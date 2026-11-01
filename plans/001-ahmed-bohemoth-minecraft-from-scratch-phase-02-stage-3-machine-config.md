@@ -50,13 +50,15 @@ Results, all on the copy described in issue 1, each heavy command through that c
 | Five deliberate breaks in the tool (rewriting unchanged files, the thread rule off, unwrapped negatives, a wrong define name, a changed `%define`) | The test fails on every one: `1752 checks, 4 failures`, then 17, 3, 12 and 19. Unbroken it prints `1752 checks, 0 failures` |
 | `pgrep -a minecraft_c` | rc 1, nothing printed. `pgrep -af` on the copy's build path shows nothing of mine |
 
-Every row was run on the final code.
+| Each of `gcc_min`, `nvcc_min`, `nasm_min`, `cmake_min` raised to 99, and `nasm_min` to `3.03`, then configure | rc 1 each: `needs GCC 99, found 16.2.1`, `needs nvcc 99.0, found 13.4.92`, `needs NASM 99.0, found 3.02`, `needs CMake 99.0, found 4.4.3`, `needs NASM 3.03, found 3.02`. Restored: rc 0 and `cmp` silent |
+
+The second attempt re-ran on the final `cmake/machine.cmake` (with the NASM fix in issue 5): all four presets configure and build rc 0, ctest `100% tests passed out of 6` each, `compile_machine_config` passes on each (17.38 s on `sanitize`), `standards_lint: clean, 32 source files` and `no recursion` on `debug`, and `threads.workers` 16 to 12 and back with only `cmake --build` gives `[1/2] Re-running CMake...`, then `MC_THREADS_WORKERS=12`, all four generated files at 12, then 16. The rows for the `minecraft_c` print, `arch_flag`, `workers: 17` and the five deliberate breaks were not repeated: they are from the first attempt, and only `cmake/machine.cmake`'s version checks have changed since.
 
 ## Commits
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-17`, based directly on `5bb5c57`. See issue 1.
+Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-18`, based directly on `5bb5c57`, which contains all of `worktree-wf_a4b549de-085-17`. See issue 1.
 
 ## Issues found
 
@@ -66,7 +68,8 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 - Done: ran the landing command twice, once for each landing step the workflow asks for, got the same refusal both times, and escalated. I did not try another way to move `main` (`update-ref`, `branch -f`, `cd` into the main checkout), because that would get around the isolation.
 - This branch holds only this stage's own new files, plus one sentence in `plans/REPO_STRUCTURE.md`, and carries nobody else's commits. Stage 02.4 issue 9 reports that bringing another branch into a worktree was denied, so I did not try it. Instead I used `git archive` to export `worktree-wf_a4b549de-085-14` at `8af2957` (Stages 02.1 and 02.4) and the YAML paths of `worktree-wf_a4b549de-085-15` at `16be95a` (Stage 02.2) into `build/overlay/`, copied this stage over them, and verified there. That directory has been deleted.
 - `git merge-tree --write-tree` first reported a conflict with `worktree-wf_a4b549de-085-14` in `plans/REPO_STRUCTURE.md`, because my note was on the table row next to Stage 02.4's new row. I moved the note to section 4. The re-check against `worktree-wf_a4b549de-085-14`, `-15` and `-16` returns rc 0 for each, with no conflict.
-- So **the boxes above were ticked on that copy, not on `main`.** To finish, from a shell outside the isolation, in the main checkout, once Stages 02.1, 02.2 and 02.4 are in: `git rebase main worktree-wf_a4b549de-085-17 && git checkout main && git merge --ff-only worktree-wf_a4b549de-085-17`. Then run this file's Verification there, add the landed sha above, and set Status to done.
+- Second attempt (2026-11-02): `main` was still `5bb5c57`, and all of `worktree-wf_a4b549de-085-1` to `-17` still hold unlanded work. This branch fast-forwarded to `worktree-wf_a4b549de-085-17` without trouble, which is local to this worktree. `git -C` on the main checkout, even for a read, was refused with `this command redirects git to the shared checkout via -C`. The landing command, run once as written at `a4598fb`, was refused with the same `too complex to verify` message. A plain `git -C` to that checkout is refused too, so splitting the command does not help, and I again did not use another route to move `main`. The copy was rebuilt the same way, from `8af2957` and `16be95a`. `worktree-wf_a4b549de-085-16` differs from `main` only in its plan file, so it adds no code to the copy.
+- So **the boxes above were ticked on that copy, not on `main`.** To finish, from a shell outside the isolation, in the main checkout, once Stages 02.1, 02.2 and 02.4 are in: `git rebase main worktree-wf_a4b549de-085-18 && git checkout main && git merge --ff-only worktree-wf_a4b549de-085-18`. Then run this file's Verification there, add the landed sha above, and set Status to done.
 - Order matters in one way. After Stage 02.1 lands, `cmake/machine.cmake` stops the configure with a message naming the missing file if the YAML parser is not there, so land Stage 02.2 before or together with this one.
 
 **2. The "binary" in the proof is `machine_config_report`, not `minecraft_c`.**
@@ -81,7 +84,7 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 
 **3. The configure-time build of the tool failed at `-O1`, in the YAML parser.**
 - Expected: the YAML parser, which builds clean on all four presets, to compile with the same warnings at `-O1`.
-- Actual: `compile/src/yaml/index.c:529:20: error: 'decoded' may be used uninitialized [-Werror=maybe-uninitialized]`, in `yaml_scan_escaped_quoted`. It looks like a false positive, since `decoded` should be set whenever `yaml_reserve_string` returns true, but I did not read that function to prove it.
+- Actual: `compile/src/yaml/index.c:529:20: error: 'decoded' may be used uninitialized [-Werror=maybe-uninitialized]`, in `yaml_scan_escaped_quoted`. It is a false positive, now read rather than assumed: at `16be95a`, `yaml_reserve_string` (`compile/src/yaml/index.c:319`) either returns `yaml_fail(...)`, which always returns false, or sets `*out` and returns true, and the caller at line 517 returns on false before using `decoded`.
 - Done: the configure-time compile uses `-O0`. It runs once on a 1 KiB file, and the build targets judge the same source at each preset's level. The parser belongs to Stage 02.2, so I left it alone. Initializing `decoded` to `nullptr` there should remove the warning.
 
 **4. The plan's paths and the standard's CPU list differ from what exists.**
@@ -92,7 +95,7 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 **5. Choices the plan left open, which Ahmed may want different.**
 - The tool refuses more than the stage asked, on the grounds that a wrong value should stop the build with a line number. The full list is in `compile/src/machine_config/README.md`. The one most likely to surprise: **`threads.workers: 17` or more is refused on the current yaml**, because the thread counts would pass `cpu.logical_threads`, and threads are pinned. To try a higher number, lower `threads.reserved_os` or raise `cpu.logical_threads`.
 - `threads.main` and `threads.sim` must be 1, and `threads.gpu` 0 or 1, as the plan's thread table has them.
-- `cmake/machine.cmake` also compares the running GCC, nvcc, NASM and CMake against `toolchain.*` and stops the configure if one is older. All four passed here, but I never saw one fail, and `CMAKE_ASM_NASM_COMPILER_VERSION` is checked only when CMake sets it, which I did not confirm.
+- `cmake/machine.cmake` also compares the running GCC, nvcc, NASM and CMake against `toolchain.*` and stops the configure if one is older. The first version of the NASM check never ran. Expected: an old NASM stops the configure. Actual: `CMakeASM_NASMCompiler.cmake` has `set(CMAKE_ASM_NASM_COMPILER_VERSION "")`, so the `if` guarding it was false and it was skipped silently. Fixed: the version now comes from `nasm -v`, and a version it cannot read stops the configure. All four checks have now been seen failing (the table above).
 - The test writes its own `main` and `CHECK`, as Stage 02.2's does, so it does not depend on the order Stage 02.4 lands in. It could move to the harness later.
 
 **6. Wiring outside this stage's owned paths.**
