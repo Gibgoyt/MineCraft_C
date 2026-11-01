@@ -110,7 +110,7 @@ That is about 1 ray in 100000 to 200000, and the differences are consistent with
 
 ### What was built
 
-`/tmp/mc_c_spikes/ray_throughput/`: `CMakeLists.txt`, `shared.h`, `main.c` (C23, built with the standard's warning flags plus `-Wno-format`, see issue 1), `kernel.cu` (`sm_75`). Throwaway, as the plan says.
+`/tmp/mc_c_spikes/ray_throughput/`: `CMakeLists.txt`, `shared.h`, `main.c` (C23, built with the standard's warning flags, and since the second gate check no `-Wno-format`, see issue 10), `kernel.cu` (`sm_75`). Throwaway, as the plan says.
 
 - **World:** 65x65 columns (1040x1040 blocks), 48 section slots per column, deterministic own noise: rolling hills, mountains up to z = 193, a sea, caves, ore blobs, porous-leaved trees. Built in 3 to 16 s depending on what else was running.
 - **Format, as encoded:** column table (16 bytes: 48-bit section mask, first section, max height); section (16 bytes: 64-bit brick mask, first brick, or one uniform value); brick (64-bit voxel mask, plus a 4-byte reference); 4 bytes per occupied voxel (material and light) in mixed bricks only. Children are found with popcount.
@@ -135,7 +135,7 @@ Accepted exception (plan section 6): `tools/test-or-build.sh` does not exist unt
 
     cmake -S /tmp/mc_c_spikes/ray_throughput -B /tmp/mc_c_spikes/ray_throughput/build
     cmake --build /tmp/mc_c_spikes/ray_throughput/build
-    timeout 120 /tmp/mc_c_spikes/ray_throughput/build/ray_throughput    # exit 0 means PASS; see the VERDICT line
+    timeout 120 /tmp/mc_c_spikes/ray_throughput/build/ray_throughput    # exit 0 PASS, 1 MISS, 3 UNCHECKED; see the VERDICT line
     pgrep -a ray_throughput    # must print nothing
 
 ### Verification run
@@ -176,11 +176,41 @@ Lattice rerun, which the second agent had not done: same picture as the table ab
 
 Read through for a fake: the timer wraps `rt_render`, which launches the kernel and waits on `cudaDeviceSynchronize`. The grid covers `width x height` pixels, and each pixel writes device memory, so the work cannot be optimized away. The reference trace reads the dense grid, not the encoded tree, so it is independent of the format under test. Two runs were then made after the fix below: terrain `VERDICT: PASS`, worst p99 4.10 ms, 13 wrong of 2721600, exit 0; lattice `VERDICT: MISS`, exit 1.
 
+### Second gate check, 2026-11-02, from a deleted `build/`, after issues 10 and 11
+
+Full run `rc=0`, 11.2 s, `pgrep -a ray_throughput` rc 1. `link.txt` starts `/usr/bin/cc` and holds `-lcudart_static`; there is no `g++` or `-lstdc++`. `NEEDED` is `libm.so.6`, `libc.so.6` and `ld-linux-x86-64.so.2`.
+
+    VERDICT: PASS. Worst p99, 1920x1080, primary + sun: 4.10 ms against 8.33. Rays checked: 2721600, disagreeing: 12, not explained by rounding: 0.
+
+| Terrain, 1920x1080 | This run |
+|---|---|
+| Sun 50 degrees, path means | 0.69 - 2.24 |
+| Sun 50 degrees, worst p99 | 2.65 |
+| Sun 15 degrees, path means | 0.80 - 2.55 |
+| Sun 15 degrees, worst p99 | 4.10 |
+| Sun 15 degrees, slowest single frame | 4.11 |
+| Primary rays only, path means | 0.50 - 1.04 |
+
+So the static link and the flag form moved no number outside what earlier runs showed. Terrain disagreements went from 13 to 12, the same in three runs of this build, with voxel differences 8 where they were 9. The kernel source did not change, only how it is built (`-Xcompiler=` form and static cudart), so the change is attributed to that, without having been traced.
+
+Controls for the new verdict, all with `--no-pictures --no-scales --frames 40`:
+
+| Run | Exit | Verdict | Disagreeing | Not explained by rounding |
+|---|---|---|---|---|
+| plain | 0 | PASS | 12 | 0 |
+| `--perturb-eye 0.001` | 1 | MISS | 8148 | 5766 |
+| `--perturb-eye 0.01` | 1 | MISS | 82352 | 79867 |
+| `--perturb-eye 0.05` | 1 | MISS | 383951 | 381738 |
+| `--lattice` | 1 | MISS, on time only (53.74 ms) | 26 | 0 |
+| `--no-validate` | 3 | UNCHECKED | 0 of 0 checked | 0 |
+
+`--perturb-eye` moves only the reference ray, so it plays a kernel that is wrong by that many blocks. The check catches an error of one thousandth of a block, a third of the allowance at the longest path.
+
 ## Commits
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-9`, which holds all four Phase 01 stages rebased on `5bb5c57`, and the gate check. Landing needs `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-9` from outside the agent isolation; see the phase file. Record the landed shas here after that.
+Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-10`, which holds all four Phase 01 stages rebased on `5bb5c57`, and both gate checks. Landing needs `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-10` from outside the agent isolation; see the phase file. Record the landed shas here after that.
 
 
 ## Issues found
@@ -239,3 +269,20 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 - **Expected:** the listed commands work from nothing.
 - **Actual:** the list began at `cmake --build`, which needs a configured `build/`. It worked only because the author's directory was still there.
 - **Done:** added the `cmake -S -B` line above. Also replaced `(unsigned long)` casts in `main.c`, a banned keyword, with `(uint64_t)`.
+
+### 10. Second gate check: the spike broke the Stage 01.1 rules
+
+- **Expected:** the phase's spikes build the way the standard says: no `-Wno-format`, gcc linking static cudart.
+- **Actual:** `CMakeLists.txt` had `-Wno-format`, which turned off format checking for all of `main.c`, and `LINKER_LANGUAGE CUDA`, so g++ linked shared `libcudart.so` and `libstdc++`. The previous gate check left this as throwaway.
+- **Done:** fixed instead of excused. `CMakeLists.txt` now uses section 9's recipe and the `-Xcompiler=` flag form, `shared.h` defines `libc_double_t`, and every float passed to `printf` is cast to it. `main.c` builds under `-Wall -Werror` with format checking on. Results are above: the numbers did not move.
+
+### 11. Second gate check: the correctness limit was a chosen number, and `--no-validate` passed half the verdict
+
+- **Expected:** issue 8's exit code says whether the picture is right.
+- **Actual:** the limit was 1 wrong ray in 10000, about ten times what had been seen, as issue 8 admits. Up to 272 wrong rays could have been a real traversal bug and still passed. The "consistent with float32 rounding" sentence under "Is the picture right?" had never been checked ray by ray. And `--no-validate` checks 0 rays, and `0 * 10000 <= 0` passed.
+- **Done:** fixed. There is no longer a rate. **Every** disagreement is classified, and one that rounding cannot explain fails the run:
+  - The allowance is derived, in `rounding_pad` in `main.c`. With u = 2^-24: CPU and GPU directions can differ by 22u, the parameter `(plane - origin) * inverse` carries 3u of t, and the position adds 1u of t and 1u of a coordinate below 2048. That is 26u x t + 2048u, rounded up to t x 2^-19 + 2^-13 blocks, about 0.003 blocks at the longest path of about 1500. The derivation is an upper bound by hand, not a formal proof, and no number in it was fitted to the results.
+  - A different primary answer needs the kernel's voxel to be solid and within the allowance of the float64 ray, and any voxel the kernel skipped to be grazed within it. A different face needs the crossing of the kernel's face plane to be within it of the voxel. A shadow difference needs the blocker to be grazed, or another solid voxel within the allowance, not counting the hit voxel itself.
+  - Result on terrain and on the lattice: every disagreement (12 and 26) is explained. **That now confirms what Results only supposed.** The perturbation controls above show the check can fail.
+  - `--no-validate` now gives `VERDICT: UNCHECKED` and exit 3.
+- **Limit:** the check still covers 1/16 of the pixels of 3 poses per path. The mid-path poses are compared by eye only.

@@ -1042,7 +1042,7 @@ int32_t main(int32_t argc, char **argv) {
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-9`, which holds all four Phase 01 stages rebased on `5bb5c57`, and the gate check. Landing needs `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-9` from outside the agent isolation; see the phase file. Record the landed shas here after that.
+Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-10`, which holds all four Phase 01 stages rebased on `5bb5c57`, and both gate checks. Landing needs `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-10` from outside the agent isolation; see the phase file. Record the landed shas here after that.
 
 
 ## Issues found
@@ -1103,3 +1103,13 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 - **Expected:** a ticked "write the spike" means more than that it compiles, because this code will run once, by hand, on the real display.
 - **Actual:** the binary had never been executed. A 1,000-line program whose failure paths leave a dark console had only compile checks behind it.
 - **Done:** wrote the fake card and 14 cases above. They found the issue before this one. The remaining todo boxes stay unticked, because a fake card cannot answer them.
+
+### Second gate check: what nvidia-drm's source says, read but not run
+
+- **Expected:** the earlier issue "X may hold the card" and "Console restore" rest on memory, because the module source is not on this machine.
+- **Actual:** the driver's source was read on GitHub on 2026-11-02, from `NVIDIA/open-gpu-kernel-modules`, branch `main`, files `kernel-open/nvidia-drm/nvidia-drm-drv.c` and `nvidia-drm-gem-nvkms-memory.c`, through a web fetch that summarizes. **`main` is not necessarily the installed 615.71.09, and nothing here was run.** It says:
+  - With `modeset=1` the driver sets `DRIVER_MODESET | DRIVER_ATOMIC` and provides `dumb_create` and `dumb_map_offset`, so dumb buffers exist as an interface. `/sys/module/nvidia_drm/parameters/modeset` reads `Y` here.
+  - `__nv_drm_master_set` returns `-EINVAL` when `!hasFramebufferConsole && !grabOwnership()`. So the spike's `EINVAL` refusal is the right case for "someone else owns NVKMS". With a framebuffer console the grab is skipped, because the driver takes ownership at load. `fbdev` reads `Y` here, so `SET_MASTER` may succeed, which the earlier issue did not expect. Whether X and the console really share that ownership is not answered by reading this.
+  - `nv_drm_master_drop` differs on that same flag. Without a framebuffer console it disables every output and releases NVKMS ownership. With one, it only resets the input colorspace.
+- **What that changes:** the restore order in the spike (put the CRTC back, drop master, `KD_TEXT`) still looks right, since on that path the drop itself neither disables nor restores outputs. It also gives a hard reason why **agents must not open this card even just to look**: sysfs shows no output enabled through DRM, so there may be no DRM master at all, and in that case the kernel makes the opener master on `open` and calls this `master_set` and `master_drop` on close. This is inference from the source, not something observed.
+- **Done:** recorded. The boxes stay unticked and the risk entry above stays open. This narrows what Ahmed's run has to answer, and it does not replace the run.

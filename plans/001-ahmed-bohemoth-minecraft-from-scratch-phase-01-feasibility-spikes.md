@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 1: Feasibility spikes
 
-**Status:** in progress: Stages 01.1 and 01.3 are verified. Stage 01.2 and the dumb-buffer half of 01.4 await Ahmed's runs on a text console. None of this phase is on `main` yet, because agents cannot land it (see Issues)   (updated 2026-11-01)
+**Status:** in progress: Stages 01.1 and 01.3 are verified. Stage 01.2 and the dumb-buffer half of 01.4 await Ahmed's runs on a text console. None of this phase is on `main` yet, because agents cannot land it (see Issues)   (updated 2026-11-02)
 
 ## Goal
 
@@ -41,11 +41,20 @@ Gate check result, 2026-11-01: both commands behave as stated (four directories 
 | 01.3 | Pass, worst p99 4.24 ms against 8.33 ms | Ticked | Landing |
 | 01.4 | Readback 1.26 ms; stand-in total about 1.8 ms; shim cases pass | Open | Ahmed's run; a miss is predicted if the buffer is in VRAM |
 
+Second gate check result, 2026-11-02: the same two commands again behave as stated, every agent-runnable check below passes from clean, and **the gate still does not pass**, for the same two reasons.
+
+| Stage | Second check | Box | Waiting for |
+|---|---|---|---|
+| 01.1 | Clean rebuild and all three matrices pass | Ticked | Landing |
+| 01.2 | Strict build; 14 fake-card cases pass; source copy unchanged | Open | Ahmed's run |
+| 01.3 | Rebuilt to the 01.1 rules; `VERDICT: PASS`, 4.10 ms; 12 of 12 disagreements explained by rounding; negative controls fail as they should | Ticked | Landing |
+| 01.4 | Readback 1.263 ms; stand-in total 1.80 ms; 10 fake cases asserted; rebuild from the stage file works | Open | Ahmed's run; a miss is now likelier, as the driver's source puts the buffer in VRAM |
+
 ## Commits
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-9`, which holds all four Phase 01 stages rebased on `5bb5c57`, and the gate check. Landing needs `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-9` from outside the agent isolation; see the phase file. Record the landed shas here after that.
+Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-10`, which holds all four Phase 01 stages rebased on `5bb5c57`, and both gate checks. Landing needs `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-10` from outside the agent isolation; see the phase file. Record the landed shas here after that.
 
 ## Issues found
 
@@ -60,3 +69,20 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 - Done: left in place. Delete those blocks once his results are recorded.
 
 **3. Defects found by the gate check are logged in the stage files.** In short: 01.2 had never executed and had a false FAIL on a slow modeset; 01.3's exit code asserted nothing and its Verification could not build from clean; 01.4's rerun source was missing and its stated ranges were too narrow; 01.1 had only a banned cast. All are fixed, except that the 01.4 outlier remains unexplained.
+
+**4. Second gate check: defects it was handed, and what became of each.**
+
+| Defect | Outcome |
+|---|---|
+| Phase 01 not on `main` | **Open.** The landing command was refused a third time from this checker's worktree, see below |
+| 01.2 nothing known about real hardware | **Open, narrowed.** Only Ahmed's run can answer it. The driver source was read, Stage 01.2's last issue |
+| 01.4 real write unmeasured, target unjudged | **Open, narrowed.** Same. Source says VRAM, so the predicted miss is likelier, Stage 01.4 issue 9 |
+| 01.4 outlier, cause unknown | **Open, narrowed.** Not recurred in 24 runs. Memory contention and throttle events ruled out by experiment; a low core clock fits best; why the clock would be low under load is unproven, Stage 01.4 issue 8 |
+| 01.3 `-Wno-format` and g++ link | **Fixed**, Stage 01.3 issue 10 |
+| 01.3 chosen limit, `--no-validate` | **Fixed**, Stage 01.3 issue 11 |
+
+New defects it found and fixed: `build.sh` in 01.4 failed on the documented rebuild, and `test_shim/run.sh` in 01.4 asserted nothing (Stage 01.4 issue 10). New finding for later stages: sleeping before the copy costs 0.8 to 1.2 ms in the write, measured at about 900 to 1200 MHz (Stage 01.4 Results).
+
+**Landing, third round.** Expected: step 5's command lands. Actual: `flock /tmp/mc_c_land.lock sh -c 'git rebase main && git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only '"$(git rev-parse --abbrev-ref HEAD)"` was refused: "this command names git in a form too complex to verify that it stays inside the worktree". Done: the attempt was made once, and no other route to move `main` was tried, for the reason in issue 1. **A checker told to fix this cannot, from inside the isolation. Either the workflow lands these commits from outside, or its agents run without worktree isolation.** Later phases need that, as they read `plans/CODING_STANDARD.md`.
+
+**Limit on the sources in `/tmp`.** Only 01.2 and 01.4 keep their source in the repo. The Verification commands for 01.1 and 01.3 need `/tmp/mc_c_spikes/`, which is tmpfs, so they cannot be rerun after a reboot. Their results stay, as this phase intends. The `outlier/` experiments and `test_shim/` for 01.2 and 01.4 are in the same position.

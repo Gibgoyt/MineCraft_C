@@ -51,6 +51,8 @@ Gate check, 2026-11-01, by a separate agent that assumed the claims were false. 
 - New minimal `.cu` files, not the spike's own, reproduce both nvcc errors: `_Float32` in a kernel signature gives "contains a C++23 extended floating-point", and `0.5f32 + 0.5f32` on plain `float` gives `Internal Compiler Error (codegen): "unsupported float variant!"`.
 - The kernel's result is checked on the host, and `main` returns non-zero if any of the three values is wrong, so exit 0 does mean the kernel ran.
 
+Second gate check, 2026-11-01, from a deleted `build/`: `sum=524800`, `scale_last=512.0`, `abi_mix=3.75`, exit 0, `pgrep -a spike` rc 1, `NEEDED` of `libc.so.6` and `ld-linux-x86-64.so.2`. `flag_matrix.sh`, `link_matrix.sh` and `cmake_matrix.sh` were run again; the rows read back (the end of each script's output) match the tables below, including the failing `static_noflags` link and the `libstdc++` in `NEEDED` for the g++ links. Nothing false was found in this stage.
+
 ## Results
 
 **Answers.** CMake links C, NASM and CUDA through `main.c`. The flags remove all C++ runtime symbols. cudart should be **static**, and the binary then has no C++ runtime at all.
@@ -113,7 +115,7 @@ The spike sources and the matrix scripts stay in `/tmp/mc_c_spikes/toolchain_lin
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-9`, which holds all four Phase 01 stages rebased on `5bb5c57`, and the gate check. Landing needs `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-9` from outside the agent isolation; see the phase file. Record the landed shas here after that.
+Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-10`, which holds all four Phase 01 stages rebased on `5bb5c57`, and both gate checks. Landing needs `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-10` from outside the agent isolation; see the phase file. Record the landed shas here after that.
 
 
 ## Issues found
@@ -164,3 +166,8 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 - Expected: the stage's claims to fail when re-run from clean, by the checker's default assumption.
 - Actual: every claim held, see "Gate check" under Verification. One gap: `main.c` cast to `unsigned long long`, a banned keyword the standard's flags cannot catch.
 - Done: `main.c` now prints with `PRIu64`, and the Verification commands were re-run after that edit with the same results. The master plan is unchanged, as `git diff 5bb5c57 HEAD` on it shows. Stage 01.3's CMake project and its `-Wno-format` do not follow this stage's link list or `libc_double_t`; that spike is throwaway and its numbers do not depend on either, so they were left.
+
+**10. Second gate check: the exception in issue 9 is gone.**
+- Expected: issue 9 says Stage 01.3 does not follow this stage's link list or `libc_double_t`.
+- Actual: that was true until the second gate check, which changed Stage 01.3 to use both.
+- Done: see Stage 01.3 issue 10. Its build now also confirms this stage's CMake recipe on a second project: `/usr/bin/cc` links, `-lcudart_static`, `NEEDED` of `libm.so.6`, `libc.so.6` and `ld-linux-x86-64.so.2`, and `-Wformat` on under `-Werror`, with every `float64_t` printf argument cast to `libc_double_t`.

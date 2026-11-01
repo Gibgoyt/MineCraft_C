@@ -77,8 +77,8 @@ What this shows:
 
 - **Readback alone is 1.26 to 1.29 ms**, which leaves about 0.74 ms for the write within 2 ms.
 - **The host WC memory really is write-combined:** a CPU read of it runs at 102 MB/s against 11 GB/s for ordinary memory. It still sits on the CPU's memory bus, so it says nothing about a write across PCIe.
-- **Sleeping between frames costs 0.8 ms in the write,** and the two write modes are clearly separate. Sleep-paced ordinary memory is even bimodal, between 0.53 and 1.9 ms. The governor is `powersave` and the core idles at 800 MHz, so waking at low frequency is the likely cause, but that was not isolated. A cold source alone explains only 0.23 to 0.53 ms.
-- **Prediction, not a measurement:** if the dumb buffer lives in VRAM, the write crosses the same PCIe link. Gen3 x8 carries at most 7.88 GB/s raw, so the write takes at least 1.05 ms, and about 1.28 ms at the 6.5 GB/s measured for DMA. The total would then be about 2.3 to 2.6 ms, a **miss**. Passing needs 11.3 GB/s, above the link's limit. If the driver puts the buffer in system memory, the stand-in's 1.8 ms is the better guide. nvidia-drm's source is not on this machine, so where the buffer lives was not confirmed. Ahmed's run settles it, and its `CPU read of REAL dumb buffer` row is further evidence.
+- **Sleeping between frames costs 0.8 ms in the write,** and the two write modes are clearly separate. Sleep-paced ordinary memory is even bimodal, between 0.53 and 1.9 ms. The governor is `powersave` and the core idles at 800 MHz, so waking at low frequency is the likely cause. The second gate check measured it: see the clock column below. A cold source alone explains only 0.23 to 0.53 ms.
+- **Prediction, not a measurement:** if the dumb buffer lives in VRAM, the write crosses the same PCIe link. Gen3 x8 carries at most 7.88 GB/s raw, so the write takes at least 1.05 ms, and about 1.28 ms at the 6.5 GB/s measured for DMA. The total would then be about 2.3 to 2.6 ms, a **miss**. Passing needs 11.3 GB/s, above the link's limit. If the driver puts the buffer in system memory, the stand-in's 1.8 ms is the better guide. nvidia-drm's source is not on this machine. The second gate check read it on GitHub, and it says the buffer goes in video memory on this GPU, so the miss is the likelier outcome (Issue 9). Ahmed's run settles it, and its `CPU read of REAL dumb buffer` row is further evidence.
 
 **Fallbacks to weigh if Ahmed's run misses, for Ahmed to decide:** the target can be relaxed, since the copy engine runs while the CPU does other work (the async submit call costs 2 microseconds), so readback need not block the frame thread, at the price of frame latency. Getting the GPU onto x16 (Issue 1) could roughly halve both copies, if the link is the limit. Neither was tried.
 
@@ -103,6 +103,25 @@ Six of the seven, CPU frequency 4.96 to 5.18 GHz measured beside each run, milli
 | CPU read of host WC | 99 to 103 MB/s, against about 10000 MB/s for ordinary memory |
 
 The seventh, the first one, was far slower on the host side. See Issue 7.
+
+### Second gate check, 2026-11-02: what the core clock does to these rows
+
+The program now prints, for every row, the clock the core really ran at (a `dec`/`jnz` loop of known clocks in `index.asm`, timed, best of three), and at three points the throttle counters and load. All numbers below come from `index.c` with that change. 24 runs under no extra load, 6 of them straight after a rebuild, kept the fast rows at the values below, within 0.1 ms. The sleep-paced rows were read in full in 4 further runs.
+
+| Row, one normal run | median ms | Loop clock MHz |
+|---|---|---|
+| Readback to pinned, tight loop | 1.263 | 5187 |
+| Stream to host WC | 0.243 | 5187 |
+| Stand-in WC, spin-paced: write | 0.536 | 5187 |
+| Stand-in WC, spin-paced: TOTAL | 1.800 | 5187 |
+| Stand-in WC, sleep-paced: write | **1.361 to 1.753** | **893 to 1191** |
+| Stand-in WC, sleep-paced: TOTAL | **2.645 to 3.044** | **893 to 1197** |
+
+So **sleeping between frames puts the core near its floor, measured**: the clock read right after the row is about 900 to 1200 MHz, against 5100 when spinning. The reading is one probe after the row, so it does not cover every frame. The stand-in WB row is bimodal, with one run at a 0.635 median and 4888 MHz and others at about 1.8 and 890 MHz. The 2 ms budget holds, if at all, only for a frame thread that does not sleep right before the copy. **For Stage 08.4 and Phase 17:** pace by spinning for the last stretch before the copy, or expect the write to cost 0.8 to 1.2 ms more.
+
+The experiments are in `/tmp/mc_c_spikes/copy_scanout/outlier/` (`clock_table.c`, `hog.c`, `conditions.py`); Issue 7 uses them.
+
+Also seen, on the machine itself: the CPU is an i9-10900K, in a chassis that reports a battery and `dell_smm`/`alienware_wmi`. One core at 5.2 GHz goes from 76 C to 91-94 C within a run, and most runs logged 300 to 400 throttle events and 1.2 to 2.4 s of throttle time. The rows above did not change when that happened. `package_throttle_total_time_ms` read 698689567, about 8 days of a 30-day uptime. A long sustained load was not measured, and Phase 17 should expect it to matter.
 
 ### Spike source
 
@@ -151,6 +170,7 @@ Copied from `/tmp/mc_c_spikes/copy_scanout/`, so that Ahmed's run survives `/tmp
 #define CS_READ_RUNS 4u
 #define CS_SAMPLE_POINTS 4096u
 #define CS_MAX_RUNS 512u
+#define CS_MHZ_PROBE_CLOCKS UINT64_C(1000000)
 
 enum {
     CS_EXIT_OK = 0,
@@ -235,18 +255,69 @@ static void cs_print_ms(uint64_t ns) {
     printf("%5" PRIu64 ".%03" PRIu64, us / UINT64_C(1000), us % UINT64_C(1000));
 }
 
+/* The clock this core ran at just now, in MHz, from a loop of known clocks: not what cpufreq asked for.
+ * Best of three, so an interrupt during one does not read as a slow core. */
+static uint64_t cs_core_mhz(void) {
+    uint64_t best = UINT64_C(0);
+    for (uint32_t attempt = 0u; attempt < 3u; attempt++) {
+        uint64_t start = cs_now_ns();
+        cs_spin_cycles(CS_MHZ_PROBE_CLOCKS);
+        uint64_t elapsed = cs_now_ns() - start;
+        uint64_t mhz = CS_MHZ_PROBE_CLOCKS * UINT64_C(1000) / (elapsed == UINT64_C(0) ? UINT64_C(1) : elapsed);
+        if (mhz > best) {
+            best = mhz;
+        }
+    }
+    return best;
+}
+
+static uint64_t cs_read_cpu_u64(int32_t cpu, const char *leaf) {
+    char path[160];
+    uint64_t value = UINT64_C(0);
+    snprintf(path, sizeof(path), "/sys/devices/system/cpu/cpu%" PRId32 "/%s", cpu, leaf);
+    FILE *file = fopen(path, "r");
+    if (file != nullptr) {
+        if (fscanf(file, "%" SCNu64, &value) != 1) {
+            value = UINT64_C(0);
+        }
+        fclose(file);
+    }
+    return value;
+}
+
+/* Everything that could explain a slow host row, read beside the rows. Read-only sysfs and procfs. */
+static void cs_print_machine(const char *when) {
+    int32_t cpu = sched_getcpu();
+    char load[64] = "";
+    FILE *file = fopen("/proc/loadavg", "r");
+    if (file != nullptr) {
+        if (fgets(load, (int32_t)sizeof(load), file) != nullptr) {
+            load[strcspn(load, "\n")] = '\0';
+        }
+        fclose(file);
+    }
+    printf("machine %s: cpu %" PRId32 ", loop clock %" PRIu64 " MHz, cpufreq %" PRIu64 " MHz, core throttle %" PRIu64
+           " events %" PRIu64 " ms, package throttle %" PRIu64 " events %" PRIu64 " ms, load %s\n",
+           when, cpu, cs_core_mhz(), cs_read_cpu_u64(cpu, "cpufreq/scaling_cur_freq") / UINT64_C(1000),
+           cs_read_cpu_u64(cpu, "thermal_throttle/core_throttle_count"),
+           cs_read_cpu_u64(cpu, "thermal_throttle/core_throttle_total_time_ms"),
+           cs_read_cpu_u64(cpu, "thermal_throttle/package_throttle_count"),
+           cs_read_cpu_u64(cpu, "thermal_throttle/package_throttle_total_time_ms"), load);
+}
+
 static void cs_print_stats(const char *name, const cs_stats_t *stats) {
+    uint64_t mhz = cs_core_mhz();
     printf("%-38s", name);
     cs_print_ms(stats->first_ns);
     cs_print_ms(stats->min_ns);
     cs_print_ms(stats->median_ns);
     cs_print_ms(stats->p99_ns);
     cs_print_ms(stats->max_ns);
-    printf(" %8" PRIu64 "\n", stats->median_ns == UINT64_C(0) ? UINT64_C(0) : CS_FRAME_BYTES * UINT64_C(1000) / stats->median_ns);
+    printf(" %8" PRIu64 " %6" PRIu64 "\n", stats->median_ns == UINT64_C(0) ? UINT64_C(0) : CS_FRAME_BYTES * UINT64_C(1000) / stats->median_ns, mhz);
 }
 
 static void cs_print_header(void) {
-    printf("%-38s%9s%9s%9s%9s%9s %8s\n", "all times in ms", "first", "min", "median", "p99", "max", "MB/s");
+    printf("%-38s%9s%9s%9s%9s%9s %8s %6s\n", "all times in ms", "first", "min", "median", "p99", "max", "MB/s", "MHz");
 }
 
 static bool cs_ok(const char *what, const char *error) {
@@ -648,6 +719,7 @@ static bool cs_run_all(const char *card_path, int32_t *out_exit) {
     memset(write_combined, 0, CS_FRAME_BYTES);
     uint32_t *frame = pinned;
 
+    cs_print_machine("before");
     cs_print_header();
     cs_print_link("before");
     if (!cs_run_readback("readback pinned, paced 120 Hz", pinned, CS_PACED_RUNS, true, &seed) ||
@@ -657,6 +729,7 @@ static bool cs_run_all(const char *card_path, int32_t *out_exit) {
         return false;
     }
     cs_print_link("after GPU copies");
+    cs_print_machine("after GPU copies");
 
     const cs_target_t ordinary = {.base = ordinary_write, .pitch = CS_PITCH, .name = "ordinary host memory"};
     const cs_target_t combined = {.base = write_combined, .pitch = CS_PITCH, .name = "host write-combined memory"};
@@ -676,6 +749,7 @@ static bool cs_run_all(const char *card_path, int32_t *out_exit) {
         return false;
     }
     cs_print_link("after frame runs");
+    cs_print_machine("after frame runs");
 
     if (card_path == nullptr) {
         printf("scanout write: UNMEASURED. No dumb buffer was opened; every write above went to host memory.\n"
@@ -774,6 +848,8 @@ void cs_gpu_shutdown(void);
 /* index.asm. dst must be 32-byte aligned and bytes a multiple of 32. AVX2 non-temporal stores
  * ending in sfence: one-way, so a write-combined target is never read. */
 void cs_stream_copy(void *dst, const void *src, uint64_t bytes);
+/* index.asm. Takes count core clocks: times the real clock of this core. */
+void cs_spin_cycles(uint64_t count);
 
 #ifdef __cplusplus
 }
@@ -865,6 +941,16 @@ default rel
 section .note.GNU-stack noalloc noexec nowrite progbits
 
 section .text
+; void cs_spin_cycles(uint64_t count): a fused dec/jnz pair runs one iteration per core clock, so count over elapsed
+; time is the clock this core really ran at. rdi = count, at least 1.
+global cs_spin_cycles
+align 64
+cs_spin_cycles:
+.loop:
+    dec rdi
+    jnz .loop
+    ret
+
 global cs_stream_copy
 align 32
 cs_stream_copy:
@@ -915,14 +1001,17 @@ nvcc -std=c++20 -arch=sm_75 -O3 -Xcompiler=-fno-exceptions,-fno-rtti,-fno-thread
     -c -o "$out/cuda.o" "$here/index.cu"
 gcc -o "$here/copy_scanout" "$out/c.o" "$out/asm.o" "$out/cuda.o" \
     -L/opt/cuda/lib64 -lcudart_static
-gcc -std=c23 -Wall -Wextra -Werror -O1 -shared -fPIC -o "$out/test_shim.so" "$here/test_shim/index.c"
+# The shim is only for agents' tests; a rebuild from the stage file does not have it.
+if [ -f "$here/test_shim/index.c" ]; then
+    gcc -std=c23 -Wall -Wextra -Werror -O1 -shared -fPIC -o "$out/test_shim.so" "$here/test_shim/index.c"
+fi
 ```
 
 ## Commits
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-9`, which holds all four Phase 01 stages rebased on `5bb5c57`, and the gate check. Landing needs `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-9` from outside the agent isolation; see the phase file. Record the landed shas here after that.
+Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-10`, which holds all four Phase 01 stages rebased on `5bb5c57`, and both gate checks. Landing needs `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-10` from outside the agent isolation; see the phase file. Record the landed shas here after that.
 
 
 ## Issues found
@@ -963,4 +1052,37 @@ Done: fixed. The source is under "Spike source" with a rebuild command, and the 
 **7. Gate check: the Results understated how much the numbers vary.**
 Expected: the Results table's sleep-paced total "2.59 to 2.64", and its spin-paced p99 "2.00", describe what a rerun gives.
 Actual: sleep-paced medians ranged 1.899 to 3.219 over these seven runs, and the spin-paced p99 reached 2.25 in the six normal ones. The first run was an outlier on every host-side row: stream to ordinary host 1.370 (usual 0.23), memcpy 1.637 (usual 0.30), stream to WC 1.380 (usual 0.23), CPU read of ordinary memory 1913 MB/s (usual about 10000), unpinned readback 2.107 (usual 1.33), and spin-paced p99 3.307. It ran pinned to cpu 12 at load average 1.0. The pinned DMA rows did not move, so the GPU and PCIe link were not the cause.
-Done: recorded, with the tables above left as measured. **The cause of the outlier is not known:** the host rows are about six times slower, which would fit a core held near its 800 MHz floor by the `powersave` governor, but frequency was not being recorded on that run, and it did not recur in six more that did record it. When Ahmed reads his own run, one bad run is not decisive. Run it twice or three times. The verdict rests on a median, and a run like this one would still have read 1.811 on that row, so a passing median can hide a p99 well above 2 ms.
+Done: recorded, with the tables above left as measured. **The cause of the outlier is not known:** the host rows are about six times slower, which would fit a core held near its 800 MHz floor by the `powersave` governor, but frequency was not being recorded on that run, and it did not recur in six more that did record it. Narrowed by Issue 8. When Ahmed reads his own run, one bad run is not decisive. Run it twice or three times. The verdict rests on a median, and a run like this one would still have read 1.811 on that row, so a passing median can hide a p99 well above 2 ms.
+
+**8. Second gate check: the outlier in Issue 7 is narrowed to a low core clock, and its cause is still not proven.**
+Expected: the host rows that ran six times slower in one run have a cause that can be shown. Actual: it did not recur in 24 more runs, so this compares its signature against conditions made on purpose. Pinned DMA stayed at 1.263 to 1.287 in every one of them, so no row below separates on that.
+
+| Condition | memcpy | stream | memcpy / stream | CPU read MB/s | unpinned | Loop clock MHz |
+|---|---|---|---|---|---|---|
+| **The outlier** | **1.637** | **1.370** | **1.2** | **1913** | **2.107** | not recorded |
+| Normal | 0.33 | 0.243 | 1.4 | 10000 | 1.33 | 5187 |
+| Memory hog, 3 cores | 1.0 to 1.2 | 0.41 | 2.5 to 3.0 | 2200 | 2.65 | 4888 |
+| Memory hog, 6 cores | 4.2 | 1.2 | 3.5 | 1000 | 4.5 | 2100 |
+| Memory hog, 14 cores | 7.4 to 8.1 | 2.4 to 2.7 | 3.1 | 700 | not recorded | 2500 to 3400 |
+| CPU hog, 14 cores, 96 C | 0.33 to 0.36 | 0.26 | 1.3 | 10300 | not recorded | 2700 to 4800 |
+| Spinning sibling hyperthread | 0.35 | 0.25 | 1.4 | 5480 | not recorded | 2400 (the loop shares the core, so this reads low) |
+| Straight after a rebuild, 6 runs | 0.33 to 0.41 | 0.245 | 1.4 | 10000 | 1.33 | 4800 to 5187 |
+| Core at 1.0 to 1.5 GHz (`clock_table`, sleeping between samples) | 1.46 to 1.54 | 1.21 to 1.41 | 1.1 to 1.2 | not the same loop | not measured | 1000 to 1500 |
+
+What this shows:
+- **Memory contention does not fit.** It can reach a read rate like the outlier's only with memcpy two and a half times the stream or more, and a much smaller stream cost. The outlier's ratio is 1.2.
+- **Thermal throttle events alone do not fit.** Runs with 1.2 to 2.4 s of throttle time read normal, and neither does a rebuild just before, a hot package or a busy sibling.
+- **A core at about 1.0 to 1.5 GHz fits memcpy, stream and their ratio.** The one read comparison is weaker: `clock_table` reads 4.1 times slower at under 1 GHz, where the outlier is 5.2 times, on a similar but not identical loop.
+- **Not shown:** why a busy core would sit that low for several seconds. No condition tried held it there under load; only sleeping between copies did. The outlier also ended before the spin-paced row, whose median was normal. Nothing about the original run can be recovered.
+
+Done: **the cause stays unproven.** It is now a low clock by best fit, not by guess, with memory contention and throttle events ruled out as the explanation. The row-by-row clock column and the throttle counters mean a recurrence will now name itself. The `MHz` column is new in Ahmed's output: a row with a clock far below 5000 was not measured at full speed.
+
+**9. Second gate check: nvidia-drm's source says the dumb buffer is in video memory, which supports the predicted miss. Still not a measurement.**
+Expected: the prediction under Results depends on where the buffer lives, which nobody knew.
+Actual: `nv_drm_dumb_create` in `kernel-open/nvidia-drm/nvidia-drm-gem-nvkms-memory.c`, `NVIDIA/open-gpu-kernel-modules` branch `main`, read 2026-11-02 through a web fetch that summarizes, sets `allocParams.useVideoMemory = nv_dev->hasVideoMemory` and maps video memory with `ioremap_wc`. The kernel-side mapping is write-combined; the summary could not confirm the attribute of the user-space `mmap`. `main` is not necessarily the installed 615.71.09.
+What this means: this GPU has video memory, so the write should cross the x8 link. PCIe writes also carry packet overhead: with 64-byte write-combine bursts and about 24 bytes of headers and framing, 7.88 GB/s falls to about 5.7 GB/s, which is 1.45 ms. Adding that to the prediction gives a write of 1.05 to 1.45 ms and a total of about 2.3 to 2.75 ms, **a likely miss of the 2 ms target**. This is arithmetic, not a measurement.
+Done: recorded; the box stays unticked. An agent cannot close this by measuring. Sysfs shows no output enabled through DRM, so there may be no DRM master, in which case opening the card would make the opener master, which the safety rules forbid. Ahmed's run remains the only measurement. His decision is likely to be the Fallbacks paragraph under Results, so it is worth reading before the run.
+
+**10. Second gate check: two more defects in this stage's tooling.**
+- `build.sh` failed after a rebuild from the stage file. Expected: the documented rebuild works after `/tmp` is cleared. Actual: the script's last line compiled `test_shim/index.c`, which the rebuild does not create, so under `set -eu` it would end non-zero with a compile error, after building the binary. Done: fixed with an `if [ -f ... ]`, and tested by moving `test_shim` aside, deleting `build/` and the binary, and running it: no output, binary built. The copy above is the fixed one.
+- `test_shim/run.sh` asserted nothing. Expected: "all 10 cases pass" comes from something that can fail. Actual: it prints each case's output and always ends well, and the earlier claims rested on someone reading it. Done: `test_shim/check.py` now asserts each case's required and forbidden lines and exits non-zero on a failure. Result: `failed cases: 0`, rc 0, and on output with lines removed `failed cases: 4`, rc 1. `run.sh`'s case 7 still reports grep's status and not the program's exit, so the check there relies on the `Permission denied` line.
