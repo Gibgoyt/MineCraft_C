@@ -79,7 +79,7 @@ What this shows:
 
 Appended as they land:
 
-None landed yet: see Issue 5. The work is on branch `worktree-wf_a4b549de-085-7`.
+None landed yet: see Issue 5. The work is on branch `worktree-wf_a4b549de-085-8`, which contains all of `worktree-wf_a4b549de-085-7`.
 
 ## Issues found
 
@@ -109,3 +109,4 @@ Done: VERDICT uses the spin-paced median, because a default `cudaDeviceSynchroni
 Expected: `flock /tmp/mc_c_land.lock sh -c 'git rebase main && git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-7'` fast-forwards main.
 Actual: the session's worktree isolation guard refused it, both in that form and as a plain `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-7`: "this command redirects git to the shared checkout via -C. Refusing to run it".
 Done: the guard was not worked around, since a wrapper script, `git update-ref` or a `cd` into the main checkout would all bypass the same boundary. The branch is rebased on main and sits one fast-forward away. Whoever can write to the main checkout lands it with the command above.
+Second attempt, by the agent that took over this stage on branch `worktree-wf_a4b549de-085-8`: the instructed `flock` command, with this branch's name, was refused the same way: "this command hands sh text naming git in a plain command, which cannot be shown to stay inside the worktree". It was again not worked around. `main` was still at `5bb5c57` afterwards. To land from the main checkout, `git merge --ff-only worktree-wf_a4b549de-085-8`, or if main has moved, `git cherry-pick 5bb5c57..worktree-wf_a4b549de-085-8`; these commits touch only this file.
