@@ -142,7 +142,7 @@ Layout: `compile/src/<tool>/index.c`, `compile/include/<tool>/index.h`, `README.
 | Tool | Job | Stage |
 |---|---|---|
 | `yaml` | Our own YAML-subset parser, with line-numbered errors | 02.2 |
-| `machine_config` | `machine.yaml` → `.h .hu .inc .cmake` | 02.3 |
+| `machine_config` | `machine.yaml` → `.h .hu .inc .cmake`. `report/` is a small program that prints defines as compiled | 02.3 |
 | `standards_lint` | Fails the build on any coding-standard breach | 02.4 |
 | `struct_offsets` | Emits `.inc` offsets from C structs, for NASM | 04.3 |
 | `inflate` | Our own DEFLATE decoder | 06.1 |
