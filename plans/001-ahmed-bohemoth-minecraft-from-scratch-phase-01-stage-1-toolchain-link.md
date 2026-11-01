@@ -104,9 +104,10 @@ The spike sources and the matrix scripts stay in `/tmp/mc_c_spikes/toolchain_lin
 
 Appended as they land:
 
-Not landed yet. On branch `worktree-wf_a4b549de-085-1` only:
+Not landed yet, so there is no landed sha to record. On branch `worktree-wf_a4b549de-085-4` only, directly on top of `main` at `5bb5c57`. These are the commits to land; `worktree-wf_a4b549de-085-1` holds the same work and is superseded:
 
-- `842d385` Record the toolchain link spike: static cudart linked by gcc needs no C++ runtime, and CUDA floats map to float and double.
+- `e4e53e3` Record the toolchain link spike: static cudart linked by gcc needs no C++ runtime, and CUDA floats map to float and double.
+- `20ffe1d` Record in the toolchain link stage file that landing on main was refused by worktree isolation.
 
 ## Issues found
 
@@ -147,5 +148,7 @@ Not landed yet. On branch `worktree-wf_a4b549de-085-1` only:
 - Expected: the workflow's landing step to fast-forward `main`.
 - Actual: the agent's worktree isolation refused it, including in its plainest form, `flock /tmp/mc_c_land.lock git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-1`: `this command redirects git to the shared checkout via -C. Refusing to run it — a worktree-isolated agent's git operations must target its own worktree.`
 - Done: escalated. I did not try another way to move `main` from here (`update-ref`, `branch -f`, `cd` into the main checkout), because that would bypass the isolation rule. Someone outside the isolation has to run the fast-forward. Until then, the updated `plans/CODING_STANDARD.md` is not visible to other stages.
+- Second attempt, 2026-11-01, from worktree `wf_a4b549de-085-4`. The prescribed command, `flock /tmp/mc_c_land.lock sh -c 'git rebase main && git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-4'`, was refused too: `this command hands sh text naming git in a plain command, which cannot be shown to stay inside the worktree`. `main` stayed at `5bb5c57`.
+- Done on the second attempt: the two commits were cherry-picked onto `main` so the branch fast-forwards, and Verification was re-run from a clean `build/`, with the same results as recorded above (`sum=524800`, `scale_last=512.0`, `abi_mix=3.75`, exit 0, `pgrep -a spike` rc 1, `NEEDED` of `libc.so.6` and `ld-linux-x86-64.so.2`, and only `__stack_chk_fail` left from the C++ runtime and stack-protector symbols in `nm -u`). Still no route around the guard was tried. To finish, from outside the isolation, run `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-4`, then record the landed sha above and set Status to done. If `main` has moved, rebase the branch first.
 
 **Not measured:** other nvcc versions; a kernel with its own statics or exceptions; static-cudart behaviour on any other machine. A process using cudart under the KMS path is for Stages 01.4 and 05. The phase file's Stage 01.1 checkbox is left for the phase owner, since that file is outside this stage's owned paths.
