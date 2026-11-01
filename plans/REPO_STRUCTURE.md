@@ -132,6 +132,8 @@ texture: { all: blocks/dirt }
 
 `machine.yaml` generates one output per consumer, in `build/<preset>/generated/machine/`: `index.h` (C), `index.hu`
 (CUDA), `index.inc` (NASM), `index.cmake` (CMake). Everything agrees because everything comes from one file.
+`compile/src/machine_config/report/` is a small program that prints the defines as compiled, to show a yaml change
+reaching a built binary.
 
 ---
 

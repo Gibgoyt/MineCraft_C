@@ -1,0 +1,24 @@
+platform: { os: linux, posix: true }
+toolchain: { c_standard: c23, gcc_min: 16, nvcc_min: "13.4", nasm_min: "3.02", cmake_min: "4.4" }
+cpu:
+  model: i9-10900K
+  arch_flag: skylake
+  logical_threads: 20
+  physical_cores: 10
+  cache_line_bytes: 64
+  l1d_kib: 32
+  l2_kib: 256
+  l3_mib: 20
+  simd: { sse42: true, avx: true, avx2: true, fma3: true, bmi1: true, bmi2: true, popcnt: true, lzcnt: true, avx512: false }
+threads: { main: 1, sim: 1, gpu: 1, workers: 16, reserved_os: 1, pin_physical_first: true }
+gpu:
+  enabled: true
+  api: cuda
+  model: RTX 2080 Super
+  architecture: sm_75
+  vram_mib: 8192
+  budget: { voxels_mib: 6144, textures_mib: 256, frames_mib: 256 }
+display: { backend: kms, device: /dev/dri/card1, connector: auto, width: 1920, height: 1080, refresh_hz: 120 }
+memory: { huge_page_bytes: 2097152, process_budget_mib: 16384 }
+game: { render_distance_default: 32, render_distance_max: 512, tick_hz: 20 }
+world: { z_min: -250, z_sea: 0, z_max: 500, chunk_size: 16, section_size: 16 }
