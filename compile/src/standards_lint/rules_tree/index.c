@@ -97,6 +97,11 @@ static const char *const tree_readme_fields[] = {
 };
 enum { TREE_README_FIELD_COUNT = sizeof(tree_readme_fields) / sizeof(tree_readme_fields[0]) };
 
+/* Other languages' source and headers, and GAS assembly, which would be SIMD outside asm/. */
+static const char *const tree_foreign_extensions[] = {".cpp", ".cc",  ".cxx", ".C", ".hpp",
+                                                      ".hh",  ".hxx", ".H",   ".s", ".S"};
+enum { TREE_FOREIGN_COUNT = sizeof(tree_foreign_extensions) / sizeof(tree_foreign_extensions[0]) };
+
 static const char *tree_join_path(lint_arena_t *arena, const char *directory, const char *name) {
     if (directory[0] == '\0') {
         return lint_arena_text(arena, name, strlen(name));
@@ -350,6 +355,13 @@ static void tree_check_directory(tree_t *tree, const char *directory, const tree
             has_readme = true;
         }
         if (kind == TREE_KIND_OTHER) {
+            /* Not compiled by anything and not read by any rule, so it would otherwise pass in silence. */
+            for (uint32_t f = 0; f < TREE_FOREIGN_COUNT; f++) {
+                if (lint_ends_with(name, tree_foreign_extensions[f])) {
+                    lint_breach(tree->report, tree_join_path(tree->arena_file, directory, name), 0, "foreign_source",
+                                "this project is C, CUDA and NASM only (plans/CODING_STANDARD.md section 5)");
+                }
+            }
             continue;
         }
         const char *path = tree_join_path(tree->arena_file, directory, name);

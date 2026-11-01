@@ -29,7 +29,8 @@ typedef struct lint_include_t {
     const char *path; /* NUL terminated, in the arena */
     uint32_t line;
     uint8_t angled;
-    uint8_t _pad0[3];
+    uint8_t computed; /* #include MACRO: path is empty */
+    uint8_t _pad0[2];
 } lint_include_t;
 static_assert(sizeof(lint_include_t) == 16);
 

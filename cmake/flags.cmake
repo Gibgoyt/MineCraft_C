@@ -13,7 +13,15 @@ set(CMAKE_C23_STANDARD_COMPILE_OPTION -std=c23)   # CMake would otherwise pass t
 set(CMAKE_CUDA_STANDARD 20)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 set(CMAKE_CUDA_EXTENSIONS OFF)
-set(CMAKE_CUDA_ARCHITECTURES 75)
+# config/machine.yaml's gpu.architecture, such as sm_75, which CMake wants without the sm_. Stage 02.3 generates it.
+if(DEFINED MC_GPU_ARCHITECTURE)
+  if(NOT MC_GPU_ARCHITECTURE MATCHES "^sm_([0-9]+)$")
+    message(FATAL_ERROR "config/machine.yaml: gpu.architecture is '${MC_GPU_ARCHITECTURE}', expected sm_<number>")
+  endif()
+  set(CMAKE_CUDA_ARCHITECTURES ${CMAKE_MATCH_1})
+else()
+  set(CMAKE_CUDA_ARCHITECTURES 75)
+endif()
 set(CMAKE_ASM_NASM_OBJECT_FORMAT elf64)
 
 # Stage 01.1: static cudart, or the binary depends on libstdc++ and libgcc_s through libcudart.so.
@@ -77,6 +85,12 @@ elseif(MC_PRESET STREQUAL "profile")
   list(APPEND MC_NASM_FLAGS -g -Fdwarf)
   list(APPEND MC_LINK_FLAGS ${mc_codegen})
   list(APPEND MC_DEFINES NDEBUG=1 MC_PROFILE=1)
+endif()
+
+# Under -flto code is generated at the link, so anything the optimizer warns about, and the frame limit above all, can
+# only fire there, and only if the link is given it.
+if(MC_PRESET MATCHES "^(release|profile)$")
+  list(APPEND MC_LINK_FLAGS -Wframe-larger-than=${MC_FRAME_LIMIT_BYTES} -Werror)
 endif()
 
 # GCC writes no call graph for -flto objects at compile time, so only the presets without LTO ask for one.

@@ -1,6 +1,6 @@
 # compile/src/standards_lint/rules_asm
 
-**Purpose:** the required form of NASM files, and `.inc` includes.
+**Purpose:** the required form of NASM files, the hardware baseline's registers, and `.inc` includes.
 **Tier:** Arena. Allocates only from the `lint_arena_t` it is given.
 **Owns:** nothing.
 **Lifetime:** Process.

@@ -55,6 +55,82 @@ static void asm_first_instruction(const char *text, uint64_t length, const char 
     *out_length = i - start;
 }
 
+/* The label a line opens with, without its colon. Returns false if it has none. */
+static bool asm_line_label(const char *text, uint64_t length, const char **out_name, uint64_t *out_length) {
+    uint64_t i = 0;
+    while (i < length && asm_is_space(text[i])) {
+        i++;
+    }
+    const uint64_t start = i;
+    while (i < length && !asm_is_space(text[i])) {
+        i++;
+    }
+    if (i == start || text[i - 1u] != ':') {
+        return false;
+    }
+    *out_name = text + start;
+    *out_length = i - start - 1u;
+    return true;
+}
+
+/* The target of a jump: the first operand after the mnemonic, past any short or near. */
+static void asm_jump_target(const char *mnemonic, uint64_t mnemonic_length, const char *line_end, const char **out_name,
+                            uint64_t *out_length) {
+    const char *p = mnemonic + mnemonic_length;
+    const char *start = p;
+    uint64_t length = 0;
+    for (uint32_t words = 0; words < 2u; words++) {
+        while (p < line_end && asm_is_space(*p)) {
+            p++;
+        }
+        start = p;
+        while (p < line_end && !asm_is_space(*p)) {
+            p++;
+        }
+        length = (uint64_t)(p - start);
+        if (!lint_text_equal(start, length, "short") && !lint_text_equal(start, length, "near")) {
+            break;
+        }
+    }
+    *out_name = start;
+    *out_length = length;
+}
+
+enum { ASM_MAX_DIRTY_TARGETS = 64 };
+
+/* Labels a jump reaches with YMM state live. A ret after a jump is not the end of the code that used YMM: the jump may
+ * land past that ret, so a linear scan alone would call the second exit clean. Jumps backward are not followed. */
+typedef struct asm_dirty_labels_t {
+    const char *names[ASM_MAX_DIRTY_TARGETS];
+    uint64_t lengths[ASM_MAX_DIRTY_TARGETS];
+    uint32_t count;
+    uint8_t overflowed; /* too many to remember, so every label counts as dirty: strict, never silently clean */
+    uint8_t _pad0[3];
+} asm_dirty_labels_t;
+static_assert(sizeof(asm_dirty_labels_t) == 16u * ASM_MAX_DIRTY_TARGETS + 8u);
+
+static void asm_dirty_add(asm_dirty_labels_t *labels, const char *name, uint64_t length) {
+    if (labels->count >= ASM_MAX_DIRTY_TARGETS) {
+        labels->overflowed = 1;
+        return;
+    }
+    labels->names[labels->count] = name;
+    labels->lengths[labels->count] = length;
+    labels->count++;
+}
+
+static bool asm_dirty_has(const asm_dirty_labels_t *labels, const char *name, uint64_t length) {
+    if (labels->overflowed != 0) {
+        return true;
+    }
+    for (uint32_t i = 0; i < labels->count; i++) {
+        if (labels->lengths[i] == length && memcmp(labels->names[i], name, length) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void lint_rules_asm_check(const lint_file_t *file, bool is_include) {
     const char *const end = file->text + file->length;
     const char *line = file->text;
@@ -62,6 +138,9 @@ void lint_rules_asm_check(const lint_file_t *file, bool is_include) {
     bool has_default_rel = false;
     bool has_gnu_stack = false;
     bool ymm_dirty = false;
+    asm_dirty_labels_t dirty_labels;
+    dirty_labels.count = 0;
+    dirty_labels.overflowed = 0;
 
     while (line < end) {
         const char *line_end = memchr(line, '\n', (uint64_t)(end - line));
@@ -91,12 +170,35 @@ void lint_rules_asm_check(const lint_file_t *file, bool is_include) {
         if (memmem(line, code_length, ".note.GNU-stack", strlen(".note.GNU-stack")) != nullptr) {
             has_gnu_stack = true;
         }
+        const char *label = nullptr;
+        uint64_t label_length = 0;
+        if (asm_line_label(line, code_length, &label, &label_length)) {
+            if (label[0] != '.') {
+                /* A new function. */
+                ymm_dirty = false;
+                dirty_labels.count = 0;
+                dirty_labels.overflowed = 0;
+            } else if (asm_dirty_has(&dirty_labels, label, label_length)) {
+                ymm_dirty = true;
+            }
+        }
         /* Register names ymm0 to ymm15 end in digits, so look for the stem. */
         if (memmem(line, code_length, "ymm", 3u) != nullptr || memmem(line, code_length, "YMM", 3u) != nullptr) {
             ymm_dirty = true;
         }
+        if (memmem(line, code_length, "zmm", 3u) != nullptr || memmem(line, code_length, "ZMM", 3u) != nullptr ||
+            asm_has_word(line, code_length, "mm") || asm_has_word(word, word_length, "emms")) {
+            lint_breach(file->report, file->path, line_number, "asm_banned_register",
+                        "no AVX-512 and no MMX on this hardware baseline (plans/CODING_STANDARD.md section 7)");
+        }
         if (asm_has_word(word, word_length, "vzeroupper")) {
             ymm_dirty = false;
+        }
+        if (ymm_dirty && word_length > 1u && asm_lower(word[0]) == 'j') {
+            const char *target = nullptr;
+            uint64_t target_length = 0;
+            asm_jump_target(word, word_length, line + code_length, &target, &target_length);
+            asm_dirty_add(&dirty_labels, target, target_length);
         }
         if (asm_has_word(word, word_length, "ret") && word_length == 3u) {
             if (ymm_dirty) {

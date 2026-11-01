@@ -13,4 +13,5 @@ The match on rules is exact, so a fixture cannot pass by tripping some other rul
 with no fixture fails the test, which keeps "one failing fixture per banned construct" true as rules are added.
 
 The `ok_*` fixtures must stay clean, and guard against false alarms. `harness/` tests `tests/harness/` and is its own ctest,
-`compile_standards_lint_harness`.
+`compile_standards_lint_harness`. Its partner `compile_standards_lint_harness_samples_fail` runs the failing samples and must
+exit non-zero, which holds even if the harness has stopped counting failures and so cannot report on itself.

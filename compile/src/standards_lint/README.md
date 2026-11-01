@@ -28,18 +28,30 @@ purpose. Symbolic links are not followed. Code is any `.c .h .cu .hu .asm .inc` 
 
 | Part | Rules |
 |---|---|
-| `catalog/` | The banned identifiers and where each is allowed: `banned:<word>`. Also the `borrowed_` static allowlist |
-| `rules_c/` | `literal_*`, `packed`, `pragma_pack`, `bitfield`, `bool_in_struct`, `struct_*`, `type_name`, `owning_static`, `borrowed_*`, `tier_*`, `init_deinit_pair`, `goto_cleanup_only`, `inline_asm`, `intrinsic`, `vector_extension`, `simd_target`, and the calls that feed `recursion_cuda` |
-| `rules_include/` | `include_*`, `banned_header:*`, `cuda_cpp_header`, and the system ranks from `plans/REPO_STRUCTURE.md` section 11 |
+| `catalog/` | The banned identifiers and where each is allowed: `banned:<word>`, including other names for the same types and allocators (`__int128_t`, `__libc_malloc`, `SYS_mmap`), libc calls that hand back a malloc'd block, `dlopen`, and `_Pragma`. Also the `borrowed_` static allowlist |
+| `rules_c/` | `literal_*`, `packed`, `pragma_pack`, `pragma_other`, `digraph`, `line_splice_in_token`, `int_fast_least`, `cuda_struct_method`, `cuda_inheritance`, `bitfield`, `bool_in_struct`, `struct_*`, `type_name`, `owning_static`, `borrowed_*`, `tier_*`, `init_deinit_pair`, `goto_cleanup_only`, `inline_asm`, `intrinsic`, `vector_extension`, `simd_target`, and the calls that feed `recursion_cuda` |
+| `rules_include/` | `include_*`, `banned_header:*`, `cuda_cpp_header`, and the system ranks from `plans/REPO_STRUCTURE.md` section 11. `#include "x"` and `#include <x>` obey the same rules, because GCC finds either file through either spelling |
 | `rules_asm/` | `asm_*` |
-| `rules_tree/` | `file_name`, `file_location`, `header_location`, `one_module`, `cuda_header_ext`, `line_limit`, `readme_*`, `stray_file`, `unknown_system` |
+| `rules_tree/` | `file_name`, `file_location`, `header_location`, `one_module`, `cuda_header_ext`, `line_limit`, `readme_*`, `stray_file`, `foreign_source`, `unknown_system` |
 | `graph/` | `recursion` and `recursion_cuda` |
 
 To add a rule: add its id to `catalog/`, report it, and add a fixture. `standards_lint_fixtures` fails for any rule with
 no fixture, and `lint_breach` treats an id missing from the catalog as a lint bug.
 
+## Stricter than the standard's words
+
+These follow from what the standard says but are not spelled out in it: `auto` and `__auto_type`, because a declaration
+must show its size; `ptrdiff_t`, `intmax_t`, `uintmax_t`, `intptr_t`, `wchar_t` and the `int_fast`/`int_least` families,
+because section 2's table of allowed types does not have them; every `#pragma` but `#pragma once`, because
+`#pragma GCC diagnostic ignored "-Wpadded"` would switch off the padding check; digraphs; a line splice inside a word.
+
 ## What it does not check
 
+- A `.cmake` file that drops a flag for one source. The fixtures test judges the flags in `cmake/flags.cmake`, not a
+  `set_source_files_properties` somewhere else.
+- `alignof` and per-field `offsetof` asserts on structs shared with CUDA, NASM or files (section 3, rule 4). Only the
+  `sizeof` assert is checked.
+- A jump backward to a label reached with YMM state live, in `asm_vzeroupper`. Forward jumps are followed.
 - `char` used for bytes, `bool` passed through memory, and any other rule that needs types and not tokens.
 - A pointer hidden inside a static struct, and ownership prefixes on struct fields. Those stay with review, as section 10
   of the standard says.

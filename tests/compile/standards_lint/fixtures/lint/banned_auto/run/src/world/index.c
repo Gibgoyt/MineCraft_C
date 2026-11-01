@@ -1,0 +1,1 @@
+auto world_value;

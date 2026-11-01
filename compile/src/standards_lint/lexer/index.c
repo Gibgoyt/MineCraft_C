@@ -138,9 +138,17 @@ void lint_lex(lint_arena_t *arena, const char *text, uint64_t length, lint_lexed
                     includes[include_count].path = lint_arena_text(arena, text + path_start, path_end - path_start);
                     includes[include_count].line = line;
                     includes[include_count].angled = angled ? 1u : 0u;
+                    includes[include_count].computed = 0;
                     memset(includes[include_count]._pad0, 0, sizeof(includes[include_count]._pad0));
                     include_count++;
                     i = path_end < length && text[path_end] == closer ? path_end + 1u : path_end;
+                } else {
+                    includes[include_count].path = lint_arena_text(arena, text + i, 0u);
+                    includes[include_count].line = line;
+                    includes[include_count].angled = 0;
+                    includes[include_count].computed = 1u;
+                    memset(includes[include_count]._pad0, 0, sizeof(includes[include_count]._pad0));
+                    include_count++;
                 }
                 comment_pending = false; /* a comment above an include does not describe what follows it */
                 continue;

@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 2, stage 1: CMake, mutex and hello binary
 
-**Status:** in progress: the work is finished and verified; the only thing pending is the landing on `main` (issue 8)   (updated 2026-11-02)
+**Status:** in progress: the work is finished and verified on all four presets by the gate check; the only thing pending is the landing on `main` (issue 8)   (updated 2026-11-02)
 
 ## Goal
 
@@ -132,3 +132,9 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 - Second attempt, 2026-11-02: the same command, run once more unchanged from `worktree-wf_a4b549de-085-12`, returned the same refusal, and `main` is still `5bb5c57`. Retrying from an isolated worktree cannot succeed, so this needs the merge below run from outside it, or the guard changed by whoever owns it. No other way of moving `main` was tried.
 - Done: escalated. I did not try another way to move `main` (`update-ref`, `branch -f`, `cd` into the main checkout), because that would bypass the isolation rule. The branch is rebased on `main`, and `git merge-tree --write-tree worktree-wf_a4b549de-085-10 HEAD` reports no conflict with the unlanded Phase 01 branch. To finish, from outside the isolation, in the main checkout: `git merge --ff-only worktree-wf_a4b549de-085-12`, which contains all of `worktree-wf_a4b549de-085-11`. If `main` has moved, rebase this branch first. Then record the landed sha above and set Status to done.
 - Until then, **every later stage that rebases on `main` will not have `tools/test-or-build.sh` or any CMake file.** Those stages depend on this landing.
+
+**9. Gate check, 2026-11-02: three changes to this stage's files.** Evidence is in the phase file's gate check table.
+- `cmake/flags.cmake`: the frame limit and warnings did not apply at the LTO link, where `release` and `profile` generate code. The link now gets `-Wframe-larger-than=` and `-Werror`. Stage 02.2 issue 5 had asked for this, and the Stage 02.4 file on `worktree-wf_a4b549de-085-16`, its issue 9, measured the fix.
+- `cmake/flags.cmake`: `CMAKE_CUDA_ARCHITECTURES` comes from `gpu.architecture` once Stage 02.3 is in, and stays 75 until then.
+- `cmake/hello/main/index.c`: reports `MC_THREADS_WORKERS` once the generated header exists. Before this, the program had no way to meet Stage 02.3's proof.
+- Status of the landing: see the phase file's issue 1, which gives the commands that supersede the one at the end of issue 8 above.

@@ -45,6 +45,7 @@ static const include_banned_t include_banned[] = {
     {"netinet/", "banned_header:sockets", INCLUDE_MATCH_PREFIX, {0}},
     {"arpa/", "banned_header:sockets", INCLUDE_MATCH_PREFIX, {0}},
     {"netdb.h", "banned_header:sockets", INCLUDE_MATCH_EXACT, {0}},
+    {"dlfcn.h", "banned_header:dlfcn", INCLUDE_MATCH_EXACT, {0}},
 };
 enum { INCLUDE_BANNED_COUNT = sizeof(include_banned) / sizeof(include_banned[0]) };
 
@@ -92,13 +93,17 @@ static bool include_is_banned(const char *path, const include_banned_t *row) {
     }
 }
 
-static void include_check_angled(const lint_file_t *file, const lint_include_t *include, uint8_t language) {
+/* Both spellings: GCC falls back to the system directories for #include "immintrin.h". */
+static void include_check_banned(const lint_file_t *file, const lint_include_t *include) {
     for (uint32_t i = 0; i < INCLUDE_BANNED_COUNT; i++) {
         if (include_is_banned(include->path, &include_banned[i])) {
             lint_breach(file->report, file->path, include->line, include_banned[i].rule,
                         "<%s> is not allowed; see plans/CODING_STANDARD.md sections 1 and 7", include->path);
         }
     }
+}
+
+static void include_check_angled(const lint_file_t *file, const lint_include_t *include, uint8_t language) {
     if (language == LINT_LANGUAGE_C && lint_starts_with(include->path, "cuda")) {
         lint_breach(file->report, file->path, include->line, "banned_header:cuda_in_c",
                     "<%s>: C reaches CUDA only through run/include/gpu_bridge/", include->path);
@@ -290,10 +295,17 @@ static void include_check_quoted(const lint_file_t *file, const lint_include_t *
 void lint_rules_include_check(const lint_file_t *file, const lint_lexed_t *lexed, uint8_t languages) {
     for (uint32_t i = 0; i < lexed->include_count; i++) {
         const lint_include_t *include = &lexed->includes[i];
+        if (include->computed != 0) {
+            lint_breach(file->report, file->path, include->line, "include_computed",
+                        "an include named by a macro hides its target from every include rule");
+            continue;
+        }
+        include_check_banned(file, include);
         if (include->angled != 0) {
             include_check_angled(file, include, languages);
-        } else {
-            include_check_quoted(file, include, languages);
         }
+        /* <game/index.h> finds the same file through the same -I as "game/index.h", so it obeys the same rules. Anything
+         * not under an include root, which is every real system header, resolves to nothing and is left alone. */
+        include_check_quoted(file, include, languages);
     }
 }

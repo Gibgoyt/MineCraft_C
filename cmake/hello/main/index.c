@@ -3,6 +3,13 @@
 #include <stdint.h>
 #include <stdio.h>
 
+/* Stage 02.3's proof reads "changing a yaml value changes the binary's reported define". This program is that binary until
+ * Stage 03.1 replaces it, so it reports one. The test keeps it building if the stages land in another order. */
+#if __has_include("machine/index.h")
+#include "machine/index.h"
+#define MC_HELLO_REPORTS_MACHINE 1
+#endif
+
 enum { MC_HELLO_COUNT = 1024 };
 
 uint64_t mc_hello_simd_sum_batch(const uint32_t *values, uint64_t count);
@@ -25,6 +32,9 @@ int32_t main(int32_t argc, char **argv) {
         return 1;
     }
 
+#ifdef MC_HELLO_REPORTS_MACHINE
+    printf("minecraft_c hello: MC_THREADS_WORKERS=%" PRId32 "\n", (int32_t)MC_THREADS_WORKERS);
+#endif
     printf("minecraft_c hello: nasm=%" PRIu64 " cuda=%" PRIu32 " expected=%" PRIu64 "\n", simd_sum, gpu_sum, expected);
     return (simd_sum == expected && gpu_sum == expected) ? 0 : 1;
 }

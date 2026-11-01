@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 2, stage 4: Standards lint and test harness
 
-**Status:** in progress: the work is finished and verified; the only thing pending is the landing on `main` (issue 2)   (updated 2026-11-02)
+**Status:** in progress: the work is finished and verified on all four presets by the gate check, with the defects in issues 9 and 10 fixed; the only thing pending is the landing on `main` (the phase file's issue 1)   (updated 2026-11-02)
 
 ## Goal
 
@@ -58,7 +58,7 @@ Further checks against the real build, with throwaway files that were then remov
 | Stage 02.2's YAML parser builds with this | `compile/src/yaml/`, `compile/include/yaml/` and `tests/compile/yaml/` copied from `cdb89e8`: lint clean, build rc 0, all 5 ctests pass including `compile_yaml` |
 | The fixtures can fail | On the first run `packed` failed, because of a real lint bug (issue 6) |
 
-**Not verified:** the frame limit under `release` and `profile`; see issue 4. Other machines. How Stage 02.3 code fares against this lint, because it had no code when this was written (issue 8).
+**Not verified when this was first written:** the frame limit under `release` and `profile`; issue 9 has since fixed and proved it. Other machines. How Stage 02.3 code fares against this lint, because it had no code when this was written (issue 8).
 
 **Notes for later stages.**
 
@@ -72,7 +72,7 @@ Further checks against the real build, with throwaway files that were then remov
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-14`, on top of Stage 02.1's `2ac15d2`. See issue 2.
+Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-19`, which holds all of `worktree-wf_a4b549de-085-14` and the gate check's fixes. See the phase file's issue 1.
 
 ## Issues found
 
@@ -121,3 +121,27 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 - Stage 02.3 had no code when I looked. Its code may breach the rules when it first builds on top of this, and the build will say where. That is the lint working, but that stage has to allow for it.
 - Choices the standard leaves open: `mmap` is allowed at `compile/src/<tool>/index.c`, because a compile tool may not include `run/` and so has no `heap_reserve`. `profiler`, which section 11's diagram omits, shares the `job` row. `cuda/` may include any `run/` header at or below `gpu_bridge`. `mc_compile_lib` and `mc_tool_standards_lint` compile before the lint runs, because the lint is built from them; a breach in them fails one step later.
 - Limits are listed under "What it does not check" in `compile/src/standards_lint/README.md`: tokens and not types, no recursion through function pointers, and the CUDA recursion check is a token scan.
+
+**9. Gate check, 2026-11-02: the lint's fixtures all passed, and it could still be walked past.** All of it was found by feeding it about 140 banned constructs in throwaway trees.
+- Expected: `plans/CODING_STANDARD.md` section 10, "Banned keywords, intrinsics, inline asm, banned allocators" and the rest, enforced.
+- Actual, each of these reported `clean` with rc 0 before the fix:
+  - **`#pragma GCC diagnostic ignored "-Wpadded"` and `#pragma GCC system_header`.** These switch off the very checks the gate relies on. The most serious one here. Now `pragma_other`: only `#pragma once` is allowed.
+  - **`_Pragma("pack(1)")` and `_Pragma("GCC target(\"avx2\")")`.** The operator form of what `pragma_pack` and `simd_target` ban. Now `banned:_Pragma` and `banned:__pragma`.
+  - **`#include "immintrin.h"` and `#include "stb_image.h"`.** The banned-header table was checked only for `<...>`, and GCC falls back to system directories for quotes. Now checked for both.
+  - **`#include <game/index.h>` from `run/src/heap/`.** The include direction rules were checked only for quotes, though `-I` finds either. Now both, with `include_upward_angled` and `include_compile_tool_angled`.
+  - **`#include H` with `H` a macro.** Now `include_computed`.
+  - **`index.cpp`, `index.S`, `index.hpp`.** Files of another language were not looked at, and a directory with no other code was not even a module. Now `foreign_source`.
+  - **Other spellings:** `__int128_t`, `__uint128_t`, `__SIZE_TYPE__`, `__float80`, `__ibm128`, `_Complex`, `__alloca`, `__builtin_alloca_with_align`, `__builtin_malloc` and family, `__libc_malloc` and family, `mmap64`, `__mmap`, `SYS_mmap` and `__NR_mmap` and family. Now each a `banned:` row, which forced the length guard in `lint_catalog_find_word` from 17 to 27. `_Bool` in a struct is now `bool_in_struct`.
+  - **libc calls that hand back a malloc'd block to own:** `asprintf`, `vasprintf`, `getline`, `getdelim`, `open_memstream`, `wcsdup`. **Run-time loading of a banned library:** `dlopen`, `dlmopen`, `dlsym`, `dlvsym`, `<dlfcn.h>`.
+  - **Spelling tricks:** `in\<newline>t x;` (`line_splice_in_token`) and `%:pragma pack(1)` (`digraph`).
+  - **CUDA outside the C-like subset:** methods and constructors in a struct (`cuda_struct_method`), `struct a_t : b_t` (`cuda_inheritance`), and `public`, `private`, `protected`, `friend`, `this`, `using`.
+  - **NASM:** `vzeroupper; ret` followed by `.early: ret`, where a `jz .early` before the `vzeroupper` reaches that second `ret` with YMM live, was called clean. The scan now records which labels a jump reaches with YMM live. And `zmm` and `mm0` passed, on a baseline with no AVX-512 and no MMX. Now `asm_banned_register`.
+- My first version of the NASM fix was wrong. It demanded a `vzeroupper` straight before any `ret` in a function that had used YMM, and `ok_clean_tree` failed it with two false alarms: a `pop rbx` between `vzeroupper` and `ret`, and a scalar `.scalar:` path. The fixture was right, so I replaced the check with the jump tracking above.
+- Done: fixed, with 82 new fixture directories (257 under `fixtures/lint/`, was 175), including the clean ones `ok_pragma_once`, `ok_line_splice_macro`, `ok_cuda_struct_fields` and `ok_asm_two_functions` to guard against false alarms. `--list-rules` has 200 rules, each with a failing fixture. Rerunning the 140 constructs, what still reads clean is either allowed (`pthread.h`, `cpuid.h`, `off_t`, a member named `free`, `__builtin_cpu_supports`, a `const` pointer static) or not a breach by itself. A `#include` of a header that does not exist also reads clean, as before, because the compiler rejects it.
+- Limits now written under "What it does not check" in `compile/src/standards_lint/README.md`: `.cmake` files that drop a flag, `alignof` and `offsetof` asserts on shared structs (section 3 rule 4), and backward jumps in `asm_vzeroupper`. The lint is stricter than the standard's words in the ways its README lists, including `auto`. Ahmed may want those added to the standard, or some of them removed.
+- This also closes the frame limit gap in issue 4. Under `release` and `profile` a 20000-byte local compiled and linked with rc 0, since `-flto` generates code at the link and the link was not given the flag. `cmake/flags.cmake` on this branch now gives it. The measurements that led to this are in the Stage 02.4 file on `worktree-wf_a4b549de-085-16`, its issue 9; that branch no longer needs merging. See the phase file's gate check table and its issue 1.
+
+**10. Gate check: if the harness stopped counting failures, its self test passed.**
+- Expected: Stage 02.4's table says "A harness failure really fails", on the strength of `compile_standards_lint_harness`.
+- Actual: with `t->failure_count++` removed from `test_report` in `tests/harness/index.c` (line 53), the program built and `ctest -R compile_standards_lint_harness` returned 0. The self test checks its samples through the same counter that had just been broken, so its own failed checks went uncounted as well.
+- Done: added `tests/compile/standards_lint/harness/test.cmake`, which registers `compile_standards_lint_harness_samples_fail`: the failing samples, with `WILL_FAIL`, so the verdict comes from ctest. With the same break, `ctest` now returns 8 and names that test. Unbroken, all 7 ctests pass.

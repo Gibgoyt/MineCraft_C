@@ -78,6 +78,12 @@ static void rules_check_identifiers(const lint_file_t *file, const lint_lexed_t 
                         "%.*s: intrinsics are banned; all SIMD lives in asm/ (plans/CODING_STANDARD.md section 7)",
                         (int32_t)token->length, token->text);
         }
+        if (rules_token_starts(token, "int_fast") || rules_token_starts(token, "uint_fast") ||
+            rules_token_starts(token, "int_least") || rules_token_starts(token, "uint_least")) {
+            lint_breach(file->report, file->path, token->line, "int_fast_least",
+                        "%.*s says nothing about its size; use the sized types (plans/CODING_STANDARD.md section 2)",
+                        (int32_t)token->length, token->text);
+        }
         if (lint_token_is(token, "__builtin_shuffle") || lint_token_is(token, "__builtin_shufflevector") ||
             lint_token_is(token, "__builtin_convertvector") || lint_token_is(token, "__vector") ||
             lint_token_is(token, "vector_size") || lint_token_is(token, "__vector_size__")) {
@@ -92,6 +98,81 @@ static void rules_check_identifiers(const lint_file_t *file, const lint_lexed_t 
 }
 
 /* ---- Attributes and pragmas ------------------------------------------------------------------------------------- */
+
+/* Only #pragma once is allowed. Anything else is either a named breach or can switch a check off:
+ * "#pragma GCC diagnostic ignored" would defeat -Werror=padded and -Wframe-larger-than= for the rest of the file. */
+static void rules_check_pragma(const lint_file_t *file, const lint_lexed_t *lexed, uint32_t i) {
+    const lint_token_t *token = &lexed->tokens[i];
+    const lint_token_t *first = i + 1u < lexed->token_count && lexed->tokens[i + 1u].in_directive != 0 &&
+                                        lexed->tokens[i + 1u].line == token->line
+                                    ? &lexed->tokens[i + 1u]
+                                    : nullptr;
+    const lint_token_t *second = first != nullptr && i + 2u < lexed->token_count &&
+                                         lexed->tokens[i + 2u].in_directive != 0 &&
+                                         lexed->tokens[i + 2u].line == token->line
+                                     ? &lexed->tokens[i + 2u]
+                                     : nullptr;
+    if (first != nullptr && lint_token_is(first, "once")) {
+        return;
+    }
+    if (first != nullptr && lint_token_is(first, "pack")) {
+        lint_breach(file->report, file->path, token->line, "pragma_pack",
+                    "#pragma pack is banned; write the padding out (plans/CODING_STANDARD.md section 3)");
+        return;
+    }
+    if (second != nullptr &&
+        ((lint_token_is(first, "GCC") && (lint_token_is(second, "target") || lint_token_is(second, "optimize") ||
+                                          lint_token_is(second, "ivdep") || lint_token_is(second, "unroll"))) ||
+         (lint_token_is(first, "omp") && lint_token_is(second, "simd")))) {
+        lint_breach(file->report, file->path, token->line, "simd_target",
+                    "#pragma %.*s %.*s changes code generation outside the build flags", (int32_t)first->length,
+                    first->text, (int32_t)second->length, second->text);
+        return;
+    }
+    lint_breach(file->report, file->path, token->line, "pragma_other",
+                "only #pragma once is allowed; other pragmas can switch off the checks the build relies on");
+}
+
+/* <% %> <: :> %: are { } [ ] #, and a %:pragma or %:include is not a directive to the lexer. They have no use here. */
+static void rules_check_digraphs(const lint_file_t *file, const lint_lexed_t *lexed) {
+    for (uint32_t i = 0; i + 1u < lexed->token_count; i++) {
+        const lint_token_t *token = &lexed->tokens[i];
+        const lint_token_t *next = &lexed->tokens[i + 1u];
+        if (token->kind != LINT_TOKEN_PUNCT || next->kind != LINT_TOKEN_PUNCT ||
+            token->text + token->length != next->text) {
+            continue;
+        }
+        const char a = token->text[token->length - 1u];
+        const char b = next->text[0];
+        if ((a == '<' && (b == '%' || b == ':')) || (a == '%' && (b == '>' || b == ':')) || (a == ':' && b == '>')) {
+            lint_breach(file->report, file->path, token->line, "digraph", "digraphs are banned; write the plain form");
+        }
+    }
+}
+
+/* A backslash and a newline inside a word join it back together for the compiler, so "in\<newline>t" is int. */
+static void rules_check_line_splices(const lint_file_t *file) {
+    uint32_t line = 1;
+    for (uint64_t i = 0; i < file->length; i++) {
+        if (file->text[i] == '\n') {
+            line++;
+        }
+        if (i == 0 || i + 2u >= file->length || file->text[i] != '\\' || file->text[i + 1u] != '\n') {
+            continue;
+        }
+        const char before = file->text[i - 1u];
+        const char after = file->text[i + 2u];
+        const bool before_word = (before >= 'a' && before <= 'z') || (before >= 'A' && before <= 'Z') ||
+                                 (before >= '0' && before <= '9') || before == '_';
+        const bool after_word = (after >= 'a' && after <= 'z') || (after >= 'A' && after <= 'Z') ||
+                                (after >= '0' && after <= '9') || after == '_';
+        if (before_word && after_word) {
+            lint_breach(
+                file->report, file->path, line, "line_splice_in_token",
+                "a backslash-newline splits a word; the lint would read two words where the compiler reads one");
+        }
+    }
+}
 
 static void rules_check_attributes(const lint_file_t *file, const lint_lexed_t *lexed) {
     for (uint32_t i = 0; i < lexed->token_count; i++) {
@@ -130,20 +211,8 @@ static void rules_check_attributes(const lint_file_t *file, const lint_lexed_t *
                 }
             }
         }
-        if (token->in_directive != 0 && lint_token_is(token, "pragma") && i + 2u < lexed->token_count) {
-            const lint_token_t *first = &lexed->tokens[i + 1u];
-            const lint_token_t *second = &lexed->tokens[i + 2u];
-            if (lint_token_is(first, "pack")) {
-                lint_breach(file->report, file->path, token->line, "pragma_pack",
-                            "#pragma pack is banned; write the padding out (plans/CODING_STANDARD.md section 3)");
-            }
-            if ((lint_token_is(first, "GCC") && (lint_token_is(second, "target") || lint_token_is(second, "optimize") ||
-                                                 lint_token_is(second, "ivdep") || lint_token_is(second, "unroll"))) ||
-                (lint_token_is(first, "omp") && lint_token_is(second, "simd"))) {
-                lint_breach(file->report, file->path, token->line, "simd_target",
-                            "#pragma %.*s %.*s changes code generation outside the build flags", (int32_t)first->length,
-                            first->text, (int32_t)second->length, second->text);
-            }
+        if (token->in_directive != 0 && lint_token_is(token, "pragma")) {
+            rules_check_pragma(file, lexed, i);
         }
     }
 }
@@ -261,7 +330,7 @@ typedef struct rules_walk_t {
     rules_brace_t pending_brace_kind;
     uint8_t pending_brace_typedef;
     uint8_t member_has_enum;
-    uint8_t _pad0[1];
+    uint8_t bracket_depth;
     rules_brace_t braces[RULES_MAX_BRACES];
     uint8_t brace_typedef[RULES_MAX_BRACES];
 } rules_walk_t;
@@ -423,6 +492,10 @@ static void rules_note_tagged_type(rules_walk_t *walk, uint32_t i, bool is_enum)
             next++;
         }
     }
+    if (walk->cuda_graph != nullptr && !is_enum && next < walk->code_count && lint_token_is(&walk->code[next], ":")) {
+        lint_breach(walk->file->report, walk->file->path, walk->code[i].line, "cuda_inheritance",
+                    "inheritance is outside the C-like subset for CUDA (plans/CODING_STANDARD.md section 8)");
+    }
     if (next >= walk->code_count || !lint_token_is(&walk->code[next], "{")) {
         return;
     }
@@ -516,7 +589,22 @@ static void rules_check_token(rules_walk_t *walk, uint32_t i) {
     const lint_token_t *next = i + 1u < walk->code_count ? &walk->code[i + 1u] : nullptr;
     const rules_brace_t top = rules_top_brace(walk);
 
+    if (lint_token_is(token, "[")) {
+        walk->bracket_depth++;
+    } else if (lint_token_is(token, "]") && walk->bracket_depth > 0) {
+        walk->bracket_depth--;
+    }
+
     if (lint_token_is(token, "(")) {
+        /* name( directly in a struct body is a method or a constructor. (*name)( is a function pointer field. */
+        if (walk->cuda_graph != nullptr && top == RULES_BRACE_STRUCT && walk->paren_depth == 0 &&
+            walk->bracket_depth == 0 && previous != nullptr && previous->kind == LINT_TOKEN_IDENT &&
+            !rules_is_attribute_like(previous) && next != nullptr && !lint_token_is(next, "*")) {
+            lint_breach(
+                file->report, file->path, token->line, "cuda_struct_method",
+                "%.*s: structs have no methods in the C-like subset for CUDA (plans/CODING_STANDARD.md section 8)",
+                (int32_t)previous->length, previous->text);
+        }
         if (walk->paren_depth == 0 && rules_at_file_scope(walk) && walk->function_candidate < 0 &&
             previous != nullptr && previous->kind == LINT_TOKEN_IDENT && !rules_is_attribute_like(previous)) {
             walk->function_candidate = (int32_t)i - 1;
@@ -555,7 +643,8 @@ static void rules_check_token(rules_walk_t *walk, uint32_t i) {
                !(previous != nullptr && lint_token_is(previous, "["))) {
         rules_check_static_declaration(walk, i);
     } else if (top == RULES_BRACE_STRUCT && walk->paren_depth == 0) {
-        if (lint_token_is(token, "bool") && next != nullptr && !lint_token_is(next, "(") && !lint_token_is(next, "*")) {
+        if ((lint_token_is(token, "bool") || lint_token_is(token, "_Bool")) && next != nullptr &&
+            !lint_token_is(next, "(") && !lint_token_is(next, "*")) {
             lint_breach(file->report, file->path, token->line, "bool_in_struct",
                         "struct fields hold truth values as uint8_t (plans/CODING_STANDARD.md section 2)");
         }
@@ -639,6 +728,8 @@ void lint_rules_c_check(const lint_file_t *file, const lint_lexed_t *lexed, uint
                         lint_graph_t *cuda_graph) {
     rules_check_identifiers(file, lexed, languages);
     rules_check_attributes(file, lexed);
+    rules_check_digraphs(file, lexed);
+    rules_check_line_splices(file);
     rules_check_literals(file, lexed, languages);
     rules_check_structure(file, lexed, languages == LINT_LANGUAGE_CUDA ? cuda_graph : nullptr);
 }
