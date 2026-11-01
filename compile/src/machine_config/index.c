@@ -59,6 +59,7 @@ typedef enum machine_key_id_t : uint8_t {
     KEY_CPU_HAS_BMI2,
     KEY_CPU_HAS_POPCNT,
     KEY_CPU_HAS_LZCNT,
+    KEY_CPU_HAS_F16C,
     KEY_CPU_HAS_AVX512,
     KEY_THREADS_MAIN,
     KEY_THREADS_SIM,
@@ -117,6 +118,7 @@ static const machine_key_t machine_keys[KEY_COUNT] = {
     [KEY_CPU_HAS_BMI2] = KEY_BOOL("cpu.simd.bmi2", "MC_CPU_HAS_BMI2"),
     [KEY_CPU_HAS_POPCNT] = KEY_BOOL("cpu.simd.popcnt", "MC_CPU_HAS_POPCNT"),
     [KEY_CPU_HAS_LZCNT] = KEY_BOOL("cpu.simd.lzcnt", "MC_CPU_HAS_LZCNT"),
+    [KEY_CPU_HAS_F16C] = KEY_BOOL("cpu.simd.f16c", "MC_CPU_HAS_F16C"),
     [KEY_CPU_HAS_AVX512] = KEY_BOOL("cpu.simd.avx512", "MC_CPU_HAS_AVX512"),
     /* Plan section 2 has one main thread and one sim thread. The gpu thread goes away on a build with no GPU. */
     [KEY_THREADS_MAIN] = KEY_INT("threads.main", "MC_THREADS_MAIN", 1, 1),
@@ -379,6 +381,9 @@ static bool machine_check_consistency(const machine_value_t *values, yaml_error_
     }
     if (NUMBER(KEY_CPU_HAS_FMA3) != 0 && NUMBER(KEY_CPU_HAS_AVX) == 0) {
         return yaml_fail_at_node(NODE(KEY_CPU_HAS_FMA3), error, "cpu.simd.fma3 needs cpu.simd.avx");
+    }
+    if (NUMBER(KEY_CPU_HAS_F16C) != 0 && NUMBER(KEY_CPU_HAS_AVX) == 0) {
+        return yaml_fail_at_node(NODE(KEY_CPU_HAS_F16C), error, "cpu.simd.f16c needs cpu.simd.avx");
     }
     if (NUMBER(KEY_CPU_HAS_AVX512) != 0 && NUMBER(KEY_CPU_HAS_AVX2) == 0) {
         return yaml_fail_at_node(NODE(KEY_CPU_HAS_AVX512), error, "cpu.simd.avx512 needs cpu.simd.avx2");

@@ -22,17 +22,19 @@ waits for) and ctest (`standards_lint`).
 
 Every directory under the root, found by walking, so a new directory needs no list. Three are skipped at the root only:
 `build/`, `.claude/` and `.git/`. So is any `fixtures/` directory under `tests/`, because those break the rules on
-purpose. Symbolic links are not followed. Code is any `.c .h .cu .hu .asm .inc` file.
+purpose. Symbolic links are not followed. Code is any `.c .h .cu .hu .asm .inc` file. `CMakeLists.txt` and `*.cmake`
+are read as well, for `rules_cmake/`.
 
 ## Where a rule lives
 
 | Part | Rules |
 |---|---|
 | `catalog/` | The banned identifiers and where each is allowed: `banned:<word>`, including other names for the same types and allocators (`__int128_t`, `__libc_malloc`, `SYS_mmap`), libc calls that hand back a malloc'd block, `dlopen`, and `_Pragma`. Also the `borrowed_` static allowlist |
-| `rules_c/` | `literal_*`, `packed`, `pragma_pack`, `pragma_other`, `digraph`, `line_splice_in_token`, `int_fast_least`, `cuda_struct_method`, `cuda_inheritance`, `bitfield`, `bool_in_struct`, `struct_*`, `type_name`, `owning_static`, `borrowed_*`, `tier_*`, `init_deinit_pair`, `goto_cleanup_only`, `inline_asm`, `intrinsic`, `vector_extension`, `simd_target`, and the calls that feed `recursion_cuda` |
+| `rules_c/` | `literal_*`, `packed`, `pragma_pack`, `pragma_other`, `digraph`, `line_splice_in_token`, `int_fast_least`, `cuda_struct_method`, `cuda_inheritance`, `bitfield`, `bool_in_struct`, `struct_*` (the `alignof` and `offsetof` asserts on structs under `run/include/gpu_bridge/`, `simd/` and `save/`), `type_name`, `owning_static`, `borrowed_*`, `tier_*`, `init_deinit_pair`, `goto_cleanup_only`, `inline_asm`, `intrinsic`, `vector_extension`, `simd_target`, and the calls that feed `recursion_cuda` |
 | `rules_include/` | `include_*`, `banned_header:*`, `cuda_cpp_header`, and the system ranks from `plans/REPO_STRUCTURE.md` section 11. `#include "x"` and `#include <x>` obey the same rules, because GCC finds either file through either spelling |
 | `rules_asm/` | `asm_*` |
 | `rules_tree/` | `file_name`, `file_location`, `header_location`, `one_module`, `cuda_header_ext`, `line_limit`, `readme_*`, `stray_file`, `foreign_source`, `unknown_system` |
+| `rules_cmake/` | `cmake_flags_outside`: compile flags set anywhere but `cmake/flags.cmake`, per source or per target. `cmake_weakening_flag`: `-Wno-*`, `-w`, `-ffast-math` and the like, anywhere |
 | `graph/` | `recursion` and `recursion_cuda` |
 
 To add a rule: add its id to `catalog/`, report it, and add a fixture. `standards_lint_fixtures` fails for any rule with
@@ -47,17 +49,18 @@ because section 2's table of allowed types does not have them; every `#pragma` b
 
 ## What it does not check
 
-- A `.cmake` file that drops a flag for one source. The fixtures test judges the flags in `cmake/flags.cmake`, not a
-  `set_source_files_properties` somewhere else.
-- `alignof` and per-field `offsetof` asserts on structs shared with CUDA, NASM or files (section 3, rule 4). Only the
-  `sizeof` assert is checked.
-- A jump backward to a label reached with YMM state live, in `asm_vzeroupper`. Forward jumps are followed.
+- A build file that removes a flag without naming a flag or a flags variable, for example `string(REPLACE)` on a compile
+  rule variable. `rules_cmake/` looks for the words that do this, and it is not a CMake interpreter.
+- A shared struct outside the three paths under "Where a rule lives". The list is `shared_struct_paths` in `catalog/`,
+  and a new kind of shared struct has to be added to it. The `alignof` and `offsetof` asserts must be written with those
+  words directly after `static_assert(`, and they must be in the same file as the struct.
+- A jump through a register, in `asm_vzeroupper`: its target is not a label the lint can follow. Direct jumps both ways are.
 - `char` used for bytes, `bool` passed through memory, and any other rule that needs types and not tokens.
 - A pointer hidden inside a static struct, and ownership prefixes on struct fields. Those stay with review, as section 10
   of the standard says.
 - Recursion through a function pointer: GCC records `__indirect_call` and not its target.
-- Recursion under `release` and `profile`, where `-flto` means GCC writes no `.ci` file at compile time. Those presets
-  build the same source that `debug` and `sanitize` check.
+- Recursion that only optimization adds or removes. `-flto` means GCC writes no `.ci` file at compile time, so `release`
+  and `profile` compile each C source a second time at `-O0` with the preset's own defines, only for the call graph.
 - CUDA recursion comes from a token scan of `.cu` files, not from a compiler: calls by function pointer, and names
   reused by `static` functions in two files, can fool it.
 - A rule inside code that an `#if` hides is still checked, since the lint does not preprocess. That errs on the strict side.

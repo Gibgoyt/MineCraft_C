@@ -96,39 +96,134 @@ static void asm_jump_target(const char *mnemonic, uint64_t mnemonic_length, cons
     *out_length = length;
 }
 
-enum { ASM_MAX_DIRTY_TARGETS = 64 };
+enum { ASM_MAX_DIRTY_TARGETS = 4096 };
 
-/* Labels a jump reaches with YMM state live. A ret after a jump is not the end of the code that used YMM: the jump may
- * land past that ret, so a linear scan alone would call the second exit clean. Jumps backward are not followed. */
+/* A label that a jump reaches with YMM state live. Local labels repeat between functions, so the function is part of it. */
+typedef struct asm_dirty_label_t {
+    const char *name;
+    uint64_t length;
+    uint32_t function;
+    uint8_t _pad0[4];
+} asm_dirty_label_t;
+static_assert(sizeof(asm_dirty_label_t) == 24);
+
 typedef struct asm_dirty_labels_t {
-    const char *names[ASM_MAX_DIRTY_TARGETS];
-    uint64_t lengths[ASM_MAX_DIRTY_TARGETS];
+    asm_dirty_label_t *items;
     uint32_t count;
     uint8_t overflowed; /* too many to remember, so every label counts as dirty: strict, never silently clean */
     uint8_t _pad0[3];
 } asm_dirty_labels_t;
-static_assert(sizeof(asm_dirty_labels_t) == 16u * ASM_MAX_DIRTY_TARGETS + 8u);
+static_assert(sizeof(asm_dirty_labels_t) == 16);
 
-static void asm_dirty_add(asm_dirty_labels_t *labels, const char *name, uint64_t length) {
-    if (labels->count >= ASM_MAX_DIRTY_TARGETS) {
-        labels->overflowed = 1;
-        return;
-    }
-    labels->names[labels->count] = name;
-    labels->lengths[labels->count] = length;
-    labels->count++;
-}
-
-static bool asm_dirty_has(const asm_dirty_labels_t *labels, const char *name, uint64_t length) {
+static bool asm_dirty_has(const asm_dirty_labels_t *labels, uint32_t function, const char *name, uint64_t length) {
     if (labels->overflowed != 0) {
         return true;
     }
     for (uint32_t i = 0; i < labels->count; i++) {
-        if (labels->lengths[i] == length && memcmp(labels->names[i], name, length) == 0) {
+        const asm_dirty_label_t *item = &labels->items[i];
+        if (item->function == function && item->length == length && memcmp(item->name, name, length) == 0) {
             return true;
         }
     }
     return false;
+}
+
+static void asm_dirty_add(asm_dirty_labels_t *labels, uint32_t function, const char *name, uint64_t length) {
+    if (asm_dirty_has(labels, function, name, length)) {
+        return;
+    }
+    if (labels->count >= ASM_MAX_DIRTY_TARGETS) {
+        labels->overflowed = 1;
+        return;
+    }
+    labels->items[labels->count] =
+        (asm_dirty_label_t){.name = name, .length = length, .function = function, ._pad0 = {0}};
+    labels->count++;
+}
+
+/* The length of a line's code, without its comment. */
+static uint64_t asm_code_length(const char *line, const char *line_end) {
+    const char *comment = memchr(line, ';', (uint64_t)(line_end - line));
+    return (uint64_t)((comment != nullptr ? comment : line_end) - line);
+}
+
+/* One walk over the file, tracking whether YMM state is live at each line. A ret after a jump is not the end of the code
+ * that used YMM: the jump may land past that ret, or before it. So labels learned from jumps feed the next walk, and the
+ * caller repeats it until no new label appears. Only the last walk reports. */
+static void asm_flow_pass(const lint_file_t *file, asm_dirty_labels_t *labels, bool report) {
+    const char *const end = file->text + file->length;
+    const char *line = file->text;
+    uint32_t line_number = 1;
+    uint32_t function = 0;
+    bool ymm_dirty = false;
+
+    while (line < end) {
+        const char *line_end = memchr(line, '\n', (uint64_t)(end - line));
+        if (line_end == nullptr) {
+            line_end = end;
+        }
+        const uint64_t code_length = asm_code_length(line, line_end);
+        const char *word = nullptr;
+        uint64_t word_length = 0;
+        asm_first_instruction(line, code_length, &word, &word_length);
+
+        const char *label = nullptr;
+        uint64_t label_length = 0;
+        if (asm_line_label(line, code_length, &label, &label_length)) {
+            if (label[0] != '.') {
+                /* A new function. */
+                ymm_dirty = false;
+                function++;
+            } else if (asm_dirty_has(labels, function, label, label_length)) {
+                ymm_dirty = true;
+            }
+        }
+        /* Register names ymm0 to ymm15 end in digits, so look for the stem. */
+        if (memmem(line, code_length, "ymm", 3u) != nullptr || memmem(line, code_length, "YMM", 3u) != nullptr) {
+            ymm_dirty = true;
+        }
+        if (asm_has_word(word, word_length, "vzeroupper")) {
+            ymm_dirty = false;
+        }
+        if (word_length > 1u && asm_lower(word[0]) == 'j') {
+            if (ymm_dirty) {
+                const char *target = nullptr;
+                uint64_t target_length = 0;
+                asm_jump_target(word, word_length, line + code_length, &target, &target_length);
+                asm_dirty_add(labels, function, target, target_length);
+            }
+            /* Nothing falls through a jmp, so what follows is only as dirty as the jumps that reach its label. */
+            if (word_length == 3u && asm_has_word(word, word_length, "jmp")) {
+                ymm_dirty = false;
+            }
+        }
+        if (asm_has_word(word, word_length, "ret") && word_length == 3u) {
+            if (ymm_dirty && report) {
+                lint_breach(
+                    file->report, file->path, line_number, "asm_vzeroupper",
+                    "YMM registers are live at this ret; vzeroupper first (plans/CODING_STANDARD.md section 7)");
+            }
+            ymm_dirty = false;
+        }
+        line = line_end + 1;
+        line_number++;
+    }
+}
+
+static void asm_check_vzeroupper(const lint_file_t *file) {
+    asm_dirty_labels_t labels = {
+        .items = lint_arena_alloc(file->arena_file, ASM_MAX_DIRTY_TARGETS * sizeof(asm_dirty_label_t)),
+        .count = 0,
+        .overflowed = 0,
+        ._pad0 = {0},
+    };
+    /* The count only grows and has a ceiling, so this ends. */
+    uint32_t before = 0;
+    do {
+        before = labels.count;
+        asm_flow_pass(file, &labels, false);
+    } while (labels.count != before && labels.overflowed == 0);
+    asm_flow_pass(file, &labels, true);
 }
 
 void lint_rules_asm_check(const lint_file_t *file, bool is_include) {
@@ -137,18 +232,15 @@ void lint_rules_asm_check(const lint_file_t *file, bool is_include) {
     uint32_t line_number = 1;
     bool has_default_rel = false;
     bool has_gnu_stack = false;
-    bool ymm_dirty = false;
-    asm_dirty_labels_t dirty_labels;
-    dirty_labels.count = 0;
-    dirty_labels.overflowed = 0;
+
+    asm_check_vzeroupper(file);
 
     while (line < end) {
         const char *line_end = memchr(line, '\n', (uint64_t)(end - line));
         if (line_end == nullptr) {
             line_end = end;
         }
-        const char *comment = memchr(line, ';', (uint64_t)(line_end - line));
-        const uint64_t code_length = (uint64_t)((comment != nullptr ? comment : line_end) - line);
+        const uint64_t code_length = asm_code_length(line, line_end);
 
         const char *word = nullptr;
         uint64_t word_length = 0;
@@ -170,43 +262,10 @@ void lint_rules_asm_check(const lint_file_t *file, bool is_include) {
         if (memmem(line, code_length, ".note.GNU-stack", strlen(".note.GNU-stack")) != nullptr) {
             has_gnu_stack = true;
         }
-        const char *label = nullptr;
-        uint64_t label_length = 0;
-        if (asm_line_label(line, code_length, &label, &label_length)) {
-            if (label[0] != '.') {
-                /* A new function. */
-                ymm_dirty = false;
-                dirty_labels.count = 0;
-                dirty_labels.overflowed = 0;
-            } else if (asm_dirty_has(&dirty_labels, label, label_length)) {
-                ymm_dirty = true;
-            }
-        }
-        /* Register names ymm0 to ymm15 end in digits, so look for the stem. */
-        if (memmem(line, code_length, "ymm", 3u) != nullptr || memmem(line, code_length, "YMM", 3u) != nullptr) {
-            ymm_dirty = true;
-        }
         if (memmem(line, code_length, "zmm", 3u) != nullptr || memmem(line, code_length, "ZMM", 3u) != nullptr ||
             asm_has_word(line, code_length, "mm") || asm_has_word(word, word_length, "emms")) {
             lint_breach(file->report, file->path, line_number, "asm_banned_register",
                         "no AVX-512 and no MMX on this hardware baseline (plans/CODING_STANDARD.md section 7)");
-        }
-        if (asm_has_word(word, word_length, "vzeroupper")) {
-            ymm_dirty = false;
-        }
-        if (ymm_dirty && word_length > 1u && asm_lower(word[0]) == 'j') {
-            const char *target = nullptr;
-            uint64_t target_length = 0;
-            asm_jump_target(word, word_length, line + code_length, &target, &target_length);
-            asm_dirty_add(&dirty_labels, target, target_length);
-        }
-        if (asm_has_word(word, word_length, "ret") && word_length == 3u) {
-            if (ymm_dirty) {
-                lint_breach(
-                    file->report, file->path, line_number, "asm_vzeroupper",
-                    "YMM registers are live at this ret; vzeroupper first (plans/CODING_STANDARD.md section 7)");
-            }
-            ymm_dirty = false;
         }
         line = line_end + 1;
         line_number++;

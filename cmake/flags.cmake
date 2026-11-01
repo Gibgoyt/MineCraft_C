@@ -93,10 +93,17 @@ if(MC_PRESET MATCHES "^(release|profile)$")
   list(APPEND MC_LINK_FLAGS -Wframe-larger-than=${MC_FRAME_LIMIT_BYTES} -Werror)
 endif()
 
-# GCC writes no call graph for -flto objects at compile time, so only the presets without LTO ask for one.
+# GCC writes no call graph for -flto objects at compile time, so only the presets without LTO get one from the real
+# objects. The others compile the same sources again for it; see cmake/standards_lint.cmake.
 if(MC_C_CALLGRAPH)
   list(APPEND MC_C_FLAGS -fcallgraph-info=su)
 endif()
+
+# For those extra objects. They come after the preset's flags, so they win over -O3 -flto. Everything else stays, the
+# defines above all, so code under #ifdef NDEBUG is what gets checked.
+function(mc_callgraph_compile_options target)
+  target_compile_options(${target} PRIVATE -O0 -fno-lto -fcallgraph-info=su)
+endfunction()
 
 # Any linker warning is a failure too. A missing .note.GNU-stack, for one, shows up here.
 list(APPEND MC_LINK_FLAGS -Wl,--fatal-warnings -Wl,-z,noexecstack)

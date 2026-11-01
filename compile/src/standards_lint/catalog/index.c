@@ -6,6 +6,10 @@
 
 #include <string.h>
 
+/* Section 3, rule 4: structs shared with CUDA (gpu_bridge), NASM (the kernels' C prototypes) and files (saves). */
+static const char *const shared_struct_paths[] = {"run/include/gpu_bridge/", "run/include/simd/", "run/include/save/",
+                                                  nullptr};
+
 /* plans/CODING_STANDARD.md section 2: "the only file where the lint accepts a floating-point base type". */
 static const char *const typedef_site[] = {"run/include/types/index.h", nullptr};
 /* Section 4: only the heap calls the OS allocator. */
@@ -193,6 +197,8 @@ static const char *const lint_other_rules[] = {
     "bool_in_struct",
     "struct_no_typedef",
     "struct_no_sizeof_assert",
+    "struct_no_alignof_assert",
+    "struct_no_offsetof_assert",
     /* Section 4: the memory law. */
     "owning_static",
     "borrowed_not_allowlisted",
@@ -215,6 +221,9 @@ static const char *const lint_other_rules[] = {
     "readme_tier",
     "stray_file",
     "foreign_source",
+    /* Section 9: the flags live in cmake/flags.cmake, and no .cmake file can take one away for a single source. */
+    "cmake_flags_outside",
+    "cmake_weakening_flag",
     /* Section 2: the sized types are the only integer types. */
     "int_fast_least",
     /* Section 6: naming and style. */
@@ -306,6 +315,15 @@ bool lint_catalog_has_rule(const char *rule) {
 bool lint_catalog_borrowed_static_allowed(const char *path) {
     for (uint32_t i = 0; borrowed_static_files[i] != nullptr; i++) {
         if (lint_path_matches(borrowed_static_files[i], path)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool lint_catalog_struct_is_shared(const char *path) {
+    for (uint32_t i = 0; shared_struct_paths[i] != nullptr; i++) {
+        if (lint_path_matches(shared_struct_paths[i], path)) {
             return true;
         }
     }

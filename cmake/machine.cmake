@@ -19,14 +19,14 @@ endforeach()
 # Ninja re-runs this configure when any of them changes.
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${mc_machine_inputs})
 
-# The standard's warnings, without -march: the flag this tool is about to produce cannot be an input to it. -O0 because it
-# runs once on a 1 KiB file, and so that an optimizer-only warning stops at the build target, not at configure. The same
-# source gets the full flags again as the build target mc_tool_machine_config, which the standards lint gates.
+# The standard's warnings, without -march: the flag this tool is about to produce cannot be an input to it. -O1 so that
+# the warnings that need the optimizer judge it here too. The same source gets the full flags again as the build target
+# mc_tool_machine_config, which the standards lint gates.
 set(mc_machine_tool "${CMAKE_BINARY_DIR}/machine_tool/machine_config")
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/machine_tool")
 execute_process(
   COMMAND "${CMAKE_C_COMPILER}" -std=c23 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wdouble-promotion
-    -Wshadow -Wvla -Wpadded -Werror -O0 -D_GNU_SOURCE=1 "-I${CMAKE_SOURCE_DIR}/compile/include" ${mc_machine_sources}
+    -Wshadow -Wvla -Wpadded -Werror -O1 -D_GNU_SOURCE=1 "-I${CMAKE_SOURCE_DIR}/compile/include" ${mc_machine_sources}
     -o "${mc_machine_tool}"
   TIMEOUT 120
   RESULT_VARIABLE mc_machine_result

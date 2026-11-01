@@ -9,7 +9,7 @@ cpu:
   l1d_kib: 32
   l2_kib: 256
   l3_mib: 20
-  simd: { sse42: true, avx: true, avx2: true, fma3: true, bmi1: true, bmi2: true, popcnt: true, lzcnt: true, avx512: false }
+  simd: { sse42: true, avx: true, avx2: true, fma3: true, bmi1: true, bmi2: true, popcnt: true, lzcnt: true, f16c: true, avx512: false }
 threads: { main: 1, sim: 1, gpu: 1, workers: 16, reserved_os: 1, pin_physical_first: true }
 gpu:
   enabled: true

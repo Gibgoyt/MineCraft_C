@@ -2,6 +2,7 @@
  * ctest compile_machine_config. See README.md. Arguments come from test.cmake:
  *   tool report_tool machine_yaml generated_dir work_dir gcc nasm nvcc cmake
  */
+#include "harness/index.h"
 #include "machine/index.h"
 #include "yaml/index.h"
 
@@ -48,34 +49,33 @@ typedef struct mct_bad_case_t {
 static_assert(sizeof(mct_bad_case_t) == 32);
 
 /* Deliberately not the real config/machine.yaml, whose values may change. The numbers on the right are line numbers. */
-static const char
-    MCT_FIXTURE[] =
-        "platform: { os: linux, posix: true }\n" /*  1 */
-        "toolchain: { c_standard: c23, gcc_min: 16, nvcc_min: \"13.4\", nasm_min: \"3.02\", cmake_min: \"4.4\" }\n" /*  2 */
-        "cpu:\n"                   /*  3 */
-        "  model: i9-10900K\n"     /*  4 */
-        "  arch_flag: skylake\n"   /*  5 */
-        "  logical_threads: 20\n"  /*  6 */
-        "  physical_cores: 10\n"   /*  7 */
-        "  cache_line_bytes: 64\n" /*  8 */
-        "  l1d_kib: 32\n"          /*  9 */
-        "  l2_kib: 256\n"          /* 10 */
-        "  l3_mib: 20\n"           /* 11 */
-        "  simd: { sse42: true, avx: true, avx2: true, fma3: true, bmi1: true, bmi2: true, popcnt: true, "
-        "lzcnt: true, avx512: false }\n"                                                                /* 12 */
-        "threads: { main: 1, sim: 1, gpu: 1, workers: 16, reserved_os: 1, pin_physical_first: true }\n" /* 13 */
-        "gpu:\n"                                                                                        /* 14 */
-        "  enabled: true\n"                                                                             /* 15 */
-        "  api: cuda\n"                                                                                 /* 16 */
-        "  model: RTX 2080 Super\n"                                                                     /* 17 */
-        "  architecture: sm_75\n"                                                                       /* 18 */
-        "  vram_mib: 8192\n"                                                                            /* 19 */
-        "  budget: { voxels_mib: 6144, textures_mib: 256, frames_mib: 256 }\n"                          /* 20 */
-        "display: { backend: kms, device: /dev/dri/card1, connector: auto, width: 1920, height: 1080, refresh_hz: 120 "
-        "}\n"                                                                               /* 21 */
-        "memory: { huge_page_bytes: 2097152, process_budget_mib: 16384 }\n"                 /* 22 */
-        "game: { render_distance_default: 32, render_distance_max: 512, tick_hz: 20 }\n"    /* 23 */
-        "world: { z_min: -250, z_sea: 0, z_max: 500, chunk_size: 16, section_size: 16 }\n"; /* 24 */
+static const char MCT_FIXTURE[] =
+    "platform: { os: linux, posix: true }\n"                                                                    /*  1 */
+    "toolchain: { c_standard: c23, gcc_min: 16, nvcc_min: \"13.4\", nasm_min: \"3.02\", cmake_min: \"4.4\" }\n" /*  2 */
+    "cpu:\n"                                                                                                    /*  3 */
+    "  model: i9-10900K\n"                                                                                      /*  4 */
+    "  arch_flag: skylake\n"                                                                                    /*  5 */
+    "  logical_threads: 20\n"                                                                                   /*  6 */
+    "  physical_cores: 10\n"                                                                                    /*  7 */
+    "  cache_line_bytes: 64\n"                                                                                  /*  8 */
+    "  l1d_kib: 32\n"                                                                                           /*  9 */
+    "  l2_kib: 256\n"                                                                                           /* 10 */
+    "  l3_mib: 20\n"                                                                                            /* 11 */
+    "  simd: { sse42: true, avx: true, avx2: true, fma3: true, bmi1: true, bmi2: true, popcnt: true, "
+    "lzcnt: true, f16c: true, avx512: false }\n"                                                    /* 12 */
+    "threads: { main: 1, sim: 1, gpu: 1, workers: 16, reserved_os: 1, pin_physical_first: true }\n" /* 13 */
+    "gpu:\n"                                                                                        /* 14 */
+    "  enabled: true\n"                                                                             /* 15 */
+    "  api: cuda\n"                                                                                 /* 16 */
+    "  model: RTX 2080 Super\n"                                                                     /* 17 */
+    "  architecture: sm_75\n"                                                                       /* 18 */
+    "  vram_mib: 8192\n"                                                                            /* 19 */
+    "  budget: { voxels_mib: 6144, textures_mib: 256, frames_mib: 256 }\n"                          /* 20 */
+    "display: { backend: kms, device: /dev/dri/card1, connector: auto, width: 1920, height: 1080, refresh_hz: 120 "
+    "}\n"                                                                               /* 21 */
+    "memory: { huge_page_bytes: 2097152, process_budget_mib: 16384 }\n"                 /* 22 */
+    "game: { render_distance_default: 32, render_distance_max: 512, tick_hz: 20 }\n"    /* 23 */
+    "world: { z_min: -250, z_sea: 0, z_max: 500, chunk_size: 16, section_size: 16 }\n"; /* 24 */
 
 static const mct_bad_case_t MCT_BAD_CASES[] = {
     /* Wrong types and ranges, each on its own line. */
@@ -129,6 +129,12 @@ static const mct_bad_case_t MCT_BAD_CASES[] = {
     {"huge_page_bytes: 2097152", "huge_page_bytes: 2097153", "power of two", 22u, {0}},
     {"sse42: true", "sse42: false", "cpu.simd.avx needs cpu.simd.sse42", 12u, {0}},
     {"avx: true", "avx: false", "cpu.simd.avx2 needs cpu.simd.avx", 12u, {0}},
+    {"avx: true, avx2: true, fma3: true",
+     "avx: false, avx2: false, fma3: false",
+     "cpu.simd.f16c needs cpu.simd.avx",
+     12u,
+     {0}},
+    {"f16c: true, ", "", "missing key 'cpu.simd.f16c'", 1u, {0}},
     {"voxels_mib: 6144", "voxels_mib: 7681", "gpu.budget adds up to 8193 MiB", 20u, {0}},
     {"render_distance_default: 32", "render_distance_default: 513", "render_distance_default", 23u, {0}},
     {"z_min: -250", "z_min: 500", "world.z_min must be below world.z_max", 24u, {0}},
@@ -141,21 +147,10 @@ static const mct_bad_case_t MCT_BAD_CASES[] = {
     {"  model: i9-10900K\n", "  model: &a i9-10900K\n", "", 4u, {0}},
 };
 
-static uint32_t mct_failures;
-static uint32_t mct_checks;
 static uint8_t mct_buffer_a[MCT_FILE_BYTES];
 static uint8_t mct_buffer_b[MCT_FILE_BYTES];
 static char mct_text[MCT_FILE_BYTES];
 static char mct_captured[MCT_FILE_BYTES];
-
-#define CHECK(condition)                                                                                               \
-    do {                                                                                                               \
-        mct_checks++;                                                                                                  \
-        if (!(condition)) {                                                                                            \
-            mct_failures++;                                                                                            \
-            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #condition);                                                \
-        }                                                                                                              \
-    } while (0)
 
 static void mct_join(char *out, const char *directory, const char *name) {
     const int32_t length = snprintf(out, MCT_PATH_BYTES, "%s/%s", directory, name);
@@ -288,7 +283,8 @@ static bool mct_file_has_line(const char *directory, const char *name, const cha
 }
 
 /* Every language's spelling of one value. */
-static void mct_check_value(const char *directory, const char *name, const char *c_value, const char *cmake_value) {
+static void mct_check_value(test_context_t *t, const char *directory, const char *name, const char *c_value,
+                            const char *cmake_value) {
     char line[256];
     snprintf(line, sizeof(line), "#define %s %s", name, c_value);
     CHECK(mct_file_has_line(directory, "index.h", line));
@@ -324,9 +320,51 @@ static void mct_make_dir(const char *path) {
     }
 }
 
+/* Creates each missing directory of the work path, which lives under the build directory. */
+static void mct_make_work_dir(const char *work_dir) {
+    char path[MCT_PATH_BYTES];
+    const uint64_t length = strlen(work_dir);
+    if (length >= sizeof(path)) {
+        printf("FAIL work path too long\n");
+        _exit(1);
+    }
+    memcpy(path, work_dir, length + 1u);
+    for (uint64_t i = 1u; i < length; i++) {
+        if (path[i] == '/') {
+            path[i] = '\0';
+            mct_make_dir(path);
+            path[i] = '/';
+        }
+    }
+    mct_make_dir(path);
+}
+
+/* The paths from test.cmake, in memory that lasts until the running test ends. */
+static const mct_paths_t *mct_paths(test_context_t *t) {
+    if (t->arg_count != 9) {
+        printf("usage: tool report machine_yaml generated_dir work_dir gcc nasm nvcc cmake\n");
+        _exit(2);
+    }
+    char **argv = t->borrowed_args;
+    mct_paths_t *paths = test_alloc(t, sizeof(mct_paths_t));
+    *paths = (mct_paths_t){
+        .tool = argv[0],
+        .report = argv[1],
+        .machine_yaml = argv[2],
+        .generated_dir = argv[3],
+        .work_dir = argv[4],
+        .gcc = argv[5],
+        .nasm = argv[6],
+        .nvcc = argv[7],
+        .cmake = argv[8],
+    };
+    mct_make_work_dir(paths->work_dir);
+    return paths;
+}
+
 /* Writes the fixture and generates from it, into work/<name>/machine, so that <name> works as an include root. */
-static void mct_generate_fixture(const mct_paths_t *paths, const char *name, const char *text, uint64_t length,
-                                 char *out_directory) {
+static void mct_generate_fixture(test_context_t *t, const mct_paths_t *paths, const char *name, const char *text,
+                                 uint64_t length, char *out_directory) {
     char root[MCT_PATH_BYTES];
     char input[MCT_PATH_BYTES];
     mct_join(root, paths->work_dir, name);
@@ -341,37 +379,40 @@ static void mct_generate_fixture(const mct_paths_t *paths, const char *name, con
     CHECK(status == 0);
 }
 
-static void mct_test_values(const mct_paths_t *paths) {
+TEST(values) {
+    const mct_paths_t *paths = mct_paths(t);
     char directory[MCT_PATH_BYTES];
-    mct_generate_fixture(paths, "values", MCT_FIXTURE, sizeof(MCT_FIXTURE) - 1u, directory);
-    mct_check_value(directory, "MC_PLATFORM_POSIX", "1", "1");
-    mct_check_value(directory, "MC_THREADS_WORKERS", "16", "16");
-    mct_check_value(directory, "MC_CPU_HAS_AVX2", "1", "1");
-    mct_check_value(directory, "MC_CPU_HAS_AVX512", "0", "0");
-    mct_check_value(directory, "MC_GPU_ENABLED", "1", "1");
-    mct_check_value(directory, "MC_WORLD_Z_MIN", "(-250)", "-250");
-    mct_check_value(directory, "MC_WORLD_Z_SEA", "0", "0");
-    mct_check_value(directory, "MC_GPU_BUDGET_VOXELS_MIB", "6144", "6144");
-    mct_check_value(directory, "MC_MEMORY_HUGE_PAGE_BYTES", "2097152", "2097152");
-    mct_check_value(directory, "MC_CPU_ARCH_FLAG", "\"skylake\"", "\"skylake\"");
-    mct_check_value(directory, "MC_CPU_MODEL", "\"i9-10900K\"", "\"i9-10900K\"");
-    mct_check_value(directory, "MC_GPU_MODEL", "\"RTX 2080 Super\"", "\"RTX 2080 Super\"");
-    mct_check_value(directory, "MC_DISPLAY_DEVICE", "\"/dev/dri/card1\"", "\"/dev/dri/card1\"");
-    mct_check_value(directory, "MC_TOOLCHAIN_NVCC_MIN", "\"13.4\"", "\"13.4\"");
-    mct_check_value(directory, "MC_DISPLAY_BACKEND", "\"kms\"", "\"kms\"");
-    mct_check_value(directory, "MC_DISPLAY_BACKEND_KMS", "1", "1");
-    mct_check_value(directory, "MC_PLATFORM_OS_LINUX", "1", "1");
-    mct_check_value(directory, "MC_GPU_API_CUDA", "1", "1");
+    mct_generate_fixture(t, paths, "values", MCT_FIXTURE, sizeof(MCT_FIXTURE) - 1u, directory);
+    mct_check_value(t, directory, "MC_PLATFORM_POSIX", "1", "1");
+    mct_check_value(t, directory, "MC_THREADS_WORKERS", "16", "16");
+    mct_check_value(t, directory, "MC_CPU_HAS_AVX2", "1", "1");
+    mct_check_value(t, directory, "MC_CPU_HAS_F16C", "1", "1");
+    mct_check_value(t, directory, "MC_CPU_HAS_AVX512", "0", "0");
+    mct_check_value(t, directory, "MC_GPU_ENABLED", "1", "1");
+    mct_check_value(t, directory, "MC_WORLD_Z_MIN", "(-250)", "-250");
+    mct_check_value(t, directory, "MC_WORLD_Z_SEA", "0", "0");
+    mct_check_value(t, directory, "MC_GPU_BUDGET_VOXELS_MIB", "6144", "6144");
+    mct_check_value(t, directory, "MC_MEMORY_HUGE_PAGE_BYTES", "2097152", "2097152");
+    mct_check_value(t, directory, "MC_CPU_ARCH_FLAG", "\"skylake\"", "\"skylake\"");
+    mct_check_value(t, directory, "MC_CPU_MODEL", "\"i9-10900K\"", "\"i9-10900K\"");
+    mct_check_value(t, directory, "MC_GPU_MODEL", "\"RTX 2080 Super\"", "\"RTX 2080 Super\"");
+    mct_check_value(t, directory, "MC_DISPLAY_DEVICE", "\"/dev/dri/card1\"", "\"/dev/dri/card1\"");
+    mct_check_value(t, directory, "MC_TOOLCHAIN_NVCC_MIN", "\"13.4\"", "\"13.4\"");
+    mct_check_value(t, directory, "MC_DISPLAY_BACKEND", "\"kms\"", "\"kms\"");
+    mct_check_value(t, directory, "MC_DISPLAY_BACKEND_KMS", "1", "1");
+    mct_check_value(t, directory, "MC_PLATFORM_OS_LINUX", "1", "1");
+    mct_check_value(t, directory, "MC_GPU_API_CUDA", "1", "1");
 }
 
 /* The stage's proof, at the file level: one yaml value moves, and only that define moves, in all four languages. */
-static void mct_test_change_propagates(const mct_paths_t *paths) {
+TEST(change_propagates) {
+    const mct_paths_t *paths = mct_paths(t);
     char before[MCT_PATH_BYTES];
     char after[MCT_PATH_BYTES];
-    mct_generate_fixture(paths, "before", MCT_FIXTURE, sizeof(MCT_FIXTURE) - 1u, before);
+    mct_generate_fixture(t, paths, "before", MCT_FIXTURE, sizeof(MCT_FIXTURE) - 1u, before);
     const uint64_t length = mct_mutate(mct_text, "workers: 16", "workers: 12");
-    mct_generate_fixture(paths, "after", mct_text, length, after);
-    mct_check_value(after, "MC_THREADS_WORKERS", "12", "12");
+    mct_generate_fixture(t, paths, "after", mct_text, length, after);
+    mct_check_value(t, after, "MC_THREADS_WORKERS", "12", "12");
 
     for (uint32_t i = 0u; i < MCT_OUTPUT_COUNT; i++) {
         char path_before[MCT_PATH_BYTES];
@@ -392,11 +433,12 @@ static void mct_test_change_propagates(const mct_paths_t *paths) {
     }
 }
 
-static void mct_test_stable_output(const mct_paths_t *paths) {
+TEST(stable_output) {
+    const mct_paths_t *paths = mct_paths(t);
     char directory[MCT_PATH_BYTES];
     char input[MCT_PATH_BYTES];
     char root[MCT_PATH_BYTES];
-    mct_generate_fixture(paths, "stable", MCT_FIXTURE, sizeof(MCT_FIXTURE) - 1u, directory);
+    mct_generate_fixture(t, paths, "stable", MCT_FIXTURE, sizeof(MCT_FIXTURE) - 1u, directory);
     mct_join(root, paths->work_dir, "stable");
     mct_join(input, root, "machine.yaml");
 
@@ -437,9 +479,9 @@ static void mct_test_stable_output(const mct_paths_t *paths) {
     char moved[MCT_PATH_BYTES];
     uint64_t swapped = mct_mutate(mct_text, "platform: { os: linux, posix: true }\n",
                                   "# a comment\nplatform: { posix: true, os: linux }  # another\n");
-    mct_generate_fixture(paths, "swapped", mct_text, swapped, moved);
+    mct_generate_fixture(t, paths, "swapped", mct_text, swapped, moved);
     char original[MCT_PATH_BYTES];
-    mct_generate_fixture(paths, "plain", MCT_FIXTURE, sizeof(MCT_FIXTURE) - 1u, original);
+    mct_generate_fixture(t, paths, "plain", MCT_FIXTURE, sizeof(MCT_FIXTURE) - 1u, original);
     for (uint32_t i = 0u; i < MCT_OUTPUT_COUNT; i++) {
         char path_a[MCT_PATH_BYTES];
         char path_b[MCT_PATH_BYTES];
@@ -450,13 +492,14 @@ static void mct_test_stable_output(const mct_paths_t *paths) {
 }
 
 /* Each generated file is real input to the program it was written for, and each sees the right values at compile time. */
-static void mct_test_consumers(const mct_paths_t *paths) {
+TEST(consumers) {
+    const mct_paths_t *paths = mct_paths(t);
     char directory[MCT_PATH_BYTES];
     char root[MCT_PATH_BYTES];
     char include_flag[MCT_PATH_BYTES + 8u];
     char source[MCT_PATH_BYTES];
     char object[MCT_PATH_BYTES];
-    mct_generate_fixture(paths, "consumers", MCT_FIXTURE, sizeof(MCT_FIXTURE) - 1u, directory);
+    mct_generate_fixture(t, paths, "consumers", MCT_FIXTURE, sizeof(MCT_FIXTURE) - 1u, directory);
     mct_join(root, paths->work_dir, "consumers");
     snprintf(include_flag, sizeof(include_flag), "-I%s", root);
     mct_join(object, root, "probe.o");
@@ -542,13 +585,14 @@ static void mct_test_consumers(const mct_paths_t *paths) {
     CHECK(status == 0);
 }
 
-static void mct_test_bad_input(const mct_paths_t *paths) {
+TEST(bad_input) {
+    const mct_paths_t *paths = mct_paths(t);
     char directory[MCT_PATH_BYTES];
     char root[MCT_PATH_BYTES];
     char input[MCT_PATH_BYTES];
     char header[MCT_PATH_BYTES];
     char reference[MCT_PATH_BYTES];
-    mct_generate_fixture(paths, "bad", MCT_FIXTURE, sizeof(MCT_FIXTURE) - 1u, directory);
+    mct_generate_fixture(t, paths, "bad", MCT_FIXTURE, sizeof(MCT_FIXTURE) - 1u, directory);
     mct_join(root, paths->work_dir, "bad");
     mct_join(input, root, "machine.yaml");
     mct_join(header, directory, "index.h");
@@ -568,12 +612,10 @@ static void mct_test_bad_input(const mct_paths_t *paths) {
         snprintf(position, sizeof(position), "%s:%u:", input, bad->line);
         const bool right =
             status == 1 && strstr(mct_captured, position) != nullptr && strstr(mct_captured, bad->expected) != nullptr;
-        if (!right) {
+        if (!CHECK(right)) {
             printf("FAIL bad case %u (%s -> %s): expected status 1 at line %u with '%s', got status %d: %s\n", i,
                    bad->from, bad->to, bad->line, bad->expected, status, mct_captured);
-            mct_failures++;
         }
-        mct_checks++;
         /* A refusal writes nothing. */
         CHECK(mct_files_equal(header, reference));
     }
@@ -591,11 +633,12 @@ static void mct_test_bad_input(const mct_paths_t *paths) {
 }
 
 /* No damage to the input may crash the tool. It either accepts a still-complete file or reports a problem. */
-static void mct_test_damaged_input(const mct_paths_t *paths) {
+TEST(damaged_input) {
+    const mct_paths_t *paths = mct_paths(t);
     char root[MCT_PATH_BYTES];
     char input[MCT_PATH_BYTES];
     char directory[MCT_PATH_BYTES];
-    mct_generate_fixture(paths, "damage", MCT_FIXTURE, sizeof(MCT_FIXTURE) - 1u, directory);
+    mct_generate_fixture(t, paths, "damage", MCT_FIXTURE, sizeof(MCT_FIXTURE) - 1u, directory);
     mct_join(root, paths->work_dir, "damage");
     mct_join(input, root, "machine.yaml");
 
@@ -635,7 +678,8 @@ static void mct_test_damaged_input(const mct_paths_t *paths) {
     CHECK(unexpected == 0u);
 }
 
-static void mct_test_cannot_run(const mct_paths_t *paths) {
+TEST(cannot_run) {
+    const mct_paths_t *paths = mct_paths(t);
     char root[MCT_PATH_BYTES];
     char input[MCT_PATH_BYTES];
     char blocker[MCT_PATH_BYTES];
@@ -673,7 +717,8 @@ static void mct_test_cannot_run(const mct_paths_t *paths) {
 }
 
 /* The real file, as this build saw it. */
-static void mct_test_real_config(const mct_paths_t *paths) {
+TEST(real_config) {
+    const mct_paths_t *paths = mct_paths(t);
     char root[MCT_PATH_BYTES];
     char directory[MCT_PATH_BYTES];
     mct_join(root, paths->work_dir, "real");
@@ -725,52 +770,4 @@ static void mct_test_real_config(const mct_paths_t *paths) {
     CHECK(strstr(mct_captured, expected) != nullptr);
 }
 
-/* Creates each missing directory of the work path, which lives under the build directory. */
-static void mct_make_work_dir(const char *work_dir) {
-    char path[MCT_PATH_BYTES];
-    const uint64_t length = strlen(work_dir);
-    if (length >= sizeof(path)) {
-        printf("FAIL work path too long\n");
-        _exit(1);
-    }
-    memcpy(path, work_dir, length + 1u);
-    for (uint64_t i = 1u; i < length; i++) {
-        if (path[i] == '/') {
-            path[i] = '\0';
-            mct_make_dir(path);
-            path[i] = '/';
-        }
-    }
-    mct_make_dir(path);
-}
-
-int32_t main(int32_t argc, char **argv) {
-    if (argc != 10) {
-        printf("usage: tool report machine_yaml generated_dir work_dir gcc nasm nvcc cmake\n");
-        return 2;
-    }
-    const mct_paths_t paths = {
-        .tool = argv[1],
-        .report = argv[2],
-        .machine_yaml = argv[3],
-        .generated_dir = argv[4],
-        .work_dir = argv[5],
-        .gcc = argv[6],
-        .nasm = argv[7],
-        .nvcc = argv[8],
-        .cmake = argv[9],
-    };
-    mct_make_work_dir(paths.work_dir);
-
-    mct_test_values(&paths);
-    mct_test_change_propagates(&paths);
-    mct_test_stable_output(&paths);
-    mct_test_consumers(&paths);
-    mct_test_bad_input(&paths);
-    mct_test_damaged_input(&paths);
-    mct_test_cannot_run(&paths);
-    mct_test_real_config(&paths);
-
-    printf("%u checks, %u failures\n", mct_checks, mct_failures);
-    return mct_failures == 0u ? 0 : 1;
-}
+TEST_MAIN()

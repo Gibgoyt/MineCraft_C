@@ -6,6 +6,7 @@
 #include "standards_lint/lexer/index.h"
 #include "standards_lint/rules_asm/index.h"
 #include "standards_lint/rules_c/index.h"
+#include "standards_lint/rules_cmake/index.h"
 #include "standards_lint/rules_include/index.h"
 
 #include <dirent.h>
@@ -187,6 +188,16 @@ static void tree_check_file_contents(tree_t *tree, const char *path, tree_kind_t
     tree->arena_file->used = mark;
 }
 
+/* Build logic is code too: a line in any of these files can undo a flag the rest of the lint relies on. */
+static void tree_check_cmake_file(tree_t *tree, const char *path) {
+    const uint64_t mark = tree->arena_file->used;
+    lint_file_t file = {.root = tree->root, .path = path, .arena_file = tree->arena_file, .report = tree->report};
+    if (lint_read_file(tree->arena_file, tree->report, tree_absolute(tree, path), &file.text, &file.length)) {
+        lint_rules_cmake_check(&file);
+    }
+    tree->arena_file->used = mark;
+}
+
 /* Section 5: is this kind of file allowed in this directory? */
 static void tree_check_location(const tree_t *tree, const char *directory, const char *path, tree_kind_t kind) {
     if (kind == TREE_KIND_H && tree_in_first_component(directory, "cuda")) {
@@ -353,6 +364,9 @@ static void tree_check_directory(tree_t *tree, const char *directory, const tree
         const tree_kind_t kind = tree_kind_of(name);
         if (strcmp(name, "README.md") == 0) {
             has_readme = true;
+        }
+        if (strcmp(name, "CMakeLists.txt") == 0 || lint_ends_with(name, ".cmake")) {
+            tree_check_cmake_file(tree, tree_join_path(tree->arena_file, directory, name));
         }
         if (kind == TREE_KIND_OTHER) {
             /* Not compiled by anything and not read by any rule, so it would otherwise pass in silence. */

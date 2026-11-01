@@ -1,0 +1,1 @@
+string(APPEND CMAKE_C_FLAGS_RELEASE " -O2")

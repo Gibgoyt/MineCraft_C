@@ -7,7 +7,7 @@
 **Threads:** main only.
 **Public functions:** none. It is the ctest `compile_yaml`.
 **May be called by:** ctest.
-**Depends on:** `compile/src/yaml`.
+**Depends on:** `tests/harness/` and `compile/src/yaml`.
 
 The text of `config/machine.yaml` from plan section 5 is embedded and checked value by value, along with the dirt block
 example from `plans/REPO_STRUCTURE.md`. The last tests truncate and corrupt those texts at every position, and check

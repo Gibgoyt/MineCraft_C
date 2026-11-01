@@ -2,6 +2,7 @@
  * ctest compile_yaml: valid documents read back correctly, bad ones fail on the right line, and damaged input
  * can only ever give a valid tree or a positioned error.
  */
+#include "harness/index.h"
 #include "yaml/index.h"
 
 #include <stdio.h>
@@ -12,17 +13,6 @@
 
 static yaml_node_t test_nodes[TEST_NODE_CAPACITY];
 static uint8_t test_strings[TEST_STRING_CAPACITY];
-static uint32_t test_failures;
-static uint32_t test_checks;
-
-#define CHECK(condition)                                                                                               \
-    do {                                                                                                               \
-        test_checks++;                                                                                                 \
-        if (!(condition)) {                                                                                            \
-            test_failures++;                                                                                           \
-            printf("FAIL %s:%d: %s\n", __FILE__, __LINE__, #condition);                                                \
-        }                                                                                                              \
-    } while (0)
 
 /* Plan section 5, verbatim. */
 static const char TEST_MACHINE_YAML[] =
@@ -95,7 +85,7 @@ static bool test_text_at(const yaml_document_t *document, const char *path, cons
 
 /* ---- Valid documents -------------------------------------------------------------------------------- */
 
-static void test_machine_yaml(void) {
+TEST(machine_yaml) {
     yaml_document_t d;
     CHECK(test_parse(&d, TEST_MACHINE_YAML));
     const yaml_node_t *root = yaml_root(&d);
@@ -177,7 +167,7 @@ static void test_machine_yaml(void) {
     CHECK(test_at(&d, "cpu.model")->column == 10u);
 }
 
-static void test_dirt_yaml(void) {
+TEST(dirt_yaml) {
     yaml_document_t d;
     CHECK(test_parse(&d, TEST_DIRT_YAML));
     CHECK(test_text_at(&d, "name", "dirt"));
@@ -194,7 +184,7 @@ static void test_dirt_yaml(void) {
     CHECK(test_text_at(&d, "texture.all", "blocks/dirt"));
 }
 
-static void test_block_shapes(void) {
+TEST(block_shapes) {
     yaml_document_t d;
 
     /* Empty and comment-only documents have a null root. */
@@ -273,7 +263,7 @@ static void test_block_shapes(void) {
     CHECK(yaml_seq_at(&d, yaml_root(&d), 0u)->kind == YAML_KIND_NULL);
 }
 
-static void test_plain_scalars(void) {
+TEST(plain_scalars) {
     yaml_document_t d;
     CHECK(test_parse(&d, "url: http://x.y/z?a=b\n"
                          "time: 12:30\n"
@@ -305,7 +295,7 @@ static void test_plain_scalars(void) {
     CHECK(test_int_at(&d, "---x", 1));
 }
 
-static void test_quoted_scalars(void) {
+TEST(quoted_scalars) {
     yaml_document_t d;
     CHECK(test_parse(&d, "a: 'it''s'\n"
                          "b: ''''\n"
@@ -343,7 +333,7 @@ static void test_quoted_scalars(void) {
     CHECK(error.line == 9u);
 }
 
-static void test_flow(void) {
+TEST(flow) {
     yaml_document_t d;
     CHECK(test_parse(&d, "a: {}\nb: []\nc: {x: , y: ~, z: 1,}\nd: [1, [2, [3]], {e: [4]},]\n"
                          "f: {\"q\":1, 'r': 2}\n"
@@ -411,7 +401,7 @@ static bool test_decimal_refused(const char *text) {
     return test_parse(&d, text) && !yaml_get_decimal(yaml_root(&d), &value, &error) && error.line == 1u;
 }
 
-static void test_typed_reads(void) {
+TEST(typed_reads) {
     CHECK(test_int_of("0", 0));
     CHECK(test_int_of("-0", 0));
     CHECK(test_int_of("+7", 7));
@@ -632,7 +622,7 @@ static const test_bad_t TEST_BAD_INPUTS[] = {
     {"a: \xF0\x9F\x8E", "UTF-8", 1u, 4u},
 };
 
-static void test_bad_inputs(void) {
+TEST(bad_inputs) {
     for (uint64_t i = 0u; i < sizeof(TEST_BAD_INPUTS) / sizeof(TEST_BAD_INPUTS[0]); i++) {
         const test_bad_t *bad = &TEST_BAD_INPUTS[i];
         yaml_document_t d;
@@ -640,9 +630,7 @@ static void test_bad_inputs(void) {
         bool ok = yaml_parse(&d, (const uint8_t *)bad->text, strlen(bad->text), test_storage(), &error);
         bool as_expected = !ok && error.line == bad->line && error.column == bad->column &&
                            strstr(error.message, bad->message_part) != nullptr;
-        test_checks++;
-        if (!as_expected) {
-            test_failures++;
+        if (!CHECK(as_expected)) {
             printf("FAIL bad input %u: expected %u:%u '%s', got ok=%d %u:%u '%s'\n  in: %s\n", (uint32_t)i, bad->line,
                    bad->column, bad->message_part, ok, error.line, error.column, error.message, bad->text);
         }
@@ -665,7 +653,7 @@ static void test_bad_inputs(void) {
 
 /* ---- Limits ----------------------------------------------------------------------------------------- */
 
-static void test_depth(void) {
+TEST(depth) {
     static uint8_t text[2048];
     yaml_document_t d;
     yaml_error_t error;
@@ -709,7 +697,7 @@ static void test_depth(void) {
     CHECK(!yaml_parse(&d, brackets, sizeof(brackets), test_storage(), &error));
 }
 
-static void test_storage_limits(void) {
+TEST(storage_limits) {
     yaml_document_t d;
     yaml_error_t error;
     const uint8_t *text = (const uint8_t *)TEST_MACHINE_YAML;
@@ -754,7 +742,8 @@ static void test_storage_limits(void) {
 /* ---- Damaged input ---------------------------------------------------------------------------------- */
 
 /* Whatever came back must be a real tree, reached by walking it with no recursion and no out-of-range index. */
-static void test_check_result(bool ok, const yaml_document_t *d, const yaml_error_t *error, uint64_t length) {
+static void test_check_result(test_context_t *t, bool ok, const yaml_document_t *d, const yaml_error_t *error,
+                              uint64_t length) {
     if (!ok) {
         CHECK(error->line >= 1u && error->line <= length + 1u);
         CHECK(error->column >= 1u && error->column <= length + 1u);
@@ -790,7 +779,7 @@ static void test_check_result(bool ok, const yaml_document_t *d, const yaml_erro
 }
 
 /* Parses from a buffer ending exactly at the text's end, so that the sanitizer catches any read past it. */
-static void test_damaged_one(const uint8_t *source, uint64_t length) {
+static void test_damaged_one(test_context_t *t, const uint8_t *source, uint64_t length) {
     static uint8_t tail_buffer[8192];
     /* Copied up against the end, because the sanitizer puts a redzone right after a static array. */
     uint8_t *copy = tail_buffer + sizeof(tail_buffer) - length;
@@ -798,10 +787,10 @@ static void test_damaged_one(const uint8_t *source, uint64_t length) {
     yaml_document_t d;
     yaml_error_t error;
     bool ok = yaml_parse(&d, copy, length, test_storage(), &error);
-    test_check_result(ok, &d, &error, length);
+    test_check_result(t, ok, &d, &error, length);
 }
 
-static void test_damaged_text(const char *text) {
+static void test_damaged_text(test_context_t *t, const char *text) {
     uint64_t length = strlen(text);
     static uint8_t buffer[8192];
     if (length >= sizeof(buffer)) {
@@ -811,7 +800,7 @@ static void test_damaged_text(const char *text) {
 
     /* Every truncation. */
     for (uint64_t cut = 0u; cut <= length; cut++) {
-        test_damaged_one((const uint8_t *)text, cut);
+        test_damaged_one(t, (const uint8_t *)text, cut);
     }
     /* Every position, overwritten with each byte likely to confuse the structure. */
     static const uint8_t mutations[] = {'\n', '\r', '\t', ' ',  ':',   '-',   '#',   ',',   '{',
@@ -821,35 +810,21 @@ static void test_damaged_text(const char *text) {
         for (uint64_t m = 0u; m < sizeof(mutations); m++) {
             memcpy(buffer, text, length);
             buffer[at] = mutations[m];
-            test_damaged_one(buffer, length);
+            test_damaged_one(t, buffer, length);
         }
     }
     /* Every position, deleted. */
     for (uint64_t at = 0u; at < length; at++) {
         memcpy(buffer, text, at);
         memcpy(buffer + at, text + at + 1u, length - at - 1u);
-        test_damaged_one(buffer, length - 1u);
+        test_damaged_one(t, buffer, length - 1u);
     }
 }
 
-static void test_damaged(void) {
-    test_damaged_text(TEST_MACHINE_YAML);
-    test_damaged_text(TEST_DIRT_YAML);
-    test_damaged_text("a:\n- 'x''y'\n- \"p\\tq\\u20AC\"\n- b: {c: [1, {d: ~}]}\n  e:\n  - - f\n    - g\n...\n");
+TEST(damaged) {
+    test_damaged_text(t, TEST_MACHINE_YAML);
+    test_damaged_text(t, TEST_DIRT_YAML);
+    test_damaged_text(t, "a:\n- 'x''y'\n- \"p\\tq\\u20AC\"\n- b: {c: [1, {d: ~}]}\n  e:\n  - - f\n    - g\n...\n");
 }
 
-int32_t main(void) {
-    test_machine_yaml();
-    test_dirt_yaml();
-    test_block_shapes();
-    test_plain_scalars();
-    test_quoted_scalars();
-    test_flow();
-    test_typed_reads();
-    test_bad_inputs();
-    test_depth();
-    test_storage_limits();
-    test_damaged();
-    printf("%u checks, %u failures\n", test_checks, test_failures);
-    return test_failures == 0u ? 0 : 1;
-}
+TEST_MAIN()

@@ -5,9 +5,9 @@
 **Owns:** nothing. Its buffers are static, and it writes only under `build/<preset>/test_work/machine_config/`.
 **Lifetime:** Process.
 **Threads:** one.
-**Public functions:** `main`, with the paths from `test.cmake`.
+**Public functions:** none. It is the ctest `compile_machine_config`, on `tests/harness/`, with the paths from `test.cmake`.
 **May be called by:** ctest.
-**Depends on:** `compile/src/yaml/`, the `machine_config` and `machine_config_report` tools, the generated `machine/index.h`, and `gcc`, `nasm`, `nvcc`, `cmake` and `timeout`. It starts no server and touches no display, and nvcc only compiles.
+**Depends on:** `tests/harness/`, `compile/src/yaml/`, the `machine_config` and `machine_config_report` tools, the generated `machine/index.h`, and `gcc`, `nasm`, `nvcc`, `cmake` and `timeout`. It starts no server and touches no display, and nvcc only compiles.
 
 ## What it checks
 
@@ -20,5 +20,5 @@
 - A missing input, a directory as input, an unwritable output and wrong arguments give exit status 2.
 - The real `config/machine.yaml`: the tool's output is byte-identical to what the build generated, the header compiled into this test matches values parsed directly from the yaml, and `machine_config_report` prints them.
 
-It writes its own `main`, as the YAML test does, because it needs its own helpers and does not depend on any harness.
+It uses `tests/harness/` for its tests and checks, and its own `mct_run` for children, because it needs their output in a file.
 Every child runs under `timeout`, so nothing can outlive the test.

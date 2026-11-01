@@ -8,4 +8,4 @@
 **Public functions:**
 - `lint_rules_tree_check`: lints a whole repository.
 **May be called by:** the tool.
-**Depends on:** `standards_lint/rules_c`, `standards_lint/rules_include`, `standards_lint/rules_asm`, `standards_lint/lexer`, `standards_lint/graph`, `standards_lint/catalog`, `standards_lint/support`.
+**Depends on:** `standards_lint/rules_cmake`, `standards_lint/rules_c`, `standards_lint/rules_include`, `standards_lint/rules_asm`, `standards_lint/lexer`, `standards_lint/graph`, `standards_lint/catalog`, `standards_lint/support`.

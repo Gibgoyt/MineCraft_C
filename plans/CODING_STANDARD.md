@@ -414,9 +414,11 @@ CMake still adds `-lcudadevrt -lrt -lpthread -ldl` and an unused `-rpath`. None 
 | `index.*` and `README.md` in each directory, `.hu` only | `standards_lint` |
 | Allocation by tier | `standards_lint`, using path depth |
 | Compiler padding | `-Werror=padded` |
-| Struct sizes and offsets | `static_assert` |
+| Struct sizes and offsets | `static_assert`; `standards_lint` requires them for every struct (`sizeof`) and for shared structs (`alignof`, each field's `offsetof`) |
+| Flags set only in `cmake/flags.cmake`, none taken away | `standards_lint` reads the build files |
+| Formatting | ctest `clang_format` |
 | VLAs | `-Wvla` |
-| Recursion | Call-graph check from GCC's `-fcallgraph-info` *(built in Stage 02.4)* |
+| Recursion | Call-graph check from GCC's `-fcallgraph-info`, on every preset |
 | Large stack frames | `-Wframe-larger-than=` |
 | Leaks | Heap counters must read zero at exit; sanitize preset |
 | Ownership prefixes, thread rules | Review; the lint checks prefixes where it can |

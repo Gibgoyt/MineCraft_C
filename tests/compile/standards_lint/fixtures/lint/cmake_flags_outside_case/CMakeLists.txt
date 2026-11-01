@@ -1,0 +1,1 @@
+SET_SOURCE_FILES_PROPERTIES(run/src/world/index.c PROPERTIES LABELS x)

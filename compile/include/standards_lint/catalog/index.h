@@ -31,4 +31,7 @@ const char *lint_catalog_rule_at(uint32_t index);
 /* True if this file may hold a borrowed_ static. See plans/CODING_STANDARD.md section 4. */
 bool lint_catalog_borrowed_static_allowed(const char *path);
 
+/* True if structs in this file are shared with CUDA, NASM or files. See plans/CODING_STANDARD.md section 3, rule 4. */
+bool lint_catalog_struct_is_shared(const char *path);
+
 #endif

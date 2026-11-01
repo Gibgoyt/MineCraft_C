@@ -510,6 +510,93 @@ static void rules_note_tagged_type(rules_walk_t *walk, uint32_t i, bool is_enum)
     }
 }
 
+/* Whether the file holds static_assert(<word>(<type>...), or static_assert(<word>(<type>, <field>... with a field. */
+static bool rules_has_layout_assert(const rules_walk_t *walk, const char *word, const lint_token_t *type,
+                                    const lint_token_t *field) {
+    const uint32_t needed = field != nullptr ? 7u : 5u;
+    for (uint32_t i = 0; i + needed <= walk->code_count; i++) {
+        const lint_token_t *t = &walk->code[i];
+        if (!(lint_token_is(t, "static_assert") || lint_token_is(t, "_Static_assert")) || !lint_token_is(&t[1], "(") ||
+            !lint_token_is(&t[2], word) || !lint_token_is(&t[3], "(") || t[4].length != type->length ||
+            memcmp(t[4].text, type->text, type->length) != 0) {
+            continue;
+        }
+        if (field == nullptr) {
+            return true;
+        }
+        if (lint_token_is(&t[5], ",") && t[6].length == field->length &&
+            memcmp(t[6].text, field->text, field->length) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void rules_require_offsetof(const rules_walk_t *walk, const lint_token_t *type, const lint_token_t *field) {
+    if (!rules_has_layout_assert(walk, "offsetof", type, field)) {
+        lint_breach(walk->file->report, walk->file->path, field->line, "struct_no_offsetof_assert",
+                    "%.*s is shared with CUDA, NASM or files, so it needs static_assert(offsetof(%.*s, %.*s) == N) "
+                    "(plans/CODING_STANDARD.md section 3)",
+                    (int32_t)type->length, type->text, (int32_t)type->length, type->text, (int32_t)field->length,
+                    field->text);
+    }
+}
+
+/* Section 3, rule 4, for the struct whose body closed at close_index: its alignof, and the offsetof of every field. A
+ * named inner struct is one field. An unnamed one's fields belong to the outer struct, so they are read as its own. */
+static void rules_check_shared_struct(const rules_walk_t *walk, uint32_t close_index, const lint_token_t *type) {
+    if (!rules_has_layout_assert(walk, "alignof", type, nullptr)) {
+        lint_breach(walk->file->report, walk->file->path, type->line, "struct_no_alignof_assert",
+                    "%.*s is shared with CUDA, NASM or files, so it needs static_assert(alignof(%.*s) == N) "
+                    "(plans/CODING_STANDARD.md section 3)",
+                    (int32_t)type->length, type->text, (int32_t)type->length, type->text);
+    }
+    uint32_t open_index = close_index;
+    uint32_t depth = 1;
+    while (open_index > 0 && depth > 0) {
+        open_index--;
+        depth += lint_token_is(&walk->code[open_index], "}") ? 1u : 0u;
+        depth -= lint_token_is(&walk->code[open_index], "{") ? 1u : 0u;
+    }
+    const lint_token_t *field = nullptr;
+    uint32_t i = open_index + 1u;
+    while (i < close_index) {
+        const lint_token_t *token = &walk->code[i];
+        if (lint_token_is(token, "{")) {
+            const uint32_t after = rules_skip_attributes(walk, rules_skip_group(walk, i, "{", "}"));
+            /* Named: carry on at its name. Unnamed: walk into it. */
+            i = walk->code[after].kind == LINT_TOKEN_IDENT ? after : i + 1u;
+            field = nullptr;
+        } else if (lint_token_is(token, "}")) {
+            field = nullptr;
+            i++;
+        } else if (lint_token_is(token, "(") && i + 2u < close_index && lint_token_is(&walk->code[i + 1u], "*")) {
+            /* A function pointer: (*name)(arguments) */
+            field = &walk->code[i + 2u];
+            i = rules_skip_group(walk, i, "(", ")");
+        } else if (lint_token_is(token, "(")) {
+            i = rules_skip_group(walk, i, "(", ")");
+        } else if (lint_token_is(token, "[")) {
+            i = i + 1u < close_index && lint_token_is(&walk->code[i + 1u], "[") ? rules_skip_attributes(walk, i)
+                                                                                : rules_skip_group(walk, i, "[", "]");
+        } else if (lint_token_is(token, ";") || lint_token_is(token, ",")) {
+            if (field != nullptr) {
+                rules_require_offsetof(walk, type, field);
+            }
+            field = nullptr;
+            i++;
+        } else if (token->kind == LINT_TOKEN_IDENT && rules_is_attribute_like(token) &&
+                   lint_token_is(&walk->code[i + 1u], "(")) {
+            i = rules_skip_group(walk, i + 1u, "(", ")");
+        } else {
+            if (token->kind == LINT_TOKEN_IDENT) {
+                field = token;
+            }
+            i++;
+        }
+    }
+}
+
 /* The struct or enum body that just closed at index i, with the typedef name after it. */
 static void rules_close_tagged_type(rules_walk_t *walk, uint32_t i, rules_brace_t kind, bool had_typedef) {
     const uint32_t after = rules_skip_attributes(walk, i + 1u);
@@ -524,6 +611,9 @@ static void rules_close_tagged_type(rules_walk_t *walk, uint32_t i, rules_brace_
     if (kind == RULES_BRACE_STRUCT && rules_top_brace(walk) != RULES_BRACE_STRUCT) {
         walk->struct_names[walk->struct_name_count] = name;
         walk->struct_name_count++;
+        if (lint_catalog_struct_is_shared(walk->file->path)) {
+            rules_check_shared_struct(walk, i, name);
+        }
     }
 }
 

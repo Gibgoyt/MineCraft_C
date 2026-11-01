@@ -349,7 +349,7 @@ static bool yaml_scan_single_quoted(yaml_parser_t *parser, yaml_scalar_t *out) {
     if (doubled_quotes == 0u) {
         out->text = parser->text + start;
     } else {
-        uint8_t *decoded;
+        uint8_t *decoded = nullptr;
         if (!yaml_reserve_string(parser, out->length, &decoded)) {
             return false;
         }
@@ -476,7 +476,7 @@ static bool yaml_decode_escape(yaml_parser_t *parser, uint8_t *decoded, uint32_t
     if (digits == 0u) {
         return yaml_fail(parser, "unknown escape '\\%c'", name);
     }
-    uint32_t code_point;
+    uint32_t code_point = 0u;
     if (!yaml_read_numeric_escape(parser, digits, &code_point)) {
         return false;
     }
@@ -513,7 +513,7 @@ static bool yaml_scan_escaped_quoted(yaml_parser_t *parser, yaml_scalar_t *out) 
         parser->pos = cursor + 1u;
         return true;
     }
-    uint8_t *decoded;
+    uint8_t *decoded = nullptr;
     if (!yaml_reserve_string(parser, cursor - start, &decoded)) {
         return false;
     }
