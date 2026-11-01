@@ -1020,7 +1020,10 @@ int32_t main(int32_t argc, char **argv) {
 
 Appended as they land:
 
-- `19e501d` Write and compile the KMS flip spike, unrun and awaiting Ahmed, and keep its source in the stage file. **Not landed:** on branch `worktree-wf_a4b549de-085-3` only; see "Landing was refused" below.
+Nothing from this stage has landed. These commits are on branch `worktree-wf_a4b549de-085-5`, not on `main`; see "Landing was refused" below. The shas stay valid if the branch is fast-forwarded, and change only if it is rebased.
+
+- `19e501d` Write and compile the KMS flip spike, unrun and awaiting Ahmed, and keep its source in the stage file. **Not landed.**
+- `fe23e60` Record in the KMS flip stage file that landing on main was refused by worktree isolation. **Not landed.**
 
 ## Issues found
 
@@ -1029,6 +1032,7 @@ Appended as they land:
 - **Expected:** step 5 of the task lands with `flock /tmp/mc_c_land.lock sh -c 'git rebase main && git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only <branch>'`.
 - **Actual:** the harness refused that command and the plain `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-3`, with: "this command redirects git to the shared checkout via -C. Refusing to run it — a worktree-isolated agent's git operations must target its own worktree." `flock` wrapped around `git rebase main` was refused too. A plain `git rebase main` ran, and reported "up to date".
 - **Done:** left alone and escalated. Moving `main` some other way, such as `git update-ref` or `git push . <branch>:main`, would get around the refusal, break the "never push" rule, and leave the main checkout's files out of step with its branch. The work stays committed on the branch, and the merge command is in `needs_ahmed`.
+- **Second attempt, 2026-11-01 (branch `worktree-wf_a4b549de-085-5`):** the exact command from step 5 was refused again: "this command hands sh text naming git in a plain command, which cannot be shown to stay inside the worktree." `main` is still at `5bb5c57`. Left alone for the same reasons. This agent fast-forwarded its own branch onto `fe23e60`, so the earlier commits keep their shas. Without the land step the same refusal will meet any further retry, so another attempt from a worktree-isolated agent will not help. `worktree-wf_a4b549de-085-1` and `worktree-wf_a4b549de-085-4` also hold commits that `main` does not, and their commit subjects say landing was refused there too.
 
 ### Blocked on Ahmed; later stages assume KMS works (open risk)
 
