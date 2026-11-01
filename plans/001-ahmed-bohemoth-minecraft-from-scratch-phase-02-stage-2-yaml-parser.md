@@ -66,7 +66,10 @@ Appended as they land:
 - A wrong expected line in the test: `yaml_seq_at(&d, test_at(&d, "h"), 1u)->line == 12u` failed on the first run. Counting the text by hand gave line 10, and the parser was right. I corrected the test.
 - A test that kept going after a failed bound check. The first `release` build printed `warning: 'memcpy' writing between 2147483648 and 9223372036854775805 bytes into a region of size 8192` at the LTO link. `CHECK(length < sizeof(buffer))` only counts a failure, so the copy after it was reachable. GCC was right, and the warning did not fail the build because the link does not get `-Werror`. The test now returns at that point, and the warning is gone. **Compiler warnings at the LTO link do not fail the `release` build**, which is outside this stage's paths, so Stage 02.1's owner may want `-Werror` on the link as well.
 
-**6. The landing state is recorded under Commits and in the workflow's result.** See the entry below if landing was refused.
+**6. The landing command is refused, so this work is not on `main`.**
+- Expected: the workflow's landing step to fast-forward `main`.
+- Actual: `flock /tmp/mc_c_land.lock sh -c 'git rebase main && git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only '"$(git rev-parse --abbrev-ref HEAD)"` returned `this command names git in a form too complex to verify that it stays inside the worktree. Refusing to run it — a worktree-isolated agent's git operations must target its own worktree.` A plain read with `git -C` on the main checkout was refused as well: `this command redirects git to the shared checkout via -C`. `main` stays at `5bb5c57`. Stages 01.x and 02.1 report the same block.
+- Done: tried once, and escalated. I did not try another way to move `main` (`update-ref`, `branch -f`, `cd` into the main checkout), because that would bypass the isolation rule. To finish, from outside the isolation, in the main checkout, after Stage 02.1 if it goes first: `git rebase main worktree-wf_a4b549de-085-13 && git checkout main && git merge --ff-only worktree-wf_a4b549de-085-13`. Then add the landed sha above and set Status to done.
 
 **7. Cross-check against PyYAML, a one-off that is not part of the repo.**
 - Why: my own tests only show that the parser agrees with what I believed YAML means.
