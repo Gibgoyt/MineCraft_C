@@ -55,9 +55,10 @@ Further checks against the real build, with throwaway files that were then remov
 | The frame limit fails the build on `debug` | A 20000-byte local: `error: the frame size of 20016 bytes is larger than 16384 bytes [-Werror=frame-larger-than=]` |
 | Test discovery | `tests/compile/probe_discovery/index.c`, using only the harness, with no list edited: built, and `ctest -R '^compile_probe_discovery$'` passes |
 | A harness failure really fails | `compile_standards_lint_harness` runs itself with tests that fail on purpose, and checks exit status 1, file and line, both values, and that `REQUIRE` stops its test |
+| Stage 02.2's YAML parser builds with this | `compile/src/yaml/`, `compile/include/yaml/` and `tests/compile/yaml/` copied from `cdb89e8`: lint clean, build rc 0, all 5 ctests pass including `compile_yaml` |
 | The fixtures can fail | On the first run `packed` failed, because of a real lint bug (issue 6) |
 
-**Not verified:** the frame limit under `release` and `profile`; see issue 4. Other machines. How Stage 02.2 and 02.3 code fares against this lint, because neither had any code when this was written (issue 8).
+**Not verified:** the frame limit under `release` and `profile`; see issue 4. Other machines. How Stage 02.3 code fares against this lint, because it had no code when this was written (issue 8).
 
 **Notes for later stages.**
 
@@ -71,6 +72,8 @@ Further checks against the real build, with throwaway files that were then remov
 
 Appended as they land:
 
+Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-14`, on top of Stage 02.1's `2ac15d2`. See issue 2.
+
 ## Issues found
 
 **1. Stage 02.1 is not on `main`, and this stage cannot exist without it.**
@@ -78,7 +81,11 @@ Appended as they land:
 - Actual: `main` was still `5bb5c57`, which has only `plans/` and `research/`. Stage 02.1's own issue 8 says its landing was refused and warns later stages of exactly this. Its work is on branch `worktree-wf_a4b549de-085-12` at `2ac15d2`.
 - Done: fast-forwarded this branch onto `2ac15d2` with `git merge --ff-only`, which changes only this worktree. So **this branch carries Stage 02.1's three commits**, unchanged. It does not include any Phase 01 branch.
 
-**2. The landing command is refused, so this work is not on `main`.** See the entry at the end of this section, written after the attempt.
+**2. The landing command is refused, so this work is not on `main`.**
+- Expected: the workflow's landing step to fast-forward `main`.
+- Actual: `flock /tmp/mc_c_land.lock sh -c 'git rebase main && git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only '"$(git rev-parse --abbrev-ref HEAD)"` returns, twice, `this command names git in a form too complex to verify that it stays inside the worktree. Refusing to run it — a worktree-isolated agent's git operations must target its own worktree.` `main` stays at `5bb5c57`. This is the same block as Stage 01.1 issue 8 and Stage 02.1 issue 8.
+- Done: escalated. I did not try another way to move `main` (`update-ref`, `branch -f`, or `cd` into the main checkout), because that would bypass the isolation rule. `git rebase main` alone is a no-op here, as the branch already sits on `main`. `git merge-tree --write-tree worktree-wf_a4b549de-085-13 HEAD` reports no conflict with the YAML branch.
+- To finish, from outside the isolation, in the main checkout: `git merge --ff-only worktree-wf_a4b549de-085-14`, which also lands Stage 02.1, since this branch contains all of `worktree-wf_a4b549de-085-12`. If `main` has moved, rebase this branch first. Then record the landed sha above and set Status to done.
 
 **3. The standard names `-Wframe-larger-than=` but gives no number.**
 - Expected: a value in `plans/CODING_STANDARD.md` or the master plan. `grep` found none, and no stage file sets a thread stack size.
@@ -109,6 +116,8 @@ Appended as they land:
 
 **8. The lint is stricter than the banned list, and other in-flight stages will meet it.**
 - Beyond section 10's table I implemented rules the standard states but that table does not list: `struct_no_sizeof_assert`, `bool_in_struct`, `struct_no_typedef`, `type_name`, `init_deinit_pair`, `goto_cleanup_only`, the eight README fields from `plans/REPO_STRUCTURE.md` section 3, a README tier that must match the path's depth, the NASM required form, and C++ words in `.cu` files.
-- Stages 02.2 and 02.3 are running in parallel, with no commits when I looked. Their code may breach these when it first builds on top of this, and the build will say where. That is the lint working, but those stages have to allow for it.
+- Stage 02.2 committed while this was being verified, on branch `worktree-wf_a4b549de-085-13` at `cdb89e8`, so I linted a copy of that tree. It reported one thing: `compile/src/yaml/README.md: [readme_fields] does not state **Public functions:**`. That README does state them, as `**Public functions** (`compile/include/yaml/index.h`):`, so the fault was in the lint. The field check now matches the name with no closing colon, and `ok_clean_tree` holds that form. With the YAML parser and its test copied into this worktree, the lint reports clean and its ctest passes; see the table above. The copies were then removed.
+- Stage 02.2's issue 4 worries that a harness `main` would break its test's link. The harness defines no `main`, only `TEST_MAIN()` for a test to use. The YAML test keeps its own `main` and `CHECK`, and could move to the harness later.
+- Stage 02.3 had no code when I looked. Its code may breach the rules when it first builds on top of this, and the build will say where. That is the lint working, but that stage has to allow for it.
 - Choices the standard leaves open: `mmap` is allowed at `compile/src/<tool>/index.c`, because a compile tool may not include `run/` and so has no `heap_reserve`. `profiler`, which section 11's diagram omits, shares the `job` row. `cuda/` may include any `run/` header at or below `gpu_bridge`. `mc_compile_lib` and `mc_tool_standards_lint` compile before the lint runs, because the lint is built from them; a breach in them fails one step later.
 - Limits are listed under "What it does not check" in `compile/src/standards_lint/README.md`: tokens and not types, no recursion through function pointers, and the CUDA recursion check is a token scan.

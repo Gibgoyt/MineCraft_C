@@ -90,9 +90,10 @@ enum { TREE_MODULE_ROOT_COUNT = sizeof(tree_module_roots) / sizeof(tree_module_r
 static const char *const tree_free_roots[] = {"tests", "bench", "cmake"};
 enum { TREE_FREE_ROOT_COUNT = sizeof(tree_free_roots) / sizeof(tree_free_roots[0]) };
 
+/* No closing colon, so "**Public functions** (compile/include/yaml/index.h):" counts as stating the field. */
 static const char *const tree_readme_fields[] = {
-    "**Purpose:**",          "**Tier:**",       "**Owns:**", "**Lifetime:**", "**Threads:**", "**Public functions:**",
-    "**May be called by:**", "**Depends on:**",
+    "**Purpose",          "**Tier",       "**Owns", "**Lifetime", "**Threads", "**Public functions",
+    "**May be called by", "**Depends on",
 };
 enum { TREE_README_FIELD_COUNT = sizeof(tree_readme_fields) / sizeof(tree_readme_fields[0]) };
 
@@ -257,7 +258,7 @@ static void tree_check_readme_contents(const tree_t *tree, const char *directory
         default:
             break;
         }
-        const char *tier_field = strstr(text, "**Tier:**");
+        const char *tier_field = strstr(text, "**Tier");
         if (expected != nullptr && tier_field != nullptr) {
             const char *tier_end = strchr(tier_field, '\n');
             const uint64_t tier_length = tier_end != nullptr ? (uint64_t)(tier_end - tier_field) : strlen(tier_field);

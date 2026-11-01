@@ -4,6 +4,6 @@
 **Owns:** nothing.
 **Lifetime:** Process.
 **Threads:** main.
-**Public functions:** none.
+**Public functions** (`compile/include/yaml/index.h`): none.
 **May be called by:** nobody.
 **Depends on:** nothing.
