@@ -1,5 +1,5 @@
 # Generated and compiled output, per preset. Never committed.
-build/
+/build/
 
 # Parallel agent worktrees live inside the main checkout.
 .claude/worktrees/

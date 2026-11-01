@@ -1,0 +1,1 @@
+unsigned world_value;

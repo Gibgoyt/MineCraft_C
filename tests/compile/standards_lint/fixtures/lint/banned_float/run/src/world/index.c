@@ -1,0 +1,1 @@
+float world_value;

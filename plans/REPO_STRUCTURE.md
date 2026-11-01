@@ -143,7 +143,7 @@ Layout: `compile/src/<tool>/index.c`, `compile/include/<tool>/index.h`, `README.
 |---|---|---|
 | `yaml` | Our own YAML-subset parser, with line-numbered errors | 02.2 |
 | `machine_config` | `machine.yaml` → `.h .hu .inc .cmake` | 02.3 |
-| `standards_lint` | Fails the build on any coding-standard breach | 02.4 |
+| `standards_lint` | Fails the build on any coding-standard breach. Parts: `support catalog lexer graph rules_c rules_include rules_asm rules_tree` | 02.4 |
 | `struct_offsets` | Emits `.inc` offsets from C structs, for NASM | 04.3 |
 | `inflate` | Our own DEFLATE decoder | 06.1 |
 | `png` | Our own bounds-checked PNG decoder (packs are untrusted) | 06.1 |
@@ -346,6 +346,8 @@ linked into minecraft_c, read through run/src/texture/
 |---|---|
 | `tests/harness/` | Minimal test framework (Stage 02.4) |
 | `tests/compile/<tool>/` | Tool tests |
+| `tests/compile/standards_lint/` | ctest `standards_lint_fixtures`: one failing fixture per banned construct, under `fixtures/{lint,callgraph,compiler}/` |
+| `tests/compile/standards_lint/harness/` | Tests the harness itself |
 | `tests/run/<system>/<part>/` | Game tests |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
 | `tests/asm/` | NASM kernels against scalar C references |
@@ -370,6 +372,7 @@ tools/test-or-build.sh cmake --build --preset debug
 | `cmake/generated.cmake` | Custom commands for tables and textures |
 | `cmake/targets.cmake` | `mc_asm`, `mc_cuda`, `mc_run`, `minecraft_c`, tools, tests; all found by path |
 | `cmake/check_link.cmake` | Fails the build if `minecraft_c` needs a library the standard does not allow, or has an executable stack |
+| `cmake/standards_lint.cmake` | Runs the lint before anything else compiles, runs the recursion check, and registers ctest `standards_lint` |
 | `cmake/hello/` | `minecraft_c` until `run/src/main/` exists: proves C, NASM and CUDA link and run |
 | `cmake/sanitize/` | ASan options CUDA needs, linked only in the `sanitize` preset |
 

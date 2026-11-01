@@ -1,0 +1,1 @@
+#define FRAME_SCALE 1.0f32

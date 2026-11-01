@@ -1,0 +1,1 @@
+short world_value;

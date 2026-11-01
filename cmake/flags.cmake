@@ -35,6 +35,10 @@ set(MC_C_FLAGS
   -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -Wdouble-promotion -Wshadow -Wvla -Wpadded -Werror
   -march=${MC_CPU_ARCH_FLAG} -mtune=${MC_CPU_ARCH_FLAG}
   -fno-tree-vectorize -fno-tree-slp-vectorize)
+# plans/CODING_STANDARD.md section 4: thread stacks are small and fixed, and large data goes in an arena. The value is
+# Stage 02.4's choice; the standard names the flag but no number.
+set(MC_FRAME_LIMIT_BYTES 16384)
+list(APPEND MC_C_FLAGS -Wframe-larger-than=${MC_FRAME_LIMIT_BYTES})
 # nvcc rejects these three bare ("Unknown option '-fno-exceptions'"), so they go through -Xcompiler.
 # Without them the C link fails on __cxa_guard_* and __gxx_personality_v0 (Stage 01.1).
 set(MC_CUDA_FLAGS -Xcompiler=-fno-exceptions,-fno-rtti,-fno-threadsafe-statics --Werror=all-warnings)
@@ -45,11 +49,13 @@ set(MC_DEFINES _GNU_SOURCE=1)
 
 if(MC_PRESET STREQUAL "debug")
   list(APPEND MC_C_FLAGS -O0 -g3)
+  set(MC_C_CALLGRAPH ON)   # cmake/standards_lint.cmake reads this GCC output to find recursion
   list(APPEND MC_CUDA_FLAGS -g)
   list(APPEND MC_NASM_FLAGS -g -Fdwarf)
 elseif(MC_PRESET STREQUAL "sanitize")
   set(mc_sanitize -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer)
   list(APPEND MC_C_FLAGS -O1 -g3 ${mc_sanitize})
+  set(MC_C_CALLGRAPH ON)
   list(APPEND MC_CUDA_FLAGS -g)
   list(APPEND MC_NASM_FLAGS -g -Fdwarf)
   list(APPEND MC_LINK_FLAGS ${mc_sanitize})
@@ -71,6 +77,11 @@ elseif(MC_PRESET STREQUAL "profile")
   list(APPEND MC_NASM_FLAGS -g -Fdwarf)
   list(APPEND MC_LINK_FLAGS ${mc_codegen})
   list(APPEND MC_DEFINES NDEBUG=1 MC_PROFILE=1)
+endif()
+
+# GCC writes no call graph for -flto objects at compile time, so only the presets without LTO ask for one.
+if(MC_C_CALLGRAPH)
+  list(APPEND MC_C_FLAGS -fcallgraph-info=su)
 endif()
 
 # Any linker warning is a failure too. A missing .note.GNU-stack, for one, shows up here.
