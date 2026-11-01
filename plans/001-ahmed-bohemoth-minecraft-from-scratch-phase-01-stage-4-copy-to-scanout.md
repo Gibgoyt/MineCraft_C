@@ -77,6 +77,8 @@ What this shows:
 
 Appended as they land:
 
+None landed yet: see Issue 5. The work is on branch `worktree-wf_a4b549de-085-7`.
+
 ## Issues found
 
 **1. The GPU link is x8, not the x16 the plan assumes.**
@@ -100,3 +102,8 @@ Done: left as is; Ahmed's run is the first real test.
 Expected: "total of at most 2 ms" has one meaning. Actual: spin-paced and sleep-paced stand-ins differ by 0.8 ms, either side of the target.
 Evidence: the second Results table.
 Done: VERDICT uses the spin-paced median, because a default `cudaDeviceSynchronize` busy-waits, so the real frame thread is awake when the copy starts. That reasoning is not proven by this spike, and the p99 sits right at the target. The program prints all rows so Ahmed can overrule it.
+
+**5. This stage's commit could not be landed on main by the agent.**
+Expected: `flock /tmp/mc_c_land.lock sh -c 'git rebase main && git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-7'` fast-forwards main.
+Actual: the session's worktree isolation guard refused it, both in that form and as a plain `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-7`: "this command redirects git to the shared checkout via -C. Refusing to run it".
+Done: the guard was not worked around, since a wrapper script, `git update-ref` or a `cd` into the main checkout would all bypass the same boundary. The branch is rebased on main and sits one fast-forward away. Whoever can write to the main checkout lands it with the command above.
