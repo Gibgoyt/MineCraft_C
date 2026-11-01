@@ -24,7 +24,7 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 ## Results
 
-**Verdict: pass.** On the terrain world, primary plus sun rays at 1920x1080 cost at most 4.15 ms at p99 and 4.47 ms for the slowest single frame, across all seven camera paths and both sun angles. That is about half of the 8.33 ms target. The fallback (render scale with TAA upsampling) is not needed for this budget and is not chosen. It stays available for later, because this spike covers only part of a real frame: see "What these numbers leave out".
+**Verdict: pass.** On the terrain world, primary plus sun rays at 1920x1080 cost at most 4.15 ms at p99 and 4.83 ms for the slowest single frame (over two runs), across all seven camera paths and both sun angles. That is about half of the 8.33 ms target. The fallback (render scale with TAA upsampling) is not needed for this budget and is not chosen. It stays available for later, because this spike covers only part of a real frame: see "What these numbers leave out".
 
 Conditions: RTX 2080 Super, compute only, under Ahmed's live X desktop (274 MiB VRAM used by the desktop, 1-2 % utilization when idle). During the run nvidia-smi showed P2, 1905-1920 MHz core, 6801 MHz memory, 99 % utilization, about 140 W, 62-68 C. Times are host `CLOCK_MONOTONIC` around the launch plus `cudaDeviceSynchronize`, so launch overhead is included (an empty kernel costs 0.005 ms). There were 200 frames per path after 20 warm-up frames (100 at the lower resolutions). Other agents' builds were running on the CPU; `nvidia-smi --query-compute-apps` listed no other compute process when checked. Nothing else was pinned or isolated.
 
@@ -143,11 +143,26 @@ Accepted exception (plan section 6): `tools/test-or-build.sh` does not exist unt
     timeout 120 /tmp/mc_c_spikes/ray_throughput/build/ray_throughput    # rc=0, total run 23.7 s; output kept in out/final_run.txt
     pgrep -a ray_throughput    # printed nothing, rc=1
 
+### Second verification run, by the agent that picked up the landing
+
+Same commands on the same spike sources: build up to date, `ray_throughput` rc=0, total run 11.0 s, `pgrep -a ray_throughput` printed nothing, rc=1. The tables above are from the first run and were not replaced. This run agrees with them:
+
+| Terrain, 1920x1080 | First run | Second run |
+|---|---|---|
+| Sun 50 degrees, path means | 0.70 - 2.26 | 0.68 - 2.22 |
+| Sun 50 degrees, worst p99 | 3.21 | 2.63 |
+| Sun 15 degrees, path means | 0.80 - 2.60 | 0.78 - 2.53 |
+| Sun 15 degrees, worst p99 | 4.15 | 4.14 |
+| Sun 15 degrees, slowest single frame | 4.47 | 4.83 |
+| Primary rays only, path means | 0.52 - 1.06 | 0.50 - 1.03 |
+
+So the slowest single frame seen is 4.83 ms, not the 4.47 ms in the verdict above and not the "4.5 ms" in the first commit's subject. It is still well under 8.33 ms. Correctness differences in this run: 0 hit-or-miss, 9 voxel, 1 face, 3 of 1133548 shadow, the same counts as before. The lattice world was not run again. I viewed `canopy_skim.png` and `ridge_grazing.png` from this final build at reduced size: both look right, so at least those two paths have now been checked by eye on the final code.
+
 ## Commits
 
 Appended as they land:
 
-- Not landed yet. `9ac8e9d` Record the ray throughput spike: primary and sun rays at 1080p cost at most 4.5 ms on an R=32 terrain world. This commit is on branch `worktree-wf_a4b549de-085-2`, on top of main at `5bb5c57`. See issue 7.
+- Not landed yet. `9ac8e9d` Record the ray throughput spike: primary and sun rays at 1080p cost at most 4.5 ms on an R=32 terrain world. These commits are now also on branch `worktree-wf_a4b549de-085-6`, on top of main at `5bb5c57`, and that branch is the one to land. See issue 7. The landed sha still has to be added here once it lands.
 
 ## Issues found
 
@@ -192,3 +207,4 @@ Appended as they land:
 - **Expected:** the workflow's landing step runs: `flock /tmp/mc_c_land.lock sh -c 'git rebase main && git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only <branch>'`.
 - **Actual:** the session's worktree isolation refused it: "this command names git in a form too complex to verify that it stays inside the worktree". It also refused `flock /tmp/mc_c_land.lock git rebase main`, and earlier refused a read-only `git -C /home/ahmed/Projects/Games/MineCraft_C log` with "redirects git to the shared checkout via -C".
 - **Done:** left alone. That isolation is a deliberate limit on this agent, so I did not try to get around it with a wrapper script, a push to the main checkout or a direct ref update. The commits stay on branch `worktree-wf_a4b549de-085-2`, and the merge is a fast-forward once rebased. Escalated with the exact command in the final report.
+- **Second attempt:** a second agent on branch `worktree-wf_a4b549de-085-6` fast-forwarded to those commits and ran the same landing command once. It was refused again: "this command hands sh text naming git in a plain command, which cannot be shown to stay inside the worktree". It got the same answer from the same limit, so it also did not try another route. **Still open:** landing needs someone outside the isolation, and main stays at `5bb5c57` for this stage until then.
