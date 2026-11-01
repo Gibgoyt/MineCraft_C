@@ -84,6 +84,8 @@ Further checks beyond the list above, all run in the worktree with throwaway fil
 
 Appended as they land:
 
+Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-11`, rebased on `5bb5c57`. See issue 8.
+
 ## Issues found
 
 **1. Stage 01.1's findings are not on `main`.**
@@ -122,5 +124,8 @@ Appended as they land:
 **7. The Verification list shows `cmake --preset` unwrapped; I wrapped it.**
 - The stage file lists `cmake --preset <name>` unwrapped, but the configure step compiles with nvcc, and the workflow task says every heavy command goes through the wrapper once it exists. Results are the same. The wrapped form is what `.claude/rules/test-or-build-mutex.md` tells agents to use.
 
-**8. Landing.**
-- To be filled in with the result of the landing command.
+**8. The landing command is refused, so this work is not on `main`.**
+- Expected: the workflow's landing step to fast-forward `main`.
+- Actual: `flock /tmp/mc_c_land.lock sh -c 'git rebase main && git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only '"$(git rev-parse --abbrev-ref HEAD)"` returns `this command names git in a form too complex to verify that it stays inside the worktree. Refusing to run it — a worktree-isolated agent's git operations must target its own worktree.` A plain read with `git -C` on the main checkout was refused earlier in this session too: `this command redirects git to the shared checkout via -C`. `main` stays at `5bb5c57`. This is the same block as Stage 01.1 issue 8.
+- Done: escalated. I did not try another way to move `main` (`update-ref`, `branch -f`, `cd` into the main checkout), because that would bypass the isolation rule. The branch is rebased on `main`, and `git merge-tree --write-tree worktree-wf_a4b549de-085-10 HEAD` reports no conflict with the unlanded Phase 01 branch. To finish, from outside the isolation, in the main checkout: `git merge --ff-only worktree-wf_a4b549de-085-11`. If `main` has moved, rebase this branch first. Then record the landed sha above and set Status to done.
+- Until then, **every later stage that rebases on `main` will not have `tools/test-or-build.sh` or any CMake file.** Those stages depend on this landing.
