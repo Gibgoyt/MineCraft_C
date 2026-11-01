@@ -44,6 +44,8 @@ Decide from the `REAL dumb, spin-paced: TOTAL` row and the VERDICT line. Exit 0 
 
 Measured 2026-11-01 23:21 to 23:25, four runs (the "does not wait" row comes from one of them), load average under 0.6, no other compute process on the GPU. One frame is 1920x1080 XRGB8888, 8,294,400 bytes. Runs after the first 10 of each phase are kept. Frame content is checked: the kernel writes a per-frame pattern and the host compares it, in full for every readback sampled (1 in 10) and at 4097 points for writes. Times are milliseconds and vary by about 0.03 between runs, except where a range is given.
 
+A fifth run at 23:28 on a fresh rebuild, by the agent that took over this stage, agrees: readback to pinned 1.263 tight and 1.294 paced, stream to host WC 0.246, spin-paced stand-in total 1.831 (p99 1.979), sleep-paced 2.667 (p99 3.48), slightly above the sleep-paced median range in the table below. The real write was again UNMEASURED and the run again printed `VERDICT: INCOMPLETE`.
+
 | Measured | median | p99 | Rate at median |
 |---|---|---|---|
 | Readback to pinned, paced at 120 Hz | 1.292 | 1.30 to 1.32 | 6.4 GB/s |
@@ -96,7 +98,7 @@ Done: boxes left unticked, Status set to blocked, and the run left ready for Ahm
 Expected: the gate refuses anywhere but the visible text console, before opening anything.
 Actual, under an `LD_PRELOAD` shim that stops every `/dev/dri/` open from reaching the kernel (`test_shim/run.sh`): `DISPLAY` set, `WAYLAND_DISPLAY` set, stdin not a terminal, a pty, and a console other than the visible one all exit 2 with no open attempted. With the gate passed, a denied open exits with an error; a fake dumb buffer completes at pitch 7680 and 8192; pitch 7684 is rejected and the buffer destroyed. A default run under the shim logged no `/dev/dri` open at all, from us or from libcuda.
 Limit: the fake is a memfd, so those runs printed `VERDICT: PASS` and `MEASURED on a real dumb buffer`, and both lines mean nothing there. The strings are only true outside the shim. The ioctls against the real driver have never run.
-Done: left as is; Ahmed's run is the first real test.
+Done: left as is; Ahmed's run is the first real test. Rerun in full on the 23:28 rebuild with the same results; the only source change was the shim's banned `unsigned long long` log cast, now `PRIx64`. A word scan of the spike sources for the banned keywords now finds only the word "long" in one comment in `index.c`.
 
 **4. Which number decides the pass was chosen here, and it matters.**
 Expected: "total of at most 2 ms" has one meaning. Actual: spin-paced and sleep-paced stand-ins differ by 0.8 ms, either side of the target.
