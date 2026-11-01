@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 1, stage 3: Ray throughput spike
 
-**Status:** done   (updated 2026-11-01)
+**Status:** done, not yet landed on main (see issue 7)   (updated 2026-11-01)
 
 ## Goal
 
@@ -147,6 +147,8 @@ Accepted exception (plan section 6): `tools/test-or-build.sh` does not exist unt
 
 Appended as they land:
 
+- Not landed yet. `9ac8e9d` Record the ray throughput spike: primary and sun rays at 1080p cost at most 4.5 ms on an R=32 terrain world. This commit is on branch `worktree-wf_a4b549de-085-2`, on top of main at `5bb5c57`. See issue 7.
+
 ## Issues found
 
 ### 1. `float64_t` cannot be passed to `printf` under the standard's flags
@@ -184,3 +186,9 @@ Appended as they land:
 - **Expected:** plan section 2 estimates about 100 MiB at R=32, assuming 6 sections per column at 4 KiB.
 - **Actual:** 72.5 MiB, but with about 20 occupied sections per column, because the solid ground goes down to z = -256. The total holds only because 94 % of bricks are uniform and store no voxels. A rough estimate if those bricks stored every voxel: 3064562 x 64 x 4 bytes, about 750 MiB (assuming they are nearly full).
 - **Done:** recorded here, since the master plan is not edited. **Stage 08.2 needs uniform bricks** (or an equivalent) for the estimate to hold, because the plan's format description does not mention them.
+
+### 7. The landing command was refused, so this work is on a branch and not on main
+
+- **Expected:** the workflow's landing step runs: `flock /tmp/mc_c_land.lock sh -c 'git rebase main && git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only <branch>'`.
+- **Actual:** the session's worktree isolation refused it: "this command names git in a form too complex to verify that it stays inside the worktree". It also refused `flock /tmp/mc_c_land.lock git rebase main`, and earlier refused a read-only `git -C /home/ahmed/Projects/Games/MineCraft_C log` with "redirects git to the shared checkout via -C".
+- **Done:** left alone. That isolation is a deliberate limit on this agent, so I did not try to get around it with a wrapper script, a push to the main checkout or a direct ref update. The commits stay on branch `worktree-wf_a4b549de-085-2`, and the merge is a fast-forward once rebased. Escalated with the exact command in the final report.
