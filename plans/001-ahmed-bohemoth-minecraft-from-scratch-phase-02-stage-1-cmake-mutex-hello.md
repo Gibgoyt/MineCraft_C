@@ -72,7 +72,9 @@ Further checks beyond the list above, all run in the worktree with throwaway fil
 | `.gitignore` | `git check-ignore build/debug .claude/worktrees/x` prints both |
 | `.clang-format` | `clang-format --dry-run --Werror` on the two C files and the `.cu` returns 0 |
 
-**Not tested:** other machines, and a real parallel build by two agents beyond the lock probe above. `-fsanitize` covers C only: nvcc's host code and NASM are not instrumented. No NASM warning was provoked to prove `-w+all -Werror`.
+**Not tested:** other machines, and a real parallel build by two agents beyond the lock probe above. `-fsanitize` covers C only: nvcc's host code and NASM are not instrumented.
+
+Second attempt, 2026-11-02, on branch `worktree-wf_a4b549de-085-12` after fast-forwarding onto the first attempt's commits: from a deleted `build/`, all four configures and builds return 0, `minecraft_c` prints `nasm=524800 cuda=524800 expected=524800` with rc 0 on all four, `ctest` is `100% tests passed out of 1` on all four, `NEEDED` is unchanged on release and sanitize, and `pgrep -a minecraft_c` and `pgrep -af "$PWD/build"` both return 1. This run also closes the NASM gap: a probe `asm/src/nasm_warn_probe/index.asm` with a label alone on a line gave `error: label 'orphan_label' alone on a line without a colon might be in error`, build rc 1. Removing the probe restored a passing build with no re-run of `cmake` by hand.
 
 **Notes for later stages.**
 
@@ -84,7 +86,7 @@ Further checks beyond the list above, all run in the worktree with throwaway fil
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-11`, rebased on `5bb5c57`. See issue 8.
+Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-12`, based on `5bb5c57`. See issue 8.
 
 ## Issues found
 
@@ -127,5 +129,6 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 **8. The landing command is refused, so this work is not on `main`.**
 - Expected: the workflow's landing step to fast-forward `main`.
 - Actual: `flock /tmp/mc_c_land.lock sh -c 'git rebase main && git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only '"$(git rev-parse --abbrev-ref HEAD)"` returns `this command names git in a form too complex to verify that it stays inside the worktree. Refusing to run it — a worktree-isolated agent's git operations must target its own worktree.` A plain read with `git -C` on the main checkout was refused earlier in this session too: `this command redirects git to the shared checkout via -C`. `main` stays at `5bb5c57`. This is the same block as Stage 01.1 issue 8.
-- Done: escalated. I did not try another way to move `main` (`update-ref`, `branch -f`, `cd` into the main checkout), because that would bypass the isolation rule. The branch is rebased on `main`, and `git merge-tree --write-tree worktree-wf_a4b549de-085-10 HEAD` reports no conflict with the unlanded Phase 01 branch. To finish, from outside the isolation, in the main checkout: `git merge --ff-only worktree-wf_a4b549de-085-11`. If `main` has moved, rebase this branch first. Then record the landed sha above and set Status to done.
+- Second attempt, 2026-11-02: the same command, run once more unchanged from `worktree-wf_a4b549de-085-12`, returned the same refusal, and `main` is still `5bb5c57`. Retrying from an isolated worktree cannot succeed, so this needs the merge below run from outside it, or the guard changed by whoever owns it. No other way of moving `main` was tried.
+- Done: escalated. I did not try another way to move `main` (`update-ref`, `branch -f`, `cd` into the main checkout), because that would bypass the isolation rule. The branch is rebased on `main`, and `git merge-tree --write-tree worktree-wf_a4b549de-085-10 HEAD` reports no conflict with the unlanded Phase 01 branch. To finish, from outside the isolation, in the main checkout: `git merge --ff-only worktree-wf_a4b549de-085-12`, which contains all of `worktree-wf_a4b549de-085-11`. If `main` has moved, rebase this branch first. Then record the landed sha above and set Status to done.
 - Until then, **every later stage that rebases on `main` will not have `tools/test-or-build.sh` or any CMake file.** Those stages depend on this landing.
