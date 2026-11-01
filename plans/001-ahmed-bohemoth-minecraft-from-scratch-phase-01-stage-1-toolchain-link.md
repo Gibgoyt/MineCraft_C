@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 1, stage 1: Toolchain link spike
 
-**Status:** done   (updated 2026-11-01)
+**Status:** blocked   (updated 2026-11-01): the work is done and verified, but it has not landed on `main`; see issue 8.
 
 ## Goal
 
@@ -104,6 +104,10 @@ The spike sources and the matrix scripts stay in `/tmp/mc_c_spikes/toolchain_lin
 
 Appended as they land:
 
+Not landed yet. On branch `worktree-wf_a4b549de-085-1` only:
+
+- `842d385` Record the toolchain link spike: static cudart linked by gcc needs no C++ runtime, and CUDA floats map to float and double.
+
 ## Issues found
 
 **1. `_Float32` and `_Float64` cannot be used in device code.**
@@ -138,5 +142,10 @@ Appended as they land:
 
 **7. Spike location differs from the workflow's instruction.**
 - The workflow task said to build only inside the worktree; this stage's owned paths and Verification name `/tmp/mc_c_spikes/toolchain_link/`. I followed the stage file, since the spike is meant to stay out of the repo. Nothing was built in the worktree.
+
+**8. The landing command is refused, so this work is not on `main`.**
+- Expected: the workflow's landing step to fast-forward `main`.
+- Actual: the agent's worktree isolation refused it, including in its plainest form, `flock /tmp/mc_c_land.lock git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-1`: `this command redirects git to the shared checkout via -C. Refusing to run it — a worktree-isolated agent's git operations must target its own worktree.`
+- Done: escalated. I did not try another way to move `main` from here (`update-ref`, `branch -f`, `cd` into the main checkout), because that would bypass the isolation rule. Someone outside the isolation has to run the fast-forward. Until then, the updated `plans/CODING_STANDARD.md` is not visible to other stages.
 
 **Not measured:** other nvcc versions; a kernel with its own statics or exceptions; static-cudart behaviour on any other machine. A process using cudart under the KMS path is for Stages 01.4 and 05. The phase file's Stage 01.1 checkbox is left for the phase owner, since that file is outside this stage's owned paths.
