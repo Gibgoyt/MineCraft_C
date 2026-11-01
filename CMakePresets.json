@@ -1,0 +1,55 @@
+{
+  "version": 8,
+  "cmakeMinimumRequired": { "major": 4, "minor": 4, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": { "MC_PRESET": "${presetName}", "CMAKE_C_COMPILER": "gcc" }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug: -O0, full debug info",
+      "inherits": "base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "sanitize",
+      "displayName": "Sanitize: ASan and UBSan on C",
+      "inherits": "base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
+      "name": "release",
+      "displayName": "Release: -O3 -flto",
+      "inherits": "base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "profile",
+      "displayName": "Profile: release code, debug info, frame pointers, MC_PROFILE=1",
+      "inherits": "base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "debug", "configurePreset": "debug" },
+    { "name": "sanitize", "configurePreset": "sanitize" },
+    { "name": "release", "configurePreset": "release" },
+    { "name": "profile", "configurePreset": "profile" }
+  ],
+  "testPresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "timeout": 300 }
+    },
+    { "name": "debug", "inherits": "base", "configurePreset": "debug" },
+    { "name": "sanitize", "inherits": "base", "configurePreset": "sanitize" },
+    { "name": "release", "inherits": "base", "configurePreset": "release" },
+    { "name": "profile", "inherits": "base", "configurePreset": "profile" }
+  ]
+}

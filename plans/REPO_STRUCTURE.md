@@ -368,10 +368,35 @@ tools/test-or-build.sh cmake --build --preset debug
 | `cmake/machine.cmake` | Builds the machine tool at configure time; loads generated values |
 | `cmake/flags.cmake` | Flags per language and preset |
 | `cmake/generated.cmake` | Custom commands for tables and textures |
-| `cmake/targets.cmake` | `mc_asm`, `mc_cuda`, `mc_run`, `minecraft_c`, tools, tests |
+| `cmake/targets.cmake` | `mc_asm`, `mc_cuda`, `mc_run`, `minecraft_c`, tools, tests; all found by path |
+| `cmake/check_link.cmake` | Fails the build if `minecraft_c` needs a library the standard does not allow, or has an executable stack |
+| `cmake/hello/` | `minecraft_c` until `run/src/main/` exists: proves C, NASM and CUDA link and run |
+| `cmake/sanitize/` | ASan options CUDA needs, linked only in the `sanitize` preset |
+
+`cmake/machine.cmake` and `cmake/generated.cmake` are included if present, so the stages that write them do not edit
+the root `CMakeLists.txt`.
 
 Presets: `debug`, `sanitize`, `release`, `profile`. Output goes to `build/<preset>/`, with the program at
-`build/<preset>/bin/minecraft_c`.
+`build/<preset>/bin/minecraft_c`, tools at `bin/tools/<name>`, tests at `bin/tests/<name>`, and generated files under
+`build/<preset>/generated/`.
+
+**Discovery.** There is no source list to edit. A glob with `CONFIGURE_DEPENDS` finds new directories at build time:
+
+| Path | Becomes |
+|---|---|
+| `run/src/**/index.c` | Object library `mc_run`. Tests link all of it except `run/src/main/` |
+| `asm/src/**/index.asm` | Object library `mc_asm` |
+| `cuda/src/**/index.cu` | Object library `mc_cuda` |
+| `compile/src/**/index.c` with `int32_t main(` at line start | Tool target `mc_tool_<path>` |
+| `compile/src/**/index.c` without one | Object library `mc_compile_lib`, linked into every tool and `tests/compile/` test |
+| `tests/harness/index.c` | Linked into every test. Include root `tests/`: `#include "harness/index.h"` |
+| `tests/**/index.c` | Target `mc_test_<name>` and ctest `<name>`, the path with `/` as `_`: `tests/run/world/section/` is `run_world_section` |
+
+Under `tests/`, nothing in `harness/`, `fuzz/`, `soak/` or any `fixtures/` directory is registered as a test.
+
+A `test.cmake` next to a test's `index.c` may set `MC_TEST_NAME`, `MC_TEST_ARGS`, `MC_TEST_LIBS` and `MC_TEST_TIMEOUT`,
+and may call `add_test` for more runs. A step that has to run before anything compiles, such as the lint, is added with
+`add_dependencies(mc_prebuild <target>)`.
 
 **`.claude/rules/test-or-build-mutex.md`** documents the mutex (Stage 02.1), since `plans/README.md` refers to it.
 
