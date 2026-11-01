@@ -35,6 +35,7 @@ The numbered plan files, `plans/REPO_STRUCTURE.md`, `plans/CODING_STANDARD.md` a
 
 Appended as they land:
 
+- `7e615ac` Document the full plan, repository structure, coding standard and speed research for the from-scratch game.
 ## Issues found
 
 None.

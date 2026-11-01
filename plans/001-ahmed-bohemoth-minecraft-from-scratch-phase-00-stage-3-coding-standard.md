@@ -31,6 +31,7 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `7e615ac` Document the full plan, repository structure, coding standard and speed research for the from-scratch game.
 ## Issues found
 
 None.
