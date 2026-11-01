@@ -1020,7 +1020,15 @@ int32_t main(int32_t argc, char **argv) {
 
 Appended as they land:
 
+- `19e501d` Write and compile the KMS flip spike, unrun and awaiting Ahmed, and keep its source in the stage file. **Not landed:** on branch `worktree-wf_a4b549de-085-3` only; see "Landing was refused" below.
+
 ## Issues found
+
+### Landing was refused by the agent's worktree isolation
+
+- **Expected:** step 5 of the task lands with `flock /tmp/mc_c_land.lock sh -c 'git rebase main && git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only <branch>'`.
+- **Actual:** the harness refused that command and the plain `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-3`, with: "this command redirects git to the shared checkout via -C. Refusing to run it — a worktree-isolated agent's git operations must target its own worktree." `flock` wrapped around `git rebase main` was refused too. A plain `git rebase main` ran, and reported "up to date".
+- **Done:** left alone and escalated. Moving `main` some other way, such as `git update-ref` or `git push . <branch>:main`, would get around the refusal, break the "never push" rule, and leave the main checkout's files out of step with its branch. The work stays committed on the branch, and the merge command is in `needs_ahmed`.
 
 ### Blocked on Ahmed; later stages assume KMS works (open risk)
 
