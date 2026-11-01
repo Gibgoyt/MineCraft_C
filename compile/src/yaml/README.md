@@ -51,7 +51,7 @@ Refused, each with a line-numbered error rather than a misread value:
 
 - Anchors, aliases, tags, block scalars (`|`, `>`), complex keys (`? `), directives (`%`).
 - Scalars spanning lines, and more than one document.
-- Tabs in indentation, indentation matching no open block, duplicate keys in one mapping.
+- Tabs in indentation or between a `-` and its value, indentation matching no open block, duplicate keys in one mapping.
 - Mappings on a single line in block style (`a: b: c`), `[a: 1]` (write `[{ a: 1 }]`), and `{ a }` (write `{ a: }`).
 - Invalid UTF-8, control characters, a carriage return not followed by a line feed, and a NUL from an escape.
 - Nesting deeper than `YAML_MAX_DEPTH`, and text larger than `YAML_MAX_TEXT_BYTES`.

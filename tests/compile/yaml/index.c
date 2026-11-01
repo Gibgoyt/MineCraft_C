@@ -266,6 +266,11 @@ static void test_block_shapes(void) {
     CHECK(test_parse(&d, "  a : 1\n  b:\t2\t# c\n"));
     CHECK(test_int_at(&d, "a", 1));
     CHECK(test_int_at(&d, "b", 2));
+
+    /* A tab after a dash is harmless when no value follows on that line. */
+    CHECK(test_parse(&d, "-\t# c\n- x\n"));
+    CHECK(yaml_root(&d)->child_count == 2u);
+    CHECK(yaml_seq_at(&d, yaml_root(&d), 0u)->kind == YAML_KIND_NULL);
 }
 
 static void test_plain_scalars(void) {
@@ -542,6 +547,8 @@ static const test_bad_t TEST_BAD_INPUTS[] = {
     /* Indentation. */
     {"a:\n\tb: 1\n", "tabs", 2u, 1u},
     {"a:\n  \tb: 1\n", "tabs", 2u, 3u},
+    {"-\ta: 1\n  b: 2\n", "a tab may not separate", 1u, 3u},
+    {"- \tx\n", "a tab may not separate", 1u, 4u},
     {"a:\n    b: 1\n  c: 2\n", "indentation", 3u, 3u},
     {"a: 1\n  b: 2\n", "indentation", 2u, 3u},
     {"  a: 1\nb: 2\n", "root", 2u, 1u},

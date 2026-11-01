@@ -865,11 +865,16 @@ static bool yaml_parse_block_line(yaml_parser_t *parser) {
                 return false;
             }
             parser->pos++;
+            uint32_t space_start = parser->pos;
             yaml_skip_blanks(parser);
             parser->pending = child;
             parser->pending_indent = column;
             if (yaml_is_line_end(yaml_peek(parser)) || yaml_peek(parser) == '#') {
                 return yaml_finish_line(parser);
+            }
+            /* What follows the dash sets the indentation of `- a: 1`, and a tab has no defined width. */
+            if (memchr(parser->text + space_start, '\t', parser->pos - space_start) != nullptr) {
+                return yaml_fail(parser, "a tab may not separate '-' from its value");
             }
             column = (int32_t)(parser->pos - parser->line_start);
             continue;

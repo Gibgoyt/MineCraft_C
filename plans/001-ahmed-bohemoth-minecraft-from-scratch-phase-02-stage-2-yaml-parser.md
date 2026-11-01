@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 2, stage 2: YAML parser
 
-**Status:** in progress   (updated 2026-11-02). The code is finished and verified. See issues 1 and 6 for what stands between it and done.
+**Status:** in progress   (updated 2026-11-02). The code is finished and verified. See issues 1 and 9 for what stands between it and done.
 
 ## Goal
 
@@ -35,6 +35,12 @@ Results on 2026-11-02, run in the overlay described in issue 1:
 - `pgrep -a minecraft_c`: printed nothing, rc 1.
 
 **This has not yet been run in a checkout where `CMakeLists.txt` is on `main`.** Repeat the three commands above once Stage 02.1 has landed.
+
+Results on 2026-11-02 from the second attempt, on the code with the fix in issue 8, in the same kind of overlay (Stage 02.1 at `2ac15d2`, since `main` was still `5bb5c57`):
+
+- `cmake --build`: clean on `debug`, `sanitize`, `release` and `profile`, with no warning at any link.
+- `ctest -R '^compile_yaml$'`: passed on all four presets. Run directly, the test program prints `3278213 checks, 0 failures` on `debug` and `sanitize`. The count differs from the first attempt's because of issue 8's new refusal and test cases.
+- `pgrep -a minecraft_c`: printed nothing, rc 1.
 
 ## Commits
 
@@ -78,3 +84,13 @@ Appended as they land:
 - The 195 that differ all contain `?` or a tab. The samples I read were a plain scalar starting with `?` inside a flow collection, such as `{?os: linux}`. YAML 1.2 makes that the plain text `?os`, which is what this parser gives. PyYAML drops the `?`. I filtered on `?` and tabs and read samples rather than all 195, and with those filtered out there are 0 differences.
 - The 4,356 that only this parser accepted: 3,036 contain a tab, and PyYAML is known to be strict about tabs inside plain scalars and after a colon. I did not classify those further. The other 1,320 are all `?` or `:` inside flow collections (`[1?, 2]`, `{ :main: 1 }`), plain text in YAML 1.2 and refused by PyYAML's 1.1 rules.
 - 7,074 documents were refused here and accepted by PyYAML. That is the subset's job (duplicate keys, multi-line scalars and so on). I did not check them one by one, but a refusal cannot misread a value.
+
+**8. A tab after a dash was counted as one column, which could silently misread a nested mapping.** Found while reviewing the first attempt's code on the second attempt.
+- Expected: the README's promise that the parser refuses rather than guesses, and that indentation is spaces only.
+- Actual: `-\ta: 1\n  b: 2\n` was accepted, because the tab took one column in `yaml_parse_block_line` and so `a` and `b` lined up. A tab has no defined width. With the new check disabled in the overlay, the new tests print `FAIL bad input 18: expected 1:3 'a tab may not separate', got ok=1 0:0 ''` and the same for input 19, then `3278625 checks, 2 failures`, rc 1. This confirms the old acceptance and that the tests catch it.
+- Done: fixed. A tab between a dash and a value on the same line is now the error `a tab may not separate '-' from its value`, at the value's position. `-\t# c` with no value stays valid. Two bad inputs and one valid input were added to the test, and the README's refused list says so. I did not re-run the PyYAML comparison, so the counts in issue 7 describe the code before this fix, and its 3,036 tab documents remain unclassified.
+
+**9. The landing command was refused again on the second attempt, so this work is still not on `main`.**
+- Expected: the workflow's landing step to fast-forward `main`.
+- Actual: the same command as issue 6, from branch `worktree-wf_a4b549de-085-15`, returned the same refusal: `this command names git in a form too complex to verify that it stays inside the worktree`. `main` is still `5bb5c57`, and the Stage 02.1 branch `worktree-wf_a4b549de-085-12` is unlanded too. This branch replaces `worktree-wf_a4b549de-085-13`: it holds that branch's two commits, cherry-picked, and the fix in issue 8.
+- Done: tried once and escalated. As in issue 6, I did not look for another way to move `main`, because that would get around the isolation. To finish, from a shell outside the isolation, in the main checkout, after Stage 02.1 if it goes first: `git rebase main worktree-wf_a4b549de-085-15 && git checkout main && git merge --ff-only worktree-wf_a4b549de-085-15`. Then run the Verification commands there, add the landed sha under Commits, and set Status to done.
