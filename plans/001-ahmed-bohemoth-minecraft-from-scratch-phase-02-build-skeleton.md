@@ -85,6 +85,8 @@ None landed. Gate fixes are on branch `worktree-wf_a4b549de-085-19`.
       tools/test-or-build.sh timeout 300 ctest --preset debug --output-on-failure
 
   Then tick this file and set Status to done, and add the landed shas under Commits here and in the stage files.
+- The workflow's landing command, run once as written from this branch at `291b50c`, was denied the same way: `Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Modify Shared Resources]`. Not retried.
+- Those merges are checked without being run. `git merge-tree --write-tree` of this branch at `291b50c` with `-15`, then of that result with `-18`, reports no conflict and gives tree `2fb3bfb`. `diff -r` of that tree against the overlay this gate ran on shows only `plans/` files differing, so every line of code and build logic tested above is what those merges produce. The later commit that records this changes only this file. This branch alone, with neither merge, also passes: clean `debug` configure and build, `100% tests passed out of 5`, `minecraft_c` rc 0. So the first merge can go in by itself and nothing breaks.
 - **Do not merge `worktree-wf_a4b549de-085-16`.** Its one commit changes only the Stage 02.4 file and will conflict with this branch's version. What it recorded is closed by issue 9 in the Stage 02.4 file on this branch.
 - The Stage 02.2 and 02.3 files on this branch still read `not started`, because their real versions are on their branches. Editing them here would make the merges above conflict. So what the gate found in those two stages is logged here, in issues 3 to 7, and they come in with the merge.
 
