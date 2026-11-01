@@ -5,8 +5,8 @@ checked: by compiler flags, by `static_assert`, or by `compile/src/standards_lin
 
 Toolchain: **GCC 16 (`-std=c23`), nvcc 13 (`-std=c++20`, `sm_75`), NASM 3, CMake 4.4.** Linux and POSIX only for now.
 
-**Status of this document:** written before any code exists. Items marked *(Stage 01.1)* depend on a measurement that
-has not been made yet, and the stage that makes the measurement updates this file.
+**Status of this document:** written before any code exists. The measurements Stage 01.1 owed this file are now in
+sections 1, 2, 8 and 9; the evidence is in `plans/001-ahmed-bohemoth-minecraft-from-scratch-phase-01-stage-1-toolchain-link.md`.
 
 ---
 
@@ -18,8 +18,12 @@ Allowed, and nothing else:
 |---|---|
 | glibc: libc, libm, pthreads | The C standard library, plus the POSIX layer in the same package |
 | Linux syscalls and kernel UAPI headers (`drm/*`, `linux/input.h`, ...) | Display and input through our own code |
-| CUDA runtime (`libcudart`) | **The one sanctioned exception.** Needed to run CUDA at all |
-| C++ runtime (`libstdc++`, `libgcc_s`) | **Only if Stage 01.1 proves nvcc objects cannot link without it** *(Stage 01.1)* |
+| CUDA runtime (`libcudart_static.a`) | **The one sanctioned exception.** Needed to run CUDA at all. Linked statically; at run time it loads the driver's `libcuda.so.1` itself |
+
+The C++ runtime (`libstdc++`, `libgcc_s`) is **not allowed**. Stage 01.1 measured that nothing needs it: with the flags
+in section 8 and static cudart, the binary needs only `libc.so.6` and `ld-linux-x86-64.so.2`, plus `libm.so.6` once our
+code calls libm, and neither C++ library is loaded at run time. Shared `libcudart.so` is not used, because it depends on
+both of them.
 
 Banned: OpenGL, Vulkan, EGL, GBM, libdrm, X11, xcb, Wayland, SDL, GLFW, OptiX, stb, zlib, libpng, libyaml, and any
 other third-party code. No networking: no TCP, no sockets, no server.
@@ -52,17 +56,42 @@ The point: anyone reading a declaration knows exactly how many bytes it takes.
 accepts a floating-point base type:
 
 ```c
+#ifdef __CUDACC__
+typedef float  float32_t;
+typedef double float64_t;
+#define F32(x) x##F
+#define F64(x) x
+#else
 typedef _Float32 float32_t;
 typedef _Float64 float64_t;
+#define F32(x) x##f32
+#define F64(x) x##f64
+#endif
+typedef double libc_double_t;   /* only for passing to a varargs libc call */
+static_assert(sizeof(float32_t) == 4);
+static_assert(sizeof(float64_t) == 8);
+static_assert(alignof(float32_t) == 4);
+static_assert(alignof(float64_t) == 8);
 ```
 
-Literals use the matching suffix: `1.0f32`, `1.0f64`. An unsuffixed `1.0` is a `double` and is banned.
+Literals:
 
-Under `__CUDACC__` the same header may map to `float` and `double`, if Stage 01.1 shows that device code needs it. The
-layout is the same either way, and `static_assert` checks that. *(Stage 01.1)*
+- **C-only files** use the suffix: `1.0f32`, `1.0f64`. An unsuffixed `1.0` is a `double` and is banned.
+- **`.cu` and `.hu` files** use `1.0F` for `float32_t` and `1.0` for `float64_t`. Here an unsuffixed `1.0` is the correct
+  `float64_t`, and `f32`/`f64` suffixes are banned.
+- **Headers compiled on both sides** (`run/include/gpu_bridge/`, `run/include/types/`) use `F32(1.0)` and `F64(1.0)`.
+
+Why CUDA differs, measured in Stage 01.1 on nvcc 13.4.92, `-std=c++20`, `sm_75`: `_Float32` in device code is a hard
+error ("C++23 extended floating-point, which is not supported in device code"). An `f32` or `f64` literal in device
+arithmetic crashes the compiler (`Internal Compiler Error (codegen): "unsupported float variant!"`), even when the
+variables are plain `float`.
+
+The two mappings are the same on the wire. A C `_Float32`/`_Float64` passed by value and by pointer across the
+`extern "C"` boundary to `float`/`double` arrived with the right values.
 
 Verified on GCC 16.2 with `-std=c23 -Wall -Wextra -Wpedantic -Wconversion -Wdouble-promotion -Werror`: `_Float32`
-passes to and from libm functions such as `sinf`, and `1.0f32` is accepted.
+passes to and from libm functions such as `sinf`, and `1.0f32` is accepted. `printf("%f", x)` is **rejected** for a
+`_Float64` (`-Wformat`: expects `double`), which is what `libc_double_t` is for (see below).
 
 ### Standard library boundaries
 
@@ -70,6 +99,8 @@ passes to and from libm functions such as `sinf`, and `1.0f32` is accepted.
 - **libc return values:** `int32_t rc = open(...);` works with no cast and no exception.
 - **`size_t` at a libc call:** convert at the call. Store the value as `uint64_t` in our code.
 - **`sizeof`:** assign to `uint64_t`, or use directly at a libc call.
+- **Floats at a varargs call:** cast at the call, `printf("%.2f", (libc_double_t)value)`. Store the value as `float32_t`
+  or `float64_t` in our code.
 - **Kernel structs** from UAPI headers are used as they are. They are system headers, so the padding check skips them.
 
 ---
@@ -309,7 +340,14 @@ nvcc compiles `.cu` as C++, so we restrict it to a **C-like subset**:
 - Allowed: functions, plain structs, the sized types above, `static_assert`, `__global__`/`__device__`/`__host__`.
 - Banned: exceptions, RTTI, `new`/`delete`, STL, classes with methods, inheritance, virtual functions, templates, and
   `int`/`float`/`double`, apart from the mapping at the typedef site in section 2.
-- Build flags include `-fno-exceptions -fno-rtti -fno-threadsafe-statics`, if Stage 01.1 confirms they work. *(Stage 01.1)*
+- Build flags always include `-Xcompiler=-fno-exceptions,-fno-rtti,-fno-threadsafe-statics`. Stage 01.1 confirmed that
+  they remove every C++ runtime symbol from the object. On the spike kernel, `-fno-threadsafe-statics` alone removed all
+  of them. The kernel source has no function-local static of its own, so that guard code comes from nvcc's generated code.
+  `-fno-exceptions` alone left `__cxa_guard_acquire` and `__cxa_guard_release`, and `-fno-rtti` alone removed nothing. All
+  three stay, because a later kernel could bring in what the others guard against. nvcc rejects these flags without
+  `-Xcompiler` unless `-forward-unknown-to-host-compiler` is also given. Without them the link fails, so forgetting them
+  cannot go unnoticed.
+- What remains undefined is cudart's `cuda*` and `__cuda*` symbols, plus glibc's `atexit`, `exit` and `__stack_chk_fail`.
 
 ### The boundary
 
@@ -335,6 +373,35 @@ cuda/src/<dir>/index.cu                    implements it
 ```
 
 Release adds `-O3 -flto`. Exact values live in `cmake/` and come from `config/machine.yaml`.
+
+### Link list (measured in Stage 01.1)
+
+gcc performs the final link, never nvcc or g++:
+
+```
+gcc <nasm objects> <c objects> <cuda objects> -L/opt/cuda/lib64 -lcudart_static -lm
+```
+
+Measured: without `-lm`, the spike links and runs with `-lcudart_static` alone. Adding `-lm` puts `libm.so.6` in `NEEDED`,
+but the spike itself calls no libm function, so `-lm` is here for our own code. `-ldl -lrt -lpthread` add nothing.
+
+In CMake, `-lstdc++` must be kept out explicitly, because the CUDA language adds it to any target holding CUDA objects:
+
+```cmake
+set(CMAKE_CUDA_RUNTIME_LIBRARY Static)
+set(CMAKE_CUDA_IMPLICIT_LINK_LIBRARIES "")          # after project(); otherwise -lstdc++ -lm are added
+set(CMAKE_CUDA_IMPLICIT_LINK_DIRECTORIES "")
+set_target_properties(minecraft_c PROPERTIES LINKER_LANGUAGE C)   # otherwise g++ links
+target_link_directories(minecraft_c PRIVATE /opt/cuda/lib64)
+target_link_libraries(minecraft_c PRIVATE cudart_static m)
+```
+
+CMake still adds `-lcudadevrt -lrt -lpthread -ldl` and an unused `-rpath`. None of them changes `NEEDED`.
+
+| Run-time need | Source |
+|---|---|
+| `libc.so.6`, `ld-linux-x86-64.so.2`, and `libm.so.6` once used | `NEEDED` in the binary |
+| `libcuda.so.1`, `libnvcuextend.so` | Loaded by cudart and the driver with `dlopen`; come with the NVIDIA driver, not with us |
 
 ---
 
