@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 1, stage 3: Ray throughput spike
 
-**Status:** not started   (updated 2026-11-01)
+**Status:** in progress: every check passed the gate check; the only thing pending is the landing on `main` (issue 7)   (updated 2026-11-01)
 
 ## Goal
 
@@ -17,23 +17,272 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 ## Todo
 
-- [ ] Build a synthetic R=32 world in the plan's three-level `uint64_t` bitmask format, in `/tmp/mc_c_spikes/ray_throughput/`
-- [ ] Write a CUDA kernel casting primary and sun rays at 1920x1080
-- [ ] Measure frame time over several camera paths, and record the results in this file
-- [ ] If it misses 8.33 ms, record the measured numbers and the fallback for Ahmed to decide
+- [x] Build a synthetic R=32 world in the plan's three-level `uint64_t` bitmask format, in `/tmp/mc_c_spikes/ray_throughput/`
+- [x] Write a CUDA kernel casting primary and sun rays at 1920x1080
+- [x] Measure frame time over several camera paths, and record the results in this file
+- [x] If it misses 8.33 ms, record the measured numbers and the fallback for Ahmed to decide (it did not miss on terrain, so no fallback is chosen; the render-scale numbers and the stress-world misses are recorded below anyway)
+
+## Results
+
+**Verdict: pass.** On the terrain world, primary plus sun rays at 1920x1080 cost at most 4.24 ms at p99 and 4.83 ms for the slowest single frame (over the five runs recorded here), across all seven camera paths and both sun angles. That is about half of the 8.33 ms target. The fallback (render scale with TAA upsampling) is not needed for this budget and is not chosen. It stays available for later, because this spike covers only part of a real frame: see "What these numbers leave out".
+
+Conditions: RTX 2080 Super, compute only, under Ahmed's live X desktop (274 MiB VRAM used by the desktop, 1-2 % utilization when idle). During the run nvidia-smi showed P2, 1905-1920 MHz core, 6801 MHz memory, 99 % utilization, about 140 W, 62-68 C. Times are host `CLOCK_MONOTONIC` around the launch plus `cudaDeviceSynchronize`, so launch overhead is included (an empty kernel costs 0.005 ms). There were 200 frames per path after 20 warm-up frames (100 at the lower resolutions). Other agents' builds were running on the CPU; `nvidia-smi --query-compute-apps` listed no other compute process when checked. Nothing else was pinned or isolated.
+
+### Frame time at 1920x1080, primary + sun rays, terrain world
+
+Sun at 50 degrees:
+
+| Path | Mean ms | p50 | p95 | p99 | Max | About Mrays/s |
+|---|---|---|---|---|---|---|
+| walk_horizon | 0.87 | 0.85 | 1.42 | 1.80 | 1.92 | 3188 |
+| flyover_high | 2.26 | 2.21 | 2.66 | 3.21 | 3.46 | 1228 |
+| ridge_grazing | 1.73 | 1.84 | 2.45 | 2.58 | 2.94 | 1616 |
+| spin_360 | 0.75 | 0.74 | 0.88 | 0.89 | 0.90 | 4568 |
+| forest_floor | 0.70 | 0.71 | 0.92 | 1.11 | 1.20 | 4403 |
+| canopy_skim | 1.73 | 1.91 | 2.23 | 2.25 | 2.26 | 1837 |
+| cave_interior | 1.10 | 1.15 | 1.57 | 1.62 | 1.62 | 3720 |
+
+Mrays/s is the mid-path ray count divided by the path's mean time, so it is approximate.
+
+Sun at 15 degrees (long shadow rays), the worst case on terrain:
+
+| Path | Mean ms | p50 | p95 | p99 | Max |
+|---|---|---|---|---|---|
+| walk_horizon | 1.04 | 0.93 | 1.98 | 2.92 | 3.01 |
+| flyover_high | 2.37 | 2.32 | 2.84 | 2.90 | 2.91 |
+| ridge_grazing | 2.36 | 2.31 | 3.85 | 4.13 | 4.15 |
+| spin_360 | 0.85 | 0.82 | 1.06 | 1.08 | 1.10 |
+| forest_floor | 0.80 | 0.86 | 1.04 | 1.05 | 1.06 |
+| canopy_skim | 2.60 | 2.69 | 4.04 | 4.15 | 4.47 |
+| cave_interior | 1.44 | 1.40 | 1.99 | 2.08 | 2.09 |
+
+Primary rays alone: mean 0.52 to 1.06 ms, worst p99 1.21 ms.
+
+### Ray statistics at mid-path, sun 50 degrees
+
+| Path | Sun rays | Pixels hitting a block | Steps per primary | Steps per sun ray | Max primary | Max sun |
+|---|---|---|---|---|---|---|
+| walk_horizon | 709418 | 100.0 % | 13.6 | 10.6 | 81 | 56 |
+| flyover_high | 698507 | 75.1 % | 29.8 | 12.4 | 169 | 155 |
+| ridge_grazing | 727049 | 40.4 % | 35.0 | 13.7 | 190 | 121 |
+| spin_360 | 1355274 | 98.3 % | 12.1 | 8.5 | 124 | 41 |
+| forest_floor | 1029117 | 99.9 % | 8.6 | 6.3 | 165 | 45 |
+| canopy_skim | 1105836 | 66.4 % | 28.3 | 13.4 | 243 | 66 |
+| cave_interior | 2034982 | 100.0 % | 2.8 | 9.9 | 9 | 21 |
+
+Each frame has 2073600 primary rays. A sun ray is cast only when the hit face points towards the sun.
+
+### Render scale, for the record (mean ms / worst p99 over the seven paths, sun 50 degrees)
+
+| Internal size | Mean range | Worst p99 |
+|---|---|---|
+| 1920x1080 | 0.70 - 2.26 | 3.21 |
+| 1440x810 | 0.42 - 1.48 | 1.75 |
+| 1280x720 | 0.34 - 1.24 | 1.52 |
+| 960x540 | 0.22 - 0.84 | 1.41 |
+
+### Stress world, where the target does break
+
+`--lattice` replaces the terrain with single voxels every 9 blocks, so empty sections and bricks barely help: 51-147 steps per primary ray. No natural terrain looks like this, but a player could build it.
+
+| Sun 50 degrees | Mean ms | p99 |
+|---|---|---|
+| forest_floor (the only pass) | 5.10 | 7.55 |
+| walk_horizon | 9.48 | 12.07 |
+| ridge_grazing | 10.30 | 12.84 |
+| canopy_skim | 11.87 | 19.99 |
+| spin_360 | 12.28 | 17.73 |
+| flyover_high | 13.30 | 16.57 |
+| cave_interior | 24.77 | 34.14 |
+
+With the sun at 15 degrees the worst path is cave_interior at 35.46 ms mean, 55.56 ms p99. Primary rays alone stay at 3.28 to 8.26 ms mean. Throughput there is about 14 to 18 billion traversal steps per second (about 31 billion on flyover_high on terrain, where many steps skip whole nodes). Use the lower figure when estimating a future ray budget.
+
+### Is the picture right?
+
+Fast but wrong would mean nothing, so the kernel is checked against an exact voxel-by-voxel Amanatides-Woo trace in float64 on the dense grid, in C on the CPU. This covers 1/16 of the pixels of 3 poses per path, 2721600 rays per world, comparing hit or miss, hit voxel, hit face and shadow result:
+
+| World | Hit or miss differs | Voxel differs | Face differs | Shadow differs |
+|---|---|---|---|---|
+| Terrain | 0 | 9 | 1 | 3 of 1133548 |
+| Lattice | 10 | 8 | 8 | 2 of 503535 |
+
+That is about 1 ray in 100000 to 200000, and the differences are consistent with float32 rounding on voxel corners, though I did not inspect each one. No terrain ray reached the step cap in the mid-path statistics pass (maximum 243 steps). I also looked at the pictures in `/tmp/mc_c_spikes/ray_throughput/out/`: hills, water, trees and sun shadows all look right. The 1/16 sample does not cover the mid-path poses used for those statistics.
+
+### What was built
+
+`/tmp/mc_c_spikes/ray_throughput/`: `CMakeLists.txt`, `shared.h`, `main.c` (C23, built with the standard's warning flags, and since the second gate check no `-Wno-format`, see issue 10), `kernel.cu` (`sm_75`). Throwaway, as the plan says.
+
+- **World:** 65x65 columns (1040x1040 blocks), 48 section slots per column, deterministic own noise: rolling hills, mountains up to z = 193, a sea, caves, ore blobs, porous-leaved trees. Built in 3 to 16 s depending on what else was running.
+- **Format, as encoded:** column table (16 bytes: 48-bit section mask, first section, max height); section (16 bytes: 64-bit brick mask, first brick, or one uniform value); brick (64-bit voxel mask, plus a 4-byte reference); 4 bytes per occupied voxel (material and light) in mixed bricks only. Children are found with popcount.
+- **Traversal:** one loop stepping through the largest empty node containing the current cell (column above its max height, empty section, empty brick, empty voxel), and re-reading masks only when the cell has left the cached column, section or brick.
+- **Thread block shape:** 8x8 threads per block mapped to an 8x8 pixel tile is the best or tied for best of those tried. Flyover mean: 4x4 3.97 ms, 8x8 2.26 ms, 16x16 2.51 ms, 32x2 2.78 ms, 32x8 2.81 ms, 64x1 2.92 ms.
+
+### What these numbers leave out
+
+Do not read 4 ms as "the frame costs 4 ms". The spike has none of these: textures and mips (each hit reads only its voxel value and a small colour switch), non-cube shapes, water and glass continuing the ray (water is opaque here), AO, TAA, sky and fog, entities, the coarse depth pass, LOD, readback and copy (Stage 01.4), and world uploads running at the same time. The stored light is a stand-in. The coarse pass was not built because the target was already met. The world is static, and rays stop at its edge, so paths near the centre see about R=32 but those further out see less. The measurement ran under a nearly idle desktop; a busy compositor would take GPU time. Each path was measured for seconds, not minutes, so sustained thermal throttling is not covered.
+
+So the budget left for everything else, on the same 8.33 ms, is about 4.2 ms on the worst terrain frame, and Stage 01.4 may take up to 2 ms of it. **If later effects overrun, render scale is the first lever:** 1440x810 cuts this part by about a third (worst p99 3.21 to 1.75 ms).
+
+### For Stage 08.3 (traverse) and Phase 09
+
+The three bugs under "Issues found" are the things to carry over. Without those three fixes the numbers look almost the same but the picture is wrong or a ray can loop until the cap. Also carry over: uniform-brick storage and the 8x8 block shape.
+
+**Memory:** 72.5 MiB of world on the device at R=32 (columns 0.06, sections 1.31, brick masks 24.95, brick references 12.47, voxels 33.74). There are 85821 sections, about 20 per column, of which 27974 are uniform; 3270015 bricks, of which 3064562 are uniform; 8844778 stored voxels. Scaled by area this is about 1.1 GiB at R=128.
 
 ## Verification
 
 Accepted exception (plan section 6): `tools/test-or-build.sh` does not exist until Stage 02.1, so these commands are not wrapped.
 
+    cmake -S /tmp/mc_c_spikes/ray_throughput -B /tmp/mc_c_spikes/ray_throughput/build
     cmake --build /tmp/mc_c_spikes/ray_throughput/build
-    timeout 120 /tmp/mc_c_spikes/ray_throughput/build/ray_throughput
+    timeout 120 /tmp/mc_c_spikes/ray_throughput/build/ray_throughput    # exit 0 PASS, 1 MISS, 3 UNCHECKED; see the VERDICT line
     pgrep -a ray_throughput    # must print nothing
+
+### Verification run
+
+    cmake --build /tmp/mc_c_spikes/ray_throughput/build    # Built target ray_throughput
+    timeout 120 /tmp/mc_c_spikes/ray_throughput/build/ray_throughput    # rc=0, total run 23.7 s; output kept in out/final_run.txt
+    pgrep -a ray_throughput    # printed nothing, rc=1
+
+### Second verification run, by the agent that picked up the landing
+
+Same commands on the same spike sources: build up to date, `ray_throughput` rc=0, total run 11.0 s, `pgrep -a ray_throughput` printed nothing, rc=1. The tables above are from the first run and were not replaced. This run agrees with them:
+
+| Terrain, 1920x1080 | First run | Second run |
+|---|---|---|
+| Sun 50 degrees, path means | 0.70 - 2.26 | 0.68 - 2.22 |
+| Sun 50 degrees, worst p99 | 3.21 | 2.63 |
+| Sun 15 degrees, path means | 0.80 - 2.60 | 0.78 - 2.53 |
+| Sun 15 degrees, worst p99 | 4.15 | 4.14 |
+| Sun 15 degrees, slowest single frame | 4.47 | 4.83 |
+| Primary rays only, path means | 0.52 - 1.06 | 0.50 - 1.03 |
+
+So the slowest single frame seen is 4.83 ms, not the 4.47 ms in the verdict above and not the "4.5 ms" in the first commit's subject. It is still well under 8.33 ms. Correctness differences in this run: 0 hit-or-miss, 9 voxel, 1 face, 3 of 1133548 shadow, the same counts as before. The lattice world was not run again. I viewed `canopy_skim.png` and `ridge_grazing.png` from this final build at reduced size: both look right, so at least those two paths have now been checked by eye on the final code.
+
+### Gate check, 2026-11-01, from a deleted `build/`
+
+Same world and same statistics to the digit: 72.5 MiB, 85821 sections, 3270015 bricks, 8844778 voxels, and the same ray statistics table. Correctness on terrain: 0 hit-or-miss, 9 voxel, 1 face, 3 of 1133548 shadow, summed from the per-path rows and equal to the table above. Rays per pass are `7 x 388800 = 2721600`, as stated.
+
+| Terrain, 1920x1080 | This run |
+|---|---|
+| Sun 50 degrees, path means | 0.68 - 2.20 |
+| Sun 50 degrees, worst p99 | 2.70 |
+| Sun 15 degrees, path means | 0.78 - 2.51 |
+| Sun 15 degrees, worst p99 | 4.24 |
+| Sun 15 degrees, slowest single frame | 4.52 |
+| Primary rays only, path means | 0.49 - 1.02 |
+
+Lattice rerun, which the second agent had not done: same picture as the table above, with cave_interior worst at 24.34 ms mean at sun 50 degrees and 55.07 ms worst p99 overall.
+
+Read through for a fake: the timer wraps `rt_render`, which launches the kernel and waits on `cudaDeviceSynchronize`. The grid covers `width x height` pixels, and each pixel writes device memory, so the work cannot be optimized away. The reference trace reads the dense grid, not the encoded tree, so it is independent of the format under test. Two runs were then made after the fix below: terrain `VERDICT: PASS`, worst p99 4.10 ms, 13 wrong of 2721600, exit 0; lattice `VERDICT: MISS`, exit 1.
+
+### Second gate check, 2026-11-02, from a deleted `build/`, after issues 10 and 11
+
+Full run `rc=0`, 11.2 s, `pgrep -a ray_throughput` rc 1. `link.txt` starts `/usr/bin/cc` and holds `-lcudart_static`; there is no `g++` or `-lstdc++`. `NEEDED` is `libm.so.6`, `libc.so.6` and `ld-linux-x86-64.so.2`.
+
+    VERDICT: PASS. Worst p99, 1920x1080, primary + sun: 4.10 ms against 8.33. Rays checked: 2721600, disagreeing: 12, not explained by rounding: 0.
+
+| Terrain, 1920x1080 | This run |
+|---|---|
+| Sun 50 degrees, path means | 0.69 - 2.24 |
+| Sun 50 degrees, worst p99 | 2.65 |
+| Sun 15 degrees, path means | 0.80 - 2.55 |
+| Sun 15 degrees, worst p99 | 4.10 |
+| Sun 15 degrees, slowest single frame | 4.11 |
+| Primary rays only, path means | 0.50 - 1.04 |
+
+So the static link and the flag form moved no number outside what earlier runs showed. Terrain disagreements went from 13 to 12, the same in three runs of this build, with voxel differences 8 where they were 9. The kernel source did not change, only how it is built (`-Xcompiler=` form and static cudart), so the change is attributed to that, without having been traced.
+
+Controls for the new verdict, all with `--no-pictures --no-scales --frames 40`:
+
+| Run | Exit | Verdict | Disagreeing | Not explained by rounding |
+|---|---|---|---|---|
+| plain | 0 | PASS | 12 | 0 |
+| `--perturb-eye 0.001` | 1 | MISS | 8148 | 5766 |
+| `--perturb-eye 0.01` | 1 | MISS | 82352 | 79867 |
+| `--perturb-eye 0.05` | 1 | MISS | 383951 | 381738 |
+| `--lattice` | 1 | MISS, on time only (53.74 ms) | 26 | 0 |
+| `--no-validate` | 3 | UNCHECKED | 0 of 0 checked | 0 |
+
+`--perturb-eye` moves only the reference ray, so it plays a kernel that is wrong by that many blocks. The check catches an error of one thousandth of a block, a third of the allowance at the longest path.
 
 ## Commits
 
 Appended as they land:
 
+Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-10`, which holds all four Phase 01 stages rebased on `5bb5c57`, and both gate checks. Landing needs `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-10` from outside the agent isolation; see the phase file. Record the landed shas here after that.
+
+
 ## Issues found
 
-None.
+### 1. `float64_t` cannot be passed to `printf` under the standard's flags
+
+- **Expected:** `plans/CODING_STANDARD.md` section 2 says `_Float64` works at libc boundaries, and section 9 sets `-Wall -Werror`.
+- **Actual:** GCC 16.2 rejects it: `main.c:706:51: error: format '%f' expects argument of type 'double', but argument 7 has type 'float64_t' {aka '_Float64'} [-Werror=format=]`. `_Float64` is a distinct type to GCC, and casting to `double` is banned by the same standard.
+- **Done:** worked around in the spike only, with `-Wno-format`. **Resolved elsewhere:** Stage 01.1 added `libc_double_t` to `plans/CODING_STANDARD.md` section 2 for exactly this. The spike keeps `-Wno-format`, because it is throwaway and its numbers do not depend on it.
+
+### 2. Plane intersection lost precision, 23 % of pixels on one path had the wrong voxel
+
+- **Expected:** the common GPU form `plane * inverse - origin * inverse`, which saves one subtraction, is accurate enough at world scale.
+- **Actual:** the float64 reference reported 89787 wrong voxels of 388800 on `ridge_grazing` (79881 of them a neighbouring cell). For a ray with a nearly flat axis the inverse is large, so both products are huge and the difference loses up to tens of blocks of `t`.
+- **Done:** fixed by using `(plane - origin) * inverse`. The wrong-voxel count on that path fell to 0-3 and the frame time did not measurably change. Stage 08.3 must use this form.
+
+### 3. A near-tie of two planes could make a ray bounce between two cells until the step cap
+
+- **Expected:** each step moves the ray forward.
+- **Actual:** 2 pixels on `flyover_high` hit the 4096-step cap and were reported as misses. A host build of the same code showed the cycle at pixel (1501, 424): cells (659 515 391) and (659 516 390) alternating, `ty` = 143.568863 and `tz` = 143.568848. The plane reached second lay slightly behind the first, recomputing the other axis at that earlier `t` moved `y` back, and clamping to the node allowed it because the coarser node contained both cells.
+- **Done:** fixed by never letting a coordinate move against the ray: the clamp's bound on the near side is the current cell, not the node's edge. This also bounds a ray at width + width + height steps. No ray reached the cap in the statistics passes afterwards (maximum 243 steps on terrain, 532 on the lattice).
+
+### 4. The sun ray started from the wrong cell
+
+- **Expected:** "the cell before the last step" is the air cell next to the hit voxel, as it is in a unit-step DDA.
+- **Actual:** after fix 3, the shadow results disagreed with the reference on up to 847 of 143673 rays (`canopy_skim`). In a hierarchical DDA, the last step can leave a big empty node, so that cell can be far from the hit point. Fix 3 made this visible, because the start cell now bounds the ray.
+- **Done:** fixed by starting from the hit voxel plus the face normal. Shadow disagreements fell to 3 of 1133548.
+
+### 5. The reference check itself was wrong for a camera above the world box
+
+- **Expected:** a mismatch means a kernel bug.
+- **Actual:** the first lattice run reported about 150000 hit-or-miss differences per path with 0 voxel differences. The camera there is above the box top (z index 338.7, top 334). The kernel clips to the box and the reference stopped immediately.
+- **Done:** the reference now does the same box clip. Differences fell to 0-3 per path. The kernel did not change, and the numbers above come from after this fix.
+
+### 6. Plan estimate of VRAM has the right total for a different reason
+
+- **Expected:** plan section 2 estimates about 100 MiB at R=32, assuming 6 sections per column at 4 KiB.
+- **Actual:** 72.5 MiB, but with about 20 occupied sections per column, because the solid ground goes down to z = -256. The total holds only because 94 % of bricks are uniform and store no voxels. A rough estimate if those bricks stored every voxel: 3064562 x 64 x 4 bytes, about 750 MiB (assuming they are nearly full).
+- **Done:** recorded here, since the master plan is not edited. **Stage 08.2 needs uniform bricks** (or an equivalent) for the estimate to hold, because the plan's format description does not mention them.
+
+### 7. The landing command was refused, so this work is on a branch and not on main
+
+- **Expected:** the workflow's landing step runs: `flock /tmp/mc_c_land.lock sh -c 'git rebase main && git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only <branch>'`.
+- **Actual:** the session's worktree isolation refused it: "this command names git in a form too complex to verify that it stays inside the worktree". It also refused `flock /tmp/mc_c_land.lock git rebase main`, and earlier refused a read-only `git -C /home/ahmed/Projects/Games/MineCraft_C log` with "redirects git to the shared checkout via -C".
+- **Done:** left alone. That isolation is a deliberate limit on this agent, so I did not try to get around it with a wrapper script, a push to the main checkout or a direct ref update. The commits stay on branch `worktree-wf_a4b549de-085-2`, and the merge is a fast-forward once rebased. Escalated with the exact command in the final report.
+- **Second attempt:** a second agent on branch `worktree-wf_a4b549de-085-6` fast-forwarded to those commits and ran the same landing command once. It was refused again: "this command hands sh text naming git in a plain command, which cannot be shown to stay inside the worktree". It got the same answer from the same limit, so it also did not try another route. **Still open:** landing needs someone outside the isolation, and main stays at `5bb5c57` for this stage until then.
+
+### 8. Gate check: exit 0 proved nothing
+
+- **Expected:** the Verification command fails when the target is missed or the picture is wrong.
+- **Actual:** `main` ended in `return 0` whatever happened. `--lattice` printed `NO` in the `<=8.33` column for six of seven paths and still exited 0, and so would a kernel that drew the wrong picture. The stage's "rc=0" lines above were therefore no evidence of the pass; the printed tables were. The tables themselves are right.
+- **Done:** fixed. The spike prints a `VERDICT` line and exits 1 if the worst p99 at 1920x1080, primary plus sun, is above 8.33 ms, or if more than 1 ray in 10000 disagrees with the reference. The lattice world is the negative control: `VERDICT: MISS`, 55.07 ms, exit 1. The 1 in 10000 is about ten times the rate seen on terrain and was chosen here, not derived. A run with `--no-validate` checks 0 rays and passes that half, so the plain command is the one that counts.
+
+### 9. Gate check: Verification could not build from clean
+
+- **Expected:** the listed commands work from nothing.
+- **Actual:** the list began at `cmake --build`, which needs a configured `build/`. It worked only because the author's directory was still there.
+- **Done:** added the `cmake -S -B` line above. Also replaced `(unsigned long)` casts in `main.c`, a banned keyword, with `(uint64_t)`.
+
+### 10. Second gate check: the spike broke the Stage 01.1 rules
+
+- **Expected:** the phase's spikes build the way the standard says: no `-Wno-format`, gcc linking static cudart.
+- **Actual:** `CMakeLists.txt` had `-Wno-format`, which turned off format checking for all of `main.c`, and `LINKER_LANGUAGE CUDA`, so g++ linked shared `libcudart.so` and `libstdc++`. The previous gate check left this as throwaway.
+- **Done:** fixed instead of excused. `CMakeLists.txt` now uses section 9's recipe and the `-Xcompiler=` flag form, `shared.h` defines `libc_double_t`, and every float passed to `printf` is cast to it. `main.c` builds under `-Wall -Werror` with format checking on. Results are above: the numbers did not move.
+
+### 11. Second gate check: the correctness limit was a chosen number, and `--no-validate` passed half the verdict
+
+- **Expected:** issue 8's exit code says whether the picture is right.
+- **Actual:** the limit was 1 wrong ray in 10000, about ten times what had been seen, as issue 8 admits. Up to 272 wrong rays could have been a real traversal bug and still passed. The "consistent with float32 rounding" sentence under "Is the picture right?" had never been checked ray by ray. And `--no-validate` checks 0 rays, and `0 * 10000 <= 0` passed.
+- **Done:** fixed. There is no longer a rate. **Every** disagreement is classified, and one that rounding cannot explain fails the run:
+  - The allowance is derived, in `rounding_pad` in `main.c`. With u = 2^-24: CPU and GPU directions can differ by 22u, the parameter `(plane - origin) * inverse` carries 3u of t, and the position adds 1u of t and 1u of a coordinate below 2048. That is 26u x t + 2048u, rounded up to t x 2^-19 + 2^-13 blocks, about 0.003 blocks at the longest path of about 1500. The derivation is an upper bound by hand, not a formal proof, and no number in it was fitted to the results.
+  - A different primary answer needs the kernel's voxel to be solid and within the allowance of the float64 ray, and any voxel the kernel skipped to be grazed within it. A different face needs the crossing of the kernel's face plane to be within it of the voxel. A shadow difference needs the blocker to be grazed, or another solid voxel within the allowance, not counting the hit voxel itself.
+  - Result on terrain and on the lattice: every disagreement (12 and 26) is explained. **That now confirms what Results only supposed.** The perturbation controls above show the check can fail.
+  - `--no-validate` now gives `VERDICT: UNCHECKED` and exit 3.
+- **Limit:** the check still covers 1/16 of the pixels of 3 poses per path. The mid-path poses are compared by eye only.
