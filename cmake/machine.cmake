@@ -58,7 +58,17 @@ endif()
 if(CMAKE_CUDA_COMPILER_VERSION VERSION_LESS MC_TOOLCHAIN_NVCC_MIN)
   message(FATAL_ERROR "config/machine.yaml needs nvcc ${MC_TOOLCHAIN_NVCC_MIN}, found ${CMAKE_CUDA_COMPILER_VERSION}")
 endif()
-if(CMAKE_ASM_NASM_COMPILER_VERSION AND CMAKE_ASM_NASM_COMPILER_VERSION VERSION_LESS MC_TOOLCHAIN_NASM_MIN)
+# CMake identifies NASM but leaves CMAKE_ASM_NASM_COMPILER_VERSION empty, so the version comes from NASM itself.
+execute_process(
+  COMMAND "${CMAKE_ASM_NASM_COMPILER}" -v
+  TIMEOUT 30
+  RESULT_VARIABLE mc_machine_result
+  OUTPUT_VARIABLE mc_machine_output
+  ERROR_VARIABLE mc_machine_output)
+if(NOT mc_machine_result EQUAL 0 OR NOT mc_machine_output MATCHES "^NASM version ([0-9]+(\\.[0-9]+)*)")
   message(FATAL_ERROR
-    "config/machine.yaml needs NASM ${MC_TOOLCHAIN_NASM_MIN}, found ${CMAKE_ASM_NASM_COMPILER_VERSION}")
+    "Could not read the version of ${CMAKE_ASM_NASM_COMPILER} (${mc_machine_result}):\n${mc_machine_output}")
+endif()
+if(CMAKE_MATCH_1 VERSION_LESS MC_TOOLCHAIN_NASM_MIN)
+  message(FATAL_ERROR "config/machine.yaml needs NASM ${MC_TOOLCHAIN_NASM_MIN}, found ${CMAKE_MATCH_1}")
 endif()
