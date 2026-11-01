@@ -47,10 +47,10 @@ Results, all on the copy described in issue 1, each heavy command through that c
 | `cpu.arch_flag` to `haswell`, then configure | `build.ninja` has 18 lines with `-march=haswell` and 0 with `-march=skylake`, so `cmake/flags.cmake` takes the value from the yaml |
 | `threads.workers` to 17, then configure | `CMake Error at cmake/machine.cmake`, `config/machine.yaml was refused (1)`. The header keeps its last good value |
 | Values restored | `cmp` of the copy's yaml against the committed yaml is silent, and the report prints 16 |
-| Five deliberate breaks in the tool (rewriting unchanged files, the thread rule off, unwrapped negatives, a wrong define name, a changed `%define`) | The test fails on every one. Failure counts printed: 4, 17, 3, not captured (the output was cut off by `head`), 19 |
+| Five deliberate breaks in the tool (rewriting unchanged files, the thread rule off, unwrapped negatives, a wrong define name, a changed `%define`) | The test fails on every one: `1752 checks, 4 failures`, then 17, 3, 12 and 19. Unbroken it prints `1752 checks, 0 failures` |
 | `pgrep -a minecraft_c` | rc 1, nothing printed. `pgrep -af` on the copy's build path shows nothing of mine |
 
-The five breaks, and the checks before the last row's rerun, ran one small edit earlier than the committed test: after them I only added a check that no temporary file is left behind, corrected two comments and ran `clang-format`. The four-preset row is on the final code. The 16-to-12 row was not repeated on it.
+Every row was run on the final code.
 
 ## Commits
 
@@ -65,7 +65,7 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 - Actual: `main` is still `5bb5c57`, with only `plans/` and `research/`, so this stage has nothing to build on there. The landing command returned `this command names git in a form too complex to verify that it stays inside the worktree. Refusing to run it — a worktree-isolated agent's git operations must target its own worktree.` That is the same block as Stage 02.1 issue 8 and Stage 02.2 issue 6.
 - Done: tried the landing once and escalated. I did not try another way to move `main` (`update-ref`, `branch -f`, `cd` into the main checkout), because that would get around the isolation.
 - This branch holds only this stage's own new files, plus one sentence in `plans/REPO_STRUCTURE.md`, and carries nobody else's commits. Stage 02.4 issue 9 reports that bringing another branch into a worktree was denied, so I did not try it. Instead I used `git archive` to export `worktree-wf_a4b549de-085-14` at `8af2957` (Stages 02.1 and 02.4) and the YAML paths of `worktree-wf_a4b549de-085-15` at `16be95a` (Stage 02.2) into `build/overlay/`, copied this stage over them, and verified there. That directory has been deleted.
-- `git merge-tree --write-tree` first reported a conflict with `worktree-wf_a4b549de-085-14` in `plans/REPO_STRUCTURE.md`, because my note was on the table row next to Stage 02.4's new row. I moved the note to section 4. The result of the re-check is in the structured report for this run and under Commits once landed.
+- `git merge-tree --write-tree` first reported a conflict with `worktree-wf_a4b549de-085-14` in `plans/REPO_STRUCTURE.md`, because my note was on the table row next to Stage 02.4's new row. I moved the note to section 4. The re-check against `worktree-wf_a4b549de-085-14`, `-15` and `-16` returns rc 0 for each, with no conflict.
 - So **the boxes above were ticked on that copy, not on `main`.** To finish, from a shell outside the isolation, in the main checkout, once Stages 02.1, 02.2 and 02.4 are in: `git rebase main worktree-wf_a4b549de-085-17 && git checkout main && git merge --ff-only worktree-wf_a4b549de-085-17`. Then run this file's Verification there, add the landed sha above, and set Status to done.
 - Order matters in one way. After Stage 02.1 lands, `cmake/machine.cmake` stops the configure with a message naming the missing file if the YAML parser is not there, so land Stage 02.2 before or together with this one.
 
