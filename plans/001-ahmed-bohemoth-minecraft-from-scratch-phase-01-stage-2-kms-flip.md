@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 1, stage 2: KMS flip spike
 
-**Status:** blocked, awaiting Ahmed: the spike is written and compiled but has never been run   (updated 2026-11-01)
+**Status:** in progress: written, tested against a fake card, and never run on real hardware; awaits Ahmed's run below   (updated 2026-11-01)
 
 ## Goal
 
@@ -33,7 +33,7 @@ Accepted exception (plan section 6): `tools/test-or-build.sh` does not exist unt
 
 ## How Ahmed runs it
 
-The first box above means written and compiled only. The boxes left open need a real run, which only Ahmed can do.
+The first box above means written, compiled and tested against a fake card only. The boxes left open need a real run, which only Ahmed can do.
 
 If `/tmp` was cleared, rebuild from the copy of the source below. From the main checkout:
 
@@ -47,7 +47,7 @@ If `/tmp` was cleared, rebuild from the copy of the source below. From the main 
     pgrep -a kms_flip    # must print nothing
     cat /tmp/mc_c_spikes/kms_flip/last_result.txt
 
-What you should see: red, green, blue and grey, changing every half second, for 8 seconds, on one monitor. Then the text console comes back and the report prints. Do not switch VT during those 8 seconds. Add `--connector HDMI-A-1` or `--connector eDP-1` to choose the output; by default it takes the fastest one at 1920x1080.
+What you should see: red, green, blue and grey, changing every half second, on one monitor, until 8 seconds after the command started. Then the text console comes back and the report prints. Do not switch VT during that time. Add `--connector HDMI-A-1` or `--connector eDP-1` to choose the output; by default it takes the fastest one at 1920x1080.
 
 | Exit | Meaning | Next step |
 |---|---|---|
@@ -63,14 +63,32 @@ Paste the report into **Results** below and tick the remaining boxes.
 
 ## Results
 
-No run yet. Nothing about flips, timings or console restore has been observed.
+No run on hardware yet. Nothing about real flips, timings or console restore has been observed.
+
+Tested against a fake card, 2026-11-01, gate check. `/tmp/mc_c_spikes/kms_flip/test_shim/` is an `LD_PRELOAD` shim that answers the DRM and VT ioctls and produces flip events on a clock; `run.sh` runs 14 cases with `--card /dev/dri/fake_card`, which does not exist, and stdin `/dev/null`, so nothing real could be touched even if the shim failed to load. Result: `failed cases: 0`, `pgrep -a kms_flip` rc 1.
+
+| Case | Exit | What it proves |
+|---|---|---|
+| stdin not a console; X owns the VT; another client is master | 2 | Refused, with `REFUSED` text, and nothing changed |
+| no dumb buffers; ADDFB2 fails | 3 | `ERROR during setup`; buffers already made are destroyed |
+| normal 120 Hz | 0 | `VERDICT: PASS` with the restore complete |
+| 2.5 s modeset | 0 | Passes under `timeout 10`; this failed before the fix, see the issue below |
+| 5.5 s modeset | 1 | Too few intervals gives a stated `MISS` |
+| 60 Hz mode; flips really at 100 Hz on a 120 Hz mode | 1 | `VERDICT: FAIL` for the right reason, so the verdict can fail |
+| PAGE_FLIP error; event never arrives | 1 | Stops, reports, restores |
+| SIGTERM | 124 | From `timeout`; the program reported `stopped early` and restored |
+| SIGSEGV inside a flip | 139 | The handler restored, then it died of the signal |
+
+On every path that reached `KD_GRAPHICS`, `run.sh` checks the order `SETCRTC` back to the saved framebuffer, then `DROP_MASTER`, then `KD_TEXT`. This proves the program's logic only. Whether `nvidia-drm` accepts these calls, and whether fbcon really comes back, is what Ahmed's run is for.
+
+The refusal was also run for real, with no shim, on the built binary: `timeout 10 kms_flip --card /nonexistent/card </dev/null` prints `REFUSED: stdin is not a Linux virtual console` and exits 2.
 
 Checked without running it, 2026-11-01:
 
-- The strict build above exits 0 on gcc 16.2.1, with `-Wpadded -Werror`. Adding `-fanalyzer` also exits 0 with no diagnostics.
+- The strict build above exits 0 on gcc 16.2.1, with `-Wpadded -Werror`. Adding `-fanalyzer` also exited 0 with no diagnostics, on the source before the gate check's fix. The gate check repeated the strict build after the fix, not the analyzer.
 - `readelf -d` shows `libc.so.6` as the only `NEEDED` library. `nm -Du` lists only glibc symbols.
 - Grepping the source for banned keywords matches only the word "long" inside one comment.
-- `pgrep -a kms_flip` printed nothing after the build (rc 1). The binary was never executed.
+- `pgrep -a kms_flip` printed nothing after the build (rc 1). The first author never executed the binary; the gate check ran it as described above, never against a real card.
 - `/dev/dri/card*` was not opened. Display facts come from sysfs reads only.
 
 ## Spike source
@@ -136,12 +154,12 @@ enum {
 #define KMS_TTY_MAJOR 4u
 #define KMS_TTY_MINOR_MAX 63u
 #define KMS_CONNECTION_CONNECTED 1u
-#define KMS_RUN_NS 8000000000ull        /* Below `timeout 10`, so a normal run ends by itself. */
+#define KMS_RUN_NS 8000000000ull        /* From process start, below `timeout 10`: a slow modeset must not reach the timeout. */
 #define KMS_FLIP_STALL_NS 1000000000ull /* No event for this long means flips have stopped. */
 #define KMS_DRAIN_NS 200000000ull
 #define KMS_POLL_MS 100
 #define KMS_FLIPS_PER_COLOR 60u
-#define KMS_MIN_INTERVALS 600u /* Five seconds at 120 Hz: a run that ended sooner proves too little. */
+#define KMS_MIN_INTERVALS 360u /* Three seconds at 120 Hz: a run that ended sooner proves too little. */
 #define KMS_WARMUP_EVENTS 8u /* The first events follow the modeset and are not representative. */
 #define KMS_VT_CHECK_EVENTS 120u
 #define KMS_TARGET_MIN_MHZ 119000ull /* A "120 Hz" mode may really be 119.88 Hz. */
@@ -191,6 +209,7 @@ typedef struct kms_flip_t {
     struct drm_mode_crtc saved_crtc;
     uint64_t kernel_interval_ns[KMS_MAX_INTERVALS];
     uint64_t wake_interval_ns[KMS_MAX_INTERVALS];
+    uint64_t process_start_ns;
     uint64_t period_ns;
     uint64_t refresh_mhz;
     uint64_t fill_max_ns;
@@ -229,7 +248,7 @@ typedef struct kms_flip_t {
     uint8_t _pad0[6];
     char log_text[KMS_LOG_BYTES];
 } kms_flip_t;
-static_assert(sizeof(kms_flip_t) == 150608);
+static_assert(sizeof(kms_flip_t) == 150616);
 
 /* Borrowed: a signal handler has no other way in, and main() outlives every signal it handles. */
 static kms_flip_t *borrowed_crash_state;
@@ -714,10 +733,9 @@ static bool kms_vt_still_ours(const kms_flip_t *s) {
 
 static void kms_flip_loop(kms_flip_t *s) {
     static const uint32_t colors[4] = {0x00c00000u, 0x0000c000u, 0x000000c0u, 0x00c0c0c0u};
-    uint64_t started_ns = kms_now_ns();
-    s->last_event_ns = started_ns;
+    s->last_event_ns = kms_now_ns();
 
-    while (stop_signal == 0 && kms_now_ns() - started_ns < KMS_RUN_NS) {
+    while (stop_signal == 0 && kms_now_ns() - s->process_start_ns < KMS_RUN_NS) {
         kms_buffer_t *back = &s->buffers[s->front ^ 1u];
         uint32_t color = colors[(s->flips_submitted / KMS_FLIPS_PER_COLOR) % 4u];
         if (back->color != color) {
@@ -901,6 +919,9 @@ static int32_t kms_report(kms_flip_t *s) {
         kms_log(s, "MISS: the picked mode is below 119 Hz; try --connector with a faster output.\n");
         pass = false;
     }
+    if (stats->count < KMS_MIN_INTERVALS) {
+        kms_log(s, "MISS: only %" PRIu64 " intervals were measured, and a verdict needs %u.\n", stats->count, KMS_MIN_INTERVALS);
+    }
     if (stats->count > 0u) {
         uint64_t mean_ns = stats->sum_ns / stats->count;
         uint64_t tolerance_ns = s->period_ns / 100u;
@@ -993,6 +1014,7 @@ int32_t main(int32_t argc, char **argv) {
     kms_flip_t *s = &state;
     s->card_fd = -1;
     s->exit_code = KMS_EXIT_REFUSED;
+    s->process_start_ns = kms_now_ns();
 
     kms_install_signals();
     bool ran = false;
@@ -1020,10 +1042,8 @@ int32_t main(int32_t argc, char **argv) {
 
 Appended as they land:
 
-Nothing from this stage has landed. These commits are on branch `worktree-wf_a4b549de-085-5`, not on `main`; see "Landing was refused" below. The shas stay valid if the branch is fast-forwarded, and change only if it is rebased.
+Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-9`, which holds all four Phase 01 stages rebased on `5bb5c57`, and the gate check. Landing needs `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-9` from outside the agent isolation; see the phase file. Record the landed shas here after that.
 
-- `19e501d` Write and compile the KMS flip spike, unrun and awaiting Ahmed, and keep its source in the stage file. **Not landed.**
-- `fe23e60` Record in the KMS flip stage file that landing on main was refused by worktree isolation. **Not landed.**
 
 ## Issues found
 
@@ -1071,3 +1091,15 @@ Nothing from this stage has landed. These commits are on branch `worktree-wf_a4b
 - **Expected:** a clean build.
 - **Actual:** `-Werror=padded` rejected the first layout of `kms_connector_t` and `kms_flip_t`, and `-Wconversion` and `-Wsign-conversion` rejected two assignments. Reading the code before the second build also found that `kms_cleanup` could run twice and remove the framebuffers twice.
 - **Done:** fields reordered with written-out padding, conversions made explicit, and `kms_cleanup` now runs exactly once. The strict build passes.
+
+### Gate check: a slow modeset would have reported a false FAIL
+
+- **Expected:** a run that works ends by itself inside `timeout 10`, as the source's comment said.
+- **Actual:** the 8 seconds were counted from the start of the flip loop, after probing and modeset. Against the fake card with a 2.5 s modeset: exit 124, `stopped early by signal 15`, `VERDICT: FAIL`, after 890 clean intervals at 120.000 Hz. Link training can plausibly take that long, though nobody has measured it here. It would also have put SIGKILL (`timeout -k 3`) closer to the restore. `KMS_MIN_INTERVALS` could also fail a run with no line saying why.
+- **Done:** fixed. `KMS_RUN_NS` now counts from process start, `KMS_MIN_INTERVALS` went from 600 to 360, three seconds at 120 Hz, and a run with too few intervals logs `MISS: only N intervals`. The copy of the source above is the fixed one, and re-extracting it with the `awk` command above matches `/tmp/mc_c_spikes/kms_flip/index.c`.
+
+### Gate check: this stage's logic had never run at all
+
+- **Expected:** a ticked "write the spike" means more than that it compiles, because this code will run once, by hand, on the real display.
+- **Actual:** the binary had never been executed. A 1,000-line program whose failure paths leave a dark console had only compile checks behind it.
+- **Done:** wrote the fake card and 14 cases above. They found the issue before this one. The remaining todo boxes stay unticked, because a fake card cannot answer them.

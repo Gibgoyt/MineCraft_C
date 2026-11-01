@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 1, stage 3: Ray throughput spike
 
-**Status:** done, not yet landed on main (see issue 7)   (updated 2026-11-01)
+**Status:** in progress: every check passed the gate check; the only thing pending is the landing on `main` (issue 7)   (updated 2026-11-01)
 
 ## Goal
 
@@ -24,7 +24,7 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 ## Results
 
-**Verdict: pass.** On the terrain world, primary plus sun rays at 1920x1080 cost at most 4.15 ms at p99 and 4.83 ms for the slowest single frame (over two runs), across all seven camera paths and both sun angles. That is about half of the 8.33 ms target. The fallback (render scale with TAA upsampling) is not needed for this budget and is not chosen. It stays available for later, because this spike covers only part of a real frame: see "What these numbers leave out".
+**Verdict: pass.** On the terrain world, primary plus sun rays at 1920x1080 cost at most 4.24 ms at p99 and 4.83 ms for the slowest single frame (over the five runs recorded here), across all seven camera paths and both sun angles. That is about half of the 8.33 ms target. The fallback (render scale with TAA upsampling) is not needed for this budget and is not chosen. It stays available for later, because this spike covers only part of a real frame: see "What these numbers leave out".
 
 Conditions: RTX 2080 Super, compute only, under Ahmed's live X desktop (274 MiB VRAM used by the desktop, 1-2 % utilization when idle). During the run nvidia-smi showed P2, 1905-1920 MHz core, 6801 MHz memory, 99 % utilization, about 140 W, 62-68 C. Times are host `CLOCK_MONOTONIC` around the launch plus `cudaDeviceSynchronize`, so launch overhead is included (an empty kernel costs 0.005 ms). There were 200 frames per path after 20 warm-up frames (100 at the lower resolutions). Other agents' builds were running on the CPU; `nvidia-smi --query-compute-apps` listed no other compute process when checked. Nothing else was pinned or isolated.
 
@@ -133,8 +133,9 @@ The three bugs under "Issues found" are the things to carry over. Without those 
 
 Accepted exception (plan section 6): `tools/test-or-build.sh` does not exist until Stage 02.1, so these commands are not wrapped.
 
+    cmake -S /tmp/mc_c_spikes/ray_throughput -B /tmp/mc_c_spikes/ray_throughput/build
     cmake --build /tmp/mc_c_spikes/ray_throughput/build
-    timeout 120 /tmp/mc_c_spikes/ray_throughput/build/ray_throughput
+    timeout 120 /tmp/mc_c_spikes/ray_throughput/build/ray_throughput    # exit 0 means PASS; see the VERDICT line
     pgrep -a ray_throughput    # must print nothing
 
 ### Verification run
@@ -158,11 +159,29 @@ Same commands on the same spike sources: build up to date, `ray_throughput` rc=0
 
 So the slowest single frame seen is 4.83 ms, not the 4.47 ms in the verdict above and not the "4.5 ms" in the first commit's subject. It is still well under 8.33 ms. Correctness differences in this run: 0 hit-or-miss, 9 voxel, 1 face, 3 of 1133548 shadow, the same counts as before. The lattice world was not run again. I viewed `canopy_skim.png` and `ridge_grazing.png` from this final build at reduced size: both look right, so at least those two paths have now been checked by eye on the final code.
 
+### Gate check, 2026-11-01, from a deleted `build/`
+
+Same world and same statistics to the digit: 72.5 MiB, 85821 sections, 3270015 bricks, 8844778 voxels, and the same ray statistics table. Correctness on terrain: 0 hit-or-miss, 9 voxel, 1 face, 3 of 1133548 shadow, summed from the per-path rows and equal to the table above. Rays per pass are `7 x 388800 = 2721600`, as stated.
+
+| Terrain, 1920x1080 | This run |
+|---|---|
+| Sun 50 degrees, path means | 0.68 - 2.20 |
+| Sun 50 degrees, worst p99 | 2.70 |
+| Sun 15 degrees, path means | 0.78 - 2.51 |
+| Sun 15 degrees, worst p99 | 4.24 |
+| Sun 15 degrees, slowest single frame | 4.52 |
+| Primary rays only, path means | 0.49 - 1.02 |
+
+Lattice rerun, which the second agent had not done: same picture as the table above, with cave_interior worst at 24.34 ms mean at sun 50 degrees and 55.07 ms worst p99 overall.
+
+Read through for a fake: the timer wraps `rt_render`, which launches the kernel and waits on `cudaDeviceSynchronize`. The grid covers `width x height` pixels, and each pixel writes device memory, so the work cannot be optimized away. The reference trace reads the dense grid, not the encoded tree, so it is independent of the format under test. Two runs were then made after the fix below: terrain `VERDICT: PASS`, worst p99 4.10 ms, 13 wrong of 2721600, exit 0; lattice `VERDICT: MISS`, exit 1.
+
 ## Commits
 
 Appended as they land:
 
-- Not landed yet. `9ac8e9d` Record the ray throughput spike: primary and sun rays at 1080p cost at most 4.5 ms on an R=32 terrain world. These commits are now also on branch `worktree-wf_a4b549de-085-6`, on top of main at `5bb5c57`, and that branch is the one to land. See issue 7. The landed sha still has to be added here once it lands.
+Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-9`, which holds all four Phase 01 stages rebased on `5bb5c57`, and the gate check. Landing needs `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-9` from outside the agent isolation; see the phase file. Record the landed shas here after that.
+
 
 ## Issues found
 
@@ -170,7 +189,7 @@ Appended as they land:
 
 - **Expected:** `plans/CODING_STANDARD.md` section 2 says `_Float64` works at libc boundaries, and section 9 sets `-Wall -Werror`.
 - **Actual:** GCC 16.2 rejects it: `main.c:706:51: error: format '%f' expects argument of type 'double', but argument 7 has type 'float64_t' {aka '_Float64'} [-Werror=format=]`. `_Float64` is a distinct type to GCC, and casting to `double` is banned by the same standard.
-- **Done:** worked around in the spike only, with `-Wno-format`. **Left open:** `CODING_STANDARD.md` is not owned by this stage. Stage 03.1 (`log`) needs a rule here: a single allowlisted conversion, or no floats through varargs.
+- **Done:** worked around in the spike only, with `-Wno-format`. **Resolved elsewhere:** Stage 01.1 added `libc_double_t` to `plans/CODING_STANDARD.md` section 2 for exactly this. The spike keeps `-Wno-format`, because it is throwaway and its numbers do not depend on it.
 
 ### 2. Plane intersection lost precision, 23 % of pixels on one path had the wrong voxel
 
@@ -208,3 +227,15 @@ Appended as they land:
 - **Actual:** the session's worktree isolation refused it: "this command names git in a form too complex to verify that it stays inside the worktree". It also refused `flock /tmp/mc_c_land.lock git rebase main`, and earlier refused a read-only `git -C /home/ahmed/Projects/Games/MineCraft_C log` with "redirects git to the shared checkout via -C".
 - **Done:** left alone. That isolation is a deliberate limit on this agent, so I did not try to get around it with a wrapper script, a push to the main checkout or a direct ref update. The commits stay on branch `worktree-wf_a4b549de-085-2`, and the merge is a fast-forward once rebased. Escalated with the exact command in the final report.
 - **Second attempt:** a second agent on branch `worktree-wf_a4b549de-085-6` fast-forwarded to those commits and ran the same landing command once. It was refused again: "this command hands sh text naming git in a plain command, which cannot be shown to stay inside the worktree". It got the same answer from the same limit, so it also did not try another route. **Still open:** landing needs someone outside the isolation, and main stays at `5bb5c57` for this stage until then.
+
+### 8. Gate check: exit 0 proved nothing
+
+- **Expected:** the Verification command fails when the target is missed or the picture is wrong.
+- **Actual:** `main` ended in `return 0` whatever happened. `--lattice` printed `NO` in the `<=8.33` column for six of seven paths and still exited 0, and so would a kernel that drew the wrong picture. The stage's "rc=0" lines above were therefore no evidence of the pass; the printed tables were. The tables themselves are right.
+- **Done:** fixed. The spike prints a `VERDICT` line and exits 1 if the worst p99 at 1920x1080, primary plus sun, is above 8.33 ms, or if more than 1 ray in 10000 disagrees with the reference. The lattice world is the negative control: `VERDICT: MISS`, 55.07 ms, exit 1. The 1 in 10000 is about ten times the rate seen on terrain and was chosen here, not derived. A run with `--no-validate` checks 0 rays and passes that half, so the plain command is the one that counts.
+
+### 9. Gate check: Verification could not build from clean
+
+- **Expected:** the listed commands work from nothing.
+- **Actual:** the list began at `cmake --build`, which needs a configured `build/`. It worked only because the author's directory was still there.
+- **Done:** added the `cmake -S -B` line above. Also replaced `(unsigned long)` casts in `main.c`, a banned keyword, with `(uint64_t)`.

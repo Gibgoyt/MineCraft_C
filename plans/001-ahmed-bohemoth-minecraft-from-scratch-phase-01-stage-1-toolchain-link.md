@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 1, stage 1: Toolchain link spike
 
-**Status:** blocked   (updated 2026-11-01): the work is done and verified, but it has not landed on `main`; see issue 8.
+**Status:** in progress: every check passed the gate check; the only thing pending is the landing on `main` (issue 8)   (updated 2026-11-01)
 
 ## Goal
 
@@ -41,6 +41,15 @@ Verification result, from a clean `build/` on 2026-11-01 (GCC 16.2.1, nvcc 13.4.
     pgrep -a spike: printed nothing (rc 1)
 
 The same binary built with `-O3 -flto -march=skylake -mtune=skylake -fno-tree-vectorize -fno-tree-slp-vectorize` for C, `-O3` for CUDA and `-lm` added also exits 0, with `NEEDED` of `libm.so.6`, `libc.so.6` and `ld-linux-x86-64.so.2`. GPU memory use read 270 MiB before the runs and 270 MiB after one of them.
+
+Gate check, 2026-11-01, by a separate agent that assumed the claims were false. It deleted `build/` and `cm_release/` first:
+
+- Verification commands: `sum=524800`, `scale_last=512.0`, `abi_mix=3.75`, exit 0, `pgrep -a spike` rc 1. `NEEDED` is `libc.so.6` and `ld-linux-x86-64.so.2`.
+- `flag_matrix.sh`, `link_matrix.sh` and `cmake_matrix.sh` reproduce every row of the three tables below. `link.txt` holds `-lcudart_static -lcudadevrt -lcudart_static -lrt -lpthread -ldl` and the `-rpath`, as section 9 of the standard says.
+- `-O3 -flto` release form rebuilt: exit 0, `NEEDED` of `libm.so.6`, `libc.so.6` and `ld-linux-x86-64.so.2`.
+- `LD_DEBUG=files` on the static binary loads `libc`, `libm`, `libdl`, `libpthread`, `librt`, `libcuda.so.1` and `libnvcuextend.so`. Neither `libstdc++` nor `libgcc_s` appears.
+- New minimal `.cu` files, not the spike's own, reproduce both nvcc errors: `_Float32` in a kernel signature gives "contains a C++23 extended floating-point", and `0.5f32 + 0.5f32` on plain `float` gives `Internal Compiler Error (codegen): "unsupported float variant!"`.
+- The kernel's result is checked on the host, and `main` returns non-zero if any of the three values is wrong, so exit 0 does mean the kernel ran.
 
 ## Results
 
@@ -104,10 +113,8 @@ The spike sources and the matrix scripts stay in `/tmp/mc_c_spikes/toolchain_lin
 
 Appended as they land:
 
-Not landed yet, so there is no landed sha to record. On branch `worktree-wf_a4b549de-085-4` only, directly on top of `main` at `5bb5c57`. These are the commits to land; `worktree-wf_a4b549de-085-1` holds the same work and is superseded:
+Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-9`, which holds all four Phase 01 stages rebased on `5bb5c57`, and the gate check. Landing needs `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-9` from outside the agent isolation; see the phase file. Record the landed shas here after that.
 
-- `e4e53e3` Record the toolchain link spike: static cudart linked by gcc needs no C++ runtime, and CUDA floats map to float and double.
-- `20ffe1d` Record in the toolchain link stage file that landing on main was refused by worktree isolation.
 
 ## Issues found
 
@@ -152,3 +159,8 @@ Not landed yet, so there is no landed sha to record. On branch `worktree-wf_a4b5
 - Done on the second attempt: the two commits were cherry-picked onto `main` so the branch fast-forwards, and Verification was re-run from a clean `build/`, with the same results as recorded above (`sum=524800`, `scale_last=512.0`, `abi_mix=3.75`, exit 0, `pgrep -a spike` rc 1, `NEEDED` of `libc.so.6` and `ld-linux-x86-64.so.2`, and only `__stack_chk_fail` left from the C++ runtime and stack-protector symbols in `nm -u`). Still no route around the guard was tried. To finish, from outside the isolation, run `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-4`, then record the landed sha above and set Status to done. If `main` has moved, rebase the branch first.
 
 **Not measured:** other nvcc versions; a kernel with its own statics or exceptions; static-cudart behaviour on any other machine. A process using cudart under the KMS path is for Stages 01.4 and 05. The phase file's Stage 01.1 checkbox is left for the phase owner, since that file is outside this stage's owned paths.
+
+**9. Gate check: nothing false found, one small fix.**
+- Expected: the stage's claims to fail when re-run from clean, by the checker's default assumption.
+- Actual: every claim held, see "Gate check" under Verification. One gap: `main.c` cast to `unsigned long long`, a banned keyword the standard's flags cannot catch.
+- Done: `main.c` now prints with `PRIu64`, and the Verification commands were re-run after that edit with the same results. The master plan is unchanged, as `git diff 5bb5c57 HEAD` on it shows. Stage 01.3's CMake project and its `-Wno-format` do not follow this stage's link list or `libc_double_t`; that spike is throwaway and its numbers do not depend on either, so they were left.
