@@ -48,6 +48,7 @@ Appended as they land:
 - `1b65e8c` Test what the deliberate bugs got past, the slots of the exchange, a wrapped column and the test world's surface, and move the display-loop tests into run_game so the frame test stays under 1500 lines.
 - `3c67659` Take the traverse fixture pool from the heap, so that its measurement at render distance 32 fits again on the new format.
 - `47a62ba` Merge of the integration branch at `45351f2`, bringing in Stage 10.6.
+- `40f941e` Record the Stage 08.4 results, wiring and issues in its stage file.
 
 ## Results
 
