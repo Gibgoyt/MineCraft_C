@@ -65,25 +65,31 @@ typedef struct game_t {
     input_t *borrowed_input;                             /* 768: only while the threads run from real input */
     game_column_job_t *borrowed_jobs;                    /* 776: GAME_STREAM_JOBS */
     const uint8_t *borrowed_last_picture;                /* 784: main's: what to show until a newer one is ready */
-    uint64_t tick_count;                                 /* 792: the sim's */
-    uint64_t columns_made;                               /* 800 */
-    int64_t last_frame_ns;                               /* 808: main's */
+    int64_t last_frame_ns;                               /* 792: main's */
+    int64_t loop_started_ns;                             /* 800: main's */
+    uint64_t pictures_shown;                             /* 808: main's: new pictures it has put on the screen */
     _Atomic int32_t center_x;                            /* 816: main to sim: the chunk the eye is in */
     _Atomic int32_t center_y;                            /* 820 */
     _Atomic uint32_t stop;                               /* 824: main to sim and gpu */
     _Atomic uint32_t failed; /* 828: sim or gpu to main: the card failed, and it has said why */
-    uint32_t jobs_in_use;    /* 832 */
-    uint8_t open;            /* 836 */
-    uint8_t threads_running; /* 837 */
-    uint8_t stream_quiet;    /* 838: nothing more to generate, last time the sim looked */
-    uint8_t pool_full_said;  /* 839 */
-    uint8_t _pad0[56];       /* 840 */
+    /* A line of its own from here: the sim writes these all the time, and main writes the line above every frame. */
+    uint64_t tick_count;     /* 832: the sim's */
+    uint64_t columns_made;   /* 840: the sim's */
+    int64_t loop_ended_ns;   /* 848: main's, once the threads have stopped */
+    uint32_t jobs_in_use;    /* 856 */
+    uint8_t open;            /* 860 */
+    uint8_t threads_running; /* 861 */
+    uint8_t stream_quiet;    /* 862: nothing more to generate, last time the sim looked */
+    uint8_t pool_full_said;  /* 863 */
+    uint8_t _pad0[32];       /* 864 */
 } game_t;
 static_assert(sizeof(game_t) == 896);
 static_assert(alignof(game_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(game_t, group) == 192);
 static_assert(offsetof(game_t, cameras) == 256);
 static_assert(offsetof(game_t, owned_region) == 608);
+static_assert(offsetof(game_t, center_x) == 816);
+static_assert(offsetof(game_t, tick_count) == 832);
 
 /* Remembers what it will run on, and takes nothing. All must outlive it, and topology must have been read before the caller
  * pinned itself. */

@@ -31,7 +31,8 @@ static __device__ __forceinline__ uint64_t traverse_brick_region(int32_t x0, int
 }
 
 /* Is every voxel of this inclusive box of cells empty? With look_inside the answer is exact, and without it the answer is for
- * whole sections, so it may say no when the box is empty, as it may for a box too wide to look at. Never says yes when it is not. What lies outside the window is empty, since no ray looks there. */
+ * whole sections, so it may say no when the box is empty, as it may for a box too wide to look at. Never says yes when it is
+ * not. What lies outside the window is empty, since no ray looks there. */
 static __device__ __forceinline__ bool traverse_box_is_empty(const traverse_view_t *view, const int32_t low[3],
                                                              const int32_t high[3], bool look_inside) {
     const int32_t window_x = view->window_min_block[0], window_y = view->window_min_block[1];
@@ -50,7 +51,7 @@ static __device__ __forceinline__ bool traverse_box_is_empty(const traverse_view
     }
     for (int32_t column_y = column_y0; column_y <= column_y1; column_y += 1) {
         for (int32_t column_x = column_x0; column_x <= column_x1; column_x += 1) {
-            const world_buffers_column_t *const column = &view->table[traverse_slot(view, column_x, column_y)];
+            const world_buffers_column_t *const column = &view->borrowed_table[traverse_slot(view, column_x, column_y)];
             const int32_t top = traverse_column_top(column, column_x, column_y) - 1;
             const int32_t z_end = z1 < top ? z1 : top;
             if (z0 > z_end) {
@@ -273,8 +274,8 @@ static gpu_status_t traverse_view_from(gpu_error_t *error, const traverse_world_
         return traverse_refuse(error, "traverse: the column table is smaller than the window says");
     }
     const uint64_t blocks = (uint64_t)window->side * TRAVERSE_COLUMN_BLOCKS;
-    view->table = (const world_buffers_column_t *)(const void *)device_memory_pointer(world->borrowed_table);
-    view->pool = device_memory_pointer(world->borrowed_pool);
+    view->borrowed_table = (const world_buffers_column_t *)(const void *)device_memory_pointer(world->borrowed_table);
+    view->borrowed_pool = device_memory_pointer(world->borrowed_pool);
     view->window_min_column[0] = window->min_x;
     view->window_min_column[1] = window->min_y;
     view->window_min_block[0] = window->min_x * (int32_t)TRAVERSE_COLUMN_BLOCKS;

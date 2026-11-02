@@ -133,11 +133,11 @@ void render_close(render_t *render) {
 }
 
 typedef struct render_block_wanted_t {
-    device_block_t *block; /* 0 */
-    const char *name;      /* 8 */
-    uint64_t bytes;        /* 16 */
-    device_pool_t pool;    /* 24 */
-    uint8_t _pad0[4];      /* 28 */
+    device_block_t *borrowed_block; /* 0 */
+    const char *borrowed_name;      /* 8 */
+    uint64_t bytes;                 /* 16 */
+    device_pool_t pool;             /* 24 */
+    uint8_t _pad0[4];               /* 28 */
 } render_block_wanted_t;
 static_assert(sizeof(render_block_wanted_t) == 32);
 
@@ -158,8 +158,8 @@ static gpu_status_t render_frame_blocks_take(render_t *render, const texture_t *
         {&render->owned_xrgb, "finished picture", post_xrgb_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
     };
     for (uint32_t i = 0u; i < sizeof(wanted) / sizeof(wanted[0]); i++) {
-        const gpu_status_t status =
-            device_memory_alloc(memory, wanted[i].pool, wanted[i].bytes, wanted[i].name, wanted[i].block);
+        const gpu_status_t status = device_memory_alloc(memory, wanted[i].pool, wanted[i].bytes,
+                                                        wanted[i].borrowed_name, wanted[i].borrowed_block);
         if (status != GPU_STATUS_OK) {
             gpu_error_log(&memory->last_error);
             return status;

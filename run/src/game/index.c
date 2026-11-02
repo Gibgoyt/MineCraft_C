@@ -405,6 +405,8 @@ bool game_loop_start(game_t *game, input_t *input) {
     ASSERT_ALWAYS(game->open != 0u && game->threads_running == 0u);
     game->borrowed_input = input;
     game->last_frame_ns = time_now_ns();
+    game->loop_started_ns = game->last_frame_ns;
+    game->pictures_shown = 0u;
     render_exchange_start(&game->cameras);
     /* Before the threads, so the first camera the gpu thread reads is a real one. */
     for (uint32_t i = 0u; i < RENDER_EXCHANGE_SLOTS; i++) {
@@ -431,6 +433,7 @@ bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t se
     render_frame_t *const frame = &game->borrowed_render->frame;
     const uint8_t *const picture = render_frame_take(frame);
     game->borrowed_last_picture = picture != nullptr ? picture : game->borrowed_last_picture;
+    game->pictures_shown += picture != nullptr ? 1u : 0u;
     if (game->borrowed_last_picture != nullptr) {
         render_frame_present(frame, game->borrowed_last_picture, target);
     }
@@ -442,6 +445,7 @@ bool game_loop_stop(game_t *game) {
     thread_join(&game->sim_thread);
     thread_join(&game->gpu_thread);
     game->threads_running = 0u;
+    game->loop_ended_ns = time_now_ns();
     return atomic_load_explicit(&game->failed, memory_order_acquire) == 0u;
 }
 
@@ -482,5 +486,16 @@ void game_report(game_t *game) {
              " sections sent, %.1f MiB of slabs held",
              game->columns_made, game->tick_count, game->borrowed_render->upload.stats.sections_sent,
              (libc_double_t)game->borrowed_render->buffers.slab_bytes / (libc_double_t)(1u << 20));
+    /* The threads have no one to tell at the time: nothing can log while the console shows the picture. */
+    if (game->borrowed_render->buffers.pool_full_count != 0u) {
+        LOG_WARN("game: the section pool was full %" PRIu64 " times, so part of the world was not drawn",
+                 (uint64_t)game->borrowed_render->buffers.pool_full_count);
+    }
+    /* The flip rate display_frames_run reports counts a picture shown twice as two. This is the rate of new ones. */
+    if (game->pictures_shown != 0u && game->loop_ended_ns > game->loop_started_ns) {
+        const float64_t seconds = time_ns_to_seconds(game->loop_ended_ns - game->loop_started_ns);
+        LOG_INFO("game: %" PRIu64 " new pictures on the screen in %.1f s: %.1f FPS", game->pictures_shown,
+                 (libc_double_t)seconds, (libc_double_t)((float64_t)game->pictures_shown / seconds));
+    }
     render_frame_report(&game->borrowed_render->frame);
 }

@@ -8,7 +8,10 @@ gpu_status_t frame_gpu_init(frame_gpu_t *frame) {
         const gpu_status_t status =
             device_memory_check(&frame->last_error, cudaEventCreate(&event), "frame: making a clock event");
         if (status != GPU_STATUS_OK) {
-            frame_gpu_deinit(frame);
+            /* The creating failure is the one to report, so it is kept over whatever giving back the rest says. */
+            const gpu_error_t created = frame->last_error;
+            (void)frame_gpu_deinit(frame);
+            frame->last_error = created;
             return status;
         }
         frame->owned_events[i] = (void *)event;
@@ -17,15 +20,22 @@ gpu_status_t frame_gpu_init(frame_gpu_t *frame) {
     return GPU_STATUS_OK;
 }
 
-void frame_gpu_deinit(frame_gpu_t *frame) {
+gpu_status_t frame_gpu_deinit(frame_gpu_t *frame) {
+    gpu_status_t first = GPU_STATUS_OK;
     for (uint32_t i = 0u; i < (uint32_t)FRAME_PASS_COUNT + 1u; i += 1u) {
         if (frame->owned_events[i] != nullptr) {
-            /* There is nothing left to do about a failure here, and the runtime tears down with the context anyway. */
-            (void)cudaEventDestroy((cudaEvent_t)frame->owned_events[i]);
+            gpu_error_t error = {};
+            const gpu_status_t status = device_memory_check(
+                &error, cudaEventDestroy((cudaEvent_t)frame->owned_events[i]), "frame: giving a clock event back");
+            if (status != GPU_STATUS_OK && first == GPU_STATUS_OK) {
+                first = status;
+                frame->last_error = error;
+            }
             frame->owned_events[i] = nullptr;
         }
     }
     frame->open = 0u;
+    return first;
 }
 
 gpu_status_t frame_host_pin(frame_gpu_t *frame, void *host, uint64_t bytes) {

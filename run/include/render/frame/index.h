@@ -72,16 +72,16 @@ typedef struct render_fly_input_t {
 } render_fly_input_t;
 static_assert(sizeof(render_fly_input_t) == 32);
 
-#define RENDER_CAMERA_FAST_FACTOR F32(5.0)
-#define RENDER_CAMERA_SPEED_DEFAULT F32(20.0)
-#define RENDER_CAMERA_SPEED_STEP F32(1.25)
-#define RENDER_CAMERA_SPEED_MAX F32(2000.0)
-#define RENDER_CAMERA_SPEED_MIN F32(0.5)
-#define RENDER_CAMERA_RADIANS_PER_COUNT F32(0.0025)
+#define RENDER_CAMERA_FAST_FACTOR 5.0f32
+#define RENDER_CAMERA_SPEED_DEFAULT 20.0f32
+#define RENDER_CAMERA_SPEED_STEP 1.25f32
+#define RENDER_CAMERA_SPEED_MAX 2000.0f32
+#define RENDER_CAMERA_SPEED_MIN 0.5f32
+#define RENDER_CAMERA_RADIANS_PER_COUNT 0.0025f32
 /* Looking straight up or down leaves no sideways. */
-#define RENDER_CAMERA_PITCH_LIMIT F32(1.553)
+#define RENDER_CAMERA_PITCH_LIMIT 1.553f32
 /* The tangent of half of a vertical field of view of 70 degrees. */
-#define RENDER_CAMERA_HALF_FOV_TANGENT_DEFAULT F32(0.7002)
+#define RENDER_CAMERA_HALF_FOV_TANGENT_DEFAULT 0.7002f32
 
 void render_camera_start(render_camera_t *camera, float64_t x, float64_t y, float64_t z, float32_t yaw,
                          float32_t pitch);
