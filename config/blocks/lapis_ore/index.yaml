@@ -1,0 +1,6 @@
+name: lapis_ore
+hardness: 3
+tool: pickaxe
+tier: stone
+drops: [{ item: lapis_lazuli, count: 4, max: 9 }]
+texture: { all: blocks/lapis_ore }

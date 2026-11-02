@@ -1,0 +1,6 @@
+name: deepslate_coal_ore
+hardness: 4.5
+tool: pickaxe
+tier: wood
+drops: [{ item: coal, count: 1 }]
+texture: { all: blocks/deepslate_coal_ore }

@@ -1,0 +1,6 @@
+name: orange_terracotta
+hardness: 1.25
+tool: pickaxe
+tier: wood
+drops: [{ item: orange_terracotta, count: 1 }]
+texture: { all: blocks/orange_terracotta }

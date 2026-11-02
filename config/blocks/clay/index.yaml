@@ -1,0 +1,5 @@
+name: clay
+hardness: 0.6
+tool: shovel
+drops: [{ item: clay_ball, count: 4 }]
+texture: { all: blocks/clay }

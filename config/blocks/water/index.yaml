@@ -1,0 +1,6 @@
+name: water
+hardness: 100
+drops: []
+shape: fluid
+opacity: 2
+texture: { top: blocks/water_still, bottom: blocks/water_still, side: blocks/water_flow }

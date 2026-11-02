@@ -1,0 +1,7 @@
+name: vine
+hardness: 0.2
+tool: shears
+drops: []
+shape: thin
+replaceable: true
+texture: { all: blocks/vine }

@@ -1,0 +1,6 @@
+name: deepslate_iron_ore
+hardness: 4.5
+tool: pickaxe
+tier: stone
+drops: [{ item: raw_iron, count: 1 }]
+texture: { all: blocks/deepslate_iron_ore }

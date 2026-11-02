@@ -1,0 +1,6 @@
+name: dripstone_block
+hardness: 1.5
+tool: pickaxe
+tier: wood
+drops: [{ item: dripstone_block, count: 1 }]
+texture: { all: blocks/dripstone_block }

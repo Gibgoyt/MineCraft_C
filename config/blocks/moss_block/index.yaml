@@ -1,0 +1,5 @@
+name: moss_block
+hardness: 0.1
+tool: hoe
+drops: [{ item: moss_block, count: 1 }]
+texture: { all: blocks/moss_block }

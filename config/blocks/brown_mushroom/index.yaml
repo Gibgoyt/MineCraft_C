@@ -1,0 +1,5 @@
+name: brown_mushroom
+hardness: 0
+drops: [{ item: brown_mushroom, count: 1 }]
+shape: cross
+texture: { all: blocks/brown_mushroom }

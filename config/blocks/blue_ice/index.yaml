@@ -1,0 +1,5 @@
+name: blue_ice
+hardness: 2.8
+tool: pickaxe
+drops: []
+texture: { all: blocks/blue_ice }

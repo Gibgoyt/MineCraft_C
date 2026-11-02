@@ -1,0 +1,5 @@
+name: grass_block
+hardness: 0.6
+tool: shovel
+drops: [{ item: dirt, count: 1 }]
+texture: { top: blocks/grass_top, bottom: blocks/dirt, side: blocks/grass_side }

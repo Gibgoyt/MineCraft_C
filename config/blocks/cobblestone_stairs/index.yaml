@@ -1,0 +1,7 @@
+name: cobblestone_stairs
+hardness: 2
+tool: pickaxe
+tier: wood
+drops: [{ item: cobblestone_stairs, count: 1 }]
+shape: stairs
+texture: { all: blocks/cobblestone }

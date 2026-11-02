@@ -1,0 +1,5 @@
+name: azure_bluet
+hardness: 0
+drops: [{ item: azure_bluet, count: 1 }]
+shape: cross
+texture: { all: blocks/azure_bluet }

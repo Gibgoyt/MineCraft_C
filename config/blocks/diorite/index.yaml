@@ -1,0 +1,6 @@
+name: diorite
+hardness: 1.5
+tool: pickaxe
+tier: wood
+drops: [{ item: diorite, count: 1 }]
+texture: { all: blocks/diorite }

@@ -1,0 +1,6 @@
+name: snow_block
+hardness: 0.2
+tool: shovel
+tier: wood
+drops: [{ item: snowball, count: 4 }]
+texture: { all: blocks/snow }

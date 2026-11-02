@@ -1,0 +1,5 @@
+name: sugar_cane
+hardness: 0
+drops: [{ item: sugar_cane, count: 1 }]
+shape: cross
+texture: { all: blocks/sugar_cane }

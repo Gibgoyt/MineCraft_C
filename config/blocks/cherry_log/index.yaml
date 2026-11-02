@@ -1,0 +1,5 @@
+name: cherry_log
+hardness: 2
+tool: axe
+drops: [{ item: cherry_log, count: 1 }]
+texture: { top: blocks/cherry_log_top, bottom: blocks/cherry_log_top, side: blocks/cherry_log }

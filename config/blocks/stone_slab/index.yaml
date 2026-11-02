@@ -1,0 +1,7 @@
+name: stone_slab
+hardness: 2
+tool: pickaxe
+tier: wood
+drops: [{ item: stone_slab, count: 1 }]
+shape: slab
+texture: { all: blocks/smooth_stone }

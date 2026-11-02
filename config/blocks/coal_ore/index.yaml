@@ -1,0 +1,6 @@
+name: coal_ore
+hardness: 3
+tool: pickaxe
+tier: wood
+drops: [{ item: coal, count: 1 }]
+texture: { all: blocks/coal_ore }

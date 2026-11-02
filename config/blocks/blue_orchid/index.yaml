@@ -1,0 +1,5 @@
+name: blue_orchid
+hardness: 0
+drops: [{ item: blue_orchid, count: 1 }]
+shape: cross
+texture: { all: blocks/blue_orchid }

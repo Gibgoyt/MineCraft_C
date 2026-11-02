@@ -1,0 +1,6 @@
+name: ice
+hardness: 0.5
+tool: pickaxe
+drops: []
+opacity: 2
+texture: { all: blocks/ice }

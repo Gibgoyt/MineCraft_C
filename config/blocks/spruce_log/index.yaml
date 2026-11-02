@@ -1,0 +1,5 @@
+name: spruce_log
+hardness: 2
+tool: axe
+drops: [{ item: spruce_log, count: 1 }]
+texture: { top: blocks/spruce_log_top, bottom: blocks/spruce_log_top, side: blocks/spruce_log }

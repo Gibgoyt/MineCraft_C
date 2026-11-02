@@ -1,0 +1,9 @@
+name: spruce_leaves
+hardness: 0.2
+tool: shears
+drops:
+  - { item: spruce_sapling, count: 1, chance: 0.05 }
+  - { item: stick, count: 1, max: 2, chance: 0.02 }
+opacity: 1
+decays: true
+texture: { all: blocks/spruce_leaves }

@@ -1,0 +1,7 @@
+name: seagrass
+hardness: 0
+tool: shears
+drops: []
+shape: cross
+replaceable: true
+texture: { all: blocks/seagrass }

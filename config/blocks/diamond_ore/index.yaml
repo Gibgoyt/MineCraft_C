@@ -1,0 +1,6 @@
+name: diamond_ore
+hardness: 3
+tool: pickaxe
+tier: iron
+drops: [{ item: diamond, count: 1 }]
+texture: { all: blocks/diamond_ore }

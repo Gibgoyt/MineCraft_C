@@ -1,0 +1,6 @@
+name: furnace
+hardness: 3.5
+tool: pickaxe
+tier: wood
+drops: [{ item: furnace, count: 1 }]
+texture: { top: blocks/furnace_top, bottom: blocks/furnace_bottom, side: blocks/furnace_side, north: blocks/furnace_front }

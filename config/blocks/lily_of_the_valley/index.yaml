@@ -1,0 +1,5 @@
+name: lily_of_the_valley
+hardness: 0
+drops: [{ item: lily_of_the_valley, count: 1 }]
+shape: cross
+texture: { all: blocks/lily_of_the_valley }

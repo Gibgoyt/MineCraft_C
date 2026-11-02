@@ -1,0 +1,5 @@
+name: coarse_dirt
+hardness: 0.5
+tool: shovel
+drops: [{ item: coarse_dirt, count: 1 }]
+texture: { all: blocks/coarse_dirt }

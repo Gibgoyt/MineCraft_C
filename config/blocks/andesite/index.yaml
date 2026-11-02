@@ -1,0 +1,6 @@
+name: andesite
+hardness: 1.5
+tool: pickaxe
+tier: wood
+drops: [{ item: andesite, count: 1 }]
+texture: { all: blocks/andesite }

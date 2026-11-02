@@ -1,0 +1,6 @@
+name: gold_ore
+hardness: 3
+tool: pickaxe
+tier: iron
+drops: [{ item: raw_gold, count: 1 }]
+texture: { all: blocks/gold_ore }
