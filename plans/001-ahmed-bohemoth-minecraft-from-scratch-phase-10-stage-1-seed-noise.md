@@ -43,6 +43,8 @@ Also run:
 
 Appended as they land:
 
+- `79fdbb2` Add the terrain Owner with seeded streams, position hashes and fractal noise fields sampled in bulk on the NASM kernel, tested to give the same bytes from 1 worker and 16.
+
 ## Wiring outside the owned paths
 
 Each the smallest I could make:
