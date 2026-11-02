@@ -38,6 +38,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `8760f67` Add 2x2 and 3x3 crafting from config/recipes, furnaces that burn and light their block, and chests that spill what they held when broken.
+
 ## Issues found
 
 1. **A chest could not spill what no block drops.** Expected: a broken chest throws out what it held. Actual: `run/src/entity/item_drop/` holds only rows of `block_drop_items`, and that table had only what blocks drop (`ASSERT_ALWAYS(item < BLOCK_DROP_ITEM_COUNT)` at `run/src/entity/item_drop/index.c:76`), so an iron pickaxe had no row. Done: `compile/src/game_tables/blocks/` now writes a row for every file in `config/items/`, sorted as item ids are, so row i is item i + 1 (`item_stack_drop_row`, held by `every_item_has_a_row_to_lie_on_the_ground_by_which_is_its_id_less_one`). That took the table past `ENTITY_RAYS_TEXTURES_MAX`, whose `static_assert` counted rows with no need of a texture, so it now asks a new `BLOCK_DROP_ITEM_NO_BLOCK_COUNT`, 137 against 256. `render_feature_entities`, which checks that every such row has a texture, passes for all of them.
