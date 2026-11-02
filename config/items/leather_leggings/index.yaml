@@ -1,0 +1,5 @@
+name: leather_leggings
+texture: items/leather_leggings
+stack: 1
+durability: 75
+armor: { slot: legs, points: 2 }

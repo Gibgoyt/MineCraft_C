@@ -1,0 +1,4 @@
+name: berries
+texture: items/berries
+food: 2
+saturation: 0.4

@@ -1,0 +1,4 @@
+name: rotten_flesh
+texture: items/rotten_flesh
+food: 4
+saturation: 0.8

@@ -1,0 +1,7 @@
+name: stone_sword
+texture: items/stone_sword
+stack: 1
+tool: sword
+tier: stone
+durability: 131
+damage: 5

@@ -1,0 +1,7 @@
+name: wood_hoe
+texture: items/wood_hoe
+stack: 1
+tool: hoe
+tier: wood
+durability: 59
+damage: 1

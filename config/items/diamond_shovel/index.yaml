@@ -1,0 +1,7 @@
+name: diamond_shovel
+texture: items/diamond_shovel
+stack: 1
+tool: shovel
+tier: diamond
+durability: 1561
+damage: 5.5

@@ -1,0 +1,7 @@
+name: diamond_axe
+texture: items/diamond_axe
+stack: 1
+tool: axe
+tier: diamond
+durability: 1561
+damage: 9

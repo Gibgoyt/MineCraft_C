@@ -1,0 +1,7 @@
+name: stone_hoe
+texture: items/stone_hoe
+stack: 1
+tool: hoe
+tier: stone
+durability: 131
+damage: 1

@@ -1,0 +1,7 @@
+name: iron_pickaxe
+texture: items/iron_pickaxe
+stack: 1
+tool: pickaxe
+tier: iron
+durability: 250
+damage: 4

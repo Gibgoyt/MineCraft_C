@@ -1,0 +1,7 @@
+name: diamond_hoe
+texture: items/diamond_hoe
+stack: 1
+tool: hoe
+tier: diamond
+durability: 1561
+damage: 1

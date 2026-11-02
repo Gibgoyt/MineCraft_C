@@ -1,0 +1,4 @@
+name: potato
+texture: items/potato
+food: 1
+saturation: 0.6

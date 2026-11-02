@@ -1,0 +1,5 @@
+name: gold_boots
+texture: items/gold_boots
+stack: 1
+durability: 91
+armor: { slot: feet, points: 1 }

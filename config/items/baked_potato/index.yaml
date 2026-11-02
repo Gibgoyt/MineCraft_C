@@ -1,0 +1,4 @@
+name: baked_potato
+texture: items/baked_potato
+food: 5
+saturation: 6

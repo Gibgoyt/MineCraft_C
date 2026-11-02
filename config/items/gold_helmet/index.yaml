@@ -1,0 +1,5 @@
+name: gold_helmet
+texture: items/gold_helmet
+stack: 1
+durability: 77
+armor: { slot: head, points: 2 }

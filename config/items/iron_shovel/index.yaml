@@ -1,0 +1,7 @@
+name: iron_shovel
+texture: items/iron_shovel
+stack: 1
+tool: shovel
+tier: iron
+durability: 250
+damage: 4.5

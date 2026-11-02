@@ -1,0 +1,5 @@
+name: iron_boots
+texture: items/iron_boots
+stack: 1
+durability: 195
+armor: { slot: feet, points: 2 }

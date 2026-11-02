@@ -6,6 +6,7 @@
  */
 #include "harness/index.h"
 #include "tables/blocks/index.h"
+#include "tables/items/index.h"
 #include "yaml/index.h"
 
 #include <stdio.h>
@@ -299,8 +300,8 @@ TEST(the_tool_makes_the_same_bytes_as_the_build) {
     test_process_run(t, argv, GTT_TIMEOUT_MS, &run);
     CHECK_EQ_I64(run.exit_code, 0);
     CHECK_STR_EQ(run.output, "");
-    const char *const files[] = {"blocks/index.h", "blocks/index.c"};
-    for (uint32_t i = 0; i < 2u; i++) {
+    const char *const files[] = {"blocks/index.h", "blocks/index.c", "items/index.h", "items/index.c"};
+    for (uint32_t i = 0; i < 4u; i++) {
         uint64_t left_length = 0;
         uint64_t right_length = 0;
         const char *left = gtt_read(t, gtt_path(t, out, files[i]), &left_length);
@@ -314,7 +315,7 @@ TEST(the_tool_makes_the_same_bytes_as_the_build) {
 
 /* ---- Small trees ------------------------------------------------------------------------------------------------ */
 
-/* The tree: air and stone, stone's texture, and a coal item. Each case then replaces stone's file. */
+/* The tree: air and stone, stone's texture, and items of coal and stone. Each case then replaces stone's file. */
 static const char GTT_STONE[] = "name: stone\n"
                                 "hardness: 1.5\n"
                                 "tool: pickaxe\n"
@@ -350,6 +351,11 @@ static gtt_tree_t gtt_tree_make(test_context_t *t, const char *name) {
     gtt_write(t, tree.borrowed_stone, GTT_STONE);
     gtt_write(t, gtt_path(t, tree.borrowed_textures, "blocks/stone/index.mctex"), "");
     gtt_write(t, gtt_path(t, tree.borrowed_textures, "items/coal/index.mctex"), "");
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "items/coal"));
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "items/stone"));
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "items/coal/index.yaml"), "name: coal\ntexture: items/coal\n");
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "items/stone/index.yaml"),
+              "name: stone\ntexture: blocks/stone\nblock: stone\n");
     return tree;
 }
 
@@ -455,7 +461,7 @@ TEST(a_good_tree_makes_tables) {
     CHECK_CONTAINS(source, "\"blocks/stone\",");
     /* What the file wrote, exactly: 15 tenths, not a rounded binary number. */
     CHECK_CONTAINS(source, ".hardness = 15e-1f32");
-    CHECK_CONTAINS(source, "{.name = \"coal\", .block = BLOCK_NO_ID}");
+    CHECK_CONTAINS(source, "{.name = \"coal\", .block = BLOCK_NO_ID, .item = ITEM_ID_COAL}");
 }
 
 TEST(air_stays_block_0_and_the_rest_sort_by_name) {
@@ -475,13 +481,13 @@ TEST(air_stays_block_0_and_the_rest_sort_by_name) {
     CHECK_CONTAINS(header, "BLOCK_ID_AAA = 1,");
     CHECK_CONTAINS(header, "BLOCK_ID_STONE = 2,");
     /* A drop that is a block links to it. */
-    CHECK_CONTAINS(source, "{.name = \"stone\", .block = BLOCK_ID_STONE}");
+    CHECK_CONTAINS(source, "{.name = \"stone\", .block = BLOCK_ID_STONE, .item = ITEM_ID_STONE}");
 }
 
 TEST(an_item_may_be_defined_by_its_config_file) {
     const gtt_tree_t tree = gtt_tree_make(t, "item_file");
     gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "items/pebble"));
-    gtt_write(t, gtt_path(t, tree.borrowed_config, "items/pebble/index.yaml"), "name: pebble\n");
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "items/pebble/index.yaml"), "name: pebble\ntexture: items/coal\n");
     gtt_write(t, tree.borrowed_stone, GTT_STONE_START "drops: [{ item: pebble, count: 1 }]\n" GTT_STONE_TEXTURE);
     test_process_t run;
     gtt_tree_run(t, &tree, &run);
@@ -574,6 +580,208 @@ TEST(a_tree_with_a_hole_is_refused) {
     gtt_tree_run(t, &tree, &run);
     CHECK_EQ_I64(run.exit_code, 1);
     CHECK_CONTAINS(run.output, "has no air");
+}
+
+/* ---- Items: Stage 13.1 --------------------------------------------------------------------------------------------- */
+
+TEST(item_0_is_none_and_the_rest_sort_by_name) {
+    CHECK_EQ_U64(ITEM_ID_NONE, 0u);
+    CHECK_STR_EQ(item_defs[ITEM_ID_NONE].name, "none");
+    CHECK_EQ_U64(item_defs[ITEM_ID_NONE].max_stack, 0u);
+    CHECK_EQ_U64(item_defs[ITEM_ID_NONE].block, ITEM_NO_BLOCK);
+    for (uint32_t i = 2u; i < ITEM_COUNT; i++) {
+        CHECK(strcmp(item_defs[i - 1u].name, item_defs[i].name) < 0);
+    }
+}
+
+TEST(every_item_is_whole_and_its_texture_is_on_disk) {
+    for (uint32_t i = 1u; i < ITEM_COUNT; i++) {
+        const item_def_t *const item = &item_defs[i];
+        CHECK(item->max_stack >= 1u && item->max_stack <= ITEM_STACK_LIMIT);
+        char *const pixels = test_alloc(t, GTT_PATH_BYTES);
+        snprintf(pixels, GTT_PATH_BYTES, "%s/%s/index.mctex", gtt_arg(t, 2), item->texture);
+        struct stat info;
+        CHECK(stat(pixels, &info) == 0);
+        if (item->block != ITEM_NO_BLOCK) {
+            CHECK(item->block != BLOCK_ID_AIR);
+            CHECK(item->block < BLOCK_COUNT);
+        }
+        if (item->durability != 0u) {
+            CHECK_EQ_U64(item->max_stack, 1u);
+        }
+        if (item->tool != BLOCK_TOOL_NONE) {
+            CHECK(item->durability != 0u);
+        }
+    }
+}
+
+TEST(what_a_drop_names_is_an_item_of_that_name_that_places_that_block) {
+    for (uint32_t i = 0u; i < BLOCK_DROP_ITEM_COUNT; i++) {
+        const block_drop_item_t *const drop = &block_drop_items[i];
+        REQUIRE(drop->item < ITEM_COUNT);
+        CHECK(drop->item != ITEM_ID_NONE);
+        CHECK_STR_EQ(item_defs[drop->item].name, drop->name);
+        if (drop->block != BLOCK_NO_ID) {
+            CHECK_EQ_U64(item_defs[drop->item].block, drop->block);
+        }
+    }
+}
+
+TEST(what_the_item_files_say_is_in_the_table) {
+    const item_def_t *const dirt = &item_defs[ITEM_ID_DIRT];
+    CHECK_EQ_U64(dirt->block, BLOCK_ID_DIRT);
+    CHECK_EQ_U64(dirt->max_stack, 64u);
+    CHECK_STR_EQ(dirt->texture, "blocks/dirt");
+    CHECK_EQ_U64(item_defs[ITEM_ID_COAL].block, ITEM_NO_BLOCK);
+    CHECK_STR_EQ(item_defs[ITEM_ID_COAL].texture, "items/coal");
+    CHECK_EQ_U64(item_defs[ITEM_ID_SNOWBALL].max_stack, 16u);
+    CHECK_EQ_U64(item_defs[ITEM_ID_WHEAT_SEEDS].block, BLOCK_ID_WHEAT_STAGE_1);
+
+    const item_def_t *const pick = &item_defs[ITEM_ID_IRON_PICKAXE];
+    CHECK_EQ_U64(pick->max_stack, 1u);
+    CHECK_EQ_U64(pick->durability, 250u);
+    CHECK_EQ_U64(pick->tool, BLOCK_TOOL_PICKAXE);
+    CHECK_EQ_U64(pick->tier, ITEM_TIER_IRON);
+    CHECK_EQ_U64(pick->harvest_tier, BLOCK_TIER_IRON);
+    CHECK(pick->damage == 4.0f32);
+
+    /* Gold says gold, and breaks what wood breaks. */
+    CHECK_EQ_U64(item_defs[ITEM_ID_GOLD_PICKAXE].tier, ITEM_TIER_GOLD);
+    CHECK_EQ_U64(item_defs[ITEM_ID_GOLD_PICKAXE].harvest_tier, BLOCK_TIER_WOOD);
+    CHECK_EQ_U64(item_defs[ITEM_ID_SHEARS].tool, BLOCK_TOOL_SHEARS);
+    CHECK_EQ_U64(item_defs[ITEM_ID_SHEARS].durability, 238u);
+
+    CHECK_EQ_U64(item_defs[ITEM_ID_BREAD].food, 5u);
+    CHECK(item_defs[ITEM_ID_BREAD].saturation == 6.0f32);
+    CHECK_EQ_U64(item_defs[ITEM_ID_IRON_BOOTS].armor_slot, ITEM_ARMOR_SLOT_FEET);
+    CHECK_EQ_U64(item_defs[ITEM_ID_IRON_BOOTS].armor_points, 2u);
+    CHECK_EQ_U64(item_defs[ITEM_ID_DIAMOND_CHESTPLATE].armor_slot, ITEM_ARMOR_SLOT_CHEST);
+    CHECK_EQ_U64(item_defs[ITEM_ID_DIAMOND_CHESTPLATE].durability, 528u);
+}
+
+/* A whole file for an item called pebble, the line:column it must be refused at, and what the message must say. */
+#define GTT_PEBBLE "name: pebble\ntexture: items/coal\n"
+
+static const gtt_bad_case_t GTT_BAD_ITEMS[] = {
+    {GTT_PEBBLE "colour: grey\n", ":3:", "unknown field 'colour' in an item"},
+    {GTT_PEBBLE "durability: 5\nstack: 1\narmor: { slot: head, points: 1, shine: 2 }\n",
+     ":5:", "unknown field 'shine' in armor"},
+    {"texture: items/coal\n", ":1:", "missing field 'name'"},
+    {"name: pebble\n", ":1:", "missing field 'texture'"},
+    {"name: gravel\ntexture: items/coal\n", ":1:", "is not its directory's"},
+    {"name: pebble\ntexture: items/nothing\n", ":2:", "texture 'items/nothing' does not exist"},
+    {"name: pebble\ntexture: mobs/coal\n", ":2:", "is not of the form"},
+    {"name: pebble\ntexture: items/../coal\n", ":2:", "is not of the form"},
+    {GTT_PEBBLE "stack: 0\n", ":3:", "stack is 0, and must be 1 to 64"},
+    {GTT_PEBBLE "stack: 65\n", ":3:", "stack is 65, and must be 1 to 64"},
+    {GTT_PEBBLE "block: nothing\n", ":3:", "block 'nothing' does not exist"},
+    {GTT_PEBBLE "block: air\n", ":3:", "cannot place air"},
+    {GTT_PEBBLE "tool: spoon\n", ":3:", "unknown tool 'spoon'"},
+    {GTT_PEBBLE "tier: wood\n", ":3:", "needs a tool that has tiers"},
+    {GTT_PEBBLE "tool: pickaxe\ndurability: 5\nstack: 1\n", ":3:", "tool 'pickaxe' needs a tier"},
+    {GTT_PEBBLE "tool: shears\nstack: 1\n", ":1:", "a tool or armor needs a durability"},
+    {GTT_PEBBLE "durability: 5\n", ":3:", "must have stack: 1"},
+    {GTT_PEBBLE "durability: 0\nstack: 1\n", ":3:", "durability is 0"},
+    {GTT_PEBBLE "durability: 70000\nstack: 1\n", ":3:", "durability is 70000"},
+    {GTT_PEBBLE "durability: 5\nstack: 1\nblock: stone\n", ":3:", "that places a block has no durability"},
+    {GTT_PEBBLE "food: 21\n", ":3:", "food is 21"},
+    {GTT_PEBBLE "saturation: 2\n", ":3:", "saturation needs a food"},
+    {GTT_PEBBLE "food: 2\nsaturation: 21\n", ":4:", "saturation '21' must be 0 to 20"},
+    {GTT_PEBBLE "damage: 101\n", ":3:", "damage '101' must be 0 to 100"},
+    {GTT_PEBBLE "armor: { slot: head }\n", ":3:", "armor needs both slot and points"},
+    {GTT_PEBBLE "durability: 5\nstack: 1\narmor: { slot: tail, points: 1 }\n", ":5:", "unknown armor slot 'tail'"},
+    {GTT_PEBBLE "durability: 5\nstack: 1\narmor: { slot: none, points: 1 }\n", ":5:", "armor must go on a slot"},
+    {GTT_PEBBLE "durability: 5\nstack: 1\narmor: { slot: head, points: 21 }\n", ":5:", "armor points is 21"},
+    {GTT_PEBBLE "armor: { slot: head, points: 1 }\n", ":1:", "a tool or armor needs a durability"},
+    {GTT_PEBBLE "durability: 5\nstack: 1\ntool: shears\narmor: { slot: head, points: 1 }\n",
+     ":6:", "both a tool and armor"},
+};
+enum { GTT_BAD_ITEM_COUNT = sizeof(GTT_BAD_ITEMS) / sizeof(GTT_BAD_ITEMS[0]) };
+
+TEST(each_bad_item_is_refused_at_its_line_and_nothing_is_written) {
+    const gtt_tree_t tree = gtt_tree_make(t, "bad_items");
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "items/pebble"));
+    char *const file = gtt_path(t, tree.borrowed_config, "items/pebble/index.yaml");
+    char *const table = gtt_path(t, tree.borrowed_out, "items/index.h");
+    for (uint32_t i = 0u; i < GTT_BAD_ITEM_COUNT; i++) {
+        gtt_write(t, file, GTT_BAD_ITEMS[i].text);
+        test_process_t run;
+        gtt_tree_run(t, &tree, &run);
+        CHECK_EQ_I64(run.exit_code, 1);
+        CHECK_CONTAINS(run.output, GTT_BAD_ITEMS[i].position);
+        CHECK_CONTAINS(run.output, GTT_BAD_ITEMS[i].message);
+        CHECK(access(table, F_OK) != 0);
+    }
+}
+
+TEST(an_item_named_for_a_block_must_say_so) {
+    const gtt_tree_t tree = gtt_tree_make(t, "named_for_a_block");
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "items/stone/index.yaml"), "name: stone\ntexture: blocks/stone\n");
+    test_process_t run;
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 1);
+    CHECK_CONTAINS(run.output, "item 'stone' is named for a block; say block: stone");
+}
+
+TEST(a_drop_with_no_item_file_is_refused_even_with_a_texture_or_a_block) {
+    const gtt_tree_t tree = gtt_tree_make(t, "drop_without_item");
+    unlink(gtt_path(t, tree.borrowed_config, "items/coal/index.yaml"));
+    rmdir(gtt_path(t, tree.borrowed_config, "items/coal"));
+    test_process_t run;
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 1);
+    CHECK_CONTAINS(run.output, "drop item 'coal' does not exist");
+    gtt_write(t, tree.borrowed_stone, GTT_STONE_START "drops: [{ item: stone, count: 1 }]\n" GTT_STONE_TEXTURE);
+    unlink(gtt_path(t, tree.borrowed_config, "items/stone/index.yaml"));
+    rmdir(gtt_path(t, tree.borrowed_config, "items/stone"));
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 1);
+    CHECK_CONTAINS(run.output, "drop item 'stone' does not exist");
+}
+
+TEST(a_tree_of_items_with_a_hole_is_refused) {
+    const gtt_tree_t tree = gtt_tree_make(t, "item_hole");
+    test_process_t run;
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "items/ghost"));
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 1);
+    CHECK_CONTAINS(run.output, "items/ghost/index.yaml: missing");
+    rmdir(gtt_path(t, tree.borrowed_config, "items/ghost"));
+
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "items/none"));
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 1);
+    CHECK_CONTAINS(run.output, "the name of the empty row");
+    rmdir(gtt_path(t, tree.borrowed_config, "items/none"));
+
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "items/Bad-Name"));
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 1);
+    CHECK_CONTAINS(run.output, "directory name 'Bad-Name'");
+}
+
+TEST(a_good_item_tree_makes_tables) {
+    const gtt_tree_t tree = gtt_tree_make(t, "good_items");
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "items/gold_pick"));
+    gtt_write(
+        t, gtt_path(t, tree.borrowed_config, "items/gold_pick/index.yaml"),
+        "name: gold_pick\ntexture: items/coal\nstack: 1\ntool: pickaxe\ntier: gold\ndurability: 32\ndamage: 2.5\n");
+    test_process_t run;
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 0);
+    CHECK_STR_EQ(run.output, "");
+    const char *header = gtt_read(t, gtt_path(t, tree.borrowed_out, "items/index.h"), nullptr);
+    const char *source = gtt_read(t, gtt_path(t, tree.borrowed_out, "items/index.c"), nullptr);
+    REQUIRE(header != nullptr);
+    REQUIRE(source != nullptr);
+    CHECK_CONTAINS(header, "ITEM_ID_NONE = 0,");
+    CHECK_CONTAINS(header, "ITEM_ID_COAL = 1,");
+    CHECK_CONTAINS(header, "ITEM_ID_GOLD_PICK = 2,");
+    CHECK_CONTAINS(header, "ITEM_ID_STONE = 3,");
+    CHECK_CONTAINS(header, "#define ITEM_COUNT 4u");
+    CHECK_CONTAINS(source, ".damage = 25e-1f32");
+    CHECK_CONTAINS(source, ".tier = ITEM_TIER_GOLD, .harvest_tier = BLOCK_TIER_WOOD");
+    CHECK_CONTAINS(source, ".block = BLOCK_ID_STONE");
 }
 
 /* ---- Biomes: Stage 10.6 ------------------------------------------------------------------------------------------- */

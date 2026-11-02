@@ -1,0 +1,5 @@
+name: gold_leggings
+texture: items/gold_leggings
+stack: 1
+durability: 105
+armor: { slot: legs, points: 3 }

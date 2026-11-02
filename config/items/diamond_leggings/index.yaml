@@ -1,0 +1,5 @@
+name: diamond_leggings
+texture: items/diamond_leggings
+stack: 1
+durability: 495
+armor: { slot: legs, points: 6 }

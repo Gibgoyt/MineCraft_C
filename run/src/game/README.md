@@ -17,10 +17,12 @@
 - `game_fly_from_script`, `game_fly_from_input`: either kind of input to a step of flying.
 - `game_player_set`, `game_walk_send`, `game_hands_send`: walk through the world with this player and not fly; what the mouse and keys want of it; what its two buttons are doing.
 - `game_entity_set`: what the player breaks comes out as items in the world, which it can pick up.
+- `game_item_set`: what it picks up goes into an inventory, and the hotbar slot in hand is what it places.
+- `game_hotbar_send`: the number keys and the wheel.
 - `game_report`: what the frames took, and the books of what was dropped.
 
 **May be called by:** `run/src/main/`.
-**Depends on:** `player`, `entity`, `render`, `world`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
+**Depends on:** `player`, `entity`, `item`, `render`, `world`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
 
 A column's blocks are `terrain_generate_box`, on a worker, over all of the column's storage. Each job lends it the states and a byte per voxel.
 
@@ -50,6 +52,7 @@ With `game_player_set`, as `--walk` does, the eye stops flying and follows a bod
 - What it aims at is worked out on each tick, with the look `main` last sent. After each tick the sim publishes it, with how far along mining is and where each item lies, to `run/src/render/entities/`, and whichever frame comes next draws them: the outline and the crack are in the picture by the time `main` sees it. The `gpu` thread still leaves each picture's camera beside it in `picture_cameras`, and `main` reads it as `shown_camera`.
 - Each tick the hands act first, on what the last tick aimed at, then the body moves: the left button mines and the right places, all on `sim`, through `world/edit`, so that light, the renderer and `world/tick` see them as any other edit. See `run/src/player/interaction/README.md`.
 - With `game_entity_set`, as `--walk` also does, what the hands break, and what `world_tick_broken_next` says went by itself, goes through the player's ring into `run/src/entity/` on that same tick, before the body moves. Then everything there moves, and the body picks up what it now reaches. `game` joins the two, so that `entity` knows nothing of a player. See `run/src/entity/item_drop/README.md`.
+- With `game_item_set`, as `--walk` also does, what the body picks up goes into `run/src/item/`, and `game` joins that to the hands too: before each tick the hand is set to the hotbar slot chosen, and what the tick placed comes off that slot. So neither knows of the other. The inventory opens and closes with the world, and nothing is saved.
 - A world whose render distance is past `game_config_t.full_detail` draws the rest as coarse grids, in `run/src/render/lod/`. The map and the sim never hear of it: the map loads only what is drawn block by block, and the gpu thread, or `game_settle` with no threads, keeps the grids up with the eye.
 - Without a player everything flies as before, so the golden pictures of `tests/run/render/frame/` stay as they were.
 

@@ -7,6 +7,7 @@
 #include "entity/index.h"
 #include "heap/index.h"
 #include "input/index.h"
+#include "item/index.h"
 #include "job/index.h"
 #include "machine/index.h"
 #include "player/index.h"
@@ -98,7 +99,7 @@ typedef struct game_t {
     uint32_t commit_next;      /* 872: the job the next step looks at first */
     uint8_t _pad0[4];          /* 876 */
     entity_t *borrowed_entity; /* 880: what a player's drops go into; set before a world opens, and only read after */
-    uint8_t _pad4[8];          /* 888 */
+    item_t *borrowed_item;     /* 888: what a player carries; set before a world opens, and only read after */
     /* A line of its own, written by main every frame. */
     float64_t day_fraction; /* 896: main's: the time of day, from 0 to 1 */
     _Atomic uint32_t
@@ -130,6 +131,10 @@ void game_player_set(game_t *game, player_t *player);
 /* From here on what a player breaks comes out as items in the world, which it can pick up, and these open and close with the world.
  * Must outlive it. Before game_open. Without it the drops stay in the player's ring, and nothing reaches its hand. */
 void game_entity_set(game_t *game, entity_t *entity);
+
+/* From here on what a player picks up goes into this inventory, the hotbar slot in hand is what it places, and these open and close
+ * with the world. Must outlive it. Before game_open. Without it what is picked up goes straight to the player's one-slot hand. */
+void game_item_set(game_t *game, item_t *item);
 
 /* Stops whatever is running, and closes any world. Safe on a zeroed game_t. */
 void game_deinit(game_t *game);
@@ -187,6 +192,10 @@ void game_walk_send(game_t *game, const render_fly_input_t *input, bool jump, bo
 /* Walking: what the left and right mouse buttons are doing, which mine and place on the sim thread's next tick. The thread that owns
  * input, right after game_walk_send. */
 void game_hands_send(game_t *game, bool attack, bool place);
+
+/* Walking: the number keys choose a hotbar slot, and the wheel moves along it, as of the sim thread's next tick. The thread that owns
+ * input. Away from the user is to the left, as in Minecraft. Does nothing with no inventory. */
+void game_hotbar_send(game_t *game, const bool keys[INVENTORY_HOTBAR_SLOTS], int64_t wheel);
 
 /* Turning either kind of input into a step of flying. */
 void game_fly_from_script(const display_script_state_t *state, render_fly_input_t *out);

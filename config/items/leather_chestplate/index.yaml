@@ -1,0 +1,5 @@
+name: leather_chestplate
+texture: items/leather_chestplate
+stack: 1
+durability: 80
+armor: { slot: chest, points: 3 }

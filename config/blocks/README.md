@@ -37,7 +37,7 @@ To add a block: make `config/blocks/<name>/index.yaml`, and build. `compile/src/
 
 | Field | Needed | Values |
 |---|---|---|
-| `item` | yes | A block, or an item with `config/items/<item>/index.yaml` or `textures/items/<item>/index.mctex` |
+| `item` | yes | An item with `config/items/<item>/index.yaml`, which a block's own item is too |
 | `count` | yes | 1 to 64 |
 | `max` | | `count` to 64: gives a count from `count` to `max` |
 | `chance` | | Above 0, up to 1. Default 1 |

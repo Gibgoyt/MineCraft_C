@@ -1,0 +1,7 @@
+name: wood_shovel
+texture: items/wood_shovel
+stack: 1
+tool: shovel
+tier: wood
+durability: 59
+damage: 2.5

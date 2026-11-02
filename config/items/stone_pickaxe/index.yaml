@@ -1,0 +1,7 @@
+name: stone_pickaxe
+texture: items/stone_pickaxe
+stack: 1
+tool: pickaxe
+tier: stone
+durability: 131
+damage: 3

@@ -1,0 +1,4 @@
+name: glow_berries
+texture: items/glow_berries
+food: 2
+saturation: 0.4

@@ -1,0 +1,7 @@
+name: wood_pickaxe
+texture: items/wood_pickaxe
+stack: 1
+tool: pickaxe
+tier: wood
+durability: 59
+damage: 2

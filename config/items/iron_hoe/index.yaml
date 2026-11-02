@@ -1,0 +1,7 @@
+name: iron_hoe
+texture: items/iron_hoe
+stack: 1
+tool: hoe
+tier: iron
+durability: 250
+damage: 1

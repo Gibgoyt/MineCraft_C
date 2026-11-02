@@ -1,0 +1,5 @@
+name: iron_helmet
+texture: items/iron_helmet
+stack: 1
+durability: 165
+armor: { slot: head, points: 2 }
