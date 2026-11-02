@@ -19,7 +19,7 @@ static_assert(alignof(item_stack_t) == 2);
 /* What a slot of this item holds at most. 0 for ITEM_ID_NONE, and for what is no item at all. */
 uint32_t item_stack_max(uint16_t item);
 
-/* The row of block_drop_items for an item, which is what lies on the ground. Not for ITEM_ID_NONE. Wear does not survive lying there. */
+/* The row of block_drop_items for an item, which is what lies on the ground. Not for ITEM_ID_NONE. */
 uint16_t item_stack_drop_row(uint16_t item);
 
 /* New and unworn, as many as one slot takes of count. Empty if that is none. */

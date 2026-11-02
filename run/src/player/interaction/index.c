@@ -55,6 +55,10 @@ void player_interaction_hold_tool(player_interaction_t *interaction, uint8_t too
     interaction->held_tier = tier;
 }
 
+void player_interaction_hold_speed(player_interaction_t *interaction, uint32_t speed_milli) {
+    interaction->held_speed_milli = speed_milli;
+}
+
 bool player_interaction_harvests(uint16_t block, uint8_t tool, uint8_t tier) {
     const block_def_t *const def = &block_defs[block];
     return def->tier == BLOCK_TIER_NONE || (def->tool == tool && tier >= def->tier);
@@ -84,9 +88,8 @@ static uint64_t interaction_required(uint16_t block, uint8_t tool, uint8_t tier)
 }
 
 /* One tick's work. Never 0: the slowest is a hand, over 25. */
-static uint64_t interaction_work(uint16_t block, uint8_t tool, uint8_t tier, bool on_ground, bool eyes_under_water) {
-    uint64_t work =
-        (uint64_t)player_interaction_speed_milli(block, tool, tier) * INTERACTION_UNITS_PER_HAND_TICK / 1000u;
+static uint64_t interaction_work(uint32_t speed_milli, bool on_ground, bool eyes_under_water) {
+    uint64_t work = (uint64_t)speed_milli * INTERACTION_UNITS_PER_HAND_TICK / 1000u;
     work /= on_ground ? 1u : INTERACTION_PENALTY;
     work /= eyes_under_water ? INTERACTION_PENALTY : 1u;
     return work;
@@ -97,7 +100,8 @@ uint32_t player_interaction_ticks(uint16_t block, uint8_t tool, uint8_t tier, bo
         return PLAYER_INTERACTION_TICKS_NEVER;
     }
     const uint64_t required = interaction_required(block, tool, tier);
-    const uint64_t work = interaction_work(block, tool, tier, on_ground, eyes_under_water);
+    const uint64_t work =
+        interaction_work(player_interaction_speed_milli(block, tool, tier), on_ground, eyes_under_water);
     return required == 0u ? 1u : (uint32_t)((required + work - 1u) / work);
 }
 
@@ -235,7 +239,11 @@ static void interaction_mine(player_interaction_t *interaction, world_edit_t *ed
     }
     const uint8_t tool = interaction->held_tool, tier = interaction->held_tier;
     const uint64_t required = interaction_required(block, tool, tier);
-    const uint64_t work = interaction_work(block, tool, tier, input->borrowed_movement->on_ground != 0u,
+    const bool own_block = tool != BLOCK_TOOL_NONE && block_defs[block].tool == tool;
+    const uint32_t speed_milli = own_block && interaction->held_speed_milli != 0u
+                                     ? interaction->held_speed_milli
+                                     : player_interaction_speed_milli(block, tool, tier);
+    const uint64_t work = interaction_work(speed_milli, input->borrowed_movement->on_ground != 0u,
                                            input->borrowed_movement->eyes_under_water != 0u);
     interaction->progress += work;
     if (interaction->progress < required) {
@@ -253,7 +261,9 @@ static void interaction_mine(player_interaction_t *interaction, world_edit_t *ed
     }
     interaction->mined_count++;
     interaction->last_mined = block;
-    if (player_interaction_harvests(block, tool, tier)) {
+    /* Shears on their own block give that block and nothing else. run/src/game/ brings it out, as only it knows items. */
+    const bool shorn = tool == BLOCK_TOOL_SHEARS && block_defs[block].tool == BLOCK_TOOL_SHEARS;
+    if (!shorn && player_interaction_harvests(block, tool, tier)) {
         player_interaction_drops_spawn(interaction, block, x, y, z);
     }
     interaction_stack_break(interaction, edit, x, y, z);

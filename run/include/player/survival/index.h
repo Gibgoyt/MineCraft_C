@@ -101,21 +101,24 @@ typedef struct player_survival_t {
     uint32_t state_ticks;             /* 124: how long it has been asleep or dead */
     int32_t air;                      /* 128: ticks left, and below 0 towards the next gasp */
     uint32_t burn_ticks;              /* 132 */
-    uint16_t held_item;     /* 136: whatever identifies what is in hand, so that changing it starts eating over */
-    uint8_t food;           /* 138: 0 to PLAYER_SURVIVAL_FOOD_MAX */
-    uint8_t state;          /* 139: player_survival_state_t */
-    uint8_t held_food;      /* 140: what eating held_item gives, and 0 if it is not food */
-    uint8_t invulnerable;   /* 141: ticks left */
-    uint8_t has_bed;        /* 142: bed_cell means something */
-    uint8_t placing;        /* 143: it has come back, and waits for the ground there to load */
-    uint8_t placing_at_bed; /* 144: and it means to stand by the bed */
-    uint8_t died_new;       /* 145: for player_survival_died_take */
-    uint8_t morning_new;    /* 146: for player_survival_morning_take */
-    uint8_t killed_by;      /* 147: a player_survival_cause_t */
-    uint8_t buttons_before; /* 148: what was held last tick, so that a press is told from a hold */
-    uint8_t was_on_ground;  /* 149 */
-    uint8_t bed_answer;     /* 150: a player_survival_bed_answer_t */
-    uint8_t _pad0[41];      /* 151 */
+    uint16_t held_item;        /* 136: whatever identifies what is in hand, so that changing it starts eating over */
+    uint8_t food;              /* 138: 0 to PLAYER_SURVIVAL_FOOD_MAX */
+    uint8_t state;             /* 139: player_survival_state_t */
+    uint8_t held_food;         /* 140: what eating held_item gives, and 0 if it is not food */
+    uint8_t invulnerable;      /* 141: ticks left */
+    uint8_t has_bed;           /* 142: bed_cell means something */
+    uint8_t placing;           /* 143: it has come back, and waits for the ground there to load */
+    uint8_t placing_at_bed;    /* 144: and it means to stand by the bed */
+    uint8_t died_new;          /* 145: for player_survival_died_take */
+    uint8_t morning_new;       /* 146: for player_survival_morning_take */
+    uint8_t killed_by;         /* 147: a player_survival_cause_t */
+    uint8_t buttons_before;    /* 148: what was held last tick, so that a press is told from a hold */
+    uint8_t was_on_ground;     /* 149 */
+    uint8_t bed_answer;        /* 150: a player_survival_bed_answer_t */
+    uint8_t _pad0[1];          /* 151 */
+    float32_t armor_toughness; /* 152: all that is worn, added up */
+    float32_t armor_hit;       /* 156: what armor has stood against since player_survival_armor_hit_take */
+    uint8_t _pad1[32];         /* 160 */
 } player_survival_t;
 static_assert(sizeof(player_survival_t) == 192);
 static_assert(alignof(player_survival_t) == 8);
@@ -144,11 +147,14 @@ bool player_survival_is_night(float64_t day_fraction);
 /* What the sim is told of the time of day, each tick before the buttons. */
 void player_survival_day_set(player_survival_t *survival, float64_t day_fraction);
 
-/* What is worn, in half shirts. Stage 13.3's armor comes in here. */
-void player_survival_armor_set(player_survival_t *survival, float32_t points);
+/* What is worn: its points, in half shirts, and its toughness. run/src/game/ says so each tick, from run/src/item/equipment/. */
+void player_survival_armor_set(player_survival_t *survival, float32_t points, float32_t toughness);
 
-/* What a hit of this size does through this much armor: the published sum, with no toughness, as no armor here has any. */
-float32_t player_survival_after_armor(float32_t amount, float32_t points);
+/* What a hit of this size does through this much armor: the published sum. */
+float32_t player_survival_after_armor(float32_t amount, float32_t points, float32_t toughness);
+
+/* The size of the hits armor has stood against since this was last asked, and 0 if none. Each piece worn pays for them. */
+float32_t player_survival_armor_hit_take(player_survival_t *survival);
 
 /* What a fall of this distance does on landing. A bed under the feet halves it. */
 float32_t player_survival_fall_damage(float64_t distance, bool on_bed);

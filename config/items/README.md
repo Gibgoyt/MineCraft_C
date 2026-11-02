@@ -31,6 +31,6 @@ Blocks with no item, because nobody holds them: `air`, `water`, `lava`, `farmlan
 | `damage` | | 0 to 100: what a hit does, in half hearts | 0 |
 | `food` | | 1 to 20: half drumsticks eating it gives | not food |
 | `saturation` | | 0 to 20: what eating it gives on top. Needs a `food` | 0 |
-| `armor` | | `{ slot: head, points: 2 }`. `slot` is `head chest legs feet`, `points` 1 to 20. Needs a `durability`, and not with a `tool` | not armor |
+| `armor` | | `{ slot: head, points: 2 }`, or with `toughness: 2` too. `slot` is `head chest legs feet`, `points` and `toughness` 1 to 20. Needs a `durability`, and not with a `tool` | not armor |
 
 What wears, what feeds and what protects is only read here: `run/src/item/equipment/` (Stage 13.3) and `run/src/player/survival/` (Stage 13.4) use it.

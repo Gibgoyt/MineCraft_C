@@ -58,3 +58,9 @@ Appended as they land:
 11. **`render_feature_sky` timed out at 280 s** in the full run with `-j3`, others on the card. Stage 13.2's issue 6 records the same at `-j4`, and it passed alone there. It passed in the next full run.
 12. **`run_render_frame` failed once in the last full `ctest --preset debug -j3`** (76 of 77 passed), in 64 s, and passed in the full run before it. Alone it then passed 3 of 3 (`ctest --preset debug -R '^run_render_frame$'`), about 30 s each. Its message from the failing run was not kept, so which check it was is not known. Stage 13.2's issue 6 records this test failing some runs on an `item_t`-less game, which this stage's survival code does not touch beyond a line of `game_sim_tick` behind a player. Left alone, as not shown to be this stage's.
 13. **The bed was looked at once by eye:** a frame from the real-game test, written out by a line taken out again, shows a half-height block with its pillow and blanket on top and planks round the sides, under its outline. No golden holds that.
+
+## Gate check, 2026-11-03
+
+- **Issue 3 is fixed:** see Stage 13.3's issue 7. Armor now reaches this module each tick.
+- **Issue 14. Death did not spill what was worn.** Expected: all a body has goes where it lies. Actual: `game_death_spill` walked the inventory and the two crafting grids only, so armor stayed on through death, and its comment said worn tools came back new. Fixed: worn armor spills too, every stack keeps its wear, and `in_a_real_game_dying_spills_what_was_worn_and_all_of_it_comes_back_as_worn_as_it_was` holds it.
+- **Issue 2 stands, and waits for Ahmed:** no bed can be got in a played game, as it has no recipe for want of wool. It needs his decision.

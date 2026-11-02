@@ -62,3 +62,16 @@ Its "What is left for others" still says only a hand exists in a real run until 
 
 **6. What a real run cannot reach yet.**
 With no crafting screen until Stage 14.3, nothing in a played game puts a tool or armor in the inventory, and with no health until Stage 13.4 nothing calls `equipment_armor_hurt`; no combat until Stage 15.7 means the same for `equipment_tool_attacked`. All of it is tested directly, and tools and armor through the real threads with the inventory filled by the test.
+
+## Gate check, 2026-11-03
+
+The commit above says armor "stops hits". In a played game it did not.
+
+- **Issue 7. Armor did nothing in a running game.** Expected: worn armor softens a hit and wears for it. Actual: `grep -rn 'player_survival_armor_set\|equipment_armor_hurt' run/src` found only their own definitions. `survival->armor_points` stayed 0 for ever and no piece ever lost a use. Stage 13.4's issue 3 left the one call to whoever merged the two stages, and merge `2d74762` did not add it. Tests passed because each module was tested alone. Fixed: `game_survive_tick` sets the points and toughness worn before each tick, and hands what armor stood against (`player_survival_armor_hit_take`, new) to `equipment_armor_hurt` after it. New test: `in_a_real_game_armor_stops_hits_and_wears_and_what_goes_past_it_does_not_touch_it`, with an outside hit, real lava, being alight, and a piece breaking.
+- **Issue 1 is fixed: gold mines at 12.** `equipment_tool_speed_milli` and `player_interaction_hold_speed` carry it past the tier, and changing to it starts a block again. Gold on stone is 4 ticks, against wood's 23; held by `gold_mines_faster_than_diamond_and_harvests_only_what_wood_does` and through the real game. A gold sword mines as a sword.
+- **Issue 2 is fixed: wear survives the ground.** `item_drop_t` has `wear` (`pickup_delay` became a `uint8_t` to make room, and the struct stays 64 bytes), only the same wear merges, `item_drop_take_t` is told it, and `game_pickup_take` puts it back. New tests in `run_entity_drop` and `run_item_equipment`, through a broken chest and through dying.
+- **Issue 3 is fixed: shears give only the block.** `interaction_mine` rolls nothing for shears on their own block. 200 cuts of tall grass give no rolled drop, where a hand's do.
+- **Issue 4 is fixed: armor has toughness.** `armor: { toughness: 2 }` on diamond's 4 files, read by `compile/src/game_tables/items/`, in `item_def_t` from its padding, and in both sums. `toughness_keeps_hard_hits_out_and_both_sums_are_one_sum` holds the two armor sums, in `run/src/item/equipment/` and `run/src/player/survival/`, to each other over every points, toughness and hit of up to 50.
+- **Issue 5 is fixed:** `run/src/player/interaction/README.md` says what is true now.
+- **Issue 8. A press that woke a body or brought it back also used what was in hand.** `equipment_use_tick` runs before survival takes the buttons, so asleep with a helmet in hand, the press that woke it also put the helmet on, and a hoe would till. Fixed in `game_interact_tick`; `a_press_that_wakes_or_brings_back_a_body_does_nothing_else`.
+- **Still as issue 6 says:** no combat until Stage 15.7, so `equipment_tool_attacked` and `equipment_attack_damage` are reached only by tests.

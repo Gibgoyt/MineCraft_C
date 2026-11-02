@@ -21,4 +21,7 @@ What it checks:
 - **At random:** 200000 steps, where every stack stays valid, every item is accounted for and the books balance. The same steps give the same bytes, with no heap.
 - **The Owner:** nothing worn at `item_open`, and forgotten at `item_close`.
 - **A real game,** down a shaft on the real card and threads: a hoe tills, a helmet goes on, wood on farmland and on stone, a hand on stone at its own time with nothing to show, shears on leaves, a change of tool starting the block again, and a tool breaking on its last use.
+- **With everything else, by script on the real card:** armor stops an outside hit and real lava and wears for each, being alight goes past it, a piece that runs out comes off; dying spills what is worn, and that and a worn tool come back as worn as they were; a chest's worn tool likewise; gold on stone in its own 4 ticks; a press that wakes a body does nothing else.
+- **The sums:** toughness by hand, and `run/src/player/survival/`'s armor sum held to this module's, over every points, toughness and hit.
+- **The hands:** gold's speed and what it harvests; shears rolling nothing of a table in 200 cuts, where a hand does.
 - **The program:** it runs with all of this and reports it.

@@ -165,11 +165,11 @@ TEST(a_body_starts_whole_and_main_can_see_it) {
 
 TEST(armor_falls_and_night_by_hand) {
     /* max(points / 5, points - hit / 2), held to 20, and 4 % a point off. */
-    CHECK_NEAR(player_survival_after_armor(10.0f32, 0.0f32), 10.0f32, PS_CLOSE);
-    CHECK_NEAR(player_survival_after_armor(10.0f32, 20.0f32), 4.0f32, PS_CLOSE);
-    CHECK_NEAR(player_survival_after_armor(20.0f32, 20.0f32), 12.0f32, PS_CLOSE);
-    CHECK_NEAR(player_survival_after_armor(100.0f32, 5.0f32), 96.0f32, PS_CLOSE);
-    CHECK_NEAR(player_survival_after_armor(10.0f32, 40.0f32), 2.0f32, PS_CLOSE);
+    CHECK_NEAR(player_survival_after_armor(10.0f32, 0.0f32, 0.0f32), 10.0f32, PS_CLOSE);
+    CHECK_NEAR(player_survival_after_armor(10.0f32, 20.0f32, 0.0f32), 4.0f32, PS_CLOSE);
+    CHECK_NEAR(player_survival_after_armor(20.0f32, 20.0f32, 0.0f32), 12.0f32, PS_CLOSE);
+    CHECK_NEAR(player_survival_after_armor(100.0f32, 5.0f32, 0.0f32), 96.0f32, PS_CLOSE);
+    CHECK_NEAR(player_survival_after_armor(10.0f32, 40.0f32, 0.0f32), 2.0f32, PS_CLOSE);
 
     CHECK_NEAR(player_survival_fall_damage(0.0f64, false), 0.0f32, 0.0f32);
     CHECK_NEAR(player_survival_fall_damage(3.0f64, false), 0.0f32, 0.0f32);
@@ -360,11 +360,11 @@ TEST(a_cactus_hurts_what_touches_it_and_nothing_else) {
     ps_tick(&rig, &keys);
     CHECK_NEAR(survival->health, 18.0f32, 0.0f32);
     /* Armor counts here. */
-    player_survival_armor_set(survival, 20.0f32);
+    player_survival_armor_set(survival, 20.0f32, 0.0f32);
     for (uint32_t i = 0u; i < 10u; i++) {
         ps_tick(&rig, &keys);
     }
-    CHECK_NEAR(survival->health, 18.0f32 - player_survival_after_armor(1.0f32, 20.0f32), PS_CLOSE);
+    CHECK_NEAR(survival->health, 18.0f32 - player_survival_after_armor(1.0f32, 20.0f32, 0.0f32), PS_CLOSE);
     ps_end(&rig);
 
     /* Standing on one. */
@@ -438,7 +438,7 @@ TEST(a_full_opaque_cube_at_the_eyes_smothers_and_glass_and_leaves_do_not) {
     ps_idle(&rig, 1u);
     CHECK_NEAR(survival->health, 18.0f32, 0.0f32);
     /* Armor does not help with this. */
-    player_survival_armor_set(survival, 20.0f32);
+    player_survival_armor_set(survival, 20.0f32, 0.0f32);
     ps_idle(&rig, 10u);
     CHECK_NEAR(survival->health, 17.0f32, 0.0f32);
     ps_end(&rig);
@@ -744,7 +744,7 @@ TEST(armor_counts_against_what_it_should_and_nothing_else) {
     REQUIRE(ps_begin(t, &rig));
     player_survival_t *const survival = &rig.player->survival;
     ps_no_healing(survival);
-    player_survival_armor_set(survival, 20.0f32);
+    player_survival_armor_set(survival, 20.0f32, 0.0f32);
     CHECK_NEAR(player_survival_hurt(survival, 4.0f32, PLAYER_SURVIVAL_CAUSE_LAVA), 4.0f32 * 0.28f32, PS_CLOSE);
     ps_idle(&rig, 10u);
     CHECK_NEAR(player_survival_hurt(survival, 4.0f32, PLAYER_SURVIVAL_CAUSE_ATTACK), 4.0f32 * 0.28f32, PS_CLOSE);

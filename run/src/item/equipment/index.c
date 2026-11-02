@@ -16,12 +16,15 @@ enum : uint32_t {
     EQUIPMENT_ARMOR_DAMAGE_PER_USE = 4u,
     /* No wear is more than this, whatever hit: nothing lasts longer. */
     EQUIPMENT_WEAR_MOST = UINT16_MAX,
+    /* The published speed of gold, which block_tier_t has no rung for. */
+    EQUIPMENT_SPEED_GOLD_MILLI = 12000u,
 };
 
 /* Past this a hit wears as much as anything can. Below it, the hit fits a uint32_t. */
 #define EQUIPMENT_DAMAGE_WEARS_MOST 262140.0f32
-/* The published formula's numbers. Its toughness would add to the 2, and has no field. */
+/* The published formula's numbers. */
 #define EQUIPMENT_ABSORB_DAMAGE_DIVISOR 2.0f32
+#define EQUIPMENT_ABSORB_TOUGHNESS_DIVISOR 4.0f32
 #define EQUIPMENT_ABSORB_POINTS_FLOOR_DIVISOR 5.0f32
 #define EQUIPMENT_ABSORB_WHOLE 25.0f32
 
@@ -66,6 +69,12 @@ uint32_t equipment_wear_of_attack(uint16_t item) {
 uint32_t equipment_uses_left(const item_stack_t *stack) {
     const uint32_t durability = item_defs[stack->item].durability;
     return durability == 0u ? 0u : durability - (uint32_t)stack->wear;
+}
+
+uint32_t equipment_tool_speed_milli(uint16_t item) {
+    /* A sword's speed is a sword's, of whatever it is made. */
+    const item_def_t *const def = &item_defs[item];
+    return def->tier == ITEM_TIER_GOLD && def->tool != BLOCK_TOOL_SWORD ? EQUIPMENT_SPEED_GOLD_MILLI : 0u;
 }
 
 float32_t equipment_attack_damage(const item_stack_t *stack) {
@@ -225,20 +234,31 @@ uint32_t equipment_armor_points(const equipment_t *equipment) {
     return points;
 }
 
-float32_t equipment_armor_absorb(uint32_t points, float32_t damage) {
+uint32_t equipment_armor_toughness(const equipment_t *equipment) {
+    uint32_t toughness = 0u;
+    for (uint32_t slot = 0u; slot < EQUIPMENT_ARMOR_SLOTS; slot++) {
+        toughness += item_defs[equipment->armor[slot].item].armor_toughness;
+    }
+    return toughness;
+}
+
+float32_t equipment_armor_absorb(uint32_t points, uint32_t toughness, float32_t damage) {
     if (!(damage > 0.0f32)) {
         return 0.0f32;
     }
     const float32_t have = (float32_t)points;
     const float32_t least = have / EQUIPMENT_ABSORB_POINTS_FLOOR_DIVISOR;
-    const float32_t against = have - damage / EQUIPMENT_ABSORB_DAMAGE_DIVISOR;
+    const float32_t divisor =
+        EQUIPMENT_ABSORB_DAMAGE_DIVISOR + (float32_t)toughness / EQUIPMENT_ABSORB_TOUGHNESS_DIVISOR;
+    const float32_t against = have - damage / divisor;
     const float32_t share = against > least ? against : least;
     const float32_t most = (float32_t)EQUIPMENT_ARMOR_POINTS_MOST;
     return damage * (1.0f32 - (share < most ? share : most) / EQUIPMENT_ABSORB_WHOLE);
 }
 
 float32_t equipment_armor_hurt(equipment_t *equipment, float32_t damage) {
-    const float32_t left = equipment_armor_absorb(equipment_armor_points(equipment), damage);
+    const float32_t left =
+        equipment_armor_absorb(equipment_armor_points(equipment), equipment_armor_toughness(equipment), damage);
     if (!(damage > 0.0f32)) {
         return left;
     }

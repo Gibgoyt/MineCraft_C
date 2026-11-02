@@ -2,4 +2,4 @@ name: diamond_chestplate
 texture: items/diamond_chestplate
 stack: 1
 durability: 528
-armor: { slot: chest, points: 8 }
+armor: { slot: chest, points: 8, toughness: 2 }

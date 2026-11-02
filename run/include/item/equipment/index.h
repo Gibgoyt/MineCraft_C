@@ -54,6 +54,10 @@ uint32_t equipment_wear_of_attack(uint16_t item);
 /* Uses left in a stack, for a bar on a slot. 0 for what does not wear. */
 uint32_t equipment_uses_left(const item_stack_t *stack);
 
+/* What this item mines its own blocks at, in thousandths, if that is not its tier's: gold, which breaks what wood breaks, at 12. 0 for the
+ * rest. */
+uint32_t equipment_tool_speed_milli(uint16_t item);
+
 /* What a hit with this does, in half hearts. */
 float32_t equipment_attack_damage(const item_stack_t *stack);
 
@@ -104,8 +108,11 @@ uint32_t equipment_armor_quick_move_out(equipment_t *equipment, inventory_t *inv
 /* All that is worn, in half shirts. */
 uint32_t equipment_armor_points(const equipment_t *equipment);
 
-/* What is left of a hit against this many points. Nothing here wears. */
-float32_t equipment_armor_absorb(uint32_t points, float32_t damage);
+/* The toughness of all that is worn: what keeps hard hits from getting through as easily. */
+uint32_t equipment_armor_toughness(const equipment_t *equipment);
+
+/* What is left of a hit against this many points and this toughness. Nothing here wears. */
+float32_t equipment_armor_absorb(uint32_t points, uint32_t toughness, float32_t damage);
 
 /* A hit armor stops: what is left of it, and every piece worn loses uses for it. What goes past armor, like falling, does not call this.
  * What has no uses left breaks and comes off. */
