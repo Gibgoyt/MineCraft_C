@@ -39,6 +39,8 @@ All run on 2026-11-02, and all passed. `pgrep` printed nothing. Issue 12 lists w
 
 Appended as they land:
 
+- `735911d` Make mip chains and a texture blob at build time, embed it with incbin, and find textures by name at run time, fixing the display struct sizes the last merge left broken.
+
 ## Issues found
 
 All 2026-11-02, by this stage.
