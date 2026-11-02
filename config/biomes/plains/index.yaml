@@ -1,0 +1,7 @@
+name: plains
+where: land
+climate: { temperature: [-0.45, 0.2], humidity: [-1, -0.15], height: [-1000, 110] }
+surface:
+  top: grass_block
+  filler: dirt
+features: { tree_oak: 0.05, grass: 10, flower: 1 }

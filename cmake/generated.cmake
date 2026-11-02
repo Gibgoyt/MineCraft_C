@@ -35,25 +35,33 @@ add_custom_target(mc_texture_blob DEPENDS "${mc_texture_blob_file}")
 set(mc_tables_dir "${MC_GENERATED_DIR}/tables")
 set(mc_block_table_header "${mc_tables_dir}/blocks/index.h")
 set(mc_block_table_source "${mc_tables_dir}/blocks/index.c")
+# config/biomes/ -> tables/biomes/index.{h,c}, by the same tool and the same command: Stage 10.6.
+set(mc_biome_table_header "${mc_tables_dir}/biomes/index.h")
+set(mc_biome_table_source "${mc_tables_dir}/biomes/index.c")
 file(GLOB mc_block_inputs CONFIGURE_DEPENDS
   "${CMAKE_SOURCE_DIR}/config/blocks/*/index.yaml"
   "${CMAKE_SOURCE_DIR}/config/items/*/index.yaml"
+  "${CMAKE_SOURCE_DIR}/config/biomes/*/index.yaml"
   "${CMAKE_SOURCE_DIR}/textures/items/*/index.mctex")
 
 # Ninja reruns a command for a new or changed input, and not for one gone from its list, so a deleted block would stay in the
 # tables. This file changes when the list does, and only then. The block directories are in it for one with no file yet.
-file(GLOB mc_block_directories CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/config/blocks/*")
+file(GLOB mc_block_directories CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/config/blocks/*"
+  "${CMAKE_SOURCE_DIR}/config/biomes/*")
 string(JOIN "\n" mc_block_input_list ${mc_block_directories} ${mc_block_inputs} ${mc_texture_inputs})
 file(CONFIGURE OUTPUT "${mc_tables_dir}/inputs.txt" CONTENT "${mc_block_input_list}\n" @ONLY)
 
 # The touch: the tool leaves a file with the same bytes alone, and then Ninja would see the outputs as old on every build.
-add_custom_command(OUTPUT "${mc_block_table_header}" "${mc_block_table_source}"
+add_custom_command(OUTPUT "${mc_block_table_header}" "${mc_block_table_source}" "${mc_biome_table_header}"
+    "${mc_biome_table_source}"
   COMMAND mc_tool_game_tables --config "${CMAKE_SOURCE_DIR}/config" --textures "${CMAKE_SOURCE_DIR}/textures"
     --out "${mc_tables_dir}"
-  COMMAND "${CMAKE_COMMAND}" -E touch "${mc_block_table_header}" "${mc_block_table_source}"
+  COMMAND "${CMAKE_COMMAND}" -E touch "${mc_block_table_header}" "${mc_block_table_source}" "${mc_biome_table_header}"
+    "${mc_biome_table_source}"
   DEPENDS mc_tool_game_tables ${mc_block_inputs} ${mc_texture_inputs} "${mc_tables_dir}/inputs.txt"
-  COMMENT "Generating the block tables"
+  COMMENT "Generating the block and biome tables"
   VERBATIM)
-add_custom_target(mc_game_tables DEPENDS "${mc_block_table_header}" "${mc_block_table_source}")
+add_custom_target(mc_game_tables DEPENDS "${mc_block_table_header}" "${mc_block_table_source}" "${mc_biome_table_header}"
+  "${mc_biome_table_source}")
 # Sources of generated tables that the game links.
-set(mc_generated_run_sources "${mc_block_table_source}")
+set(mc_generated_run_sources "${mc_block_table_source}" "${mc_biome_table_source}")

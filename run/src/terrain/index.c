@@ -31,10 +31,23 @@ bool terrain_init(terrain_t *terrain, uint64_t seed) {
         return false;
     }
     terrain_ore_init(&terrain->borrowed_ore, &terrain->arena_tables, seed, terrain->borrowed_density);
+    terrain_biome_init(&terrain->borrowed_biome, &terrain->arena_tables, terrain->borrowed_climate,
+                       terrain->borrowed_hydrology);
+    if (!terrain_surface_init(&terrain->borrowed_surface, &terrain->arena_tables, &terrain->noise_bank, seed,
+                              terrain->borrowed_biome, terrain->borrowed_hydrology, terrain->borrowed_cave)) {
+        terrain_deinit(terrain); /* it has said why */
+        return false;
+    }
     return true;
 }
 
 void terrain_deinit(terrain_t *terrain) {
+    if (terrain->borrowed_surface != nullptr) {
+        terrain_surface_deinit(terrain->borrowed_surface);
+    }
+    if (terrain->borrowed_biome != nullptr) {
+        terrain_biome_deinit(terrain->borrowed_biome);
+    }
     if (terrain->borrowed_ore != nullptr) {
         terrain_ore_deinit(terrain->borrowed_ore);
     }

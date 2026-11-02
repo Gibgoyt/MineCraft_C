@@ -1,0 +1,7 @@
+name: jungle
+where: land
+climate: { temperature: [0.2, 0.55], humidity: [0.4, 1], height: [-1000, 110] }
+surface:
+  top: grass_block
+  filler: dirt
+features: { tree_jungle: 16, tree_oak: 2, grass: 8, fern: 4, vine: 8, melon: 0.3 }

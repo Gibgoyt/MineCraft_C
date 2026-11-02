@@ -1,0 +1,9 @@
+name: deep_dark
+where: underground
+priority: 2
+climate: { erosion: [-1, -0.25], z: [-250, -140] }
+cave:
+  floor: cobbled_deepslate
+  ceiling: deepslate
+  patches:
+    - { block: tuff, from: 0.2, to: 0.6 }

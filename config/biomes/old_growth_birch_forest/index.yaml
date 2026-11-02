@@ -1,0 +1,8 @@
+name: old_growth_birch_forest
+where: land
+priority: 1
+climate: { temperature: [-0.15, 0.2], humidity: [0.15, 0.4], weirdness: [0.2, 1], height: [-1000, 110] }
+surface:
+  top: grass_block
+  filler: dirt
+features: { tree_birch: 10, grass: 3, flower: 1 }

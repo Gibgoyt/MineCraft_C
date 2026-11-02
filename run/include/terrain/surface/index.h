@@ -1,0 +1,81 @@
+/* See run/src/terrain/surface/README.md. */
+#ifndef MC_RUN_TERRAIN_SURFACE_INDEX_H
+#define MC_RUN_TERRAIN_SURFACE_INDEX_H
+
+#include "arena/index.h"
+#include "terrain/biome/index.h"
+#include "terrain/cave/index.h"
+#include "terrain/density/index.h"
+#include "terrain/hydrology/index.h"
+#include "terrain/noise/index.h"
+#include "types/index.h"
+
+#include <stddef.h>
+#include <stdint.h>
+
+enum : uint32_t {
+    /* The noise fields one world's surface takes from the bank. */
+    TERRAIN_SURFACE_NOISE_FIELDS = 3u,
+    /* How many layers the badlands' colours take to repeat. A power of 2. */
+    TERRAIN_SURFACE_BANDS = 256u,
+};
+static_assert((TERRAIN_SURFACE_BANDS & (TERRAIN_SURFACE_BANDS - 1u)) == 0u);
+
+/* One world's surface. Nothing changes it after terrain_surface_init, so any number of workers may read it. */
+typedef struct terrain_surface_t {
+    uint16_t bands[TERRAIN_SURFACE_BANDS];         /* 0: the badlands' colours, by height */
+    const terrain_biome_t *borrowed_biome;         /* 512 */
+    const terrain_hydrology_t *borrowed_hydrology; /* 520 */
+    const terrain_cave_t *borrowed_cave;           /* 528 */
+    const terrain_noise_field_t *borrowed_depth;   /* 536: how much filler a column has */
+    const terrain_noise_field_t *borrowed_patch;   /* 544: what is in place of a biome's top */
+    const terrain_noise_field_t *borrowed_wander;  /* 552: how the bands bend */
+} terrain_surface_t;
+static_assert(sizeof(terrain_surface_t) == 560);
+
+/* What decides a voxel's block. */
+typedef struct terrain_surface_inputs_t {
+    float32_t depth_noise; /* 0: from -1 to 1 */
+    float32_t patch;       /* 4: from -1 to 1 */
+    float32_t steepness;   /* 8: blocks of ground per block across */
+    int32_t z;             /* 12 */
+    int32_t band_z;        /* 16: z, moved by how the bands bend */
+    uint32_t depth;        /* 20: solid voxels between this one and what is open above it */
+    uint16_t block;        /* 24: what is there now */
+    uint8_t wet;           /* 26: 1 if what is open above it is water */
+    uint8_t _pad0[1];      /* 27 */
+} terrain_surface_inputs_t;
+static_assert(sizeof(terrain_surface_inputs_t) == 28);
+
+/* Takes the surface from arena and adds its fields to bank, for bank's seed, with the bands drawn from seed. For use while
+ * terrain_init runs. What it is given must outlive it. If the bank refuses a field, which has logged why, sets *out to nullptr
+ * and returns false. Fields added before that stay in the bank, so the caller gives up on the whole terrain_t. */
+[[nodiscard]] bool terrain_surface_init(terrain_surface_t **out, arena_t *arena, terrain_noise_bank_t *bank,
+                                        uint64_t seed, const terrain_biome_t *biome,
+                                        const terrain_hydrology_t *hydrology, const terrain_cave_t *cave);
+
+/* Empties the handle. The memory goes back with the arena. */
+void terrain_surface_deinit(terrain_surface_t *surface);
+
+/* The README's rules: what one voxel of a biome becomes, as plain arithmetic. bands holds TERRAIN_SURFACE_BANDS colours. */
+uint16_t terrain_surface_block_from(const biome_def_t *def, const uint16_t *bands,
+                                    const terrain_surface_inputs_t *inputs);
+
+/* The README's rule under the ground: what a rock voxel of an underground biome becomes, given that a cave lies directly above
+ * it (floor) or below it (ceiling), or neither. */
+uint16_t terrain_surface_cave_block_from(const biome_def_t *def, uint16_t block, float32_t patch, bool cave_above,
+                                         bool cave_below);
+
+/* Covers the ground. blocks holds the box's voxels as terrain_hydrology_fill_box left them, in x, then y, then z order, and
+ * they become what each column's biome lays on them. Allocates nothing, and a voxel is a pure function of the surface and the
+ * voxel: splitting a box into parts, in any order, on any thread, gives the same bytes. Call it before anything else changes
+ * blocks: see the README's order. */
+void terrain_surface_fill_box(const terrain_surface_t *surface, const terrain_density_box_t *box, uint16_t *blocks);
+
+/* Lines the caves of the underground biomes. Any stone voxel of blocks directly above or below what a cave wants takes the
+ * biome's floor or ceiling. Nothing else changes. Call it after the caves are cut and flooded, and before terrain_ore_fill_box.
+ * As pure and as free of allocation as the fill. */
+void terrain_surface_line_caves_box(const terrain_surface_t *surface, const terrain_density_box_t *box,
+                                    uint16_t *blocks);
+
+#endif

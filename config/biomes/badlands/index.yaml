@@ -1,0 +1,12 @@
+name: badlands
+where: land
+priority: 1
+climate: { temperature: [0.55, 1], humidity: [-1, 0.1], erosion: [-1, 0.2], height: [30, 170] }
+surface:
+  top: red_sand
+  filler: red_sand
+  filler_depth: 1
+  under: red_sandstone
+  under_depth: 3
+  bands: { depth: 14, from: 40 }
+features: { dead_bush: 2, cactus: 0.3 }

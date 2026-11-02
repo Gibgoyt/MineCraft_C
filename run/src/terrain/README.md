@@ -23,6 +23,8 @@
 | `hydrology` | Rivers, oceans, beaches, aquifers and the lava level, on top of the density's blocks | 10.4 |
 | `cave` | Cheese, spaghetti and noodle caves cut from any box of voxels | 10.5 |
 | `ore` | Deepslate by depth, and the table of rock and ore veins by depth, laid into any box of voxels | 10.5 |
+| `biome` | Which of the biomes in `config/biomes/` holds any column or voxel | 10.6 |
+| `surface` | What each biome lays on the ground, and lines its caves with | 10.6 |
 
 A part that needs tables takes them from `arena_tables` in its `_init`, called from `terrain_init`, and adds its noise fields
 to `noise_bank` there too. `TERRAIN_NOISE_FIELDS_MAX` says how many fields fit.

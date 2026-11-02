@@ -1,0 +1,9 @@
+name: taiga
+where: land
+climate: { temperature: [-0.45, -0.15], humidity: [0.15, 0.4], height: [-1000, 110] }
+surface:
+  top: grass_block
+  filler: dirt
+  patches:
+    - { block: podzol, from: 0.45, to: 1 }
+features: { tree_spruce: 8, grass: 2, fern: 3, mushroom: 0.2 }

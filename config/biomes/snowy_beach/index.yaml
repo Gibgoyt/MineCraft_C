@@ -1,0 +1,9 @@
+name: snowy_beach
+where: beach
+climate: { temperature: [-1, -0.45] }
+surface:
+  top: sand
+  filler: sand
+  under: sandstone
+  under_depth: 2
+features: { snow: 1, ice: 1 }

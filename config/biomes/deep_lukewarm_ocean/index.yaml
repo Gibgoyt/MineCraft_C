@@ -1,0 +1,7 @@
+name: deep_lukewarm_ocean
+where: deep_ocean
+climate: { temperature: [0.2, 1] }
+surface:
+  top: sand
+  filler: sand
+features: { seagrass: 8, kelp: 4 }

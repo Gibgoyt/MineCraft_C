@@ -1,0 +1,10 @@
+name: desert
+where: land
+climate: { temperature: [0.55, 1], humidity: [-1, 0.3], height: [-1000, 170] }
+surface:
+  top: sand
+  filler: sand
+  filler_depth: 3
+  under: sandstone
+  under_depth: 4
+features: { cactus: 1, dead_bush: 2, sugar_cane: 0.2 }

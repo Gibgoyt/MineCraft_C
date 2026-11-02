@@ -1,0 +1,8 @@
+name: sunflower_plains
+where: land
+priority: 1
+climate: { temperature: [-0.15, 0.2], humidity: [-1, -0.4], weirdness: [0.2, 1], height: [-1000, 110] }
+surface:
+  top: grass_block
+  filler: dirt
+features: { tree_oak: 0.02, grass: 12, flower: 8 }

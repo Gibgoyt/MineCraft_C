@@ -1,0 +1,8 @@
+name: cherry_grove
+where: land
+climate: { temperature: [-0.15, 0.2], humidity: [0.1, 1], height: [110, 170] }
+surface:
+  top: grass_block
+  filler: dirt
+  steep: { block: stone, from: 1.5 }
+features: { tree_cherry: 3, grass: 12, flower: 8 }
