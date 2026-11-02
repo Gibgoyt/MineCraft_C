@@ -1,0 +1,10 @@
+name: bamboo_jungle
+where: land
+priority: 1
+climate: { temperature: [0.2, 0.55], humidity: [0.4, 1], weirdness: [0.2, 1], height: [-1000, 110] }
+surface:
+  top: grass_block
+  filler: dirt
+  patches:
+    - { block: podzol, from: 0.2, to: 1 }
+features: { tree_jungle: 6, grass: 6, fern: 6, vine: 4 }

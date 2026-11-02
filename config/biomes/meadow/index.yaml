@@ -1,0 +1,8 @@
+name: meadow
+where: land
+climate: { temperature: [-0.15, 0.2], humidity: [-1, 0.1], height: [110, 170] }
+surface:
+  top: grass_block
+  filler: dirt
+  steep: { block: stone, from: 1.5 }
+features: { grass: 20, flower: 10, tree_oak: 0.02 }

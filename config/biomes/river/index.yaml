@@ -1,0 +1,7 @@
+name: river
+where: river
+climate: { temperature: [-0.45, 1] }
+surface:
+  top: sand
+  filler: sand
+features: { seagrass: 4, sugar_cane: 2, kelp: 1 }

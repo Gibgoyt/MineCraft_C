@@ -1,0 +1,7 @@
+name: sparse_jungle
+where: land
+climate: { temperature: [0.2, 0.55], humidity: [0.15, 0.4], height: [-1000, 110] }
+surface:
+  top: grass_block
+  filler: dirt
+features: { tree_jungle: 3, tree_oak: 1, grass: 6, fern: 2, vine: 2, melon: 0.1 }

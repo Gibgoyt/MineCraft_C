@@ -1,0 +1,9 @@
+name: lush_caves
+where: underground
+priority: 1
+climate: { humidity: [0.5, 1], z: [-120, 300] }
+cave:
+  floor: moss_block
+  ceiling: rooted_dirt
+  patches:
+    - { block: clay, from: 0.5, to: 1 }

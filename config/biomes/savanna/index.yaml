@@ -1,0 +1,9 @@
+name: savanna
+where: land
+climate: { temperature: [0.2, 0.55], humidity: [-1, 0.1], height: [-1000, 70] }
+surface:
+  top: grass_block
+  filler: dirt
+  patches:
+    - { block: coarse_dirt, from: 0.55, to: 1 }
+features: { tree_acacia: 1, grass: 15, flower: 0.5 }

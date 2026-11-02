@@ -1,0 +1,10 @@
+name: swamp
+where: land
+priority: 3
+climate: { temperature: [-0.45, 0.55], humidity: [-0.1, 1], erosion: [0.5, 1], continentalness: [-0.2, 0.5], height: [-1000, 24] }
+surface:
+  top: grass_block
+  filler: dirt
+  wet_top: mud
+  wet_depth: 2
+features: { tree_oak: 2, grass: 4, lily_pad: 4, mushroom: 2, sugar_cane: 2, seagrass: 4, vine: 2 }

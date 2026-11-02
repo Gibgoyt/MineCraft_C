@@ -1,0 +1,12 @@
+name: frozen_peaks
+where: land
+climate: { temperature: [-1, -0.15], weirdness: [-1, 0], height: [170, 1000] }
+surface:
+  top: snow_block
+  filler: packed_ice
+  filler_depth: 2
+  steep: { block: packed_ice, from: 2 }
+  patches:
+    - { block: packed_ice, from: -0.2, to: 0.2 }
+    - { block: ice, from: 0.2, to: 0.35 }
+features: { snow: 1, ice: 1 }

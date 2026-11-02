@@ -1,0 +1,8 @@
+name: stony_shore
+where: stony_shore
+surface:
+  top: stone
+  filler: stone
+  filler_depth: 0
+  patches:
+    - { block: gravel, from: 0.3, to: 0.6 }

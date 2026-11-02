@@ -1,0 +1,7 @@
+name: frozen_river
+where: river
+climate: { temperature: [-1, -0.45] }
+surface:
+  top: sand
+  filler: sand
+features: { ice: 1, snow: 1 }

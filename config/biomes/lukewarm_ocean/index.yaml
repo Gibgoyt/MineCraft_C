@@ -1,0 +1,7 @@
+name: lukewarm_ocean
+where: ocean
+climate: { temperature: [0.2, 0.55] }
+surface:
+  top: sand
+  filler: sand
+features: { seagrass: 8, kelp: 4 }

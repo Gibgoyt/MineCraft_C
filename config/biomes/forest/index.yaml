@@ -1,0 +1,7 @@
+name: forest
+where: land
+climate: { temperature: [-0.45, 0.2], humidity: [-0.15, 0.15], height: [-1000, 110] }
+surface:
+  top: grass_block
+  filler: dirt
+features: { tree_oak: 7, tree_birch: 2, grass: 2, flower: 1, mushroom: 0.1 }

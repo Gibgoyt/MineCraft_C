@@ -1,0 +1,7 @@
+name: dark_forest
+where: land
+climate: { temperature: [-0.15, 0.2], humidity: [0.4, 1], height: [-1000, 110] }
+surface:
+  top: grass_block
+  filler: dirt
+features: { tree_dark_oak: 14, tree_oak: 1, grass: 2, mushroom: 1 }

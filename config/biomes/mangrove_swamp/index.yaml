@@ -1,0 +1,11 @@
+name: mangrove_swamp
+where: land
+priority: 3
+climate: { temperature: [0.55, 1], humidity: [-0.1, 1], erosion: [0.5, 1], continentalness: [-0.2, 0.5], height: [-1000, 24] }
+surface:
+  top: mud
+  filler: mud
+  filler_depth: 4
+  wet_top: mud
+  wet_depth: 3
+features: { tree_mangrove: 8, grass: 2, seagrass: 4, lily_pad: 1, vine: 2 }

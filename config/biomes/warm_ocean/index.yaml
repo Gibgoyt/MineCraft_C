@@ -1,0 +1,7 @@
+name: warm_ocean
+where: ocean
+climate: { temperature: [0.55, 1] }
+surface:
+  top: sand
+  filler: sand
+features: { seagrass: 8 }
