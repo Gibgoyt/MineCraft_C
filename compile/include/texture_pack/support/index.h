@@ -22,7 +22,7 @@ char *tp_arena_text(tp_arena_t *arena, const void *bytes, uint64_t length);
 [[gnu::format(printf, 2, 3)]]
 char *tp_arena_format(tp_arena_t *arena, const char *format, ...);
 
-/* Prints "texture_pack: <message>" to stderr. Returns false, so a caller can write `return tp_fail(...)`. */
+/* Prints "<this program's name>: <message>" to stderr; texture_vector shares this. Returns false, so a caller can write `return tp_fail(...)`. */
 [[gnu::format(printf, 1, 2)]]
 bool tp_fail(const char *format, ...);
 

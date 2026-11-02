@@ -1,7 +1,7 @@
 /* See README.md. */
 #include "texture_pack/support/index.h"
 
-#include <errno.h>
+#include <errno.h> /* program_invocation_short_name too */
 #include <fcntl.h>
 #include <inttypes.h>
 #include <stdarg.h>
@@ -53,7 +53,7 @@ char *tp_arena_format(tp_arena_t *arena, const char *format, ...) {
 }
 
 bool tp_fail(const char *format, ...) {
-    fputs("texture_pack: ", stderr);
+    fprintf(stderr, "%s: ", program_invocation_short_name); /* texture_vector shares this */
     va_list arguments;
     va_start(arguments, format);
     vfprintf(stderr, format, arguments);

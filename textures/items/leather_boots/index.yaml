@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: leather_boots
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A leather boots."
+  seed: 1680520338
+  ops:
+    - op: art
+      palette: { l: "#a56f42", m: "#7f5230", d: "#573720" }
+      rows:
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "...lmd....lmd..."
+        - "...lmd....lmd..."
+        - "...lmd....lmd..."
+        - "...lmd....lmd..."
+        - "...lmd....lmd..."
+        - "..lmmd...lmmd..."
+        - ".lmmmd..lmmmd..."
+        - ".ddddd..ddddd..."
+        - "................"
+        - "................"
+        - "................"

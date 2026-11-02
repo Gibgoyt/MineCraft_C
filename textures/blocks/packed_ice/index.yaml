@@ -1,0 +1,14 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: packed_ice
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Ice pressed hard enough not to melt."
+  seed: 1085975531
+  ops:
+    - { op: fill, color: "#8bb1e6" }
+    - { op: noise, amount: 10, cell: 4 }
+    - { op: noise, amount: 5, cell: 1 }
+    - { op: line, color: "#c4dbf8", x0: 2, y0: 3, x1: 9, y1: 7 }
+    - { op: line, color: "#c4dbf8", x0: 8, y0: 11, x1: 14, y1: 9 }

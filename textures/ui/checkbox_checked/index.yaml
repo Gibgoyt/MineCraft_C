@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: checkbox_checked
+group: ui
+size: { width: 12, height: 12, frames: 1 }
+source:
+  kind: procedural
+  about: "A box ticked."
+  seed: 1264226028
+  ops:
+    - op: art
+      palette: { o: "#404040", b: "#202020", w: "#a0a0a0" }
+      rows:
+        - "............"
+        - ".oooooooooo."
+        - ".obbbbbbbbw."
+        - ".obbbbbbbbw."
+        - ".obbbbbbbbw."
+        - ".obbbbbbbbw."
+        - ".obbbbbbbbw."
+        - ".obbbbbbbbw."
+        - ".obbbbbbbbw."
+        - ".obbbbbbbbw."
+        - ".owwwwwwwww."
+        - "............"
+    - { op: line, color: "#7fe07f", x0: 3, y0: 6, x1: 5, y1: 8 }
+    - { op: line, color: "#7fe07f", x0: 5, y0: 8, x1: 8, y1: 3 }
+    - { op: line, color: "#5fc05f", x0: 3, y0: 7, x1: 5, y1: 9 }
+    - { op: line, color: "#5fc05f", x0: 5, y0: 9, x1: 8, y1: 4 }

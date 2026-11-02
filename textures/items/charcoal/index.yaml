@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: charcoal
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A burnt stick of wood."
+  seed: 377996701
+  ops:
+    - op: art
+      palette: { l: "#4e4842", m: "#2f2a26", d: "#161311" }
+      rows:
+        - "................"
+        - "................"
+        - "................"
+        - "..........lmm..."
+        - "........lmmmmd.."
+        - "......lmmmmmdd.."
+        - ".....lmmdmmdd..."
+        - "...lmmmmmmdd...."
+        - "..lmmmdmmdd....."
+        - "..mmmmmmdd......"
+        - "..dmmmmdd......."
+        - "...dddd........."
+        - "................"
+        - "................"
+        - "................"
+        - "................"

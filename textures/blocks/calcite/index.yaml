@@ -1,0 +1,14 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: calcite
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Bright chalky stone."
+  seed: 1189393255
+  ops:
+    - { op: fill, color: "#dfe0da" }
+    - { op: noise, amount: 6, cell: 4 }
+    - { op: noise, amount: 2, cell: 2 }
+    - { op: noise, amount: 4, cell: 1 }
+    - { op: speckle, color: "#c6c7c1", permille: 80 }

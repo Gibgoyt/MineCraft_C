@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: lilac_top
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The purple head of a lilac."
+  seed: 1788789167
+  ops:
+    - op: art
+      palette: { a: "#b47ad1", b: "#8d58ad", g: "#3f7a2d" }
+      rows:
+        - "................"
+        - "......a.b......."
+        - ".....abaab......"
+        - "....baabaab....."
+        - "....abbaaba....."
+        - ".....abaab......"
+        - "....abaabba....."
+        - ".....baaba......"
+        - "......aba......."
+        - "......gag......."
+        - ".......g........"
+        - "......gg........"
+        - ".......g........"
+        - ".......gg......."
+        - ".......g........"
+        - ".......g........"

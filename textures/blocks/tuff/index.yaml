@@ -1,0 +1,15 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: tuff
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Grey-green volcanic ash stone."
+  seed: 333306207
+  ops:
+    - { op: fill, color: "#6b6d63" }
+    - { op: noise, amount: 12, cell: 4 }
+    - { op: noise, amount: 8, cell: 2 }
+    - { op: noise, amount: 8, cell: 1 }
+    - { op: speckle, color: "#54564d", permille: 120, seed: 1 }
+    - { op: speckle, color: "#83857a", permille: 70, seed: 2 }

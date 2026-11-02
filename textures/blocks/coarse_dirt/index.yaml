@@ -1,0 +1,15 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: coarse_dirt
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Dirt too stony to grow grass."
+  seed: 1661069504
+  ops:
+    - { op: fill, color: "#75573f" }
+    - { op: noise, amount: 14, cell: 2 }
+    - { op: noise, amount: 10, cell: 1 }
+    - { op: speckle, color: "#5a412e", permille: 150, seed: 1 }
+    - { op: speckle, color: "#93775c", permille: 90, seed: 2 }
+    - { op: blobs, color: "#6e6a62", count: 3, radius_min: 0, radius_max: 1, jitter: 8 }

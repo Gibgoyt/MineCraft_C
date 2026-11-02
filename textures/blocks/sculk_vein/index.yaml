@@ -1,0 +1,14 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: sculk_vein
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Thin veins of sculk."
+  seed: 804191865
+  ops:
+    - { op: line, color: "#1c5664", x0: 2, y0: 14, x1: 7, y1: 8 }
+    - { op: line, color: "#1c5664", x0: 7, y0: 8, x1: 13, y1: 11 }
+    - { op: line, color: "#1c5664", x0: 7, y0: 8, x1: 5, y1: 1 }
+    - { op: line, color: "#0f2a33", x0: 13, y0: 11, x1: 14, y1: 3 }
+    - { op: speckle, color: "#3fb6c7", permille: 0 }

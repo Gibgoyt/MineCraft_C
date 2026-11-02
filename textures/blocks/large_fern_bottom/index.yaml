@@ -1,0 +1,16 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: large_fern_bottom
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The base of a tall fern."
+  seed: 1546102704
+  ops:
+    - { op: line, color: "#2a5c26", x0: 8, y0: 0, x1: 8, y1: 15 }
+    - { op: line, color: "#3f7f35", x0: 8, y0: 3, x1: 3, y1: 0 }
+    - { op: line, color: "#3f7f35", x0: 8, y0: 3, x1: 13, y1: 0 }
+    - { op: line, color: "#3f7f35", x0: 8, y0: 8, x1: 2, y1: 4 }
+    - { op: line, color: "#3f7f35", x0: 8, y0: 8, x1: 14, y1: 4 }
+    - { op: line, color: "#3f7f35", x0: 8, y0: 13, x1: 3, y1: 9 }
+    - { op: line, color: "#3f7f35", x0: 8, y0: 13, x1: 13, y1: 9 }

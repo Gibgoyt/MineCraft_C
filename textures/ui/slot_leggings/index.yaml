@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: slot_leggings
+group: ui
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Marks the slot leggings go in."
+  seed: 1522893516
+  ops:
+    - op: art
+      palette: { m: "#00000060" }
+      rows:
+        - "................"
+        - "................"
+        - "....mmmmmmmm...."
+        - "....mmmmmmmm...."
+        - "....mmmmmmmm...."
+        - "....mmm..mmm...."
+        - "....mmm..mmm...."
+        - "....mmm..mmm...."
+        - "....mmm..mmm...."
+        - "....mmm..mmm...."
+        - "....mmm..mmm...."
+        - "....mmm..mmm...."
+        - "....mmm..mmm...."
+        - "................"
+        - "................"
+        - "................"

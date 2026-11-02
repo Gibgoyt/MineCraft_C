@@ -1,0 +1,31 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: cave_vines_lit
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Vines carrying glowing berries."
+  seed: 839962989
+  ops:
+    - { op: line, color: "#4f7a2a", x0: 8, y0: 0, x1: 7, y1: 15 }
+    - { op: line, color: "#3f6a22", x0: 8, y0: 0, x1: 8, y1: 8 }
+    - op: art
+      palette: { a: "#5f8f30" }
+      rows:
+        - ".......a........"
+        - ".....aaa........"
+        - "......a.a......."
+        - ".........aa....."
+        - ".........a......"
+        - ".....aa........."
+        - "......a........."
+        - ".........a......"
+        - ".........aa....."
+        - ".....aa........."
+        - "......a........."
+        - ".........a......"
+        - "........aa......"
+        - ".....a.........."
+        - ".....aa........."
+        - "................"
+    - { op: blobs, color: "#f5b73a", count: 4, radius_min: 0, radius_max: 1, jitter: 10, x: 4, y: 1, w: 8, h: 14, seed: 1 }

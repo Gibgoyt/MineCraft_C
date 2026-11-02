@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: cherry_sapling
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A young cherry."
+  seed: 451194879
+  ops:
+    - op: art
+      palette: { a: "#e8a2c0", b: "#cf82a7", t: "#3a2430" }
+      rows:
+        - "................"
+        - "................"
+        - "................"
+        - "......aab......."
+        - ".....aabaa......"
+        - "....aaabaab....."
+        - "...baaaabaa....."
+        - "...aabaaaaab...."
+        - "....aaabaaa....."
+        - ".....baaab......"
+        - "......aaa......."
+        - ".......t........"
+        - ".......t........"
+        - ".......t........"
+        - "......tt........"
+        - "................"

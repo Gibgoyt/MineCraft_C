@@ -1,0 +1,12 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: sunflower_back
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The back of a sunflower."
+  seed: 1021821130
+  ops:
+    - { op: disc, color: "#d99f1c", cx: 8, cy: 8, rx: 7, ry: 7 }
+    - { op: disc, color: "#5a8a2c", cx: 8, cy: 8, rx: 5, ry: 5 }
+    - { op: noise, amount: 9, cell: 1 }

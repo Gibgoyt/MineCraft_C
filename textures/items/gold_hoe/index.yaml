@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: gold_hoe
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A gold hoe."
+  seed: 1555644579
+  ops:
+    - op: art
+      palette: { l: "#fff4a0", m: "#eec83a", d: "#a97f17", h: "#7a5230", g: "#4f3520" }
+      rows:
+        - "................"
+        - "........lmmmmd.."
+        - ".......lmmmmmmd."
+        - ".......hmmd..dd."
+        - "......hhgdd....."
+        - ".....hhg........"
+        - "....hhg........."
+        - "...hhg.........."
+        - "..hhg..........."
+        - ".hhg............"
+        - "hhg............."
+        - "hg.............."
+        - "................"
+        - "................"
+        - "................"
+        - "................"

@@ -1,0 +1,16 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: deepslate_lapis_ore
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Lapis ore in deep rock."
+  seed: 1309995720
+  ops:
+    - { op: fill, color: "#4d4d55" }
+    - { op: noise, amount: 10, cell: 4 }
+    - { op: noise, amount: 6, cell: 2 }
+    - { op: noise, amount: 7, cell: 1 }
+    - { op: blobs, color: "#16306f", count: 3, radius_min: 1, radius_max: 1, jitter: 0, x: 3, y: 3, w: 10, h: 10, seed: 1 }
+    - { op: blobs, color: "#2a4fb0", count: 4, radius_min: 1, radius_max: 1, jitter: 6, x: 3, y: 3, w: 10, h: 10, seed: 2 }
+    - { op: speckle, color: "#5a82df", permille: 70, x: 3, y: 3, w: 10, h: 10, seed: 3 }

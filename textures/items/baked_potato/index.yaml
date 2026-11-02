@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: baked_potato
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A potato out of the fire."
+  seed: 1357747658
+  ops:
+    - op: art
+      palette: { l: "#c79a58", m: "#a3743a", d: "#6e4a22", w: "#f3e6a6" }
+      rows:
+        - "................"
+        - "................"
+        - "................"
+        - ".......lmmm....."
+        - ".....lmmwwmmd..."
+        - "....lmmwwwwmmd.."
+        - "...lmmwwwwwmmd.."
+        - "...lmmmwwwmmmd.."
+        - "...mmmmmmmmmd..."
+        - "....mmmmmmmd...."
+        - ".....dmmmdd....."
+        - ".......dd......."
+        - "................"
+        - "................"
+        - "................"
+        - "................"

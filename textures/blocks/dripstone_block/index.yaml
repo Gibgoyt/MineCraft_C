@@ -1,0 +1,13 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: dripstone_block
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Brown streaked cave stone."
+  seed: 1861570622
+  ops:
+    - { op: fill, color: "#86694f" }
+    - { op: noise, amount: 20, cell_x: 2, cell_y: 8 }
+    - { op: noise, amount: 10, cell_x: 1, cell_y: 2 }
+    - { op: speckle, color: "#6a523e", permille: 70 }
