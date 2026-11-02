@@ -270,7 +270,7 @@ static main_exit_t main_run_test_pattern(app_t *app, const main_options_t *optio
     if (!input_init(&app->input, INPUT_DEVICE_DIRECTORY, input_ops_real(), nullptr)) {
         return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
     }
-    display_test_pattern_set_cursor(&app->display, input_test_pattern_cursor, &app->input);
+    display_test_pattern_set_cursor(&app->display, input_test_pattern_cursor, input_test_pattern_discard, &app->input);
     const display_status_t ran = display_test_pattern_run(&app->display, started_ns, DISPLAY_TEST_PATTERN_NS);
     input_report(&app->input);
     return main_exit_from_display(ran);

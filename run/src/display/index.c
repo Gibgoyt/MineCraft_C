@@ -190,8 +190,14 @@ static bool display_draw_frame(display_t *display, uint64_t frame) {
                                 &active)) {
         return false;
     }
+    /* Erasing the cursor puts back the bare pattern, so if it was over the notice, the notice goes back on as well: it is the
+     * only thing on screen that says how to get out. */
+    const bool repair_notice = back->has_cursor != 0u && back->cursor_y < display_vt_guard_notice_bottom(back);
     display_flip_pattern_cursor_erase(back);
     display_flip_pattern_frame(back, frame);
+    if (repair_notice) {
+        display_vt_guard_draw_notice(back);
+    }
     display_flip_pattern_cursor_draw(back, x, y, active);
     return true;
 }
@@ -223,6 +229,7 @@ static void display_test_pattern_loop(display_t *display, int64_t started_ns, in
     display_flip_t *const flip = &display->flip;
     display_vt_guard_t *const guard = &display->guard;
     uint64_t frame = 0;
+    bool was_away = false;
     while (atomic_load_explicit(&display_stop_signal, memory_order_relaxed) == 0 &&
            time_now_ns() - started_ns < duration_ns) {
         display_vt_guard_pet(guard);
@@ -231,7 +238,14 @@ static void display_test_pattern_loop(display_t *display, int64_t started_ns, in
             return;
         }
         if (state == DISPLAY_VT_GUARD_AWAY) {
+            was_away = true;
             continue; /* it has paused; the deadline and the stop signals still count */
+        }
+        if (was_away) {
+            was_away = false;
+            if (display->cursor_discard != nullptr) {
+                display->cursor_discard(display->borrowed_cursor_context);
+            }
         }
         if (!display_flip_once(display, frame)) {
             return;
@@ -263,8 +277,10 @@ static void display_test_pattern_report(const display_t *display) {
              display->mode.refresh_mhz / 1000u, display->mode.refresh_mhz % 1000u);
 }
 
-void display_test_pattern_set_cursor(display_t *display, display_cursor_source_t source, void *context) {
+void display_test_pattern_set_cursor(display_t *display, display_cursor_source_t source,
+                                     display_cursor_discard_t discard, void *context) {
     display->cursor_source = source;
+    display->cursor_discard = discard;
     display->borrowed_cursor_context = context;
 }
 

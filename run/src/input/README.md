@@ -13,6 +13,7 @@ parts it starts: `events`, `discovery`. `ops` is a table and needs no starting.
 - `input_report`: logs what the polls counted. For after the console is back.
 - `input_cursor_move`: moves a position by a frame's mouse movement, inside a rectangle.
 - `input_test_pattern_cursor`: what `--test-pattern` draws its cursor square from. Esc ends the run; holding a key or button changes the square's colour.
+- `input_test_pattern_discard`: throws away what waited while another VT was on screen. See below.
 
 **May be called by:** `main`, `game`.
 **Depends on:** `heap`, `arena`, `log`.
@@ -27,7 +28,13 @@ directory. Neither reaches a real device.
 
 It does not grab anything: see `input/ops`.
 
-## Until Stage 05.2
+## The console's own keyboard
 
-The keyboard goes on reaching the console too until `K_OFF`, which is Stage 05.2's. Until then, keys pressed during
-`--test-pattern` wait in the tty, and the shell gets them on exit. Ctrl+C still raises `SIGINT`, which restores the display.
+During `--test-pattern`, `display/vt_guard` has the console in `K_OFF`, so keys reach this code and not the shell. The guard's
+emergency exit reads the keyboards for itself, in another process, and uses nothing here.
+
+## Another VT on screen
+
+Nothing here is polled while another VT is showing, but the evdev queues go on filling. What they hold on the way back was typed
+at something else, so `input_test_pattern_discard` takes it in without acting on it: an Esc pressed in X does not end the run. It
+reads it because the state of what is held has to stay right, and it keeps nothing else.

@@ -12,7 +12,7 @@
 - `display_vt_guard_give_back`: the normal way out.
 - `display_vt_guard_pet`, `display_vt_guard_service`: once a frame. The first tells the watchdog we are alive, the second does the VT switching.
 - `display_vt_guard_keys_take`: pure; what one key event asks for.
-- `display_vt_guard_draw_notice`: writes the emergency exit across the top of a buffer.
+- `display_vt_guard_draw_notice`, `display_vt_guard_notice_bottom`: write the emergency exit across the top of a buffer, and say where that band ends, so that whatever erases over it knows to write it again.
 - `display_vt_guard_crash_test_from_name`, `display_vt_guard_crash_now`: `--crash-test`.
 
 **May be called by:** `display`, `render/frame` (Stage 08.4).

@@ -767,16 +767,28 @@ static const guard_glyph_t *guard_glyph_for(char character) {
     return nullptr; /* a space */
 }
 
-void display_vt_guard_draw_notice(display_buffer_t *buffer) {
-    const uint32_t length = (uint32_t)sizeof(guard_notice_text) - 1u;
-    const uint32_t cells = length * GUARD_NOTICE_CELL;
+/* 0 if the notice does not fit. */
+static uint32_t guard_notice_scale(const display_buffer_t *buffer) {
+    const uint32_t cells = ((uint32_t)sizeof(guard_notice_text) - 1u) * GUARD_NOTICE_CELL;
     if (buffer->width <= GUARD_NOTICE_MARGIN * 2u || buffer->height <= GUARD_NOTICE_MARGIN * 2u) {
-        return;
+        return 0u;
     }
     uint32_t scale = (buffer->width - GUARD_NOTICE_MARGIN * 2u) / cells;
     scale = scale < GUARD_NOTICE_SCALE_MAX ? scale : GUARD_NOTICE_SCALE_MAX;
     /* A band at most an eighth of the screen, so that the moving square in the middle never reaches it. */
-    if (scale == 0u || (GUARD_NOTICE_GLYPH_ROWS + 2u) * scale > buffer->height / 8u) {
+    return (GUARD_NOTICE_GLYPH_ROWS + 2u) * scale > buffer->height / 8u ? 0u : scale;
+}
+
+uint32_t display_vt_guard_notice_bottom(const display_buffer_t *buffer) {
+    const uint32_t scale = guard_notice_scale(buffer);
+    return scale == 0u ? 0u : GUARD_NOTICE_MARGIN + (GUARD_NOTICE_GLYPH_ROWS + 2u) * scale;
+}
+
+void display_vt_guard_draw_notice(display_buffer_t *buffer) {
+    const uint32_t length = (uint32_t)sizeof(guard_notice_text) - 1u;
+    const uint32_t cells = length * GUARD_NOTICE_CELL;
+    const uint32_t scale = guard_notice_scale(buffer);
+    if (scale == 0u) {
         return;
     }
     const uint32_t band_height = (GUARD_NOTICE_GLYPH_ROWS + 2u) * scale;

@@ -60,4 +60,9 @@ void input_cursor_move(input_cursor_t *cursor, const input_frame_t *frame, uint3
 bool input_test_pattern_cursor(void *context, uint32_t room_x, uint32_t room_y, uint32_t *out_x, uint32_t *out_y,
                                bool *out_active);
 
+/* The test pattern's way to throw away what waited while another VT was on screen, with the shape of
+ * display_cursor_discard_t. Reads it all and keeps track of what is held, but neither its presses nor its movement are
+ * seen by the next poll. */
+void input_test_pattern_discard(void *context);
+
 #endif

@@ -949,6 +949,44 @@ TEST(the_test_patterns_cursor_moves_with_a_replayed_mouse_and_esc_ends_it) {
     finish(t, input, fake);
 }
 
+TEST(what_waited_while_another_vt_showed_neither_moves_the_cursor_nor_ends_the_run) {
+    fake_evdev_t *const fake = fake_new(t);
+    fake_device_t *const mouse = fake_add(fake, "event0", "Mouse", fake_caps_mouse, true);
+    fake_device_t *const keyboard = fake_add(fake, "event1", "Keyboard", fake_caps_keyboard, true);
+    input_t *const input = start(t, fake);
+    uint32_t x = 0;
+    uint32_t y = 0;
+    bool active = true;
+    CHECK(input_test_pattern_cursor(input, 1000u, 600u, &x, &y, &active));
+
+    /* Typed in X: Esc pressed and let go, a move, and W still held when the switch back comes. */
+    static const struct input_event esc_tapped[] = {REPLAY_EVENT(EV_KEY, KEY_ESC, 1), REPLAY_SYN,
+                                                    REPLAY_EVENT(EV_KEY, KEY_ESC, 0), REPLAY_SYN};
+    fake_replay(keyboard, esc_tapped, REPLAY_COUNT(esc_tapped));
+    fake_replay(mouse, replay_mouse_moves, REPLAY_COUNT(replay_mouse_moves));
+    fake_replay(keyboard, replay_w_held, REPLAY_COUNT(replay_w_held));
+    input_test_pattern_discard(input);
+
+    CHECK(input_test_pattern_cursor(input, 1000u, 600u, &x, &y, &active));
+    CHECK_EQ_U64(x, 500u);
+    CHECK_EQ_U64(y, 300u);
+    CHECK(active); /* what is held now is still true */
+
+    /* And an Esc held through the switch, pressed before it and let go after, is no press here either. */
+    static const struct input_event esc_down[] = {REPLAY_EVENT(EV_KEY, KEY_ESC, 1), REPLAY_SYN};
+    fake_replay(keyboard, esc_down, REPLAY_COUNT(esc_down));
+    input_test_pattern_discard(input);
+    CHECK(input_test_pattern_cursor(input, 1000u, 600u, &x, &y, &active));
+
+    /* A press made here still counts. */
+    static const struct input_event esc_up[] = {REPLAY_EVENT(EV_KEY, KEY_ESC, 0), REPLAY_SYN};
+    fake_replay(keyboard, esc_up, REPLAY_COUNT(esc_up));
+    CHECK(input_test_pattern_cursor(input, 1000u, 600u, &x, &y, &active));
+    fake_replay(keyboard, esc_down, REPLAY_COUNT(esc_down));
+    CHECK(!input_test_pattern_cursor(input, 1000u, 600u, &x, &y, &active));
+    finish(t, input, fake);
+}
+
 /* ---- The square on the test pattern ------------------------------------------------------------------------------- */
 
 enum : uint32_t {

@@ -112,3 +112,9 @@ bool input_test_pattern_cursor(void *context, uint32_t room_x, uint32_t room_y, 
     *out_active = input_keys_any(&frame->down);
     return !input_keys_has(&frame->pressed, KEY_ESC);
 }
+
+/* A poll takes everything in, and the next one starts by clearing the edges and the movement, so nothing but the state of
+ * what is held survives this. */
+void input_test_pattern_discard(void *context) {
+    (void)input_poll(context);
+}

@@ -2,7 +2,7 @@
 
 **Purpose:** the two display backends: KMS, which takes the display from a text console, picks an output, shows pixels and gives it all back; and `headless`, which has no display at all.
 **Tier:** Owner.
-**Owns:** one `heap_region_t`, with `arena_setup` over it, which `display/mode` allocates from at init. The parts it starts:
+**Owns:** one `heap_region_t`, with `arena_setup` over it, which `display/mode` and `display/vt_guard` allocate from at init. The parts it starts:
 `device`, `mode`, `flip`, `vt_guard`. Apart from those, one more region and arena in `display_offscreen_t`, which `display/headless` allocates from.
 **Lifetime:** Process.
 **Threads:** main. The signal handler only sets a flag.
@@ -14,8 +14,9 @@
 - `display_offscreen_config_from_machine`, `display_offscreen_init`, `display_offscreen_deinit`: a pair and its defaults. They reserve for and start the no-display backend, and touch no card and no console. How to use it is in `headless/README.md`.
 - `display_test_pattern_run`: `--test-pattern`. Bars and a moving square, flipped at the mode's rate until it ends by itself
   or a signal stops it, then the display goes back and the flip timings are logged.
-- `display_test_pattern_set_cursor`: adds a cursor square, placed each frame by a function it is given. `main` joins this to
-  `input`, so that this system does not include that one.
+- `display_test_pattern_set_cursor`: adds a cursor square, placed each frame by a function it is given, and a second function
+  called once on coming back from another VT, to throw away what waited meanwhile. `main` joins these to `input`, so that this
+  system does not include that one.
 
 **May be called by:** `main`, `game`.
 **Depends on:** `heap`, `arena`, `log`, `time`, generated `machine/index.h`.
