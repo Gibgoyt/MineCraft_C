@@ -8,6 +8,7 @@
 #include "gpu_bridge/device_memory/index.h"
 #include "gpu_bridge/status/index.h"
 #include "gpu_bridge/traverse/index.h"
+#include "heap/index.h"
 #include "types/index.h"
 #include "world/column/index.h"
 
@@ -257,12 +258,21 @@ static bool tw_world_upload(test_context_t *t, device_memory_t *memory, tw_world
     tw_encode(world, nullptr, nullptr);
     const uint64_t slots = (uint64_t)world->columns_wide * world->columns_wide;
     world_buffers_column_t *const table = test_alloc(t, slots * sizeof(world_buffers_column_t));
-    uint8_t *const pool = test_alloc(t, world->pool_bytes + 64u);
     memset(table, 0, slots * sizeof(world_buffers_column_t));
+    /* From the heap and not the test arena, and given back: at R = 32 this alone is 618 MiB, which with the dense world would
+     * not fit in the arena's 1 GiB. */
+    heap_region_t region;
+    if (!CHECK(heap_reserve(world->pool_bytes + 64u, &region))) {
+        return false;
+    }
+    uint8_t *const pool = region.owned_base;
     memset(pool, 0, world->pool_bytes + 64u);
     tw_encode(world, table, pool);
-    return tw_block_up(t, memory, &world->table, table, slots * sizeof(world_buffers_column_t), "tw table") &&
-           tw_block_up(t, memory, &world->pool, pool, world->pool_bytes, "tw pool");
+    const bool sent =
+        tw_block_up(t, memory, &world->table, table, slots * sizeof(world_buffers_column_t), "tw table") &&
+        tw_block_up(t, memory, &world->pool, pool, world->pool_bytes, "tw pool");
+    heap_release(&region);
+    return sent;
 }
 
 static bool tw_open(test_context_t *t, device_memory_t *memory) {
