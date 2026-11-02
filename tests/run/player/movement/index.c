@@ -841,7 +841,8 @@ TEST(any_input_through_any_place_stays_clear_of_everything_and_gives_the_same_by
             modes_seen |= (uint8_t)(1u << runs[run].mode);
             const float64_t height =
                 runs[run].crouched != 0u ? PLAYER_MOVEMENT_HEIGHT_CROUCHED : PLAYER_MOVEMENT_HEIGHT_STANDING;
-            const collision_box_t box = player_movement_box(runs[run].position, height);
+            collision_box_t box;
+            player_movement_box(runs[run].position, height, &box);
             /* It started clear, so it is clear now. */
             if (!CHECK(physics_box_is_clear(w.physics, w.map, &box))) {
                 test_world_end(&w);

@@ -7,7 +7,7 @@
 **Threads:** main; and for the test of the real loop, the real workers and the real `sim` and `gpu` threads.
 **Public functions:** none; a test program.
 **May be called by:** ctest.
-**Depends on:** `tests/harness/`, `tests/run/physics/fixtures/`, `run/src/player/`, `run/src/game/` and everything under it, `config/blocks/`, and a card for the tests of the game.
+**Depends on:** `tests/harness/`, `tests/run/input/fixtures/`, `tests/run/physics/fixtures/`, `run/src/player/`, `run/src/game/` and everything under it, `config/blocks/`, and a card for the tests of the game.
 
 Compute only. No real display, console or input device is opened: pictures go into plain memory, and the program always runs `--headless`.
 
@@ -22,4 +22,6 @@ What it checks:
 - **Edits are real:** each goes in the log and flags its section for the renderer, save and light.
 - **Through the player:** a click between ticks, no one at the controls, and walking up to a wall of dirt on real intents, mining it with a real aim, walking through the gap, and placing it back.
 - **The real threads:** a real world on the card, mined through `game_hands_send`, what it drops picked up from the ground, placed back, and the picture changing.
+- **Real buttons:** fake kernel events for the left and right buttons, through `input/` and `game_loop_source`, on the real threads: mined, picked up, and placed back by clicks that begin and end between two polls.
+- **What goes by itself:** water washing a dandelion away in a running game, and the item coming out through `game_sim_tick`.
 - **The program:** a script walks, looks down, mines through grass to dirt, mines a wall of the hole, and places one back, with screenshots before and after each. The same script gives the same bytes twice.

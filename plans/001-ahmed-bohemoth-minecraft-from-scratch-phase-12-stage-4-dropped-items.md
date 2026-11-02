@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 12, stage 4: Dropped items
 
-**Status:** done   (updated 2026-11-02)
+**Status:** in progress   (updated 2026-11-02). Every check an agent can run has passed. Waiting for Ahmed's check with a real mouse, the one unticked box.
 
 ## Goal
 
@@ -101,7 +101,9 @@ The smallest needed to call this stage's module, as the task allows:
 
 - **Expected:** with items now in the world, what `world/tick` washes away would drop, as `run/src/world/tick/README.md` line 62 says it should once this stage lands.
 - **Actual:** only the player's mining makes items. `world/tick` has no road to `entity`, and that line of its README is now out of date.
-- **Done:** left alone and reported, as it is outside this stage's paths and more than wiring. Flowing water does not carry an item either, so `item_drop` has no way yet to be told about flow.
+- **Done at first:** left alone and reported, as it is outside this stage's paths and more than wiring.
+- **Done at the gate check, 2026-11-02:** fixed. `world/tick` keeps a ring of 64, read with `world_tick_broken_next`: what water washes away, what a falling block buries, leaves that decay, and a crop with no farmland under it. Lava gives nothing. `game_items_tick` rolls each one's table and spawns it. `world_tick_t` goes from 704 to 728 bytes, out of `world_t`'s padding, whose size stays 2048, and `sim_t` in `tests/run/world/tick/` does the same. Tests: `the_tick_says_what_water_washed_away_and_what_sand_buried_and_lava_gives_nothing`, `a_full_ring_of_what_went_by_itself_loses_the_oldest_and_counts_them`, and `in_a_real_game_water_washes_a_plant_away_and_it_comes_out_as_an_item` on the real threads. Taking the roll out of `game_items_tick` fails the last (`items->dropped_count == 1u: 0 != 1`), and letting lava give a drop fails the first.
+- **Still open:** flowing water does not carry an item, so `item_drop` has no way yet to be told about flow. The plan's Stage 12.4 does not ask for it.
 
 ### Issue 5: the first version of pushing an item out of a block did not always end
 
@@ -114,3 +116,7 @@ The smallest needed to call this stage's module, as the task allows:
 - **Expected:** it stops as at a wall, and goes on ageing.
 - **Actual:** `going->age == 100u: 6 != 100`. Its box's face was exactly on the line, so the corner's cell counted as not loaded.
 - **Done:** fixed: a box only touching the edge is not over it.
+
+### Issue 7: `item_drop_box` and `player_pickup_reach` returned a 48-byte struct
+
+- **Done:** fixed at the gate check, 2026-11-02, with Stage 12.1's Issue 7, which has the details.

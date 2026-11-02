@@ -40,7 +40,7 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 - `pgrep -af "$PWD/build"`: nothing of this worktree left running.
 - Six deliberate bugs built in at once (harvest always true, no body check, hardness rounded up, chance ignored, letting go not resetting, no delay): 9 tests failed, including one for each bug. The source was then restored.
 - **Scripted headless play**, at 960x540 with `--no-sky`, the script being the one in `pi_mine_script`: walks 20 ticks, looks straight down, holds the left button, then turns uphill, mines the hole's wall and clicks the right button. The program reports `the player mined 3 blocks and placed 1; the last mined was dirt, and the hand holds 2 of dirt`, with `0 bytes live` at exit. By eye: `before.png` shows grass under the feet, `grass_gone.png` a dirt face where it was, `notch.png` a one-block hole in the wall, and `placed.png` that hole filled with dirt again. The test runs the same script twice at 160x90: the same bytes both times, and each picture differs from the one before.
-- Not checked: the buttons on a real mouse and playing under KMS. Only Ahmed can run those. Real input is tested only as far as `game_loop_source` is compiled; the buttons are exercised through a script and `game_hands_send`, not through the fake kernel.
+- Not checked: the buttons on a real mouse and playing under KMS. Only Ahmed can run those. Real input was at first tested only as far as `game_loop_source` is compiled: see Issue 5, which closed that.
 
 ## Commits
 
@@ -84,4 +84,10 @@ The smallest needed to call this stage's module, as the task allows:
 - **Actual:** `tests/run/render/frame/index.c:1145: CHECK failed: wrong == 0u`: `start.png` 53247 of 57600 pixels past the tolerance, `north_low.png` 55941, `down.png` 54263.
 - **Evidence it is not this stage:** `git archive` of `8864855`, the merged integration branch with none of this stage, built in a scratch directory and run with `TEST_FILTER=golden_pictures_match`, gives exactly those three numbers.
 - **Cause:** not found. Nearly every pixel differs, so the look changed, or the world did, after these pictures were made. It may be the same thing as the darkness in Issue 3, but that was not established.
-- **Done:** left alone and reported. The fixtures are outside this stage's paths, and writing new ones over an unexplained change would hide it. Someone has to look at the pictures, then fix the cause or rewrite them with `MC_GOLDEN_WRITE=1`.
+- **Done:** left alone and reported. The fixtures are outside this stage's paths, and writing new ones over an unexplained change would hide it. Someone has to look at the pictures, then fix the cause or rewrite them with `MC_GOLDEN_WRITE=1`. **Gate check, 2026-11-02:** this is gone. The cause was Stage 09.3 issue 1, solid voxels holding no light, and `81783f8` from the Phase 11 gate fixed it with new fixtures. After merging that, `run_render_frame` passes.
+
+### Issue 5: no test took a real button to the hands (gate check, 2026-11-02)
+
+- **Expected:** the gate is a person with a real mouse, so the road from an evdev event to `player_hands_send` should be held by a test.
+- **Actual:** Only `game_hands_send` and a script's `button` lines were tested. BTN_LEFT and BTN_RIGHT in `game_loop_source` ran under no test: this stage's own results said so.
+- **Done:** `real_buttons_through_the_source_mine_what_is_aimed_at_and_place_what_was_picked_up` in `tests/run/player/interaction/`, on the real threads and a fake kernel: the left button held mines, the item comes into the hand, and right clicks whole between two polls place it, with Space held. It found no bug. Taking `pressed` away from the right button in `game_loop_source` fails it: `hands->placed_count == 1u: 0 != 1`.

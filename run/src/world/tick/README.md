@@ -8,6 +8,7 @@
 **Public functions** (`run/include/world/tick/index.h`):
 
 - `world_tick_init`, `world_tick_deinit`: the tables.
+- `world_tick_broken_next`: the oldest block with drops that went by itself, for whoever makes the items.
 - `world_tick_seed_set`: where the random ticks' numbers come from.
 - `world_tick_column_leaving`: gives back a column's levels.
 - `world_tick_step`: one tick of game time.
@@ -59,7 +60,7 @@ If a neighbouring column is not loaded, step 3 cannot be trusted, so it keeps it
 
 Sideways it goes only towards the nearest way down within reach, 3 steps past the voxel beside it for water and 1 for lava, and to every direction that ties. With none in reach, it goes all ways. It runs through what it could enter and through its own kind, but not through a source.
 
-**What it enters:** air, and things small enough to wash away: `cross`, `crop` and `torch` shapes. Not `kelp` or `seagrass`, which live in water, and not `thin`: a ladder holds water back. What it washes away gives no drop yet, since items on the ground arrive in Stage 12.4.
+**What it enters:** air, and things small enough to wash away: `cross`, `crop` and `torch` shapes. Not `kelp` or `seagrass`, which live in water, and not `thin`: a ladder holds water back. What water washes away, a falling block buries, leaves that decay and a crop left with no farmland under it go in a ring, for `world_tick_broken_next`: `run/src/game/` rolls their drops and puts them on the ground. Lava burns what it enters to nothing, and a flowing fluid does not yet carry an item along.
 
 **Lava and water.** Lava with water beside it or above it hardens when its tick comes: a source to obsidian, flowing lava to cobblestone. Lava going down into water leaves stone there. Water does not enter lava.
 

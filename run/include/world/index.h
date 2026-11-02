@@ -59,7 +59,7 @@ typedef struct world_t {
     world_edit_snapshot_t snapshot; /* 512 */
     world_light_t light;            /* 1088 */
     world_tick_t tick;              /* 1312 */
-    uint8_t _pad1[32];              /* 2016 */
+    uint8_t _pad1[8];               /* 2040 */
 } world_t;
 static_assert(sizeof(world_t) == 2048);
 static_assert(alignof(world_t) == 64);

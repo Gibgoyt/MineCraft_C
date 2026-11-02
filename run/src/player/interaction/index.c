@@ -263,7 +263,8 @@ static bool interaction_fits(uint16_t block, int32_t x, int32_t y, int32_t z, co
     const uint32_t count = collision_block_boxes(block, x, y, z, boxes);
     const float64_t height =
         movement->crouched != 0u ? PLAYER_MOVEMENT_HEIGHT_CROUCHED : PLAYER_MOVEMENT_HEIGHT_STANDING;
-    const collision_box_t body = player_movement_box(movement->position, height);
+    collision_box_t body;
+    player_movement_box(movement->position, height, &body);
     return !collision_overlaps_any(boxes, count, &body);
 }
 

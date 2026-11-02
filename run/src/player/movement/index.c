@@ -67,16 +67,17 @@ void player_movement_start(player_movement_t *movement, float64_t x, float64_t y
     movement->mode = PLAYER_MOVEMENT_MODE_AIR;
 }
 
-collision_box_t player_movement_box(const float64_t position[3], float64_t height) {
+void player_movement_box(const float64_t position[3], float64_t height, collision_box_t *out) {
     const float64_t half = PLAYER_MOVEMENT_WIDTH * 0.5f64;
-    return (collision_box_t){
+    *out = (collision_box_t){
         .min = {position[0] - half, position[1] - half, position[2]},
         .max = {position[0] + half, position[1] + half, position[2] + height},
     };
 }
 
-static collision_box_t movement_box_moved(const collision_box_t *box, float64_t x, float64_t y, float64_t z) {
-    return (collision_box_t){
+static void movement_box_moved(const collision_box_t *box, float64_t x, float64_t y, float64_t z,
+                               collision_box_t *out) {
+    *out = (collision_box_t){
         .min = {box->min[0] + x, box->min[1] + y, box->min[2] + z},
         .max = {box->max[0] + x, box->max[1] + y, box->max[2] + z},
     };
@@ -85,7 +86,8 @@ static collision_box_t movement_box_moved(const collision_box_t *box, float64_t 
 /* What it is in. A ladder or vine counts only in the cell of its feet, so it can step off the top and away. */
 static movement_touch_t movement_touches(const player_movement_t *movement, const world_map_t *map, float64_t height) {
     movement_touch_t touch = {0u, 0u, 0u, 0u};
-    const collision_box_t box = player_movement_box(movement->position, height);
+    collision_box_t box;
+    player_movement_box(movement->position, height, &box);
     const int32_t x_from = (int32_t)floor(box.min[0] + MOVEMENT_TOUCH_INSET);
     const int32_t y_from = (int32_t)floor(box.min[1] + MOVEMENT_TOUCH_INSET);
     const int32_t z_from = (int32_t)floor(box.min[2] + MOVEMENT_TOUCH_INSET);
@@ -128,14 +130,16 @@ static float64_t movement_edge_less(float64_t distance) {
 static void movement_keep_on_edge(physics_t *physics, const world_map_t *map, const collision_box_t *box, float64_t *x,
                                   float64_t *y) {
     while (*x != 0.0f64) {
-        const collision_box_t at = movement_box_moved(box, *x, 0.0f64, -MOVEMENT_STEP_HEIGHT);
+        collision_box_t at;
+        movement_box_moved(box, *x, 0.0f64, -MOVEMENT_STEP_HEIGHT, &at);
         if (!physics_box_is_clear(physics, map, &at)) {
             break;
         }
         *x = movement_edge_less(*x);
     }
     while (*y != 0.0f64) {
-        const collision_box_t at = movement_box_moved(box, *x, *y, -MOVEMENT_STEP_HEIGHT);
+        collision_box_t at;
+        movement_box_moved(box, *x, *y, -MOVEMENT_STEP_HEIGHT, &at);
         if (!physics_box_is_clear(physics, map, &at)) {
             break;
         }
@@ -150,11 +154,13 @@ static void movement_try_step(physics_t *physics, const world_map_t *map, const 
     const float64_t rise_by[COLLISION_AXES] = {0.0f64, 0.0f64, MOVEMENT_STEP_HEIGHT};
     collision_move_t rise;
     physics_move(physics, map, box, rise_by, &rise);
-    const collision_box_t raised = movement_box_moved(box, 0.0f64, 0.0f64, rise.moved[2]);
+    collision_box_t raised;
+    movement_box_moved(box, 0.0f64, 0.0f64, rise.moved[2], &raised);
     const float64_t along_by[COLLISION_AXES] = {delta[0], delta[1], 0.0f64};
     collision_move_t along;
     physics_move(physics, map, &raised, along_by, &along);
-    const collision_box_t over = movement_box_moved(&raised, along.moved[0], along.moved[1], 0.0f64);
+    collision_box_t over;
+    movement_box_moved(&raised, along.moved[0], along.moved[1], 0.0f64, &over);
     const float64_t lower_by[COLLISION_AXES] = {0.0f64, 0.0f64, -rise.moved[2] + delta[2]};
     collision_move_t lower;
     physics_move(physics, map, &over, lower_by, &lower);
@@ -174,7 +180,8 @@ static void movement_try_step(physics_t *physics, const world_map_t *map, const 
 /* Moves by velocity. What stopped it stops its velocity too. */
 static void movement_move(player_movement_t *movement, physics_t *physics, const world_map_t *map, float64_t height,
                           bool keep_on_edge, collision_move_t *out) {
-    const collision_box_t box = player_movement_box(movement->position, height);
+    collision_box_t box;
+    player_movement_box(movement->position, height, &box);
     float64_t delta[COLLISION_AXES] = {movement->velocity[0], movement->velocity[1], movement->velocity[2]};
     if (keep_on_edge) {
         movement_keep_on_edge(physics, map, &box, &delta[0], &delta[1]);
@@ -208,8 +215,10 @@ static void movement_tick_fluid(player_movement_t *movement, physics_t *physics,
     movement->velocity[2] = movement->velocity[2] * drag - MOVEMENT_FLUID_GRAVITY;
     /* Swimming into a bank that ends just above: hop out. Under it, the bank is still in the way and nothing happens. */
     if (moved.hit_x != 0u || moved.hit_y != 0u) {
-        const collision_box_t box = player_movement_box(movement->position, wish->height);
-        const collision_box_t hop = movement_box_moved(&box, tried_x, tried_y, MOVEMENT_STEP_HEIGHT);
+        collision_box_t box;
+        player_movement_box(movement->position, wish->height, &box);
+        collision_box_t hop;
+        movement_box_moved(&box, tried_x, tried_y, MOVEMENT_STEP_HEIGHT, &hop);
         if (physics_box_is_clear(physics, map, &hop)) {
             movement->velocity[2] = MOVEMENT_FLUID_HOP_SPEED;
         }
@@ -280,7 +289,8 @@ void player_movement_tick(player_movement_t *movement, physics_t *physics, const
     movement->waiting_for_column = 0u;
 
     /* Still crouched for as long as there is no room to stand. */
-    const collision_box_t standing = player_movement_box(movement->position, PLAYER_MOVEMENT_HEIGHT_STANDING);
+    collision_box_t standing;
+    player_movement_box(movement->position, PLAYER_MOVEMENT_HEIGHT_STANDING, &standing);
     const bool crouched =
         intent->sneak != 0u || (movement->crouched != 0u && !physics_box_is_clear(physics, map, &standing));
     movement->crouched = crouched ? 1u : 0u;

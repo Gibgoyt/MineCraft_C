@@ -27,10 +27,10 @@ bool collision_cell_read(const world_map_t *map, int32_t x, int32_t y, int32_t z
     return true;
 }
 
-static collision_box_t collision_cell_part(int32_t x, int32_t y, int32_t z, float64_t from_y, float64_t from_z,
-                                           float64_t to_z) {
+static void collision_cell_part(int32_t x, int32_t y, int32_t z, float64_t from_y, float64_t from_z, float64_t to_z,
+                                collision_box_t *out) {
     const float64_t cell_x = (float64_t)x, cell_y = (float64_t)y, cell_z = (float64_t)z;
-    return (collision_box_t){
+    *out = (collision_box_t){
         .min = {cell_x, cell_y + from_y, cell_z + from_z},
         .max = {cell_x + 1.0f64, cell_y + 1.0f64, cell_z + to_z},
     };
@@ -44,16 +44,16 @@ uint32_t collision_block_boxes(uint16_t block, int32_t x, int32_t y, int32_t z, 
     }
     const uint8_t shape = known ? block_defs[block].shape : (uint8_t)BLOCK_SHAPE_CUBE;
     if (shape == BLOCK_SHAPE_SLAB) {
-        out[0] = collision_cell_part(x, y, z, 0.0f64, 0.0f64, 0.5f64);
+        collision_cell_part(x, y, z, 0.0f64, 0.0f64, 0.5f64, &out[0]);
         return 1u;
     }
     if (shape == BLOCK_SHAPE_STAIRS) {
-        out[0] = collision_cell_part(x, y, z, 0.0f64, 0.0f64, 0.5f64);
+        collision_cell_part(x, y, z, 0.0f64, 0.0f64, 0.5f64, &out[0]);
         /* A block is one state for now and has no facing, so all stairs climb to the north. */
-        out[1] = collision_cell_part(x, y, z, 0.5f64, 0.5f64, 1.0f64);
+        collision_cell_part(x, y, z, 0.5f64, 0.5f64, 1.0f64, &out[1]);
         return 2u;
     }
-    out[0] = collision_cell_part(x, y, z, 0.0f64, 0.0f64, 1.0f64);
+    collision_cell_part(x, y, z, 0.0f64, 0.0f64, 1.0f64, &out[0]);
     return 1u;
 }
 

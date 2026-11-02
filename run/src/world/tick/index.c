@@ -341,6 +341,31 @@ static void tick_wake_around(world_tick_t *tick, int32_t x, int32_t y, int32_t z
 
 /* ---- Writing ----------------------------------------------------------------------------------------------------- */
 
+/* A block with something to give has gone by itself: game comes for it on its next tick. */
+static void tick_broken_note(world_tick_t *tick, uint16_t block, int32_t x, int32_t y, int32_t z) {
+    if (!tick_is_block(block) || block_defs[block].drop_count == 0u) {
+        return;
+    }
+    if (tick->broken_count == WORLD_TICK_BROKEN) {
+        tick->broken_head = (tick->broken_head + 1u) % WORLD_TICK_BROKEN;
+        tick->broken_count--;
+        tick->broken_lost_count++;
+    }
+    tick->borrowed_broken[(tick->broken_head + tick->broken_count) % WORLD_TICK_BROKEN] =
+        (world_tick_broken_t){.x = x, .y = y, .z = z, .block = block, ._pad0 = {0}};
+    tick->broken_count++;
+}
+
+bool world_tick_broken_next(world_tick_t *tick, world_tick_broken_t *out) {
+    if (tick->broken_count == 0u) {
+        return false;
+    }
+    *out = tick->borrowed_broken[tick->broken_head];
+    tick->broken_head = (tick->broken_head + 1u) % WORLD_TICK_BROKEN;
+    tick->broken_count--;
+    return true;
+}
+
 /* A voxel stops holding a fluid here, or holds something that keeps no level. */
 static bool tick_block_write(world_tick_t *tick, int32_t x, int32_t y, int32_t z, uint16_t state) {
     const world_edit_status_t status = world_edit_block_set(tick->borrowed_edit, x, y, z, state);
@@ -359,11 +384,16 @@ static bool tick_fluid_write(world_tick_t *tick, int32_t x, int32_t y, int32_t z
     if (!tick_level_set(tick, x, y, z, level)) {
         return false;
     }
+    const uint16_t before = tick_look(tick, x, y, z);
     const world_edit_status_t status = world_edit_block_set(tick->borrowed_edit, x, y, z, fluid);
     if (status != WORLD_EDIT_STATUS_CHANGED) {
         tick->no_memory_count += status == WORLD_EDIT_STATUS_NO_MEMORY ? 1u : 0u;
         (void)tick_level_set(tick, x, y, z, WORLD_TICK_LEVEL_SOURCE);
         return false;
+    }
+    /* Water washes a plant away and leaves what it gave. Lava burns it to nothing. */
+    if (fluid == BLOCK_ID_WATER) {
+        tick_broken_note(tick, before, x, y, z);
     }
     return true;
 }
@@ -567,10 +597,12 @@ static void tick_fall(world_tick_t *tick, uint16_t state, int32_t x, int32_t y, 
     if (!tick_can_fall_into(tick_look(tick, x, y, z - 1))) {
         return;
     }
+    const uint16_t buried = tick_look(tick, x, y, z - 1);
     if (!tick_block_write(tick, x, y, z - 1, state)) {
         tick_schedule(tick, x, y, z, TICK_DELAY_RETRY);
         return;
     }
+    tick_broken_note(tick, buried, x, y, z - 1);
     if (!tick_block_write(tick, x, y, z, BLOCK_ID_AIR)) {
         /* A block must not be two blocks. What it fell into is gone, as it would be had it landed there. */
         (void)tick_block_write(tick, x, y, z - 1, BLOCK_ID_AIR);
@@ -585,8 +617,8 @@ static void tick_support(world_tick_t *tick, uint16_t state, int32_t x, int32_t 
         if (tick_is_solid(tick_look(tick, x, y, z + 1))) {
             (void)tick_block_write(tick, x, y, z, BLOCK_ID_DIRT);
         }
-    } else if (tick_look(tick, x, y, z - 1) != BLOCK_ID_FARMLAND) {
-        (void)tick_block_write(tick, x, y, z, BLOCK_ID_AIR);
+    } else if (tick_look(tick, x, y, z - 1) != BLOCK_ID_FARMLAND && tick_block_write(tick, x, y, z, BLOCK_ID_AIR)) {
+        tick_broken_note(tick, state, x, y, z);
     }
 }
 
@@ -717,8 +749,8 @@ static void tick_random_voxel(world_tick_t *tick, uint64_t *rng, uint16_t state,
         tick_random_farmland(tick, rng, x, y, z);
     } else if (tick_is_wheat(state)) {
         tick_random_wheat(tick, rng, state, x, y, z);
-    } else if (!tick_leaf_held(tick, x, y, z)) {
-        (void)tick_block_write(tick, x, y, z, BLOCK_ID_AIR);
+    } else if (!tick_leaf_held(tick, x, y, z) && tick_block_write(tick, x, y, z, BLOCK_ID_AIR)) {
+        tick_broken_note(tick, state, x, y, z);
     }
 }
 
@@ -868,6 +900,8 @@ void world_tick_init(world_tick_t *tick, arena_t *arena, world_edit_t *edit, uin
     tick->borrowed_page_used = arena_alloc_array(arena, page_capacity, sizeof(uint16_t), alignof(uint16_t));
     tick->borrowed_log =
         arena_alloc_array(arena, WORLD_TICK_RECORDS, sizeof(world_edit_record_t), alignof(world_edit_record_t));
+    tick->borrowed_broken =
+        arena_alloc_array(arena, WORLD_TICK_BROKEN, sizeof(world_tick_broken_t), alignof(world_tick_broken_t));
     tick->log_cursor = world_edit_log_position(edit);
     tick->node_capacity = node_capacity;
     tick->node_free = TICK_NODE_NONE;

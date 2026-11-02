@@ -39,9 +39,9 @@ void item_drop_store_start(item_drop_store_t *store, arena_t *arena, uint64_t se
     store->random = terrain_rng_start(seed);
 }
 
-collision_box_t item_drop_box(const float64_t position[COLLISION_AXES]) {
+void item_drop_box(const float64_t position[COLLISION_AXES], collision_box_t *out) {
     const float64_t half = ITEM_DROP_SIZE / 2.0f64;
-    return (collision_box_t){
+    *out = (collision_box_t){
         .min = {position[0] - half, position[1] - half, position[2] - half},
         .max = {position[0] + half, position[1] + half, position[2] + half},
     };
@@ -230,7 +230,8 @@ static void item_drop_move(physics_t *physics, const world_map_t *map, item_drop
         drop->velocity[COLLISION_AXIS_Z] = 0.0f64;
     }
     drop->on_ground = move.hit_z_down != 0u ? 1u : 0u;
-    const collision_box_t moved = item_drop_box(drop->position);
+    collision_box_t moved;
+    item_drop_box(drop->position, &moved);
     const float64_t across =
         ITEM_DROP_DRAG * (drop->on_ground != 0u ? item_drop_friction_under(map, drop, &moved) : 1.0f64);
     drop->velocity[COLLISION_AXIS_X] *= across;
@@ -248,7 +249,8 @@ static bool item_drop_is_resting(const item_drop_store_t *store, const item_drop
 
 static void item_drop_tick_one(item_drop_store_t *store, physics_t *physics, const world_map_t *map, uint32_t index) {
     item_drop_t *const drop = &store->borrowed_items[index];
-    const collision_box_t box = item_drop_box(drop->position);
+    collision_box_t box;
+    item_drop_box(drop->position, &box);
     if (!item_drop_is_loaded(map, &box)) {
         return;
     }
@@ -376,7 +378,8 @@ uint32_t item_drop_pickup(item_drop_store_t *store, const collision_box_t *reach
         if (drop->pickup_delay != 0u) {
             continue;
         }
-        const collision_box_t box = item_drop_box(drop->position);
+        collision_box_t box;
+        item_drop_box(drop->position, &box);
         if (!collision_overlaps_any(&box, 1u, reach)) {
             continue;
         }

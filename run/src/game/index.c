@@ -384,16 +384,27 @@ static uint32_t game_pickup_take(void *borrowed_player, uint16_t item, uint32_t 
     return player_interaction_hand_take(&player->interaction, item, count);
 }
 
-/* What the hands just broke comes out into the world, everything there moves, and the body picks up what it now reaches. */
+static void game_drops_spawn(game_t *game) {
+    player_drop_t drop;
+    while (player_interaction_drop_next(&game->borrowed_player->interaction, &drop)) {
+        item_drop_spawn(&game->borrowed_entity->item_drops, drop.item, drop.count, drop.position);
+    }
+}
+
+/* What the hands just broke, and what went by itself, comes out into the world, everything there moves, and the body picks up what it
+ * now reaches. One block at a time out of the tick's ring: all of it at once could be more than the hands' ring holds. */
 static void game_items_tick(game_t *game) {
     entity_t *const entity = game->borrowed_entity;
     player_t *const player = game->borrowed_player;
-    player_drop_t drop;
-    while (player_interaction_drop_next(&player->interaction, &drop)) {
-        item_drop_spawn(&entity->item_drops, drop.item, drop.count, drop.position);
+    game_drops_spawn(game);
+    world_tick_broken_t broken;
+    while (world_tick_broken_next(&game->borrowed_world->tick, &broken)) {
+        player_interaction_drops_spawn(&player->interaction, broken.block, broken.x, broken.y, broken.z);
+        game_drops_spawn(game);
     }
     entity_tick(entity, &game->borrowed_world->map);
-    const collision_box_t reach = player_pickup_reach(player);
+    collision_box_t reach;
+    player_pickup_reach(player, &reach);
     (void)item_drop_pickup(&entity->item_drops, &reach, game_pickup_take, player);
 }
 

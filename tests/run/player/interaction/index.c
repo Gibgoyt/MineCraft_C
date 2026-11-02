@@ -1,6 +1,8 @@
 /* ctest run_player_interaction. See README.md. */
 #include "harness/index.h"
 
+#include "run/input/fixtures/fake_evdev.h"
+#include "run/input/fixtures/replay.h"
 #include "run/physics/fixtures/test_world.h"
 
 #include "file/index.h"
@@ -1304,6 +1306,149 @@ TEST(the_real_threads_mine_and_place_a_real_world_and_the_picture_changes) {
     /* The threads have stopped: all is whole to read. */
     CHECK(rig.player->interaction.mined_count >= 1u);
     CHECK_EQ_U64(rig.player->interaction.no_memory_count, 0u);
+    game_close(game);
+    pi_game_end(t, &rig);
+}
+
+/* Real buttons: what a mouse hands the kernel, through input/ and game_loop_source, to the hands on the sim thread. */
+TEST(real_buttons_through_the_source_mine_what_is_aimed_at_and_place_what_was_picked_up) {
+    pi_game_rig_t rig;
+    REQUIRE(pi_game_begin(t, &rig));
+    game_t *const game = rig.game;
+    REQUIRE(game_open(game, &pi_small_game));
+    /* The fixtures' other helpers, which only their own tests need. */
+    (void)fake_record;
+    (void)fake_caps_touchpad;
+    (void)fake_caps_power_button;
+    fake_evdev_t *const fake = fake_new(t);
+    fake_device_t *const mouse = fake_add(fake, "event0", "Mouse", fake_caps_mouse, true);
+    fake_device_t *const keyboard = fake_add(fake, "event1", "Keyboard", fake_caps_keyboard, true);
+    input_t *const input = test_world_aligned(t, sizeof(input_t));
+    REQUIRE(input_init(input, FAKE_DIRECTORY, &fake_ops, fake));
+    game_loop_source_begin(game, input);
+    const uint64_t bytes = post_xrgb_bytes(PI_WIDTH, PI_HEIGHT);
+    display_buffer_t target = {.owned_map = test_world_aligned(t, bytes),
+                               .map_bytes = bytes,
+                               .pitch = PI_WIDTH * 4u,
+                               .width = PI_WIDTH,
+                               .height = PI_HEIGHT};
+    /* Straight down from where it starts: it stands on what it will mine. */
+    game->camera.pitch = -1.55f32;
+    const player_interaction_t *const hands = &rig.player->interaction;
+    const player_movement_t *const body = &rig.player->movement;
+    const int64_t landed_by = time_now_ns() + 30000000000;
+    CHECK(game_loop_source(game, &target));
+    while (time_now_ns() < landed_by &&
+           (body->on_ground == 0u || rig.player->target.hit.result != RAYCAST_RESULT_HIT)) {
+        CHECK(game_loop_source(game, &target));
+        time_sleep_ns(2000000);
+    }
+    REQUIRE(rig.player->target.hit.result == RAYCAST_RESULT_HIT);
+
+    /* The right button with nothing in the hand does nothing, and neither button has broken anything. */
+    static const struct input_event right_click[] = {REPLAY_EVENT(EV_KEY, BTN_RIGHT, 1), REPLAY_SYN,
+                                                     REPLAY_EVENT(EV_KEY, BTN_RIGHT, 0), REPLAY_SYN};
+    fake_replay(mouse, right_click, REPLAY_COUNT(right_click));
+    const int64_t idle_until = time_now_ns() + 300000000;
+    while (time_now_ns() < idle_until) {
+        CHECK(game_loop_source(game, &target));
+        time_sleep_ns(2000000);
+    }
+    CHECK_EQ_U64(hands->mined_count, 0u);
+    CHECK_EQ_U64(hands->placed_count, 0u);
+
+    /* The left button held: what is underfoot goes, falls out as an item and comes into the hand. */
+    static const struct input_event left_down[] = {REPLAY_EVENT(EV_KEY, BTN_LEFT, 1), REPLAY_SYN};
+    static const struct input_event left_up[] = {REPLAY_EVENT(EV_KEY, BTN_LEFT, 0), REPLAY_SYN};
+    fake_replay(mouse, left_down, REPLAY_COUNT(left_down));
+    const int64_t mined_by = time_now_ns() + 40000000000;
+    while (time_now_ns() < mined_by && hands->mined_count < 1u) {
+        CHECK(game_loop_source(game, &target));
+        time_sleep_ns(2000000);
+    }
+    fake_replay(mouse, left_up, REPLAY_COUNT(left_up));
+    CHECK(hands->mined_count >= 1u);
+    const int64_t picked_by = time_now_ns() + 10000000000;
+    while (time_now_ns() < picked_by && hands->hand_count == 0u) {
+        CHECK(game_loop_source(game, &target));
+        time_sleep_ns(2000000);
+    }
+    CHECK(hands->hand_count >= 1u);
+    const uint64_t mined = hands->mined_count;
+
+    /* Space held, and a click of the right button whole between two polls, frame after frame: it goes back under the feet. */
+    static const struct input_event space[] = {REPLAY_EVENT(EV_KEY, KEY_SPACE, 1), REPLAY_SYN};
+    static const struct input_event space_up[] = {REPLAY_EVENT(EV_KEY, KEY_SPACE, 0), REPLAY_SYN};
+    fake_replay(keyboard, space, REPLAY_COUNT(space));
+    const int64_t placed_by = time_now_ns() + 30000000000;
+    while (time_now_ns() < placed_by && hands->placed_count < 1u) {
+        fake_replay(mouse, right_click, REPLAY_COUNT(right_click));
+        CHECK(game_loop_source(game, &target));
+        time_sleep_ns(2000000);
+    }
+    fake_replay(keyboard, space_up, REPLAY_COUNT(space_up));
+
+    static const struct input_event esc[] = {REPLAY_EVENT(EV_KEY, KEY_ESC, 1), REPLAY_SYN};
+    fake_replay(keyboard, esc, REPLAY_COUNT(esc));
+    CHECK(!game_loop_source(game, &target));
+    CHECK(game_loop_stop(game));
+    CHECK_EQ_U64(hands->placed_count, 1u);
+    CHECK_EQ_U64(hands->mined_count, mined); /* the right button broke nothing */
+    CHECK_EQ_U64(hands->no_memory_count, 0u);
+    input_deinit(input);
+    game_close(game);
+    pi_game_end(t, &rig);
+}
+
+/* What water washes away in a running game is on the ground as an item, by the road game_sim_tick has for it. */
+TEST(in_a_real_game_water_washes_a_plant_away_and_it_comes_out_as_an_item) {
+    pi_game_rig_t rig;
+    REQUIRE(pi_game_begin(t, &rig));
+    game_t *const game = rig.game;
+    REQUIRE(game_open(game, &pi_small_game));
+    REQUIRE(game_settle(game));
+    /* A floor far wider than water reaches, with room over it, so that the water goes all ways, well away from the body. */
+    const int32_t middle_x = (int32_t)floor(rig.player->movement.position[0]) + 12;
+    const int32_t middle_y = (int32_t)floor(rig.player->movement.position[1]);
+    const int32_t floor_z = (int32_t)floor(rig.player->movement.position[2]);
+    world_edit_t *const edit = &rig.world->edit;
+    for (int32_t x = middle_x - 7; x <= middle_x + 7; x++) {
+        for (int32_t y = middle_y - 7; y <= middle_y + 7; y++) {
+            for (int32_t z = floor_z; z <= floor_z + 4; z++) {
+                const world_edit_status_t status =
+                    world_edit_block_set(edit, x, y, z, z == floor_z ? BLOCK_ID_STONE : BLOCK_ID_AIR);
+                REQUIRE(status == WORLD_EDIT_STATUS_CHANGED || status == WORLD_EDIT_STATUS_UNCHANGED);
+            }
+        }
+    }
+    REQUIRE(world_edit_block_set(edit, middle_x + 1, middle_y, floor_z + 1, BLOCK_ID_DANDELION) ==
+            WORLD_EDIT_STATUS_CHANGED);
+    REQUIRE(world_edit_block_set(edit, middle_x, middle_y, floor_z + 1, BLOCK_ID_WATER) == WORLD_EDIT_STATUS_CHANGED);
+    const uint64_t bytes = post_xrgb_bytes(PI_WIDTH, PI_HEIGHT);
+    display_buffer_t target = {.owned_map = test_world_aligned(t, bytes),
+                               .map_bytes = bytes,
+                               .pitch = PI_WIDTH * 4u,
+                               .width = PI_WIDTH,
+                               .height = PI_HEIGHT};
+    REQUIRE(game_loop_start(game, nullptr));
+    render_fly_input_t none;
+    memset(&none, 0, sizeof(none));
+    const item_drop_store_t *const items = &rig.entity->item_drops;
+    const int64_t give_up = time_now_ns() + 15000000000;
+    while (time_now_ns() < give_up && items->dropped_count == 0u) {
+        game_walk_send(game, &none, false, false, time_now_ns());
+        CHECK(game_loop_frame(game, &none, 0.0f32, &target));
+        time_sleep_ns(4000000);
+    }
+    CHECK(game_loop_stop(game));
+    uint16_t now = BLOCK_ID_AIR;
+    CHECK_EQ_U64(world_map_block_get(&rig.world->map, middle_x + 1, middle_y, floor_z + 1, &now), WORLD_MAP_STATUS_OK);
+    CHECK_EQ_U64(now, BLOCK_ID_WATER);
+    CHECK_EQ_U64(items->dropped_count, 1u);
+    CHECK_EQ_U64(items->count, 1u);
+    if (items->count == 1u) {
+        CHECK_STR_EQ(block_drop_items[items->borrowed_items[0].item].name, "dandelion");
+    }
     game_close(game);
     pi_game_end(t, &rig);
 }
