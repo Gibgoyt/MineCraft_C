@@ -90,6 +90,7 @@ static bool game_open_parts(game_t *game, const game_config_t *config, int32_t c
         return false;
     }
     world_map_set_view_radius(&world->map, config->render_distance);
+    world_tick_seed_set(&world->tick, game->borrowed_terrain->seed);
     const render_upload_budget_t budget = {
         .bytes = RENDER_UPLOAD_BUDGET_BYTES_DEFAULT,
         .sections = RENDER_UPLOAD_BUDGET_SECTIONS_DEFAULT,
@@ -354,6 +355,7 @@ void game_sim_step(game_t *game) {
     world_map_leaving_t leaving;
     while (world_map_stream_leaving(map, &leaving)) {
         (void)world_light_column_leaving(&world->light, leaving.slot);
+        world_tick_column_leaving(&world->tick, leaving.slot);
         world_map_unload(map, leaving.slot); /* nothing to save yet: Stage 16.1 looks here first */
     }
     game_columns_commit(game);
@@ -370,6 +372,7 @@ static void game_sim_tick(game_t *game, int64_t tick_ns) {
     if (game->borrowed_player != nullptr) {
         player_tick(game->borrowed_player, &game->borrowed_world->map, tick_ns);
     }
+    world_tick_step(&game->borrowed_world->tick);
     game->tick_count++;
 }
 

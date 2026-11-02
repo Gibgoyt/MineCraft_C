@@ -28,7 +28,7 @@ A column's blocks are `terrain_generate_box`, on a worker, over all of the colum
 | Thread | Does | Tells the others through |
 |---|---|---|
 | `main` | Input, moves the eye, keeps the time of day, shows the newest picture | A triple buffer of cameras to `gpu`; a relaxed atomic, the time, to `gpu`; two relaxed atomics, the eye's chunk, to `sim` |
-| `sim` | Columns to and from workers, into the map, their light and every edit's, then a snapshot. A tick at 20 Hz, which moves the player if there is one | The snapshots of `world/edit` to `gpu`; each tick's eye to `main`, through `player` |
+| `sim` | Columns to and from workers, into the map, their light and every edit's, then a snapshot. A tick at 20 Hz, which moves the player if there is one and runs `world/tick` | The snapshots of `world/edit` to `gpu`; each tick's eye to `main`, through `player` |
 | `gpu` | The upload queue, then the frame's kernels | A triple buffer of pictures to `main` |
 
 None of them ever waits for another, as the plan wants: a slow tick cannot stall a frame, and a slow frame cannot stall input.

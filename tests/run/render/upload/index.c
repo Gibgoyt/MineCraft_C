@@ -52,14 +52,14 @@ typedef struct upload_fixture_t {
     gpu_bridge_t bridge;        /* 0 */
     job_system_t job;           /* 384 */
     world_t world;              /* 640 */
-    render_t render;            /* 1984 */
-    device_block_t scratch;     /* 3904 */
-    thread_topology_t topology; /* 3928 */
+    render_t render;            /* 2688 */
+    device_block_t scratch;     /* 4608 */
+    thread_topology_t topology; /* 4632 */
     world_buffers_probe_query_t *queries;
     world_buffers_probe_result_t *results;
     uint8_t _pad0[16];
 } upload_fixture_t;
-static_assert(sizeof(upload_fixture_t) == 4480);
+static_assert(sizeof(upload_fixture_t) == 5184);
 
 static const render_upload_budget_t upload_test_budget_large = {.bytes = 64ull << 20, .sections = 65536u};
 

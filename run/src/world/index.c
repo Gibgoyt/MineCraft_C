@@ -78,6 +78,8 @@ bool world_open(world_t *world, uint32_t table_radius, int32_t center_x, int32_t
     world_edit_snapshot_init(&world->snapshot, &world->arena_columns, &world->edit,
                              WORLD_EDIT_SNAPSHOT_SECTIONS_DEFAULT);
     world_light_init(&world->light, &world->arena_columns, &world->edit, WORLD_LIGHT_WAVE_CAPACITY_DEFAULT);
+    world_tick_init(&world->tick, &world->arena_columns, &world->edit, WORLD_TICK_NODE_CAPACITY_DEFAULT,
+                    WORLD_TICK_PAGE_CAPACITY_DEFAULT);
     return true;
 }
 
@@ -85,6 +87,7 @@ void world_close(world_t *world) {
     if (world->map.borrowed_slots == nullptr) {
         return;
     }
+    world_tick_deinit(&world->tick);
     world_light_deinit(&world->light);
     world_edit_snapshot_deinit(&world->snapshot);
     world_edit_deinit(&world->edit);
