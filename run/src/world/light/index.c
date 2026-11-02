@@ -743,10 +743,76 @@ static void light_catch_up(world_light_t *light) {
     }
 }
 
+/* Whether this section gives nothing to an opaque block's face, from what can be seen without looking at each voxel. */
+static bool light_section_shows_nothing(const section_t *section, uint32_t channel) {
+    return (section->bits == SECTION_BITS_UNIFORM && light_is_opaque(light_block_def(section->block_uniform))) ||
+           (section->borrowed_light == nullptr && light_channel(section->light_uniform, channel) == 0u);
+}
+
+/* A section all of one opaque block in a new column: only its outer layers can see anything, and only on a side with something to
+ * see. Most sections of a world are this, under the ground. */
+static void light_opaque_section_seed(world_light_t *light, uint32_t slot, uint32_t section_index, uint32_t channel) {
+    const column_t *const column = light_column(light, slot);
+    for (uint32_t direction = 0u; direction < LIGHT_DIRECTIONS; direction++) {
+        bool wanted = false;
+        if (direction == LIGHT_DOWN) {
+            wanted =
+                section_index != 0u && !light_section_shows_nothing(&column->sections[section_index - 1u], channel);
+        } else if (direction == LIGHT_UP) {
+            wanted = section_index + 1u == COLUMN_SECTIONS
+                         ? channel == LIGHT_SKY
+                         : !light_section_shows_nothing(&column->sections[section_index + 1u], channel);
+        } else {
+            uint32_t beside = 0u;
+            wanted = light_beside(light, slot, direction, &beside) &&
+                     !light_section_shows_nothing(&light_column(light, beside)->sections[section_index], channel);
+        }
+        if (!wanted) {
+            continue;
+        }
+        for (uint32_t b = 0u; b < SECTION_SIZE; b++) {
+            for (uint32_t a = 0u; a < SECTION_SIZE; a++) {
+                uint32_t index = 0u;
+                switch (direction) {
+                case LIGHT_WEST:
+                    index = section_voxel_index(0u, a, b);
+                    break;
+                case LIGHT_EAST:
+                    index = section_voxel_index(SECTION_SIZE - 1u, a, b);
+                    break;
+                case LIGHT_SOUTH:
+                    index = section_voxel_index(a, 0u, b);
+                    break;
+                case LIGHT_NORTH:
+                    index = section_voxel_index(a, SECTION_SIZE - 1u, b);
+                    break;
+                case LIGHT_DOWN:
+                    index = section_voxel_index(a, b, 0u);
+                    break;
+                default:
+                    index = section_voxel_index(a, b, SECTION_SIZE - 1u);
+                    break;
+                }
+                light_wave_push(light, slot, (section_index << LIGHT_SECTION_SHIFT) | index, 0u);
+            }
+        }
+    }
+}
+
 /* After a new column's sky has fallen: asks about every voxel that could be owed more, there and over the edge. */
 static void light_column_added_seed(world_light_t *light, uint32_t slot, uint32_t channel) {
     const column_t *const column = light_column(light, slot);
     for (uint32_t s = 0u; s < COLUMN_SECTIONS; s++) {
+        const section_t *const section = &column->sections[s];
+        if (section->bits == SECTION_BITS_UNIFORM && section->borrowed_light == nullptr) {
+            const block_def_t *const def = light_block_def(section->block_uniform);
+            if (light_is_opaque(def)) {
+                if (!light_keeps_own(def, channel)) {
+                    light_opaque_section_seed(light, slot, s, channel);
+                }
+                continue;
+            }
+        }
         if (!light_section_settled(light, slot, s, channel)) {
             for (uint32_t i = 0u; i < SECTION_VOXELS; i++) {
                 light_wave_push(light, slot, (s << LIGHT_SECTION_SHIFT) | i, 0u);
@@ -812,8 +878,11 @@ static void light_column_leaving_seed(world_light_t *light, uint32_t slot, uint3
         if (ours->borrowed_light == nullptr && theirs->borrowed_light == nullptr) {
             const uint32_t gave = light_channel(ours->light_uniform, channel);
             const uint32_t held = light_channel(theirs->light_uniform, channel);
-            if (gave == 0u || held == 0u || held > gave) {
-                continue; /* nothing can have come over this face: it costs, or an opaque block's faces see it as it is */
+            /* Nothing can have come over this face: it costs, unless an opaque block's faces saw it as it was. */
+            if (gave == 0u || held == 0u || held > gave ||
+                (held == gave && theirs->bits == SECTION_BITS_UNIFORM &&
+                 !light_is_opaque(light_block_def(theirs->block_uniform)))) {
+                continue;
             }
         }
         for (uint32_t z = 0u; z < SECTION_SIZE; z++) {
