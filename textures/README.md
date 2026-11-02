@@ -46,6 +46,10 @@ A stage that wants a new texture adds it under `needs` in `vector.yaml`, and giv
 
 `texture_vector vectors` derives palette, mean colour, height, normal, emissive map and alpha class for each texture, into `build/<preset>/generated/`, never here: `compile/src/texture_vector/analyze/README.md` says how. What pixels cannot say, such as which textures shine, is in `vector.yaml`, which a re-import does not touch.
 
+## Into the game
+
+Every build turns this directory into one blob, `build/<preset>/generated/textures/index.mctb`, holding each texture's mip chain and vector data, and links it into the program. `compile/src/texture_blob/mip/README.md` has the rules for mips, and `run/src/texture/README.md` says how the game reads it. Change a texture or `vector.yaml`, build, and it is in.
+
 ## Re-importing
 
 Only to change what is imported, or to move the pin. The pack is untrusted, so clone it to its own directory, and never run anything from it. Check out the commit that `pack.commit` names, or change that line after reading the new commit's licence.

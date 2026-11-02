@@ -151,6 +151,7 @@ Layout: `compile/src/<tool>/index.c`, `compile/include/<tool>/index.h`, `README.
 | `png` | Our own bounds-checked PNG decoder (packs are untrusted) | 06.1 |
 | `texture_pack` | Open pack in `/tmp/mc_c_assets/` → `textures/`; `verify` checks that tree with no pack. Parts: `support mctex manifest pack output verify`. Run by hand, never by the build | 06.2 |
 | `texture_vector` | Procedural recipes -> `textures/`, and vector data per texture (`.mcvec`); `check` holds the tree to `textures/vector.yaml`. Parts: `analyze palette mcvec materials recipe`. `recipes` and `check` are run by hand and by its test; 06.4's blob step runs `vectors` | 06.3 |
+| `texture_blob` | Mip chains, and every texture with its vector data in one blob, in `build/<preset>/generated/textures/`, run by `cmake/generated.cmake`. Part: `mip`. The format is `run/include/types/texture_blob/` | 06.4 |
 | `game_tables` | `config/{blocks,items,recipes,biomes,mobs}` → C tables | 07.1 |
 
 ---
@@ -165,6 +166,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 |---|---|---|---|
 | `main` | `cpu_check` | Entry point, `app_t`, CPUID check against the build's flags, init and deinit order | 03.1 |
 | `types` | | The only home of `float32_t`, `float64_t` | 03.1 |
+| | `texture_blob` | The texture blob's format, in the one place both `compile/` and `run/` may include | 06.4 |
 | `assert` | | Assertions | 03.1 |
 | `log` | | Logging | 03.1 |
 | `heap` | | **Only OS allocator user**; counts everything, holds to `memory.process_budget_mib` | 03.2 |
@@ -182,6 +184,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | `math` | `vec2 vec3 vec4 ivec3 mat4 quat aabb ray` | Our vector library, scalar C; `math_init` checks the floating-point environment | 04.1 |
 | `simd` | `cpuid` | C prototypes of the CPUID and XGETBV functions, used by `main/cpu_check` | 03.1 |
 | | `copy blend bitmask noise vec_batch` | C prototypes of NASM kernels | 04.2, 04.3 |
+| | `embed_assets` | C declarations of the data `asm/src/embed_assets/` links in; no kernels | 06.4 |
 | | (the Owner) | `simd_init`, `simd_deinit`: scratch region and arena, and a self-check of every kernel at startup | 04.2 |
 | | `reference` | Scalar C version of each kernel: what it must match in tests, and beat in `bench/simd` | 04.2 |
 
@@ -204,7 +207,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `frame` | Frame sequence: submit, readback, HUD, present | 08.4 |
 | | `entities` | Per-tile entity lists | 09.5 |
 | | `lod` | Build coarse far-field grids | 09.6 |
-| `texture` | `registry` | Runtime lookup of embedded texture blobs | 06.4 |
+| `texture` | `blob registry` | Checks the embedded blob; finds a texture, a mip level or its vector data by name or id | 06.4 |
 
 ### World
 
@@ -338,8 +341,9 @@ open pack, pinned commit, cloned to /tmp/mc_c_assets/      (never committed as-i
         ▼
 textures/<GROUP>/<NAME>/                                    committed: builds need no network
         │  compile/src/texture_vector  (palette, mean color, height, normal)
+        │  compile/src/texture_blob  (mip chains, and all of it in one file)
         ▼
-build/<preset>/generated/textures/                          blob
+build/<preset>/generated/textures/index.mctb                blob
         │  asm/src/embed_assets  (incbin)
         ▼
 linked into minecraft_c, read through run/src/texture/
@@ -361,6 +365,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/compile/standards_lint/harness/` | Tests the harness itself |
 | `tests/compile/texture_pack/` | ctest `compile_texture_pack`: builds its own small pack at run time, and checks the committed `textures/` with no pack |
 | `tests/compile/texture_vector/` | ctest `compile_texture_vector`: vector data worked by hand, every recipe operation, bad input, and the committed `textures/` |
+| `tests/compile/texture_blob/` | ctest `compile_texture_blob`: the mip rules by hand-worked images, the blob's layout, and bad input |
 | `tests/compile/{inflate,png}/fixtures/` | Committed streams and images from independent encoders, with `generate.py`, which wrote them and is not part of the build |
 | `tests/run/<system>/<part>/` | Game tests |
 | `tests/run/types/` | ctest `run_types`, covering all of Stage 03.1: `types`, `assert`, `log`, `main/cpu_check`, `asm/src/cpuid`, and the built program's `--report` and failure paths |
@@ -369,6 +374,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/display/mode/` | ctest `run_display_mode`, covering `run/src/display/` with `device`, `mode` and `flip`, on `fixtures/fake_card.h`, a fake kernel behind `display_ops_t` |
 | `tests/run/display/vt_guard/` | ctest `run_display_vt_guard`, in forked children that really die, over a fake kernel reporting down a pipe and keys fed down another. Shares `../mode/fixtures/fake_card.h` |
 | `tests/run/input/` | ctest `run_input`, covering `run/src/input/` with `ops`, `discovery` and `events`, on replay data, this machine's capability bitmaps copied from `/proc/bus/input/devices` and the fake kernel in `fixtures/`, never on a real device |
+| `tests/run/texture/` | ctest `run_texture`, covering `run/src/texture/` with `blob` and `registry`, and `asm/src/embed_assets/`: every texture against its source files, and damage to the blob, field by field |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
 | `tests/asm/` | NASM kernels against scalar C references |
 | `tests/asm/abi/` | ctest `asm_abi`: every kernel keeps the callee-saved registers and leaves no dirty YMM state, by machine state, not by output |
