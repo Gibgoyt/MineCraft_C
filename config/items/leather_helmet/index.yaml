@@ -1,0 +1,5 @@
+name: leather_helmet
+texture: items/leather_helmet
+stack: 1
+durability: 55
+armor: { slot: head, points: 1 }

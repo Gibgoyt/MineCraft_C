@@ -1,0 +1,7 @@
+name: iron_axe
+texture: items/iron_axe
+stack: 1
+tool: axe
+tier: iron
+durability: 250
+damage: 9

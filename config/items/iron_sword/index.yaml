@@ -1,0 +1,7 @@
+name: iron_sword
+texture: items/iron_sword
+stack: 1
+tool: sword
+tier: iron
+durability: 250
+damage: 6

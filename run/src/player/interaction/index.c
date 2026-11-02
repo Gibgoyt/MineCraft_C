@@ -165,6 +165,11 @@ void player_interaction_hand_give(player_interaction_t *interaction, uint16_t bl
     interaction->hand_count = (uint8_t)(total > PLAYER_INTERACTION_HAND_MAX ? PLAYER_INTERACTION_HAND_MAX : total);
 }
 
+void player_interaction_hand_set(player_interaction_t *interaction, uint16_t block, uint32_t count) {
+    interaction->hand_count = 0u;
+    player_interaction_hand_give(interaction, block, count);
+}
+
 uint32_t player_interaction_hand_take(player_interaction_t *interaction, uint16_t item, uint32_t count) {
     const uint16_t block = block_drop_items[item].block;
     if (block == BLOCK_NO_ID || (interaction->hand_count != 0u && interaction->hand_block != block)) {

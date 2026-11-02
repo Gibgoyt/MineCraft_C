@@ -1,0 +1,5 @@
+name: leather_boots
+texture: items/leather_boots
+stack: 1
+durability: 65
+armor: { slot: feet, points: 1 }

@@ -1,0 +1,5 @@
+name: gold_chestplate
+texture: items/gold_chestplate
+stack: 1
+durability: 112
+armor: { slot: chest, points: 5 }

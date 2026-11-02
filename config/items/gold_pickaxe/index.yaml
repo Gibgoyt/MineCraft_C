@@ -1,0 +1,7 @@
+name: gold_pickaxe
+texture: items/gold_pickaxe
+stack: 1
+tool: pickaxe
+tier: gold
+durability: 32
+damage: 2

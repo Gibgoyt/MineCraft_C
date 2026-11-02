@@ -1,0 +1,5 @@
+name: mushroom_stew
+texture: items/mushroom_stew
+stack: 1
+food: 6
+saturation: 7.2

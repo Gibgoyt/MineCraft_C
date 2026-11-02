@@ -1,0 +1,7 @@
+name: wood_axe
+texture: items/wood_axe
+stack: 1
+tool: axe
+tier: wood
+durability: 59
+damage: 7

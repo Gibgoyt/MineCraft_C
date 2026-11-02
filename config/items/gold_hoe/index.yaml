@@ -1,0 +1,7 @@
+name: gold_hoe
+texture: items/gold_hoe
+stack: 1
+tool: hoe
+tier: gold
+durability: 32
+damage: 1

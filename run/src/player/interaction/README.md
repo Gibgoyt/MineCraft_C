@@ -12,9 +12,9 @@
 - `player_interaction_tick`: one tick of both buttons.
 - `player_interaction_progress`: how far along the block being mined is, for Stage 09.5's breaking overlay.
 - `player_interaction_drops_spawn`, `player_interaction_drop_next`: rolls a block's table into the ring; takes the oldest out of it.
-- `player_interaction_hand_give`, `player_interaction_hand_take`: the one slot, until there is an inventory.
+- `player_interaction_hand_give`, `player_interaction_hand_set`, `player_interaction_hand_take`: the one slot placing takes from.
 
-**May be called by:** `run/src/player/`. `run/src/game/` takes the drops from `player_interaction_drop_next` and gives what is picked up to `player_interaction_hand_take`, and Stage 13.3 calls `player_interaction_hold_tool`.
+**May be called by:** `run/src/player/`. `run/src/game/` takes the drops from `player_interaction_drop_next` and sets the hand to the hotbar slot in hand with `player_interaction_hand_set`, or in a run with no inventory gives what is picked up to `player_interaction_hand_take`, and Stage 13.3 calls `player_interaction_hold_tool`.
 **Depends on:** `world/edit`, `world/map`, `physics/collision`, `physics/raycast`, `player/camera` and `player/movement` for their types, and the generated `tables/blocks`.
 
 ## Mining
@@ -56,9 +56,11 @@ It does nothing, and costs nothing, when:
 
 `player_interact_tick` runs before `player_tick`, so it acts on the block the last tick aimed at: the one the player sees outlined. The body then moves in the world as the hands left it, so it cannot end a tick inside a block just placed, and the next aim and outline are of the block just uncovered. A block that is no longer what was aimed at is left alone for that tick.
 
-## The hand is a stand-in
+## The hand is a mirror
 
-There is no inventory until Stage 13.1, but what is mined has to be placed back. So what `run/src/entity/item_drop/` picks up from the ground goes through `player_interaction_hand_take` to one slot of up to 64 blocks. An item that is no block, like coal, or another block than the slot holds, is not taken, so it stays on the ground and the slot loses nothing. `player_interaction_hand_give` is the slot itself, and it does replace a different block. When Stage 13.1 lands, `player_interaction_hand_take` is what it replaces.
+Placing takes from one slot of up to 64 blocks, and knows nothing of an inventory. With `game_item_set`, as in `--walk`, `run/src/game/` sets it to the hotbar slot in hand before each tick, and takes off that slot what the tick placed. An item that is no block, like coal, leaves the hand empty, so nothing is placed.
+
+With no inventory, as in tests of this module alone, what `run/src/entity/item_drop/` picks up from the ground goes through `player_interaction_hand_take` to that slot. An item that is no block, or another block than the slot holds, is not taken, so it stays on the ground and the slot loses nothing. `player_interaction_hand_give` is the slot itself, and it does replace a different block.
 
 ## What is left for others
 

@@ -103,7 +103,10 @@ bool player_interaction_drop_next(player_interaction_t *interaction, player_drop
 /* In the hand, up to PLAYER_INTERACTION_HAND_MAX. A different block takes the place of what is there, as there is one slot. */
 void player_interaction_hand_give(player_interaction_t *interaction, uint16_t block, uint32_t count);
 
-/* What a picked up item goes into, until Stage 13.1's inventory: how many of count fit in the hand, which are now in it. None if the
+/* What the hand holds from now on, whatever it held. What game makes it hold is the hotbar slot in hand. */
+void player_interaction_hand_set(player_interaction_t *interaction, uint16_t block, uint32_t count);
+
+/* What a picked up item goes into in a run with no inventory: how many of count fit in the hand, which are now in it. None if the
  * item is no block, or the hand holds a different one, so that what it has is not lost and the item stays on the ground. */
 uint32_t player_interaction_hand_take(player_interaction_t *interaction, uint16_t item, uint32_t count);
 

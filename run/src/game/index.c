@@ -65,6 +65,11 @@ void game_entity_set(game_t *game, entity_t *entity) {
     game->borrowed_entity = entity;
 }
 
+void game_item_set(game_t *game, item_t *item) {
+    ASSERT_ALWAYS(game->open == 0u);
+    game->borrowed_item = item;
+}
+
 void game_deinit(game_t *game) {
     if (game->threads_running != 0u) {
         (void)game_loop_stop(game); /* it has said what went wrong, and there is no one left to tell */
@@ -270,6 +275,9 @@ bool game_open(game_t *game, const game_config_t *config) {
     if (game->borrowed_entity != nullptr) {
         entity_open(game->borrowed_entity, terrain_rng_derive(terrain->seed, terrain_rng_salt("entity")));
     }
+    if (game->borrowed_item != nullptr) {
+        item_open(game->borrowed_item);
+    }
     game->open = 1u;
     return true;
 }
@@ -282,6 +290,9 @@ void game_close(game_t *game) {
     /* Nothing may be writing into the jobs' memory when it goes. */
     job_group_wait(game->borrowed_job, &game->group);
     job_group_deinit(&game->group);
+    if (game->borrowed_item != nullptr) {
+        item_close(game->borrowed_item);
+    }
     if (game->borrowed_entity != nullptr) {
         entity_close(game->borrowed_entity);
     }
@@ -394,10 +405,37 @@ void game_sim_step(game_t *game) {
     (void)world_edit_snapshot_publish(&world->snapshot);
 }
 
-/* An item picked up goes to the hand, until Stage 13.1 gives it an inventory. */
-static uint32_t game_pickup_take(void *borrowed_player, uint16_t item, uint32_t count) {
-    player_t *const player = borrowed_player;
-    return player_interaction_hand_take(&player->interaction, item, count);
+/* An item picked up goes to the inventory, or with none to the hand. What does not fit stays on the ground. */
+static uint32_t game_pickup_take(void *borrowed_game, uint16_t item, uint32_t count) {
+    game_t *const game = borrowed_game;
+    if (game->borrowed_item != nullptr) {
+        return inventory_add(&game->borrowed_item->inventory, block_drop_items[item].item, count);
+    }
+    return player_interaction_hand_take(&game->borrowed_player->interaction, item, count);
+}
+
+/* The hands place from the hotbar slot in hand, and know nothing of it: they see its block, or nothing if it places none. */
+static void game_hand_from_hotbar(game_t *game) {
+    const item_stack_t *const held = inventory_selected(&game->borrowed_item->inventory);
+    const uint16_t block = item_defs[held->item].block;
+    player_interaction_hand_set(&game->borrowed_player->interaction, block == ITEM_NO_BLOCK ? BLOCK_ID_AIR : block,
+                                block == ITEM_NO_BLOCK ? 0u : held->count);
+}
+
+/* One tick of the hands: which slot is in hand first, so that a key and a click in one tick act in that order, and what they placed
+ * comes off it. */
+static void game_interact_tick(game_t *game, int64_t tick_ns) {
+    player_t *const player = game->borrowed_player;
+    item_t *const item = game->borrowed_item;
+    if (item == nullptr) {
+        player_interact_tick(player, &game->borrowed_world->edit, tick_ns);
+        return;
+    }
+    item_hotbar_apply(item);
+    game_hand_from_hotbar(game);
+    const uint32_t before = player->interaction.hand_count;
+    player_interact_tick(player, &game->borrowed_world->edit, tick_ns);
+    (void)inventory_selected_take(&item->inventory, before - (uint32_t)player->interaction.hand_count);
 }
 
 static void game_drops_spawn(game_t *game) {
@@ -421,7 +459,11 @@ static void game_items_tick(game_t *game) {
     entity_tick(entity, &game->borrowed_world->map);
     collision_box_t reach;
     player_pickup_reach(player, &reach);
-    (void)item_drop_pickup(&entity->item_drops, &reach, game_pickup_take, player);
+    (void)item_drop_pickup(&entity->item_drops, &reach, game_pickup_take, game);
+    /* What was just picked up may be what the hand holds, and whoever looks before the next tick should see so. */
+    if (game->borrowed_item != nullptr) {
+        game_hand_from_hotbar(game);
+    }
 }
 
 /* What the next frames draw: every item as it now lies, what is aimed at and how far along mining it is. Nobody draws anything before
@@ -469,7 +511,7 @@ static void game_sim_tick(game_t *game, int64_t tick_ns) {
     arena_reset(&game->arena_tick);
     if (game->borrowed_player != nullptr) {
         /* First, so that the body and its next aim both meet the world as the hands leave it. */
-        player_interact_tick(game->borrowed_player, &game->borrowed_world->edit, tick_ns);
+        game_interact_tick(game, tick_ns);
         if (game->borrowed_entity != nullptr) {
             game_items_tick(game);
         }
@@ -507,6 +549,20 @@ void game_walk_send(game_t *game, const render_fly_input_t *input, bool jump, bo
 
 void game_hands_send(game_t *game, bool attack, bool place) {
     player_hands_send(game->borrowed_player, attack, place);
+}
+
+void game_hotbar_send(game_t *game, const bool keys[INVENTORY_HOTBAR_SLOTS], int64_t wheel) {
+    item_t *const item = game->borrowed_item;
+    if (item == nullptr) {
+        return;
+    }
+    for (uint32_t slot = 0u; slot < INVENTORY_HOTBAR_SLOTS; slot++) {
+        if (keys[slot]) {
+            item_hotbar_send(item, slot);
+        }
+    }
+    /* Round the ends comes to the same, so that a wheel never overflows what it goes through. */
+    item_hotbar_scroll_send(item, -(int32_t)(wheel % (int64_t)INVENTORY_HOTBAR_SLOTS));
 }
 
 /* The eye goes where the ticks have got to, by now_ns. */
@@ -608,6 +664,11 @@ static bool game_scene_tick(void *context, const display_headless_tick_t *tick) 
                    display_script_state_is_down(tick->state, KEY_LEFTSHIFT), tick_ns);
     game_hands_send(game, display_script_state_is_down(tick->state, BTN_LEFT),
                     display_script_state_is_down(tick->state, BTN_RIGHT));
+    bool hotbar[INVENTORY_HOTBAR_SLOTS];
+    for (uint32_t slot = 0u; slot < INVENTORY_HOTBAR_SLOTS; slot++) {
+        hotbar[slot] = display_script_state_is_down(tick->state, KEY_1 + slot);
+    }
+    game_hotbar_send(game, hotbar, 0);
     game_sim_tick(game, tick_ns);
     /* A whole tick on from when it was due: where this tick ended. */
     game_walk_view(game, tick_ns + GAME_TICK_NS);
@@ -780,6 +841,11 @@ bool game_loop_source(void *context, display_buffer_t *back) {
         /* A click over between two polls is in pressed and not in down. */
         game_hands_send(game, input_keys_has(&frame->down, BTN_LEFT) || input_keys_has(&frame->pressed, BTN_LEFT),
                         input_keys_has(&frame->down, BTN_RIGHT) || input_keys_has(&frame->pressed, BTN_RIGHT));
+        bool hotbar[INVENTORY_HOTBAR_SLOTS];
+        for (uint32_t slot = 0u; slot < INVENTORY_HOTBAR_SLOTS; slot++) {
+            hotbar[slot] = input_keys_has(&frame->pressed, KEY_1 + slot);
+        }
+        game_hotbar_send(game, hotbar, frame->wheel);
     }
     return game_loop_frame(game, &input, seconds, back);
 }
@@ -803,6 +869,15 @@ void game_report(game_t *game) {
                  "holds %" PRIu32 " of %s",
                  hands->mined_count, hands->placed_count, block_defs[hands->last_mined].name,
                  (uint32_t)hands->hand_count, hands->hand_count != 0u ? block_defs[hands->hand_block].name : "nothing");
+    }
+    if (game->borrowed_item != nullptr && game->borrowed_item->inventory.borrowed_slots != nullptr) {
+        const inventory_t *const inventory = &game->borrowed_item->inventory;
+        const item_stack_t *const held = inventory_selected(inventory);
+        LOG_INFO("game: the inventory holds %" PRIu64 " items in %" PRIu32 " stacks; %" PRIu64 " added, %" PRIu64
+                 " removed, %" PRIu64 " refused; hotbar slot %" PRIu32 " is in hand, with %" PRIu32 " of %s",
+                 inventory_items_held(inventory), inventory_stacks_held(inventory), inventory->added_count,
+                 inventory->removed_count, inventory->refused_count, (uint32_t)inventory->selected + 1u,
+                 (uint32_t)held->count, item_defs[held->item].name);
     }
     if (game->borrowed_entity != nullptr) {
         const item_drop_store_t *const drops = &game->borrowed_entity->item_drops;

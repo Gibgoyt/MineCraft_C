@@ -1,0 +1,7 @@
+name: wood_sword
+texture: items/wood_sword
+stack: 1
+tool: sword
+tier: wood
+durability: 59
+damage: 4

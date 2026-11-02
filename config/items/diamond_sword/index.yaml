@@ -1,0 +1,7 @@
+name: diamond_sword
+texture: items/diamond_sword
+stack: 1
+tool: sword
+tier: diamond
+durability: 1561
+damage: 7

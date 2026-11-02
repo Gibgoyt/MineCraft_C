@@ -1,0 +1,4 @@
+name: bread
+texture: items/bread
+food: 5
+saturation: 6

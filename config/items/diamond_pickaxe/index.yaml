@@ -1,0 +1,7 @@
+name: diamond_pickaxe
+texture: items/diamond_pickaxe
+stack: 1
+tool: pickaxe
+tier: diamond
+durability: 1561
+damage: 5

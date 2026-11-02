@@ -1,0 +1,4 @@
+name: melon_slice
+texture: items/melon_slice
+food: 2
+saturation: 1.2

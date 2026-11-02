@@ -5,6 +5,7 @@
 
 #include "game_tables/biomes/index.h"
 #include "game_tables/blocks/index.h"
+#include "game_tables/items/index.h"
 #include "texture_pack/support/index.h"
 
 #include <stdio.h>
@@ -53,8 +54,9 @@ int32_t main(int32_t argc, char **argv) {
         return GAME_TABLES_EXIT_USAGE;
     }
     tp_arena_t arena = {.borrowed_base = owned_region, .capacity = GT_ARENA_BYTES, .used = 0};
-    /* Blocks first, since biomes name them. */
+    /* Blocks first, since items and biomes name them. Each part looks at the others' files, not at their tables. */
     const bool good = game_tables_blocks_build(&arena, arguments.config, arguments.textures, arguments.out) &&
+                      game_tables_items_build(&arena, arguments.config, arguments.textures, arguments.out) &&
                       game_tables_biomes_build(&arena, arguments.config, arguments.out);
     munmap(owned_region, GT_ARENA_BYTES);
     return good ? GAME_TABLES_EXIT_OK : GAME_TABLES_EXIT_REFUSED;

@@ -1,0 +1,7 @@
+name: stone_shovel
+texture: items/stone_shovel
+stack: 1
+tool: shovel
+tier: stone
+durability: 131
+damage: 3.5

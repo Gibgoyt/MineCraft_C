@@ -1,0 +1,7 @@
+name: gold_axe
+texture: items/gold_axe
+stack: 1
+tool: axe
+tier: gold
+durability: 32
+damage: 7

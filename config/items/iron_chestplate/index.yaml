@@ -1,0 +1,5 @@
+name: iron_chestplate
+texture: items/iron_chestplate
+stack: 1
+durability: 240
+armor: { slot: chest, points: 6 }

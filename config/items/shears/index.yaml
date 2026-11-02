@@ -1,0 +1,5 @@
+name: shears
+texture: items/shears
+stack: 1
+tool: shears
+durability: 238

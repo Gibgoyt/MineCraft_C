@@ -1,0 +1,7 @@
+name: gold_sword
+texture: items/gold_sword
+stack: 1
+tool: sword
+tier: gold
+durability: 32
+damage: 4

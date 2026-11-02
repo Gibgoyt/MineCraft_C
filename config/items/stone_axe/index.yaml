@@ -1,0 +1,7 @@
+name: stone_axe
+texture: items/stone_axe
+stack: 1
+tool: axe
+tier: stone
+durability: 131
+damage: 9

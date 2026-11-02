@@ -19,7 +19,7 @@ Every problem gets `path:line:column: message`, and reading goes on, so one buil
 - A field it does not know, in a block, a drop or a texture. A typo must not quietly mean the default.
 - A missing `name`, `hardness`, `drops`, or `texture`, and a `name` that is not its directory's.
 - A texture with no `<textures>/blocks/<name>/index.mctex`, or that is not `blocks/<name>`.
-- A drop item that is no block, has no `config/items/<item>/index.yaml`, and has no `textures/items/<item>/index.mctex`. Items have no files until Stage 13.1, so for now most exist by their texture. Air cannot be a drop.
+- A drop item with no `config/items/<item>/index.yaml`, even if a block has its name. Air cannot be a drop.
 - A value out of range or of the wrong type: see `config/blocks/README.md`.
 
 A file that is missing altogether has no line to point at, and is reported as `path: missing`.
@@ -33,7 +33,7 @@ A file that is missing altogether has no line to point at, and is reported as `p
 | `block_id_t`, `BLOCK_ID_DIRT` | Block ids. **0 is air**, so a zeroed section is empty. The rest sort by name |
 | `block_defs[BLOCK_COUNT]` | `block_def_t` by id: name, hardness, six faces, drops, tool, tier, shape, light, opacity, flags |
 | `block_drops[BLOCK_DROP_COUNT]` | `block_drop_t`: a block's rows are `first_drop` and `drop_count` of them |
-| `block_drop_items[BLOCK_DROP_ITEM_COUNT]` | Each item a drop names, with the block of that name or `BLOCK_NO_ID` |
+| `block_drop_items[BLOCK_DROP_ITEM_COUNT]` | Each item a drop names, with the block of that name or `BLOCK_NO_ID`, and its `item_id_t` |
 | `block_texture_names[BLOCK_TEXTURE_COUNT]` | `"blocks/dirt"`. Faces index this |
 | `block_shape_t`, `block_tool_t`, `block_tier_t`, `block_face_t`, `BLOCK_FLAG_*` | The words the yaml uses, as numbers |
 
