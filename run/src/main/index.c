@@ -16,6 +16,7 @@
 #include "thread/index.h"
 #include "time/index.h"
 #include "types/index.h"
+#include "world/index.h"
 
 #include <inttypes.h>
 #include <stdatomic.h>
@@ -203,7 +204,8 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         math_deinit(&app->math);
         return MAIN_EXIT_RUNTIME; /* each has said why, and neither left anything behind */
     }
-    if (!thread_pin_self(thread_cpu_for(&topology, THREAD_ROLE_MAIN, 0u))) {
+    if (!thread_pin_self(thread_cpu_for(&topology, THREAD_ROLE_MAIN, 0u)) ||
+        !world_init(&app->world, world_limits_default())) {
         job_deinit(&app->job);
         texture_deinit(&app->texture);
         simd_deinit(&app->simd);
@@ -217,6 +219,7 @@ static void app_deinit(app_t *app) {
     input_deinit(&app->input);
     display_offscreen_deinit(&app->offscreen);
     display_deinit(&app->display);
+    world_deinit(&app->world);
     job_deinit(&app->job);
     texture_deinit(&app->texture);
     simd_deinit(&app->simd);

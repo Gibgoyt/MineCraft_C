@@ -213,7 +213,8 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 
 | System | Parts | Job | Stage |
 |---|---|---|---|
-| `world` | `section column` | Palette storage, coordinates, `z` range checks | 07.2 |
+| `world` | (the Owner) | `world_init`, `world_deinit`, `world_reset`: the two regions and arenas its parts borrow | 07.2 |
+| | `section column` | Palette storage, coordinates, `z` range checks | 07.2 |
 | | `map edit` | Column map, streaming, edit log, snapshots | 07.3 |
 | | `light` | Sky and block light | 11.1 |
 | | `tick` | Fluids, falling blocks, random ticks | 11.2 |
@@ -376,6 +377,8 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/display/vt_guard/` | ctest `run_display_vt_guard`, in forked children that really die, over a fake kernel reporting down a pipe and keys fed down another. Shares `../mode/fixtures/fake_card.h` |
 | `tests/run/display/headless/` | ctest `run_display_headless`, covering `run/src/display/headless/` with `png`, `script` and `demo`, and the built program from script to file. Links `compile/src/png` to decode what it writes |
 | `tests/run/input/` | ctest `run_input`, covering `run/src/input/` with `ops`, `discovery` and `events`, on replay data, this machine's capability bitmaps copied from `/proc/bus/input/devices` and the fake kernel in `fixtures/`, never on a real device |
+| `tests/run/world/section/` | ctest `run_world_section`: random edits against a brute-force array, each change of form, running out of room, and the bytes each form holds |
+| `tests/run/world/column/` | ctest `run_world_column`: coordinates and `z` limits, random edits against a brute-force array of the whole gameplay range, and `run/src/world/` itself |
 | `tests/run/texture/` | ctest `run_texture`, covering `run/src/texture/` with `blob` and `registry`, and `asm/src/embed_assets/`: every texture against its source files, and damage to the blob, field by field |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
 | `tests/asm/` | NASM kernels against scalar C references |
