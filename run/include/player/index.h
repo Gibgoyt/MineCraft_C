@@ -4,6 +4,7 @@
 
 #include "machine/index.h"
 #include "physics/index.h"
+#include "player/camera/index.h"
 #include "player/movement/index.h"
 #include "render/frame/index.h"
 #include "world/map/index.h"
@@ -18,33 +19,37 @@ enum : int64_t {
     PLAYER_INTENT_STALE_NS = 250000000,
 };
 
-/* One tick's worth of where the eye was and is, from sim to main. */
+/* One tick's worth of where the eye was and is and what it aims at, from sim to main. */
 typedef struct player_view_t {
-    float64_t previous[3]; /* 0 */
-    float64_t current[3];  /* 24 */
-    int64_t tick_ns;       /* 48: when this tick was due */
-    uint64_t tick;         /* 56: which one, counting from 1, and 0 before any */
+    float64_t previous[3];  /* 0 */
+    float64_t current[3];   /* 24 */
+    int64_t tick_ns;        /* 48: when this tick was due */
+    uint64_t tick;          /* 56: which one, counting from 1, and 0 before any */
+    player_target_t target; /* 64 */
 } player_view_t;
-static_assert(sizeof(player_view_t) == 64);
+static_assert(sizeof(player_view_t) == 160);
 
-/* The player. There is one, under app_t. The sim writes everything up to the last line, and main that line. */
+/* The player. There is one, under app_t. The sim writes everything up to the intent, and main the rest. */
 typedef struct player_t {
     player_movement_t movement;                      /* 0: the sim's */
     physics_t *borrowed_physics;                     /* 112 */
     uint64_t tick_count;                             /* 120: the sim's */
     render_exchange_t views;                         /* 128: sim to main, over view_slots */
     player_view_t view_slots[RENDER_EXCHANGE_SLOTS]; /* 320 */
-    /* Main to sim. None of the three carries a pointer or vouches for anything written before it, so all are relaxed. */
-    _Atomic uint64_t intent_word;   /* 512: the newest player_intent_t, packed */
-    _Atomic int64_t intent_sent_ns; /* 520 */
-    _Atomic uint32_t jump_latch;    /* 528: a jump pressed since the sim last looked */
-    uint32_t view_slot;             /* 532: main's: the slot it reads */
-    uint8_t _pad0[40];              /* 536 */
+    player_target_t target;                          /* 800: the sim's: what it aims at, as of the last tick */
+    /* Main to sim. None of these carries a pointer or vouches for anything written before it, so all are relaxed. */
+    _Atomic uint64_t intent_word;   /* 896: the newest player_intent_t, packed */
+    _Atomic int64_t intent_sent_ns; /* 904 */
+    _Atomic uint64_t look_word;     /* 912: the newest yaw and pitch, packed */
+    _Atomic uint32_t jump_latch;    /* 920: a jump pressed since the sim last looked */
+    uint32_t view_slot;             /* 924: main's: the slot it reads */
+    uint8_t _pad0[32];              /* 928 */
 } player_t;
-static_assert(sizeof(player_t) == 576);
+static_assert(sizeof(player_t) == 960);
 static_assert(alignof(player_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(player_t, views) == 128);
-static_assert(offsetof(player_t, intent_word) == 512);
+static_assert(offsetof(player_t, target) == 800);
+static_assert(offsetof(player_t, intent_word) == 896);
 
 /* Remembers what it moves with, and takes nothing. Physics must outlive it. */
 void player_init(player_t *player, physics_t *physics);
@@ -59,6 +64,9 @@ void player_spawn(player_t *player, float64_t x, float64_t y, float64_t z);
  * two ticks still jumps. Never waits. */
 void player_send(player_t *player, const player_intent_t *intent, int64_t now_ns);
 
+/* Where the player looks now, for what it aims at. Main, as often as it likes. A yaw and pitch stay a pair. Never waits. */
+void player_look_send(player_t *player, float32_t yaw, float32_t pitch);
+
 /* One tick. The sim, or whichever one thread holds the map, with tick_ns the time this tick was due. Never waits and never
  * touches the heap. */
 void player_tick(player_t *player, const world_map_t *map, int64_t tick_ns);
@@ -66,5 +74,8 @@ void player_tick(player_t *player, const world_map_t *map, int64_t tick_ns);
 /* Where the eye is to be drawn at now_ns: from a tick's start to its end, over the tick after it was due, so that a picture
  * moves smoothly at any rate and is never more than a tick behind. Main. Never waits. */
 void player_eye_at(player_t *player, int64_t now_ns, float64_t out[3]);
+
+/* What the tick player_eye_at last read aims at. Main. Stays whole until player_eye_at is next called. */
+const player_target_t *player_target_view(const player_t *player);
 
 #endif

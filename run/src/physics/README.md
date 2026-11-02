@@ -1,6 +1,6 @@
 # run/src/physics
 
-**Purpose:** moves boxes through the world's blocks, for anything with a body. The Owner of `collision`, and of `raycast` when Stage 12.2 adds it.
+**Purpose:** moves boxes through the world's blocks, for anything with a body. The Owner of `collision` and `raycast`.
 **Tier:** Owner.
 **Owns:** `owned_region`, 2 MiB, with `arena_boxes` over it: the boxes a move might meet, reset by every move. The region is sized for the largest box and step in `run/include/physics/index.h`, checked by a `static_assert`.
 **Lifetime:** Process, with what is in the arena lasting one move.
@@ -14,6 +14,6 @@
 **May be called by:** `run/src/main/` for the pair, and `player`, later `mob`, `entity` and `item`, for the rest.
 **Depends on:** `heap`, `arena`, `assert`, `world/map`, libm, and its part below.
 
-**Parts:** `collision`: the sweep, the boxes of a block, and what a cell reads as.
+**Parts:** `collision`: the sweep, the boxes of a block, and what a cell reads as. `raycast`: DDA block targeting, which needs no memory of `physics`'s and so takes no `physics_t`.
 
 Neither `physics_move` nor `physics_box_is_clear` touches the heap, so both may run every tick.

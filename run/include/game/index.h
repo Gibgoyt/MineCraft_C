@@ -86,8 +86,13 @@ typedef struct game_t {
     uint8_t pool_full_said;    /* 863 */
     player_t *borrowed_player; /* 864: walking if not nullptr; set before a world opens, and only read after */
     uint8_t _pad0[24];         /* 872 */
+    /* A line of its own from here: the gpu thread writes these, and main what is after them. */
+    render_camera_t picture_cameras[RENDER_EXCHANGE_SLOTS]; /* 896: what the picture in each slot was drawn from */
+    uint8_t _pad1[8];                                       /* 1016 */
+    render_camera_t shown_camera; /* 1024: main's: what borrowed_last_picture was drawn from */
+    uint8_t _pad2[24];            /* 1064 */
 } game_t;
-static_assert(sizeof(game_t) == 896);
+static_assert(sizeof(game_t) == 1088);
 static_assert(alignof(game_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(game_t, group) == 192);
 static_assert(offsetof(game_t, cameras) == 256);
