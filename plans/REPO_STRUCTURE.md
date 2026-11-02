@@ -191,7 +191,8 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 |---|---|---|---|
 | `display` | `device mode flip` | Raw-ioctl KMS: card, connector, mode, dumb buffers, page flip | 05.1 |
 | | `vt_guard` | Console takeover; always restores, even on a crash | 05.2 |
-| | `headless` | No-display backend, PNG screenshots for tests | 05.4 |
+| | `headless` | No-display backend, scripted input replay, PNG screenshots for tests and agents | 05.4 |
+| | `headless/png` `headless/script` `headless/demo` | Stored-DEFLATE PNG encoder; the script language; the scene shown until `game` exists | 05.4 |
 | `input` | `ops discovery events` | evdev discovery by capability, raw keyboard and mouse events, hot-plug | 05.3 |
 
 ### Rendering (CPU side)

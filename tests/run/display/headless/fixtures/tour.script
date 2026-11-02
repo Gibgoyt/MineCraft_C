@@ -1,0 +1,12 @@
+# A short tour of the script language, run by ctest run_display_headless and named in
+# run/src/display/headless/README.md. Plain ticks only, so it does not depend on game.tick_hz.
+0    screenshot start.png
+2    key w down
++3   move 60 -40           # tick 5
+5    screenshot moved.png  # shows tick 5's input, even that on the lines below
+5    button left down
+12   key w up
++0   button left up
+12   wheel 4
++2   screenshot            # tick 14, as tick_00000014.png
++1   end
