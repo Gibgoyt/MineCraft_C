@@ -735,6 +735,16 @@ TEST(malformed_event_blocks_end_quietly) {
     memcpy(bytes, &header, sizeof(header));
     CHECK_EQ_U64(display_flip_take_events(flip, bytes, sizeof(bytes), 1), 0u);
 
+    /* A length shorter than the header itself ends the block: what follows it cannot be trusted to be an event. */
+    header.length = 4u;
+    memcpy(bytes, &header, sizeof(header));
+    /* Stepping 4 would read a header at offset 4, of type 4 and of the length at offset 8, which steps to offset 16. */
+    const uint32_t step_to_16 = 12u;
+    memcpy(bytes + 8u, &step_to_16, sizeof(step_to_16));
+    const uint64_t after_short = event_append(bytes, 16u, DRM_EVENT_FLIP_COMPLETE, crtc, 1u, 100u);
+    CHECK_EQ_U64(display_flip_take_events(flip, bytes, after_short, 1), 0u);
+    CHECK_EQ_U64(flip->flip_pending, 1u);
+
     /* A flip event too short to be one, and an event of another kind, are stepped over. */
     header = (struct drm_event){.type = DRM_EVENT_FLIP_COMPLETE, .length = sizeof(header)};
     memcpy(bytes, &header, sizeof(header));
