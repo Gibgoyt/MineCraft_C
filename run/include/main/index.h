@@ -17,6 +17,7 @@ enum {
     MAIN_EXIT_OK = 0,
     MAIN_EXIT_USAGE = 2,
     MAIN_EXIT_CPU_MISMATCH = 3,
+    MAIN_EXIT_LEAK = 4,
 };
 
 #endif

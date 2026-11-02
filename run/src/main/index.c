@@ -2,6 +2,7 @@
  * allocates nothing. No system with an _init exists yet, so app_init holds only the CPU check, which must stay first. */
 #include "main/index.h"
 
+#include "heap/index.h"
 #include "log/index.h"
 #include "machine/index.h"
 #include "main/cpu_check/index.h"
@@ -97,5 +98,6 @@ int32_t main(int32_t argc, char **argv) {
         LOG_INFO("core runtime started and stopped; no game systems exist yet");
     }
     app_deinit(&app);
-    return MAIN_EXIT_OK;
+    /* Everything is deinitialized by now, so anything still live is a leak: plans/CODING_STANDARD.md section 10. */
+    return heap_exit_check() ? MAIN_EXIT_OK : MAIN_EXIT_LEAK;
 }

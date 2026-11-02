@@ -167,8 +167,8 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | `types` | | The only home of `float32_t`, `float64_t` | 03.1 |
 | `assert` | | Assertions | 03.1 |
 | `log` | | Logging | 03.1 |
-| `heap` | | **Only OS allocator user**; counts everything | 03.2 |
-| `arena` | | Bump allocators | 03.2 |
+| `heap` | | **Only OS allocator user**; counts everything, holds to `memory.process_budget_mib` | 03.2 |
+| `arena` | | Bump allocators over memory an Owner reserved and passes in | 03.2 |
 | `thread` | | Pinning, rings | 03.3 |
 | `time` | | Monotonic clock | 03.3 |
 | `file` | | File wrappers | 03.3 |

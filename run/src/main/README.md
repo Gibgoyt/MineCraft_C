@@ -11,8 +11,9 @@
     minecraft_c --report                          prints the compiled defines and CPU features, then exits
     minecraft_c --pretend-missing-cpu <key>       treats a feature as absent, to see the CPU check fail
 
-Exit status: 0 for success, 2 for a bad command line, 3 for a CPU that lacks what the build uses (`MAIN_EXIT_*`).
+Exit status: 0 for success, 2 for a bad command line, 3 for a CPU that lacks what the build uses, 4 for heap regions
+still live after `app_deinit` (`MAIN_EXIT_*`).
 Later systems' `_init` calls go in `app_init` after the CPU check, and their `_deinit` calls in `app_deinit` in reverse.
 
 **May be called by:** the OS. Tests link everything but this file, and run the built program with `--report`.
-**Depends on:** `log`, `main/cpu_check`, the generated `machine/index.h`.
+**Depends on:** `heap` (only its leak check), `log`, `main/cpu_check`, the generated `machine/index.h`.
