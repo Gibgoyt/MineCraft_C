@@ -117,6 +117,8 @@ Tests catch broken kernels. Each change was made, built and undone, by script:
 
 Appended as they land:
 
+- `a410a81` Add 8-wide gradient noise, batch vector transforms, generated struct offsets for NASM, and a benchmark of every kernel against its scalar reference.
+
 ## Issues found
 
 1. **The first hash was not good enough, and only the test saw it.** Expected: one round of xorshift and multiply to pick gradients with no visible pattern. Actual: `asm_noise` failed `the_hash_has_no_pattern_a_correlation_could_see` on its first run, at `tests/asm/noise/index.c:323` and `:330`. A throwaway measurement of gradient correlation over 64^3 cells gave 0.298 between a seed and the same seed with its top bit flipped, -0.096 for seed + 1, and -0.076 for one flipped bit in the middle. So nearby seeds would give related worlds. Done: a second round (`NOISE_HASH_MIX_2`, 8 more `vpmulld` per batch), which brings all of those under 0.01 in that measurement, and more seeds and distances in the test. The swap checks had a wrong limit, which was the test's bug: where x equals y a swap changes nothing, so they start near 0.016, and they now allow 0.05 and say why.
