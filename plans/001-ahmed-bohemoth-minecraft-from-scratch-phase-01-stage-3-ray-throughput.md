@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 1, stage 3: Ray throughput spike
 
-**Status:** in progress: every check passed the gate check; the only thing pending is the landing on `main` (issue 7)   (updated 2026-11-01)
+**Status:** done: every check passed both gate checks   (updated 2026-11-02)
 
 ## Goal
 
@@ -210,8 +210,11 @@ Controls for the new verdict, all with `--no-pictures --no-scales --frames 40`:
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-10`, which holds all four Phase 01 stages rebased on `5bb5c57`, and both gate checks. Landing needs `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-10` from outside the agent isolation; see the phase file. Record the landed shas here after that.
+On the integration branch `worktree-wf_a4b549de-085-20`; Ahmed fast-forwards `main` at the end.
 
+- `46154ca` Results
+- `642ad8d` First refused landing
+- `e4dda1d` Second run and refused landing
 
 ## Issues found
 
@@ -286,3 +289,8 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
   - Result on terrain and on the lattice: every disagreement (12 and 26) is explained. **That now confirms what Results only supposed.** The perturbation controls above show the check can fail.
   - `--no-validate` now gives `VERDICT: UNCHECKED` and exit 3.
 - **Limit:** the check still covers 1/16 of the pixels of 3 poses per path. The mid-path poses are compared by eye only.
+
+### 12. 2026-11-02: the landing process changed, so the "not on `main`" text above is history.
+- Expected: this stage to land on `main` through the workflow's landing command (issue 7).
+- Actual: every landing from a worktree was refused, and `main` is still `5bb5c57`. The refusals are recorded above as they happened, and are left as written. The Commits section used to say the work was unlanded, on branch `worktree-wf_a4b549de-085-10`.
+- Done: the process changed. Agent branches now merge into `worktree-wf_a4b549de-085-20`, which stands in for `main`, and Ahmed fast-forwards `main` at the end. The landing commands written above are no longer anyone's to run. The Commits section now lists the shas on the integration branch.

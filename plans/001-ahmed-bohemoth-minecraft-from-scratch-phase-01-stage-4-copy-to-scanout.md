@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 1, stage 4: Copy to scanout spike
 
-**Status:** in progress: all agent work is done and re-verified; the real dumb-buffer write is UNMEASURED and awaits Ahmed   (updated 2026-11-01)
+**Status:** in progress: all agent work is done and re-verified; the real dumb-buffer write is UNMEASURED and awaits Ahmed. On the integration branch `worktree-wf_a4b549de-085-20`   (updated 2026-11-02)
 
 ## Goal
 
@@ -1011,8 +1011,12 @@ fi
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-10`, which holds all four Phase 01 stages rebased on `5bb5c57`, and both gate checks. Landing needs `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-10` from outside the agent isolation; see the phase file. Record the landed shas here after that.
+On the integration branch `worktree-wf_a4b549de-085-20`; Ahmed fast-forwards `main` at the end.
 
+- `e536ce2` Readback and stand-in timings
+- `acd7f68` First refused landing
+- `7e490d4` Rerun on a fresh rebuild
+- `3f14568` Second refused landing
 
 ## Issues found
 
@@ -1086,3 +1090,8 @@ Done: recorded; the box stays unticked. An agent cannot close this by measuring.
 **10. Second gate check: two more defects in this stage's tooling.**
 - `build.sh` failed after a rebuild from the stage file. Expected: the documented rebuild works after `/tmp` is cleared. Actual: the script's last line compiled `test_shim/index.c`, which the rebuild does not create, so under `set -eu` it would end non-zero with a compile error, after building the binary. Done: fixed with an `if [ -f ... ]`, and tested by moving `test_shim` aside, deleting `build/` and the binary, and running it: no output, binary built. The copy above is the fixed one.
 - `test_shim/run.sh` asserted nothing. Expected: "all 10 cases pass" comes from something that can fail. Actual: it prints each case's output and always ends well, and the earlier claims rested on someone reading it. Done: `test_shim/check.py` now asserts each case's required and forbidden lines and exits non-zero on a failure. Result: `failed cases: 0`, rc 0, and on output with lines removed `failed cases: 4`, rc 1. `run.sh`'s case 7 still reports grep's status and not the program's exit, so the check there relies on the `Permission denied` line.
+
+**11. 2026-11-02: the landing process changed, so the "not on `main`" text above is history.**
+- Expected: this stage to land on `main` through the workflow's landing command (issue 5).
+- Actual: every landing from a worktree was refused, and `main` is still `5bb5c57`. The refusals are recorded above as they happened, and are left as written. The Commits section used to say the work was unlanded, on branch `worktree-wf_a4b549de-085-10`.
+- Done: the process changed. Agent branches now merge into `worktree-wf_a4b549de-085-20`, which stands in for `main`, and Ahmed fast-forwards `main` at the end. The landing commands written above are no longer anyone's to run. The Commits section now lists the shas on the integration branch.

@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 1, stage 2: KMS flip spike
 
-**Status:** in progress: written, tested against a fake card, and never run on real hardware; awaits Ahmed's run below   (updated 2026-11-01)
+**Status:** in progress: written, tested against a fake card, and never run on real hardware; awaits Ahmed's run below. On the integration branch `worktree-wf_a4b549de-085-20`   (updated 2026-11-02)
 
 ## Goal
 
@@ -1042,8 +1042,11 @@ int32_t main(int32_t argc, char **argv) {
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-10`, which holds all four Phase 01 stages rebased on `5bb5c57`, and both gate checks. Landing needs `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-10` from outside the agent isolation; see the phase file. Record the landed shas here after that.
+On the integration branch `worktree-wf_a4b549de-085-20`; Ahmed fast-forwards `main` at the end.
 
+- `6c12827` Spike written and compiled, unrun
+- `0f468f5` First refused landing
+- `86c10e3` Second refused landing
 
 ## Issues found
 
@@ -1113,3 +1116,8 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
   - `nv_drm_master_drop` differs on that same flag. Without a framebuffer console it disables every output and releases NVKMS ownership. With one, it only resets the input colorspace.
 - **What that changes:** the restore order in the spike (put the CRTC back, drop master, `KD_TEXT`) still looks right, since on that path the drop itself neither disables nor restores outputs. It also gives a hard reason why **agents must not open this card even just to look**: sysfs shows no output enabled through DRM, so there may be no DRM master at all, and in that case the kernel makes the opener master on `open` and calls this `master_set` and `master_drop` on close. This is inference from the source, not something observed.
 - **Done:** recorded. The boxes stay unticked and the risk entry above stays open. This narrows what Ahmed's run has to answer, and it does not replace the run.
+
+### 2026-11-02: the landing process changed, so the "not on `main`" text above is history.
+- Expected: this stage to land on `main` through the workflow's landing command (see "Landing was refused" above).
+- Actual: every landing from a worktree was refused, and `main` is still `5bb5c57`. The refusals are recorded above as they happened, and are left as written. The Commits section used to say the work was unlanded, on branch `worktree-wf_a4b549de-085-10`.
+- Done: the process changed. Agent branches now merge into `worktree-wf_a4b549de-085-20`, which stands in for `main`, and Ahmed fast-forwards `main` at the end. The landing commands written above are no longer anyone's to run. The Commits section now lists the shas on the integration branch.

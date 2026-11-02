@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 2, stage 4: Standards lint and test harness
 
-**Status:** in progress: verified on all four presets on `worktree-wf_a4b549de-085-20`, with the defects in issues 9 to 14 fixed; the only thing pending is the landing on `main` (the phase file's issue 8)   (updated 2026-11-02)
+**Status:** done: verified on all four presets, most recently by the phase's third gate check; issues 9 to 14 fixed, and Stage 01.1's follow-up confirmed (issue 16)   (updated 2026-11-02)
 
 ## Goal
 
@@ -72,7 +72,13 @@ Further checks against the real build, with throwaway files that were then remov
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-20`, which holds all of `worktree-wf_a4b549de-085-19`, itself holding `-14`. See the phase file's issue 8.
+On the integration branch `worktree-wf_a4b549de-085-20`; Ahmed fast-forwards `main` at the end.
+
+- `98c06e4` Lint, fixtures and harness
+- `8af2957` README field fix and refused landing
+- `5dd2396` Re-verification on the old branch; merged as issue 15
+- `291b50c` First gate check: closes the ways past the lint
+- `8b5bd21` Second gate check: closes its defects
 
 ## Issues found
 
@@ -183,3 +189,13 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 
   With it on the export: `release` built with rc 0 and passed 4/4, and `profile` built with rc 0 and passed 4/4. A throwaway `tests/compile/probe_frame/index.c`, with the same local in a called function and no list edited, stopped the real `release` build at its link with the error above and `ninja: build stopped`. The probe was not run under `profile`. It also showed test discovery working again. The recursion gap in issue 4 is unchanged.
 - To finish, in the main checkout: land `worktree-wf_a4b549de-085-14` as issue 2 says, apply the fix above, then take this file from this branch, whose text is a superset of the one on that branch. Merging this branch as it stands will conflict on this file, since both add the same text to it. Then record the landed sha under Commits and set Status to done.
+
+**16. 2026-11-02: Stage 01.1's follow-up for this stage is done.**
+- Expected: Stage 01.1 issue 2, `f32` and `f64` suffixes banned in `.cu` and `.hu`, because they crash nvcc.
+- Actual: rule `literal_cuda_suffix` is on the lint. A throwaway tree run through `standards_lint --root`, rc 1, reported `1.0f32`, `1.0f64`, `1.0F32`, `.5f64`, `1e3f32` and `0x1p3f32` in a `.cu`, and `1.0f32` and `1.0f64` in a `.hu`. It reported neither `1.0F` nor an unsuffixed `1.0`. `2f32` is not reported, because the lint treats it as an integer. nvcc refuses it under this build's `--Werror=all-warnings`, rc 2: `error #2506-D: a user-provided literal suffix must begin with "_"`, so nothing gets through.
+- Done: nothing to change in the rule. **Left open:** the fixture `literal_cuda_suffix` covers `.cu` only, so no permanent test protects the `.hu` half; the probe above was removed. The task for this check allowed no other changes. One more fixture directory with a `.hu` would close it.
+
+**17. 2026-11-02: the landing process changed, so the "not on `main`" text above is history.**
+- Expected: this stage to land on `main` through the workflow's landing command (issues 2, 9 and 15).
+- Actual: every landing from a worktree was refused, and `main` is still `5bb5c57`. The refusals are recorded above as they happened, and are left as written. The Commits section used to say the work was unlanded, on branches `worktree-wf_a4b549de-085-14` and later `worktree-wf_a4b549de-085-20`.
+- Done: the process changed. Agent branches now merge into `worktree-wf_a4b549de-085-20`, which stands in for `main`, and Ahmed fast-forwards `main` at the end. The landing commands written above are no longer anyone's to run. The Commits section now lists the shas on the integration branch.

@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 1: Feasibility spikes
 
-**Status:** in progress: Stages 01.1 and 01.3 are verified. Stage 01.2 and the dumb-buffer half of 01.4 await Ahmed's runs on a text console. None of this phase is on `main` yet, because agents cannot land it (see Issues)   (updated 2026-11-02)
+**Status:** in progress: Stages 01.1 and 01.3 are done. Stage 01.2 and the dumb-buffer half of 01.4 await Ahmed's runs on a text console, so the gate stays open. All of this phase's records are on the integration branch `worktree-wf_a4b549de-085-20`   (updated 2026-11-02)
 
 ## Goal
 
@@ -54,7 +54,10 @@ Second gate check result, 2026-11-02: the same two commands again behave as stat
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-10`, which holds all four Phase 01 stages rebased on `5bb5c57`, and both gate checks. Landing needs `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-10` from outside the agent isolation; see the phase file. Record the landed shas here after that.
+On the integration branch `worktree-wf_a4b549de-085-20`; Ahmed fast-forwards `main` at the end.
+
+- `59a5397` First gate check
+- `9cb0362` Second gate check
 
 ## Issues found
 
@@ -86,3 +89,10 @@ New defects it found and fixed: `build.sh` in 01.4 failed on the documented rebu
 **Landing, third round.** Expected: step 5's command lands. Actual: `flock /tmp/mc_c_land.lock sh -c 'git rebase main && git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only '"$(git rev-parse --abbrev-ref HEAD)"` was refused: "this command names git in a form too complex to verify that it stays inside the worktree". Done: the attempt was made once, and no other route to move `main` was tried, for the reason in issue 1. **A checker told to fix this cannot, from inside the isolation. Either the workflow lands these commits from outside, or its agents run without worktree isolation.** Later phases need that, as they read `plans/CODING_STANDARD.md`.
 
 **Limit on the sources in `/tmp`.** Only 01.2 and 01.4 keep their source in the repo. The Verification commands for 01.1 and 01.3 need `/tmp/mc_c_spikes/`, which is tmpfs, so they cannot be rerun after a reboot. Their results stay, as this phase intends. The `outlier/` experiments and `test_shim/` for 01.2 and 01.4 are in the same position.
+
+**5. 2026-11-02: the landing process changed, so the "not on `main`" text above is history.**
+- Expected: this stage to land on `main` through the workflow's landing command (issues 1 and 4, and "Landing, third round").
+- Actual: every landing from a worktree was refused, and `main` is still `5bb5c57`. The refusals are recorded above as they happened, and are left as written. The Commits section used to say the work was unlanded, on branch `worktree-wf_a4b549de-085-10`.
+- Done: the process changed. Agent branches now merge into `worktree-wf_a4b549de-085-20`, which stands in for `main`, and Ahmed fast-forwards `main` at the end. The landing commands written above are no longer anyone's to run. The Commits section now lists the shas on the integration branch.
+- The "Landing" entries in the gate check tables above were true on their dates. For 01.1 and 01.3 nothing now waits on an agent. What still blocks this gate is unchanged: Ahmed's runs for 01.2 and 01.4, whose commands are in those stage files. Neither failure route has been triggered or ruled out.
+- Issue 2's spike sources stay in the 01.2 and 01.4 stage files until his results are recorded.
