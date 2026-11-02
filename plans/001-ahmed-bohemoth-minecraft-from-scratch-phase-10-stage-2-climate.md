@@ -54,6 +54,8 @@ No visual check was made here, and none is possible yet: no terrain is built fro
 
 Appended as they land:
 
+- `21b7785` Add the climate fields, continentalness, erosion, ridges, temperature, humidity and weirdness, spread evenly over -1 to 1 and tested to give the same bytes from 1 worker and 16.
+
 ## Wiring outside the owned paths
 
 Each the smallest I could make:
