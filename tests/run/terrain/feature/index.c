@@ -621,6 +621,7 @@ TEST(lily_pads_grow_on_a_swamps_standing_water) {
     uint8_t *const opened = test_alloc(t, (uint64_t)FEA_COLUMNS * LAYERS);
     uint32_t chunks = 0u;
     uint64_t pads = 0u;
+    uint64_t logs = 0u;
     const int32_t z_low = MC_WORLD_Z_SEA - 20;
     for (uint32_t row = 0u; row < FEA_SEARCH_SIDE && chunks < 600u; row++) {
         const terrain_climate_area_t area = {
@@ -633,8 +634,8 @@ TEST(lily_pads_grow_on_a_swamps_standing_water) {
         };
         terrain_biome_columns_area(terrain.borrowed_biome, &area, columns);
         for (uint32_t i = 0u; i < FEA_SEARCH_SIDE && chunks < 600u; i++) {
-            const bool swampy = columns[i].biome == BIOME_ID_SWAMP || columns[i].biome == BIOME_ID_MANGROVE_SWAMP;
-            if (!swampy || columns[i].ground >= (float32_t)MC_WORLD_Z_SEA) {
+            const bool land = biome_defs[columns[i].biome].where == BIOME_WHERE_LAND;
+            if (!land || columns[i].ground >= (float32_t)MC_WORLD_Z_SEA) {
                 continue;
             }
             chunks++;
@@ -649,6 +650,11 @@ TEST(lily_pads_grow_on_a_swamps_standing_water) {
             terrain_generate_box(&terrain, &box, opened, blocks);
             for (uint32_t c = 0u; c < FEA_COLUMNS; c++) {
                 for (uint32_t z = 1u; z < LAYERS; z++) {
+                    /* Land under water is where any tree could wrongly stand. Only a mangrove may. */
+                    if (fea_is_dry_log(blocks[c + FEA_COLUMNS * z])) {
+                        logs++;
+                        CHECK(blocks[c + FEA_COLUMNS * (z - 1u)] != BLOCK_ID_WATER);
+                    }
                     if (blocks[c + FEA_COLUMNS * z] == BLOCK_ID_LILY_PAD) {
                         pads++;
                         CHECK(blocks[c + FEA_COLUMNS * (z - 1u)] == BLOCK_ID_WATER);
@@ -658,7 +664,7 @@ TEST(lily_pads_grow_on_a_swamps_standing_water) {
             }
         }
     }
-    printf("    %" PRIu64 " pads on %u wet chunks of swamp\n", pads, chunks);
+    printf("    %" PRIu64 " pads and %" PRIu64 " logs on %u wet chunks of land\n", pads, logs, chunks);
     REQUIRE(chunks > 0u);
     CHECK(pads > 0u);
     terrain_deinit(&terrain);
@@ -1107,6 +1113,60 @@ TEST(fractional_tries_come_out_as_fractions) {
     REQUIRE(chunks >= 100u);
     CHECK(oaks > 0u);
     CHECK(oaks < chunks / 4u);
+    terrain_deinit(&terrain);
+}
+
+/* As the game will ask: one section of 16 layers at a time, against the whole column. A section far above the ground still has to
+ * get the top of the tallest tree, and one under it the foot. Places with mixed trees, whose leaves overlap. */
+TEST(section_by_section_is_the_whole_column) {
+    terrain_t terrain;
+    REQUIRE(terrain_init(&terrain, FEA_WORLD));
+    fea_place_t *const places = test_alloc(t, BIOME_COUNT * sizeof(*places));
+    fea_find_places(t, &terrain, places);
+    const uint64_t voxels = (uint64_t)FEA_COLUMNS * FEA_LAYERS;
+    uint16_t *const whole = test_alloc(t, voxels * sizeof(uint16_t));
+    uint8_t *const opened = test_alloc(t, voxels);
+    uint16_t section[FEA_COLUMNS * 16u];
+    const biome_id_t biomes[4] = {BIOME_ID_JUNGLE, BIOME_ID_WINDSWEPT_FOREST, BIOME_ID_FOREST, BIOME_ID_JAGGED_PEAKS};
+    for (uint32_t b = 0u; b < 4u; b++) {
+        REQUIRE(places[biomes[b]].found != 0u);
+        for (int32_t dy = -1; dy <= 1; dy++) {
+            for (int32_t dx = -1; dx <= 1; dx++) {
+                const terrain_density_box_t box = {
+                    .origin_x = (places[biomes[b]].chunk_x + dx) * (int32_t)FEA_CHUNK,
+                    .origin_y = (places[biomes[b]].chunk_y + dy) * (int32_t)FEA_CHUNK,
+                    .origin_z = MC_WORLD_Z_MIN,
+                    .count_x = FEA_CHUNK,
+                    .count_y = FEA_CHUNK,
+                    .count_z = FEA_LAYERS,
+                };
+                terrain_generate_box(&terrain, &box, opened, whole);
+                uint64_t wrong = 0u;
+                /* Sections from the top down, so none is helped by the one before. */
+                for (uint32_t s = FEA_LAYERS / 16u + 1u; s-- > 0u;) {
+                    const uint32_t first = s * 16u;
+                    if (first >= FEA_LAYERS) {
+                        continue;
+                    }
+                    const uint32_t tall = FEA_LAYERS - first < 16u ? FEA_LAYERS - first : 16u;
+                    const terrain_density_box_t part = {
+                        .origin_x = box.origin_x,
+                        .origin_y = box.origin_y,
+                        .origin_z = box.origin_z + (int32_t)first,
+                        .count_x = FEA_CHUNK,
+                        .count_y = FEA_CHUNK,
+                        .count_z = tall,
+                    };
+                    uint8_t part_opened[FEA_COLUMNS * 16u];
+                    terrain_generate_box(&terrain, &part, part_opened, section);
+                    for (uint32_t i = 0u; i < FEA_COLUMNS * tall; i++) {
+                        wrong += section[i] != whole[(uint64_t)first * FEA_COLUMNS + i] ? 1u : 0u;
+                    }
+                }
+                CHECK_EQ_U64(wrong, 0u);
+            }
+        }
+    }
     terrain_deinit(&terrain);
 }
 
