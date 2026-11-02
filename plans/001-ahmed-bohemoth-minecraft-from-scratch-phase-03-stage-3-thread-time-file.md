@@ -53,6 +53,9 @@ Notes:
 
 Appended as they land:
 
+- `dbab144` Add pinned threads placed physical cores first, single-producer rings, the monotonic clock and crash-safe file wrappers, with their tests.
+- `0f38597` Make the file tests catch an in-place write and fail rather than hang, and record Stage 03.3 as done.
+
 ## Issues found
 
 1. **The first kill test for `file_write_atomic` could not fail.**
