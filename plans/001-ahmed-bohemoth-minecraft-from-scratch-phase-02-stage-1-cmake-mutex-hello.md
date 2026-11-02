@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 2, stage 1: CMake, mutex and hello binary
 
-**Status:** in progress: verified on all four presets on `worktree-wf_a4b549de-085-20`; the only thing pending is the landing on `main` (the phase file's issue 8)   (updated 2026-11-02)
+**Status:** done: verified on all four presets, most recently by the phase's third gate check; Stage 01.1's follow-ups are confirmed (issue 10)   (updated 2026-11-02)
 
 ## Goal
 
@@ -86,7 +86,13 @@ Second attempt, 2026-11-02, on branch `worktree-wf_a4b549de-085-12` after fast-f
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-20`, which holds all of `worktree-wf_a4b549de-085-12`. See the phase file's issue 8.
+On the integration branch `worktree-wf_a4b549de-085-20`; Ahmed fast-forwards `main` at the end.
+
+- `004761b` Build, presets, discovery, mutex and hello
+- `996f273` Verification and refused landing
+- `2ac15d2` Re-verification and second refused landing
+- `291b50c` First gate check: `cmake/flags.cmake`, `cmake/hello/`
+- `8b5bd21` Second gate check: `cmake/`
 
 ## Issues found
 
@@ -144,3 +150,13 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 - `cmake/machine.cmake`: the configure-time compile moved from `-O0` to `-O1`. See the phase file's issue 12.
 - `cmake/check_format.cmake`, new, for ctest `clang_format`. See the phase file's issue 9. Added to `plans/REPO_STRUCTURE.md`.
 - All four presets were rerun from a deleted `build/`; the table is in the phase file.
+
+**10. 2026-11-02: Stage 01.1's follow-ups for this stage are done.**
+- Expected: Stage 01.1 issue 5, a `readelf -d` check that fails the build if `libstdc++` appears, and its issues 4 and 5 and section 9 applied.
+- Actual, on this clean `debug` build: `cmake/check_link.cmake` runs after the link on `minecraft_c`. With `set(CMAKE_CUDA_IMPLICIT_LINK_LIBRARIES "")` removed from `cmake/flags.cmake`, the build returned rc 1: `check_link: ... needs libstdc++.so.6. Allowed: libc.so.6;libm.so.6;ld-linux-x86-64.so.2`, `ninja: build stopped`. The line was then restored. `build.ninja` links `-lcudart_static -lm -lcudadevrt -lcudart_static -lrt -lpthread -ldl`, and `nm -u` on the CUDA object has no `cxa`, `gxx` or `Unwind` symbol.
+- Done: nothing to change.
+
+**11. 2026-11-02: the landing process changed, so the "not on `main`" text above is history.**
+- Expected: this stage to land on `main` through the workflow's landing command (issue 8).
+- Actual: every landing from a worktree was refused, and `main` is still `5bb5c57`. The refusals are recorded above as they happened, and are left as written. The Commits section used to say the work was unlanded, on branches `worktree-wf_a4b549de-085-12` and later `worktree-wf_a4b549de-085-20`.
+- Done: the process changed. Agent branches now merge into `worktree-wf_a4b549de-085-20`, which stands in for `main`, and Ahmed fast-forwards `main` at the end. The landing commands written above are no longer anyone's to run. The Commits section now lists the shas on the integration branch.

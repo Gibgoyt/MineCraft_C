@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 2, stage 3: Machine config generator
 
-**Status:** in progress: verified on all four presets on `worktree-wf_a4b549de-085-20`; the only thing pending is the landing on `main` (the phase file's issue 8)   (updated 2026-11-02)
+**Status:** done: verified on all four presets, most recently by the phase's third gate check. The first todo has a one-key exception (issue 8)   (updated 2026-11-02)
 
 ## Goal
 
@@ -18,7 +18,7 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 ## Todo
 
-Ticked on the merged tree on `worktree-wf_a4b549de-085-20`, not on `main`. The first box has a one-key exception, in issue 8.
+Ticked on the merged tree on `worktree-wf_a4b549de-085-20`. The first box has a one-key exception, in issue 8.
 
 - [x] Create `config/machine.yaml` with the exact content from plan section 5
 - [x] Implement `compile/src/machine_config/index.c` emitting `build/generated/machine/index.{h,hu,inc,cmake}`, including `MC_PLATFORM_POSIX`, `MC_THREADS_WORKERS`, `MC_CPU_HAS_AVX2`, `MC_GPU_ENABLED`
@@ -60,7 +60,14 @@ Second gate check, 2026-11-02, on the merged tree: `compile_machine_config` pass
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-20`, which holds all of `worktree-wf_a4b549de-085-18`. See the phase file's issue 8.
+On the integration branch `worktree-wf_a4b549de-085-20`; Ahmed fast-forwards `main` at the end.
+
+- `57d8554` Generator, config, tests
+- `7bfbde4` README note moved, and stage record
+- `234d0f4` Final verification
+- `4fa7b64` Correction to the landing count
+- `fd20b5c` Second attempt
+- `8b5bd21` Second gate check: F16C key, formatting, move to the harness
 
 ## Issues found
 
@@ -113,3 +120,8 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 - To reverse: remove the key from the yaml, the fixture and the table, and take F16C out of section 7.
 
 **9. Second gate check: `-O1` at configure, and issue 3 corrected.** Issue 3 said initializing `decoded` should remove the warning. It removed that one and exposed a second; Stage 02.2 issue 10 has it. `cmake/machine.cmake` now compiles at `-O1`. Also closed: issue 4's `cmake/flags.cmake` point, and issue 2's `minecraft_c`, by the earlier gate check.
+
+**12. 2026-11-02: the landing process changed, so the "not on `main`" text above is history.**
+- Expected: this stage to land on `main` through the workflow's landing command (issue 1).
+- Actual: every landing from a worktree was refused, and `main` is still `5bb5c57`. The refusals are recorded above as they happened, and are left as written. The Commits section used to say the work was unlanded, on `worktree-wf_a4b549de-085-20`.
+- Done: the process changed. Agent branches now merge into `worktree-wf_a4b549de-085-20`, which stands in for `main`, and Ahmed fast-forwards `main` at the end. The landing commands written above are no longer anyone's to run. The Commits section now lists the shas on the integration branch.

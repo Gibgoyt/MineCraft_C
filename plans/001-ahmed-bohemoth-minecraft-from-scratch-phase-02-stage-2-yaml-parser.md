@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 2, stage 2: YAML parser
 
-**Status:** in progress: verified on all four presets on `worktree-wf_a4b549de-085-20`; the only thing pending is the landing on `main` (the phase file's issue 8)   (updated 2026-11-02)
+**Status:** done: verified on all four presets, most recently by the phase's third gate check   (updated 2026-11-02)
 
 ## Goal
 
@@ -48,7 +48,12 @@ Results on 2026-11-02 from the second gate check, a real merged tree and not an 
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-20`, which holds all of `worktree-wf_a4b549de-085-15`.
+On the integration branch `worktree-wf_a4b549de-085-20`; Ahmed fast-forwards `main` at the end.
+
+- `c607463` Parser, errors and tests
+- `429fbd3` Verification and refused landing
+- `16be95a` Tab fix and second refused landing
+- `8b5bd21` Second gate check: uninitialized values, move to the harness
 
 ## Issues found
 
@@ -103,3 +108,9 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 - Issue 4 is closed. `tests/compile/yaml/index.c` now uses `TEST`, `CHECK` and `TEST_MAIN` from `tests/harness/`. The same 3278213 checks run.
 - A second false `-Wmaybe-uninitialized`. Expected: Stage 02.3 issue 3 said that initializing `decoded` would be enough for `-O1`. Actual: `compile/src/yaml/index.c:382: error: 'code_point' may be used uninitialized`, reached through `yaml_decode_escape`, once `decoded` was done. `yaml_read_numeric_escape` either fails, and the caller returns, or sets it, so this one is false too. Done: `decoded` is `nullptr` in both places it is declared, and `code_point` starts at 0. Neither value is ever read.
 - `TEST_MACHINE_YAML` in the test stays the plan's text exactly, with no `f16c` key, on purpose. It tests the parser, and that text is still valid YAML. See Stage 02.3 issue 8 for the real file.
+
+**11. 2026-11-02: the landing process changed, so the "not on `main`" text above is history.**
+- Expected: this stage to land on `main` through the workflow's landing command (issues 6 and 9).
+- Actual: every landing from a worktree was refused, and `main` is still `5bb5c57`. The refusals are recorded above as they happened, and are left as written. The Commits section used to say the work was unlanded, on `worktree-wf_a4b549de-085-20`.
+- Done: the process changed. Agent branches now merge into `worktree-wf_a4b549de-085-20`, which stands in for `main`, and Ahmed fast-forwards `main` at the end. The landing commands written above are no longer anyone's to run. The Commits section now lists the shas on the integration branch.
+- This also answers Verification's "repeat once Stage 02.1 has landed": `compile_yaml` passed on all four presets on the integration tree, from a deleted `build/`, in the phase's third gate check. Its Todo's "unlanded branch" and issue 1 describe the earlier overlay.

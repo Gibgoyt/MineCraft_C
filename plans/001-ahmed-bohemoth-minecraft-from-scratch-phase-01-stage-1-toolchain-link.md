@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 1, stage 1: Toolchain link spike
 
-**Status:** in progress: every check passed the gate check; the only thing pending is the landing on `main` (issue 8)   (updated 2026-11-01)
+**Status:** done: every check passed both gate checks, and the follow-ups it named for Stages 02.1 and 02.4 are confirmed done (issue 12)   (updated 2026-11-02)
 
 ## Goal
 
@@ -115,8 +115,11 @@ The spike sources and the matrix scripts stay in `/tmp/mc_c_spikes/toolchain_lin
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-10`, which holds all four Phase 01 stages rebased on `5bb5c57`, and both gate checks. Landing needs `git -C /home/ahmed/Projects/Games/MineCraft_C merge --ff-only worktree-wf_a4b549de-085-10` from outside the agent isolation; see the phase file. Record the landed shas here after that.
+On the integration branch `worktree-wf_a4b549de-085-20`; Ahmed fast-forwards `main` at the end.
 
+- `34fc420` Results
+- `da54065` First refused landing
+- `9f91c40` Second refused landing and rerun
 
 ## Issues found
 
@@ -171,3 +174,14 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 - Expected: issue 9 says Stage 01.3 does not follow this stage's link list or `libc_double_t`.
 - Actual: that was true until the second gate check, which changed Stage 01.3 to use both.
 - Done: see Stage 01.3 issue 10. Its build now also confirms this stage's CMake recipe on a second project: `/usr/bin/cc` links, `-lcudart_static`, `NEEDED` of `libm.so.6`, `libc.so.6` and `ld-linux-x86-64.so.2`, and `-Wformat` on under `-Werror`, with every `float64_t` printf argument cast to `libc_double_t`.
+
+**11. 2026-11-02: the landing process changed, so the "not on `main`" text above is history.**
+- Expected: this stage to land on `main` through the workflow's landing command (issue 8).
+- Actual: every landing from a worktree was refused, and `main` is still `5bb5c57`. The refusals are recorded above as they happened, and are left as written. The Commits section used to say the work was unlanded, on branch `worktree-wf_a4b549de-085-10`.
+- Done: the process changed. Agent branches now merge into `worktree-wf_a4b549de-085-20`, which stands in for `main`, and Ahmed fast-forwards `main` at the end. The landing commands written above are no longer anyone's to run. The Commits section now lists the shas on the integration branch.
+
+**12. 2026-11-02: the follow-ups this stage named for later stages are done.** Checked on the Phase 02 gate's clean build; the evidence is in the Stage 02.1 and 02.4 files.
+- Issue 5, for Stage 02.1 (a `readelf -d` check that fails the build if `libstdc++` appears): done, `cmake/check_link.cmake`. It fired when the setting it guards was removed.
+- Issues 4 and 5 and section 9, for Stage 02.1 (the `-Xcompiler=` flags, static cudart, a C link, cleared implicit link variables): done, in `cmake/flags.cmake` and `cmake/targets.cmake`.
+- Issue 2, for Stage 02.4 (ban `f32` and `f64` suffixes in `.cu` and `.hu`): done, rule `literal_cuda_suffix`.
+- Not done yet, and not due: issue 2's `F32()` and `F64()` macros belong to Stage 03.1.

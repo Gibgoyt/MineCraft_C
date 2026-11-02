@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 2: Build skeleton
 
-**Status:** blocked: every agent-runnable check passes on branch `worktree-wf_a4b549de-085-20`, which holds all of this phase, but none of it is on `main`, which is still `5bb5c57`. The one thing left is the landing, which an agent cannot do (issues 1 and 8), and then one run of the gate on `main`   (updated 2026-11-02)
+**Status:** done: all four stages verified and the gate passes from a clean build on all four presets (third gate check). On the integration branch `worktree-wf_a4b549de-085-20`; Ahmed fast-forwards `main` at the end   (updated 2026-11-02)
 
 ## Goal
 
@@ -17,13 +17,13 @@ CMake builds all three languages on every preset, `config/machine.yaml` drives c
 
 ## Todo
 
-The stage boxes are ticked on `worktree-wf_a4b549de-085-20`, where each was verified from a clean build. The gate box stays open, because the gate is about `main`, and it has not run there.
+The boxes are ticked on the integration branch `worktree-wf_a4b549de-085-20`, from the third gate check below.
 
 - [x] Stage 02.1: CMake, mutex and hello binary
 - [x] Stage 02.2: YAML parser
 - [x] Stage 02.3: Machine config generator
 - [x] Stage 02.4: Standards lint and test harness
-- [ ] Phase gate passed
+- [x] Phase gate passed
 
 ## Verification
 
@@ -89,11 +89,36 @@ Run on branch `worktree-wf_a4b549de-085-20`, a real tree this time and not an ov
 
 **Not run on the real `main`, because it has nothing to build.** **Not tested:** other machines.
 
+### Third gate check, 2026-11-02
+
+Run on branch `worktree-wf_916eee71-48c-1`: the integration branch plus the Stage 02.4 note from `5dd2396`, which changes no code. Everything is from a deleted `build/`, through `tools/test-or-build.sh`. **The gate passes.** It was run on this branch, not on `main`, which the process no longer asks for (issue 16).
+
+| Check | Result |
+|---|---|
+| `cmake --preset`, `cmake --build --preset`, `ctest --preset` on `debug`, `sanitize`, `release`, `profile` | rc 0 on all, `100% tests passed out of 8` on each, `standards_lint: clean, 34 source files` and `no recursion` on each |
+| `minecraft_c`, all four | rc 0, `MC_THREADS_WORKERS=16`, `nasm=524800 cuda=524800 expected=524800`. Compute only |
+| `NEEDED` | `libm libc ld-linux` on debug, release and profile; `libasan libm libubsan libc` on sanitize |
+| Gate: `int` in a throwaway `run/src/world/index.c` | build rc 1: `run/src/world/index.c:1: [banned:int]` |
+| Gate: 2001 lines | build rc 1: `[line_limit] 2001 lines; the limit is 2000` |
+| Gate: padding | build rc 1: `error: padding struct to align 'b' [-Werror=padded]`. My first probe had no `static_assert` and stopped earlier at `[struct_no_sizeof_assert]`, which does not exercise the flag, so I added the assert and ran it again |
+| Gate: missing README | build rc 1: `run/src/world/README.md: [readme_missing]` |
+| Control: the same module with its README, nothing banned | build rc 0, so the probes failed for the reasons shown |
+| No process left | `pgrep -af "$PWD/build"` rc 1. `run/` removed, `git status --short` empty before the plan edits |
+
+**Not tested:** other machines.
+
 ## Commits
 
 Appended as they land:
 
-None landed. All of this phase is on branch `worktree-wf_a4b549de-085-20`.
+On the integration branch `worktree-wf_a4b549de-085-20`; Ahmed fast-forwards `main` at the end.
+
+- `291b50c` First gate check: closes the ways past the lint, frame limit at the LTO link
+- `1eee34c` First gate check: records the refused landing
+- `8b5bd21` Second gate check: closes its defects
+- `65c4f4e` Second gate check: records it
+- `bba174d` Third round: merges `5dd2396`, the Stage 02.4 note
+- `92ec4a8` Third gate check, statuses, and Stage 01.1 follow-ups
 
 ## Issues found
 
@@ -184,3 +209,11 @@ None landed. All of this phase is on branch `worktree-wf_a4b549de-085-20`.
 - Expected: `plans/CODING_STANDARD.md` without `(Stage 01.1)` placeholders, since the lint's literal rules already assume those answers.
 - Actual: on `main` it still has them.
 - Done: merged `worktree-wf_a4b549de-085-10` here, which holds Phase 01's plan files and the updated standard. It changes only 6 files under `plans/`, because spike code stays under `/tmp/`. So the landing above lands it too. I did not merge its stage branches (`-1` to `-8`): `git merge-tree` shows them conflicting with `-10` in their own stage files, and `-10` is Phase 01's latest gate check, which says it integrated them. I took its word for that and did not compare them line by line. Phase 01's gate is not mine: its own file says what awaits Ahmed.
+
+**16. 2026-11-02: the landing process changed, so issues 1 and 8 are history.**
+- Expected: stages to land on `main`, and the gate to run there.
+- Actual: as issues 1 and 8 record, agents could not land, and `main` is still `5bb5c57`, which has nothing to build.
+- Done: agent branches now merge into `worktree-wf_a4b549de-085-20`, which stands in for `main`, and Ahmed fast-forwards `main` at the end. The commands under "To finish" in issues 1 and 8 are not needed. This file's gate box said it stayed open until a run on `main`; that condition is replaced, so the gate ran on this branch and the box is ticked.
+- Issues 1 and 8 said not to merge `worktree-wf_a4b549de-085-16`. It is merged now, on instruction. It conflicted only in the Stage 02.4 file, in four places. The current text was kept, and its note was added as that file's issue 15.
+
+**17. 2026-11-02: Stage 01.1's follow-ups for Stages 02.1 and 02.4 are done.** Stage 02.1 issue 10 and Stage 02.4 issue 16 have the evidence. One gap in the test suite is left open, on instruction not to change anything else: `literal_cuda_suffix` has a fixture for `.cu` but none for `.hu`. A throwaway probe shows the rule does catch it in `.hu`.
