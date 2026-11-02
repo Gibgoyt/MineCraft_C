@@ -12,6 +12,7 @@
 #include "main/cpu_check/index.h"
 #include "math/index.h"
 #include "simd/index.h"
+#include "terrain/index.h"
 #include "texture/index.h"
 #include "thread/index.h"
 #include "time/index.h"
@@ -212,6 +213,14 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         math_deinit(&app->math);
         return MAIN_EXIT_RUNTIME;
     }
+    if (!terrain_init(&app->terrain, TERRAIN_SEED_DEFAULT)) {
+        world_deinit(&app->world);
+        job_deinit(&app->job);
+        texture_deinit(&app->texture);
+        simd_deinit(&app->simd);
+        math_deinit(&app->math);
+        return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
+    }
     return MAIN_EXIT_OK;
 }
 
@@ -219,6 +228,7 @@ static void app_deinit(app_t *app) {
     input_deinit(&app->input);
     display_offscreen_deinit(&app->offscreen);
     display_deinit(&app->display);
+    terrain_deinit(&app->terrain);
     world_deinit(&app->world);
     job_deinit(&app->job);
     texture_deinit(&app->texture);
