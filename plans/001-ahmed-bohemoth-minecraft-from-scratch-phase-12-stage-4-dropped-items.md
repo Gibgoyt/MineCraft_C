@@ -63,6 +63,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `bb8a800`: the entity Owner, the item_drop part, the wiring, the test, and the docs.
+
 ## Wiring outside the owned paths
 
 The smallest needed to call this stage's module, as the task allows:
