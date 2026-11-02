@@ -20,6 +20,7 @@
 | `noise` | Fractal noise fields, sampled in bulk on the NASM kernel | 10.1 |
 | `climate` | Continentalness, erosion, ridges, temperature, humidity and weirdness at any column | 10.2 |
 | `density` | The ground's shape: height splines, 3D density, and bedrock, stone, water and air for any box of voxels | 10.3 |
+| `hydrology` | Rivers, oceans, beaches, aquifers and the lava level, on top of the density's blocks | 10.4 |
 
 A part that needs tables takes them from `arena_tables` in its `_init`, called from `terrain_init`, and adds its noise fields
 to `noise_bank` there too. `TERRAIN_NOISE_FIELDS_MAX` says how many fields fit.

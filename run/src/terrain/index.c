@@ -20,10 +20,18 @@ bool terrain_init(terrain_t *terrain, uint64_t seed) {
         terrain_deinit(terrain); /* it has said why */
         return false;
     }
+    if (!terrain_hydrology_init(&terrain->borrowed_hydrology, &terrain->arena_tables, &terrain->noise_bank,
+                                terrain->borrowed_density, terrain->borrowed_climate)) {
+        terrain_deinit(terrain); /* it has said why */
+        return false;
+    }
     return true;
 }
 
 void terrain_deinit(terrain_t *terrain) {
+    if (terrain->borrowed_hydrology != nullptr) {
+        terrain_hydrology_deinit(terrain->borrowed_hydrology);
+    }
     if (terrain->borrowed_density != nullptr) {
         terrain_density_deinit(terrain->borrowed_density);
     }
