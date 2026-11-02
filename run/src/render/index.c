@@ -157,6 +157,11 @@ static gpu_status_t render_frame_blocks_take(render_t *render, const texture_t *
         {&render->owned_hits, "hits", traverse_hits_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
         {&render->owned_shaded, "shaded pixels", shade_pixels_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
         {&render->owned_xrgb, "finished picture", post_xrgb_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
+        {&render->owned_ao[0], "AO history", shade_ao_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
+        {&render->owned_ao[1], "AO history", shade_ao_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
+        {&render->owned_history[0], "picture history", post_history_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
+        {&render->owned_history[1], "picture history", post_history_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
+        {&render->owned_shafts, "god rays", post_shafts_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
     };
     for (uint32_t i = 0u; i < sizeof(wanted) / sizeof(wanted[0]); i++) {
         const gpu_status_t status = device_memory_alloc(memory, wanted[i].pool, wanted[i].bytes,
@@ -171,9 +176,11 @@ static gpu_status_t render_frame_blocks_take(render_t *render, const texture_t *
 
 static void render_frame_blocks_give_back(render_t *render) {
     device_memory_t *const memory = render->borrowed_memory;
-    device_block_t *const blocks[] = {&render->owned_xrgb,   &render->owned_shaded,     &render->owned_hits,
-                                      &render->owned_coarse, &render->owned_tex_pixels, &render->owned_shapes,
-                                      &render->owned_faces,  &render->owned_textures};
+    device_block_t *const blocks[] = {&render->owned_shafts,     &render->owned_history[1], &render->owned_history[0],
+                                      &render->owned_ao[1],      &render->owned_ao[0],      &render->owned_xrgb,
+                                      &render->owned_shaded,     &render->owned_hits,       &render->owned_coarse,
+                                      &render->owned_tex_pixels, &render->owned_shapes,     &render->owned_faces,
+                                      &render->owned_textures};
     for (uint32_t i = 0u; i < sizeof(blocks) / sizeof(blocks[0]); i++) {
         if (device_memory_free(memory, blocks[i]) != GPU_STATUS_OK) {
             gpu_error_log(&memory->last_error);
@@ -204,6 +211,9 @@ gpu_status_t render_open_frame(render_t *render, const texture_t *texture, uint3
         .borrowed_shaded = &render->owned_shaded,
         .borrowed_xrgb = &render->owned_xrgb,
         .borrowed_shapes = &render->owned_shapes,
+        .borrowed_ao = {&render->owned_ao[0], &render->owned_ao[1]},
+        .borrowed_history = {&render->owned_history[0], &render->owned_history[1]},
+        .borrowed_shafts = &render->owned_shafts,
     };
     status = render_frame_init(&render->frame, &render->arena_frame, render->borrowed_memory, texture, &blocks, width,
                                height, fog_end);

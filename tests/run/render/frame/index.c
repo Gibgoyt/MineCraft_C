@@ -962,7 +962,8 @@ static void fr_check_terrain_picture(test_context_t *t, const fr_rig_t *rig, con
 static const game_config_t fr_small_game = {.render_distance = 6u,
                                             .width = FR_WIDTH,
                                             .height = FR_HEIGHT,
-                                            .features_off = SHADE_FEATURE_DAY_CYCLE,
+                                            .features_off =
+                                                SHADE_FEATURE_DAY_CYCLE | SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
                                             ._pad0 = {0}};
 
 static void fr_check_tally(test_context_t *t, const fr_terrain_tally_t *tally) {

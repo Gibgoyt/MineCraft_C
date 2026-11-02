@@ -9,7 +9,7 @@
 
 - `frame_gpu_init`, `frame_gpu_deinit`: make and destroy the clock events. Deinit is safe on a zeroed `frame_gpu_t`.
 - `frame_host_pin`, `frame_host_unpin`: pin host memory for the copy home. It stays whoever's it was: `cudaHostRegister` allocates nothing, so `run/src/heap/` stays the only allocator.
-- `frame_gpu_run`: coarse pass, primary rays, shading, post, and the copy, and waits for all of it. Reports each pass's time on the card's clock.
+- `frame_gpu_run`: coarse pass, primary rays, shading, post, and the copy, and waits for all of it. Reports each pass's time on the card's clock. God rays and the temporal pass count as post, and AO as shading.
 
 **May be called by:** `render`.
 **Depends on:** `gpu_bridge/*`, `cuda/src/traverse/`, `cuda/src/shade/`, `cuda/src/post/`, the CUDA runtime.

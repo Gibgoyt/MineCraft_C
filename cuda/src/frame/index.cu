@@ -77,9 +77,15 @@ static gpu_status_t frame_passes(frame_gpu_t *frame, const frame_args_t *args) {
     if (status == GPU_STATUS_OK) {
         status = frame_mark(frame, FRAME_PASS_POST);
     }
+    const shade_scene_t *const scene = args->borrowed_scene;
+    const bool shafts = (scene->features & SHADE_FEATURE_GOD_RAYS) != 0u;
+    if (status == GPU_STATUS_OK && shafts) {
+        status = shade_shafts_frame(&frame->last_error, scene, args->borrowed_world, camera, targets->borrowed_pixels);
+    }
     if (status == GPU_STATUS_OK) {
-        status = post_frame(&frame->last_error, args->borrowed_post, camera, targets->borrowed_pixels,
-                            targets->borrowed_xrgb);
+        status = post_frame_temporal(&frame->last_error, args->borrowed_post, scene->borrowed_temporal,
+                                     (scene->features & SHADE_FEATURE_TAA) != 0u, shafts, camera,
+                                     targets->borrowed_pixels, targets->borrowed_xrgb);
     }
     if (status == GPU_STATUS_OK) {
         status = frame_mark(frame, FRAME_PASS_READBACK);

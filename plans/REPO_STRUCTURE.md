@@ -278,7 +278,7 @@ Layout: `cuda/src/<dir>/index.cu`, `cuda/include/<dir>/index.hu`, `README.md`. *
 | `world_buffers` | Section pool, column table on device | 08.2 |
 | `traverse` | Coarse depth pass; primary rays through the bitmask tree, which `world_buffers` holds; the shape table of boxes | 08.3, 08.4, 09.1 |
 | `shade` | Textures, holes in them, light, shadows, AO, water | 08.4, 09.x |
-| `post` | Sky, fog, TAA, tone map | 08.4, 09.x |
+| `post` | Sky, fog, god rays' colour, TAA, tone map | 08.4, 09.x |
 | `frame` | One frame's kernels in order, GPU timers | 08.4, 17.1 |
 | `entity_rays` | Mob and item boxes | 09.5 |
 | `lod` | Far-field traversal | 09.6 |
@@ -388,8 +388,8 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/world/column/` | ctest `run_world_column`: coordinates and `z` limits, random edits against a brute-force array of the whole gameplay range, and `run/src/world/` itself |
 | `tests/run/world/map/` | ctest `run_world_map`: the toroidal table, streaming by distance, requests out of date, a random walk against a brute-force model, and `world_open` |
 | `tests/run/world/edit/` | ctest `run_world_edit`: random edits against a brute-force array and brute-force flags, the log, each consumer's flags, and snapshots, with a real reader thread |
-| `tests/run/world/light/` | ctest `run_world_light`: incremental light against a separate full recompute on random edits, columns coming and going, running out of room or memory, and exact values worked out by hand |
-| `tests/run/world/tick/` | ctest `run_world_sim` (named in its `test.cmake`): `run/src/world/tick/`: flow worked out by hand and against a separate flood fill, lava and water, falling blocks, leaf decay, crops, grass, columns coming and going, running out of room, the same world from the same seed, and real terrain left alone |
+| `tests/run/world/light/` | ctest `run_world_light`: incremental light against a separate full recompute on random edits, columns coming and going, running out of room or memory, exact values worked out by hand, and what an opaque block's faces see |
+| `tests/run/world/tick/` | ctest `run_world_sim` (named in its `test.cmake`): `run/src/world/tick/`: flow worked out by hand and against a separate flood fill, lava and water, falling blocks, leaf decay, crops, grass, columns coming and going, running out of room, the same world from the same seed, real terrain left alone, each rule's number from both sides, and light against a rebuild after real terrain has been simulated |
 | `tests/run/terrain/seed/` | ctest `run_terrain_seed`: `run/src/terrain/` with `rng` and `noise`, the same bytes from 1 worker and 16, any split of the work, and values pinned from a separate program and the scalar kernel |
 | `tests/run/terrain/climate/` | ctest `run_terrain_climate`: `run/src/terrain/climate/`: ranges, the spread its README promises, the same bytes from 1 worker and 16, any split of the work, and each value worked out by hand from its noise |
 | `tests/run/terrain/density/` | ctest `run_terrain_density`: `run/src/terrain/density/`: the range limits on every corner of the climate and on real columns, bedrock at `-250`, water's top at `0`, values worked out by hand, any split of the work, and the same bytes from 1 worker and 16 |
@@ -413,6 +413,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/cuda/shapes/` | ctest `render_feature_shapes`, named in its `test.cmake`: each shape by hand, a block of each shape and its holes against an exact trace from all sides, the settings, the coarse pass, how many holes a pixel goes through, golden PNGs in `fixtures/`, and the cost, on the real card |
 | `tests/cuda/sky/` | ctest `render_feature_sky`, named in its `test.cmake`: the day and the light by hand, the sky, fog, shadows through holes and stored light against an exact trace, a tower's shadow by hand, the settings, the clock through the real threads, golden PNGs in `fixtures/`, and the cost, on the real card |
 | `tests/cuda/water/` | ctest `render_feature_water`, named in its `test.cmake`: reflection, depth tint and fog behind a surface by hand, a lake, glass and ice against an exact trace from above and from under the water, deeper being bluer, a tower in the water by hand, the settings, golden PNGs in `fixtures/`, and the cost, on the real card |
+| `tests/cuda/post/` | ctest `render_feature_post`, named in its `test.cmake`: the jitter, the way back to the last frame and what AO and god rays add up to by hand, AO's rate read back from the card and against the exact integral, TAA against a picture at four times the size, ghosts and a moving eye, god rays against an exact walk, the settings, golden PNGs in `fixtures/`, and the cost, on the real card |
 | `tests/cuda/traverse/` | ctest `cuda_traverse`, with an encoder of its own for `world_buffers`' format: known hits, random rays and whole frames against an exact CPU reference in `float64_t`, the coarse pass never overestimating, and Stage 01.3's worlds. Timing on request |
 | `tests/asm/` | NASM kernels against scalar C references |
 | `tests/asm/abi/` | ctest `asm_abi`: every kernel keeps the callee-saved registers and leaves no dirty YMM state, by machine state, not by output |

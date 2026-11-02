@@ -176,6 +176,19 @@ static void sim_ring(test_context_t *t, sim_t *sim, int32_t z_top) {
     }
 }
 
+/* Every voxel of every column the map holds, by block. */
+static void sim_block_counts_of(const sim_t *sim, uint64_t *counts) {
+    memset(counts, 0, BLOCK_COUNT * sizeof(uint64_t));
+    for (uint32_t i = 0u; i < sim->map.active_count; i++) {
+        const column_t *const column = &sim->map.borrowed_columns[sim->map.borrowed_active[i]];
+        for (uint32_t section = 0u; section < COLUMN_SECTIONS; section++) {
+            for (uint32_t voxel = 0u; voxel < SECTION_VOXELS; voxel++) {
+                counts[section_block_get(&column->sections[section], voxel)]++;
+            }
+        }
+    }
+}
+
 /* ---- Water: worked out by hand --------------------------------------------------------------------------------------- */
 
 TEST(water_on_a_floor_makes_a_diamond_of_levels_one_block_every_five_ticks) {
@@ -1067,6 +1080,118 @@ TEST(water_that_leaves_with_its_column_leaves_nothing_behind) {
     sim_end(sim);
 }
 
+/* A way down: the floor gone at one voxel, and stone under it so that what falls in stays there. */
+static void sim_hole(test_context_t *t, sim_t *sim, int32_t x, int32_t y) {
+    sim_set(t, sim, x, y, SIM_FLOOR_Z - 1, BLOCK_ID_STONE);
+    sim_set(t, sim, x, y, SIM_FLOOR_Z, BLOCK_ID_AIR);
+}
+
+TEST(water_looks_4_blocks_for_a_way_down_and_lava_2_and_no_further) {
+    {
+        sim_t *const sim = sim_begin(t);
+        sim_floor(t, sim, BLOCK_ID_STONE);
+        sim_hole(t, sim, -4, SIM_MID); /* 4 from the water: it goes only that way */
+        sim_set(t, sim, -8, SIM_MID, 1, BLOCK_ID_WATER);
+        sim_hole(t, sim, 25, SIM_MID); /* 5 from the water: it does not know, and goes all ways */
+        sim_set(t, sim, 20, SIM_MID, 1, BLOCK_ID_WATER);
+        sim_run(sim, 7u);
+        CHECK_EQ_U64(sim_at(t, sim, -7, SIM_MID, 1), BLOCK_ID_WATER);
+        CHECK_EQ_U64(sim_at(t, sim, -9, SIM_MID, 1), BLOCK_ID_AIR);
+        CHECK_EQ_U64(sim_at(t, sim, -8, SIM_MID + 1, 1), BLOCK_ID_AIR);
+        CHECK_EQ_U64(sim_at(t, sim, -8, SIM_MID - 1, 1), BLOCK_ID_AIR);
+        CHECK_EQ_U64(sim_at(t, sim, 21, SIM_MID, 1), BLOCK_ID_WATER);
+        CHECK_EQ_U64(sim_at(t, sim, 19, SIM_MID, 1), BLOCK_ID_WATER);
+        CHECK_EQ_U64(sim_at(t, sim, 20, SIM_MID + 1, 1), BLOCK_ID_WATER);
+        CHECK_EQ_U64(sim_at(t, sim, 20, SIM_MID - 1, 1), BLOCK_ID_WATER);
+        sim_end(sim);
+    }
+    {
+        sim_t *const sim = sim_begin(t);
+        sim_floor(t, sim, BLOCK_ID_STONE);
+        sim_hole(t, sim, -6, SIM_MID); /* 2 from the lava */
+        sim_set(t, sim, -8, SIM_MID, 1, BLOCK_ID_LAVA);
+        sim_hole(t, sim, 23, SIM_MID); /* 3 from the lava */
+        sim_set(t, sim, 20, SIM_MID, 1, BLOCK_ID_LAVA);
+        sim_run(sim, 32u);
+        CHECK_EQ_U64(sim_at(t, sim, -7, SIM_MID, 1), BLOCK_ID_LAVA);
+        CHECK_EQ_U64(sim_at(t, sim, -9, SIM_MID, 1), BLOCK_ID_AIR);
+        CHECK_EQ_U64(sim_at(t, sim, -8, SIM_MID + 1, 1), BLOCK_ID_AIR);
+        CHECK_EQ_U64(sim_at(t, sim, 21, SIM_MID, 1), BLOCK_ID_LAVA);
+        CHECK_EQ_U64(sim_at(t, sim, 19, SIM_MID, 1), BLOCK_ID_LAVA);
+        CHECK_EQ_U64(sim_at(t, sim, 20, SIM_MID + 1, 1), BLOCK_ID_LAVA);
+        sim_end(sim);
+    }
+}
+
+/* Going down takes all a flowing voxel has, unless 3 sources beside it feed it: the edge of a sea runs both ways. */
+TEST(water_going_down_runs_sideways_too_only_with_3_sources_beside_it) {
+    sim_t *const sim = sim_begin(t);
+    sim_floor(t, sim, BLOCK_ID_STONE);
+    /* 3 sources round a hole. The fourth side is open. */
+    sim_hole(t, sim, 8, SIM_MID);
+    sim_set(t, sim, 7, SIM_MID, 1, BLOCK_ID_WATER);
+    sim_set(t, sim, 8, SIM_MID + 1, 1, BLOCK_ID_WATER);
+    sim_set(t, sim, 8, SIM_MID - 1, 1, BLOCK_ID_WATER);
+    /* 2 sources and a wall, the same otherwise. */
+    sim_hole(t, sim, 24, SIM_MID);
+    sim_set(t, sim, 23, SIM_MID, 1, BLOCK_ID_WATER);
+    sim_set(t, sim, 24, SIM_MID + 1, 1, BLOCK_ID_WATER);
+    sim_set(t, sim, 24, SIM_MID - 1, 1, BLOCK_ID_STONE);
+    (void)sim_settle(t, sim);
+    CHECK_EQ_U64(sim_at(t, sim, 8, SIM_MID, 0), BLOCK_ID_WATER);
+    CHECK_EQ_U64(sim_at(t, sim, 9, SIM_MID, 1), BLOCK_ID_WATER);
+    CHECK_EQ_U64(sim_at(t, sim, 24, SIM_MID, 0), BLOCK_ID_WATER);
+    CHECK_EQ_U64(sim_at(t, sim, 25, SIM_MID, 1), BLOCK_ID_AIR);
+    sim_end(sim);
+}
+
+/* A wake waiting for a column that has gone does not run on the column that took its place: that one's sand hangs, as terrain
+ * does, until something next to it changes. */
+TEST(a_wake_for_a_column_that_left_does_not_run_on_the_one_that_came_back) {
+    sim_t *const sim = sim_begin(t);
+    sim_set(t, sim, 24, SIM_MID, 10, BLOCK_ID_SAND);
+    world_tick_step(&sim->tick);
+    CHECK(world_tick_pending(&sim->tick) != 0u);
+    sim_unload(sim, 1, 0);
+    sim_reload(t, sim, 1, 0);
+    column_t *const column = world_map_column_at(&sim->map, 1, 0);
+    REQUIRE(column != nullptr);
+    REQUIRE(column_block_set(column, &sim->pool, 8u, (uint32_t)SIM_MID, 10, BLOCK_ID_SAND) == COLUMN_STATUS_OK);
+    sim_run_only_ticks(sim, 5u);
+    CHECK_EQ_U64(sim_at(t, sim, 24, SIM_MID, 10), BLOCK_ID_SAND);
+    CHECK_EQ_U64(sim_at(t, sim, 24, SIM_MID, 9), BLOCK_ID_AIR);
+    sim_end(sim);
+}
+
+/* A sealed pool of sources comes due all at once and writes nothing, so only the limit on fires holds it back. */
+TEST(one_tick_runs_no_more_than_its_limit_even_when_nothing_writes) {
+    sim_t *const sim = sim_begin(t);
+    sim_floor(t, sim, BLOCK_ID_STONE);
+    sim_ring(t, sim, 10);
+    for (int32_t z = 1; z <= 10; z++) {
+        for (int32_t y = SIM_MIN + 1; y < SIM_END - 1; y++) {
+            for (int32_t x = SIM_MIN + 1; x < SIM_END - 1; x++) {
+                sim_set(t, sim, x, y, z, BLOCK_ID_WATER);
+            }
+        }
+    }
+    const uint64_t log_before = sim->edit.log_next;
+    uint64_t most = 0u;
+    uint64_t total = 0u;
+    for (uint32_t i = 0u; i < 20u; i++) {
+        const uint64_t fired_before = sim->tick.fired_count;
+        world_tick_step(&sim->tick);
+        const uint64_t fired = sim->tick.fired_count - fired_before;
+        most = fired > most ? fired : most;
+        total += fired;
+    }
+    CHECK_EQ_U64(most, WORLD_TICK_FIRES_PER_TICK);
+    CHECK(total > WORLD_TICK_FIRES_PER_TICK);
+    CHECK_EQ_U64(world_tick_pending(&sim->tick), 0u);
+    CHECK_EQ_U64(sim->edit.log_next, log_before);
+    sim_end(sim);
+}
+
 /* ---- Running out ----------------------------------------------------------------------------------------------------- */
 
 TEST(with_too_few_nodes_wakes_are_dropped_and_counted_and_it_keeps_going) {
@@ -1237,6 +1362,124 @@ TEST(the_same_seed_and_edits_make_the_same_world_and_another_seed_does_not) {
     CHECK(grass_a > 0u);
 }
 
+/* ---- Exactly at each number ------------------------------------------------------------------------------------------ */
+
+/* A voxel's light, written by hand: only sim_run_only_ticks may follow, since a light pass would put it right. Exact levels beside
+ * each other are hard to get from real light, and these tests are about the numbers in world/tick and not about light. */
+static void sim_light_force(sim_t *sim, int32_t x, int32_t y, int32_t z, uint32_t sky) {
+    column_t *const column = world_map_column_at(&sim->map, column_chunk_of(x), column_chunk_of(y));
+    ASSERT_ALWAYS(column != nullptr);
+    ASSERT_ALWAYS(
+        section_light_set(&column->sections[column_section_of(z)], &sim->pool,
+                          section_voxel_index(column_local_of(x), column_local_of(y), column_section_local_of(z)),
+                          section_light_pack(sky, 0u)));
+}
+
+TEST(wheat_grows_at_light_9_and_not_at_light_8) {
+    sim_t *const sim = sim_begin(t);
+    sim_floor(t, sim, BLOCK_ID_STONE);
+    sim_set(t, sim, 2, 2, 1, BLOCK_ID_FARMLAND);
+    sim_set(t, sim, 2, 2, 2, BLOCK_ID_WHEAT_STAGE_1);
+    sim_set(t, sim, 6, 2, 1, BLOCK_ID_FARMLAND);
+    sim_set(t, sim, 6, 2, 2, BLOCK_ID_WHEAT_STAGE_1);
+    (void)sim_settle(t, sim);
+    sim_light_force(sim, 2, 2, 2, 9u);
+    sim_light_force(sim, 6, 2, 2, 8u);
+    sim->tick.random_per_section = SIM_RANDOM_FAST;
+    sim_run_only_ticks(sim, 60u);
+    CHECK(sim_at(t, sim, 2, 2, 2) > BLOCK_ID_WHEAT_STAGE_1);
+    CHECK_EQ_U64(sim_at(t, sim, 6, 2, 2), BLOCK_ID_WHEAT_STAGE_1);
+    sim_end(sim);
+}
+
+TEST(grass_needs_light_9_over_itself_and_light_4_over_what_it_takes) {
+    sim_t *const sim = sim_begin(t);
+    sim_floor(t, sim, BLOCK_ID_STONE);
+    /* In the light it needs: dirt with 4 over it goes, and dirt with 3 stays. */
+    sim_set(t, sim, 8, 8, 1, BLOCK_ID_GRASS_BLOCK);
+    sim_set(t, sim, 9, 8, 1, BLOCK_ID_DIRT);
+    sim_set(t, sim, 7, 8, 1, BLOCK_ID_DIRT);
+    /* With 8 over it, it takes nothing, even dirt in full light. */
+    sim_set(t, sim, 20, 8, 1, BLOCK_ID_GRASS_BLOCK);
+    sim_set(t, sim, 21, 8, 1, BLOCK_ID_DIRT);
+    (void)sim_settle(t, sim);
+    sim_light_force(sim, 8, 8, 2, 9u);
+    sim_light_force(sim, 9, 8, 2, 4u);
+    sim_light_force(sim, 7, 8, 2, 3u);
+    sim_light_force(sim, 20, 8, 2, 8u);
+    sim->tick.random_per_section = SIM_RANDOM_FAST;
+    sim_run_only_ticks(sim, 60u);
+    CHECK_EQ_U64(sim_at(t, sim, 9, 8, 1), BLOCK_ID_GRASS_BLOCK);
+    CHECK_EQ_U64(sim_at(t, sim, 7, 8, 1), BLOCK_ID_DIRT);
+    CHECK_EQ_U64(sim_at(t, sim, 21, 8, 1), BLOCK_ID_DIRT);
+    sim_end(sim);
+}
+
+TEST(water_keeps_farmland_from_4_away_and_one_above_and_no_further) {
+    sim_t *const sim = sim_begin(t);
+    sim_floor(t, sim, BLOCK_ID_STONE);
+    /* Each kept 16 or more from the others, in a stone cup so that the water stays where it is put. */
+    sim_set(t, sim, 0, 0, 1, BLOCK_ID_FARMLAND); /* 4 away: kept */
+    sim_wall(t, sim, 4, 0, 1, 15u);
+    sim_set(t, sim, 4, 0, 1, BLOCK_ID_WATER);
+    sim_set(t, sim, 20, 0, 1, BLOCK_ID_FARMLAND); /* 5 away: not */
+    sim_wall(t, sim, 25, 0, 1, 15u);
+    sim_set(t, sim, 25, 0, 1, BLOCK_ID_WATER);
+    sim_set(t, sim, 0, 20, 1, BLOCK_ID_FARMLAND); /* one above: kept */
+    sim_set(t, sim, 2, 20, 1, BLOCK_ID_STONE);
+    sim_wall(t, sim, 2, 20, 2, 15u);
+    sim_set(t, sim, 2, 20, 2, BLOCK_ID_WATER);
+    sim_set(t, sim, 20, 20, 1, BLOCK_ID_FARMLAND); /* two above: not */
+    sim_set(t, sim, 22, 20, 1, BLOCK_ID_STONE);
+    sim_set(t, sim, 22, 20, 2, BLOCK_ID_STONE);
+    sim_wall(t, sim, 22, 20, 3, 15u);
+    sim_set(t, sim, 22, 20, 3, BLOCK_ID_WATER);
+    (void)sim_settle(t, sim);
+    sim->tick.random_per_section = SIM_RANDOM_FAST;
+    sim_run_only_ticks(sim, 60u);
+    CHECK_EQ_U64(sim_at(t, sim, 0, 0, 1), BLOCK_ID_FARMLAND);
+    CHECK_EQ_U64(sim_at(t, sim, 20, 0, 1), BLOCK_ID_DIRT);
+    CHECK_EQ_U64(sim_at(t, sim, 0, 20, 1), BLOCK_ID_FARMLAND);
+    CHECK_EQ_U64(sim_at(t, sim, 20, 20, 1), BLOCK_ID_DIRT);
+    sim_end(sim);
+}
+
+TEST(dry_farmland_goes_at_the_rate_the_readme_says) {
+    sim_t *const sim = sim_begin(t);
+    sim_floor(t, sim, BLOCK_ID_FARMLAND);
+    (void)sim_settle(t, sim);
+    uint64_t counts[BLOCK_COUNT];
+    sim_block_counts_of(sim, counts);
+    const uint64_t farmland_before = counts[BLOCK_ID_FARMLAND];
+    const uint64_t picks_before = sim->tick.random_count;
+    sim->tick.random_per_section = 8u;
+    while (sim->tick.random_count - picks_before < 1000u) {
+        sim_run_only_ticks(sim, 1u);
+    }
+    sim_block_counts_of(sim, counts);
+    /* Every pick landed on farmland, since one that has gone is no longer picked: 1000 / 8 = 125, and sigma is about 10. Fixed by
+     * the seed, so this does not flake. */
+    const uint64_t gone = farmland_before - counts[BLOCK_ID_FARMLAND];
+    printf("dry farmland: %" PRIu64 " gone in %" PRIu64 " picks\n", gone, sim->tick.random_count - picks_before);
+    CHECK(gone >= 90u && gone <= 165u);
+    sim_end(sim);
+}
+
+TEST(random_ticks_reach_as_far_as_their_radius_and_no_further) {
+    sim_t *const sim = sim_begin(t);
+    sim_set(t, sim, SIM_MID, SIM_MID, 10, BLOCK_ID_OAK_LEAVES);
+    sim_set(t, sim, 24, SIM_MID, 10, BLOCK_ID_OAK_LEAVES); /* chunk 1 */
+    sim_set(t, sim, 40, SIM_MID, 10, BLOCK_ID_OAK_LEAVES); /* chunk 2 */
+    (void)sim_settle(t, sim);
+    sim->tick.random_per_section = SIM_RANDOM_FAST;
+    sim->tick.random_radius = 1u;
+    sim_run_only_ticks(sim, 60u);
+    CHECK_EQ_U64(sim_at(t, sim, SIM_MID, SIM_MID, 10), BLOCK_ID_AIR);
+    CHECK_EQ_U64(sim_at(t, sim, 24, SIM_MID, 10), BLOCK_ID_AIR);
+    CHECK_EQ_U64(sim_at(t, sim, 40, SIM_MID, 10), BLOCK_ID_OAK_LEAVES);
+    sim_end(sim);
+}
+
 /* ---- Real terrain ---------------------------------------------------------------------------------------------------- */
 
 typedef struct sim_terrain_t {
@@ -1270,19 +1513,6 @@ static void sim_fill_from_terrain(test_context_t *t, sim_t *sim, const terrain_t
     }
 }
 
-static void sim_block_counts(const sim_t *sim, uint64_t *counts) {
-    memset(counts, 0, BLOCK_COUNT * sizeof(uint64_t));
-    for (uint32_t i = 0u; i < sim->map.active_count; i++) {
-        const uint32_t slot = sim->map.borrowed_active[i];
-        const column_t *const column = &sim->map.borrowed_columns[slot];
-        for (uint32_t section = 0u; section < COLUMN_SECTIONS; section++) {
-            for (uint32_t voxel = 0u; voxel < SECTION_VOXELS; voxel++) {
-                counts[section_block_get(&column->sections[section], voxel)]++;
-            }
-        }
-    }
-}
-
 TEST(real_terrain_runs_on_its_own_without_flooding_or_stripping_its_trees) {
     terrain_t *const terrain = test_alloc(t, sizeof(terrain_t) + 64u);
     terrain_t *const aligned = (terrain_t *)(((uintptr_t)terrain + 63u) & ~(uintptr_t)63u);
@@ -1302,7 +1532,7 @@ TEST(real_terrain_runs_on_its_own_without_flooding_or_stripping_its_trees) {
         sim_t *const sim = sim_start(t, SIM_NODES, SIM_PAGES, 5u);
         sim_fill_from_terrain(t, sim, aligned, &scratch, places[place][0], places[place][1]);
         (void)world_light_update(&sim->light);
-        sim_block_counts(sim, before);
+        sim_block_counts_of(sim, before);
 
         const int64_t started = time_now_ns();
         for (uint32_t i = 0u; i < 400u; i++) {
@@ -1310,7 +1540,7 @@ TEST(real_terrain_runs_on_its_own_without_flooding_or_stripping_its_trees) {
             (void)world_light_update(&sim->light);
         }
         const int64_t spent = time_now_ns() - started;
-        sim_block_counts(sim, after);
+        sim_block_counts_of(sim, after);
         /* Nothing woke, and so no fluid moved. */
         CHECK_EQ_U64(world_tick_pending(&sim->tick), 0u);
         CHECK_EQ_U64(after[BLOCK_ID_WATER], before[BLOCK_ID_WATER]);
@@ -1333,6 +1563,81 @@ TEST(real_terrain_runs_on_its_own_without_flooding_or_stripping_its_trees) {
     terrain_deinit(aligned);
 }
 
+/* Nothing else here asks whether light kept up with what the simulation wrote. Real terrain, dug into and flooded at random, with
+ * water, lava, sand and random ticks all writing through the log: then every voxel against light's own rebuild, which
+ * tests/run/world/light/ holds to a separate recompute. */
+TEST(light_stays_right_while_the_simulation_changes_real_terrain) {
+    terrain_t *const terrain = test_alloc(t, sizeof(terrain_t) + 64u);
+    terrain_t *const aligned = (terrain_t *)(((uintptr_t)terrain + 63u) & ~(uintptr_t)63u);
+    REQUIRE(terrain_init(aligned, 0x1234567890ABCDEFull));
+    const uint64_t voxels = (uint64_t)COLUMN_SECTIONS * SECTION_VOXELS;
+    const sim_terrain_t scratch = {
+        .borrowed_states = test_alloc(t, voxels * sizeof(uint16_t)),
+        .borrowed_opened = test_alloc(t, voxels),
+    };
+    sim_t *const sim = sim_start(t, SIM_NODES, SIM_PAGES, 11u);
+    sim_fill_from_terrain(t, sim, aligned, &scratch, 0, 0);
+    (void)world_light_update(&sim->light);
+    sim->tick.random_per_section = 64u;
+
+    static const uint16_t dropped[] = {BLOCK_ID_WATER, BLOCK_ID_WATER, BLOCK_ID_LAVA, BLOCK_ID_SAND, BLOCK_ID_GRAVEL,
+                                       BLOCK_ID_AIR,   BLOCK_ID_AIR,   BLOCK_ID_AIR,  BLOCK_ID_TORCH};
+    uint64_t rng = 0xBEEFCAFE12345678ull;
+    uint64_t edits = 0u;
+    for (uint32_t round = 0u; round < 400u; round++) {
+        const uint64_t r = sim_random(&rng);
+        const int32_t x = SIM_MIN + (int32_t)((r & 0xFFFFu) % (uint32_t)(SIM_END - SIM_MIN));
+        const int32_t y = SIM_MIN + (int32_t)(((r >> 16) & 0xFFFFu) % (uint32_t)(SIM_END - SIM_MIN));
+        /* The highest block that is not air, and what lands at it or on it. */
+        int32_t z = COLUMN_Z_GAMEPLAY_MAX;
+        while (z > COLUMN_Z_GAMEPLAY_MIN && sim_at(t, sim, x, y, z) == BLOCK_ID_AIR) {
+            z--;
+        }
+        const uint16_t state = dropped[(r >> 32) % (sizeof(dropped) / sizeof(dropped[0]))];
+        const int32_t at = state == BLOCK_ID_AIR ? z : z + 1;
+        if (world_edit_block_set(&sim->edit, x, y, at, state) == WORLD_EDIT_STATUS_CHANGED) {
+            edits++;
+        }
+        sim_run(sim, 3u);
+    }
+    sim_run(sim, 200u);
+
+    /* It all really happened, and by passes alone: no rebuild hid a wrong one. */
+    CHECK(edits > 200u);
+    CHECK(sim->tick.fired_count > 1000u);
+    CHECK_EQ_U64(sim->tick.lost_count, 0u);
+    CHECK_EQ_U64(sim->light.rebuild_count, 0u);
+    CHECK_EQ_U64(sim->light.overflow_count, 0u);
+    CHECK_EQ_U64(sim->light.lost_count, 0u);
+
+    uint8_t *const incremental = test_alloc(t, (uint64_t)sim->map.active_count * voxels);
+    uint64_t at = 0u;
+    for (uint32_t i = 0u; i < sim->map.active_count; i++) {
+        const column_t *const column = &sim->map.borrowed_columns[sim->map.borrowed_active[i]];
+        for (uint32_t s = 0u; s < COLUMN_SECTIONS; s++) {
+            for (uint32_t v = 0u; v < SECTION_VOXELS; v++) {
+                incremental[at++] = section_light_get(&column->sections[s], v);
+            }
+        }
+    }
+    CHECK_EQ_U64(world_light_rebuild(&sim->light), WORLD_LIGHT_STATUS_OK);
+    uint64_t differences = 0u;
+    at = 0u;
+    for (uint32_t i = 0u; i < sim->map.active_count; i++) {
+        const column_t *const column = &sim->map.borrowed_columns[sim->map.borrowed_active[i]];
+        for (uint32_t s = 0u; s < COLUMN_SECTIONS; s++) {
+            for (uint32_t v = 0u; v < SECTION_VOXELS; v++) {
+                differences += incremental[at++] != section_light_get(&column->sections[s], v) ? 1u : 0u;
+            }
+        }
+    }
+    CHECK_EQ_U64(differences, 0u);
+    printf("light against a rebuild after %" PRIu64 " edits and %" PRIu64 " fired ticks: %" PRIu64 " voxels differ\n",
+           edits, sim->tick.fired_count, differences);
+    sim_end(sim);
+    terrain_deinit(aligned);
+}
+
 /* ---- world_open ------------------------------------------------------------------------------------------------------ */
 
 TEST(world_open_starts_it_within_what_it_said_it_needs_and_a_step_touches_no_heap) {
@@ -1345,6 +1650,9 @@ TEST(world_open_starts_it_within_what_it_said_it_needs_and_a_step_touches_no_hea
     REQUIRE(world_open(world, 2u, 0, 0));
     CHECK(world->arena_columns.used <= world_open_bytes(2u));
     CHECK_EQ_U64(world->tick.node_capacity, WORLD_TICK_NODE_CAPACITY_DEFAULT);
+    /* What the README says, as numbers: only here are the defaults used, since other tests set their own. */
+    CHECK_EQ_U64(world->tick.random_per_section, 3u);
+    CHECK_EQ_U64(world->tick.random_radius, 8u);
     world_map_request_t request;
     while (world_map_stream_take(&world->map, &request, 1u) == 1u) {
         REQUIRE(world_map_stream_commit(&world->map, &request) != nullptr);

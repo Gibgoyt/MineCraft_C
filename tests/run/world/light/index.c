@@ -243,6 +243,34 @@ static void light_reference_compute(light_reference_t *reference, const world_ma
     }
 }
 
+/* What a voxel of the box should hold, once its light has been worked out: its own, or, for an opaque block, what its faces see. An
+ * opaque block that gives off light holds that in that channel. Past the top of the box is open sky. */
+static uint8_t light_reference_wanted(const light_reference_t *reference, uint32_t x, uint32_t y, uint32_t z) {
+    const uint64_t at = light_reference_index(reference, x, y, z);
+    const uint16_t here = reference->borrowed_blocks[at];
+    if (block_defs[here].opacity != 15u) {
+        return section_light_pack(reference->borrowed_sky[at], reference->borrowed_block[at]);
+    }
+    uint32_t sky = z + 1u == reference->height ? 15u : 0u;
+    uint32_t glow = 0u;
+    const int64_t offsets[6][3] = {{-1, 0, 0}, {1, 0, 0}, {0, -1, 0}, {0, 1, 0}, {0, 0, -1}, {0, 0, 1}};
+    for (uint32_t n = 0u; n < 6u; n++) {
+        const int64_t nx = (int64_t)x + offsets[n][0];
+        const int64_t ny = (int64_t)y + offsets[n][1];
+        const int64_t nz = (int64_t)z + offsets[n][2];
+        if (nx < 0 || ny < 0 || nz < 0 || nx >= (int64_t)reference->size || ny >= (int64_t)reference->size ||
+            nz >= (int64_t)reference->height || light_reference_present(reference, (uint32_t)nx, (uint32_t)ny) == 0u) {
+            continue;
+        }
+        const uint64_t there = light_reference_index(reference, (uint32_t)nx, (uint32_t)ny, (uint32_t)nz);
+        if (block_defs[reference->borrowed_blocks[there]].opacity != 15u) {
+            sky = reference->borrowed_sky[there] > sky ? reference->borrowed_sky[there] : sky;
+            glow = reference->borrowed_block[there] > glow ? reference->borrowed_block[there] : glow;
+        }
+    }
+    return section_light_pack(sky, block_defs[here].light != 0u ? block_defs[here].light : glow);
+}
+
 /* How many voxels differ, in the box and all above and below it: above, whatever is lit must be plain open sky, and below, dark.
  * Prints the first. */
 static uint64_t light_reference_differences(const light_reference_t *reference, const world_map_t *map) {
@@ -265,10 +293,8 @@ static uint64_t light_reference_differences(const light_reference_t *reference, 
                         if (z >= top) {
                             want = SECTION_LIGHT_OPEN_SKY;
                         } else if (z >= reference->min_z) {
-                            const uint64_t at =
-                                light_reference_index(reference, cx * COLUMN_SIZE + x, cy * COLUMN_SIZE + y,
-                                                      (uint32_t)(z - reference->min_z));
-                            want = section_light_pack(reference->borrowed_sky[at], reference->borrowed_block[at]);
+                            want = light_reference_wanted(reference, cx * COLUMN_SIZE + x, cy * COLUMN_SIZE + y,
+                                                          (uint32_t)(z - reference->min_z));
                         }
                         if (got != want) {
                             if (differences == 0u) {
@@ -401,7 +427,7 @@ TEST(a_roof_shuts_out_sky_and_a_hole_lets_a_shaft_of_it_down) {
     CHECK_EQ_U64(world_light_update(&test->light), WORLD_LIGHT_STATUS_OK);
     CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 8, 8, 31)), 15u);
     CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 8, 8, 29)), 0u);
-    CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 8, 8, 30)), 0u);
+    CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 8, 8, 30)), 15u); /* the roof, whose top sees the sky */
 
     light_test_set(t, test, 8, 8, 30, BLOCK_ID_AIR);
     CHECK_EQ_U64(world_light_update(&test->light), WORLD_LIGHT_STATUS_OK);
@@ -409,8 +435,11 @@ TEST(a_roof_shuts_out_sky_and_a_hole_lets_a_shaft_of_it_down) {
     CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 8, 8, 0)), 15u);  /* no loss, all the way down */
     CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 9, 8, 29)), 14u); /* one step aside */
     CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 10, 9, 29)), 12u);
-    CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 9, 8, 30)), 0u); /* the roof itself */
-    CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 8, 8, -1)), 0u); /* the floor */
+    CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 9, 8, 30)),
+                 15u); /* the roof itself, whose top sees the sky */
+    CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 8, 8, -1)), 15u); /* the floor under the shaft */
+    CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 9, 8, -1)), 14u); /* the floor one step aside */
+    CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 8, 8, -2)), 0u);  /* and under that, stone on all sides */
 
     light_test_set(t, test, 8, 8, 30, BLOCK_ID_STONE);
     CHECK_EQ_U64(world_light_update(&test->light), WORLD_LIGHT_STATUS_OK);
@@ -459,6 +488,70 @@ TEST(water_and_leaves_take_what_their_opacity_says_and_a_lit_furnace_shines_out)
     light_test_end(test);
 }
 
+/* cuda/src/shade/ lights a block's faces by the byte in the block, since air is not on the card. If these go, the world goes black. */
+TEST(an_opaque_block_holds_what_its_faces_see_and_passes_none_of_it_on) {
+    light_test_t *const test = light_test_begin(t, 0u);
+    light_test_commit_all(t, test);
+    light_test_floor(test, 0u);
+    light_test_add_all(t, test);
+    const uint32_t torch = block_defs[BLOCK_ID_TORCH].light;
+    /* The ground under open sky, and the stone under it. */
+    CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 5, 5, -1)), 15u);
+    CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 5, 5, -2)), 0u);
+
+    /* A wall one block thick: x = 8, with a closed room on the side away from the sky. */
+    for (int32_t y = 0; y < 16; y++) {
+        for (int32_t z = 0; z < 6; z++) {
+            light_test_set(t, test, 8, y, z, BLOCK_ID_STONE);
+            light_test_set(t, test, 12, y, z, BLOCK_ID_STONE);
+        }
+        for (int32_t x = 8; x <= 12; x++) {
+            light_test_set(t, test, x, y, 6, BLOCK_ID_STONE);
+        }
+    }
+    light_test_set(t, test, 10, 8, 2, BLOCK_ID_TORCH);
+    CHECK_EQ_U64(world_light_update(&test->light), WORLD_LIGHT_STATUS_OK);
+    /* The wall sees 15 less a step sideways on its open side, and the torch 2 steps off on the other. */
+    CHECK_EQ_U64(section_light_block(light_test_at(t, test, 8, 8, 2)), torch - 1u);
+    CHECK_EQ_U64(section_light_block(light_test_at(t, test, 7, 8, 2)), 0u); /* and none of it gets through */
+    CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 8, 8, 2)), 15u);
+    CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 9, 8, 2)), 0u); /* nor the sky the other way */
+
+    /* Out goes the torch: the wall's faces see only what is left. */
+    light_test_set(t, test, 10, 8, 2, BLOCK_ID_AIR);
+    CHECK_EQ_U64(world_light_update(&test->light), WORLD_LIGHT_STATUS_OK);
+    CHECK_EQ_U64(section_light_block(light_test_at(t, test, 8, 8, 2)), 0u);
+    CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 8, 8, 2)), 15u);
+
+    /* A lit furnace in a room, beside a torch that outshines it: in block light it holds its own, and light it gave goes with it
+     * when it is swapped for stone, however bright its faces were. */
+    light_test_set(t, test, 10, 4, 2, BLOCK_ID_FURNACE_LIT);
+    light_test_set(t, test, 10, 3, 2, BLOCK_ID_TORCH);
+    CHECK_EQ_U64(world_light_update(&test->light), WORLD_LIGHT_STATUS_OK);
+    const uint32_t furnace = block_defs[BLOCK_ID_FURNACE_LIT].light;
+    CHECK(torch > furnace);
+    CHECK_EQ_U64(section_light_block(light_test_at(t, test, 10, 4, 2)), furnace);
+    CHECK_EQ_U64(section_light_block(light_test_at(t, test, 10, 5, 2)), furnace - 1u);
+    light_test_set(t, test, 10, 4, 2, BLOCK_ID_STONE);
+    CHECK_EQ_U64(world_light_update(&test->light), WORLD_LIGHT_STATUS_OK);
+    CHECK_EQ_U64(section_light_block(light_test_at(t, test, 10, 4, 2)), torch);
+    /* The way past it is round: 3 sideways and over from the torch. */
+    CHECK_EQ_U64(section_light_block(light_test_at(t, test, 10, 5, 2)), torch - 4u);
+
+    /* Dug out, it shows what is around it, as air. And the whole room against a rebuild. */
+    const uint64_t written = test->light.rebuild_count;
+    CHECK_EQ_U64(written, 0u);
+    uint8_t before[64];
+    for (uint32_t i = 0u; i < 64u; i++) {
+        before[i] = light_test_at(t, test, (int32_t)(i % 16u), (int32_t)(i / 4u), 2);
+    }
+    CHECK_EQ_U64(world_light_rebuild(&test->light), WORLD_LIGHT_STATUS_OK);
+    for (uint32_t i = 0u; i < 64u; i++) {
+        CHECK_EQ_U64(before[i], light_test_at(t, test, (int32_t)(i % 16u), (int32_t)(i / 4u), 2));
+    }
+    light_test_end(test);
+}
+
 TEST(a_shaft_the_whole_height_of_storage_goes_dark_when_shut_at_the_top) {
     light_test_t *const test = light_test_begin(t, 0u);
     light_test_commit_all(t, test);
@@ -485,7 +578,8 @@ TEST(a_shaft_the_whole_height_of_storage_goes_dark_when_shut_at_the_top) {
     }
     light_test_add_all(t, test);
     CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 7, 7, COLUMN_Z_GAMEPLAY_MIN)), 15u);
-    CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 8, 7, COLUMN_Z_GAMEPLAY_MIN)), 0u);
+    CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 8, 7, COLUMN_Z_GAMEPLAY_MIN)), 15u); /* the shaft's wall */
+    CHECK_EQ_U64(section_light_sky(light_test_at(t, test, 9, 7, COLUMN_Z_GAMEPLAY_MIN)), 0u);  /* behind that */
 
     light_test_set(t, test, 7, 7, COLUMN_Z_GAMEPLAY_MAX, BLOCK_ID_STONE);
     CHECK_EQ_U64(world_light_update(&test->light), WORLD_LIGHT_STATUS_OK);
@@ -524,6 +618,12 @@ TEST(the_reference_agrees_with_hand_worked_values) {
     CHECK_EQ_U64(reference.borrowed_sky[light_reference_index(&reference, 4u, 4u, z_roof)], 0u);
     CHECK_EQ_U64(reference.borrowed_sky[light_reference_index(&reference, 4u, 4u, z_roof - 1u)], 0u);
     CHECK_EQ_U64(reference.borrowed_sky[light_reference_index(&reference, 4u, 4u, z_roof + 1u)], 15u);
+    /* The roof's own byte: 15 of sky from above, and from below the torch's 14 less the 6 steps to z 9. */
+    const uint8_t roof = light_reference_wanted(&reference, 4u, 4u, z_roof);
+    CHECK_EQ_U64(section_light_sky(roof), 15u);
+    CHECK_EQ_U64(section_light_block(roof), torch - 6u);
+    /* The floor's: 3 steps down from the torch, at z 0, is what it sees from z -1. */
+    CHECK_EQ_U64(section_light_block(light_reference_wanted(&reference, 4u, 4u, 0u)), torch - 3u);
     light_test_end(test);
 }
 
@@ -669,6 +769,44 @@ TEST(sections_of_one_value_beside_very_different_ones_are_still_raised) {
         /* And the rebuild, which skips by the same test. */
         CHECK_EQ_U64(world_light_rebuild(&test->light), WORLD_LIGHT_STATUS_OK);
         CHECK_EQ_U64(light_reference_differences(&reference, &test->map), 0u);
+        light_test_end(test);
+    }
+}
+
+/* No block in config/blocks/ gives off light that leaves two sections of one value exactly 2 apart, so the numbers are written in by
+ * hand: a difference of 2 is the smallest that sends light over a column's edge. */
+TEST(sections_of_one_value_two_apart_across_a_column_edge_are_still_raised) {
+    enum : uint32_t {
+        SECTION_INDEX = 20u, /* z from 64 to 79 */
+    };
+    const int32_t z = 70;
+    /* The new column is the darker. */
+    {
+        light_test_t *const test = light_test_begin(t, 1u);
+        light_test_commit_all(t, test);
+        const uint32_t middle = light_test_slot(test, 0, 0);
+        CHECK_EQ_U64(world_light_column_added(&test->light, middle), WORLD_LIGHT_STATUS_OK);
+        section_light_fill(&test->map.borrowed_columns[middle].sections[SECTION_INDEX], &test->pool,
+                           section_light_pack(SECTION_LIGHT_MAX, 2u));
+        CHECK_EQ_U64(world_light_column_added(&test->light, light_test_slot(test, 1, 0)), WORLD_LIGHT_STATUS_OK);
+        CHECK_EQ_U64(section_light_block(light_test_at(t, test, 16, 5, z)), 1u);
+        CHECK_EQ_U64(section_light_block(light_test_at(t, test, 17, 5, z)), 0u);
+        light_test_end(test);
+    }
+    /* The new column is the brighter: torches, 14, beside 12. */
+    {
+        light_test_t *const test = light_test_begin(t, 1u);
+        light_test_commit_all(t, test);
+        const uint32_t middle = light_test_slot(test, 0, 0);
+        const uint32_t east = light_test_slot(test, 1, 0);
+        CHECK_EQ_U64(world_light_column_added(&test->light, middle), WORLD_LIGHT_STATUS_OK);
+        section_light_fill(&test->map.borrowed_columns[middle].sections[SECTION_INDEX], &test->pool,
+                           section_light_pack(SECTION_LIGHT_MAX, 12u));
+        section_block_fill(&test->map.borrowed_columns[east].sections[SECTION_INDEX], &test->pool, BLOCK_ID_TORCH);
+        CHECK_EQ_U64(block_defs[BLOCK_ID_TORCH].light, 14u);
+        CHECK_EQ_U64(world_light_column_added(&test->light, east), WORLD_LIGHT_STATUS_OK);
+        CHECK_EQ_U64(section_light_block(light_test_at(t, test, 15, 5, z)), 13u);
+        CHECK_EQ_U64(section_light_block(light_test_at(t, test, 14, 5, z)), 12u);
         light_test_end(test);
     }
 }

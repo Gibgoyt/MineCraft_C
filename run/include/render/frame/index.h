@@ -107,16 +107,19 @@ static_assert(sizeof(render_frame_stats_t) == 88);
 
 /* The device blocks a frame needs, which the Owner holds. */
 typedef struct render_frame_blocks_t {
-    const device_block_t *borrowed_textures; /* 0: render_frame_texture_table_bytes */
-    const device_block_t *borrowed_faces;    /* 8: render_frame_face_table_bytes */
-    const device_block_t *borrowed_pixels;   /* 16: all of texture_pixels_get */
-    const device_block_t *borrowed_coarse;   /* 24 */
-    const device_block_t *borrowed_hits;     /* 32 */
-    const device_block_t *borrowed_shaded;   /* 40 */
-    const device_block_t *borrowed_xrgb;     /* 48 */
-    const device_block_t *borrowed_shapes;   /* 56: render_frame_shape_table_bytes */
+    const device_block_t *borrowed_textures;   /* 0: render_frame_texture_table_bytes */
+    const device_block_t *borrowed_faces;      /* 8: render_frame_face_table_bytes */
+    const device_block_t *borrowed_pixels;     /* 16: all of texture_pixels_get */
+    const device_block_t *borrowed_coarse;     /* 24 */
+    const device_block_t *borrowed_hits;       /* 32 */
+    const device_block_t *borrowed_shaded;     /* 40 */
+    const device_block_t *borrowed_xrgb;       /* 48 */
+    const device_block_t *borrowed_shapes;     /* 56: render_frame_shape_table_bytes */
+    const device_block_t *borrowed_ao[2];      /* 64: shade_ao_bytes each: one is the last frame's, one the next's */
+    const device_block_t *borrowed_history[2]; /* 80: post_history_bytes each, the same way */
+    const device_block_t *borrowed_shafts;     /* 96: post_shafts_bytes */
 } render_frame_blocks_t;
-static_assert(sizeof(render_frame_blocks_t) == 64);
+static_assert(sizeof(render_frame_blocks_t) == 104);
 
 /* One picture's way from the card to the screen. The gpu thread draws, and the main thread takes and presents. */
 typedef struct render_frame_t {
@@ -124,25 +127,28 @@ typedef struct render_frame_t {
     frame_gpu_t gpu;                                   /* 192 */
     frame_targets_t targets;                           /* 280 */
     shade_scene_t scene;                               /* 312 */
-    post_settings_t post;                              /* 400 */
-    render_frame_stats_t stats;                        /* 480 */
-    device_memory_t *borrowed_memory;                  /* 568 */
-    uint8_t *borrowed_pictures[RENDER_EXCHANGE_SLOTS]; /* 576: width * height * 4 each */
-    float32_t *borrowed_samples;                       /* 600: RENDER_FRAME_SAMPLES of total_ms */
-    uint64_t picture_bytes;                            /* 608 */
-    uint32_t width;                                    /* 616 */
-    uint32_t height;                                   /* 620 */
-    const device_block_t *borrowed_shapes;             /* 624: a traverse_shape_t per block */
-    float32_t fog_end;                                 /* 632: in blocks, as it was asked for */
-    float32_t day_fraction;                            /* 636: what scene.sun and post were last worked out for */
-    uint8_t pinned;                                    /* 640: how many of the pictures are pinned */
-    uint8_t _pad0[63];                                 /* 641 */
+    post_settings_t post;                              /* 408 */
+    render_frame_stats_t stats;                        /* 488 */
+    device_memory_t *borrowed_memory;                  /* 576 */
+    uint8_t *borrowed_pictures[RENDER_EXCHANGE_SLOTS]; /* 584: width * height * 4 each */
+    float32_t *borrowed_samples;                       /* 608: RENDER_FRAME_SAMPLES of total_ms */
+    uint64_t picture_bytes;                            /* 616 */
+    uint32_t width;                                    /* 624 */
+    uint32_t height;                                   /* 628 */
+    const device_block_t *borrowed_shapes;             /* 632: a traverse_shape_t per block */
+    post_temporal_t temporal;                          /* 640: what scene.borrowed_temporal points to */
+    float32_t fog_end;                                 /* 776: in blocks, as it was asked for */
+    float32_t day_fraction;                            /* 780: what scene.sun and post were last worked out for */
+    uint32_t drawn_features;                           /* 784: what the last frame was drawn with */
+    uint8_t pinned;                                    /* 788: how many of the pictures are pinned */
+    uint8_t _pad0[43];                                 /* 789 */
 } render_frame_t;
-static_assert(sizeof(render_frame_t) == 704);
+static_assert(sizeof(render_frame_t) == 832);
 static_assert(alignof(render_frame_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(render_frame_t, gpu) == 192);
-static_assert(offsetof(render_frame_t, borrowed_memory) == 568);
-static_assert(offsetof(render_frame_t, pinned) == 640);
+static_assert(offsetof(render_frame_t, borrowed_memory) == 576);
+static_assert(offsetof(render_frame_t, temporal) == 640);
+static_assert(offsetof(render_frame_t, pinned) == 788);
 
 /* Sizes, for the Owner to take blocks and memory. */
 uint64_t render_frame_texture_table_bytes(void);
@@ -159,8 +165,8 @@ gpu_status_t render_frame_init(render_frame_t *frame, arena_t *arena, device_mem
 /* Unpins, and forgets the rest. Safe on zero bytes. No kernel may be running. */
 void render_frame_deinit(render_frame_t *frame);
 
-/* Which effects the next frames draw with: SHADE_FEATURE_*, all on from render_frame_init. Between frames: a draw reads this on
- * the gpu thread. */
+/* Which effects the next frames draw with: SHADE_FEATURE_*, SHADE_FEATURES_ALL from render_frame_init. Between frames: a draw reads
+ * this on the gpu thread. An effect with a history starts it again when it is turned on. */
 void render_frame_features_set(render_frame_t *frame, uint32_t features);
 
 /* The time of day: 0 is midnight, 0.25 sunrise in the east (+x), 0.5 noon and 0.75 sunset in the west, and anything else wraps.

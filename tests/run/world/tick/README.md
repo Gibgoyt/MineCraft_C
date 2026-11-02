@@ -16,3 +16,7 @@ The name comes from `test.cmake`: the plan calls this test `run_world_sim`, whil
 Tests of random ticks use a large `random_per_section`, except `wheat_grows_faster_with_water_at_the_rate_the_readme_says`, which needs the real odds. Results follow from the seed, so none of this can flake.
 
 The real-terrain test prints what a tick cost, for the stage file, and checks nothing about that.
+
+`sim_light_force` writes a voxel's light by hand, so that the tests of the exact levels (wheat at 9 and 8, grass at 9, 4 and 3) need no room lit just so. Only ticks may run after it, since a light pass would put it right.
+
+`light_stays_right_while_the_simulation_changes_real_terrain` is the one test of the two modules together: real terrain, edited at random, with everything in this module writing, and then every voxel's light against `world_light_rebuild`, with no rebuild allowed on the way.

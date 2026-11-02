@@ -61,26 +61,29 @@ typedef struct render_t {
 
     arena_t arena_frame;             /* 896: over owned_frame_host */
     render_frame_t frame;            /* 960 */
-    heap_region_t owned_frame_host;  /* 1664 */
-    device_block_t owned_textures;   /* 1680: what shading reads, from DEVICE_POOL_TEXTURES */
-    device_block_t owned_faces;      /* 1704 */
-    device_block_t owned_tex_pixels; /* 1728 */
-    device_block_t owned_coarse;     /* 1752: what a frame writes, from DEVICE_POOL_FRAMES */
-    device_block_t owned_hits;       /* 1776 */
-    device_block_t owned_shaded;     /* 1800 */
-    device_block_t owned_xrgb;       /* 1824 */
-    device_block_t owned_shapes;     /* 1848: from DEVICE_POOL_TEXTURES, with the other tables */
-    uint8_t _pad1[48];               /* 1872 */
+    heap_region_t owned_frame_host;  /* 1792 */
+    device_block_t owned_textures;   /* 1808: what shading reads, from DEVICE_POOL_TEXTURES */
+    device_block_t owned_faces;      /* 1832 */
+    device_block_t owned_tex_pixels; /* 1856 */
+    device_block_t owned_coarse;     /* 1880: what a frame writes, from DEVICE_POOL_FRAMES */
+    device_block_t owned_hits;       /* 1904 */
+    device_block_t owned_shaded;     /* 1928 */
+    device_block_t owned_xrgb;       /* 1952 */
+    device_block_t owned_shapes;     /* 1976: from DEVICE_POOL_TEXTURES, with the other tables */
+    device_block_t owned_ao[2];      /* 2000: what goes from frame to frame, from DEVICE_POOL_FRAMES */
+    device_block_t owned_history[2]; /* 2048 */
+    device_block_t owned_shafts;     /* 2096 */
+    uint8_t _pad1[56];               /* 2120 */
 } render_t;
-static_assert(sizeof(render_t) == 1920);
+static_assert(sizeof(render_t) == 2176);
 static_assert(alignof(render_t) == 64);
 static_assert(offsetof(render_t, upload) == 64);
 static_assert(offsetof(render_t, owned_host) == 512);
 static_assert(offsetof(render_t, buffers) == 576);
 static_assert(offsetof(render_t, open) == 848);
 static_assert(offsetof(render_t, frame) == 960);
-static_assert(offsetof(render_t, owned_frame_host) == 1664);
-static_assert(offsetof(render_t, _pad1) == 1872);
+static_assert(offsetof(render_t, owned_frame_host) == 1792);
+static_assert(offsetof(render_t, _pad1) == 2120);
 
 /* What a real game runs with: gpu.budget in config/machine.yaml. */
 render_limits_t render_limits_default(void);

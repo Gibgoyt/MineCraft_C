@@ -114,7 +114,8 @@ static bool game_open_parts(game_t *game, const game_config_t *config, int32_t c
         world_close(world);
         return false;
     }
-    render_frame_features_set(&render->frame, SHADE_FEATURES_ALL & ~(uint32_t)config->features_off);
+    const uint32_t optional = config->god_rays != 0u ? (uint32_t)SHADE_FEATURE_GOD_RAYS : 0u;
+    render_frame_features_set(&render->frame, (SHADE_FEATURES_PLAY | optional) & ~(uint32_t)config->features_off);
     return true;
 }
 
