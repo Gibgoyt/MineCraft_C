@@ -91,7 +91,7 @@ The two mappings are the same on the wire. A C `_Float32`/`_Float64` passed by v
 
 Verified on GCC 16.2 with `-std=c23 -Wall -Wextra -Wpedantic -Wconversion -Wdouble-promotion -Werror`: `_Float32`
 passes to and from libm functions such as `sinf`, and `1.0f32` is accepted. `printf("%f", x)` is **rejected** for a
-`_Float64` (`-Wformat`: expects `double`), which is what `libc_double_t` is for (see below).
+`_Float64` (`-Wformat`: expects `double`), which is what `libc_double_t` is for (see "The printf rule").
 
 ### Standard library boundaries
 
@@ -99,9 +99,30 @@ passes to and from libm functions such as `sinf`, and `1.0f32` is accepted. `pri
 - **libc return values:** `int32_t rc = open(...);` works with no cast and no exception.
 - **`size_t` at a libc call:** convert at the call. Store the value as `uint64_t` in our code.
 - **`sizeof`:** assign to `uint64_t`, or use directly at a libc call.
-- **Floats at a varargs call:** cast at the call, `printf("%.2f", (libc_double_t)value)`. Store the value as `float32_t`
-  or `float64_t` in our code.
+- **Floats at a varargs call:** see "The printf rule" below.
 - **Kernel structs** from UAPI headers are used as they are. They are system headers, so the padding check skips them.
+
+### The printf rule
+
+**Every float passed to a varargs call is cast to `libc_double_t` at the call, and nowhere else:**
+
+```c
+printf("%.2f ms\n", (libc_double_t)elapsed);
+LOG_INFO("%.2f ms", (libc_double_t)elapsed);
+```
+
+- This covers `printf`, `fprintf`, `snprintf` and the rest of that family, and our `LOG_*` macros, which carry the same
+  format attribute so that GCC checks them the same way.
+- `float32_t` and `float64_t` both need the cast. To GCC they are `_Float32` and `_Float64`, distinct from `double`, and
+  `-Wformat` under `-Werror` fails the build on either one. (Measured on GCC 16.2. Stage 01.1 had tried only `_Float64`.)
+- `-Wno-format` is not an alternative: it would stop every format check in the program, and `standards_lint` rejects it
+  (`cmake_weakening_flag`).
+- `libc_double_t` is never the type of a variable, field, parameter or return value. Values stay `float32_t` or
+  `float64_t`, and a plain `(double)` cast is still banned. This part is checked by review, because a token scan cannot
+  tell a cast from a declaration.
+- CUDA host code follows the same rule. There the cast changes nothing, and writing it keeps one rule for both languages.
+
+ctest `run_types` asks the compiler, with the build's own flags: the bare forms must be rejected, and the casts accepted.
 
 ---
 
@@ -304,7 +325,8 @@ Benchmarks must show that each kernel beats its scalar C reference. If one does 
 
 Comet Lake i9-10900K. Baseline: AVX2, FMA3, BMI1/2, POPCNT, LZCNT, F16C, with 16 YMM registers. **No AVX-512.** MMX is not used. Each
 feature is guarded by a `MC_CPU_HAS_*` define from `config/machine.yaml`. At startup, `run/src/main/` checks CPUID
-against the build flags and exits with a clear message if they do not match.
+against the build flags and exits with a clear message if they do not match. That code is built with the same `-march`,
+so on a CPU older than the flag it can die of SIGILL before printing it: see Stage 03.1 issue 1.
 
 ### Required form
 
@@ -328,6 +350,9 @@ noise3_batch8:
 - **`.note.GNU-stack`** in every file, so the stack stays non-executable.
 - **Aligned data at 32 bytes**, and say in a comment whether a pointer must be aligned.
 - **Each kernel has a C prototype** in `run/include/simd/<name>/index.h`, and a test against a scalar C reference.
+- **`asm/src/cpuid/` is the one directory here that is not SIMD.** CPUID and XGETBV have no C form and inline `asm` is
+  banned, so they are written in NASM. They use no vector register and, like everything here, take arrays. Their test
+  has no scalar C reference to run against, so it compares with `/proc/cpuinfo`.
 - **Struct offsets come from `compile/src/struct_offsets/`.** Numbers are never typed by hand.
 - NASM produces `.o` files only. They link into the program that the C entry point starts.
 
@@ -417,6 +442,7 @@ CMake still adds `-lcudadevrt -lrt -lpthread -ldl` and an unused `-rpath`. None 
 | Struct sizes and offsets | `static_assert`; `standards_lint` requires them for every struct (`sizeof`) and for shared structs (`alignof`, each field's `offsetof`) |
 | Flags set only in `cmake/flags.cmake`, none taken away | `standards_lint` reads the build files |
 | Formatting | ctest `clang_format` |
+| Floats at varargs calls: the printf rule | `-Wformat` under `-Werror`; ctest `run_types`; review for `libc_double_t` used as anything but a cast |
 | VLAs | `-Wvla` |
 | Recursion | Call-graph check from GCC's `-fcallgraph-info`, on every preset |
 | Large stack frames | `-Wframe-larger-than=` |

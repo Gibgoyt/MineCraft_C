@@ -1,11 +1,11 @@
 # cmake/hello
 
-The program `minecraft_c` is until `run/src/main/` exists (Stage 03.1). It proves that C, NASM and CUDA compile with
-the real flags and link the way the coding standard requires, by adding up the same numbers on the CPU and the GPU.
+What is left of the program that was `minecraft_c` until `run/src/main/` arrived in Stage 03.1. Its `main/` and `simd/`
+parts went then, since `run/src/main/` and `asm/src/cpuid/` took their place.
 
-It lives here and not in `run/`, `asm/` and `cuda/` because it is part of the build's own proof, not of the game.
-`cmake/targets.cmake` drops `main/` as soon as `run/src/main/index.c` exists, and drops `simd/` and `gpu/` after that
-as soon as their language has a real module. Nothing in the game may call it.
+`gpu/` stays because an object library must have a source, and CUDA has no module until Stage 08.1.
+`cmake/targets.cmake` drops it as soon as `cuda/src/` holds one, and this directory should be deleted then. Nothing in
+the game calls it.
 
-`gpu/` calls `cudaMalloc`, which the standard otherwise allows only in `cuda/src/device_memory/`. That module does not
-exist yet (Stage 08.1). `standards_lint` (Stage 02.4) should leave `cmake/` out of that check.
+`gpu/` calls `cudaMalloc`, which the standard otherwise allows only in `cuda/src/device_memory/`, and `standards_lint`
+allows this one file for that reason.

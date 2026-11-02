@@ -163,7 +163,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 
 | System | Parts | Job | Stage |
 |---|---|---|---|
-| `main` | | Entry point, `app_t`, CPUID check, init and deinit order | 03.1 |
+| `main` | `cpu_check` | Entry point, `app_t`, CPUID check against the build's flags, init and deinit order | 03.1 |
 | `types` | | The only home of `float32_t`, `float64_t` | 03.1 |
 | `assert` | | Assertions | 03.1 |
 | `log` | | Logging | 03.1 |
@@ -180,7 +180,8 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | System | Parts | Job | Stage |
 |---|---|---|---|
 | `math` | `vec2 vec3 vec4 ivec3 mat4 quat aabb ray` | Our vector library, scalar C | 04.1 |
-| `simd` | `copy blend bitmask noise vec_batch` | C prototypes of NASM kernels | 04.2, 04.3 |
+| `simd` | `cpuid` | C prototypes of the CPUID and XGETBV functions, used by `main/cpu_check` | 03.1 |
+| | `copy blend bitmask noise vec_batch` | C prototypes of NASM kernels | 04.2, 04.3 |
 
 ### Display and input
 
@@ -292,6 +293,7 @@ Layout: `asm/src/<dir>/index.asm`, `asm/include/<dir>/index.inc`, `README.md`. C
 
 | Directory | Job | Stage |
 |---|---|---|
+| `cpuid` | The CPUID and XGETBV instructions, since inline asm is banned; not SIMD | 03.1 |
 | `copy` | Streaming copy to scanout memory | 04.2 |
 | `blend` | HUD alpha blending | 04.2 |
 | `bitmask` | Popcount and mask kernels | 04.2 |
@@ -351,6 +353,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/compile/standards_lint/` | ctest `standards_lint_fixtures`: one failing fixture per banned construct, under `fixtures/{lint,callgraph,compiler}/` |
 | `tests/compile/standards_lint/harness/` | Tests the harness itself |
 | `tests/run/<system>/<part>/` | Game tests |
+| `tests/run/types/` | ctest `run_types`, covering all of Stage 03.1: `types`, `assert`, `log`, `main/cpu_check`, `asm/src/cpuid`, and the built program's `--report` and failure paths |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
 | `tests/asm/` | NASM kernels against scalar C references |
 | `tests/fuzz/`, `tests/soak/` | Fuzzing and long runs (Stage 18.1) |
@@ -376,7 +379,7 @@ tools/test-or-build.sh cmake --build --preset debug
 | `cmake/check_link.cmake` | Fails the build if `minecraft_c` needs a library the standard does not allow, or has an executable stack |
 | `cmake/standards_lint.cmake` | Runs the lint before anything else compiles, runs the recursion check on every preset, and registers ctests `standards_lint` and `clang_format` |
 | `cmake/check_format.cmake` | Run by ctest `clang_format`: fails if any C or CUDA file does not match `.clang-format` |
-| `cmake/hello/` | `minecraft_c` until `run/src/main/` exists: proves C, NASM and CUDA link and run |
+| `cmake/hello/gpu/` | The source `mc_cuda` needs until `cuda/src/` has a module (Stage 08.1) |
 | `cmake/sanitize/` | ASan options CUDA needs, linked only in the `sanitize` preset |
 
 `cmake/machine.cmake` and `cmake/generated.cmake` are included if present, so the stages that write them do not edit
