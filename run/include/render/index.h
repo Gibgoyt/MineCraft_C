@@ -9,6 +9,7 @@
 #include "job/index.h"
 #include "machine/index.h"
 #include "render/encode/index.h"
+#include "render/entities/index.h"
 #include "render/frame/index.h"
 #include "render/upload/index.h"
 #include "texture/index.h"
@@ -59,21 +60,23 @@ typedef struct render_t {
     uint8_t frame_open;               /* 849 */
     uint8_t _pad0[46];                /* 850 */
 
-    arena_t arena_frame;             /* 896: over owned_frame_host */
-    render_frame_t frame;            /* 960 */
-    heap_region_t owned_frame_host;  /* 1792 */
-    device_block_t owned_textures;   /* 1808: what shading reads, from DEVICE_POOL_TEXTURES */
-    device_block_t owned_faces;      /* 1832 */
-    device_block_t owned_tex_pixels; /* 1856 */
-    device_block_t owned_coarse;     /* 1880: what a frame writes, from DEVICE_POOL_FRAMES */
-    device_block_t owned_hits;       /* 1904 */
-    device_block_t owned_shaded;     /* 1928 */
-    device_block_t owned_xrgb;       /* 1952 */
-    device_block_t owned_shapes;     /* 1976: from DEVICE_POOL_TEXTURES, with the other tables */
-    device_block_t owned_ao[2];      /* 2000: what goes from frame to frame, from DEVICE_POOL_FRAMES */
-    device_block_t owned_history[2]; /* 2048 */
-    device_block_t owned_shafts;     /* 2096 */
-    uint8_t _pad1[56];               /* 2120 */
+    arena_t arena_frame;                  /* 896: over owned_frame_host */
+    render_frame_t frame;                 /* 960 */
+    heap_region_t owned_frame_host;       /* 1792 */
+    device_block_t owned_textures;        /* 1808: what shading reads, from DEVICE_POOL_TEXTURES */
+    device_block_t owned_faces;           /* 1832 */
+    device_block_t owned_tex_pixels;      /* 1856 */
+    device_block_t owned_coarse;          /* 1880: what a frame writes, from DEVICE_POOL_FRAMES */
+    device_block_t owned_hits;            /* 1904 */
+    device_block_t owned_shaded;          /* 1928 */
+    device_block_t owned_xrgb;            /* 1952 */
+    device_block_t owned_shapes;          /* 1976: from DEVICE_POOL_TEXTURES, with the other tables */
+    device_block_t owned_ao[2];           /* 2000: what goes from frame to frame, from DEVICE_POOL_FRAMES */
+    device_block_t owned_history[2];      /* 2048 */
+    device_block_t owned_shafts;          /* 2096 */
+    device_block_t owned_entity_lists;    /* 2120: the same pool: render_entities_lists_bytes */
+    device_block_t owned_entity_hits;     /* 2144 */
+    render_entities_t *borrowed_entities; /* 2168: from arena_frame, from render_open_frame to render_close_frame */
 } render_t;
 static_assert(sizeof(render_t) == 2176);
 static_assert(alignof(render_t) == 64);
@@ -83,7 +86,8 @@ static_assert(offsetof(render_t, buffers) == 576);
 static_assert(offsetof(render_t, open) == 848);
 static_assert(offsetof(render_t, frame) == 960);
 static_assert(offsetof(render_t, owned_frame_host) == 1792);
-static_assert(offsetof(render_t, _pad1) == 2120);
+static_assert(offsetof(render_t, owned_entity_lists) == 2120);
+static_assert(offsetof(render_t, borrowed_entities) == 2168);
 
 /* What a real game runs with: gpu.budget in config/machine.yaml. */
 render_limits_t render_limits_default(void);

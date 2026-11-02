@@ -121,6 +121,8 @@ typedef struct render_frame_blocks_t {
 } render_frame_blocks_t;
 static_assert(sizeof(render_frame_blocks_t) == 104);
 
+typedef struct render_entities_t render_entities_t;
+
 /* One picture's way from the card to the screen. The gpu thread draws, and the main thread takes and presents. */
 typedef struct render_frame_t {
     render_exchange_t pictures;                        /* 0 */
@@ -141,7 +143,9 @@ typedef struct render_frame_t {
     float32_t day_fraction;                            /* 780: what scene.sun and post were last worked out for */
     uint32_t drawn_features;                           /* 784: what the last frame was drawn with */
     uint8_t pinned;                                    /* 788: how many of the pictures are pinned */
-    uint8_t _pad0[43];                                 /* 789 */
+    uint8_t _pad0[3];                                  /* 789 */
+    render_entities_t *borrowed_entities; /* 792: what each frame draws of them, from the Owner, or nullptr */
+    uint8_t _pad1[32];                    /* 800 */
 } render_frame_t;
 static_assert(sizeof(render_frame_t) == 832);
 static_assert(alignof(render_frame_t) == MC_CPU_CACHE_LINE_BYTES);
@@ -149,6 +153,7 @@ static_assert(offsetof(render_frame_t, gpu) == 192);
 static_assert(offsetof(render_frame_t, borrowed_memory) == 576);
 static_assert(offsetof(render_frame_t, temporal) == 640);
 static_assert(offsetof(render_frame_t, pinned) == 788);
+static_assert(offsetof(render_frame_t, borrowed_entities) == 792);
 
 /* Sizes, for the Owner to take blocks and memory. */
 uint64_t render_frame_texture_table_bytes(void);

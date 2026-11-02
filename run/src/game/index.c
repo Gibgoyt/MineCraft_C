@@ -4,6 +4,7 @@
 
 #include "assert/index.h"
 #include "log/index.h"
+#include "render/entities/index.h"
 #include "tables/blocks/index.h"
 #include "time/index.h"
 
@@ -408,6 +409,46 @@ static void game_items_tick(game_t *game) {
     (void)item_drop_pickup(&entity->item_drops, &reach, game_pickup_take, player);
 }
 
+/* What the next frames draw: every item as it now lies, what is aimed at and how far along mining it is. Nobody draws anything before
+ * a frame is open, and with neither a body nor items there is nothing to say. */
+static void game_entities_publish(game_t *game) {
+    render_entities_t *const entities = game->borrowed_render->borrowed_entities;
+    if (entities == nullptr || (game->borrowed_entity == nullptr && game->borrowed_player == nullptr)) {
+        return;
+    }
+    render_entities_begin(entities);
+    if (game->borrowed_entity != nullptr) {
+        const world_map_t *const map = &game->borrowed_world->map;
+        const item_drop_store_t *const drops = &game->borrowed_entity->item_drops;
+        for (uint32_t i = 0u; i < drops->count; i++) {
+            const item_drop_t *const drop = &drops->borrowed_items[i];
+            uint8_t stored = SHADE_LIGHT_OPEN_SKY;
+            /* A column not loaded holds no light, and whatever it is, it is not drawn. */
+            if (world_map_light_get(map, (int32_t)floor(drop->position[0]), (int32_t)floor(drop->position[1]),
+                                    (int32_t)floor(drop->position[2]), &stored) != WORLD_MAP_STATUS_OK) {
+                stored = SHADE_LIGHT_OPEN_SKY;
+            }
+            render_entities_add_item_drop(entities, drop->item, drop->position, (float32_t)ITEM_DROP_SIZE, drop->age,
+                                          stored);
+        }
+    }
+    if (game->borrowed_player != nullptr) {
+        const player_t *const player = game->borrowed_player;
+        render_entities_target_t target;
+        memset(&target, 0, sizeof(target));
+        const raycast_hit_t *const hit = &player->target.hit;
+        if (hit->result == RAYCAST_RESULT_HIT) {
+            target.outline = 1u;
+            memcpy(target.box_min, hit->bounds.min, sizeof(target.box_min));
+            memcpy(target.box_max, hit->bounds.max, sizeof(target.box_max));
+        }
+        target.crack_frame = render_entities_crack_frame(player_interaction_progress(&player->interaction));
+        memcpy(target.crack_cell, player->interaction.cell, sizeof(target.crack_cell));
+        render_entities_target_set(entities, &target);
+    }
+    render_entities_publish(entities);
+}
+
 /* One tick of simulated time, due at tick_ns: this is where Stages 11 to 15 add theirs. */
 static void game_sim_tick(game_t *game, int64_t tick_ns) {
     arena_reset(&game->arena_tick);
@@ -420,6 +461,7 @@ static void game_sim_tick(game_t *game, int64_t tick_ns) {
         player_tick(game->borrowed_player, &game->borrowed_world->map, tick_ns);
     }
     world_tick_step(&game->borrowed_world->tick);
+    game_entities_publish(game);
     game->tick_count++;
 }
 
@@ -456,13 +498,6 @@ void game_hands_send(game_t *game, bool attack, bool place) {
 static void game_walk_view(game_t *game, int64_t now_ns) {
     player_eye_at(game->borrowed_player, now_ns, game->camera.position);
     game_center_on_eye(game);
-}
-
-/* The block aimed at, on a picture just put in target, which camera drew. Without a player nothing is aimed at. */
-static void game_outline_draw(const game_t *game, const render_camera_t *camera, display_buffer_t *target) {
-    if (game->borrowed_player != nullptr) {
-        player_camera_outline_draw(camera, player_target_view(game->borrowed_player), target);
-    }
 }
 
 /* ---- A run on one thread ------------------------------------------------------------------------------------------ */
@@ -574,7 +609,6 @@ static bool game_scene_draw(void *context, const display_headless_tick_t *tick, 
     const uint8_t *const picture = render_frame_take(&render->frame);
     ASSERT_ALWAYS(picture != nullptr);
     render_frame_present(&render->frame, picture, frame);
-    game_outline_draw(game, &game->camera, frame);
     return true;
 }
 
@@ -621,7 +655,7 @@ static void game_gpu_thread(void *borrowed_argument) {
             return;
         }
         game_day_apply(game);
-        /* In the slot this picture is going into, for the outline. The publish in the draw hands main both. */
+        /* In the slot this picture is going into, for whoever asks what it was drawn from. The publish in the draw hands main both. */
         game->picture_cameras[render->frame.pictures.back] = *camera;
         status = render_frame_draw(&render->frame, &render->buffers, camera);
         if (status != GPU_STATUS_OK) {
@@ -675,7 +709,6 @@ bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t se
     }
     if (game->borrowed_last_picture != nullptr) {
         render_frame_present(frame, game->borrowed_last_picture, target);
-        game_outline_draw(game, &game->shown_camera, target);
     }
     return atomic_load_explicit(&game->failed, memory_order_acquire) == 0u;
 }
@@ -748,6 +781,13 @@ void game_report(game_t *game) {
                  " lost",
                  drops->dropped_count, drops->picked_up_count, item_drop_on_ground(drops), drops->count,
                  drops->merged_count, drops->despawned_count, drops->destroyed_count, drops->lost_count);
+    }
+    const render_entities_t *const entities = game->borrowed_render->borrowed_entities;
+    if (entities != nullptr && entities->stats.frames != 0u) {
+        LOG_INFO("game: %" PRIu64 " frames drew %" PRIu64 " boxes through %" PRIu64 " links; %" PRIu64
+                 " out of sight, %" PRIu64 " past the links and %" PRIu64 " past the snapshots",
+                 entities->stats.frames, entities->stats.boxes, entities->stats.links, entities->stats.out_of_sight,
+                 entities->stats.out_of_links, entities->stats.out_of_snapshots);
     }
     LOG_INFO("game: %" PRIu64 " columns generated, %" PRIu64 " ticks, %" PRIu64
              " sections sent, %.1f MiB of slabs held",

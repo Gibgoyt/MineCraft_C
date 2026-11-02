@@ -503,6 +503,93 @@ static __device__ __forceinline__ void shade_reflection(const shade_context_t *c
     }
 }
 
+/* Over a surface's colour, the crack on the block being mined: its texture's frame for how far along that is, by the same place on the
+ * face and the same choice of mip as the surface's own. */
+static __device__ __forceinline__ void shade_crack_over(const shade_context_t *context, const shade_texture_t *crack,
+                                                        uint32_t frame, const shade_surface_t *surface, float32_t t,
+                                                        float32_t colour[3]) {
+    float32_t u = 0.0F, v = 0.0F;
+    shade_face_uv(surface->face, surface->local, &u, &v);
+    const uint32_t level = shade_mip_level(t, context->tangent, crack->width, crack->level_count);
+    const uint32_t width = shade_level_dimension(crack->width, level);
+    const uint32_t height = shade_level_dimension(crack->height, level);
+    const uint8_t *const texel =
+        shade_texel(crack, context->pixels, level, u, v) + (uint64_t)(frame - 1u) * (uint64_t)width * height * 4u;
+    const float32_t cover = (float32_t)texel[3] / 255.0F;
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        const float32_t seen = shade_srgb_to_linear((float32_t)texel[i] / 255.0F);
+        colour[i] += (seen - colour[i]) * cover;
+    }
+}
+
+/* What a box shows where a pixel's ray meets it, as a block's face would under the same light and sun: a texture over the whole of the
+ * face, by its own axes, and one sun ray from that place through the world. Boxes cast no shadow and take no AO. */
+static __device__ __forceinline__ void shade_box_colour(const shade_context_t *context, const entity_rays_box_t *box,
+                                                        const shade_texture_t *entity_textures,
+                                                        const entity_rays_hit_t *entity, const float32_t direction[3],
+                                                        float32_t out[3]) {
+    const uint32_t face = entity->face;
+    const float32_t t = entity->t;
+    const float32_t from_middle[3] = {direction[0] * t - box->center[0], direction[1] * t - box->center[1],
+                                      direction[2] * t - box->center[2]};
+    float32_t own[3];
+    entity_rays_to_box(box, from_middle, own);
+    shade_surface_t surface = {};
+    surface.face = face;
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        const float32_t part = (own[i] + box->half[i]) / (2.0F * box->half[i]);
+        surface.local[i] = part < 0.0F ? 0.0F : (part > 1.0F ? 1.0F : part);
+    }
+    const shade_texture_t *texture = nullptr;
+    if (box->material != ENTITY_RAYS_NO_MATERIAL) {
+        const uint32_t index = box->material < context->material_count
+                                   ? context->faces[box->material * SHADE_FACES + face]
+                                   : (uint32_t)SHADE_NO_TEXTURE;
+        texture = index != SHADE_NO_TEXTURE ? &context->textures[index] : nullptr;
+    } else if (box->texture != ENTITY_RAYS_NO_TEXTURE) {
+        texture = &entity_textures[box->texture];
+    }
+    float32_t colour[3] = {SHADE_MISSING_R, SHADE_MISSING_G, SHADE_MISSING_B};
+    if (texture != nullptr) {
+        float32_t u = 0.0F, v = 0.0F;
+        shade_face_uv(face, surface.local, &u, &v);
+        /* The whole texture is across the box, so that its texels are as many times smaller on the screen as the box is than a block. */
+        const float32_t longest = fmaxf(box->half[0], fmaxf(box->half[1], box->half[2])) * 2.0F;
+        const uint32_t level = shade_mip_level(t / longest, context->tangent, texture->width, texture->level_count);
+        shade_texel_colour(texture, shade_texel(texture, context->pixels, level, u, v), colour);
+    }
+    float32_t normal[3];
+    entity_rays_normal(box, face, normal);
+    const uint32_t stored =
+        (context->features & SHADE_FEATURE_LIGHT) != 0u ? box->stored : (uint32_t)SHADE_LIGHT_OPEN_SKY;
+    const shade_sun_t *const sun = context->sun;
+    const float32_t along =
+        normal[0] * sun->direction[0] + normal[1] * sun->direction[1] + normal[2] * sun->direction[2];
+    float32_t sun_seen = 1.0F;
+    if ((context->features & SHADE_FEATURE_SHADOW) != 0u && (stored >> 4) != 0u && along > 0.0F &&
+        sun->direct[0] + sun->direct[1] + sun->direct[2] > 0.0F) {
+        /* The place as a voxel and a fraction, as a god ray's, and pushed off along whichever of the world's axes it looks most along. */
+        traverse_hit_t place = {};
+        place.t = t;
+        shade_surface_t from = {};
+        uint32_t axis = 0u;
+        for (uint32_t a = 0u; a < 3u; a += 1u) {
+            const float32_t coordinate = context->camera->eye_frac[a] + direction[a] * t;
+            const float32_t cell = floorf(coordinate);
+            place.offset[a] = (int16_t)cell;
+            from.local[a] = coordinate - cell;
+            axis = fabsf(normal[a]) > fabsf(normal[axis]) ? a : axis;
+        }
+        from.face = axis * 2u + (normal[axis] > 0.0F ? 1u : 0u);
+        sun_seen = shade_sun_seen(context, &place, &from);
+    }
+    float32_t light[3];
+    shade_box_light(sun, face, normal, stored, sun_seen, light);
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        out[i] = colour[i] * light[i];
+    }
+}
+
 /* What one layer adds to a pixel: its colour, fogged, by its share of what still gets this far. */
 static __device__ __forceinline__ void shade_add(float32_t sum[3], const float32_t through[3],
                                                  const float32_t colour[3], const float32_t sky[3], float32_t fog,
@@ -517,6 +604,8 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
                              uint32_t material_count, uint32_t features, uint32_t water_material,
                              uint32_t glass_material, const shade_sun_t sun, const post_settings_t post,
                              const post_temporal_t temporal, const shade_ao_pixel_t *ao_last, shade_ao_pixel_t *ao_next,
+                             const entity_rays_box_t *entity_boxes, const entity_rays_hit_t *entity_hits,
+                             const shade_texture_t *entity_textures, const entity_rays_mark_t mark,
                              const traverse_hit_t *hits, shade_pixel_t *out) {
     const uint32_t pixel_x = blockIdx.x * blockDim.x + threadIdx.x;
     const uint32_t pixel_y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -552,6 +641,10 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
     }
     ray.resume = 1u;
     traverse_hit_t hit = hits[index];
+    const entity_rays_hit_t entity =
+        entity_hits != nullptr
+            ? entity_hits[index]
+            : entity_rays_hit_t{TRAVERSE_COARSE_SKY, (uint16_t)ENTITY_RAYS_NO_BOX, (uint16_t)TRAVERSE_FACE_MISS};
     float32_t sky[3];
     post_sky(&post, direction, sky);
     /* From near to far: sum is what is seen so far, and through how much of whatever is further on still shows. */
@@ -574,6 +667,14 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
      * line of leaves may cost a pixel. */
     for (uint32_t layer = 0u;; layer += 1u) {
         const uint32_t face = (uint32_t)hit.info & TRAVERSE_INFO_FACE_MASK;
+        if (entity.box != ENTITY_RAYS_NO_BOX && (face == TRAVERSE_FACE_MISS || entity.t < hit.t)) {
+            first_t = drawn ? first_t : entity.t;
+            float32_t colour[3];
+            shade_box_colour(&context, &entity_boxes[entity.box], entity_textures, &entity, direction, colour);
+            shade_add(sum, through, colour, sky, drawn ? shade_fog_behind(&post, first_t, entity.t) : 0.0F, 1.0F);
+            result.t = first_t;
+            break;
+        }
         if (face == TRAVERSE_FACE_MISS) {
             if (drawn) {
                 /* Post draws the sky only where nothing was drawn, so here it is this pixel's to draw. */
@@ -627,9 +728,15 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
                     through[i] *= 1.0F - share;
                 }
             }
+            const bool cracked = mark.crack_frame != 0u && face < SHADE_FACES && hit.offset[0] == mark.crack_cell[0] &&
+                                 hit.offset[1] == mark.crack_cell[1] && hit.offset[2] == mark.crack_cell[2];
             if (!is_water && !part_covered) {
                 float32_t colour[3];
                 shade_texel_colour(surface.texture, surface.texel, colour);
+                if (cracked) {
+                    shade_crack_over(&context, &entity_textures[ENTITY_RAYS_TEXTURE_CRACK], mark.crack_frame, &surface,
+                                     hit.t, colour);
+                }
                 for (uint32_t i = 0u; i < 3u; i += 1u) {
                     colour[i] *= light[i];
                 }
@@ -640,7 +747,14 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
             if (has_face) {
                 float32_t colour[3];
                 for (uint32_t i = 0u; i < 3u; i += 1u) {
-                    colour[i] = shade_srgb_to_linear((float32_t)surface.texel[i] / 255.0F) * light[i];
+                    colour[i] = shade_srgb_to_linear((float32_t)surface.texel[i] / 255.0F);
+                }
+                if (cracked) {
+                    shade_crack_over(&context, &entity_textures[ENTITY_RAYS_TEXTURE_CRACK], mark.crack_frame, &surface,
+                                     hit.t, colour);
+                }
+                for (uint32_t i = 0u; i < 3u; i += 1u) {
+                    colour[i] *= light[i];
                 }
                 const float32_t cover = (float32_t)alpha / 255.0F;
                 shade_add(sum, through, colour, sky, fog, cover);
@@ -658,7 +772,8 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
                     /* It gives back by the light on a top of that water with all the sun: there is no second ray for this. */
                     float32_t full[3], passed[3], given[3];
                     shade_surface_light(&sun, TRAVERSE_FACE_POS_Z, surface.stored, 1.0F, full);
-                    shade_water_tint(walk.out - hit.t, passed, given);
+                    /* A box in the water is as far as this ray looks through it. */
+                    shade_water_tint(fminf(walk.out, entity.t) - hit.t, passed, given);
                     for (uint32_t i = 0u; i < 3u; i += 1u) {
                         given[i] *= full[i];
                     }
@@ -667,7 +782,7 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
                         through[i] *= passed[i];
                     }
                 }
-                if (walk.cut_short != 0u) {
+                if (walk.cut_short != 0u && entity.t >= walk.out) {
                     /* Nothing that far down can be told from more water, and the tint up to here has taken nearly all of it. */
                     result.t = first_t;
                     break;
@@ -765,6 +880,13 @@ static bool shade_block_fits(const device_block_t *block, uint64_t bytes) {
 gpu_status_t shade_frame(gpu_error_t *error, const shade_scene_t *scene, const post_settings_t *post,
                          const traverse_world_t *world, const traverse_camera_t *camera, const device_block_t *hits,
                          const device_block_t *pixels) {
+    return shade_frame_entities(error, scene, post, world, camera, hits, pixels, nullptr);
+}
+
+gpu_status_t shade_frame_entities(gpu_error_t *error, const shade_scene_t *scene, const post_settings_t *post,
+                                  const traverse_world_t *world, const traverse_camera_t *camera,
+                                  const device_block_t *hits, const device_block_t *pixels,
+                                  const entity_rays_scene_t *entities) {
     if (camera->width == 0u || camera->height == 0u) {
         return shade_refuse(error, "shade: the camera has no pixels");
     }
@@ -793,6 +915,16 @@ gpu_status_t shade_frame(gpu_error_t *error, const shade_scene_t *scene, const p
         ao_last = (const shade_ao_pixel_t *)(const void *)device_memory_pointer(temporal.borrowed_ao_last);
         ao_next = (shade_ao_pixel_t *)(void *)device_memory_pointer(temporal.borrowed_ao_next);
     }
+    const bool any_box = entities != nullptr && entities->box_count != 0u;
+    const bool any_crack = entities != nullptr && entities->mark.crack_frame != 0u;
+    if ((any_box || any_crack) &&
+        !shade_block_fits(entities->borrowed_lists, entity_rays_textures_offset(camera->width, camera->height))) {
+        return shade_refuse(error, "shade: the entity lists are missing or too small for the camera");
+    }
+    if (any_box && !shade_block_fits(entities->borrowed_hits, entity_rays_hits_bytes(camera->width, camera->height))) {
+        return shade_refuse(error, "shade: the entity hits are missing or too small for the camera");
+    }
+    const uint8_t *const lists = any_box || any_crack ? device_memory_pointer(entities->borrowed_lists) : nullptr;
     traverse_view_t view;
     const gpu_status_t status = traverse_view_from(error, world, &view);
     if (status != GPU_STATUS_OK) {
@@ -804,6 +936,12 @@ gpu_status_t shade_frame(gpu_error_t *error, const shade_scene_t *scene, const p
         (const uint16_t *)(const void *)device_memory_pointer(scene->borrowed_faces),
         device_memory_pointer(scene->borrowed_pixels), scene->material_count, scene->features, scene->water_material,
         scene->glass_material, scene->sun, *post, temporal, ao_last, ao_next,
+        any_box ? (const entity_rays_box_t *)(const void *)lists : nullptr,
+        any_box ? (const entity_rays_hit_t *)(const void *)device_memory_pointer(entities->borrowed_hits) : nullptr,
+        lists != nullptr ? (const shade_texture_t *)(const void *)(lists + entity_rays_textures_offset(camera->width,
+                                                                                                       camera->height))
+                         : nullptr,
+        entities != nullptr ? entities->mark : entity_rays_mark_t{},
         (const traverse_hit_t *)(const void *)device_memory_pointer(hits),
         (shade_pixel_t *)(void *)device_memory_pointer(pixels));
     return device_memory_check(error, cudaGetLastError(), "shade: starting the kernel");

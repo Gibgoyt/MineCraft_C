@@ -26,4 +26,4 @@ The block outline was to be Stage 09.5's, and that stage has not landed: see Iss
 - **It is a tick old.** What is aimed at is worked out on the sim thread, which is also what mining will use, so a fast turn of the mouse can leave it up to 50 ms behind the look. Where it is drawn is not behind: see the first point.
 - **It only writes.** Blending would mean reading scanout memory, which is slow. So the lines are solid black, a pixel wide at 720 rows and wider in proportion.
 
-When Stage 09.5's outline arrives, `game` should hand it this `player_target_t` and stop calling `player_camera_outline_draw`. The depth test there will be better than the pieces here.
+Stage 09.5's outline has arrived, and `game` hands it this `player_target_t` and no longer calls `player_camera_outline_draw`: `cuda/src/entity_rays/` tests each pixel against depth. So nothing but `tests/run/physics/raycast/` calls this function now, and the sim's hundred casts for `edge_visible` are read by no picture. Both are left for this directory's owner to take out: Stage 09.5 issue 2.

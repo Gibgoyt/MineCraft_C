@@ -67,12 +67,17 @@ static gpu_status_t frame_passes(frame_gpu_t *frame, const frame_args_t *args) {
     if (status == GPU_STATUS_OK) {
         status = traverse_primary(&frame->last_error, args->borrowed_world, camera, &traverse_targets, true);
     }
+    const entity_rays_scene_t *const entities = args->borrowed_entities;
+    if (status == GPU_STATUS_OK && entities != nullptr) {
+        status = entity_rays_frame(&frame->last_error, entities, camera);
+    }
     if (status == GPU_STATUS_OK) {
         status = frame_mark(frame, FRAME_PASS_SHADE);
     }
     if (status == GPU_STATUS_OK) {
-        status = shade_frame(&frame->last_error, args->borrowed_scene, args->borrowed_post, args->borrowed_world,
-                             camera, targets->borrowed_hits, targets->borrowed_pixels);
+        status =
+            shade_frame_entities(&frame->last_error, args->borrowed_scene, args->borrowed_post, args->borrowed_world,
+                                 camera, targets->borrowed_hits, targets->borrowed_pixels, entities);
     }
     if (status == GPU_STATUS_OK) {
         status = frame_mark(frame, FRAME_PASS_POST);
@@ -85,6 +90,13 @@ static gpu_status_t frame_passes(frame_gpu_t *frame, const frame_args_t *args) {
     if (status == GPU_STATUS_OK) {
         status = post_frame_temporal(&frame->last_error, args->borrowed_post, scene->borrowed_temporal,
                                      (scene->features & SHADE_FEATURE_TAA) != 0u, shafts, camera,
+                                     targets->borrowed_pixels, targets->borrowed_xrgb);
+    }
+    if (status == GPU_STATUS_OK && entities != nullptr) {
+        const float32_t no_jitter[2] = {0.0F, 0.0F};
+        const post_temporal_t *const temporal = scene->borrowed_temporal;
+        status = entity_rays_overlay(&frame->last_error, entities, args->borrowed_world, camera,
+                                     temporal != nullptr ? temporal->jitter : no_jitter, scene->water_material,
                                      targets->borrowed_pixels, targets->borrowed_xrgb);
     }
     if (status == GPU_STATUS_OK) {

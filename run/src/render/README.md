@@ -2,7 +2,7 @@
 
 **Purpose:** the CPU side of drawing the world: holds what getting sections to the card takes, and later the frame sequence.
 **Tier:** Owner.
-**Owns:** `owned_host` with `arena_host` over it, for the host's copy of the column table, the slab bookkeeping, and upload's jobs, staging and ring; and on the card, `owned_pool` and `owned_table`, for one world at a time. For drawing, `owned_frame_host` with `arena_frame` over it, and on the card the textures, the three tables, a frame's four targets and what goes from frame to frame, from `render_open_frame` to `render_close_frame`.
+**Owns:** `owned_host` with `arena_host` over it, for the host's copy of the column table, the slab bookkeeping, and upload's jobs, staging and ring; and on the card, `owned_pool` and `owned_table`, for one world at a time. For drawing, `owned_frame_host` with `arena_frame` over it, and on the card the textures, the three tables, a frame's four targets, what goes from frame to frame and each frame's entity lists and hits, from `render_open_frame` to `render_close_frame`.
 **Lifetime:** Process for the host region, World for what is in it and for the blocks on the card.
 **Threads:** `main` for init and deinit; `render_open` and `render_close` from whoever owns the world (`game`, Stage 08.4), with the `gpu` thread not using it.
 **Public functions** (`run/include/render/index.h`):
@@ -24,8 +24,9 @@
 | `upload` | The budgeted queue from snapshots, through the workers, to the card |
 
 | `frame` | The tables the kernels read, the free-fly camera, the pictures on their way home, and putting one on the screen |
+| `entities` | The sim's boxes to the gpu thread, each frame's per-tile lists on the card, what is aimed at and mined |
 
-`entities` arrives with 09.5 and `lod` with 09.6.
+`lod` arrives with 09.6.
 
 ## Why init takes nothing on the card
 

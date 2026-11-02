@@ -162,6 +162,12 @@ static gpu_status_t render_frame_blocks_take(render_t *render, const texture_t *
         {&render->owned_history[0], "picture history", post_history_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
         {&render->owned_history[1], "picture history", post_history_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
         {&render->owned_shafts, "god rays", post_shafts_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
+        {&render->owned_entity_lists,
+         "entity lists",
+         render_entities_lists_bytes(width, height),
+         DEVICE_POOL_FRAMES,
+         {0}},
+        {&render->owned_entity_hits, "entity hits", entity_rays_hits_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
     };
     for (uint32_t i = 0u; i < sizeof(wanted) / sizeof(wanted[0]); i++) {
         const gpu_status_t status = device_memory_alloc(memory, wanted[i].pool, wanted[i].bytes,
@@ -176,11 +182,11 @@ static gpu_status_t render_frame_blocks_take(render_t *render, const texture_t *
 
 static void render_frame_blocks_give_back(render_t *render) {
     device_memory_t *const memory = render->borrowed_memory;
-    device_block_t *const blocks[] = {&render->owned_shafts,     &render->owned_history[1], &render->owned_history[0],
-                                      &render->owned_ao[1],      &render->owned_ao[0],      &render->owned_xrgb,
-                                      &render->owned_shaded,     &render->owned_hits,       &render->owned_coarse,
-                                      &render->owned_tex_pixels, &render->owned_shapes,     &render->owned_faces,
-                                      &render->owned_textures};
+    device_block_t *const blocks[] = {
+        &render->owned_entity_hits, &render->owned_entity_lists, &render->owned_shafts,  &render->owned_history[1],
+        &render->owned_history[0],  &render->owned_ao[1],        &render->owned_ao[0],   &render->owned_xrgb,
+        &render->owned_shaded,      &render->owned_hits,         &render->owned_coarse,  &render->owned_tex_pixels,
+        &render->owned_shapes,      &render->owned_faces,        &render->owned_textures};
     for (uint32_t i = 0u; i < sizeof(blocks) / sizeof(blocks[0]); i++) {
         if (device_memory_free(memory, blocks[i]) != GPU_STATUS_OK) {
             gpu_error_log(&memory->last_error);
@@ -196,7 +202,8 @@ gpu_status_t render_open_frame(render_t *render, const texture_t *texture, uint3
         render_frame_blocks_give_back(render);
         return status;
     }
-    if (!heap_reserve(render_frame_arena_bytes(width, height), &render->owned_frame_host)) {
+    if (!heap_reserve(render_frame_arena_bytes(width, height) + render_entities_arena_bytes(width, height),
+                      &render->owned_frame_host)) {
         render_frame_blocks_give_back(render);
         return GPU_STATUS_OUT_OF_MEMORY; /* it has said why */
     }
@@ -223,6 +230,20 @@ gpu_status_t render_open_frame(render_t *render, const texture_t *texture, uint3
         render_frame_blocks_give_back(render);
         return status;
     }
+    render->borrowed_entities =
+        arena_alloc(&render->arena_frame, sizeof(render_entities_t), alignof(render_entities_t));
+    status = render_entities_init(render->borrowed_entities, &render->arena_frame, render->borrowed_memory, texture,
+                                  &render->owned_entity_lists, &render->owned_entity_hits, width, height);
+    if (status != GPU_STATUS_OK) {
+        render_entities_deinit(render->borrowed_entities);
+        render_frame_deinit(&render->frame);
+        arena_deinit(&render->arena_frame);
+        heap_release(&render->owned_frame_host);
+        render_frame_blocks_give_back(render);
+        render->borrowed_entities = nullptr;
+        return status;
+    }
+    render->frame.borrowed_entities = render->borrowed_entities;
     render->frame_open = 1u;
     return GPU_STATUS_OK;
 }
@@ -231,9 +252,11 @@ void render_close_frame(render_t *render) {
     if (render->frame_open == 0u) {
         return;
     }
+    render_entities_deinit(render->borrowed_entities);
     render_frame_deinit(&render->frame);
     arena_deinit(&render->arena_frame);
     heap_release(&render->owned_frame_host);
     render_frame_blocks_give_back(render);
+    render->borrowed_entities = nullptr;
     render->frame_open = 0u;
 }
