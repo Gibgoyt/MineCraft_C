@@ -42,6 +42,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `751761b` Add the no-display backend, with a stored-deflate PNG writer and a script of timed key and mouse events that takes screenshots at chosen ticks.
+
 ## Issues found
 
 1. **The test could not include the decoder by relative path.**
