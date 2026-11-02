@@ -41,6 +41,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `3b5541a` Add swept AABB collision and a player that walks, sprints, sneaks, jumps, swims, climbs and falls on the 20 Hz tick with render interpolation, behind --test-world --walk.
+
 ## Results
 
 `physics_init` holds the 2 MiB region for a move's boxes. `player_init` holds none: its part needs no memory, and its README says so, as `math`'s does.
