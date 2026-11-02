@@ -1,10 +1,10 @@
 # run/src/item
 
-**Purpose:** what a player has, and what stands in the world holding items. The Owner of `stack`, `inventory`, `crafting`, `smelting` and `container`, and of what Stage 13.3 adds here.
+**Purpose:** what a player has, and what stands in the world holding items. The Owner of `stack`, `inventory`, `crafting`, `smelting`, `container` and `equipment`.
 **Tier:** Owner.
 **Owns:** `owned_region`, 2 MiB, with `arena_world` over it: what its parts keep for as long as a world is open. A `static_assert` checks that `inventory`, `container` and `smelting` fit.
 **Lifetime:** Process for `item_t` and the region. World for what is in the arena: `item_open` starts it and `item_close` ends it, and nothing is kept until Stage 16.2 saves.
-**Threads:** `main` for the pair and `item_open`, before the threads start, and `item_close`, after they stop. `item_hotbar_apply`, `item_world_tick`, the inventory, the two crafting grids and both stores on `sim`. `item_hotbar_send` and `item_hotbar_scroll_send` from the thread that owns input, through two atomics on a cache line of their own.
+**Threads:** `main` for the pair and `item_open`, before the threads start, and `item_close`, after they stop. `item_hotbar_apply`, `item_world_tick`, the inventory, the two crafting grids, both stores and what is worn on `sim`. `item_hotbar_send` and `item_hotbar_scroll_send` from the thread that owns input, through two atomics on a cache line of their own.
 **Public functions** (`run/include/item/index.h`):
 
 - `item_init`, `item_deinit`: reserve the region; release it. Deinit is safe on a zeroed `item_t`.
@@ -16,7 +16,7 @@
 **May be called by:** `run/src/main/` for the pair, and `run/src/game/` for the rest.
 **Depends on:** `heap`, `arena`, `world/edit`, `world/map`, the generated `tables/items/` and `tables/blocks/`, and its parts below.
 
-**Parts:** `stack`: one slot's worth. `inventory`: 36 slots and a hotbar. `crafting`: 2x2 and 3x3 grids and what they make. `smelting`: furnaces. `container`: chests.
+**Parts:** `stack`: one slot's worth. `inventory`: 36 slots and a hotbar. `crafting`: 2x2 and 3x3 grids and what they make. `smelting`: furnaces. `container`: chests. `equipment`: what tools do and how they wear, and armor.
 
 ## How chests and furnaces follow the world
 
@@ -34,4 +34,4 @@ What is not here is opening one: the right button still places, and the screens 
 
 ## Why an item is not a dropped item
 
-`run/src/entity/item_drop/` carries an index into `block_drop_items`, and its bytes and pictures are held to by tests. That table has a row for every item since Stage 13.2, in the order of the ids, so a chest can spill anything. `block_drop_items[i].item` is the `item_id_t` of a row, `item_stack_drop_row` is the way back, and `game` makes the change at each end. **Wear does not survive lying on the ground,** as a drop has no field for it: Stage 13.3, which brings wear, is who needs to decide that.
+`run/src/entity/item_drop/` carries an index into `block_drop_items`, and its bytes and pictures are held to by tests. That table has a row for every item since Stage 13.2, in the order of the ids, so a chest can spill anything. `block_drop_items[i].item` is the `item_id_t` of a row, `item_stack_drop_row` is the way back, and `game` makes the change at each end. **Wear does not survive lying on the ground,** as a drop has no field for it, so a worn tool spilled from a chest comes back new. Stage 13.3 could not change that from its own paths, since it takes a field in `item_drop_t` and wear through its pickup: see Issue 2 in that stage's plan file.

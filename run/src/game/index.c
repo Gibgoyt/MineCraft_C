@@ -423,8 +423,43 @@ static void game_hand_from_hotbar(game_t *game) {
                                 block == ITEM_NO_BLOCK ? 0u : held->count);
 }
 
-/* One tick of the hands: which slot is in hand first, so that a key and a click in one tick act in that order, and what they placed
- * comes off it. */
+/* Mining counts as what is in hand. A different tool starts the block again, so that the last touch cannot be the one that wears least. */
+static void game_tool_from_hotbar(game_t *game) {
+    player_interaction_t *const hands = &game->borrowed_player->interaction;
+    uint8_t tool = BLOCK_TOOL_NONE, tier = BLOCK_TIER_NONE;
+    equipment_tool_held(&game->borrowed_item->inventory, &tool, &tier);
+    if (hands->held_tool != tool || hands->held_tier != tier) {
+        hands->progress = 0u;
+        player_interaction_hold_tool(hands, tool, tier);
+    }
+}
+
+/* The right button with no left, as for placing. Only a look: player_interact_tick takes the latch next. A press and release that fall
+ * between the two reach placing alone, and the next press is not far behind. */
+static bool game_use_held(const player_t *player, int64_t tick_ns) {
+    if (tick_ns - atomic_load_explicit(&player->intent_sent_ns, memory_order_relaxed) > PLAYER_INTENT_STALE_NS) {
+        return false;
+    }
+    const uint32_t hands = atomic_load_explicit(&player->hands_word, memory_order_relaxed) |
+                           atomic_load_explicit(&player->hands_latch, memory_order_relaxed);
+    return (hands & PLAYER_HAND_PLACE) != 0u && (hands & PLAYER_HAND_ATTACK) == 0u;
+}
+
+/* What the hands broke this tick wears what broke it, and shears bring the block itself out as well. */
+static void game_tool_after_break(game_t *game, uint16_t held_item) {
+    const player_interaction_t *const hands = &game->borrowed_player->interaction;
+    item_t *const item = game->borrowed_item;
+    const uint16_t own = equipment_own_drop(held_item, hands->last_mined);
+    if (own != ITEM_ID_NONE && game->borrowed_entity != nullptr) {
+        const float64_t middle[3] = {(float64_t)hands->cell[0] + 0.5f64, (float64_t)hands->cell[1] + 0.5f64,
+                                     (float64_t)hands->cell[2] + 0.5f64};
+        item_drop_spawn(&game->borrowed_entity->item_drops, item_stack_drop_row(own), 1u, middle);
+    }
+    (void)equipment_tool_block_broken(&item->equipment, &item->inventory, hands->last_mined);
+}
+
+/* One tick of the hands: which slot is in hand first, so that a key and a click in one tick act in that order, then what the right button
+ * does with armor or a hoe; what they placed comes off the slot, and what they broke wears it. */
 static void game_interact_tick(game_t *game, int64_t tick_ns) {
     player_t *const player = game->borrowed_player;
     item_t *const item = game->borrowed_item;
@@ -433,10 +468,19 @@ static void game_interact_tick(game_t *game, int64_t tick_ns) {
         return;
     }
     item_hotbar_apply(item);
+    const raycast_hit_t *const hit = &player->target.hit;
+    equipment_use_tick(&item->equipment, &item->inventory, &game->borrowed_world->edit, game_use_held(player, tick_ns),
+                       hit->result == RAYCAST_RESULT_HIT ? hit->cell : nullptr);
     game_hand_from_hotbar(game);
+    game_tool_from_hotbar(game);
     const uint32_t before = player->interaction.hand_count;
+    const uint64_t mined_before = player->interaction.mined_count;
+    const uint16_t held_item = inventory_selected(&item->inventory)->item;
     player_interact_tick(player, &game->borrowed_world->edit, tick_ns);
     (void)inventory_selected_take(&item->inventory, before - (uint32_t)player->interaction.hand_count);
+    if (player->interaction.mined_count != mined_before) {
+        game_tool_after_break(game, held_item);
+    }
 }
 
 /* What a broken chest or furnace held comes out where it stood. With nothing to lie on, as in a run with no entities, it is gone. */
@@ -899,6 +943,9 @@ void game_report(game_t *game) {
                  " of fuel burned, %" PRIu64 " spilled",
                  item->chests.count, item->furnaces.count, item->furnaces.smelted_count, item->furnaces.burned_count,
                  item->spilled_count);
+        LOG_INFO("game: %" PRIu32 " armor points worn; %" PRIu64 " tools and %" PRIu32 " pieces of armor have broken",
+                 equipment_armor_points(&item->equipment), item->equipment.tools_broken_count,
+                 item->equipment.armor_broken_count);
     }
     if (game->borrowed_entity != nullptr) {
         const item_drop_store_t *const drops = &game->borrowed_entity->item_drops;
