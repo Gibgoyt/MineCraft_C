@@ -54,6 +54,8 @@ Run on 2026-11-02, after the merge of the integration branch at `9a18bbe`:
 - Mutation: 44 hand-made bugs across all nine source files. 43 failed their test at once, and the other is issue 3. Each was a
   single sed on the source, such as a flipped cofactor sign, `<` for `<=` on a box edge, or a dropped NaN guard.
 
+Gate check, 2026-11-02: no defect in this stage. Five more mutants (perspective, `quat_from_mat4`, floor-mod, `aabb_closest_point`, the ray's `t_out`) each failed their test, and all of `tests/run/math/` passes in debug, release and sanitize. See the phase file. Issue 1's open point stands: only review covers `main` exiting on a bad floating-point environment.
+
 ## Issues found
 
 1. **The todo says the Owner owns "the regions and arenas its parts borrow", and there are none to own.**

@@ -7,7 +7,8 @@
 
 #include <stdint.h>
 
-/* The number of bits set in count words. */
+/* The number of bits set in count words. For arrays of 16 words or more: below that, a popcount loop in the caller's own C
+ * is faster, since it is the same instruction without this call. bench/simd holds this to that line. */
 uint64_t bitmask_popcount_batch(const uint64_t *words, uint64_t count);
 
 /* dst[i] = a[i] & b[i]. dst may be a or b, or not overlap them at all. The same goes for the next two. */

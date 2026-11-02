@@ -8,4 +8,4 @@ kernel assembles without a word under the real config, and refuses a config that
 **Threads:** the test's main thread, and the NASM it starts and waits for.
 **Public functions:** none.
 **May be called by:** ctest.
-**Depends on:** `asm/include/conventions/`, `asm/src/{copy,blend,bitmask}/`.
+**Depends on:** `asm/include/conventions/`, `asm/src/{copy,blend,bitmask,noise,vec_batch}/`, the generated `struct_offsets/index.inc`.

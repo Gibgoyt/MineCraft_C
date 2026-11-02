@@ -26,7 +26,8 @@ enum : uint64_t {
     BENCH_BUFFER_BYTES = 2u * BENCH_FRAME_BYTES,
     BENCH_HUD_PIXELS = 65536u,
     BENCH_WORDS_SHORT = 8u,
-    BENCH_WORDS_SECTION = 64u, /* one bit for each of the 4096 blocks of a section */
+    BENCH_WORDS_POPCOUNT_FLOOR = 24u, /* just past where the prototype says bitmask_popcount_batch starts to pay */
+    BENCH_WORDS_SECTION = 64u,        /* one bit for each of the 4096 blocks of a section */
     BENCH_WORDS_LONG = 4096u,
     BENCH_SECTION_VALUES = 4096u,
     BENCH_NOISE_TAIL = 5u,
@@ -73,7 +74,7 @@ typedef struct bench_row_t {
     bench_reset_t reset;
     uint64_t count;
     uint64_t compare_bytes; /* of out, for this row */
-    uint8_t gated;          /* a length real callers use, so no gain here means the kernel goes */
+    uint8_t gated;          /* a length the kernel is for, so no gain here means the kernel goes */
     uint8_t _pad0[7];
 } bench_row_t;
 static_assert(sizeof(bench_row_t) == 80);
@@ -309,6 +310,8 @@ static const bench_row_t bench_rows[] = {
               bench_reset_from_b, BENCH_HUD_PIXELS, BENCH_HUD_PIXELS * 4u, 1u),
     BENCH_ROW("blend_premul_batch", "all partial", "pixel", bench_premul, bench_fill_all_partial, bench_reset_from_b,
               BENCH_HUD_PIXELS, BENCH_HUD_PIXELS * 4u, 1u),
+    BENCH_ROW("bitmask_popcount_batch", "24 words", "word", bench_popcount, bench_fill_random, nullptr,
+              BENCH_WORDS_POPCOUNT_FLOOR, sizeof(uint64_t), 1u),
     BENCH_WORD_ROWS("bitmask_popcount_batch", bench_popcount),
     BENCH_WORD_ROWS("bitmask_and_batch", bench_and),
     BENCH_WORD_ROWS("bitmask_or_batch", bench_or),
