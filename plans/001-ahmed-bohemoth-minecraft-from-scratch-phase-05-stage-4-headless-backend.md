@@ -44,6 +44,7 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `180c9b1` The Phase 05 gate check: issues 5 and 6 below, and the fixes logged in the other stages.
 - `751761b` Add the no-display backend, with a stored-deflate PNG writer and a script of timed key and mouse events that takes screenshots at chosen ticks.
 
 ## Issues found

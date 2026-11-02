@@ -54,7 +54,7 @@ Gate check, 2026-11-02, on this branch, from `rm -rf build`:
 | Check | Result |
 |---|---|
 | `cmake --build`, debug, sanitize, release | All build, once the defects below were fixed. Before that, none could: debug stopped on the merge's sizes |
-| `ctest` on the debug, release and sanitize presets, everything | 39 of 39 on each |
+| `ctest` on the debug, release and sanitize presets, everything | 39 of 39 on each, then 40 of 40 on each after merging the integration branch again, since it had moved on |
 | Gate: `ctest --preset debug -R '^run_(display|input)'` | 4 of 4: `run_display_headless` 32 tests, 828203 checks; `run_display_mode` 74, 999; `run_display_vt_guard` 48, 2665; `run_input` 49, 2068 |
 | `DISPLAY=:0`, stdin `/dev/null`, `--test-pattern --card /nonexistent/...` | `refused: DISPLAY is set ...`, exit 6, no open of a card or input device. The same for `WAYLAND_DISPLAY`, and for neither set |
 | 14 changes to the code, tried one at a time on debug, 5 of them to the new fixes and 9 to what the stages claim | All 14 failed the tests. 3 first failed to build (an unused name), so they were rewritten until they built |
@@ -65,6 +65,8 @@ Gate check, 2026-11-02, on this branch, from `rm -rf build`:
 ## Commits
 
 Appended as they land:
+
+- `180c9b1` Close the agent side of the Phase 5 gate: make the merged tree build on every preset, keep the emergency notice whole under the cursor, stop input from another VT counting on the way back, and record the results.
 
 ## Issues found
 
