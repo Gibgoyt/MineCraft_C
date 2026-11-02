@@ -1,0 +1,3 @@
+name: group_lapis_ore
+kind: group
+items: [lapis_ore, deepslate_lapis_ore]

@@ -1,0 +1,4 @@
+name: smelt_emerald
+kind: smelt
+input: group_emerald_ore
+gives: emerald

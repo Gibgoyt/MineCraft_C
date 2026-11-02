@@ -1,0 +1,5 @@
+name: dye_grey_from_mixing
+kind: shapeless
+ingredients: [dye_black, dye_white]
+gives: dye_grey
+count: 2

@@ -63,6 +63,10 @@ uint32_t inventory_count(const inventory_t *inventory, uint16_t item);
 /* Takes away up to count of an item, from the last slot back, so that what is on the hotbar goes last. Returns how many went. */
 uint32_t inventory_remove(inventory_t *inventory, uint16_t item, uint32_t count);
 
+/* Moves up to count of a slot out of the inventory, on to another stack that is not one of its own, as far as they merge. Returns how many
+ * went, which the books count as removed. A slot that does not exist moves nothing. */
+uint32_t inventory_slot_move_out(inventory_t *inventory, uint32_t slot, item_stack_t *to, uint32_t count);
+
 /* Takes away up to count of what is in hand, and returns how many went. */
 uint32_t inventory_selected_take(inventory_t *inventory, uint32_t count);
 

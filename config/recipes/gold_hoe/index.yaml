@@ -1,0 +1,5 @@
+name: gold_hoe
+kind: shaped
+pattern: ["MM", " S", " S"]
+keys: { M: gold_ingot, S: stick }
+gives: gold_hoe

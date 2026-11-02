@@ -1,0 +1,5 @@
+name: gold_chestplate
+kind: shaped
+pattern: ["M M", "MMM", "MMM"]
+keys: { M: gold_ingot }
+gives: gold_chestplate

@@ -1,0 +1,5 @@
+name: cherry_planks
+kind: shapeless
+ingredients: [cherry_log]
+gives: cherry_planks
+count: 4

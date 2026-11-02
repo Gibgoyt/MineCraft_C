@@ -1,0 +1,6 @@
+name: paper
+kind: shaped
+pattern: ["SSS"]
+keys: { S: sugar_cane }
+gives: paper
+count: 3

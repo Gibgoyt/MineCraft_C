@@ -1,0 +1,4 @@
+name: dye_grey_from_azure_bluet
+kind: shapeless
+ingredients: [azure_bluet]
+gives: dye_grey

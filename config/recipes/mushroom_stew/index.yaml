@@ -1,0 +1,4 @@
+name: mushroom_stew
+kind: shapeless
+ingredients: [bowl, red_mushroom, brown_mushroom]
+gives: mushroom_stew

@@ -1,0 +1,5 @@
+name: boat
+kind: shaped
+pattern: ["P P", "PPP"]
+keys: { P: group_planks }
+gives: boat

@@ -1,0 +1,3 @@
+name: group_coal_ore
+kind: group
+items: [coal_ore, deepslate_coal_ore]

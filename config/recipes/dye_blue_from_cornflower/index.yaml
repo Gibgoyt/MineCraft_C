@@ -1,0 +1,4 @@
+name: dye_blue_from_cornflower
+kind: shapeless
+ingredients: [cornflower]
+gives: dye_blue

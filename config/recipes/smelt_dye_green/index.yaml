@@ -1,0 +1,4 @@
+name: smelt_dye_green
+kind: smelt
+input: cactus
+gives: dye_green

@@ -1,0 +1,6 @@
+name: oak_slab
+kind: shaped
+pattern: ["PPP"]
+keys: { P: oak_planks }
+gives: oak_slab
+count: 6

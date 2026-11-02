@@ -1,0 +1,5 @@
+name: dye_pink_from_mixing
+kind: shapeless
+ingredients: [dye_red, dye_white]
+gives: dye_pink
+count: 2

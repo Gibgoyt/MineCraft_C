@@ -1,0 +1,5 @@
+name: diamond_shovel
+kind: shaped
+pattern: ["M", "S", "S"]
+keys: { M: diamond, S: stick }
+gives: diamond_shovel

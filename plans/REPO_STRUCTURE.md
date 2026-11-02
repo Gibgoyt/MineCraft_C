@@ -152,7 +152,7 @@ Layout: `compile/src/<tool>/index.c`, `compile/include/<tool>/index.h`, `README.
 | `texture_pack` | Open pack in `/tmp/mc_c_assets/` → `textures/`; `verify` checks that tree with no pack. Parts: `support mctex manifest pack output verify`. Run by hand, never by the build | 06.2 |
 | `texture_vector` | Procedural recipes -> `textures/`, and vector data per texture (`.mcvec`); `check` holds the tree to `textures/vector.yaml`. Parts: `analyze palette mcvec materials recipe`. `recipes` and `check` are run by hand and by its test; 06.4's blob step runs `vectors` | 06.3 |
 | `texture_blob` | Mip chains, and every texture with its vector data in one blob, in `build/<preset>/generated/textures/`, run by `cmake/generated.cmake`. Part: `mip`. The format is `run/include/types/texture_blob/` | 06.4 |
-| `game_tables` | `config/{blocks,items,recipes,biomes,mobs}` → C tables in `build/<preset>/generated/tables/`, compiled into `mc_run` and included as `"tables/blocks/index.h"`, run by `cmake/generated.cmake`. Parts so far: `blocks` (07.1), `biomes` (10.6), `items` (13.1); the others arrive with their stages | 07.1 |
+| `game_tables` | `config/{blocks,items,recipes,biomes,mobs}` → C tables in `build/<preset>/generated/tables/`, compiled into `mc_run` and included as `"tables/blocks/index.h"`, run by `cmake/generated.cmake`. Parts so far: `blocks` (07.1), `biomes` (10.6), `items` (13.1), `recipes` (13.2); the others arrive with their stages | 07.1 |
 
 ---
 

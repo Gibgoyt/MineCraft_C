@@ -1,0 +1,5 @@
+name: dark_oak_planks
+kind: shapeless
+ingredients: [dark_oak_log]
+gives: dark_oak_planks
+count: 4

@@ -1,0 +1,3 @@
+name: group_iron_source
+kind: group
+items: [iron_ore, deepslate_iron_ore, raw_iron]

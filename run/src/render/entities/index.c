@@ -9,7 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static_assert((uint32_t)BLOCK_DROP_ITEM_COUNT + 1u <= (uint32_t)ENTITY_RAYS_TEXTURES_MAX);
+static_assert((uint32_t)BLOCK_DROP_ITEM_NO_BLOCK_COUNT + 1u <= (uint32_t)ENTITY_RAYS_TEXTURES_MAX);
 static_assert((uint32_t)TRAVERSE_TILE_PIXELS == 8u);
 static_assert((uint32_t)ENTITY_RAYS_BOXES_MAX < (uint32_t)ENTITY_RAYS_NO_BOX);
 static_assert((uint32_t)ENTITY_RAYS_NO_MATERIAL == (uint32_t)SHADE_NO_MATERIAL);

@@ -1,0 +1,4 @@
+name: fuel_wood_slab
+kind: fuel
+items: [oak_slab]
+ticks: 150

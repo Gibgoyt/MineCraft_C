@@ -1,0 +1,5 @@
+name: jungle_planks
+kind: shapeless
+ingredients: [jungle_log]
+gives: jungle_planks
+count: 4

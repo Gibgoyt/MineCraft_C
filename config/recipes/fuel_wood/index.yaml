@@ -1,0 +1,4 @@
+name: fuel_wood
+kind: fuel
+items: [group_planks, group_logs, crafting_table, chest, ladder, oak_stairs, wood_door, oak_sign, boat]
+ticks: 300

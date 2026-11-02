@@ -1,0 +1,6 @@
+name: cobblestone_stairs
+kind: shaped
+pattern: ["C  ", "CC ", "CCC"]
+keys: { C: cobblestone }
+gives: cobblestone_stairs
+count: 4

@@ -1,0 +1,5 @@
+name: iron_pickaxe
+kind: shaped
+pattern: ["MMM", " S ", " S "]
+keys: { M: iron_ingot, S: stick }
+gives: iron_pickaxe

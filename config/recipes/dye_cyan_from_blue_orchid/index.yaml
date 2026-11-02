@@ -1,0 +1,4 @@
+name: dye_cyan_from_blue_orchid
+kind: shapeless
+ingredients: [blue_orchid]
+gives: dye_cyan

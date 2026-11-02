@@ -1,0 +1,5 @@
+name: iron_nugget
+kind: shapeless
+ingredients: [iron_ingot]
+gives: iron_nugget
+count: 9

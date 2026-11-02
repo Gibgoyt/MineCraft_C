@@ -1,0 +1,5 @@
+name: iron_ingot_from_nuggets
+kind: shaped
+pattern: ["NNN", "NNN", "NNN"]
+keys: { N: iron_nugget }
+gives: iron_ingot

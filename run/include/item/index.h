@@ -4,8 +4,12 @@
 
 #include "arena/index.h"
 #include "heap/index.h"
+#include "item/container/index.h"
+#include "item/crafting/index.h"
 #include "item/inventory/index.h"
+#include "item/smelting/index.h"
 #include "item/stack/index.h"
+#include "world/edit/index.h"
 
 #include <stdatomic.h>
 #include <stddef.h>
@@ -21,11 +25,22 @@ typedef struct item_t {
     _Atomic uint32_t hotbar_key;  /* 128: main to sim: the slot asked for, plus one, and 0 for none */
     _Atomic int32_t hotbar_wheel; /* 132: main to sim: slots to the right, not yet taken */
     uint8_t _pad1[56];            /* 136 */
+    /* The sim's, from here on, as is what is at the far end of the two stores. */
+    crafting_grid_t crafting_hands; /* 192: the 2x2 a player always has */
+    crafting_grid_t crafting_table; /* 288: the 3x3 at a crafting table */
+    container_store_t chests;       /* 384 */
+    smelting_store_t furnaces;      /* 408 */
+    uint64_t edit_cursor;           /* 448: how far into the world's edit log item_world_tick has read */
+    uint64_t spilled_count;         /* 456: items that came out of a chest or a furnace that went */
+    uint8_t _pad2[48];              /* 464 */
 } item_t;
-static_assert(sizeof(item_t) == 192);
+static_assert(sizeof(item_t) == 512);
 static_assert(alignof(item_t) == 64);
 static_assert(offsetof(item_t, inventory) == 80);
 static_assert(offsetof(item_t, hotbar_key) == 128);
+
+/* Something that went spills: a stack, whose cell it comes out of, for whoever puts it in the world. On the sim thread. */
+typedef void item_spill_t(void *borrowed_context, const item_stack_t *stack, const int32_t cell[3]);
 
 /* Reserves the region. On failure logs why, leaves nothing behind and returns false. */
 [[nodiscard]] bool item_init(item_t *item);
@@ -42,6 +57,14 @@ void item_close(item_t *item);
 /* main asks for a hotbar slot, or to scroll by some slots. Neither waits. Any thread, one at a time. A slot past the hotbar is ignored. */
 void item_hotbar_send(item_t *item, uint32_t slot);
 void item_hotbar_scroll_send(item_t *item, int32_t slots);
+
+/* From here on it follows this world's edits. Before the threads start, with the world open. */
+void item_world_begin(item_t *item, const world_edit_t *edit);
+
+/* One tick of what stands in the world. A chest or a furnace made since the last tick gets its slots, and one that went spills what it held
+ * through spill; then every furnace in a loaded column burns, with its block made furnace or furnace_lit to match. The sim's, holding the
+ * map. Never waits and never touches the heap. */
+void item_world_tick(item_t *item, world_edit_t *edit, item_spill_t *spill, void *borrowed_context);
 
 /* The sim takes what has been asked for since it last looked: the slot, and then the scroll on from there. */
 void item_hotbar_apply(item_t *item);

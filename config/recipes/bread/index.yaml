@@ -1,0 +1,5 @@
+name: bread
+kind: shaped
+pattern: ["WWW"]
+keys: { W: wheat }
+gives: bread

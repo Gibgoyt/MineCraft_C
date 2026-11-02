@@ -1,0 +1,5 @@
+name: tnt
+kind: shaped
+pattern: ["GSG", "SGS", "GSG"]
+keys: { G: gunpowder, S: group_sand }
+gives: tnt

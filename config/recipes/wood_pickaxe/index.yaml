@@ -1,0 +1,5 @@
+name: wood_pickaxe
+kind: shaped
+pattern: ["MMM", " S ", " S "]
+keys: { M: group_planks, S: stick }
+gives: wood_pickaxe

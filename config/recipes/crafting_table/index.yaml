@@ -1,0 +1,5 @@
+name: crafting_table
+kind: shaped
+pattern: ["PP", "PP"]
+keys: { P: group_planks }
+gives: crafting_table

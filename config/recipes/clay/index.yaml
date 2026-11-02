@@ -1,0 +1,5 @@
+name: clay
+kind: shaped
+pattern: ["BB", "BB"]
+keys: { B: clay_ball }
+gives: clay

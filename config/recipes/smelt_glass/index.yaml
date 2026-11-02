@@ -1,0 +1,4 @@
+name: smelt_glass
+kind: smelt
+input: group_sand
+gives: glass

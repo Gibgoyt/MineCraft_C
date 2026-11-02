@@ -1,0 +1,5 @@
+name: fuel_lava
+kind: fuel
+items: [lava_bucket]
+ticks: 20000
+leaves: bucket

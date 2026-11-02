@@ -1,0 +1,6 @@
+name: stone_slab
+kind: shaped
+pattern: ["SSS"]
+keys: { S: stone }
+gives: stone_slab
+count: 6

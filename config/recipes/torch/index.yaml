@@ -1,0 +1,6 @@
+name: torch
+kind: shaped
+pattern: ["C", "S"]
+keys: { C: group_coal, S: stick }
+gives: torch
+count: 4

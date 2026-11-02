@@ -45,7 +45,7 @@ typedef struct app_t {
     math_t math;
     uint8_t _pad0[40];
 } app_t;
-static_assert(sizeof(app_t) == 11776);
+static_assert(sizeof(app_t) == 12096);
 static_assert(alignof(app_t) == 64);
 
 /* The exit codes of minecraft_c. */

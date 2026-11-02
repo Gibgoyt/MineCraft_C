@@ -1,0 +1,4 @@
+name: smelt_baked_potato
+kind: smelt
+input: potato
+gives: baked_potato

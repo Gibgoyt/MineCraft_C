@@ -1,0 +1,6 @@
+name: glass_door
+kind: shaped
+pattern: ["GG", "GG", "GG"]
+keys: { G: glass }
+gives: glass_door
+count: 3

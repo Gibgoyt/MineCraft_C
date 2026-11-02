@@ -1,6 +1,6 @@
 # tests/compile/game_tables
 
-**Purpose:** ctest `compile_game_tables`: the real block and item tables say what `config/blocks/` and `config/items/` say, dirt drops dirt, every drop is an item, and `compile/src/game_tables/` refuses each bad file with the right line, for blocks, items and biomes.
+**Purpose:** ctest `compile_game_tables`: the real block and item tables say what `config/blocks/` and `config/items/` say, dirt drops dirt, every drop is an item, and `compile/src/game_tables/` refuses each bad file with the right line, for blocks, items, recipes and biomes.
 **Tier:** none; tests are not tiered.
 **Owns:** nothing. Memory comes from the harness's test arena.
 **Lifetime:** Process.

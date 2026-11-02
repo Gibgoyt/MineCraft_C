@@ -1,0 +1,3 @@
+name: group_saplings
+kind: group
+items: [oak_sapling, birch_sapling, spruce_sapling, jungle_sapling, acacia_sapling, dark_oak_sapling, cherry_sapling, mangrove_propagule]

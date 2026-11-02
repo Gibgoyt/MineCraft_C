@@ -1,0 +1,6 @@
+name: red_terracotta
+kind: shaped
+pattern: ["TTT", "TDT", "TTT"]
+keys: { T: terracotta, D: dye_red }
+gives: red_terracotta
+count: 8

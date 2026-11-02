@@ -1,0 +1,4 @@
+name: smelt_dried_kelp
+kind: smelt
+input: kelp
+gives: dried_kelp

@@ -1,0 +1,5 @@
+name: bow
+kind: shaped
+pattern: [" ST", "S T", " ST"]
+keys: { S: stick, T: string }
+gives: bow

@@ -1,0 +1,5 @@
+name: cookie
+kind: shapeless
+ingredients: [wheat, dye_brown, wheat]
+gives: cookie
+count: 8

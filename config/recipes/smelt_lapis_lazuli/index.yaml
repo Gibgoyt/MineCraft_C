@@ -1,0 +1,4 @@
+name: smelt_lapis_lazuli
+kind: smelt
+input: group_lapis_ore
+gives: lapis_lazuli

@@ -11,7 +11,7 @@
 - `inventory_slot`, `inventory_slot_read`, `inventory_selected`: looking at slots.
 - `inventory_select`, `inventory_scroll`: which hotbar slot is in hand.
 - `inventory_add`, `inventory_add_stack`, `inventory_room`: putting in, and how much would fit.
-- `inventory_count`, `inventory_remove`, `inventory_selected_take`: what is there, and taking it away.
+- `inventory_count`, `inventory_remove`, `inventory_selected_take`, `inventory_slot_move_out`: what is there, and taking it away.
 - `inventory_swap`, `inventory_quick_move`: moving between slots.
 - `inventory_items_held`, `inventory_stacks_held`: totals.
 

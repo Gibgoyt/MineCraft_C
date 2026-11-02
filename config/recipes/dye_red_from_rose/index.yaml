@@ -1,0 +1,4 @@
+name: dye_red_from_rose
+kind: shapeless
+ingredients: [rose]
+gives: dye_red

@@ -1,0 +1,5 @@
+name: iron_helmet
+kind: shaped
+pattern: ["MMM", "M M"]
+keys: { M: iron_ingot }
+gives: iron_helmet
