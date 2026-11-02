@@ -173,6 +173,9 @@ TEST(the_loop_source_starts_the_threads_on_its_first_frame_and_flies_from_real_i
     fake_replay(keyboard, esc, REPLAY_COUNT(esc));
     CHECK(!game_loop_source(game, &target));
     CHECK(game_loop_stop(game));
+    /* world/tick is wired in: one tick of the world for each of the game, and the terrain's seed. */
+    CHECK_EQ_U64(rig.world->tick.now, game->tick_count);
+    CHECK_EQ_U64(rig.world->tick.seed, rig.terrain->seed);
     CHECK_EQ_U64(game->threads_running, 0u);
     input_deinit(input);
     game_close(game);

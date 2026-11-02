@@ -10,6 +10,7 @@
 #include "world/light/index.h"
 #include "world/map/index.h"
 #include "world/section/index.h"
+#include "world/tick/index.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -30,18 +31,22 @@ enum : uint64_t {
         (2ull * MC_GAME_RENDER_DISTANCE_MAX + 1ull) * (2ull * MC_GAME_RENDER_DISTANCE_MAX + 1ull),
     /* What the column region gives one slot of the map. */
     WORLD_COLUMN_BYTES_PER_SLOT = sizeof(column_t) + WORLD_MAP_BYTES_PER_SLOT + WORLD_EDIT_BYTES_PER_SLOT +
-                                  WORLD_EDIT_SNAPSHOT_BYTES_PER_SLOT + WORLD_LIGHT_BYTES_PER_SLOT,
+                                  WORLD_EDIT_SNAPSHOT_BYTES_PER_SLOT + WORLD_LIGHT_BYTES_PER_SLOT +
+                                  WORLD_TICK_BYTES_PER_SLOT,
     /* And what it holds besides, whatever the map's size. */
     WORLD_COLUMN_BYTES_FIXED = WORLD_MAP_BYTES_FIXED + WORLD_EDIT_BYTES_FIXED + WORLD_EDIT_SNAPSHOT_BYTES_FIXED +
                                WORLD_EDIT_LOG_CAPACITY_DEFAULT * sizeof(world_edit_record_t) +
                                WORLD_EDIT_SNAPSHOT_SECTIONS_DEFAULT * WORLD_EDIT_SNAPSHOT_BYTES_PER_SECTION +
-                               WORLD_LIGHT_BYTES_FIXED + WORLD_LIGHT_WAVE_CAPACITY_DEFAULT * WORLD_LIGHT_BYTES_PER_WAVE,
+                               WORLD_LIGHT_BYTES_FIXED +
+                               WORLD_LIGHT_WAVE_CAPACITY_DEFAULT * WORLD_LIGHT_BYTES_PER_WAVE + WORLD_TICK_BYTES_FIXED +
+                               WORLD_TICK_NODE_CAPACITY_DEFAULT * WORLD_TICK_BYTES_PER_NODE +
+                               WORLD_TICK_PAGE_CAPACITY_DEFAULT * WORLD_TICK_BYTES_PER_PAGE,
 };
 static_assert(WORLD_SECTION_BYTES_DEFAULT + WORLD_COLUMN_COUNT_DEFAULT * WORLD_COLUMN_BYTES_PER_SLOT +
                   WORLD_COLUMN_BYTES_FIXED <
               HEAP_BUDGET_BYTES);
 
-/* Holds what a world's parts borrow. There is one, under app_t. map, edit, snapshot and light are zero bytes until world_open. */
+/* Holds what a world's parts borrow. There is one, under app_t. map, edit, snapshot, light and tick are zero bytes until world_open. */
 typedef struct world_t {
     arena_t arena_sections;         /* 0: over owned_sections; section_pool takes from it */
     arena_t arena_columns;          /* 64: over owned_columns; the column table, and what world_open puts beside it */
@@ -53,9 +58,10 @@ typedef struct world_t {
     uint8_t _pad0[32];              /* 480 */
     world_edit_snapshot_t snapshot; /* 512 */
     world_light_t light;            /* 1088 */
-    uint8_t _pad1[32];              /* 1312 */
+    world_tick_t tick;              /* 1312 */
+    uint8_t _pad1[32];              /* 2016 */
 } world_t;
-static_assert(sizeof(world_t) == 1344);
+static_assert(sizeof(world_t) == 2048);
 static_assert(alignof(world_t) == 64);
 static_assert(offsetof(world_t, owned_sections) == 128);
 static_assert(offsetof(world_t, section_pool) == 160);
@@ -63,6 +69,7 @@ static_assert(offsetof(world_t, map) == 264);
 static_assert(offsetof(world_t, edit) == 384);
 static_assert(offsetof(world_t, snapshot) == 512);
 static_assert(offsetof(world_t, light) == 1088);
+static_assert(offsetof(world_t, tick) == 1312);
 
 /* The limits a real game runs with. */
 world_limits_t world_limits_default(void);
@@ -81,7 +88,7 @@ void world_reset(world_t *world);
 /* What world_open takes from arena_columns, for a table of this radius. */
 uint64_t world_open_bytes(uint32_t table_radius);
 
-/* Starts the map, the edit log, the snapshots and light, with a table of table_radius, centered on that chunk. Costs time and pages
+/* Starts the map, the edit log, the snapshots, light and ticks, with a table of table_radius, centered on that chunk. Costs time and pages
  * in proportion to the table. If it will not fit the limits given to world_init, logs why, changes nothing and returns false.
  * The view radius starts at table_radius: world_map_set_view_radius narrows it. */
 bool world_open(world_t *world, uint32_t table_radius, int32_t center_x, int32_t center_y);
