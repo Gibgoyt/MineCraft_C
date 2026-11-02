@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 2, stage 1: CMake, mutex and hello binary
 
-**Status:** in progress: the work is finished and verified on all four presets by the gate check; the only thing pending is the landing on `main` (issue 8)   (updated 2026-11-02)
+**Status:** in progress: verified on all four presets on `worktree-wf_a4b549de-085-20`; the only thing pending is the landing on `main` (the phase file's issue 8)   (updated 2026-11-02)
 
 ## Goal
 
@@ -86,7 +86,7 @@ Second attempt, 2026-11-02, on branch `worktree-wf_a4b549de-085-12` after fast-f
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-12`, based on `5bb5c57`. See issue 8.
+Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-20`, which holds all of `worktree-wf_a4b549de-085-12`. See the phase file's issue 8.
 
 ## Issues found
 
@@ -138,3 +138,9 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 - `cmake/flags.cmake`: `CMAKE_CUDA_ARCHITECTURES` comes from `gpu.architecture` once Stage 02.3 is in, and stays 75 until then.
 - `cmake/hello/main/index.c`: reports `MC_THREADS_WORKERS` once the generated header exists. Before this, the program had no way to meet Stage 02.3's proof.
 - Status of the landing: see the phase file's issue 1, which gives the commands that supersede the one at the end of issue 8 above.
+
+**9. Second gate check, 2026-11-02: changes in this stage's paths.**
+- `cmake/flags.cmake`: new function `mc_callgraph_compile_options`, so that `cmake/standards_lint.cmake` can ask for call graph objects under `release` and `profile` while flags are still set in this one file. See Stage 02.4 issue 14.
+- `cmake/machine.cmake`: the configure-time compile moved from `-O0` to `-O1`. See the phase file's issue 12.
+- `cmake/check_format.cmake`, new, for ctest `clang_format`. See the phase file's issue 9. Added to `plans/REPO_STRUCTURE.md`.
+- All four presets were rerun from a deleted `build/`; the table is in the phase file.

@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 2, stage 2: YAML parser
 
-**Status:** in progress   (updated 2026-11-02). The code is finished and verified. See issues 1 and 9 for what stands between it and done.
+**Status:** in progress: verified on all four presets on `worktree-wf_a4b549de-085-20`; the only thing pending is the landing on `main` (the phase file's issue 8)   (updated 2026-11-02)
 
 ## Goal
 
@@ -42,9 +42,13 @@ Results on 2026-11-02 from the second attempt, on the code with the fix in issue
 - `ctest -R '^compile_yaml$'`: passed on all four presets. Run directly, the test program prints `3278213 checks, 0 failures` on `debug` and `sanitize`. The count differs from the first attempt's because of issue 8's new refusal and test cases.
 - `pgrep -a minecraft_c`: printed nothing, rc 1.
 
+Results on 2026-11-02 from the second gate check, a real merged tree and not an overlay: `ctest` passes on all four presets, and the test prints `harness: 11 tests, 0 failed, 3278213 checks` on `debug`. With the error line off by one, `compile_yaml` returns rc 8.
+
 ## Commits
 
 Appended as they land:
+
+Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-20`, which holds all of `worktree-wf_a4b549de-085-15`.
 
 ## Issues found
 
@@ -94,3 +98,8 @@ Appended as they land:
 - Expected: the workflow's landing step to fast-forward `main`.
 - Actual: the same command as issue 6, from branch `worktree-wf_a4b549de-085-15`, returned the same refusal: `this command names git in a form too complex to verify that it stays inside the worktree`. `main` is still `5bb5c57`, and the Stage 02.1 branch `worktree-wf_a4b549de-085-12` is unlanded too. This branch replaces `worktree-wf_a4b549de-085-13`: it holds that branch's two commits, cherry-picked, and the fix in issue 8.
 - Done: tried once and escalated. As in issue 6, I did not look for another way to move `main`, because that would get around the isolation. To finish, from a shell outside the isolation, in the main checkout, after Stage 02.1 if it goes first: `git rebase main worktree-wf_a4b549de-085-15 && git checkout main && git merge --ff-only worktree-wf_a4b549de-085-15`. Then run the Verification commands there, add the landed sha under Commits, and set Status to done.
+
+**10. Second gate check, 2026-11-02.**
+- Issue 4 is closed. `tests/compile/yaml/index.c` now uses `TEST`, `CHECK` and `TEST_MAIN` from `tests/harness/`. The same 3278213 checks run.
+- A second false `-Wmaybe-uninitialized`. Expected: Stage 02.3 issue 3 said that initializing `decoded` would be enough for `-O1`. Actual: `compile/src/yaml/index.c:382: error: 'code_point' may be used uninitialized`, reached through `yaml_decode_escape`, once `decoded` was done. `yaml_read_numeric_escape` either fails, and the caller returns, or sets it, so this one is false too. Done: `decoded` is `nullptr` in both places it is declared, and `code_point` starts at 0. Neither value is ever read.
+- `TEST_MACHINE_YAML` in the test stays the plan's text exactly, with no `f16c` key, on purpose. It tests the parser, and that text is still valid YAML. See Stage 02.3 issue 8 for the real file.

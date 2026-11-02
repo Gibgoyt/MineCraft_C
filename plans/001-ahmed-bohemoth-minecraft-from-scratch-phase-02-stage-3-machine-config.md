@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 2, stage 3: Machine config generator
 
-**Status:** blocked: implemented and verified on a copy, not on `main`, because the landing was refused (issue 1)   (updated 2026-11-02)
+**Status:** in progress: verified on all four presets on `worktree-wf_a4b549de-085-20`; the only thing pending is the landing on `main` (the phase file's issue 8)   (updated 2026-11-02)
 
 ## Goal
 
@@ -18,7 +18,7 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 ## Todo
 
-Ticked on the copy described in issue 1, not on `main`.
+Ticked on the merged tree on `worktree-wf_a4b549de-085-20`, not on `main`. The first box has a one-key exception, in issue 8.
 
 - [x] Create `config/machine.yaml` with the exact content from plan section 5
 - [x] Implement `compile/src/machine_config/index.c` emitting `build/generated/machine/index.{h,hu,inc,cmake}`, including `MC_PLATFORM_POSIX`, `MC_THREADS_WORKERS`, `MC_CPU_HAS_AVX2`, `MC_GPU_ENABLED`
@@ -54,11 +54,13 @@ Results, all on the copy described in issue 1, each heavy command through that c
 
 The second attempt re-ran on the final `cmake/machine.cmake` (with the NASM fix in issue 5): all four presets configure and build rc 0, ctest `100% tests passed out of 6` each, `compile_machine_config` passes on each (17.38 s on `sanitize`), `standards_lint: clean, 32 source files` and `no recursion` on `debug`, and `threads.workers` 16 to 12 and back with only `cmake --build` gives `[1/2] Re-running CMake...`, then `MC_THREADS_WORKERS=12`, all four generated files at 12, then 16. The rows for the `minecraft_c` print, `arch_flag`, `workers: 17` and the five deliberate breaks were not repeated: they are from the first attempt, and only `cmake/machine.cmake`'s version checks have changed since.
 
+Second gate check, 2026-11-02, on the merged tree: `compile_machine_config` passes on all four presets, `harness: 8 tests, 0 failed, 1780 checks` on `debug`. **The first row of the first table no longer holds:** `cmp` against the plan's lines now differs by the `f16c` key in issue 8. `minecraft_c` reports the define, and the 16 to 12 run was repeated on it. A misnamed F16C define fails this test with rc 8.
+
 ## Commits
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-18`, based directly on `5bb5c57`, which contains all of `worktree-wf_a4b549de-085-17`. See issue 1.
+Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-20`, which holds all of `worktree-wf_a4b549de-085-18`. See the phase file's issue 8.
 
 ## Issues found
 
@@ -101,3 +103,13 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 **6. Wiring outside this stage's owned paths.**
 - `cmake/machine.cmake`, new. Stage 02.1 already includes it as `OPTIONAL` and `plans/REPO_STRUCTURE.md` already lists it, so no existing file changes.
 - `plans/REPO_STRUCTURE.md`: one sentence in section 4 about `report/`.
+
+**7. Second gate check: the test moved to the harness and was formatted.** `tests/compile/machine_config/index.c` had 37 clang-format errors, and its own `main` and `CHECK`. Now it matches `.clang-format`, which ctest `clang_format` enforces, and uses `tests/harness/`. Each `TEST` reads the paths from `t->borrowed_args` through `mct_paths`. Issue 5's last bullet is closed by this.
+
+**8. Second gate check: F16C, decided so the phase can close, and Ahmed may reverse it.**
+- Expected: this stage's todo says `config/machine.yaml` has "the exact content from plan section 5". `plans/CODING_STANDARD.md` section 7 says F16C is in the baseline and that each feature has a `MC_CPU_HAS_*` define from that file. Issue 4 left the conflict open.
+- Actual: both cannot hold. Plan line 29 lists F16C in the NASM baseline, so the standard and the plan's own reasoning agree, and the yaml in section 5 is the one that left it out.
+- Done: `f16c: true` in `cpu.simd`, `KEY_CPU_HAS_F16C` in `machine_keys`, the rule `cpu.simd.f16c needs cpu.simd.avx` because F16C is VEX encoded, the fixture, three test cases, and a line in `machine_config_report`. `MC_CPU_HAS_F16C` is 1 in all four generated files. The plan file is not changed. Nothing uses the define yet; Stage 03.1's CPUID check should.
+- To reverse: remove the key from the yaml, the fixture and the table, and take F16C out of section 7.
+
+**9. Second gate check: `-O1` at configure, and issue 3 corrected.** Issue 3 said initializing `decoded` should remove the warning. It removed that one and exposed a second; Stage 02.2 issue 10 has it. `cmake/machine.cmake` now compiles at `-O1`. Also closed: issue 4's `cmake/flags.cmake` point, and issue 2's `minecraft_c`, by the earlier gate check.

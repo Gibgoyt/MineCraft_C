@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 2, stage 4: Standards lint and test harness
 
-**Status:** in progress: the work is finished and verified on all four presets by the gate check, with the defects in issues 9 and 10 fixed; the only thing pending is the landing on `main` (the phase file's issue 1)   (updated 2026-11-02)
+**Status:** in progress: verified on all four presets on `worktree-wf_a4b549de-085-20`, with the defects in issues 9 to 14 fixed; the only thing pending is the landing on `main` (the phase file's issue 8)   (updated 2026-11-02)
 
 ## Goal
 
@@ -72,7 +72,7 @@ Further checks against the real build, with throwaway files that were then remov
 
 Appended as they land:
 
-Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-19`, which holds all of `worktree-wf_a4b549de-085-14` and the gate check's fixes. See the phase file's issue 1.
+Nothing from this stage is on `main`, so there is no landed sha yet. The commits are on branch `worktree-wf_a4b549de-085-20`, which holds all of `worktree-wf_a4b549de-085-19`, itself holding `-14`. See the phase file's issue 8.
 
 ## Issues found
 
@@ -145,3 +145,23 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 - Expected: Stage 02.4's table says "A harness failure really fails", on the strength of `compile_standards_lint_harness`.
 - Actual: with `t->failure_count++` removed from `test_report` in `tests/harness/index.c` (line 53), the program built and `ctest -R compile_standards_lint_harness` returned 0. The self test checks its samples through the same counter that had just been broken, so its own failed checks went uncounted as well.
 - Done: added `tests/compile/standards_lint/harness/test.cmake`, which registers `compile_standards_lint_harness_samples_fail`: the failing samples, with `WILL_FAIL`, so the verdict comes from ctest. With the same break, `ctest` now returns 8 and names that test. Unbroken, all 7 ctests pass.
+
+**11. Second gate check: `asm_vzeroupper` did not follow a jump backward.**
+- Expected: section 7, `vzeroupper` before every `ret` from code that used YMM.
+- Actual: this read as clean, since the scan only went forward: `jmp .body`, `.exit: ret`, `.body: vpxor ymm0, ymm0, ymm0`, `jmp .exit`. The `ret` runs with YMM live.
+- Done: the flow check in `rules_asm/index.c` is now its own walk, repeated until no new dirty label appears, reporting on the last one. Dirty labels are kept per function, because local names repeat. After an unconditional `jmp`, state is clean until a label says otherwise, since nothing falls through. Fixtures: `asm_vzeroupper_backward`, `asm_vzeroupper_backward_chain` (only found on a second walk) and `ok_asm_backward_clean`. A jump through a register is still not followed; the README says so.
+
+**12. Second gate check: shared structs were not checked for `alignof` and `offsetof`.**
+- Expected: section 3 rule 4: structs shared with CUDA, NASM or files also assert `alignof` and each field's `offsetof`.
+- Actual: only `sizeof` was checked.
+- Done: `struct_no_alignof_assert` and `struct_no_offsetof_assert`, on structs in `run/include/gpu_bridge/` (CUDA), `run/include/simd/` (NASM kernels' prototypes) and `run/include/save/` (files). The list is `shared_struct_paths` in `catalog/`. Padding fields count as fields. This choice of paths is mine: section 8 and `plans/REPO_STRUCTURE.md` name the first two, and `save` is the system Phase 16 writes its files from. `ok_shared_struct` covers function pointers, two names on one line, a named inner struct, an unnamed union, `alignas`, arrays and padding. Nothing on the real tree has such a struct yet, so the first real test of this is Stage 04.2 and Stage 08.1.
+
+**13. Second gate check: a `.cmake` file could drop a flag for one source.**
+- Expected: section 9 and the gate's "fails the build on any breach".
+- Actual: the lint did not read build files. `set_source_files_properties(... COMPILE_OPTIONS -Wno-padded)` in any file would have switched off the padding check for that source.
+- Done: new part `rules_cmake/`, reading `CMakeLists.txt` and `*.cmake` everywhere the walk goes. `cmake_flags_outside`: flag commands, flag properties, `CMAKE_*_FLAGS*`, compile rule variables and writes to `MC_*_FLAGS` anywhere but `cmake/flags.cmake`. `cmake_weakening_flag`: `-Wno-*`, `-w`, `-w-*`, `-ffast-math`, `-Ofast`, `-fpack-struct*`, `-mavx512*`, the vectorize flags and the like, anywhere, including `cmake/flags.cmake`. Strings count; comments do not. It reads words and does not interpret CMake, so something like `string(REPLACE)` on a compile rule variable with the name built up from parts could still pass. The README says so. Added to `plans/REPO_STRUCTURE.md` and section 10 of the standard.
+
+**14. Second gate check: `release` and `profile` had no recursion check.** This closes issue 4's first half.
+- Expected: section 10's recursion check on the build, with no exception by preset.
+- Actual: `-flto` writes no `.ci` at compile time, so `mc_recursion_check` did not exist on those two. Issue 4 accepted that on the grounds that all presets build the same source, but `#ifdef NDEBUG` makes that untrue, and it did say so.
+- Done: on those two, `cmake/standards_lint.cmake` adds an object library per C target, compiled once more at `-O0 -fno-lto -fcallgraph-info=su` with the preset's defines, and nothing links them. They exist only for their `.ci` files. `-O0` means the graph is the source's, not what inlining or tail-call removal left. It costs one more compile of the C sources on those presets. Proof: recursion under `#ifdef NDEBUG` passes `debug` and fails `release` and `profile` with `[recursion]`. Debug and sanitize are unchanged.
