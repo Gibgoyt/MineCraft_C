@@ -165,3 +165,21 @@ Nothing from this stage is on `main`, so there is no landed sha yet. The commits
 - Expected: section 10's recursion check on the build, with no exception by preset.
 - Actual: `-flto` writes no `.ci` at compile time, so `mc_recursion_check` did not exist on those two. Issue 4 accepted that on the grounds that all presets build the same source, but `#ifdef NDEBUG` makes that untrue, and it did say so.
 - Done: on those two, `cmake/standards_lint.cmake` adds an object library per C target, compiled once more at `-O0 -fno-lto -fcallgraph-info=su` with the preset's defines, and nothing links them. They exist only for their `.ci` files. `-O0` means the graph is the source's, not what inlining or tail-call removal left. It costs one more compile of the C sources on those presets. Proof: recursion under `#ifdef NDEBUG` passes `debug` and fails `release` and `profile` with `[recursion]`. Debug and sanitize are unchanged.
+
+**15. (Numbered 9 on `worktree-wf_a4b549de-085-16`, commit `5dd2396`; merged here with its text unchanged.) Second attempt, 2026-11-02: still not landed, and this branch could not take the code either.**
+- Expected: to fast-forward this worktree onto `worktree-wf_a4b549de-085-14`, finish the open items there, and land.
+- Actual: `main` is still `5bb5c57`. `git merge --ff-only worktree-wf_a4b549de-085-14` in this worktree was denied by the permission classifier: `Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Auto-Mode Bypass]`. I did not retry it, and did not bring the same commits in another way (`cherry-pick`, `reset`, `read-tree`). So this branch holds only this stage file on top of `main`; the ticked boxes above describe the code at `8af2957`, not anything on this branch. I tried nothing to move `main` other than the workflow's landing command.
+- Done: exported `8af2957` with `git archive` to the throwaway directory `build/snap_8af2957/` in this worktree, without moving any branch, and verified there. That directory has since been deleted.
+- Results on that export, each through `tools/test-or-build.sh`:
+  - Unchanged `8af2957`: `debug`, `sanitize`, `release` and `profile` each configure and build with rc 0 and pass 4/4 ctests. This closes the earlier gap that `release` and `profile` had not been rebuilt after `8af2957`. On `debug`, `standards_lint_fixtures` passes, `standards_lint --root .` prints `clean, 25 source files`, and `--list-rules` prints 138 lines.
+  - `pgrep -a minecraft_c` returned rc 1. `pgrep -af` on this worktree's `build/` matched only its own shell.
+- **This narrows issue 4: the frame limit is not enforced under `release` and `profile` on `8af2957`.** It is a real gap, not just an inconclusive probe. A function with a 20000-byte local that `main` calls, compiled `gcc -std=c23 -O3 -flto=auto -Wframe-larger-than=16384 -Werror -c`, returns rc 0. Linking it with `gcc -O3 -flto=auto` returns rc 0, while linking it with `-Wframe-larger-than=16384 -Werror` added returns rc 1 with `error: the frame size of 20016 bytes is larger than 16384 bytes [-Werror=frame-larger-than=]`.
+- Fix, measured but **not committed**, because `cmake/flags.cmake` is not on this branch. Add this to `cmake/flags.cmake` just before the `MC_C_CALLGRAPH` comment:
+
+      # Under -flto code is generated at the link, so the frame limit can only fire there, and only if the link is given it.
+      if(MC_PRESET MATCHES "^(release|profile)$")
+        list(APPEND MC_LINK_FLAGS -Wframe-larger-than=${MC_FRAME_LIMIT_BYTES} -Werror)
+      endif()
+
+  With it on the export: `release` built with rc 0 and passed 4/4, and `profile` built with rc 0 and passed 4/4. A throwaway `tests/compile/probe_frame/index.c`, with the same local in a called function and no list edited, stopped the real `release` build at its link with the error above and `ninja: build stopped`. The probe was not run under `profile`. It also showed test discovery working again. The recursion gap in issue 4 is unchanged.
+- To finish, in the main checkout: land `worktree-wf_a4b549de-085-14` as issue 2 says, apply the fix above, then take this file from this branch, whose text is a superset of the one on that branch. Merging this branch as it stands will conflict on this file, since both add the same text to it. Then record the landed sha under Commits and set Status to done.
