@@ -733,7 +733,8 @@ TEST(init_and_deinit_are_a_pair) {
     REQUIRE(terrain_init(&terrain, 7u));
     REQUIRE(terrain.borrowed_climate != nullptr);
     const terrain_climate_t *const climate = terrain.borrowed_climate;
-    CHECK_EQ_U64(terrain.noise_bank.count, TERRAIN_CLIMATE_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS);
+    CHECK_EQ_U64(terrain.noise_bank.count,
+                 TERRAIN_CLIMATE_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS + TERRAIN_HYDROLOGY_NOISE_FIELDS);
     CHECK_STR_EQ(climate->borrowed_continentalness->borrowed_name, "climate/continentalness");
     CHECK_STR_EQ(climate->borrowed_erosion->borrowed_name, "climate/erosion");
     CHECK_STR_EQ(climate->borrowed_temperature->borrowed_name, "climate/temperature");
