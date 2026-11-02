@@ -1308,7 +1308,8 @@ TEST(terrain_starts_the_hydrology_and_stops_it) {
     CHECK(hydrology->borrowed_density == terrain.borrowed_density);
     CHECK(hydrology->borrowed_climate == terrain.borrowed_climate);
     CHECK_EQ_U64(terrain.noise_bank.count,
-                 TERRAIN_CLIMATE_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS + TERRAIN_HYDROLOGY_NOISE_FIELDS);
+                 TERRAIN_CLIMATE_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS + TERRAIN_HYDROLOGY_NOISE_FIELDS +
+                     TERRAIN_CAVE_NOISE_FIELDS);
     /* The river's fields are 2D, as a column has no height in it, and the aquifers' are 3D. */
     CHECK(hydrology->borrowed_width->octaves[0].frequency_z == 0.0f64);
     CHECK(hydrology->borrowed_shore->octaves[0].frequency_z == 0.0f64);

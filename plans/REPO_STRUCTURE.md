@@ -228,7 +228,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `climate` | Continentalness, erosion, ridges, temperature, humidity, weirdness | 10.2 |
 | | `density` | Height splines and 3D terrain shape, `z ∈ [-250, 500]`; bedrock at `-250`, water up to `0` | 10.3 |
 | | `hydrology` | Sea level 0, rivers, oceans, beaches, aquifers, the lava level under the world at `-230` | 10.4 |
-| | `cave ore` | Caves and ore tables | 10.5 |
+| | `cave ore` | Cheese, spaghetti and noodle caves cut from any box; deepslate by depth, and the table of rock and ore veins by depth | 10.5 |
 | | `biome surface` | All Overworld biomes, surface rules | 10.6 |
 | | `feature` | Trees, plants, cross-chunk placement | 10.7 |
 
@@ -391,6 +391,8 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/terrain/climate/` | ctest `run_terrain_climate`: `run/src/terrain/climate/`: ranges, the spread its README promises, the same bytes from 1 worker and 16, any split of the work, and each value worked out by hand from its noise |
 | `tests/run/terrain/density/` | ctest `run_terrain_density`: `run/src/terrain/density/`: the range limits on every corner of the climate and on real columns, bedrock at `-250`, water's top at `0`, values worked out by hand, any split of the work, and the same bytes from 1 worker and 16 |
 | `tests/run/terrain/hydrology/` | ctest `run_terrain_hydrology`: `run/src/terrain/hydrology/`: each column worked out by hand, rivers that hold water and reach the sea, oceans, beaches, aquifers that cannot flow, the lava level, any split of the work, and the same bytes from 1 worker and 16 |
+| `tests/run/terrain/cave/` | ctest `run_terrain_cave`: `run/src/terrain/cave/`: all three kinds and their shares, thin against wide, a solid floor, no cave reaching the sea, each voxel worked out by hand, any split of the work, and the same bytes from 1 worker and 16 |
+| `tests/run/terrain/ore/` | ctest `run_terrain_ore`: `run/src/terrain/ore/`: the table against the README, each ore at its depths, deepslate variants only in deepslate, veins worked out by hand, across chunks, any split of the work, and the same bytes from 1 worker and 16 |
 | `tests/run/texture/` | ctest `run_texture`, covering `run/src/texture/` with `blob` and `registry`, and `asm/src/embed_assets/`: every texture against its source files, and damage to the blob, field by field |
 | `tests/run/gpu_bridge/` | ctest `run_gpu_bridge`, covering `run/src/gpu_bridge/` with `status`, and `cuda/src/device_memory/`, on the real card: real blocks and a real kernel, the budgets, stale and forged handles, a pebibyte refused, and no device in a process of its own |
 | `tests/run/render/encode/` | ctest `run_render_encode`: one voxel's bytes worked out on paper, every shape of section against brute force, and real workers. No card |

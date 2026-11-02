@@ -4,10 +4,12 @@
 
 #include "arena/index.h"
 #include "heap/index.h"
+#include "terrain/cave/index.h"
 #include "terrain/climate/index.h"
 #include "terrain/density/index.h"
 #include "terrain/hydrology/index.h"
 #include "terrain/noise/index.h"
+#include "terrain/ore/index.h"
 #include "terrain/rng/index.h"
 
 #include <stddef.h>
@@ -24,10 +26,11 @@ enum : uint32_t {
     TERRAIN_NOISE_FIELDS_MAX = 64u,
 };
 static_assert(TERRAIN_NOISE_FIELDS_MAX * sizeof(terrain_noise_field_t) + sizeof(terrain_climate_t) +
-                  sizeof(terrain_density_t) + sizeof(terrain_hydrology_t) <
+                  sizeof(terrain_density_t) + sizeof(terrain_hydrology_t) + sizeof(terrain_cave_t) +
+                  sizeof(terrain_ore_t) <
               TERRAIN_TABLES_BYTES);
 static_assert((uint32_t)TERRAIN_CLIMATE_NOISE_FIELDS + (uint32_t)TERRAIN_DENSITY_NOISE_FIELDS +
-                  (uint32_t)TERRAIN_HYDROLOGY_NOISE_FIELDS <=
+                  (uint32_t)TERRAIN_HYDROLOGY_NOISE_FIELDS + (uint32_t)TERRAIN_CAVE_NOISE_FIELDS <=
               (uint32_t)TERRAIN_NOISE_FIELDS_MAX);
 
 /* All of one world's terrain, for its one seed. There is one, under app_t. After terrain_init nothing changes it, so any
@@ -40,7 +43,9 @@ typedef struct terrain_t {
     terrain_climate_t *borrowed_climate;     /* 112: in arena_tables */
     terrain_density_t *borrowed_density;     /* 120: in arena_tables */
     terrain_hydrology_t *borrowed_hydrology; /* 128: in arena_tables */
-    uint8_t _pad0[56];                       /* 136 */
+    terrain_cave_t *borrowed_cave;           /* 136: in arena_tables */
+    terrain_ore_t *borrowed_ore;             /* 144: in arena_tables */
+    uint8_t _pad0[40];                       /* 152 */
 } terrain_t;
 static_assert(sizeof(terrain_t) == 192);
 static_assert(alignof(terrain_t) == 64);
@@ -50,6 +55,8 @@ static_assert(offsetof(terrain_t, seed) == 104);
 static_assert(offsetof(terrain_t, borrowed_climate) == 112);
 static_assert(offsetof(terrain_t, borrowed_density) == 120);
 static_assert(offsetof(terrain_t, borrowed_hydrology) == 128);
+static_assert(offsetof(terrain_t, borrowed_cave) == 136);
+static_assert(offsetof(terrain_t, borrowed_ore) == 144);
 
 /* Reserves the region and starts the parts, for this seed. On failure logs why, leaves nothing behind and returns false. A
  * world with another seed is a terrain_deinit and another terrain_init: nothing computed from the old seed may survive. */
