@@ -41,6 +41,7 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 Appended as they land:
 
 - `2a1f416` Add the scalar vector library under run/src/math with its tests, and check the floating-point environment from main before any worker starts.
+- `bae1987` Pin what a ray starting on a face reports, and record Stage 04.1's results and issues in its plan file.
 
 ## Results
 
