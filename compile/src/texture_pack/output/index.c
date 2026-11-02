@@ -32,7 +32,7 @@ const char *tp_output_group_at(uint32_t position) {
 
 static void tp_output_authors(tp_builder_t *builder, const tp_manifest_t *manifest) {
     for (uint32_t i = 0; i < manifest->author_count; i++) {
-        tp_builder_add(builder, "%s%s", i == 0 ? "" : ", ", manifest->authors[i]);
+        tp_builder_add(builder, "%s%s", i == 0 ? "" : ", ", manifest->borrowed_authors[i]);
     }
 }
 
@@ -41,9 +41,9 @@ static void tp_output_changes(tp_builder_t *builder, const tp_entry_t *entry) {
     if (entry->frames > 1u) {
         tp_builder_add(builder, ", with its vertical strip recorded as %u frames", entry->frames);
     }
-    if (entry->over != nullptr) {
+    if (entry->borrowed_over != nullptr) {
         tp_builder_add(builder, ", and composited over `%s` from the same pack, which makes it fully opaque",
-                       entry->over);
+                       entry->borrowed_over);
     } else {
         tp_builder_add(builder, ", with every pixel value kept");
     }
@@ -53,7 +53,7 @@ static void tp_output_changes(tp_builder_t *builder, const tp_entry_t *entry) {
 bool tp_output_texture(tp_arena_t *arena, const char *textures, const tp_manifest_t *manifest, const tp_entry_t *entry,
                        const tp_image_t *image, uint32_t *out_written) {
     const uint64_t mark = arena->used;
-    const char *directory = tp_arena_format(arena, "%s/%s", textures, entry->to);
+    const char *directory = tp_arena_format(arena, "%s/%s", textures, entry->borrowed_to);
     if (!tp_make_directories(arena, directory)) {
         return false;
     }
@@ -63,7 +63,7 @@ bool tp_output_texture(tp_arena_t *arena, const char *textures, const tp_manifes
     const mctex_status_t encoded = mctex_encode(file, file_bytes, image->width, image->height, image->frames,
                                                 image->borrowed_pixels, image->pixel_bytes);
     if (encoded != MCTEX_OK) {
-        return tp_fail("%s: %s", entry->to, mctex_status_text(encoded));
+        return tp_fail("%s: %s", entry->borrowed_to, mctex_status_text(encoded));
     }
     bool wrote = false;
     if (!tp_write_if_changed(arena, tp_arena_format(arena, "%s/index.mctex", directory), file, file_bytes, &wrote)) {
@@ -74,12 +74,12 @@ bool tp_output_texture(tp_arena_t *arena, const char *textures, const tp_manifes
     tp_builder_t yaml = tp_builder_begin(arena, TP_OUTPUT_TEXT_BYTES);
     tp_builder_add(&yaml,
                    "# Written by compile/src/texture_pack from textures/import.yaml. A re-import replaces it.\n");
-    tp_builder_add(&yaml, "name: %s\ngroup: %s\n", entry->name, entry->group);
+    tp_builder_add(&yaml, "name: %s\ngroup: %s\n", entry->borrowed_name, entry->borrowed_group);
     tp_builder_add(&yaml, "size: { width: %u, height: %u, frames: %u }\n", image->width, image->height, image->frames);
     tp_builder_add(&yaml, "source:\n  kind: pack\n  pack: %s\n  commit: \"%s\"\n  licence: %s\n  file: %s\n",
-                   manifest->id, manifest->commit, manifest->licence, entry->from);
-    if (entry->over != nullptr) {
-        tp_builder_add(&yaml, "  over: %s\n", entry->over);
+                   manifest->borrowed_id, manifest->borrowed_commit, manifest->borrowed_licence, entry->borrowed_from);
+    if (entry->borrowed_over != nullptr) {
+        tp_builder_add(&yaml, "  over: %s\n", entry->borrowed_over);
     }
     if (!tp_write_if_changed(arena, tp_arena_format(arena, "%s/index.yaml", directory), yaml.borrowed_text, yaml.used,
                              &wrote)) {
@@ -88,12 +88,12 @@ bool tp_output_texture(tp_arena_t *arena, const char *textures, const tp_manifes
     *out_written += wrote ? 1u : 0u;
 
     tp_builder_t readme = tp_builder_begin(arena, TP_OUTPUT_TEXT_BYTES);
-    tp_builder_add(&readme, "# textures/%s\n\n", entry->to);
-    tp_builder_add(&readme, "From [%s](%s), file `%s`, commit `%s`.\n\nBy ", manifest->title, manifest->url,
-                   entry->from, manifest->commit);
+    tp_builder_add(&readme, "# textures/%s\n\n", entry->borrowed_to);
+    tp_builder_add(&readme, "From [%s](%s), file `%s`, commit `%s`.\n\nBy ", manifest->borrowed_title,
+                   manifest->borrowed_url, entry->borrowed_from, manifest->borrowed_commit);
     tp_output_authors(&readme, manifest);
-    tp_builder_add(&readme, ". Licence: [%s](%s). See `textures/ATTRIBUTION.md`.\n\n", manifest->licence,
-                   manifest->licence_url);
+    tp_builder_add(&readme, ". Licence: [%s](%s). See `textures/ATTRIBUTION.md`.\n\n", manifest->borrowed_licence,
+                   manifest->borrowed_licence_url);
     tp_output_changes(&readme, entry);
     tp_builder_add(&readme, "\n\nWritten by `compile/src/texture_pack`, which `textures/README.md` describes.\n");
     if (!tp_write_if_changed(arena, tp_arena_format(arena, "%s/README.md", directory), readme.borrowed_text,
@@ -136,13 +136,13 @@ bool tp_output_attribution(tp_arena_t *arena, const char *textures, const tp_man
     tp_builder_add(&text, "This file ships with anything that ships these textures. No Mojang textures and no "
                           "decompiled code are used anywhere in this repository. A texture with no row below comes "
                           "from this project's own procedural recipes, which its `index.yaml` holds.\n\n");
-    tp_builder_add(&text, "## %s\n\n", manifest->title);
+    tp_builder_add(&text, "## %s\n\n", manifest->borrowed_title);
     tp_builder_add(&text, "- **Authors:** ");
     tp_output_authors(&text, manifest);
-    tp_builder_add(&text, "\n- **Source:** %s\n", manifest->url);
-    tp_builder_add(&text, "- **Commit:** `%s`\n", manifest->commit);
-    tp_builder_add(&text, "- **Licence:** %s, %s, %s\n", manifest->licence, manifest->licence_name,
-                   manifest->licence_url);
+    tp_builder_add(&text, "\n- **Source:** %s\n", manifest->borrowed_url);
+    tp_builder_add(&text, "- **Commit:** `%s`\n", manifest->borrowed_commit);
+    tp_builder_add(&text, "- **Licence:** %s, %s, %s\n", manifest->borrowed_licence, manifest->borrowed_licence_name,
+                   manifest->borrowed_licence_url);
     tp_builder_add(&text,
                    "- **Coverage:** %u files in the pack: %u imported, %u deliberately left out, %u holding its "
                    "licence statement. The reasons are in `textures/import.yaml`.\n\n",
@@ -152,10 +152,10 @@ bool tp_output_attribution(tp_arena_t *arena, const char *textures, const tp_man
                           "our own `.mctex` format, and renamed. Any further change is stated in its row.\n\n");
     tp_builder_add(&text, "| Texture | File in the pack | Further change |\n|---|---|---|\n");
     for (uint32_t i = 0; i < manifest->entry_count; i++) {
-        const tp_entry_t *entry = &manifest->entries[i];
-        tp_builder_add(&text, "| `%s` | `%s` | ", entry->to, entry->from);
-        if (entry->over != nullptr) {
-            tp_builder_add(&text, "composited over `%s`", entry->over);
+        const tp_entry_t *entry = &manifest->borrowed_entries[i];
+        tp_builder_add(&text, "| `%s` | `%s` | ", entry->borrowed_to, entry->borrowed_from);
+        if (entry->borrowed_over != nullptr) {
+            tp_builder_add(&text, "composited over `%s`", entry->borrowed_over);
         } else if (entry->frames > 1u) {
             tp_builder_add(&text, "%u animation frames", entry->frames);
         } else {

@@ -110,9 +110,9 @@ bool tp_pack_check_commit(tp_arena_t *arena, const char *pack, const tp_manifest
             return false;
         }
     }
-    if (memcmp(commit, manifest->commit, TP_COMMIT_HEX_DIGITS) != 0) {
-        return tp_fail("%s: it is at commit %.40s, and %s pins %s", pack, (const char *)commit, manifest->path,
-                       manifest->commit);
+    if (memcmp(commit, manifest->borrowed_commit, TP_COMMIT_HEX_DIGITS) != 0) {
+        return tp_fail("%s: it is at commit %.40s, and %s pins %s", pack, (const char *)commit, manifest->borrowed_path,
+                       manifest->borrowed_commit);
     }
     arena->used = mark;
     return true;
@@ -154,20 +154,21 @@ static const char *tp_conf_licence(tp_arena_t *arena, const uint8_t *bytes, uint
 bool tp_pack_check_licence(tp_arena_t *arena, const char *pack, const tp_manifest_t *manifest) {
     const uint64_t mark = arena->used;
     for (uint32_t i = 0; i < manifest->evidence_count; i++) {
-        const tp_evidence_t *evidence = &manifest->evidence[i];
+        const tp_evidence_t *evidence = &manifest->borrowed_evidence[i];
         uint8_t *bytes = nullptr;
         uint64_t length = 0;
         const tp_read_status_t status =
-            tp_read_contained(arena, pack, evidence->file, TP_PACK_TEXT_MAX_BYTES, &bytes, &length);
+            tp_read_contained(arena, pack, evidence->borrowed_file, TP_PACK_TEXT_MAX_BYTES, &bytes, &length);
         if (status == TP_READ_MISSING) {
             return tp_fail("licence check: the pack has no %s, where it stated its licence when reviewed",
-                           evidence->file);
+                           evidence->borrowed_file);
         }
         if (status != TP_READ_OK) {
             return false;
         }
-        if (!tp_bytes_contain(bytes, length, evidence->contains)) {
-            return tp_fail("licence check: %s no longer says \"%s\"", evidence->file, evidence->contains);
+        if (!tp_bytes_contain(bytes, length, evidence->borrowed_contains)) {
+            return tp_fail("licence check: %s no longer says \"%s\"", evidence->borrowed_file,
+                           evidence->borrowed_contains);
         }
     }
     uint8_t *conf = nullptr;
@@ -179,9 +180,10 @@ bool tp_pack_check_licence(tp_arena_t *arena, const char *pack, const tp_manifes
     }
     if (status == TP_READ_OK) {
         const char *stated = tp_conf_licence(arena, conf, conf_length);
-        if (stated != nullptr && strcmp(stated, manifest->licence) != 0) {
+        if (stated != nullptr && strcmp(stated, manifest->borrowed_licence) != 0) {
             /* The pack's own bytes, so they are not repeated: only that they differ. */
-            return tp_fail("licence check: texture_pack.conf states a licence other than %s", manifest->licence);
+            return tp_fail("licence check: texture_pack.conf states a licence other than %s",
+                           manifest->borrowed_licence);
         }
     }
     arena->used = mark;
@@ -212,18 +214,19 @@ static bool tp_coverage_account(const tp_manifest_t *manifest, const char *file,
     out->files++;
     bool accounted = false;
     for (uint32_t i = 0; i < manifest->entry_count; i++) {
-        if (strcmp(manifest->entries[i].from, file) == 0) {
+        if (strcmp(manifest->borrowed_entries[i].borrowed_from, file) == 0) {
             seen->entries[i] = 1;
             out->imported++;
             accounted = true;
         }
-        if (manifest->entries[i].over != nullptr && strcmp(manifest->entries[i].over, file) == 0) {
+        if (manifest->borrowed_entries[i].borrowed_over != nullptr &&
+            strcmp(manifest->borrowed_entries[i].borrowed_over, file) == 0) {
             seen->overs[i] = 1;
             accounted = true;
         }
     }
     for (uint32_t i = 0; i < manifest->skip_count; i++) {
-        if (strcmp(manifest->skips[i].file, file) == 0) {
+        if (strcmp(manifest->borrowed_skips[i].borrowed_file, file) == 0) {
             seen->skips[i] = 1;
             out->skipped++;
             accounted = true;
@@ -231,7 +234,7 @@ static bool tp_coverage_account(const tp_manifest_t *manifest, const char *file,
     }
     bool is_evidence = false;
     for (uint32_t i = 0; i < manifest->evidence_count; i++) {
-        if (strcmp(manifest->evidence[i].file, file) == 0) {
+        if (strcmp(manifest->borrowed_evidence[i].borrowed_file, file) == 0) {
             out->evidence++;
             accounted = true;
             is_evidence = true;
@@ -240,10 +243,11 @@ static bool tp_coverage_account(const tp_manifest_t *manifest, const char *file,
     if (!is_evidence && tp_name_looks_like_licence(name)) {
         return tp_fail("coverage: %s looks like a licence or credits file, and no one has reviewed it: read it, then "
                        "add it to pack.evidence in %s",
-                       file, manifest->path);
+                       file, manifest->borrowed_path);
     }
     if (!accounted) {
-        return tp_fail("coverage: %s is in the pack, and %s neither imports nor skips it", file, manifest->path);
+        return tp_fail("coverage: %s is in the pack, and %s neither imports nor skips it", file,
+                       manifest->borrowed_path);
     }
     return true;
 }
@@ -311,18 +315,18 @@ bool tp_pack_check_coverage(tp_arena_t *arena, const char *pack, const tp_manife
     }
     for (uint32_t i = 0; i < manifest->entry_count; i++) {
         if (seen.entries[i] == 0) {
-            return tp_fail("coverage: %s:%u wants %s, which the pack does not have", manifest->path,
-                           manifest->entries[i].line, manifest->entries[i].from);
+            return tp_fail("coverage: %s:%u wants %s, which the pack does not have", manifest->borrowed_path,
+                           manifest->borrowed_entries[i].line, manifest->borrowed_entries[i].borrowed_from);
         }
-        if (manifest->entries[i].over != nullptr && seen.overs[i] == 0) {
-            return tp_fail("coverage: %s:%u composites over %s, which the pack does not have", manifest->path,
-                           manifest->entries[i].line, manifest->entries[i].over);
+        if (manifest->borrowed_entries[i].borrowed_over != nullptr && seen.overs[i] == 0) {
+            return tp_fail("coverage: %s:%u composites over %s, which the pack does not have", manifest->borrowed_path,
+                           manifest->borrowed_entries[i].line, manifest->borrowed_entries[i].borrowed_over);
         }
     }
     for (uint32_t i = 0; i < manifest->skip_count; i++) {
         if (seen.skips[i] == 0) {
-            return tp_fail("coverage: %s skips %s, which the pack does not have", manifest->path,
-                           manifest->skips[i].file);
+            return tp_fail("coverage: %s skips %s, which the pack does not have", manifest->borrowed_path,
+                           manifest->borrowed_skips[i].borrowed_file);
         }
     }
     arena->used = mark;
@@ -374,31 +378,33 @@ bool tp_pack_load_entry(tp_arena_t *arena, const char *pack, const tp_entry_t *e
     memset(out, 0, sizeof(*out));
     png_info_t info;
     uint8_t *pixels = nullptr;
-    if (!tp_pack_decode(arena, pack, entry->from, &pixels, &info)) {
+    if (!tp_pack_decode(arena, pack, entry->borrowed_from, &pixels, &info)) {
         return false;
     }
     if (info.height % entry->frames != 0) {
-        return tp_fail("%s: a height of %u does not divide into %u frames", entry->from, info.height, entry->frames);
+        return tp_fail("%s: a height of %u does not divide into %u frames", entry->borrowed_from, info.height,
+                       entry->frames);
     }
     const uint32_t frame_height = info.height / entry->frames;
     uint64_t expected = 0;
     if (!mctex_pixel_bytes(info.width, frame_height, entry->frames, &expected) || expected != info.pixel_bytes) {
-        return tp_fail("%s: %ux%u in %u frames is over the .mctex limits", entry->from, info.width, frame_height,
-                       entry->frames);
+        return tp_fail("%s: %ux%u in %u frames is over the .mctex limits", entry->borrowed_from, info.width,
+                       frame_height, entry->frames);
     }
-    if (entry->over != nullptr) {
+    if (entry->borrowed_over != nullptr) {
         png_info_t base_info;
         uint8_t *base = nullptr;
-        if (!tp_pack_decode(arena, pack, entry->over, &base, &base_info)) {
+        if (!tp_pack_decode(arena, pack, entry->borrowed_over, &base, &base_info)) {
             return false;
         }
         if (base_info.width != info.width || base_info.height != info.height) {
-            return tp_fail("%s is %ux%u, and %s under it is %ux%u", entry->from, info.width, info.height, entry->over,
-                           base_info.width, base_info.height);
+            return tp_fail("%s is %ux%u, and %s under it is %ux%u", entry->borrowed_from, info.width, info.height,
+                           entry->borrowed_over, base_info.width, base_info.height);
         }
         for (uint64_t i = 3u; i < base_info.pixel_bytes; i += 4u) {
             if (base[i] != 255u) {
-                return tp_fail("%s is not fully opaque, so it cannot be the base of %s", entry->over, entry->from);
+                return tp_fail("%s is not fully opaque, so it cannot be the base of %s", entry->borrowed_over,
+                               entry->borrowed_from);
             }
         }
         tp_composite_over_opaque(pixels, base, info.pixel_bytes);

@@ -127,12 +127,12 @@ static void tv_analyze_height(const tv_image_t *image, tv_vector_t *out) {
     for (uint64_t i = 0; i < out->pixel_count; i++) {
         const uint8_t *pixel = image->borrowed_pixels + i * 4u;
         if (pixel[3] == 0) {
-            out->height[i] = 0;
+            out->borrowed_height[i] = 0;
         } else if (span < TV_HEIGHT_MIN_SPAN) {
-            out->height[i] = TV_HEIGHT_FLAT;
+            out->borrowed_height[i] = TV_HEIGHT_FLAT;
         } else {
             const uint32_t luma = tv_luma(pixel[0], pixel[1], pixel[2]);
-            out->height[i] = (uint8_t)(((luma - out->luma_min) * 255u + span / 2u) / span);
+            out->borrowed_height[i] = (uint8_t)(((luma - out->luma_min) * 255u + span / 2u) / span);
         }
     }
 }
@@ -154,7 +154,7 @@ static void tv_analyze_normal(const tv_image_t *image, tv_vector_t *out) {
     const uint64_t frame_pixels = (uint64_t)image->width * image->height;
     for (uint32_t f = 0; f < image->frames; f++) {
         const uint8_t *frame = image->borrowed_pixels + frame_pixels * f * 4u;
-        uint8_t *normal = out->normal + frame_pixels * f * 2u;
+        uint8_t *normal = out->borrowed_normal + frame_pixels * f * 2u;
         for (uint32_t y = 0; y < image->height; y++) {
             for (uint32_t x = 0; x < image->width; x++) {
                 const uint8_t *pixel = frame + ((uint64_t)y * image->width + x) * 4u;
@@ -195,7 +195,7 @@ static void tv_analyze_emissive(const tv_image_t *image, tv_material_t material,
             const bool bright = tv_luma(pixel[0], pixel[1], pixel[2]) >= material.min_luma;
             const bool warm = material.warm == 0 || (int32_t)pixel[0] - (int32_t)pixel[2] >= TV_WARM_MARGIN;
             if (pixel[3] != 0 && bright && warm) {
-                out->emissive[i] = material.emissive_level;
+                out->borrowed_emissive[i] = material.emissive_level;
                 lit++;
             }
         }
@@ -213,11 +213,11 @@ static void tv_analyze_emissive(const tv_image_t *image, tv_material_t material,
 void tv_analyze(tp_arena_t *arena, const tv_image_t *image, tv_material_t material, tv_vector_t *out) {
     memset(out, 0, sizeof(*out));
     out->pixel_count = image->pixel_bytes / 4u;
-    out->indices = tp_arena_alloc(arena, out->pixel_count);
-    out->height = tp_arena_alloc(arena, out->pixel_count);
-    out->normal = tp_arena_alloc(arena, out->pixel_count * 2u);
-    out->emissive = tp_arena_alloc(arena, out->pixel_count);
-    tv_palette_build(arena, image, &out->palette, out->indices);
+    out->borrowed_indices = tp_arena_alloc(arena, out->pixel_count);
+    out->borrowed_height = tp_arena_alloc(arena, out->pixel_count);
+    out->borrowed_normal = tp_arena_alloc(arena, out->pixel_count * 2u);
+    out->borrowed_emissive = tp_arena_alloc(arena, out->pixel_count);
+    tv_palette_build(arena, image, &out->palette, out->borrowed_indices);
     tv_analyze_alpha_and_mean(image, out);
     tv_analyze_height(image, out);
     tv_analyze_normal(image, out);

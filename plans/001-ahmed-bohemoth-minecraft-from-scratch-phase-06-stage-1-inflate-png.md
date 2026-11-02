@@ -50,3 +50,7 @@ All 2026-11-02, by this stage.
 6. **Process.** The first compile of the two modules was a direct `gcc -c` to `/dev/null`, not through `tools/test-or-build.sh`. It was one file at a time and wrote nothing, but it broke the rule; everything after it went through the wrapper. The worktree isolation check refused three compound shell commands as too complex to verify, and each was re-run as the plain separate commands its message asked for, with nothing bypassed.
 
 Extra runs beyond this file's Verification, all passing: `compile_inflate` and `compile_png` in the `sanitize` and `release` presets, and `clang_format`.
+
+### Phase gate check, 2026-11-02
+
+Nothing false found here. Read both decoders in full and re-ran the Verification in `debug`, plus `sanitize` and `release`. New one-line breaks of my own, in a one-off script: 4 to inflate and 4 to png, all caught. An independent Python decoder (zlib for the inflate, its own filters) gives the same pixels as the committed `.mctex` for all 325 imported textures. PngSuite and the `/usr/share` sample in issue 3 were not re-run.

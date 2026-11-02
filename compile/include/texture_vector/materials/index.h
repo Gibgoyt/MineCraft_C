@@ -11,18 +11,18 @@
 #include <stdint.h>
 
 typedef struct tv_material_row_t {
-    const char *texture;    /* 0: group/name */
-    tv_material_t material; /* 8 */
-    uint32_t line;          /* 12: in the file */
+    const char *borrowed_texture; /* 0: group/name */
+    tv_material_t material;       /* 8 */
+    uint32_t line;                /* 12: in the file */
 } tv_material_row_t;
 static_assert(sizeof(tv_material_row_t) == 16);
 
 typedef struct tv_materials_t {
-    const char *path;        /* 0 */
-    tv_material_row_t *rows; /* 8 */
-    const char **needs;      /* 16: group/name */
-    uint32_t row_count;      /* 24 */
-    uint32_t need_count;     /* 28 */
+    const char *borrowed_path;        /* 0 */
+    tv_material_row_t *borrowed_rows; /* 8 */
+    const char **borrowed_needs;      /* 16: group/name */
+    uint32_t row_count;               /* 24 */
+    uint32_t need_count;              /* 28 */
 } tv_materials_t;
 static_assert(sizeof(tv_materials_t) == 32);
 

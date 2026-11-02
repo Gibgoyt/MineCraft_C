@@ -59,7 +59,7 @@ static bool tp_import_check_all(tp_arena_t *arena, const char *pack, const tp_ma
     for (uint32_t i = 0; i < manifest->entry_count; i++) {
         const uint64_t mark = arena->used;
         tp_image_t image;
-        good = tp_pack_load_entry(arena, pack, &manifest->entries[i], &image) && good;
+        good = tp_pack_load_entry(arena, pack, &manifest->borrowed_entries[i], &image) && good;
         arena->used = mark;
     }
     return good;
@@ -80,8 +80,9 @@ static bool tp_import(tp_arena_t *arena, const tp_arguments_t *arguments, const 
     for (uint32_t i = 0; i < manifest->entry_count; i++) {
         const uint64_t mark = arena->used;
         tp_image_t image;
-        if (!tp_pack_load_entry(arena, arguments->pack, &manifest->entries[i], &image) ||
-            !tp_output_texture(arena, arguments->textures, manifest, &manifest->entries[i], &image, &written)) {
+        if (!tp_pack_load_entry(arena, arguments->pack, &manifest->borrowed_entries[i], &image) ||
+            !tp_output_texture(arena, arguments->textures, manifest, &manifest->borrowed_entries[i], &image,
+                               &written)) {
             return false;
         }
         arena->used = mark;
@@ -91,8 +92,8 @@ static bool tp_import(tp_arena_t *arena, const tp_arguments_t *arguments, const 
     }
     printf("texture_pack: %s at %s, %s: %u files, %u imported, %u skipped, %u licence statements; %u output files "
            "changed\n",
-           manifest->id, manifest->commit, manifest->licence, coverage.files, coverage.imported, coverage.skipped,
-           coverage.evidence, written);
+           manifest->borrowed_id, manifest->borrowed_commit, manifest->borrowed_licence, coverage.files,
+           coverage.imported, coverage.skipped, coverage.evidence, written);
     return true;
 }
 

@@ -200,7 +200,7 @@ TEST(fully_transparent_texture_has_no_mean) {
     CHECK_EQ_U64(vector.visible_pixels, 0u);
     CHECK_EQ_U64(vector.mean_rgba[0], 0u);
     CHECK_EQ_U64(vector.mean_rgba[3], 0u);
-    CHECK_EQ_U64(vector.height[0], 0u);
+    CHECK_EQ_U64(vector.borrowed_height[0], 0u);
     CHECK_EQ_U64(vector.palette.count, 1u);
 }
 
@@ -219,11 +219,11 @@ TEST(height_stretches_visible_luma_across_every_frame) {
     tv_analyze(&arena, &image, TV_NO_MATERIAL, &vector);
     CHECK_EQ_U64(vector.luma_min, 10u);
     CHECK_EQ_U64(vector.luma_max, 110u);
-    CHECK_EQ_U64(vector.height[0], 0u);
+    CHECK_EQ_U64(vector.borrowed_height[0], 0u);
     /* (10 * 255 + 50) / 100 = 26 */
-    CHECK_EQ_U64(vector.height[1], 26u);
-    CHECK_EQ_U64(vector.height[2], 0u);
-    CHECK_EQ_U64(vector.height[3], 255u);
+    CHECK_EQ_U64(vector.borrowed_height[1], 26u);
+    CHECK_EQ_U64(vector.borrowed_height[2], 0u);
+    CHECK_EQ_U64(vector.borrowed_height[3], 255u);
 }
 
 TEST(height_of_a_nearly_flat_texture_is_flat) {
@@ -235,14 +235,14 @@ TEST(height_of_a_nearly_flat_texture_is_flat) {
     tv_image_t image = tv_image(pixels, 3, 1, 1);
     tv_vector_t vector;
     tv_analyze(&arena, &image, TV_NO_MATERIAL, &vector);
-    CHECK_EQ_U64(vector.height[0], TV_HEIGHT_FLAT);
-    CHECK_EQ_U64(vector.height[1], TV_HEIGHT_FLAT);
-    CHECK_EQ_U64(vector.height[2], 0u);
+    CHECK_EQ_U64(vector.borrowed_height[0], TV_HEIGHT_FLAT);
+    CHECK_EQ_U64(vector.borrowed_height[1], TV_HEIGHT_FLAT);
+    CHECK_EQ_U64(vector.borrowed_height[2], 0u);
     /* Span 8 is not. */
     tv_grey(pixels, 1, 108);
     tv_analyze(&arena, &image, TV_NO_MATERIAL, &vector);
-    CHECK_EQ_U64(vector.height[0], 0u);
-    CHECK_EQ_U64(vector.height[1], 255u);
+    CHECK_EQ_U64(vector.borrowed_height[0], 0u);
+    CHECK_EQ_U64(vector.borrowed_height[1], 255u);
 }
 
 /* ---- Normal ----------------------------------------------------------------------------------------------------- */
@@ -262,12 +262,12 @@ TEST(normal_of_a_step_is_worked_by_hand_and_wraps) {
      * vector is (-3060, 0, 2040), length sqrt(13525200) = 3677, and x is -3060 * 127 / 3677 = -105.7, rounded to -106.
      * The surface rises to the right, so it faces left.
      */
-    CHECK_EQ_I64((int8_t)vector.normal[1u * 2u], -106);
-    CHECK_EQ_I64((int8_t)vector.normal[1u * 2u + 1u], 0);
-    CHECK_EQ_I64((int8_t)vector.normal[2u * 2u], -106);
+    CHECK_EQ_I64((int8_t)vector.borrowed_normal[1u * 2u], -106);
+    CHECK_EQ_I64((int8_t)vector.borrowed_normal[1u * 2u + 1u], 0);
+    CHECK_EQ_I64((int8_t)vector.borrowed_normal[2u * 2u], -106);
     /* x = 0 sees x = 3 on its left only by wrapping: it falls from 255 to 0, so it faces right. x = 3 likewise. */
-    CHECK_EQ_I64((int8_t)vector.normal[0u * 2u], 106);
-    CHECK_EQ_I64((int8_t)vector.normal[3u * 2u], 106);
+    CHECK_EQ_I64((int8_t)vector.borrowed_normal[0u * 2u], 106);
+    CHECK_EQ_I64((int8_t)vector.borrowed_normal[3u * 2u], 106);
 }
 
 TEST(normal_points_down_the_texture_for_a_step_in_y) {
@@ -281,9 +281,9 @@ TEST(normal_points_down_the_texture_for_a_step_in_y) {
     tv_vector_t vector;
     tv_analyze(&arena, &image, TV_NO_MATERIAL, &vector);
     /* The same numbers. +y is down the texture, and this one rises going down, so at y = 1 it faces up: negative y. */
-    CHECK_EQ_I64((int8_t)vector.normal[1u * 2u], 0);
-    CHECK_EQ_I64((int8_t)vector.normal[1u * 2u + 1u], -106);
-    CHECK_EQ_I64((int8_t)vector.normal[0u * 2u + 1u], 106);
+    CHECK_EQ_I64((int8_t)vector.borrowed_normal[1u * 2u], 0);
+    CHECK_EQ_I64((int8_t)vector.borrowed_normal[1u * 2u + 1u], -106);
+    CHECK_EQ_I64((int8_t)vector.borrowed_normal[0u * 2u + 1u], 106);
 }
 
 TEST(normal_is_flat_on_flat_and_at_transparent_edges) {
@@ -297,7 +297,7 @@ TEST(normal_is_flat_on_flat_and_at_transparent_edges) {
     tv_analyze(&arena, &image, TV_NO_MATERIAL, &vector);
     /* A hole beside it counts as level with it, so a leaf's edge is no cliff. */
     for (uint32_t i = 0; i < 6u; i++) {
-        CHECK_EQ_U64(vector.normal[i], 0u);
+        CHECK_EQ_U64(vector.borrowed_normal[i], 0u);
     }
 }
 
@@ -318,8 +318,8 @@ TEST(normal_is_per_frame_and_never_longer_than_one) {
     tv_vector_t vector;
     tv_analyze(&arena, &image, TV_NO_MATERIAL, &vector);
     for (uint32_t i = 0; i < WIDTH * HEIGHT * FRAMES; i++) {
-        const int32_t x = (int8_t)vector.normal[i * 2u];
-        const int32_t y = (int8_t)vector.normal[i * 2u + 1u];
+        const int32_t x = (int8_t)vector.borrowed_normal[i * 2u];
+        const int32_t y = (int8_t)vector.borrowed_normal[i * 2u + 1u];
         /* Rounding may add just under a unit to each. */
         CHECK(x * x + y * y <= 128 * 128);
         if (i >= WIDTH * HEIGHT && i < WIDTH * HEIGHT * 2u) {
@@ -349,20 +349,20 @@ TEST(emissive_classes_and_rules) {
     tv_analyze(&arena, &image, material, &vector);
     CHECK_EQ_U64(vector.emissive_class, MCVEC_EMISSIVE_FULL);
     CHECK_EQ_U64(vector.emissive_pixels, 3u);
-    CHECK_EQ_U64(vector.emissive[3], 0u);
+    CHECK_EQ_U64(vector.borrowed_emissive[3], 0u);
 
     material.min_luma = 100;
     tv_analyze(&arena, &image, material, &vector);
     CHECK_EQ_U64(vector.emissive_class, MCVEC_EMISSIVE_PARTIAL);
-    CHECK_EQ_U64(vector.emissive[0], 14u);
-    CHECK_EQ_U64(vector.emissive[1], 0u);
-    CHECK_EQ_U64(vector.emissive[2], 14u);
+    CHECK_EQ_U64(vector.borrowed_emissive[0], 14u);
+    CHECK_EQ_U64(vector.borrowed_emissive[1], 0u);
+    CHECK_EQ_U64(vector.borrowed_emissive[2], 14u);
 
     material.warm = 1;
     tv_analyze(&arena, &image, material, &vector);
     CHECK_EQ_U64(vector.emissive_pixels, 1u);
-    CHECK_EQ_U64(vector.emissive[0], 14u);
-    CHECK_EQ_U64(vector.emissive[2], 0u);
+    CHECK_EQ_U64(vector.borrowed_emissive[0], 14u);
+    CHECK_EQ_U64(vector.borrowed_emissive[2], 0u);
     CHECK_EQ_U64(vector.emissive_level, 14u);
 
     /* A level with nothing bright enough gives no light at all: the class must not claim any. */
@@ -1327,6 +1327,28 @@ TEST(tool_check_holds_the_tree_to_needs_and_materials) {
     CHECK_CONTAINS(process.output, ":2: no such texture: blocks/gone");
 }
 
+/* The lit pixel is {200, 100, 50}: luma 117, and warm. A row its thresholds shut out must not pass as a light. */
+TEST(a_material_that_gives_no_light_is_refused) {
+    const char *root = tv_mini_tree(t, "no_light");
+    CHECK_EQ_I64(tv_recipes(t, root).exit_code, 0);
+    const char *out = tv_format(t, "%s/out", root);
+    const char *textures = tv_format(t, "%s/textures", root);
+    const char *table = tv_format(t, "%s/vector.yaml", root);
+
+    tv_write_text(t, table, "materials:\n  - { texture: blocks/lit, emissive: 9, min_luma: 118 }\nneeds: {}\n");
+    test_process_t process = tv_check_tree(t, root);
+    CHECK_EQ_I64(process.exit_code, 1);
+    CHECK_CONTAINS(process.output, "blocks/lit asks for light level 9");
+    process = tv_tool(t, "vectors", textures, table, out);
+    CHECK_EQ_I64(process.exit_code, 1);
+    CHECK_CONTAINS(process.output, "blocks/lit asks for light level 9");
+
+    /* One level lower it passes, in both commands. */
+    tv_write_text(t, table, "materials:\n  - { texture: blocks/lit, emissive: 9, min_luma: 117 }\nneeds: {}\n");
+    CHECK_EQ_I64(tv_check_tree(t, root).exit_code, 0);
+    CHECK_EQ_I64(tv_tool(t, "vectors", textures, table, out).exit_code, 0);
+}
+
 TEST(tool_refuses_a_bad_directory) {
     const char *root = tv_mini_tree(t, "bad_directory");
     const char *yaml = tv_format(t, "%s/textures/blocks/moss/index.yaml", root);
@@ -1490,7 +1512,7 @@ TEST(materials_load_and_find) {
     REQUIRE(tv_materials_load(&arena, path, &materials));
     CHECK_EQ_U64(materials.row_count, 4u);
     CHECK_EQ_U64(materials.need_count, 3u);
-    CHECK_STR_EQ(materials.needs[2], "ui/font");
+    CHECK_STR_EQ(materials.borrowed_needs[2], "ui/font");
     tv_material_t found = tv_materials_find(&materials, "blocks/torch");
     CHECK_EQ_U64(found.emissive_level, 14u);
     CHECK_EQ_U64(found.min_luma, 130u);
@@ -1651,7 +1673,7 @@ TEST(needs_cover_what_the_game_cannot_do_without) {
     for (uint32_t i = 0; i < sizeof(required) / sizeof(required[0]); i++) {
         bool found = false;
         for (uint32_t n = 0; n < materials.need_count; n++) {
-            found = found || strcmp(materials.needs[n], required[i]) == 0;
+            found = found || strcmp(materials.borrowed_needs[n], required[i]) == 0;
         }
         if (!found) {
             test_check(t, false, __FILE__, __LINE__, required[i]);

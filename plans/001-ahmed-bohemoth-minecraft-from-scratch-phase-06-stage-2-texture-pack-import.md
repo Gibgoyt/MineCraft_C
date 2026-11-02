@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 6, stage 2: Texture pack import
 
-**Status:** done, with the licence question in issue 1 left for Ahmed   (updated 2026-11-02)
+**Status:** in progress: everything agents can run passes, and only the licence review below awaits Ahmed   (updated 2026-11-02)
 
 ## Goal
 
@@ -19,7 +19,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 ## Todo
 
 - [x] Clone Pixel Perfection at a pinned commit into `/tmp/mc_c_assets/pixel_perfection/`, and treat it as untrusted data. Pin: `7935d064fc6f993d1b5038ed5ec17a615600cf0a` (2023-06-30, branch `master`), in `textures/import.yaml`; the tool refuses any other commit
-- [x] Verify the licence file and per-pack coverage; record the commit and findings here; escalate to Ahmed if the licence is unclear. See issues 1 and 2. The pack has no licence file, so this is escalated, and the import stays usable meanwhile
+- [x] Verify per-pack coverage, and record the commit and findings here: issue 2
+- [ ] Verify the licence. **Awaits Ahmed.** The pack has no licence file, and its history says some art came from another pack: issues 1, 12 and "For Ahmed". The import stays usable meanwhile
 - [x] Implement `compile/src/texture_pack/index.c`, translating the pack into `textures/<GROUP>/<dir>/` for groups `blocks`, `items`, `mobs`, `ui`
 - [x] Give each texture directory an `index.yaml` and `README.md`
 - [x] Write `textures/ATTRIBUTION.md`
@@ -64,3 +65,27 @@ All 2026-11-02, by this stage.
    - The tool is not run by the build, so that a build needs neither the pack nor a network.
 10. **ShareAlike reaches further than this stage.** `ATTRIBUTION.md` says it must ship with anything that ships these textures. Stage 06.4 embeds the textures in the binary, so any release needs that file beside it. Nothing enforces that yet, because nothing packages a release; Stage 18.3's licence audit is where it belongs.
 11. **Process.** The worktree isolation check refused several compound shell commands as too complex to verify, each named in its message, and I re-ran them as plain separate commands, with the source files written by the Write tool. Nothing was bypassed. Because of that rule I did not run `git log` on the clone after the first look, so **I did not search the pack's history for a licence file that was later deleted.** The first command, before the refusal, only printed the last 3 commits. The commit came from it, and `.git/HEAD` is checked by the tool. Ahmed can run the search; the command is in `needs_ahmed`.
+
+12. **Gate check, 2026-11-02: the licence is less clear than issue 1 says, and a box claimed more than was done.** Expected "verify the licence file" to be done when ticked. Actual: there is no licence file, so nothing was verified, and the box only recorded the escalation. It is unticked now. Issue 11 also left the history search undone. I did it through the GitHub API, since the isolation check limits `git` to this worktree:
+    - `commits?path=` for `LICENSE`, `LICENSE.txt`, `LICENSE.md` and `COPYING` each return no commits, so no such file was ever at those paths. `README.md` has 5 commits, none about licensing by message.
+    - **Commit `28ab9a0` (2023-05-10): "new textures: blueberries (original), corals (from PP MineCraft)".** It adds the five `default_coral_*` files, which we import as `blocks/coral_{brown,cyan,green,orange,pink}`.
+    - **Commit `7725aa8` (2023-05-12), by its body:** `default_blueberry_bush_leaves` and `default_leaves_simple` are based on dark oak leaves from "MCr PP", recoloured after sweet berry bushes. `520e1de` changes the first one's palette "based on PP Legacy's sweetberry bush". We import that file as `blocks/berry_bush_leaves`. `default_leaves_simple` and `default_blueberry_overlay` are skipped.
+    - So 6 imported textures state a Minecraft-pack origin. That is the "began as a Minecraft resource pack" worry in issue 1, now in the pack's own words for these files. It does not show that they are Mojang's, nor what licence those other packs carry. `ATTRIBUTION.md` still says no Mojang textures are used, and the repo cannot prove that for these 6.
+    - **What was done:** left in place and escalated, since whether to keep them is a legal call. Only commit messages were read, 42 in all, so other files may have an unstated origin.
+13. **Gate check: `needs_ahmed` pointed nowhere.** Issues 1 and 11 send the reader to "this stage's `needs_ahmed`", which was only the earlier agent's return value and is in no file. Fixed by "For Ahmed" below.
+14. **Gate check: `compositing's rounding` was not held to the byte.** Issue 7 says it was caught. Actual: my mutant `+ 128u` in `tp_composite_over_opaque` survived `compile_texture_pack`, because no pixel of `TT_ORE` sums to a remainder of 127. Fixed: `compositing_rounds_to_nearest_on_each_side_of_a_half`; `+ 126u` and `+ 128u` are now both caught. The committed pixels were right all along, by an independent recomputation.
+15. **Gate check: pointer fields without the `borrowed_` prefix** in `tp_entry_t`, `tp_evidence_t`, `tp_skip_t` and `tp_manifest_t` (CODING_STANDARD section 4; the lint cannot see this one). Renamed; no behaviour changes. Left as they are, and not called defects: `tp_arguments_t`-style structs holding `argv` strings, and tables of string literals, since neither points into a heap block.
+
+Gate check re-runs, all passing: the Verification in `debug`; `compile_texture_pack` in `sanitize` and `release`; `texture_pack verify`; a real re-import from the pinned clone to a scratch copy, `0 output files changed`, with `diff -r` empty; every row in `ATTRIBUTION.md` against each `source.kind`, 325 and 186, none stale.
+
+## For Ahmed
+
+The licence review. Nothing here blocks the build, and only you can decide it.
+
+    git -C /tmp/mc_c_assets/pixel_perfection log --all --full-history --stat -- '*LICEN*' '*COPYING*' '*NOTICE*'
+    git -C /tmp/mc_c_assets/pixel_perfection show --stat 28ab9a0 7725aa8 520e1de
+
+If the clone is gone, the same commits are at https://github.com/minetest-texture-packs/Pixel-Perfection/commit/28ab9a0 and so on. Decide two things:
+
+1. Does the pack's stated CC-BY-SA-4.0, with no licence file and no per-file provenance, satisfy you?
+2. Do the 6 textures in issue 12 stay? To drop them, move each row in `textures/import.yaml` to a skip with its reason, delete its directory under `textures/blocks/`, give it a recipe, re-import, and run `texture_vector check`. Then tick the licence box here, and Stage 06.2 and the gate in the phase file.

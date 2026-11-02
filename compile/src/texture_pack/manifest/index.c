@@ -113,7 +113,7 @@ static bool tp_load_evidence(const tp_load_t *load, const yaml_node_t *pack, tp_
         return tp_load_complain(load, pack, "'evidence' must list where the pack itself states its licence");
     }
     out->evidence_count = evidence->child_count;
-    out->evidence = tp_arena_alloc(load->arena, sizeof(out->evidence[0]) * evidence->child_count);
+    out->borrowed_evidence = tp_arena_alloc(load->arena, sizeof(out->borrowed_evidence[0]) * evidence->child_count);
     uint32_t next = 0;
     for (const yaml_node_t *item = yaml_first_child(load->document, evidence); item != nullptr;
          item = yaml_next_sibling(load->document, item)) {
@@ -125,8 +125,8 @@ static bool tp_load_evidence(const tp_load_t *load, const yaml_node_t *pack, tp_
         if (file == nullptr) {
             return tp_load_complain(load, item, "'file' is required here");
         }
-        if (!tp_load_pack_path(load, file, &out->evidence[next].file) ||
-            !tp_load_required(load, item, "contains", &out->evidence[next].contains)) {
+        if (!tp_load_pack_path(load, file, &out->borrowed_evidence[next].borrowed_file) ||
+            !tp_load_required(load, item, "contains", &out->borrowed_evidence[next].borrowed_contains)) {
             return false;
         }
         next++;
@@ -138,34 +138,36 @@ static bool tp_load_evidence(const tp_load_t *load, const yaml_node_t *pack, tp_
 static bool tp_load_pack(const tp_load_t *load, const yaml_node_t *pack, tp_manifest_t *out) {
     static const char *const keys[] = {"id", "title", "url", "commit", "licence", "authors", "evidence"};
     if (!tp_load_known_keys(load, pack, keys, sizeof(keys) / sizeof(keys[0])) ||
-        !tp_load_required(load, pack, "id", &out->id) || !tp_load_required(load, pack, "title", &out->title) ||
-        !tp_load_required(load, pack, "url", &out->url) || !tp_load_required(load, pack, "commit", &out->commit) ||
-        !tp_load_required(load, pack, "licence", &out->licence)) {
+        !tp_load_required(load, pack, "id", &out->borrowed_id) ||
+        !tp_load_required(load, pack, "title", &out->borrowed_title) ||
+        !tp_load_required(load, pack, "url", &out->borrowed_url) ||
+        !tp_load_required(load, pack, "commit", &out->borrowed_commit) ||
+        !tp_load_required(load, pack, "licence", &out->borrowed_licence)) {
         return false;
     }
-    if (!tp_name_is_safe(out->id, strlen(out->id))) {
-        return tp_load_complain(load, pack, "the pack id '%s' is not a safe name", out->id);
+    if (!tp_name_is_safe(out->borrowed_id, strlen(out->borrowed_id))) {
+        return tp_load_complain(load, pack, "the pack id '%s' is not a safe name", out->borrowed_id);
     }
-    if (strncmp(out->url, "https://", 8) != 0) {
+    if (strncmp(out->borrowed_url, "https://", 8) != 0) {
         return tp_load_complain(load, pack, "the pack url must be https://");
     }
-    bool hex = strlen(out->commit) == TP_COMMIT_HEX_DIGITS;
+    bool hex = strlen(out->borrowed_commit) == TP_COMMIT_HEX_DIGITS;
     for (uint32_t i = 0; hex && i < TP_COMMIT_HEX_DIGITS; i++) {
-        const char c = out->commit[i];
+        const char c = out->borrowed_commit[i];
         hex = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
     }
     if (!hex) {
         return tp_load_complain(load, pack, "the commit must be a full 40-digit lowercase hash, so that it pins");
     }
     for (uint32_t i = 0; i < TP_LICENCE_COUNT; i++) {
-        if (strcmp(out->licence, tp_licences[i].id) == 0) {
-            out->licence_name = tp_licences[i].name;
-            out->licence_url = tp_licences[i].url;
+        if (strcmp(out->borrowed_licence, tp_licences[i].id) == 0) {
+            out->borrowed_licence_name = tp_licences[i].name;
+            out->borrowed_licence_url = tp_licences[i].url;
         }
     }
-    if (out->licence_name == nullptr) {
+    if (out->borrowed_licence_name == nullptr) {
         return tp_load_complain(load, pack, "licence '%s' is not on this tool's allowlist of open licences",
-                                out->licence);
+                                out->borrowed_licence);
     }
 
     const yaml_node_t *authors = yaml_map_get(load->document, pack, "authors");
@@ -173,11 +175,11 @@ static bool tp_load_pack(const tp_load_t *load, const yaml_node_t *pack, tp_mani
         return tp_load_complain(load, pack, "'authors' must be a non-empty list: the licence requires the credit");
     }
     out->author_count = authors->child_count;
-    out->authors = tp_arena_alloc(load->arena, sizeof(out->authors[0]) * authors->child_count);
+    out->borrowed_authors = tp_arena_alloc(load->arena, sizeof(out->borrowed_authors[0]) * authors->child_count);
     uint32_t next_author = 0;
     for (const yaml_node_t *item = yaml_first_child(load->document, authors); item != nullptr;
          item = yaml_next_sibling(load->document, item)) {
-        if (!tp_load_text(load, item, &out->authors[next_author])) {
+        if (!tp_load_text(load, item, &out->borrowed_authors[next_author])) {
             return false;
         }
         next_author++;
@@ -195,35 +197,35 @@ static bool tp_load_entry(const tp_load_t *load, const yaml_node_t *item, tp_ent
     if (from == nullptr) {
         return tp_load_complain(load, item, "'from' is required here");
     }
-    if (!tp_load_pack_path(load, from, &entry->from)) {
+    if (!tp_load_pack_path(load, from, &entry->borrowed_from)) {
         return false;
     }
     const yaml_node_t *over = yaml_map_get(load->document, item, "over");
-    if (over != nullptr && !tp_load_pack_path(load, over, &entry->over)) {
+    if (over != nullptr && !tp_load_pack_path(load, over, &entry->borrowed_over)) {
         return false;
     }
-    if (!tp_load_required(load, item, "to", &entry->to)) {
+    if (!tp_load_required(load, item, "to", &entry->borrowed_to)) {
         return false;
     }
-    const char *slash = strchr(entry->to, '/');
+    const char *slash = strchr(entry->borrowed_to, '/');
     if (slash == nullptr) {
-        return tp_load_complain(load, item, "'to' must be <group>/<name>, and '%s' is not", entry->to);
+        return tp_load_complain(load, item, "'to' must be <group>/<name>, and '%s' is not", entry->borrowed_to);
     }
-    entry->group = tp_arena_text(load->arena, entry->to, (uint64_t)(slash - entry->to));
-    entry->name = slash + 1;
+    entry->borrowed_group = tp_arena_text(load->arena, entry->borrowed_to, (uint64_t)(slash - entry->borrowed_to));
+    entry->borrowed_name = slash + 1;
     bool group_known = false;
     for (uint32_t i = 0; i < TP_GROUP_COUNT; i++) {
-        group_known = group_known || strcmp(entry->group, tp_groups[i]) == 0;
+        group_known = group_known || strcmp(entry->borrowed_group, tp_groups[i]) == 0;
     }
     if (!group_known) {
-        return tp_load_complain(load, item, "'%s' is not a group: blocks, items, mobs or ui", entry->group);
+        return tp_load_complain(load, item, "'%s' is not a group: blocks, items, mobs or ui", entry->borrowed_group);
     }
-    if (entry->name[0] == '\0') {
+    if (entry->borrowed_name[0] == '\0') {
         return tp_load_complain(load, item, "'to' has an empty name");
     }
-    for (const char *c = entry->name; *c != '\0'; c++) {
+    for (const char *c = entry->borrowed_name; *c != '\0'; c++) {
         if (!((*c >= 'a' && *c <= 'z') || (*c >= '0' && *c <= '9') || *c == '_')) {
-            return tp_load_complain(load, item, "a texture name is [a-z0-9_]+, and '%s' is not", entry->name);
+            return tp_load_complain(load, item, "a texture name is [a-z0-9_]+, and '%s' is not", entry->borrowed_name);
         }
     }
     entry->frames = 1;
@@ -239,7 +241,7 @@ static bool tp_load_entry(const tp_load_t *load, const yaml_node_t *item, tp_ent
         }
         entry->frames = (uint32_t)count;
     }
-    if (entry->over != nullptr && entry->frames != 1) {
+    if (entry->borrowed_over != nullptr && entry->frames != 1) {
         return tp_load_complain(load, item, "'over' works on one frame, and this entry has %u", entry->frames);
     }
     return true;
@@ -262,7 +264,7 @@ static bool tp_load_skips(const tp_load_t *load, const yaml_node_t *skips, tp_ma
         }
         total += files->child_count;
     }
-    out->skips = tp_arena_alloc(load->arena, sizeof(out->skips[0]) * (uint64_t)(total + 1u));
+    out->borrowed_skips = tp_arena_alloc(load->arena, sizeof(out->borrowed_skips[0]) * (uint64_t)(total + 1u));
     for (const yaml_node_t *group = yaml_first_child(load->document, skips); group != nullptr;
          group = yaml_next_sibling(load->document, group)) {
         const char *why = nullptr;
@@ -272,11 +274,11 @@ static bool tp_load_skips(const tp_load_t *load, const yaml_node_t *skips, tp_ma
         const yaml_node_t *files = yaml_map_get(load->document, group, "files");
         for (const yaml_node_t *file = yaml_first_child(load->document, files); file != nullptr;
              file = yaml_next_sibling(load->document, file)) {
-            tp_skip_t *skip = &out->skips[out->skip_count];
-            if (!tp_load_pack_path(load, file, &skip->file)) {
+            tp_skip_t *skip = &out->borrowed_skips[out->skip_count];
+            if (!tp_load_pack_path(load, file, &skip->borrowed_file)) {
                 return false;
             }
-            skip->why = why;
+            skip->borrowed_why = why;
             out->skip_count++;
         }
     }
@@ -286,27 +288,29 @@ static bool tp_load_skips(const tp_load_t *load, const yaml_node_t *skips, tp_ma
 /* A file listed twice would make the coverage count a lie, and two entries writing one directory would lose one. */
 static bool tp_load_no_duplicates(const tp_manifest_t *manifest) {
     for (uint32_t i = 0; i < manifest->entry_count; i++) {
-        const tp_entry_t *entry = &manifest->entries[i];
+        const tp_entry_t *entry = &manifest->borrowed_entries[i];
         for (uint32_t j = i + 1u; j < manifest->entry_count; j++) {
-            if (strcmp(entry->to, manifest->entries[j].to) == 0) {
-                return tp_fail("%s:%u: '%s' is also written by line %u", manifest->path, manifest->entries[j].line,
-                               entry->to, entry->line);
+            if (strcmp(entry->borrowed_to, manifest->borrowed_entries[j].borrowed_to) == 0) {
+                return tp_fail("%s:%u: '%s' is also written by line %u", manifest->borrowed_path,
+                               manifest->borrowed_entries[j].line, entry->borrowed_to, entry->line);
             }
-            if (strcmp(entry->from, manifest->entries[j].from) == 0) {
-                return tp_fail("%s:%u: '%s' is also imported by line %u", manifest->path, manifest->entries[j].line,
-                               entry->from, entry->line);
+            if (strcmp(entry->borrowed_from, manifest->borrowed_entries[j].borrowed_from) == 0) {
+                return tp_fail("%s:%u: '%s' is also imported by line %u", manifest->borrowed_path,
+                               manifest->borrowed_entries[j].line, entry->borrowed_from, entry->line);
             }
         }
         for (uint32_t j = 0; j < manifest->skip_count; j++) {
-            if (strcmp(entry->from, manifest->skips[j].file) == 0) {
-                return tp_fail("%s:%u: '%s' is both imported and skipped", manifest->path, entry->line, entry->from);
+            if (strcmp(entry->borrowed_from, manifest->borrowed_skips[j].borrowed_file) == 0) {
+                return tp_fail("%s:%u: '%s' is both imported and skipped", manifest->borrowed_path, entry->line,
+                               entry->borrowed_from);
             }
         }
     }
     for (uint32_t i = 0; i < manifest->skip_count; i++) {
         for (uint32_t j = i + 1u; j < manifest->skip_count; j++) {
-            if (strcmp(manifest->skips[i].file, manifest->skips[j].file) == 0) {
-                return tp_fail("%s: '%s' is skipped twice", manifest->path, manifest->skips[i].file);
+            if (strcmp(manifest->borrowed_skips[i].borrowed_file, manifest->borrowed_skips[j].borrowed_file) == 0) {
+                return tp_fail("%s: '%s' is skipped twice", manifest->borrowed_path,
+                               manifest->borrowed_skips[i].borrowed_file);
             }
         }
     }
@@ -315,7 +319,7 @@ static bool tp_load_no_duplicates(const tp_manifest_t *manifest) {
 
 bool tp_manifest_load(tp_arena_t *arena, const char *path, tp_manifest_t *out) {
     memset(out, 0, sizeof(*out));
-    out->path = path;
+    out->borrowed_path = path;
     uint8_t *text = nullptr;
     uint64_t length = 0;
     const tp_read_status_t read_status = tp_read_path(arena, path, TP_MANIFEST_MAX_BYTES, &text, &length);
@@ -352,11 +356,12 @@ bool tp_manifest_load(tp_arena_t *arena, const char *path, tp_manifest_t *out) {
         return tp_load_complain(&load, root, "'textures' must be a list");
     }
     out->entry_count = textures->child_count;
-    out->entries = tp_arena_alloc(arena, sizeof(out->entries[0]) * (uint64_t)(textures->child_count + 1u));
+    out->borrowed_entries =
+        tp_arena_alloc(arena, sizeof(out->borrowed_entries[0]) * (uint64_t)(textures->child_count + 1u));
     uint32_t next = 0;
     for (const yaml_node_t *item = yaml_first_child(&document, textures); item != nullptr;
          item = yaml_next_sibling(&document, item)) {
-        if (!tp_load_entry(&load, item, &out->entries[next])) {
+        if (!tp_load_entry(&load, item, &out->borrowed_entries[next])) {
             return false;
         }
         next++;

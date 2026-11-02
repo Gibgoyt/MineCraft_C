@@ -29,22 +29,22 @@ typedef struct tv_material_t {
 static_assert(sizeof(tv_material_t) == 4);
 
 typedef struct tv_vector_t {
-    tv_palette_t palette;     /* 0 */
-    uint8_t *indices;         /* 1032: the rest are from the arena, one entry per pixel of every frame */
-    uint8_t *height;          /* 1040 */
-    uint8_t *normal;          /* 1048: two bytes per pixel */
-    uint8_t *emissive;        /* 1056 */
-    uint64_t pixel_count;     /* 1064 */
-    uint32_t visible_pixels;  /* 1072 */
-    uint32_t emissive_pixels; /* 1076 */
-    uint8_t mean_rgba[4];     /* 1080 */
-    uint8_t alpha_class;      /* 1084 */
-    uint8_t emissive_class;   /* 1085 */
-    uint8_t emissive_level;   /* 1086 */
-    uint8_t luma_min;         /* 1087 */
-    uint8_t luma_max;         /* 1088 */
-    uint8_t luma_mean;        /* 1089 */
-    uint8_t _pad0[6];         /* 1090 */
+    tv_palette_t palette;       /* 0 */
+    uint8_t *borrowed_indices;  /* 1032: the rest are from the arena, one entry per pixel of every frame */
+    uint8_t *borrowed_height;   /* 1040 */
+    uint8_t *borrowed_normal;   /* 1048: two bytes per pixel */
+    uint8_t *borrowed_emissive; /* 1056 */
+    uint64_t pixel_count;       /* 1064 */
+    uint32_t visible_pixels;    /* 1072 */
+    uint32_t emissive_pixels;   /* 1076 */
+    uint8_t mean_rgba[4];       /* 1080 */
+    uint8_t alpha_class;        /* 1084 */
+    uint8_t emissive_class;     /* 1085 */
+    uint8_t emissive_level;     /* 1086 */
+    uint8_t luma_min;           /* 1087 */
+    uint8_t luma_max;           /* 1088 */
+    uint8_t luma_mean;          /* 1089 */
+    uint8_t _pad0[6];           /* 1090 */
 } tv_vector_t;
 static_assert(sizeof(tv_vector_t) == 1096);
 

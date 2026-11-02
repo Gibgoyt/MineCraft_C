@@ -28,3 +28,5 @@ needs:
 ```
 
 `needs` is what `texture_vector check` holds the tree to: each name must exist, from the pack or from a recipe. A later stage that wants a new texture adds it there and gives it a source.
+
+A row that asks for light and that no pixel passes is refused, by `check` and by `vectors`, and so by the build: otherwise the block would stay dark with this table saying it shines.

@@ -1,7 +1,7 @@
 # What pixels cannot say about a texture, and every texture the game needs. Read by compile/src/texture_vector, whose part
 # materials/README.md explains it. It is here and not in each index.yaml because a re-import replaces those of pack textures.
 materials:
-  # ---- Light. Levels are block light, 0 to 15. min_luma and warm keep a stick or a brick from shining with its flame ----
+  # ---- Light. Levels are block light, 0 to 15. min_luma and warm keep a stick or a brick from shining with its flame. A row no pixel passes is refused ----
   - { texture: blocks/lava_still, emissive: 15 }
   - { texture: blocks/lava_flow, emissive: 15 }
   - { texture: blocks/fire, emissive: 15 }
@@ -9,7 +9,7 @@ materials:
   - { texture: blocks/torch_wall, emissive: 14, min_luma: 130, warm: true }
   - { texture: blocks/torch_ceiling, emissive: 14, min_luma: 130, warm: true }
   - { texture: blocks/furnace_front_lit, emissive: 13, min_luma: 90, warm: true, alpha: opaque }
-  - { texture: blocks/tnt_top_burning, emissive: 8, min_luma: 110, warm: true }
+  - { texture: blocks/tnt_top_burning, emissive: 8 }
   - { texture: blocks/jack_o_lantern, emissive: 15, min_luma: 150, warm: true }
   - { texture: blocks/cave_vines_lit, emissive: 14, min_luma: 130, warm: true }
   - { texture: blocks/glow_lichen, emissive: 7, min_luma: 180 }

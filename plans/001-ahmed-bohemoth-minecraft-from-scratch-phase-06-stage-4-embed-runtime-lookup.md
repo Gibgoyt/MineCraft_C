@@ -70,3 +70,9 @@ All 2026-11-02, by this stage.
     - `plans/REPO_STRUCTURE.md`, `textures/README.md`, `run/include/types/README.md`: what was added.
     - `run/include/display/`: issue 1.
 15. **Process.** The worktree isolation check refused a few compound shell commands as too complex to verify. I re-ran them as plain separate commands, and did the file edits with the edit tools or a Python script in the scratchpad. They touched only this worktree. All GPU and display code was left alone: only headless mode was run.
+
+16. **Gate check, 2026-11-02: pointer fields without the `borrowed_` prefix in the public API.** `texture_info_t`, `texture_mip_t` and `texture_vector_t` hand out pointers into the blob as `pixels`, `palette` and so on, against CODING_STANDARD section 4, and `run/include/texture/index.h` is what Stage 08.x will bind to. Renamed now, while only `run_texture` uses them, to `borrowed_pixels` and the like. No behaviour changes.
+
+Gate check re-runs, all passing: the Verification in `debug`; all of `ctest --preset debug`; `run_texture` and `compile_texture_blob` in `sanitize` and `release`; the blob byte-identical across `debug`, `sanitize` and `release`, by `cmp`; `minecraft_c --headless --ticks 2 --width 64 --height 36` logged `texture: 511 textures, 3459932 bytes embedded`, heap 0 bytes live at exit. An independent Python reader re-derived every level of every frame from `.mctex`: alpha promises and the cutout share for all, and colour within 1 for the square power-of-two textures, by a separate area average in linear light. No failure. New one-line breaks of my own to the registry, blob checks and offsets: all caught.
+
+`texture_find` and the mip and vector getters have no caller but `run_texture` yet. That is expected: Stage 08.4 is their consumer, and `texture_init` does run in the real program.

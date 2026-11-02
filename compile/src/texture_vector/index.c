@@ -44,15 +44,15 @@ static_assert(sizeof(tv_arguments_t) == 32);
 
 /* One directory under a group. */
 typedef struct tv_texture_t {
-    const char *to;    /* 0: group/name, first because the sort compares it */
-    const char *group; /* 8 */
-    const char *name;  /* 16 */
+    const char *borrowed_to;    /* 0: group/name, first because the sort compares it */
+    const char *borrowed_group; /* 8 */
+    const char *borrowed_name;  /* 16 */
 } tv_texture_t;
 static_assert(sizeof(tv_texture_t) == 24);
 
 typedef struct tv_tree_t {
-    tv_texture_t *textures; /* 0 */
-    uint64_t count;         /* 8 */
+    tv_texture_t *borrowed_textures; /* 0 */
+    uint64_t count;                  /* 8 */
 } tv_tree_t;
 static_assert(sizeof(tv_tree_t) == 16);
 
@@ -111,7 +111,7 @@ static int32_t tv_compare_text(const void *left, const void *right) {
 static bool tv_tree_load(tp_arena_t *arena, const char *textures, tv_tree_t *out) {
     uint64_t capacity = 0;
     out->count = 0;
-    out->textures = nullptr;
+    out->borrowed_textures = nullptr;
     for (uint32_t pass = 0; pass < 2u; pass++) {
         uint64_t found = 0;
         for (uint32_t g = 0; g < tp_output_group_count(); g++) {
@@ -128,9 +128,11 @@ static bool tv_tree_load(tp_arena_t *arena, const char *textures, tv_tree_t *out
                 const char *child = tp_arena_format(arena, "%s/%s", path, item->d_name);
                 if (item->d_name[0] != '.' && stat(child, &info) == 0 && S_ISDIR(info.st_mode)) {
                     if (pass == 1u) {
-                        out->textures[found].group = group;
-                        out->textures[found].name = tp_arena_text(arena, item->d_name, strlen(item->d_name));
-                        out->textures[found].to = tp_arena_format(arena, "%s/%s", group, item->d_name);
+                        out->borrowed_textures[found].borrowed_group = group;
+                        out->borrowed_textures[found].borrowed_name =
+                            tp_arena_text(arena, item->d_name, strlen(item->d_name));
+                        out->borrowed_textures[found].borrowed_to =
+                            tp_arena_format(arena, "%s/%s", group, item->d_name);
                     }
                     found++;
                 }
@@ -138,12 +140,12 @@ static bool tv_tree_load(tp_arena_t *arena, const char *textures, tv_tree_t *out
             }
             closedir(listing);
             if (pass == 1u) {
-                qsort(out->textures + first, found - first, sizeof(tv_texture_t), tv_compare_text);
+                qsort(out->borrowed_textures + first, found - first, sizeof(tv_texture_t), tv_compare_text);
             }
         }
         if (pass == 0u) {
             capacity = found;
-            out->textures = tp_arena_alloc(arena, (capacity + 1u) * sizeof(tv_texture_t));
+            out->borrowed_textures = tp_arena_alloc(arena, (capacity + 1u) * sizeof(tv_texture_t));
         } else {
             out->count = found;
         }
@@ -152,7 +154,7 @@ static bool tv_tree_load(tp_arena_t *arena, const char *textures, tv_tree_t *out
 }
 
 static bool tv_yaml_load(tp_arena_t *arena, const char *textures, const tv_texture_t *texture, tv_yaml_t *out) {
-    const char *path = tp_arena_format(arena, "%s/%s/index.yaml", textures, texture->to);
+    const char *path = tp_arena_format(arena, "%s/%s/index.yaml", textures, texture->borrowed_to);
     uint8_t *text = nullptr;
     uint64_t length = 0;
     const tp_read_status_t status = tp_read_path(arena, path, TV_YAML_BYTES, &text, &length);
@@ -217,7 +219,7 @@ static const char *tv_readme_text(tp_arena_t *arena, const tv_texture_t *texture
         return nullptr;
     }
     tp_builder_t readme = tp_builder_begin(arena, TV_README_BYTES);
-    tp_builder_add(&readme, "# textures/%s\n\n%s\n\n", texture->to, sentence);
+    tp_builder_add(&readme, "# textures/%s\n\n%s\n\n", texture->borrowed_to, sentence);
     tp_builder_add(&readme, "Our own: painted by the recipe in `index.yaml`, from nothing but that recipe. It uses no "
                             "pack's pixels, and owes no credit.\n\n");
     tp_builder_add(&readme, "Written by `compile/src/texture_vector`, which `textures/README.md` describes.\n");
@@ -244,12 +246,12 @@ static bool tv_file_matches(tp_arena_t *arena, const char *path, const void *byt
 /* Paints one recipe. Writing, or only comparing with what is there. */
 static bool tv_recipe_one(tp_arena_t *arena, const char *textures, const tv_texture_t *texture, const tv_yaml_t *yaml,
                           bool writing, uint32_t *out_written) {
-    const char *directory = tp_arena_format(arena, "%s/%s", textures, texture->to);
+    const char *directory = tp_arena_format(arena, "%s/%s", textures, texture->borrowed_to);
     const char *yaml_path = tp_arena_format(arena, "%s/index.yaml", directory);
     const yaml_node_t *name = yaml_map_get(&yaml->document, yaml->root, "name");
     const yaml_node_t *group = yaml_map_get(&yaml->document, yaml->root, "group");
-    if (name == nullptr || group == nullptr || !yaml_text_equals(name, texture->name) ||
-        !yaml_text_equals(group, texture->group)) {
+    if (name == nullptr || group == nullptr || !yaml_text_equals(name, texture->borrowed_name) ||
+        !yaml_text_equals(group, texture->borrowed_group)) {
         return tp_fail("%s: its name and group must be those of its directory", yaml_path);
     }
     uint32_t width = 0;
@@ -272,7 +274,7 @@ static bool tv_recipe_one(tp_arena_t *arena, const char *textures, const tv_text
     uint8_t *file = tp_arena_alloc(arena, file_bytes);
     const mctex_status_t encoded = mctex_encode(file, file_bytes, width, height, frames, pixels, pixel_bytes);
     if (encoded != MCTEX_OK) {
-        return tp_fail("%s: %s", texture->to, mctex_status_text(encoded));
+        return tp_fail("%s: %s", texture->borrowed_to, mctex_status_text(encoded));
     }
     const char *readme = tv_readme_text(arena, texture, &yaml->document, source, yaml_path);
     if (readme == nullptr) {
@@ -305,16 +307,16 @@ static bool tv_command_recipes(tp_arena_t *arena, const char *textures, const tv
     for (uint64_t i = 0; i < tree->count; i++) {
         const uint64_t mark = arena->used;
         tv_yaml_t yaml;
-        if (!tv_yaml_load(arena, textures, &tree->textures[i], &yaml)) {
+        if (!tv_yaml_load(arena, textures, &tree->borrowed_textures[i], &yaml)) {
             good = false;
         } else if (yaml_text_equals(yaml.kind, "procedural")) {
             recipes++;
-            good = tv_recipe_one(arena, textures, &tree->textures[i], &yaml, writing, &written) && good;
+            good = tv_recipe_one(arena, textures, &tree->borrowed_textures[i], &yaml, writing, &written) && good;
         } else if (yaml_text_equals(yaml.kind, "pack")) {
             packs++;
         } else {
-            good =
-                tp_fail("%s/%s/index.yaml: source.kind is neither pack nor procedural", textures, tree->textures[i].to);
+            good = tp_fail("%s/%s/index.yaml: source.kind is neither pack nor procedural", textures,
+                           tree->borrowed_textures[i].borrowed_to);
         }
         arena->used = mark;
     }
@@ -354,16 +356,29 @@ static bool tv_load_pixels(tp_arena_t *arena, const char *textures, const char *
     return true;
 }
 
+/* A row that asks for light and gets none shows nowhere else: the block is simply dark, with a table saying it shines. */
+static bool tv_material_gave_light(const tv_materials_t *materials, const char *to, const tv_vector_t *vector) {
+    const tv_material_t material = tv_materials_find(materials, to);
+    if (material.emissive_level != 0 && vector->emissive_class == MCVEC_EMISSIVE_NONE) {
+        return tp_fail("%s: %s asks for light level %u, and no pixel passes its min_luma and warm",
+                       materials->borrowed_path, to, (uint32_t)material.emissive_level);
+    }
+    return true;
+}
+
 static bool tv_vector_one(tp_arena_t *arena, const tv_arguments_t *arguments, const tv_materials_t *materials,
                           const tv_texture_t *texture, uint32_t *out_alpha_classes, uint32_t *out_emissive,
                           uint32_t *out_written) {
     tv_image_t image;
     uint64_t source_hash = 0;
-    if (!tv_load_pixels(arena, arguments->textures, texture->to, &image, &source_hash)) {
+    if (!tv_load_pixels(arena, arguments->textures, texture->borrowed_to, &image, &source_hash)) {
         return false;
     }
     tv_vector_t vector;
-    tv_analyze(arena, &image, tv_materials_find(materials, texture->to), &vector);
+    tv_analyze(arena, &image, tv_materials_find(materials, texture->borrowed_to), &vector);
+    if (!tv_material_gave_light(materials, texture->borrowed_to, &vector)) {
+        return false;
+    }
     mcvec_header_t header = {.width = image.width,
                              .height = image.height,
                              .frame_count = image.frames,
@@ -381,15 +396,16 @@ static bool tv_vector_one(tp_arena_t *arena, const tv_arguments_t *arguments, co
     memcpy(header.mean_rgba, vector.mean_rgba, 4u);
     uint64_t bytes = 0;
     if (!mcvec_file_bytes(image.width, image.height, image.frames, vector.palette.count, &bytes)) {
-        return tp_fail("%s: over the limits of .mcvec", texture->to);
+        return tp_fail("%s: over the limits of .mcvec", texture->borrowed_to);
     }
     uint8_t *file = tp_arena_alloc(arena, bytes);
-    const mcvec_status_t encoded = mcvec_encode(file, bytes, &header, vector.palette.rgba, vector.indices,
-                                                vector.height, vector.normal, vector.emissive);
+    const mcvec_status_t encoded =
+        mcvec_encode(file, bytes, &header, vector.palette.rgba, vector.borrowed_indices, vector.borrowed_height,
+                     vector.borrowed_normal, vector.borrowed_emissive);
     if (encoded != MCVEC_OK) {
-        return tp_fail("%s: %s", texture->to, mcvec_status_text(encoded));
+        return tp_fail("%s: %s", texture->borrowed_to, mcvec_status_text(encoded));
     }
-    const char *directory = tp_arena_format(arena, "%s/%s", arguments->out, texture->to);
+    const char *directory = tp_arena_format(arena, "%s/%s", arguments->out, texture->borrowed_to);
     bool wrote = false;
     if (!tp_make_directories(arena, directory) ||
         !tp_write_if_changed(arena, tp_arena_format(arena, "%s/index.mcvec", directory), file, bytes, &wrote)) {
@@ -409,8 +425,9 @@ static bool tv_command_vectors(tp_arena_t *arena, const tv_arguments_t *argument
     uint32_t written = 0;
     for (uint64_t i = 0; i < tree->count; i++) {
         const uint64_t mark = arena->used;
-        good =
-            tv_vector_one(arena, arguments, materials, &tree->textures[i], alpha_classes, &emissive, &written) && good;
+        good = tv_vector_one(arena, arguments, materials, &tree->borrowed_textures[i], alpha_classes, &emissive,
+                             &written) &&
+               good;
         arena->used = mark;
     }
     if (good) {
@@ -425,7 +442,7 @@ static bool tv_command_vectors(tp_arena_t *arena, const tv_arguments_t *argument
 
 static bool tv_tree_has(const tv_tree_t *tree, const char *to) {
     for (uint64_t i = 0; i < tree->count; i++) {
-        if (strcmp(tree->textures[i].to, to) == 0) {
+        if (strcmp(tree->borrowed_textures[i].borrowed_to, to) == 0) {
             return true;
         }
     }
@@ -442,19 +459,26 @@ static bool tv_command_check(tp_arena_t *arena, const tv_arguments_t *arguments,
         const uint64_t mark = arena->used;
         tv_image_t image;
         uint64_t hash = 0;
-        good = tv_load_pixels(arena, arguments->textures, tree->textures[i].to, &image, &hash) && good;
+        const char *to = tree->borrowed_textures[i].borrowed_to;
+        if (tv_load_pixels(arena, arguments->textures, to, &image, &hash)) {
+            tv_vector_t vector;
+            tv_analyze(arena, &image, tv_materials_find(materials, to), &vector);
+            good = tv_material_gave_light(materials, to, &vector) && good;
+        } else {
+            good = false;
+        }
         arena->used = mark;
     }
     for (uint32_t i = 0; i < materials->need_count; i++) {
-        if (!tv_tree_has(tree, materials->needs[i])) {
-            good = tp_fail("%s: the game needs %s, and neither the pack nor a recipe gives it", materials->path,
-                           materials->needs[i]);
+        if (!tv_tree_has(tree, materials->borrowed_needs[i])) {
+            good = tp_fail("%s: the game needs %s, and neither the pack nor a recipe gives it",
+                           materials->borrowed_path, materials->borrowed_needs[i]);
         }
     }
     for (uint32_t i = 0; i < materials->row_count; i++) {
-        if (!tv_tree_has(tree, materials->rows[i].texture)) {
-            good = tp_fail("%s:%u: no such texture: %s", materials->path, materials->rows[i].line,
-                           materials->rows[i].texture);
+        if (!tv_tree_has(tree, materials->borrowed_rows[i].borrowed_texture)) {
+            good = tp_fail("%s:%u: no such texture: %s", materials->borrowed_path, materials->borrowed_rows[i].line,
+                           materials->borrowed_rows[i].borrowed_texture);
         }
     }
     if (good) {

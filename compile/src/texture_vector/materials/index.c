@@ -85,8 +85,8 @@ static bool tv_materials_read_row(tp_arena_t *arena, const char *path, const yam
     if (texture == nullptr) {
         return tv_materials_fail(path, row, "a material needs a texture");
     }
-    out->texture = tv_materials_text(arena, texture);
-    if (out->texture == nullptr || !tv_materials_texture_is_valid(out->texture)) {
+    out->borrowed_texture = tv_materials_text(arena, texture);
+    if (out->borrowed_texture == nullptr || !tv_materials_texture_is_valid(out->borrowed_texture)) {
         return tv_materials_fail(path, texture, "texture must be group/name");
     }
     out->line = row->line;
@@ -135,7 +135,7 @@ static bool tv_materials_read_needs(tp_arena_t *arena, const char *path, const y
          group = yaml_next_sibling(document, group)) {
         capacity += group->child_count;
     }
-    out->needs = tp_arena_alloc(arena, (uint64_t)capacity * sizeof(const char *) + 1u);
+    out->borrowed_needs = tp_arena_alloc(arena, (uint64_t)capacity * sizeof(const char *) + 1u);
     for (const yaml_node_t *group = yaml_first_child(document, needs); group != nullptr;
          group = yaml_next_sibling(document, group)) {
         if (group->kind != YAML_KIND_SEQ) {
@@ -150,11 +150,11 @@ static bool tv_materials_read_needs(tp_arena_t *arena, const char *path, const y
                 return tv_materials_fail(path, item, "not a group/name");
             }
             for (uint32_t i = 0; i < out->need_count; i++) {
-                if (strcmp(out->needs[i], texture) == 0) {
+                if (strcmp(out->borrowed_needs[i], texture) == 0) {
                     return tv_materials_fail(path, item, "named twice");
                 }
             }
-            out->needs[out->need_count++] = texture;
+            out->borrowed_needs[out->need_count++] = texture;
         }
     }
     return true;
@@ -162,7 +162,7 @@ static bool tv_materials_read_needs(tp_arena_t *arena, const char *path, const y
 
 bool tv_materials_load(tp_arena_t *arena, const char *path, tv_materials_t *out) {
     memset(out, 0, sizeof(*out));
-    out->path = path;
+    out->borrowed_path = path;
     uint8_t *text = nullptr;
     uint64_t length = 0;
     const tp_read_status_t status = tp_read_path(arena, path, TV_MATERIALS_FILE_BYTES, &text, &length);
@@ -198,15 +198,15 @@ bool tv_materials_load(tp_arena_t *arena, const char *path, tv_materials_t *out)
     if (materials == nullptr || materials->kind != YAML_KIND_SEQ || needs == nullptr) {
         return tv_materials_fail(path, root, "needs both a materials sequence and needs");
     }
-    out->rows = tp_arena_alloc(arena, (uint64_t)materials->child_count * sizeof(tv_material_row_t) + 1u);
+    out->borrowed_rows = tp_arena_alloc(arena, (uint64_t)materials->child_count * sizeof(tv_material_row_t) + 1u);
     for (const yaml_node_t *row = yaml_first_child(&document, materials); row != nullptr;
          row = yaml_next_sibling(&document, row)) {
-        tv_material_row_t *written = &out->rows[out->row_count];
+        tv_material_row_t *written = &out->borrowed_rows[out->row_count];
         if (!tv_materials_read_row(arena, path, &document, row, written)) {
             return false;
         }
         for (uint32_t i = 0; i < out->row_count; i++) {
-            if (strcmp(out->rows[i].texture, written->texture) == 0) {
+            if (strcmp(out->borrowed_rows[i].borrowed_texture, written->borrowed_texture) == 0) {
                 return tv_materials_fail(path, row, "this texture already has a material");
             }
         }
@@ -217,8 +217,8 @@ bool tv_materials_load(tp_arena_t *arena, const char *path, tv_materials_t *out)
 
 tv_material_t tv_materials_find(const tv_materials_t *materials, const char *texture) {
     for (uint32_t i = 0; i < materials->row_count; i++) {
-        if (strcmp(materials->rows[i].texture, texture) == 0) {
-            return materials->rows[i].material;
+        if (strcmp(materials->borrowed_rows[i].borrowed_texture, texture) == 0) {
+            return materials->borrowed_rows[i].material;
         }
     }
     return (tv_material_t){.alpha_class = TV_ALPHA_FROM_PIXELS};

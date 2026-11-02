@@ -37,17 +37,18 @@ static bool tp_verify_number_is(const yaml_document_t *document, const yaml_node
 static bool tp_verify_imported(tp_arena_t *arena, const char *directory, const tp_manifest_t *manifest,
                                const tp_entry_t *entry, const yaml_document_t *document, const yaml_node_t *root) {
     bool good = true;
-    if (!tp_verify_text_is(document, root, "name", entry->name) ||
-        !tp_verify_text_is(document, root, "group", entry->group) ||
-        !tp_verify_text_is(document, root, "source.pack", manifest->id) ||
-        !tp_verify_text_is(document, root, "source.commit", manifest->commit) ||
-        !tp_verify_text_is(document, root, "source.licence", manifest->licence) ||
-        !tp_verify_text_is(document, root, "source.file", entry->from)) {
+    if (!tp_verify_text_is(document, root, "name", entry->borrowed_name) ||
+        !tp_verify_text_is(document, root, "group", entry->borrowed_group) ||
+        !tp_verify_text_is(document, root, "source.pack", manifest->borrowed_id) ||
+        !tp_verify_text_is(document, root, "source.commit", manifest->borrowed_commit) ||
+        !tp_verify_text_is(document, root, "source.licence", manifest->borrowed_licence) ||
+        !tp_verify_text_is(document, root, "source.file", entry->borrowed_from)) {
         good = tp_fail("%s/index.yaml: does not say what the manifest says about it", directory);
     }
     const yaml_node_t *over = yaml_path_get(document, root, "source.over");
-    const bool over_matches =
-        entry->over != nullptr ? (over != nullptr && yaml_text_equals(over, entry->over)) : over == nullptr;
+    const bool over_matches = entry->borrowed_over != nullptr
+                                  ? (over != nullptr && yaml_text_equals(over, entry->borrowed_over))
+                                  : over == nullptr;
     if (!over_matches) {
         good = tp_fail("%s/index.yaml: source.over does not match the manifest", directory);
     }
@@ -122,8 +123,9 @@ static bool tp_verify_directory(tp_arena_t *arena, const char *textures, const c
         const tp_entry_t *entry = nullptr;
         uint32_t position = 0;
         for (uint32_t i = 0; i < manifest->entry_count && entry == nullptr; i++) {
-            if (strcmp(manifest->entries[i].group, group) == 0 && strcmp(manifest->entries[i].name, name) == 0) {
-                entry = &manifest->entries[i];
+            if (strcmp(manifest->borrowed_entries[i].borrowed_group, group) == 0 &&
+                strcmp(manifest->borrowed_entries[i].borrowed_name, name) == 0) {
+                entry = &manifest->borrowed_entries[i];
                 position = i;
             }
         }
@@ -132,7 +134,7 @@ static bool tp_verify_directory(tp_arena_t *arena, const char *textures, const c
         } else {
             seen[position] = 1;
             good = tp_verify_imported(arena, directory, manifest, entry, &document, root) && good;
-            if (readme != nullptr && !tp_bytes_contain(readme, readme_length, manifest->licence)) {
+            if (readme != nullptr && !tp_bytes_contain(readme, readme_length, manifest->borrowed_licence)) {
                 good = tp_fail("%s/README.md: does not state the licence", directory);
             }
         }
@@ -157,22 +159,23 @@ static bool tp_verify_attribution(tp_arena_t *arena, const char *textures, const
         return false;
     }
     bool good = true;
-    const char *const required[] = {manifest->licence, manifest->licence_url, manifest->commit, manifest->url,
-                                    manifest->title};
+    const char *const required[] = {manifest->borrowed_licence, manifest->borrowed_licence_url,
+                                    manifest->borrowed_commit, manifest->borrowed_url, manifest->borrowed_title};
     for (uint32_t i = 0; i < sizeof(required) / sizeof(required[0]); i++) {
         if (!tp_bytes_contain(text, length, required[i])) {
             good = tp_fail("%s: does not state %s", path, required[i]);
         }
     }
     for (uint32_t i = 0; i < manifest->author_count; i++) {
-        if (!tp_bytes_contain(text, length, manifest->authors[i])) {
-            good = tp_fail("%s: does not credit %s", path, manifest->authors[i]);
+        if (!tp_bytes_contain(text, length, manifest->borrowed_authors[i])) {
+            good = tp_fail("%s: does not credit %s", path, manifest->borrowed_authors[i]);
         }
     }
     for (uint32_t i = 0; i < manifest->entry_count; i++) {
-        const char *row = tp_arena_format(arena, "| `%s` | `%s` |", manifest->entries[i].to, manifest->entries[i].from);
+        const char *row = tp_arena_format(arena, "| `%s` | `%s` |", manifest->borrowed_entries[i].borrowed_to,
+                                          manifest->borrowed_entries[i].borrowed_from);
         if (!tp_bytes_contain(text, length, row)) {
-            good = tp_fail("%s: has no row for %s", path, manifest->entries[i].to);
+            good = tp_fail("%s: has no row for %s", path, manifest->borrowed_entries[i].borrowed_to);
         }
     }
     arena->used = mark;
@@ -244,7 +247,7 @@ bool tp_verify_tree(tp_arena_t *arena, const char *textures, const tp_manifest_t
     for (uint32_t i = 0; i < manifest->entry_count; i++) {
         if (seen[i] == 0) {
             good = tp_fail("%s/%s: the manifest imports it, and it is not there as an imported texture", textures,
-                           manifest->entries[i].to);
+                           manifest->borrowed_entries[i].borrowed_to);
         }
     }
     arena->used = mark;
