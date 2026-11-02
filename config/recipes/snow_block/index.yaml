@@ -1,0 +1,5 @@
+name: snow_block
+kind: shaped
+pattern: ["SS", "SS"]
+keys: { S: snowball }
+gives: snow_block

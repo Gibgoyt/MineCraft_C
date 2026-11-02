@@ -1,0 +1,4 @@
+name: book
+kind: shapeless
+ingredients: [paper, paper, paper, leather]
+gives: book

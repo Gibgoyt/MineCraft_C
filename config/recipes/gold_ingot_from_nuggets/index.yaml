@@ -1,0 +1,5 @@
+name: gold_ingot_from_nuggets
+kind: shaped
+pattern: ["NNN", "NNN", "NNN"]
+keys: { N: gold_nugget }
+gives: gold_ingot

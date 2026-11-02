@@ -1,0 +1,5 @@
+name: melon
+kind: shaped
+pattern: ["MMM", "MMM", "MMM"]
+keys: { M: melon_slice }
+gives: melon

@@ -1,0 +1,4 @@
+name: smelt_terracotta
+kind: smelt
+input: clay
+gives: terracotta

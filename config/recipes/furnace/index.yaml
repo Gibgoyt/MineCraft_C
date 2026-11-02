@@ -1,0 +1,5 @@
+name: furnace
+kind: shaped
+pattern: ["CCC", "C C", "CCC"]
+keys: { C: group_cobble }
+gives: furnace

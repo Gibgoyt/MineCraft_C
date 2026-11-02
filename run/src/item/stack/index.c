@@ -5,6 +5,11 @@ uint32_t item_stack_max(uint16_t item) {
     return item < ITEM_COUNT ? item_defs[item].max_stack : 0u;
 }
 
+uint16_t item_stack_drop_row(uint16_t item) {
+    /* Both tables sort by name, and block_drop_items has no row for none. run_item_crafting holds them to it. */
+    return (uint16_t)(item - 1u);
+}
+
 item_stack_t item_stack_make(uint16_t item, uint32_t count) {
     const uint32_t most = item_stack_max(item);
     const uint32_t held = count < most ? count : most;

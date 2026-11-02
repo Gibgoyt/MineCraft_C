@@ -1,0 +1,4 @@
+name: fuel_coal
+kind: fuel
+items: [group_coal]
+ticks: 1600

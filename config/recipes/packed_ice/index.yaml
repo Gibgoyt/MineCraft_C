@@ -1,0 +1,5 @@
+name: packed_ice
+kind: shaped
+pattern: ["III", "III", "III"]
+keys: { I: ice }
+gives: packed_ice

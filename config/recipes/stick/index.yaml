@@ -1,0 +1,6 @@
+name: stick
+kind: shaped
+pattern: ["P", "P"]
+keys: { P: group_planks }
+gives: stick
+count: 4

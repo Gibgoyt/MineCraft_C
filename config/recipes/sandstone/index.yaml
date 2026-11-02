@@ -1,0 +1,5 @@
+name: sandstone
+kind: shaped
+pattern: ["SS", "SS"]
+keys: { S: sand }
+gives: sandstone

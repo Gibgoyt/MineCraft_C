@@ -1,0 +1,5 @@
+name: diamond_chestplate
+kind: shaped
+pattern: ["M M", "MMM", "MMM"]
+keys: { M: diamond }
+gives: diamond_chestplate

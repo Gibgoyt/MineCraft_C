@@ -1,0 +1,5 @@
+name: leather_chestplate
+kind: shaped
+pattern: ["M M", "MMM", "MMM"]
+keys: { M: leather }
+gives: leather_chestplate

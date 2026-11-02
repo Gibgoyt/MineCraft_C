@@ -1,0 +1,4 @@
+name: smelt_charcoal
+kind: smelt
+input: group_logs
+gives: charcoal

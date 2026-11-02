@@ -1,0 +1,5 @@
+name: birch_planks
+kind: shapeless
+ingredients: [birch_log]
+gives: birch_planks
+count: 4

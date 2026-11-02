@@ -1,0 +1,5 @@
+name: diamond_boots
+kind: shaped
+pattern: ["M M", "M M"]
+keys: { M: diamond }
+gives: diamond_boots

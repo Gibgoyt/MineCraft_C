@@ -1,0 +1,4 @@
+name: dye_white_from_lily_of_the_valley
+kind: shapeless
+ingredients: [lily_of_the_valley]
+gives: dye_white

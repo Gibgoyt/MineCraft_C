@@ -1,0 +1,4 @@
+name: flint_and_steel
+kind: shapeless
+ingredients: [iron_ingot, flint]
+gives: flint_and_steel

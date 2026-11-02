@@ -1,0 +1,4 @@
+name: melon_seeds
+kind: shapeless
+ingredients: [melon_slice]
+gives: melon_seeds

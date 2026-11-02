@@ -1,0 +1,4 @@
+name: smelt_deepslate
+kind: smelt
+input: cobbled_deepslate
+gives: deepslate

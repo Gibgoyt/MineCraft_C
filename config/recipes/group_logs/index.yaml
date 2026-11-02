@@ -1,0 +1,3 @@
+name: group_logs
+kind: group
+items: [oak_log, birch_log, spruce_log, jungle_log, acacia_log, dark_oak_log, mangrove_log, cherry_log]

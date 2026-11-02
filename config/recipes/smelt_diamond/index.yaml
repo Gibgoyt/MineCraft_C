@@ -1,0 +1,4 @@
+name: smelt_diamond
+kind: smelt
+input: group_diamond_ore
+gives: diamond

@@ -1,0 +1,5 @@
+name: wood_sword
+kind: shaped
+pattern: ["M", "M", "S"]
+keys: { M: group_planks, S: stick }
+gives: wood_sword

@@ -300,8 +300,9 @@ TEST(the_tool_makes_the_same_bytes_as_the_build) {
     test_process_run(t, argv, GTT_TIMEOUT_MS, &run);
     CHECK_EQ_I64(run.exit_code, 0);
     CHECK_STR_EQ(run.output, "");
-    const char *const files[] = {"blocks/index.h", "blocks/index.c", "items/index.h", "items/index.c"};
-    for (uint32_t i = 0; i < 4u; i++) {
+    const char *const files[] = {"blocks/index.h", "blocks/index.c",  "items/index.h",
+                                 "items/index.c",  "recipes/index.h", "recipes/index.c"};
+    for (uint32_t i = 0; i < 6u; i++) {
         uint64_t left_length = 0;
         uint64_t right_length = 0;
         const char *left = gtt_read(t, gtt_path(t, out, files[i]), &left_length);
@@ -712,6 +713,129 @@ TEST(each_bad_item_is_refused_at_its_line_and_nothing_is_written) {
         CHECK_CONTAINS(run.output, GTT_BAD_ITEMS[i].message);
         CHECK(access(table, F_OK) != 0);
     }
+}
+
+/* Recipes: a tree that is good until the file under test goes in beside it. */
+static void gtt_recipes_add(test_context_t *t, const gtt_tree_t *tree) {
+    gtt_mkdirs(t, gtt_path(t, tree->borrowed_config, "recipes/ok_craft"));
+    gtt_write(t, gtt_path(t, tree->borrowed_config, "recipes/ok_craft/index.yaml"),
+              "name: ok_craft\nkind: shaped\npattern: [\"SC\"]\nkeys: { S: stone, C: coal }\ngives: coal\ncount: 4\n");
+    gtt_mkdirs(t, gtt_path(t, tree->borrowed_config, "recipes/ok_smelt"));
+    gtt_write(t, gtt_path(t, tree->borrowed_config, "recipes/ok_smelt/index.yaml"),
+              "name: ok_smelt\nkind: smelt\ninput: stone\ngives: coal\n");
+    gtt_mkdirs(t, gtt_path(t, tree->borrowed_config, "recipes/group_rock"));
+    gtt_write(t, gtt_path(t, tree->borrowed_config, "recipes/group_rock/index.yaml"),
+              "name: group_rock\nkind: group\nitems: [stone]\n");
+}
+
+#define GTT_SHAPED "name: bad\nkind: shaped\n"
+#define GTT_GIVES "gives: coal\n"
+
+static const gtt_bad_case_t GTT_BAD_RECIPES[] = {
+    {"kind: smelt\ninput: coal\ngives: coal\n", ":1:", "missing field 'name'"},
+    {"name: other\nkind: smelt\ninput: coal\ngives: coal\n", ":1:", "is not its directory's"},
+    {"name: bad\n", ":1:", "missing field 'kind'"},
+    {"name: bad\nkind: boiled\n", ":2:", "unknown kind 'boiled'"},
+    {"name: bad\nkind: group\nitems: [coal]\n", ":2:", "only a group, has a name that starts with group_"},
+    {"name: bad\nkind: smelt\ninput: coal\ngives: coal\ncolour: grey\n", ":5:", "unknown field 'colour' in a smelt"},
+    {"name: bad\nkind: fuel\nitems: [coal]\nticks: 1\ngives: coal\n", ":5:", "unknown field 'gives' in a fuel"},
+    {GTT_SHAPED GTT_GIVES, ":1:", "needs a pattern"},
+    {GTT_SHAPED "pattern: [\"C\", \"C\", \"C\", \"C\"]\nkeys: { C: coal }\n" GTT_GIVES,
+     ":3:", "a pattern has 1 to 3 rows"},
+    {GTT_SHAPED "pattern: [\"CCCC\"]\nkeys: { C: coal }\n" GTT_GIVES, ":3:", "a row has 1 to 3 cells"},
+    {GTT_SHAPED "pattern: [\"CC\", \"C\"]\nkeys: { C: coal }\n" GTT_GIVES, ":3:", "not as long as the first"},
+    {GTT_SHAPED "pattern: [\"C \", \"C \"]\nkeys: { C: coal }\n" GTT_GIVES,
+     ":3:", "an empty row or column at its edge"},
+    {GTT_SHAPED "pattern: [\"  \", \"CC\"]\nkeys: { C: coal }\n" GTT_GIVES,
+     ":3:", "an empty row or column at its edge"},
+    {GTT_SHAPED "pattern: [\"C\"]\n" GTT_GIVES, ":1:", "needs keys"},
+    {GTT_SHAPED "pattern: [\"CD\"]\nkeys: { C: coal }\n" GTT_GIVES, ":4:", "the pattern's 'D' is not in keys"},
+    {GTT_SHAPED "pattern: [\"C\"]\nkeys: { C: coal, D: coal }\n" GTT_GIVES, ":4:", "key 'D' is not in the pattern"},
+    {GTT_SHAPED "pattern: [\"C\"]\nkeys: { C: coal, DD: coal }\n" GTT_GIVES, ":4:", "a key is one letter"},
+    {GTT_SHAPED "pattern: [\"C\"]\nkeys: { C: nothing }\n" GTT_GIVES, ":4:", "'nothing' is no item and no group"},
+    {GTT_SHAPED "pattern: [\"C\"]\nkeys: { C: coal }\n", ":1:", "missing field 'gives'"},
+    {GTT_SHAPED "pattern: [\"C\"]\nkeys: { C: coal }\ngives: nothing\n", ":5:", "item 'nothing' does not exist"},
+    {GTT_SHAPED "pattern: [\"C\"]\nkeys: { C: coal }\ngives: group_rock\n", ":5:", "item 'group_rock' does not exist"},
+    {GTT_SHAPED "pattern: [\"C\"]\nkeys: { C: coal }\n" GTT_GIVES "count: 0\n", ":6:", "count is 0"},
+    {GTT_SHAPED "pattern: [\"C\"]\nkeys: { C: coal }\n" GTT_GIVES "count: 65\n", ":6:", "count is 65"},
+    {GTT_SHAPED "pattern: [\"C\"]\nkeys: { C: coal }\ngives: pick\ncount: 2\n", ":6:", "more than one slot of pick"},
+    {"name: bad\nkind: shapeless\ngives: coal\n", ":1:", "needs ingredients"},
+    {"name: bad\nkind: shapeless\ningredients: []\ngives: coal\n", ":1:", "needs ingredients"},
+    {"name: bad\nkind: shapeless\ningredients: [coal, coal, coal, coal, coal, coal, coal, coal, coal, coal]\ngives: "
+     "coal\n",
+     ":1:", "needs ingredients"},
+    {"name: bad\nkind: shapeless\ningredients: [nothing]\ngives: coal\n", ":3:", "'nothing' is no item and no group"},
+    {"name: bad\nkind: smelt\ngives: coal\n", ":1:", "missing field 'input'"},
+    {"name: bad\nkind: smelt\ninput: nothing\ngives: coal\n", ":3:", "'nothing' is no item and no group"},
+    {"name: bad\nkind: smelt\ninput: coal\ngives: coal\nticks: 0\n", ":5:", "ticks is 0"},
+    {"name: bad\nkind: fuel\nitems: [coal]\n", ":1:", "a fuel needs ticks"},
+    {"name: bad\nkind: fuel\nitems: [coal]\nticks: 70000\n", ":4:", "ticks is 70000"},
+    {"name: bad\nkind: fuel\nitems: []\nticks: 1\n", ":1:", "items must be a list"},
+    {"name: bad\nkind: fuel\nitems: [coal]\nticks: 1\nleaves: nothing\n", ":5:", "item 'nothing' does not exist"},
+    /* Two that one grid could match, each way there is. The first is straight, the second the same mirrored. */
+    {GTT_SHAPED "pattern: [\"SC\"]\nkeys: { S: stone, C: coal }\ngives: stone\n",
+     ":1:", "one grid can match this and bad"},
+    {GTT_SHAPED "pattern: [\"CS\"]\nkeys: { S: stone, C: coal }\ngives: stone\n",
+     ":1:", "one grid can match this and bad"},
+    {GTT_SHAPED "pattern: [\"RC\"]\nkeys: { R: group_rock, C: coal }\ngives: stone\n",
+     ":1:", "one grid can match this and bad"},
+    {"name: bad\nkind: shapeless\ningredients: [coal, stone]\ngives: stone\n",
+     ":1:", "one grid can match this and bad"},
+    /* An item smelts one way and burns one way. */
+    {"name: bad\nkind: smelt\ninput: group_rock\ngives: stone\n", ":1:", "'stone' smelts here and in bad"},
+    {"name: bad\nkind: fuel\nitems: [coal, coal]\nticks: 1\n", ":1:", "'coal' burns here and in bad"},
+};
+enum { GTT_BAD_RECIPE_COUNT = sizeof(GTT_BAD_RECIPES) / sizeof(GTT_BAD_RECIPES[0]) };
+
+TEST(each_bad_recipe_is_refused_at_its_line_and_nothing_is_written) {
+    const gtt_tree_t tree = gtt_tree_make(t, "bad_recipes");
+    gtt_recipes_add(t, &tree);
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "items/pick"));
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "items/pick/index.yaml"),
+              "name: pick\ntexture: items/coal\nstack: 1\n");
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "recipes/bad"));
+    char *const file = gtt_path(t, tree.borrowed_config, "recipes/bad/index.yaml");
+    char *const table = gtt_path(t, tree.borrowed_out, "recipes/index.h");
+    for (uint32_t i = 0u; i < GTT_BAD_RECIPE_COUNT; i++) {
+        gtt_write(t, file, GTT_BAD_RECIPES[i].text);
+        test_process_t run;
+        gtt_tree_run(t, &tree, &run);
+        CHECK_EQ_I64(run.exit_code, 1);
+        CHECK_CONTAINS(run.output, GTT_BAD_RECIPES[i].position);
+        CHECK_CONTAINS(run.output, GTT_BAD_RECIPES[i].message);
+        CHECK(access(table, F_OK) != 0);
+    }
+}
+
+TEST(good_recipes_make_tables_and_a_tree_with_none_needs_none) {
+    const gtt_tree_t tree = gtt_tree_make(t, "good_recipes");
+    test_process_t run;
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 0);
+    CHECK(access(gtt_path(t, tree.borrowed_out, "recipes/index.h"), F_OK) != 0);
+
+    gtt_recipes_add(t, &tree);
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "recipes/fuel_rock"));
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "recipes/fuel_rock/index.yaml"),
+              "name: fuel_rock\nkind: fuel\nitems: [group_rock]\nticks: 7\nleaves: coal\n");
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 0);
+    CHECK_STR_EQ(run.output, "");
+    uint64_t length = 0u;
+    const char *const source = gtt_read(t, gtt_path(t, tree.borrowed_out, "recipes/index.c"), &length);
+    REQUIRE(source != nullptr);
+    CHECK_CONTAINS(source,
+                   "{.name = \"ok_craft\", .cells = {2, 1, 0, 0, 0, 0, 0, 0, 0}, .gives = ITEM_ID_COAL, .count = 4");
+    CHECK_CONTAINS(source, "{.name = \"ok_smelt\", .gives = ITEM_ID_COAL, .ticks = 200, .count = 1}");
+    CHECK_CONTAINS(source, "[ITEM_ID_STONE] = 1,");
+    CHECK_CONTAINS(source, "[ITEM_ID_STONE] = {.ticks = 7, .leaves = ITEM_ID_COAL},");
+
+    /* A directory of recipes that makes nothing is a mistake. */
+    unlink(gtt_path(t, tree.borrowed_config, "recipes/ok_smelt/index.yaml"));
+    rmdir(gtt_path(t, tree.borrowed_config, "recipes/ok_smelt"));
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 1);
+    CHECK_CONTAINS(run.output, "there must be a crafting recipe and a smelting one");
 }
 
 TEST(an_item_named_for_a_block_must_say_so) {

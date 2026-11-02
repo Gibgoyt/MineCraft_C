@@ -1,0 +1,6 @@
+name: bowl
+kind: shaped
+pattern: ["P P", " P "]
+keys: { P: group_planks }
+gives: bowl
+count: 4

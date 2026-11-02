@@ -1,0 +1,5 @@
+name: gold_nugget
+kind: shapeless
+ingredients: [gold_ingot]
+gives: gold_nugget
+count: 9

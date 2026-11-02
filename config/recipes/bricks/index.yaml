@@ -1,0 +1,5 @@
+name: bricks
+kind: shaped
+pattern: ["BB", "BB"]
+keys: { B: brick }
+gives: bricks

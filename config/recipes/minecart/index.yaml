@@ -1,0 +1,5 @@
+name: minecart
+kind: shaped
+pattern: ["I I", "III"]
+keys: { I: iron_ingot }
+gives: minecart

@@ -1,0 +1,5 @@
+name: acacia_planks
+kind: shapeless
+ingredients: [acacia_log]
+gives: acacia_planks
+count: 4

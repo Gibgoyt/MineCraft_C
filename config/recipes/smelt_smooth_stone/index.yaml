@@ -1,0 +1,4 @@
+name: smelt_smooth_stone
+kind: smelt
+input: stone
+gives: smooth_stone

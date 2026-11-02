@@ -1,0 +1,4 @@
+name: smelt_stone
+kind: smelt
+input: cobblestone
+gives: stone

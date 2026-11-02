@@ -1,0 +1,4 @@
+name: smelt_gold_ingot
+kind: smelt
+input: group_gold_source
+gives: gold_ingot

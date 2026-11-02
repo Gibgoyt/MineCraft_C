@@ -1,0 +1,5 @@
+name: bucket
+kind: shaped
+pattern: ["I I", " I "]
+keys: { I: iron_ingot }
+gives: bucket

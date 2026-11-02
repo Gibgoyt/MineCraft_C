@@ -1,0 +1,3 @@
+name: group_gold_source
+kind: group
+items: [gold_ore, deepslate_gold_ore, raw_gold]

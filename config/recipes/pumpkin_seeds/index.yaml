@@ -1,0 +1,5 @@
+name: pumpkin_seeds
+kind: shapeless
+ingredients: [pumpkin]
+gives: pumpkin_seeds
+count: 4

@@ -1,0 +1,4 @@
+name: dye_orange_from_tulip
+kind: shapeless
+ingredients: [tulip]
+gives: dye_orange

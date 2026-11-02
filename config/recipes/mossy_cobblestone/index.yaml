@@ -1,0 +1,4 @@
+name: mossy_cobblestone
+kind: shapeless
+ingredients: [cobblestone, vine]
+gives: mossy_cobblestone

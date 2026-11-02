@@ -1,0 +1,4 @@
+name: smelt_copper_ingot
+kind: smelt
+input: group_copper_source
+gives: copper_ingot

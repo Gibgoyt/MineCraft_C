@@ -277,6 +277,7 @@ bool game_open(game_t *game, const game_config_t *config) {
     }
     if (game->borrowed_item != nullptr) {
         item_open(game->borrowed_item);
+        item_world_begin(game->borrowed_item, &game->borrowed_world->edit);
     }
     game->open = 1u;
     return true;
@@ -438,6 +439,16 @@ static void game_interact_tick(game_t *game, int64_t tick_ns) {
     (void)inventory_selected_take(&item->inventory, before - (uint32_t)player->interaction.hand_count);
 }
 
+/* What a broken chest or furnace held comes out where it stood. With nothing to lie on, as in a run with no entities, it is gone. */
+static void game_spill(void *borrowed_game, const item_stack_t *stack, const int32_t cell[3]) {
+    game_t *const game = borrowed_game;
+    if (game->borrowed_entity != nullptr) {
+        const float64_t middle[3] = {(float64_t)cell[0] + 0.5f64, (float64_t)cell[1] + 0.5f64,
+                                     (float64_t)cell[2] + 0.5f64};
+        item_drop_spawn(&game->borrowed_entity->item_drops, item_stack_drop_row(stack->item), stack->count, middle);
+    }
+}
+
 static void game_drops_spawn(game_t *game) {
     player_drop_t drop;
     while (player_interaction_drop_next(&game->borrowed_player->interaction, &drop)) {
@@ -512,6 +523,9 @@ static void game_sim_tick(game_t *game, int64_t tick_ns) {
     if (game->borrowed_player != nullptr) {
         /* First, so that the body and its next aim both meet the world as the hands leave it. */
         game_interact_tick(game, tick_ns);
+        if (game->borrowed_item != nullptr) {
+            item_world_tick(game->borrowed_item, &game->borrowed_world->edit, game_spill, game);
+        }
         if (game->borrowed_entity != nullptr) {
             game_items_tick(game);
         }
@@ -878,6 +892,13 @@ void game_report(game_t *game) {
                  inventory_items_held(inventory), inventory_stacks_held(inventory), inventory->added_count,
                  inventory->removed_count, inventory->refused_count, (uint32_t)inventory->selected + 1u,
                  (uint32_t)held->count, item_defs[held->item].name);
+    }
+    if (game->borrowed_item != nullptr && game->borrowed_item->inventory.borrowed_slots != nullptr) {
+        const item_t *const item = game->borrowed_item;
+        LOG_INFO("game: %" PRIu32 " chests and %" PRIu32 " furnaces stand; %" PRIu64 " items smelted, %" PRIu64
+                 " of fuel burned, %" PRIu64 " spilled",
+                 item->chests.count, item->furnaces.count, item->furnaces.smelted_count, item->furnaces.burned_count,
+                 item->spilled_count);
     }
     if (game->borrowed_entity != nullptr) {
         const item_drop_store_t *const drops = &game->borrowed_entity->item_drops;

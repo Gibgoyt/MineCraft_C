@@ -1,0 +1,6 @@
+name: iron_door
+kind: shaped
+pattern: ["II", "II", "II"]
+keys: { I: iron_ingot }
+gives: iron_door
+count: 3

@@ -1,0 +1,4 @@
+name: smelt_brick
+kind: smelt
+input: clay_ball
+gives: brick

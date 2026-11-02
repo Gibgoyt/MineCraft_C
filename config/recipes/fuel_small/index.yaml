@@ -1,0 +1,4 @@
+name: fuel_small
+kind: fuel
+items: [stick, group_saplings]
+ticks: 100

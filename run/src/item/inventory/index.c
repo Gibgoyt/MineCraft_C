@@ -123,6 +123,15 @@ uint32_t inventory_remove(inventory_t *inventory, uint16_t item, uint32_t count)
     return removed;
 }
 
+uint32_t inventory_slot_move_out(inventory_t *inventory, uint32_t slot, item_stack_t *to, uint32_t count) {
+    if (slot >= INVENTORY_SLOTS) {
+        return 0u;
+    }
+    const uint32_t moved = item_stack_move(&inventory->borrowed_slots[slot], to, count);
+    inventory->removed_count += moved;
+    return moved;
+}
+
 uint32_t inventory_selected_take(inventory_t *inventory, uint32_t count) {
     const uint32_t taken = item_stack_take(&inventory->borrowed_slots[inventory->selected], count);
     inventory->removed_count += taken;

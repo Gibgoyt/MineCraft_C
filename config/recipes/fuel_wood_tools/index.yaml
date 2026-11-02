@@ -1,0 +1,4 @@
+name: fuel_wood_tools
+kind: fuel
+items: [wood_pickaxe, wood_axe, wood_shovel, wood_hoe, wood_sword, bow, bowl]
+ticks: 200

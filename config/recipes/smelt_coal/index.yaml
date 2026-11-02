@@ -1,0 +1,4 @@
+name: smelt_coal
+kind: smelt
+input: group_coal_ore
+gives: coal

@@ -1,0 +1,4 @@
+name: pumpkin_pie
+kind: shapeless
+ingredients: [pumpkin, sugar]
+gives: pumpkin_pie

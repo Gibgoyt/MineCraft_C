@@ -7,6 +7,7 @@
 **Threads:** whichever holds the stacks; nothing here is shared.
 **Public functions** (`run/include/item/stack/index.h`):
 
+- `item_stack_drop_row`: which row of `block_drop_items` an item lies on the ground as.
 - `item_stack_max`, `item_stack_make`: what a slot of an item holds; a new stack, cut down to that.
 - `item_stack_is_empty`, `item_stack_is_valid`, `item_stack_can_merge`, `item_stack_room`: looking.
 - `item_stack_move`, `item_stack_take`, `item_stack_swap`: changing.
