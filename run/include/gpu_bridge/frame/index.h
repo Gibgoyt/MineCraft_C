@@ -5,6 +5,7 @@
 
 #include "gpu_bridge/device_memory/index.h"
 #include "gpu_bridge/entity_rays/index.h"
+#include "gpu_bridge/lod/index.h"
 #include "gpu_bridge/post/index.h"
 #include "gpu_bridge/shade/index.h"
 #include "gpu_bridge/status/index.h"
@@ -62,8 +63,10 @@ typedef struct frame_args_t {
     const frame_targets_t *borrowed_targets;      /* 32 */
     uint8_t *borrowed_host_xrgb;                  /* 40: post_xrgb_bytes, 4-aligned: the finished frame comes here */
     const entity_rays_scene_t *borrowed_entities; /* 48: or nullptr for none */
+    const lod_scene_t *borrowed_lod;              /* 56: the far field, or nullptr for none */
+    const lod_light_t *borrowed_lod_light;        /* 64: with it */
 } frame_args_t;
-static_assert(sizeof(frame_args_t) == 56);
+static_assert(sizeof(frame_args_t) == 72);
 static_assert(alignof(frame_args_t) == 8);
 static_assert(offsetof(frame_args_t, borrowed_world) == 0);
 static_assert(offsetof(frame_args_t, borrowed_scene) == 8);
@@ -72,6 +75,8 @@ static_assert(offsetof(frame_args_t, borrowed_camera) == 24);
 static_assert(offsetof(frame_args_t, borrowed_targets) == 32);
 static_assert(offsetof(frame_args_t, borrowed_host_xrgb) == 40);
 static_assert(offsetof(frame_args_t, borrowed_entities) == 48);
+static_assert(offsetof(frame_args_t, borrowed_lod) == 56);
+static_assert(offsetof(frame_args_t, borrowed_lod_light) == 64);
 
 /* The card's clock, as CUDA events. One thread at a time. Zeroed means not started, so _deinit is safe either way. */
 typedef struct frame_gpu_t {

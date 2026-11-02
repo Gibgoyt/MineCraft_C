@@ -38,8 +38,11 @@ typedef struct game_config_t {
     uint16_t features_off;    /* 12: SHADE_FEATURE_* to leave off; 0 draws all of SHADE_FEATURES_PLAY */
     uint8_t god_rays;         /* 14: and these on top, being optional */
     uint8_t _pad0[1];         /* 15 */
+    /* 16: how far the world is drawn block by block, in chunks. Past it, to render_distance, coarse grids take over. 0 means
+     * RENDER_LOD_FULL_DETAIL_DEFAULT. */
+    uint32_t full_detail;
 } game_config_t;
-static_assert(sizeof(game_config_t) == 16);
+static_assert(sizeof(game_config_t) == 20);
 
 /* One column being made on a worker. Its own cache line: a worker writes done while the sim thread polls it. */
 typedef struct game_column_job_t {

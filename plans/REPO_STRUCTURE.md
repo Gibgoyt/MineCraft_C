@@ -208,12 +208,13 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `world_buffers` | The C API of the section pool and column table, and the form of a section on the card. Its `run/src/` directory holds only a README: `cuda/src/world_buffers/` implements it | 08.2 |
 | | `traverse` | The C API of ray traversal: cameras and hits, on the format of `world_buffers`. Its `run/src/` directory holds only a README: `cuda/src/traverse/` implements it | 08.3 |
 | | `entity_rays` | The C API of entity boxes and the outline. Its `run/src/` directory holds only a README: `cuda/src/entity_rays/` implements it | 09.5 |
+| | `lod` | The C API of the far field's rays. Its `run/src/` directory holds only a README: `cuda/src/lod/` implements it | 09.6 |
 | | `shade post frame` | The C APIs of shading, of sky, fog and the tone map, and of one frame's kernels. Each `run/src/` directory holds only a README: `cuda/src/<area>/` implements it | 08.4 |
 | `render` | (the Owner) | `render_init`, `render_deinit`: the host region; `render_open`, `render_close`: the pool and table on the card, for one world | 08.2 |
 | | `encode upload` | Encode sections on workers; budgeted upload queue | 08.2 |
 | | `frame` | The kernels' tables, the free-fly camera, readback, present; HUD from 14.2 | 08.4 |
 | | `entities` | Boxes from the sim to the gpu thread, per-tile entity lists, what is aimed at and mined | 09.5 |
-| | `lod` | Build coarse far-field grids | 09.6 |
+| | `lod` | Build coarse far-field grids on workers, each a level in the format of `world_buffers`, following the eye | 09.6 |
 | `texture` | `blob registry` | Checks the embedded blob; finds a texture, a mip level or its vector data by name or id | 06.4 |
 
 ### World
@@ -282,7 +283,7 @@ Layout: `cuda/src/<dir>/index.cu`, `cuda/include/<dir>/index.hu`, `README.md`. *
 | `post` | Sky, fog, god rays' colour, TAA, tone map | 08.4, 09.x |
 | `frame` | One frame's kernels in order, GPU timers | 08.4, 17.1 |
 | `entity_rays` | Mob and item boxes against a frame's rays; the outline of what is aimed at, on the finished picture | 09.5 |
-| `lod` | Far-field traversal | 09.6 |
+| `lod` | Far-field traversal: rays from the finest coarse grid out, past what full detail holds, with a sun ray for each surface | 09.6 |
 
 ### The C ↔ CUDA boundary
 
@@ -406,6 +407,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/physics/` | ctest `run_physics`: `run/src/physics/` with `collision`: sweeps worked out by hand, random sweeps against a march in tiny steps, every block's boxes, what is not loaded, and no heap in a move |
 | `tests/run/physics/raycast/` | ctest `run_physics_raycast`: `run/src/physics/raycast/` and `run/src/player/camera/`: casts worked out by hand, random casts against a march in tiny steps, what every block is aimed at by, mouse look, `player_camera_outline_draw`'s pixels, and `run/src/game/`'s target and outline on the real card |
 | `tests/cuda/entity_rays/` | ctest `render_feature_entities`: `cuda/src/entity_rays/` and `run/src/render/entities/`: rays against boxes by hand and against a march, every tile's list against every ray, the card's hits against the host's, a box's pixels against its texture, sun, shade, glass and water, the outline's edges, depth and water, the crack by its frames, golden pictures, the cost on real terrain, and a script in the built program that digs and looks |
+| `tests/cuda/lod/` | ctest `render_feature_lod`: `run/src/render/lod/`, `cuda/src/lod/` and their share in `cuda/src/shade/`: levels and coarse voxels by hand, every level on the card against its samples, following the eye, rays against a march, the sun, every far pixel's colour, what stands in front and what lets it through, fog, real terrain, golden pictures, the cost at R=512, the real threads, and the built program |
 | `tests/run/player/interaction/` | ctest `run_player_interaction`: `run/src/player/interaction/`: every block's table against its `config/blocks/` file, mined and rolled; mining times by hand and for every block and tool; placing; through `run/src/player/`; on the real card and threads; and a script in the built program that walks, mines to dirt and places it back |
 | `tests/run/entity/item_drop/` | ctest `run_entity_drop`, named in its `test.cmake`: `run/src/entity/` with `item_drop`: falling and sliding by hand, every block's effect on an item, merging at its limits and the grid against every pair, pickup to the tick and into a real hand, the books, the same bytes, no heap, a real body, and a script in the built program stopped at each point from dirt dropped to dirt placed back |
 | `tests/run/player/movement/` | ctest `run_player_movement`: `run/src/player/` with `movement`: each mode's measured speeds against the numbers in its README, the same bytes from the same intents, the threads' exchange and interpolation, and `run/src/game/`'s walking on the real card and threads, on fake input, and in the built program |

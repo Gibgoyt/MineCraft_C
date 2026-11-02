@@ -92,10 +92,15 @@ static void game_arenas_stop(game_t *game) {
 static bool game_open_parts(game_t *game, const game_config_t *config, int32_t chunk_x, int32_t chunk_y) {
     world_t *const world = game->borrowed_world;
     render_t *const render = game->borrowed_render;
-    if (!world_open(world, config->render_distance + WORLD_MAP_KEEP_EXTRA, chunk_x, chunk_y)) {
+    const uint32_t full_detail_given = config->full_detail != 0u ? config->full_detail : RENDER_LOD_FULL_DETAIL_DEFAULT;
+    /* What the map loads is what is drawn block by block. The far field never touches it. */
+    const uint32_t full_detail =
+        config->render_distance < full_detail_given ? config->render_distance : full_detail_given;
+    const bool far_field = config->render_distance > full_detail && (config->features_off & SHADE_FEATURE_LOD) == 0u;
+    if (!world_open(world, full_detail + WORLD_MAP_KEEP_EXTRA, chunk_x, chunk_y)) {
         return false;
     }
-    world_map_set_view_radius(&world->map, config->render_distance);
+    world_map_set_view_radius(&world->map, full_detail);
     world_tick_seed_set(&world->tick, game->borrowed_terrain->seed);
     const render_upload_budget_t budget = {
         .bytes = RENDER_UPLOAD_BUDGET_BYTES_DEFAULT,
@@ -108,12 +113,22 @@ static bool game_open_parts(game_t *game, const game_config_t *config, int32_t c
         return false;
     }
     /* The fog is whole a chunk short of what is loaded: the eye moves about inside a chunk before the map follows. */
-    const uint32_t fog_chunks = config->render_distance > 1u ? config->render_distance - 1u : 1u;
+    const uint32_t reach_chunks = far_field ? config->render_distance : full_detail;
+    const uint32_t fog_chunks = reach_chunks > 1u ? reach_chunks - 1u : 1u;
     const float32_t fog_end = (float32_t)(fog_chunks * COLUMN_SIZE);
     if (render_open_frame(render, game->borrowed_texture, config->width, config->height, fog_end) != GPU_STATUS_OK) {
         render_close(render);
         world_close(world);
         return false;
+    }
+    if (far_field) {
+        const render_lod_plan_t plan = render_lod_plan(full_detail, config->render_distance);
+        const gpu_status_t status = render_open_lod(render, &plan, render_lod_sample_terrain, game->borrowed_terrain);
+        if (status != GPU_STATUS_OK) {
+            render_close(render);
+            world_close(world);
+            return false;
+        }
     }
     const uint32_t optional = config->god_rays != 0u ? (uint32_t)SHADE_FEATURE_GOD_RAYS : 0u;
     render_frame_features_set(&render->frame, (SHADE_FEATURES_PLAY | optional) & ~(uint32_t)config->features_off);
@@ -511,7 +526,8 @@ static bool game_is_settled(const game_t *game) {
     const bool sections_waiting =
         world->edit.queue_count[WORLD_EDIT_CONSUMER_RENDER] != 0u && render->buffers.pool_full_count == 0u;
     return game->stream_quiet != 0u && world->map.pending_count == 0u && !unread && !sections_waiting &&
-           render_upload_idle(&render->upload);
+           render_upload_idle(&render->upload) &&
+           (render->borrowed_lod == nullptr || render_lod_idle(render->borrowed_lod));
 }
 
 bool game_settle(game_t *game) {
@@ -524,6 +540,11 @@ bool game_settle(game_t *game) {
             gpu_error_log(&render->buffers.last_error);
             return false;
         }
+        const uint64_t far_built = render->borrowed_lod != nullptr ? render->borrowed_lod->stats.columns_built : 0u;
+        if (render->borrowed_lod != nullptr &&
+            render_lod_frame(render->borrowed_lod, game->camera.position) != GPU_STATUS_OK) {
+            return false; /* it has said why */
+        }
         if (render->buffers.pool_full_count != 0u && game->pool_full_said == 0u) {
             LOG_WARN("game: the section pool is full, so part of the world will not be drawn");
             game->pool_full_said = 1u;
@@ -531,7 +552,9 @@ bool game_settle(game_t *game) {
         if (game_is_settled(game)) {
             return true;
         }
-        if (waiting_before != 0u && waiting_before == game->jobs_in_use) {
+        const bool far_waiting = render->borrowed_lod != nullptr && render->borrowed_lod->jobs_in_use != 0u &&
+                                 far_built == render->borrowed_lod->stats.columns_built;
+        if (far_waiting || (waiting_before != 0u && waiting_before == game->jobs_in_use)) {
             time_sleep_ns(GAME_SETTLE_IDLE_NS);
         }
     }
@@ -653,6 +676,13 @@ static void game_gpu_thread(void *borrowed_argument) {
             gpu_error_log(&render->buffers.last_error);
             atomic_store_explicit(&game->failed, 1u, memory_order_release);
             return;
+        }
+        if (render->borrowed_lod != nullptr) {
+            status = render_lod_frame(render->borrowed_lod, camera->position);
+            if (status != GPU_STATUS_OK) {
+                atomic_store_explicit(&game->failed, 1u, memory_order_release);
+                return; /* it has said why */
+            }
         }
         game_day_apply(game);
         /* In the slot this picture is going into, for whoever asks what it was drawn from. The publish in the draw hands main both. */
@@ -797,6 +827,16 @@ void game_report(game_t *game) {
     if (game->borrowed_render->buffers.pool_full_count != 0u) {
         LOG_WARN("game: the section pool was full %" PRIu64 " times, so part of the world was not drawn",
                  (uint64_t)game->borrowed_render->buffers.pool_full_count);
+    }
+    const render_lod_t *const far = game->borrowed_render->borrowed_lod;
+    if (far != nullptr) {
+        LOG_INFO("game: far field: %" PRIu32 " levels, %" PRIu64
+                 " columns built in %.1f s of workers' time, %.1f MiB sent",
+                 far->level_count, far->stats.columns_built, (libc_double_t)((float64_t)far->stats.build_ns * 1e-9f64),
+                 (libc_double_t)((float64_t)far->stats.bytes_sent / 1048576.0f64));
+        if (far->stats.columns_no_room != 0u) {
+            LOG_WARN("game: %" PRIu64 " far columns had no room in their pool", far->stats.columns_no_room);
+        }
     }
     /* The flip rate display_frames_run reports counts a picture shown twice as two. This is the rate of new ones. */
     if (game->pictures_shown != 0u && game->loop_ended_ns > game->loop_started_ns) {

@@ -11,6 +11,7 @@
 #include "render/encode/index.h"
 #include "render/entities/index.h"
 #include "render/frame/index.h"
+#include "render/lod/index.h"
 #include "render/upload/index.h"
 #include "texture/index.h"
 #include "world/edit/index.h"
@@ -77,8 +78,16 @@ typedef struct render_t {
     device_block_t owned_entity_lists;    /* 2120: the same pool: render_entities_lists_bytes */
     device_block_t owned_entity_hits;     /* 2144 */
     render_entities_t *borrowed_entities; /* 2168: from arena_frame, from render_open_frame to render_close_frame */
+
+    arena_t arena_lod;                               /* 2176: over owned_lod_host */
+    heap_region_t owned_lod_host;                    /* 2240 */
+    device_block_t owned_lod_tables[LOD_LEVELS_MAX]; /* 2256: from DEVICE_POOL_VOXELS, with the world's */
+    device_block_t owned_lod_pools[LOD_LEVELS_MAX];  /* 2400 */
+    device_block_t owned_lod_hits;                   /* 2544: from DEVICE_POOL_FRAMES */
+    render_lod_t *borrowed_lod; /* 2568: from arena_lod, from render_open_lod to render_close_lod */
+    uint8_t _pad1[48];          /* 2576 */
 } render_t;
-static_assert(sizeof(render_t) == 2176);
+static_assert(sizeof(render_t) == 2624);
 static_assert(alignof(render_t) == 64);
 static_assert(offsetof(render_t, upload) == 64);
 static_assert(offsetof(render_t, owned_host) == 512);
@@ -88,6 +97,8 @@ static_assert(offsetof(render_t, frame) == 960);
 static_assert(offsetof(render_t, owned_frame_host) == 1792);
 static_assert(offsetof(render_t, owned_entity_lists) == 2120);
 static_assert(offsetof(render_t, borrowed_entities) == 2168);
+static_assert(offsetof(render_t, arena_lod) == 2176);
+static_assert(offsetof(render_t, borrowed_lod) == 2568);
 
 /* What a real game runs with: gpu.budget in config/machine.yaml. */
 render_limits_t render_limits_default(void);
@@ -118,7 +129,16 @@ void render_close(render_t *render);
 gpu_status_t render_open_frame(render_t *render, const texture_t *texture, uint32_t width, uint32_t height,
                                float32_t fog_end);
 
-/* Gives all of that back. Safe if none is open. The gpu thread must have stopped using it. */
+/* Gives all of that back, the far field's too. Safe if none is open. The gpu thread must have stopped using it. */
 void render_close_frame(render_t *render);
+
+/* Starts on the far field of a world whose frame is open, in these levels: takes their tables and pools from DEVICE_POOL_VOXELS, their hits
+ * from DEVICE_POOL_FRAMES, and host memory. From here on each frame draws it. sample and its context must outlive it. On failure logs
+ * why, takes nothing and returns what went wrong, and the frames go on without it. */
+gpu_status_t render_open_lod(render_t *render, const render_lod_plan_t *plan, render_lod_sample_t sample,
+                             const void *sample_context);
+
+/* Gives all of that back. Safe if none is open. The gpu thread must have stopped using it. */
+void render_close_lod(render_t *render);
 
 #endif

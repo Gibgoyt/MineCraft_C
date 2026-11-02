@@ -12,6 +12,7 @@
 - `render_pool_bytes_for`: a pool size for a table of this many slots.
 - `render_open`, `render_close`: take and give back the blocks on the card, for one world.
 - `render_open_frame`, `render_close_frame`: the same for drawing: textures, tables, a frame's targets, and the pictures.
+- `render_open_lod`, `render_close_lod`: the same for the far field: each level's table and pool, a frame's far hits, and `owned_lod_host` with `arena_lod` over it.
 
 **May be called by:** `run/src/main/`, which starts and stops it, and `game`, which opens a world.
 **Depends on:** `heap`, `arena`, `log`, `machine`, `job`, `texture`, `display/flip`, `world/edit`, `gpu_bridge/device_memory`, `gpu_bridge/world_buffers`, `gpu_bridge/traverse`, `gpu_bridge/shade`, `gpu_bridge/post`, `gpu_bridge/frame`, and its parts below.
@@ -25,8 +26,7 @@
 
 | `frame` | The tables the kernels read, the free-fly camera, the pictures on their way home, and putting one on the screen |
 | `entities` | The sim's boxes to the gpu thread, each frame's per-tile lists on the card, what is aimed at and mined |
-
-`lod` arrives with 09.6.
+| `lod` | Past full detail: coarse grids made on workers, following the eye |
 
 ## Why init takes nothing on the card
 

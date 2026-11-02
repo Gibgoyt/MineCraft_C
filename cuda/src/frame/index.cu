@@ -71,6 +71,11 @@ static gpu_status_t frame_passes(frame_gpu_t *frame, const frame_args_t *args) {
     if (status == GPU_STATUS_OK && entities != nullptr) {
         status = entity_rays_frame(&frame->last_error, entities, camera);
     }
+    /* Under primary's clock, as it is the rest of those same rays. */
+    if (status == GPU_STATUS_OK && args->borrowed_lod != nullptr) {
+        status = lod_frame(&frame->last_error, args->borrowed_lod, args->borrowed_lod_light, args->borrowed_world,
+                           camera, targets->borrowed_hits);
+    }
     if (status == GPU_STATUS_OK) {
         status = frame_mark(frame, FRAME_PASS_SHADE);
     }

@@ -248,10 +248,77 @@ gpu_status_t render_open_frame(render_t *render, const texture_t *texture, uint3
     return GPU_STATUS_OK;
 }
 
+static void render_lod_blocks_give_back(render_t *render) {
+    device_memory_t *const memory = render->borrowed_memory;
+    if (device_memory_free(memory, &render->owned_lod_hits) != GPU_STATUS_OK) {
+        gpu_error_log(&memory->last_error);
+    }
+    for (uint32_t i = LOD_LEVELS_MAX; i-- > 0u;) {
+        if (device_memory_free(memory, &render->owned_lod_pools[i]) != GPU_STATUS_OK ||
+            device_memory_free(memory, &render->owned_lod_tables[i]) != GPU_STATUS_OK) {
+            gpu_error_log(&memory->last_error);
+        }
+    }
+}
+
+gpu_status_t render_open_lod(render_t *render, const render_lod_plan_t *plan, render_lod_sample_t sample,
+                             const void *sample_context) {
+    ASSERT_ALWAYS(render->frame_open != 0u && render->borrowed_lod == nullptr);
+    device_memory_t *const memory = render->borrowed_memory;
+    gpu_status_t status =
+        device_memory_alloc(memory, DEVICE_POOL_FRAMES, lod_hits_bytes(render->frame.width, render->frame.height),
+                            "far hits", &render->owned_lod_hits);
+    for (uint32_t i = 0u; i < plan->level_count && status == GPU_STATUS_OK; i++) {
+        status = device_memory_alloc(memory, DEVICE_POOL_VOXELS, render_lod_table_bytes(plan, i), "far column table",
+                                     &render->owned_lod_tables[i]);
+        if (status == GPU_STATUS_OK) {
+            status = device_memory_alloc(memory, DEVICE_POOL_VOXELS, render_lod_pool_bytes(plan, i), "far section pool",
+                                         &render->owned_lod_pools[i]);
+        }
+    }
+    if (status != GPU_STATUS_OK) {
+        gpu_error_log(&memory->last_error);
+        render_lod_blocks_give_back(render);
+        return status;
+    }
+    const uint64_t arena_bytes = render_lod_arena_bytes(plan) + sizeof(render_lod_t) + MC_CPU_CACHE_LINE_BYTES;
+    if (!heap_reserve(arena_bytes, &render->owned_lod_host)) {
+        render_lod_blocks_give_back(render);
+        return GPU_STATUS_OUT_OF_MEMORY; /* it has said why */
+    }
+    arena_init(&render->arena_lod, "render_lod", render->owned_lod_host.owned_base, render->owned_lod_host.bytes);
+    render_lod_t *const lod = arena_alloc(&render->arena_lod, sizeof(render_lod_t), alignof(render_lod_t));
+    status = render_lod_init(lod, &render->arena_lod, memory, render->borrowed_job, plan, render->owned_lod_tables,
+                             render->owned_lod_pools, &render->owned_lod_hits, sample, sample_context);
+    if (status != GPU_STATUS_OK) {
+        render_lod_deinit(lod);
+        arena_deinit(&render->arena_lod);
+        heap_release(&render->owned_lod_host);
+        render_lod_blocks_give_back(render);
+        return status;
+    }
+    render->borrowed_lod = lod;
+    render->frame.borrowed_lod = lod;
+    return GPU_STATUS_OK;
+}
+
+void render_close_lod(render_t *render) {
+    if (render->borrowed_lod == nullptr) {
+        return;
+    }
+    render_lod_deinit(render->borrowed_lod);
+    arena_deinit(&render->arena_lod);
+    heap_release(&render->owned_lod_host);
+    render_lod_blocks_give_back(render);
+    render->frame.borrowed_lod = nullptr;
+    render->borrowed_lod = nullptr;
+}
+
 void render_close_frame(render_t *render) {
     if (render->frame_open == 0u) {
         return;
     }
+    render_close_lod(render);
     render_entities_deinit(render->borrowed_entities);
     render_frame_deinit(&render->frame);
     arena_deinit(&render->arena_frame);

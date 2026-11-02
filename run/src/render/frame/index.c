@@ -5,6 +5,7 @@
 #include "assert/index.h"
 #include "log/index.h"
 #include "render/entities/index.h"
+#include "render/lod/index.h"
 #include "simd/copy/index.h"
 #include "tables/blocks/index.h"
 
@@ -443,7 +444,25 @@ gpu_status_t render_frame_draw(render_frame_t *frame, const world_buffers_t *buf
             return sent;
         }
     }
+    lod_scene_t far_scene;
+    const bool far = frame->borrowed_lod != nullptr && (features & SHADE_FEATURE_LOD) != 0u;
+    if (far) {
+        render_lod_scene(frame->borrowed_lod, &far_scene);
+    }
+    const shade_sun_t *const sun = &frame->scene.sun;
+    /* With no sun to speak of, nothing is lost by no rays towards it. */
+    const bool sun_shines = sun->direct[0] + sun->direct[1] + sun->direct[2] > 0.0f32;
+    const lod_light_t far_light = {
+        .borrowed_textures = frame->scene.borrowed_textures,
+        .borrowed_faces = frame->scene.borrowed_faces,
+        .sun_direction = {sun->direction[0], sun->direction[1], sun->direction[2]},
+        .material_count = frame->scene.material_count,
+        .shadows = (features & SHADE_FEATURE_SHADOW) != 0u && sun_shines ? 1u : 0u,
+    };
+    frame->scene.borrowed_lod_hits = far ? far_scene.borrowed_hits : nullptr;
     const frame_args_t args = {
+        .borrowed_lod = far ? &far_scene : nullptr,
+        .borrowed_lod_light = far ? &far_light : nullptr,
         .borrowed_world = &world,
         .borrowed_scene = &frame->scene,
         .borrowed_post = &frame->post,

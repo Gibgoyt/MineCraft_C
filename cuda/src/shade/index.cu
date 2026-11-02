@@ -606,7 +606,7 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
                              const post_temporal_t temporal, const shade_ao_pixel_t *ao_last, shade_ao_pixel_t *ao_next,
                              const entity_rays_box_t *entity_boxes, const entity_rays_hit_t *entity_hits,
                              const shade_texture_t *entity_textures, const entity_rays_mark_t mark,
-                             const traverse_hit_t *hits, shade_pixel_t *out) {
+                             const lod_hit_t *lod_hits, const traverse_hit_t *hits, shade_pixel_t *out) {
     const uint32_t pixel_x = blockIdx.x * blockDim.x + threadIdx.x;
     const uint32_t pixel_y = blockIdx.y * blockDim.y + threadIdx.y;
     if (pixel_x >= camera.width || pixel_y >= camera.height) {
@@ -672,6 +672,23 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
             float32_t colour[3];
             shade_box_colour(&context, &entity_boxes[entity.box], entity_textures, &entity, direction, colour);
             shade_add(sum, through, colour, sky, drawn ? shade_fog_behind(&post, first_t, entity.t) : 0.0F, 1.0F);
+            result.t = first_t;
+            break;
+        }
+        if (face == TRAVERSE_FACE_MISS && lod_hits != nullptr && lod_hits[index].material != LOD_NO_MATERIAL) {
+            /* Out of what full detail holds, and on to the far field: the same ray, which lod_frame has already followed. */
+            const lod_hit_t far = lod_hits[index];
+            first_t = drawn ? first_t : far.t;
+            float32_t colour[3] = {SHADE_MISSING_R, SHADE_MISSING_G, SHADE_MISSING_B};
+            const uint32_t texture = far.material < material_count ? faces[far.material * SHADE_FACES + far.face]
+                                                                   : (uint32_t)SHADE_NO_TEXTURE;
+            if (texture != SHADE_NO_TEXTURE) {
+                const bool water = see_through && far.material == water_material;
+                shade_far_colour(&sun, textures[texture].mean_rgba, water && tint,
+                                 water && (features & SHADE_FEATURE_WATER_REFLECTION) != 0u, &far, direction, sky,
+                                 colour);
+            }
+            shade_add(sum, through, colour, sky, drawn ? shade_fog_behind(&post, first_t, far.t) : 0.0F, 1.0F);
             result.t = first_t;
             break;
         }
@@ -924,6 +941,10 @@ gpu_status_t shade_frame_entities(gpu_error_t *error, const shade_scene_t *scene
     if (any_box && !shade_block_fits(entities->borrowed_hits, entity_rays_hits_bytes(camera->width, camera->height))) {
         return shade_refuse(error, "shade: the entity hits are missing or too small for the camera");
     }
+    if (scene->borrowed_lod_hits != nullptr &&
+        scene->borrowed_lod_hits->bytes < lod_hits_bytes(camera->width, camera->height)) {
+        return shade_refuse(error, "shade: the far field's hits are too small for the camera");
+    }
     const uint8_t *const lists = any_box || any_crack ? device_memory_pointer(entities->borrowed_lists) : nullptr;
     traverse_view_t view;
     const gpu_status_t status = traverse_view_from(error, world, &view);
@@ -942,6 +963,9 @@ gpu_status_t shade_frame_entities(gpu_error_t *error, const shade_scene_t *scene
                                                                                                        camera->height))
                          : nullptr,
         entities != nullptr ? entities->mark : entity_rays_mark_t{},
+        scene->borrowed_lod_hits != nullptr
+            ? (const lod_hit_t *)(const void *)device_memory_pointer(scene->borrowed_lod_hits)
+            : nullptr,
         (const traverse_hit_t *)(const void *)device_memory_pointer(hits),
         (shade_pixel_t *)(void *)device_memory_pointer(pixels));
     return device_memory_check(error, cudaGetLastError(), "shade: starting the kernel");

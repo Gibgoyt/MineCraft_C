@@ -24,6 +24,8 @@
     minecraft_c --headless --test-world [--walk] [--render-distance <chunks>] [--script ...] [--screenshot-dir ...] [--ticks ...]
                 [--width ...] [--height ...]      the same with no display: a script flies it, into PNG screenshots
 
+`--render-distance` is how far the world is drawn in all and `--full-detail` how far block by block, 32 chunks unless told: past it, coarse grids take over, and `--no-lod` stops the world where full detail does.
+
 `--no-shapes` draws every block a whole cube, and `--no-alpha` stops rays at see-through texels. `--no-transparency` stops them at water and part-covered texels too, `--no-water-reflection` leaves the mirror out of water, and `--no-water-tint` leaves its colour with depth out. `--no-ao` leaves out the short rays that darken corners, and `--no-taa` has each frame stand alone. `--god-rays` turns on the one effect that is off until asked for. Each effect of phase 9 is a
 switch like these until `run/src/ui/screen_settings/` (Stage 14.5) has a screen for them.
 
