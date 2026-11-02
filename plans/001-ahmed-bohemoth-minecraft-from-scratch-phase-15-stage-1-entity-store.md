@@ -55,6 +55,8 @@ All run on 2026-11-03.
 
 Appended as they land:
 
+- `1dd90ac`: the store, grid, body physics, animation, bench and test.
+
 ## Issues found
 
 1. **A body touching the edge of what is loaded froze there.**
