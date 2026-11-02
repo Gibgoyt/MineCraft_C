@@ -1,0 +1,15 @@
+/* See cuda/src/world_buffers/README.md. The C API, and what only CUDA code may see. */
+#ifndef MC_CUDA_WORLD_BUFFERS_INDEX_HU
+#define MC_CUDA_WORLD_BUFFERS_INDEX_HU
+
+#include "gpu_bridge/world_buffers/index.h"
+
+/* What a kernel takes. The traversal gets its pointers this way. */
+static inline const world_buffers_column_t *world_buffers_table_pointer(const world_buffers_t *buffers) {
+    return (const world_buffers_column_t *)buffers->borrowed_table->owned_address;
+}
+static inline const uint8_t *world_buffers_pool_pointer(const world_buffers_t *buffers) {
+    return (const uint8_t *)buffers->borrowed_pool->owned_address;
+}
+
+#endif

@@ -22,6 +22,7 @@ One per CUDA area, and each is the C API to it: `run/include/gpu_bridge/<area>/i
 |---|---|
 | `status` | `gpu_status_t`, `gpu_error_t`, and reporting a failure. The one part here with C behind it |
 | `device_memory` | The device allocator, in `cuda/src/device_memory/` |
+| `world_buffers` | The section pool and column table, in `cuda/src/world_buffers/`. `run/src/render/` owns its blocks |
 
 ## What it costs
 

@@ -12,6 +12,7 @@
 #include "machine/index.h"
 #include "main/cpu_check/index.h"
 #include "math/index.h"
+#include "render/index.h"
 #include "simd/index.h"
 #include "terrain/index.h"
 #include "texture/index.h"
@@ -232,6 +233,16 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         math_deinit(&app->math);
         return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
     }
+    if (!render_init(&app->render, &app->gpu_bridge.device_memory, &app->job, render_limits_default())) {
+        terrain_deinit(&app->terrain);
+        world_deinit(&app->world);
+        gpu_bridge_deinit(&app->gpu_bridge);
+        job_deinit(&app->job);
+        texture_deinit(&app->texture);
+        simd_deinit(&app->simd);
+        math_deinit(&app->math);
+        return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
+    }
     return MAIN_EXIT_OK;
 }
 
@@ -239,6 +250,7 @@ static void app_deinit(app_t *app) {
     input_deinit(&app->input);
     display_offscreen_deinit(&app->offscreen);
     display_deinit(&app->display);
+    render_deinit(&app->render);
     terrain_deinit(&app->terrain);
     world_deinit(&app->world);
     gpu_bridge_deinit(&app->gpu_bridge);
