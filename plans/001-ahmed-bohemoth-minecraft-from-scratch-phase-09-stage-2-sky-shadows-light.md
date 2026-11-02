@@ -79,6 +79,8 @@ On that terrain view, turning off the sky changes all 2073600 pixels, the fog 24
 
 Appended as they land:
 
+- `382302d` Give the world a sky, a day that goes round, fog with colour from the sun, one sun ray per surface and the light stored in each voxel, each with a setting, a measured cost and golden pictures.
+
 ## Issues found
 
 ### 1. Decided: Stage 08.2 issue 3. Stage 11.1 must store on each block the light its faces should show
