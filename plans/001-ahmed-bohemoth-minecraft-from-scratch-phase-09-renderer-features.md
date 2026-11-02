@@ -100,6 +100,8 @@ The command is in this branch's result, and needs a text console.
 
 Appended as they land:
 
+- `c4c6b9c` Make far water look like near water that deep so a sea has no edge at full detail, and record the Phase 9 gate check with costs measured on the integrated branch.
+
 ## Issues found
 
 ### A sea changed colour at the edge of full detail

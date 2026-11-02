@@ -118,6 +118,7 @@ Building: 4885 columns, with full detail's own columns beside them, took 123 s f
 Appended as they land:
 
 - `7c20c87` Draw the world past full detail out to a render distance of 512 in coarse grids built on workers and traced by the card, with a setting, a measured cost and golden pictures.
+- `c4c6b9c` Make far water look like near water that deep so a sea has no edge at full detail, and record the Phase 9 gate check with costs measured on the integrated branch.
 
 ## Issues found
 
