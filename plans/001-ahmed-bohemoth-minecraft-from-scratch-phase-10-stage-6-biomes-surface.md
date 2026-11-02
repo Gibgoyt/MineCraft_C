@@ -59,6 +59,8 @@ Wiring outside the owned paths, each the least that would do:
 
 Appended as they land:
 
+- `28da06d` Add all 53 biomes as config files, choose among them by the nearest box in the climate, and lay each biome's surface and cave linings, tested to find every biome in every world searched and to give the same bytes from 1 worker and 16.
+
 ## Issues found
 
 1. **The stage's owned paths leave out what reads its yaml.** Expected `config/biomes/` to be read by something in the owned paths. Actually the plan has `compile/src/game_tables/` read it (`plans/REPO_STRUCTURE.md`, line 119), and that tool's README says its parts arrive with their stages. Added the part there rather than typing a second copy of the table into `run/src/terrain/biome/`. Listed under wiring above.
