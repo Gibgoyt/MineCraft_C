@@ -1,0 +1,5 @@
+name: oak_planks
+hardness: 2
+tool: axe
+drops: [{ item: oak_planks, count: 1 }]
+texture: { all: blocks/oak_planks }

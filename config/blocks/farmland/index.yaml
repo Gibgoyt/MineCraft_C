@@ -1,0 +1,5 @@
+name: farmland
+hardness: 0.6
+tool: shovel
+drops: [{ item: dirt, count: 1 }]
+texture: { top: blocks/farmland, bottom: blocks/dirt, side: blocks/dirt }

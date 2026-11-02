@@ -1,0 +1,6 @@
+name: deepslate_copper_ore
+hardness: 4.5
+tool: pickaxe
+tier: stone
+drops: [{ item: raw_copper, count: 2, max: 5 }]
+texture: { all: blocks/deepslate_copper_ore }

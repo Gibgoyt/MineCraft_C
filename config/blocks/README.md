@@ -1,0 +1,51 @@
+# config/blocks
+
+One directory per block, and to see what a block does, open its one file:
+
+```yaml
+# config/blocks/dirt/index.yaml
+name: dirt
+hardness: 0.5
+tool: shovel
+drops: [{ item: dirt, count: 1 }]
+texture: { all: blocks/dirt }
+```
+
+To add a block: make `config/blocks/<name>/index.yaml`, and build. `compile/src/game_tables/blocks/` turns these into the tables, and refuses a field it does not know or a reference to something missing, with the line.
+
+## Fields
+
+| Field | Needed | Values | Default |
+|---|---|---|---|
+| `name` | yes | The directory's name: lower case, digits, underscores | |
+| `hardness` | yes | 0 to 1000, or `unbreakable`. 0 breaks at a touch | |
+| `drops` | yes | A list of rows, or `[]` for nothing. A row is below | |
+| `texture` | unless `shape: none` | A map of faces, below | |
+| `tool` | | `none pickaxe axe shovel hoe shears sword`: what breaks it fastest | `none` |
+| `tier` | | `none wood stone iron diamond`: the lowest of `tool` that gets the drops at all. Needs a `tool` other than `none` or `shears` | `none` |
+| `shape` | | `none cube slab stairs cross crop torch thin fluid` | `cube` |
+| `light` | | Block light given off, 0 to 15 | 0 |
+| `opacity` | | Light lost passing through, 0 to 15 | 15 for `cube`, otherwise 0 |
+| `solid` | | `true` if a body collides with it | `true` for `cube slab stairs`, otherwise `false` |
+| `replaceable` | | `true` if placing a block here overwrites it | `true` for `none fluid`, otherwise `false` |
+| `falls` | | `true` if gravity moves it | `false` |
+| `decays` | | `true` for leaves, which go away far from a log | `false` |
+
+### A drop row
+
+`{ item: gravel, count: 1, chance: 0.9 }`. Each row is rolled on its own.
+
+| Field | Needed | Values |
+|---|---|---|
+| `item` | yes | A block, or an item with `config/items/<item>/index.yaml` or `textures/items/<item>/index.mctex` |
+| `count` | yes | 1 to 64 |
+| `max` | | `count` to 64: gives a count from `count` to `max` |
+| `chance` | | Above 0, up to 1. Default 1 |
+
+### Faces
+
+`z` is up, and `west east north south` are `-x +x -y +y`. Either `all` alone, or every face covered by `top`, `bottom` and `side`, where a named face beats `side`. A value is `blocks/<name>`, in `textures/blocks/`. The sides of water and lava show their flowing texture.
+
+```yaml
+texture: { top: blocks/furnace_top, bottom: blocks/furnace_bottom, side: blocks/furnace_side, north: blocks/furnace_front }
+```

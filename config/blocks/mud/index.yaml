@@ -1,0 +1,5 @@
+name: mud
+hardness: 0.5
+tool: shovel
+drops: [{ item: mud, count: 1 }]
+texture: { all: blocks/mud }

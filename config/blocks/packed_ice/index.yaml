@@ -1,0 +1,5 @@
+name: packed_ice
+hardness: 0.5
+tool: pickaxe
+drops: []
+texture: { all: blocks/packed_ice }

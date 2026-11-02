@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 7, stage 1: Block tables
 
-**Status:** not started   (updated 2026-11-01)
+**Status:** done   (updated 2026-11-02)
 
 ## Goal
 
@@ -18,11 +18,11 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 ## Todo
 
-- [ ] Implement `compile/src/game_tables/index.c`, generating C tables in `build/generated/`
-- [ ] Write `config/blocks/<block>/index.yaml` for about 120 Overworld blocks; `config/blocks/dirt/index.yaml` must plainly show dirt drops dirt
-- [ ] Reject unknown fields and missing references with line-numbered errors
-- [ ] Register test `compile_game_tables`
-- [ ] Add a `README.md` (purpose, tier, what it owns, public functions, what may call it) to every new source directory, with exactly one `index.*` in each
+- [x] Implement `compile/src/game_tables/index.c`, generating C tables in `build/generated/`
+- [x] Write `config/blocks/<block>/index.yaml` for about 120 Overworld blocks; `config/blocks/dirt/index.yaml` must plainly show dirt drops dirt
+- [x] Reject unknown fields and missing references with line-numbered errors
+- [x] Register test `compile_game_tables`
+- [x] Add a `README.md` (purpose, tier, what it owns, public functions, what may call it) to every new source directory, with exactly one `index.*` in each
 
 ## Verification
 
@@ -37,4 +37,22 @@ Appended as they land:
 
 ## Issues found
 
-None.
+All 2026-11-02, by this stage.
+
+1. **133 blocks, where the plan says about 120.** Expected about 120. Actual, by `ls config/blocks | grep -v README | wc -l`: 133, and `about_120_blocks_with_air_first` holds it to 110 to 140. 16 go to eight trees' saplings and leaves, 8 to wheat's growth stages, one block each. Left as it is: each is used by a biome or a stage already planned. Metal blocks, wool, mushroom blocks, carrots and potatoes have textures and are not in yet; each is one file when a stage wants it.
+2. **The plan's path is not the real one.** The todo says `build/generated/`. Actual: `MC_GENERATED_DIR`, `build/<preset>/generated/`, as `plans/REPO_STRUCTURE.md` says. Tables are at `generated/tables/blocks/index.{h,c}`. Not `generated/game_tables/`, so that `#include "tables/blocks/index.h"` cannot be mistaken for `compile/include/game_tables/`.
+3. **A part beyond the todo.** The todo names `compile/src/game_tables/index.c`. The Owner there holds the command line and arena, and the work is in `compile/src/game_tables/blocks/`, so Stage 13.1 and the others add a part each, rather than growing one file past the limit.
+4. **My bug: garbage in error messages, caught by the test.** Expected: `hardness: soft` refused at line 2. Actual: `index.yaml:8:8: <random bytes>`. `yaml_get_*` keep the first problem by writing only if `error->line == 0`, and I passed an uninitialised `yaml_error_t`. Fixed, `= {0}` at each. `yaml_parse` clears it but the typed reads do not, and `compile/include/yaml/index.h` does not say so. That is out of my paths, so it is left and noted here for whoever uses them next.
+5. **A key's position is its value's, for a scalar.** Expected `colour: grey` to be reported at column 1. Actual: `3:9`. `yaml_node_t` holds the scalar's own line and column, and none for the key. The line is right, which is what was asked, so the tool is left and the tests corrected.
+6. **My bug: a deleted block stayed in the tables.** Expected: removing `config/blocks/x/` removes the block. Actual, tested with a probe block: CMake re-globbed, but Ninja does not rerun a command for an input gone from its list, so `BLOCK_ID_ZZZ_PROBE` stayed in the header with rc 0. Fixed: `cmake/generated.cmake` writes `generated/tables/inputs.txt` by `file(CONFIGURE)`, which changes only with the list, and the command depends on it. Tested again: gone. A following no-op build runs the generator 0 times. **The same hole is in Stage 06.4's texture blob:** a deleted texture stays in the blob until something else changes it. Out of my paths, left alone.
+7. **Drops name items that have no files yet.** "Reject missing references" needs items to exist, and `config/items/` is Stage 13.1's. For now a drop's item is good if it is a block, has `config/items/<item>/index.yaml`, or has `textures/items/<item>/index.mctex`. Stage 13.1 should drop the third.
+8. **Ids move when a block is added.** Air is 0 and the rest sort by name, since the agreed `config/blocks/dirt/index.yaml` has no id field. Stage 16.1 must save names or a table of them, not these numbers. It says so in `compile/src/game_tables/blocks/README.md` and the generated header.
+9. **Not yet called by anything.** `block_defs` is compiled and linked into `minecraft_c` in debug (`nm` shows it), and release's `-flto` removes it as unused. No game code reads it until Stage 07.2 and on. Wiring outside my owned paths, each the smallest I could make:
+    - `cmake/generated.cmake`: the custom command, which is what that file is for.
+    - `cmake/targets.cmake`: the generated source in `mc_run`, and in the test's target.
+    - `plans/REPO_STRUCTURE.md`: what was added.
+10. **Fields beyond the todo's list.** `tier`, `opacity`, `solid`, `replaceable`, `falls` and `decays`. Mining needs a tier, light an opacity, and Stage 11.2 falling sand and leaf decay, and the point of the yaml is that those stages need no list of block names in C.
+11. **Hardnesses are my own entry of common knowledge about the game.** No Mojang jar or decompiled code was read. Mining feel is for Ahmed, once Stage 12.3 exists.
+12. **Tests checked by breaking things on purpose.** A one-off script, not committed. Caught: dirt dropping cobblestone (`dirt_drops_dirt`), torch light 13, stone hardness 1.6, no unknown-field check on drops, air not first, `side` covering the bottom, a silent missing file, `max` below `count`, no check on a drop's item. Refused by the build itself, with file and line: `dropz:` in dirt's yaml, and a missing texture.
+13. **Beyond the Verification list, also run.** All of `ctest --preset debug`, 43 of 43, including `clang_format`. `compile_game_tables` in `sanitize` and `release`. The generated files are byte-identical across the three, by `cmp`. Only `--target` builds in those two presets, so their other tests were not run.
+14. **Process.** The worktree isolation check refused compound shell commands as too complex to verify. I re-ran them as plain separate commands, and did scripted edits with Python files in the scratchpad. All stayed in this worktree. One stray run of the test binary, `compile_game_tables --help`, was outside `timeout` and the lock; it ended by itself at once, and `pgrep` shows nothing left.

@@ -1,0 +1,5 @@
+name: tulip
+hardness: 0
+drops: [{ item: tulip, count: 1 }]
+shape: cross
+texture: { all: blocks/tulip }

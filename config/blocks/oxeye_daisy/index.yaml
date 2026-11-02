@@ -1,0 +1,5 @@
+name: oxeye_daisy
+hardness: 0
+drops: [{ item: oxeye_daisy, count: 1 }]
+shape: cross
+texture: { all: blocks/oxeye_daisy }

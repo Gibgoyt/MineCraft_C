@@ -1,0 +1,6 @@
+name: copper_ore
+hardness: 3
+tool: pickaxe
+tier: stone
+drops: [{ item: raw_copper, count: 2, max: 5 }]
+texture: { all: blocks/copper_ore }

@@ -1,0 +1,6 @@
+name: iron_ore
+hardness: 3
+tool: pickaxe
+tier: stone
+drops: [{ item: raw_iron, count: 1 }]
+texture: { all: blocks/iron_ore }

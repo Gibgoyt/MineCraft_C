@@ -1,0 +1,5 @@
+name: wheat_stage_7
+hardness: 0
+drops: [{ item: wheat_seeds, count: 1 }]
+shape: crop
+texture: { all: blocks/wheat_stage_7 }

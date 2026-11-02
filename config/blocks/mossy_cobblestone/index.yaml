@@ -1,0 +1,6 @@
+name: mossy_cobblestone
+hardness: 2
+tool: pickaxe
+tier: wood
+drops: [{ item: mossy_cobblestone, count: 1 }]
+texture: { all: blocks/mossy_cobblestone }

@@ -1,0 +1,5 @@
+name: crafting_table
+hardness: 2.5
+tool: axe
+drops: [{ item: crafting_table, count: 1 }]
+texture: { top: blocks/crafting_table_top, bottom: blocks/crafting_table_bottom, side: blocks/crafting_table_side }

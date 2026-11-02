@@ -1,0 +1,4 @@
+name: tnt
+hardness: 0
+drops: [{ item: tnt, count: 1 }]
+texture: { top: blocks/tnt_top, bottom: blocks/tnt_bottom, side: blocks/tnt_side }

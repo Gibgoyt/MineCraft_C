@@ -1,0 +1,5 @@
+name: cornflower
+hardness: 0
+drops: [{ item: cornflower, count: 1 }]
+shape: cross
+texture: { all: blocks/cornflower }

@@ -1,0 +1,5 @@
+name: podzol
+hardness: 0.5
+tool: shovel
+drops: [{ item: dirt, count: 1 }]
+texture: { top: blocks/podzol_top, bottom: blocks/dirt, side: blocks/podzol_side }

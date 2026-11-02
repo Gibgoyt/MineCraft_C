@@ -1,0 +1,6 @@
+name: calcite
+hardness: 0.75
+tool: pickaxe
+tier: wood
+drops: [{ item: calcite, count: 1 }]
+texture: { all: blocks/calcite }

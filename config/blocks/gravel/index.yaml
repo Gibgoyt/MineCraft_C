@@ -1,0 +1,8 @@
+name: gravel
+hardness: 0.6
+tool: shovel
+drops:
+  - { item: gravel, count: 1, chance: 0.9 }
+  - { item: flint, count: 1, chance: 0.1 }
+falls: true
+texture: { all: blocks/gravel }

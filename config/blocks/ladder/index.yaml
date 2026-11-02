@@ -1,0 +1,6 @@
+name: ladder
+hardness: 0.4
+tool: axe
+drops: [{ item: ladder, count: 1 }]
+shape: thin
+texture: { all: blocks/ladder }

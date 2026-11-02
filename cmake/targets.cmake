@@ -45,7 +45,7 @@ add_library(mc_cuda OBJECT ${mc_cuda_sources})
 target_include_directories(mc_cuda PRIVATE "${CMAKE_SOURCE_DIR}/cuda/include" "${CMAKE_SOURCE_DIR}/run/include"
   "${MC_GENERATED_DIR}")
 
-add_library(mc_run OBJECT ${mc_run_sources})
+add_library(mc_run OBJECT ${mc_run_sources} ${mc_generated_run_sources})
 target_include_directories(mc_run PRIVATE "${CMAKE_SOURCE_DIR}/run/include" "${MC_GENERATED_DIR}")
 
 add_dependencies(mc_asm mc_prebuild)
@@ -191,6 +191,11 @@ endforeach()
 # tests/asm/vec_batch includes the generated index.h, to have the compiler confirm every offset.
 if(TARGET mc_test_asm_vec_batch)
   add_dependencies(mc_test_asm_vec_batch mc_struct_offsets)
+endif()
+
+# tests/compile/game_tables reads the real tables. Tests under compile/ do not link mc_run, so it compiles them itself.
+if(TARGET mc_test_compile_game_tables)
+  target_sources(mc_test_compile_game_tables PRIVATE ${mc_generated_run_sources})
 endif()
 
 # ---- Benchmarks ------------------------------------------------------------------------------------

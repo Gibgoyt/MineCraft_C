@@ -1,0 +1,7 @@
+name: lava
+hardness: 100
+drops: []
+shape: fluid
+light: 15
+opacity: 15
+texture: { top: blocks/lava_still, bottom: blocks/lava_still, side: blocks/lava_flow }

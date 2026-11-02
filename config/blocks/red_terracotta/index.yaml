@@ -1,0 +1,6 @@
+name: red_terracotta
+hardness: 1.25
+tool: pickaxe
+tier: wood
+drops: [{ item: red_terracotta, count: 1 }]
+texture: { all: blocks/red_terracotta }

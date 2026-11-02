@@ -1,0 +1,6 @@
+name: deepslate_diamond_ore
+hardness: 4.5
+tool: pickaxe
+tier: iron
+drops: [{ item: diamond, count: 1 }]
+texture: { all: blocks/deepslate_diamond_ore }

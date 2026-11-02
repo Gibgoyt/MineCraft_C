@@ -1,0 +1,7 @@
+name: dead_bush
+hardness: 0
+tool: shears
+drops: [{ item: stick, count: 1, max: 2, chance: 0.5 }]
+shape: cross
+replaceable: true
+texture: { all: blocks/dead_bush }

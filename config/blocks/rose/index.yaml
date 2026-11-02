@@ -1,0 +1,5 @@
+name: rose
+hardness: 0
+drops: [{ item: rose, count: 1 }]
+shape: cross
+texture: { all: blocks/rose }

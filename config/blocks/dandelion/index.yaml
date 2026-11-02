@@ -1,0 +1,5 @@
+name: dandelion
+hardness: 0
+drops: [{ item: dandelion, count: 1 }]
+shape: cross
+texture: { all: blocks/dandelion }

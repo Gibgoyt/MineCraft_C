@@ -1,0 +1,6 @@
+name: stone_bricks
+hardness: 1.5
+tool: pickaxe
+tier: wood
+drops: [{ item: stone_bricks, count: 1 }]
+texture: { all: blocks/stone_bricks }

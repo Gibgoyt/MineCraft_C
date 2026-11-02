@@ -1,0 +1,6 @@
+name: obsidian
+hardness: 50
+tool: pickaxe
+tier: diamond
+drops: [{ item: obsidian, count: 1 }]
+texture: { all: blocks/obsidian }

@@ -113,7 +113,7 @@ Headers mirror source paths exactly. Include roots: `run/include`, `compile/incl
 | Path | Contents | Read by |
 |---|---|---|
 | `config/machine.yaml` | Platform (`posix: true`), threads, CPU, SIMD, GPU, display, memory, world constants | `compile/src/machine_config/` |
-| `config/blocks/<block>/index.yaml` | Hardness, right tool, drops, shape, light, textures | `compile/src/game_tables/` |
+| `config/blocks/<block>/index.yaml` | Hardness, right tool, drops, shape, light, textures. `config/blocks/README.md` lists every field | `compile/src/game_tables/` |
 | `config/items/<item>/index.yaml` | Stack size, durability, food, tool tier | `compile/src/game_tables/` |
 | `config/recipes/<recipe>/index.yaml` | Crafting and smelting | `compile/src/game_tables/` |
 | `config/biomes/<biome>/index.yaml` | Climate range, surface blocks, features | `compile/src/game_tables/` |
@@ -152,7 +152,7 @@ Layout: `compile/src/<tool>/index.c`, `compile/include/<tool>/index.h`, `README.
 | `texture_pack` | Open pack in `/tmp/mc_c_assets/` → `textures/`; `verify` checks that tree with no pack. Parts: `support mctex manifest pack output verify`. Run by hand, never by the build | 06.2 |
 | `texture_vector` | Procedural recipes -> `textures/`, and vector data per texture (`.mcvec`); `check` holds the tree to `textures/vector.yaml`. Parts: `analyze palette mcvec materials recipe`. `recipes` and `check` are run by hand and by its test; 06.4's blob step runs `vectors` | 06.3 |
 | `texture_blob` | Mip chains, and every texture with its vector data in one blob, in `build/<preset>/generated/textures/`, run by `cmake/generated.cmake`. Part: `mip`. The format is `run/include/types/texture_blob/` | 06.4 |
-| `game_tables` | `config/{blocks,items,recipes,biomes,mobs}` → C tables | 07.1 |
+| `game_tables` | `config/{blocks,items,recipes,biomes,mobs}` → C tables in `build/<preset>/generated/tables/`, compiled into `mc_run` and included as `"tables/blocks/index.h"`, run by `cmake/generated.cmake`. Part so far: `blocks` (07.1); the others arrive with their stages | 07.1 |
 
 ---
 
@@ -366,6 +366,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/compile/texture_pack/` | ctest `compile_texture_pack`: builds its own small pack at run time, and checks the committed `textures/` with no pack |
 | `tests/compile/texture_vector/` | ctest `compile_texture_vector`: vector data worked by hand, every recipe operation, bad input, and the committed `textures/` |
 | `tests/compile/texture_blob/` | ctest `compile_texture_blob`: the mip rules by hand-worked images, the blob's layout, and bad input |
+| `tests/compile/game_tables/` | ctest `compile_game_tables`: the real block tables against what `config/blocks/` says, dirt drops dirt, and each bad file refused at its line. `cmake/targets.cmake` compiles the generated tables into it |
 | `tests/compile/{inflate,png}/fixtures/` | Committed streams and images from independent encoders, with `generate.py`, which wrote them and is not part of the build |
 | `tests/run/<system>/<part>/` | Game tests |
 | `tests/run/types/` | ctest `run_types`, covering all of Stage 03.1: `types`, `assert`, `log`, `main/cpu_check`, `asm/src/cpuid`, and the built program's `--report` and failure paths |

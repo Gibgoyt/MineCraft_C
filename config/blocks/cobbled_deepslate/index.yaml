@@ -1,0 +1,6 @@
+name: cobbled_deepslate
+hardness: 3.5
+tool: pickaxe
+tier: wood
+drops: [{ item: cobbled_deepslate, count: 1 }]
+texture: { all: blocks/cobbled_deepslate }

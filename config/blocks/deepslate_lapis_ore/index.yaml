@@ -1,0 +1,6 @@
+name: deepslate_lapis_ore
+hardness: 4.5
+tool: pickaxe
+tier: stone
+drops: [{ item: lapis_lazuli, count: 4, max: 9 }]
+texture: { all: blocks/deepslate_lapis_ore }
