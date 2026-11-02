@@ -33,4 +33,4 @@ One ray for each far surface that faces it, from just outside the surface, throu
 
 ## What is simple about it
 
-A far surface is its face's mean colour and has no texture: a voxel is many blocks, and `mean_rgba` is what `compile/*/texture_vector` made for this. Water out there is deep and clear, with the sky reflected for how square a ray meets it, and no ray to its bottom. A far surface takes no AO and no reflections, and has no shape but a cube.
+A far surface is its face's mean colour and has no texture: a voxel is many blocks, and `mean_rgba` is what `compile/*/texture_vector` made for this. Water out there is what near water comes to when deep: the sky reflected for how square a ray meets it, the texture's mean as far as that covers, and what deep water gives back, with no ray to its bottom. It has no sides, as a side is only where a level rounds the surface, and a ray that came in through near water sees only more water. A far surface takes no AO and no reflections, and has no shape but a cube.

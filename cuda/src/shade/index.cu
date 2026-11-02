@@ -685,8 +685,8 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
             if (texture != SHADE_NO_TEXTURE) {
                 const bool water = see_through && far.material == water_material;
                 shade_far_colour(&sun, textures[texture].mean_rgba, water && tint,
-                                 water && (features & SHADE_FEATURE_WATER_REFLECTION) != 0u, &far, direction, sky,
-                                 colour);
+                                 water && (features & SHADE_FEATURE_WATER_REFLECTION) != 0u,
+                                 water && last_material == water_material, &far, direction, sky, colour);
             }
             shade_add(sum, through, colour, sky, drawn ? shade_fog_behind(&post, first_t, far.t) : 0.0F, 1.0F);
             result.t = first_t;

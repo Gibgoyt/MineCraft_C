@@ -30,10 +30,6 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
     tools/test-or-build.sh timeout 300 ctest --preset debug -R '^standards_lint$' --output-on-failure
     pgrep -a minecraft_c    # must print nothing
 
-## Commits
-
-Appended as they land:
-
 ## Results
 
 Verification on 2026-11-02, in this worktree: the build, `render_feature_shapes` and `standards_lint` pass. All 62 ctests pass on debug, and `render_feature_shapes` also passes on a clean release build. `pgrep -a minecraft_c` prints nothing.
@@ -112,3 +108,9 @@ Appended as they land:
 - **Expected:** rays from a diagonal of 36 cells from -64 all reach their blocks.
 - **What actually happened:** cases 0 to 5 missed, with shapes on and off. The map loads a circle of columns, and column (-4, -4) is outside a radius of 5.
 - **What was done:** a bug in the test and not the kernel. It now starts at -36 with a radius of 8, and says why.
+
+### 7. The gate checker's note on this stage's cost table
+
+- **Expected:** the table to stand for what the game draws now.
+- **What actually happened:** it was measured with the land nearly black, before light and this stage met. On the integrated branch terrain shade reads 1.73 to 1.83 ms where it says 0.235 to 0.289 ms. What each setting adds is still about what it says.
+- **What was done:** nothing here changed. The numbers to go by are in the phase file's table.

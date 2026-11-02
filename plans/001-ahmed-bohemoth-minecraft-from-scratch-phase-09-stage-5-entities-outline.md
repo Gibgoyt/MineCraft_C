@@ -150,3 +150,9 @@ Appended as they land:
 - **The crack's look is the pack's:** a mottled texture in `blocks/crack`, over the colour in linear light. Whether it reads well in play is for Ahmed's eye.
 - **The outline is hard-edged and is not antialiased,** as Stage 12.2's was, and is hidden by what stands more than 0.05 blocks and 8 pixels' width in front, chosen from these tests. A line along something in front of it can move by a pixel between frames under TAA, which was not watched in motion.
 - **The harness refused some of my compound commands** as too complex to verify, and none of those ran: a heredoc with a mkdir, and a lint with `$PWD`. They were run as plain commands.
+
+### 6. The gate checker's note on the lists' cost
+
+- **Expected:** the last row of the cost table, 16.556 ms on the host, and 1.571 ms for 4096 items, to come out about the same again.
+- **What actually happened:** two release runs on the integrated branch gave 2.967 ms and 0.305 ms in the first. The card's columns agree with the table. Why the host's differ by this much was not found, and those runs cannot be repeated: other agents' builds were sharing the machine then, which may be it.
+- **What was done:** nothing changed. Issue 3 stands as a worst case, by less than it says. The phase file has the new numbers.

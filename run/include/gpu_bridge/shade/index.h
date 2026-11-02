@@ -482,20 +482,27 @@ SHADE_BOTH_SIDES static inline void shade_water_tint(float32_t blocks, float32_t
 }
 
 /* What a far surface looks like: a coarse voxel has no texels to speak of, so it is its face's mean colour under that face's light. Water
- * that is deep and clear is all a far ray can tell of it, with no ray to its bottom: what deep water gives back, and with reflect the sky
- * off its surface, for how square the ray meets it. */
+ * that is deep and clear is all a far ray can tell of it, with no ray to its bottom, so it is what near water that deep comes to: the sky
+ * off its surface with reflect, for how square the ray meets it, then the texture's mean as far as that covers, over what deep water
+ * gives back. Water has no sides: a coarse voxel's side is only where a level's rounding of the surface shows, so it is lit and mirrors as
+ * a top does, and asks no sun of its own, as lod_frame sends no ray for a side turned from the sun. And from in_water, a ray that came in
+ * through near water, a far voxel of water is more of the same: there is no surface to it, only what deep water gives back. */
 SHADE_BOTH_SIDES static inline void shade_far_colour(const shade_sun_t *sun, const uint8_t mean_rgba[4],
-                                                     bool deep_water, bool reflect, const lod_hit_t *hit,
+                                                     bool deep_water, bool reflect, bool in_water, const lod_hit_t *hit,
                                                      const float32_t direction[3], const float32_t sky[3],
                                                      float32_t out[3]) {
-    const uint32_t face = hit->face;
+    const bool water = deep_water || reflect;
+    const uint32_t face = water ? (uint32_t)TRAVERSE_FACE_POS_Z : hit->face;
+    const bool sunlit = hit->sun == LOD_SUN_SEEN || (water && hit->face != TRAVERSE_FACE_POS_Z);
     float32_t light[3];
-    shade_surface_light(sun, face, SHADE_LIGHT_OPEN_SKY, hit->sun == LOD_SUN_SEEN ? F32(1.0) : F32(0.0), light);
+    shade_surface_light(sun, face, SHADE_LIGHT_OPEN_SKY, sunlit ? F32(1.0) : F32(0.0), light);
     const float32_t deep[3] = {SHADE_WATER_DEEP_R, SHADE_WATER_DEEP_G, SHADE_WATER_DEEP_B};
     const float32_t cosine = direction[face >> 1] < F32(0.0) ? -direction[face >> 1] : direction[face >> 1];
-    const float32_t share = reflect ? shade_water_fresnel(cosine) : F32(0.0);
+    const float32_t share = reflect && !in_water ? shade_water_fresnel(cosine) : F32(0.0);
+    const float32_t cover = in_water ? F32(0.0) : (float32_t)mean_rgba[3] / F32(255.0);
     for (uint32_t i = 0u; i < 3u; i += 1u) {
-        const float32_t own = deep_water ? deep[i] : shade_srgb_to_linear((float32_t)mean_rgba[i] / F32(255.0));
+        const float32_t mean = shade_srgb_to_linear((float32_t)mean_rgba[i] / F32(255.0));
+        const float32_t own = deep_water ? mean * cover + deep[i] * (F32(1.0) - cover) : mean;
         out[i] = own * light[i] * (F32(1.0) - share) + sky[i] * share;
     }
 }

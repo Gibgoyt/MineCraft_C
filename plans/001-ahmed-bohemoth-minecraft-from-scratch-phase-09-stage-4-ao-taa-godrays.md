@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 9, stage 4: AO, TAA and god rays
 
-**Status:** done, with `run_render_frame` failing from before this stage: see issue 1   (updated 2026-11-02)
+**Status:** done, but for how TAA and god rays look in motion, which is Ahmed's to judge   (updated 2026-11-02)
 
 ## Goal
 
@@ -104,7 +104,9 @@ Appended as they land:
 
 ## Issues found
 
-### 1. `run_render_frame`'s golden pictures still fail, from before this stage. Not fixed here
+### 1. `run_render_frame`'s golden pictures still fail, from before this stage. Fixed since, by `81783f8` and `6f0f052`
+
+- **Gate checker, 2026-11-02:** it passes on the integrated branch. This stage's cost table, and what it says of AO on dark land, are from when the land was dark. The phase file has the numbers now.
 
 - **Expected:** `run_render_frame` to pass.
 - **What actually happened:** `tests/run/render/frame/index.c`, `golden_pictures_match`: `start.png` 53330, `north_low.png` 55941 and `down.png` 55008 of 57600 pixels past the tolerance: the very numbers Stage 09.3 issue 1 gave, with this stage's bits off in that test. A real run, `minecraft_c --headless --test-world --god-rays`, shows the land near black by day in its screenshot, with sand, leaves and water lit.

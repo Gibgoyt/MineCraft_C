@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 9, stage 3: Water and glass
 
-**Status:** done, with `run_render_frame` failing from before this stage: see issue 1   (updated 2026-11-02)
+**Status:** done   (updated 2026-11-02)
 
 ## Goal
 
@@ -82,7 +82,9 @@ Appended as they land:
 
 ## Issues found
 
-### 1. Real terrain draws almost black, and `run_render_frame`'s golden pictures fail, from before this stage. Not fixed here, needs a decision
+### 1. Real terrain draws almost black, and `run_render_frame`'s golden pictures fail, from before this stage. Fixed since, by `81783f8` and `6f0f052`
+
+- **Gate checker, 2026-11-02:** `run_render_frame` passes on the integrated branch, and a real run's land is lit: looked at, at 960x540. This stage's terrain cost rows are from when it was dark. The phase file has the numbers now.
 
 - **Expected:** `run_render_frame` to pass on the integration branch, and terrain at noon to look lit.
 - **What actually happened:** `tests/run/render/frame/index.c:1145`, `golden_pictures_match`: `start.png` 53330, `north_low.png` 55941 and `down.png` 55008 of 57600 pixels past the tolerance. With this stage's three bits turned off in that test by hand, it still failed, on 53247, 55941 and 54263. Making the pictures again and looking at them showed land and hills near black at noon, with only leaves and water lit.
