@@ -78,6 +78,8 @@ So on terrain all of this costs 0.7 ms, and at the worst here 3.4 ms of shading.
 
 Appended as they land:
 
+- `3347add` Send rays on through glass, ice and water, with a reflection off the surface of water and colour that grows with depth, each with a setting, a measured cost and golden pictures.
+
 ## Issues found
 
 ### 1. Real terrain draws almost black, and `run_render_frame`'s golden pictures fail, from before this stage. Not fixed here, needs a decision
