@@ -1080,6 +1080,118 @@ TEST(water_that_leaves_with_its_column_leaves_nothing_behind) {
     sim_end(sim);
 }
 
+/* A way down: the floor gone at one voxel, and stone under it so that what falls in stays there. */
+static void sim_hole(test_context_t *t, sim_t *sim, int32_t x, int32_t y) {
+    sim_set(t, sim, x, y, SIM_FLOOR_Z - 1, BLOCK_ID_STONE);
+    sim_set(t, sim, x, y, SIM_FLOOR_Z, BLOCK_ID_AIR);
+}
+
+TEST(water_looks_4_blocks_for_a_way_down_and_lava_2_and_no_further) {
+    {
+        sim_t *const sim = sim_begin(t);
+        sim_floor(t, sim, BLOCK_ID_STONE);
+        sim_hole(t, sim, -4, SIM_MID); /* 4 from the water: it goes only that way */
+        sim_set(t, sim, -8, SIM_MID, 1, BLOCK_ID_WATER);
+        sim_hole(t, sim, 25, SIM_MID); /* 5 from the water: it does not know, and goes all ways */
+        sim_set(t, sim, 20, SIM_MID, 1, BLOCK_ID_WATER);
+        sim_run(sim, 7u);
+        CHECK_EQ_U64(sim_at(t, sim, -7, SIM_MID, 1), BLOCK_ID_WATER);
+        CHECK_EQ_U64(sim_at(t, sim, -9, SIM_MID, 1), BLOCK_ID_AIR);
+        CHECK_EQ_U64(sim_at(t, sim, -8, SIM_MID + 1, 1), BLOCK_ID_AIR);
+        CHECK_EQ_U64(sim_at(t, sim, -8, SIM_MID - 1, 1), BLOCK_ID_AIR);
+        CHECK_EQ_U64(sim_at(t, sim, 21, SIM_MID, 1), BLOCK_ID_WATER);
+        CHECK_EQ_U64(sim_at(t, sim, 19, SIM_MID, 1), BLOCK_ID_WATER);
+        CHECK_EQ_U64(sim_at(t, sim, 20, SIM_MID + 1, 1), BLOCK_ID_WATER);
+        CHECK_EQ_U64(sim_at(t, sim, 20, SIM_MID - 1, 1), BLOCK_ID_WATER);
+        sim_end(sim);
+    }
+    {
+        sim_t *const sim = sim_begin(t);
+        sim_floor(t, sim, BLOCK_ID_STONE);
+        sim_hole(t, sim, -6, SIM_MID); /* 2 from the lava */
+        sim_set(t, sim, -8, SIM_MID, 1, BLOCK_ID_LAVA);
+        sim_hole(t, sim, 23, SIM_MID); /* 3 from the lava */
+        sim_set(t, sim, 20, SIM_MID, 1, BLOCK_ID_LAVA);
+        sim_run(sim, 32u);
+        CHECK_EQ_U64(sim_at(t, sim, -7, SIM_MID, 1), BLOCK_ID_LAVA);
+        CHECK_EQ_U64(sim_at(t, sim, -9, SIM_MID, 1), BLOCK_ID_AIR);
+        CHECK_EQ_U64(sim_at(t, sim, -8, SIM_MID + 1, 1), BLOCK_ID_AIR);
+        CHECK_EQ_U64(sim_at(t, sim, 21, SIM_MID, 1), BLOCK_ID_LAVA);
+        CHECK_EQ_U64(sim_at(t, sim, 19, SIM_MID, 1), BLOCK_ID_LAVA);
+        CHECK_EQ_U64(sim_at(t, sim, 20, SIM_MID + 1, 1), BLOCK_ID_LAVA);
+        sim_end(sim);
+    }
+}
+
+/* Going down takes all a flowing voxel has, unless 3 sources beside it feed it: the edge of a sea runs both ways. */
+TEST(water_going_down_runs_sideways_too_only_with_3_sources_beside_it) {
+    sim_t *const sim = sim_begin(t);
+    sim_floor(t, sim, BLOCK_ID_STONE);
+    /* 3 sources round a hole. The fourth side is open. */
+    sim_hole(t, sim, 8, SIM_MID);
+    sim_set(t, sim, 7, SIM_MID, 1, BLOCK_ID_WATER);
+    sim_set(t, sim, 8, SIM_MID + 1, 1, BLOCK_ID_WATER);
+    sim_set(t, sim, 8, SIM_MID - 1, 1, BLOCK_ID_WATER);
+    /* 2 sources and a wall, the same otherwise. */
+    sim_hole(t, sim, 24, SIM_MID);
+    sim_set(t, sim, 23, SIM_MID, 1, BLOCK_ID_WATER);
+    sim_set(t, sim, 24, SIM_MID + 1, 1, BLOCK_ID_WATER);
+    sim_set(t, sim, 24, SIM_MID - 1, 1, BLOCK_ID_STONE);
+    (void)sim_settle(t, sim);
+    CHECK_EQ_U64(sim_at(t, sim, 8, SIM_MID, 0), BLOCK_ID_WATER);
+    CHECK_EQ_U64(sim_at(t, sim, 9, SIM_MID, 1), BLOCK_ID_WATER);
+    CHECK_EQ_U64(sim_at(t, sim, 24, SIM_MID, 0), BLOCK_ID_WATER);
+    CHECK_EQ_U64(sim_at(t, sim, 25, SIM_MID, 1), BLOCK_ID_AIR);
+    sim_end(sim);
+}
+
+/* A wake waiting for a column that has gone does not run on the column that took its place: that one's sand hangs, as terrain
+ * does, until something next to it changes. */
+TEST(a_wake_for_a_column_that_left_does_not_run_on_the_one_that_came_back) {
+    sim_t *const sim = sim_begin(t);
+    sim_set(t, sim, 24, SIM_MID, 10, BLOCK_ID_SAND);
+    world_tick_step(&sim->tick);
+    CHECK(world_tick_pending(&sim->tick) != 0u);
+    sim_unload(sim, 1, 0);
+    sim_reload(t, sim, 1, 0);
+    column_t *const column = world_map_column_at(&sim->map, 1, 0);
+    REQUIRE(column != nullptr);
+    REQUIRE(column_block_set(column, &sim->pool, 8u, (uint32_t)SIM_MID, 10, BLOCK_ID_SAND) == COLUMN_STATUS_OK);
+    sim_run_only_ticks(sim, 5u);
+    CHECK_EQ_U64(sim_at(t, sim, 24, SIM_MID, 10), BLOCK_ID_SAND);
+    CHECK_EQ_U64(sim_at(t, sim, 24, SIM_MID, 9), BLOCK_ID_AIR);
+    sim_end(sim);
+}
+
+/* A sealed pool of sources comes due all at once and writes nothing, so only the limit on fires holds it back. */
+TEST(one_tick_runs_no_more_than_its_limit_even_when_nothing_writes) {
+    sim_t *const sim = sim_begin(t);
+    sim_floor(t, sim, BLOCK_ID_STONE);
+    sim_ring(t, sim, 10);
+    for (int32_t z = 1; z <= 10; z++) {
+        for (int32_t y = SIM_MIN + 1; y < SIM_END - 1; y++) {
+            for (int32_t x = SIM_MIN + 1; x < SIM_END - 1; x++) {
+                sim_set(t, sim, x, y, z, BLOCK_ID_WATER);
+            }
+        }
+    }
+    const uint64_t log_before = sim->edit.log_next;
+    uint64_t most = 0u;
+    uint64_t total = 0u;
+    for (uint32_t i = 0u; i < 20u; i++) {
+        const uint64_t fired_before = sim->tick.fired_count;
+        world_tick_step(&sim->tick);
+        const uint64_t fired = sim->tick.fired_count - fired_before;
+        most = fired > most ? fired : most;
+        total += fired;
+    }
+    CHECK_EQ_U64(most, WORLD_TICK_FIRES_PER_TICK);
+    CHECK(total > WORLD_TICK_FIRES_PER_TICK);
+    CHECK_EQ_U64(world_tick_pending(&sim->tick), 0u);
+    CHECK_EQ_U64(sim->edit.log_next, log_before);
+    sim_end(sim);
+}
+
 /* ---- Running out ----------------------------------------------------------------------------------------------------- */
 
 TEST(with_too_few_nodes_wakes_are_dropped_and_counted_and_it_keeps_going) {
