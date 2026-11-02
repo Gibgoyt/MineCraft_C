@@ -64,6 +64,10 @@ Wiring outside the owned paths, each the least that would do:
 
 Appended as they land:
 
+- `38cc760` Grow every tree, plant, lake, ice and snow across chunks purely from the seed, run all terrain stages in terrain_generate_box, and add the bench and biome tour.
+- `4efc4a6` Test terrain features section by section and on all low land, where the first tests let a tree stand in water and a chunk give up too early.
+- `7fd9f25` Test one layer at the tip of a tree, record the terrain bench results, and record Stage 10.7's results, wiring and issues in its stage file.
+
 ## Issues found
 
 1. **The previous attempt's work could not be picked up.** Expected `git merge worktree-wf_916eee71-48c-67` to bring it. Actually that printed `Already up to date`: its report says nothing was committed, and its branch tip is `45351f2`, a merge from the integration branch. Its files are uncommitted in that worktree. I was told to stay out of other worktrees, and its report warns that a killed mutation run may have left a bug in its `index.c`, so I did not read or copy them. All of this stage was written again here. Its `mutate.py` and `fix5.py` in the shared scratchpad were read for its list of mutations and its README wiring. That worktree still holds the old files, and nothing here depends on them.
@@ -71,10 +75,12 @@ Appended as they land:
 2. **A first bug, caught by its test.** Expected 0.05 oaks a chunk in plains. Actually 217 on 220 chunks (`fractional_tries_come_out_as_fractions`), because a try passed on `chance * most < rate`, and for a `most` of 0.05 that is always true. Fixed: `chance * tries < rate`.
 
 3. **Two mutations survive.** Expected every mutation to fail a test.
-   - "Any tree stands in water": `column->water > (mangrove ? 5 : 0)` changed to `> 5`. No test fails, in 545 wet chunks of land holding 4302 logs, since nothing but mud counts as soil under water, and only mangrove swamps have that. So in these worlds the check does nothing that soil does not already do. Kept: it says what is meant, and a biome file could change that.
+   - "Any tree stands in water": `column->water > (mangrove ? 5 : 0)` changed to `> 5`. No test fails, in 545 wet chunks of land holding 4302 logs, which I read as under water being sand, gravel or clay from hydrology, or a `wet_top`, so soil does the job first. I did not prove that. So far as these worlds show, the check does nothing that soil does not already do. Kept: it says what is meant, and a biome file could change that.
    - "Rows cross the tile": a tile's canvas reaching back over the whole box in `x`. By reasoning and not by test, this changes no byte: every tree touching a voxel is among the chunks round that voxel's tile, which has already painted them in its order, and what comes later cannot change what it left. Left alone.
 
-   Three more survived the first tests, and made better tests: "a chunk gives up too early" led to `one_layer_at_the_tip_of_a_tree_is_the_same_voxels`, and `section_by_section_is_the_whole_column` and the wet land check came from the same round. Neither section nor split test catches a too-low chunk bound by itself. Only the tip test does.
+   A third, "a chunk gives up too early", survived until `one_layer_at_the_tip_of_a_tree_is_the_same_voxels` was written for it, which now fails on it. The split test and `section_by_section_is_the_whole_column` do not catch it. The "wet land" check in `lily_pads_grow_on_a_swamps_standing_water` was added for the first of the two above, and did not catch it.
+
+   The 18: chunks round a tile ignored, draws depending on the canvas, a chunk or a site giving up too early, leaves over ground, every lake holding, snow on anything, sites ignoring lakes, cane needing no water, jungle reach understated, fractional tries, warm water freezing, ground ignoring caves, no lake painted, a lake with no bed, a wide trunk missing a column, and the two above. Those run in the first round were against the tests as they then were.
 
 4. **`TERRAIN_FEATURE_NO_GROUND` never turned up.** Expected a cave mouth now and then to leave a column with no top in range. Actually 0 of 12,800 columns of the 50 chunks looked at (`a_columns_ground_is_what_the_stages_leave`), so that path has not been seen running on real ground. It is short, and the mutation "ground ignores caves" shows the walk does see caves. Left alone.
 
