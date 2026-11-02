@@ -56,6 +56,8 @@ No visual check was made here. Nothing draws this ground yet, and how the rivers
 
 Appended as they land:
 
+- `9109df9` Add rivers along weirdness's zero line, oceans, beaches, aquifers that leave nothing able to flow and the lava level at z = -230, tested voxel by voxel and to give the same bytes from 1 worker and 16.
+
 ## Wiring outside the owned paths
 
 Each the smallest I could make:
