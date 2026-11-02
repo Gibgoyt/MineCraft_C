@@ -117,6 +117,8 @@ On the integration branch `worktree-wf_a4b549de-085-20`; Ahmed fast-forwards `ma
 - `1eee34c` First gate check: records the refused landing
 - `8b5bd21` Second gate check: closes its defects
 - `65c4f4e` Second gate check: records it
+- `bba174d` Third round: merges `5dd2396`, the Stage 02.4 note
+- `92ec4a8` Third gate check, statuses, and Stage 01.1 follow-ups
 
 ## Issues found
 
