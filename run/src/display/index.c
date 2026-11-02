@@ -128,9 +128,33 @@ static void display_signals_restore(const display_signals_t *signals) {
     }
 }
 
-/* One submitted flip, and waiting for it. Returns false to stop: the failure is in flip->failed_call. */
-static bool display_flip_once(display_flip_t *flip, uint64_t frame) {
-    display_flip_pattern_frame(display_flip_back(flip), frame);
+/* The back buffer's picture for this frame. Returns false if the cursor's source says to stop. */
+static bool display_draw_frame(display_t *display, uint64_t frame) {
+    display_buffer_t *const back = display_flip_back(&display->flip);
+    if (display->cursor_source == nullptr) {
+        display_flip_pattern_frame(back, frame);
+        return true;
+    }
+    const uint32_t side = display_flip_pattern_cursor_side(back);
+    uint32_t x = 0;
+    uint32_t y = 0;
+    bool active = false;
+    if (!display->cursor_source(display->borrowed_cursor_context, back->width - side, back->height - side, &x, &y,
+                                &active)) {
+        return false;
+    }
+    display_flip_pattern_cursor_erase(back);
+    display_flip_pattern_frame(back, frame);
+    display_flip_pattern_cursor_draw(back, x, y, active);
+    return true;
+}
+
+/* One submitted flip, and waiting for it. Returns false to stop: if for a failure, that is in flip->failed_call. */
+static bool display_flip_once(display_t *display, uint64_t frame) {
+    display_flip_t *const flip = &display->flip;
+    if (!display_draw_frame(display, frame)) {
+        return false;
+    }
     if (!display_flip_submit(flip)) {
         return false;
     }
@@ -153,7 +177,7 @@ static void display_test_pattern_loop(display_t *display, int64_t started_ns, in
     uint64_t frame = 0;
     while (atomic_load_explicit(&display_stop_signal, memory_order_relaxed) == 0 &&
            time_now_ns() - started_ns < duration_ns) {
-        if (!display_flip_once(flip, frame)) {
+        if (!display_flip_once(display, frame)) {
             return;
         }
         frame++;
@@ -178,6 +202,11 @@ static void display_test_pattern_report(const display_t *display) {
              " ns, late %" PRIu64 ", rate %" PRIu64 ".%03" PRIu64 " Hz against a mode of %" PRIu64 ".%03" PRIu64 " Hz",
              stats->intervals, mean_ns, stats->min_ns, stats->max_ns, stats->late, rate_mhz / 1000u, rate_mhz % 1000u,
              display->mode.refresh_mhz / 1000u, display->mode.refresh_mhz % 1000u);
+}
+
+void display_test_pattern_set_cursor(display_t *display, display_cursor_source_t source, void *context) {
+    display->cursor_source = source;
+    display->borrowed_cursor_context = context;
 }
 
 display_status_t display_test_pattern_run(display_t *display, int64_t started_ns, int64_t duration_ns) {

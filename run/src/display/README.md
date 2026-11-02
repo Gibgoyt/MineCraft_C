@@ -13,6 +13,8 @@
   back whatever is still owed. `_init` takes a `display_ops_t`, so a test can run all of it against a fake card.
 - `display_test_pattern_run`: `--test-pattern`. Bars and a moving square, flipped at the mode's rate until it ends by itself
   or a signal stops it, then the display goes back and the flip timings are logged.
+- `display_test_pattern_set_cursor`: adds a cursor square, placed each frame by a function it is given. `main` joins this to
+  `input`, so that this system does not include that one.
 
 **May be called by:** `main`, `game`.
 **Depends on:** `heap`, `arena`, `log`, `time`, generated `machine/index.h`.
