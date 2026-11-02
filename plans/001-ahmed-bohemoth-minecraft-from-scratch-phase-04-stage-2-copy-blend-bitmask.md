@@ -75,6 +75,8 @@ The popcount's gain at 8 words is 1.07x, which is thin: see Issue 4.
 
 Appended as they land:
 
+- `1243e43` Add the streaming copy, alpha blend, popcount and mask kernels in NASM, with C prototypes, scalar references, a simd Owner that checks them at startup, and tests.
+
 ## Issues found
 
 1. **Kernel constants could not go in `.rodata`.** Expected: `section .rodata align=32`, the normal place. Actual: `error: 32-bit relative section-crossing relocation [-w+error=reloc-rel-dword]` from `asm/src/blend/index.asm:36` and `asm/src/bitmask/index.asm:25` on, under the build's `-w+all -Werror`. Done: the tables moved to the end of `.text`, as `asm/src/cpuid/` already does, and `asm/include/conventions/` says so. The warning stays on: `.text` needs no relocation, and nothing writes the tables.
