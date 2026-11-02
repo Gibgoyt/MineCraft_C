@@ -12,6 +12,8 @@
 - `shade_pixels_bytes`, `shade_ao_bytes`: what its targets need.
 - `shade_face_brightness`, `shade_face_towards`, `shade_sky_level`, `shade_block_level`, `shade_sun_towards`, `shade_surface_light`, `shade_sun_bias`, `shade_face_uv`, `shade_texel_of`, `shade_mip_level`, `shade_level_dimension`, `shade_srgb_to_linear`, `shade_pixel_tangent`, `shade_water_fresnel`, `shade_water_tint`, `shade_fog_behind`, `shade_own_kind_behind`, `shade_surface_light_near`, `shade_ao_turn`, `shade_ao_hash`, `shade_ao_sample`, `shade_ao_direction`, `shade_ao_near`, `shade_ao_same_surface`, `shade_shaft_phase`, `shade_shaft_part`, `shade_shaft_noise`: its arithmetic, inline on host and device, so that a test on the host runs the same lines.
 
+**The far field:** where a ray of its own leaves the world, with `shade_scene_t.borrowed_lod_hits` there, it stops on what `cuda/src/lod/` found on that same ray: `shade_far_colour`, the face's mean colour, or deep water with the sky in it, under the same light. So fog, water and glass in front of it work as they do on anything. See that README.
+
 **May be called by:** `render`, `cuda/src/frame/`.
 **Depends on:** `gpu_bridge/device_memory`, `gpu_bridge/post` for the sky and fog it draws behind glass and in water, `gpu_bridge/status`, `gpu_bridge/traverse`, and `cuda/include/traverse/` for a pixel's direction and the ray loop.
 

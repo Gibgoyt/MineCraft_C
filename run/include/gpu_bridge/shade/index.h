@@ -6,6 +6,7 @@
 
 #include "gpu_bridge/device_memory/index.h"
 #include "gpu_bridge/entity_rays/index.h"
+#include "gpu_bridge/lod/index.h"
 #include "gpu_bridge/post/index.h"
 #include "gpu_bridge/status/index.h"
 #include "gpu_bridge/traverse/index.h"
@@ -62,13 +63,14 @@ enum : uint32_t {
     SHADE_FEATURE_GOD_RAYS = 1u << 12, /* the air shows the sun's light where it reaches, or is clear */
     SHADE_FEATURE_ENTITIES = 1u << 13, /* mobs and items are drawn as boxes, or not at all */
     SHADE_FEATURE_OUTLINE =
-        1u << 14, /* what is aimed at has an outline, and what is being mined its crack, or neither */
+        1u << 14,                 /* what is aimed at has an outline, and what is being mined its crack, or neither */
+    SHADE_FEATURE_LOD = 1u << 15, /* the world goes on past full detail in coarse grids, or stops there */
     /* What a picture is drawn with on its own, from nothing: no frame of these reads what the last one left. What render_frame_init
      * starts with, and so what a test that wants one exact picture gets. */
     SHADE_FEATURES_ALL = SHADE_FEATURE_SHAPES | SHADE_FEATURE_ALPHA | SHADE_FEATURE_SKY | SHADE_FEATURE_DAY_CYCLE |
                          SHADE_FEATURE_FOG | SHADE_FEATURE_SHADOW | SHADE_FEATURE_LIGHT | SHADE_FEATURE_TRANSPARENCY |
                          SHADE_FEATURE_WATER_REFLECTION | SHADE_FEATURE_WATER_TINT | SHADE_FEATURE_ENTITIES |
-                         SHADE_FEATURE_OUTLINE,
+                         SHADE_FEATURE_OUTLINE | SHADE_FEATURE_LOD,
     /* What a world is played with unless told otherwise. God rays are optional, so they are asked for. */
     SHADE_FEATURES_PLAY = SHADE_FEATURES_ALL | SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
     SHADE_FEATURES_EVERY = SHADE_FEATURES_PLAY | SHADE_FEATURE_GOD_RAYS,
@@ -177,8 +179,10 @@ typedef struct shade_scene_t {
     shade_sun_t sun;                       /* 40 */
     /* 88: AO's history, for a scene with SHADE_FEATURE_AO, and god rays' target for one with SHADE_FEATURE_GOD_RAYS. */
     const post_temporal_t *borrowed_temporal;
+    /* 96: what lod_frame wrote for this frame: what a ray that leaves the world goes on to meet, or nullptr for none. */
+    const device_block_t *borrowed_lod_hits;
 } shade_scene_t;
-static_assert(sizeof(shade_scene_t) == 96);
+static_assert(sizeof(shade_scene_t) == 104);
 static_assert(alignof(shade_scene_t) == 8);
 static_assert(offsetof(shade_scene_t, borrowed_textures) == 0);
 static_assert(offsetof(shade_scene_t, borrowed_faces) == 8);
@@ -190,6 +194,7 @@ static_assert(offsetof(shade_scene_t, water_material) == 36);
 static_assert(offsetof(shade_scene_t, glass_material) == 38);
 static_assert(offsetof(shade_scene_t, sun) == 40);
 static_assert(offsetof(shade_scene_t, borrowed_temporal) == 88);
+static_assert(offsetof(shade_scene_t, borrowed_lod_hits) == 96);
 
 /* One pixel, in linear light before the sky and the tone map: where post goes on from. */
 typedef struct shade_pixel_t {
@@ -474,6 +479,25 @@ SHADE_BOTH_SIDES static inline void shade_water_tint(float32_t blocks, float32_t
     out_given[0] = SHADE_WATER_DEEP_R * (F32(1.0) - out_through[0]);
     out_given[1] = SHADE_WATER_DEEP_G * (F32(1.0) - out_through[1]);
     out_given[2] = SHADE_WATER_DEEP_B * (F32(1.0) - out_through[2]);
+}
+
+/* What a far surface looks like: a coarse voxel has no texels to speak of, so it is its face's mean colour under that face's light. Water
+ * that is deep and clear is all a far ray can tell of it, with no ray to its bottom: what deep water gives back, and with reflect the sky
+ * off its surface, for how square the ray meets it. */
+SHADE_BOTH_SIDES static inline void shade_far_colour(const shade_sun_t *sun, const uint8_t mean_rgba[4],
+                                                     bool deep_water, bool reflect, const lod_hit_t *hit,
+                                                     const float32_t direction[3], const float32_t sky[3],
+                                                     float32_t out[3]) {
+    const uint32_t face = hit->face;
+    float32_t light[3];
+    shade_surface_light(sun, face, SHADE_LIGHT_OPEN_SKY, hit->sun == LOD_SUN_SEEN ? F32(1.0) : F32(0.0), light);
+    const float32_t deep[3] = {SHADE_WATER_DEEP_R, SHADE_WATER_DEEP_G, SHADE_WATER_DEEP_B};
+    const float32_t cosine = direction[face >> 1] < F32(0.0) ? -direction[face >> 1] : direction[face >> 1];
+    const float32_t share = reflect ? shade_water_fresnel(cosine) : F32(0.0);
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        const float32_t own = deep_water ? deep[i] : shade_srgb_to_linear((float32_t)mean_rgba[i] / F32(255.0));
+        out[i] = own * light[i] * (F32(1.0) - share) + sky[i] * share;
+    }
 }
 
 /* Post fogs a whole pixel by its first surface. What is seen behind that, at t, needs only the rest of its own fog on top, so that

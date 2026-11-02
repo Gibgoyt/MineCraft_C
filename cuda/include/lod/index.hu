@@ -1,0 +1,9 @@
+/* See cuda/src/lod/README.md. The C API, for the one file that implements it: the far field's rays run in that file's own kernels, so
+ * no other area needs their loop. */
+#ifndef MC_CUDA_LOD_INDEX_HU
+#define MC_CUDA_LOD_INDEX_HU
+
+#include "gpu_bridge/lod/index.h"
+#include "traverse/index.hu"
+
+#endif

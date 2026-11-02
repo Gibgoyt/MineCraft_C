@@ -54,7 +54,7 @@ typedef struct main_options_t {
     uint8_t god_rays;           /* --god-rays */
     uint8_t _pad0[1];
     float32_t time_of_day; /* --time-of-day */
-    uint8_t _pad1[4];
+    uint32_t full_detail;  /* --full-detail, or 0 for RENDER_LOD_FULL_DETAIL_DEFAULT */
 } main_options_t;
 static_assert(sizeof(main_options_t) == 72);
 
@@ -68,7 +68,7 @@ static void main_print_usage(const char *program) {
         "           [--no-shapes] [--no-alpha] [--no-sky] [--no-day-cycle] [--no-fog]\n"
         "           [--no-shadows] [--no-stored-light] [--no-transparency] [--no-water-reflection]\n"
         "           [--no-water-tint] [--no-ao] [--no-taa] [--god-rays] [--no-entities]\n"
-        "           [--no-outline] [--headless ...]\n"
+        "           [--no-outline] [--full-detail <chunks>] [--no-lod] [--headless ...]\n"
         "  --report                 print the build's defines and CPU features, then exit\n"
         "  --pretend-missing-cpu    treat this feature as absent, to see the CPU check fail; may repeat\n"
         "  --pretend-leak           skip the shutdown, to see the leak check at exit fail\n"
@@ -92,6 +92,9 @@ static void main_print_usage(const char *program) {
         "  --no-ao, --no-taa        with --test-world: no short rays to darken corners, or each frame stands alone\n"
         "  --no-entities            with --test-world: mobs and items are not drawn\n"
         "  --no-outline             with --test-world: no outline on what is aimed at, and no crack on what is mined\n"
+        "  --full-detail <chunks>   with --test-world: how far the world is drawn block by block. Past it, up to\n"
+        "                           --render-distance, coarse grids take over. Default 32\n"
+        "  --no-lod                 with --test-world: the world stops where full detail does\n"
         "  --god-rays               with --test-world: the air shows the sun's light where it reaches\n"
         "  --time-of-day <0 to 1>   with --test-world: the time to start at: 0 midnight, 0.25 sunrise, 0.5 noon\n"
         "  --test-world             fly through a generated world: through KMS from a text console, never inside X,\n"
@@ -172,6 +175,13 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
             out->features_off |= (uint16_t)SHADE_FEATURE_AO;
         } else if (strcmp(argv[i], "--no-taa") == 0) {
             out->features_off |= (uint16_t)SHADE_FEATURE_TAA;
+        } else if (strcmp(argv[i], "--no-lod") == 0) {
+            out->features_off |= (uint16_t)SHADE_FEATURE_LOD;
+        } else if (strcmp(argv[i], "--full-detail") == 0 && i + 1 < argc) {
+            i++;
+            if (!main_parse_count("--full-detail", argv[i], &out->full_detail)) {
+                return false;
+            }
         } else if (strcmp(argv[i], "--god-rays") == 0) {
             out->god_rays = 1u;
         } else if (strcmp(argv[i], "--no-fog") == 0) {
@@ -252,6 +262,10 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
     }
     if (out->render_distance != 0u && out->test_world == 0) {
         fprintf(stderr, "%s: --render-distance only means something with --test-world\n", argv[0]);
+        return false;
+    }
+    if (out->full_detail != 0u && out->test_world == 0) {
+        fprintf(stderr, "%s: --full-detail only means something with --test-world\n", argv[0]);
         return false;
     }
     if ((out->features_off != 0u || out->god_rays != 0u) && out->test_world == 0) {
@@ -509,6 +523,7 @@ static main_exit_t main_run_test_world_headless(app_t *app, const main_options_t
                                 .height = config.height,
                                 .features_off = options->features_off,
                                 .god_rays = options->god_rays,
+                                .full_detail = options->full_detail,
                                 ._pad0 = {0}};
     if (!game_open(&app->game, &game)) {
         return MAIN_EXIT_RUNTIME;
@@ -547,6 +562,7 @@ static main_exit_t main_run_test_world(app_t *app, const main_options_t *options
                                 .height = buffer->height,
                                 .features_off = options->features_off,
                                 .god_rays = options->god_rays,
+                                .full_detail = options->full_detail,
                                 ._pad0 = {0}};
     if (!game_open(&app->game, &game)) {
         return MAIN_EXIT_RUNTIME;
