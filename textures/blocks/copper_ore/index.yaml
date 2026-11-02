@@ -1,0 +1,11 @@
+# Written by compile/src/texture_pack from textures/import.yaml. A re-import replaces it.
+name: copper_ore
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: pack
+  pack: pixel_perfection
+  commit: "7935d064fc6f993d1b5038ed5ec17a615600cf0a"
+  licence: CC-BY-SA-4.0
+  file: default/default_mineral_copper.png
+  over: default/default_stone.png

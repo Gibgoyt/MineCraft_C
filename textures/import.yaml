@@ -1,0 +1,458 @@
+# What compile/src/texture_pack imports, and from where. See textures/README.md. Every file in the pack is named here,
+# as a texture, a skip with its reason, or evidence of the licence: the import refuses a pack with anything else in it.
+#
+# Names are this game's, not the pack's. The pack was drawn for Minetest, so aspen is our birch, pine our spruce, papyrus
+# our sugar cane and steel our iron. A pack file that shows only a transparent overlay is composited on what Minetest
+# would have drawn under it, with `over`, since our renderer samples one texture per face.
+pack:
+  id: pixel_perfection
+  title: Pixel Perfection
+  url: https://github.com/minetest-texture-packs/Pixel-Perfection
+  commit: 7935d064fc6f993d1b5038ed5ec17a615600cf0a
+  licence: CC-BY-SA-4.0
+  authors: ['Hugh "XSSheep" Rutland', Toby109tt, tacotexmex, devurandom]
+  # The pack has no LICENSE file, so these two statements are all it says. Stage 06.2's Issues section has the review.
+  evidence:
+    - { file: texture_pack.conf, contains: "license = CC-BY-SA-4.0" }
+    - { file: README.md, contains: "Creative Commons Attribution-Share Alike 4.0 International License" }
+
+textures:
+  # ---- Terrain ------------------------------------------------------------------------------------------------------
+  - { from: bedrock/bedrock.png, to: blocks/bedrock }
+  - { from: default/default_stone.png, to: blocks/stone }
+  - { from: default/default_cobble.png, to: blocks/cobblestone }
+  - { from: default/default_mossycobble.png, to: blocks/mossy_cobblestone }
+  - { from: default/default_stone_brick.png, to: blocks/stone_bricks }
+  - { from: default/default_dirt.png, to: blocks/dirt }
+  - { from: default/default_grass.png, to: blocks/grass_top }
+  - { from: default/default_grass_side.png, over: default/default_dirt.png, to: blocks/grass_side }
+  - { from: default/default_dry_grass.png, to: blocks/dry_grass_top }
+  - { from: default/default_dry_grass_side.png, over: default/default_dirt.png, to: blocks/dry_grass_side }
+  - { from: default/default_snow.png, to: blocks/snow }
+  - { from: default/default_snow_side.png, over: default/default_dirt.png, to: blocks/snow_side }
+  - { from: default/default_ice.png, to: blocks/ice }
+  - { from: default/default_sand.png, to: blocks/sand }
+  - { from: default/default_gravel.png, to: blocks/gravel }
+  - { from: default/default_clay.png, to: blocks/clay }
+  - { from: default/default_sandstone.png, to: blocks/sandstone }
+  - { from: default/default_sandstone_brick.png, to: blocks/sandstone_bricks }
+  - { from: default/default_desert_sand.png, to: blocks/red_sand }
+  - { from: default/default_desert_stone.png, to: blocks/desert_stone }
+  - { from: default/default_desert_cobble.png, to: blocks/desert_cobblestone }
+  - { from: default/default_desert_stone_brick.png, to: blocks/desert_stone_bricks }
+  - { from: default/default_obsidian.png, to: blocks/obsidian }
+  - { from: default/default_obsidian_brick.png, to: blocks/obsidian_bricks }
+  - { from: default/default_cloud.png, to: blocks/cloud }
+  - { from: farming/farming_soil.png, to: blocks/farmland }
+  - { from: farming/farming_soil_wet.png, to: blocks/farmland_wet }
+  # ---- Ores: overlays on stone --------------------------------------------------------------------------------------
+  - { from: default/default_mineral_coal.png, over: default/default_stone.png, to: blocks/coal_ore }
+  - { from: default/default_mineral_iron.png, over: default/default_stone.png, to: blocks/iron_ore }
+  - { from: default/default_mineral_copper.png, over: default/default_stone.png, to: blocks/copper_ore }
+  - { from: default/default_mineral_gold.png, over: default/default_stone.png, to: blocks/gold_ore }
+  - { from: default/default_mineral_diamond.png, over: default/default_stone.png, to: blocks/diamond_ore }
+  # ---- Metal and mineral blocks -------------------------------------------------------------------------------------
+  - { from: default/default_coal_block.png, to: blocks/coal_block }
+  - { from: default/default_steel_block.png, to: blocks/iron_block }
+  - { from: default/default_copper_block.png, to: blocks/copper_block }
+  - { from: default/default_gold_block.png, to: blocks/gold_block }
+  - { from: default/default_diamond_block.png, to: blocks/diamond_block }
+  - { from: fossils/fossils_bone_block.png, to: blocks/bone_block_side }
+  - { from: fossils/fossils_bone_block_top.png, to: blocks/bone_block_top }
+  # ---- Wood ---------------------------------------------------------------------------------------------------------
+  - { from: default/default_tree.png, to: blocks/oak_log }
+  - { from: default/default_tree_top.png, to: blocks/oak_log_top }
+  - { from: default/default_wood.png, to: blocks/oak_planks }
+  - { from: default/default_leaves.png, to: blocks/oak_leaves }
+  - { from: default/default_sapling.png, to: blocks/oak_sapling }
+  - { from: default/default_aspen_tree.png, to: blocks/birch_log }
+  - { from: default/default_aspen_tree_top.png, to: blocks/birch_log_top }
+  - { from: default/default_aspen_wood.png, to: blocks/birch_planks }
+  - { from: default/default_aspen_leaves.png, to: blocks/birch_leaves }
+  - { from: default/default_aspen_sapling.png, to: blocks/birch_sapling }
+  - { from: default/default_pine_tree.png, to: blocks/spruce_log }
+  - { from: default/default_pine_tree_top.png, to: blocks/spruce_log_top }
+  - { from: default/default_pine_wood.png, to: blocks/spruce_planks }
+  - { from: default/default_pine_needles.png, to: blocks/spruce_leaves }
+  - { from: default/default_pine_sapling.png, to: blocks/spruce_sapling }
+  - { from: default/default_jungletree.png, to: blocks/jungle_log }
+  - { from: default/default_jungletree_top.png, to: blocks/jungle_log_top }
+  - { from: default/default_junglewood.png, to: blocks/jungle_planks }
+  - { from: default/default_jungleleaves.png, to: blocks/jungle_leaves }
+  - { from: default/default_junglesapling.png, to: blocks/jungle_sapling }
+  - { from: default/default_acacia_tree.png, to: blocks/acacia_log }
+  - { from: default/default_acacia_tree_top.png, to: blocks/acacia_log_top }
+  - { from: default/default_acacia_wood.png, to: blocks/acacia_planks }
+  - { from: default/default_acacia_leaves.png, to: blocks/acacia_leaves }
+  - { from: default/default_acacia_sapling.png, to: blocks/acacia_sapling }
+  - { from: default/default_fence_wood.png, to: blocks/oak_fence }
+  - { from: default/default_fence_rail_wood.png, to: blocks/oak_fence_rail }
+  - { from: default/default_fence_aspen_wood.png, to: blocks/birch_fence }
+  - { from: default/default_fence_rail_aspen_wood.png, to: blocks/birch_fence_rail }
+  - { from: default/default_fence_pine_wood.png, to: blocks/spruce_fence }
+  - { from: default/default_fence_rail_pine_wood.png, to: blocks/spruce_fence_rail }
+  - { from: default/default_fence_junglewood.png, to: blocks/jungle_fence }
+  - { from: default/default_fence_rail_junglewood.png, to: blocks/jungle_fence_rail }
+  - { from: default/default_fence_acacia_wood.png, to: blocks/acacia_fence }
+  - { from: default/default_fence_rail_acacia_wood.png, to: blocks/acacia_fence_rail }
+  # ---- Plants -------------------------------------------------------------------------------------------------------
+  - { from: default/default_grass_1.png, to: blocks/tall_grass_1 }
+  - { from: default/default_grass_2.png, to: blocks/tall_grass_2 }
+  - { from: default/default_grass_3.png, to: blocks/tall_grass_3 }
+  - { from: default/default_grass_4.png, to: blocks/tall_grass_4 }
+  - { from: default/default_grass_5.png, to: blocks/tall_grass_5 }
+  - { from: default/default_dry_grass_1.png, to: blocks/dry_tall_grass_1 }
+  - { from: default/default_dry_grass_2.png, to: blocks/dry_tall_grass_2 }
+  - { from: default/default_dry_grass_3.png, to: blocks/dry_tall_grass_3 }
+  - { from: default/default_dry_grass_4.png, to: blocks/dry_tall_grass_4 }
+  - { from: default/default_dry_grass_5.png, to: blocks/dry_tall_grass_5 }
+  - { from: default/default_dry_shrub.png, to: blocks/dead_bush }
+  - { from: default/default_junglegrass.png, to: blocks/jungle_grass }
+  - { from: default/default_papyrus.png, to: blocks/sugar_cane }
+  - { from: default/default_cactus_side.png, to: blocks/cactus_side }
+  - { from: default/default_cactus_top.png, to: blocks/cactus_top }
+  - { from: default/default_blueberry_bush_leaves.png, to: blocks/berry_bush_leaves }
+  - { from: default/default_coral_brown.png, to: blocks/coral_brown }
+  - { from: default/default_coral_cyan.png, to: blocks/coral_cyan }
+  - { from: default/default_coral_green.png, to: blocks/coral_green }
+  - { from: default/default_coral_orange.png, to: blocks/coral_orange }
+  - { from: default/default_coral_pink.png, to: blocks/coral_pink }
+  - { from: flowers/flowers_dandelion_yellow.png, to: blocks/dandelion }
+  - { from: flowers/flowers_dandelion_white.png, to: blocks/white_dandelion }
+  - { from: flowers/flowers_geranium.png, to: blocks/geranium }
+  - { from: flowers/flowers_rose.png, to: blocks/rose }
+  - { from: flowers/flowers_tulip.png, to: blocks/tulip }
+  - { from: flowers/flowers_viola.png, to: blocks/viola }
+  - { from: flowers/flowers_mushroom_brown.png, to: blocks/brown_mushroom }
+  - { from: flowers/flowers_mushroom_red.png, to: blocks/red_mushroom }
+  - { from: flowers/flowers_waterlily.png, to: blocks/lily_pad }
+  - { from: flowers/flowers_waterlily_bottom.png, to: blocks/lily_pad_bottom }
+  - { from: farming/farming_wheat_1.png, to: blocks/wheat_stage_1 }
+  - { from: farming/farming_wheat_2.png, to: blocks/wheat_stage_2 }
+  - { from: farming/farming_wheat_3.png, to: blocks/wheat_stage_3 }
+  - { from: farming/farming_wheat_4.png, to: blocks/wheat_stage_4 }
+  - { from: farming/farming_wheat_5.png, to: blocks/wheat_stage_5 }
+  - { from: farming/farming_wheat_6.png, to: blocks/wheat_stage_6 }
+  - { from: farming/farming_wheat_7.png, to: blocks/wheat_stage_7 }
+  - { from: farming/farming_wheat_8.png, to: blocks/wheat_stage_8 }
+  - { from: farming/farming_straw.png, to: blocks/hay_side }
+  - { from: farming/farming_straw_top.png, to: blocks/hay_top }
+  # ---- Fluids, fire, light ------------------------------------------------------------------------------------------
+  - { from: default/default_water_source_animated.png, to: blocks/water_still, frames: 16 }
+  - { from: default/default_water_flowing_animated.png, to: blocks/water_flow, frames: 16 }
+  - { from: default/default_river_water_source_animated.png, to: blocks/river_water_still, frames: 16 }
+  - { from: default/default_river_water_flowing_animated.png, to: blocks/river_water_flow, frames: 16 }
+  - { from: default/default_lava_source_animated.png, to: blocks/lava_still, frames: 16 }
+  - { from: default/default_lava_flowing_animated.png, to: blocks/lava_flow, frames: 16 }
+  - { from: fire/fire_basic_flame_animated.png, to: blocks/fire, frames: 8 }
+  - { from: default/default_torch_on_floor_animated.png, to: blocks/torch_floor, frames: 16 }
+  - { from: default/default_torch_on_ceiling_animated.png, to: blocks/torch_ceiling, frames: 16 }
+  - { from: default/default_torch_animated.png, to: blocks/torch_wall, frames: 16 }
+  - { from: misc/crack_anylength.png, to: blocks/crack, frames: 10 }
+  # ---- Things built -------------------------------------------------------------------------------------------------
+  - { from: default/default_brick.png, to: blocks/bricks }
+  - { from: default/default_bookshelf.png, to: blocks/bookshelf }
+  - { from: default/default_glass.png, to: blocks/glass }
+  - { from: default/default_glass_detail.png, to: blocks/glass_detail }
+  - { from: default/default_obsidian_glass.png, to: blocks/obsidian_glass }
+  - { from: default/default_obsidian_glass_detail.png, to: blocks/obsidian_glass_detail }
+  - { from: default/default_ladder_wood.png, to: blocks/ladder }
+  - { from: default/default_ladder_steel.png, to: blocks/iron_ladder }
+  - { from: default/default_sign_wall_wood.png, to: blocks/oak_wall_sign }
+  - { from: default/default_furnace_top.png, to: blocks/furnace_top }
+  - { from: default/default_furnace_bottom.png, to: blocks/furnace_bottom }
+  - { from: default/default_furnace_side.png, to: blocks/furnace_side }
+  - { from: default/default_furnace_front.png, to: blocks/furnace_front }
+  - { from: crafting/crafting_furnace_front_active.png, to: blocks/furnace_front_lit, frames: 8 }
+  - { from: crafting/crafting_work_bench_top.png, to: blocks/crafting_table_top }
+  - { from: crafting/crafting_work_bench_side.png, to: blocks/crafting_table_side }
+  - { from: crafting/crafting_work_bench_bottom.png, to: blocks/crafting_table_bottom }
+  - { from: default/default_chest_top.png, to: blocks/chest_top }
+  - { from: default/default_chest_side.png, to: blocks/chest_side }
+  - { from: default/default_chest_front.png, to: blocks/chest_front }
+  - { from: default/default_chest_inside.png, to: blocks/chest_inside }
+  - { from: default/default_chest_lock.png, to: blocks/chest_lock }
+  - { from: tnt/tnt_top.png, to: blocks/tnt_top }
+  - { from: tnt/tnt_bottom.png, to: blocks/tnt_bottom }
+  - { from: tnt/tnt_side.png, to: blocks/tnt_side }
+  - { from: tnt/tnt_top_burning.png, to: blocks/tnt_top_burning }
+  - { from: doors/doors_door_wood.png, to: blocks/wood_door }
+  - { from: doors/doors_door_steel.png, to: blocks/iron_door }
+  - { from: doors/doors_door_glass.png, to: blocks/glass_door }
+  - { from: doors/doors_door_obsidian_glass.png, to: blocks/obsidian_glass_door }
+  - { from: doors/doors_trapdoor.png, to: blocks/wood_trapdoor }
+  - { from: doors/doors_trapdoor_side.png, to: blocks/wood_trapdoor_side }
+  - { from: doors/doors_trapdoor_steel.png, to: blocks/iron_trapdoor }
+  - { from: doors/doors_trapdoor_steel_side.png, to: blocks/iron_trapdoor_side }
+  - { from: xpanes/xpanes_bar.png, to: blocks/iron_bars }
+  - { from: xpanes/xpanes_bar_top.png, to: blocks/iron_bars_top }
+  - { from: beds/beds_bed_foot.png, to: blocks/bed_foot }
+  - { from: beds/beds_bed_head.png, to: blocks/bed_head }
+  - { from: beds/beds_bed_side1.png, to: blocks/bed_side_1 }
+  - { from: beds/beds_bed_side2.png, to: blocks/bed_side_2 }
+  - { from: beds/beds_bed_side_bottom.png, to: blocks/bed_side_bottom }
+  - { from: beds/beds_bed_side_bottom_l.png, to: blocks/bed_side_bottom_left }
+  - { from: beds/beds_bed_side_bottom_r.png, to: blocks/bed_side_bottom_right }
+  - { from: beds/beds_bed_side_top.png, to: blocks/bed_side_top }
+  - { from: beds/beds_bed_side_top_l.png, to: blocks/bed_side_top_left }
+  - { from: beds/beds_bed_side_top_r.png, to: blocks/bed_side_top_right }
+  - { from: beds/beds_bed_top1.png, to: blocks/bed_top_1 }
+  - { from: beds/beds_bed_top2.png, to: blocks/bed_top_2 }
+  - { from: beds/beds_bed_top_bottom.png, to: blocks/bed_top_bottom }
+  - { from: beds/beds_bed_top_top.png, to: blocks/bed_top_top }
+  - { from: carts/carts_rail_straight.png, to: blocks/rail }
+  - { from: carts/carts_rail_curved.png, to: blocks/rail_curved }
+  - { from: carts/carts_rail_crossing.png, to: blocks/rail_crossing }
+  - { from: carts/carts_rail_t_junction.png, to: blocks/rail_t_junction }
+  - { from: carts/carts_rail_straight_pwr.png, to: blocks/powered_rail }
+  - { from: carts/carts_rail_curved_pwr.png, to: blocks/powered_rail_curved }
+  - { from: carts/carts_rail_crossing_pwr.png, to: blocks/powered_rail_crossing }
+  - { from: carts/carts_rail_t_junction_pwr.png, to: blocks/powered_rail_t_junction }
+  - { from: carts/carts_rail_straight_brk.png, to: blocks/brake_rail }
+  - { from: carts/carts_rail_curved_brk.png, to: blocks/brake_rail_curved }
+  - { from: carts/carts_rail_crossing_brk.png, to: blocks/brake_rail_crossing }
+  - { from: carts/carts_rail_t_junction_brk.png, to: blocks/brake_rail_t_junction }
+  # ---- Wool ---------------------------------------------------------------------------------------------------------
+  - { from: wool/wool_white.png, to: blocks/wool_white }
+  - { from: wool/wool_grey.png, to: blocks/wool_grey }
+  - { from: wool/wool_dark_grey.png, to: blocks/wool_dark_grey }
+  - { from: wool/wool_black.png, to: blocks/wool_black }
+  - { from: wool/wool_red.png, to: blocks/wool_red }
+  - { from: wool/wool_orange.png, to: blocks/wool_orange }
+  - { from: wool/wool_yellow.png, to: blocks/wool_yellow }
+  - { from: wool/wool_green.png, to: blocks/wool_green }
+  - { from: wool/wool_dark_green.png, to: blocks/wool_dark_green }
+  - { from: wool/wool_cyan.png, to: blocks/wool_cyan }
+  - { from: wool/wool_blue.png, to: blocks/wool_blue }
+  - { from: wool/wool_violet.png, to: blocks/wool_violet }
+  - { from: wool/wool_magenta.png, to: blocks/wool_magenta }
+  - { from: wool/wool_pink.png, to: blocks/wool_pink }
+  - { from: wool/wool_brown.png, to: blocks/wool_brown }
+  # ---- Items: materials ---------------------------------------------------------------------------------------------
+  - { from: default/default_coal_lump.png, to: items/coal }
+  - { from: default/default_steel_ingot.png, to: items/iron_ingot }
+  - { from: default/default_copper_ingot.png, to: items/copper_ingot }
+  - { from: default/default_copper_lump.png, to: items/raw_copper }
+  - { from: default/default_gold_ingot.png, to: items/gold_ingot }
+  - { from: default/default_gold_lump.png, to: items/raw_gold }
+  - { from: default/default_diamond.png, to: items/diamond }
+  - { from: default/default_flint.png, to: items/flint }
+  - { from: default/default_stick.png, to: items/stick }
+  - { from: default/default_clay_lump.png, to: items/clay_ball }
+  - { from: default/default_clay_brick.png, to: items/brick }
+  - { from: default/default_paper.png, to: items/paper }
+  - { from: default/default_book.png, to: items/book }
+  - { from: default/default_book_written.png, to: items/written_book }
+  - { from: default/default_obsidian_shard.png, to: items/obsidian_shard }
+  - { from: default/default_snowball.png, to: items/snowball }
+  - { from: default/default_torch_on_floor.png, to: items/torch }
+  - { from: default/default_sign_wood.png, to: items/oak_sign }
+  - { from: fossils/fossils_bone.png, to: items/bone }
+  - { from: bonemeal/bonemeal_bonemeal.png, to: items/bone_meal }
+  - { from: tnt/tnt_gunpowder_inventory.png, to: items/gunpowder }
+  - { from: misc/wieldhand.png, to: items/hand }
+  # ---- Items: food --------------------------------------------------------------------------------------------------
+  - { from: default/default_apple.png, to: items/apple }
+  - { from: default/default_blueberries.png, to: items/berries }
+  - { from: farming/farming_bread.png, to: items/bread }
+  - { from: farming/farming_wheat.png, to: items/wheat }
+  - { from: farming/farming_wheat_seed.png, to: items/wheat_seeds }
+  - { from: farming/farming_cotton.png, to: items/string }
+  # ---- Items: tools -------------------------------------------------------------------------------------------------
+  - { from: default/default_tool_woodaxe.png, to: items/wood_axe }
+  - { from: default/default_tool_woodpick.png, to: items/wood_pickaxe }
+  - { from: default/default_tool_woodshovel.png, to: items/wood_shovel }
+  - { from: default/default_tool_woodsword.png, to: items/wood_sword }
+  - { from: farming/farming_tool_woodhoe.png, to: items/wood_hoe }
+  - { from: default/default_tool_stoneaxe.png, to: items/stone_axe }
+  - { from: default/default_tool_stonepick.png, to: items/stone_pickaxe }
+  - { from: default/default_tool_stoneshovel.png, to: items/stone_shovel }
+  - { from: default/default_tool_stonesword.png, to: items/stone_sword }
+  - { from: farming/farming_tool_stonehoe.png, to: items/stone_hoe }
+  - { from: default/default_tool_steelaxe.png, to: items/iron_axe }
+  - { from: default/default_tool_steelpick.png, to: items/iron_pickaxe }
+  - { from: default/default_tool_steelshovel.png, to: items/iron_shovel }
+  - { from: default/default_tool_steelsword.png, to: items/iron_sword }
+  - { from: farming/farming_tool_steelhoe.png, to: items/iron_hoe }
+  - { from: default/default_tool_diamondaxe.png, to: items/diamond_axe }
+  - { from: default/default_tool_diamondpick.png, to: items/diamond_pickaxe }
+  - { from: default/default_tool_diamondshovel.png, to: items/diamond_shovel }
+  - { from: default/default_tool_diamondsword.png, to: items/diamond_sword }
+  - { from: farming/farming_diamondhoe.png, to: items/diamond_hoe }
+  - { from: fire/fire_flint_steel.png, to: items/flint_and_steel }
+  - { from: bucket/bucket.png, to: items/bucket }
+  - { from: bucket/bucket_water.png, to: items/water_bucket }
+  - { from: bucket/bucket_lava.png, to: items/lava_bucket }
+  - { from: boats/boats_inventory.png, to: items/boat }
+  - { from: boats/boats_wield.png, to: items/boat_wield }
+  - { from: doors/doors_item_wood.png, to: items/wood_door }
+  - { from: doors/doors_item_steel.png, to: items/iron_door }
+  - { from: doors/doors_item_glass.png, to: items/glass_door }
+  - { from: doors/doors_item_obsidian_glass.png, to: items/obsidian_glass_door }
+  - { from: beds/beds_bed.png, to: items/bed }
+  - { from: beds/beds_bed_fancy.png, to: items/bed_fancy }
+  - { from: carts/carts_cart_front.png, to: items/minecart }
+  - { from: vessels/vessels_glass_bottle.png, to: items/glass_bottle }
+  # ---- Items: dyes and potions --------------------------------------------------------------------------------------
+  - { from: dye/dye_white.png, to: items/dye_white }
+  - { from: dye/dye_grey.png, to: items/dye_grey }
+  - { from: dye/dye_dark_grey.png, to: items/dye_dark_grey }
+  - { from: dye/dye_black.png, to: items/dye_black }
+  - { from: dye/dye_red.png, to: items/dye_red }
+  - { from: dye/dye_orange.png, to: items/dye_orange }
+  - { from: dye/dye_yellow.png, to: items/dye_yellow }
+  - { from: dye/dye_green.png, to: items/dye_green }
+  - { from: dye/dye_dark_green.png, to: items/dye_dark_green }
+  - { from: dye/dye_cyan.png, to: items/dye_cyan }
+  - { from: dye/dye_blue.png, to: items/dye_blue }
+  - { from: dye/dye_violet.png, to: items/dye_violet }
+  - { from: dye/dye_magenta.png, to: items/dye_magenta }
+  - { from: dye/dye_pink.png, to: items/dye_pink }
+  - { from: dye/dye_brown.png, to: items/dye_brown }
+  - { from: dye/dye_purple.png, to: items/dye_purple }
+  - { from: vessels/vessels_glass_bottle_white.png, to: items/potion_white }
+  - { from: vessels/vessels_glass_bottle_grey.png, to: items/potion_grey }
+  - { from: vessels/vessels_glass_bottle_dark_grey.png, to: items/potion_dark_grey }
+  - { from: vessels/vessels_glass_bottle_black.png, to: items/potion_black }
+  - { from: vessels/vessels_glass_bottle_red.png, to: items/potion_red }
+  - { from: vessels/vessels_glass_bottle_dark_red.png, to: items/potion_dark_red }
+  - { from: vessels/vessels_glass_bottle_orange.png, to: items/potion_orange }
+  - { from: vessels/vessels_glass_bottle_yellow.png, to: items/potion_yellow }
+  - { from: vessels/vessels_glass_bottle_green.png, to: items/potion_green }
+  - { from: vessels/vessels_glass_bottle_dark_green.png, to: items/potion_dark_green }
+  - { from: vessels/vessels_glass_bottle_cyan.png, to: items/potion_cyan }
+  - { from: vessels/vessels_glass_bottle_light_cyan.png, to: items/potion_light_cyan }
+  - { from: vessels/vessels_glass_bottle_blue.png, to: items/potion_blue }
+  - { from: vessels/vessels_glass_bottle_violet.png, to: items/potion_violet }
+  - { from: vessels/vessels_glass_bottle_magenta.png, to: items/potion_magenta }
+  - { from: vessels/vessels_glass_bottle_pink.png, to: items/potion_pink }
+  - { from: vessels/vessels_glass_bottle_brown.png, to: items/potion_brown }
+  # ---- Things that move: the pack has no zombie, skeleton, creeper or any other mob ---------------------------------
+  - { from: player_api/character.png, to: mobs/player }
+  - { from: carts/carts_cart.png, to: mobs/minecart }
+  - { from: carts/carts_cart_side.png, to: mobs/minecart_side }
+  - { from: carts/carts_cart_top.png, to: mobs/minecart_top }
+  # ---- UI -----------------------------------------------------------------------------------------------------------
+  - { from: gui/crosshair.png, to: ui/crosshair }
+  - { from: gui/gui_hotbar.png, to: ui/hotbar }
+  - { from: gui/gui_hotbar_selected.png, to: ui/hotbar_selected }
+  - { from: gui/gui_hb_bg.png, to: ui/slot }
+  - { from: gui/gui_formbg.png, to: ui/panel }
+  - { from: gui/gui_furnace_arrow_bg.png, to: ui/furnace_arrow_empty }
+  - { from: gui/gui_furnace_arrow_fg.png, to: ui/furnace_arrow_full }
+  - { from: default/default_furnace_fire_bg.png, to: ui/furnace_fire_empty }
+  - { from: default/default_furnace_fire_fg.png, to: ui/furnace_fire_full }
+  - { from: gui/heart.png, to: ui/heart }
+  - { from: gui/bubble.png, to: ui/bubble }
+  - { from: gui/progress_bar.png, to: ui/progress_bar_full }
+  - { from: gui/progress_bar_bg.png, to: ui/progress_bar_empty }
+  - { from: hudbars/hudbars_bar_background.png, to: ui/bar_background }
+  - { from: hudbars/hudbars_bar_health.png, to: ui/bar_health }
+  - { from: hudbars/hudbars_bar_breath.png, to: ui/bar_breath }
+  - { from: hudbars/hudbars_icon_health.png, to: ui/icon_health }
+  - { from: hudbars/hudbars_bgicon_health.png, to: ui/icon_health_empty }
+  - { from: hudbars/hudbars_icon_breath.png, to: ui/icon_breath }
+  - { from: hudbars/hudbars_bgicon_breath.png, to: ui/icon_breath_empty }
+  - { from: hunger_ng/hunger_ng_hunger_bar_image.png, to: ui/icon_hunger }
+  - { from: misc/sun.png, to: ui/sun }
+  - { from: misc/moon.png, to: ui/moon }
+
+skip:
+  - why: Not texture data for the game. The template and screenshot are pictures of the pack, and override.txt is a Minetest setting
+    files: [Template.png, screenshot.png, override.txt]
+  - why: The artist's Photoshop sources. Our tool reads PNG only, and the pack ships the flattened result
+    files:
+      - _resources/default_furnace_front.psd
+      - _resources/dice.psd
+      - _resources/ore_shadow.psd
+      - _resources/overhang_shadow.psd
+      - _resources/vessels_bottles.psd
+      - _resources/vessels_shelf.psd
+  - why: The pack's own to-do folder, with an icon for Minetest's creative trash
+    files: [_todo/creative_trash_icon.png]
+  - why: Symbolic links into vessels/, and links in a pack are never followed. Their targets are imported directly
+    files:
+      - simple_potions/bottle_aqua.png
+      - simple_potions/bottle_black.png
+      - simple_potions/bottle_blue.png
+      - simple_potions/bottle_crimson.png
+      - simple_potions/bottle_cyan.png
+      - simple_potions/bottle_darkgreen.png
+      - simple_potions/bottle_green.png
+      - simple_potions/bottle_magenta.png
+      - simple_potions/bottle_orange.png
+      - simple_potions/bottle_purple.png
+      - simple_potions/bottle_red.png
+  - why: Minetest's fictional material mese, and tin and bronze, none of which this game has
+    files:
+      - default/default_mese_block.png
+      - default/default_mese_crystal.png
+      - default/default_mese_crystal_fragment.png
+      - default/default_meselamp.png
+      - default/default_mineral_mese.png
+      - default/default_mineral_tin.png
+      - default/default_tin_block.png
+      - default/default_tin_ingot.png
+      - default/default_tin_lump.png
+      - default/default_bronze_block.png
+      - default/default_bronze_ingot.png
+      - default/default_tool_bronzeaxe.png
+      - default/default_tool_bronzepick.png
+      - default/default_tool_bronzeshovel.png
+      - default/default_tool_bronzesword.png
+      - default/default_tool_meseaxe.png
+      - default/default_tool_mesehoe.png
+      - default/default_tool_mesepick.png
+      - default/default_tool_meseshovel.png
+      - default/default_tool_mesesword.png
+  - why: Older or lesser copies of something imported above, under another name
+    files:
+      - default/default_lava.png
+      - default/default_leaves_simple.png
+      - default/default_furnace_front_active.png
+      - default/default_rail.png
+      - default/default_rail_crossing.png
+      - default/default_rail_curved.png
+      - default/default_rail_t_junction.png
+      - default/default_torch.png
+      - default/iron_block.png
+      - tnt/tnt_top_burning_animated.png
+  - why: Overlays for a Minetest mechanic or a mod this game does not have
+    files:
+      - default/default_blueberry_overlay.png
+      - default/default_fence_overlay.png
+      - default/default_footprint.png
+      - default/default_mineral_copper_extra.png
+      - default/default_sign_steel.png
+      - default/default_sign_wall_steel.png
+      - bucket/bucket_river_water.png
+      - farming/farming_flour.png
+      - gui/minimap_overlay_square.png
+      - gui/player_marker.png
+      - player_api/player.png
+      - player_api/player_back.png
+      - screwdriver/screwdriver.png
+      - vessels/vessels_glass_bottle_mask.png
+      - vessels/vessels_shelf.png
+      - vessels/vessels_shelf_slot.png
+      - tnt/tnt_gunpowder_crossing.png
+      - tnt/tnt_gunpowder_curved.png
+      - tnt/tnt_gunpowder_straight.png
+      - tnt/tnt_gunpowder_t_junction.png
+      - tnt/tnt_gunpowder_burning_crossing_animated.png
+      - tnt/tnt_gunpowder_burning_curved_animated.png
+      - tnt/tnt_gunpowder_burning_straight_animated.png
+      - tnt/tnt_gunpowder_burning_t_junction_animated.png
+  - why: A Minetest bones node, and dice from a mod, which this game does not have
+    files:
+      - bones/bones_bottom.png
+      - bones/bones_front.png
+      - bones/bones_rear.png
+      - bones/bones_side.png
+      - bones/bones_top.png
+      - dice3/dice3_1.png
+      - dice3/dice3_2.png
+      - dice3/dice3_3.png
+      - dice3/dice3_4.png
+      - dice3/dice3_5.png
+      - dice3/dice3_6.png

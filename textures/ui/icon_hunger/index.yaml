@@ -1,0 +1,10 @@
+# Written by compile/src/texture_pack from textures/import.yaml. A re-import replaces it.
+name: icon_hunger
+group: ui
+size: { width: 18, height: 18, frames: 1 }
+source:
+  kind: pack
+  pack: pixel_perfection
+  commit: "7935d064fc6f993d1b5038ed5ec17a615600cf0a"
+  licence: CC-BY-SA-4.0
+  file: hunger_ng/hunger_ng_hunger_bar_image.png
