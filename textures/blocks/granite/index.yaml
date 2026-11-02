@@ -1,0 +1,16 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: granite
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Coarse pink and brown stone."
+  seed: 1024719661
+  ops:
+    - { op: fill, color: "#94675a" }
+    - { op: noise, amount: 12, cell: 4 }
+    - { op: noise, amount: 8, cell: 2 }
+    - { op: noise, amount: 8, cell: 1 }
+    - { op: speckle, color: "#b98a7c", permille: 110, seed: 1 }
+    - { op: speckle, color: "#6a4439", permille: 90, seed: 2 }
+    - { op: blobs, color: "#a97a6a", count: 3, radius_min: 1, radius_max: 2, jitter: 6 }

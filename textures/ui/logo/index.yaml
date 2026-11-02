@@ -1,0 +1,62 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: logo
+group: ui
+size: { width: 147, height: 24, frames: 1 }
+source:
+  kind: procedural
+  about: "The title on the main menu, in our own glyphs."
+  seed: 178029498
+  ops:
+    - op: art
+      x: 2
+      y: 2
+      palette: { s: "#2a2a2a" }
+      rows:
+        - "ssssssssssss.........sssssssss......sss.........sss...sssssssssssssss...sss.........sss......sssssssss......sssssssssssssss...sss.........sss..."
+        - "ssssssssssss.........sssssssss......sss.........sss...sssssssssssssss...sss.........sss......sssssssss......sssssssssssssss...sss.........sss..."
+        - "ssssssssssss.........sssssssss......sss.........sss...sssssssssssssss...sss.........sss......sssssssss......sssssssssssssss...sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............ssssss...ssssss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............ssssss...ssssss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............ssssss...ssssss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............sss...sss...sss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............sss...sss...sss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............sss...sss...sss...sss.........sss.........sss.........sss.........sss..."
+        - "ssssssssssss......sss.........sss...sssssssssssssss...ssssssssssss......sss...sss...sss...sss.........sss.........sss.........sssssssssssssss..."
+        - "ssssssssssss......sss.........sss...sssssssssssssss...ssssssssssss......sss...sss...sss...sss.........sss.........sss.........sssssssssssssss..."
+        - "ssssssssssss......sss.........sss...sssssssssssssss...ssssssssssss......sss...sss...sss...sss.........sss.........sss.........sssssssssssssss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............sss.........sss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............sss.........sss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............sss.........sss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............sss.........sss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............sss.........sss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............sss.........sss...sss.........sss.........sss.........sss.........sss..."
+        - "ssssssssssss.........sssssssss......sss.........sss...sssssssssssssss...sss.........sss......sssssssss............sss.........sss.........sss..."
+        - "ssssssssssss.........sssssssss......sss.........sss...sssssssssssssss...sss.........sss......sssssssss............sss.........sss.........sss..."
+        - "ssssssssssss.........sssssssss......sss.........sss...sssssssssssssss...sss.........sss......sssssssss............sss.........sss.........sss..."
+    - op: art
+      x: 1
+      y: 1
+      palette: { s: "#c8c8c2" }
+      rows:
+        - "ssssssssssss.........sssssssss......sss.........sss...sssssssssssssss...sss.........sss......sssssssss......sssssssssssssss...sss.........sss..."
+        - "ssssssssssss.........sssssssss......sss.........sss...sssssssssssssss...sss.........sss......sssssssss......sssssssssssssss...sss.........sss..."
+        - "ssssssssssss.........sssssssss......sss.........sss...sssssssssssssss...sss.........sss......sssssssss......sssssssssssssss...sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............ssssss...ssssss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............ssssss...ssssss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............ssssss...ssssss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............sss...sss...sss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............sss...sss...sss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............sss...sss...sss...sss.........sss.........sss.........sss.........sss..."
+        - "ssssssssssss......sss.........sss...sssssssssssssss...ssssssssssss......sss...sss...sss...sss.........sss.........sss.........sssssssssssssss..."
+        - "ssssssssssss......sss.........sss...sssssssssssssss...ssssssssssss......sss...sss...sss...sss.........sss.........sss.........sssssssssssssss..."
+        - "ssssssssssss......sss.........sss...sssssssssssssss...ssssssssssss......sss...sss...sss...sss.........sss.........sss.........sssssssssssssss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............sss.........sss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............sss.........sss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............sss.........sss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............sss.........sss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............sss.........sss...sss.........sss.........sss.........sss.........sss..."
+        - "sss.........sss...sss.........sss...sss.........sss...sss...............sss.........sss...sss.........sss.........sss.........sss.........sss..."
+        - "ssssssssssss.........sssssssss......sss.........sss...sssssssssssssss...sss.........sss......sssssssss............sss.........sss.........sss..."
+        - "ssssssssssss.........sssssssss......sss.........sss...sssssssssssssss...sss.........sss......sssssssss............sss.........sss.........sss..."
+        - "ssssssssssss.........sssssssss......sss.........sss...sssssssssssssss...sss.........sss......sssssssss............sss.........sss.........sss..."
+    - { op: noise, amount: 10, cell: 2 }

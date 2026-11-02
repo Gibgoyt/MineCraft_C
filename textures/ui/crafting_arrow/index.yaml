@@ -1,0 +1,26 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: crafting_arrow
+group: ui
+size: { width: 22, height: 15, frames: 1 }
+source:
+  kind: procedural
+  about: "The arrow between a crafting grid and its result."
+  seed: 668976071
+  ops:
+    - op: art
+      y: 1
+      palette: { k: "#2a2a2a", b: "#8a8a8a" }
+      rows:
+        - "...............k......"
+        - "...............kk....."
+        - "...............kbk...."
+        - "...............kbbk..."
+        - "kkkkkkkkkkkkkkkkbbbk.."
+        - "kbbbbbbbbbbbbbbbbbbbk."
+        - "kbbbbbbbbbbbbbbbbbbbbk"
+        - "kbbbbbbbbbbbbbbbbbbbk."
+        - "kkkkkkkkkkkkkkkkbbbk.."
+        - "...............kbbk..."
+        - "...............kbk...."
+        - "...............kk....."
+        - "...............k......"

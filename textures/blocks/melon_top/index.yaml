@@ -1,0 +1,14 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: melon_top
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The top of a melon."
+  seed: 1758487906
+  ops:
+    - { op: fill, color: "#7fae31" }
+    - { op: noise, amount: 8, cell: 2 }
+    - { op: disc, color: "#5a8a24", cx: 8, cy: 8, rx: 5, ry: 5 }
+    - { op: disc, color: "#7fae31", cx: 8, cy: 8, rx: 3, ry: 3 }
+    - { op: disc, color: "#3f6e1c", cx: 8, cy: 8, rx: 1, ry: 1 }

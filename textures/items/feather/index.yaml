@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: feather
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A white feather."
+  seed: 1571392901
+  ops:
+    - op: art
+      palette: { w: "#f2f2ee", b: "#c7c7c2", q: "#8f8f8a" }
+      rows:
+        - "................"
+        - "..........ww...."
+        - ".........wwwb..."
+        - "........wwwwb..."
+        - ".......wwwwb...."
+        - "......wwwwb....."
+        - ".....wwwwb......"
+        - "....wwwwb......."
+        - "....wwwb........"
+        - "...wwbb........."
+        - "...wb..........."
+        - "..q............."
+        - ".q.............."
+        - "................"
+        - "................"
+        - "................"

@@ -1,0 +1,16 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: bamboo
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A green cane with joints."
+  seed: 746249841
+  ops:
+    - { op: fill, color: "#5f9a2e", x: 6, w: 4 }
+    - { op: noise, amount: 8, cell_x: 1, cell_y: 8, x: 6, w: 4 }
+    - { op: fill, color: "#3f7a22", x: 6, y: 4, w: 4, h: 1 }
+    - { op: fill, color: "#3f7a22", x: 6, y: 12, w: 4, h: 1 }
+    - { op: line, color: "#7fb845", x0: 7, y0: 0, x1: 7, y1: 3 }
+    - { op: line, color: "#7fb845", x0: 7, y0: 5, x1: 7, y1: 11 }
+    - { op: line, color: "#7fb845", x0: 7, y0: 13, x1: 7, y1: 15 }

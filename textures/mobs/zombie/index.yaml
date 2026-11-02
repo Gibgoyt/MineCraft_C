@@ -1,0 +1,54 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: zombie
+group: mobs
+size: { width: 64, height: 32, frames: 1 }
+source:
+  kind: procedural
+  about: "The zombie: green rotting skin, torn teal shirt, dark trousers. A 64 by 32 skin, unwrapped as the player skin is."
+  seed: 62388376
+  ops:
+    - { op: fill, color: "#2f4f2a", x: 8, y: 0, w: 8, h: 8 }
+    - { op: fill, color: "#3c6530", x: 16, y: 0, w: 8, h: 8 }
+    - { op: fill, color: "#4f7f3a", x: 0, y: 8, w: 8, h: 8 }
+    - { op: fill, color: "#4f7f3a", x: 8, y: 8, w: 8, h: 8 }
+    - { op: fill, color: "#4f7f3a", x: 16, y: 8, w: 8, h: 8 }
+    - { op: fill, color: "#39602d", x: 24, y: 8, w: 8, h: 8 }
+    - { op: fill, color: "#2f4f2a", x: 0, y: 8, w: 32, h: 2 }
+    - { op: speckle, color: "#2f4f2a", permille: 400, x: 0, y: 10, w: 32, h: 1 }
+    - { op: fill, color: "#2f6f73", x: 20, y: 16, w: 8, h: 4 }
+    - { op: fill, color: "#2f6f73", x: 28, y: 16, w: 8, h: 4 }
+    - { op: fill, color: "#2a6367", x: 16, y: 20, w: 4, h: 12 }
+    - { op: fill, color: "#2f6f73", x: 20, y: 20, w: 8, h: 12 }
+    - { op: fill, color: "#2a6367", x: 28, y: 20, w: 4, h: 12 }
+    - { op: fill, color: "#285c60", x: 32, y: 20, w: 8, h: 12 }
+    - { op: fill, color: "#3c6530", x: 44, y: 16, w: 4, h: 4 }
+    - { op: fill, color: "#4f7f3a", x: 48, y: 16, w: 4, h: 4 }
+    - { op: fill, color: "#4f7f3a", x: 40, y: 20, w: 4, h: 12 }
+    - { op: fill, color: "#4f7f3a", x: 44, y: 20, w: 4, h: 12 }
+    - { op: fill, color: "#4f7f3a", x: 48, y: 20, w: 4, h: 12 }
+    - { op: fill, color: "#3c6530", x: 52, y: 20, w: 4, h: 12 }
+    - { op: fill, color: "#2a6367", x: 40, y: 20, w: 16, h: 4 }
+    - { op: fill, color: "#39335c", x: 4, y: 16, w: 4, h: 4 }
+    - { op: fill, color: "#2b2747", x: 8, y: 16, w: 4, h: 4 }
+    - { op: fill, color: "#39335c", x: 0, y: 20, w: 4, h: 12 }
+    - { op: fill, color: "#3f3966", x: 4, y: 20, w: 4, h: 12 }
+    - { op: fill, color: "#39335c", x: 8, y: 20, w: 4, h: 12 }
+    - { op: fill, color: "#332e52", x: 12, y: 20, w: 4, h: 12 }
+    - { op: noise, amount: 10, cell: 2 }
+    - { op: noise, amount: 8, cell: 1 }
+    - { op: speckle, color: "#4f7f3a", permille: 240, x: 20, y: 28, w: 8, h: 4 }
+    - { op: speckle, color: "#4f7f3a", permille: 240, x: 32, y: 28, w: 8, h: 4 }
+    - { op: speckle, color: "#4f7f3a", permille: 90, x: 20, y: 20, w: 8, h: 8, seed: 1 }
+    - op: art
+      x: 8
+      y: 8
+      palette: { h: "#2f4f2a", k: "#1c2e18", r: "#c0352a", n: "#31532a" }
+      rows:
+        - "........"
+        - "hhhhhhhh"
+        - "hh....hh"
+        - ".kkk.kkk"
+        - ".rkk.rkk"
+        - "...nn..."
+        - ".kkkkkk."
+        - "..k.kk.."

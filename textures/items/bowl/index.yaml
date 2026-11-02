@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: bowl
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A wooden bowl."
+  seed: 698671234
+  ops:
+    - op: art
+      palette: { l: "#9a7445", m: "#7a5a30", d: "#4f3a1e" }
+      rows:
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "..lmmmmmmmmmmd.."
+        - "..lmmmmmmmmmmd.."
+        - "..lmmmmmmmmmdd.."
+        - "...lmmmmmmmdd..."
+        - "....lmmmmmdd...."
+        - ".....ddddddd...."
+        - "................"
+        - "................"
+        - "................"
+        - "................"

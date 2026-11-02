@@ -1,0 +1,15 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: mossy_stone_bricks
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Stone bricks grown over with moss."
+  seed: 1756620013
+  ops:
+    - { op: fill, color: "#8c8c88" }
+    - { op: noise, amount: 10, cell: 3 }
+    - { op: noise, amount: 7, cell: 1 }
+    - { op: bricks, color: "#555552", brick_w: 8, brick_h: 4 }
+    - { op: blobs, color: "#566e31", count: 7, radius_min: 1, radius_max: 2, jitter: 10 }
+    - { op: speckle, color: "#42592a", permille: 40 }

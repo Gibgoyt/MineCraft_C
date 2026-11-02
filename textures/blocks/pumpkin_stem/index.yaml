@@ -1,0 +1,12 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: pumpkin_stem
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A pumpkin vine."
+  seed: 1615507287
+  ops:
+    - { op: line, color: "#88a03a", x0: 8, y0: 15, x1: 8, y1: 4 }
+    - { op: line, color: "#88a03a", x0: 8, y0: 8, x1: 5, y1: 5 }
+    - { op: line, color: "#88a03a", x0: 8, y0: 6, x1: 11, y1: 3 }

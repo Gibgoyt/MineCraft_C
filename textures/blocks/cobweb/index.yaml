@@ -1,0 +1,16 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: cobweb
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Sticky web in an old corner."
+  seed: 516314703
+  ops:
+    - { op: line, color: "#e3e6e8", x0: 0, y0: 0, x1: 15, y1: 15 }
+    - { op: line, color: "#e3e6e8", x0: 15, y0: 0, x1: 0, y1: 15 }
+    - { op: line, color: "#d4d7d9", x0: 8, y0: 0, x1: 8, y1: 15 }
+    - { op: line, color: "#d4d7d9", x0: 0, y0: 8, x1: 15, y1: 8 }
+    - { op: outline, color: "#c8cccf", x: 4, y: 4, w: 8, h: 8 }
+    - { op: outline, color: "#c8cccf", x: 2, y: 2, w: 12, h: 12 }
+    - { op: speckle, color: "#00000000", permille: 110 }

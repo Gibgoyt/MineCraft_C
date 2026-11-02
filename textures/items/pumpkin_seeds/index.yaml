@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: pumpkin_seeds
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Pale pumpkin seeds."
+  seed: 2118803987
+  ops:
+    - op: art
+      palette: { a: "#e6dca8", b: "#b7ac7c" }
+      rows:
+        - "................"
+        - "................"
+        - "................"
+        - "......a........."
+        - ".....aab..a....."
+        - "......b..aab...."
+        - "..a.......b....."
+        - ".aab...a........"
+        - "..b...aab..a...."
+        - ".......b..aab..."
+        - "...a.......b...."
+        - "..aab...a......."
+        - "...b...aab......"
+        - "........b......."
+        - "................"
+        - "................"

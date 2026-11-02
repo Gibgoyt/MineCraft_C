@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: glow_berries
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Berries that shine a little."
+  seed: 1054826441
+  ops:
+    - op: art
+      palette: { g: "#5f8f30", l: "#ffe08a", m: "#f5b73a", d: "#b8791a" }
+      rows:
+        - "................"
+        - ".......g........"
+        - ".......g........"
+        - "......gg........"
+        - ".....g..g......."
+        - "....g....g......"
+        - "...lm.....lm...."
+        - "...mmd....mmd..."
+        - "....dd.....dd..."
+        - ".......lm......."
+        - ".......mmd......"
+        - "........dd......"
+        - "................"
+        - "................"
+        - "................"
+        - "................"

@@ -1,0 +1,34 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: carved_pumpkin
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A pumpkin with a face cut in it."
+  seed: 1406989912
+  ops:
+    - { op: fill, color: "#c96f1a" }
+    - { op: noise, amount: 9, cell_x: 2, cell_y: 8 }
+    - { op: noise, amount: 5, cell: 1 }
+    - { op: line, color: "#a8560f", x0: 3, y0: 0, x1: 3, y1: 15 }
+    - { op: line, color: "#a8560f", x0: 8, y0: 0, x1: 8, y1: 15 }
+    - { op: line, color: "#a8560f", x0: 12, y0: 0, x1: 12, y1: 15 }
+    - op: art
+      palette: { k: "#2d1a0a" }
+      rows:
+        - "................"
+        - "................"
+        - "................"
+        - "...kk......kk..."
+        - "..kkkk....kkkk.."
+        - "..kkkk....kkkk.."
+        - "................"
+        - ".......kk......."
+        - ".......kk......."
+        - "................"
+        - "..k..kkkkkk..k.."
+        - "..kkkkkkkkkkkk.."
+        - "...kkkkkkkkkk..."
+        - "....kk.kk.kk...."
+        - "................"
+        - "................"

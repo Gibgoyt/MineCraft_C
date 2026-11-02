@@ -1,0 +1,12 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: lilac_bottom
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The leafy stalk of a lilac."
+  seed: 809518905
+  ops:
+    - { op: blobs, color: "#3f7a2d", count: 10, radius_min: 1, radius_max: 2, jitter: 8, x: 2, y: 0, w: 12, h: 16 }
+    - { op: speckle, color: "#00000000", permille: 240 }
+    - { op: line, color: "#2b5a20", x0: 8, y0: 0, x1: 8, y1: 15 }

@@ -1,0 +1,11 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: pink_petals
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Fallen cherry petals."
+  seed: 1107170080
+  ops:
+    - { op: blobs, color: "#f0b4d0", count: 12, radius_min: 0, radius_max: 1, jitter: 10 }
+    - { op: speckle, color: "#00000000", permille: 240 }

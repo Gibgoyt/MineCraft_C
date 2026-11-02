@@ -1,0 +1,16 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: dark_oak_log_top
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Dark oak, cut."
+  seed: 1661429611
+  ops:
+    - { op: fill, color: "#3e2c1a" }
+    - { op: noise, amount: 8, cell: 1 }
+    - { op: disc, color: "#5b4326", cx: 8, cy: 8, rx: 6, ry: 6 }
+    - { op: disc, color: "#47331d", cx: 8, cy: 8, rx: 4, ry: 4 }
+    - { op: disc, color: "#5b4326", cx: 8, cy: 8, rx: 3, ry: 3 }
+    - { op: disc, color: "#47331d", cx: 8, cy: 8, rx: 1, ry: 1 }
+    - { op: noise, amount: 7, cell: 1, x: 2, y: 2, w: 12, h: 12 }

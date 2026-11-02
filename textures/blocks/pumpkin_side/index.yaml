@@ -1,0 +1,16 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: pumpkin_side
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The ribbed side of a pumpkin."
+  seed: 1668556295
+  ops:
+    - { op: fill, color: "#c96f1a" }
+    - { op: noise, amount: 9, cell_x: 2, cell_y: 8 }
+    - { op: noise, amount: 5, cell: 1 }
+    - { op: line, color: "#a8560f", x0: 3, y0: 0, x1: 3, y1: 15 }
+    - { op: line, color: "#a8560f", x0: 8, y0: 0, x1: 8, y1: 15 }
+    - { op: line, color: "#a8560f", x0: 12, y0: 0, x1: 12, y1: 15 }
+    - { op: speckle, color: "#d98a2c", permille: 60 }

@@ -1,0 +1,7 @@
+# textures/items/mushroom_stew
+
+A bowl of mushroom stew.
+
+Our own: painted by the recipe in `index.yaml`, from nothing but that recipe. It uses no pack's pixels, and owes no credit.
+
+Written by `compile/src/texture_vector`, which `textures/README.md` describes.

@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: sugar
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A heap of sugar."
+  seed: 607808901
+  ops:
+    - op: art
+      palette: { w: "#f8f8f8", g: "#c9c9c9" }
+      rows:
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - ".......w........"
+        - "......wwg......."
+        - ".....wwwwg.w...."
+        - "....wwgwwwwwg..."
+        - "...wwwwwgwwwwg.."
+        - "..wwgwwwwwgwwwg."
+        - "..ggggggggggggg."
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"

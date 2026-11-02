@@ -1,0 +1,132 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: skeleton
+group: mobs
+size: { width: 64, height: 32, frames: 1 }
+source:
+  kind: procedural
+  about: "The skeleton: bleached bone, dark sockets, ribs with gaps, and thin limbs of 2 by 12 by 2. A 64 by 32 skin."
+  seed: 1813587336
+  ops:
+    - { op: fill, color: "#cfcfc8", x: 8, y: 0, w: 8, h: 8 }
+    - { op: fill, color: "#8f8f89", x: 16, y: 0, w: 8, h: 8 }
+    - { op: fill, color: "#c6c6bf", x: 0, y: 8, w: 8, h: 8 }
+    - { op: fill, color: "#c6c6bf", x: 8, y: 8, w: 8, h: 8 }
+    - { op: fill, color: "#c6c6bf", x: 16, y: 8, w: 8, h: 8 }
+    - { op: fill, color: "#b4b4ad", x: 24, y: 8, w: 8, h: 8 }
+    - { op: noise, amount: 7, cell: 2, x: 0, y: 0, w: 32, h: 16 }
+    - { op: noise, amount: 6, cell: 1, x: 0, y: 0, w: 32, h: 16 }
+    - op: art
+      x: 8
+      y: 8
+      palette: { k: "#2a2a2c" }
+      rows:
+        - "........"
+        - "........"
+        - ".kkk.kkk"
+        - ".kkk.kkk"
+        - "....k..."
+        - "...kkk.."
+        - "k.k.k.k."
+        - ".k.k.k.k"
+    - op: art
+      x: 20
+      y: 20
+      palette: { b: "#c6c6bf", k: "#2a2a2c" }
+      rows:
+        - "bbbbbbbb"
+        - "bbkkkkbb"
+        - "bkkbbkkb"
+        - "bbbkkbbb"
+        - "bkkbbkkb"
+        - "bbbkkbbb"
+        - "bkkbbkkb"
+        - "bbbkkbbb"
+        - ".kkbbkk."
+        - "..bbbb.."
+        - "..bbbb.."
+        - "..bbbb.."
+    - { op: fill, color: "#c6c6bf", x: 20, y: 16, w: 8, h: 4 }
+    - { op: fill, color: "#8f8f89", x: 28, y: 16, w: 8, h: 4 }
+    - op: art
+      x: 16
+      y: 20
+      palette: { b: "#c6c6bf", k: "#2a2a2c" }
+      rows:
+        - "bbbb"
+        - "kbbk"
+        - "bkkb"
+        - "kbbk"
+        - "bkkb"
+        - "kbbk"
+        - "bkkb"
+        - "kbbk"
+        - ".kk."
+        - ".bb."
+        - ".bb."
+        - ".bb."
+    - op: art
+      x: 28
+      y: 20
+      palette: { b: "#c6c6bf", k: "#2a2a2c" }
+      rows:
+        - "bbbb"
+        - "kbbk"
+        - "bkkb"
+        - "kbbk"
+        - "bkkb"
+        - "kbbk"
+        - "bkkb"
+        - "kbbk"
+        - ".kk."
+        - ".bb."
+        - ".bb."
+        - ".bb."
+    - { op: copy, x: 20, y: 20, w: 8, h: 12, to_x: 32, to_y: 20 }
+    - { op: fill, color: "#c6c6bf", x: 42, y: 16, w: 2, h: 2 }
+    - { op: fill, color: "#8f8f89", x: 44, y: 16, w: 2, h: 2 }
+    - { op: fill, color: "#c6c6bf", x: 40, y: 18, w: 2, h: 12 }
+    - { op: fill, color: "#c6c6bf", x: 42, y: 18, w: 2, h: 12 }
+    - { op: fill, color: "#c6c6bf", x: 44, y: 18, w: 2, h: 12 }
+    - { op: fill, color: "#b4b4ad", x: 46, y: 18, w: 2, h: 12 }
+    - { op: noise, amount: 10, cell_x: 1, cell_y: 4, x: 40, y: 16, w: 8, h: 14 }
+    - op: art
+      x: 42
+      y: 18
+      palette: { b: "#c6c6bf", k: "#8f8f89" }
+      rows:
+        - "bb"
+        - "bk"
+        - "bb"
+        - "kb"
+        - "bb"
+        - "bb"
+        - "kb"
+        - "bb"
+        - "bk"
+        - "bb"
+        - "bb"
+        - "bk"
+    - { op: fill, color: "#c6c6bf", x: 2, y: 16, w: 2, h: 2 }
+    - { op: fill, color: "#8f8f89", x: 4, y: 16, w: 2, h: 2 }
+    - { op: fill, color: "#c6c6bf", x: 0, y: 18, w: 2, h: 12 }
+    - { op: fill, color: "#c6c6bf", x: 2, y: 18, w: 2, h: 12 }
+    - { op: fill, color: "#c6c6bf", x: 4, y: 18, w: 2, h: 12 }
+    - { op: fill, color: "#b4b4ad", x: 6, y: 18, w: 2, h: 12 }
+    - { op: noise, amount: 10, cell_x: 1, cell_y: 4, x: 0, y: 16, w: 8, h: 14 }
+    - op: art
+      x: 2
+      y: 18
+      palette: { b: "#c6c6bf", k: "#8f8f89" }
+      rows:
+        - "bb"
+        - "bk"
+        - "bb"
+        - "kb"
+        - "bb"
+        - "bb"
+        - "kb"
+        - "bb"
+        - "bk"
+        - "bb"
+        - "bb"
+        - "bk"

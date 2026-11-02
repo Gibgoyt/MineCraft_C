@@ -6,9 +6,10 @@ Translated texture data, committed, so that a build needs no pack and no network
 textures/
 ├── ATTRIBUTION.md             every source pack, author, licence and commit
 ├── import.yaml                what the import takes from the pack, and why it leaves out the rest
+├── vector.yaml                what pixels cannot say (light, blending), and every texture the game needs
 ├── blocks/dirt/
 │   ├── index.mctex            the pixels: see compile/src/texture_pack/mctex/README.md
-│   ├── index.yaml             where it came from, and its size
+│   ├── index.yaml             where it came from and its size, or its whole recipe
 │   └── README.md              its credit, and what was changed
 ├── items/
 ├── mobs/
@@ -17,7 +18,7 @@ textures/
 
 Groups: `blocks`, `items`, `mobs`, `ui`. Every directory below a group is one texture, and has an `index.yaml` and a `README.md`.
 
-`source.kind` in `index.yaml` says where a texture comes from. `pack` means imported, and checked against `import.yaml`. Anything else, such as a procedural recipe from Stage 06.3, is its own stage's business, and owes no credit. **No Mojang textures and no decompiled code**, ever.
+`source.kind` in `index.yaml` says where a texture comes from, and there are two: `pack` means imported, and checked against `import.yaml`. `procedural` means painted by the recipe in that file, from nothing else, and it owes no credit. **No Mojang textures and no decompiled code**, ever.
 
 ## Without the pack
 
@@ -27,6 +28,23 @@ To check this tree, with no pack:
 
     tools/test-or-build.sh cmake --build --preset debug --target mc_tool_texture_pack
     build/debug/bin/tools/texture_pack verify --manifest textures/import.yaml --textures textures
+
+## Recipes
+
+The textures the pack lacks are ours: every mob but the player, gold tools, armour, deep rock, more trees and plants, the buttons and the font. `compile/src/texture_vector/recipe/README.md` lists the operations. A recipe reads only its own `index.yaml`, so these 186 textures survive the pack being removed. To change one, edit its yaml, then:
+
+    tools/test-or-build.sh cmake --build --preset debug --target mc_tool_texture_vector
+    build/debug/bin/tools/texture_vector recipes --textures textures
+
+That writes its `index.mctex` and `README.md`, which are committed. To check that everything is whole, that each recipe still makes what is committed, and that everything the game needs is here:
+
+    build/debug/bin/tools/texture_vector check --textures textures --materials textures/vector.yaml
+
+A stage that wants a new texture adds it under `needs` in `vector.yaml`, and gives it a source. Mobs share the player's 64 by 32 layout: a box of width w, height h and depth d at (x, y) has its top at (x+d, y), its bottom at (x+d+w, y), and in the next row right, front, left and back at (x, y+d), (x+d, y+d), (x+d+w, y+d) and (x+d+w+d, y+d). The head is 8 by 8 by 8 at (0, 0), the body 8 by 12 by 4 at (16, 16), an arm 4 by 12 by 4 at (40, 16) and a leg 4 by 12 by 4 at (0, 16). The skeleton's limbs are 2 by 12 by 2 at the same places, and the creeper's four feet 4 by 6 by 4 at (0, 16).
+
+## Vector data
+
+`texture_vector vectors` derives palette, mean colour, height, normal, emissive map and alpha class for each texture, into `build/<preset>/generated/`, never here: `compile/src/texture_vector/analyze/README.md` says how. What pixels cannot say, such as which textures shine, is in `vector.yaml`, which a re-import does not touch.
 
 ## Re-importing
 

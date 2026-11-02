@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: arrow
+group: mobs
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A flying arrow, drawn along its length."
+  seed: 1676175987
+  ops:
+    - { op: fill, color: "#7a5230", x: 2, y: 7, w: 11, h: 2 }
+    - { op: noise, amount: 10, cell_x: 4, cell_y: 1, x: 2, y: 7, w: 11, h: 2 }
+    - op: art
+      x: 0
+      y: 6
+      palette: { w: "#e8e8e4" }
+      rows:
+        - ".wwww.........."
+        - "wwwww.........."
+        - ".wwww.........."
+    - op: art
+      x: 13
+      y: 6
+      palette: { c: "#55555a" }
+      rows:
+        - "c."
+        - "cc"
+        - "cc"
+        - "c."

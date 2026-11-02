@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: leather_helmet
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A leather helmet."
+  seed: 1845377909
+  ops:
+    - op: art
+      palette: { l: "#a56f42", m: "#7f5230", d: "#573720" }
+      rows:
+        - "................"
+        - "................"
+        - "................"
+        - "....lmmmmmmd...."
+        - "...lmmmmmmmmd..."
+        - "...lmmmmmmmmd..."
+        - "...lmmmddmmmd..."
+        - "...lmd....mmd..."
+        - "...lmd....mmd..."
+        - "...ldd....ddd..."
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"

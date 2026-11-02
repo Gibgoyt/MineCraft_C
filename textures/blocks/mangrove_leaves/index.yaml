@@ -1,0 +1,14 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: mangrove_leaves
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Bright swamp leaves."
+  seed: 1545092499
+  ops:
+    - { op: fill, color: "#4f8a2e" }
+    - { op: noise, amount: 18, cell: 2 }
+    - { op: blobs, color: "#366b22", count: 12, radius_min: 1, radius_max: 1, jitter: 4 }
+    - { op: blobs, color: "#6aa63c", count: 9, radius_min: 0, radius_max: 1, jitter: 6 }
+    - { op: speckle, color: "#00000000", permille: 170 }
