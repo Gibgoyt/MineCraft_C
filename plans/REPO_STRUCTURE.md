@@ -169,7 +169,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | `log` | | Logging | 03.1 |
 | `heap` | | **Only OS allocator user**; counts everything, holds to `memory.process_budget_mib` | 03.2 |
 | `arena` | | Bump allocators over memory an Owner reserved and passes in | 03.2 |
-| `thread` | | Pinning, rings | 03.3 |
+| `thread` | `ring` | Pinning physical cores first; single-producer rings | 03.3 |
 | `time` | | Monotonic clock | 03.3 |
 | `file` | | File wrappers | 03.3 |
 | `job` | | Work-stealing job system, per-thread arenas | 03.4 |
@@ -354,6 +354,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/compile/standards_lint/harness/` | Tests the harness itself |
 | `tests/run/<system>/<part>/` | Game tests |
 | `tests/run/types/` | ctest `run_types`, covering all of Stage 03.1: `types`, `assert`, `log`, `main/cpu_check`, `asm/src/cpuid`, and the built program's `--report` and failure paths |
+| `tests/run/thread/` | ctest `run_thread`, covering `run/src/thread/` and `run/src/thread/ring/` together |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
 | `tests/asm/` | NASM kernels against scalar C references |
 | `tests/fuzz/`, `tests/soak/` | Fuzzing and long runs (Stage 18.1) |
