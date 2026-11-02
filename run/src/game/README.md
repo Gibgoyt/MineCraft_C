@@ -9,6 +9,7 @@
 
 - `game_init`, `game_deinit`: remember what it runs on, taking nothing; stop everything. Deinit is safe on a zeroed `game_t`.
 - `game_open`, `game_close`: a world, its blocks on the card, and its pictures, with the effects `game_config_t.features_off` leaves on.
+- `game_day_set`: the time of day, from where the clock goes on. Mid-morning unless told otherwise.
 - `game_sim_step`, `game_fly`, `game_settle`: a step of streaming, a step of flying, and running the sim and upload here until the card holds all the eye's place wants.
 - `game_headless_scene`: what `display_headless_run` drives. One thread, no clock, and one script gives one set of pictures.
 - `game_loop_start`, `game_loop_frame`, `game_loop_stop`: the real threads, and a frame on the main thread.
@@ -25,7 +26,7 @@ A column's blocks are `terrain_generate_box`, on a worker, over all of the colum
 
 | Thread | Does | Tells the others through |
 |---|---|---|
-| `main` | Input, moves the eye, shows the newest picture | A triple buffer of cameras to `gpu`; two relaxed atomics, the eye's chunk, to `sim` |
+| `main` | Input, moves the eye, keeps the time of day, shows the newest picture | A triple buffer of cameras to `gpu`; a relaxed atomic, the time, to `gpu`; two relaxed atomics, the eye's chunk, to `sim` |
 | `sim` | Columns to and from workers, into the map, then a snapshot. A tick at 20 Hz, with nothing in it yet | The snapshots of `world/edit` to `gpu` |
 | `gpu` | The upload queue, then the frame's kernels | A triple buffer of pictures to `main` |
 
@@ -34,6 +35,10 @@ None of them ever waits for another, as the plan wants: a slow tick cannot stall
 With no threads, as under `--headless`, `game_settle` does a sim step and an upload round in turn until all of it is on the card, before each frame. So a picture does not depend on how fast a worker was, and the same script always gives the same bytes. It is the same code as the threads run, in another order.
 
 `tests/run/render/frame/` runs the threads for real, on a plain buffer for a display, and `tests/run/game/` through `display_frames_run` on a fake kernel with a real guardian forked. Only Ahmed can run them on KMS.
+
+## The time of day
+
+One day is 1200 seconds, of whatever `game_loop_frame` or a script's ticks say has passed, so a script's pictures depend on its ticks and on nothing else. `main` keeps it, as a real frame already knows how long it took, and the gpu thread reads it before each frame. A frame out of date by one is the sun a few millionths of a day behind, so a relaxed atomic is plenty. `SHADE_FEATURE_DAY_CYCLE` off stops the clock where it is. When the sim has a world time of its own to keep (Stage 16.1 saves one), it should move there.
 
 ## The guardian's fork
 

@@ -30,6 +30,10 @@ enum : uint32_t {
     RENDER_FRAME_PICTURE_ALIGNMENT = 4096u,
 };
 
+#define RENDER_DAY_PI 3.14159265358979f32
+/* How far from straight overhead the sun's path leans, towards the south, in radians: 20 degrees. */
+#define RENDER_DAY_TILT 0.35f32
+
 /* ---- The exchange ------------------------------------------------------------------------------------------------- */
 
 void render_exchange_start(render_exchange_t *exchange) {
@@ -234,6 +238,7 @@ static gpu_status_t frame_send_tables(render_frame_t *frame, device_memory_t *me
         .features = SHADE_FEATURES_ALL,
     };
     frame->borrowed_shapes = blocks->borrowed_shapes;
+    render_frame_time_set(frame, RENDER_DAY_NOON);
     return GPU_STATUS_OK;
 }
 
@@ -246,12 +251,7 @@ gpu_status_t render_frame_init(render_frame_t *frame, arena_t *arena, device_mem
     frame->width = width;
     frame->height = height;
     frame->picture_bytes = post_xrgb_bytes(width, height);
-    frame->post = (post_settings_t){
-        .sky_zenith = {0.16f32, 0.32f32, 0.70f32},
-        .sky_horizon = {0.62f32, 0.75f32, 0.92f32},
-        .fog_start = fog_end * 0.7f32,
-        .fog_end = fog_end,
-    };
+    frame->fog_end = fog_end;
     frame->targets = (frame_targets_t){
         .borrowed_coarse = blocks->borrowed_coarse,
         .borrowed_hits = blocks->borrowed_hits,
@@ -298,8 +298,102 @@ void render_frame_deinit(render_frame_t *frame) {
 
 /* ---- A frame ------------------------------------------------------------------------------------------------------ */
 
+static float32_t frame_smooth(float32_t from, float32_t to, float32_t value) {
+    float32_t x = (value - from) / (to - from);
+    x = x < 0.0f32 ? 0.0f32 : (x > 1.0f32 ? 1.0f32 : x);
+    return x * x * (3.0f32 - 2.0f32 * x);
+}
+
+/* Three colours by how much of each of day, twilight and night it is. */
+static void frame_day_mix(const float32_t day[3], const float32_t twilight[3], const float32_t night[3],
+                          const float32_t parts[3], float32_t scale, float32_t out[3]) {
+    for (uint32_t i = 0u; i < 3u; i++) {
+        out[i] = (day[i] * parts[0] + twilight[i] * parts[1] + night[i] * parts[2]) * scale;
+    }
+}
+
+void render_day_fill(float32_t day_fraction, post_settings_t *post, shade_sun_t *sun) {
+    /* The sun goes round once a day, from the east over the south side, tilted so that it is never quite overhead: at noon a wall
+     * still throws a shadow, and a block's top and sides do not all look the same. */
+    const float32_t wrapped = day_fraction - floorf(day_fraction);
+    const float32_t angle = 2.0f32 * RENDER_DAY_PI * (wrapped - 0.25f32);
+    const float32_t height = sinf(angle);
+    const float32_t sun_direction[3] = {cosf(angle), -height * sinf(RENDER_DAY_TILT), height * cosf(RENDER_DAY_TILT)};
+    /* Night and day never overlap, and whatever they leave is twilight. */
+    const float32_t day = frame_smooth(0.0f32, 0.35f32, height);
+    const float32_t night = frame_smooth(0.0f32, 0.25f32, -height);
+    const float32_t parts[3] = {day, 1.0f32 - day - night, night};
+
+    static const float32_t zenith_day[3] = {0.16f32, 0.32f32, 0.70f32}, horizon_day[3] = {0.62f32, 0.75f32, 0.92f32};
+    static const float32_t zenith_twilight[3] = {0.14f32, 0.18f32, 0.42f32},
+                           horizon_twilight[3] = {0.85f32, 0.45f32, 0.25f32};
+    static const float32_t zenith_night[3] = {0.004f32, 0.006f32, 0.018f32},
+                           horizon_night[3] = {0.012f32, 0.016f32, 0.04f32};
+    frame_day_mix(zenith_day, zenith_twilight, zenith_night, parts, 1.0f32, post->sky_zenith);
+    frame_day_mix(horizon_day, horizon_twilight, horizon_night, parts, 1.0f32, post->sky_horizon);
+    static const float32_t glow_day[3] = {0.25f32, 0.22f32, 0.16f32}, glow_twilight[3] = {0.60f32, 0.30f32, 0.15f32};
+    static const float32_t none[3] = {0.0f32, 0.0f32, 0.0f32};
+    frame_day_mix(glow_day, glow_twilight, none, parts, 1.0f32, post->sun_glow);
+    memcpy(post->sun_direction, sun_direction, sizeof(sun_direction));
+    static const float32_t disc_sun[3] = {20.0f32, 18.0f32, 14.0f32}, disc_moon[3] = {0.9f32, 0.9f32, 1.0f32};
+    memcpy(post->sun_disc, disc_sun, sizeof(disc_sun));
+    memcpy(post->moon_disc, disc_moon, sizeof(disc_moon));
+
+    /* Noon's sky and sun add up to about 1 on the top of a block, so that the pack's colours are what shows. */
+    static const float32_t direct_day[3] = {0.43f32, 0.417f32, 0.387f32},
+                           direct_twilight[3] = {0.45f32, 0.25f32, 0.13f32},
+                           direct_night[3] = {0.05f32, 0.06f32, 0.10f32};
+    static const float32_t ambient_day[3] = {0.60f32, 0.62f32, 0.65f32},
+                           ambient_twilight[3] = {0.32f32, 0.28f32, 0.34f32},
+                           ambient_night[3] = {0.03f32, 0.04f32, 0.07f32};
+    /* The light swaps from sun to moon at the horizon, so it goes to nothing there and no shadow jumps. */
+    const bool sun_up = height >= 0.0f32;
+    const float32_t fade = frame_smooth(0.0f32, 0.12f32, fabsf(height));
+    const float32_t direct_parts[3] = {parts[0], sun_up ? parts[1] : 0.0f32, parts[2]};
+    frame_day_mix(direct_day, direct_twilight, direct_night, direct_parts, fade, sun->direct);
+    frame_day_mix(ambient_day, ambient_twilight, ambient_night, parts, 1.0f32, sun->ambient);
+    for (uint32_t i = 0u; i < 3u; i++) {
+        sun->direction[i] = sun_up ? sun_direction[i] : -sun_direction[i];
+    }
+    sun->block[0] = 1.0f32;
+    sun->block[1] = 0.82f32;
+    sun->block[2] = 0.58f32;
+}
+
+/* The sun straight up and a sky that never changes: each kind of face has its one brightness. */
+static void frame_day_plain(post_settings_t *post, shade_sun_t *sun) {
+    *sun = (shade_sun_t){.direction = {0.0f32, 0.0f32, 1.0f32},
+                         .ambient = {1.0f32, 1.0f32, 1.0f32},
+                         .block = {1.0f32, 0.82f32, 0.58f32}};
+    const float32_t fog_start = post->fog_start, fog_end = post->fog_end;
+    *post = (post_settings_t){.sky_zenith = {0.16f32, 0.32f32, 0.70f32},
+                              .sky_horizon = {0.62f32, 0.75f32, 0.92f32},
+                              .fog_start = fog_start,
+                              .fog_end = fog_end,
+                              .sun_direction = {0.0f32, 0.0f32, 1.0f32}};
+}
+
+/* Everything the kernels read that follows from the settings and the time. */
+static void frame_settings_apply(render_frame_t *frame) {
+    const bool fog = (frame->scene.features & SHADE_FEATURE_FOG) != 0u;
+    /* Off, nothing is fog but what hit nothing at all: TRAVERSE_COARSE_SKY is at this end, and every hit is before this start. */
+    frame->post.fog_start = fog ? frame->fog_end * 0.7f32 : TRAVERSE_COARSE_SKY * 0.5f32;
+    frame->post.fog_end = fog ? frame->fog_end : TRAVERSE_COARSE_SKY;
+    if ((frame->scene.features & SHADE_FEATURE_SKY) != 0u) {
+        render_day_fill(frame->day_fraction, &frame->post, &frame->scene.sun);
+    } else {
+        frame_day_plain(&frame->post, &frame->scene.sun);
+    }
+}
+
 void render_frame_features_set(render_frame_t *frame, uint32_t features) {
     frame->scene.features = features & SHADE_FEATURES_ALL;
+    frame_settings_apply(frame);
+}
+
+void render_frame_time_set(render_frame_t *frame, float32_t day_fraction) {
+    frame->day_fraction = day_fraction - floorf(day_fraction);
+    frame_settings_apply(frame);
 }
 
 gpu_status_t render_frame_draw(render_frame_t *frame, const world_buffers_t *buffers, const render_camera_t *camera) {

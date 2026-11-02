@@ -100,8 +100,11 @@ static const uint8_t *gl_draw(test_context_t *t, gl_rig_t *rig, const render_cam
     return picture;
 }
 
-static const game_config_t gl_small_game = {
-    .render_distance = 6u, .width = GL_WIDTH, .height = GL_HEIGHT, ._pad0 = {0}};
+static const game_config_t gl_small_game = {.render_distance = 6u,
+                                            .width = GL_WIDTH,
+                                            .height = GL_HEIGHT,
+                                            .features_off = SHADE_FEATURE_DAY_CYCLE,
+                                            ._pad0 = {0}};
 
 static input_t *gl_input_start(test_context_t *t, fake_evdev_t *fake) {
     input_t *const input = gl_aligned(t, sizeof(input_t));
@@ -264,7 +267,11 @@ TEST(a_world_runs_through_the_display_loop_with_a_real_guardian_forked) {
     REQUIRE(display_init(display, &config, &fake_ops, card) == DISPLAY_STATUS_OK);
     const display_buffer_t *const buffer = &display->flip.buffers[0];
     REQUIRE(buffer->pitch == buffer->width * 4u);
-    const game_config_t small = {.render_distance = 6u, .width = buffer->width, .height = buffer->height, ._pad0 = {0}};
+    const game_config_t small = {.render_distance = 6u,
+                                 .width = buffer->width,
+                                 .height = buffer->height,
+                                 .features_off = SHADE_FEATURE_DAY_CYCLE,
+                                 ._pad0 = {0}};
     REQUIRE(game_open(game, &small));
     fake_evdev_t *const fake = fake_new(t);
     fake_device_t *const keyboard = fake_add(fake, "event1", "Keyboard", fake_caps_keyboard, true);

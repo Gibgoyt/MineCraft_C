@@ -83,6 +83,8 @@ static_assert(sizeof(render_fly_input_t) == 32);
 /* The tangent of half of a vertical field of view of 70 degrees. */
 #define RENDER_CAMERA_HALF_FOV_TANGENT_DEFAULT 0.7002f32
 
+#define RENDER_DAY_NOON 0.5f32
+
 void render_camera_start(render_camera_t *camera, float64_t x, float64_t y, float64_t z, float32_t yaw,
                          float32_t pitch);
 
@@ -122,23 +124,25 @@ typedef struct render_frame_t {
     frame_gpu_t gpu;                                   /* 192 */
     frame_targets_t targets;                           /* 280 */
     shade_scene_t scene;                               /* 312 */
-    post_settings_t post;                              /* 352 */
-    render_frame_stats_t stats;                        /* 384 */
-    device_memory_t *borrowed_memory;                  /* 472 */
-    uint8_t *borrowed_pictures[RENDER_EXCHANGE_SLOTS]; /* 480: width * height * 4 each */
-    float32_t *borrowed_samples;                       /* 504: RENDER_FRAME_SAMPLES of total_ms */
-    uint64_t picture_bytes;                            /* 512 */
-    uint32_t width;                                    /* 520 */
-    uint32_t height;                                   /* 524 */
-    const device_block_t *borrowed_shapes;             /* 528: a traverse_shape_t per block */
-    uint8_t pinned;                                    /* 536: how many of the pictures are pinned */
-    uint8_t _pad0[39];                                 /* 537 */
+    post_settings_t post;                              /* 400 */
+    render_frame_stats_t stats;                        /* 480 */
+    device_memory_t *borrowed_memory;                  /* 568 */
+    uint8_t *borrowed_pictures[RENDER_EXCHANGE_SLOTS]; /* 576: width * height * 4 each */
+    float32_t *borrowed_samples;                       /* 600: RENDER_FRAME_SAMPLES of total_ms */
+    uint64_t picture_bytes;                            /* 608 */
+    uint32_t width;                                    /* 616 */
+    uint32_t height;                                   /* 620 */
+    const device_block_t *borrowed_shapes;             /* 624: a traverse_shape_t per block */
+    float32_t fog_end;                                 /* 632: in blocks, as it was asked for */
+    float32_t day_fraction;                            /* 636: what scene.sun and post were last worked out for */
+    uint8_t pinned;                                    /* 640: how many of the pictures are pinned */
+    uint8_t _pad0[63];                                 /* 641 */
 } render_frame_t;
-static_assert(sizeof(render_frame_t) == 576);
+static_assert(sizeof(render_frame_t) == 704);
 static_assert(alignof(render_frame_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(render_frame_t, gpu) == 192);
-static_assert(offsetof(render_frame_t, borrowed_memory) == 472);
-static_assert(offsetof(render_frame_t, pinned) == 536);
+static_assert(offsetof(render_frame_t, borrowed_memory) == 568);
+static_assert(offsetof(render_frame_t, pinned) == 640);
 
 /* Sizes, for the Owner to take blocks and memory. */
 uint64_t render_frame_texture_table_bytes(void);
@@ -158,6 +162,15 @@ void render_frame_deinit(render_frame_t *frame);
 /* Which effects the next frames draw with: SHADE_FEATURE_*, all on from render_frame_init. Between frames: a draw reads this on
  * the gpu thread. */
 void render_frame_features_set(render_frame_t *frame, uint32_t features);
+
+/* The time of day: 0 is midnight, 0.25 sunrise in the east (+x), 0.5 noon and 0.75 sunset in the west, and anything else wraps.
+ * Noon from render_frame_init. Between frames, on the thread that draws. With SHADE_FEATURE_DAY_CYCLE off this still moves the sun:
+ * it is whoever calls this that keeps time, and the setting tells it not to. */
+void render_frame_time_set(render_frame_t *frame, float32_t day_fraction);
+
+/* What the sky and the light are at a time of day: where the sun and moon are, and all their colours. Touches nothing else, so a
+ * test can ask without a card. Leaves post's fog alone. */
+void render_day_fill(float32_t day_fraction, post_settings_t *post, shade_sun_t *sun);
 
 /* The gpu thread. Draws one whole frame of what buffers hold now, from this camera, and makes it the newest picture. Waits for
  * the card. Allocates nothing. Anything but GPU_STATUS_OK means nothing more should be asked of the card, and gpu.last_error

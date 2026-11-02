@@ -39,6 +39,9 @@ enum : uint32_t {
     SH_COST_RENDER_DISTANCE = 10u,
 };
 
+/* This test holds shapes and holes to an exact trace, under the plain light of each kind of face: tests/cuda/sky/ has the rest. */
+enum : uint32_t { SH_FEATURES_BOTH = SHADE_FEATURE_SHAPES | SHADE_FEATURE_ALPHA };
+
 #define SH_PI 3.14159265358979f32
 /* A plate is one texel thick: from 15/32 to 17/32 through the middle of a block. */
 #define SH_THIN_LOW (15.0f64 / 32.0f64)
@@ -107,6 +110,7 @@ static bool sh_hand_world_open(test_context_t *t, sh_rig_t *rig, uint32_t radius
         !CHECK_EQ_U64(render_open_frame(render, rig->texture, width, height, 100000.0f32), GPU_STATUS_OK)) {
         return false;
     }
+    render_frame_features_set(&render->frame, SH_FEATURES_BOTH);
     world_map_request_t request;
     while (world_map_stream_take(&world->map, &request, 1u) == 1u) {
         if (!CHECK(world_map_stream_commit(&world->map, &request) != nullptr)) {
@@ -821,7 +825,7 @@ TEST(every_shape_and_every_hole_matches_an_exact_trace_from_all_sides) {
     REQUIRE(sh_scene_put(t, &rig));
     sh_tally_t *const tally = test_alloc(t, sizeof(sh_tally_t));
     memset(tally, 0, sizeof(*tally));
-    sh_compare_from_all_sides(t, &rig, SHADE_FEATURES_ALL, tally);
+    sh_compare_from_all_sides(t, &rig, SH_FEATURES_BOTH, tally);
     sh_report("shapes and holes", tally);
     CHECK_EQ_U64(tally->wrong, 0u);
     CHECK(tally->compared > (uint64_t)SH_WIDTH * SH_HEIGHT * 24u);
@@ -846,8 +850,6 @@ TEST(each_setting_off_is_exactly_what_it_says) {
     REQUIRE(sh_rig_begin(t, &rig));
     REQUIRE(sh_hand_world_open(t, &rig, 2u, SH_WIDTH, SH_HEIGHT));
     REQUIRE(sh_scene_put(t, &rig));
-    /* What every frame starts with. */
-    CHECK_EQ_U64(rig.render->frame.scene.features, SHADE_FEATURES_ALL);
     const uint32_t settings[] = {0u, SHADE_FEATURE_SHAPES, SHADE_FEATURE_ALPHA};
     const char *const names[] = {"all off", "shapes alone", "alpha alone"};
     for (uint32_t s = 0u; s < 3u; s++) {
@@ -975,7 +977,7 @@ TEST(a_pixel_goes_through_as_many_holes_as_it_may_and_stops_on_the_last) {
     picture = sh_draw(t, &rig, &camera);
     REQUIRE(picture != nullptr);
     CHECK(sh_bytes_near(sh_pixel(picture, SH_WIDTH, x, y), mean, 1u));
-    render_frame_features_set(&rig.render->frame, SHADE_FEATURES_ALL);
+    render_frame_features_set(&rig.render->frame, SH_FEATURES_BOTH);
     /* One leaf fewer, and the stone behind them is the sixteenth surface. It is what the middle of the picture now shows. */
     REQUIRE(world_edit_block_set(&rig.world->edit, first, 8, 8, BLOCK_ID_AIR) == WORLD_EDIT_STATUS_CHANGED);
     REQUIRE(sh_hand_world_sync(t, &rig));
@@ -1086,7 +1088,7 @@ static void sh_cost_measure(test_context_t *t, sh_rig_t *rig, const render_camer
 }
 
 static void sh_cost_row(test_context_t *t, sh_rig_t *rig, const render_camera_t *camera, const char *where) {
-    const uint32_t settings[] = {0u, SHADE_FEATURE_SHAPES, SHADE_FEATURE_ALPHA, SHADE_FEATURES_ALL};
+    const uint32_t settings[] = {0u, SHADE_FEATURE_SHAPES, SHADE_FEATURE_ALPHA, SH_FEATURES_BOTH};
     const char *const names[] = {"all off", "shapes", "alpha", "both"};
     for (uint32_t s = 0u; s < 4u; s++) {
         sh_cost_t cost = {0};
@@ -1119,7 +1121,7 @@ TEST(the_cost_is_measured_on_real_terrain_and_on_a_field_of_plants) {
     device_memory_t *const memory = &rig.bridge->device_memory;
     const uint64_t bytes = (uint64_t)SH_COST_WIDTH * SH_COST_HEIGHT * 4u;
     uint8_t *const both = test_alloc(t, bytes);
-    render_frame_features_set(&render->frame, SHADE_FEATURES_ALL);
+    render_frame_features_set(&render->frame, SH_FEATURES_BOTH);
     const uint8_t *picture = sh_draw(t, &rig, &camera);
     REQUIRE(picture != nullptr);
     memcpy(both, picture, bytes);

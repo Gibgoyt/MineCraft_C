@@ -368,6 +368,8 @@ static bool fr_hand_world_open(test_context_t *t, fr_rig_t *rig, uint32_t radius
         !CHECK_EQ_U64(render_open_frame(render, rig->texture, width, height, 100000.0f32), GPU_STATUS_OK)) {
         return false;
     }
+    /* The reference knows each kind of face's one brightness: tests/cuda/sky/ has the sun and stored light. */
+    render_frame_features_set(&render->frame, SHADE_FEATURE_SHAPES | SHADE_FEATURE_ALPHA);
     world_map_request_t request;
     while (world_map_stream_take(&world->map, &request, 1u) == 1u) {
         if (!CHECK(world_map_stream_commit(&world->map, &request) != nullptr)) {
@@ -954,8 +956,11 @@ static void fr_check_terrain_picture(test_context_t *t, const fr_rig_t *rig, con
     }
 }
 
-static const game_config_t fr_small_game = {
-    .render_distance = 6u, .width = FR_WIDTH, .height = FR_HEIGHT, ._pad0 = {0}};
+static const game_config_t fr_small_game = {.render_distance = 6u,
+                                            .width = FR_WIDTH,
+                                            .height = FR_HEIGHT,
+                                            .features_off = SHADE_FEATURE_DAY_CYCLE,
+                                            ._pad0 = {0}};
 
 static void fr_check_tally(test_context_t *t, const fr_terrain_tally_t *tally) {
     printf("  %" PRIu64 " pixels, %" PRIu64 " hits, picture wrong on %" PRIu64 "; %" PRIu64
