@@ -37,6 +37,8 @@ All run on 2026-11-02, and all passed. `pgrep` printed nothing. Beyond this list
 
 Appended as they land:
 
+- `01b1d05` Add procedural recipes for every texture the pack lacks, vector data for all textures, and a check that the game's needs are met.
+
 ## Issues found
 
 All 2026-11-02, by this stage.
