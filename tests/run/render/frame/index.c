@@ -729,7 +729,8 @@ TEST(what_makes_no_sense_is_refused_and_starts_nothing) {
                                     .borrowed_pool = render->buffers.borrowed_pool,
                                     .window = render->buffers.window};
     gpu_error_t error = {0};
-    CHECK_EQ_U64(shade_frame(&error, &frame->scene, &world, &too_large, &render->owned_hits, &render->owned_shaded),
+    CHECK_EQ_U64(shade_frame(&error, &frame->scene, &frame->post, &world, &too_large, &render->owned_hits,
+                             &render->owned_shaded),
                  GPU_STATUS_INVALID_ARGUMENT);
     CHECK_CONTAINS(error.borrowed_what, "hits are too small");
     CHECK_EQ_U64(post_frame(&error, &frame->post, &too_large, &render->owned_shaded, &render->owned_xrgb),
@@ -737,7 +738,8 @@ TEST(what_makes_no_sense_is_refused_and_starts_nothing) {
     CHECK_CONTAINS(error.borrowed_what, "pixels are too small");
     traverse_camera_t no_pixels = too_large;
     no_pixels.width = 0u;
-    CHECK_EQ_U64(shade_frame(&error, &frame->scene, &world, &no_pixels, &render->owned_hits, &render->owned_shaded),
+    CHECK_EQ_U64(shade_frame(&error, &frame->scene, &frame->post, &world, &no_pixels, &render->owned_hits,
+                             &render->owned_shaded),
                  GPU_STATUS_INVALID_ARGUMENT);
     CHECK_EQ_U64(post_frame(&error, &frame->post, &no_pixels, &render->owned_shaded, &render->owned_xrgb),
                  GPU_STATUS_INVALID_ARGUMENT);
@@ -750,8 +752,9 @@ TEST(what_makes_no_sense_is_refused_and_starts_nothing) {
     CHECK_CONTAINS(error.borrowed_what, "fog");
     shade_scene_t short_table = frame->scene;
     short_table.material_count = 1u << 24;
-    CHECK_EQ_U64(shade_frame(&error, &short_table, &world, &fits, &render->owned_hits, &render->owned_shaded),
-                 GPU_STATUS_INVALID_ARGUMENT);
+    CHECK_EQ_U64(
+        shade_frame(&error, &short_table, &frame->post, &world, &fits, &render->owned_hits, &render->owned_shaded),
+        GPU_STATUS_INVALID_ARGUMENT);
     CHECK_CONTAINS(error.borrowed_what, "table");
     const frame_args_t args = {.borrowed_world = &world,
                                .borrowed_scene = &frame->scene,

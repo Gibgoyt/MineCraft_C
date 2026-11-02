@@ -40,6 +40,9 @@ enum : uint32_t {
     SK_FEATURES_BASE = SHADE_FEATURE_SHAPES | SHADE_FEATURE_ALPHA,
     /* What draws with nothing of this stage's on. */
     SK_FEATURES_NONE = SK_FEATURES_BASE,
+    /* All of what this stage's reference knows: a ray here stops at what is part-covered. Going on past it is tests/cuda/water/'s. */
+    SK_FEATURES_ALL = SHADE_FEATURES_ALL & ~(uint32_t)(SHADE_FEATURE_TRANSPARENCY | SHADE_FEATURE_WATER_REFLECTION |
+                                                       SHADE_FEATURE_WATER_TINT),
 };
 
 #define SK_NEAR_NOTHING 1e-5f32
@@ -50,6 +53,16 @@ enum : uint32_t {
 #define SK_NIGHT 0.03f32
 
 #include "cuda/sky/fixtures/rig.h"
+
+/* A world with nothing in it, drawn as this test's reference knows how to draw. */
+static bool sk_open(test_context_t *t, sk_rig_t *rig, uint32_t radius, uint32_t width, uint32_t height,
+                    float32_t fog_end) {
+    if (!sk_hand_world_open(t, rig, radius, width, height, fog_end)) {
+        return false;
+    }
+    render_frame_features_set(&rig->render->frame, SK_FEATURES_ALL);
+    return true;
+}
 
 /* ---- The day, and the light, on numbers worked out by hand ---------------------------------------------------------------- */
 
@@ -691,9 +704,9 @@ TEST(everything_starts_on_and_noon_is_the_first_time) {
     CHECK_NEAR(frame->post.fog_end, 1000.0f32, 0.0f32);
     CHECK_NEAR(frame->post.fog_start, 700.0f32, 1e-2f32);
     /* What a setting does to what the kernels read. */
-    render_frame_features_set(&rig.render->frame, SHADE_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_FOG);
+    render_frame_features_set(&rig.render->frame, SK_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_FOG);
     CHECK(frame->post.fog_start > 1e20f32);
-    render_frame_features_set(&rig.render->frame, SHADE_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_SKY);
+    render_frame_features_set(&rig.render->frame, SK_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_SKY);
     CHECK_NEAR(frame->scene.sun.ambient[0], 1.0f32, 0.0f32);
     CHECK_NEAR(frame->scene.sun.direct[0], 0.0f32, 0.0f32);
     CHECK_NEAR(frame->post.fog_end, 1000.0f32, 0.0f32);
@@ -709,7 +722,7 @@ TEST(everything_starts_on_and_noon_is_the_first_time) {
 TEST(the_sky_all_round_and_all_day_is_what_the_arithmetic_says) {
     sk_rig_t rig;
     REQUIRE(sk_rig_begin(t, &rig));
-    REQUIRE(sk_hand_world_open(t, &rig, 1u, SK_WIDTH, SK_HEIGHT, 1000.0f32));
+    REQUIRE(sk_open(t, &rig, 1u, SK_WIDTH, SK_HEIGHT, 1000.0f32));
     REQUIRE(sk_hand_world_sync(t, &rig));
     sk_scene_t *const scene = test_alloc(t, sizeof(sk_scene_t));
     memset(scene, 0, sizeof(*scene));
@@ -745,7 +758,7 @@ static void sk_camera_at(render_camera_t *camera, const float32_t direction[3]) 
 TEST(the_sun_and_moon_are_where_they_should_be_and_fog_hides_them) {
     sk_rig_t rig;
     REQUIRE(sk_rig_begin(t, &rig));
-    REQUIRE(sk_hand_world_open(t, &rig, 4u, SK_WIDTH, SK_HEIGHT, 40.0f32));
+    REQUIRE(sk_open(t, &rig, 4u, SK_WIDTH, SK_HEIGHT, 40.0f32));
     REQUIRE(sk_hand_world_sync(t, &rig));
     render_frame_t *const frame = &rig.render->frame;
     const uint32_t middle_x = SK_WIDTH / 2u, middle_y = SK_HEIGHT / 2u;
@@ -800,7 +813,7 @@ TEST(the_sun_and_moon_are_where_they_should_be_and_fog_hides_them) {
     printf("  in front of the sun, past the fog: %06" PRIX32 ", the sky with no disc: %06" PRIX32 "\n", through, foggy);
     CHECK(sk_bytes_near(through, foggy, 2u));
     /* And with fog off, the wall itself, and it is plainly not the sky. */
-    render_frame_features_set(frame, SHADE_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_FOG);
+    render_frame_features_set(frame, SK_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_FOG);
     picture = sk_draw(t, &rig, &camera);
     REQUIRE(picture != nullptr);
     CHECK(!sk_bytes_near(sk_pixel(picture, SK_WIDTH, middle_x, middle_y), foggy, 8u));
@@ -812,7 +825,7 @@ TEST(fog_is_exact_at_every_distance_and_off_is_off) {
     sk_rig_t rig;
     REQUIRE(sk_rig_begin(t, &rig));
     /* From nothing at 21 blocks to all sky at 30. */
-    REQUIRE(sk_hand_world_open(t, &rig, 4u, SK_WIDTH, SK_HEIGHT, 30.0f32));
+    REQUIRE(sk_open(t, &rig, 4u, SK_WIDTH, SK_HEIGHT, 30.0f32));
     sk_scene_t *const scene = test_alloc(t, sizeof(sk_scene_t));
     memset(scene, 0, sizeof(*scene));
     REQUIRE(sk_floor_put(t, &rig, scene, false));
@@ -831,7 +844,7 @@ TEST(fog_is_exact_at_every_distance_and_off_is_off) {
     for (uint32_t d = 0u; d < 3u; d++) {
         sk_tally_t *const tally = test_alloc(t, sizeof(sk_tally_t));
         memset(tally, 0, sizeof(*tally));
-        render_frame_features_set(&rig.render->frame, SHADE_FEATURES_ALL);
+        render_frame_features_set(&rig.render->frame, SK_FEATURES_ALL);
         render_frame_time_set(&rig.render->frame, days[d]);
         const uint8_t *const picture = sk_draw(t, &rig, &camera);
         REQUIRE(picture != nullptr);
@@ -841,7 +854,7 @@ TEST(fog_is_exact_at_every_distance_and_off_is_off) {
         foggy_hits += tally->hits;
         sk_tally_t *const off = test_alloc(t, sizeof(sk_tally_t));
         memset(off, 0, sizeof(*off));
-        render_frame_features_set(&rig.render->frame, SHADE_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_FOG);
+        render_frame_features_set(&rig.render->frame, SK_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_FOG);
         const uint8_t *const clear = sk_draw(t, &rig, &camera);
         REQUIRE(clear != nullptr);
         sk_compare_picture(t, &rig, scene, &camera, clear, off);
@@ -856,7 +869,7 @@ TEST(fog_is_exact_at_every_distance_and_off_is_off) {
 TEST(every_pixel_and_every_shadow_matches_an_exact_trace_all_day) {
     sk_rig_t rig;
     REQUIRE(sk_rig_begin(t, &rig));
-    REQUIRE(sk_hand_world_open(t, &rig, 2u, SK_WIDTH, SK_HEIGHT, 100000.0f32));
+    REQUIRE(sk_open(t, &rig, 2u, SK_WIDTH, SK_HEIGHT, 100000.0f32));
     sk_scene_t *const scene = test_alloc(t, sizeof(sk_scene_t));
     REQUIRE(sk_scene_put(t, &rig, scene, false));
     const float32_t days[] = {SK_MORNING, SK_NOON, SK_EVENING, SK_DUSK, SK_NIGHT};
@@ -889,7 +902,7 @@ TEST(every_pixel_and_every_shadow_matches_an_exact_trace_all_day) {
 TEST(a_tower_shades_the_ground_where_the_sun_says_and_nowhere_else) {
     sk_rig_t rig;
     REQUIRE(sk_rig_begin(t, &rig));
-    REQUIRE(sk_hand_world_open(t, &rig, 2u, 64u, 64u, 100000.0f32));
+    REQUIRE(sk_open(t, &rig, 2u, 64u, 64u, 100000.0f32));
     world_edit_t *const edit = &rig.world->edit;
     for (int32_t y = -16; y < 32; y++) {
         for (int32_t x = -16; x < 32; x++) {
@@ -918,7 +931,7 @@ TEST(a_tower_shades_the_ground_where_the_sun_says_and_nowhere_else) {
         {6.5f32, 10.5f32, 0u},  /* off to one side */
         {10.5f32, 10.5f32, 0u}, /* off to the other */
     };
-    const uint32_t lit_features = SHADE_FEATURES_ALL;
+    const uint32_t lit_features = SK_FEATURES_ALL;
     uint64_t bright[2] = {0u, 0u};
     for (uint32_t s = 0u; s < sizeof(spots) / sizeof(spots[0]); s++) {
         render_camera_t camera;
@@ -956,7 +969,7 @@ TEST(a_tower_shades_the_ground_where_the_sun_says_and_nowhere_else) {
 TEST(stored_light_reaches_the_picture_at_every_level) {
     sk_rig_t rig;
     REQUIRE(sk_rig_begin(t, &rig));
-    REQUIRE(sk_hand_world_open(t, &rig, 2u, SK_WIDTH, SK_HEIGHT, 100000.0f32));
+    REQUIRE(sk_open(t, &rig, 2u, SK_WIDTH, SK_HEIGHT, 100000.0f32));
     sk_scene_t *const scene = test_alloc(t, sizeof(sk_scene_t));
     REQUIRE(sk_scene_put(t, &rig, scene, true));
     /* The card has it as written: each cell of the floor, read back from the hits of a look straight down. */
@@ -998,7 +1011,7 @@ TEST(stored_light_reaches_the_picture_at_every_level) {
         CHECK(levels_seen > 180u);
     }
     /* Off, every voxel is under open sky: what was stored is not looked at. */
-    render_frame_features_set(&rig.render->frame, SHADE_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_LIGHT);
+    render_frame_features_set(&rig.render->frame, SK_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_LIGHT);
     sk_tally_t *const tally = test_alloc(t, sizeof(sk_tally_t));
     memset(tally, 0, sizeof(*tally));
     sk_compare_around(t, &rig, scene, SK_NOON, 3u, tally);
@@ -1013,7 +1026,7 @@ TEST(stored_light_reaches_the_picture_at_every_level) {
 TEST(a_section_all_of_one_light_shows_that_light) {
     sk_rig_t rig;
     REQUIRE(sk_rig_begin(t, &rig));
-    REQUIRE(sk_hand_world_open(t, &rig, 1u, SK_WIDTH, SK_HEIGHT, 100000.0f32));
+    REQUIRE(sk_open(t, &rig, 1u, SK_WIDTH, SK_HEIGHT, 100000.0f32));
     world_edit_t *const edit = &rig.world->edit;
     const uint8_t packed = 0x35u;
     for (int32_t z = 0; z < 16; z++) {
@@ -1043,13 +1056,13 @@ TEST(a_section_all_of_one_light_shows_that_light) {
 TEST(each_setting_off_is_exactly_what_it_says) {
     sk_rig_t rig;
     REQUIRE(sk_rig_begin(t, &rig));
-    REQUIRE(sk_hand_world_open(t, &rig, 2u, SK_WIDTH, SK_HEIGHT, 30.0f32));
+    REQUIRE(sk_open(t, &rig, 2u, SK_WIDTH, SK_HEIGHT, 30.0f32));
     sk_scene_t *const scene = test_alloc(t, sizeof(sk_scene_t));
     REQUIRE(sk_scene_put(t, &rig, scene, true));
     const uint32_t settings[] = {
-        SHADE_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_SKY,   SHADE_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_DAY_CYCLE,
-        SHADE_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_FOG,   SHADE_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_SHADOW,
-        SHADE_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_LIGHT, SK_FEATURES_NONE,
+        SK_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_SKY,   SK_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_DAY_CYCLE,
+        SK_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_FOG,   SK_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_SHADOW,
+        SK_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_LIGHT, SK_FEATURES_NONE,
     };
     const char *const names[] = {"no sky", "no day cycle", "no fog", "no shadows", "no stored light", "none of these"};
     for (uint32_t s = 0u; s < 6u; s++) {
@@ -1068,11 +1081,11 @@ TEST(each_setting_off_is_exactly_what_it_says) {
     sk_camera_around(&camera, 2.0f32, -0.6f32, 14.0f64);
     uint64_t bytes = post_xrgb_bytes(SK_WIDTH, SK_HEIGHT);
     uint8_t *const with_rays = test_alloc(t, bytes);
-    render_frame_features_set(&rig.render->frame, SHADE_FEATURES_ALL);
+    render_frame_features_set(&rig.render->frame, SK_FEATURES_ALL);
     const uint8_t *picture = sk_draw(t, &rig, &camera);
     REQUIRE(picture != nullptr);
     memcpy(with_rays, picture, bytes);
-    render_frame_features_set(&rig.render->frame, SHADE_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_SHADOW);
+    render_frame_features_set(&rig.render->frame, SK_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_SHADOW);
     picture = sk_draw(t, &rig, &camera);
     REQUIRE(picture != nullptr);
     uint64_t brighter = 0u, darker = 0u;
@@ -1101,7 +1114,7 @@ TEST(the_clock_runs_through_the_real_threads_and_the_setting_stops_it) {
         const game_config_t config = {.render_distance = 2u,
                                       .width = width,
                                       .height = height,
-                                      .features_off = pass == 0u ? 0u : (uint8_t)SHADE_FEATURE_DAY_CYCLE,
+                                      .features_off = pass == 0u ? 0u : (uint16_t)SHADE_FEATURE_DAY_CYCLE,
                                       ._pad0 = {0}};
         REQUIRE(game_open(game, &config));
         CHECK_NEAR(game->day_fraction, GAME_DAY_START, 0.0f64);
@@ -1176,7 +1189,7 @@ TEST(golden_pictures_match) {
     sk_rig_t rig;
     REQUIRE(sk_rig_begin(t, &rig));
     /* The fog is a little short of the far side of the floor, so that the fog's own picture shows some. */
-    REQUIRE(sk_hand_world_open(t, &rig, 2u, SK_WIDTH, SK_HEIGHT, 30.0f32));
+    REQUIRE(sk_open(t, &rig, 2u, SK_WIDTH, SK_HEIGHT, 30.0f32));
     sk_scene_t *const scene = test_alloc(t, sizeof(sk_scene_t));
     REQUIRE(sk_scene_put(t, &rig, scene, false));
     typedef struct golden_t {
@@ -1186,13 +1199,13 @@ TEST(golden_pictures_match) {
     } golden_t;
     static_assert(sizeof(golden_t) == 16);
     const golden_t goldens[] = {
-        {"tests/cuda/sky/fixtures/noon.png", SK_NOON, SHADE_FEATURES_ALL},
-        {"tests/cuda/sky/fixtures/morning_shadows.png", SK_MORNING, SHADE_FEATURES_ALL},
-        {"tests/cuda/sky/fixtures/dusk.png", SK_DUSK, SHADE_FEATURES_ALL},
-        {"tests/cuda/sky/fixtures/night.png", SK_NIGHT, SHADE_FEATURES_ALL},
-        {"tests/cuda/sky/fixtures/no_fog.png", SK_NOON, SHADE_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_FOG},
-        {"tests/cuda/sky/fixtures/no_shadows.png", SK_MORNING, SHADE_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_SHADOW},
-        {"tests/cuda/sky/fixtures/no_sky.png", SK_MORNING, SHADE_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_SKY},
+        {"tests/cuda/sky/fixtures/noon.png", SK_NOON, SK_FEATURES_ALL},
+        {"tests/cuda/sky/fixtures/morning_shadows.png", SK_MORNING, SK_FEATURES_ALL},
+        {"tests/cuda/sky/fixtures/dusk.png", SK_DUSK, SK_FEATURES_ALL},
+        {"tests/cuda/sky/fixtures/night.png", SK_NIGHT, SK_FEATURES_ALL},
+        {"tests/cuda/sky/fixtures/no_fog.png", SK_NOON, SK_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_FOG},
+        {"tests/cuda/sky/fixtures/no_shadows.png", SK_MORNING, SK_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_SHADOW},
+        {"tests/cuda/sky/fixtures/no_sky.png", SK_MORNING, SK_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_SKY},
     };
     render_camera_t camera;
     sk_camera_around(&camera, 2.1f32, -0.5f32, 18.0f64);
@@ -1206,7 +1219,7 @@ TEST(golden_pictures_match) {
     sk_hand_world_close(&rig);
 
     /* The floor's cells, each with its own light: sky across, block up the picture. At night the block light is what shows. */
-    REQUIRE(sk_hand_world_open(t, &rig, 2u, SK_WIDTH, SK_HEIGHT, 100000.0f32));
+    REQUIRE(sk_open(t, &rig, 2u, SK_WIDTH, SK_HEIGHT, 100000.0f32));
     REQUIRE(sk_scene_put(t, &rig, scene, true));
     render_camera_start(&camera, 8.0f64, 8.0f64, 10.0f64, 1.5708f32, -RENDER_CAMERA_PITCH_LIMIT);
     render_frame_time_set(&rig.render->frame, SK_NOON);
@@ -1252,7 +1265,7 @@ static void sk_cost_row(test_context_t *t, sk_rig_t *rig, const render_camera_t 
                                  SK_FEATURES_BASE | SHADE_FEATURE_FOG,
                                  SK_FEATURES_BASE | SHADE_FEATURE_LIGHT,
                                  SK_FEATURES_BASE | SHADE_FEATURE_SKY | SHADE_FEATURE_SHADOW,
-                                 SHADE_FEATURES_ALL};
+                                 SK_FEATURES_ALL};
     const char *const names[] = {"none", "sky", "fog", "light", "sky+shadow", "all"};
     for (uint32_t s = 0u; s < 6u; s++) {
         sk_cost_t cost = {0};
@@ -1285,14 +1298,14 @@ TEST(the_cost_is_measured_on_real_terrain_and_under_a_forest) {
     /* What each setting changes, here. */
     const uint64_t bytes = (uint64_t)SK_COST_WIDTH * SK_COST_HEIGHT * 4u;
     uint8_t *const all = test_alloc(t, bytes);
-    render_frame_features_set(&render->frame, SHADE_FEATURES_ALL);
+    render_frame_features_set(&render->frame, SK_FEATURES_ALL);
     const uint8_t *picture = sk_draw(t, &rig, &camera);
     REQUIRE(picture != nullptr);
     memcpy(all, picture, bytes);
     const uint32_t bits[] = {SHADE_FEATURE_SKY, SHADE_FEATURE_FOG, SHADE_FEATURE_SHADOW, SHADE_FEATURE_LIGHT};
     const char *const names[] = {"sky", "fog", "shadow", "stored light"};
     for (uint32_t b = 0u; b < 4u; b++) {
-        render_frame_features_set(&render->frame, SHADE_FEATURES_ALL & ~bits[b]);
+        render_frame_features_set(&render->frame, SK_FEATURES_ALL & ~bits[b]);
         picture = sk_draw(t, &rig, &camera);
         REQUIRE(picture != nullptr);
         uint64_t changed = 0u;
@@ -1315,7 +1328,7 @@ TEST(the_cost_is_measured_on_real_terrain_and_under_a_forest) {
            (libc_double_t)((float64_t)(time_now_ns() - started_ns) / 100000.0f64 / 1000.0f64));
     game_close(game);
 
-    REQUIRE(sk_hand_world_open(t, &rig, 3u, SK_COST_WIDTH, SK_COST_HEIGHT, 100000.0f32));
+    REQUIRE(sk_open(t, &rig, 3u, SK_COST_WIDTH, SK_COST_HEIGHT, 100000.0f32));
     for (int32_t y = -32; y < 32; y++) {
         for (int32_t x = -32; x < 32; x++) {
             REQUIRE(world_edit_block_set(&rig.world->edit, x, y, -1, BLOCK_ID_GRASS_BLOCK) ==

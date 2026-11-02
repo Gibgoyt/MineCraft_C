@@ -34,8 +34,8 @@ typedef struct game_config_t {
     uint32_t render_distance; /* 0: in chunks */
     uint32_t width;           /* 4: of the picture */
     uint32_t height;          /* 8 */
-    uint8_t features_off;     /* 12: SHADE_FEATURE_* to leave off; 0 draws everything */
-    uint8_t _pad0[3];         /* 13 */
+    uint16_t features_off;    /* 12: SHADE_FEATURE_* to leave off; 0 draws everything */
+    uint8_t _pad0[2];         /* 14 */
 } game_config_t;
 static_assert(sizeof(game_config_t) == 16);
 
