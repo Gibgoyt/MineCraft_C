@@ -35,6 +35,9 @@ Inventory, crafting, smelting, tools, armor, health and hunger all work.
 
 Appended as they land:
 
+- `bf9dcec` Make armor stop hits and wear in a running game, spill it on death, keep wear on the ground, and give gold, shears and diamond their published numbers.
+- `7b26962` Record the Phase 13 gate results and list the crafting test in the repo structure.
+
 ## Issues found
 
 Gate check of 2026-11-03, from a clean build of the integration branch. All the listed tests passed as they stood, and the defects below were not seen by any of them. Each is written up in full in its stage file.
