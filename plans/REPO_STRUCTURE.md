@@ -182,6 +182,8 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | `math` | `vec2 vec3 vec4 ivec3 mat4 quat aabb ray` | Our vector library, scalar C | 04.1 |
 | `simd` | `cpuid` | C prototypes of the CPUID and XGETBV functions, used by `main/cpu_check` | 03.1 |
 | | `copy blend bitmask noise vec_batch` | C prototypes of NASM kernels | 04.2, 04.3 |
+| | (the Owner) | `simd_init`, `simd_deinit`: scratch region and arena, and a self-check of every kernel at startup | 04.2 |
+| | `reference` | Scalar C version of each kernel: what it must match in tests, and beat in `bench/simd` | 04.2 |
 
 ### Display and input
 
@@ -294,6 +296,7 @@ Layout: `asm/src/<dir>/index.asm`, `asm/include/<dir>/index.inc`, `README.md`. C
 | Directory | Job | Stage |
 |---|---|---|
 | `cpuid` | The CPUID and XGETBV instructions, since inline asm is banned, and the CPU guard that runs before anything built with `-march`; not SIMD | 03.1 |
+| `conventions` | `asm/include/` only: register rules, `YMM_BYTES`, and `REQUIRE_CPU`, which fails the build if `cpu.simd` turns off what a kernel uses | 04.2 |
 | `copy` | Streaming copy to scanout memory | 04.2 |
 | `blend` | HUD alpha blending | 04.2 |
 | `bitmask` | Popcount and mask kernels | 04.2 |
