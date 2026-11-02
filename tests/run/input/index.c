@@ -15,8 +15,14 @@
 
 /* ---- Helpers ----------------------------------------------------------------------------------------------------- */
 
+/* test_alloc gives 16-byte alignment, and input_t holds an arena_t, which asks for 64. */
+static input_t *input_alloc(test_context_t *t) {
+    const uintptr_t raw = (uintptr_t)test_alloc(t, sizeof(input_t) + alignof(input_t));
+    return (input_t *)((raw + alignof(input_t) - 1u) & ~(uintptr_t)(alignof(input_t) - 1u));
+}
+
 static input_t *start(test_context_t *t, fake_evdev_t *fake) {
-    input_t *const input = test_alloc(t, sizeof(input_t));
+    input_t *const input = input_alloc(t);
     test_check(t, input_init(input, FAKE_DIRECTORY, &fake_ops, fake), __FILE__, __LINE__, "input_init");
     return input;
 }
@@ -791,7 +797,7 @@ TEST(polling_never_touches_the_heap_and_everything_goes_back) {
 }
 
 TEST(deinit_on_something_never_started_does_nothing) {
-    input_t *const input = test_alloc(t, sizeof(input_t));
+    input_t *const input = input_alloc(t);
     input_deinit(input);
     input_report(input);
     CHECK_EQ_U64(input->running, 0u);
@@ -1036,7 +1042,7 @@ TEST(the_real_calls_reject_what_is_not_a_device_and_leave_it_closed) {
     REQUIRE(made >= 0);
     close(made);
 
-    input_t *const input = test_alloc(t, sizeof(input_t));
+    input_t *const input = input_alloc(t);
     REQUIRE(input_init(input, directory.path, input_ops_real(), nullptr));
     CHECK_EQ_U64(input->discovery.device_count, 0u);
     CHECK_EQ_U64(input->discovery.stats.rejected, 1u); /* ENOTTY: a regular file is not an evdev device */
@@ -1058,7 +1064,7 @@ TEST(the_real_calls_reject_what_is_not_a_device_and_leave_it_closed) {
 }
 
 TEST(the_real_calls_refuse_a_missing_directory_without_failing) {
-    input_t *const input = test_alloc(t, sizeof(input_t));
+    input_t *const input = input_alloc(t);
     REQUIRE(input_init(input, "/nonexistent/run_input", input_ops_real(), nullptr));
     CHECK_EQ_I64(input->discovery.watch_fd, -1);
     CHECK_EQ_I64(input->discovery.stats.last_errno, ENOENT);
@@ -1075,7 +1081,7 @@ TEST(replay_through_real_inotify_and_real_reads_covers_plugging_and_pulling) {
     /* One device from the start, found by the real listing. */
     const int32_t first = real_fifo(&directory, "event0");
     REQUIRE(first >= 0);
-    input_t *const input = test_alloc(t, sizeof(input_t));
+    input_t *const input = input_alloc(t);
     REQUIRE(input_init(input, directory.path, &ops, nullptr));
     CHECK_EQ_U64(input->discovery.device_count, 1u);
     CHECK_STR_EQ(input->discovery.borrowed_devices[0].label, "FIFO");

@@ -20,7 +20,7 @@ static_assert(sizeof(struct inotify_event) == DISCOVERY_RECORD_HEADER_BYTES);
 /* ---- What a device is -------------------------------------------------------------------------------------------- */
 
 static bool bits_has(const uint8_t *bits, uint32_t bit) {
-    return (bits[bit / 8u] >> (bit % 8u) & 1u) != 0u;
+    return ((uint32_t)bits[bit / 8u] >> (bit % 8u) & 1u) != 0u;
 }
 
 static bool bits_has_range(const uint8_t *bits, uint32_t first, uint32_t last) {
