@@ -64,6 +64,20 @@ static inline uint8_t light_with_channel(uint8_t packed, uint32_t channel, uint3
                                 : section_light_pack(section_light_sky(packed), value);
 }
 
+static inline bool light_is_opaque(const block_def_t *def) {
+    return def->opacity >= LIGHT_OPAQUE;
+}
+
+/* Whether an opaque block holds what it gives off, and not what its faces see: see "What a block holds" in the README. */
+static inline bool light_keeps_own(const block_def_t *def, uint32_t channel) {
+    return channel == LIGHT_BLOCK && def->light != 0u;
+}
+
+/* Whether what a voxel holds in this channel goes on to its neighbours. */
+static inline bool light_spreads(const block_def_t *def, uint32_t channel) {
+    return !light_is_opaque(def) || light_keeps_own(def, channel);
+}
+
 /* ---- Places ------------------------------------------------------------------------------------------------------- */
 
 static inline column_t *light_column(const world_light_t *light, uint32_t slot) {
@@ -80,6 +94,15 @@ static inline uint32_t light_read(const world_light_t *light, uint32_t slot, uin
 
 static inline const block_def_t *light_def_at(const world_light_t *light, uint32_t slot, uint32_t voxel) {
     return light_block_def(section_block_get(light_section_of(light, slot, voxel), voxel & LIGHT_INDEX_MASK));
+}
+
+/* What a voxel gives its neighbours: what it holds, unless that is only what an opaque block's faces see. */
+static inline uint32_t light_offer(const world_light_t *light, uint32_t slot, uint32_t voxel, uint32_t channel) {
+    const block_def_t *const def = light_def_at(light, slot, voxel);
+    if (!light_is_opaque(def)) {
+        return light_read(light, slot, voxel, channel);
+    }
+    return channel == LIGHT_BLOCK ? def->light : 0u;
 }
 
 static bool light_slot_is_lit(const world_light_t *light, uint32_t slot) {
@@ -255,9 +278,31 @@ static void light_seed(world_light_t *light, uint32_t slot, uint32_t voxel, uint
     }
 }
 
+/* What an opaque block's faces see: the brightest of its neighbours that are not opaque, at no cost. */
+static uint32_t light_owed_opaque(const world_light_t *light, uint32_t slot, uint32_t voxel, uint32_t channel) {
+    const block_def_t *const def = light_def_at(light, slot, voxel);
+    if (light_keeps_own(def, channel)) {
+        return def->light;
+    }
+    uint32_t best = channel == LIGHT_SKY && (voxel >> 8) == LIGHT_Z_TOP ? SECTION_LIGHT_MAX : 0u;
+    for (uint32_t direction = 0u; direction < LIGHT_DIRECTIONS; direction++) {
+        uint32_t near_slot = 0u;
+        uint32_t near_voxel = 0u;
+        if (light_neighbour(light, slot, voxel, direction, &near_slot, &near_voxel) &&
+            !light_is_opaque(light_def_at(light, near_slot, near_voxel))) {
+            const uint32_t seen = light_read(light, near_slot, near_voxel, channel);
+            best = seen > best ? seen : best;
+        }
+    }
+    return best;
+}
+
 /* What a voxel is owed, from what it gives off and from its neighbours as they now are. */
 static uint32_t light_owed(const world_light_t *light, uint32_t slot, uint32_t voxel, uint32_t channel) {
     const block_def_t *const def = light_def_at(light, slot, voxel);
+    if (light_is_opaque(def)) {
+        return light_owed_opaque(light, slot, voxel, channel);
+    }
     const uint32_t opacity = def->opacity;
     uint32_t best = 0u;
     if (channel == LIGHT_BLOCK) {
@@ -265,14 +310,11 @@ static uint32_t light_owed(const world_light_t *light, uint32_t slot, uint32_t v
     } else if ((voxel >> 8) == LIGHT_Z_TOP) {
         best = light_into(SECTION_LIGHT_MAX, opacity, true);
     }
-    if (opacity >= LIGHT_OPAQUE) {
-        return best; /* nothing gets in */
-    }
     for (uint32_t direction = 0u; direction < LIGHT_DIRECTIONS; direction++) {
         uint32_t near_slot = 0u;
         uint32_t near_voxel = 0u;
         if (light_neighbour(light, slot, voxel, direction, &near_slot, &near_voxel)) {
-            const uint32_t offered = light_into(light_read(light, near_slot, near_voxel, channel), opacity,
+            const uint32_t offered = light_into(light_offer(light, near_slot, near_voxel, channel), opacity,
                                                 channel == LIGHT_SKY && direction == LIGHT_UP);
             best = offered > best ? offered : best;
         }
@@ -296,8 +338,19 @@ static void light_pass_dark(world_light_t *light, uint32_t channel) {
                 continue;
             }
             const uint32_t held = light_read(light, near_slot, near_voxel, channel);
-            if (held == 0u || held != light_into(value, light_def_at(light, near_slot, near_voxel)->opacity,
-                                                 channel == LIGHT_SKY && direction == LIGHT_DOWN)) {
+            if (held == 0u) {
+                continue;
+            }
+            const block_def_t *const near_def = light_def_at(light, near_slot, near_voxel);
+            if (light_is_opaque(near_def)) {
+                /* Faces that saw this much may have seen it here. They only look again, and pass nothing on. */
+                if (held == value && !light_keeps_own(near_def, channel) &&
+                    light_write(light, near_slot, near_voxel, channel, 0u)) {
+                    light_wave_push(light, near_slot, near_voxel, 0u);
+                }
+                continue;
+            }
+            if (held != light_into(value, near_def->opacity, channel == LIGHT_SKY && direction == LIGHT_DOWN)) {
                 continue;
             }
             if (light_write(light, near_slot, near_voxel, channel, 0u)) {
@@ -317,7 +370,8 @@ static void light_pass_look(world_light_t *light, uint32_t channel) {
             continue; /* nothing can be owed more */
         }
         const uint32_t owed = light_owed(light, slot, voxel, channel);
-        if (owed > held && light_write(light, slot, voxel, channel, owed)) {
+        if (owed > held && light_write(light, slot, voxel, channel, owed) &&
+            light_spreads(light_def_at(light, slot, voxel), channel)) {
             light_bucket_push(light, slot, voxel, owed);
         }
     }
@@ -336,14 +390,24 @@ static void light_pass_bright(world_light_t *light, uint32_t channel) {
             if (light_read(light, slot, voxel, channel) != level) {
                 continue; /* got brighter since this was queued, and is queued for that too */
             }
+            const bool from_opaque = light_is_opaque(light_def_at(light, slot, voxel));
             for (uint32_t direction = 0u; direction < LIGHT_DIRECTIONS; direction++) {
                 uint32_t near_slot = 0u;
                 uint32_t near_voxel = 0u;
                 if (!light_neighbour(light, slot, voxel, direction, &near_slot, &near_voxel)) {
                     continue;
                 }
-                const uint32_t offered = light_into(level, light_def_at(light, near_slot, near_voxel)->opacity,
-                                                    channel == LIGHT_SKY && direction == LIGHT_DOWN);
+                const block_def_t *const near_def = light_def_at(light, near_slot, near_voxel);
+                if (light_is_opaque(near_def)) {
+                    /* Its faces see this, and it goes no further. */
+                    if (!from_opaque && !light_keeps_own(near_def, channel) &&
+                        level > light_read(light, near_slot, near_voxel, channel)) {
+                        (void)light_write(light, near_slot, near_voxel, channel, level);
+                    }
+                    continue;
+                }
+                const uint32_t offered =
+                    light_into(level, near_def->opacity, channel == LIGHT_SKY && direction == LIGHT_DOWN);
                 if (offered > light_read(light, near_slot, near_voxel, channel) &&
                     light_write(light, near_slot, near_voxel, channel, offered)) {
                     light_bucket_push(light, near_slot, near_voxel, offered);
@@ -460,14 +524,19 @@ static bool light_section_one_value(const section_t *section, uint32_t channel, 
     return true;
 }
 
-/* Whether nothing could raise this section once sky has fallen on it: it holds one value, and it is opaque, or that value is at
- * least what any section beside it could offer. Worth asking before 4096 looks. */
+/* Whether nothing could raise this section once sky has fallen on it: it holds one value, and that is at least what any section
+ * beside it could offer. Light costs a voxel with nothing opaque in it at least 1 to enter, and an opaque block's faces see it for
+ * nothing, so only a section all of one block that is not opaque has that 1 to spare. Worth asking before 4096 looks. */
 static bool light_section_settled(const world_light_t *light, uint32_t slot, uint32_t section_index, uint32_t channel) {
     const column_t *const column = light_column(light, slot);
     const section_t *const section = &column->sections[section_index];
-    if (section->bits == SECTION_BITS_UNIFORM && light_block_def(section->block_uniform)->opacity >= LIGHT_OPAQUE &&
-        section->borrowed_light == nullptr) {
-        return true;
+    uint32_t spare = 0u;
+    if (section->bits == SECTION_BITS_UNIFORM) {
+        const block_def_t *const def = light_block_def(section->block_uniform);
+        if (light_is_opaque(def) && light_keeps_own(def, channel) && section->borrowed_light == nullptr) {
+            return true;
+        }
+        spare = light_is_opaque(def) ? 0u : 1u;
     }
     uint32_t value = 0u;
     if (!light_section_one_value(section, channel, &value)) {
@@ -482,14 +551,14 @@ static bool light_section_settled(const world_light_t *light, uint32_t slot, uin
         if (!light_section_one_value(&column->sections[section_index + 1u], channel, &near_value)) {
             return false;
         }
-        if (near_value > value + 1u ||
+        if (near_value > value + spare ||
             (channel == LIGHT_SKY && near_value == SECTION_LIGHT_MAX && value != near_value)) {
             return false;
         }
     }
     if (section_index != 0u) {
         if (!light_section_one_value(&column->sections[section_index - 1u], channel, &near_value) ||
-            near_value > value + 1u) {
+            near_value > value + spare) {
             return false;
         }
     }
@@ -497,7 +566,7 @@ static bool light_section_settled(const world_light_t *light, uint32_t slot, uin
         uint32_t beside = 0u;
         if (light_beside(light, slot, direction, &beside)) {
             if (!light_section_one_value(&light_column(light, beside)->sections[section_index], channel, &near_value) ||
-                near_value > value + 1u) {
+                near_value > value + spare) {
                 return false;
             }
         }
@@ -619,6 +688,61 @@ void world_light_deinit(world_light_t *light) {
     memset(light, 0, sizeof(*light));
 }
 
+static void light_records_seed(world_light_t *light, uint64_t count, uint32_t channel) {
+    for (uint64_t i = 0u; i < count; i++) {
+        const world_edit_record_t *const record = &light->borrowed_log[i];
+        uint32_t slot = 0u;
+        if (light_lit_slot(light, column_chunk_of(record->x), column_chunk_of(record->y), &slot)) {
+            const uint32_t index = section_voxel_index(column_local_of(record->x), column_local_of(record->y),
+                                                       column_section_local_of(record->z));
+            light_seed(light, slot, (column_section_of(record->z) << LIGHT_SECTION_SHIFT) | index, channel);
+        }
+    }
+}
+
+/* Every record since the last call, one channel at a time, then one pass for all of them. All of them, since an opaque block holds
+ * what its faces see, and a pass that ran before a block's own record was read could not tell that from what a block there before
+ * had given its neighbours. Records wanted for the second channel are still there: nothing writes while this runs. */
+static void light_catch_up(world_light_t *light) {
+    world_edit_t *const edit = light->borrowed_edit;
+    /* Room has come back since a pool refused. A rebuild sees every record too, so those are only read past. */
+    const bool retry = light->stale != 0u && light->borrowed_map->borrowed_pool->live_bytes < light->failed_live_bytes;
+    const uint64_t first = light->log_cursor;
+    bool lost_any = false;
+    for (uint32_t channel = 0u; channel < LIGHT_CHANNELS; channel++) {
+        light->log_cursor = first;
+        for (;;) {
+            uint64_t lost = 0u;
+            const uint64_t count =
+                world_edit_log_read(edit, &light->log_cursor, light->borrowed_log, WORLD_LIGHT_RECORDS, &lost);
+            lost_any = lost_any || lost != 0u;
+            if (count == 0u) {
+                break;
+            }
+            /* The same after a loss or an overflow. */
+            if (!retry && !lost_any && light->overflowed == 0u) {
+                light_records_seed(light, count, channel);
+            }
+        }
+        if (lost_any) {
+            break;
+        }
+        if (!retry) {
+            light_pass(light, channel);
+        }
+    }
+    /* Only what the log told of, or a new column's own: both are done with. */
+    world_edit_dirty_t dirty;
+    while (world_edit_dirty_next(edit, WORLD_EDIT_CONSUMER_LIGHT, &dirty)) {
+    }
+    if (lost_any) {
+        light->lost_count++;
+        light_rebuild_all(light);
+    } else if (retry) {
+        light_rebuild_all(light);
+    }
+}
+
 /* After a new column's sky has fallen: asks about every voxel that could be owed more, there and over the edge. */
 static void light_column_added_seed(world_light_t *light, uint32_t slot, uint32_t channel) {
     const column_t *const column = light_column(light, slot);
@@ -642,8 +766,9 @@ static void light_column_added_seed(world_light_t *light, uint32_t slot, uint32_
             const section_t *const theirs = &near->sections[s];
             if (ours->borrowed_light == nullptr) {
                 const uint32_t gives = light_channel(ours->light_uniform, channel);
-                if (gives <= 1u || (theirs->borrowed_light == nullptr &&
-                                    gives <= light_channel(theirs->light_uniform, channel) + 1u)) {
+                /* Not gives + 1: an opaque block's faces there would see this for nothing. */
+                if (gives == 0u ||
+                    (theirs->borrowed_light == nullptr && gives <= light_channel(theirs->light_uniform, channel))) {
                     continue;
                 }
             }
@@ -664,6 +789,7 @@ world_light_status_t world_light_column_added(world_light_t *light, uint32_t slo
     if (light_slot_is_lit(light, slot)) {
         return light_status(light);
     }
+    light_catch_up(light);
     light_column_fall(light, slot);
     light->borrowed_lit[slot] = map->borrowed_slots[slot].generation;
     for (uint32_t channel = 0u; channel < LIGHT_CHANNELS; channel++) {
@@ -686,8 +812,8 @@ static void light_column_leaving_seed(world_light_t *light, uint32_t slot, uint3
         if (ours->borrowed_light == nullptr && theirs->borrowed_light == nullptr) {
             const uint32_t gave = light_channel(ours->light_uniform, channel);
             const uint32_t held = light_channel(theirs->light_uniform, channel);
-            if (gave == 0u || held == 0u || held >= gave) {
-                continue; /* nothing can have come over this face: going sideways always costs */
+            if (gave == 0u || held == 0u || held > gave) {
+                continue; /* nothing can have come over this face: it costs, or an opaque block's faces see it as it is */
             }
         }
         for (uint32_t z = 0u; z < SECTION_SIZE; z++) {
@@ -698,11 +824,21 @@ static void light_column_leaving_seed(world_light_t *light, uint32_t slot, uint3
                                                                     : section_voxel_index(along, edge_near, z);
                 const uint32_t voxel = (s << LIGHT_SECTION_SHIFT) | index_near;
                 const uint32_t held = light_channel(section_light_get(theirs, index_near), channel);
-                if (held != 0u && held == light_into(light_channel(section_light_get(ours, index_ours), channel),
-                                                     light_def_at(light, beside, voxel)->opacity, false)) {
-                    if (light_write(light, beside, voxel, channel, 0u)) {
-                        light_wave_push(light, beside, voxel, held);
+                if (held == 0u) {
+                    continue;
+                }
+                const uint32_t voxel_ours = (s << LIGHT_SECTION_SHIFT) | index_ours;
+                const block_def_t *const near_def = light_def_at(light, beside, voxel);
+                if (light_is_opaque(near_def)) {
+                    if (held == light_read(light, slot, voxel_ours, channel) && !light_keeps_own(near_def, channel) &&
+                        !light_is_opaque(light_def_at(light, slot, voxel_ours)) &&
+                        light_write(light, beside, voxel, channel, 0u)) {
+                        light_wave_push(light, beside, voxel, 0u);
                     }
+                } else if (held ==
+                               light_into(light_offer(light, slot, voxel_ours, channel), near_def->opacity, false) &&
+                           light_write(light, beside, voxel, channel, 0u)) {
+                    light_wave_push(light, beside, voxel, held);
                 }
             }
         }
@@ -714,6 +850,7 @@ world_light_status_t world_light_column_leaving(world_light_t *light, uint32_t s
     if (!light_slot_is_lit(light, slot)) {
         return light_status(light);
     }
+    light_catch_up(light);
     /* Stops counting before anything else runs, so that what goes dark cannot lean on it again. */
     light->borrowed_lit[slot] = 0u;
     for (uint32_t channel = 0u; channel < LIGHT_CHANNELS; channel++) {
@@ -728,54 +865,14 @@ world_light_status_t world_light_column_leaving(world_light_t *light, uint32_t s
     return light_finish(light);
 }
 
-static void light_records_seed(world_light_t *light, uint64_t count, uint32_t channel) {
-    for (uint64_t i = 0u; i < count; i++) {
-        const world_edit_record_t *const record = &light->borrowed_log[i];
-        uint32_t slot = 0u;
-        if (light_lit_slot(light, column_chunk_of(record->x), column_chunk_of(record->y), &slot)) {
-            const uint32_t index = section_voxel_index(column_local_of(record->x), column_local_of(record->y),
-                                                       column_section_local_of(record->z));
-            light_seed(light, slot, (column_section_of(record->z) << LIGHT_SECTION_SHIFT) | index, channel);
-        }
-    }
-}
-
 world_light_status_t world_light_update(world_light_t *light) {
-    world_edit_t *const edit = light->borrowed_edit;
-    /* Room has come back since a pool refused. A rebuild sees every record too, so those are only read past. */
-    const bool retry = light->stale != 0u && light->borrowed_map->borrowed_pool->live_bytes < light->failed_live_bytes;
-    bool lost_any = false;
-    for (;;) {
-        uint64_t lost = 0u;
-        const uint64_t count =
-            world_edit_log_read(edit, &light->log_cursor, light->borrowed_log, WORLD_LIGHT_RECORDS, &lost);
-        lost_any = lost_any || lost != 0u;
-        if (count == 0u) {
-            break;
-        }
-        /* The same after a loss or an overflow. */
-        if (!retry && !lost_any && light->overflowed == 0u) {
-            for (uint32_t channel = 0u; channel < LIGHT_CHANNELS; channel++) {
-                light_records_seed(light, count, channel);
-                light_pass(light, channel);
-            }
-        }
-    }
-    /* Only what the log told of, or a new column's own: both are done with. */
-    world_edit_dirty_t dirty;
-    while (world_edit_dirty_next(edit, WORLD_EDIT_CONSUMER_LIGHT, &dirty)) {
-    }
-    if (lost_any) {
-        light->lost_count++;
-        light_rebuild_all(light);
-    } else if (retry) {
-        light_rebuild_all(light);
-    }
+    light_catch_up(light);
     return light_finish(light);
 }
 
 world_light_status_t world_light_sections_replaced(world_light_t *light, uint32_t slot, uint64_t section_mask) {
     ASSERT_ALWAYS(slot < light->borrowed_map->slot_count && (section_mask & ~WORLD_EDIT_SECTIONS_ALL) == 0u);
+    light_catch_up(light);
     if (light_slot_is_lit(light, slot)) {
         for (uint32_t channel = 0u; channel < LIGHT_CHANNELS; channel++) {
             for (uint32_t s = 0u; s < COLUMN_SECTIONS; s++) {
