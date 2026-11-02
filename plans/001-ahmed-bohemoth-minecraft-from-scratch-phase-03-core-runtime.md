@@ -68,6 +68,7 @@ Mutants tried this round, each restored afterwards. The first group was already 
 Appended as they land:
 
 - `a11e658` Start the core runtime from main so the heap check at exit means something, refuse an unsupported CPU before any -march code runs, and fill the test gaps and standard breaches the Phase 03 gate check found.
+- `86cde35` Record the Phase 03 gate check as passed, with the defects it found and how each was fixed.
 
 ## Issues found
 
