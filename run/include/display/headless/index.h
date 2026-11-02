@@ -46,7 +46,7 @@ typedef struct display_headless_tick_t {
 } display_headless_tick_t;
 static_assert(sizeof(display_headless_tick_t) == 24);
 
-/* What runs under the backend: the demo for now, and game from Stage 08.4. Either function may be nullptr. Returning
+/* What runs under the backend: the demo, or game with --test-world. Either function may be nullptr. Returning
  * false ends the run as failed, and the function has said why. */
 typedef struct display_headless_scene_t {
     void *borrowed_context; /* passed through untouched */

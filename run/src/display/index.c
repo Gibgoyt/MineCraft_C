@@ -178,6 +178,9 @@ static void display_signals_restore(const display_signals_t *signals) {
 /* The back buffer's picture for this frame. Returns false if the cursor's source says to stop. */
 static bool display_draw_frame(display_t *display, uint64_t frame) {
     display_buffer_t *const back = display_flip_back(&display->flip);
+    if (display->frame_source != nullptr) {
+        return display->frame_source(display->borrowed_cursor_context, back);
+    }
     if (display->cursor_source == nullptr) {
         display_flip_pattern_frame(back, frame);
         return true;
@@ -224,14 +227,15 @@ static bool display_flip_once(display_t *display, uint64_t frame) {
     return true;
 }
 
-/* Nothing here logs: the console shows nothing until the restore, so everything is told afterwards. */
-static void display_test_pattern_loop(display_t *display, int64_t started_ns, int64_t duration_ns) {
+/* Nothing here logs: the console shows nothing until the restore, so everything is told afterwards. A duration of 0 has no
+ * deadline. */
+static void display_run_loop(display_t *display, int64_t started_ns, int64_t duration_ns) {
     display_flip_t *const flip = &display->flip;
     display_vt_guard_t *const guard = &display->guard;
     uint64_t frame = 0;
     bool was_away = false;
     while (atomic_load_explicit(&display_stop_signal, memory_order_relaxed) == 0 &&
-           time_now_ns() - started_ns < duration_ns) {
+           (duration_ns == 0 || time_now_ns() - started_ns < duration_ns)) {
         display_vt_guard_pet(guard);
         const display_vt_guard_state_t state = display_vt_guard_service(guard);
         if (state == DISPLAY_VT_GUARD_FAILED) {
@@ -261,20 +265,20 @@ static void display_test_pattern_loop(display_t *display, int64_t started_ns, in
     }
 }
 
-static void display_test_pattern_report(const display_t *display) {
+static void display_run_report(const display_t *display, const char *what) {
     const display_flip_stats_t *const stats = &display->flip.stats;
-    LOG_INFO("test pattern: %" PRIu64 " flips submitted, %" PRIu64 " events, %" PRIu64 " sequence gaps",
+    LOG_INFO("%s: %" PRIu64 " flips submitted, %" PRIu64 " events, %" PRIu64 " sequence gaps", what,
              stats->flips_submitted, stats->events, stats->sequence_gaps);
     if (stats->intervals == 0u) {
-        LOG_WARN("test pattern: no flip intervals were measured");
+        LOG_WARN("%s: no flip intervals were measured", what);
         return;
     }
     const uint64_t mean_ns = stats->sum_ns / stats->intervals;
     const uint64_t rate_mhz = mean_ns == 0u ? 0u : (uint64_t)TIME_NS_PER_SECOND * 1000u / mean_ns;
-    LOG_INFO("test pattern: %" PRIu64 " intervals, mean %" PRIu64 " ns, min %" PRIu64 " ns, max %" PRIu64
-             " ns, late %" PRIu64 ", rate %" PRIu64 ".%03" PRIu64 " Hz against a mode of %" PRIu64 ".%03" PRIu64 " Hz",
-             stats->intervals, mean_ns, stats->min_ns, stats->max_ns, stats->late, rate_mhz / 1000u, rate_mhz % 1000u,
-             display->mode.refresh_mhz / 1000u, display->mode.refresh_mhz % 1000u);
+    LOG_INFO("%s: %" PRIu64 " intervals, mean %" PRIu64 " ns, min %" PRIu64 " ns, max %" PRIu64 " ns, late %" PRIu64
+             ", rate %" PRIu64 ".%03" PRIu64 " Hz against a mode of %" PRIu64 ".%03" PRIu64 " Hz",
+             what, stats->intervals, mean_ns, stats->min_ns, stats->max_ns, stats->late, rate_mhz / 1000u,
+             rate_mhz % 1000u, display->mode.refresh_mhz / 1000u, display->mode.refresh_mhz % 1000u);
 }
 
 void display_test_pattern_set_cursor(display_t *display, display_cursor_source_t source,
@@ -284,17 +288,15 @@ void display_test_pattern_set_cursor(display_t *display, display_cursor_source_t
     display->borrowed_cursor_context = context;
 }
 
-display_status_t display_test_pattern_run(display_t *display, int64_t started_ns, int64_t duration_ns) {
+/* Takes the console, runs the loop and gives it back, and says how it went once the console can show that. */
+static display_status_t display_run_taken(display_t *display, int64_t started_ns, int64_t duration_ns,
+                                          const char *what) {
     display_flip_t *const flip = &display->flip;
     display_vt_guard_t *const guard = &display->guard;
-    for (uint32_t i = 0; i < DISPLAY_FLIP_BUFFERS; i++) {
-        display_flip_pattern_fill(&flip->buffers[i]);
-        display_vt_guard_draw_notice(&flip->buffers[i]);
-    }
     display_signals_t signals;
     display_signals_install(&signals);
     if (display_vt_guard_take_console(guard)) {
-        display_test_pattern_loop(display, started_ns, duration_ns);
+        display_run_loop(display, started_ns, duration_ns);
     }
     display_flip_drain(flip);
     const bool restored = display_vt_guard_give_back(guard);
@@ -302,21 +304,42 @@ display_status_t display_test_pattern_run(display_t *display, int64_t started_ns
     display_signals_restore(&signals);
 
     /* The console is back, so now it can be told. */
-    display_test_pattern_report(display);
+    display_run_report(display, what);
     if (stopped_by != 0) {
-        LOG_INFO("test pattern: stopped early by signal %" PRId32, stopped_by);
+        LOG_INFO("%s: stopped early by signal %" PRId32, what, stopped_by);
     }
     if (guard->failed_call != nullptr) {
-        LOG_ERROR("test pattern: %s%s%s", guard->failed_call, guard->failed_errno != 0 ? ": " : "",
+        LOG_ERROR("%s: %s%s%s", what, guard->failed_call, guard->failed_errno != 0 ? ": " : "",
                   guard->failed_errno != 0 ? strerror(guard->failed_errno) : "");
     }
     if (flip->failed_call != nullptr) {
-        LOG_ERROR("test pattern: %s%s%s", flip->failed_call, flip->failed_errno != 0 ? ": " : "",
+        LOG_ERROR("%s: %s%s%s", what, flip->failed_call, flip->failed_errno != 0 ? ": " : "",
                   flip->failed_errno != 0 ? strerror(flip->failed_errno) : "");
     }
     if (!restored) {
-        LOG_ERROR("test pattern: at least one ioctl failed while giving the display back");
+        LOG_ERROR("%s: at least one ioctl failed while giving the display back", what);
     }
     const bool ok = flip->failed_call == nullptr && guard->failed_call == nullptr && restored;
     return ok ? DISPLAY_STATUS_OK : DISPLAY_STATUS_ERROR;
+}
+
+display_status_t display_test_pattern_run(display_t *display, int64_t started_ns, int64_t duration_ns) {
+    display_flip_t *const flip = &display->flip;
+    for (uint32_t i = 0; i < DISPLAY_FLIP_BUFFERS; i++) {
+        display_flip_pattern_fill(&flip->buffers[i]);
+        display_vt_guard_draw_notice(&flip->buffers[i]);
+    }
+    return display_run_taken(display, started_ns, duration_ns, "test pattern");
+}
+
+display_status_t display_frames_run(display_t *display, display_frame_source_t source, display_cursor_discard_t discard,
+                                    void *context) {
+    display_flip_t *const flip = &display->flip;
+    for (uint32_t i = 0; i < DISPLAY_FLIP_BUFFERS; i++) {
+        memset(flip->buffers[i].owned_map, 0, flip->buffers[i].map_bytes);
+    }
+    display->frame_source = source;
+    display->cursor_discard = discard;
+    display->borrowed_cursor_context = context;
+    return display_run_taken(display, time_now_ns(), 0, "frames");
 }

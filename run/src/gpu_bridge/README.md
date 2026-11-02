@@ -24,6 +24,9 @@ One per CUDA area, and each is the C API to it: `run/include/gpu_bridge/<area>/i
 | `device_memory` | The device allocator, in `cuda/src/device_memory/` |
 | `world_buffers` | The section pool and column table, in `cuda/src/world_buffers/`. `run/src/render/` owns its blocks |
 | `traverse` | Ray traversal, in `cuda/src/traverse/`. The bridge starts nothing of it: `render` holds its blocks, and calls it |
+| `shade` | Textures and face shade, in `cuda/src/shade/` |
+| `post` | Sky, distance fog and the tone map to XRGB8888, in `cuda/src/post/` |
+| `frame` | One frame's kernels in order, GPU timers and readback, in `cuda/src/frame/` |
 
 ## What it costs
 

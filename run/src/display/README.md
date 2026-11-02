@@ -14,6 +14,7 @@
 - `display_offscreen_config_from_machine`, `display_offscreen_init`, `display_offscreen_deinit`: a pair and its defaults. They reserve for and start the no-display backend, and touch no card and no console. How to use it is in `headless/README.md`.
 - `display_test_pattern_run`: `--test-pattern`. Bars and a moving square, flipped at the mode's rate until it ends by itself
   or a signal stops it, then the display goes back and the flip timings are logged.
+- `display_frames_run`: the same loop with a function drawing every frame in place of the pattern, and no deadline. `game` is that function.
 - `display_test_pattern_set_cursor`: adds a cursor square, placed each frame by a function it is given, and a second function
   called once on coming back from another VT, to throw away what waited meanwhile. `main` joins these to `input`, so that this
   system does not include that one.

@@ -4,6 +4,7 @@
 
 #include "display/headless/demo/index.h"
 #include "display/index.h"
+#include "game/index.h"
 #include "gpu_bridge/index.h"
 #include "heap/index.h"
 #include "input/index.h"
@@ -40,10 +41,12 @@ typedef struct main_options_t {
     uint8_t pretend_leak;       /* --pretend-leak */
     uint8_t test_pattern;       /* --test-pattern */
     uint8_t headless;           /* --headless */
+    uint32_t render_distance;   /* --render-distance, or 0 for config/machine.yaml */
     uint8_t crash_test;         /* display_crash_test_t: --crash-test */
-    uint8_t _pad0[3];
+    uint8_t test_world;         /* --test-world */
+    uint8_t _pad0[6];
 } main_options_t;
-static_assert(sizeof(main_options_t) == 56);
+static_assert(sizeof(main_options_t) == 64);
 
 static void main_print_usage(const char *program) {
     fprintf(
@@ -51,6 +54,7 @@ static void main_print_usage(const char *program) {
         "usage: %s [--report] [--pretend-missing-cpu <cpu.simd key>] [--pretend-leak]\n"
         "       %s --test-pattern [--card <path>] [--connector <name>] [--crash-test[=<how>]]\n"
         "       %s --headless [--script <path>] [--screenshot-dir <dir>] [--ticks <n>] [--width <w>] [--height <h>]\n"
+        "       %s --test-world [--render-distance <chunks>] [--headless ...]\n"
         "  --report                 print the build's defines and CPU features, then exit\n"
         "  --pretend-missing-cpu    treat this feature as absent, to see the CPU check fail; may repeat\n"
         "  --pretend-leak           skip the shutdown, to see the leak check at exit fail\n"
@@ -61,8 +65,11 @@ static void main_print_usage(const char *program) {
         "                           back. <how> is segv (the default), abort, kill, or hang for the watchdog\n"
         "  While the display is taken, Ctrl+Alt+Backspace is the emergency exit\n"
         "  --headless               no display: replay a script of input and write PNG screenshots; never needs a\n"
-        "                           console. See run/src/display/headless/README.md\n",
-        program, program, program);
+        "                           console. See run/src/display/headless/README.md\n"
+        "  --test-world             fly through a generated world: through KMS from a text console, never inside X,\n"
+        "                           where WASD, Space and Shift move, the mouse looks, the wheel sets the speed, Ctrl\n"
+        "                           goes faster and Esc ends the run. With --headless, the script does all of that\n",
+        program, program, program, program);
 }
 
 /* A whole number from 1 up, for a flag. */
@@ -107,6 +114,13 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
             out->crash_test = (uint8_t)how;
         } else if (strcmp(argv[i], "--headless") == 0) {
             out->headless = 1;
+        } else if (strcmp(argv[i], "--test-world") == 0) {
+            out->test_world = 1;
+        } else if (strcmp(argv[i], "--render-distance") == 0 && i + 1 < argc) {
+            i++;
+            if (!main_parse_count("--render-distance", argv[i], &out->render_distance)) {
+                return false;
+            }
         } else if (strcmp(argv[i], "--script") == 0 && i + 1 < argc) {
             i++;
             out->script = argv[i];
@@ -163,6 +177,19 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
                 argv[0]);
         return false;
     }
+    if (out->render_distance != 0u && out->test_world == 0) {
+        fprintf(stderr, "%s: --render-distance only means something with --test-world\n", argv[0]);
+        return false;
+    }
+    if (out->render_distance > MC_GAME_RENDER_DISTANCE_MAX) {
+        fprintf(stderr, "%s: --render-distance goes up to %" PRIu32 "\n", argv[0],
+                (uint32_t)MC_GAME_RENDER_DISTANCE_MAX);
+        return false;
+    }
+    if (out->test_world != 0 && (out->test_pattern != 0 || out->report != 0)) {
+        fprintf(stderr, "%s: --test-world does not go with --test-pattern or --report\n", argv[0]);
+        return false;
+    }
     if (out->headless != 0 && (out->test_pattern != 0 || out->report != 0)) {
         fprintf(stderr, "%s: --headless does not go with --test-pattern or --report\n", argv[0]);
         return false;
@@ -200,8 +227,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         math_deinit(&app->math);
         return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
     }
-    thread_topology_t topology;
-    if (!thread_topology_read(&topology) || !job_init(&app->job, &topology)) {
+    if (!thread_topology_read(&app->topology) || !job_init(&app->job, &app->topology)) {
         texture_deinit(&app->texture);
         simd_deinit(&app->simd);
         math_deinit(&app->math);
@@ -215,7 +241,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         math_deinit(&app->math);
         return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
     }
-    if (!thread_pin_self(thread_cpu_for(&topology, THREAD_ROLE_MAIN, 0u)) ||
+    if (!thread_pin_self(thread_cpu_for(&app->topology, THREAD_ROLE_MAIN, 0u)) ||
         !world_init(&app->world, world_limits_default())) {
         gpu_bridge_deinit(&app->gpu_bridge);
         job_deinit(&app->job);
@@ -243,10 +269,13 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         math_deinit(&app->math);
         return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
     }
+    /* Takes nothing until game_open. */
+    game_init(&app->game, &app->world, &app->terrain, &app->render, &app->job, &app->texture, &app->topology);
     return MAIN_EXIT_OK;
 }
 
 static void app_deinit(app_t *app) {
+    game_deinit(&app->game);
     input_deinit(&app->input);
     display_offscreen_deinit(&app->offscreen);
     display_deinit(&app->display);
@@ -267,9 +296,9 @@ static void main_job_count(job_worker_t *worker, void *borrowed_argument) {
     atomic_fetch_add_explicit(done, 1u, memory_order_relaxed);
 }
 
-/* Until game arrives (Stage 08.4) this is all there is to run: one round of real jobs through the real workers, so a
- * runtime that cannot run anything fails here and not in the first stage that needs it. The group's wait carries the
- * ordering, so the load below may be relaxed. */
+/* What a run with no flags does until a menu opens a world: one round of real jobs through the real workers, so a runtime
+ * that cannot run anything fails here and not in the first stage that needs it. The group's wait carries the ordering, so the
+ * load below may be relaxed. */
 static bool main_run(app_t *app) {
     const int64_t started_ns = time_now_ns();
     _Atomic uint64_t done = 0;
@@ -298,8 +327,7 @@ static main_exit_t main_exit_from_display(display_status_t status) {
     return MAIN_EXIT_DISPLAY_ERROR;
 }
 
-/* The one way into KMS for now. Only this flag opens the display: the default run stays away from it until game does
- * (Stage 08.4), so that nothing ctest runs can reach the card. */
+/* KMS with no world. Only this flag and --test-world open the display, so that nothing ctest runs can reach the card. */
 static main_exit_t main_run_test_pattern(app_t *app, const main_options_t *options, int64_t started_ns) {
     display_config_t config;
     display_config_from_machine(&config);
@@ -322,8 +350,7 @@ static main_exit_t main_run_test_pattern(app_t *app, const main_options_t *optio
     return main_exit_from_display(ran);
 }
 
-/* Replays input with no display at all. Starts after the runtime, as game will, so that what a script drives later is
- * running as it does for real. The demo scene stands in until game passes its own (Stage 08.4). */
+/* Replays input with no display at all, on the demo scene, which needs no card: see run/src/game/README.md. */
 static main_exit_t main_run_headless(app_t *app, const main_options_t *options) {
     display_headless_config_t config;
     display_offscreen_config_from_machine(&config);
@@ -343,6 +370,71 @@ static main_exit_t main_run_headless(app_t *app, const main_options_t *options) 
     LOG_INFO("headless: %" PRIu64 " frames, %" PRIu64 " screenshots", headless->frames_presented,
              headless->screenshots_written);
     return ran ? MAIN_EXIT_OK : MAIN_EXIT_HEADLESS;
+}
+
+/* A generated world, with no display at all: what a script does to the free-fly camera, in PNGs. */
+static main_exit_t main_run_test_world_headless(app_t *app, const main_options_t *options) {
+    display_headless_config_t config;
+    display_offscreen_config_from_machine(&config);
+    config.script_path = options->script;
+    config.screenshot_dir = options->screenshot_dir;
+    config.tick_count = options->ticks;
+    config.width = options->width != 0u ? options->width : config.width;
+    config.height = options->height != 0u ? options->height : config.height;
+    if (!display_offscreen_init(&app->offscreen, &config)) {
+        return MAIN_EXIT_HEADLESS;
+    }
+    const game_config_t game = {.render_distance = options->render_distance != 0u ? options->render_distance
+                                                                                  : MC_GAME_RENDER_DISTANCE_DEFAULT,
+                                .width = config.width,
+                                .height = config.height,
+                                ._pad0 = {0}};
+    if (!game_open(&app->game, &game)) {
+        return MAIN_EXIT_RUNTIME;
+    }
+    display_headless_scene_t scene;
+    game_headless_scene(&app->game, &scene);
+    display_headless_t *const headless = &app->offscreen.headless;
+    const bool ran = display_headless_run(headless, &scene);
+    LOG_INFO("headless: %" PRIu64 " frames, %" PRIu64 " screenshots", headless->frames_presented,
+             headless->screenshots_written);
+    game_report(&app->game);
+    game_close(&app->game);
+    return ran ? MAIN_EXIT_OK : MAIN_EXIT_HEADLESS;
+}
+
+/* A generated world through KMS. The display comes first: under a display server it refuses before anything has been looked at
+ * or started, and input only ever opens once it said yes. */
+static main_exit_t main_run_test_world(app_t *app, const main_options_t *options) {
+    display_config_t config;
+    display_config_from_machine(&config);
+    config.console_fd = STDIN_FILENO;
+    const display_status_t status = display_init(&app->display, &config, display_device_real_ops(), nullptr);
+    if (status != DISPLAY_STATUS_OK) {
+        return main_exit_from_display(status);
+    }
+    if (!input_init(&app->input, INPUT_DEVICE_DIRECTORY, input_ops_real(), nullptr)) {
+        return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
+    }
+    const display_buffer_t *const buffer = &app->display.flip.buffers[0];
+    const game_config_t game = {.render_distance = options->render_distance != 0u ? options->render_distance
+                                                                                  : MC_GAME_RENDER_DISTANCE_DEFAULT,
+                                .width = buffer->width,
+                                .height = buffer->height,
+                                ._pad0 = {0}};
+    if (!game_open(&app->game, &game)) {
+        return MAIN_EXIT_RUNTIME;
+    }
+    game_loop_source_begin(&app->game, &app->input);
+    const display_status_t ran = display_frames_run(&app->display, game_loop_source, game_loop_discard, &app->game);
+    const bool loop_ok = game_loop_stop(&app->game);
+    input_report(&app->input);
+    game_report(&app->game);
+    game_close(&app->game);
+    if (ran == DISPLAY_STATUS_OK && !loop_ok) {
+        return MAIN_EXIT_RUNTIME;
+    }
+    return main_exit_from_display(ran);
 }
 
 /* Stage 02.3 asks the binary to report its defines, to show a yaml change reaching compiled code. This path must never
@@ -378,6 +470,9 @@ int32_t main(int32_t argc, char **argv) {
         main_report(&app);
     } else if (options.test_pattern != 0) {
         status = main_run_test_pattern(&app, &options, started_ns);
+    } else if (options.test_world != 0) {
+        status =
+            options.headless != 0 ? main_run_test_world_headless(&app, &options) : main_run_test_world(&app, &options);
     } else if (options.headless != 0) {
         status = main_run_headless(&app, &options);
     } else if (!main_run(&app)) {

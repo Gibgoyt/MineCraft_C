@@ -8,6 +8,7 @@
 #include "gpu_bridge/device_memory/index.h"
 #include "gpu_bridge/status/index.h"
 #include "gpu_bridge/traverse/index.h"
+#include "heap/index.h"
 #include "types/index.h"
 #include "world/column/index.h"
 
@@ -39,32 +40,20 @@ enum : uint64_t { TW_POOL_BYTES = 1ull << 30 }; /* under 4 GiB: the desktop shar
 /* ---- A world, in a dense array, and in the tree ---------------------------------------------------------------------- */
 
 typedef struct tw_world_t {
-    uint8_t *dense;             /* 0: x, then y, then storage height */
-    device_block_t columns;     /* 8 */
-    device_block_t sections;    /* 32 */
-    device_block_t brick_masks; /* 56 */
-    device_block_t brick_refs;  /* 80 */
-    device_block_t voxels;      /* 104 */
-    traverse_world_t view;      /* 128 */
-    uint64_t section_count;     /* 184 */
-    uint64_t brick_count;       /* 192 */
-    uint64_t voxel_count;       /* 200 */
-    uint64_t uniform_sections;  /* 208 */
-    uint64_t uniform_bricks;    /* 216 */
-    int32_t min_block[2];       /* 224 */
-    uint32_t columns_wide;      /* 232 */
-    uint32_t width;             /* 236 */
+    uint8_t *dense;            /* 0: x, then y, then storage height */
+    device_block_t table;      /* 8 */
+    device_block_t pool;       /* 32 */
+    traverse_world_t view;     /* 56 */
+    uint64_t pool_bytes;       /* 96 */
+    uint64_t section_count;    /* 104 */
+    uint64_t brick_count;      /* 112 */
+    uint64_t voxel_count;      /* 120: in sections that keep their voxels */
+    uint64_t uniform_sections; /* 128 */
+    int32_t min_block[2];      /* 136 */
+    uint32_t columns_wide;     /* 144 */
+    uint32_t width;            /* 148 */
 } tw_world_t;
-static_assert(sizeof(tw_world_t) == 240);
-
-typedef struct tw_encode_t {
-    traverse_column_t *columns;   /* 0 */
-    traverse_section_t *sections; /* 8 */
-    uint64_t *masks;              /* 16 */
-    uint32_t *refs;               /* 24 */
-    uint32_t *voxels;             /* 32 */
-} tw_encode_t;
-static_assert(sizeof(tw_encode_t) == 40);
+static_assert(sizeof(tw_world_t) == 152);
 
 static uint32_t tw_hash(int32_t x, int32_t y, int32_t z) {
     uint32_t h = (uint32_t)x * 0x8DA6B343u ^ (uint32_t)y * 0xD8163841u ^ (uint32_t)z * 0xCB1AB31Fu;
@@ -85,9 +74,15 @@ static uint32_t tw_value(const tw_world_t *world, uint32_t x, uint32_t y, uint32
     }
     const uint32_t material = world->dense[tw_index(world, x, y, z)];
     if (material == TW_MATERIAL_HASHED) {
+        /* A material and a light of its own, each of which has to arrive: see traverse_hit_t.value. */
         return material | (tw_hash((int32_t)x, (int32_t)y, (int32_t)z) & 0xFFFFu) << 8;
     }
     return material;
+}
+
+static uint32_t tw_floor_mod(int32_t value, uint32_t modulus) {
+    const int64_t remainder = (int64_t)value % (int64_t)modulus;
+    return (uint32_t)(remainder < 0 ? remainder + (int64_t)modulus : remainder);
 }
 
 static tw_world_t *tw_world_begin(test_context_t *t, uint32_t columns_wide, int32_t min_column_x,
@@ -99,13 +94,14 @@ static tw_world_t *tw_world_begin(test_context_t *t, uint32_t columns_wide, int3
     world->min_block[0] = min_column_x * (int32_t)TRAVERSE_COLUMN_BLOCKS;
     world->min_block[1] = min_column_y * (int32_t)TRAVERSE_COLUMN_BLOCKS;
     world->dense = test_alloc(t, (uint64_t)world->width * world->width * TW_DENSE_HEIGHT);
-    world->view = (traverse_world_t){.borrowed_columns = &world->columns,
-                                     .borrowed_sections = &world->sections,
-                                     .borrowed_brick_masks = &world->brick_masks,
-                                     .borrowed_brick_refs = &world->brick_refs,
-                                     .borrowed_voxels = &world->voxels,
-                                     .window_min_column = {min_column_x, min_column_y},
-                                     .columns_wide = columns_wide};
+    world->view = (traverse_world_t){.borrowed_table = &world->table,
+                                     .borrowed_pool = &world->pool,
+                                     .window = {.min_x = min_column_x,
+                                                .min_y = min_column_y,
+                                                .min_slot_x = tw_floor_mod(min_column_x, columns_wide),
+                                                .min_slot_y = tw_floor_mod(min_column_y, columns_wide),
+                                                .side = columns_wide,
+                                                .slot_count = columns_wide * columns_wide}};
     return world;
 }
 
@@ -120,94 +116,129 @@ static void tw_set(tw_world_t *world, int32_t x, int32_t y, int32_t z, uint32_t 
     world->dense[tw_index(world, dx, dy, dz)] = (uint8_t)material;
 }
 
-static uint32_t tw_floor_mod(int32_t value, uint32_t modulus) {
-    const int64_t remainder = (int64_t)value % (int64_t)modulus;
-    return (uint32_t)(remainder < 0 ? remainder + (int64_t)modulus : remainder);
+/* One section, in the form gpu_bridge/world_buffers/index.h defines, at out, or with out nullptr only counted. Returns its
+ * bytes. Written from the dense array alone, as Stage 01.3's encoder was, and it is not the game's: this test says what the
+ * format means without taking the encoder's word for it. x0, y0 and z0 are dense coordinates of its low corner. */
+static uint32_t tw_encode_section(tw_world_t *world, uint32_t x0, uint32_t y0, uint32_t z0, uint8_t *out) {
+    const uint32_t first_value = tw_value(world, x0, y0, z0);
+    uint64_t words[64];
+    uint64_t brick_mask = 0u;
+    uint32_t bricks = 0u, voxels = 0u;
+    bool uniform = true;
+    for (uint32_t b = 0u; b < 64u; b += 1u) {
+        const uint32_t bx = x0 + (b & 3u) * 4u, by = y0 + ((b >> 2) & 3u) * 4u, bz = z0 + (b >> 4) * 4u;
+        uint64_t mask = 0u;
+        for (uint32_t v = 0u; v < 64u; v += 1u) {
+            const uint32_t value = tw_value(world, bx + (v & 3u), by + ((v >> 2) & 3u), bz + (v >> 4));
+            uniform = uniform && value == first_value;
+            if (value != 0u) {
+                mask |= 1ull << v;
+                voxels += 1u;
+            }
+        }
+        if (mask != 0u) {
+            brick_mask |= 1ull << b;
+            words[bricks] = mask;
+            bricks += 1u;
+        }
+    }
+    if (voxels == 0u) {
+        return 0u;
+    }
+    if (uniform) {
+        world->uniform_sections += 1u;
+        if (out != nullptr) {
+            const world_buffers_section_t header = {.brick_mask = ~0ull,
+                                                    .voxel_count = 4096u,
+                                                    .material_offset = 16u,
+                                                    .light_offset = 18u,
+                                                    .brick_count = 0u};
+            const uint16_t material = (uint16_t)(first_value & TRAVERSE_VALUE_MATERIAL_MASK);
+            memcpy(out, &header, sizeof(header));
+            memcpy(out + 16, &material, 2u);
+            out[18] = (uint8_t)(first_value >> TRAVERSE_VALUE_LIGHT_SHIFT);
+        }
+        return WORLD_BUFFERS_SECTION_BYTES_UNIFORM;
+    }
+    world->brick_count += bricks;
+    world->voxel_count += voxels;
+    const uint32_t first_offset = 16u + bricks * 8u;
+    const uint32_t material_offset = first_offset + bricks * 2u;
+    const uint32_t light_offset = material_offset + voxels * 2u;
+    const uint32_t bytes = (light_offset + voxels + 7u) & ~7u;
+    if (out == nullptr) {
+        return bytes;
+    }
+    const world_buffers_section_t header = {.brick_mask = brick_mask,
+                                            .voxel_count = (uint16_t)voxels,
+                                            .material_offset = (uint16_t)material_offset,
+                                            .light_offset = (uint16_t)light_offset,
+                                            .brick_count = (uint8_t)bricks};
+    memcpy(out, &header, sizeof(header));
+    memcpy(out + 16, words, bricks * 8u);
+    uint32_t rank = 0u, place = 0u;
+    for (uint32_t b = 0u; b < 64u; b += 1u) {
+        if (((brick_mask >> b) & 1u) == 0u) {
+            continue;
+        }
+        const uint16_t first = (uint16_t)place;
+        memcpy(out + first_offset + rank * 2u, &first, 2u);
+        const uint32_t bx = x0 + (b & 3u) * 4u, by = y0 + ((b >> 2) & 3u) * 4u, bz = z0 + (b >> 4) * 4u;
+        for (uint32_t v = 0u; v < 64u; v += 1u) {
+            const uint32_t value = tw_value(world, bx + (v & 3u), by + ((v >> 2) & 3u), bz + (v >> 4));
+            if (value != 0u) {
+                const uint16_t material = (uint16_t)(value & TRAVERSE_VALUE_MATERIAL_MASK);
+                memcpy(out + material_offset + place * 2u, &material, 2u);
+                out[light_offset + place] = (uint8_t)(value >> TRAVERSE_VALUE_LIGHT_SHIFT);
+                place += 1u;
+            }
+        }
+        rank += 1u;
+    }
+    return bytes;
 }
 
-/* Writes the tree, or with out nullptr only counts it. Written from the dense array alone, as Stage 01.3's encoder was, and it
- * is not the game's: this test says what the format means without taking the encoder's word for it. */
-static void tw_encode(tw_world_t *world, const tw_encode_t *out) {
-    uint64_t sections = 0u, bricks = 0u, voxels = 0u, uniform_sections = 0u, uniform_bricks = 0u;
+/* The table and the pool, or with nullptrs only counted. Sections go where a slab would, on a whole granule. */
+static void tw_encode(tw_world_t *world, world_buffers_column_t *table, uint8_t *pool) {
+    world->section_count = 0u;
+    world->brick_count = 0u;
+    world->voxel_count = 0u;
+    world->uniform_sections = 0u;
+    uint64_t granule = 0u;
     const uint32_t wide = world->columns_wide;
     for (uint32_t column_y = 0u; column_y < wide; column_y += 1u) {
         for (uint32_t column_x = 0u; column_x < wide; column_x += 1u) {
-            traverse_column_t column = {.first_section = (uint32_t)sections};
+            const int32_t world_x = world->min_block[0] / 16 + (int32_t)column_x;
+            const int32_t world_y = world->min_block[1] / 16 + (int32_t)column_y;
+            world_buffers_column_t column = {.chunk_x = world_x,
+                                             .chunk_y = world_y,
+                                             .generation = 1u,
+                                             .top_z = (int16_t)(TRAVERSE_Z_BASE - 1),
+                                             .ready = 1u};
             for (uint32_t section_z = 0u; section_z < TW_DENSE_HEIGHT / 16u; section_z += 1u) {
                 const uint32_t x0 = column_x * 16u, y0 = column_y * 16u, z0 = section_z * 16u;
-                const uint32_t first = tw_value(world, x0, y0, z0);
-                uint32_t occupied = 0u, top = 0u;
-                bool uniform = true;
-                for (uint32_t i = 0u; i < 4096u; i += 1u) {
-                    const uint32_t value = tw_value(world, x0 + (i & 15u), y0 + ((i >> 4) & 15u), z0 + (i >> 8));
-                    occupied += value != 0u;
-                    uniform = uniform && value == first;
-                    top = value != 0u && z0 + (i >> 8) + 1u > top ? z0 + (i >> 8) + 1u : top;
-                }
-                if (occupied == 0u) {
+                uint8_t *const out = pool != nullptr ? pool + granule * WORLD_BUFFERS_GRANULE_BYTES : nullptr;
+                const uint32_t bytes = tw_encode_section(world, x0, y0, z0, out);
+                if (bytes == 0u) {
                     continue;
                 }
                 column.section_mask |= 1ull << section_z;
-                column.top = (uint16_t)top;
-                traverse_section_t section = {0};
-                if (uniform) {
-                    section.brick_mask = ~0ull;
-                    section.first_brick = TRAVERSE_SECTION_UNIFORM;
-                    section.uniform_value = first;
-                    uniform_sections += 1u;
-                } else {
-                    section.first_brick = (uint32_t)bricks;
-                    for (uint32_t b = 0u; b < 64u; b += 1u) {
-                        const uint32_t bx = x0 + (b & 3u) * 4u, by = y0 + ((b >> 2) & 3u) * 4u, bz = z0 + (b >> 4) * 4u;
-                        uint64_t mask = 0u;
-                        uint32_t count = 0u, same_as = 0u;
-                        bool same = true;
-                        for (uint32_t v = 0u; v < 64u; v += 1u) {
-                            const uint32_t value = tw_value(world, bx + (v & 3u), by + ((v >> 2) & 3u), bz + (v >> 4));
-                            if (value != 0u) {
-                                same_as = count == 0u ? value : same_as;
-                                same = same && value == same_as;
-                                mask |= 1ull << v;
-                                if (out != nullptr) {
-                                    out->voxels[voxels + count] = value; /* wasted if this brick turns out uniform */
-                                }
-                                count += 1u;
-                            }
-                        }
-                        if (mask == 0u) {
-                            continue;
-                        }
-                        section.brick_mask |= 1ull << b;
-                        if (out != nullptr) {
-                            out->masks[bricks] = mask;
-                            out->refs[bricks] = same ? (TRAVERSE_BRICK_UNIFORM | same_as) : (uint32_t)voxels;
-                        }
-                        if (same) {
-                            uniform_bricks += 1u;
-                        } else {
-                            voxels += count;
-                        }
-                        bricks += 1u;
+                column.sections[section_z] = (uint32_t)granule + 1u;
+                granule += (bytes + WORLD_BUFFERS_GRANULE_BYTES - 1u) / WORLD_BUFFERS_GRANULE_BYTES;
+                world->section_count += 1u;
+                for (uint32_t i = 0u; i < 4096u; i += 1u) {
+                    if (tw_value(world, x0 + (i & 15u), y0 + ((i >> 4) & 15u), z0 + (i >> 8)) != 0u) {
+                        const int32_t height = (int32_t)(z0 + (i >> 8)) + TRAVERSE_Z_BASE;
+                        column.top_z = height > column.top_z ? (int16_t)height : column.top_z;
                     }
                 }
-                if (out != nullptr) {
-                    out->sections[sections] = section;
-                }
-                sections += 1u;
             }
-            if (out != nullptr) {
-                const int32_t world_x = world->min_block[0] / 16 + (int32_t)column_x;
-                const int32_t world_y = world->min_block[1] / 16 + (int32_t)column_y;
-                const uint32_t slot = tw_floor_mod(world_y, wide) * wide + tw_floor_mod(world_x, wide);
-                out->columns[slot] = column;
+            if (table != nullptr) {
+                table[tw_floor_mod(world_y, wide) * wide + tw_floor_mod(world_x, wide)] = column;
             }
         }
     }
-    world->section_count = sections;
-    world->brick_count = bricks;
-    world->voxel_count = voxels;
-    world->uniform_sections = uniform_sections;
-    world->uniform_bricks = uniform_bricks;
+    world->pool_bytes = granule * WORLD_BUFFERS_GRANULE_BYTES;
 }
 
 static bool tw_block_up(test_context_t *t, device_memory_t *memory, device_block_t *block, const void *source,
@@ -224,24 +255,24 @@ static bool tw_block_up(test_context_t *t, device_memory_t *memory, device_block
 }
 
 static bool tw_world_upload(test_context_t *t, device_memory_t *memory, tw_world_t *world) {
-    tw_encode(world, nullptr);
-    /* The first pass told us the sizes. The second may write up to 64 voxels past them, before a brick turns out uniform. */
+    tw_encode(world, nullptr, nullptr);
     const uint64_t slots = (uint64_t)world->columns_wide * world->columns_wide;
-    const tw_encode_t out = {
-        .columns = test_alloc(t, slots * sizeof(traverse_column_t)),
-        .sections = test_alloc(t, world->section_count * sizeof(traverse_section_t)),
-        .masks = test_alloc(t, world->brick_count * sizeof(uint64_t)),
-        .refs = test_alloc(t, world->brick_count * sizeof(uint32_t)),
-        .voxels = test_alloc(t, (world->voxel_count + 64u) * sizeof(uint32_t)),
-    };
-    memset(out.columns, 0, slots * sizeof(traverse_column_t));
-    tw_encode(world, &out);
-    return tw_block_up(t, memory, &world->columns, out.columns, slots * sizeof(traverse_column_t), "tw columns") &&
-           tw_block_up(t, memory, &world->sections, out.sections, world->section_count * sizeof(traverse_section_t),
-                       "tw sections") &&
-           tw_block_up(t, memory, &world->brick_masks, out.masks, world->brick_count * sizeof(uint64_t), "tw masks") &&
-           tw_block_up(t, memory, &world->brick_refs, out.refs, world->brick_count * sizeof(uint32_t), "tw refs") &&
-           tw_block_up(t, memory, &world->voxels, out.voxels, world->voxel_count * sizeof(uint32_t), "tw voxels");
+    world_buffers_column_t *const table = test_alloc(t, slots * sizeof(world_buffers_column_t));
+    memset(table, 0, slots * sizeof(world_buffers_column_t));
+    /* From the heap and not the test arena, and given back: at R = 32 this alone is 618 MiB, which with the dense world would
+     * not fit in the arena's 1 GiB. */
+    heap_region_t region;
+    if (!CHECK(heap_reserve(world->pool_bytes + 64u, &region))) {
+        return false;
+    }
+    uint8_t *const pool = region.owned_base;
+    memset(pool, 0, world->pool_bytes + 64u);
+    tw_encode(world, table, pool);
+    const bool sent =
+        tw_block_up(t, memory, &world->table, table, slots * sizeof(world_buffers_column_t), "tw table") &&
+        tw_block_up(t, memory, &world->pool, pool, world->pool_bytes, "tw pool");
+    heap_release(&region);
+    return sent;
 }
 
 static bool tw_open(test_context_t *t, device_memory_t *memory) {

@@ -131,8 +131,7 @@ TEST(values_come_from_every_kind_of_node) {
     CHECK_EQ_U64(world->uniform_sections, 1u);
     CHECK_EQ_U64(world->section_count, 3u);
     CHECK_EQ_U64(world->brick_count, 2u);
-    CHECK_EQ_U64(world->uniform_bricks, 1u);
-    CHECK_EQ_U64(world->voxel_count, 3u);
+    CHECK_EQ_U64(world->voxel_count, 67u);
     const int32_t above = TRAVERSE_Z_BASE + 200;
     const traverse_ray_t rays[5] = {
         tw_ray(5, 5, above, 0.0f32, 0.0f32, -1.0f32),  tw_ray(22, 6, above, 0.0f32, 0.0f32, -1.0f32),
@@ -169,6 +168,32 @@ TEST(the_window_may_lie_below_zero_and_its_table_wraps) {
     tw_check_hit(t, &hits[0], TRAVERSE_FACE_POS_Z, 19.5f32, 0, 0, -20, 3u);
     tw_check_hit(t, &hits[1], TRAVERSE_FACE_POS_Z, 19.5f32, 0, 0, -20, 4u);
     tw_check_hit(t, &hits[2], TRAVERSE_FACE_NEG_X, 52.5f32, 53, 0, 0, 4u);
+    tw_close(t, &memory);
+}
+
+/* A slot still holding the column that wrapped out of this place is not looked at, and shows nothing, until its new one arrives. */
+TEST(a_column_that_wrapped_out_of_its_slot_is_not_seen) {
+    device_memory_t memory;
+    REQUIRE(tw_open(t, &memory));
+    tw_world_t *const world = tw_world_begin(t, 4u, 0, 0);
+    tw_set(world, 5, 5, 40, 4u); /* column 0, 0, in slot 0 */
+    REQUIRE(tw_world_upload(t, &memory, world));
+    const traverse_ray_t ray = tw_ray(5, 5, 60, 0.0f32, 0.0f32, -1.0f32);
+    traverse_hit_t hit;
+    REQUIRE(tw_cast(t, &memory, world, &ray, 1u, &hit));
+    tw_check_hit(t, &hit, TRAVERSE_FACE_POS_Z, 19.5f32, 0, 0, -20, 4u);
+    const int32_t elsewhere = 4;
+    const int32_t here = 0;
+    REQUIRE(device_memory_write(&memory, &world->table, offsetof(world_buffers_column_t, chunk_x), &elsewhere,
+                                sizeof(elsewhere)) == GPU_STATUS_OK);
+    REQUIRE(tw_cast(t, &memory, world, &ray, 1u, &hit));
+    CHECK_EQ_U64(traverse_hit_face(hit.info), TRAVERSE_FACE_MISS);
+    REQUIRE(device_memory_write(&memory, &world->table, offsetof(world_buffers_column_t, chunk_x), &here,
+                                sizeof(here)) == GPU_STATUS_OK);
+    REQUIRE(device_memory_write(&memory, &world->table, offsetof(world_buffers_column_t, chunk_y), &elsewhere,
+                                sizeof(elsewhere)) == GPU_STATUS_OK);
+    REQUIRE(tw_cast(t, &memory, world, &ray, 1u, &hit));
+    CHECK_EQ_U64(traverse_hit_face(hit.info), TRAVERSE_FACE_MISS);
     tw_close(t, &memory);
 }
 
@@ -289,9 +314,11 @@ TEST(what_makes_no_sense_is_refused_and_starts_nothing) {
     const traverse_camera_t empty_camera = {.forward = {1.0f32, 0.0f32, 0.0f32}, .width = 0u, .height = 64u};
     CHECK_EQ_U64(traverse_coarse(&error, &world->view, &empty_camera, &good_targets), GPU_STATUS_INVALID_ARGUMENT);
     traverse_world_t bad_world = world->view;
-    bad_world.columns_wide = 0u;
+    bad_world.window.side = 0u;
+    bad_world.window.slot_count = 0u;
     CHECK_EQ_U64(traverse_coarse(&error, &bad_world, &camera, &good_targets), GPU_STATUS_INVALID_ARGUMENT);
-    bad_world.columns_wide = 3u; /* the table holds 2 x 2 */
+    bad_world.window.side = 3u; /* the table holds 2 x 2 */
+    bad_world.window.slot_count = 9u;
     CHECK_EQ_U64(traverse_primary(&error, &bad_world, &camera, &good_targets, false), GPU_STATUS_INVALID_ARGUMENT);
     CHECK_CONTAINS(error.borrowed_what, "column table");
     CHECK_EQ_U64(traverse_rays(&error, &world->view, &small, &small, 100u), GPU_STATUS_INVALID_ARGUMENT);
@@ -740,7 +767,6 @@ TEST(random_rays_match_the_reference) {
     tw_world_t *const world = tw_random_world(t, 9u, -5, 3, 0x1234567u);
     REQUIRE(tw_world_upload(t, &memory, world));
     CHECK(world->uniform_sections > 0u);
-    CHECK(world->uniform_bricks > 0u);
     CHECK(world->voxel_count > 0u);
     traverse_ray_t *const rays = test_alloc(t, TW_RANDOM_RAYS * sizeof(traverse_ray_t));
     traverse_hit_t *const hits = test_alloc(t, TW_RANDOM_RAYS * sizeof(traverse_hit_t));
@@ -972,10 +998,10 @@ TEST(changing_a_voxel_on_the_card_changes_the_answer) {
     traverse_hit_t hit;
     REQUIRE(tw_cast(t, &memory, world, &ray, 1u, &hit));
     tw_check_hit(t, &hit, TRAVERSE_FACE_NEG_X, 9.5f32, 10, 0, 0, 8u);
-    /* Takes voxel (20, 20, 40) out of its brick's mask, directly. Bricks are written in column and section order, and this
-     * world has two: the first holds it, as its only voxel, since 20 and 30 fall in different bricks. */
+    /* Takes voxel (20, 20, 40) out of its brick's mask, directly. This world has one section, first in the pool, whose words
+     * follow its 16-byte header. Its first brick holds that voxel alone, since 20 and 30 fall in different bricks. */
     const uint64_t empty = 0u;
-    REQUIRE(device_memory_write(&memory, &world->brick_masks, 0u, &empty, sizeof(empty)) == GPU_STATUS_OK);
+    REQUIRE(device_memory_write(&memory, &world->pool, 16u, &empty, sizeof(empty)) == GPU_STATUS_OK);
     REQUIRE(tw_cast(t, &memory, world, &ray, 1u, &hit));
     tw_check_hit(t, &hit, TRAVERSE_FACE_NEG_X, 19.5f32, 20, 0, 0, 9u);
     tw_close(t, &memory);
@@ -1142,8 +1168,7 @@ static void tw_measure_world(test_context_t *t, bool lattice) {
     REQUIRE(tw_world_upload(t, &memory, world));
     printf("  world: %" PRIu64 " sections, %" PRIu64 " bricks, %" PRIu64 " voxels, %.1f MiB\n", world->section_count,
            world->brick_count, world->voxel_count,
-           (libc_double_t)(world->section_count * 16u + world->brick_count * 12u + world->voxel_count * 4u +
-                           (uint64_t)TW_MEASURE_COLUMNS * TW_MEASURE_COLUMNS * 16u) /
+           (libc_double_t)(world->pool_bytes + (uint64_t)TW_MEASURE_COLUMNS * TW_MEASURE_COLUMNS * 16u) /
                (libc_double_t)1048576u);
     enum : uint32_t { TW_MEASURE_FRAMES = 200u };
     int64_t *const samples = test_alloc(t, TW_MEASURE_FRAMES * sizeof(int64_t));

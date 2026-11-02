@@ -18,7 +18,7 @@
 
 Only for CUDA code (`cuda/include/world_buffers/index.hu`): `world_buffers_table_pointer`, `world_buffers_pool_pointer`, for kernels.
 
-**May be called by:** `run/src/render/` and its parts, and `cuda/src/traverse/`, which reads the format.
+**May be called by:** `run/src/render/` and its parts, and `cuda/src/traverse/`, which walks the format.
 **Depends on:** `gpu_bridge/device_memory`, `gpu_bridge/status`, `cuda/src/device_memory/`, the CUDA runtime.
 
 ## The pool
