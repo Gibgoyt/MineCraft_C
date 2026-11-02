@@ -15,13 +15,15 @@ Only a release build's numbers mean anything: debug has the references at `-O0`.
 
 Each side of a row runs for 30 ms of rounds, and at least 5, and keeps its best round, which is the one the least else
 interfered with. Runs shorter than 16384 elements repeat inside a round so the clock can read them. A row is gated if it is
-a length real callers use; a "not gated" row is printed to watch, and fails only if the output differs. Copies go to ordinary
+a length the kernel is for; a "not gated" row is printed to watch, and fails only if the output differs. Copies go to ordinary
 cached memory, so this says nothing about a scanout buffer.
 
 Two results are easy to misread. `noise3_batch8` at 256 points repeats the same points, so the branch predictor learns them
 and the reference has no mispredictions: its 4x is the gain against scalar code at its best. Fresh data, as terrain has, is
-closer to the 4096 row's 19x. And `bitmask_popcount_batch` loses at 8 words, at 0.84x: it wins from the 64 words of a section
-up, which is what it is for, so do not give it arrays much shorter than that.
+closer to the 4096 row's 19x. And `bitmask_popcount_batch` loses at 8 words, at about 0.84x: its prototype says it is for 16
+words and up, and the 24-word row is gated to hold it to that. Measured gains by length, on 2026-11-02: 1 word 0.46x, 2 0.50x,
+4 0.66x, 7 0.67x, 12 1.00x, 15 0.94x, 16 1.07x, 24 1.27x, 32 1.40x. A scalar path for short arrays inside the kernel did not
+cure it (8 words 0.95x, 7 words 0.58x), because the reference has the same instruction at one per cycle and no call to make.
 
 ## Results
 

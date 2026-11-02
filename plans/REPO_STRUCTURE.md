@@ -363,6 +363,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/display/mode/` | ctest `run_display_mode`, covering `run/src/display/` with `device`, `mode` and `flip`, on `fixtures/fake_card.h`, a fake kernel behind `display_ops_t` |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
 | `tests/asm/` | NASM kernels against scalar C references |
+| `tests/asm/abi/` | ctest `asm_abi`: every kernel keeps the callee-saved registers and leaves no dirty YMM state, by machine state, not by output |
 | `tests/fuzz/`, `tests/soak/` | Fuzzing and long runs (Stage 18.1) |
 
 Tests need no server and no display, and run under `timeout`.

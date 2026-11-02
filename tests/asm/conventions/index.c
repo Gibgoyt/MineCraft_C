@@ -47,24 +47,20 @@ static void run_nasm(test_context_t *t, const char *kernel, const char *config_d
     char object[PATH_BYTES];
     char include_asm[PATH_BYTES];
     char include_config[PATH_BYTES];
+    char include_generated[PATH_BYTES];
     (void)snprintf(source, sizeof(source), "asm/src/%s/index.asm", kernel);
     (void)snprintf(object, sizeof(object), "%s/%s.o", t->borrowed_args[ARG_TMP], kernel);
     (void)snprintf(include_asm, sizeof(include_asm), "-I%s/", t->borrowed_args[ARG_ASM_INCLUDE]);
     (void)snprintf(include_config, sizeof(include_config), "-I%s/", config_dir);
+    /* After config_dir, which wins for machine/index.inc: this is for struct_offsets/index.inc, which vec_batch needs. */
+    (void)snprintf(include_generated, sizeof(include_generated), "-I%s/", t->borrowed_args[ARG_GENERATED]);
     static char format_flag[] = "-felf64";
     static char warnings_flag[] = "-w+all";
     static char error_flag[] = "-Werror";
     static char output_flag[] = "-o";
-    char *const argv[] = {t->borrowed_args[ARG_NASM],
-                          format_flag,
-                          warnings_flag,
-                          error_flag,
-                          include_asm,
-                          include_config,
-                          source,
-                          output_flag,
-                          object,
-                          nullptr};
+    char *const argv[] = {
+        t->borrowed_args[ARG_NASM], format_flag, warnings_flag, error_flag, include_asm, include_config,
+        include_generated,          source,      output_flag,   object,     nullptr};
     test_process_run(t, argv, NASM_TIMEOUT_MS, out);
 }
 
@@ -95,8 +91,8 @@ static void check_accepted(test_context_t *t, const char *kernel, const char *fe
 
 TEST(kernels_assemble_clean_under_the_real_config) {
     REQUIRE((uint32_t)t->arg_count == ARG_COUNT);
-    const char *const kernels[] = {"copy", "blend", "bitmask"};
-    for (uint32_t i = 0; i < 3u; i++) {
+    const char *const kernels[] = {"copy", "blend", "bitmask", "noise", "vec_batch"};
+    for (uint32_t i = 0; i < sizeof(kernels) / sizeof(kernels[0]); i++) {
         test_process_t result;
         run_nasm(t, kernels[i], t->borrowed_args[ARG_GENERATED], &result);
         CHECK(result.started != 0u);
@@ -112,6 +108,9 @@ TEST(a_kernel_refuses_a_config_without_what_it_uses) {
     check_refused(t, "bitmask", "AVX2");
     check_refused(t, "bitmask", "POPCNT");
     check_refused(t, "bitmask", "BMI2");
+    check_refused(t, "noise", "AVX2");
+    check_refused(t, "noise", "FMA3");
+    check_refused(t, "vec_batch", "AVX");
 }
 
 TEST(a_kernel_does_not_care_about_what_it_does_not_use) {
@@ -119,6 +118,8 @@ TEST(a_kernel_does_not_care_about_what_it_does_not_use) {
     check_accepted(t, "copy", "AVX2");
     check_accepted(t, "blend", "POPCNT");
     check_accepted(t, "bitmask", "F16C");
+    check_accepted(t, "noise", "BMI2");
+    check_accepted(t, "vec_batch", "AVX2");
 }
 
 TEST_MAIN()

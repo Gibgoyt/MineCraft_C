@@ -87,7 +87,7 @@ Tests catch broken kernels. Each change was made, built and undone, by script:
 | `blend_over_batch` | all partial | 0.286 | 2.311 | 8.07x |
 | `blend_premul_batch` | runs, no partial alpha | 0.151 | 3.824 | 25.25x |
 | `blend_premul_batch` | all partial | 0.238 | 3.820 | 16.06x |
-| `bitmask_popcount_batch` | 8 words, not gated | 0.434 | 0.366 | **0.84x** |
+| `bitmask_popcount_batch` | 8 words, not gated, see Issue 9 | 0.434 | 0.366 | **0.84x** |
 | `bitmask_popcount_batch` | 64 words, a section | 0.160 | 0.282 | 1.76x |
 | `bitmask_popcount_batch` | 4096 words | 0.130 | 0.278 | 2.14x |
 | `bitmask_and_batch` | 8 / 64 / 4096 words | 0.337 / 0.142 / 0.144 | 0.443 / 0.298 / 0.352 | 1.31x / 2.10x / 2.44x |
@@ -129,3 +129,13 @@ Appended as they land:
 6. **`struct_offsets` reads headers as text.** A tool may not include `run/` (`plans/REPO_STRUCTURE.md` section 11), and NASM cannot read C, so it works layouts out itself. It refuses what it does not understand, and the generated `static_assert`s are compiled in `tests/asm/vec_batch/`, but only in a target that builds tests: `minecraft_c` alone does not compile them. Every preset's default build does. A struct with an enum-typed field or a constant as a dimension is refused, and will need the tool extended when something in NASM needs one.
 7. **`bench_t` needed written-out padding.** `error: padding struct to align 'matrix' [-Werror=padded]`. Done: `_pad0[16]`, as the standard says.
 8. **A tool refused some compound shell commands** ("too complex to verify that it stays inside the worktree"), including heredocs and a chain of ctest runs. Done: wrote edit scripts to the scratchpad and re-ran the commands one at a time, as the refusal says to. Nothing was skipped.
+9. **Gate check: Issue 3 left `bitmask_popcount_batch` losing at 8 words behind a "not gated" row, with no limit stated where callers would see it.**
+   - Expected: `plans/CODING_STANDARD.md` section 7, a kernel beats its reference or goes.
+   - Actual: 0.84x at 8 words on every run, and only `bench/simd/README.md` said not to do that. Gains by length: 1 word 0.46x, 2 0.50x, 4 0.66x, 7 0.67x, 12 1.00x, 15 0.94x, 16 1.07x, 24 1.27x, 32 1.40x.
+   - Tried: a path for under 16 words in the kernel, with `popcnt` unrolled 4 times and no YMM or `vzeroupper`. It reached 8 words 0.95x, 7 words 0.58x and 1 word 0.62x, so still a loss: the reference runs the same instruction at the same one per cycle, and has no call to make. Removed, since it added code and fixed nothing.
+   - Done: kept the kernel, which gains 1.76x at a section's 64 words and 2.14x at 4096. Its prototype in `run/include/simd/bitmask/index.h` now says it is for 16 words or more, and `bench_simd` has a gated 24-word row, 1.32x on this run, so a loss in the range it claims now fails the benchmark. The 8-word row stays as a row to watch. No caller exists yet, so no caller breaks that limit.
+10. **Gate check: `asm_conventions` stopped at Stage 04.2's kernels.**
+    - Expected: `tests/asm/conventions/README.md` says each kernel refuses a config that turns off an instruction set it uses.
+    - Actual: `tests/asm/conventions/index.c` listed `copy`, `blend` and `bitmask` only, so nothing tested `REQUIRE_CPU` in `noise` (AVX2, FMA3) or `vec_batch` (AVX), and nothing checked that those two assemble without a word under the real config.
+    - Done: added them, with the generated directory on NASM's include path after the config's, since `vec_batch` needs `struct_offsets/index.inc`. `asm_conventions` passes.
+11. **A tool refused several compound shell commands during the gate check** ("too complex to verify that it stays inside the worktree"), for chains with quoted regexes, variables or loops. Done: re-ran each as plain separate commands, with narrower `ctest -R` patterns where the regex was the trigger, as the refusal says to. Nothing was skipped.
