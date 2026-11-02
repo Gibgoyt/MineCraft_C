@@ -74,6 +74,7 @@ Appended as they land:
 
 - `42e9ca5` Read keyboards and mice from evdev, found by capability and followed through hot-plug, and move a cursor square on the test pattern with them.
 - `d3a8793` Fix the input code's sanitize build and its test's alignment, and record Stage 05.3's results.
+- `b20a979` Ask the kernel for key state only after a read's events are taken, and test device classification on this machine's real capability bitmaps.
 
 ## Issues found
 
