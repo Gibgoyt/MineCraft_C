@@ -8,6 +8,8 @@
 #include "input/index.h"
 #include "job/index.h"
 #include "math/index.h"
+#include "physics/index.h"
+#include "player/index.h"
 #include "render/index.h"
 #include "simd/index.h"
 #include "terrain/index.h"
@@ -25,6 +27,8 @@ typedef struct app_t {
     texture_t texture;
     world_t world;                 /* nothing runs in it until game does (Stage 08.4) */
     terrain_t terrain;             /* the same */
+    physics_t physics;             /* only --walk moves anything with it */
+    player_t player;               /* game moves it only with --walk */
     gpu_bridge_t gpu_bridge;       /* the default run and --headless start it, unless gpu.enabled says otherwise */
     render_t render;               /* takes nothing on the card until game opens a world */
     game_t game;                   /* takes nothing until --test-world opens a world */
@@ -37,7 +41,7 @@ typedef struct app_t {
     math_t math;
     uint8_t _pad0[40];
 } app_t;
-static_assert(sizeof(app_t) == 7040);
+static_assert(sizeof(app_t) == 7744);
 static_assert(alignof(app_t) == 64);
 
 /* The exit codes of minecraft_c. */

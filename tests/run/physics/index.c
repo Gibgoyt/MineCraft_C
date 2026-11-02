@@ -1,0 +1,548 @@
+/* ctest run_physics. See README.md. */
+#include "harness/index.h"
+
+#include "run/physics/fixtures/test_world.h"
+
+#include "heap/index.h"
+#include "physics/index.h"
+#include "tables/blocks/index.h"
+#include "types/index.h"
+#include "world/index.h"
+
+#include <math.h>
+#include <stdint.h>
+#include <string.h>
+
+/* What a contact may differ from its face by, after the arithmetic of a move. */
+#define PT_EXACT 1.0e-9f64
+
+static collision_box_t pt_box(float64_t x0, float64_t y0, float64_t z0, float64_t x1, float64_t y1, float64_t z1) {
+    return (collision_box_t){.min = {x0, y0, z0}, .max = {x1, y1, z1}};
+}
+
+static void pt_sweep(const collision_box_t *others, uint32_t count, const collision_box_t *box, float64_t x,
+                     float64_t y, float64_t z, collision_move_t *out) {
+    const float64_t delta[COLLISION_AXES] = {x, y, z};
+    collision_sweep(others, count, box, delta, out);
+}
+
+/* ---- Sweeps by hand ------------------------------------------------------------------------------------------------- */
+
+TEST(each_direction_stops_exactly_on_the_face_and_says_which) {
+    const collision_box_t wall = pt_box(10.0f64, 10.0f64, 10.0f64, 11.0f64, 11.0f64, 11.0f64);
+    const float64_t size = 0.5f64;
+    collision_move_t move;
+    /* From each side of it, going at it, from 2 away, with 5 to go. */
+    const collision_box_t from_west = pt_box(7.5f64, 10.25f64, 10.25f64, 8.0f64, 10.75f64, 10.75f64);
+    pt_sweep(&wall, 1u, &from_west, 5.0f64, 0.0f64, 0.0f64, &move);
+    CHECK_NEAR(move.moved[0], 2.0f64, PT_EXACT);
+    CHECK(move.hit_x == 1u && move.hit_y == 0u && move.hit_z_down == 0u && move.hit_z_up == 0u);
+    const collision_box_t from_east = pt_box(13.0f64, 10.25f64, 10.25f64, 13.0f64 + size, 10.75f64, 10.75f64);
+    pt_sweep(&wall, 1u, &from_east, -5.0f64, 0.0f64, 0.0f64, &move);
+    CHECK_NEAR(move.moved[0], -2.0f64, PT_EXACT);
+    CHECK(move.hit_x == 1u && move.hit_y == 0u);
+    const collision_box_t from_south = pt_box(10.25f64, 7.5f64, 10.25f64, 10.75f64, 8.0f64, 10.75f64);
+    pt_sweep(&wall, 1u, &from_south, 0.0f64, 5.0f64, 0.0f64, &move);
+    CHECK_NEAR(move.moved[1], 2.0f64, PT_EXACT);
+    CHECK(move.hit_x == 0u && move.hit_y == 1u);
+    const collision_box_t from_north = pt_box(10.25f64, 13.0f64, 10.25f64, 10.75f64, 13.0f64 + size, 10.75f64);
+    pt_sweep(&wall, 1u, &from_north, 0.0f64, -5.0f64, 0.0f64, &move);
+    CHECK_NEAR(move.moved[1], -2.0f64, PT_EXACT);
+    CHECK(move.hit_y == 1u);
+    const collision_box_t from_below = pt_box(10.25f64, 10.25f64, 7.5f64, 10.75f64, 10.75f64, 8.0f64);
+    pt_sweep(&wall, 1u, &from_below, 0.0f64, 0.0f64, 5.0f64, &move);
+    CHECK_NEAR(move.moved[2], 2.0f64, PT_EXACT);
+    CHECK(move.hit_z_up == 1u && move.hit_z_down == 0u);
+    const collision_box_t from_above = pt_box(10.25f64, 10.25f64, 13.0f64, 10.75f64, 10.75f64, 13.0f64 + size);
+    pt_sweep(&wall, 1u, &from_above, 0.0f64, 0.0f64, -5.0f64, &move);
+    CHECK_NEAR(move.moved[2], -2.0f64, PT_EXACT);
+    CHECK(move.hit_z_down == 1u && move.hit_z_up == 0u);
+    /* Short of it, nothing stops it. */
+    pt_sweep(&wall, 1u, &from_west, 1.5f64, 0.0f64, 0.0f64, &move);
+    CHECK_NEAR(move.moved[0], 1.5f64, PT_EXACT);
+    CHECK_EQ_U64(move.hit_x, 0u);
+    /* Reaching it exactly as the move ends: went all the way. */
+    pt_sweep(&wall, 1u, &from_west, 2.0f64, 0.0f64, 0.0f64, &move);
+    CHECK_NEAR(move.moved[0], 2.0f64, PT_EXACT);
+    /* Beside it and going past: no. */
+    const collision_box_t beside = pt_box(7.5f64, 12.0f64, 10.25f64, 8.0f64, 12.5f64, 10.75f64);
+    pt_sweep(&wall, 1u, &beside, 5.0f64, 0.0f64, 0.0f64, &move);
+    CHECK_NEAR(move.moved[0], 5.0f64, PT_EXACT);
+    /* Going away: no. */
+    pt_sweep(&wall, 1u, &from_west, -5.0f64, 0.0f64, 0.0f64, &move);
+    CHECK_NEAR(move.moved[0], -5.0f64, PT_EXACT);
+}
+
+TEST(a_diagonal_stops_on_one_axis_and_slides_along_the_others) {
+    /* A wall along y and z at x = 10. The box gets there halfway through, and goes on along it. */
+    const collision_box_t wall = pt_box(10.0f64, -100.0f64, -100.0f64, 11.0f64, 100.0f64, 100.0f64);
+    const collision_box_t box = pt_box(8.0f64, 0.0f64, 0.0f64, 9.0f64, 1.0f64, 1.0f64);
+    collision_move_t move;
+    pt_sweep(&wall, 1u, &box, 2.0f64, 3.0f64, -4.0f64, &move);
+    CHECK_NEAR(move.moved[0], 1.0f64, PT_EXACT);
+    CHECK_NEAR(move.moved[1], 3.0f64, PT_EXACT);
+    CHECK_NEAR(move.moved[2], -4.0f64, PT_EXACT);
+    CHECK(move.hit_x == 1u && move.hit_y == 0u && move.hit_z_down == 0u);
+
+    /* Into a corner of the room: stops on all three, in whatever order they are met. */
+    const collision_box_t room[3] = {
+        wall,
+        pt_box(-100.0f64, 5.0f64, -100.0f64, 100.0f64, 6.0f64, 100.0f64),
+        pt_box(-100.0f64, -100.0f64, -3.0f64, 100.0f64, 100.0f64, -2.0f64),
+    };
+    pt_sweep(room, 3u, &box, 20.0f64, 20.0f64, -20.0f64, &move);
+    CHECK_NEAR(move.moved[0], 1.0f64, PT_EXACT);
+    CHECK_NEAR(move.moved[1], 4.0f64, PT_EXACT);
+    CHECK_NEAR(move.moved[2], -2.0f64, PT_EXACT);
+    CHECK(move.hit_x == 1u && move.hit_y == 1u && move.hit_z_down == 1u);
+}
+
+TEST(a_diagonal_passes_a_corner_it_misses_and_stops_at_one_it_clips) {
+    const collision_box_t post = pt_box(10.0f64, 10.0f64, 0.0f64, 11.0f64, 11.0f64, 5.0f64);
+    /* Its top reaches the post's south side at y = 10 only after its west face has passed the post's east side: it goes by. */
+    const collision_box_t south = pt_box(8.0f64, 7.3f64, 1.0f64, 9.0f64, 8.3f64, 2.0f64);
+    collision_move_t move;
+    pt_sweep(&post, 1u, &south, 4.0f64, 2.0f64, 0.0f64, &move);
+    CHECK_NEAR(move.moved[0], 4.0f64, PT_EXACT);
+    CHECK_NEAR(move.moved[1], 2.0f64, PT_EXACT);
+    CHECK(move.hit_x == 0u && move.hit_y == 0u);
+    /* The same line further north meets the post's south side while it is still under it, and slides along it to the east. */
+    const collision_box_t clips = pt_box(8.5f64, 8.5f64, 1.0f64, 9.5f64, 9.5f64, 2.0f64);
+    pt_sweep(&post, 1u, &clips, 4.0f64, 2.0f64, 0.0f64, &move);
+    CHECK_NEAR(move.moved[0], 4.0f64, PT_EXACT);
+    CHECK_NEAR(move.moved[1], 0.5f64, PT_EXACT);
+    CHECK(move.hit_x == 0u && move.hit_y == 1u);
+}
+
+TEST(a_box_resting_on_a_floor_or_along_a_wall_is_free_to_go_along_it_and_leave) {
+    const collision_box_t floor_cells[2] = {
+        pt_box(0.0f64, 0.0f64, -1.0f64, 1.0f64, 1.0f64, 0.0f64),
+        pt_box(1.0f64, 0.0f64, -1.0f64, 2.0f64, 1.0f64, 0.0f64),
+    };
+    const collision_box_t on = pt_box(0.2f64, 0.2f64, 0.0f64, 0.8f64, 0.8f64, 1.8f64);
+    collision_move_t move;
+    /* Across the seam between the two, on its top. */
+    pt_sweep(floor_cells, 2u, &on, 0.9f64, 0.0f64, 0.0f64, &move);
+    CHECK_NEAR(move.moved[0], 0.9f64, PT_EXACT);
+    CHECK_EQ_U64(move.hit_x, 0u);
+    /* Pushed down on it, it still goes along: the floor stops z and only z. */
+    pt_sweep(floor_cells, 2u, &on, 0.9f64, 0.0f64, -0.5f64, &move);
+    CHECK_NEAR(move.moved[0], 0.9f64, PT_EXACT);
+    CHECK_NEAR(move.moved[2], 0.0f64, PT_EXACT);
+    CHECK(move.hit_x == 0u && move.hit_z_down == 1u);
+    /* Up and away. */
+    pt_sweep(floor_cells, 2u, &on, 0.0f64, 0.0f64, 3.0f64, &move);
+    CHECK_NEAR(move.moved[2], 3.0f64, PT_EXACT);
+    CHECK_EQ_U64(move.hit_z_up, 0u);
+    /* A hair into a wall it is leaving, at the corner where another of its faces is reaching that wall: rounding, and it goes. */
+    const collision_box_t cube = pt_box(0.0f64, 0.0f64, 0.0f64, 1.0f64, 1.0f64, 1.0f64);
+    const collision_box_t cornered = pt_box(1.0f64 - 1.0e-8f64, 1.0f64, 0.2f64, 2.0f64, 2.0f64, 0.8f64);
+    pt_sweep(&cube, 1u, &cornered, 1.0f64, -1.0f64, 0.0f64, &move);
+    CHECK_NEAR(move.moved[0], 1.0f64, PT_EXACT);
+    CHECK_NEAR(move.moved[1], -1.0f64, PT_EXACT);
+    /* A hair into the floor is rounding, and is treated as touching. */
+    const collision_box_t rounded = pt_box(0.2f64, 0.2f64, -1.0e-8f64, 0.8f64, 0.8f64, 1.8f64);
+    pt_sweep(floor_cells, 2u, &rounded, 0.5f64, 0.0f64, -0.5f64, &move);
+    CHECK_NEAR(move.moved[0], 0.5f64, PT_EXACT);
+    CHECK_NEAR(move.moved[2], 1.0e-8f64, PT_EXACT);
+    CHECK_EQ_U64(move.hit_z_down, 1u);
+}
+
+TEST(coming_down_on_a_seam_the_floor_counts_before_the_wall) {
+    /* The box is over the first cell, and its front face and bottom face reach the second cell's corner at the same moment. If the
+     * side of that cell counted, it would stop going east on flat ground. */
+    const collision_box_t floor_cells[2] = {
+        pt_box(0.0f64, 0.0f64, -1.0f64, 1.0f64, 1.0f64, 0.0f64),
+        pt_box(1.0f64, 0.0f64, -1.0f64, 2.0f64, 1.0f64, 0.0f64),
+    };
+    const collision_box_t box = pt_box(0.0f64, 0.2f64, 0.5f64, 0.5f64, 0.8f64, 2.0f64);
+    collision_move_t move;
+    pt_sweep(floor_cells, 2u, &box, 1.0f64, 0.0f64, -1.0f64, &move);
+    CHECK_NEAR(move.moved[0], 1.0f64, PT_EXACT);
+    CHECK_NEAR(move.moved[2], -0.5f64, PT_EXACT);
+    CHECK(move.hit_x == 0u && move.hit_z_down == 1u);
+    /* In either order in the list. */
+    const collision_box_t turned[2] = {floor_cells[1], floor_cells[0]};
+    pt_sweep(turned, 2u, &box, 1.0f64, 0.0f64, -1.0f64, &move);
+    CHECK_NEAR(move.moved[0], 1.0f64, PT_EXACT);
+    CHECK(move.hit_x == 0u && move.hit_z_down == 1u);
+}
+
+TEST(a_box_already_inside_another_can_leave_and_is_stopped_by_the_next) {
+    const collision_box_t others[2] = {
+        pt_box(0.0f64, 0.0f64, 0.0f64, 1.0f64, 1.0f64, 1.0f64),
+        pt_box(3.0f64, 0.0f64, 0.0f64, 4.0f64, 1.0f64, 1.0f64),
+    };
+    const collision_box_t inside = pt_box(0.2f64, 0.2f64, 0.2f64, 0.8f64, 0.8f64, 0.8f64);
+    collision_move_t move;
+    pt_sweep(others, 2u, &inside, 5.0f64, 0.0f64, 0.0f64, &move);
+    CHECK_NEAR(move.moved[0], 2.2f64, PT_EXACT);
+    CHECK_EQ_U64(move.hit_x, 1u);
+}
+
+TEST(overlap_means_shared_volume_and_not_a_touch) {
+    const collision_box_t other = pt_box(0.0f64, 0.0f64, 0.0f64, 1.0f64, 1.0f64, 1.0f64);
+    const collision_box_t touching = pt_box(1.0f64, 0.0f64, 0.0f64, 2.0f64, 1.0f64, 1.0f64);
+    const collision_box_t sharing = pt_box(0.5f64, 0.5f64, 0.5f64, 2.0f64, 2.0f64, 2.0f64);
+    const collision_box_t off = pt_box(1.0f64, 2.0f64, 0.0f64, 2.0f64, 3.0f64, 1.0f64);
+    CHECK(!collision_overlaps_any(&other, 1u, &touching));
+    CHECK(collision_overlaps_any(&other, 1u, &sharing));
+    CHECK(!collision_overlaps_any(&other, 1u, &off));
+    CHECK(!collision_overlaps_any(&other, 0u, &sharing));
+}
+
+/* ---- Blocks ----------------------------------------------------------------------------------------------------------- */
+
+TEST(every_block_collides_as_its_config_says) {
+    collision_box_t boxes[COLLISION_BOXES_PER_BLOCK];
+    uint32_t solid = 0u;
+    for (uint32_t block = 0u; block < BLOCK_COUNT; block++) {
+        const block_def_t *const def = &block_defs[block];
+        const uint32_t count = collision_block_boxes((uint16_t)block, -3, 7, 100, boxes);
+        if ((def->flags & BLOCK_FLAG_SOLID) == 0u) {
+            CHECK_EQ_U64(count, 0u);
+            continue;
+        }
+        solid++;
+        CHECK_EQ_U64(count, def->shape == BLOCK_SHAPE_STAIRS ? 2u : 1u);
+        CHECK_NEAR(boxes[0].min[0], -3.0f64, PT_EXACT);
+        CHECK_NEAR(boxes[0].max[0], -2.0f64, PT_EXACT);
+        CHECK_NEAR(boxes[0].min[2], 100.0f64, PT_EXACT);
+        const bool half = def->shape == BLOCK_SHAPE_SLAB || def->shape == BLOCK_SHAPE_STAIRS;
+        CHECK_NEAR(boxes[0].max[2], half ? 100.5f64 : 101.0f64, PT_EXACT);
+    }
+    CHECK(solid > 50u);
+    /* By name, what a player will walk into. */
+    CHECK_EQ_U64(collision_block_boxes(BLOCK_ID_AIR, 0, 0, 0, boxes), 0u);
+    CHECK_EQ_U64(collision_block_boxes(BLOCK_ID_WATER, 0, 0, 0, boxes), 0u);
+    CHECK_EQ_U64(collision_block_boxes(BLOCK_ID_LAVA, 0, 0, 0, boxes), 0u);
+    CHECK_EQ_U64(collision_block_boxes(BLOCK_ID_LADDER, 0, 0, 0, boxes), 0u);
+    CHECK_EQ_U64(collision_block_boxes(BLOCK_ID_VINE, 0, 0, 0, boxes), 0u);
+    CHECK_EQ_U64(collision_block_boxes(BLOCK_ID_DANDELION, 0, 0, 0, boxes), 0u);
+    CHECK_EQ_U64(collision_block_boxes(BLOCK_ID_STONE, 0, 0, 0, boxes), 1u);
+    CHECK_EQ_U64(collision_block_boxes(BLOCK_ID_OAK_LEAVES, 0, 0, 0, boxes), 1u);
+    CHECK_EQ_U64(collision_block_boxes(BLOCK_ID_OAK_SLAB, 0, 0, 0, boxes), 1u);
+    CHECK_NEAR(boxes[0].max[2], 0.5f64, PT_EXACT);
+    /* Stairs: the lower half, and the top of the north half. */
+    CHECK_EQ_U64(collision_block_boxes(BLOCK_ID_OAK_STAIRS, 0, 0, 0, boxes), 2u);
+    CHECK_NEAR(boxes[0].max[2], 0.5f64, PT_EXACT);
+    CHECK_NEAR(boxes[0].min[1], 0.0f64, PT_EXACT);
+    CHECK_NEAR(boxes[1].min[1], 0.5f64, PT_EXACT);
+    CHECK_NEAR(boxes[1].max[1], 1.0f64, PT_EXACT);
+    CHECK_NEAR(boxes[1].min[2], 0.5f64, PT_EXACT);
+    CHECK_NEAR(boxes[1].max[2], 1.0f64, PT_EXACT);
+    /* A number no block has stands like a block. */
+    CHECK_EQ_U64(collision_block_boxes((uint16_t)BLOCK_COUNT, 0, 0, 0, boxes), 1u);
+    CHECK_EQ_U64(collision_block_boxes(UINT16_MAX, 0, 0, 0, boxes), 1u);
+}
+
+/* ---- In a real world -------------------------------------------------------------------------------------------------- */
+
+static void pt_move(test_world_t *w, const collision_box_t *box, float64_t x, float64_t y, float64_t z,
+                    collision_move_t *out) {
+    const float64_t delta[COLLISION_AXES] = {x, y, z};
+    physics_move(w->physics, w->map, box, delta, out);
+}
+
+TEST(a_cell_reads_as_what_is_in_it_with_bedrock_under_the_world_and_air_over_it) {
+    test_world_t w;
+    REQUIRE(test_world_begin(t, &w));
+    test_world_fill(t, &w, 1, 1, 1, 1, 1, 1, BLOCK_ID_STONE);
+    uint16_t block = UINT16_MAX;
+    CHECK(collision_cell_read(w.map, 1, 1, 1, &block));
+    CHECK_EQ_U64(block, BLOCK_ID_STONE);
+    CHECK(collision_cell_read(w.map, 1, 1, 2, &block));
+    CHECK_EQ_U64(block, BLOCK_ID_AIR);
+    CHECK(collision_cell_read(w.map, -1, -1, COLUMN_Z_GAMEPLAY_MIN - 1, &block));
+    CHECK_EQ_U64(block, BLOCK_ID_BEDROCK);
+    CHECK(collision_cell_read(w.map, -1, -1, COLUMN_Z_GAMEPLAY_MIN - 100000, &block));
+    CHECK_EQ_U64(block, BLOCK_ID_BEDROCK);
+    block = UINT16_MAX;
+    CHECK(collision_cell_read(w.map, -1, -1, COLUMN_Z_GAMEPLAY_MAX + 1, &block));
+    CHECK_EQ_U64(block, BLOCK_ID_AIR);
+    /* Not loaded leaves it alone. */
+    block = 77u;
+    CHECK(!collision_cell_read(w.map, 3 * 16, 3 * 16, 0, &block));
+    CHECK_EQ_U64(block, 77u);
+    test_world_end(&w);
+}
+
+TEST(no_speed_gets_through_the_thinnest_wall) {
+    test_world_t w;
+    REQUIRE(test_world_begin(t, &w));
+    /* A slab's thickness of stone, standing as a floor at z = 20.5, and a wall one block thick. */
+    test_world_fill(t, &w, -8, -8, 20, 8, 8, 20, BLOCK_ID_OAK_SLAB);
+    test_world_fill(t, &w, 30, -8, 0, 30, 40, 16, BLOCK_ID_STONE);
+    const collision_box_t above = pt_box(0.2f64, 0.2f64, 40.0f64, 0.8f64, 0.8f64, 41.8f64);
+    collision_move_t move;
+    pt_move(&w, &above, 0.0f64, 0.0f64, -4000.0f64, &move);
+    CHECK_NEAR(move.moved[2], 20.5f64 - 40.0f64, PT_EXACT);
+    CHECK_EQ_U64(move.hit_z_down, 1u);
+    /* From below, the slab's underside. */
+    const collision_box_t below = pt_box(0.2f64, 0.2f64, 10.0f64, 0.8f64, 0.8f64, 11.8f64);
+    pt_move(&w, &below, 0.0f64, 0.0f64, 4000.0f64, &move);
+    CHECK_NEAR(move.moved[2], 20.0f64 - 11.8f64, PT_EXACT);
+    CHECK_EQ_U64(move.hit_z_up, 1u);
+    /* Going at it along x, far faster than any step, on a long enough move to have several pieces. */
+    const collision_box_t west = pt_box(0.2f64, 0.2f64, 5.0f64, 0.8f64, 0.8f64, 6.8f64);
+    pt_move(&w, &west, 40.0f64, 0.0f64, 0.0f64, &move);
+    CHECK_NEAR(move.moved[0], 30.0f64 - 0.8f64, PT_EXACT);
+    CHECK_EQ_U64(move.hit_x, 1u);
+    /* A piece that stops on one axis stops it there for all the pieces after it, and the others go on. */
+    pt_move(&w, &west, 40.0f64, 20.0f64, 0.0f64, &move);
+    CHECK_NEAR(move.moved[0], 30.0f64 - 0.8f64, PT_EXACT);
+    CHECK_NEAR(move.moved[1], 20.0f64, 1.0e-6f64);
+    /* The longest move allowed, with a large box, which only pieces can fit in the region. */
+    const collision_box_t large = pt_box(0.0f64, 0.0f64, 5.0f64, 4.0f64, 4.0f64, 9.0f64);
+    pt_move(&w, &large, 4000.0f64, 0.0f64, 0.0f64, &move);
+    CHECK_NEAR(move.moved[0], 26.0f64, PT_EXACT);
+    test_world_end(&w);
+}
+
+TEST(what_stopped_a_piece_stops_the_pieces_after_it_even_past_the_end_of_the_wall) {
+    test_world_t w;
+    REQUIRE(test_world_begin(t, &w));
+    /* It reaches this wall a tenth of the way along, slides off the end of it soon after, and a single sweep would stay on that line. */
+    test_world_fill(t, &w, 10, -8, 0, 10, 8, 16, BLOCK_ID_STONE);
+    const collision_box_t box = pt_box(5.2f64, 0.2f64, 5.0f64, 5.8f64, 0.8f64, 6.8f64);
+    collision_move_t move;
+    pt_move(&w, &box, 40.0f64, 30.0f64, 0.0f64, &move);
+    CHECK_NEAR(move.moved[0], 10.0f64 - 5.8f64, PT_EXACT);
+    CHECK_NEAR(move.moved[1], 30.0f64, 1.0e-6f64);
+    CHECK_EQ_U64(move.hit_x, 1u);
+    test_world_end(&w);
+}
+
+TEST(nothing_falls_out_of_the_world_and_up_is_open) {
+    test_world_t w;
+    REQUIRE(test_world_begin(t, &w));
+    const float64_t bottom = (float64_t)COLUMN_Z_GAMEPLAY_MIN;
+    const collision_box_t box = pt_box(0.2f64, 0.2f64, bottom + 5.0f64, 0.8f64, 0.8f64, bottom + 6.8f64);
+    collision_move_t move;
+    pt_move(&w, &box, 0.0f64, 0.0f64, -100.0f64, &move);
+    CHECK_NEAR(move.moved[2], -5.0f64, PT_EXACT);
+    CHECK_EQ_U64(move.hit_z_down, 1u);
+    const float64_t top = (float64_t)COLUMN_Z_GAMEPLAY_MAX;
+    const collision_box_t high = pt_box(0.2f64, 0.2f64, top - 1.0f64, 0.8f64, 0.8f64, top + 0.8f64);
+    pt_move(&w, &high, 0.0f64, 0.0f64, 50.0f64, &move);
+    CHECK_NEAR(move.moved[2], 50.0f64, PT_EXACT);
+    CHECK_EQ_U64(move.hit_z_up, 0u);
+    test_world_end(&w);
+}
+
+TEST(a_column_that_is_not_loaded_is_a_wall_on_every_side) {
+    test_world_t w;
+    REQUIRE(test_world_begin(t, &w));
+    /* Chunk 3 along x is at distance 3, and chunk 4 is past the view. */
+    const float64_t edge = 4.0f64 * 16.0f64;
+    const collision_box_t box = pt_box(edge - 2.0f64, 0.2f64, 5.0f64, edge - 1.4f64, 0.8f64, 6.8f64);
+    collision_move_t move;
+    pt_move(&w, &box, 5.0f64, 0.0f64, 0.0f64, &move);
+    CHECK_NEAR(move.moved[0], 1.4f64, PT_EXACT);
+    CHECK_EQ_U64(move.hit_x, 1u);
+    /* And is not clear to stand in. */
+    const collision_box_t past = pt_box(edge + 1.0f64, 0.2f64, 5.0f64, edge + 1.6f64, 0.8f64, 6.8f64);
+    CHECK(!physics_box_is_clear(w.physics, w.map, &past));
+    /* Where it has been loaded, it no longer is. */
+    world_map_set_center(w.map, 1, 0);
+    test_world_stream_all(t, &w);
+    CHECK(physics_box_is_clear(w.physics, w.map, &past));
+    pt_move(&w, &box, 5.0f64, 0.0f64, 0.0f64, &move);
+    CHECK_NEAR(move.moved[0], 5.0f64, PT_EXACT);
+    test_world_end(&w);
+}
+
+TEST(a_box_is_clear_only_where_nothing_solid_is) {
+    test_world_t w;
+    REQUIRE(test_world_begin(t, &w));
+    test_world_fill(t, &w, 0, 0, 0, 0, 0, 0, BLOCK_ID_STONE);
+    test_world_fill(t, &w, 2, 0, 0, 2, 0, 0, BLOCK_ID_WATER);
+    test_world_fill(t, &w, 4, 0, 0, 4, 0, 0, BLOCK_ID_OAK_SLAB);
+    collision_box_t box = pt_box(0.2f64, 0.2f64, 0.2f64, 0.8f64, 0.8f64, 0.8f64);
+    CHECK(!physics_box_is_clear(w.physics, w.map, &box));
+    box = pt_box(2.2f64, 0.2f64, 0.2f64, 2.8f64, 0.8f64, 0.8f64);
+    CHECK(physics_box_is_clear(w.physics, w.map, &box));
+    /* Standing on the slab is clear, and in it is not. */
+    box = pt_box(4.2f64, 0.2f64, 0.5f64, 4.8f64, 0.8f64, 0.9f64);
+    CHECK(physics_box_is_clear(w.physics, w.map, &box));
+    box = pt_box(4.2f64, 0.2f64, 0.4f64, 4.8f64, 0.8f64, 0.9f64);
+    CHECK(!physics_box_is_clear(w.physics, w.map, &box));
+    test_world_end(&w);
+}
+
+/* ---- Random sweeps against brute force --------------------------------------------------------------------------------- */
+
+enum : uint32_t {
+    PT_RANDOM_SIDE = 12u,
+    PT_RANDOM_SWEEPS = 4000u,
+    PT_RANDOM_MARCH_STEPS = 4096u,
+};
+
+static uint64_t pt_random(uint64_t *rng) {
+    uint64_t x = *rng;
+    x ^= x << 13;
+    x ^= x >> 7;
+    x ^= x << 17;
+    *rng = x;
+    return x;
+}
+
+/* From 0 up to 1. */
+static float64_t pt_random_unit(uint64_t *rng) {
+    return (float64_t)(pt_random(rng) >> 11) * 0x1.0p-53f64;
+}
+
+/* Whether a box overlaps a solid in the grid, by its cells, and nothing of the code under test. Outside the grid is open. */
+static bool pt_grid_overlaps(const uint8_t *grid, float64_t x0, float64_t y0, float64_t z0, float64_t x1, float64_t y1,
+                             float64_t z1) {
+    const int32_t side = (int32_t)PT_RANDOM_SIDE;
+    for (int32_t x = (int32_t)floor(x0); x <= (int32_t)floor(x1); x++) {
+        for (int32_t y = (int32_t)floor(y0); y <= (int32_t)floor(y1); y++) {
+            for (int32_t z = (int32_t)floor(z0); z <= (int32_t)floor(z1); z++) {
+                if (x < 0 || y < 0 || z < 0 || x >= side || y >= side || z >= side) {
+                    continue;
+                }
+                if (grid[(x * side + y) * side + z] != 0u && x0 < (float64_t)x + 1.0f64 && x1 > (float64_t)x &&
+                    y0 < (float64_t)y + 1.0f64 && y1 > (float64_t)y && z0 < (float64_t)z + 1.0f64 &&
+                    z1 > (float64_t)z) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+TEST(random_sweeps_end_where_a_march_in_tiny_steps_ends) {
+    test_world_t w;
+    REQUIRE(test_world_begin(t, &w));
+    const uint32_t side = PT_RANDOM_SIDE;
+    uint8_t *const grid = test_alloc(t, (uint64_t)side * side * side);
+    uint64_t rng = 0x1234abcd5678ef01ull;
+    for (uint32_t x = 0u; x < side; x++) {
+        for (uint32_t y = 0u; y < side; y++) {
+            for (uint32_t z = 0u; z < side; z++) {
+                if (pt_random(&rng) % 8u == 0u) {
+                    grid[(x * side + y) * side + z] = 1u;
+                    test_world_fill(t, &w, (int32_t)x, (int32_t)y, (int32_t)z, (int32_t)x, (int32_t)y, (int32_t)z,
+                                    BLOCK_ID_STONE);
+                }
+            }
+        }
+    }
+    uint32_t swept = 0u, stopped = 0u, disagreed = 0u;
+    for (uint32_t trial = 0u; trial < PT_RANDOM_SWEEPS; trial++) {
+        const float64_t size_x = 0.1f64 + pt_random_unit(&rng) * 1.5f64;
+        const float64_t size_y = 0.1f64 + pt_random_unit(&rng) * 1.5f64;
+        const float64_t size_z = 0.1f64 + pt_random_unit(&rng) * 2.5f64;
+        const float64_t x0 = pt_random_unit(&rng) * (float64_t)side;
+        const float64_t y0 = pt_random_unit(&rng) * (float64_t)side;
+        const float64_t z0 = pt_random_unit(&rng) * (float64_t)side;
+        const collision_box_t box = pt_box(x0, y0, z0, x0 + size_x, y0 + size_y, z0 + size_z);
+        if (pt_grid_overlaps(grid, box.min[0], box.min[1], box.min[2], box.max[0], box.max[1], box.max[2])) {
+            continue; /* a sweep that starts free is what the march can compare */
+        }
+        const float64_t delta[COLLISION_AXES] = {
+            (pt_random_unit(&rng) - 0.5f64) * 12.0f64,
+            (pt_random_unit(&rng) - 0.5f64) * 12.0f64,
+            (pt_random_unit(&rng) - 0.5f64) * 12.0f64,
+        };
+        collision_move_t move;
+        physics_move(w.physics, w.map, &box, delta, &move);
+        swept++;
+        stopped += move.hit_x != 0u || move.hit_y != 0u || move.hit_z_down != 0u || move.hit_z_up != 0u ? 1u : 0u;
+
+        /* The march: a tiny step on each axis in turn, kept unless it overlaps. */
+        float64_t at[COLLISION_AXES] = {box.min[0], box.min[1], box.min[2]};
+        const float64_t sizes[COLLISION_AXES] = {size_x, size_y, size_z};
+        uint8_t blocked[COLLISION_AXES] = {0u, 0u, 0u};
+        for (uint32_t step = 0u; step < PT_RANDOM_MARCH_STEPS; step++) {
+            for (uint32_t a = 0u; a < COLLISION_AXES; a++) {
+                if (blocked[a] != 0u) {
+                    continue;
+                }
+                float64_t tried[COLLISION_AXES] = {at[0], at[1], at[2]};
+                tried[a] += delta[a] / (float64_t)PT_RANDOM_MARCH_STEPS;
+                if (pt_grid_overlaps(grid, tried[0], tried[1], tried[2], tried[0] + sizes[0], tried[1] + sizes[1],
+                                     tried[2] + sizes[2])) {
+                    blocked[a] = 1u;
+                } else {
+                    at[a] = tried[a];
+                }
+            }
+        }
+        /* One step on each axis of slack, plus what a grazed corner can come to: it is a difference only near a tie. */
+        const float64_t slack = 12.0f64 / (float64_t)PT_RANDOM_MARCH_STEPS * 2.0f64;
+        bool same = true;
+        for (uint32_t a = 0u; a < COLLISION_AXES; a++) {
+            same = same && fabs(box.min[a] + move.moved[a] - at[a]) <= slack;
+            CHECK(fabs(move.moved[a]) <= fabs(delta[a]) + PT_EXACT);
+        }
+        disagreed += same ? 0u : 1u;
+        /* Wherever it ended, it is clear. */
+        const collision_box_t end =
+            pt_box(box.min[0] + move.moved[0], box.min[1] + move.moved[1], box.min[2] + move.moved[2],
+                   box.max[0] + move.moved[0], box.max[1] + move.moved[1], box.max[2] + move.moved[2]);
+        CHECK(physics_box_is_clear(w.physics, w.map, &end));
+    }
+    /* Most boxes start free, and a good share hit something: the test is not passing on nothing. */
+    CHECK(swept > PT_RANDOM_SWEEPS / 4u);
+    CHECK(stopped > swept / 3u);
+    /* A tiny-step march and an exact sweep may part where a box grazes a corner in the same tiny step. In 1 sweep in 200 at most. */
+    CHECK(disagreed <= swept / 200u);
+    test_world_end(&w);
+}
+
+/* ---- Memory ------------------------------------------------------------------------------------------------------------ */
+
+TEST(init_and_deinit_are_a_pair_and_deinit_is_safe_on_zero) {
+    heap_counters_t before, after;
+    heap_counters_read(&before);
+    physics_t *const physics = test_world_aligned(t, sizeof(physics_t));
+    physics_deinit(physics);
+    REQUIRE(physics_init(physics));
+    heap_counters_read(&after);
+    CHECK_EQ_U64(after.reserve_calls, before.reserve_calls + 1u);
+    CHECK(physics->owned_region.owned_base != nullptr);
+    CHECK(physics->arena_boxes.capacity >= 1ull << 20);
+    physics_deinit(physics);
+    heap_counters_read(&after);
+    CHECK_EQ_U64(after.live_bytes, before.live_bytes);
+    CHECK(physics->owned_region.owned_base == nullptr);
+    physics_deinit(physics); /* twice does nothing */
+}
+
+TEST(the_largest_box_on_the_largest_step_in_solid_rock_fits_the_region) {
+    test_world_t w;
+    REQUIRE(test_world_begin(t, &w));
+    test_world_fill(t, &w, -20, -20, 0, 20, 20, 40, BLOCK_ID_OAK_STAIRS);
+    const collision_box_t box = pt_box(-4.5f64, -4.5f64, 16.5f64, 3.5f64, 3.5f64, 24.5f64);
+    collision_move_t move;
+    pt_move(&w, &box, 8.0f64, 8.0f64, 8.0f64, &move);
+    CHECK(w.physics->arena_boxes.failed_count == 0u);
+    CHECK(w.physics->arena_boxes.peak <= w.physics->arena_boxes.capacity);
+    test_world_end(&w);
+}
+
+TEST(a_move_never_touches_the_heap_and_keeps_to_its_arena) {
+    test_world_t w;
+    REQUIRE(test_world_begin(t, &w));
+    test_world_fill(t, &w, -8, -8, -1, 8, 8, -1, BLOCK_ID_STONE);
+    const collision_box_t box = pt_box(0.2f64, 0.2f64, 0.0f64, 0.8f64, 0.8f64, 1.8f64);
+    collision_move_t move;
+    pt_move(&w, &box, 1.0f64, 1.0f64, -1.0f64, &move);
+    const uint64_t peak = w.physics->arena_boxes.peak;
+    heap_counters_t before, after;
+    heap_counters_read(&before);
+    for (uint32_t i = 0u; i < 10000u; i++) {
+        pt_move(&w, &box, 1.0f64, 1.0f64, -1.0f64, &move);
+        CHECK(physics_box_is_clear(w.physics, w.map, &box));
+    }
+    heap_counters_read(&after);
+    CHECK_EQ_U64(after.reserve_calls, before.reserve_calls);
+    CHECK_EQ_U64(after.release_calls, before.release_calls);
+    CHECK_EQ_U64(w.physics->arena_boxes.peak, peak);
+    test_world_end(&w);
+}
+
+TEST_MAIN()

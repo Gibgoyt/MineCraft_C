@@ -28,6 +28,13 @@ enum : int64_t {
     GAME_TICK_NS = 1000000000 / MC_GAME_TICK_HZ,
 };
 
+/* How far from the world's middle a body looks for dry land, in squares this many blocks apart. A world with none in 1 km of the
+ * middle starts it in the water it would have had anyway. */
+enum : int32_t {
+    GAME_SPAWN_STEP = 16,
+    GAME_SPAWN_RINGS = 64,
+};
+
 #define GAME_START_EYE_HEIGHT 24.5f64
 #define GAME_START_YAW 0.6f32
 #define GAME_START_PITCH (-0.3f32)
@@ -43,6 +50,11 @@ void game_init(game_t *game, world_t *world, terrain_t *terrain, render_t *rende
     game->borrowed_job = job;
     game->borrowed_texture = texture;
     game->borrowed_topology = topology;
+}
+
+void game_player_set(game_t *game, player_t *player) {
+    ASSERT_ALWAYS(game->open == 0u);
+    game->borrowed_player = player;
 }
 
 void game_deinit(game_t *game) {
@@ -121,6 +133,35 @@ static int32_t game_ground_z(const terrain_t *terrain, const game_column_job_t *
     return COLUMN_Z_STORAGE_MIN;
 }
 
+/* Whether a body could stand on this column's top: not water, not a flower, and not a tree's leaves. Reads what game_ground_z left in
+ * the job's memory. */
+static bool game_top_is_dry_land(const game_column_job_t *job, int32_t ground_z) {
+    const uint16_t top = job->borrowed_states[ground_z - COLUMN_Z_STORAGE_MIN];
+    return (block_defs[top].flags & BLOCK_FLAG_SOLID) != 0u && (block_defs[top].flags & BLOCK_FLAG_DECAYS) == 0u;
+}
+
+/* The nearest dry land to the world's middle, ring by ring of a square around it, and the middle itself if there is none. The same
+ * seed gives the same place. */
+static void game_spawn_find(const terrain_t *terrain, const game_column_job_t *job, int32_t middle_x, int32_t middle_y,
+                            int32_t *out_x, int32_t *out_y) {
+    *out_x = middle_x;
+    *out_y = middle_y;
+    for (int32_t ring = 0; ring <= GAME_SPAWN_RINGS; ring++) {
+        for (int32_t dy = -ring; dy <= ring; dy++) {
+            /* The inside of a square has been looked at already: only its first and last columns remain on these rows. */
+            const int32_t across = dy == -ring || dy == ring ? 1 : (ring == 0 ? 1 : 2 * ring);
+            for (int32_t dx = -ring; dx <= ring; dx += across) {
+                const int32_t x = middle_x + dx * GAME_SPAWN_STEP, y = middle_y + dy * GAME_SPAWN_STEP;
+                if (game_top_is_dry_land(job, game_ground_z(terrain, job, x, y))) {
+                    *out_x = x;
+                    *out_y = y;
+                    return;
+                }
+            }
+        }
+    }
+}
+
 bool game_open(game_t *game, const game_config_t *config) {
     ASSERT_ALWAYS(game->open == 0u);
     if (config->render_distance == 0u || config->render_distance > MC_GAME_RENDER_DISTANCE_MAX) {
@@ -144,11 +185,22 @@ bool game_open(game_t *game, const game_config_t *config) {
         job->borrowed_opened = arena_alloc(&game->arena_world, GAME_COLUMN_VOXELS, alignof(uint64_t));
     }
 
-    /* A little above whatever is at the world's middle, water included, looking out and down. */
-    const int32_t start_x = 8, start_y = 8;
+    /* Flying: a little above whatever is at the world's middle, water included, looking out and down. Walking: on dry land near it. */
+    int32_t start_x = 8, start_y = 8;
+    if (game->borrowed_player != nullptr) {
+        game_spawn_find(terrain, &game->borrowed_jobs[0], start_x, start_y, &start_x, &start_y);
+    }
     const float64_t ground = (float64_t)game_ground_z(terrain, &game->borrowed_jobs[0], start_x, start_y);
-    render_camera_start(&game->camera, (float64_t)start_x + 0.5f64, (float64_t)start_y + 0.5f64,
-                        ground + GAME_START_EYE_HEIGHT, GAME_START_YAW, GAME_START_PITCH);
+    const float64_t middle_x = (float64_t)start_x + 0.5f64, middle_y = (float64_t)start_y + 0.5f64;
+    float64_t eye_z = ground + GAME_START_EYE_HEIGHT;
+    if (game->borrowed_player != nullptr) {
+        /* Feet on top of whatever that is. Nothing is above it, so the body fits. */
+        player_spawn(game->borrowed_player, middle_x, middle_y, ground + 1.0f64);
+        eye_z = ground + 1.0f64 + PLAYER_MOVEMENT_EYE_STANDING;
+        LOG_INFO("game: the player starts at %.1f, %.1f, %.1f", (libc_double_t)middle_x, (libc_double_t)middle_y,
+                 (libc_double_t)(ground + 1.0f64));
+    }
+    render_camera_start(&game->camera, middle_x, middle_y, eye_z, GAME_START_YAW, GAME_START_PITCH);
     const int32_t chunk_x = column_chunk_of(start_x), chunk_y = column_chunk_of(start_y);
     atomic_store_explicit(&game->center_x, chunk_x, memory_order_relaxed);
     atomic_store_explicit(&game->center_y, chunk_y, memory_order_relaxed);
@@ -272,18 +324,48 @@ void game_sim_step(game_t *game) {
     (void)world_edit_snapshot_publish(&world->snapshot);
 }
 
-/* One tick of simulated time. There is nothing to simulate yet: this is where Stages 11 to 15 add theirs. */
-static void game_sim_tick(game_t *game) {
+/* One tick of simulated time, due at tick_ns: this is where Stages 11 to 15 add theirs. */
+static void game_sim_tick(game_t *game, int64_t tick_ns) {
     arena_reset(&game->arena_tick);
+    if (game->borrowed_player != nullptr) {
+        player_tick(game->borrowed_player, &game->borrowed_world->map, tick_ns);
+    }
     game->tick_count++;
 }
 
-void game_fly(game_t *game, const render_fly_input_t *input, float32_t seconds) {
-    render_camera_fly(&game->camera, input, seconds);
+static void game_center_on_eye(game_t *game) {
     const int32_t cell_x = (int32_t)floor(game->camera.position[0]);
     const int32_t cell_y = (int32_t)floor(game->camera.position[1]);
     atomic_store_explicit(&game->center_x, column_chunk_of(cell_x), memory_order_relaxed);
     atomic_store_explicit(&game->center_y, column_chunk_of(cell_y), memory_order_relaxed);
+}
+
+void game_fly(game_t *game, const render_fly_input_t *input, float32_t seconds) {
+    render_camera_fly(&game->camera, input, seconds);
+    game_center_on_eye(game);
+}
+
+void game_walk_send(game_t *game, const render_fly_input_t *input, bool jump, bool sneak, int64_t now_ns) {
+    /* No keys and no time: all this moves is where it looks. */
+    render_fly_input_t look;
+    memset(&look, 0, sizeof(look));
+    look.mouse_dx = input->mouse_dx;
+    look.mouse_dy = input->mouse_dy;
+    render_camera_fly(&game->camera, &look, 0.0f32);
+    const player_intent_t intent = {.yaw = game->camera.yaw,
+                                    .forward = input->forward,
+                                    .right = input->right,
+                                    .jump = jump ? 1u : 0u,
+                                    .sneak = sneak ? 1u : 0u,
+                                    .sprint = input->fast,
+                                    ._pad0 = {0}};
+    player_send(game->borrowed_player, &intent, now_ns);
+}
+
+/* The eye goes where the ticks have got to, by now_ns. */
+static void game_walk_view(game_t *game, int64_t now_ns) {
+    player_eye_at(game->borrowed_player, now_ns, game->camera.position);
+    game_center_on_eye(game);
 }
 
 /* ---- A run on one thread ------------------------------------------------------------------------------------------ */
@@ -355,8 +437,22 @@ static bool game_scene_tick(void *context, const display_headless_tick_t *tick) 
     game_t *const game = context;
     render_fly_input_t input;
     game_fly_from_script(tick->state, &input);
-    game_fly(game, &input, 1.0f32 / (float32_t)MC_GAME_TICK_HZ);
-    game_sim_tick(game);
+    /* Time here is the count of ticks, so one script gives one path. */
+    const int64_t tick_ns = (int64_t)(game->tick_count + 1u) * GAME_TICK_NS;
+    if (game->borrowed_player == nullptr) {
+        game_fly(game, &input, 1.0f32 / (float32_t)MC_GAME_TICK_HZ);
+        game_sim_tick(game, tick_ns);
+        return true;
+    }
+    /* A draw settles too, but a script need not draw every tick, and the body would then wait for ground that never comes. */
+    if (!game_settle(game)) {
+        return false;
+    }
+    game_walk_send(game, &input, display_script_state_is_down(tick->state, KEY_SPACE),
+                   display_script_state_is_down(tick->state, KEY_LEFTSHIFT), tick_ns);
+    game_sim_tick(game, tick_ns);
+    /* A whole tick on from when it was due: where this tick ended. */
+    game_walk_view(game, tick_ns + GAME_TICK_NS);
     return true;
 }
 
@@ -393,7 +489,7 @@ static void game_sim_thread(void *borrowed_argument) {
         game_sim_step(game);
         const int64_t now_ns = time_now_ns();
         if (now_ns >= next_tick_ns) {
-            game_sim_tick(game);
+            game_sim_tick(game, next_tick_ns);
             next_tick_ns += GAME_TICK_NS;
         }
         if (game->stream_quiet != 0u) {
@@ -457,7 +553,11 @@ bool game_loop_start(game_t *game, input_t *input) {
 
 bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t seconds, display_buffer_t *target) {
     arena_reset(&game->arena_frame);
-    game_fly(game, input, seconds);
+    if (game->borrowed_player != nullptr) {
+        game_walk_view(game, time_now_ns());
+    } else {
+        game_fly(game, input, seconds);
+    }
     game->camera_slots[game->cameras.back] = game->camera;
     render_exchange_publish(&game->cameras);
     render_frame_t *const frame = &game->borrowed_render->frame;
@@ -501,6 +601,10 @@ bool game_loop_source(void *context, display_buffer_t *back) {
     game->last_frame_ns = now_ns;
     render_fly_input_t input;
     game_fly_from_input(frame, &input);
+    if (game->borrowed_player != nullptr) {
+        game_walk_send(game, &input, input_keys_has(&frame->down, KEY_SPACE),
+                       input_keys_has(&frame->down, KEY_LEFTSHIFT), now_ns);
+    }
     return game_loop_frame(game, &input, seconds, back);
 }
 
@@ -512,6 +616,12 @@ void game_loop_discard(void *context) {
 }
 
 void game_report(game_t *game) {
+    if (game->borrowed_player != nullptr) {
+        const player_movement_t *const movement = &game->borrowed_player->movement;
+        LOG_INFO("game: the player is at %.3f, %.3f, %.3f after %" PRIu64 " ticks",
+                 (libc_double_t)movement->position[0], (libc_double_t)movement->position[1],
+                 (libc_double_t)movement->position[2], game->borrowed_player->tick_count);
+    }
     LOG_INFO("game: %" PRIu64 " columns generated, %" PRIu64 " ticks, %" PRIu64
              " sections sent, %.1f MiB of slabs held",
              game->columns_made, game->tick_count, game->borrowed_render->upload.stats.sections_sent,
