@@ -35,6 +35,12 @@ Open-licensed and generated textures compile into our own format, with vector da
 
 Appended as they land:
 
+- `ba172d8` Stage 06.1: inflate and PNG decoders.
+- `64fa317` Stage 06.2: the pack import.
+- `01b1d05` Stage 06.3: recipes and vector data.
+- `735911d` Stage 06.4: mip chains, the blob, and lookup.
+- `23b6791` Check the Phase 6 gate: make burning TNT give light and refuse a light row no pixel passes, hold compositing's rounding with a test, name borrowed pointers as the standard asks, and leave the licence for Ahmed with what the pack's history says.
+
 ## Issues found
 
 **Gate check, 2026-11-02.** Each defect is logged in its stage file; this is the list.
