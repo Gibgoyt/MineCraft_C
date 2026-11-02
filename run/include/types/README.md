@@ -11,5 +11,7 @@
 - `F32(1.0)`, `F64(1.0)`: literals for headers compiled on both sides. A C-only file writes `1.0f32`, a `.cu` file `1.0F`.
 - `libc_double_t`: only for the cast at a varargs call, as in `printf("%.2f", (libc_double_t)value)`.
 
+`texture_blob/` has its own README: the format of the blob that `compile/` writes and `run/` reads.
+
 **May be called by:** everything, including `compile/` and `cuda/`.
 **Depends on:** `<stdint.h>`.

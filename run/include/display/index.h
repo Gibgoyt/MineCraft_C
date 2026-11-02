@@ -68,9 +68,9 @@ typedef struct display_offscreen_t {
     heap_region_t owned_region;
     display_headless_t headless;
     uint8_t running;
-    uint8_t _pad0[7];
+    uint8_t _pad0[71];
 } display_offscreen_t;
-static_assert(sizeof(display_offscreen_t) == 384);
+static_assert(sizeof(display_offscreen_t) == 448);
 static_assert(alignof(display_offscreen_t) == 64);
 
 void display_config_from_machine(display_config_t *out);

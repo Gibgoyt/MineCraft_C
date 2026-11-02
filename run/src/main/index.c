@@ -12,6 +12,7 @@
 #include "main/cpu_check/index.h"
 #include "math/index.h"
 #include "simd/index.h"
+#include "texture/index.h"
 #include "thread/index.h"
 #include "time/index.h"
 #include "types/index.h"
@@ -190,14 +191,21 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         math_deinit(&app->math);
         return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
     }
+    if (!texture_init(&app->texture)) {
+        simd_deinit(&app->simd);
+        math_deinit(&app->math);
+        return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
+    }
     thread_topology_t topology;
     if (!thread_topology_read(&topology) || !job_init(&app->job, &topology)) {
+        texture_deinit(&app->texture);
         simd_deinit(&app->simd);
         math_deinit(&app->math);
         return MAIN_EXIT_RUNTIME; /* each has said why, and neither left anything behind */
     }
     if (!thread_pin_self(thread_cpu_for(&topology, THREAD_ROLE_MAIN, 0u))) {
         job_deinit(&app->job);
+        texture_deinit(&app->texture);
         simd_deinit(&app->simd);
         math_deinit(&app->math);
         return MAIN_EXIT_RUNTIME;
@@ -210,6 +218,7 @@ static void app_deinit(app_t *app) {
     display_offscreen_deinit(&app->offscreen);
     display_deinit(&app->display);
     job_deinit(&app->job);
+    texture_deinit(&app->texture);
     simd_deinit(&app->simd);
     math_deinit(&app->math);
     memset(app, 0, sizeof(*app));
