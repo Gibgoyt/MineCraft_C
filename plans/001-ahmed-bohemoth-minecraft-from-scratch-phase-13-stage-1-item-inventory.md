@@ -38,6 +38,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `c76a31b` Add item tables from config/items, stacks, and a 36-slot inventory with a hotbar that the player picks up into and places from.
+
 ## Issues found
 
 1. **`run_types` counts the program's regions.** Expected it to pass unchanged; it failed at `tests/run/types/index.c:914` and `:922`, wanting `heap at exit: 10 reserved, 10 released` and `leak at exit: 10 regions`, with 11 now that `item_t` holds one. Both numbers were changed to 11, which is what they are there to notice.
