@@ -48,3 +48,7 @@ Appended as they land:
 4. **`player_interaction_hand_take` stays, with a narrower job.** Its README said this stage replaces it. In `--walk` nothing calls it now, but `run_player_interaction`, `run_entity_drop` and any `game_t` with no `game_item_set` still do, and those tests belong to their stages, so it was kept as the path with no inventory, and `game_t` falls back to it. Left for whoever wants one path only.
 5. **Not reachable by any test here: the real keyboard and wheel path.** `game_loop_source` reads `frame->pressed` and `frame->wheel`, which needs KMS mode and a real input device, neither of which may be opened here. The number keys are proved through the script path in the built program, and scrolling through `item_hotbar_scroll_send` and `item_hotbar_apply`, with `game_hotbar_send`'s wheel argument only ever given 0. The script format has no wheel. Left for Ahmed's own run.
 6. **Items that do less than their name, by what exists so far.** `water_bucket` and `lava_bucket` place nothing, as placing one must also leave an empty bucket; doors, `bed`, `oak_sign`, `melon_seeds` and `pumpkin_seeds` place nothing, as those blocks do not exist. No HUD shows the hotbar until Stage 14.2, so for now only the log line at the end of a run says what is in hand. Durability, food and armor are read into the table and used by nothing until Stages 13.3 and 13.4.
+
+## Gate check, 2026-11-03
+
+Nothing false found here. `item_stack_drop_row`'s comment no longer says wear is lost. Issue 5 stands: the real keyboard and wheel can only be checked by Ahmed.

@@ -20,6 +20,7 @@
 #include "world/index.h"
 
 #include <dirent.h>
+#include <linux/input-event-codes.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,6 +37,8 @@ enum : uint32_t {
     /* Worked out in run/src/player/interaction/README.md. */
     IE_STONE_TICKS_WOOD_PICKAXE = 23u,
     IE_STONE_TICKS_HAND = 150u,
+    /* 45 ticks' work over a speed of 12. */
+    IE_STONE_TICKS_GOLD_PICKAXE = 4u,
 };
 
 #define IE_DAMAGE_EPSILON 1.0e-4f64
@@ -185,6 +188,113 @@ TEST(the_slot_in_hand_is_what_mining_goes_by_and_gold_breaks_what_wood_breaks) {
 }
 
 /* ---- Wear ------------------------------------------------------------------------------------------------------------- */
+
+/* A world and a body at rest, with hands that are only told what they hold, and the target set by hand. */
+typedef struct ie_hands_t {
+    test_world_t world;         /* 0 */
+    player_movement_t movement; /* 24 */
+    player_target_t target;     /* 136 */
+    player_interaction_t hands; /* 232 */
+} ie_hands_t;
+static_assert(sizeof(ie_hands_t) == 1384);
+
+/* Holds the left button on this cell until it changes. How many ticks that took, up to a limit. */
+static uint32_t ie_hands_mine(ie_hands_t *rig, int32_t x, int32_t y, int32_t z, uint32_t limit) {
+    uint16_t block = BLOCK_ID_AIR;
+    (void)world_map_block_get(rig->world.map, x, y, z, &block);
+    memset(&rig->target, 0, sizeof(rig->target));
+    rig->target.hit.result = RAYCAST_RESULT_HIT;
+    rig->target.hit.cell[0] = x;
+    rig->target.hit.cell[1] = y;
+    rig->target.hit.cell[2] = z;
+    rig->target.hit.block = block;
+    rig->target.hit.axis = COLLISION_AXIS_Z;
+    rig->target.hit.normal_sign = 1;
+    const player_interaction_input_t input = {
+        .borrowed_target = &rig->target, .borrowed_movement = &rig->movement, .attack = 1u, .place = 0u, ._pad0 = {0}};
+    for (uint32_t tick = 1u; tick <= limit; tick++) {
+        player_interaction_tick(&rig->hands, &rig->world.world->edit, &input);
+        uint16_t now = block;
+        (void)world_map_block_get(rig->world.map, x, y, z, &now);
+        if (now != block) {
+            return tick;
+        }
+    }
+    return UINT32_MAX;
+}
+
+static bool ie_hands_begin(test_context_t *t, ie_hands_t *rig) {
+    if (!test_world_begin(t, &rig->world)) {
+        return false;
+    }
+    player_movement_start(&rig->movement, 40.5f64, 40.5f64, 0.0f64);
+    rig->movement.on_ground = 1u;
+    player_interaction_start(&rig->hands, 4321u);
+    return true;
+}
+
+/* Published: 12, so stone at 1.5 * 30 / 12 and rounded up. As wood in what it harvests, and a sword stays a sword. */
+TEST(gold_mines_faster_than_diamond_and_harvests_only_what_wood_does) {
+    CHECK_EQ_U64(equipment_tool_speed_milli(ITEM_ID_GOLD_PICKAXE), 12000u);
+    CHECK_EQ_U64(equipment_tool_speed_milli(ITEM_ID_GOLD_SHOVEL), 12000u);
+    CHECK_EQ_U64(equipment_tool_speed_milli(ITEM_ID_GOLD_AXE), 12000u);
+    CHECK_EQ_U64(equipment_tool_speed_milli(ITEM_ID_GOLD_HOE), 12000u);
+    CHECK_EQ_U64(equipment_tool_speed_milli(ITEM_ID_GOLD_SWORD), 0u);
+    CHECK_EQ_U64(equipment_tool_speed_milli(ITEM_ID_DIAMOND_PICKAXE), 0u);
+    CHECK_EQ_U64(equipment_tool_speed_milli(ITEM_ID_NONE), 0u);
+
+    ie_hands_t *const rig = test_alloc(t, sizeof(ie_hands_t));
+    REQUIRE(ie_hands_begin(t, rig));
+    test_world_fill(t, &rig->world, 0, 0, 10, 4, 0, 10, BLOCK_ID_STONE);
+    player_interaction_hold_tool(&rig->hands, BLOCK_TOOL_PICKAXE, BLOCK_TIER_WOOD);
+    CHECK_EQ_U64(ie_hands_mine(rig, 0, 0, 10, 100u), IE_STONE_TICKS_WOOD_PICKAXE);
+    rig->hands.mine_delay = 0u;
+    player_interaction_hold_speed(&rig->hands, equipment_tool_speed_milli(ITEM_ID_GOLD_PICKAXE));
+    CHECK_EQ_U64(ie_hands_mine(rig, 1, 0, 10, 100u), IE_STONE_TICKS_GOLD_PICKAXE);
+    /* Off its own blocks it is a hand, like any other pickaxe. */
+    world_edit_block_set(&rig->world.world->edit, 2, 0, 10, BLOCK_ID_DIRT);
+    rig->hands.mine_delay = 0u;
+    CHECK_EQ_U64(ie_hands_mine(rig, 2, 0, 10, 100u), 15u);
+    /* What wood cannot harvest takes its 3 * 100 ticks over 12, and gives nothing. */
+    world_edit_block_set(&rig->world.world->edit, 3, 0, 10, BLOCK_ID_IRON_ORE);
+    const uint32_t drops = rig->hands.drop_count;
+    rig->hands.mine_delay = 0u;
+    CHECK_EQ_U64(ie_hands_mine(rig, 3, 0, 10, 100u), 25u);
+    CHECK_EQ_U64(rig->hands.drop_count, drops);
+    test_world_end(&rig->world);
+}
+
+/* A table of chance 1 in 8 would come up many times in this many, if it were rolled. */
+TEST(shears_roll_nothing_of_a_table_and_every_block_of_theirs_has_an_item_to_give) {
+    for (uint32_t block = 0u; block < BLOCK_COUNT; block++) {
+        if (block_defs[block].tool == BLOCK_TOOL_SHEARS) {
+            CHECK(equipment_own_drop(ITEM_ID_SHEARS, (uint16_t)block) != ITEM_ID_NONE);
+        }
+    }
+    ie_hands_t *const rig = test_alloc(t, sizeof(ie_hands_t));
+    REQUIRE(ie_hands_begin(t, rig));
+    enum : uint32_t { CUTS = 200u };
+    player_interaction_hold_tool(&rig->hands, BLOCK_TOOL_SHEARS, BLOCK_TIER_NONE);
+    test_world_fill(t, &rig->world, 0, 0, 10, 0, 0, 10, BLOCK_ID_STONE);
+    for (uint32_t cut = 0u; cut < CUTS; cut++) {
+        world_edit_block_set(&rig->world.world->edit, 0, 0, 11, BLOCK_ID_TALL_GRASS);
+        CHECK_EQ_U64(ie_hands_mine(rig, 0, 0, 11, 2u), 1u);
+        CHECK_EQ_U64(rig->hands.drop_count, 0u);
+    }
+    /* The same grass by hand does roll, so that the loop above can be believed. */
+    player_interaction_hold_tool(&rig->hands, BLOCK_TOOL_NONE, BLOCK_TIER_NONE);
+    uint32_t rolled = 0u;
+    for (uint32_t cut = 0u; cut < CUTS; cut++) {
+        world_edit_block_set(&rig->world.world->edit, 0, 0, 11, BLOCK_ID_TALL_GRASS);
+        CHECK_EQ_U64(ie_hands_mine(rig, 0, 0, 11, 2u), 1u);
+        player_drop_t drop;
+        while (player_interaction_drop_next(&rig->hands, &drop)) {
+            rolled++;
+        }
+    }
+    CHECK(rolled > 0u);
+    test_world_end(&rig->world);
+}
 
 TEST(what_a_block_costs_worked_out_by_hand) {
     CHECK_EQ_U64(equipment_wear_of_block(ITEM_ID_WOOD_PICKAXE, BLOCK_ID_STONE), 1u);
@@ -587,20 +697,48 @@ TEST(a_shift_click_goes_across_when_there_is_room) {
 
 TEST(what_a_hit_leaves_worked_out_by_hand) {
     /* left = damage * (1 - min(20, max(points / 5, points - damage / 2)) / 25) */
-    CHECK_NEAR((float64_t)equipment_armor_absorb(0u, 10.0f32), 10.0f64, IE_DAMAGE_EPSILON);
+    CHECK_NEAR((float64_t)equipment_armor_absorb(0u, 0u, 10.0f32), 10.0f64, IE_DAMAGE_EPSILON);
     /* max(4, 17.5) = 17.5, so 5 * (1 - 0.7) */
-    CHECK_NEAR((float64_t)equipment_armor_absorb(20u, 5.0f32), 1.5f64, IE_DAMAGE_EPSILON);
+    CHECK_NEAR((float64_t)equipment_armor_absorb(20u, 0u, 5.0f32), 1.5f64, IE_DAMAGE_EPSILON);
     /* max(2, 5) = 5, so 10 * 0.8 */
-    CHECK_NEAR((float64_t)equipment_armor_absorb(10u, 10.0f32), 8.0f64, IE_DAMAGE_EPSILON);
+    CHECK_NEAR((float64_t)equipment_armor_absorb(10u, 0u, 10.0f32), 8.0f64, IE_DAMAGE_EPSILON);
     /* max(0.6, -47) = 0.6: a hard hit goes through all but a fifth of the points. 100 * (1 - 0.024) */
-    CHECK_NEAR((float64_t)equipment_armor_absorb(3u, 100.0f32), 97.6f64, IE_DAMAGE_EPSILON);
+    CHECK_NEAR((float64_t)equipment_armor_absorb(3u, 0u, 100.0f32), 97.6f64, IE_DAMAGE_EPSILON);
     /* min(20, 79.5): more than a full set stops no more. 1 * 0.2 */
-    CHECK_NEAR((float64_t)equipment_armor_absorb(80u, 1.0f32), 0.2f64, IE_DAMAGE_EPSILON);
+    CHECK_NEAR((float64_t)equipment_armor_absorb(80u, 0u, 1.0f32), 0.2f64, IE_DAMAGE_EPSILON);
     /* Exactly at the floor: 7 - 28 / 2 is below 7 / 5. */
-    CHECK_NEAR((float64_t)equipment_armor_absorb(7u, 28.0f32), 28.0f64 * (1.0f64 - 1.4f64 / 25.0f64),
+    CHECK_NEAR((float64_t)equipment_armor_absorb(7u, 0u, 28.0f32), 28.0f64 * (1.0f64 - 1.4f64 / 25.0f64),
                IE_DAMAGE_EPSILON);
-    CHECK_NEAR((float64_t)equipment_armor_absorb(20u, 0.0f32), 0.0f64, IE_DAMAGE_EPSILON);
-    CHECK_NEAR((float64_t)equipment_armor_absorb(20u, -3.0f32), 0.0f64, IE_DAMAGE_EPSILON);
+    CHECK_NEAR((float64_t)equipment_armor_absorb(20u, 0u, 0.0f32), 0.0f64, IE_DAMAGE_EPSILON);
+    CHECK_NEAR((float64_t)equipment_armor_absorb(20u, 0u, -3.0f32), 0.0f64, IE_DAMAGE_EPSILON);
+}
+
+TEST(toughness_keeps_hard_hits_out_and_both_sums_are_one_sum) {
+    /* The published sum: 20 points against 20 is 20 - 20 / (2 + 8 / 4) = 15 of 25. With no toughness, 10 of 25. */
+    CHECK_NEAR((float64_t)equipment_armor_absorb(20u, 8u, 20.0f32), 8.0f64, IE_DAMAGE_EPSILON);
+    CHECK_NEAR((float64_t)equipment_armor_absorb(20u, 0u, 20.0f32), 12.0f64, IE_DAMAGE_EPSILON);
+    /* What survival works out in a running game is what this says, for anything worn and any hit. */
+    for (uint32_t points = 0u; points <= 24u; points++) {
+        for (uint32_t toughness = 0u; toughness <= 8u; toughness += 2u) {
+            for (uint32_t half = 1u; half <= 100u; half++) {
+                const float32_t damage = (float32_t)half / 2.0f32;
+                CHECK_NEAR((float64_t)equipment_armor_absorb(points, toughness, damage),
+                           (float64_t)player_survival_after_armor(damage, (float32_t)points, (float32_t)toughness),
+                           IE_DAMAGE_EPSILON);
+            }
+        }
+    }
+    /* Only diamond has any. */
+    equipment_t equipment;
+    equipment_start(&equipment);
+    CHECK_EQ_U64(equipment_armor_toughness(&equipment), 0u);
+    equipment.armor[0] = item_stack_make(ITEM_ID_IRON_HELMET, 1u);
+    CHECK_EQ_U64(equipment_armor_toughness(&equipment), 0u);
+    equipment.armor[0] = item_stack_make(ITEM_ID_DIAMOND_HELMET, 1u);
+    equipment.armor[1] = item_stack_make(ITEM_ID_DIAMOND_CHESTPLATE, 1u);
+    equipment.armor[2] = item_stack_make(ITEM_ID_DIAMOND_LEGGINGS, 1u);
+    equipment.armor[3] = item_stack_make(ITEM_ID_DIAMOND_BOOTS, 1u);
+    CHECK_EQ_U64(equipment_armor_toughness(&equipment), 8u);
 }
 
 TEST(more_points_never_let_more_through_and_a_hit_never_grows) {
@@ -608,7 +746,7 @@ TEST(more_points_never_let_more_through_and_a_hit_never_grows) {
         const float32_t damage = (float32_t)tenths / 10.0f32;
         float32_t last = damage;
         for (uint32_t points = 0u; points <= 30u; points++) {
-            const float32_t left = equipment_armor_absorb(points, damage);
+            const float32_t left = equipment_armor_absorb(points, 0u, damage);
             CHECK(left <= last);
             CHECK(left > 0.0f32);
             last = left;
@@ -641,7 +779,7 @@ TEST(a_hit_wears_every_piece_by_a_quarter_of_itself_and_at_least_one) {
     equipment.armor[3].wear = 10u;
     /* 4 points. */
     float32_t left = equipment_armor_hurt(&equipment, 1.0f32);
-    CHECK_NEAR((float64_t)left, (float64_t)equipment_armor_absorb(4u, 1.0f32), IE_DAMAGE_EPSILON);
+    CHECK_NEAR((float64_t)left, (float64_t)equipment_armor_absorb(4u, 0u, 1.0f32), IE_DAMAGE_EPSILON);
     CHECK_EQ_U64(equipment.armor[0].wear, 1u);
     CHECK_EQ_U64(equipment.armor[3].wear, 11u);
     (void)equipment_armor_hurt(&equipment, 3.9f32); /* still one */
@@ -667,7 +805,7 @@ TEST(a_piece_breaks_on_its_last_use_after_the_hit_it_helped_to_stop) {
     equipment.armor[1] = item_stack_make(ITEM_ID_IRON_CHESTPLATE, 1u);
     const float32_t left = equipment_armor_hurt(&equipment, 1.0f32);
     /* 8 points stopped this one: the helmet was still on. */
-    CHECK_NEAR((float64_t)left, (float64_t)equipment_armor_absorb(8u, 1.0f32), IE_DAMAGE_EPSILON);
+    CHECK_NEAR((float64_t)left, (float64_t)equipment_armor_absorb(8u, 0u, 1.0f32), IE_DAMAGE_EPSILON);
     CHECK(item_stack_is_empty(&equipment.armor[0]));
     CHECK(item_stack_is_valid(&equipment.armor[0]));
     CHECK_EQ_U64(equipment.armor_broken_count, 1u);
@@ -1078,6 +1216,324 @@ TEST(in_a_real_game_tools_mine_and_wear_and_break_a_hoe_tills_and_armor_goes_on)
     texture_deinit(texture);
     job_deinit(job);
     gpu_bridge_deinit(bridge);
+}
+
+/* ---- A real game by script: what tools and armor do with everything else ---------------------------------------------- */
+
+typedef struct ie_script_game_t {
+    gpu_bridge_t *bridge;           /* 0 */
+    job_system_t *job;              /* 8 */
+    world_t *world;                 /* 16 */
+    terrain_t *terrain;             /* 24 */
+    render_t *render;               /* 32 */
+    texture_t *texture;             /* 40 */
+    game_t *game;                   /* 48 */
+    physics_t *physics;             /* 56 */
+    player_t *player;               /* 64 */
+    entity_t *entity;               /* 72 */
+    item_t *item;                   /* 80 */
+    thread_topology_t *topology;    /* 88 */
+    display_headless_scene_t scene; /* 96 */
+    display_script_state_t state;   /* 120 */
+    uint32_t tick;                  /* 272 */
+    int32_t pad_cell[3];            /* 276: the cell of the floor under its feet */
+} ie_script_game_t;
+static_assert(sizeof(ie_script_game_t) == 288);
+
+/* A game on the real card with its own floor to work on, as the seed's ground falls away steeply where it starts. Ticks by hand. */
+static bool ie_script_begin(test_context_t *t, ie_script_game_t *rig) {
+    memset(rig, 0, sizeof(*rig));
+    rig->bridge = test_world_aligned(t, sizeof(gpu_bridge_t));
+    rig->job = test_world_aligned(t, sizeof(job_system_t));
+    rig->world = test_world_aligned(t, sizeof(world_t));
+    rig->terrain = test_world_aligned(t, sizeof(terrain_t));
+    rig->render = test_world_aligned(t, sizeof(render_t));
+    rig->texture = test_world_aligned(t, sizeof(texture_t));
+    rig->game = test_world_aligned(t, sizeof(game_t));
+    rig->physics = test_world_aligned(t, sizeof(physics_t));
+    rig->player = test_world_aligned(t, sizeof(player_t));
+    rig->entity = test_world_aligned(t, sizeof(entity_t));
+    rig->item = test_world_aligned(t, sizeof(item_t));
+    rig->topology = test_alloc(t, sizeof(thread_topology_t));
+    if (!CHECK_EQ_U64(gpu_bridge_init(rig->bridge, gpu_bridge_limits_default()), GPU_STATUS_OK) ||
+        !CHECK(thread_topology_read(rig->topology)) || !CHECK(job_init(rig->job, rig->topology)) ||
+        !CHECK(texture_init(rig->texture)) || !CHECK(world_init(rig->world, world_limits_default())) ||
+        !CHECK(terrain_init(rig->terrain, TERRAIN_SEED_DEFAULT)) || !CHECK(physics_init(rig->physics)) ||
+        !CHECK(entity_init(rig->entity, rig->physics)) || !CHECK(item_init(rig->item)) ||
+        !CHECK(render_init(rig->render, &rig->bridge->device_memory, rig->job, render_limits_default()))) {
+        return false;
+    }
+    player_init(rig->player, rig->physics);
+    game_init(rig->game, rig->world, rig->terrain, rig->render, rig->job, rig->texture, rig->topology);
+    game_player_set(rig->game, rig->player);
+    game_entity_set(rig->game, rig->entity);
+    game_item_set(rig->game, rig->item);
+    static const game_config_t small = {.render_distance = 5u, .width = IE_WIDTH, .height = IE_HEIGHT, ._pad0 = {0}};
+    if (!CHECK(game_open(rig->game, &small)) || !CHECK(game_settle(rig->game))) {
+        return false;
+    }
+    game_headless_scene(rig->game, &rig->scene);
+    const int32_t pad_x = (int32_t)floor(rig->player->movement.position[0]);
+    const int32_t pad_y = (int32_t)floor(rig->player->movement.position[1]);
+    const int32_t pad_z = (int32_t)floor(rig->player->movement.position[2]);
+    for (int32_t x = pad_x - 6; x <= pad_x + 6; x++) {
+        for (int32_t y = pad_y - 6; y <= pad_y + 6; y++) {
+            for (int32_t z = pad_z - 9; z <= pad_z + 8; z++) {
+                const world_edit_status_t status =
+                    world_edit_block_set(&rig->world->edit, x, y, z, z < pad_z ? BLOCK_ID_STONE : BLOCK_ID_AIR);
+                if (!CHECK(status == WORLD_EDIT_STATUS_CHANGED || status == WORLD_EDIT_STATUS_UNCHANGED)) {
+                    return false;
+                }
+            }
+        }
+    }
+    rig->pad_cell[0] = pad_x;
+    rig->pad_cell[1] = pad_y;
+    rig->pad_cell[2] = pad_z - 1;
+    return true;
+}
+
+static void ie_script_end(test_context_t *t, ie_script_game_t *rig) {
+    game_close(rig->game);
+    game_deinit(rig->game);
+    render_deinit(rig->render);
+    CHECK(gpu_bridge_exit_check(rig->bridge));
+    item_deinit(rig->item);
+    entity_deinit(rig->entity);
+    player_deinit(rig->player);
+    physics_deinit(rig->physics);
+    terrain_deinit(rig->terrain);
+    world_deinit(rig->world);
+    texture_deinit(rig->texture);
+    job_deinit(rig->job);
+    gpu_bridge_deinit(rig->bridge);
+}
+
+static void ie_script_key(ie_script_game_t *rig, uint32_t code, bool down) {
+    const uint64_t bit = 1ull << (code % 64u);
+    rig->state.down[code / 64u] = down ? rig->state.down[code / 64u] | bit : rig->state.down[code / 64u] & ~bit;
+}
+
+static bool ie_script_ticks(ie_script_game_t *rig, uint32_t ticks) {
+    for (uint32_t i = 0u; i < ticks; i++) {
+        rig->tick++;
+        const display_headless_tick_t tick = {
+            .events = nullptr, .state = &rig->state, .event_count = 0u, .tick = rig->tick};
+        if (!rig->scene.tick(rig->scene.borrowed_context, &tick)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* A press and a let go, one tick each. */
+static bool ie_script_press(ie_script_game_t *rig, uint32_t code) {
+    ie_script_key(rig, code, true);
+    const bool down = ie_script_ticks(rig, 1u);
+    ie_script_key(rig, code, false);
+    return down && ie_script_ticks(rig, 1u);
+}
+
+TEST(in_a_real_game_armor_stops_hits_and_wears_and_what_goes_past_it_does_not_touch_it) {
+    ie_script_game_t *const rig = test_alloc(t, sizeof(ie_script_game_t));
+    REQUIRE(ie_script_begin(t, rig));
+    player_survival_t *const survival = &rig->player->survival;
+    item_t *const item = rig->item;
+    REQUIRE(ie_script_ticks(rig, 10u));
+    REQUIRE(survival->armor_points == 0.0f32);
+
+    /* In hand, then on by the button: the same armor that goes on is what the next tick counts. */
+    ie_put(&item->inventory, 0u, ITEM_ID_DIAMOND_CHESTPLATE, 0u);
+    rig->game->camera.pitch = 1.5f32; /* the sky: only the armor has anything to do */
+    REQUIRE(ie_script_press(rig, BTN_RIGHT));
+    CHECK_EQ_U64(item->equipment.armor[1].item, ITEM_ID_DIAMOND_CHESTPLATE);
+    CHECK(survival->armor_points == 8.0f32);
+    CHECK(survival->armor_toughness == 2.0f32);
+
+    /* A hit from outside: what comes through is the sum's, and a hit of 10 costs 2 uses. */
+    const float32_t expected = player_survival_after_armor(10.0f32, 8.0f32, 2.0f32);
+    CHECK(expected < 10.0f32);
+    const float32_t before = survival->health;
+    (void)player_survival_hurt(survival, 10.0f32, PLAYER_SURVIVAL_CAUSE_ATTACK);
+    CHECK_NEAR((float64_t)survival->health, (float64_t)(before - expected), IE_DAMAGE_EPSILON);
+    REQUIRE(ie_script_ticks(rig, 1u));
+    CHECK_EQ_U64(item->equipment.armor[1].wear, 2u);
+    REQUIRE(ie_script_ticks(rig, 1u));
+    CHECK_EQ_U64(item->equipment.armor[1].wear, 2u); /* once for a hit */
+
+    /* Being alight goes past armor: it hurts, and costs no uses. */
+    REQUIRE(ie_script_ticks(rig, PLAYER_SURVIVAL_INVULNERABLE_TICKS));
+    const uint64_t hits = survival->hurt_count;
+    survival->burn_ticks = PLAYER_SURVIVAL_BURN_EVERY_TICKS;
+    REQUIRE(ie_script_ticks(rig, PLAYER_SURVIVAL_BURN_EVERY_TICKS + 1u));
+    CHECK_EQ_U64(survival->hurt_count, hits + 1u);
+    CHECK_EQ_U64(item->equipment.armor[1].wear, 2u);
+
+    /* Real lava, which armor does stop, wears it through the world's own road. */
+    const int32_t x = (int32_t)floor(rig->player->movement.position[0]);
+    const int32_t y = (int32_t)floor(rig->player->movement.position[1]);
+    const int32_t z = (int32_t)floor(rig->player->movement.position[2]);
+    REQUIRE(ie_script_ticks(rig, PLAYER_SURVIVAL_INVULNERABLE_TICKS));
+    survival->health = 20.0f32;
+    REQUIRE(world_edit_block_set(&rig->world->edit, x, y, z, BLOCK_ID_LAVA) == WORLD_EDIT_STATUS_CHANGED);
+    REQUIRE(ie_script_ticks(rig, 2u));
+    CHECK(survival->hurt_count > hits + 1u);
+    CHECK(item->equipment.armor[1].wear > 2u);
+    CHECK(survival->health > 20.0f32 - 4.0f32);
+
+    /* The piece that has run out comes off, and from the next tick nothing is worn. */
+    (void)world_edit_block_set(&rig->world->edit, x, y, z, BLOCK_ID_AIR);
+    REQUIRE(ie_script_ticks(rig, PLAYER_SURVIVAL_INVULNERABLE_TICKS));
+    survival->burn_ticks = 0u;
+    survival->health = 20.0f32;
+    item->equipment.armor[1].wear = (uint16_t)(item_defs[ITEM_ID_DIAMOND_CHESTPLATE].durability - 1u);
+    REQUIRE(ie_script_ticks(rig, PLAYER_SURVIVAL_INVULNERABLE_TICKS));
+    (void)player_survival_hurt(survival, 1.0f32, PLAYER_SURVIVAL_CAUSE_ATTACK);
+    REQUIRE(ie_script_ticks(rig, 2u));
+    CHECK(item_stack_is_empty(&item->equipment.armor[1]));
+    CHECK_EQ_U64(item->equipment.armor_broken_count, 1u);
+    CHECK(survival->armor_points == 0.0f32);
+    CHECK(survival->armor_toughness == 0.0f32);
+    ie_script_end(t, rig);
+}
+
+TEST(in_a_real_game_dying_spills_what_was_worn_and_all_of_it_comes_back_as_worn_as_it_was) {
+    ie_script_game_t *const rig = test_alloc(t, sizeof(ie_script_game_t));
+    REQUIRE(ie_script_begin(t, rig));
+    player_survival_t *const survival = &rig->player->survival;
+    item_t *const item = rig->item;
+    inventory_t *const inventory = &item->inventory;
+    REQUIRE(ie_script_ticks(rig, 10u));
+    ie_put(inventory, 0u, ITEM_ID_IRON_PICKAXE, 37u);
+    equipment_t *const equipment = &item->equipment;
+    equipment->armor[0] = item_stack_make(ITEM_ID_IRON_HELMET, 1u);
+    equipment->armor[0].wear = 11u;
+    REQUIRE(ie_script_ticks(rig, 1u));
+
+    /* A hit that kills costs its uses first, as any hit does. */
+    (void)player_survival_hurt(survival, 100.0f32, PLAYER_SURVIVAL_CAUSE_ATTACK);
+    REQUIRE(ie_script_ticks(rig, 1u));
+    CHECK_EQ_U64(survival->state, PLAYER_SURVIVAL_DEAD);
+    CHECK(item_stack_is_empty(&equipment->armor[0]));
+    CHECK(item_stack_is_empty(inventory_slot_read(inventory, 0u)));
+    const item_drop_store_t *const drops = &rig->entity->item_drops;
+    uint32_t found = 0u;
+    for (uint32_t i = 0u; i < drops->count; i++) {
+        const item_drop_t *const drop = &drops->borrowed_items[i];
+        if (block_drop_items[drop->item].item == ITEM_ID_IRON_PICKAXE) {
+            CHECK_EQ_U64(drop->wear, 37u);
+            found++;
+        } else if (block_drop_items[drop->item].item == ITEM_ID_IRON_HELMET) {
+            CHECK_EQ_U64(drop->wear, 11u + 25u);
+            found++;
+        }
+    }
+    CHECK_EQ_U64(found, 2u);
+
+    /* Back, and they are picked up as they were: one more use will not make the pick new. */
+    REQUIRE(ie_script_ticks(rig, PLAYER_SURVIVAL_RESPAWN_WAIT_TICKS + 1u));
+    REQUIRE(ie_script_press(rig, KEY_SPACE));
+    CHECK_EQ_U64(survival->state, PLAYER_SURVIVAL_ALIVE);
+    CHECK(survival->armor_points == 0.0f32);
+    REQUIRE(ie_script_ticks(rig, 60u));
+    CHECK_EQ_U64(inventory_count(inventory, ITEM_ID_IRON_PICKAXE), 1u);
+    CHECK_EQ_U64(inventory_count(inventory, ITEM_ID_IRON_HELMET), 1u);
+    for (uint32_t slot = 0u; slot < INVENTORY_SLOTS; slot++) {
+        const item_stack_t *const stack = inventory_slot_read(inventory, slot);
+        if (stack->item == ITEM_ID_IRON_PICKAXE) {
+            CHECK_EQ_U64(stack->wear, 37u);
+        } else if (stack->item == ITEM_ID_IRON_HELMET) {
+            CHECK_EQ_U64(stack->wear, 11u + 25u);
+        }
+    }
+    ie_script_end(t, rig);
+}
+
+TEST(in_a_real_game_a_chest_spills_a_worn_tool_as_worn_and_gold_mines_at_its_own_speed) {
+    ie_script_game_t *const rig = test_alloc(t, sizeof(ie_script_game_t));
+    REQUIRE(ie_script_begin(t, rig));
+    item_t *const item = rig->item;
+    inventory_t *const inventory = &item->inventory;
+    REQUIRE(ie_script_ticks(rig, 10u));
+    ie_put(inventory, 0u, ITEM_ID_GOLD_PICKAXE, 0u);
+    /* Straight down, at the chest let into the floor. */
+    rig->game->camera.pitch = -1.55f32;
+    const int32_t *const pad = rig->pad_cell;
+    REQUIRE(world_edit_block_set(&rig->world->edit, pad[0], pad[1], pad[2], BLOCK_ID_CHEST) ==
+            WORLD_EDIT_STATUS_CHANGED);
+    REQUIRE(ie_script_ticks(rig, 3u));
+    container_chest_t *const chest = container_at(&item->chests, pad[0], pad[1], pad[2]);
+    REQUIRE(chest != nullptr);
+    item_stack_t worn = item_stack_make(ITEM_ID_IRON_SHOVEL, 1u);
+    worn.wear = 99u;
+    CHECK_EQ_U64(container_add_stack(chest, &worn), 1u);
+    REQUIRE(rig->player->target.hit.result == RAYCAST_RESULT_HIT);
+    REQUIRE(rig->player->target.hit.block == BLOCK_ID_CHEST);
+
+    /* A chest is an axe's block: a pickaxe of any kind is a hand on it, at a hand's time. */
+    const uint64_t mined = rig->player->interaction.mined_count;
+    ie_script_key(rig, BTN_LEFT, true);
+    for (uint32_t i = 0u; i < 200u && rig->player->interaction.mined_count == mined; i++) {
+        REQUIRE(ie_script_ticks(rig, 1u));
+    }
+    ie_script_key(rig, BTN_LEFT, false);
+    CHECK_EQ_U64(rig->player->interaction.mined_count, mined + 1u);
+    REQUIRE(ie_script_ticks(rig, 60u));
+    CHECK_EQ_U64(inventory_count(inventory, ITEM_ID_IRON_SHOVEL), 1u);
+    bool seen = false;
+    for (uint32_t slot = 0u; slot < INVENTORY_SLOTS; slot++) {
+        const item_stack_t *const stack = inventory_slot_read(inventory, slot);
+        if (stack->item == ITEM_ID_IRON_SHOVEL) {
+            CHECK_EQ_U64(stack->wear, 99u);
+            seen = true;
+        }
+    }
+    CHECK(seen);
+
+    /* It has fallen through to the stone below, and stone goes in gold's own ticks, and is harvested. */
+    const uint64_t now_mined = rig->player->interaction.mined_count;
+    REQUIRE(rig->player->target.hit.block == BLOCK_ID_STONE);
+    const uint32_t cobble = inventory_count(inventory, ITEM_ID_COBBLESTONE);
+    ie_script_key(rig, BTN_LEFT, true);
+    uint32_t ticks = 0u;
+    while (ticks < 200u && rig->player->interaction.mined_count == now_mined) {
+        REQUIRE(ie_script_ticks(rig, 1u));
+        ticks++;
+    }
+    ie_script_key(rig, BTN_LEFT, false);
+    CHECK_EQ_U64(ticks, IE_STONE_TICKS_GOLD_PICKAXE);
+    REQUIRE(ie_script_ticks(rig, 60u));
+    CHECK_EQ_U64(inventory_count(inventory, ITEM_ID_COBBLESTONE), cobble + 1u);
+    CHECK_EQ_U64(inventory_slot_read(inventory, 0u)->wear, 2u);
+    ie_script_end(t, rig);
+}
+
+TEST(a_press_that_wakes_or_brings_back_a_body_does_nothing_else) {
+    ie_script_game_t *const rig = test_alloc(t, sizeof(ie_script_game_t));
+    REQUIRE(ie_script_begin(t, rig));
+    player_survival_t *const survival = &rig->player->survival;
+    item_t *const item = rig->item;
+    REQUIRE(ie_script_ticks(rig, 10u));
+    /* Asleep, with armor in hand. Made so by hand, as beds are run_player_survival's. */
+    ie_put(&item->inventory, 0u, ITEM_ID_IRON_HELMET, 0u);
+    survival->state = PLAYER_SURVIVAL_SLEEPING;
+    survival->state_ticks = 0u;
+    survival->has_bed = 1u;
+    survival->bed_cell[0] = rig->pad_cell[0];
+    survival->bed_cell[1] = rig->pad_cell[1];
+    survival->bed_cell[2] = rig->pad_cell[2];
+    REQUIRE(world_edit_block_set(&rig->world->edit, rig->pad_cell[0], rig->pad_cell[1], rig->pad_cell[2],
+                                 BLOCK_ID_BED) == WORLD_EDIT_STATUS_CHANGED);
+    REQUIRE(ie_script_press(rig, BTN_RIGHT));
+    CHECK_EQ_U64(survival->state, PLAYER_SURVIVAL_ALIVE);
+    CHECK(item_stack_is_empty(&item->equipment.armor[0]));
+    CHECK_EQ_U64(inventory_slot_read(&item->inventory, 0u)->item, ITEM_ID_IRON_HELMET);
+    /* The next press is an ordinary one. */
+    rig->game->camera.pitch = 1.5f32;
+    REQUIRE(ie_script_ticks(rig, 2u));
+    REQUIRE(ie_script_press(rig, BTN_RIGHT));
+    CHECK_EQ_U64(item->equipment.armor[0].item, ITEM_ID_IRON_HELMET);
+    ie_script_end(t, rig);
 }
 
 /* ---- The program ------------------------------------------------------------------------------------------------------ */

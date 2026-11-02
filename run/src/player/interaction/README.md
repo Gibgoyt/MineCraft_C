@@ -7,14 +7,14 @@
 **Threads:** the one holding the map, which is `sim` in a real run.
 **Public functions** (`run/include/player/interaction/index.h`):
 
-- `player_interaction_start`, `player_interaction_hold_tool`: empty hands and a seed; what it mines with from now on.
+- `player_interaction_start`, `player_interaction_hold_tool`, `player_interaction_hold_speed`: empty hands and a seed; what it mines with from now on, and what it mines at if its tier does not say.
 - `player_interaction_harvests`, `player_interaction_speed_milli`, `player_interaction_ticks`: the rules below, for any block and tool.
 - `player_interaction_tick`: one tick of both buttons.
 - `player_interaction_progress`: how far along the block being mined is, for Stage 09.5's breaking overlay.
 - `player_interaction_drops_spawn`, `player_interaction_drop_next`: rolls a block's table into the ring; takes the oldest out of it.
 - `player_interaction_hand_give`, `player_interaction_hand_set`, `player_interaction_hand_take`: the one slot placing takes from.
 
-**May be called by:** `run/src/player/`. `run/src/game/` takes the drops from `player_interaction_drop_next` and sets the hand to the hotbar slot in hand with `player_interaction_hand_set`, or in a run with no inventory gives what is picked up to `player_interaction_hand_take`, and Stage 13.3 calls `player_interaction_hold_tool`.
+**May be called by:** `run/src/player/`. `run/src/game/` takes the drops from `player_interaction_drop_next` and sets the hand to the hotbar slot in hand with `player_interaction_hand_set`, or in a run with no inventory gives what is picked up to `player_interaction_hand_take`, and `player_interaction_hold_tool` and `player_interaction_hold_speed` with what `run/src/item/equipment/` says of that slot.
 **Depends on:** `world/edit`, `world/map`, `physics/collision`, `physics/raycast`, `player/camera` and `player/movement` for their types, and the generated `tables/blocks`.
 
 ## Mining
@@ -25,7 +25,7 @@ Everything comes from `config/blocks/<block>/index.yaml`. These are Minecraft's 
 |---|---|
 | Harvest | A block with no `tier` always gives its drops. One with a `tier` gives them only to its own `tool` of that tier or better. Anything else breaks it for nothing |
 | Time | `hardness * 1.5` seconds if it can be harvested, `hardness * 5` if not, divided by the speed, so `hardness * 30` or `* 100` ticks over the speed. Rounded up, and at least one tick |
-| Speed | 1 for a hand, or for any tool that is not the block's. On the block's own tool: wood 2, stone 4, iron 6, diamond 8; a sword 1.5; shears 2, and 15 on what decays |
+| Speed | 1 for a hand, or for any tool that is not the block's. On the block's own tool: wood 2, stone 4, iron 6, diamond 8; gold 12, by `player_interaction_hold_speed`, as it has no tier of its own; a sword 1.5; shears 2, and 15 on what decays |
 | Penalties | 5 times as long with the feet off the ground, and 5 times again with the eyes under water |
 | Never | `hardness: unbreakable` |
 
@@ -38,7 +38,7 @@ So dirt by hand is 15 ticks, stone by hand is 150 with nothing to show for it, a
 
 ## Drops
 
-Each row of a block's table is rolled on its own, its chance and then its count, from splitmix64 with the state in the struct, so one run's buttons always give the same drops. They go in a ring of 32 as `player_drop_t`: an item number from `block_drop_items`, a count, and the middle of the cell. If no one takes them, the oldest are pushed out, and `drops_lost_count` says how many.
+Shears on their own block roll nothing: `run/src/game/` brings out the block itself, as only it knows items. Otherwise each row of a block's table is rolled on its own, its chance and then its count, from splitmix64 with the state in the struct, so one run's buttons always give the same drops. They go in a ring of 32 as `player_drop_t`: an item number from `block_drop_items`, a count, and the middle of the cell. If no one takes them, the oldest are pushed out, and `drops_lost_count` says how many.
 
 ## Placing
 
@@ -65,5 +65,4 @@ With no inventory, as in tests of this module alone, what `run/src/entity/item_d
 ## What is left for others
 
 - The picture does not show the crack yet. Stage 09.5 owns the breaking overlay: `player_interaction_progress` is its number, and it still needs a way across to `main`, such as `player_view_t`.
-- Only a hand exists in a real run until Stage 13.3, which calls `player_interaction_hold_tool`.
-- Durability, enchantments and hunger's mining penalties have no part here yet.
+- Enchantments have no part here yet. Durability is `run/src/item/equipment/`'s, and what mining tires is `run/src/player/survival/`'s, from `mined_count`.

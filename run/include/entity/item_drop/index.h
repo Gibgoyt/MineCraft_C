@@ -38,9 +38,9 @@ typedef struct item_drop_t {
     uint32_t id;                        /* 52: which tick it looks at the world on, when it lies still */
     uint16_t item;                      /* 56: into block_drop_items */
     uint16_t count;                     /* 58: 1 to ITEM_DROP_STACK_MAX, and 0 only in the middle of a merge */
-    uint16_t pickup_delay;              /* 60: ticks until it can be picked up */
-    uint8_t on_ground;                  /* 62 */
-    uint8_t _pad0[1];                   /* 63 */
+    uint16_t wear;                      /* 60: uses gone, as the stack it was had; only the same wear merges */
+    uint8_t pickup_delay;               /* 62: ticks until it can be picked up */
+    uint8_t on_ground;                  /* 63 */
 } item_drop_t;
 static_assert(sizeof(item_drop_t) == 64);
 
@@ -72,7 +72,7 @@ typedef struct item_drop_store_t {
 static_assert(sizeof(item_drop_store_t) == 96);
 
 /* How many items the taker takes of count, which may be none: a hand that is full or holds something else. On the sim thread. */
-typedef uint32_t item_drop_take_t(void *borrowed_context, uint16_t item, uint32_t count);
+typedef uint32_t item_drop_take_t(void *borrowed_context, uint16_t item, uint16_t wear, uint32_t count);
 
 /* An empty store, from the arena, with scatter from this seed. */
 void item_drop_store_start(item_drop_store_t *store, arena_t *arena, uint64_t seed);
@@ -83,6 +83,10 @@ void item_drop_box(const float64_t position[COLLISION_AXES], collision_box_t *ou
 /* Count items thrown out of a broken block, around this place, in stacks of at most ITEM_DROP_STACK_MAX. If the store is full, the
  * oldest stack goes to make room for each new one. */
 void item_drop_spawn(item_drop_store_t *store, uint16_t item, uint32_t count, const float64_t position[COLLISION_AXES]);
+
+/* The same, for what has been used: picked up again, it is as worn as it was. */
+void item_drop_spawn_worn(item_drop_store_t *store, uint16_t item, uint16_t wear, uint32_t count,
+                          const float64_t position[COLLISION_AXES]);
 
 /* One tick of everything: gravity, drag, the world's blocks, fluids, old age and merging. A stack in a column not loaded waits, and
  * does not age. Physics and map are the sim's. Never waits and never touches the heap. */

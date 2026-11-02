@@ -614,7 +614,7 @@ TEST(closing_a_screen_gives_back_what_fits_and_leaves_the_rest) {
 
 static smelting_store_t *ic_furnaces(test_context_t *t) {
     smelting_store_t *const store = test_alloc(t, sizeof(smelting_store_t));
-    arena_t *const arena = test_alloc(t, sizeof(arena_t));
+    arena_t *const arena = test_world_aligned(t, sizeof(arena_t));
     arena_init(arena, "ic_furnaces", test_alloc(t, SMELTING_BYTES), SMELTING_BYTES);
     smelting_start(store, arena);
     return store;
@@ -879,7 +879,7 @@ TEST(a_store_of_furnaces_finds_opens_refuses_and_gives_back) {
 
 static container_store_t *ic_chests(test_context_t *t) {
     container_store_t *const store = test_alloc(t, sizeof(container_store_t));
-    arena_t *const arena = test_alloc(t, sizeof(arena_t));
+    arena_t *const arena = test_world_aligned(t, sizeof(arena_t));
     arena_init(arena, "ic_chests", test_alloc(t, CONTAINER_BYTES), CONTAINER_BYTES);
     container_start(store, arena);
     return store;

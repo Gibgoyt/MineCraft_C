@@ -37,7 +37,8 @@ A hit does `damage` half hearts, or a hand's 1 if that is more. `run/src/player/
 **What tools do besides:**
 
 - **A hoe** on `dirt` or `grass_block` makes `farmland`, and on `coarse_dirt` makes `dirt`, if only air is above it. The right button, held, does this every 4 ticks.
-- **Shears** bring out the block they broke as an item, if it has one, on top of what its table rolls for anything else. So a shorn leaf gives the leaf and now and then a sapling too, which is more than the published game gives: the table is rolled in `run/src/player/interaction/`, before this knows.
+- **Shears** bring out the block they broke as an item, and `run/src/player/interaction/` rolls nothing of its table, so a shorn leaf gives the leaf and no sapling. Every block with `tool: shears` has such an item, as `run_item_equipment` holds.
+- **Gold** mines its own blocks at the published 12, by `equipment_tool_speed_milli`, and harvests what wood harvests. A gold sword mines as any sword.
 
 ## Armor
 
@@ -45,15 +46,15 @@ Four slots: head, chest, legs, feet. Armor goes on with the right button, on the
 
 Points add up, and against a hit of `damage` half hearts:
 
-    left = damage * (1 - min(20, max(points / 5, points - damage / 2)) / 25)
+    left = damage * (1 - min(20, max(points / 5, points - damage / (2 + toughness / 4))) / 25)
 
-This is the published formula with toughness 0, since `config/items/` has no field for toughness. So 20 points leave 30% of a hit of 5, and 10 points leave 80% of a hit of 10.
+This is the published formula. Only diamond has toughness, 2 a piece in `config/items/`. So 20 points with none leave 30% of a hit of 5 and 60% of a hit of 20, and a full diamond set leaves 40% of that hit of 20.
 
 `equipment_armor_hurt` is that with the wear: each piece loses a quarter of the hit in uses, rounded down, and at least 1. What goes past armor is the caller's to know: it does not call this.
 
+**In a running game** `run/src/game/` tells `run/src/player/survival/` the points and toughness worn before each tick, so that module works out what a hit leaves, and its sum is held to this one by `run_item_equipment`. After the tick it gives what armor stood against to `equipment_armor_hurt` for the wear. On dying, what is worn spills with the rest.
+
 ## What it is not
 
-- **Gold mines at wood's speed here,** not its published 12: `player_interaction_speed_milli` takes a block's tier, which has no rung for gold. See Issue 1 in the stage's plan file.
-- **Wear does not survive the ground.** See `run/src/item/README.md`, and Issue 2 in the stage's plan file.
 - **A hoe works from any side,** underneath too, where the published one does not.
 - **No enchantments,** and no repairing: neither is in the plan.

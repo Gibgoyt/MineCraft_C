@@ -73,6 +73,11 @@ static float64_t item_drop_random_around(terrain_rng_t *random, float64_t reach)
 
 void item_drop_spawn(item_drop_store_t *store, uint16_t item, uint32_t count,
                      const float64_t position[COLLISION_AXES]) {
+    item_drop_spawn_worn(store, item, 0u, count, position);
+}
+
+void item_drop_spawn_worn(item_drop_store_t *store, uint16_t item, uint16_t wear, uint32_t count,
+                          const float64_t position[COLLISION_AXES]) {
     ASSERT_ALWAYS(item < BLOCK_DROP_ITEM_COUNT);
     for (uint32_t left = count; left != 0u;) {
         const uint32_t stack = left > ITEM_DROP_STACK_MAX ? ITEM_DROP_STACK_MAX : left;
@@ -94,6 +99,7 @@ void item_drop_spawn(item_drop_store_t *store, uint16_t item, uint32_t count,
         store->next_id++;
         drop->item = item;
         drop->count = (uint16_t)stack;
+        drop->wear = wear;
         drop->pickup_delay = ITEM_DROP_PICKUP_DELAY_TICKS;
         store->dropped_count += stack;
     }
@@ -254,7 +260,7 @@ static void item_drop_tick_one(item_drop_store_t *store, physics_t *physics, con
     if (!item_drop_is_loaded(map, &box)) {
         return;
     }
-    drop->pickup_delay = drop->pickup_delay != 0u ? (uint16_t)(drop->pickup_delay - 1u) : 0u;
+    drop->pickup_delay = drop->pickup_delay != 0u ? (uint8_t)(drop->pickup_delay - 1u) : 0u;
     drop->age++;
     if (drop->age >= ITEM_DROP_DESPAWN_TICKS) {
         store->despawned_count += drop->count;
@@ -327,7 +333,8 @@ static void item_drop_merge_bucket(item_drop_store_t *store, uint32_t index, uin
     for (uint32_t other = store->borrowed_buckets[bucket]; other != ITEM_DROP_GRID_NONE && item_drop_can_merge(drop);
          other = store->borrowed_chain[other]) {
         item_drop_t *const near = &store->borrowed_items[other];
-        if (other > index && near->item == drop->item && item_drop_can_merge(near) && item_drop_in_reach(drop, near)) {
+        if (other > index && near->item == drop->item && near->wear == drop->wear && item_drop_can_merge(near) &&
+            item_drop_in_reach(drop, near)) {
             item_drop_join(store, drop, near);
         }
     }
@@ -383,7 +390,7 @@ uint32_t item_drop_pickup(item_drop_store_t *store, const collision_box_t *reach
         if (!collision_overlaps_any(&box, 1u, reach)) {
             continue;
         }
-        const uint32_t taken = take(borrowed_context, drop->item, drop->count);
+        const uint32_t taken = take(borrowed_context, drop->item, drop->wear, drop->count);
         ASSERT_ALWAYS(taken <= drop->count);
         drop->count = (uint16_t)(drop->count - taken);
         total += taken;

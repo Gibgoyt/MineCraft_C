@@ -410,10 +410,25 @@ void game_sim_step(game_t *game) {
 }
 
 /* An item picked up goes to the inventory, or with none to the hand. What does not fit stays on the ground. */
-static uint32_t game_pickup_take(void *borrowed_game, uint16_t item, uint32_t count) {
+static uint32_t game_pickup_take(void *borrowed_game, uint16_t item, uint16_t wear, uint32_t count) {
     game_t *const game = borrowed_game;
     if (game->borrowed_item != nullptr) {
-        return inventory_add(&game->borrowed_item->inventory, block_drop_items[item].item, count);
+        inventory_t *const inventory = &game->borrowed_item->inventory;
+        const uint16_t id = block_drop_items[item].item;
+        if (wear == 0u) {
+            return inventory_add(inventory, id, count);
+        }
+        /* What wears stacks to one, while a drop may be several as worn as each other. */
+        uint32_t taken = 0u;
+        while (taken < count) {
+            item_stack_t one = item_stack_make(id, 1u);
+            one.wear = wear;
+            if (inventory_add_stack(inventory, &one) == 0u) {
+                break;
+            }
+            taken++;
+        }
+        return taken;
     }
     return player_interaction_hand_take(&game->borrowed_player->interaction, item, count);
 }
@@ -433,9 +448,11 @@ static void game_tool_from_hotbar(game_t *game) {
     player_interaction_t *const hands = &game->borrowed_player->interaction;
     uint8_t tool = BLOCK_TOOL_NONE, tier = BLOCK_TIER_NONE;
     equipment_tool_held(&game->borrowed_item->inventory, &tool, &tier);
-    if (hands->held_tool != tool || hands->held_tier != tier) {
+    const uint32_t speed = equipment_tool_speed_milli(inventory_selected(&game->borrowed_item->inventory)->item);
+    if (hands->held_tool != tool || hands->held_tier != tier || hands->held_speed_milli != speed) {
         hands->progress = 0u;
         player_interaction_hold_tool(hands, tool, tier);
+        player_interaction_hold_speed(hands, speed);
     }
 }
 
@@ -474,7 +491,9 @@ static void game_interact_tick(game_t *game, int64_t tick_ns) {
     }
     item_hotbar_apply(item);
     const raycast_hit_t *const hit = &player->target.hit;
-    equipment_use_tick(&item->equipment, &item->inventory, &game->borrowed_world->edit, game_use_held(player, tick_ns),
+    /* A press that brings a body back or wakes it is used up by that. */
+    equipment_use_tick(&item->equipment, &item->inventory, &game->borrowed_world->edit,
+                       game_use_held(player, tick_ns) && !player_survival_holds_body(&player->survival),
                        hit->result == RAYCAST_RESULT_HIT ? hit->cell : nullptr);
     game_hand_from_hotbar(game);
     game_tool_from_hotbar(game);
@@ -503,7 +522,8 @@ static void game_spill(void *borrowed_game, const item_stack_t *stack, const int
     if (game->borrowed_entity != nullptr) {
         const float64_t middle[3] = {(float64_t)cell[0] + 0.5f64, (float64_t)cell[1] + 0.5f64,
                                      (float64_t)cell[2] + 0.5f64};
-        item_drop_spawn(&game->borrowed_entity->item_drops, item_stack_drop_row(stack->item), stack->count, middle);
+        item_drop_spawn_worn(&game->borrowed_entity->item_drops, item_stack_drop_row(stack->item), stack->wear,
+                             stack->count, middle);
     }
 }
 
@@ -538,8 +558,8 @@ static void game_items_tick(game_t *game) {
     }
 }
 
-/* A body that has died leaves what it carried where it lies, what was in its crafting grids too. Worn tools come back new, as with a
- * chest's. With no inventory there is nothing to leave but the one-slot hand of a test, which it keeps. */
+/* A body that has died leaves what it carried where it lies, what it wore and what was in its crafting grids too, each as worn as it was.
+ * With no inventory there is nothing to leave but the one-slot hand of a test, which it keeps. */
 static void game_death_spill(game_t *game) {
     item_t *const item = game->borrowed_item;
     if (item == nullptr) {
@@ -554,6 +574,13 @@ static void game_death_spill(game_t *game) {
             item_stack_t out = {.item = ITEM_ID_NONE, .wear = 0u, .count = 0u, ._pad0 = {0}};
             (void)inventory_slot_move_out(&item->inventory, slot, &out, stack->count);
             game_spill(game, &out, cell);
+        }
+    }
+    for (uint32_t slot = 0u; slot < EQUIPMENT_ARMOR_SLOTS; slot++) {
+        item_stack_t *const stack = &item->equipment.armor[slot];
+        if (!item_stack_is_empty(stack)) {
+            game_spill(game, stack, cell);
+            *stack = (item_stack_t){0};
         }
     }
     crafting_grid_t *const grids[2] = {&item->crafting_hands, &item->crafting_table};
@@ -572,7 +599,16 @@ static void game_death_spill(game_t *game) {
 /* One tick of what keeps the body going, and what that means for everything else. */
 static void game_survive_tick(game_t *game) {
     player_t *const player = game->borrowed_player;
+    item_t *const item = game->borrowed_item;
+    if (item != nullptr) {
+        player_survival_armor_set(&player->survival, (float32_t)equipment_armor_points(&item->equipment),
+                                  (float32_t)equipment_armor_toughness(&item->equipment));
+    }
     player_survive_tick(player, &game->borrowed_world->map);
+    const float32_t armor_hit = player_survival_armor_hit_take(&player->survival);
+    if (item != nullptr && armor_hit > 0.0f32) {
+        (void)equipment_armor_hurt(&item->equipment, armor_hit);
+    }
     if (player_survival_died_take(&player->survival)) {
         game_death_spill(game);
     }

@@ -2,4 +2,4 @@ name: diamond_boots
 texture: items/diamond_boots
 stack: 1
 durability: 429
-armor: { slot: feet, points: 3 }
+armor: { slot: feet, points: 3, toughness: 2 }

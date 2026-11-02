@@ -49,7 +49,7 @@ static const char *const GI_ITEM_FIELDS[] = {"name",       "texture", "stack", "
                                              "durability", "damage",  "food",  "saturation", "armor"};
 enum { GI_ITEM_FIELD_COUNT = sizeof(GI_ITEM_FIELDS) / sizeof(GI_ITEM_FIELDS[0]) };
 
-static const char *const GI_ARMOR_FIELDS[] = {"slot", "points"};
+static const char *const GI_ARMOR_FIELDS[] = {"slot", "points", "toughness"};
 enum { GI_ARMOR_FIELD_COUNT = sizeof(GI_ARMOR_FIELDS) / sizeof(GI_ARMOR_FIELDS[0]) };
 
 /* One item, as read. Everything it points to is in the arena. */
@@ -67,7 +67,8 @@ typedef struct gi_item_t {
     uint8_t food;                 /* 71 */
     uint8_t armor_slot;           /* 72 */
     uint8_t armor_points;         /* 73 */
-    uint8_t _pad0[6];             /* 74 */
+    uint8_t armor_toughness;      /* 74 */
+    uint8_t _pad0[5];             /* 75 */
 } gi_item_t;
 static_assert(sizeof(gi_item_t) == 80);
 
@@ -306,6 +307,10 @@ static void gi_read_armor(gi_context_t *context, const yaml_document_t *document
         gi_report(context, slot->line, slot->column, "armor must go on a slot");
     }
     gi_read_small(context, points, "armor points", 1, GI_ARMOR_LIMIT, &item->armor_points);
+    const yaml_node_t *toughness = yaml_map_get(document, map, "toughness");
+    if (toughness != nullptr) {
+        gi_read_small(context, toughness, "armor toughness", 1, GI_ARMOR_LIMIT, &item->armor_toughness);
+    }
 }
 
 /* What fields say about one another, once they have all been read. */
@@ -517,7 +522,8 @@ static void gi_emit_header(tp_arena_t *arena, tp_builder_t *out, const gi_item_t
                    "    uint8_t food;          /* 32: half drumsticks eating it gives; 0 if it is not food */\n"
                    "    uint8_t armor_slot;    /* 33: an item_armor_slot_t */\n"
                    "    uint8_t armor_points;  /* 34: half shirts it gives when worn */\n"
-                   "    uint8_t _pad0[5];      /* 35 */\n"
+                   "    uint8_t armor_toughness; /* 35: what it adds against hard hits when worn */\n"
+                   "    uint8_t _pad0[4];      /* 36 */\n"
                    "} item_def_t;\n"
                    "static_assert(sizeof(item_def_t) == 40);\n\n"
                    "extern const item_def_t item_defs[ITEM_COUNT];\n\n"
@@ -553,7 +559,8 @@ static void gi_emit_source(tp_arena_t *arena, tp_builder_t *out, const gi_item_t
                        gi_upper(arena, GI_TIERS[item->tier]));
         tp_builder_add(out, ", .harvest_tier = BLOCK_TIER_%s, .food = %u, .armor_slot = ITEM_ARMOR_SLOT_%s",
                        GI_TIER_HARVEST[item->tier], item->food, gi_upper(arena, GI_SLOTS[item->armor_slot]));
-        tp_builder_add(out, ", .armor_points = %u},\n", item->armor_points);
+        tp_builder_add(out, ", .armor_points = %u, .armor_toughness = %u},\n", item->armor_points,
+                       item->armor_toughness);
     }
     tp_builder_add(out, "};\n");
 }

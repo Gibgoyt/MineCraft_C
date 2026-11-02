@@ -2,4 +2,4 @@ name: diamond_helmet
 texture: items/diamond_helmet
 stack: 1
 durability: 363
-armor: { slot: head, points: 3 }
+armor: { slot: head, points: 3, toughness: 2 }

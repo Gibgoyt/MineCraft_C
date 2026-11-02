@@ -29,6 +29,7 @@
 #define SURVIVAL_ARMOR_PER_POINT 0.04f32
 #define SURVIVAL_ARMOR_MIN_PART 5.0f32
 #define SURVIVAL_ARMOR_SPLIT 2.0f32
+#define SURVIVAL_ARMOR_TOUGHNESS_PART 4.0f32
 #define SURVIVAL_FALL_ON_BED 0.5f32
 
 /* How close a cactus has to be to hurt: a body it stops only touches it. */
@@ -85,12 +86,19 @@ void player_survival_day_set(player_survival_t *survival, float64_t day_fraction
     survival->day_fraction = day_fraction;
 }
 
-void player_survival_armor_set(player_survival_t *survival, float32_t points) {
+void player_survival_armor_set(player_survival_t *survival, float32_t points, float32_t toughness) {
     survival->armor_points = points;
+    survival->armor_toughness = toughness;
 }
 
-float32_t player_survival_after_armor(float32_t amount, float32_t points) {
-    const float32_t by_hit = points - amount / SURVIVAL_ARMOR_SPLIT;
+float32_t player_survival_armor_hit_take(player_survival_t *survival) {
+    const float32_t hit = survival->armor_hit;
+    survival->armor_hit = 0.0f32;
+    return hit;
+}
+
+float32_t player_survival_after_armor(float32_t amount, float32_t points, float32_t toughness) {
+    const float32_t by_hit = points - amount / (SURVIVAL_ARMOR_SPLIT + toughness / SURVIVAL_ARMOR_TOUGHNESS_PART);
     const float32_t by_points = points / SURVIVAL_ARMOR_MIN_PART;
     const float32_t counted = by_hit > by_points ? by_hit : by_points;
     const float32_t limited = counted > SURVIVAL_ARMOR_MAX ? SURVIVAL_ARMOR_MAX : counted;
@@ -141,7 +149,11 @@ float32_t player_survival_hurt(player_survival_t *survival, float32_t amount, pl
     }
     survival->last_hurt = amount;
     const survival_cause_row_t *const row = &SURVIVAL_CAUSES[cause];
-    const float32_t taken = row->armored != 0u ? player_survival_after_armor(counted, survival->armor_points) : counted;
+    float32_t taken = counted;
+    if (row->armored != 0u) {
+        taken = player_survival_after_armor(counted, survival->armor_points, survival->armor_toughness);
+        survival->armor_hit += counted;
+    }
     player_survival_exhaust(survival, row->tires);
     survival->hurt_count++;
     survival->health -= taken;

@@ -658,6 +658,8 @@ TEST(what_the_item_files_say_is_in_the_table) {
     CHECK_EQ_U64(item_defs[ITEM_ID_IRON_BOOTS].armor_points, 2u);
     CHECK_EQ_U64(item_defs[ITEM_ID_DIAMOND_CHESTPLATE].armor_slot, ITEM_ARMOR_SLOT_CHEST);
     CHECK_EQ_U64(item_defs[ITEM_ID_DIAMOND_CHESTPLATE].durability, 528u);
+    CHECK_EQ_U64(item_defs[ITEM_ID_DIAMOND_CHESTPLATE].armor_toughness, 2u);
+    CHECK_EQ_U64(item_defs[ITEM_ID_IRON_BOOTS].armor_toughness, 0u);
 }
 
 /* A whole file for an item called pebble, the line:column it must be refused at, and what the message must say. */
@@ -690,6 +692,8 @@ static const gtt_bad_case_t GTT_BAD_ITEMS[] = {
     {GTT_PEBBLE "food: 2\nsaturation: 21\n", ":4:", "saturation '21' must be 0 to 20"},
     {GTT_PEBBLE "damage: 101\n", ":3:", "damage '101' must be 0 to 100"},
     {GTT_PEBBLE "armor: { slot: head }\n", ":3:", "armor needs both slot and points"},
+    {GTT_PEBBLE "durability: 5\nstack: 1\narmor: { slot: head, points: 1, toughness: 21 }\n",
+     ":5:", "armor toughness is 21"},
     {GTT_PEBBLE "durability: 5\nstack: 1\narmor: { slot: tail, points: 1 }\n", ":5:", "unknown armor slot 'tail'"},
     {GTT_PEBBLE "durability: 5\nstack: 1\narmor: { slot: none, points: 1 }\n", ":5:", "armor must go on a slot"},
     {GTT_PEBBLE "durability: 5\nstack: 1\narmor: { slot: head, points: 21 }\n", ":5:", "armor points is 21"},

@@ -500,14 +500,50 @@ typedef struct di_taker_t {
 } di_taker_t;
 static_assert(sizeof(di_taker_t) == 8);
 
-static uint32_t di_take(void *borrowed_taker, uint16_t item, uint32_t count) {
+static uint32_t di_take(void *borrowed_taker, uint16_t item, uint16_t wear, uint32_t count) {
     (void)item;
+    (void)wear;
     di_taker_t *const taker = borrowed_taker;
     taker->offers++;
     return count < taker->wants ? count : taker->wants;
 }
 
 static const collision_box_t di_reach = {.min = {0.0f64, 0.0f64, 0.0f64}, .max = {1.0f64, 1.0f64, 2.0f64}};
+
+static uint32_t di_take_wear(void *borrowed_wear, uint16_t item, uint16_t wear, uint32_t count) {
+    (void)item;
+    *(uint16_t *)borrowed_wear = wear;
+    return count;
+}
+
+TEST(wear_lies_on_the_ground_with_a_stack_and_only_the_same_wear_merges) {
+    di_rig_t rig;
+    REQUIRE(di_begin(t, &rig));
+    item_drop_store_t *const store = di_store(&rig);
+    const uint16_t item = di_item_of(BLOCK_ID_DIRT);
+    const float64_t middle[COLLISION_AXES] = {0.5f64, 0.5f64, 1.0f64};
+    item_drop_spawn_worn(store, item, 7u, 1u, middle);
+    CHECK_EQ_U64(store->borrowed_items[0].wear, 7u);
+    store->borrowed_items[0].pickup_delay = 0u;
+    uint16_t seen = 0u;
+    CHECK_EQ_U64(item_drop_pickup(store, &di_reach, di_take_wear, &seen), 1u);
+    CHECK_EQ_U64(seen, 7u);
+    CHECK_EQ_U64(store->count, 0u);
+
+    /* Side by side: new, worn, as worn again and more worn. Only the two as worn as each other become one. */
+    const uint16_t wears[] = {0u, 7u, 7u, 9u};
+    for (uint32_t i = 0u; i < 4u; i++) {
+        item_drop_t *const drop = di_put(store, item, 1u, 0.5f64, 0.5f64, 0.5f64);
+        drop->wear = wears[i];
+    }
+    di_ticks(&rig, ITEM_DROP_MERGE_EVERY_TICKS);
+    CHECK_EQ_U64(store->count, 3u);
+    CHECK_EQ_U64(store->merged_count, 1u);
+    for (uint32_t i = 0u; i < store->count; i++) {
+        CHECK_EQ_U64(store->borrowed_items[i].count, store->borrowed_items[i].wear == 7u ? 2u : 1u);
+    }
+    di_end(&rig);
+}
 
 TEST(it_cannot_be_picked_up_until_the_tenth_tick) {
     di_rig_t rig;
@@ -571,7 +607,8 @@ TEST(what_is_not_taken_stays_on_the_ground) {
     di_end(&rig);
 }
 
-static uint32_t di_hand_take(void *borrowed_hands, uint16_t item, uint32_t count) {
+static uint32_t di_hand_take(void *borrowed_hands, uint16_t item, uint16_t wear, uint32_t count) {
+    (void)wear;
     return player_interaction_hand_take(borrowed_hands, item, count);
 }
 

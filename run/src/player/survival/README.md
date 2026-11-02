@@ -15,9 +15,9 @@
 - `player_survival_hold_food`, `player_survival_day_set`, `player_survival_armor_set`: what it is told, as it knows nothing of items or the sky.
 - `player_survival_after_armor`, `player_survival_fall_damage`, `player_survival_is_night`: the sums, for any numbers.
 - `player_survival_holds_body`, `player_survival_can_sprint`: what `run/src/player/` does to the keys.
-- `player_survival_died_take`, `player_survival_morning_take`: what `run/src/game/` acts on: what was carried spills, and the day moves on.
+- `player_survival_died_take`, `player_survival_morning_take`, `player_survival_armor_hit_take`: what `run/src/game/` acts on: what was carried spills, the day moves on, and what is worn wears.
 
-**May be called by:** `run/src/player/`, and `run/src/game/` for what it is told and what it acts on. Stage 15 calls `player_survival_hurt`, and Stage 13.3 `player_survival_armor_set`.
+**May be called by:** `run/src/player/`, and `run/src/game/` for what it is told and what it acts on. Stage 15 calls `player_survival_hurt`.
 **Depends on:** `physics`, `world/map`, `player/camera` and `player/movement` for their types, and the generated `tables/blocks`.
 
 ## The rules
@@ -40,13 +40,13 @@ Minecraft's published rules for its normal difficulty, written here from scratch
 | Drowning | 300 ticks of air with the eyes under, then 2 every 20 ticks. Back at 4 air a tick |
 | Smothering | 1 a hit, with the eyes in a full cube that stops light |
 | One hit at a time | For 10 ticks after a hit, only what is more than that hit counts, and only by the difference. So lava is 4 every 10 ticks |
-| Armor | Helps against lava, cactus and outside hits: `hit * (1 - min(20, max(points / 5, points - hit / 2)) / 25)` |
+| Armor | Helps against lava, cactus and outside hits: `hit * (1 - min(20, max(points / 5, points - hit / (2 + toughness / 4))) / 25)`. `run/src/game/` tells it what is worn each tick, and each piece loses uses for every such hit |
 
 Falling out of the world cannot hurt, as `physics/collision` makes below the world bedrock.
 
 ## Death and coming back
 
-At 0 health the body is dead. It keeps falling, and nothing it is told moves it. `run/src/game/` spills what it carried, once, where it lies, and it picks nothing up. After 20 ticks a press of either mouse button or jump, not one already held, brings it back with everything full.
+At 0 health the body is dead. It keeps falling, and nothing it is told moves it. `run/src/game/` spills what it carried and wore, once, where it lies, each tool as worn as it was, and it picks nothing up. After 20 ticks a press of either mouse button or jump, not one already held, brings it back with everything full.
 
 **Where.** The last bed it used, or otherwise where the world started it. The ground there may not be loaded, so it holds still until it is. Then a bed that has gone counts for nothing, and it goes to the world's place. It stands beside a bed if it can and on it if not, and at the world's place it goes up as far as it takes to fit.
 

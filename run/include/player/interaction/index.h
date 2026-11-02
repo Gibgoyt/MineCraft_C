@@ -55,7 +55,8 @@ typedef struct player_interaction_t {
     uint8_t mining;                                /* 1109: cell and mining_block mean something */
     uint8_t mine_delay;                            /* 1110: ticks until it may mine again */
     uint8_t place_delay;                           /* 1111: ticks until it may place again */
-    uint8_t _pad0[40];                             /* 1112 */
+    uint32_t held_speed_milli;                     /* 1112: on its own blocks, if not 0, over what its tier says */
+    uint8_t _pad0[36];                             /* 1116 */
 } player_interaction_t;
 static_assert(sizeof(player_interaction_t) == 1152);
 static_assert(alignof(player_interaction_t) == 8);
@@ -87,6 +88,10 @@ float32_t player_interaction_progress(const player_interaction_t *interaction);
 
 /* From now on it mines with this. Stage 13.3's tools come in here: until then a hand is BLOCK_TOOL_NONE and BLOCK_TIER_NONE. */
 void player_interaction_hold_tool(player_interaction_t *interaction, uint8_t tool, uint8_t tier);
+
+/* What the tool held mines its own blocks at, in thousandths, whatever its tier says: gold, which breaks what wood breaks, far faster. 0
+ * goes by its tier. Nothing else changes: not what it harvests, nor what a sword or shears do. */
+void player_interaction_hold_speed(player_interaction_t *interaction, uint32_t speed_milli);
 
 /* One tick, on the thread holding the map: the left button mines the target, or if it is not held the right button places what is
  * in the hand against it. The target may be a tick old, and a block that has changed since is not touched. Never waits and never
