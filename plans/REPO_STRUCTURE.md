@@ -206,6 +206,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `status` | `gpu_status_t`, `gpu_error_t`, and reporting a failure | 08.1 |
 | | `device_memory` | The C API of the device allocator. Its `run/src/` directory holds only a README: `cuda/src/device_memory/` implements it | 08.1 |
 | | `world_buffers` | The C API of the section pool and column table, and the form of a section on the card. Its `run/src/` directory holds only a README: `cuda/src/world_buffers/` implements it | 08.2 |
+| | `traverse` | The C API of ray traversal: the tree's format, cameras and hits. Its `run/src/` directory holds only a README: `cuda/src/traverse/` implements it | 08.3 |
 | `render` | (the Owner) | `render_init`, `render_deinit`: the host region; `render_open`, `render_close`: the pool and table on the card, for one world | 08.2 |
 | | `encode upload` | Encode sections on workers; budgeted upload queue | 08.2 |
 | | `frame` | Frame sequence: submit, readback, HUD, present | 08.4 |
@@ -394,6 +395,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/render/encode/` | ctest `run_render_encode`: one voxel's bytes worked out on paper, every shape of section against brute force, and real workers. No card |
 | `tests/run/render/upload/` | ctest `run_render_upload`, covering `run/src/render/` with `upload`, and `cuda/src/world_buffers/`, on the real card: a real kernel's answers against the world voxel for voxel, the slab pool against a model, the budget, and a real sim thread |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
+| `tests/cuda/traverse/` | ctest `cuda_traverse`: known hits, random rays and whole frames against an exact CPU reference in `float64_t`, the coarse pass never overestimating, and Stage 01.3's worlds. Timing on request |
 | `tests/asm/` | NASM kernels against scalar C references |
 | `tests/asm/abi/` | ctest `asm_abi`: every kernel keeps the callee-saved registers and leaves no dirty YMM state, by machine state, not by output |
 | `tests/fuzz/`, `tests/soak/` | Fuzzing and long runs (Stage 18.1) |
