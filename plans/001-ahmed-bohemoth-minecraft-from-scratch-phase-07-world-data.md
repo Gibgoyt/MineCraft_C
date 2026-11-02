@@ -51,6 +51,7 @@ Appended as they land:
 - `e32ebcb` Stage 07.1.
 - `0ab4b2c` Stage 07.2.
 - `2e2074a` Stage 07.3.
+- `7cea60d` Check the Phase 7 gate: make north plus y as the plan's axes say, name borrowed pointers as the standard asks, test flags that overrule a shape and block textures against the blob, and stop a deleted texture staying in the blob.
 
 ## Issues found
 
