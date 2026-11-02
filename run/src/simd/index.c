@@ -5,7 +5,9 @@
 #include "simd/bitmask/index.h"
 #include "simd/blend/index.h"
 #include "simd/copy/index.h"
+#include "simd/noise/index.h"
 #include "simd/reference/index.h"
+#include "simd/vec_batch/index.h"
 
 #include <string.h>
 
@@ -22,6 +24,12 @@ enum : uint64_t {
     SIMD_CHECK_RANDOM_SEED = 0x9E3779B97F4A7C15ull,
     SIMD_CHECK_MISALIGNMENTS = 8u,
     SIMD_CHECK_SHORT_BY = 3u, /* leaves an odd remainder, so that each kernel's tail runs too */
+    SIMD_CHECK_FLOATS = SIMD_CHECK_BYTES / sizeof(float32_t),
+    SIMD_CHECK_NOISE_POINTS = SIMD_CHECK_FLOATS / 3u,
+    SIMD_CHECK_VEC3S = SIMD_CHECK_BYTES / sizeof(vec3_t),
+    SIMD_CHECK_VEC4S = SIMD_CHECK_BYTES / sizeof(vec4_t),
+    SIMD_CHECK_MAT4_FLOATS = 16u,
+    SIMD_CHECK_NOISE_SEED = 0x51D7A3C9u,
 };
 
 /* What the checks run on: two inputs, and two outputs to compare. */
@@ -156,6 +164,64 @@ static bool simd_check_bitmask(const simd_check_t *check) {
     return simd_check_same(check, "bitmask_from_equal_u16_batch");
 }
 
+/* Finite values with a fraction, on both sides of zero: what the arithmetic kernels are for. Random bytes would mostly be
+ * huge, and sometimes not numbers at all. */
+static void simd_check_fill_floats(const simd_check_t *check) {
+    float32_t *values = (float32_t *)(void *)check->borrowed_a;
+    uint64_t state = SIMD_CHECK_RANDOM_SEED;
+    for (uint64_t i = 0; i < SIMD_CHECK_FLOATS; i++) {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        values[i] = (float32_t)(int32_t)(state >> 44) * 0.001f32 - 500.0f32;
+    }
+}
+
+static bool simd_check_noise(const simd_check_t *check) {
+    simd_check_fill_floats(check);
+    const float32_t *xs = (const float32_t *)(const void *)check->borrowed_a;
+    const float32_t *ys = xs + SIMD_CHECK_NOISE_POINTS;
+    const float32_t *zs = ys + SIMD_CHECK_NOISE_POINTS;
+    const uint64_t count = SIMD_CHECK_NOISE_POINTS - SIMD_CHECK_SHORT_BY;
+    simd_check_reset_outputs(check);
+    noise3_batch8((float32_t *)(void *)check->borrowed_got, xs, ys, zs, count, SIMD_CHECK_NOISE_SEED);
+    simd_reference_noise3((float32_t *)(void *)check->borrowed_want, xs, ys, zs, count, SIMD_CHECK_NOISE_SEED);
+    return simd_check_same(check, "noise3_batch8");
+}
+
+static bool simd_check_vec_batch(const simd_check_t *check) {
+    simd_check_fill_floats(check);
+    mat4_t m;
+    for (uint32_t i = 0; i < SIMD_CHECK_MAT4_FLOATS; i++) {
+        m.m[i] = ((float32_t)i - 7.5f32) * 0.25f32; /* no zero and no two alike, so a mixed-up element shows */
+    }
+    const vec3_t *in3 = (const vec3_t *)(const void *)check->borrowed_a;
+    const vec4_t *in4 = (const vec4_t *)(const void *)check->borrowed_a;
+    vec3_t *got3 = (vec3_t *)(void *)check->borrowed_got;
+    vec3_t *want3 = (vec3_t *)(void *)check->borrowed_want;
+    vec4_t *got4 = (vec4_t *)(void *)check->borrowed_got;
+    vec4_t *want4 = (vec4_t *)(void *)check->borrowed_want;
+    const uint64_t count3 = SIMD_CHECK_VEC3S - SIMD_CHECK_SHORT_BY;
+    const uint64_t count4 = SIMD_CHECK_VEC4S - SIMD_CHECK_SHORT_BY;
+
+    simd_check_reset_outputs(check);
+    vec_batch_transform_points(got3, in3, count3, &m);
+    simd_reference_vec_batch_transform_points(want3, in3, count3, &m);
+    if (!simd_check_same(check, "vec_batch_transform_points")) {
+        return false;
+    }
+    simd_check_reset_outputs(check);
+    vec_batch_transform_directions(got3, in3, count3, &m);
+    simd_reference_vec_batch_transform_directions(want3, in3, count3, &m);
+    if (!simd_check_same(check, "vec_batch_transform_directions")) {
+        return false;
+    }
+    simd_check_reset_outputs(check);
+    vec_batch_mul_vec4(got4, in4, count4, &m);
+    simd_reference_vec_batch_mul_vec4(want4, in4, count4, &m);
+    return simd_check_same(check, "vec_batch_mul_vec4");
+}
+
 bool simd_self_check(simd_t *simd) {
     arena_reset(&simd->arena_scratch);
     const simd_check_t check = {
@@ -170,7 +236,7 @@ bool simd_self_check(simd_t *simd) {
     const bool ok = simd_check_copy(&check) &&
                     simd_check_blend(&check, blend_over_batch, simd_reference_blend_over, "blend_over_batch") &&
                     simd_check_blend(&check, blend_premul_batch, simd_reference_blend_premul, "blend_premul_batch") &&
-                    simd_check_bitmask(&check);
+                    simd_check_bitmask(&check) && simd_check_noise(&check) && simd_check_vec_batch(&check);
     arena_reset(&simd->arena_scratch);
     return ok;
 }

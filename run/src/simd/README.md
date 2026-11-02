@@ -16,4 +16,4 @@ takes pointers from its caller and needs no memory of its own. Only the pages th
 The kernels' own prototypes are in `run/include/simd/<name>/index.h`, one directory per file in `asm/src/`.
 
 **May be called by:** `run/src/main/`, and any system for the kernel headers.
-**Depends on:** `heap`, `arena`, `log`, `simd/reference`, `asm/src/{copy,blend,bitmask}`.
+**Depends on:** `heap`, `arena`, `log`, `simd/reference`, `math/mat4`, `asm/src/{copy,blend,bitmask,noise,vec_batch}`.

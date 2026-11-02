@@ -146,7 +146,7 @@ Layout: `compile/src/<tool>/index.c`, `compile/include/<tool>/index.h`, `README.
 | `yaml` | Our own YAML-subset parser, with line-numbered errors | 02.2 |
 | `machine_config` | `machine.yaml` → `.h .hu .inc .cmake` | 02.3 |
 | `standards_lint` | Fails the build on any coding-standard breach. Parts: `support catalog lexer graph rules_c rules_include rules_asm rules_cmake rules_tree` | 02.4 |
-| `struct_offsets` | Emits `.inc` offsets from C structs, for NASM | 04.3 |
+| `struct_offsets` | Emits `.inc` offsets from C structs, for NASM, and the same numbers as `static_assert`s for C. `cmake/targets.cmake` lists the headers it reads | 04.3 |
 | `inflate` | Our own DEFLATE decoder | 06.1 |
 | `png` | Our own bounds-checked PNG decoder (packs are untrusted) | 06.1 |
 | `texture_pack` | Open pack in `/tmp/mc_c_assets/` → `textures/` | 06.2 |
@@ -382,7 +382,7 @@ tools/test-or-build.sh cmake --build --preset debug
 | `cmake/machine.cmake` | Builds the machine tool at configure time; loads generated values |
 | `cmake/flags.cmake` | Flags per language and preset |
 | `cmake/generated.cmake` | Custom commands for tables and textures |
-| `cmake/targets.cmake` | `mc_asm`, `mc_cuda`, `mc_run`, `minecraft_c`, tools, tests; all found by path |
+| `cmake/targets.cmake` | `mc_asm`, `mc_cuda`, `mc_run`, `minecraft_c`, tools, tests, benchmarks; all found by path. Also runs `struct_offsets`, which `mc_asm` waits for |
 | `cmake/check_link.cmake` | Fails the build if `minecraft_c` needs a library the standard does not allow, or has an executable stack |
 | `cmake/standards_lint.cmake` | Runs the lint before anything else compiles, runs the recursion check on every preset, and registers ctests `standards_lint` and `clang_format` |
 | `cmake/check_format.cmake` | Run by ctest `clang_format`: fails if any C or CUDA file does not match `.clang-format` |
@@ -393,8 +393,8 @@ tools/test-or-build.sh cmake --build --preset debug
 the root `CMakeLists.txt`.
 
 Presets: `debug`, `sanitize`, `release`, `profile`. Output goes to `build/<preset>/`, with the program at
-`build/<preset>/bin/minecraft_c`, tools at `bin/tools/<name>`, tests at `bin/tests/<name>`, and generated files under
-`build/<preset>/generated/`.
+`build/<preset>/bin/minecraft_c`, tools at `bin/tools/<name>`, tests at `bin/tests/<name>`, benchmarks at
+`bin/bench_<name>`, and generated files under `build/<preset>/generated/`.
 
 **Discovery.** There is no source list to edit. A glob with `CONFIGURE_DEPENDS` finds new directories at build time:
 
@@ -406,6 +406,7 @@ Presets: `debug`, `sanitize`, `release`, `profile`. Output goes to `build/<prese
 | `compile/src/**/index.c` with `int32_t main(` at line start | Tool target `mc_tool_<path>` |
 | `compile/src/**/index.c` without one | Object library `mc_compile_lib`, linked into every tool and `tests/compile/` test |
 | `tests/harness/index.c` | Linked into every test. Include root `tests/`: `#include "harness/index.h"` |
+| `bench/**/index.c` | Target `mc_bench_<name>` and program `bin/bench_<name>`, the path with `/` as `_`, linked like a game test. Not a ctest |
 | `tests/**/index.c` | Target `mc_test_<name>` and ctest `<name>`, the path with `/` as `_`: `tests/run/world/section/` is `run_world_section` |
 
 Under `tests/`, nothing in `harness/`, `fuzz/`, `soak/` or any `fixtures/` directory is registered as a test.
