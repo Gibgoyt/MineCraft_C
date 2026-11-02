@@ -86,6 +86,8 @@ Appended as they land:
 
 - `0775443` Add the KMS display backend with raw-ioctl card, mode and flip parts behind a replaceable kernel layer, a refusal before the card is opened under a display server, and --test-pattern.
 - `dd1bba2` Record the Stage 05.1 results and issues, and make the display test catch an event length shorter than its header.
+- `dc41280` Merge the earlier Stage 05.1 work, keeping simd, math and display in app_t and in the startup and shutdown order.
+- `d223e29` Stop the display test crashing when run without its argument, and record Stage 05.1's results on the merged tree.
 
 ## Issues found
 
