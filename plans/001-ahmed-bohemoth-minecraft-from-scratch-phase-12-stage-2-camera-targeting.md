@@ -45,6 +45,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `68cb32b`: mouse look, DDA targeting, the outline, and the test.
+
 ## Wiring outside the owned paths
 
 The smallest needed to call this stage's modules, as the task allows:
