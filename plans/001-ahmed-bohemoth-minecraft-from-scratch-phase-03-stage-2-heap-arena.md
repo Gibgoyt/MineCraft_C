@@ -38,6 +38,7 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 Appended as they land:
 
 - `282acbe` Add the heap with its 2 MiB aligned regions, budget and live counters, the bump arenas, their tests, and a leak check at exit.
+- `a11e658` Start the core runtime from main so the heap check at exit means something, refuse an unsupported CPU before any -march code runs, and fill the test gaps and standard breaches the Phase 03 gate check found.
 
 ## Wiring outside the owned paths
 
@@ -78,3 +79,7 @@ Appended as they land:
 6. **Known limits, by decision:** arenas have no red zones under ASan, so running from one block straight into the next is
    not caught, because red zones would give the sanitize preset different limits from the build that ships. A stale
    `heap_region_t` copy goes undetected if something else has been mapped at its address since.
+7. **Found by the Phase 03 gate check.** Expected: the "leak planted before `main`" run above to be held in place. Actual: it
+   was a one-time run. The program reserved nothing, so no test could see `main` stop calling `heap_exit_check`. Fixed:
+   `game_exits_with_its_own_status_on_a_leak` in `run_types` now fails on exactly that change. `log_capture_t._pad0` in
+   `tests/run/heap/index.c` is now a byte array, per the standard's section 3. See the phase file's issues 1 and 4.

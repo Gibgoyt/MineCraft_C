@@ -55,6 +55,7 @@ Appended as they land:
 
 - `dbab144` Add pinned threads placed physical cores first, single-producer rings, the monotonic clock and crash-safe file wrappers, with their tests.
 - `0f38597` Make the file tests catch an in-place write and fail rather than hang, and record Stage 03.3 as done.
+- `a11e658` Start the core runtime from main so the heap check at exit means something, refuse an unsupported CPU before any -march code runs, and fill the test gaps and standard breaches the Phase 03 gate check found.
 
 ## Issues found
 
@@ -76,6 +77,15 @@ Appended as they land:
    - Actual: `FILE_ERROR_EXISTS`, from `tests/run/file/index.c:301`. The first component in the way is the file, and that
      status is the documented one for it.
    - Done: changed the test, and made the status's comment in the header say this.
+
+4. **Found by the Phase 03 gate check: the real read's placement order was not tested.**
+   - Expected: `this_machine_is_read_correctly` to catch `thread_topology_read` ignoring `threads.pin_physical_first`.
+   - Actual: with `MC_THREADS_PIN_PHYSICAL_FIRST != 0` replaced by `false`, `run_thread` passed 100%. This machine numbers its
+     cores 0 to 9 and their siblings 10 to 19 (`cpu0/topology/thread_siblings_list` is `0,10`), so rising order already is
+     physical first. Only the made-up `/sys` tests saw the difference, and they call `thread_topology_read_from` with the
+     flag passed in.
+   - Done: fixed. `the_real_read_applies_pin_physical_first_from_machine_yaml` narrows the affinity to both CPUs of a core and
+     one CPU of a higher core, where the two orders differ, and restores it. The same mutant now fails it.
 
 The ring's ordering check was also tried: publishing `tail` before copying the element fails both two-thread stress
 tests.
