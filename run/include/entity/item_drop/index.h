@@ -78,7 +78,7 @@ typedef uint32_t item_drop_take_t(void *borrowed_context, uint16_t item, uint32_
 void item_drop_store_start(item_drop_store_t *store, arena_t *arena, uint64_t seed);
 
 /* An item's box, at a place. */
-collision_box_t item_drop_box(const float64_t position[COLLISION_AXES]);
+void item_drop_box(const float64_t position[COLLISION_AXES], collision_box_t *out);
 
 /* Count items thrown out of a broken block, around this place, in stacks of at most ITEM_DROP_STACK_MAX. If the store is full, the
  * oldest stack goes to make room for each new one. */

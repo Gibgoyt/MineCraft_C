@@ -41,7 +41,7 @@ typedef struct sim_t {
     world_edit_t edit;
     world_light_t light;
     world_tick_t tick;
-    uint8_t _pad0[32];
+    uint8_t _pad0[8];
 } sim_t;
 static_assert(sizeof(sim_t) == 1408);
 

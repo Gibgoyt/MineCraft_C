@@ -11,6 +11,7 @@
 #include "tables/blocks/index.h"
 #include "terrain/rng/index.h"
 #include "time/index.h"
+#include "world/index.h"
 
 #include <dirent.h>
 #include <inttypes.h>
@@ -130,7 +131,8 @@ TEST(thrown_out_of_a_block_it_goes_up_stays_in_its_cell_and_waits_to_be_picked_u
     for (uint32_t i = 0u; i < 1000u; i++) {
         item_drop_spawn(store, di_item_of(BLOCK_ID_DIRT), 1u, middle);
         const item_drop_t *const drop = &store->borrowed_items[i];
-        const collision_box_t box = item_drop_box(drop->position);
+        collision_box_t box;
+        item_drop_box(drop->position, &box);
         CHECK(box.min[0] >= 3.0f64 && box.max[0] <= 4.0f64);
         CHECK(box.min[1] >= -5.0f64 && box.max[1] <= -4.0f64);
         CHECK(box.min[2] >= 7.0f64 && box.max[2] <= 8.0f64);
@@ -232,7 +234,8 @@ TEST(when_what_it_lies_on_goes_it_falls_and_when_a_block_comes_down_on_it_it_lea
     item_drop_t *const edge = di_put(store, di_item_of(BLOCK_ID_COAL_ORE), 1u, 4.95f64, 4.95f64, 0.125f64);
     test_world_fill(t, &rig.world, 5, 5, 0, 5, 5, 0, BLOCK_ID_DIRT);
     di_ticks(&rig, 6u);
-    const collision_box_t edge_box = item_drop_box(edge->position);
+    collision_box_t edge_box;
+    item_drop_box(edge->position, &edge_box);
     CHECK(physics_box_is_clear(rig.world.physics, rig.world.map, &edge_box));
     CHECK_NEAR(edge->position[0], 4.875f64, 1.0e-3f64);
     CHECK_NEAR(edge->position[1], 4.875f64, 1.0e-3f64);
@@ -244,7 +247,8 @@ TEST(when_what_it_lies_on_goes_it_falls_and_when_a_block_comes_down_on_it_it_lea
     /* A block in its place: dirt is put in the hole, and it is out of it and on top within a few ticks, by whichever face. */
     test_world_fill(t, &rig.world, 0, 0, -1, 0, 0, -1, BLOCK_ID_DIRT);
     di_ticks(&rig, 40u);
-    const collision_box_t box = item_drop_box(drop->position);
+    collision_box_t box;
+    item_drop_box(drop->position, &box);
     CHECK(physics_box_is_clear(rig.world.physics, rig.world.map, &box));
     CHECK(drop->position[2] >= 0.125f64 - 1.0e-6f64);
     CHECK_EQ_U64(store->count, 1u);
@@ -254,7 +258,8 @@ TEST(when_what_it_lies_on_goes_it_falls_and_when_a_block_comes_down_on_it_it_lea
     test_world_fill(t, &rig.world, 5, 5, 0, 7, 7, 8, BLOCK_ID_DIRT);
     di_ticks(&rig, 200u);
     CHECK(buried->position[2] >= 9.0f64);
-    const collision_box_t free_box = item_drop_box(buried->position);
+    collision_box_t free_box;
+    item_drop_box(buried->position, &free_box);
     CHECK(physics_box_is_clear(rig.world.physics, rig.world.map, &free_box));
     di_end(&rig);
 }
@@ -740,6 +745,81 @@ TEST(a_store_full_of_moving_stacks_fits_in_a_tick) {
     di_end(&rig);
 }
 
+/* ---- What went by itself ----------------------------------------------------------------------------------------------- */
+
+static void di_tick_steps(di_rig_t *rig, uint32_t ticks) {
+    for (uint32_t i = 0u; i < ticks; i++) {
+        world_tick_step(&rig->world.world->tick);
+    }
+}
+
+TEST(the_tick_says_what_water_washed_away_and_what_sand_buried_and_lava_gives_nothing) {
+    di_rig_t rig;
+    REQUIRE(di_begin(t, &rig));
+    test_world_fill(t, &rig.world, -16, -16, -1, 32, 32, -1, BLOCK_ID_STONE);
+    world_tick_t *const tick = &rig.world.world->tick;
+    world_edit_t *const edit = &rig.world.world->edit;
+    world_tick_broken_t broken;
+    CHECK(!world_tick_broken_next(tick, &broken));
+
+    /* Water beside a flower. Air has no drops, so the rest of its spread says nothing. */
+    REQUIRE(world_edit_block_set(edit, 1, 0, 0, BLOCK_ID_DANDELION) == WORLD_EDIT_STATUS_CHANGED);
+    REQUIRE(world_edit_block_set(edit, 0, 0, 0, BLOCK_ID_WATER) == WORLD_EDIT_STATUS_CHANGED);
+    di_tick_steps(&rig, 12u);
+    REQUIRE(world_tick_broken_next(tick, &broken));
+    CHECK_EQ_I64(broken.x, 1);
+    CHECK_EQ_I64(broken.y, 0);
+    CHECK_EQ_I64(broken.z, 0);
+    CHECK_EQ_U64(broken.block, BLOCK_ID_DANDELION);
+    CHECK(!world_tick_broken_next(tick, &broken));
+
+    /* Sand onto a flower far from the water, and lava beside another. */
+    REQUIRE(world_edit_block_set(edit, -10, -10, 0, BLOCK_ID_DANDELION) == WORLD_EDIT_STATUS_CHANGED);
+    REQUIRE(world_edit_block_set(edit, -10, -10, 1, BLOCK_ID_SAND) == WORLD_EDIT_STATUS_CHANGED);
+    di_tick_steps(&rig, 6u);
+    REQUIRE(world_tick_broken_next(tick, &broken));
+    CHECK_EQ_I64(broken.x, -10);
+    CHECK_EQ_I64(broken.z, 0);
+    CHECK_EQ_U64(broken.block, BLOCK_ID_DANDELION);
+    REQUIRE(world_edit_block_set(edit, 12, 12, 0, BLOCK_ID_DANDELION) == WORLD_EDIT_STATUS_CHANGED);
+    REQUIRE(world_edit_block_set(edit, 11, 12, 0, BLOCK_ID_LAVA) == WORLD_EDIT_STATUS_CHANGED);
+    di_tick_steps(&rig, 40u);
+    uint16_t burnt = BLOCK_ID_AIR;
+    REQUIRE(world_map_block_get(rig.world.map, 12, 12, 0, &burnt) == WORLD_MAP_STATUS_OK);
+    CHECK_EQ_U64(burnt, BLOCK_ID_LAVA);
+    CHECK(!world_tick_broken_next(tick, &broken));
+    CHECK_EQ_U64(tick->broken_lost_count, 0u);
+    di_end(&rig);
+}
+
+TEST(a_full_ring_of_what_went_by_itself_loses_the_oldest_and_counts_them) {
+    di_rig_t rig;
+    REQUIRE(di_begin(t, &rig));
+    test_world_fill(t, &rig.world, -16, -16, -1, 32, 32, -1, BLOCK_ID_STONE);
+    world_tick_t *const tick = &rig.world.world->tick;
+    world_edit_t *const edit = &rig.world.world->edit;
+    /* A row of sand over a row of flowers, more than the ring holds, all falling in one tick. */
+    const uint32_t extra = 3u;
+    uint32_t placed = 0u;
+    for (int32_t y = -16; y < 16 && placed < WORLD_TICK_BROKEN + extra; y++) {
+        for (int32_t x = -16; x < 16 && placed < WORLD_TICK_BROKEN + extra; x++) {
+            REQUIRE(world_edit_block_set(edit, x, y, 0, BLOCK_ID_DANDELION) == WORLD_EDIT_STATUS_CHANGED);
+            REQUIRE(world_edit_block_set(edit, x, y, 1, BLOCK_ID_SAND) == WORLD_EDIT_STATUS_CHANGED);
+            placed++;
+        }
+    }
+    di_tick_steps(&rig, 6u);
+    CHECK_EQ_U64(tick->broken_lost_count, extra);
+    uint32_t left = 0u;
+    world_tick_broken_t broken;
+    while (world_tick_broken_next(tick, &broken)) {
+        CHECK_EQ_U64(broken.block, BLOCK_ID_DANDELION);
+        left++;
+    }
+    CHECK_EQ_U64(left, WORLD_TICK_BROKEN);
+    di_end(&rig);
+}
+
 /* ---- Through a real body, in the order game_sim_tick has it ----------------------------------------------------------- */
 
 typedef struct di_body_t {
@@ -764,7 +844,8 @@ static void di_body_tick(di_body_t *body, int8_t forward, float32_t pitch, bool 
         item_drop_spawn(store, drop.item, drop.count, drop.position);
     }
     entity_tick(body->rig.entity, body->rig.world.map);
-    const collision_box_t reach = player_pickup_reach(player);
+    collision_box_t reach;
+    player_pickup_reach(player, &reach);
     (void)item_drop_pickup(store, &reach, di_hand_take, &player->interaction);
     player_tick(player, body->rig.world.map, body->now_ns);
 }

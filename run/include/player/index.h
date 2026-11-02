@@ -92,7 +92,7 @@ void player_hands_send(player_t *player, bool attack, bool place);
 void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns);
 
 /* What an item's box has to overlap to be picked up, with the body where it now is. The thread its ticks are on. */
-collision_box_t player_pickup_reach(const player_t *player);
+void player_pickup_reach(const player_t *player, collision_box_t *out);
 
 /* One tick. The sim, or whichever one thread holds the map, with tick_ns the time this tick was due. Never waits and never
  * touches the heap. */

@@ -126,18 +126,17 @@ void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns)
     player_interaction_tick(&player->interaction, edit, &input);
 }
 
-collision_box_t player_pickup_reach(const player_t *player) {
+void player_pickup_reach(const player_t *player, collision_box_t *out) {
     const player_movement_t *const movement = &player->movement;
     const float64_t height =
         movement->crouched != 0u ? PLAYER_MOVEMENT_HEIGHT_CROUCHED : PLAYER_MOVEMENT_HEIGHT_STANDING;
-    collision_box_t reach = player_movement_box(movement->position, height);
-    reach.min[COLLISION_AXIS_X] -= PLAYER_PICKUP_REACH_ACROSS;
-    reach.min[COLLISION_AXIS_Y] -= PLAYER_PICKUP_REACH_ACROSS;
-    reach.min[COLLISION_AXIS_Z] -= PLAYER_PICKUP_REACH_UP;
-    reach.max[COLLISION_AXIS_X] += PLAYER_PICKUP_REACH_ACROSS;
-    reach.max[COLLISION_AXIS_Y] += PLAYER_PICKUP_REACH_ACROSS;
-    reach.max[COLLISION_AXIS_Z] += PLAYER_PICKUP_REACH_UP;
-    return reach;
+    player_movement_box(movement->position, height, out);
+    out->min[COLLISION_AXIS_X] -= PLAYER_PICKUP_REACH_ACROSS;
+    out->min[COLLISION_AXIS_Y] -= PLAYER_PICKUP_REACH_ACROSS;
+    out->min[COLLISION_AXIS_Z] -= PLAYER_PICKUP_REACH_UP;
+    out->max[COLLISION_AXIS_X] += PLAYER_PICKUP_REACH_ACROSS;
+    out->max[COLLISION_AXIS_Y] += PLAYER_PICKUP_REACH_ACROSS;
+    out->max[COLLISION_AXIS_Z] += PLAYER_PICKUP_REACH_UP;
 }
 
 void player_tick(player_t *player, const world_map_t *map, int64_t tick_ns) {

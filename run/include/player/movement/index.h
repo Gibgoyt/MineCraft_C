@@ -59,7 +59,7 @@ static_assert(sizeof(player_movement_t) == 112);
 void player_movement_start(player_movement_t *movement, float64_t x, float64_t y, float64_t z);
 
 /* The box of a body at this place, this tall. */
-collision_box_t player_movement_box(const float64_t position[3], float64_t height);
+void player_movement_box(const float64_t position[3], float64_t height, collision_box_t *out);
 
 /* One tick, at 20 Hz. Uses physics's arena, and the map's columns, so it runs on the thread holding the map. While the column
  * its feet are in is not loaded it stays exactly where it is. */
