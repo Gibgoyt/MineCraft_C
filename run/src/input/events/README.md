@@ -24,7 +24,7 @@
 - A press and release between two polls shows in `pressed` and `released`, and not in `down`.
 - Auto-repeat (`value == 2`) goes in `repeated` and changes nothing else. Pressing what is held, and releasing what is not, do
   nothing, so no sequence of events can unbalance the holder counts.
-- `SYN_DROPPED`: everything up to the next `SYN_REPORT` is thrown away, and key state comes from `EVIOCGKEY`, both at the drop and
-  at the report. Mouse movement lost in a drop stays lost.
+- `SYN_DROPPED`: everything up to the next `SYN_REPORT` is thrown away, and key state comes from `EVIOCGKEY`, asked once the read
+  holding the drop or the report has been taken, because its answer is newer than anything already read. Mouse movement lost in a drop stays lost.
 - Movement is raw counts, with no acceleration and no scaling. That is for whoever reads the frame to decide.
 - Absolute axes are ignored, so a touchpad does not work: `input/discovery` does not even keep one open.

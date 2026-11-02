@@ -364,7 +364,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/thread/` | ctest `run_thread`, covering `run/src/thread/` and `run/src/thread/ring/` together |
 | `tests/run/math/` | ctest `run_math_owner` for `run/src/math/` itself, named in its `test.cmake`, and `run_math_<part>` for each part |
 | `tests/run/display/mode/` | ctest `run_display_mode`, covering `run/src/display/` with `device`, `mode` and `flip`, on `fixtures/fake_card.h`, a fake kernel behind `display_ops_t` |
-| `tests/run/input/` | ctest `run_input`, covering `run/src/input/` with `ops`, `discovery` and `events`, on replay data and the fake kernel in `fixtures/`, never on a real device |
+| `tests/run/input/` | ctest `run_input`, covering `run/src/input/` with `ops`, `discovery` and `events`, on replay data, this machine's capability bitmaps copied from `/proc/bus/input/devices` and the fake kernel in `fixtures/`, never on a real device |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
 | `tests/asm/` | NASM kernels against scalar C references |
 | `tests/fuzz/`, `tests/soak/` | Fuzzing and long runs (Stage 18.1) |

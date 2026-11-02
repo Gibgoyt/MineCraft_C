@@ -17,5 +17,8 @@ own fake directory. The real ops are only given a `mkdtemp` directory with regul
 either the real one, which answers `ENOTTY` on a regular file, or a stand-in. The real program only ever gets `/dev/null` for
 stdin (the harness does that), which `display_device_check_console` refuses before `input_init` would run.
 
-What this cannot show is what real devices send and answer. The replay data is written by hand from the kernel's event-code
-documentation, not captured, because capturing means reading a device. Ahmed's run on a text console is what covers that.
+`fixtures/real_devices.h` holds the capability bitmaps of this machine's real devices, copied from `/proc/bus/input/devices`, a
+text file anyone can read, so classifying is tested on what real hardware says. No device was opened for it.
+
+What this cannot show is what real devices send, and how a real ioctl answers. The replay data is written by hand, not captured,
+because capturing means reading a device. Ahmed's run on a text console is what covers that.

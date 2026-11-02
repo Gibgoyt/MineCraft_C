@@ -36,10 +36,11 @@ static_assert(sizeof(input_frame_t) == 416);
 
 /* One open device's event stream. */
 typedef struct input_stream_t {
-    input_keys_t keys;  /* what this device holds down, so that it can be let go if the device vanishes */
-    int32_t fd;         /* borrowed from input/discovery, which opened it */
-    uint8_t discarding; /* after SYN_DROPPED: everything up to the next SYN_REPORT is unreliable */
-    uint8_t _pad0[3];
+    input_keys_t keys;   /* what this device holds down, so that it can be let go if the device vanishes */
+    int32_t fd;          /* borrowed from input/discovery, which opened it */
+    uint8_t discarding;  /* after SYN_DROPPED: everything up to the next SYN_REPORT is unreliable */
+    uint8_t resync_owed; /* ask the kernel what is held, once this read's events have been taken */
+    uint8_t _pad0[2];
 } input_stream_t;
 static_assert(sizeof(input_stream_t) == 104);
 

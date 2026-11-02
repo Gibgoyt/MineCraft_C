@@ -14,6 +14,12 @@
 #define REPLAY_SCAN(scan) REPLAY_EVENT(EV_MSC, MSC_SCAN, (scan))
 #define REPLAY_COUNT(events) ((uint32_t)(sizeof(events) / sizeof((events)[0])))
 
+/* A drop, with W pressed and let go behind it, all read at once. Whatever EVIOCGKEY says next is newer than all of these. */
+static const struct input_event replay_drop_then_stale_release[] = {
+    REPLAY_EVENT(EV_SYN, SYN_DROPPED, 0), REPLAY_SYN, REPLAY_EVENT(EV_KEY, KEY_W, 1), REPLAY_SYN,
+    REPLAY_EVENT(EV_KEY, KEY_W, 0),       REPLAY_SYN,
+};
+
 /* W pressed, held long enough to repeat twice. */
 static const struct input_event replay_w_held[] = {
     REPLAY_SCAN(0x70000 + 0x1a),

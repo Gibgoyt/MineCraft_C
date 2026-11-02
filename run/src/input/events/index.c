@@ -143,15 +143,17 @@ static void events_resync(input_events_t *events, input_stream_t *stream) {
     }
 }
 
+/* The kernel's answer is newer than every event already read, so asking waits until those are taken. Asked earlier, a stale
+ * release still in the batch would undo the answer. Owed at the drop as well as at the report, since a report may not come
+ * until the device next does something. */
 static void events_take_syn(input_events_t *events, input_stream_t *stream, uint32_t code) {
     if (code == SYN_DROPPED) {
         events->stats.dropped++;
         stream->discarding = 1u;
-        /* Now as well as at the report, since a report may not come until the device next does something. */
-        events_resync(events, stream);
+        stream->resync_owed = 1u;
     } else if (code == SYN_REPORT && stream->discarding != 0u) {
         stream->discarding = 0u;
-        events_resync(events, stream);
+        stream->resync_owed = 1u;
     }
 }
 
@@ -183,6 +185,10 @@ int32_t input_events_drain(input_events_t *events, input_stream_t *stream) {
         const uint64_t count = bytes / sizeof(batch[0]);
         for (uint64_t i = 0; i < count; i++) {
             events_take(events, stream, &batch[i]);
+        }
+        if (stream->resync_owed != 0u) {
+            stream->resync_owed = 0u;
+            events_resync(events, stream);
         }
         if (bytes < sizeof(batch)) {
             break; /* it had no more, so another read would only cost a system call */

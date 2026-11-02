@@ -6,6 +6,7 @@
 #include "heap/index.h"
 #include "input/index.h"
 #include "run/input/fixtures/fake_evdev.h"
+#include "run/input/fixtures/real_devices.h"
 #include "run/input/fixtures/replay.h"
 
 #include <fcntl.h>
@@ -72,6 +73,68 @@ TEST(devices_are_told_apart_by_what_they_can_do) {
     memset(&caps, 0, sizeof(caps));
     fake_caps_touchpad(&caps);
     CHECK_EQ_U64(input_discovery_classify(&caps), 0u);
+}
+
+/* /proc/bus/input/devices' form, read from the right: the last word is the lowest, and each digit is four bits. */
+static bool real_bits(const char *text, uint8_t *bits, uint64_t bytes) {
+    uint64_t word = 0;
+    uint64_t digit = 0;
+    for (uint64_t i = strlen(text); i > 0u; i--) {
+        const char c = text[i - 1u];
+        if (c == ' ') {
+            word++;
+            digit = 0u;
+            continue;
+        }
+        const uint32_t value = c <= '9' ? (uint32_t)(c - '0') : (uint32_t)(c - 'a') + 10u;
+        const uint64_t byte = word * 8u + digit / 2u;
+        if (byte >= bytes) {
+            return false;
+        }
+        bits[byte] |= (uint8_t)(value << (digit % 2u * 4u));
+        digit++;
+    }
+    return true;
+}
+
+static void real_caps_empty(input_capabilities_t *caps) {
+    (void)caps;
+}
+
+TEST(this_machines_own_devices_are_told_apart_correctly) {
+    fake_evdev_t *const fake = fake_new(t);
+    const uint32_t count = (uint32_t)(sizeof(real_devices) / sizeof(real_devices[0]));
+    uint32_t expected_kept = 0;
+    for (uint32_t i = 0; i < count; i++) {
+        const real_device_t *const real = &real_devices[i];
+        fake_device_t *const device = fake_add(fake, real->file_name, real->label, real_caps_empty, true);
+        input_capabilities_t *const caps = &device->capabilities;
+        CHECK(real_bits(real->event_types, caps->event_types, sizeof(caps->event_types)));
+        CHECK(real_bits(real->keys, caps->keys, sizeof(caps->keys)));
+        CHECK(real_bits(real->relative_axes, caps->relative_axes, sizeof(caps->relative_axes)));
+        expected_kept += real->expected_kinds != 0u ? 1u : 0u;
+    }
+    CHECK_EQ_U64(expected_kept, 7u);
+
+    input_t *const input = start(t, fake);
+    CHECK_EQ_U64(input->discovery.device_count, expected_kept);
+    CHECK_EQ_U64(input->discovery.stats.rejected, count - expected_kept);
+    for (uint32_t i = 0; i < count; i++) {
+        CHECK_EQ_U64(input_discovery_classify(&fake->devices[i].capabilities), real_devices[i].expected_kinds);
+        CHECK_EQ_U64(fake->devices[i].is_open, real_devices[i].expected_kinds != 0u ? 1u : 0u);
+    }
+    /* The one mouse here is the Razer's first interface, and its label arrives whole. */
+    uint32_t mice = 0;
+    for (uint32_t slot = 0; slot < INPUT_DISCOVERY_MAX_DEVICES; slot++) {
+        const input_device_t *const kept = &input->discovery.borrowed_devices[slot];
+        if (kept->in_use != 0u && (kept->kinds & INPUT_KIND_MOUSE) != 0u) {
+            mice++;
+            CHECK_STR_EQ(kept->file_name, "event6");
+            CHECK_STR_EQ(kept->label, "Razer Razer Basilisk V2");
+        }
+    }
+    CHECK_EQ_U64(mice, 1u);
+    finish(t, input, fake);
 }
 
 TEST(each_thing_a_keyboard_needs_is_needed) {
@@ -461,6 +524,21 @@ TEST(after_a_drop_nothing_counts_until_the_report_and_keys_come_from_the_kernel)
     CHECK(input_keys_has(&frame->released, KEY_D));
     CHECK_EQ_I64(frame->mouse_dy, 0);
     CHECK_EQ_I64(frame->mouse_dx, 4); /* after the report, normal again */
+    finish(t, input, fake);
+}
+
+TEST(a_resync_comes_after_every_event_already_read_since_it_is_newer_than_them) {
+    fake_evdev_t *const fake = fake_new(t);
+    fake_device_t *const keyboard = fake_add(fake, "event0", "Keyboard", fake_caps_keyboard, true);
+    input_t *const input = start(t, fake);
+
+    /* W is held now, whatever the batch still says: its last word on W is a release from before the kernel was asked. */
+    keyboard->key_state.words[KEY_W / 64u] |= 1ull << (KEY_W % 64u);
+    fake_replay(keyboard, replay_drop_then_stale_release, REPLAY_COUNT(replay_drop_then_stale_release));
+    const input_frame_t *const frame = input_poll(input);
+    CHECK(input_keys_has(&frame->down, KEY_W));
+    CHECK_EQ_U64(input->discovery.borrowed_devices[0].stream.resync_owed, 0u);
+    CHECK_EQ_U64(input->discovery.borrowed_devices[0].stream.discarding, 0u);
     finish(t, input, fake);
 }
 

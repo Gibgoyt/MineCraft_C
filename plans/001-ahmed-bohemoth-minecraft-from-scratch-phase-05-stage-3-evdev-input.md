@@ -42,12 +42,14 @@ Agent side, 2026-11-02, on the merged integration branch:
 | Check | Result |
 |---|---|
 | `cmake --build --preset debug`, `release`, `sanitize` | All build |
-| ctest `run_input`, debug | Passes: 46 tests, 1910 checks |
+| ctest `run_input`, debug | Passes: 48 tests, 2054 checks |
 | ctest `run_input`, release and sanitize | Passes |
 | ctest `run_display_mode`, debug and sanitize | Passes |
 | ctest `standards_lint`, `clang_format`, debug | Pass |
-| Whole debug ctest | 32 of 32 pass |
-| 34 hand mutations of `input/` and the cursor drawing, each built and run against `run_input` | All 34 fail it. Three first failed to build, so they were rewritten until they built, and then failed the tests |
+| Whole debug ctest, on the integration branch as of this run | 36 of 36 pass |
+| 34 hand mutations of `input/` and the cursor drawing, each built and run against `run_input`, before issues 7 and 8 | All 34 fail it. Three first failed to build, so they were rewritten until they built, and then failed the tests |
+| The two mutations in issues 7 and 8 | Both fail it |
+| `tests/run/input/fixtures/real_devices.h` against `/proc/bus/input/devices` | 21 rows each, 0 differences |
 | `pgrep -af "$PWD/build"`, `pgrep -a minecraft_c` | Print nothing |
 
 **Ahmed's run**, on a text console:
@@ -57,7 +59,7 @@ Agent side, 2026-11-02, on the merged integration branch:
 
 | Look for | What it shows |
 |---|---|
-| `input: eventN: <name>, keyboard` and `, mouse` lines before the screen changes | Discovery found your real devices, and not the power button |
+| `input: eventN: <name>, keyboard` and `, mouse` lines before the screen changes. With today's devices: one `, mouse` for the Razer, and `, keyboard` for the AT keyboard, the G710 twice, the Razer twice and the DELL keyboard | Discovery found your real devices, and not the power button |
 | A white square with a black edge, starting mid-screen, that follows the mouse and stops at each edge | Raw mouse events |
 | It turns red while any key or mouse button is held | Raw key events |
 | Esc ends the run, and the console comes back | `pressed`, and the clean stop |
@@ -90,12 +92,12 @@ Appended as they land:
 
 3. **Replay data is written by hand, and not captured from a device.**
    - **Expected:** a replay test replays what a device really sends.
-   - **Actual:** capturing means reading a real device, which no agent may do. `tests/run/input/fixtures/replay.h` is written from the kernel's event codes as remembered, and the fake's answers are too; neither was checked against kernel source, which is not on this machine. So how a real keyboard orders `EV_MSC` around its keys, and how a real USB pull is reported, are not proven.
-   - **Done:** nothing depends on that order: `EV_MSC` is ignored and each key event stands alone. Ahmed's run is what covers the rest. If a device is misclassified or stays silent there, the `input:` lines say which one.
+   - **Actual:** capturing means reading a real device, which no agent may do. `tests/run/input/fixtures/replay.h` is written from the kernel's event codes as remembered, and the fake's answers are too. The evdev driver's source is not on this machine (`find /usr/lib/modules/ -maxdepth 6 -name 'evdev*'` prints nothing), though the UAPI headers are, and the code takes every code and ioctl number from them. So how a real keyboard orders `EV_MSC` around its keys, and how a real USB pull is reported, are not proven.
+   - **Done:** nothing depends on that order: `EV_MSC` is ignored and each key event stands alone. Classifying is now tested on real answers: see issue 8. Ahmed's run is what covers the rest. If a device is misclassified or stays silent there, the `input:` lines say which one.
 
 4. **Touchpads and tablets do not work.**
    - **Expected:** the stage says mouse and keyboard, by capability.
-   - **Actual:** a touchpad reports absolute axes and no `REL_X`, so `input_discovery_classify` rejects it, and so does the rest of `input`. A mouse is required to move the cursor. A laptop with only a touchpad would get no cursor; the desktop this targets has a mouse.
+   - **Actual:** a touchpad reports absolute axes and no `REL_X`, so `input_discovery_classify` rejects it, and so does the rest of `input`. A mouse is required to move the cursor. A laptop with only a touchpad would get no cursor. This machine has one, `Synaptics TM3394-001` on `event16`, which stays rejected, and a mouse, the Razer on `event6`, whose bitmaps are classified as a mouse.
    - **Done:** left alone, as out of scope, and stated in `run/src/input/events/README.md`.
 
 5. **Defects found by running this stage's own tests. All fixed.**
@@ -109,3 +111,13 @@ Appended as they land:
    - **Expected:** every process goes through `tools/test-or-build.sh` and `timeout`.
    - **Actual:** to read its check count, `build/debug/bin/tests/run_input <program>` was run bare once. It finished at once and `pgrep` found nothing left. It opened no device, as it never does.
    - **Done:** noted. Nothing further.
+
+7. **A key could stay wrong after a queue overflow. Found by reading the code when this stage was picked up again. Fixed.**
+   - **Expected:** after `SYN_DROPPED`, key state ends up as the kernel says.
+   - **Actual:** `EVIOCGKEY` was asked in the middle of a batch, at the drop and at the report, and events already read after that point were then applied on top, though the answer was newer than them. With W held and `DROPPED, REPORT, W down, REPORT, W up, REPORT` in one read, W ended up not down, until its next press. From memory of the kernel's `evdev_handle_get_val`, not checked since the source is not here, `EVIOCGKEY` also removes queued key events, so no later event would have corrected it.
+   - **Done:** `input_stream_t` gets `resync_owed` (its size stays 104), and the question is asked once the batch has been taken. `a_resync_comes_after_every_event_already_read_since_it_is_newer_than_them` covers it. With the old order put back in `events_take_syn`, that test failed, the only one of 48 to (`1 of 8 checks`). My first attempt at that check changed only the report branch and did not fail it, since the drop's owed question still came last. That is why both branches were changed.
+
+8. **Real capability data was available all along, without opening a device.**
+   - **Expected:** classifying is only proven by Ahmed's run (issue 3).
+   - **Actual:** `/proc/bus/input/devices` is a text file anyone can read, and prints the capability bitmaps of every device. Reading it opens nothing under `/dev/input` and reads no keystrokes.
+   - **Done:** its 21 devices are in `tests/run/input/fixtures/real_devices.h`, and `this_machines_own_devices_are_told_apart_correctly` runs them through the whole of discovery on the fake kernel. Kept: 7. They are the `AT` keyboard (`event3`), the G710's two interfaces (`event4`, `event5`), the Razer's mouse (`event6`) and its two keyboard interfaces (`event7`, `event9`), and the `DELL Technologies Keyboard` (`event10`). Rejected: 14, including the lid, power buttons, Video Bus, hotkeys and the touchpad. A one-off script compared the fixture with `/proc`: 21 and 21 rows, 0 differences. Removing the mouse's need for `REL_X` and `REL_Y` fails this test (`7 of 138 checks`). This does not tick the discovery box: the real `EVIOCGBIT` ioctl has still not been run on a real device, and event numbers change between boots, so the table is a record of one day, and tests the classifier only.
