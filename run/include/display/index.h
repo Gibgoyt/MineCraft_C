@@ -5,6 +5,7 @@
 #include "arena/index.h"
 #include "display/device/index.h"
 #include "display/flip/index.h"
+#include "display/headless/index.h"
 #include "display/mode/index.h"
 #include "heap/index.h"
 
@@ -41,7 +42,26 @@ typedef struct display_t {
 static_assert(sizeof(display_t) == 704);
 static_assert(alignof(display_t) == 64);
 
+/* The no-display backend, and what it needs reserved. It is apart from display_t, which is all KMS, and never touches a
+ * card, a console or an input device. Zeroed means not running, so _deinit is safe whether or not _init ever ran. */
+typedef struct display_offscreen_t {
+    arena_t arena_setup; /* Process lifetime: the frame, the script and the PNG buffer */
+    heap_region_t owned_region;
+    display_headless_t headless;
+    uint8_t running;
+    uint8_t _pad0[15];
+} display_offscreen_t;
+static_assert(sizeof(display_offscreen_t) == 384);
+static_assert(alignof(display_offscreen_t) == 64);
+
 void display_config_from_machine(display_config_t *out);
+
+/* The frame size and tick rate from config/machine.yaml, with no script and no screenshots. */
+void display_offscreen_config_from_machine(display_headless_config_t *out);
+
+/* Starts the no-display backend. On false it has logged why and left nothing behind. */
+bool display_offscreen_init(display_offscreen_t *offscreen, const display_headless_config_t *config);
+void display_offscreen_deinit(display_offscreen_t *offscreen);
 
 /* Refuses, with a message naming what to do, unless this process is on the visible text console and can become the
  * card's master. Then picks an output and makes its buffers, and changes nothing on screen. ops is

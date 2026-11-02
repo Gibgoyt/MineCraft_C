@@ -2,6 +2,7 @@
  * that reserves memory. */
 #include "display/index.h"
 
+#include "display/headless/png/index.h"
 #include "log/index.h"
 #include "machine/index.h"
 #include "time/index.h"
@@ -91,6 +92,47 @@ void display_deinit(display_t *display) {
     arena_deinit(&display->arena_setup);
     heap_release(&display->owned_region);
     display->running = 0u;
+}
+
+void display_offscreen_config_from_machine(display_headless_config_t *out) {
+    *out = (display_headless_config_t){.script_path = nullptr,
+                                       .screenshot_dir = nullptr,
+                                       .width = MC_DISPLAY_WIDTH,
+                                       .height = MC_DISPLAY_HEIGHT,
+                                       .tick_count = 0u,
+                                       .tick_hz = MC_GAME_TICK_HZ};
+}
+
+bool display_offscreen_init(display_offscreen_t *offscreen, const display_headless_config_t *config) {
+    memset(offscreen, 0, sizeof(*offscreen));
+    const uint64_t bytes = display_headless_arena_bytes(config);
+    if (bytes == 0u) {
+        LOG_ERROR("display: a frame of %" PRIu32 "x%" PRIu32 " is not possible: each side is 1 to %" PRIu32,
+                  config->width, config->height, (uint32_t)DISPLAY_PNG_MAX_DIMENSION);
+        return false;
+    }
+    if (!heap_reserve(bytes, &offscreen->owned_region)) {
+        return false;
+    }
+    arena_init(&offscreen->arena_setup, "display_offscreen", offscreen->owned_region.owned_base,
+               offscreen->owned_region.bytes);
+    if (!display_headless_init(&offscreen->headless, &offscreen->arena_setup, config)) {
+        arena_deinit(&offscreen->arena_setup);
+        heap_release(&offscreen->owned_region);
+        return false;
+    }
+    offscreen->running = 1u;
+    return true;
+}
+
+void display_offscreen_deinit(display_offscreen_t *offscreen) {
+    if (offscreen->running == 0u) {
+        return;
+    }
+    display_headless_deinit(&offscreen->headless);
+    arena_deinit(&offscreen->arena_setup);
+    heap_release(&offscreen->owned_region);
+    offscreen->running = 0u;
 }
 
 /* ---- The test pattern -------------------------------------------------------------------------------------------- */

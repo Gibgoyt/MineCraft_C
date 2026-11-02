@@ -1,9 +1,9 @@
 # run/src/display
 
-**Purpose:** the KMS backend: takes the display from a text console, picks an output, shows pixels and gives it all back.
+**Purpose:** the two display backends: KMS, which takes the display from a text console, picks an output, shows pixels and gives it all back; and `headless`, which has no display at all.
 **Tier:** Owner.
 **Owns:** one `heap_region_t`, with `arena_setup` over it, which `display/mode` allocates from at init. The parts it starts:
-`device`, `mode`, `flip`.
+`device`, `mode`, `flip`. Apart from those, one more region and arena in `display_offscreen_t`, which `display/headless` allocates from.
 **Lifetime:** Process.
 **Threads:** main. The signal handler only sets a flag.
 **Public functions:**
@@ -11,6 +11,7 @@
 - `display_config_from_machine`: the `display:` keys of `config/machine.yaml`.
 - `display_init`, `display_deinit`: a pair. `_init` refuses first (see below) and changes nothing on screen; `_deinit` gives
   back whatever is still owed. `_init` takes a `display_ops_t`, so a test can run all of it against a fake card.
+- `display_offscreen_config_from_machine`, `display_offscreen_init`, `display_offscreen_deinit`: a pair and its defaults. They reserve for and start the no-display backend, and touch no card and no console. How to use it is in `headless/README.md`.
 - `display_test_pattern_run`: `--test-pattern`. Bars and a moving square, flipped at the mode's rate until it ends by itself
   or a signal stops it, then the display goes back and the flip timings are logged.
 

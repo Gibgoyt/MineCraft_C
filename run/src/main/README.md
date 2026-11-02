@@ -2,7 +2,7 @@
 
 **Purpose:** the program's entry point: holds `app_t` on the stack, checks the CPU, starts each system and stops it again.
 **Tier:** Root. Allocates nothing.
-**Owns:** `app_t app`, which everything else in the program hangs from. So far that is `job_system_t job`, `simd_t simd`, `math_t math` and `display_t display`.
+**Owns:** `app_t app`, which everything else in the program hangs from. So far that is `job_system_t job`, `simd_t simd`, `math_t math`, `display_t display` and `display_offscreen_t offscreen`.
 **Lifetime:** Process.
 **Threads:** main, which it pins to its place in `config/machine.yaml`.
 **Public functions:** `main`. A command line:
@@ -13,16 +13,19 @@
     minecraft_c --pretend-leak                    skips the shutdown, to see the leak check at exit fail
     minecraft_c --test-pattern [--card <path>] [--connector <name>]
                                                   shows a test pattern through KMS, from a text console only
+    minecraft_c --headless [--script <path>] [--screenshot-dir <dir>] [--ticks <n>] [--width <w>] [--height <h>]
+                                                  no display: replays a script of input and writes PNG screenshots; see
+                                                  run/src/display/headless/README.md
 
 Running the program starts the job system, runs one job per worker through it, logs the heap's counts and stops. There is
 nothing more to run until `game` (Stage 08.4).
 
 Exit status: 0 for success, 2 for a bad command line, 3 for a CPU that lacks what the build uses, 4 for heap regions
 still live after `app_deinit`, 5 for a core runtime that would not start or did not run its jobs, 6 for a display that is not ours to take (nothing on
-it was changed), 7 for KMS failing partway (`MAIN_EXIT_*`).
+it was changed), 7 for KMS failing partway, 8 for a bad script or a screenshot that could not be written under `--headless` (`MAIN_EXIT_*`).
 
 Only `--test-pattern` opens the display. It starts no job system, and the default run stays away from the card until
-`game` arrives.
+`game` arrives. `--headless` starts the same runtime as the default run, and then no card, console or input device is opened.
 Later systems' `_init` calls go in `app_init` after the CPU check, and their `_deinit` calls in `app_deinit` in reverse.
 
 **May be called by:** the OS. Tests link everything but this file, and run the built program.

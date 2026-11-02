@@ -2,6 +2,7 @@
  * allocates nothing. The CPU check must stay first. */
 #include "main/index.h"
 
+#include "display/headless/demo/index.h"
 #include "display/index.h"
 #include "heap/index.h"
 #include "job/index.h"
@@ -21,26 +22,59 @@
 #include <unistd.h>
 
 typedef struct main_options_t {
-    const char *card;      /* --card, or nullptr for config/machine.yaml */
-    const char *connector; /* --connector, or nullptr for config/machine.yaml */
-    uint32_t cpu_hidden;   /* features to treat as absent: --pretend-missing-cpu */
-    uint8_t report;        /* --report */
-    uint8_t pretend_leak;  /* --pretend-leak */
-    uint8_t test_pattern;  /* --test-pattern */
-    uint8_t _pad0[1];
+    const char *card;           /* --card, or nullptr for config/machine.yaml */
+    const char *connector;      /* --connector, or nullptr for config/machine.yaml */
+    const char *script;         /* --script */
+    const char *screenshot_dir; /* --screenshot-dir */
+    uint32_t width;             /* --width, or 0 for config/machine.yaml */
+    uint32_t height;            /* --height, or 0 for config/machine.yaml */
+    uint32_t ticks;             /* --ticks, or 0 for as long as the script */
+    uint32_t cpu_hidden;        /* features to treat as absent: --pretend-missing-cpu */
+    uint8_t report;             /* --report */
+    uint8_t pretend_leak;       /* --pretend-leak */
+    uint8_t test_pattern;       /* --test-pattern */
+    uint8_t headless;           /* --headless */
+    uint8_t _pad0[4];
 } main_options_t;
-static_assert(sizeof(main_options_t) == 24);
+static_assert(sizeof(main_options_t) == 56);
 
 static void main_print_usage(const char *program) {
-    fprintf(stderr,
-            "usage: %s [--report] [--pretend-missing-cpu <cpu.simd key>] [--pretend-leak]\n"
-            "       %s --test-pattern [--card <path>] [--connector <name>]\n"
-            "  --report                 print the build's defines and CPU features, then exit\n"
-            "  --pretend-missing-cpu    treat this feature as absent, to see the CPU check fail; may repeat\n"
-            "  --pretend-leak           skip the shutdown, to see the leak check at exit fail\n"
-            "  --test-pattern           show a test pattern through KMS; only from a text console, never inside X\n"
-            "  --card, --connector      with --test-pattern: use these and not display: in config/machine.yaml\n",
-            program, program);
+    fprintf(
+        stderr,
+        "usage: %s [--report] [--pretend-missing-cpu <cpu.simd key>] [--pretend-leak]\n"
+        "       %s --test-pattern [--card <path>] [--connector <name>]\n"
+        "       %s --headless [--script <path>] [--screenshot-dir <dir>] [--ticks <n>] [--width <w>] [--height <h>]\n"
+        "  --report                 print the build's defines and CPU features, then exit\n"
+        "  --pretend-missing-cpu    treat this feature as absent, to see the CPU check fail; may repeat\n"
+        "  --pretend-leak           skip the shutdown, to see the leak check at exit fail\n"
+        "  --test-pattern           show a test pattern through KMS; only from a text console, never inside X\n"
+        "  --card, --connector      with --test-pattern: use these and not display: in config/machine.yaml\n"
+        "  --headless               no display: replay a script of input and write PNG screenshots; never needs a\n"
+        "                           console. See run/src/display/headless/README.md\n",
+        program, program, program);
+}
+
+/* A whole number from 1 up, for a flag. */
+static bool main_parse_count(const char *flag, const char *text, uint32_t *out) {
+    uint64_t value = 0;
+    for (const char *c = text; *c != '\0'; c++) {
+        if (*c < '0' || *c > '9') {
+            value = 0;
+            break;
+        }
+        value = value * 10u + (uint64_t)(*c - '0');
+        if (value > INT32_MAX) {
+            value = 0;
+            break;
+        }
+    }
+    if (value == 0u) {
+        fprintf(stderr, "%s wants a whole number above 0, up to %" PRId32 ", not '%s'\n", flag, (int32_t)INT32_MAX,
+                text);
+        return false;
+    }
+    *out = (uint32_t)value;
+    return true;
 }
 
 static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out) {
@@ -52,6 +86,29 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
             out->pretend_leak = 1;
         } else if (strcmp(argv[i], "--test-pattern") == 0) {
             out->test_pattern = 1;
+        } else if (strcmp(argv[i], "--headless") == 0) {
+            out->headless = 1;
+        } else if (strcmp(argv[i], "--script") == 0 && i + 1 < argc) {
+            i++;
+            out->script = argv[i];
+        } else if (strcmp(argv[i], "--screenshot-dir") == 0 && i + 1 < argc) {
+            i++;
+            out->screenshot_dir = argv[i];
+        } else if (strcmp(argv[i], "--ticks") == 0 && i + 1 < argc) {
+            i++;
+            if (!main_parse_count("--ticks", argv[i], &out->ticks)) {
+                return false;
+            }
+        } else if (strcmp(argv[i], "--width") == 0 && i + 1 < argc) {
+            i++;
+            if (!main_parse_count("--width", argv[i], &out->width)) {
+                return false;
+            }
+        } else if (strcmp(argv[i], "--height") == 0 && i + 1 < argc) {
+            i++;
+            if (!main_parse_count("--height", argv[i], &out->height)) {
+                return false;
+            }
         } else if (strcmp(argv[i], "--card") == 0 && i + 1 < argc) {
             i++;
             out->card = argv[i];
@@ -73,6 +130,18 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
     }
     if ((out->card != nullptr || out->connector != nullptr) && out->test_pattern == 0) {
         fprintf(stderr, "%s: --card and --connector only mean something with --test-pattern\n", argv[0]);
+        return false;
+    }
+    if (out->headless == 0 && (out->script != nullptr || out->screenshot_dir != nullptr || out->ticks != 0u ||
+                               out->width != 0u || out->height != 0u)) {
+        fprintf(stderr,
+                "%s: --script, --screenshot-dir, --ticks, --width and --height only mean something with "
+                "--headless\n",
+                argv[0]);
+        return false;
+    }
+    if (out->headless != 0 && (out->test_pattern != 0 || out->report != 0)) {
+        fprintf(stderr, "%s: --headless does not go with --test-pattern or --report\n", argv[0]);
         return false;
     }
     return true;
@@ -119,6 +188,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
 }
 
 static void app_deinit(app_t *app) {
+    display_offscreen_deinit(&app->offscreen);
     display_deinit(&app->display);
     job_deinit(&app->job);
     simd_deinit(&app->simd);
@@ -178,6 +248,29 @@ static main_exit_t main_run_test_pattern(app_t *app, const main_options_t *optio
     return main_exit_from_display(display_test_pattern_run(&app->display, started_ns, DISPLAY_TEST_PATTERN_NS));
 }
 
+/* Replays input with no display at all. Starts after the runtime, as game will, so that what a script drives later is
+ * running as it does for real. The demo scene stands in until game passes its own (Stage 08.4). */
+static main_exit_t main_run_headless(app_t *app, const main_options_t *options) {
+    display_headless_config_t config;
+    display_offscreen_config_from_machine(&config);
+    config.script_path = options->script;
+    config.screenshot_dir = options->screenshot_dir;
+    config.tick_count = options->ticks;
+    config.width = options->width != 0u ? options->width : config.width;
+    config.height = options->height != 0u ? options->height : config.height;
+    if (!display_offscreen_init(&app->offscreen, &config)) {
+        return MAIN_EXIT_HEADLESS;
+    }
+    display_headless_demo_t demo;
+    display_headless_scene_t scene;
+    display_headless_demo_scene(&demo, &scene);
+    display_headless_t *const headless = &app->offscreen.headless;
+    const bool ran = display_headless_run(headless, &scene);
+    LOG_INFO("headless: %" PRIu64 " frames, %" PRIu64 " screenshots", headless->frames_presented,
+             headless->screenshots_written);
+    return ran ? MAIN_EXIT_OK : MAIN_EXIT_HEADLESS;
+}
+
 /* Stage 02.3 asks the binary to report its defines, to show a yaml change reaching compiled code. This path must never
  * touch a display or an input device: ctest runs it. */
 static void main_report(const app_t *app) {
@@ -211,6 +304,8 @@ int32_t main(int32_t argc, char **argv) {
         main_report(&app);
     } else if (options.test_pattern != 0) {
         status = main_run_test_pattern(&app, &options, started_ns);
+    } else if (options.headless != 0) {
+        status = main_run_headless(&app, &options);
     } else if (!main_run(&app)) {
         status = MAIN_EXIT_RUNTIME;
     }
