@@ -6,6 +6,7 @@
 #include "heap/index.h"
 #include "item/container/index.h"
 #include "item/crafting/index.h"
+#include "item/equipment/index.h"
 #include "item/inventory/index.h"
 #include "item/smelting/index.h"
 #include "item/stack/index.h"
@@ -32,12 +33,13 @@ typedef struct item_t {
     smelting_store_t furnaces;      /* 408 */
     uint64_t edit_cursor;           /* 448: how far into the world's edit log item_world_tick has read */
     uint64_t spilled_count;         /* 456: items that came out of a chest or a furnace that went */
-    uint8_t _pad2[48];              /* 464 */
+    equipment_t equipment;          /* 464: what is worn, and how tools have gone */
 } item_t;
 static_assert(sizeof(item_t) == 512);
 static_assert(alignof(item_t) == 64);
 static_assert(offsetof(item_t, inventory) == 80);
 static_assert(offsetof(item_t, hotbar_key) == 128);
+static_assert(offsetof(item_t, equipment) == 464);
 
 /* Something that went spills: a stack, whose cell it comes out of, for whoever puts it in the world. On the sim thread. */
 typedef void item_spill_t(void *borrowed_context, const item_stack_t *stack, const int32_t cell[3]);

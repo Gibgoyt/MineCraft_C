@@ -51,6 +51,7 @@ void item_open(item_t *item) {
     smelting_start(&item->furnaces, &item->arena_world);
     crafting_grid_start(&item->crafting_hands, CRAFTING_SIDE_HANDS);
     crafting_grid_start(&item->crafting_table, CRAFTING_SIDE_TABLE);
+    equipment_start(&item->equipment);
     item->edit_cursor = 0u;
     item->spilled_count = 0u;
     atomic_store_explicit(&item->hotbar_key, 0u, memory_order_relaxed);
@@ -64,6 +65,7 @@ void item_close(item_t *item) {
     memset(&item->crafting_table, 0, sizeof(item->crafting_table));
     memset(&item->chests, 0, sizeof(item->chests));
     memset(&item->furnaces, 0, sizeof(item->furnaces));
+    memset(&item->equipment, 0, sizeof(item->equipment));
 }
 
 /* Relaxed, both of these: each is a whole request by itself, and nothing else is read because of it. */
