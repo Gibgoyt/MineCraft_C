@@ -18,7 +18,7 @@
 
 Every number is a row's whole definition, and changing one changes every world. `tests/run/terrain/ore/` types them out again.
 
-The depths come from a familiar game's published distributions, moved to our range: its sea level goes to ours, at 0, and each block away from that becomes about 1.95, as its 384 layers are our 751. So `z = 1.95 * (y - 63)`. As the same veins now have about twice the rock to go in, a row tries about twice as many in a chunk, so that a block of rock holds as much ore as there it would. Nothing was read from that game's files: these are numbers from its public documentation, and they are only a starting point.
+The depths start from what was remembered of a familiar game's published ore distributions, not checked against a source, moved to our range: its sea level goes to ours, at 0, and each block away from that becomes about 1.95, as its 384 layers are our 751. So `z = 1.95 * (y - 63)`. As the same veins now have about twice the rock to go in, a row tries about twice as many in a chunk, so that a block of rock holds as much ore as there it would. Nothing was read from that game's files, and these numbers are only a starting point.
 
 "Tried" is the number of veins started in a 16 by 16 chunk: `0.33` means one chunk in 3.
 
@@ -45,7 +45,7 @@ The depths come from a familiar game's published distributions, moved to our ran
 | `ore/lapis_low` | lapis | -250 | 2 | uniform | 7 | 8 | |
 | `ore/diamond_small` | diamond | -406 | -92 | triangle | 4 | 14 | The triangle's peak is at -249, the bottom of the world, and veins that land below it are lost, so diamonds grow more common with depth |
 | `ore/diamond_large` | diamond | -406 | -92 | triangle | 12 | 0.22 | One big one, now and then |
-| `ore/emerald` | emerald | -154 | 500 | uniform | 3 | 16 | Only where a chunk's middle column is at least 120 high: a mountain's. Biomes come later than this stage, and this is the part of "mountain" that needs no biome. Fewer tried than the documentation's rule gives, as our veins of 3 really come to about 3: see Stage 10.5's issue 2 |
+| `ore/emerald` | emerald | -154 | 500 | uniform | 3 | 16 | Only where a chunk's middle column is at least 120 high: a mountain's. Biomes come later than this stage, and this is the part of "mountain" that needs no biome. Fewer tried than the remembered number gives, as our veins of 3 really come to about 3: see Stage 10.5's issue 2 |
 
 There is no redstone: `config/blocks/` has no such block. A row for one goes here when it does.
 
