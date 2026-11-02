@@ -33,5 +33,6 @@ the end. On the i9-10900K, whose CPU N and CPU N+10 share a core:
 With `pin_physical_first: false`, the order is simply rising. With fewer CPUs than threads, for instance under `taskset`,
 places wrap round and threads share, after a warning, so that the game still runs.
 
-**May be called by:** `job` for workers and `game` for sim and gpu; `ring` by anything from this layer up.
+**May be called by:** `main` for its own place, `job` for workers and `game` for sim and gpu; `ring` by anything from this
+layer up.
 **Depends on:** `file` for reading `/sys`, `log`, `assert`, glibc's pthreads, and generated `machine/index.h`.

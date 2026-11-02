@@ -326,7 +326,8 @@ Benchmarks must show that each kernel beats its scalar C reference. If one does 
 Comet Lake i9-10900K. Baseline: AVX2, FMA3, BMI1/2, POPCNT, LZCNT, F16C, with 16 YMM registers. **No AVX-512.** MMX is not used. Each
 feature is guarded by a `MC_CPU_HAS_*` define from `config/machine.yaml`. At startup, `run/src/main/` checks CPUID
 against the build flags and exits with a clear message if they do not match. That code is built with the same `-march`,
-so on a CPU older than the flag it can die of SIGILL before printing it: see Stage 03.1 issue 1.
+so on a CPU older than the flag it could die of SIGILL first. So `asm/src/cpuid/` makes the same check from `.preinit_array`,
+with baseline x86-64 instructions only, before any code compiled with `-march` runs: see Stage 03.1 issue 1.
 
 ### Required form
 
@@ -351,8 +352,8 @@ noise3_batch8:
 - **Aligned data at 32 bytes**, and say in a comment whether a pointer must be aligned.
 - **Each kernel has a C prototype** in `run/include/simd/<name>/index.h`, and a test against a scalar C reference.
 - **`asm/src/cpuid/` is the one directory here that is not SIMD.** CPUID and XGETBV have no C form and inline `asm` is
-  banned, so they are written in NASM. They use no vector register and, like everything here, take arrays. Their test
-  has no scalar C reference to run against, so it compares with `/proc/cpuinfo`.
+  banned, so they are written in NASM, along with the early guard that needs them. They use no vector register and, like
+  everything here, take arrays. Their test has no scalar C reference to run against, so it compares with `/proc/cpuinfo`.
 - **Struct offsets come from `compile/src/struct_offsets/`.** Numbers are never typed by hand.
 - NASM produces `.o` files only. They link into the program that the C entry point starts.
 

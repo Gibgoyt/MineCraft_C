@@ -293,7 +293,7 @@ Layout: `asm/src/<dir>/index.asm`, `asm/include/<dir>/index.inc`, `README.md`. C
 
 | Directory | Job | Stage |
 |---|---|---|
-| `cpuid` | The CPUID and XGETBV instructions, since inline asm is banned; not SIMD | 03.1 |
+| `cpuid` | The CPUID and XGETBV instructions, since inline asm is banned, and the CPU guard that runs before anything built with `-march`; not SIMD | 03.1 |
 | `copy` | Streaming copy to scanout memory | 04.2 |
 | `blend` | HUD alpha blending | 04.2 |
 | `bitmask` | Popcount and mask kernels | 04.2 |
@@ -429,6 +429,7 @@ main
          └─ arena, heap, log, assert, types
 ```
 
+- `main` calls `job` directly too: `job_system_t` is a field of `app_t`, and `game` will borrow it.
 - Depth 2 parts may include their own Owner's header, and lower systems.
 - Sibling parts may include one another only if their READMEs say so.
 - `compile/` may not include `run/`, except for `run/include/types/`. Its tools share the type definitions.

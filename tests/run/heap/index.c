@@ -43,7 +43,7 @@ static uint64_t counters_live_bytes(void) {
 typedef struct log_capture_t {
     int32_t fds[2];
     int32_t previous_fd;
-    uint32_t _pad0;
+    uint8_t _pad0[4];
 } log_capture_t;
 static_assert(sizeof(log_capture_t) == 16);
 
@@ -52,7 +52,7 @@ static bool log_capture_begin(log_capture_t *capture) {
         return false;
     }
     capture->previous_fd = log_set_fd(capture->fds[1]);
-    capture->_pad0 = 0;
+    memset(capture->_pad0, 0, sizeof(capture->_pad0));
     return true;
 }
 

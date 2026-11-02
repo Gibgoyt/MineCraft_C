@@ -37,7 +37,7 @@ static bool system_start(job_system_t *system) {
 }
 
 /* All workers added up, with the arena's peak as the highest and cpu left at zero. */
-static job_stats_t stats_total(const job_system_t *system) {
+static void stats_total(const job_system_t *system, job_stats_t *out) {
     job_stats_t total;
     memset(&total, 0, sizeof(total));
     for (uint32_t i = 0; i < MC_THREADS_WORKERS; i++) {
@@ -51,7 +51,7 @@ static job_stats_t stats_total(const job_system_t *system) {
         total.arena_resets += one.arena_resets;
         total.arena_peak = one.arena_peak > total.arena_peak ? one.arena_peak : total.arena_peak;
     }
-    return total;
+    *out = total;
 }
 
 static bool wait_for_all_asleep(const job_system_t *system) {
@@ -111,7 +111,7 @@ typedef struct barrier_t {
     _Atomic uint32_t arrived;
     _Atomic uint32_t wrong_cpu;
     _Atomic uint32_t timed_out;
-    uint32_t _pad0;
+    uint8_t _pad0[4];
 } barrier_t;
 static_assert(sizeof(barrier_t) == 32);
 
@@ -336,7 +336,8 @@ TEST(stress_on_all_workers_runs_every_job_exactly_once) {
     CHECK_EQ_U64(atomic_load(&shared.arena_corrupted), 0u);
 
     const uint64_t jobs_total = item_total + (uint64_t)STRESS_TREE_NODES * 2u * STRESS_TREE_ROUNDS;
-    const job_stats_t total = stats_total(&system);
+    job_stats_t total;
+    stats_total(&system, &total);
     CHECK_EQ_U64(total.jobs_run, jobs_total);
     CHECK_EQ_U64(total.arena_resets, jobs_total);
     CHECK_EQ_U64(total.jobs_inlined, 0u);
@@ -365,7 +366,7 @@ typedef struct steal_t {
     _Atomic uint32_t parent_index;
     _Atomic uint32_t done;
     _Atomic uint32_t timed_out;
-    uint32_t _pad0;
+    uint8_t _pad0[4];
 } steal_t;
 static_assert(sizeof(steal_t) == 40);
 
@@ -422,7 +423,8 @@ TEST(a_busy_workers_queue_is_emptied_by_the_others) {
     CHECK_EQ_U64(atomic_load(&steal.done), JOB_QUEUE_CAPACITY);
     CHECK_EQ_U64(atomic_load(&steal.parent_ran_child), 0u);
     CHECK(count_bits(atomic_load(&steal.seen)) >= 2u);
-    const job_stats_t total = stats_total(&system);
+    job_stats_t total;
+    stats_total(&system, &total);
     CHECK_EQ_U64(total.jobs_stolen, JOB_QUEUE_CAPACITY);
     CHECK_EQ_U64(total.jobs_from_injector, 1u);
     CHECK_EQ_U64(total.jobs_run, JOB_QUEUE_CAPACITY + 1u);
@@ -480,7 +482,7 @@ typedef struct gate_t {
     _Atomic uint32_t blocked;
     _Atomic uint32_t open;
     _Atomic uint32_t timed_out;
-    uint32_t _pad0;
+    uint8_t _pad0[4];
 } gate_t;
 static_assert(sizeof(gate_t) == 24);
 
@@ -527,7 +529,7 @@ static bool gate_block_all(job_system_t *system, job_group_t *group, gate_t *gat
 typedef struct gate_opener_t {
     thread_t thread;
     gate_t *borrowed_gate;
-    uint64_t _pad0;
+    uint8_t _pad0[8];
 } gate_opener_t;
 static_assert(sizeof(gate_opener_t) == 64);
 
@@ -642,7 +644,8 @@ TEST(spawning_past_every_queue_runs_inline_in_the_same_arena) {
     CHECK_EQ_U64(atomic_load(&overflow.gate.ran), OVERFLOW_CHILDREN);
     CHECK_EQ_U64(atomic_load(&overflow.inline_found_arena_empty), 0u);
     CHECK_EQ_U64(atomic_load(&overflow.block_changed), 0u);
-    const job_stats_t total = stats_total(&system);
+    job_stats_t total;
+    stats_total(&system, &total);
     CHECK_EQ_U64(total.jobs_run, OVERFLOW_CHILDREN + 1u);
     CHECK(total.jobs_inlined >= OVERFLOW_EXTRA);
     /* An inlined job does not end the arena's lifetime. Every other job does. */
@@ -682,7 +685,9 @@ TEST(no_wakeup_is_lost_around_going_to_sleep) {
     }
     job_group_deinit(&group);
     CHECK_EQ_U64(atomic_load(&ran), submitted);
-    CHECK(stats_total(&system).sleeps > 0u);
+    job_stats_t total;
+    stats_total(&system, &total);
+    CHECK(total.sleeps > 0u);
     job_deinit(&system);
 }
 

@@ -284,6 +284,56 @@ TEST(this_machine_is_read_correctly) {
     }
 }
 
+/* On this machine's numbering, cpu0 to cpu9 are the ten cores and cpu10 on are their siblings, so rising order is already
+ * physical first and the test above cannot tell whether threads.pin_physical_first was applied. With both CPUs of one
+ * core and only one CPU of a core numbered above them allowed, the two orders differ. */
+TEST(the_real_read_applies_pin_physical_first_from_machine_yaml) {
+    cpuinfo_t *info = test_alloc(t, sizeof(cpuinfo_t));
+    REQUIRE(cpuinfo_read(t, info));
+    cpu_set_t saved;
+    CPU_ZERO(&saved);
+    REQUIRE(sched_getaffinity(0, sizeof(saved), &saved) == 0);
+
+    uint32_t low = 0;
+    uint32_t high = 0;
+    uint32_t other = 0;
+    bool found = false;
+    for (uint32_t a = 0; a < THREAD_MAX_CPUS && !found; a++) {
+        for (uint32_t b = a + 1u; b < THREAD_MAX_CPUS && !found; b++) {
+            for (uint32_t c = b + 1u; c < THREAD_MAX_CPUS && !found; c++) {
+                const bool allowed = CPU_ISSET(a, &saved) && CPU_ISSET(b, &saved) && CPU_ISSET(c, &saved);
+                if (allowed && info->core_of[a] != 0 && info->core_of[a] == info->core_of[b] && info->core_of[c] != 0 &&
+                    info->core_of[c] != info->core_of[a]) {
+                    low = a;
+                    high = b;
+                    other = c;
+                    found = true;
+                }
+            }
+        }
+    }
+    if (!found) {
+        printf("  no core with two CPUs here, so the two orders are the same\n");
+        return;
+    }
+
+    cpu_set_t three;
+    CPU_ZERO(&three);
+    CPU_SET(low, &three);
+    CPU_SET(high, &three);
+    CPU_SET(other, &three);
+    REQUIRE(sched_setaffinity(0, sizeof(three), &three) == 0);
+    thread_topology_t topology;
+    const bool read = thread_topology_read(&topology);
+    REQUIRE(sched_setaffinity(0, sizeof(saved), &saved) == 0);
+    REQUIRE(read);
+
+    CHECK_EQ_U64(topology.physical_count, 2u);
+    const uint16_t physical_first[3] = {(uint16_t)low, (uint16_t)other, (uint16_t)high};
+    const uint16_t rising[3] = {(uint16_t)low, (uint16_t)high, (uint16_t)other};
+    check_order(t, &topology, MC_THREADS_PIN_PHYSICAL_FIRST != 0 ? physical_first : rising, 3u);
+}
+
 /* ---- Places in the order ----------------------------------------------------------------------------------------- */
 
 TEST(roles_take_their_places_from_machine_yaml) {
