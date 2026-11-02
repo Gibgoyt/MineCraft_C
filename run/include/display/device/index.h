@@ -28,8 +28,8 @@ typedef enum display_refusal_t : uint8_t {
 /* Every call this system makes to the kernel, and so the one place a test can stand in for it. The real table is only
  * ever used by the program, so no test goes near a card or a console. Each call that can fail returns a negative errno,
  * not -1 with errno set, because a fake is simpler that way and because errno is one more thing a signal handler would
- * have to look after. context is passed through untouched. The real calls are all async-signal-safe, apart from
- * open_keyboards, which is only called well before the display is taken. */
+ * have to look after. context is passed through untouched. The real calls are all async-signal-safe, open_keyboards
+ * included, since the guardian calls it again when a keyboard goes away. */
 typedef struct display_ops_t {
     int32_t (*open_card)(void *context, const char *path); /* a descriptor, or -errno */
     int32_t (*close_fd)(void *context, int32_t fd);

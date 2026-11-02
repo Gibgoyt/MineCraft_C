@@ -54,6 +54,7 @@ enum : int64_t {
     GUARD_RESTORE_WAIT_NS = 2000000000,
     GUARD_REAP_WAIT_NS = 2000000000,
     GUARD_HANG_NS = 60000000000,
+    GUARD_RESCAN_EVERY_NS = 1000000000,
 };
 enum : uint8_t {
     GUARD_PIPE_PET = 'p',
@@ -290,13 +291,15 @@ int32_t display_vt_guard_keys_take(display_vt_guard_keys_t *keys, uint32_t code,
 typedef struct guard_guardian_t {
     display_vt_guard_t *borrowed_guard; /* the guardian's copy */
     int64_t last_pet_ns;
+    int64_t last_scan_ns;
     struct pollfd fds[GUARD_MAX_KEYBOARDS + 1u]; /* the pipe first, then the keyboards */
     uint32_t fd_count;
     int32_t program_pid;
     display_vt_guard_keys_t keys;
-    uint8_t _pad0[7];
+    uint8_t rescan_wanted; /* a keyboard went away, or the last look found none */
+    uint8_t _pad0[6];
 } guard_guardian_t;
-static_assert(sizeof(guard_guardian_t) == 32 + sizeof(struct pollfd) * (GUARD_MAX_KEYBOARDS + 1u));
+static_assert(sizeof(guard_guardian_t) == 40 + sizeof(struct pollfd) * (GUARD_MAX_KEYBOARDS + 1u));
 
 typedef enum guard_pipe_news_t : uint8_t {
     GUARD_PIPE_ALIVE = 0,
@@ -329,7 +332,10 @@ static guard_pipe_news_t guard_pipe_read(guard_guardian_t *guardian) {
     display_vt_guard_t *const guard = guardian->borrowed_guard;
     /* This copy was made before the takeover, so it does not know what the program went on to take. Every step is safe
      * whether or not it is still owed: on another VT's time, SETCRTC fails since we are not master, and KD_TEXT and the
-     * keyboard mode apply only to our VT. */
+     * keyboard mode apply only to our VT.
+     * Unless this is root, the kernel answers this process's DROP_MASTER with EACCES: drm_master_check_perm wants the thread
+     * group that opened the card, and that was the program's. SETCRTC is not held to that, so the saved picture still goes
+     * back. Master itself goes when the card's last descriptor does, and that is this process's, in the _exit below. */
     display_flip_assume_taken(guard->borrowed_flip);
     guard->keyboard_off = (uint8_t)(guard->keyboard_count != 0u);
     guard->vt_process = 1u;
@@ -404,12 +410,39 @@ static void guard_guardian_read_keyboard(guard_guardian_t *guardian, struct poll
     struct input_event events[GUARD_EVENTS_AT_ONCE];
     const int64_t count = read(keyboard->fd, events, sizeof(events));
     if (count == 0 || (count < 0 && errno != EAGAIN && errno != EINTR)) {
-        keyboard->fd = -1; /* unplugged: poll ignores it from now on */
+        /* Unplugged. poll ignores -1 from now on, and K_OFF has left nothing else to get out with, so go and look for it. */
+        close(keyboard->fd);
+        keyboard->fd = -1;
+        guardian->rescan_wanted = 1u;
         return;
     }
     for (int64_t i = 0; i < count / (int64_t)sizeof(events[0]); i++) {
         guard_guardian_take_key(guardian, &events[i]);
     }
+}
+
+/* Opens what is there now and only then lets go of the old ones, after one last read, so that no key falls in between; a key
+ * seen on both counts the same twice. A key let go of on a keyboard that has gone was never seen, so nothing counts as held
+ * any more: the combination must be pressed afresh. If nothing is there, the main loop comes back here until there is. */
+static void guard_guardian_rescan_keyboards(guard_guardian_t *guardian) {
+    const display_vt_guard_t *const guard = guardian->borrowed_guard;
+    int32_t fresh[GUARD_MAX_KEYBOARDS];
+    const uint32_t count = guard->borrowed_ops->open_keyboards(guard->borrowed_context, fresh, GUARD_MAX_KEYBOARDS);
+    for (uint32_t i = 1; i < guardian->fd_count; i++) {
+        if (guardian->fds[i].fd >= 0) {
+            guard_guardian_read_keyboard(guardian, &guardian->fds[i]);
+        }
+        if (guardian->fds[i].fd >= 0) {
+            close(guardian->fds[i].fd);
+        }
+    }
+    for (uint32_t i = 0; i < count; i++) {
+        guardian->fds[i + 1u] = (struct pollfd){.fd = fresh[i], .events = POLLIN, .revents = 0};
+    }
+    guardian->fd_count = count + 1u;
+    guardian->keys.held = 0u;
+    guardian->rescan_wanted = (uint8_t)(count == 0u);
+    guardian->last_scan_ns = time_now_ns();
 }
 
 [[noreturn]] static void guard_guardian_main(guard_guardian_t *guardian) {
@@ -446,6 +479,9 @@ static void guard_guardian_read_keyboard(guard_guardian_t *guardian, struct poll
                     guard_guardian_read_keyboard(guardian, &guardian->fds[i]);
                 }
             }
+        }
+        if (guardian->rescan_wanted != 0u && time_now_ns() - guardian->last_scan_ns >= GUARD_RESCAN_EVERY_NS) {
+            guard_guardian_rescan_keyboards(guardian);
         }
         if (time_now_ns() - guardian->last_pet_ns > guard->watchdog_ns) {
             guard_guardian_take_down(guardian, "the watchdog saw the program stop responding");

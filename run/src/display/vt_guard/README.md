@@ -45,10 +45,12 @@ Magic SysRq is not part of this. It is `16` on this machine (`/proc/sys/kernel/s
 | `SIGKILL`, or a stack overflow on a thread with no alternate stack, or a fault inside the handler | The pipe closes without the program having said "done", so the guardian restores from its own copy of the state |
 | Memory scribbled over | The same: the guardian's copy was made at fork |
 | Hang, or `SIGSTOP` | No pet for 8 s: `SIGTERM`, a second later `SIGKILL`, a second later the restore regardless |
-| Stuck in a driver call | The same. It may not be able to kill the program, but it can still give the console back |
+| Stuck in a driver call | The same. It may not be able to kill the program, but it still puts the saved picture back and the console in text mode. The program keeps DRM master until it really dies, so the console may not be fully itself until then |
 | Ctrl+Alt+Backspace | The same as a hang, immediately |
 
-It shares the card and console descriptors, so it can do the whole restore, and it reads the keyboards itself, so a stuck program does not stop the keys. It stays in the session, because `KDSETMODE` and friends need the tty as controlling terminal, but takes a process group of its own, because `timeout` signals its whole group. It ignores every signal it can, except that `SIGKILL` of it directly loses this layer: the program's pets then fail quietly and the handler still works.
+It shares the card and console descriptors, so it can do the restore, and it reads the keyboards itself, so a stuck program does not stop the keys. If a keyboard goes away it looks again at once, then once a second until it finds one: under `K_OFF` nothing else gets you out. It stays in the session, because `KDSETMODE` and friends need the tty as controlling terminal, but takes a process group of its own, because `timeout` signals its whole group.
+
+Unless it is root, its `DROP_MASTER` is refused with `EACCES`: `drm_master_check_perm` takes it only from the thread group that opened the card. Everything else in the restore goes on regardless, `SETCRTC` is not held to that rule, and master goes with the card's last descriptor when the guardian exits. It ignores every signal it can, except that `SIGKILL` of it directly loses this layer: the program's pets then fail quietly and the handler still works.
 
 The restore is a list of steps, each claimed once by an atomic counter, so any thread may run it and a fault in one step resumes at the next. Order: the CRTC, `DROP_MASTER`, `KD_TEXT` (all three in `display_flip_restore`); keyboard mode; `VT_RELDISP(1)` in case a switch is waiting on an answer that is never coming; `VT_MODE`.
 
@@ -68,4 +70,4 @@ The keyboards are read whichever VT is showing, so every key that means somethin
 
 ## What has been checked
 
-Every path above has run in `tests/run/display/vt_guard/`, against a fake kernel, in forked children that really die. `real_open_keyboards` and the real `KD*`/`VT_*` calls have not run at all: tests may not touch a real console or a real keyboard. That is Ahmed's run, in `plans/*-phase-05-stage-2-vt-guard.md`.
+Every path above has run in `tests/run/display/vt_guard/`, against a fake kernel, in forked children that really die. `real_open_keyboards` and the real `KD*`/`VT_*` calls have not run at all: tests may not touch a real console or a real keyboard. That is Ahmed's run, in `plans/*-phase-05-stage-2-vt-guard.md`. What the fake assumes of the kernel (`K_OFF`, `VT_RELDISP`, `reset_vc`, who may drop master) was checked against the kernel's master branch, as the stage file's issue 8 says.

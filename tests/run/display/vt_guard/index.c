@@ -30,7 +30,8 @@ enum : uint32_t {
     RIG_ARENA_BYTES = 256u * 1024u,
 };
 enum : uint64_t {
-    RIG_STACK_MARK = 0xa17u, /* not a real request: says which stack a keyboard ioctl was made from */
+    RIG_STACK_MARK = 0xa17u,      /* not a real request: says which stack a keyboard ioctl was made from */
+    RIG_EMPTY_SCAN_MARK = 0xa18u, /* not a real request either: the guardian looked for keyboards and found none */
 };
 enum : int64_t {
     RIG_WATCHDOG_NS = 200000000,
@@ -65,10 +66,15 @@ typedef struct rig_t {
     int32_t active_vt;
     uint32_t keyboards;
     int32_t master_refusals;
+    int32_t second_keyboard_read;
+    int32_t second_keyboard_write;
+    int32_t master_pid; /* who "opened the card", and so the only one whose DROP_MASTER the kernel takes */
     uint8_t fault_armed;
-    uint8_t _pad0[3];
+    uint8_t replugged;   /* open_keyboards gives the second keyboard from now on */
+    uint8_t empty_scans; /* and before that, comes back with nothing this many times */
+    uint8_t _pad0[5];
 } rig_t;
-static_assert(sizeof(rig_t) == 32 + 304 + 232 + 112 + 24 + 16 * RIG_MAX_RECORDS + 48);
+static_assert(sizeof(rig_t) == 32 + 304 + 232 + 112 + 24 + 16 * RIG_MAX_RECORDS + 64);
 
 static void rig_report(rig_t *rig, uint64_t request, uint32_t value) {
     const rig_record_t record = {.request = request, .value = value, .pid = getpid()};
@@ -122,6 +128,10 @@ static int32_t rig_ioctl(void *context, int32_t fd, uint64_t request, void *argu
             return -EBUSY;
         }
         return 0;
+    case DRM_IOCTL_DROP_MASTER:
+        /* As drm_master_check_perm does for anyone but root: the guardian shares the descriptor, not the right. */
+        rig_report(rig, request, 0u);
+        return getpid() == rig->master_pid ? 0 : -EACCES;
     case VT_RELDISP:
         rig_report(rig, request, (uint32_t)(uintptr_t)argument);
         return 0;
@@ -135,6 +145,22 @@ static uint32_t rig_open_keyboards(void *context, int32_t *out_fds, uint32_t cap
     rig_t *const rig = context;
     if (rig->keyboards == 0u || capacity == 0u) {
         return 0u;
+    }
+    if (rig->replugged != 0u && getpid() != rig->master_pid) {
+        if (rig->empty_scans > 0u) {
+            rig->empty_scans--;
+            rig_report(rig, RIG_EMPTY_SCAN_MARK, 0u);
+            return 0u;
+        }
+        /* Two, the quiet one first, so that the guardian has to go on and watch as many as it was given. The writing end
+         * stays open until the guardian exits, which is what keeps it quiet. */
+        int32_t quiet[2];
+        if (pipe2(quiet, O_NONBLOCK) != 0) {
+            abort();
+        }
+        out_fds[0] = quiet[0];
+        out_fds[1] = dup(rig->second_keyboard_read);
+        return 2u;
     }
     out_fds[0] = dup(rig->keyboard_read);
     return 1u;
@@ -170,6 +196,11 @@ static rig_t *rig_new(test_context_t *t) {
     }
     rig->keyboard_read = ends[0];
     rig->keyboard_write = ends[1];
+    if (pipe2(ends, O_CLOEXEC | O_NONBLOCK) != 0) {
+        abort();
+    }
+    rig->second_keyboard_read = ends[0];
+    rig->second_keyboard_write = ends[1];
     if (pipe2(ends, O_CLOEXEC) != 0) {
         abort();
     }
@@ -203,6 +234,8 @@ static void rig_child_begin(rig_t *rig) {
     alarm(RIG_ALARM_SECONDS);
     dup2(rig->output_write, STDERR_FILENO);
     close(rig->keyboard_write);
+    close(rig->second_keyboard_write);
+    rig->master_pid = getpid();
 }
 
 /* Waits for the child and for every process that held the report pipe, and takes in what they said. So a guardian left
@@ -212,6 +245,7 @@ static void rig_collect(test_context_t *t, rig_t *rig, int32_t child, int32_t *o
     close(rig->report_write);
     close(rig->output_write);
     close(rig->keyboard_read);
+    close(rig->second_keyboard_read);
     rig->report_write = -1;
     rig->record_count = 0u;
     uint64_t output_length = 0;
@@ -251,6 +285,7 @@ static void rig_collect(test_context_t *t, rig_t *rig, int32_t child, int32_t *o
     close(rig->report_read);
     close(rig->output_read);
     close(rig->keyboard_write);
+    close(rig->second_keyboard_write);
     const int32_t waited = waitpid(child, out_status, 0);
     CHECK_EQ_I64(waited, child);
     arena_deinit(rig->borrowed_arena); /* or the harness, clearing the test arena, trips over its poison */
@@ -563,6 +598,7 @@ TEST(the_crash_handler_runs_on_its_own_stack) {
 TEST(the_time_away_on_another_vt_is_not_counted_as_a_late_frame) {
     rig_t *const rig = rig_new(t);
     display_flip_t *const flip = &rig->flip;
+    rig->master_pid = getpid();
     rig->device.timestamp_monotonic = 1u;
     flip->period_ns = 8333333u;
     const struct drm_event_vblank feed = {
@@ -997,6 +1033,106 @@ TEST(an_unplugged_keyboard_does_not_stop_the_guardian) {
     rig_collect(t, rig, child, &status, output, 8192u);
     CHECK_EQ_I64(WEXITSTATUS(status), RIG_CHILD_FINE);
     CHECK_EQ_U64(rig_count(rig, KDSETMODE, KD_TEXT), 1u);
+}
+
+/* The keyboard's pipe ends, and the second pipe is what is there when the guardian looks again. */
+static void rig_replug(rig_t *rig) {
+    close(rig->keyboard_write);
+    rig->keyboard_write = rig->second_keyboard_write;
+    rig->second_keyboard_write = -1;
+}
+
+/* Under K_OFF a keyboard that went away and came back is the only way out there is. It must count, even if it took a while. */
+static void check_keyboard_comes_back(test_context_t *t, uint8_t empty_scans) {
+    rig_t *const rig = rig_new(t);
+    rig->guard.watchdog_ns = 60000000000; /* so that this is the keys' doing */
+    rig->replugged = 1u;
+    rig->empty_scans = empty_scans;
+    const int32_t child = fork();
+    REQUIRE(child >= 0);
+    if (child == 0) {
+        rig_child_begin(rig);
+        signal(SIGTERM, SIG_IGN);
+        if (!display_vt_guard_take_console(&rig->guard)) {
+            _exit(1);
+        }
+        for (;;) {
+            pause();
+        }
+    }
+    usleep(100000u);
+    rig_replug(rig);
+    rig_press_emergency(rig);
+    char *const output = test_alloc(t, 8192u);
+    int32_t status = 0;
+    rig_collect(t, rig, child, &status, output, 8192u);
+    CHECK(WIFSIGNALED(status));
+    CHECK_EQ_I64(WTERMSIG(status), SIGKILL);
+    CHECK_CONTAINS(output, "Ctrl+Alt+Backspace was pressed");
+    CHECK_EQ_U64(rig_count(rig, RIG_EMPTY_SCAN_MARK, 0u), empty_scans);
+    const int32_t text = rig_find(rig, KDSETMODE, KD_TEXT, 0);
+    REQUIRE(text >= 0);
+    check_given_back_from(t, rig, text - 2);
+}
+
+TEST(a_keyboard_that_comes_back_still_has_the_emergency_exit) {
+    check_keyboard_comes_back(t, 0u);
+}
+
+TEST(the_guardian_keeps_looking_until_a_keyboard_comes_back) {
+    check_keyboard_comes_back(t, 2u);
+}
+
+TEST(ctrl_held_on_a_keyboard_that_went_away_does_not_count_on_the_next) {
+    rig_t *const rig = rig_new(t);
+    rig->guard.watchdog_ns = 60000000000;
+    rig->replugged = 1u;
+    const int32_t child = fork();
+    REQUIRE(child >= 0);
+    if (child == 0) {
+        rig_child_begin(rig);
+        bool ok = display_vt_guard_take_console(&rig->guard);
+        usleep(600000u);
+        ok = display_vt_guard_give_back(&rig->guard) && ok;
+        _exit(ok ? RIG_CHILD_FINE : 1);
+    }
+    usleep(100000u);
+    rig_press(rig, KEY_LEFTCTRL, 1);
+    rig_press(rig, KEY_LEFTALT, 1);
+    usleep(100000u); /* so that the guardian has taken them before the keyboard goes */
+    rig_replug(rig);
+    rig_press(rig, KEY_BACKSPACE, 1);
+    char *const output = test_alloc(t, 8192u);
+    int32_t status = 0;
+    rig_collect(t, rig, child, &status, output, 8192u);
+    CHECK(WIFEXITED(status));
+    CHECK_EQ_I64(WEXITSTATUS(status), RIG_CHILD_FINE);
+    CHECK(strstr(output, "was pressed") == nullptr);
+}
+
+/* A guardian that is not root is refused DROP_MASTER, in every test here, as the kernel would. Nothing after it may be lost. */
+TEST(the_guardian_being_refused_drop_master_loses_nothing_else) {
+    rig_t *const rig = rig_new(t);
+    const int32_t child = fork();
+    REQUIRE(child >= 0);
+    if (child == 0) {
+        rig_child_begin(rig);
+        if (!display_vt_guard_take_console(&rig->guard)) {
+            _exit(1);
+        }
+        display_vt_guard_crash_now(DISPLAY_CRASH_TEST_KILL);
+        _exit(2);
+    }
+    char *const output = test_alloc(t, 8192u);
+    int32_t status = 0;
+    rig_collect(t, rig, child, &status, output, 8192u);
+    const int32_t drop = rig_find(rig, DRM_IOCTL_DROP_MASTER, 0u, 0);
+    REQUIRE(drop >= 0);
+    CHECK(rig->records[drop].pid != child);
+    CHECK(rig_find(rig, KDSETMODE, KD_TEXT, drop) > drop);
+    CHECK(rig_find(rig, KDSKBMODE, (uint32_t)RIG_KB_MODE, drop) > drop);
+    CHECK(rig_find(rig, VT_SETMODE, VT_AUTO, drop) > drop);
+    CHECK_CONTAINS(output, "the console has been given back");
 }
 
 /* ---- The notice on screen ---------------------------------------------------------------------------------------- */

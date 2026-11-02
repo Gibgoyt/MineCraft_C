@@ -119,8 +119,15 @@ static uint32_t real_open_keyboards(void *context, int32_t *out_fds, uint32_t ca
     (void)context;
     uint32_t count = 0;
     for (uint32_t i = 0; i < DEVICE_INPUT_NODES && count < capacity; i++) {
-        char path[32];
-        snprintf(path, sizeof(path), "/dev/input/event%" PRIu32, i);
+        /* By hand, since the guardian calls this too, and it may have been forked from a program with other threads. */
+        char path[] = "/dev/input/event00";
+        uint32_t end = (uint32_t)sizeof("/dev/input/event") - 1u;
+        if (i >= 10u) {
+            path[end] = (char)('0' + i / 10u);
+            end++;
+        }
+        path[end] = (char)('0' + i % 10u);
+        path[end + 1u] = '\0';
         const int32_t fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
         if (fd < 0) {
             continue;

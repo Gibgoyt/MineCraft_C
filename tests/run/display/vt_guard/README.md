@@ -13,4 +13,6 @@
 
 The real program only ever gets `/dev/null` for stdin (the harness does that), which `display_device_check_console` refuses before anything else.
 
-What this cannot show is what the kernel does with these calls, and the fake's `VT_RELDISP` is modelled on memory of `vt_reldisp` in `drivers/tty/vt/vt_ioctl.c`, not on the source. That is what Ahmed's run on a text console is for.
+The fake refuses `DROP_MASTER` with `EACCES` from anyone but the process that took the console, as `drm_master_check_perm` in `drivers/gpu/drm/drm_auth.c` does for anyone but root, so every guardian path here runs with that refusal. A keyboard unplugged is its pipe ending, and a second pipe is what the guardian finds when it looks again.
+
+What this cannot show is what the kernel really does with these calls. That is what Ahmed's run on a text console is for.

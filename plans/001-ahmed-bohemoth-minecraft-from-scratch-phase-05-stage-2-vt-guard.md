@@ -57,7 +57,21 @@ After each: does the prompt echo what you type, at the right resolution? Does Ct
 
 **No run on hardware. Nothing about a real console, a real keyboard or a real VT switch has been observed.** No KD or VT ioctl was made on a real tty, `/dev/dri/card*` was not opened, and `/dev/input` was not touched: `real_open_keyboards` has never run. Everything below ran on fake kernels.
 
-Run 2026-11-02, gcc 16.2.1, after merging the integration branch:
+Second pass, 2026-11-02, after merging the integration branch again and adding issue 8's changes:
+
+| Command | Result |
+|---|---|
+| `tools/test-or-build.sh cmake --build --preset debug` | Clean; `standards_lint: no recursion` |
+| `tools/test-or-build.sh timeout 500 ctest --preset debug`, everything | 37 of 37 passed, including `standards_lint`, `clang_format`, `run_display_mode`, `run_display_vt_guard` |
+| `build/debug/bin/tests/run_display_vt_guard build/debug/bin/minecraft_c` | 44 tests, 2632 checks, 0 failed, on 3 runs in a row and on the runs either side of the last mutation |
+| `build/debug/bin/tests/run_display_mode build/debug/bin/minecraft_c` | 73 tests, 981 checks, 0 failed |
+| Sanitize preset and release preset, `ctest -R '^run_display'` | 2 of 2 passed on each |
+| `DISPLAY=:0 timeout 10 build/debug/bin/minecraft_c --test-pattern --crash-test --card /nonexistent/mc_c_no_such_card </dev/null` | `refused: DISPLAY is set`, `heap at exit: 0 reserved`, exit 6 |
+| `pgrep -a minecraft_c` | Prints nothing, rc 1 |
+
+5 more changes to the code, each tried on debug, and all 5 failed the tests: no rescan when a keyboard goes, no retry when a rescan finds none, held keys kept across a rescan, the new keyboards not watched, the restore stopping at a refused `DROP_MASTER`. The fourth passed at first, because the fake gave back one keyboard as before; the fake now gives two, the quiet one first, and it fails.
+
+First pass, also 2026-11-02, gcc 16.2.1, after merging the integration branch:
 
 | Command | Result |
 |---|---|
@@ -86,6 +100,7 @@ Appended as they land:
    - **Expected:** the todo lists `K_OFF` and an emergency key combo as separate items.
    - **Actual:** as I remember `drivers/tty/vt/keyboard.c` (not checked against source; no copy here, and fetching was refused on Stage 05.1), `K_OFF` stops everything except `KT_SHIFT` and SAK, so the tty never sees the combo, and `Ctrl+Alt+Fn` no longer reaches the kernel's console switch. So the combo and VT switching can only come from reading evdev, and Stage 05.3's `input` is not merged, and lives in the program, which is what may be hung.
    - **Done:** `vt_guard` reads the keyboards itself, in the guardian, read-only and never grabbed. It asks for `VT_ACTIVATE` on Ctrl+Alt+Fn. If no keyboard opens, it stays out of `K_OFF` and says so in capitals, because the alternative leaves no way out.
+   - **Checked since, in issue 8:** the `K_OFF` rule above matches the source.
    - **Owed by Stage 05.3:** it must never use `EVIOCGRAB`, which would hide the keys from the emergency exit. It cannot be written in that stage's file from here, so it is written here and in `run/src/display/vt_guard/README.md`.
 
 2. **A guardian process, which the plan does not mention.**
@@ -103,10 +118,10 @@ Appended as they land:
 4. **`SA_NODEFER` was not tested at first.** Removing it passed, because the test's fault came during a `SIGABRT`, and so was a different signal. The test now also runs with the crash and the fault both `SIGSEGV`, and removing it fails.
 
 5. **What is still not protected, or not known.**
-   - The fake's `VT_RELDISP`, and the claim that `reset_vc` handles a dead `VT_PROCESS` owner, are from my memory of `drivers/tty/vt/vt_ioctl.c` and `vt.c`, not the source.
+   - The fake's `VT_RELDISP`, and the claim that `reset_vc` handles a dead `VT_PROCESS` owner, were from memory when written. Issue 8 has them checked since.
    - The crash handler's own stack is set on the thread that takes the console, so a stack overflow on a worker thread dies without the handler. The guardian covers it. No workers run during `--test-pattern` anyway.
    - A real stack overflow was not made: recursion is banned, and the lint checks it. The test proves the handler runs on its own stack, by the address of its frame.
-   - A keyboard plugged in after takeover is not watched, and modifier state is merged, so one unplugged with Ctrl held leaves Ctrl counted as held. Rare, and only makes the combo easier.
+   - A keyboard plugged in after takeover is not watched while another is still there, since looking means opening every input node and that wakes sleeping devices. If one goes, all are looked at again (issue 8).
    - The window between the guardian's fork and the first ioctl is covered, but `SIGSTOP` of both processes, or `SIGKILL` of the guardian and then of the program, is not. Nothing can cover that from user space.
    - `SIGTERM` and its family are only handled while `display_test_pattern_run` has its own handlers in place. `game` (Stage 08.4) must install the same, or the guardian alone gives the console back. Noted for that stage.
 
@@ -120,3 +135,12 @@ Appended as they land:
    - **Not edited:** `compile/src/standards_lint/`; its allowlist already named this file. The phase file's todo, since it is not this stage's file. Stage 05.1's file, whose "do not switch VT" and "a crash leaves the console in graphics mode" are now out of date; its own issue 3 says this stage would take them over.
 
 7. **Commands refused by the worktree guard while working, not worked around.** A compound `python3` heredoc that edited many files, and some compound commands naming `git` or `env -u`, were refused as too complex to verify. Each was redone as plain separate commands, or as individual edits. The by-hand run of the stdin refusal, with both session variables unset, was left to `the_program_refuses_before_any_crash_test_can_start`, which does the same in ctest.
+
+8. **Second pass: what the first pass took from memory, checked, and two things it found.**
+   - **Checked:** with `WebFetch` on `raw.githubusercontent.com/torvalds/linux/master`, of `drivers/tty/vt/keyboard.c`, `vt_ioctl.c` and `drivers/gpu/drm/drm_auth.c`. Not this machine's 7.2.7, whose `/usr/src/linux` has headers only, and what came back was a summary with short quotes, not whole files. It agrees on: `K_OFF` stops everything but `KT_SPEC` and `KT_SHIFT`, and `k_spec` then lets only SAK through; `VT_RELDISP` answers as the fake does; the `perm` rule is the controlling tty or `CAP_SYS_TTY_CONFIG`, so the guardian staying in the session is right; a `VT_PROCESS` owner that cannot be signalled is reset to auto. Not checked: where SysRq is handled, so the `Alt+SysRq+K` advice is still from memory.
+   - **Found, DROP_MASTER.** Expected: the guardian does the whole restore, as the README said. Actual: `drm_master_check_perm` takes `DROP_MASTER` only from the thread group that opened the card, or from `CAP_SYS_ADMIN`, so as Ahmed the guardian gets `EACCES`. Every guardian path was passing against a fake that said yes. Harm: none found. `display_flip_restore` goes on past a failure, `SETCRTC` is not under that rule, and master goes when the guardian's `_exit` closes the card's last descriptor. **Done:** the fake now refuses it the same way in every test, with a test of its own and a code comment. One thing is left: with the program stuck in a driver call it keeps master, so the README no longer promises a full console in that one case. Run 4 in the table above is the real test of all this: if the prompt comes back but does not redraw, look here first.
+   - **Found, keyboard unplugged.** Expected: an emergency exit that is always there. Actual: under `K_OFF`, a keyboard that dropped off and came back (a KVM, a wireless receiver, a USB reset) comes back as a new descriptor, which nothing was watching. That left only SSH, or the watchdog if hung. It also leaked the old descriptor. **Done:** the guardian closes it, looks again at once, then once a second until it finds one, and forgets held keys, so the combination must be pressed afresh. `real_open_keyboards` no longer uses `snprintf`, since the guardian now calls it. New tests: `a_keyboard_that_comes_back_still_has_the_emergency_exit`, `the_guardian_keeps_looking_until_a_keyboard_comes_back`, `ctrl_held_on_a_keyboard_that_went_away_does_not_count_on_the_next`, `the_guardian_being_refused_drop_master_loses_nothing_else`.
+   - **Seen on this machine, read-only:** `ahmed` is in group `input` (994) and `/dev/input/event*` is `root:input 0660`, so `real_open_keyboards` should find keyboards. No device was opened.
+   - **Wiring, as issue 6:** `run/{src,include}/display/device/` for the path and a comment.
+   - **Left alone:** `run_display_mode`'s alignment (issue 3) and Stage 05.1's stale notes (issue 6), neither of them this stage's. Still owed by Stage 05.3 and Stage 08.4, as issues 1 and 5 say. Stage 08.4 also pins main and starts CUDA, so it should think about the guardian inheriting that pin, and forking with the GPU open.
+   - **Refused by the worktree guard, not worked around:** one compound command with a heredoc and `git`. Split into plain commands, as it said.
