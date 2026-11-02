@@ -62,6 +62,7 @@ Beyond the gate:
 Appended as they land:
 
 - `b9b80ba` Fix the phase 8 gate's findings: a clean release build that failed on the generated tables, sim and main sharing a cache line in `game_t`, an unchecked CUDA call, no way to read the FPS or a full pool after a KMS run, and names and literals outside the standard.
+- `94ef054` Record the phase 8 gate's results, what it fixed and what awaits Ahmed's flight on KMS.
 
 ## Issues found
 
