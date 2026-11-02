@@ -117,6 +117,8 @@ Building: 4885 columns, with full detail's own columns beside them, took 123 s f
 
 Appended as they land:
 
+- `7c20c87` Draw the world past full detail out to a render distance of 512 in coarse grids built on workers and traced by the card, with a setting, a measured cost and golden pictures.
+
 ## Issues found
 
 ### 1. `terrain_generate_box` is far too slow for one column at a time
