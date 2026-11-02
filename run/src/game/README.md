@@ -8,7 +8,7 @@
 **Public functions** (`run/include/game/index.h`):
 
 - `game_init`, `game_deinit`: remember what it runs on, taking nothing; stop everything. Deinit is safe on a zeroed `game_t`.
-- `game_open`, `game_close`: a world, its blocks on the card, and its pictures.
+- `game_open`, `game_close`: a world, its blocks on the card, and its pictures, with the effects `game_config_t.features_off` leaves on.
 - `game_sim_step`, `game_fly`, `game_settle`: a step of streaming, a step of flying, and running the sim and upload here until the card holds all the eye's place wants.
 - `game_headless_scene`: what `display_headless_run` drives. One thread, no clock, and one script gives one set of pictures.
 - `game_loop_start`, `game_loop_frame`, `game_loop_stop`: the real threads, and a frame on the main thread.

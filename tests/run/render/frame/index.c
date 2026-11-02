@@ -723,8 +723,11 @@ TEST(what_makes_no_sense_is_refused_and_starts_nothing) {
     render_camera_t camera;
     render_camera_start(&camera, 0.0f64, 0.0f64, 0.0f64, 0.0f32, 0.0f32);
     render_camera_to_traverse(&camera, 65u, 64u, &too_large);
+    const traverse_world_t world = {.borrowed_table = render->buffers.borrowed_table,
+                                    .borrowed_pool = render->buffers.borrowed_pool,
+                                    .window = render->buffers.window};
     gpu_error_t error = {0};
-    CHECK_EQ_U64(shade_frame(&error, &frame->scene, &too_large, &render->owned_hits, &render->owned_shaded),
+    CHECK_EQ_U64(shade_frame(&error, &frame->scene, &world, &too_large, &render->owned_hits, &render->owned_shaded),
                  GPU_STATUS_INVALID_ARGUMENT);
     CHECK_CONTAINS(error.borrowed_what, "hits are too small");
     CHECK_EQ_U64(post_frame(&error, &frame->post, &too_large, &render->owned_shaded, &render->owned_xrgb),
@@ -732,7 +735,7 @@ TEST(what_makes_no_sense_is_refused_and_starts_nothing) {
     CHECK_CONTAINS(error.borrowed_what, "pixels are too small");
     traverse_camera_t no_pixels = too_large;
     no_pixels.width = 0u;
-    CHECK_EQ_U64(shade_frame(&error, &frame->scene, &no_pixels, &render->owned_hits, &render->owned_shaded),
+    CHECK_EQ_U64(shade_frame(&error, &frame->scene, &world, &no_pixels, &render->owned_hits, &render->owned_shaded),
                  GPU_STATUS_INVALID_ARGUMENT);
     CHECK_EQ_U64(post_frame(&error, &frame->post, &no_pixels, &render->owned_shaded, &render->owned_xrgb),
                  GPU_STATUS_INVALID_ARGUMENT);
@@ -745,12 +748,9 @@ TEST(what_makes_no_sense_is_refused_and_starts_nothing) {
     CHECK_CONTAINS(error.borrowed_what, "fog");
     shade_scene_t short_table = frame->scene;
     short_table.material_count = 1u << 24;
-    CHECK_EQ_U64(shade_frame(&error, &short_table, &fits, &render->owned_hits, &render->owned_shaded),
+    CHECK_EQ_U64(shade_frame(&error, &short_table, &world, &fits, &render->owned_hits, &render->owned_shaded),
                  GPU_STATUS_INVALID_ARGUMENT);
     CHECK_CONTAINS(error.borrowed_what, "table");
-    const traverse_world_t world = {.borrowed_table = render->buffers.borrowed_table,
-                                    .borrowed_pool = render->buffers.borrowed_pool,
-                                    .window = render->buffers.window};
     const frame_args_t args = {.borrowed_world = &world,
                                .borrowed_scene = &frame->scene,
                                .borrowed_post = &frame->post,
@@ -1042,6 +1042,8 @@ TEST(real_terrain_through_the_real_path_is_what_the_map_holds) {
     REQUIRE(game_settle(game));
     CHECK_EQ_U64(rig.render->buffers.pool_full_count, 0u);
     CHECK(rig.render->buffers.section_count > 100u);
+    /* This compares voxels with the map, so every voxel is drawn whole. Shapes and holes have their test: tests/cuda/shapes/. */
+    render_frame_features_set(&rig.render->frame, 0u);
     /* What the pool allows a column: the real world must fit it, or a whole render distance would not. */
     CHECK(rig.render->buffers.slab_bytes < (uint64_t)rig.world->map.ready_count * RENDER_POOL_BYTES_PER_COLUMN);
     fr_terrain_tally_t tally = {0};
@@ -1067,6 +1069,7 @@ TEST(flying_far_scrolls_the_table_and_the_picture_stays_right) {
     REQUIRE(fr_rig_begin(t, &rig));
     game_t *const game = rig.game;
     REQUIRE(game_open(game, &fr_small_game));
+    render_frame_features_set(&rig.render->frame, 0u); /* as above: this compares voxels */
     fr_terrain_tally_t tally = {0};
     uint64_t columns_before = 0u;
     for (uint32_t i = 0u; i < 6u; i++) {

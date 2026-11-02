@@ -69,9 +69,10 @@ typedef struct render_t {
     device_block_t owned_hits;       /* 1648 */
     device_block_t owned_shaded;     /* 1672 */
     device_block_t owned_xrgb;       /* 1696 */
-    uint8_t _pad1[8];                /* 1720 */
+    device_block_t owned_shapes;     /* 1720: from DEVICE_POOL_TEXTURES, with the other tables */
+    uint8_t _pad1[48];               /* 1744 */
 } render_t;
-static_assert(sizeof(render_t) == 1728);
+static_assert(sizeof(render_t) == 1792);
 static_assert(alignof(render_t) == 64);
 static_assert(offsetof(render_t, upload) == 64);
 static_assert(offsetof(render_t, owned_host) == 512);
@@ -79,7 +80,7 @@ static_assert(offsetof(render_t, buffers) == 576);
 static_assert(offsetof(render_t, open) == 848);
 static_assert(offsetof(render_t, frame) == 960);
 static_assert(offsetof(render_t, owned_frame_host) == 1536);
-static_assert(offsetof(render_t, _pad1) == 1720);
+static_assert(offsetof(render_t, _pad1) == 1744);
 
 /* What a real game runs with: gpu.budget in config/machine.yaml. */
 render_limits_t render_limits_default(void);

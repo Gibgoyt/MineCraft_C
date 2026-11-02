@@ -1,6 +1,6 @@
 # cuda/src/traverse
 
-**Purpose:** the coarse depth pass and primary rays: hierarchical DDA through the three-level bitmask tree.
+**Purpose:** the coarse depth pass and primary rays: hierarchical DDA through the three-level bitmask tree, and the table of boxes for what is not a whole cube.
 **Tier:** a CUDA area. It holds no memory. Device blocks come from its caller, and are checked against what is asked of them.
 **Owns:** nothing.
 **Lifetime:** each call starts a kernel and returns. `traverse_wait` waits.
@@ -14,7 +14,9 @@
 
 Only for CUDA code (`cuda/include/traverse/index.hu`):
 
-- `traverse_trace`: the ray loop, inline, because a device function cannot be called across files without device linking. Sun rays in `cuda/src/shade/` will call this.
+- `traverse_trace`: the ray loop, inline, because a device function cannot be called across files without device linking. `cuda/src/shade/` calls it for rays going on through holes, and sun rays there will too.
+- `traverse_boxes`, `traverse_shape_rows`: the shape table, on the card as constants, for the same reason in the header and not here.
+- `traverse_view_from`: a `traverse_world_t` checked and made into what a kernel takes.
 
 **May be called by:** `render`, the other `cuda/` areas.
 **Depends on:** `gpu_bridge/device_memory`, `gpu_bridge/world_buffers` and `gpu_bridge/status`, and `cuda/include/device_memory/` for `device_memory_check` and `device_memory_pointer`.
@@ -26,6 +28,18 @@ Only for CUDA code (`cuda/include/traverse/index.hu`):
 - A section of one block and one light stores only those: Stage 01.3 issue 6 and Stage 08.4 issue 2.
 - One block of threads is one 8 x 8 tile: Stage 01.3 measured it best or tied for best.
 - There is no `%` in the loop for the toroidal table: the slot of the window's corner is worked out once per kernel.
+
+## Shapes
+
+A material's `traverse_shape_t` comes from the table `run/src/render/frame/` sends, `traverse_world_t.borrowed_shapes`. Nothing there, or a material past its end, or a value with no row, is a whole cube, and a cube takes the same few lines as ever: and with the setting off a picture is what it was before shapes, pixel for pixel: Stage 09.1 checked that against the old golden pictures.
+
+A shape is up to four boxes inside its voxel, in 32nds of a block. So the voxel's bit in the tree stays set, the coarse pass stays right without knowing, and only the last step changes: `traverse_voxel_hit` cuts the ray against each box, from the eye as everything here is, and the nearest wins. If none is met the ray goes on, one voxel at a time, also through a section all of one block, which has no masks to skip by.
+
+A ray with `resume` set is going on past a surface at `t_start`, and takes only what it enters after `t_start`. It need not know what it left or how far that goes. This relies on working a plane out the same way each time, whole number first, so that a cube's `t` here is the same bits as `traverse_hit_found`'s and is not after itself.
+
+From inside a box a ray says `TRAVERSE_FACE_INSIDE` for a slab or stairs. For a plate or a torch it sees on past: someone flying through grass does not want the screen to go dark.
+
+Plants are a `+` and not Minecraft's `X`: the table holds boxes along the axes, as the plan says, so the two plates are square to the world. No block has a facing yet, so stairs rise towards `+y`, and a ladder or a vine is on the `+y` side: `plans/001-ahmed-bohemoth-minecraft-from-scratch-phase-09-stage-1-non-cube-shapes.md`, issue 1.
 
 ## The coarse pass
 

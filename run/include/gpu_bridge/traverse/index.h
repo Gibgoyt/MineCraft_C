@@ -55,21 +55,44 @@ enum : uint32_t {
 /* What the coarse pass writes for a tile no ray of which can hit anything. */
 #define TRAVERSE_COARSE_SKY F32(1e30)
 
+/* What a material draws as: a row of the table of boxes in cuda/include/traverse/index.hu. CUBE is the whole voxel, and what a
+ * ray takes for anything with no row. Boxes are inside their voxel, so the tree's masks and the coarse pass never need to know. */
+typedef enum traverse_shape_t : uint8_t {
+    TRAVERSE_SHAPE_CUBE = 0,
+    /* These first have a body: from inside one a ray says TRAVERSE_FACE_INSIDE. From CROSS on, it sees on past what it is in. */
+    TRAVERSE_SHAPE_SLAB = 1,   /* the lower half */
+    TRAVERSE_SHAPE_STAIRS = 2, /* the lower half, and the upper half towards +y */
+    TRAVERSE_SHAPE_CROSS = 3,  /* a plant: two thin plates through the middle, one along each of x and y */
+    TRAVERSE_SHAPE_CROP = 4,   /* a crop: four thin plates, two along each */
+    TRAVERSE_SHAPE_TORCH = 5,  /* a stick in the middle, standing on the floor */
+    TRAVERSE_SHAPE_PLATE = 6,  /* a thin plate against the +y side: a ladder, a vine */
+    TRAVERSE_SHAPE_FLAT = 7,   /* a thin plate on the floor: a lily pad */
+    TRAVERSE_SHAPE_COUNT = 8,
+} traverse_shape_t;
+static_assert(sizeof(traverse_shape_t) == 1);
+
 /* The world as kernels see it, in the form gpu_bridge/world_buffers/index.h defines and run/src/render/encode/ writes: one
  * format, whatever Stage 08.3 and Stage 08.2 each started with (Stage 08.4 issue 1). The blocks are borrowed from whoever holds
  * them, and read only: they must not be freed or written while a kernel using them may still run. A column x, y in the window
  * lives where the window says. A slot may still hold the column that wrapped out of it, with other coordinates: that one reads
- * as empty, so what wrapped cannot be seen twice, as can nothing past the window, where rays are clipped. */
+ * as empty, so what wrapped cannot be seen twice, as can nothing past the window, where rays are clipped. With no shapes, every
+ * voxel is a whole cube: which is the setting's off, and what a world of bare materials means. */
 typedef struct traverse_world_t {
-    const device_block_t *borrowed_table; /* 0: window.slot_count world_buffers_column_t */
-    const device_block_t *borrowed_pool;  /* 8: where the sections are */
-    world_buffers_window_t window;        /* 16 */
+    const device_block_t *borrowed_table;  /* 0: window.slot_count world_buffers_column_t */
+    const device_block_t *borrowed_pool;   /* 8: where the sections are */
+    world_buffers_window_t window;         /* 16 */
+    const device_block_t *borrowed_shapes; /* 40: shape_count traverse_shape_t, by material, or nullptr */
+    uint32_t shape_count;                  /* 48 */
+    uint8_t _pad0[4];                      /* 52 */
 } traverse_world_t;
-static_assert(sizeof(traverse_world_t) == 40);
+static_assert(sizeof(traverse_world_t) == 56);
 static_assert(alignof(traverse_world_t) == 8);
 static_assert(offsetof(traverse_world_t, borrowed_table) == 0);
 static_assert(offsetof(traverse_world_t, borrowed_pool) == 8);
 static_assert(offsetof(traverse_world_t, window) == 16);
+static_assert(offsetof(traverse_world_t, borrowed_shapes) == 40);
+static_assert(offsetof(traverse_world_t, shape_count) == 48);
+static_assert(offsetof(traverse_world_t, _pad0) == 52);
 
 /* The eye is a whole block and a fraction, so that a ray is computed relative to the eye and is as exact at x = 10000000 as at
  * the origin. width and height are the size being rendered, which may be below the display's: Stage 01.3's fallback. For
@@ -111,7 +134,7 @@ static_assert(offsetof(traverse_ray_t, t_start) == 36);
 
 /* What a ray found, one per pixel. 16 bytes, so a 1080p frame's hits are 33 MiB and shading touches few cache lines. */
 typedef struct traverse_hit_t {
-    float32_t t;       /* 0: blocks from the eye to where the ray enters the voxel */
+    float32_t t;       /* 0: blocks from the eye to where the ray enters the voxel, or the voxel's box */
     uint32_t value;    /* 4: the voxel's material and light: TRAVERSE_VALUE_* */
     int16_t offset[3]; /* 8: the voxel, from eye_cell. int16_t is enough: the widest window is 1025 columns */
     uint16_t info;     /* 14: see traverse_face_t */

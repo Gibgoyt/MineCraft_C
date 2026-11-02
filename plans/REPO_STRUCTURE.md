@@ -276,8 +276,8 @@ Layout: `cuda/src/<dir>/index.cu`, `cuda/include/<dir>/index.hu`, `README.md`. *
 |---|---|---|
 | `device_memory` | **Only `cudaMalloc`/`cudaFree` user**; device allocator | 08.1 |
 | `world_buffers` | Section pool, column table on device | 08.2 |
-| `traverse` | Coarse depth pass; primary rays through the bitmask tree, which `world_buffers` holds | 08.3, 08.4 |
-| `shade` | Textures, light, shadows, AO, water | 08.4, 09.x |
+| `traverse` | Coarse depth pass; primary rays through the bitmask tree, which `world_buffers` holds; the shape table of boxes | 08.3, 08.4, 09.1 |
+| `shade` | Textures, holes in them, light, shadows, AO, water | 08.4, 09.x |
 | `post` | Sky, fog, TAA, tone map | 08.4, 09.x |
 | `frame` | One frame's kernels in order, GPU timers | 08.4, 17.1 |
 | `entity_rays` | Mob and item boxes | 09.5 |
@@ -403,6 +403,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/game/` | ctest `run_game`: the real loop on the real card and threads through `display_frames_run`, on fake kernels, with the guardian really forked |
 | `tests/run/render/upload/` | ctest `run_render_upload`, covering `run/src/render/` with `upload`, and `cuda/src/world_buffers/`, on the real card: a real kernel's answers against the world voxel for voxel, the slab pool against a model, the budget, and a real sim thread |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
+| `tests/cuda/shapes/` | ctest `render_feature_shapes`, named in its `test.cmake`: each shape by hand, a block of each shape and its holes against an exact trace from all sides, the settings, the coarse pass, how many holes a pixel goes through, golden PNGs in `fixtures/`, and the cost, on the real card |
 | `tests/cuda/traverse/` | ctest `cuda_traverse`, with an encoder of its own for `world_buffers`' format: known hits, random rays and whole frames against an exact CPU reference in `float64_t`, the coarse pass never overestimating, and Stage 01.3's worlds. Timing on request |
 | `tests/asm/` | NASM kernels against scalar C references |
 | `tests/asm/abi/` | ctest `asm_abi`: every kernel keeps the callee-saved registers and leaves no dirty YMM state, by machine state, not by output |

@@ -1,6 +1,6 @@
 # run/src/gpu_bridge/traverse
 
-**Purpose:** names the C API to ray traversal, in `run/include/gpu_bridge/traverse/index.h`. No C implements it, so this directory holds no `index.c`: `cuda/src/traverse/index.cu` does, and that README has the rules.
+**Purpose:** names the C API to ray traversal, and `traverse_shape_t`, what a material draws as, in `run/include/gpu_bridge/traverse/index.h`. No C implements it, so this directory holds no `index.c`: `cuda/src/traverse/index.cu` does, and that README has the rules.
 **Tier:** Arena, and it allocates nothing on the host or the card: its caller passes in every block.
 **Owns:** nothing here.
 **Lifetime:** Process.
