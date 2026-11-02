@@ -9,7 +9,9 @@
 #include "job/index.h"
 #include "machine/index.h"
 #include "render/encode/index.h"
+#include "render/frame/index.h"
 #include "render/upload/index.h"
+#include "texture/index.h"
 #include "world/edit/index.h"
 
 #include <stddef.h>
@@ -53,14 +55,30 @@ typedef struct render_t {
     job_system_t *borrowed_job;       /* 816 */
     render_limits_t limits;           /* 824 */
     uint8_t open;                     /* 848 */
-    uint8_t _pad0[47];                /* 849 */
+    uint8_t frame_open;               /* 849 */
+    uint8_t _pad0[46];                /* 850 */
+
+    arena_t arena_frame;             /* 896: over owned_frame_host */
+    render_frame_t frame;            /* 960 */
+    heap_region_t owned_frame_host;  /* 1536 */
+    device_block_t owned_textures;   /* 1552: what shading reads, from DEVICE_POOL_TEXTURES */
+    device_block_t owned_faces;      /* 1576 */
+    device_block_t owned_tex_pixels; /* 1600 */
+    device_block_t owned_coarse;     /* 1624: what a frame writes, from DEVICE_POOL_FRAMES */
+    device_block_t owned_hits;       /* 1648 */
+    device_block_t owned_shaded;     /* 1672 */
+    device_block_t owned_xrgb;       /* 1696 */
+    uint8_t _pad1[8];                /* 1720 */
 } render_t;
-static_assert(sizeof(render_t) == 896);
+static_assert(sizeof(render_t) == 1728);
 static_assert(alignof(render_t) == 64);
 static_assert(offsetof(render_t, upload) == 64);
 static_assert(offsetof(render_t, owned_host) == 512);
 static_assert(offsetof(render_t, buffers) == 576);
 static_assert(offsetof(render_t, open) == 848);
+static_assert(offsetof(render_t, frame) == 960);
+static_assert(offsetof(render_t, owned_frame_host) == 1536);
+static_assert(offsetof(render_t, _pad1) == 1720);
 
 /* What a real game runs with: gpu.budget in config/machine.yaml. */
 render_limits_t render_limits_default(void);
@@ -81,7 +99,17 @@ uint64_t render_pool_bytes_for(const render_t *render, uint32_t slot_count);
 gpu_status_t render_open(render_t *render, world_edit_snapshot_t *snapshot, uint64_t pool_bytes,
                          render_upload_budget_t budget);
 
-/* Gives all of that back. Safe if none is open. The gpu thread must have stopped using it. */
+/* Gives all of that back, and a frame's too if it is still open. Safe if none is open. The gpu thread must have stopped using
+ * it. */
 void render_close(render_t *render);
+
+/* Starts drawing pictures of this size: takes the textures and tables from DEVICE_POOL_TEXTURES, the frame's targets from
+ * DEVICE_POOL_FRAMES, and host memory for the pictures. Apart from render_open, since a test can want one without the other.
+ * On failure logs why, takes nothing and returns what went wrong. */
+gpu_status_t render_open_frame(render_t *render, const texture_t *texture, uint32_t width, uint32_t height,
+                               float32_t fog_end);
+
+/* Gives all of that back. Safe if none is open. The gpu thread must have stopped using it. */
+void render_close_frame(render_t *render);
 
 #endif

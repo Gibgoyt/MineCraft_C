@@ -17,13 +17,13 @@ Only for CUDA code (`cuda/include/traverse/index.hu`):
 - `traverse_trace`: the ray loop, inline, because a device function cannot be called across files without device linking. Sun rays in `cuda/src/shade/` will call this.
 
 **May be called by:** `render`, the other `cuda/` areas.
-**Depends on:** `gpu_bridge/device_memory` and `gpu_bridge/status`, and `cuda/include/device_memory/` for `device_memory_check` and `device_memory_pointer`.
+**Depends on:** `gpu_bridge/device_memory`, `gpu_bridge/world_buffers` and `gpu_bridge/status`, and `cuda/include/device_memory/` for `device_memory_check` and `device_memory_pointer`.
 
 ## Why it is the way it is
 
 - The eye is a cell and a fraction, and every plane is computed from the eye: `((float32_t)(plane - eye_cell) - eye_frac) * inverse`. So a ray is as exact at x = 16000000 as at the origin, and a test says so to the bit. Stage 01.3 computed from the world's corner, and could only do so because its world was small.
 - Stage 01.3's three bugs stay fixed, each marked in the code: `(plane - origin) * inverse` and never `plane * inverse - origin * inverse` (its issue 2); a coordinate never moves against the ray (issue 3), which is also what bounds a ray's steps; and the hit's face comes from the voxel and not from the last step (issue 4). The last goes further than Stage 01.3 did: a ray enters a box at the latest of its near planes, so the face and `t` are worked out from the voxel alone.
-- A uniform section, and a uniform brick, store only one value: Stage 01.3 issue 6.
+- A section of one block and one light stores only those: Stage 01.3 issue 6 and Stage 08.4 issue 2.
 - One block of threads is one 8 x 8 tile: Stage 01.3 measured it best or tied for best.
 - There is no `%` in the loop for the toroidal table: the slot of the window's corner is worked out once per kernel.
 
@@ -37,4 +37,4 @@ The box hugs the stretch, and the short stretch looks at voxels. Both are needed
 
 ## The format
 
-`traverse_column_t`, `traverse_section_t`, `brick_masks` and `brick_refs` are described in the header. They are Stage 01.3's format, as measured, with one change: a column's `top` is one above its highest occupied height, and 0 when empty, where Stage 01.3 stored the highest height itself, which cannot say empty. Stage 08.2's encoder is to write this: see issue 1 in the stage file.
+There is one format: the table and the slab pool in `run/include/gpu_bridge/world_buffers/index.h`, which `run/src/render/encode/` writes. Stage 08.3 first walked a format of its own, Stage 01.3's, and Stage 08.4 issue 1 is how the two became one. A column's height comes from its `top_z`, and a slot that is empty, or still holds the column that wrapped out of this place, reads as empty. `traverse_hit_t.value` is the voxel's material with its light above it.

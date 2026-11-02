@@ -35,6 +35,47 @@ static void encode_bricks_from_occupied(const uint64_t *occupied, uint64_t *bric
     }
 }
 
+/* Whether every voxel is the one block with the one light: stone far below the ground, mostly. Worth a look, as this is 4096
+ * comparisons at the most, against 12944 bytes to send and keep. Only asked of a section with no air in it. */
+static bool encode_is_uniform(const render_encode_source_t *source) {
+    const uint16_t *const blocks = source->borrowed_blocks;
+    const uint8_t *const light = source->borrowed_light;
+    if (blocks != nullptr) {
+        for (uint32_t i = 1; i < SECTION_VOXELS; i++) {
+            if (blocks[i] != blocks[0]) {
+                return false;
+            }
+        }
+    }
+    if (light != nullptr) {
+        for (uint32_t i = 1; i < SECTION_VOXELS; i++) {
+            if (light[i] != light[0]) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static uint32_t encode_uniform(const render_encode_source_t *source, uint8_t *out) {
+    const uint16_t material = source->borrowed_blocks != nullptr ? source->borrowed_blocks[0] : source->block_uniform;
+    const uint8_t light = source->borrowed_light != nullptr ? source->borrowed_light[0] : source->light_uniform;
+    const uint32_t light_offset = (uint32_t)sizeof(world_buffers_section_t) + (uint32_t)sizeof(uint16_t);
+    const world_buffers_section_t header = {
+        .brick_mask = ~0ull,
+        .voxel_count = (uint16_t)SECTION_VOXELS,
+        .material_offset = (uint16_t)sizeof(world_buffers_section_t),
+        .light_offset = (uint16_t)light_offset,
+        .brick_count = 0u,
+        ._pad0 = {0},
+    };
+    memset(out, 0, WORLD_BUFFERS_SECTION_BYTES_UNIFORM);
+    memcpy(out, &header, sizeof(header));
+    memcpy(out + sizeof(header), &material, sizeof(material));
+    out[light_offset] = light;
+    return WORLD_BUFFERS_SECTION_BYTES_UNIFORM;
+}
+
 uint32_t render_encode_section(const render_encode_source_t *source, uint8_t *out) {
     uint64_t occupied[ENCODE_WORDS];
     uint64_t bricks[ENCODE_WORDS];
@@ -59,6 +100,9 @@ uint32_t render_encode_section(const render_encode_source_t *source, uint8_t *ou
     }
     if (voxel_count == 0u) {
         return 0u;
+    }
+    if (voxel_count == SECTION_VOXELS && encode_is_uniform(source)) {
+        return encode_uniform(source, out);
     }
 
     const uint32_t words_offset = (uint32_t)sizeof(world_buffers_section_t);

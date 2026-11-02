@@ -206,10 +206,11 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `status` | `gpu_status_t`, `gpu_error_t`, and reporting a failure | 08.1 |
 | | `device_memory` | The C API of the device allocator. Its `run/src/` directory holds only a README: `cuda/src/device_memory/` implements it | 08.1 |
 | | `world_buffers` | The C API of the section pool and column table, and the form of a section on the card. Its `run/src/` directory holds only a README: `cuda/src/world_buffers/` implements it | 08.2 |
-| | `traverse` | The C API of ray traversal: the tree's format, cameras and hits. Its `run/src/` directory holds only a README: `cuda/src/traverse/` implements it | 08.3 |
+| | `traverse` | The C API of ray traversal: cameras and hits, on the format of `world_buffers`. Its `run/src/` directory holds only a README: `cuda/src/traverse/` implements it | 08.3 |
+| | `shade post frame` | The C APIs of shading, of sky, fog and the tone map, and of one frame's kernels. Each `run/src/` directory holds only a README: `cuda/src/<area>/` implements it | 08.4 |
 | `render` | (the Owner) | `render_init`, `render_deinit`: the host region; `render_open`, `render_close`: the pool and table on the card, for one world | 08.2 |
 | | `encode upload` | Encode sections on workers; budgeted upload queue | 08.2 |
-| | `frame` | Frame sequence: submit, readback, HUD, present | 08.4 |
+| | `frame` | The kernels' tables, the free-fly camera, readback, present; HUD from 14.2 | 08.4 |
 | | `entities` | Per-tile entity lists | 09.5 |
 | | `lod` | Build coarse far-field grids | 09.6 |
 | `texture` | `blob registry` | Checks the embedded blob; finds a texture, a mip level or its vector data by name or id | 06.4 |
@@ -237,6 +238,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | System | Parts | Job | Stage |
 |---|---|---|---|
 | `game` | | **Owner of World, Tick and Frame arenas**; the loop connecting `sim`, `gpu`, `main` | 08.4, extended later |
+| | `test_world` | The blocks of a column, until the real world's surface exists | 08.4; goes with 10.6 |
 | `physics` | `collision raycast` | Swept AABB; DDA block targeting | 12.1, 12.2 |
 | `player` | `movement camera` | Walk, jump, swim, look | 12.1, 12.2 |
 | | `interaction` | **Mining, drops, placing** | 12.3 |
@@ -275,7 +277,7 @@ Layout: `cuda/src/<dir>/index.cu`, `cuda/include/<dir>/index.hu`, `README.md`. *
 |---|---|---|
 | `device_memory` | **Only `cudaMalloc`/`cudaFree` user**; device allocator | 08.1 |
 | `world_buffers` | Section pool, column table on device | 08.2 |
-| `traverse` | Coarse depth pass; primary rays through the bitmask tree | 08.3 |
+| `traverse` | Coarse depth pass; primary rays through the bitmask tree, which `world_buffers` holds | 08.3, 08.4 |
 | `shade` | Textures, light, shadows, AO, water | 08.4, 09.x |
 | `post` | Sky, fog, TAA, tone map | 08.4, 09.x |
 | `frame` | One frame's kernels in order, GPU timers | 08.4, 17.1 |
@@ -396,9 +398,10 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/texture/` | ctest `run_texture`, covering `run/src/texture/` with `blob` and `registry`, and `asm/src/embed_assets/`: every texture against its source files, and damage to the blob, field by field |
 | `tests/run/gpu_bridge/` | ctest `run_gpu_bridge`, covering `run/src/gpu_bridge/` with `status`, and `cuda/src/device_memory/`, on the real card: real blocks and a real kernel, the budgets, stale and forged handles, a pebibyte refused, and no device in a process of its own |
 | `tests/run/render/encode/` | ctest `run_render_encode`: one voxel's bytes worked out on paper, every shape of section against brute force, and real workers. No card |
+| `tests/run/render/frame/` | ctest `run_render_frame`, covering `run/src/game/`, `run/src/render/frame/` and `cuda/src/{shade,post,frame}/`, on the real card: every pixel against an exact trace, the real path against the map, golden PNGs in `fixtures/`, the built program from script to file, and the real threads |
 | `tests/run/render/upload/` | ctest `run_render_upload`, covering `run/src/render/` with `upload`, and `cuda/src/world_buffers/`, on the real card: a real kernel's answers against the world voxel for voxel, the slab pool against a model, the budget, and a real sim thread |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
-| `tests/cuda/traverse/` | ctest `cuda_traverse`: known hits, random rays and whole frames against an exact CPU reference in `float64_t`, the coarse pass never overestimating, and Stage 01.3's worlds. Timing on request |
+| `tests/cuda/traverse/` | ctest `cuda_traverse`, with an encoder of its own for `world_buffers`' format: known hits, random rays and whole frames against an exact CPU reference in `float64_t`, the coarse pass never overestimating, and Stage 01.3's worlds. Timing on request |
 | `tests/asm/` | NASM kernels against scalar C references |
 | `tests/asm/abi/` | ctest `asm_abi`: every kernel keeps the callee-saved registers and leaves no dirty YMM state, by machine state, not by output |
 | `tests/fuzz/`, `tests/soak/` | Fuzzing and long runs (Stage 18.1) |

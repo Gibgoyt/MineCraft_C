@@ -6,26 +6,25 @@
 #include "device_memory/index.hu"
 #include "gpu_bridge/traverse/index.h"
 
+#include <math.h>
+
 /* A direction component nearer zero than this becomes this, keeping its sign, so that its inverse stays finite. A test's CPU
  * reference applies the same rule. */
 #define TRAVERSE_DIRECTION_FLOOR 1e-6F
 
 /* The world, with what a kernel needs worked out from traverse_world_t. Passed to kernels by value. */
 typedef struct traverse_view_t {
-    const traverse_column_t *columns;   /* 0 */
-    const traverse_section_t *sections; /* 8 */
-    const uint64_t *brick_masks;        /* 16 */
-    const uint32_t *brick_refs;         /* 24 */
-    const uint32_t *voxels;             /* 32 */
-    int32_t window_min_block[2];        /* 40 */
-    int32_t window_min_column[2];       /* 48 */
-    uint32_t origin_slot[2];            /* 56: the table slot of the window's low corner column */
-    uint32_t columns_wide;              /* 64 */
-    uint32_t window_blocks;             /* 68 */
-    uint32_t max_steps;                 /* 72: see traverse_view_from in the .cu for why this is enough */
-    uint8_t _pad0[4];                   /* 76 */
+    const world_buffers_column_t *table; /* 0 */
+    const uint8_t *pool;                 /* 8 */
+    int32_t window_min_block[2];         /* 16 */
+    int32_t window_min_column[2];        /* 24 */
+    uint32_t origin_slot[2];             /* 32: the table slot of the window's low corner column */
+    uint32_t columns_wide;               /* 40 */
+    uint32_t window_blocks;              /* 44 */
+    uint32_t max_steps;                  /* 48: see traverse_view_from in the .cu for why this is enough */
+    uint8_t _pad0[4];                    /* 52 */
 } traverse_view_t;
-static_assert(sizeof(traverse_view_t) == 80);
+static_assert(sizeof(traverse_view_t) == 56);
 static_assert(alignof(traverse_view_t) == 8);
 
 /* A ray ready to trace: eye_cell[2] is a storage height from here on, not a world z. */
@@ -37,6 +36,20 @@ typedef struct traverse_trace_ray_t {
 } traverse_trace_ray_t;
 static_assert(sizeof(traverse_trace_ray_t) == 40);
 static_assert(alignof(traverse_trace_ray_t) == 4);
+
+/* A pixel's unit direction: see traverse_camera_t. Shade and post need the same ray as traversal did. */
+static __device__ __forceinline__ void traverse_camera_direction(const traverse_camera_t *camera, float32_t pixel_x,
+                                                                 float32_t pixel_y, float32_t out[3]) {
+    const float32_t u = 2.0F * pixel_x / (float32_t)camera->width - 1.0F;
+    const float32_t v = 1.0F - 2.0F * pixel_y / (float32_t)camera->height;
+    const float32_t x = camera->forward[0] + u * camera->right[0] + v * camera->up[0];
+    const float32_t y = camera->forward[1] + u * camera->right[1] + v * camera->up[1];
+    const float32_t z = camera->forward[2] + u * camera->right[2] + v * camera->up[2];
+    const float32_t scale = 1.0F / sqrtf(x * x + y * y + z * z);
+    out[0] = x * scale;
+    out[1] = y * scale;
+    out[2] = z * scale;
+}
 
 static __device__ __forceinline__ int32_t traverse_clamp(int32_t value, int32_t low, int32_t high) {
     return value < low ? low : (value > high ? high : value);
@@ -57,6 +70,30 @@ static __device__ __forceinline__ uint32_t traverse_slot(const traverse_view_t *
     slot_x = slot_x >= view->columns_wide ? slot_x - view->columns_wide : slot_x;
     slot_y = slot_y >= view->columns_wide ? slot_y - view->columns_wide : slot_y;
     return slot_y * view->columns_wide + slot_x;
+}
+
+/* One above a column's highest block, as a storage height, or 0 when there is nothing in it: when the slot is empty, or still
+ * holds the column that wrapped out of this place. So every height is above it, and the masks are never read. */
+static __device__ __forceinline__ int32_t traverse_column_top(const world_buffers_column_t *column, int32_t column_x,
+                                                              int32_t column_y) {
+    if (column->ready == 0u || column->chunk_x != column_x || column->chunk_y != column_y) {
+        return 0;
+    }
+    return (int32_t)column->top_z - TRAVERSE_Z_BASE + 1;
+}
+
+/* A section's bytes in the pool, from a place in the table. */
+static __device__ __forceinline__ const uint8_t *traverse_section_bytes(const traverse_view_t *view, uint32_t entry) {
+    return view->pool + (uint64_t)(entry - 1u) * WORLD_BUFFERS_GRANULE_BYTES;
+}
+
+/* The value of a voxel known to be there, at this place among the section's voxels: place 0 in a uniform section. */
+static __device__ __forceinline__ uint32_t traverse_section_value(const uint8_t *encoded,
+                                                                  const world_buffers_section_t *header,
+                                                                  uint32_t place) {
+    const uint32_t material = ((const uint16_t *)(const void *)(encoded + header->material_offset))[place];
+    const uint32_t light = (encoded + header->light_offset)[place];
+    return material | light << TRAVERSE_VALUE_LIGHT_SHIFT;
 }
 
 /* Fills a hit for the voxel the loop stopped in. The face is worked out from the voxel and not from the last step: the last
@@ -134,10 +171,13 @@ static __device__ __forceinline__ void traverse_trace(const traverse_view_t *vie
 
     uint32_t cached_slot = 0xFFFFFFFFu;
     int32_t cached_section = -1, cached_brick = -1;
-    traverse_column_t column = {};
-    traverse_section_t section = {};
+    const world_buffers_column_t *column = nullptr;
+    int32_t column_top = 0;
+    uint64_t column_mask = 0u;
+    const uint8_t *encoded = nullptr;
+    world_buffers_section_t header = {};
     uint64_t brick_mask = 0u;
-    uint32_t brick_index = 0u;
+    uint32_t brick_rank = 0u;
     uint32_t steps = 0u;
     for (; steps < view->max_steps; steps += 1u) {
         if (((uint32_t)(x - window_x) >= width) | ((uint32_t)(y - window_y) >= width) |
@@ -147,46 +187,48 @@ static __device__ __forceinline__ void traverse_trace(const traverse_view_t *vie
         }
         const uint32_t slot = traverse_slot(view, x >> 4, y >> 4);
         if (slot != cached_slot) {
-            column = view->columns[slot];
+            column = &view->table[slot];
+            column_top = traverse_column_top(column, x >> 4, y >> 4);
+            column_mask = column->section_mask;
             cached_slot = slot;
             cached_section = -1;
         }
         int32_t shift = 4;
         int32_t z_low, z_high;
-        if (z >= (int32_t)column.top) {
+        if (z >= column_top) {
             /* Above everything in this column: the node goes up to the top of the world, the early exit for sky rays. */
-            z_low = (int32_t)column.top;
+            z_low = column_top;
             z_high = height;
         } else {
             const int32_t section_z = z >> 4;
-            if ((column.section_mask >> section_z) & 1u) {
+            if ((column_mask >> section_z) & 1u) {
                 if (section_z != cached_section) {
-                    const uint64_t below = column.section_mask & ((1ull << section_z) - 1ull);
-                    section = view->sections[column.first_section + (uint32_t)__popcll(below)];
+                    encoded = traverse_section_bytes(view, column->sections[section_z]);
+                    header = *(const world_buffers_section_t *)(const void *)encoded;
                     cached_section = section_z;
                     cached_brick = -1;
                 }
-                if (section.first_brick == TRAVERSE_SECTION_UNIFORM) {
+                if (header.brick_count == 0u) {
                     const int32_t cell[3] = {x, y, z};
-                    traverse_hit_found(ray, inverse, cell, section.uniform_value, steps, hit);
+                    traverse_hit_found(ray, inverse, cell, traverse_section_value(encoded, &header, 0u), steps, hit);
                     return;
                 }
                 const int32_t brick = ((x >> 2) & 3) | (((y >> 2) & 3) << 2) | (((z >> 2) & 3) << 4);
-                if ((section.brick_mask >> brick) & 1u) {
+                if ((header.brick_mask >> brick) & 1u) {
+                    const uint8_t *const after_header = encoded + sizeof(world_buffers_section_t);
                     if (brick != cached_brick) {
-                        const uint64_t below = section.brick_mask & ((1ull << brick) - 1ull);
-                        brick_index = section.first_brick + (uint32_t)__popcll(below);
-                        brick_mask = view->brick_masks[brick_index];
+                        const uint64_t below = header.brick_mask & ((1ull << brick) - 1ull);
+                        brick_rank = (uint32_t)__popcll(below);
+                        brick_mask = ((const uint64_t *)(const void *)after_header)[brick_rank];
                         cached_brick = brick;
                     }
                     const int32_t voxel = (x & 3) | ((y & 3) << 2) | ((z & 3) << 4);
                     if ((brick_mask >> voxel) & 1u) {
-                        const uint32_t reference = view->brick_refs[brick_index];
-                        uint32_t value = reference & ~(uint32_t)TRAVERSE_BRICK_UNIFORM;
-                        if ((reference & TRAVERSE_BRICK_UNIFORM) == 0u) {
-                            const uint64_t before = brick_mask & ((1ull << voxel) - 1ull);
-                            value = view->voxels[reference + (uint32_t)__popcll(before)];
-                        }
+                        const uint8_t *const after_words = after_header + (uint32_t)header.brick_count * 8u;
+                        const uint32_t first = ((const uint16_t *)(const void *)after_words)[brick_rank];
+                        const uint64_t before = brick_mask & ((1ull << voxel) - 1ull);
+                        const uint32_t value =
+                            traverse_section_value(encoded, &header, first + (uint32_t)__popcll(before));
                         const int32_t cell[3] = {x, y, z};
                         traverse_hit_found(ray, inverse, cell, value, steps, hit);
                         return;

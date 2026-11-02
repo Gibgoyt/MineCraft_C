@@ -42,6 +42,10 @@ typedef bool (*display_cursor_source_t)(void *context, uint32_t room_x, uint32_t
  * run when the switch back comes. It must not block or log either. */
 typedef void (*display_cursor_discard_t)(void *context);
 
+/* Puts the next picture in the back buffer, which is written and never read, for display_frames_run. Called once per frame by
+ * the loop while the console is dark: so it must not log. Returns false to end the run, cleanly. */
+typedef bool (*display_frame_source_t)(void *context, display_buffer_t *back);
+
 /* The KMS backend. Zeroed means not running, so _deinit is safe whether or not _init ever ran. */
 typedef struct display_t {
     arena_t arena_setup; /* Process lifetime: what the parts ask for at _init */
@@ -53,10 +57,11 @@ typedef struct display_t {
     display_cursor_source_t cursor_source;   /* nullptr for a test pattern with no cursor */
     display_cursor_discard_t cursor_discard; /* nullptr if the source has nothing to throw away */
     void *borrowed_cursor_context;
-    uint8_t refusal; /* display_refusal_t, when _init refused */
+    display_frame_source_t frame_source; /* nullptr for the test pattern. Its context is borrowed_cursor_context */
+    uint8_t refusal;                     /* display_refusal_t, when _init refused */
     uint8_t running;
     uint8_t crash_test; /* display_crash_test_t */
-    uint8_t _pad0[29];
+    uint8_t _pad0[21];
 } display_t;
 static_assert(sizeof(display_t) == 832);
 static_assert(alignof(display_t) == 64);
@@ -99,5 +104,10 @@ void display_test_pattern_set_cursor(display_t *display, display_cursor_source_t
  * measured. Takes the display over, behind display/vt_guard, so VT switches work and a crash gives the console back: run
  * only after display_init said OK. Returns OK if everything worked. */
 display_status_t display_test_pattern_run(display_t *display, int64_t started_ns, int64_t duration_ns);
+
+/* The same, with source drawing every frame in place of the pattern, until it returns false or a stop signal comes. Both
+ * buffers start black. discard may be nullptr, and is as for the test pattern's cursor. Run only after display_init said OK. */
+display_status_t display_frames_run(display_t *display, display_frame_source_t source, display_cursor_discard_t discard,
+                                    void *context);
 
 #endif

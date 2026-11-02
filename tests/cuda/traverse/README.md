@@ -21,7 +21,7 @@ What it checks:
 
 `fixtures/world.h` is the world and that encoder, and `fixtures/stress_world.h` is Stage 01.3's worlds and paths.
 
-Its tree comes from its own encoder, written from the dense array, and not from `run/src/render/encode/`: the test says what the format means.
+Its table and pool come from its own encoder, written from the dense array, and not from `run/src/render/encode/`: the test says what the format means. `tests/run/render/frame/` traces what the real encoder wrote.
 
 ## Timing
 

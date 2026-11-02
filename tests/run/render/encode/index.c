@@ -68,6 +68,26 @@ static void encode_test_compare(test_context_t *t, const uint8_t *encoded, uint3
         return;
     }
     const world_buffers_section_t *const header = (const world_buffers_section_t *)(const void *)encoded;
+    if (header->brick_count == 0u) {
+        CHECK_EQ_U64(header->brick_mask, ~0ull);
+        CHECK_EQ_U64(bricks_seen, ~0ull);
+        CHECK_EQ_U64(header->voxel_count, SECTION_VOXELS);
+        CHECK_EQ_U64(voxels_seen, SECTION_VOXELS);
+        CHECK_EQ_U64(header->material_offset, 16u);
+        CHECK_EQ_U64(header->light_offset, 18u);
+        CHECK_EQ_U64(bytes, WORLD_BUFFERS_SECTION_BYTES_UNIFORM);
+        CHECK_EQ_U64(header->_pad0[0], 0u);
+        for (uint32_t i = 19u; i < bytes; i++) {
+            CHECK_EQ_U64(encoded[i], 0u);
+        }
+        for (uint32_t i = bytes; i < ENCODE_TEST_BUFFER_BYTES; i++) {
+            if (encoded[i] != ENCODE_TEST_BYTE_DIRT) {
+                CHECK_EQ_U64(encoded[i], ENCODE_TEST_BYTE_DIRT);
+                break;
+            }
+        }
+        return;
+    }
     const uint32_t brick_total = (uint32_t)__builtin_popcountll(bricks_seen);
     CHECK_EQ_U64(header->brick_mask, bricks_seen);
     CHECK_EQ_U64(header->brick_count, brick_total);
@@ -142,6 +162,46 @@ TEST(any_one_voxel_is_found_where_it_was_put_and_nowhere_else) {
         blocks[index] = 0u;
         light[index] = 0u;
     }
+}
+
+/* Worked out on paper: 16 bytes of header, the material, the light, then five zeros. Any one voxel that differs, in block or in
+ * light, takes the long form, which is why each is tried at the first voxel, the last, and between. */
+TEST(a_section_of_one_block_and_one_light_is_24_bytes_and_anything_else_is_not) {
+    uint16_t *const blocks = test_alloc(t, SECTION_VOXELS * sizeof(uint16_t));
+    uint8_t *const light = test_alloc(t, SECTION_VOXELS);
+    uint8_t *const out = encode_test_buffer(t);
+    const uint32_t places[3] = {0u, 1234u, SECTION_VOXELS - 1u};
+    for (uint32_t i = 0; i < SECTION_VOXELS; i++) {
+        blocks[i] = 0x0102u;
+        light[i] = 0x35u;
+    }
+    REQUIRE(encode_test_arrays(out, blocks, light) == 24u);
+    encode_test_compare(t, out, 24u, blocks, light);
+    const uint8_t expected_tail[16] = {0x00u, 0x10u, 16u, 0u, 18u, 0u, 0u, 0u, 0x02u, 0x01u, 0x35u, 0u, 0u, 0u, 0u, 0u};
+    CHECK_MEM_EQ(out + 8, expected_tail, sizeof(expected_tail));
+
+    const render_encode_source_t uniform = {.block_uniform = 0x0102u, .light_uniform = 0x35u};
+    memset(out, ENCODE_TEST_BYTE_DIRT, ENCODE_TEST_BUFFER_BYTES);
+    REQUIRE(render_encode_section(&uniform, out) == 24u);
+    encode_test_compare(t, out, 24u, blocks, light);
+
+    for (uint32_t p = 0; p < 3u; p++) {
+        blocks[places[p]] = 0x0103u;
+        uint32_t bytes = encode_test_arrays(out, blocks, light);
+        CHECK(bytes > 24u);
+        encode_test_compare(t, out, bytes, blocks, light);
+        blocks[places[p]] = 0x0102u;
+        light[places[p]] = 0x36u;
+        bytes = encode_test_arrays(out, blocks, light);
+        CHECK(bytes > 24u);
+        encode_test_compare(t, out, bytes, blocks, light);
+        light[places[p]] = 0x35u;
+    }
+    /* One voxel of air, and it is not full at all. */
+    blocks[77u] = 0u;
+    const uint32_t bytes = encode_test_arrays(out, blocks, light);
+    CHECK(bytes > 24u);
+    encode_test_compare(t, out, bytes, blocks, light);
 }
 
 TEST(a_full_section_takes_the_most_a_section_can_and_says_so_in_brick_order) {

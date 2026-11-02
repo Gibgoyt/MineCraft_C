@@ -1,0 +1,9 @@
+/* See cuda/src/post/README.md. The C API; nothing here is for CUDA code alone yet. */
+#ifndef MC_CUDA_POST_INDEX_HU
+#define MC_CUDA_POST_INDEX_HU
+
+#include "device_memory/index.hu"
+#include "gpu_bridge/post/index.h"
+#include "traverse/index.hu"
+
+#endif

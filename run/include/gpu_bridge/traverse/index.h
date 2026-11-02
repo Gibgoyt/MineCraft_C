@@ -5,6 +5,7 @@
 
 #include "gpu_bridge/device_memory/index.h"
 #include "gpu_bridge/status/index.h"
+#include "gpu_bridge/world_buffers/index.h"
 #include "types/index.h"
 
 #include <stddef.h>
@@ -20,10 +21,14 @@ enum : uint32_t {
     TRAVERSE_HEIGHT_BLOCKS = 768u, /* a world z of TRAVERSE_Z_BASE is storage height 0 */
     /* One block of threads, one coarse value. Stage 01.3 measured 8x8 best or tied for best of those it tried. */
     TRAVERSE_TILE_PIXELS = 8u,
-    TRAVERSE_SECTION_UNIFORM = 0xFFFFFFFFu, /* traverse_section_t.first_brick: all one value, nothing else stored */
-    TRAVERSE_BRICK_UNIFORM = 0x80000000u,   /* brick reference: the low bits are the value, and no voxels are stored */
+    /* traverse_hit_t.value: the voxel's material in the low 16 bits, and its light in the 8 above them. */
+    TRAVERSE_VALUE_MATERIAL_MASK = 0xFFFFu,
+    TRAVERSE_VALUE_LIGHT_SHIFT = 16u,
 };
 enum : int32_t { TRAVERSE_Z_BASE = -256 };
+static_assert((uint32_t)TRAVERSE_COLUMN_SECTIONS == (uint32_t)WORLD_BUFFERS_COLUMN_SECTIONS);
+static_assert((int32_t)TRAVERSE_Z_BASE == -(int32_t)WORLD_BUFFERS_Z_ORIGIN);
+static_assert((uint32_t)TRAVERSE_HEIGHT_BLOCKS == WORLD_BUFFERS_COLUMN_SECTIONS * 16u);
 
 /* traverse_hit_t.info: bits 0-2 are one of these, bits 3-14 the steps taken (saturating), and bit 15 TRAVERSE_INFO_CAPPED. A
  * face is named by the way it looks: FACE_NEG_X is the side of the voxel towards -x, so its normal is -x. */
@@ -50,62 +55,21 @@ enum : uint32_t {
 /* What the coarse pass writes for a tile no ray of which can hit anything. */
 #define TRAVERSE_COARSE_SKY F32(1e30)
 
-/* Level 0 of the tree, one per slot of the toroidal table. Sections of one column sit together, in slot order. Stage 01.3's
- * format, for Stage 08.2's encoder to write. An unloaded column is all zero, and rays pass through it as air. */
-typedef struct traverse_column_t {
-    uint64_t section_mask;  /* 0: bit n: section n has something in it. n = (z - TRAVERSE_Z_BASE) / 16 */
-    uint32_t first_section; /* 8: index into sections of the lowest set bit */
-    uint16_t top;     /* 12: one above the highest occupied storage height; 0 if empty, so sky rays leave at once */
-    uint8_t _pad0[2]; /* 14 */
-} traverse_column_t;
-static_assert(sizeof(traverse_column_t) == 16);
-static_assert(alignof(traverse_column_t) == 8);
-static_assert(offsetof(traverse_column_t, section_mask) == 0);
-static_assert(offsetof(traverse_column_t, first_section) == 8);
-static_assert(offsetof(traverse_column_t, top) == 12);
-static_assert(offsetof(traverse_column_t, _pad0) == 14);
-
-/* Level 1, a section's 4x4x4 bricks. Bit b = bx | by << 2 | bz << 4. Children are found with popcount, so bricks of one
- * section sit together. A uniform section has first_brick TRAVERSE_SECTION_UNIFORM, and its value in uniform_value. */
-typedef struct traverse_section_t {
-    uint64_t brick_mask;    /* 0 */
-    uint32_t first_brick;   /* 8: index into brick_masks and brick_refs */
-    uint32_t uniform_value; /* 12 */
-} traverse_section_t;
-static_assert(sizeof(traverse_section_t) == 16);
-static_assert(alignof(traverse_section_t) == 8);
-static_assert(offsetof(traverse_section_t, brick_mask) == 0);
-static_assert(offsetof(traverse_section_t, first_brick) == 8);
-static_assert(offsetof(traverse_section_t, uniform_value) == 12);
-
-/* Level 2 is one uint64_t per brick in brick_masks, bit v = x | y << 2 | z << 4 for the voxel's low two bits, and one
- * uint32_t per brick in brick_refs: the index in voxels of its lowest set bit, or TRAVERSE_BRICK_UNIFORM | the value. A voxel
- * value is a uint32_t that traversal hands back untouched. */
-
-/* The world as kernels see it: borrowed from whoever holds the blocks, and read only. The blocks must not be freed or written
- * while a kernel using them may still run. columns holds columns_wide x columns_wide traverse_column_t. A world column cx, cy
- * in the window lives in slot (cy mod columns_wide) * columns_wide + (cx mod columns_wide), with mod never negative, so moving
- * the window rewrites only the columns that wrap. Rays are clipped to the window, so what wrapped cannot be seen twice. */
+/* The world as kernels see it, in the form gpu_bridge/world_buffers/index.h defines and run/src/render/encode/ writes: one
+ * format, whatever Stage 08.3 and Stage 08.2 each started with (Stage 08.4 issue 1). The blocks are borrowed from whoever holds
+ * them, and read only: they must not be freed or written while a kernel using them may still run. A column x, y in the window
+ * lives where the window says. A slot may still hold the column that wrapped out of it, with other coordinates: that one reads
+ * as empty, so what wrapped cannot be seen twice, as can nothing past the window, where rays are clipped. */
 typedef struct traverse_world_t {
-    const device_block_t *borrowed_columns;     /* 0 */
-    const device_block_t *borrowed_sections;    /* 8 */
-    const device_block_t *borrowed_brick_masks; /* 16 */
-    const device_block_t *borrowed_brick_refs;  /* 24 */
-    const device_block_t *borrowed_voxels;      /* 32 */
-    int32_t window_min_column[2];               /* 40: the world column x and y at the window's low corner */
-    uint32_t columns_wide;                      /* 48: the window and the table are this wide, each way */
-    uint8_t _pad0[4];                           /* 52 */
+    const device_block_t *borrowed_table; /* 0: window.slot_count world_buffers_column_t */
+    const device_block_t *borrowed_pool;  /* 8: where the sections are */
+    world_buffers_window_t window;        /* 16 */
 } traverse_world_t;
-static_assert(sizeof(traverse_world_t) == 56);
+static_assert(sizeof(traverse_world_t) == 40);
 static_assert(alignof(traverse_world_t) == 8);
-static_assert(offsetof(traverse_world_t, borrowed_columns) == 0);
-static_assert(offsetof(traverse_world_t, borrowed_sections) == 8);
-static_assert(offsetof(traverse_world_t, borrowed_brick_masks) == 16);
-static_assert(offsetof(traverse_world_t, borrowed_brick_refs) == 24);
-static_assert(offsetof(traverse_world_t, borrowed_voxels) == 32);
-static_assert(offsetof(traverse_world_t, window_min_column) == 40);
-static_assert(offsetof(traverse_world_t, columns_wide) == 48);
-static_assert(offsetof(traverse_world_t, _pad0) == 52);
+static_assert(offsetof(traverse_world_t, borrowed_table) == 0);
+static_assert(offsetof(traverse_world_t, borrowed_pool) == 8);
+static_assert(offsetof(traverse_world_t, window) == 16);
 
 /* The eye is a whole block and a fraction, so that a ray is computed relative to the eye and is as exact at x = 10000000 as at
  * the origin. width and height are the size being rendered, which may be below the display's: Stage 01.3's fallback. For
@@ -148,7 +112,7 @@ static_assert(offsetof(traverse_ray_t, t_start) == 36);
 /* What a ray found, one per pixel. 16 bytes, so a 1080p frame's hits are 33 MiB and shading touches few cache lines. */
 typedef struct traverse_hit_t {
     float32_t t;       /* 0: blocks from the eye to where the ray enters the voxel */
-    uint32_t value;    /* 4: the voxel's stored value */
+    uint32_t value;    /* 4: the voxel's material and light: TRAVERSE_VALUE_* */
     int16_t offset[3]; /* 8: the voxel, from eye_cell. int16_t is enough: the widest window is 1025 columns */
     uint16_t info;     /* 14: see traverse_face_t */
 } traverse_hit_t;
