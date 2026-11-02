@@ -1170,6 +1170,62 @@ TEST(section_by_section_is_the_whole_column) {
     terrain_deinit(&terrain);
 }
 
+/* A box of one layer, right at the top of what a chunk holds: the very tip of its tallest tree. All that a box can know of a tree
+ * it has only the tip of is what the bounds let through, so a bound too low loses it. */
+TEST(one_layer_at_the_tip_of_a_tree_is_the_same_voxels) {
+    terrain_t terrain;
+    REQUIRE(terrain_init(&terrain, FEA_WORLD));
+    fea_place_t *const places = test_alloc(t, BIOME_COUNT * sizeof(*places));
+    fea_find_places(t, &terrain, places);
+    const uint64_t voxels = (uint64_t)FEA_COLUMNS * FEA_LAYERS;
+    uint16_t *const whole = test_alloc(t, voxels * sizeof(uint16_t));
+    uint8_t *const opened = test_alloc(t, voxels);
+    uint16_t one[FEA_COLUMNS];
+    uint8_t one_opened[FEA_COLUMNS];
+    const biome_id_t biomes[5] = {BIOME_ID_JUNGLE, BIOME_ID_SPARSE_JUNGLE, BIOME_ID_BAMBOO_JUNGLE, BIOME_ID_DARK_FOREST,
+                                  BIOME_ID_MANGROVE_SWAMP};
+    uint32_t tips = 0u;
+    for (uint32_t b = 0u; b < 5u; b++) {
+        REQUIRE(places[biomes[b]].found != 0u);
+        for (int32_t dy = -2; dy <= 2; dy++) {
+            for (int32_t dx = -2; dx <= 2; dx++) {
+                const terrain_density_box_t box = {
+                    .origin_x = (places[biomes[b]].chunk_x + dx) * (int32_t)FEA_CHUNK,
+                    .origin_y = (places[biomes[b]].chunk_y + dy) * (int32_t)FEA_CHUNK,
+                    .origin_z = MC_WORLD_Z_MIN,
+                    .count_x = FEA_CHUNK,
+                    .count_y = FEA_CHUNK,
+                    .count_z = FEA_LAYERS,
+                };
+                terrain_generate_box(&terrain, &box, opened, whole);
+                uint32_t highest = FEA_LAYERS;
+                for (uint32_t z = FEA_LAYERS; z-- > 0u && highest == FEA_LAYERS;) {
+                    for (uint32_t i = 0u; i < FEA_COLUMNS; i++) {
+                        if (whole[i + FEA_COLUMNS * z] != BLOCK_ID_AIR) {
+                            highest = z;
+                            break;
+                        }
+                    }
+                }
+                REQUIRE(highest < FEA_LAYERS);
+                const terrain_density_box_t tip = {
+                    .origin_x = box.origin_x,
+                    .origin_y = box.origin_y,
+                    .origin_z = box.origin_z + (int32_t)highest,
+                    .count_x = FEA_CHUNK,
+                    .count_y = FEA_CHUNK,
+                    .count_z = 1u,
+                };
+                terrain_generate_box(&terrain, &tip, one_opened, one);
+                CHECK_MEM_EQ(one, &whole[(uint64_t)FEA_COLUMNS * highest], FEA_COLUMNS * sizeof(uint16_t));
+                tips++;
+            }
+        }
+    }
+    printf("    %u tips\n", tips);
+    terrain_deinit(&terrain);
+}
+
 /* A seed makes its world, and another makes another. */
 TEST(another_seed_makes_another_world) {
     terrain_t a;

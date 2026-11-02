@@ -1,6 +1,6 @@
 # tests/run/terrain/feature
 
-**Purpose:** ctest `run_terrain_feature`. Tests `run/src/terrain/feature/` and `terrain_generate_box`: any split of a box and any order of chunks give the same bytes, as do 1 worker and 16; each tree stays within its reach and is whole across chunk lines; a column's ground against the stages walked from the sky; everything stands where it may; lakes hold their water; ice and snow are where each biome's file says.
+**Purpose:** ctest `run_terrain_feature`. Tests `run/src/terrain/feature/` and `terrain_generate_box`: any split of a box, section by section, one layer at the tip of a tree, and any order of chunks give the same bytes, as do 1 worker and 16; each tree stays within its reach and is whole across chunk lines; a column's ground against the stages walked from the sky; everything stands where it may; lakes hold their water; ice and snow are where each biome's file says.
 **Tier:** test.
 **Owns:** nothing. Memory comes from the harness's test arena, and each test starts and stops its own systems.
 **Lifetime:** One run.
