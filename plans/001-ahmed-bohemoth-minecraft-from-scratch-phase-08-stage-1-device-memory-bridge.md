@@ -47,6 +47,8 @@ Run on 2026-11-02, on the RTX 2080 Super, with X up: all pass, and `pgrep` print
 
 Appended as they land:
 
+- `8e0a544` Add the C bridge to CUDA and the device allocator, with budgets per pool, checked handles, every CUDA error turned into a status, and a kernel self-check at start, and start it from main in place of the hello stand-in.
+
 ## Issues found
 
 **1. `--headless` and the default run now need a card, by decision.** Expected from the wiring, recorded so that it is not a surprise. Before this stage those two ran with no GPU. With `gpu.enabled: true` they now exit with status 5 and `no CUDA device` on a machine CUDA cannot see a card on, which `the_program_says_why_and_exits_when_there_is_no_card` checks with `CUDA_VISIBLE_DEVICES=`. Tests that run the program (`run_types`, `run_display_headless`) inherit that. `--report` and `--test-pattern` do not start it. `minecraft_c` was not run in KMS mode at any point, and `--test-pattern` was not touched.
