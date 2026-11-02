@@ -15,10 +15,18 @@ bool terrain_init(terrain_t *terrain, uint64_t seed) {
         terrain_deinit(terrain); /* it has said why */
         return false;
     }
+    if (!terrain_density_init(&terrain->borrowed_density, &terrain->arena_tables, &terrain->noise_bank,
+                              terrain->borrowed_climate)) {
+        terrain_deinit(terrain); /* it has said why */
+        return false;
+    }
     return true;
 }
 
 void terrain_deinit(terrain_t *terrain) {
+    if (terrain->borrowed_density != nullptr) {
+        terrain_density_deinit(terrain->borrowed_density);
+    }
     if (terrain->borrowed_climate != nullptr) {
         terrain_climate_deinit(terrain->borrowed_climate);
     }
