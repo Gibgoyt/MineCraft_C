@@ -205,6 +205,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | `gpu_bridge` | one per CUDA area | **The C API to CUDA** (`extern "C"`) | 08.1 |
 | | `status` | `gpu_status_t`, `gpu_error_t`, and reporting a failure | 08.1 |
 | | `device_memory` | The C API of the device allocator. Its `run/src/` directory holds only a README: `cuda/src/device_memory/` implements it | 08.1 |
+| | `traverse` | The C API of ray traversal: the tree's format, cameras and hits. Its `run/src/` directory holds only a README: `cuda/src/traverse/` implements it | 08.3 |
 | `render` | `encode upload` | Encode sections on workers; budgeted upload queue | 08.2 |
 | | `frame` | Frame sequence: submit, readback, HUD, present | 08.4 |
 | | `entities` | Per-tile entity lists | 09.5 |
@@ -388,6 +389,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/texture/` | ctest `run_texture`, covering `run/src/texture/` with `blob` and `registry`, and `asm/src/embed_assets/`: every texture against its source files, and damage to the blob, field by field |
 | `tests/run/gpu_bridge/` | ctest `run_gpu_bridge`, covering `run/src/gpu_bridge/` with `status`, and `cuda/src/device_memory/`, on the real card: real blocks and a real kernel, the budgets, stale and forged handles, a pebibyte refused, and no device in a process of its own |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
+| `tests/cuda/traverse/` | ctest `cuda_traverse`: known hits, random rays and whole frames against an exact CPU reference in `float64_t`, the coarse pass never overestimating, and Stage 01.3's worlds. Timing on request |
 | `tests/asm/` | NASM kernels against scalar C references |
 | `tests/asm/abi/` | ctest `asm_abi`: every kernel keeps the callee-saved registers and leaves no dirty YMM state, by machine state, not by output |
 | `tests/fuzz/`, `tests/soak/` | Fuzzing and long runs (Stage 18.1) |

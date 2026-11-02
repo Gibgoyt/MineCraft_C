@@ -1,0 +1,236 @@
+/* See cuda/src/traverse/README.md. The C API, and the ray loop itself. The loop is here because a device function cannot be
+ * called across translation units without device linking, and later areas (sun rays in shade) need the same loop. */
+#ifndef MC_CUDA_TRAVERSE_INDEX_HU
+#define MC_CUDA_TRAVERSE_INDEX_HU
+
+#include "device_memory/index.hu"
+#include "gpu_bridge/traverse/index.h"
+
+/* A direction component nearer zero than this becomes this, keeping its sign, so that its inverse stays finite. A test's CPU
+ * reference applies the same rule. */
+#define TRAVERSE_DIRECTION_FLOOR 1e-6F
+
+/* The world, with what a kernel needs worked out from traverse_world_t. Passed to kernels by value. */
+typedef struct traverse_view_t {
+    const traverse_column_t *columns;   /* 0 */
+    const traverse_section_t *sections; /* 8 */
+    const uint64_t *brick_masks;        /* 16 */
+    const uint32_t *brick_refs;         /* 24 */
+    const uint32_t *voxels;             /* 32 */
+    int32_t window_min_block[2];        /* 40 */
+    int32_t window_min_column[2];       /* 48 */
+    uint32_t origin_slot[2];            /* 56: the table slot of the window's low corner column */
+    uint32_t columns_wide;              /* 64 */
+    uint32_t window_blocks;             /* 68 */
+    uint32_t max_steps;                 /* 72: see traverse_view_from in the .cu for why this is enough */
+    uint8_t _pad0[4];                   /* 76 */
+} traverse_view_t;
+static_assert(sizeof(traverse_view_t) == 80);
+static_assert(alignof(traverse_view_t) == 8);
+
+/* A ray ready to trace: eye_cell[2] is a storage height from here on, not a world z. */
+typedef struct traverse_trace_ray_t {
+    int32_t eye_cell[3];    /* 0 */
+    float32_t eye_frac[3];  /* 12 */
+    float32_t direction[3]; /* 24: unit length, with no component below TRAVERSE_DIRECTION_FLOOR */
+    float32_t t_start;      /* 36 */
+} traverse_trace_ray_t;
+static_assert(sizeof(traverse_trace_ray_t) == 40);
+static_assert(alignof(traverse_trace_ray_t) == 4);
+
+static __device__ __forceinline__ int32_t traverse_clamp(int32_t value, int32_t low, int32_t high) {
+    return value < low ? low : (value > high ? high : value);
+}
+
+static __device__ __forceinline__ float32_t traverse_guard(float32_t value) {
+    if (value > -TRAVERSE_DIRECTION_FLOOR && value < TRAVERSE_DIRECTION_FLOOR) {
+        return value < 0.0F ? -TRAVERSE_DIRECTION_FLOOR : TRAVERSE_DIRECTION_FLOOR;
+    }
+    return value;
+}
+
+/* The table slot of a column in the window. No modulo in the loop: the origin slot is worked out once. */
+static __device__ __forceinline__ uint32_t traverse_slot(const traverse_view_t *view, int32_t column_x,
+                                                         int32_t column_y) {
+    uint32_t slot_x = (uint32_t)(column_x - view->window_min_column[0]) + view->origin_slot[0];
+    uint32_t slot_y = (uint32_t)(column_y - view->window_min_column[1]) + view->origin_slot[1];
+    slot_x = slot_x >= view->columns_wide ? slot_x - view->columns_wide : slot_x;
+    slot_y = slot_y >= view->columns_wide ? slot_y - view->columns_wide : slot_y;
+    return slot_y * view->columns_wide + slot_x;
+}
+
+/* Fills a hit for the voxel the loop stopped in. The face is worked out from the voxel and not from the last step: the last
+ * step may have left a large empty node, and it says nothing exact about the voxel (Stage 01.3 issues 3 and 4). A ray enters a
+ * box at the latest of its three near planes. */
+static __device__ __forceinline__ void traverse_hit_found(const traverse_trace_ray_t *ray, const float32_t inverse[3],
+                                                          const int32_t cell[3], uint32_t value, uint32_t steps,
+                                                          traverse_hit_t *hit) {
+    float32_t t = -1e30F;
+    uint32_t axis = 0u;
+    int32_t offset[3];
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        offset[i] = cell[i] - ray->eye_cell[i];
+        const float32_t near_plane = (float32_t)(ray->direction[i] > 0.0F ? offset[i] : offset[i] + 1);
+        const float32_t t_near = (near_plane - ray->eye_frac[i]) * inverse[i];
+        if (t_near > t) {
+            t = t_near;
+            axis = i;
+        }
+    }
+    uint32_t face = axis * 2u + (ray->direction[axis] > 0.0F ? 0u : 1u);
+    if (t <= ray->t_start) {
+        t = ray->t_start;
+        face = TRAVERSE_FACE_INSIDE;
+    }
+    hit->t = t;
+    hit->value = value;
+    hit->offset[0] = (int16_t)offset[0];
+    hit->offset[1] = (int16_t)offset[1];
+    hit->offset[2] = (int16_t)offset[2];
+    const uint32_t reported = steps > TRAVERSE_INFO_STEPS_MAX ? TRAVERSE_INFO_STEPS_MAX : steps;
+    hit->info = (uint16_t)(face | reported << TRAVERSE_INFO_STEPS_SHIFT);
+}
+
+static __device__ __forceinline__ void traverse_hit_missed(uint32_t steps, bool capped, traverse_hit_t *hit) {
+    const uint32_t reported = steps > TRAVERSE_INFO_STEPS_MAX ? TRAVERSE_INFO_STEPS_MAX : steps;
+    hit->t = TRAVERSE_COARSE_SKY;
+    hit->value = 0u;
+    hit->offset[0] = 0;
+    hit->offset[1] = 0;
+    hit->offset[2] = 0;
+    hit->info = (uint16_t)((uint32_t)TRAVERSE_FACE_MISS | reported << TRAVERSE_INFO_STEPS_SHIFT |
+                           (capped ? TRAVERSE_INFO_CAPPED : 0u));
+}
+
+/* One ray through the tree: Amanatides and Woo, stepping through the largest empty node holding the current cell, and reading
+ * masks again only when the cell has left the column, section or brick it has cached. Stage 01.3 issues 2, 3 and 4 are why it
+ * is the way it is, and each is marked. */
+static __device__ __forceinline__ void traverse_trace(const traverse_view_t *view, const traverse_trace_ray_t *ray,
+                                                      traverse_hit_t *hit) {
+    const float32_t dx = ray->direction[0], dy = ray->direction[1], dz = ray->direction[2];
+    const float32_t fx = ray->eye_frac[0], fy = ray->eye_frac[1], fz = ray->eye_frac[2];
+    const int32_t ex = ray->eye_cell[0], ey = ray->eye_cell[1], ez = ray->eye_cell[2];
+    const float32_t inverse[3] = {1.0F / dx, 1.0F / dy, 1.0F / dz};
+    const float32_t ix = inverse[0], iy = inverse[1], iz = inverse[2];
+    const int32_t window_x = view->window_min_block[0], window_y = view->window_min_block[1];
+    const uint32_t width = view->window_blocks;
+    const int32_t height = (int32_t)TRAVERSE_HEIGHT_BLOCKS;
+
+    /* Clip to the window, from the eye: its planes are whole numbers relative to the eye cell, so nothing is lost. */
+    const float32_t ax = ((float32_t)(window_x - ex) - fx) * ix,
+                    bx = ((float32_t)(window_x + (int32_t)width - ex) - fx) * ix;
+    const float32_t ay = ((float32_t)(window_y - ey) - fy) * iy,
+                    by = ((float32_t)(window_y + (int32_t)width - ey) - fy) * iy;
+    const float32_t az = ((float32_t)(0 - ez) - fz) * iz, bz = ((float32_t)(height - ez) - fz) * iz;
+    const float32_t t_near = fmaxf(fmaxf(fminf(ax, bx), fminf(ay, by)), fmaxf(fminf(az, bz), ray->t_start));
+    const float32_t t_far = fminf(fminf(fmaxf(ax, bx), fmaxf(ay, by)), fmaxf(az, bz));
+    if (!(t_near < t_far)) {
+        traverse_hit_missed(0u, false, hit);
+        return;
+    }
+    int32_t x = traverse_clamp((int32_t)floorf(fx + dx * t_near) + ex, window_x, window_x + (int32_t)width - 1);
+    int32_t y = traverse_clamp((int32_t)floorf(fy + dy * t_near) + ey, window_y, window_y + (int32_t)width - 1);
+    int32_t z = traverse_clamp((int32_t)floorf(fz + dz * t_near) + ez, 0, height - 1);
+
+    uint32_t cached_slot = 0xFFFFFFFFu;
+    int32_t cached_section = -1, cached_brick = -1;
+    traverse_column_t column = {};
+    traverse_section_t section = {};
+    uint64_t brick_mask = 0u;
+    uint32_t brick_index = 0u;
+    uint32_t steps = 0u;
+    for (; steps < view->max_steps; steps += 1u) {
+        if (((uint32_t)(x - window_x) >= width) | ((uint32_t)(y - window_y) >= width) |
+            ((uint32_t)z >= (uint32_t)height)) {
+            traverse_hit_missed(steps, false, hit);
+            return;
+        }
+        const uint32_t slot = traverse_slot(view, x >> 4, y >> 4);
+        if (slot != cached_slot) {
+            column = view->columns[slot];
+            cached_slot = slot;
+            cached_section = -1;
+        }
+        int32_t shift = 4;
+        int32_t z_low, z_high;
+        if (z >= (int32_t)column.top) {
+            /* Above everything in this column: the node goes up to the top of the world, the early exit for sky rays. */
+            z_low = (int32_t)column.top;
+            z_high = height;
+        } else {
+            const int32_t section_z = z >> 4;
+            if ((column.section_mask >> section_z) & 1u) {
+                if (section_z != cached_section) {
+                    const uint64_t below = column.section_mask & ((1ull << section_z) - 1ull);
+                    section = view->sections[column.first_section + (uint32_t)__popcll(below)];
+                    cached_section = section_z;
+                    cached_brick = -1;
+                }
+                if (section.first_brick == TRAVERSE_SECTION_UNIFORM) {
+                    const int32_t cell[3] = {x, y, z};
+                    traverse_hit_found(ray, inverse, cell, section.uniform_value, steps, hit);
+                    return;
+                }
+                const int32_t brick = ((x >> 2) & 3) | (((y >> 2) & 3) << 2) | (((z >> 2) & 3) << 4);
+                if ((section.brick_mask >> brick) & 1u) {
+                    if (brick != cached_brick) {
+                        const uint64_t below = section.brick_mask & ((1ull << brick) - 1ull);
+                        brick_index = section.first_brick + (uint32_t)__popcll(below);
+                        brick_mask = view->brick_masks[brick_index];
+                        cached_brick = brick;
+                    }
+                    const int32_t voxel = (x & 3) | ((y & 3) << 2) | ((z & 3) << 4);
+                    if ((brick_mask >> voxel) & 1u) {
+                        const uint32_t reference = view->brick_refs[brick_index];
+                        uint32_t value = reference & ~(uint32_t)TRAVERSE_BRICK_UNIFORM;
+                        if ((reference & TRAVERSE_BRICK_UNIFORM) == 0u) {
+                            const uint64_t before = brick_mask & ((1ull << voxel) - 1ull);
+                            value = view->voxels[reference + (uint32_t)__popcll(before)];
+                        }
+                        const int32_t cell[3] = {x, y, z};
+                        traverse_hit_found(ray, inverse, cell, value, steps, hit);
+                        return;
+                    }
+                    shift = 0;
+                } else {
+                    shift = 2;
+                }
+            }
+            z_low = z & ~((1 << shift) - 1);
+            z_high = z_low + (1 << shift);
+        }
+        const int32_t x_low = x & ~((1 << shift) - 1), x_high = x_low + (1 << shift);
+        const int32_t y_low = y & ~((1 << shift) - 1), y_high = y_low + (1 << shift);
+        /* (plane - origin) * inverse, never plane * inverse - origin * inverse. The second form lost up to tens of blocks of t
+         * on near-axis rays, and gave 23 % wrong voxels on one path: Stage 01.3 issue 2. */
+        const float32_t tx = ((float32_t)((dx > 0.0F ? x_high : x_low) - ex) - fx) * ix;
+        const float32_t ty = ((float32_t)((dy > 0.0F ? y_high : y_low) - ey) - fy) * iy;
+        const float32_t tz = ((float32_t)((dz > 0.0F ? z_high : z_low) - ez) - fz) * iz;
+        /* A coordinate never moves against the ray. Clamped only to the node, a near-tie of two planes bounced a ray between
+         * two cells until the cap: Stage 01.3 issue 3. So the near bound is the current cell, and a ray takes at most
+         * width + width + height steps. */
+        const int32_t x_min = dx > 0.0F ? x : x_low, x_max = dx > 0.0F ? x_high - 1 : x;
+        const int32_t y_min = dy > 0.0F ? y : y_low, y_max = dy > 0.0F ? y_high - 1 : y;
+        const int32_t z_min = dz > 0.0F ? z : z_low, z_max = dz > 0.0F ? z_high - 1 : z;
+        int32_t next_x, next_y, next_z;
+        if (tx <= ty && tx <= tz) {
+            next_x = dx > 0.0F ? x_high : x_low - 1;
+            next_y = traverse_clamp((int32_t)floorf(fy + dy * tx) + ey, y_min, y_max);
+            next_z = traverse_clamp((int32_t)floorf(fz + dz * tx) + ez, z_min, z_max);
+        } else if (ty <= tz) {
+            next_x = traverse_clamp((int32_t)floorf(fx + dx * ty) + ex, x_min, x_max);
+            next_y = dy > 0.0F ? y_high : y_low - 1;
+            next_z = traverse_clamp((int32_t)floorf(fz + dz * ty) + ez, z_min, z_max);
+        } else {
+            next_x = traverse_clamp((int32_t)floorf(fx + dx * tz) + ex, x_min, x_max);
+            next_y = traverse_clamp((int32_t)floorf(fy + dy * tz) + ey, y_min, y_max);
+            next_z = dz > 0.0F ? z_high : z_low - 1;
+        }
+        x = next_x;
+        y = next_y;
+        z = next_z;
+    }
+    traverse_hit_missed(steps, true, hit);
+}
+
+#endif
