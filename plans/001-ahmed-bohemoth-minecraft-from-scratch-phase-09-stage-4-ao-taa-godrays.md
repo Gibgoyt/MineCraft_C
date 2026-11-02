@@ -100,6 +100,8 @@ So AO costs 1.5 to 1.8 ms, TAA 0.4, and god rays 3.1. AO and TAA together stay w
 
 Appended as they land:
 
+- `7d1e318` Add short AO rays with temporal reuse, TAA and optional god rays, each with a setting, a measured cost and golden pictures.
+
 ## Issues found
 
 ### 1. `run_render_frame`'s golden pictures still fail, from before this stage. Not fixed here
