@@ -44,4 +44,4 @@ Appended as they land:
 
 ## Issues found
 
-None.
+1. **Noted ahead of this stage by the Phase 03 gate check.** `game_runs_the_core_runtime_and_ends_with_nothing_live`, `game_exits_with_its_own_status_on_a_leak`, and `game_ignores_a_missing_feature_the_build_does_not_use` in `tests/run/types/index.c` run `minecraft_c` in its default mode, or with only a `--pretend-*` flag. That is harmless while no mode opens a display. Once this stage makes KMS the default, those ctest runs must move to headless, or a test would try to take the card. Not started: this stage's code does not exist yet.

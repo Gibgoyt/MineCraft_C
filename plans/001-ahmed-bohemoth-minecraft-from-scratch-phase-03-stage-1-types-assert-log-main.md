@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 3, stage 1: Types, assert, log and main
 
-**Status:** done, with one known limit that Ahmed may want closed (issue 1)   (updated 2026-11-02)
+**Status:** done   (updated 2026-11-02)
 
 ## Goal
 
@@ -23,7 +23,7 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 - [x] Define `float32_t` and `float64_t` in `run/include/types/index.h`, the single typedef site, using the Stage 01.1 result for CUDA
 - [x] Implement `run/src/assert/index.c` and `run/src/log/index.c`
 - [x] Write `run/src/main/index.c` with `int32_t main(int32_t, char **)` and `app_t app` on its stack
-- [x] Check CPUID against the build's SIMD flags at startup, and exit with a clear message on mismatch (on any CPU that gets as far as the check: issue 1)
+- [x] Check CPUID against the build's SIMD flags at startup, and exit with a clear message on mismatch (issue 1)
 - [x] Add `tests/run/types/index.c`, registered as ctest `run_types`
 - [x] Add a `README.md` (purpose, tier, what it owns, public functions, what may call it) to every new source directory, with exactly one `index.*` in each
 
@@ -78,6 +78,7 @@ Each row broke one thing, rebuilt, and ran `run_types`. All were restored.
 Appended as they land:
 
 - `e76cc61` Add the sanctioned types, assert, log and the real entry point with its CPUID check, and settle the printf rule.
+- `a11e658` Start the core runtime from main so the heap check at exit means something, refuse an unsupported CPU before any -march code runs, and fill the test gaps and standard breaches the Phase 03 gate check found.
 
 ## Issues found
 
@@ -85,6 +86,10 @@ Appended as they land:
 - Expected: any mismatch exits with the clear message.
 - Actual: `main`, `app_init` and the rest are built with `-march=skylake` like everything else. `objdump -d build/release/bin/minecraft_c` finds `vmovdqu`, `vpxor`, `vzeroupper` and `andn` in `app_init`, `vmovaps` in `log_write` and `shlx` in `cpu_check_names`. So a release binary on a CPU without AVX or BMI1 (before 2013) would get SIGILL. A mismatch this code does reach is one like `avx512: true` above, or any feature the startup path happens not to use. Not run on such a CPU: there is none here, and no emulator.
 - Done: left, and stated in `run/src/main/cpu_check/README.md` and the standard's section 7, because the fixes each cost something the plan did not ask for, and the target hardware is one known CPU. Inline asm, `target` attributes and per-file flags are all banned, so C cannot avoid this on its own. The way to close it is a small NASM guard in `.preinit_array` that repeats the check using only baseline instructions, then calls `write` and `exit_group`. **Ahmed's decision.**
+- Closed by the Phase 03 gate check, 2026-11-02, since the todo says "exit with a clear message" and Ahmed is not available to decide. That was the gate checker's call and not his: to undo it, delete the guard section of `asm/src/cpuid/index.asm`, its prototypes and its tests.
+- What exists: `cpuid_guard_preinit`, in `.preinit_array` (`readelf -d` shows `PREINIT_ARRAY`, 8 bytes), reads CPUID and XCR0 and compares with the yaml's `cpu.simd`, using baseline instructions and system calls only. The decode moved to NASM as `cpuid_decode_batch`, and `cpu_check_decode` calls it, so there is one copy, and the existing `decode_*` tests now test that copy.
+- Evidence: with `avx512: true` temporarily in the yaml and a rebuild, `minecraft_c` and `--report` both give rc 3 and `[error] this CPU does not support what this build was compiled to use. Missing: avx512. Build flags: -march=skylake ...`. There is no `main/index.c:` in that line, which shows the guard said it and not the C check. The yaml was restored. `the_guard_refuses_a_cpu_without_a_feature_and_says_which` holds that path in place.
+- Still not run: on a CPU that really is older than the flag. There is none here, and no emulator (`which qemu-x86_64` finds nothing). The one warning turned off is `reloc-abs-qword`, for the array's one entry, in the source and for that line only: an entry of that array is an absolute address.
 
 **2. Wiring outside this stage's owned paths.**
 - `asm/src/cpuid/` and `run/include/simd/cpuid/`, new. CPUID needs an instruction, and inline asm is banned in C; `<cpuid.h>` is that inline asm in a header, and `__builtin_cpu_supports` is GCC's code and not ours. `plans/REPO_STRUCTURE.md` sections 6 and 8 and the standard's section 7 list them. They take arrays, per section 7, and hand-typed struct offsets are avoided by using flat `uint32_t` arrays.
@@ -127,3 +132,4 @@ Appended as they land:
 
 **9. `minecraft_c` does nothing else yet.**
 - With no arguments it checks the CPU, logs that no game systems exist, and exits 0. Nothing exists for it to start until later stages. The KMS fail-fast belongs to Stage 05.1, whose code does not exist yet. The phase file's Stage 03.1 checkbox is left for the phase owner, since that file is outside this stage's paths.
+- Changed by the Phase 03 gate check: it now also starts the job system and runs one job per worker. See the phase file's issue 1. The results quoted above from before that still hold for what they tested, but the log line has changed.

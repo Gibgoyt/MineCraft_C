@@ -36,6 +36,7 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 Appended as they land:
 
 - `0ce4848` Add the work-stealing job system with a Job arena per worker and a stress test on all workers.
+- `a11e658` Start the core runtime from main so the heap check at exit means something, refuse an unsupported CPU before any -march code runs, and fill the test gaps and standard breaches the Phase 03 gate check found.
 
 ## Issues found
 
@@ -76,6 +77,10 @@ Appended as they land:
 5. **Not called by the program yet.** `job_init` has no caller outside the test, on purpose: starting 16 pinned threads for
    `minecraft_c --report` would serve nothing, and `run/src/game/`, the Owner that will hold a `job_system_t`, arrives in
    Stage 08.4. No wiring was added, and nothing outside the owned paths was edited.
+   **Superseded by the Phase 03 gate check:** an untested caller is what the gate's "heap counters zero at exit" needed, so
+   `app_t` now holds the `job_system_t`, `main` starts it on a plain run, and `--report` still starts nothing. `game` will
+   borrow it. See the phase file's issue 1. The test's `stats_total` and four `_pad0` fields were also brought into line with
+   the standard: its issue 4.
 
 6. **Extra evidence beyond the Verification section:**
 

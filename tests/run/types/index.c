@@ -491,6 +491,67 @@ static cpu_check_raw_t raw_everything(void) {
 
 enum : uint32_t { CPU_ALL = (1u << CPU_FEATURE_COUNT) - 1u };
 
+/* ---- The early guard: asm/src/cpuid/ ------------------------------------------------------------------------------- */
+
+/* The C check also counts what -march lets GCC use by itself, and the guard knows only the yaml, so a yaml that says less
+ * than its arch_flag would leave the guard blind to what the code does use. */
+TEST(the_guard_requires_what_the_build_requires) {
+    CHECK_EQ_U64(cpuid_guard_required[0], cpu_check_required());
+}
+
+extern void (*const __preinit_array_start[])(void);
+extern void (*const __preinit_array_end[])(void);
+
+TEST(the_guard_runs_before_anything_compiled_with_march) {
+    bool found = false;
+    for (void (*const *entry)(void) = __preinit_array_start; entry != __preinit_array_end; entry++) {
+        found = found || *entry == cpuid_guard_preinit;
+    }
+    CHECK(found);
+}
+
+enum { CHILD_GOT_PAST_THE_GUARD = 77 };
+
+static void child_guard_passes_what_this_cpu_has(void) {
+    const uint32_t required[2] = {cpu_check_required(), cpu_check_detect()};
+    cpuid_guard_batch(required, 2u);
+    cpuid_guard_batch(required, 0u);
+    _exit(CHILD_GOT_PAST_THE_GUARD);
+}
+
+static void child_guard_asked_for_avx512(void) {
+    const uint32_t required[2] = {CPU_FEATURE_SSE42, CPU_FEATURE_AVX512};
+    cpuid_guard_batch(required, 2u);
+    _exit(CHILD_GOT_PAST_THE_GUARD);
+}
+
+static void child_guard_stops_at_the_count(void) {
+    const uint32_t required[2] = {CPU_FEATURE_SSE42, CPU_FEATURE_AVX512};
+    cpuid_guard_batch(required, 1u);
+    _exit(CHILD_GOT_PAST_THE_GUARD);
+}
+
+TEST(the_guard_passes_a_cpu_with_what_is_asked) {
+    child_result_t result;
+    REQUIRE(child_run(t, child_guard_passes_what_this_cpu_has, &result));
+    CHECK_EQ_I64(result.exit_code, CHILD_GOT_PAST_THE_GUARD);
+    REQUIRE(child_run(t, child_guard_stops_at_the_count, &result));
+    CHECK_EQ_I64(result.exit_code, CHILD_GOT_PAST_THE_GUARD);
+}
+
+TEST(the_guard_refuses_a_cpu_without_a_feature_and_says_which) {
+    if ((cpu_check_detect() & CPU_FEATURE_AVX512) != 0) {
+        printf("  this CPU has AVX-512, the one feature it could be asked for and lack\n");
+        return;
+    }
+    child_result_t result;
+    REQUIRE(child_run(t, child_guard_asked_for_avx512, &result));
+    CHECK_EQ_I64(result.exit_code, MAIN_EXIT_CPU_MISMATCH);
+    CHECK_CONTAINS(result.output, "Missing: avx512.");
+    CHECK_CONTAINS(result.output, "-march=" MC_CPU_ARCH_FLAG);
+    CHECK_CONTAINS(result.output, "rebuild.\n");
+}
+
 TEST(decode_reads_every_bit) {
     cpu_check_raw_t raw = raw_everything();
     CHECK_EQ_U64(cpu_check_decode(&raw), CPU_ALL);
@@ -840,11 +901,25 @@ static void game_run(test_context_t *t, char *first_arg, char *second_arg, test_
 static char game_report_flag[] = "--report";
 static char game_pretend_flag[] = "--pretend-missing-cpu";
 
-TEST(game_runs_and_exits_cleanly) {
+/* The default run starts the real core runtime: the counts show that the workers did run jobs, and that the zero at exit
+ * follows a real reservation and release, and is not a zero because nothing happened. */
+TEST(game_runs_the_core_runtime_and_ends_with_nothing_live) {
     test_process_t result;
     game_run(t, nullptr, nullptr, &result);
     CHECK_EQ_I64(result.exit_code, MAIN_EXIT_OK);
+    char expected[64];
+    snprintf(expected, sizeof(expected), "%d workers ran %d jobs", MC_THREADS_WORKERS, MC_THREADS_WORKERS);
+    CHECK_CONTAINS(result.output, expected);
     CHECK_CONTAINS(result.output, "no game systems exist yet");
+    CHECK_CONTAINS(result.output, "heap at exit: 1 reserved, 1 released, 0 bytes live");
+}
+
+TEST(game_exits_with_its_own_status_on_a_leak) {
+    static char pretend_leak[] = "--pretend-leak";
+    test_process_t result;
+    game_run(t, pretend_leak, nullptr, &result);
+    CHECK_EQ_I64(result.exit_code, MAIN_EXIT_LEAK);
+    CHECK_CONTAINS(result.output, "heap: leak at exit: 1 regions");
 }
 
 TEST(game_reports_its_compiled_defines) {
@@ -856,6 +931,7 @@ TEST(game_reports_its_compiled_defines) {
     CHECK_CONTAINS(result.output, expected);
     CHECK_CONTAINS(result.output, "MC_CPU_ARCH_FLAG=" MC_CPU_ARCH_FLAG "\n");
     CHECK_CONTAINS(result.output, "cpu missing: none\n");
+    CHECK(strstr(result.output, "core runtime") == nullptr); /* --report starts no threads */
 }
 
 TEST(game_exits_with_a_message_on_a_cpu_mismatch) {

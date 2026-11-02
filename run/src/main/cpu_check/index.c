@@ -7,26 +7,11 @@
 #include <stdio.h>
 #include <string.h>
 
-/* Intel SDM volume 2, the CPUID instruction, and volume 1 section 13.2 for XCR0. */
+/* Intel SDM volume 2, the CPUID instruction. */
 enum : uint32_t {
-    LEAF1_ECX_FMA = 1u << 12,
-    LEAF1_ECX_SSE42 = 1u << 20,
-    LEAF1_ECX_POPCNT = 1u << 23,
     LEAF1_ECX_OSXSAVE = 1u << 27,
-    LEAF1_ECX_AVX = 1u << 28,
-    LEAF1_ECX_F16C = 1u << 29,
-    LEAF7_EBX_BMI1 = 1u << 3,
-    LEAF7_EBX_AVX2 = 1u << 5,
-    LEAF7_EBX_BMI2 = 1u << 8,
-    LEAF7_EBX_AVX512F = 1u << 16,
-    EXTENDED1_ECX_LZCNT = 1u << 5,
     LEAF_EXTENDED_MAX = 0x80000000u,
     LEAF_EXTENDED_FEATURES = 0x80000001u,
-};
-
-enum : uint64_t {
-    XCR0_YMM_STATE = 0x06u, /* XMM and YMM */
-    XCR0_ZMM_STATE = 0xE0u, /* opmask and the two halves of ZMM */
 };
 
 /* In bit order, so a bit's index finds its name. These are the keys under cpu.simd in config/machine.yaml. */
@@ -92,30 +77,14 @@ void cpu_check_read_raw(cpu_check_raw_t *out) {
     }
 }
 
+/* The bits themselves are read in NASM, because the early guard has to make the same decision before any C can run, and
+ * one copy of it cannot disagree with itself. XCR0's high half holds no feature this looks at. */
 uint32_t cpu_check_decode(const cpu_check_raw_t *raw) {
-    const uint32_t leaf1 = raw->max_leaf >= 1u ? raw->leaf1_ecx : 0u;
-    const uint32_t leaf7 = raw->max_leaf >= 7u ? raw->leaf7_ebx : 0u;
-    const uint32_t extended1 = raw->max_extended_leaf >= LEAF_EXTENDED_FEATURES ? raw->extended1_ecx : 0u;
-
-    /* XCR0 means nothing unless the OS turned XSAVE on. */
-    const bool ymm_usable = (leaf1 & LEAF1_ECX_OSXSAVE) != 0 && (raw->xcr0 & XCR0_YMM_STATE) == XCR0_YMM_STATE;
-    const bool zmm_usable = ymm_usable && (raw->xcr0 & XCR0_ZMM_STATE) == XCR0_ZMM_STATE;
-
+    const uint32_t flat[CPUID_RAW_WORDS] = {
+        raw->max_leaf, raw->max_extended_leaf, raw->leaf1_ecx, raw->leaf7_ebx, raw->extended1_ecx, (uint32_t)raw->xcr0,
+    };
     uint32_t present = 0;
-    present |= (leaf1 & LEAF1_ECX_SSE42) != 0 ? (uint32_t)CPU_FEATURE_SSE42 : 0u;
-    present |= (leaf1 & LEAF1_ECX_POPCNT) != 0 ? (uint32_t)CPU_FEATURE_POPCNT : 0u;
-    present |= (leaf7 & LEAF7_EBX_BMI1) != 0 ? (uint32_t)CPU_FEATURE_BMI1 : 0u;
-    present |= (leaf7 & LEAF7_EBX_BMI2) != 0 ? (uint32_t)CPU_FEATURE_BMI2 : 0u;
-    present |= (extended1 & EXTENDED1_ECX_LZCNT) != 0 ? (uint32_t)CPU_FEATURE_LZCNT : 0u;
-    if (ymm_usable) {
-        present |= (leaf1 & LEAF1_ECX_AVX) != 0 ? (uint32_t)CPU_FEATURE_AVX : 0u;
-        present |= (leaf1 & LEAF1_ECX_FMA) != 0 ? (uint32_t)CPU_FEATURE_FMA3 : 0u;
-        present |= (leaf1 & LEAF1_ECX_F16C) != 0 ? (uint32_t)CPU_FEATURE_F16C : 0u;
-        present |= (leaf7 & LEAF7_EBX_AVX2) != 0 ? (uint32_t)CPU_FEATURE_AVX2 : 0u;
-    }
-    if (zmm_usable) {
-        present |= (leaf7 & LEAF7_EBX_AVX512F) != 0 ? (uint32_t)CPU_FEATURE_AVX512 : 0u;
-    }
+    cpuid_decode_batch(flat, 1u, &present);
     return present;
 }
 

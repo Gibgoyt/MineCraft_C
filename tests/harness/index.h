@@ -27,7 +27,7 @@ typedef struct test_context_t {
     uint64_t check_count;
     uint64_t failure_count; /* in the running test */
     int32_t arg_count;
-    uint32_t _pad0;
+    uint8_t _pad0[4];
 } test_context_t;
 static_assert(sizeof(test_context_t) == 56);
 

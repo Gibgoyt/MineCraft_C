@@ -2,22 +2,28 @@
 #ifndef MC_RUN_MAIN_INDEX_H
 #define MC_RUN_MAIN_INDEX_H
 
+#include "job/index.h"
+
 #include <stdint.h>
 
 /* The one root of ownership: plans/CODING_STANDARD.md section 4. There is one of these, on main's stack, and every heap
  * block in the program traces back to it through struct fields. Each later system adds its field here. */
 typedef struct app_t {
+    job_system_t job;      /* first: its alignment is what gives app_t its own */
     uint32_t cpu_required; /* CPU_FEATURE_* the build uses */
     uint32_t cpu_present;  /* CPU_FEATURE_* this machine has */
+    uint8_t _pad0[56];
 } app_t;
-static_assert(sizeof(app_t) == 8);
+static_assert(sizeof(app_t) == 320);
+static_assert(alignof(app_t) == 64);
 
 /* The exit codes of minecraft_c. */
-enum {
+typedef enum main_exit_t : uint8_t {
     MAIN_EXIT_OK = 0,
     MAIN_EXIT_USAGE = 2,
-    MAIN_EXIT_CPU_MISMATCH = 3,
+    MAIN_EXIT_CPU_MISMATCH = 3, /* the early guard in asm/src/cpuid/ uses this number too */
     MAIN_EXIT_LEAK = 4,
-};
+    MAIN_EXIT_RUNTIME = 5, /* the core runtime would not start, or did not do what it was given */
+} main_exit_t;
 
 #endif

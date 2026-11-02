@@ -53,4 +53,4 @@ wakeup is lost.
 how this module works rather than a fact about the machine. The whole region is 516 MiB of address space. It counts
 against `memory.process_budget_mib`, while only the pages touched use real memory.
 
-No system calls `job_init` yet. `game` (Stage 08.4) is the Owner that will hold a `job_system_t`.
+`main` holds the `job_system_t`, in `app_t`, and calls `job_init` and `job_deinit`. `game` (Stage 08.4) will borrow it.
