@@ -35,6 +35,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `e32ebcb` Compile 133 blocks from config/blocks into generated C tables, refusing unknown fields and missing references by line, so that dirt plainly drops dirt.
+
 ## Issues found
 
 All 2026-11-02, by this stage.
