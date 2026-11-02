@@ -38,6 +38,10 @@ First playable: the player walks through the world, mines blocks, picks up the c
 
 Appended as they land:
 
+- `3b5541a`, `68cb32b`, `a3c0476`, `bb8a800`: the four stages, each in its own stage file.
+- `1f5a7e8` Give drops to what water washes away, what sand buries and what decays, test real mouse buttons through to the hands, and stop returning 48-byte boxes by value.
+- `f00b838` Record the Phase 12 gate check: what it found, what it fixed, and the play with a real mouse that waits for Ahmed.
+
 ## Gate check results
 
 Run on 2026-11-02 in a clean build of this branch, which holds the integration branch at `7e14576`.
