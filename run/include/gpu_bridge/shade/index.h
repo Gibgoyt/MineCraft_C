@@ -5,6 +5,7 @@
 #define MC_RUN_GPU_BRIDGE_SHADE_INDEX_H
 
 #include "gpu_bridge/device_memory/index.h"
+#include "gpu_bridge/entity_rays/index.h"
 #include "gpu_bridge/post/index.h"
 #include "gpu_bridge/status/index.h"
 #include "gpu_bridge/traverse/index.h"
@@ -59,11 +60,15 @@ enum : uint32_t {
     SHADE_FEATURE_AO = 1u << 10,       /* short rays darken what stored light falls on near other blocks, or none */
     SHADE_FEATURE_TAA = 1u << 11,      /* each frame looks a little off centre and adds to the last, or stands alone */
     SHADE_FEATURE_GOD_RAYS = 1u << 12, /* the air shows the sun's light where it reaches, or is clear */
+    SHADE_FEATURE_ENTITIES = 1u << 13, /* mobs and items are drawn as boxes, or not at all */
+    SHADE_FEATURE_OUTLINE =
+        1u << 14, /* what is aimed at has an outline, and what is being mined its crack, or neither */
     /* What a picture is drawn with on its own, from nothing: no frame of these reads what the last one left. What render_frame_init
      * starts with, and so what a test that wants one exact picture gets. */
     SHADE_FEATURES_ALL = SHADE_FEATURE_SHAPES | SHADE_FEATURE_ALPHA | SHADE_FEATURE_SKY | SHADE_FEATURE_DAY_CYCLE |
                          SHADE_FEATURE_FOG | SHADE_FEATURE_SHADOW | SHADE_FEATURE_LIGHT | SHADE_FEATURE_TRANSPARENCY |
-                         SHADE_FEATURE_WATER_REFLECTION | SHADE_FEATURE_WATER_TINT,
+                         SHADE_FEATURE_WATER_REFLECTION | SHADE_FEATURE_WATER_TINT | SHADE_FEATURE_ENTITIES |
+                         SHADE_FEATURE_OUTLINE,
     /* What a world is played with unless told otherwise. God rays are optional, so they are asked for. */
     SHADE_FEATURES_PLAY = SHADE_FEATURES_ALL | SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
     SHADE_FEATURES_EVERY = SHADE_FEATURES_PLAY | SHADE_FEATURE_GOD_RAYS,
@@ -365,6 +370,20 @@ SHADE_BOTH_SIDES static inline void shade_surface_light(const shade_sun_t *sun, 
     shade_surface_light_near(sun, face, stored, sun_seen, F32(1.0), out);
 }
 
+/* What falls on a face of a box, which may be turned: as on a block's face under the same light and sun, with nothing near, but for
+ * how it looks towards the sun. normal is on the world's axes, and face on the box's. */
+SHADE_BOTH_SIDES static inline void shade_box_light(const shade_sun_t *sun, uint32_t face, const float32_t normal[3],
+                                                    uint32_t stored, float32_t sun_seen, float32_t out[3]) {
+    const float32_t brightness = shade_face_brightness(face);
+    const float32_t sky = shade_sky_level(stored >> 4), block = shade_block_level(stored & 15u);
+    const float32_t along =
+        normal[0] * sun->direction[0] + normal[1] * sun->direction[1] + normal[2] * sun->direction[2];
+    const float32_t towards = (stored >> 4) == 0u || along <= F32(0.0) ? F32(0.0) : along;
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        out[i] = brightness * (sun->ambient[i] * sky + sun->block[i] * block) + sun->direct[i] * towards * sun_seen;
+    }
+}
+
 /* How far off a surface a sun ray starts, for the distance the surface is seen from: more than that distance's rounding, so that
  * a surface does not shadow itself, and far less than anything a block is made of. */
 SHADE_BOTH_SIDES static inline float32_t shade_sun_bias(float32_t t) {
@@ -489,6 +508,13 @@ SHADE_BOTH_SIDES static inline bool shade_own_kind_behind(uint32_t last_material
 gpu_status_t shade_frame(gpu_error_t *error, const shade_scene_t *scene, const post_settings_t *post,
                          const traverse_world_t *world, const traverse_camera_t *camera, const device_block_t *hits,
                          const device_block_t *pixels);
+
+/* The same, with entities: a box a ray meets before whatever it would have stopped on is what it stops on, and the block being mined
+ * has its crack. scene is what render_entities_frame said, or nullptr for neither, and entity_rays_frame has been started for it. */
+gpu_status_t shade_frame_entities(gpu_error_t *error, const shade_scene_t *scene, const post_settings_t *post,
+                                  const traverse_world_t *world, const traverse_camera_t *camera,
+                                  const device_block_t *hits, const device_block_t *pixels,
+                                  const entity_rays_scene_t *entities);
 
 /* God rays: for every second pixel each way of what shade_frame just wrote to pixels, how much sun the air along its ray shows, into
  * scene's borrowed_temporal's borrowed_shafts. Here and not in post, as a sun ray needs the textures and the loop above. Starts a

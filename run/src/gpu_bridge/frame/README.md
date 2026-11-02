@@ -7,4 +7,4 @@
 **Threads:** the `gpu` thread, or the one thread of a run with no threads.
 **Public functions:** those of that header, listed in `cuda/src/frame/README.md`.
 **May be called by:** `render`.
-**Depends on:** `gpu_bridge/device_memory`, `gpu_bridge/status`, `gpu_bridge/traverse`, `gpu_bridge/shade` and `gpu_bridge/post`, whose types are in its signatures, and `types`.
+**Depends on:** `gpu_bridge/device_memory`, `gpu_bridge/entity_rays`, `gpu_bridge/status`, `gpu_bridge/traverse`, `gpu_bridge/shade` and `gpu_bridge/post`, whose types are in its signatures, and `types`.

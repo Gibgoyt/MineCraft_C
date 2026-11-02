@@ -1064,7 +1064,7 @@ static const game_config_t rt_small_game = {.render_distance = 5u,
                                             .features_off = SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
                                             ._pad0 = {0}};
 
-/* Compares a shown frame with the picture under it: what differs must be the outline's colour, and there must be some. */
+/* Compares a shown frame with the same frame drawn with no outline: what differs must be the outline's colour, and there must be some. */
 static uint64_t rt_outline_pixels(test_context_t *t, const uint8_t *shown, const uint8_t *picture) {
     uint64_t differing = 0u;
     const uint32_t *const after = (const uint32_t *)(const void *)shown;
@@ -1112,20 +1112,24 @@ TEST(on_one_thread_a_script_looks_down_and_the_block_underfoot_gets_its_outline)
     CHECK_EQ_I64(aim->hit.cell[2], (int64_t)floor(rig.player->movement.position[2] - 0.5f64));
     CHECK_NEAR(aim->hit.distance, PLAYER_MOVEMENT_EYE_STANDING, 0.05f64);
     REQUIRE(scene.draw(game, &tick, &target));
-    render_frame_t *const frame = &rig.render->frame;
-    const uint8_t *const picture = frame->borrowed_pictures[frame->pictures.front];
-    const uint64_t outlined = rt_outline_pixels(t, target.owned_map, picture);
-    CHECK(outlined > 50u);
-    /* And the same frame again is the same bytes: one script, one picture. */
     uint8_t *const first = test_alloc(t, bytes);
     memcpy(first, target.owned_map, bytes);
+    /* The kernels draw it into the picture, so the same frame with that off is what is under it. */
+    render_frame_t *const frame = &rig.render->frame;
+    const uint32_t features = frame->scene.features;
+    render_frame_features_set(frame, features & ~(uint32_t)SHADE_FEATURE_OUTLINE);
+    REQUIRE(scene.draw(game, &tick, &target));
+    render_frame_features_set(frame, features);
+    const uint64_t outlined = rt_outline_pixels(t, first, target.owned_map);
+    CHECK(outlined > 50u);
+    /* And the same frame again is the same bytes: one script, one picture. */
     REQUIRE(scene.draw(game, &tick, &target));
     CHECK_MEM_EQ(first, target.owned_map, bytes);
     game_close(game);
     rt_rig_end(t, &rig);
 }
 
-TEST(on_real_threads_the_outline_sits_on_the_picture_it_is_drawn_over) {
+TEST(on_real_threads_the_outline_is_in_the_picture_on_the_camera_it_was_drawn_from) {
     rt_rig_t rig;
     REQUIRE(rt_rig_begin(t, &rig));
     game_t *const game = rig.game;
@@ -1151,7 +1155,7 @@ TEST(on_real_threads_the_outline_sits_on_the_picture_it_is_drawn_over) {
     look.mouse_dy = -260;
     game_walk_send(game, &look, false, false, time_now_ns());
     const int64_t give_up = time_now_ns() + 40000000000;
-    uint64_t checked = 0u, behind = 0u, with_lines = 0u;
+    uint64_t checked = 0u, behind = 0u, with_lines = 0u, edges_asked = 0u, edges_found = 0u;
     /* The mouse goes on turning, so that each picture has been drawn from an older look than main's. */
     render_fly_input_t turn = none;
     turn.mouse_dx = 16;
@@ -1169,9 +1173,10 @@ TEST(on_real_threads_the_outline_sits_on_the_picture_it_is_drawn_over) {
         traverse_camera_t view;
         render_camera_to_traverse(&game->shown_camera, RT_PICTURE_WIDTH, RT_PICTURE_HEIGHT, &view);
         CHECK(game->shown_camera.pitch < -0.5f32);
-        const uint64_t outlined = rt_outline_pixels(t, shown.buffer.owned_map, game->borrowed_last_picture);
+        /* The card put the lines in the picture, so what is shown is that picture, byte for byte. */
+        CHECK_MEM_EQ(shown.buffer.owned_map, game->borrowed_last_picture, bytes);
         /* What it aims at is a tick old, and at this speed may have left the picture, so not every frame has lines. */
-        with_lines += outlined > 0u ? 1u : 0u;
+        uint64_t found_here = 0u;
         for (uint32_t e = 0u; e < PLAYER_CAMERA_EDGES; e++) {
             if (aim->edge_visible[e] != 0xFFu) {
                 continue;
@@ -1182,15 +1187,20 @@ TEST(on_real_threads_the_outline_sits_on_the_picture_it_is_drawn_over) {
                                          (from[2] + to[2]) / 2.0f64};
             if (player_camera_project(&view, middle, pixel) && pixel[0] >= 2.0f64 && pixel[1] >= 2.0f64 &&
                 pixel[0] < (float64_t)RT_PICTURE_WIDTH - 2.0f64 && pixel[1] < (float64_t)RT_PICTURE_HEIGHT - 2.0f64) {
-                CHECK(rt_picture_drawn_near(&shown, pixel[0], pixel[1], 1));
+                /* This is main's newest aim, and the picture has the aim the gpu thread last had: often the same, and not always. */
+                edges_asked++;
+                found_here += rt_picture_drawn_near(&shown, pixel[0], pixel[1], 1) ? 1u : 0u;
             }
         }
+        edges_found += found_here;
+        with_lines += found_here != 0u ? 1u : 0u;
         checked++;
     }
     CHECK_EQ_U64(checked, 40u);
     /* Or this has shown nothing about which camera it uses. */
     CHECK(behind > checked / 2u);
     CHECK(with_lines > checked / 4u);
+    CHECK(edges_found * 2u > edges_asked);
     CHECK(game_loop_stop(game));
     game_close(game);
     rt_rig_end(t, &rig);

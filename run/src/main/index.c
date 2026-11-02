@@ -67,7 +67,8 @@ static void main_print_usage(const char *program) {
         "       %s --test-world [--walk] [--render-distance <chunks>] [--time-of-day <0 to 1>]\n"
         "           [--no-shapes] [--no-alpha] [--no-sky] [--no-day-cycle] [--no-fog]\n"
         "           [--no-shadows] [--no-stored-light] [--no-transparency] [--no-water-reflection]\n"
-        "           [--no-water-tint] [--no-ao] [--no-taa] [--god-rays] [--headless ...]\n"
+        "           [--no-water-tint] [--no-ao] [--no-taa] [--god-rays] [--no-entities]\n"
+        "           [--no-outline] [--headless ...]\n"
         "  --report                 print the build's defines and CPU features, then exit\n"
         "  --pretend-missing-cpu    treat this feature as absent, to see the CPU check fail; may repeat\n"
         "  --pretend-leak           skip the shutdown, to see the leak check at exit fail\n"
@@ -89,6 +90,8 @@ static void main_print_usage(const char *program) {
         "  --no-water-reflection, --no-water-tint\n"
         "                           with --test-world: water reflects nothing, or takes no colour with depth\n"
         "  --no-ao, --no-taa        with --test-world: no short rays to darken corners, or each frame stands alone\n"
+        "  --no-entities            with --test-world: mobs and items are not drawn\n"
+        "  --no-outline             with --test-world: no outline on what is aimed at, and no crack on what is mined\n"
         "  --god-rays               with --test-world: the air shows the sun's light where it reaches\n"
         "  --time-of-day <0 to 1>   with --test-world: the time to start at: 0 midnight, 0.25 sunrise, 0.5 noon\n"
         "  --test-world             fly through a generated world: through KMS from a text console, never inside X,\n"
@@ -161,6 +164,10 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
             out->features_off |= (uint16_t)SHADE_FEATURE_WATER_REFLECTION;
         } else if (strcmp(argv[i], "--no-water-tint") == 0) {
             out->features_off |= (uint16_t)SHADE_FEATURE_WATER_TINT;
+        } else if (strcmp(argv[i], "--no-entities") == 0) {
+            out->features_off |= (uint16_t)SHADE_FEATURE_ENTITIES;
+        } else if (strcmp(argv[i], "--no-outline") == 0) {
+            out->features_off |= (uint16_t)SHADE_FEATURE_OUTLINE;
         } else if (strcmp(argv[i], "--no-ao") == 0) {
             out->features_off |= (uint16_t)SHADE_FEATURE_AO;
         } else if (strcmp(argv[i], "--no-taa") == 0) {

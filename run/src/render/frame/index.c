@@ -4,6 +4,7 @@
 
 #include "assert/index.h"
 #include "log/index.h"
+#include "render/entities/index.h"
 #include "simd/copy/index.h"
 #include "tables/blocks/index.h"
 
@@ -432,6 +433,16 @@ gpu_status_t render_frame_draw(render_frame_t *frame, const world_buffers_t *buf
         .borrowed_shapes = (frame->scene.features & SHADE_FEATURE_SHAPES) != 0u ? frame->borrowed_shapes : nullptr,
         .shape_count = BLOCK_COUNT,
     };
+    entity_rays_scene_t entities;
+    if (frame->borrowed_entities != nullptr) {
+        /* Past the fog a box is sky, and with no fog nothing is past anything. */
+        const float32_t far = (features & SHADE_FEATURE_FOG) != 0u ? frame->fog_end : 0.0f32;
+        const gpu_status_t sent = render_entities_frame(frame->borrowed_entities, &steady, features, far, &entities);
+        if (sent != GPU_STATUS_OK) {
+            frame->gpu.last_error = frame->borrowed_memory->last_error;
+            return sent;
+        }
+    }
     const frame_args_t args = {
         .borrowed_world = &world,
         .borrowed_scene = &frame->scene,
@@ -439,6 +450,7 @@ gpu_status_t render_frame_draw(render_frame_t *frame, const world_buffers_t *buf
         .borrowed_camera = &view,
         .borrowed_targets = &frame->targets,
         .borrowed_host_xrgb = frame->borrowed_pictures[frame->pictures.back],
+        .borrowed_entities = frame->borrowed_entities != nullptr ? &entities : nullptr,
     };
     frame_timings_t timings;
     const gpu_status_t status = frame_gpu_run(&frame->gpu, &args, &timings);
