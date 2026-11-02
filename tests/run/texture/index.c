@@ -128,10 +128,10 @@ TEST(every_texture_is_found_under_its_own_name) {
     for (uint32_t id = 0; id < count; id++) {
         texture_info_t info;
         REQUIRE(texture_info_get(&texture, id, &info));
-        CHECK(strcmp(previous, info.name) < 0);
-        previous = info.name;
+        CHECK(strcmp(previous, info.borrowed_name) < 0);
+        previous = info.borrowed_name;
         uint32_t found = UINT32_MAX;
-        CHECK(texture_find(&texture, info.name, &found));
+        CHECK(texture_find(&texture, info.borrowed_name, &found));
         CHECK_EQ_U64(found, id);
     }
     texture_deinit(&texture);
@@ -189,7 +189,7 @@ TEST(a_very_long_name_finds_nothing_and_stays_in_bounds) {
 
 static void texture_test_check_alpha(test_context_t *t, const texture_blob_entry_t *entry, const texture_mip_t *mip) {
     for (uint64_t i = 0; i < mip->bytes / 4u; i++) {
-        const uint8_t alpha = mip->pixels[i * 4u + 3u];
+        const uint8_t alpha = mip->borrowed_pixels[i * 4u + 3u];
         if (entry->alpha_class == TEXTURE_BLOB_ALPHA_OPAQUE) {
             CHECK_EQ_U64(alpha, 255u);
         } else if (entry->alpha_class == TEXTURE_BLOB_ALPHA_CUTOUT) {
@@ -202,7 +202,7 @@ static void texture_test_check_alpha(test_context_t *t, const texture_blob_entry
 static void texture_test_check_level_zero(test_context_t *t, const texture_blob_entry_t *entry,
                                           const texture_mip_t *mip, const uint8_t *source) {
     for (uint64_t i = 0; i < mip->bytes / 4u; i++) {
-        CHECK_MEM_EQ(mip->pixels + i * 4u, source + i * 4u, 3u);
+        CHECK_MEM_EQ(mip->borrowed_pixels + i * 4u, source + i * 4u, 3u);
         const uint8_t from = source[i * 4u + 3u];
         uint8_t want = from;
         if (entry->alpha_class == TEXTURE_BLOB_ALPHA_OPAQUE) {
@@ -210,17 +210,17 @@ static void texture_test_check_level_zero(test_context_t *t, const texture_blob_
         } else if (entry->alpha_class == TEXTURE_BLOB_ALPHA_CUTOUT) {
             want = from >= TEXTURE_BLOB_CUTOUT_THRESHOLD ? 255u : 0u;
         }
-        CHECK_EQ_U64(mip->pixels[i * 4u + 3u], want);
+        CHECK_EQ_U64(mip->borrowed_pixels[i * 4u + 3u], want);
     }
 }
 
 static void texture_test_check_one(test_context_t *t, const texture_t *texture, uint32_t id) {
     texture_info_t info;
     REQUIRE(texture_info_get(texture, id, &info));
-    const texture_blob_entry_t *entry = info.entry;
+    const texture_blob_entry_t *entry = info.borrowed_entry;
     uint64_t mctex_length = 0;
     const uint8_t *mctex = texture_test_read(
-        t, texture_test_format(t, "%s/%s/index.mctex", t->borrowed_args[0], info.name), &mctex_length);
+        t, texture_test_format(t, "%s/%s/index.mctex", t->borrowed_args[0], info.borrowed_name), &mctex_length);
     REQUIRE(mctex != nullptr);
     uint32_t file_width = 0;
     uint32_t file_height = 0;
@@ -241,7 +241,7 @@ static void texture_test_check_one(test_context_t *t, const texture_t *texture, 
             CHECK_EQ_U64(mip.width, expected_width);
             CHECK_EQ_U64(mip.height, expected_height);
             CHECK_EQ_U64(mip.bytes, expected_width * expected_height * 4u);
-            CHECK_EQ_U64((uintptr_t)mip.pixels % 4u, 0u);
+            CHECK_EQ_U64((uintptr_t)mip.borrowed_pixels % 4u, 0u);
             texture_test_check_alpha(t, entry, &mip);
             if (level == 0u) {
                 texture_test_check_level_zero(t, entry, &mip,
@@ -264,7 +264,7 @@ static void texture_test_check_one(test_context_t *t, const texture_t *texture, 
     /* Vector data, section by section, frame by frame. */
     uint64_t mcvec_length = 0;
     const uint8_t *mcvec = texture_test_read(
-        t, texture_test_format(t, "%s/%s/index.mcvec", t->borrowed_args[2], info.name), &mcvec_length);
+        t, texture_test_format(t, "%s/%s/index.mcvec", t->borrowed_args[2], info.borrowed_name), &mcvec_length);
     REQUIRE(mcvec != nullptr);
     const uint64_t count = (uint64_t)entry->width * entry->height;
     const uint64_t all = count * entry->frame_count;
@@ -278,11 +278,11 @@ static void texture_test_check_one(test_context_t *t, const texture_t *texture, 
         texture_vector_t vector;
         REQUIRE(texture_vector_get(texture, id, frame, &vector));
         CHECK_EQ_U64(vector.count, count);
-        CHECK_MEM_EQ(vector.palette, palette, entry->palette_count * 4ull);
-        CHECK_MEM_EQ(vector.indices, indices + count * frame, count);
-        CHECK_MEM_EQ(vector.height, height + count * frame, count);
-        CHECK_MEM_EQ(vector.normal, normal + count * frame * 2u, count * 2u);
-        CHECK_MEM_EQ(vector.emissive, emissive + count * frame, count);
+        CHECK_MEM_EQ(vector.borrowed_palette, palette, entry->palette_count * 4ull);
+        CHECK_MEM_EQ(vector.borrowed_indices, indices + count * frame, count);
+        CHECK_MEM_EQ(vector.borrowed_height, height + count * frame, count);
+        CHECK_MEM_EQ(vector.borrowed_normal, normal + count * frame * 2u, count * 2u);
+        CHECK_MEM_EQ(vector.borrowed_emissive, emissive + count * frame, count);
     }
     texture_vector_t vector;
     CHECK(!texture_vector_get(texture, id, entry->frame_count, &vector));
@@ -316,12 +316,12 @@ TEST(sections_hold_exactly_the_textures) {
     for (uint32_t id = 0; id < count; id++) {
         texture_info_t info;
         REQUIRE(texture_info_get(&texture, id, &info));
-        CHECK(info.entry->pixels_offset >= end);
-        CHECK(info.entry->pixels_offset - end < TEXTURE_BLOB_TEXTURE_ALIGNMENT);
-        end = info.entry->pixels_offset + info.entry->pixels_bytes;
+        CHECK(info.borrowed_entry->pixels_offset >= end);
+        CHECK(info.borrowed_entry->pixels_offset - end < TEXTURE_BLOB_TEXTURE_ALIGNMENT);
+        end = info.borrowed_entry->pixels_offset + info.borrowed_entry->pixels_bytes;
         texture_mip_t first;
         REQUIRE(texture_mip_get(&texture, id, 0u, 0u, &first));
-        CHECK(first.pixels == pixels + info.entry->pixels_offset);
+        CHECK(first.borrowed_pixels == pixels + info.borrowed_entry->pixels_offset);
     }
     CHECK_EQ_U64(end, bytes);
     texture_info_t info;
@@ -344,7 +344,7 @@ static uint32_t texture_test_id(test_context_t *t, const texture_t *texture, con
 static uint64_t texture_test_solid(const texture_mip_t *mip) {
     uint64_t solid = 0;
     for (uint64_t i = 0; i < mip->bytes / 4u; i++) {
-        solid += mip->pixels[i * 4u + 3u] == 255u ? 1u : 0u;
+        solid += mip->borrowed_pixels[i * 4u + 3u] == 255u ? 1u : 0u;
     }
     return solid;
 }
@@ -355,7 +355,7 @@ TEST(leaves_are_cutout_and_keep_their_density_down_the_chain) {
     const uint32_t id = texture_test_id(t, &texture, "blocks/oak_leaves");
     texture_info_t info;
     REQUIRE(texture_info_get(&texture, id, &info));
-    CHECK_EQ_U64(info.entry->alpha_class, TEXTURE_BLOB_ALPHA_CUTOUT);
+    CHECK_EQ_U64(info.borrowed_entry->alpha_class, TEXTURE_BLOB_ALPHA_CUTOUT);
     texture_mip_t zero;
     REQUIRE(texture_mip_get(&texture, id, 0u, 0u, &zero));
     const uint64_t solid_zero = texture_test_solid(&zero);
@@ -364,16 +364,16 @@ TEST(leaves_are_cutout_and_keep_their_density_down_the_chain) {
     uint32_t cutouts = 0;
     for (uint32_t other = 0; other < texture_count(&texture); other++) {
         REQUIRE(texture_info_get(&texture, other, &info));
-        if (info.entry->alpha_class != TEXTURE_BLOB_ALPHA_CUTOUT) {
+        if (info.borrowed_entry->alpha_class != TEXTURE_BLOB_ALPHA_CUTOUT) {
             continue;
         }
         cutouts++;
-        for (uint32_t frame = 0; frame < info.entry->frame_count; frame++) {
+        for (uint32_t frame = 0; frame < info.borrowed_entry->frame_count; frame++) {
             texture_mip_t top;
             REQUIRE(texture_mip_get(&texture, other, 0u, frame, &top));
             const uint64_t top_texels = top.bytes / 4u;
             const uint64_t top_solid = texture_test_solid(&top);
-            for (uint32_t level = 1; level < info.entry->level_count; level++) {
+            for (uint32_t level = 1; level < info.borrowed_entry->level_count; level++) {
                 texture_mip_t mip;
                 REQUIRE(texture_mip_get(&texture, other, level, frame, &mip));
                 const uint64_t texels = mip.bytes / 4u;
@@ -391,8 +391,19 @@ TEST(a_lit_furnace_is_opaque_though_its_file_says_252) {
     const uint32_t id = texture_test_id(t, &texture, "blocks/furnace_front_lit");
     texture_info_t info;
     REQUIRE(texture_info_get(&texture, id, &info));
-    CHECK_EQ_U64(info.entry->alpha_class, TEXTURE_BLOB_ALPHA_OPAQUE);
-    CHECK(info.entry->emissive_level > 0u);
+    CHECK_EQ_U64(info.borrowed_entry->alpha_class, TEXTURE_BLOB_ALPHA_OPAQUE);
+    CHECK(info.borrowed_entry->emissive_level > 0u);
+    texture_deinit(&texture);
+}
+
+/* Its pack file is the same pixels as the unlit top, all dim and brown, so thresholds would leave it dark. */
+TEST(burning_tnt_gives_light) {
+    texture_t texture;
+    REQUIRE(texture_init(&texture));
+    texture_info_t info;
+    REQUIRE(texture_info_get(&texture, texture_test_id(t, &texture, "blocks/tnt_top_burning"), &info));
+    CHECK_EQ_U64(info.borrowed_entry->emissive_class, TEXTURE_BLOB_EMISSIVE_FULL);
+    CHECK_EQ_U64(info.borrowed_entry->emissive_level, 8u);
     texture_deinit(&texture);
 }
 
@@ -403,7 +414,7 @@ TEST(an_animation_has_frames_that_differ) {
     for (uint32_t id = 0; id < texture_count(&texture); id++) {
         texture_info_t info;
         REQUIRE(texture_info_get(&texture, id, &info));
-        if (info.entry->frame_count < 2u) {
+        if (info.borrowed_entry->frame_count < 2u) {
             continue;
         }
         animated++;
@@ -411,11 +422,11 @@ TEST(an_animation_has_frames_that_differ) {
         REQUIRE(texture_mip_get(&texture, id, 0u, 0u, &first));
         /* Some frame must differ, though not the next: the pack's water_flow and lava_flow hold each frame twice. */
         bool any_differs = false;
-        for (uint32_t frame = 1; frame < info.entry->frame_count; frame++) {
+        for (uint32_t frame = 1; frame < info.borrowed_entry->frame_count; frame++) {
             texture_mip_t later;
             REQUIRE(texture_mip_get(&texture, id, 0u, frame, &later));
-            CHECK(later.pixels == first.pixels + first.bytes * frame);
-            any_differs = any_differs || memcmp(first.pixels, later.pixels, first.bytes) != 0;
+            CHECK(later.borrowed_pixels == first.borrowed_pixels + first.bytes * frame);
+            any_differs = any_differs || memcmp(first.borrowed_pixels, later.borrowed_pixels, first.bytes) != 0;
         }
         CHECK(any_differs);
     }
@@ -432,7 +443,7 @@ TEST(the_last_level_agrees_with_the_mean_colour) {
     for (uint32_t id = 0; id < texture_count(&texture); id++) {
         texture_info_t info;
         REQUIRE(texture_info_get(&texture, id, &info));
-        const texture_blob_entry_t *entry = info.entry;
+        const texture_blob_entry_t *entry = info.borrowed_entry;
         if (entry->alpha_class != TEXTURE_BLOB_ALPHA_OPAQUE || entry->frame_count != 1u ||
             entry->width != entry->height) {
             continue;
@@ -441,10 +452,10 @@ TEST(the_last_level_agrees_with_the_mean_colour) {
         texture_mip_t last;
         REQUIRE(texture_mip_get(&texture, id, entry->level_count - 1u, 0u, &last));
         for (uint32_t channel = 0; channel < 3u; channel++) {
-            const int64_t gap = (int64_t)last.pixels[channel] - (int64_t)entry->mean_rgba[channel];
+            const int64_t gap = (int64_t)last.borrowed_pixels[channel] - (int64_t)entry->mean_rgba[channel];
             CHECK(gap >= -1 && gap <= 1);
         }
-        CHECK_EQ_U64(last.pixels[3], 255u);
+        CHECK_EQ_U64(last.borrowed_pixels[3], 255u);
     }
     CHECK(compared > 100u);
     texture_deinit(&texture);

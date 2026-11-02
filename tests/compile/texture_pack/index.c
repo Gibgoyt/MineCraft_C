@@ -458,6 +458,16 @@ TEST(import_writes_exactly_this) {
     CHECK_EQ_U64(find.output_length, 0u);
 }
 
+/* The bytes where rounding decides: sums of 127 over a multiple of 255 go down, and 128 go up. TT_ORE never lands on either. */
+TEST(compositing_rounds_to_nearest_on_each_side_of_a_half) {
+    const tt_case_t c = tt_case_begin(t, 0);
+    static const uint8_t top[16] = {197, 207, 217, 1, 228, 238, 248, 1, 0, 0, 0, 0, 0, 0, 0, 0};
+    static const uint8_t wanted[16] = {70, 80, 90, 255, 101, 111, 121, 255, 10, 20, 30, 255, 40, 50, 60, 255};
+    tt_write_png(t, tt_format(t, "%s/a/ore.png", c.pack), 2u, 2u, top);
+    tt_good_import(t, &c);
+    tt_check_mctex(t, tt_format(t, "%s/mobs/ore/index.mctex", c.textures), 2u, 2u, 1u, wanted);
+}
+
 TEST(import_is_repeatable) {
     const tt_case_t c = tt_case_begin(t, 0);
     tt_good_import(t, &c);

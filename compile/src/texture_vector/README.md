@@ -9,7 +9,7 @@
 
 - `texture_vector recipes --textures textures`: writes `index.mctex` and `README.md` of each `source.kind: procedural` texture. Run by hand after editing a recipe; the outputs are committed.
 - `texture_vector vectors --textures textures --materials textures/vector.yaml --out <directory>`: writes `<out>/<group>/<name>/index.mcvec` for every texture. A file already holding the right bytes is not touched.
-- `texture_vector check --textures textures --materials textures/vector.yaml`: writes nothing. Each recipe still makes exactly what is committed, every `.mctex` is whole, everything in `needs` exists, and every material names a real texture.
+- `texture_vector check --textures textures --materials textures/vector.yaml`: writes nothing. Each recipe still makes exactly what is committed, every `.mctex` is whole, everything in `needs` exists, and every material names a real texture and gives the light it asks for.
 
 **May be called by:** a person editing recipes, ctest `compile_texture_vector`, and Stage 06.4's blob step for `vectors`.
 **Depends on:** its parts below, `compile/src/yaml/`, and `compile/src/texture_pack/` parts `support`, `mctex` and `output`.

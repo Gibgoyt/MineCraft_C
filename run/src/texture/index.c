@@ -55,8 +55,8 @@ bool texture_info_get(const texture_t *texture, uint32_t id, texture_info_t *out
         return false;
     }
     const texture_blob_entry_t *entry = &texture->blob.borrowed_entries[id];
-    out->name = (const char *)(texture->blob.borrowed_names + entry->name_offset);
-    out->entry = entry;
+    out->borrowed_name = (const char *)(texture->blob.borrowed_names + entry->name_offset);
+    out->borrowed_entry = entry;
     return true;
 }
 
@@ -69,7 +69,7 @@ bool texture_mip_get(const texture_t *texture, uint32_t id, uint32_t level, uint
         return false;
     }
     const uint64_t frame_bytes = texture_blob_level_frame_bytes(entry->width, entry->height, level);
-    out->pixels =
+    out->borrowed_pixels =
         texture->blob.borrowed_pixels + entry->pixels_offset + entry->level_offset[level] + frame_bytes * frame;
     out->bytes = frame_bytes;
     out->width = texture_blob_level_dimension(entry->width, level);
@@ -92,11 +92,11 @@ bool texture_vector_get(const texture_t *texture, uint32_t id, uint32_t frame, t
     const uint8_t *height = indices + all_frames;
     const uint8_t *normal = height + all_frames;
     const uint8_t *emissive = normal + all_frames * 2u;
-    out->palette = palette;
-    out->indices = indices + count * frame;
-    out->height = height + count * frame;
-    out->normal = (const int8_t *)(const void *)(normal + count * frame * 2u);
-    out->emissive = emissive + count * frame;
+    out->borrowed_palette = palette;
+    out->borrowed_indices = indices + count * frame;
+    out->borrowed_height = height + count * frame;
+    out->borrowed_normal = (const int8_t *)(const void *)(normal + count * frame * 2u);
+    out->borrowed_emissive = emissive + count * frame;
     out->count = count;
     return true;
 }

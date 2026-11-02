@@ -27,28 +27,28 @@ static_assert(offsetof(texture_t, _pad0) == 152);
 
 /* What is known of one texture. Both last as long as the blob. */
 typedef struct texture_info_t {
-    const char *name;                  /* 0: such as "blocks/dirt" */
-    const texture_blob_entry_t *entry; /* 8 */
+    const char *borrowed_name;                  /* 0: such as "blocks/dirt" */
+    const texture_blob_entry_t *borrowed_entry; /* 8 */
 } texture_info_t;
 static_assert(sizeof(texture_info_t) == 16);
 
 /* One frame of one mip level: RGBA8, not premultiplied, sRGB, top row first, with no gap between rows. 4-byte aligned. */
 typedef struct texture_mip_t {
-    const uint8_t *pixels; /* 0 */
-    uint64_t bytes;        /* 8 */
-    uint32_t width;        /* 16 */
-    uint32_t height;       /* 20 */
+    const uint8_t *borrowed_pixels; /* 0 */
+    uint64_t bytes;                 /* 8 */
+    uint32_t width;                 /* 16 */
+    uint32_t height;                /* 20 */
 } texture_mip_t;
 static_assert(sizeof(texture_mip_t) == 24);
 
 /* The vector data of one frame, at full size only, with count = width * height. It has no mips: see README.md. */
 typedef struct texture_vector_t {
-    const uint8_t *palette;  /* 0: palette_count * 4 bytes, RGBA8, and the same for every frame */
-    const uint8_t *indices;  /* 8: count bytes, into the palette */
-    const uint8_t *height;   /* 16: count bytes, 0 to 255 */
-    const int8_t *normal;    /* 24: count * 2: x then y, each scaled by 127. z is sqrt(1 - x * x - y * y) */
-    const uint8_t *emissive; /* 32: count bytes, a light level from 0 to 15 */
-    uint64_t count;          /* 40 */
+    const uint8_t *borrowed_palette;  /* 0: palette_count * 4 bytes, RGBA8, and the same for every frame */
+    const uint8_t *borrowed_indices;  /* 8: count bytes, into the palette */
+    const uint8_t *borrowed_height;   /* 16: count bytes, 0 to 255 */
+    const int8_t *borrowed_normal;    /* 24: count * 2: x then y, each scaled by 127. z is sqrt(1 - x * x - y * y) */
+    const uint8_t *borrowed_emissive; /* 32: count bytes, a light level from 0 to 15 */
+    uint64_t count;                   /* 40 */
 } texture_vector_t;
 static_assert(sizeof(texture_vector_t) == 48);
 
