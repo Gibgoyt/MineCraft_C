@@ -4,6 +4,7 @@
 
 #include "display/index.h"
 #include "heap/index.h"
+#include "input/index.h"
 #include "job/index.h"
 #include "log/index.h"
 #include "machine/index.h"
@@ -38,7 +39,8 @@ static void main_print_usage(const char *program) {
             "  --report                 print the build's defines and CPU features, then exit\n"
             "  --pretend-missing-cpu    treat this feature as absent, to see the CPU check fail; may repeat\n"
             "  --pretend-leak           skip the shutdown, to see the leak check at exit fail\n"
-            "  --test-pattern           show a test pattern through KMS; only from a text console, never inside X\n"
+            "  --test-pattern           show a test pattern through KMS; only from a text console, never inside X.\n"
+            "                           The mouse moves a square, a held key or button turns it red, Esc ends the run\n"
             "  --card, --connector      with --test-pattern: use these and not display: in config/machine.yaml\n",
             program, program);
 }
@@ -119,6 +121,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
 }
 
 static void app_deinit(app_t *app) {
+    input_deinit(&app->input);
     display_deinit(&app->display);
     job_deinit(&app->job);
     simd_deinit(&app->simd);
@@ -175,7 +178,15 @@ static main_exit_t main_run_test_pattern(app_t *app, const main_options_t *optio
     if (status != DISPLAY_STATUS_OK) {
         return main_exit_from_display(status);
     }
-    return main_exit_from_display(display_test_pattern_run(&app->display, started_ns, DISPLAY_TEST_PATTERN_NS));
+    /* Only now: reading /dev/input reads whoever is at the machine, and display_init said that this process holds the
+     * console. Under X, in a pipe or under ctest, it has refused by this point. */
+    if (!input_init(&app->input, INPUT_DEVICE_DIRECTORY, input_ops_real(), nullptr)) {
+        return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
+    }
+    display_test_pattern_set_cursor(&app->display, input_test_pattern_cursor, &app->input);
+    const display_status_t ran = display_test_pattern_run(&app->display, started_ns, DISPLAY_TEST_PATTERN_NS);
+    input_report(&app->input);
+    return main_exit_from_display(ran);
 }
 
 /* Stage 02.3 asks the binary to report its defines, to show a yaml change reaching compiled code. This path must never

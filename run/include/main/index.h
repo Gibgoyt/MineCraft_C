@@ -3,6 +3,7 @@
 #define MC_RUN_MAIN_INDEX_H
 
 #include "display/index.h"
+#include "input/index.h"
 #include "job/index.h"
 #include "math/index.h"
 #include "simd/index.h"
@@ -15,12 +16,13 @@ typedef struct app_t {
     job_system_t job; /* first: its alignment is what gives app_t its own */
     simd_t simd;
     display_t display;     /* only --test-pattern starts it, for now */
+    input_t input;         /* likewise, and only once display_init said OK */
     uint32_t cpu_required; /* CPU_FEATURE_* the build uses */
     uint32_t cpu_present;  /* CPU_FEATURE_* this machine has */
     math_t math;
     uint8_t _pad0[48];
 } app_t;
-static_assert(sizeof(app_t) == 1152);
+static_assert(sizeof(app_t) == 1472);
 static_assert(alignof(app_t) == 64);
 
 /* The exit codes of minecraft_c. */

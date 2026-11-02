@@ -25,10 +25,13 @@ typedef struct display_buffer_t {
     uint32_t height;
     uint32_t square_x; /* where the test pattern's square is in this buffer */
     uint32_t square_y;
+    uint32_t cursor_x; /* where the test pattern's cursor is in this buffer */
+    uint32_t cursor_y;
     uint8_t has_square;
-    uint8_t _pad0[3];
+    uint8_t has_cursor;
+    uint8_t _pad0[2];
 } display_buffer_t;
-static_assert(sizeof(display_buffer_t) == 48);
+static_assert(sizeof(display_buffer_t) == 56);
 
 /* Flip timing, from page-flip events. Plain counters, read by the one thread that flips. */
 typedef struct display_flip_stats_t {
@@ -60,7 +63,7 @@ typedef struct display_flip_t {
     uint8_t restored;
     uint8_t restore_failed;
 } display_flip_t;
-static_assert(sizeof(display_flip_t) == 224);
+static_assert(sizeof(display_flip_t) == 240);
 
 /* What waiting for a flip found. */
 typedef enum display_flip_wait_t : uint8_t {
@@ -113,5 +116,15 @@ void display_flip_pattern_fill(display_buffer_t *buffer);
 /* Moves the square to where it is in this frame, repainting only the part it left, so that it costs almost nothing per
  * frame. Each buffer remembers where its own square was. */
 void display_flip_pattern_frame(display_buffer_t *buffer, uint64_t frame);
+
+/* The side of the cursor square in this buffer, so that the caller can say how much room it has to move. */
+uint32_t display_flip_pattern_cursor_side(const display_buffer_t *buffer);
+
+/* Repaints what this buffer's cursor covered. Each buffer remembers where its own was, as for the square. Call this before
+ * display_flip_pattern_frame, and draw after it, so that the cursor stays on top of the square wherever the two meet. */
+void display_flip_pattern_cursor_erase(display_buffer_t *buffer);
+
+/* Draws the cursor square with its corner here, or as near as fits. active shows that a key or button is held. */
+void display_flip_pattern_cursor_draw(display_buffer_t *buffer, uint32_t x, uint32_t y, bool active);
 
 #endif

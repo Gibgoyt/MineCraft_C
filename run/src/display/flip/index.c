@@ -16,6 +16,11 @@ enum : uint32_t {
     PATTERN_SQUARE_MAX = 64u,
     PATTERN_SPEED = 4u, /* pixels per frame */
     PATTERN_SQUARE_COLOUR = 0x00ff8000u,
+    PATTERN_CURSOR_SIDE = 24u,
+    PATTERN_CURSOR_EDGE = 2u, /* a black edge, so that it shows on every bar */
+    PATTERN_CURSOR_COLOUR = 0x00ffffffu,
+    PATTERN_CURSOR_ACTIVE_COLOUR = 0x00ff0060u,
+    PATTERN_CURSOR_EDGE_COLOUR = 0x00000000u,
     PATTERN_WHITE = 0x00ffffffu,
 };
 enum : int32_t {
@@ -328,6 +333,7 @@ void display_flip_pattern_fill(display_buffer_t *buffer) {
         }
     }
     buffer->has_square = 0u;
+    buffer->has_cursor = 0u;
 }
 
 static uint32_t pattern_square_side(const display_buffer_t *buffer) {
@@ -362,4 +368,41 @@ void display_flip_pattern_frame(display_buffer_t *buffer, uint64_t frame) {
     buffer->square_x = new_x;
     buffer->square_y = new_y;
     buffer->has_square = 1u;
+}
+
+uint32_t display_flip_pattern_cursor_side(const display_buffer_t *buffer) {
+    const uint32_t shorter = buffer->width < buffer->height ? buffer->width : buffer->height;
+    return shorter < PATTERN_CURSOR_SIDE ? shorter : PATTERN_CURSOR_SIDE;
+}
+
+void display_flip_pattern_cursor_erase(display_buffer_t *buffer) {
+    if (buffer->has_cursor == 0u) {
+        return;
+    }
+    const uint32_t side = display_flip_pattern_cursor_side(buffer);
+    for (uint32_t y = buffer->cursor_y; y < buffer->cursor_y + side; y++) {
+        uint32_t *const row = pattern_row(buffer, y);
+        for (uint32_t x = buffer->cursor_x; x < buffer->cursor_x + side; x++) {
+            row[x] = display_flip_pattern_pixel(x, y, buffer->width, buffer->height);
+        }
+    }
+    buffer->has_cursor = 0u;
+}
+
+void display_flip_pattern_cursor_draw(display_buffer_t *buffer, uint32_t x, uint32_t y, bool active) {
+    const uint32_t side = display_flip_pattern_cursor_side(buffer);
+    const uint32_t left = x < buffer->width - side ? x : buffer->width - side;
+    const uint32_t top = y < buffer->height - side ? y : buffer->height - side;
+    const uint32_t fill = active ? PATTERN_CURSOR_ACTIVE_COLOUR : PATTERN_CURSOR_COLOUR;
+    for (uint32_t row_y = 0; row_y < side; row_y++) {
+        uint32_t *const row = pattern_row(buffer, top + row_y);
+        for (uint32_t column = 0; column < side; column++) {
+            const bool edge = column < PATTERN_CURSOR_EDGE || row_y < PATTERN_CURSOR_EDGE ||
+                              column + PATTERN_CURSOR_EDGE >= side || row_y + PATTERN_CURSOR_EDGE >= side;
+            row[left + column] = edge ? PATTERN_CURSOR_EDGE_COLOUR : fill;
+        }
+    }
+    buffer->cursor_x = left;
+    buffer->cursor_y = top;
+    buffer->has_cursor = 1u;
 }
