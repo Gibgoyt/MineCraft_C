@@ -911,7 +911,7 @@ TEST(game_runs_the_core_runtime_and_ends_with_nothing_live) {
     snprintf(expected, sizeof(expected), "%d workers ran %d jobs", MC_THREADS_WORKERS, MC_THREADS_WORKERS);
     CHECK_CONTAINS(result.output, expected);
     CHECK_CONTAINS(result.output, "no game systems exist yet");
-    CHECK_CONTAINS(result.output, "heap at exit: 1 reserved, 1 released, 0 bytes live");
+    CHECK_CONTAINS(result.output, "heap at exit: 2 reserved, 2 released, 0 bytes live");
 }
 
 TEST(game_exits_with_its_own_status_on_a_leak) {
@@ -919,7 +919,7 @@ TEST(game_exits_with_its_own_status_on_a_leak) {
     test_process_t result;
     game_run(t, pretend_leak, nullptr, &result);
     CHECK_EQ_I64(result.exit_code, MAIN_EXIT_LEAK);
-    CHECK_CONTAINS(result.output, "heap: leak at exit: 1 regions");
+    CHECK_CONTAINS(result.output, "heap: leak at exit: 2 regions");
 }
 
 TEST(game_reports_its_compiled_defines) {

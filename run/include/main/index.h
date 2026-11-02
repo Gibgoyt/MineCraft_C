@@ -4,19 +4,21 @@
 
 #include "job/index.h"
 #include "math/index.h"
+#include "simd/index.h"
 
 #include <stdint.h>
 
 /* The one root of ownership: plans/CODING_STANDARD.md section 4. There is one of these, on main's stack, and every heap
  * block in the program traces back to it through struct fields. Each later system adds its field here. */
 typedef struct app_t {
-    job_system_t job;      /* first: its alignment is what gives app_t its own */
+    job_system_t job; /* first: its alignment is what gives app_t its own */
+    simd_t simd;
     uint32_t cpu_required; /* CPU_FEATURE_* the build uses */
     uint32_t cpu_present;  /* CPU_FEATURE_* this machine has */
     math_t math;
     uint8_t _pad0[48];
 } app_t;
-static_assert(sizeof(app_t) == 320);
+static_assert(sizeof(app_t) == 448);
 static_assert(alignof(app_t) == 64);
 
 /* The exit codes of minecraft_c. */
