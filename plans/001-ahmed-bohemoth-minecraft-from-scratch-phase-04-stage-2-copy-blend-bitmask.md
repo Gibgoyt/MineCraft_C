@@ -75,6 +75,7 @@ The popcount's gain at 8 words is 1.07x, which is thin: see Issue 4.
 
 Appended as they land:
 
+- `57cfde7` Gate check: `asm_abi`, and the popcount's stated length (issues 7 and 8).
 - `1243e43` Add the streaming copy, alpha blend, popcount and mask kernels in NASM, with C prototypes, scalar references, a simd Owner that checks them at startup, and tests.
 
 ## Issues found

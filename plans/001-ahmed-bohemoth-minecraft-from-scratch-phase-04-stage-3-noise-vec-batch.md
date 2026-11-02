@@ -117,6 +117,7 @@ Tests catch broken kernels. Each change was made, built and undone, by script:
 
 Appended as they land:
 
+- `57cfde7` Gate check: `asm_conventions` for noise and vec_batch, and the gated 24-word popcount row (issues 9 and 10).
 - `a410a81` Add 8-wide gradient noise, batch vector transforms, generated struct offsets for NASM, and a benchmark of every kernel against its scalar reference.
 
 ## Issues found

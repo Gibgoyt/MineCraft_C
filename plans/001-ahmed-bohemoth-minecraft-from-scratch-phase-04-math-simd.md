@@ -37,6 +37,7 @@ Run on 2026-11-02 by the skeptical gate checker, from a deleted `build/`, on the
 
 - Debug: the build is clean. `ctest --preset debug` is 35 of 35, and the gate's `^(run_math|asm_).*` is 17 of 17.
 - Release: the build is clean, and `run_math`, `asm_`, `compile_struct_offsets` and `run_types` are 19 of 19. So are they in sanitize.
+- The integration branch moved during this check, so it was merged again at `2db24aa` and the gate re-run from a deleted `build/`: debug 36 of 36, the gate's regex 17 of 17, release `run_math` and `asm_` passing, and `bench_simd` rc 0 with the popcount's 24-word row at 1.32x. Sanitize was not repeated on the merged tree: that merge brought only texture work, and none of this phase's paths.
 - `build/release/bin/bench_simd` rc 0: "Every gated row gained, and every kernel gave its reference's bytes."
 - `pgrep -a minecraft_c` rc 1, and `pgrep -af` on this worktree's `build/` shows only its own shell.
 
@@ -50,7 +51,9 @@ Nothing in this phase waits on Ahmed. The copy's speed on real scanout memory is
 
 ## Commits
 
-Appended as they land:
+Appended as they land. The stages' own commits are in their files.
+
+- `57cfde7` Close the Phase 4 gate: test every kernel's ABI from machine state, extend the config refusal test to noise and vec_batch, and hold the popcount to a stated length.
 
 ## Issues found
 
