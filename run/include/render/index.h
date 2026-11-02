@@ -24,7 +24,7 @@ enum : uint64_t {
     RENDER_POOL_BYTES_DEFAULT =
         (RENDER_VOXEL_BUDGET_BYTES - RENDER_COLUMN_COUNT_DEFAULT * sizeof(world_buffers_column_t)) /
         WORLD_BUFFERS_PAGE_BYTES * WORLD_BUFFERS_PAGE_BYTES,
-    /* The pool render_pool_bytes_for gives each column: six sections of the 6782 bytes measured in Stage 08.2 issue 5, in
+    /* The pool render_pool_bytes_for gives each column: six sections of the 7885 bytes measured in Stage 08.2 issue 5, in
      * slabs of up to 8192. Sizes a first guess, and Stage 17.3 replaces it with what real terrain takes. */
     RENDER_POOL_BYTES_PER_COLUMN = 6ull * 8192ull,
     /* Never smaller than this: a world of a few columns still has every slab size to serve, each with a page of its own. */

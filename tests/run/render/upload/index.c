@@ -381,6 +381,16 @@ TEST(render_open_past_the_limits_or_the_budget_takes_nothing) {
     upload_fixture_end(t, f);
 }
 
+TEST(deinit_closes_a_world_still_open) {
+    upload_fixture_t *const f = upload_test_aligned(t, sizeof(*f));
+    REQUIRE(upload_fixture_begin(t, f, 1u, 2ull << 20, upload_test_budget_large));
+    device_memory_t *const memory = &f->bridge.device_memory;
+    CHECK_EQ_U64(memory->live_blocks, 3u); /* the pool, the table, and the probe's */
+    render_deinit(&f->render);
+    CHECK_EQ_U64(memory->live_blocks, 1u);
+    upload_fixture_end(t, f);
+}
+
 /* ---- The slab pool ------------------------------------------------------------------------------------------------ */
 
 TEST(slabs_come_in_the_stated_sizes) {
@@ -745,6 +755,28 @@ TEST(a_new_load_of_a_slot_starts_empty_and_its_old_slabs_come_back) {
     upload_buffers_end(t, b);
 }
 
+TEST(a_slot_still_holding_another_chunk_after_a_scroll_says_not_loaded) {
+    upload_buffers_t *const b = upload_test_aligned(t, sizeof(*b));
+    REQUIRE(upload_buffers_begin(t, b, 2u, WORLD_BUFFERS_PAGE_BYTES));
+    world_buffers_t *const buffers = &b->buffers;
+    device_memory_t *const memory = &b->bridge.device_memory;
+    device_block_t *const scratch = test_alloc(t, sizeof(*scratch));
+    REQUIRE(device_memory_alloc(memory, DEVICE_POOL_FRAMES, 4u * WORLD_BUFFERS_PROBE_BYTES, "probe", scratch) ==
+            GPU_STATUS_OK);
+    world_buffers_column_set(buffers, 0u, 0, 0, 1u, 0);
+    REQUIRE(world_buffers_flush(buffers) == GPU_STATUS_OK);
+    /* Chunk (2, 0) now has slot 0, and the column there is still chunk (0, 0), which has left the window. */
+    world_buffers_set_window(buffers, (world_buffers_window_t){1, 0, 1u, 0u, 2u, 4u});
+    const world_buffers_probe_query_t queries[3] = {{2 * 16, 0, 0}, {0, 0, 0}, {1 * 16, 0, 0}};
+    world_buffers_probe_result_t results[3];
+    REQUIRE(world_buffers_probe(buffers, scratch, queries, results, 3u) == GPU_STATUS_OK);
+    CHECK_EQ_U64(results[0].state, WORLD_BUFFERS_VOXEL_NOT_LOADED);
+    CHECK_EQ_U64(results[1].state, WORLD_BUFFERS_VOXEL_NOT_LOADED); /* outside the window altogether */
+    CHECK_EQ_U64(results[2].state, WORLD_BUFFERS_VOXEL_NOT_LOADED); /* in it, and slot 1 holds nothing */
+    CHECK_EQ_U64(device_memory_free(memory, scratch), GPU_STATUS_OK);
+    upload_buffers_end(t, b);
+}
+
 /* ---- The whole way, against a real world ------------------------------------------------------------------------- */
 
 TEST(a_world_reaches_the_card_voxel_for_voxel) {
@@ -830,9 +862,8 @@ TEST(walking_scrolls_the_table_and_what_is_left_behind_comes_back) {
     upload_fixture_end(t, f);
 }
 
-TEST(no_frame_goes_over_its_budget_and_the_world_still_arrives_whole) {
+static void upload_budget_run(test_context_t *t, render_upload_budget_t budget) {
     upload_fixture_t *const f = upload_test_aligned(t, sizeof(*f));
-    const render_upload_budget_t budget = {.bytes = 2ull * WORLD_BUFFERS_SECTION_BYTES_MAX, .sections = 3u};
     REQUIRE(upload_fixture_begin(t, f, 1u, UPLOAD_TEST_POOL_BYTES, budget));
     upload_world_stream(t, f);
     const render_upload_t *const upload = &f->render.upload;
@@ -860,6 +891,14 @@ TEST(no_frame_goes_over_its_budget_and_the_world_still_arrives_whole) {
     upload_fixture_end(t, f);
 }
 
+TEST(no_frame_goes_over_its_bytes_and_the_world_still_arrives_whole) {
+    upload_budget_run(t, (render_upload_budget_t){.bytes = 2ull * WORLD_BUFFERS_SECTION_BYTES_MAX, .sections = 65536u});
+}
+
+TEST(no_frame_goes_over_its_copies_and_the_world_still_arrives_whole) {
+    upload_budget_run(t, (render_upload_budget_t){.bytes = 64ull << 20, .sections = 2u});
+}
+
 TEST(a_full_pool_sends_sections_back_and_they_arrive_once_there_is_room) {
     upload_fixture_t *const f = upload_test_aligned(t, sizeof(*f));
     /* The 113 columns inside radius 6, of about 30 KiB, will not go in four pages. A column has at most four sections here, so that one column does
@@ -869,26 +908,34 @@ TEST(a_full_pool_sends_sections_back_and_they_arrive_once_there_is_room) {
     render_upload_t *const upload = &f->render.upload;
     /* Not to quiet: this cannot settle while the pool is full. A fair few rounds of asking. */
     const int64_t deadline = time_now_ns() + (int64_t)UPLOAD_TEST_PUMP_NS;
-    while (upload->stats.sections_resent < 50u && time_now_ns() < deadline) {
+    while ((upload->stats.sections_resent < 50u || ring_count(&upload->resend) == 0u) && time_now_ns() < deadline) {
         render_upload_resend_drain(upload, &f->world.edit);
         world_edit_snapshot_publish(&f->world.snapshot);
         REQUIRE(render_upload_frame(upload) == GPU_STATUS_OK);
         sched_yield();
     }
-    REQUIRE(upload->stats.sections_resent >= 50u);
+    REQUIRE(upload->stats.sections_resent >= 50u && ring_count(&upload->resend) > 0u);
     CHECK(f->render.buffers.pool_full_count >= 50u);
 
-    /* All but one column leaves. What is left must all arrive, though only the refusals marked it again. */
+    /* The section refused last, read from the ring without taking it. Nothing else will ever mark it dirty again, so if the
+     * refusal is lost, this section never arrives. */
+    const uint64_t last = atomic_load_explicit(&upload->resend.tail, memory_order_acquire) - 1u;
+    world_edit_dirty_t refused;
+    memcpy(&refused, upload->resend.borrowed_storage + (last & (RENDER_UPLOAD_RESEND_CAPACITY - 1u)) * sizeof(refused),
+           sizeof(refused));
+    const uint32_t refused_index = (uint32_t)__builtin_ctzll(refused.section_mask);
+    CHECK_EQ_U64((f->render.buffers.borrowed_shadow[refused.slot].section_mask >> refused_index) & 1u, 0u);
+
+    /* All but its column leaves, which makes room. */
     world_map_set_view_radius(&f->world.map, 0u);
-    uint32_t center_slot = 0u;
-    REQUIRE(world_map_slot_of(&f->world.map, 0, 0, &center_slot));
     for (uint32_t slot = 0; slot < f->world.map.slot_count; slot++) {
-        if (slot != center_slot && f->world.map.borrowed_slots[slot].state == WORLD_MAP_STATE_READY) {
+        if (slot != refused.slot && f->world.map.borrowed_slots[slot].state == WORLD_MAP_STATE_READY) {
             world_map_unload(&f->world.map, slot);
         }
     }
     REQUIRE(upload_pump(t, f));
     CHECK_EQ_U64(f->world.map.ready_count, 1u);
+    CHECK_EQ_U64((f->render.buffers.borrowed_shadow[refused.slot].section_mask >> refused_index) & 1u, 1u);
     CHECK_EQ_U64(upload_compare_world(t, f), 0u);
     upload_compare_table(t, f);
     upload_fixture_end(t, f);
@@ -952,6 +999,32 @@ TEST(a_view_is_not_let_go_while_a_job_still_has_to_read_it) {
     REQUIRE(upload_pump(t, f));
     CHECK_EQ_U64(upload->stats.views, 2u);
     CHECK_EQ_U64(upload_compare_world(t, f), 0u);
+    upload_fixture_end(t, f);
+}
+
+/* A view's sections always match its own table, so this cannot happen by itself: the test takes the column away behind the
+ * queue's back. A write to a column that has gone would be refused as a bug, and stop the frame. */
+TEST(a_section_whose_column_has_gone_is_dropped_and_no_failure) {
+    upload_fixture_t *const f = upload_test_aligned(t, sizeof(*f));
+    REQUIRE(upload_fixture_begin(t, f, 1u, UPLOAD_TEST_POOL_BYTES, upload_test_budget_large));
+    upload_world_stream(t, f);
+    upload_gate_t *const gate = upload_test_aligned(t, sizeof(*gate));
+    job_group_t *const gates = upload_test_aligned(t, sizeof(*gates));
+    job_group_init(gates);
+    for (uint32_t i = 0; i < MC_THREADS_WORKERS; i++) {
+        job_submit(&f->job, gates, upload_gate_job, gate);
+    }
+    render_upload_t *const upload = &f->render.upload;
+    REQUIRE(world_edit_snapshot_publish(&f->world.snapshot));
+    REQUIRE(render_upload_frame(upload) == GPU_STATUS_OK);
+    REQUIRE(upload->borrowed_view != nullptr && upload->borrowed_view->section_count > 0u);
+    world_buffers_column_clear(&f->render.buffers, upload->borrowed_view->borrowed_sections[0].slot);
+    atomic_store_explicit(&gate->open, 1u, memory_order_release);
+    job_group_wait(&f->job, gates);
+    job_group_deinit(gates);
+    REQUIRE(upload_pump(t, f));
+    CHECK(upload->stats.sections_stale > 0u);
+    CHECK(upload->stats.sections_sent > 0u);
     upload_fixture_end(t, f);
 }
 

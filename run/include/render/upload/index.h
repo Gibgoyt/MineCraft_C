@@ -13,7 +13,7 @@
 #include <stdint.h>
 
 enum : uint64_t {
-    /* What one frame may send of sections. About 0.8 ms at the 5 GB/s measured in Stage 08.2 issue 5, a tenth of a frame at
+    /* What one frame may send of sections. About 0.7 ms at the 6 GB/s measured in Stage 08.2 issue 5, a tenth of a frame at
      * 120 FPS. Measured on one card with no frame running: Stage 17.3 owes this a real one. */
     RENDER_UPLOAD_BUDGET_BYTES_DEFAULT = 4ull << 20,
     /* Sections it may hold back a pool-full answer for at once: see render_upload_resend_drain. A power of two. */
