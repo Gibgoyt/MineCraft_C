@@ -33,7 +33,7 @@ static const int64_t ORE_WAIT_NS = 60 * TIME_NS_PER_SECOND;
 static const uint64_t ORE_WORLD = 0x1234567890ABCDEFull;
 
 /* Pinned: see README.md. */
-static const uint64_t ORE_DIGEST_PIN = 0xC76ED6257560A88Dull;
+static const uint64_t ORE_DIGEST_PIN = 0x74124D5C8C1EB588ull;
 
 static uint64_t ore_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

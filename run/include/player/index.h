@@ -7,6 +7,7 @@
 #include "player/camera/index.h"
 #include "player/interaction/index.h"
 #include "player/movement/index.h"
+#include "player/survival/index.h"
 #include "render/frame/index.h"
 #include "world/map/index.h"
 
@@ -40,7 +41,16 @@ typedef struct player_view_t {
 } player_view_t;
 static_assert(sizeof(player_view_t) == 160);
 
-/* The player. There is one, under app_t. The sim writes everything up to the intent, and main the rest. */
+/* A body's health as main may see it, for a screen to draw. Goes across in one word, so that it stays whole. */
+typedef struct player_vitals_t {
+    float32_t health; /* 0 */
+    uint16_t air;     /* 4: ticks left, and 0 when drowning */
+    uint8_t food;     /* 6 */
+    uint8_t state;    /* 7: player_survival_state_t */
+} player_vitals_t;
+static_assert(sizeof(player_vitals_t) == 8);
+
+/* The player. There is one, under app_t. The sim writes everything up to the intent, and main the rest up to survival. */
 typedef struct player_t {
     player_movement_t movement;                      /* 0: the sim's */
     physics_t *borrowed_physics;                     /* 112 */
@@ -57,14 +67,19 @@ typedef struct player_t {
     uint32_t view_slot;             /* 2076: main's: the slot it reads */
     _Atomic uint32_t hands_word;    /* 2080: PLAYER_HAND_* held now */
     _Atomic uint32_t hands_latch;   /* 2084: PLAYER_HAND_* pressed since the sim last looked */
-    uint8_t _pad0[24];              /* 2088 */
+    /* Sim to main: the newest player_vitals_t, relaxed, as only what is on the screen depends on it. */
+    _Atomic uint64_t vitals_word; /* 2088 */
+    uint8_t _pad0[16];            /* 2096 */
+    /* A line of its own: main writes the line above all the time. */
+    player_survival_t survival; /* 2112: the sim's */
 } player_t;
-static_assert(sizeof(player_t) == 2112);
+static_assert(sizeof(player_t) == 2304);
 static_assert(alignof(player_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(player_t, views) == 128);
 static_assert(offsetof(player_t, target) == 800);
 static_assert(offsetof(player_t, interaction) == 896);
 static_assert(offsetof(player_t, intent_word) == 2048);
+static_assert(offsetof(player_t, survival) == 2112);
 
 /* Remembers what it moves with, and takes nothing. Physics must outlive it. */
 void player_init(player_t *player, physics_t *physics);
@@ -97,6 +112,13 @@ void player_pickup_reach(const player_t *player, collision_box_t *out);
 /* One tick. The sim, or whichever one thread holds the map, with tick_ns the time this tick was due. Never waits and never
  * touches the heap. */
 void player_tick(player_t *player, const world_map_t *map, int64_t tick_ns);
+
+/* One tick of what keeps the body going, right after player_tick on the same thread, so on what the body has just done and now touches.
+ * Tests of how a body moves can leave it out, and then nothing ever hurts it. Never waits and never touches the heap. */
+void player_survive_tick(player_t *player, const world_map_t *map);
+
+/* The body's health as of the last tick. Main, as often as it likes. Never waits. */
+player_vitals_t player_vitals_read(const player_t *player);
 
 /* Where the eye is to be drawn at now_ns: from a tick's start to its end, over the tick after it was due, so that a picture
  * moves smoothly at any rate and is never more than a tick behind. Main. Never waits. */

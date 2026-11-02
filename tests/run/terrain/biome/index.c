@@ -42,7 +42,7 @@ static const uint64_t BIO_SEED_LIST[BIO_SEEDS] = {0x1234567890ABCDEFull, 1ull, 0
 static const int32_t BIO_CAVE_LEVEL_Z[BIO_CAVE_LEVELS] = {-210, -170, -100, -60, -20, 30};
 
 /* Pinned: see README.md. */
-static const uint64_t BIO_DIGEST_PIN = 0x5A80BA2E80CDD2F4ull;
+static const uint64_t BIO_DIGEST_PIN = 0x3325F341B1D8B60Eull;
 static const uint64_t BIO_COLUMNS_PIN = 0x4C00A0C4B7250BF1ull;
 
 static uint64_t bio_digest(uint64_t hash, const void *memory, uint64_t bytes) {

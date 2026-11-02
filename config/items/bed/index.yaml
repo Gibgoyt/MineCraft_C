@@ -1,3 +1,4 @@
 name: bed
 texture: items/bed
 stack: 1
+block: bed

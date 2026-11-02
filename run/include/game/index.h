@@ -103,8 +103,10 @@ typedef struct game_t {
     /* A line of its own, written by main every frame. */
     float64_t day_fraction; /* 896: main's: the time of day, from 0 to 1 */
     _Atomic uint32_t
-        day_units;     /* 904: main to gpu: the same, in 1/2^32 of a day, relaxed: only the look depends on it */
-    uint8_t _pad1[52]; /* 908 */
+        day_units; /* 904: main to gpu and sim: the same, in 1/2^32 of a day, relaxed: the look and whether a bed works depend on it, and neither to the tick */
+    _Atomic uint32_t
+        morning_latch; /* 908: sim to main: a night was slept through, so the day goes on from morning; relaxed */
+    uint8_t _pad1[48]; /* 912 */
     /* A line of its own from here: the gpu thread writes these, and main what is after them. */
     render_camera_t picture_cameras[RENDER_EXCHANGE_SLOTS]; /* 960: what the picture in each slot was drawn from */
     uint8_t _pad2[8];                                       /* 1080 */
@@ -152,7 +154,7 @@ void game_sim_step(game_t *game);
 
 /* Sets the time of day: see render_frame_time_set. Before the threads start, or from the thread that owns input. With
  * SHADE_FEATURE_DAY_CYCLE on, it goes on from here by a day per GAME_DAY_SECONDS of what game_loop_frame and the headless scene are
- * told has passed, and with it off it stays. */
+ * told has passed, and with it off it stays, until a night is slept through. */
 void game_day_set(game_t *game, float64_t day_fraction);
 
 /* Moves the eye. The thread that owns input. */
