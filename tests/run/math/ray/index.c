@@ -104,6 +104,18 @@ TEST(a_ray_starting_inside_came_through_no_face) {
     CHECK_EQ_I64(hit.normal_sign, 0);
 }
 
+/* The header's word for it: at t_min counts as already in. A player's ray starting on a block's face is not said to have
+ * come through it. */
+TEST(a_ray_starting_on_a_face_came_through_no_face) {
+    ray_aabb_hit_t hit;
+    REQUIRE(ray_intersect_aabb(ray_make(vec3_make(1.0f32, 1.5f32, 1.5f32), vec3_make(1.0f32, 0.0f32, 0.0f32)),
+                               test_box(), 0.0f32, T_FAR, &hit));
+    CHECK(hit.t_enter == 0.0f32);
+    CHECK(hit.t_exit == 1.0f32);
+    CHECK_EQ_U64(hit.axis, RAY_AXIS_NONE);
+    CHECK_EQ_I64(hit.normal_sign, 0);
+}
+
 TEST(the_t_range_limits_the_hit) {
     const ray_t ray = ray_make(vec3_make(-1.0f32, 1.5f32, 1.5f32), vec3_make(1.0f32, 0.0f32, 0.0f32));
     const aabb_t box = test_box(); /* in from t 2 to t 3 */
