@@ -71,8 +71,8 @@ static gpu_status_t frame_passes(frame_gpu_t *frame, const frame_args_t *args) {
         status = frame_mark(frame, FRAME_PASS_SHADE);
     }
     if (status == GPU_STATUS_OK) {
-        status = shade_frame(&frame->last_error, args->borrowed_scene, camera, targets->borrowed_hits,
-                             targets->borrowed_pixels);
+        status = shade_frame(&frame->last_error, args->borrowed_scene, args->borrowed_world, camera,
+                             targets->borrowed_hits, targets->borrowed_pixels);
     }
     if (status == GPU_STATUS_OK) {
         status = frame_mark(frame, FRAME_PASS_POST);

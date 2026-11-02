@@ -9,8 +9,9 @@
 
 - `render_exchange_start`, `render_exchange_publish`, `render_exchange_take`, `render_exchange_waiting`: a triple buffer's numbers, from one thread to another, without either ever waiting.
 - `render_camera_start`, `render_camera_fly`, `render_camera_to_traverse`: where the eye is, one step of flying, and what kernels take.
-- `render_frame_texture_table_bytes`, `render_frame_face_table_bytes`, `render_frame_arena_bytes`: sizes for the parent.
+- `render_frame_texture_table_bytes`, `render_frame_face_table_bytes`, `render_frame_shape_table_bytes`, `render_frame_arena_bytes`: sizes for the parent.
 - `render_frame_init`, `render_frame_deinit`: the tables and textures sent to the card, and the pictures pinned.
+- `render_frame_features_set`: which effects the next frames draw with. All of them, unless told otherwise.
 - `render_frame_draw`: a whole frame, from world_buffers as they stand and a camera, on the card and home.
 - `render_frame_take`, `render_frame_present`: the newest picture, and copying it to a display buffer.
 - `render_frame_report`, `render_frame_percentiles`: what the frames took.

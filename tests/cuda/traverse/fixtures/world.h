@@ -44,16 +44,16 @@ typedef struct tw_world_t {
     device_block_t table;      /* 8 */
     device_block_t pool;       /* 32 */
     traverse_world_t view;     /* 56 */
-    uint64_t pool_bytes;       /* 96 */
-    uint64_t section_count;    /* 104 */
-    uint64_t brick_count;      /* 112 */
-    uint64_t voxel_count;      /* 120: in sections that keep their voxels */
-    uint64_t uniform_sections; /* 128 */
-    int32_t min_block[2];      /* 136 */
-    uint32_t columns_wide;     /* 144 */
-    uint32_t width;            /* 148 */
+    uint64_t pool_bytes;       /* 112 */
+    uint64_t section_count;    /* 120 */
+    uint64_t brick_count;      /* 128 */
+    uint64_t voxel_count;      /* 136: in sections that keep their voxels */
+    uint64_t uniform_sections; /* 144 */
+    int32_t min_block[2];      /* 152 */
+    uint32_t columns_wide;     /* 160 */
+    uint32_t width;            /* 164 */
 } tw_world_t;
-static_assert(sizeof(tw_world_t) == 152);
+static_assert(sizeof(tw_world_t) == 168);
 
 static uint32_t tw_hash(int32_t x, int32_t y, int32_t z) {
     uint32_t h = (uint32_t)x * 0x8DA6B343u ^ (uint32_t)y * 0xD8163841u ^ (uint32_t)z * 0xCB1AB31Fu;

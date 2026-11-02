@@ -94,6 +94,7 @@ static bool game_open_parts(game_t *game, const game_config_t *config, int32_t c
         world_close(world);
         return false;
     }
+    render_frame_features_set(&render->frame, SHADE_FEATURES_ALL & ~(uint32_t)config->features_off);
     return true;
 }
 

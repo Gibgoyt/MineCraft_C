@@ -112,8 +112,9 @@ typedef struct render_frame_blocks_t {
     const device_block_t *borrowed_hits;     /* 32 */
     const device_block_t *borrowed_shaded;   /* 40 */
     const device_block_t *borrowed_xrgb;     /* 48 */
+    const device_block_t *borrowed_shapes;   /* 56: render_frame_shape_table_bytes */
 } render_frame_blocks_t;
-static_assert(sizeof(render_frame_blocks_t) == 56);
+static_assert(sizeof(render_frame_blocks_t) == 64);
 
 /* One picture's way from the card to the screen. The gpu thread draws, and the main thread takes and presents. */
 typedef struct render_frame_t {
@@ -121,26 +122,28 @@ typedef struct render_frame_t {
     frame_gpu_t gpu;                                   /* 192 */
     frame_targets_t targets;                           /* 280 */
     shade_scene_t scene;                               /* 312 */
-    post_settings_t post;                              /* 344 */
-    render_frame_stats_t stats;                        /* 376 */
-    device_memory_t *borrowed_memory;                  /* 464 */
-    uint8_t *borrowed_pictures[RENDER_EXCHANGE_SLOTS]; /* 472: width * height * 4 each */
-    float32_t *borrowed_samples;                       /* 496: RENDER_FRAME_SAMPLES of total_ms */
-    uint64_t picture_bytes;                            /* 504 */
-    uint32_t width;                                    /* 512 */
-    uint32_t height;                                   /* 516 */
-    uint8_t pinned;                                    /* 520: how many of the pictures are pinned */
-    uint8_t _pad0[55];                                 /* 521 */
+    post_settings_t post;                              /* 352 */
+    render_frame_stats_t stats;                        /* 384 */
+    device_memory_t *borrowed_memory;                  /* 472 */
+    uint8_t *borrowed_pictures[RENDER_EXCHANGE_SLOTS]; /* 480: width * height * 4 each */
+    float32_t *borrowed_samples;                       /* 504: RENDER_FRAME_SAMPLES of total_ms */
+    uint64_t picture_bytes;                            /* 512 */
+    uint32_t width;                                    /* 520 */
+    uint32_t height;                                   /* 524 */
+    const device_block_t *borrowed_shapes;             /* 528: a traverse_shape_t per block */
+    uint8_t pinned;                                    /* 536: how many of the pictures are pinned */
+    uint8_t _pad0[39];                                 /* 537 */
 } render_frame_t;
 static_assert(sizeof(render_frame_t) == 576);
 static_assert(alignof(render_frame_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(render_frame_t, gpu) == 192);
-static_assert(offsetof(render_frame_t, borrowed_memory) == 464);
-static_assert(offsetof(render_frame_t, pinned) == 520);
+static_assert(offsetof(render_frame_t, borrowed_memory) == 472);
+static_assert(offsetof(render_frame_t, pinned) == 536);
 
 /* Sizes, for the Owner to take blocks and memory. */
 uint64_t render_frame_texture_table_bytes(void);
 uint64_t render_frame_face_table_bytes(void);
+uint64_t render_frame_shape_table_bytes(void);
 uint64_t render_frame_arena_bytes(uint32_t width, uint32_t height);
 
 /* Builds the tables from the block table and the texture blob and sends them and every texture's pixels to the card, takes the
@@ -151,6 +154,10 @@ gpu_status_t render_frame_init(render_frame_t *frame, arena_t *arena, device_mem
 
 /* Unpins, and forgets the rest. Safe on zero bytes. No kernel may be running. */
 void render_frame_deinit(render_frame_t *frame);
+
+/* Which effects the next frames draw with: SHADE_FEATURE_*, all on from render_frame_init. Between frames: a draw reads this on
+ * the gpu thread. */
+void render_frame_features_set(render_frame_t *frame, uint32_t features);
 
 /* The gpu thread. Draws one whole frame of what buffers hold now, from this camera, and makes it the newest picture. Waits for
  * the card. Allocates nothing. Anything but GPU_STATUS_OK means nothing more should be asked of the card, and gpu.last_error

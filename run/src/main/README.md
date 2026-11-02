@@ -17,12 +17,15 @@
     minecraft_c --headless [--script <path>] [--screenshot-dir <dir>] [--ticks <n>] [--width <w>] [--height <h>]
                                                   no display: replays a script of input and writes PNG screenshots; see
                                                   run/src/display/headless/README.md
-    minecraft_c --test-world [--render-distance <chunks>]
+    minecraft_c --test-world [--render-distance <chunks>] [--no-shapes] [--no-alpha]
                                                   flies through a generated world through KMS, from a text console only. WASD,
                                                   Space and Left Shift move, the mouse looks, the wheel sets the speed, Left Ctrl
                                                   goes faster, Esc ends the run, Ctrl+Alt+Backspace is the emergency exit
     minecraft_c --headless --test-world [--render-distance <chunks>] [--script ...] [--screenshot-dir ...] [--ticks ...]
                 [--width ...] [--height ...]      the same with no display: a script flies it, into PNG screenshots
+
+`--no-shapes` draws every block a whole cube, and `--no-alpha` stops rays at see-through texels. Each effect of phase 9 is a
+switch like these until `run/src/ui/screen_settings/` (Stage 14.5) has a screen for them.
 
 With no flag, running the program starts the job system, runs one job per worker through it, logs the heap's counts and
 stops. Until the game has a menu, `--test-world` is how to get to a world.

@@ -227,6 +227,7 @@ __global__ void traverse_primary_kernel(const traverse_view_t view, const traver
         ray.direction[i] = traverse_guard(direction[i]);
     }
     ray.t_start = coarse != nullptr ? coarse[blockIdx.y * gridDim.x + blockIdx.x] : 0.0F;
+    ray.resume = 0u;
     traverse_trace(&view, &ray, &hits[pixel_y * camera.width + pixel_x]);
 }
 
@@ -249,47 +250,8 @@ __global__ void traverse_rays_kernel(const traverse_view_t view, const traverse_
         ray.direction[i] = traverse_guard(given.direction[i] * scale);
     }
     ray.t_start = given.t_start;
+    ray.resume = 0u;
     traverse_trace(&view, &ray, &hits[index]);
-}
-
-static gpu_status_t traverse_refuse(gpu_error_t *error, const char *what) {
-    *error = gpu_error_t{what, nullptr, nullptr, 0, GPU_STATUS_INVALID_ARGUMENT};
-    return GPU_STATUS_INVALID_ARGUMENT;
-}
-
-/* A column count this wide fits an int16_t offset from any eye inside the window, in traverse_hit_t. */
-enum : uint32_t { TRAVERSE_COLUMNS_WIDE_MAX = 2047u };
-
-/* A ray's steps: each moves at least one coordinate forward by at least one, and no coordinate ever moves back, so a ray takes
- * at most width + width + height steps. The cap is that and some room, so it can only trip on a bug, and a test says it never
- * does. */
-static gpu_status_t traverse_view_from(gpu_error_t *error, const traverse_world_t *world, traverse_view_t *view) {
-    const world_buffers_window_t *const window = &world->window;
-    if (window->side == 0u || window->side > TRAVERSE_COLUMNS_WIDE_MAX ||
-        window->slot_count != window->side * window->side || window->min_slot_x >= window->side ||
-        window->min_slot_y >= window->side) {
-        return traverse_refuse(error, "traverse: the window is empty, too wide, or not a square of slots");
-    }
-    if (world->borrowed_table->bytes < (uint64_t)window->slot_count * sizeof(world_buffers_column_t)) {
-        return traverse_refuse(error, "traverse: the column table is smaller than the window says");
-    }
-    const uint64_t blocks = (uint64_t)window->side * TRAVERSE_COLUMN_BLOCKS;
-    view->borrowed_table = (const world_buffers_column_t *)(const void *)device_memory_pointer(world->borrowed_table);
-    view->borrowed_pool = device_memory_pointer(world->borrowed_pool);
-    view->window_min_column[0] = window->min_x;
-    view->window_min_column[1] = window->min_y;
-    view->window_min_block[0] = window->min_x * (int32_t)TRAVERSE_COLUMN_BLOCKS;
-    view->window_min_block[1] = window->min_y * (int32_t)TRAVERSE_COLUMN_BLOCKS;
-    view->origin_slot[0] = window->min_slot_x;
-    view->origin_slot[1] = window->min_slot_y;
-    view->columns_wide = window->side;
-    view->window_blocks = (uint32_t)blocks;
-    view->max_steps = (uint32_t)(blocks * 2u) + 2u * TRAVERSE_HEIGHT_BLOCKS + 16u;
-    view->_pad0[0] = 0u;
-    view->_pad0[1] = 0u;
-    view->_pad0[2] = 0u;
-    view->_pad0[3] = 0u;
-    return GPU_STATUS_OK;
 }
 
 static gpu_status_t traverse_camera_check(gpu_error_t *error, const traverse_camera_t *camera) {

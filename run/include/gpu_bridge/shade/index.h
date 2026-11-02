@@ -28,6 +28,15 @@ enum : uint32_t {
     SHADE_LEVELS_MAX = 13u,     /* TEXTURE_BLOB_MAX_LEVELS */
     SHADE_NO_TEXTURE = 0xFFFFu, /* in the face table: BLOCK_NO_TEXTURE, and a block with this draws SHADE_MISSING_* */
     SHADE_ALPHA_OPAQUE = 255u,
+    /* How many surfaces a pixel looks at, holes and all. Past this it stops on the last one: see cuda/src/shade/README.md. */
+    SHADE_ALPHA_LAYERS = 16u,
+};
+
+/* The switches of a frame, as shade_scene_t.features. A bit set means the effect is on. */
+enum : uint32_t {
+    SHADE_FEATURE_SHAPES = 1u << 0, /* boxes for what is not a cube, or every voxel whole */
+    SHADE_FEATURE_ALPHA = 1u << 1,  /* rays go on through a texel of alpha 0, or stop on the texture's mean colour */
+    SHADE_FEATURES_ALL = SHADE_FEATURE_SHAPES | SHADE_FEATURE_ALPHA,
 };
 
 /* A material with no texture, or none in the table: a colour nothing else in the game is, so that the bug shows. */
@@ -50,7 +59,7 @@ typedef struct shade_texture_t {
     uint16_t width;                          /* 60: of level 0 */
     uint16_t height;                         /* 62 */
     uint8_t level_count;                     /* 64 */
-    uint8_t mean_rgba[4]; /* 65: what shows where the texture is see-through, until rays go on: Stage 09.3 */
+    uint8_t mean_rgba[4]; /* 65: what shows in a part-covered texel, until rays go on past those: Stage 09.3 */
     uint8_t _pad0[3];     /* 69 */
 } shade_texture_t;
 static_assert(sizeof(shade_texture_t) == 72);
@@ -71,14 +80,18 @@ typedef struct shade_scene_t {
     const device_block_t *borrowed_pixels; /* 16: every texture's RGBA8 */
     uint32_t texture_count;                /* 24 */
     uint32_t material_count;               /* 28 */
+    uint32_t features;                     /* 32: SHADE_FEATURE_* */
+    uint8_t _pad0[4];                      /* 36 */
 } shade_scene_t;
-static_assert(sizeof(shade_scene_t) == 32);
+static_assert(sizeof(shade_scene_t) == 40);
 static_assert(alignof(shade_scene_t) == 8);
 static_assert(offsetof(shade_scene_t, borrowed_textures) == 0);
 static_assert(offsetof(shade_scene_t, borrowed_faces) == 8);
 static_assert(offsetof(shade_scene_t, borrowed_pixels) == 16);
 static_assert(offsetof(shade_scene_t, texture_count) == 24);
 static_assert(offsetof(shade_scene_t, material_count) == 28);
+static_assert(offsetof(shade_scene_t, features) == 32);
+static_assert(offsetof(shade_scene_t, _pad0) == 36);
 
 /* One pixel, in linear light before the sky and the tone map: where post goes on from. */
 typedef struct shade_pixel_t {
@@ -179,10 +192,11 @@ SHADE_BOTH_SIDES static inline float32_t shade_pixel_tangent(const traverse_came
     return F32(2.0) * sqrtf(squared) / (float32_t)camera->height;
 }
 
-/* One colour per pixel of hits, into pixels, each row after row at the camera's size. Starts a kernel and returns; it runs in
- * order with any other. Nothing here allocates. On failure error says why, and nothing was started. */
-gpu_status_t shade_frame(gpu_error_t *error, const shade_scene_t *scene, const traverse_camera_t *camera,
-                         const device_block_t *hits, const device_block_t *pixels);
+/* One colour per pixel of hits, into pixels, each row after row at the camera's size. A ray that lands on a texel of alpha 0 goes
+ * on through world, which must be the one the hits came from. Starts a kernel and returns; it runs in order with any other.
+ * Nothing here allocates. On failure error says why, and nothing was started. */
+gpu_status_t shade_frame(gpu_error_t *error, const shade_scene_t *scene, const traverse_world_t *world,
+                         const traverse_camera_t *camera, const device_block_t *hits, const device_block_t *pixels);
 
 #ifdef __cplusplus
 }

@@ -44,7 +44,8 @@ typedef struct main_options_t {
     uint32_t render_distance;   /* --render-distance, or 0 for config/machine.yaml */
     uint8_t crash_test;         /* display_crash_test_t: --crash-test */
     uint8_t test_world;         /* --test-world */
-    uint8_t _pad0[6];
+    uint8_t features_off;       /* --no-shapes, --no-alpha: SHADE_FEATURE_* */
+    uint8_t _pad0[5];
 } main_options_t;
 static_assert(sizeof(main_options_t) == 64);
 
@@ -54,7 +55,7 @@ static void main_print_usage(const char *program) {
         "usage: %s [--report] [--pretend-missing-cpu <cpu.simd key>] [--pretend-leak]\n"
         "       %s --test-pattern [--card <path>] [--connector <name>] [--crash-test[=<how>]]\n"
         "       %s --headless [--script <path>] [--screenshot-dir <dir>] [--ticks <n>] [--width <w>] [--height <h>]\n"
-        "       %s --test-world [--render-distance <chunks>] [--headless ...]\n"
+        "       %s --test-world [--render-distance <chunks>] [--no-shapes] [--no-alpha] [--headless ...]\n"
         "  --report                 print the build's defines and CPU features, then exit\n"
         "  --pretend-missing-cpu    treat this feature as absent, to see the CPU check fail; may repeat\n"
         "  --pretend-leak           skip the shutdown, to see the leak check at exit fail\n"
@@ -66,6 +67,8 @@ static void main_print_usage(const char *program) {
         "  While the display is taken, Ctrl+Alt+Backspace is the emergency exit\n"
         "  --headless               no display: replay a script of input and write PNG screenshots; never needs a\n"
         "                           console. See run/src/display/headless/README.md\n"
+        "  --no-shapes, --no-alpha  with --test-world: draw every block a whole cube, or stop rays at see-through "
+        "texels\n"
         "  --test-world             fly through a generated world: through KMS from a text console, never inside X,\n"
         "                           where WASD, Space and Shift move, the mouse looks, the wheel sets the speed, Ctrl\n"
         "                           goes faster and Esc ends the run. With --headless, the script does all of that\n",
@@ -116,6 +119,10 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
             out->headless = 1;
         } else if (strcmp(argv[i], "--test-world") == 0) {
             out->test_world = 1;
+        } else if (strcmp(argv[i], "--no-shapes") == 0) {
+            out->features_off |= (uint8_t)SHADE_FEATURE_SHAPES;
+        } else if (strcmp(argv[i], "--no-alpha") == 0) {
+            out->features_off |= (uint8_t)SHADE_FEATURE_ALPHA;
         } else if (strcmp(argv[i], "--render-distance") == 0 && i + 1 < argc) {
             i++;
             if (!main_parse_count("--render-distance", argv[i], &out->render_distance)) {
@@ -179,6 +186,10 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
     }
     if (out->render_distance != 0u && out->test_world == 0) {
         fprintf(stderr, "%s: --render-distance only means something with --test-world\n", argv[0]);
+        return false;
+    }
+    if (out->features_off != 0u && out->test_world == 0) {
+        fprintf(stderr, "%s: --no-shapes and --no-alpha only mean something with --test-world\n", argv[0]);
         return false;
     }
     if (out->render_distance > MC_GAME_RENDER_DISTANCE_MAX) {
@@ -388,6 +399,7 @@ static main_exit_t main_run_test_world_headless(app_t *app, const main_options_t
                                                                                   : MC_GAME_RENDER_DISTANCE_DEFAULT,
                                 .width = config.width,
                                 .height = config.height,
+                                .features_off = options->features_off,
                                 ._pad0 = {0}};
     if (!game_open(&app->game, &game)) {
         return MAIN_EXIT_RUNTIME;
@@ -421,6 +433,7 @@ static main_exit_t main_run_test_world(app_t *app, const main_options_t *options
                                                                                   : MC_GAME_RENDER_DISTANCE_DEFAULT,
                                 .width = buffer->width,
                                 .height = buffer->height,
+                                .features_off = options->features_off,
                                 ._pad0 = {0}};
     if (!game_open(&app->game, &game)) {
         return MAIN_EXIT_RUNTIME;

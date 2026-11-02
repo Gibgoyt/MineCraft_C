@@ -128,11 +128,15 @@ uint64_t render_frame_face_table_bytes(void) {
     return (uint64_t)BLOCK_COUNT * SHADE_FACES * sizeof(uint16_t);
 }
 
+uint64_t render_frame_shape_table_bytes(void) {
+    return (uint64_t)BLOCK_COUNT * sizeof(uint8_t);
+}
+
 uint64_t render_frame_arena_bytes(uint32_t width, uint32_t height) {
     /* Each allocation can waste its alignment. */
     return (uint64_t)RENDER_EXCHANGE_SLOTS * (post_xrgb_bytes(width, height) + 2ull * RENDER_FRAME_PICTURE_ALIGNMENT) +
            (uint64_t)RENDER_FRAME_SAMPLES * sizeof(float32_t) + render_frame_texture_table_bytes() +
-           render_frame_face_table_bytes() + 4u * MC_CPU_CACHE_LINE_BYTES;
+           render_frame_face_table_bytes() + render_frame_shape_table_bytes() + 5u * MC_CPU_CACHE_LINE_BYTES;
 }
 
 /* block_defs' faces already index block_texture_names, so that list, found in the blob, is the table the kernel reads. */
@@ -166,14 +170,43 @@ static void frame_face_table(uint16_t *out) {
     }
 }
 
+/* What each kind of block draws as. Water and lava stay whole cubes: their surface is Stage 09.3's. `thin` is two shapes, as
+ * config/blocks says one word for a lily pad on the floor and a ladder on a wall. No block has a facing yet, so stairs, ladders
+ * and vines all have the one: Stage 09.1 issue 1. */
+static uint8_t frame_shape_of(uint32_t block) {
+    switch ((block_shape_t)block_defs[block].shape) {
+    case BLOCK_SHAPE_SLAB:
+        return TRAVERSE_SHAPE_SLAB;
+    case BLOCK_SHAPE_STAIRS:
+        return TRAVERSE_SHAPE_STAIRS;
+    case BLOCK_SHAPE_CROSS:
+        return TRAVERSE_SHAPE_CROSS;
+    case BLOCK_SHAPE_CROP:
+        return TRAVERSE_SHAPE_CROP;
+    case BLOCK_SHAPE_TORCH:
+        return TRAVERSE_SHAPE_TORCH;
+    case BLOCK_SHAPE_THIN:
+        return block == BLOCK_ID_LILY_PAD ? TRAVERSE_SHAPE_FLAT : TRAVERSE_SHAPE_PLATE;
+    case BLOCK_SHAPE_NONE:
+    case BLOCK_SHAPE_CUBE:
+    case BLOCK_SHAPE_FLUID:
+        break;
+    }
+    return TRAVERSE_SHAPE_CUBE;
+}
+
 static gpu_status_t frame_send_tables(render_frame_t *frame, device_memory_t *memory, arena_t *arena,
                                       const texture_t *texture, const render_frame_blocks_t *blocks) {
     shade_texture_t *const textures = arena_alloc(arena, render_frame_texture_table_bytes(), alignof(shade_texture_t));
     uint16_t *const faces = arena_alloc(arena, render_frame_face_table_bytes(), alignof(uint16_t));
+    uint8_t *const shapes = arena_alloc(arena, render_frame_shape_table_bytes(), alignof(uint8_t));
     if (!frame_texture_table(texture, textures)) {
         return GPU_STATUS_INVALID_ARGUMENT;
     }
     frame_face_table(faces);
+    for (uint32_t block = 0u; block < BLOCK_COUNT; block++) {
+        shapes[block] = frame_shape_of(block);
+    }
     const uint8_t *pixels = nullptr;
     uint64_t pixel_bytes = 0u;
     texture_pixels_get(texture, &pixels, &pixel_bytes);
@@ -181,6 +214,9 @@ static gpu_status_t frame_send_tables(render_frame_t *frame, device_memory_t *me
         device_memory_write(memory, blocks->borrowed_textures, 0u, textures, render_frame_texture_table_bytes());
     if (status == GPU_STATUS_OK) {
         status = device_memory_write(memory, blocks->borrowed_faces, 0u, faces, render_frame_face_table_bytes());
+    }
+    if (status == GPU_STATUS_OK) {
+        status = device_memory_write(memory, blocks->borrowed_shapes, 0u, shapes, render_frame_shape_table_bytes());
     }
     if (status == GPU_STATUS_OK) {
         status = device_memory_write(memory, blocks->borrowed_pixels, 0u, pixels, pixel_bytes);
@@ -195,7 +231,9 @@ static gpu_status_t frame_send_tables(render_frame_t *frame, device_memory_t *me
         .borrowed_pixels = blocks->borrowed_pixels,
         .texture_count = BLOCK_TEXTURE_COUNT,
         .material_count = BLOCK_COUNT,
+        .features = SHADE_FEATURES_ALL,
     };
+    frame->borrowed_shapes = blocks->borrowed_shapes;
     return GPU_STATUS_OK;
 }
 
@@ -260,6 +298,10 @@ void render_frame_deinit(render_frame_t *frame) {
 
 /* ---- A frame ------------------------------------------------------------------------------------------------------ */
 
+void render_frame_features_set(render_frame_t *frame, uint32_t features) {
+    frame->scene.features = features & SHADE_FEATURES_ALL;
+}
+
 gpu_status_t render_frame_draw(render_frame_t *frame, const world_buffers_t *buffers, const render_camera_t *camera) {
     traverse_camera_t view;
     render_camera_to_traverse(camera, frame->width, frame->height, &view);
@@ -267,6 +309,8 @@ gpu_status_t render_frame_draw(render_frame_t *frame, const world_buffers_t *buf
         .borrowed_table = buffers->borrowed_table,
         .borrowed_pool = buffers->borrowed_pool,
         .window = buffers->window,
+        .borrowed_shapes = (frame->scene.features & SHADE_FEATURE_SHAPES) != 0u ? frame->borrowed_shapes : nullptr,
+        .shape_count = BLOCK_COUNT,
     };
     const frame_args_t args = {
         .borrowed_world = &world,

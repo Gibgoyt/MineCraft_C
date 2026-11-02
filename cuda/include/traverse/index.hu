@@ -16,15 +16,16 @@
 typedef struct traverse_view_t {
     const world_buffers_column_t *borrowed_table; /* 0 */
     const uint8_t *borrowed_pool;                 /* 8 */
-    int32_t window_min_block[2];                  /* 16 */
-    int32_t window_min_column[2];                 /* 24 */
-    uint32_t origin_slot[2];                      /* 32: the table slot of the window's low corner column */
-    uint32_t columns_wide;                        /* 40 */
-    uint32_t window_blocks;                       /* 44 */
-    uint32_t max_steps;                           /* 48: see traverse_view_from in the .cu for why this is enough */
-    uint8_t _pad0[4];                             /* 52 */
+    const uint8_t *borrowed_shapes;               /* 16: a traverse_shape_t per material, or nullptr for all cubes */
+    int32_t window_min_block[2];                  /* 24 */
+    int32_t window_min_column[2];                 /* 32 */
+    uint32_t origin_slot[2];                      /* 40: the table slot of the window's low corner column */
+    uint32_t columns_wide;                        /* 48 */
+    uint32_t window_blocks;                       /* 52 */
+    uint32_t max_steps;                           /* 56: see traverse_view_from for why this is enough */
+    uint32_t shape_count;                         /* 60 */
 } traverse_view_t;
-static_assert(sizeof(traverse_view_t) == 56);
+static_assert(sizeof(traverse_view_t) == 64);
 static_assert(alignof(traverse_view_t) == 8);
 
 /* A ray ready to trace: eye_cell[2] is a storage height from here on, not a world z. */
@@ -33,9 +34,55 @@ typedef struct traverse_trace_ray_t {
     float32_t eye_frac[3];  /* 12 */
     float32_t direction[3]; /* 24: unit length, with no component below TRAVERSE_DIRECTION_FLOOR */
     float32_t t_start;      /* 36 */
+    /* 40: 0 for a ray starting out, where t_start is inside a block if it is inside a block. 1 for a ray going on past a surface
+     * at t_start: it takes only what it enters after t_start, so what it just left, and its far side, are nothing to it. */
+    uint32_t resume;
 } traverse_trace_ray_t;
-static_assert(sizeof(traverse_trace_ray_t) == 40);
+static_assert(sizeof(traverse_trace_ray_t) == 44);
 static_assert(alignof(traverse_trace_ray_t) == 4);
+
+/* A box inside a voxel, in units of TRAVERSE_BOX_UNIT of a block from its low corner. */
+#define TRAVERSE_BOX_UNIT (1.0F / 32.0F)
+typedef struct traverse_box_t {
+    uint8_t low[3];  /* 0 */
+    uint8_t high[3]; /* 3 */
+} traverse_box_t;
+static_assert(sizeof(traverse_box_t) == 6);
+
+/* A row of the table: traverse_shape_t is its index. */
+typedef struct traverse_shape_row_t {
+    uint8_t first; /* 0: into traverse_boxes */
+    uint8_t count; /* 1 */
+} traverse_shape_row_t;
+static_assert(sizeof(traverse_shape_row_t) == 2);
+
+/* The shape table. Here and not in the .cu because the loop that reads it is here, and each file with the loop in it needs its
+ * own copy on the card. A plate is one texel thick, 2 of these units, and the texture on its wide sides is the whole of the
+ * block's, so a plant shows all of its picture. The boxes of a shape may meet but need not be sorted: the nearest wins. */
+static __constant__ const traverse_box_t traverse_boxes[] = {
+    {{0, 0, 0}, {32, 32, 32}},   /* 0: cube */
+    {{0, 0, 0}, {32, 32, 16}},   /* 1: slab, and the lower half of the stairs */
+    {{0, 16, 16}, {32, 32, 32}}, /* 2: the upper half of the stairs */
+    {{0, 15, 0}, {32, 17, 32}},  /* 3: cross, along x */
+    {{15, 0, 0}, {17, 32, 32}},  /* 4: cross, along y */
+    {{0, 7, 0}, {32, 9, 32}},    /* 5: crop, along x at a quarter */
+    {{0, 23, 0}, {32, 25, 32}},  /* 6: crop, along x at three quarters */
+    {{7, 0, 0}, {9, 32, 32}},    /* 7: crop, along y at a quarter */
+    {{23, 0, 0}, {25, 32, 32}},  /* 8: crop, along y at three quarters */
+    {{14, 14, 0}, {18, 18, 20}}, /* 9: torch: two texels wide and ten tall, where the texture has it */
+    {{0, 30, 0}, {32, 32, 32}},  /* 10: plate */
+    {{0, 0, 0}, {32, 32, 2}},    /* 11: flat */
+};
+static __constant__ const traverse_shape_row_t traverse_shape_rows[TRAVERSE_SHAPE_COUNT] = {
+    {0u, 1u},  /* TRAVERSE_SHAPE_CUBE */
+    {1u, 1u},  /* TRAVERSE_SHAPE_SLAB */
+    {1u, 2u},  /* TRAVERSE_SHAPE_STAIRS */
+    {3u, 2u},  /* TRAVERSE_SHAPE_CROSS */
+    {5u, 4u},  /* TRAVERSE_SHAPE_CROP */
+    {9u, 1u},  /* TRAVERSE_SHAPE_TORCH */
+    {10u, 1u}, /* TRAVERSE_SHAPE_PLATE */
+    {11u, 1u}, /* TRAVERSE_SHAPE_FLAT */
+};
 
 /* A pixel's unit direction: see traverse_camera_t. Shade and post need the same ray as traversal did. */
 static __device__ __forceinline__ void traverse_camera_direction(const traverse_camera_t *camera, float32_t pixel_x,
@@ -128,6 +175,89 @@ static __device__ __forceinline__ void traverse_hit_found(const traverse_trace_r
     hit->info = (uint16_t)(face | reported << TRAVERSE_INFO_STEPS_SHIFT);
 }
 
+/* The hit for a voxel with a block in it, if the ray meets what that block draws as. False means the ray goes through this voxel.
+ * A cube on a ray starting out meets the ray by the loop's having got here, and takes the short way. Otherwise each box is cut
+ * against the ray from the eye, whole number first, so that for a cube this t is the same bits as traverse_hit_found's: a ray
+ * going on from a hole relies on that, to see it is past what it left. */
+static __device__ __forceinline__ bool traverse_voxel_hit(const traverse_view_t *view, const traverse_trace_ray_t *ray,
+                                                          const float32_t inverse[3], const int32_t cell[3],
+                                                          uint32_t value, uint32_t steps, traverse_hit_t *hit) {
+    uint32_t shape = TRAVERSE_SHAPE_CUBE;
+    const uint32_t material = value & TRAVERSE_VALUE_MATERIAL_MASK;
+    if (view->borrowed_shapes != nullptr && material < view->shape_count) {
+        const uint32_t given = view->borrowed_shapes[material];
+        shape = given < TRAVERSE_SHAPE_COUNT ? given : (uint32_t)TRAVERSE_SHAPE_CUBE;
+    }
+    if (shape == TRAVERSE_SHAPE_CUBE && ray->resume == 0u) {
+        traverse_hit_found(ray, inverse, cell, value, steps, hit);
+        return true;
+    }
+    int32_t offset[3];
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        offset[i] = cell[i] - ray->eye_cell[i];
+    }
+    const traverse_shape_row_t row = traverse_shape_rows[shape];
+    float32_t best = 1e30F;
+    uint32_t best_face = 0u;
+    bool found = false;
+    for (uint32_t b = 0u; b < row.count; b += 1u) {
+        const traverse_box_t box = traverse_boxes[row.first + b];
+        float32_t t_in = -1e30F, t_out = 1e30F;
+        uint32_t axis = 0u;
+        for (uint32_t i = 0u; i < 3u; i += 1u) {
+            const uint32_t near_units = ray->direction[i] > 0.0F ? box.low[i] : box.high[i];
+            const uint32_t far_units = ray->direction[i] > 0.0F ? box.high[i] : box.low[i];
+            const float32_t near_plane = (float32_t)offset[i] + (float32_t)near_units * TRAVERSE_BOX_UNIT;
+            const float32_t far_plane = (float32_t)offset[i] + (float32_t)far_units * TRAVERSE_BOX_UNIT;
+            const float32_t t_near = (near_plane - ray->eye_frac[i]) * inverse[i];
+            const float32_t t_far = (far_plane - ray->eye_frac[i]) * inverse[i];
+            if (t_near > t_in) {
+                t_in = t_near;
+                axis = i;
+            }
+            t_out = t_far < t_out ? t_far : t_out;
+        }
+        if (!(t_in < t_out)) {
+            continue;
+        }
+        float32_t t = t_in;
+        uint32_t face = axis * 2u + (ray->direction[axis] > 0.0F ? 0u : 1u);
+        if (ray->resume != 0u) {
+            if (!(t_in > ray->t_start)) {
+                continue;
+            }
+        } else {
+            if (t_out <= ray->t_start) {
+                continue;
+            }
+            if (t_in <= ray->t_start) {
+                /* An eye among a plant's plates sees on past them, and does not go dark as inside a block with a body. */
+                if (shape >= TRAVERSE_SHAPE_CROSS) {
+                    continue;
+                }
+                t = ray->t_start;
+                face = TRAVERSE_FACE_INSIDE;
+            }
+        }
+        if (t < best) {
+            best = t;
+            best_face = face;
+            found = true;
+        }
+    }
+    if (!found) {
+        return false;
+    }
+    hit->t = best;
+    hit->value = value;
+    hit->offset[0] = (int16_t)offset[0];
+    hit->offset[1] = (int16_t)offset[1];
+    hit->offset[2] = (int16_t)offset[2];
+    const uint32_t reported = steps > TRAVERSE_INFO_STEPS_MAX ? TRAVERSE_INFO_STEPS_MAX : steps;
+    hit->info = (uint16_t)(best_face | reported << TRAVERSE_INFO_STEPS_SHIFT);
+    return true;
+}
+
 static __device__ __forceinline__ void traverse_hit_missed(uint32_t steps, bool capped, traverse_hit_t *hit) {
     const uint32_t reported = steps > TRAVERSE_INFO_STEPS_MAX ? TRAVERSE_INFO_STEPS_MAX : steps;
     hit->t = TRAVERSE_COARSE_SKY;
@@ -208,13 +338,16 @@ static __device__ __forceinline__ void traverse_trace(const traverse_view_t *vie
                     cached_section = section_z;
                     cached_brick = -1;
                 }
+                const int32_t brick = ((x >> 2) & 3) | (((y >> 2) & 3) << 2) | (((z >> 2) & 3) << 4);
                 if (header.brick_count == 0u) {
                     const int32_t cell[3] = {x, y, z};
-                    traverse_hit_found(ray, inverse, cell, traverse_section_value(encoded, &header, 0u), steps, hit);
-                    return;
-                }
-                const int32_t brick = ((x >> 2) & 3) | (((y >> 2) & 3) << 2) | (((z >> 2) & 3) << 4);
-                if ((header.brick_mask >> brick) & 1u) {
+                    if (traverse_voxel_hit(view, ray, inverse, cell, traverse_section_value(encoded, &header, 0u),
+                                           steps, hit)) {
+                        return;
+                    }
+                    /* A section all of one shape, and this ray passed this voxel's box by: on to the next voxel. */
+                    shift = 0;
+                } else if ((header.brick_mask >> brick) & 1u) {
                     const uint8_t *const after_header = encoded + sizeof(world_buffers_section_t);
                     if (brick != cached_brick) {
                         const uint64_t below = header.brick_mask & ((1ull << brick) - 1ull);
@@ -230,8 +363,9 @@ static __device__ __forceinline__ void traverse_trace(const traverse_view_t *vie
                         const uint32_t value =
                             traverse_section_value(encoded, &header, first + (uint32_t)__popcll(before));
                         const int32_t cell[3] = {x, y, z};
-                        traverse_hit_found(ray, inverse, cell, value, steps, hit);
-                        return;
+                        if (traverse_voxel_hit(view, ray, inverse, cell, value, steps, hit)) {
+                            return;
+                        }
                     }
                     shift = 0;
                 } else {
@@ -273,6 +407,50 @@ static __device__ __forceinline__ void traverse_trace(const traverse_view_t *vie
         z = next_z;
     }
     traverse_hit_missed(steps, true, hit);
+}
+
+/* ---- For the host side of any area whose kernel runs that loop ------------------------------------------------------- */
+
+static inline gpu_status_t traverse_refuse(gpu_error_t *error, const char *what) {
+    *error = gpu_error_t{what, nullptr, nullptr, 0, GPU_STATUS_INVALID_ARGUMENT};
+    return GPU_STATUS_INVALID_ARGUMENT;
+}
+
+/* A column count this wide fits an int16_t offset from any eye inside the window, in traverse_hit_t. */
+enum : uint32_t { TRAVERSE_COLUMNS_WIDE_MAX = 2047u };
+
+/* A ray's steps: each moves at least one coordinate forward by at least one, and no coordinate ever moves back, so a ray takes
+ * at most width + width + height steps. The cap is that and some room, so it can only trip on a bug, and a test says it never
+ * does. */
+static inline gpu_status_t traverse_view_from(gpu_error_t *error, const traverse_world_t *world,
+                                              traverse_view_t *view) {
+    const world_buffers_window_t *const window = &world->window;
+    if (window->side == 0u || window->side > TRAVERSE_COLUMNS_WIDE_MAX ||
+        window->slot_count != window->side * window->side || window->min_slot_x >= window->side ||
+        window->min_slot_y >= window->side) {
+        return traverse_refuse(error, "traverse: the window is empty, too wide, or not a square of slots");
+    }
+    if (world->borrowed_table->bytes < (uint64_t)window->slot_count * sizeof(world_buffers_column_t)) {
+        return traverse_refuse(error, "traverse: the column table is smaller than the window says");
+    }
+    if (world->borrowed_shapes != nullptr && world->borrowed_shapes->bytes < (uint64_t)world->shape_count) {
+        return traverse_refuse(error, "traverse: the shape table is smaller than the world says");
+    }
+    const uint64_t blocks = (uint64_t)window->side * TRAVERSE_COLUMN_BLOCKS;
+    view->borrowed_table = (const world_buffers_column_t *)(const void *)device_memory_pointer(world->borrowed_table);
+    view->borrowed_pool = device_memory_pointer(world->borrowed_pool);
+    view->borrowed_shapes = world->borrowed_shapes != nullptr ? device_memory_pointer(world->borrowed_shapes) : nullptr;
+    view->window_min_column[0] = window->min_x;
+    view->window_min_column[1] = window->min_y;
+    view->window_min_block[0] = window->min_x * (int32_t)TRAVERSE_COLUMN_BLOCKS;
+    view->window_min_block[1] = window->min_y * (int32_t)TRAVERSE_COLUMN_BLOCKS;
+    view->origin_slot[0] = window->min_slot_x;
+    view->origin_slot[1] = window->min_slot_y;
+    view->columns_wide = window->side;
+    view->window_blocks = (uint32_t)blocks;
+    view->max_steps = (uint32_t)(blocks * 2u) + 2u * TRAVERSE_HEIGHT_BLOCKS + 16u;
+    view->shape_count = world->borrowed_shapes != nullptr ? world->shape_count : 0u;
+    return GPU_STATUS_OK;
 }
 
 #endif

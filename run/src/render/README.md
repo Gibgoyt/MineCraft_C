@@ -2,7 +2,7 @@
 
 **Purpose:** the CPU side of drawing the world: holds what getting sections to the card takes, and later the frame sequence.
 **Tier:** Owner.
-**Owns:** `owned_host` with `arena_host` over it, for the host's copy of the column table, the slab bookkeeping, and upload's jobs, staging and ring; and on the card, `owned_pool` and `owned_table`, for one world at a time. For drawing, `owned_frame_host` with `arena_frame` over it, and on the card the textures, the two tables and a frame's four targets, from `render_open_frame` to `render_close_frame`.
+**Owns:** `owned_host` with `arena_host` over it, for the host's copy of the column table, the slab bookkeeping, and upload's jobs, staging and ring; and on the card, `owned_pool` and `owned_table`, for one world at a time. For drawing, `owned_frame_host` with `arena_frame` over it, and on the card the textures, the three tables and a frame's four targets, from `render_open_frame` to `render_close_frame`.
 **Lifetime:** Process for the host region, World for what is in it and for the blocks on the card.
 **Threads:** `main` for init and deinit; `render_open` and `render_close` from whoever owns the world (`game`, Stage 08.4), with the `gpu` thread not using it.
 **Public functions** (`run/include/render/index.h`):
