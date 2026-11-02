@@ -36,6 +36,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `ba172d8` Add our own bounds-checked inflate and PNG decoders, with tests against independent encoders and hostile input.
+
 ## Issues found
 
 All 2026-11-02, by this stage.
