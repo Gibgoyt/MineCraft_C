@@ -108,6 +108,8 @@ So nothing to draw costs nothing that can be told from the noise between rows, w
 
 Appended as they land:
 
+- `387fce3` Draw mobs and items as boxes from per-tile lists, with the block outline and the crack on the block being mined, each with a setting, a measured cost and golden pictures.
+
 ## Issues found
 
 ### 1. A line in front of a box was drawn anyway
