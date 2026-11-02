@@ -37,6 +37,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `ae56b60` Add the ui Owner with a bitmap font, widgets and composition that puts every pixel through the NASM blend kernel.
+
 ## Issues found
 
 1. **A part the stage did not list.** Expected: `font` and `widget` only. Both have to draw, and an Owner's header includes its parts, so neither could take canvas and blit code from the Owner without a circle, and text cannot sit under widgets if widgets hold it. Done: added `run/{src,include}/ui/compose/`, outside the stage's owned paths, as the home of the todo "Compose with the NASM blend kernel". `plans/REPO_STRUCTURE.md` lists it, and its README allows its siblings to include it.
