@@ -959,8 +959,8 @@ TEST(cost_on_this_machine) {
     const int64_t rebuild_ns = time_now_ns() - rebuild_start;
 
     printf("a new column with 2000 scattered blocks: %" PRId64 " us; one edit's pass: %" PRId64
-           " us on average; a rebuild of 25 columns: %" PRId64 " us\n",
-           per_column / 1000, passes_ns / edits / 1000, rebuild_ns / 1000);
+           " us on average; a rebuild of %" PRIu32 " columns: %" PRId64 " us\n",
+           per_column / 1000, passes_ns / edits / 1000, test->map.active_count, rebuild_ns / 1000);
     light_test_end(test);
 }
 

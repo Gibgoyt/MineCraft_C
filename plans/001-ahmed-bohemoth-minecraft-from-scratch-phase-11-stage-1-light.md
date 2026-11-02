@@ -40,9 +40,9 @@ Appended as they land:
 | | debug | release |
 |---|---|---|
 | A new column, real terrain, with its neighbours | 3.5 ms (render distance 12) | 0.69 ms (render distance 32, 3209 columns) |
-| A new column, 2000 scattered blocks under a holed roof | | 1.68 ms |
-| One edit's pass, on average | | about 1 us |
-| A rebuild of 21 columns (`light_test_begin` radius 2) | | 88 ms |
+| A new column, 2000 scattered blocks under a holed roof | | 1.7 to 2.1 ms over two runs |
+| One edit's pass, on average | | 1 to 2 us over two runs |
+| A rebuild of 13 columns | | 88 to 101 ms over two runs |
 
 Mutation check of the test, each put in and taken out by hand: spreading of dark off, free fall off, nothing leaving with a column, new column not raising its neighbours, wrong face of a neighbour, no render flags, bright pass stopping early, log never read, no retry after a full pool, and `light_section_settled` ignoring the column beside, the section above or the section below. All were caught, the last three only after `sections_of_one_value_beside_very_different_ones_are_still_raised` was added for them. **Not caught:** `value + 2u` for `value + 1u` in the check of a column beside: no test has two sections of one value exactly 2 apart.
 
