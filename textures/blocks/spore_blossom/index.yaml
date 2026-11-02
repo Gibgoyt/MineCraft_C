@@ -1,0 +1,23 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: spore_blossom
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A pink flower hanging from a cave roof."
+  seed: 837447639
+  ops:
+    - op: art
+      palette: { a: "#c95a9d", b: "#e07fb5", c: "#f2a8cf", d: "#7f9a30" }
+      rows:
+        - "................"
+        - "................"
+        - ".....aa.aa......"
+        - "....aabbbaa....."
+        - "...aabcccbaa...."
+        - "...abccdccba...."
+        - "...abcdddcba...."
+        - "...abccdccba...."
+        - "...aabcccbaa...."
+        - "....aabbbaa....."
+        - ".....aa.aa......"

@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: carrot
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A carrot, leaves on."
+  seed: 140636715
+  ops:
+    - op: art
+      palette: { l: "#f5a84a", m: "#e88c2a", d: "#b0641a", g: "#4d9a33" }
+      rows:
+        - "................"
+        - ".............g.g"
+        - "...........gg.g."
+        - "............ggg."
+        - "..........lmmgg."
+        - ".........lmmmd.g"
+        - "........lmmmmd.."
+        - ".......lmmmmd..."
+        - "......lmmmdd...."
+        - ".....lmmmd......"
+        - "....lmmdd......."
+        - "...lmmd........."
+        - "..lmd..........."
+        - "..d............."
+        - "................"
+        - "................"

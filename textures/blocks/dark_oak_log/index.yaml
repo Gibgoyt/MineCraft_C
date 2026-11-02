@@ -1,0 +1,13 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: dark_oak_log
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Almost black bark."
+  seed: 738258848
+  ops:
+    - { op: fill, color: "#3e2c1a" }
+    - { op: noise, amount: 26, cell_x: 2, cell_y: 8 }
+    - { op: noise, amount: 14, cell_x: 1, cell_y: 3 }
+    - { op: speckle, color: "#241809", permille: 90 }

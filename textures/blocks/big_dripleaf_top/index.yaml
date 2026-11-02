@@ -1,0 +1,35 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: big_dripleaf_top
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A wide leaf you can stand on, for a moment."
+  seed: 2128988579
+  ops:
+    - { op: fill, color: "#6f9e33" }
+    - { op: noise, amount: 10, cell: 2 }
+    - { op: line, color: "#527d27", x0: 8, y0: 0, x1: 8, y1: 15 }
+    - { op: line, color: "#527d27", x0: 0, y0: 8, x1: 15, y1: 8 }
+    - { op: line, color: "#527d27", x0: 2, y0: 2, x1: 13, y1: 13 }
+    - { op: line, color: "#527d27", x0: 13, y0: 2, x1: 2, y1: 13 }
+    - { op: speckle, color: "#00000000", permille: 0 }
+    - op: art
+      palette: { a: "#00000000" }
+      rows:
+        - "aa............aa"
+        - "a..............a"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "a..............a"
+        - "aa............aa"

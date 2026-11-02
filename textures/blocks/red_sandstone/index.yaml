@@ -1,0 +1,15 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: red_sandstone
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Rust-red layered sandstone."
+  seed: 1058017386
+  ops:
+    - { op: fill, color: "#ad5a20" }
+    - { op: noise, amount: 12, cell_x: 16, cell_y: 2 }
+    - { op: noise, amount: 8, cell_x: 8, cell_y: 1 }
+    - { op: noise, amount: 5, cell: 1 }
+    - { op: line, color: "#c56d2b", x0: 0, y0: 0, x1: 15, y1: 0 }
+    - { op: line, color: "#8a4518", x0: 0, y0: 15, x1: 15, y1: 15 }

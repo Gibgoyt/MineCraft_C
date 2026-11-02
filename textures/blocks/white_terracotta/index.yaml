@@ -1,0 +1,12 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: white_terracotta
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "White terracotta: fired clay in the bands of the badlands."
+  seed: 384028204
+  ops:
+    - { op: fill, color: "#cdb0a1" }
+    - { op: noise, amount: 5, cell_x: 16, cell_y: 2 }
+    - { op: noise, amount: 5, cell: 1 }

@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: leather
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A square of tanned hide."
+  seed: 2044318411
+  ops:
+    - op: art
+      palette: { l: "#b57a4a", m: "#8f5d36", d: "#5f3d22" }
+      rows:
+        - "................"
+        - "...lmm...lmm...."
+        - "..lmmmmmmmmmd..."
+        - "..lmmmmmmmmmd..."
+        - "...mmmdmmmmd...."
+        - "...lmmmmmmmd...."
+        - "...lmmmmmdmd...."
+        - "...mmmmmmmmd...."
+        - "...lmmmdmmmd...."
+        - "..lmmmmmmmmmd..."
+        - "..lmmmmmmmmmd..."
+        - "...dd....ddd...."
+        - "................"
+        - "................"
+        - "................"
+        - "................"

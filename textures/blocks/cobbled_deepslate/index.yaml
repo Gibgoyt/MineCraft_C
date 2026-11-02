@@ -1,0 +1,14 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: cobbled_deepslate
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Broken deep rock in dark mortar."
+  seed: 1775285680
+  ops:
+    - { op: fill, color: "#2c2c33" }
+    - { op: noise, amount: 6, cell: 1 }
+    - { op: blobs, color: "#5a5a62", count: 16, radius_min: 1, radius_max: 2, jitter: 5 }
+    - { op: blobs, color: "#5a5a62", count: 8, radius_min: 2, radius_max: 2, jitter: 5 }
+    - { op: noise, amount: 7, cell: 1 }

@@ -1,0 +1,21 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: icon_armor
+group: ui
+size: { width: 9, height: 9, frames: 1 }
+source:
+  kind: procedural
+  about: "One point of armour."
+  seed: 380829738
+  ops:
+    - op: art
+      palette: { k: "#3f3f44", b: "#c9c9c6" }
+      rows:
+        - ".kkk.kkk."
+        - "kbbbkbbbk"
+        - "kbbbbbbbk"
+        - "kbbbbbbbk"
+        - ".kbbbbbk."
+        - ".kbbbbbk."
+        - ".kbbbbbk."
+        - "..kbbbk.."
+        - "...kkk..."

@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: iron_nugget
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A small lump of iron."
+  seed: 447360222
+  ops:
+    - op: art
+      palette: { l: "#e9e9e4", m: "#bdbdb8", d: "#7c7c78" }
+      rows:
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - ".....lm........."
+        - "....lmmm.lm....."
+        - "....mmmd.mmd...."
+        - ".....dd.lmmd...."
+        - "........mmd....."
+        - ".....lm..dd....."
+        - "....lmmd........"
+        - "....dmmd........"
+        - ".....dd........."
+        - "................"
+        - "................"
+        - "................"

@@ -1,0 +1,14 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: slider_track
+group: ui
+size: { width: 200, height: 20, frames: 1 }
+source:
+  kind: procedural
+  about: "The track under a slider."
+  seed: 2131753924
+  ops:
+    - { op: fill, color: "#2a2a2a" }
+    - { op: noise, amount: 3, cell: 1 }
+    - { op: line, color: "#1a1a1a", x0: 1, y0: 1, x1: 198, y1: 1 }
+    - { op: line, color: "#404040", x0: 1, y0: 18, x1: 198, y1: 18 }
+    - { op: outline, color: "#000000" }

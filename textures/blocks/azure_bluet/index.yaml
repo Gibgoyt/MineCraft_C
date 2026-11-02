@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: azure_bluet
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Small white flowers."
+  seed: 647172021
+  ops:
+    - op: art
+      palette: { g: "#3f7a2d", h: "#2b5a20", w: "#eef2f6", y: "#e6c84a" }
+      rows:
+        - "................"
+        - "....ww...ww....."
+        - "....wyw..wyw...."
+        - ".....w....w....."
+        - "......w..w......"
+        - ".......g........"
+        - ".......g........"
+        - ".......g.h......"
+        - "....h..g.hh....."
+        - "....hh.gh......."
+        - ".....hhg........"
+        - ".......g........"
+        - ".......g........"
+        - ".......g........"
+        - ".......g........"
+        - "................"

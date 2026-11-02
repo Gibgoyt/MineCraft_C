@@ -1,0 +1,14 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: sculk
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Dark, faintly living growth of the deep dark."
+  seed: 1350100753
+  ops:
+    - { op: fill, color: "#0f2a33" }
+    - { op: noise, amount: 9, cell: 3 }
+    - { op: noise, amount: 5, cell: 1 }
+    - { op: speckle, color: "#1c5664", permille: 90, seed: 1 }
+    - { op: speckle, color: "#3fb6c7", permille: 18, seed: 2 }

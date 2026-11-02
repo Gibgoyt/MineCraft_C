@@ -1,0 +1,14 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: deepslate
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Dark layered rock of the deep, seen from the side."
+  seed: 126053426
+  ops:
+    - { op: fill, color: "#4f4f57" }
+    - { op: noise, amount: 16, cell_x: 16, cell_y: 2 }
+    - { op: noise, amount: 12, cell_x: 8, cell_y: 1 }
+    - { op: noise, amount: 8, cell: 1 }
+    - { op: speckle, color: "#3a3a42", permille: 70 }

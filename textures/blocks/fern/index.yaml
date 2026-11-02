@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: fern
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A low fern."
+  seed: 1436465756
+  ops:
+    - op: art
+      palette: { a: "#3f7f35", d: "#2a5c26" }
+      rows:
+        - "................"
+        - "................"
+        - ".......a........"
+        - ".....a.a.a......"
+        - "....a.aaa.a....."
+        - "...a.a.a.a.a...."
+        - "..a...aaa...a..."
+        - "...a.a.a.a.a...."
+        - "..a.a.aaa.a.a..."
+        - "...a.a.d.a.a...."
+        - "....a.ada.a....."
+        - ".....a.d.a......"
+        - "......ada......."
+        - ".......d........"
+        - ".......d........"
+        - ".......d........"

@@ -1,0 +1,19 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: potatoes_stage_2
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Potatoes, growth stage 2 of 4."
+  seed: 294124523
+  ops:
+    - op: art
+      y: 10
+      palette: { a: "#5a9a3a", r: "#c9a65f" }
+      rows:
+        - "...a......a....."
+        - "....a..a.a......"
+        - ".....a.aa......."
+        - "..a..aa.a..a...."
+        - "...a.a.a..a....."
+        - "....aa.aaa......"

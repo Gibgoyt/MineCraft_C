@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: gold_helmet
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A gold helmet."
+  seed: 1592679365
+  ops:
+    - op: art
+      palette: { l: "#fff4a0", m: "#eec83a", d: "#a97f17" }
+      rows:
+        - "................"
+        - "................"
+        - "................"
+        - "....lmmmmmmd...."
+        - "...lmmmmmmmmd..."
+        - "...lmmmmmmmmd..."
+        - "...lmmmddmmmd..."
+        - "...lmd....mmd..."
+        - "...lmd....mmd..."
+        - "...ldd....ddd..."
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"

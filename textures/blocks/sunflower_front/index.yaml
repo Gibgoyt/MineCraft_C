@@ -1,0 +1,14 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: sunflower_front
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The face of a sunflower."
+  seed: 1034339670
+  ops:
+    - { op: disc, color: "#f0c630", cx: 8, cy: 8, rx: 7, ry: 7 }
+    - { op: disc, color: "#d99f1c", cx: 8, cy: 8, rx: 6, ry: 6 }
+    - { op: disc, color: "#6b4220", cx: 8, cy: 8, rx: 4, ry: 4 }
+    - { op: speckle, color: "#4a2c14", permille: 260, x: 4, y: 4, w: 8, h: 8 }
+    - { op: speckle, color: "#f7dd59", permille: 160, visible: true, seed: 1 }

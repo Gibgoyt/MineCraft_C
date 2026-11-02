@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: bow
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A curved wooden bow."
+  seed: 1917020723
+  ops:
+    - op: art
+      palette: { a: "#7a5230", s: "#dcdcd4" }
+      rows:
+        - "................"
+        - ".....ssaaaa....."
+        - "....s...aaaa...."
+        - "...s.......aa..."
+        - "..s.........aa.."
+        - ".s...........aa."
+        - ".s............a."
+        - ".s............aa"
+        - ".s.............a"
+        - ".s.............a"
+        - "..s...........aa"
+        - "...s.........aa."
+        - "....s.......aa.."
+        - ".....s...aaaa..."
+        - "......ssaaa....."
+        - "................"

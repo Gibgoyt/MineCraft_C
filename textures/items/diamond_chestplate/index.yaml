@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: diamond_chestplate
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A diamond chestplate."
+  seed: 1874464888
+  ops:
+    - op: art
+      palette: { l: "#c8f7fa", m: "#5fd6e0", d: "#2a8c97" }
+      rows:
+        - "................"
+        - "...lmd....lmd..."
+        - "..lmmd....lmmd.."
+        - "..lmmmddddmmmd.."
+        - "..lmmmmmmmmmmd.."
+        - "...ddlmmmmdd...."
+        - "....dlmmmmd....."
+        - "....dlmmmmd....."
+        - "....dlmmmmd....."
+        - "....dlmmmmd....."
+        - "....dlmmmmd....."
+        - "....dlmmmmd....."
+        - "....dlmmmmd....."
+        - "....ddddddd....."
+        - "................"
+        - "................"

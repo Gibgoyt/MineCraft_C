@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: melon_slice
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A slice of melon."
+  seed: 891378599
+  ops:
+    - op: art
+      palette: { r: "#d9402f", k: "#26180f", w: "#d8e8a0", g: "#4a8a2a" }
+      rows:
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "..rrrrrrrrrrrr.."
+        - "..rrkrrrrkrrrr.."
+        - "..wrrrrkrrrrrw.."
+        - "..gwrrrrrrrrwg.."
+        - "...gwwrrrrwwg..."
+        - "....ggwwwwgg...."
+        - "......gggg......"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"

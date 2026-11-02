@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: arrow
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "An arrow, flint at the tip and feathers at the tail."
+  seed: 1472801092
+  ops:
+    - op: art
+      palette: { a: "#7a5230", c: "#55555a", w: "#e8e8e4" }
+      rows:
+        - "................"
+        - "............ccc."
+        - "...........cccc."
+        - "..........aacc.."
+        - ".........aa.c..."
+        - "........aa......"
+        - ".......aa......."
+        - "......aa........"
+        - ".....aa........."
+        - "....aa.........."
+        - ".w.aa..........."
+        - ".wwa............"
+        - "..wwww.........."
+        - ".w.ww..........."
+        - "....w..........."
+        - "................"

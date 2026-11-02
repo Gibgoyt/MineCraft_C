@@ -1,0 +1,13 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: smooth_stone
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Stone cut flat."
+  seed: 1545412187
+  ops:
+    - { op: fill, color: "#9c9c99" }
+    - { op: noise, amount: 5, cell: 2 }
+    - { op: noise, amount: 3, cell: 1 }
+    - { op: outline, color: "#7f7f7c" }
