@@ -33,6 +33,9 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `11d03f8` Add sky and block light, with the wiring and the test.
+- `bacfaed` Print how many columns the cost test rebuilds, and record the cost over two runs.
+
 ## Measured
 
 `cost_on_this_machine`, and a temporary timer around `world_light_column_added` in `game_column_fill`, since removed. Real terrain is `--headless --test-world --ticks 1`.
