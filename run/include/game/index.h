@@ -82,7 +82,8 @@ typedef struct game_t {
     uint8_t threads_running; /* 861 */
     uint8_t stream_quiet;    /* 862: nothing more to generate, last time the sim looked */
     uint8_t pool_full_said;  /* 863 */
-    uint8_t _pad0[32];       /* 864 */
+    uint32_t commit_next;    /* 864: the job the next step looks at first */
+    uint8_t _pad0[28];       /* 868 */
 } game_t;
 static_assert(sizeof(game_t) == 896);
 static_assert(alignof(game_t) == MC_CPU_CACHE_LINE_BYTES);

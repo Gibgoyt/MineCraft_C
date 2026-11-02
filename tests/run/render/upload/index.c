@@ -59,7 +59,7 @@ typedef struct upload_fixture_t {
     world_buffers_probe_result_t *results;
     uint8_t _pad0[16];
 } upload_fixture_t;
-static_assert(sizeof(upload_fixture_t) == 4032);
+static_assert(sizeof(upload_fixture_t) == 4288);
 
 static const render_upload_budget_t upload_test_budget_large = {.bytes = 64ull << 20, .sections = 65536u};
 

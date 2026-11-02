@@ -26,10 +26,12 @@ A column's blocks are `terrain_generate_box`, on a worker, over all of the colum
 | Thread | Does | Tells the others through |
 |---|---|---|
 | `main` | Input, moves the eye, shows the newest picture | A triple buffer of cameras to `gpu`; two relaxed atomics, the eye's chunk, to `sim` |
-| `sim` | Columns to and from workers, into the map, then a snapshot. A tick at 20 Hz, with nothing in it yet | The snapshots of `world/edit` to `gpu` |
+| `sim` | Columns to and from workers, into the map, their light and every edit's, then a snapshot. A tick at 20 Hz, with nothing in it yet | The snapshots of `world/edit` to `gpu` |
 | `gpu` | The upload queue, then the frame's kernels | A triple buffer of pictures to `main` |
 
 None of them ever waits for another, as the plan wants: a slow tick cannot stall a frame, and a slow frame cannot stall input.
+
+A sim step spends at most `GAME_COMMIT_BUDGET_NS` on finished columns, since each gets its light there. The rest wait for the next step, so snapshots keep going out.
 
 With no threads, as under `--headless`, `game_settle` does a sim step and an upload round in turn until all of it is on the card, before each frame. So a picture does not depend on how fast a worker was, and the same script always gives the same bytes. It is the same code as the threads run, in another order.
 

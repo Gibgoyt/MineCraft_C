@@ -388,6 +388,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/world/column/` | ctest `run_world_column`: coordinates and `z` limits, random edits against a brute-force array of the whole gameplay range, and `run/src/world/` itself |
 | `tests/run/world/map/` | ctest `run_world_map`: the toroidal table, streaming by distance, requests out of date, a random walk against a brute-force model, and `world_open` |
 | `tests/run/world/edit/` | ctest `run_world_edit`: random edits against a brute-force array and brute-force flags, the log, each consumer's flags, and snapshots, with a real reader thread |
+| `tests/run/world/light/` | ctest `run_world_light`: incremental light against a separate full recompute on random edits, columns coming and going, running out of room or memory, and exact values worked out by hand |
 | `tests/run/terrain/seed/` | ctest `run_terrain_seed`: `run/src/terrain/` with `rng` and `noise`, the same bytes from 1 worker and 16, any split of the work, and values pinned from a separate program and the scalar kernel |
 | `tests/run/terrain/climate/` | ctest `run_terrain_climate`: `run/src/terrain/climate/`: ranges, the spread its README promises, the same bytes from 1 worker and 16, any split of the work, and each value worked out by hand from its noise |
 | `tests/run/terrain/density/` | ctest `run_terrain_density`: `run/src/terrain/density/`: the range limits on every corner of the climate and on real columns, bedrock at `-250`, water's top at `0`, values worked out by hand, any split of the work, and the same bytes from 1 worker and 16 |
@@ -491,9 +492,9 @@ main
 | Thread | Started by | Mainly runs |
 |---|---|---|
 | `main` | The OS | `main`, `input`, `display`, `ui`, last step of `render/frame` |
-| `sim` | `game` | `game`, `player`, `mob`, `entity`, `world/tick` |
+| `sim` | `game` | `game`, `player`, `mob`, `entity`, `world/tick`, `world/light` |
 | `gpu` | `game` | `render/frame`, `render/upload`, `gpu_bridge`, `cuda/` |
-| `worker` × 16 | `job` | `terrain`, `world/light`, `render/encode`, `save`, mob AI batches |
+| `worker` × 16 | `job` | `terrain`, `render/encode`, `save`, mob AI batches |
 
 ---
 
