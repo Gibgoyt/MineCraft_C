@@ -11,6 +11,8 @@
 - `display_flip_take_over`: `KD_GRAPHICS`, then `SETCRTC` to buffer 0.
 - `display_flip_back`, `display_flip_submit`, `display_flip_wait`, `display_flip_take_events`, `display_flip_drain`: the loop.
 - `display_flip_restore`: the saved CRTC, then `DROP_MASTER`, then `KD_TEXT`, once.
+- `display_flip_suspend`, `display_flip_resume`: a VT switch away and back, for `display/vt_guard`.
+- `display_flip_assume_taken`: for the guardian's copy of this struct, made before the takeover.
 - `display_flip_pattern_pixel`, `display_flip_pattern_fill`, `display_flip_pattern_frame`: the test pattern.
 
 **May be called by:** `display`, `display/vt_guard`, and `render/frame` for presenting (Stage 08.4).

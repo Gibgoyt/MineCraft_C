@@ -59,8 +59,11 @@ typedef struct display_flip_t {
     uint8_t modeset_done; /* set before the attempt: a failed SETCRTC may still have disturbed the CRTC */
     uint8_t restored;
     uint8_t restore_failed;
+    uint8_t suspended;     /* another VT is on screen and we hold no master: the CRTC is not ours to touch */
+    uint8_t skip_interval; /* the next event's interval is the time away on another VT, which says nothing */
+    uint8_t _pad0[6];
 } display_flip_t;
-static_assert(sizeof(display_flip_t) == 224);
+static_assert(sizeof(display_flip_t) == 232);
 
 /* What waiting for a flip found. */
 typedef enum display_flip_wait_t : uint8_t {
@@ -101,6 +104,19 @@ void display_flip_drain(display_flip_t *flip);
  * its mode, and it cannot while another client holds master. Runs once; a second call returns the first answer. Only
  * ioctls and flags, so it is safe in a signal handler: display/vt_guard depends on that. */
 bool display_flip_restore(display_flip_t *flip);
+
+/* For a VT switch away: the saved CRTC, so that whatever comes next starts from what it left, then DROP_MASTER. The console
+ * stays in KD_GRAPHICS, since that belongs to this VT and not to the one coming up. Drain first. Failures are only reported:
+ * the switch must go ahead regardless, because the other VT cannot appear until it does. */
+bool display_flip_suspend(display_flip_t *flip);
+
+/* For the VT switch back: SET_MASTER, then shows the front buffer again. false with no failure recorded means master was
+ * refused, as it can be while the other VT's client lets go, so try again. A failed modeset is recorded in failed_call. */
+bool display_flip_resume(display_flip_t *flip);
+
+/* For a process holding a copy of this flip made before the takeover (display/vt_guard's guardian): marks everything owed,
+ * so that display_flip_restore in that process does all of it. What is no longer owed fails harmlessly at the kernel. */
+void display_flip_assume_taken(display_flip_t *flip);
 
 /* The test pattern, in pure pixels. */
 

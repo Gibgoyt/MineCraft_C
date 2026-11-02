@@ -11,8 +11,9 @@
     minecraft_c --report                          prints the compiled defines and CPU features, then exits, starting nothing
     minecraft_c --pretend-missing-cpu <key>       treats a feature as absent, to see the CPU check fail
     minecraft_c --pretend-leak                    skips the shutdown, to see the leak check at exit fail
-    minecraft_c --test-pattern [--card <path>] [--connector <name>]
-                                                  shows a test pattern through KMS, from a text console only
+    minecraft_c --test-pattern [--card <path>] [--connector <name>] [--crash-test[=segv|abort|kill|hang]]
+                                                  shows a test pattern through KMS, from a text console only; Ctrl+Alt+Backspace
+                                                  is the emergency exit; --crash-test dies on purpose after 240 frames
 
 Running the program starts the job system, runs one job per worker through it, logs the heap's counts and stops. There is
 nothing more to run until `game` (Stage 08.4).

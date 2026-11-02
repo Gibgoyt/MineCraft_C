@@ -6,6 +6,7 @@
 #include "display/device/index.h"
 #include "display/flip/index.h"
 #include "display/mode/index.h"
+#include "display/vt_guard/index.h"
 #include "heap/index.h"
 
 #include <stdint.h>
@@ -23,9 +24,11 @@ typedef struct display_config_t {
     uint32_t width;
     uint32_t height;
     uint32_t refresh_hz;
-    int32_t console_fd; /* the console that must be ours: stdin */
+    int32_t console_fd;              /* the console that must be ours: stdin */
+    display_crash_test_t crash_test; /* --crash-test: how the test pattern is to die */
+    uint8_t _pad0[7];
 } display_config_t;
-static_assert(sizeof(display_config_t) == 32);
+static_assert(sizeof(display_config_t) == 40);
 
 /* The KMS backend. Zeroed means not running, so _deinit is safe whether or not _init ever ran. */
 typedef struct display_t {
@@ -34,11 +37,13 @@ typedef struct display_t {
     display_device_t device;
     display_mode_t mode;
     display_flip_t flip;
+    display_vt_guard_t guard;
     uint8_t refusal; /* display_refusal_t, when _init refused */
     uint8_t running;
-    uint8_t _pad0[62];
+    uint8_t crash_test; /* display_crash_test_t */
+    uint8_t _pad0[5];
 } display_t;
-static_assert(sizeof(display_t) == 704);
+static_assert(sizeof(display_t) == 768);
 static_assert(alignof(display_t) == 64);
 
 void display_config_from_machine(display_config_t *out);
@@ -53,7 +58,8 @@ display_status_t display_init(display_t *display, const display_config_t *config
 void display_deinit(display_t *display);
 
 /* Runs the test pattern until started_ns + duration_ns or a stop signal, then gives the display back and logs what it
- * measured. Takes the display over: run only after display_init said OK. Returns OK if everything worked. */
+ * measured. Takes the display over, behind display/vt_guard, so VT switches work and a crash gives the console back: run
+ * only after display_init said OK. Returns OK if everything worked. */
 display_status_t display_test_pattern_run(display_t *display, int64_t started_ns, int64_t duration_ns);
 
 #endif

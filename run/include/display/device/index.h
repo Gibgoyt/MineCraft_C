@@ -28,7 +28,8 @@ typedef enum display_refusal_t : uint8_t {
 /* Every call this system makes to the kernel, and so the one place a test can stand in for it. The real table is only
  * ever used by the program, so no test goes near a card or a console. Each call that can fail returns a negative errno,
  * not -1 with errno set, because a fake is simpler that way and because errno is one more thing a signal handler would
- * have to look after. context is passed through untouched. The real calls are all async-signal-safe. */
+ * have to look after. context is passed through untouched. The real calls are all async-signal-safe, apart from
+ * open_keyboards, which is only called well before the display is taken. */
 typedef struct display_ops_t {
     int32_t (*open_card)(void *context, const char *path); /* a descriptor, or -errno */
     int32_t (*close_fd)(void *context, int32_t fd);
@@ -40,8 +41,11 @@ typedef struct display_ops_t {
     /* 0 with the device numbers, -ENOTTY if fd is not a character device, or another -errno. */
     int32_t (*char_device)(void *context, int32_t fd, uint32_t *out_major, uint32_t *out_minor);
     const char *(*get_env)(void *context, const char *name);
+    /* display/vt_guard's two. Opens every readable keyboard, read-only and never grabbed, and returns how many. */
+    uint32_t (*open_keyboards)(void *context, int32_t *out_fds, uint32_t capacity);
+    void (*pause_ms)(void *context, int32_t milliseconds);
 } display_ops_t;
-static_assert(sizeof(display_ops_t) == 72);
+static_assert(sizeof(display_ops_t) == 88);
 
 /* The open card. Zeroed means nothing is open, so _deinit is safe on a device whose _init never ran. */
 typedef struct display_device_t {
@@ -94,6 +98,9 @@ int32_t display_device_console_graphics(display_device_t *device);
 /* Each of these two is safe in a signal handler and does nothing if nothing is owed. Returns 0 or -errno. */
 int32_t display_device_console_text(display_device_t *device);
 int32_t display_device_drop_master(display_device_t *device);
+
+/* Becomes the card's master again, after a VT switch away and back. Returns 0 or -errno. */
+int32_t display_device_set_master(display_device_t *device);
 
 /* Whether our console is still the one on screen. */
 bool display_device_console_is_visible(const display_device_t *device);
