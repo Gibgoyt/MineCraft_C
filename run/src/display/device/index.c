@@ -9,21 +9,25 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
+#include <linux/input.h>
 #include <linux/kd.h>
 #include <linux/vt.h>
 #include <poll.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
+#include <time.h>
 #include <unistd.h>
 
 enum : uint32_t {
     DEVICE_TTY_MAJOR = 4u,
     DEVICE_TTY_MINOR_MAX = 63u, /* minors above this are serial ports; minor 0 is /dev/tty0, "whichever is on screen" */
     DEVICE_IOCTL_TRIES = 256u,  /* so that a crash handler restoring the console cannot spin for ever */
+    DEVICE_INPUT_NODES = 64u,   /* /dev/input/event0 up to this */
 };
 
 /* ---- The kernel -------------------------------------------------------------------------------------------------- */
@@ -98,6 +102,52 @@ static const char *real_get_env(void *context, const char *name) {
     return getenv(name);
 }
 
+/* A keyboard is whatever can send both of the keys the emergency exit needs. Mice and power buttons cannot. */
+static bool real_is_keyboard(int32_t fd) {
+    uint8_t bits[KEY_MAX / 8 + 1] = {0};
+    if (ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(bits)), bits) < 0) {
+        return false;
+    }
+    const bool has_backspace = (bits[KEY_BACKSPACE / 8] >> (KEY_BACKSPACE % 8) & 1u) != 0u;
+    const bool has_ctrl = (bits[KEY_LEFTCTRL / 8] >> (KEY_LEFTCTRL % 8) & 1u) != 0u;
+    return has_backspace && has_ctrl;
+}
+
+/* Never EVIOCGRAB: the guard only watches, and whatever else reads these keys goes on seeing them. Only ever reached from
+ * display_vt_guard_take_console, after every refusal in display_init has passed, so no test and no run inside X gets here. */
+static uint32_t real_open_keyboards(void *context, int32_t *out_fds, uint32_t capacity) {
+    (void)context;
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < DEVICE_INPUT_NODES && count < capacity; i++) {
+        /* By hand, since the guardian calls this too, and it may have been forked from a program with other threads. */
+        char path[] = "/dev/input/event00";
+        uint32_t end = (uint32_t)sizeof("/dev/input/event") - 1u;
+        if (i >= 10u) {
+            path[end] = (char)('0' + i / 10u);
+            end++;
+        }
+        path[end] = (char)('0' + i % 10u);
+        path[end + 1u] = '\0';
+        const int32_t fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+        if (fd < 0) {
+            continue;
+        }
+        if (real_is_keyboard(fd)) {
+            out_fds[count] = fd;
+            count++;
+        } else {
+            close(fd);
+        }
+    }
+    return count;
+}
+
+static void real_pause_ms(void *context, int32_t milliseconds) {
+    (void)context;
+    const struct timespec wait = {.tv_sec = milliseconds / 1000, .tv_nsec = (int64_t)(milliseconds % 1000) * 1000000};
+    nanosleep(&wait, nullptr);
+}
+
 static const display_ops_t device_real_ops = {
     .open_card = real_open_card,
     .close_fd = real_close_fd,
@@ -108,6 +158,8 @@ static const display_ops_t device_real_ops = {
     .read_fd = real_read_fd,
     .char_device = real_char_device,
     .get_env = real_get_env,
+    .open_keyboards = real_open_keyboards,
+    .pause_ms = real_pause_ms,
 };
 
 const display_ops_t *display_device_real_ops(void) {
@@ -325,6 +377,12 @@ int32_t display_device_drop_master(display_device_t *device) {
     }
     device->is_master = 0u;
     return display_device_ioctl(device, DRM_IOCTL_DROP_MASTER, nullptr);
+}
+
+int32_t display_device_set_master(display_device_t *device) {
+    const int32_t result = display_device_ioctl(device, DRM_IOCTL_SET_MASTER, nullptr);
+    device->is_master = (uint8_t)(result == 0);
+    return result;
 }
 
 bool display_device_console_is_visible(const display_device_t *device) {

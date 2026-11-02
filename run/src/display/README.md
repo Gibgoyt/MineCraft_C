@@ -3,7 +3,7 @@
 **Purpose:** the KMS backend: takes the display from a text console, picks an output, shows pixels and gives it all back.
 **Tier:** Owner.
 **Owns:** one `heap_region_t`, with `arena_setup` over it, which `display/mode` allocates from at init. The parts it starts:
-`device`, `mode`, `flip`.
+`device`, `mode`, `flip`, `vt_guard`.
 **Lifetime:** Process.
 **Threads:** main. The signal handler only sets a flag.
 **Public functions:**
@@ -35,11 +35,7 @@ pipe nothing here ever opens the card. Exit status 6 means one of these said no.
 
 ## What the test pattern does and does not protect
 
-`SIGTERM`, `SIGINT`, `SIGHUP` and `SIGQUIT` end the loop and run the full restore. It also ends by itself 20 seconds after the
-process started, below the `timeout 30` it is run under.
-
-**A crash does not restore the console yet.** A crash handler needs a `borrowed_` static, and the only file allowed one is
-`run/src/display/vt_guard/index.c`, Stage 05.2. `display_flip_restore` is safe in a signal handler so that the guard can call
-it. `SIGKILL` can never be handled. In either case the VT stays in graphics mode until something resets it; Ctrl+Alt+F1 or F2
-should still reach X. Neither is `VT_PROCESS` handled yet, so do not switch VT during a run: the loop notices within about a
-second and stops.
+All of it runs behind `display/vt_guard`: see its README for the emergency exit (Ctrl+Alt+Backspace), VT switching, the crash
+handler, the watchdog and the guardian process. `SIGTERM`, `SIGINT`, `SIGHUP` and `SIGQUIT` end the loop and run the full
+restore. It also ends by itself 20 seconds after the process started, below the `timeout 30` it is run under. `--crash-test`
+kills it on purpose after 240 frames, to prove the console comes back.

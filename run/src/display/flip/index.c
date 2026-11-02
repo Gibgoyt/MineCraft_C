@@ -168,31 +168,80 @@ bool display_flip_take_over(display_flip_t *flip) {
     return true;
 }
 
+/* Only ioctls, so safe in a signal handler. */
+static bool flip_put_crtc_back(display_flip_t *flip) {
+    const display_device_t *const device = flip->borrowed_device;
+    const display_mode_t *const mode = flip->borrowed_mode;
+    struct drm_mode_crtc crtc = mode->saved_crtc;
+    crtc.set_connectors_ptr = (uint64_t)(uintptr_t)mode->saved_connectors;
+    crtc.count_connectors = mode->saved_connector_count;
+    if (crtc.mode_valid == 0u || crtc.fb_id == 0u || crtc.count_connectors == 0u) {
+        /* It was off, or nothing can be put back: off is what it goes back to, and fbcon sets up its own. */
+        crtc.fb_id = 0u;
+        crtc.mode_valid = 0u;
+        crtc.count_connectors = 0u;
+        crtc.set_connectors_ptr = 0u;
+    }
+    if (display_device_ioctl(device, DRM_IOCTL_MODE_SETCRTC, &crtc) != 0) {
+        /* Without the saved framebuffer, turn the CRTC off and let fbcon set it up again. */
+        crtc = (struct drm_mode_crtc){.crtc_id = mode->crtc_id};
+        (void)display_device_ioctl(device, DRM_IOCTL_MODE_SETCRTC, &crtc);
+        return false;
+    }
+    return true;
+}
+
+bool display_flip_suspend(display_flip_t *flip) {
+    const bool put_back = flip_put_crtc_back(flip);
+    const bool dropped = display_device_drop_master(flip->borrowed_device) == 0;
+    flip->suspended = 1u;
+    flip->flip_pending = 0u;
+    return put_back && dropped;
+}
+
+bool display_flip_resume(display_flip_t *flip) {
+    display_device_t *const device = flip->borrowed_device;
+    const display_mode_t *const mode = flip->borrowed_mode;
+    if (display_device_set_master(device) != 0) {
+        return false;
+    }
+    flip->suspended = 0u;
+    flip->flip_pending = 0u;
+    flip->skip_interval = 1u;
+    uint32_t connector_id = mode->connector_id;
+    struct drm_mode_crtc crtc = {.crtc_id = mode->crtc_id,
+                                 .fb_id = flip->buffers[flip->front].fb_id,
+                                 .set_connectors_ptr = (uint64_t)(uintptr_t)&connector_id,
+                                 .count_connectors = 1u,
+                                 .mode_valid = 1u};
+    crtc.mode = mode->mode;
+    const int32_t result = display_device_ioctl(device, DRM_IOCTL_MODE_SETCRTC, &crtc);
+    if (result != 0) {
+        flip_record_failure(flip, "SETCRTC after a VT switch", -result);
+        return false;
+    }
+    flip->last_event_ns = time_now_ns();
+    return true;
+}
+
+void display_flip_assume_taken(display_flip_t *flip) {
+    flip->modeset_done = 1u;
+    flip->restored = 0u;
+    flip->restore_failed = 0u;
+    flip->suspended = 0u;
+    flip->borrowed_device->console_graphics = 1u;
+    flip->borrowed_device->is_master = 1u;
+}
+
 bool display_flip_restore(display_flip_t *flip) {
     if (flip->restored != 0u) {
         return flip->restore_failed == 0u;
     }
     flip->restored = 1u;
     display_device_t *const device = flip->borrowed_device;
-    const display_mode_t *const mode = flip->borrowed_mode;
     bool ok = true;
-    if (flip->modeset_done != 0u) {
-        struct drm_mode_crtc crtc = mode->saved_crtc;
-        crtc.set_connectors_ptr = (uint64_t)(uintptr_t)mode->saved_connectors;
-        crtc.count_connectors = mode->saved_connector_count;
-        if (crtc.mode_valid == 0u || crtc.fb_id == 0u || crtc.count_connectors == 0u) {
-            /* It was off, or nothing can be put back: off is what it goes back to, and fbcon sets up its own. */
-            crtc.fb_id = 0u;
-            crtc.mode_valid = 0u;
-            crtc.count_connectors = 0u;
-            crtc.set_connectors_ptr = 0u;
-        }
-        if (display_device_ioctl(device, DRM_IOCTL_MODE_SETCRTC, &crtc) != 0) {
-            /* Without the saved framebuffer, turn the CRTC off and let fbcon set it up again. */
-            crtc = (struct drm_mode_crtc){.crtc_id = mode->crtc_id};
-            (void)display_device_ioctl(device, DRM_IOCTL_MODE_SETCRTC, &crtc);
-            ok = false;
-        }
+    if (flip->modeset_done != 0u && flip->suspended == 0u) {
+        ok = flip_put_crtc_back(flip);
     }
     ok = display_device_drop_master(device) == 0 && ok;
     ok = display_device_console_text(device) == 0 && ok;
@@ -234,7 +283,7 @@ static void flip_record_event(display_flip_t *flip, const struct drm_event_vblan
         (uint64_t)event->tv_sec * (uint64_t)TIME_NS_PER_SECOND + (uint64_t)event->tv_usec * 1000u;
     const bool use_kernel = flip->borrowed_device->timestamp_monotonic != 0u && kernel_ns != 0u;
     const int64_t at_ns = use_kernel ? (int64_t)kernel_ns : now_ns;
-    if (stats->events >= DISPLAY_FLIP_WARMUP_EVENTS) {
+    if (stats->events >= DISPLAY_FLIP_WARMUP_EVENTS && flip->skip_interval == 0u) {
         const uint64_t interval = at_ns > flip->last_event_ns ? (uint64_t)(at_ns - flip->last_event_ns) : 0u;
         stats->min_ns = stats->intervals == 0u || interval < stats->min_ns ? interval : stats->min_ns;
         stats->max_ns = interval > stats->max_ns ? interval : stats->max_ns;
@@ -245,6 +294,7 @@ static void flip_record_event(display_flip_t *flip, const struct drm_event_vblan
         const bool known = event->sequence != 0u && flip->last_sequence != 0u;
         stats->sequence_gaps += known && event->sequence - flip->last_sequence > 1u ? 1u : 0u;
     }
+    flip->skip_interval = 0u;
     flip->last_event_ns = at_ns;
     flip->last_sequence = event->sequence;
     stats->events++;

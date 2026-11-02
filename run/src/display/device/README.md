@@ -15,8 +15,11 @@
 - `display_device_map`, `display_device_unmap`: dumb buffers.
 - `display_device_wait_readable`, `display_device_read`: the card's event stream.
 - `display_device_console_graphics`, `display_device_console_text`, `display_device_console_is_visible`: `KD_GRAPHICS` and back.
-  Stage 05.2's `vt_guard` is to take these over, with `K_OFF` and `VT_PROCESS`.
-- `display_device_drop_master`.
+  `display/vt_guard` adds `K_OFF` and `VT_PROCESS` around them.
+- `display_device_drop_master`, `display_device_set_master`.
+
+The table's `open_keyboards` is the one call in it that opens anything under `/dev/input`, read-only and never grabbed, and only
+`display/vt_guard` calls it, after every refusal has passed.
 
 **May be called by:** `display`, `display/mode`, `display/flip`, `display/vt_guard`.
 **Depends on:** `log`, kernel UAPI headers.
