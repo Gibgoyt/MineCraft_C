@@ -93,6 +93,7 @@ Appended as they land:
 
 - `49b3bba` Add the VT guard, with K_OFF and VT_PROCESS switching, a crash handler, a watchdog and guardian process that restore the console, Ctrl+Alt+Backspace as the emergency exit, and --crash-test.
 - `3a2ad09` Test a fault in the VT guard's restore under the crash's own signal, and record Stage 05.2's results, issues and how Ahmed runs it.
+- `f5204cf` Keep the emergency exit working when a keyboard drops off and comes back, make the VT guard's fake kernel refuse the guardian's DROP_MASTER as the real one does, and record what was checked against the kernel source.
 
 ## Issues found
 
