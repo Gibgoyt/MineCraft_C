@@ -11,10 +11,17 @@ bool terrain_init(terrain_t *terrain, uint64_t seed) {
     arena_init(&terrain->arena_tables, "terrain_tables", terrain->owned_tables.owned_base, terrain->owned_tables.bytes);
     terrain->seed = seed;
     terrain_noise_bank_init(&terrain->noise_bank, &terrain->arena_tables, seed, TERRAIN_NOISE_FIELDS_MAX);
+    if (!terrain_climate_init(&terrain->borrowed_climate, &terrain->arena_tables, &terrain->noise_bank)) {
+        terrain_deinit(terrain); /* it has said why */
+        return false;
+    }
     return true;
 }
 
 void terrain_deinit(terrain_t *terrain) {
+    if (terrain->borrowed_climate != nullptr) {
+        terrain_climate_deinit(terrain->borrowed_climate);
+    }
     terrain_noise_bank_deinit(&terrain->noise_bank);
     arena_deinit(&terrain->arena_tables);
     heap_release(&terrain->owned_tables);

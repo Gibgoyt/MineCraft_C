@@ -642,7 +642,7 @@ TEST(a_field_does_not_depend_on_what_was_added_before_it) {
     CHECK(terrain_noise_bank_add(&second.noise_bank, "test/before", &SEED_SHAPE_SOLID, &ignored));
     CHECK(terrain_noise_bank_add(&second.noise_bank, "test/flat", &SEED_SHAPE_FLAT, &crowded));
     CHECK_MEM_EQ(alone->octaves, crowded->octaves, sizeof(alone->octaves));
-    CHECK_EQ_U64(second.noise_bank.count, 2u);
+    CHECK_EQ_U64(second.noise_bank.count, TERRAIN_CLIMATE_NOISE_FIELDS + 2u);
     terrain_deinit(&second);
     terrain_deinit(&first);
 }
@@ -672,17 +672,19 @@ TEST(a_bank_refuses_what_is_wrong) {
         CHECK(!terrain_noise_bank_add(bank, "test/bad", &bad[i], &field));
         CHECK(field == nullptr);
     }
-    CHECK_EQ_U64(bank->count, 0u);
+    /* What terrain_init added for itself is already there. */
+    const uint32_t count_at_start = bank->count;
+    CHECK_EQ_U64(count_at_start, TERRAIN_CLIMATE_NOISE_FIELDS);
 
     CHECK(terrain_noise_bank_add(bank, "test/same", &SEED_SHAPE_SOLID, &field));
     CHECK(field != nullptr);
     CHECK_STR_EQ(field->borrowed_name, "test/same");
     CHECK(!terrain_noise_bank_add(bank, "test/same", &SEED_SHAPE_FLAT, &field));
     CHECK(field == nullptr);
-    CHECK_EQ_U64(bank->count, 1u);
+    CHECK_EQ_U64(bank->count, count_at_start + 1u);
 
     /* Up to exactly full, and no further. Names kept in the test arena, since a bank borrows them. */
-    for (uint32_t i = 1u; i < TERRAIN_NOISE_FIELDS_MAX; i++) {
+    for (uint32_t i = count_at_start + 1u; i < TERRAIN_NOISE_FIELDS_MAX; i++) {
         char *const name = test_alloc(t, 16u);
         (void)snprintf(name, 16u, "test/%" PRIu32, i);
         CHECK(terrain_noise_bank_add(bank, name, &SEED_SHAPE_SOLID, &field));
