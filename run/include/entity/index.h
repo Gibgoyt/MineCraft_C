@@ -3,7 +3,10 @@
 #define MC_RUN_ENTITY_INDEX_H
 
 #include "arena/index.h"
+#include "entity/animation/index.h"
+#include "entity/grid/index.h"
 #include "entity/item_drop/index.h"
+#include "entity/store/index.h"
 #include "heap/index.h"
 #include "physics/index.h"
 #include "world/map/index.h"
@@ -17,9 +20,11 @@ typedef struct entity_t {
     heap_region_t owned_region;   /* 64 */
     physics_t *borrowed_physics;  /* 80 */
     item_drop_store_t item_drops; /* 88 */
-    uint8_t _pad0[8];             /* 184 */
+    entity_store_t store;         /* 184: every body with a mind of its own; run/src/mob/ gives them one */
+    entity_grid_t grid;           /* 464: where they were at the end of the last tick */
+    uint8_t _pad0[40];            /* 536 */
 } entity_t;
-static_assert(sizeof(entity_t) == 192);
+static_assert(sizeof(entity_t) == 576);
 static_assert(alignof(entity_t) == 64);
 
 /* Reserves the region, and remembers what it moves things with, which must outlive it and be the thread's whose ticks these are. On
