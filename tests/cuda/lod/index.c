@@ -39,6 +39,7 @@ enum : uint32_t {
     LD_COST_HEIGHT = 1080u,
     LD_RANDOM_RAYS = 3000u,
     LD_HAND_RADIUS = 2u,
+    LD_SEA_STEP = 12u,
 };
 
 #define LD_FOG_FAR 20000.0f32
@@ -383,26 +384,44 @@ TEST(far_colour_is_as_on_paper) {
     const float32_t down[3] = {0.0f32, 0.0f32, -1.0f32};
     const lod_hit_t top = {100.0f32, BLOCK_ID_STONE, TRAVERSE_FACE_POS_Z, LOD_SUN_SEEN};
     float32_t colour[3];
-    shade_far_colour(&sun, mean, false, false, &top, down, sky, colour);
+    shade_far_colour(&sun, mean, false, false, false, &top, down, sky, colour);
     CHECK_NEAR(colour[0], 0.75f32, 1e-4f32);
     CHECK_NEAR(colour[1], 0.0f32, 1e-4f32);
     CHECK_NEAR(colour[2], 0.75f32 * shade_srgb_to_linear(188.0f32 / 255.0f32), 1e-4f32);
     /* The sun's share goes with the sun. */
     const lod_hit_t shaded_top = {100.0f32, BLOCK_ID_STONE, TRAVERSE_FACE_POS_Z, LOD_SUN_HIDDEN};
-    shade_far_colour(&sun, mean, false, false, &shaded_top, down, sky, colour);
+    shade_far_colour(&sun, mean, false, false, false, &shaded_top, down, sky, colour);
     CHECK_NEAR(colour[0], 0.25f32, 1e-4f32);
     /* A side has its brightness and no sun from straight above. */
     const lod_hit_t side = {100.0f32, BLOCK_ID_STONE, TRAVERSE_FACE_NEG_X, LOD_SUN_SEEN};
     const float32_t east[3] = {1.0f32, 0.0f32, 0.0f32};
-    shade_far_colour(&sun, mean, false, false, &side, east, sky, colour);
+    shade_far_colour(&sun, mean, false, false, false, &side, east, sky, colour);
     CHECK_NEAR(colour[0], 0.25f32 * SHADE_BRIGHTNESS_X, 1e-4f32);
     /* Water seen straight on: nearly all its own. Along it: nearly all sky. */
     const float32_t flat[3] = {0.9999f32, 0.0f32, -0.01414f32};
-    shade_far_colour(&sun, mean, true, true, &top, down, sky, colour);
+    const uint8_t clear[4] = {255u, 0u, 188u, 0u};
+    shade_far_colour(&sun, clear, true, true, false, &top, down, sky, colour);
     CHECK_NEAR(colour[2], SHADE_WATER_DEEP_B * 0.75f32 * (1.0f32 - SHADE_WATER_F0) + 0.3f32 * SHADE_WATER_F0, 1e-3f32);
-    shade_far_colour(&sun, mean, true, true, &top, flat, sky, colour);
+    shade_far_colour(&sun, clear, true, true, false, &top, flat, sky, colour);
     CHECK(colour[2] > 0.26f32 && colour[2] < 0.3f32);
-    shade_far_colour(&sun, mean, true, false, &top, flat, sky, colour);
+    shade_far_colour(&sun, clear, true, false, false, &top, flat, sky, colour);
+    CHECK_NEAR(colour[2], SHADE_WATER_DEEP_B * 0.75f32, 1e-4f32);
+    /* The texture's mean over deep water, as far as it covers: near water's order, with half of red's linear 1 on top. */
+    const uint8_t half[4] = {255u, 0u, 0u, 51u};
+    shade_far_colour(&sun, half, true, false, false, &top, down, sky, colour);
+    CHECK_NEAR(colour[0], (0.2f32 + SHADE_WATER_DEEP_R * 0.8f32) * 0.75f32, 1e-4f32);
+    CHECK_NEAR(colour[1], SHADE_WATER_DEEP_G * 0.8f32 * 0.75f32, 1e-4f32);
+    /* A side of far water, turned from the sun and asking none, looks as its top does. */
+    const lod_hit_t water_side = {100.0f32, BLOCK_ID_WATER, TRAVERSE_FACE_NEG_X, LOD_SUN_HIDDEN};
+    float32_t on_top[3];
+    shade_far_colour(&sun, half, true, true, false, &top, flat, sky, on_top);
+    shade_far_colour(&sun, half, true, true, false, &water_side, flat, sky, colour);
+    for (uint32_t i = 0u; i < 3u; i++) {
+        CHECK_NEAR(colour[i], on_top[i], 1e-6f32);
+    }
+    /* From inside water: no mirror and no texture, only what deep water gives back. */
+    shade_far_colour(&sun, half, true, true, true, &water_side, flat, sky, colour);
+    CHECK_NEAR(colour[0], SHADE_WATER_DEEP_R * 0.75f32, 1e-4f32);
     CHECK_NEAR(colour[2], SHADE_WATER_DEEP_B * 0.75f32, 1e-4f32);
 }
 
@@ -740,7 +759,7 @@ TEST(what_full_detail_misses_goes_on_to_the_far_field_and_shows_its_colour) {
             post_sky(&frame->post, direction, sky_colour);
             const uint8_t *const mean = ld_mean_of(&rig, hits[i].material, hits[i].face);
             REQUIRE(mean != nullptr);
-            shade_far_colour(&frame->scene.sun, mean, false, false, &hits[i], direction, sky_colour, colour);
+            shade_far_colour(&frame->scene.sun, mean, false, false, false, &hits[i], direction, sky_colour, colour);
             bool near = fabs((float64_t)shaded[i].t - (float64_t)hits[i].t) < 1e-3f64;
             for (uint32_t a = 0u; a < 3u; a++) {
                 near = near && fabsf(shaded[i].rgb[a] - colour[a]) < 1e-4f32;
@@ -932,6 +951,109 @@ TEST(fog_takes_the_far_field_and_water_shows_the_sky) {
     printf("  %" PRIu64 " pixels of water, %" PRIu64 " all fog\n", water, fogged);
     CHECK(fogged > 0u);
     CHECK(water > 0u);
+    ld_end(t, &rig);
+}
+
+/* Far water's sides in a picture, against what is three rows either way: how many there are, and how many channels are darker than both
+ * by more than a texel's own change. From the air, or from under near water. */
+static void ld_sea_sides(const uint8_t *picture, const lod_hit_t *hits, const shade_pixel_t *shaded, bool from_air,
+                         uint64_t *out_sides, uint64_t *out_dark) {
+    *out_sides = 0u;
+    *out_dark = 0u;
+    for (uint32_t y = 3u; y + 3u < LD_HEIGHT; y++) {
+        for (uint32_t x = 0u; x < LD_WIDTH; x++) {
+            const uint64_t i = (uint64_t)y * LD_WIDTH + x;
+            if (hits[i].material != BLOCK_ID_WATER || hits[i].face == TRAVERSE_FACE_POS_Z ||
+                (shaded[i].t == hits[i].t) != from_air) {
+                continue;
+            }
+            *out_sides += 1u;
+            const uint8_t *const bytes = picture + i * 4u;
+            const uint8_t *const above = bytes - 3u * (uint64_t)LD_WIDTH * 4u;
+            const uint8_t *const below = bytes + 3u * (uint64_t)LD_WIDTH * 4u;
+            for (uint32_t c = 0u; c < 3u; c++) {
+                const uint32_t low = above[c] < below[c] ? above[c] : below[c];
+                *out_dark += (uint32_t)bytes[c] + LD_SEA_STEP < low ? 1u : 0u;
+            }
+        }
+    }
+}
+
+/* Where a sea crosses from full detail to the far field there is no edge to see. Found by looking at a real run, which showed a dashed dark
+ * line there and a sea of another colour past it. A far surface is what a near one that deep comes to, and a coarse voxel's side, from the
+ * air or from under near water, is only more water. */
+TEST(a_sea_goes_on_past_full_detail_with_no_edge) {
+    sk_rig_t rig;
+    const ld_source_t source = {LD_GROUND_LAKE, {0}};
+    render_camera_t eye;
+    render_camera_start(&eye, 8.5f64, 8.5f64, 40.5f64, 0.0f32, -0.3f32);
+    REQUIRE(ld_begin(t, &rig, &source, LD_HAND_RADIUS, 40u, LD_FOG_FAR, SHADE_FEATURES_ALL, eye.position));
+    render_frame_time_set(&rig.render->frame, 0.4f32);
+    for (int32_t cy = -(int32_t)LD_HAND_RADIUS; cy <= (int32_t)LD_HAND_RADIUS; cy++) {
+        for (int32_t cx = -(int32_t)LD_HAND_RADIUS; cx <= (int32_t)LD_HAND_RADIUS; cx++) {
+            if (world_map_column_at(&rig.world->map, cx, cy) != nullptr) {
+                /* Deeper than SHADE_WATER_SEEN_BLOCKS, so that no ray of it sees a bottom, and the far surface has none. */
+                REQUIRE(ld_put(t, &rig, cx * 16, cy * 16, -60, cx * 16 + 16, cy * 16 + 16, 0, BLOCK_ID_WATER));
+            }
+        }
+    }
+    REQUIRE(sk_hand_world_sync(t, &rig));
+    const uint8_t *const picture = ld_picture(t, &rig, &eye);
+    const lod_hit_t *const hits = ld_hits(t, &rig);
+    const shade_pixel_t *const shaded = ld_shaded(t, &rig);
+
+    /* Row by row, the far surface against the near one, on the rows that have both. */
+    uint64_t rows = 0u, worst = 0u;
+    for (uint32_t y = 0u; y < LD_HEIGHT; y++) {
+        uint64_t near_sum[3] = {0u, 0u, 0u}, far_sum[3] = {0u, 0u, 0u}, near_count = 0u, far_count = 0u;
+        for (uint32_t x = 0u; x < LD_WIDTH; x++) {
+            const uint64_t i = (uint64_t)y * LD_WIDTH + x;
+            const bool is_far = hits[i].material == BLOCK_ID_WATER && shaded[i].t == hits[i].t;
+            const bool is_near = shaded[i].t < TRAVERSE_COARSE_SKY && shaded[i].t < hits[i].t;
+            for (uint32_t c = 0u; c < 3u; c++) {
+                far_sum[c] += is_far ? picture[i * 4u + c] : 0u;
+                near_sum[c] += is_near ? picture[i * 4u + c] : 0u;
+            }
+            far_count += is_far ? 1u : 0u;
+            near_count += is_near ? 1u : 0u;
+        }
+        if (near_count >= 8u && far_count >= 8u) {
+            rows++;
+            for (uint32_t c = 0u; c < 3u; c++) {
+                const uint64_t a = near_sum[c] / near_count, b = far_sum[c] / far_count;
+                const uint64_t apart = a > b ? a - b : b - a;
+                worst = apart > worst ? apart : worst;
+            }
+        }
+    }
+    uint64_t under_sides = 0u, under_dark = 0u;
+    ld_sea_sides(picture, hits, shaded, false, &under_sides, &under_dark);
+
+    /* Near water a block lower than the far level rounds it, as real sea is: the far voxels' sides now stand in the air. */
+    for (int32_t cy = -(int32_t)LD_HAND_RADIUS; cy <= (int32_t)LD_HAND_RADIUS; cy++) {
+        for (int32_t cx = -(int32_t)LD_HAND_RADIUS; cx <= (int32_t)LD_HAND_RADIUS; cx++) {
+            if (world_map_column_at(&rig.world->map, cx, cy) != nullptr) {
+                REQUIRE(ld_put(t, &rig, cx * 16, cy * 16, -1, cx * 16 + 16, cy * 16 + 16, 0, BLOCK_ID_AIR));
+            }
+        }
+    }
+    REQUIRE(sk_hand_world_sync(t, &rig));
+    const uint8_t *const lower = ld_picture(t, &rig, &eye);
+    const lod_hit_t *const lower_hits = ld_hits(t, &rig);
+    const shade_pixel_t *const lower_shaded = ld_shaded(t, &rig);
+    uint64_t air_sides = 0u, air_dark = 0u;
+    ld_sea_sides(lower, lower_hits, lower_shaded, true, &air_sides, &air_dark);
+
+    printf("  %" PRIu64 " rows with both, at worst %" PRIu64 " bytes apart. Far sides under near water %" PRIu64
+           ", dark %" PRIu64 ". From the air %" PRIu64 ", dark %" PRIu64 "\n",
+           rows, worst, under_sides, under_dark, air_sides, air_dark);
+    CHECK(rows > 0u);
+    /* The means of real texels against the one mean of the texture, with colour and cover going together in its texels. It was 28. */
+    CHECK(worst <= 10u);
+    CHECK(under_sides > 0u);
+    CHECK_EQ_U64(under_dark, 0u);
+    CHECK(air_sides > 0u);
+    CHECK_EQ_U64(air_dark, 0u);
     ld_end(t, &rig);
 }
 
