@@ -3,6 +3,7 @@
 #define MC_RUN_MAIN_INDEX_H
 
 #include "job/index.h"
+#include "math/index.h"
 
 #include <stdint.h>
 
@@ -12,7 +13,8 @@ typedef struct app_t {
     job_system_t job;      /* first: its alignment is what gives app_t its own */
     uint32_t cpu_required; /* CPU_FEATURE_* the build uses */
     uint32_t cpu_present;  /* CPU_FEATURE_* this machine has */
-    uint8_t _pad0[56];
+    math_t math;
+    uint8_t _pad0[48];
 } app_t;
 static_assert(sizeof(app_t) == 320);
 static_assert(alignof(app_t) == 64);

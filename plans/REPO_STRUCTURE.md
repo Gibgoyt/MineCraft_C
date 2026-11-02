@@ -179,7 +179,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 
 | System | Parts | Job | Stage |
 |---|---|---|---|
-| `math` | `vec2 vec3 vec4 ivec3 mat4 quat aabb ray` | Our vector library, scalar C | 04.1 |
+| `math` | `vec2 vec3 vec4 ivec3 mat4 quat aabb ray` | Our vector library, scalar C; `math_init` checks the floating-point environment | 04.1 |
 | `simd` | `cpuid` | C prototypes of the CPUID and XGETBV functions, used by `main/cpu_check` | 03.1 |
 | | `copy blend bitmask noise vec_batch` | C prototypes of NASM kernels | 04.2, 04.3 |
 
@@ -355,6 +355,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/<system>/<part>/` | Game tests |
 | `tests/run/types/` | ctest `run_types`, covering all of Stage 03.1: `types`, `assert`, `log`, `main/cpu_check`, `asm/src/cpuid`, and the built program's `--report` and failure paths |
 | `tests/run/thread/` | ctest `run_thread`, covering `run/src/thread/` and `run/src/thread/ring/` together |
+| `tests/run/math/` | ctest `run_math_owner` for `run/src/math/` itself, named in its `test.cmake`, and `run_math_<part>` for each part |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
 | `tests/asm/` | NASM kernels against scalar C references |
 | `tests/fuzz/`, `tests/soak/` | Fuzzing and long runs (Stage 18.1) |
