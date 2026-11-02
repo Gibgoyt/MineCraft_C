@@ -1,5 +1,5 @@
 /* See README.md. One colour per pixel of the hits: the texture of the face that was hit, at a mip chosen by distance, under
- * that face's brightness. */
+ * that face's brightness, the light stored in its voxel, and what its one sun ray saw. */
 #include "shade/index.hu"
 
 #include <math.h>
@@ -30,10 +30,67 @@ static __device__ __forceinline__ void shade_texel_colour(const shade_texture_t 
     }
 }
 
+/* How much of the sun reaches this point of a surface, from 0 to 1: the one sun ray. It starts from the surface's own voxel, so it
+ * is as exact far from the eye as near it, and goes on through what is see-through as a primary ray does, with a part-covered
+ * texel taking its share. from->t, how far off the surface is seen, chooses the mip of whatever is in the way, so that a far tree's
+ * shadow has the same holes as its leaves. */
+static __device__ __forceinline__ float32_t shade_sun_seen(const traverse_view_t *view, const traverse_camera_t *camera,
+                                                           const shade_texture_t *textures, const uint16_t *faces,
+                                                           const uint8_t *pixels, uint32_t material_count,
+                                                           uint32_t features, const float32_t sun_direction[3],
+                                                           const traverse_hit_t *from, uint32_t from_face,
+                                                           const float32_t from_local[3], float32_t tangent) {
+    traverse_trace_ray_t ray;
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        ray.eye_cell[i] = camera->eye_cell[i] + (int32_t)from->offset[i];
+        ray.eye_frac[i] = from_local[i];
+        ray.direction[i] = traverse_guard(sun_direction[i]);
+    }
+    ray.eye_cell[2] -= TRAVERSE_Z_BASE;
+    const float32_t bias = shade_sun_bias(from->t);
+    ray.eye_frac[from_face >> 1] += (from_face & 1u) != 0u ? bias : -bias;
+    ray.t_start = 0.0F;
+    ray.resume = 1u;
+    float32_t seen = 1.0F;
+    for (uint32_t layer = 0u; layer < SHADE_SUN_LAYERS; layer += 1u) {
+        traverse_hit_t hit;
+        traverse_trace(view, &ray, &hit);
+        const uint32_t face = (uint32_t)hit.info & TRAVERSE_INFO_FACE_MASK;
+        if (face == TRAVERSE_FACE_MISS) {
+            return seen;
+        }
+        if ((features & SHADE_FEATURE_ALPHA) == 0u) {
+            return 0.0F;
+        }
+        const uint32_t material = hit.value & TRAVERSE_VALUE_MATERIAL_MASK;
+        const uint32_t lookup_face = face == TRAVERSE_FACE_INSIDE ? (uint32_t)TRAVERSE_FACE_POS_Z : face;
+        const uint32_t texture_index =
+            material < material_count ? faces[material * SHADE_FACES + lookup_face] : (uint32_t)SHADE_NO_TEXTURE;
+        if (texture_index == SHADE_NO_TEXTURE) {
+            return 0.0F;
+        }
+        float32_t local[3];
+        for (uint32_t i = 0u; i < 3u; i += 1u) {
+            local[i] = ray.eye_frac[i] + ray.direction[i] * hit.t - (float32_t)hit.offset[i];
+        }
+        float32_t u = 0.0F, v = 0.0F;
+        shade_face_uv(face, local, &u, &v);
+        const shade_texture_t *const texture = &textures[texture_index];
+        const uint32_t level = shade_mip_level(from->t, tangent, texture->width, texture->level_count);
+        const uint32_t alpha = shade_texel(texture, pixels, level, u, v)[3];
+        if (alpha == SHADE_ALPHA_OPAQUE) {
+            return 0.0F;
+        }
+        seen *= 1.0F - (float32_t)alpha / 255.0F;
+        ray.t_start = hit.t;
+    }
+    return 0.0F;
+}
+
 __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t camera,
                              const shade_texture_t *textures, const uint16_t *faces, const uint8_t *pixels,
-                             uint32_t material_count, uint32_t features, const traverse_hit_t *hits,
-                             shade_pixel_t *out) {
+                             uint32_t material_count, uint32_t features, const shade_sun_t sun,
+                             const traverse_hit_t *hits, shade_pixel_t *out) {
     const uint32_t pixel_x = blockIdx.x * blockDim.x + threadIdx.x;
     const uint32_t pixel_y = blockIdx.y * blockDim.y + threadIdx.y;
     if (pixel_x >= camera.width || pixel_y >= camera.height) {
@@ -93,10 +150,20 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
         }
         float32_t colour[3];
         shade_texel_colour(texture, texel, colour);
-        const float32_t brightness = shade_face_brightness(face);
-        result.rgb[0] = colour[0] * brightness;
-        result.rgb[1] = colour[1] * brightness;
-        result.rgb[2] = colour[2] * brightness;
+        const uint32_t stored = (features & SHADE_FEATURE_LIGHT) != 0u
+                                    ? (hit.value >> TRAVERSE_VALUE_LIGHT_SHIFT) & 0xFFu
+                                    : (uint32_t)SHADE_LIGHT_OPEN_SKY;
+        float32_t sun_seen = 1.0F;
+        if ((features & SHADE_FEATURE_SHADOW) != 0u && shade_sun_towards(&sun, face, stored) > 0.0F &&
+            sun.direct[0] + sun.direct[1] + sun.direct[2] > 0.0F) {
+            sun_seen = shade_sun_seen(&view, &camera, textures, faces, pixels, material_count, features, sun.direction,
+                                      &hit, face, local, tangent);
+        }
+        float32_t light[3];
+        shade_surface_light(&sun, face, stored, sun_seen, light);
+        result.rgb[0] = colour[0] * light[0];
+        result.rgb[1] = colour[1] * light[1];
+        result.rgb[2] = colour[2] * light[2];
         break;
     }
     out[index] = result;
@@ -131,7 +198,7 @@ gpu_status_t shade_frame(gpu_error_t *error, const shade_scene_t *scene, const t
     shade_kernel<<<grid, dim3(TRAVERSE_TILE_PIXELS, TRAVERSE_TILE_PIXELS)>>>(
         view, *camera, (const shade_texture_t *)(const void *)device_memory_pointer(scene->borrowed_textures),
         (const uint16_t *)(const void *)device_memory_pointer(scene->borrowed_faces),
-        device_memory_pointer(scene->borrowed_pixels), scene->material_count, scene->features,
+        device_memory_pointer(scene->borrowed_pixels), scene->material_count, scene->features, scene->sun,
         (const traverse_hit_t *)(const void *)device_memory_pointer(hits),
         (shade_pixel_t *)(void *)device_memory_pointer(pixels));
     return device_memory_check(error, cudaGetLastError(), "shade: starting the kernel");

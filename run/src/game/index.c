@@ -112,6 +112,32 @@ static bool game_open_parts(game_t *game, const game_config_t *config, int32_t c
     return true;
 }
 
+/* A day's fraction as main hands it to the gpu thread, and back. */
+static uint32_t game_day_units_of(float64_t day_fraction) {
+    return (uint32_t)(day_fraction * 4294967296.0f64);
+}
+
+static float32_t game_day_of_units(uint32_t units) {
+    return (float32_t)((float64_t)units / 4294967296.0f64);
+}
+
+void game_day_set(game_t *game, float64_t day_fraction) {
+    game->day_fraction = day_fraction - floor(day_fraction);
+    atomic_store_explicit(&game->day_units, game_day_units_of(game->day_fraction), memory_order_relaxed);
+}
+
+static void game_day_advance(game_t *game, float32_t seconds) {
+    if ((game->borrowed_render->frame.scene.features & SHADE_FEATURE_DAY_CYCLE) != 0u) {
+        game_day_set(game, game->day_fraction + (float64_t)seconds / GAME_DAY_SECONDS);
+    }
+}
+
+/* On whichever thread draws: the next frame is of the time main last said. */
+static void game_day_apply(game_t *game) {
+    render_frame_time_set(&game->borrowed_render->frame,
+                          game_day_of_units(atomic_load_explicit(&game->day_units, memory_order_relaxed)));
+}
+
 /* All of a column's storage, at a place: terrain_generate_box's order is section_voxel_index's. */
 static terrain_density_box_t game_column_box(int32_t x, int32_t y, uint32_t across) {
     return (terrain_density_box_t){
@@ -216,6 +242,8 @@ bool game_open(game_t *game, const game_config_t *config) {
         heap_release(&game->owned_region);
         return false;
     }
+    game_day_set(game, GAME_DAY_START);
+    game_day_apply(game);
     game->open = 1u;
     return true;
 }
@@ -451,6 +479,7 @@ static bool game_scene_tick(void *context, const display_headless_tick_t *tick) 
     game_fly_from_script(tick->state, &input);
     /* Time here is the count of ticks, so one script gives one path. */
     const int64_t tick_ns = (int64_t)(game->tick_count + 1u) * GAME_TICK_NS;
+    game_day_advance(game, 1.0f32 / (float32_t)MC_GAME_TICK_HZ);
     if (game->borrowed_player == nullptr) {
         game_fly(game, &input, 1.0f32 / (float32_t)MC_GAME_TICK_HZ);
         game_sim_tick(game, tick_ns);
@@ -477,6 +506,7 @@ static bool game_scene_draw(void *context, const display_headless_tick_t *tick, 
         return false;
     }
     /* What later stages draw each frame goes in here. */
+    game_day_apply(game);
     const gpu_status_t status = render_frame_draw(&render->frame, &render->buffers, &game->camera);
     if (status != GPU_STATUS_OK) {
         gpu_error_log(&render->frame.gpu.last_error);
@@ -530,6 +560,7 @@ static void game_gpu_thread(void *borrowed_argument) {
             atomic_store_explicit(&game->failed, 1u, memory_order_release);
             return;
         }
+        game_day_apply(game);
         status = render_frame_draw(&render->frame, &render->buffers, camera);
         if (status != GPU_STATUS_OK) {
             gpu_error_log(&render->frame.gpu.last_error);
@@ -570,6 +601,7 @@ bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t se
     } else {
         game_fly(game, input, seconds);
     }
+    game_day_advance(game, seconds);
     game->camera_slots[game->cameras.back] = game->camera;
     render_exchange_publish(&game->cameras);
     render_frame_t *const frame = &game->borrowed_render->frame;

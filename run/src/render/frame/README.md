@@ -12,6 +12,7 @@
 - `render_frame_texture_table_bytes`, `render_frame_face_table_bytes`, `render_frame_shape_table_bytes`, `render_frame_arena_bytes`: sizes for the parent.
 - `render_frame_init`, `render_frame_deinit`: the tables and textures sent to the card, and the pictures pinned.
 - `render_frame_features_set`: which effects the next frames draw with. All of them, unless told otherwise.
+- `render_frame_time_set`, `render_day_fill`: the time of day, and what sky and light it means.
 - `render_frame_draw`: a whole frame, from world_buffers as they stand and a camera, on the card and home.
 - `render_frame_take`, `render_frame_present`: the newest picture, and copying it to a display buffer.
 - `render_frame_report`, `render_frame_percentiles`: what the frames took.
@@ -24,6 +25,12 @@
 The plan's own words: copy to pinned host memory, then into the dumb buffer, then a page flip. Here that is `frame_gpu_run` into one of three pinned pictures, `render_exchange_publish`, then on the main thread `render_frame_take` and `render_frame_present`, whose copy is `asm/src/copy`'s streaming kernel, with its fence, into whatever `display_buffer_t` it is given. The HUD comes between those two in Stage 14.2.
 
 Three pictures, so that the gpu thread never waits for the display and the display never waits for the card: if a new one is not ready for this flip, the last one shows again.
+
+## The day
+
+`render_day_fill` is arithmetic, once a frame, from a fraction of a day: 0 midnight, 0.25 sunrise in the east, 0.5 noon, 0.75 sunset in the west. The sun's path leans 20 degrees to the south, so that noon has shadows and a side facing south is not the same as one facing north. Colours are mixed from day, twilight and night by how high it is, which come to 1 between them and do not overlap. What lights the world is the sun, or from sunset the moon opposite it, going to nothing at the horizon as one takes over from the other. Colours are this file's and nothing else's, in linear light.
+
+`shade_scene_t.sun` and `post_settings_t` are always what the settings and the time make them, worked out again when either changes: so a kernel has few cases of its own, and with `SHADE_FEATURE_SKY` off it is sent the plain sky and each face's one brightness. This file keeps no clock: `game` does.
 
 ## The camera
 

@@ -407,6 +407,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/render/upload/` | ctest `run_render_upload`, covering `run/src/render/` with `upload`, and `cuda/src/world_buffers/`, on the real card: a real kernel's answers against the world voxel for voxel, the slab pool against a model, the budget, and a real sim thread |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
 | `tests/cuda/shapes/` | ctest `render_feature_shapes`, named in its `test.cmake`: each shape by hand, a block of each shape and its holes against an exact trace from all sides, the settings, the coarse pass, how many holes a pixel goes through, golden PNGs in `fixtures/`, and the cost, on the real card |
+| `tests/cuda/sky/` | ctest `render_feature_sky`, named in its `test.cmake`: the day and the light by hand, the sky, fog, shadows through holes and stored light against an exact trace, a tower's shadow by hand, the settings, the clock through the real threads, golden PNGs in `fixtures/`, and the cost, on the real card |
 | `tests/cuda/traverse/` | ctest `cuda_traverse`, with an encoder of its own for `world_buffers`' format: known hits, random rays and whole frames against an exact CPU reference in `float64_t`, the coarse pass never overestimating, and Stage 01.3's worlds. Timing on request |
 | `tests/asm/` | NASM kernels against scalar C references |
 | `tests/asm/abi/` | ctest `asm_abi`: every kernel keeps the callee-saved registers and leaves no dirty YMM state, by machine state, not by output |

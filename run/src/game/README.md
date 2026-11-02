@@ -9,6 +9,7 @@
 
 - `game_init`, `game_deinit`: remember what it runs on, taking nothing; stop everything. Deinit is safe on a zeroed `game_t`.
 - `game_open`, `game_close`: a world, its blocks on the card, and its pictures, with the effects `game_config_t.features_off` leaves on.
+- `game_day_set`: the time of day, from where the clock goes on. Mid-morning unless told otherwise.
 - `game_sim_step`, `game_fly`, `game_settle`: a step of streaming, a step of flying, and running the sim and upload here until the card holds all the eye's place wants.
 - `game_headless_scene`: what `display_headless_run` drives. One thread, no clock, and one script gives one set of pictures.
 - `game_loop_start`, `game_loop_frame`, `game_loop_stop`: the real threads, and a frame on the main thread.
@@ -26,7 +27,7 @@ A column's blocks are `terrain_generate_box`, on a worker, over all of the colum
 
 | Thread | Does | Tells the others through |
 |---|---|---|
-| `main` | Input, moves the eye, shows the newest picture | A triple buffer of cameras to `gpu`; two relaxed atomics, the eye's chunk, to `sim` |
+| `main` | Input, moves the eye, keeps the time of day, shows the newest picture | A triple buffer of cameras to `gpu`; a relaxed atomic, the time, to `gpu`; two relaxed atomics, the eye's chunk, to `sim` |
 | `sim` | Columns to and from workers, into the map, their light and every edit's, then a snapshot. A tick at 20 Hz, which moves the player if there is one | The snapshots of `world/edit` to `gpu`; each tick's eye to `main`, through `player` |
 | `gpu` | The upload queue, then the frame's kernels | A triple buffer of pictures to `main` |
 
@@ -46,6 +47,10 @@ With `game_player_set`, as `--walk` does, the eye stops flying and follows a bod
 - The mouse turns the camera on `main` at once. The keys go to `sim`, and move the body on its next tick. `main` draws from where the last two ticks say, between them.
 - Under `--headless` it is the same code on one thread, with time counted in ticks. Each tick settles the world first, so that the body does not depend on how fast a worker was, and is drawn at the tick's end.
 - Without a player everything flies as before, so the golden pictures of `tests/run/render/frame/` stay as they were.
+
+## The time of day
+
+One day is 1200 seconds, of whatever `game_loop_frame` or a script's ticks say has passed, so a script's pictures depend on its ticks and on nothing else. `main` keeps it, as a real frame already knows how long it took, and the gpu thread reads it before each frame. A frame out of date by one is the sun a few millionths of a day behind, so a relaxed atomic is plenty. `SHADE_FEATURE_DAY_CYCLE` off stops the clock where it is. When the sim has a world time of its own to keep (Stage 16.1 saves one), it should move there.
 
 ## The guardian's fork
 

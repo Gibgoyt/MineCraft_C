@@ -24,6 +24,11 @@ enum : uint32_t {
     GAME_STREAM_JOBS = 64u,
 };
 
+/* How long a day is, as a familiar game has it: 24000 ticks at 20 Hz. */
+#define GAME_DAY_SECONDS 1200.0f64
+/* Where a world's first day starts: mid-morning, with the sun well up and shadows to see. */
+#define GAME_DAY_START 0.35f64
+
 /* What a world is opened with. */
 typedef struct game_config_t {
     uint32_t render_distance; /* 0: in chunks */
@@ -87,14 +92,20 @@ typedef struct game_t {
     player_t *borrowed_player; /* 864: walking if not nullptr; set before a world opens, and only read after */
     uint32_t commit_next;      /* 872: the job the next step looks at first */
     uint8_t _pad0[20];         /* 876 */
+    /* A line of its own, written by main every frame. */
+    float64_t day_fraction; /* 896: main's: the time of day, from 0 to 1 */
+    _Atomic uint32_t
+        day_units;     /* 904: main to gpu: the same, in 1/2^32 of a day, relaxed: only the look depends on it */
+    uint8_t _pad1[52]; /* 908 */
 } game_t;
-static_assert(sizeof(game_t) == 896);
+static_assert(sizeof(game_t) == 960);
 static_assert(alignof(game_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(game_t, group) == 192);
 static_assert(offsetof(game_t, cameras) == 256);
 static_assert(offsetof(game_t, owned_region) == 608);
 static_assert(offsetof(game_t, center_x) == 816);
 static_assert(offsetof(game_t, tick_count) == 832);
+static_assert(offsetof(game_t, day_fraction) == 896);
 
 /* Remembers what it will run on, and takes nothing. All must outlive it, and topology must have been read before the caller
  * pinned itself. */
@@ -117,6 +128,11 @@ void game_close(game_t *game);
 /* One step of the sim's: what has been generated goes into the world, what is wanted next goes to workers, what has left goes,
  * and the world as it now is goes out as a snapshot. Never waits for a worker. The one thread holding the map. */
 void game_sim_step(game_t *game);
+
+/* Sets the time of day: see render_frame_time_set. Before the threads start, or from the thread that owns input. With
+ * SHADE_FEATURE_DAY_CYCLE on, it goes on from here by a day per GAME_DAY_SECONDS of what game_loop_frame and the headless scene are
+ * told has passed, and with it off it stays. */
+void game_day_set(game_t *game, float64_t day_fraction);
 
 /* Moves the eye. The thread that owns input. */
 void game_fly(game_t *game, const render_fly_input_t *input, float32_t seconds);

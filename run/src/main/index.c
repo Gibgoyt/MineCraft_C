@@ -27,6 +27,7 @@
 #include <inttypes.h>
 #include <stdatomic.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -46,11 +47,14 @@ typedef struct main_options_t {
     uint32_t render_distance;   /* --render-distance, or 0 for config/machine.yaml */
     uint8_t crash_test;         /* display_crash_test_t: --crash-test */
     uint8_t test_world;         /* --test-world */
-    uint8_t features_off;       /* --no-shapes, --no-alpha: SHADE_FEATURE_* */
+    uint8_t features_off;       /* --no-shapes, --no-alpha, --no-sky and on: SHADE_FEATURE_* */
     uint8_t walk;               /* --walk */
-    uint8_t _pad0[4];
+    uint8_t has_time_of_day;    /* --time-of-day */
+    uint8_t _pad0[3];
+    float32_t time_of_day;      /* --time-of-day */
+    uint8_t _pad1[4];
 } main_options_t;
-static_assert(sizeof(main_options_t) == 64);
+static_assert(sizeof(main_options_t) == 72);
 
 static void main_print_usage(const char *program) {
     fprintf(
@@ -58,7 +62,9 @@ static void main_print_usage(const char *program) {
         "usage: %s [--report] [--pretend-missing-cpu <cpu.simd key>] [--pretend-leak]\n"
         "       %s --test-pattern [--card <path>] [--connector <name>] [--crash-test[=<how>]]\n"
         "       %s --headless [--script <path>] [--screenshot-dir <dir>] [--ticks <n>] [--width <w>] [--height <h>]\n"
-        "       %s --test-world [--walk] [--render-distance <chunks>] [--no-shapes] [--no-alpha] [--headless ...]\n"
+        "       %s --test-world [--walk] [--render-distance <chunks>] [--time-of-day <0 to 1>]\n"
+        "           [--no-shapes] [--no-alpha] [--no-sky] [--no-day-cycle] [--no-fog]\n"
+        "           [--no-shadows] [--no-stored-light] [--headless ...]\n"
         "  --report                 print the build's defines and CPU features, then exit\n"
         "  --pretend-missing-cpu    treat this feature as absent, to see the CPU check fail; may repeat\n"
         "  --pretend-leak           skip the shutdown, to see the leak check at exit fail\n"
@@ -72,6 +78,11 @@ static void main_print_usage(const char *program) {
         "                           console. See run/src/display/headless/README.md\n"
         "  --no-shapes, --no-alpha  with --test-world: draw every block a whole cube, or stop rays at see-through "
         "texels\n"
+        "  --no-sky                 with --test-world: a plain painted sky and the sun straight up, with no shadows\n"
+        "  --no-day-cycle           with --test-world: the time of day stays where it starts\n"
+        "  --no-fog, --no-shadows, --no-stored-light\n"
+        "                           with --test-world: no fog, nothing in the sun's way, every voxel under open sky\n"
+        "  --time-of-day <0 to 1>   with --test-world: the time to start at: 0 midnight, 0.25 sunrise, 0.5 noon\n"
         "  --test-world             fly through a generated world: through KMS from a text console, never inside X,\n"
         "                           where WASD, Space and Shift move, the mouse looks, the wheel sets the speed, Ctrl\n"
         "                           goes faster and Esc ends the run. With --headless, the script does all of that\n"
@@ -131,6 +142,25 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
             out->features_off |= (uint8_t)SHADE_FEATURE_ALPHA;
         } else if (strcmp(argv[i], "--walk") == 0) {
             out->walk = 1;
+        } else if (strcmp(argv[i], "--no-sky") == 0) {
+            out->features_off |= (uint8_t)SHADE_FEATURE_SKY;
+        } else if (strcmp(argv[i], "--no-day-cycle") == 0) {
+            out->features_off |= (uint8_t)SHADE_FEATURE_DAY_CYCLE;
+        } else if (strcmp(argv[i], "--no-fog") == 0) {
+            out->features_off |= (uint8_t)SHADE_FEATURE_FOG;
+        } else if (strcmp(argv[i], "--no-shadows") == 0) {
+            out->features_off |= (uint8_t)SHADE_FEATURE_SHADOW;
+        } else if (strcmp(argv[i], "--no-stored-light") == 0) {
+            out->features_off |= (uint8_t)SHADE_FEATURE_LIGHT;
+        } else if (strcmp(argv[i], "--time-of-day") == 0 && i + 1 < argc) {
+            i++;
+            char *end = nullptr;
+            out->time_of_day = strtof(argv[i], &end);
+            if (end == argv[i] || *end != '\0' || !(out->time_of_day >= 0.0f32 && out->time_of_day <= 1.0f32)) {
+                fprintf(stderr, "%s: --time-of-day takes a number from 0 to 1, not %s\n", argv[0], argv[i]);
+                return false;
+            }
+            out->has_time_of_day = 1u;
         } else if (strcmp(argv[i], "--render-distance") == 0 && i + 1 < argc) {
             i++;
             if (!main_parse_count("--render-distance", argv[i], &out->render_distance)) {
@@ -197,7 +227,12 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
         return false;
     }
     if (out->features_off != 0u && out->test_world == 0) {
-        fprintf(stderr, "%s: --no-shapes and --no-alpha only mean something with --test-world\n", argv[0]);
+        fprintf(stderr, "%s: --no-shapes and the other effects' flags only mean something with --test-world\n",
+                argv[0]);
+        return false;
+    }
+    if (out->has_time_of_day != 0u && out->test_world == 0) {
+        fprintf(stderr, "%s: --time-of-day only means something with --test-world\n", argv[0]);
         return false;
     }
     if (out->walk != 0 && out->test_world == 0) {
@@ -434,6 +469,9 @@ static main_exit_t main_run_test_world_headless(app_t *app, const main_options_t
     if (!game_open(&app->game, &game)) {
         return MAIN_EXIT_RUNTIME;
     }
+    if (options->has_time_of_day != 0u) {
+        game_day_set(&app->game, (float64_t)options->time_of_day);
+    }
     display_headless_scene_t scene;
     game_headless_scene(&app->game, &scene);
     display_headless_t *const headless = &app->offscreen.headless;
@@ -467,6 +505,9 @@ static main_exit_t main_run_test_world(app_t *app, const main_options_t *options
                                 ._pad0 = {0}};
     if (!game_open(&app->game, &game)) {
         return MAIN_EXIT_RUNTIME;
+    }
+    if (options->has_time_of_day != 0u) {
+        game_day_set(&app->game, (float64_t)options->time_of_day);
     }
     game_loop_source_begin(&app->game, &app->input);
     const display_status_t ran = display_frames_run(&app->display, game_loop_source, game_loop_discard, &app->game);

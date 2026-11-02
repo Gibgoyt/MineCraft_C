@@ -18,12 +18,16 @@ __global__ void post_kernel(const post_settings_t settings, const traverse_camer
     traverse_camera_direction(&camera, (float32_t)pixel_x + 0.5F, (float32_t)pixel_y + 0.5F, direction);
     float32_t sky[3];
     post_sky(&settings, direction, sky);
-    /* TRAVERSE_COARSE_SKY is past any fog_end, so sky needs no case of its own. */
+    /* TRAVERSE_COARSE_SKY is past any fog_end, so sky needs no case of its own but its discs. */
     const float32_t fog = post_fog(&settings, pixel.t);
-    const float32_t red = pixel.rgb[0] + (sky[0] - pixel.rgb[0]) * fog;
-    const float32_t green = pixel.rgb[1] + (sky[1] - pixel.rgb[1]) * fog;
-    const float32_t blue = pixel.rgb[2] + (sky[2] - pixel.rgb[2]) * fog;
-    xrgb[index] = post_xrgb(post_tone_map(red), post_tone_map(green), post_tone_map(blue));
+    float32_t seen[3];
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        seen[i] = pixel.rgb[i] + (sky[i] - pixel.rgb[i]) * fog;
+    }
+    if (pixel.t >= TRAVERSE_COARSE_SKY) {
+        post_sky_discs(&settings, direction, seen);
+    }
+    xrgb[index] = post_xrgb(post_tone_map(seen[0]), post_tone_map(seen[1]), post_tone_map(seen[2]));
 }
 
 static gpu_status_t post_refuse(gpu_error_t *error, const char *what) {

@@ -30,13 +30,25 @@ enum : uint32_t {
     SHADE_ALPHA_OPAQUE = 255u,
     /* How many surfaces a pixel looks at, holes and all. Past this it stops on the last one: see cuda/src/shade/README.md. */
     SHADE_ALPHA_LAYERS = 16u,
+    /* How many surfaces a sun ray looks at, holes and all, before it calls the sun hidden: see cuda/src/shade/README.md. */
+    SHADE_SUN_LAYERS = 8u,
+    /* A voxel's stored light byte with nothing stored: the sky open above it, and no block light. Sky is the high half. */
+    SHADE_LIGHT_OPEN_SKY = 0xF0u,
+    SHADE_LIGHT_LEVEL_MAX = 15u,
 };
 
 /* The switches of a frame, as shade_scene_t.features. A bit set means the effect is on. */
 enum : uint32_t {
     SHADE_FEATURE_SHAPES = 1u << 0, /* boxes for what is not a cube, or every voxel whole */
     SHADE_FEATURE_ALPHA = 1u << 1,  /* rays go on through a texel of alpha 0, or stop on the texture's mean colour */
-    SHADE_FEATURES_ALL = SHADE_FEATURE_SHAPES | SHADE_FEATURE_ALPHA,
+    SHADE_FEATURE_SKY =
+        1u << 2, /* a sun that moves and lights things, and a sky to go with it, or the sun straight up */
+    SHADE_FEATURE_DAY_CYCLE = 1u << 3, /* the time of day goes on, or stays where it was set */
+    SHADE_FEATURE_FOG = 1u << 4,       /* the far world melts into the sky, or stops at a wall */
+    SHADE_FEATURE_SHADOW = 1u << 5,    /* one ray per surface facing the sun, or nothing ever stands in its way */
+    SHADE_FEATURE_LIGHT = 1u << 6,     /* the light stored per voxel counts, or every voxel is under an open sky */
+    SHADE_FEATURES_ALL = SHADE_FEATURE_SHAPES | SHADE_FEATURE_ALPHA | SHADE_FEATURE_SKY | SHADE_FEATURE_DAY_CYCLE |
+                         SHADE_FEATURE_FOG | SHADE_FEATURE_SHADOW | SHADE_FEATURE_LIGHT,
 };
 
 /* A material with no texture, or none in the table: a colour nothing else in the game is, so that the bug shows. */
@@ -44,7 +56,7 @@ enum : uint32_t {
 #define SHADE_MISSING_G F32(0.0)
 #define SHADE_MISSING_B F32(1.0)
 
-/* The sun is straight up, for now: each kind of face has its one brightness. Stored light and shadow come with Stage 09.2. */
+/* Each kind of face has its one brightness under the sky: what is left of the sky's light on a face that looks sideways or down. */
 #define SHADE_BRIGHTNESS_TOP F32(1.0)
 #define SHADE_BRIGHTNESS_BOTTOM F32(0.5)
 #define SHADE_BRIGHTNESS_X F32(0.6)
@@ -72,6 +84,21 @@ static_assert(offsetof(shade_texture_t, level_count) == 64);
 static_assert(offsetof(shade_texture_t, mean_rgba) == 65);
 static_assert(offsetof(shade_texture_t, _pad0) == 69);
 
+/* The light of this moment of the day, in linear light, worked out once a frame by render_day_fill. With all but ambient at
+ * zero and ambient at one, each kind of face has its one brightness and nothing else, which is the setting's off. */
+typedef struct shade_sun_t {
+    float32_t direction[3]; /* 0: unit, towards the sun, or the moon when the sun is down */
+    float32_t direct[3];    /* 12: its light on a surface square to it */
+    float32_t ambient[3];   /* 24: the sky's light on a surface under all of it */
+    float32_t block[3];     /* 36: block light at its brightest */
+} shade_sun_t;
+static_assert(sizeof(shade_sun_t) == 48);
+static_assert(alignof(shade_sun_t) == 4);
+static_assert(offsetof(shade_sun_t, direction) == 0);
+static_assert(offsetof(shade_sun_t, direct) == 12);
+static_assert(offsetof(shade_sun_t, ambient) == 24);
+static_assert(offsetof(shade_sun_t, block) == 36);
+
 /* What shading reads, borrowed from whoever holds the blocks and not written while a kernel may run. */
 typedef struct shade_scene_t {
     const device_block_t *borrowed_textures; /* 0: texture_count shade_texture_t */
@@ -82,8 +109,9 @@ typedef struct shade_scene_t {
     uint32_t material_count;               /* 28 */
     uint32_t features;                     /* 32: SHADE_FEATURE_* */
     uint8_t _pad0[4];                      /* 36 */
+    shade_sun_t sun;                       /* 40 */
 } shade_scene_t;
-static_assert(sizeof(shade_scene_t) == 40);
+static_assert(sizeof(shade_scene_t) == 88);
 static_assert(alignof(shade_scene_t) == 8);
 static_assert(offsetof(shade_scene_t, borrowed_textures) == 0);
 static_assert(offsetof(shade_scene_t, borrowed_faces) == 8);
@@ -92,6 +120,7 @@ static_assert(offsetof(shade_scene_t, texture_count) == 24);
 static_assert(offsetof(shade_scene_t, material_count) == 28);
 static_assert(offsetof(shade_scene_t, features) == 32);
 static_assert(offsetof(shade_scene_t, _pad0) == 36);
+static_assert(offsetof(shade_scene_t, sun) == 40);
 
 /* One pixel, in linear light before the sky and the tone map: where post goes on from. */
 typedef struct shade_pixel_t {
@@ -122,6 +151,55 @@ SHADE_BOTH_SIDES static inline float32_t shade_face_brightness(uint32_t face) {
         return SHADE_BRIGHTNESS_Y;
     }
     return SHADE_BRIGHTNESS_INSIDE;
+}
+
+/* How square a face is to a unit direction: 0 if it looks away. From inside a block, no face looks at anything. */
+SHADE_BOTH_SIDES static inline float32_t shade_face_towards(uint32_t face, const float32_t direction[3]) {
+    if (face >= SHADE_FACES) {
+        return F32(0.0);
+    }
+    const float32_t along = direction[face >> 1];
+    const float32_t towards = (face & 1u) != 0u ? along : -along;
+    return towards > F32(0.0) ? towards : F32(0.0);
+}
+
+/* A stored level of 0 to 15 as light: each step down is 0.8 of the one above, so a level of 15 is exactly 1. Sky light of 0 is
+ * still a little, as a cave is not pitch black; block light of 0 is none, or a world with no torch would pay for one. */
+SHADE_BOTH_SIDES static inline float32_t shade_sky_level(uint32_t level) {
+    if (level >= SHADE_LIGHT_LEVEL_MAX) {
+        return F32(1.0);
+    }
+    return powf(F32(0.8), (float32_t)(SHADE_LIGHT_LEVEL_MAX - level));
+}
+
+SHADE_BOTH_SIDES static inline float32_t shade_block_level(uint32_t level) {
+    if (level == 0u) {
+        return F32(0.0);
+    }
+    return level >= SHADE_LIGHT_LEVEL_MAX ? F32(1.0) : powf(F32(0.8), (float32_t)(SHADE_LIGHT_LEVEL_MAX - level));
+}
+
+/* How much of the sun a voxel with this stored light may get before asking a ray: none, where no sky light reaches. */
+SHADE_BOTH_SIDES static inline float32_t shade_sun_towards(const shade_sun_t *sun, uint32_t face, uint32_t stored) {
+    return (stored >> 4) == 0u ? F32(0.0) : shade_face_towards(face, sun->direction);
+}
+
+/* What falls on a surface, to multiply its colour by: the sky and block light stored in its voxel, under the face's brightness,
+ * and the sun on top, as much of it as sun_seen says reached here. */
+SHADE_BOTH_SIDES static inline void shade_surface_light(const shade_sun_t *sun, uint32_t face, uint32_t stored,
+                                                        float32_t sun_seen, float32_t out[3]) {
+    const float32_t brightness = shade_face_brightness(face);
+    const float32_t sky = shade_sky_level(stored >> 4), block = shade_block_level(stored & 15u);
+    const float32_t towards = shade_sun_towards(sun, face, stored);
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        out[i] = brightness * (sun->ambient[i] * sky + sun->block[i] * block) + sun->direct[i] * towards * sun_seen;
+    }
+}
+
+/* How far off a surface a sun ray starts, for the distance the surface is seen from: more than that distance's rounding, so that
+ * a surface does not shadow itself, and far less than anything a block is made of. */
+SHADE_BOTH_SIDES static inline float32_t shade_sun_bias(float32_t t) {
+    return F32(2.5e-4) + t * F32(1e-6);
 }
 
 /* Where on a texture a point of a face is, with local from 0 to 1 inside the voxel. v is down the texture, since rows start at
