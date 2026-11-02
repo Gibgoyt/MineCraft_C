@@ -195,7 +195,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | `display` | `device mode flip` | Raw-ioctl KMS: card, connector, mode, dumb buffers, page flip | 05.1 |
 | | `vt_guard` | Console takeover; always restores, even on a crash | 05.2 |
 | | `headless` | No-display backend, scripted input replay, PNG screenshots for tests and agents | 05.4 |
-| | `headless/png` `headless/script` `headless/demo` | Stored-DEFLATE PNG encoder; the script language; the scene shown until `game` exists | 05.4 |
+| | `headless/png` `headless/script` `headless/demo` | Stored-DEFLATE PNG encoder; the script language; the scene `--headless` shows without `--test-world`, which needs no card | 05.4 |
 | `input` | `ops discovery events` | evdev discovery by capability, raw keyboard and mouse events, hot-plug | 05.3 |
 
 ### Rendering (CPU side)
@@ -399,6 +399,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/gpu_bridge/` | ctest `run_gpu_bridge`, covering `run/src/gpu_bridge/` with `status`, and `cuda/src/device_memory/`, on the real card: real blocks and a real kernel, the budgets, stale and forged handles, a pebibyte refused, and no device in a process of its own |
 | `tests/run/render/encode/` | ctest `run_render_encode`: one voxel's bytes worked out on paper, every shape of section against brute force, and real workers. No card |
 | `tests/run/render/frame/` | ctest `run_render_frame`, covering `run/src/game/`, `run/src/render/frame/` and `cuda/src/{shade,post,frame}/`, on the real card: every pixel against an exact trace, the real path against the map, golden PNGs in `fixtures/`, the built program from script to file, and the real threads |
+| `tests/run/game/` | ctest `run_game`: the real loop on the real card and threads through `display_frames_run`, on fake kernels, with the guardian really forked |
 | `tests/run/render/upload/` | ctest `run_render_upload`, covering `run/src/render/` with `upload`, and `cuda/src/world_buffers/`, on the real card: a real kernel's answers against the world voxel for voxel, the slab pool against a model, the budget, and a real sim thread |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
 | `tests/cuda/traverse/` | ctest `cuda_traverse`, with an encoder of its own for `world_buffers`' format: known hits, random rays and whole frames against an exact CPU reference in `float64_t`, the coarse pass never overestimating, and Stage 01.3's worlds. Timing on request |

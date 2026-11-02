@@ -438,10 +438,6 @@ bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t se
 }
 
 bool game_loop_stop(game_t *game) {
-    /* A run can end before its first frame, with nothing started. */
-    if (game->threads_running == 0u) {
-        return atomic_load_explicit(&game->failed, memory_order_acquire) == 0u;
-    }
     atomic_store_explicit(&game->stop, 1u, memory_order_release);
     thread_join(&game->sim_thread);
     thread_join(&game->gpu_thread);

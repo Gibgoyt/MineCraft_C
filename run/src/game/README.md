@@ -37,7 +37,7 @@ None of them ever waits for another, as the plan wants: a slow tick cannot stall
 
 With no threads, as under `--headless`, `game_settle` does a sim step and an upload round in turn until all of it is on the card, before each frame. So a picture does not depend on how fast a worker was, and the same script always gives the same bytes. It is the same code as the threads run, in another order.
 
-`tests/run/render/frame/` runs the threads for real, on a plain buffer for a display, and through `display_frames_run` on a fake kernel with a real guardian forked. Only Ahmed can run them on KMS.
+`tests/run/render/frame/` runs the threads for real, on a plain buffer for a display, and `tests/run/game/` through `display_frames_run` on a fake kernel with a real guardian forked. Only Ahmed can run them on KMS.
 
 ## The guardian's fork
 

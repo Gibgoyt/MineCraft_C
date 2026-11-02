@@ -171,6 +171,32 @@ TEST(the_window_may_lie_below_zero_and_its_table_wraps) {
     tw_close(t, &memory);
 }
 
+/* A slot still holding the column that wrapped out of this place is not looked at, and shows nothing, until its new one arrives. */
+TEST(a_column_that_wrapped_out_of_its_slot_is_not_seen) {
+    device_memory_t memory;
+    REQUIRE(tw_open(t, &memory));
+    tw_world_t *const world = tw_world_begin(t, 4u, 0, 0);
+    tw_set(world, 5, 5, 40, 4u); /* column 0, 0, in slot 0 */
+    REQUIRE(tw_world_upload(t, &memory, world));
+    const traverse_ray_t ray = tw_ray(5, 5, 60, 0.0f32, 0.0f32, -1.0f32);
+    traverse_hit_t hit;
+    REQUIRE(tw_cast(t, &memory, world, &ray, 1u, &hit));
+    tw_check_hit(t, &hit, TRAVERSE_FACE_POS_Z, 19.5f32, 0, 0, -20, 4u);
+    const int32_t elsewhere = 4;
+    const int32_t here = 0;
+    REQUIRE(device_memory_write(&memory, &world->table, offsetof(world_buffers_column_t, chunk_x), &elsewhere,
+                                sizeof(elsewhere)) == GPU_STATUS_OK);
+    REQUIRE(tw_cast(t, &memory, world, &ray, 1u, &hit));
+    CHECK_EQ_U64(traverse_hit_face(hit.info), TRAVERSE_FACE_MISS);
+    REQUIRE(device_memory_write(&memory, &world->table, offsetof(world_buffers_column_t, chunk_x), &here,
+                                sizeof(here)) == GPU_STATUS_OK);
+    REQUIRE(device_memory_write(&memory, &world->table, offsetof(world_buffers_column_t, chunk_y), &elsewhere,
+                                sizeof(elsewhere)) == GPU_STATUS_OK);
+    REQUIRE(tw_cast(t, &memory, world, &ray, 1u, &hit));
+    CHECK_EQ_U64(traverse_hit_face(hit.info), TRAVERSE_FACE_MISS);
+    tw_close(t, &memory);
+}
+
 TEST(a_ray_from_outside_the_window_enters_it) {
     device_memory_t memory;
     REQUIRE(tw_open(t, &memory));

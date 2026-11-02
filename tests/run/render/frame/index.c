@@ -3,21 +3,6 @@
 
 #include "png/index.h"
 
-/* Both fake kernels, for the run through the display loop. Their helpers share names, so the one for input is renamed coming in. */
-#include "run/display/mode/fixtures/fake_card.h"
-#define fake_close_fd evdev_close_fd
-#define fake_ioctl_call evdev_ioctl_call
-#define fake_read_fd evdev_read_fd
-#define fake_record evdev_record
-#define fake_ops evdev_ops
-#include "run/input/fixtures/fake_evdev.h"
-#undef fake_close_fd
-#undef fake_ioctl_call
-#undef fake_read_fd
-#undef fake_record
-#undef fake_ops
-#include "run/input/fixtures/replay.h"
-
 #include "display/headless/png/index.h"
 #include "file/index.h"
 #include "game/index.h"
@@ -347,6 +332,71 @@ TEST(the_exchange_hands_over_the_newest_and_keeps_what_is_being_read) {
         render_exchange_publish(exchange);
     }
     CHECK(exchange->back != slot);
+    /* However the two sides take turns, the writer, the reader and the middle hold one slot each. */
+    uint32_t turns = 0x2d6bu;
+    for (uint32_t i = 0u; i < 64u; i++) {
+        if ((turns & 1u) != 0u) {
+            render_exchange_publish(exchange);
+        } else {
+            (void)render_exchange_take(exchange, &slot);
+        }
+        turns = turns >> 1 | turns << 15;
+        const uint32_t middle =
+            atomic_load_explicit(&exchange->exchange, memory_order_relaxed) & 3u; /* the low bits name a slot */
+        CHECK_EQ_U64(1u << exchange->back | 1u << exchange->front | 1u << middle, 7u);
+    }
+}
+
+/* The goldens look at grass and rock, so they would not see this. Stage 10.6 replaces it, and this test with it. */
+TEST(the_test_worlds_surface_is_sand_by_the_water_and_grass_above_it) {
+    fr_rig_t rig;
+    REQUIRE(fr_rig_begin(t, &rig));
+    uint16_t *const states = test_alloc(t, GAME_TEST_WORLD_COLUMN_VOXELS * sizeof(uint16_t));
+    const uint32_t per_layer = COLUMN_SIZE * COLUMN_SIZE;
+    const int32_t height = COLUMN_Z_STORAGE_END - COLUMN_Z_STORAGE_MIN;
+    uint64_t beaches = 0u, sea_beds = 0u, meadows = 0u, soil = 0u, overhangs = 0u;
+    for (int32_t chunk_y = -8; chunk_y <= 8; chunk_y++) {
+        for (int32_t chunk_x = -8; chunk_x <= 8; chunk_x++) {
+            game_test_world_fill(rig.terrain->borrowed_density, chunk_x, chunk_y, states);
+            for (uint32_t cell = 0u; cell < per_layer; cell++) {
+                /* Down from the sky to the first thing that is not air or water. */
+                int32_t storage = height - 1;
+                bool under_water = false;
+                uint16_t state = states[(uint64_t)storage * per_layer + cell];
+                while (storage > 0 && (state == BLOCK_ID_AIR || state == BLOCK_ID_WATER)) {
+                    under_water = under_water || state == BLOCK_ID_WATER;
+                    storage--;
+                    state = states[(uint64_t)storage * per_layer + cell];
+                }
+                const int32_t z = storage + COLUMN_Z_STORAGE_MIN;
+                if (under_water) {
+                    CHECK_EQ_U64(state, BLOCK_ID_SAND);
+                    sea_beds++;
+                } else if (z <= MC_WORLD_Z_SEA + 2) {
+                    CHECK_EQ_U64(state, BLOCK_ID_SAND);
+                    beaches++;
+                } else if (state == BLOCK_ID_GRASS_BLOCK) {
+                    meadows++;
+                    CHECK(z < 170);
+                    /* Or nothing, under an overhang one block thick. */
+                    const uint16_t below = states[(uint64_t)(storage - 1) * per_layer + cell];
+                    overhangs += below == BLOCK_ID_AIR || below == BLOCK_ID_WATER ? 1u : 0u;
+                    soil += below == BLOCK_ID_DIRT ? 1u : 0u;
+                } else {
+                    CHECK_EQ_U64(state, BLOCK_ID_SNOW_BLOCK);
+                    CHECK(z >= 170);
+                }
+            }
+        }
+    }
+    printf("  %" PRIu64 " beach, %" PRIu64 " sea bed, %" PRIu64 " grass, %" PRIu64 " over air or water\n", beaches,
+           sea_beds, meadows, overhangs);
+    CHECK(beaches > 0u);
+    CHECK(sea_beds > 0u);
+    CHECK(meadows > 0u);
+    CHECK_EQ_U64(soil + overhangs, meadows);
+    CHECK(soil > overhangs);
+    fr_rig_end(t, &rig);
 }
 
 /* ---- A world of a few blocks, against an exact reference ----------------------------------------------------------------- */
@@ -1291,274 +1341,6 @@ TEST(the_real_threads_draw_what_one_thread_draws_with_nothing_from_the_heap) {
         hit_count += traverse_hit_face(hits[i].info) != TRAVERSE_FACE_MISS ? 1u : 0u;
     }
     CHECK(hit_count > (uint64_t)FR_WIDTH * FR_HEIGHT / 8u);
-    game_close(game);
-    fr_rig_end(t, &rig);
-}
-
-/* ---- Through the display loop, as under KMS ------------------------------------------------------------------------------- */
-
-static input_t *fr_input_start(test_context_t *t, fake_evdev_t *fake) {
-    input_t *const input = fr_aligned(t, sizeof(input_t));
-    CHECK(input_init(input, FAKE_DIRECTORY, &evdev_ops, fake));
-    return input;
-}
-
-static float64_t fr_flown(const render_camera_t *from, const render_camera_t *to) {
-    const float64_t x = to->position[0] - from->position[0];
-    const float64_t y = to->position[1] - from->position[1];
-    return sqrt(x * x + y * y);
-}
-
-/* Discard throws away what waited, and the time away, and a first frame is what starts the threads. */
-TEST(the_loop_source_starts_the_threads_on_its_first_frame_and_flies_from_real_input) {
-    /* The fixtures' other helpers, which only their own tests need. */
-    (void)evdev_record;
-    (void)fake_caps_touchpad;
-    (void)fake_caps_power_button;
-    (void)fake_find_call;
-    fr_rig_t rig;
-    REQUIRE(fr_rig_begin(t, &rig));
-    game_t *const game = rig.game;
-    REQUIRE(game_open(game, &fr_small_game));
-    fake_evdev_t *const fake = fake_new(t);
-    fake_device_t *const mouse = fake_add(fake, "event0", "Mouse", fake_caps_mouse, true);
-    fake_device_t *const keyboard = fake_add(fake, "event1", "Keyboard", fake_caps_keyboard, true);
-    input_t *const input = fr_input_start(t, fake);
-
-    /* A run that ended before any frame has nothing to stop. */
-    game_loop_source_begin(game, input);
-    CHECK_EQ_U64(game->threads_running, 0u);
-    CHECK(game_loop_stop(game));
-
-    const uint64_t bytes = post_xrgb_bytes(FR_WIDTH, FR_HEIGHT);
-    display_buffer_t target = {.owned_map = fr_aligned(t, bytes),
-                               .map_bytes = bytes,
-                               .pitch = FR_WIDTH * 4u,
-                               .width = FR_WIDTH,
-                               .height = FR_HEIGHT};
-    CHECK(game_loop_source(game, &target));
-    CHECK_EQ_U64(game->threads_running, 1u);
-
-    /* The mouse turns it, unless another VT was on screen. */
-    const float32_t yaw_start = game->camera.yaw;
-    fake_replay(mouse, replay_mouse_moves, REPLAY_COUNT(replay_mouse_moves));
-    game_loop_discard(game);
-    CHECK(game_loop_source(game, &target));
-    CHECK(game->camera.yaw == yaw_start);
-    fake_replay(mouse, replay_mouse_moves, REPLAY_COUNT(replay_mouse_moves));
-    CHECK(game_loop_source(game, &target));
-    CHECK(game->camera.yaw != yaw_start);
-
-    /* W flies it along where it looks, by the clock, and the time spent away is not time spent flying. */
-    fake_replay(keyboard, replay_w_held, REPLAY_COUNT(replay_w_held));
-    CHECK(game_loop_source(game, &target));
-    render_camera_t before = game->camera;
-    time_sleep_ns(400000000);
-    CHECK(game_loop_source(game, &target));
-    const float64_t flown = fr_flown(&before, &game->camera);
-    CHECK(flown > 0.0f64);
-    before = game->camera;
-    time_sleep_ns(400000000);
-    game_loop_discard(game);
-    CHECK(game_loop_source(game, &target));
-    CHECK(fr_flown(&before, &game->camera) < flown / 2.0f64);
-
-    static const struct input_event esc[] = {REPLAY_EVENT(EV_KEY, KEY_ESC, 1), REPLAY_SYN};
-    fake_replay(keyboard, esc, REPLAY_COUNT(esc));
-    CHECK(!game_loop_source(game, &target));
-    CHECK(game_loop_stop(game));
-    CHECK_EQ_U64(game->threads_running, 0u);
-    input_deinit(input);
-    game_close(game);
-    fr_rig_end(t, &rig);
-}
-
-typedef enum fr_run_stage_t : uint32_t {
-    FR_RUN_WANT_FIRST_PICTURE, /* until the screen is what was drawn before the fork */
-    FR_RUN_FLYING,             /* W and Ctrl held, until three chunks away */
-    FR_RUN_SETTLING,           /* let go, until the screen stops changing */
-} fr_run_stage_t;
-
-typedef struct fr_run_t {
-    game_t *borrowed_game;             /* 0 */
-    const display_t *borrowed_display; /* 8 */
-    fake_device_t *borrowed_keyboard;  /* 16 */
-    const uint8_t *borrowed_expected;  /* 24: from before the fork */
-    uint8_t *borrowed_last;            /* 32: what the screen last showed */
-    uint64_t bytes;                    /* 40 */
-    uint64_t frames;                   /* 48 */
-    int64_t started_ns;                /* 56 */
-    render_camera_t start;             /* 64 */
-    fr_run_stage_t stage;              /* 104 */
-    uint32_t same;                     /* 108 */
-    uint8_t guardian_before_threads;   /* 112 */
-    uint8_t first_picture_true;        /* 113 */
-    uint8_t timed_out;                 /* 114 */
-    uint8_t _pad0[5];                  /* 115 */
-} fr_run_t;
-static_assert(sizeof(fr_run_t) == 120);
-
-static bool fr_run_source(void *context, display_buffer_t *back) {
-    static const struct input_event ctrl_w_down[] = {REPLAY_EVENT(EV_KEY, KEY_LEFTCTRL, 1),
-                                                     REPLAY_EVENT(EV_KEY, KEY_W, 1), REPLAY_SYN};
-    static const struct input_event ctrl_w_up[] = {REPLAY_EVENT(EV_KEY, KEY_LEFTCTRL, 0),
-                                                   REPLAY_EVENT(EV_KEY, KEY_W, 0), REPLAY_SYN};
-    static const struct input_event esc[] = {REPLAY_EVENT(EV_KEY, KEY_ESC, 1), REPLAY_SYN};
-    fr_run_t *const run = context;
-    game_t *const game = run->borrowed_game;
-    if (run->frames == 0u) {
-        run->guardian_before_threads = run->borrowed_display->guard.guardian_pid != 0 && game->threads_running == 0u;
-    }
-    run->frames++;
-    if (!game_loop_source(game, back)) {
-        return false;
-    }
-    if (time_now_ns() - run->started_ns > 120ll * TIME_NS_PER_SECOND) {
-        run->timed_out = 1u;
-        return false;
-    }
-    switch (run->stage) {
-    case FR_RUN_WANT_FIRST_PICTURE:
-        if (memcmp(back->owned_map, run->borrowed_expected, run->bytes) == 0) {
-            run->first_picture_true = 1u;
-            run->start = game->camera;
-            run->stage = FR_RUN_FLYING;
-            fake_replay(run->borrowed_keyboard, ctrl_w_down, REPLAY_COUNT(ctrl_w_down));
-        }
-        break;
-    case FR_RUN_FLYING:
-        if (fr_flown(&run->start, &game->camera) > 3.0f64 * COLUMN_SIZE) {
-            run->stage = FR_RUN_SETTLING;
-            fake_replay(run->borrowed_keyboard, ctrl_w_up, REPLAY_COUNT(ctrl_w_up));
-        }
-        break;
-    case FR_RUN_SETTLING:
-        run->same = memcmp(back->owned_map, run->borrowed_last, run->bytes) == 0 ? run->same + 1u : 0u;
-        memcpy(run->borrowed_last, back->owned_map, run->bytes);
-        if (run->same == 400u) {
-            fake_replay(run->borrowed_keyboard, esc, REPLAY_COUNT(esc));
-        }
-        break;
-    }
-    time_sleep_ns(1000000);
-    return true;
-}
-
-/* All of main_run_test_world but the kernel's side: the guardian is really forked, with the card's runtime live and the pictures
- * pinned before it, and it stays alive for the whole run. So a picture written after the fork that reaches this process's memory
- * shows that the pin survived: the picture to match was made before the fork, by the same pictures. */
-TEST(a_world_runs_through_the_display_loop_with_a_real_guardian_forked) {
-    fr_rig_t rig;
-    REQUIRE(fr_rig_begin(t, &rig));
-    game_t *const game = rig.game;
-    fake_card_t *const card = fake_card_new(t);
-    fake_card_use_small_mode(card);
-    display_t *const display = fr_aligned(t, sizeof(display_t));
-    const display_config_t config = fake_config();
-    REQUIRE(display_init(display, &config, &fake_ops, card) == DISPLAY_STATUS_OK);
-    const display_buffer_t *const buffer = &display->flip.buffers[0];
-    REQUIRE(buffer->pitch == buffer->width * 4u);
-    const game_config_t small = {.render_distance = 6u, .width = buffer->width, .height = buffer->height, ._pad0 = {0}};
-    REQUIRE(game_open(game, &small));
-    fake_evdev_t *const fake = fake_new(t);
-    fake_device_t *const keyboard = fake_add(fake, "event1", "Keyboard", fake_caps_keyboard, true);
-    input_t *const input = fr_input_start(t, fake);
-
-    /* Everything the eye's first place wants goes to the card before the fork, so the picture to match is known. */
-    REQUIRE(game_settle(game));
-    const uint64_t bytes = post_xrgb_bytes(buffer->width, buffer->height);
-    uint8_t *const expected = fr_aligned(t, bytes);
-    const uint8_t *const before_fork = fr_draw(t, &rig, &game->camera);
-    REQUIRE(before_fork != nullptr);
-    memcpy(expected, before_fork, bytes);
-
-    game_loop_source_begin(game, input);
-    fr_run_t run = {.borrowed_game = game,
-                    .borrowed_display = display,
-                    .borrowed_keyboard = keyboard,
-                    .borrowed_expected = expected,
-                    .borrowed_last = fr_aligned(t, bytes),
-                    .bytes = bytes,
-                    .started_ns = time_now_ns()};
-    const display_status_t status = display_frames_run(display, fr_run_source, game_loop_discard, &run);
-    CHECK(game_loop_stop(game));
-    CHECK_EQ_U64(status, DISPLAY_STATUS_OK);
-    CHECK_EQ_U64(run.timed_out, 0u);
-    CHECK_EQ_U64(run.guardian_before_threads, 1u);
-    CHECK_EQ_U64(run.first_picture_true, 1u);
-    CHECK_EQ_U64(run.stage, FR_RUN_SETTLING);
-    CHECK_EQ_I64(display->guard.guardian_pid, 0);
-    CHECK(card->flips > 400u);
-    CHECK_EQ_I64(card->kd_mode, KD_TEXT);
-    /* What it flew to: streamed and uploaded after the fork, and what one thread draws from there. */
-    const uint64_t columns_before_settle = game->columns_made;
-    CHECK(columns_before_settle > 0u);
-    REQUIRE(game_settle(game));
-    const uint8_t *const after = fr_draw(t, &rig, &game->camera);
-    REQUIRE(after != nullptr);
-    CHECK_MEM_EQ(after, run.borrowed_last, bytes);
-    CHECK(memcmp(after, expected, bytes) != 0);
-    /* A page the card had stopped writing to would still read as it did at the fork: untouched, or that one old picture. */
-    uint64_t lit = 0u;
-    for (uint64_t i = 0u; i < bytes; i++) {
-        lit += after[i] != 0u ? 1u : 0u;
-    }
-    CHECK(lit > bytes / 2u);
-
-    input_deinit(input);
-    game_close(game);
-    display_deinit(display);
-    fr_rig_end(t, &rig);
-    check_nothing_left(t, card);
-}
-
-/* The world at the real distance on the real threads, from nothing, as a measurement to read and not a check to pass: too slow
- * for every run, and it prints what it saw. MC_FRAME_MEASURE_THREADS=1 on the release preset. */
-TEST(the_real_threads_load_the_default_render_distance_when_asked) {
-    if (getenv("MC_FRAME_MEASURE_THREADS") == nullptr) {
-        return;
-    }
-    fr_rig_t rig;
-    REQUIRE(fr_rig_begin(t, &rig));
-    game_t *const game = rig.game;
-    const game_config_t full = {
-        .render_distance = MC_GAME_RENDER_DISTANCE_DEFAULT, .width = 1920u, .height = 1080u, ._pad0 = {0}};
-    REQUIRE(game_open(game, &full));
-    const uint64_t bytes = post_xrgb_bytes(full.width, full.height);
-    uint8_t *const screen = fr_aligned(t, bytes);
-    display_buffer_t target = {
-        .owned_map = screen, .map_bytes = bytes, .pitch = full.width * 4u, .width = full.width, .height = full.height};
-    const int64_t started_ns = time_now_ns();
-    REQUIRE(game_loop_start(game, nullptr));
-    const render_fly_input_t still = {0};
-    const uint32_t wanted = rig.world->map.slot_count;
-    int64_t first_picture_ns = 0, longest_frame_ns = 0, all_in_ns = 0;
-    uint64_t frames = 0u;
-    while (all_in_ns == 0) {
-        const int64_t frame_start_ns = time_now_ns();
-        REQUIRE(game_loop_frame(game, &still, 1.0f32 / 120.0f32, &target));
-        const int64_t frame_ns = time_now_ns() - frame_start_ns;
-        longest_frame_ns = frame_ns > longest_frame_ns ? frame_ns : longest_frame_ns;
-        frames++;
-        first_picture_ns = first_picture_ns == 0 && game->borrowed_last_picture != nullptr ? time_now_ns() - started_ns
-                                                                                           : first_picture_ns;
-        /* The sim's numbers, read from outside it: this only decides when to stop looking. */
-        if (rig.render->upload.stats.sections_sent > 0u && rig.world->map.pending_count == 0u &&
-            game->stream_quiet != 0u && rig.world->edit.queue_count[WORLD_EDIT_CONSUMER_RENDER] == 0u) {
-            all_in_ns = time_now_ns() - started_ns;
-        }
-        REQUIRE(time_now_ns() - started_ns < 200ll * TIME_NS_PER_SECOND);
-        time_sleep_ns(8333333);
-    }
-    CHECK(game_loop_stop(game));
-    printf("  %" PRIu32 " slots, %" PRIu64 " columns, first picture %.0f ms, all in %.0f ms, %" PRIu64
-           " frames, longest game_loop_frame %.3f ms, %.1f MiB of slabs, pool full %" PRIu64 "\n",
-           wanted, game->columns_made, (libc_double_t)time_ns_to_ms(first_picture_ns),
-           (libc_double_t)time_ns_to_ms(all_in_ns), frames, (libc_double_t)time_ns_to_ms(longest_frame_ns),
-           (libc_double_t)rig.render->buffers.slab_bytes / (libc_double_t)(1u << 20),
-           rig.render->buffers.pool_full_count);
-    CHECK_EQ_U64(rig.render->buffers.pool_full_count, 0u);
-    game_report(game);
     game_close(game);
     fr_rig_end(t, &rig);
 }
