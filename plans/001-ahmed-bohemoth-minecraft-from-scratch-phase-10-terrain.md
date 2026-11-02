@@ -68,6 +68,7 @@ Not agent-runnable: `--test-world` through KMS, and the visual review.
 Appended as they land:
 
 - `ef00f7d` Stream the real terrain into the game instead of the test world, size the section pool for it, measure the bench in the plan's chunk columns on 16 workers, and speed up a walk's surface and caves until the target is really met.
+- `d3b6969` Check the Phase 10 gate: test whole columns of every biome from 1 and 16 workers shown to have run, hold a mask's cut by hand, keep the biome test under the split line, and record what the gate found.
 
 ## Wiring outside this phase's paths
 
