@@ -16,10 +16,11 @@
 - `game_loop_source_begin`, `game_loop_source`, `game_loop_discard`: what `display_frames_run` calls: the threads start on its first frame, then real keys and a real mouse to `game_loop_frame`, and Esc to stop.
 - `game_fly_from_script`, `game_fly_from_input`: either kind of input to a step of flying.
 - `game_player_set`, `game_walk_send`, `game_hands_send`: walk through the world with this player and not fly; what the mouse and keys want of it; what its two buttons are doing.
-- `game_report`: what the frames took.
+- `game_entity_set`: what the player breaks comes out as items in the world, which it can pick up.
+- `game_report`: what the frames took, and the books of what was dropped.
 
 **May be called by:** `run/src/main/`.
-**Depends on:** `player`, `render`, `world`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
+**Depends on:** `player`, `entity`, `render`, `world`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
 
 A column's blocks are `terrain_generate_box`, on a worker, over all of the column's storage. Each job lends it the states and a byte per voxel.
 
@@ -48,6 +49,7 @@ With `game_player_set`, as `--walk` does, the eye stops flying and follows a bod
 - Under `--headless` it is the same code on one thread, with time counted in ticks. Each tick settles the world first, so that the body does not depend on how fast a worker was, and is drawn at the tick's end.
 - What it aims at is worked out on each tick, with the look `main` last sent. `main` draws its outline over each picture, through the camera that drew that picture, which the `gpu` thread leaves beside it in `picture_cameras`. See `run/src/player/camera/README.md`.
 - Each tick the hands act first, on what the last tick aimed at, then the body moves: the left button mines and the right places, all on `sim`, through `world/edit`, so that light, the renderer and `world/tick` see them as any other edit. See `run/src/player/interaction/README.md`.
+- With `game_entity_set`, as `--walk` also does, what the hands break goes from the player's ring into `run/src/entity/` on that same tick, before the body moves. Then everything there moves, and the body picks up what it now reaches. `game` joins the two, so that `entity` knows nothing of a player. See `run/src/entity/item_drop/README.md`.
 - Without a player everything flies as before, so the golden pictures of `tests/run/render/frame/` stay as they were.
 
 ## The time of day

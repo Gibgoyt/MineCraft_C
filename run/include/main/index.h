@@ -3,6 +3,7 @@
 #define MC_RUN_MAIN_INDEX_H
 
 #include "display/index.h"
+#include "entity/index.h"
 #include "game/index.h"
 #include "gpu_bridge/index.h"
 #include "input/index.h"
@@ -29,6 +30,7 @@ typedef struct app_t {
     terrain_t terrain;             /* the same */
     physics_t physics;             /* only --walk moves anything with it */
     player_t player;               /* game moves it only with --walk */
+    entity_t entity;               /* only --walk puts anything in it */
     gpu_bridge_t gpu_bridge;       /* the default run and --headless start it, unless gpu.enabled says otherwise */
     render_t render;               /* takes nothing on the card until game opens a world */
     game_t game;                   /* takes nothing until --test-world opens a world */
@@ -41,7 +43,7 @@ typedef struct app_t {
     math_t math;
     uint8_t _pad0[40];
 } app_t;
-static_assert(sizeof(app_t) == 10688);
+static_assert(sizeof(app_t) == 10880);
 static_assert(alignof(app_t) == 64);
 
 /* The exit codes of minecraft_c. */
