@@ -149,7 +149,7 @@ Layout: `compile/src/<tool>/index.c`, `compile/include/<tool>/index.h`, `README.
 | `struct_offsets` | Emits `.inc` offsets from C structs, for NASM | 04.3 |
 | `inflate` | Our own DEFLATE decoder | 06.1 |
 | `png` | Our own bounds-checked PNG decoder (packs are untrusted) | 06.1 |
-| `texture_pack` | Open pack in `/tmp/mc_c_assets/` → `textures/` | 06.2 |
+| `texture_pack` | Open pack in `/tmp/mc_c_assets/` → `textures/`; `verify` checks that tree with no pack. Parts: `support mctex manifest pack output verify`. Run by hand, never by the build | 06.2 |
 | `texture_vector` | Vector data per texture; procedural recipes | 06.3 |
 | `game_tables` | `config/{blocks,items,recipes,biomes,mobs}` → C tables | 07.1 |
 
@@ -314,7 +314,9 @@ Layout: `textures/<GROUP>/<NAME>/`.
 
 ```
 textures/
-├── ATTRIBUTION.md                   every source pack, author, licence, commit
+├── ATTRIBUTION.md                   every source pack, author, licence, commit; generated
+├── README.md                        how this directory works, and how to re-import
+├── import.yaml                      the pinned pack, and what becomes of each of its files
 ├── blocks/dirt/
 │   ├── index.yaml                   source pack or procedural recipe
 │   ├── index.mctex                  translated data
@@ -324,13 +326,13 @@ textures/
 └── ui/
 ```
 
-Groups: `blocks`, `items`, `mobs`, `ui`.
+Groups: `blocks`, `items`, `mobs`, `ui`, each with its own `README.md`. `index.mctex` is defined in `compile/src/texture_pack/mctex/`.
 
 How a texture gets into the game:
 
 ```
 open pack, pinned commit, cloned to /tmp/mc_c_assets/      (never committed as-is)
-        │  compile/src/texture_pack  (licence check)
+        │  compile/src/texture_pack  (pin and licence check), run by hand, never by the build
         ▼
 textures/<GROUP>/<NAME>/                                    committed: builds need no network
         │  compile/src/texture_vector  (palette, mean color, height, normal)
@@ -355,6 +357,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/compile/<tool>/` | Tool tests |
 | `tests/compile/standards_lint/` | ctest `standards_lint_fixtures`: one failing fixture per banned construct, under `fixtures/{lint,callgraph,compiler}/` |
 | `tests/compile/standards_lint/harness/` | Tests the harness itself |
+| `tests/compile/texture_pack/` | ctest `compile_texture_pack`: builds its own small pack at run time, and checks the committed `textures/` with no pack |
 | `tests/compile/{inflate,png}/fixtures/` | Committed streams and images from independent encoders, with `generate.py`, which wrote them and is not part of the build |
 | `tests/run/<system>/<part>/` | Game tests |
 | `tests/run/types/` | ctest `run_types`, covering all of Stage 03.1: `types`, `assert`, `log`, `main/cpu_check`, `asm/src/cpuid`, and the built program's `--report` and failure paths |
