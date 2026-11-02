@@ -7,6 +7,7 @@
 #include "input/index.h"
 #include "job/index.h"
 #include "math/index.h"
+#include "render/index.h"
 #include "simd/index.h"
 #include "terrain/index.h"
 #include "texture/index.h"
@@ -23,6 +24,7 @@ typedef struct app_t {
     world_t world;                 /* nothing runs in it until game does (Stage 08.4) */
     terrain_t terrain;             /* the same */
     gpu_bridge_t gpu_bridge;       /* the default run and --headless start it, unless gpu.enabled says otherwise */
+    render_t render;               /* takes nothing on the card until game opens a world (Stage 08.4) */
     display_t display;             /* only --test-pattern starts it, for now */
     display_offscreen_t offscreen; /* only --headless starts it */
     input_t input;                 /* only --test-pattern starts it, and only once display_init said OK */
@@ -31,7 +33,7 @@ typedef struct app_t {
     math_t math;
     uint8_t _pad0[48];
 } app_t;
-static_assert(sizeof(app_t) == 3840);
+static_assert(sizeof(app_t) == 4736);
 static_assert(alignof(app_t) == 64);
 
 /* The exit codes of minecraft_c. */

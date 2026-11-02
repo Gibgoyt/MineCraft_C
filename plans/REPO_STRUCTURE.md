@@ -205,7 +205,9 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | `gpu_bridge` | one per CUDA area | **The C API to CUDA** (`extern "C"`) | 08.1 |
 | | `status` | `gpu_status_t`, `gpu_error_t`, and reporting a failure | 08.1 |
 | | `device_memory` | The C API of the device allocator. Its `run/src/` directory holds only a README: `cuda/src/device_memory/` implements it | 08.1 |
-| `render` | `encode upload` | Encode sections on workers; budgeted upload queue | 08.2 |
+| | `world_buffers` | The C API of the section pool and column table, and the form of a section on the card. Its `run/src/` directory holds only a README: `cuda/src/world_buffers/` implements it | 08.2 |
+| `render` | (the Owner) | `render_init`, `render_deinit`: the host region; `render_open`, `render_close`: the pool and table on the card, for one world | 08.2 |
+| | `encode upload` | Encode sections on workers; budgeted upload queue | 08.2 |
 | | `frame` | Frame sequence: submit, readback, HUD, present | 08.4 |
 | | `entities` | Per-tile entity lists | 09.5 |
 | | `lod` | Build coarse far-field grids | 09.6 |
@@ -389,6 +391,8 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/terrain/density/` | ctest `run_terrain_density`: `run/src/terrain/density/`: the range limits on every corner of the climate and on real columns, bedrock at `-250`, water's top at `0`, values worked out by hand, any split of the work, and the same bytes from 1 worker and 16 |
 | `tests/run/texture/` | ctest `run_texture`, covering `run/src/texture/` with `blob` and `registry`, and `asm/src/embed_assets/`: every texture against its source files, and damage to the blob, field by field |
 | `tests/run/gpu_bridge/` | ctest `run_gpu_bridge`, covering `run/src/gpu_bridge/` with `status`, and `cuda/src/device_memory/`, on the real card: real blocks and a real kernel, the budgets, stale and forged handles, a pebibyte refused, and no device in a process of its own |
+| `tests/run/render/encode/` | ctest `run_render_encode`: one voxel's bytes worked out on paper, every shape of section against brute force, and real workers. No card |
+| `tests/run/render/upload/` | ctest `run_render_upload`, covering `run/src/render/` with `upload`, and `cuda/src/world_buffers/`, on the real card: a real kernel's answers against the world voxel for voxel, the slab pool against a model, the budget, and a real sim thread |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
 | `tests/asm/` | NASM kernels against scalar C references |
 | `tests/asm/abi/` | ctest `asm_abi`: every kernel keeps the callee-saved registers and leaves no dirty YMM state, by machine state, not by output |
