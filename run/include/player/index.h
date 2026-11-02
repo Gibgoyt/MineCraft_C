@@ -5,6 +5,7 @@
 #include "machine/index.h"
 #include "physics/index.h"
 #include "player/camera/index.h"
+#include "player/interaction/index.h"
 #include "player/movement/index.h"
 #include "render/frame/index.h"
 #include "world/map/index.h"
@@ -17,6 +18,12 @@ enum : int64_t {
     PLAYER_TICK_NS = 1000000000 / MC_GAME_TICK_HZ,
     /* An intent older than this means no one is at the controls: main has stopped, and most likely gone to another VT. */
     PLAYER_INTENT_STALE_NS = 250000000,
+};
+
+/* The two buttons, in hands_word and hands_latch. */
+enum : uint32_t {
+    PLAYER_HAND_ATTACK = 1u,
+    PLAYER_HAND_PLACE = 2u,
 };
 
 /* One tick's worth of where the eye was and is and what it aims at, from sim to main. */
@@ -37,19 +44,23 @@ typedef struct player_t {
     render_exchange_t views;                         /* 128: sim to main, over view_slots */
     player_view_t view_slots[RENDER_EXCHANGE_SLOTS]; /* 320 */
     player_target_t target;                          /* 800: the sim's: what it aims at, as of the last tick */
+    player_interaction_t interaction;                /* 896: the sim's: mining, placing and what is in the hand */
     /* Main to sim. None of these carries a pointer or vouches for anything written before it, so all are relaxed. */
-    _Atomic uint64_t intent_word;   /* 896: the newest player_intent_t, packed */
-    _Atomic int64_t intent_sent_ns; /* 904 */
-    _Atomic uint64_t look_word;     /* 912: the newest yaw and pitch, packed */
-    _Atomic uint32_t jump_latch;    /* 920: a jump pressed since the sim last looked */
-    uint32_t view_slot;             /* 924: main's: the slot it reads */
-    uint8_t _pad0[32];              /* 928 */
+    _Atomic uint64_t intent_word;   /* 2048: the newest player_intent_t, packed */
+    _Atomic int64_t intent_sent_ns; /* 2056 */
+    _Atomic uint64_t look_word;     /* 2064: the newest yaw and pitch, packed */
+    _Atomic uint32_t jump_latch;    /* 2072: a jump pressed since the sim last looked */
+    uint32_t view_slot;             /* 2076: main's: the slot it reads */
+    _Atomic uint32_t hands_word;    /* 2080: PLAYER_HAND_* held now */
+    _Atomic uint32_t hands_latch;   /* 2084: PLAYER_HAND_* pressed since the sim last looked */
+    uint8_t _pad0[24];              /* 2088 */
 } player_t;
-static_assert(sizeof(player_t) == 960);
+static_assert(sizeof(player_t) == 2112);
 static_assert(alignof(player_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(player_t, views) == 128);
 static_assert(offsetof(player_t, target) == 800);
-static_assert(offsetof(player_t, intent_word) == 896);
+static_assert(offsetof(player_t, interaction) == 896);
+static_assert(offsetof(player_t, intent_word) == 2048);
 
 /* Remembers what it moves with, and takes nothing. Physics must outlive it. */
 void player_init(player_t *player, physics_t *physics);
@@ -66,6 +77,15 @@ void player_send(player_t *player, const player_intent_t *intent, int64_t now_ns
 
 /* Where the player looks now, for what it aims at. Main, as often as it likes. A yaw and pitch stay a pair. Never waits. */
 void player_look_send(player_t *player, float32_t yaw, float32_t pitch);
+
+/* What the two buttons are doing now. Main, as often as it likes, right after player_send, whose time also says how fresh this is.
+ * A click between two ticks still counts for one tick. Never waits. */
+void player_hands_send(player_t *player, bool attack, bool place);
+
+/* The hands' tick, on what player_tick last aimed at, so on the block the player sees outlined: the sim, or whichever one thread holds
+ * the map, right before player_tick, so that the body and the next aim both meet the world as this leaves it. Never waits and never
+ * touches the heap. */
+void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns);
 
 /* One tick. The sim, or whichever one thread holds the map, with tick_ns the time this tick was due. Never waits and never
  * touches the heap. */

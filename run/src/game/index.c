@@ -370,6 +370,8 @@ void game_sim_step(game_t *game) {
 static void game_sim_tick(game_t *game, int64_t tick_ns) {
     arena_reset(&game->arena_tick);
     if (game->borrowed_player != nullptr) {
+        /* First, so that the body and its next aim both meet the world as the hands leave it. */
+        player_interact_tick(game->borrowed_player, &game->borrowed_world->edit, tick_ns);
         player_tick(game->borrowed_player, &game->borrowed_world->map, tick_ns);
     }
     world_tick_step(&game->borrowed_world->tick);
@@ -399,6 +401,10 @@ void game_walk_send(game_t *game, const render_fly_input_t *input, bool jump, bo
                                     .sprint = input->fast,
                                     ._pad0 = {0}};
     player_send(game->borrowed_player, &intent, now_ns);
+}
+
+void game_hands_send(game_t *game, bool attack, bool place) {
+    player_hands_send(game->borrowed_player, attack, place);
 }
 
 /* The eye goes where the ticks have got to, by now_ns. */
@@ -497,6 +503,8 @@ static bool game_scene_tick(void *context, const display_headless_tick_t *tick) 
     }
     game_walk_send(game, &input, display_script_state_is_down(tick->state, KEY_SPACE),
                    display_script_state_is_down(tick->state, KEY_LEFTSHIFT), tick_ns);
+    game_hands_send(game, display_script_state_is_down(tick->state, BTN_LEFT),
+                    display_script_state_is_down(tick->state, BTN_RIGHT));
     game_sim_tick(game, tick_ns);
     /* A whole tick on from when it was due: where this tick ended. */
     game_walk_view(game, tick_ns + GAME_TICK_NS);
@@ -661,6 +669,9 @@ bool game_loop_source(void *context, display_buffer_t *back) {
     if (game->borrowed_player != nullptr) {
         game_walk_send(game, &input, input_keys_has(&frame->down, KEY_SPACE),
                        input_keys_has(&frame->down, KEY_LEFTSHIFT), now_ns);
+        /* A click over between two polls is in pressed and not in down. */
+        game_hands_send(game, input_keys_has(&frame->down, BTN_LEFT) || input_keys_has(&frame->pressed, BTN_LEFT),
+                        input_keys_has(&frame->down, BTN_RIGHT) || input_keys_has(&frame->pressed, BTN_RIGHT));
     }
     return game_loop_frame(game, &input, seconds, back);
 }
@@ -678,6 +689,12 @@ void game_report(game_t *game) {
         LOG_INFO("game: the player is at %.3f, %.3f, %.3f after %" PRIu64 " ticks",
                  (libc_double_t)movement->position[0], (libc_double_t)movement->position[1],
                  (libc_double_t)movement->position[2], game->borrowed_player->tick_count);
+        const player_interaction_t *const hands = &game->borrowed_player->interaction;
+        LOG_INFO("game: the player mined %" PRIu64 " blocks and placed %" PRIu64
+                 "; the last mined was %s, and the hand "
+                 "holds %" PRIu32 " of %s",
+                 hands->mined_count, hands->placed_count, block_defs[hands->last_mined].name,
+                 (uint32_t)hands->hand_count, hands->hand_count != 0u ? block_defs[hands->hand_block].name : "nothing");
     }
     LOG_INFO("game: %" PRIu64 " columns generated, %" PRIu64 " ticks, %" PRIu64
              " sections sent, %.1f MiB of slabs held",

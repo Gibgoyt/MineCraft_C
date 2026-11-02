@@ -12,6 +12,9 @@ enum : uint32_t {
     PLAYER_INTENT_SHIFT_SPRINT = 50u,
 };
 
+/* Where the random numbers of a body's drops start. */
+#define PLAYER_DROP_SEED 0x4D494E45u
+
 /* In one word, so that the sim never sees half of one intent and half of another. */
 static uint64_t player_intent_pack(const player_intent_t *intent) {
     uint32_t yaw = 0u;
@@ -81,6 +84,9 @@ void player_spawn(player_t *player, float64_t x, float64_t y, float64_t z) {
     atomic_store_explicit(&player->intent_sent_ns, 0, memory_order_relaxed);
     atomic_store_explicit(&player->look_word, 0u, memory_order_relaxed);
     atomic_store_explicit(&player->jump_latch, 0u, memory_order_relaxed);
+    atomic_store_explicit(&player->hands_word, 0u, memory_order_relaxed);
+    atomic_store_explicit(&player->hands_latch, 0u, memory_order_relaxed);
+    player_interaction_start(&player->interaction, PLAYER_DROP_SEED);
 }
 
 void player_look_send(player_t *player, float32_t yaw, float32_t pitch) {
@@ -93,6 +99,33 @@ void player_send(player_t *player, const player_intent_t *intent, int64_t now_ns
     if (intent->jump != 0u) {
         atomic_store_explicit(&player->jump_latch, 1u, memory_order_relaxed);
     }
+}
+
+void player_hands_send(player_t *player, bool attack, bool place) {
+    const uint32_t hands = (attack ? (uint32_t)PLAYER_HAND_ATTACK : 0u) | (place ? (uint32_t)PLAYER_HAND_PLACE : 0u);
+    atomic_store_explicit(&player->hands_word, hands, memory_order_relaxed);
+    if (hands != 0u) {
+        atomic_fetch_or_explicit(&player->hands_latch, hands, memory_order_relaxed);
+    }
+}
+
+void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns) {
+    uint32_t hands = atomic_load_explicit(&player->hands_word, memory_order_relaxed);
+    hands |= atomic_exchange_explicit(&player->hands_latch, 0u, memory_order_relaxed);
+    /* As for the keys: nobody at the controls lets go. */
+    if (tick_ns - atomic_load_explicit(&player->intent_sent_ns, memory_order_relaxed) > PLAYER_INTENT_STALE_NS) {
+        hands = 0u;
+    }
+    const player_interaction_input_t input = {
+        .borrowed_target = &player->target,
+        .borrowed_movement = &player->movement,
+        .attack = (hands & PLAYER_HAND_ATTACK) != 0u ? 1u : 0u,
+        .place = (hands & PLAYER_HAND_PLACE) != 0u ? 1u : 0u,
+        ._pad0 = {0},
+    };
+    player_interaction_tick(&player->interaction, edit, &input);
+    /* Stage 12.4 and Stage 13.1 replace this one call with an item in the world and a pickup. */
+    player_interaction_drops_to_hand(&player->interaction);
 }
 
 void player_tick(player_t *player, const world_map_t *map, int64_t tick_ns) {
