@@ -27,7 +27,7 @@
 `--no-shapes` draws every block a whole cube, and `--no-alpha` stops rays at see-through texels. Each effect of phase 9 is a
 switch like these until `run/src/ui/screen_settings/` (Stage 14.5) has a screen for them.
 
-`--walk` puts a body in that world, on the nearest dry land to its middle, in place of the flying camera. WASD walks, Space jumps, swims up and climbs, Left Shift sneaks, Left Ctrl sprints, and the mouse looks. A script drives the same keys. See `run/src/player/README.md`.
+`--walk` puts a body in that world, on the nearest dry land to its middle, in place of the flying camera. WASD walks, Space jumps, swims up and climbs, Left Shift sneaks, Left Ctrl sprints, the mouse looks, the left button mines and the right button places what was mined. A script drives the same keys. See `run/src/player/README.md`.
 
 With no flag, running the program starts the job system, runs one job per worker through it, logs the heap's counts and
 stops. Until the game has a menu, `--test-world` is how to get to a world.

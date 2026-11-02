@@ -51,7 +51,7 @@ typedef struct main_options_t {
     uint8_t walk;               /* --walk */
     uint8_t has_time_of_day;    /* --time-of-day */
     uint8_t _pad0[3];
-    float32_t time_of_day;      /* --time-of-day */
+    float32_t time_of_day; /* --time-of-day */
     uint8_t _pad1[4];
 } main_options_t;
 static_assert(sizeof(main_options_t) == 72);
@@ -88,7 +88,8 @@ static void main_print_usage(const char *program) {
         "                           goes faster and Esc ends the run. With --headless, the script does all of that\n"
         "  --walk                   with --test-world: walk and do not fly. WASD walks, Space jumps, swims up and "
         "climbs,\n"
-        "                           Shift sneaks, Ctrl sprints, the mouse looks\n",
+        "                           Shift sneaks, Ctrl sprints, the mouse looks, the left button mines and the right\n"
+        "                           button places what was mined\n",
         program, program, program, program);
 }
 
