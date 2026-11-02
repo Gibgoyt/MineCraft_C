@@ -13,6 +13,8 @@
 #include "machine/index.h"
 #include "main/cpu_check/index.h"
 #include "math/index.h"
+#include "physics/index.h"
+#include "player/index.h"
 #include "render/index.h"
 #include "simd/index.h"
 #include "terrain/index.h"
@@ -45,7 +47,8 @@ typedef struct main_options_t {
     uint8_t crash_test;         /* display_crash_test_t: --crash-test */
     uint8_t test_world;         /* --test-world */
     uint8_t features_off;       /* --no-shapes, --no-alpha: SHADE_FEATURE_* */
-    uint8_t _pad0[5];
+    uint8_t walk;               /* --walk */
+    uint8_t _pad0[4];
 } main_options_t;
 static_assert(sizeof(main_options_t) == 64);
 
@@ -55,7 +58,7 @@ static void main_print_usage(const char *program) {
         "usage: %s [--report] [--pretend-missing-cpu <cpu.simd key>] [--pretend-leak]\n"
         "       %s --test-pattern [--card <path>] [--connector <name>] [--crash-test[=<how>]]\n"
         "       %s --headless [--script <path>] [--screenshot-dir <dir>] [--ticks <n>] [--width <w>] [--height <h>]\n"
-        "       %s --test-world [--render-distance <chunks>] [--no-shapes] [--no-alpha] [--headless ...]\n"
+        "       %s --test-world [--walk] [--render-distance <chunks>] [--no-shapes] [--no-alpha] [--headless ...]\n"
         "  --report                 print the build's defines and CPU features, then exit\n"
         "  --pretend-missing-cpu    treat this feature as absent, to see the CPU check fail; may repeat\n"
         "  --pretend-leak           skip the shutdown, to see the leak check at exit fail\n"
@@ -71,7 +74,10 @@ static void main_print_usage(const char *program) {
         "texels\n"
         "  --test-world             fly through a generated world: through KMS from a text console, never inside X,\n"
         "                           where WASD, Space and Shift move, the mouse looks, the wheel sets the speed, Ctrl\n"
-        "                           goes faster and Esc ends the run. With --headless, the script does all of that\n",
+        "                           goes faster and Esc ends the run. With --headless, the script does all of that\n"
+        "  --walk                   with --test-world: walk and do not fly. WASD walks, Space jumps, swims up and "
+        "climbs,\n"
+        "                           Shift sneaks, Ctrl sprints, the mouse looks\n",
         program, program, program, program);
 }
 
@@ -123,6 +129,8 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
             out->features_off |= (uint8_t)SHADE_FEATURE_SHAPES;
         } else if (strcmp(argv[i], "--no-alpha") == 0) {
             out->features_off |= (uint8_t)SHADE_FEATURE_ALPHA;
+        } else if (strcmp(argv[i], "--walk") == 0) {
+            out->walk = 1;
         } else if (strcmp(argv[i], "--render-distance") == 0 && i + 1 < argc) {
             i++;
             if (!main_parse_count("--render-distance", argv[i], &out->render_distance)) {
@@ -190,6 +198,10 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
     }
     if (out->features_off != 0u && out->test_world == 0) {
         fprintf(stderr, "%s: --no-shapes and --no-alpha only mean something with --test-world\n", argv[0]);
+        return false;
+    }
+    if (out->walk != 0 && out->test_world == 0) {
+        fprintf(stderr, "%s: --walk only means something with --test-world\n", argv[0]);
         return false;
     }
     if (out->render_distance > MC_GAME_RENDER_DISTANCE_MAX) {
@@ -270,7 +282,20 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         math_deinit(&app->math);
         return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
     }
+    if (!physics_init(&app->physics)) {
+        terrain_deinit(&app->terrain);
+        world_deinit(&app->world);
+        gpu_bridge_deinit(&app->gpu_bridge);
+        job_deinit(&app->job);
+        texture_deinit(&app->texture);
+        simd_deinit(&app->simd);
+        math_deinit(&app->math);
+        return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
+    }
+    player_init(&app->player, &app->physics);
     if (!render_init(&app->render, &app->gpu_bridge.device_memory, &app->job, render_limits_default())) {
+        player_deinit(&app->player);
+        physics_deinit(&app->physics);
         terrain_deinit(&app->terrain);
         world_deinit(&app->world);
         gpu_bridge_deinit(&app->gpu_bridge);
@@ -282,6 +307,9 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
     }
     /* Takes nothing until game_open. */
     game_init(&app->game, &app->world, &app->terrain, &app->render, &app->job, &app->texture, &app->topology);
+    if (options->walk != 0) {
+        game_player_set(&app->game, &app->player);
+    }
     return MAIN_EXIT_OK;
 }
 
@@ -291,6 +319,8 @@ static void app_deinit(app_t *app) {
     display_offscreen_deinit(&app->offscreen);
     display_deinit(&app->display);
     render_deinit(&app->render);
+    player_deinit(&app->player);
+    physics_deinit(&app->physics);
     terrain_deinit(&app->terrain);
     world_deinit(&app->world);
     gpu_bridge_deinit(&app->gpu_bridge);

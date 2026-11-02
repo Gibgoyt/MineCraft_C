@@ -14,10 +14,11 @@
 - `game_loop_start`, `game_loop_frame`, `game_loop_stop`: the real threads, and a frame on the main thread.
 - `game_loop_source_begin`, `game_loop_source`, `game_loop_discard`: what `display_frames_run` calls: the threads start on its first frame, then real keys and a real mouse to `game_loop_frame`, and Esc to stop.
 - `game_fly_from_script`, `game_fly_from_input`: either kind of input to a step of flying.
+- `game_player_set`, `game_walk_send`: walk through the world with this player and not fly; what the mouse and keys want of it.
 - `game_report`: what the frames took.
 
 **May be called by:** `run/src/main/`.
-**Depends on:** `render`, `world`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
+**Depends on:** `player`, `render`, `world`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
 
 A column's blocks are `terrain_generate_box`, on a worker, over all of the column's storage. Each job lends it the states and a byte per voxel.
 
@@ -26,7 +27,7 @@ A column's blocks are `terrain_generate_box`, on a worker, over all of the colum
 | Thread | Does | Tells the others through |
 |---|---|---|
 | `main` | Input, moves the eye, shows the newest picture | A triple buffer of cameras to `gpu`; two relaxed atomics, the eye's chunk, to `sim` |
-| `sim` | Columns to and from workers, into the map, then a snapshot. A tick at 20 Hz, with nothing in it yet | The snapshots of `world/edit` to `gpu` |
+| `sim` | Columns to and from workers, into the map, then a snapshot. A tick at 20 Hz, which moves the player if there is one | The snapshots of `world/edit` to `gpu`; each tick's eye to `main`, through `player` |
 | `gpu` | The upload queue, then the frame's kernels | A triple buffer of pictures to `main` |
 
 None of them ever waits for another, as the plan wants: a slow tick cannot stall a frame, and a slow frame cannot stall input.
@@ -34,6 +35,15 @@ None of them ever waits for another, as the plan wants: a slow tick cannot stall
 With no threads, as under `--headless`, `game_settle` does a sim step and an upload round in turn until all of it is on the card, before each frame. So a picture does not depend on how fast a worker was, and the same script always gives the same bytes. It is the same code as the threads run, in another order.
 
 `tests/run/render/frame/` runs the threads for real, on a plain buffer for a display, and `tests/run/game/` through `display_frames_run` on a fake kernel with a real guardian forked. Only Ahmed can run them on KMS.
+
+## Walking
+
+With `game_player_set`, as `--walk` does, the eye stops flying and follows a body. See `run/src/player/README.md`.
+
+- The body starts on the nearest dry land to the world's middle, found by looking at single columns in widening squares, and waits there for its column. Flying still starts over the middle, in or out of water.
+- The mouse turns the camera on `main` at once. The keys go to `sim`, and move the body on its next tick. `main` draws from where the last two ticks say, between them.
+- Under `--headless` it is the same code on one thread, with time counted in ticks. Each tick settles the world first, so that the body does not depend on how fast a worker was, and is drawn at the tick's end.
+- Without a player everything flies as before, so the golden pictures of `tests/run/render/frame/` stay as they were.
 
 ## The guardian's fork
 

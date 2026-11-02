@@ -8,6 +8,7 @@
 #include "input/index.h"
 #include "job/index.h"
 #include "machine/index.h"
+#include "player/index.h"
 #include "render/index.h"
 #include "terrain/index.h"
 #include "texture/index.h"
@@ -75,15 +76,16 @@ typedef struct game_t {
     _Atomic uint32_t stop;                               /* 824: main to sim and gpu */
     _Atomic uint32_t failed; /* 828: sim or gpu to main: the card failed, and it has said why */
     /* A line of its own from here: the sim writes these all the time, and main writes the line above every frame. */
-    uint64_t tick_count;     /* 832: the sim's */
-    uint64_t columns_made;   /* 840: the sim's */
-    int64_t loop_ended_ns;   /* 848: main's, once the threads have stopped */
-    uint32_t jobs_in_use;    /* 856 */
-    uint8_t open;            /* 860 */
-    uint8_t threads_running; /* 861 */
-    uint8_t stream_quiet;    /* 862: nothing more to generate, last time the sim looked */
-    uint8_t pool_full_said;  /* 863 */
-    uint8_t _pad0[32];       /* 864 */
+    uint64_t tick_count;       /* 832: the sim's */
+    uint64_t columns_made;     /* 840: the sim's */
+    int64_t loop_ended_ns;     /* 848: main's, once the threads have stopped */
+    uint32_t jobs_in_use;      /* 856 */
+    uint8_t open;              /* 860 */
+    uint8_t threads_running;   /* 861 */
+    uint8_t stream_quiet;      /* 862: nothing more to generate, last time the sim looked */
+    uint8_t pool_full_said;    /* 863 */
+    player_t *borrowed_player; /* 864: walking if not nullptr; set before a world opens, and only read after */
+    uint8_t _pad0[24];         /* 872 */
 } game_t;
 static_assert(sizeof(game_t) == 896);
 static_assert(alignof(game_t) == MC_CPU_CACHE_LINE_BYTES);
@@ -97,6 +99,9 @@ static_assert(offsetof(game_t, tick_count) == 832);
  * pinned itself. */
 void game_init(game_t *game, world_t *world, terrain_t *terrain, render_t *render, job_system_t *job,
                const texture_t *texture, const thread_topology_t *topology);
+
+/* From here on a world is walked through and not flown through, by this player, which must outlive it. Before game_open. */
+void game_player_set(game_t *game, player_t *player);
 
 /* Stops whatever is running, and closes any world. Safe on a zeroed game_t. */
 void game_deinit(game_t *game);
@@ -124,8 +129,8 @@ void game_fly(game_t *game, const render_fly_input_t *input, float32_t seconds);
 void game_headless_scene(game_t *game, display_headless_scene_t *out);
 
 /* The real loop's threads. game_loop_start starts sim and gpu, pinned where config/machine.yaml says. Then the main thread calls
- * game_loop_frame once per frame, which moves the eye, tells the others, and puts the newest finished picture in target. It
- * never waits for either. game_loop_stop stops and joins them if they are running, and says whether they ran clean. input may be
+ * game_loop_frame once per frame, which moves the eye, tells the others, and puts the newest finished picture in target. With a
+ * player the eye goes where the last ticks say, between them, and input is not looked at. It never waits for either. game_loop_stop stops and joins them if they are running, and says whether they ran clean. input may be
  * nullptr, for a caller that polls its own. */
 [[nodiscard]] bool game_loop_start(game_t *game, input_t *input);
 [[nodiscard]] bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t seconds,
@@ -140,6 +145,11 @@ bool game_loop_source(void *context, display_buffer_t *back);
 
 /* What display_frames_run calls on coming back from another VT, with a game_t * as context: nothing typed there counts here. */
 void game_loop_discard(void *context);
+
+/* Walking: the mouse looks at once, and the keys go to the sim thread for its next tick. Forward, right and fast mean what they
+ * do for flying, and fast is a sprint. The thread that owns input. A caller of game_loop_frame calls this first, and
+ * game_loop_source does. */
+void game_walk_send(game_t *game, const render_fly_input_t *input, bool jump, bool sneak, int64_t now_ns);
 
 /* Turning either kind of input into a step of flying. */
 void game_fly_from_script(const display_script_state_t *state, render_fly_input_t *out);
