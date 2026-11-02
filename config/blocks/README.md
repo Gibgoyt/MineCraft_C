@@ -44,7 +44,7 @@ To add a block: make `config/blocks/<name>/index.yaml`, and build. `compile/src/
 
 ### Faces
 
-`z` is up, and `west east north south` are `-x +x -y +y`. Either `all` alone, or every face covered by `top`, `bottom` and `side`, where a named face beats `side`. A value is `blocks/<name>`, in `textures/blocks/`. The sides of water and lava show their flowing texture.
+`z` is up, and `west east south north` are `-x +x -y +y`: x is east and y is north, as everywhere in the game. Either `all` alone, or every face covered by `top`, `bottom` and `side`, where a named face beats `side`. A value is `blocks/<name>`, in `textures/blocks/`. The sides of water and lava show their flowing texture.
 
 ```yaml
 texture: { top: blocks/furnace_top, bottom: blocks/furnace_bottom, side: blocks/furnace_side, north: blocks/furnace_front }

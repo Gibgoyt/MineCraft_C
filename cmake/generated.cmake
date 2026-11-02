@@ -9,6 +9,11 @@ set(mc_texture_vectors "${MC_GENERATED_DIR}/textures/vectors")
 set(mc_texture_table "${CMAKE_SOURCE_DIR}/textures/vector.yaml")
 file(GLOB mc_texture_inputs CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/textures/*/*/index.mctex")
 
+# Ninja reruns a command for a new or changed input, and not for one gone from its list, so a deleted texture would stay in
+# the blob. This file changes when the list does, and only then.
+string(JOIN "\n" mc_texture_input_list ${mc_texture_inputs})
+file(CONFIGURE OUTPUT "${MC_GENERATED_DIR}/textures/inputs.txt" CONTENT "${mc_texture_input_list}\n" @ONLY)
+
 # The touch: the tool leaves a file with the same bytes alone, and then Ninja would see the output as old on every build.
 add_custom_command(OUTPUT "${mc_texture_blob_file}"
   COMMAND mc_tool_texture_vector vectors --textures "${CMAKE_SOURCE_DIR}/textures" --materials "${mc_texture_table}"
@@ -17,6 +22,7 @@ add_custom_command(OUTPUT "${mc_texture_blob_file}"
     --out "${mc_texture_blob_file}"
   COMMAND "${CMAKE_COMMAND}" -E touch "${mc_texture_blob_file}"
   DEPENDS mc_tool_texture_vector mc_tool_texture_blob ${mc_texture_inputs} "${mc_texture_table}"
+    "${MC_GENERATED_DIR}/textures/inputs.txt"
   COMMENT "Generating the texture blob"
   VERBATIM)
 # Only order: NASM's -MD lists what it incbins, so a new blob rebuilds asm/src/embed_assets/ by its depfile.

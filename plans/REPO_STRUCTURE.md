@@ -213,7 +213,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 
 | System | Parts | Job | Stage |
 |---|---|---|---|
-| `world` | (the Owner) | `world_init`, `world_deinit`, `world_reset`: the two regions and arenas its parts borrow | 07.2 |
+| `world` | (the Owner) | `world_init`, `world_deinit`, `world_reset`: the two regions and arenas its parts borrow. `world_open`, `world_close`: the map, edit log and snapshots of one world (07.3) | 07.2 |
 | | `section column` | Palette storage, coordinates, `z` range checks | 07.2 |
 | | `map edit` | Column map, streaming, edit log, snapshots | 07.3 |
 | | `light` | Sky and block light | 11.1 |
