@@ -34,6 +34,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `7092cf2` Add the block simulation: water and lava flow, falling sand and gravel, leaf decay, and wheat and grass on random ticks.
+
 ## Wiring outside the owned paths
 
 - `run/include/world/index.h`, `run/src/world/index.c`: `world_tick_t` in `world_t`, started by `world_open`, ended by `world_close`, and its bytes in the budget. `world_t` goes from 1344 to 2048 bytes.
