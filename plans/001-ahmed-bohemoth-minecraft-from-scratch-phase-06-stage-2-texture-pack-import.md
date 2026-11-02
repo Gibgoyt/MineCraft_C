@@ -39,6 +39,8 @@ All run on 2026-11-02, and all passed. `pgrep` printed nothing, and the `grep` f
 
 Appended as they land:
 
+- `64fa317` Import the pinned Pixel Perfection pack into textures through our own checked tool, with attribution, and a test that needs no pack.
+
 ## Issues found
 
 All 2026-11-02, by this stage.
