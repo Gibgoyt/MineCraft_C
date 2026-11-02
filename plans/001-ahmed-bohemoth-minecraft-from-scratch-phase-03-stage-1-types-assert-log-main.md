@@ -77,6 +77,8 @@ Each row broke one thing, rebuilt, and ran `run_types`. All were restored.
 
 Appended as they land:
 
+- `e76cc61` Add the sanctioned types, assert, log and the real entry point with its CPUID check, and settle the printf rule.
+
 ## Issues found
 
 **1. Known limit: on a CPU older than `-march`, the check can die before it speaks.**
