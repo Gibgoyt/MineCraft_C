@@ -46,6 +46,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `a3c0476`: timed mining, drops, placing, the wiring, and the test.
+
 ## Wiring outside the owned paths
 
 The smallest needed to call this stage's module, as the task allows:
