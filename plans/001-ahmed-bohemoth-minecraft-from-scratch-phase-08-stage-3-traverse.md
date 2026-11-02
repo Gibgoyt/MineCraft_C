@@ -94,6 +94,8 @@ Nothing in the game calls this yet. Stage 08.4's frame will.
 
 Appended as they land:
 
+- `699caeb` Add the coarse depth pass and primary rays through the bitmask tree, with a test against an exact CPU reference on Stage 01.3's worlds.
+
 ## Issues found
 
 **1. Stage 08.2 has not landed, so the tree format is defined here.**
