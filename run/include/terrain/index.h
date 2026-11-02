@@ -5,6 +5,7 @@
 #include "arena/index.h"
 #include "heap/index.h"
 #include "terrain/climate/index.h"
+#include "terrain/density/index.h"
 #include "terrain/noise/index.h"
 #include "terrain/rng/index.h"
 
@@ -21,9 +22,11 @@ enum : uint32_t {
     /* Noise fields one world can have. */
     TERRAIN_NOISE_FIELDS_MAX = 64u,
 };
-static_assert(TERRAIN_NOISE_FIELDS_MAX * sizeof(terrain_noise_field_t) + sizeof(terrain_climate_t) <
+static_assert(TERRAIN_NOISE_FIELDS_MAX * sizeof(terrain_noise_field_t) + sizeof(terrain_climate_t) +
+                  sizeof(terrain_density_t) <
               TERRAIN_TABLES_BYTES);
-static_assert((uint32_t)TERRAIN_CLIMATE_NOISE_FIELDS <= (uint32_t)TERRAIN_NOISE_FIELDS_MAX);
+static_assert((uint32_t)TERRAIN_CLIMATE_NOISE_FIELDS + (uint32_t)TERRAIN_DENSITY_NOISE_FIELDS <=
+              (uint32_t)TERRAIN_NOISE_FIELDS_MAX);
 
 /* All of one world's terrain, for its one seed. There is one, under app_t. After terrain_init nothing changes it, so any
  * number of workers may read it, and that is why they all get the same bytes. */
@@ -33,7 +36,7 @@ typedef struct terrain_t {
     terrain_noise_bank_t noise_bank;     /* 80 */
     uint64_t seed;                       /* 104 */
     terrain_climate_t *borrowed_climate; /* 112: in arena_tables */
-    uint8_t _pad0[8];                    /* 120 */
+    terrain_density_t *borrowed_density; /* 120: in arena_tables */
 } terrain_t;
 static_assert(sizeof(terrain_t) == 128);
 static_assert(alignof(terrain_t) == 64);
@@ -41,6 +44,7 @@ static_assert(offsetof(terrain_t, owned_tables) == 64);
 static_assert(offsetof(terrain_t, noise_bank) == 80);
 static_assert(offsetof(terrain_t, seed) == 104);
 static_assert(offsetof(terrain_t, borrowed_climate) == 112);
+static_assert(offsetof(terrain_t, borrowed_density) == 120);
 
 /* Reserves the region and starts the parts, for this seed. On failure logs why, leaves nothing behind and returns false. A
  * world with another seed is a terrain_deinit and another terrain_init: nothing computed from the old seed may survive. */
