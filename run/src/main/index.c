@@ -88,7 +88,8 @@ static void main_print_usage(const char *program) {
         "                           goes faster and Esc ends the run. With --headless, the script does all of that\n"
         "  --walk                   with --test-world: walk and do not fly. WASD walks, Space jumps, swims up and "
         "climbs,\n"
-        "                           Shift sneaks, Ctrl sprints, the mouse looks\n",
+        "                           Shift sneaks, Ctrl sprints, the mouse looks, the left button mines and the right\n"
+        "                           button places what was mined\n",
         program, program, program, program);
 }
 

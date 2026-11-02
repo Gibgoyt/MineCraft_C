@@ -173,6 +173,10 @@ void game_loop_discard(void *context);
  * game_loop_source does. */
 void game_walk_send(game_t *game, const render_fly_input_t *input, bool jump, bool sneak, int64_t now_ns);
 
+/* Walking: what the left and right mouse buttons are doing, which mine and place on the sim thread's next tick. The thread that owns
+ * input, right after game_walk_send. */
+void game_hands_send(game_t *game, bool attack, bool place);
+
 /* Turning either kind of input into a step of flying. */
 void game_fly_from_script(const display_script_state_t *state, render_fly_input_t *out);
 void game_fly_from_input(const input_frame_t *frame, render_fly_input_t *out);
