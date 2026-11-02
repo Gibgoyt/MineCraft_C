@@ -85,7 +85,8 @@ static_assert(offsetof(frame_gpu_t, open) == 80);
 static_assert(offsetof(frame_gpu_t, _pad0) == 81);
 
 gpu_status_t frame_gpu_init(frame_gpu_t *frame);
-void frame_gpu_deinit(frame_gpu_t *frame);
+/* Gives every event back whatever happens, and returns the first failure, which last_error then holds. */
+gpu_status_t frame_gpu_deinit(frame_gpu_t *frame);
 
 /* Pins host memory the card will copy into, which makes those copies direct and so about twice as fast. Takes nothing: the
  * memory stays whoever's it was, and must outlive the pin. Each pin is given back with frame_host_unpin. */

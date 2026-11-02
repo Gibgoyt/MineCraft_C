@@ -42,7 +42,9 @@ foreach(mc_target IN LISTS mc_callgraph_targets)
     # The generator expression, since it also brings what the target's libraries add: get_target_property would not.
     target_include_directories(${mc_callgraph_target} PRIVATE "$<TARGET_PROPERTY:${mc_target},INCLUDE_DIRECTORIES>")
     mc_callgraph_compile_options(${mc_callgraph_target})
-    add_dependencies(${mc_callgraph_target} mc_prebuild mc_struct_offsets) # a source may include what that generates
+    # A source may include what these generate. The real targets get the tables through mc_run's own custom command, which
+    # these copies do not have, so a clean build used to fail here: Stage 08.2 issue 8 and the phase 8 gate.
+    add_dependencies(${mc_callgraph_target} mc_prebuild mc_struct_offsets mc_game_tables)
   endif()
   list(APPEND mc_callgraph_objects ${mc_callgraph_target})
   string(APPEND mc_object_lists "$<JOIN:$<FILTER:$<TARGET_OBJECTS:${mc_callgraph_target}>,INCLUDE,[.]c[.]o$>,\n>\n")

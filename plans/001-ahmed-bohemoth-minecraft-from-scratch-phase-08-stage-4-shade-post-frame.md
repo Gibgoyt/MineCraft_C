@@ -181,6 +181,8 @@ One run. At 1440x810, the worst lattice p99 is 6.41 ms and the worst terrain p99
 - Actual, from the run of 21 (16 caught, 1 did not build, as written): a column wrapped out of its slot seen: survived, as a settled world never shows one, so that line of the README was wrong. The reader's slot overwritten in the exchange: survived. No beaches: survived, as the goldens hold no shore. A guard I had just added in `game_loop_stop`: survived, because `thread_join` already does nothing for a thread never started, so it added nothing.
 - Done: `a_column_that_wrapped_out_of_its_slot_is_not_seen` in `cuda_traverse`; the exchange checked to keep three separate slots over 64 turns; `the_test_worlds_surface_is_sand_by_the_water_and_grass_above_it`, which also found 211 of 59959 grass tops over air or water, which is right, under a one-block overhang; the guard removed. A second round of 6 caught all of them, the one that had not built among them.
 
+**Phase gate, later.** The checker fixed in this stage's paths: `game_t`'s cache lines, the unchecked `cudaEventDestroy`, an FPS line and a full-pool warning in `game_report`, and C-only `F32()`. See the phase file's issue 2. `Golden PNGs: every pixel exact` above was confirmed on debug. No sizes or goldens changed.
+
 **13. `run_render_frame` passed 1500 lines.**
 - Expected: the standard says to split at 1500.
 - Actual: 1676 with the display-loop tests.

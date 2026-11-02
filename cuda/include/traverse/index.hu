@@ -14,15 +14,15 @@
 
 /* The world, with what a kernel needs worked out from traverse_world_t. Passed to kernels by value. */
 typedef struct traverse_view_t {
-    const world_buffers_column_t *table; /* 0 */
-    const uint8_t *pool;                 /* 8 */
-    int32_t window_min_block[2];         /* 16 */
-    int32_t window_min_column[2];        /* 24 */
-    uint32_t origin_slot[2];             /* 32: the table slot of the window's low corner column */
-    uint32_t columns_wide;               /* 40 */
-    uint32_t window_blocks;              /* 44 */
-    uint32_t max_steps;                  /* 48: see traverse_view_from in the .cu for why this is enough */
-    uint8_t _pad0[4];                    /* 52 */
+    const world_buffers_column_t *borrowed_table; /* 0 */
+    const uint8_t *borrowed_pool;                 /* 8 */
+    int32_t window_min_block[2];                  /* 16 */
+    int32_t window_min_column[2];                 /* 24 */
+    uint32_t origin_slot[2];                      /* 32: the table slot of the window's low corner column */
+    uint32_t columns_wide;                        /* 40 */
+    uint32_t window_blocks;                       /* 44 */
+    uint32_t max_steps;                           /* 48: see traverse_view_from in the .cu for why this is enough */
+    uint8_t _pad0[4];                             /* 52 */
 } traverse_view_t;
 static_assert(sizeof(traverse_view_t) == 56);
 static_assert(alignof(traverse_view_t) == 8);
@@ -84,7 +84,7 @@ static __device__ __forceinline__ int32_t traverse_column_top(const world_buffer
 
 /* A section's bytes in the pool, from a place in the table. */
 static __device__ __forceinline__ const uint8_t *traverse_section_bytes(const traverse_view_t *view, uint32_t entry) {
-    return view->pool + (uint64_t)(entry - 1u) * WORLD_BUFFERS_GRANULE_BYTES;
+    return view->borrowed_pool + (uint64_t)(entry - 1u) * WORLD_BUFFERS_GRANULE_BYTES;
 }
 
 /* The value of a voxel known to be there, at this place among the section's voxels: place 0 in a uniform section. */
@@ -187,7 +187,7 @@ static __device__ __forceinline__ void traverse_trace(const traverse_view_t *vie
         }
         const uint32_t slot = traverse_slot(view, x >> 4, y >> 4);
         if (slot != cached_slot) {
-            column = &view->table[slot];
+            column = &view->borrowed_table[slot];
             column_top = traverse_column_top(column, x >> 4, y >> 4);
             column_mask = column->section_mask;
             cached_slot = slot;

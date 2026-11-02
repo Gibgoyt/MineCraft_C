@@ -88,7 +88,7 @@ void render_camera_fly(render_camera_t *camera, const render_fly_input_t *input,
         camera->speed /= RENDER_CAMERA_SPEED_STEP;
     }
     const float64_t distance = (float64_t)camera->speed * (float64_t)seconds *
-                               (float64_t)(input->fast != 0u ? RENDER_CAMERA_FAST_FACTOR : F32(1.0));
+                               (float64_t)(input->fast != 0u ? RENDER_CAMERA_FAST_FACTOR : 1.0f32);
     const float64_t forward_x = (float64_t)cosf(camera->yaw), forward_y = (float64_t)sinf(camera->yaw);
     camera->position[0] += distance * ((float64_t)input->forward * forward_x + (float64_t)input->right * forward_y);
     camera->position[1] += distance * ((float64_t)input->forward * forward_y - (float64_t)input->right * forward_x);
@@ -100,7 +100,7 @@ void render_camera_to_traverse(const render_camera_t *camera, uint32_t width, ui
     const float32_t cos_yaw = cosf(camera->yaw), sin_yaw = sinf(camera->yaw);
     const float32_t forward[3] = {cos_pitch * cos_yaw, cos_pitch * sin_yaw, sin_pitch};
     /* Right-handed with z up: right is forward x up. */
-    const float32_t right[3] = {sin_yaw, -cos_yaw, F32(0.0)};
+    const float32_t right[3] = {sin_yaw, -cos_yaw, 0.0f32};
     const float32_t up[3] = {right[1] * forward[2] - right[2] * forward[1],
                              right[2] * forward[0] - right[0] * forward[2],
                              right[0] * forward[1] - right[1] * forward[0]};
@@ -209,9 +209,9 @@ gpu_status_t render_frame_init(render_frame_t *frame, arena_t *arena, device_mem
     frame->height = height;
     frame->picture_bytes = post_xrgb_bytes(width, height);
     frame->post = (post_settings_t){
-        .sky_zenith = {F32(0.16), F32(0.32), F32(0.70)},
-        .sky_horizon = {F32(0.62), F32(0.75), F32(0.92)},
-        .fog_start = fog_end * F32(0.7),
+        .sky_zenith = {0.16f32, 0.32f32, 0.70f32},
+        .sky_horizon = {0.62f32, 0.75f32, 0.92f32},
+        .fog_start = fog_end * 0.7f32,
         .fog_end = fog_end,
     };
     frame->targets = (frame_targets_t){
@@ -252,7 +252,9 @@ void render_frame_deinit(render_frame_t *frame) {
             gpu_error_log(&frame->gpu.last_error);
         }
     }
-    frame_gpu_deinit(&frame->gpu);
+    if (frame_gpu_deinit(&frame->gpu) != GPU_STATUS_OK) {
+        gpu_error_log(&frame->gpu.last_error);
+    }
     memset(frame, 0, sizeof(*frame));
 }
 
@@ -311,8 +313,8 @@ static int32_t frame_compare_samples(const void *a, const void *b) {
 
 void render_frame_percentiles(render_frame_t *frame, float32_t *out_p50, float32_t *out_p99) {
     const uint64_t count = frame->stats.frames < RENDER_FRAME_SAMPLES ? frame->stats.frames : RENDER_FRAME_SAMPLES;
-    *out_p50 = F32(0.0);
-    *out_p99 = F32(0.0);
+    *out_p50 = 0.0f32;
+    *out_p99 = 0.0f32;
     if (count == 0u) {
         return;
     }
@@ -333,7 +335,7 @@ void render_frame_report(render_frame_t *frame) {
         LOG_INFO("frame: %-8s mean %7.3f ms, max %7.3f ms", names[i], (libc_double_t)(stats->sum_ms[i] / frames),
                  (libc_double_t)stats->max_ms[i]);
     }
-    float32_t p50 = F32(0.0), p99 = F32(0.0);
+    float32_t p50 = 0.0f32, p99 = 0.0f32;
     render_frame_percentiles(frame, &p50, &p99);
     LOG_INFO("frame: %" PRIu64 " frames of %" PRIu32 "x%" PRIu32
              ", total mean %.3f ms, p50 %.3f ms, p99 %.3f ms, max %.3f ms",

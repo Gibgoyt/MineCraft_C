@@ -296,6 +296,10 @@ TEST(a_world_runs_through_the_display_loop_with_a_real_guardian_forked) {
     CHECK_EQ_I64(display->guard.guardian_pid, 0);
     CHECK(card->flips > 400u);
     CHECK_EQ_I64(card->kd_mode, KD_TEXT);
+    /* What the end of a run logs as its FPS: every new picture taken and no more, over a real length of time. */
+    CHECK(game->pictures_shown > 0u);
+    CHECK(game->pictures_shown <= game->borrowed_render->frame.stats.frames);
+    CHECK(game->loop_ended_ns > game->loop_started_ns);
     /* What it flew to: streamed and uploaded after the fork, and what one thread draws from there. */
     const uint64_t columns_before_settle = game->columns_made;
     CHECK(columns_before_settle > 0u);

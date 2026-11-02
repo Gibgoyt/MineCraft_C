@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 8, stage 3: Ray traversal
 
-**Status:** done, with the tree format still to be agreed with Stage 08.2: issue 1   (updated 2026-11-02)
+**Status:** done. The tree format was agreed with Stage 08.2 by Stage 08.4: issue 1   (updated 2026-11-02)
 
 ## Goal
 
@@ -88,7 +88,7 @@ The coarse pass more than pays for itself on mean time on all 14 rows, most on `
 - `run/src/gpu_bridge/README.md`: a line in its table of parts.
 - `plans/REPO_STRUCTURE.md`: the part and the test.
 
-Nothing in the game calls this yet. Stage 08.4's frame will.
+When this stage landed nothing in the game called it. Stage 08.4's frame does now, through `frame_passes` in `cuda/src/frame/index.cu`. `traverse_rays` and `traverse_wait` are called only by this stage's test, on purpose.
 
 ## Commits
 
@@ -101,7 +101,7 @@ Appended as they land:
 **1. Stage 08.2 has not landed, so the tree format is defined here.**
 - Expected: `cuda/src/world_buffers/` and the encoder to exist, since the phase lists them first.
 - Actual: `git log --all -- cuda/src/world_buffers run/src/render` printed nothing when this stage ran.
-- Done: `run/include/gpu_bridge/traverse/index.h` defines the tree as Stage 01.3 measured it, and the test has its own encoder written from a dense array. One deliberate change from Stage 01.3: a column's `top` is one above its highest occupied height and 0 when empty, because `max_zi` cannot say empty. **Not tested against the real encoder, since there is none. Whichever of 08.2 and this stage merges second must make the two agree.** The only code that reads the layout is `traverse_trace` and `traverse_box_is_empty`.
+- Done: `run/include/gpu_bridge/traverse/index.h` defines the tree as Stage 01.3 measured it, and the test has its own encoder written from a dense array. One deliberate change from Stage 01.3: a column's `top` is one above its highest occupied height and 0 when empty, because `max_zi` cannot say empty. **Not tested against the real encoder, since there is none. Whichever of 08.2 and this stage merges second must make the two agree.** The only code that reads the layout is `traverse_trace` and `traverse_box_is_empty`. Resolved by Stage 08.4 issue 1: traversal now walks `world_buffers`, and the tables above are for the old format.
 
 **2. The coarse pass's first version was correct and did nothing on the ground.**
 - Expected: a conservative march saves steps.
@@ -121,7 +121,7 @@ Appended as they land:
 **5. `run_types` fails on the integration branch, and not from this stage.**
 - Expected: `heap at exit: 6 reserved, 6 released, 0 bytes live`.
 - Actual: `tests/run/types/index.c:914` and `:922` fail against `heap at exit: 7 reserved, 7 released, 0 bytes live` and the matching leak message. Merge `65a9bc4` kept both the terrain and `gpu_bridge` fields in `app_t`, and each stage had counted only itself, so the program now reserves 7. This stage reserves nothing on the heap.
-- Done: left alone, as outside this stage's paths. The test's two numbers need to become 7. Escalated to the orchestrator in this stage's result.
+- Done: left alone, as outside this stage's paths. The test's two numbers need to become 7. Escalated to the orchestrator in this stage's result. `run_types` has since been brought up to date, and the phase gate saw it pass on debug and release.
 
 **6. Two command forms were refused by the worktree isolation.**
 - Expected: `tools/test-or-build.sh sh -c '...ctest...'`, and a Python script holding `git` in its text, to run.
