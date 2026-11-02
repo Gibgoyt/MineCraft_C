@@ -33,11 +33,6 @@ file(GLOB_RECURSE mc_run_sources CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/run/src/
 file(GLOB_RECURSE mc_asm_sources CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/asm/src/*/index.asm")
 file(GLOB_RECURSE mc_cuda_sources CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/cuda/src/*/index.cu")
 
-# An object library must have a source, and CUDA has no module until Stage 08.1. cmake/hello/gpu stands in until then.
-if(NOT mc_cuda_sources)
-  list(APPEND mc_cuda_sources "${CMAKE_SOURCE_DIR}/cmake/hello/gpu/index.cu")
-endif()
-
 add_library(mc_asm OBJECT ${mc_asm_sources})
 target_include_directories(mc_asm PRIVATE "${CMAKE_SOURCE_DIR}/asm/include" "${MC_GENERATED_DIR}")
 

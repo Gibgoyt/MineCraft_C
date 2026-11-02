@@ -18,9 +18,8 @@ static const char *const heap_only[] = {"run/src/heap/index.c", nullptr};
  * 11), so its Owner maps its one process arena itself. The harness's test arena is the standard's "test arena". */
 static const char *const os_map[] = {"run/src/heap/index.c", "run/src/display/device/index.c", "compile/src/*/index.c",
                                      "tests/harness/index.c", nullptr};
-/* Section 4: GPU memory. cmake/hello is the stand-in program that runs until the real device code exists. */
-static const char *const device_memory_only[] = {"cuda/src/device_memory/index.cu", "cmake/hello/gpu/index.cu",
-                                                 nullptr};
+/* Section 4: GPU memory. */
+static const char *const device_memory_only[] = {"cuda/src/device_memory/index.cu", nullptr};
 /* Section 4: "Every such static ... is listed in the lint's allowlist." */
 static const char *const borrowed_static_files[] = {"run/src/display/vt_guard/index.c", nullptr};
 

@@ -4,6 +4,7 @@
 
 #include "display/headless/demo/index.h"
 #include "display/index.h"
+#include "gpu_bridge/index.h"
 #include "heap/index.h"
 #include "input/index.h"
 #include "job/index.h"
@@ -205,8 +206,17 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         math_deinit(&app->math);
         return MAIN_EXIT_RUNTIME; /* each has said why, and neither left anything behind */
     }
+    /* Before main pins itself: any thread CUDA starts here would inherit that one CPU. */
+    if (MC_GPU_ENABLED != 0 && gpu_bridge_init(&app->gpu_bridge, gpu_bridge_limits_default()) != GPU_STATUS_OK) {
+        job_deinit(&app->job);
+        texture_deinit(&app->texture);
+        simd_deinit(&app->simd);
+        math_deinit(&app->math);
+        return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
+    }
     if (!thread_pin_self(thread_cpu_for(&topology, THREAD_ROLE_MAIN, 0u)) ||
         !world_init(&app->world, world_limits_default())) {
+        gpu_bridge_deinit(&app->gpu_bridge);
         job_deinit(&app->job);
         texture_deinit(&app->texture);
         simd_deinit(&app->simd);
@@ -215,6 +225,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
     }
     if (!terrain_init(&app->terrain, TERRAIN_SEED_DEFAULT)) {
         world_deinit(&app->world);
+        gpu_bridge_deinit(&app->gpu_bridge);
         job_deinit(&app->job);
         texture_deinit(&app->texture);
         simd_deinit(&app->simd);
@@ -230,6 +241,7 @@ static void app_deinit(app_t *app) {
     display_deinit(&app->display);
     terrain_deinit(&app->terrain);
     world_deinit(&app->world);
+    gpu_bridge_deinit(&app->gpu_bridge);
     job_deinit(&app->job);
     texture_deinit(&app->texture);
     simd_deinit(&app->simd);
@@ -359,6 +371,8 @@ int32_t main(int32_t argc, char **argv) {
     } else if (!main_run(&app)) {
         status = MAIN_EXIT_RUNTIME;
     }
+    /* Before deinit, which frees whatever is left on the card. */
+    const bool gpu_clean = gpu_bridge_exit_check(&app.gpu_bridge);
     if (options.pretend_leak == 0) {
         app_deinit(&app);
     }
@@ -369,7 +383,8 @@ int32_t main(int32_t argc, char **argv) {
                  counters.reserve_calls, counters.release_calls, counters.live_bytes);
     }
     /* Everything is deinitialized by now, so anything still live is a leak: plans/CODING_STANDARD.md section 10. */
-    const main_exit_t final_status = heap_exit_check() ? status : MAIN_EXIT_LEAK;
+    const bool heap_clean = heap_exit_check();
+    const main_exit_t final_status = heap_clean && gpu_clean ? status : MAIN_EXIT_LEAK;
     if (options.pretend_leak != 0) {
         /* The workers are still running and looking at app, on this stack, so main must not return under them. */
         _exit(final_status);
