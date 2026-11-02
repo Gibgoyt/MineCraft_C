@@ -72,6 +72,8 @@ So shapes cost about 0.01 ms in the worst case, nothing measurable on terrain, a
 
 Appended as they land:
 
+- `55e173a` Draw slabs, stairs, plants, crops, torches and thin plates from a table of boxes, send rays on through see-through texels, and give both a setting, a measured cost and golden pictures.
+
 ## Issues found
 
 ### 1. No block has a facing, so stairs, ladders and vines each have only one
