@@ -47,11 +47,11 @@ typedef struct main_options_t {
     uint32_t render_distance;   /* --render-distance, or 0 for config/machine.yaml */
     uint8_t crash_test;         /* display_crash_test_t: --crash-test */
     uint8_t test_world;         /* --test-world */
-    uint8_t features_off;       /* --no-shapes, --no-alpha, --no-sky and on: SHADE_FEATURE_* */
     uint8_t walk;               /* --walk */
     uint8_t has_time_of_day;    /* --time-of-day */
-    uint8_t _pad0[3];
-    float32_t time_of_day;      /* --time-of-day */
+    uint16_t features_off;      /* --no-shapes, --no-alpha, --no-sky and on: SHADE_FEATURE_* */
+    uint8_t _pad0[2];
+    float32_t time_of_day; /* --time-of-day */
     uint8_t _pad1[4];
 } main_options_t;
 static_assert(sizeof(main_options_t) == 72);
@@ -64,7 +64,8 @@ static void main_print_usage(const char *program) {
         "       %s --headless [--script <path>] [--screenshot-dir <dir>] [--ticks <n>] [--width <w>] [--height <h>]\n"
         "       %s --test-world [--walk] [--render-distance <chunks>] [--time-of-day <0 to 1>]\n"
         "           [--no-shapes] [--no-alpha] [--no-sky] [--no-day-cycle] [--no-fog]\n"
-        "           [--no-shadows] [--no-stored-light] [--headless ...]\n"
+        "           [--no-shadows] [--no-stored-light] [--no-transparency] [--no-water-reflection]\n"
+        "           [--no-water-tint] [--headless ...]\n"
         "  --report                 print the build's defines and CPU features, then exit\n"
         "  --pretend-missing-cpu    treat this feature as absent, to see the CPU check fail; may repeat\n"
         "  --pretend-leak           skip the shutdown, to see the leak check at exit fail\n"
@@ -82,6 +83,9 @@ static void main_print_usage(const char *program) {
         "  --no-day-cycle           with --test-world: the time of day stays where it starts\n"
         "  --no-fog, --no-shadows, --no-stored-light\n"
         "                           with --test-world: no fog, nothing in the sun's way, every voxel under open sky\n"
+        "  --no-transparency        with --test-world: rays stop at water and part-covered texels, on the mean colour\n"
+        "  --no-water-reflection, --no-water-tint\n"
+        "                           with --test-world: water reflects nothing, or takes no colour with depth\n"
         "  --time-of-day <0 to 1>   with --test-world: the time to start at: 0 midnight, 0.25 sunrise, 0.5 noon\n"
         "  --test-world             fly through a generated world: through KMS from a text console, never inside X,\n"
         "                           where WASD, Space and Shift move, the mouse looks, the wheel sets the speed, Ctrl\n"
@@ -137,21 +141,27 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
         } else if (strcmp(argv[i], "--test-world") == 0) {
             out->test_world = 1;
         } else if (strcmp(argv[i], "--no-shapes") == 0) {
-            out->features_off |= (uint8_t)SHADE_FEATURE_SHAPES;
+            out->features_off |= (uint16_t)SHADE_FEATURE_SHAPES;
         } else if (strcmp(argv[i], "--no-alpha") == 0) {
-            out->features_off |= (uint8_t)SHADE_FEATURE_ALPHA;
+            out->features_off |= (uint16_t)SHADE_FEATURE_ALPHA;
         } else if (strcmp(argv[i], "--walk") == 0) {
             out->walk = 1;
         } else if (strcmp(argv[i], "--no-sky") == 0) {
-            out->features_off |= (uint8_t)SHADE_FEATURE_SKY;
+            out->features_off |= (uint16_t)SHADE_FEATURE_SKY;
         } else if (strcmp(argv[i], "--no-day-cycle") == 0) {
-            out->features_off |= (uint8_t)SHADE_FEATURE_DAY_CYCLE;
+            out->features_off |= (uint16_t)SHADE_FEATURE_DAY_CYCLE;
+        } else if (strcmp(argv[i], "--no-transparency") == 0) {
+            out->features_off |= (uint16_t)SHADE_FEATURE_TRANSPARENCY;
+        } else if (strcmp(argv[i], "--no-water-reflection") == 0) {
+            out->features_off |= (uint16_t)SHADE_FEATURE_WATER_REFLECTION;
+        } else if (strcmp(argv[i], "--no-water-tint") == 0) {
+            out->features_off |= (uint16_t)SHADE_FEATURE_WATER_TINT;
         } else if (strcmp(argv[i], "--no-fog") == 0) {
-            out->features_off |= (uint8_t)SHADE_FEATURE_FOG;
+            out->features_off |= (uint16_t)SHADE_FEATURE_FOG;
         } else if (strcmp(argv[i], "--no-shadows") == 0) {
-            out->features_off |= (uint8_t)SHADE_FEATURE_SHADOW;
+            out->features_off |= (uint16_t)SHADE_FEATURE_SHADOW;
         } else if (strcmp(argv[i], "--no-stored-light") == 0) {
-            out->features_off |= (uint8_t)SHADE_FEATURE_LIGHT;
+            out->features_off |= (uint16_t)SHADE_FEATURE_LIGHT;
         } else if (strcmp(argv[i], "--time-of-day") == 0 && i + 1 < argc) {
             i++;
             char *end = nullptr;

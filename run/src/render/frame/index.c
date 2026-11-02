@@ -174,7 +174,7 @@ static void frame_face_table(uint16_t *out) {
     }
 }
 
-/* What each kind of block draws as. Water and lava stay whole cubes: their surface is Stage 09.3's. `thin` is two shapes, as
+/* What each kind of block draws as. Water and lava are whole cubes: cuda/src/shade/README.md has what a ray does in water. `thin` is two shapes, as
  * config/blocks says one word for a lily pad on the floor and a ladder on a wall. No block has a facing yet, so stairs, ladders
  * and vines all have the one: Stage 09.1 issue 1. */
 static uint8_t frame_shape_of(uint32_t block) {
@@ -236,6 +236,8 @@ static gpu_status_t frame_send_tables(render_frame_t *frame, device_memory_t *me
         .texture_count = BLOCK_TEXTURE_COUNT,
         .material_count = BLOCK_COUNT,
         .features = SHADE_FEATURES_ALL,
+        .water_material = BLOCK_ID_WATER,
+        .glass_material = BLOCK_ID_GLASS,
     };
     frame->borrowed_shapes = blocks->borrowed_shapes;
     render_frame_time_set(frame, RENDER_DAY_NOON);

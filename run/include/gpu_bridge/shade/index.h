@@ -5,6 +5,7 @@
 #define MC_RUN_GPU_BRIDGE_SHADE_INDEX_H
 
 #include "gpu_bridge/device_memory/index.h"
+#include "gpu_bridge/post/index.h"
 #include "gpu_bridge/status/index.h"
 #include "gpu_bridge/traverse/index.h"
 #include "types/index.h"
@@ -32,6 +33,10 @@ enum : uint32_t {
     SHADE_ALPHA_LAYERS = 16u,
     /* How many surfaces a sun ray looks at, holes and all, before it calls the sun hidden: see cuda/src/shade/README.md. */
     SHADE_SUN_LAYERS = 8u,
+    /* How many surfaces a reflection looks at, holes and all, before it stops on the last. */
+    SHADE_REFLECTION_LAYERS = 8u,
+    /* A material no voxel has: shade_scene_t's water and glass, in a scene with none. */
+    SHADE_NO_MATERIAL = 0xFFFFu,
     /* A voxel's stored light byte with nothing stored: the sky open above it, and no block light. Sky is the high half. */
     SHADE_LIGHT_OPEN_SKY = 0xF0u,
     SHADE_LIGHT_LEVEL_MAX = 15u,
@@ -47,8 +52,13 @@ enum : uint32_t {
     SHADE_FEATURE_FOG = 1u << 4,       /* the far world melts into the sky, or stops at a wall */
     SHADE_FEATURE_SHADOW = 1u << 5,    /* one ray per surface facing the sun, or nothing ever stands in its way */
     SHADE_FEATURE_LIGHT = 1u << 6,     /* the light stored per voxel counts, or every voxel is under an open sky */
+    /* Rays go on through part-covered texels and through water, or stop there on the texture's mean colour. The next two need it. */
+    SHADE_FEATURE_TRANSPARENCY = 1u << 7,
+    SHADE_FEATURE_WATER_REFLECTION = 1u << 8, /* one ray off the surface of water, or none */
+    SHADE_FEATURE_WATER_TINT = 1u << 9,       /* water takes light by how far a ray goes in it, or is clear */
     SHADE_FEATURES_ALL = SHADE_FEATURE_SHAPES | SHADE_FEATURE_ALPHA | SHADE_FEATURE_SKY | SHADE_FEATURE_DAY_CYCLE |
-                         SHADE_FEATURE_FOG | SHADE_FEATURE_SHADOW | SHADE_FEATURE_LIGHT,
+                         SHADE_FEATURE_FOG | SHADE_FEATURE_SHADOW | SHADE_FEATURE_LIGHT | SHADE_FEATURE_TRANSPARENCY |
+                         SHADE_FEATURE_WATER_REFLECTION | SHADE_FEATURE_WATER_TINT,
 };
 
 /* A material with no texture, or none in the table: a colour nothing else in the game is, so that the bug shows. */
@@ -64,6 +74,21 @@ enum : uint32_t {
 /* From inside a block: dark, so that it is plain where the eye is. */
 #define SHADE_BRIGHTNESS_INSIDE F32(0.25)
 
+/* How much of the light water reflects, looking straight at it: Schlick's form, with water's own number. */
+#define SHADE_WATER_F0 F32(0.02)
+/* What water takes of the light per block a ray goes through it, by channel: red goes first, so that deep water is blue. */
+#define SHADE_WATER_ABSORB_R F32(0.30)
+#define SHADE_WATER_ABSORB_G F32(0.10)
+#define SHADE_WATER_ABSORB_B F32(0.07)
+/* What water gives back to the eye in place of what it took, under full light: the colour of very deep water. */
+#define SHADE_WATER_DEEP_R F32(0.012)
+#define SHADE_WATER_DEEP_G F32(0.06)
+#define SHADE_WATER_DEEP_B F32(0.10)
+/* What a sun ray loses per block of water. One number, as what it carries is one: see cuda/src/shade/README.md. */
+#define SHADE_WATER_ABSORB_SUN F32(0.10)
+/* Past this many blocks of water nothing behind it can be told from none, so a ray with tint on looks no further. */
+#define SHADE_WATER_SEEN_BLOCKS F32(48.0)
+
 /* What a kernel needs of one texture, from its entry in the blob. */
 typedef struct shade_texture_t {
     uint64_t pixels_offset;                  /* 0: into the pixels block */
@@ -71,8 +96,8 @@ typedef struct shade_texture_t {
     uint16_t width;                          /* 60: of level 0 */
     uint16_t height;                         /* 62 */
     uint8_t level_count;                     /* 64 */
-    uint8_t mean_rgba[4]; /* 65: what shows in a part-covered texel, until rays go on past those: Stage 09.3 */
-    uint8_t _pad0[3];     /* 69 */
+    uint8_t mean_rgba[4];                    /* 65: what shows in a part-covered texel where a ray stops on it */
+    uint8_t _pad0[3];                        /* 69 */
 } shade_texture_t;
 static_assert(sizeof(shade_texture_t) == 72);
 static_assert(alignof(shade_texture_t) == 8);
@@ -108,7 +133,8 @@ typedef struct shade_scene_t {
     uint32_t texture_count;                /* 24 */
     uint32_t material_count;               /* 28 */
     uint32_t features;                     /* 32: SHADE_FEATURE_* */
-    uint8_t _pad0[4];                      /* 36 */
+    uint16_t water_material;               /* 36: or SHADE_NO_MATERIAL */
+    uint16_t glass_material;               /* 38: or SHADE_NO_MATERIAL */
     shade_sun_t sun;                       /* 40 */
 } shade_scene_t;
 static_assert(sizeof(shade_scene_t) == 88);
@@ -119,7 +145,8 @@ static_assert(offsetof(shade_scene_t, borrowed_pixels) == 16);
 static_assert(offsetof(shade_scene_t, texture_count) == 24);
 static_assert(offsetof(shade_scene_t, material_count) == 28);
 static_assert(offsetof(shade_scene_t, features) == 32);
-static_assert(offsetof(shade_scene_t, _pad0) == 36);
+static_assert(offsetof(shade_scene_t, water_material) == 36);
+static_assert(offsetof(shade_scene_t, glass_material) == 38);
 static_assert(offsetof(shade_scene_t, sun) == 40);
 
 /* One pixel, in linear light before the sky and the tone map: where post goes on from. */
@@ -270,11 +297,56 @@ SHADE_BOTH_SIDES static inline float32_t shade_pixel_tangent(const traverse_came
     return F32(2.0) * sqrtf(squared) / (float32_t)camera->height;
 }
 
+/* How much of the light a surface of water reflects, for how square a ray meets it: the cosine, from 0 along it to 1 straight on. */
+SHADE_BOTH_SIDES static inline float32_t shade_water_fresnel(float32_t cosine) {
+    const float32_t off = cosine >= F32(1.0) ? F32(0.0) : (cosine <= F32(0.0) ? F32(1.0) : F32(1.0) - cosine);
+    const float32_t squared = off * off;
+    return SHADE_WATER_F0 + (F32(1.0) - SHADE_WATER_F0) * squared * squared * off;
+}
+
+/* What a length of water does to a ray: out_through is what gets past it, and out_given what it gives back under full light. */
+SHADE_BOTH_SIDES static inline void shade_water_tint(float32_t blocks, float32_t out_through[3],
+                                                     float32_t out_given[3]) {
+    out_through[0] = expf(-SHADE_WATER_ABSORB_R * blocks);
+    out_through[1] = expf(-SHADE_WATER_ABSORB_G * blocks);
+    out_through[2] = expf(-SHADE_WATER_ABSORB_B * blocks);
+    out_given[0] = SHADE_WATER_DEEP_R * (F32(1.0) - out_through[0]);
+    out_given[1] = SHADE_WATER_DEEP_G * (F32(1.0) - out_through[1]);
+    out_given[2] = SHADE_WATER_DEEP_B * (F32(1.0) - out_through[2]);
+}
+
+/* Post fogs a whole pixel by its first surface. What is seen behind that, at t, needs only the rest of its own fog on top, so that
+ * both together come to post_fog at t. */
+SHADE_BOTH_SIDES static inline float32_t shade_fog_behind(const post_settings_t *settings, float32_t first,
+                                                          float32_t t) {
+    const float32_t near_part = post_fog(settings, first);
+    return near_part >= F32(1.0) ? F32(0.0) : (post_fog(settings, t) - near_part) / (F32(1.0) - near_part);
+}
+
+/* Whether a surface is only the far side of the see-through voxel a ray just left: the same block, and next to it across the face
+ * the ray came in by. A wall of glass has no frames inside it, and a stack of ice no faces. */
+SHADE_BOTH_SIDES static inline bool shade_own_kind_behind(uint32_t last_material, const int16_t last_offset[3],
+                                                          uint32_t material, const int16_t offset[3], uint32_t face) {
+    if (material != last_material || face >= SHADE_FACES) {
+        return false;
+    }
+    const uint32_t axis = face >> 1;
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        const int32_t towards = i != axis ? 0 : ((face & 1u) != 0u ? 1 : -1);
+        if ((int32_t)offset[i] + towards != (int32_t)last_offset[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /* One colour per pixel of hits, into pixels, each row after row at the camera's size. A ray that lands on a texel of alpha 0 goes
- * on through world, which must be the one the hits came from. Starts a kernel and returns; it runs in order with any other.
- * Nothing here allocates. On failure error says why, and nothing was started. */
-gpu_status_t shade_frame(gpu_error_t *error, const shade_scene_t *scene, const traverse_world_t *world,
-                         const traverse_camera_t *camera, const device_block_t *hits, const device_block_t *pixels);
+ * on through world, which must be the one the hits came from, as one does through glass and water. post is the same sky and fog
+ * post_frame is about to use: what shows behind glass, and in water, is shaded here. Starts a kernel and returns; it runs in order
+ * with any other. Nothing here allocates. On failure error says why, and nothing was started. */
+gpu_status_t shade_frame(gpu_error_t *error, const shade_scene_t *scene, const post_settings_t *post,
+                         const traverse_world_t *world, const traverse_camera_t *camera, const device_block_t *hits,
+                         const device_block_t *pixels);
 
 #ifdef __cplusplus
 }

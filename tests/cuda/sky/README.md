@@ -18,6 +18,7 @@ What it checks:
 - **A shadow by hand:** a tower 10 blocks tall at noon: the ground where its shadow must fall, up to where the tilt says its tip is, and the ground just past it and to each side, where the sun ray must change nothing at all.
 - **Discs and fog:** straight at the sun, straight at the moon, and a wall past the fog in front of the sun, which must show the sky with no disc.
 - **Stored light on the card:** read back from the hits, voxel by voxel, and from a section all of one block and one light, which is a form of its own.
+- **All of this with Stage 09.3's transparency off:** this reference stops a ray on what is part-covered. Rays going on past that are `tests/cuda/water/`'s to hold, and with it off these pictures did not change.
 - **The settings:** each off, against the same reference. All off is what was drawn before this stage: `tests/cuda/shapes/`' golden pictures are unchanged, and it draws with these off. A shadow only ever takes light away.
 - **The clock:** through the real threads, with what `game_loop_frame` is told has passed: it wraps past midnight, and the setting stops it.
 - **Golden pictures:** `fixtures/*.png`, at most 2 out of 255 apart on any channel. Ahmed's card and driver made them. To make them again, after looking at them:
