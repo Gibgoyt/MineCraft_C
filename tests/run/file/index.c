@@ -426,9 +426,13 @@ static void run_through_pipe(test_context_t *t, bool we_write) {
         time_sleep_ns(100000);
     }
     REQUIRE(pthread_join(side_thread, nullptr) == 0);
+    /* If that side gave up early, the peer would wait for ever on a pipe nobody serves. Closing its end ends that with
+     * end of file or EPIPE, and only the failed checks below remain. */
+    (void)signal(SIGPIPE, SIG_IGN);
+    REQUIRE(close(we_write ? ends[1] : ends[0]) == 0);
     REQUIRE(pthread_join(peer_thread, nullptr) == 0);
-    REQUIRE(close(ends[0]) == 0);
-    REQUIRE(close(ends[1]) == 0);
+    REQUIRE(close(we_write ? ends[0] : ends[1]) == 0);
+    (void)signal(SIGPIPE, SIG_DFL);
     REQUIRE(sigaction(SIGUSR1, &previous, nullptr) == 0);
 
     CHECK_EQ_U64(side.status, FILE_OK);
@@ -537,9 +541,19 @@ TEST(atomic_write_failing_partway_keeps_the_old_contents) {
     CHECK_EQ_U64(file_path_size(temporary, &got), FILE_ERROR_NOT_FOUND);
 }
 
-/* Each version is all one byte value, so any mix of two versions, or a cut-off one, shows at once. */
-TEST(atomic_write_killed_at_any_moment_leaves_one_whole_version) {
-    enum : uint64_t { VERSION_BYTES = 256u * 1024u };
+/* One version of the file, whole: the right length, and all one byte value, so a mix of two versions or a cut-off one
+ * cannot pass. Comparing the buffer with itself one byte along is the same as comparing every byte with the first. */
+static bool is_one_whole_version(const char *path, uint8_t *buffer, uint64_t version_bytes) {
+    uint64_t got = 0;
+    return file_read_whole(path, buffer, version_bytes + 1u, &got) == FILE_OK && got == version_bytes &&
+           memcmp(buffer, buffer + 1, version_bytes - 1u) == 0;
+}
+
+/* A child replaces the file as fast as it can, while this process keeps reading it and then kills the child at a
+ * different moment each round. Large versions, so that a write takes long enough for both to land inside it. A file
+ * written in place fails this: that was tried, by making the temporary name the path itself. */
+TEST(atomic_write_read_during_and_killed_at_any_moment_shows_one_whole_version) {
+    enum : uint64_t { VERSION_BYTES = 4u * 1024u * 1024u };
     enum : uint32_t { ROUNDS = 8u };
     const char *path = scratch_path(t, "data");
     uint8_t *version = test_alloc(t, VERSION_BYTES);
@@ -547,11 +561,13 @@ TEST(atomic_write_killed_at_any_moment_leaves_one_whole_version) {
     memset(version, 0xAA, VERSION_BYTES);
     REQUIRE(file_write_atomic(path, version, VERSION_BYTES) == FILE_OK);
 
+    uint64_t reads = 0;
+    uint64_t bad_reads = 0;
     for (uint32_t round = 0; round < ROUNDS; round++) {
         const pid_t child = fork();
         REQUIRE(child >= 0);
         if (child == 0) {
-            (void)alarm(30u); /* in case the parent dies and never kills it */
+            (void)alarm(30u); /* in case this process dies and never kills it */
             for (uint8_t value = 0;; value++) {
                 memset(version, value, VERSION_BYTES);
                 if (file_write_atomic(path, version, VERSION_BYTES) != FILE_OK) {
@@ -559,22 +575,20 @@ TEST(atomic_write_killed_at_any_moment_leaves_one_whole_version) {
                 }
             }
         }
-        /* A different moment each round, and early enough that some land inside a write. */
-        time_sleep_ns((int64_t)(round + 1u) * 3 * TIME_NS_PER_MS);
+        const int64_t kill_at = time_now_ns() + (int64_t)(round + 1u) * 5 * TIME_NS_PER_MS;
+        while (time_now_ns() < kill_at) {
+            bad_reads += is_one_whole_version(path, read_back, VERSION_BYTES) ? 0u : 1u;
+            reads++;
+        }
         CHECK_EQ_I64(kill(child, SIGKILL), 0);
         int32_t wait_status = 0;
         REQUIRE(waitpid(child, &wait_status, 0) == child);
         CHECK(WIFSIGNALED(wait_status) && WTERMSIG(wait_status) == SIGKILL);
-
-        uint64_t got = 0;
-        REQUIRE(file_read_whole(path, read_back, VERSION_BYTES + 1u, &got) == FILE_OK);
-        CHECK_EQ_U64(got, VERSION_BYTES);
-        uint64_t mixed = 0;
-        for (uint64_t i = 1; i < got; i++) {
-            mixed += read_back[i] != read_back[0] ? 1u : 0u;
-        }
-        CHECK_EQ_U64(mixed, 0u);
+        bad_reads += is_one_whole_version(path, read_back, VERSION_BYTES) ? 0u : 1u;
+        reads++;
     }
+    CHECK(reads >= ROUNDS);
+    CHECK_EQ_U64(bad_reads, 0u);
     /* What the kill may have left behind does not stop the next write. */
     CHECK_EQ_U64(file_write_atomic(path, "after", 5u), FILE_OK);
 }
