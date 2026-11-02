@@ -1,6 +1,8 @@
 /* See README.md. The Owner: it holds the region, and lends its arena to the parts. */
 #include "terrain/index.h"
 
+#include "tables/blocks/index.h"
+
 #include <string.h>
 
 bool terrain_init(terrain_t *terrain, uint64_t seed) {
@@ -38,10 +40,35 @@ bool terrain_init(terrain_t *terrain, uint64_t seed) {
         terrain_deinit(terrain); /* it has said why */
         return false;
     }
+    terrain_feature_init(&terrain->borrowed_feature, &terrain->arena_tables, seed, terrain->borrowed_biome,
+                         terrain->borrowed_hydrology, terrain->borrowed_surface, terrain->borrowed_cave);
     return true;
 }
 
+void terrain_generate_box(const terrain_t *terrain, const terrain_density_box_t *box, uint8_t *opened,
+                          uint16_t *blocks) {
+    terrain_hydrology_fill_box(terrain->borrowed_hydrology, box, blocks);
+    terrain_surface_fill_box(terrain->borrowed_surface, box, blocks);
+    terrain_cave_mask_box(terrain->borrowed_cave, box, opened);
+    const uint64_t voxels = terrain_density_box_voxels(box);
+    /* Only what a cave truly cuts takes its fill from the flood. */
+    for (uint64_t i = 0u; i < voxels; i++) {
+        const uint16_t block = blocks[i];
+        const bool rock =
+            block != BLOCK_ID_AIR && block != BLOCK_ID_WATER && block != BLOCK_ID_LAVA && block != BLOCK_ID_BEDROCK;
+        opened[i] = opened[i] != 0u && rock ? 1u : 0u;
+    }
+    (void)terrain_cave_carve_box(terrain->borrowed_cave, box, blocks);
+    terrain_hydrology_flood_box(terrain->borrowed_hydrology, box, opened, blocks);
+    terrain_surface_line_caves_box(terrain->borrowed_surface, box, blocks);
+    terrain_ore_fill_box(terrain->borrowed_ore, box, blocks);
+    terrain_feature_fill_box(terrain->borrowed_feature, box, blocks);
+}
+
 void terrain_deinit(terrain_t *terrain) {
+    if (terrain->borrowed_feature != nullptr) {
+        terrain_feature_deinit(terrain->borrowed_feature);
+    }
     if (terrain->borrowed_surface != nullptr) {
         terrain_surface_deinit(terrain->borrowed_surface);
     }

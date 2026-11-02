@@ -64,4 +64,4 @@ Each is `[low, high]`, low below high, both ends in the range.
 
 ### Features
 
-Each says how many a 16 by 16 chunk tries, and it is for Stage 10.7 to place them: `tree_oak tree_birch tree_spruce tree_jungle tree_acacia tree_dark_oak tree_mangrove tree_cherry grass fern flower cactus sugar_cane dead_bush mushroom lily_pad vine melon pumpkin seagrass kelp snow ice`.
+Each says how many a 16 by 16 chunk tries, except `snow` and `ice`, which above 0 are on for every column of the biome, and `vine`, which is shared out among the biome's trees. `run/src/terrain/feature/README.md` says what each does: `tree_oak tree_birch tree_spruce tree_jungle tree_acacia tree_dark_oak tree_mangrove tree_cherry grass fern flower cactus sugar_cane dead_bush mushroom lily_pad vine melon pumpkin seagrass kelp snow ice`.

@@ -26,6 +26,7 @@ Each of these takes what the one before left, in the same box:
 | 3 | `terrain_cave_carve_box`, `terrain_hydrology_flood_box` | Cuts through what the surface laid, and fills what it opened |
 | 4 | `terrain_surface_line_caves_box` | Needs to know the caves. Reads only `terrain_cave_mask_box`, so lining does not depend on what any cave held |
 | 5 | `terrain_ore_fill_box` | Rock and ore replace stone and deepslate only, so they leave everything the surface laid, and stay out of the lining |
+| 6 | `terrain_feature_fill_box` | Stage 10.7: what grows on it. `terrain_generate_box` runs all six |
 
 ## The rules
 
@@ -87,7 +88,7 @@ Noise is spread as hydrology spreads it, and the limit is the one it measured fo
 
 - **No eroded badlands hoodoos.** The ground's shape comes from the density, and this only colours it. Eroded badlands differ from badlands by their bands reaching lower and their barer top.
 - **No sculk in the deep dark:** `config/blocks/` has no such block. It has cobbled deepslate and tuff on its floors until it does.
-- **No snow layers or ice on water.** Those are Stage 10.7's. `snow_block` is the only snow there is, and it lies on the coldest ground from here.
+- **No ice on water, and no snow over what is not its own top.** Those are `run/src/terrain/feature/`'s. `snow_block` is the only snow there is, and it lies on the coldest ground from here.
 
 ## What it costs
 

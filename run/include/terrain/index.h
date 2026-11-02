@@ -8,6 +8,7 @@
 #include "terrain/cave/index.h"
 #include "terrain/climate/index.h"
 #include "terrain/density/index.h"
+#include "terrain/feature/index.h"
 #include "terrain/hydrology/index.h"
 #include "terrain/noise/index.h"
 #include "terrain/ore/index.h"
@@ -29,7 +30,8 @@ enum : uint32_t {
 };
 static_assert(TERRAIN_NOISE_FIELDS_MAX * sizeof(terrain_noise_field_t) + sizeof(terrain_climate_t) +
                   sizeof(terrain_density_t) + sizeof(terrain_hydrology_t) + sizeof(terrain_cave_t) +
-                  sizeof(terrain_ore_t) + sizeof(terrain_biome_t) + sizeof(terrain_surface_t) <
+                  sizeof(terrain_ore_t) + sizeof(terrain_biome_t) + sizeof(terrain_surface_t) +
+                  sizeof(terrain_feature_t) <
               TERRAIN_TABLES_BYTES);
 static_assert((uint32_t)TERRAIN_CLIMATE_NOISE_FIELDS + (uint32_t)TERRAIN_DENSITY_NOISE_FIELDS +
                   (uint32_t)TERRAIN_HYDROLOGY_NOISE_FIELDS + (uint32_t)TERRAIN_CAVE_NOISE_FIELDS +
@@ -50,7 +52,8 @@ typedef struct terrain_t {
     terrain_ore_t *borrowed_ore;             /* 144: in arena_tables */
     terrain_biome_t *borrowed_biome;         /* 152: in arena_tables */
     terrain_surface_t *borrowed_surface;     /* 160: in arena_tables */
-    uint8_t _pad0[24];                       /* 168 */
+    terrain_feature_t *borrowed_feature;     /* 168: in arena_tables */
+    uint8_t _pad0[16];                       /* 176 */
 } terrain_t;
 static_assert(sizeof(terrain_t) == 192);
 static_assert(alignof(terrain_t) == 64);
@@ -64,6 +67,7 @@ static_assert(offsetof(terrain_t, borrowed_cave) == 136);
 static_assert(offsetof(terrain_t, borrowed_ore) == 144);
 static_assert(offsetof(terrain_t, borrowed_biome) == 152);
 static_assert(offsetof(terrain_t, borrowed_surface) == 160);
+static_assert(offsetof(terrain_t, borrowed_feature) == 168);
 
 /* Reserves the region and starts the parts, for this seed. On failure logs why, leaves nothing behind and returns false. A
  * world with another seed is a terrain_deinit and another terrain_init: nothing computed from the old seed may survive. */
@@ -71,5 +75,11 @@ static_assert(offsetof(terrain_t, borrowed_surface) == 160);
 
 /* Releases what init reserved. Safe on a zeroed terrain_t. No worker may still be reading it. */
 void terrain_deinit(terrain_t *terrain);
+
+/* Every stage in its order, for one box: the blocks of the world there. blocks holds terrain_density_box_voxels(box) values in x,
+ * then y, then z order, and opened that many bytes the caller lends for working. Allocates nothing, and a voxel is a pure function
+ * of the terrain and the voxel: splitting a box into parts, in any order, on any thread, gives the same bytes. */
+void terrain_generate_box(const terrain_t *terrain, const terrain_density_box_t *box, uint8_t *opened,
+                          uint16_t *blocks);
 
 #endif

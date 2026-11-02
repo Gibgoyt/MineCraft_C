@@ -8,6 +8,7 @@
 **Public functions:**
 
 - `terrain_init`, `terrain_deinit`: a pair.
+- `terrain_generate_box`: every stage, in order, for one box. What feeds a world from terrain calls this.
 
 **May be called by:** `main`, until `game` holds it (Stage 08.4).
 **Depends on:** `heap`, `arena`, and its parts.
@@ -25,6 +26,7 @@
 | `ore` | Deepslate by depth, and the table of rock and ore veins by depth, laid into any box of voxels | 10.5 |
 | `biome` | Which of the biomes in `config/biomes/` holds any column or voxel | 10.6 |
 | `surface` | What each biome lays on the ground, and lines its caves with | 10.6 |
+| `feature` | What grows on the ground, and lakes, ice and snow, across chunks | 10.7 |
 
 A part that needs tables takes them from `arena_tables` in its `_init`, called from `terrain_init`, and adds its noise fields
 to `noise_bank` there too. `TERRAIN_NOISE_FIELDS_MAX` says how many fields fit.

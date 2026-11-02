@@ -231,7 +231,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `hydrology` | Sea level 0, rivers, oceans, beaches, aquifers, the lava level under the world at `-230` | 10.4 |
 | | `cave ore` | Cheese, spaghetti and noodle caves cut from any box; deepslate by depth, and the table of rock and ore veins by depth | 10.5 |
 | | `biome surface` | All Overworld biomes, chosen from the climate by `config/biomes/`; what each lays on the ground and lines its caves with | 10.6 |
-| | `feature` | Trees, plants, cross-chunk placement | 10.7 |
+| | `feature` | Trees, plants, lakes, ice and snow, cross-chunk placement. `terrain_generate_box` in the Owner runs every stage | 10.7 |
 
 ### Gameplay
 
@@ -395,6 +395,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/terrain/hydrology/` | ctest `run_terrain_hydrology`: `run/src/terrain/hydrology/`: each column worked out by hand, rivers that hold water and reach the sea, oceans, beaches, aquifers that cannot flow, the lava level, any split of the work, and the same bytes from 1 worker and 16 |
 | `tests/run/terrain/cave/` | ctest `run_terrain_cave`: `run/src/terrain/cave/`: all three kinds and their shares, thin against wide, a solid floor, no cave reaching the sea, each voxel worked out by hand, any split of the work, and the same bytes from 1 worker and 16 |
 | `tests/run/terrain/biome/` | ctest `run_terrain_biome`: `run/src/terrain/biome/` and `run/src/terrain/surface/`: every biome the plan lists is in the table and turns up in real worlds, the choice and the rules worked out by hand, each biome's own surface in real columns, lined caves, the whole chain of stages, any split of the work, and the same bytes from 1 worker and 16 |
+| `tests/run/terrain/feature/` | ctest `run_terrain_feature`: `run/src/terrain/feature/` and `terrain_generate_box`: any split of a box, any order of chunks, the same bytes from 1 worker and 16, trees whole across chunk lines, each tree within its reach, a column's ground against the stages walked from the sky, everything standing where it may, lakes that hold their water, ice and snow |
 | `tests/run/terrain/ore/` | ctest `run_terrain_ore`: `run/src/terrain/ore/`: the table against the README, each ore at its depths, deepslate variants only in deepslate, veins worked out by hand, across chunks, any split of the work, and the same bytes from 1 worker and 16 |
 | `tests/run/texture/` | ctest `run_texture`, covering `run/src/texture/` with `blob` and `registry`, and `asm/src/embed_assets/`: every texture against its source files, and damage to the blob, field by field |
 | `tests/run/gpu_bridge/` | ctest `run_gpu_bridge`, covering `run/src/gpu_bridge/` with `status`, and `cuda/src/device_memory/`, on the real card: real blocks and a real kernel, the budgets, stale and forged handles, a pebibyte refused, and no device in a process of its own |
@@ -410,7 +411,7 @@ linked into minecraft_c, read through run/src/texture/
 
 Tests need no server and no display, and run under `timeout`.
 
-**`bench/`**: `simd`, `terrain`, `mobs`, `world`, each `index.c` with a `README.md` and a results history.
+**`bench/`**: `simd`, `terrain`, `mobs`, `world`, each `index.c` with a `README.md` and a results history. `terrain/tour` is the phase gate's biome tour: a picture of every biome, with no display and no card.
 
 **`tools/test-or-build.sh`**: `flock` around heavy commands, so parallel agents never run builds at the same time:
 
@@ -554,6 +555,8 @@ Split it into sub-directories. Remember that going deeper changes the tier: code
 | Rivers, oceans, beaches, aquifers, lava | `run/src/terrain/hydrology/` |
 | Biomes | `config/biomes/`, `run/src/terrain/biome/` |
 | What a biome lays on the ground | `config/biomes/`, `run/src/terrain/surface/` |
+| What grows on it, and lakes | `config/biomes/`, `run/src/terrain/feature/` |
+| Every stage of terrain for one box | `terrain_generate_box` in `run/src/terrain/` |
 | Zombie behaviour | `run/src/mob/zombie/` |
 | Who allocates anything | `run/src/heap/`, then depth 1 of the system |
 | Type rules, padding, memory law | `plans/CODING_STANDARD.md` |
