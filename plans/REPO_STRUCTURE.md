@@ -220,7 +220,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `tick` | Fluids, falling blocks, random ticks | 11.2 |
 | `terrain` | (the Owner) | `terrain_init`, `terrain_deinit`: one seed, and the region and arena its parts borrow | 10.1 |
 | | `rng noise` | Seeded streams and position hashes; fractal fields sampled in bulk on `asm/src/noise` | 10.1 |
-| | `climate` | Continentalness, erosion, ridges, temperature, humidity | 10.2 |
+| | `climate` | Continentalness, erosion, ridges, temperature, humidity, weirdness | 10.2 |
 | | `density` | 3D terrain shape, `z ∈ [-250, 500]` | 10.3 |
 | | `hydrology` | Sea level 0, rivers, oceans, aquifers, lava | 10.4 |
 | | `cave ore` | Caves and ore tables | 10.5 |
@@ -383,6 +383,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/world/map/` | ctest `run_world_map`: the toroidal table, streaming by distance, requests out of date, a random walk against a brute-force model, and `world_open` |
 | `tests/run/world/edit/` | ctest `run_world_edit`: random edits against a brute-force array and brute-force flags, the log, each consumer's flags, and snapshots, with a real reader thread |
 | `tests/run/terrain/seed/` | ctest `run_terrain_seed`: `run/src/terrain/` with `rng` and `noise`, the same bytes from 1 worker and 16, any split of the work, and values pinned from a separate program and the scalar kernel |
+| `tests/run/terrain/climate/` | ctest `run_terrain_climate`: `run/src/terrain/climate/`: ranges, the spread its README promises, the same bytes from 1 worker and 16, any split of the work, and each value worked out by hand from its noise |
 | `tests/run/texture/` | ctest `run_texture`, covering `run/src/texture/` with `blob` and `registry`, and `asm/src/embed_assets/`: every texture against its source files, and damage to the blob, field by field |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
 | `tests/asm/` | NASM kernels against scalar C references |
