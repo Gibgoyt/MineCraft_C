@@ -33,6 +33,8 @@ A **column** here is what it is in the plan and in `run/src/world/column/`: a ch
 
 Run under `tools/test-or-build.sh`, so no other agent's build or test shared the CPU. Each place is the first column of that biome the search meets, so its 36 chunks are not all that biome.
 
+A second run on a clean build of the same code, for the same gate, gave `jungle` 125 and 1051, `snowy_taiga` 181 and 1283, and every place over the target, exit status 0. So the margin is 5% to 10% from one run to the next. Later stages that add work to a column should expect to have to pay for it.
+
 ### 2026-11-02, Stage 10.7: withdrawn
 
 That table counted a block's column of 1 by 1, so each number was 256 times what the plan means, and it held the 1-worker number against a target set for 16. Its 22,725 and 193,174 for `jungle` were 89 and 755 in the plan's unit, under the target: see the phase file's issue 1.

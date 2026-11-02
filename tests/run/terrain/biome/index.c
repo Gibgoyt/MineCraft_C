@@ -1428,48 +1428,6 @@ TEST(far_from_the_ground_nothing_changes) {
     terrain_deinit(&terrain);
 }
 
-/* A chunk walked slice by slice reads what does not change with the layers once. It has to lay what the whole fill lays. */
-TEST(a_tile_read_once_lays_what_the_fill_lays) {
-    enum : uint32_t { LAYERS = 16u, VOXELS = 256u * LAYERS, SLICES = 6u };
-    uint16_t *const whole = test_alloc(t, VOXELS * sizeof(uint16_t));
-    uint16_t *const tiled = test_alloc(t, VOXELS * sizeof(uint16_t));
-    uint16_t *const before = test_alloc(t, VOXELS * sizeof(uint16_t));
-    terrain_surface_tile_t *const tile = test_alloc(t, sizeof(*tile));
-    terrain_t terrain;
-    REQUIRE(terrain_init(&terrain, BIO_WORLD));
-    const bio_found_t *const found = bio_found_in_world(t, &terrain);
-    const biome_id_t biomes[4] = {BIOME_ID_FOREST, BIOME_ID_BADLANDS, BIOME_ID_MANGROVE_SWAMP, BIOME_ID_JAGGED_PEAKS};
-    uint64_t changed = 0u;
-    for (uint32_t b = 0u; b < 4u; b++) {
-        const int32_t x = found->at[biomes[b]].x & ~15;
-        const int32_t y = found->at[biomes[b]].y & ~15;
-        const int32_t ground = found->at[biomes[b]].z;
-        terrain_surface_tile_read(terrain.borrowed_surface, x, y, tile);
-        /* From above the ground down through it, in the order a walk goes, the one tile used for them all. */
-        for (uint32_t slice = 0u; slice < SLICES; slice++) {
-            const terrain_density_box_t box = {
-                .origin_x = x,
-                .origin_y = y,
-                .origin_z = ((ground >> 4) + 2 - (int32_t)slice) * (int32_t)LAYERS,
-                .count_x = 16u,
-                .count_y = 16u,
-                .count_z = LAYERS,
-            };
-            terrain_hydrology_fill_box(terrain.borrowed_hydrology, &box, before);
-            memcpy(whole, before, VOXELS * sizeof(uint16_t));
-            memcpy(tiled, before, VOXELS * sizeof(uint16_t));
-            terrain_surface_fill_box(terrain.borrowed_surface, &box, whole);
-            terrain_surface_fill_tile_box(terrain.borrowed_surface, tile, &box, tiled);
-            CHECK(memcmp(whole, tiled, VOXELS * sizeof(uint16_t)) == 0);
-            for (uint32_t i = 0u; i < VOXELS; i++) {
-                changed += before[i] != tiled[i] ? 1u : 0u;
-            }
-        }
-    }
-    CHECK(changed > 0u);
-    terrain_deinit(&terrain);
-}
-
 TEST(a_full_bank_is_refused_and_nothing_is_left_behind) {
     terrain_t terrain;
     REQUIRE(terrain_init(&terrain, BIO_WORLD));

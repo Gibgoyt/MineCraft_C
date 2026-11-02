@@ -8,9 +8,9 @@
 **Public functions:**
 
 - `terrain_init`, `terrain_deinit`: a pair.
-- `terrain_generate_box`: every stage, in order, for one box. What feeds a world from terrain calls this.
+- `terrain_generate_box`: every stage, in order, for one box. `run/src/game/` calls it on a worker for each column.
 
-**May be called by:** `main`, until `game` holds it (Stage 08.4).
+**May be called by:** `main`, which starts and stops it, and `game`, which borrows it and makes every column of the world with `terrain_generate_box`.
 **Depends on:** `heap`, `arena`, and its parts.
 
 ## Parts

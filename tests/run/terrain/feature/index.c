@@ -9,8 +9,10 @@
 #include "terrain/index.h"
 #include "thread/index.h"
 #include "time/index.h"
+#include "world/column/index.h"
 
 #include <inttypes.h>
+#include <sched.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
@@ -297,6 +299,183 @@ TEST(one_and_sixteen_workers_give_the_same_bytes_in_any_order) {
     CHECK_EQ_U64(scattered, one);
     printf("    digest: 0x%016" PRIX64 "\n", one);
     CHECK_EQ_U64(one, FEA_DIGEST_PIN);
+    terrain_deinit(&terrain);
+}
+
+/* ---- The phase's gate, on what the game asks for ---------------------------------------------------------------------- */
+
+enum : uint32_t {
+    FEA_WHOLE_LAYERS = (uint32_t)(COLUMN_Z_STORAGE_END - COLUMN_Z_STORAGE_MIN),
+    FEA_WHOLE_VOXELS = FEA_COLUMNS * FEA_WHOLE_LAYERS,
+};
+
+typedef struct fea_whole_run_t {
+    const terrain_t *borrowed_terrain;  /* 0 */
+    const fea_place_t *borrowed_places; /* 8: the chunks to make, BIOME_COUNT of them, some not found */
+    uint16_t *borrowed_blocks;          /* 16: FEA_WHOLE_VOXELS per biome */
+    uint8_t *borrowed_opened;           /* 24: FEA_WHOLE_VOXELS per worker */
+    _Atomic uint64_t worker_mask;       /* 32: who ran a job */
+    _Atomic uint32_t next;              /* 40: the next biome to take, backwards or forwards */
+    _Atomic uint32_t arrived;           /* 44: jobs at the barrier; each takes its share of memory from this */
+    uint32_t barrier;                   /* 48: jobs that must all be running before any does its work */
+    uint8_t backwards;                  /* 52 */
+    uint8_t _pad0[3];                   /* 53 */
+} fea_whole_run_t;
+static_assert(sizeof(fea_whole_run_t) == 56);
+
+static void fea_whole_job(job_worker_t *worker, void *borrowed_argument) {
+    fea_whole_run_t *const run = borrowed_argument;
+    atomic_fetch_or_explicit(&run->worker_mask, 1ull << worker->index, memory_order_relaxed);
+    const uint32_t me = atomic_fetch_add_explicit(&run->arrived, 1u, memory_order_relaxed);
+    /* Every job holds its worker here until all have one, so that many workers really are at it. */
+    while (atomic_load_explicit(&run->arrived, memory_order_relaxed) < run->barrier) {
+        (void)sched_yield();
+    }
+    uint8_t *const opened = run->borrowed_opened + (uint64_t)me * FEA_WHOLE_VOXELS;
+    for (;;) {
+        const uint32_t turn = atomic_fetch_add_explicit(&run->next, 1u, memory_order_relaxed);
+        if (turn >= BIOME_COUNT) {
+            return;
+        }
+        const uint32_t b = run->backwards != 0u ? BIOME_COUNT - 1u - turn : turn;
+        const fea_place_t *const place = &run->borrowed_places[b];
+        if (place->found == 0u) {
+            continue;
+        }
+        const terrain_density_box_t box = {
+            .origin_x = place->chunk_x * (int32_t)FEA_CHUNK,
+            .origin_y = place->chunk_y * (int32_t)FEA_CHUNK,
+            .origin_z = COLUMN_Z_STORAGE_MIN,
+            .count_x = FEA_CHUNK,
+            .count_y = FEA_CHUNK,
+            .count_z = FEA_WHOLE_LAYERS,
+        };
+        terrain_generate_box(run->borrowed_terrain, &box, opened,
+                             run->borrowed_blocks + (uint64_t)b * FEA_WHOLE_VOXELS);
+    }
+}
+
+/* How many workers ran a job. */
+static uint64_t fea_whole_run_all(job_system_t *system, fea_whole_run_t *run, uint32_t workers, bool backwards,
+                                  uint16_t *blocks) {
+    atomic_store_explicit(&run->worker_mask, 0u, memory_order_relaxed);
+    atomic_store_explicit(&run->next, 0u, memory_order_relaxed);
+    atomic_store_explicit(&run->arrived, 0u, memory_order_relaxed);
+    run->barrier = workers;
+    run->backwards = backwards ? 1u : 0u;
+    run->borrowed_blocks = blocks;
+    job_group_t group;
+    job_group_init(&group);
+    for (uint32_t i = 0u; i < workers; i++) {
+        job_submit(system, &group, fea_whole_job, run);
+    }
+    job_group_wait(system, &group);
+    job_group_deinit(&group);
+    uint64_t mask = atomic_load_explicit(&run->worker_mask, memory_order_relaxed);
+    uint64_t count = 0u;
+    while (mask != 0u) {
+        mask &= mask - 1u;
+        count++;
+    }
+    return count;
+}
+
+/* The gate as the plan says it: whole columns, all the storage the game asks for, in a chunk of every biome on the surface, with
+ * 16 workers shown to have been at it, and what those columns must be whatever the seed. Underground biomes are under these. */
+TEST(whole_columns_of_every_biome_are_the_same_from_1_and_16_workers_and_sound) {
+    terrain_t terrain;
+    REQUIRE(terrain_init(&terrain, FEA_WORLD));
+    fea_place_t *const places = test_alloc(t, BIOME_COUNT * sizeof(*places));
+    fea_find_places(t, &terrain, places);
+    const uint64_t bytes = (uint64_t)BIOME_COUNT * FEA_WHOLE_VOXELS * sizeof(uint16_t);
+    uint16_t *const one = test_alloc(t, bytes);
+    uint16_t *const many = test_alloc(t, bytes);
+    uint16_t *const scattered = test_alloc(t, bytes);
+    memset(one, 0, bytes);
+    memset(many, 0, bytes);
+    memset(scattered, 0, bytes);
+    fea_whole_run_t run = {
+        .borrowed_terrain = &terrain,
+        .borrowed_places = places,
+        .borrowed_opened = test_alloc(t, (uint64_t)FEA_WORKERS_MANY * FEA_WHOLE_VOXELS),
+    };
+    job_system_t system;
+    thread_topology_t topology;
+    REQUIRE(thread_topology_read(&topology));
+    REQUIRE(job_init(&system, &topology));
+    heap_counters_t heap_before;
+    heap_counters_read(&heap_before);
+    CHECK_EQ_U64(fea_whole_run_all(&system, &run, 1u, false, one), 1u);
+    CHECK_EQ_U64(fea_whole_run_all(&system, &run, FEA_WORKERS_MANY, false, many), FEA_WORKERS_MANY);
+    CHECK_EQ_U64(fea_whole_run_all(&system, &run, FEA_WORKERS_MANY, true, scattered), FEA_WORKERS_MANY);
+    heap_counters_t heap_after;
+    heap_counters_read(&heap_after);
+    CHECK_EQ_U64(heap_after.reserve_calls, heap_before.reserve_calls);
+    job_deinit(&system);
+    CHECK(memcmp(one, many, bytes) == 0);
+    CHECK(memcmp(one, scattered, bytes) == 0);
+
+    const uint64_t layer = FEA_COLUMNS;
+    uint64_t made = 0u;
+    uint64_t fluid = 0u;
+    uint64_t fluid_on_air = 0u;
+    uint64_t fluid_by_air = 0u;
+    uint64_t water_by_lava = 0u;
+    for (uint32_t b = 0u; b < BIOME_COUNT; b++) {
+        if (places[b].found == 0u) {
+            CHECK(biome_defs[b].where == BIOME_WHERE_UNDERGROUND);
+            continue;
+        }
+        CHECK(biome_defs[b].where != BIOME_WHERE_UNDERGROUND);
+        made++;
+        const uint16_t *const blocks = one + (uint64_t)b * FEA_WHOLE_VOXELS;
+        uint64_t b_on_air = 0u;
+        uint64_t b_by_air = 0u;
+        uint64_t b_by_lava = 0u;
+        for (uint32_t iz = 0u; iz < FEA_WHOLE_LAYERS; iz++) {
+            const int32_t z = COLUMN_Z_STORAGE_MIN + (int32_t)iz;
+            for (uint32_t i = 0u; i < FEA_COLUMNS; i++) {
+                const uint64_t at = i + layer * iz;
+                const uint16_t block = blocks[at];
+                if (z < MC_WORLD_Z_MIN || z > MC_WORLD_Z_MAX) {
+                    CHECK_EQ_U64(block, BLOCK_ID_AIR);
+                    continue;
+                }
+                CHECK((z == MC_WORLD_Z_MIN) == (block == BLOCK_ID_BEDROCK));
+                if (block != BLOCK_ID_WATER && block != BLOCK_ID_LAVA) {
+                    continue;
+                }
+                fluid++;
+                b_on_air += blocks[at - layer] == BLOCK_ID_AIR ? 1u : 0u;
+                const uint32_t x = i % FEA_CHUNK;
+                const uint32_t y = i / FEA_CHUNK;
+                const uint16_t sides[4] = {
+                    x > 0u ? blocks[at - 1u] : BLOCK_ID_STONE,
+                    x + 1u < FEA_CHUNK ? blocks[at + 1u] : BLOCK_ID_STONE,
+                    y > 0u ? blocks[at - FEA_CHUNK] : BLOCK_ID_STONE,
+                    y + 1u < FEA_CHUNK ? blocks[at + FEA_CHUNK] : BLOCK_ID_STONE,
+                };
+                for (uint32_t s = 0u; s < 4u; s++) {
+                    b_by_air += sides[s] == BLOCK_ID_AIR ? 1u : 0u;
+                    b_by_lava += block == BLOCK_ID_WATER && sides[s] == BLOCK_ID_LAVA ? 1u : 0u;
+                }
+            }
+        }
+        if (b_on_air + b_by_air + b_by_lava != 0u) {
+            printf("    %s at chunk %" PRId32 ", %" PRId32 ": %" PRIu64 " fluid on air, %" PRIu64 " by air, %" PRIu64
+                   " water by lava\n",
+                   biome_defs[b].name, places[b].chunk_x, places[b].chunk_y, b_on_air, b_by_air, b_by_lava);
+        }
+        fluid_on_air += b_on_air;
+        fluid_by_air += b_by_air;
+        water_by_lava += b_by_lava;
+    }
+    printf("    %" PRIu64 " whole chunks, %" PRIu64 " fluid voxels\n", made, fluid);
+    CHECK(made != 0u);
+    CHECK(fluid != 0u);
+    CHECK_EQ_U64(fluid_on_air, 0u);
+    CHECK_EQ_U64(fluid_by_air, 0u);
+    CHECK_EQ_U64(water_by_lava, 0u);
     terrain_deinit(&terrain);
 }
 
@@ -1240,6 +1419,50 @@ TEST(another_seed_makes_another_world) {
     CHECK(a.borrowed_feature->lake_seed != b.borrowed_feature->lake_seed);
     terrain_deinit(&a);
     terrain_deinit(&b);
+}
+
+/* A chunk walked slice by slice reads what does not change with the layers once. It has to lay what the whole fill lays. */
+TEST(a_tile_read_once_lays_what_the_fill_lays) {
+    enum : uint32_t { LAYERS = 16u, VOXELS = 256u * LAYERS, SLICES = 6u };
+    uint16_t *const whole = test_alloc(t, VOXELS * sizeof(uint16_t));
+    uint16_t *const tiled = test_alloc(t, VOXELS * sizeof(uint16_t));
+    uint16_t *const before = test_alloc(t, VOXELS * sizeof(uint16_t));
+    terrain_surface_tile_t *const tile = test_alloc(t, sizeof(*tile));
+    terrain_t terrain;
+    REQUIRE(terrain_init(&terrain, FEA_WORLD));
+    fea_place_t *const places = test_alloc(t, BIOME_COUNT * sizeof(*places));
+    fea_find_places(t, &terrain, places);
+    const biome_id_t biomes[4] = {BIOME_ID_FOREST, BIOME_ID_BADLANDS, BIOME_ID_MANGROVE_SWAMP, BIOME_ID_JAGGED_PEAKS};
+    uint64_t changed = 0u;
+    for (uint32_t b = 0u; b < 4u; b++) {
+        REQUIRE(places[biomes[b]].found != 0u);
+        const int32_t x = places[biomes[b]].chunk_x * (int32_t)FEA_CHUNK;
+        const int32_t y = places[biomes[b]].chunk_y * (int32_t)FEA_CHUNK;
+        const int32_t ground = places[biomes[b]].ground;
+        terrain_surface_tile_read(terrain.borrowed_surface, x, y, tile);
+        /* From above the ground down through it, in the order a walk goes, the one tile used for them all. */
+        for (uint32_t slice = 0u; slice < SLICES; slice++) {
+            const terrain_density_box_t box = {
+                .origin_x = x,
+                .origin_y = y,
+                .origin_z = ((ground >> 4) + 2 - (int32_t)slice) * (int32_t)LAYERS,
+                .count_x = 16u,
+                .count_y = 16u,
+                .count_z = LAYERS,
+            };
+            terrain_hydrology_fill_box(terrain.borrowed_hydrology, &box, before);
+            memcpy(whole, before, VOXELS * sizeof(uint16_t));
+            memcpy(tiled, before, VOXELS * sizeof(uint16_t));
+            terrain_surface_fill_box(terrain.borrowed_surface, &box, whole);
+            terrain_surface_fill_tile_box(terrain.borrowed_surface, tile, &box, tiled);
+            CHECK(memcmp(whole, tiled, VOXELS * sizeof(uint16_t)) == 0);
+            for (uint32_t i = 0u; i < VOXELS; i++) {
+                changed += before[i] != tiled[i] ? 1u : 0u;
+            }
+        }
+    }
+    CHECK(changed > 0u);
+    terrain_deinit(&terrain);
 }
 
 TEST_MAIN()

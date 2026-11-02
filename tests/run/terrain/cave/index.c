@@ -1079,7 +1079,7 @@ TEST(cutting_with_a_mask_is_what_carving_gives) {
     terrain_t terrain;
     REQUIRE(terrain_init(&terrain, CAVE_WORLD));
     uint64_t total = 0u;
-    /* From the bedrock, where a mask covers what must not be cut, to the sea and the ground. */
+    /* From the bedrock to the sea and the ground. No real mask reaches the bedrock, so the next test holds that by hand. */
     const int32_t levels[3] = {MC_WORLD_Z_MIN, -60, -48};
     for (uint32_t l = 0u; l < 3u; l++) {
         const terrain_density_box_t box = {
@@ -1109,6 +1109,31 @@ TEST(cutting_with_a_mask_is_what_carving_gives) {
     }
     CHECK(total > 0u);
     terrain_deinit(&terrain);
+}
+
+/* By hand, for what real masks never ask: caves stop above the bedrock, so only this says a mask there still cuts nothing. */
+TEST(a_mask_cuts_only_rock_and_says_what_it_cut) {
+    enum : uint32_t { KINDS = 6u, BOTH = 2u * KINDS };
+    const uint16_t kinds[KINDS] = {BLOCK_ID_AIR,     BLOCK_ID_WATER, BLOCK_ID_LAVA,
+                                   BLOCK_ID_BEDROCK, BLOCK_ID_STONE, BLOCK_ID_DIRT};
+    const bool is_cut[KINDS] = {false, false, false, false, true, true};
+    uint16_t blocks[BOTH];
+    uint8_t mask[BOTH];
+    for (uint32_t i = 0u; i < KINDS; i++) {
+        blocks[i] = kinds[i];
+        mask[i] = 0u;
+        blocks[KINDS + i] = kinds[i];
+        mask[KINDS + i] = 2u; /* any kind of cave: what comes back is only 0 or 1 */
+    }
+    const terrain_density_box_t box = {
+        .origin_x = 0, .origin_y = 0, .origin_z = 0, .count_x = BOTH, .count_y = 1u, .count_z = 1u};
+    terrain_cave_cut_with_mask(&box, mask, blocks);
+    for (uint32_t i = 0u; i < KINDS; i++) {
+        CHECK_EQ_U64(blocks[i], kinds[i]);
+        CHECK_EQ_U64(mask[i], 0u);
+        CHECK_EQ_U64(blocks[KINDS + i], is_cut[i] ? (uint16_t)BLOCK_ID_AIR : kinds[i]);
+        CHECK_EQ_U64(mask[KINDS + i], is_cut[i] ? 1u : 0u);
+    }
 }
 
 TEST(a_full_bank_is_refused) {

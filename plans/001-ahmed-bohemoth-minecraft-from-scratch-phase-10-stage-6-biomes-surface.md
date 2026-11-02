@@ -75,4 +75,4 @@ Appended as they land:
 
 6. **`tests/run/terrain/seed/index.c` was not clang-formatted as it stood on the integration branch.** `clang_format` flagged `:680`, a line this stage did not write. Formatted the file, which moved that one call and nothing else. The test passes after it.
 
-7. **Nothing in the game calls this yet.** Expected, and for the record: `run/src/main/` starts `terrain_t`, and no stage has yet made chunks from it for the world, so the five-step order in `run/src/terrain/surface/README.md` is run only by `tests/run/terrain/biome/`. Whoever feeds `run/src/world/` from terrain must call them in that order.
+7. **Nothing in the game calls this yet.** Expected, and for the record: `run/src/main/` starts `terrain_t`, and no stage has yet made chunks from it for the world, so the five-step order in `run/src/terrain/surface/README.md` is run only by `tests/run/terrain/biome/`. Whoever feeds `run/src/world/` from terrain must call them in that order. **Closed by the phase gate:** `run/src/game/` makes every column with `terrain_generate_box`, which calls them in that order. See the phase file's issue 2.
