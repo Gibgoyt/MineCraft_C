@@ -1058,8 +1058,11 @@ static void rt_rig_end(test_context_t *t, rt_rig_t *rig) {
     gpu_bridge_deinit(rig->bridge);
 }
 
-static const game_config_t rt_small_game = {
-    .render_distance = 5u, .width = RT_PICTURE_WIDTH, .height = RT_PICTURE_HEIGHT, ._pad0 = {0}};
+static const game_config_t rt_small_game = {.render_distance = 5u,
+                                            .width = RT_PICTURE_WIDTH,
+                                            .height = RT_PICTURE_HEIGHT,
+                                            .features_off = SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
+                                            ._pad0 = {0}};
 
 /* Compares a shown frame with the picture under it: what differs must be the outline's colour, and there must be some. */
 static uint64_t rt_outline_pixels(test_context_t *t, const uint8_t *shown, const uint8_t *picture) {

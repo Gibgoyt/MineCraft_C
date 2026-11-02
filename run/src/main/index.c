@@ -50,7 +50,8 @@ typedef struct main_options_t {
     uint8_t walk;               /* --walk */
     uint8_t has_time_of_day;    /* --time-of-day */
     uint16_t features_off;      /* --no-shapes, --no-alpha, --no-sky and on: SHADE_FEATURE_* */
-    uint8_t _pad0[2];
+    uint8_t god_rays;           /* --god-rays */
+    uint8_t _pad0[1];
     float32_t time_of_day; /* --time-of-day */
     uint8_t _pad1[4];
 } main_options_t;
@@ -65,7 +66,7 @@ static void main_print_usage(const char *program) {
         "       %s --test-world [--walk] [--render-distance <chunks>] [--time-of-day <0 to 1>]\n"
         "           [--no-shapes] [--no-alpha] [--no-sky] [--no-day-cycle] [--no-fog]\n"
         "           [--no-shadows] [--no-stored-light] [--no-transparency] [--no-water-reflection]\n"
-        "           [--no-water-tint] [--headless ...]\n"
+        "           [--no-water-tint] [--no-ao] [--no-taa] [--god-rays] [--headless ...]\n"
         "  --report                 print the build's defines and CPU features, then exit\n"
         "  --pretend-missing-cpu    treat this feature as absent, to see the CPU check fail; may repeat\n"
         "  --pretend-leak           skip the shutdown, to see the leak check at exit fail\n"
@@ -86,6 +87,8 @@ static void main_print_usage(const char *program) {
         "  --no-transparency        with --test-world: rays stop at water and part-covered texels, on the mean colour\n"
         "  --no-water-reflection, --no-water-tint\n"
         "                           with --test-world: water reflects nothing, or takes no colour with depth\n"
+        "  --no-ao, --no-taa        with --test-world: no short rays to darken corners, or each frame stands alone\n"
+        "  --god-rays               with --test-world: the air shows the sun's light where it reaches\n"
         "  --time-of-day <0 to 1>   with --test-world: the time to start at: 0 midnight, 0.25 sunrise, 0.5 noon\n"
         "  --test-world             fly through a generated world: through KMS from a text console, never inside X,\n"
         "                           where WASD, Space and Shift move, the mouse looks, the wheel sets the speed, Ctrl\n"
@@ -157,6 +160,12 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
             out->features_off |= (uint16_t)SHADE_FEATURE_WATER_REFLECTION;
         } else if (strcmp(argv[i], "--no-water-tint") == 0) {
             out->features_off |= (uint16_t)SHADE_FEATURE_WATER_TINT;
+        } else if (strcmp(argv[i], "--no-ao") == 0) {
+            out->features_off |= (uint16_t)SHADE_FEATURE_AO;
+        } else if (strcmp(argv[i], "--no-taa") == 0) {
+            out->features_off |= (uint16_t)SHADE_FEATURE_TAA;
+        } else if (strcmp(argv[i], "--god-rays") == 0) {
+            out->god_rays = 1u;
         } else if (strcmp(argv[i], "--no-fog") == 0) {
             out->features_off |= (uint16_t)SHADE_FEATURE_FOG;
         } else if (strcmp(argv[i], "--no-shadows") == 0) {
@@ -237,7 +246,7 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
         fprintf(stderr, "%s: --render-distance only means something with --test-world\n", argv[0]);
         return false;
     }
-    if (out->features_off != 0u && out->test_world == 0) {
+    if ((out->features_off != 0u || out->god_rays != 0u) && out->test_world == 0) {
         fprintf(stderr, "%s: --no-shapes and the other effects' flags only mean something with --test-world\n",
                 argv[0]);
         return false;
@@ -476,6 +485,7 @@ static main_exit_t main_run_test_world_headless(app_t *app, const main_options_t
                                 .width = config.width,
                                 .height = config.height,
                                 .features_off = options->features_off,
+                                .god_rays = options->god_rays,
                                 ._pad0 = {0}};
     if (!game_open(&app->game, &game)) {
         return MAIN_EXIT_RUNTIME;
@@ -513,6 +523,7 @@ static main_exit_t main_run_test_world(app_t *app, const main_options_t *options
                                 .width = buffer->width,
                                 .height = buffer->height,
                                 .features_off = options->features_off,
+                                .god_rays = options->god_rays,
                                 ._pad0 = {0}};
     if (!game_open(&app->game, &game)) {
         return MAIN_EXIT_RUNTIME;
