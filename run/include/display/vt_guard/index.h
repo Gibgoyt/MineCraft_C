@@ -105,6 +105,9 @@ int32_t display_vt_guard_keys_take(display_vt_guard_keys_t *keys, uint32_t code,
 /* Writes "CTRL+ALT+BACKSPACE = EMERGENCY EXIT" across the top of a buffer, so that it is on screen with the picture. */
 void display_vt_guard_draw_notice(display_buffer_t *buffer);
 
+/* The first row below that notice on a buffer of this size. 0 if the buffer is too small for it to be drawn. */
+uint32_t display_vt_guard_notice_bottom(const display_buffer_t *buffer);
+
 /* "" is segv. NONE for anything it does not know. */
 display_crash_test_t display_vt_guard_crash_test_from_name(const char *name);
 

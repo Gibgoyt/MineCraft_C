@@ -1190,6 +1190,20 @@ TEST(the_notice_shows_the_text_it_says) {
     CHECK_EQ_U64(row[left + 24u + 3u], 0x00c00000u);
 }
 
+TEST(the_notice_says_where_it_ends_or_that_it_is_not_there) {
+    display_buffer_t buffer = notice_buffer(t, 1920u, 1080u);
+    CHECK_EQ_U64(display_vt_guard_notice_bottom(&buffer), 8u + 9u * 6u);
+    display_vt_guard_draw_notice(&buffer);
+    const uint32_t *const last =
+        (const uint32_t *)(const void *)(buffer.owned_map + (uint64_t)(8u + 9u * 6u - 1u) * buffer.pitch);
+    const uint32_t *const after =
+        (const uint32_t *)(const void *)(buffer.owned_map + (uint64_t)(8u + 9u * 6u) * buffer.pitch);
+    CHECK_EQ_U64(last[960], 0x00c00000u);
+    CHECK_EQ_U64(after[960], 0u);
+    display_buffer_t tiny = notice_buffer(t, 100u, 100u);
+    CHECK_EQ_U64(display_vt_guard_notice_bottom(&tiny), 0u);
+}
+
 TEST(the_notice_keeps_to_small_screens_or_stays_off) {
     /* Each is in a buffer with a gap past the row: a write outside the width would be found by the count. */
     static const uint32_t sizes[][2] = {{1u, 1u}, {16u, 16u}, {100u, 100u}, {320u, 200u}, {640u, 480u}, {3840u, 2160u}};
@@ -1235,6 +1249,101 @@ TEST(the_test_pattern_goes_through_a_vt_switch_and_carries_on) {
     check_nothing_left(t, card);
     CHECK_EQ_I64(card->kd_mode, KD_TEXT);
     CHECK_EQ_U64(card->is_master, 0u);
+}
+
+typedef struct card_cursor_t {
+    uint32_t asked;
+    uint32_t discards;
+    uint32_t asked_at_discard;
+    uint32_t top_until; /* asks to spend in the top corner, on the notice, before going to the bottom one */
+    uint32_t stop_after;
+} card_cursor_t;
+static_assert(sizeof(card_cursor_t) == 20);
+
+static bool card_cursor_source(void *context, uint32_t room_x, uint32_t room_y, uint32_t *out_x, uint32_t *out_y,
+                               bool *out_active) {
+    card_cursor_t *const cursor = context;
+    cursor->asked++;
+    /* Across the notice, a row of cursor's width at a time, and then well away from it. */
+    const bool on_notice = cursor->asked <= cursor->top_until;
+    *out_x = on_notice ? cursor->asked * 8u % room_x : room_x;
+    *out_y = on_notice ? 10u : room_y;
+    *out_active = false;
+    return cursor->stop_after == 0u || cursor->asked < cursor->stop_after;
+}
+
+static void card_cursor_discard(void *context) {
+    card_cursor_t *const cursor = context;
+    cursor->discards++;
+    cursor->asked_at_discard = cursor->asked;
+}
+
+static display_status_t run_card_pattern_with_cursor(fake_card_t *card, display_t *display, card_cursor_t *cursor,
+                                                     int64_t duration_ns) {
+    display_config_t config = fake_config();
+    const display_status_t status = display_init(display, &config, &fake_ops, card);
+    if (status != DISPLAY_STATUS_OK) {
+        return status;
+    }
+    display_test_pattern_set_cursor(display, card_cursor_source, card_cursor_discard, cursor);
+    return display_test_pattern_run(display, time_now_ns(), duration_ns);
+}
+
+TEST(what_the_cursor_source_has_waiting_is_thrown_away_once_on_coming_back_from_another_vt) {
+    fake_card_t *const card = fake_card_new(t);
+    fake_card_use_small_mode(card);
+    card->vt_release_after_flips = 20u;
+    display_t *const display = rig_alloc_aligned(t, sizeof(display_t));
+    card_cursor_t cursor = {.stop_after = 40u};
+    CHECK_EQ_U64(run_card_pattern_with_cursor(card, display, &cursor, 60000000000), DISPLAY_STATUS_OK);
+    CHECK_EQ_U64(cursor.discards, 1u);
+    /* Not asked while away: every flip before the switch had its ask, and nothing came between. */
+    CHECK(cursor.asked_at_discard >= 20u);
+    CHECK(cursor.asked_at_discard <= 21u);
+    CHECK_EQ_U64(cursor.asked, 40u);
+    display_deinit(display);
+    check_nothing_left(t, card);
+}
+
+TEST(with_no_vt_switch_nothing_the_cursor_source_has_is_thrown_away) {
+    fake_card_t *const card = fake_card_new(t);
+    fake_card_use_small_mode(card);
+    display_t *const display = rig_alloc_aligned(t, sizeof(display_t));
+    card_cursor_t cursor = {.stop_after = 30u};
+    CHECK_EQ_U64(run_card_pattern_with_cursor(card, display, &cursor, 60000000000), DISPLAY_STATUS_OK);
+    CHECK_EQ_U64(cursor.discards, 0u);
+    display_deinit(display);
+    check_nothing_left(t, card);
+}
+
+/* Erasing the cursor puts back the bare pattern, so without care it would eat the one thing that says how to get out. */
+TEST(the_cursor_crossing_the_notice_leaves_it_whole_on_both_buffers) {
+    fake_card_t *const card = fake_card_new(t);
+    fake_card_use_small_mode(card);
+    display_t *const display = rig_alloc_aligned(t, sizeof(display_t));
+    card_cursor_t cursor = {.top_until = 24u, .stop_after = 40u};
+    CHECK_EQ_U64(run_card_pattern_with_cursor(card, display, &cursor, 60000000000), DISPLAY_STATUS_OK);
+    for (uint32_t i = 0; i < DISPLAY_FLIP_BUFFERS; i++) {
+        const display_buffer_t *const shown = &display->flip.buffers[i];
+        const uint32_t bottom = display_vt_guard_notice_bottom(shown);
+        REQUIRE(bottom != 0u);
+        CHECK(shown->cursor_y >= bottom);
+        display_buffer_t expected = notice_buffer(t, shown->width, shown->height);
+        display_flip_pattern_fill(&expected);
+        display_vt_guard_draw_notice(&expected);
+        uint32_t differences = 0;
+        for (uint32_t y = 0; y < bottom; y++) {
+            const uint32_t *const a = (const uint32_t *)(const void *)(shown->owned_map + (uint64_t)y * shown->pitch);
+            const uint32_t *const b =
+                (const uint32_t *)(const void *)(expected.owned_map + (uint64_t)y * expected.pitch);
+            for (uint32_t x = 0; x < shown->width; x++) {
+                differences += a[x] != b[x] ? 1u : 0u;
+            }
+        }
+        CHECK_EQ_U64(differences, 0u);
+    }
+    display_deinit(display);
+    check_nothing_left(t, card);
 }
 
 TEST(the_test_pattern_ending_leaves_handlers_as_it_found_them) {

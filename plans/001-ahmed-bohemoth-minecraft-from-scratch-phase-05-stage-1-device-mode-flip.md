@@ -45,7 +45,7 @@ Build first, from the integration branch, with `tools/test-or-build.sh cmake --b
     timeout 30 build/debug/bin/minecraft_c --test-pattern 2>&1 | tee /tmp/mc_c_test_pattern.txt; echo "exit=${PIPESTATUS[0]}"
     pgrep -a minecraft_c    # must print nothing
 
-What you should see: eight colour bars over a grey ramp, a thin white border around the edge, and an orange square moving back and forth. It ends by itself 20 seconds after it started, the text console comes back, and it prints the flip timings. Do not switch VT during the run. To choose the output, add `--connector HDMI-A-1` or `--connector eDP-1`; to choose the card, `--card /dev/dri/card0`.
+What you should see: eight colour bars over a grey ramp, a thin white border around the edge, and an orange square moving back and forth. It ends by itself 20 seconds after it started, the text console comes back, and it prints the flip timings. Switching VT during the run is Stage 05.2's, and is handled now. To choose the output, add `--connector HDMI-A-1` or `--connector eDP-1`; to choose the card, `--card /dev/dri/card0`.
 
 | Exit | Meaning | Next step |
 |---|---|---|
@@ -54,7 +54,7 @@ What you should see: eight colour bars over a grey ramp, a thin white border aro
 | 7 | KMS failed partway. The `display:` or `test pattern:` line names the call and the error | Record it in this file. This is the result the run exists to find |
 | 124 or 137 | It did not end by itself, which is a bug | Record it. If the screen stays dark, Ctrl+Alt+F1 or F2 should reach X |
 
-A crash leaves the console in graphics mode until Stage 05.2: see issue 3 below.
+A crash is meant to give the console back now that Stage 05.2 is merged: see its file for how to test that, and the phase file for the run that covers all of it.
 
 ## Results
 
@@ -129,3 +129,8 @@ Appended as they land:
    - **Merge:** `plans/REPO_STRUCTURE.md`, `run/include/main/index.h` and `run/src/main/README.md` conflicted with the Stage 04 work, since both sides added to `app_t`. All were kept: `job`, `simd`, `display`, `math`. `sizeof(app_t)` is now 1152, and its `static_assert` says so. `run/src/main/index.c` merged by itself; one comment line over length was rewrapped.
    - **Expected:** `run_display_mode`, run by hand with no argument, fails its checks. **Actual:** `Segmentation fault`, rc 139, after `CHECK failed: t->arg_count == 1`. `REQUIRE` inside the helper `run_game_pattern` ended only the helper, so the test went on to read an uninitialized `test_process_t`. ctest always passes the argument, so it never saw this. The inside-X test could also return with `DISPLAY` still set.
    - **Done:** the helper returns whether the program ran, and each test requires that after putting the environment back. By hand with no argument it now exits 1 and does not crash. Checks went from 984 to 981 as a result. No other helper in the file has a `REQUIRE`.
+
+9. **Found by the Phase 05 gate check, 2026-11-02.**
+   - **Stale notes.** This file still said not to switch VT and that a crash leaves the console in graphics mode, both of which Stage 05.2 changed; its issue 6 left them for someone else. Corrected above; issue 3 stays as the record of what was true then.
+   - **`run_display_mode` allocated `display_t` at the wrong alignment.** Expected: 64, which `alignas` asks for. Actual: `test_alloc` gives 16, in 9 places. Stage 05.2 issue 3 and Stage 05.3 issue 5 both saw this and left it, because it passed by where the allocation landed. It is undefined all the same. Fixed with `mode_alloc_display`.
+   - **Left alone, and for Ahmed to judge:** `display_ops_t` and `display_device_ioctl` return `-errno` as `int32_t`, and `input_events_drain` too, where the standard's section 6 says a function that can fail returns `bool` or an error enum. It follows the kernel's convention at the layer that wraps it, the lint does not see it, and changing it would touch every call and gain nothing a test could show.

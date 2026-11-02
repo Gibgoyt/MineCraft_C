@@ -35,7 +35,7 @@ typedef struct display_headless_t {
     uint32_t tick_count;
     uint8_t _pad0[4];
 } display_headless_t;
-static_assert(sizeof(display_headless_t) == 288);
+static_assert(sizeof(display_headless_t) == 296);
 
 /* What a scene gets for one tick. */
 typedef struct display_headless_tick_t {

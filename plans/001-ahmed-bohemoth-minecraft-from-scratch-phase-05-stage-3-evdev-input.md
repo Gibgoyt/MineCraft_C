@@ -66,7 +66,7 @@ Agent side, 2026-11-02, on the merged integration branch:
 | Unplug and replug a USB mouse during the run, and it still moves the square | Hot-plug. The final line counts it, as `removed` or `lost` and `opened` |
 | The last `input:` line has no `queue overflows` warning beside it | Nothing lost |
 
-Keys typed during the run also reach the shell afterwards, until Stage 05.2's `K_OFF`: see issue 2.
+With Stage 05.2's `K_OFF` merged, keys typed during the run should not reach the shell afterwards. One more to try: switch to another VT mid-run, press Esc and move the mouse there, and switch back. The run should carry on, with the square where it was.
 
 ## Commits
 
@@ -122,3 +122,7 @@ Appended as they land:
    - **Expected:** classifying is only proven by Ahmed's run (issue 3).
    - **Actual:** `/proc/bus/input/devices` is a text file anyone can read, and prints the capability bitmaps of every device. Reading it opens nothing under `/dev/input` and reads no keystrokes.
    - **Done:** its 21 devices are in `tests/run/input/fixtures/real_devices.h`, and `this_machines_own_devices_are_told_apart_correctly` runs them through the whole of discovery on the fake kernel. Kept: 7. They are the `AT` keyboard (`event3`), the G710's two interfaces (`event4`, `event5`), the Razer's mouse (`event6`) and its two keyboard interfaces (`event7`, `event9`), and the `DELL Technologies Keyboard` (`event10`). Rejected: 14, including the lid, power buttons, Video Bus, hotkeys and the touchpad. A one-off script compared the fixture with `/proc`: 21 and 21 rows, 0 differences. Removing the mouse's need for `REL_X` and `REL_Y` fails this test (`7 of 138 checks`). This does not tick the discovery box: the real `EVIOCGBIT` ioctl has still not been run on a real device, and event numbers change between boots, so the table is a record of one day, and tests the classifier only.
+
+9. **Found by the Phase 05 gate check, 2026-11-02.**
+   - **Issue 2 is out of date.** Stage 05.2 merged, so `K_OFF` applies while a keyboard is being watched. It also did not need `input_keys_has`: the guard reads the keyboards itself. `run/src/input/README.md` still had a section "Until Stage 05.2" saying otherwise. Replaced.
+   - **Input queued on another VT was acted on when the VT came back.** See Stage 05.2 issue 9, where the fix is logged. It adds `input_test_pattern_discard`, and one more test here.

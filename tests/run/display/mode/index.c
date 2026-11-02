@@ -215,11 +215,17 @@ TEST(a_named_connector_wins_even_when_slower_and_never_falls_back) {
     CHECK(display_mode_pick_connector(connectors, 2u, &wanted) == nullptr);
 }
 
+/* test_alloc gives 16-byte alignment, and display_t asks for 64: anything less is undefined, whether or not it happens to land right. */
+static display_t *mode_alloc_display(test_context_t *t) {
+    const uintptr_t raw = (uintptr_t)test_alloc(t, sizeof(display_t) + alignof(display_t));
+    return (display_t *)((raw + alignof(display_t) - 1u) & ~(uintptr_t)(alignof(display_t) - 1u));
+}
+
 /* ---- Refusing ---------------------------------------------------------------------------------------------------- */
 
 static void check_refused_untouched(test_context_t *t, fake_card_t *card, display_refusal_t refusal) {
     display_config_t config = fake_config();
-    display_t *const display = test_alloc(t, sizeof(display_t));
+    display_t *const display = mode_alloc_display(t);
     CHECK_EQ_U64(display_init(display, &config, &fake_ops, card), DISPLAY_STATUS_REFUSED);
     CHECK_EQ_U64(display->refusal, refusal);
     /* The card was never opened, and nothing asked was able to change anything. */
@@ -294,7 +300,7 @@ TEST(a_card_that_will_not_open_is_refused_with_the_reason) {
         fake_card_t *const card = fake_card_new(t);
         card->open_errno = errors[i];
         display_config_t config = fake_config();
-        display_t *const display = test_alloc(t, sizeof(display_t));
+        display_t *const display = mode_alloc_display(t);
         CHECK_EQ_U64(display_init(display, &config, &fake_ops, card), DISPLAY_STATUS_REFUSED);
         CHECK_EQ_U64(display->refusal, refusals[i]);
         CHECK_EQ_U64(card->open_count, 1u);
@@ -310,7 +316,7 @@ TEST(a_card_with_another_master_is_refused_and_closed) {
         card->fail_request = DRM_IOCTL_SET_MASTER;
         card->fail_errno = errors[i];
         display_config_t config = fake_config();
-        display_t *const display = test_alloc(t, sizeof(display_t));
+        display_t *const display = mode_alloc_display(t);
         CHECK_EQ_U64(display_init(display, &config, &fake_ops, card), DISPLAY_STATUS_REFUSED);
         CHECK_EQ_U64(display->refusal, DISPLAY_REFUSAL_NOT_MASTER);
         CHECK_EQ_U64(card->close_count, 1u);
@@ -335,7 +341,7 @@ TEST(a_card_with_no_dumb_buffers_is_an_error_and_gives_master_back) {
     fake_card_t *const card = fake_card_new(t);
     card->no_dumb = 1u;
     display_config_t config = fake_config();
-    display_t *const display = test_alloc(t, sizeof(display_t));
+    display_t *const display = mode_alloc_display(t);
     CHECK_EQ_U64(display_init(display, &config, &fake_ops, card), DISPLAY_STATUS_ERROR);
     CHECK_EQ_U64(card->is_master, 0u);
     check_nothing_left(t, card);
@@ -1133,7 +1139,7 @@ static void check_given_back(test_context_t *t, const fake_card_t *card) {
 
 static display_status_t run_pattern(test_context_t *t, fake_card_t *card, int64_t duration_ns, display_t **out) {
     display_config_t config = fake_config();
-    display_t *const display = test_alloc(t, sizeof(display_t));
+    display_t *const display = mode_alloc_display(t);
     *out = display;
     if (display_init(display, &config, &fake_ops, card) != DISPLAY_STATUS_OK) {
         test_check(t, false, __FILE__, __LINE__, "display_init on the fake card");
@@ -1188,10 +1194,10 @@ TEST(the_test_pattern_asks_for_its_cursor_each_frame_and_its_source_can_end_it_c
     fake_card_t *const card = fake_card_new(t);
     fake_card_use_small_mode(card);
     display_config_t config = fake_config();
-    display_t *const display = test_alloc(t, sizeof(display_t));
+    display_t *const display = mode_alloc_display(t);
     REQUIRE(display_init(display, &config, &fake_ops, card) == DISPLAY_STATUS_OK);
     pattern_cursor_script_t script = {.stop_after = 20u};
-    display_test_pattern_set_cursor(display, pattern_cursor_source, &script);
+    display_test_pattern_set_cursor(display, pattern_cursor_source, nullptr, &script);
     /* A long deadline, so that only the source can end it. */
     CHECK_EQ_U64(display_test_pattern_run(display, time_now_ns(), 60000000000), DISPLAY_STATUS_OK);
     CHECK_EQ_U64(script.asked, 20u);
@@ -1211,7 +1217,7 @@ TEST(the_test_pattern_stops_at_its_deadline_counted_from_its_start) {
     fake_card_t *const card = fake_card_new(t);
     fake_card_use_small_mode(card);
     display_config_t config = fake_config();
-    display_t *const display = test_alloc(t, sizeof(display_t));
+    display_t *const display = mode_alloc_display(t);
     REQUIRE(display_init(display, &config, &fake_ops, card) == DISPLAY_STATUS_OK);
     /* Already out of time when the loop starts, as after a very slow modeset: it shows nothing, and gives back. */
     CHECK_EQ_U64(display_test_pattern_run(display, time_now_ns() - 1000000000, 1000000), DISPLAY_STATUS_OK);
@@ -1281,7 +1287,7 @@ TEST(a_switched_console_ends_the_test_pattern_and_gives_back) {
 }
 
 TEST(display_deinit_is_safe_on_a_display_that_never_ran) {
-    display_t *const display = test_alloc(t, sizeof(display_t));
+    display_t *const display = mode_alloc_display(t);
     display_deinit(display);
     heap_counters_t counters;
     heap_counters_read(&counters);
@@ -1296,7 +1302,7 @@ TEST(a_failure_in_each_part_of_init_leaves_nothing) {
         card->fail_request = requests[r];
         card->fail_errno = EIO;
         display_config_t config = fake_config();
-        display_t *const display = test_alloc(t, sizeof(display_t));
+        display_t *const display = mode_alloc_display(t);
         CHECK_EQ_U64(display_init(display, &config, &fake_ops, card), DISPLAY_STATUS_ERROR);
         CHECK_EQ_U64(card->is_master, 0u);
         check_nothing_left(t, card);

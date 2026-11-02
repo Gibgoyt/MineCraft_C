@@ -37,10 +37,10 @@ foreach(mc_target IN LISTS mc_callgraph_targets)
     if(NOT mc_sources)
       continue()
     endif()
-    get_target_property(mc_includes ${mc_target} INCLUDE_DIRECTORIES)
     set(mc_callgraph_target ${mc_target}_callgraph)
     add_library(${mc_callgraph_target} OBJECT ${mc_sources})
-    target_include_directories(${mc_callgraph_target} PRIVATE ${mc_includes})
+    # The generator expression, since it also brings what the target's libraries add: get_target_property would not.
+    target_include_directories(${mc_callgraph_target} PRIVATE "$<TARGET_PROPERTY:${mc_target},INCLUDE_DIRECTORIES>")
     mc_callgraph_compile_options(${mc_callgraph_target})
     add_dependencies(${mc_callgraph_target} mc_prebuild mc_struct_offsets) # a source may include what that generates
   endif()
