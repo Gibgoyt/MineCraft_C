@@ -34,6 +34,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `9380d38` Add health, hunger, food, damage, death, respawn and a bed block to sleep the night through and come back to.
+
 ## Wiring outside the owned paths
 
 - `run/src/player/` and `run/include/player/index.h`: `player_t` holds `player_survival_t` (from 2112 to 2304 bytes), `player_survive_tick`, `player_vitals_read`, and the buttons go through survival in `player_interact_tick`. `run/include/main/index.h`: `app_t`'s size follows, 12096 to 12288.
