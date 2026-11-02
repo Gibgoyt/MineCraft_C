@@ -105,6 +105,8 @@ bool yaml_text_equals(const yaml_node_t *node, const char *text);
  *   decimal: [-+]?digits[.digits][e[-+]?digits]. `.inf` and `.nan` are refused.
  *   text:    any scalar, as written or decoded. Not NUL-terminated.
  */
+/* These keep the first problem by writing only while error->line is 0, so the error must start zeroed: yaml_parse clears
+ * its own, and these do not. */
 bool yaml_get_bool(const yaml_node_t *node, bool *out, yaml_error_t *error);
 bool yaml_get_int64(const yaml_node_t *node, int64_t *out, yaml_error_t *error);
 bool yaml_get_decimal(const yaml_node_t *node, yaml_decimal_t *out, yaml_error_t *error);

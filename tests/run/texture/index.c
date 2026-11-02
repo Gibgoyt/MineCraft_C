@@ -3,6 +3,7 @@
 
 #include "heap/index.h"
 #include "simd/embed_assets/index.h"
+#include "tables/blocks/index.h"
 #include "texture/index.h"
 
 #include <dirent.h>
@@ -146,6 +147,20 @@ TEST(what_the_game_is_known_to_need_is_there) {
     for (uint32_t i = 0; i < sizeof(names) / sizeof(names[0]); i++) {
         uint32_t id = 0;
         CHECK(texture_find(&texture, names[i], &id));
+    }
+    texture_deinit(&texture);
+}
+
+/* The block tables name faces by the texture's name, and a renderer looks them up here: both ends have to agree. */
+TEST(every_texture_a_block_names_is_found_in_the_blob) {
+    texture_t texture;
+    REQUIRE(texture_init(&texture));
+    for (uint32_t i = 0; i < BLOCK_TEXTURE_COUNT; i++) {
+        uint32_t id = 0;
+        if (!texture_find(&texture, block_texture_names[i], &id)) {
+            fprintf(stderr, "not in the blob: %s\n", block_texture_names[i]);
+            CHECK(false);
+        }
     }
     texture_deinit(&texture);
 }

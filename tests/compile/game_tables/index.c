@@ -176,6 +176,14 @@ TEST(what_the_files_say_is_in_the_table) {
     CHECK_EQ_U64(block_defs[BLOCK_ID_WATER].opacity, 2u);
     CHECK_EQ_U64(block_defs[BLOCK_ID_WATER].flags, BLOCK_FLAG_REPLACEABLE);
 
+    /* x east, y north, z up, and bit 0 is the positive side, so a ray's step picks a face with no branch. */
+    CHECK_EQ_U64(BLOCK_FACE_WEST, 0u);
+    CHECK_EQ_U64(BLOCK_FACE_EAST, 1u);
+    CHECK_EQ_U64(BLOCK_FACE_SOUTH, 2u);
+    CHECK_EQ_U64(BLOCK_FACE_NORTH, 3u);
+    CHECK_EQ_U64(BLOCK_FACE_BOTTOM, 4u);
+    CHECK_EQ_U64(BLOCK_FACE_TOP, 5u);
+
     /* Faces land where they were named: the furnace's front is its north, and side covers the other three. */
     const uint16_t *faces = block_defs[BLOCK_ID_FURNACE].faces;
     CHECK_STR_EQ(block_texture_names[faces[BLOCK_FACE_NORTH]], "blocks/furnace_front");
@@ -315,38 +323,39 @@ static const char GTT_STONE[] = "name: stone\n"
                                 "texture: { all: blocks/stone }\n";
 
 typedef struct gtt_tree_t {
-    char *root;     /* 0 */
-    char *config;   /* 8 */
-    char *textures; /* 16 */
-    char *out;      /* 24 */
-    char *stone;    /* 32: stone's yaml */
+    char *borrowed_root;     /* 0 */
+    char *borrowed_config;   /* 8 */
+    char *borrowed_textures; /* 16 */
+    char *borrowed_out;      /* 24 */
+    char *borrowed_stone;    /* 32: stone's yaml */
 } gtt_tree_t;
 static_assert(sizeof(gtt_tree_t) == 40);
 
 static gtt_tree_t gtt_tree_make(test_context_t *t, const char *name) {
     gtt_tree_t tree;
-    tree.root = gtt_path(t, gtt_arg(t, 4), name);
-    tree.config = gtt_path(t, tree.root, "config");
-    tree.textures = gtt_path(t, tree.root, "textures");
-    tree.out = gtt_path(t, tree.root, "out");
-    tree.stone = gtt_path(t, tree.config, "blocks/stone/index.yaml");
-    char *const rm[] = {(char *)"rm", (char *)"-rf", tree.root, nullptr};
+    tree.borrowed_root = gtt_path(t, gtt_arg(t, 4), name);
+    tree.borrowed_config = gtt_path(t, tree.borrowed_root, "config");
+    tree.borrowed_textures = gtt_path(t, tree.borrowed_root, "textures");
+    tree.borrowed_out = gtt_path(t, tree.borrowed_root, "out");
+    tree.borrowed_stone = gtt_path(t, tree.borrowed_config, "blocks/stone/index.yaml");
+    char *const rm[] = {(char *)"rm", (char *)"-rf", tree.borrowed_root, nullptr};
     test_process_t run;
     test_process_run(t, rm, GTT_TIMEOUT_MS, &run);
-    gtt_mkdirs(t, gtt_path(t, tree.config, "blocks/air"));
-    gtt_mkdirs(t, gtt_path(t, tree.config, "blocks/stone"));
-    gtt_mkdirs(t, gtt_path(t, tree.textures, "blocks/stone"));
-    gtt_mkdirs(t, gtt_path(t, tree.textures, "items/coal"));
-    gtt_write(t, gtt_path(t, tree.config, "blocks/air/index.yaml"), "name: air\nhardness: 0\nshape: none\ndrops: []\n");
-    gtt_write(t, tree.stone, GTT_STONE);
-    gtt_write(t, gtt_path(t, tree.textures, "blocks/stone/index.mctex"), "");
-    gtt_write(t, gtt_path(t, tree.textures, "items/coal/index.mctex"), "");
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "blocks/air"));
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "blocks/stone"));
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_textures, "blocks/stone"));
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_textures, "items/coal"));
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "blocks/air/index.yaml"),
+              "name: air\nhardness: 0\nshape: none\ndrops: []\n");
+    gtt_write(t, tree.borrowed_stone, GTT_STONE);
+    gtt_write(t, gtt_path(t, tree.borrowed_textures, "blocks/stone/index.mctex"), "");
+    gtt_write(t, gtt_path(t, tree.borrowed_textures, "items/coal/index.mctex"), "");
     return tree;
 }
 
 static void gtt_tree_run(test_context_t *t, const gtt_tree_t *tree, test_process_t *run) {
-    char *const argv[] = {(char *)gtt_arg(t, 0), (char *)"--config", tree->config, (char *)"--textures",
-                          tree->textures,        (char *)"--out",    tree->out,    nullptr};
+    char *const argv[] = {(char *)gtt_arg(t, 0),   (char *)"--config", tree->borrowed_config, (char *)"--textures",
+                          tree->borrowed_textures, (char *)"--out",    tree->borrowed_out,    nullptr};
     test_process_run(t, argv, GTT_TIMEOUT_MS, run);
 }
 
@@ -436,8 +445,8 @@ TEST(a_good_tree_makes_tables) {
     gtt_tree_run(t, &tree, &run);
     CHECK_EQ_I64(run.exit_code, 0);
     CHECK_STR_EQ(run.output, "");
-    const char *header = gtt_read(t, gtt_path(t, tree.out, "blocks/index.h"), nullptr);
-    const char *source = gtt_read(t, gtt_path(t, tree.out, "blocks/index.c"), nullptr);
+    const char *header = gtt_read(t, gtt_path(t, tree.borrowed_out, "blocks/index.h"), nullptr);
+    const char *source = gtt_read(t, gtt_path(t, tree.borrowed_out, "blocks/index.c"), nullptr);
     REQUIRE(header != nullptr);
     REQUIRE(source != nullptr);
     CHECK_CONTAINS(header, "BLOCK_ID_AIR = 0,");
@@ -452,14 +461,14 @@ TEST(a_good_tree_makes_tables) {
 TEST(air_stays_block_0_and_the_rest_sort_by_name) {
     const gtt_tree_t tree = gtt_tree_make(t, "order");
     /* "aaa" sorts before "air", and air must stay 0 anyway. */
-    gtt_mkdirs(t, gtt_path(t, tree.config, "blocks/aaa"));
-    gtt_write(t, gtt_path(t, tree.config, "blocks/aaa/index.yaml"),
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "blocks/aaa"));
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "blocks/aaa/index.yaml"),
               "name: aaa\nhardness: 0\ndrops: [{ item: stone, count: 1 }]\ntexture: { all: blocks/stone }\n");
     test_process_t run;
     gtt_tree_run(t, &tree, &run);
     CHECK_EQ_I64(run.exit_code, 0);
-    const char *header = gtt_read(t, gtt_path(t, tree.out, "blocks/index.h"), nullptr);
-    const char *source = gtt_read(t, gtt_path(t, tree.out, "blocks/index.c"), nullptr);
+    const char *header = gtt_read(t, gtt_path(t, tree.borrowed_out, "blocks/index.h"), nullptr);
+    const char *source = gtt_read(t, gtt_path(t, tree.borrowed_out, "blocks/index.c"), nullptr);
     REQUIRE(header != nullptr);
     REQUIRE(source != nullptr);
     CHECK_CONTAINS(header, "BLOCK_ID_AIR = 0,");
@@ -471,13 +480,34 @@ TEST(air_stays_block_0_and_the_rest_sort_by_name) {
 
 TEST(an_item_may_be_defined_by_its_config_file) {
     const gtt_tree_t tree = gtt_tree_make(t, "item_file");
-    gtt_mkdirs(t, gtt_path(t, tree.config, "items/pebble"));
-    gtt_write(t, gtt_path(t, tree.config, "items/pebble/index.yaml"), "name: pebble\n");
-    gtt_write(t, tree.stone, GTT_STONE_START "drops: [{ item: pebble, count: 1 }]\n" GTT_STONE_TEXTURE);
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "items/pebble"));
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "items/pebble/index.yaml"), "name: pebble\n");
+    gtt_write(t, tree.borrowed_stone, GTT_STONE_START "drops: [{ item: pebble, count: 1 }]\n" GTT_STONE_TEXTURE);
     test_process_t run;
     gtt_tree_run(t, &tree, &run);
     CHECK_EQ_I64(run.exit_code, 0);
     CHECK_STR_EQ(run.output, "");
+}
+
+/* No real block has yet said false to a default it would get from its shape, so nothing else would notice this going wrong. */
+TEST(a_flag_in_the_file_beats_its_shape_either_way) {
+    const gtt_tree_t tree = gtt_tree_make(t, "flags");
+    gtt_write(t, tree.borrowed_stone,
+              GTT_STONE_START "solid: false\nreplaceable: true\nfalls: true\n" GTT_STONE_DROPS GTT_STONE_TEXTURE);
+    test_process_t run;
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 0);
+    const char *source = gtt_read(t, gtt_path(t, tree.borrowed_out, "blocks/index.c"), nullptr);
+    REQUIRE(source != nullptr);
+    CHECK_CONTAINS(source, ".flags = BLOCK_FLAG_REPLACEABLE | BLOCK_FLAG_FALLS}");
+
+    gtt_write(t, tree.borrowed_stone,
+              GTT_STONE_START "shape: fluid\nreplaceable: false\n" GTT_STONE_DROPS GTT_STONE_TEXTURE);
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 0);
+    source = gtt_read(t, gtt_path(t, tree.borrowed_out, "blocks/index.c"), nullptr);
+    REQUIRE(source != nullptr);
+    CHECK_CONTAINS(source, ".shape = BLOCK_SHAPE_FLUID, .light = 0, .opacity = 0, .flags = 0u}");
 }
 
 TEST(each_mistake_is_refused_at_its_line) {
@@ -485,7 +515,7 @@ TEST(each_mistake_is_refused_at_its_line) {
     char *expected = test_alloc(t, GTT_PATH_BYTES);
     for (uint32_t i = 0; i < GTT_BAD_CASE_COUNT; i++) {
         const gtt_bad_case_t *bad = &GTT_BAD_CASES[i];
-        gtt_write(t, tree.stone, bad->text);
+        gtt_write(t, tree.borrowed_stone, bad->text);
         test_process_t run;
         gtt_tree_run(t, &tree, &run);
         /* Named on failure, since one test covers every case. */
@@ -495,27 +525,27 @@ TEST(each_mistake_is_refused_at_its_line) {
         }
         CHECK_EQ_I64(run.exit_code, 1);
         CHECK_CONTAINS(run.output, bad->message);
-        snprintf(expected, GTT_PATH_BYTES, "%s%s", tree.stone, bad->position);
+        snprintf(expected, GTT_PATH_BYTES, "%s%s", tree.borrowed_stone, bad->position);
         CHECK_CONTAINS(run.output, expected);
         /* Nothing is written when anything is wrong. */
         struct stat info;
-        CHECK(stat(gtt_path(t, tree.out, "blocks/index.h"), &info) != 0);
+        CHECK(stat(gtt_path(t, tree.borrowed_out, "blocks/index.h"), &info) != 0);
     }
 }
 
 TEST(all_the_problems_are_shown_at_once) {
     const gtt_tree_t tree = gtt_tree_make(t, "many");
-    gtt_write(t, tree.stone,
+    gtt_write(t, tree.borrowed_stone,
               "name: stone\nhardness: soft\ncolour: grey\ndrops: []\ntexture: { all: blocks/nothing }\n");
     test_process_t run;
     gtt_tree_run(t, &tree, &run);
     CHECK_EQ_I64(run.exit_code, 1);
     char *expected = test_alloc(t, GTT_PATH_BYTES);
-    snprintf(expected, GTT_PATH_BYTES, "%s:2:", tree.stone);
+    snprintf(expected, GTT_PATH_BYTES, "%s:2:", tree.borrowed_stone);
     CHECK_CONTAINS(run.output, expected);
-    snprintf(expected, GTT_PATH_BYTES, "%s:3:9: unknown field 'colour'", tree.stone);
+    snprintf(expected, GTT_PATH_BYTES, "%s:3:9: unknown field 'colour'", tree.borrowed_stone);
     CHECK_CONTAINS(run.output, expected);
-    snprintf(expected, GTT_PATH_BYTES, "%s:5:", tree.stone);
+    snprintf(expected, GTT_PATH_BYTES, "%s:5:", tree.borrowed_stone);
     CHECK_CONTAINS(run.output, expected);
     CHECK_CONTAINS(run.output, "3 problems");
 }
@@ -525,22 +555,22 @@ TEST(a_tree_with_a_hole_is_refused) {
     test_process_t run;
 
     /* A block's directory with no file. */
-    gtt_mkdirs(t, gtt_path(t, tree.config, "blocks/ghost"));
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "blocks/ghost"));
     gtt_tree_run(t, &tree, &run);
     CHECK_EQ_I64(run.exit_code, 1);
     CHECK_CONTAINS(run.output, "blocks/ghost/index.yaml: missing");
-    rmdir(gtt_path(t, tree.config, "blocks/ghost"));
+    rmdir(gtt_path(t, tree.borrowed_config, "blocks/ghost"));
 
     /* A directory that could not be an enum name. */
-    gtt_mkdirs(t, gtt_path(t, tree.config, "blocks/Bad-Name"));
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "blocks/Bad-Name"));
     gtt_tree_run(t, &tree, &run);
     CHECK_EQ_I64(run.exit_code, 1);
     CHECK_CONTAINS(run.output, "directory name 'Bad-Name'");
-    rmdir(gtt_path(t, tree.config, "blocks/Bad-Name"));
+    rmdir(gtt_path(t, tree.borrowed_config, "blocks/Bad-Name"));
 
     /* No air. */
-    unlink(gtt_path(t, tree.config, "blocks/air/index.yaml"));
-    rmdir(gtt_path(t, tree.config, "blocks/air"));
+    unlink(gtt_path(t, tree.borrowed_config, "blocks/air/index.yaml"));
+    rmdir(gtt_path(t, tree.borrowed_config, "blocks/air"));
     gtt_tree_run(t, &tree, &run);
     CHECK_EQ_I64(run.exit_code, 1);
     CHECK_CONTAINS(run.output, "has no air");

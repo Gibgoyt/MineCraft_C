@@ -37,9 +37,9 @@ static_assert(sizeof(edit_test_t) == 1024);
 
 /* What a reader builds from nothing but views. */
 typedef struct edit_mirror_t {
-    uint16_t *blocks;      /* slot, then section, then voxel */
-    uint8_t *light;        /* the same */
-    uint32_t *generations; /* slot */
+    uint16_t *borrowed_blocks;      /* slot, then section, then voxel */
+    uint8_t *borrowed_light;        /* the same */
+    uint32_t *borrowed_generations; /* slot */
     uint64_t slot_count;
     uint64_t last_sequence;
     uint64_t error_count;
@@ -49,8 +49,8 @@ typedef struct edit_mirror_t {
 static_assert(sizeof(edit_mirror_t) == 64);
 
 typedef struct edit_reader_t {
-    edit_test_t *test;
-    edit_mirror_t *mirror;
+    edit_test_t *borrowed_test;
+    edit_mirror_t *borrowed_mirror;
     _Atomic uint32_t stop;
     uint8_t _pad0[4];
 } edit_reader_t;
@@ -976,8 +976,8 @@ TEST(a_section_of_a_column_gone_does_not_come_back_with_a_view_nobody_read) {
 /* A mirror built from nothing but views. Reader's side: no test_check, since this may run on another thread. */
 static void edit_mirror_slot_reset(edit_mirror_t *mirror, uint32_t slot) {
     const uint64_t voxels = (uint64_t)COLUMN_SECTIONS * SECTION_VOXELS;
-    memset(&mirror->blocks[slot * voxels], 0, voxels * sizeof(uint16_t));
-    memset(&mirror->light[slot * voxels], SECTION_LIGHT_OPEN_SKY, voxels);
+    memset(&mirror->borrowed_blocks[slot * voxels], 0, voxels * sizeof(uint16_t));
+    memset(&mirror->borrowed_light[slot * voxels], SECTION_LIGHT_OPEN_SKY, voxels);
 }
 
 static void edit_mirror_apply(edit_mirror_t *mirror, const world_edit_snapshot_view_t *view) {
@@ -990,15 +990,15 @@ static void edit_mirror_apply(edit_mirror_t *mirror, const world_edit_snapshot_v
     for (uint32_t slot = 0; slot < view->slot_count; slot++) {
         const world_edit_snapshot_column_t *const column = &view->borrowed_columns[slot];
         if (column->state == WORLD_MAP_STATE_EMPTY) {
-            mirror->generations[slot] = 0u;
+            mirror->borrowed_generations[slot] = 0u;
             continue;
         }
         if (column->revision > view->revision) {
             mirror->error_count++;
         }
-        if (column->generation != mirror->generations[slot]) {
+        if (column->generation != mirror->borrowed_generations[slot]) {
             edit_mirror_slot_reset(mirror, slot);
-            mirror->generations[slot] = column->generation;
+            mirror->borrowed_generations[slot] = column->generation;
         }
     }
     for (uint32_t s = 0; s < view->section_count; s++) {
@@ -1008,8 +1008,8 @@ static void edit_mirror_apply(edit_mirror_t *mirror, const world_edit_snapshot_v
             mirror->error_count++;
             continue;
         }
-        uint16_t *const blocks = &mirror->blocks[entry->slot * voxels + entry->section_index * SECTION_VOXELS];
-        uint8_t *const light = &mirror->light[entry->slot * voxels + entry->section_index * SECTION_VOXELS];
+        uint16_t *const blocks = &mirror->borrowed_blocks[entry->slot * voxels + entry->section_index * SECTION_VOXELS];
+        uint8_t *const light = &mirror->borrowed_light[entry->slot * voxels + entry->section_index * SECTION_VOXELS];
         for (uint32_t i = 0; i < SECTION_VOXELS; i++) {
             blocks[i] = world_edit_view_block(view, s, i);
             light[i] = world_edit_view_light(view, s, i);
@@ -1021,9 +1021,9 @@ static void edit_mirror_apply(edit_mirror_t *mirror, const world_edit_snapshot_v
 static edit_mirror_t *edit_mirror_begin(test_context_t *t, const world_map_t *map) {
     edit_mirror_t *const mirror = test_alloc(t, sizeof(edit_mirror_t));
     const uint64_t voxels = (uint64_t)map->slot_count * COLUMN_SECTIONS * SECTION_VOXELS;
-    mirror->blocks = test_alloc(t, voxels * sizeof(uint16_t));
-    mirror->light = test_alloc(t, voxels);
-    mirror->generations = test_alloc(t, (uint64_t)map->slot_count * sizeof(uint32_t));
+    mirror->borrowed_blocks = test_alloc(t, voxels * sizeof(uint16_t));
+    mirror->borrowed_light = test_alloc(t, voxels);
+    mirror->borrowed_generations = test_alloc(t, (uint64_t)map->slot_count * sizeof(uint32_t));
     mirror->slot_count = map->slot_count;
     return mirror;
 }
@@ -1075,18 +1075,18 @@ static void edit_mirror_check(test_context_t *t, const edit_mirror_t *mirror, co
     for (uint32_t slot = 0; slot < map->slot_count; slot++) {
         const world_map_slot_t *const entry = &map->borrowed_slots[slot];
         if (entry->state != WORLD_MAP_STATE_READY) {
-            CHECK_EQ_U64(mirror->generations[slot], 0u);
+            CHECK_EQ_U64(mirror->borrowed_generations[slot], 0u);
             continue;
         }
         columns++;
-        CHECK_EQ_U64(mirror->generations[slot], entry->generation);
+        CHECK_EQ_U64(mirror->borrowed_generations[slot], entry->generation);
         for (uint32_t s = 0; s < COLUMN_SECTIONS; s++) {
             const section_t *const live = &map->borrowed_columns[slot].sections[s];
             section_blocks_export(live, blocks);
             section_lights_export(live, light);
             const uint64_t at = slot * voxels + s * SECTION_VOXELS;
-            CHECK(memcmp(&mirror->blocks[at], blocks, sizeof(uint16_t) * SECTION_VOXELS) == 0);
-            CHECK(memcmp(&mirror->light[at], light, SECTION_VOXELS) == 0);
+            CHECK(memcmp(&mirror->borrowed_blocks[at], blocks, sizeof(uint16_t) * SECTION_VOXELS) == 0);
+            CHECK(memcmp(&mirror->borrowed_light[at], light, SECTION_VOXELS) == 0);
         }
     }
     CHECK_EQ_U64(columns, map->ready_count);
@@ -1140,12 +1140,12 @@ static void edit_reader_run(void *borrowed_argument) {
     edit_reader_t *const reader = borrowed_argument;
     uint64_t seen = 0;
     while (atomic_load_explicit(&reader->stop, memory_order_acquire) == 0u) {
-        const world_edit_snapshot_view_t *const view = world_edit_snapshot_acquire(&reader->test->snapshot);
+        const world_edit_snapshot_view_t *const view = world_edit_snapshot_acquire(&reader->borrowed_test->snapshot);
         if (view == nullptr) {
             (void)sched_yield();
             continue;
         }
-        edit_mirror_apply(reader->mirror, view);
+        edit_mirror_apply(reader->borrowed_mirror, view);
         seen++;
         /* Now and then a slow frame, so that the sim thread goes on without it. */
         if (seen % 32u == 0u) {
@@ -1160,8 +1160,8 @@ TEST(a_reader_on_its_own_thread_ends_with_an_exact_copy_of_the_world) {
     edit_test_t *const test = edit_test_begin(t, 2u, 64u, 6u);
     edit_mirror_t *const mirror = edit_mirror_begin(t, &test->map);
     edit_reader_t *const reader = test_alloc(t, sizeof(edit_reader_t));
-    reader->test = test;
-    reader->mirror = mirror;
+    reader->borrowed_test = test;
+    reader->borrowed_mirror = mirror;
     atomic_init(&reader->stop, 0u);
     thread_topology_t *const topology = test_alloc(t, sizeof(thread_topology_t));
     REQUIRE(thread_topology_read(topology));
