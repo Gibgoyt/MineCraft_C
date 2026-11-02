@@ -41,6 +41,8 @@ Results, 2026-11-03: the build is clean; `run_item_equipment` passes, 26 tests i
 
 Appended as they land:
 
+- `3f7d4b6` Add tools that wear and break, a hoe that tills, shears that bring out what they cut, and armor that goes on and stops hits.
+
 ## Issues found
 
 **1. Gold tools mine at wood's speed, not their published 12 (left alone, out of this stage's paths).**
