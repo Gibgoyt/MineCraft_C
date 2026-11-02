@@ -35,6 +35,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `0ce4848` Add the work-stealing job system with a Job arena per worker and a stress test on all workers.
+
 ## Issues found
 
 1. **My test, not the job system: the thread count read high after a join.** Expected `/proc/self/status` `Threads:` to be
