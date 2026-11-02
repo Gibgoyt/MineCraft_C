@@ -2,6 +2,7 @@
  * allocates nothing. The CPU check must stay first. */
 #include "main/index.h"
 
+#include "display/index.h"
 #include "heap/index.h"
 #include "job/index.h"
 #include "log/index.h"
@@ -20,29 +21,43 @@
 #include <unistd.h>
 
 typedef struct main_options_t {
-    uint32_t cpu_hidden;  /* features to treat as absent: --pretend-missing-cpu */
-    uint8_t report;       /* --report */
-    uint8_t pretend_leak; /* --pretend-leak */
-    uint8_t _pad0[2];
+    const char *card;      /* --card, or nullptr for config/machine.yaml */
+    const char *connector; /* --connector, or nullptr for config/machine.yaml */
+    uint32_t cpu_hidden;   /* features to treat as absent: --pretend-missing-cpu */
+    uint8_t report;        /* --report */
+    uint8_t pretend_leak;  /* --pretend-leak */
+    uint8_t test_pattern;  /* --test-pattern */
+    uint8_t _pad0[1];
 } main_options_t;
-static_assert(sizeof(main_options_t) == 8);
+static_assert(sizeof(main_options_t) == 24);
 
 static void main_print_usage(const char *program) {
     fprintf(stderr,
             "usage: %s [--report] [--pretend-missing-cpu <cpu.simd key>] [--pretend-leak]\n"
+            "       %s --test-pattern [--card <path>] [--connector <name>]\n"
             "  --report                 print the build's defines and CPU features, then exit\n"
             "  --pretend-missing-cpu    treat this feature as absent, to see the CPU check fail; may repeat\n"
-            "  --pretend-leak           skip the shutdown, to see the leak check at exit fail\n",
-            program);
+            "  --pretend-leak           skip the shutdown, to see the leak check at exit fail\n"
+            "  --test-pattern           show a test pattern through KMS; only from a text console, never inside X\n"
+            "  --card, --connector      with --test-pattern: use these and not display: in config/machine.yaml\n",
+            program, program);
 }
 
 static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out) {
-    *out = (main_options_t){.cpu_hidden = 0, .report = 0, .pretend_leak = 0, ._pad0 = {0}};
+    memset(out, 0, sizeof(*out));
     for (int32_t i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--report") == 0) {
             out->report = 1;
         } else if (strcmp(argv[i], "--pretend-leak") == 0) {
             out->pretend_leak = 1;
+        } else if (strcmp(argv[i], "--test-pattern") == 0) {
+            out->test_pattern = 1;
+        } else if (strcmp(argv[i], "--card") == 0 && i + 1 < argc) {
+            i++;
+            out->card = argv[i];
+        } else if (strcmp(argv[i], "--connector") == 0 && i + 1 < argc) {
+            i++;
+            out->connector = argv[i];
         } else if (strcmp(argv[i], "--pretend-missing-cpu") == 0 && i + 1 < argc) {
             i++;
             uint32_t feature = 0;
@@ -56,11 +71,16 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
             return false;
         }
     }
+    if ((out->card != nullptr || out->connector != nullptr) && out->test_pattern == 0) {
+        fprintf(stderr, "%s: --card and --connector only mean something with --test-pattern\n", argv[0]);
+        return false;
+    }
     return true;
 }
 
 /* The CPU check comes first: everything after it assumes these instructions exist. --report only prints, so it starts
- * nothing. The topology is read before main pins itself, since afterwards the answer would be that one CPU. */
+ * nothing, and --test-pattern needs only the display. The topology is read before main pins itself, since afterwards
+ * the answer would be that one CPU. */
 static main_exit_t app_init(app_t *app, const main_options_t *options) {
     memset(app, 0, sizeof(*app));
     app->cpu_required = cpu_check_required();
@@ -72,7 +92,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         LOG_ERROR("%s", message);
         return MAIN_EXIT_CPU_MISMATCH;
     }
-    if (options->report != 0) {
+    if (options->report != 0 || options->test_pattern != 0) {
         return MAIN_EXIT_OK;
     }
     /* math before job: workers inherit this thread's floating-point environment, so this is the check for them too. */
@@ -99,6 +119,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
 }
 
 static void app_deinit(app_t *app) {
+    display_deinit(&app->display);
     job_deinit(&app->job);
     simd_deinit(&app->simd);
     math_deinit(&app->math);
@@ -130,6 +151,33 @@ static bool main_run(app_t *app) {
     return jobs_done == MC_THREADS_WORKERS;
 }
 
+static main_exit_t main_exit_from_display(display_status_t status) {
+    switch (status) {
+    case DISPLAY_STATUS_OK:
+        return MAIN_EXIT_OK;
+    case DISPLAY_STATUS_REFUSED:
+        return MAIN_EXIT_DISPLAY_REFUSED;
+    case DISPLAY_STATUS_ERROR:
+        return MAIN_EXIT_DISPLAY_ERROR;
+    }
+    return MAIN_EXIT_DISPLAY_ERROR;
+}
+
+/* The one way into KMS for now. Only this flag opens the display: the default run stays away from it until game does
+ * (Stage 08.4), so that nothing ctest runs can reach the card. */
+static main_exit_t main_run_test_pattern(app_t *app, const main_options_t *options, int64_t started_ns) {
+    display_config_t config;
+    display_config_from_machine(&config);
+    config.card_path = options->card != nullptr ? options->card : config.card_path;
+    config.connector_name = options->connector != nullptr ? options->connector : config.connector_name;
+    config.console_fd = STDIN_FILENO;
+    const display_status_t status = display_init(&app->display, &config, display_device_real_ops(), nullptr);
+    if (status != DISPLAY_STATUS_OK) {
+        return main_exit_from_display(status);
+    }
+    return main_exit_from_display(display_test_pattern_run(&app->display, started_ns, DISPLAY_TEST_PATTERN_NS));
+}
+
 /* Stage 02.3 asks the binary to report its defines, to show a yaml change reaching compiled code. This path must never
  * touch a display or an input device: ctest runs it. */
 static void main_report(const app_t *app) {
@@ -147,6 +195,7 @@ static void main_report(const app_t *app) {
 }
 
 int32_t main(int32_t argc, char **argv) {
+    const int64_t started_ns = time_now_ns();
     main_options_t options;
     if (!main_parse_arguments(argc, argv, &options)) {
         main_print_usage(argv[0]);
@@ -160,6 +209,8 @@ int32_t main(int32_t argc, char **argv) {
     }
     if (options.report != 0) {
         main_report(&app);
+    } else if (options.test_pattern != 0) {
+        status = main_run_test_pattern(&app, &options, started_ns);
     } else if (!main_run(&app)) {
         status = MAIN_EXIT_RUNTIME;
     }
