@@ -32,20 +32,8 @@ file(GLOB_RECURSE mc_run_sources CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/run/src/
 file(GLOB_RECURSE mc_asm_sources CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/asm/src/*/index.asm")
 file(GLOB_RECURSE mc_cuda_sources CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/cuda/src/*/index.cu")
 
-# cmake/hello/ proves the three languages link while the game does not exist yet. Its main calls its other
-# two parts, so all three stay until run/src/main/ (Stage 03.1) replaces it. After that a hello part remains
-# only while its language has no module, because an object library must have a source and the toolchain
-# should keep being exercised.
-if(EXISTS "${CMAKE_SOURCE_DIR}/run/src/main/index.c")
-  set(MC_HELLO_MAIN OFF)
-else()
-  set(MC_HELLO_MAIN ON)
-  list(APPEND mc_run_sources "${CMAKE_SOURCE_DIR}/cmake/hello/main/index.c")
-endif()
-if(MC_HELLO_MAIN OR NOT mc_asm_sources)
-  list(APPEND mc_asm_sources "${CMAKE_SOURCE_DIR}/cmake/hello/simd/index.asm")
-endif()
-if(MC_HELLO_MAIN OR NOT mc_cuda_sources)
+# An object library must have a source, and CUDA has no module until Stage 08.1. cmake/hello/gpu stands in until then.
+if(NOT mc_cuda_sources)
   list(APPEND mc_cuda_sources "${CMAKE_SOURCE_DIR}/cmake/hello/gpu/index.cu")
 endif()
 
@@ -79,12 +67,6 @@ add_custom_command(TARGET minecraft_c POST_BUILD
   COMMAND "${CMAKE_COMMAND}" -DMC_BINARY=$<TARGET_FILE:minecraft_c> -DMC_READELF=${CMAKE_READELF}
     -DMC_PRESET=${MC_PRESET} -P "${CMAKE_SOURCE_DIR}/cmake/check_link.cmake"
   VERBATIM)
-
-# Only the hello program may run under ctest. The real game opens the display, and tests never do.
-if(MC_HELLO_MAIN)
-  add_test(NAME minecraft_c_hello COMMAND minecraft_c)
-  set_tests_properties(minecraft_c_hello PROPERTIES TIMEOUT 60)
-endif()
 
 # ---- Build-time tools ------------------------------------------------------------------------------
 
@@ -131,10 +113,10 @@ endif()
 
 # Everything a game test needs except an entry point. The test's own main replaces the game's. The regex uses
 # [.] because CMake turns every backslash in a source list into a slash, which would silently match nothing. The
-# optional ./ because $<TARGET_OBJECTS> reads mc_run.dir/./cmake/hello/... while the Ninja file shows no such segment.
+# optional ./ because $<TARGET_OBJECTS> can read mc_run.dir/./run/... while the Ninja file shows no such segment.
 set(mc_game_objects_no_main
   $<TARGET_OBJECTS:mc_asm> $<TARGET_OBJECTS:mc_cuda> ${mc_sanitize_objects}
-  "$<FILTER:$<TARGET_OBJECTS:mc_run>,EXCLUDE,mc_run[.]dir/([.]/)?(run/src|cmake/hello)/main/index[.]c[.]o$>")
+  "$<FILTER:$<TARGET_OBJECTS:mc_run>,EXCLUDE,mc_run[.]dir/([.]/)?run/src/main/index[.]c[.]o$>")
 
 # A test.cmake next to the test's index.c is included here, before the target exists. It may set:
 #   MC_TEST_NAME     the ctest name, where the path-derived one does not fit
