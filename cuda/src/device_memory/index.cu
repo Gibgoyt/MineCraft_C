@@ -1,0 +1,367 @@
+/* See README.md. The only file that calls cudaMalloc and cudaFree: plans/CODING_STANDARD.md section 4. */
+#include "device_memory/index.hu"
+
+#include <string.h>
+
+static gpu_status_t device_memory_refuse(device_memory_t *memory, gpu_status_t status, const char *what) {
+    memory->last_error = gpu_error_t{what, nullptr, nullptr, 0, status};
+    return status;
+}
+
+static void device_memory_clear_error(device_memory_t *memory) {
+    memory->last_error = gpu_error_t{nullptr, nullptr, nullptr, 0, GPU_STATUS_OK};
+}
+
+gpu_status_t device_memory_status_from_cuda(int32_t cuda_code) {
+    switch ((cudaError_t)cuda_code) {
+    case cudaSuccess:
+        return GPU_STATUS_OK;
+    case cudaErrorNoDevice:
+    case cudaErrorInvalidDevice:
+        return GPU_STATUS_NO_DEVICE;
+    case cudaErrorInitializationError:
+    case cudaErrorCudartUnloading:
+    case cudaErrorStubLibrary:
+    case cudaErrorInsufficientDriver:
+    case cudaErrorCallRequiresNewerDriver:
+    case cudaErrorDevicesUnavailable:
+    case cudaErrorIncompatibleDriverContext:
+    case cudaErrorDeviceNotLicensed:
+    case cudaErrorSoftwareValidityNotEstablished:
+    case cudaErrorStartupFailure:
+    case cudaErrorDeviceUninitialized:
+    case cudaErrorInsufficientLoaderVersion:
+    case cudaErrorOperatingSystem:
+    case cudaErrorNotPermitted:
+    case cudaErrorSystemNotReady:
+    case cudaErrorSystemDriverMismatch:
+    case cudaErrorCompatNotSupportedOnDevice:
+        return GPU_STATUS_DRIVER;
+    case cudaErrorInvalidKernelImage:
+    case cudaErrorNoKernelImageForDevice:
+    case cudaErrorInvalidPtx:
+    case cudaErrorUnsupportedPtxVersion:
+    case cudaErrorJitCompilerNotFound:
+    case cudaErrorJitCompilationDisabled:
+    case cudaErrorInvalidDeviceFunction:
+        return GPU_STATUS_NO_KERNEL_IMAGE;
+    case cudaErrorMemoryAllocation:
+    case cudaErrorLaunchOutOfResources:
+        return GPU_STATUS_OUT_OF_MEMORY;
+    case cudaErrorInvalidValue:
+    case cudaErrorInvalidMemcpyDirection:
+    case cudaErrorInvalidHostPointer:
+    case cudaErrorMemoryValueTooLarge:
+        return GPU_STATUS_INVALID_ARGUMENT;
+    case cudaErrorInvalidDevicePointer:
+        return GPU_STATUS_BAD_HANDLE;
+    case cudaErrorIllegalAddress:
+    case cudaErrorLaunchTimeout:
+    case cudaErrorContextIsDestroyed:
+    case cudaErrorAssert:
+    case cudaErrorHardwareStackError:
+    case cudaErrorIllegalInstruction:
+    case cudaErrorMisalignedAddress:
+    case cudaErrorInvalidAddressSpace:
+    case cudaErrorInvalidPc:
+    case cudaErrorLaunchFailure:
+    case cudaErrorPriorLaunchFailure:
+    case cudaErrorECCUncorrectable:
+    case cudaErrorNvlinkUncorrectable:
+    case cudaErrorContained:
+        return GPU_STATUS_DEVICE_LOST;
+    default:
+        return GPU_STATUS_CUDA_OTHER;
+    }
+}
+
+gpu_status_t device_memory_check(gpu_error_t *error, cudaError_t result, const char *what) {
+    if (result == cudaSuccess) {
+        return GPU_STATUS_OK;
+    }
+    const gpu_status_t status = device_memory_status_from_cuda((int32_t)result);
+    *error = gpu_error_t{what, cudaGetErrorName(result), cudaGetErrorString(result), (int32_t)result, status};
+    /* The runtime keeps this until asked, and the next launch's cudaGetLastError would report it as that launch's own: a
+     * pool refused once would fail the next kernel (Stage 08.1 issue 2). Its value is the one just recorded. A lost device
+     * stays lost: the runtime reports that from every call, whatever is cleared here. */
+    (void)cudaGetLastError();
+    return status;
+}
+
+gpu_status_t device_memory_init(device_memory_t *memory, device_memory_limits_t limits, device_memory_record_t *records,
+                                uint64_t record_capacity) {
+    memset(memory, 0, sizeof(*memory));
+    memset(records, 0, record_capacity * sizeof(records[0]));
+    memory->borrowed_records = records;
+    memory->record_capacity = record_capacity;
+    for (uint32_t i = 0; i < DEVICE_POOL_COUNT; i++) {
+        memory->pools[i].limit_bytes = limits.pool_bytes[i];
+    }
+
+    gpu_error_t *const error = &memory->last_error;
+    gpu_status_t status = device_memory_check(error, cudaGetDeviceCount(&memory->device_count), "counting devices");
+    if (status != GPU_STATUS_OK) {
+        return status;
+    }
+    if (memory->device_count < 1) {
+        return device_memory_refuse(memory, GPU_STATUS_NO_DEVICE, "counting devices");
+    }
+    status = device_memory_check(error, cudaSetDevice(0), "choosing the device");
+    if (status != GPU_STATUS_OK) {
+        return status;
+    }
+    cudaDeviceProp properties;
+    status = device_memory_check(error, cudaGetDeviceProperties(&properties, 0), "reading the device's properties");
+    if (status != GPU_STATUS_OK) {
+        return status;
+    }
+    /* uint64_t is size_t here, so this is the call's own type. */
+    status = device_memory_check(error, cudaMemGetInfo(&memory->free_bytes_at_init, &memory->total_bytes),
+                                 "reading the device's memory");
+    if (status != GPU_STATUS_OK) {
+        return status;
+    }
+    for (uint32_t i = 0; i + 1u < sizeof(memory->device_name) && properties.name[i] != '\0'; i++) {
+        memory->device_name[i] = properties.name[i];
+    }
+    memory->open = 1;
+    return GPU_STATUS_OK;
+}
+
+gpu_status_t device_memory_deinit(device_memory_t *memory) {
+    if (memory->open == 0) {
+        return GPU_STATUS_OK;
+    }
+    device_memory_clear_error(memory);
+    gpu_status_t first = GPU_STATUS_OK;
+    for (uint64_t i = 0; i < memory->record_capacity; i++) {
+        device_memory_record_t *const record = &memory->borrowed_records[i];
+        if (record->address == 0u) {
+            continue;
+        }
+        gpu_error_t error = {};
+        const gpu_status_t status = device_memory_check(&error, cudaFree((void *)record->address), "freeing a block");
+        if (status != GPU_STATUS_OK && first == GPU_STATUS_OK) {
+            first = status;
+            memory->last_error = error;
+        }
+        record->address = 0u;
+    }
+    memory->live_blocks = 0;
+    for (uint32_t i = 0; i < DEVICE_POOL_COUNT; i++) {
+        memory->pools[i].live_bytes = 0;
+        memory->pools[i].live_blocks = 0;
+    }
+    memory->open = 0;
+    return first;
+}
+
+static gpu_status_t device_memory_alloc_checked(device_memory_t *memory, device_pool_t pool, uint64_t bytes,
+                                                const char *name, device_block_t *out) {
+    if (memory->open == 0) {
+        return device_memory_refuse(memory, GPU_STATUS_INVALID_ARGUMENT, "allocating from a closed device_memory_t");
+    }
+    if ((uint32_t)pool >= DEVICE_POOL_COUNT) {
+        return device_memory_refuse(memory, GPU_STATUS_INVALID_ARGUMENT, "allocating from a pool that does not exist");
+    }
+    if (bytes == 0u || name == nullptr) {
+        return device_memory_refuse(memory, GPU_STATUS_INVALID_ARGUMENT, "allocating no bytes, or with no name");
+    }
+    device_memory_pool_t *const entry = &memory->pools[(uint32_t)pool];
+    if (bytes > entry->limit_bytes - entry->live_bytes) {
+        return device_memory_refuse(memory, GPU_STATUS_OVER_BUDGET, name);
+    }
+    uint64_t index = memory->record_capacity;
+    for (uint64_t i = 0; i < memory->record_capacity; i++) {
+        if (memory->borrowed_records[i].address == 0u) {
+            index = i;
+            break;
+        }
+    }
+    if (index == memory->record_capacity) {
+        return device_memory_refuse(memory, GPU_STATUS_TABLE_FULL, name);
+    }
+    void *address = nullptr;
+    const gpu_status_t status = device_memory_check(&memory->last_error, cudaMalloc(&address, bytes), name);
+    if (status != GPU_STATUS_OK) {
+        return status;
+    }
+    device_memory_record_t *const record = &memory->borrowed_records[index];
+    record->address = (uintptr_t)address;
+    record->bytes = bytes;
+    record->borrowed_name = name;
+    record->pool = (uint32_t)pool;
+    record->generation++;
+    entry->live_bytes += bytes;
+    entry->live_blocks++;
+    entry->peak_bytes = entry->live_bytes > entry->peak_bytes ? entry->live_bytes : entry->peak_bytes;
+    memory->live_blocks++;
+    *out = device_block_t{record->address, bytes, (uint32_t)index, record->generation};
+    return GPU_STATUS_OK;
+}
+
+gpu_status_t device_memory_alloc(device_memory_t *memory, device_pool_t pool, uint64_t bytes, const char *name,
+                                 device_block_t *out) {
+    memset(out, 0, sizeof(*out));
+    device_memory_clear_error(memory);
+    memory->alloc_calls++;
+    const gpu_status_t status = device_memory_alloc_checked(memory, pool, bytes, name, out);
+    if (status != GPU_STATUS_OK) {
+        memory->failed_allocs++;
+    }
+    return status;
+}
+
+/* The record this handle was given, if the block is still the one the handle means. */
+static device_memory_record_t *device_memory_find(const device_memory_t *memory, const device_block_t *block) {
+    if (memory->open == 0 || block->owned_address == 0u || block->record_index >= memory->record_capacity) {
+        return nullptr;
+    }
+    device_memory_record_t *const record = &memory->borrowed_records[block->record_index];
+    if (record->address != block->owned_address || record->generation != block->generation ||
+        record->bytes != block->bytes) {
+        return nullptr;
+    }
+    return record;
+}
+
+gpu_status_t device_memory_free(device_memory_t *memory, device_block_t *block) {
+    device_memory_clear_error(memory);
+    if (block->owned_address == 0u) {
+        return GPU_STATUS_OK;
+    }
+    device_memory_record_t *const record = device_memory_find(memory, block);
+    if (record == nullptr) {
+        return device_memory_refuse(memory, GPU_STATUS_BAD_HANDLE, "freeing a block");
+    }
+    memory->free_calls++;
+    const gpu_status_t status =
+        device_memory_check(&memory->last_error, cudaFree((void *)record->address), record->borrowed_name);
+    if (status != GPU_STATUS_OK) {
+        return status; /* still recorded, so it still shows as live, and deinit tries again */
+    }
+    device_memory_pool_t *const entry = &memory->pools[record->pool];
+    entry->live_bytes -= record->bytes;
+    entry->live_blocks--;
+    memory->live_blocks--;
+    record->address = 0u;
+    memset(block, 0, sizeof(*block));
+    return GPU_STATUS_OK;
+}
+
+/* Written so that offset + bytes cannot overflow. */
+static gpu_status_t device_memory_check_range(device_memory_t *memory, const device_block_t *block, uint64_t offset,
+                                              uint64_t bytes, const char *what) {
+    device_memory_clear_error(memory);
+    const device_memory_record_t *const record = device_memory_find(memory, block);
+    if (record == nullptr) {
+        return device_memory_refuse(memory, GPU_STATUS_BAD_HANDLE, what);
+    }
+    if (offset > record->bytes || bytes > record->bytes - offset) {
+        return device_memory_refuse(memory, GPU_STATUS_INVALID_ARGUMENT, what);
+    }
+    return GPU_STATUS_OK;
+}
+
+gpu_status_t device_memory_write(device_memory_t *memory, const device_block_t *block, uint64_t offset,
+                                 const void *source, uint64_t bytes) {
+    const gpu_status_t status = device_memory_check_range(memory, block, offset, bytes, "writing to a block");
+    if (status != GPU_STATUS_OK || bytes == 0u) {
+        return status;
+    }
+    return device_memory_check(&memory->last_error,
+                               cudaMemcpy(device_memory_pointer(block) + offset, source, bytes, cudaMemcpyHostToDevice),
+                               "writing to a block");
+}
+
+gpu_status_t device_memory_read(device_memory_t *memory, const device_block_t *block, uint64_t offset,
+                                void *destination, uint64_t bytes) {
+    const gpu_status_t status = device_memory_check_range(memory, block, offset, bytes, "reading from a block");
+    if (status != GPU_STATUS_OK || bytes == 0u) {
+        return status;
+    }
+    return device_memory_check(
+        &memory->last_error,
+        cudaMemcpy(destination, device_memory_pointer(block) + offset, bytes, cudaMemcpyDeviceToHost),
+        "reading from a block");
+}
+
+gpu_status_t device_memory_zero(device_memory_t *memory, const device_block_t *block, uint64_t offset, uint64_t bytes) {
+    const gpu_status_t status = device_memory_check_range(memory, block, offset, bytes, "zeroing a block");
+    if (status != GPU_STATUS_OK || bytes == 0u) {
+        return status;
+    }
+    /* Memset alone may return before the card has done it, and a caller here was promised it had. */
+    const gpu_status_t set = device_memory_check(
+        &memory->last_error, cudaMemset(device_memory_pointer(block) + offset, 0, bytes), "zeroing a block");
+    if (set != GPU_STATUS_OK) {
+        return set;
+    }
+    return device_memory_check(&memory->last_error, cudaDeviceSynchronize(), "waiting for the zeroing");
+}
+
+/* ---- The self-check ---------------------------------------------------------------------------------------------- */
+
+enum : uint32_t {
+    DEVICE_MEMORY_SELF_CHECK_THREADS = 256u,
+    DEVICE_MEMORY_SELF_CHECK_BLOCKS = DEVICE_MEMORY_SELF_CHECK_VALUES / DEVICE_MEMORY_SELF_CHECK_THREADS,
+};
+static_assert(DEVICE_MEMORY_SELF_CHECK_BLOCKS * DEVICE_MEMORY_SELF_CHECK_THREADS == DEVICE_MEMORY_SELF_CHECK_VALUES);
+static_assert(DEVICE_MEMORY_SELF_CHECK_VALUES * sizeof(uint32_t) == DEVICE_MEMORY_SELF_CHECK_BYTES);
+
+static __host__ __device__ uint32_t device_memory_mix(uint32_t value, uint32_t index) {
+    return (value ^ 0x5BD1E995u) + index * 0x9E3779B1u;
+}
+
+__global__ void device_memory_self_check_kernel(uint32_t *values) {
+    const uint32_t index = blockIdx.x * blockDim.x + threadIdx.x;
+    values[index] = device_memory_mix(values[index], index);
+}
+
+static gpu_status_t device_memory_self_check_run(device_memory_t *memory, const device_block_t *block) {
+    uint32_t values[DEVICE_MEMORY_SELF_CHECK_VALUES];
+    for (uint32_t i = 0; i < DEVICE_MEMORY_SELF_CHECK_VALUES; i++) {
+        values[i] = i * 0x01000193u;
+    }
+    gpu_status_t status = device_memory_write(memory, block, 0u, values, sizeof(values));
+    if (status != GPU_STATUS_OK) {
+        return status;
+    }
+    device_memory_self_check_kernel<<<DEVICE_MEMORY_SELF_CHECK_BLOCKS, DEVICE_MEMORY_SELF_CHECK_THREADS>>>(
+        (uint32_t *)device_memory_pointer(block));
+    status = device_memory_check(&memory->last_error, cudaGetLastError(), "starting the self-check kernel");
+    if (status != GPU_STATUS_OK) {
+        return status;
+    }
+    status = device_memory_check(&memory->last_error, cudaDeviceSynchronize(), "running the self-check kernel");
+    if (status != GPU_STATUS_OK) {
+        return status;
+    }
+    status = device_memory_read(memory, block, 0u, values, sizeof(values));
+    if (status != GPU_STATUS_OK) {
+        return status;
+    }
+    for (uint32_t i = 0; i < DEVICE_MEMORY_SELF_CHECK_VALUES; i++) {
+        if (values[i] != device_memory_mix(i * 0x01000193u, i)) {
+            return device_memory_refuse(memory, GPU_STATUS_SELF_CHECK, "comparing the self-check kernel's answer");
+        }
+    }
+    return GPU_STATUS_OK;
+}
+
+gpu_status_t device_memory_self_check(device_memory_t *memory) {
+    device_block_t block;
+    const gpu_status_t allocated =
+        device_memory_alloc(memory, DEVICE_POOL_FRAMES, DEVICE_MEMORY_SELF_CHECK_BYTES, "self-check", &block);
+    if (allocated != GPU_STATUS_OK) {
+        return allocated;
+    }
+    const gpu_status_t ran = device_memory_self_check_run(memory, &block);
+    const gpu_error_t ran_error = memory->last_error; /* the free below would clear what the run said */
+    const gpu_status_t freed = device_memory_free(memory, &block);
+    if (ran != GPU_STATUS_OK) {
+        memory->last_error = ran_error;
+        return ran;
+    }
+    return freed;
+}

@@ -203,6 +203,8 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | System | Parts | Job | Stage |
 |---|---|---|---|
 | `gpu_bridge` | one per CUDA area | **The C API to CUDA** (`extern "C"`) | 08.1 |
+| | `status` | `gpu_status_t`, `gpu_error_t`, and reporting a failure | 08.1 |
+| | `device_memory` | The C API of the device allocator. Its `run/src/` directory holds only a README: `cuda/src/device_memory/` implements it | 08.1 |
 | `render` | `encode upload` | Encode sections on workers; budgeted upload queue | 08.2 |
 | | `frame` | Frame sequence: submit, readback, HUD, present | 08.4 |
 | | `entities` | Per-tile entity lists | 09.5 |
@@ -382,6 +384,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/world/map/` | ctest `run_world_map`: the toroidal table, streaming by distance, requests out of date, a random walk against a brute-force model, and `world_open` |
 | `tests/run/world/edit/` | ctest `run_world_edit`: random edits against a brute-force array and brute-force flags, the log, each consumer's flags, and snapshots, with a real reader thread |
 | `tests/run/texture/` | ctest `run_texture`, covering `run/src/texture/` with `blob` and `registry`, and `asm/src/embed_assets/`: every texture against its source files, and damage to the blob, field by field |
+| `tests/run/gpu_bridge/` | ctest `run_gpu_bridge`, covering `run/src/gpu_bridge/` with `status`, and `cuda/src/device_memory/`, on the real card: real blocks and a real kernel, the budgets, stale and forged handles, a pebibyte refused, and no device in a process of its own |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
 | `tests/asm/` | NASM kernels against scalar C references |
 | `tests/asm/abi/` | ctest `asm_abi`: every kernel keeps the callee-saved registers and leaves no dirty YMM state, by machine state, not by output |
@@ -408,7 +411,6 @@ tools/test-or-build.sh cmake --build --preset debug
 | `cmake/check_link.cmake` | Fails the build if `minecraft_c` needs a library the standard does not allow, or has an executable stack |
 | `cmake/standards_lint.cmake` | Runs the lint before anything else compiles, runs the recursion check on every preset, and registers ctests `standards_lint` and `clang_format` |
 | `cmake/check_format.cmake` | Run by ctest `clang_format`: fails if any C or CUDA file does not match `.clang-format` |
-| `cmake/hello/gpu/` | The source `mc_cuda` needs until `cuda/src/` has a module (Stage 08.1) |
 | `cmake/sanitize/` | ASan options CUDA needs, linked only in the `sanitize` preset |
 
 `cmake/machine.cmake` and `cmake/generated.cmake` are included if present, so the stages that write them do not edit

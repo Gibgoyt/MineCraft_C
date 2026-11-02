@@ -1,0 +1,17 @@
+/* See cuda/src/device_memory/README.md. The C API, and what only CUDA code may see. */
+#ifndef MC_CUDA_DEVICE_MEMORY_INDEX_HU
+#define MC_CUDA_DEVICE_MEMORY_INDEX_HU
+
+#include "gpu_bridge/device_memory/index.h"
+
+/* Every CUDA call's result goes through this, in every area under cuda/: plans/CODING_STANDARD.md section 8. On success
+ * returns GPU_STATUS_OK and leaves error alone. On failure fills error, clears the runtime's own last error so that it is
+ * reported once, and returns its status. what must be static. After a launch, pass cudaGetLastError() to this. */
+gpu_status_t device_memory_check(gpu_error_t *error, cudaError_t result, const char *what);
+
+/* What a kernel takes. Each area under cuda/ gets its pointers this way, from a block its owner holds. */
+static inline uint8_t *device_memory_pointer(const device_block_t *block) {
+    return (uint8_t *)block->owned_address;
+}
+
+#endif
