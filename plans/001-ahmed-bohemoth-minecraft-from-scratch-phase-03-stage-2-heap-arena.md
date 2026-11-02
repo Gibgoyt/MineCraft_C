@@ -37,6 +37,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `282acbe` Add the heap with its 2 MiB aligned regions, budget and live counters, the bump arenas, their tests, and a leak check at exit.
+
 ## Wiring outside the owned paths
 
 - `run/src/main/index.c`, `run/include/main/index.h`, `run/src/main/README.md`: `main` calls `heap_exit_check` after
@@ -56,9 +58,10 @@ Appended as they land:
 ## Issues found
 
 1. **The head trim in `heap_map_aligned` never ran on this kernel.** Expected: a mapping needs trimming at both ends.
-   Actual: with a span of `bytes + 2 MiB` the mutant `aligned = start` passed every test, because Linux 7.2 aligns an
-   anonymous mapping whose length is a multiple of 2 MiB, so `head` was always 0. Evidence: mutation run, `SURVIVED no head
-   trim`. Fixed: the span is now `bytes + 2 MiB - 4 KiB`, the true minimum, which is not such a multiple.
+   Actual: with a span of `bytes + 2 MiB` the mutant `aligned = start` passed every test, so `head` was always 0.
+   Evidence: mutation run, `SURVIVED no head trim keeps alignment wrong`, on Linux 7.2.7. The likely cause is the kernel
+   aligning an anonymous mapping whose length is a multiple of 2 MiB; that is inferred, not read from kernel source, but
+   changing only the length made this mutant get caught. Fixed: the span is now `bytes + 2 MiB - 4 KiB`, the true minimum.
 2. **That fix moved the gap to the tail trim.** Expected: both ends trimmed. Actual: `SURVIVED no tail trim`, because the
    new mapping sits directly below an aligned one, so its end is aligned and `tail` is 0. Fixed in the test, not the code:
    `both_ends_are_given_back_below_a_mapping_that_ends_off_the_boundary` holds a thread stack of an odd length above the
