@@ -77,6 +77,9 @@ Run 2026-11-02, gcc 16.2.1, after merging the integration branch:
 
 Appended as they land:
 
+- `49b3bba` Add the VT guard, with K_OFF and VT_PROCESS switching, a crash handler, a watchdog and guardian process that restore the console, Ctrl+Alt+Backspace as the emergency exit, and --crash-test.
+- `3a2ad09` Test a fault in the VT guard's restore under the crash's own signal, and record Stage 05.2's results, issues and how Ahmed runs it.
+
 ## Issues found
 
 1. **The plan's `K_OFF` needs more than the plan says.**
