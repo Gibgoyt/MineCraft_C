@@ -3,8 +3,8 @@
 #include "game/index.h"
 
 #include "assert/index.h"
-#include "game/test_world/index.h"
 #include "log/index.h"
+#include "tables/blocks/index.h"
 #include "time/index.h"
 
 #include <inttypes.h>
@@ -15,8 +15,11 @@ enum : uint64_t {
     /* Budgets of the two arenas with a lifetime shorter than a world's. Nothing uses them yet: Stages 11 to 15 do. */
     GAME_TICK_ARENA_BYTES = 64ull << 20,
     GAME_FRAME_ARENA_BYTES = 64ull << 20,
-    GAME_COLUMN_BYTES = GAME_TEST_WORLD_COLUMN_VOXELS * sizeof(uint16_t),
-    GAME_WORLD_ARENA_BYTES = GAME_STREAM_JOBS * (GAME_COLUMN_BYTES + sizeof(game_column_job_t)) + 2ull * 4096ull,
+    /* A whole column of states, section after section, each in section_voxel_index order. */
+    GAME_COLUMN_VOXELS = (uint64_t)COLUMN_SECTIONS * SECTION_VOXELS,
+    GAME_COLUMN_BYTES = GAME_COLUMN_VOXELS * sizeof(uint16_t),
+    GAME_WORLD_ARENA_BYTES =
+        GAME_STREAM_JOBS * (GAME_COLUMN_BYTES + GAME_COLUMN_VOXELS + sizeof(game_column_job_t)) + 2ull * 4096ull,
 };
 enum : int64_t {
     GAME_SIM_IDLE_NS = 1000000,  /* the sim looks for finished columns this often when it has nothing to do */
@@ -94,6 +97,30 @@ static bool game_open_parts(game_t *game, const game_config_t *config, int32_t c
     return true;
 }
 
+/* All of a column's storage, at a place: terrain_generate_box's order is section_voxel_index's. */
+static terrain_density_box_t game_column_box(int32_t x, int32_t y, uint32_t across) {
+    return (terrain_density_box_t){
+        .origin_x = x,
+        .origin_y = y,
+        .origin_z = COLUMN_Z_STORAGE_MIN,
+        .count_x = across,
+        .count_y = across,
+        .count_z = (uint32_t)(COLUMN_Z_STORAGE_END - COLUMN_Z_STORAGE_MIN),
+    };
+}
+
+/* The highest z with anything in it at this x and y, water and what grows included. Works in a job's memory, before any job runs. */
+static int32_t game_ground_z(const terrain_t *terrain, const game_column_job_t *job, int32_t x, int32_t y) {
+    const terrain_density_box_t box = game_column_box(x, y, 1u);
+    terrain_generate_box(terrain, &box, job->borrowed_opened, job->borrowed_states);
+    for (int32_t storage = (int32_t)box.count_z - 1; storage > 0; storage--) {
+        if (job->borrowed_states[storage] != BLOCK_ID_AIR) {
+            return storage + COLUMN_Z_STORAGE_MIN;
+        }
+    }
+    return COLUMN_Z_STORAGE_MIN;
+}
+
 bool game_open(game_t *game, const game_config_t *config) {
     ASSERT_ALWAYS(game->open == 0u);
     if (config->render_distance == 0u || config->render_distance > MC_GAME_RENDER_DISTANCE_MAX) {
@@ -108,17 +135,18 @@ bool game_open(game_t *game, const game_config_t *config) {
     job_group_init(&game->group);
     game->borrowed_jobs =
         arena_alloc_array(&game->arena_world, GAME_STREAM_JOBS, sizeof(game_column_job_t), alignof(game_column_job_t));
-    const terrain_density_t *const density = game->borrowed_terrain->borrowed_density;
+    const terrain_t *const terrain = game->borrowed_terrain;
     for (uint32_t i = 0u; i < GAME_STREAM_JOBS; i++) {
         game_column_job_t *const job = &game->borrowed_jobs[i];
         memset(job, 0, sizeof(*job));
-        job->borrowed_density = density;
+        job->borrowed_terrain = terrain;
         job->borrowed_states = arena_alloc(&game->arena_world, GAME_COLUMN_BYTES, alignof(uint64_t));
+        job->borrowed_opened = arena_alloc(&game->arena_world, GAME_COLUMN_VOXELS, alignof(uint64_t));
     }
 
     /* A little above whatever is at the world's middle, water included, looking out and down. */
     const int32_t start_x = 8, start_y = 8;
-    const float64_t ground = (float64_t)game_test_world_ground_z(density, start_x, start_y);
+    const float64_t ground = (float64_t)game_ground_z(terrain, &game->borrowed_jobs[0], start_x, start_y);
     render_camera_start(&game->camera, (float64_t)start_x + 0.5f64, (float64_t)start_y + 0.5f64,
                         ground + GAME_START_EYE_HEIGHT, GAME_START_YAW, GAME_START_PITCH);
     const int32_t chunk_x = column_chunk_of(start_x), chunk_y = column_chunk_of(start_y);
@@ -161,7 +189,9 @@ void game_close(game_t *game) {
 static void game_column_job_run(job_worker_t *worker, void *borrowed_job) {
     (void)worker;
     game_column_job_t *const job = borrowed_job;
-    game_test_world_fill(job->borrowed_density, job->request.chunk_x, job->request.chunk_y, job->borrowed_states);
+    const terrain_density_box_t box = game_column_box(job->request.chunk_x * (int32_t)COLUMN_SIZE,
+                                                      job->request.chunk_y * (int32_t)COLUMN_SIZE, COLUMN_SIZE);
+    terrain_generate_box(job->borrowed_terrain, &box, job->borrowed_opened, job->borrowed_states);
     /* Release gives the sim thread the states just written, and pairs with the acquire in game_columns_commit. */
     atomic_store_explicit(&job->done, 1u, memory_order_release);
 }

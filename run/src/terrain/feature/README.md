@@ -133,4 +133,4 @@ They go last, into air or water only, so nothing ends up under them. Snow lies o
 
 ## What it costs
 
-A tile's own chunk and 8 others each take a biome area and a lattice of 25 hydrology columns, and those whose sites can reach the tile a walk. `bench/terrain/` measures it in columns a second through every stage.
+A tile's own chunk and 8 others each take a biome area and a lattice of 25 hydrology columns, and those whose sites can reach the tile a walk. A walk reads its chunk's biomes and noise once, `terrain_surface_tile_read`, for all its slices, and cuts its caves from the mask it already asked for. Reading them once a slice and asking twice cost a third more on the slowest ground. `bench/terrain/` measures it in chunk columns a second through every stage.

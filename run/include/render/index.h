@@ -26,9 +26,10 @@ enum : uint64_t {
     RENDER_POOL_BYTES_DEFAULT =
         (RENDER_VOXEL_BUDGET_BYTES - RENDER_COLUMN_COUNT_DEFAULT * sizeof(world_buffers_column_t)) /
         WORLD_BUFFERS_PAGE_BYTES * WORLD_BUFFERS_PAGE_BYTES,
-    /* The pool render_pool_bytes_for gives each column: six sections of the 7885 bytes measured in Stage 08.2 issue 5, in
-     * slabs of up to 8192. Sizes a first guess, and Stage 17.3 replaces it with what real terrain takes. */
-    RENDER_POOL_BYTES_PER_COLUMN = 6ull * 8192ull,
+    /* The pool render_pool_bytes_for gives each column. Real terrain, measured in the phase 10 gate on 100 columns scattered over
+     * 1280 blocks: a mean of 216 KiB a column, 20.2 sections with something other than one block all through, at about 10.7 KiB
+     * each. This is 24 sections, in 16 KiB of slab each, for slab waste and for columns under mountains. */
+    RENDER_POOL_BYTES_PER_COLUMN = 24ull * 16384ull,
     /* Never smaller than this: a world of a few columns still has every slab size to serve, each with a page of its own. */
     RENDER_POOL_BYTES_MIN = (uint64_t)WORLD_BUFFERS_CLASS_COUNT * WORLD_BUFFERS_PAGE_BYTES,
 };

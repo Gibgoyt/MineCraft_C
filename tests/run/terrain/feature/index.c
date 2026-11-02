@@ -35,7 +35,6 @@ enum : uint32_t {
     FEA_LAYERS = 751u,
 };
 static const uint64_t FEA_WORLD = 0x1234567890ABCDEFull;
-static const int64_t FEA_WAIT_NS = 120 * TIME_NS_PER_SECOND;
 
 /* Pinned: see README.md. */
 static const uint64_t FEA_DIGEST_PIN = 0x391B2BD657A49109ull;
@@ -253,9 +252,8 @@ static uint64_t fea_run_all(job_system_t *system, fea_run_t *run, uint32_t worke
     job_group_wait(system, &group);
     job_group_deinit(&group);
     const int64_t took = time_now_ns() - started;
-    printf("    %u workers: %.0f columns/s\n", workers,
-           (libc_double_t)((float64_t)(FEA_MAP_CHUNKS * FEA_COLUMNS) / ((float64_t)took / 1e9f64)));
-    (void)FEA_WAIT_NS;
+    printf("    %u workers: %.0f chunk columns/s\n", workers,
+           (libc_double_t)((float64_t)FEA_MAP_CHUNKS / ((float64_t)took / 1e9f64)));
     return fea_digest(0xCBF29CE484222325ull, run->borrowed_blocks,
                       FEA_MAP_CHUNKS * FEA_CHUNK_VOXELS * sizeof(uint16_t));
 }

@@ -1069,6 +1069,48 @@ TEST(a_seed_gives_its_own_caves_and_the_same_ones_every_time) {
     CHECK(memcmp(first, other, VOXELS) != 0);
 }
 
+/* The chain of stages cuts with the mask it already asked for, as asking twice is most of a chunk's walk. It has to be the same. */
+TEST(cutting_with_a_mask_is_what_carving_gives) {
+    enum : uint32_t { ACROSS = 64u, TALL = 96u, VOXELS = ACROSS * ACROSS * TALL };
+    uint16_t *const carved = test_alloc(t, VOXELS * sizeof(uint16_t));
+    uint16_t *const cut = test_alloc(t, VOXELS * sizeof(uint16_t));
+    uint16_t *const before = test_alloc(t, VOXELS * sizeof(uint16_t));
+    uint8_t *const mask = test_alloc(t, VOXELS);
+    terrain_t terrain;
+    REQUIRE(terrain_init(&terrain, CAVE_WORLD));
+    uint64_t total = 0u;
+    /* From the bedrock, where a mask covers what must not be cut, to the sea and the ground. */
+    const int32_t levels[3] = {MC_WORLD_Z_MIN, -60, -48};
+    for (uint32_t l = 0u; l < 3u; l++) {
+        const terrain_density_box_t box = {
+            .origin_x = -32,
+            .origin_y = 16,
+            .origin_z = levels[l],
+            .count_x = ACROSS,
+            .count_y = ACROSS,
+            .count_z = TALL,
+        };
+        terrain_hydrology_fill_box(terrain.borrowed_hydrology, &box, before);
+        memcpy(carved, before, VOXELS * sizeof(uint16_t));
+        memcpy(cut, before, VOXELS * sizeof(uint16_t));
+        const uint64_t changed = terrain_cave_carve_box(terrain.borrowed_cave, &box, carved);
+        terrain_cave_mask_box(terrain.borrowed_cave, &box, mask);
+        terrain_cave_cut_with_mask(&box, mask, cut);
+        CHECK_MEM_EQ(carved, cut, VOXELS * sizeof(uint16_t));
+        uint64_t marked = 0u;
+        uint64_t wrong = 0u;
+        for (uint32_t i = 0u; i < VOXELS; i++) {
+            marked += mask[i];
+            wrong += (mask[i] != 0u) != (before[i] != cut[i]) ? 1u : 0u;
+        }
+        CHECK_EQ_U64(marked, changed);
+        CHECK_EQ_U64(wrong, 0u);
+        total += changed;
+    }
+    CHECK(total > 0u);
+    terrain_deinit(&terrain);
+}
+
 TEST(a_full_bank_is_refused) {
     enum : uint64_t { BYTES = 1024ull * 1024ull };
     uint8_t *const memory = test_alloc(t, BYTES);

@@ -436,19 +436,12 @@ static_assert(sizeof(feature_chunk_t) == 2080);
 
 /* Every stage whose blocks say what a site stands on: see the README's order. Lining and ore change only rock. */
 [[gnu::noinline]]
-static void feature_stages(const terrain_feature_t *feature, const terrain_density_box_t *box, uint8_t *opened,
-                           uint16_t *blocks) {
+static void feature_stages(const terrain_feature_t *feature, terrain_surface_tile_t *tile,
+                           const terrain_density_box_t *box, uint8_t *opened, uint16_t *blocks) {
     terrain_hydrology_fill_box(feature->borrowed_hydrology, box, blocks);
-    terrain_surface_fill_box(feature->borrowed_surface, box, blocks);
+    terrain_surface_fill_tile_box(feature->borrowed_surface, tile, box, blocks);
     terrain_cave_mask_box(feature->borrowed_cave, box, opened);
-    const uint64_t voxels = terrain_density_box_voxels(box);
-    for (uint64_t i = 0u; i < voxels; i++) {
-        const uint16_t block = blocks[i];
-        const bool rock =
-            block != BLOCK_ID_AIR && block != BLOCK_ID_WATER && block != BLOCK_ID_LAVA && block != BLOCK_ID_BEDROCK;
-        opened[i] = opened[i] != 0u && rock ? 1u : 0u;
-    }
-    (void)terrain_cave_carve_box(feature->borrowed_cave, box, blocks);
+    terrain_cave_cut_with_mask(box, opened, blocks);
     terrain_hydrology_flood_box(feature->borrowed_hydrology, box, opened, blocks);
 }
 
@@ -507,8 +500,8 @@ static void feature_chunk_load(const terrain_feature_t *feature, int32_t chunk_x
 
 /* One slice of the walk down. Returns how many columns are still looking. */
 [[gnu::noinline]]
-static uint32_t feature_walk_slice(const terrain_feature_t *feature, feature_chunk_t *chunk, int32_t z_first,
-                                   int32_t z_last, uint32_t looking) {
+static uint32_t feature_walk_slice(const terrain_feature_t *feature, terrain_surface_tile_t *tile,
+                                   feature_chunk_t *chunk, int32_t z_first, int32_t z_last, uint32_t looking) {
     uint16_t blocks[FEATURE_SLICE_VOXELS];
     uint8_t opened[FEATURE_SLICE_VOXELS];
     const terrain_density_box_t box = {
@@ -519,7 +512,7 @@ static uint32_t feature_walk_slice(const terrain_feature_t *feature, feature_chu
         .count_y = TERRAIN_FEATURE_CHUNK,
         .count_z = (uint32_t)(z_last - z_first) + 1u,
     };
-    feature_stages(feature, &box, opened, blocks);
+    feature_stages(feature, tile, &box, opened, blocks);
     for (uint32_t i = 0u; i < TERRAIN_FEATURE_CHUNK_COLUMNS; i++) {
         terrain_feature_column_t *const column = &chunk->columns[i];
         if (column->top != TERRAIN_FEATURE_NO_GROUND) {
@@ -544,7 +537,8 @@ static uint32_t feature_walk_slice(const terrain_feature_t *feature, feature_chu
 
 /* From over all the ground, down to under all that can be its top: each column's top and the water on it. A column with nothing
  * in that range has had its ground cut away by a cave, and grows nothing. */
-static void feature_chunk_columns_walk(const terrain_feature_t *feature, feature_chunk_t *chunk) {
+static void feature_chunk_columns_walk(const terrain_feature_t *feature, terrain_surface_tile_t *tile,
+                                       feature_chunk_t *chunk) {
     /* Over that range, up to the sea, there is only water. */
     const uint16_t water = chunk->z_high < MC_WORLD_Z_SEA ? (uint16_t)(MC_WORLD_Z_SEA - chunk->z_high) : 0u;
     for (uint32_t i = 0u; i < TERRAIN_FEATURE_CHUNK_COLUMNS; i++) {
@@ -554,7 +548,7 @@ static void feature_chunk_columns_walk(const terrain_feature_t *feature, feature
     for (int32_t z = chunk->z_high; z >= chunk->z_low && looking > 0u;) {
         const int32_t slice_low = (z >> 4) * (int32_t)FEATURE_SLICE_LAYERS;
         const int32_t z_first = slice_low > chunk->z_low ? slice_low : chunk->z_low;
-        looking = feature_walk_slice(feature, chunk, z_first, z, looking);
+        looking = feature_walk_slice(feature, tile, chunk, z_first, z, looking);
         z = z_first - 1;
     }
     if (looking > 0u) {
@@ -637,8 +631,8 @@ static bool feature_is_ground(uint16_t block) {
 /* Does each voxel of water have ground or more of the lake on every side and below? From the real voxels, as a cave can pass
  * under a shore without changing any column's top. */
 [[gnu::noinline]]
-static bool feature_lake_holds(const terrain_feature_t *feature, const feature_chunk_t *chunk,
-                               const terrain_feature_lake_t *lake) {
+static bool feature_lake_holds(const terrain_feature_t *feature, terrain_surface_tile_t *tile,
+                               const feature_chunk_t *chunk, const terrain_feature_lake_t *lake) {
     uint16_t blocks[TERRAIN_FEATURE_CHUNK_COLUMNS * FEATURE_LAKE_LAYERS];
     uint8_t opened[TERRAIN_FEATURE_CHUNK_COLUMNS * FEATURE_LAKE_LAYERS];
     const int32_t z_low = (int32_t)lake->level - (int32_t)lake->depth;
@@ -650,7 +644,7 @@ static bool feature_lake_holds(const terrain_feature_t *feature, const feature_c
         .count_y = TERRAIN_FEATURE_CHUNK,
         .count_z = (uint32_t)lake->depth + 1u,
     };
-    feature_stages(feature, &box, opened, blocks);
+    feature_stages(feature, tile, &box, opened, blocks);
     static const int32_t SIDE_X[4] = {1, -1, 0, 0};
     static const int32_t SIDE_Y[4] = {0, 0, 1, -1};
     for (uint32_t y = 0u; y < TERRAIN_FEATURE_CHUNK; y++) {
@@ -687,7 +681,8 @@ static bool feature_lake_holds(const terrain_feature_t *feature, const feature_c
 
 /* What the columns say first, as it costs nothing: the lake's level is the lowest of its shore, so no column of the shore can
  * let it out, and a lake needs dry land that is all near that height. */
-static void feature_chunk_lake_find(const terrain_feature_t *feature, feature_chunk_t *chunk) {
+static void feature_chunk_lake_find(const terrain_feature_t *feature, terrain_surface_tile_t *tile,
+                                    feature_chunk_t *chunk) {
     terrain_feature_lake_t lake;
     if (!feature_lake_plan(feature, chunk->chunk_x, chunk->chunk_y, &lake)) {
         return;
@@ -730,17 +725,22 @@ static void feature_chunk_lake_find(const terrain_feature_t *feature, feature_ch
         }
     }
     lake.level = (int16_t)level;
-    if (feature_lake_holds(feature, chunk, &lake)) {
+    if (feature_lake_holds(feature, tile, chunk, &lake)) {
         chunk->lake = lake;
     }
 }
 
+/* The biomes and noise of a chunk do not change as the walk goes down, so its slices share one read of them. */
+[[gnu::noinline]]
 static void feature_chunk_walk(const terrain_feature_t *feature, feature_chunk_t *chunk) {
     if (chunk->walked != 0u) {
         return;
     }
-    feature_chunk_columns_walk(feature, chunk);
-    feature_chunk_lake_find(feature, chunk);
+    terrain_surface_tile_t tile;
+    terrain_surface_tile_read(feature->borrowed_surface, chunk->chunk_x * (int32_t)TERRAIN_FEATURE_CHUNK,
+                              chunk->chunk_y * (int32_t)TERRAIN_FEATURE_CHUNK, &tile);
+    feature_chunk_columns_walk(feature, &tile, chunk);
+    feature_chunk_lake_find(feature, &tile, chunk);
     chunk->walked = 1u;
 }
 
@@ -748,7 +748,10 @@ void terrain_feature_chunk_columns(const terrain_feature_t *feature, int32_t chu
                                    terrain_feature_column_t *out) {
     feature_chunk_t chunk;
     feature_chunk_load(feature, chunk_x, chunk_y, &chunk);
-    feature_chunk_columns_walk(feature, &chunk);
+    terrain_surface_tile_t tile;
+    terrain_surface_tile_read(feature->borrowed_surface, chunk_x * (int32_t)TERRAIN_FEATURE_CHUNK,
+                              chunk_y * (int32_t)TERRAIN_FEATURE_CHUNK, &tile);
+    feature_chunk_columns_walk(feature, &tile, &chunk);
     memcpy(out, chunk.columns, sizeof(chunk.columns));
 }
 

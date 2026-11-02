@@ -15,6 +15,7 @@ What it checks:
 
 - **By hand:** a face's texture coordinates, a texel's place, the mip level, the sRGB curves and the tone map, sky and fog, on numbers worked out on paper. The camera: which way each key and the mouse move it.
 - **Against an exact reference:** a world of a few blocks, grass and a furnace among them, seen from all sides. Every pixel against a trace in `float64_t` over a list of boxes, with its own table of faces, looking up each texel through `run/src/texture/`. This is what says that no face is mirrored or upside down.
+- **The real world in the map:** `the_columns_the_game_streams_are_what_terrain_generates`, voxel for voxel against `terrain_generate_box`, so that what the game streams is every stage of the terrain.
 - **The real path on real terrain:** what the rays found against the map, voxel for voxel, against a separate trace through the map. Every pixel against what its hit says it should be. The window scrolling. A column that wrapped out of its slot not being seen is held to in `tests/cuda/traverse/`, since a settled world never shows it here.
 - **Golden pictures:** `fixtures/*.png`, at most 2 out of 255 apart on any channel. Ahmed's card and driver made them. To make them again, after looking at them:
 
@@ -24,6 +25,6 @@ What it checks:
 - **The real threads:** `sim`, `gpu` and a `main` loop on a plain buffer draw the same picture as a run with no threads, take nothing from the heap once running, and stop clean.
 - **What a frame refuses:** targets too small, and a material with no texture, which draws magenta.
 
-`fixtures/` holds only those pictures. Any change to the terrain, the test world's surface, or the textures changes them, and they are made again and looked at.
+`fixtures/` holds only those pictures. Any change to the terrain or the textures changes them, and they are made again and looked at.
 
 The real loop through `display_frames_run`, with the guardian forked, is `tests/run/game/`.

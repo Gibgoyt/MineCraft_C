@@ -6,7 +6,6 @@
 #include "display/headless/png/index.h"
 #include "file/index.h"
 #include "game/index.h"
-#include "game/test_world/index.h"
 #include "gpu_bridge/index.h"
 #include "heap/index.h"
 #include "job/index.h"
@@ -345,58 +344,6 @@ TEST(the_exchange_hands_over_the_newest_and_keeps_what_is_being_read) {
             atomic_load_explicit(&exchange->exchange, memory_order_relaxed) & 3u; /* the low bits name a slot */
         CHECK_EQ_U64(1u << exchange->back | 1u << exchange->front | 1u << middle, 7u);
     }
-}
-
-/* The goldens look at grass and rock, so they would not see this. Stage 10.6 replaces it, and this test with it. */
-TEST(the_test_worlds_surface_is_sand_by_the_water_and_grass_above_it) {
-    fr_rig_t rig;
-    REQUIRE(fr_rig_begin(t, &rig));
-    uint16_t *const states = test_alloc(t, GAME_TEST_WORLD_COLUMN_VOXELS * sizeof(uint16_t));
-    const uint32_t per_layer = COLUMN_SIZE * COLUMN_SIZE;
-    const int32_t height = COLUMN_Z_STORAGE_END - COLUMN_Z_STORAGE_MIN;
-    uint64_t beaches = 0u, sea_beds = 0u, meadows = 0u, soil = 0u, overhangs = 0u;
-    for (int32_t chunk_y = -8; chunk_y <= 8; chunk_y++) {
-        for (int32_t chunk_x = -8; chunk_x <= 8; chunk_x++) {
-            game_test_world_fill(rig.terrain->borrowed_density, chunk_x, chunk_y, states);
-            for (uint32_t cell = 0u; cell < per_layer; cell++) {
-                /* Down from the sky to the first thing that is not air or water. */
-                int32_t storage = height - 1;
-                bool under_water = false;
-                uint16_t state = states[(uint64_t)storage * per_layer + cell];
-                while (storage > 0 && (state == BLOCK_ID_AIR || state == BLOCK_ID_WATER)) {
-                    under_water = under_water || state == BLOCK_ID_WATER;
-                    storage--;
-                    state = states[(uint64_t)storage * per_layer + cell];
-                }
-                const int32_t z = storage + COLUMN_Z_STORAGE_MIN;
-                if (under_water) {
-                    CHECK_EQ_U64(state, BLOCK_ID_SAND);
-                    sea_beds++;
-                } else if (z <= MC_WORLD_Z_SEA + 2) {
-                    CHECK_EQ_U64(state, BLOCK_ID_SAND);
-                    beaches++;
-                } else if (state == BLOCK_ID_GRASS_BLOCK) {
-                    meadows++;
-                    CHECK(z < 170);
-                    /* Or nothing, under an overhang one block thick. */
-                    const uint16_t below = states[(uint64_t)(storage - 1) * per_layer + cell];
-                    overhangs += below == BLOCK_ID_AIR || below == BLOCK_ID_WATER ? 1u : 0u;
-                    soil += below == BLOCK_ID_DIRT ? 1u : 0u;
-                } else {
-                    CHECK_EQ_U64(state, BLOCK_ID_SNOW_BLOCK);
-                    CHECK(z >= 170);
-                }
-            }
-        }
-    }
-    printf("  %" PRIu64 " beach, %" PRIu64 " sea bed, %" PRIu64 " grass, %" PRIu64 " over air or water\n", beaches,
-           sea_beds, meadows, overhangs);
-    CHECK(beaches > 0u);
-    CHECK(sea_beds > 0u);
-    CHECK(meadows > 0u);
-    CHECK_EQ_U64(soil + overhangs, meadows);
-    CHECK(soil > overhangs);
-    fr_rig_end(t, &rig);
 }
 
 /* ---- A world of a few blocks, against an exact reference ----------------------------------------------------------------- */
@@ -1025,6 +972,68 @@ static void fr_check_tally(test_context_t *t, const fr_terrain_tally_t *tally) {
     CHECK(tally->not_adjacent * 2000u <= tally->rays);
 }
 
+/* What the game streams into its map is the real world, every stage of it, and not something else that looks like ground. The
+ * goldens could not say so: they would look the same on any world that had been made again. */
+TEST(the_columns_the_game_streams_are_what_terrain_generates) {
+    fr_rig_t rig;
+    REQUIRE(fr_rig_begin(t, &rig));
+    game_t *const game = rig.game;
+    REQUIRE(game_open(game, &fr_small_game));
+    REQUIRE(game_settle(game));
+    const int32_t storage_voxels = (COLUMN_Z_STORAGE_END - COLUMN_Z_STORAGE_MIN) * (int32_t)(COLUMN_SIZE * COLUMN_SIZE);
+    uint16_t *const states = test_alloc(t, (uint64_t)storage_voxels * sizeof(uint16_t));
+    uint8_t *const opened = test_alloc(t, (uint64_t)storage_voxels);
+    const int32_t reach = (int32_t)fr_small_game.render_distance;
+    uint64_t columns = 0u, wrong = 0u, stored_outside = 0u;
+    uint8_t *const seen = test_alloc(t, BLOCK_COUNT);
+    memset(seen, 0, BLOCK_COUNT);
+    for (int32_t chunk_y = -reach; chunk_y <= reach; chunk_y++) {
+        for (int32_t chunk_x = -reach; chunk_x <= reach; chunk_x++) {
+            const column_t *const column = world_map_column_at(&rig.world->map, chunk_x, chunk_y);
+            if (column == nullptr) {
+                continue;
+            }
+            columns++;
+            const terrain_density_box_t box = {
+                .origin_x = chunk_x * (int32_t)COLUMN_SIZE,
+                .origin_y = chunk_y * (int32_t)COLUMN_SIZE,
+                .origin_z = COLUMN_Z_STORAGE_MIN,
+                .count_x = COLUMN_SIZE,
+                .count_y = COLUMN_SIZE,
+                .count_z = (uint32_t)(COLUMN_Z_STORAGE_END - COLUMN_Z_STORAGE_MIN),
+            };
+            terrain_generate_box(rig.terrain, &box, opened, states);
+            for (int32_t z = COLUMN_Z_STORAGE_MIN; z < COLUMN_Z_STORAGE_END; z++) {
+                const uint64_t layer = (uint64_t)(z - COLUMN_Z_STORAGE_MIN) * (COLUMN_SIZE * COLUMN_SIZE);
+                for (uint32_t y = 0u; y < COLUMN_SIZE; y++) {
+                    for (uint32_t x = 0u; x < COLUMN_SIZE; x++) {
+                        const uint16_t want = states[layer + y * COLUMN_SIZE + x];
+                        uint16_t block = BLOCK_ID_AIR;
+                        if (column_block_get(column, x, y, z, &block)) {
+                            wrong += block != want ? 1u : 0u;
+                            seen[want < BLOCK_COUNT ? want : 0u] = 1u;
+                        } else {
+                            /* Past gameplay's range, where nothing can read it, nothing should have been made. */
+                            stored_outside += want != BLOCK_ID_AIR ? 1u : 0u;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    printf("  %" PRIu64 " columns compared\n", columns);
+    CHECK(columns >= 9u);
+    CHECK_EQ_U64(wrong, 0u);
+    CHECK_EQ_U64(stored_outside, 0u);
+    /* The stages' own blocks, which the density alone never makes. */
+    CHECK(seen[BLOCK_ID_BEDROCK] != 0u);
+    CHECK(seen[BLOCK_ID_DEEPSLATE] != 0u);
+    CHECK(seen[BLOCK_ID_COAL_ORE] != 0u || seen[BLOCK_ID_IRON_ORE] != 0u);
+    CHECK(seen[BLOCK_ID_LAVA] != 0u);
+    game_close(game);
+    fr_rig_end(t, &rig);
+}
+
 TEST(real_terrain_through_the_real_path_is_what_the_map_holds) {
     fr_rig_t rig;
     REQUIRE(fr_rig_begin(t, &rig));
@@ -1033,8 +1042,8 @@ TEST(real_terrain_through_the_real_path_is_what_the_map_holds) {
     REQUIRE(game_settle(game));
     CHECK_EQ_U64(rig.render->buffers.pool_full_count, 0u);
     CHECK(rig.render->buffers.section_count > 100u);
-    /* Solid stone under the ground is why the pool holds this little: Stage 08.4 issue 2. */
-    CHECK(rig.render->buffers.slab_bytes < (uint64_t)rig.world->map.ready_count * 64u * 1024u);
+    /* What the pool allows a column: the real world must fit it, or a whole render distance would not. */
+    CHECK(rig.render->buffers.slab_bytes < (uint64_t)rig.world->map.ready_count * RENDER_POOL_BYTES_PER_COLUMN);
     fr_terrain_tally_t tally = {0};
     const uint8_t *picture = fr_draw(t, &rig, &game->camera);
     REQUIRE(picture != nullptr);

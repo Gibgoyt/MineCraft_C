@@ -238,7 +238,6 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | System | Parts | Job | Stage |
 |---|---|---|---|
 | `game` | | **Owner of World, Tick and Frame arenas**; the loop connecting `sim`, `gpu`, `main` | 08.4, extended later |
-| | `test_world` | The blocks of a column, until the real world's surface exists | 08.4; goes with 10.6 |
 | `physics` | `collision raycast` | Swept AABB; DDA block targeting | 12.1, 12.2 |
 | `player` | `movement camera` | Walk, jump, swim, look | 12.1, 12.2 |
 | | `interaction` | **Mining, drops, placing** | 12.3 |

@@ -18,6 +18,8 @@ enum : uint32_t {
     TERRAIN_SURFACE_NOISE_FIELDS = 3u,
     /* How many layers the badlands' colours take to repeat. A power of 2. */
     TERRAIN_SURFACE_BANDS = 256u,
+    /* The columns of one chunk-sized tile: the size of what terrain_surface_tile_t keeps. */
+    TERRAIN_SURFACE_TILE_COLUMNS = 256u,
 };
 static_assert((TERRAIN_SURFACE_BANDS & (TERRAIN_SURFACE_BANDS - 1u)) == 0u);
 
@@ -47,6 +49,21 @@ typedef struct terrain_surface_inputs_t {
 } terrain_surface_inputs_t;
 static_assert(sizeof(terrain_surface_inputs_t) == 28);
 
+/* What a chunk-sized tile needs that does not change with the layers. Reading it costs far more than laying one slice, so what
+ * asks for one chunk slice by slice reads it once. Filled by terrain_surface_tile_read; the caller lends the memory. */
+typedef struct terrain_surface_tile_t {
+    terrain_biome_column_t columns[TERRAIN_SURFACE_TILE_COLUMNS]; /* 0 */
+    float32_t depth[TERRAIN_SURFACE_TILE_COLUMNS];                /* 4096: good once has_noise is 1 */
+    float32_t patch[TERRAIN_SURFACE_TILE_COLUMNS];                /* 5120: the same */
+    float32_t wander[TERRAIN_SURFACE_TILE_COLUMNS];               /* 6144: the same */
+    float32_t steepness[TERRAIN_SURFACE_TILE_COLUMNS];            /* 7168 */
+    float32_t solid_top;                                          /* 8192: at or under this, no voxel changes */
+    float32_t open_from;                                          /* 8196: from here up, nothing is ground */
+    uint8_t has_noise;                                            /* 8200 */
+    uint8_t _pad0[7];                                             /* 8201 */
+} terrain_surface_tile_t;
+static_assert(sizeof(terrain_surface_tile_t) == 8208);
+
 /* Takes the surface from arena and adds its fields to bank, for bank's seed, with the bands drawn from seed. For use while
  * terrain_init runs. What it is given must outlive it. If the bank refuses a field, which has logged why, sets *out to nullptr
  * and returns false. Fields added before that stay in the bank, so the caller gives up on the whole terrain_t. */
@@ -71,6 +88,12 @@ uint16_t terrain_surface_cave_block_from(const biome_def_t *def, uint16_t block,
  * voxel: splitting a box into parts, in any order, on any thread, gives the same bytes. Call it before anything else changes
  * blocks: see the README's order. */
 void terrain_surface_fill_box(const terrain_surface_t *surface, const terrain_density_box_t *box, uint16_t *blocks);
+
+/* The same as terrain_surface_fill_box, byte for byte, for a box exactly one chunk across at the place tile was read for: any
+ * layers, any number of calls, with the tile read once. x and y are the chunk's lowest corner. */
+void terrain_surface_tile_read(const terrain_surface_t *surface, int32_t x, int32_t y, terrain_surface_tile_t *tile);
+void terrain_surface_fill_tile_box(const terrain_surface_t *surface, terrain_surface_tile_t *tile,
+                                   const terrain_density_box_t *box, uint16_t *blocks);
 
 /* Lines the caves of the underground biomes. Any stone voxel of blocks directly above or below what a cave wants takes the
  * biome's floor or ceiling. Nothing else changes. Call it after the caves are cut and flooded, and before terrain_ore_fill_box.
