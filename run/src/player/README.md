@@ -13,6 +13,7 @@
 - `player_look_send`: main says where the player looks, for what it aims at.
 - `player_hands_send`: main says what the two mouse buttons are doing.
 - `player_interact_tick`: one tick of the sim's for the hands, on what the last tick aimed at, before `player_tick`.
+- `player_pickup_reach`: the box an item has to overlap to be picked up, with the body where it now is.
 - `player_tick`: one tick of the sim's: the body moves, then what it aims at is worked out from where it now stands.
 - `player_eye_at`: main asks where to draw the eye right now.
 - `player_target_view`: main asks what that tick aimed at, to draw its outline.

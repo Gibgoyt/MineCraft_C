@@ -18,8 +18,8 @@ What it checks:
 - **What starts the count again:** letting go, another target, the block changing, and bedrock never going.
 - **The delay and the sweep,** a plant going with its ground, and a stack of them.
 - **Placing:** all six faces, what can be overwritten, the body at both heights, a slab under the feet, the world's top, a column not loaded, an empty hand, plants on and off the ground, and the repeat rate.
-- **The ring and the hand:** overflow counted, the one slot's rules, and the same bytes from the same seed with nothing from the heap.
+- **The ring and the hand:** where a test goes through the player, `pi_drops_to_hand` takes each drop from the ring to the hand at once, as these tests are of the hands: `tests/run/entity/item_drop/` tests an item's way between them. Overflow counted, the one slot's rules, and the same bytes from the same seed with nothing from the heap.
 - **Edits are real:** each goes in the log and flags its section for the renderer, save and light.
 - **Through the player:** a click between ticks, no one at the controls, and walking up to a wall of dirt on real intents, mining it with a real aim, walking through the gap, and placing it back.
-- **The real threads:** a real world on the card, mined and placed back through `game_hands_send`, and the picture changing.
+- **The real threads:** a real world on the card, mined through `game_hands_send`, what it drops picked up from the ground, placed back, and the picture changing.
 - **The program:** a script walks, looks down, mines through grass to dirt, mines a wall of the hole, and places one back, with screenshots before and after each. The same script gives the same bytes twice.

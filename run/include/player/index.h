@@ -20,6 +20,10 @@ enum : int64_t {
     PLAYER_INTENT_STALE_NS = 250000000,
 };
 
+/* How far past its body the player picks things up: the published numbers. */
+#define PLAYER_PICKUP_REACH_ACROSS 1.0f64
+#define PLAYER_PICKUP_REACH_UP 0.5f64
+
 /* The two buttons, in hands_word and hands_latch. */
 enum : uint32_t {
     PLAYER_HAND_ATTACK = 1u,
@@ -84,8 +88,11 @@ void player_hands_send(player_t *player, bool attack, bool place);
 
 /* The hands' tick, on what player_tick last aimed at, so on the block the player sees outlined: the sim, or whichever one thread holds
  * the map, right before player_tick, so that the body and the next aim both meet the world as this leaves it. Never waits and never
- * touches the heap. */
+ * touches the heap. What it broke waits in the interaction's ring, for whoever puts items in the world. */
 void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns);
+
+/* What an item's box has to overlap to be picked up, with the body where it now is. The thread its ticks are on. */
+collision_box_t player_pickup_reach(const player_t *player);
 
 /* One tick. The sim, or whichever one thread holds the map, with tick_ns the time this tick was due. Never waits and never
  * touches the heap. */

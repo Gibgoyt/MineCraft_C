@@ -124,8 +124,20 @@ void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns)
         ._pad0 = {0},
     };
     player_interaction_tick(&player->interaction, edit, &input);
-    /* Stage 12.4 and Stage 13.1 replace this one call with an item in the world and a pickup. */
-    player_interaction_drops_to_hand(&player->interaction);
+}
+
+collision_box_t player_pickup_reach(const player_t *player) {
+    const player_movement_t *const movement = &player->movement;
+    const float64_t height =
+        movement->crouched != 0u ? PLAYER_MOVEMENT_HEIGHT_CROUCHED : PLAYER_MOVEMENT_HEIGHT_STANDING;
+    collision_box_t reach = player_movement_box(movement->position, height);
+    reach.min[COLLISION_AXIS_X] -= PLAYER_PICKUP_REACH_ACROSS;
+    reach.min[COLLISION_AXIS_Y] -= PLAYER_PICKUP_REACH_ACROSS;
+    reach.min[COLLISION_AXIS_Z] -= PLAYER_PICKUP_REACH_UP;
+    reach.max[COLLISION_AXIS_X] += PLAYER_PICKUP_REACH_ACROSS;
+    reach.max[COLLISION_AXIS_Y] += PLAYER_PICKUP_REACH_ACROSS;
+    reach.max[COLLISION_AXIS_Z] += PLAYER_PICKUP_REACH_UP;
+    return reach;
 }
 
 void player_tick(player_t *player, const world_map_t *map, int64_t tick_ns) {

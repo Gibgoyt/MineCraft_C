@@ -59,6 +59,11 @@ void game_player_set(game_t *game, player_t *player) {
     game->borrowed_player = player;
 }
 
+void game_entity_set(game_t *game, entity_t *entity) {
+    ASSERT_ALWAYS(game->open == 0u);
+    game->borrowed_entity = entity;
+}
+
 void game_deinit(game_t *game) {
     if (game->threads_running != 0u) {
         (void)game_loop_stop(game); /* it has said what went wrong, and there is no one left to tell */
@@ -245,6 +250,9 @@ bool game_open(game_t *game, const game_config_t *config) {
     }
     game_day_set(game, GAME_DAY_START);
     game_day_apply(game);
+    if (game->borrowed_entity != nullptr) {
+        entity_open(game->borrowed_entity, terrain_rng_derive(terrain->seed, terrain_rng_salt("entity")));
+    }
     game->open = 1u;
     return true;
 }
@@ -257,6 +265,9 @@ void game_close(game_t *game) {
     /* Nothing may be writing into the jobs' memory when it goes. */
     job_group_wait(game->borrowed_job, &game->group);
     job_group_deinit(&game->group);
+    if (game->borrowed_entity != nullptr) {
+        entity_close(game->borrowed_entity);
+    }
     render_close(game->borrowed_render);
     world_close(game->borrowed_world);
     game_arenas_stop(game);
@@ -366,12 +377,34 @@ void game_sim_step(game_t *game) {
     (void)world_edit_snapshot_publish(&world->snapshot);
 }
 
+/* An item picked up goes to the hand, until Stage 13.1 gives it an inventory. */
+static uint32_t game_pickup_take(void *borrowed_player, uint16_t item, uint32_t count) {
+    player_t *const player = borrowed_player;
+    return player_interaction_hand_take(&player->interaction, item, count);
+}
+
+/* What the hands just broke comes out into the world, everything there moves, and the body picks up what it now reaches. */
+static void game_items_tick(game_t *game) {
+    entity_t *const entity = game->borrowed_entity;
+    player_t *const player = game->borrowed_player;
+    player_drop_t drop;
+    while (player_interaction_drop_next(&player->interaction, &drop)) {
+        item_drop_spawn(&entity->item_drops, drop.item, drop.count, drop.position);
+    }
+    entity_tick(entity, &game->borrowed_world->map);
+    const collision_box_t reach = player_pickup_reach(player);
+    (void)item_drop_pickup(&entity->item_drops, &reach, game_pickup_take, player);
+}
+
 /* One tick of simulated time, due at tick_ns: this is where Stages 11 to 15 add theirs. */
 static void game_sim_tick(game_t *game, int64_t tick_ns) {
     arena_reset(&game->arena_tick);
     if (game->borrowed_player != nullptr) {
         /* First, so that the body and its next aim both meet the world as the hands leave it. */
         player_interact_tick(game->borrowed_player, &game->borrowed_world->edit, tick_ns);
+        if (game->borrowed_entity != nullptr) {
+            game_items_tick(game);
+        }
         player_tick(game->borrowed_player, &game->borrowed_world->map, tick_ns);
     }
     world_tick_step(&game->borrowed_world->tick);
@@ -695,6 +728,14 @@ void game_report(game_t *game) {
                  "holds %" PRIu32 " of %s",
                  hands->mined_count, hands->placed_count, block_defs[hands->last_mined].name,
                  (uint32_t)hands->hand_count, hands->hand_count != 0u ? block_defs[hands->hand_block].name : "nothing");
+    }
+    if (game->borrowed_entity != nullptr) {
+        const item_drop_store_t *const drops = &game->borrowed_entity->item_drops;
+        LOG_INFO("game: %" PRIu64 " items dropped, %" PRIu64 " picked up, %" PRIu64 " on the ground in %" PRIu32
+                 " stacks; %" PRIu64 " stacks merged, %" PRIu64 " items despawned, %" PRIu64 " destroyed, %" PRIu64
+                 " lost",
+                 drops->dropped_count, drops->picked_up_count, item_drop_on_ground(drops), drops->count,
+                 drops->merged_count, drops->despawned_count, drops->destroyed_count, drops->lost_count);
     }
     LOG_INFO("game: %" PRIu64 " columns generated, %" PRIu64 " ticks, %" PRIu64
              " sections sent, %.1f MiB of slabs held",

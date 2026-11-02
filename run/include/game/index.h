@@ -4,6 +4,7 @@
 
 #include "arena/index.h"
 #include "display/index.h"
+#include "entity/index.h"
 #include "heap/index.h"
 #include "input/index.h"
 #include "job/index.h"
@@ -91,7 +92,9 @@ typedef struct game_t {
     uint8_t pool_full_said;    /* 863 */
     player_t *borrowed_player; /* 864: walking if not nullptr; set before a world opens, and only read after */
     uint32_t commit_next;      /* 872: the job the next step looks at first */
-    uint8_t _pad0[20];         /* 876 */
+    uint8_t _pad0[4];          /* 876 */
+    entity_t *borrowed_entity; /* 880: what a player's drops go into; set before a world opens, and only read after */
+    uint8_t _pad4[8];          /* 888 */
     /* A line of its own, written by main every frame. */
     float64_t day_fraction; /* 896: main's: the time of day, from 0 to 1 */
     _Atomic uint32_t
@@ -119,6 +122,10 @@ void game_init(game_t *game, world_t *world, terrain_t *terrain, render_t *rende
 
 /* From here on a world is walked through and not flown through, by this player, which must outlive it. Before game_open. */
 void game_player_set(game_t *game, player_t *player);
+
+/* From here on what a player breaks comes out as items in the world, which it can pick up, and these open and close with the world.
+ * Must outlive it. Before game_open. Without it the drops stay in the player's ring, and nothing reaches its hand. */
+void game_entity_set(game_t *game, entity_t *entity);
 
 /* Stops whatever is running, and closes any world. Safe on a zeroed game_t. */
 void game_deinit(game_t *game);

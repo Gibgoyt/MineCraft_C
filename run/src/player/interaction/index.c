@@ -165,16 +165,18 @@ void player_interaction_hand_give(player_interaction_t *interaction, uint16_t bl
     interaction->hand_count = (uint8_t)(total > PLAYER_INTERACTION_HAND_MAX ? PLAYER_INTERACTION_HAND_MAX : total);
 }
 
-void player_interaction_drops_to_hand(player_interaction_t *interaction) {
-    player_drop_t drop;
-    while (player_interaction_drop_next(interaction, &drop)) {
-        const uint16_t block = block_drop_items[drop.item].block;
-        if (block == BLOCK_NO_ID) {
-            interaction->drops_unheld_count++;
-        } else {
-            player_interaction_hand_give(interaction, block, drop.count);
-        }
+uint32_t player_interaction_hand_take(player_interaction_t *interaction, uint16_t item, uint32_t count) {
+    const uint16_t block = block_drop_items[item].block;
+    if (block == BLOCK_NO_ID || (interaction->hand_count != 0u && interaction->hand_block != block)) {
+        return 0u;
     }
+    const uint32_t room = PLAYER_INTERACTION_HAND_MAX - (uint32_t)interaction->hand_count;
+    const uint32_t taken = count < room ? count : room;
+    if (taken != 0u) {
+        player_interaction_hand_give(interaction, block, taken);
+        interaction->picked_up_count += taken;
+    }
+    return taken;
 }
 
 /* ---- Mining ------------------------------------------------------------------------------------------------------- */
