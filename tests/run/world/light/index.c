@@ -673,6 +673,44 @@ TEST(sections_of_one_value_beside_very_different_ones_are_still_raised) {
     }
 }
 
+/* No block in config/blocks/ gives off light that leaves two sections of one value exactly 2 apart, so the numbers are written in by
+ * hand: a difference of 2 is the smallest that sends light over a column's edge. */
+TEST(sections_of_one_value_two_apart_across_a_column_edge_are_still_raised) {
+    enum : uint32_t {
+        SECTION_INDEX = 20u, /* z from 64 to 79 */
+    };
+    const int32_t z = 70;
+    /* The new column is the darker. */
+    {
+        light_test_t *const test = light_test_begin(t, 1u);
+        light_test_commit_all(t, test);
+        const uint32_t middle = light_test_slot(test, 0, 0);
+        CHECK_EQ_U64(world_light_column_added(&test->light, middle), WORLD_LIGHT_STATUS_OK);
+        section_light_fill(&test->map.borrowed_columns[middle].sections[SECTION_INDEX], &test->pool,
+                           section_light_pack(SECTION_LIGHT_MAX, 2u));
+        CHECK_EQ_U64(world_light_column_added(&test->light, light_test_slot(test, 1, 0)), WORLD_LIGHT_STATUS_OK);
+        CHECK_EQ_U64(section_light_block(light_test_at(t, test, 16, 5, z)), 1u);
+        CHECK_EQ_U64(section_light_block(light_test_at(t, test, 17, 5, z)), 0u);
+        light_test_end(test);
+    }
+    /* The new column is the brighter: torches, 14, beside 12. */
+    {
+        light_test_t *const test = light_test_begin(t, 1u);
+        light_test_commit_all(t, test);
+        const uint32_t middle = light_test_slot(test, 0, 0);
+        const uint32_t east = light_test_slot(test, 1, 0);
+        CHECK_EQ_U64(world_light_column_added(&test->light, middle), WORLD_LIGHT_STATUS_OK);
+        section_light_fill(&test->map.borrowed_columns[middle].sections[SECTION_INDEX], &test->pool,
+                           section_light_pack(SECTION_LIGHT_MAX, 12u));
+        section_block_fill(&test->map.borrowed_columns[east].sections[SECTION_INDEX], &test->pool, BLOCK_ID_TORCH);
+        CHECK_EQ_U64(block_defs[BLOCK_ID_TORCH].light, 14u);
+        CHECK_EQ_U64(world_light_column_added(&test->light, east), WORLD_LIGHT_STATUS_OK);
+        CHECK_EQ_U64(section_light_block(light_test_at(t, test, 15, 5, z)), 13u);
+        CHECK_EQ_U64(section_light_block(light_test_at(t, test, 14, 5, z)), 12u);
+        light_test_end(test);
+    }
+}
+
 TEST(a_column_leaving_takes_its_light_out_of_its_neighbours) {
     light_test_t *const test = light_test_begin(t, 1u);
     light_test_commit_all(t, test);

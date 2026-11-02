@@ -51,7 +51,7 @@ typedef struct main_options_t {
     uint8_t walk;               /* --walk */
     uint8_t has_time_of_day;    /* --time-of-day */
     uint8_t _pad0[3];
-    float32_t time_of_day;      /* --time-of-day */
+    float32_t time_of_day; /* --time-of-day */
     uint8_t _pad1[4];
 } main_options_t;
 static_assert(sizeof(main_options_t) == 72);
