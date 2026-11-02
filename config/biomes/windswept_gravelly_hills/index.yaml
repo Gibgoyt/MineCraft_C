@@ -1,0 +1,13 @@
+name: windswept_gravelly_hills
+where: land
+priority: 2
+climate: { temperature: [-1, -0.45], erosion: [-0.2, 0.3], weirdness: [0.75, 1], height: [30, 170] }
+surface:
+  top: gravel
+  filler: gravel
+  filler_depth: 2
+  steep: { block: stone, from: 1 }
+  patches:
+    - { block: stone, from: 0.1, to: 0.4 }
+    - { block: grass_block, from: 0.4, to: 1 }
+features: { tree_spruce: 0.2, grass: 1 }

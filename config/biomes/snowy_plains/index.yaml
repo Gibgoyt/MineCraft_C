@@ -1,0 +1,7 @@
+name: snowy_plains
+where: land
+climate: { temperature: [-1, -0.45], humidity: [-1, 0.1], height: [-1000, 110] }
+surface:
+  top: snow_block
+  filler: dirt
+features: { tree_spruce: 0.05, snow: 1, ice: 1 }

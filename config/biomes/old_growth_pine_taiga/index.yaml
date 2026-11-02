@@ -1,0 +1,11 @@
+name: old_growth_pine_taiga
+where: land
+priority: 1
+climate: { temperature: [-0.45, -0.15], humidity: [0.15, 0.4], weirdness: [0.2, 1], height: [-1000, 110] }
+surface:
+  top: podzol
+  filler: dirt
+  patches:
+    - { block: coarse_dirt, from: 0.1, to: 0.5 }
+    - { block: grass_block, from: 0.5, to: 1 }
+features: { tree_spruce: 10, fern: 6, grass: 2, mushroom: 1 }

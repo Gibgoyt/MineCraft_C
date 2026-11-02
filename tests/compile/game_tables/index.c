@@ -576,6 +576,126 @@ TEST(a_tree_with_a_hole_is_refused) {
     CHECK_CONTAINS(run.output, "has no air");
 }
 
+/* ---- Biomes: Stage 10.6 ------------------------------------------------------------------------------------------- */
+
+#define GTT_LAND_START "name: land_one\nwhere: land\n"
+#define GTT_LAND_SURFACE "surface: { top: stone, filler: stone }\n"
+
+/* One biome for each kind of place, so that a tree is whole. */
+static void gtt_biomes_make(test_context_t *t, const gtt_tree_t *tree, const char *land) {
+    static const char *const WHERES[] = {"ocean", "deep_ocean", "river", "beach", "stony_shore"};
+    for (uint32_t i = 0u; i < sizeof(WHERES) / sizeof(WHERES[0]); i++) {
+        char *const name = test_alloc(t, GTT_PATH_BYTES);
+        snprintf(name, GTT_PATH_BYTES, "biomes/%s_one", WHERES[i]);
+        gtt_mkdirs(t, gtt_path(t, tree->borrowed_config, name));
+        char *const file = test_alloc(t, GTT_PATH_BYTES);
+        snprintf(file, GTT_PATH_BYTES, "%s/index.yaml", name);
+        char *const text = test_alloc(t, GTT_PATH_BYTES);
+        snprintf(text, GTT_PATH_BYTES,
+                 "name: %s_one\nwhere: %s\nsurface:\n  top: stone\n  filler: stone\n  patches:\n"
+                 "    - { block: stone, from: 0, to: 1 }\n",
+                 WHERES[i], WHERES[i]);
+        gtt_write(t, gtt_path(t, tree->borrowed_config, file), text);
+    }
+    gtt_mkdirs(t, gtt_path(t, tree->borrowed_config, "biomes/under_one"));
+    gtt_write(
+        t, gtt_path(t, tree->borrowed_config, "biomes/under_one/index.yaml"),
+        "name: under_one\nwhere: underground\nclimate: { z: [-10, 10] }\ncave: { floor: stone, ceiling: stone }\n");
+    gtt_mkdirs(t, gtt_path(t, tree->borrowed_config, "biomes/land_one"));
+    gtt_write(t, gtt_path(t, tree->borrowed_config, "biomes/land_one/index.yaml"), land);
+}
+
+TEST(a_whole_tree_of_biomes_becomes_tables) {
+    const gtt_tree_t tree = gtt_tree_make(t, "biomes_good");
+    gtt_biomes_make(t, &tree,
+                    GTT_LAND_START "priority: 3\nclimate: { temperature: [-0.5, 0.25], height: [10, 90] }\n"
+                                   "surface:\n  top: stone\n  filler: stone\n  filler_depth: 5\n"
+                                   "  steep: { block: stone, from: 1.5 }\n  high: { block: stone, from: 140 }\n"
+                                   "  bands: { from: 40, depth: 14 }\n"
+                                   "features: { tree_oak: 0.5, cactus: 2 }\n");
+    test_process_t run;
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 0);
+    uint64_t length = 0u;
+    const char *const source = gtt_read(t, gtt_path(t, tree.borrowed_out, "biomes/index.c"), &length);
+    const char *const header = gtt_read(t, gtt_path(t, tree.borrowed_out, "biomes/index.h"), &length);
+    CHECK_CONTAINS(header, "BIOME_ID_LAND_ONE");
+    CHECK_CONTAINS(header, "#define BIOME_COUNT 7u");
+    CHECK_CONTAINS(header, "#define BIOME_UNDERGROUND_COUNT 1u");
+    /* As written, never rounded. */
+    CHECK_CONTAINS(source, ".temperature = {-5e-1f32, 25e-2f32}");
+    CHECK_CONTAINS(source, ".height = {10e0f32, 90e0f32}");
+    CHECK_CONTAINS(source, ".height = {-10e0f32, 10e0f32}");
+    CHECK_CONTAINS(source, ".top = BLOCK_ID_STONE");
+    CHECK_CONTAINS(source, ".steep_from = 15e-1f32");
+    CHECK_CONTAINS(source, ".high_from = 140, .bands_from = 40");
+    CHECK_CONTAINS(source, ".filler_depth = 5");
+    CHECK_CONTAINS(source, ".bands_depth = 14");
+    CHECK_CONTAINS(source, ".where = BIOME_WHERE_LAND, .priority = 3");
+    CHECK_CONTAINS(source, "[BIOME_FEATURE_TREE_OAK] = 5e-1f32, [BIOME_FEATURE_CACTUS] = 2e0f32");
+    CHECK_CONTAINS(source, "BIOME_ID_UNDER_ONE,\n");
+}
+
+static const gtt_bad_case_t GTT_BAD_BIOMES[] = {
+    {GTT_LAND_START "colour: green\n" GTT_LAND_SURFACE, ":3:", "unknown field 'colour' in a biome"},
+    {GTT_LAND_START "climate: { wetness: [0, 1] }\n" GTT_LAND_SURFACE, ":3:", "unknown field 'wetness' in climate"},
+    {GTT_LAND_START "surface: { top: stone, filler: stone, shiny: stone }\n",
+     ":3:", "unknown field 'shiny' in surface"},
+    {GTT_LAND_START GTT_LAND_SURFACE "features: { dragons: 1 }\n", ":4:", "unknown field 'dragons' in features"},
+    {"name: other\nwhere: land\n" GTT_LAND_SURFACE, ":1:", "is not its directory's"},
+    {"name: land_one\n" GTT_LAND_SURFACE, ":1:", "missing field 'where'"},
+    {"name: land_one\nwhere: moon\n" GTT_LAND_SURFACE, ":2:", "unknown where 'moon'"},
+    {GTT_LAND_START, ":1:", "missing field 'surface'"},
+    {GTT_LAND_START "surface: { top: stone }\n", ":3:", "surface must have top and filler"},
+    {GTT_LAND_START "surface: { top: granite_ghost, filler: stone }\n", ":3:", "block 'granite_ghost' does not exist"},
+    {GTT_LAND_START "climate: { temperature: [0.5, 0.5] }\n" GTT_LAND_SURFACE, ":3:", "with low below high"},
+    {GTT_LAND_START "climate: { temperature: [0.5] }\n" GTT_LAND_SURFACE, ":3:", "must be [low, high]"},
+    {GTT_LAND_START "climate: { temperature: [0, 1.5] }\n" GTT_LAND_SURFACE, ":3:", "temperature is '1.5'"},
+    {GTT_LAND_START "climate: { z: [0, 1] }\n" GTT_LAND_SURFACE, ":3:", "only an underground biome goes by z"},
+    {GTT_LAND_START "cave: { floor: stone, ceiling: stone }\n" GTT_LAND_SURFACE,
+     ":3:", "only an underground biome has cave"},
+    {GTT_LAND_START "priority: 300\n" GTT_LAND_SURFACE, ":3:", "priority is 300"},
+    {GTT_LAND_START "surface: { top: stone, filler: stone, filler_depth: 12, under: stone, under_depth: 4 }\n",
+     ":3:", "over 16 layers"},
+    {GTT_LAND_START "surface: { top: stone, filler: stone, wet_top: stone }\n",
+     ":3:", "wet_top and wet_depth go together"},
+    {GTT_LAND_START "surface: { top: stone, filler: stone, under_depth: 2 }\n",
+     ":3:", "under and under_depth go together"},
+    {GTT_LAND_START "surface: { top: stone, filler: stone, steep: { block: stone, from: 0 } }\n",
+     ":3:", "steep from must be above 0"},
+    {GTT_LAND_START "surface: { top: stone, filler: stone, bands: { from: 3, depth: 0 } }\n",
+     ":3:", "bands depth must be above 0"},
+    {GTT_LAND_START "surface:\n  top: stone\n  filler: stone\n  patches:\n    - { block: stone, from: 0.5, to: 0.5 }\n",
+     ":7:", "a patch's from must be below its to"},
+    {GTT_LAND_START GTT_LAND_SURFACE "features: { cactus: 257 }\n", ":4:", "cactus is '257'"},
+};
+
+TEST(each_bad_biome_is_refused_at_its_line_and_nothing_is_written) {
+    const gtt_tree_t tree = gtt_tree_make(t, "biomes_bad");
+    for (uint32_t i = 0u; i < sizeof(GTT_BAD_BIOMES) / sizeof(GTT_BAD_BIOMES[0]); i++) {
+        gtt_biomes_make(t, &tree, GTT_BAD_BIOMES[i].text);
+        test_process_t run;
+        gtt_tree_run(t, &tree, &run);
+        CHECK_EQ_I64(run.exit_code, 1);
+        CHECK_CONTAINS(run.output, GTT_BAD_BIOMES[i].position);
+        CHECK_CONTAINS(run.output, GTT_BAD_BIOMES[i].message);
+        CHECK_CONTAINS(run.output, "nothing was written");
+    }
+    struct stat info;
+    CHECK(stat(gtt_path(t, tree.borrowed_out, "biomes/index.c"), &info) != 0);
+}
+
+TEST(a_kind_of_place_with_no_biome_is_refused) {
+    const gtt_tree_t tree = gtt_tree_make(t, "biomes_hole");
+    gtt_biomes_make(t, &tree, GTT_LAND_START GTT_LAND_SURFACE);
+    unlink(gtt_path(t, tree.borrowed_config, "biomes/river_one/index.yaml"));
+    rmdir(gtt_path(t, tree.borrowed_config, "biomes/river_one"));
+    test_process_t run;
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 1);
+    CHECK_CONTAINS(run.output, "no biome has where: river");
+}
+
 TEST(a_bad_command_line_says_how) {
     char *const argv[] = {(char *)gtt_arg(t, 0), (char *)"--config", (char *)"x", nullptr};
     test_process_t run;

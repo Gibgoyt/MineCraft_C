@@ -152,7 +152,7 @@ Layout: `compile/src/<tool>/index.c`, `compile/include/<tool>/index.h`, `README.
 | `texture_pack` | Open pack in `/tmp/mc_c_assets/` → `textures/`; `verify` checks that tree with no pack. Parts: `support mctex manifest pack output verify`. Run by hand, never by the build | 06.2 |
 | `texture_vector` | Procedural recipes -> `textures/`, and vector data per texture (`.mcvec`); `check` holds the tree to `textures/vector.yaml`. Parts: `analyze palette mcvec materials recipe`. `recipes` and `check` are run by hand and by its test; 06.4's blob step runs `vectors` | 06.3 |
 | `texture_blob` | Mip chains, and every texture with its vector data in one blob, in `build/<preset>/generated/textures/`, run by `cmake/generated.cmake`. Part: `mip`. The format is `run/include/types/texture_blob/` | 06.4 |
-| `game_tables` | `config/{blocks,items,recipes,biomes,mobs}` → C tables in `build/<preset>/generated/tables/`, compiled into `mc_run` and included as `"tables/blocks/index.h"`, run by `cmake/generated.cmake`. Part so far: `blocks` (07.1); the others arrive with their stages | 07.1 |
+| `game_tables` | `config/{blocks,items,recipes,biomes,mobs}` → C tables in `build/<preset>/generated/tables/`, compiled into `mc_run` and included as `"tables/blocks/index.h"`, run by `cmake/generated.cmake`. Parts so far: `blocks` (07.1), `biomes` (10.6); the others arrive with their stages | 07.1 |
 
 ---
 
@@ -229,7 +229,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `density` | Height splines and 3D terrain shape, `z ∈ [-250, 500]`; bedrock at `-250`, water up to `0` | 10.3 |
 | | `hydrology` | Sea level 0, rivers, oceans, beaches, aquifers, the lava level under the world at `-230` | 10.4 |
 | | `cave ore` | Cheese, spaghetti and noodle caves cut from any box; deepslate by depth, and the table of rock and ore veins by depth | 10.5 |
-| | `biome surface` | All Overworld biomes, surface rules | 10.6 |
+| | `biome surface` | All Overworld biomes, chosen from the climate by `config/biomes/`; what each lays on the ground and lines its caves with | 10.6 |
 | | `feature` | Trees, plants, cross-chunk placement | 10.7 |
 
 ### Gameplay
@@ -373,7 +373,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/compile/texture_pack/` | ctest `compile_texture_pack`: builds its own small pack at run time, and checks the committed `textures/` with no pack |
 | `tests/compile/texture_vector/` | ctest `compile_texture_vector`: vector data worked by hand, every recipe operation, bad input, and the committed `textures/` |
 | `tests/compile/texture_blob/` | ctest `compile_texture_blob`: the mip rules by hand-worked images, the blob's layout, and bad input |
-| `tests/compile/game_tables/` | ctest `compile_game_tables`: the real block tables against what `config/blocks/` says, dirt drops dirt, and each bad file refused at its line. `cmake/targets.cmake` compiles the generated tables into it |
+| `tests/compile/game_tables/` | ctest `compile_game_tables`: the real block tables against what `config/blocks/` says, dirt drops dirt, and each bad file refused at its line, blocks and biomes both. `cmake/targets.cmake` compiles the generated tables into it |
 | `tests/compile/{inflate,png}/fixtures/` | Committed streams and images from independent encoders, with `generate.py`, which wrote them and is not part of the build |
 | `tests/run/<system>/<part>/` | Game tests |
 | `tests/run/types/` | ctest `run_types`, covering all of Stage 03.1: `types`, `assert`, `log`, `main/cpu_check`, `asm/src/cpuid`, and the built program's `--report` and failure paths |
@@ -392,6 +392,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/terrain/density/` | ctest `run_terrain_density`: `run/src/terrain/density/`: the range limits on every corner of the climate and on real columns, bedrock at `-250`, water's top at `0`, values worked out by hand, any split of the work, and the same bytes from 1 worker and 16 |
 | `tests/run/terrain/hydrology/` | ctest `run_terrain_hydrology`: `run/src/terrain/hydrology/`: each column worked out by hand, rivers that hold water and reach the sea, oceans, beaches, aquifers that cannot flow, the lava level, any split of the work, and the same bytes from 1 worker and 16 |
 | `tests/run/terrain/cave/` | ctest `run_terrain_cave`: `run/src/terrain/cave/`: all three kinds and their shares, thin against wide, a solid floor, no cave reaching the sea, each voxel worked out by hand, any split of the work, and the same bytes from 1 worker and 16 |
+| `tests/run/terrain/biome/` | ctest `run_terrain_biome`: `run/src/terrain/biome/` and `run/src/terrain/surface/`: every biome the plan lists is in the table and turns up in real worlds, the choice and the rules worked out by hand, each biome's own surface in real columns, lined caves, the whole chain of stages, any split of the work, and the same bytes from 1 worker and 16 |
 | `tests/run/terrain/ore/` | ctest `run_terrain_ore`: `run/src/terrain/ore/`: the table against the README, each ore at its depths, deepslate variants only in deepslate, veins worked out by hand, across chunks, any split of the work, and the same bytes from 1 worker and 16 |
 | `tests/run/texture/` | ctest `run_texture`, covering `run/src/texture/` with `blob` and `registry`, and `asm/src/embed_assets/`: every texture against its source files, and damage to the blob, field by field |
 | `tests/run/gpu_bridge/` | ctest `run_gpu_bridge`, covering `run/src/gpu_bridge/` with `status`, and `cuda/src/device_memory/`, on the real card: real blocks and a real kernel, the budgets, stale and forged handles, a pebibyte refused, and no device in a process of its own |
@@ -548,6 +549,7 @@ Split it into sub-directories. Remember that going deeper changes the tier: code
 | Terrain shape | `run/src/terrain/density/` |
 | Rivers, oceans, beaches, aquifers, lava | `run/src/terrain/hydrology/` |
 | Biomes | `config/biomes/`, `run/src/terrain/biome/` |
+| What a biome lays on the ground | `config/biomes/`, `run/src/terrain/surface/` |
 | Zombie behaviour | `run/src/mob/zombie/` |
 | Who allocates anything | `run/src/heap/`, then depth 1 of the system |
 | Type rules, padding, memory law | `plans/CODING_STANDARD.md` |

@@ -3,6 +3,7 @@
  */
 #include "game_tables/index.h"
 
+#include "game_tables/biomes/index.h"
 #include "game_tables/blocks/index.h"
 #include "texture_pack/support/index.h"
 
@@ -52,7 +53,9 @@ int32_t main(int32_t argc, char **argv) {
         return GAME_TABLES_EXIT_USAGE;
     }
     tp_arena_t arena = {.borrowed_base = owned_region, .capacity = GT_ARENA_BYTES, .used = 0};
-    const bool good = game_tables_blocks_build(&arena, arguments.config, arguments.textures, arguments.out);
+    /* Blocks first, since biomes name them. */
+    const bool good = game_tables_blocks_build(&arena, arguments.config, arguments.textures, arguments.out) &&
+                      game_tables_biomes_build(&arena, arguments.config, arguments.out);
     munmap(owned_region, GT_ARENA_BYTES);
     return good ? GAME_TABLES_EXIT_OK : GAME_TABLES_EXIT_REFUSED;
 }

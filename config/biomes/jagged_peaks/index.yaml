@@ -1,0 +1,9 @@
+name: jagged_peaks
+where: land
+climate: { temperature: [-1, -0.15], weirdness: [0, 1], height: [170, 1000] }
+surface:
+  top: snow_block
+  filler: stone
+  filler_depth: 0
+  steep: { block: stone, from: 2 }
+features: { snow: 1, ice: 1 }

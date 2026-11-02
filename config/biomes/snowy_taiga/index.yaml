@@ -1,0 +1,7 @@
+name: snowy_taiga
+where: land
+climate: { temperature: [-1, -0.45], humidity: [0.1, 1], height: [-1000, 110] }
+surface:
+  top: snow_block
+  filler: dirt
+features: { tree_spruce: 6, fern: 1, snow: 1, ice: 1 }

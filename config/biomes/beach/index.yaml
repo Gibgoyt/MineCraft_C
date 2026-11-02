@@ -1,0 +1,9 @@
+name: beach
+where: beach
+climate: { temperature: [-0.45, 1] }
+surface:
+  top: sand
+  filler: sand
+  under: sandstone
+  under_depth: 2
+features: { sugar_cane: 0.5 }
