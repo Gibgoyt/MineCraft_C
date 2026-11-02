@@ -1069,6 +1069,73 @@ TEST(a_seed_gives_its_own_caves_and_the_same_ones_every_time) {
     CHECK(memcmp(first, other, VOXELS) != 0);
 }
 
+/* The chain of stages cuts with the mask it already asked for, as asking twice is most of a chunk's walk. It has to be the same. */
+TEST(cutting_with_a_mask_is_what_carving_gives) {
+    enum : uint32_t { ACROSS = 64u, TALL = 96u, VOXELS = ACROSS * ACROSS * TALL };
+    uint16_t *const carved = test_alloc(t, VOXELS * sizeof(uint16_t));
+    uint16_t *const cut = test_alloc(t, VOXELS * sizeof(uint16_t));
+    uint16_t *const before = test_alloc(t, VOXELS * sizeof(uint16_t));
+    uint8_t *const mask = test_alloc(t, VOXELS);
+    terrain_t terrain;
+    REQUIRE(terrain_init(&terrain, CAVE_WORLD));
+    uint64_t total = 0u;
+    /* From the bedrock to the sea and the ground. No real mask reaches the bedrock, so the next test holds that by hand. */
+    const int32_t levels[3] = {MC_WORLD_Z_MIN, -60, -48};
+    for (uint32_t l = 0u; l < 3u; l++) {
+        const terrain_density_box_t box = {
+            .origin_x = -32,
+            .origin_y = 16,
+            .origin_z = levels[l],
+            .count_x = ACROSS,
+            .count_y = ACROSS,
+            .count_z = TALL,
+        };
+        terrain_hydrology_fill_box(terrain.borrowed_hydrology, &box, before);
+        memcpy(carved, before, VOXELS * sizeof(uint16_t));
+        memcpy(cut, before, VOXELS * sizeof(uint16_t));
+        const uint64_t changed = terrain_cave_carve_box(terrain.borrowed_cave, &box, carved);
+        terrain_cave_mask_box(terrain.borrowed_cave, &box, mask);
+        terrain_cave_cut_with_mask(&box, mask, cut);
+        CHECK_MEM_EQ(carved, cut, VOXELS * sizeof(uint16_t));
+        uint64_t marked = 0u;
+        uint64_t wrong = 0u;
+        for (uint32_t i = 0u; i < VOXELS; i++) {
+            marked += mask[i];
+            wrong += (mask[i] != 0u) != (before[i] != cut[i]) ? 1u : 0u;
+        }
+        CHECK_EQ_U64(marked, changed);
+        CHECK_EQ_U64(wrong, 0u);
+        total += changed;
+    }
+    CHECK(total > 0u);
+    terrain_deinit(&terrain);
+}
+
+/* By hand, for what real masks never ask: caves stop above the bedrock, so only this says a mask there still cuts nothing. */
+TEST(a_mask_cuts_only_rock_and_says_what_it_cut) {
+    enum : uint32_t { KINDS = 6u, BOTH = 2u * KINDS };
+    const uint16_t kinds[KINDS] = {BLOCK_ID_AIR,     BLOCK_ID_WATER, BLOCK_ID_LAVA,
+                                   BLOCK_ID_BEDROCK, BLOCK_ID_STONE, BLOCK_ID_DIRT};
+    const bool is_cut[KINDS] = {false, false, false, false, true, true};
+    uint16_t blocks[BOTH];
+    uint8_t mask[BOTH];
+    for (uint32_t i = 0u; i < KINDS; i++) {
+        blocks[i] = kinds[i];
+        mask[i] = 0u;
+        blocks[KINDS + i] = kinds[i];
+        mask[KINDS + i] = 2u; /* any kind of cave: what comes back is only 0 or 1 */
+    }
+    const terrain_density_box_t box = {
+        .origin_x = 0, .origin_y = 0, .origin_z = 0, .count_x = BOTH, .count_y = 1u, .count_z = 1u};
+    terrain_cave_cut_with_mask(&box, mask, blocks);
+    for (uint32_t i = 0u; i < KINDS; i++) {
+        CHECK_EQ_U64(blocks[i], kinds[i]);
+        CHECK_EQ_U64(mask[i], 0u);
+        CHECK_EQ_U64(blocks[KINDS + i], is_cut[i] ? (uint16_t)BLOCK_ID_AIR : kinds[i]);
+        CHECK_EQ_U64(mask[KINDS + i], is_cut[i] ? 1u : 0u);
+    }
+}
+
 TEST(a_full_bank_is_refused) {
     enum : uint64_t { BYTES = 1024ull * 1024ull };
     uint8_t *const memory = test_alloc(t, BYTES);

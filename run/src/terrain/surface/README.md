@@ -10,6 +10,7 @@
 - `terrain_surface_init`, `terrain_surface_deinit`: a pair.
 - `terrain_surface_block_from`, `terrain_surface_cave_block_from`: the rules, as plain arithmetic.
 - `terrain_surface_fill_box`: covers the ground of a box.
+- `terrain_surface_tile_read`, `terrain_surface_fill_tile_box`: the same fill, for what asks for one chunk in slices, reading what does not change with the layers once.
 - `terrain_surface_line_caves_box`: lines the caves of a box.
 
 **May be called by:** `terrain` and its parts.

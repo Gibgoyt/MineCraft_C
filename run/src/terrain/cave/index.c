@@ -647,6 +647,19 @@ uint64_t terrain_cave_carve_box(const terrain_cave_t *cave, const terrain_densit
     return output.changed;
 }
 
+void terrain_cave_cut_with_mask(const terrain_density_box_t *box, uint8_t *mask, uint16_t *blocks) {
+    const uint64_t voxels = terrain_density_box_voxels(box);
+    for (uint64_t i = 0u; i < voxels; i++) {
+        const uint16_t block = blocks[i];
+        const bool cut = mask[i] != 0u && block != BLOCK_ID_AIR && block != BLOCK_ID_WATER && block != BLOCK_ID_LAVA &&
+                         block != BLOCK_ID_BEDROCK;
+        mask[i] = cut ? 1u : 0u;
+        if (cut) {
+            blocks[i] = BLOCK_ID_AIR;
+        }
+    }
+}
+
 uint8_t terrain_cave_at(const terrain_cave_t *cave, int32_t x, int32_t y, int32_t z) {
     const terrain_density_box_t box = {
         .origin_x = x, .origin_y = y, .origin_z = z, .count_x = 1u, .count_y = 1u, .count_z = 1u};

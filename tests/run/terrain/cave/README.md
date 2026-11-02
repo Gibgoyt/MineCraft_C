@@ -1,6 +1,6 @@
 # tests/run/terrain/cave
 
-**Purpose:** ctest `run_terrain_cave`. Tests `run/src/terrain/cave/`: all three kinds and their shares, thin against wide, tubes that join up, a solid floor over the bedrock, no cave touching the sea, each voxel worked out by hand, and the same bytes with 1 worker and with 16, in any order and any split of the work.
+**Purpose:** ctest `run_terrain_cave`. Tests `run/src/terrain/cave/`: all three kinds and their shares, thin against wide, tubes that join up, a solid floor over the bedrock, no cave touching the sea, each voxel worked out by hand, cutting with a mask against carving and by hand, and the same bytes with 1 worker and with 16, in any order and any split of the work.
 **Tier:** test.
 **Owns:** nothing. Memory comes from the harness's test arena, and each test starts and stops its own systems.
 **Lifetime:** One run.

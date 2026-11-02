@@ -1350,7 +1350,7 @@ TEST(one_and_sixteen_workers_give_the_same_bytes) {
     const float64_t one_seconds = (float64_t)(one_done - started) / 1.0e9f64;
     const float64_t many_seconds = (float64_t)(many_done - one_done) / 1.0e9f64;
     printf("%" PRIu32
-           " chunks through every stage: %.1f ms on 1 worker, %.1f ms on 16, or %.0f and %.0f columns a second; "
+           " chunks through every stage: %.1f ms on 1 worker, %.1f ms on 16, or %.0f and %.0f block columns a second; "
            "digest 0x%016" PRIX64 "\n",
            (uint32_t)BIO_CHUNKS, (libc_double_t)(one_seconds * 1000.0f64), (libc_double_t)(many_seconds * 1000.0f64),
            (libc_double_t)(columns / one_seconds), (libc_double_t)(columns / many_seconds), digest);

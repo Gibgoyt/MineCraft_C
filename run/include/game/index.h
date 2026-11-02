@@ -34,12 +34,13 @@ static_assert(sizeof(game_config_t) == 16);
 
 /* One column being made on a worker. Its own cache line: a worker writes done while the sim thread polls it. */
 typedef struct game_column_job_t {
-    alignas(MC_CPU_CACHE_LINE_BYTES) const terrain_density_t *borrowed_density; /* 0 */
-    uint16_t *borrowed_states;                                                  /* 8: a whole column's */
-    world_map_request_t request;                                                /* 16 */
-    _Atomic uint32_t done;                                                      /* 32: release when finished */
-    uint8_t in_use;                                                             /* 36 */
-    uint8_t _pad0[27];                                                          /* 37 */
+    alignas(MC_CPU_CACHE_LINE_BYTES) const terrain_t *borrowed_terrain; /* 0 */
+    uint16_t *borrowed_states;                                          /* 8: a whole column's */
+    uint8_t *borrowed_opened;    /* 16: a byte per voxel, for terrain to work in */
+    world_map_request_t request; /* 24 */
+    _Atomic uint32_t done;       /* 40: release when finished */
+    uint8_t in_use;              /* 44 */
+    uint8_t _pad0[19];           /* 45 */
 } game_column_job_t;
 static_assert(sizeof(game_column_job_t) == MC_CPU_CACHE_LINE_BYTES);
 

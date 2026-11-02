@@ -76,6 +76,10 @@ void terrain_cave_mask_box(const terrain_cave_t *cave, const terrain_density_box
  * as the mask. */
 uint64_t terrain_cave_carve_box(const terrain_cave_t *cave, const terrain_density_box_t *box, uint16_t *blocks);
 
+/* terrain_cave_carve_box from a mask already asked for, which costs nothing more: blocks becomes what carving gives, and mask
+ * becomes 1 at each voxel this changed, 0 elsewhere, which is what terrain_hydrology_flood_box takes. */
+void terrain_cave_cut_with_mask(const terrain_density_box_t *box, uint8_t *mask, uint16_t *blocks);
+
 /* The mask at one voxel, for something that asks about a single place. Voxels in bulk cost far less each through a box. */
 uint8_t terrain_cave_at(const terrain_cave_t *cave, int32_t x, int32_t y, int32_t z);
 

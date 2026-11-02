@@ -1,4 +1,4 @@
-/* bench_terrain: columns a second through every stage of terrain. See README.md. */
+/* bench_terrain: chunk columns a second through every stage of terrain. See README.md. */
 #include "heap/index.h"
 #include "job/index.h"
 #include "machine/index.h"
@@ -6,6 +6,7 @@
 #include "terrain/index.h"
 #include "thread/index.h"
 #include "time/index.h"
+#include "world/column/index.h"
 
 #include <inttypes.h>
 #include <stdatomic.h>
@@ -13,15 +14,15 @@
 
 enum : uint32_t {
     BENCH_CHUNK = TERRAIN_FEATURE_CHUNK,
-    BENCH_COLUMNS = TERRAIN_FEATURE_CHUNK_COLUMNS,
-    BENCH_LAYERS = 751u, /* the plan's -250 to 500, both included */
-    BENCH_VOXELS = BENCH_COLUMNS * BENCH_LAYERS,
+    /* A whole column_t's voxels, exactly what the game asks for. */
+    BENCH_LAYERS = (uint32_t)(COLUMN_Z_STORAGE_END - COLUMN_Z_STORAGE_MIN),
+    BENCH_VOXELS = TERRAIN_FEATURE_CHUNK_COLUMNS * BENCH_LAYERS,
     BENCH_SIDE = 6u, /* chunks a side of what one round makes */
     BENCH_CHUNKS = BENCH_SIDE * BENCH_SIDE,
     BENCH_WORKERS = 16u,
     BENCH_ROUNDS = 3u,
     BENCH_PLACES = 9u,
-    /* The plan's number: a column a millisecond. */
+    /* The plan's number, on 16 workers. A column there is a chunk's, 16 by 16: "Chunk = 16x16 column". */
     BENCH_TARGET = 1000u,
     /* The search for a place: this many columns a side, this far apart. */
     BENCH_SEARCH_SIDE = 512u,
@@ -58,7 +59,7 @@ static void bench_job(job_worker_t *worker, void *borrowed_argument) {
         const terrain_density_box_t box = {
             .origin_x = run->origin_x + (int32_t)(chunk % BENCH_SIDE * BENCH_CHUNK),
             .origin_y = run->origin_y + (int32_t)(chunk / BENCH_SIDE * BENCH_CHUNK),
-            .origin_z = MC_WORLD_Z_MIN,
+            .origin_z = COLUMN_Z_STORAGE_MIN,
             .count_x = BENCH_CHUNK,
             .count_y = BENCH_CHUNK,
             .count_z = BENCH_LAYERS,
@@ -68,7 +69,7 @@ static void bench_job(job_worker_t *worker, void *borrowed_argument) {
     }
 }
 
-/* The best of a few rounds, in columns a second: the one the least else interfered with. */
+/* The best of a few rounds, in chunk columns a second: the one the least else interfered with. */
 static float64_t bench_place(job_system_t *system, bench_run_t *run, uint32_t workers) {
     float64_t best = 0.0f64;
     for (uint32_t round = 0u; round < BENCH_ROUNDS; round++) {
@@ -83,7 +84,7 @@ static float64_t bench_place(job_system_t *system, bench_run_t *run, uint32_t wo
         job_group_wait(system, &group);
         job_group_deinit(&group);
         const float64_t seconds = (float64_t)(time_now_ns() - started) / (float64_t)TIME_NS_PER_SECOND;
-        const float64_t rate = (float64_t)(BENCH_CHUNKS * BENCH_COLUMNS) / seconds;
+        const float64_t rate = (float64_t)BENCH_CHUNKS / seconds;
         best = rate > best ? rate : best;
     }
     return best;
@@ -142,8 +143,9 @@ int32_t main(int32_t argc, char **argv) {
         .borrowed_blocks = (uint16_t *)memory.owned_base,
         .borrowed_opened = (uint8_t *)memory.owned_base + (uint64_t)BENCH_WORKERS * BENCH_VOXELS * 2u,
     };
-    printf("%u chunks of %u layers, every stage, best of %u rounds, seed 0x%" PRIX64 "\n", BENCH_CHUNKS, BENCH_LAYERS,
-           BENCH_ROUNDS, (uint64_t)TERRAIN_SEED_DEFAULT);
+    printf("%u chunk columns of %u layers, every stage, best of %u rounds, seed 0x%" PRIX64 "\n", BENCH_CHUNKS,
+           BENCH_LAYERS, BENCH_ROUNDS, (uint64_t)TERRAIN_SEED_DEFAULT);
+    printf("chunk columns a second\n");
     printf("%-18s %12s %12s %8s\n", "place", "1 worker", "16 workers", "scaling");
     int32_t status = 0;
     float64_t slowest = -1.0f64;
@@ -163,14 +165,14 @@ int32_t main(int32_t argc, char **argv) {
         const float64_t many = bench_place(&system, &run, BENCH_WORKERS);
         printf("%-18s %12.0f %12.0f %7.1fx\n", biome_defs[BENCH_BIOMES[p]].name, (libc_double_t)one,
                (libc_double_t)many, (libc_double_t)(many / one));
-        if (slowest < 0.0f64 || one < slowest) {
-            slowest = one;
+        if (slowest < 0.0f64 || many < slowest) {
+            slowest = many;
         }
-        if (one < (float64_t)BENCH_TARGET) {
+        if (many < (float64_t)BENCH_TARGET) {
             status = 1;
         }
     }
-    printf("slowest on 1 worker: %.0f columns/s. target: %u: %s\n", (libc_double_t)slowest, BENCH_TARGET,
+    printf("slowest on 16 workers: %.0f chunk columns/s. target: %u: %s\n", (libc_double_t)slowest, BENCH_TARGET,
            status == 0 ? "every place beat it" : "NOT MET");
     job_deinit(&system);
     heap_release(&memory);

@@ -27,6 +27,7 @@ enum : uint32_t {
     SURFACE_SLICE_VOXELS = SURFACE_TILE_COLUMNS * (SURFACE_SLICE_LAYERS + 2u),
 };
 static_assert((uint32_t)SURFACE_CELL == (uint32_t)TERRAIN_DENSITY_CELL_XY);
+static_assert((uint32_t)SURFACE_TILE_COLUMNS == (uint32_t)TERRAIN_SURFACE_TILE_COLUMNS);
 
 /* The sizes in the README's formulas. Changing any number here changes every world. */
 static const terrain_noise_shape_t SURFACE_SHAPE_DEPTH = {
@@ -304,17 +305,9 @@ static surface_bounds_t surface_lattice_read(const terrain_surface_t *surface, c
     return bounds;
 }
 
-/* The noise of a tile's columns. */
-typedef struct surface_noise_t {
-    float32_t depth[SURFACE_TILE_COLUMNS];     /* 0 */
-    float32_t patch[SURFACE_TILE_COLUMNS];     /* 1024 */
-    float32_t wander[SURFACE_TILE_COLUMNS];    /* 2048 */
-    float32_t steepness[SURFACE_TILE_COLUMNS]; /* 3072 */
-} surface_noise_t;
-static_assert(sizeof(surface_noise_t) == 4096);
-
 [[gnu::noinline]]
-static void surface_noise_fill(const terrain_surface_t *surface, const surface_span_t *span, surface_noise_t *noise) {
+static void surface_noise_fill(const terrain_surface_t *surface, const surface_span_t *span,
+                               terrain_surface_tile_t *noise) {
     const terrain_noise_grid_t grid = {
         .origin_x = span->x,
         .origin_y = span->y,
@@ -342,9 +335,9 @@ static int32_t surface_band_z(int32_t z, float32_t wander) {
     return z + (int32_t)(moved < 0.0f32 ? moved - 0.5f32 : moved + 0.5f32);
 }
 
-static void surface_tile(const terrain_surface_t *surface, const terrain_density_box_t *box, const surface_span_t *span,
-                         uint16_t *blocks) {
-    terrain_biome_column_t columns[SURFACE_TILE_COLUMNS];
+/* What does not change with the layers. The noise waits until a voxel asks for it. */
+static void surface_tile_read(const terrain_surface_t *surface, const surface_span_t *span,
+                              terrain_surface_tile_t *tile) {
     const terrain_climate_area_t area = {
         .origin_x = span->x,
         .origin_y = span->y,
@@ -353,38 +346,47 @@ static void surface_tile(const terrain_surface_t *surface, const terrain_density
         .count_x = span->count_x,
         .count_y = span->count_y,
     };
-    terrain_biome_columns_area(surface->borrowed_biome, &area, columns);
-
-    surface_noise_t noise;
-    surface_bounds_t bounds = surface_lattice_read(surface, span, noise.steepness);
+    terrain_biome_columns_area(surface->borrowed_biome, &area, tile->columns);
+    surface_bounds_t bounds = surface_lattice_read(surface, span, tile->steepness);
     /* A river's cut is a column's own number, and takes ground away. */
     const uint32_t count = span->count_x * span->count_y;
     for (uint32_t i = 0u; i < count; i++) {
-        bounds.solid_top = columns[i].carve_top < bounds.solid_top ? columns[i].carve_top : bounds.solid_top;
+        bounds.solid_top =
+            tile->columns[i].carve_top < bounds.solid_top ? tile->columns[i].carve_top : bounds.solid_top;
     }
+    tile->solid_top = bounds.solid_top;
+    tile->open_from = bounds.open_from;
+    tile->has_noise = 0u;
+}
+
+static void surface_tile_lay(const terrain_surface_t *surface, terrain_surface_tile_t *tile,
+                             const terrain_density_box_t *box, const surface_span_t *span, uint16_t *blocks) {
     /* Over all the ground, or too far under the top of all of it to be reached, the rules change nothing. */
     const int32_t box_top = box->origin_z + (int32_t)box->count_z - 1;
-    if ((float32_t)box->origin_z >= bounds.open_from ||
-        (float32_t)box_top + (float32_t)SURFACE_REACH + 1.0f32 <= bounds.solid_top) {
+    if ((float32_t)box->origin_z >= tile->open_from ||
+        (float32_t)box_top + (float32_t)SURFACE_REACH + 1.0f32 <= tile->solid_top) {
         return;
     }
 
     uint8_t depth[SURFACE_TILE_COLUMNS];
     uint8_t wet[SURFACE_TILE_COLUMNS];
-    if ((float32_t)box_top + 1.0f32 >= bounds.open_from) {
+    if ((float32_t)box_top + 1.0f32 >= tile->open_from) {
         /* Nothing over the box is ground, so it is the sea, or air. */
         memset(depth, 0, sizeof(depth));
         memset(wet, box_top + 1 <= MC_WORLD_Z_SEA ? 1 : 0, sizeof(wet));
     } else {
         surface_reach_above(surface, span, box_top, depth, wet);
     }
-    surface_noise_fill(surface, span, &noise);
+    if (tile->has_noise == 0u) {
+        surface_noise_fill(surface, span, tile);
+        tile->has_noise = 1u;
+    }
 
     const uint64_t layer = (uint64_t)box->count_x * box->count_y;
     for (uint32_t iy = 0u; iy < span->count_y; iy++) {
         for (uint32_t ix = 0u; ix < span->count_x; ix++) {
             const uint32_t i = ix + span->count_x * iy;
-            const biome_def_t *const def = &biome_defs[columns[i].biome];
+            const biome_def_t *const def = &biome_defs[tile->columns[i].biome];
             const uint64_t column_at = (uint64_t)(span->ix + ix) + (uint64_t)box->count_x * (span->iy + iy);
             uint32_t walking = depth[i];
             uint8_t walking_wet = wet[i];
@@ -399,11 +401,11 @@ static void surface_tile(const terrain_surface_t *surface, const terrain_density
                 if (walking < SURFACE_REACH) {
                     const int32_t z = box->origin_z + (int32_t)iz;
                     const terrain_surface_inputs_t inputs = {
-                        .depth_noise = noise.depth[i],
-                        .patch = noise.patch[i],
-                        .steepness = noise.steepness[i],
+                        .depth_noise = tile->depth[i],
+                        .patch = tile->patch[i],
+                        .steepness = tile->steepness[i],
                         .z = z,
-                        .band_z = surface_band_z(z, noise.wander[i]),
+                        .band_z = surface_band_z(z, tile->wander[i]),
                         .depth = walking,
                         .block = block,
                         .wet = walking_wet,
@@ -436,11 +438,27 @@ void terrain_surface_fill_box(const terrain_surface_t *surface, const terrain_de
                 .count_x = count_x,
                 .count_y = count_y,
             };
-            surface_tile(surface, box, &span, blocks);
+            terrain_surface_tile_t read;
+            surface_tile_read(surface, &span, &read);
+            surface_tile_lay(surface, &read, box, &span, blocks);
             ix += count_x;
         }
         iy += count_y;
     }
+}
+
+void terrain_surface_tile_read(const terrain_surface_t *surface, int32_t x, int32_t y, terrain_surface_tile_t *tile) {
+    ASSERT(((uint32_t)x & (SURFACE_TILE - 1u)) == 0u && ((uint32_t)y & (SURFACE_TILE - 1u)) == 0u);
+    const surface_span_t span = {.x = x, .y = y, .ix = 0u, .iy = 0u, .count_x = SURFACE_TILE, .count_y = SURFACE_TILE};
+    surface_tile_read(surface, &span, tile);
+}
+
+void terrain_surface_fill_tile_box(const terrain_surface_t *surface, terrain_surface_tile_t *tile,
+                                   const terrain_density_box_t *box, uint16_t *blocks) {
+    ASSERT(box->count_x == SURFACE_TILE && box->count_y == SURFACE_TILE);
+    const surface_span_t span = {
+        .x = box->origin_x, .y = box->origin_y, .ix = 0u, .iy = 0u, .count_x = SURFACE_TILE, .count_y = SURFACE_TILE};
+    surface_tile_lay(surface, tile, box, &span, blocks);
 }
 
 /* ---- Under the ground --------------------------------------------------------------------------------------------- */

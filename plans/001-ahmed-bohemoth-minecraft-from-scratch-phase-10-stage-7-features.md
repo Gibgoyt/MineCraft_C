@@ -36,7 +36,7 @@ Results on 2026-11-02: the build, `run_terrain_feature` (17 tests, about 775,000
 Also run:
 
 - `run_terrain_feature` on `release` and `sanitize` passed, with no sanitizer report. Each printed the same digests on all three presets: `0x391B2BD657A49109` and `0x1C7FDB098B2749EC`. `profile` was not built.
-- `bench_terrain` on `release`, exit status 0: the slowest place, `jungle`, made 22,725 columns a second on 1 worker and 193,174 on 16, against the target of 1000. All 9 places are in `bench/terrain/README.md`.
+- `bench_terrain` on `release`, exit status 0: the slowest place, `jungle`, made 22,725 columns a second on 1 worker and 193,174 on 16, against the target of 1000. All 9 places are in `bench/terrain/README.md`. **Withdrawn by the phase gate:** those are 1 by 1 columns, and the target is in chunk columns. In that unit this was 89 and 755, under the target. See the phase file's issue 1 for what was done and what it measures now.
 - 18 mutations, not committed: 16 failed at least one test other than the two digest pins, 2 survived (issue 3).
 
 What the tests measured:
@@ -68,6 +68,8 @@ Appended as they land:
 - `4efc4a6` Test terrain features section by section and on all low land, where the first tests let a tree stand in water and a chunk give up too early.
 - `7fd9f25` Test one layer at the tip of a tree, record the terrain bench results, and record Stage 10.7's results, wiring and issues in its stage file.
 
+The phase gate's commits on these paths are listed in the phase file.
+
 ## Issues found
 
 1. **The previous attempt's work could not be picked up.** Expected `git merge worktree-wf_916eee71-48c-67` to bring it. Actually that printed `Already up to date`: its report says nothing was committed, and its branch tip is `45351f2`, a merge from the integration branch. Its files are uncommitted in that worktree. I was told to stay out of other worktrees, and its report warns that a killed mutation run may have left a bug in its `index.c`, so I did not read or copy them. All of this stage was written again here. Its `mutate.py` and `fix5.py` in the shared scratchpad were read for its list of mutations and its README wiring. That worktree still holds the old files, and nothing here depends on them.
@@ -94,4 +96,4 @@ Appended as they land:
 
 9. **`birch_leaves` may look wrong in the game.** The previous attempt's report says they render red. `textures/import.yaml:71` does map them from the pack's `default_aspen_leaves.png`. I did not see it: the tour's colours are its own table by hand, and do not use textures. Not this stage's. For Ahmed to judge.
 
-10. **Nothing in the game calls this yet.** Expected, and for the record: `terrain_generate_box` is called only by this stage's tests, bench and tour. Whoever feeds `run/src/world/` from terrain calls it, and must lend it a byte per voxel as `opened`.
+10. **Nothing in the game calls this yet.** Expected, and for the record: `terrain_generate_box` is called only by this stage's tests, bench and tour. Whoever feeds `run/src/world/` from terrain calls it, and must lend it a byte per voxel as `opened`. **Closed by the phase gate:** `run/src/game/` now calls it for every column. See the phase file's issue 2.

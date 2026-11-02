@@ -17,13 +17,9 @@
 - `game_report`: what the frames took.
 
 **May be called by:** `run/src/main/`.
-**Depends on:** `render`, `world`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`, and its part below.
+**Depends on:** `render`, `world`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
 
-## Parts
-
-| Part | Job |
-|---|---|
-| `test_world` | The blocks of a column, until Stages 10.4 to 10.7 make the real ones |
+A column's blocks are `terrain_generate_box`, on a worker, over all of the column's storage. Each job lends it the states and a byte per voxel.
 
 ## The threads
 
