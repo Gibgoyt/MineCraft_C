@@ -56,10 +56,44 @@ enum : uint32_t {
     SHADE_FEATURE_TRANSPARENCY = 1u << 7,
     SHADE_FEATURE_WATER_REFLECTION = 1u << 8, /* one ray off the surface of water, or none */
     SHADE_FEATURE_WATER_TINT = 1u << 9,       /* water takes light by how far a ray goes in it, or is clear */
+    SHADE_FEATURE_AO = 1u << 10,       /* short rays darken what stored light falls on near other blocks, or none */
+    SHADE_FEATURE_TAA = 1u << 11,      /* each frame looks a little off centre and adds to the last, or stands alone */
+    SHADE_FEATURE_GOD_RAYS = 1u << 12, /* the air shows the sun's light where it reaches, or is clear */
+    /* What a picture is drawn with on its own, from nothing: no frame of these reads what the last one left. What render_frame_init
+     * starts with, and so what a test that wants one exact picture gets. */
     SHADE_FEATURES_ALL = SHADE_FEATURE_SHAPES | SHADE_FEATURE_ALPHA | SHADE_FEATURE_SKY | SHADE_FEATURE_DAY_CYCLE |
                          SHADE_FEATURE_FOG | SHADE_FEATURE_SHADOW | SHADE_FEATURE_LIGHT | SHADE_FEATURE_TRANSPARENCY |
                          SHADE_FEATURE_WATER_REFLECTION | SHADE_FEATURE_WATER_TINT,
+    /* What a world is played with unless told otherwise. God rays are optional, so they are asked for. */
+    SHADE_FEATURES_PLAY = SHADE_FEATURES_ALL | SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
+    SHADE_FEATURES_EVERY = SHADE_FEATURES_PLAY | SHADE_FEATURE_GOD_RAYS,
 };
+
+enum : uint32_t {
+    /* A pixel with history sends its one AO ray on one frame of this many, in turn with the three next to it. */
+    SHADE_AO_TURNS = 4u,
+    /* A pixel with nothing from the last frame on its surface, itself or around it, sends this many, as it has nothing else. */
+    SHADE_AO_FRESH_RAYS = 4u,
+    /* How many samples a pixel's AO is the mean of, at most. Past this the oldest count for less. */
+    SHADE_AO_SAMPLES_MAX = 32u,
+    /* How many surfaces an AO ray looks at, holes and all, before it stops looking. */
+    SHADE_AO_LAYERS = 4u,
+    /* An AO ray's cap on steps: a ray of SHADE_AO_REACH crosses no more than 3 * sqrt(3) + 3 planes between cells, and each step
+     * crosses at least one, so this always gets past its reach. So a capped ray has met nothing. */
+    SHADE_AO_STEPS = 12u,
+    /* How many places a god ray asks about the sun. */
+    SHADE_SHAFT_STEPS = 6u,
+};
+
+/* How far an AO ray looks, in blocks. */
+#define SHADE_AO_REACH F32(3.0)
+/* How far along a god ray the air is looked at, in blocks, and how much of the light it stops per block. */
+#define SHADE_SHAFT_REACH F32(64.0)
+#define SHADE_SHAFT_DENSITY F32(0.015)
+/* Henyey-Greenstein's number: how much of what the air scatters goes on forward, so that the rays show looking towards the sun. */
+#define SHADE_SHAFT_FORWARD F32(0.6)
+/* What the air shows of the sun's light, so that they can be seen at all with so little of it scattered. */
+#define SHADE_SHAFT_STRENGTH F32(2.0)
 
 /* A material with no texture, or none in the table: a colour nothing else in the game is, so that the bug shows. */
 #define SHADE_MISSING_R F32(1.0)
@@ -136,8 +170,10 @@ typedef struct shade_scene_t {
     uint16_t water_material;               /* 36: or SHADE_NO_MATERIAL */
     uint16_t glass_material;               /* 38: or SHADE_NO_MATERIAL */
     shade_sun_t sun;                       /* 40 */
+    /* 88: AO's history, for a scene with SHADE_FEATURE_AO, and god rays' target for one with SHADE_FEATURE_GOD_RAYS. */
+    const post_temporal_t *borrowed_temporal;
 } shade_scene_t;
-static_assert(sizeof(shade_scene_t) == 88);
+static_assert(sizeof(shade_scene_t) == 96);
 static_assert(alignof(shade_scene_t) == 8);
 static_assert(offsetof(shade_scene_t, borrowed_textures) == 0);
 static_assert(offsetof(shade_scene_t, borrowed_faces) == 8);
@@ -148,6 +184,7 @@ static_assert(offsetof(shade_scene_t, features) == 32);
 static_assert(offsetof(shade_scene_t, water_material) == 36);
 static_assert(offsetof(shade_scene_t, glass_material) == 38);
 static_assert(offsetof(shade_scene_t, sun) == 40);
+static_assert(offsetof(shade_scene_t, borrowed_temporal) == 88);
 
 /* One pixel, in linear light before the sky and the tone map: where post goes on from. */
 typedef struct shade_pixel_t {
@@ -159,8 +196,105 @@ static_assert(alignof(shade_pixel_t) == 4);
 static_assert(offsetof(shade_pixel_t, rgb) == 0);
 static_assert(offsetof(shade_pixel_t, t) == 12);
 
+/* What AO keeps of a pixel from frame to frame, about the surface its ray ended on. */
+typedef struct shade_ao_pixel_t {
+    float32_t visible; /* 0: the mean of its samples: 1 with nothing near, down towards 0 in a corner */
+    float32_t plane;  /* 4: where that surface is along the axis it looks along, in blocks from that frame's eye cell */
+    uint16_t samples; /* 8: how many it is the mean of, 0 if no surface */
+    uint16_t face;    /* 10: a traverse_face_t */
+} shade_ao_pixel_t;
+static_assert(sizeof(shade_ao_pixel_t) == 12);
+static_assert(alignof(shade_ao_pixel_t) == 4);
+static_assert(offsetof(shade_ao_pixel_t, visible) == 0);
+static_assert(offsetof(shade_ao_pixel_t, plane) == 4);
+static_assert(offsetof(shade_ao_pixel_t, samples) == 8);
+static_assert(offsetof(shade_ao_pixel_t, face) == 10);
+
 static inline uint64_t shade_pixels_bytes(uint32_t width, uint32_t height) {
     return (uint64_t)width * height * sizeof(shade_pixel_t);
+}
+
+static inline uint64_t shade_ao_bytes(uint32_t width, uint32_t height) {
+    return (uint64_t)width * height * sizeof(shade_ao_pixel_t);
+}
+
+/* Whether this is a pixel's frame to send its AO ray. By groups of 8 by 4 pixels and not pixel by pixel, because that is a warp of a
+ * kernel of TRAVERSE_TILE_PIXELS: a warp with one ray in it takes as long as that ray takes for all 32 threads, so one ray in four
+ * spread evenly over the pixels costs nearly as much as a ray each. So of each two by two groups, one a frame. */
+SHADE_BOTH_SIDES static inline bool shade_ao_turn(uint32_t frame, uint32_t pixel_x, uint32_t pixel_y) {
+    const uint32_t place = ((pixel_x >> 3) & 1u) | (((pixel_y >> 2) & 1u) << 1);
+    const uint32_t order = frame % SHADE_AO_TURNS;
+    return place == (order == 0u ? 0u : (order == 1u ? 3u : (order == 2u ? 1u : 2u)));
+}
+
+/* A pixel's own fixed number, so that no two near each other walk the same way through their samples. */
+SHADE_BOTH_SIDES static inline uint32_t shade_ao_hash(uint32_t pixel_x, uint32_t pixel_y) {
+    uint32_t value = pixel_x * 73856093u ^ pixel_y * 19349663u;
+    value ^= value >> 16;
+    value *= 2654435769u;
+    value ^= value >> 13;
+    value *= 2246822519u;
+    return value ^ (value >> 16);
+}
+
+/* A pixel's sample number n, as two numbers from 0 to 1: Roberts' R2 sequence from where its hash starts it, in 32 bits so that it
+ * is as good on frame 1000000 as on the first. Any stretch of it covers the square evenly. */
+SHADE_BOTH_SIDES static inline void shade_ao_sample(uint32_t hash, uint32_t n, float32_t *out_u, float32_t *out_v) {
+    const uint32_t u = hash + n * 3242174889u;
+    const uint32_t v = (hash * 2654435769u) + n * 2447445414u;
+    *out_u = (float32_t)(u >> 8) / F32(16777216.0);
+    *out_v = (float32_t)(v >> 8) / F32(16777216.0);
+}
+
+/* A unit direction off a face, cosine weighted about its normal, for two numbers from 0 to 1. Then the mean of what the rays see is
+ * how much of the sky's light reaches the face, which falls on it by the same cosine. */
+SHADE_BOTH_SIDES static inline void shade_ao_direction(uint32_t face, float32_t u, float32_t v, float32_t out[3]) {
+    const float32_t radius = sqrtf(u);
+    const float32_t angle = F32(6.28318530718) * v;
+    const uint32_t axis = face >> 1;
+    out[axis] = sqrtf(fmaxf(F32(1.0) - u, F32(0.0)));
+    out[axis] = (face & 1u) != 0u ? out[axis] : -out[axis];
+    out[(axis + 1u) % 3u] = radius * cosf(angle);
+    out[(axis + 2u) % 3u] = radius * sinf(angle);
+}
+
+/* How much a surface t along an AO ray takes from what it sees: all, touching, and nothing by SHADE_AO_REACH, so that nothing pops
+ * as it comes into reach. */
+SHADE_BOTH_SIDES static inline float32_t shade_ao_near(float32_t t) {
+    const float32_t x = t / SHADE_AO_REACH;
+    return x >= F32(1.0) ? F32(0.0) : F32(1.0) - x * x;
+}
+
+/* Whether what a pixel has from the last frame is about this surface: the same way up, on the same plane. cell_moved is how far the
+ * eye's cell went along that axis, from then to now. Rounding grows with distance. */
+SHADE_BOTH_SIDES static inline bool shade_ao_same_surface(const shade_ao_pixel_t *last, uint32_t face, float32_t plane,
+                                                          int32_t cell_moved, float32_t t) {
+    if (last->samples == 0u || last->face != face) {
+        return false;
+    }
+    return fabsf((float32_t)cell_moved + plane - last->plane) <= F32(0.01) + t * F32(4e-5);
+}
+
+/* How much of what the air scatters comes to the eye, by the cosine of the angle from the way it looks to the sun: Henyey-Greenstein. */
+SHADE_BOTH_SIDES static inline float32_t shade_shaft_phase(float32_t cosine) {
+    const float32_t g = SHADE_SHAFT_FORWARD;
+    const float32_t under = F32(1.0) + g * g - F32(2.0) * g * cosine;
+    return (F32(1.0) - g * g) / (F32(12.5663706144) * under * sqrtf(under));
+}
+
+/* Of the light from the eye to from, and from it to to, what the air between them adds, with what the air before them lets through
+ * taken off. Added up along a ray they come to exactly 1 - e^(-density * length) however it is cut. */
+SHADE_BOTH_SIDES static inline float32_t shade_shaft_part(float32_t from, float32_t to) {
+    return expf(-SHADE_SHAFT_DENSITY * from) - expf(-SHADE_SHAFT_DENSITY * to);
+}
+
+/* A number from 0 to 1 that looks like noise and differs a lot between neighbours: Jimenez's, so that where a god ray asks about the
+ * sun changes smoothly enough over the picture to be filtered away. */
+SHADE_BOTH_SIDES static inline float32_t shade_shaft_noise(uint32_t x, uint32_t y, uint32_t frame) {
+    const float32_t a = F32(0.06711056) * (float32_t)x + F32(0.00583715) * (float32_t)y +
+                        F32(0.7548776662) * (float32_t)(frame % POST_JITTER_FRAMES);
+    const float32_t b = F32(52.9829189) * (a - floorf(a));
+    return b - floorf(b);
 }
 
 /* A traverse_face_t's brightness. */
@@ -212,15 +346,23 @@ SHADE_BOTH_SIDES static inline float32_t shade_sun_towards(const shade_sun_t *su
 }
 
 /* What falls on a surface, to multiply its colour by: the sky and block light stored in its voxel, under the face's brightness,
- * and the sun on top, as much of it as sun_seen says reached here. */
-SHADE_BOTH_SIDES static inline void shade_surface_light(const shade_sun_t *sun, uint32_t face, uint32_t stored,
-                                                        float32_t sun_seen, float32_t out[3]) {
+ * and the sun on top, as much of it as sun_seen says reached here. With AO, visible is how much of the way to it is open: what is
+ * near takes from the stored light, which comes from all around, and not from the sun, whose own ray knows what is in its way. */
+SHADE_BOTH_SIDES static inline void shade_surface_light_near(const shade_sun_t *sun, uint32_t face, uint32_t stored,
+                                                             float32_t sun_seen, float32_t visible, float32_t out[3]) {
     const float32_t brightness = shade_face_brightness(face);
     const float32_t sky = shade_sky_level(stored >> 4), block = shade_block_level(stored & 15u);
     const float32_t towards = shade_sun_towards(sun, face, stored);
     for (uint32_t i = 0u; i < 3u; i += 1u) {
-        out[i] = brightness * (sun->ambient[i] * sky + sun->block[i] * block) + sun->direct[i] * towards * sun_seen;
+        out[i] = brightness * (sun->ambient[i] * sky + sun->block[i] * block) * visible +
+                 sun->direct[i] * towards * sun_seen;
     }
+}
+
+/* The same with nothing near. */
+SHADE_BOTH_SIDES static inline void shade_surface_light(const shade_sun_t *sun, uint32_t face, uint32_t stored,
+                                                        float32_t sun_seen, float32_t out[3]) {
+    shade_surface_light_near(sun, face, stored, sun_seen, F32(1.0), out);
 }
 
 /* How far off a surface a sun ray starts, for the distance the surface is seen from: more than that distance's rounding, so that
@@ -347,6 +489,12 @@ SHADE_BOTH_SIDES static inline bool shade_own_kind_behind(uint32_t last_material
 gpu_status_t shade_frame(gpu_error_t *error, const shade_scene_t *scene, const post_settings_t *post,
                          const traverse_world_t *world, const traverse_camera_t *camera, const device_block_t *hits,
                          const device_block_t *pixels);
+
+/* God rays: for every second pixel each way of what shade_frame just wrote to pixels, how much sun the air along its ray shows, into
+ * scene's borrowed_temporal's borrowed_shafts. Here and not in post, as a sun ray needs the textures and the loop above. Starts a
+ * kernel and returns. On failure error says why, and nothing was started. */
+gpu_status_t shade_shafts_frame(gpu_error_t *error, const shade_scene_t *scene, const traverse_world_t *world,
+                                const traverse_camera_t *camera, const device_block_t *pixels);
 
 #ifdef __cplusplus
 }

@@ -11,7 +11,7 @@
 - `render_camera_start`, `render_camera_fly`, `render_camera_to_traverse`: where the eye is, one step of flying, and what kernels take.
 - `render_frame_texture_table_bytes`, `render_frame_face_table_bytes`, `render_frame_shape_table_bytes`, `render_frame_arena_bytes`: sizes for the parent.
 - `render_frame_init`, `render_frame_deinit`: the tables and textures sent to the card, and the pictures pinned.
-- `render_frame_features_set`: which effects the next frames draw with. All of them, unless told otherwise.
+- `render_frame_features_set`: which effects the next frames draw with. `SHADE_FEATURES_ALL` unless told otherwise, and `game` asks for `SHADE_FEATURES_PLAY`, as the ones with a history do not suit a test that wants one exact picture.
 - `render_frame_time_set`, `render_day_fill`: the time of day, and what sky and light it means.
 - `render_frame_draw`: a whole frame, from world_buffers as they stand and a camera, on the card and home.
 - `render_frame_take`, `render_frame_present`: the newest picture, and copying it to a display buffer.
@@ -37,3 +37,7 @@ Three pictures, so that the gpu thread never waits for the display and the displ
 `x` is east, `y` north and `z` up. A yaw of 0 looks east, and a positive yaw turns to the north. W and S go along where it looks, level, A and D across that, Space and Left Shift up and down, Left Ctrl five times as fast, and the wheel sets the speed. `game` turns keys into `render_fly_input_t`.
 
 The position is `float64_t`, and goes to the kernels as a whole cell and a fraction, so the picture is as exact far from the origin as near it.
+
+## From frame to frame
+
+`post_temporal_t` holds what goes from one frame to the next: the last frame's camera with no jitter, this one's jitter, a count of frames, and which block of each two the last frame wrote. `render_frame_draw` is what keeps it, and the blocks swap only after a frame that succeeded and only for an effect that was on. An effect turned on starts from nothing, as what its blocks hold is from before it was turned off. See `cuda/src/post/README.md` and `cuda/src/shade/README.md`.

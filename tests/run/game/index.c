@@ -103,7 +103,8 @@ static const uint8_t *gl_draw(test_context_t *t, gl_rig_t *rig, const render_cam
 static const game_config_t gl_small_game = {.render_distance = 6u,
                                             .width = GL_WIDTH,
                                             .height = GL_HEIGHT,
-                                            .features_off = SHADE_FEATURE_DAY_CYCLE,
+                                            .features_off =
+                                                SHADE_FEATURE_DAY_CYCLE | SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
                                             ._pad0 = {0}};
 
 static input_t *gl_input_start(test_context_t *t, fake_evdev_t *fake) {
@@ -273,7 +274,7 @@ TEST(a_world_runs_through_the_display_loop_with_a_real_guardian_forked) {
     const game_config_t small = {.render_distance = 6u,
                                  .width = buffer->width,
                                  .height = buffer->height,
-                                 .features_off = SHADE_FEATURE_DAY_CYCLE,
+                                 .features_off = SHADE_FEATURE_DAY_CYCLE | SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
                                  ._pad0 = {0}};
     REQUIRE(game_open(game, &small));
     fake_evdev_t *const fake = fake_new(t);

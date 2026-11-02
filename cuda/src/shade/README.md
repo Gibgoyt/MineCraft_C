@@ -7,16 +7,17 @@
 **Threads:** the `gpu` thread, or the one thread of a run with no threads.
 **Public functions** (`run/include/gpu_bridge/shade/index.h`, for C and CUDA):
 
-- `shade_frame`: the kernel.
-- `shade_pixels_bytes`: what its target needs.
-- `shade_face_brightness`, `shade_face_towards`, `shade_sky_level`, `shade_block_level`, `shade_sun_towards`, `shade_surface_light`, `shade_sun_bias`, `shade_face_uv`, `shade_texel_of`, `shade_mip_level`, `shade_level_dimension`, `shade_srgb_to_linear`, `shade_pixel_tangent`, `shade_water_fresnel`, `shade_water_tint`, `shade_fog_behind`, `shade_own_kind_behind`: its arithmetic, inline on host and device, so that a test on the host runs the same lines.
+- `shade_frame`: the kernel, with AO in it when asked.
+- `shade_shafts_frame`: god rays, from what `shade_frame` just wrote.
+- `shade_pixels_bytes`, `shade_ao_bytes`: what its targets need.
+- `shade_face_brightness`, `shade_face_towards`, `shade_sky_level`, `shade_block_level`, `shade_sun_towards`, `shade_surface_light`, `shade_sun_bias`, `shade_face_uv`, `shade_texel_of`, `shade_mip_level`, `shade_level_dimension`, `shade_srgb_to_linear`, `shade_pixel_tangent`, `shade_water_fresnel`, `shade_water_tint`, `shade_fog_behind`, `shade_own_kind_behind`, `shade_surface_light_near`, `shade_ao_turn`, `shade_ao_hash`, `shade_ao_sample`, `shade_ao_direction`, `shade_ao_near`, `shade_ao_same_surface`, `shade_shaft_phase`, `shade_shaft_part`, `shade_shaft_noise`: its arithmetic, inline on host and device, so that a test on the host runs the same lines.
 
 **May be called by:** `render`, `cuda/src/frame/`.
 **Depends on:** `gpu_bridge/device_memory`, `gpu_bridge/post` for the sky and fog it draws behind glass and in water, `gpu_bridge/status`, `gpu_bridge/traverse`, and `cuda/include/traverse/` for a pixel's direction and the ray loop.
 
 ## What is here, and what is not
 
-Point sampling, on purpose: blocks are meant to look like their pixels. The mip is by distance alone, as the plan says, so a surface seen at a low angle stays sharper than it strictly should, and shimmers a little. Stage 09.4's temporal pass is what deals with that.
+Point sampling, on purpose: blocks are meant to look like their pixels. The mip is by distance alone, as the plan says, so a surface seen at a low angle stays sharper than it strictly should, and shimmers a little. The temporal pass in `cuda/src/post/` is what deals with that.
 
 ## The light on a surface
 
@@ -32,7 +33,7 @@ Each kind of face keeps its one brightness: a top is 1, a bottom a half, the sid
 
 One per surface that faces the light and has any sky light stored, from a hair off that surface in the voxel's own coordinates, so it is as exact far from the eye as near. It is `traverse_trace` again, with `resume` set so that it takes only what it enters, and a surface cannot meet itself. The column heights send it to the top of the world at once, once it is above everything. What it meets goes by that block's texture at the mip the surface is seen at: a hole lets it on, a part-covered texel takes its share and lets it on, an opaque texel ends it, and water goes by how much of it there is: see Water. At `SHADE_SUN_LAYERS` surfaces it calls the sun hidden, which is what a thick wood looks like anyway. At night the same ray goes to the moon. Faces away from the light pay nothing.
 
-Shadows have hard edges, one ray's worth, and it does not bounce. There are no soft edges until a later stage's temporal pass has something to blend.
+Shadows have hard edges, one ray's worth, and it does not bounce. The temporal pass in `cuda/src/post/` smooths the stair steps of an edge, as it does any edge, and does not make it any softer than that.
 
 A texel of alpha 0 is a hole. The kernel sends the ray on from there with `traverse_trace`, through the world it is given, and looks at the next surface, up to `SHADE_ALPHA_LAYERS` in all, and that one it draws: on a line of leaves that many holes long, it stops on the last, with that texture's mean colour, which is what far leaves look like anyway. Only the pixels that land on a hole pay for this, and they pay per hole. Holes behind a hole are in their own place: a leaf's far side is not drawn, since a ray takes only what it enters. The blob promises a cutout texture is 0 or 255 at every mip, so no threshold is needed, and a far tree stays about as see-through as a near one.
 
@@ -66,3 +67,19 @@ A pixel of water is, near to far:
 - **A sun ray in water** takes `SHADE_WATER_ABSORB_SUN` per block, one number and not three, as it carries no colour, and nothing for the surface's alpha. So a bed in the shallows has most of the sun on it, and a deep one has only its stored sky light. With tint off the water is clear to the sun as well. A ray with tint on that goes past `SHADE_WATER_SEEN_BLOCKS` calls the sun hidden.
 
 From inside a body of water (a hit that says `TRAVERSE_FACE_INSIDE`) there is no surface: only the tint, out to where the water ends, and what is behind. Going out of the water into air draws nothing at that surface. A level of water below the voxel's top is not here: all water is a whole cube until Stage 11.2 says otherwise. The cost of each setting is in `plans/001-ahmed-bohemoth-minecraft-from-scratch-phase-09-stage-3-water-glass.md`.
+
+## AO
+
+`SHADE_FEATURE_AO`: `visible` in `shade_surface_light_near`, from 1 with nothing near down towards 0 in a corner. It takes from the stored light, which comes from all around, and not from the sun, whose own ray knows what is in its way. **What a pixel has is about the surface its ray ends on, the one seen whole:** the bed under water or the frame of a pane of glass, and not water or ice over it. A reflection has none. A surface of a part-covered block has none.
+
+- **A ray** goes `SHADE_AO_REACH` blocks, in a direction weighted by the cosine about the face's normal, so that the mean of what they see is how much of the sky's light reaches the face, which falls on it by the same cosine. What it meets counts by `shade_ao_near`: all, touching, and nothing at its reach, so nothing pops as it comes in reach. It stops by a cap on steps that always gets past its reach, and costs no more than that. Holes let it on, part-covered texels take their share, and water takes nothing: a lake's bed is not in a corner for having a lake on it.
+- **Reduced rate.** One frame in four, by `shade_ao_turn`, one ray. **By groups of 8 by 4 pixels, and not one pixel in four,** which is a warp of this kernel: a warp with one ray in it takes as long as that ray for all its 32 threads, so one pixel in four spread evenly cost 2.4 ms where this costs 1.8 (`plans/001-ahmed-bohemoth-minecraft-from-scratch-phase-09-stage-4-ao-taa-godrays.md`).
+- **Temporal reuse.** `shade_ao_pixel_t` holds the mean, and which plane and which way up it is about. `post_reproject` finds where the surface was in the last frame, and `shade_ao_same_surface` asks if that place holds the same plane: in blocks from the eye's cell, so it is as exact far from the origin as near it. A surface it finds goes on from its mean, as a running mean of up to `SHADE_AO_SAMPLES_MAX`. So a camera that stands still comes to the integral, and one that moves keeps all it knew. A block placed changes no plane, so what is next to it darkens over those samples, in about two seconds at 60 frames, and not at once.
+- **A pixel on another surface** from what its own place held, as along the edge of a block that has moved a little or has a part-covered neighbour, goes on from the pixels around that place on this surface, with the weight of one sample and no ray. Only with none of those either, where something has just come into view, does it send `SHADE_AO_FRESH_RAYS` at once. With TAA on, this cut those rays by 50 times on real terrain, as jitter sends some pixels along the edge of each leaf to the surface behind it.
+- **What is shown** is its mean with those of the 8 pixels around it on the same surface, as each pixel's own walk through its samples is grain, which the temporal pass cannot take away since it stays still.
+
+`SHADE_AO_FRESH_RAYS` is also what a first frame sends. Nothing random is used: the two numbers of each sample are Roberts' R2 sequence in 32 bits, from a place each pixel's hash chooses, so one script gives one picture.
+
+## God rays
+
+`shade_shafts_frame`, for `SHADE_FEATURE_GOD_RAYS`, for every second pixel each way: `SHADE_SHAFT_STEPS` places along the ray up to the first surface drawn or `SHADE_SHAFT_REACH`, each asking `shade_sun_seen` as a surface does, holes in leaves and all. Each counts for the light its own stretch of air scatters, `shade_shaft_part`, which add up to exactly what the whole ray would for any cut. What they find is multiplied by `shade_shaft_phase`, Henyey-Greenstein's, so that they show looking towards the sun. Where along its stretch each place is differs by `shade_shaft_noise`, a little from each texel to the next, and from frame to frame when `SHADE_FEATURE_TAA` is on to take that away, and not otherwise, so that a still picture stays still. Air is not in a voxel: rays do not know of water or fog. The cost is in the stage's plan file.

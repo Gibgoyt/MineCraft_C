@@ -864,7 +864,7 @@ TEST(each_setting_off_is_exactly_what_it_says) {
     }
     /* What is asked for beyond what there is does nothing. */
     render_frame_features_set(&rig.render->frame, 0xFFFFFFFFu);
-    CHECK_EQ_U64(rig.render->frame.scene.features, SHADE_FEATURES_ALL);
+    CHECK_EQ_U64(rig.render->frame.scene.features, SHADE_FEATURES_EVERY);
     sh_hand_world_close(&rig);
     sh_rig_end(t, &rig);
 }

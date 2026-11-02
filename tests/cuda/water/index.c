@@ -805,7 +805,7 @@ TEST(everything_starts_on_and_the_kernel_is_told_which_block_is_water) {
     CHECK_EQ_U64(frame->scene.water_material, BLOCK_ID_WATER);
     CHECK_EQ_U64(frame->scene.glass_material, BLOCK_ID_GLASS);
     render_frame_features_set(frame, 0xFFFFFFFFu);
-    CHECK_EQ_U64(frame->scene.features, SHADE_FEATURES_ALL);
+    CHECK_EQ_U64(frame->scene.features, SHADE_FEATURES_EVERY);
     sk_hand_world_close(&rig);
     sk_rig_end(t, &rig);
 }

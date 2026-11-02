@@ -711,7 +711,7 @@ TEST(everything_starts_on_and_noon_is_the_first_time) {
     CHECK_NEAR(frame->scene.sun.direct[0], 0.0f32, 0.0f32);
     CHECK_NEAR(frame->post.fog_end, 1000.0f32, 0.0f32);
     render_frame_features_set(&rig.render->frame, 0xFFFFFFFFu);
-    CHECK_EQ_U64(frame->scene.features, SHADE_FEATURES_ALL);
+    CHECK_EQ_U64(frame->scene.features, SHADE_FEATURES_EVERY);
     render_frame_time_set(&rig.render->frame, 1.25f32);
     CHECK_NEAR(frame->day_fraction, 0.25f32, 0.0f32);
     sk_hand_world_close(&rig);
@@ -1403,6 +1403,8 @@ static void sk_program_run(test_context_t *t, const sk_temp_dir_t *dir, const ch
                           (char *)"320",
                           (char *)"--height",
                           (char *)"180",
+                          (char *)"--no-taa",
+                          (char *)"--no-ao",
                           (char *)flag,
                           nullptr};
     test_process_run(t, argv, SK_PROGRAM_TIMEOUT_MS, out);

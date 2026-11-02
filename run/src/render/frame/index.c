@@ -238,6 +238,7 @@ static gpu_status_t frame_send_tables(render_frame_t *frame, device_memory_t *me
         .features = SHADE_FEATURES_ALL,
         .water_material = BLOCK_ID_WATER,
         .glass_material = BLOCK_ID_GLASS,
+        .borrowed_temporal = &frame->temporal,
     };
     frame->borrowed_shapes = blocks->borrowed_shapes;
     render_frame_time_set(frame, RENDER_DAY_NOON);
@@ -259,6 +260,13 @@ gpu_status_t render_frame_init(render_frame_t *frame, arena_t *arena, device_mem
         .borrowed_hits = blocks->borrowed_hits,
         .borrowed_pixels = blocks->borrowed_shaded,
         .borrowed_xrgb = blocks->borrowed_xrgb,
+    };
+    frame->temporal = (post_temporal_t){
+        .borrowed_ao_last = blocks->borrowed_ao[0],
+        .borrowed_ao_next = blocks->borrowed_ao[1],
+        .borrowed_history_last = blocks->borrowed_history[0],
+        .borrowed_history_next = blocks->borrowed_history[1],
+        .borrowed_shafts = blocks->borrowed_shafts,
     };
     gpu_status_t status = frame_gpu_init(&frame->gpu);
     if (status != GPU_STATUS_OK) {
@@ -389,7 +397,7 @@ static void frame_settings_apply(render_frame_t *frame) {
 }
 
 void render_frame_features_set(render_frame_t *frame, uint32_t features) {
-    frame->scene.features = features & SHADE_FEATURES_ALL;
+    frame->scene.features = features & SHADE_FEATURES_EVERY;
     frame_settings_apply(frame);
 }
 
@@ -401,6 +409,22 @@ void render_frame_time_set(render_frame_t *frame, float32_t day_fraction) {
 gpu_status_t render_frame_draw(render_frame_t *frame, const world_buffers_t *buffers, const render_camera_t *camera) {
     traverse_camera_t view;
     render_camera_to_traverse(camera, frame->width, frame->height, &view);
+    /* What the history is reprojected with has no jitter: otherwise a still camera would see its own picture move. */
+    const traverse_camera_t steady = view;
+    const uint32_t features = frame->scene.features;
+    post_temporal_t *const temporal = &frame->temporal;
+    const bool drawn_before = frame->stats.frames != 0u;
+    temporal->ao_valid = drawn_before && (frame->drawn_features & SHADE_FEATURE_AO) != 0u ? 1u : 0u;
+    temporal->history_valid = drawn_before && (frame->drawn_features & SHADE_FEATURE_TAA) != 0u ? 1u : 0u;
+    temporal->jitter[0] = 0.0f32;
+    temporal->jitter[1] = 0.0f32;
+    if ((features & SHADE_FEATURE_TAA) != 0u) {
+        post_jitter(temporal->frame, temporal->jitter);
+        post_camera_jitter(&view, temporal->jitter);
+    }
+    for (uint32_t i = 0u; i < 3u; i++) {
+        temporal->shaft_colour[i] = frame->scene.sun.direct[i] * SHADE_SHAFT_STRENGTH;
+    }
     const traverse_world_t world = {
         .borrowed_table = buffers->borrowed_table,
         .borrowed_pool = buffers->borrowed_pool,
@@ -420,6 +444,20 @@ gpu_status_t render_frame_draw(render_frame_t *frame, const world_buffers_t *buf
     const gpu_status_t status = frame_gpu_run(&frame->gpu, &args, &timings);
     if (status != GPU_STATUS_OK) {
         return status;
+    }
+    /* What this frame wrote is what the next one reads. */
+    temporal->previous = steady;
+    temporal->frame++;
+    frame->drawn_features = features;
+    if ((features & SHADE_FEATURE_AO) != 0u) {
+        const device_block_t *const written = temporal->borrowed_ao_next;
+        temporal->borrowed_ao_next = temporal->borrowed_ao_last;
+        temporal->borrowed_ao_last = written;
+    }
+    if ((features & SHADE_FEATURE_TAA) != 0u) {
+        const device_block_t *const written = temporal->borrowed_history_next;
+        temporal->borrowed_history_next = temporal->borrowed_history_last;
+        temporal->borrowed_history_last = written;
     }
     render_frame_stats_t *const stats = &frame->stats;
     for (uint32_t i = 0u; i < FRAME_PASS_COUNT; i++) {
