@@ -8,6 +8,7 @@
 #include "math/index.h"
 #include "simd/index.h"
 #include "texture/index.h"
+#include "world/index.h"
 
 #include <stdint.h>
 
@@ -17,6 +18,7 @@ typedef struct app_t {
     job_system_t job; /* first: its alignment is what gives app_t its own */
     simd_t simd;
     texture_t texture;
+    world_t world;                 /* nothing runs in it until game does (Stage 08.4) */
     display_t display;             /* only --test-pattern starts it, for now */
     display_offscreen_t offscreen; /* only --headless starts it */
     input_t input;                 /* only --test-pattern starts it, and only once display_init said OK */
@@ -25,7 +27,7 @@ typedef struct app_t {
     math_t math;
     uint8_t _pad0[48];
 } app_t;
-static_assert(sizeof(app_t) == 2240);
+static_assert(sizeof(app_t) == 2560);
 static_assert(alignof(app_t) == 64);
 
 /* The exit codes of minecraft_c. */
