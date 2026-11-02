@@ -25,7 +25,7 @@ typedef struct column_test_t {
     column_t column;
     uint8_t _pad0[56];
 } column_test_t;
-static_assert(sizeof(column_test_t) == 1536);
+static_assert(sizeof(column_test_t) == 2304);
 
 static column_test_t *column_test_begin(test_context_t *t) {
     column_test_t *const raw = test_alloc(t, sizeof(column_test_t) + 64u);

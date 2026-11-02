@@ -379,6 +379,8 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/input/` | ctest `run_input`, covering `run/src/input/` with `ops`, `discovery` and `events`, on replay data, this machine's capability bitmaps copied from `/proc/bus/input/devices` and the fake kernel in `fixtures/`, never on a real device |
 | `tests/run/world/section/` | ctest `run_world_section`: random edits against a brute-force array, each change of form, running out of room, and the bytes each form holds |
 | `tests/run/world/column/` | ctest `run_world_column`: coordinates and `z` limits, random edits against a brute-force array of the whole gameplay range, and `run/src/world/` itself |
+| `tests/run/world/map/` | ctest `run_world_map`: the toroidal table, streaming by distance, requests out of date, a random walk against a brute-force model, and `world_open` |
+| `tests/run/world/edit/` | ctest `run_world_edit`: random edits against a brute-force array and brute-force flags, the log, each consumer's flags, and snapshots, with a real reader thread |
 | `tests/run/texture/` | ctest `run_texture`, covering `run/src/texture/` with `blob` and `registry`, and `asm/src/embed_assets/`: every texture against its source files, and damage to the blob, field by field |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
 | `tests/asm/` | NASM kernels against scalar C references |
