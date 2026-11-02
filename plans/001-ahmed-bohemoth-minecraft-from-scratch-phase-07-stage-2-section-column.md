@@ -40,6 +40,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `0ab4b2c` Store blocks and light in sections with palettes and no array when uniform, stack 48 of them into columns that refuse z outside -250 to 500, and start the world Owner from main.
+
 ## Measured memory
 
 From `run_world_section` and `run_world_column`, debug, 2026-11-02. A test fails if a section's number moves. Flat is 2 bytes of block and 1 of light per voxel, 12288 bytes.
