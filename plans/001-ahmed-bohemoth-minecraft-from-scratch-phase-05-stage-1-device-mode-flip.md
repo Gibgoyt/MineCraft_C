@@ -60,17 +60,21 @@ A crash leaves the console in graphics mode until Stage 05.2: see issue 3 below.
 
 **No run on hardware. Nothing about a real card, real flips or the console coming back has been observed.** Everything below ran on the fake kernel in `tests/run/display/mode/fixtures/fake_card.h`, or got no further than refusing. `/dev/dri/card*` was never opened and no KD or VT ioctl was made on a real tty.
 
-Run 2026-11-02, gcc 16.2.1:
+Run 2026-11-02, gcc 16.2.1, after merging the integration branch (with `math` and `simd` in it):
 
 | Command | Result |
 |---|---|
-| `tools/test-or-build.sh cmake --build --preset debug` | Clean; `standards_lint: clean`, `no recursion` |
-| `ctest --preset debug -R '^run_display_mode$'` | Passed: 73 tests, 984 checks, 0 failed |
-| `ctest --preset debug -R '^standards_lint$'`, `'^clang_format$'` | Passed |
-| `ctest --preset debug`, everything | 15 of 15 passed |
+| `tools/test-or-build.sh cmake --build --preset debug` | Clean; `standards_lint: no recursion` |
+| `ctest --preset debug`, everything, including `run_display_mode`, `standards_lint`, `clang_format`, `run_types` | 31 of 31 passed |
+| `build/debug/bin/tests/run_display_mode build/debug/bin/minecraft_c` | 73 tests, 981 checks, 0 failed |
 | Sanitize preset, `run_display_mode` | Passed. Release preset, `run_display_mode`: passed |
-| `timeout 10 build/debug/bin/minecraft_c --test-pattern --card /nonexistent/mc_c_no_such_card </dev/null` | `display: refused: DISPLAY is set, so this is running inside X ... The card was not opened`, `heap at exit: 0 reserved`, exit 6 |
-| `pgrep -a minecraft_c` | Prints nothing, rc 1 |
+| `DISPLAY=:0 timeout 10 build/debug/bin/minecraft_c --test-pattern --card /nonexistent/mc_c_no_such_card </dev/null` | `display: refused: DISPLAY is set, so this is running inside X ... The card was not opened`, `heap at exit: 0 reserved`, exit 6 |
+| The same with `WAYLAND_DISPLAY` set and `DISPLAY` unset | `refused: WAYLAND_DISPLAY is set`, exit 6 |
+| The same with both unset | `refused: stdin is not a Linux virtual console`, exit 6 |
+| `timeout 10 build/debug/bin/minecraft_c </dev/null` (the default run) | Core runtime only, nothing live at exit, exit 0 |
+| `pgrep -a minecraft_c`, `pgrep -af "$PWD/build"` | Both print nothing, rc 1 |
+
+Read from sysfs only, no device opened: `/sys/module/nvidia_drm/version` is `615.71.09`, and its `modeset` and `fbdev` parameters are both `Y`, on kernel `7.2.7-arch1-1`. So the driver offers KMS on this machine. Whether its dumb buffers and flips work is still what Ahmed's run finds out.
 
 **Do the tests catch anything?** Ten changes were made to the code in turn, and the test program was run against each, on debug. Nine failed straight away: the restore order swapped, `DISPLAY` not looked at, `display_init` ignoring a refusal, `modeset_done` not set, no 1 Hz tolerance, the front buffer never swapping, the square never erased, `SET_MASTER` failure ignored, a free CRTC not preferred. The tenth, a short event length not stopping the parser, passed, which was a gap in the test: issue 7. It fails now. All were put back; `git status` showed no change to the source after.
 
@@ -102,9 +106,10 @@ Appended as they land:
    - **Expected:** a fake is only as good as what it is modelled on.
    - **Actual:** its answers (modes copied only if all of them fit, as many CRTCs copied as fit, `EBUSY` on a flip with one pending) come from what I know of `drm_mode_getconnector` and `drm_mode_getresources`. The kernel source is not on this machine, and they were not checked against it. What `nvidia-drm` answers is not modelled at all.
    - **Done:** left as it is, and said so here and in `tests/run/display/mode/README.md`. A disagreement would show on Ahmed's run as exit 7 naming the call.
+   - **Tried on 2026-11-02, and refused:** fetching `drm_connector.c`, `drm_mode_config.c` and `nvidia-drm-drv.c` with `curl` from GitHub into `/tmp/mc_c_assets/kms_refs/`, to check the fake against them. The worktree guard refused each `curl` (`this command names git in a form too complex to verify`). Not worked around. The fake stays unchecked.
 
 5. **Wiring outside the owned paths.**
-   - `run/src/main/index.c`, `run/src/main/README.md`, `run/include/main/index.h`: the `--test-pattern`, `--card` and `--connector` flags, `display_t` in `app_t` (from 320 to 1024 bytes), `display_deinit` in `app_deinit`, and exit codes 6 and 7. The smallest wiring that lets the module be called.
+   - `run/src/main/index.c`, `run/src/main/README.md`, `run/include/main/index.h`: the `--test-pattern`, `--card` and `--connector` flags, `display_t` in `app_t` (704 bytes more: 448 to 1152 once merged with `simd` and `math`), `display_deinit` in `app_deinit`, and exit codes 6 and 7. The smallest wiring that lets the module be called.
    - `plans/REPO_STRUCTURE.md`: one row under `tests/`, for what `run_display_mode` covers.
    - **Not edited:** the phase file's todo, since it is not this stage's file. Its box for Stage 05.1 stays open until Ahmed's run.
 
@@ -117,3 +122,8 @@ Appended as they land:
    - The sanitize preset failed with `AddressSanitizer: use-after-poison` at `tests/harness/index.c:243`. The test's fault, not the program's: it built arenas on the test arena and never called `arena_deinit`, so the harness's clearing hit memory the arena had poisoned. Tests now call it.
    - The mutation "a length under 8 does not stop the event parser" passed all the tests. The first test written for it passed too, since the event it placed at offset 4 overwrote the very length it was testing. `malformed_event_blocks_end_quietly` now lays the bytes out so that stepping by 4 finds a flip event, and that mutation fails it.
    - `tests/run/display/mode/index.c` reached 1817 lines, over the standard's 1500-line mark. The fake kernel moved to `fixtures/fake_card.h`, leaving 1401.
+
+8. **Merging the integration branch conflicted, and the display test could crash.**
+   - **Merge:** `plans/REPO_STRUCTURE.md`, `run/include/main/index.h` and `run/src/main/README.md` conflicted with the Stage 04 work, since both sides added to `app_t`. All were kept: `job`, `simd`, `display`, `math`. `sizeof(app_t)` is now 1152, and its `static_assert` says so. `run/src/main/index.c` merged by itself; one comment line over length was rewrapped.
+   - **Expected:** `run_display_mode`, run by hand with no argument, fails its checks. **Actual:** `Segmentation fault`, rc 139, after `CHECK failed: t->arg_count == 1`. `REQUIRE` inside the helper `run_game_pattern` ended only the helper, so the test went on to read an uninitialized `test_process_t`. ctest always passes the argument, so it never saw this. The inside-X test could also return with `DISPLAY` still set.
+   - **Done:** the helper returns whether the program ran, and each test requires that after putting the environment back. By hand with no argument it now exits 1 and does not crash. Checks went from 984 to 981 as a result. No other helper in the file has a `REQUIRE`.

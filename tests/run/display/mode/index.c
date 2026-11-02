@@ -1347,20 +1347,25 @@ static char pattern_flag[] = "--test-pattern";
 static char card_flag[] = "--card";
 static char no_card[] = "/nonexistent/mc_c_no_such_card";
 
-/* The harness gives the child /dev/null for stdin, and the card does not exist, so this cannot reach anything real. */
-static void run_game_pattern(test_context_t *t, test_process_t *out) {
-    REQUIRE(t->arg_count == 1);
+/* The harness gives the child /dev/null for stdin, and the card does not exist, so this cannot reach anything real.
+ * Returns whether the program ran: a REQUIRE here would end only this function, and the test would read an empty result.
+ * Run by hand, this binary needs the path of minecraft_c as its argument, as test.cmake gives it. */
+static bool run_game_pattern(test_context_t *t, test_process_t *out) {
+    if (t->arg_count != 1) {
+        return false;
+    }
     char *const argv[] = {t->borrowed_args[0], pattern_flag, card_flag, no_card, nullptr};
     test_process_run(t, argv, 30000u, out);
-    REQUIRE(out->started != 0u);
+    return out->started != 0u;
 }
 
 TEST(the_program_inside_x_fails_fast_with_a_clear_message) {
     REQUIRE(setenv("DISPLAY", ":0", 1) == 0);
     REQUIRE(unsetenv("WAYLAND_DISPLAY") == 0);
     test_process_t result;
-    run_game_pattern(t, &result);
+    const bool ran = run_game_pattern(t, &result);
     REQUIRE(unsetenv("DISPLAY") == 0);
+    REQUIRE(ran);
     CHECK_EQ_I64(result.exit_code, MAIN_EXIT_DISPLAY_REFUSED);
     CHECK_CONTAINS(result.output, "running inside X");
     CHECK_CONTAINS(result.output, "The card was not opened");
@@ -1373,8 +1378,9 @@ TEST(the_program_in_wayland_fails_fast_with_a_clear_message) {
     REQUIRE(unsetenv("DISPLAY") == 0);
     REQUIRE(setenv("WAYLAND_DISPLAY", "wayland-0", 1) == 0);
     test_process_t result;
-    run_game_pattern(t, &result);
+    const bool ran = run_game_pattern(t, &result);
     REQUIRE(unsetenv("WAYLAND_DISPLAY") == 0);
+    REQUIRE(ran);
     CHECK_EQ_I64(result.exit_code, MAIN_EXIT_DISPLAY_REFUSED);
     CHECK_CONTAINS(result.output, "Wayland");
 }
@@ -1383,7 +1389,7 @@ TEST(the_program_with_stdin_not_a_console_fails_fast) {
     REQUIRE(unsetenv("DISPLAY") == 0);
     REQUIRE(unsetenv("WAYLAND_DISPLAY") == 0);
     test_process_t result;
-    run_game_pattern(t, &result);
+    REQUIRE(run_game_pattern(t, &result));
     CHECK_EQ_I64(result.exit_code, MAIN_EXIT_DISPLAY_REFUSED);
     CHECK_CONTAINS(result.output, "stdin is not a Linux virtual console");
     CHECK_CONTAINS(result.output, "The card was not opened");
