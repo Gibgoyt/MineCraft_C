@@ -438,6 +438,10 @@ bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t se
 }
 
 bool game_loop_stop(game_t *game) {
+    /* A run can end before its first frame, with nothing started. */
+    if (game->threads_running == 0u) {
+        return atomic_load_explicit(&game->failed, memory_order_acquire) == 0u;
+    }
     atomic_store_explicit(&game->stop, 1u, memory_order_release);
     thread_join(&game->sim_thread);
     thread_join(&game->gpu_thread);
@@ -445,8 +449,19 @@ bool game_loop_stop(game_t *game) {
     return atomic_load_explicit(&game->failed, memory_order_acquire) == 0u;
 }
 
+void game_loop_source_begin(game_t *game, input_t *input) {
+    ASSERT_ALWAYS(game->open != 0u && game->threads_running == 0u);
+    game->borrowed_input = input;
+}
+
 bool game_loop_source(void *context, display_buffer_t *back) {
     game_t *const game = context;
+    /* Here and not before the run: display_frames_run forks vt_guard's guardian before its first frame, and the sim and gpu
+     * threads should not be writing into the memory that fork is about to share. */
+    if (game->threads_running == 0u && !game_loop_start(game, game->borrowed_input)) {
+        atomic_store_explicit(&game->failed, 1u, memory_order_release);
+        return false; /* it has said why */
+    }
     const input_frame_t *const frame = input_poll(game->borrowed_input);
     if (input_keys_has(&frame->pressed, KEY_ESC)) {
         return false;

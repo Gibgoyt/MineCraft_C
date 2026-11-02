@@ -296,9 +296,9 @@ static void main_job_count(job_worker_t *worker, void *borrowed_argument) {
     atomic_fetch_add_explicit(done, 1u, memory_order_relaxed);
 }
 
-/* Until game arrives (Stage 08.4) this is all there is to run: one round of real jobs through the real workers, so a
- * runtime that cannot run anything fails here and not in the first stage that needs it. The group's wait carries the
- * ordering, so the load below may be relaxed. */
+/* What a run with no flags does until a menu opens a world: one round of real jobs through the real workers, so a runtime
+ * that cannot run anything fails here and not in the first stage that needs it. The group's wait carries the ordering, so the
+ * load below may be relaxed. */
 static bool main_run(app_t *app) {
     const int64_t started_ns = time_now_ns();
     _Atomic uint64_t done = 0;
@@ -327,8 +327,7 @@ static main_exit_t main_exit_from_display(display_status_t status) {
     return MAIN_EXIT_DISPLAY_ERROR;
 }
 
-/* The one way into KMS for now. Only this flag opens the display: the default run stays away from it until game does
- * (Stage 08.4), so that nothing ctest runs can reach the card. */
+/* KMS with no world. Only this flag and --test-world open the display, so that nothing ctest runs can reach the card. */
 static main_exit_t main_run_test_pattern(app_t *app, const main_options_t *options, int64_t started_ns) {
     display_config_t config;
     display_config_from_machine(&config);
@@ -351,8 +350,7 @@ static main_exit_t main_run_test_pattern(app_t *app, const main_options_t *optio
     return main_exit_from_display(ran);
 }
 
-/* Replays input with no display at all. Starts after the runtime, as game will, so that what a script drives later is
- * running as it does for real. The demo scene stands in until game passes its own (Stage 08.4). */
+/* Replays input with no display at all, on the demo scene, which needs no card: see run/src/game/README.md. */
 static main_exit_t main_run_headless(app_t *app, const main_options_t *options) {
     display_headless_config_t config;
     display_offscreen_config_from_machine(&config);
@@ -427,10 +425,7 @@ static main_exit_t main_run_test_world(app_t *app, const main_options_t *options
     if (!game_open(&app->game, &game)) {
         return MAIN_EXIT_RUNTIME;
     }
-    if (!game_loop_start(&app->game, &app->input)) {
-        game_close(&app->game);
-        return MAIN_EXIT_RUNTIME;
-    }
+    game_loop_source_begin(&app->game, &app->input);
     const display_status_t ran = display_frames_run(&app->display, game_loop_source, game_loop_discard, &app->game);
     const bool loop_ok = game_loop_stop(&app->game);
     input_report(&app->input);

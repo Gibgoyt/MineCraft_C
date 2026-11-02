@@ -22,6 +22,8 @@ What it checks:
 
 - **The built program:** the same script gives the same PNG files byte for byte, flying changes them, and bad flags are refused. KMS is not run here: only Ahmed can, on a text console.
 - **The real threads:** `sim`, `gpu` and a `main` loop on a plain buffer draw the same picture as a run with no threads, take nothing from the heap once running, and stop clean.
+- **Through the display loop, as under KMS:** `display_frames_run` on the fake kernel of `tests/run/display/mode/fixtures/` and `game_loop_source` on the fake evdev of `tests/run/input/fixtures/`, with the real card and threads, and the real guardian forked after the pictures are pinned. The threads start only after that fork, a picture made after it matches one made before it, and a flight streams and draws while the guardian lives. A first frame starts the threads, Esc ends the run, and what waited on another VT, and the time spent there, count for nothing.
+- **A measurement, on request:** `MC_FRAME_MEASURE_THREADS=1` runs the real threads at the default render distance from nothing, and prints how long it took. Use the release preset. Otherwise that test does nothing.
 - **What a frame refuses:** targets too small, and a material with no texture, which draws magenta.
 
 `fixtures/` holds only those pictures. Any change to the terrain, the test world's surface, or the textures changes them, and they are made again and looked at.

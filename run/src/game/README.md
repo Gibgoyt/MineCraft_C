@@ -12,7 +12,7 @@
 - `game_sim_step`, `game_fly`, `game_settle`: a step of streaming, a step of flying, and running the sim and upload here until the card holds all the eye's place wants.
 - `game_headless_scene`: what `display_headless_run` drives. One thread, no clock, and one script gives one set of pictures.
 - `game_loop_start`, `game_loop_frame`, `game_loop_stop`: the real threads, and a frame on the main thread.
-- `game_loop_source`, `game_loop_discard`: what `display_frames_run` calls: real keys and a real mouse to `game_loop_frame`, and Esc to stop.
+- `game_loop_source_begin`, `game_loop_source`, `game_loop_discard`: what `display_frames_run` calls: the threads start on its first frame, then real keys and a real mouse to `game_loop_frame`, and Esc to stop.
 - `game_fly_from_script`, `game_fly_from_input`: either kind of input to a step of flying.
 - `game_report`: what the frames took.
 
@@ -37,7 +37,15 @@ None of them ever waits for another, as the plan wants: a slow tick cannot stall
 
 With no threads, as under `--headless`, `game_settle` does a sim step and an upload round in turn until all of it is on the card, before each frame. So a picture does not depend on how fast a worker was, and the same script always gives the same bytes. It is the same code as the threads run, in another order.
 
-`tests/run/render/frame/` runs the threads for real, on a plain buffer for a display. Only Ahmed can run them on KMS.
+`tests/run/render/frame/` runs the threads for real, on a plain buffer for a display, and through `display_frames_run` on a fake kernel with a real guardian forked. Only Ahmed can run them on KMS.
+
+## The guardian's fork
+
+Under KMS, `display/vt_guard` forks its guardian as the console is taken, with CUDA live and the pictures already pinned. So:
+
+- The sim and gpu threads start on the first frame, after that fork, so nothing of theirs is mid-write as it happens. The job workers are already running then, with nothing to do.
+- The guardian touches nothing of CUDA's and leaves by `_exit`, so no exit handler of the runtime's runs in it.
+- A pinned page must stay the parent's across a fork, or the card would go on writing to a page the program no longer sees. The kernel keeps it so for pins taken with `FOLL_PIN`. Whether this driver's are was measured, not assumed: `a_world_runs_through_the_display_loop_with_a_real_guardian_forked` draws through pictures pinned before the fork, with the guardian alive, and compares with a picture made before it.
 
 ## Why `--headless` alone still shows the demo
 

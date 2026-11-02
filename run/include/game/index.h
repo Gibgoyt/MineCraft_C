@@ -117,15 +117,17 @@ void game_headless_scene(game_t *game, display_headless_scene_t *out);
 
 /* The real loop's threads. game_loop_start starts sim and gpu, pinned where config/machine.yaml says. Then the main thread calls
  * game_loop_frame once per frame, which moves the eye, tells the others, and puts the newest finished picture in target. It
- * never waits for either. game_loop_stop stops and joins them, and says whether they ran clean. input may be nullptr, for a
- * caller that polls its own. */
+ * never waits for either. game_loop_stop stops and joins them if they are running, and says whether they ran clean. input may be
+ * nullptr, for a caller that polls its own. */
 [[nodiscard]] bool game_loop_start(game_t *game, input_t *input);
 [[nodiscard]] bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t seconds,
                                    display_buffer_t *target);
 [[nodiscard]] bool game_loop_stop(game_t *game);
 
-/* What display_frames_run calls, with a game_t * as context, after game_loop_start with an input: one poll of the real keys and
- * mouse, Esc to end the run, and game_loop_frame by the clock. */
+/* What display_frames_run calls, with a game_t * as context, after game_loop_source_begin: on its first call it starts the
+ * threads, which is after display_frames_run has forked its guardian; then one poll of the real keys and mouse, Esc to end the
+ * run, and game_loop_frame by the clock. game_loop_stop still ends it, and says if the threads could not start. */
+void game_loop_source_begin(game_t *game, input_t *input);
 bool game_loop_source(void *context, display_buffer_t *back);
 
 /* What display_frames_run calls on coming back from another VT, with a game_t * as context: nothing typed there counts here. */
