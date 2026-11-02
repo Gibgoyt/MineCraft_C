@@ -53,8 +53,9 @@ void render_deinit(render_t *render) {
 }
 
 uint64_t render_pool_bytes_for(const render_t *render, uint32_t slot_count) {
-    uint64_t bytes = (uint64_t)slot_count * RENDER_POOL_BYTES_PER_COLUMN;
-    bytes = bytes < RENDER_POOL_BYTES_MIN ? RENDER_POOL_BYTES_MIN : bytes;
+    /* On top of the floor, and not up to it: each size of slab holds a page of its own however little of it is in use, so a
+     * small table with the floor alone ran out: Stage 08.4 issue 3. */
+    uint64_t bytes = (uint64_t)slot_count * RENDER_POOL_BYTES_PER_COLUMN + RENDER_POOL_BYTES_MIN;
     bytes = bytes > render->limits.pool_bytes ? render->limits.pool_bytes : bytes;
     return bytes / WORLD_BUFFERS_PAGE_BYTES * WORLD_BUFFERS_PAGE_BYTES;
 }
@@ -116,6 +117,7 @@ gpu_status_t render_open(render_t *render, world_edit_snapshot_t *snapshot, uint
 }
 
 void render_close(render_t *render) {
+    render_close_frame(render);
     if (render->open == 0u) {
         return;
     }
@@ -128,4 +130,98 @@ void render_close(render_t *render) {
         gpu_error_log(&memory->last_error);
     }
     render->open = 0u;
+}
+
+typedef struct render_block_wanted_t {
+    device_block_t *block; /* 0 */
+    const char *name;      /* 8 */
+    uint64_t bytes;        /* 16 */
+    device_pool_t pool;    /* 24 */
+    uint8_t _pad0[4];      /* 28 */
+} render_block_wanted_t;
+static_assert(sizeof(render_block_wanted_t) == 32);
+
+/* Takes every block a frame needs, saying why if it cannot. What it took, render_close_frame gives back. */
+static gpu_status_t render_frame_blocks_take(render_t *render, const texture_t *texture, uint32_t width,
+                                             uint32_t height) {
+    device_memory_t *const memory = render->borrowed_memory;
+    const uint8_t *pixels = nullptr;
+    uint64_t pixel_bytes = 0u;
+    texture_pixels_get(texture, &pixels, &pixel_bytes);
+    const render_block_wanted_t wanted[] = {
+        {&render->owned_textures, "texture table", render_frame_texture_table_bytes(), DEVICE_POOL_TEXTURES, {0}},
+        {&render->owned_faces, "face table", render_frame_face_table_bytes(), DEVICE_POOL_TEXTURES, {0}},
+        {&render->owned_tex_pixels, "texture pixels", pixel_bytes, DEVICE_POOL_TEXTURES, {0}},
+        {&render->owned_coarse, "coarse depth", traverse_coarse_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
+        {&render->owned_hits, "hits", traverse_hits_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
+        {&render->owned_shaded, "shaded pixels", shade_pixels_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
+        {&render->owned_xrgb, "finished picture", post_xrgb_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
+    };
+    for (uint32_t i = 0u; i < sizeof(wanted) / sizeof(wanted[0]); i++) {
+        const gpu_status_t status =
+            device_memory_alloc(memory, wanted[i].pool, wanted[i].bytes, wanted[i].name, wanted[i].block);
+        if (status != GPU_STATUS_OK) {
+            gpu_error_log(&memory->last_error);
+            return status;
+        }
+    }
+    return GPU_STATUS_OK;
+}
+
+static void render_frame_blocks_give_back(render_t *render) {
+    device_memory_t *const memory = render->borrowed_memory;
+    device_block_t *const blocks[] = {&render->owned_xrgb,    &render->owned_shaded,     &render->owned_hits,
+                                      &render->owned_coarse,  &render->owned_tex_pixels, &render->owned_faces,
+                                      &render->owned_textures};
+    for (uint32_t i = 0u; i < sizeof(blocks) / sizeof(blocks[0]); i++) {
+        if (device_memory_free(memory, blocks[i]) != GPU_STATUS_OK) {
+            gpu_error_log(&memory->last_error);
+        }
+    }
+}
+
+gpu_status_t render_open_frame(render_t *render, const texture_t *texture, uint32_t width, uint32_t height,
+                               float32_t fog_end) {
+    ASSERT_ALWAYS(render->frame_open == 0u);
+    gpu_status_t status = render_frame_blocks_take(render, texture, width, height);
+    if (status != GPU_STATUS_OK) {
+        render_frame_blocks_give_back(render);
+        return status;
+    }
+    if (!heap_reserve(render_frame_arena_bytes(width, height), &render->owned_frame_host)) {
+        render_frame_blocks_give_back(render);
+        return GPU_STATUS_OUT_OF_MEMORY; /* it has said why */
+    }
+    arena_init(&render->arena_frame, "render_frame", render->owned_frame_host.owned_base,
+               render->owned_frame_host.bytes);
+    const render_frame_blocks_t blocks = {
+        .borrowed_textures = &render->owned_textures,
+        .borrowed_faces = &render->owned_faces,
+        .borrowed_pixels = &render->owned_tex_pixels,
+        .borrowed_coarse = &render->owned_coarse,
+        .borrowed_hits = &render->owned_hits,
+        .borrowed_shaded = &render->owned_shaded,
+        .borrowed_xrgb = &render->owned_xrgb,
+    };
+    status = render_frame_init(&render->frame, &render->arena_frame, render->borrowed_memory, texture, &blocks, width,
+                               height, fog_end);
+    if (status != GPU_STATUS_OK) {
+        arena_deinit(&render->arena_frame);
+        heap_release(&render->owned_frame_host);
+        render_frame_blocks_give_back(render);
+        return status;
+    }
+    render->frame_open = 1u;
+    return GPU_STATUS_OK;
+}
+
+void render_close_frame(render_t *render) {
+    if (render->frame_open == 0u) {
+        return;
+    }
+    render_frame_deinit(&render->frame);
+    arena_deinit(&render->arena_frame);
+    heap_release(&render->owned_frame_host);
+    render_frame_blocks_give_back(render);
+    render->frame_open = 0u;
 }

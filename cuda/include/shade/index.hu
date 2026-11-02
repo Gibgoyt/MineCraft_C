@@ -1,0 +1,9 @@
+/* See cuda/src/shade/README.md. The C API; nothing here is for CUDA code alone yet. */
+#ifndef MC_CUDA_SHADE_INDEX_HU
+#define MC_CUDA_SHADE_INDEX_HU
+
+#include "device_memory/index.hu"
+#include "gpu_bridge/shade/index.h"
+#include "traverse/index.hu"
+
+#endif

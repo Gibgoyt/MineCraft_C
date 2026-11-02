@@ -15,7 +15,7 @@
 **May be called by:** `display` (the Owner), `main`, `game`.
 **Depends on:** `arena`, `file`, `log`, `display/flip` (`display_buffer_t`), `display/headless/{png,script}`.
 
-**Parts:** `png` (the encoder), `script` (the language), `demo` (what is drawn until `game` exists).
+**Parts:** `png` (the encoder), `script` (the language), `demo` (what is drawn without `--test-world`).
 
 It opens no `/dev/dri` card and no `/dev/input` device, and the code path has no way to. So it is safe with a desktop running.
 
@@ -87,7 +87,7 @@ For each tick from 0, in this order, with nothing between ticks:
 
 ## Driving real gameplay
 
-`main` runs the scene in `display/headless/demo` for now. `game` passes its own scene when it exists (Stage 08.4): `tick` steps the simulation, `draw` renders into the `display_buffer_t` it is handed, which is the same type as a KMS back buffer. Scenes read `tick->state` for what is held and `tick->events` for what changed. `code` is evdev's own `KEY_*` or `BTN_*`, and `move` and `wheel` carry what `REL_X`, `REL_Y` and `REL_WHEEL` would, so the code that turns these into player input is the same code that handles Stage 05.3's real events.
+With `--test-world`, `main` runs `game`'s scene, where `tick` steps the simulation and `draw` renders into the `display_buffer_t` it is handed, which is the same type as a KMS back buffer. Without it, `main` runs the scene in `display/headless/demo`, which needs no card: see `run/src/game/README.md`. Scenes read `tick->state` for what is held and `tick->events` for what changed. `code` is evdev's own `KEY_*` or `BTN_*`, and `move` and `wheel` carry what `REL_X`, `REL_Y` and `REL_WHEEL` would, so the code that turns these into player input is the same code that handles Stage 05.3's real events.
 
 ## Screenshots
 

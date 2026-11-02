@@ -3,6 +3,7 @@
 #define MC_RUN_MAIN_INDEX_H
 
 #include "display/index.h"
+#include "game/index.h"
 #include "gpu_bridge/index.h"
 #include "input/index.h"
 #include "job/index.h"
@@ -11,6 +12,7 @@
 #include "simd/index.h"
 #include "terrain/index.h"
 #include "texture/index.h"
+#include "thread/index.h"
 #include "world/index.h"
 
 #include <stdint.h>
@@ -24,16 +26,18 @@ typedef struct app_t {
     world_t world;                 /* nothing runs in it until game does (Stage 08.4) */
     terrain_t terrain;             /* the same */
     gpu_bridge_t gpu_bridge;       /* the default run and --headless start it, unless gpu.enabled says otherwise */
-    render_t render;               /* takes nothing on the card until game opens a world (Stage 08.4) */
-    display_t display;             /* only --test-pattern starts it, for now */
+    render_t render;               /* takes nothing on the card until game opens a world */
+    game_t game;                   /* takes nothing until --test-world opens a world */
+    display_t display;             /* --test-pattern and --test-world start it */
     display_offscreen_t offscreen; /* only --headless starts it */
-    input_t input;                 /* only --test-pattern starts it, and only once display_init said OK */
+    input_t input;                 /* only after display_init said OK */
+    thread_topology_t topology;    /* read once, before main pins itself, and kept for the threads game starts */
     uint32_t cpu_required;         /* CPU_FEATURE_* the build uses */
     uint32_t cpu_present;          /* CPU_FEATURE_* this machine has */
     math_t math;
-    uint8_t _pad0[48];
+    uint8_t _pad0[104];
 } app_t;
-static_assert(sizeof(app_t) == 4736);
+static_assert(sizeof(app_t) == 7040);
 static_assert(alignof(app_t) == 64);
 
 /* The exit codes of minecraft_c. */

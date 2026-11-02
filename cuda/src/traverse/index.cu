@@ -20,19 +20,6 @@ enum : uint32_t {
 /* What comes off the safe distance at the end, so the start cell is not decided by rounding either. */
 #define TRAVERSE_COARSE_BACK_OFF 0.25F
 
-static __device__ __forceinline__ void traverse_camera_direction(const traverse_camera_t *camera, float32_t pixel_x,
-                                                                 float32_t pixel_y, float32_t out[3]) {
-    const float32_t u = 2.0F * pixel_x / (float32_t)camera->width - 1.0F;
-    const float32_t v = 1.0F - 2.0F * pixel_y / (float32_t)camera->height;
-    const float32_t x = camera->forward[0] + u * camera->right[0] + v * camera->up[0];
-    const float32_t y = camera->forward[1] + u * camera->right[1] + v * camera->up[1];
-    const float32_t z = camera->forward[2] + u * camera->right[2] + v * camera->up[2];
-    const float32_t scale = 1.0F / sqrtf(x * x + y * y + z * z);
-    out[0] = x * scale;
-    out[1] = y * scale;
-    out[2] = z * scale;
-}
-
 /* The bits of a 4 x 4 x 4 mask inside an inclusive range: a section's bricks and a brick's voxels are numbered alike. */
 static __device__ __forceinline__ uint64_t traverse_brick_region(int32_t x0, int32_t x1, int32_t y0, int32_t y1,
                                                                  int32_t z0, int32_t z1) {
@@ -63,14 +50,14 @@ static __device__ __forceinline__ bool traverse_box_is_empty(const traverse_view
     }
     for (int32_t column_y = column_y0; column_y <= column_y1; column_y += 1) {
         for (int32_t column_x = column_x0; column_x <= column_x1; column_x += 1) {
-            const traverse_column_t column = view->columns[traverse_slot(view, column_x, column_y)];
-            const int32_t top = (int32_t)column.top - 1;
+            const world_buffers_column_t *const column = &view->table[traverse_slot(view, column_x, column_y)];
+            const int32_t top = traverse_column_top(column, column_x, column_y) - 1;
             const int32_t z_end = z1 < top ? z1 : top;
             if (z0 > z_end) {
                 continue;
             }
             const int32_t section_0 = z0 >> 4, section_1 = z_end >> 4;
-            uint64_t found = column.section_mask & (((1ull << (section_1 - section_0 + 1)) - 1ull) << section_0);
+            uint64_t found = column->section_mask & (((1ull << (section_1 - section_0 + 1)) - 1ull) << section_0);
             if (found == 0u) {
                 continue;
             }
@@ -86,9 +73,9 @@ static __device__ __forceinline__ bool traverse_box_is_empty(const traverse_view
             while (found != 0u) {
                 const int32_t section_z = __ffsll((int64_t)found) - 1;
                 found &= found - 1u;
-                const uint64_t below = column.section_mask & ((1ull << section_z) - 1ull);
-                const traverse_section_t section = view->sections[column.first_section + (uint32_t)__popcll(below)];
-                if (section.first_brick == TRAVERSE_SECTION_UNIFORM) {
+                const uint8_t *const encoded = traverse_section_bytes(view, column->sections[section_z]);
+                const world_buffers_section_t header = *(const world_buffers_section_t *)(const void *)encoded;
+                if (header.brick_count == 0u) {
                     return false;
                 }
                 const int32_t floor_z = section_z << 4;
@@ -96,12 +83,13 @@ static __device__ __forceinline__ bool traverse_box_is_empty(const traverse_view
                 const int32_t brick_z1 = ((z_end < floor_z + 15 ? z_end : floor_z + 15) - floor_z) >> 2;
                 const uint64_t region =
                     traverse_brick_region(brick_x0, brick_x1, brick_y0, brick_y1, brick_z0, brick_z1);
-                uint64_t bricks = section.brick_mask & region;
+                uint64_t bricks = header.brick_mask & region;
                 while (bricks != 0u) {
                     const int32_t brick = __ffsll((int64_t)bricks) - 1;
                     bricks &= bricks - 1u;
-                    const uint64_t earlier = section.brick_mask & ((1ull << brick) - 1ull);
-                    const uint64_t voxels = view->brick_masks[section.first_brick + (uint32_t)__popcll(earlier)];
+                    const uint64_t earlier = header.brick_mask & ((1ull << brick) - 1ull);
+                    const uint8_t *const words = encoded + sizeof(world_buffers_section_t);
+                    const uint64_t voxels = ((const uint64_t *)(const void *)words)[(uint32_t)__popcll(earlier)];
                     const int32_t cell_x = left + (brick & 3) * 4, cell_y = bottom + ((brick >> 2) & 3) * 4;
                     const int32_t cell_z = floor_z + (brick >> 4) * 4;
                     const uint64_t cells = traverse_brick_region(
@@ -268,11 +256,6 @@ static gpu_status_t traverse_refuse(gpu_error_t *error, const char *what) {
     return GPU_STATUS_INVALID_ARGUMENT;
 }
 
-static uint32_t traverse_floor_mod(int32_t value, uint32_t modulus) {
-    const int64_t remainder = (int64_t)value % (int64_t)modulus;
-    return (uint32_t)(remainder < 0 ? remainder + (int64_t)modulus : remainder);
-}
-
 /* A column count this wide fits an int16_t offset from any eye inside the window, in traverse_hit_t. */
 enum : uint32_t { TRAVERSE_COLUMNS_WIDE_MAX = 2047u };
 
@@ -280,25 +263,25 @@ enum : uint32_t { TRAVERSE_COLUMNS_WIDE_MAX = 2047u };
  * at most width + width + height steps. The cap is that and some room, so it can only trip on a bug, and a test says it never
  * does. */
 static gpu_status_t traverse_view_from(gpu_error_t *error, const traverse_world_t *world, traverse_view_t *view) {
-    if (world->columns_wide == 0u || world->columns_wide > TRAVERSE_COLUMNS_WIDE_MAX) {
-        return traverse_refuse(error, "traverse: columns_wide is 0 or too wide");
+    const world_buffers_window_t *const window = &world->window;
+    if (window->side == 0u || window->side > TRAVERSE_COLUMNS_WIDE_MAX ||
+        window->slot_count != window->side * window->side || window->min_slot_x >= window->side ||
+        window->min_slot_y >= window->side) {
+        return traverse_refuse(error, "traverse: the window is empty, too wide, or not a square of slots");
     }
-    const uint64_t slots = (uint64_t)world->columns_wide * world->columns_wide;
-    if (world->borrowed_columns->bytes < slots * sizeof(traverse_column_t)) {
-        return traverse_refuse(error, "traverse: the column table is smaller than columns_wide says");
+    if (world->borrowed_table->bytes < (uint64_t)window->slot_count * sizeof(world_buffers_column_t)) {
+        return traverse_refuse(error, "traverse: the column table is smaller than the window says");
     }
-    const uint64_t blocks = (uint64_t)world->columns_wide * TRAVERSE_COLUMN_BLOCKS;
-    view->columns = (const traverse_column_t *)device_memory_pointer(world->borrowed_columns);
-    view->sections = (const traverse_section_t *)device_memory_pointer(world->borrowed_sections);
-    view->brick_masks = (const uint64_t *)device_memory_pointer(world->borrowed_brick_masks);
-    view->brick_refs = (const uint32_t *)device_memory_pointer(world->borrowed_brick_refs);
-    view->voxels = (const uint32_t *)device_memory_pointer(world->borrowed_voxels);
-    for (uint32_t i = 0u; i < 2u; i += 1u) {
-        view->window_min_column[i] = world->window_min_column[i];
-        view->window_min_block[i] = world->window_min_column[i] * (int32_t)TRAVERSE_COLUMN_BLOCKS;
-        view->origin_slot[i] = traverse_floor_mod(world->window_min_column[i], world->columns_wide);
-    }
-    view->columns_wide = world->columns_wide;
+    const uint64_t blocks = (uint64_t)window->side * TRAVERSE_COLUMN_BLOCKS;
+    view->table = (const world_buffers_column_t *)(const void *)device_memory_pointer(world->borrowed_table);
+    view->pool = device_memory_pointer(world->borrowed_pool);
+    view->window_min_column[0] = window->min_x;
+    view->window_min_column[1] = window->min_y;
+    view->window_min_block[0] = window->min_x * (int32_t)TRAVERSE_COLUMN_BLOCKS;
+    view->window_min_block[1] = window->min_y * (int32_t)TRAVERSE_COLUMN_BLOCKS;
+    view->origin_slot[0] = window->min_slot_x;
+    view->origin_slot[1] = window->min_slot_y;
+    view->columns_wide = window->side;
     view->window_blocks = (uint32_t)blocks;
     view->max_steps = (uint32_t)(blocks * 2u) + 2u * TRAVERSE_HEIGHT_BLOCKS + 16u;
     view->_pad0[0] = 0u;

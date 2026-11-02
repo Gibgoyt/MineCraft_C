@@ -1251,6 +1251,52 @@ TEST(the_test_pattern_goes_through_a_vt_switch_and_carries_on) {
     CHECK_EQ_U64(card->is_master, 0u);
 }
 
+typedef struct card_frames_t {
+    uint32_t drawn;      /* 0 */
+    uint32_t stop_after; /* 4 */
+    uint32_t discards;   /* 8 */
+    uint32_t wrong_size; /* 12 */
+} card_frames_t;
+static_assert(sizeof(card_frames_t) == 16);
+
+static bool card_frames_draw(void *context, display_buffer_t *back) {
+    card_frames_t *const frames = context;
+    if (back->width == 0u || back->owned_map == nullptr) {
+        frames->wrong_size++;
+    }
+    memset(back->owned_map, (int32_t)(frames->drawn & 255u), back->map_bytes);
+    frames->drawn++;
+    return frames->drawn < frames->stop_after;
+}
+
+static void card_frames_discard(void *context) {
+    card_frames_t *const frames = context;
+    frames->discards++;
+}
+
+/* What game draws through: every frame comes from the source, the run ends when it says so, a VT switch is told, and the console
+ * goes back as for the test pattern. */
+TEST(frames_from_a_source_reach_the_card_and_the_display_goes_back) {
+    fake_card_t *const card = fake_card_new(t);
+    fake_card_use_small_mode(card);
+    card->vt_release_after_flips = 20u;
+    display_t *const display = rig_alloc_aligned(t, sizeof(display_t));
+    display_config_t config = fake_config();
+    REQUIRE(display_init(display, &config, &fake_ops, card) == DISPLAY_STATUS_OK);
+    card_frames_t frames = {.stop_after = 60u};
+    const display_status_t status = display_frames_run(display, card_frames_draw, card_frames_discard, &frames);
+    CHECK_EQ_U64(status, DISPLAY_STATUS_OK);
+    CHECK_EQ_U64(frames.drawn, 60u);
+    CHECK_EQ_U64(frames.wrong_size, 0u);
+    /* The source's 60th call said to stop, so it put up 59 flips. */
+    CHECK(card->flips >= 59u);
+    CHECK_EQ_U64(frames.discards, 1u);
+    display_deinit(display);
+    check_nothing_left(t, card);
+    CHECK_EQ_I64(card->kd_mode, KD_TEXT);
+    CHECK_EQ_U64(card->is_master, 0u);
+}
+
 typedef struct card_cursor_t {
     uint32_t asked;
     uint32_t discards;

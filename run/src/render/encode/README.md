@@ -23,4 +23,4 @@ Light is stored only for occupied voxels, as the plan says. See Stage 08.2 issue
 
 Time follows the blocks, not the 4096 voxels. `asm/src/bitmask` turns the states into a bit per voxel, and from there only set bits are visited, twice: once to sort them into bricks, and once to read each one's material and light in brick order.
 
-Bytes are `16 + 10 * bricks + 3 * voxels`, rounded up to 8. The most is 12944. A section is deliberately not compressed further: a uniform stone section takes the full size. Stage 08.2 issue 5 has the numbers.
+Bytes are `16 + 10 * bricks + 3 * voxels`, rounded up to 8. The most is 12944. A section of one block and one light all through takes 24, and nothing else is compressed. Stage 08.2 issue 5 has the numbers from before that form existed, and Stage 08.4 issue 2 says why it does.

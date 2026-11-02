@@ -49,13 +49,17 @@ static_assert(WORLD_BUFFERS_PAGE_GRANULES < WORLD_BUFFERS_SLAB_NONE);
  *     zeros, up to a multiple of 8
  *
  * Bit b of brick_mask is the brick at (b & 3, (b >> 2) & 3, b >> 4), and bit v of a brick_voxels word the voxel at the same
- * place inside it, so walking set bits with tzcnt walks each axis in order. A section with no block has no bytes at all. */
+ * place inside it, so walking set bits with tzcnt walks each axis in order. A section with no block has no bytes at all.
+ *
+ * A section whose 4096 voxels are all one block with one light is the header, with brick_count 0 and every bit of brick_mask,
+ * then that one material and that one light: WORLD_BUFFERS_SECTION_BYTES_UNIFORM bytes. Buried stone is most of a column, and
+ * took 12944 bytes a section before this: Stage 08.4 issue 2. */
 typedef struct world_buffers_section_t {
     uint64_t brick_mask;      /* 0 */
     uint16_t voxel_count;     /* 8: at least 1, up to 4096 */
     uint16_t material_offset; /* 10: from the start of this header */
     uint16_t light_offset;    /* 12: the same */
-    uint8_t brick_count;      /* 14: the bits in brick_mask */
+    uint8_t brick_count;      /* 14: the bits in brick_mask; 0 for a uniform section */
     uint8_t _pad0[1];         /* 15 */
 } world_buffers_section_t;
 static_assert(sizeof(world_buffers_section_t) == 16);
@@ -73,6 +77,10 @@ enum : uint32_t {
                                       WORLD_BUFFERS_BRICKS * 2u + WORLD_BUFFERS_SECTION_VOXELS * 3u,
 };
 static_assert(WORLD_BUFFERS_SECTION_BYTES_MAX % 8u == 0u);
+enum : uint32_t {
+    /* The header, a material and a light, up to a multiple of 8. */
+    WORLD_BUFFERS_SECTION_BYTES_UNIFORM = 24u,
+};
 
 /* One slot of the toroidal table, on the card and in the host's copy. All zero is a slot with no column. A stride of four
  * cache lines, so that a slot's address is a shift. */
@@ -293,6 +301,11 @@ WORLD_BUFFERS_BOTH_SIDES static inline bool world_buffers_section_voxel(const ui
                                                                         uint32_t z, uint16_t *out_material,
                                                                         uint8_t *out_light) {
     const world_buffers_section_t *const header = (const world_buffers_section_t *)(const void *)encoded;
+    if (header->brick_count == 0u) {
+        *out_material = *(const uint16_t *)(const void *)(encoded + header->material_offset);
+        *out_light = encoded[header->light_offset];
+        return true;
+    }
     const uint32_t brick = world_buffers_brick_of(x, y, z);
     if (((header->brick_mask >> brick) & 1u) == 0u) {
         return false;
