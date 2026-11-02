@@ -593,7 +593,8 @@ TEST(the_time_away_on_another_vt_is_not_counted_as_a_late_frame) {
     arena_deinit(rig->borrowed_arena);
 }
 
-TEST(a_fault_inside_the_restore_is_finished_by_the_guardian) {
+/* The crash's own signal and a different one: with the same one, only SA_NODEFER lets the handler carry on. */
+static void check_fault_inside_the_restore(test_context_t *t, display_crash_test_t how) {
     rig_t *const rig = rig_new(t);
     rig->fault_request = KDSETMODE;
     rig->guard.watchdog_ns = 60000000000; /* the handler waits out its own lost step, which must not count as a hang */
@@ -607,7 +608,7 @@ TEST(a_fault_inside_the_restore_is_finished_by_the_guardian) {
         /* After the takeover's own KDSETMODE. So this fault is in the handler's KD_TEXT. Not in the guardian: it is forked
          * earlier, and has fault_armed clear in its own copy. */
         rig->fault_armed = 1u;
-        raise(SIGABRT);
+        display_vt_guard_crash_now(how);
         _exit(2);
     }
     char *const output = test_alloc(t, 8192u);
@@ -627,6 +628,11 @@ TEST(a_fault_inside_the_restore_is_finished_by_the_guardian) {
     CHECK(handler_did_vt_mode);
     CHECK_CONTAINS(output, "the program crashed; the console has been given back");
     CHECK_CONTAINS(output, "the program ended without giving the console back");
+}
+
+TEST(a_fault_inside_the_restore_is_finished_by_the_guardian) {
+    check_fault_inside_the_restore(t, DISPLAY_CRASH_TEST_ABORT);
+    check_fault_inside_the_restore(t, DISPLAY_CRASH_TEST_SEGV);
 }
 
 /* ---- What no handler can catch ----------------------------------------------------------------------------------- */
