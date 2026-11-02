@@ -25,6 +25,8 @@ enum : int64_t {
     GAME_SIM_IDLE_NS = 1000000,  /* the sim looks for finished columns this often when it has nothing to do */
     GAME_GPU_IDLE_NS = 100000,   /* the gpu thread waits this long for main to take the picture it just made */
     GAME_SETTLE_IDLE_NS = 50000, /* a run with no threads waits this long for a worker */
+    GAME_COMMIT_BUDGET_NS =
+        4000000, /* the most a sim step spends on finished columns, each with its light, past the first */
     GAME_TICK_NS = 1000000000 / MC_GAME_TICK_HZ,
 };
 
@@ -266,12 +268,19 @@ static bool game_column_fill(game_t *game, const game_column_job_t *job) {
         }
     }
     world_edit_column_filled(&world->edit, job->request.slot);
+    /* Short of memory, it says so, and world_light_update tries again. */
+    (void)world_light_column_added(&world->light, job->request.slot);
     game->columns_made++;
     return true;
 }
 
 static void game_columns_commit(game_t *game) {
-    for (uint32_t i = 0u; i < GAME_STREAM_JOBS; i++) {
+    /* What is finished past this waits for the next step, so that a snapshot still goes out as often as it should. That step
+     * starts where this one stopped, so that no column waits behind others forever. */
+    const int64_t deadline_ns = time_now_ns() + GAME_COMMIT_BUDGET_NS;
+    for (uint32_t n = 0u; n < GAME_STREAM_JOBS && time_now_ns() < deadline_ns; n++) {
+        const uint32_t i = game->commit_next;
+        game->commit_next = i + 1u == GAME_STREAM_JOBS ? 0u : i + 1u;
         game_column_job_t *const job = &game->borrowed_jobs[i];
         if (job->in_use != 0u && atomic_load_explicit(&job->done, memory_order_acquire) != 0u) {
             /* A full world asks again for this column later, when something has left. */
@@ -316,10 +325,12 @@ void game_sim_step(game_t *game) {
     }
     world_map_leaving_t leaving;
     while (world_map_stream_leaving(map, &leaving)) {
+        (void)world_light_column_leaving(&world->light, leaving.slot);
         world_map_unload(map, leaving.slot); /* nothing to save yet: Stage 16.1 looks here first */
     }
     game_columns_commit(game);
     game_columns_request(game);
+    (void)world_light_update(&world->light);
     (void)render_upload_resend_drain(&game->borrowed_render->upload, &world->edit);
     /* False is only that nothing changed. */
     (void)world_edit_snapshot_publish(&world->snapshot);

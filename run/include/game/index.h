@@ -85,7 +85,8 @@ typedef struct game_t {
     uint8_t stream_quiet;      /* 862: nothing more to generate, last time the sim looked */
     uint8_t pool_full_said;    /* 863 */
     player_t *borrowed_player; /* 864: walking if not nullptr; set before a world opens, and only read after */
-    uint8_t _pad0[24];         /* 872 */
+    uint32_t commit_next;      /* 872: the job the next step looks at first */
+    uint8_t _pad0[20];         /* 876 */
 } game_t;
 static_assert(sizeof(game_t) == 896);
 static_assert(alignof(game_t) == MC_CPU_CACHE_LINE_BYTES);
