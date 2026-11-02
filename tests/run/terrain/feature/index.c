@@ -39,8 +39,8 @@ enum : uint32_t {
 static const uint64_t FEA_WORLD = 0x1234567890ABCDEFull;
 
 /* Pinned: see README.md. */
-static const uint64_t FEA_DIGEST_PIN = 0x391B2BD657A49109ull;
-static const uint64_t FEA_FOREST_PIN = 0x1C7FDB098B2749ECull;
+static const uint64_t FEA_DIGEST_PIN = 0x5EEB5051896D759Dull;
+static const uint64_t FEA_FOREST_PIN = 0x4311581F6DB47BB3ull;
 
 static uint64_t fea_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

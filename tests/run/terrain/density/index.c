@@ -49,7 +49,7 @@ static const uint64_t DENSITY_SEEDS[DENSITY_WIDE_SEEDS] = {
 };
 
 /* Pinned: see README.md. */
-static const uint64_t DENSITY_DIGEST_PIN = 0x9E92B14641827BCFull;
+static const uint64_t DENSITY_DIGEST_PIN = 0x91901C14200BDA7Eull;
 
 static uint64_t density_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

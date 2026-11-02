@@ -42,9 +42,9 @@ static const uint64_t HYDRO_SEED_LIST[HYDRO_SEEDS] = {0x1234567890ABCDEFull, 1ul
 static const int32_t HYDRO_MAP_MIN = -3;
 
 /* Pinned: see README.md. */
-static const uint64_t HYDRO_DIGEST_PIN = 0x4B4DCF3287542485ull;
+static const uint64_t HYDRO_DIGEST_PIN = 0xE92FBE01569A9BCDull;
 static const uint64_t HYDRO_COLUMNS_PIN = 0x6DC6F64A27C1B384ull;
-static const uint64_t HYDRO_FLOOD_PIN = 0xAB7A04324AA969DFull;
+static const uint64_t HYDRO_FLOOD_PIN = 0xF844FDA5354430CEull;
 
 static uint64_t hydro_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

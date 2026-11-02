@@ -69,8 +69,24 @@ static void player_view_fill(const player_t *player, player_view_t *view, int64_
     view->target = player->target;
 }
 
+/* In one word, so that main never sees part of one tick's with part of another's. */
+static void player_vitals_publish(player_t *player) {
+    const player_survival_t *const survival = &player->survival;
+    const player_vitals_t vitals = {
+        .health = survival->health,
+        .air = survival->air > 0 ? (uint16_t)survival->air : 0u,
+        .food = survival->food,
+        .state = survival->state,
+    };
+    uint64_t word = 0u;
+    memcpy(&word, &vitals, sizeof(word));
+    atomic_store_explicit(&player->vitals_word, word, memory_order_relaxed);
+}
+
 void player_spawn(player_t *player, float64_t x, float64_t y, float64_t z) {
     player_movement_start(&player->movement, x, y, z);
+    player_survival_start(&player->survival, x, y, z);
+    player_vitals_publish(player);
     player->tick_count = 0u;
     memset(&player->target, 0, sizeof(player->target));
     render_exchange_start(&player->views);
@@ -112,15 +128,35 @@ void player_hands_send(player_t *player, bool attack, bool place) {
 void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns) {
     uint32_t hands = atomic_load_explicit(&player->hands_word, memory_order_relaxed);
     hands |= atomic_exchange_explicit(&player->hands_latch, 0u, memory_order_relaxed);
+    /* Looked at and left for player_tick, whose jump it is. */
+    const player_intent_t intent =
+        player_intent_unpack(atomic_load_explicit(&player->intent_word, memory_order_relaxed));
+    bool jump = intent.jump != 0u || atomic_load_explicit(&player->jump_latch, memory_order_relaxed) != 0u;
+    bool sneak = intent.sneak != 0u;
     /* As for the keys: nobody at the controls lets go. */
     if (tick_ns - atomic_load_explicit(&player->intent_sent_ns, memory_order_relaxed) > PLAYER_INTENT_STALE_NS) {
         hands = 0u;
+        jump = false;
+        sneak = false;
     }
+    /* What keeps the body going has the buttons first, and may leave the hands none. */
+    player_survival_buttons_t buttons = {
+        .borrowed_target = &player->target,
+        .borrowed_movement = &player->movement,
+        .borrowed_physics = player->borrowed_physics,
+        .borrowed_map = edit->borrowed_map,
+        .attack = (hands & PLAYER_HAND_ATTACK) != 0u ? 1u : 0u,
+        .place = (hands & PLAYER_HAND_PLACE) != 0u ? 1u : 0u,
+        .jump = jump ? 1u : 0u,
+        .sneak = sneak ? 1u : 0u,
+        ._pad0 = {0},
+    };
+    player_survival_buttons(&player->survival, &buttons);
     const player_interaction_input_t input = {
         .borrowed_target = &player->target,
         .borrowed_movement = &player->movement,
-        .attack = (hands & PLAYER_HAND_ATTACK) != 0u ? 1u : 0u,
-        .place = (hands & PLAYER_HAND_PLACE) != 0u ? 1u : 0u,
+        .attack = buttons.attack,
+        .place = buttons.place,
         ._pad0 = {0},
     };
     player_interaction_tick(&player->interaction, edit, &input);
@@ -151,7 +187,22 @@ void player_tick(player_t *player, const world_map_t *map, int64_t tick_ns) {
         intent.sneak = 0u;
         intent.sprint = 0u;
     }
+    /* Dead or asleep, it does not matter who is at the controls. */
+    if (player_survival_holds_body(&player->survival)) {
+        intent.forward = 0;
+        intent.right = 0;
+        intent.jump = 0u;
+        intent.sneak = 0u;
+        intent.sprint = 0u;
+    } else if (!player_survival_can_sprint(&player->survival)) {
+        intent.sprint = 0u;
+    }
     player_movement_tick(&player->movement, player->borrowed_physics, map, &intent);
+    if (player->survival.state != PLAYER_SURVIVAL_ALIVE) {
+        /* Lying down, however the body would stand. */
+        const float64_t lowered = player->movement.previous_eye - PLAYER_SURVIVAL_EYE_LOWERS;
+        player->movement.eye_height = lowered < PLAYER_SURVIVAL_EYE_LYING ? PLAYER_SURVIVAL_EYE_LYING : lowered;
+    }
     player->tick_count++;
     /* After the move: what it aims at is from where it now stands. */
     const uint64_t look = atomic_load_explicit(&player->look_word, memory_order_relaxed);
@@ -165,6 +216,19 @@ void player_tick(player_t *player, const world_map_t *map, int64_t tick_ns) {
     player_camera_target(map, eye, yaw, pitch, &player->target);
     player_view_fill(player, &player->view_slots[player->views.back], tick_ns);
     (void)render_exchange_publish(&player->views);
+}
+
+void player_survive_tick(player_t *player, const world_map_t *map) {
+    player_survival_tick(&player->survival, &player->movement, player->borrowed_physics, map,
+                         player->interaction.mined_count);
+    player_vitals_publish(player);
+}
+
+player_vitals_t player_vitals_read(const player_t *player) {
+    const uint64_t word = atomic_load_explicit(&player->vitals_word, memory_order_relaxed);
+    player_vitals_t vitals;
+    memcpy(&vitals, &word, sizeof(vitals));
+    return vitals;
 }
 
 void player_eye_at(player_t *player, int64_t now_ns, float64_t out[3]) {

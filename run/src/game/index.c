@@ -155,6 +155,9 @@ void game_day_set(game_t *game, float64_t day_fraction) {
 }
 
 static void game_day_advance(game_t *game, float32_t seconds) {
+    if (atomic_exchange_explicit(&game->morning_latch, 0u, memory_order_relaxed) != 0u) {
+        game_day_set(game, PLAYER_SURVIVAL_MORNING);
+    }
     if ((game->borrowed_render->frame.scene.features & SHADE_FEATURE_DAY_CYCLE) != 0u) {
         game_day_set(game, game->day_fraction + (float64_t)seconds / GAME_DAY_SECONDS);
     }
@@ -421,6 +424,8 @@ static void game_hand_from_hotbar(game_t *game) {
     const uint16_t block = item_defs[held->item].block;
     player_interaction_hand_set(&game->borrowed_player->interaction, block == ITEM_NO_BLOCK ? BLOCK_ID_AIR : block,
                                 block == ITEM_NO_BLOCK ? 0u : held->count);
+    player_survival_hold_food(&game->borrowed_player->survival, held->item, item_defs[held->item].food,
+                              item_defs[held->item].saturation);
 }
 
 /* One tick of the hands: which slot is in hand first, so that a key and a click in one tick act in that order, and what they placed
@@ -435,8 +440,18 @@ static void game_interact_tick(game_t *game, int64_t tick_ns) {
     item_hotbar_apply(item);
     game_hand_from_hotbar(game);
     const uint32_t before = player->interaction.hand_count;
+    const uint64_t eaten = player->survival.eaten_count;
+    const uint16_t held = inventory_selected(&item->inventory)->item;
     player_interact_tick(player, &game->borrowed_world->edit, tick_ns);
     (void)inventory_selected_take(&item->inventory, before - (uint32_t)player->interaction.hand_count);
+    if (player->survival.eaten_count != eaten) {
+        (void)inventory_selected_take(&item->inventory, 1u);
+        /* What a stew came in stays in hand. A stew stacks to one, so the slot it left is empty. */
+        if (held == ITEM_ID_MUSHROOM_STEW) {
+            *inventory_slot(&item->inventory, item->inventory.selected) = item_stack_make(ITEM_ID_BOWL, 1u);
+            item->inventory.added_count++;
+        }
+    }
 }
 
 /* What a broken chest or furnace held comes out where it stood. With nothing to lie on, as in a run with no entities, it is gone. */
@@ -470,10 +485,56 @@ static void game_items_tick(game_t *game) {
     entity_tick(entity, &game->borrowed_world->map);
     collision_box_t reach;
     player_pickup_reach(player, &reach);
-    (void)item_drop_pickup(&entity->item_drops, &reach, game_pickup_take, game);
+    /* A dead body takes nothing, or it would take back what it just spilled. */
+    if (!player_survival_holds_body(&player->survival)) {
+        (void)item_drop_pickup(&entity->item_drops, &reach, game_pickup_take, game);
+    }
     /* What was just picked up may be what the hand holds, and whoever looks before the next tick should see so. */
     if (game->borrowed_item != nullptr) {
         game_hand_from_hotbar(game);
+    }
+}
+
+/* A body that has died leaves what it carried where it lies, what was in its crafting grids too. Worn tools come back new, as with a
+ * chest's. With no inventory there is nothing to leave but the one-slot hand of a test, which it keeps. */
+static void game_death_spill(game_t *game) {
+    item_t *const item = game->borrowed_item;
+    if (item == nullptr) {
+        return;
+    }
+    const player_movement_t *const movement = &game->borrowed_player->movement;
+    const int32_t cell[3] = {(int32_t)floor(movement->position[0]), (int32_t)floor(movement->position[1]),
+                             (int32_t)floor(movement->position[2])};
+    for (uint32_t slot = 0u; slot < INVENTORY_SLOTS; slot++) {
+        const item_stack_t *const stack = inventory_slot_read(&item->inventory, slot);
+        if (!item_stack_is_empty(stack)) {
+            item_stack_t out = {.item = ITEM_ID_NONE, .wear = 0u, .count = 0u, ._pad0 = {0}};
+            (void)inventory_slot_move_out(&item->inventory, slot, &out, stack->count);
+            game_spill(game, &out, cell);
+        }
+    }
+    crafting_grid_t *const grids[2] = {&item->crafting_hands, &item->crafting_table};
+    for (uint32_t g = 0u; g < 2u; g++) {
+        for (uint32_t c = 0u; c < crafting_grid_cells(grids[g]); c++) {
+            item_stack_t *const stack = crafting_grid_cell(grids[g], c);
+            if (!item_stack_is_empty(stack)) {
+                game_spill(game, stack, cell);
+                memset(stack, 0, sizeof(*stack));
+            }
+        }
+        crafting_grid_changed(grids[g]);
+    }
+}
+
+/* One tick of what keeps the body going, and what that means for everything else. */
+static void game_survive_tick(game_t *game) {
+    player_t *const player = game->borrowed_player;
+    player_survive_tick(player, &game->borrowed_world->map);
+    if (player_survival_died_take(&player->survival)) {
+        game_death_spill(game);
+    }
+    if (player_survival_morning_take(&player->survival)) {
+        atomic_store_explicit(&game->morning_latch, 1u, memory_order_relaxed);
     }
 }
 
@@ -521,6 +582,9 @@ static void game_entities_publish(game_t *game) {
 static void game_sim_tick(game_t *game, int64_t tick_ns) {
     arena_reset(&game->arena_tick);
     if (game->borrowed_player != nullptr) {
+        player_survival_day_set(&game->borrowed_player->survival,
+                                (float64_t)atomic_load_explicit(&game->day_units, memory_order_relaxed) /
+                                    4294967296.0f64);
         /* First, so that the body and its next aim both meet the world as the hands leave it. */
         game_interact_tick(game, tick_ns);
         if (game->borrowed_item != nullptr) {
@@ -530,6 +594,7 @@ static void game_sim_tick(game_t *game, int64_t tick_ns) {
             game_items_tick(game);
         }
         player_tick(game->borrowed_player, &game->borrowed_world->map, tick_ns);
+        game_survive_tick(game);
     }
     world_tick_step(&game->borrowed_world->tick);
     game_entities_publish(game);
@@ -877,6 +942,13 @@ void game_report(game_t *game) {
         LOG_INFO("game: the player is at %.3f, %.3f, %.3f after %" PRIu64 " ticks",
                  (libc_double_t)movement->position[0], (libc_double_t)movement->position[1],
                  (libc_double_t)movement->position[2], game->borrowed_player->tick_count);
+        const player_survival_t *const survival = &game->borrowed_player->survival;
+        LOG_INFO("game: the player has %.1f health, %" PRIu32 " food and %.1f saturation; hurt %" PRIu64
+                 " times, died %" PRIu64 ", came back %" PRIu64 ", ate %" PRIu64 " and slept through %" PRIu64
+                 " nights",
+                 (libc_double_t)survival->health, (uint32_t)survival->food, (libc_double_t)survival->saturation,
+                 survival->hurt_count, survival->died_count, survival->respawned_count, survival->eaten_count,
+                 survival->slept_count);
         const player_interaction_t *const hands = &game->borrowed_player->interaction;
         LOG_INFO("game: the player mined %" PRIu64 " blocks and placed %" PRIu64
                  "; the last mined was %s, and the hand "

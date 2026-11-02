@@ -30,8 +30,8 @@ A column's blocks are `terrain_generate_box`, on a worker, over all of the colum
 
 | Thread | Does | Tells the others through |
 |---|---|---|
-| `main` | Input, moves the eye, keeps the time of day, shows the newest picture | A triple buffer of cameras to `gpu`; a relaxed atomic, the time, to `gpu`; two relaxed atomics, the eye's chunk, to `sim` |
-| `sim` | Columns to and from workers, into the map, their light and every edit's, then a snapshot. A tick at 20 Hz, which moves the player if there is one and runs `world/tick` | The snapshots of `world/edit` to `gpu`; each tick's eye to `main`, through `player` |
+| `main` | Input, moves the eye, keeps the time of day, shows the newest picture | A triple buffer of cameras to `gpu`; a relaxed atomic, the time, to `gpu` and `sim`; two relaxed atomics, the eye's chunk, to `sim` |
+| `sim` | Columns to and from workers, into the map, their light and every edit's, then a snapshot. A tick at 20 Hz, which moves the player if there is one and runs `world/tick` | The snapshots of `world/edit` to `gpu`; each tick's eye and the body's health to `main`, through `player`; a relaxed atomic, that a night has been slept through, to `main` |
 | `gpu` | The upload queue, then the frame's kernels | A triple buffer of pictures to `main` |
 
 None of them ever waits for another, as the plan wants: a slow tick cannot stall a frame, and a slow frame cannot stall input.
@@ -53,6 +53,7 @@ With `game_player_set`, as `--walk` does, the eye stops flying and follows a bod
 - Each tick the hands act first, on what the last tick aimed at, then the body moves: the left button mines and the right places, all on `sim`, through `world/edit`, so that light, the renderer and `world/tick` see them as any other edit. See `run/src/player/interaction/README.md`.
 - With `game_entity_set`, as `--walk` also does, what the hands break, and what `world_tick_broken_next` says went by itself, goes through the player's ring into `run/src/entity/` on that same tick, before the body moves. Then everything there moves, and the body picks up what it now reaches. `game` joins the two, so that `entity` knows nothing of a player. See `run/src/entity/item_drop/README.md`.
 - With `game_item_set`, as `--walk` also does, what the body picks up goes into `run/src/item/`, and `game` joins that to the hands too: before each tick the hand is set to the hotbar slot chosen, and what the tick placed comes off that slot. So neither knows of the other. The inventory opens and closes with the world, and nothing is saved. Each tick after the hands, `item_world_tick` gives chests and furnaces their slots, burns furnaces, and throws out what a broken one held, through `game_spill`.
+- With a player, `game` is also what joins `run/src/player/survival/` to everything else. Before each tick it tells it the time of day and what food is in hand, and what it ate comes off that slot, a stew leaving its bowl. After each tick, one that has died has all it carried and what is in its crafting grids thrown out through `game_spill`, and picks nothing up until it is back. A night slept through sets `morning_latch`, which main turns into `game_day_set` in `game_day_advance`.
 - A world whose render distance is past `game_config_t.full_detail` draws the rest as coarse grids, in `run/src/render/lod/`. The map and the sim never hear of it: the map loads only what is drawn block by block, and the gpu thread, or `game_settle` with no threads, keeps the grids up with the eye.
 - Without a player everything flies as before, so the golden pictures of `tests/run/render/frame/` stay as they were.
 
