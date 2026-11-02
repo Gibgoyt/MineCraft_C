@@ -389,12 +389,8 @@ void game_fly(game_t *game, const render_fly_input_t *input, float32_t seconds) 
 }
 
 void game_walk_send(game_t *game, const render_fly_input_t *input, bool jump, bool sneak, int64_t now_ns) {
-    /* No keys and no time: all this moves is where it looks. */
-    render_fly_input_t look;
-    memset(&look, 0, sizeof(look));
-    look.mouse_dx = input->mouse_dx;
-    look.mouse_dy = input->mouse_dy;
-    render_camera_fly(&game->camera, &look, 0.0f32);
+    player_camera_look(&game->camera, input->mouse_dx, input->mouse_dy);
+    player_look_send(game->borrowed_player, game->camera.yaw, game->camera.pitch);
     const player_intent_t intent = {.yaw = game->camera.yaw,
                                     .forward = input->forward,
                                     .right = input->right,
@@ -409,6 +405,13 @@ void game_walk_send(game_t *game, const render_fly_input_t *input, bool jump, bo
 static void game_walk_view(game_t *game, int64_t now_ns) {
     player_eye_at(game->borrowed_player, now_ns, game->camera.position);
     game_center_on_eye(game);
+}
+
+/* The block aimed at, on a picture just put in target, which camera drew. Without a player nothing is aimed at. */
+static void game_outline_draw(const game_t *game, const render_camera_t *camera, display_buffer_t *target) {
+    if (game->borrowed_player != nullptr) {
+        player_camera_outline_draw(camera, player_target_view(game->borrowed_player), target);
+    }
 }
 
 /* ---- A run on one thread ------------------------------------------------------------------------------------------ */
@@ -518,6 +521,7 @@ static bool game_scene_draw(void *context, const display_headless_tick_t *tick, 
     const uint8_t *const picture = render_frame_take(&render->frame);
     ASSERT_ALWAYS(picture != nullptr);
     render_frame_present(&render->frame, picture, frame);
+    game_outline_draw(game, &game->camera, frame);
     return true;
 }
 
@@ -564,6 +568,8 @@ static void game_gpu_thread(void *borrowed_argument) {
             return;
         }
         game_day_apply(game);
+        /* In the slot this picture is going into, for the outline. The publish in the draw hands main both. */
+        game->picture_cameras[render->frame.pictures.back] = *camera;
         status = render_frame_draw(&render->frame, &render->buffers, camera);
         if (status != GPU_STATUS_OK) {
             gpu_error_log(&render->frame.gpu.last_error);
@@ -609,10 +615,14 @@ bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t se
     render_exchange_publish(&game->cameras);
     render_frame_t *const frame = &game->borrowed_render->frame;
     const uint8_t *const picture = render_frame_take(frame);
-    game->borrowed_last_picture = picture != nullptr ? picture : game->borrowed_last_picture;
-    game->pictures_shown += picture != nullptr ? 1u : 0u;
+    if (picture != nullptr) {
+        game->borrowed_last_picture = picture;
+        game->shown_camera = game->picture_cameras[frame->pictures.front];
+        game->pictures_shown++;
+    }
     if (game->borrowed_last_picture != nullptr) {
         render_frame_present(frame, game->borrowed_last_picture, target);
+        game_outline_draw(game, &game->shown_camera, target);
     }
     return atomic_load_explicit(&game->failed, memory_order_acquire) == 0u;
 }

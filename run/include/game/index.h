@@ -97,8 +97,13 @@ typedef struct game_t {
     _Atomic uint32_t
         day_units;     /* 904: main to gpu: the same, in 1/2^32 of a day, relaxed: only the look depends on it */
     uint8_t _pad1[52]; /* 908 */
+    /* A line of its own from here: the gpu thread writes these, and main what is after them. */
+    render_camera_t picture_cameras[RENDER_EXCHANGE_SLOTS]; /* 960: what the picture in each slot was drawn from */
+    uint8_t _pad2[8];                                       /* 1080 */
+    render_camera_t shown_camera; /* 1088: main's: what borrowed_last_picture was drawn from */
+    uint8_t _pad3[24];            /* 1128 */
 } game_t;
-static_assert(sizeof(game_t) == 960);
+static_assert(sizeof(game_t) == 1152);
 static_assert(alignof(game_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(game_t, group) == 192);
 static_assert(offsetof(game_t, cameras) == 256);

@@ -46,6 +46,7 @@ With `game_player_set`, as `--walk` does, the eye stops flying and follows a bod
 - The body starts on the nearest dry land to the world's middle, found by looking at single columns in widening squares, and waits there for its column. Flying still starts over the middle, in or out of water.
 - The mouse turns the camera on `main` at once. The keys go to `sim`, and move the body on its next tick. `main` draws from where the last two ticks say, between them.
 - Under `--headless` it is the same code on one thread, with time counted in ticks. Each tick settles the world first, so that the body does not depend on how fast a worker was, and is drawn at the tick's end.
+- What it aims at is worked out on each tick, with the look `main` last sent. `main` draws its outline over each picture, through the camera that drew that picture, which the `gpu` thread leaves beside it in `picture_cameras`. See `run/src/player/camera/README.md`.
 - Without a player everything flies as before, so the golden pictures of `tests/run/render/frame/` stay as they were.
 
 ## The time of day

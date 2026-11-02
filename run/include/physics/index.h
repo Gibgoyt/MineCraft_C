@@ -5,6 +5,7 @@
 #include "arena/index.h"
 #include "heap/index.h"
 #include "physics/collision/index.h"
+#include "physics/raycast/index.h"
 #include "world/map/index.h"
 
 #include <stddef.h>
