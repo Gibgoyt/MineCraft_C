@@ -10,6 +10,7 @@
 #   tests/**/index.c         the ctest <path with / as _>, such as tests/run/world/section -> run_world_section.
 #                            Not under tests/harness, tests/fuzz, tests/soak or any fixtures/ directory
 #   tests/**/test.cmake      optional settings for the test next to it; see mc_add_test
+#   bench/**/index.c         the program bench_<path with / as _>, linked like a game test, built but not registered
 
 # Stage 01.1. gcc, not g++ or nvcc, performs the final link, and it does not know where cudart lives.
 if(NOT IS_DIRECTORY "${CMAKE_CUDA_COMPILER_TOOLKIT_LIBRARY_ROOT}/lib64")
@@ -101,6 +102,25 @@ foreach(mc_source IN LISTS mc_tool_sources)
     OUTPUT_NAME "${mc_name}" RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/tools")
 endforeach()
 
+# ---- Generated struct offsets ----------------------------------------------------------------------
+
+# What NASM may know the layout of, in the order the tool needs: a header's structs may use those of one before it. Stage
+# 04.3. Anything in asm/ that includes struct_offsets/index.inc compiles after this.
+set(mc_struct_offset_headers
+  "${CMAKE_SOURCE_DIR}/run/include/math/vec3/index.h"
+  "${CMAKE_SOURCE_DIR}/run/include/math/vec4/index.h"
+  "${CMAKE_SOURCE_DIR}/run/include/math/mat4/index.h")
+set(mc_struct_offset_outputs
+  "${MC_GENERATED_DIR}/struct_offsets/index.inc"
+  "${MC_GENERATED_DIR}/struct_offsets/index.h")
+add_custom_command(OUTPUT ${mc_struct_offset_outputs}
+  COMMAND mc_tool_struct_offsets "${MC_GENERATED_DIR}/struct_offsets" ${mc_struct_offset_headers}
+  DEPENDS mc_tool_struct_offsets ${mc_struct_offset_headers}
+  COMMENT "Generating struct offsets"
+  VERBATIM)
+add_custom_target(mc_struct_offsets DEPENDS ${mc_struct_offset_outputs})
+add_dependencies(mc_asm mc_struct_offsets)
+
 # ---- Tests -----------------------------------------------------------------------------------------
 
 set(mc_harness_objects)
@@ -163,4 +183,22 @@ foreach(mc_source IN LISTS mc_test_sources)
   if(NOT mc_source MATCHES "/tests/(harness|fuzz|soak)/" AND NOT mc_source MATCHES "/fixtures/")
     mc_add_test("${mc_source}")
   endif()
+endforeach()
+
+# tests/asm/vec_batch includes the generated index.h, to have the compiler confirm every offset.
+if(TARGET mc_test_asm_vec_batch)
+  add_dependencies(mc_test_asm_vec_batch mc_struct_offsets)
+endif()
+
+# ---- Benchmarks ------------------------------------------------------------------------------------
+
+file(GLOB_RECURSE mc_bench_sources CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/bench/*/index.c")
+foreach(mc_source IN LISTS mc_bench_sources)
+  cmake_path(GET mc_source PARENT_PATH mc_dir)
+  cmake_path(RELATIVE_PATH mc_dir BASE_DIRECTORY "${CMAKE_SOURCE_DIR}/bench" OUTPUT_VARIABLE mc_name)
+  string(REPLACE "/" "_" mc_name "${mc_name}")
+  add_executable(mc_bench_${mc_name} "${mc_source}" ${mc_game_objects_no_main})
+  target_include_directories(mc_bench_${mc_name} PRIVATE "${CMAKE_SOURCE_DIR}/run/include" "${MC_GENERATED_DIR}")
+  mc_link_game(mc_bench_${mc_name})
+  set_target_properties(mc_bench_${mc_name} PROPERTIES OUTPUT_NAME "bench_${mc_name}")
 endforeach()
