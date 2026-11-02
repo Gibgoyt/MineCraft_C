@@ -12,9 +12,9 @@
 - `player_interaction_tick`: one tick of both buttons.
 - `player_interaction_progress`: how far along the block being mined is, for Stage 09.5's breaking overlay.
 - `player_interaction_drops_spawn`, `player_interaction_drop_next`: rolls a block's table into the ring; takes the oldest out of it.
-- `player_interaction_hand_give`, `player_interaction_drops_to_hand`: the one slot, until there is an inventory.
+- `player_interaction_hand_give`, `player_interaction_hand_take`: the one slot, until there is an inventory.
 
-**May be called by:** `run/src/player/`. Stage 12.4 takes the drops from `player_interaction_drop_next`, and Stage 13.3 calls `player_interaction_hold_tool`.
+**May be called by:** `run/src/player/`. `run/src/game/` takes the drops from `player_interaction_drop_next` and gives what is picked up to `player_interaction_hand_take`, and Stage 13.3 calls `player_interaction_hold_tool`.
 **Depends on:** `world/edit`, `world/map`, `physics/collision`, `physics/raycast`, `player/camera` and `player/movement` for their types, and the generated `tables/blocks`.
 
 ## Mining
@@ -58,7 +58,7 @@ It does nothing, and costs nothing, when:
 
 ## The hand is a stand-in
 
-There is no item in the world until Stage 12.4 and no inventory until Stage 13.1, but what is mined has to be placed back. So `player_interact_tick` hands every drop straight to one slot of up to 64 blocks. A different block takes the slot's place, and a drop that is no block, like coal, is gone and counted in `drops_unheld_count`. When those stages land, the one call to `player_interaction_drops_to_hand` is what they replace.
+There is no inventory until Stage 13.1, but what is mined has to be placed back. So what `run/src/entity/item_drop/` picks up from the ground goes through `player_interaction_hand_take` to one slot of up to 64 blocks. An item that is no block, like coal, or another block than the slot holds, is not taken, so it stays on the ground and the slot loses nothing. `player_interaction_hand_give` is the slot itself, and it does replace a different block. When Stage 13.1 lands, `player_interaction_hand_take` is what it replaces.
 
 ## What is left for others
 

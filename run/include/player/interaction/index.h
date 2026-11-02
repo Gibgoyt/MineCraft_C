@@ -42,7 +42,7 @@ typedef struct player_interaction_t {
     uint64_t drops_lost_count;                     /* 1048: pushed out of a full ring before anyone took them */
     uint64_t no_memory_count;                      /* 1056: edits the section pool refused */
     uint64_t progress;                             /* 1064: on the block being mined, in the units of a tick's work */
-    uint64_t drops_unheld_count;                   /* 1072: drops that are no block, so no hand can hold them yet */
+    uint64_t picked_up_count;                      /* 1072: items that have come into the hand from the ground */
     int32_t cell[COLLISION_AXES];                  /* 1080: what is being mined */
     uint32_t drop_head;                            /* 1092: the oldest in the ring */
     uint32_t drop_count;                           /* 1096 */
@@ -103,8 +103,8 @@ bool player_interaction_drop_next(player_interaction_t *interaction, player_drop
 /* In the hand, up to PLAYER_INTERACTION_HAND_MAX. A different block takes the place of what is there, as there is one slot. */
 void player_interaction_hand_give(player_interaction_t *interaction, uint16_t block, uint32_t count);
 
-/* Every drop waiting goes straight to the hand, or is gone if it is no block. What stands in for Stage 12.4's pickup and Stage 13.1's
- * inventory, so that what was mined can be placed back. */
-void player_interaction_drops_to_hand(player_interaction_t *interaction);
+/* What a picked up item goes into, until Stage 13.1's inventory: how many of count fit in the hand, which are now in it. None if the
+ * item is no block, or the hand holds a different one, so that what it has is not lost and the item stays on the ground. */
+uint32_t player_interaction_hand_take(player_interaction_t *interaction, uint16_t item, uint32_t count);
 
 #endif

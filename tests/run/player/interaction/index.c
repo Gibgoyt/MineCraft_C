@@ -26,6 +26,15 @@
 #include <string.h>
 #include <unistd.h>
 
+/* What run/src/game/ and run/src/entity/item_drop/ do between a block breaking and the hand, with neither the wait nor the fall, as what
+ * these tests look at is the hands. tests/run/entity/item_drop/ tests the rest. */
+static void pi_drops_to_hand(player_interaction_t *hands) {
+    player_drop_t drop;
+    while (player_interaction_drop_next(hands, &drop)) {
+        (void)player_interaction_hand_take(hands, drop.item, drop.count);
+    }
+}
+
 /* ---- A body, a target by hand, and the buttons ---------------------------------------------------------------------- */
 
 enum : uint32_t {
@@ -659,17 +668,28 @@ TEST(the_hand_is_one_slot_and_only_blocks_go_in_it) {
     player_interaction_hand_give(hands, BLOCK_ID_STONE, 2u);
     CHECK_EQ_U64(hands->hand_block, BLOCK_ID_STONE);
     CHECK_EQ_U64(hands->hand_count, 2u);
-    /* Coal is no block, so the hand keeps what it has. */
+    /* Coal is no block, so the hand keeps what it has and takes none of it. */
     player_interaction_drops_spawn(hands, BLOCK_ID_COAL_ORE, 0, 0, 0);
-    player_interaction_drops_to_hand(hands);
+    player_drop_t drop;
+    REQUIRE(player_interaction_drop_next(hands, &drop));
+    CHECK_EQ_U64(player_interaction_hand_take(hands, drop.item, drop.count), 0u);
     CHECK_EQ_U64(hands->hand_block, BLOCK_ID_STONE);
     CHECK_EQ_U64(hands->hand_count, 2u);
-    CHECK_EQ_U64(hands->drops_unheld_count, 1u);
-    /* Dirt from grass goes in, as dirt. */
+    /* Dirt from grass is another block than what it holds: taking it would lose the stone, so it does not. */
     player_interaction_drops_spawn(hands, BLOCK_ID_GRASS_BLOCK, 0, 0, 0);
-    player_interaction_drops_to_hand(hands);
+    REQUIRE(player_interaction_drop_next(hands, &drop));
+    CHECK_EQ_U64(player_interaction_hand_take(hands, drop.item, drop.count), 0u);
+    CHECK_EQ_U64(hands->hand_block, BLOCK_ID_STONE);
+    CHECK_EQ_U64(hands->picked_up_count, 0u);
+    /* With the hand empty it goes in, as dirt, and past 64 it takes what fits. */
+    hands->hand_count = 0u;
+    CHECK_EQ_U64(player_interaction_hand_take(hands, drop.item, 1u), 1u);
     CHECK_EQ_U64(hands->hand_block, BLOCK_ID_DIRT);
     CHECK_EQ_U64(hands->hand_count, 1u);
+    CHECK_EQ_U64(player_interaction_hand_take(hands, drop.item, 64u), 63u);
+    CHECK_EQ_U64(hands->hand_count, PLAYER_INTERACTION_HAND_MAX);
+    CHECK_EQ_U64(hands->picked_up_count, 64u);
+    CHECK_EQ_U64(player_interaction_hand_take(hands, drop.item, 1u), 0u);
     CHECK_EQ_U64(hands->drop_count, 0u);
 }
 
@@ -969,7 +989,7 @@ TEST(mined_and_placed_blocks_go_on_the_books_for_everyone_who_reads_them) {
         CHECK_EQ_U64(dirty.section_mask, 1ull << column_section_of(5));
     }
     /* And placing it back is one more. */
-    player_interaction_drops_to_hand(&rig.hands);
+    pi_drops_to_hand(&rig.hands);
     pi_put(t, &rig, 3, 3, 4, BLOCK_ID_STONE);
     cursor = world_edit_log_position(edit);
     pi_aim(&rig, 3, 3, 4);
@@ -1017,6 +1037,7 @@ static void pi_player_tick(pi_player_rig_t *rig, int8_t forward, float32_t yaw, 
     player_look_send(rig->player, yaw, pitch);
     player_hands_send(rig->player, attack, place);
     player_interact_tick(rig->player, &rig->world.world->edit, rig->now_ns);
+    pi_drops_to_hand(&rig->player->interaction);
     player_tick(rig->player, rig->world.map, rig->now_ns);
 }
 
@@ -1153,8 +1174,9 @@ typedef struct pi_game_rig_t {
     thread_topology_t *topology; /* 56 */
     physics_t *physics;          /* 64 */
     player_t *player;            /* 72 */
+    entity_t *entity;            /* 80 */
 } pi_game_rig_t;
-static_assert(sizeof(pi_game_rig_t) == 80);
+static_assert(sizeof(pi_game_rig_t) == 88);
 
 static bool pi_game_begin(test_context_t *t, pi_game_rig_t *rig) {
     rig->bridge = test_world_aligned(t, sizeof(gpu_bridge_t));
@@ -1166,17 +1188,20 @@ static bool pi_game_begin(test_context_t *t, pi_game_rig_t *rig) {
     rig->game = test_world_aligned(t, sizeof(game_t));
     rig->physics = test_world_aligned(t, sizeof(physics_t));
     rig->player = test_world_aligned(t, sizeof(player_t));
+    rig->entity = test_world_aligned(t, sizeof(entity_t));
     rig->topology = test_alloc(t, sizeof(thread_topology_t));
     if (!CHECK_EQ_U64(gpu_bridge_init(rig->bridge, gpu_bridge_limits_default()), GPU_STATUS_OK) ||
         !CHECK(thread_topology_read(rig->topology)) || !CHECK(job_init(rig->job, rig->topology)) ||
         !CHECK(texture_init(rig->texture)) || !CHECK(world_init(rig->world, world_limits_default())) ||
         !CHECK(terrain_init(rig->terrain, TERRAIN_SEED_DEFAULT)) || !CHECK(physics_init(rig->physics)) ||
+        !CHECK(entity_init(rig->entity, rig->physics)) ||
         !CHECK(render_init(rig->render, &rig->bridge->device_memory, rig->job, render_limits_default()))) {
         return false;
     }
     player_init(rig->player, rig->physics);
     game_init(rig->game, rig->world, rig->terrain, rig->render, rig->job, rig->texture, rig->topology);
     game_player_set(rig->game, rig->player);
+    game_entity_set(rig->game, rig->entity);
     return true;
 }
 
@@ -1184,6 +1209,7 @@ static void pi_game_end(test_context_t *t, pi_game_rig_t *rig) {
     game_deinit(rig->game);
     render_deinit(rig->render);
     CHECK(gpu_bridge_exit_check(rig->bridge));
+    entity_deinit(rig->entity);
     player_deinit(rig->player);
     physics_deinit(rig->physics);
     terrain_deinit(rig->terrain);
