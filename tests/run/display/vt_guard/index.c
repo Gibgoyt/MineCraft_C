@@ -74,7 +74,7 @@ typedef struct rig_t {
     uint8_t empty_scans; /* and before that, comes back with nothing this many times */
     uint8_t _pad0[5];
 } rig_t;
-static_assert(sizeof(rig_t) == 32 + 304 + 232 + 112 + 24 + 16 * RIG_MAX_RECORDS + 64);
+static_assert(sizeof(rig_t) == 32 + 304 + 248 + 112 + 24 + 16 * RIG_MAX_RECORDS + 64);
 
 static void rig_report(rig_t *rig, uint64_t request, uint32_t value) {
     const rig_record_t record = {.request = request, .value = value, .pid = getpid()};

@@ -192,7 +192,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | `display` | `device mode flip` | Raw-ioctl KMS: card, connector, mode, dumb buffers, page flip | 05.1 |
 | | `vt_guard` | Console takeover; always restores, even on a crash | 05.2 |
 | | `headless` | No-display backend, PNG screenshots for tests | 05.4 |
-| `input` | `device keyboard mouse` | evdev discovery, raw events, hot-plug | 05.3 |
+| `input` | `ops discovery events` | evdev discovery by capability, raw keyboard and mouse events, hot-plug | 05.3 |
 
 ### Rendering (CPU side)
 
@@ -365,6 +365,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/math/` | ctest `run_math_owner` for `run/src/math/` itself, named in its `test.cmake`, and `run_math_<part>` for each part |
 | `tests/run/display/mode/` | ctest `run_display_mode`, covering `run/src/display/` with `device`, `mode` and `flip`, on `fixtures/fake_card.h`, a fake kernel behind `display_ops_t` |
 | `tests/run/display/vt_guard/` | ctest `run_display_vt_guard`, in forked children that really die, over a fake kernel reporting down a pipe and keys fed down another. Shares `../mode/fixtures/fake_card.h` |
+| `tests/run/input/` | ctest `run_input`, covering `run/src/input/` with `ops`, `discovery` and `events`, on replay data, this machine's capability bitmaps copied from `/proc/bus/input/devices` and the fake kernel in `fixtures/`, never on a real device |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
 | `tests/asm/` | NASM kernels against scalar C references |
 | `tests/asm/abi/` | ctest `asm_abi`: every kernel keeps the callee-saved registers and leaves no dirty YMM state, by machine state, not by output |

@@ -559,7 +559,7 @@ TEST(more_connectors_than_fit_do_not_overrun) {
 typedef struct fake_flip_session_t {
     fake_session_t session;
     display_flip_t flip;
-    uint8_t _pad0[24];
+    uint8_t _pad0[8];
 } fake_flip_session_t;
 static_assert(sizeof(fake_flip_session_t) == 704);
 
@@ -1162,6 +1162,49 @@ TEST(the_test_pattern_runs_flips_gives_back_and_leaves_nothing) {
     /* A second deinit, as main's cleanup might, does nothing. */
     display_deinit(display);
     CHECK_EQ_U64(card->close_count, 1u);
+}
+
+typedef struct pattern_cursor_script_t {
+    uint32_t room_x;
+    uint32_t room_y;
+    uint32_t asked;
+    uint32_t stop_after;
+} pattern_cursor_script_t;
+static_assert(sizeof(pattern_cursor_script_t) == 16);
+
+static bool pattern_cursor_source(void *context, uint32_t room_x, uint32_t room_y, uint32_t *out_x, uint32_t *out_y,
+                                  bool *out_active) {
+    pattern_cursor_script_t *const script = context;
+    script->room_x = room_x;
+    script->room_y = room_y;
+    script->asked++;
+    *out_x = script->asked * 2u;
+    *out_y = script->asked;
+    *out_active = false;
+    return script->asked < script->stop_after;
+}
+
+TEST(the_test_pattern_asks_for_its_cursor_each_frame_and_its_source_can_end_it_cleanly) {
+    fake_card_t *const card = fake_card_new(t);
+    fake_card_use_small_mode(card);
+    display_config_t config = fake_config();
+    display_t *const display = test_alloc(t, sizeof(display_t));
+    REQUIRE(display_init(display, &config, &fake_ops, card) == DISPLAY_STATUS_OK);
+    pattern_cursor_script_t script = {.stop_after = 20u};
+    display_test_pattern_set_cursor(display, pattern_cursor_source, &script);
+    /* A long deadline, so that only the source can end it. */
+    CHECK_EQ_U64(display_test_pattern_run(display, time_now_ns(), 60000000000), DISPLAY_STATUS_OK);
+    CHECK_EQ_U64(script.asked, 20u);
+    CHECK_EQ_U64(card->flips, 19u); /* the last answer stopped it before a flip */
+    const display_buffer_t *const buffer = &display->flip.buffers[0];
+    const uint32_t side = display_flip_pattern_cursor_side(buffer);
+    CHECK_EQ_U64(script.room_x, buffer->width - side);
+    CHECK_EQ_U64(script.room_y, buffer->height - side);
+    CHECK_EQ_U64(display->flip.buffers[0].has_cursor, 1u);
+    CHECK_EQ_U64(display->flip.buffers[1].has_cursor, 1u);
+    check_given_back(t, card);
+    display_deinit(display);
+    check_nothing_left(t, card);
 }
 
 TEST(the_test_pattern_stops_at_its_deadline_counted_from_its_start) {

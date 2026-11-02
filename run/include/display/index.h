@@ -30,6 +30,12 @@ typedef struct display_config_t {
 } display_config_t;
 static_assert(sizeof(display_config_t) == 40);
 
+/* Where the test pattern's cursor square goes, asked once per frame by the loop while the console is dark: so it must not
+ * block or log. room_x and room_y are the most its corner can be. Returns false to end the run, cleanly. This is a function
+ * pointer because display does not include input: main joins the two. */
+typedef bool (*display_cursor_source_t)(void *context, uint32_t room_x, uint32_t room_y, uint32_t *out_x,
+                                        uint32_t *out_y, bool *out_active);
+
 /* The KMS backend. Zeroed means not running, so _deinit is safe whether or not _init ever ran. */
 typedef struct display_t {
     arena_t arena_setup; /* Process lifetime: what the parts ask for at _init */
@@ -38,12 +44,14 @@ typedef struct display_t {
     display_mode_t mode;
     display_flip_t flip;
     display_vt_guard_t guard;
+    display_cursor_source_t cursor_source; /* nullptr for a test pattern with no cursor */
+    void *borrowed_cursor_context;
     uint8_t refusal; /* display_refusal_t, when _init refused */
     uint8_t running;
     uint8_t crash_test; /* display_crash_test_t */
-    uint8_t _pad0[5];
+    uint8_t _pad0[37];
 } display_t;
-static_assert(sizeof(display_t) == 768);
+static_assert(sizeof(display_t) == 832);
 static_assert(alignof(display_t) == 64);
 
 void display_config_from_machine(display_config_t *out);
@@ -56,6 +64,9 @@ display_status_t display_init(display_t *display, const display_config_t *config
 
 /* Gives the display back if that is still owed, and releases everything. */
 void display_deinit(display_t *display);
+
+/* Gives the test pattern a cursor square. Call after display_init, which clears it. */
+void display_test_pattern_set_cursor(display_t *display, display_cursor_source_t source, void *context);
 
 /* Runs the test pattern until started_ns + duration_ns or a stop signal, then gives the display back and logs what it
  * measured. Takes the display over, behind display/vt_guard, so VT switches work and a crash gives the console back: run
