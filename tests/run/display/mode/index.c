@@ -559,7 +559,7 @@ TEST(more_connectors_than_fit_do_not_overrun) {
 typedef struct fake_flip_session_t {
     fake_session_t session;
     display_flip_t flip;
-    uint8_t _pad0[32];
+    uint8_t _pad0[24];
 } fake_flip_session_t;
 static_assert(sizeof(fake_flip_session_t) == 704);
 

@@ -27,19 +27,22 @@ typedef struct main_options_t {
     uint8_t report;        /* --report */
     uint8_t pretend_leak;  /* --pretend-leak */
     uint8_t test_pattern;  /* --test-pattern */
-    uint8_t _pad0[1];
+    uint8_t crash_test;    /* display_crash_test_t: --crash-test */
 } main_options_t;
 static_assert(sizeof(main_options_t) == 24);
 
 static void main_print_usage(const char *program) {
     fprintf(stderr,
             "usage: %s [--report] [--pretend-missing-cpu <cpu.simd key>] [--pretend-leak]\n"
-            "       %s --test-pattern [--card <path>] [--connector <name>]\n"
+            "       %s --test-pattern [--card <path>] [--connector <name>] [--crash-test[=<how>]]\n"
             "  --report                 print the build's defines and CPU features, then exit\n"
             "  --pretend-missing-cpu    treat this feature as absent, to see the CPU check fail; may repeat\n"
             "  --pretend-leak           skip the shutdown, to see the leak check at exit fail\n"
             "  --test-pattern           show a test pattern through KMS; only from a text console, never inside X\n"
-            "  --card, --connector      with --test-pattern: use these and not display: in config/machine.yaml\n",
+            "  --card, --connector      with --test-pattern: use these and not display: in config/machine.yaml\n"
+            "  --crash-test[=<how>]     with --test-pattern: die on purpose after 240 frames, to see the console come\n"
+            "                           back. <how> is segv (the default), abort, kill, or hang for the watchdog\n"
+            "  While the display is taken, Ctrl+Alt+Backspace is the emergency exit\n",
             program, program);
 }
 
@@ -52,6 +55,14 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
             out->pretend_leak = 1;
         } else if (strcmp(argv[i], "--test-pattern") == 0) {
             out->test_pattern = 1;
+        } else if (strncmp(argv[i], "--crash-test", 12u) == 0 && (argv[i][12] == '\0' || argv[i][12] == '=')) {
+            const char *const how_name = argv[i][12] == '=' ? argv[i] + 13 : "";
+            const display_crash_test_t how = display_vt_guard_crash_test_from_name(how_name);
+            if (how == DISPLAY_CRASH_TEST_NONE) {
+                fprintf(stderr, "%s: --crash-test takes segv, abort, kill or hang, not '%s'\n", argv[0], how_name);
+                return false;
+            }
+            out->crash_test = (uint8_t)how;
         } else if (strcmp(argv[i], "--card") == 0 && i + 1 < argc) {
             i++;
             out->card = argv[i];
@@ -73,6 +84,10 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
     }
     if ((out->card != nullptr || out->connector != nullptr) && out->test_pattern == 0) {
         fprintf(stderr, "%s: --card and --connector only mean something with --test-pattern\n", argv[0]);
+        return false;
+    }
+    if (out->crash_test != DISPLAY_CRASH_TEST_NONE && out->test_pattern == 0) {
+        fprintf(stderr, "%s: --crash-test only means something with --test-pattern\n", argv[0]);
         return false;
     }
     return true;
@@ -171,6 +186,7 @@ static main_exit_t main_run_test_pattern(app_t *app, const main_options_t *optio
     config.card_path = options->card != nullptr ? options->card : config.card_path;
     config.connector_name = options->connector != nullptr ? options->connector : config.connector_name;
     config.console_fd = STDIN_FILENO;
+    config.crash_test = (display_crash_test_t)options->crash_test;
     const display_status_t status = display_init(&app->display, &config, display_device_real_ops(), nullptr);
     if (status != DISPLAY_STATUS_OK) {
         return main_exit_from_display(status);

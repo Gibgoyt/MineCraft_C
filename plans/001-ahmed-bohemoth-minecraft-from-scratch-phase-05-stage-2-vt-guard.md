@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 5, stage 2: VT guard
 
-**Status:** not started   (updated 2026-11-01)
+**Status:** in progress: written and passing against a fake kernel, never run on a real console; awaits Ahmed's run below   (updated 2026-11-02)
 
 ## Goal
 
@@ -16,11 +16,11 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 ## Todo
 
-- [ ] Implement KD_GRAPHICS, K_OFF and VT_PROCESS switching in `run/src/display/vt_guard/index.c`
-- [ ] Restore the console on normal exit, crash signals and watchdog expiry
-- [ ] Add the emergency key combo
-- [ ] Add a `--crash-test` mode that deliberately crashes
-- [ ] Add a `README.md` (purpose, tier, what it owns, public functions, what may call it) to every new source directory, with exactly one `index.*` in each
+- [ ] Implement KD_GRAPHICS, K_OFF and VT_PROCESS switching in `run/src/display/vt_guard/index.c` (written; passes against the fake kernel; a real VT switch is Ahmed's run)
+- [ ] Restore the console on normal exit, crash signals and watchdog expiry (written; every path passes against the fake kernel, with real signals, in children that really die; a real console coming back is Ahmed's run)
+- [ ] Add the emergency key combo: Ctrl+Alt+Backspace (written; passes with key events fed down a pipe; a real keyboard is Ahmed's run)
+- [x] Add a `--crash-test` mode that deliberately crashes: `--crash-test[=segv|abort|kill|hang]`, tested through the display's own loop on the fake card
+- [x] Add a `README.md` (purpose, tier, what it owns, public functions, what may call it) to every new source directory, with exactly one `index.*` in each
 
 ## Verification
 

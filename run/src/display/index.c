@@ -14,6 +14,7 @@
 enum : uint64_t {
     DISPLAY_SETUP_BYTES = HEAP_REGION_ALIGNMENT,
     DISPLAY_VT_CHECK_FRAMES = 120u,
+    DISPLAY_CRASH_TEST_FRAMES = 240u, /* two seconds at 120 Hz: long enough to see that it was showing */
 };
 enum : int32_t {
     DISPLAY_POLL_MS = 100,
@@ -68,6 +69,9 @@ display_status_t display_init(display_t *display, const display_config_t *config
     if (status != DISPLAY_STATUS_OK) {
         goto cleanup_mode;
     }
+    /* Takes nothing yet: display_test_pattern_run takes the console, behind it. */
+    display_vt_guard_init(&display->guard, &display->device, &display->flip, &display->arena_setup);
+    display->crash_test = (uint8_t)config->crash_test;
     display->running = 1u;
     return DISPLAY_STATUS_OK;
 
@@ -85,6 +89,7 @@ void display_deinit(display_t *display) {
     if (display->running == 0u) {
         return;
     }
+    display_vt_guard_deinit(&display->guard);
     display_flip_deinit(&display->flip);
     display_mode_deinit(&display->mode);
     display_device_deinit(&display->device);
@@ -150,13 +155,25 @@ static bool display_flip_once(display_flip_t *flip, uint64_t frame) {
 /* Nothing here logs: the console shows nothing until the restore, so everything is told afterwards. */
 static void display_test_pattern_loop(display_t *display, int64_t started_ns, int64_t duration_ns) {
     display_flip_t *const flip = &display->flip;
+    display_vt_guard_t *const guard = &display->guard;
     uint64_t frame = 0;
     while (atomic_load_explicit(&display_stop_signal, memory_order_relaxed) == 0 &&
            time_now_ns() - started_ns < duration_ns) {
+        display_vt_guard_pet(guard);
+        const display_vt_guard_state_t state = display_vt_guard_service(guard);
+        if (state == DISPLAY_VT_GUARD_FAILED) {
+            return;
+        }
+        if (state == DISPLAY_VT_GUARD_AWAY) {
+            continue; /* it has paused; the deadline and the stop signals still count */
+        }
         if (!display_flip_once(flip, frame)) {
             return;
         }
         frame++;
+        if (frame == DISPLAY_CRASH_TEST_FRAMES) {
+            display_vt_guard_crash_now((display_crash_test_t)display->crash_test);
+        }
         if (frame % DISPLAY_VT_CHECK_FRAMES == 0u && !display_device_console_is_visible(&display->device)) {
             flip->failed_call = "the visible virtual console changed during the run";
             return;
@@ -182,16 +199,18 @@ static void display_test_pattern_report(const display_t *display) {
 
 display_status_t display_test_pattern_run(display_t *display, int64_t started_ns, int64_t duration_ns) {
     display_flip_t *const flip = &display->flip;
+    display_vt_guard_t *const guard = &display->guard;
     for (uint32_t i = 0; i < DISPLAY_FLIP_BUFFERS; i++) {
         display_flip_pattern_fill(&flip->buffers[i]);
+        display_vt_guard_draw_notice(&flip->buffers[i]);
     }
     display_signals_t signals;
     display_signals_install(&signals);
-    if (display_flip_take_over(flip)) {
+    if (display_vt_guard_take_console(guard)) {
         display_test_pattern_loop(display, started_ns, duration_ns);
     }
     display_flip_drain(flip);
-    const bool restored = display_flip_restore(flip);
+    const bool restored = display_vt_guard_give_back(guard);
     const int32_t stopped_by = atomic_load_explicit(&display_stop_signal, memory_order_relaxed);
     display_signals_restore(&signals);
 
@@ -200,6 +219,10 @@ display_status_t display_test_pattern_run(display_t *display, int64_t started_ns
     if (stopped_by != 0) {
         LOG_INFO("test pattern: stopped early by signal %" PRId32, stopped_by);
     }
+    if (guard->failed_call != nullptr) {
+        LOG_ERROR("test pattern: %s%s%s", guard->failed_call, guard->failed_errno != 0 ? ": " : "",
+                  guard->failed_errno != 0 ? strerror(guard->failed_errno) : "");
+    }
     if (flip->failed_call != nullptr) {
         LOG_ERROR("test pattern: %s%s%s", flip->failed_call, flip->failed_errno != 0 ? ": " : "",
                   flip->failed_errno != 0 ? strerror(flip->failed_errno) : "");
@@ -207,5 +230,6 @@ display_status_t display_test_pattern_run(display_t *display, int64_t started_ns
     if (!restored) {
         LOG_ERROR("test pattern: at least one ioctl failed while giving the display back");
     }
-    return flip->failed_call == nullptr && restored ? DISPLAY_STATUS_OK : DISPLAY_STATUS_ERROR;
+    const bool ok = flip->failed_call == nullptr && guard->failed_call == nullptr && restored;
+    return ok ? DISPLAY_STATUS_OK : DISPLAY_STATUS_ERROR;
 }

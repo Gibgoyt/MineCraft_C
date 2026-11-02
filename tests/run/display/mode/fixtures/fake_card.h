@@ -1,6 +1,6 @@
 /* The fake kernel behind display_ops_t, for ctest run_display_mode. See ../README.md. It answers as the DRM UAPI says the real
  * one does, down to the kernel copying modes only if all of them fit, and it records what was asked, so that a test can
- * check the order of the calls. Included once, by ../index.c. */
+ * check the order of the calls. Included once each, by ../index.c and ../../vt_guard/index.c. */
 #ifndef MC_TESTS_RUN_DISPLAY_MODE_FIXTURES_FAKE_CARD_H
 #define MC_TESTS_RUN_DISPLAY_MODE_FIXTURES_FAKE_CARD_H
 
@@ -87,6 +87,9 @@ typedef struct fake_card_t {
     uint32_t grow_connector_after; /* one more mode appears after the count call, this many times */
     uint32_t sigterm_after_flips;
     uint32_t vt_change_after_flips;
+    uint32_t vt_release_after_flips; /* the kernel asks us to release the VT, and brings us straight back */
+    uint8_t vt_release_pending;
+    uint8_t _pad1[3];
     uint8_t no_dumb;
     uint8_t monotonic;
     uint8_t no_flip_events;
@@ -94,7 +97,7 @@ typedef struct fake_card_t {
     uint8_t has_saved_fb;
     uint8_t _pad0[3];
 } fake_card_t;
-static_assert(sizeof(fake_card_t) == 64 + 640 + 16384 + 16 + 4096 + 104);
+static_assert(sizeof(fake_card_t) == 64 + 640 + 16384 + 16 + 4096 + 112);
 
 static void fake_record(fake_card_t *card, uint64_t request, uint32_t value, uint32_t count) {
     if (card->call_count < FAKE_MAX_CALLS) {
@@ -274,6 +277,24 @@ static int32_t fake_page_flip(fake_card_t *card, const struct drm_mode_crtc_page
     if (card->vt_change_after_flips != 0u && card->flips == card->vt_change_after_flips) {
         card->active_vt = card->console_minor + 1u;
     }
+    if (card->vt_release_after_flips != 0u && card->flips == card->vt_release_after_flips) {
+        card->vt_release_pending = 1u;
+        raise(SIGUSR1);
+    }
+    return 0;
+}
+
+/* As the kernel's vt_reldisp does, with the switch back on its heels. */
+static int32_t fake_reldisp(fake_card_t *card, uintptr_t answer) {
+    fake_record(card, VT_RELDISP, (uint32_t)answer, 0u);
+    if (answer == VT_ACKACQ) {
+        return 0;
+    }
+    if (card->vt_release_pending == 0u) {
+        return -EINVAL;
+    }
+    card->vt_release_pending = 0u;
+    raise(SIGUSR2);
     return 0;
 }
 
@@ -289,6 +310,20 @@ static int32_t fake_console_ioctl(fake_card_t *card, uint64_t request, void *arg
         card->kd_mode = (int32_t)(uintptr_t)argument;
         fake_record(card, request, (uint32_t)(uintptr_t)argument, 0u);
         return 0;
+    case KDGKBMODE:
+        *(int32_t *)argument = K_UNICODE;
+        return 0;
+    case KDSKBMODE:
+        fake_record(card, request, (uint32_t)(uintptr_t)argument, 0u);
+        return 0;
+    case VT_GETMODE:
+        memset(argument, 0, sizeof(struct vt_mode));
+        return 0;
+    case VT_SETMODE:
+        fake_record(card, request, (uint32_t)((const struct vt_mode *)argument)->mode, 0u);
+        return 0;
+    case VT_RELDISP:
+        return fake_reldisp(card, (uintptr_t)argument);
     default:
         return -ENOTTY;
     }
@@ -385,6 +420,19 @@ static int32_t fake_ioctl_call(void *context, int32_t fd, uint64_t request, void
     return fd == FAKE_CARD_FD ? fake_card_ioctl(card, request, argument) : -EBADF;
 }
 
+/* No keyboard here: the fake kernel has none, and tests/run/display/vt_guard/ feeds keys down its own pipes. */
+static uint32_t fake_open_keyboards(void *context, int32_t *out_fds, uint32_t capacity) {
+    (void)context;
+    (void)out_fds;
+    (void)capacity;
+    return 0u;
+}
+
+static void fake_pause_ms(void *context, int32_t milliseconds) {
+    (void)context;
+    (void)milliseconds;
+}
+
 static const display_ops_t fake_ops = {
     .open_card = fake_open_card,
     .close_fd = fake_close_fd,
@@ -395,6 +443,8 @@ static const display_ops_t fake_ops = {
     .read_fd = fake_read_fd,
     .char_device = fake_char_device,
     .get_env = fake_get_env,
+    .open_keyboards = fake_open_keyboards,
+    .pause_ms = fake_pause_ms,
 };
 
 /* A text console on tty3, with one 1080p120 monitor on CRTC 0, ready to be taken. */
