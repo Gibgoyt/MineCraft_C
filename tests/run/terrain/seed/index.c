@@ -642,7 +642,8 @@ TEST(a_field_does_not_depend_on_what_was_added_before_it) {
     CHECK(terrain_noise_bank_add(&second.noise_bank, "test/before", &SEED_SHAPE_SOLID, &ignored));
     CHECK(terrain_noise_bank_add(&second.noise_bank, "test/flat", &SEED_SHAPE_FLAT, &crowded));
     CHECK_MEM_EQ(alone->octaves, crowded->octaves, sizeof(alone->octaves));
-    CHECK_EQ_U64(second.noise_bank.count, TERRAIN_CLIMATE_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS + 2u);
+    CHECK_EQ_U64(second.noise_bank.count,
+                 TERRAIN_CLIMATE_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS + TERRAIN_CAVE_NOISE_FIELDS + 2u);
     terrain_deinit(&second);
     terrain_deinit(&first);
 }
@@ -674,7 +675,8 @@ TEST(a_bank_refuses_what_is_wrong) {
     }
     /* What terrain_init added for itself is already there. */
     const uint32_t count_at_start = bank->count;
-    CHECK_EQ_U64(count_at_start, TERRAIN_CLIMATE_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS);
+    CHECK_EQ_U64(count_at_start,
+                 TERRAIN_CLIMATE_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS + TERRAIN_CAVE_NOISE_FIELDS);
 
     CHECK(terrain_noise_bank_add(bank, "test/same", &SEED_SHAPE_SOLID, &field));
     CHECK(field != nullptr);
