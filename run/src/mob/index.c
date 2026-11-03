@@ -6,7 +6,8 @@
 enum : uint64_t {
     MOB_REGION_BYTES = 4ull << 20,
 };
-static_assert((uint64_t)MOB_PATH_BYTES + (uint64_t)MOB_ZOMBIE_BYTES + (uint64_t)MOB_SKELETON_BYTES + (uint64_t)MOB_CREEPER_BYTES <=
+static_assert((uint64_t)MOB_PATH_BYTES + (uint64_t)MOB_ZOMBIE_BYTES + (uint64_t)MOB_SKELETON_BYTES +
+                  (uint64_t)MOB_CREEPER_BYTES <=
               (uint64_t)MOB_REGION_BYTES);
 
 bool mob_init(mob_t *mob, job_system_t *job) {

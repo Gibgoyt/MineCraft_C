@@ -299,6 +299,12 @@ TEST(the_field_of_view_scale_effects_and_mouse_all_take_at_once_in_an_open_world
     heap_counters_read(&after);
     CHECK_EQ_U64(after.reserve_calls, before.reserve_calls);
     CHECK_NEAR(game->camera.half_fov_tangent, 1.19175f32, 0.0001f32);
+    /* What a pause shows comes to it with nothing else changing: this is all a pause on one thread draws. */
+    CHECK_EQ_U64(game->view_stale, 1u);
+    REQUIRE(game_view_refresh(game));
+    CHECK_EQ_U64(game->view_stale, 0u);
+    REQUIRE(game->borrowed_last_picture != nullptr);
+    CHECK(pixels_different(game->borrowed_last_picture, first, pixels) > pixels / 10u);
     REQUIRE(game_rig_draw(rig));
     CHECK(pixels_different(rig->screen, first, pixels) > pixels / 10u);
     config.fov_degrees = 0u;
@@ -459,6 +465,7 @@ enum : int32_t {
     AT_PAUSE_SETTINGS_Y = 248,
     AT_PAUSE_TITLE_Y = 296,
     AT_ROW_0_Y = 68,
+    AT_ROW_2_Y = 164,
     AT_ROW_4_Y = 260,
     AT_DONE_Y = 452,
 };
@@ -628,6 +635,14 @@ TEST(render_distance_changes_through_the_screen_in_a_pause_with_the_real_threads
     SESSION_WAIT_FOR(game->borrowed_last_picture != picture_before);
     CHECK_EQ_U64(game->tick_count, ticks_paused);
     CHECK_EQ_I64((int64_t)rig->session.failed, 0);
+
+    /* The field of view needs no restart of the threads, and no one is publishing cameras in a pause: it shows behind the screen all the same. */
+    CHECK(game->shown_camera.half_fov_tangent == RENDER_CAMERA_HALF_FOV_TANGENT_DEFAULT);
+    session_move(t, rig, AT_MIDDLE_X, AT_ROW_2_Y);
+    session_send(rig->mouse, EV_REL, REL_WHEEL, 30);
+    SESSION_WAIT_FOR(game->shown_camera.half_fov_tangent > 1.19f32 && game->shown_camera.half_fov_tangent < 1.20f32);
+    CHECK_EQ_U64(settings->values.fov_degrees, 100u);
+    CHECK_EQ_U64(game->tick_count, ticks_paused);
 
     /* The render scale too, and pictures behind the screen all the while: what a pause shows does not go black, or away. */
     session_move(t, rig, AT_MIDDLE_X, AT_ROW_4_Y);

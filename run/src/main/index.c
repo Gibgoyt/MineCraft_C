@@ -124,7 +124,8 @@ static void main_print_usage(const char *program) {
           "                           from a text console, never inside X; with --headless, a script does all of that\n"
           "  --saves <dir>            with --menu: where worlds live. Default saves, under where it was started\n"
           "  --settings <file>        with --menu: where settings are kept. Default settings.yaml, under where it was\n"
-          "                           started. Flags that say the same go over it for the run\n",
+          "                           started. Flags that say the same go over it, held to its ranges, and are kept\n"
+          "                           with the rest if the Settings screen is left with Done\n",
           stderr);
 }
 
@@ -352,6 +353,8 @@ static void main_settings_read(app_t *app, const main_options_t *options) {
     values->full_detail = options->full_detail != 0u ? options->full_detail : values->full_detail;
     values->effects &= ~(uint32_t)options->features_off;
     values->effects |= options->god_rays != 0u ? (uint32_t)SHADE_FEATURE_GOD_RAYS : 0u;
+    /* A flag can say what the file cannot: a full detail too big for the card, or a distance no slider has. */
+    settings_persist_clamp(values);
 }
 
 /* The CPU check comes first: everything after it assumes these instructions exist. --report only prints, so it starts
