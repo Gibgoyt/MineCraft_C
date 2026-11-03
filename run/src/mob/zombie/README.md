@@ -53,4 +53,4 @@ Not published: `MOB_ZOMBIE_SIGHT_EVERY`, which saves rays while it chases, with 
 
 ## What this does not do
 
-It has no knockback, and nothing hurts it: both are Stage 15.7. It does not break doors, burn or call for help. Rows of `drops` do not depend on who killed it, though the rare ones do in the published game. Nothing draws it: see Stage 15.4's Issues.
+What hurts and pushes it is `run/src/mob/combat/`. Its blow does not push the player, though the published one does: a blow is only an amount here. It does not break doors, burn or call for help. Rows of `drops` do not depend on who killed it, though the rare ones do in the published game.

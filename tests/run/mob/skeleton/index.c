@@ -1165,12 +1165,13 @@ TEST(in_a_real_game_a_skeleton_shoots_the_player_and_leaves_its_drops) {
     CHECK_EQ_U64(rig.mob->skeleton.shot_count, 1u);
     REQUIRE(rig.entity->projectiles.count == 1u);
     CHECK_EQ_U64(rig.entity->item_drops.count, 0u);
+    /* The arrow, and the six parts of what shot it. */
     uint32_t drawn = 0u;
     for (uint32_t i = 0u; i < RENDER_EXCHANGE_SLOTS; i++) {
         const uint32_t count = rig.render->borrowed_entities->slots[i].count;
         drawn = count > drawn ? count : drawn;
     }
-    CHECK_EQ_U64(drawn, 1u);
+    CHECK_EQ_U64(drawn, 1u + MOB_SKELETON_PART_COUNT);
 
     const float32_t health = rig.player->survival.health;
     const uint64_t hurts = rig.player->survival.hurt_count;

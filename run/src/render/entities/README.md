@@ -8,7 +8,7 @@
 **Public functions** (`run/include/render/entities/index.h`):
 
 - `render_entities_init`, with `render_entities_arena_bytes` and `render_entities_lists_bytes` for what it takes. Sends the frame's own textures once.
-- `render_entities_begin`, `render_entities_add`, `render_entities_add_item_drop`, `render_entities_target_set`, `render_entities_publish`: one tick's snapshot.
+- `render_entities_begin`, `render_entities_add`, `render_entities_add_item_drop`, `render_entities_add_mob_part`, `render_entities_target_set`, `render_entities_publish`: one tick's snapshot.
 - `render_entities_crack_frame`: how far along mining is, as a frame of the crack.
 - `render_entities_pixels`: which pixels a box can touch on a camera.
 - `render_entities_frame`: the newest snapshot to this frame's lists, on the card, and the scene the kernels take.
@@ -29,3 +29,5 @@ A box past the fog is sky whatever it is: nothing is sent for it.
 **The crack is the same mark as the outline** because it is one thing a player sees and one setting. Its block is named by its cell, and shade looks for that cell among the surfaces it draws: through water or leaves it shows as it should.
 
 **The outline's numbers come from the sim's target,** which is at most a tick behind the aim. A picture carries the outline of whichever tick the gpu thread had last.
+
+**A mob is one box for each part of its body,** leaning by its pitch and with `skin_u`, `skin_v` and `skin_size` saying which share of the mob's skin is on it. `render_entities_init` puts each mob's skin in the frame's own table, and one with none draws in the colour that says so. What the corners of a leaning box reach is worked out in `entities_keep`, so that `render_entities_pixels` still takes a box turned by yaw alone.

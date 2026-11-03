@@ -40,6 +40,6 @@ The numbers are Minecraft's published ones, in blocks and ticks at 20 Hz. Speed,
 
 ## Not here yet
 
-- **It is not drawn.** See Stage 15.1's Issues: no stage in this phase gives a mob's boxes to `run/src/render/entities/`.
+- **It does not flash.** It is drawn as every mob is, by `run/src/game/`, and swells as its fuse runs. There is no white flash, and no particles or sound for a blast.
 - **Other kinds with no health left stay in the store** until their own stages, 15.4, 15.5 and 15.7, take them away: see the stage file's Issues.
 - **It does not run from cats, or turn on what hits it.** There are no cats, and being hit belongs to Stage 15.7.

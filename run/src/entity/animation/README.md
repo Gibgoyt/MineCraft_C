@@ -37,6 +37,6 @@
 - `aim`, from 0 to 1, takes an arm from whatever it was doing to straight out.
 - `swell`, from 0 to 1, grows every part by up to a fifth about its own middle, for a creeper about to burst.
 
-A pose's `half` and `pitch` are the part as it really is. **`reach`** is the box that holds all of it if it is turned by yaw alone, which is what `render_entities_item_t` and `cuda/src/entity_rays/` can draw: a box with no pitch of its own. For an arm held straight out, that is exactly the arm.
+A pose's `half` and `pitch` are the part as it really is. **`reach`** is the box that holds all of it if it is turned by yaw alone, for whoever wants a bound without the pitch; what is drawn leans by `pitch` itself, as `cuda/src/entity_rays/` can: a box with no pitch of its own. For an arm held straight out, that is exactly the arm.
 
-Nothing here draws them yet: that needs each body's boxes given to `run/src/render/entities/`, with its texture. See the Issues of Stage 15.1.
+`run/src/game/` draws them: `game_mobs_publish` gives each part's middle, `half`, `yaw` and `pitch` to `render_entities_add_mob_part`, with its share of the body's skin, every tick.

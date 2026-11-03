@@ -78,3 +78,4 @@ Appended as they land:
    - `seen[MOB_ID_CREEPER] > 0` after filling to the cap: the fixture holds few columns, so its cap is a couple of packs. Weights now have their own test over 300 packs;
    - that test checked every tick as one pack, and a tick can hold two: such ticks are now counted and must be rare;
    - line numbers in the compile test's first bad-mob rows, where `GTT_MOB_GOOD` is 13 lines and not 11.
+6. **Issue 2 is left as it is, on purpose (phase gate check, 2026-11-03).** `mob_spawn_t` stays in `game_t`: moving it to `mob_t` changes no behaviour, and `entity` may still not include it. The README's "for now" and "until a `mob` Owner does" were stale and are corrected. Issue 3 is closed by the phase file's Issue 1.

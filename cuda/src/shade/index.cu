@@ -523,7 +523,7 @@ static __device__ __forceinline__ void shade_crack_over(const shade_context_t *c
 }
 
 /* What a box shows where a pixel's ray meets it, as a block's face would under the same light and sun: a texture over the whole of the
- * face, by its own axes, and one sun ray from that place through the world. Boxes cast no shadow and take no AO. */
+ * face or a body part's share of its skin, by its own axes, and one sun ray from that place through the world. Boxes cast no shadow and take no AO. */
 static __device__ __forceinline__ void shade_box_colour(const shade_context_t *context, const entity_rays_box_t *box,
                                                         const shade_texture_t *entity_textures,
                                                         const entity_rays_hit_t *entity, const float32_t direction[3],
@@ -552,10 +552,16 @@ static __device__ __forceinline__ void shade_box_colour(const shade_context_t *c
     float32_t colour[3] = {SHADE_MISSING_R, SHADE_MISSING_G, SHADE_MISSING_B};
     if (texture != nullptr) {
         float32_t u = 0.0F, v = 0.0F;
-        shade_face_uv(face, surface.local, &u, &v);
         /* The whole texture is across the box, so that its texels are as many times smaller on the screen as the box is than a block. */
-        const float32_t longest = fmaxf(box->half[0], fmaxf(box->half[1], box->half[2])) * 2.0F;
-        const uint32_t level = shade_mip_level(t / longest, context->tangent, texture->width, texture->level_count);
+        float32_t across = fmaxf(box->half[0], fmaxf(box->half[1], box->half[2])) * 2.0F;
+        if (box->skin_size[0] != 0u) {
+            /* A skin's texels are the same size on every part: its whole width is this many blocks. */
+            entity_rays_skin_uv(box, face, surface.local, texture->width, texture->height, &u, &v);
+            across = (float32_t)texture->width / ENTITY_RAYS_SKIN_TEXELS_PER_BLOCK;
+        } else {
+            shade_face_uv(face, surface.local, &u, &v);
+        }
+        const uint32_t level = shade_mip_level(t / across, context->tangent, texture->width, texture->level_count);
         shade_texel_colour(texture, shade_texel(texture, context->pixels, level, u, v), colour);
     }
     float32_t normal[3];

@@ -13,6 +13,7 @@
 #include "main/index.h"
 #include "render/index.h"
 #include "tables/blocks/index.h"
+#include "tables/mobs/index.h"
 #include "terrain/index.h"
 #include "texture/index.h"
 #include "thread/index.h"
@@ -78,6 +79,8 @@ static entity_rays_box_t en_box(float32_t x, float32_t y, float32_t z, float32_t
                                .half = {half, half, half},
                                .cos_yaw = cosf(yaw),
                                .sin_yaw = sinf(yaw),
+                               .cos_pitch = 1.0f32,
+                               .sin_pitch = 0.0f32,
                                .material = BLOCK_ID_DIRT,
                                .texture = ENTITY_RAYS_NO_TEXTURE,
                                .stored = SHADE_LIGHT_OPEN_SKY};
@@ -130,6 +133,105 @@ TEST(a_ray_against_a_box_is_as_on_paper) {
     CHECK_NEAR(own[1], 0.0f32, 1e-5f32);
 }
 
+/* A part leaning right over: its own forward is the world's up, and its own up points back along the world's forward. */
+TEST(a_box_that_leans_is_as_on_paper) {
+    entity_rays_box_t box = en_box(0.0f32, 0.0f32, 3.0f32, 0.5f32, 0.0f32);
+    box.half[0] = 0.25f32;
+    box.half[2] = 1.0f32;
+    box.cos_pitch = 0.0f32;
+    box.sin_pitch = 1.0f32;
+    const float32_t world_up[3] = {0.0f32, 0.0f32, 2.0f32};
+    float32_t own[3];
+    entity_rays_to_box(&box, world_up, own);
+    CHECK_NEAR(own[0], 2.0f32, 1e-6f32);
+    CHECK_NEAR(own[2], 0.0f32, 1e-6f32);
+    const float32_t world_ahead[3] = {2.0f32, 0.0f32, 0.0f32};
+    entity_rays_to_box(&box, world_ahead, own);
+    CHECK_NEAR(own[0], 0.0f32, 1e-6f32);
+    CHECK_NEAR(own[2], -2.0f32, 1e-6f32);
+    float32_t normal[3];
+    entity_rays_normal(&box, TRAVERSE_FACE_POS_X, normal);
+    CHECK_NEAR(normal[0], 0.0f32, 1e-6f32);
+    CHECK_NEAR(normal[2], 1.0f32, 1e-6f32);
+    entity_rays_normal(&box, TRAVERSE_FACE_POS_Z, normal);
+    CHECK_NEAR(normal[0], -1.0f32, 1e-6f32);
+    CHECK_NEAR(normal[2], 0.0f32, 1e-6f32);
+    entity_rays_normal(&box, TRAVERSE_FACE_POS_Y, normal);
+    CHECK_NEAR(normal[1], 1.0f32, 1e-6f32);
+    /* From under it, looking up: its own back, which is only 0.25 down from its middle now, and not 1. */
+    const float32_t up[3] = {0.0f32, 0.0f32, 1.0f32};
+    float32_t hit = 0.0f32;
+    uint32_t face = 0u;
+    REQUIRE(entity_rays_box_hit(&box, up, &hit, &face));
+    CHECK_NEAR(hit, 2.75f32, 1e-5f32);
+    CHECK_EQ_U64(face, TRAVERSE_FACE_NEG_X);
+    /* Looking along the ground it is long, 2 where it would be 0.5. */
+    box.center[0] = 3.0f32;
+    box.center[2] = 0.0f32;
+    const float32_t ahead[3] = {1.0f32, 0.0f32, 0.0f32};
+    REQUIRE(entity_rays_box_hit(&box, ahead, &hit, &face));
+    CHECK_NEAR(hit, 2.0f32, 1e-5f32);
+    /* Half a turn is the same box with its faces the other way round. */
+    box.cos_pitch = -1.0f32;
+    box.sin_pitch = 0.0f32;
+    REQUIRE(entity_rays_box_hit(&box, ahead, &hit, &face));
+    CHECK_NEAR(hit, 2.75f32, 1e-5f32);
+    CHECK_EQ_U64(face, TRAVERSE_FACE_POS_X);
+}
+
+/* The unwrap of a head and of an arm, each face's middle and edges, worked out from the skin's picture in textures/mobs/README.md. */
+TEST(a_skin_is_unwrapped_as_on_paper) {
+    entity_rays_box_t head = en_box(0.0f32, 0.0f32, 0.0f32, 0.25f32, 0.0f32);
+    head.skin_size[0] = 8u;
+    head.skin_size[1] = 8u;
+    head.skin_size[2] = 8u;
+    const float32_t middle[3] = {0.5f32, 0.5f32, 0.5f32};
+    /* top, bottom; right, front, left and back: each's middle in texels. */
+    const uint32_t faces[SHADE_FACES] = {TRAVERSE_FACE_POS_Z, TRAVERSE_FACE_NEG_Z, TRAVERSE_FACE_NEG_Y,
+                                         TRAVERSE_FACE_POS_X, TRAVERSE_FACE_POS_Y, TRAVERSE_FACE_NEG_X};
+    const float32_t head_u[SHADE_FACES] = {12.0f32, 20.0f32, 4.0f32, 12.0f32, 20.0f32, 28.0f32};
+    const float32_t head_v[SHADE_FACES] = {4.0f32, 4.0f32, 12.0f32, 12.0f32, 12.0f32, 12.0f32};
+    float32_t u = 0.0f32, v = 0.0f32;
+    for (uint32_t i = 0u; i < SHADE_FACES; i++) {
+        entity_rays_skin_uv(&head, faces[i], middle, 64u, 32u, &u, &v);
+        CHECK_NEAR(u * 64.0f32, head_u[i], 1e-3f32);
+        CHECK_NEAR(v * 32.0f32, head_v[i], 1e-3f32);
+    }
+    /* The eyes are on the front's upper half, the viewer's left is the mob's right, and top is top. */
+    const float32_t high_on_its_right[3] = {1.0f32, 0.0f32, 1.0f32};
+    entity_rays_skin_uv(&head, TRAVERSE_FACE_POS_X, high_on_its_right, 64u, 32u, &u, &v);
+    CHECK_NEAR(u * 64.0f32, 8.0f32, 0.05f32);
+    CHECK_NEAR(v * 32.0f32, 8.0f32, 0.05f32);
+    /* The top's front edge meets the front's top: both are at the row between them. */
+    const float32_t top_front[3] = {1.0f32, 0.5f32, 1.0f32};
+    entity_rays_skin_uv(&head, TRAVERSE_FACE_POS_Z, top_front, 64u, 32u, &u, &v);
+    CHECK_NEAR(v * 32.0f32, 8.0f32, 0.05f32);
+
+    /* An arm: 4 deep, 4 wide and 12 tall, at 40, 16. */
+    entity_rays_box_t arm = head;
+    arm.skin_u = 40u;
+    arm.skin_v = 16u;
+    arm.skin_size[0] = 4u;
+    arm.skin_size[1] = 4u;
+    arm.skin_size[2] = 12u;
+    entity_rays_skin_uv(&arm, TRAVERSE_FACE_POS_X, middle, 64u, 32u, &u, &v);
+    CHECK_NEAR(u * 64.0f32, 46.0f32, 1e-3f32);
+    CHECK_NEAR(v * 32.0f32, 26.0f32, 1e-3f32);
+    entity_rays_skin_uv(&arm, TRAVERSE_FACE_NEG_X, middle, 64u, 32u, &u, &v);
+    CHECK_NEAR(u * 64.0f32, 54.0f32, 1e-3f32);
+    /* However far along a face, it stays on that face's texels: the far edge is the next one's first. */
+    for (uint32_t corner = 0u; corner < 8u; corner++) {
+        const float32_t place[3] = {(corner & 1u) != 0u ? 1.0f32 : 0.0f32, (corner & 2u) != 0u ? 1.0f32 : 0.0f32,
+                                    (corner & 4u) != 0u ? 1.0f32 : 0.0f32};
+        entity_rays_skin_uv(&arm, TRAVERSE_FACE_POS_X, place, 64u, 32u, &u, &v);
+        CHECK(u * 64.0f32 > 44.0f32 && u * 64.0f32 < 48.0f32);
+        CHECK(v * 32.0f32 > 20.0f32 && v * 32.0f32 < 32.0f32);
+        entity_rays_skin_uv(&arm, TRAVERSE_FACE_POS_Z, place, 64u, 32u, &u, &v);
+        CHECK(u * 64.0f32 > 44.0f32 && u * 64.0f32 < 48.0f32);
+        CHECK(v * 32.0f32 > 16.0f32 && v * 32.0f32 < 20.0f32);
+    }
+}
+
 TEST(a_line_a_crack_and_a_layout_are_as_on_paper) {
     /* 10 blocks ahead, a line off to the side by one, at a tangent of 0.01: a hundredth of a block a pixel per block. */
     const float32_t east[3] = {1.0f32, 0.0f32, 0.0f32};
@@ -176,7 +278,7 @@ TEST(a_line_a_crack_and_a_layout_are_as_on_paper) {
 
     /* In one block, in order, and with nothing on top of anything. */
     const uint64_t starts = entity_rays_starts_offset(), links = entity_rays_links_offset(320u, 180u);
-    CHECK_EQ_U64(starts, 8192u * 40u);
+    CHECK_EQ_U64(starts, 8192u * 52u);
     CHECK_EQ_U64(links, starts + (40u * 23u + 1u) * 4u);
     CHECK(entity_rays_textures_offset(320u, 180u) >= links + (1u << 20) * 2u);
     CHECK_EQ_U64(entity_rays_textures_offset(320u, 180u) % 8u, 0u);
@@ -249,6 +351,8 @@ TEST(random_rays_agree_with_a_march_in_tiny_steps) {
     uint64_t hits = 0u;
     for (uint32_t i = 0u; i < 3000u; i++) {
         const float64_t yaw = en_rng_next(&rng) * 6.283185307f64;
+        /* A third stand level, as an item does, and the rest lean as a limb does. */
+        const float64_t pitch = i % 3u == 0u ? 0.0f64 : en_rng_next(&rng) * 6.283185307f64;
         const entity_rays_box_t box = {
             .center = {(float32_t)(en_rng_next(&rng) * 8.0f64 - 4.0f64),
                        (float32_t)(en_rng_next(&rng) * 8.0f64 - 4.0f64),
@@ -257,6 +361,8 @@ TEST(random_rays_agree_with_a_march_in_tiny_steps) {
                      (float32_t)(en_rng_next(&rng) * 1.0f64 + 0.1f64)},
             .cos_yaw = (float32_t)cos(yaw),
             .sin_yaw = (float32_t)sin(yaw),
+            .cos_pitch = (float32_t)cos(pitch),
+            .sin_pitch = (float32_t)sin(pitch),
         };
         /* Near the box's way half the time, or few would meet it. */
         float64_t way[3];
@@ -790,6 +896,79 @@ TEST(a_box_shows_its_texture_and_hides_what_is_behind_it_and_nothing_else) {
         took_sky += sky[i].t >= TRAVERSE_COARSE_SKY && on_sky[i].t < TRAVERSE_COARSE_SKY ? 1u : 0u;
     }
     CHECK(took_sky > 100u);
+    en_end(t, &rig);
+}
+
+/* Every mob has its skin in the table, and a part of its body shows that part's share of it, leaning or not, on the card. */
+TEST(a_mob_s_part_shows_its_share_of_the_skin) {
+    sk_rig_t rig;
+    REQUIRE(en_begin(t, &rig, EN_PLAIN));
+    render_entities_t *const entities = rig.render->borrowed_entities;
+    CHECK_EQ_U64(entities->mob_textures[MOB_ID_NONE], ENTITY_RAYS_NO_TEXTURE);
+    for (uint32_t mob = 1u; mob < MOB_COUNT; mob++) {
+        CHECK(entities->mob_textures[mob] != ENTITY_RAYS_NO_TEXTURE);
+    }
+    render_camera_t eye;
+    render_camera_start(&eye, 8.5f64, 6.5f64, 4.5f64, 0.0f32, -0.1f32);
+    traverse_camera_t view;
+    render_camera_to_traverse(&eye, EN_WIDTH, EN_HEIGHT, &view);
+    const float32_t tangent = shade_pixel_tangent(&view);
+    const float32_t pitches[3] = {0.0f32, 0.7f32, 1.57079633f32};
+    const float32_t yaws[3] = {3.14159265f32, 2.6f32, 0.4f32};
+    for (uint32_t turn = 0u; turn < 3u; turn++) {
+        /* A zombie's arm, big enough on the screen to see every texel. */
+        const mob_part_t *const part = &mob_parts[MOB_ZOMBIE_FIRST_PART + 2u];
+        const float64_t place[3] = {11.0f64, 6.5f64, 4.2f64};
+        const float32_t half[3] = {part->size[0] / 32.0f32, part->size[1] / 32.0f32, part->size[2] / 32.0f32};
+        render_entities_begin(entities);
+        render_entities_add_mob_part(entities, (uint16_t)MOB_ID_ZOMBIE, place, half, yaws[turn], pitches[turn],
+                                     part->texture_u, part->texture_v, part->size, SHADE_LIGHT_OPEN_SKY);
+        render_entities_publish(entities);
+        REQUIRE(sk_draw(t, &rig, &eye) != nullptr);
+        const shade_pixel_t *const shaded = en_shaded(t, &rig);
+        const entity_rays_box_t box = rig.render->borrowed_entities->borrowed_boxes[0];
+        CHECK_NEAR(box.cos_pitch, cosf(pitches[turn]), 1e-6f32);
+        CHECK_NEAR(box.sin_pitch, sinf(pitches[turn]), 1e-6f32);
+        uint64_t checked = 0u, wrong = 0u;
+        for (uint32_t y = 0u; y < EN_HEIGHT; y++) {
+            for (uint32_t x = 0u; x < EN_WIDTH; x++) {
+                float32_t direction[3], hit = 0.0f32;
+                uint32_t face = 0u;
+                en_direction(&view, (float32_t)x + 0.5f32, (float32_t)y + 0.5f32, direction);
+                if (!entity_rays_box_hit(&box, direction, &hit, &face)) {
+                    continue;
+                }
+                const float32_t point[3] = {direction[0] * hit - box.center[0], direction[1] * hit - box.center[1],
+                                            direction[2] * hit - box.center[2]};
+                float32_t own[3], local[3], u = 0.0f32, v = 0.0f32;
+                entity_rays_to_box(&box, point, own);
+                for (uint32_t i = 0u; i < 3u; i++) {
+                    const float32_t along = (own[i] + box.half[i]) / (2.0f32 * box.half[i]);
+                    local[i] = along < 0.0f32 ? 0.0f32 : (along > 1.0f32 ? 1.0f32 : along);
+                }
+                entity_rays_skin_uv(&box, face, local, MOB_ZOMBIE_TEXTURE_WIDTH, MOB_ZOMBIE_TEXTURE_HEIGHT, &u, &v);
+                const uint8_t *const texel =
+                    en_texel(&rig, mob_defs[MOB_ID_ZOMBIE].texture, 0u, u, v,
+                             hit / ((float32_t)MOB_ZOMBIE_TEXTURE_WIDTH / ENTITY_RAYS_SKIN_TEXELS_PER_BLOCK), tangent);
+                REQUIRE(texel != nullptr);
+                float32_t colour[3];
+                en_texel_linear(texel, colour);
+                const float32_t brightness = shade_face_brightness(face);
+                const shade_pixel_t *const pixel = &shaded[(uint64_t)y * EN_WIDTH + x];
+                checked++;
+                for (uint32_t i = 0u; i < 3u; i++) {
+                    if (fabsf(pixel->rgb[i] - colour[i] * brightness) > 0.01f32) {
+                        wrong++;
+                        break;
+                    }
+                }
+            }
+        }
+        printf("  a part at pitch %.2f: %" PRIu64 " pixels against its skin, %" PRIu64 " off\n",
+               (libc_double_t)pitches[turn], checked, wrong);
+        CHECK(checked > 300u);
+        CHECK(wrong * 50u <= checked);
+    }
     en_end(t, &rig);
 }
 

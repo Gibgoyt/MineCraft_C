@@ -20,4 +20,4 @@ What it checks:
 - **The blow:** at once in reach, then exactly 20 ticks apart; never through a wall built in the way; two in a tick as one; what `player_survival_hurt` makes of it, with seven killing and armor helping.
 - **What it leaves:** rows lying as the right item; each row's chance and counts over 6000 deaths; only zombies die here, several in a tick, with handles still good; nothing left by a body taken away otherwise.
 - **The rest:** a slot used again knows nothing; a body waiting for its column does nothing; the same bytes twice, and with workers; another seed others; a hundred chasing take no heap and no arena, with what a tick took printed.
-- **The program:** at midnight in a real world, on the real rules, a player standing still is struck, and it exits with nothing left on the heap.
+- **The program:** at midnight in a real world, on the real rules, mobs come, the report says what they did, and it exits with nothing left on the heap. Whether a zombie gets to a player standing on this seed's mountain is the seed's business: a blow through the whole game is in `run_mob_combat`.

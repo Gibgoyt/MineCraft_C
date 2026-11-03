@@ -21,3 +21,4 @@ What it checks:
 - **Death:** each kind killed by a blow, gone on its mind's next tick, with its drops on the books; a creeper killed with its fuse lit not bursting.
 - **Same fight, same bytes,** another seed another; **no heap and no more arena;** **the cost** against the phase's budget, on the plan's 100 mobs; a world opened again.
 - **A real game,** through `game_headless_scene`'s tick and a script's button: the sword in hand, a blow's damage and wear, tiring, the push, nothing mined behind, three blows to kill a zombie, its drops in the world, and then the same button mining the wall.
+- **A zombie in a real game:** on known ground, through the game's tick: its six parts are in the snapshot the frames draw, near where it is, and it walks over at its speed and strikes the body.
