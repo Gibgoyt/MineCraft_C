@@ -1,0 +1,72 @@
+# The whole round in the built program, at 640 by 480, scale 2. Worked out by hand from the layout in run/src/ui/menu/index.c.
+# The pointer starts in the middle, at 320, 240, once tick 0 has shown it the canvas. Each comment says where it now is.
+
+1 move 0 -40                    # 320, 200: Singleplayer
++1 screenshot main.png
++1 button left down
++1 button left up
++1 screenshot select_empty.png
+
++1 move 132 196                 # 452, 396: Create New World
++1 button left down
++1 button left up
+
+# Typing goes to the name at once.
++1 key f down
++1 key f up
++1 key l down
++1 key l up
++1 key o down
++1 key o up
++1 key w down
++1 key w up
++1 move -132 -194               # 320, 202: the seed field, which runs from y 182 to 222
++1 button left down
++1 button left up
++1 key 1 down
++1 key 1 up
++1 key 2 down
++1 key 2 up
++1 key 3 down
++1 key 3 up
++1 screenshot create.png
++1 key enter down               # opens the world, between this tick and the next
++1 key enter up
+
++3 screenshot world_a.png
++1 key escape down
++0 screenshot paused.png
++1 key escape up
++1 move 0 -2                    # 320, 200: Resume, on the pause screen
++1 button left down
++1 button left up
++1 screenshot resumed.png
+
++1 key escape down
++1 key escape up
++1 move 0 96                    # 320, 296: Quit to Title
++1 button left down
++1 button left up
++1 screenshot title_again.png
+
++1 move 0 -96                   # 320, 200: Singleplayer
++1 button left down
++1 button left up
++1 move -20 -122                # 300, 78: the first row of the list
++1 button left down
++1 button left up
++1 screenshot select_chosen.png
++1 move -112 318                # 188, 396: Play Selected
++1 button left down
++1 button left up
+
++4 screenshot world_b.png
++1 key escape down
++1 key escape up
++1 move 132 -100                # 320, 296: Quit to Title
++1 button left down
++1 button left up
++2 button left down             # the same place: Quit Game
++1 button left up
++1 screenshot after_quit.png
++1 end

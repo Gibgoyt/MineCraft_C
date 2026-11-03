@@ -209,11 +209,14 @@ static bool game_top_is_dry_land(const game_column_job_t *job, int32_t ground_z)
 
 /* The nearest dry land to the world's middle, ring by ring of a square around it, and the middle itself if there is none. The same
  * seed gives the same place. */
-static void game_spawn_find(const terrain_t *terrain, const game_column_job_t *job, int32_t middle_x, int32_t middle_y,
-                            int32_t *out_x, int32_t *out_y) {
+static void game_spawn_find(const game_t *game, const terrain_t *terrain, const game_column_job_t *job,
+                            int32_t middle_x, int32_t middle_y, int32_t *out_x, int32_t *out_y) {
     *out_x = middle_x;
     *out_y = middle_y;
     for (int32_t ring = 0; ring <= GAME_SPAWN_RINGS; ring++) {
+        if (game->open_alive != nullptr) {
+            game->open_alive(game->borrowed_open_alive_context);
+        }
         for (int32_t dy = -ring; dy <= ring; dy++) {
             /* The inside of a square has been looked at already: only its first and last columns remain on these rows. */
             const int32_t across = dy == -ring || dy == ring ? 1 : (ring == 0 ? 1 : 2 * ring);
@@ -247,6 +250,11 @@ static void game_hud_start(game_t *game) {
     game->hud_present_us = 0u;
 }
 
+void game_open_alive_set(game_t *game, void (*alive)(void *context), void *context) {
+    game->open_alive = alive;
+    game->borrowed_open_alive_context = context;
+}
+
 bool game_open(game_t *game, const game_config_t *config) {
     ASSERT_ALWAYS(game->open == 0u);
     if (config->render_distance == 0u || config->render_distance > MC_GAME_RENDER_DISTANCE_MAX) {
@@ -273,7 +281,7 @@ bool game_open(game_t *game, const game_config_t *config) {
     /* Flying: a little above whatever is at the world's middle, water included, looking out and down. Walking: on dry land near it. */
     int32_t start_x = 8, start_y = 8;
     if (game->borrowed_player != nullptr) {
-        game_spawn_find(terrain, &game->borrowed_jobs[0], start_x, start_y, &start_x, &start_y);
+        game_spawn_find(game, terrain, &game->borrowed_jobs[0], start_x, start_y, &start_x, &start_y);
     }
     const float64_t ground = (float64_t)game_ground_z(terrain, &game->borrowed_jobs[0], start_x, start_y);
     const float64_t middle_x = (float64_t)start_x + 0.5f64, middle_y = (float64_t)start_y + 0.5f64;
@@ -291,6 +299,7 @@ bool game_open(game_t *game, const game_config_t *config) {
     atomic_store_explicit(&game->center_y, chunk_y, memory_order_relaxed);
     atomic_store_explicit(&game->stop, 0u, memory_order_relaxed);
     atomic_store_explicit(&game->failed, 0u, memory_order_relaxed);
+    atomic_store_explicit(&game->paused, 0u, memory_order_relaxed);
 
     if (!game_open_parts(game, config, chunk_x, chunk_y)) {
         job_group_deinit(&game->group);
@@ -1113,6 +1122,7 @@ static bool game_scene_draw(void *context, const display_headless_tick_t *tick, 
     const uint8_t *const picture = render_frame_take(&render->frame);
     ASSERT_ALWAYS(picture != nullptr);
     game_fps_note(game, 1u, 0.0f32);
+    game->borrowed_last_picture = picture; /* what a pause screen goes over */
     render_frame_present(&render->frame, game_hud_compose(game, picture), frame);
     return true;
 }
@@ -1129,7 +1139,9 @@ static void game_sim_thread(void *borrowed_argument) {
     while (atomic_load_explicit(&game->stop, memory_order_acquire) == 0u) {
         game_sim_step(game);
         const int64_t now_ns = time_now_ns();
-        if (now_ns >= next_tick_ns) {
+        if (now_ns >= next_tick_ns && atomic_load_explicit(&game->paused, memory_order_relaxed) != 0u) {
+            next_tick_ns = now_ns + GAME_TICK_NS; /* the time paused is not owed afterwards */
+        } else if (now_ns >= next_tick_ns) {
             game_sim_tick(game, next_tick_ns);
             next_tick_ns += GAME_TICK_NS;
             atomic_store_explicit(&game->hud_tick_us, (uint32_t)((time_now_ns() - now_ns) / 1000),
@@ -1247,20 +1259,22 @@ void game_loop_source_begin(game_t *game, input_t *input) {
     game->borrowed_input = input;
 }
 
-bool game_loop_source(void *context, display_buffer_t *back) {
-    game_t *const game = context;
+bool game_loop_threads_ensure(game_t *game) {
     /* Here and not before the run: display_frames_run forks vt_guard's guardian before its first frame, and the sim and gpu
      * threads should not be writing into the memory that fork is about to share. */
     if (game->threads_running == 0u && !game_loop_start(game, game->borrowed_input)) {
         atomic_store_explicit(&game->failed, 1u, memory_order_release);
         return false; /* it has said why */
     }
-    const input_frame_t *const frame = input_poll(game->borrowed_input);
+    return true;
+}
+
+bool game_screen_up(game_t *game) {
+    return game_has_screens(game) && ui_screen_up(game->borrowed_ui);
+}
+
+bool game_loop_input_frame(game_t *game, const input_frame_t *frame, display_buffer_t *back) {
     const bool screen_up = game_screen_input(game, frame);
-    /* With a screen up, Esc has closed it. */
-    if (input_keys_has(&frame->pressed, KEY_ESC) && !screen_up) {
-        return false;
-    }
     /* A tap over between two polls is in pressed and not in down. */
     game_debug_send(game, input_keys_has(&frame->down, KEY_F3) || input_keys_has(&frame->pressed, KEY_F3));
     const int64_t now_ns = time_now_ns();
@@ -1286,6 +1300,32 @@ bool game_loop_source(void *context, display_buffer_t *back) {
         game_hotbar_send(game, hotbar, frame->wheel);
     }
     return game_loop_frame(game, &input, seconds, back);
+}
+
+bool game_loop_source(void *context, display_buffer_t *back) {
+    game_t *const game = context;
+    if (!game_loop_threads_ensure(game)) {
+        return false;
+    }
+    const input_frame_t *const frame = input_poll(game->borrowed_input);
+    /* With a screen up, Esc closes it. */
+    if (input_keys_has(&frame->pressed, KEY_ESC) && !game_screen_up(game)) {
+        return false;
+    }
+    return game_loop_input_frame(game, frame, back);
+}
+
+void game_loop_input_clear(game_t *game) {
+    if (game->borrowed_player != nullptr) {
+        const render_fly_input_t none = {0};
+        game_walk_send(game, &none, false, false, time_now_ns());
+        game_hands_send(game, false, false);
+    }
+}
+
+void game_pause_set(game_t *game, bool paused) {
+    atomic_store_explicit(&game->paused, paused ? 1u : 0u, memory_order_relaxed);
+    game->last_frame_ns = time_now_ns();
 }
 
 void game_loop_discard(void *context) {

@@ -7,6 +7,7 @@
 #include "entity/index.h"
 #include "item/index.h"
 #include "game/index.h"
+#include "game/session/index.h"
 #include "gpu_bridge/index.h"
 #include "heap/index.h"
 #include "input/index.h"
@@ -53,11 +54,15 @@ typedef struct main_options_t {
     uint8_t has_time_of_day;    /* --time-of-day */
     uint16_t features_off;      /* --no-shapes, --no-alpha, --no-sky and on: SHADE_FEATURE_* */
     uint8_t god_rays;           /* --god-rays */
-    uint8_t _pad0[1];
-    float32_t time_of_day; /* --time-of-day */
-    uint32_t full_detail;  /* --full-detail, or 0 for RENDER_LOD_FULL_DETAIL_DEFAULT */
+    uint8_t menu;               /* --menu, or no flags at all on a terminal */
+    float32_t time_of_day;      /* --time-of-day */
+    uint32_t full_detail;       /* --full-detail, or 0 for RENDER_LOD_FULL_DETAIL_DEFAULT */
+    const char *saves;          /* --saves, or nullptr for MAIN_SAVES_DEFAULT */
 } main_options_t;
-static_assert(sizeof(main_options_t) == 72);
+static_assert(sizeof(main_options_t) == 80);
+
+/* Where worlds live unless told otherwise: beside where the program was started, like everything else it reads. */
+static const char MAIN_SAVES_DEFAULT[] = "saves";
 
 static void main_print_usage(const char *program) {
     fprintf(
@@ -70,6 +75,7 @@ static void main_print_usage(const char *program) {
         "           [--no-shadows] [--no-stored-light] [--no-transparency] [--no-water-reflection]\n"
         "           [--no-water-tint] [--no-ao] [--no-taa] [--god-rays] [--no-entities]\n"
         "           [--no-outline] [--full-detail <chunks>] [--no-lod] [--headless ...]\n"
+        "       %s --menu [--saves <dir>] [--render-distance <chunks>] [--headless ...]\n"
         "  --report                 print the build's defines and CPU features, then exit\n"
         "  --pretend-missing-cpu    treat this feature as absent, to see the CPU check fail; may repeat\n"
         "  --pretend-leak           skip the shutdown, to see the leak check at exit fail\n"
@@ -107,7 +113,13 @@ static void main_print_usage(const char *program) {
         "                           button places what was mined. E opens the inventory, the right button on a "
         "crafting\n"
         "                           table, furnace or chest opens that, and E or Esc closes it\n",
-        program, program, program, program);
+        program, program, program, program, program);
+    fputs("  (no flags, on a terminal) the same as --menu\n"
+          "  --menu                   the game: main menu, make or choose a world, walk in it, Esc to pause. Through "
+          "KMS\n"
+          "                           from a text console, never inside X; with --headless, a script does all of that\n"
+          "  --saves <dir>            with --menu: where worlds live. Default saves, under where it was started\n",
+          stderr);
 }
 
 /* A whole number from 1 up, for a flag. */
@@ -158,6 +170,11 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
             out->features_off |= (uint16_t)SHADE_FEATURE_SHAPES;
         } else if (strcmp(argv[i], "--no-alpha") == 0) {
             out->features_off |= (uint16_t)SHADE_FEATURE_ALPHA;
+        } else if (strcmp(argv[i], "--menu") == 0) {
+            out->menu = 1u;
+        } else if (strcmp(argv[i], "--saves") == 0 && i + 1 < argc) {
+            i++;
+            out->saves = argv[i];
         } else if (strcmp(argv[i], "--walk") == 0) {
             out->walk = 1;
         } else if (strcmp(argv[i], "--no-sky") == 0) {
@@ -263,16 +280,25 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
                 argv[0]);
         return false;
     }
-    if (out->render_distance != 0u && out->test_world == 0) {
-        fprintf(stderr, "%s: --render-distance only means something with --test-world\n", argv[0]);
+    if (out->saves != nullptr && out->menu == 0u) {
+        fprintf(stderr, "%s: --saves only means something with --menu\n", argv[0]);
         return false;
     }
-    if (out->full_detail != 0u && out->test_world == 0) {
-        fprintf(stderr, "%s: --full-detail only means something with --test-world\n", argv[0]);
+    if (out->menu != 0u && (out->test_world != 0 || out->test_pattern != 0 || out->report != 0)) {
+        fprintf(stderr, "%s: --menu does not go with --test-world, --test-pattern or --report\n", argv[0]);
         return false;
     }
-    if ((out->features_off != 0u || out->god_rays != 0u) && out->test_world == 0) {
-        fprintf(stderr, "%s: --no-shapes and the other effects' flags only mean something with --test-world\n",
+    if (out->render_distance != 0u && out->test_world == 0 && out->menu == 0u) {
+        fprintf(stderr, "%s: --render-distance only means something with --test-world or --menu\n", argv[0]);
+        return false;
+    }
+    if (out->full_detail != 0u && out->test_world == 0 && out->menu == 0u) {
+        fprintf(stderr, "%s: --full-detail only means something with --test-world or --menu\n", argv[0]);
+        return false;
+    }
+    if ((out->features_off != 0u || out->god_rays != 0u) && out->test_world == 0 && out->menu == 0u) {
+        fprintf(stderr,
+                "%s: --no-shapes and the other effects' flags only mean something with --test-world or --menu\n",
                 argv[0]);
         return false;
     }
@@ -296,6 +322,11 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
     if (out->headless != 0 && (out->test_pattern != 0 || out->report != 0)) {
         fprintf(stderr, "%s: --headless does not go with --test-pattern or --report\n", argv[0]);
         return false;
+    }
+    /* The game, for a person who just runs it. Only on a terminal: anything else that starts the program with no flags, such as
+     * ctest, with stdin from /dev/null, gets the check of the runtime and is nowhere near the display. Inside X this is refused. */
+    if (argc == 1 && isatty(STDIN_FILENO) != 0) {
+        out->menu = 1u;
     }
     return true;
 }
@@ -430,7 +461,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
     /* Takes nothing until game_open. */
     game_init(&app->game, &app->world, &app->terrain, &app->render, &app->job, &app->texture, &app->topology);
     game_ui_set(&app->game, &app->ui);
-    if (options->walk != 0) {
+    if (options->walk != 0 || options->menu != 0u) {
         game_player_set(&app->game, &app->player);
         game_entity_set(&app->game, &app->entity);
         game_item_set(&app->game, &app->item);
@@ -618,6 +649,78 @@ static main_exit_t main_run_test_world(app_t *app, const main_options_t *options
     return main_exit_from_display(ran);
 }
 
+/* What a world opens with from the menus. The size is the display's or the headless frame's. */
+static game_config_t main_menu_game_config(const main_options_t *options, uint32_t width, uint32_t height) {
+    return (game_config_t){.render_distance = options->render_distance != 0u ? options->render_distance
+                                                                             : MC_GAME_RENDER_DISTANCE_DEFAULT,
+                           .width = width,
+                           .height = height,
+                           .features_off = options->features_off,
+                           .god_rays = options->god_rays,
+                           .full_detail = options->full_detail,
+                           ._pad0 = {0}};
+}
+
+/* The game through KMS. As with --test-world, the display comes first, and input only once it said yes. */
+static main_exit_t main_run_menu(app_t *app, const main_options_t *options) {
+    display_config_t config;
+    display_config_from_machine(&config);
+    config.console_fd = STDIN_FILENO;
+    const display_status_t status = display_init(&app->display, &config, display_device_real_ops(), nullptr);
+    if (status != DISPLAY_STATUS_OK) {
+        return main_exit_from_display(status);
+    }
+    if (!input_init(&app->input, INPUT_DEVICE_DIRECTORY, input_ops_real(), nullptr)) {
+        return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
+    }
+    const display_buffer_t *const buffer = &app->display.flip.buffers[0];
+    const game_config_t game = main_menu_game_config(options, buffer->width, buffer->height);
+    /* A world made with no seed is a new one each time. Golden-ratio mixing, to spread what is only a clock. */
+    const uint64_t blank_seed = (uint64_t)time_now_ns() * 0x9E3779B97F4A7C15ull;
+    game_session_t session;
+    game_session_init(&session, &app->game, &app->ui, &app->terrain, &app->input, &game,
+                      options->saves != nullptr ? options->saves : MAIN_SAVES_DEFAULT, blank_seed);
+    const display_status_t ran = game_session_run(&session, &app->display, game_session_source, &session);
+    input_report(&app->input);
+    const bool failed = session.failed != 0u;
+    game_session_deinit(&session);
+    if (ran == DISPLAY_STATUS_OK && failed) {
+        return MAIN_EXIT_RUNTIME;
+    }
+    return main_exit_from_display(ran);
+}
+
+/* The same with no display at all: a script clicks through the menus into PNGs. A blank seed is always the default one, so that
+ * one script always gives one set of pictures. */
+static main_exit_t main_run_menu_headless(app_t *app, const main_options_t *options) {
+    display_headless_config_t config;
+    display_offscreen_config_from_machine(&config);
+    config.script_path = options->script;
+    config.screenshot_dir = options->screenshot_dir;
+    config.tick_count = options->ticks;
+    config.width = options->width != 0u ? options->width : config.width;
+    config.height = options->height != 0u ? options->height : config.height;
+    if (!display_offscreen_init(&app->offscreen, &config)) {
+        return MAIN_EXIT_HEADLESS;
+    }
+    const game_config_t game = main_menu_game_config(options, config.width, config.height);
+    game_session_t session;
+    game_session_init(&session, &app->game, &app->ui, &app->terrain, nullptr, &game,
+                      options->saves != nullptr ? options->saves : MAIN_SAVES_DEFAULT, TERRAIN_SEED_DEFAULT);
+    display_headless_scene_t scene;
+    game_session_headless_scene(&session, &scene);
+    display_headless_t *const headless = &app->offscreen.headless;
+    const bool ran = display_headless_run(headless, &scene);
+    LOG_INFO("headless: %" PRIu64 " frames, %" PRIu64 " screenshots", headless->frames_presented,
+             headless->screenshots_written);
+    const bool ended = game_session_end(&session);
+    game_session_deinit(&session);
+    if (!ended) {
+        return MAIN_EXIT_RUNTIME;
+    }
+    return ran ? MAIN_EXIT_OK : MAIN_EXIT_HEADLESS;
+}
+
 /* Stage 02.3 asks the binary to report its defines, to show a yaml change reaching compiled code. This path must never
  * touch a display or an input device: ctest runs it. */
 static void main_report(const app_t *app) {
@@ -651,6 +754,8 @@ int32_t main(int32_t argc, char **argv) {
         main_report(&app);
     } else if (options.test_pattern != 0) {
         status = main_run_test_pattern(&app, &options, started_ns);
+    } else if (options.menu != 0u) {
+        status = options.headless != 0 ? main_run_menu_headless(&app, &options) : main_run_menu(&app, &options);
     } else if (options.test_world != 0) {
         status =
             options.headless != 0 ? main_run_test_world_headless(&app, &options) : main_run_test_world(&app, &options);

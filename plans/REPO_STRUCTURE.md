@@ -240,6 +240,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | System | Parts | Job | Stage |
 |---|---|---|---|
 | `game` | | **Owner of World, Tick and Frame arenas**; the loop connecting `sim`, `gpu`, `main` | 08.4, extended later |
+| | `session` | From the title screen to Quit Game: runs the menus, opens the world chosen, pauses it, closes it. Not in the plan's list: `ui` must not call `game`, and `main` may not hold this much | 14.4 |
 | `physics` | `collision raycast` | Swept AABB; DDA block targeting | 12.1, 12.2 |
 | `player` | `movement camera` | Walk, jump, swim, look | 12.1, 12.2 |
 | | `interaction` | **Mining, drops, placing** | 12.3 |
@@ -264,7 +265,8 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `font widget` | Bitmap font, widgets | 14.1 |
 | | `hud` | Crosshair, hotbar, hearts, drumsticks, debug overlay with FPS and per-stage times | 14.2 |
 | | `screen_inventory screen_crafting screen_furnace screen_chest` | Game screens. `screen_inventory` also holds what all four share: the ring from `main` to `sim`, the views back, the item pictures and the window, and the other three include it, as its README allows | 14.3 |
-| | `menu` | Main menu, world select, pause | 14.4 |
+| | `menu` | Main menu, world create and select, pause, loading | 14.4 |
+| | `menu/catalog` | Worlds on disk: each one's `world.meta`, what a typed name and seed turn into | 14.4 |
 | | `screen_settings` | **Render distance and all options** | 14.5 |
 | `settings` | `persist` | Stored options with our own runtime parser | 14.5 |
 | `save` | `world` | Seed + changed-section deltas, crash-safe | 16.1 |
@@ -420,6 +422,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/player/movement/` | ctest `run_player_movement`: `run/src/player/` with `movement`: each mode's measured speeds against the numbers in its README, the same bytes from the same intents, the threads' exchange and interpolation, and `run/src/game/`'s walking on the real card and threads, on fake input, and in the built program |
 | `tests/run/game/` | ctest `run_game`: the real loop on the real card and threads through `display_frames_run`, on fake kernels, with the guardian really forked |
 | `tests/run/ui/screens/` | ctest `run_ui_screens`, named by its path: `run/src/ui/` with its four `screen_*`, and what `run/src/game/` does with them: every slot's place at three scales, replays of real scripts in `fixtures/` held byte for byte to golden PNGs beside them, 20000 random clicks on each screen, closing with no room, the ring, no heap, every way a screen comes up and goes on the real card, a click over the real threads, and the built program |
+| `tests/run/ui/menu/` | ctest `run_ui_menu`: `run/src/ui/menu/` with `catalog`, and `run/src/game/session/`: what is typed against published vectors and by hand, worlds on disk with what is wrong with them, each screen on made-up input by numbers worked out by hand, every size, no heap, pictures held to hashes set after looking at them, the built program all the way round under `--headless` and its refusals, and the whole round on fake kernels with the real threads and a real guardian |
 | `tests/run/ui/font/` | ctest `run_ui_font`, named by its path: `run/src/ui/` with `compose`, `font` and `widget`: the font against its recipe by hand, text, fills and images against a pixel-at-a-time model on `simd_reference_blend_over` with guard pixels round the canvas, each widget on made-up input frames, every key of a US keyboard, a picture left alone by what is drawn over it, no heap in 200 frames, a sheet of all of it held to a hash set after looking at it, and the built program |
 | `tests/run/ui/hud/` | ctest `run_ui_hud`: `run/src/ui/hud/`, with what `run/src/game/` does with it: where things go by hand, random states against a pixel-at-a-time model with guard pixels round the canvas, golden PNGs in `fixtures/`, no heap in 200 frames, the real game on the card with one thread and with its real threads, and a script in the built program |
 | `tests/run/render/upload/` | ctest `run_render_upload`, covering `run/src/render/` with `upload`, and `cuda/src/world_buffers/`, on the real card: a real kernel's answers against the world voxel for voxel, the slab pool against a model, the budget, and a real sim thread |

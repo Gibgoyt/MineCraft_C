@@ -12,6 +12,7 @@
 #include "ui/screen_crafting/index.h"
 #include "ui/screen_furnace/index.h"
 #include "ui/screen_inventory/index.h"
+#include "ui/menu/index.h"
 #include "ui/widget/index.h"
 
 #include <stdint.h>
@@ -28,8 +29,10 @@ typedef struct ui_t {
     ui_widget_t widget;             /* 240 */
     ui_hud_t hud;                   /* 576 */
     ui_screens_t *borrowed_screens; /* 696: from arena_tables: what the game screens share */
+    ui_menu_t menu;                 /* 704 */
+    uint8_t _pad0[16];              /* 1008 */
 } ui_t;
-static_assert(sizeof(ui_t) == 704);
+static_assert(sizeof(ui_t) == 1024);
 static_assert(alignof(ui_t) == 64);
 
 /* Reserves its memory and reads the font and the widgets' textures, which texture must keep for as long as this lives. On
@@ -48,6 +51,10 @@ bool ui_frame_begin(ui_t *ui, uint8_t *pixels, uint64_t pitch, uint32_t width, u
  * memory is reserved the first time it is needed at a size, not in every frame. False if that fails or the size is refused,
  * with no frame started. */
 bool ui_frame_begin_over(ui_t *ui, const uint8_t *picture, uint32_t width, uint32_t height);
+
+/* Starts a frame with no picture under it, on black, for screens that have no world behind them, with the same memory and the
+ * same failures as ui_frame_begin_over. */
+bool ui_frame_begin_blank(ui_t *ui, uint32_t width, uint32_t height);
 
 /* Ends the frame, as ui_widget_frame_end does, and returns what was drawn on, for render_frame_present. */
 const uint8_t *ui_frame_end(ui_t *ui, bool show_pointer);

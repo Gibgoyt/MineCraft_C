@@ -14,20 +14,25 @@
 - `game_headless_scene`: what `display_headless_run` drives. One thread, no clock, and one script gives one set of pictures.
 - `game_loop_start`, `game_loop_frame`, `game_loop_stop`: the real threads, and a frame on the main thread.
 - `game_loop_source_begin`, `game_loop_source`, `game_loop_discard`: what `display_frames_run` calls: the threads start on its first frame, then real keys and a real mouse to `game_loop_frame`, and Esc to stop.
+- `game_loop_threads_ensure`, `game_loop_input_frame`, `game_loop_input_clear`: the same in parts, for `session`, which wants Esc for itself.
+- `game_pause_set`: stops the world's clock, or starts it.
+- `game_open_alive_set`: someone to tell that a long `game_open` is still going.
 - `game_fly_from_script`, `game_fly_from_input`: either kind of input to a step of flying.
 - `game_player_set`, `game_walk_send`, `game_hands_send`: walk through the world with this player and not fly; what the mouse and keys want of it; what its two buttons are doing.
 - `game_entity_set`: what the player breaks comes out as items in the world, which it can pick up.
 - `game_item_set`: what it picks up goes into an inventory, and the hotbar slot in hand is what it places.
 - `game_hotbar_send`: the number keys and the wheel.
 - `game_ui_set`: draw on each picture shown with this `ui_t`, and the game screens come up on it.
-- `game_screen_input`: a poll's input for the game screens.
+- `game_screen_input`, `game_screen_up`: a poll's input for the game screens, and whether one is up, which then has Esc.
 - `game_input_from_script`: a script's tick as a poll of real input.
 - `game_debug_send`: the debug overlay's key, F3.
 - `game_hud_state_read`, `game_hud_debug_read`: what the HUD and the overlay show now.
 - `game_report`: what the frames took, and the books of what was dropped.
 
-**May be called by:** `run/src/main/`.
+**May be called by:** `run/src/main/`, and its part `session`.
 **Depends on:** `player`, `entity`, `item`, `ui`, `render`, `world`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
+
+**Parts:** `session`: from the title screen to Quit Game, on top of the rest of this.
 
 A column's blocks are `terrain_generate_box`, on a worker, over all of the column's storage. Each job lends it the states and a byte per voxel.
 

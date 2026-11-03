@@ -7,7 +7,12 @@
 **Threads:** main, which it pins to its place in `config/machine.yaml`.
 **Public functions:** `main`. A command line:
 
-    minecraft_c                                   runs the program
+    minecraft_c                                   on a terminal, the same as --menu; otherwise, as under ctest, the check below
+    minecraft_c --menu [--saves <dir>] [--render-distance <chunks>] [the effects' flags]
+                                                  the game, through KMS, from a text console only: main menu, make or choose a
+                                                  world, walk in it, Esc to pause. See run/src/game/session/README.md
+    minecraft_c --headless --menu [the same] [--script ...] [--screenshot-dir ...] [--ticks ...] [--width ...] [--height ...]
+                                                  the same with no display: a script clicks through it, into PNG screenshots
     minecraft_c --report                          prints the compiled defines and CPU features, then exits, starting nothing
     minecraft_c --pretend-missing-cpu <key>       treats a feature as absent, to see the CPU check fail
     minecraft_c --pretend-leak                    skips the shutdown, to see the leak check at exit fail
@@ -31,14 +36,16 @@ switch like these until `run/src/ui/screen_settings/` (Stage 14.5) has a screen 
 
 `--walk` puts a body in that world, on the nearest dry land to its middle, in place of the flying camera. WASD walks, Space jumps, swims up and climbs, Left Shift sneaks, Left Ctrl sprints, the mouse looks, the left button mines and the right button places what was mined. E opens the inventory, the right button on a crafting table, furnace or chest opens that, and E or Esc closes it, with the mouse then a pointer. A script drives the same keys. See `run/src/player/README.md`. It also brings the HUD. F3, in any `--test-world` run, turns the debug overlay on and off: see `run/src/ui/hud/README.md`.
 
-With no flag, running the program starts the job system, runs one job per worker through it, logs the heap's counts and
-stops. Until the game has a menu, `--test-world` is how to get to a world.
+Worlds live under `--saves`, or `saves` where the program was started, which git ignores.
+
+With no flag and stdin not a terminal, running the program starts the job system, runs one job per worker through it, logs the heap's counts and
+stops. `ctest` runs it that way, with stdin from `/dev/null`. On a terminal it is the game, as `--menu` is, and inside X that is refused with nothing touched.
 
 Exit status: 0 for success, 2 for a bad command line, 3 for a CPU that lacks what the build uses, 4 for heap regions
 still live after `app_deinit` or device blocks still live before it, 5 for a core runtime or a card that would not start or did not run its jobs, 6 for a display that is not ours to take (nothing on
 it was changed), 7 for KMS failing partway, 8 for a bad script or a screenshot that could not be written under `--headless` (`MAIN_EXIT_*`).
 
-Only `--test-pattern` and `--test-world` without `--headless` open the display and read input. The default run stays away from
+Only `--test-pattern`, `--test-world` and `--menu` without `--headless`, and no flags at all on a terminal, open the display and read input. The default run off a terminal stays away from
 the card and from `/dev/input`. Each starts `input` only after `display_init` said OK, so a run that is refused never looks at
 an input device, and `--test-world` asks for the display before it opens a world. `--test-pattern` starts no job system. The mouse moves a cursor square, a held key or button turns it red, and Esc ends the run.
 `--headless` starts the same runtime as the default run, and then no display card, console or input device is opened.

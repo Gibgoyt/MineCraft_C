@@ -154,7 +154,7 @@ typedef struct test_ui_t {
     test_sheet_t sheet;
     uint8_t _pad0[16];
 } test_ui_t;
-static_assert(sizeof(test_ui_t) == 960);
+static_assert(sizeof(test_ui_t) == 1280);
 static_assert(alignof(test_ui_t) == 64);
 
 /* The test arena lines up on 16 bytes, and a ui_t wants 64. */

@@ -3,3 +3,6 @@
 
 # Parallel agent worktrees live inside the main checkout.
 .claude/worktrees/
+
+# Worlds made by running the game from the repository root.
+/saves/
