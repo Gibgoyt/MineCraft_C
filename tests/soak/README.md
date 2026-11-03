@@ -15,7 +15,7 @@
 
 | Flag | Meaning | Default |
 |---|---|---|
-| `--seconds <n>` | How long. A round is not started if it might run past this | 14100, so as to end inside the timeout above |
+| `--seconds <n>` | How long. A round is not started if it might run past this, and a session still going a sixty-fourth of this past it is stopped, not judged | 14100, so as to end inside the timeout above |
 | `--program <path>` | The game | `minecraft_c` next to this |
 | `--report <path>` | Also write what it says here | None |
 | `--keep` | Keep the directory | Only after a failure |
@@ -26,7 +26,7 @@ Exit status 0 is a pass. It stops at the first round with a failure, which says 
 
 Sessions are a twelfth of the time, and at least 60 s.
 
-1. **The threaded game**, as a child of this program: sim, gpu and workers with a body walking, digging and placing in frames as fast as they come, saving every 5 s of world time. It must end with no save failed and no `heap_reserve` in the last four fifths of play, and with every heap and device block released.
+1. **The threaded game**, as a child of this program: sim, gpu and workers with a body walking, digging and placing in frames as fast as they come, saving every 5 s of world time. Half its time goes to standing and digging, for 2 to 12 s at a time. It must end with a block dug, no save failed and no `heap_reserve` in the last four fifths of play, and with every heap and device block released.
 2. **The built program**, `--headless --menu`: through the real menus into a world, playing, through a pause, the inventory, the overlay, and walks that bring columns in and out; back to the title, into the world again, and on. It must end at exit status 0 with no heap live and nothing read back damaged. A player can be dead at the moment the script asks for the pause screen, and then the clicks fall on nothing and it plays on, so one session is not held to getting back through the title. Of six or more, one must.
 3. **The same killed**, every other round, by `SIGKILL` once it has saved, as a power cut would. The next session goes on from what it left. A player who changes nothing saves nothing, so one session is not held to it. Of three rounds or more, one must.
 

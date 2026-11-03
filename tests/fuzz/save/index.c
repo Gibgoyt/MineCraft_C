@@ -46,7 +46,8 @@ enum : uint64_t {
     FS_FAR_LINE_VOXELS = (uint64_t)COLUMN_SECTIONS * SECTION_SIZE,
 };
 enum : uint32_t {
-    FS_TICKS = 4u,
+    /* Long enough for a mind to ask the way, have it answered and go, and for the seed's creeper to burst. */
+    FS_TICKS = 8u,
     FS_NAME_BYTES = 2048u,
     FS_RECORD_LEVELS = 0x8000u,
 };
@@ -54,6 +55,8 @@ enum : uint32_t {
 #define FS_SPEED_MOST 1024.0f64
 /* Well under SAVE_STATE_PLACE_MOST, which is 1e9: what is at it moves past it in a tick, and the file then written is refused. */
 #define FS_PLACE_MOST 999000000.0f64
+/* Far from either end of an int32_t, which a tick adds to and takes from. */
+#define FS_AIR_MOST 1000000
 
 typedef struct fs_context_t {
     test_context_t *borrowed_test; /* 0 */
@@ -102,6 +105,8 @@ enum : uint32_t {
     FS_COUNT_META = 6u,
     FS_COUNT_SETTINGS_SET = 7u,
     FS_COUNT_KNOWN_DEFECT = 8u,
+    FS_COUNT_SEARCHES = 9u,
+    FS_COUNT_BLASTS = 10u,
 };
 static const char *const fs_count_names[] = {"records accepted",
                                              "states opened",
@@ -111,7 +116,9 @@ static const char *const fs_count_names[] = {"records accepted",
                                              "worlds opened again",
                                              "world.meta accepted",
                                              "settings files that set something",
-                                             "states not ticked, as they would meet issue 1"};
+                                             "states not ticked, as they would meet issue 1",
+                                             "states whose minds searched for a way",
+                                             "states a creeper burst in"};
 
 static uint64_t fs_hash_more(uint64_t hash, const void *data, uint64_t bytes) {
     const uint8_t *const cursor = data;
@@ -272,10 +279,11 @@ static void fs_no_spill(void *context, const item_stack_t *stack, const int32_t 
     (void)cell;
 }
 
-/* A velocity no tick of physics will take, which save_state_check lets through, and which ASSERT_ALWAYS then ends the program for, or a place right at what it believes, which goes past it in a tick: the stage file's issue 1. It is
- * not this stage's code to mend, and every run would stop there and see nothing behind it. So until it is mended, what would meet it is opened and written
- * back but not ticked, and the run counts how many: see FS_COUNT_KNOWN_DEFECT. MC_FUZZ_KNOWN_DEFECTS=1 in the environment takes this away. */
-static bool fs_state_speed_past_physics(const save_state_t *state) {
+/* A number save_state_check lets through and the game then cannot live with: a velocity no tick of physics will take, which ASSERT_ALWAYS ends the program for, a place right
+ * at what it believes, which goes past it in a tick, an eye so far up that a line to it overflows, or air at the end of its range: the stage file's issue 1. It is not this
+ * stage's code to mend, and every run would stop there and see nothing behind it. So until it is mended, what would meet it is opened and written back but not ticked, and the
+ * run counts how many: see FS_COUNT_KNOWN_DEFECT. MC_FUZZ_KNOWN_DEFECTS=1 in the environment takes this away. */
+static bool fs_state_meets_known_defect(const save_state_t *state) {
     const uint8_t *const file = state->borrowed_image;
     const uint64_t bytes = state->image_bytes;
     uint64_t size = 0u;
@@ -288,6 +296,8 @@ static bool fs_state_speed_past_physics(const save_state_t *state) {
             past = past || fabs(player.movement.velocity[a]) > FS_SPEED_MOST ||
                    fabs(player.movement.position[a]) > FS_PLACE_MOST;
         }
+        past = past || fabs(player.movement.eye_height) > FS_SPEED_MOST || player.survival.air > FS_AIR_MOST ||
+               player.survival.air < -FS_AIR_MOST;
     }
     data = save_state_section_find(file, bytes, SAVE_STATE_SECTION_DROPS, &size);
     if (data != nullptr) {
@@ -334,20 +344,62 @@ static bool fs_state_speed_past_physics(const save_state_t *state) {
     return past;
 }
 
-/* What goes on in a game loaded from this, for what asks no paths of anyone: see README.md. */
+/* What goes on in a game loaded from this, in the order of game_sim_tick. The searches run on this thread, as mob_init was given no job system: see README.md. */
 static void fs_state_ticks(fs_context_t *fs) {
     entity_t *const entity = fs->entity;
+    player_t *const player = fs->player;
+    mob_t *const mob = fs->mob;
+    const uint64_t searches_before = mob->path.searches;
     for (uint32_t tick = 0u; tick < FS_TICKS; tick++) {
+        const player_movement_t *const movement = &player->movement;
+        const bool target = player->survival.state != PLAYER_SURVIVAL_DEAD && player->survival.placing == 0u;
+        const float64_t height =
+            movement->crouched != 0u ? PLAYER_MOVEMENT_HEIGHT_CROUCHED : PLAYER_MOVEMENT_HEIGHT_STANDING;
+        item_world_tick(fs->item, &fs->w.world->edit, fs_no_spill, nullptr);
+        mob_tick(mob);
+        const mob_zombie_view_t zombie_view = {
+            .position = {movement->position[0], movement->position[1], movement->position[2]},
+            .eye = movement->eye_height,
+            .half_width = PLAYER_MOVEMENT_WIDTH * 0.5f64,
+            .height = height,
+            .alive = (uint8_t)(target ? 1u : 0u),
+        };
+        const float32_t blow = mob_minds_tick(mob, entity, &zombie_view);
+        if (blow > 0.0f32) {
+            (void)player_survival_hurt(&player->survival, blow, PLAYER_SURVIVAL_CAUSE_ATTACK);
+        }
         const mob_spawn_view_t view = {.position = {fs->player->movement.position[0], fs->player->movement.position[1],
                                                     fs->player->movement.position[2]},
                                        .day_fraction = fs->player->survival.day_fraction};
-        item_world_tick(fs->item, &fs->w.world->edit, fs_no_spill, nullptr);
         mob_spawn_tick(fs->spawn, &entity->store, entity->borrowed_physics, fs->w.map, &view);
+        const mob_skeleton_view_t skeleton_view = {
+            .position = {movement->position[0], movement->position[1], movement->position[2]},
+            .eye_height = movement->eye_height,
+            .height = height,
+            .alive = (uint8_t)(target ? 1u : 0u),
+        };
+        mob_skeleton_tick(&mob->skeleton, &mob->path, entity, fs->w.map, &skeleton_view);
+        const mob_creeper_scene_t scene = {
+            .borrowed_entity = entity,
+            .borrowed_path = &mob->path,
+            .borrowed_edit = &fs->w.world->edit,
+            .borrowed_movement = &player->movement,
+            .borrowed_survival = &player->survival,
+        };
+        mob_creeper_tick(&mob->creeper, &scene);
         entity_tick(entity, fs->w.map);
-        mob_combat_tick(&fs->mob->combat, &entity->store);
+        mob_combat_tick(&mob->combat, &entity->store);
         projectile_tick(&entity->projectiles, &entity->store, &entity->grid, fs->w.map, nullptr, nullptr, nullptr);
         player_tick(fs->player, fs->w.map, (int64_t)tick * PLAYER_TICK_NS);
         player_survive_tick(fs->player, fs->w.map);
+    }
+    if (mob->path.searches != searches_before) {
+        fuzz_count(FS_COUNT_SEARCHES);
+    }
+    /* The floor, as it was, or a few thousand blasts on nothing is left to stand on. */
+    if (entity->explosion.blast_count != 0u) {
+        fuzz_count(FS_COUNT_BLASTS);
+        test_world_fill(fs->borrowed_test, &fs->w, -16, -16, 0, 31, 31, 0, BLOCK_ID_STONE);
     }
 }
 
@@ -380,7 +432,7 @@ static void fs_state_execute(fs_context_t *fs, const uint8_t *body, uint64_t len
     if (!save_state_apply(&state, &parts)) {
         fuzz_fail("a file that passed would not apply");
     }
-    if (fs_state_speed_past_physics(&state) && getenv("MC_FUZZ_KNOWN_DEFECTS") == nullptr) {
+    if (fs_state_meets_known_defect(&state) && getenv("MC_FUZZ_KNOWN_DEFECTS") == nullptr) {
         fuzz_count(FS_COUNT_KNOWN_DEFECT);
     } else {
         fs_state_ticks(fs);
@@ -891,12 +943,22 @@ static void fs_seeds_state(test_context_t *t, fs_context_t *fs, fuzz_corpus_t *c
     const entity_handle_t first = mob_spawn_body(fs->spawn, &entity->store, MOB_ID_ZOMBIE, feet, 0.5f32);
     const float64_t feet2[3] = {12.5f64, 12.5f64, 3.0f64};
     (void)mob_spawn_body(fs->spawn, &entity->store, MOB_ID_SKELETON, feet2, 1.5f32);
-    const float64_t feet3[3] = {14.5f64, 10.5f64, 1.0f64};
+    /* By the player, its fuse nearly run, so that what a blast does is met by most inputs made from this one. */
+    const float64_t feet3[3] = {5.5f64, 5.5f64, 1.0f64};
     const entity_handle_t third = mob_spawn_body(fs->spawn, &entity->store, MOB_ID_CREEPER, feet3, 2.5f32);
+    mob_creeper_body_t *const lit = &fs->mob->creeper.borrowed_bodies[entity_handle_slot(third)];
+    lit->owner = third;
+    lit->state = MOB_CREEPER_STATE_CHASING;
+    lit->lit = 1u;
+    lit->fuse = MOB_CREEPER_FUSE_TICKS - 4u;
     const float64_t origin[3] = {2.5f64, 2.5f64, 5.0f64};
     const float64_t along[3] = {1.0f64, 0.25f64, 0.1f64};
     projectile_fire(&entity->projectiles, third, origin, along, 1.6f64, 1.0f64);
-    fs->mob->zombie.borrowed_bodies[entity_handle_slot(first)].unseen = 3u;
+    /* Already after the player, so that it asks the way at once and is not one in ten a tick. Without an owner a mind is taken as a new one's, and starts over. */
+    mob_zombie_body_t *const chasing = &fs->mob->zombie.borrowed_bodies[entity_handle_slot(first)];
+    chasing->owner = first;
+    chasing->chasing = 1u;
+    chasing->unseen = 3u;
 
     save_state_parts_t parts = fs_parts(fs);
     parts.time.world_ticks = 1234u;
@@ -987,7 +1049,7 @@ TEST(save) {
                                   .execute = fs_execute,
                                   .borrowed_count_names = fs_count_names,
                                   .token_count = 0u,
-                                  .count_name_count = 9u,
+                                  .count_name_count = 11u,
                                   .kind_count = FS_MODE_COUNT,
                                   ._pad0 = {0}};
     fuzz_run(t, &target);

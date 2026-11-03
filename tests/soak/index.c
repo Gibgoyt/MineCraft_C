@@ -45,6 +45,8 @@ enum : uint64_t {
     SOAK_GROWTH_ALLOWED_MIB = 256u,
     /* The hard rule for tests on this machine: the desktop shares the card. */
     SOAK_VRAM_LIMIT_MIB = 3900u,
+    /* A session past its time by this share of the soak is stopped: 220 s of the default, inside its 300 s to the timeout. */
+    SOAK_OVERRUN_ONE_IN = 64u,
 };
 enum : uint32_t {
     SOAK_PATH_BYTES = 1024u,
@@ -400,9 +402,10 @@ static uint64_t soak_script_play(soak_t *soak, uint64_t *at, uint64_t ticks, boo
                       (int32_t)(soak_next(soak) % 800u) - 400, (int32_t)(soak_next(soak) % 400u) - 200);
             passed += gap;
             break;
-        case 4u: /* looks down and digs */
-            soak_line(soak, at, "+1 move 0 500\n+1 button left down\n+%" PRIu64 " button left up\n", gap);
-            passed += gap + 2u;
+        case 4u: /* looks somewhere, mostly down, and digs. Long enough for stone by hand, 150 ticks, or the first shaft to reach stone is the last block it ever breaks */
+            soak_line(soak, at, "+1 move %" PRId32 " %" PRId32 "\n+1 button left down\n+%" PRIu64 " button left up\n",
+                      (int32_t)(soak_next(soak) % 400u) - 200, (int32_t)(soak_next(soak) % 700u) - 200, gap * 3u);
+            passed += gap * 3u + 2u;
             break;
         case 5u: /* puts what it has down */
             soak_line(soak, at, "+1 button right down\n+%" PRIu64 " button right up\n", gap / 4u + 1u);
@@ -461,12 +464,21 @@ static uint64_t soak_manifest_generation(const char *world_directory) {
 /* The generation a killed session has to get past. */
 static uint64_t soak_kill_after_generation;
 
+/* A script is ticks, and the machine says how long those take, so a last session could run on past what its caller's timeout allows, which would lose all of the soak's
+ * results to save one session's. At this it is stopped and goes unjudged. */
+static int64_t soak_stop_ns;
+
 /* And when to stop waiting for that. A world where nothing changes never saves: measured 634 s of a session that had nothing to do, which took a 1620 s soak to 1793 s. */
 static int64_t soak_kill_give_up_ns;
 
 static bool soak_saved_since(const soak_t *soak) {
     return soak_manifest_generation(soak->world_directory) > soak_kill_after_generation ||
-           time_now_ns() > soak_kill_give_up_ns;
+           time_now_ns() > soak_kill_give_up_ns || time_now_ns() > soak_stop_ns;
+}
+
+static bool soak_out_of_time(const soak_t *soak) {
+    (void)soak;
+    return time_now_ns() > soak_stop_ns;
 }
 
 /* One run of the built program. kill_when_saved kills it once it has saved, which leaves its files as a power cut would. */
@@ -523,8 +535,8 @@ static void soak_menu_session(soak_t *soak, bool kill_when_saved) {
     }
     soak_child_t watched;
     const uint64_t limit = soak->session_seconds * 4u + 300u;
-    soak_child_watch(soak, child, limit, soak->session_seconds / 10u, kill_when_saved ? soak_saved_since : nullptr,
-                     &watched);
+    soak_child_watch(soak, child, limit, soak->session_seconds / 10u,
+                     kill_when_saved ? soak_saved_since : soak_out_of_time, &watched);
     const char *const log_text = soak_log_read(soak, log_path);
     const char *const kind = kill_when_saved ? "killed session" : "session";
     soak_child_check(soak, kind, &watched, log_text);
@@ -533,6 +545,10 @@ static void soak_menu_session(soak_t *soak, bool kill_when_saved) {
         /* Nothing changed means nothing to save, which can be so of a player who digs nothing: no fault of one session. The soak as a whole is held to it at the end. */
         soak->kills += soak_manifest_generation(soak->world_directory) > soak_kill_after_generation ? 1u : 0u;
         soak_child_say(soak, kind, &watched, "");
+        return;
+    }
+    if (watched.killed_on_purpose != 0u) {
+        soak_child_say(soak, kind, &watched, "; stopped at the end of the soak's time, and not judged");
         return;
     }
     if (watched.seconds != 0u) {
@@ -695,13 +711,15 @@ static void soak_threaded_child(test_context_t *t, const char *directory, uint64
     const int64_t until_ns = started_ns + (int64_t)seconds * TIME_NS_PER_SECOND;
     int64_t last_ns = started_ns;
     uint64_t frames = 0u;
-    uint64_t rng = 0x9E3779B97F4A7C15ull;
+    /* Of what the world has come to, so that each round goes its own way, and a run can still be had again. */
+    uint64_t rng = 0x9E3779B97F4A7C15ull ^ (rig.save->world.generation * 0xD1342543DE82EF95ull);
     render_fly_input_t input = {0};
     bool attack = false;
     bool place = false;
     bool jump = false;
     bool sneak = false;
-    uint32_t hold = 0u;
+    int64_t next_ns = 0;
+    int8_t turning = 0;
     bool running = true;
     while (running && time_now_ns() < until_ns) {
         const int64_t now_ns = time_now_ns();
@@ -709,23 +727,31 @@ static void soak_threaded_child(test_context_t *t, const char *directory, uint64
             heap_counters_read(&counters_settled);
             counted = true;
         }
-        /* A new thing to do every so often. */
-        if (hold == 0u) {
+        /* A new thing to do every so often, by the clock: frames come by the hundred a second, and a block by hand takes seconds of looking at it. Measured, with a new
+         * thing every 60 to 300 frames and the view turning in every one: 3 blocks dug in 60 s. Half of its time goes to digging, of which a turn only at the start. */
+        input.mouse_dx = turning;
+        input.mouse_dy = 0;
+        if (now_ns >= next_ns) {
             rng ^= rng << 13;
             rng ^= rng >> 7;
             rng ^= rng << 17;
-            hold = 60u + (uint32_t)(rng % 240u);
-            input.forward = (int8_t)((rng >> 8) % 3u) - 1;
-            input.right = (int8_t)((rng >> 12) % 3u) - 1;
-            input.fast = (uint8_t)((rng >> 16) % 2u);
-            attack = (rng >> 18) % 2u == 0u;
-            place = (rng >> 20) % 4u == 0u;
-            jump = (rng >> 24) % 4u == 0u;
-            sneak = (rng >> 28) % 8u == 0u;
-            input.mouse_dx = (int64_t)((rng >> 32) % 41u) - 20;
-            input.mouse_dy = (int64_t)((rng >> 40) % 21u) - 10;
+            const uint32_t what = (uint32_t)(rng % 8u);
+            const bool digs = what < 4u;
+            /* Stone by hand takes 7.5 s, so some of these get through it. */
+            const int64_t millis = digs ? 2000 + (int64_t)((rng >> 8) % 10000u) : 500 + (int64_t)((rng >> 8) % 3500u);
+            next_ns = now_ns + millis * 1000000;
+            input.forward = digs ? 0 : (int8_t)((rng >> 24) % 3u) - 1;
+            input.right = digs ? 0 : (int8_t)((rng >> 26) % 3u) - 1;
+            input.fast = (uint8_t)((rng >> 28) % 2u);
+            attack = digs;
+            /* Puts back what it picked up, where it is looking. */
+            place = what == 4u;
+            jump = !digs && (rng >> 29) % 2u == 0u;
+            sneak = !digs && (rng >> 30) % 8u == 0u;
+            turning = digs ? 0 : (int8_t)((rng >> 33) % 5u) - 2;
+            input.mouse_dx = (int64_t)((rng >> 36) % 801u) - 400;
+            input.mouse_dy = (int64_t)((rng >> 46) % 701u) - 200;
         }
-        hold--;
         game_walk_send(rig.game, &input, jump, sneak, now_ns);
         game_hands_send(rig.game, attack, place);
         const float32_t passed = (float32_t)time_ns_to_seconds(now_ns - last_ns);
@@ -754,6 +780,8 @@ static void soak_threaded_child(test_context_t *t, const char *directory, uint64
     CHECK(pictures > 10u);
     CHECK(rig.save->autosave.saves_done >= 1u);
     CHECK_EQ_U64(rig.save->autosave.saves_failed, 0u);
+    /* If it digs nothing the saves have nothing to do, and the soak of them is no soak. */
+    CHECK(rig.player->interaction.mined_count >= 1u);
     /* Far from the only thing in play that might, and this is the one that no short run can see adding up. */
     CHECK_EQ_U64(counters_end.reserve_calls - counters_settled.reserve_calls, 0u);
 
@@ -889,6 +917,7 @@ TEST(soak) {
 
     const int64_t started_ns = time_now_ns();
     const int64_t until_ns = started_ns + (int64_t)soak->seconds * TIME_NS_PER_SECOND;
+    soak_stop_ns = until_ns + (int64_t)(soak->seconds / SOAK_OVERRUN_ONE_IN) * TIME_NS_PER_SECOND;
     soak_say(soak, "soak: %" PRIu64 " s, sessions of %" PRIu64 " s, in %s, of %s", soak->seconds, soak->session_seconds,
              soak->root, soak->program);
     /* Stops before starting what would take it past its time: a round is two sessions, a look, and now and then a third that is killed. */
