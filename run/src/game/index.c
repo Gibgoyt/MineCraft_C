@@ -65,6 +65,11 @@ void game_entity_set(game_t *game, entity_t *entity) {
     game->borrowed_entity = entity;
 }
 
+void game_ui_set(game_t *game, ui_t *ui) {
+    ASSERT_ALWAYS(game->open == 0u);
+    game->borrowed_ui = ui;
+}
+
 void game_item_set(game_t *game, item_t *item) {
     ASSERT_ALWAYS(game->open == 0u);
     game->borrowed_item = item;
@@ -282,6 +287,9 @@ bool game_open(game_t *game, const game_config_t *config) {
         item_open(game->borrowed_item);
         item_world_begin(game->borrowed_item, &game->borrowed_world->edit);
     }
+    if (game->borrowed_ui != nullptr) {
+        ui_screen_world_begin(game->borrowed_ui);
+    }
     game->open = 1u;
     return true;
 }
@@ -387,7 +395,33 @@ static void game_columns_request(game_t *game) {
     }
 }
 
+static void game_spill(void *borrowed_game, const item_stack_t *stack, const int32_t cell[3]);
+
+/* What the screens need to know of this moment, on the sim. */
+static void game_screen_sim(game_t *game, ui_screen_sim_t *out) {
+    const player_t *const player = game->borrowed_player;
+    const float64_t *const position = player->movement.position;
+    *out = (ui_screen_sim_t){
+        .borrowed_item = game->borrowed_item,
+        .spill = game_spill,
+        .borrowed_context = game,
+        .cell = {(int32_t)floor(position[0]), (int32_t)floor(position[1]), (int32_t)floor(position[2])},
+        .may_open = player_survival_holds_body(&player->survival) ? 0u : 1u,
+        ._pad0 = {0}};
+}
+
+/* Whether a game has screens at all: they move what is carried, so they need something carried, and a body to carry it. */
+static bool game_has_screens(const game_t *game) {
+    return game->borrowed_ui != nullptr && game->borrowed_item != nullptr && game->borrowed_player != nullptr;
+}
+
 void game_sim_step(game_t *game) {
+    /* In every step and not only in a tick, so that a click shows in a few milliseconds and not in up to fifty. */
+    if (game_has_screens(game)) {
+        ui_screen_sim_t sim;
+        game_screen_sim(game, &sim);
+        ui_screen_sim_step(game->borrowed_ui, &sim, false);
+    }
     world_t *const world = game->borrowed_world;
     world_map_t *const map = &world->map;
     const int32_t center_x = atomic_load_explicit(&game->center_x, memory_order_relaxed);
@@ -480,6 +514,26 @@ static void game_tool_after_break(game_t *game, uint16_t held_item) {
     (void)equipment_tool_block_broken(&item->equipment, &item->inventory, hands->last_mined);
 }
 
+/* The right button on a block with a screen brings it up, as it goes down. A held button that comes to rest on one does not, or a screen
+ * just closed would come straight back. While a screen is up, or the button is on such a block, the hands do nothing: a chest is not built on,
+ * and sneaking is how to build on one. */
+static void game_screen_hands(game_t *game, int64_t tick_ns) {
+    player_t *const player = game->borrowed_player;
+    ui_t *const ui = game->borrowed_ui;
+    const raycast_hit_t *const hit = &player->target.hit;
+    const bool held = game_use_held(player, tick_ns);
+    const bool pressed = held && game->use_was_held == 0u;
+    /* main sends no buttons while a screen is up, and one still held as it goes is no new press. */
+    game->use_was_held = held || ui_screen_sim_kind(ui) != UI_SCREEN_NONE ? 1u : 0u;
+    const bool sneaking = player_sneak_sent(player);
+    const ui_screen_kind_t kind =
+        hit->result == RAYCAST_RESULT_HIT && !sneaking ? ui_screen_kind_of_block(hit->block) : UI_SCREEN_NONE;
+    if (pressed && kind != UI_SCREEN_NONE && !player_survival_holds_body(&player->survival)) {
+        (void)ui_screen_sim_open(ui, game->borrowed_item, kind, hit->cell);
+    }
+    player->hands_held_off = ui_screen_sim_kind(ui) != UI_SCREEN_NONE || (held && kind != UI_SCREEN_NONE) ? 1u : 0u;
+}
+
 /* One tick of the hands: which slot is in hand first, so that a key and a click in one tick act in that order, then what the right button
  * does with armor or a hoe; what they placed comes off the slot, and what they broke wears it. */
 static void game_interact_tick(game_t *game, int64_t tick_ns) {
@@ -490,10 +544,14 @@ static void game_interact_tick(game_t *game, int64_t tick_ns) {
         return;
     }
     item_hotbar_apply(item);
+    if (game_has_screens(game)) {
+        game_screen_hands(game, tick_ns);
+    }
     const raycast_hit_t *const hit = &player->target.hit;
     /* A press that brings a body back or wakes it is used up by that. */
     equipment_use_tick(&item->equipment, &item->inventory, &game->borrowed_world->edit,
-                       game_use_held(player, tick_ns) && !player_survival_holds_body(&player->survival),
+                       game_use_held(player, tick_ns) && !player_survival_holds_body(&player->survival) &&
+                           player->hands_held_off == 0u,
                        hit->result == RAYCAST_RESULT_HIT ? hit->cell : nullptr);
     game_hand_from_hotbar(game);
     game_tool_from_hotbar(game);
@@ -610,6 +668,12 @@ static void game_survive_tick(game_t *game) {
         (void)equipment_armor_hurt(&item->equipment, armor_hit);
     }
     if (player_survival_died_take(&player->survival)) {
+        /* What a screen had out goes back first, so that it comes out with the rest. */
+        if (game_has_screens(game)) {
+            ui_screen_sim_t sim;
+            game_screen_sim(game, &sim);
+            ui_screen_sim_close(game->borrowed_ui, &sim);
+        }
         game_death_spill(game);
     }
     if (player_survival_morning_take(&player->survival)) {
@@ -657,6 +721,23 @@ static void game_entities_publish(game_t *game) {
     render_entities_publish(entities);
 }
 
+/* A screen whose block has gone goes with it, and with no one asking main is told how things are, as a furnace burns. */
+static void game_screen_tick(game_t *game) {
+    ui_t *const ui = game->borrowed_ui;
+    ui_screen_sim_t sim;
+    game_screen_sim(game, &sim);
+    const ui_screen_kind_t kind = ui_screen_sim_kind(ui);
+    if (kind != UI_SCREEN_NONE && kind != UI_SCREEN_INVENTORY) {
+        const int32_t *const cell = ui_screen_sim_cell(ui);
+        uint16_t block = BLOCK_ID_AIR;
+        if (world_map_block_get(&game->borrowed_world->map, cell[0], cell[1], cell[2], &block) != WORLD_MAP_STATUS_OK ||
+            ui_screen_kind_of_block(block) != kind) {
+            ui_screen_sim_close(ui, &sim);
+        }
+    }
+    ui_screen_sim_step(ui, &sim, true);
+}
+
 /* One tick of simulated time, due at tick_ns: this is where Stages 11 to 15 add theirs. */
 static void game_sim_tick(game_t *game, int64_t tick_ns) {
     arena_reset(&game->arena_tick);
@@ -666,6 +747,9 @@ static void game_sim_tick(game_t *game, int64_t tick_ns) {
                                     4294967296.0f64);
         /* First, so that the body and its next aim both meet the world as the hands leave it. */
         game_interact_tick(game, tick_ns);
+        if (game_has_screens(game)) {
+            game_screen_tick(game);
+        }
         if (game->borrowed_item != nullptr) {
             item_world_tick(game->borrowed_item, &game->borrowed_world->edit, game_spill, game);
         }
@@ -774,6 +858,39 @@ bool game_settle(game_t *game) {
     }
 }
 
+bool game_screen_input(game_t *game, const input_frame_t *frame) {
+    if (!game_has_screens(game)) {
+        return false;
+    }
+    const render_frame_t *const render_frame = &game->borrowed_render->frame;
+    return ui_screen_input(game->borrowed_ui, frame, render_frame->width, render_frame->height);
+}
+
+void game_input_from_script(const display_headless_tick_t *tick, input_frame_t *out) {
+    static_assert(sizeof(tick->state->down) == sizeof(out->down.words));
+    memset(out, 0, sizeof(*out));
+    memcpy(out->down.words, tick->state->down, sizeof(out->down.words));
+    out->mouse_dx = tick->state->tick_dx;
+    out->mouse_dy = tick->state->tick_dy;
+    out->wheel = tick->state->tick_wheel;
+    for (uint32_t i = 0u; i < tick->event_count; i++) {
+        const display_script_event_t *const event = &tick->events[i];
+        if (event->kind == DISPLAY_SCRIPT_KEY) {
+            input_keys_t *const keys = event->pressed != 0u ? &out->pressed : &out->released;
+            keys->words[event->code / 64u] |= 1ull << (event->code % 64u);
+        }
+    }
+}
+
+/* The picture with whatever screen is up on it. */
+static const uint8_t *game_picture_with_screen(game_t *game, const uint8_t *picture) {
+    if (!game_has_screens(game)) {
+        return picture;
+    }
+    const render_frame_t *const frame = &game->borrowed_render->frame;
+    return ui_screen_over(game->borrowed_ui, picture, frame->width, frame->height);
+}
+
 void game_fly_from_script(const display_script_state_t *state, render_fly_input_t *out) {
     memset(out, 0, sizeof(*out));
     out->mouse_dx = state->tick_dx;
@@ -818,15 +935,24 @@ static bool game_scene_tick(void *context, const display_headless_tick_t *tick) 
     if (!game_settle(game)) {
         return false;
     }
-    game_walk_send(game, &input, display_script_state_is_down(tick->state, KEY_SPACE),
-                   display_script_state_is_down(tick->state, KEY_LEFTSHIFT), tick_ns);
-    game_hands_send(game, display_script_state_is_down(tick->state, BTN_LEFT),
-                    display_script_state_is_down(tick->state, BTN_RIGHT));
-    bool hotbar[INVENTORY_HOTBAR_SLOTS];
-    for (uint32_t slot = 0u; slot < INVENTORY_HOTBAR_SLOTS; slot++) {
-        hotbar[slot] = display_script_state_is_down(tick->state, KEY_1 + slot);
+    input_frame_t frame;
+    game_input_from_script(tick, &frame);
+    if (game_screen_input(game, &frame)) {
+        /* The same as a real frame with a screen up: the body stands, and looks where it looked. */
+        memset(&input, 0, sizeof(input));
+        game_walk_send(game, &input, false, false, tick_ns);
+        game_hands_send(game, false, false);
+    } else {
+        game_walk_send(game, &input, display_script_state_is_down(tick->state, KEY_SPACE),
+                       display_script_state_is_down(tick->state, KEY_LEFTSHIFT), tick_ns);
+        game_hands_send(game, display_script_state_is_down(tick->state, BTN_LEFT),
+                        display_script_state_is_down(tick->state, BTN_RIGHT));
+        bool hotbar[INVENTORY_HOTBAR_SLOTS];
+        for (uint32_t slot = 0u; slot < INVENTORY_HOTBAR_SLOTS; slot++) {
+            hotbar[slot] = display_script_state_is_down(tick->state, KEY_1 + slot);
+        }
+        game_hotbar_send(game, hotbar, 0);
     }
-    game_hotbar_send(game, hotbar, 0);
     game_sim_tick(game, tick_ns);
     /* A whole tick on from when it was due: where this tick ended. */
     game_walk_view(game, tick_ns + GAME_TICK_NS);
@@ -850,7 +976,7 @@ static bool game_scene_draw(void *context, const display_headless_tick_t *tick, 
     }
     const uint8_t *const picture = render_frame_take(&render->frame);
     ASSERT_ALWAYS(picture != nullptr);
-    render_frame_present(&render->frame, picture, frame);
+    render_frame_present(&render->frame, game_picture_with_screen(game, picture), frame);
     return true;
 }
 
@@ -957,7 +1083,7 @@ bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t se
         game->pictures_shown++;
     }
     if (game->borrowed_last_picture != nullptr) {
-        render_frame_present(frame, game->borrowed_last_picture, target);
+        render_frame_present(frame, game_picture_with_screen(game, game->borrowed_last_picture), target);
     }
     return atomic_load_explicit(&game->failed, memory_order_acquire) == 0u;
 }
@@ -985,7 +1111,9 @@ bool game_loop_source(void *context, display_buffer_t *back) {
         return false; /* it has said why */
     }
     const input_frame_t *const frame = input_poll(game->borrowed_input);
-    if (input_keys_has(&frame->pressed, KEY_ESC)) {
+    const bool screen_up = game_screen_input(game, frame);
+    /* With a screen up, Esc has closed it. */
+    if (input_keys_has(&frame->pressed, KEY_ESC) && !screen_up) {
         return false;
     }
     const int64_t now_ns = time_now_ns();
@@ -993,7 +1121,12 @@ bool game_loop_source(void *context, display_buffer_t *back) {
     game->last_frame_ns = now_ns;
     render_fly_input_t input;
     game_fly_from_input(frame, &input);
-    if (game->borrowed_player != nullptr) {
+    if (screen_up) {
+        /* The body stands, and the mouse is the pointer. Sent all the same, or the sim would take it that nobody is at the controls. */
+        memset(&input, 0, sizeof(input));
+        game_walk_send(game, &input, false, false, now_ns);
+        game_hands_send(game, false, false);
+    } else if (game->borrowed_player != nullptr) {
         game_walk_send(game, &input, input_keys_has(&frame->down, KEY_SPACE),
                        input_keys_has(&frame->down, KEY_LEFTSHIFT), now_ns);
         /* A click over between two polls is in pressed and not in down. */
@@ -1053,6 +1186,12 @@ void game_report(game_t *game) {
         LOG_INFO("game: %" PRIu32 " armor points worn; %" PRIu64 " tools and %" PRIu32 " pieces of armor have broken",
                  equipment_armor_points(&item->equipment), item->equipment.tools_broken_count,
                  item->equipment.armor_broken_count);
+    }
+    if (game_has_screens(game) && game->borrowed_item->inventory.borrowed_slots != nullptr) {
+        const ui_screens_t *const screens = game->borrowed_ui->borrowed_screens;
+        LOG_INFO("game: screens came up %" PRIu64 " times and took %" PRIu64 " clicks; %" PRIu64
+                 " requests were lost, with %" PRIu64 " sent",
+                 screens->opened_count, screens->click_count, screens->lost_count, screens->sent_count);
     }
     if (game->borrowed_entity != nullptr) {
         const item_drop_store_t *const drops = &game->borrowed_entity->item_drops;

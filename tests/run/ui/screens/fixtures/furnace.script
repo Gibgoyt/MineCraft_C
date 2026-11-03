@@ -1,0 +1,28 @@
+# The window's top left is at (72, 37), and the test has opened the screen, with the pointer at (160, 120).
+# Hotbar 0, at (89, 188): the sand on the pointer.
+0 move -71 68
+1 button left down
+2 button left up
+# Into the input, at (136, 62).
+3 move 47 -126
+4 button left down
+5 button left up
+# The coal, in hotbar 1 at (107, 188), by shift to the fuel slot.
+6 move -29 126
+7 key lshift down
+8 button left down
+9 button left up
+10 key lshift up
+# Away, off the window.
+11 move 143 -158
+# Part way through the first of the two.
+110 screenshot furnace_burning.png
+# Both done. The output, at (196, 80), by shift into the inventory.
+420 screenshot furnace_done.png
+421 move -54 50
+422 key lshift down
+423 button left down
+424 button left up
+425 key lshift up
+426 key escape down
+427 key escape up

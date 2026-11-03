@@ -104,7 +104,9 @@ static void main_print_usage(const char *program) {
         "  --walk                   with --test-world: walk and do not fly. WASD walks, Space jumps, swims up and "
         "climbs,\n"
         "                           Shift sneaks, Ctrl sprints, the mouse looks, the left button mines and the right\n"
-        "                           button places what was mined\n",
+        "                           button places what was mined. E opens the inventory, the right button on a "
+        "crafting\n"
+        "                           table, furnace or chest opens that, and E or Esc closes it\n",
         program, program, program, program);
 }
 
@@ -431,6 +433,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         game_player_set(&app->game, &app->player);
         game_entity_set(&app->game, &app->entity);
         game_item_set(&app->game, &app->item);
+        game_ui_set(&app->game, &app->ui);
     }
     return MAIN_EXIT_OK;
 }

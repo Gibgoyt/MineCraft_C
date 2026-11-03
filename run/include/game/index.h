@@ -15,6 +15,7 @@
 #include "terrain/index.h"
 #include "texture/index.h"
 #include "thread/index.h"
+#include "ui/index.h"
 #include "world/index.h"
 
 #include <stdatomic.h>
@@ -97,7 +98,8 @@ typedef struct game_t {
     uint8_t pool_full_said;    /* 863 */
     player_t *borrowed_player; /* 864: walking if not nullptr; set before a world opens, and only read after */
     uint32_t commit_next;      /* 872: the job the next step looks at first */
-    uint8_t _pad0[4];          /* 876 */
+    uint8_t use_was_held;      /* 876: the sim's: the right button, last tick */
+    uint8_t _pad0[3];          /* 877 */
     entity_t *borrowed_entity; /* 880: what a player's drops go into; set before a world opens, and only read after */
     item_t *borrowed_item;     /* 888: what a player carries; set before a world opens, and only read after */
     /* A line of its own, written by main every frame. */
@@ -106,7 +108,8 @@ typedef struct game_t {
         day_units; /* 904: main to gpu and sim: the same, in 1/2^32 of a day, relaxed: the look and whether a bed works depend on it, and neither to the tick */
     _Atomic uint32_t
         morning_latch; /* 908: sim to main: a night was slept through, so the day goes on from morning; relaxed */
-    uint8_t _pad1[48]; /* 912 */
+    ui_t *borrowed_ui; /* 912: what draws the game screens; set before a world opens, and only read after */
+    uint8_t _pad1[40]; /* 920 */
     /* A line of its own from here: the gpu thread writes these, and main what is after them. */
     render_camera_t picture_cameras[RENDER_EXCHANGE_SLOTS]; /* 960: what the picture in each slot was drawn from */
     uint8_t _pad2[8];                                       /* 1080 */
@@ -137,6 +140,10 @@ void game_entity_set(game_t *game, entity_t *entity);
 /* From here on what a player picks up goes into this inventory, the hotbar slot in hand is what it places, and these open and close
  * with the world. Must outlive it. Before game_open. Without it what is picked up goes straight to the player's one-slot hand. */
 void game_item_set(game_t *game, item_t *item);
+
+/* From here on E, and the right button on a crafting table, furnace or chest, bring up the game screens, on this ui. Must outlive it. Before
+ * game_open. It takes a game_item_set and a game_player_set as well, and without them there are no screens. */
+void game_ui_set(game_t *game, ui_t *ui);
 
 /* Stops whatever is running, and closes any world. Safe on a zeroed game_t. */
 void game_deinit(game_t *game);
@@ -198,6 +205,13 @@ void game_hands_send(game_t *game, bool attack, bool place);
 /* Walking: the number keys choose a hotbar slot, and the wheel moves along it, as of the sim thread's next tick. The thread that owns
  * input. Away from the user is to the left, as in Minecraft. Does nothing with no inventory. */
 void game_hotbar_send(game_t *game, const bool keys[INVENTORY_HOTBAR_SLOTS], int64_t wheel);
+
+/* One poll's input for the game screens. True if one is up, which has this input: the caller then sends the player no keys or buttons,
+ * and Esc does not end the run. The thread that owns input, before game_walk_send. */
+bool game_screen_input(game_t *game, const input_frame_t *frame);
+
+/* What a script's tick looks like as a poll of real input. */
+void game_input_from_script(const display_headless_tick_t *tick, input_frame_t *out);
 
 /* Turning either kind of input into a step of flying. */
 void game_fly_from_script(const display_script_state_t *state, render_fly_input_t *out);

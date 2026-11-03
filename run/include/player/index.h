@@ -69,7 +69,8 @@ typedef struct player_t {
     _Atomic uint32_t hands_latch;   /* 2084: PLAYER_HAND_* pressed since the sim last looked */
     /* Sim to main: the newest player_vitals_t, relaxed, as only what is on the screen depends on it. */
     _Atomic uint64_t vitals_word; /* 2088 */
-    uint8_t _pad0[16];            /* 2096 */
+    uint8_t hands_held_off;       /* 2096: the sim's: a screen has the buttons, so the hands do nothing */
+    uint8_t _pad0[15];            /* 2097 */
     /* A line of its own: main writes the line above all the time. */
     player_survival_t survival; /* 2112: the sim's */
 } player_t;
@@ -93,6 +94,9 @@ void player_spawn(player_t *player, float64_t x, float64_t y, float64_t z);
 /* What the player wants now. Main, as often as it likes, with now_ns from the same clock as the ticks'. A jump pressed between
  * two ticks still jumps. Never waits. */
 void player_send(player_t *player, const player_intent_t *intent, int64_t now_ns);
+
+/* Whether the keys main sent last say to sneak. The sim. */
+bool player_sneak_sent(const player_t *player);
 
 /* Where the player looks now, for what it aims at. Main, as often as it likes. A yaw and pitch stay a pair. Never waits. */
 void player_look_send(player_t *player, float32_t yaw, float32_t pitch);
