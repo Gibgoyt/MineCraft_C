@@ -275,7 +275,8 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `screen_settings` | **Render distance and all options** | 14.5 |
 | `settings` | (the Owner) | `settings_init`, `settings_deinit`, `settings_load`, `settings_save`: the values, and where they are kept | 14.5 |
 | | `persist` | Their ranges and defaults, and the file, with our own runtime parser | 14.5 |
-| `save` | `world` | Seed + changed-section deltas, crash-safe | 16.1 |
+| `save` | (the Owner) | `save_init`, `save_deinit`, `save_open`, `save_close`: the region and arena its parts borrow, and the one world open | 16.1 |
+| | `world` | Seed + changed-section deltas, with versioned headers, replaced through a crash-safe rename | 16.1 |
 | | `state autosave` | Player, entities, time; background saves | 16.2 |
 
 ---
@@ -435,6 +436,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/game/` | ctest `run_game`: the real loop on the real card and threads through `display_frames_run`, on fake kernels, with the guardian really forked |
 | `tests/run/ui/screens/` | ctest `run_ui_screens`, named by its path: `run/src/ui/` with its four `screen_*`, and what `run/src/game/` does with them: every slot's place at three scales, replays of real scripts in `fixtures/` held byte for byte to golden PNGs beside them, 20000 random clicks on each screen, closing with no room, the ring, no heap, every way a screen comes up and goes on the real card, a click over the real threads, and the built program |
 | `tests/run/ui/menu/` | ctest `run_ui_menu`: `run/src/ui/menu/` with `catalog`, and `run/src/game/session/`: what is typed against published vectors and by hand, worlds on disk with what is wrong with them, each screen on made-up input by numbers worked out by hand, every size, no heap, pictures held to hashes set after looking at them, the built program all the way round under `--headless` and its refusals, and the whole round on fake kernels with the real threads and a real guardian |
+| `tests/run/save/world/` | ctest `run_save_world`: `run/src/save/` with `world`: each record and a manifest by hand, reloads against a brute-force model over many saves and on real terrain with real light, a bit flipped at every byte of a manifest, children killed at every step of a save and at random moments, readers on threads, a disk that refuses, the game on the real card, and the built program digging, reopened, and refused another seed |
 | `tests/run/settings/` | ctest `run_settings`: `run/src/settings/` with `persist`, `run/src/ui/screen_settings/` and `run/src/game/view/`: every setting saved and read back, bad files, each slider and box on made-up input, flips on a fake kernel, workers, and scripts in the built program whose pictures and files prove render distance live, without a restart, and kept |
 | `tests/run/settings/session/` | ctest `run_settings_session`: `game_reconfigure`, `game_view_refresh` and the Settings screen through `run/src/game/session/`: render distance both ways and everything else in an open world on the card, with one thread and with its real threads, and a whole session on fake devices |
 | `tests/run/ui/font/` | ctest `run_ui_font`, named by its path: `run/src/ui/` with `compose`, `font` and `widget`: the font against its recipe by hand, text, fills and images against a pixel-at-a-time model on `simd_reference_blend_over` with guard pixels round the canvas, each widget on made-up input frames, every key of a US keyboard, a picture left alone by what is drawn over it, no heap in 200 frames, a sheet of all of it held to a hash set after looking at it, and the built program |
@@ -589,6 +591,7 @@ Split it into sub-directories. Remember that going deeper changes the tier: code
 | How mining works | `run/src/player/interaction/` |
 | Height limit and sea level | `config/machine.yaml`, `world:` |
 | Render distance setting | `run/src/ui/screen_settings/`, `run/src/settings/` |
+| What is on disk for a world, and what a crash does to it | `run/src/save/world/README.md` |
 | How a pixel is made | `cuda/src/frame/`, then `traverse`, `shade`, `post` |
 | How pixels reach the monitor | `run/src/render/frame/`, then `run/src/display/flip/` |
 | Why the console came back after a crash | `run/src/display/vt_guard/` |

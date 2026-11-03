@@ -14,7 +14,7 @@
 - `game_session_headless_scene`, `game_session_end`: all of it for `display_headless_run`, and closing what is left.
 
 **May be called by:** `run/src/main/`.
-**Depends on:** `game`, `ui`, `ui/menu` and `ui/screen_settings`, `settings`, `terrain`, `input`, `display`, `simd/copy`, `log`, `assert`.
+**Depends on:** `game`, `save`, `ui`, `ui/menu` and `ui/screen_settings`, `settings`, `terrain`, `input`, `display`, `simd/copy`, `log`, `assert`.
 
 ## How it goes
 
@@ -47,3 +47,7 @@ The Settings button, on the main screen or a pause, brings up `run/src/ui/screen
 - A world that opens later opens from the values, with a table sized for its full detail.
 
 `tests/run/ui/menu/` runs the whole round on fake kernels with a real guardian forked. Only Ahmed can run it on a real console.
+
+## Saving
+
+Each world opened has its files opened first, `save_open` on `<saves>/<directory>`, with the seed in `world.meta`, and one it refuses is not opened: the session fails with why in the log, and the files stay as they were. Closing a world saves all it has changed, before `game_close`, and a save that fails makes the session's exit a failure. See `run/src/save/world/README.md`. Saves during play are Stage 16.2's.

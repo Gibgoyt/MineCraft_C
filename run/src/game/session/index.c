@@ -67,7 +67,44 @@ static void game_session_world_close(game_session_t *session) {
         session->failed = 1u;
     }
     game_report(game);
+    save_t *const save = game->borrowed_save;
+    if (save != nullptr && save->world.open != 0u) {
+        const save_world_status_t saved = save_world_flush(&save->world, &game->borrowed_world->edit);
+        if (saved != SAVE_WORLD_OK) {
+            LOG_ERROR("session: the world's changes could not all be saved: %s", save_world_status_name(saved));
+            session->failed = 1u;
+        }
+        LOG_INFO("save: %" PRIu64 " saves of %" PRIu64 " sections, %" PRIu64 " sections read back, %" PRIu64
+                 " past reading",
+                 save->world.saves_done, save->world.sections_written,
+                 atomic_load_explicit(&save->world.sections_loaded, memory_order_relaxed),
+                 atomic_load_explicit(&save->world.sections_damaged, memory_order_relaxed));
+    }
     game_close(game);
+    if (save != nullptr) {
+        save_close(save);
+    }
+}
+
+/* The world's files, if this game keeps any. False, having said why, if it cannot have them, and they are left as they were. */
+static bool game_session_save_open(const game_session_t *session, const ui_menu_world_t *world) {
+    save_t *const save = session->borrowed_game->borrowed_save;
+    if (save == nullptr) {
+        return true;
+    }
+    char directory[FILE_PATH_BYTES];
+    const int32_t written =
+        snprintf(directory, sizeof(directory), "%s/%s", session->borrowed_ui->menu.borrowed_saves, world->directory);
+    if (written <= 0 || written >= FILE_PATH_BYTES) {
+        LOG_ERROR("session: the path of world '%s' is too long", world->name);
+        return false;
+    }
+    const save_world_status_t status = save_open(save, directory, world->seed);
+    if (status != SAVE_WORLD_OK) {
+        LOG_ERROR("session: world '%s' will not be opened: %s", world->name, save_world_status_name(status));
+        return false;
+    }
+    return true;
 }
 
 /* A world's terrain is its seed's and nothing else's, so each opening makes it again. False, having said why, on failure. */
@@ -79,7 +116,13 @@ static bool game_session_world_open(game_session_t *session) {
         game_session_config_from_settings(session);
     }
     terrain_deinit(session->borrowed_terrain);
-    if (!terrain_init(session->borrowed_terrain, world->seed) || !game_open(game, &session->config)) {
+    if (!terrain_init(session->borrowed_terrain, world->seed) || !game_session_save_open(session, world)) {
+        return false;
+    }
+    if (!game_open(game, &session->config)) {
+        if (game->borrowed_save != nullptr) {
+            save_close(game->borrowed_save);
+        }
         return false;
     }
     LOG_INFO("session: world '%s' is open, from %s, with seed %" PRIu64 ", in %.3f s", world->name, world->directory,
