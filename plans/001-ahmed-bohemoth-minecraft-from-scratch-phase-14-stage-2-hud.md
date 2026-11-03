@@ -33,6 +33,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `caf182c` Add the HUD with crosshair, hotbar, hearts and hunger, and the F3 debug overlay with FPS and per-stage times, drawn on each picture the game shows.
+
 ## Issues found
 
 1. **The hotbar texture has eight slots, and the game nine.** Expected: a hotbar texture to stretch over `INVENTORY_HOTBAR_SLOTS`. `textures/ui/hotbar` is 162 by 22, with slots 20 apart (`gui/gui_hotbar.png`, from an eight-slot game), seen by drawing it at six times its size. Done: drawn in pieces, its eight slots, its last again, and its last two columns, 182 wide. The texture is left alone. `run/src/ui/hud/README.md` says so.
