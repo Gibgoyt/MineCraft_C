@@ -34,6 +34,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `81770bf` Add creepers that notice the player, walk to it, run their fuse and burst in a ray-based explosion that breaks blocks, hurts and pushes bodies and leaves gunpowder when killed otherwise.
+
 ## Issues found
 
 1. **The integration branch did not build: `app_t`'s size assert was stale.**
