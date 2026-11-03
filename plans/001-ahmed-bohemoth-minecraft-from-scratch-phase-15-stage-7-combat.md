@@ -34,6 +34,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `47ce4b9` Add the player attack with swing strength, reach and critical hits, and mob damage, knockback, falls and lava, so that a click with what is in hand can kill a mob.
+
 ## Issues found
 
 1. **`run_mob_zombie`'s program test fails, and not because of this stage.**
