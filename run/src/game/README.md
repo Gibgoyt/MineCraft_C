@@ -22,7 +22,7 @@
 - `game_fly_from_script`, `game_fly_from_input`: either kind of input to a step of flying.
 - `game_player_set`, `game_walk_send`, `game_hands_send`: walk through the world with this player and not fly; what the mouse and keys want of it; what its two buttons are doing.
 - `game_entity_set`: what the player breaks comes out as items in the world, which it can pick up, and mobs come and go in it by `run/src/mob/spawn/`, which `game_t` holds until a `mob` Owner does.
-- `game_mob_set`: `run/src/mob/` opens and closes with the world, and has a tick before the bodies move. What its zombies strike is the player, through `player_survival_hurt`. Skeletons think just before they move and shoot at the player; arrows fly just after, and are drawn. Creepers think, with the player in view, after the spawner and before the bodies move.
+- `game_mob_set`: `run/src/mob/` opens and closes with the world, and has a tick before the bodies move. What its zombies strike is the player, through `player_survival_hurt`. Skeletons think just before they move and shoot at the player; arrows fly just after, and are drawn. Creepers think, with the player in view, after the spawner and before the bodies move. A press of the left button on a body in reach is a blow on it through `run/src/mob/combat/`, before the hands and with what is in hand, which it wears; its fall and lava come after the bodies move.
 - `game_item_set`: what it picks up goes into an inventory, and the hotbar slot in hand is what it places.
 - `game_hotbar_send`: the number keys and the wheel.
 - `game_ui_set`: draw on each picture shown with this `ui_t`, and the game screens come up on it.
@@ -35,7 +35,7 @@
 **May be called by:** `run/src/main/`, and its part `session`.
 **Depends on:** `mob`, `player`, `entity`, `item`, `ui`, `render`, `world`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
 
-**Parts:** `session`: from the title screen to Quit Game, on top of the rest of this. `view`: what a config comes to, and bringing a picture up to the display's size. `report`: what it says about itself. `input`: what a person's hands come to.
+**Parts:** `session`: from the title screen to Quit Game, on top of the rest of this. `view`: what a config comes to, and bringing a picture up to the display's size. `report`: what it says about itself. `input`: what a person's hands come to. `settle`: everything on the card, on one thread.
 
 A column's blocks are `terrain_generate_box`, on a worker, over all of the column's storage. Each job lends it the states and a byte per voxel.
 

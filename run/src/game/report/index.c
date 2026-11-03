@@ -72,6 +72,10 @@ void game_report(game_t *game) {
         LOG_INFO("game: %" PRIu32 " blasts broke %" PRIu64 " blocks", game->borrowed_entity->explosion.blast_count,
                  game->borrowed_entity->explosion.broken_count);
     }
+    if (game->borrowed_mob != nullptr && game->borrowed_mob->combat.borrowed_bodies != nullptr) {
+        LOG_INFO("game: %" PRIu64 " hits landed on mobs, and took the last health of %" PRIu64,
+                 game->borrowed_mob->combat.landed_count, game->borrowed_mob->combat.killed_count);
+    }
     if (game->borrowed_mob != nullptr && game->borrowed_mob->creeper.borrowed_bodies != nullptr) {
         LOG_INFO("game: %" PRIu64 " creepers burst, and %" PRIu64 " died, leaving %" PRIu64 " items",
                  game->borrowed_mob->creeper.burst_count, game->borrowed_mob->creeper.died_count,

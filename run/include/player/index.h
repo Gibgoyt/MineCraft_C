@@ -5,6 +5,7 @@
 #include "machine/index.h"
 #include "physics/index.h"
 #include "player/camera/index.h"
+#include "player/combat/index.h"
 #include "player/interaction/index.h"
 #include "player/movement/index.h"
 #include "player/survival/index.h"
@@ -70,7 +71,8 @@ typedef struct player_t {
     /* Sim to main: the newest player_vitals_t, relaxed, as only what is on the screen depends on it. */
     _Atomic uint64_t vitals_word; /* 2088 */
     uint8_t hands_held_off;       /* 2096: the sim's: a screen has the buttons, so the hands do nothing */
-    uint8_t _pad0[15];            /* 2097 */
+    uint8_t _pad0[7];             /* 2097 */
+    player_combat_t combat;       /* 2104: the sim's: what the hand remembers of swinging */
     /* A line of its own: main writes the line above all the time. */
     player_survival_t survival; /* 2112: the sim's */
 } player_t;
@@ -109,6 +111,15 @@ void player_hands_send(player_t *player, bool attack, bool place);
  * the map, right before player_tick, so that the body and the next aim both meet the world as this leaves it. Never waits and never
  * touches the heap. What it broke waits in the interaction's ring, for whoever puts items in the world. */
 void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns);
+
+/* The hand's tick, right before player_interact_tick on the same thread: a press of the left button on a body in reach returns true and
+ * says what it does, for the caller to apply. While the button is on a body the hands that follow do not mine. A run that does not call this
+ * has hands that only mine. Never waits and never touches the heap. */
+bool player_attack_tick(player_t *player, const entity_store_t *store, const world_map_t *map,
+                        const player_combat_weapon_t *weapon, int64_t tick_ns, player_combat_swing_t *out);
+
+/* That swing has landed: it tires the body, and a sprint's push stops the sprint. */
+void player_attack_landed(player_t *player, const player_combat_swing_t *swing);
 
 /* What an item's box has to overlap to be picked up, with the body where it now is. The thread its ticks are on. */
 void player_pickup_reach(const player_t *player, collision_box_t *out);

@@ -243,9 +243,11 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `session` | From the title screen to Quit Game: runs the menus, opens the world chosen, pauses it, closes it. Not in the plan's list: `ui` must not call `game`, and `main` may not hold this much | 14.4 |
 | | `report` | What the HUD shows now and the log's lines at the end of a run. Not in the plan's list: split off at Stage 14.5 for size | 14.5 |
 | | `view` | What a config comes to for what is drawn, and bringing a picture up to the display's size. Not in the plan's list: `game_reconfigure` needs it, and `game` had reached its size for splitting | 14.5 |
+| | `settle` | One thread, until all the eye's place wants is on the card. Not in the plan's list: split off at the Phase 14 gate, as `input` was | 14 gate |
 | | `input` | A poll of real input or a script's tick turned into flying, the body's wishes, the hotbar and the overlay's key. Not in the plan's list: split off at the Phase 14 gate, when `game` passed its size for splitting | 14 gate |
 | `physics` | `collision raycast` | Swept AABB; DDA block targeting | 12.1, 12.2 |
 | `player` | `movement camera` | Walk, jump, swim, look | 12.1, 12.2 |
+| | `combat` | The attack: aim, swing, strength | 15.7 |
 | | `interaction` | **Mining, drops, placing** | 12.3 |
 | | `survival` | Health, hunger, death, respawn | 13.4 |
 | | `combat` | Attacking | 15.7 |
@@ -425,6 +427,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/item/inventory/` | ctest `run_item_inventory`, named by its path: `run/src/item/` with `stack` and `inventory`: every stack rule against every item, where things go, the books, the hotbar from another thread, no heap, and a script in the built program choosing slots, picking up and placing |
 | `tests/run/item/crafting/` | ctest `run_item_crafting`, named by its path: `run/src/item/` with `crafting`, `smelting` and `container`: every recipe everywhere it fits and mirrored, furnaces by the tick, chests, and what `run/src/game/` does with them on the real card and threads |
 | `tests/run/item/equipment/` | ctest `run_item_equipment`, named by its path: `run/src/item/equipment/`: every tool and piece of armor against the published numbers, wear to the use that breaks it, a hoe and shears, armor on and off with the books kept, what it stops worked out by hand, 200000 steps at random, no heap, what `run/src/game/` does with all of it on the real card and threads, and the built program |
+| `tests/run/mob/combat/` | ctest `run_mob_combat`, named by its path: `run/src/mob/combat/` and `run/src/player/combat/`: each number by hand, the aim and what shields it, the button, the ten ticks after a hit, pushes by hand and on real bodies, falls and lava, each kind dying with its drops, the same bytes, no heap, and a real game on the card with a sword in hand |
 | `tests/run/player/survival/` | ctest `run_player_survival`: `run/src/player/survival/`, with what `run/src/player/` and `run/src/game/` do with it: every rule's numbers by hand and by a real body in a real world, death and coming back, the bed, the same bytes, no heap, a real game on the card, and a script in the built program |
 | `tests/run/player/movement/` | ctest `run_player_movement`: `run/src/player/` with `movement`: each mode's measured speeds against the numbers in its README, the same bytes from the same intents, the threads' exchange and interpolation, and `run/src/game/`'s walking on the real card and threads, on fake input, and in the built program |
 | `tests/run/game/` | ctest `run_game`: the real loop on the real card and threads through `display_frames_run`, on fake kernels, with the guardian really forked |

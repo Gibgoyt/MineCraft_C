@@ -25,9 +25,8 @@ enum : uint64_t {
                              2ull * 4096ull + MOB_SPAWN_BYTES,
 };
 enum : int64_t {
-    GAME_SIM_IDLE_NS = 1000000,  /* the sim looks for finished columns this often when it has nothing to do */
-    GAME_GPU_IDLE_NS = 100000,   /* the gpu thread waits this long for main to take the picture it just made */
-    GAME_SETTLE_IDLE_NS = 50000, /* a run with no threads waits this long for a worker */
+    GAME_SIM_IDLE_NS = 1000000, /* the sim looks for finished columns this often when it has nothing to do */
+    GAME_GPU_IDLE_NS = 100000,  /* the gpu thread waits this long for main to take the picture it just made */
     GAME_COMMIT_BUDGET_NS =
         4000000, /* the most a sim step spends on finished columns, each with its light, past the first */
     GAME_TICK_NS = 1000000000 / MC_GAME_TICK_HZ,
@@ -713,12 +712,50 @@ static void game_screen_hands(game_t *game, int64_t tick_ns) {
     player->hands_held_off = ui_screen_sim_kind(ui) != UI_SCREEN_NONE || (held && kind != UI_SCREEN_NONE) ? 1u : 0u;
 }
 
+/* A press of the left button on a body in reach is a blow on it, with whatever is in hand, which it wears if it lands. Before the hands, who
+ * then leave alone what is behind the body. */
+static void game_attack_tick(game_t *game, int64_t tick_ns) {
+    player_t *const player = game->borrowed_player;
+    entity_t *const entity = game->borrowed_entity;
+    mob_t *const mob = game->borrowed_mob;
+    if (entity == nullptr || mob == nullptr || mob->combat.borrowed_bodies == nullptr) {
+        return;
+    }
+    item_t *const item = game->borrowed_item;
+    const item_stack_t held =
+        item != nullptr ? *inventory_selected(&item->inventory) : item_stack_make(ITEM_ID_NONE, 0u);
+    const player_combat_weapon_t weapon = {
+        .damage = equipment_attack_damage(&held),
+        .speed = player_combat_attack_speed(held.item),
+        .item = held.item,
+        ._pad0 = {0},
+    };
+    player_combat_swing_t swing;
+    if (!player_attack_tick(player, &entity->store, &game->borrowed_world->map, &weapon, tick_ns, &swing)) {
+        return;
+    }
+    const mob_combat_blow_t blow = {
+        .from = {player->movement.position[0], player->movement.position[1]},
+        .facing = {swing.facing[0], swing.facing[1]},
+        .damage = swing.damage,
+        .knockback = swing.knockback,
+    };
+    mob_combat_outcome_t outcome;
+    if (mob_combat_strike(&mob->combat, &entity->store, swing.handle, &blow, &outcome)) {
+        player_attack_landed(player, &swing);
+        if (item != nullptr) {
+            (void)equipment_tool_attacked(&item->equipment, &item->inventory);
+        }
+    }
+}
+
 /* One tick of the hands: which slot is in hand first, so that a key and a click in one tick act in that order, then what the right button
  * does with armor or a hoe; what they placed comes off the slot, and what they broke wears it. */
 static void game_interact_tick(game_t *game, int64_t tick_ns) {
     player_t *const player = game->borrowed_player;
     item_t *const item = game->borrowed_item;
     if (item == nullptr) {
+        game_attack_tick(game, tick_ns);
         player_interact_tick(player, &game->borrowed_world->edit, tick_ns);
         return;
     }
@@ -732,6 +769,8 @@ static void game_interact_tick(game_t *game, int64_t tick_ns) {
                        game_use_held(player, tick_ns) && !player_survival_holds_body(&player->survival) &&
                            player->hands_held_off == 0u,
                        hit->result == RAYCAST_RESULT_HIT ? hit->cell : nullptr);
+    /* Before the hand is read: a tool that breaks on this blow is no longer what the hands hold. */
+    game_attack_tick(game, tick_ns);
     game_hand_from_hotbar(game);
     game_tool_from_hotbar(game);
     const uint32_t before = player->interaction.hand_count;
@@ -843,6 +882,9 @@ static void game_items_tick(game_t *game) {
         mob_creeper_tick(&game->borrowed_mob->creeper, &scene);
     }
     entity_tick(entity, &game->borrowed_world->map);
+    if (game->borrowed_mob != nullptr) {
+        mob_combat_tick(&game->borrowed_mob->combat, &entity->store);
+    }
     game_arrows_tick(game);
     collision_box_t reach;
     player_pickup_reach(player, &reach);
@@ -1075,51 +1117,6 @@ void game_fly(game_t *game, const render_fly_input_t *input, float32_t seconds) 
 static void game_walk_view(game_t *game, int64_t now_ns) {
     player_eye_at(game->borrowed_player, now_ns, game->camera.position);
     game_center_on_eye(game);
-}
-
-/* ---- A run on one thread ------------------------------------------------------------------------------------------ */
-
-/* Whether every section the eye's place wants is on the card, or as much of it as the pool will take. */
-static bool game_is_settled(const game_t *game) {
-    const world_t *const world = game->borrowed_world;
-    const render_t *const render = game->borrowed_render;
-    const world_edit_snapshot_t *const snapshot = &world->snapshot;
-    const bool unread = snapshot->published_count != snapshot->acquired_count + snapshot->overwritten_count;
-    const bool sections_waiting =
-        world->edit.queue_count[WORLD_EDIT_CONSUMER_RENDER] != 0u && render->buffers.pool_full_count == 0u;
-    return game->stream_quiet != 0u && world->map.pending_count == 0u && !unread && !sections_waiting &&
-           render_upload_idle(&render->upload) &&
-           (render->borrowed_lod == nullptr || render_lod_idle(render->borrowed_lod));
-}
-
-bool game_settle(game_t *game) {
-    render_t *const render = game->borrowed_render;
-    for (;;) {
-        const uint32_t waiting_before = game->jobs_in_use;
-        game_sim_step(game);
-        const gpu_status_t status = render_upload_frame(&render->upload);
-        if (status != GPU_STATUS_OK) {
-            gpu_error_log(&render->buffers.last_error);
-            return false;
-        }
-        const uint64_t far_built = render->borrowed_lod != nullptr ? render->borrowed_lod->stats.columns_built : 0u;
-        if (render->borrowed_lod != nullptr &&
-            render_lod_frame(render->borrowed_lod, game->camera.position) != GPU_STATUS_OK) {
-            return false; /* it has said why */
-        }
-        if (render->buffers.pool_full_count != 0u && game->pool_full_said == 0u) {
-            LOG_WARN("game: the section pool is full, so part of the world will not be drawn");
-            game->pool_full_said = 1u;
-        }
-        if (game_is_settled(game)) {
-            return true;
-        }
-        const bool far_waiting = render->borrowed_lod != nullptr && render->borrowed_lod->jobs_in_use != 0u &&
-                                 far_built == render->borrowed_lod->stats.columns_built;
-        if (far_waiting || (waiting_before != 0u && waiting_before == game->jobs_in_use)) {
-            time_sleep_ns(GAME_SETTLE_IDLE_NS);
-        }
-    }
 }
 
 bool game_screen_input(game_t *game, const input_frame_t *frame) {
