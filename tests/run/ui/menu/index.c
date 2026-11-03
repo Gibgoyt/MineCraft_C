@@ -862,13 +862,20 @@ TEST(the_program_goes_all_the_way_round_with_a_script) {
     REQUIRE(bytes == sizeof(expected_meta) - 1u);
     CHECK_MEM_EQ(meta, expected_meta, bytes);
 
-    /* The same seed, opened again, and a few ticks in each time: the same world, the same place, the same picture. */
+    /* The same seed, opened again: the same world, the same place. Since Stage 16.2 a world opened again goes on from where it was left, ticks later than
+     * the first picture by a pause and a few steps, so it is the same picture but for the light having moved on a little. A new place, or a new look,
+     * would change a large part of it. */
     uint64_t a_bytes = 0u;
     uint64_t b_bytes = 0u;
     const uint8_t *const world_a = file_slurp(t, path_join(t, shots, "world_a.png"), &a_bytes);
     const uint8_t *const world_b = file_slurp(t, path_join(t, shots, "world_b.png"), &b_bytes);
     REQUIRE(world_a != nullptr && world_b != nullptr && a_bytes == b_bytes);
-    CHECK_MEM_EQ(world_a, world_b, a_bytes);
+    uint64_t far_off = 0u;
+    for (uint64_t i = 0u; i < a_bytes; i++) {
+        far_off += world_a[i] > world_b[i] + 16 || world_b[i] > world_a[i] + 16 ? 1u : 0u;
+    }
+    printf("  a world and that world opened again: %" PRIu64 " of %" PRIu64 " bytes far off\n", far_off, a_bytes);
+    CHECK(far_off < a_bytes / 1000u);
     /* A screen is not a world, and the two title screens are one picture but for nothing. */
     uint64_t main_bytes = 0u;
     uint64_t title_bytes = 0u;

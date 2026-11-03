@@ -1,4 +1,5 @@
-# A new program, on the worlds and the settings file live.script left: straight into the world, at what the file says, and the same look.
+# A new program, on the worlds and the settings file live.script left: straight into the world, at what the file says, and the same look,
+# which is kept with the world since Stage 16.2, so nothing here moves it.
 
 1 move 0 -40                    # 320, 200: Singleplayer
 +1 button left down
@@ -10,8 +11,7 @@
 +1 button left down
 +1 button left up
 
-+3 move 1250 -160
-+4 screenshot opened.png
++7 screenshot opened.png
 +1 key escape down
 +1 key escape up
 +1 move 132 -100                # 320, 296: Quit to Title

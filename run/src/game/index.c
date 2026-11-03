@@ -89,6 +89,38 @@ void game_item_set(game_t *game, item_t *item) {
     game->borrowed_item = item;
 }
 
+/* What a save is of, in this game. */
+static void game_save_parts(game_t *game, save_state_parts_t *out) {
+    player_t *const player = game->borrowed_player;
+    const uint64_t look = player != nullptr ? atomic_load_explicit(&player->look_word, memory_order_relaxed) : 0u;
+    const uint32_t yaw_bits = (uint32_t)look, pitch_bits = (uint32_t)(look >> 32u);
+    *out = (save_state_parts_t){
+        .borrowed_player = player,
+        .borrowed_item = game->borrowed_item,
+        .borrowed_entity = game->borrowed_entity,
+        .borrowed_mob = game->borrowed_mob,
+        .borrowed_spawn = game->borrowed_entity != nullptr ? &game->mob_spawn : nullptr,
+        .borrowed_held = game->borrowed_ui != nullptr ? &game->borrowed_ui->borrowed_screens->cursor : nullptr,
+        .time = {.world_ticks = game->tick_count,
+                 .day_units = atomic_load_explicit(&game->day_units, memory_order_relaxed),
+                 .yaw = 0.0f32,
+                 .pitch = 0.0f32,
+                 ._pad0 = {0}},
+    };
+    memcpy(&out->time.yaw, &yaw_bits, sizeof(yaw_bits));
+    memcpy(&out->time.pitch, &pitch_bits, sizeof(pitch_bits));
+}
+
+save_world_status_t game_save_finish(game_t *game) {
+    save_t *const save = game->borrowed_save;
+    if (save == nullptr || save->world.open == 0u) {
+        return SAVE_WORLD_OK;
+    }
+    save_state_parts_t parts;
+    game_save_parts(game, &parts);
+    return save_autosave_finish(&save->autosave, &game->borrowed_world->edit, &parts);
+}
+
 void game_deinit(game_t *game) {
     if (game->threads_running != 0u) {
         (void)game_loop_stop(game); /* it has said what went wrong, and there is no one left to tell */
@@ -298,20 +330,37 @@ bool game_open(game_t *game, const game_config_t *config) {
 
     /* Flying: a little above whatever is at the world's middle, water included, looking out and down. Walking: on dry land near it. */
     int32_t start_x = 8, start_y = 8;
-    if (game->borrowed_player != nullptr) {
-        game_spawn_find(game, terrain, &game->borrowed_jobs[0], start_x, start_y, &start_x, &start_y);
+    /* A world that has been saved takes up where the player was, with no looking for land. */
+    float64_t kept_feet[3] = {0.0f64, 0.0f64, 0.0f64};
+    float32_t kept_yaw = 0.0f32, kept_pitch = 0.0f32;
+    save_t *const save =
+        game->borrowed_save != nullptr && game->borrowed_save->world.open != 0u ? game->borrowed_save : nullptr;
+    if (game->borrowed_player != nullptr && save != nullptr &&
+        save_state_kept_start(&save->state, kept_feet, &kept_yaw, &kept_pitch)) {
+        start_x = (int32_t)floor(kept_feet[0]);
+        start_y = (int32_t)floor(kept_feet[1]);
+        player_spawn(game->borrowed_player, kept_feet[0], kept_feet[1], kept_feet[2]);
+        player_look_send(game->borrowed_player, kept_yaw, kept_pitch);
+        render_camera_start(&game->camera, kept_feet[0], kept_feet[1], kept_feet[2] + PLAYER_MOVEMENT_EYE_STANDING,
+                            kept_yaw, kept_pitch);
+        LOG_INFO("game: the player goes on from %.1f, %.1f, %.1f", (libc_double_t)kept_feet[0],
+                 (libc_double_t)kept_feet[1], (libc_double_t)kept_feet[2]);
+    } else {
+        if (game->borrowed_player != nullptr) {
+            game_spawn_find(game, terrain, &game->borrowed_jobs[0], start_x, start_y, &start_x, &start_y);
+        }
+        const float64_t ground = (float64_t)game_ground_z(terrain, &game->borrowed_jobs[0], start_x, start_y);
+        const float64_t middle_x = (float64_t)start_x + 0.5f64, middle_y = (float64_t)start_y + 0.5f64;
+        float64_t eye_z = ground + GAME_START_EYE_HEIGHT;
+        if (game->borrowed_player != nullptr) {
+            /* Feet on top of whatever that is. Nothing is above it, so the body fits. */
+            player_spawn(game->borrowed_player, middle_x, middle_y, ground + 1.0f64);
+            eye_z = ground + 1.0f64 + PLAYER_MOVEMENT_EYE_STANDING;
+            LOG_INFO("game: the player starts at %.1f, %.1f, %.1f", (libc_double_t)middle_x, (libc_double_t)middle_y,
+                     (libc_double_t)(ground + 1.0f64));
+        }
+        render_camera_start(&game->camera, middle_x, middle_y, eye_z, GAME_START_YAW, GAME_START_PITCH);
     }
-    const float64_t ground = (float64_t)game_ground_z(terrain, &game->borrowed_jobs[0], start_x, start_y);
-    const float64_t middle_x = (float64_t)start_x + 0.5f64, middle_y = (float64_t)start_y + 0.5f64;
-    float64_t eye_z = ground + GAME_START_EYE_HEIGHT;
-    if (game->borrowed_player != nullptr) {
-        /* Feet on top of whatever that is. Nothing is above it, so the body fits. */
-        player_spawn(game->borrowed_player, middle_x, middle_y, ground + 1.0f64);
-        eye_z = ground + 1.0f64 + PLAYER_MOVEMENT_EYE_STANDING;
-        LOG_INFO("game: the player starts at %.1f, %.1f, %.1f", (libc_double_t)middle_x, (libc_double_t)middle_y,
-                 (libc_double_t)(ground + 1.0f64));
-    }
-    render_camera_start(&game->camera, middle_x, middle_y, eye_z, GAME_START_YAW, GAME_START_PITCH);
     const int32_t chunk_x = column_chunk_of(start_x), chunk_y = column_chunk_of(start_y);
     atomic_store_explicit(&game->center_x, chunk_x, memory_order_relaxed);
     atomic_store_explicit(&game->center_y, chunk_y, memory_order_relaxed);
@@ -351,6 +400,16 @@ bool game_open(game_t *game, const game_config_t *config) {
     }
     if (game->borrowed_ui != nullptr) {
         ui_screen_world_begin(game->borrowed_ui);
+    }
+    game->tick_count = 0u;
+    if (save != nullptr) {
+        save_state_parts_t parts;
+        game_save_parts(game, &parts);
+        save_state_apply(&save->state, &parts);
+        game->tick_count = parts.time.world_ticks;
+        game_day_set(game, (float64_t)parts.time.day_units / 4294967296.0f64);
+        game_day_apply(game);
+        save_autosave_start(&save->autosave, game->borrowed_job, &save->world, &save->state, game->tick_count);
     }
     game->open = 1u;
     return true;
@@ -562,23 +621,19 @@ static void game_columns_commit(game_t *game) {
     }
 }
 
-/* The changes of a column on its way out, so that it may go. If they will not fit, a save now makes room. False if that fails: it has said so, once,
- * and the column stays, keeping what would be lost, until a later step can do better. */
+/* The changes of a column on its way out, so that it may go. False if they will not fit, and a save has been asked for: the column stays, keeping what
+ * would be lost, until a later step can do better. */
 static bool game_column_leaving_save(game_t *game, uint32_t slot) {
     save_t *const save = game->borrowed_save;
     if (save == nullptr || save->world.open == 0u) {
         return true;
     }
     world_edit_t *const edit = &game->borrowed_world->edit;
-    save_world_status_t status = save_world_capture_column(&save->world, edit, slot);
+    const save_world_status_t status = save_world_capture_column(&save->world, edit, slot);
     if (status == SAVE_WORLD_FULL) {
-        status = SAVE_WORLD_OK;
-        while (status == SAVE_WORLD_OK && save_world_commit_begin(&save->world)) {
-            status = save_world_commit_write(&save->world);
-        }
-        if (status == SAVE_WORLD_OK) {
-            status = save_world_capture_column(&save->world, edit, slot);
-        }
+        /* Only the autosave writes, so that there is never a second write and always a state to go with it. The column stays until it has. */
+        save_autosave_request(&save->autosave);
+        return false;
     }
     if (status != SAVE_WORLD_OK && game->save_failed_said == 0u) {
         LOG_ERROR("game: a column on its way out could not be saved, so it stays: %s", save_world_status_name(status));
@@ -660,6 +715,12 @@ void game_sim_step(game_t *game) {
     (void)render_upload_resend_drain(&game->borrowed_render->upload, &world->edit);
     /* False is only that nothing changed. */
     (void)world_edit_snapshot_publish(&world->snapshot);
+    save_t *const save = game->borrowed_save;
+    if (save != nullptr && save->autosave.started != 0u) {
+        save_state_parts_t parts;
+        game_save_parts(game, &parts);
+        save_autosave_step(&save->autosave, &world->edit, &parts, game->tick_count);
+    }
 }
 
 /* An item picked up goes to the inventory, or with none to the hand. What does not fit stays on the ground. */

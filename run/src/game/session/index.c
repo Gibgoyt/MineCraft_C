@@ -69,7 +69,7 @@ static void game_session_world_close(game_session_t *session) {
     game_report(game);
     save_t *const save = game->borrowed_save;
     if (save != nullptr && save->world.open != 0u) {
-        const save_world_status_t saved = save_world_flush(&save->world, &game->borrowed_world->edit);
+        const save_world_status_t saved = game_save_finish(game);
         if (saved != SAVE_WORLD_OK) {
             LOG_ERROR("session: the world's changes could not all be saved: %s", save_world_status_name(saved));
             session->failed = 1u;
@@ -79,6 +79,11 @@ static void game_session_world_close(game_session_t *session) {
                  save->world.saves_done, save->world.sections_written,
                  atomic_load_explicit(&save->world.sections_loaded, memory_order_relaxed),
                  atomic_load_explicit(&save->world.sections_damaged, memory_order_relaxed));
+        LOG_INFO("autosave: %" PRIu64 " saves, %" PRIu64
+                 " failed; the longest took %.3f ms of the sim and %.3f ms of a worker",
+                 save->autosave.saves_done, save->autosave.saves_failed,
+                 (libc_double_t)time_ns_to_ms(save->autosave.capture_ns_most),
+                 (libc_double_t)time_ns_to_ms(save->autosave.write_ns_most));
     }
     game_close(game);
     if (save != nullptr) {

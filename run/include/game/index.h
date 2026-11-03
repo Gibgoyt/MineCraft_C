@@ -220,11 +220,17 @@ void game_item_set(game_t *game, item_t *item);
 void game_ui_set(game_t *game, ui_t *ui);
 
 /* From here on, a column that comes in has what a world open in this holds for it over what generates there, and one that goes out leaves its
- * changes with it. With no world open in it, none of that happens. Must outlive it. Before game_open. */
+ * changes with it; a game_open takes up the player, inventory, entities and time where a world open in this left them, and from then on all of
+ * it is saved in the background every SAVE_AUTOSAVE_INTERVAL_TICKS. With no world open in it, none of that happens. Must outlive it. Before
+ * game_open. */
 void game_save_set(game_t *game, save_t *save);
 
 /* Stops whatever is running, and closes any world. Safe on a zeroed game_t. */
 void game_deinit(game_t *game);
+
+/* All there is, saved now, on this thread: the threads must have stopped, and the world be open. SAVE_WORLD_OK if there is no save to make, or
+ * it is all on disk. */
+[[nodiscard]] save_world_status_t game_save_finish(game_t *game);
 
 /* Someone to tell, from the thread calling it, that a game_open that may take seconds is still going: looking for dry land in an
  * ocean does. A frame source that opens a world needs this, for vt_guard's watchdog. nullptr for nobody. */
