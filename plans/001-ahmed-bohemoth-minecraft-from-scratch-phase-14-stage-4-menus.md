@@ -34,6 +34,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `382ea25` Add the main menu, world create and select, and a pause screen, and run the game from them with a session under game.
+
 ## Wiring outside the owned paths
 
 A menu no one can reach is not one, and `run/src/main/README.md` said the menu was how a world would be reached. So:
