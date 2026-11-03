@@ -210,7 +210,9 @@ typedef struct bench_options_t {
     const char *trace;     /* 24: a profile of the one row */
     const char *shots;     /* 32: a picture of the end of each row goes here */
     uint32_t features_off; /* 40: SHADE_FEATURE_* to take away, to see what each costs */
-    uint8_t _pad0[4];      /* 44 */
+    uint8_t god_rays;      /* 44: every row with the one optional effect too, as the target says all of them */
+    uint8_t live;          /* 45: every row but the walk on the game's own threads, against the clock */
+    uint8_t _pad0[2];      /* 46 */
 } bench_options_t;
 static_assert(sizeof(bench_options_t) == 48);
 
@@ -770,7 +772,6 @@ static bool bench_row_settled(bench_t *bench, const bench_row_t *row, const benc
 
 static bool bench_row_live(bench_t *bench, const bench_row_t *row, const bench_place_t *place, float64_t height,
                            bench_result_t *result) {
-    (void)row;
     app_t *const app = bench->borrowed_app;
     game_t *const game = &app->game;
     render_t *const render = &app->render;
@@ -799,7 +800,11 @@ static bool bench_row_live(bench_t *bench, const bench_row_t *row, const bench_p
     bool ok = true;
     while (ok && now_ns - started_ns < total_ns) {
         const float64_t seconds_in = (float64_t)(now_ns - started_ns) / (float64_t)TIME_NS_PER_SECOND;
-        bench_flight_at(&game->camera, place, height, BENCH_FLIGHT_LIVE_SPEED * seconds_in);
+        if (row->path == BENCH_PATH_ORBIT) {
+            bench_orbit_at(&game->camera, place, height, seconds_in / (float64_t)BENCH_LIVE_SECONDS);
+        } else {
+            bench_flight_at(&game->camera, place, height, BENCH_FLIGHT_LIVE_SPEED * seconds_in);
+        }
         ok = game_loop_frame(game, &still, (float32_t)((float64_t)(now_ns - last_ns) / (float64_t)TIME_NS_PER_SECOND),
                              &target);
         last_ns = now_ns;
@@ -1083,10 +1088,13 @@ static bool bench_record(const bench_result_t *results, const bench_options_t *o
 
 static void bench_usage(const char *program) {
     fprintf(stderr,
-            "usage: %s [--only <text>] [--record <file>] [--label <text>] [--shots <dir>] [--trace <file>] "
-            "[--list]\n"
+            "usage: %s [--only <text>] [--features-off <hex>] [--god-rays] [--live] [--record <file>] "
+            "[--label <text>] [--shots <dir>] [--trace <file>] [--list]\n"
             "  --only <text>    only the rows whose name holds this, or =<name> for just that row\n"
             "  --features-off <hex>  take these SHADE_FEATURE_* bits away, to see what each costs\n"
+            "  --god-rays       every row with god rays too. Not with --record\n"
+            "  --live           every row but the walk on the game's own threads, against the clock. Not with "
+            "--record\n"
             "  --record <file>  add a line per row to this history: bench/world/history.tsv is the repository's\n"
             "  --label <text>   says what was measured, in the history: no tabs\n"
             "  --shots <dir>    write the last picture of each row here, as a PNG\n"
@@ -1110,6 +1118,14 @@ static uint32_t bench_rows_chosen(const char *only) {
         count += bench_row_chosen(i, only) ? 1u : 0u;
     }
     return count;
+}
+
+/* A row as the flags have it, which is what is run and printed. */
+static bench_row_t bench_row_asked(uint32_t index, const bench_options_t *options) {
+    bench_row_t row = BENCH_ROW_LIST[index];
+    row.god_rays = options->god_rays != 0u ? 1u : row.god_rays;
+    row.mode = options->live != 0u && row.path != BENCH_PATH_WALK ? (uint8_t)BENCH_MODE_LIVE : row.mode;
+    return row;
 }
 
 static uint64_t bench_page(uint64_t bytes) {
@@ -1165,8 +1181,7 @@ static void bench_summary(const bench_result_t *results, const char *only) {
     for (uint32_t i = 0u; i < BENCH_ROWS; i++) {
         const bench_row_t *const row = &BENCH_ROW_LIST[i];
         const bench_result_t *const r = &results[i];
-        if (r->ran == 0u || row->render_distance != BENCH_DISTANCE_TARGET ||
-            (only != nullptr && strstr(row->name, only) == nullptr)) {
+        if (r->ran == 0u || row->render_distance != BENCH_DISTANCE_TARGET || !bench_row_chosen(i, only)) {
             continue;
         }
         aimed++;
@@ -1180,7 +1195,8 @@ static void bench_summary(const bench_result_t *results, const char *only) {
         printf("target: no row that has one ran\n");
         return;
     }
-    printf("target: %.0f fps at %ux%u, render distance %u, all effects: %" PRIu32 " of %" PRIu32
+    /* All effects only on a row with god rays: see README.md. */
+    printf("target: %.0f fps at %ux%u, render distance %u: %" PRIu32 " of %" PRIu32
            " rows met it; slowest %s at %.1f fps\n",
            (libc_double_t)BENCH_TARGET_FPS, BENCH_WIDTH, BENCH_HEIGHT, BENCH_DISTANCE_TARGET, met, aimed, worst_row,
            (libc_double_t)worst_fps);
@@ -1196,6 +1212,10 @@ static bool bench_parse(int32_t argc, char **argv, bench_options_t *out, bool *o
         } else if (strcmp(argv[i], "--features-off") == 0 && has_value) {
             i++;
             out->features_off = (uint32_t)strtoul(argv[i], nullptr, 16);
+        } else if (strcmp(argv[i], "--god-rays") == 0) {
+            out->god_rays = 1u;
+        } else if (strcmp(argv[i], "--live") == 0) {
+            out->live = 1u;
         } else if (strcmp(argv[i], "--only") == 0 && has_value) {
             out->only = argv[++i];
         } else if (strcmp(argv[i], "--record") == 0 && has_value) {
@@ -1212,6 +1232,11 @@ static bool bench_parse(int32_t argc, char **argv, bench_options_t *out, bool *o
     }
     if (out->label != nullptr && strchr(out->label, '\t') != nullptr) {
         fprintf(stderr, "--label takes no tabs: the history is split on them\n");
+        return false;
+    }
+    /* A line of the history says what it measured by the row's name. */
+    if (out->record != nullptr && (out->god_rays != 0u || out->live != 0u)) {
+        fprintf(stderr, "--record takes neither --god-rays nor --live: a line would say another row's name\n");
         return false;
     }
     /* A world claims the profiler's lanes as it opens, and they are few. */
@@ -1240,7 +1265,8 @@ static int32_t bench_process(const bench_options_t *options, uint32_t row, bool 
                    (libc_double_t)bench_mib(memory->free_bytes_at_init));
             (void)fflush(stdout);
         }
-        const bool ran = bench_row(&bench, &BENCH_ROW_LIST[row], options, profiled, result);
+        const bench_row_t asked = bench_row_asked(row, options);
+        const bool ran = bench_row(&bench, &asked, options, profiled, result);
         status = ran && result->sound != 0u ? 0 : 1;
     }
     const bool gpu_clean = bench.started < 6u || gpu_bridge_exit_check(&bench.borrowed_app->gpu_bridge);
@@ -1339,7 +1365,8 @@ int32_t main(int32_t argc, char **argv) {
         const int32_t row_status = bench_row_forked(&options, i, !said_card, results);
         said_card = true;
         status = row_status > status ? row_status : status;
-        bench_row_print(&BENCH_ROW_LIST[i], &results[i]);
+        const bench_row_t asked = bench_row_asked(i, &options);
+        bench_row_print(&asked, &results[i]);
         (void)fflush(stdout);
     }
     bench_summary(results, options.only);

@@ -41,7 +41,7 @@ Every world is the game's default seed, `TERRAIN_SEED_DEFAULT`, and 1920 by 1080
 
 ## Rows
 
-`bench_world --list` prints them. Those at render distance 32 are held to the 120 fps, and `night/walk-mobs` to the tick as well. `plains/orbit-godrays` has the one effect the game leaves off by default, since the target says all of them.
+`bench_world --list` prints them. Those at render distance 32 are held to the 120 fps, and `night/walk-mobs` to the tick as well. `plains/orbit-godrays` has the one effect the game leaves off by default, and is the only row with all of them: `--god-rays` asks for that on the rest.
 
 A row is not sound, and the exit status says so, if the last picture has fewer than 8 colours on a grid of 64 by 36 (an eye in a wall is very fast), if anything called the heap while it was timed, or, on the walk, if the minds did no searches, the store fell under 100 or the player died.
 
@@ -49,6 +49,8 @@ A row is not sound, and the exit status says so, if the last picture has fewer t
 
 - `--only <text>`: the rows whose name holds this, or `=<name>` for exactly that row.
 - `--features-off <hex>`: take these `SHADE_FEATURE_*` bits away, which is how to see what each effect costs.
+- `--god-rays`: every row with god rays too, as only that is all effects. Not with `--record`, as a line would carry another row's name.
+- `--live`: every row but the walk on the game's own threads against the clock, an orbit included. Not with `--record`, for the same reason.
 - `--record <file>`: add a line per row to a history. **`bench/world/history.tsv` is the repository's.** New columns go on the end of its first line, and old lines stay.
 - `--label <text>`: says what was measured, in the history, such as the commit.
 - `--shots <dir>`: the last picture of each row as a PNG, to see what a row is looking at.
@@ -131,3 +133,23 @@ The same command, exit status 0, 449.6 s, and the same machine. **11 of the 12 r
 A live row now draws more of the world than it did, as the picture costs less, so it can go down when a row keeps up better: `plains/flight-live` made 2303 columns in this run and 1187 in the last.
 
 Picture hashes, which should be the same on a later run unless the pictures were meant to change. A pixel's light is now added up in another order, so most moved, by 1 in 255 on at most 0.001% of channels: `plains/orbit` CB2E45E9179493B0, `plains/flight` 850D8837E1C32C4E, `plains/orbit-godrays` B3456ACD4DE95E4C, `jungle/orbit` 3482D4FFA58BBC2B, `jagged_peaks/orbit` 5DFEC9A05B5E3633, `deep_ocean/orbit` 6CE16CAB894553F4, `cave/orbit` 3825C2ED4113BFFD, `night/walk-mobs` F279DFD63D183B1E, `plains/orbit-r512` 1F9DDD009389C74E.
+
+### 2026-11-03, the phase gate check: what "all effects" and "the game's own threads" come to
+
+The table above has god rays on only in `plains/orbit-godrays`, and a settled row's fps leaves out the CPU. So, one row at a time on the same code, beside the two full runs of that code:
+
+| Row | Effects as above | `--god-rays` | `--live`, god rays off |
+|---|---|---|---|
+| `plains/orbit` | 149.7 to 150.7 | 142.6 to 143.6 | |
+| `plains/flight` | 151.0 to 152.1 | 141.5 | |
+| `plains/flight-live` | 129.4 to 134.8 | 133.7 to 135.6 | as it is |
+| `jungle/orbit` | 122.5 to 123.5 | **110.2 MISSED** | **112.2 MISSED** |
+| `jungle/flight-live` | 153.4 to 154.8 | 125.4 | as it is |
+| `jagged_peaks/orbit` | 173.4 to 174.4 | 138.0 | 173.3 |
+| `jagged_peaks/flight-live` | 233.6 to 235.2 | 206.5 | as it is |
+| `deep_ocean/orbit` | **115.8 to 117.0 MISSED** | **107.4 MISSED** | **109.1 MISSED** |
+| `deep_ocean/flight-live` | 169.1 to 173.0 | 139.6 | as it is |
+| `cave/orbit` | 193.4 to 193.6 | 144.0, the same picture | |
+| `night/walk-mobs` | 163.6 to 164.9 | 143.9 | |
+
+God rays cost 0.3 to 0.5 ms on `plains`, and 0.7 to 1.8 ms on a settled row elsewhere. **So with all effects on, 2 of these 11 views miss 120 fps, by 8% and 11%.** Blank cells were not run. These runs are not in `history.tsv`.
