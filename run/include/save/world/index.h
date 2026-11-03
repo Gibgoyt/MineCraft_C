@@ -7,6 +7,7 @@
 #include "world/column/index.h"
 #include "world/edit/index.h"
 #include "world/section/index.h"
+#include "world/tick/index.h"
 
 #include <pthread.h>
 #include <stdatomic.h>
@@ -14,8 +15,8 @@
 #include <stdint.h>
 
 enum : uint32_t {
-    /* Raised by any change a version 1 reader could not read. A file of another version is refused and left alone. */
-    SAVE_WORLD_VERSION = 1u,
+    /* Raised by any change an older reader could not read. A file of another version is refused and left alone. Version 2: a record may end in levels. */
+    SAVE_WORLD_VERSION = 2u,
     /* A delta file holds a square of columns this many on a side: half a kilometre of blocks. */
     SAVE_WORLD_REGION_SHIFT = 5u,
     SAVE_WORLD_REGION_SIDE = 1u << SAVE_WORLD_REGION_SHIFT,
@@ -24,6 +25,9 @@ enum : uint32_t {
     SAVE_WORLD_REGIONS_MAX = 1u << 16,
     /* The largest section's bytes on disk: its 4 byte head and 4096 states. */
     SAVE_WORLD_RECORD_BYTES_MAX = 4u + 2u * SECTION_VOXELS,
+    /* A section with flowing fluid in it adds its levels after that: half a byte per voxel. */
+    SAVE_WORLD_RECORD_LEVELS_BYTES = SECTION_VOXELS / 2u,
+    SAVE_WORLD_ENTRY_BYTES_MAX = SAVE_WORLD_RECORD_BYTES_MAX + SAVE_WORLD_RECORD_LEVELS_BYTES,
     /* What one set of captured sections may hold before it must be written. */
     SAVE_WORLD_PENDING_SECTIONS = 1u << 15,
     SAVE_WORLD_PENDING_HASH_SLOTS = SAVE_WORLD_PENDING_SECTIONS * 2u,
@@ -223,12 +227,13 @@ typedef struct save_world_t {
     save_world_column_entry_t *borrowed_table_old; /* 160: SAVE_WORLD_REGION_COLUMNS */
     save_world_column_entry_t *borrowed_table_new; /* 168 */
     uint8_t *borrowed_manifest_bytes;              /* 176: the manifest as a file */
-    uint8_t *borrowed_record;                      /* 184: SAVE_WORLD_RECORD_BYTES_MAX: an old record to a new file */
+    uint8_t *borrowed_record;                      /* 184: SAVE_WORLD_ENTRY_BYTES_MAX: an old record to a new file */
     uint16_t *borrowed_states;                     /* 192: SECTION_VOXELS: a section being captured */
     uint16_t *borrowed_palette_slots;              /* 200: 65536: a state's place in a palette being built, + 1 */
     char *borrowed_directory;                      /* 208: <world>/blocks */
     save_world_step_hook_t step_hook;              /* 216: nullptr but in a test */
     void *borrowed_step_context;                   /* 224 */
+    const world_tick_t *borrowed_tick;             /* 232: where a section's levels are, or nullptr to keep none */
     uint64_t seed;                                 /* 232 */
     uint64_t generation;                           /* 240: of the current manifest */
     uint64_t table_hash;                           /* 248 */
@@ -243,7 +248,7 @@ typedef struct save_world_t {
     uint8_t active;      /* 302: which of pending is captured to: the other is being written */
     uint8_t open;        /* 303 */
 } save_world_t;
-static_assert(sizeof(save_world_t) == 304);
+static_assert(sizeof(save_world_t) == 312);
 static_assert(alignof(save_world_t) == 8);
 static_assert(offsetof(save_world_t, mutex) == 0);
 static_assert(offsetof(save_world_t, pending) == 40);
@@ -260,19 +265,20 @@ static_assert(offsetof(save_world_t, borrowed_palette_slots) == 200);
 static_assert(offsetof(save_world_t, borrowed_directory) == 208);
 static_assert(offsetof(save_world_t, step_hook) == 216);
 static_assert(offsetof(save_world_t, borrowed_step_context) == 224);
-static_assert(offsetof(save_world_t, seed) == 232);
-static_assert(offsetof(save_world_t, generation) == 240);
-static_assert(offsetof(save_world_t, table_hash) == 248);
-static_assert(offsetof(save_world_t, sections_loaded) == 256);
-static_assert(offsetof(save_world_t, sections_damaged) == 264);
-static_assert(offsetof(save_world_t, sections_written) == 272);
-static_assert(offsetof(save_world_t, saves_done) == 280);
-static_assert(offsetof(save_world_t, lock) == 288);
-static_assert(offsetof(save_world_t, region_count) == 296);
-static_assert(offsetof(save_world_t, file_status) == 300);
-static_assert(offsetof(save_world_t, current) == 301);
-static_assert(offsetof(save_world_t, active) == 302);
-static_assert(offsetof(save_world_t, open) == 303);
+static_assert(offsetof(save_world_t, borrowed_tick) == 232);
+static_assert(offsetof(save_world_t, seed) == 240);
+static_assert(offsetof(save_world_t, generation) == 248);
+static_assert(offsetof(save_world_t, table_hash) == 256);
+static_assert(offsetof(save_world_t, sections_loaded) == 264);
+static_assert(offsetof(save_world_t, sections_damaged) == 272);
+static_assert(offsetof(save_world_t, sections_written) == 280);
+static_assert(offsetof(save_world_t, saves_done) == 288);
+static_assert(offsetof(save_world_t, lock) == 296);
+static_assert(offsetof(save_world_t, region_count) == 304);
+static_assert(offsetof(save_world_t, file_status) == 308);
+static_assert(offsetof(save_world_t, current) == 309);
+static_assert(offsetof(save_world_t, active) == 310);
+static_assert(offsetof(save_world_t, open) == 311);
 
 /* What save_world_open takes from its arena. */
 enum : uint64_t {
@@ -283,10 +289,12 @@ enum : uint64_t {
         2u * SAVE_WORLD_PENDING_SECTIONS * sizeof(save_world_region_t) +
         SAVE_WORLD_PENDING_SECTIONS * sizeof(save_world_sort_key_t) +
         2u * SAVE_WORLD_REGION_COLUMNS * sizeof(save_world_column_entry_t) + sizeof(save_world_manifest_header_t) +
-        SAVE_WORLD_REGIONS_MAX * sizeof(save_world_region_t) + SAVE_WORLD_RECORD_BYTES_MAX +
+        SAVE_WORLD_REGIONS_MAX * sizeof(save_world_region_t) + SAVE_WORLD_ENTRY_BYTES_MAX +
         SECTION_VOXELS * sizeof(uint16_t) + 65536u * sizeof(uint16_t) + FILE_PATH_BYTES + 32u * 64u,
     /* What a caller of save_world_column_overlay lends it. */
-    SAVE_WORLD_OVERLAY_SCRATCH_BYTES = SAVE_WORLD_RECORD_BYTES_MAX,
+    SAVE_WORLD_OVERLAY_SCRATCH_BYTES = SAVE_WORLD_ENTRY_BYTES_MAX,
+    /* What save_world_column_overlay_levels writes levels into. */
+    SAVE_WORLD_OVERLAY_LEVELS_BYTES = (uint64_t)COLUMN_SECTIONS * SAVE_WORLD_RECORD_LEVELS_BYTES,
 };
 
 /* A status as text for a log line. */
@@ -303,6 +311,9 @@ uint32_t save_world_record_encode(const uint16_t *states, uint16_t *palette_slot
 /* And back. False, with out untouched, if these bytes are not exactly a record an encoder could mean. Trusts nothing. */
 bool save_world_record_decode(const uint8_t *record, uint64_t bytes, uint16_t *out);
 
+/* A record that holds levels ends in them. For one save_world_record_decode took: the levels, which it has checked, or nullptr if it has none. */
+const uint8_t *save_world_record_levels(const uint8_t *record, uint64_t bytes);
+
 /* Starts on <world_directory>/blocks, made if it is not there, for a world of this seed: a new world gets a manifest with no regions.
  * Takes the world's lock, removes what an interrupted save left, and takes from the arena, which must outlive this. Anything but
  * SAVE_WORLD_OK has logged why, holds nothing, and has written nothing over what was there. */
@@ -311,6 +322,9 @@ bool save_world_record_decode(const uint8_t *record, uint64_t bytes, uint16_t *o
 
 /* Gives up the lock and forgets it all. What was captured and not written is gone: save_world_flush first. Safe on one not open. */
 void save_world_close(save_world_t *save);
+
+/* Where captures find a section's levels, from now until this closes. Without it they keep blocks alone. */
+void save_world_levels_from(save_world_t *save, const world_tick_t *tick);
 
 /* A test's way in. */
 void save_world_step_hook_set(save_world_t *save, save_world_step_hook_t hook, void *context);
@@ -346,5 +360,11 @@ void save_world_step_hook_set(save_world_t *save, save_world_step_hook_t hook, v
  * SAVE_WORLD_OVERLAY_SCRATCH_BYTES of the caller's. Calls no heap. Does nothing on one not open. */
 uint64_t save_world_column_overlay(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
                                    uint8_t *scratch);
+
+/* The same, and the levels of each section it wrote that has any, at levels + section * SAVE_WORLD_RECORD_LEVELS_BYTES, out of
+ * SAVE_WORLD_OVERLAY_LEVELS_BYTES, with a mask of those in *out_levels_mask. A voxel of fluid with no level saved is a source, so a save read without them
+ * floods. */
+uint64_t save_world_column_overlay_levels(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
+                                          uint8_t *levels, uint64_t *out_levels_mask, uint8_t *scratch);
 
 #endif

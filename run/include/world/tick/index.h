@@ -136,6 +136,18 @@ void world_tick_step(world_tick_t *tick);
  * items in the world rolls its drops: this stays on the block's side of that line. */
 bool world_tick_broken_next(world_tick_t *tick, world_tick_broken_t *out);
 
+/* A section's levels for a save: WORLD_TICK_PAGE_BYTES, half a byte per voxel in section_voxel_index order, or nullptr if nothing in it flows. Good until the
+ * next tick. */
+const uint8_t *world_tick_section_levels(const world_tick_t *tick, uint32_t slot, uint32_t section);
+
+/* What a save said of a section of a column just filled, with its blocks in place. Only voxels holding a fluid take a level, and each one that does wakes, so
+ * that what was flowing goes on. */
+void world_tick_section_levels_restore(world_tick_t *tick, int32_t chunk_x, int32_t chunk_y, uint32_t section,
+                                       const uint8_t *levels);
+
+/* Where a world that has been saved takes up its count of ticks, before anything is waiting: the random ticks' numbers come from it. */
+void world_tick_now_set(world_tick_t *tick, uint64_t now);
+
 /* A level from above. Means nothing unless the voxel holds a fluid, and is the level of a source where nothing is known. */
 uint8_t world_tick_fluid_level(const world_tick_t *tick, int32_t x, int32_t y, int32_t z);
 

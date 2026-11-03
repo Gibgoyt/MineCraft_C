@@ -31,6 +31,8 @@ enum : uint64_t {
 };
 enum : uint32_t {
     SAVE_WORLD_RECORD_HEAD_BYTES = 4u,
+    /* In a record's first number, which otherwise says how many bits an index takes. */
+    SAVE_WORLD_RECORD_HAS_LEVELS = 0x8000u,
     SAVE_WORLD_PALETTE_MAX = 256u,
     SAVE_WORLD_PLACE_SECTIONS = 64u,
     /* How many times a reader follows a file replaced under it before it calls that damage. Each is a whole save happening between two
@@ -38,7 +40,9 @@ enum : uint32_t {
     SAVE_WORLD_READ_TRIES = 64u,
 };
 static_assert(SAVE_WORLD_PENDING_BYTES < UINT32_MAX);
-static_assert(SAVE_WORLD_RECORD_BYTES_MAX < UINT16_MAX);
+static_assert(SAVE_WORLD_ENTRY_BYTES_MAX < UINT16_MAX);
+static_assert((uint32_t)SAVE_WORLD_RECORD_LEVELS_BYTES == (uint32_t)WORLD_TICK_PAGE_BYTES);
+static_assert((uint32_t)SECTION_BITS_DIRECT < (uint32_t)SAVE_WORLD_RECORD_HAS_LEVELS);
 static_assert(BLOCK_COUNT <= 65536u);
 static_assert((uint32_t)COLUMN_SECTIONS <= (uint32_t)SAVE_WORLD_PLACE_SECTIONS);
 
@@ -99,6 +103,10 @@ static void save_world_step(const save_world_t *save, save_world_step_t step) {
     if (save->step_hook != nullptr) {
         save->step_hook(save->borrowed_step_context, step);
     }
+}
+
+void save_world_levels_from(save_world_t *save, const world_tick_t *tick) {
+    save->borrowed_tick = tick;
 }
 
 void save_world_step_hook_set(save_world_t *save, save_world_step_hook_t hook, void *context) {
@@ -176,21 +184,38 @@ uint32_t save_world_record_encode(const uint16_t *states, uint16_t *palette_slot
     return (uint32_t)bytes;
 }
 
+/* Every voxel's level is one a fluid can have. */
+static bool save_world_levels_valid(const uint8_t *levels) {
+    for (uint32_t i = 0u; i < SAVE_WORLD_RECORD_LEVELS_BYTES; i++) {
+        if ((levels[i] & 15u) > WORLD_TICK_LEVEL_FALLING || (levels[i] >> 4) > WORLD_TICK_LEVEL_FALLING) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /* All of a record but its states being written: so that a bad one leaves what it was to go over alone. */
 static bool save_world_record_valid(const uint8_t *record, uint64_t bytes, uint32_t *out_bits,
                                     uint32_t *out_palette_count, uint16_t *out_palette) {
-    if (bytes < SAVE_WORLD_RECORD_HEAD_BYTES || bytes > SAVE_WORLD_RECORD_BYTES_MAX) {
+    if (bytes < SAVE_WORLD_RECORD_HEAD_BYTES || bytes > SAVE_WORLD_ENTRY_BYTES_MAX) {
         return false;
     }
     uint16_t head[2];
     memcpy(head, record, sizeof(head));
-    const uint32_t bits = head[0];
+    const bool has_levels = (head[0] & SAVE_WORLD_RECORD_HAS_LEVELS) != 0u;
+    const uint64_t levels_bytes = has_levels ? SAVE_WORLD_RECORD_LEVELS_BYTES : 0u;
+    if (bytes < SAVE_WORLD_RECORD_HEAD_BYTES + levels_bytes ||
+        (has_levels && !save_world_levels_valid(record + bytes - levels_bytes))) {
+        return false;
+    }
+    const uint32_t bits = head[0] & ~(uint32_t)SAVE_WORLD_RECORD_HAS_LEVELS;
     const uint32_t palette_count = head[1];
+    const uint64_t blocks_bytes = bytes - levels_bytes;
     const uint8_t *const body = record + SAVE_WORLD_RECORD_HEAD_BYTES;
     *out_bits = bits;
     *out_palette_count = palette_count;
     if (bits == SECTION_BITS_DIRECT) {
-        if (palette_count != 0u || bytes != save_world_record_bytes_for(bits, 0u)) {
+        if (palette_count != 0u || blocks_bytes != save_world_record_bytes_for(bits, 0u)) {
             return false;
         }
         for (uint32_t i = 0u; i < SECTION_VOXELS; i++) {
@@ -203,7 +228,7 @@ static bool save_world_record_valid(const uint8_t *record, uint64_t bytes, uint3
         return true;
     }
     if ((bits != 0u && bits != 1u && bits != 2u && bits != 4u && bits != 8u) || palette_count == 0u ||
-        palette_count > (1u << bits) || bytes != save_world_record_bytes_for(bits, palette_count)) {
+        palette_count > (1u << bits) || blocks_bytes != save_world_record_bytes_for(bits, palette_count)) {
         return false;
     }
     memcpy(out_palette, body, (uint64_t)palette_count * sizeof(uint16_t));
@@ -251,6 +276,12 @@ bool save_world_record_decode(const uint8_t *record, uint64_t bytes, uint16_t *o
     return true;
 }
 
+const uint8_t *save_world_record_levels(const uint8_t *record, uint64_t bytes) {
+    uint16_t bits = 0u;
+    memcpy(&bits, record, sizeof(bits));
+    return (bits & SAVE_WORLD_RECORD_HAS_LEVELS) != 0u ? record + bytes - SAVE_WORLD_RECORD_LEVELS_BYTES : nullptr;
+}
+
 /* ---- What has been captured ----------------------------------------------------------------------------------------- */
 
 static uint32_t save_world_pending_slot_start(int32_t chunk_x, int32_t chunk_y, uint32_t section) {
@@ -285,16 +316,27 @@ static void save_world_pending_clear(save_world_pending_t *pending) {
 }
 
 /* One section of a live column into the set being captured to. False if there is no room, and then nothing changed. */
-static bool save_world_capture_section(save_world_t *save, const column_t *column, uint32_t section) {
+static bool save_world_capture_section(save_world_t *save, const column_t *column, uint32_t column_slot,
+                                       uint32_t section) {
     save_world_pending_t *const pending = &save->pending[save->active];
     if (pending->count >= SAVE_WORLD_PENDING_SECTIONS ||
-        pending->used + SAVE_WORLD_RECORD_BYTES_MAX > SAVE_WORLD_PENDING_BYTES) {
+        pending->used + SAVE_WORLD_ENTRY_BYTES_MAX > SAVE_WORLD_PENDING_BYTES) {
         return false;
     }
     section_blocks_export(&column->sections[section], save->borrowed_states);
     /* Past used, no reader looks: so this needs no lock, and only the moment it comes to be seen does. */
-    const uint32_t bytes = save_world_record_encode(save->borrowed_states, save->borrowed_palette_slots,
-                                                    pending->borrowed_bytes + pending->used);
+    uint8_t *const record = pending->borrowed_bytes + pending->used;
+    uint32_t bytes = save_world_record_encode(save->borrowed_states, save->borrowed_palette_slots, record);
+    const uint8_t *const levels =
+        save->borrowed_tick != nullptr ? world_tick_section_levels(save->borrowed_tick, column_slot, section) : nullptr;
+    if (levels != nullptr) {
+        uint16_t bits = 0u;
+        memcpy(&bits, record, sizeof(bits));
+        bits |= SAVE_WORLD_RECORD_HAS_LEVELS;
+        memcpy(record, &bits, sizeof(bits));
+        memcpy(record + bytes, levels, SAVE_WORLD_RECORD_LEVELS_BYTES);
+        bytes += SAVE_WORLD_RECORD_LEVELS_BYTES;
+    }
     const uint32_t offset = (uint32_t)pending->used;
     save_world_pending_ref_t *const found = save_world_pending_find(pending, column->chunk_x, column->chunk_y, section);
     (void)pthread_mutex_lock(&save->mutex);
@@ -322,10 +364,10 @@ static bool save_world_capture_section(save_world_t *save, const column_t *colum
 }
 
 /* What of mask it could not capture. */
-static uint64_t save_world_capture_mask(save_world_t *save, const column_t *column, uint64_t mask) {
+static uint64_t save_world_capture_mask(save_world_t *save, const column_t *column, uint32_t slot, uint64_t mask) {
     while (mask != 0u) {
         const uint32_t section = (uint32_t)__builtin_ctzll(mask);
-        if (!save_world_capture_section(save, column, section)) {
+        if (!save_world_capture_section(save, column, slot, section)) {
             return mask;
         }
         mask &= mask - 1u;
@@ -337,7 +379,7 @@ save_world_status_t save_world_capture_dirty(save_world_t *save, world_edit_t *e
     world_edit_dirty_t dirty;
     while (world_edit_dirty_next(edit, WORLD_EDIT_CONSUMER_SAVE, &dirty)) {
         const column_t *const column = &edit->borrowed_map->borrowed_columns[dirty.slot];
-        const uint64_t left = save_world_capture_mask(save, column, dirty.section_mask);
+        const uint64_t left = save_world_capture_mask(save, column, dirty.slot, dirty.section_mask);
         if (left != 0u) {
             dirty.section_mask = left;
             world_edit_dirty_restore(edit, &dirty, WORLD_EDIT_CONSUMER_SAVE);
@@ -352,7 +394,7 @@ save_world_status_t save_world_capture_column(save_world_t *save, world_edit_t *
     if (mask == 0u) {
         return SAVE_WORLD_OK;
     }
-    const uint64_t left = save_world_capture_mask(save, &edit->borrowed_map->borrowed_columns[slot], mask);
+    const uint64_t left = save_world_capture_mask(save, &edit->borrowed_map->borrowed_columns[slot], slot, mask);
     world_edit_dirty_clear(edit, slot, WORLD_EDIT_CONSUMER_SAVE, mask & ~left);
     return left == 0u ? SAVE_WORLD_OK : SAVE_WORLD_FULL;
 }
@@ -695,7 +737,7 @@ save_world_status_t save_world_open(save_world_t *save, arena_t *arena, const ch
     save->borrowed_table_old = arena_alloc(arena, SAVE_WORLD_TABLE_BYTES, 8u);
     save->borrowed_table_new = arena_alloc(arena, SAVE_WORLD_TABLE_BYTES, 8u);
     save->borrowed_manifest_bytes = arena_alloc(arena, SAVE_WORLD_MANIFEST_BYTES_MAX, 8u);
-    save->borrowed_record = arena_alloc(arena, SAVE_WORLD_RECORD_BYTES_MAX, 8u);
+    save->borrowed_record = arena_alloc(arena, SAVE_WORLD_ENTRY_BYTES_MAX, 8u);
     save->borrowed_states = arena_alloc_array(arena, SECTION_VOXELS, sizeof(uint16_t), alignof(uint16_t));
     save->borrowed_palette_slots = arena_alloc_zeroed(arena, 65536u * sizeof(uint16_t), alignof(uint16_t));
     save->borrowed_directory = arena_alloc(arena, FILE_PATH_BYTES, 1u);
@@ -791,7 +833,7 @@ static bool save_world_entries_read(const file_t *file, uint64_t file_bytes, con
 static bool save_world_old_record_read(const save_world_t *save, const save_world_delta_writer_t *writer,
                                        const save_world_section_entry_t *entry, file_status_t *status) {
     *status = FILE_OK;
-    if (entry->bytes > SAVE_WORLD_RECORD_BYTES_MAX ||
+    if (entry->bytes > SAVE_WORLD_ENTRY_BYTES_MAX ||
         !save_world_within(entry->offset, entry->bytes, writer->old_bytes)) {
         return false;
     }
@@ -1221,10 +1263,20 @@ save_world_status_t save_world_flush(save_world_t *save, world_edit_t *edit) {
 
 /* ---- Reading --------------------------------------------------------------------------------------------------------- */
 
+/* A section just read: its levels too, if it has any and they are wanted. */
+static void save_world_overlay_levels_take(const uint8_t *record, uint64_t bytes, uint32_t section, uint8_t *levels,
+                                           uint64_t *levels_mask) {
+    const uint8_t *const held = save_world_record_levels(record, bytes);
+    if (levels != nullptr && held != nullptr) {
+        memcpy(levels + (uint64_t)section * SAVE_WORLD_RECORD_LEVELS_BYTES, held, SAVE_WORLD_RECORD_LEVELS_BYTES);
+        *levels_mask |= 1ull << section;
+    }
+}
+
 /* The records of one column of an open file, past what is already in *mask. Returns how many it could not read. */
 static uint64_t save_world_overlay_records(const file_t *file, const save_world_region_t *region, uint64_t section_mask,
                                            const save_world_section_entry_t *entries, uint64_t *mask, uint16_t *states,
-                                           uint8_t *scratch) {
+                                           uint8_t *levels, uint64_t *levels_mask, uint8_t *scratch) {
     uint64_t damaged = 0u;
     uint32_t index = 0u;
     for (uint64_t left = section_mask; left != 0u; left &= left - 1u) {
@@ -1234,13 +1286,14 @@ static uint64_t save_world_overlay_records(const file_t *file, const save_world_
         if ((*mask & (1ull << section)) != 0u) {
             continue;
         }
-        const bool good = entry->bytes <= SAVE_WORLD_RECORD_BYTES_MAX &&
+        const bool good = entry->bytes <= SAVE_WORLD_ENTRY_BYTES_MAX &&
                           save_world_within(entry->offset, entry->bytes, region->file_bytes) &&
                           file_read_at(file, entry->offset, scratch, entry->bytes) == FILE_OK &&
                           save_world_record_checksum(scratch, entry->bytes) == entry->checksum &&
                           save_world_record_decode(scratch, entry->bytes, states + (uint64_t)section * SECTION_VOXELS);
         if (good) {
             *mask |= 1ull << section;
+            save_world_overlay_levels_take(scratch, entry->bytes, section, levels, levels_mask);
         } else {
             damaged++;
             LOG_ERROR("save: section %" PRIu32 " of a column in region %" PRId32 ", %" PRId32 " is past reading",
@@ -1252,7 +1305,8 @@ static uint64_t save_world_overlay_records(const file_t *file, const save_world_
 
 /* What this file has of a column, past what is already in *mask. False if a save has replaced it, so look again. */
 static bool save_world_overlay_file(save_world_t *save, const save_world_region_t *region, uint32_t local,
-                                    uint64_t *mask, uint16_t *states, uint8_t *scratch) {
+                                    uint64_t *mask, uint16_t *states, uint8_t *levels, uint64_t *levels_mask,
+                                    uint8_t *scratch) {
     char path[FILE_PATH_BYTES];
     file_t file = {.fd = -1, ._pad0 = {0}};
     uint64_t damaged = 0u;
@@ -1283,7 +1337,8 @@ static bool save_world_overlay_file(save_world_t *save, const save_world_region_
             LOG_ERROR("save: column %" PRIu32 " of %s is past reading, so what generates there is used", local, path);
             damaged = 1u;
         } else if (column.section_mask != 0u) {
-            damaged = save_world_overlay_records(&file, region, column.section_mask, entries, mask, states, scratch);
+            damaged = save_world_overlay_records(&file, region, column.section_mask, entries, mask, states, levels,
+                                                 levels_mask, scratch);
         }
     }
     /* It was only read. */
@@ -1296,6 +1351,15 @@ static bool save_world_overlay_file(save_world_t *save, const save_world_region_
 
 uint64_t save_world_column_overlay(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
                                    uint8_t *scratch) {
+    return save_world_column_overlay_levels(save, chunk_x, chunk_y, states, nullptr, nullptr, scratch);
+}
+
+uint64_t save_world_column_overlay_levels(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
+                                          uint8_t *levels, uint64_t *out_levels_mask, uint8_t *scratch) {
+    uint64_t levels_mask = 0u;
+    if (out_levels_mask != nullptr) {
+        *out_levels_mask = 0u;
+    }
     if (save->open == 0u) {
         return 0u;
     }
@@ -1321,6 +1385,8 @@ uint64_t save_world_column_overlay(save_world_t *save, int32_t chunk_x, int32_t 
                                                            states + (uint64_t)section * SECTION_VOXELS);
                 ASSERT_ALWAYS(good);
                 mask |= 1ull << section;
+                save_world_overlay_levels_take(pending->borrowed_bytes + ref->offset, ref->bytes, section, levels,
+                                               &levels_mask);
             }
         }
     }
@@ -1336,7 +1402,7 @@ uint64_t save_world_column_overlay(save_world_t *save, int32_t chunk_x, int32_t 
             found = true;
         }
         (void)pthread_mutex_unlock(&save->mutex);
-        if (!found || save_world_overlay_file(save, &region, local, &mask, states, scratch)) {
+        if (!found || save_world_overlay_file(save, &region, local, &mask, states, levels, &levels_mask, scratch)) {
             break;
         }
         if (tries + 1u == SAVE_WORLD_READ_TRIES) {
@@ -1347,6 +1413,9 @@ uint64_t save_world_column_overlay(save_world_t *save, int32_t chunk_x, int32_t 
     }
     if (mask != 0u) {
         atomic_fetch_add_explicit(&save->sections_loaded, (uint64_t)__builtin_popcountll(mask), memory_order_relaxed);
+    }
+    if (out_levels_mask != nullptr) {
+        *out_levels_mask = levels_mask;
     }
     return mask;
 }

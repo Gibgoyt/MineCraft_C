@@ -207,6 +207,10 @@ static void item_furnaces_tick(item_t *item, world_edit_t *edit) {
     }
 }
 
+void item_world_edits_read(item_t *item, world_edit_t *edit, item_spill_t *spill, void *borrowed_context) {
+    item_edits_read(item, edit, spill, borrowed_context);
+}
+
 void item_world_tick(item_t *item, world_edit_t *edit, item_spill_t *spill, void *borrowed_context) {
     item_edits_read(item, edit, spill, borrowed_context);
     item_furnaces_tick(item, edit);

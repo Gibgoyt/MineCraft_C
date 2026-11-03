@@ -8,6 +8,8 @@
 #include "physics/index.h"
 #include "render/index.h"
 #include "save/index.h"
+#include "tables/blocks/index.h"
+#include "tables/items/index.h"
 #include "terrain/index.h"
 #include "texture/index.h"
 #include "thread/index.h"
@@ -396,6 +398,98 @@ TEST(a_column_that_will_not_fit_waits_for_a_save_and_only_the_autosave_writes) {
     CHECK(save->autosave.saves_done >= 2u); /* the one it waited for, and this */
     CHECK(save->world.generation >= 1u);
     CHECK_EQ_U64(ss_state_files(root), 1u);
+    game_close(game);
+    save_close(save);
+    ss_game_end(t, rig);
+    ss_temp_remove(t, root);
+}
+
+static void ss_no_spill(void *context, const item_stack_t *stack, const int32_t cell[3]) {
+    (void)context;
+    (void)stack;
+    (void)cell;
+}
+
+/* Steps the sim until no write is under way, and it has looked at what the last one said. */
+static bool ss_autosave_settle(game_t *game, save_t *save) {
+    const int64_t deadline = time_now_ns() + 60ll * TIME_NS_PER_SECOND;
+    while (time_now_ns() < deadline) {
+        game_sim_step(game);
+        if (atomic_load(&save->autosave.writing) == 0u && save->autosave.outstanding == 0u) {
+            return true;
+        }
+        time_sleep_ns(200000);
+    }
+    return false;
+}
+
+TEST(the_game_keeps_what_flows_the_tick_count_and_what_a_chest_gone_this_tick_held) {
+    char *const root = ss_temp_directory(t);
+    REQUIRE(root != nullptr);
+    ss_game_rig_t *const rig = test_alloc(t, sizeof(ss_game_rig_t));
+    REQUIRE(ss_game_begin(t, rig, true));
+    game_t *const game = rig->game;
+    save_t *const save = rig->save;
+    world_t *const world = rig->world;
+    REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
+    const game_config_t config = {.render_distance = 3u, .width = 64u, .height = 36u, ._pad0 = {0}};
+    REQUIRE(game_open(game, &config));
+    REQUIRE(game_settle(game));
+    const int32_t home_x = atomic_load(&game->center_x) * 16, home_y = atomic_load(&game->center_y) * 16;
+
+    /* High in the air, on a floor of its own, far from anything terrain made. */
+    const int32_t z = 400;
+    for (int32_t y = 0; y < 16; y++) {
+        for (int32_t x = 0; x < 16; x++) {
+            REQUIRE(world_edit_block_set(&world->edit, home_x + x, home_y + y, z - 1, BLOCK_ID_STONE) ==
+                    WORLD_EDIT_STATUS_CHANGED);
+        }
+    }
+    REQUIRE(world_edit_block_set(&world->edit, home_x + 8, home_y + 8, z, BLOCK_ID_WATER) == WORLD_EDIT_STATUS_CHANGED);
+    for (uint32_t i = 0u; i < 100u; i++) {
+        world_tick_step(&world->tick);
+    }
+    REQUIRE(world_tick_fluid_level(&world->tick, home_x + 9, home_y + 8, z) == 1u);
+    REQUIRE(world_tick_fluid_level(&world->tick, home_x + 15, home_y + 8, z) == 7u);
+
+    /* A chest with something in it that goes after the items have had their look for this tick, as a creeper's blast does. */
+    const int32_t chest_x = home_x + 2, chest_y = home_y + 2, chest_z = z + 5;
+    REQUIRE(world_edit_block_set(&world->edit, chest_x, chest_y, chest_z, BLOCK_ID_CHEST) == WORLD_EDIT_STATUS_CHANGED);
+    item_world_edits_read(rig->item, &world->edit, ss_no_spill, nullptr);
+    container_chest_t *const chest = container_at(&rig->item->chests, chest_x, chest_y, chest_z);
+    REQUIRE(chest != nullptr);
+    *container_slot(chest, 0u) = item_stack_make(ITEM_ID_DIRT, 5u);
+    const uint32_t chests = rig->item->chests.count;
+    const uint32_t drops = rig->entity->item_drops.count;
+    REQUIRE(world_edit_block_set(&world->edit, chest_x, chest_y, chest_z, BLOCK_ID_AIR) == WORLD_EDIT_STATUS_CHANGED);
+
+    /* The save comes before any tick does. What it keeps is the items on the ground, and no chest with nowhere to be. */
+    save->autosave.next_tick = 0u;
+    REQUIRE(ss_autosave_settle(game, save));
+    CHECK(save->autosave.saves_done >= 1u);
+    CHECK_EQ_U64(rig->item->chests.count, chests - 1u);
+    CHECK_EQ_U64(rig->entity->item_drops.count, drops + 1u);
+
+    game->tick_count = 777u;
+    REQUIRE(game_save_finish(game) == SAVE_WORLD_OK);
+    game_close(game);
+    save_close(save);
+
+    REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
+    REQUIRE(game_open(game, &config));
+    CHECK_EQ_U64(game->tick_count, 777u);
+    CHECK_EQ_U64(world->tick.now, 777u);
+    CHECK_EQ_U64(rig->item->chests.count, chests - 1u);
+    CHECK(container_at(&rig->item->chests, chest_x, chest_y, chest_z) == nullptr);
+    CHECK_EQ_U64(rig->entity->item_drops.count, drops + 1u);
+    REQUIRE(game_settle(game));
+    uint16_t block = BLOCK_ID_AIR;
+    REQUIRE(world_map_block_get(&world->map, home_x + 15, home_y + 8, z, &block) == WORLD_MAP_STATUS_OK);
+    CHECK_EQ_U64(block, BLOCK_ID_WATER);
+    CHECK_EQ_U64(world_tick_fluid_level(&world->tick, home_x + 8, home_y + 8, z), WORLD_TICK_LEVEL_SOURCE);
+    CHECK_EQ_U64(world_tick_fluid_level(&world->tick, home_x + 9, home_y + 8, z), 1u);
+    CHECK_EQ_U64(world_tick_fluid_level(&world->tick, home_x + 15, home_y + 8, z), 7u);
+    CHECK(world_tick_pending(&world->tick) > 0u);
     game_close(game);
     save_close(save);
     ss_game_end(t, rig);

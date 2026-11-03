@@ -111,11 +111,22 @@ static void game_save_parts(game_t *game, save_state_parts_t *out) {
     memcpy(&out->time.pitch, &pitch_bits, sizeof(pitch_bits));
 }
 
+static void game_spill(void *borrowed_game, const item_stack_t *stack, const int32_t cell[3]);
+
+/* A chest or furnace an edit has taken since item_world_tick last looked has its items spilled now, and not in the next tick, which comes too late for what
+ * is about to be saved. */
+static void game_save_items_settle(game_t *game) {
+    if (game->borrowed_item != nullptr) {
+        item_world_edits_read(game->borrowed_item, &game->borrowed_world->edit, game_spill, game);
+    }
+}
+
 save_world_status_t game_save_finish(game_t *game) {
     save_t *const save = game->borrowed_save;
     if (save == nullptr || save->world.open == 0u) {
         return SAVE_WORLD_OK;
     }
+    game_save_items_settle(game);
     save_state_parts_t parts;
     game_save_parts(game, &parts);
     return save_autosave_finish(&save->autosave, &game->borrowed_world->edit, &parts);
@@ -407,6 +418,8 @@ bool game_open(game_t *game, const game_config_t *config) {
         game_save_parts(game, &parts);
         save_state_apply(&save->state, &parts);
         game->tick_count = parts.time.world_ticks;
+        world_tick_now_set(&game->borrowed_world->tick, game->tick_count);
+        save_world_levels_from(&save->world, &game->borrowed_world->tick);
         game_day_set(game, (float64_t)parts.time.day_units / 4294967296.0f64);
         game_day_apply(game);
         save_autosave_start(&save->autosave, game->borrowed_job, &save->world, &save->state, game->tick_count);
@@ -573,9 +586,11 @@ static void game_column_job_run(job_worker_t *worker, void *borrowed_job) {
     terrain_generate_box(job->borrowed_terrain, &box, job->borrowed_opened, job->borrowed_states);
     if (job->borrowed_save != nullptr) {
         /* Terrain has finished with what it worked in, which is far larger than this needs. */
-        static_assert((uint64_t)GAME_COLUMN_VOXELS >= (uint64_t)SAVE_WORLD_OVERLAY_SCRATCH_BYTES);
-        (void)save_world_column_overlay(job->borrowed_save, job->request.chunk_x, job->request.chunk_y,
-                                        job->borrowed_states, job->borrowed_opened);
+        static_assert((uint64_t)GAME_COLUMN_VOXELS >=
+                      (uint64_t)SAVE_WORLD_OVERLAY_SCRATCH_BYTES + (uint64_t)SAVE_WORLD_OVERLAY_LEVELS_BYTES);
+        (void)save_world_column_overlay_levels(
+            job->borrowed_save, job->request.chunk_x, job->request.chunk_y, job->borrowed_states,
+            job->borrowed_opened + SAVE_WORLD_OVERLAY_SCRATCH_BYTES, &job->levels_mask, job->borrowed_opened);
     }
     /* Release gives the sim thread the states just written, and pairs with the acquire in game_columns_commit. */
     atomic_store_explicit(&job->done, 1u, memory_order_release);
@@ -598,6 +613,14 @@ static bool game_column_fill(game_t *game, const game_column_job_t *job) {
         }
     }
     world_edit_column_filled(&world->edit, job->request.slot);
+    if (job->borrowed_save != nullptr) {
+        for (uint64_t left = job->levels_mask; left != 0u; left &= left - 1u) {
+            const uint32_t section = (uint32_t)__builtin_ctzll(left);
+            world_tick_section_levels_restore(&world->tick, job->request.chunk_x, job->request.chunk_y, section,
+                                              job->borrowed_opened + SAVE_WORLD_OVERLAY_SCRATCH_BYTES +
+                                                  (uint64_t)section * SAVE_WORLD_RECORD_LEVELS_BYTES);
+        }
+    }
     /* Short of memory, it says so, and world_light_update tries again. */
     (void)world_light_column_added(&world->light, job->request.slot);
     game->columns_made++;
@@ -666,8 +689,6 @@ static void game_columns_request(game_t *game) {
     }
 }
 
-static void game_spill(void *borrowed_game, const item_stack_t *stack, const int32_t cell[3]);
-
 /* What the screens need to know of this moment, on the sim. */
 static void game_screen_sim(game_t *game, ui_screen_sim_t *out) {
     const player_t *const player = game->borrowed_player;
@@ -716,7 +737,8 @@ void game_sim_step(game_t *game) {
     /* False is only that nothing changed. */
     (void)world_edit_snapshot_publish(&world->snapshot);
     save_t *const save = game->borrowed_save;
-    if (save != nullptr && save->autosave.started != 0u) {
+    if (save != nullptr && save_autosave_due(&save->autosave, game->tick_count)) {
+        game_save_items_settle(game);
         save_state_parts_t parts;
         game_save_parts(game, &parts);
         save_autosave_step(&save->autosave, &world->edit, &parts, game->tick_count);
