@@ -143,7 +143,7 @@ The phase gate check, from a clean `build/` after merging the integration branch
 - `ctest --preset debug --output-on-failure`: 95 of 96 passed, 1196 s. The one that failed was `clang_format`, on a comment of the gate check's own in `tests/run/render/upload/index.c`. Fixed, and `cuda_traverse`, `run_render_upload`, `standards_lint` and `clang_format` then passed on the final code. The full list was not run again, as only that comment and the two mutations taken back out had changed.
 - `--trace` with `--only peaks/orbit`: exit status 0, 91671 events that parse as JSON, kernels and job lanes in them, and 0 lost.
 - `minecraft_c --headless --test-world --ticks 60 --width 640 --height 360 --render-distance 2`: exit status 0, 0 bytes live at exit.
-- `nvidia-smi --query-gpu=pcie.link.width.current`: 8, as issue text above says.
+- `nvidia-smi --query-gpu=pcie.link.width.current`: 8, as this file says under "The target table".
 - Read for stubs and for what nothing calls, in the profiler, the benchmark, and this stage's kernels: none found. Banned types: none in those files.
 
 ## Commits
@@ -158,6 +158,7 @@ Appended as they land:
 - `6edd0da` Work in progress on the top-cost pass: no worker beside the sim, and last-surface sun rays apart in the game whichever effects are on.
 - `43c86a2` Work in progress on the top-cost pass: the thread order goes back to what it was, as terrain lost more than the tick gained.
 - `2018fd2` Finish the pass over the top costs, with the plan target table filled in with measured numbers and misses stated.
+- `24f402b` Correct the performance target table after the phase gate check: with god rays on two views miss 120 fps, with flags to measure it and a test of the tops through the real upload.
 
 ## Issues found
 

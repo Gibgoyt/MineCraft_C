@@ -46,7 +46,9 @@ A settled row's fps is what the card's clock allows. It leaves out `past the car
 
 ## Commits
 
-Appended as they land:
+Appended as they land. Each stage's are in its file. The gate check's:
+
+- `24f402b` Correct the performance target table after the phase gate check: with god rays on two views miss 120 fps, with flags to measure it and a test of the tops through the real upload.
 
 ## Issues found
 
