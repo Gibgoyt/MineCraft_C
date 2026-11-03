@@ -25,6 +25,4 @@ A state or a record is mostly changed in place, by `mutate`: a section, each the
 
 ## What it does not do
 
-A state with a number the game cannot live with, such as a speed past what physics takes, is not ticked, and each is counted as a known defect: see `fs_state_meets_known_defect` and issue 1 of `plans/001-ahmed-bohemoth-minecraft-from-scratch-phase-18-stage-1-sanitize-fuzz-soak.md`. `MC_FUZZ_KNOWN_DEFECTS=1` in the environment ticks them, and a run stops within seconds. A manifest at the last generation there is, issue 8, is not opened again after its save, and counted the same. Take the skips out when these are mended.
-
 A search does not run on a worker, as a job system's threads would not survive the fork: `mob_init` is given none, which is its way of running them on the sim. An arrow is not given the player to hit. An input may leave a block changed in the world in memory, for the next to meet, though a blast's floor is put back, so a failure that needs that may not come again with `--replay`.

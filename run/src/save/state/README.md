@@ -15,6 +15,10 @@
 **May be called by:** `save`, `save/autosave`, and `game`, which opens a world with it.
 **Depends on:** `save/world`, for its statuses, `file`, `arena`, `log`, `assert`, the stores in `player`, `item`, `entity` and `mob`, whose fields it reads and writes as a file's numbers, the generated tables, and glibc's `opendir`.
 
+## What a file may say, and what the game then writes
+
+`save_state_check` asks more than that a number be finite: it refuses what the game could not then live with, as a state with good hashes can be an edited one. A speed past `SAVE_STATE_SPEED_MOST`, which physics would stop the program for, an eye past `SAVE_STATE_EYE_MOST`, a fall or a body's tally past `SAVE_STATE_TALLY_MOST`, or air the game never has. What is alive can pass those limits, as an arrow keeps flying, so `save_state_capture` writes such a number at its limit, and something that is not a number as 0. The game goes on with what it has, and the file is one it believes.
+
 ## On disk
 
     <world>/state.<g>       this file; g is the save of the blocks it goes with

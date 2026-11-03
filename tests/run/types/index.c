@@ -910,7 +910,7 @@ TEST(game_runs_the_core_runtime_and_ends_with_nothing_live) {
     char expected[64];
     snprintf(expected, sizeof(expected), "%d workers ran %d jobs", MC_THREADS_WORKERS, MC_THREADS_WORKERS);
     CHECK_CONTAINS(result.output, expected);
-    CHECK_CONTAINS(result.output, "no game systems exist yet");
+    CHECK_CONTAINS(result.output, "no terminal, so no game");
     CHECK_CONTAINS(result.output, "heap at exit: 14 reserved, 14 released, 0 bytes live");
 }
 
@@ -942,7 +942,7 @@ TEST(game_exits_with_a_message_on_a_cpu_mismatch) {
     CHECK_CONTAINS(result.output, "[error] ");
     CHECK_CONTAINS(result.output, "Missing: avx2.");
     CHECK_CONTAINS(result.output, "config/machine.yaml");
-    CHECK(strstr(result.output, "no game systems exist yet") == nullptr);
+    CHECK(strstr(result.output, "no terminal, so no game") == nullptr);
 }
 
 TEST(game_ignores_a_missing_feature_the_build_does_not_use) {

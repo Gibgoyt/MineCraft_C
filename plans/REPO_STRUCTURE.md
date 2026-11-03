@@ -43,7 +43,7 @@ Three rules make the tree predictable:
 | `research/` | Source research and speed notes | Docs |
 | `build/` | Generated and compiled output. **Never committed** | Build time |
 
-Root files: `CMakeLists.txt`, `CMakePresets.json`, `.gitignore`, `.clang-format`.
+Root files: `README.md`, `CMakeLists.txt`, `CMakePresets.json`, `.gitignore`, `.clang-format`.
 
 ---
 
@@ -90,7 +90,7 @@ run/include/world/
 Headers mirror source paths, with two kinds of exception, each saying so in its README. A header with no C behind it:
 `run/include/types/`, `run/include/simd/<kernel>/` (`asm/` implements it) and `run/include/gpu_bridge/<area>/` (`cuda/`
 implements it, and its `run/src/` directory holds only a README). A part declared with its Owner: `run/src/game/input/`,
-`report/` and `settle/`, in `run/include/game/index.h`. Include roots: `run/include`, `compile/include`, `cuda/include`,
+`report/`, `settle/` and `tick/`, in `run/include/game/index.h`, and `run/src/save/world/record/`, in `run/include/save/world/index.h`. Include roots: `run/include`, `compile/include`, `cuda/include`,
 `asm/include`, and `build/<preset>/generated`.
 
 ### Every `README.md` states
@@ -245,6 +245,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `report` | What the HUD shows now and the log's lines at the end of a run. Not in the plan's list: split off at Stage 14.5 for size | 14.5 |
 | | `view` | What a config comes to for what is drawn, and bringing a picture up to the display's size. Not in the plan's list: `game_reconfigure` needs it, and `game` had reached its size for splitting | 14.5 |
 | | `settle` | One thread, until all the eye's place wants is on the card. Not in the plan's list: split off at the Phase 14 gate, as `input` was | 14 gate |
+| | `tick` | One tick of the world, `game_sim_tick`. Not in the plan's list: split off at the Phase 18 gate, at the standard's 1500 lines | 18 gate |
 | | `input` | A poll of real input or a script's tick turned into flying, the body's wishes, the hotbar and the overlay's key. Not in the plan's list: split off at the Phase 14 gate, when `game` passed its size for splitting | 14 gate |
 | `physics` | `collision raycast` | Swept AABB; DDA block targeting | 12.1, 12.2 |
 | `player` | `movement camera` | Walk, jump, swim, look | 12.1, 12.2 |
@@ -277,6 +278,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `persist` | Their ranges and defaults, and the file, with our own runtime parser | 14.5 |
 | `save` | (the Owner) | `save_init`, `save_deinit`, `save_open`, `save_close`: the region and arena its parts borrow, and the one world open | 16.1 |
 | | `world` | Seed + changed-section deltas, with versioned headers, replaced through a crash-safe rename | 16.1 |
+| | `world/record` | One section's record, to and from a delta file. Split off at the Phase 18 gate, at the standard's 1500 lines | 18 gate |
 | | `state` | Player, inventory, entities, mobs, time, chests and furnaces, in a file that goes with one save of the blocks | 16.2 |
 | | `autosave` | Every 30 s of world time: the sim copies out, a worker writes; the only writer while a game runs | 16.2 |
 
@@ -643,7 +645,7 @@ Two things to know first:
 | `display.device`, `connector`, `width`, `height`, `refresh_hz` | Real. `display_config_from_machine` |
 | `gpu.architecture`, `gpu.budget.*` | Real. `CMAKE_CUDA_ARCHITECTURES`, and `gpu_bridge_limits_default` |
 | `gpu.enabled` | Guards one call, `gpu_bridge_init` in `run/src/main/`. **It does not give a game without a card:** see 15.5 |
-| `threads.gpu` | `0` is accepted (measured), but `game` starts its gpu thread regardless, and `thread_cpu_for` asserts `index < count` (read, not run) |
+| `threads.gpu` | `0` is refused while `gpu.enabled` is true, as `game` starts its gpu thread whenever a world opens. With `gpu.enabled: false` it passes, and no world opens anyway (15.5) |
 | `platform.posix` | Printed by `--report`. Nothing branches on it |
 | `platform.os`, `gpu.api`, `display.backend` | No consumer in `run/`, `cuda/`, `asm/` or `cmake/`. One word allowed each, and any other is refused at configure (measured): `platform.os must be one of: linux` |
 

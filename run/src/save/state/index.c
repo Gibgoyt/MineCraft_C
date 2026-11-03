@@ -9,6 +9,7 @@
 #include "tables/recipes/index.h"
 
 #include <dirent.h>
+#include <float.h>
 #include <inttypes.h>
 #include <math.h>
 #include <stdatomic.h>
@@ -33,6 +34,12 @@ static_assert(ENTITY_STORE_CAPACITY % 64u == 0u);
 
 /* As far from the middle as a place may be believed: past this a cell's number stops fitting what columns are counted in. */
 #define SAVE_STATE_PLACE_MOST 1000000000.0f64
+/* Blocks a tick, far past anything that happens, and with a wish on top still well inside PHYSICS_MOVE_BLOCKS_MAX, which physics stops the program for. */
+#define SAVE_STATE_SPEED_MOST 1024.0f64
+/* Blocks above the feet: a line to an eye further than this could run a cell's number off the end of an int32_t. */
+#define SAVE_STATE_EYE_MOST 1024.0f64
+/* A fall, or a hit or anything else a body adds up: far past anything that happens, and far from what a float32_t holds, so that a body is never hurt by infinity. */
+#define SAVE_STATE_TALLY_MOST 1000000.0f64
 
 static uint64_t save_state_hash_more(uint64_t hash, const void *data, uint64_t bytes) {
     const uint8_t *const cursor = data;
@@ -111,6 +118,26 @@ static_assert(13u * 8u + 10u * 4u + 2u * 4u + 2u + 2u * 1u == SAVE_STATE_BODY_BY
 
 /* ---- Copying out -------------------------------------------------------------------------------------------------------- */
 
+/* A file the game writes is one it must believe, or the world will not open again, and what is alive can pass what a check believes: an arrow keeps flying, a fall keeps
+ * adding up. So what goes into a file stops at those limits. Only the file: it changes nothing a game that has them in range would write. */
+static void save_state_settle_f64s(uint8_t *numbers, uint32_t count, float64_t most) {
+    for (uint32_t i = 0u; i < count; i++) {
+        float64_t value;
+        memcpy(&value, numbers + (uint64_t)i * sizeof(value), sizeof(value));
+        const float64_t settled = !isfinite(value) ? 0.0f64 : (fabs(value) > most ? copysign(most, value) : value);
+        memcpy(numbers + (uint64_t)i * sizeof(value), &settled, sizeof(value));
+    }
+}
+
+static void save_state_settle_f32s(uint8_t *numbers, uint32_t count, float32_t most) {
+    for (uint32_t i = 0u; i < count; i++) {
+        float32_t value;
+        memcpy(&value, numbers + (uint64_t)i * sizeof(value), sizeof(value));
+        const float32_t settled = !isfinite(value) ? 0.0f32 : (fabsf(value) > most ? copysignf(most, value) : value);
+        memcpy(numbers + (uint64_t)i * sizeof(value), &settled, sizeof(value));
+    }
+}
+
 /* Where a file is being put together. */
 typedef struct save_state_out_t {
     uint8_t *borrowed_file; /* 0 */
@@ -120,6 +147,11 @@ typedef struct save_state_out_t {
     uint8_t _pad0[4];       /* 28 */
 } save_state_out_t;
 static_assert(sizeof(save_state_out_t) == 32);
+
+/* Where what has been written of the section open now begins. */
+static uint8_t *save_state_out_section(const save_state_out_t *out) {
+    return out->borrowed_file + out->section_at + sizeof(save_state_section_t);
+}
 
 static void save_state_out_begin(save_state_out_t *out, uint32_t id) {
     out->section_at = out->used;
@@ -158,6 +190,23 @@ static void save_state_out_player(save_state_out_t *out, const player_t *player)
     save_state_out_bytes(out, &player->interaction, sizeof(player->interaction));
     save_state_out_bytes(out, &player->combat, sizeof(player->combat));
     save_state_out_bytes(out, &player->tick_count, sizeof(player->tick_count));
+    uint8_t *const movement = save_state_out_section(out) + offsetof(save_state_player_t, movement);
+    save_state_settle_f64s(movement + offsetof(player_movement_t, position), 2u * COLLISION_AXES,
+                           SAVE_STATE_PLACE_MOST);
+    save_state_settle_f64s(movement + offsetof(player_movement_t, velocity), COLLISION_AXES, SAVE_STATE_SPEED_MOST);
+    save_state_settle_f64s(movement + offsetof(player_movement_t, fall_distance), 2u, SAVE_STATE_TALLY_MOST);
+    save_state_settle_f64s(movement + offsetof(player_movement_t, eye_height), 2u, SAVE_STATE_EYE_MOST);
+    uint8_t *const survival = save_state_out_section(out) + offsetof(save_state_player_t, survival);
+    save_state_settle_f64s(survival + offsetof(player_survival_t, spawn), COLLISION_AXES, SAVE_STATE_PLACE_MOST);
+    save_state_settle_f32s(survival + offsetof(player_survival_t, saturation), 5u, (float32_t)SAVE_STATE_TALLY_MOST);
+    save_state_settle_f32s(survival + offsetof(player_survival_t, armor_toughness), 2u,
+                           (float32_t)SAVE_STATE_TALLY_MOST);
+    uint8_t *const hands = save_state_out_section(out) + offsetof(save_state_player_t, interaction);
+    for (uint32_t i = 0u; i < PLAYER_INTERACTION_DROPS; i++) {
+        save_state_settle_f64s(hands + offsetof(player_interaction_t, drops) + (uint64_t)i * sizeof(player_drop_t) +
+                                   offsetof(player_drop_t, position),
+                               COLLISION_AXES, SAVE_STATE_PLACE_MOST);
+    }
     save_state_out_end(out);
 }
 
@@ -207,6 +256,11 @@ static void save_state_out_entity(save_state_out_t *out, const entity_t *entity)
     save_state_out_begin(out, SAVE_STATE_SECTION_DROPS);
     save_state_out_bytes(out, &drops_head, sizeof(drops_head));
     save_state_out_bytes(out, drops->borrowed_items, (uint64_t)drops->count * sizeof(item_drop_t));
+    for (uint32_t i = 0u; i < drops->count; i++) {
+        uint8_t *const drop = save_state_out_section(out) + sizeof(drops_head) + (uint64_t)i * sizeof(item_drop_t);
+        save_state_settle_f64s(drop + offsetof(item_drop_t, position), COLLISION_AXES, SAVE_STATE_PLACE_MOST);
+        save_state_settle_f64s(drop + offsetof(item_drop_t, velocity), COLLISION_AXES, SAVE_STATE_SPEED_MOST);
+    }
     save_state_out_end(out);
 
     const projectile_store_t *const arrows = &entity->projectiles;
@@ -223,6 +277,11 @@ static void save_state_out_entity(save_state_out_t *out, const entity_t *entity)
     save_state_out_begin(out, SAVE_STATE_SECTION_ARROWS);
     save_state_out_bytes(out, &arrows_head, sizeof(arrows_head));
     save_state_out_bytes(out, arrows->borrowed_items, (uint64_t)arrows->count * sizeof(projectile_t));
+    for (uint32_t i = 0u; i < arrows->count; i++) {
+        uint8_t *const arrow = save_state_out_section(out) + sizeof(arrows_head) + (uint64_t)i * sizeof(projectile_t);
+        save_state_settle_f64s(arrow + offsetof(projectile_t, position), COLLISION_AXES, SAVE_STATE_PLACE_MOST);
+        save_state_settle_f64s(arrow + offsetof(projectile_t, velocity), COLLISION_AXES, SAVE_STATE_SPEED_MOST);
+    }
     save_state_out_end(out);
 
     const entity_store_t *const store = &entity->store;
@@ -242,9 +301,18 @@ static void save_state_out_entity(save_state_out_t *out, const entity_t *entity)
     save_state_out_bytes(out, store->borrowed_free_slots, ENTITY_STORE_CAPACITY * sizeof(uint32_t));
     save_state_field_t fields[SAVE_STATE_BODY_FIELDS];
     save_state_body_fields(store, fields);
+    const uint64_t arrays_at = out->used;
     for (uint32_t i = 0u; i < SAVE_STATE_BODY_FIELDS; i++) {
         save_state_out_bytes(out, fields[i].borrowed_array, (uint64_t)store->count * fields[i].element_bytes);
     }
+    /* In the order of save_state_body_fields, as save_state_check_bodies reads them. */
+    uint8_t *const arrays = out->borrowed_file + arrays_at;
+    const uint64_t each = (uint64_t)store->count * sizeof(float64_t);
+    save_state_settle_f64s(arrays, 6u * store->count, SAVE_STATE_PLACE_MOST);
+    save_state_settle_f64s(arrays + 6u * each, 5u * store->count, SAVE_STATE_SPEED_MOST);
+    save_state_settle_f64s(arrays + 11u * each, 2u * store->count, SAVE_STATE_TALLY_MOST);
+    /* All but half_width and height, which never change and are looked at more closely. */
+    save_state_settle_f32s(arrays + 13u * each + 2ull * store->count * sizeof(float32_t), 8u * store->count, FLT_MAX);
     save_state_out_end(out);
 }
 
@@ -281,6 +349,15 @@ static void save_state_out_minds(save_state_out_t *out, const mob_t *mob) {
     save_state_out_bytes(out, mob->skeleton.borrowed_bodies, ENTITY_STORE_CAPACITY * sizeof(mob_skeleton_body_t));
     save_state_out_bytes(out, mob->creeper.borrowed_bodies, ENTITY_STORE_CAPACITY * sizeof(mob_creeper_body_t));
     save_state_out_bytes(out, mob->combat.borrowed_bodies, ENTITY_STORE_CAPACITY * sizeof(mob_combat_body_t));
+    uint8_t *const zombies = save_state_out_section(out) + sizeof(head);
+    uint8_t *const hurts = zombies + ENTITY_STORE_CAPACITY * (sizeof(mob_zombie_body_t) + sizeof(mob_skeleton_body_t) +
+                                                              sizeof(mob_creeper_body_t));
+    for (uint32_t i = 0u; i < ENTITY_STORE_CAPACITY; i++) {
+        save_state_settle_f64s(zombies + (uint64_t)i * sizeof(mob_zombie_body_t) + offsetof(mob_zombie_body_t, asked),
+                               COLLISION_AXES, SAVE_STATE_PLACE_MOST);
+        save_state_settle_f32s(hurts + (uint64_t)i * sizeof(mob_combat_body_t) + offsetof(mob_combat_body_t, last_hurt),
+                               1u, FLT_MAX);
+    }
     save_state_out_end(out);
 }
 
@@ -375,9 +452,9 @@ const uint8_t *save_state_section_find(const uint8_t *file, uint64_t bytes, uint
     return nullptr;
 }
 
-static bool save_state_f64s_fine(const float64_t *values, uint32_t count) {
+static bool save_state_f64s_within(const float64_t *values, uint32_t count, float64_t most) {
     for (uint32_t i = 0u; i < count; i++) {
-        if (!isfinite(values[i])) {
+        if (!isfinite(values[i]) || fabs(values[i]) > most) {
             return false;
         }
     }
@@ -385,12 +462,11 @@ static bool save_state_f64s_fine(const float64_t *values, uint32_t count) {
 }
 
 static bool save_state_place_fine(const float64_t *values, uint32_t count) {
-    for (uint32_t i = 0u; i < count; i++) {
-        if (!isfinite(values[i]) || fabs(values[i]) > SAVE_STATE_PLACE_MOST) {
-            return false;
-        }
-    }
-    return true;
+    return save_state_f64s_within(values, count, SAVE_STATE_PLACE_MOST);
+}
+
+static bool save_state_tally_fine(float32_t value) {
+    return isfinite(value) && fabsf(value) <= (float32_t)SAVE_STATE_TALLY_MOST;
 }
 
 static bool save_state_f32s_fine(const float32_t *values, uint32_t count) {
@@ -431,16 +507,21 @@ static bool save_state_check_player(const uint8_t *data, uint64_t bytes) {
     const player_interaction_t *const hands = &player.interaction;
     if (!save_state_place_fine(body->position, COLLISION_AXES) ||
         !save_state_place_fine(body->previous, COLLISION_AXES) ||
-        !save_state_f64s_fine(body->velocity, COLLISION_AXES) || !isfinite(body->fall_distance) ||
-        !isfinite(body->landed_fall) || !isfinite(body->eye_height) || !isfinite(body->previous_eye) ||
+        !save_state_f64s_within(body->velocity, COLLISION_AXES, SAVE_STATE_SPEED_MOST) ||
+        !save_state_f64s_within(&body->fall_distance, 1u, SAVE_STATE_TALLY_MOST) ||
+        !save_state_f64s_within(&body->landed_fall, 1u, SAVE_STATE_TALLY_MOST) ||
+        !save_state_f64s_within(&body->eye_height, 1u, SAVE_STATE_EYE_MOST) ||
+        !save_state_f64s_within(&body->previous_eye, 1u, SAVE_STATE_EYE_MOST) ||
         body->mode > PLAYER_MOVEMENT_MODE_CLIMB) {
         return false;
     }
     if (!save_state_place_fine(health->spawn, COLLISION_AXES) || !isfinite(health->day_fraction) ||
         !(health->health >= 0.0f32 && health->health <= (float32_t)PLAYER_SURVIVAL_HEALTH_MAX) ||
-        !isfinite(health->saturation) || !isfinite(health->exhaustion) || !isfinite(health->last_hurt) ||
-        !isfinite(health->armor_points) || !isfinite(health->held_saturation) || !isfinite(health->armor_toughness) ||
-        !isfinite(health->armor_hit) || health->food > PLAYER_SURVIVAL_FOOD_MAX ||
+        !save_state_tally_fine(health->saturation) || !save_state_tally_fine(health->exhaustion) ||
+        !save_state_tally_fine(health->last_hurt) || !save_state_tally_fine(health->armor_points) ||
+        !save_state_tally_fine(health->held_saturation) || !save_state_tally_fine(health->armor_toughness) ||
+        !save_state_tally_fine(health->armor_hit) || health->air > (int32_t)PLAYER_SURVIVAL_AIR_MAX ||
+        health->air < -(int32_t)PLAYER_SURVIVAL_DROWN_EVERY_TICKS || health->food > PLAYER_SURVIVAL_FOOD_MAX ||
         health->state > PLAYER_SURVIVAL_DEAD || health->killed_by >= PLAYER_SURVIVAL_CAUSE_COUNT ||
         health->bed_answer > PLAYER_SURVIVAL_BED_ASLEEP) {
         return false;
@@ -518,7 +599,7 @@ static bool save_state_check_drops(const uint8_t *data, uint64_t bytes) {
         memcpy(&drop, data + sizeof(head) + (uint64_t)i * sizeof(drop), sizeof(drop));
         if (drop.item >= BLOCK_DROP_ITEM_COUNT || drop.count == 0u || drop.count > ITEM_DROP_STACK_MAX ||
             !save_state_place_fine(drop.position, COLLISION_AXES) ||
-            !save_state_f64s_fine(drop.velocity, COLLISION_AXES)) {
+            !save_state_f64s_within(drop.velocity, COLLISION_AXES, SAVE_STATE_SPEED_MOST)) {
             return false;
         }
     }
@@ -538,7 +619,7 @@ static bool save_state_check_arrows(const uint8_t *data, uint64_t bytes) {
         projectile_t arrow;
         memcpy(&arrow, data + sizeof(head) + (uint64_t)i * sizeof(arrow), sizeof(arrow));
         if (!save_state_place_fine(arrow.position, COLLISION_AXES) ||
-            !save_state_f64s_fine(arrow.velocity, COLLISION_AXES)) {
+            !save_state_f64s_within(arrow.velocity, COLLISION_AXES, SAVE_STATE_SPEED_MOST)) {
             return false;
         }
     }
@@ -592,13 +673,15 @@ static bool save_state_check_bodies(const uint8_t *data, uint64_t bytes) {
     }
     const uint8_t *const tables = data + sizeof(head);
     const uint8_t *const arrays = tables + tables_bytes;
-    /* Thirteen numbers of 8 bytes, of which the first nine are places and velocities. */
+    /* Thirteen numbers of 8 bytes: six of place, five of speed that go into a move, and two of fall. */
     for (uint32_t field = 0u; field < 13u; field++) {
         for (uint32_t i = 0u; i < head.count; i++) {
             float64_t value;
             memcpy(&value, arrays + (uint64_t)field * head.count * sizeof(value) + (uint64_t)i * sizeof(value),
                    sizeof(value));
-            if (!isfinite(value) || (field < 6u && fabs(value) > SAVE_STATE_PLACE_MOST)) {
+            const float64_t most =
+                field < 6u ? SAVE_STATE_PLACE_MOST : (field < 11u ? SAVE_STATE_SPEED_MOST : SAVE_STATE_TALLY_MOST);
+            if (!isfinite(value) || fabs(value) > most) {
                 return false;
             }
         }
@@ -646,7 +729,7 @@ static bool save_state_check_minds(const uint8_t *data, uint64_t bytes) {
         memcpy(&zombie, zombies + (uint64_t)i * sizeof(zombie), sizeof(zombie));
         memcpy(&creeper, creepers + (uint64_t)i * sizeof(creeper), sizeof(creeper));
         memcpy(&hurt, hurts + (uint64_t)i * sizeof(hurt), sizeof(hurt));
-        if (!save_state_f64s_fine(zombie.asked, COLLISION_AXES) || creeper.state > MOB_CREEPER_STATE_CHASING ||
+        if (!save_state_place_fine(zombie.asked, COLLISION_AXES) || creeper.state > MOB_CREEPER_STATE_CHASING ||
             creeper.fuse > MOB_CREEPER_FUSE_TICKS || !save_state_f32s_fine(&hurt.last_hurt, 1u)) {
             return false;
         }

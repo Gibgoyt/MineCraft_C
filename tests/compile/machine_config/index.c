@@ -136,6 +136,7 @@ static const mct_bad_case_t MCT_BAD_CASES[] = {
      {0}},
     {"f16c: true, ", "", "missing key 'cpu.simd.f16c'", 1u, {0}},
     {"voxels_mib: 6144", "voxels_mib: 7681", "gpu.budget adds up to 8193 MiB", 20u, {0}},
+    {"gpu: 1, workers", "gpu: 0, workers", "threads.gpu must be 1 while gpu.enabled is true", 13u, {0}},
     {"render_distance_default: 32", "render_distance_default: 513", "render_distance_default", 23u, {0}},
     {"z_min: -250", "z_min: 500", "world.z_min must be below world.z_max", 24u, {0}},
     {"z_sea: 0", "z_sea: 501", "world.z_sea", 24u, {0}},

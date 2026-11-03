@@ -5,7 +5,7 @@ checked: by compiler flags, by `static_assert`, or by `compile/src/standards_lin
 
 Toolchain: **GCC 16 (`-std=c23`), nvcc 13 (`-std=c++20`, `sm_75`), NASM 3, CMake 4.4.** Linux and POSIX only for now.
 
-**Status of this document:** written before any code exists. The measurements Stage 01.1 owed this file are now in
+**Status of this document:** written before any code existed, and in force over all of it since. The measurements Stage 01.1 owed this file are in
 sections 1, 2, 8 and 9; the evidence is in `plans/001-ahmed-bohemoth-minecraft-from-scratch-phase-01-stage-1-toolchain-link.md`.
 
 ---

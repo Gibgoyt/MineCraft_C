@@ -651,7 +651,7 @@ static bool main_run(app_t *app) {
     job_group_wait(&app->job, &group);
     job_group_deinit(&group);
     const uint64_t jobs_done = atomic_load_explicit(&done, memory_order_relaxed);
-    LOG_INFO("core runtime: %" PRIu32 " workers ran %" PRIu64 " jobs in %.3f ms; no game systems exist yet",
+    LOG_INFO("core runtime: %" PRIu32 " workers ran %" PRIu64 " jobs in %.3f ms; no terminal, so no game",
              (uint32_t)MC_THREADS_WORKERS, jobs_done, (libc_double_t)time_ns_to_ms(time_now_ns() - started_ns));
     return jobs_done == MC_THREADS_WORKERS;
 }

@@ -39,7 +39,7 @@
 **May be called by:** `run/src/main/`, and its part `session`.
 **Depends on:** `mob`, `player`, `entity`, `item`, `ui`, `render`, `world`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
 
-**Parts:** `session`: from the title screen to Quit Game, on top of the rest of this. `view`: what a config comes to, and bringing a picture up to the display's size. `report`: what it says about itself. `input`: what a person's hands come to. `settle`: everything on the card, on one thread.
+**Parts:** `tick`: one tick of the world, `game_sim_tick`. `session`: from the title screen to Quit Game, on top of the rest of this. `view`: what a config comes to, and bringing a picture up to the display's size. `report`: what it says about itself. `input`: what a person's hands come to. `settle`: everything on the card, on one thread.
 
 A column's blocks are `terrain_generate_box`, on a worker, over all of the column's storage. Each job lends it the states and a byte per voxel.
 

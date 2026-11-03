@@ -27,7 +27,7 @@
 #include <stdint.h>
 
 /* The one root of ownership: plans/CODING_STANDARD.md section 4. There is one of these, on main's stack, and every heap
- * block in the program traces back to it through struct fields. Each later system adds its field here. */
+ * block in the program traces back to it through struct fields. Each system has its field here. */
 typedef struct app_t {
     job_system_t job; /* first: its alignment is what gives app_t its own */
     simd_t simd;
@@ -35,15 +35,15 @@ typedef struct app_t {
     ui_t ui; /* reads its textures at start; game draws the HUD and the game screens with it, and --menu its menus */
     world_t world;                 /* nothing runs in it until game does (Stage 08.4) */
     terrain_t terrain;             /* the same */
-    physics_t physics;             /* only --walk moves anything with it */
-    player_t player;               /* game moves it only with --walk */
-    entity_t entity;               /* only --walk puts anything in it */
+    physics_t physics;             /* borrowed by player, entity and the world's columns */
+    player_t player;               /* the sim moves it */
+    entity_t entity;               /* the sim's bodies, drops and arrows */
     mob_t mob;                     /* the same */
     item_t item;                   /* the same */
     gpu_bridge_t gpu_bridge;       /* the default run and --headless start it, unless gpu.enabled says otherwise */
     render_t render;               /* takes nothing on the card until game opens a world */
-    game_t game;                   /* takes nothing until --test-world opens a world */
-    display_t display;             /* --test-pattern and --test-world start it */
+    game_t game;                   /* takes nothing until a world opens */
+    display_t display;             /* whatever draws to a screen starts it, never --headless */
     display_offscreen_t offscreen; /* only --headless starts it */
     input_t input;                 /* only after display_init said OK */
     thread_topology_t topology;    /* read once, before main pins itself, and kept for the threads game starts */
@@ -51,8 +51,8 @@ typedef struct app_t {
     uint32_t cpu_present;          /* CPU_FEATURE_* this machine has */
     math_t math;
     uint8_t _pad0[40];
-    settings_t settings; /* read only for --menu: everything else runs on its flags */
-    save_t save;         /* only --menu has worlds to keep */
+    settings_t settings; /* read only for --menu, which is the default: everything else runs on its flags */
+    save_t save;         /* only --menu, the default, has worlds to keep */
     profiler_t profiler; /* only --profile starts it, first of all, and it stops last: job and game hold lanes in it */
 } app_t;
 static_assert(sizeof(app_t) == 16000);

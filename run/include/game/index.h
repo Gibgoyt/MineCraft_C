@@ -316,6 +316,18 @@ void game_day_set(game_t *game, float64_t day_fraction);
 /* Moves the eye. The thread that owns input. */
 void game_fly(game_t *game, const render_fly_input_t *input, float32_t seconds);
 
+/* One tick of the world: run/src/game/tick/. The sim thread, or the one thread of a run with none. */
+void game_sim_tick(game_t *game, int64_t tick_ns);
+
+/* What a tick or a screen could not keep goes on the ground at this cell. The sim's. */
+void game_spill(void *borrowed_game, const item_stack_t *stack, const int32_t cell[3]);
+
+/* What a screen is told of the sim, this moment. The sim's. */
+void game_screen_sim(game_t *game, ui_screen_sim_t *out);
+
+/* Whether a game has screens at all: they move what is carried, so they need something carried, and a body to carry it. */
+[[nodiscard]] bool game_has_screens(const game_t *game);
+
 /* Runs the sim and the upload queue, on this thread, until everything the eye's place wants is on the card. A run with no
  * threads calls this, so that a picture never depends on how fast a worker was. False if the card failed, having said why. */
 [[nodiscard]] bool game_settle(game_t *game);
