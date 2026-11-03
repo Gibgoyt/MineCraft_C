@@ -66,6 +66,8 @@ The Before column is from reading the code as it stood, not from running it.
 
 Appended as they land:
 
+- `0d1b098` Failure handling: a lost or hung card saves the world and exits 9, a pulled device pauses play, a full disk is said on the screen and holds nobody, and a VT switch during a load is answered at once.
+
 ## Issues found
 
 1. **`game_session_run` handed a wrapped source's context to the session's discard.**
