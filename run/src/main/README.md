@@ -2,7 +2,7 @@
 
 **Purpose:** the program's entry point: holds `app_t` on the stack, checks the CPU, starts each system and stops it again.
 **Tier:** Root. Allocates nothing.
-**Owns:** `app_t app`, which everything else in the program hangs from. So far that is `job_system_t job`, `simd_t simd`, `texture_t texture`, `ui_t ui`, `world_t world`, `terrain_t terrain`, `physics_t physics`, `player_t player`, `entity_t entity`, `mob_t mob`, `item_t item`, `gpu_bridge_t gpu_bridge`, `render_t render`, `game_t game`, `math_t math`, `display_t display`, `display_offscreen_t offscreen` and `input_t input`.
+**Owns:** `app_t app`, which everything else in the program hangs from. So far that is `job_system_t job`, `simd_t simd`, `texture_t texture`, `ui_t ui`, `world_t world`, `terrain_t terrain`, `physics_t physics`, `player_t player`, `entity_t entity`, `mob_t mob`, `item_t item`, `gpu_bridge_t gpu_bridge`, `render_t render`, `game_t game`, `math_t math`, `display_t display`, `display_offscreen_t offscreen`, `input_t input` and `profiler_t profiler`.
 **Lifetime:** Process.
 **Threads:** main, which it pins to its place in `config/machine.yaml`.
 **Public functions:** `main`. A command line:
@@ -13,6 +13,9 @@
                                                   world, walk in it, Esc to pause. See run/src/game/session/README.md
     minecraft_c --headless --menu [the same] [--script ...] [--screenshot-dir ...] [--ticks ...] [--width ...] [--height ...]
                                                   the same with no display: a script clicks through it, into PNG screenshots
+    minecraft_c <any of these but --report and --test-pattern> --profile <path>
+                                                  times the run: a trace at <path> and a table on stderr, at exit. Not in a
+                                                  release build. See run/src/profiler/README.md
     minecraft_c --report                          prints the compiled defines and CPU features, then exits, starting nothing
     minecraft_c --pretend-missing-cpu <key>       treats a feature as absent, to see the CPU check fail
     minecraft_c --pretend-leak                    skips the shutdown, to see the leak check at exit fail

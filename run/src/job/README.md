@@ -16,6 +16,7 @@ inside a job, on the worker it was handed.
 - `job_spawn`: queue a job from inside a job. Cannot fail.
 - `job_group_wait`: sleep until a group's jobs have all finished.
 - `job_stats_read`, `job_sleeper_count`: counters for tests and the debug overlay.
+- `job_profiler_set`, `job_worker_lane`: each job a scope on its worker's lane in `run/src/profiler/`, and that lane for a job's own scopes.
 
 **May be called by:** `game`, `terrain`, `world/light`, `render/encode`, `save`, `mob`: anything above this layer.
 **Depends on:** `thread` for pinned threads, `heap`, `arena`, `log`, `assert`, futex through `syscall`, and generated

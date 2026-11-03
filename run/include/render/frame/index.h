@@ -128,35 +128,36 @@ typedef struct render_lod_t render_lod_t;
 typedef struct render_frame_t {
     render_exchange_t pictures;                        /* 0 */
     frame_gpu_t gpu;                                   /* 192 */
-    frame_targets_t targets;                           /* 280 */
-    shade_scene_t scene;                               /* 312 */
-    post_settings_t post;                              /* 416 */
-    render_frame_stats_t stats;                        /* 496 */
-    device_memory_t *borrowed_memory;                  /* 584 */
-    uint8_t *borrowed_pictures[RENDER_EXCHANGE_SLOTS]; /* 592: width * height * 4 each */
-    float32_t *borrowed_samples;                       /* 616: RENDER_FRAME_SAMPLES of total_ms */
-    uint64_t picture_bytes;                            /* 624 */
-    uint32_t width;                                    /* 632 */
-    uint32_t height;                                   /* 636 */
-    const device_block_t *borrowed_shapes;             /* 640: a traverse_shape_t per block */
-    post_temporal_t temporal;                          /* 648: what scene.borrowed_temporal points to */
-    float32_t fog_end;                                 /* 784: in blocks, as it was asked for */
-    float32_t day_fraction;                            /* 788: what scene.sun and post were last worked out for */
-    uint32_t drawn_features;                           /* 792: what the last frame was drawn with */
-    uint8_t pinned;                                    /* 796: how many of the pictures are pinned */
-    uint8_t _pad0[3];                                  /* 797 */
-    render_entities_t *borrowed_entities; /* 800: what each frame draws of them, from the Owner, or nullptr */
-    render_lod_t *borrowed_lod;           /* 808: what each frame draws past full detail, from the Owner, or nullptr */
-    uint8_t _pad1[16];                    /* 816 */
+    frame_targets_t targets;                           /* 312 */
+    shade_scene_t scene;                               /* 344 */
+    post_settings_t post;                              /* 448 */
+    render_frame_stats_t stats;                        /* 528 */
+    device_memory_t *borrowed_memory;                  /* 616 */
+    uint8_t *borrowed_pictures[RENDER_EXCHANGE_SLOTS]; /* 624: width * height * 4 each */
+    float32_t *borrowed_samples;                       /* 648: RENDER_FRAME_SAMPLES of total_ms */
+    uint64_t picture_bytes;                            /* 656 */
+    uint32_t width;                                    /* 664 */
+    uint32_t height;                                   /* 668 */
+    const device_block_t *borrowed_shapes;             /* 672: a traverse_shape_t per block */
+    post_temporal_t temporal;                          /* 680: what scene.borrowed_temporal points to */
+    float32_t fog_end;                                 /* 816: in blocks, as it was asked for */
+    float32_t day_fraction;                            /* 820: what scene.sun and post were last worked out for */
+    uint32_t drawn_features;                           /* 824: what the last frame was drawn with */
+    uint8_t pinned;                                    /* 828: how many of the pictures are pinned */
+    uint8_t _pad0[3];                                  /* 829 */
+    render_entities_t *borrowed_entities; /* 832: what each frame draws of them, from the Owner, or nullptr */
+    render_lod_t *borrowed_lod;           /* 840: what each frame draws past full detail, from the Owner, or nullptr */
+    frame_timings_t last_timings;         /* 848: what the last frame took, kernel by kernel, on the card's clock */
+    uint8_t _pad1[48];                    /* 912 */
 } render_frame_t;
-static_assert(sizeof(render_frame_t) == 832);
+static_assert(sizeof(render_frame_t) == 960);
 static_assert(alignof(render_frame_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(render_frame_t, gpu) == 192);
-static_assert(offsetof(render_frame_t, borrowed_memory) == 584);
-static_assert(offsetof(render_frame_t, temporal) == 648);
-static_assert(offsetof(render_frame_t, pinned) == 796);
-static_assert(offsetof(render_frame_t, borrowed_entities) == 800);
-static_assert(offsetof(render_frame_t, borrowed_lod) == 808);
+static_assert(offsetof(render_frame_t, borrowed_memory) == 616);
+static_assert(offsetof(render_frame_t, temporal) == 680);
+static_assert(offsetof(render_frame_t, pinned) == 828);
+static_assert(offsetof(render_frame_t, borrowed_entities) == 832);
+static_assert(offsetof(render_frame_t, borrowed_lod) == 840);
 
 /* Sizes, for the Owner to take blocks and memory. */
 uint64_t render_frame_texture_table_bytes(void);

@@ -13,6 +13,7 @@
 #include "machine/index.h"
 #include "mob/spawn/index.h"
 #include "player/index.h"
+#include "profiler/index.h"
 #include "render/index.h"
 #include "save/index.h"
 #include "terrain/index.h"
@@ -152,11 +153,16 @@ typedef struct game_t {
     _Atomic uint64_t hud_hotbar[INVENTORY_HOTBAR_SLOTS]; /* 1152: sim to main: each an item_stack_t's bytes */
     _Atomic uint32_t hud_selected;                       /* 1224: sim to main: the hotbar slot in hand */
     _Atomic uint32_t hud_tick_us;                        /* 1228: sim to main: what its last tick took */
-    uint8_t _pad4[48];                                   /* 1232 */
+    profiler_lane_t *borrowed_lane_sim;                  /* 1232: whichever thread is doing the sim's work now */
+    profiler_lane_t *borrowed_lane_sim_thread;           /* 1240: that of the sim thread, while it runs */
+    uint8_t _pad4[32];                                   /* 1248 */
     /* A line of its own: the gpu thread writes these, once a picture. */
     _Atomic uint32_t hud_pass_us[FRAME_PASS_COUNT]; /* 1280: gpu to main: the card's clock, on the last picture */
     _Atomic uint32_t hud_total_us;                  /* 1300 */
-    uint8_t _pad5[40];                              /* 1304 */
+    profiler_lane_t *borrowed_lane_gpu;             /* 1304: whichever thread is doing the gpu's work now */
+    profiler_lane_t *borrowed_lane_gpu_thread;      /* 1312: that of the gpu thread, while it runs */
+    profiler_lane_t *borrowed_lane_card;            /* 1320: the kernels, written by whichever that is */
+    uint8_t _pad5[16];                              /* 1328 */
     /* A line of its own: main's. */
     ui_t *borrowed_ui;         /* 1344: draws on each picture shown if not nullptr; set before a world opens */
     float64_t hud_fps_seconds; /* 1352: of the window being counted */
@@ -166,7 +172,9 @@ typedef struct game_t {
     uint32_t hud_present_us;   /* 1372: what copying it out took */
     uint8_t hud_debug;         /* 1376: the debug overlay is up */
     uint8_t hud_debug_key;     /* 1377: its key was down, last time anyone looked */
-    uint8_t _pad6[30];         /* 1378 */
+    uint8_t _pad6[6];          /* 1378 */
+    profiler_lane_t *borrowed_lane_main; /* 1384: this thread's, and the others' while there are no threads */
+    uint8_t _pad9[16];                   /* 1392 */
     /* A line of its own from here: the sim's. */
     mob_spawn_t mob_spawn; /* 1408: which mobs come and go in the entity store; only with a borrowed_entity */
     save_t *borrowed_save; /* 1448: where a world's changes go; set before a world opens, and only read after */
@@ -226,6 +234,10 @@ void game_ui_set(game_t *game, ui_t *ui);
  * it is saved in the background every SAVE_AUTOSAVE_INTERVAL_TICKS. With no world open in it, none of that happens. Must outlive it. Before
  * game_open. */
 void game_save_set(game_t *game, save_t *save);
+
+/* From here on what its threads do, and what the card does, is timed in this profiler's lanes. The profiler must outlive it. Before
+ * game_open. Without it, nothing is timed. */
+void game_profiler_set(game_t *game, profiler_t *profiler);
 
 /* Stops whatever is running, and closes any world. Safe on a zeroed game_t. */
 void game_deinit(game_t *game);

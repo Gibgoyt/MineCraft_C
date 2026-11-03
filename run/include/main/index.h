@@ -13,6 +13,7 @@
 #include "math/index.h"
 #include "physics/index.h"
 #include "player/index.h"
+#include "profiler/index.h"
 #include "render/index.h"
 #include "save/index.h"
 #include "settings/index.h"
@@ -52,8 +53,9 @@ typedef struct app_t {
     uint8_t _pad0[40];
     settings_t settings; /* read only for --menu: everything else runs on its flags */
     save_t save;         /* only --menu has worlds to keep */
+    profiler_t profiler; /* only --profile starts it, first of all, and it stops last: job and game hold lanes in it */
 } app_t;
-static_assert(sizeof(app_t) == 15808);
+static_assert(sizeof(app_t) == 16000);
 static_assert(alignof(app_t) == 64);
 
 /* The exit codes of minecraft_c. */
