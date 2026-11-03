@@ -12,6 +12,8 @@
 - `device_memory_write`, `device_memory_read`, `device_memory_zero`: bounds-checked, waiting copies, for small and start-up work.
 - `device_memory_self_check`: runs a real kernel over a real block and checks its answer.
 - `device_memory_status_from_cuda`: the table from CUDA's errors to ours.
+- `device_memory_lost_set`: the card has gone. From then on every block counts as given back without asking, in `device_memory_free` and `device_memory_deinit`, which also find this out for themselves.
+- `device_memory_fault_now`: a real fault, by a kernel writing where nothing is mapped, for `--pretend-gpu-lost` and `tests/run/failure/`. Only this process's context goes, and the kernel's log gets a line.
 
 Only for CUDA code (`cuda/include/device_memory/index.hu`):
 

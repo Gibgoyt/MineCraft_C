@@ -89,7 +89,8 @@ typedef struct fake_card_t {
     uint32_t vt_change_after_flips;
     uint32_t vt_release_after_flips; /* the kernel asks us to release the VT, and brings us straight back */
     uint8_t vt_release_pending;
-    uint8_t _pad1[3];
+    uint8_t vt_release_stays; /* the other VT stays on screen after the release, until the test brings it back */
+    uint8_t _pad1[2];
     uint8_t no_dumb;
     uint8_t monotonic;
     uint8_t no_flip_events;
@@ -294,6 +295,10 @@ static int32_t fake_reldisp(fake_card_t *card, uintptr_t answer) {
         return -EINVAL;
     }
     card->vt_release_pending = 0u;
+    if (card->vt_release_stays != 0u) {
+        card->active_vt = card->console_minor + 1u;
+        return 0;
+    }
     raise(SIGUSR2);
     return 0;
 }

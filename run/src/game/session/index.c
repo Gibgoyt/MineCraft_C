@@ -57,6 +57,13 @@ void game_session_deinit(game_session_t *session) {
     memset(session, 0, sizeof(*session));
 }
 
+/* What a person reads, once the console is back. */
+static void game_session_card_gone_say(bool saved_all) {
+    LOG_ERROR("session: the card has gone, so nothing more can be drawn by this run. %s Start the program again; if "
+              "this comes back, the kernel's log (dmesg) will have the card's side of it",
+              saved_all ? "The world was saved first." : "The world's last changes could not be saved.");
+}
+
 /* Between frames: the threads stopped and the world gone, if there is one. */
 static void game_session_world_close(game_session_t *session) {
     game_t *const game = session->borrowed_game;
@@ -67,12 +74,20 @@ static void game_session_world_close(game_session_t *session) {
         session->failed = 1u;
     }
     game_report(game);
+    game_open_alive_tell(game);
     save_t *const save = game->borrowed_save;
+    bool saved_all = true;
     if (save != nullptr && save->world.open != 0u) {
-        const save_world_status_t saved = game_save_finish(game);
-        if (saved != SAVE_WORLD_OK) {
-            LOG_ERROR("session: the world's changes could not all be saved: %s", save_world_status_name(saved));
-            session->failed = 1u;
+        if (session->leave_unsaved != 0u) {
+            saved_all = false;
+            LOG_WARN("session: left the world with what changed since its last save given up");
+        } else if (session->world_saved == 0u) {
+            const save_world_status_t saved = game_save_finish(game);
+            if (saved != SAVE_WORLD_OK) {
+                LOG_ERROR("session: the world's changes could not all be saved: %s", save_world_status_name(saved));
+                session->failed = 1u;
+                saved_all = false;
+            }
         }
         LOG_INFO("save: %" PRIu64 " saves of %" PRIu64 " sections, %" PRIu64 " sections read back, %" PRIu64
                  " past reading",
@@ -85,9 +100,20 @@ static void game_session_world_close(game_session_t *session) {
                  (libc_double_t)time_ns_to_ms(save->autosave.capture_ns_most),
                  (libc_double_t)time_ns_to_ms(save->autosave.write_ns_most));
     }
+    session->leave_unsaved = 0u;
+    session->world_saved = 0u;
+    const bool lost = game_gpu_lost(game);
+    if (game_gpu_stuck(game)) {
+        game_session_card_gone_say(saved_all);
+        return; /* whatever the gpu thread is holding stays, and the process ends: see game_gpu_stuck */
+    }
+    game_open_alive_tell(game);
     game_close(game);
     if (save != nullptr) {
         save_close(save);
+    }
+    if (lost) {
+        game_session_card_gone_say(saved_all); /* last, past what closing logs of the card's side */
     }
 }
 
@@ -132,10 +158,13 @@ static bool game_session_world_open(game_session_t *session) {
         game_session_config_from_settings(session);
     }
     terrain_deinit(session->borrowed_terrain);
+    game_open_alive_tell(game);
     if (!terrain_init(session->borrowed_terrain, world->seed)) {
         return false;
     }
+    game_open_alive_tell(game);
     const save_world_status_t saved = game_session_save_open(session, world);
+    game_open_alive_tell(game);
     if (saved != SAVE_WORLD_OK) {
         game_session_world_refused(session, saved);
         return true;
@@ -156,6 +185,38 @@ static bool game_session_world_open(game_session_t *session) {
     return true;
 }
 
+/* Tried before a world is closed, as a full disk may yet be emptied by a person with the world still open. True to go on and close it, with nothing more to
+ * save. False if it stays open, on the pause screen, which says why and offers a way out. */
+static bool game_session_leave_saved(game_session_t *session) {
+    game_t *const game = session->borrowed_game;
+    save_t *const save = game->borrowed_save;
+    if (save == nullptr || save->world.open == 0u || session->leave_unsaved != 0u) {
+        return true;
+    }
+    if (game->threads_running != 0u && !game_loop_stop(game)) {
+        session->failed = 1u; /* the card: this world is over, and closing it makes the one last try */
+        return true;
+    }
+    game_open_alive_tell(game);
+    const save_world_status_t saved = game_save_finish(game);
+    if (saved == SAVE_WORLD_OK) {
+        session->world_saved = 1u;
+        return true;
+    }
+    LOG_ERROR("session: the world's changes could not all be saved, so it stays open: %s",
+              save_world_status_name(saved));
+    /* The threads start again on Resume. Nothing is lost by the wait: the world's time has stopped, in a pause. */
+    save_autosave_resume(&save->autosave, game->tick_count);
+    ui_menu_t *const menu = &session->borrowed_ui->menu;
+    const char *const trouble = save_autosave_trouble(&save->autosave);
+    char message[UI_MENU_MESSAGE_BYTES];
+    (void)snprintf(message, sizeof(message), "Not saved: %s. Free some space and quit again",
+                   trouble != nullptr ? trouble : save_world_status_name(saved));
+    ui_menu_message_set(menu, message);
+    ui_menu_leave_offer(menu);
+    return false;
+}
+
 /* What a frame asked for. False to stop running, for good: something failed, and it has said why. */
 static bool game_session_advance(game_session_t *session) {
     const game_session_next_t next = (game_session_next_t)session->next;
@@ -168,6 +229,9 @@ static bool game_session_advance(game_session_t *session) {
         }
         return true;
     case GAME_SESSION_NEXT_TITLE:
+        if (!game_session_leave_saved(session)) {
+            return true;
+        }
         game_session_world_close(session);
         session->state = GAME_SESSION_MENU;
         ui_menu_open(&session->borrowed_ui->menu, UI_MENU_SCREEN_MAIN);
@@ -281,6 +345,10 @@ static bool game_session_action(game_session_t *session, ui_menu_action_t action
     case UI_MENU_ACTION_QUIT_TO_TITLE:
         session->next = GAME_SESSION_NEXT_TITLE;
         return true;
+    case UI_MENU_ACTION_LEAVE_UNSAVED:
+        session->leave_unsaved = 1u;
+        session->next = GAME_SESSION_NEXT_TITLE;
+        return true;
     case UI_MENU_ACTION_RESUME:
         game_pause_set(session->borrowed_game, false);
         session->state = GAME_SESSION_PLAYING;
@@ -300,6 +368,44 @@ static void game_session_pause(game_session_t *session) {
     session->state = GAME_SESSION_PAUSED;
     session->escape_used = 1u;
     session->pauses++;
+    /* The screen a person comes to in order to leave, so the one that should say what leaving would come to. */
+    const save_t *const save = session->borrowed_game->borrowed_save;
+    const char *const trouble =
+        save != nullptr && save->world.open != 0u ? save_autosave_trouble(&save->autosave) : nullptr;
+    if (trouble != nullptr) {
+        char message[UI_MENU_MESSAGE_BYTES];
+        (void)snprintf(message, sizeof(message), "Not saving: %s", trouble);
+        ui_menu_message_set(&session->borrowed_ui->menu, message);
+    }
+}
+
+/* A keyboard or mouse gone: a world with a person in it stops for them, as what they had held has just been let go of and they may have no way to reach Esc. On
+ * the screen, where they can read it, until it is back. Plugging it back in does not end a pause: that is for a person to do, with the hands they now have. */
+static void game_session_devices_look(game_session_t *session) {
+    const uint8_t now = input_kinds_now(session->borrowed_input);
+    const uint8_t gone = (uint8_t)(session->input_kinds & ~now);
+    session->input_kinds = now;
+    ui_menu_t *const menu = &session->borrowed_ui->menu;
+    if (gone != 0u) {
+        if (session->state == GAME_SESSION_PLAYING && session->next == GAME_SESSION_NEXT_NONE) {
+            game_loop_input_clear(session->borrowed_game);
+            game_session_pause(session);
+        }
+        session->kinds_missing |= gone;
+    }
+    if (session->kinds_missing == 0u) {
+        return;
+    }
+    if ((session->kinds_missing & ~now) == 0u) {
+        session->kinds_missing = 0u;
+        ui_menu_message_set(menu, "");
+    } else if (gone != 0u) {
+        ui_menu_message_set(menu, (session->kinds_missing & ~now) == INPUT_KIND_MOUSE
+                                      ? "The mouse has gone: plug one in"
+                                      : ((session->kinds_missing & ~now) == INPUT_KIND_KEYBOARD
+                                             ? "The keyboard has gone: plug one in"
+                                             : "Keyboard and mouse have gone: plug them in"));
+    }
 }
 
 /* The paused or menu frame both ways of running share. False if a frame could not be started, which has been said. */
@@ -334,6 +440,7 @@ bool game_session_source(void *context, display_buffer_t *back) {
     const input_frame_t *const frame = input_poll(session->borrowed_input);
     const bool escape = input_keys_has(&frame->pressed, KEY_ESC);
     bool next = false;
+    game_session_devices_look(session);
     if (session->next == GAME_SESSION_NEXT_OPEN_WORLD) {
         if (session->loading_frames == 0u) {
             /* The buffer waiting for this frame says loading, and stays up until the world's first picture is in it. */
@@ -358,6 +465,7 @@ bool game_session_source(void *context, display_buffer_t *back) {
         game_loop_input_clear(game);
         game_session_pause(session);
     }
+    (void)game_gpu_alive(game); /* it says so, and that is failed */
     if (atomic_load_explicit(&game->failed, memory_order_acquire) != 0u) {
         session->failed = 1u;
         return false;
@@ -385,18 +493,26 @@ void game_session_discard(void *context) {
     }
 }
 
-/* A world can take many seconds to open on an unlucky seed, inside one frame, and the watchdog must not take that for a hang. */
+/* A world can take many seconds to open on an unlucky seed, inside one frame. The watchdog must not take that for a hang, and a person who asks for another VT
+ * meanwhile must not wait for the end of it. */
 static void game_session_open_alive(void *context) {
     display_t *const display = context;
-    display_vt_guard_pet(&display->guard);
+    display_vt_guard_long_work(&display->guard);
+}
+
+static bool game_session_run_source(void *context, display_buffer_t *back) {
+    game_session_t *const session = context;
+    return session->source(session->borrowed_source_context, back);
 }
 
 display_status_t game_session_run(game_session_t *session, display_t *display, display_frame_source_t source,
                                   void *context) {
+    session->source = source;
+    session->borrowed_source_context = context;
     game_open_alive_set(session->borrowed_game, game_session_open_alive, display);
     session->borrowed_display = display;
     display_flip_vsync_set(&display->flip, session->config.uncapped == 0u);
-    const display_status_t status = display_frames_run(display, source, game_session_discard, context);
+    const display_status_t status = display_frames_run(display, game_session_run_source, game_session_discard, session);
     game_session_world_close(session);
     game_open_alive_set(session->borrowed_game, nullptr, nullptr);
     session->borrowed_display = nullptr;

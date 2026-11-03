@@ -11,6 +11,8 @@
 - `display_vt_guard_take_console`: everything below, in order, ending in `display_flip_take_over`.
 - `display_vt_guard_give_back`: the normal way out.
 - `display_vt_guard_pet`, `display_vt_guard_service`: once a frame. The first tells the watchdog we are alive, the second does the VT switching.
+- `display_vt_guard_long_work`: both of those, for work inside one frame that takes long, called every so often.
+- `display_vt_guard_came_back_take`: whether it has come back from another VT since last asked, whenever in a frame that was.
 - `display_vt_guard_keys_take`: pure; what one key event asks for.
 - `display_vt_guard_draw_notice`, `display_vt_guard_notice_bottom`: write the emergency exit across the top of a buffer, and say where that band ends, so that whatever erases over it knows to write it again.
 - `display_vt_guard_crash_test_from_name`, `display_vt_guard_crash_now`: `--crash-test`.
@@ -63,6 +65,10 @@ The restore is a list of steps, each claimed once by an atomic counter, so any t
 3. Kernel: `SIGUSR2`. `VT_RELDISP(VT_ACKACQ)`, `SET_MASTER` with retries, `SETCRTC` to the front buffer.
 
 The keyboards are read whichever VT is showing, so every key that means something is checked against `VT_GETSTATE` first: Ctrl+Alt+Backspace in X does nothing here.
+
+**During a load.** A world opens inside one frame, and that may take many seconds. The person who asked for another VT is looking at nothing until `VT_RELDISP`, so `display_vt_guard_long_work` answers from inside that frame, as `game/session` tells it, and takes the card off the screen just as above. The frame's end looks at `away`, `failed_call` and `display_flip_t.failed_call` before it flips, so nothing goes to a card that is not ours now. Since nothing is drawn or flipped during that work, this is still one thread at a time on `display/flip`.
+
+**Before the console is taken.** Until `VT_PROCESS` a switch is the kernel's to make, and nobody here hears of it: `--test-world` opens its world first, and the notice holds for 3 seconds. So `display_vt_guard_take_console` looks again once it has `VT_PROCESS`. If another VT is showing, it lets go of master, which that VT's owner needs, and `display_flip_take_over` waits: `display_vt_guard_service` says AWAY until our VT is back, and does the takeover then. A stop signal meanwhile leaves everything as it was.
 
 ## Why the keyboard here and not `input`
 

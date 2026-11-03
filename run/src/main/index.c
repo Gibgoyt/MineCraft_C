@@ -61,8 +61,10 @@ typedef struct main_options_t {
     const char *saves;          /* --saves, or nullptr for MAIN_SAVES_DEFAULT */
     const char *settings;       /* --settings, or nullptr for MAIN_SETTINGS_DEFAULT */
     const char *profile;        /* --profile, or nullptr for none */
+    uint32_t pretend_gpu_lost;  /* --pretend-gpu-lost: pictures until the card really faults; 0 for never */
+    uint8_t _pad0[4];
 } main_options_t;
-static_assert(sizeof(main_options_t) == 96);
+static_assert(sizeof(main_options_t) == 104);
 
 /* Where worlds live unless told otherwise: beside where the program was started, like everything else it reads. */
 static const char MAIN_SAVES_DEFAULT[] = "saves";
@@ -72,7 +74,7 @@ static const char MAIN_SETTINGS_DEFAULT[] = "settings.yaml";
 static void main_print_usage(const char *program) {
     fprintf(
         stderr,
-        "usage: %s [--report] [--pretend-missing-cpu <cpu.simd key>] [--pretend-leak]\n"
+        "usage: %s [--report] [--pretend-missing-cpu <cpu.simd key>] [--pretend-leak] [--pretend-gpu-lost <pictures>]\n"
         "       %s --test-pattern [--card <path>] [--connector <name>] [--crash-test[=<how>]]\n"
         "       %s --headless [--script <path>] [--screenshot-dir <dir>] [--ticks <n>] [--width <w>] [--height <h>]\n"
         "       %s --test-world [--walk] [--render-distance <chunks>] [--time-of-day <0 to 1>]\n"
@@ -120,6 +122,8 @@ static void main_print_usage(const char *program) {
         "                           table, furnace or chest opens that, and E or Esc closes it\n",
         program, program, program, program, program);
     fputs(
+        "  --pretend-gpu-lost       make the card fault for real after this many pictures, to see a world saved\n"
+        "                           and the run end. Takes only this program's context; the kernel's log has a line\n"
         "  (no flags, on a terminal) the same as --menu\n"
         "  --menu                   the game: main menu, make or choose a world, walk in it, Esc to pause. Through "
         "KMS\n"
@@ -163,6 +167,11 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
             out->report = 1;
         } else if (strcmp(argv[i], "--pretend-leak") == 0) {
             out->pretend_leak = 1;
+        } else if (strcmp(argv[i], "--pretend-gpu-lost") == 0 && i + 1 < argc) {
+            i++;
+            if (!main_parse_count("--pretend-gpu-lost", argv[i], &out->pretend_gpu_lost)) {
+                return false;
+            }
         } else if (strcmp(argv[i], "--test-pattern") == 0) {
             out->test_pattern = 1;
         } else if (strncmp(argv[i], "--crash-test", 12u) == 0 && (argv[i][12] == '\0' || argv[i][12] == '=')) {
@@ -565,6 +574,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
     game_init(&app->game, &app->world, &app->terrain, &app->render, &app->job, &app->texture, &app->topology);
     game_ui_set(&app->game, &app->ui);
     game_profiler_set(&app->game, &app->profiler);
+    game_gpu_pretend_set(&app->game, options->pretend_gpu_lost, false);
     if (options->walk != 0 || options->menu != 0u) {
         game_player_set(&app->game, &app->player);
         game_entity_set(&app->game, &app->entity);
@@ -644,6 +654,14 @@ static bool main_run(app_t *app) {
     LOG_INFO("core runtime: %" PRIu32 " workers ran %" PRIu64 " jobs in %.3f ms; no game systems exist yet",
              (uint32_t)MC_THREADS_WORKERS, jobs_done, (libc_double_t)time_ns_to_ms(time_now_ns() - started_ns));
     return jobs_done == MC_THREADS_WORKERS;
+}
+
+/* The card hung with a thread inside it: that thread may yet run, on anything it holds, so nothing can be given back and main cannot return. The console has
+ * gone back and the world has been saved by now, and the kernel takes the rest. */
+static void main_exit_if_gpu_stuck(const app_t *app) {
+    if (game_gpu_stuck(&app->game)) {
+        _exit(MAIN_EXIT_GPU_LOST);
+    }
 }
 
 static main_exit_t main_exit_from_display(display_status_t status) {
@@ -739,7 +757,11 @@ static main_exit_t main_run_test_world_headless(app_t *app, const main_options_t
     LOG_INFO("headless: %" PRIu64 " frames, %" PRIu64 " screenshots", headless->frames_presented,
              headless->screenshots_written);
     game_report(&app->game);
+    const bool lost = game_gpu_lost(&app->game);
     game_close(&app->game);
+    if (lost) {
+        return MAIN_EXIT_GPU_LOST;
+    }
     return ran ? MAIN_EXIT_OK : MAIN_EXIT_HEADLESS;
 }
 
@@ -776,8 +798,13 @@ static main_exit_t main_run_test_world(app_t *app, const main_options_t *options
     const display_status_t ran = display_frames_run(&app->display, game_loop_source, game_loop_discard, &app->game);
     const bool loop_ok = game_loop_stop(&app->game);
     input_report(&app->input);
+    main_exit_if_gpu_stuck(app);
     game_report(&app->game);
+    const bool lost = game_gpu_lost(&app->game);
     game_close(&app->game);
+    if (lost) {
+        return MAIN_EXIT_GPU_LOST;
+    }
     if (ran == DISPLAY_STATUS_OK && !loop_ok) {
         return MAIN_EXIT_RUNTIME;
     }
@@ -819,8 +846,12 @@ static main_exit_t main_run_menu(app_t *app, const main_options_t *options) {
     game_session_settings_set(&session, &app->settings);
     const display_status_t ran = game_session_run(&session, &app->display, game_session_source, &session);
     input_report(&app->input);
+    main_exit_if_gpu_stuck(app);
     const bool failed = session.failed != 0u;
     game_session_deinit(&session);
+    if (game_gpu_lost(&app->game)) {
+        return MAIN_EXIT_GPU_LOST;
+    }
     if (ran == DISPLAY_STATUS_OK && failed) {
         return MAIN_EXIT_RUNTIME;
     }
@@ -854,6 +885,9 @@ static main_exit_t main_run_menu_headless(app_t *app, const main_options_t *opti
              headless->screenshots_written);
     const bool ended = game_session_end(&session);
     game_session_deinit(&session);
+    if (game_gpu_lost(&app->game)) {
+        return MAIN_EXIT_GPU_LOST;
+    }
     if (!ended) {
         return MAIN_EXIT_RUNTIME;
     }

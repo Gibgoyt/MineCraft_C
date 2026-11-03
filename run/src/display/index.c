@@ -208,8 +208,16 @@ static bool display_draw_frame(display_t *display, uint64_t frame) {
 /* One submitted flip, and waiting for it. Returns false to stop: if for a failure, that is in flip->failed_call. */
 static bool display_flip_once(display_t *display, uint64_t frame) {
     display_flip_t *const flip = &display->flip;
+    const display_vt_guard_t *const guard = &display->guard;
     if (!display_draw_frame(display, frame)) {
         return false;
+    }
+    /* A long frame answers VT switches as it goes: see display_vt_guard_long_work. */
+    if (guard->failed_call != nullptr || flip->failed_call != nullptr) {
+        return false;
+    }
+    if (guard->away != 0u) {
+        return true; /* nothing may be sent to a card that is not ours now, and the frame waits in its buffer */
     }
     if (!display_flip_submit(flip)) {
         return false;
@@ -233,7 +241,6 @@ static void display_run_loop(display_t *display, int64_t started_ns, int64_t dur
     display_flip_t *const flip = &display->flip;
     display_vt_guard_t *const guard = &display->guard;
     uint64_t frame = 0;
-    bool was_away = false;
     while (atomic_load_explicit(&display_stop_signal, memory_order_relaxed) == 0 &&
            (duration_ns == 0 || time_now_ns() - started_ns < duration_ns)) {
         display_vt_guard_pet(guard);
@@ -242,17 +249,16 @@ static void display_run_loop(display_t *display, int64_t started_ns, int64_t dur
             return;
         }
         if (state == DISPLAY_VT_GUARD_AWAY) {
-            was_away = true;
             continue; /* it has paused; the deadline and the stop signals still count */
         }
-        if (was_away) {
-            was_away = false;
-            if (display->cursor_discard != nullptr) {
-                display->cursor_discard(display->borrowed_cursor_context);
-            }
+        if (display_vt_guard_came_back_take(guard) && display->cursor_discard != nullptr) {
+            display->cursor_discard(display->borrowed_cursor_context);
         }
         if (!display_flip_once(display, frame)) {
             return;
+        }
+        if (guard->away != 0u) {
+            continue; /* it went in that frame, so nothing was shown, and the checks below are for a VT on screen */
         }
         frame++;
         if (frame == DISPLAY_CRASH_TEST_FRAMES) {

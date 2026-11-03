@@ -13,6 +13,7 @@
 - `ui_hud_item_draw`: one item with its wear and count, for any slot.
 - `ui_hud_draw`: all of the HUD, from a `ui_hud_state_t`.
 - `ui_hud_debug_draw`, `ui_hud_debug_panel`: the overlay, from a `ui_hud_debug_t`, and where it lies.
+- `ui_hud_notice_draw`: one line in a red band across the top, for what a person playing has no other way to learn: `game` uses it when saves are failing.
 
 **May be called by:** `ui`, `run/src/game/` and the screens under `ui`.
 **Depends on:** `arena`, `assert`, `log`, `texture`, `item/stack`, `item/inventory`, the generated item table, and its siblings `ui/compose` and `ui/font`, and `ui_widget_scale_for` from `ui/widget`, so that the HUD and the screens are one size.

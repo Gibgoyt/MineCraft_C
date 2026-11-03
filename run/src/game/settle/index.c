@@ -28,13 +28,17 @@ bool game_settle(game_t *game) {
         const gpu_status_t status = render_upload_frame(&render->upload);
         if (status != GPU_STATUS_OK) {
             gpu_error_log(&render->buffers.last_error);
+            game_gpu_failed_note(game, status);
             return false;
         }
         const uint64_t far_built = render->borrowed_lod != nullptr ? render->borrowed_lod->stats.columns_built : 0u;
         game_far_changes_take(game);
-        if (render->borrowed_lod != nullptr &&
-            render_lod_frame(render->borrowed_lod, game->camera.position) != GPU_STATUS_OK) {
-            return false; /* it has said why */
+        if (render->borrowed_lod != nullptr) {
+            const gpu_status_t far = render_lod_frame(render->borrowed_lod, game->camera.position);
+            if (far != GPU_STATUS_OK) {
+                game_gpu_failed_note(game, far);
+                return false; /* it has said why */
+            }
         }
         if (render->buffers.pool_full_count != 0u && game->pool_full_said == 0u) {
             LOG_WARN("game: the section pool is full, so part of the world will not be drawn");

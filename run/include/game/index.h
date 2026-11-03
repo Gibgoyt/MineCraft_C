@@ -162,7 +162,9 @@ typedef struct game_t {
     profiler_lane_t *borrowed_lane_gpu;             /* 1304: whichever thread is doing the gpu's work now */
     profiler_lane_t *borrowed_lane_gpu_thread;      /* 1312: that of the gpu thread, while it runs */
     profiler_lane_t *borrowed_lane_card;            /* 1320: the kernels, written by whichever that is */
-    uint8_t _pad5[16];                              /* 1328 */
+    _Atomic uint64_t gpu_beats;    /* 1328: gpu to main, relaxed: once round its loop, picture or no picture */
+    _Atomic uint32_t gpu_failure;  /* 1336: gpu to main, read under failed: a gpu_status_t, OK until something failed */
+    uint32_t gpu_pretend_pictures; /* 1340: pictures until the card goes, on purpose; 0 for never. Whoever draws */
     /* A line of its own: main's. */
     ui_t *borrowed_ui;         /* 1344: draws on each picture shown if not nullptr; set before a world opens */
     float64_t hud_fps_seconds; /* 1352: of the window being counted */
@@ -174,7 +176,8 @@ typedef struct game_t {
     uint8_t hud_debug_key;     /* 1377: its key was down, last time anyone looked */
     uint8_t _pad6[6];          /* 1378 */
     profiler_lane_t *borrowed_lane_main; /* 1384: this thread's, and the others' while there are no threads */
-    uint8_t _pad9[16];                   /* 1392 */
+    uint64_t gpu_beats_seen;             /* 1392: main's */
+    int64_t gpu_beats_seen_ns;           /* 1400: main's: when that last changed */
     /* A line of its own from here: the sim's. */
     mob_spawn_t mob_spawn; /* 1408: which mobs come and go in the entity store; only with a borrowed_entity */
     save_t *borrowed_save; /* 1448: where a world's changes go; set before a world opens, and only read after */
@@ -188,7 +191,9 @@ typedef struct game_t {
     _Atomic uint32_t uncapped; /* 1584: main to gpu: relaxed, as a picture more or less depends on it */
     uint8_t view_held;         /* 1588: owned_view holds the last picture, as the frame it came from has gone */
     uint8_t view_stale;        /* 1589: with no threads: a config changed, and nothing has been drawn since */
-    uint8_t _pad8[10];         /* 1590 */
+    uint8_t gpu_stuck;         /* 1590: main's: the gpu thread has stopped answering, and will not be joined */
+    uint8_t gpu_pretend_stuck; /* 1591: when the pictures run out the thread stops answering, in place of a fault */
+    int64_t gpu_watched_ns;    /* 1592: main's: when it last looked */
 } game_t;
 static_assert(sizeof(game_t) == 1600);
 static_assert(alignof(game_t) == MC_CPU_CACHE_LINE_BYTES);
@@ -251,8 +256,31 @@ void game_deinit(game_t *game);
 void game_far_changes_take(game_t *game);
 
 /* Someone to tell, from the thread calling it, that a game_open that may take seconds is still going: looking for dry land in an
- * ocean does. A frame source that opens a world needs this, for vt_guard's watchdog. nullptr for nobody. */
+ * ocean does. A frame source that opens a world needs this, for vt_guard's watchdog and for a VT switch asked for meanwhile. nullptr for
+ * nobody. */
 void game_open_alive_set(game_t *game, void (*alive)(void *context), void *context);
+
+/* Tells them, if anyone is listening. For whatever else takes long inside a frame. */
+void game_open_alive_tell(const game_t *game);
+
+/* A failure from the card, from whichever thread was talking to it. Before failed is set, for whoever reads this under it. */
+void game_gpu_failed_note(game_t *game, gpu_status_t status);
+
+/* Main's, once a frame with the threads running: whether the gpu thread still goes round. A card that hangs and returns nothing can only be seen
+ * like this. False once it has been silent for GAME_GPU_STUCK_NS, having said so, and with failed set. */
+bool game_gpu_alive(game_t *game);
+
+/* The card has gone, for this process: nothing more will be drawn, and only ending the process and starting another can change that. What is on
+ * the CPU's side is whole, so the world can still be saved. */
+[[nodiscard]] bool game_gpu_lost(const game_t *game);
+
+/* The card has gone with a thread inside a call that does not return. The world can still be saved, as nothing the save needs is that thread's, but
+ * nothing it may be using can be given back: game_close must not run, and the process ends with _exit. */
+[[nodiscard]] bool game_gpu_stuck(const game_t *game);
+
+/* After this many pictures the card goes for real, or if stuck, the thread that draws stops answering for ever: --pretend-gpu-lost and tests. Before any
+ * threads start. Stuck is only for a game with threads, as with none nothing is left to notice. */
+void game_gpu_pretend_set(game_t *game, uint32_t pictures, bool stuck);
 
 /* Opens a world around the place the eye starts: its map, its blocks on the card, its pictures. On failure logs why, leaves
  * nothing behind and returns false. */

@@ -9,7 +9,7 @@
 
 - `gpu_bridge_limits_default`: `gpu.budget` from `config/machine.yaml`, and room for 1024 live blocks.
 - `gpu_bridge_init`, `gpu_bridge_deinit`: start CUDA and run its self-check; free what is left and stop. Deinit is safe on a zeroed `gpu_bridge_t`.
-- `gpu_bridge_exit_check`: names every block still live, for `main` to call before deinit.
+- `gpu_bridge_exit_check`: names every block still live, for `main` to call before deinit. With the card lost there are none to name: what it held is the driver's.
 
 **May be called by:** `run/src/main/`, which starts and stops it, and later `render` and `game`.
 **Depends on:** `heap`, `arena`, `log`, `machine`, and its parts below.

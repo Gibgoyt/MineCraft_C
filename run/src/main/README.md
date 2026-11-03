@@ -45,7 +45,9 @@ stops. `ctest` runs it that way, with stdin from `/dev/null`. On a terminal it i
 
 Exit status: 0 for success, 2 for a bad command line, 3 for a CPU that lacks what the build uses, 4 for heap regions
 still live after `app_deinit` or device blocks still live before it, 5 for a core runtime or a card that would not start or did not run its jobs, 6 for a display that is not ours to take (nothing on
-it was changed), 7 for KMS failing partway, 8 for a bad script or a screenshot that could not be written under `--headless` (`MAIN_EXIT_*`).
+it was changed), 7 for KMS failing partway, 8 for a bad script or a screenshot that could not be written under `--headless`, 9 for a card that went during the run, with the world saved if the log says so (`MAIN_EXIT_*`).
+
+`--pretend-gpu-lost <pictures>` makes the card fault for real after that many pictures, to see all of that happen: see `run/src/game/README.md`. It costs only this program's context on the card, and a line in the kernel's log.
 
 Only `--test-pattern`, `--test-world` and `--menu` without `--headless`, and no flags at all on a terminal, open the display and read input. The default run off a terminal stays away from
 the card and from `/dev/input`. Each starts `input` only after `display_init` said OK, so a run that is refused never looks at

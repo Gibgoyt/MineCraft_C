@@ -656,6 +656,18 @@ bool display_vt_guard_take_console(display_vt_guard_t *guard) {
             return false;
         }
     }
+    /* A switch before VT_PROCESS was the kernel's to make, and nobody here heard of it. The picture must not go over whatever is showing now, and that VT's
+     * owner needs the card: this has held master since display_init. */
+    if (!display_device_console_is_visible(guard->borrowed_device)) {
+        (void)display_device_drop_master(guard->borrowed_device);
+        guard->take_over_owed = 1u;
+        guard->away = 1u;
+        return true;
+    }
+    /* Back just as VT_PROCESS came in: the kernel is waiting on the answer. */
+    if (atomic_exchange_explicit(&guard->acquire_wanted, 0u, memory_order_relaxed) != 0u) {
+        (void)guard_console_ioctl(guard, VT_RELDISP, (void *)(uintptr_t)VT_ACKACQ);
+    }
     return display_flip_take_over(guard->borrowed_flip);
 }
 
@@ -698,8 +710,15 @@ static display_vt_guard_state_t guard_come_back(display_vt_guard_t *guard) {
     }
     /* Whoever had the card may take a moment to let go of it. */
     for (uint32_t i = 0; i < GUARD_RESUME_TRIES; i++) {
-        if (display_flip_resume(flip)) {
+        if (guard->take_over_owed != 0u && display_device_set_master(guard->borrowed_device) == 0) {
+            guard->take_over_owed = 0u;
             guard->away = 0u;
+            guard->came_back = 1u;
+            return display_flip_take_over(flip) ? DISPLAY_VT_GUARD_SHOWING : DISPLAY_VT_GUARD_FAILED;
+        }
+        if (guard->take_over_owed == 0u && display_flip_resume(flip)) {
+            guard->away = 0u;
+            guard->came_back = 1u;
             return DISPLAY_VT_GUARD_SHOWING;
         }
         if (flip->failed_call != nullptr) {
@@ -733,6 +752,20 @@ display_vt_guard_state_t display_vt_guard_service(display_vt_guard_t *guard) {
         return DISPLAY_VT_GUARD_FAILED;
     }
     return DISPLAY_VT_GUARD_AWAY;
+}
+
+void display_vt_guard_long_work(display_vt_guard_t *guard) {
+    display_vt_guard_pet(guard);
+    /* Failed is for the frame's end to act on. Asked again, it would wait on a switch that will never be answered. */
+    if (guard->failed_call == nullptr && guard->borrowed_flip->failed_call == nullptr) {
+        (void)display_vt_guard_service(guard);
+    }
+}
+
+bool display_vt_guard_came_back_take(display_vt_guard_t *guard) {
+    const bool came_back = guard->came_back != 0u;
+    guard->came_back = 0u;
+    return came_back;
 }
 
 /* ---- The notice on screen ---------------------------------------------------------------------------------------- */

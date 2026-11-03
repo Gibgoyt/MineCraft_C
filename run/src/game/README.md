@@ -20,7 +20,8 @@
 - `game_pause_set`: stops the world's clock, or starts it.
 - `game_far_changes_take`: what has been captured, told to the far field, by whichever thread calls `render_lod_frame`.
 - `game_save_finish`: all there is, saved here and now, as a world closes: see `run/src/save/autosave/`. A `game_open` with a save takes up where the state in it left off, and `game_sim_step` calls `save_autosave_step`.
-- `game_open_alive_set`: someone to tell that a long `game_open` is still going.
+- `game_open_alive_set`, `game_open_alive_tell`: someone to tell that a long `game_open` is still going, and telling them.
+- `game_gpu_alive`, `game_gpu_lost`, `game_gpu_stuck`, `game_gpu_failed_note`, `game_gpu_pretend_set`: when the card goes. See below.
 - `game_fly_from_script`, `game_fly_from_input`: either kind of input to a step of flying.
 - `game_player_set`, `game_walk_send`, `game_hands_send`: walk through the world with this player and not fly; what the mouse and keys want of it; what its two buttons are doing.
 - `game_entity_set`: what the player breaks comes out as items in the world, which it can pick up, and mobs come and go in it by `run/src/mob/spawn/`, which `game_t` holds, and each is drawn by the tick that moved it, a box for each part in its own skin.
@@ -118,3 +119,11 @@ Under KMS, `display/vt_guard` forks its guardian as the console is taken, with C
 ## Why `--headless` alone still shows the demo
 
 Plain `--headless` stays what `tests/run/display/headless/` tests, with no world and no card work: `--headless --test-world` is this. The line in `run/src/display/headless/README.md` that said `game` would replace the demo was written before there was a reason to keep a run that needs no card.
+
+## When the card goes
+
+CUDA's errors from a fault are sticky, so nothing after one can draw, and only a new process has a context again. Whatever thread is talking to the card says so with `game_gpu_failed_note` and stops, and `failed` ends the run through the path it already had. What a save needs is all on the CPU's side, so the session still saves the world, and `device_memory_lost_set` makes everything that gives blocks back do so without asking a runtime that can only say the same thing again. `game_gpu_lost` is how `main` comes to exit 9.
+
+A card can also hang and say nothing, with the gpu thread inside a call that never comes back. Main would go on showing the last picture for ever, and `game_loop_stop` would join for ever. So the gpu thread counts its rounds, idle or not, and `game_gpu_alive` runs on main each frame: `GAME_GPU_STUCK_NS` with no round is `game_gpu_stuck`. That thread is never joined. The sim is, the world is saved, the console has gone back, and then nothing that thread may be using can be given back, so `game_close` does not run and the program ends by `_exit`. If main itself was away, on another VT or stopped, what it did not see proves nothing, so a gap of a second starts the count again.
+
+`--pretend-gpu-lost <pictures>` makes `device_memory_fault_now` run in the draw of that picture: a real fault on the real card, in this process's context only.

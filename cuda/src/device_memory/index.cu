@@ -128,6 +128,10 @@ gpu_status_t device_memory_init(device_memory_t *memory, device_memory_limits_t 
     return GPU_STATUS_OK;
 }
 
+void device_memory_lost_set(device_memory_t *memory) {
+    memory->lost = 1u;
+}
+
 gpu_status_t device_memory_deinit(device_memory_t *memory) {
     if (memory->open == 0) {
         return GPU_STATUS_OK;
@@ -139,11 +143,17 @@ gpu_status_t device_memory_deinit(device_memory_t *memory) {
         if (record->address == 0u) {
             continue;
         }
-        gpu_error_t error = {};
-        const gpu_status_t status = device_memory_check(&error, cudaFree((void *)record->address), "freeing a block");
-        if (status != GPU_STATUS_OK && first == GPU_STATUS_OK) {
-            first = status;
-            memory->last_error = error;
+        if (memory->lost == 0u) {
+            gpu_error_t error = {};
+            const gpu_status_t status =
+                device_memory_check(&error, cudaFree((void *)record->address), "freeing a block");
+            if (status == GPU_STATUS_DEVICE_LOST) {
+                memory->lost = 1u; /* said once, and the rest are the driver's to take with the process */
+            }
+            if (status != GPU_STATUS_OK && first == GPU_STATUS_OK) {
+                first = status;
+                memory->last_error = error;
+            }
         }
         record->address = 0u;
     }
@@ -184,6 +194,7 @@ static gpu_status_t device_memory_alloc_checked(device_memory_t *memory, device_
     void *address = nullptr;
     const gpu_status_t status = device_memory_check(&memory->last_error, cudaMalloc(&address, bytes), name);
     if (status != GPU_STATUS_OK) {
+        memory->lost = status == GPU_STATUS_DEVICE_LOST ? 1u : memory->lost;
         return status;
     }
     device_memory_record_t *const record = &memory->borrowed_records[index];
@@ -235,9 +246,14 @@ gpu_status_t device_memory_free(device_memory_t *memory, device_block_t *block) 
         return device_memory_refuse(memory, GPU_STATUS_BAD_HANDLE, "freeing a block");
     }
     memory->free_calls++;
+    /* With the card gone there is nothing to ask, and nothing a caller could do with the answer: the driver takes it with the process. */
     const gpu_status_t status =
-        device_memory_check(&memory->last_error, cudaFree((void *)record->address), record->borrowed_name);
-    if (status != GPU_STATUS_OK) {
+        memory->lost != 0u
+            ? GPU_STATUS_OK
+            : device_memory_check(&memory->last_error, cudaFree((void *)record->address), record->borrowed_name);
+    if (status == GPU_STATUS_DEVICE_LOST) {
+        memory->lost = 1u;
+    } else if (status != GPU_STATUS_OK) {
         return status; /* still recorded, so it still shows as live, and deinit tries again */
     }
     device_memory_pool_t *const entry = &memory->pools[record->pool];
@@ -298,6 +314,26 @@ gpu_status_t device_memory_zero(device_memory_t *memory, const device_block_t *b
         return set;
     }
     return device_memory_check(&memory->last_error, cudaDeviceSynchronize(), "waiting for the zeroing");
+}
+
+/* ---- Losing the card on purpose ----------------------------------------------------------------------------------- */
+
+__global__ void device_memory_fault_kernel(uint32_t *nowhere) {
+    nowhere[threadIdx.x] = 1u;
+}
+
+gpu_status_t device_memory_fault_now(device_memory_t *memory) {
+    device_memory_clear_error(memory);
+    /* Not 0, which a compiler may take for undefined and do something else with. Nothing is mapped this low in any context. */
+    uint32_t *const nowhere = (uint32_t *)(uintptr_t)0x1000u;
+    device_memory_fault_kernel<<<1, 1>>>(nowhere);
+    const gpu_status_t launched = device_memory_check(&memory->last_error, cudaGetLastError(), "faulting on purpose");
+    const gpu_status_t status =
+        launched != GPU_STATUS_OK
+            ? launched
+            : device_memory_check(&memory->last_error, cudaDeviceSynchronize(), "faulting on purpose");
+    memory->lost = status == GPU_STATUS_DEVICE_LOST ? 1u : memory->lost;
+    return status;
 }
 
 /* ---- The self-check ---------------------------------------------------------------------------------------------- */

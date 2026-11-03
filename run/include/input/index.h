@@ -48,6 +48,10 @@ void input_deinit(input_t *input);
  * blocks, allocates or logs. The frame stays valid until the next poll. */
 const input_frame_t *input_poll(input_t *input);
 
+/* Which kinds of device are plugged in as of the last poll: INPUT_KIND_KEYBOARD and INPUT_KIND_MOUSE. A person with no way to play should not be left in a
+ * world that goes on without them. */
+[[nodiscard]] uint8_t input_kinds_now(const input_t *input);
+
 /* Logs what the polls counted, for after the console is back. Does nothing if input is not running. */
 void input_report(const input_t *input);
 

@@ -24,6 +24,7 @@ enum : uint32_t {
     UI_HUD_COLOR_SHADOW = 0xFF3F3F3Fu,
     UI_HUD_COLOR_FPS = 0xFFFFFF60u,
     UI_HUD_COLOR_PANEL = 0xA0000000u,
+    UI_HUD_COLOR_NOTICE_BAND = 0xC0A00000u,
     UI_HUD_COLOR_WEAR_BACK = 0xFF000000u,
 };
 
@@ -194,6 +195,16 @@ ui_rect_t ui_hud_debug_panel(uint32_t canvas_width, uint32_t canvas_height) {
     const int32_t margin = (int32_t)UI_HUD_DEBUG_MARGIN * size;
     return (ui_rect_t){margin, margin, (int32_t)UI_HUD_DEBUG_WIDTH * size + 2 * margin,
                        (int32_t)(UI_HUD_DEBUG_LINES * UI_FONT_LINE) * size + 2 * margin};
+}
+
+void ui_hud_notice_draw(ui_canvas_t *canvas, const ui_font_t *font, const char *text) {
+    const uint32_t scale = ui_hud_debug_scale(canvas->width, canvas->height);
+    const ui_text_size_t measured = ui_font_measure(font, text, scale);
+    const int32_t margin = (int32_t)UI_HUD_DEBUG_MARGIN * (int32_t)scale;
+    const ui_rect_t band = {0, margin, (int32_t)canvas->width, (int32_t)measured.height + 2 * margin};
+    ui_compose_fill(canvas, band, UI_HUD_COLOR_NOTICE_BAND);
+    const ui_text_style_t style = {.color = UI_HUD_COLOR_TEXT, .shadow = UI_HUD_COLOR_SHADOW, .scale = scale};
+    ui_font_draw(font, canvas, ((int32_t)canvas->width - (int32_t)measured.width) / 2, band.y + margin, text, style);
 }
 
 void ui_hud_debug_draw(ui_canvas_t *canvas, const ui_font_t *font, const ui_hud_debug_t *debug) {

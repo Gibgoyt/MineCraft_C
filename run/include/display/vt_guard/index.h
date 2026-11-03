@@ -73,7 +73,10 @@ typedef struct display_vt_guard_t {
     uint8_t away;         /* another VT is on screen */
     uint8_t keyboard_off; /* the VT is in K_OFF because of us */
     uint8_t vt_process;   /* the VT is in VT_PROCESS because of us */
-    uint8_t _pad0[5];
+    uint8_t
+        take_over_owed; /* another VT was showing when the console was taken: display_flip_take_over waits for our VT */
+    uint8_t came_back;  /* it came back from another VT, and nobody has asked since: display_vt_guard_came_back_take */
+    uint8_t _pad0[3];
 } display_vt_guard_t;
 static_assert(sizeof(display_vt_guard_t) == 112);
 
@@ -85,7 +88,9 @@ void display_vt_guard_deinit(display_vt_guard_t *guard);
 
 /* Takes the console, in this order: saves the keyboard and VT modes; opens the keyboards; says on the console how to get
  * out, and pauses so that can be read; starts the guardian; installs the crash and VT handlers; VT_PROCESS; K_OFF; then
- * display_flip_take_over, which is KD_GRAPHICS and the modeset. On false, call display_vt_guard_give_back all the same. */
+ * display_flip_take_over, which is KD_GRAPHICS and the modeset. If by then another VT is showing, as a person may switch while the notice is up or
+ * a world opens first, that last step waits for ours to come back, by display_vt_guard_service, which says AWAY until then. On false, call
+ * display_vt_guard_give_back all the same. */
 bool display_vt_guard_take_console(display_vt_guard_t *guard);
 
 /* The normal way out: the display, the keyboard, the VT mode, then the handlers and the guardian. Runs once. Returns whether
@@ -97,6 +102,14 @@ void display_vt_guard_pet(display_vt_guard_t *guard);
 
 /* Handles a VT switch in either direction, if one was asked for. Call it every frame, from the thread that flips. */
 display_vt_guard_state_t display_vt_guard_service(display_vt_guard_t *guard);
+
+/* For work inside one frame that takes long, such as a world opening, called every so often from the thread that flips: pet and service together. A switch is
+ * answered when it is asked for and not when the frame ends, since the person who asked for it is looking at a VT that cannot appear until then. What it
+ * finds stays in away, failed_call and came_back, for the frame's end. Nothing here is drawn, and nothing the frame's work does may touch the display meanwhile. */
+void display_vt_guard_long_work(display_vt_guard_t *guard);
+
+/* Whether it has come back from another VT since this was last asked, whenever in a frame that was: what input has waiting was typed at something else. */
+[[nodiscard]] bool display_vt_guard_came_back_take(display_vt_guard_t *guard);
 
 /* Takes one key event and says what it asks for: 0 for nothing, DISPLAY_VT_GUARD_KEY_EMERGENCY, or a VT number to switch to.
  * Pure, and K_OFF is why it exists: the kernel no longer sees Ctrl+Alt+Fn, so we must. */

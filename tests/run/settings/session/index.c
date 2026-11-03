@@ -472,15 +472,15 @@ enum : int32_t {
 
 typedef struct session_rig_t {
     game_session_t session;  /* 0 */
-    display_buffer_t buffer; /* 112 */
-    fake_device_t *mouse;    /* 168 */
-    fake_device_t *keyboard; /* 176 */
-    int32_t pointer_x;       /* 184 */
-    int32_t pointer_y;       /* 188 */
-    uint8_t failed;          /* 192 */
-    uint8_t _pad0[7];        /* 193 */
+    display_buffer_t buffer; /* 136 */
+    fake_device_t *mouse;    /* 192 */
+    fake_device_t *keyboard; /* 200 */
+    int32_t pointer_x;       /* 208 */
+    int32_t pointer_y;       /* 212 */
+    uint8_t failed;          /* 216 */
+    uint8_t _pad0[7];        /* 217 */
 } session_rig_t;
-static_assert(sizeof(session_rig_t) == 200);
+static_assert(sizeof(session_rig_t) == 224);
 
 static void session_send(fake_device_t *device, uint16_t type, uint16_t code, int32_t value) {
     const struct input_event events[] = {REPLAY_EVENT(type, code, value), REPLAY_SYN};

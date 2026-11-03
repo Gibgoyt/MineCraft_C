@@ -1,0 +1,20 @@
+# Worked out by hand from the layout in run/src/ui/menu/index.c, at 640 by 480, as tests/run/ui/menu/fixtures/flow.script is.
+# The pointer starts in the middle, at 320, 240, once tick 0 has shown it the canvas.
+
+1 move 0 -40                    # 320, 200: Singleplayer
++1 button left down
++1 button left up
+
++1 move -20 -122                # 300, 78: the first row of the list
++1 button left down
++1 button left up
++1 move -112 318                # 188, 396: Play Selected
++1 button left down
++1 button left up
+
++5 key escape down
++1 key escape up
++1 move 132 -100                # 320, 296: Quit to Title
++1 button left down
++1 button left up
++1 move 0 -48                   # 320, 248: where Quit Game is not, so nothing more

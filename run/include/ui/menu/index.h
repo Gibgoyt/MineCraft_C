@@ -32,6 +32,8 @@ typedef enum ui_menu_action_t : uint8_t {
     UI_MENU_ACTION_QUIT_TO_TITLE = 3, /* close the world; the next screen is the caller's to open */
     UI_MENU_ACTION_QUIT_GAME = 4,
     UI_MENU_ACTION_SETTINGS = 5, /* only if ui_menu_settings_enable has been called */
+    UI_MENU_ACTION_LEAVE_UNSAVED =
+        6, /* close the world, and lose what could not be saved: only if ui_menu_leave_offer was called */
 } ui_menu_action_t;
 
 /* The main thread's, like all of ui_t. */
@@ -52,7 +54,8 @@ typedef struct ui_menu_t {
     int32_t selected;                        /* 292: in borrowed_worlds; -1 is none */
     uint8_t screen;                          /* 296: ui_menu_screen_t */
     uint8_t settings_enabled;                /* 297 */
-    uint8_t _pad0[6];                        /* 298 */
+    uint8_t leave_offered; /* 298: the pause screen has a way out with no save, until the next ui_menu_open */
+    uint8_t _pad0[5];      /* 299 */
 } ui_menu_t;
 static_assert(sizeof(ui_menu_t) == 304);
 
@@ -73,6 +76,9 @@ void ui_menu_open(ui_menu_t *menu, ui_menu_screen_t screen);
 
 /* Says this on the screen now showing, in place of anything it said, until the next ui_menu_open. Cut short if it does not fit. */
 void ui_menu_message_set(ui_menu_t *menu, const char *text);
+
+/* The pause screen shows Leave Unsaved as well: a save has failed, and nobody should be held in a world by a full disk. */
+void ui_menu_leave_offer(ui_menu_t *menu);
 
 /* One frame of the screen, between ui_frame_begin_* and ui_frame_end, over all of the canvas. escape is that Esc was pressed,
  * which goes back one screen. Never logs: under KMS nothing can read a log while a frame is drawn, so what went wrong is shown
