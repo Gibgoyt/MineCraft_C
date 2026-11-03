@@ -605,19 +605,79 @@ static __device__ __forceinline__ void shade_add(float32_t sum[3], const float32
     }
 }
 
-/* What shade_kernel leaves for shade_ao_kernel in AO's next block, which has the room, in place of a shade_ao_pixel_t: how much of this
- * pixel's colour goes by what AO finds. Its hit stays in the hits, which nothing reads after this, as the surface it ended on. */
+/* What shade_kernel leaves for the two kernels below, in AO's next block, which has the room, in place of a shade_ao_pixel_t: what a pixel
+ * shows of its last surface per unit of light on it. Its hit stays in the hits, which nothing reads after this, as that surface. A pixel's
+ * colour is a straight line in what the sun ray and AO find, so each of them adds its own part afterwards. See the phase 17 stage 3 file for
+ * why they are kernels of their own: rays of a warp that come to one at different layers of shade_kernel's loop each run it while the rest wait. */
 typedef struct shade_ao_work_t {
     float32_t share[3]; /* 0 */
 } shade_ao_work_t;
 static_assert(sizeof(shade_ao_work_t) == sizeof(shade_ao_pixel_t));
 
-/* AO, as a kernel of its own, as its loops and rays took this one from 152 registers a thread to fewer, and the card keeps fewer warps at
- * work at once the more each needs. A pixel's colour is a straight line in what AO finds, so this adds what shade_kernel left out. */
+/* What these two need of a pixel's last surface. */
+static __device__ __forceinline__ void shade_last_surface(const traverse_camera_t *camera, const traverse_hit_t *hit,
+                                                          const float32_t direction[3], uint32_t features,
+                                                          shade_surface_t *out) {
+    *out = shade_surface_t{};
+    out->face = (uint32_t)hit->info & TRAVERSE_INFO_FACE_MASK;
+    out->stored = (features & SHADE_FEATURE_LIGHT) != 0u ? (hit->value >> TRAVERSE_VALUE_LIGHT_SHIFT) & 0xFFu
+                                                         : (uint32_t)SHADE_LIGHT_OPEN_SKY;
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        out->local[i] = camera->eye_frac[i] + direction[i] * hit->t - (float32_t)hit->offset[i];
+    }
+}
+
+/* The sun ray of a pixel's last surface, where shade_kernel left one to ask. */
+__global__ void shade_sun_kernel(const traverse_view_t view, const traverse_camera_t camera,
+                                 const shade_texture_t *textures, const uint16_t *faces, const uint8_t *pixels,
+                                 uint32_t material_count, uint32_t features, uint32_t water_material,
+                                 uint32_t glass_material, const shade_sun_t sun, const shade_ao_work_t *work,
+                                 const traverse_hit_t *hits, shade_pixel_t *out) {
+    const uint32_t pixel_x = blockIdx.x * blockDim.x + threadIdx.x;
+    const uint32_t pixel_y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (pixel_x >= camera.width || pixel_y >= camera.height) {
+        return;
+    }
+    const uint64_t index = (uint64_t)pixel_y * camera.width + pixel_x;
+    const traverse_hit_t hit = hits[index];
+    const uint32_t face = (uint32_t)hit.info & TRAVERSE_INFO_FACE_MASK;
+    const uint32_t stored = (features & SHADE_FEATURE_LIGHT) != 0u ? (hit.value >> TRAVERSE_VALUE_LIGHT_SHIFT) & 0xFFu
+                                                                   : (uint32_t)SHADE_LIGHT_OPEN_SKY;
+    /* Far from all of this, a face turned away, a miss among them, has nothing to ask. */
+    const float32_t towards = face == TRAVERSE_FACE_MISS ? 0.0F : shade_sun_towards(&sun, face, stored);
+    if (!(towards > 0.0F) || !(sun.direct[0] + sun.direct[1] + sun.direct[2] > 0.0F)) {
+        return;
+    }
+    const shade_context_t context = {
+        &view,
+        &camera,
+        textures,
+        faces,
+        pixels,
+        &sun,
+        nullptr,
+        shade_pixel_tangent(&camera),
+        material_count,
+        features,
+        (uint16_t)water_material,
+        (uint16_t)glass_material,
+    };
+    float32_t direction[3];
+    traverse_camera_direction(&camera, (float32_t)pixel_x + 0.5F, (float32_t)pixel_y + 0.5F, direction);
+    shade_surface_t surface;
+    shade_last_surface(&camera, &hit, direction, features, &surface);
+    const float32_t seen = shade_sun_seen(&context, &hit, &surface);
+    const shade_ao_work_t mine = work[index];
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        out[index].rgb[i] += mine.share[i] * sun.direct[i] * towards * seen;
+    }
+}
+
+/* What AO finds for a pixel's last surface, and its history for the next frame. */
 __global__ void shade_ao_kernel(const traverse_view_t view, const traverse_camera_t camera,
                                 const shade_texture_t *textures, const uint16_t *faces, const uint8_t *pixels,
                                 uint32_t material_count, uint32_t features, uint32_t water_material,
-                                uint32_t glass_material, const post_temporal_t temporal,
+                                uint32_t glass_material, const shade_sun_t sun, const post_temporal_t temporal,
                                 const shade_ao_pixel_t *ao_last, shade_ao_pixel_t *ao_next, const traverse_hit_t *hits,
                                 shade_pixel_t *out) {
     const uint32_t pixel_x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -636,7 +696,7 @@ __global__ void shade_ao_kernel(const traverse_view_t view, const traverse_camer
             textures,
             faces,
             pixels,
-            nullptr,
+            &sun,
             nullptr,
             shade_pixel_tangent(&camera),
             material_count,
@@ -646,20 +706,70 @@ __global__ void shade_ao_kernel(const traverse_view_t view, const traverse_camer
         };
         float32_t direction[3];
         traverse_camera_direction(&camera, (float32_t)pixel_x + 0.5F, (float32_t)pixel_y + 0.5F, direction);
-        shade_surface_t surface = {};
-        surface.face = (uint32_t)hit.info & TRAVERSE_INFO_FACE_MASK;
-        for (uint32_t i = 0u; i < 3u; i += 1u) {
-            surface.local[i] = camera.eye_frac[i] + direction[i] * hit.t - (float32_t)hit.offset[i];
-        }
+        shade_surface_t surface;
+        shade_last_surface(&camera, &hit, direction, features, &surface);
         shade_ao_frame_t ao = {&temporal, ao_last, pixel_x, pixel_y, {0.0F, 0.0F, 0.0F}, {0u, 0u, 0u, 0u}};
         traverse_camera_direction(&camera, (float32_t)pixel_x + 0.5F - temporal.jitter[0],
                                   (float32_t)pixel_y + 0.5F - temporal.jitter[1], ao.steady);
         const float32_t visible = shade_ao_at(&context, &ao, &hit, &surface, &ao_out);
+        float32_t light[3];
+        shade_surface_light_stored(&sun, surface.face, surface.stored, light);
         for (uint32_t i = 0u; i < 3u; i += 1u) {
-            out[index].rgb[i] += work.share[i] * visible;
+            out[index].rgb[i] += work.share[i] * light[i] * visible;
         }
     }
     ao_next[index] = ao_out;
+}
+
+/* Before shade_kernel, for a pixel whose ray first meets a surface of water: its reflection in rgb and what its sun ray saw in t, of the
+ * pixels block, which shade_kernel takes from there and then writes over. The same work it would have done at that one place. As with the two
+ * kernels above, here all a warp's rays of each kind run together. A ray that comes to water behind something still asks in shade_kernel. */
+__global__ void shade_water_kernel(const traverse_view_t view, const traverse_camera_t camera,
+                                   const shade_texture_t *textures, const uint16_t *faces, const uint8_t *pixels,
+                                   uint32_t material_count, uint32_t features, uint32_t water_material,
+                                   uint32_t glass_material, const shade_sun_t sun, const post_settings_t post,
+                                   const traverse_hit_t *hits, shade_pixel_t *out) {
+    const uint32_t pixel_x = blockIdx.x * blockDim.x + threadIdx.x;
+    const uint32_t pixel_y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (pixel_x >= camera.width || pixel_y >= camera.height) {
+        return;
+    }
+    const uint64_t index = (uint64_t)pixel_y * camera.width + pixel_x;
+    const traverse_hit_t hit = hits[index];
+    const uint32_t face = (uint32_t)hit.info & TRAVERSE_INFO_FACE_MASK;
+    if (face >= SHADE_FACES || (hit.value & TRAVERSE_VALUE_MATERIAL_MASK) != water_material) {
+        return;
+    }
+    const shade_context_t context = {
+        &view,
+        &camera,
+        textures,
+        faces,
+        pixels,
+        &sun,
+        &post,
+        shade_pixel_tangent(&camera),
+        material_count,
+        features,
+        (uint16_t)water_material,
+        (uint16_t)glass_material,
+    };
+    float32_t direction[3];
+    traverse_camera_direction(&camera, (float32_t)pixel_x + 0.5F, (float32_t)pixel_y + 0.5F, direction);
+    shade_surface_t surface;
+    shade_surface_read(&context, camera.eye_frac, direction, &hit, hit.t, &surface);
+    if (surface.texture == nullptr) {
+        return;
+    }
+    shade_pixel_t result = {{0.0F, 0.0F, 0.0F}, 1.0F};
+    if ((features & SHADE_FEATURE_SHADOW) != 0u && shade_sun_towards(&sun, face, surface.stored) > 0.0F &&
+        sun.direct[0] + sun.direct[1] + sun.direct[2] > 0.0F) {
+        result.t = shade_sun_seen(&context, &hit, &surface);
+    }
+    if ((features & SHADE_FEATURE_WATER_REFLECTION) != 0u) {
+        shade_reflection(&context, &hit, &surface, direction, hit.t, result.rgb);
+    }
+    out[index] = result;
 }
 
 __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t camera,
@@ -789,15 +899,22 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
             /* From inside water, or going on through water from water, there is no face: only what is behind. */
             const bool has_face = !is_water || (face != TRAVERSE_FACE_INSIDE && !own_kind);
             float32_t light[3] = {0.0F, 0.0F, 0.0F};
-            /* What AO will find is added by shade_ao_kernel: none of the stored light yet. */
+            /* What AO and the sun ray will find is added by their own kernels. With no shadows there is no ray, and the sun is here. */
             const bool ao_surface = ao_on && !is_water && !part_covered;
-            if (has_face) {
+            /* On the first surface, shade_water_kernel has already asked. */
+            const bool water_asked = is_water && has_face && layer == 0u;
+            const shade_pixel_t asked = water_asked ? out[index] : shade_pixel_t{};
+            if (water_asked) {
+                shade_surface_light_near(&sun, surface.face, surface.stored, asked.t, 1.0F, light);
+            } else if (has_face && !(ao_surface && (features & SHADE_FEATURE_SHADOW) != 0u)) {
                 shade_surface_lit(&context, &hit, &surface, ao_surface ? 0.0F : 1.0F, light);
             }
             if (is_water && has_face && (features & SHADE_FEATURE_WATER_REFLECTION) != 0u) {
                 const float32_t share = shade_water_fresnel(fabsf(direction[face >> 1]));
-                float32_t mirror[3];
-                shade_reflection(&context, &hit, &surface, direction, first_t, mirror);
+                float32_t mirror[3] = {asked.rgb[0], asked.rgb[1], asked.rgb[2]};
+                if (!water_asked) {
+                    shade_reflection(&context, &hit, &surface, direction, first_t, mirror);
+                }
                 shade_add(sum, through, mirror, sky, 0.0F, share);
                 for (uint32_t i = 0u; i < 3u; i += 1u) {
                     through[i] *= 1.0F - share;
@@ -813,11 +930,9 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
                                      hit.t, colour);
                 }
                 if (ao_surface) {
-                    float32_t stored_light[3];
-                    shade_surface_light_stored(&sun, surface.face, surface.stored, stored_light);
                     shade_ao_work_t work;
                     for (uint32_t i = 0u; i < 3u; i += 1u) {
-                        work.share[i] = through[i] * (1.0F - fog) * colour[i] * stored_light[i];
+                        work.share[i] = through[i] * (1.0F - fog) * colour[i];
                     }
                     ((shade_ao_work_t *)(void *)ao_next)[index] = work;
                     hits[index] = hit;
@@ -1021,6 +1136,19 @@ gpu_status_t shade_frame_entities(gpu_error_t *error, const shade_scene_t *scene
         return status;
     }
     const dim3 grid(traverse_tiles_across(camera->width), traverse_tiles_across(camera->height));
+    if ((scene->features & SHADE_FEATURE_TRANSPARENCY) != 0u) {
+        shade_water_kernel<<<grid, dim3(TRAVERSE_TILE_PIXELS, TRAVERSE_TILE_PIXELS)>>>(
+            view, *camera, (const shade_texture_t *)(const void *)device_memory_pointer(scene->borrowed_textures),
+            (const uint16_t *)(const void *)device_memory_pointer(scene->borrowed_faces),
+            device_memory_pointer(scene->borrowed_pixels), scene->material_count, scene->features,
+            scene->water_material, scene->glass_material, scene->sun, *post,
+            (const traverse_hit_t *)(const void *)device_memory_pointer(hits),
+            (shade_pixel_t *)(void *)device_memory_pointer(pixels));
+        const gpu_status_t water_started = device_memory_check(error, cudaGetLastError(), "shade: starting water");
+        if (water_started != GPU_STATUS_OK) {
+            return water_started;
+        }
+    }
     shade_kernel<<<grid, dim3(TRAVERSE_TILE_PIXELS, TRAVERSE_TILE_PIXELS)>>>(
         view, *camera, (const shade_texture_t *)(const void *)device_memory_pointer(scene->borrowed_textures),
         (const uint16_t *)(const void *)device_memory_pointer(scene->borrowed_faces),
@@ -1040,11 +1168,25 @@ gpu_status_t shade_frame_entities(gpu_error_t *error, const shade_scene_t *scene
     if (started != GPU_STATUS_OK || !ao_on) {
         return started;
     }
+    if ((scene->features & SHADE_FEATURE_SHADOW) != 0u) {
+        shade_sun_kernel<<<grid, dim3(TRAVERSE_TILE_PIXELS, TRAVERSE_TILE_PIXELS)>>>(
+            view, *camera, (const shade_texture_t *)(const void *)device_memory_pointer(scene->borrowed_textures),
+            (const uint16_t *)(const void *)device_memory_pointer(scene->borrowed_faces),
+            device_memory_pointer(scene->borrowed_pixels), scene->material_count, scene->features,
+            scene->water_material, scene->glass_material, scene->sun,
+            (const shade_ao_work_t *)(const void *)ao_next,
+            (const traverse_hit_t *)(const void *)device_memory_pointer(hits),
+            (shade_pixel_t *)(void *)device_memory_pointer(pixels));
+        const gpu_status_t sun_started = device_memory_check(error, cudaGetLastError(), "shade: starting the sun rays");
+        if (sun_started != GPU_STATUS_OK) {
+            return sun_started;
+        }
+    }
     shade_ao_kernel<<<grid, dim3(TRAVERSE_TILE_PIXELS, TRAVERSE_TILE_PIXELS)>>>(
         view, *camera, (const shade_texture_t *)(const void *)device_memory_pointer(scene->borrowed_textures),
         (const uint16_t *)(const void *)device_memory_pointer(scene->borrowed_faces),
         device_memory_pointer(scene->borrowed_pixels), scene->material_count, scene->features, scene->water_material,
-        scene->glass_material, temporal, ao_last, ao_next,
+        scene->glass_material, scene->sun, temporal, ao_last, ao_next,
         (const traverse_hit_t *)(const void *)device_memory_pointer(hits),
         (shade_pixel_t *)(void *)device_memory_pointer(pixels));
     return device_memory_check(error, cudaGetLastError(), "shade: starting AO");
