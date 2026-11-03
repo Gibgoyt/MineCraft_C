@@ -307,8 +307,10 @@ static inline uint64_t shade_pixels_bytes(uint32_t width, uint32_t height) {
     return (uint64_t)width * height * sizeof(shade_pixel_t);
 }
 
+/* A pixel's shade_ao_pixel_t, then behind them all a uint32_t per pixel and one more: a list of the pixels with nothing to go on, and how long it
+ * is, for one frame, so that their rays run together: see cuda/src/shade/README.md. */
 static inline uint64_t shade_ao_bytes(uint32_t width, uint32_t height) {
-    return (uint64_t)width * height * sizeof(shade_ao_pixel_t);
+    return (uint64_t)width * height * (sizeof(shade_ao_pixel_t) + sizeof(uint32_t)) + sizeof(uint32_t);
 }
 
 /* Whether this is a pixel's frame to send its AO ray. By groups of 8 by 4 pixels and not pixel by pixel, because that is a warp of a

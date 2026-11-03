@@ -359,12 +359,12 @@ static_assert(sizeof(shade_ao_frame_t) == 40);
 
 /* How open a pixel's last surface is: what AO's history says, with this frame's ray in it if it is this pixel's turn. A pixel whose
  * own place in the last frame was another surface goes on from the pixels around that place which are on this one, with the weight
- * of one sample. With none of those either, as where something has just come into view, it sends SHADE_AO_FRESH_RAYS now. What is
- * shown is its mean with those of the pixels around it on the same surface, as each one's own walk through its samples shows as
- * grain. out is what the next frame gets. */
+ * of one sample. With none of those either, as where something has just come into view, out_fresh says so, and shade_ao_fresh_kernel
+ * sends its SHADE_AO_FRESH_RAYS. What is shown is its mean with those of the pixels around it on the same surface, as each one's own
+ * walk through its samples shows as grain. out is what the next frame gets. */
 static __device__ __forceinline__ float32_t shade_ao_at(const shade_context_t *context, const shade_ao_frame_t *ao,
                                                         const traverse_hit_t *hit, const shade_surface_t *surface,
-                                                        shade_ao_pixel_t *out) {
+                                                        shade_ao_pixel_t *out, bool *out_fresh) {
     const uint32_t face = surface->face;
     const traverse_camera_t *const camera = context->camera;
     const post_temporal_t *const temporal = ao->temporal;
@@ -409,28 +409,22 @@ static __device__ __forceinline__ float32_t shade_ao_at(const shade_context_t *c
         own = around_sum / around_count;
         own_samples = 1u;
     }
-    const uint32_t hash = shade_ao_hash(ao->pixel_x, ao->pixel_y);
-    const uint32_t first_sample = temporal->frame / SHADE_AO_TURNS;
-    const uint32_t rays = own_samples == 0u ? (uint32_t)SHADE_AO_FRESH_RAYS
-                                            : (shade_ao_turn(temporal->frame, ao->pixel_x, ao->pixel_y) ? 1u : 0u);
-    float32_t seen = 0.0F;
-    for (uint32_t r = 0u; r < rays; r += 1u) {
-        float32_t u = 0.0F, v = 0.0F, direction[3];
-        shade_ao_sample(hash, first_sample + r, &u, &v);
-        shade_ao_direction(face, u, v, direction);
-        seen += shade_ao_ray(context, hit, surface, direction);
-    }
     if (own_samples == 0u) {
-        out->visible = seen / (float32_t)SHADE_AO_FRESH_RAYS;
-        out->samples = SHADE_AO_FRESH_RAYS;
-    } else if (rays == 0u) {
-        out->visible = own;
-        out->samples = (uint16_t)own_samples;
-    } else {
+        *out_fresh = true;
+        return 0.0F;
+    }
+    if (shade_ao_turn(temporal->frame, ao->pixel_x, ao->pixel_y)) {
+        float32_t u = 0.0F, v = 0.0F, direction[3];
+        shade_ao_sample(shade_ao_hash(ao->pixel_x, ao->pixel_y), temporal->frame / SHADE_AO_TURNS, &u, &v);
+        shade_ao_direction(face, u, v, direction);
+        const float32_t seen = shade_ao_ray(context, hit, surface, direction);
         const uint32_t samples =
             own_samples >= SHADE_AO_SAMPLES_MAX ? (uint32_t)SHADE_AO_SAMPLES_MAX : own_samples + 1u;
         out->visible = own + (seen - own) / (float32_t)samples;
         out->samples = (uint16_t)samples;
+    } else {
+        out->visible = own;
+        out->samples = (uint16_t)own_samples;
     }
     return (out->visible + around_sum) / (1.0F + around_count);
 }
@@ -678,8 +672,8 @@ __global__ void shade_ao_kernel(const traverse_view_t view, const traverse_camer
                                 const shade_texture_t *textures, const uint16_t *faces, const uint8_t *pixels,
                                 uint32_t material_count, uint32_t features, uint32_t water_material,
                                 uint32_t glass_material, const shade_sun_t sun, const post_temporal_t temporal,
-                                const shade_ao_pixel_t *ao_last, shade_ao_pixel_t *ao_next, const traverse_hit_t *hits,
-                                shade_pixel_t *out) {
+                                const shade_ao_pixel_t *ao_last, shade_ao_pixel_t *ao_next, uint32_t *fresh,
+                                uint32_t *fresh_count, const traverse_hit_t *hits, shade_pixel_t *out) {
     const uint32_t pixel_x = blockIdx.x * blockDim.x + threadIdx.x;
     const uint32_t pixel_y = blockIdx.y * blockDim.y + threadIdx.y;
     if (pixel_x >= camera.width || pixel_y >= camera.height) {
@@ -711,7 +705,13 @@ __global__ void shade_ao_kernel(const traverse_view_t view, const traverse_camer
         shade_ao_frame_t ao = {&temporal, ao_last, pixel_x, pixel_y, {0.0F, 0.0F, 0.0F}, {0u, 0u, 0u, 0u}};
         traverse_camera_direction(&camera, (float32_t)pixel_x + 0.5F - temporal.jitter[0],
                                   (float32_t)pixel_y + 0.5F - temporal.jitter[1], ao.steady);
-        const float32_t visible = shade_ao_at(&context, &ao, &hit, &surface, &ao_out);
+        bool is_fresh = false;
+        const float32_t visible = shade_ao_at(&context, &ao, &hit, &surface, &ao_out, &is_fresh);
+        if (is_fresh) {
+            /* What it left in the next block stays, for shade_ao_fresh_kernel to go on from. */
+            fresh[atomicAdd(fresh_count, 1u)] = (uint32_t)index;
+            return;
+        }
         float32_t light[3];
         shade_surface_light_stored(&sun, surface.face, surface.stored, light);
         for (uint32_t i = 0u; i < 3u; i += 1u) {
@@ -724,6 +724,65 @@ __global__ void shade_ao_kernel(const traverse_view_t view, const traverse_camer
 /* Before shade_kernel, for a pixel whose ray first meets a surface of water: its reflection in rgb and what its sun ray saw in t, of the
  * pixels block, which shade_kernel takes from there and then writes over. The same work it would have done at that one place. As with the two
  * kernels above, here all a warp's rays of each kind run together. A ray that comes to water behind something still asks in shade_kernel. */
+/* The rays of the pixels shade_ao_kernel listed: as a list, and not where they are on the picture, so that a warp is 32 pixels that have rays to
+ * send, and not 32 of which one has, which would take as long. See the phase 17 stage 3 file. */
+__global__ void shade_ao_fresh_kernel(const traverse_view_t view, const traverse_camera_t camera,
+                                      const shade_texture_t *textures, const uint16_t *faces, const uint8_t *pixels,
+                                      uint32_t material_count, uint32_t features, uint32_t water_material,
+                                      uint32_t glass_material, const shade_sun_t sun, uint32_t frame,
+                                      shade_ao_pixel_t *ao_next, const uint32_t *fresh, const uint32_t *fresh_count,
+                                      const traverse_hit_t *hits, shade_pixel_t *out) {
+    const uint32_t place = blockIdx.x * blockDim.x + threadIdx.x;
+    if (place >= *fresh_count) {
+        return;
+    }
+    const uint32_t index = fresh[place];
+    const uint32_t pixel_y = index / camera.width, pixel_x = index - pixel_y * camera.width;
+    const traverse_hit_t hit = hits[index];
+    const shade_ao_work_t work = ((const shade_ao_work_t *)(const void *)ao_next)[index];
+    const shade_context_t context = {
+        &view,
+        &camera,
+        textures,
+        faces,
+        pixels,
+        &sun,
+        nullptr,
+        shade_pixel_tangent(&camera),
+        material_count,
+        features,
+        (uint16_t)water_material,
+        (uint16_t)glass_material,
+    };
+    float32_t direction[3];
+    traverse_camera_direction(&camera, (float32_t)pixel_x + 0.5F, (float32_t)pixel_y + 0.5F, direction);
+    shade_surface_t surface;
+    shade_last_surface(&camera, &hit, direction, features, &surface);
+    const uint32_t hash = shade_ao_hash(pixel_x, pixel_y);
+    const uint32_t first_sample = frame / SHADE_AO_TURNS;
+    float32_t seen = 0.0F;
+    for (uint32_t r = 0u; r < SHADE_AO_FRESH_RAYS; r += 1u) {
+        float32_t u = 0.0F, v = 0.0F, ray_direction[3];
+        shade_ao_sample(hash, first_sample + r, &u, &v);
+        shade_ao_direction(surface.face, u, v, ray_direction);
+        seen += shade_ao_ray(&context, &hit, &surface, ray_direction);
+    }
+    const float32_t visible = seen / (float32_t)SHADE_AO_FRESH_RAYS;
+    float32_t light[3];
+    shade_surface_light_stored(&sun, surface.face, surface.stored, light);
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        out[index].rgb[i] += work.share[i] * light[i] * visible;
+    }
+    const uint32_t axis = surface.face >> 1;
+    ao_next[index] = shade_ao_pixel_t{visible, surface.local[axis] + (float32_t)hit.offset[axis],
+                                      (uint16_t)SHADE_AO_FRESH_RAYS, (uint16_t)surface.face};
+}
+
+/* A list starts each frame empty, from where it is in the stream. */
+__global__ void shade_ao_fresh_clear_kernel(uint32_t *fresh_count) {
+    *fresh_count = 0u;
+}
+
 __global__ void shade_water_kernel(const traverse_view_t view, const traverse_camera_t camera,
                                    const shade_texture_t *textures, const uint16_t *faces, const uint8_t *pixels,
                                    uint32_t material_count, uint32_t features, uint32_t water_material,
@@ -1182,11 +1241,25 @@ gpu_status_t shade_frame_entities(gpu_error_t *error, const shade_scene_t *scene
             return sun_started;
         }
     }
+    const uint64_t pixel_count = (uint64_t)camera->width * camera->height;
+    uint32_t *const fresh = (uint32_t *)(void *)(ao_next + pixel_count);
+    uint32_t *const fresh_count = fresh + pixel_count;
+    shade_ao_fresh_clear_kernel<<<1, 1>>>(fresh_count);
     shade_ao_kernel<<<grid, dim3(TRAVERSE_TILE_PIXELS, TRAVERSE_TILE_PIXELS)>>>(
         view, *camera, (const shade_texture_t *)(const void *)device_memory_pointer(scene->borrowed_textures),
         (const uint16_t *)(const void *)device_memory_pointer(scene->borrowed_faces),
         device_memory_pointer(scene->borrowed_pixels), scene->material_count, scene->features, scene->water_material,
-        scene->glass_material, scene->sun, temporal, ao_last, ao_next,
+        scene->glass_material, scene->sun, temporal, ao_last, ao_next, fresh, fresh_count,
+        (const traverse_hit_t *)(const void *)device_memory_pointer(hits),
+        (shade_pixel_t *)(void *)device_memory_pointer(pixels));
+    /* How long the list is, only the card knows yet, so this is as long as it could be, and what is past its end returns at once. Waiting to
+     * hear, and launching only what is on it, came to the same: see the phase 17 stage 3 file. */
+    const uint32_t per_warp = 32u;
+    shade_ao_fresh_kernel<<<(uint32_t)((pixel_count + per_warp - 1u) / per_warp), per_warp>>>(
+        view, *camera, (const shade_texture_t *)(const void *)device_memory_pointer(scene->borrowed_textures),
+        (const uint16_t *)(const void *)device_memory_pointer(scene->borrowed_faces),
+        device_memory_pointer(scene->borrowed_pixels), scene->material_count, scene->features, scene->water_material,
+        scene->glass_material, scene->sun, temporal.frame, ao_next, fresh, fresh_count,
         (const traverse_hit_t *)(const void *)device_memory_pointer(hits),
         (shade_pixel_t *)(void *)device_memory_pointer(pixels));
     return device_memory_check(error, cudaGetLastError(), "shade: starting AO");
