@@ -34,6 +34,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `b243fe8` Add the skeleton, which keeps its distance, shoots arrows that fly as projectiles and hit the player, and leaves its drops, and correct two struct sizes that stopped the merged tree building.
+
 ## Wiring outside the owned paths
 
 - `run/include/entity/index.h`, `run/src/entity/index.c`, `run/src/entity/README.md`: `entity_t` holds `projectile_store_t`, started and ended with the world. `entity_t` grew from 576 to 704 bytes.
