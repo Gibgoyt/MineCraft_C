@@ -41,7 +41,7 @@ A record is `uint16_t bits, uint16_t palette_count`, the palette in the order st
 3. `manifest` is replaced through `file_write_atomic`: temporary, sync, rename, sync of the directory. **That rename is the save.** Before it the world is the last save, whole, and after it this one, whole.
 4. The files it replaced are removed.
 
-A kill or a power cut anywhere leaves extra files at worst. `save_world_open` removes `*.tmp` and any `r.*` the manifest does not name. It never removes `damaged.*`, or a name it does not make. No world is ever a mix of two saves, and Stage 16.2 can keep state beside a generation.
+A kill or a power cut anywhere leaves extra files at worst. `save_world_open` removes `*.tmp` and any `r.*` the manifest does not name. It never removes `damaged.*`, or a name it does not make. No world is ever a mix of two saves, and `run/src/save/state/` keeps its file beside a generation.
 
 `save_world_open` refuses, changing nothing, for: a bad header or list, another version, another seed, another block table, a file the manifest names being missing or of the wrong size, and delta files with no manifest. It also refuses a world another game has open. None of these can be a crash's doing. A bad section or column in a file that is otherwise fine does not stop a world: that place gets what generates there, it is logged and counted in `sections_damaged`, and the next save of that region drops it and keeps the old file as `damaged.*`.
 
@@ -55,13 +55,13 @@ A kill or a power cut anywhere leaves extra files at worst. `save_world_open` re
 
 A section goes one way: the set being captured to, then the set being written, then the current manifest's file. A write publishes the new manifest and retires its set in one step under the mutex. A reader looks at both sets first and at the manifest after, so a section that has left the sets by the time it looks is in the manifest it sees then. A reader whose file has been replaced under it gets `FILE_ERROR_NOT_FOUND` and looks again at the newer manifest. Only a column not in the map may be read like this, since edits to a live one are not here.
 
-Capture calls no heap and does no I/O. Each set holds 64 MiB or 32768 sections, whichever comes first. Past that a capture says `SAVE_WORLD_FULL` and leaves the flags alone, so nothing is lost: the caller writes and tries again. `game_sim_step` does this for a column on its way out, and keeps the column until it is captured.
+Capture calls no heap and does no I/O. Each set holds 64 MiB or 32768 sections, whichever comes first. Past that a capture says `SAVE_WORLD_FULL` and leaves the flags alone, so nothing is lost: the caller writes and tries again. `game_sim_step` asks the autosave for that when a column on its way out will not fit, and keeps the column until it is captured.
 
 A failed write keeps its set and is tried first the next time, and in the meantime readers still see it, so the game plays on with its changes intact, and a world whose disk is full loses nothing until it is closed. All this memory is about 138 MiB of address, and pages cost nothing until touched.
 
-## What this stage does not do
+## What this does not do
 
-Only blocks are here. `game_session_world_close` saves when a world closes, and a column leaving is held in memory until then, so a kill in play loses everything since the world opened: Stage 16.2's autosave calls `save_world_capture_dirty`, `save_world_commit_begin` on the sim and `save_world_commit_write` on a worker. It must also stop `game_sim_step`'s own write, in `game_column_leaving_save`, running during one of its own.
+Only blocks are here, and it does not decide when. `run/src/save/autosave/` calls `save_world_capture_dirty` and `save_world_commit_begin` on the sim and `save_world_commit_write` on a worker, with `run/src/save/state/` keeping the rest of a world beside a generation, and it is the only writer while a game runs. `save_world_flush` remains for a world with no game.
 
 ## Limits
 

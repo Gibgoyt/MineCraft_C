@@ -18,6 +18,7 @@
 - `game_loop_source_begin`, `game_loop_source`, `game_loop_discard`: what `display_frames_run` calls: the threads start on its first frame, then real keys and a real mouse to `game_loop_frame`, and Esc to stop.
 - `game_loop_threads_ensure`, `game_loop_input_frame`, `game_loop_input_clear`: the same in parts, for `session`, which wants Esc for itself.
 - `game_pause_set`: stops the world's clock, or starts it.
+- `game_save_finish`: all there is, saved here and now, as a world closes: see `run/src/save/autosave/`. A `game_open` with a save takes up where the state in it left off, and `game_sim_step` calls `save_autosave_step`.
 - `game_open_alive_set`: someone to tell that a long `game_open` is still going.
 - `game_fly_from_script`, `game_fly_from_input`: either kind of input to a step of flying.
 - `game_player_set`, `game_walk_send`, `game_hands_send`: walk through the world with this player and not fly; what the mouse and keys want of it; what its two buttons are doing.
