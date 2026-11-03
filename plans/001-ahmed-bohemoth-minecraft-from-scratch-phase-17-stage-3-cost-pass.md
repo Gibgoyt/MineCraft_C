@@ -141,7 +141,14 @@ Not run: `tsan` and `sanitize`, and anything under KMS, which is Ahmed's to run.
 
 Appended as they land:
 
-COMMITS_HERE
+- `18c6a13` Work in progress on the top-cost pass: a limit on column tops, tables for powf, and AO in a kernel of its own.
+- `0513e7b` Work in progress on the top-cost pass: the sun ray of a last surface, and the first surface of water, each in a kernel of its own.
+- `a519ff2` Work in progress on the top-cost pass: a list for AO rays with nothing to go on, and a top per square of columns.
+- `b26ae14` Work in progress on the top-cost pass: deep water finished in its own kernel.
+- `cffaf16` Work in progress on the top-cost pass: last-surface sun rays go to their own kernel with AO off as well, with tests for the tops and tables.
+- `6edd0da` Work in progress on the top-cost pass: no worker beside the sim, and last-surface sun rays apart in the game whichever effects are on.
+- `43c86a2` Work in progress on the top-cost pass: the thread order goes back to what it was, as terrain lost more than the tick gained.
+- `2018fd2` Finish the pass over the top costs, with the plan target table filled in with measured numbers and misses stated.
 
 ## Issues found
 
