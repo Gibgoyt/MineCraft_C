@@ -12,8 +12,8 @@
 - `world_reset`: takes back every section and column at once, with no world open.
 - `world_open`, `world_close`, `world_open_bytes`: start and end the map, the edit log, the snapshots, light and ticks, for one world. `world_close` resets. `game` calls these (Stage 08.4); today only tests do.
 
-**May be called by:** `run/src/main/`, which starts and stops it, and later `game`, `terrain`, `render`, `save`.
-**Depends on:** `heap`, `arena`, `log`, `machine`, and its parts below.
+**May be called by:** `run/src/main/`, which starts and stops it, `game`, `mob`, and `bench/`.
+**Depends on:** `heap`, `arena`, `assert`, `log`, `machine`, and its parts below.
 
 ## Parts
 

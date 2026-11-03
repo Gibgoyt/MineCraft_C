@@ -40,4 +40,4 @@ A file that is missing altogether has no line to point at, and is reported as `p
 - **Faces are names, not texture ids.** The ids belong to the blob, and `run/src/texture/registry/` finds them by name. A caller that needs ids makes them once at startup.
 - **Ids are not stable across a change to the set of blocks.** Adding a block moves those after it. A save must store names, or a table of them, rather than trust these numbers.
 - **A decimal is printed as it was written:** `0.5` is `5e-1f32`. The tool never rounds, so what the compiler makes of it is the same on any machine.
-- **One block per state, for now.** Wheat is `wheat_stage_1` to `_8`, because the world stores one `uint16_t` per block and nothing yet says what else it holds.
+- **One block per state.** Wheat is `wheat_stage_1` to `_8`, because the world stores one `uint16_t` per block and nothing says what else it holds.

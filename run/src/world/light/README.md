@@ -13,7 +13,7 @@
 - `world_light_sections_replaced`: for blocks written past the log.
 - `world_light_rebuild`: everything from nothing, with no queue.
 
-**May be called by:** `run/src/world/`, `game`, and later `world/tick`, `save`.
+**May be called by:** `run/src/world/`, and `game`, through `world`'s header.
 **Depends on:** `world/section`, `world/column`, `world/map`, `world/edit`, `arena`, `assert`, and the generated `tables/blocks/`.
 
 ## The rules

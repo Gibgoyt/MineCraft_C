@@ -14,4 +14,4 @@
 **May be called by:** `run/src/texture/`.
 **Depends on:** `arena`, `run/src/texture/blob/`. It uses that sibling's types and its hash, which `plans/REPO_STRUCTURE.md` section 11 requires this line to say: `texture/blob`.
 
-A blob's entries are sorted, so a binary search would need no table. A hash table is here because later stages look names up as their tables load, once per block and mob, and because a miss, which is what a typo gives, then costs one short probe.
+A blob's entries are sorted, so a binary search would need no table. A hash table is here because names are looked up as tables load, once per block and mob, and because a miss, which is what a typo gives, then costs one short probe.

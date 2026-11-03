@@ -4,7 +4,7 @@
 **Tier:** test.
 **Owns:** nothing outside the test arena, and blocks on the card for the length of a test, never more than 16 MiB.
 **Lifetime:** One run.
-**Threads:** main, and a short-lived thread it joins, as `gpu` will be.
+**Threads:** main, and a short-lived thread it joins, in the place of `gpu`.
 **Public functions:** none; a test program.
 **May be called by:** ctest.
 **Depends on:** `tests/harness/`, `run/src/gpu_bridge/`, `cuda/src/device_memory/`, the built `minecraft_c`, and a card. No card fails this test, on purpose: `gpu.enabled` is true, and a skip would read as a pass.

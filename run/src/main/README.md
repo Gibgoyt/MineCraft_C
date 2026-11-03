@@ -2,7 +2,7 @@
 
 **Purpose:** the program's entry point: holds `app_t` on the stack, checks the CPU, starts each system and stops it again.
 **Tier:** Root. Allocates nothing.
-**Owns:** `app_t app`, which everything else in the program hangs from. So far that is `job_system_t job`, `simd_t simd`, `texture_t texture`, `ui_t ui`, `world_t world`, `terrain_t terrain`, `physics_t physics`, `player_t player`, `entity_t entity`, `mob_t mob`, `item_t item`, `gpu_bridge_t gpu_bridge`, `render_t render`, `game_t game`, `math_t math`, `display_t display`, `display_offscreen_t offscreen`, `input_t input` and `profiler_t profiler`.
+**Owns:** `app_t app`, which everything else in the program hangs from. That is `job_system_t job`, `simd_t simd`, `texture_t texture`, `ui_t ui`, `world_t world`, `terrain_t terrain`, `physics_t physics`, `player_t player`, `entity_t entity`, `mob_t mob`, `item_t item`, `gpu_bridge_t gpu_bridge`, `render_t render`, `game_t game`, `math_t math`, `display_t display`, `display_offscreen_t offscreen`, `input_t input`, `settings_t settings`, `save_t save` and `profiler_t profiler`, and the plain values `thread_topology_t topology`, `cpu_required` and `cpu_present`.
 **Lifetime:** Process.
 **Threads:** main, which it pins to its place in `config/machine.yaml`.
 **Public functions:** `main`. A command line:
@@ -60,5 +60,5 @@ Later systems' `_init` calls go in `app_init` after the CPU check, and their `_d
 **May be called by:** the OS. Tests link everything but this file, and run the built program.
 **Saves:** with `--menu`, `save_init` and `game_save_set`; nothing else has a world on disk. See `run/src/save/README.md`.
 **Settings:** with `--menu`, `settings_load` comes before `job_init`, as the worker count is in it, and `game_session_settings_set` hands them to the session. See `run/src/settings/README.md`.
-**Depends on:** `display`, `game`, `physics`, `player`, `gpu_bridge`, `input`, `job`, `math`, `render`, `save`, `terrain`, `texture`, `world`, `thread`, `time`, `heap` (only its counters and leak check), `log`, `types`, `main/cpu_check`, the
+**Depends on:** `display`, `game`, `physics`, `player`, `entity`, `item`, `mob`, `simd`, `settings`, `ui`, `profiler`, `gpu_bridge`, `input`, `job`, `math`, `render`, `save`, `terrain`, `texture`, `world`, `thread`, `time`, `heap` (only its counters and leak check), `log`, `types`, `main/cpu_check`, the
 generated `machine/index.h`.

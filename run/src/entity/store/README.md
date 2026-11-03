@@ -15,7 +15,7 @@
 - `entity_store_wish_set`, `entity_store_jump`: what a mind asks of a body.
 - `entity_store_tick`: one tick of every body.
 
-**May be called by:** `run/src/entity/`, `run/src/entity/grid/`, `run/src/entity/animation/`, `run/src/mob/` and what it has for a mob, and `run/src/game/`, later, to draw them.
+**May be called by:** `run/src/entity/`, `run/src/entity/grid/`, `run/src/entity/animation/`, `run/src/entity/explosion/` and `projectile/`, `run/src/mob/` and what it has for a mob, `run/src/player/combat/`, and `run/src/game/` to draw them.
 **Depends on:** `arena`, `physics`, `assert`, `world/map`, `world/column`, and the generated `tables/blocks`.
 
 ## What it does

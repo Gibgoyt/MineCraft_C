@@ -1,6 +1,6 @@
 # run/src/game
 
-**Purpose:** connects the sim, gpu and main threads: streams the world around the eye, uploads it, draws it and shows it. Later stages add their tick and frame calls here.
+**Purpose:** connects the sim, gpu and main threads: streams the world around the eye, uploads it, draws it and shows it, with each system's tick and frame calls.
 **Tier:** Owner.
 **Owns:** `owned_region`, with `arena_world`, `arena_tick` and `arena_frame` over it. The first holds the column jobs and their scratch, reset at `game_close`. The other two are the Tick and Frame arenas of `plans/CODING_STANDARD.md` section 4, reset at those boundaries, and nothing takes from them until Stages 11 to 15.
 **Lifetime:** `game_open` to `game_close`: World. `game_t` itself is Process, under `app_t`.
@@ -106,7 +106,7 @@ The far field samples terrain and writes over it what the save holds: `save_worl
 
 A world opened through `game/session` has a `save_t` as well: `game_save_set` before it opens. Each column job then writes what is saved over what it generates, and `game_sim_step` captures a column's changes before it unloads it. If that fails, the column stays, and is offered again next step. See `run/src/save/world/README.md`.
 
-One day is 1200 seconds, of whatever `game_loop_frame` or a script's ticks say has passed, so a script's pictures depend on its ticks and on nothing else. `main` keeps it, as a real frame already knows how long it took, and the gpu thread reads it before each frame. A frame out of date by one is the sun a few millionths of a day behind, so a relaxed atomic is plenty. `SHADE_FEATURE_DAY_CYCLE` off stops the clock where it is. When the sim has a world time of its own to keep (Stage 16.1 saves one), it should move there.
+One day is 1200 seconds, of whatever `game_loop_frame` or a script's ticks say has passed, so a script's pictures depend on its ticks and on nothing else. `main` keeps it, as a real frame already knows how long it took, and the gpu thread reads it before each frame. A frame out of date by one is the sun a few millionths of a day behind, so a relaxed atomic is plenty. `SHADE_FEATURE_DAY_CYCLE` off stops the clock where it is. A save's time of day goes through `game_day_set` when a world opens: `run/src/save/state/`.
 
 ## The guardian's fork
 

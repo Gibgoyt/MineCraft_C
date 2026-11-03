@@ -4,18 +4,18 @@
 **Tier:** Arena. `item_drop_store_start` takes its three arrays from the arena `entity` gives it, once per world. A tick and a pickup allocate nothing.
 **Owns:** nothing. `item_drop_store_t` is a field of `entity_t`.
 **Lifetime:** World.
-**Threads:** `sim`, or whichever one thread holds the map. Nothing here is read from another thread yet: drawing them is Stage 09.5's, and it will need a snapshot.
+**Threads:** `sim`, or whichever one thread holds the map. `run/src/game/` copies them into `run/src/render/entities/` on that thread, so nothing here is read from another.
 **Public functions** (`run/include/entity/item_drop/index.h`):
 
 - `item_drop_store_start`: an empty store, from an arena and a seed.
-- `item_drop_spawn`: items thrown out of a broken block.
+- `item_drop_spawn`, `item_drop_spawn_worn`: items thrown out of a broken block; the same for what has been used, which is as worn when picked up again.
 - `item_drop_tick`: one tick of every stack.
-- `item_drop_pickup`: gives a taker what lies in reach, and removes what it takes.
+- `item_drop_pickup`, with an `item_drop_take_t`: gives a taker what lies in reach, and removes what it takes.
 - `item_drop_box`: a stack's box at a place.
 - `item_drop_on_ground`: how many items are lying there.
 
-**May be called by:** `run/src/entity/`, and `run/src/game/`, which brings the player's drops and its reach to it. It knows nothing of the player: what takes an item is a function it is handed.
-**Depends on:** `physics`, `world/map`, `terrain/rng`, `arena`, and the generated `tables/blocks`.
+**May be called by:** `run/src/entity/`, `run/src/entity/explosion/` and `run/src/mob/zombie/`, which drop things, and `run/src/game/`, which brings the player's drops and its reach to it. It knows nothing of the player: what takes an item is a function it is handed.
+**Depends on:** `physics`, `world/map`, `world/column`, `terrain/rng`, `arena`, `assert`, and the generated `tables/blocks`.
 
 ## What it does
 
@@ -43,7 +43,7 @@ The numbers are Minecraft's published ones, in blocks and ticks at 20 Hz. z is u
 
 **Same input, same bytes.** Everything is `float64_t` arithmetic in a fixed order with numbers from one seed. Stacks are removed by moving the last one into the gap, always walking from the end, so the order depends on nothing but what happened.
 
-## Not here yet
+## What is elsewhere
 
-- **They are not drawn.** `cuda/src/entity_rays/` is Stage 09.5's. Until then an item is known only by what it does, and by the line in `game_report`.
-- **A hand is one slot.** Until Stage 13.1 the player's taker is `player_interaction_hand_take`: an item that is no block, or another block than the hand holds, stays on the ground.
+- **Drawing them** is `cuda/src/entity_rays/`'s, from what `run/src/game/` hands `render_entities_add_item_drop`.
+- **Who takes an item.** With an inventory the player's taker is `inventory_add_stack`, in `run/src/game/`. With none, as in tests of the hands alone, it is `player_interaction_hand_take`: an item that is no block, or another block than the hand holds, stays on the ground.

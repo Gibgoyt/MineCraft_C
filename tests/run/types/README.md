@@ -15,5 +15,5 @@ nvcc for `fixtures/`.
 `plans/CODING_STANDARD.md` section 2 exists because of what GCC rejects, so GCC is what gets asked. Each fixture says
 at its top whether it must compile.
 
-It runs `minecraft_c` with `--report`, `--pretend-missing-cpu`, `--pretend-leak`, a bad argument, and with no argument. No
-mode opens a display yet. **Stage 05.1 must move the no-argument run to the headless mode**, or ctest would take the card.
+It runs `minecraft_c` with `--report`, `--pretend-missing-cpu`, `--pretend-leak`, a bad argument, and with no argument. With
+no argument and stdin that is no terminal, as under ctest, `main` runs the check of the core runtime and opens no display: on a terminal, the same run is `--menu`.

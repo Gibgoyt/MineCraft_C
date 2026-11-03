@@ -73,7 +73,7 @@ Sideways it goes only towards the nearest way down within reach, 3 steps past th
 
 ## Falling blocks
 
-`BLOCK_FLAG_FALLS`: sand, red sand and gravel. There is no entity store until Stage 15.1, so a falling block is a block that moves down one voxel every 2 ticks. It falls into what a fluid could enter, and through fluids, which it replaces. A stack falls one block at a time from the bottom.
+`BLOCK_FLAG_FALLS`: sand, red sand and gravel. A falling block is not an entity: it is a block that moves down one voxel every 2 ticks. It falls into what a fluid could enter, and through fluids, which it replaces. A stack falls one block at a time from the bottom.
 
 ## Random ticks
 

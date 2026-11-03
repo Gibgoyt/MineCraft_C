@@ -2,9 +2,7 @@
 
 A map of the entire codebase, so you can find anything by reasoning about where it must live instead of grepping.
 
-**Status:** written before any code exists. This is the target layout. Directories appear as their stages land, and
-Stage 18.3 audits this file against the real tree. Part names below `run/src/<system>/` may be refined by their stage,
-and the stage updates this file when that happens.
+**Status:** audited against the tree by Stage 18.3, 2026-11-04. A stage that adds or renames a directory updates this file.
 
 Rules for code are in `plans/CODING_STANDARD.md`. Rules for planning are in `plans/README.md`.
 
@@ -89,7 +87,10 @@ run/include/world/
 └── map/index.h
 ```
 
-Headers mirror source paths exactly. Include roots: `run/include`, `compile/include`, `cuda/include`,
+Headers mirror source paths, with two kinds of exception, each saying so in its README. A header with no C behind it:
+`run/include/types/`, `run/include/simd/<kernel>/` (`asm/` implements it) and `run/include/gpu_bridge/<area>/` (`cuda/`
+implements it, and its `run/src/` directory holds only a README). A part declared with its Owner: `run/src/game/input/`,
+`report/` and `settle/`, in `run/include/game/index.h`. Include roots: `run/include`, `compile/include`, `cuda/include`,
 `asm/include`, and `build/<preset>/generated`.
 
 ### Every `README.md` states
@@ -152,7 +153,7 @@ Layout: `compile/src/<tool>/index.c`, `compile/include/<tool>/index.h`, `README.
 | `texture_pack` | Open pack in `/tmp/mc_c_assets/` → `textures/`; `verify` checks that tree with no pack. Parts: `support mctex manifest pack output verify`. Run by hand, never by the build | 06.2 |
 | `texture_vector` | Procedural recipes -> `textures/`, and vector data per texture (`.mcvec`); `check` holds the tree to `textures/vector.yaml`. Parts: `analyze palette mcvec materials recipe`. `recipes` and `check` are run by hand and by its test; 06.4's blob step runs `vectors` | 06.3 |
 | `texture_blob` | Mip chains, and every texture with its vector data in one blob, in `build/<preset>/generated/textures/`, run by `cmake/generated.cmake`. Part: `mip`. The format is `run/include/types/texture_blob/` | 06.4 |
-| `game_tables` | `config/{blocks,items,recipes,biomes,mobs}` → C tables in `build/<preset>/generated/tables/`, compiled into `mc_run` and included as `"tables/blocks/index.h"`, run by `cmake/generated.cmake`. Parts so far: `blocks` (07.1), `biomes` (10.6), `items` (13.1), `recipes` (13.2), `mobs` (15.3) | 07.1 |
+| `game_tables` | `config/{blocks,items,recipes,biomes,mobs}` → C tables in `build/<preset>/generated/tables/`, compiled into `mc_run` and included as `"tables/blocks/index.h"`, run by `cmake/generated.cmake`. Parts: `blocks` (07.1), `biomes` (10.6), `items` (13.1), `recipes` (13.2), `mobs` (15.3) | 07.1 |
 
 ---
 
@@ -250,7 +251,6 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `combat` | The attack: aim, swing, strength | 15.7 |
 | | `interaction` | **Mining, drops, placing** | 12.3 |
 | | `survival` | Health, hunger, death, respawn | 13.4 |
-| | `combat` | Attacking | 15.7 |
 | `item` | `stack inventory` | Stacks, hotbar, 36 slots | 13.1 |
 | | `crafting smelting container` | Recipes, furnace, chest | 13.2 |
 | | `equipment` | Tools, durability, armor | 13.3 |
@@ -340,7 +340,7 @@ Layout: `textures/<GROUP>/<NAME>/`.
 
 ```
 textures/
-├── ATTRIBUTION.md                   every source pack, author, licence, commit; generated
+├── ATTRIBUTION.md                   every source pack, author, licence, commit; generated, but for its last section
 ├── README.md                        how this directory works, and how to re-import
 ├── import.yaml                      the pinned pack, and what becomes of each of its files
 ├── vector.yaml                      what pixels cannot say (light, blending), and every texture the game needs
@@ -454,7 +454,10 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/cuda/water/` | ctest `render_feature_water`, named in its `test.cmake`: reflection, depth tint and fog behind a surface by hand, a lake, glass and ice against an exact trace from above and from under the water, deeper being bluer, a tower in the water by hand, the settings, golden PNGs in `fixtures/`, and the cost, on the real card |
 | `tests/cuda/post/` | ctest `render_feature_post`, named in its `test.cmake`: the jitter, the way back to the last frame and what AO and god rays add up to by hand, AO's rate read back from the card and against the exact integral, TAA against a picture at four times the size, ghosts and a moving eye, god rays against an exact walk, the settings, golden PNGs in `fixtures/`, and the cost, on the real card |
 | `tests/cuda/traverse/` | ctest `cuda_traverse`, with an encoder of its own for `world_buffers`' format: known hits, random rays and whole frames against an exact CPU reference in `float64_t`, the coarse pass never overestimating, and Stage 01.3's worlds. Timing on request |
-| `tests/asm/` | NASM kernels against scalar C references |
+| `tests/asm/` | NASM kernels against scalar C references: `tests/asm/<kernel>/` is ctest `asm_<kernel>` |
+| `tests/asm/simd/` | ctest `asm_simd`: the `simd` Owner, its region and its self-check |
+| `tests/asm/conventions/` | ctest `asm_conventions`: `asm/include/conventions/` and the offsets from `struct_offsets` |
+| `tests/asm/support/` | Not a test: guard-page buffers and a repeatable random source, shared by those above. A header and a README |
 | `tests/asm/abi/` | ctest `asm_abi`: every kernel keeps the callee-saved registers and leaves no dirty YMM state, by machine state, not by output |
 | `tests/fuzz/` | Coverage-guided fuzzers of our own, sanitize preset only: `support` (the fuzzer), `yaml`, `png`, `save`, each also a 20 s ctest `fuzz_<name>`, and `planted`, ctest `fuzz_planted`, that it finds what is there (Stage 18.1) |
 | `tests/soak/` | The program `soak`, of every preset, run by hand for hours: the threaded game and the built program with `--headless`, again and again on the same worlds (Stage 18.1) |
@@ -526,11 +529,11 @@ main
      ├─ render ─► gpu_bridge ─► (cuda/)
      ├─ terrain, world
      ├─ display, input, texture
-     └─ job, thread, file, time, math, simd ─► (asm/)
+     └─ job, thread, file, time, math, simd, profiler ─► (asm/)
          └─ arena, heap, log, assert, types
 ```
 
-- `main` calls `job` directly too: `job_system_t` is a field of `app_t`, and `game` will borrow it.
+- `main` calls `job` directly too: `job_system_t` is a field of `app_t`, and `game` borrows it.
 - Depth 2 parts may include their own Owner's header, and lower systems.
 - Sibling parts may include one another only if their READMEs say so.
 - `compile/` may not include `run/`, except for `run/include/types/`. Its tools share the type definitions.
@@ -614,4 +617,5 @@ Split it into sub-directories. Remember that going deeper changes the tier: code
 | Zombie behaviour | `run/src/mob/zombie/` |
 | Who allocates anything | `run/src/heap/`, then depth 1 of the system |
 | Type rules, padding, memory law | `plans/CODING_STANDARD.md` |
+| Whose textures these are, and what shipping them owes | `textures/ATTRIBUTION.md` |
 | What's done and what's next | `plans/001-*-phase-*.md` |

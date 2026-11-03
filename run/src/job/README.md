@@ -54,4 +54,4 @@ wakeup is lost.
 how this module works rather than a fact about the machine. The whole region is 516 MiB of address space. It counts
 against `memory.process_budget_mib`, while only the pages touched use real memory.
 
-`main` holds the `job_system_t`, in `app_t`, and calls `job_init` and `job_deinit`. `game` (Stage 08.4) will borrow it.
+`main` holds the `job_system_t`, in `app_t`, and calls `job_init` and `job_deinit`. `game` borrows it.

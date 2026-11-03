@@ -11,7 +11,7 @@
 - `raycast_cast`: the walk: the first box along a ray, within a distance.
 - `raycast_hit_in_front`: the cell in front of a hit's face, where a block placed against it goes.
 
-**May be called by:** `run/src/player/` and its parts, and later anything that aims, through `physics`'s header.
+**May be called by:** `run/src/player/` and its parts, and anything else that aims, through `physics`'s header.
 **Depends on:** `physics/collision` for what a cell reads as and a solid block's boxes, `world/map`, `world/column`, the generated `tables/blocks`, libm.
 
 ## How a cast goes

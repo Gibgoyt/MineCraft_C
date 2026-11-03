@@ -1,8 +1,8 @@
 # Texture attribution
 
-Written by `compile/src/texture_pack` from `textures/import.yaml`. A re-import replaces it.
+Written by `compile/src/texture_pack` from `textures/import.yaml`, but for its last section and the second sentence below, which Stage 18.3 wrote by hand. A re-import replaces the whole file, so put those back after one: `textures/README.md`.
 
-This file ships with anything that ships these textures. No Mojang textures and no decompiled code are used anywhere in this repository. A texture with no row below comes from this project's own procedural recipes, which its `index.yaml` holds.
+This file ships with anything that ships these textures. No decompiled code is used anywhere in this repository, and no Mojang texture knowingly; six textures have a stated origin this repository cannot trace, under "What this file cannot promise" below. A texture with no row below comes from this project's own procedural recipes, which its `index.yaml` holds.
 
 ## Pixel Perfection
 
@@ -341,3 +341,14 @@ The textures listed below are adaptations of that work, and are licensed to you 
 | `ui/icon_hunger` | `hunger_ng/hunger_ng_hunger_bar_image.png` | none |
 | `ui/sun` | `misc/sun.png` | none |
 | `ui/moon` | `misc/moon.png` | none |
+
+## What this file cannot promise
+
+Audited by Stage 18.3, 2026-11-04. Written by hand: see the top of this file.
+
+- **The licence is a statement, not a file.** The pack has no licence file. Its `texture_pack.conf` and `README.md` state CC-BY-SA-4.0, and that is what the import holds it to. Nothing in the pack says who drew which file.
+- **Six textures have a stated origin in other packs.** The pack's own commit messages say `blocks/coral_brown`, `blocks/coral_cyan`, `blocks/coral_green`, `blocks/coral_orange` and `blocks/coral_pink` are "from PP MineCraft" (commit `28ab9a0`), and that `blocks/berry_bush_leaves` is based on dark oak leaves from "MCr PP" (commits `7725aa8`, `520e1de`). This does not show that they are Mojang's, and it does not show what licence those packs carry. Whether they stay is Ahmed's decision, and it is open: the evidence is Stage 06.2's issue 12.
+- **More is derived from these textures than the table's rows say.** Each build makes mip chains and vector data from them, and links the result into `minecraft_c`: `compile/src/texture_vector/`, `compile/src/texture_blob/`. The golden pictures under `tests/cuda/` and `tests/run/` are renders of a game that draws with them. All of that is under the same licence.
+- **Nothing packages a release yet.** A program or an archive given to anyone has to carry this file with it, as the program holds the textures. Nothing enforces that.
+
+The rest of the repository holds no other imported art. The PNG and DEFLATE files under `tests/compile/png/fixtures/` and `tests/compile/inflate/fixtures/` were written by their `generate.py`, with Pillow, ImageMagick and zlib as encoders. PngSuite was used once as data, from outside the repository, and is not committed.

@@ -9,7 +9,7 @@
 
 - `player_init`, `player_deinit`: a pair. Deinit is safe on a zeroed `player_t`.
 - `player_spawn`: a body at rest at a place, before the threads start.
-- `player_send`: main says what the player wants.
+- `player_send`: main says what the player wants. `player_sneak_sent`: whether the keys it sent last say to sneak, for the sim.
 - `player_look_send`: main says where the player looks, for what it aims at.
 - `player_hands_send`: main says what the two mouse buttons are doing.
 - `player_interact_tick`: one tick of the sim's for the hands, on what the last tick aimed at, before `player_tick`.
@@ -21,7 +21,7 @@
 - `player_eye_at`: main asks where to draw the eye right now.
 - `player_target_view`: main asks what that tick aimed at, to draw its outline.
 
-**May be called by:** `run/src/main/` for the pair, and `run/src/game/` for the rest.
+**May be called by:** `run/src/main/` for the pair, `run/src/game/` for the rest, and `run/src/save/state/` to read and write it.
 **Depends on:** `entity/store` for what its part aims at, `physics`, `world/map`, `render/frame` for the exchange, `machine`, and its part below.
 
 **Parts:** `movement`: walk, sprint, sneak, jump, swim, climb and fall. `camera`: mouse look, what is aimed at, and its outline. `interaction`: mining, drops and placing. `survival`: health, hunger, food, damage, death, respawn and the bed. `combat`: the attack: what the left button aims at among the world's bodies, and how strong a swing is.

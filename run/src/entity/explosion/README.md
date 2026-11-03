@@ -50,8 +50,8 @@ A body's eye is at 0.85 of its height. A body with `ENTITY_STORE_FLAG_WAITING` i
 
 **The list is bounded.** The strongest blast asked for has power 8, which is under 15 cells from its middle cell, so 31 cubed cells in all. Pages the list does not reach cost nothing. A creeper's reaches about 6 cells.
 
-## Not here yet
+## What it does not do
 
 - **Blocks have no `blast_resistance` field.** `config/blocks/` and its generator are not this stage's. See the stage file's Issues.
-- **Nothing is drawn or heard.** There is no particle system or sound in the game yet.
+- **Nothing is drawn or heard.** There is no particle system or sound in the game.
 - **TNT does not go off:** a blast breaks it like any other block, with resistance 0.

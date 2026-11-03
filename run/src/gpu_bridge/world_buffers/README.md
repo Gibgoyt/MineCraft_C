@@ -6,5 +6,5 @@
 **Lifetime:** World.
 **Threads:** one at a time: `gpu`.
 **Public functions:** those of that header, listed in `cuda/src/world_buffers/README.md`.
-**May be called by:** `render` and its parts.
+**May be called by:** `render` and its parts, and `gpu_bridge/lod` and `gpu_bridge/traverse` for its types.
 **Depends on:** `gpu_bridge/device_memory`, `gpu_bridge/status`, whose types are in its signatures.

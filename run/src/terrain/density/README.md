@@ -30,9 +30,9 @@ The plan's range, from `config/machine.yaml`, both ends included: `z = -250 ... 
 | up to 0, if not stone | Water, so water's top block is at `z = 0` | `density_block_of` |
 | above 0, if not stone | Air | `density_block_of` |
 
-Sea level and the limits come from `MC_WORLD_Z_*`. Rivers, aquifers and lava are Stage 10.4's, and may turn some of this water or
-air into something else. This stage says only where water would be if nothing else were going on: so a pocket under a shore's
-overhang below `z = 0` is water, for now.
+Sea level and the limits come from `MC_WORLD_Z_*`. Rivers, aquifers and lava are `run/src/terrain/hydrology/`'s, and may turn some of this water or
+air into something else. This module says only where water would be if nothing else were going on: so a pocket under a shore's
+overhang below `z = 0` is water here.
 
 ## How high the ground is
 

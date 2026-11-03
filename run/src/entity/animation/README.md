@@ -13,7 +13,7 @@
 - `entity_animation_state_read`: how one body is moving now.
 - `entity_animation_pose`: where a rig's parts are, for a state at a place.
 
-**May be called by:** `run/src/entity/`, which ticks it, `run/src/mob/`, and what draws or hits a body.
+**May be called by:** `run/src/entity/`, which ticks it, `run/src/mob/zombie/`, and `run/src/game/`, which draws a body.
 **Depends on:** `entity/store`, libm.
 
 ## What it does

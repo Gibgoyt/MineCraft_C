@@ -15,7 +15,7 @@
 - `inventory_swap`, `inventory_quick_move`: moving between slots.
 - `inventory_items_held`, `inventory_stacks_held`: totals.
 
-**May be called by:** `run/src/item/`, `run/src/game/`, and what later stages put under `run/src/item/` and in the screens.
+**May be called by:** `run/src/item/` and its parts, `run/src/game/`, `run/src/ui/hud/` and the screens.
 **Depends on:** `arena`, `assert`, `item/stack`.
 
 ## Where things go

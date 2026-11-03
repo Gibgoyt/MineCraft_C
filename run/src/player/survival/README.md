@@ -17,7 +17,7 @@
 - `player_survival_holds_body`, `player_survival_can_sprint`: what `run/src/player/` does to the keys.
 - `player_survival_died_take`, `player_survival_morning_take`, `player_survival_armor_hit_take`: what `run/src/game/` acts on: what was carried spills, the day moves on, and what is worn wears.
 
-**May be called by:** `run/src/player/`, and `run/src/game/` for what it is told and what it acts on. Stage 15 calls `player_survival_hurt`.
+**May be called by:** `run/src/player/`, `run/src/game/` for what it is told and what it acts on, and `run/src/mob/combat/` and `run/src/mob/creeper/`, which call `player_survival_hurt`.
 **Depends on:** `physics`, `world/map`, `player/camera` and `player/movement` for their types, and the generated `tables/blocks`.
 
 ## The rules
@@ -50,7 +50,7 @@ At 0 health the body is dead. It keeps falling, and nothing it is told moves it.
 
 **Where.** The last bed it used, or otherwise where the world started it. The ground there may not be loaded, so it holds still until it is. Then a bed that has gone counts for nothing, and it goes to the world's place. It stands beside a bed if it can and on it if not, and at the world's place it goes up as far as it takes to fit.
 
-There is no death screen until Stage 14: for now the view lowers to the ground and stays until a press.
+There is no death screen: the view lowers to the ground and stays until a press.
 
 ## The bed
 
@@ -58,4 +58,4 @@ There is no death screen until Stage 14: for now the view lowers to the ground a
 
 The right button on one, within 3 blocks across and 2 up of it, and not sneaking, makes it the place to come back to. A sneak places against it instead, as for any other block. If it is night, from 12542 to 23459 ticks after sunrise, the body also lies on it with its eye low. After 100 ticks asleep `player_survival_morning_take` says so, the day goes to sunrise, and it stands beside the bed. Any press wakes it early, with no morning. So does the bed going, where it stays and falls, and a hit, where it stays on it.
 
-Monsters nearby do not stop it yet, since there are none until Stage 15.
+Monsters nearby do not stop it.

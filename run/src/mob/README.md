@@ -12,7 +12,7 @@
 - `mob_tick`: one tick of its searches, which answer the minds.
 - `mob_minds_tick`: one tick of what every zombie does, returning the blow what is in view takes. After `mob_tick`, before the bodies move.
 
-**May be called by:** `run/src/main/` for the pair, and `run/src/game/` for the rest.
+**May be called by:** `run/src/main/` for the pair, `run/src/game/` for the rest, and `run/src/save/state/` to read and write it.
 **Depends on:** `heap`, `arena`, `job`, `world`, `entity`, `terrain/rng`, and its parts below.
 
 **Parts:** `path`: bounded A\*, batched on workers, with a cache. `zombie`: chase, melee and drops. `skeleton`: keeps its distance, shoots and drops. `creeper`: its approach, its fuse, and what it leaves. `run/src/game/` ticks the last two after `mob_tick`, as they need the entity store and the player. `combat`: damage, knockback, and the health reaching 0, which each mind above then acts on; `run/src/game/` gives it the player's blows, and ticks it after the bodies move.

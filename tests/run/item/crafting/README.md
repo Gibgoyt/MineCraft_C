@@ -22,4 +22,4 @@ What it checks:
 - **A real game:** with the threads running, a chest broken before they start comes out on the ground as items, including an item no block drops, and a furnace cooks and is lit by the sim's tick alone.
 - **The program:** `--walk` runs with all of this, and its report says so.
 
-Not checked here, because nothing reaches it yet: a player opening a chest or furnace in the running game, which is Stage 14.3's screens.
+Not checked here: a player opening a chest or furnace in the running game, which is ctest `run_ui_screens`, in `tests/run/ui/screens/`.

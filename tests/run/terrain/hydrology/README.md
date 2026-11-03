@@ -13,4 +13,4 @@
 
 **Where the pinned number comes from.** The digest is a pin, not a proof: it was printed by this test's first passing run. What makes it believable is `a_column_is_worked_out_as_the_readme_says` and `the_blocks_are_the_density_with_the_rivers_cut_and_the_shore_laid_on`, which type the README's formulas and table of materials out again, and walk whole columns without the fill's shortcuts. The pin stops a value changing between runs and presets, which would change every world.
 
-**What it does not say.** Nothing here says the rivers look good. That is for the phase gate's biome tour. And nothing yet opens the ground but the tests: `run/src/terrain/cave/` (Stage 10.5) is what will call the flood for real, so here whole boxes are opened by hand.
+**What it does not say.** Nothing here says the rivers look good. That is for the phase gate's biome tour. `terrain_generate_box` calls the flood for real, on what `run/src/terrain/cave/` opens. Here whole boxes are opened by hand.

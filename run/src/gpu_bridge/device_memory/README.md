@@ -6,5 +6,5 @@
 **Lifetime:** Process.
 **Threads:** one at a time: main, then `gpu`.
 **Public functions:** those of that header, listed in `cuda/src/device_memory/README.md`.
-**May be called by:** `gpu_bridge`, and later `render`, for blocks it owns.
+**May be called by:** `gpu_bridge` and its parts, and `render` and its parts, for blocks it owns.
 **Depends on:** `gpu_bridge/status`, whose types are in its signatures.
