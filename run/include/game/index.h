@@ -14,6 +14,7 @@
 #include "mob/spawn/index.h"
 #include "player/index.h"
 #include "render/index.h"
+#include "save/index.h"
 #include "terrain/index.h"
 #include "texture/index.h"
 #include "thread/index.h"
@@ -77,7 +78,9 @@ typedef struct game_column_job_t {
     world_map_request_t request; /* 24 */
     _Atomic uint32_t done;       /* 40: release when finished */
     uint8_t in_use;              /* 44 */
-    uint8_t _pad0[19];           /* 45 */
+    uint8_t _pad0[3];            /* 45 */
+    save_world_t *borrowed_save; /* 48: what has changed there, or nullptr */
+    uint8_t _pad1[8];            /* 56 */
 } game_column_job_t;
 static_assert(sizeof(game_column_job_t) == MC_CPU_CACHE_LINE_BYTES);
 
@@ -122,7 +125,8 @@ typedef struct game_t {
     player_t *borrowed_player; /* 864: walking if not nullptr; set before a world opens, and only read after */
     uint32_t commit_next;      /* 872: the job the next step looks at first */
     uint8_t use_was_held;      /* 876: the sim's: the right button, last tick */
-    uint8_t _pad0[3];          /* 877 */
+    uint8_t save_failed_said;  /* 877: the sim's: saving a column on its way out failed, and it has said so */
+    uint8_t _pad0[2];          /* 878 */
     entity_t *borrowed_entity; /* 880: what a player's drops go into; set before a world opens, and only read after */
     item_t *borrowed_item;     /* 888: what a player carries; set before a world opens, and only read after */
     /* A line of its own, written by main every frame. */
@@ -163,7 +167,8 @@ typedef struct game_t {
     uint8_t _pad6[30];         /* 1378 */
     /* A line of its own from here: the sim's. */
     mob_spawn_t mob_spawn; /* 1408: which mobs come and go in the entity store; only with a borrowed_entity */
-    uint8_t _pad7[24];     /* 1448 */
+    save_t *borrowed_save; /* 1448: where a world's changes go; set before a world opens, and only read after */
+    uint8_t _pad7[16];     /* 1456 */
     /* A line of its own and some: main's, but for uncapped. */
     heap_region_t owned_view; /* 1472: a picture at the display's size, once something has needed one */
     game_config_t config;     /* 1488: what this world is running with now */
@@ -213,6 +218,10 @@ void game_item_set(game_t *game, item_t *item);
  * game_open. Without it pictures go out as they were drawn. The screens take a game_item_set and a game_player_set as well, and without
  * them there are none. */
 void game_ui_set(game_t *game, ui_t *ui);
+
+/* From here on, a column that comes in has what a world open in this holds for it over what generates there, and one that goes out leaves its
+ * changes with it. With no world open in it, none of that happens. Must outlive it. Before game_open. */
+void game_save_set(game_t *game, save_t *save);
 
 /* Stops whatever is running, and closes any world. Safe on a zeroed game_t. */
 void game_deinit(game_t *game);

@@ -98,6 +98,8 @@ If the far field will not fit on the card, the world stops at full detail, the f
 
 ## The time of day
 
+A world opened through `game/session` has a `save_t` as well: `game_save_set` before it opens. Each column job then writes what is saved over what it generates, and `game_sim_step` captures a column's changes before it unloads it. If that fails, the column stays, and is offered again next step. See `run/src/save/world/README.md`.
+
 One day is 1200 seconds, of whatever `game_loop_frame` or a script's ticks say has passed, so a script's pictures depend on its ticks and on nothing else. `main` keeps it, as a real frame already knows how long it took, and the gpu thread reads it before each frame. A frame out of date by one is the sun a few millionths of a day behind, so a relaxed atomic is plenty. `SHADE_FEATURE_DAY_CYCLE` off stops the clock where it is. When the sim has a world time of its own to keep (Stage 16.1 saves one), it should move there.
 
 ## The guardian's fork

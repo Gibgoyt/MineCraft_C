@@ -74,6 +74,11 @@ void game_ui_set(game_t *game, ui_t *ui) {
     game->borrowed_ui = ui;
 }
 
+void game_save_set(game_t *game, save_t *save) {
+    ASSERT_ALWAYS(game->open == 0u);
+    game->borrowed_save = save;
+}
+
 void game_mob_set(game_t *game, mob_t *mob) {
     ASSERT_ALWAYS(game->open == 0u);
     game->borrowed_mob = mob;
@@ -286,6 +291,7 @@ bool game_open(game_t *game, const game_config_t *config) {
         game_column_job_t *const job = &game->borrowed_jobs[i];
         memset(job, 0, sizeof(*job));
         job->borrowed_terrain = terrain;
+        job->borrowed_save = game->borrowed_save != nullptr ? &game->borrowed_save->world : nullptr;
         job->borrowed_states = arena_alloc(&game->arena_world, GAME_COLUMN_BYTES, alignof(uint64_t));
         job->borrowed_opened = arena_alloc(&game->arena_world, GAME_COLUMN_VOXELS, alignof(uint64_t));
     }
@@ -506,6 +512,12 @@ static void game_column_job_run(job_worker_t *worker, void *borrowed_job) {
     const terrain_density_box_t box = game_column_box(job->request.chunk_x * (int32_t)COLUMN_SIZE,
                                                       job->request.chunk_y * (int32_t)COLUMN_SIZE, COLUMN_SIZE);
     terrain_generate_box(job->borrowed_terrain, &box, job->borrowed_opened, job->borrowed_states);
+    if (job->borrowed_save != nullptr) {
+        /* Terrain has finished with what it worked in, which is far larger than this needs. */
+        static_assert((uint64_t)GAME_COLUMN_VOXELS >= (uint64_t)SAVE_WORLD_OVERLAY_SCRATCH_BYTES);
+        (void)save_world_column_overlay(job->borrowed_save, job->request.chunk_x, job->request.chunk_y,
+                                        job->borrowed_states, job->borrowed_opened);
+    }
     /* Release gives the sim thread the states just written, and pairs with the acquire in game_columns_commit. */
     atomic_store_explicit(&job->done, 1u, memory_order_release);
 }
@@ -548,6 +560,31 @@ static void game_columns_commit(game_t *game) {
             game->jobs_in_use--;
         }
     }
+}
+
+/* The changes of a column on its way out, so that it may go. If they will not fit, a save now makes room. False if that fails: it has said so, once,
+ * and the column stays, keeping what would be lost, until a later step can do better. */
+static bool game_column_leaving_save(game_t *game, uint32_t slot) {
+    save_t *const save = game->borrowed_save;
+    if (save == nullptr || save->world.open == 0u) {
+        return true;
+    }
+    world_edit_t *const edit = &game->borrowed_world->edit;
+    save_world_status_t status = save_world_capture_column(&save->world, edit, slot);
+    if (status == SAVE_WORLD_FULL) {
+        status = SAVE_WORLD_OK;
+        while (status == SAVE_WORLD_OK && save_world_commit_begin(&save->world)) {
+            status = save_world_commit_write(&save->world);
+        }
+        if (status == SAVE_WORLD_OK) {
+            status = save_world_capture_column(&save->world, edit, slot);
+        }
+    }
+    if (status != SAVE_WORLD_OK && game->save_failed_said == 0u) {
+        LOG_ERROR("game: a column on its way out could not be saved, so it stays: %s", save_world_status_name(status));
+        game->save_failed_said = 1u;
+    }
+    return status == SAVE_WORLD_OK;
 }
 
 static void game_columns_request(game_t *game) {
@@ -610,9 +647,12 @@ void game_sim_step(game_t *game) {
     }
     world_map_leaving_t leaving;
     while (world_map_stream_leaving(map, &leaving)) {
+        if (!game_column_leaving_save(game, leaving.slot)) {
+            break; /* it is offered again next step */
+        }
         (void)world_light_column_leaving(&world->light, leaving.slot);
         world_tick_column_leaving(&world->tick, leaving.slot);
-        world_map_unload(map, leaving.slot); /* nothing to save yet: Stage 16.1 looks here first */
+        world_map_unload(map, leaving.slot);
     }
     game_columns_commit(game);
     game_columns_request(game);
