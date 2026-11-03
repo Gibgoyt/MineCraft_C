@@ -909,7 +909,9 @@ __global__ void shade_water_kernel(const traverse_view_t view, const traverse_ca
     const float32_t entity_t = entity_hits != nullptr ? entity_hits[index].t : TRAVERSE_COARSE_SKY;
     const bool cracked = mark.crack_frame != 0u && hit.offset[0] == mark.crack_cell[0] &&
                          hit.offset[1] == mark.crack_cell[1] && hit.offset[2] == mark.crack_cell[2];
-    if ((features & SHADE_FEATURE_WATER_TINT) == 0u || entity_t < hit.t || cracked) {
+    /* A hole in the water's own texture would be gone on through, and is shade_kernel's. */
+    const bool hole = surface.texel[3] == 0u && (features & SHADE_FEATURE_ALPHA) != 0u;
+    if ((features & SHADE_FEATURE_WATER_TINT) == 0u || entity_t < hit.t || cracked || hole) {
         out[index] = result;
         return;
     }
@@ -1310,7 +1312,8 @@ gpu_status_t shade_frame_entities(gpu_error_t *error, const shade_scene_t *scene
     const shade_ao_pixel_t *ao_last = nullptr;
     shade_ao_pixel_t *ao_next = nullptr;
     const uint64_t ao_bytes = shade_ao_bytes(camera->width, camera->height);
-    const bool ao_blocks = scene->borrowed_temporal != nullptr &&
+    const bool ao_blocks = (ao_on || (scene->features & SHADE_FEATURE_SUN_APART) != 0u) &&
+                           scene->borrowed_temporal != nullptr &&
                            shade_block_fits(scene->borrowed_temporal->borrowed_ao_last, ao_bytes) &&
                            shade_block_fits(scene->borrowed_temporal->borrowed_ao_next, ao_bytes);
     if (ao_on && !ao_blocks) {

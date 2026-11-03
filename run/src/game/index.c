@@ -234,7 +234,7 @@ static bool game_open_parts(game_t *game, const game_config_t *config, int32_t c
             return false;
         }
     }
-    render_frame_features_set(&render->frame, view->features);
+    render_frame_features_set(&render->frame, view->features | SHADE_FEATURE_SUN_APART);
     if ((view->width != config->width || view->height != config->height) && !game_picture_full_room(game)) {
         render_close(render);
         world_close(world);
@@ -564,7 +564,7 @@ static bool game_view_change(game_t *game, game_view_t *now) {
         now->fog_end = game_view_fog_end(now->full_detail);
     }
     render_frame_fog_set(&render->frame, now->fog_end);
-    render_frame_features_set(&render->frame, now->features);
+    render_frame_features_set(&render->frame, now->features | SHADE_FEATURE_SUN_APART);
     return true;
 }
 

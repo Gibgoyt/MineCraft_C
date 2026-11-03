@@ -71,6 +71,7 @@ bool thread_topology_read_from(thread_topology_t *out, const char *sysfs_cpu_dir
     char path[FILE_PATH_BYTES];
     thread_cpu_mask_t present = {.bits = {0}};
     thread_cpu_mask_t first_of_core = {.bits = {0}};
+    uint16_t first_of[THREAD_MAX_CPUS] = {0};
     *out = (thread_topology_t){.cpu_count = 0, .physical_count = 0, .cpu_order = {0}};
 
     for (uint32_t cpu = 0; cpu < THREAD_MAX_CPUS; cpu++) {
@@ -105,6 +106,7 @@ bool thread_topology_read_from(thread_topology_t *out, const char *sysfs_cpu_dir
         while (!thread_mask_has(&siblings, first) || !thread_mask_has(allowed, first)) {
             first++;
         }
+        first_of[cpu] = (uint16_t)first;
         if (first == cpu) {
             thread_mask_add(&first_of_core, cpu);
             out->physical_count++;
@@ -119,8 +121,19 @@ bool thread_topology_read_from(thread_topology_t *out, const char *sysfs_cpu_dir
             }
         }
     }
+    /* With a core each for main and the sim, whatever shares the sim's core goes last, so that what threads.reserved_os leaves free is
+     * that: a worker beside the sim took its tick's p99 from 3.6 to 5.3 ms, turn about in the same minutes. See the phase 17 stage 3 file. */
+    const uint32_t sim_core =
+        physical_first && out->cpu_count > MC_THREADS_MAIN ? out->cpu_order[MC_THREADS_MAIN] : UINT32_MAX;
     for (uint32_t cpu = 0; cpu < THREAD_MAX_CPUS; cpu++) {
-        if (thread_mask_has(&present, cpu) && !(physical_first && thread_mask_has(&first_of_core, cpu))) {
+        if (thread_mask_has(&present, cpu) && !(physical_first && thread_mask_has(&first_of_core, cpu)) &&
+            first_of[cpu] != sim_core) {
+            out->cpu_order[out->cpu_count++] = (uint16_t)cpu;
+        }
+    }
+    for (uint32_t cpu = 0; cpu < THREAD_MAX_CPUS; cpu++) {
+        if (thread_mask_has(&present, cpu) && !(physical_first && thread_mask_has(&first_of_core, cpu)) &&
+            first_of[cpu] == sim_core) {
             out->cpu_order[out->cpu_count++] = (uint16_t)cpu;
         }
     }

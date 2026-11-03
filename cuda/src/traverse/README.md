@@ -41,6 +41,18 @@ From inside a box a ray says `TRAVERSE_FACE_INSIDE` for a slab or stairs. For a 
 
 Plants are a `+` and not Minecraft's `X`: the table holds boxes along the axes, as the plan says, so the two plates are square to the world. No block has a facing yet, so stairs rise towards `+y`, and a ladder or a vine is on the `+y` side: `plans/001-ahmed-bohemoth-minecraft-from-scratch-phase-09-stage-1-non-cube-shapes.md`, issue 1.
 
+## What a ray skips
+
+Besides the tree's own levels, three things let a ray cross empty space without asking each column it passes, none of which changes what it finds:
+
+- **A column's top:** above it, the node is the column up to the top of the world.
+- **A square's top:** `world_buffers_column_t.region_top`, in sections, one above the highest block of the `WORLD_BUFFERS_REGION_COLUMNS` square of columns on the world's own grid. Above it the node is the whole square. It is read with the column, on the same cache line. This is for a ray that goes a long way low over the ground: a reflection, a low sun, a primary ray at the horizon. It is ignored in a slot that holds another column, and 0 means not known.
+- **The world's top:** `traverse_world_t.top_limit`, for a ray going up: at or above this, there is nothing left to meet, so it misses at once. The coarse pass uses it too. It comes from `world_buffers_t.top_limit`, which never comes down, as working that out would take a walk of the table: too high costs only steps.
+
+The tests in `tests/cuda/traverse/` run with all three, against a reference that knows of none. `TRAVERSE_INFO`'s steps count what was done, so they are lower with these.
+
+A step's three-way choice of axis is no branch: all three coordinates are worked out, and one kept. Rays of a warp that go different ways there would otherwise run their sides in turn, on every step.
+
 ## The coarse pass
 
 The proof is in the comment on `traverse_coarse_tile`. In short: all of a tile's rays lie in a cone around its centre ray, so if the bounding box of a stretch of the centre ray, grown by the cone's width at the stretch's end, is empty, then no ray of the tile hits anything in that stretch. It tries a stretch of 16 blocks or a quarter of the distance so far by sections, then one of 16, then one of 4 voxel by voxel, and stops when none is clear. It backs off by a quarter block, so that the cell a ray starts in is not decided by rounding.

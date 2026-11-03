@@ -47,7 +47,8 @@ A row is not sound, and the exit status says so, if the last picture has fewer t
 
 ## Flags
 
-- `--only <text>`: the rows whose name holds this.
+- `--only <text>`: the rows whose name holds this, or `=<name>` for exactly that row.
+- `--features-off <hex>`: take these `SHADE_FEATURE_*` bits away, which is how to see what each effect costs.
 - `--record <file>`: add a line per row to a history. **`bench/world/history.tsv` is the repository's.** New columns go on the end of its first line, and old lines stay.
 - `--label <text>`: says what was measured, in the history, such as the commit.
 - `--shots <dir>`: the last picture of each row as a PNG, to see what a row is looking at.
@@ -60,7 +61,7 @@ To add to the history after a change that may move these numbers:
 
 ## Reading these numbers
 
-Compare a row's card numbers, with its `picture` the same. On this shared machine, with the same pictures, the card's numbers moved up to about 10% between runs. **What runs on the CPU's main thread moved much more:** the `tick` and `past the card` of `night/walk-mobs` come out in two groups, as in the table, with no cause found: see the stage file's issue 1. So take the tick from several runs, and not from one.
+Compare a row's card numbers, with its `picture` the same. On this shared machine, with the same pictures, the card's numbers moved up to about 10% between runs. **What runs on the CPU moved much more:** the `tick` and `past the card` of `night/walk-mobs` come out in two groups, as in the table. Stage 17.3 found out why: **it is the CPU's heat.** The package reaches 93 to 100 C under a run, and when it does, everything on the CPU takes 2 to 3 times as long while the card's numbers do not move: see that stage file's issue 1. So take the tick from several runs, say which group it is, and note that a full run is nearly all in the hot one.
 
 | Run of `night/walk-mobs`, same picture | Tick mean | Tick p99 | Past the card |
 |---|---|---|---|

@@ -11,6 +11,7 @@
 - `world_buffers_init`, `world_buffers_deinit`: start with an empty table, on the card too; forget it all.
 - `world_buffers_set_window`: scrolls the table.
 - `world_buffers_column_set`, `world_buffers_column_clear`: what column a slot holds. A new load's sections go back to the pool.
+- `world_buffers_region_note`: brings up to date the top of the square a column is in, for `cuda/src/traverse/`'s "What a ray skips". `run/src/render/upload/` calls it after a view's columns are in. A far field's levels do not, as `cuda/src/lod/` has its own loop.
 - `world_buffers_section_write`: replaces a section; no bytes empties it.
 - `world_buffers_flush`: sends the table's changes. Nothing a kernel reads changes before this.
 - `world_buffers_probe`: a real kernel looks up voxels through the table and the tree.
