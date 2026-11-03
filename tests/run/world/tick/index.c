@@ -1674,4 +1674,128 @@ TEST(world_open_starts_it_within_what_it_said_it_needs_and_a_step_touches_no_hea
     world_deinit(world);
 }
 
+/* ---- A column as a save gives it ----------------------------------------------------------------------------------------- */
+
+/* A block in a column with nothing told of it, as a column has when it comes in: no log record, and so no wake. */
+static void sim_place_quietly(test_context_t *t, sim_t *sim, int32_t x, int32_t y, int32_t z, uint16_t state) {
+    column_t *const column = world_map_column_at(&sim->map, column_chunk_of(x), column_chunk_of(y));
+    REQUIRE(column != nullptr);
+    uint16_t *const states = test_alloc(t, SECTION_VOXELS * sizeof(uint16_t));
+    section_t *const section = &column->sections[column_section_of(z)];
+    section_blocks_export(section, states);
+    states[section_voxel_index(column_local_of(x), column_local_of(y), column_section_local_of(z))] = state;
+    REQUIRE(section_blocks_import(section, &sim->pool, states));
+}
+
+TEST(what_a_save_held_before_its_first_tick_wakes_when_its_column_comes_in) {
+    sim_t *const sim = sim_begin(t);
+    sim_floor(t, sim, BLOCK_ID_STONE);
+    (void)sim_settle(t, sim);
+    sim_place_quietly(t, sim, SIM_MID, SIM_MID, 1, BLOCK_ID_WATER);
+    sim_place_quietly(t, sim, 3, 3, 6, BLOCK_ID_SAND);
+    sim_place_quietly(t, sim, 13, 3, 1, BLOCK_ID_WHEAT_STAGE_1);
+    sim_place_quietly(t, sim, 3, 13, 1, BLOCK_ID_FARMLAND);
+    sim_place_quietly(t, sim, 3, 13, 2, BLOCK_ID_STONE);
+
+    /* As it stands, and this is the trouble: all of it would wait forever. */
+    sim_run(sim, 40u);
+    CHECK_EQ_U64(world_tick_pending(&sim->tick), 0u);
+    CHECK_EQ_U64(sim_at(t, sim, SIM_MID + 1, SIM_MID, 1), BLOCK_ID_AIR);
+    CHECK_EQ_U64(sim_at(t, sim, 3, 3, 6), BLOCK_ID_SAND);
+
+    world_tick_column_saved(&sim->tick, sim_slot(sim, 0, 0), 0, 0, 1ull << column_section_of(1));
+    (void)sim_settle(t, sim);
+    CHECK_EQ_U64(sim_at(t, sim, SIM_MID + 1, SIM_MID, 1), BLOCK_ID_WATER);
+    CHECK_EQ_U64(world_tick_fluid_level(&sim->tick, SIM_MID + 1, SIM_MID, 1), 1u);
+    CHECK_EQ_U64(sim_at(t, sim, 3, 3, 6), BLOCK_ID_AIR);
+    CHECK_EQ_U64(sim_at(t, sim, 3, 3, 1), BLOCK_ID_SAND);
+    CHECK_EQ_U64(sim_at(t, sim, 13, 3, 1), BLOCK_ID_AIR);
+    CHECK_EQ_U64(sim_at(t, sim, 3, 13, 1), BLOCK_ID_DIRT);
+    CHECK_EQ_U64(world_tick_pending(&sim->tick), 0u);
+    sim_end(sim);
+}
+
+TEST(a_sea_whose_section_was_saved_wakes_only_where_it_has_somewhere_to_go) {
+    sim_t *const sim = sim_begin(t);
+    /* All of a section water, at a height where nothing else is: its outside can go somewhere, and its inside cannot. */
+    const int32_t z_low = 64;
+    const uint32_t section = column_section_of(z_low);
+    REQUIRE(column_section_local_of(z_low) == 0u);
+    column_t *const column = world_map_column_at(&sim->map, 0, 0);
+    uint16_t *const states = test_alloc(t, SECTION_VOXELS * sizeof(uint16_t));
+    for (uint32_t i = 0u; i < SECTION_VOXELS; i++) {
+        states[i] = BLOCK_ID_WATER;
+    }
+    REQUIRE(section_blocks_import(&column->sections[section], &sim->pool, states));
+    world_tick_column_saved(&sim->tick, sim_slot(sim, 0, 0), 0, 0, 1ull << section);
+    /* Four sides of 16 by 16 less what they share, and the bottom's inner 14 by 14. Not 4096. */
+    CHECK_EQ_U64(world_tick_pending(&sim->tick), 16u * (16u * 4u - 4u) + 14u * 14u);
+    sim_end(sim);
+}
+
+/* A source against the edge of a column that has a saved section beside it, whichever came in first. */
+static void sim_seam_check(test_context_t *t, bool saved_first) {
+    sim_t *const sim = sim_begin(t);
+    sim_floor(t, sim, BLOCK_ID_STONE);
+    (void)sim_settle(t, sim);
+    const uint64_t mask = 1ull << column_section_of(1);
+    sim_unload(sim, 1, 0);
+    if (saved_first) {
+        world_tick_column_saved(&sim->tick, sim_slot(sim, 0, 0), 0, 0, mask);
+    }
+    sim_reload(t, sim, 1, 0);
+    (void)sim_settle(t, sim);
+    const uint32_t slot = sim_slot(sim, 1, 0);
+    sim_place_quietly(t, sim, 16, SIM_MID, 1, BLOCK_ID_WATER);
+    CHECK_EQ_U64(world_tick_pending(&sim->tick), 0u);
+    if (saved_first) {
+        /* Its own sections are none: what it finds is what faces it. */
+        world_tick_column_saved(&sim->tick, slot, 1, 0, 0u);
+    } else {
+        /* It knows nothing of this, and the one with sections is what looks over the edge. */
+        world_tick_column_saved(&sim->tick, slot, 1, 0, 0u);
+        CHECK_EQ_U64(world_tick_pending(&sim->tick), 0u);
+        world_tick_column_saved(&sim->tick, sim_slot(sim, 0, 0), 0, 0, mask);
+    }
+    CHECK_EQ_U64(world_tick_pending(&sim->tick), 1u);
+    (void)sim_settle(t, sim);
+    CHECK_EQ_U64(sim_at(t, sim, 15, SIM_MID, 1), BLOCK_ID_WATER);
+    CHECK_EQ_U64(sim_at(t, sim, 17, SIM_MID, 1), BLOCK_ID_WATER);
+    sim_end(sim);
+}
+
+TEST(a_column_coming_in_after_a_saved_neighbour_wakes_along_where_they_meet) {
+    sim_seam_check(t, true);
+}
+
+TEST(a_saved_column_coming_in_after_its_neighbour_wakes_along_where_they_meet) {
+    sim_seam_check(t, false);
+}
+
+TEST(looking_over_a_whole_saved_column_takes_no_more_than_a_few_ticks_of_the_sim) {
+    sim_t *const sim = sim_begin(t);
+    const uint64_t all = COLUMN_SECTIONS == 64u ? UINT64_MAX : (1ull << COLUMN_SECTIONS) - 1u;
+    const int64_t one_started = time_now_ns();
+    world_tick_column_saved(&sim->tick, sim_slot(sim, 0, 0), 0, 0, 1ull);
+    const int64_t one_ns = time_now_ns() - one_started;
+    const int64_t started = time_now_ns();
+    world_tick_column_saved(&sim->tick, sim_slot(sim, 0, 0), 0, 0, all);
+    const int64_t took_ns = time_now_ns() - started;
+    printf("  one saved section %.3f ms, all %u of a column %.3f ms\n", (libc_double_t)time_ns_to_ms(one_ns),
+           (uint32_t)COLUMN_SECTIONS, (libc_double_t)time_ns_to_ms(took_ns));
+    /* The rarest column there is, once, on a busy machine and in any build: a tick is 50 ms. What each build really takes is in Stage 16.2's issue 9. */
+    CHECK(time_ns_to_ms(took_ns) < 250.0f64);
+    sim_end(sim);
+}
+
+TEST(a_column_with_nothing_saved_beside_it_is_left_at_rest) {
+    sim_t *const sim = sim_begin(t);
+    sim_floor(t, sim, BLOCK_ID_STONE);
+    (void)sim_settle(t, sim);
+    sim_place_quietly(t, sim, 16, SIM_MID, 1, BLOCK_ID_WATER);
+    world_tick_column_saved(&sim->tick, sim_slot(sim, 1, 0), 1, 0, 0u);
+    CHECK_EQ_U64(world_tick_pending(&sim->tick), 0u);
+    sim_end(sim);
+}
+
 TEST_MAIN()

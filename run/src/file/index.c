@@ -293,7 +293,10 @@ file_status_t file_rename(const char *from_path, const char *to_path) {
 /* EEXIST is only fine if what exists is a directory. */
 static file_status_t file_make_one_dir(const char *path) {
     if (mkdir(path, FILE_DIR_PERMISSIONS) == 0) {
-        return FILE_OK;
+        /* Made is not kept until what holds it has been synced: what comes to be written in it would go with it in a power cut. */
+        char parent[FILE_PATH_BYTES];
+        file_parent_of(path, parent);
+        return file_sync_dir(parent);
     }
     if (errno != EEXIST) {
         return file_status_from_errno();

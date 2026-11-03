@@ -1,6 +1,6 @@
 # tests/run/world/tick
 
-**Purpose:** ctest `run_world_sim`. Tests `run/src/world/tick/`: water and lava worked out by hand and against a separate flood fill, consistency on rough ground, water and lava meeting, falling blocks, leaf decay, crops, grass, columns coming and going, running out of nodes, pages and pool, the same world from the same seed, and real terrain left alone.
+**Purpose:** ctest `run_world_sim`. Tests `run/src/world/tick/`: water and lava worked out by hand and against a separate flood fill, consistency on rough ground, water and lava meeting, falling blocks, leaf decay, crops, grass, columns coming and going, a column as a save gives it, waking what it held and what faces it, whichever came first, running out of nodes, pages and pool, the same world from the same seed, and real terrain left alone.
 **Tier:** test.
 **Owns:** nothing. Memory comes from the harness's test arena, and `world_open`'s test from `heap`.
 **Lifetime:** One run.

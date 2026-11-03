@@ -326,7 +326,7 @@ static bool save_world_capture_section(save_world_t *save, const column_t *colum
     section_blocks_export(&column->sections[section], save->borrowed_states);
     /* Past used, no reader looks: so this needs no lock, and only the moment it comes to be seen does. */
     uint8_t *const record = pending->borrowed_bytes + pending->used;
-    uint32_t bytes = save_world_record_encode(save->borrowed_states, save->borrowed_palette_slots, record);
+    uint32_t bytes = save_world_record_encode(save->borrowed_states, save->borrowed_states + SECTION_VOXELS, record);
     const uint8_t *const levels =
         save->borrowed_tick != nullptr ? world_tick_section_levels(save->borrowed_tick, column_slot, section) : nullptr;
     if (levels != nullptr) {
@@ -363,16 +363,56 @@ static bool save_world_capture_section(save_world_t *save, const column_t *colum
     return true;
 }
 
+/* Tells the far field that what it has of this column may be out of date. By the sim, or whichever one thread is capturing. */
+static void save_world_far_note(save_world_t *save, int32_t chunk_x, int32_t chunk_y) {
+    save_world_far_t *const far = save->borrowed_far;
+    const uint32_t head = atomic_load_explicit(&far->head, memory_order_relaxed);
+    /* Acquire pairs with the release in save_world_far_next: the reader has finished with what it has moved past. */
+    const uint32_t tail = atomic_load_explicit(&far->tail, memory_order_acquire);
+    if (head - tail >= SAVE_WORLD_FAR_RING) {
+        atomic_fetch_add_explicit(&far->lost, 1u, memory_order_relaxed);
+        return;
+    }
+    const uint32_t place = head & (SAVE_WORLD_FAR_RING - 1u);
+    far->ring[place * 2u] = chunk_x;
+    far->ring[place * 2u + 1u] = chunk_y;
+    /* Release gives the reader the pair just written. */
+    atomic_store_explicit(&far->head, head + 1u, memory_order_release);
+}
+
+bool save_world_far_next(save_world_t *save, int32_t *out_chunk_x, int32_t *out_chunk_y) {
+    save_world_far_t *const far = save->borrowed_far;
+    const uint32_t tail = atomic_load_explicit(&far->tail, memory_order_relaxed);
+    /* Acquire pairs with the release in save_world_far_note. */
+    if (tail == atomic_load_explicit(&far->head, memory_order_acquire)) {
+        return false;
+    }
+    const uint32_t place = tail & (SAVE_WORLD_FAR_RING - 1u);
+    *out_chunk_x = far->ring[place * 2u];
+    *out_chunk_y = far->ring[place * 2u + 1u];
+    atomic_store_explicit(&far->tail, tail + 1u, memory_order_release);
+    return true;
+}
+
+bool save_world_far_lost_take(save_world_t *save) {
+    /* Only a flag: whatever is done about it reads the sections themselves, under their own lock. */
+    return atomic_exchange_explicit(&save->borrowed_far->lost, 0u, memory_order_relaxed) != 0u;
+}
+
 /* What of mask it could not capture. */
 static uint64_t save_world_capture_mask(save_world_t *save, const column_t *column, uint32_t slot, uint64_t mask) {
+    const uint64_t asked = mask;
     while (mask != 0u) {
         const uint32_t section = (uint32_t)__builtin_ctzll(mask);
         if (!save_world_capture_section(save, column, slot, section)) {
-            return mask;
+            break;
         }
         mask &= mask - 1u;
     }
-    return 0u;
+    if (mask != asked) {
+        save_world_far_note(save, column->chunk_x, column->chunk_y);
+    }
+    return mask;
 }
 
 save_world_status_t save_world_capture_dirty(save_world_t *save, world_edit_t *edit) {
@@ -738,8 +778,8 @@ save_world_status_t save_world_open(save_world_t *save, arena_t *arena, const ch
     save->borrowed_table_new = arena_alloc(arena, SAVE_WORLD_TABLE_BYTES, 8u);
     save->borrowed_manifest_bytes = arena_alloc(arena, SAVE_WORLD_MANIFEST_BYTES_MAX, 8u);
     save->borrowed_record = arena_alloc(arena, SAVE_WORLD_ENTRY_BYTES_MAX, 8u);
-    save->borrowed_states = arena_alloc_array(arena, SECTION_VOXELS, sizeof(uint16_t), alignof(uint16_t));
-    save->borrowed_palette_slots = arena_alloc_zeroed(arena, 65536u * sizeof(uint16_t), alignof(uint16_t));
+    save->borrowed_states = arena_alloc_zeroed(arena, (SECTION_VOXELS + 65536u) * sizeof(uint16_t), alignof(uint16_t));
+    save->borrowed_far = arena_alloc_zeroed(arena, sizeof(save_world_far_t), alignof(save_world_far_t));
     save->borrowed_directory = arena_alloc(arena, FILE_PATH_BYTES, 1u);
     save->seed = seed;
     save->table_hash = save_world_table_hash();
@@ -1349,13 +1389,8 @@ static bool save_world_overlay_file(save_world_t *save, const save_world_region_
     return true;
 }
 
-uint64_t save_world_column_overlay(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
-                                   uint8_t *scratch) {
-    return save_world_column_overlay_levels(save, chunk_x, chunk_y, states, nullptr, nullptr, scratch);
-}
-
-uint64_t save_world_column_overlay_levels(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
-                                          uint8_t *levels, uint64_t *out_levels_mask, uint8_t *scratch) {
+static uint64_t save_world_overlay_read(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
+                                        uint8_t *levels, uint64_t *out_levels_mask, uint8_t *scratch) {
     uint64_t levels_mask = 0u;
     if (out_levels_mask != nullptr) {
         *out_levels_mask = 0u;
@@ -1411,11 +1446,56 @@ uint64_t save_world_column_overlay_levels(save_world_t *save, int32_t chunk_x, i
             break;
         }
     }
-    if (mask != 0u) {
-        atomic_fetch_add_explicit(&save->sections_loaded, (uint64_t)__builtin_popcountll(mask), memory_order_relaxed);
-    }
     if (out_levels_mask != nullptr) {
         *out_levels_mask = levels_mask;
     }
     return mask;
+}
+
+uint64_t save_world_column_overlay_levels(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
+                                          uint8_t *levels, uint64_t *out_levels_mask, uint8_t *scratch) {
+    const uint64_t mask = save_world_overlay_read(save, chunk_x, chunk_y, states, levels, out_levels_mask, scratch);
+    if (mask != 0u) {
+        atomic_fetch_add_explicit(&save->sections_loaded, (uint64_t)__builtin_popcountll(mask), memory_order_relaxed);
+    }
+    return mask;
+}
+
+uint64_t save_world_column_overlay(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
+                                   uint8_t *scratch) {
+    return save_world_column_overlay_levels(save, chunk_x, chunk_y, states, nullptr, nullptr, scratch);
+}
+
+/* ---- For the far field ----------------------------------------------------------------------------------------------- */
+
+/* What save_world_far_line keeps at the start of its scratch. */
+typedef struct save_world_far_cache_t {
+    uint64_t mask;     /* 0: the sections it holds */
+    int32_t chunk_x;   /* 8 */
+    int32_t chunk_y;   /* 12 */
+    uint8_t filled;    /* 16: zero bytes say nothing has been read yet */
+    uint8_t _pad0[47]; /* 17 */
+} save_world_far_cache_t;
+static_assert(sizeof(save_world_far_cache_t) == 64);
+
+void save_world_far_line(void *borrowed_save, int32_t x, int32_t y, uint16_t *out, uint8_t *scratch) {
+    save_world_far_cache_t *const cache = (save_world_far_cache_t *)(void *)scratch;
+    uint16_t *const states = (uint16_t *)(void *)(scratch + sizeof(*cache));
+    const int32_t chunk_x = column_chunk_of(x), chunk_y = column_chunk_of(y);
+    if (cache->filled == 0u || cache->chunk_x != chunk_x || cache->chunk_y != chunk_y) {
+        cache->mask = save_world_overlay_read(borrowed_save, chunk_x, chunk_y, states, nullptr, nullptr,
+                                              scratch + sizeof(*cache) +
+                                                  (uint64_t)COLUMN_SECTIONS * SECTION_VOXELS * sizeof(uint16_t));
+        cache->chunk_x = chunk_x;
+        cache->chunk_y = chunk_y;
+        cache->filled = 1u;
+    }
+    const uint32_t local_x = column_local_of(x), local_y = column_local_of(y);
+    for (uint64_t left = cache->mask; left != 0u; left &= left - 1u) {
+        const uint32_t section = (uint32_t)__builtin_ctzll(left);
+        for (uint32_t z = 0u; z < SECTION_SIZE; z++) {
+            out[section * SECTION_SIZE + z] =
+                states[(uint64_t)section * SECTION_VOXELS + section_voxel_index(local_x, local_y, z)];
+        }
+    }
 }

@@ -44,6 +44,10 @@ static_assert(RENDER_LOD_RADIUS_COLUMNS > RENDER_LOD_MARGIN_COLUMNS);
  * is made from. Called on workers, so it reads only what cannot change, and writes only out. */
 typedef void (*render_lod_sample_t)(const void *borrowed_context, int32_t x, int32_t y, uint32_t shift, uint16_t *out);
 
+/* What may have changed from what sample says, written over out, for the same place. Also on workers, at the same time as each other, unlike sample free to read
+ * what is changing. scratch is the job's, from one call to the next, 64 byte aligned and as big as was asked for, with its first 64 bytes zero to begin with. */
+typedef void (*render_lod_overlay_t)(void *borrowed_context, int32_t x, int32_t y, uint16_t *out, uint8_t *scratch);
+
 /* Which levels a world has. */
 typedef struct render_lod_plan_t {
     uint8_t shifts[LOD_LEVELS_MAX]; /* 0: a voxel is 1 << shift blocks each way, finest first */
@@ -74,7 +78,8 @@ typedef struct render_lod_job_t {
     _Atomic uint32_t done;                                     /* 36: release when finished */
     uint8_t level;                                             /* 40 */
     uint8_t in_use;                                            /* 41: the gpu thread's */
-    uint8_t _pad0[22];                                         /* 42 */
+    uint8_t stale;     /* 42: the gpu thread's: what this reads changed once it had begun */
+    uint8_t _pad0[21]; /* 43 */
 } render_lod_job_t;
 static_assert(sizeof(render_lod_job_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(alignof(render_lod_job_t) == MC_CPU_CACHE_LINE_BYTES);
@@ -112,8 +117,11 @@ typedef struct render_lod_t {
     const void *borrowed_sample_context;                /* 1872 */
     uint32_t level_count;                               /* 1880 */
     uint32_t jobs_in_use;                               /* 1884 */
-    uint8_t no_room_said;                               /* 1888 */
-    uint8_t _pad0[31];                                  /* 1889 */
+    render_lod_overlay_t overlay;                       /* 1888: or nullptr */
+    void *borrowed_overlay_context;                     /* 1896 */
+    uint64_t overlay_scratch_bytes;                     /* 1904 */
+    uint8_t no_room_said;                               /* 1912 */
+    uint8_t _pad0[7];                                   /* 1913 */
 } render_lod_t;
 static_assert(sizeof(render_lod_t) == 1920);
 static_assert(alignof(render_lod_t) == MC_CPU_CACHE_LINE_BYTES);
@@ -145,6 +153,16 @@ void render_lod_sample_terrain(const void *borrowed_context, int32_t x, int32_t 
 gpu_status_t render_lod_init(render_lod_t *lod, arena_t *arena, device_memory_t *memory, job_system_t *job,
                              const render_lod_plan_t *plan, const device_block_t *tables, const device_block_t *pools,
                              const device_block_t *hits, render_lod_sample_t sample, const void *sample_context);
+
+/* From now on what is sampled has this written over it. Before the first render_lod_frame. */
+void render_lod_overlay_set(render_lod_t *lod, render_lod_overlay_t overlay, void *borrowed_context,
+                            uint64_t scratch_bytes);
+
+/* What is under a column of the world, in chunks, has changed: each level makes the column it falls in again, showing the old one until the new is ready. */
+void render_lod_column_changed(render_lod_t *lod, int32_t chunk_x, int32_t chunk_y);
+
+/* All of them, for when it is no longer known which. */
+void render_lod_all_changed(render_lod_t *lod);
 
 /* Waits for any job still running, since its memory is about to go. Safe on zero bytes. */
 void render_lod_deinit(render_lod_t *lod);

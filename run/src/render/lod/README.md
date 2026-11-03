@@ -4,13 +4,15 @@
 **Tier:** Arena. Takes what it holds from the arena its parent gives it, once. Each column's working memory is its worker's Job arena. The levels' blocks on the card are the Owner's.
 **Owns:** nothing of its own. In its arena: the jobs, what each has encoded, and each level's host copy of its table.
 **Lifetime:** from `render_open_lod` to `render_close_lod`, within one world's frame.
-**Threads:** the `gpu` thread for everything here, or whichever one thread a run has. The columns are made on workers, which read only the terrain, and touch nothing but their own job and staging until `done`.
+**Threads:** the `gpu` thread for everything here, or whichever one thread a run has. The columns are made on workers, which read the terrain and, through an overlay if one is set, what is saved, and touch nothing but their own job and staging until `done`.
 **Public functions** (`run/include/render/lod/index.h`):
 
 - `render_lod_plan`: which levels a world has, for how far it is drawn block by block and how far in all.
 - `render_lod_table_bytes`, `render_lod_pool_bytes`, `render_lod_arena_bytes`: sizes for the Owner.
 - `render_lod_cells_from_column`: one sampled column to its coarse voxels, on its own for a test to hold to paper.
 - `render_lod_sample_terrain`: a sample of the world's own ground.
+- `render_lod_overlay_set`: what is written over each sample, with its own scratch from the job's arena.
+- `render_lod_column_changed`, `render_lod_all_changed`: a column is made again, in each level, with the old one shown until the new one has come. One a worker has begun goes round again when it is done, as it may already have read past what changed.
 - `render_lod_init`, `render_lod_deinit`: a pair.
 - `render_lod_frame`: one frame's worth: follows the eye, sends what is finished, up to a budget, and asks for what is next. Never waits.
 - `render_lod_idle`: whether all that is wanted is on the card.

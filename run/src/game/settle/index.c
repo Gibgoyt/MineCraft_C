@@ -31,6 +31,7 @@ bool game_settle(game_t *game) {
             return false;
         }
         const uint64_t far_built = render->borrowed_lod != nullptr ? render->borrowed_lod->stats.columns_built : 0u;
+        game_far_changes_take(game);
         if (render->borrowed_lod != nullptr &&
             render_lod_frame(render->borrowed_lod, game->camera.position) != GPU_STATUS_OK) {
             return false; /* it has said why */

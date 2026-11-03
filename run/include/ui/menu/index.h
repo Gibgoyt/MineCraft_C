@@ -71,6 +71,9 @@ void ui_menu_settings_enable(ui_menu_t *menu);
 /* Goes to a screen with nothing left over from the last. The list looks at the disk, here and nowhere else. */
 void ui_menu_open(ui_menu_t *menu, ui_menu_screen_t screen);
 
+/* Says this on the screen now showing, in place of anything it said, until the next ui_menu_open. Cut short if it does not fit. */
+void ui_menu_message_set(ui_menu_t *menu, const char *text);
+
 /* One frame of the screen, between ui_frame_begin_* and ui_frame_end, over all of the canvas. escape is that Esc was pressed,
  * which goes back one screen. Never logs: under KMS nothing can read a log while a frame is drawn, so what went wrong is shown
  * in message. */

@@ -48,7 +48,7 @@ set(MC_C_FLAGS
 set(MC_FRAME_LIMIT_BYTES 16384)
 # ASan's red zones are its own and not this program's: app_t, 15104 bytes on main's stack, took a frame of 18112 there. Every other preset holds to
 # the number above, and they are what says whether this code fits.
-if(MC_PRESET STREQUAL "sanitize")
+if(MC_PRESET STREQUAL "sanitize" OR MC_PRESET STREQUAL "tsan")
   set(MC_FRAME_LIMIT_BYTES 32768)
 endif()
 list(APPEND MC_C_FLAGS -Wframe-larger-than=${MC_FRAME_LIMIT_BYTES})
@@ -74,6 +74,14 @@ elseif(MC_PRESET STREQUAL "sanitize")
   list(APPEND MC_CUDA_FLAGS -g)
   list(APPEND MC_NASM_FLAGS -g -Fdwarf)
   list(APPEND MC_LINK_FLAGS ${mc_sanitize})
+elseif(MC_PRESET STREQUAL "tsan")
+  # Finds what threads do to each other's memory. What is written in NASM or runs on the card is not watched: neither shares anything but through C.
+  set(mc_tsan -fsanitize=thread -fno-omit-frame-pointer)
+  list(APPEND MC_C_FLAGS -O1 -g3 ${mc_tsan} -Wframe-larger-than=32768)
+  set(MC_C_CALLGRAPH ON)
+  list(APPEND MC_CUDA_FLAGS -g)
+  list(APPEND MC_NASM_FLAGS -g -Fdwarf)
+  list(APPEND MC_LINK_FLAGS ${mc_tsan})
 elseif(MC_PRESET STREQUAL "release")
   # =auto is -flto with parallel LTRANS jobs. Code generation happens at the link, so the link has to
   # repeat the flags that shape it. No -ffast-math in any preset: same seed, same world.

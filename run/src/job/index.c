@@ -99,7 +99,7 @@ void job_group_wait(const job_system_t *system, job_group_t *group) {
  * job just queued and stays up, or that one does, and this load sees the worker's count. The epoch moves before the wake
  * so that a worker between its scan and its futex call returns at once. */
 static void job_wake_one(job_system_t *system) {
-    atomic_thread_fence(memory_order_seq_cst);
+    thread_fence_seq_cst();
     if (atomic_load_explicit(&system->sleeper_count, memory_order_relaxed) != 0) {
         atomic_fetch_add_explicit(&system->wake_epoch, 1u, memory_order_release);
         job_futex_wake(&system->wake_epoch, 1);
@@ -133,7 +133,7 @@ static void job_worker_sleep(job_worker_t *worker) {
     job_system_t *const system = worker->borrowed_system;
     const uint32_t epoch = atomic_load_explicit(&system->wake_epoch, memory_order_acquire);
     atomic_fetch_add_explicit(&system->sleeper_count, 1u, memory_order_relaxed);
-    atomic_thread_fence(memory_order_seq_cst);
+    thread_fence_seq_cst();
     if (!job_any_queued(system) && atomic_load_explicit(&system->stopping, memory_order_acquire) == 0) {
         job_count(&worker->sleeps);
         job_futex_wait(&system->wake_epoch, epoch);
@@ -174,7 +174,7 @@ static job_t job_slot_read(job_slot_t *slot) {
 static bool job_queue_pop(job_worker_t *worker, job_t *out) {
     const int64_t bottom = atomic_load_explicit(&worker->bottom, memory_order_relaxed) - 1;
     atomic_store_explicit(&worker->bottom, bottom, memory_order_release);
-    atomic_thread_fence(memory_order_seq_cst);
+    thread_fence_seq_cst();
     int64_t top = atomic_load_explicit(&worker->top, memory_order_relaxed);
     if (top > bottom) {
         atomic_store_explicit(&worker->bottom, bottom + 1, memory_order_release);
@@ -196,7 +196,7 @@ static bool job_queue_pop(job_worker_t *worker, job_t *out) {
  * read is the job, and if it fails it is thrown away. */
 static bool job_queue_steal(job_worker_t *victim, job_t *out) {
     int64_t top = atomic_load_explicit(&victim->top, memory_order_acquire);
-    atomic_thread_fence(memory_order_seq_cst);
+    thread_fence_seq_cst();
     const int64_t bottom = atomic_load_explicit(&victim->bottom, memory_order_acquire);
     if (top >= bottom) {
         return false;
