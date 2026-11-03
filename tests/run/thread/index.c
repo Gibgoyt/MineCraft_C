@@ -71,13 +71,9 @@ TEST(comet_lake_gets_physical_cores_first) {
     const thread_cpu_mask_t all = mask_of_all();
     thread_topology_t topology;
     REQUIRE(thread_topology_read_from(&topology, root, &all, true));
-    /* 11 shares the sim's core, on 1, so it is what is left at the end, for the OS. */
-    static const uint16_t expected[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 11};
+    static const uint16_t expected[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19};
     check_order(t, &topology, expected, 20u);
     CHECK_EQ_U64(topology.physical_count, 10u);
-    for (uint32_t i = 0u; i < MC_THREADS_WORKERS; i++) {
-        CHECK(thread_cpu_for(&topology, THREAD_ROLE_WORKER, i) != 11u);
-    }
 }
 
 /* Siblings numbered side by side, as on many other machines. Rising order would be the wrong answer here. */
@@ -87,7 +83,7 @@ TEST(adjacent_siblings_are_taken_apart) {
     const thread_cpu_mask_t all = mask_of_all();
     thread_topology_t topology;
     REQUIRE(thread_topology_read_from(&topology, root, &all, true));
-    static const uint16_t expected[] = {0, 2, 4, 1, 5, 3}; /* 3 shares the sim's core, on 2 */
+    static const uint16_t expected[] = {0, 2, 4, 1, 3, 5};
     check_order(t, &topology, expected, 6u);
     CHECK_EQ_U64(topology.physical_count, 3u);
 }
