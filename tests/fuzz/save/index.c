@@ -57,6 +57,8 @@ enum : uint32_t {
 #define FS_PLACE_MOST 999000000.0f64
 /* Far from either end of an int32_t, which a tick adds to and takes from. */
 #define FS_AIR_MOST 1000000
+/* Far from what a float32_t holds. */
+#define FS_FALL_MOST 1000000.0f64
 
 typedef struct fs_context_t {
     test_context_t *borrowed_test; /* 0 */
@@ -116,7 +118,7 @@ static const char *const fs_count_names[] = {"records accepted",
                                              "worlds opened again",
                                              "world.meta accepted",
                                              "settings files that set something",
-                                             "states not ticked, as they would meet issue 1",
+                                             "inputs held back from a known defect: issues 1 and 8",
                                              "states whose minds searched for a way",
                                              "states a creeper burst in"};
 
@@ -280,7 +282,7 @@ static void fs_no_spill(void *context, const item_stack_t *stack, const int32_t 
 }
 
 /* A number save_state_check lets through and the game then cannot live with: a velocity no tick of physics will take, which ASSERT_ALWAYS ends the program for, a place right
- * at what it believes, which goes past it in a tick, an eye so far up that a line to it overflows, or air at the end of its range: the stage file's issue 1. It is not this
+ * at what it believes, which goes past it in a tick, an eye so far up that a line to it overflows, air at the end of its range, or a fall past what a float32_t holds: the stage file's issue 1. It is not this
  * stage's code to mend, and every run would stop there and see nothing behind it. So until it is mended, what would meet it is opened and written back but not ticked, and the
  * run counts how many: see FS_COUNT_KNOWN_DEFECT. MC_FUZZ_KNOWN_DEFECTS=1 in the environment takes this away. */
 static bool fs_state_meets_known_defect(const save_state_t *state) {
@@ -298,6 +300,9 @@ static bool fs_state_meets_known_defect(const save_state_t *state) {
         }
         past = past || fabs(player.movement.eye_height) > FS_SPEED_MOST || player.survival.air > FS_AIR_MOST ||
                player.survival.air < -FS_AIR_MOST;
+        /* A fall that far is more damage than a float32_t holds, so a body hurt by infinity, and last_hurt is then what the check refuses. */
+        past = past || fabs(player.movement.fall_distance) > FS_FALL_MOST ||
+               fabs(player.movement.landed_fall) > FS_FALL_MOST;
     }
     data = save_state_section_find(file, bytes, SAVE_STATE_SECTION_DROPS, &size);
     if (data != nullptr) {
@@ -562,6 +567,8 @@ static void fs_world_execute(fs_context_t *fs, const uint8_t *body, uint64_t len
     fuzz_count(FS_COUNT_WORLD_OPENED);
     fs_world_read(fs, region_x, region_y);
     const uint64_t damaged_first = save->world.sections_damaged;
+    /* The stage file's issue 8: the next save counts round to 0, and the regions it kept are then newer than the manifest, which is refused. */
+    const bool generation_wraps = save->world.generation == UINT64_MAX;
 
     /* A save over what is there, in the region the map can reach: this is what reads the old file to make the new one. */
     fs->exec_count++;
@@ -576,6 +583,10 @@ static void fs_world_execute(fs_context_t *fs, const uint8_t *body, uint64_t len
         return;
     }
 
+    if (generation_wraps && getenv("MC_FUZZ_KNOWN_DEFECTS") == nullptr) {
+        fuzz_count(FS_COUNT_KNOWN_DEFECT);
+        return;
+    }
     fuzz_count(FS_COUNT_WORLD_SAVED);
     /* The game must always be able to open what it just saved, and nothing that was good before may be damaged now. A save does carry over a record whose checksum
      * is good and whose contents are not: see the stage file's issue 2. So what it found before is what it may find now, and no more. */

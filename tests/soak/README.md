@@ -16,6 +16,7 @@
 | Flag | Meaning | Default |
 |---|---|---|
 | `--seconds <n>` | How long. A round is not started if it might run past this, and a session still going a sixty-fourth of this past it is stopped, not judged | 14100, so as to end inside the timeout above |
+| `--stop-at <n>` | Stop a session this many seconds after the start instead, to see that stopping work | Worked out from `--seconds` |
 | `--program <path>` | The game | `minecraft_c` next to this |
 | `--report <path>` | Also write what it says here | None |
 | `--keep` | Keep the directory | Only after a failure |

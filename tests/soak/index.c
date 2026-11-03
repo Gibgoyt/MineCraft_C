@@ -104,8 +104,9 @@ typedef struct soak_t {
     uint8_t _pad0[3];              /* 149 */
     uint64_t reentries;            /* 152: sessions that went back to the title and into the world again */
     uint64_t kills;                /* 160: sessions killed once they had saved */
+    uint64_t stop_seconds;         /* 168: from --stop-at; 0: as worked out from seconds */
 } soak_t;
-static_assert(sizeof(soak_t) == 168);
+static_assert(sizeof(soak_t) == 176);
 
 [[gnu::format(printf, 2, 3)]] static void soak_say(const soak_t *soak, const char *format, ...);
 
@@ -852,6 +853,8 @@ static bool soak_arguments_read(test_context_t *t, soak_t *soak, const char **ou
             return false;
         } else if (strcmp(name, "--seconds") == 0) {
             soak->seconds = strtoull(value, nullptr, 10);
+        } else if (strcmp(name, "--stop-at") == 0) {
+            soak->stop_seconds = strtoull(value, nullptr, 10);
         } else if (strcmp(name, "--program") == 0) {
             soak->program = value;
         } else if (strcmp(name, "--report") == 0) {
@@ -918,6 +921,9 @@ TEST(soak) {
     const int64_t started_ns = time_now_ns();
     const int64_t until_ns = started_ns + (int64_t)soak->seconds * TIME_NS_PER_SECOND;
     soak_stop_ns = until_ns + (int64_t)(soak->seconds / SOAK_OVERRUN_ONE_IN) * TIME_NS_PER_SECOND;
+    if (soak->stop_seconds != 0u) {
+        soak_stop_ns = started_ns + (int64_t)soak->stop_seconds * TIME_NS_PER_SECOND;
+    }
     soak_say(soak, "soak: %" PRIu64 " s, sessions of %" PRIu64 " s, in %s, of %s", soak->seconds, soak->session_seconds,
              soak->root, soak->program);
     /* Stops before starting what would take it past its time: a round is two sessions, a look, and now and then a third that is killed. */
@@ -929,7 +935,7 @@ TEST(soak) {
         soak_menu_session(soak, false);
         soak_world_verify(soak, save, soak->world_directory, TERRAIN_SEED_DEFAULT, states, scratch);
         /* Killed in play now and then, and the next session goes on from what that left. */
-        if (soak->round % 2u == 1u && soak->failures == 0u) {
+        if (soak->round % 2u == 1u && soak->failures == 0u && time_now_ns() < soak_stop_ns) {
             soak_menu_session(soak, true);
             soak_world_verify(soak, save, soak->world_directory, TERRAIN_SEED_DEFAULT, states, scratch);
         }
