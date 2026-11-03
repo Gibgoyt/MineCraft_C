@@ -34,6 +34,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `743f6db` Add a built-in profiler with a lane per thread, a timer on each kernel of a frame, a Chrome trace and a table, turned on with --profile.
+
 ## What was done
 
 - `run/src/profiler/`: a lane per thread, a ring of records, self time, Chrome trace format and a table. `--profile <path>` on the program. Scopes compile away in release (`nm` finds no `profiler_begin` in it) and it refuses the flag there.
