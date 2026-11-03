@@ -82,6 +82,8 @@ The least there was room for, and each is said in its own README:
 
 Appended as they land:
 
+- `5fc7e5f` Add settings with their own parser and screen, and change render distance and the rest in an open world without restarting.
+
 ## Issues found
 
 **1. `run_ui_hud` did not compile on the integration branch.**
