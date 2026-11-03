@@ -53,7 +53,7 @@ void item_deinit(item_t *item);
 /* Nothing carried yet, with the first hotbar slot in hand. Before the threads start. */
 void item_open(item_t *item);
 
-/* What was carried is gone: nothing is saved until Stage 16.2. The threads must have stopped. Safe if none is open. */
+/* What was carried goes: run/src/save/state/ has kept it, if it is to be kept. The threads must have stopped. Safe if none is open. */
 void item_close(item_t *item);
 
 /* main asks for a hotbar slot, or to scroll by some slots. Neither waits. Any thread, one at a time. A slot past the hotbar is ignored. */

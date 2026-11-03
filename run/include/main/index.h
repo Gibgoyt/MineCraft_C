@@ -53,7 +53,7 @@ typedef struct app_t {
     settings_t settings; /* read only for --menu: everything else runs on its flags */
     save_t save;         /* only --menu has worlds to keep */
 } app_t;
-static_assert(sizeof(app_t) == 15552);
+static_assert(sizeof(app_t) == 15808);
 static_assert(alignof(app_t) == 64);
 
 /* The exit codes of minecraft_c. */

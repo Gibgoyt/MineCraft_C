@@ -19,4 +19,4 @@
 |---|---|
 | `world` | Seed and changed-section deltas, with versioned headers, replaced through a crash-safe rename |
 
-`state` and `autosave` arrive with Stage 16.2.
+
