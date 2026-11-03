@@ -95,6 +95,7 @@ Each was applied, run, and taken back, and the tree confirmed clean afterwards:
 Appended as they land:
 
 - `03624ea` Keep the player, inventory, entities and time beside each save of the blocks, and save them all on a worker every 30 seconds of world time.
+- `4654786` Record what state and autosave do, what they cost a frame and what a kill loses.
 
 ## Issues found
 
