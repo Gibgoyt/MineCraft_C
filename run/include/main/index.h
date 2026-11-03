@@ -28,7 +28,7 @@ typedef struct app_t {
     job_system_t job; /* first: its alignment is what gives app_t its own */
     simd_t simd;
     texture_t texture;
-    ui_t ui;                       /* reads its textures at start; draws nothing until Stage 14.2 gives it a HUD */
+    ui_t ui;                       /* reads its textures at start; game draws the HUD with it */
     world_t world;                 /* nothing runs in it until game does (Stage 08.4) */
     terrain_t terrain;             /* the same */
     physics_t physics;             /* only --walk moves anything with it */

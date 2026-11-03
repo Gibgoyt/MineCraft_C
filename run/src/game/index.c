@@ -39,6 +39,8 @@ enum : int32_t {
 };
 
 #define GAME_START_EYE_HEIGHT 24.5f64
+/* What the debug overlay's frames per second are counted over. */
+#define GAME_FPS_WINDOW_SECONDS 0.5f64
 #define GAME_START_YAW 0.6f32
 #define GAME_START_PITCH (-0.3f32)
 
@@ -68,6 +70,11 @@ void game_entity_set(game_t *game, entity_t *entity) {
 void game_item_set(game_t *game, item_t *item) {
     ASSERT_ALWAYS(game->open == 0u);
     game->borrowed_item = item;
+}
+
+void game_ui_set(game_t *game, ui_t *ui) {
+    ASSERT_ALWAYS(game->open == 0u);
+    game->borrowed_ui = ui;
 }
 
 void game_deinit(game_t *game) {
@@ -222,6 +229,24 @@ static void game_spawn_find(const terrain_t *terrain, const game_column_job_t *j
     }
 }
 
+/* A new world's HUD: nothing carried, and nothing timed yet. The overlay stays as the player left it. */
+static void game_hud_start(game_t *game) {
+    for (uint32_t slot = 0u; slot < INVENTORY_HOTBAR_SLOTS; slot++) {
+        atomic_store_explicit(&game->hud_hotbar[slot], 0u, memory_order_relaxed);
+    }
+    atomic_store_explicit(&game->hud_selected, 0u, memory_order_relaxed);
+    atomic_store_explicit(&game->hud_tick_us, 0u, memory_order_relaxed);
+    for (uint32_t pass = 0u; pass < FRAME_PASS_COUNT; pass++) {
+        atomic_store_explicit(&game->hud_pass_us[pass], 0u, memory_order_relaxed);
+    }
+    atomic_store_explicit(&game->hud_total_us, 0u, memory_order_relaxed);
+    game->hud_fps_seconds = 0.0f64;
+    game->hud_fps = 0.0f32;
+    game->hud_fps_pictures = 0u;
+    game->hud_compose_us = 0u;
+    game->hud_present_us = 0u;
+}
+
 bool game_open(game_t *game, const game_config_t *config) {
     ASSERT_ALWAYS(game->open == 0u);
     if (config->render_distance == 0u || config->render_distance > MC_GAME_RENDER_DISTANCE_MAX) {
@@ -275,6 +300,7 @@ bool game_open(game_t *game, const game_config_t *config) {
     }
     game_day_set(game, GAME_DAY_START);
     game_day_apply(game);
+    game_hud_start(game);
     if (game->borrowed_entity != nullptr) {
         entity_open(game->borrowed_entity, terrain_rng_derive(terrain->seed, terrain_rng_salt("entity")));
     }
@@ -658,6 +684,20 @@ static void game_entities_publish(game_t *game) {
 }
 
 /* One tick of simulated time, due at tick_ns: this is where Stages 11 to 15 add theirs. */
+/* What the HUD shows of the inventory goes to main as it stands after this tick. */
+static void game_hud_publish(game_t *game) {
+    if (game->borrowed_item == nullptr || game->borrowed_item->inventory.borrowed_slots == nullptr) {
+        return;
+    }
+    const inventory_t *const inventory = &game->borrowed_item->inventory;
+    for (uint32_t slot = 0u; slot < INVENTORY_HOTBAR_SLOTS; slot++) {
+        uint64_t word = 0u;
+        memcpy(&word, inventory_slot_read(inventory, slot), sizeof(word));
+        atomic_store_explicit(&game->hud_hotbar[slot], word, memory_order_relaxed);
+    }
+    atomic_store_explicit(&game->hud_selected, inventory->selected, memory_order_relaxed);
+}
+
 static void game_sim_tick(game_t *game, int64_t tick_ns) {
     arena_reset(&game->arena_tick);
     if (game->borrowed_player != nullptr) {
@@ -677,6 +717,7 @@ static void game_sim_tick(game_t *game, int64_t tick_ns) {
     }
     world_tick_step(&game->borrowed_world->tick);
     game_entities_publish(game);
+    game_hud_publish(game);
     game->tick_count++;
 }
 
@@ -802,6 +843,109 @@ void game_fly_from_input(const input_frame_t *frame, render_fly_input_t *out) {
     out->fast = input_keys_has(&frame->down, KEY_LEFTCTRL) ? 1u : 0u;
 }
 
+/* ---- What is drawn on a picture ------------------------------------------------------------------------------------- */
+
+static_assert(sizeof(item_stack_t) == sizeof(uint64_t));
+static_assert((uint32_t)UI_HUD_STAGE_COARSE == (uint32_t)FRAME_PASS_COARSE);
+static_assert((uint32_t)UI_HUD_STAGE_PRIMARY == (uint32_t)FRAME_PASS_PRIMARY);
+static_assert((uint32_t)UI_HUD_STAGE_SHADE == (uint32_t)FRAME_PASS_SHADE);
+static_assert((uint32_t)UI_HUD_STAGE_POST == (uint32_t)FRAME_PASS_POST);
+static_assert((uint32_t)UI_HUD_STAGE_READBACK == (uint32_t)FRAME_PASS_READBACK);
+static_assert((uint32_t)UI_HUD_STAGE_GPU_TOTAL == (uint32_t)FRAME_PASS_COUNT);
+
+void game_debug_send(game_t *game, bool down) {
+    if (down && game->hud_debug_key == 0u) {
+        game->hud_debug ^= 1u;
+    }
+    game->hud_debug_key = down ? 1u : 0u;
+}
+
+void game_hud_state_read(const game_t *game, ui_hud_state_t *out) {
+    memset(out, 0, sizeof(*out));
+    for (uint32_t slot = 0u; slot < INVENTORY_HOTBAR_SLOTS; slot++) {
+        const uint64_t word = atomic_load_explicit(&game->hud_hotbar[slot], memory_order_relaxed);
+        memcpy(&out->hotbar[slot], &word, sizeof(word));
+    }
+    out->selected = (uint8_t)atomic_load_explicit(&game->hud_selected, memory_order_relaxed);
+    if (game->borrowed_player != nullptr) {
+        const player_vitals_t vitals = player_vitals_read(game->borrowed_player);
+        out->health = (uint8_t)ui_hud_half_units(vitals.health, PLAYER_SURVIVAL_HEALTH_MAX);
+        out->food = (uint8_t)ui_hud_half_units((float32_t)vitals.food, PLAYER_SURVIVAL_FOOD_MAX);
+    }
+}
+
+static float32_t game_hud_ms(uint32_t microseconds) {
+    return (float32_t)microseconds / 1000.0f32;
+}
+
+void game_hud_debug_read(const game_t *game, ui_hud_debug_t *out) {
+    memset(out, 0, sizeof(*out));
+    out->fps = game->hud_fps;
+    for (uint32_t pass = 0u; pass < FRAME_PASS_COUNT; pass++) {
+        out->stage_ms[pass] = game_hud_ms(atomic_load_explicit(&game->hud_pass_us[pass], memory_order_relaxed));
+    }
+    out->stage_ms[UI_HUD_STAGE_GPU_TOTAL] =
+        game_hud_ms(atomic_load_explicit(&game->hud_total_us, memory_order_relaxed));
+    out->stage_ms[UI_HUD_STAGE_SIM_TICK] = game_hud_ms(atomic_load_explicit(&game->hud_tick_us, memory_order_relaxed));
+    out->stage_ms[UI_HUD_STAGE_HUD] = game_hud_ms(game->hud_compose_us);
+    out->stage_ms[UI_HUD_STAGE_PRESENT] = game_hud_ms(game->hud_present_us);
+}
+
+/* Counts new pictures over at least GAME_FPS_WINDOW_SECONDS of what it is told has passed. */
+static void game_fps_note(game_t *game, uint32_t pictures, float32_t seconds) {
+    game->hud_fps_pictures += pictures;
+    game->hud_fps_seconds += (float64_t)seconds;
+    if (game->hud_fps_seconds >= GAME_FPS_WINDOW_SECONDS) {
+        game->hud_fps = (float32_t)((float64_t)game->hud_fps_pictures / game->hud_fps_seconds);
+        game->hud_fps_pictures = 0u;
+        game->hud_fps_seconds = 0.0f64;
+    }
+}
+
+/* One frame, and what each pass of it took, as the difference it made to the frame's books. */
+static gpu_status_t game_frame_draw(game_t *game, const render_camera_t *camera) {
+    render_t *const render = game->borrowed_render;
+    const render_frame_stats_t before = render->frame.stats;
+    const gpu_status_t status = render_frame_draw(&render->frame, &render->buffers, camera);
+    if (status != GPU_STATUS_OK) {
+        return status;
+    }
+    const render_frame_stats_t *const after = &render->frame.stats;
+    for (uint32_t pass = 0u; pass < FRAME_PASS_COUNT; pass++) {
+        atomic_store_explicit(&game->hud_pass_us[pass],
+                              (uint32_t)((after->sum_ms[pass] - before.sum_ms[pass]) * 1000.0f64),
+                              memory_order_relaxed);
+    }
+    atomic_store_explicit(&game->hud_total_us, (uint32_t)((after->sum_total_ms - before.sum_total_ms) * 1000.0f64),
+                          memory_order_relaxed);
+    return GPU_STATUS_OK;
+}
+
+/* What goes to the screen: picture itself if there is nothing to draw on it, or if the memory for a copy could not be had, as a picture
+ * with no HUD is better than none. The copy leaves picture as it was, since it may be shown again. */
+static const uint8_t *game_hud_compose(game_t *game, const uint8_t *picture) {
+    ui_t *const ui = game->borrowed_ui;
+    const bool walking = game->borrowed_player != nullptr;
+    if (ui == nullptr || (!walking && game->hud_debug == 0u)) {
+        return picture;
+    }
+    const render_frame_t *const frame = &game->borrowed_render->frame;
+    if (!ui_frame_begin_over(ui, picture, frame->width, frame->height)) {
+        return picture;
+    }
+    if (walking) {
+        ui_hud_state_t state;
+        game_hud_state_read(game, &state);
+        ui_hud_draw(&ui->hud, &ui->canvas, &ui->font, &state);
+    }
+    if (game->hud_debug != 0u) {
+        ui_hud_debug_t debug;
+        game_hud_debug_read(game, &debug);
+        ui_hud_debug_draw(&ui->canvas, &ui->font, &debug);
+    }
+    return ui_frame_end(ui, false);
+}
+
 static bool game_scene_tick(void *context, const display_headless_tick_t *tick) {
     game_t *const game = context;
     render_fly_input_t input;
@@ -809,6 +953,8 @@ static bool game_scene_tick(void *context, const display_headless_tick_t *tick) 
     /* Time here is the count of ticks, so one script gives one path. */
     const int64_t tick_ns = (int64_t)(game->tick_count + 1u) * GAME_TICK_NS;
     game_day_advance(game, 1.0f32 / (float32_t)MC_GAME_TICK_HZ);
+    game_fps_note(game, 0u, 1.0f32 / (float32_t)MC_GAME_TICK_HZ);
+    game_debug_send(game, display_script_state_is_down(tick->state, KEY_F3));
     if (game->borrowed_player == nullptr) {
         game_fly(game, &input, 1.0f32 / (float32_t)MC_GAME_TICK_HZ);
         game_sim_tick(game, tick_ns);
@@ -843,14 +989,15 @@ static bool game_scene_draw(void *context, const display_headless_tick_t *tick, 
     }
     /* What later stages draw each frame goes in here. */
     game_day_apply(game);
-    const gpu_status_t status = render_frame_draw(&render->frame, &render->buffers, &game->camera);
+    const gpu_status_t status = game_frame_draw(game, &game->camera);
     if (status != GPU_STATUS_OK) {
         gpu_error_log(&render->frame.gpu.last_error);
         return false;
     }
     const uint8_t *const picture = render_frame_take(&render->frame);
     ASSERT_ALWAYS(picture != nullptr);
-    render_frame_present(&render->frame, picture, frame);
+    game_fps_note(game, 1u, 0.0f32);
+    render_frame_present(&render->frame, game_hud_compose(game, picture), frame);
     return true;
 }
 
@@ -869,6 +1016,8 @@ static void game_sim_thread(void *borrowed_argument) {
         if (now_ns >= next_tick_ns) {
             game_sim_tick(game, next_tick_ns);
             next_tick_ns += GAME_TICK_NS;
+            atomic_store_explicit(&game->hud_tick_us, (uint32_t)((time_now_ns() - now_ns) / 1000),
+                                  memory_order_relaxed);
         }
         if (game->stream_quiet != 0u) {
             time_sleep_ns(GAME_SIM_IDLE_NS);
@@ -906,7 +1055,7 @@ static void game_gpu_thread(void *borrowed_argument) {
         game_day_apply(game);
         /* In the slot this picture is going into, for whoever asks what it was drawn from. The publish in the draw hands main both. */
         game->picture_cameras[render->frame.pictures.back] = *camera;
-        status = render_frame_draw(&render->frame, &render->buffers, camera);
+        status = game_frame_draw(game, camera);
         if (status != GPU_STATUS_OK) {
             gpu_error_log(&render->frame.gpu.last_error);
             atomic_store_explicit(&game->failed, 1u, memory_order_release);
@@ -956,8 +1105,14 @@ bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t se
         game->shown_camera = game->picture_cameras[frame->pictures.front];
         game->pictures_shown++;
     }
+    game_fps_note(game, picture != nullptr ? 1u : 0u, seconds);
     if (game->borrowed_last_picture != nullptr) {
-        render_frame_present(frame, game->borrowed_last_picture, target);
+        const int64_t started_ns = time_now_ns();
+        const uint8_t *const shown = game_hud_compose(game, game->borrowed_last_picture);
+        const int64_t composed_ns = time_now_ns();
+        render_frame_present(frame, shown, target);
+        game->hud_compose_us = (uint32_t)((composed_ns - started_ns) / 1000);
+        game->hud_present_us = (uint32_t)((time_now_ns() - composed_ns) / 1000);
     }
     return atomic_load_explicit(&game->failed, memory_order_acquire) == 0u;
 }
@@ -988,6 +1143,8 @@ bool game_loop_source(void *context, display_buffer_t *back) {
     if (input_keys_has(&frame->pressed, KEY_ESC)) {
         return false;
     }
+    /* A tap over between two polls is in pressed and not in down. */
+    game_debug_send(game, input_keys_has(&frame->down, KEY_F3) || input_keys_has(&frame->pressed, KEY_F3));
     const int64_t now_ns = time_now_ns();
     const float32_t seconds = (float32_t)time_ns_to_seconds(now_ns - game->last_frame_ns);
     game->last_frame_ns = now_ns;

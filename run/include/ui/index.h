@@ -7,11 +7,12 @@
 #include "texture/index.h"
 #include "ui/compose/index.h"
 #include "ui/font/index.h"
+#include "ui/hud/index.h"
 #include "ui/widget/index.h"
 
 #include <stdint.h>
 
-/* The main thread's. Between ui_frame_begin and ui_frame_end, canvas is where to draw, and widget and font what with. */
+/* The main thread's. Between ui_frame_begin and ui_frame_end, canvas is where to draw, and widget, font and hud what with. */
 typedef struct ui_t {
     arena_t arena_tables;          /* 0: lives as long as this does; what is read from textures */
     arena_t arena_frame;           /* 64: reset at each frame's start */
@@ -21,8 +22,10 @@ typedef struct ui_t {
     ui_font_t font;                /* 168 */
     ui_canvas_t canvas;            /* 176 */
     ui_widget_t widget;            /* 240 */
+    ui_hud_t hud;                  /* 576 */
+    uint8_t _pad0[8];              /* 696 */
 } ui_t;
-static_assert(sizeof(ui_t) == 576);
+static_assert(sizeof(ui_t) == 704);
 static_assert(alignof(ui_t) == 64);
 
 /* Reserves its memory and reads the font and the widgets' textures, which texture must keep for as long as this lives. On

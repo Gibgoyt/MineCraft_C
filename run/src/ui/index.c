@@ -8,7 +8,8 @@
 enum : uint64_t {
     UI_REGION_BYTES = 2ull << 20,
     UI_ARENA_TABLES_BYTES =
-        3ull << 19, /* 1.5 MiB: the widgets' textures take 0.4, the row 64 KiB, and later parts the rest */
+        3ull
+        << 19, /* 1.5 MiB: the widgets' textures take 0.4, the row 64 KiB, the HUD's and every item's 0.3, and later parts the rest */
     UI_ARENA_FRAME_BYTES = UI_REGION_BYTES - UI_ARENA_TABLES_BYTES,
 };
 static_assert((uint64_t)UI_WIDGET_TOOLTIP_MAX <= (uint64_t)UI_ARENA_FRAME_BYTES);
@@ -22,7 +23,8 @@ bool ui_init(ui_t *ui, const texture_t *texture) {
     arena_init(&ui->arena_frame, "ui_frame", ui->owned_region.owned_base + UI_ARENA_TABLES_BYTES, UI_ARENA_FRAME_BYTES);
     ui->borrowed_row = arena_alloc(&ui->arena_tables, UI_CANVAS_ROW_BYTES, alignof(uint32_t));
     if (!ui_font_init(&ui->font, &ui->arena_tables, texture) ||
-        !ui_widget_init(&ui->widget, &ui->arena_tables, texture, &ui->font, &ui->arena_frame)) {
+        !ui_widget_init(&ui->widget, &ui->arena_tables, texture, &ui->font, &ui->arena_frame) ||
+        !ui_hud_init(&ui->hud, &ui->arena_tables, texture)) {
         ui_deinit(ui);
         return false; /* it has said why */
     }
@@ -30,6 +32,7 @@ bool ui_init(ui_t *ui, const texture_t *texture) {
 }
 
 void ui_deinit(ui_t *ui) {
+    ui_hud_deinit(&ui->hud);
     ui_widget_deinit(&ui->widget);
     ui_font_deinit(&ui->font);
     arena_deinit(&ui->arena_frame);

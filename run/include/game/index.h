@@ -15,6 +15,7 @@
 #include "terrain/index.h"
 #include "texture/index.h"
 #include "thread/index.h"
+#include "ui/index.h"
 #include "world/index.h"
 
 #include <stdatomic.h>
@@ -112,8 +113,28 @@ typedef struct game_t {
     uint8_t _pad2[8];                                       /* 1080 */
     render_camera_t shown_camera; /* 1088: main's: what borrowed_last_picture was drawn from */
     uint8_t _pad3[24];            /* 1128 */
+    /* What the HUD shows. All relaxed: only what is on the screen depends on it, each word stays whole, and a frame of a tick-old slot
+     * beside a new one is gone by the next. A line of its own from here: the sim writes these, once a tick. */
+    _Atomic uint64_t hud_hotbar[INVENTORY_HOTBAR_SLOTS]; /* 1152: sim to main: each an item_stack_t's bytes */
+    _Atomic uint32_t hud_selected;                       /* 1224: sim to main: the hotbar slot in hand */
+    _Atomic uint32_t hud_tick_us;                        /* 1228: sim to main: what its last tick took */
+    uint8_t _pad4[48];                                   /* 1232 */
+    /* A line of its own: the gpu thread writes these, once a picture. */
+    _Atomic uint32_t hud_pass_us[FRAME_PASS_COUNT]; /* 1280: gpu to main: the card's clock, on the last picture */
+    _Atomic uint32_t hud_total_us;                  /* 1300 */
+    uint8_t _pad5[40];                              /* 1304 */
+    /* A line of its own: main's. */
+    ui_t *borrowed_ui;         /* 1344: draws on each picture shown if not nullptr; set before a world opens */
+    float64_t hud_fps_seconds; /* 1352: of the window being counted */
+    float32_t hud_fps;         /* 1360: new pictures a second, over the last whole window */
+    uint32_t hud_fps_pictures; /* 1364: new pictures in the window being counted */
+    uint32_t hud_compose_us;   /* 1368: what drawing on the last picture took */
+    uint32_t hud_present_us;   /* 1372: what copying it out took */
+    uint8_t hud_debug;         /* 1376: the debug overlay is up */
+    uint8_t hud_debug_key;     /* 1377: its key was down, last time anyone looked */
+    uint8_t _pad6[30];         /* 1378 */
 } game_t;
-static_assert(sizeof(game_t) == 1152);
+static_assert(sizeof(game_t) == 1408);
 static_assert(alignof(game_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(game_t, group) == 192);
 static_assert(offsetof(game_t, cameras) == 256);
@@ -121,6 +142,9 @@ static_assert(offsetof(game_t, owned_region) == 608);
 static_assert(offsetof(game_t, center_x) == 816);
 static_assert(offsetof(game_t, tick_count) == 832);
 static_assert(offsetof(game_t, day_fraction) == 896);
+static_assert(offsetof(game_t, hud_hotbar) == 1152);
+static_assert(offsetof(game_t, hud_pass_us) == 1280);
+static_assert(offsetof(game_t, borrowed_ui) == 1344);
 
 /* Remembers what it will run on, and takes nothing. All must outlive it, and topology must have been read before the caller
  * pinned itself. */
@@ -137,6 +161,10 @@ void game_entity_set(game_t *game, entity_t *entity);
 /* From here on what a player picks up goes into this inventory, the hotbar slot in hand is what it places, and these open and close
  * with the world. Must outlive it. Before game_open. Without it what is picked up goes straight to the player's one-slot hand. */
 void game_item_set(game_t *game, item_t *item);
+
+/* From here on each picture shown has the HUD drawn on a copy of it with this, if a player is walking, and the debug overlay if asked
+ * for. Must outlive it. Before game_open. Without it pictures go out as they were drawn. */
+void game_ui_set(game_t *game, ui_t *ui);
 
 /* Stops whatever is running, and closes any world. Safe on a zeroed game_t. */
 void game_deinit(game_t *game);
@@ -198,6 +226,13 @@ void game_hands_send(game_t *game, bool attack, bool place);
 /* Walking: the number keys choose a hotbar slot, and the wheel moves along it, as of the sim thread's next tick. The thread that owns
  * input. Away from the user is to the left, as in Minecraft. Does nothing with no inventory. */
 void game_hotbar_send(game_t *game, const bool keys[INVENTORY_HOTBAR_SLOTS], int64_t wheel);
+
+/* Whether the debug overlay's key is down now: each press turns the overlay on or off. The thread that owns input. */
+void game_debug_send(game_t *game, bool down);
+
+/* What the HUD and the debug overlay show now, from what the other threads last said. The main thread. Never waits. */
+void game_hud_state_read(const game_t *game, ui_hud_state_t *out);
+void game_hud_debug_read(const game_t *game, ui_hud_debug_t *out);
 
 /* Turning either kind of input into a step of flying. */
 void game_fly_from_script(const display_script_state_t *state, render_fly_input_t *out);
