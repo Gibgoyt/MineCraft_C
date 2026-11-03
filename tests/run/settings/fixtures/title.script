@@ -1,0 +1,29 @@
+# The Settings screen from the title screen, with no world to change. 640 by 480, scale 2. The pointer starts at 320, 240.
+
+1 move 0 8                      # 320, 248: Settings
++1 screenshot title.png
++1 button left down
++1 button left up
++1 screenshot screen.png
++1 move 0 -180                  # 320, 68: the first slider
++1 wheel 5
++1 move 100 288                 # 420, 356: Effects..., the right half of row 6
++1 button left down
++1 button left up
++1 screenshot effects.png
++1 move -320 -288               # 100, 68: the first effect, block shapes
++1 button left down
++1 button left up
++1 key escape down              # back a page
++1 key escape up
++1 move 220 384                 # 320, 452: Done
++1 button left down
++1 button left up
++1 move 0 -204                  # 320, 248 again, so that the title is the same picture with the pointer where it was
++1 screenshot left.png          # the title again; or, if it could not be kept, still the screen with the reason on it
++1 move 0 204                   # 320, 452: Done, if the screen is still up, and nothing on the title
++1 button left down
++1 button left up
++1 move 0 -204                  # 320, 248
++1 screenshot left_again.png    # the screen has gone either way
++1 end

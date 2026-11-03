@@ -19,7 +19,7 @@ Between begin and end, `ui->canvas`, `ui->font`, `ui->widget`, `ui->hud` and `ui
 **May be called by:** `run/src/main/` for the pair, and `run/src/game/` for the frame.
 **Depends on:** `heap`, `arena`, `assert`, `texture`, and its parts below.
 
-**Parts:** `compose`: rects, images, and every pixel through the blend kernel. `font`: the bitmap font. `widget`: panels, labels, buttons, checkboxes, sliders, text fields, slots, bars, tooltips and the pointer. `hud`: the crosshair, hotbar, hearts, drumsticks and debug overlay. `screen_inventory`: the inventory, and what all the game screens share. `screen_crafting`, `screen_furnace`, `screen_chest`: the others. `menu`: the main menu, the list of worlds, making a world, and pause.
+**Parts:** `compose`: rects, images, and every pixel through the blend kernel. `font`: the bitmap font. `widget`: panels, labels, buttons, checkboxes, sliders, text fields, slots, bars, tooltips and the pointer. `hud`: the crosshair, hotbar, hearts, drumsticks and debug overlay. `screen_inventory`: the inventory, and what all the game screens share. `screen_crafting`, `screen_furnace`, `screen_chest`: the others. `menu`: the main menu, the list of worlds, making a world, and pause. `screen_settings`: the Settings screen.
 
 ## The path of a frame
 

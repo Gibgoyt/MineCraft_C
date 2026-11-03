@@ -9,7 +9,7 @@
 inside a job, on the worker it was handed.
 **Public functions:**
 
-- `job_init`, `job_deinit`: a pair. `job_deinit` first runs whatever is still queued.
+- `job_init`, `job_init_count`, `job_deinit`: a pair, the first with all of `MC_THREADS_WORKERS`, the second with as many of them as the `settings` worker count says. `job_deinit` first runs whatever is still queued.
 - `job_group_init`, `job_group_deinit`: a pair, for a group of jobs one thread can wait on.
 - `job_try_submit`, `job_submit`: queue a job from outside the workers. One returns false when the queue is full, the other
   waits for room.

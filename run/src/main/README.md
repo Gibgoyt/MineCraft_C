@@ -31,12 +31,11 @@
 
 `--render-distance` is how far the world is drawn in all and `--full-detail` how far block by block, 32 chunks unless told: past it, coarse grids take over, and `--no-lod` stops the world where full detail does.
 
-`--no-shapes` draws every block a whole cube, and `--no-alpha` stops rays at see-through texels. `--no-transparency` stops them at water and part-covered texels too, `--no-water-reflection` leaves the mirror out of water, and `--no-water-tint` leaves its colour with depth out. `--no-ao` leaves out the short rays that darken corners, and `--no-taa` has each frame stand alone. `--god-rays` turns on the one effect that is off until asked for. Each effect of phase 9 is a
-switch like these until `run/src/ui/screen_settings/` (Stage 14.5) has a screen for them.
+`--no-shapes` draws every block a whole cube, and `--no-alpha` stops rays at see-through texels. `--no-transparency` stops them at water and part-covered texels too, `--no-water-reflection` leaves the mirror out of water, and `--no-water-tint` leaves its colour with depth out. `--no-ao` leaves out the short rays that darken corners, and `--no-taa` has each frame stand alone. `--god-rays` turns on the one effect that is off until asked for. Each effect of phase 9 is a switch like these, and with `--menu` a box on the screen in `run/src/ui/screen_settings/`.
 
 `--walk` puts a body in that world, on the nearest dry land to its middle, in place of the flying camera. WASD walks, Space jumps, swims up and climbs, Left Shift sneaks, Left Ctrl sprints, the mouse looks, the left button mines and the right button places what was mined. E opens the inventory, the right button on a crafting table, furnace or chest opens that, and E or Esc closes it, with the mouse then a pointer. A script drives the same keys. See `run/src/player/README.md`. It also brings the HUD. F3, in any `--test-world` run, turns the debug overlay on and off: see `run/src/ui/hud/README.md`.
 
-Worlds live under `--saves`, or `saves` where the program was started, which git ignores.
+Worlds live under `--saves`, or `saves` where the program was started, which git ignores. What a person chose on the Settings screen lives in `--settings`, or `settings.yaml` where the program was started, which git ignores too, and only `--menu` reads it.
 
 With no flag and stdin not a terminal, running the program starts the job system, runs one job per worker through it, logs the heap's counts and
 stops. `ctest` runs it that way, with stdin from `/dev/null`. On a terminal it is the game, as `--menu` is, and inside X that is refused with nothing touched.
@@ -54,5 +53,6 @@ Both start `gpu_bridge` if `gpu.enabled` says so. That is compute only: CUDA on 
 Later systems' `_init` calls go in `app_init` after the CPU check, and their `_deinit` calls in `app_deinit` in reverse.
 
 **May be called by:** the OS. Tests link everything but this file, and run the built program.
+**Settings:** with `--menu`, `settings_load` comes before `job_init`, as the worker count is in it, and `game_session_settings_set` hands them to the session. See `run/src/settings/README.md`.
 **Depends on:** `display`, `game`, `physics`, `player`, `gpu_bridge`, `input`, `job`, `math`, `render`, `terrain`, `texture`, `world`, `thread`, `time`, `heap` (only its counters and leak check), `log`, `types`, `main/cpu_check`, the
 generated `machine/index.h`.

@@ -64,7 +64,9 @@ typedef struct display_flip_t {
     uint8_t restore_failed;
     uint8_t suspended;     /* another VT is on screen and we hold no master: the CRTC is not ours to touch */
     uint8_t skip_interval; /* the next event's interval is the time away on another VT, which says nothing */
-    uint8_t _pad0[6];
+    uint8_t uncapped;      /* flips do not wait for a vblank, if the driver lets them */
+    uint8_t async_refused; /* the driver said no to that, so they do wait */
+    uint8_t _pad0[4];
 } display_flip_t;
 static_assert(sizeof(display_flip_t) == 248);
 
@@ -92,6 +94,10 @@ display_buffer_t *display_flip_back(display_flip_t *flip);
 /* Asks for the back buffer to be shown at the next vblank, and for an event when it is. One flip at a time: with one
  * pending this fails, as the kernel would with EBUSY. */
 bool display_flip_submit(display_flip_t *flip);
+
+/* Whether later flips wait for a vblank, for the setting. A driver that refuses a flip that does not wait is asked once: every flip after
+ * that waits. Only the thread that flips. */
+void display_flip_vsync_set(display_flip_t *flip, bool vsync);
 
 /* Waits up to timeout_ms for the card's events and takes them in. */
 display_flip_wait_t display_flip_wait(display_flip_t *flip, int32_t timeout_ms);

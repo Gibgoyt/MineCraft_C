@@ -43,8 +43,29 @@ typedef struct game_config_t {
     /* 16: how far the world is drawn block by block, in chunks. Past it, to render_distance, coarse grids take over. 0 means
      * RENDER_LOD_FULL_DETAIL_DEFAULT. */
     uint32_t full_detail;
+    /* 20: how far full detail may ever reach in this world without opening it again, in chunks, since the table on the card is sized once.
+     * 0 means only what this config asks for. */
+    uint32_t table_chunks;
+    uint32_t fov_degrees;         /* 24: the vertical field of view; 0 means RENDER_CAMERA_HALF_FOV_TANGENT_DEFAULT */
+    uint32_t sensitivity_percent; /* 28: of RENDER_CAMERA_RADIANS_PER_COUNT; 0 means 100 */
+    uint32_t
+        render_scale_percent; /* 32: pictures are drawn this much of width and height, and brought up; 0 means 100 */
+    uint8_t uncapped; /* 36: the gpu thread draws as fast as it can, and does not wait for a picture to be taken */
+    uint8_t _pad1[3]; /* 37 */
 } game_config_t;
-static_assert(sizeof(game_config_t) == 20);
+static_assert(sizeof(game_config_t) == 40);
+
+/* What a config comes to, for a table of a given size. */
+typedef struct game_view_t {
+    render_lod_plan_t lod; /* 0: no levels if there is no far field */
+    uint32_t full_detail;  /* 16: the map's view radius */
+    uint32_t width;        /* 20: what is drawn, before it is brought up to the config's */
+    uint32_t height;       /* 24 */
+    float32_t fog_end;     /* 28: in blocks */
+    uint32_t features;     /* 32: SHADE_FEATURE_* */
+    uint8_t _pad0[4];      /* 36 */
+} game_view_t;
+static_assert(sizeof(game_view_t) == 40);
 
 /* One column being made on a worker. Its own cache line: a worker writes done while the sim thread polls it. */
 typedef struct game_column_job_t {
@@ -137,8 +158,18 @@ typedef struct game_t {
     uint8_t hud_debug;         /* 1376: the debug overlay is up */
     uint8_t hud_debug_key;     /* 1377: its key was down, last time anyone looked */
     uint8_t _pad6[30];         /* 1378 */
+    /* A line of its own and some: main's, but for uncapped. */
+    heap_region_t owned_view; /* 1408: a picture at the display's size, once something has needed one */
+    game_config_t config;     /* 1424: what this world is running with now */
+    game_view_t view;         /* 1464: what that came to */
+    float64_t
+        look_rest[2]; /* 1504: what the mouse's counts left over, past whole ones, at a sensitivity that is not 100 */
+    _Atomic uint32_t uncapped; /* 1520: main to gpu: relaxed, as a picture more or less depends on it */
+    uint8_t view_held;         /* 1524: owned_view holds the last picture, as the frame it came from has gone */
+    uint8_t view_stale;        /* 1525: with no threads: a config changed, and nothing has been drawn since */
+    uint8_t _pad7[10];         /* 1526 */
 } game_t;
-static_assert(sizeof(game_t) == 1408);
+static_assert(sizeof(game_t) == 1536);
 static_assert(alignof(game_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(game_t, group) == 192);
 static_assert(offsetof(game_t, cameras) == 256);
@@ -185,6 +216,21 @@ void game_open_alive_set(game_t *game, void (*alive)(void *context), void *conte
 
 /* Gives it all back. Safe if none is open. The threads must have stopped. */
 void game_close(game_t *game);
+
+/* The world goes on with this config, the same size as it opened with, without closing. The player, the columns that are still in reach and
+ * every edit in them stay. Render distance, effects, field of view, sensitivity, render scale and uncapped all take at once, and full detail as
+ * far as table_chunks reaches. The thread that owns input, between frames: anything that needs them stopped stops the threads and starts them
+ * again. Takes as long as the card does to give back and take a far field, and each frame after goes on filling it in. False, having said why,
+ * only if the card or a thread failed, which nothing more should be asked of. */
+[[nodiscard]] bool game_reconfigure(game_t *game, const game_config_t *config);
+
+/* What a changed config has made of the picture, for one with no game_loop_frame to show it, as behind a screen in a pause. With threads it
+ * takes whatever is the newest. With none it settles and draws one, if a config has changed since the last. False if the card failed, having
+ * said why. */
+[[nodiscard]] bool game_view_refresh(game_t *game);
+
+/* The last picture, at the config's size, or nullptr if there is none yet. Good until the next call to anything that shows a picture. */
+const uint8_t *game_picture_held(game_t *game);
 
 /* One step of the sim's: what has been generated goes into the world, what is wanted next goes to workers, what has left goes,
  * and the world as it now is goes out as a snapshot. Never waits for a worker. The one thread holding the map. */

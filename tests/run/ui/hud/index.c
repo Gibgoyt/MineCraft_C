@@ -115,7 +115,7 @@ typedef struct fixture_t {
     ui_t ui;
     texture_t texture;
 } fixture_t;
-static_assert(sizeof(fixture_t) == 896);
+static_assert(sizeof(fixture_t) == 1344);
 
 static fixture_t *fixture_start(test_context_t *t) {
     const uintptr_t raw = (uintptr_t)test_alloc(t, sizeof(fixture_t) + alignof(fixture_t));

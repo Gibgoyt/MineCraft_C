@@ -1,0 +1,39 @@
+# run/src/settings/persist
+
+**Purpose:** what the settings are, their ranges and defaults, and the file they are kept in: our own runtime parser, since `compile/` and its YAML are not linked at run time.
+**Tier:** Arena by depth, and it allocates nothing: the caller gives it text and a place for text.
+**Owns:** nothing.
+**Lifetime:** Nothing is kept.
+**Threads:** any, one call at a time on a set of values.
+**Public functions** (`run/include/settings/persist/index.h`):
+
+- `settings_persist_defaults`: what a new install runs with.
+- `settings_persist_clamp`: each value into its range.
+- `settings_persist_effect`: the sixteen graphics effects, for the file and the screen.
+- `settings_persist_parse`: text to values. Never fails: each problem is logged with its line.
+- `settings_persist_write`: values to text.
+
+**May be called by:** `run/src/settings/`, and `run/src/ui/screen_settings/` for the effects' names and the ranges.
+**Depends on:** `log`, `assert`, `machine` for the worker and distance limits, `gpu_bridge/shade` for the effects' bits, `render/lod` for the default full detail.
+
+## The file
+
+    version: 1
+    # A comment. So is the rest of a line after a hash.
+    render_distance: 32
+    full_detail: 32
+    fov_degrees: 70
+    sensitivity_percent: 100
+    render_scale_percent: 100
+    worker_count: 16
+    vsync: true
+    effect_shapes: true
+    ...
+
+It is the flat part of YAML and nothing more, so a person can read and change it, and any YAML tool agrees.
+
+- The first line that says anything says which version this is. Any other version sets nothing, since its lines may mean something else.
+- Lines come in any order, and the last of two for one key wins. What is missing stays what it was.
+- A number is only digits. One past its range is held to the nearest end, and said so.
+- A true or false is exactly that.
+- A line that makes no sense, or names nothing, or is past 120 bytes, is logged with its number and ignored, and the rest are read. No file is worth not starting for: it is a preference, and the Settings screen is how to mend it.
