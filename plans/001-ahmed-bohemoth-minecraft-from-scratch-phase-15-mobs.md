@@ -46,6 +46,9 @@ Zombies, skeletons and creepers spawn, behave, fight and drop items, and the pla
 
 Appended as they land:
 
+- `8428656` Draw mobs part by part in their own skins, time the real minds in bench_mobs, and correct the tests the mob stages left wrong.
+- `b7bc122` Let the sanitize preset build, and record the phase 15 gate check, its results and what awaits Ahmed.
+
 ## Results
 
 All on 2026-11-03, on this branch.
