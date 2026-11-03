@@ -68,7 +68,7 @@ static void job_group_finish(job_group_t *group) {
 
 void job_group_wait(const job_system_t *system, job_group_t *group) {
     const pthread_t self = pthread_self();
-    for (uint32_t i = 0; i < MC_THREADS_WORKERS; i++) {
+    for (uint32_t i = 0; i < system->worker_count; i++) {
         ASSERT_ALWAYS(!pthread_equal(self, system->borrowed_workers[i].thread.handle));
     }
     bool flagged = false;
@@ -112,7 +112,7 @@ static bool job_any_queued(const job_system_t *system) {
         atomic_load_explicit(&system->injector_head, memory_order_relaxed)) {
         return true;
     }
-    for (uint32_t i = 0; i < MC_THREADS_WORKERS; i++) {
+    for (uint32_t i = 0; i < system->worker_count; i++) {
         const job_worker_t *const worker = &system->borrowed_workers[i];
         if (atomic_load_explicit(&worker->bottom, memory_order_relaxed) >
             atomic_load_explicit(&worker->top, memory_order_relaxed)) {
@@ -305,7 +305,7 @@ static uint32_t job_next_victim(job_worker_t *worker) {
     random ^= random >> 7;
     random ^= random << 17;
     worker->random = random;
-    return (uint32_t)(random % MC_THREADS_WORKERS);
+    return (uint32_t)(random % worker->borrowed_system->worker_count);
 }
 
 /* Its own queue first, so that a worker finishes what it started. The shared queue next, or workers with each other's
@@ -321,12 +321,12 @@ static bool job_find(job_worker_t *worker, job_t *out) {
         return true;
     }
     uint32_t victim = job_next_victim(worker);
-    for (uint32_t i = 0; i < MC_THREADS_WORKERS; i++) {
+    for (uint32_t i = 0; i < system->worker_count; i++) {
         if (victim != worker->index && job_queue_steal(&system->borrowed_workers[victim], out)) {
             job_count(&worker->jobs_stolen);
             return true;
         }
-        victim = victim + 1u == MC_THREADS_WORKERS ? 0u : victim + 1u;
+        victim = victim + 1u == system->worker_count ? 0u : victim + 1u;
     }
     return false;
 }
@@ -358,7 +358,13 @@ static void job_worker_main(void *borrowed_argument) {
 /* ---- Lifetime ---------------------------------------------------------------------------------------------------- */
 
 bool job_init(job_system_t *system, const thread_topology_t *topology) {
+    return job_init_count(system, topology, MC_THREADS_WORKERS);
+}
+
+bool job_init_count(job_system_t *system, const thread_topology_t *topology, uint32_t worker_count) {
     memset(system, 0, sizeof(*system));
+    system->worker_count =
+        worker_count == 0u ? 1u : (worker_count > MC_THREADS_WORKERS ? MC_THREADS_WORKERS : worker_count);
     if (!heap_reserve(JOB_REGION_BYTES, &system->owned_region)) {
         return false; /* heap_reserve said why */
     }
@@ -370,7 +376,7 @@ bool job_init(job_system_t *system, const thread_topology_t *topology) {
     for (uint64_t i = 0; i < JOB_INJECTOR_CAPACITY; i++) {
         atomic_init(&system->borrowed_cells[i].sequence, i);
     }
-    for (uint32_t i = 0; i < MC_THREADS_WORKERS; i++) {
+    for (uint32_t i = 0; i < system->worker_count; i++) {
         job_worker_t *const worker = &system->borrowed_workers[i];
         worker->index = i;
         worker->random = ((uint64_t)i + 1u) * 0x9E3779B97F4A7C15ull;
@@ -380,7 +386,7 @@ bool job_init(job_system_t *system, const thread_topology_t *topology) {
                    JOB_ARENA_BYTES);
     }
     /* In a second loop, since a worker that has started looks at every other worker's queue. */
-    for (uint32_t i = 0; i < MC_THREADS_WORKERS; i++) {
+    for (uint32_t i = 0; i < system->worker_count; i++) {
         job_worker_t *const worker = &system->borrowed_workers[i];
         if (!thread_start(&worker->thread, topology, THREAD_ROLE_WORKER, i, job_worker_main, worker)) {
             job_deinit(system);
@@ -399,13 +405,13 @@ void job_deinit(job_system_t *system) {
     atomic_fetch_add_explicit(&system->wake_epoch, 1u, memory_order_seq_cst);
     job_futex_wake(&system->wake_epoch, INT32_MAX);
 
-    for (uint32_t i = 0; i < MC_THREADS_WORKERS; i++) {
+    for (uint32_t i = 0; i < system->worker_count; i++) {
         thread_join(&system->borrowed_workers[i].thread);
     }
     /* Every worker left only when it could find nothing, so anything still here was lost, and its group would never end. */
     ASSERT_ALWAYS(atomic_load_explicit(&system->injector_tail, memory_order_acquire) ==
                   atomic_load_explicit(&system->injector_head, memory_order_acquire));
-    for (uint32_t i = 0; i < MC_THREADS_WORKERS; i++) {
+    for (uint32_t i = 0; i < system->worker_count; i++) {
         job_worker_t *const worker = &system->borrowed_workers[i];
         ASSERT_ALWAYS(atomic_load_explicit(&worker->bottom, memory_order_acquire) ==
                       atomic_load_explicit(&worker->top, memory_order_acquire));
@@ -418,7 +424,7 @@ void job_deinit(job_system_t *system) {
 /* ---- Reading ----------------------------------------------------------------------------------------------------- */
 
 void job_stats_read(const job_system_t *system, uint32_t worker_index, job_stats_t *out) {
-    ASSERT_ALWAYS(worker_index < MC_THREADS_WORKERS);
+    ASSERT_ALWAYS(worker_index < system->worker_count);
     const job_worker_t *const worker = &system->borrowed_workers[worker_index];
     *out = (job_stats_t){
         .jobs_run = atomic_load_explicit(&worker->jobs_run, memory_order_relaxed),

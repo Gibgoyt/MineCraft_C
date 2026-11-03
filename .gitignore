@@ -6,3 +6,7 @@
 
 # Worlds made by running the game from the repository root.
 /saves/
+
+# And what a person chose on the Settings screen there.
+/settings.yaml
+/settings.yaml.tmp

@@ -4,6 +4,7 @@
 
 #include "assert/index.h"
 #include "item/stack/index.h"
+#include "game/view/index.h"
 #include "log/index.h"
 #include "render/entities/index.h"
 #include "tables/blocks/index.h"
@@ -106,19 +107,24 @@ static void game_arenas_stop(game_t *game) {
     arena_deinit(&game->arena_world);
 }
 
+/* A picture at the size it is shown, for one drawn smaller, or one kept while the pictures change. */
+static bool game_picture_full_room(game_t *game) {
+    const uint64_t bytes = (uint64_t)game->config.width * game->config.height * sizeof(uint32_t);
+    return game->owned_view.bytes >= bytes || heap_reserve(bytes, &game->owned_view);
+}
+
 /* The map, and what the card holds of it. Each says why if it cannot, and whatever came before it is given back. */
 static bool game_open_parts(game_t *game, const game_config_t *config, int32_t chunk_x, int32_t chunk_y) {
     world_t *const world = game->borrowed_world;
     render_t *const render = game->borrowed_render;
-    const uint32_t full_detail_given = config->full_detail != 0u ? config->full_detail : RENDER_LOD_FULL_DETAIL_DEFAULT;
     /* What the map loads is what is drawn block by block. The far field never touches it. */
-    const uint32_t full_detail =
-        config->render_distance < full_detail_given ? config->render_distance : full_detail_given;
-    const bool far_field = config->render_distance > full_detail && (config->features_off & SHADE_FEATURE_LOD) == 0u;
-    if (!world_open(world, full_detail + WORLD_MAP_KEEP_EXTRA, chunk_x, chunk_y)) {
+    const uint32_t table_chunks = game_view_table_chunks(config);
+    game_view_work_out(config, table_chunks, &game->view);
+    const game_view_t *const view = &game->view;
+    if (!world_open(world, table_chunks + WORLD_MAP_KEEP_EXTRA, chunk_x, chunk_y)) {
         return false;
     }
-    world_map_set_view_radius(&world->map, full_detail);
+    world_map_set_view_radius(&world->map, view->full_detail);
     world_tick_seed_set(&world->tick, game->borrowed_terrain->seed);
     const render_upload_budget_t budget = {
         .bytes = RENDER_UPLOAD_BUDGET_BYTES_DEFAULT,
@@ -130,26 +136,26 @@ static bool game_open_parts(game_t *game, const game_config_t *config, int32_t c
         world_close(world);
         return false;
     }
-    /* The fog is whole a chunk short of what is loaded: the eye moves about inside a chunk before the map follows. */
-    const uint32_t reach_chunks = far_field ? config->render_distance : full_detail;
-    const uint32_t fog_chunks = reach_chunks > 1u ? reach_chunks - 1u : 1u;
-    const float32_t fog_end = (float32_t)(fog_chunks * COLUMN_SIZE);
-    if (render_open_frame(render, game->borrowed_texture, config->width, config->height, fog_end) != GPU_STATUS_OK) {
+    if (render_open_frame(render, game->borrowed_texture, view->width, view->height, view->fog_end) != GPU_STATUS_OK) {
         render_close(render);
         world_close(world);
         return false;
     }
-    if (far_field) {
-        const render_lod_plan_t plan = render_lod_plan(full_detail, config->render_distance);
-        const gpu_status_t status = render_open_lod(render, &plan, render_lod_sample_terrain, game->borrowed_terrain);
+    if (view->lod.level_count != 0u) {
+        const gpu_status_t status =
+            render_open_lod(render, &view->lod, render_lod_sample_terrain, game->borrowed_terrain);
         if (status != GPU_STATUS_OK) {
             render_close(render);
             world_close(world);
             return false;
         }
     }
-    const uint32_t optional = config->god_rays != 0u ? (uint32_t)SHADE_FEATURE_GOD_RAYS : 0u;
-    render_frame_features_set(&render->frame, (SHADE_FEATURES_PLAY | optional) & ~(uint32_t)config->features_off);
+    render_frame_features_set(&render->frame, view->features);
+    if ((view->width != config->width || view->height != config->height) && !game_picture_full_room(game)) {
+        render_close(render);
+        world_close(world);
+        return false; /* it has said why */
+    }
     return true;
 }
 
@@ -307,7 +313,15 @@ bool game_open(game_t *game, const game_config_t *config) {
     atomic_store_explicit(&game->failed, 0u, memory_order_relaxed);
     atomic_store_explicit(&game->paused, 0u, memory_order_relaxed);
 
+    game->config = *config;
+    game->look_rest[0] = 0.0f64;
+    game->look_rest[1] = 0.0f64;
+    game->view_held = 0u;
+    game->view_stale = 0u;
+    atomic_store_explicit(&game->uncapped, config->uncapped, memory_order_relaxed);
+    game->camera.half_fov_tangent = game_view_half_fov_tangent(config->fov_degrees);
     if (!game_open_parts(game, config, chunk_x, chunk_y)) {
+        heap_release(&game->owned_view);
         job_group_deinit(&game->group);
         game_arenas_stop(game);
         heap_release(&game->owned_region);
@@ -358,11 +372,121 @@ void game_close(game_t *game) {
     world_close(game->borrowed_world);
     game_arenas_stop(game);
     heap_release(&game->owned_region);
+    heap_release(&game->owned_view);
+    game->view_held = 0u;
     game->open = 0u;
     game->jobs_in_use = 0u;
     game->stream_quiet = 0u;
     game->borrowed_jobs = nullptr;
     game->borrowed_last_picture = nullptr;
+}
+
+/* ---- Changing a world's config while it is open ------------------------------------------------------------------- */
+
+static const uint8_t *game_picture_full(game_t *game, const uint8_t *drawn);
+static bool game_threads_start(game_t *game);
+
+/* The pictures are about to go, and something may be showing the last one in a pause: it stays, at the size it is shown. */
+static bool game_picture_hold(game_t *game) {
+    if (game->borrowed_last_picture == nullptr) {
+        return true;
+    }
+    if (!game_picture_full_room(game)) {
+        return false; /* it has said why */
+    }
+    const uint8_t *const full = game_picture_full(game, game->borrowed_last_picture);
+    if (full != game->owned_view.owned_base) {
+        memcpy(game->owned_view.owned_base, full,
+               (uint64_t)game->config.width * game->config.height * sizeof(uint32_t));
+    }
+    game->borrowed_last_picture = nullptr;
+    game->view_held = 1u;
+    return true;
+}
+
+/* Pictures of the view's size in place of what the frame holds now, and back to what it held if the card will not have them. */
+static bool game_frame_resize(game_t *game, const game_view_t *now) {
+    render_t *const render = game->borrowed_render;
+    if (!game_picture_hold(game)) {
+        return false;
+    }
+    if ((now->width != game->config.width || now->height != game->config.height) && !game_picture_full_room(game)) {
+        return false; /* it has said why */
+    }
+    render_close_frame(render);
+    if (render_open_frame(render, game->borrowed_texture, now->width, now->height, now->fog_end) == GPU_STATUS_OK) {
+        return true;
+    }
+    LOG_WARN("game: no room on the card for pictures of %" PRIu32 " by %" PRIu32 ", so they stay as they were",
+             now->width, now->height);
+    return false;
+}
+
+/* Everything that needs the threads stopped. False if a frame or threads could not be had back at all. */
+static bool game_view_change(game_t *game, game_view_t *now) {
+    render_t *const render = game->borrowed_render;
+    const game_view_t *const was = &game->view;
+    const bool resize = now->width != was->width || now->height != was->height;
+    if (resize) {
+        if (!game_frame_resize(game, now)) {
+            now->width = was->width;
+            now->height = was->height;
+            if (render->frame_open == 0u && render_open_frame(render, game->borrowed_texture, now->width, now->height,
+                                                              now->fog_end) != GPU_STATUS_OK) {
+                return false; /* what it was a moment ago will not come back: it has said why */
+            }
+        }
+    }
+    if (render->borrowed_lod != nullptr && memcmp(&now->lod, &was->lod, sizeof(now->lod)) != 0) {
+        render_close_lod(render);
+    }
+    world_map_set_view_radius(&game->borrowed_world->map, now->full_detail);
+    if (now->lod.level_count != 0u && render->borrowed_lod == nullptr &&
+        render_open_lod(render, &now->lod, render_lod_sample_terrain, game->borrowed_terrain) != GPU_STATUS_OK) {
+        /* The world still works, to where full detail goes, and the fog comes in to meet it. */
+        LOG_WARN("game: no room on the card for a far field, so the world stops at %" PRIu32 " chunks",
+                 now->full_detail);
+        now->lod = (render_lod_plan_t){0};
+        now->fog_end = game_view_fog_end(now->full_detail);
+    }
+    render_frame_fog_set(&render->frame, now->fog_end);
+    render_frame_features_set(&render->frame, now->features);
+    return true;
+}
+
+bool game_reconfigure(game_t *game, const game_config_t *config) {
+    ASSERT_ALWAYS(game->open != 0u);
+    ASSERT_ALWAYS(config->width == game->config.width && config->height == game->config.height);
+    ASSERT_ALWAYS(config->render_distance != 0u && config->render_distance <= MC_GAME_RENDER_DISTANCE_MAX);
+    game->camera.half_fov_tangent = game_view_half_fov_tangent(config->fov_degrees);
+    atomic_store_explicit(&game->uncapped, config->uncapped, memory_order_relaxed);
+    game_view_t now;
+    const uint32_t table_chunks = game->borrowed_world->map.table_radius - WORLD_MAP_KEEP_EXTRA;
+    game_view_work_out(config, table_chunks, &now);
+    if (memcmp(&now, &game->view, sizeof(now)) == 0) {
+        game->config = *config;
+        return true;
+    }
+    const bool running = game->threads_running != 0u;
+    if (running && !game_loop_stop(game)) {
+        return false; /* a thread has said why it failed */
+    }
+    const bool changed = game_view_change(game, &now);
+    game->config = *config;
+    game->view = now;
+    game->view_stale = 1u;
+    if (!changed) {
+        atomic_store_explicit(&game->failed, 1u, memory_order_release);
+        return false;
+    }
+    LOG_INFO("game: now drawing %" PRIu32 " chunks, %" PRIu32 " of them block by block, %" PRIu32
+             " far levels, at %" PRIu32 " by %" PRIu32 ", with effects %#" PRIx32,
+             config->render_distance, now.full_detail, now.lod.level_count, now.width, now.height, now.features);
+    if (running && !game_threads_start(game)) {
+        atomic_store_explicit(&game->failed, 1u, memory_order_release);
+        return false; /* it has said why */
+    }
+    return true;
 }
 
 /* ---- The sim ------------------------------------------------------------------------------------------------------ */
@@ -931,12 +1055,17 @@ static void game_center_on_eye(game_t *game) {
 }
 
 void game_fly(game_t *game, const render_fly_input_t *input, float32_t seconds) {
-    render_camera_fly(&game->camera, input, seconds);
+    render_fly_input_t scaled = *input;
+    scaled.mouse_dx = game_view_look_scaled(input->mouse_dx, game->config.sensitivity_percent, &game->look_rest[0]);
+    scaled.mouse_dy = game_view_look_scaled(input->mouse_dy, game->config.sensitivity_percent, &game->look_rest[1]);
+    render_camera_fly(&game->camera, &scaled, seconds);
     game_center_on_eye(game);
 }
 
 void game_walk_send(game_t *game, const render_fly_input_t *input, bool jump, bool sneak, int64_t now_ns) {
-    player_camera_look(&game->camera, input->mouse_dx, input->mouse_dy);
+    player_camera_look(&game->camera,
+                       game_view_look_scaled(input->mouse_dx, game->config.sensitivity_percent, &game->look_rest[0]),
+                       game_view_look_scaled(input->mouse_dy, game->config.sensitivity_percent, &game->look_rest[1]));
     player_look_send(game->borrowed_player, game->camera.yaw, game->camera.pitch);
     const player_intent_t intent = {.yaw = game->camera.yaw,
                                     .forward = input->forward,
@@ -1021,8 +1150,7 @@ bool game_screen_input(game_t *game, const input_frame_t *frame) {
     if (!game_has_screens(game)) {
         return false;
     }
-    const render_frame_t *const render_frame = &game->borrowed_render->frame;
-    return ui_screen_input(game->borrowed_ui, frame, render_frame->width, render_frame->height);
+    return ui_screen_input(game->borrowed_ui, frame, game->config.width, game->config.height);
 }
 
 void game_input_from_script(const display_headless_tick_t *tick, input_frame_t *out) {
@@ -1086,37 +1214,6 @@ void game_debug_send(game_t *game, bool down) {
     game->hud_debug_key = down ? 1u : 0u;
 }
 
-void game_hud_state_read(const game_t *game, ui_hud_state_t *out) {
-    memset(out, 0, sizeof(*out));
-    for (uint32_t slot = 0u; slot < INVENTORY_HOTBAR_SLOTS; slot++) {
-        const uint64_t word = atomic_load_explicit(&game->hud_hotbar[slot], memory_order_relaxed);
-        memcpy(&out->hotbar[slot], &word, sizeof(word));
-    }
-    out->selected = (uint8_t)atomic_load_explicit(&game->hud_selected, memory_order_relaxed);
-    if (game->borrowed_player != nullptr) {
-        const player_vitals_t vitals = player_vitals_read(game->borrowed_player);
-        out->health = (uint8_t)ui_hud_half_units(vitals.health, PLAYER_SURVIVAL_HEALTH_MAX);
-        out->food = (uint8_t)ui_hud_half_units((float32_t)vitals.food, PLAYER_SURVIVAL_FOOD_MAX);
-    }
-}
-
-static float32_t game_hud_ms(uint32_t microseconds) {
-    return (float32_t)microseconds / 1000.0f32;
-}
-
-void game_hud_debug_read(const game_t *game, ui_hud_debug_t *out) {
-    memset(out, 0, sizeof(*out));
-    out->fps = game->hud_fps;
-    for (uint32_t pass = 0u; pass < FRAME_PASS_COUNT; pass++) {
-        out->stage_ms[pass] = game_hud_ms(atomic_load_explicit(&game->hud_pass_us[pass], memory_order_relaxed));
-    }
-    out->stage_ms[UI_HUD_STAGE_GPU_TOTAL] =
-        game_hud_ms(atomic_load_explicit(&game->hud_total_us, memory_order_relaxed));
-    out->stage_ms[UI_HUD_STAGE_SIM_TICK] = game_hud_ms(atomic_load_explicit(&game->hud_tick_us, memory_order_relaxed));
-    out->stage_ms[UI_HUD_STAGE_HUD] = game_hud_ms(game->hud_compose_us);
-    out->stage_ms[UI_HUD_STAGE_PRESENT] = game_hud_ms(game->hud_present_us);
-}
-
 /* Counts new pictures over at least GAME_FPS_WINDOW_SECONDS of what it is told has passed. */
 static void game_fps_note(game_t *game, uint32_t pictures, float32_t seconds) {
     game->hud_fps_pictures += pictures;
@@ -1147,17 +1244,35 @@ static gpu_status_t game_frame_draw(game_t *game, const render_camera_t *camera)
     return GPU_STATUS_OK;
 }
 
+/* A picture as the frame drew it, at the size of what shows it: itself at a render scale of 100, and owned_view at any other. */
+static const uint8_t *game_picture_full(game_t *game, const uint8_t *drawn) {
+    const game_view_t *const view = &game->view;
+    if (view->width == game->config.width && view->height == game->config.height) {
+        return drawn;
+    }
+    game_view_bring_up(drawn, view->width, view->height, game->owned_view.owned_base, game->config.width,
+                       game->config.height);
+    return game->owned_view.owned_base;
+}
+
+const uint8_t *game_picture_held(game_t *game) {
+    if (game->borrowed_last_picture != nullptr) {
+        return game_picture_full(game, game->borrowed_last_picture);
+    }
+    return game->view_held != 0u ? game->owned_view.owned_base : nullptr;
+}
+
 /* What goes to the screen: picture itself if there is nothing to draw on it, or if the memory for a copy could not be had, as a picture
  * with no HUD is better than none. The copy leaves picture as it was, since it may be shown again. */
-static const uint8_t *game_hud_compose(game_t *game, const uint8_t *picture) {
+static const uint8_t *game_hud_compose(game_t *game, const uint8_t *drawn) {
     ui_t *const ui = game->borrowed_ui;
     const bool walking = game->borrowed_player != nullptr;
     const bool screen_up = game_has_screens(game) && ui_screen_up(ui);
+    const uint8_t *const picture = game_picture_full(game, drawn);
     if (ui == nullptr || (!walking && game->hud_debug == 0u && !screen_up)) {
         return picture;
     }
-    const render_frame_t *const frame = &game->borrowed_render->frame;
-    if (!ui_frame_begin_over(ui, picture, frame->width, frame->height)) {
+    if (!ui_frame_begin_over(ui, picture, game->config.width, game->config.height)) {
         return picture;
     }
     if (walking) {
@@ -1237,7 +1352,43 @@ static bool game_scene_draw(void *context, const display_headless_tick_t *tick, 
     ASSERT_ALWAYS(picture != nullptr);
     game_fps_note(game, 1u, 0.0f32);
     game->borrowed_last_picture = picture; /* what a pause screen goes over */
-    render_frame_present(&render->frame, game_hud_compose(game, picture), frame);
+    game->view_held = 0u;
+    game->view_stale = 0u;
+    render_frame_present_full(game_hud_compose(game, picture), frame);
+    return true;
+}
+
+bool game_view_refresh(game_t *game) {
+    render_t *const render = game->borrowed_render;
+    if (game->threads_running != 0u) {
+        const uint8_t *const newest = render_frame_take(&render->frame);
+        if (newest != nullptr) {
+            game->borrowed_last_picture = newest;
+            game->view_held = 0u;
+            game->shown_camera = game->picture_cameras[render->frame.pictures.front];
+        }
+        return atomic_load_explicit(&game->failed, memory_order_acquire) == 0u;
+    }
+    if (game->view_stale == 0u) {
+        return true;
+    }
+    game->view_stale = 0u;
+    if (!game_settle(game)) {
+        return false;
+    }
+    game_day_apply(game);
+    const gpu_status_t status = game_frame_draw(game, &game->camera);
+    if (status != GPU_STATUS_OK) {
+        gpu_error_log(&render->frame.gpu.last_error);
+        return false;
+    }
+    game->borrowed_last_picture = render_frame_take(&render->frame);
+    ASSERT_ALWAYS(game->borrowed_last_picture != nullptr);
+    game->view_held = 0u;
+    const world_map_t *const map = &game->borrowed_world->map;
+    LOG_INFO(
+        "game: settled on %" PRIu32 " columns, with the map's view at %" PRIu32 " chunks and %" PRIu32 " far levels",
+        map->ready_count, map->view_radius, render->borrowed_lod != nullptr ? render->borrowed_lod->level_count : 0u);
     return true;
 }
 
@@ -1272,8 +1423,11 @@ static void game_gpu_thread(void *borrowed_argument) {
     render_t *const render = game->borrowed_render;
     const render_camera_t *camera = &game->camera_slots[game->cameras.front];
     while (atomic_load_explicit(&game->stop, memory_order_acquire) == 0u) {
-        /* A picture no one has taken yet is plenty: drawing past the display's rate would only heat the card. */
-        if (render_exchange_waiting(&render->frame.pictures)) {
+        /* A picture no one has taken yet is plenty: drawing past the display's rate would only heat the card. Uncapped is someone asking for
+         * that, for as long as anyone is looking. */
+        const bool draw_on = atomic_load_explicit(&game->uncapped, memory_order_relaxed) != 0u &&
+                             atomic_load_explicit(&game->paused, memory_order_relaxed) == 0u;
+        if (!draw_on && render_exchange_waiting(&render->frame.pictures)) {
             time_sleep_ns(GAME_GPU_IDLE_NS);
             continue;
         }
@@ -1306,12 +1460,8 @@ static void game_gpu_thread(void *borrowed_argument) {
     }
 }
 
-bool game_loop_start(game_t *game, input_t *input) {
-    ASSERT_ALWAYS(game->open != 0u && game->threads_running == 0u);
-    game->borrowed_input = input;
-    game->last_frame_ns = time_now_ns();
-    game->loop_started_ns = game->last_frame_ns;
-    game->pictures_shown = 0u;
+/* Both threads, from the camera as it stands. False, having said why, with neither running. */
+static bool game_threads_start(game_t *game) {
     render_exchange_start(&game->cameras);
     /* Before the threads, so the first camera the gpu thread reads is a real one. */
     for (uint32_t i = 0u; i < RENDER_EXCHANGE_SLOTS; i++) {
@@ -1330,6 +1480,15 @@ bool game_loop_start(game_t *game, input_t *input) {
     return true;
 }
 
+bool game_loop_start(game_t *game, input_t *input) {
+    ASSERT_ALWAYS(game->open != 0u && game->threads_running == 0u);
+    game->borrowed_input = input;
+    game->last_frame_ns = time_now_ns();
+    game->loop_started_ns = game->last_frame_ns;
+    game->pictures_shown = 0u;
+    return game_threads_start(game);
+}
+
 bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t seconds, display_buffer_t *target) {
     arena_reset(&game->arena_frame);
     if (game->borrowed_player != nullptr) {
@@ -1344,6 +1503,7 @@ bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t se
     const uint8_t *const picture = render_frame_take(frame);
     if (picture != nullptr) {
         game->borrowed_last_picture = picture;
+        game->view_held = 0u;
         game->shown_camera = game->picture_cameras[frame->pictures.front];
         game->pictures_shown++;
     }
@@ -1352,7 +1512,7 @@ bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t se
         const int64_t started_ns = time_now_ns();
         const uint8_t *const shown = game_hud_compose(game, game->borrowed_last_picture);
         const int64_t composed_ns = time_now_ns();
-        render_frame_present(frame, shown, target);
+        render_frame_present_full(shown, target);
         game->hud_compose_us = (uint32_t)((composed_ns - started_ns) / 1000);
         game->hud_present_us = (uint32_t)((time_now_ns() - composed_ns) / 1000);
     }
@@ -1447,108 +1607,4 @@ void game_loop_discard(void *context) {
     input_test_pattern_discard(game->borrowed_input);
     /* The time away is not time spent flying. */
     game->last_frame_ns = time_now_ns();
-}
-
-void game_report(game_t *game) {
-    if (game->borrowed_player != nullptr) {
-        const player_movement_t *const movement = &game->borrowed_player->movement;
-        LOG_INFO("game: the player is at %.3f, %.3f, %.3f after %" PRIu64 " ticks",
-                 (libc_double_t)movement->position[0], (libc_double_t)movement->position[1],
-                 (libc_double_t)movement->position[2], game->borrowed_player->tick_count);
-        const player_survival_t *const survival = &game->borrowed_player->survival;
-        LOG_INFO("game: the player has %.1f health, %" PRIu32 " food and %.1f saturation; hurt %" PRIu64
-                 " times, died %" PRIu64 ", came back %" PRIu64 ", ate %" PRIu64 " and slept through %" PRIu64
-                 " nights",
-                 (libc_double_t)survival->health, (uint32_t)survival->food, (libc_double_t)survival->saturation,
-                 survival->hurt_count, survival->died_count, survival->respawned_count, survival->eaten_count,
-                 survival->slept_count);
-        const player_interaction_t *const hands = &game->borrowed_player->interaction;
-        LOG_INFO("game: the player mined %" PRIu64 " blocks and placed %" PRIu64
-                 "; the last mined was %s, and the hand "
-                 "holds %" PRIu32 " of %s",
-                 hands->mined_count, hands->placed_count, block_defs[hands->last_mined].name,
-                 (uint32_t)hands->hand_count, hands->hand_count != 0u ? block_defs[hands->hand_block].name : "nothing");
-    }
-    if (game->borrowed_entity != nullptr && game->mob_spawn.borrowed_idle != nullptr) {
-        LOG_INFO("game: %" PRIu64 " mobs came, %" PRIu64 " went, and %" PRIu32 " are in the world",
-                 game->mob_spawn.spawned_count, game->mob_spawn.despawned_count, game->borrowed_entity->store.count);
-        if (game->borrowed_mob != nullptr) {
-            const mob_zombie_t *const zombie = &game->borrowed_mob->zombie;
-            LOG_INFO("game: zombies struck %" PRIu64 " blows, %" PRIu64 " died and left %" PRIu64 " items",
-                     zombie->struck_count, zombie->died_count, zombie->dropped_count);
-        }
-        LOG_INFO("game: %" PRIu32 " blasts broke %" PRIu64 " blocks", game->borrowed_entity->explosion.blast_count,
-                 game->borrowed_entity->explosion.broken_count);
-    }
-    if (game->borrowed_mob != nullptr && game->borrowed_mob->creeper.borrowed_bodies != nullptr) {
-        LOG_INFO("game: %" PRIu64 " creepers burst, and %" PRIu64 " died, leaving %" PRIu64 " items",
-                 game->borrowed_mob->creeper.burst_count, game->borrowed_mob->creeper.died_count,
-                 game->borrowed_mob->creeper.dropped_count);
-    }
-    if (game->borrowed_item != nullptr && game->borrowed_item->inventory.borrowed_slots != nullptr) {
-        const inventory_t *const inventory = &game->borrowed_item->inventory;
-        const item_stack_t *const held = inventory_selected(inventory);
-        LOG_INFO("game: the inventory holds %" PRIu64 " items in %" PRIu32 " stacks; %" PRIu64 " added, %" PRIu64
-                 " removed, %" PRIu64 " refused; hotbar slot %" PRIu32 " is in hand, with %" PRIu32 " of %s",
-                 inventory_items_held(inventory), inventory_stacks_held(inventory), inventory->added_count,
-                 inventory->removed_count, inventory->refused_count, (uint32_t)inventory->selected + 1u,
-                 (uint32_t)held->count, item_defs[held->item].name);
-    }
-    if (game->borrowed_item != nullptr && game->borrowed_item->inventory.borrowed_slots != nullptr) {
-        const item_t *const item = game->borrowed_item;
-        LOG_INFO("game: %" PRIu32 " chests and %" PRIu32 " furnaces stand; %" PRIu64 " items smelted, %" PRIu64
-                 " of fuel burned, %" PRIu64 " spilled",
-                 item->chests.count, item->furnaces.count, item->furnaces.smelted_count, item->furnaces.burned_count,
-                 item->spilled_count);
-        LOG_INFO("game: %" PRIu32 " armor points worn; %" PRIu64 " tools and %" PRIu32 " pieces of armor have broken",
-                 equipment_armor_points(&item->equipment), item->equipment.tools_broken_count,
-                 item->equipment.armor_broken_count);
-    }
-    if (game_has_screens(game) && game->borrowed_item->inventory.borrowed_slots != nullptr) {
-        const ui_screens_t *const screens = game->borrowed_ui->borrowed_screens;
-        LOG_INFO("game: screens came up %" PRIu64 " times and took %" PRIu64 " clicks; %" PRIu64
-                 " requests were lost, with %" PRIu64 " sent",
-                 screens->opened_count, screens->click_count, screens->lost_count, screens->sent_count);
-    }
-    if (game->borrowed_entity != nullptr) {
-        const item_drop_store_t *const drops = &game->borrowed_entity->item_drops;
-        LOG_INFO("game: %" PRIu64 " items dropped, %" PRIu64 " picked up, %" PRIu64 " on the ground in %" PRIu32
-                 " stacks; %" PRIu64 " stacks merged, %" PRIu64 " items despawned, %" PRIu64 " destroyed, %" PRIu64
-                 " lost",
-                 drops->dropped_count, drops->picked_up_count, item_drop_on_ground(drops), drops->count,
-                 drops->merged_count, drops->despawned_count, drops->destroyed_count, drops->lost_count);
-    }
-    const render_entities_t *const entities = game->borrowed_render->borrowed_entities;
-    if (entities != nullptr && entities->stats.frames != 0u) {
-        LOG_INFO("game: %" PRIu64 " frames drew %" PRIu64 " boxes through %" PRIu64 " links; %" PRIu64
-                 " out of sight, %" PRIu64 " past the links and %" PRIu64 " past the snapshots",
-                 entities->stats.frames, entities->stats.boxes, entities->stats.links, entities->stats.out_of_sight,
-                 entities->stats.out_of_links, entities->stats.out_of_snapshots);
-    }
-    LOG_INFO("game: %" PRIu64 " columns generated, %" PRIu64 " ticks, %" PRIu64
-             " sections sent, %.1f MiB of slabs held",
-             game->columns_made, game->tick_count, game->borrowed_render->upload.stats.sections_sent,
-             (libc_double_t)game->borrowed_render->buffers.slab_bytes / (libc_double_t)(1u << 20));
-    /* The threads have no one to tell at the time: nothing can log while the console shows the picture. */
-    if (game->borrowed_render->buffers.pool_full_count != 0u) {
-        LOG_WARN("game: the section pool was full %" PRIu64 " times, so part of the world was not drawn",
-                 (uint64_t)game->borrowed_render->buffers.pool_full_count);
-    }
-    const render_lod_t *const far = game->borrowed_render->borrowed_lod;
-    if (far != nullptr) {
-        LOG_INFO("game: far field: %" PRIu32 " levels, %" PRIu64
-                 " columns built in %.1f s of workers' time, %.1f MiB sent",
-                 far->level_count, far->stats.columns_built, (libc_double_t)((float64_t)far->stats.build_ns * 1e-9f64),
-                 (libc_double_t)((float64_t)far->stats.bytes_sent / 1048576.0f64));
-        if (far->stats.columns_no_room != 0u) {
-            LOG_WARN("game: %" PRIu64 " far columns had no room in their pool", far->stats.columns_no_room);
-        }
-    }
-    /* The flip rate display_frames_run reports counts a picture shown twice as two. This is the rate of new ones. */
-    if (game->pictures_shown != 0u && game->loop_ended_ns > game->loop_started_ns) {
-        const float64_t seconds = time_ns_to_seconds(game->loop_ended_ns - game->loop_started_ns);
-        LOG_INFO("game: %" PRIu64 " new pictures on the screen in %.1f s: %.1f FPS", game->pictures_shown,
-                 (libc_double_t)seconds, (libc_double_t)((float64_t)game->pictures_shown / seconds));
-    }
-    render_frame_report(&game->borrowed_render->frame);
 }

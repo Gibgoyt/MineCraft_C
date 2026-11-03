@@ -14,6 +14,7 @@
 #include "physics/index.h"
 #include "player/index.h"
 #include "render/index.h"
+#include "settings/index.h"
 #include "simd/index.h"
 #include "terrain/index.h"
 #include "texture/index.h"
@@ -48,8 +49,9 @@ typedef struct app_t {
     uint32_t cpu_present;          /* CPU_FEATURE_* this machine has */
     math_t math;
     uint8_t _pad0[40];
+    settings_t settings; /* read only for --menu: everything else runs on its flags */
 } app_t;
-static_assert(sizeof(app_t) == 14720);
+static_assert(sizeof(app_t) == 15104);
 static_assert(alignof(app_t) == 64);
 
 /* The exit codes of minecraft_c. */

@@ -1,0 +1,22 @@
+# A new program, on the worlds and the settings file live.script left: straight into the world, at what the file says, and the same look.
+
+1 move 0 -40                    # 320, 200: Singleplayer
++1 button left down
++1 button left up
++1 move -20 -122                # 300, 78: the first row of the list
++1 button left down
++1 button left up
++1 move -112 318                # 188, 396: Play Selected
++1 button left down
++1 button left up
+
++3 move 1250 -160
++4 screenshot opened.png
++1 key escape down
++1 key escape up
++1 move 132 -100                # 320, 296: Quit to Title
++1 button left down
++1 button left up
++1 button left down             # the same place: Quit Game
++1 button left up
++1 end

@@ -1,0 +1,90 @@
+/* See README.md. */
+#include "game/view/index.h"
+
+#include <math.h>
+#include <string.h>
+
+enum : uint32_t {
+    GAME_VIEW_FOV_DEFAULT = 70u, /* what RENDER_CAMERA_HALF_FOV_TANGENT_DEFAULT is the tangent of half of */
+    GAME_VIEW_PERCENT = 100u,
+    GAME_VIEW_BYTES_PER_PIXEL = 4u,
+};
+
+#define GAME_VIEW_DEGREES_TO_HALF_RADIANS (3.14159265358979f32 / 360.0f32)
+
+static uint32_t game_view_full_detail_asked(const game_config_t *config) {
+    const uint32_t given = config->full_detail != 0u ? config->full_detail : RENDER_LOD_FULL_DETAIL_DEFAULT;
+    return config->render_distance < given ? config->render_distance : given;
+}
+
+uint32_t game_view_table_chunks(const game_config_t *config) {
+    const uint32_t asked = game_view_full_detail_asked(config);
+    return config->table_chunks > asked ? config->table_chunks : asked;
+}
+
+float32_t game_view_fog_end(uint32_t reach_chunks) {
+    const uint32_t fog_chunks = reach_chunks > 1u ? reach_chunks - 1u : 1u;
+    return (float32_t)(fog_chunks * COLUMN_SIZE);
+}
+
+static uint32_t game_view_scaled(uint32_t size, uint32_t percent) {
+    if (percent == 0u || percent >= GAME_VIEW_PERCENT) {
+        return size;
+    }
+    const uint32_t scaled = (uint32_t)((uint64_t)size * percent / GAME_VIEW_PERCENT);
+    return scaled != 0u ? scaled : 1u;
+}
+
+void game_view_work_out(const game_config_t *config, uint32_t table_chunks, game_view_t *out) {
+    memset(out, 0, sizeof(*out));
+    const uint32_t asked = game_view_full_detail_asked(config);
+    out->full_detail = asked < table_chunks ? asked : table_chunks;
+    const bool far_field =
+        config->render_distance > out->full_detail && (config->features_off & SHADE_FEATURE_LOD) == 0u;
+    if (far_field) {
+        out->lod = render_lod_plan(out->full_detail, config->render_distance);
+    }
+    out->width = game_view_scaled(config->width, config->render_scale_percent);
+    out->height = game_view_scaled(config->height, config->render_scale_percent);
+    out->fog_end = game_view_fog_end(far_field ? config->render_distance : out->full_detail);
+    const uint32_t optional = config->god_rays != 0u ? (uint32_t)SHADE_FEATURE_GOD_RAYS : 0u;
+    out->features = (SHADE_FEATURES_PLAY | optional) & ~(uint32_t)config->features_off;
+}
+
+float32_t game_view_half_fov_tangent(uint32_t fov_degrees) {
+    if (fov_degrees == 0u || fov_degrees == GAME_VIEW_FOV_DEFAULT) {
+        return RENDER_CAMERA_HALF_FOV_TANGENT_DEFAULT;
+    }
+    return tanf((float32_t)fov_degrees * GAME_VIEW_DEGREES_TO_HALF_RADIANS);
+}
+
+int64_t game_view_look_scaled(int64_t counts, uint32_t percent, float64_t *rest) {
+    if (percent == 0u || percent == GAME_VIEW_PERCENT) {
+        return counts;
+    }
+    const float64_t wanted = (float64_t)counts * (float64_t)percent / (float64_t)GAME_VIEW_PERCENT + *rest;
+    const float64_t whole = trunc(wanted);
+    *rest = wanted - whole;
+    return (int64_t)whole;
+}
+
+void game_view_bring_up(const uint8_t *from, uint32_t from_width, uint32_t from_height, uint8_t *to, uint32_t to_width,
+                        uint32_t to_height) {
+    const uint64_t from_row_bytes = (uint64_t)from_width * GAME_VIEW_BYTES_PER_PIXEL;
+    const uint64_t to_row_bytes = (uint64_t)to_width * GAME_VIEW_BYTES_PER_PIXEL;
+    uint32_t last_row = UINT32_MAX;
+    for (uint32_t y = 0u; y < to_height; y++) {
+        const uint32_t row = (uint32_t)((uint64_t)y * from_height / to_height);
+        uint8_t *const out = to + (uint64_t)y * to_row_bytes;
+        if (row == last_row) {
+            memcpy(out, out - to_row_bytes, to_row_bytes);
+            continue;
+        }
+        last_row = row;
+        const uint32_t *const source = (const uint32_t *)(const void *)(from + (uint64_t)row * from_row_bytes);
+        uint32_t *const target = (uint32_t *)(void *)out;
+        for (uint32_t x = 0u; x < to_width; x++) {
+            target[x] = source[(uint64_t)x * from_width / to_width];
+        }
+    }
+}

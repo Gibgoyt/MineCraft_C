@@ -265,10 +265,18 @@ bool display_flip_submit(display_flip_t *flip) {
         flip_record_failure(flip, "a flip submitted with one still pending", EBUSY);
         return false;
     }
+    const bool async = flip->uncapped != 0u && flip->async_refused == 0u;
     struct drm_mode_crtc_page_flip request = {.crtc_id = flip->borrowed_mode->crtc_id,
                                               .fb_id = display_flip_back(flip)->fb_id,
-                                              .flags = DRM_MODE_PAGE_FLIP_EVENT};
-    const int32_t result = display_device_ioctl(flip->borrowed_device, DRM_IOCTL_MODE_PAGE_FLIP, &request);
+                                              .flags = DRM_MODE_PAGE_FLIP_EVENT |
+                                                       (async ? (uint32_t)DRM_MODE_PAGE_FLIP_ASYNC : 0u)};
+    int32_t result = display_device_ioctl(flip->borrowed_device, DRM_IOCTL_MODE_PAGE_FLIP, &request);
+    if (async && result == -EINVAL) {
+        /* Not every driver and mode can. A picture on the next vblank is still a picture. */
+        flip->async_refused = 1u;
+        request.flags = DRM_MODE_PAGE_FLIP_EVENT;
+        result = display_device_ioctl(flip->borrowed_device, DRM_IOCTL_MODE_PAGE_FLIP, &request);
+    }
     if (result != 0) {
         flip_record_failure(flip, "PAGE_FLIP", -result);
         return false;
@@ -276,6 +284,10 @@ bool display_flip_submit(display_flip_t *flip) {
     flip->stats.flips_submitted++;
     flip->flip_pending = 1u;
     return true;
+}
+
+void display_flip_vsync_set(display_flip_t *flip, bool vsync) {
+    flip->uncapped = (uint8_t)(vsync ? 0u : 1u);
 }
 
 static void flip_record_event(display_flip_t *flip, const struct drm_event_vblank *event, int64_t now_ns) {

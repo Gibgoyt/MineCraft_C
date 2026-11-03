@@ -177,6 +177,9 @@ void render_frame_deinit(render_frame_t *frame);
  * this on the gpu thread. An effect with a history starts it again when it is turned on. */
 void render_frame_features_set(render_frame_t *frame, uint32_t features);
 
+/* How far off the fog is whole, in blocks, for a render distance that has changed. Between frames, as for render_frame_features_set. */
+void render_frame_fog_set(render_frame_t *frame, float32_t fog_end);
+
 /* The time of day: 0 is midnight, 0.25 sunrise in the east (+x), 0.5 noon and 0.75 sunset in the west, and anything else wraps.
  * Noon from render_frame_init. Between frames, on the thread that draws. With SHADE_FEATURE_DAY_CYCLE off this still moves the sun:
  * it is whoever calls this that keeps time, and the setting tells it not to. */
@@ -196,6 +199,9 @@ const uint8_t *render_frame_take(render_frame_t *frame);
 
 /* The main thread. Copies a picture to a buffer of the same size, which may be scanout memory, with a fence after it. */
 void render_frame_present(const render_frame_t *frame, const uint8_t *picture, display_buffer_t *target);
+
+/* The same for pixels of the target's own size, whatever size the frame draws at: a picture brought up to it from a smaller one. */
+void render_frame_present_full(const uint8_t *picture, display_buffer_t *target);
 
 /* What the frames took, as a log line for each pass, with percentiles. Reorders the samples, so for the end of a run. */
 void render_frame_report(render_frame_t *frame);

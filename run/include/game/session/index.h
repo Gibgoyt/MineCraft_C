@@ -5,6 +5,7 @@
 #include "display/index.h"
 #include "game/index.h"
 #include "input/index.h"
+#include "settings/index.h"
 #include "terrain/index.h"
 #include "ui/index.h"
 
@@ -28,26 +29,34 @@ typedef enum game_session_next_t : uint8_t {
 
 /* The game from the title screen to Quit Game. It owns nothing and holds no memory: it decides when the others open and close. */
 typedef struct game_session_t {
-    game_t *borrowed_game;       /* 0 */
-    ui_t *borrowed_ui;           /* 8 */
-    terrain_t *borrowed_terrain; /* 16 */
-    input_t *borrowed_input;     /* 24: nullptr under --headless, where a script is the input */
-    uint64_t worlds_opened;      /* 32 */
-    uint64_t pauses;             /* 40 */
-    game_config_t config;        /* 48: what each world opens with */
-    uint8_t state;               /* 68: game_session_state_t */
-    uint8_t next;                /* 69: game_session_next_t */
-    uint8_t failed;              /* 70: a world would not open or its threads failed, having said why */
-    uint8_t escape_used;         /* 71: this Esc paused the game, and must not also resume it */
-    uint8_t loading_frames;      /* 72: of the loading screen still to show, under KMS, before a world opens */
-    uint8_t _pad0[7];            /* 73 */
+    game_t *borrowed_game;         /* 0 */
+    ui_t *borrowed_ui;             /* 8 */
+    terrain_t *borrowed_terrain;   /* 16 */
+    input_t *borrowed_input;       /* 24: nullptr under --headless, where a script is the input */
+    uint64_t worlds_opened;        /* 32 */
+    uint64_t pauses;               /* 40 */
+    game_config_t config;          /* 48: what each world opens with */
+    settings_t *borrowed_settings; /* 88: nullptr for none, and no Settings button */
+    display_t *borrowed_display;   /* 96: under KMS, while it runs */
+    uint8_t state;                 /* 104: game_session_state_t */
+    uint8_t next;                  /* 105: game_session_next_t */
+    uint8_t failed;                /* 106: a world would not open or its threads failed, having said why */
+    uint8_t escape_used;           /* 107: this Esc paused the game, and must not also resume it */
+    uint8_t loading_frames;        /* 108: of the loading screen still to show, under KMS, before a world opens */
+    uint8_t settings_up;           /* 109: the Settings screen is what shows, over whichever screen brought it up */
+    uint8_t apply_frames;          /* 110: frames until what was changed goes to the world open; 0 for nothing to do */
+    uint8_t save_failed; /* 111: Done has failed to keep them once and said so, so another Done leaves anyway */
 } game_session_t;
-static_assert(sizeof(game_session_t) == 80);
+static_assert(sizeof(game_session_t) == 112);
 
 /* Starts on the main screen. All of these must outlive it, game must have its player set, and saves is where worlds live.
  * blank_seed is what a world made with no seed gets. input is nullptr under --headless. */
 void game_session_init(game_session_t *session, game_t *game, ui_t *ui, terrain_t *terrain, input_t *input,
                        const game_config_t *config, const char *saves, uint64_t blank_seed);
+
+/* Settings from here on: its Settings buttons work, and each world opens with what settings holds, at the size in config. Before anything has
+ * run. settings must outlive it. */
+void game_session_settings_set(game_session_t *session, settings_t *settings);
 
 /* Forgets all that. Whatever it opened has been closed by game_session_run or game_session_end. */
 void game_session_deinit(game_session_t *session);

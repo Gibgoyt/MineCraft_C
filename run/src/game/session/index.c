@@ -8,11 +8,15 @@
 
 #include <inttypes.h>
 #include <stdatomic.h>
+#include <stdio.h>
 #include <string.h>
 
 enum : uint8_t {
     /* One to draw into each buffer, so that what is on the screen, whichever it is, says so before the long frame. */
     GAME_SESSION_LOADING_FRAMES = DISPLAY_FLIP_BUFFERS,
+    /* What a change waits for: a wheel turned over a slider is several, and making a far field anew for each of them would be for nothing. At
+     * 120 Hz this is an eighth of a second. */
+    GAME_SESSION_APPLY_FRAMES = 15,
 };
 
 void game_session_init(game_session_t *session, game_t *game, ui_t *ui, terrain_t *terrain, input_t *input,
@@ -26,6 +30,27 @@ void game_session_init(game_session_t *session, game_t *game, ui_t *ui, terrain_
     session->config = *config;
     ui_menu_saves_set(&ui->menu, saves, blank_seed);
     ui_menu_open(&ui->menu, UI_MENU_SCREEN_MAIN);
+}
+
+/* What settings comes to, at the size the session was given. */
+static void game_session_config_from_settings(game_session_t *session) {
+    const settings_values_t *const values = &session->borrowed_settings->values;
+    game_config_t *const config = &session->config;
+    config->render_distance = values->render_distance;
+    config->full_detail = values->full_detail;
+    config->table_chunks = values->full_detail;
+    config->features_off = (uint16_t)(SHADE_FEATURES_PLAY & ~values->effects);
+    config->god_rays = (values->effects & SHADE_FEATURE_GOD_RAYS) != 0u ? 1u : 0u;
+    config->fov_degrees = values->fov_degrees;
+    config->sensitivity_percent = values->sensitivity_percent;
+    config->render_scale_percent = values->render_scale_percent;
+    config->uncapped = (uint8_t)(values->vsync != 0u ? 0u : 1u);
+}
+
+void game_session_settings_set(game_session_t *session, settings_t *settings) {
+    session->borrowed_settings = settings;
+    game_session_config_from_settings(session);
+    ui_menu_settings_enable(&session->borrowed_ui->menu);
 }
 
 void game_session_deinit(game_session_t *session) {
@@ -50,6 +75,9 @@ static bool game_session_world_open(game_session_t *session) {
     game_t *const game = session->borrowed_game;
     const ui_menu_world_t *const world = &session->borrowed_ui->menu.chosen;
     const int64_t started_ns = time_now_ns();
+    if (session->borrowed_settings != nullptr) {
+        game_session_config_from_settings(session);
+    }
     terrain_deinit(session->borrowed_terrain);
     if (!terrain_init(session->borrowed_terrain, world->seed) || !game_open(game, &session->config)) {
         return false;
@@ -91,6 +119,71 @@ static bool game_session_advance(game_session_t *session) {
     return true;
 }
 
+/* ---- The Settings screen ----------------------------------------------------------------------------------------------- */
+
+/* What the screen did this frame. Acted on after the frame ends, as anything it does may take the picture away from under it. */
+static void game_session_settings_answer(game_session_t *session, ui_screen_settings_action_t action) {
+    if (action == UI_SCREEN_SETTINGS_CHANGED) {
+        session->apply_frames = GAME_SESSION_APPLY_FRAMES;
+    } else if (action == UI_SCREEN_SETTINGS_DONE) {
+        session->apply_frames = 1u;
+        session->settings_up = 2u; /* leaves once that is done */
+    }
+}
+
+static void game_session_settings_open(game_session_t *session) {
+    ui_t *const ui = session->borrowed_ui;
+    const game_t *const game = session->borrowed_game;
+    const uint32_t live_max = game->open != 0u ? game->borrowed_world->map.table_radius - WORLD_MAP_KEEP_EXTRA : 0u;
+    ui_screen_settings_open(&ui->settings_screen, &ui->widget, &session->borrowed_settings->values, live_max,
+                            session->borrowed_game->borrowed_job->worker_count, session->state == GAME_SESSION_PAUSED);
+    session->settings_up = 1u;
+    session->save_failed = 0u;
+}
+
+/* Hands what has changed on: to the world if one is open, and to the display. False if the card failed, having said why. */
+static bool game_session_settings_apply(game_session_t *session) {
+    game_session_config_from_settings(session);
+    if (session->borrowed_display != nullptr) {
+        display_flip_vsync_set(&session->borrowed_display->flip, session->config.uncapped == 0u);
+    }
+    game_t *const game = session->borrowed_game;
+    return game->open == 0u || game_reconfigure(game, &session->config);
+}
+
+/* Keeps them, and leaves unless that failed for the first time, when it says so and stays. */
+static void game_session_settings_leave(game_session_t *session) {
+    ui_t *const ui = session->borrowed_ui;
+    const file_status_t status = settings_save(session->borrowed_settings);
+    if (status != FILE_OK && session->save_failed == 0u) {
+        char message[UI_SCREEN_SETTINGS_MESSAGE_BYTES];
+        (void)snprintf(message, sizeof(message), "Could not keep them: %s", file_status_name(status));
+        ui_screen_settings_message_set(&ui->settings_screen, message);
+        session->save_failed = 1u;
+        session->settings_up = 1u;
+        return;
+    }
+    session->settings_up = 0u;
+}
+
+/* After a frame of the screen: what its changes have waited for, and leaving. A person's hand still on a slider puts off the first. */
+static bool game_session_settings_step(game_session_t *session) {
+    if (session->settings_up == 0u) {
+        return true;
+    }
+    const bool held = session->borrowed_ui->widget.active_id != 0u && session->settings_up == 1u;
+    if (session->apply_frames != 0u && !held) {
+        session->apply_frames--;
+        if (session->apply_frames == 0u && !game_session_settings_apply(session)) {
+            return false;
+        }
+    }
+    if (session->settings_up == 2u) {
+        game_session_settings_leave(session);
+    }
+    return true;
+}
+
 /* One frame of menus, on a copy of picture or on nothing, into target. */
 static bool game_session_menu_draw(game_session_t *session, const input_frame_t *frame, bool escape,
                                    const uint8_t *picture, display_buffer_t *target, ui_menu_action_t *out_action) {
@@ -101,7 +194,11 @@ static bool game_session_menu_draw(game_session_t *session, const input_frame_t 
     if (!started) {
         return false;
     }
-    *out_action = ui_menu_frame(&ui->menu, escape);
+    if (session->settings_up != 0u) {
+        game_session_settings_answer(session, ui_screen_settings_frame(&ui->settings_screen, escape));
+    } else {
+        *out_action = ui_menu_frame(&ui->menu, escape);
+    }
     const uint8_t *const drawn = ui_frame_end(ui, true);
     const uint64_t row_bytes = (uint64_t)target->width * sizeof(uint32_t);
     copy_stream_rows_batch(target->owned_map, target->pitch, drawn, row_bytes, row_bytes, target->height);
@@ -124,8 +221,10 @@ static bool game_session_action(game_session_t *session, ui_menu_action_t action
         game_pause_set(session->borrowed_game, false);
         session->state = GAME_SESSION_PLAYING;
         return false;
+    case UI_MENU_ACTION_SETTINGS:
+        game_session_settings_open(session);
+        return false;
     case UI_MENU_ACTION_NONE:
-    case UI_MENU_ACTION_SETTINGS: /* Stage 14.5's screen goes here; the button stays disabled until it does */
         return false;
     }
     return false;
@@ -142,14 +241,23 @@ static void game_session_pause(game_session_t *session) {
 /* The paused or menu frame both ways of running share. False if a frame could not be started, which has been said. */
 static bool game_session_screen_frame(game_session_t *session, const input_frame_t *frame, bool escape,
                                       display_buffer_t *back, bool *out_next) {
-    const uint8_t *const picture =
-        session->state == GAME_SESSION_PAUSED ? session->borrowed_game->borrowed_last_picture : nullptr;
+    game_t *const game = session->borrowed_game;
+    /* Behind this screen a person is looking for what a change has done. Behind the others a pause costs nothing. */
+    if (session->state == GAME_SESSION_PAUSED && session->settings_up != 0u && !game_view_refresh(game)) {
+        session->failed = 1u;
+        return false;
+    }
+    const uint8_t *const picture = session->state == GAME_SESSION_PAUSED ? game_picture_held(game) : nullptr;
     ui_menu_action_t action = UI_MENU_ACTION_NONE;
     if (!game_session_menu_draw(session, frame, escape && session->escape_used == 0u, picture, back, &action)) {
         session->failed = 1u;
         return false;
     }
     session->escape_used = 0u;
+    if (!game_session_settings_step(session)) {
+        session->failed = 1u;
+        return false;
+    }
     *out_next = game_session_action(session, action);
     return true;
 }
@@ -222,9 +330,12 @@ static void game_session_open_alive(void *context) {
 display_status_t game_session_run(game_session_t *session, display_t *display, display_frame_source_t source,
                                   void *context) {
     game_open_alive_set(session->borrowed_game, game_session_open_alive, display);
+    session->borrowed_display = display;
+    display_flip_vsync_set(&display->flip, session->config.uncapped == 0u);
     const display_status_t status = display_frames_run(display, source, game_session_discard, context);
     game_session_world_close(session);
     game_open_alive_set(session->borrowed_game, nullptr, nullptr);
+    session->borrowed_display = nullptr;
     return status;
 }
 

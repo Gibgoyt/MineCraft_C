@@ -403,6 +403,11 @@ void render_frame_features_set(render_frame_t *frame, uint32_t features) {
     frame_settings_apply(frame);
 }
 
+void render_frame_fog_set(render_frame_t *frame, float32_t fog_end) {
+    frame->fog_end = fog_end;
+    frame_settings_apply(frame);
+}
+
 void render_frame_time_set(render_frame_t *frame, float32_t day_fraction) {
     frame->day_fraction = day_fraction - floorf(day_fraction);
     frame_settings_apply(frame);
@@ -513,6 +518,11 @@ void render_frame_present(const render_frame_t *frame, const uint8_t *picture, d
     ASSERT_ALWAYS(target->width == frame->width && target->height == frame->height);
     const uint64_t row_bytes = (uint64_t)frame->width * POST_BYTES_PER_PIXEL;
     copy_stream_rows_batch(target->owned_map, target->pitch, picture, row_bytes, row_bytes, frame->height);
+}
+
+void render_frame_present_full(const uint8_t *picture, display_buffer_t *target) {
+    const uint64_t row_bytes = (uint64_t)target->width * POST_BYTES_PER_PIXEL;
+    copy_stream_rows_batch(target->owned_map, target->pitch, picture, row_bytes, row_bytes, target->height);
 }
 
 static int32_t frame_compare_samples(const void *a, const void *b) {

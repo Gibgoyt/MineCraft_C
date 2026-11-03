@@ -59,11 +59,14 @@ typedef struct main_options_t {
     float32_t time_of_day;      /* --time-of-day */
     uint32_t full_detail;       /* --full-detail, or 0 for RENDER_LOD_FULL_DETAIL_DEFAULT */
     const char *saves;          /* --saves, or nullptr for MAIN_SAVES_DEFAULT */
+    const char *settings;       /* --settings, or nullptr for MAIN_SETTINGS_DEFAULT */
 } main_options_t;
-static_assert(sizeof(main_options_t) == 80);
+static_assert(sizeof(main_options_t) == 88);
 
 /* Where worlds live unless told otherwise: beside where the program was started, like everything else it reads. */
 static const char MAIN_SAVES_DEFAULT[] = "saves";
+/* And where what a person chose on the Settings screen is kept. */
+static const char MAIN_SETTINGS_DEFAULT[] = "settings.yaml";
 
 static void main_print_usage(const char *program) {
     fprintf(
@@ -76,7 +79,7 @@ static void main_print_usage(const char *program) {
         "           [--no-shadows] [--no-stored-light] [--no-transparency] [--no-water-reflection]\n"
         "           [--no-water-tint] [--no-ao] [--no-taa] [--god-rays] [--no-entities]\n"
         "           [--no-outline] [--full-detail <chunks>] [--no-lod] [--headless ...]\n"
-        "       %s --menu [--saves <dir>] [--render-distance <chunks>] [--headless ...]\n"
+        "       %s --menu [--saves <dir>] [--settings <file>] [--render-distance <chunks>] [--headless ...]\n"
         "  --report                 print the build's defines and CPU features, then exit\n"
         "  --pretend-missing-cpu    treat this feature as absent, to see the CPU check fail; may repeat\n"
         "  --pretend-leak           skip the shutdown, to see the leak check at exit fail\n"
@@ -119,7 +122,9 @@ static void main_print_usage(const char *program) {
           "  --menu                   the game: main menu, make or choose a world, walk in it, Esc to pause. Through "
           "KMS\n"
           "                           from a text console, never inside X; with --headless, a script does all of that\n"
-          "  --saves <dir>            with --menu: where worlds live. Default saves, under where it was started\n",
+          "  --saves <dir>            with --menu: where worlds live. Default saves, under where it was started\n"
+          "  --settings <file>        with --menu: where settings are kept. Default settings.yaml, under where it was\n"
+          "                           started. Flags that say the same go over it for the run\n",
           stderr);
 }
 
@@ -176,6 +181,9 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
         } else if (strcmp(argv[i], "--saves") == 0 && i + 1 < argc) {
             i++;
             out->saves = argv[i];
+        } else if (strcmp(argv[i], "--settings") == 0 && i + 1 < argc) {
+            i++;
+            out->settings = argv[i];
         } else if (strcmp(argv[i], "--walk") == 0) {
             out->walk = 1;
         } else if (strcmp(argv[i], "--no-sky") == 0) {
@@ -285,6 +293,10 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
         fprintf(stderr, "%s: --saves only means something with --menu\n", argv[0]);
         return false;
     }
+    if (out->settings != nullptr && out->menu == 0u) {
+        fprintf(stderr, "%s: --settings only means something with --menu\n", argv[0]);
+        return false;
+    }
     if (out->menu != 0u && (out->test_world != 0 || out->test_pattern != 0 || out->report != 0)) {
         fprintf(stderr, "%s: --menu does not go with --test-world, --test-pattern or --report\n", argv[0]);
         return false;
@@ -332,6 +344,16 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
     return true;
 }
 
+/* What is kept, with what the flags say over it, for this run. Before job_init, which the worker count is for. */
+static void main_settings_read(app_t *app, const main_options_t *options) {
+    settings_load(&app->settings, options->settings != nullptr ? options->settings : MAIN_SETTINGS_DEFAULT);
+    settings_values_t *const values = &app->settings.values;
+    values->render_distance = options->render_distance != 0u ? options->render_distance : values->render_distance;
+    values->full_detail = options->full_detail != 0u ? options->full_detail : values->full_detail;
+    values->effects &= ~(uint32_t)options->features_off;
+    values->effects |= options->god_rays != 0u ? (uint32_t)SHADE_FEATURE_GOD_RAYS : 0u;
+}
+
 /* The CPU check comes first: everything after it assumes these instructions exist. --report only prints, so it starts
  * nothing, and --test-pattern needs only the display. The topology is read before main pins itself, since afterwards
  * the answer would be that one CPU. */
@@ -362,7 +384,18 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         math_deinit(&app->math);
         return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
     }
-    if (!thread_topology_read(&app->topology) || !job_init(&app->job, &app->topology)) {
+    if (!settings_init(&app->settings)) {
+        texture_deinit(&app->texture);
+        simd_deinit(&app->simd);
+        math_deinit(&app->math);
+        return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
+    }
+    if (options->menu != 0u) {
+        main_settings_read(app, options);
+    }
+    if (!thread_topology_read(&app->topology) ||
+        !job_init_count(&app->job, &app->topology, app->settings.values.worker_count)) {
+        settings_deinit(&app->settings);
         texture_deinit(&app->texture);
         simd_deinit(&app->simd);
         math_deinit(&app->math);
@@ -371,6 +404,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
     /* Before main pins itself: any thread CUDA starts here would inherit that one CPU. */
     if (MC_GPU_ENABLED != 0 && gpu_bridge_init(&app->gpu_bridge, gpu_bridge_limits_default()) != GPU_STATUS_OK) {
         job_deinit(&app->job);
+        settings_deinit(&app->settings);
         texture_deinit(&app->texture);
         simd_deinit(&app->simd);
         math_deinit(&app->math);
@@ -380,6 +414,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         !world_init(&app->world, world_limits_default())) {
         gpu_bridge_deinit(&app->gpu_bridge);
         job_deinit(&app->job);
+        settings_deinit(&app->settings);
         texture_deinit(&app->texture);
         simd_deinit(&app->simd);
         math_deinit(&app->math);
@@ -389,6 +424,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         world_deinit(&app->world);
         gpu_bridge_deinit(&app->gpu_bridge);
         job_deinit(&app->job);
+        settings_deinit(&app->settings);
         texture_deinit(&app->texture);
         simd_deinit(&app->simd);
         math_deinit(&app->math);
@@ -399,6 +435,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         world_deinit(&app->world);
         gpu_bridge_deinit(&app->gpu_bridge);
         job_deinit(&app->job);
+        settings_deinit(&app->settings);
         texture_deinit(&app->texture);
         simd_deinit(&app->simd);
         math_deinit(&app->math);
@@ -412,6 +449,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         world_deinit(&app->world);
         gpu_bridge_deinit(&app->gpu_bridge);
         job_deinit(&app->job);
+        settings_deinit(&app->settings);
         texture_deinit(&app->texture);
         simd_deinit(&app->simd);
         math_deinit(&app->math);
@@ -425,6 +463,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         world_deinit(&app->world);
         gpu_bridge_deinit(&app->gpu_bridge);
         job_deinit(&app->job);
+        settings_deinit(&app->settings);
         texture_deinit(&app->texture);
         simd_deinit(&app->simd);
         math_deinit(&app->math);
@@ -454,6 +493,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         world_deinit(&app->world);
         gpu_bridge_deinit(&app->gpu_bridge);
         job_deinit(&app->job);
+        settings_deinit(&app->settings);
         texture_deinit(&app->texture);
         simd_deinit(&app->simd);
         math_deinit(&app->math);
@@ -470,6 +510,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         world_deinit(&app->world);
         gpu_bridge_deinit(&app->gpu_bridge);
         job_deinit(&app->job);
+        settings_deinit(&app->settings);
         texture_deinit(&app->texture);
         simd_deinit(&app->simd);
         math_deinit(&app->math);
@@ -503,6 +544,7 @@ static void app_deinit(app_t *app) {
     world_deinit(&app->world);
     gpu_bridge_deinit(&app->gpu_bridge);
     job_deinit(&app->job);
+    settings_deinit(&app->settings);
     texture_deinit(&app->texture);
     simd_deinit(&app->simd);
     math_deinit(&app->math);
@@ -699,6 +741,7 @@ static main_exit_t main_run_menu(app_t *app, const main_options_t *options) {
     game_session_t session;
     game_session_init(&session, &app->game, &app->ui, &app->terrain, &app->input, &game,
                       options->saves != nullptr ? options->saves : MAIN_SAVES_DEFAULT, blank_seed);
+    game_session_settings_set(&session, &app->settings);
     const display_status_t ran = game_session_run(&session, &app->display, game_session_source, &session);
     input_report(&app->input);
     const bool failed = session.failed != 0u;
@@ -726,6 +769,7 @@ static main_exit_t main_run_menu_headless(app_t *app, const main_options_t *opti
     game_session_t session;
     game_session_init(&session, &app->game, &app->ui, &app->terrain, nullptr, &game,
                       options->saves != nullptr ? options->saves : MAIN_SAVES_DEFAULT, TERRAIN_SEED_DEFAULT);
+    game_session_settings_set(&session, &app->settings);
     display_headless_scene_t scene;
     game_session_headless_scene(&session, &scene);
     display_headless_t *const headless = &app->offscreen.headless;

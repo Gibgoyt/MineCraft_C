@@ -241,6 +241,8 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 |---|---|---|---|
 | `game` | | **Owner of World, Tick and Frame arenas**; the loop connecting `sim`, `gpu`, `main` | 08.4, extended later |
 | | `session` | From the title screen to Quit Game: runs the menus, opens the world chosen, pauses it, closes it. Not in the plan's list: `ui` must not call `game`, and `main` may not hold this much | 14.4 |
+| | `report` | What the HUD shows now and the log's lines at the end of a run. Not in the plan's list: split off at Stage 14.5 for size | 14.5 |
+| | `view` | What a config comes to for what is drawn, and bringing a picture up to the display's size. Not in the plan's list: `game_reconfigure` needs it, and `game` had reached its size for splitting | 14.5 |
 | `physics` | `collision raycast` | Swept AABB; DDA block targeting | 12.1, 12.2 |
 | `player` | `movement camera` | Walk, jump, swim, look | 12.1, 12.2 |
 | | `interaction` | **Mining, drops, placing** | 12.3 |
@@ -268,7 +270,8 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `menu` | Main menu, world create and select, pause, loading | 14.4 |
 | | `menu/catalog` | Worlds on disk: each one's `world.meta`, what a typed name and seed turn into | 14.4 |
 | | `screen_settings` | **Render distance and all options** | 14.5 |
-| `settings` | `persist` | Stored options with our own runtime parser | 14.5 |
+| `settings` | (the Owner) | `settings_init`, `settings_deinit`, `settings_load`, `settings_save`: the values, and where they are kept | 14.5 |
+| | `persist` | Their ranges and defaults, and the file, with our own runtime parser | 14.5 |
 | `save` | `world` | Seed + changed-section deltas, crash-safe | 16.1 |
 | | `state autosave` | Player, entities, time; background saves | 16.2 |
 
@@ -426,6 +429,8 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/game/` | ctest `run_game`: the real loop on the real card and threads through `display_frames_run`, on fake kernels, with the guardian really forked |
 | `tests/run/ui/screens/` | ctest `run_ui_screens`, named by its path: `run/src/ui/` with its four `screen_*`, and what `run/src/game/` does with them: every slot's place at three scales, replays of real scripts in `fixtures/` held byte for byte to golden PNGs beside them, 20000 random clicks on each screen, closing with no room, the ring, no heap, every way a screen comes up and goes on the real card, a click over the real threads, and the built program |
 | `tests/run/ui/menu/` | ctest `run_ui_menu`: `run/src/ui/menu/` with `catalog`, and `run/src/game/session/`: what is typed against published vectors and by hand, worlds on disk with what is wrong with them, each screen on made-up input by numbers worked out by hand, every size, no heap, pictures held to hashes set after looking at them, the built program all the way round under `--headless` and its refusals, and the whole round on fake kernels with the real threads and a real guardian |
+| `tests/run/settings/` | ctest `run_settings`: `run/src/settings/` with `persist`, `run/src/ui/screen_settings/` and `run/src/game/view/`: every setting saved and read back, bad files, each slider and box on made-up input, flips on a fake kernel, workers, and scripts in the built program whose pictures and files prove render distance live, without a restart, and kept |
+| `tests/run/settings/session/` | ctest `run_settings_session`: `game_reconfigure`, `game_view_refresh` and the Settings screen through `run/src/game/session/`: render distance both ways and everything else in an open world on the card, with one thread and with its real threads, and a whole session on fake devices |
 | `tests/run/ui/font/` | ctest `run_ui_font`, named by its path: `run/src/ui/` with `compose`, `font` and `widget`: the font against its recipe by hand, text, fills and images against a pixel-at-a-time model on `simd_reference_blend_over` with guard pixels round the canvas, each widget on made-up input frames, every key of a US keyboard, a picture left alone by what is drawn over it, no heap in 200 frames, a sheet of all of it held to a hash set after looking at it, and the built program |
 | `tests/run/ui/hud/` | ctest `run_ui_hud`: `run/src/ui/hud/`, with what `run/src/game/` does with it: where things go by hand, random states against a pixel-at-a-time model with guard pixels round the canvas, golden PNGs in `fixtures/`, no heap in 200 frames, the real game on the card with one thread and with its real threads, and a script in the built program |
 | `tests/run/render/upload/` | ctest `run_render_upload`, covering `run/src/render/` with `upload`, and `cuda/src/world_buffers/`, on the real card: a real kernel's answers against the world voxel for voxel, the slab pool against a model, the budget, and a real sim thread |

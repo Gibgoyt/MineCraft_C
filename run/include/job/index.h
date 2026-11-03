@@ -124,7 +124,9 @@ typedef struct job_system_t {
     job_worker_t *borrowed_workers; /* MC_THREADS_WORKERS, in owned_region */
     job_cell_t *borrowed_cells;     /* JOB_INJECTOR_CAPACITY, in owned_region */
     _Atomic uint8_t stopping;
-    uint8_t _pad3[MC_CPU_CACHE_LINE_BYTES - 33];
+    uint8_t _pad3[3];
+    uint32_t worker_count; /* how many of borrowed_workers run: from 1 to MC_THREADS_WORKERS */
+    uint8_t _pad4[MC_CPU_CACHE_LINE_BYTES - 40];
 } job_system_t;
 static_assert(sizeof(job_system_t) == 4 * MC_CPU_CACHE_LINE_BYTES);
 static_assert(alignof(job_system_t) == MC_CPU_CACHE_LINE_BYTES);
@@ -159,6 +161,10 @@ static_assert(sizeof(job_stats_t) == 64);
 /* Reserves all the memory and starts MC_THREADS_WORKERS pinned workers, which sleep until there is work. On failure logs
  * why, leaves nothing running or reserved, and returns false. */
 [[nodiscard]] bool job_init(job_system_t *system, const thread_topology_t *topology);
+
+/* The same with fewer workers, for the setting: from 1 to MC_THREADS_WORKERS, and anything else is that limit's nearest. All the memory
+ * is still reserved, since only pages touched cost anything, and it is the system's for its whole life. */
+[[nodiscard]] bool job_init_count(job_system_t *system, const thread_topology_t *topology, uint32_t worker_count);
 
 /* Runs what is still queued, including whatever those jobs spawn, then stops the workers and releases everything.
  * Nothing may submit from outside a job once this has been called. Does nothing on a system that is not running. */

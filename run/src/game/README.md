@@ -9,6 +9,8 @@
 
 - `game_init`, `game_deinit`: remember what it runs on, taking nothing; stop everything. Deinit is safe on a zeroed `game_t`.
 - `game_open`, `game_close`: a world, its blocks on the card, and its pictures, with the effects `game_config_t.features_off` leaves on.
+- `game_reconfigure`: the same world goes on with another config.
+- `game_view_refresh`, `game_picture_held`: what a changed config has done to the picture, and the last picture at the display's size, for what shows one with no frame going.
 - `game_day_set`: the time of day, from where the clock goes on. Mid-morning unless told otherwise.
 - `game_sim_step`, `game_fly`, `game_settle`: a step of streaming, a step of flying, and running the sim and upload here until the card holds all the eye's place wants.
 - `game_headless_scene`: what `display_headless_run` drives. One thread, no clock, and one script gives one set of pictures.
@@ -33,7 +35,7 @@
 **May be called by:** `run/src/main/`, and its part `session`.
 **Depends on:** `mob`, `player`, `entity`, `item`, `ui`, `render`, `world`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
 
-**Parts:** `session`: from the title screen to Quit Game, on top of the rest of this.
+**Parts:** `session`: from the title screen to Quit Game, on top of the rest of this. `view`: what a config comes to, and bringing a picture up to the display's size. `report`: what it says about itself.
 
 A column's blocks are `terrain_generate_box`, on a worker, over all of the column's storage. Each job lends it the states and a byte per voxel.
 
@@ -76,6 +78,23 @@ With `game_player_set`, as `--walk` does, the eye stops flying and follows a bod
 What it shows comes from the other threads as single relaxed atomics, because nothing but the screen depends on them and a word cannot tear. Each tick the sim stores each hotbar stack as one word, and which is in hand; `player_vitals_read` is the same idea for health and food. After each picture the gpu thread stores what each pass took, as the difference that picture made to `render_frame_stats_t`. It reads `stats` itself, as the only thread that writes it. Slots from two ticks can show side by side for one frame, which nobody could see.
 
 With a real clock the sim's tick, the copy and drawing, and copying out are timed too. Under `--headless`, nothing reads a clock: those stay 0, and frames per second count pictures per tick's worth of script. A run with the overlay on in `--headless` is the one kind whose pictures are not the same each time, as they show the card's clock.
+
+## Changing a config in an open world
+
+`game_reconfigure` is how render distance, and everything else on the Settings screen, takes effect without closing anything. It is called on `main` between frames.
+
+What needs only a word goes at once: field of view into the camera `main` publishes anyway, sensitivity for the next counts, and uncapped to the gpu thread as a relaxed atomic. A config that comes to the same `game_view_t` stops at that.
+
+Anything else stops the threads, changes what they use, and starts them again. That is a frame's wait for the gpu thread, against the alternative of those two taking blocks on the card away from each other under a lock neither holds. Between the stop and the start, in order:
+
+1. **Render scale:** the last picture is copied out to `owned_view`, since its memory is about to go and a pause may be showing it. `render_close_frame` and `render_open_frame` at the new size, on the display's size if it comes to that, by `game_view_bring_up` each frame before the HUD. If the card will not have it, the size stays.
+2. **Far field:** a different plan closes the one there is and opens one anew. What it held is rebuilt by workers, from the coarsest level, as at a world's opening: a level still filling makes the picture coarser and never wrong.
+3. **Map:** `world_map_set_view_radius`, with no thread holding it. Columns now out of range leave through the sim's next steps as they do when walking away, and those now in range stream in, nearest first. The columns still in range stay, with whatever has been done to them.
+4. **Fog and effects:** into the frame, for the next one.
+
+No world is closed, no player or item is touched, and the world's time goes on. Full detail cannot go past `game_config_t.table_chunks`: the table, the column table on the card and the slab pool are sized at `game_open`, so `session` opens every world with room for what full detail was then, however little of that the render distance uses. So a render distance of 4 with a full detail of 32 holds 1.8 GiB of slabs on the card, for the moment the slider goes up. What is not the session asks for no such room, as its tests always did.
+
+If the far field will not fit on the card, the world stops at full detail, the fog comes in to meet it, and it says so. Only a frame that cannot be had back, or threads that will not start, ends the game.
 
 ## The time of day
 
