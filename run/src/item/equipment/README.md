@@ -3,7 +3,7 @@
 **Purpose:** what tools do and how they wear, and what armor is worn and what it stops.
 **Tier:** Arena. Takes nothing, as a tier may allocate less than it is allowed: `equipment_t` is a field of `item_t`.
 **Owns:** nothing. What is in hand is the inventory's, and the stacks worn are in `equipment_t`.
-**Lifetime:** World: `item_open` starts it and `item_close` ends it, and nothing is kept until Stage 16.2 saves.
+**Lifetime:** World: `item_open` starts it and `item_close` ends it, and `run/src/save/state/` writes what is worn into a save and reads it back.
 **Threads:** the sim's alone.
 **Public functions** (`run/include/item/equipment/index.h`):
 
@@ -13,7 +13,7 @@
 - `equipment_tool_wear`, `equipment_tool_block_broken`, `equipment_tool_attacked`: the slot in hand wears, and breaks.
 - `equipment_own_drop`: what shears give on top.
 - `equipment_till_result`, `equipment_hoe_till`, `equipment_use_tick`: a hoe, and the right button with a hoe or armor.
-- `equipment_armor_slot_of`, `equipment_armor_worn`, `equipment_armor_points`: what goes where, what is there, and what it adds up to.
+- `equipment_armor_slot_of`, `equipment_armor_worn`, `equipment_armor_points`, `equipment_armor_toughness`: what goes where, what is there, and what it adds up to.
 - `equipment_armor_click`, `equipment_armor_wear_held`, `equipment_armor_quick_move_in`, `equipment_armor_quick_move_out`: putting it on and taking it off.
 - `equipment_armor_absorb`, `equipment_armor_hurt`: what is left of a hit, the second with the wear.
 

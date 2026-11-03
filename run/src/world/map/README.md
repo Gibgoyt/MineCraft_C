@@ -16,7 +16,7 @@
 - `world_map_stream_leaving`, `world_map_unload`: columns out of range, and ending one.
 - `world_map_block_get`, `world_map_light_get`: one voxel at world coordinates, or why not.
 
-**May be called by:** `run/src/world/`, `world/edit`, and later `game`, `terrain`, `physics`, `save`.
+**May be called by:** `run/src/world/` and its parts, `game`, `entity` and its parts, `mob` and its parts, `physics` and its parts, and `player` and its parts.
 **Depends on:** `arena`, `assert`, and its siblings `world/column` and `world/section`, whose types it stores.
 
 ## Toroidal

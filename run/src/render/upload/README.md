@@ -13,8 +13,8 @@
 - `render_upload_idle`: whether anything is on its way.
 - `render_upload_resend_drain`: gives sections the pool refused back to the world as dirty.
 
-**May be called by:** `render`, and later `render/frame`. It includes its sibling `render/encode`, which only it calls.
-**Depends on:** `render/encode`, `gpu_bridge/world_buffers`, `world/edit`, `job`, `thread/ring`, `arena`.
+**May be called by:** `render`, and `render/lod`, for its budget. It includes its sibling `render/encode`, which only it calls.
+**Depends on:** `render/encode`, `gpu_bridge/world_buffers`, `world/edit`, `job`, `thread/ring`, `arena`, `assert`.
 
 ## How a section gets to the card
 

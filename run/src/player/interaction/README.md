@@ -64,5 +64,5 @@ With no inventory, as in tests of this module alone, what `run/src/entity/item_d
 
 ## What is left for others
 
-- The picture does not show the crack yet. Stage 09.5 owns the breaking overlay: `player_interaction_progress` is its number, and it still needs a way across to `main`, such as `player_view_t`.
+- The crack is drawn by `cuda/src/entity_rays/`: `run/src/game/` turns `player_interaction_progress` into its frame with `render_entities_crack_frame`.
 - Enchantments have no part here yet. Durability is `run/src/item/equipment/`'s, and what mining tires is `run/src/player/survival/`'s, from `mined_count`.

@@ -14,7 +14,7 @@
 - `terrain_rng_start`: a stream from a seed.
 - `terrain_rng_next_u64`, `terrain_rng_next_u32`, `terrain_rng_next_below`, `terrain_rng_next_f32`, `terrain_rng_next_f64`: the next number of a stream.
 
-**May be called by:** `terrain` and its parts. `terrain/noise` uses it to derive each octave.
+**May be called by:** `terrain` and its parts, and whatever else needs numbers from a seed: `entity/explosion`, `entity/item_drop`, `entity/projectile`, `mob/creeper`, `mob/skeleton`, `mob/spawn`, `mob/zombie`, `bench/`. `terrain/noise` uses it to derive each octave.
 **Depends on:** `assert`, `types`.
 
 ## How to use it

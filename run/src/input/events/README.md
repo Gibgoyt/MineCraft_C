@@ -14,7 +14,7 @@
 - `input_events_stream_release`: lets go of everything a vanished device held.
 - `input_keys_has`, `input_keys_any`: read a key set.
 
-**May be called by:** `input`, `input/discovery`, and whoever reads a frame.
+**May be called by:** `input`, `input/discovery`, and whoever reads a frame, such as `ui/widget`.
 **Depends on:** `input/ops`, `arena`.
 
 ## What it decides

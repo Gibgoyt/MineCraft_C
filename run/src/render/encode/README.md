@@ -10,7 +10,7 @@
 - `render_encode_section`: one section's voxels to bytes; no blocks means no bytes.
 - `render_encode_job_begin`, `render_encode_job_run`, `render_encode_job_done`: the same as a job over one section of a snapshot view, and how the gpu thread sees it finish.
 
-**May be called by:** `render/upload`, and tests.
+**May be called by:** `render/upload`, `render/lod`, `render`, and tests.
 **Depends on:** `gpu_bridge/world_buffers`, whose header defines the form; `world/edit`, for snapshot views; `job`; `simd/bitmask`.
 
 ## What is a block

@@ -11,7 +11,7 @@
 - `player_movement_box`: its box at a place, for a height.
 - `player_movement_tick`: one tick from an intent.
 
-**May be called by:** `run/src/player/`, and tests.
+**May be called by:** `run/src/player/` and its parts, `run/src/mob/creeper/` for where the body stands, `bench/mobs/`, and tests.
 **Depends on:** `physics`, `world/map`, `world/column`, the generated `tables/blocks`, libm.
 
 Nothing here reads a clock or a random number. The same world and the same intents give the same bytes, and the tests hold it to that.

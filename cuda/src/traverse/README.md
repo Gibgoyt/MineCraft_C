@@ -11,6 +11,8 @@
 - `traverse_primary`: one ray per pixel, with or without the coarse pass, into a `traverse_hit_t` per pixel.
 - `traverse_rays`: the same loop over a list of rays.
 - `traverse_wait`: waits for what was started, and reports a failure of any of it.
+- `traverse_hit_face`, `traverse_hit_steps`: what a hit's `info` says.
+- `traverse_tiles_across`, `traverse_coarse_bytes`, `traverse_hits_bytes`: sizes, for whoever holds the blocks.
 
 Only for CUDA code (`cuda/include/traverse/index.hu`):
 

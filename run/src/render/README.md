@@ -1,6 +1,6 @@
 # run/src/render
 
-**Purpose:** the CPU side of drawing the world: holds what getting sections to the card takes, and later the frame sequence.
+**Purpose:** the CPU side of drawing the world: holds what getting sections to the card takes, and the parts that build and draw a frame.
 **Tier:** Owner.
 **Owns:** `owned_host` with `arena_host` over it, for the host's copy of the column table, the slab bookkeeping, and upload's jobs, staging and ring; and on the card, `owned_pool` and `owned_table`, for one world at a time. For drawing, `owned_frame_host` with `arena_frame` over it, and on the card the textures, the three tables, a frame's four targets, what goes from frame to frame and each frame's entity lists and hits, from `render_open_frame` to `render_close_frame`.
 **Lifetime:** Process for the host region, World for what is in it and for the blocks on the card.
@@ -15,7 +15,7 @@
 - `render_open_lod`, `render_close_lod`: the same for the far field: each level's table and pool, a frame's far hits, and `owned_lod_host` with `arena_lod` over it.
 
 **May be called by:** `run/src/main/`, which starts and stops it, and `game`, which opens a world.
-**Depends on:** `heap`, `arena`, `log`, `machine`, `job`, `texture`, `display/flip`, `world/edit`, `gpu_bridge/device_memory`, `gpu_bridge/world_buffers`, `gpu_bridge/traverse`, `gpu_bridge/shade`, `gpu_bridge/post`, `gpu_bridge/frame`, and its parts below.
+**Depends on:** `heap`, `arena`, `assert`, `log`, `machine`, `job`, `texture`, `display/flip`, `world/edit`, `gpu_bridge/device_memory`, `gpu_bridge/world_buffers`, `gpu_bridge/traverse`, `gpu_bridge/shade`, `gpu_bridge/post`, `gpu_bridge/frame`, and its parts below.
 
 ## Parts
 

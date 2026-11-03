@@ -15,7 +15,7 @@
 - `player_camera_outline_draw`: those pieces, as lines over a finished picture.
 
 **May be called by:** `run/src/player/`, `run/src/game/`, and tests.
-**Depends on:** `physics/raycast`, `render/frame` for `render_camera_t`, `gpu_bridge/traverse` for the rays' numbers, `display/flip` for the buffer, libm.
+**Depends on:** `physics/raycast`, `render/frame` for `render_camera_t`, `gpu_bridge/traverse` for the rays' numbers, `display/flip` for the buffer, `thread` for a fence, libm.
 
 ## Why the outline is drawn on the CPU
 

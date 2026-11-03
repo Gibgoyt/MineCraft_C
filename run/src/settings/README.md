@@ -23,7 +23,7 @@
 | Setting | Takes effect |
 |---|---|
 | Render distance | At once, with no restart and in the world that is open: nearer than full detail by the map's view, and past it by a far field made anew, which fills in over about 0.4 s of a worker for each coarse column in a release build. See `run/src/game/README.md` |
-| Full detail | At once, up to what the open world's table was sized for, which is what full detail was when it opened. Further is on the screen as taking a new world: the table and the slab pool on the card are sized once, and what is in them is the only copy of a player's edits until Stage 16.1 |
+| Full detail | At once, up to what the open world's table was sized for, which is what full detail was when it opened. Further is on the screen as taking a new world: the table and the slab pool on the card are sized once, and what is in them is sized for the world as it opened |
 | Field of view, sensitivity | At once |
 | Each effect | At once |
 | Render scale | At once: new pictures on the card, brought up to the display's size. See `run/src/game/README.md` |

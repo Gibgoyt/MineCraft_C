@@ -15,7 +15,7 @@
 - `column_block_get`, `column_block_set`, `column_light_get`, `column_light_set`: one voxel, refusing any `z` outside gameplay.
 - `column_memory_bytes`: what it holds, struct included.
 
-**May be called by:** `run/src/world/`, and later `map`, `edit`, `light`, `terrain`, `render/encode`, `save`.
+**May be called by:** `run/src/world/` and its parts, `entity/item_drop`, `entity/store`, `mob/path`, `physics`, `physics/raycast`, `player/movement`, `player/survival`, `render/lod`, `save/world`, and `bench/`.
 **Depends on:** `arena`, `assert`, `machine`, `run/src/world/section/`, whose types it stores, which `plans/REPO_STRUCTURE.md` section 11 requires this line to say: `world/section`. And the generated `tables/blocks/`, for air.
 
 ## Two ranges

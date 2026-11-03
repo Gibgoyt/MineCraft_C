@@ -21,7 +21,7 @@ It writes a small pack of its own at run time, under `build/<preset>/test_work/t
 - **The pin:** another commit, loose and packed refs and a detached `HEAD`, a hostile ref name, a damaged ref, no `.git`, and `.git` as a link.
 - **Hostile files:** flipped, cut short, not a PNG, empty, a tiny file claiming 32768 by 32768, too wide for `.mctex`, and over the file limit. A symbolic link to a file outside the pack, a link for a whole directory, a FIFO, a directory in place of a file, and an escape sequence in a file name, which must not reach the output.
 - **`mctex`:** FNV-1a's published test vectors, every truncation, every field, and every bit of the pixels and hash.
-- **`verify`, with the pack deleted:** every kind of damage it claims to catch, and that it accepts what Stage 06.3 will add.
+- **`verify`, with the pack deleted:** every kind of damage it claims to catch, and that it accepts what Stage 06.3 added.
 - **The committed tree:** `verify` passes, a direct walk of the directories (not through the tool) finds both files in each, and a table of textures the renderer will want have the expected shape, so a wrong line in the manifest cannot pass quietly.
 
 The real pack's pixels were compared with ImageMagick once, by hand, when it was imported: see the Stage 06.2 file. That needs the pack, so it is not part of this test.

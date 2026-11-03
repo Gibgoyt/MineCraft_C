@@ -45,7 +45,7 @@ The depths start from what was remembered of a familiar game's published ore dis
 | `ore/lapis_low` | lapis | -250 | 2 | uniform | 7 | 8 | |
 | `ore/diamond_small` | diamond | -406 | -92 | triangle | 4 | 14 | The triangle's peak is at -249, the bottom of the world, and veins that land below it are lost, so diamonds grow more common with depth |
 | `ore/diamond_large` | diamond | -406 | -92 | triangle | 12 | 0.22 | One big one, now and then |
-| `ore/emerald` | emerald | -154 | 500 | uniform | 3 | 16 | Only where a chunk's middle column is at least 120 high: a mountain's. Biomes come later than this stage, and this is the part of "mountain" that needs no biome. Fewer tried than the remembered number gives, as our veins of 3 really come to about 3: see Stage 10.5's issue 2 |
+| `ore/emerald` | emerald | -154 | 500 | uniform | 3 | 16 | Only where a chunk's middle column is at least 120 high: a mountain's. This module knows no biomes, and this is the part of "mountain" that needs none. Fewer tried than the remembered number gives, as our veins of 3 really come to about 3: see Stage 10.5's issue 2 |
 
 There is no redstone: `config/blocks/` has no such block. A row for one goes here when it does.
 
@@ -86,7 +86,7 @@ The radius makes that volume add up to `size`, with balls overlapping by about h
 
 A familiar game's ores sometimes refuse to touch air. That asks what is next to a vein, which can be outside the box, so it has no place in a pure function here. Later features can do the same from the cave mask if the difference shows.
 
-Nothing fills a real world from this yet: the pipeline that calls density, then caves, then ore belongs to the stage that streams chunks.
+`terrain_generate_box` in `run/src/terrain/` calls this after density and caves, for every column the world streams.
 
 ## What it costs
 

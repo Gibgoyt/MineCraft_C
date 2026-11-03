@@ -1,11 +1,9 @@
 # `./plans/` — how planned work is recorded in this repository
 
 Plan mode writes its plan to `~/.claude/plans/<slug>.md`: outside the repo,
-invisible to everybody else, and gone when the machine is reimaged. Today's
-pre-admission work and the seven `npm test` fixes between them produced 14
-commits while the plan that drove them lived only in a home directory, so
-nothing here recorded what the plan had been, which phase was finished, or
-what went wrong on the way.
+invisible to everybody else, and gone when the machine is reimaged. Work done
+from a plan that lives only in a home directory leaves nothing here to say what
+the plan had been, which phase was finished, or what went wrong on the way.
 
 **So plans are repository artifacts.** They live in this directory, they are
 split one file per phase, and each phase file carries a live todo list that
@@ -39,6 +37,13 @@ dated and attributed to the step that discovered them.
 ./plans/NNN-<author>-<round>-{plan-name}.md                  the verbatim plan
 ./plans/NNN-<author>-<round>-{plan-name}-phase-1.md          phase 1
 ./plans/NNN-<author>-<round>-{plan-name}-phase-2.md          phase 2
+```
+
+A big plan splits a phase into stages, as plan 001 does, and the phase file then tracks its stages:
+
+```
+./plans/NNN-<author>-<round>-{plan-name}-phase-02-build-skeleton.md
+./plans/NNN-<author>-<round>-{plan-name}-phase-02-stage-1-cmake-mutex-hello.md
 ```
 
 - `NNN` is a zero-padded serial — `001`, `002`, `003` — allocated when the
@@ -128,7 +133,7 @@ tell whether it has been achieved without reading the todo list.
 
 The exact commands that prove this phase, with the mutex wrapper spelled out:
 
-    tools/test-or-build.sh npm run test:file -- src/path/to.test.ts
+    tools/test-or-build.sh timeout 300 ctest --preset debug -R '^run_world_section$' --output-on-failure
 
 Never an unwrapped heavy command. See `.claude/rules/test-or-build-mutex.md`.
 
@@ -149,16 +154,12 @@ fine — write "None." — a missing section is not.
 
 ## Conventions this directory inherits
 
-- **Heavy commands go through the mutex.** Every test, build, typecheck,
-  lint, migration and browser suite runs as
-  `tools/test-or-build.sh npm run <script>`. A phase file's Verification
-  section that lists a bare `npm test` is a bug in the phase file.
-- **Commit messages are a sentence**, in the style already in the log
-  ("Reception: show the desk who has already pre-admitted"). No tag prefix,
-  and no attribution trailer.
-- **A migration is applied only after a clean local test** of that number —
-  `tools/test-or-build.sh npm run migration:test <n>` — and a re-run must
-  write nothing. See `data/fastlane-db/README.md`.
+- **Heavy commands go through the mutex.** Every build and test runs as
+  `tools/test-or-build.sh cmake --build --preset <preset>` or
+  `tools/test-or-build.sh timeout <seconds> ctest --preset <preset> ...`. A phase
+  file's Verification section that lists a bare `ctest` is a bug in the phase file.
+- **Commit messages are a sentence**, in the style already in the log, with no
+  tag prefix and no attribution trailer. See `plans/CODING_STANDARD.md` section 11.
 - **Plans are not a substitute for the code's own comments.** This directory
   records what was decided and what happened; a rule that a future reader of
   a source file needs belongs in that file's header, where they will be

@@ -25,7 +25,7 @@ What it checks:
 
       MC_GOLDEN_WRITE=1 tools/test-or-build.sh ctest --preset debug -R '^render_feature_sky$'
 
-- **The cost:** each setting on real terrain and under a forest's crowns, the worst case on purpose, at 1080p, on the card's own clock, printed as `cost, ...` lines. Nothing here is a limit: the numbers are recorded in `plans/001-ahmed-bohemoth-minecraft-from-scratch-phase-09-stage-2-sky-shadows-light.md`. It also says what each setting changes on real terrain, and holds that each does change something, but for stored light, which has nothing to change there until Stage 11.1 stores some.
+- **The cost:** each setting on real terrain and under a forest's crowns, the worst case on purpose, at 1080p, on the card's own clock, printed as `cost, ...` lines. Nothing here is a limit: the numbers are recorded in `plans/001-ahmed-bohemoth-minecraft-from-scratch-phase-09-stage-2-sky-shadows-light.md`. It also says what each setting changes on real terrain, and holds that each does change something, but for stored light, whose change there is only reported, as the test does not run `run/src/world/light/` on that terrain.
 - **The built program:** the flags change the picture of a headless run, one script gives one set of pictures, the sun moves in a script and with `--no-day-cycle` does not, and wrong uses are refused.
 
 `fixtures/` holds those pictures, and `rig.h`, what opens a real run and a world with nothing in it, kept apart to keep `index.c` under the line where the standard asks for a split.

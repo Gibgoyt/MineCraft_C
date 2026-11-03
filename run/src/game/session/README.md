@@ -14,7 +14,7 @@
 - `game_session_headless_scene`, `game_session_end`: all of it for `display_headless_run`, and closing what is left.
 
 **May be called by:** `run/src/main/`.
-**Depends on:** `game`, `save`, `ui`, `ui/menu` and `ui/screen_settings`, `settings`, `terrain`, `input`, `display`, `simd/copy`, `log`, `assert`.
+**Depends on:** `game`, `save`, `ui`, `ui/menu` and `ui/screen_settings`, `settings`, `terrain`, `input`, `display`, `simd/copy`, `time`, `log`, `assert`.
 
 ## How it goes
 

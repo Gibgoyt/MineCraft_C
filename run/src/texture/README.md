@@ -16,8 +16,8 @@
 - `texture_vector_get`: one frame's palette, indices, height, normal and emissive.
 - `texture_pixels_get`: all pixels as one run of bytes, for a GPU upload.
 
-**May be called by:** `run/src/main/`, which starts and stops it, and later `game`, `render` and `ui`.
-**Depends on:** `heap`, `arena`, `log`, `asm/src/embed_assets/`, and its parts below.
+**May be called by:** `run/src/main/`, which starts and stops it, `game`, `render` and `ui`, each with its parts.
+**Depends on:** `heap`, `arena`, `log`, `simd/embed_assets`, `asm/src/embed_assets/`, and its parts below.
 
 ## Parts
 

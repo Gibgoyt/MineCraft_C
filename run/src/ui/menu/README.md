@@ -36,10 +36,10 @@ A new world opens as soon as it is made. The name's field takes 31 characters, w
 
 Nothing here logs, because `ui_menu_frame` runs each frame inside `display_frames_run`, where no one can read a log. What goes wrong is said on the screen, in `message`: a saves directory that cannot be read, worlds that could not be listed, a world that could not be made.
 
-## What is not here yet
+## What is not here
 
-- **Settings** is a disabled button until Stage 14.5's screen calls `ui_menu_settings_enable` and answers `UI_MENU_ACTION_SETTINGS`.
-- **A world's blocks and player are not saved.** `world.meta` keeps its name and seed, so choosing it again gives the same terrain as it was generated, without anything that was changed. Stage 16 saves those, in the directory `chosen.directory` names. Until then the pause screen says Quit to Title, and not Save.
+- **Settings** is a disabled button until someone calls `ui_menu_settings_enable` and answers `UI_MENU_ACTION_SETTINGS`, as `run/src/game/session/` does.
+- **Saving a world.** `world.meta` here keeps its name and seed. Its blocks and player are `run/src/save/`'s, in the directory `chosen.directory` names, and `run/src/game/session/` saves them on Quit to Title. This module only offers Leave Unsaved, when a save has failed.
 - **Worlds cannot be deleted from here.** The plan does not ask for it, and it is the one action here that would destroy anything.
 
 ## Sizes

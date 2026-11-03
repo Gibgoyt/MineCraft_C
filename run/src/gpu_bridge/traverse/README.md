@@ -6,5 +6,5 @@
 **Lifetime:** Process.
 **Threads:** the `gpu` thread, once there is one.
 **Public functions:** those of that header, listed in `cuda/src/traverse/README.md`.
-**May be called by:** `render`.
+**May be called by:** `render`, the other `gpu_bridge` parts for its types, and `player/camera` for the rays' numbers.
 **Depends on:** `gpu_bridge/status`, `gpu_bridge/device_memory` and `gpu_bridge/world_buffers`, whose types are in its signatures and whose format it walks, and `types`.

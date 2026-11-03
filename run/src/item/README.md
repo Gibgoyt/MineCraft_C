@@ -3,7 +3,7 @@
 **Purpose:** what a player has, and what stands in the world holding items. The Owner of `stack`, `inventory`, `crafting`, `smelting`, `container` and `equipment`.
 **Tier:** Owner.
 **Owns:** `owned_region`, 2 MiB, with `arena_world` over it: what its parts keep for as long as a world is open. A `static_assert` checks that `inventory`, `container` and `smelting` fit.
-**Lifetime:** Process for `item_t` and the region. World for what is in the arena: `item_open` starts it and `item_close` ends it, and nothing is kept until Stage 16.2 saves.
+**Lifetime:** Process for `item_t` and the region. World for what is in the arena: `item_open` starts it and `item_close` ends it, and `run/src/save/state/` writes what it holds into a save and reads it back.
 **Threads:** `main` for the pair and `item_open`, before the threads start, and `item_close`, after they stop. `item_hotbar_apply`, `item_world_tick`, the inventory, the two crafting grids, both stores and what is worn on `sim`. `item_hotbar_send` and `item_hotbar_scroll_send` from the thread that owns input, through two atomics on a cache line of their own.
 **Public functions** (`run/include/item/index.h`):
 
@@ -11,9 +11,10 @@
 - `item_open`, `item_close`: a world's start and its end.
 - `item_hotbar_send`, `item_hotbar_scroll_send`: the number keys and the wheel.
 - `item_hotbar_apply`: what they asked for, on the sim's next tick.
-- `item_world_begin`, `item_world_tick`: following a world's edits, and a tick of what stands in it.
+- `item_world_begin`, `item_world_tick`: following a world's edits, and a tick of what stands in it. What goes spills through an `item_spill_t`.
+- `item_world_edits_read`: only the first half of a tick, what the log says of chests and furnaces up to now, for a save.
 
-**May be called by:** `run/src/main/` for the pair, and `run/src/game/` for the rest.
+**May be called by:** `run/src/main/` for the pair, `run/src/game/` for the rest, the four `run/src/ui/screen_*` for what they show, and `run/src/save/state/` to read and write it.
 **Depends on:** `heap`, `arena`, `world/edit`, `world/map`, the generated `tables/items/` and `tables/blocks/`, and its parts below.
 
 **Parts:** `stack`: one slot's worth. `inventory`: 36 slots and a hotbar. `crafting`: 2x2 and 3x3 grids and what they make. `smelting`: furnaces. `container`: chests. `equipment`: what tools do and how they wear, and armor.
@@ -26,11 +27,11 @@ Neither store knows of the world, and the world knows of neither. `item_world_ti
 2. **A chest or furnace that went spills.** Its stacks go through the function it is given, and `game` throws them on the ground. A broken chest loses nothing.
 3. **One that came gets its slots.** Anything still held for that cell is dropped, as it can only be left from a column that has been unloaded.
 4. **If the log has gone round past the cursor,** it asks the world about each chest and furnace instead. That takes more than the 65536 edits the log holds, between two ticks.
-5. **Every furnace in a loaded column ticks,** and its block is set to `furnace` or `furnace_lit` to match, so the light follows through the world's own road. One in a column not loaded waits. One whose column has come back without it is dropped, since nothing is saved until Stage 16.2.
+5. **Every furnace in a loaded column ticks,** and its block is set to `furnace` or `furnace_lit` to match, so the light follows through the world's own road. One in a column not loaded waits. One whose column has come back without it is dropped: with a `save_t`, a column comes back as it left, so that takes a run with no save, such as `--test-world`.
 
-What is not here is opening one: the right button still places, and the screens are Stage 14.3's. `container_open` and `smelting_open` both also work on a block that nothing has yet given slots, such as one a world generated.
+What is not here is opening one: `run/src/game/` does that with the right button, through `ui_screen_sim_open` in `run/src/ui/screen_inventory/`. `container_open` and `smelting_open` both also work on a block that nothing has yet given slots, such as one a world generated.
 
-**What a chest holds when its column unloads** waits with it, and goes with that column's edits when it comes back without the chest, until Stage 16.2 saves both. Such a chest's slots are only found and dropped if a new chest goes in the same cell, since no tick walks chests: they count against the 4096 until the world closes.
+**What a chest holds when its column unloads** waits with it. A world with a `save_t` keeps both, the slots in `run/src/save/state/` and the block in `run/src/save/world/`. With no save, the column comes back without the chest. Such a chest's slots are only found and dropped if a new chest goes in the same cell, since no tick walks chests: they count against the 4096 until the world closes.
 
 ## Why an item is not a dropped item
 

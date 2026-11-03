@@ -1,6 +1,6 @@
 # textures
 
-Translated texture data, committed, so that a build needs no pack and no network. Licences and credits are in `ATTRIBUTION.md`, which is generated and ships with anything that ships these textures.
+Translated texture data, committed, so that a build needs no pack and no network. Licences and credits are in `ATTRIBUTION.md`, which is generated, but for one section written by hand, and ships with anything that ships these textures.
 
 ```
 textures/
@@ -18,7 +18,7 @@ textures/
 
 Groups: `blocks`, `items`, `mobs`, `ui`. Every directory below a group is one texture, and has an `index.yaml` and a `README.md`.
 
-`source.kind` in `index.yaml` says where a texture comes from, and there are two: `pack` means imported, and checked against `import.yaml`. `procedural` means painted by the recipe in that file, from nothing else, and it owes no credit. **No Mojang textures and no decompiled code**, ever.
+`source.kind` in `index.yaml` says where a texture comes from, and there are two: `pack` means imported, and checked against `import.yaml`. `procedural` means painted by the recipe in that file, from nothing else, and it owes no credit. **No Mojang textures and no decompiled code**, ever. What this repository cannot prove of the pack is in `ATTRIBUTION.md`.
 
 ## Without the pack
 
@@ -58,4 +58,4 @@ Only to change what is imported, or to move the pin. The pack is untrusted, so c
     build/debug/bin/tools/texture_pack import --pack /tmp/mc_c_assets/pixel_perfection \
         --manifest textures/import.yaml --textures textures
 
-It writes nothing unless the commit, the licence and every file check out, and it changes only files whose bytes differ, so `git status` shows what the import really changed. It replaces each imported `index.yaml`, `README.md` and `index.mctex`, and `ATTRIBUTION.md`. Keep anything hand-written out of those files, or put it back after. It removes nothing: a texture dropped from `import.yaml` has to be deleted by hand, and `verify` will say which.
+It writes nothing unless the commit, the licence and every file check out, and it changes only files whose bytes differ, so `git status` shows what the import really changed. It replaces each imported `index.yaml`, `README.md` and `index.mctex`, and `ATTRIBUTION.md`. Keep anything hand-written out of those files, or put it back after. `ATTRIBUTION.md` has one such part: its section "What this file cannot promise" and the sentence at its top that points there, which the tool does not write, so `git diff` shows them going and they must be restored. It removes nothing: a texture dropped from `import.yaml` has to be deleted by hand, and `verify` will say which.

@@ -13,7 +13,7 @@
 - `mob_spawn_body`: a body of a mob, by no rule: what anything that makes a mob goes through.
 - `mob_spawn_sky_darken`, `mob_spawn_cap`: two of the rules' numbers.
 
-**May be called by:** `run/src/game/`, and the mob stages after it.
+**May be called by:** `run/src/game/`, `run/src/save/state/`, and `bench/mobs/`.
 **Depends on:** `entity/store`, `physics`, `world/map`, `world/column`, `world/section`, `terrain/rng`, `arena`, `assert`, and the generated `tables/mobs/` and `tables/blocks/`.
 
 ## The spawn rules
@@ -45,7 +45,7 @@ The sky's share uses the published curve: nothing off at noon, 11 off at midnigh
 
 Each tick, for each mob, by `despawn` in its file:
 
-- Past `far` of the player: gone, whatever else. Nothing is saved until Stage 16.1, which will want to keep the ones in columns that leave.
+- Past `far` of the player: gone, whatever else. A save keeps the mobs the store holds at that moment, through `run/src/save/state/`, and not one that has gone.
 - Within `near`: its idle count starts over, and it stays.
 - Between: its idle count goes up, and once past `idle_ticks` it has a chance of one in `one_in`, per tick, of going. A body waiting for its column neither counts nor rolls, since it is not there.
 

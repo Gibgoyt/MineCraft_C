@@ -14,8 +14,10 @@
 - `display_flip_suspend`, `display_flip_resume`: a VT switch away and back, for `display/vt_guard`.
 - `display_flip_assume_taken`: for the guardian's copy of this struct, made before the takeover.
 - `display_flip_pattern_pixel`, `display_flip_pattern_fill`, `display_flip_pattern_frame`: the test pattern.
+- `display_flip_pattern_cursor_side`, `display_flip_pattern_cursor_erase`, `display_flip_pattern_cursor_draw`: the test pattern's cursor square.
+- `display_flip_vsync_set`: whether later flips wait for a vblank, for the setting. Only the thread that flips.
 
-**May be called by:** `display`, `display/vt_guard`, and `render/frame` for presenting (Stage 08.4).
+**May be called by:** `display`, `display/vt_guard`, `display/headless` for its buffers, `render/frame` for presenting, and `player/camera` for the outline it draws in a buffer.
 **Depends on:** `display/device`, `display/mode`, `time`, `log`.
 
 ## Lessons kept from the KMS spike (Stage 01.2)

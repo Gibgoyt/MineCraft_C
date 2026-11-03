@@ -16,7 +16,7 @@
 - `save_autosave_trouble`: what the disk said to the last save, for a person to read, or nullptr.
 
 **May be called by:** `save`, and `game`.
-**Depends on:** `save/world`, `save/state`, `job`, `time`, `log`, `assert`.
+**Depends on:** `save/world`, `save/state`, `job`, `file`, `time`, `log`, `assert`.
 
 ## One save
 

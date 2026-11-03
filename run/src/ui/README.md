@@ -1,6 +1,6 @@
 # run/src/ui
 
-**Purpose:** what the player sees on top of the world. The Owner of `compose`, `font`, `widget`, `hud`, the game screens and `menu`, and of the screens later stages add.
+**Purpose:** what the player sees on top of the world. The Owner of `compose`, `font`, `widget`, `hud`, the game screens, `menu` and `screen_settings`.
 **Tier:** Owner.
 **Owns:** `owned_region`, 2 MiB, with `arena_tables` (1.5 MiB, of which about 0.95 is in use with the HUD's and the game screens' item pictures) and `arena_frame` (0.5 MiB) over it, and `owned_composite`, one frame's pixels, reserved the first time a picture of that size needs it and grown only if a larger one comes. A mode changes far less often than a frame comes, so the heap's counters stay flat in play: ctest `run_ui_font` checks it.
 **Lifetime:** Process for `ui_t`, its region and `arena_tables`. Frame for `arena_frame`, reset by each `ui_frame_begin`.

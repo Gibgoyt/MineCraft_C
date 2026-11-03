@@ -7,7 +7,7 @@
 **Threads:** `render_entities_begin` to `render_entities_publish` on the sim, or whichever one thread holds the map. `render_entities_frame` on the `gpu` thread, or the one thread of a run with no threads. Between them only `exchange`, a triple buffer: pointers do not cross, and a slot is one side's until it is published.
 **Public functions** (`run/include/render/entities/index.h`):
 
-- `render_entities_init`, with `render_entities_arena_bytes` and `render_entities_lists_bytes` for what it takes. Sends the frame's own textures once.
+- `render_entities_init`, with `render_entities_arena_bytes` and `render_entities_lists_bytes` for what it takes. Sends the frame's own textures once. `render_entities_deinit` forgets it all, with no kernel running.
 - `render_entities_begin`, `render_entities_add`, `render_entities_add_item_drop`, `render_entities_add_mob_part`, `render_entities_target_set`, `render_entities_publish`: one tick's snapshot.
 - `render_entities_crack_frame`: how far along mining is, as a frame of the crack.
 - `render_entities_pixels`: which pixels a box can touch on a camera.

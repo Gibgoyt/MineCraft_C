@@ -17,7 +17,7 @@
 - `world_edit_snapshot_init`, `world_edit_snapshot_deinit`, `world_edit_snapshot_publish`, `world_edit_snapshot_acquire`: the snapshots.
 - `world_edit_view_column_at`, `world_edit_view_block`, `world_edit_view_light`: reading a view.
 
-**May be called by:** `run/src/world/`, and later `game`, `player`, `terrain`, `world/light`, `world/tick`, `render/frame`, `save`.
+**May be called by:** `run/src/world/`, `world/light`, `world/tick`, `entity/explosion`, `item`, `item/equipment`, `mob/creeper`, `mob/path`, `player/interaction`, `render` and its `encode` and `upload`, `save/autosave`, `save/world`, and `game`.
 **Depends on:** `arena`, `machine`, its siblings `world/map` and `world/column`, and through them `world/section`, and the generated `tables/blocks/`, for air.
 
 ## The log

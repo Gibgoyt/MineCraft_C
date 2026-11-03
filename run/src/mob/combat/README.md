@@ -37,6 +37,6 @@ A push halves the speed it had across and adds its strength away from the strike
 ## What this does not do
 
 - **Arrows and blasts** take health directly, in `run/src/entity/projectile/` and `run/src/entity/explosion/`, as they did before this stage, so the 10 ticks do not stand against them, nor do those hits start them.
-- **Burning, drowning, cactus and suffocating** do not hurt mobs yet. Falls and lava do.
+- **Burning, drowning, cactus and suffocating** do not hurt mobs. Falls and lava do.
 - **There is no death animation.** A body goes on the next tick its mind has, with no time lying down.
 - **Being hit does not make a mob chase.** A mob near enough to be hit nearly always notices within a few ticks, by its own mind's rules.

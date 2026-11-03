@@ -6,5 +6,5 @@
 **Lifetime:** Process.
 **Threads:** the `gpu` thread, or the one thread of a run with no threads.
 **Public functions:** those of that header, listed in `cuda/src/shade/README.md`.
-**May be called by:** `render`, and `cuda/src/frame/`.
+**May be called by:** `render`, `cuda/src/frame/`, `gpu_bridge/frame` for its types, and `settings/persist` for the effects' bits.
 **Depends on:** `gpu_bridge/device_memory`, `gpu_bridge/entity_rays`, `gpu_bridge/lod`, `gpu_bridge/post`, `gpu_bridge/status` and `gpu_bridge/traverse`, whose types are in its signatures, and `types`.

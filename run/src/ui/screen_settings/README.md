@@ -11,7 +11,7 @@
 - `ui_screen_settings_message_set`: says what went wrong with keeping them.
 - `ui_screen_settings_frame`: one frame, which says whether a value changed and whether the person has finished.
 
-**May be called by:** `run/src/game/session/`.
+**May be called by:** `run/src/game/session/`, and `run/src/ui/`, whose header holds its state.
 **Depends on:** `settings/persist` for the values, ranges and names of effects, `ui/widget`, `ui/compose`, `assert`.
 
 ## How it works

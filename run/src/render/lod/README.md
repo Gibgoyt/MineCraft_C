@@ -19,7 +19,7 @@
 - `render_lod_scene`: what this frame's kernels read.
 - `render_lod_column_of`: which of a level's columns a place is in.
 
-**May be called by:** `run/src/render/`, which starts and stops it, `run/src/game/`, which calls `render_lod_frame`, and `run/src/render/frame/`, which calls `render_lod_scene`.
+**May be called by:** `run/src/render/`, which starts and stops it, `run/src/game/`, which calls `render_lod_frame`, `run/src/render/frame/`, which calls `render_lod_scene`, and `run/src/settings/persist/` for the default of full detail.
 **Depends on:** `arena`, `assert`, `log`, `job`, `time`, `terrain`, `tables/blocks`, `world/column`, `render/encode`, `render/upload` for its budget, `gpu_bridge/world_buffers`, `gpu_bridge/lod`, `gpu_bridge/shade` for its one light value.
 
 ## Why it is the way it is
@@ -38,4 +38,4 @@
 
 ## What it does not do
 
-It draws no edits. The far field is what terrain generates, and a player's digging is only drawn by what full detail holds, which does not outlive leaving a column until Stage 16.1 saves anything. That stage is where a far column should look in the save first.
+On its own it draws no edits: the far field is what terrain generates. A world with a save sets `render_lod_overlay_set` to `save_world_far_line`, through `run/src/game/`, so what is saved is written over each sample. Until an edit is captured, only full detail draws it.

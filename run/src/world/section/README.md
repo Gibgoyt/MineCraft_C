@@ -19,7 +19,7 @@
 - `section_palette`, `section_palette_capacity`: read the palette, for encoding.
 - `section_pool_bytes`: what a section holds in the pool.
 
-**May be called by:** `run/src/world/`, `run/src/world/column/`, and later `map`, `light`, `render/encode`, `save`.
+**May be called by:** `run/src/world/`, `world/column`, `world/map`, and `save/world`.
 **Depends on:** `arena`, `assert`, `machine`.
 
 ## The forms

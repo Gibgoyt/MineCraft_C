@@ -13,11 +13,12 @@
 - `render_frame_init`, `render_frame_deinit`: the tables and textures sent to the card, and the pictures pinned.
 - `render_frame_features_set`: which effects the next frames draw with. `SHADE_FEATURES_ALL` unless told otherwise, and `game` asks for `SHADE_FEATURES_PLAY`, as the ones with a history do not suit a test that wants one exact picture.
 - `render_frame_time_set`, `render_day_fill`: the time of day, and what sky and light it means.
+- `render_frame_fog_set`: how far off the fog is whole, for a render distance that has changed.
 - `render_frame_draw`: a whole frame, from world_buffers as they stand and a camera, on the card and home.
-- `render_frame_take`, `render_frame_present`: the newest picture, and copying it to a display buffer.
+- `render_frame_take`, `render_frame_present`, `render_frame_present_full`: the newest picture, and copying it to a display buffer; the last for pixels of the target's own size, whatever size the frame draws at.
 - `render_frame_report`, `render_frame_percentiles`: what the frames took.
 
-**May be called by:** `render` (the Owner), `game`.
+**May be called by:** `render` (the Owner) and `render/entities`, `game`, `player` and `player/camera` for `render_camera_t` and the exchange, and `ui/screen_inventory` for `render_exchange_t`.
 **Depends on:** `render/lod`, for what a frame draws past full detail, `arena`, `log`, `assert`, `machine`, `texture`, `display/flip` for `display_buffer_t`, `simd/copy`, the generated block tables, `gpu_bridge/device_memory`, `gpu_bridge/world_buffers`, `gpu_bridge/traverse`, `gpu_bridge/shade`, `gpu_bridge/post`, `gpu_bridge/frame`, `render/entities`, whose scene a frame hands its kernels.
 
 ## How a picture reaches the screen
