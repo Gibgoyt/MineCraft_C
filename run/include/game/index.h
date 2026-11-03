@@ -119,7 +119,7 @@ typedef struct game_t {
     void (*open_alive)(void *context); /* 1128: called now and then during a long game_open; nullptr for nobody */
     void *borrowed_open_alive_context; /* 1136 */
     /* Read once a tick by the sim. Set before a world opens, so no write of main's touches it, only its line. */
-    mob_t *borrowed_mob;               /* 1144: what asks for paths; set before a world opens, and only read after */
+    mob_t *borrowed_mob; /* 1144: what asks for paths; set before a world opens, and only read after */
     /* What the HUD shows. All relaxed: only what is on the screen depends on it, each word stays whole, and a frame of a tick-old slot
      * beside a new one is gone by the next. A line of its own from here: the sim writes these, once a tick. */
     _Atomic uint64_t hud_hotbar[INVENTORY_HOTBAR_SLOTS]; /* 1152: sim to main: each an item_stack_t's bytes */

@@ -63,7 +63,7 @@ static bool mp_begin_with(test_context_t *t, mp_rig_t *rig, job_system_t *job) {
         return false;
     }
     entity_open(rig->entity, 5u);
-    mob_open(rig->mob, rig->world.world);
+    mob_open(rig->mob, rig->world.world, 5u);
     rig->path = &rig->mob->path;
     return true;
 }
@@ -1080,7 +1080,7 @@ TEST(the_workers_give_the_same_bytes_as_no_workers) {
     mp_fill(t, &rig, 30, 20, 0, 30, 20, 1, BLOCK_ID_AIR);
     mob_t *const alone = test_world_aligned(t, sizeof(mob_t));
     REQUIRE(mob_init(alone, nullptr));
-    mob_open(alone, rig.world.world);
+    mob_open(alone, rig.world.world, 5u);
     uint64_t compared = 0u;
     for (uint32_t round = 0u; round < MP_WORKER_ROUNDS; round++) {
         mp_hard_asks(&rig.mob->path, round);
@@ -1427,8 +1427,8 @@ TEST(the_owner_gives_back_all_it_took_and_opens_again_with_nothing_known) {
     CHECK_EQ_U64(after.live_regions, before.live_regions + 1u);
     const mob_path_ask_t ask = mp_ask(0, 0, 0, 5, 0, 0);
     for (uint32_t open = 0u; open < 3u; open++) {
-        mob_open(mob, rig.world.world);
-        CHECK(mob->arena_world.used <= (uint64_t)MOB_PATH_BYTES);
+        mob_open(mob, rig.world.world, 5u);
+        CHECK(mob->arena_world.used <= (uint64_t)MOB_PATH_BYTES + (uint64_t)MOB_ZOMBIE_BYTES);
         CHECK(mob_path_found(&mob->path, mp_handle(1u)) == nullptr);
         mob_path_request(&mob->path, mp_handle(1u), &ask);
         mob_tick(mob);
@@ -1471,7 +1471,7 @@ TEST(no_tick_touches_the_heap_and_a_full_round_is_timed) {
     /* And with no worker to help, which is what a tick comes to when all of them are busy. */
     mob_t *const alone = test_world_aligned(t, sizeof(mob_t));
     REQUIRE(mob_init(alone, nullptr));
-    mob_open(alone, rig.world.world);
+    mob_open(alone, rig.world.world, 5u);
     int64_t longest_alone = 0;
     for (uint32_t round = 0u; round < MP_WORKER_ROUNDS; round++) {
         mp_hard_asks(&alone->path, round);

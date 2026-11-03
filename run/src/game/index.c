@@ -322,7 +322,7 @@ bool game_open(game_t *game, const game_config_t *config) {
                         terrain_rng_derive(terrain->seed, terrain_rng_salt("mob/spawn")));
     }
     if (game->borrowed_mob != nullptr) {
-        mob_open(game->borrowed_mob, game->borrowed_world);
+        mob_open(game->borrowed_mob, game->borrowed_world, terrain->seed);
     }
     if (game->borrowed_item != nullptr) {
         item_open(game->borrowed_item);
@@ -804,6 +804,24 @@ static void game_hud_publish(game_t *game) {
     atomic_store_explicit(&game->hud_selected, inventory->selected, memory_order_relaxed);
 }
 
+/* What every mob does, and what comes of it for the body. Before the bodies move and before the body's own tick, whose armor and death
+ * logic then see the blow. */
+static void game_mobs_tick(game_t *game) {
+    player_t *const player = game->borrowed_player;
+    const player_movement_t *const movement = &player->movement;
+    const mob_zombie_view_t view = {
+        .position = {movement->position[0], movement->position[1], movement->position[2]},
+        .eye = movement->eye_height,
+        .half_width = PLAYER_MOVEMENT_WIDTH * 0.5f64,
+        .height = movement->crouched != 0u ? PLAYER_MOVEMENT_HEIGHT_CROUCHED : PLAYER_MOVEMENT_HEIGHT_STANDING,
+        .alive = player->survival.state != PLAYER_SURVIVAL_DEAD && player->survival.placing == 0u ? 1u : 0u,
+    };
+    const float32_t blow = mob_minds_tick(game->borrowed_mob, game->borrowed_entity, &view);
+    if (blow > 0.0f32) {
+        (void)player_survival_hurt(&player->survival, blow, PLAYER_SURVIVAL_CAUSE_ATTACK);
+    }
+}
+
 static void game_sim_tick(game_t *game, int64_t tick_ns) {
     arena_reset(&game->arena_tick);
     if (game->borrowed_player != nullptr) {
@@ -823,6 +841,9 @@ static void game_sim_tick(game_t *game, int64_t tick_ns) {
             mob_tick(game->borrowed_mob);
         }
         if (game->borrowed_entity != nullptr) {
+            if (game->borrowed_mob != nullptr) {
+                game_mobs_tick(game);
+            }
             game_items_tick(game);
         }
         player_tick(game->borrowed_player, &game->borrowed_world->map, tick_ns);
@@ -1383,6 +1404,11 @@ void game_report(game_t *game) {
     if (game->borrowed_entity != nullptr && game->mob_spawn.borrowed_idle != nullptr) {
         LOG_INFO("game: %" PRIu64 " mobs came, %" PRIu64 " went, and %" PRIu32 " are in the world",
                  game->mob_spawn.spawned_count, game->mob_spawn.despawned_count, game->borrowed_entity->store.count);
+        if (game->borrowed_mob != nullptr) {
+            const mob_zombie_t *const zombie = &game->borrowed_mob->zombie;
+            LOG_INFO("game: zombies struck %" PRIu64 " blows, %" PRIu64 " died and left %" PRIu64 " items",
+                     zombie->struck_count, zombie->died_count, zombie->dropped_count);
+        }
     }
     if (game->borrowed_item != nullptr && game->borrowed_item->inventory.borrowed_slots != nullptr) {
         const inventory_t *const inventory = &game->borrowed_item->inventory;
