@@ -1428,8 +1428,9 @@ TEST(the_owner_gives_back_all_it_took_and_opens_again_with_nothing_known) {
     const mob_path_ask_t ask = mp_ask(0, 0, 0, 5, 0, 0);
     for (uint32_t open = 0u; open < 3u; open++) {
         mob_open(mob, rig.world.world, 5u);
-        CHECK(mob->arena_world.used <= (uint64_t)MOB_PATH_BYTES + (uint64_t)MOB_ZOMBIE_BYTES + (uint64_t)MOB_SKELETON_BYTES +
-                                       (uint64_t)MOB_CREEPER_BYTES);
+        CHECK(mob->arena_world.used <= (uint64_t)MOB_PATH_BYTES + (uint64_t)MOB_ZOMBIE_BYTES +
+                                           (uint64_t)MOB_SKELETON_BYTES + (uint64_t)MOB_CREEPER_BYTES +
+                                           (uint64_t)MOB_COMBAT_BYTES);
         CHECK(mob_path_found(&mob->path, mp_handle(1u)) == nullptr);
         mob_path_request(&mob->path, mp_handle(1u), &ask);
         mob_tick(mob);

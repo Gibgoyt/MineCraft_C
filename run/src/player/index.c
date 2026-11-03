@@ -103,6 +103,7 @@ void player_spawn(player_t *player, float64_t x, float64_t y, float64_t z) {
     atomic_store_explicit(&player->hands_word, 0u, memory_order_relaxed);
     atomic_store_explicit(&player->hands_latch, 0u, memory_order_relaxed);
     player_interaction_start(&player->interaction, PLAYER_DROP_SEED);
+    player_combat_start(&player->combat);
 }
 
 void player_look_send(player_t *player, float32_t yaw, float32_t pitch) {
@@ -159,6 +160,11 @@ void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns)
         ._pad0 = {0},
     };
     player_survival_buttons(&player->survival, &buttons);
+    /* A body in the way is what the button is on, not what is behind it. */
+    if (player->combat.aiming_body != 0u) {
+        buttons.attack = 0u;
+    }
+    player->combat.aiming_body = 0u;
     const player_interaction_input_t input = {
         .borrowed_target = &player->target,
         .borrowed_movement = &player->movement,
@@ -167,6 +173,39 @@ void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns)
         ._pad0 = {0},
     };
     player_interaction_tick(&player->interaction, edit, &input);
+}
+
+bool player_attack_tick(player_t *player, const entity_store_t *store, const world_map_t *map,
+                        const player_combat_weapon_t *weapon, int64_t tick_ns, player_combat_swing_t *out) {
+    /* Only a look at the buttons: player_interact_tick takes the latch next. */
+    uint32_t hands = atomic_load_explicit(&player->hands_word, memory_order_relaxed) |
+                     atomic_load_explicit(&player->hands_latch, memory_order_relaxed);
+    if (player->hands_held_off != 0u ||
+        tick_ns - atomic_load_explicit(&player->intent_sent_ns, memory_order_relaxed) > PLAYER_INTENT_STALE_NS) {
+        hands = 0u;
+    }
+    const uint64_t look = atomic_load_explicit(&player->look_word, memory_order_relaxed);
+    const uint32_t yaw_bits = (uint32_t)look, pitch_bits = (uint32_t)(look >> 32u);
+    float32_t yaw = 0.0f32, pitch = 0.0f32;
+    memcpy(&yaw, &yaw_bits, sizeof(yaw));
+    memcpy(&pitch, &pitch_bits, sizeof(pitch));
+    const player_combat_input_t input = {
+        .borrowed_movement = &player->movement,
+        .borrowed_store = store,
+        .borrowed_map = map,
+        .weapon = *weapon,
+        .yaw = yaw,
+        .pitch = pitch,
+        .attack = (hands & PLAYER_HAND_ATTACK) != 0u ? 1u : 0u,
+        .may_hit = player_survival_holds_body(&player->survival) ? 0u : 1u,
+        ._pad0 = {0},
+    };
+    return player_combat_tick(&player->combat, &input, out);
+}
+
+void player_attack_landed(player_t *player, const player_combat_swing_t *swing) {
+    player_survival_exhaust(&player->survival, PLAYER_COMBAT_TIRES);
+    player_combat_landed(&player->movement, swing);
 }
 
 void player_pickup_reach(const player_t *player, collision_box_t *out) {

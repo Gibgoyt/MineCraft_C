@@ -1,6 +1,6 @@
 # run/src/player
 
-**Purpose:** the player: its body, getting what it wants to the sim thread, and where it is back to main. The Owner of `movement`, `camera`, `interaction` and `survival`.
+**Purpose:** the player: its body, getting what it wants to the sim thread, and where it is back to main. The Owner of `movement`, `camera`, `interaction`, `survival` and `combat`.
 **Tier:** Owner.
 **Owns:** no region or arena. Its part keeps all it needs in `player_movement_t`, each move uses `physics`'s region, and a tier may allocate less than it is allowed: `plans/CODING_STANDARD.md` section 4.
 **Lifetime:** Process for `player_t`. `player_spawn` starts a body, for a world.
@@ -13,6 +13,7 @@
 - `player_look_send`: main says where the player looks, for what it aims at.
 - `player_hands_send`: main says what the two mouse buttons are doing.
 - `player_interact_tick`: one tick of the sim's for the hands, on what the last tick aimed at, before `player_tick`.
+- `player_attack_tick`, `player_attack_landed`: one tick of the sim's for the hand, right before `player_interact_tick`: what a press on a body in reach does, for the caller to apply; and that it landed.
 - `player_pickup_reach`: the box an item has to overlap to be picked up, with the body where it now is.
 - `player_tick`: one tick of the sim's: the body moves, then what it aims at is worked out from where it now stands.
 - `player_survive_tick`: one tick of the sim's, right after `player_tick`, for what keeps the body going.
@@ -21,9 +22,9 @@
 - `player_target_view`: main asks what that tick aimed at, to draw its outline.
 
 **May be called by:** `run/src/main/` for the pair, and `run/src/game/` for the rest.
-**Depends on:** `physics`, `world/map`, `render/frame` for the exchange, `machine`, and its part below.
+**Depends on:** `entity/store` for what its part aims at, `physics`, `world/map`, `render/frame` for the exchange, `machine`, and its part below.
 
-**Parts:** `movement`: walk, sprint, sneak, jump, swim, climb and fall. `camera`: mouse look, what is aimed at, and its outline. `interaction`: mining, drops and placing. `survival`: health, hunger, food, damage, death, respawn and the bed.
+**Parts:** `movement`: walk, sprint, sneak, jump, swim, climb and fall. `camera`: mouse look, what is aimed at, and its outline. `interaction`: mining, drops and placing. `survival`: health, hunger, food, damage, death, respawn and the bed. `combat`: the attack: what the left button aims at among the world's bodies, and how strong a swing is.
 
 ## The fixed tick and the threads
 

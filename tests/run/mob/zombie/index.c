@@ -927,8 +927,9 @@ TEST(a_hundred_chasing_take_no_heap_and_no_arena_and_little_time) {
     CHECK_EQ_U64(after.release_calls, before.release_calls);
     CHECK_EQ_U64(rig.mob->arena_world.used, used);
     CHECK_EQ_U64(rig.mob->arena_world.alloc_count, allocs);
-    CHECK(rig.mob->arena_world.used <= (uint64_t)MOB_PATH_BYTES + (uint64_t)MOB_ZOMBIE_BYTES + (uint64_t)MOB_SKELETON_BYTES +
-                                       (uint64_t)MOB_CREEPER_BYTES);
+    CHECK(rig.mob->arena_world.used <= (uint64_t)MOB_PATH_BYTES + (uint64_t)MOB_ZOMBIE_BYTES +
+                                           (uint64_t)MOB_SKELETON_BYTES + (uint64_t)MOB_CREEPER_BYTES +
+                                           (uint64_t)MOB_COMBAT_BYTES);
     uint32_t chasing = 0u;
     for (uint32_t i = 0u; i < rig.store->count; i++) {
         chasing += rig.zombie->borrowed_bodies[entity_handle_slot(rig.store->borrowed_handle[i])].chasing;

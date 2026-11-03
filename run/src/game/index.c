@@ -580,12 +580,50 @@ static void game_screen_hands(game_t *game, int64_t tick_ns) {
     player->hands_held_off = ui_screen_sim_kind(ui) != UI_SCREEN_NONE || (held && kind != UI_SCREEN_NONE) ? 1u : 0u;
 }
 
+/* A press of the left button on a body in reach is a blow on it, with whatever is in hand, which it wears if it lands. Before the hands, who
+ * then leave alone what is behind the body. */
+static void game_attack_tick(game_t *game, int64_t tick_ns) {
+    player_t *const player = game->borrowed_player;
+    entity_t *const entity = game->borrowed_entity;
+    mob_t *const mob = game->borrowed_mob;
+    if (entity == nullptr || mob == nullptr || mob->combat.borrowed_bodies == nullptr) {
+        return;
+    }
+    item_t *const item = game->borrowed_item;
+    const item_stack_t held =
+        item != nullptr ? *inventory_selected(&item->inventory) : item_stack_make(ITEM_ID_NONE, 0u);
+    const player_combat_weapon_t weapon = {
+        .damage = equipment_attack_damage(&held),
+        .speed = player_combat_attack_speed(held.item),
+        .item = held.item,
+        ._pad0 = {0},
+    };
+    player_combat_swing_t swing;
+    if (!player_attack_tick(player, &entity->store, &game->borrowed_world->map, &weapon, tick_ns, &swing)) {
+        return;
+    }
+    const mob_combat_blow_t blow = {
+        .from = {player->movement.position[0], player->movement.position[1]},
+        .facing = {swing.facing[0], swing.facing[1]},
+        .damage = swing.damage,
+        .knockback = swing.knockback,
+    };
+    mob_combat_outcome_t outcome;
+    if (mob_combat_strike(&mob->combat, &entity->store, swing.handle, &blow, &outcome)) {
+        player_attack_landed(player, &swing);
+        if (item != nullptr) {
+            (void)equipment_tool_attacked(&item->equipment, &item->inventory);
+        }
+    }
+}
+
 /* One tick of the hands: which slot is in hand first, so that a key and a click in one tick act in that order, then what the right button
  * does with armor or a hoe; what they placed comes off the slot, and what they broke wears it. */
 static void game_interact_tick(game_t *game, int64_t tick_ns) {
     player_t *const player = game->borrowed_player;
     item_t *const item = game->borrowed_item;
     if (item == nullptr) {
+        game_attack_tick(game, tick_ns);
         player_interact_tick(player, &game->borrowed_world->edit, tick_ns);
         return;
     }
@@ -599,6 +637,8 @@ static void game_interact_tick(game_t *game, int64_t tick_ns) {
                        game_use_held(player, tick_ns) && !player_survival_holds_body(&player->survival) &&
                            player->hands_held_off == 0u,
                        hit->result == RAYCAST_RESULT_HIT ? hit->cell : nullptr);
+    /* Before the hand is read: a tool that breaks on this blow is no longer what the hands hold. */
+    game_attack_tick(game, tick_ns);
     game_hand_from_hotbar(game);
     game_tool_from_hotbar(game);
     const uint32_t before = player->interaction.hand_count;
@@ -710,6 +750,9 @@ static void game_items_tick(game_t *game) {
         mob_creeper_tick(&game->borrowed_mob->creeper, &scene);
     }
     entity_tick(entity, &game->borrowed_world->map);
+    if (game->borrowed_mob != nullptr) {
+        mob_combat_tick(&game->borrowed_mob->combat, &entity->store);
+    }
     game_arrows_tick(game);
     collision_box_t reach;
     player_pickup_reach(player, &reach);
@@ -1479,6 +1522,10 @@ void game_report(game_t *game) {
         }
         LOG_INFO("game: %" PRIu32 " blasts broke %" PRIu64 " blocks", game->borrowed_entity->explosion.blast_count,
                  game->borrowed_entity->explosion.broken_count);
+    }
+    if (game->borrowed_mob != nullptr && game->borrowed_mob->combat.borrowed_bodies != nullptr) {
+        LOG_INFO("game: %" PRIu64 " hits landed on mobs, and took the last health of %" PRIu64,
+                 game->borrowed_mob->combat.landed_count, game->borrowed_mob->combat.killed_count);
     }
     if (game->borrowed_mob != nullptr && game->borrowed_mob->creeper.borrowed_bodies != nullptr) {
         LOG_INFO("game: %" PRIu64 " creepers burst, and %" PRIu64 " died, leaving %" PRIu64 " items",
