@@ -97,6 +97,8 @@ Appended as they land:
 
 - `03624ea` Keep the player, inventory, entities and time beside each save of the blocks, and save them all on a worker every 30 seconds of world time.
 - `4654786` Record what state and autosave do, what they cost a frame and what a kill loses.
+- `58451ab` Save fluid levels with the blocks so a reloaded world does not flood, keep the block tick count, and spill a lost chest before a save.
+- `6853ca5` Wake what a save held waiting, show saved changes in the far field, keep a refused world from ending the game, check what a power cut leaves against every fsync, add a thread sanitizer preset, and let the release build link.
 
 ## Issues found
 

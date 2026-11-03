@@ -55,6 +55,8 @@ Whether the tests can fail: with `save_world_commit_write` changed to retire its
 Appended as they land:
 
 - `f7e78c7` Keep a world on disk as its seed and the sections that changed, with versioned headers and a crash-safe rename.
+- `58451ab` Save fluid levels with the blocks so a reloaded world does not flood, keep the block tick count, and spill a lost chest before a save.
+- `6853ca5` Wake what a save held waiting, show saved changes in the far field, keep a refused world from ending the game, check what a power cut leaves against every fsync, add a thread sanitizer preset, and let the release build link.
 
 ## Issues found
 

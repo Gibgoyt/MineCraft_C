@@ -33,6 +33,8 @@ The test names `^run_save` now include `run_save_power`, which is what says anyt
 
 For Ahmed, who has the display and the plug. Under KMS, from a text console with no display server:
 
+    tools/test-or-build.sh cmake --preset release
+    tools/test-or-build.sh cmake --build --preset release
     build/release/bin/minecraft_c --menu    # make a world, build something tall, walk or fly over 40 chunks away, look back: it is there
 
     # Close, then corrupt a copy of a world's blocks/manifest in saves/ and choose it: the list says "Could not open it: damaged".
@@ -56,6 +58,8 @@ Thread sanitizer and power cuts: Stage 16.2's issue 10 and Stage 16.1's issue 9.
 
 Appended as they land:
 
+- `58451ab` Save fluid levels with the blocks so a reloaded world does not flood, keep the block tick count, and spill a lost chest before a save.
+- `6853ca5` Wake what a save held waiting, show saved changes in the far field, keep a refused world from ending the game, check what a power cut leaves against every fsync, add a thread sanitizer preset, and let the release build link.
 ## Issues found
 
 1. **Hunting at the gate:** both stages said done. No stub, no TODO, and no module nothing calls; every box had code behind it. What they had left were the gaps their own files named: logged, and fixed, in Stage 16.1's issues 8 and 9 and Stage 16.2's issues 9, 10 and 11.
