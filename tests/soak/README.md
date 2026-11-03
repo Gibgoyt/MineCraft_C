@@ -27,12 +27,12 @@ Exit status 0 is a pass. It stops at the first round with a failure, which says 
 Sessions are a twelfth of the time, and at least 60 s.
 
 1. **The threaded game**, as a child of this program: sim, gpu and workers with a body walking, digging and placing in frames as fast as they come, saving every 5 s of world time. It must end with no save failed and no `heap_reserve` in the last four fifths of play, and with every heap and device block released.
-2. **The built program**, `--headless --menu`: through the real menus into a world, playing, through a pause, the inventory, the overlay, and walks that bring columns in and out; back to the title, into the world again, and on. It must open twice, reach the title, and end at exit status 0 with no heap live and nothing read back damaged.
-3. **The same killed**, every other round, by `SIGKILL` once it has saved, as a power cut would. The next session goes on from what it left.
+2. **The built program**, `--headless --menu`: through the real menus into a world, playing, through a pause, the inventory, the overlay, and walks that bring columns in and out; back to the title, into the world again, and on. It must end at exit status 0 with no heap live and nothing read back damaged. A player can be dead at the moment the script asks for the pause screen, and then the clicks fall on nothing and it plays on, so one session is not held to getting back through the title. Of six or more, one must.
+3. **The same killed**, every other round, by `SIGKILL` once it has saved, as a power cut would. The next session goes on from what it left. A player who changes nothing saves nothing, so one session is not held to it. Of three rounds or more, one must.
 
 After each, this program opens what was left with `save_open`, as a new game would, and reads every section of every region: none may be refused or damaged, and a world saved has a state to go with it.
 
-Each child is held to: its exit status, no sanitizer report, no more than 8 more descriptors than a tenth of the way in, no more than 256 MiB more memory at the end than the first of its kind, and no more than 3900 MiB on the card.
+Each child is held to: its exit status, no sanitizer report, no more than 8 more descriptors than a tenth of the way in, no more than 256 MiB more memory at its most than the first of its kind, and no more than 3900 MiB on the card.
 
 It uses no display: `--headless` opens no card, console or input device, and the threaded child has never heard of them.
 

@@ -40,8 +40,8 @@ enum : uint64_t {
     SOAK_LOG_BYTES = 32ull << 20,
     SOAK_SCRIPT_BYTES = 1ull << 20,
     SOAK_MIB = 1ull << 20,
-    /* A process may hold this much more at the end than it did after everything first came in. Some growth has every right to be there: pages touched for the
-     * first time in pools already reserved. What this is here to catch is a slope. */
+    /* A process may hold this much more at its most than the first of its kind did. Some growth has every right to be there: pages touched for the first time in
+     * pools already reserved. What this is here to catch is a slope. */
     SOAK_GROWTH_ALLOWED_MIB = 256u,
     /* The hard rule for tests on this machine: the desktop shares the card. */
     SOAK_VRAM_LIMIT_MIB = 3900u,
@@ -100,8 +100,10 @@ typedef struct soak_t {
     uint32_t round;                /* 144 */
     uint8_t keep;                  /* 148: the directory stays, for looking at */
     uint8_t _pad0[3];              /* 149 */
+    uint64_t reentries;            /* 152: sessions that went back to the title and into the world again */
+    uint64_t kills;                /* 160: sessions killed once they had saved */
 } soak_t;
-static_assert(sizeof(soak_t) == 152);
+static_assert(sizeof(soak_t) == 168);
 
 [[gnu::format(printf, 2, 3)]] static void soak_say(const soak_t *soak, const char *format, ...);
 
@@ -303,21 +305,22 @@ static void soak_child_check(soak_t *soak, const char *kind, const soak_child_t 
     }
 }
 
-/* Against the first one that had long enough to fill its pools: a slope across a soak is the thing no short test can see. */
+/* Against the first of its kind: a slope across a soak is the thing no short test can see. By the most each ever held, as the last sample can land anywhere in a shutdown:
+ * measured 503 MiB of a session whose most was 1759, with three of its threads already gone. */
 static void soak_growth_check(soak_t *soak, const char *kind, const soak_child_t *child, uint64_t *first_mib,
                               const char *log_text) {
-    if (child->rss_end_mib == 0u) {
+    if (child->rss_peak_mib == 0u) {
         return;
     }
     if (*first_mib == 0u) {
-        *first_mib = child->rss_end_mib;
+        *first_mib = child->rss_peak_mib;
         return;
     }
-    if (child->rss_end_mib > *first_mib + SOAK_GROWTH_ALLOWED_MIB) {
+    if (child->rss_peak_mib > *first_mib + SOAK_GROWTH_ALLOWED_MIB) {
         char what[256];
         (void)snprintf(what, sizeof(what),
-                       "%s holds %" PRIu64 " MiB at its end, where the first of its kind held %" PRIu64 " MiB", kind,
-                       child->rss_end_mib, *first_mib);
+                       "%s held up to %" PRIu64 " MiB, where the first of its kind held %" PRIu64 " MiB", kind,
+                       child->rss_peak_mib, *first_mib);
         soak_failed(soak, what, log_text);
     }
 }
@@ -366,12 +369,15 @@ static void soak_script_enter(const soak_t *soak, uint64_t *at, int32_t move_x, 
 }
 
 /* A person's worth of doing things: anything a tick can ask for that has a cost later. Returns the ticks it wrote. */
-static uint64_t soak_script_play(soak_t *soak, uint64_t *at, uint64_t ticks) {
+static uint64_t soak_script_play(soak_t *soak, uint64_t *at, uint64_t ticks, bool pauses) {
     uint64_t passed = 0u;
     static const char *const moves[] = {"w", "a", "s", "d"};
     while (passed < ticks) {
         const uint64_t gap = 10u + soak_next(soak) % 90u;
-        const uint64_t what = soak_next(soak) % 11u;
+        uint64_t what = soak_next(soak) % 11u;
+        /* A dead player's screen takes no Esc, so the second of a pair can start a pause that lasts to the end of the script, in which nothing changes and nothing
+         * saves. A session that is waiting to save cannot have that. Measured: a whole session of 200000 ticks, in 114 s, at one generation. */
+        what = what == 8u && !pauses ? 10u : what;
         switch (what) {
         case 0u:
         case 1u:
@@ -455,8 +461,12 @@ static uint64_t soak_manifest_generation(const char *world_directory) {
 /* The generation a killed session has to get past. */
 static uint64_t soak_kill_after_generation;
 
+/* And when to stop waiting for that. A world where nothing changes never saves: measured 634 s of a session that had nothing to do, which took a 1620 s soak to 1793 s. */
+static int64_t soak_kill_give_up_ns;
+
 static bool soak_saved_since(const soak_t *soak) {
-    return soak_manifest_generation(soak->world_directory) > soak_kill_after_generation;
+    return soak_manifest_generation(soak->world_directory) > soak_kill_after_generation ||
+           time_now_ns() > soak_kill_give_up_ns;
 }
 
 /* One run of the built program. kill_when_saved kills it once it has saved, which leaves its files as a power cut would. */
@@ -466,11 +476,11 @@ static void soak_menu_session(soak_t *soak, bool kill_when_saved) {
     const uint64_t ticks = kill_when_saved ? 200000u : (soak->session_seconds * rate + 200u);
     uint64_t at = 0u;
     soak_script_enter(soak, &at, 0, -40);
-    uint64_t passed = soak_script_play(soak, &at, ticks / 2u);
+    uint64_t passed = soak_script_play(soak, &at, ticks / 2u, !kill_when_saved);
     if (!kill_when_saved) {
         soak_script_reenter(soak, &at);
     }
-    passed += soak_script_play(soak, &at, ticks - ticks / 2u);
+    passed += soak_script_play(soak, &at, ticks - ticks / 2u, !kill_when_saved);
     soak_line(soak, &at, "+4 end\n");
 
     char script_path[SOAK_PATH_BYTES + 32u];
@@ -505,6 +515,7 @@ static void soak_menu_session(soak_t *soak, bool kill_when_saved) {
                           distance,
                           nullptr};
     soak_kill_after_generation = soak_manifest_generation(soak->world_directory);
+    soak_kill_give_up_ns = time_now_ns() + (int64_t)soak->session_seconds * TIME_NS_PER_SECOND;
     const pid_t child = soak_child_start(argv, log_path);
     if (child < 0) {
         soak_failed(soak, "the program would not start", "");
@@ -519,9 +530,8 @@ static void soak_menu_session(soak_t *soak, bool kill_when_saved) {
     soak_child_check(soak, kind, &watched, log_text);
     soak->sessions++;
     if (kill_when_saved) {
-        if (watched.killed_on_purpose == 0u) {
-            soak_failed(soak, "a session never saved, so there was nothing to kill it after", log_text);
-        }
+        /* Nothing changed means nothing to save, which can be so of a player who digs nothing: no fault of one session. The soak as a whole is held to it at the end. */
+        soak->kills += soak_manifest_generation(soak->world_directory) > soak_kill_after_generation ? 1u : 0u;
         soak_child_say(soak, kind, &watched, "");
         return;
     }
@@ -535,11 +545,13 @@ static void soak_menu_session(soak_t *soak, bool kill_when_saved) {
          found = strstr(found + 1, "session: world '")) {
         opened++;
     }
-    if (opened < 2u) {
-        soak_failed(soak, "a session did not open its world twice, so its clicks missed", log_text);
+    /* A player can be dead when the script asks for the pause screen, and then the clicks fall on nothing and the session plays on. That is the script's blindness and
+     * no fault, so one session is not held to it. The soak as a whole is, at its end. */
+    if (opened == 0u) {
+        soak_failed(soak, "a session never opened its world, so its clicks missed", log_text);
     }
-    if (strstr(log_text, "session: back on the title screen") == nullptr) {
-        soak_failed(soak, "a session did not reach the title screen in the middle", log_text);
+    if (opened >= 2u && strstr(log_text, "session: back on the title screen") != nullptr) {
+        soak->reentries++;
     }
     if (strstr(log_text, " 0 bytes live") == nullptr) {
         soak_failed(soak, "a session did not end with no heap live", log_text);
@@ -547,7 +559,9 @@ static void soak_menu_session(soak_t *soak, bool kill_when_saved) {
     if (strstr(log_text, " 0 past reading") == nullptr) {
         soak_failed(soak, "a session read a damaged section of what it had saved", log_text);
     }
-    soak_child_say(soak, kind, &watched, "");
+    char said[64];
+    (void)snprintf(said, sizeof(said), "; opened %" PRIu32 " times", opened);
+    soak_child_say(soak, kind, &watched, said);
     soak_growth_check(soak, "a session", &watched, &soak->menu_rss_first, log_text);
 }
 
@@ -892,12 +906,20 @@ TEST(soak) {
         }
     }
     save_deinit(save);
+    /* Enough sessions that some player was alive at the moment, or the way back to the title is broken. */
+    if (soak->sessions >= 6u && soak->reentries == 0u) {
+        soak_failed(soak, "no session in all of them got back to the title and into the world again", "");
+    }
+    if (soak->round >= 3u && soak->kills == 0u) {
+        soak_failed(soak, "no session ever saved so that it could be killed", "");
+    }
     const uint64_t took = (uint64_t)((time_now_ns() - started_ns) / TIME_NS_PER_SECOND);
     soak_say(soak,
-             "soak: %s: %" PRIu32 " rounds, %" PRIu64 " program runs, in %" PRIu64 " s; %" PRIu64
+             "soak: %s: %" PRIu32 " rounds, %" PRIu64 " program runs, %" PRIu64
+             " of them back through the title and %" PRIu64 " killed, in %" PRIu64 " s; %" PRIu64
              " failures; at most %" PRIu64 " MiB on the card",
-             soak->failures == 0u ? "PASSED" : "FAILED", soak->round, soak->sessions, took, soak->failures,
-             soak->vram_peak_mib);
+             soak->failures == 0u ? "PASSED" : "FAILED", soak->round, soak->sessions, soak->reentries, soak->kills,
+             took, soak->failures, soak->vram_peak_mib);
     CHECK_EQ_U64(soak->failures, 0u);
     CHECK(soak->round >= 1u);
     if (soak->report != nullptr) {
