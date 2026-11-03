@@ -56,6 +56,8 @@ All run on 2026-11-03.
 
 Appended as they land:
 
+- `fd23e98`: the mob files, the tables, the spawn and despawn rules, the test and the wiring.
+
 ## Issues found
 
 1. **`entity_t` could not hold the spawn state.**
