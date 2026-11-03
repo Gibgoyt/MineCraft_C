@@ -304,6 +304,21 @@ static void upload_compare_table(test_context_t *t, upload_fixture_t *f) {
             CHECK_EQ_U64((column->section_mask >> i) & 1u, has ? 1u : 0u);
             sections += has ? 1u : 0u;
         }
+        /* What a ray skips by has to be high enough, through the real upload: every top in this column's square, and in the world. Too low would
+         * lose blocks from the picture, and nothing else would say so. */
+        const int32_t square_mask = ~((int32_t)WORLD_BUFFERS_REGION_COLUMNS - 1);
+        int32_t square_highest = 0;
+        for (uint32_t other = 0; other < map->slot_count; other++) {
+            const world_buffers_column_t *const near = &card[other];
+            if (near->ready != 0u && (near->chunk_x & square_mask) == (column->chunk_x & square_mask) &&
+                (near->chunk_y & square_mask) == (column->chunk_y & square_mask)) {
+                const int32_t above = (int32_t)near->top_z + (int32_t)WORLD_BUFFERS_Z_ORIGIN + 1;
+                square_highest = above > square_highest ? above : square_highest;
+            }
+        }
+        CHECK(column->region_top != 0u);
+        CHECK((int32_t)column->region_top * 16 >= square_highest);
+        CHECK((int64_t)buffers->top_limit >= (int64_t)square_highest);
     }
     CHECK_EQ_U64(sections, buffers->section_count);
 }
@@ -877,10 +892,13 @@ TEST(edits_and_light_reach_the_card_and_an_emptied_section_gives_its_slab_back) 
     CHECK_EQ_U64(f->render.buffers.section_count, sections + 1u);
     CHECK_EQ_U64(f->render.buffers.slab_bytes, slab_bytes + WORLD_BUFFERS_GRANULE_BYTES);
     CHECK_EQ_U64(upload_compare_world(t, f), 0u);
+    /* Higher than anything was: the square's top and the world's limit have risen with it. */
+    upload_compare_table(t, f);
     CHECK_EQ_U64(world_edit_block_set(edit, 3, 3, 400, 0u), WORLD_EDIT_STATUS_CHANGED);
     REQUIRE(upload_pump(t, f));
     CHECK_EQ_U64(f->render.buffers.section_count, sections);
     CHECK_EQ_U64(f->render.buffers.slab_bytes, slab_bytes);
+    upload_compare_table(t, f);
     CHECK(f->render.upload.stats.sections_emptied > 0u);
     upload_fixture_end(t, f);
 }

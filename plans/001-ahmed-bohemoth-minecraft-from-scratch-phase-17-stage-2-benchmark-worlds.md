@@ -62,6 +62,8 @@ I first took it for something one world leaves behind for the next in a process,
 
 **4. The first full run left too little room under its limit of 600 s.** Actual: 554.8 s, of which `plains/orbit-r128` and the two other far rows spent 106 to 122 s each on opening. Fixed: that row is gone, as `plains/orbit-r512` draws further and `plains/flight-live-r128` still covers render distance 128. A run now takes about 500 s, with a process per row included. Not much margin: a slower machine will hit `timeout 600`, and rows already printed stay printed, but `--record` writes only at the end.
 
+**5. Found by the phase gate check, fixed: the summary line said more than a run measures, and two things could not be asked for.** Expected: `target: ... all effects: 11 of 12 rows met it` means all effects. Actual: 11 of those 12 rows run with god rays off, and `--only =jungle/orbit` printed `target: no row that has one ran`, as the summary matched the `=` as text. Nor could any row but `plains/orbit-godrays` run with god rays, nor an orbit on the game's own threads. Fixed in `bench/world/index.c`: the summary says only what it knows and goes by `bench_row_chosen`, and `--god-rays` and `--live` were added, each refused with `--record`. Their numbers are in Stage 17.3 issue 6.
+
 **Found, and left for Stage 17.3, as none is this stage's to change:**
 
 - Shade is most of every slow row: 7 to 8 ms on `plains/orbit`, 24 to 26 ms on `jungle/orbit`, 10 to 11 ms on `deep_ocean/orbit`.

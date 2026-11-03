@@ -27,11 +27,11 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 ## The target table
 
-Measured 2026-11-03 on this machine, at 1920 by 1080, with the desktop on the same card, under the build lock. **Two targets are missed: 120 fps on one row of 12, by 0.21 ms, and the tick at 100 mobs once the CPU is held down by its heat (issue 1).** The picture of every row is what it was before this stage to within 1 in 255 on 0.001% of channels or fewer, of the 6 rows compared.
+Measured 2026-11-03 on this machine, at 1920 by 1080, with the desktop on the same card, under the build lock. **Missed: 120 fps with all effects on, on two views of 11, by up to 11% (issue 6); 120 fps with god rays off on one row of 12, by 0.21 ms; and the tick and terrain once the CPU is held down by its heat (issue 1).** A settled row's fps is the card's clock only: see issue 6. The picture of every row is what it was before this stage to within 1 in 255 on 0.001% of channels or fewer, of the 6 rows compared.
 
 | Metric | Target | Measured | |
 |---|---|---|---|
-| Frame rate at 1080p, render distance 32, all effects | 120 FPS (8.33 ms) | 11 of 12 rows of `bench_world`. The slowest, `deep_ocean/orbit`, **117.0 fps, 8.54 ms**. Next `jungle/orbit` 123.5, `plains/flight-live` 129.4. With god rays, the one effect off by default, 143.6. Before this stage: 5 of 12, and the slowest 34 to 37 | **MISSED** on one row, by 2.5% |
+| Frame rate at 1080p, render distance 32, all effects | 120 FPS (8.33 ms) | **All effects, god rays on (`--god-rays`):** 9 of 11 views. **`deep_ocean/orbit` 107.4 fps, 9.31 ms; `jungle/orbit` 110.2, 9.07.** **God rays off, the game's default:** 11 of 12 rows of `bench_world`. The slowest, `deep_ocean/orbit`, 117.0 fps, 8.54 ms. Next `jungle/orbit` 123.5, `plains/flight-live` 129.4. **On the game's own threads, god rays off (`--live`):** `deep_ocean/orbit` 109.1, `jungle/orbit` 112.2. Before this stage, god rays off: 5 of 12, and the slowest 34 to 37 | **MISSED**: by 11% at worst, and by 2.5% with god rays off |
 | Render distance setting | 2 to 512 chunks | 2: runs, a one-line check below. 128: 152.2 fps live. 512: 109.6 fps, was 66 to 75 | met; no frame target at those |
 | Terrain | ≥ 1000 columns/s on 16 workers | Slowest place, `jungle`: **1080** on the release preset from a cool CPU. **707** on the profile preset straight after other runs | met from cool; **MISSED when hot**: see issue 1 |
 | Sim tick at 100 mobs | ≤ 5 ms of the 50 ms budget | `bench_world`, `night/walk-mobs`, whole game, p99: **3.0 to 4.0 ms** in 8 of 9 runs in a row, and **9.0 ms** in the 9th, when the CPU was held down. The recorded full run: 8.9. `bench_mobs`, the mobs alone: p99 1.72 at worst | met, and **MISSED when the CPU is held down** |
@@ -116,7 +116,7 @@ So the tick is better in a live flight, where that was not the target's number, 
 
     tools/test-or-build.sh cmake --build --preset profile
     tools/test-or-build.sh timeout 600 build/profile/bin/bench_world
-    tools/test-or-build.sh timeout 600 ctest --preset debug --output-on-failure
+    tools/test-or-build.sh timeout 2400 ctest --preset debug --output-on-failure
     pgrep -a minecraft_c    # must print nothing
 
 What was run, and what it said: see "Checked" below.
@@ -136,6 +136,15 @@ On the final code:
 - The card: under 4 GiB, as `bench_world` keeps to 3584 MiB by its own budget and this stage adds 32 MiB of frame blocks. Not sampled again with `nvidia-smi`.
 
 Not run: `tsan` and `sanitize`, and anything under KMS, which is Ahmed's to run. `release` was built only for `bench_terrain`.
+
+The phase gate check, from a clean `build/` after merging the integration branch:
+
+- `bench_world` on the profile preset: exit status 0, 481.6 s, and again on the final code with `--record bench/world/history.tsv --label phase-17-gate-check`, exit status 0, 485.9 s. 11 of 12 rows at god rays as they stand, `deep_ocean/orbit` 115.8 and 116.1, `jungle/orbit` 122.5 and 122.8, heap calls 0 in every row, no row not sound, and all 9 settled rows' picture hashes the same as those in `bench/world/README.md`.
+- `ctest --preset debug --output-on-failure`: 95 of 96 passed, 1196 s. The one that failed was `clang_format`, on a comment of the gate check's own in `tests/run/render/upload/index.c`. Fixed, and `cuda_traverse`, `run_render_upload`, `standards_lint` and `clang_format` then passed on the final code. The full list was not run again, as only that comment and the two mutations taken back out had changed.
+- `--trace` with `--only peaks/orbit`: exit status 0, 91671 events that parse as JSON, kernels and job lanes in them, and 0 lost.
+- `minecraft_c --headless --test-world --ticks 60 --width 640 --height 360 --render-distance 2`: exit status 0, 0 bytes live at exit.
+- `nvidia-smi --query-gpu=pcie.link.width.current`: 8, as issue text above says.
+- Read for stubs and for what nothing calls, in the profiler, the benchmark, and this stage's kernels: none found. Banned types: none in those files.
 
 ## Commits
 
@@ -170,6 +179,14 @@ Done: nothing in the code can fix a CPU that is too hot; the waits were tried, a
 **4. A real capped ray in `shade_kernel`.** `TRAVERSE_INFO_CAPPED` in a hit now also means `shade_water_kernel` finished this pixel, so a primary ray that truly ran out of steps, with transparency on, would keep whatever was in its pixel from before. Left alone: it is never seen, as `tests/cuda/traverse/` holds it to 0 over every ray of its worlds, and the cap only trips on a bug. If it were seen, that is what it would look like.
 
 **5. `run/src/game/index.c` stays near its limit.** 1764 lines, with no line added by this stage, as Stage 17.1 issue 4 says. `cuda/src/shade/index.cu` went from 1008 to 1449 lines, 51 short of the standard's point of splitting. The next kernel in it should split it.
+
+**6. Found by the phase gate check, 2026-11-03: the target table said "all effects" of rows that had god rays off, and fps that leave out the CPU.** Expected: 11 of 12 rows meet 120 fps at all effects, the one miss by 2.5%, as the table said. Actual: 11 of those 12 rows run with god rays off, the row with them is the cheapest place for them, and `jungle/orbit` was 0.23 ms under the line with them off. `bench_world --only jungle/orbit --god-rays`: **110.2 fps, 9.07 ms, MISSED**. `--only deep_ocean/orbit --god-rays`: **107.4 fps, 9.31 ms, MISSED**. Every view is in `bench/world/README.md`: 9 of 11 meet it. And a settled row's fps is 1000 over the card's mean, which leaves out `past the card`, so it was never what comes out of the game's threads. No row measured an orbit that way. `--only jungle/orbit --live`, god rays off: **112.2 fps**, against 122.5 to 123.5 settled, and `--only deep_ocean/orbit --live`: **109.1**, against 115.8 to 117.0. `jagged_peaks/orbit --live` 173.3 against 173.4 to 174.4, so a view well inside the budget does not lose by it. Why the two slowest lose 7 to 9% on threads was not looked into: their passes' own numbers rise with it, shade 5.02 to 5.48 and 5.36 to 5.68 ms, which the desktop on the card and the CPU's heat could each do. Done: the table says all this, here and in the phase file, `--god-rays` and `--live` are there to measure it, and the rows stay as they are, as 14 rows already take 485 s of a 600 s limit. Not made faster: the gate asks that misses are stated, and this is a miss. Ahmed may want god rays cheaper, as `post` goes from 0.81 to 1.72 ms in `jungle/orbit` and to 2.30 in `jagged_peaks/orbit`.
+
+**7. Found by the phase gate check: this file's own Verification could not pass.** Expected: its commands prove it. Actual: `timeout 600 ctest --preset debug`, when "Checked" below says 1245.9 s, and the gate's run took 1196 s. Fixed: `timeout 2400`.
+
+**8. Found by the phase gate check: nothing tested the tops through the real upload.** Expected: a test that fails if `upload_table_apply` leaves a square's top too low, as that loses blocks from the picture without a word. Actual: `a_square_of_columns_...` calls `world_buffers_column_set` and `world_buffers_region_note` itself, and `tests/cuda/traverse/` works its tops out in the fixture, so the path the game takes had neither. Read through, it was right. Fixed: `upload_compare_table` now holds each column's `region_top` and `top_limit` to every top in its square, read back from the card, in all the tests that call it: a whole world, edits, walking and scrolling, a real sim thread, and a block put higher than all else and taken away. Checked that they bite: with `sections = (highest >> 4) - 1` in `world_buffers_region_note`, `run_render_upload` failed in those 4 tests and the old one; with `region_top` 2 sections low in the fixture, `cuda_traverse` failed, in `the_fallback_render_sizes_match_the_reference` and others. Both taken back out, and both tests pass.
+
+**9. Heat reaches `bench_mobs` too, which the table had as met.** Expected: p99 1.72 at worst. Actual, straight after other runs: `scattered` 6.73 and `packed in a pit` 7.31 ms, `target ... MISSED`, exit status 1. After 240 s idle: 1.99 at worst, met, exit status 0, and the same 120 s later. It agrees with issue 1, and the table now says so. Terrain likewise: `bench_terrain`, profile preset, straight after other runs, 992; release, after 300 s idle, 1094.
 
 **Limits to know about, by design:**
 

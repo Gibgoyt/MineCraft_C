@@ -504,6 +504,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         world_deinit(&app->world);
         gpu_bridge_deinit(&app->gpu_bridge);
         job_deinit(&app->job);
+        settings_deinit(&app->settings);
         texture_deinit(&app->texture);
         simd_deinit(&app->simd);
         math_deinit(&app->math);
