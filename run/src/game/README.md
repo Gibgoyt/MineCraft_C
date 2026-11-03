@@ -28,6 +28,7 @@
 - `game_item_set`: what it picks up goes into an inventory, and the hotbar slot in hand is what it places.
 - `game_hotbar_send`: the number keys and the wheel.
 - `game_ui_set`: draw on each picture shown with this `ui_t`, and the game screens come up on it.
+- `game_profiler_set`: what the three threads and the card do is timed in lanes of this `run/src/profiler/`. With no threads, main's lane has all of it.
 - `game_screen_input`, `game_screen_up`: a poll's input for the game screens, and whether one is up, which then has Esc.
 - `game_input_from_script`: a script's tick as a poll of real input.
 - `game_debug_send`: the debug overlay's key, F3.

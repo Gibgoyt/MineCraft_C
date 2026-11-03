@@ -63,42 +63,42 @@ typedef struct render_t {
 
     arena_t arena_frame;                  /* 896: over owned_frame_host */
     render_frame_t frame;                 /* 960 */
-    heap_region_t owned_frame_host;       /* 1792 */
-    device_block_t owned_textures;        /* 1808: what shading reads, from DEVICE_POOL_TEXTURES */
-    device_block_t owned_faces;           /* 1832 */
-    device_block_t owned_tex_pixels;      /* 1856 */
-    device_block_t owned_coarse;          /* 1880: what a frame writes, from DEVICE_POOL_FRAMES */
-    device_block_t owned_hits;            /* 1904 */
-    device_block_t owned_shaded;          /* 1928 */
-    device_block_t owned_xrgb;            /* 1952 */
-    device_block_t owned_shapes;          /* 1976: from DEVICE_POOL_TEXTURES, with the other tables */
-    device_block_t owned_ao[2];           /* 2000: what goes from frame to frame, from DEVICE_POOL_FRAMES */
-    device_block_t owned_history[2];      /* 2048 */
-    device_block_t owned_shafts;          /* 2096 */
-    device_block_t owned_entity_lists;    /* 2120: the same pool: render_entities_lists_bytes */
-    device_block_t owned_entity_hits;     /* 2144 */
-    render_entities_t *borrowed_entities; /* 2168: from arena_frame, from render_open_frame to render_close_frame */
+    heap_region_t owned_frame_host;       /* 1920 */
+    device_block_t owned_textures;        /* 1936: what shading reads, from DEVICE_POOL_TEXTURES */
+    device_block_t owned_faces;           /* 1960 */
+    device_block_t owned_tex_pixels;      /* 1984 */
+    device_block_t owned_coarse;          /* 2008: what a frame writes, from DEVICE_POOL_FRAMES */
+    device_block_t owned_hits;            /* 2032 */
+    device_block_t owned_shaded;          /* 2056 */
+    device_block_t owned_xrgb;            /* 2080 */
+    device_block_t owned_shapes;          /* 2104: from DEVICE_POOL_TEXTURES, with the other tables */
+    device_block_t owned_ao[2];           /* 2128: what goes from frame to frame, from DEVICE_POOL_FRAMES */
+    device_block_t owned_history[2];      /* 2176 */
+    device_block_t owned_shafts;          /* 2224 */
+    device_block_t owned_entity_lists;    /* 2248: the same pool: render_entities_lists_bytes */
+    device_block_t owned_entity_hits;     /* 2272 */
+    render_entities_t *borrowed_entities; /* 2296: from arena_frame, from render_open_frame to render_close_frame */
 
-    arena_t arena_lod;                               /* 2176: over owned_lod_host */
-    heap_region_t owned_lod_host;                    /* 2240 */
-    device_block_t owned_lod_tables[LOD_LEVELS_MAX]; /* 2256: from DEVICE_POOL_VOXELS, with the world's */
-    device_block_t owned_lod_pools[LOD_LEVELS_MAX];  /* 2400 */
-    device_block_t owned_lod_hits;                   /* 2544: from DEVICE_POOL_FRAMES */
-    render_lod_t *borrowed_lod; /* 2568: from arena_lod, from render_open_lod to render_close_lod */
-    uint8_t _pad1[48];          /* 2576 */
+    arena_t arena_lod;                               /* 2304: over owned_lod_host */
+    heap_region_t owned_lod_host;                    /* 2368 */
+    device_block_t owned_lod_tables[LOD_LEVELS_MAX]; /* 2384: from DEVICE_POOL_VOXELS, with the world's */
+    device_block_t owned_lod_pools[LOD_LEVELS_MAX];  /* 2528 */
+    device_block_t owned_lod_hits;                   /* 2672: from DEVICE_POOL_FRAMES */
+    render_lod_t *borrowed_lod; /* 2696: from arena_lod, from render_open_lod to render_close_lod */
+    uint8_t _pad1[48];          /* 2704 */
 } render_t;
-static_assert(sizeof(render_t) == 2624);
+static_assert(sizeof(render_t) == 2752);
 static_assert(alignof(render_t) == 64);
 static_assert(offsetof(render_t, upload) == 64);
 static_assert(offsetof(render_t, owned_host) == 512);
 static_assert(offsetof(render_t, buffers) == 576);
 static_assert(offsetof(render_t, open) == 848);
 static_assert(offsetof(render_t, frame) == 960);
-static_assert(offsetof(render_t, owned_frame_host) == 1792);
-static_assert(offsetof(render_t, owned_entity_lists) == 2120);
-static_assert(offsetof(render_t, borrowed_entities) == 2168);
-static_assert(offsetof(render_t, arena_lod) == 2176);
-static_assert(offsetof(render_t, borrowed_lod) == 2568);
+static_assert(offsetof(render_t, owned_frame_host) == 1920);
+static_assert(offsetof(render_t, owned_entity_lists) == 2248);
+static_assert(offsetof(render_t, borrowed_entities) == 2296);
+static_assert(offsetof(render_t, arena_lod) == 2304);
+static_assert(offsetof(render_t, borrowed_lod) == 2696);
 
 /* What a real game runs with: gpu.budget in config/machine.yaml. */
 render_limits_t render_limits_default(void);

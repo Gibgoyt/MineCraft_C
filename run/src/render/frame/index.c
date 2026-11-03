@@ -495,6 +495,7 @@ gpu_status_t render_frame_draw(render_frame_t *frame, const world_buffers_t *buf
         temporal->borrowed_history_next = temporal->borrowed_history_last;
         temporal->borrowed_history_last = written;
     }
+    frame->last_timings = timings;
     render_frame_stats_t *const stats = &frame->stats;
     for (uint32_t i = 0u; i < FRAME_PASS_COUNT; i++) {
         stats->sum_ms[i] += (float64_t)timings.pass_ms[i];

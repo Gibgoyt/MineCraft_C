@@ -60,8 +60,9 @@ typedef struct main_options_t {
     uint32_t full_detail;       /* --full-detail, or 0 for RENDER_LOD_FULL_DETAIL_DEFAULT */
     const char *saves;          /* --saves, or nullptr for MAIN_SAVES_DEFAULT */
     const char *settings;       /* --settings, or nullptr for MAIN_SETTINGS_DEFAULT */
+    const char *profile;        /* --profile, or nullptr for none */
 } main_options_t;
-static_assert(sizeof(main_options_t) == 88);
+static_assert(sizeof(main_options_t) == 96);
 
 /* Where worlds live unless told otherwise: beside where the program was started, like everything else it reads. */
 static const char MAIN_SAVES_DEFAULT[] = "saves";
@@ -118,15 +119,18 @@ static void main_print_usage(const char *program) {
         "crafting\n"
         "                           table, furnace or chest opens that, and E or Esc closes it\n",
         program, program, program, program, program);
-    fputs("  (no flags, on a terminal) the same as --menu\n"
-          "  --menu                   the game: main menu, make or choose a world, walk in it, Esc to pause. Through "
-          "KMS\n"
-          "                           from a text console, never inside X; with --headless, a script does all of that\n"
-          "  --saves <dir>            with --menu: where worlds live. Default saves, under where it was started\n"
-          "  --settings <file>        with --menu: where settings are kept. Default settings.yaml, under where it was\n"
-          "                           started. Flags that say the same go over it, held to its ranges, and are kept\n"
-          "                           with the rest if the Settings screen is left with Done\n",
-          stderr);
+    fputs(
+        "  (no flags, on a terminal) the same as --menu\n"
+        "  --menu                   the game: main menu, make or choose a world, walk in it, Esc to pause. Through "
+        "KMS\n"
+        "                           from a text console, never inside X; with --headless, a script does all of that\n"
+        "  --saves <dir>            with --menu: where worlds live. Default saves, under where it was started\n"
+        "  --settings <file>        with --menu: where settings are kept. Default settings.yaml, under where it was\n"
+        "                           started. Flags that say the same go over it, held to its ranges, and are kept\n"
+        "                           with the rest if the Settings screen is left with Done\n"
+        "  --profile <path>         time the run: a trace for about:tracing or Perfetto goes to <path> at exit, and a\n"
+        "                           table to stderr. Not in a release build: see run/src/profiler/README.md\n",
+        stderr);
 }
 
 /* A whole number from 1 up, for a flag. */
@@ -185,6 +189,9 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
         } else if (strcmp(argv[i], "--settings") == 0 && i + 1 < argc) {
             i++;
             out->settings = argv[i];
+        } else if (strcmp(argv[i], "--profile") == 0 && i + 1 < argc) {
+            i++;
+            out->profile = argv[i];
         } else if (strcmp(argv[i], "--walk") == 0) {
             out->walk = 1;
         } else if (strcmp(argv[i], "--no-sky") == 0) {
@@ -333,6 +340,16 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
         fprintf(stderr, "%s: --test-world does not go with --test-pattern or --report\n", argv[0]);
         return false;
     }
+    if (out->profile != nullptr && (out->test_pattern != 0 || out->report != 0)) {
+        fprintf(stderr, "%s: --profile does not go with --test-pattern or --report\n", argv[0]);
+        return false;
+    }
+    if (out->profile != nullptr && PROFILER_BUILT == 0) {
+        fprintf(stderr,
+                "%s: this build has no scopes to time, so --profile would say nothing. Build the profile preset\n",
+                argv[0]);
+        return false;
+    }
     if (out->headless != 0 && (out->test_pattern != 0 || out->report != 0)) {
         fprintf(stderr, "%s: --headless does not go with --test-pattern or --report\n", argv[0]);
         return false;
@@ -375,6 +392,10 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
     if (options->report != 0 || options->test_pattern != 0) {
         return MAIN_EXIT_OK;
     }
+    /* First, so that it can be stopped last. main gives it back if anything after this fails. */
+    if (options->profile != nullptr && !profiler_init(&app->profiler, profiler_limits_default())) {
+        return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
+    }
     /* math before job: workers inherit this thread's floating-point environment, so this is the check for them too. */
     if (!math_init(&app->math)) {
         return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
@@ -405,6 +426,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         math_deinit(&app->math);
         return MAIN_EXIT_RUNTIME; /* each has said why, and neither left anything behind */
     }
+    job_profiler_set(&app->job, &app->profiler);
     /* Before main pins itself: any thread CUDA starts here would inherit that one CPU. */
     if (MC_GPU_ENABLED != 0 && gpu_bridge_init(&app->gpu_bridge, gpu_bridge_limits_default()) != GPU_STATUS_OK) {
         job_deinit(&app->job);
@@ -541,6 +563,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
     /* Takes nothing until game_open. */
     game_init(&app->game, &app->world, &app->terrain, &app->render, &app->job, &app->texture, &app->topology);
     game_ui_set(&app->game, &app->ui);
+    game_profiler_set(&app->game, &app->profiler);
     if (options->walk != 0 || options->menu != 0u) {
         game_player_set(&app->game, &app->player);
         game_entity_set(&app->game, &app->entity);
@@ -553,8 +576,24 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
     return MAIN_EXIT_OK;
 }
 
+/* Every thread that wrote a lane has been joined. The table goes where the log does. False, having said why, if the trace could not be
+ * written: a run asked to be measured has not done what it was asked. */
+static bool main_profile_finish(app_t *app, const char *path) {
+    bool ok = true;
+    if (path != nullptr) {
+        ok = profiler_trace_dump(&app->profiler, path) == FILE_OK;
+        const file_t log_file = {.fd = STDERR_FILENO, ._pad0 = {0}};
+        if (profiler_summary_write(&app->profiler, &log_file) != FILE_OK) {
+            LOG_WARN("profiler: could not write the table to stderr");
+        }
+    }
+    profiler_deinit(&app->profiler);
+    return ok;
+}
+
+/* False if a --profile's trace could not be written. */
 [[gnu::noinline]]
-static void app_deinit(app_t *app) {
+static bool app_deinit(app_t *app, const char *profile_path) {
     game_deinit(&app->game);
     input_deinit(&app->input);
     display_offscreen_deinit(&app->offscreen);
@@ -575,7 +614,9 @@ static void app_deinit(app_t *app) {
     texture_deinit(&app->texture);
     simd_deinit(&app->simd);
     math_deinit(&app->math);
+    const bool profiled = main_profile_finish(app, profile_path);
     memset(app, 0, sizeof(*app));
+    return profiled;
 }
 
 static void main_job_count(job_worker_t *worker, void *borrowed_argument) {
@@ -847,6 +888,7 @@ int32_t main(int32_t argc, char **argv) {
     app_t app;
     main_exit_t status = app_init(&app, &options);
     if (status != MAIN_EXIT_OK) {
+        profiler_deinit(&app.profiler); /* all else that failed has gone; this came first */
         return status;
     }
     if (options.report != 0) {
@@ -865,8 +907,8 @@ int32_t main(int32_t argc, char **argv) {
     }
     /* Before deinit, which frees whatever is left on the card. */
     const bool gpu_clean = gpu_bridge_exit_check(&app.gpu_bridge);
-    if (options.pretend_leak == 0) {
-        app_deinit(&app);
+    if (options.pretend_leak == 0 && !app_deinit(&app, options.profile) && status == MAIN_EXIT_OK) {
+        status = MAIN_EXIT_RUNTIME;
     }
     if (options.report == 0) {
         heap_counters_t counters;

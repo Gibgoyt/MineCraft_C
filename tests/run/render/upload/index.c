@@ -53,13 +53,13 @@ typedef struct upload_fixture_t {
     job_system_t job;           /* 384 */
     world_t world;              /* 640 */
     render_t render;            /* 2688 */
-    device_block_t scratch;     /* 5312 */
-    thread_topology_t topology; /* 5336 */
+    device_block_t scratch;     /* 5440 */
+    thread_topology_t topology; /* 5464 */
     world_buffers_probe_query_t *queries;
     world_buffers_probe_result_t *results;
     uint8_t _pad0[16];
 } upload_fixture_t;
-static_assert(sizeof(upload_fixture_t) == 5888);
+static_assert(sizeof(upload_fixture_t) == 6016);
 
 static const render_upload_budget_t upload_test_budget_large = {.bytes = 64ull << 20, .sections = 65536u};
 

@@ -273,7 +273,9 @@ void job_submit(job_system_t *system, job_group_t *group, job_function_t functio
  * finds what this one left. The count goes first for the same reason, so job_stats_read is exact after a wait. */
 static void job_run(job_worker_t *worker, job_t job) {
     worker->inline_depth++;
+    PROFILER_BEGIN(job_worker_lane(worker), "job");
     job.function(worker, job.borrowed_argument);
+    PROFILER_END(job_worker_lane(worker));
     worker->inline_depth--;
     if (worker->inline_depth == 0) {
         arena_reset(&worker->arena_job);
@@ -394,6 +396,10 @@ bool job_init_count(job_system_t *system, const thread_topology_t *topology, uin
         }
     }
     return true;
+}
+
+void job_profiler_set(job_system_t *system, profiler_t *profiler) {
+    system->borrowed_lanes = profiler_lanes_claim(profiler, "worker", system->worker_count);
 }
 
 void job_deinit(job_system_t *system) {

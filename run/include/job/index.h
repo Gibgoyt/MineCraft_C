@@ -5,6 +5,7 @@
 #include "arena/index.h"
 #include "heap/index.h"
 #include "machine/index.h"
+#include "profiler/index.h"
 #include "thread/index.h"
 
 #include <stdatomic.h>
@@ -125,8 +126,9 @@ typedef struct job_system_t {
     job_cell_t *borrowed_cells;     /* JOB_INJECTOR_CAPACITY, in owned_region */
     _Atomic uint8_t stopping;
     uint8_t _pad3[3];
-    uint32_t worker_count; /* how many of borrowed_workers run: from 1 to MC_THREADS_WORKERS */
-    uint8_t _pad4[MC_CPU_CACHE_LINE_BYTES - 40];
+    uint32_t worker_count;           /* how many of borrowed_workers run: from 1 to MC_THREADS_WORKERS */
+    profiler_lane_t *borrowed_lanes; /* worker_count, one to a worker, or nullptr with no profiler */
+    uint8_t _pad4[MC_CPU_CACHE_LINE_BYTES - 48];
 } job_system_t;
 static_assert(sizeof(job_system_t) == 4 * MC_CPU_CACHE_LINE_BYTES);
 static_assert(alignof(job_system_t) == MC_CPU_CACHE_LINE_BYTES);
@@ -169,6 +171,16 @@ static_assert(sizeof(job_stats_t) == 64);
 /* Runs what is still queued, including whatever those jobs spawn, then stops the workers and releases everything.
  * Nothing may submit from outside a job once this has been called. Does nothing on a system that is not running. */
 void job_deinit(job_system_t *system);
+
+/* From here on each job is a scope on its worker's own lane, and a job can add its own with job_worker_lane. The profiler must outlive the
+ * system. Only with no job running or queued: what hands the lanes to the workers is the next job's trip through a queue. */
+void job_profiler_set(job_system_t *system, profiler_t *profiler);
+
+/* This worker's lane, for scopes in a job. nullptr with no profiler, which every profiler call takes. */
+static inline profiler_lane_t *job_worker_lane(const job_worker_t *worker) {
+    profiler_lane_t *const lanes = worker->borrowed_system->borrowed_lanes;
+    return lanes != nullptr ? lanes + worker->index : nullptr;
+}
 
 /* A group starts with no jobs. It may be used for any number of rounds of submitting and waiting. */
 void job_group_init(job_group_t *group);

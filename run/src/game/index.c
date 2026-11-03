@@ -89,6 +89,17 @@ void game_item_set(game_t *game, item_t *item) {
     game->borrowed_item = item;
 }
 
+void game_profiler_set(game_t *game, profiler_t *profiler) {
+    ASSERT_ALWAYS(game->open == 0u);
+    game->borrowed_lane_main = profiler_lane_claim(profiler, "main");
+    game->borrowed_lane_sim_thread = profiler_lane_claim(profiler, "sim");
+    game->borrowed_lane_gpu_thread = profiler_lane_claim(profiler, "gpu");
+    game->borrowed_lane_card = profiler_lane_claim(profiler, "card");
+    /* Until there are threads, main does what they do. */
+    game->borrowed_lane_sim = game->borrowed_lane_main;
+    game->borrowed_lane_gpu = game->borrowed_lane_main;
+}
+
 /* What a save is of, in this game. */
 static void game_save_parts(game_t *game, save_state_parts_t *out) {
     player_t *const player = game->borrowed_player;
@@ -604,7 +615,7 @@ bool game_reconfigure(game_t *game, const game_config_t *config) {
 /* ---- The sim ------------------------------------------------------------------------------------------------------ */
 
 static void game_column_job_run(job_worker_t *worker, void *borrowed_job) {
-    (void)worker;
+    PROFILER_BEGIN(job_worker_lane(worker), "column");
     game_column_job_t *const job = borrowed_job;
     const terrain_density_box_t box = game_column_box(job->request.chunk_x * (int32_t)COLUMN_SIZE,
                                                       job->request.chunk_y * (int32_t)COLUMN_SIZE, COLUMN_SIZE);
@@ -617,6 +628,7 @@ static void game_column_job_run(job_worker_t *worker, void *borrowed_job) {
             job->borrowed_save, job->request.chunk_x, job->request.chunk_y, job->borrowed_states,
             job->borrowed_opened + SAVE_WORLD_OVERLAY_SCRATCH_BYTES, &job->levels_mask, job->borrowed_opened);
     }
+    PROFILER_END(job_worker_lane(worker));
     /* Release gives the sim thread the states just written, and pairs with the acquire in game_columns_commit. */
     atomic_store_explicit(&job->done, 1u, memory_order_release);
 }
@@ -735,6 +747,7 @@ static bool game_has_screens(const game_t *game) {
 }
 
 void game_sim_step(game_t *game) {
+    PROFILER_BEGIN(game->borrowed_lane_sim, "sim_step");
     /* In every step and not only in a tick, so that a click shows in a few milliseconds and not in up to fifty. */
     if (game_has_screens(game)) {
         ui_screen_sim_t sim;
@@ -770,6 +783,7 @@ void game_sim_step(game_t *game) {
         game_save_parts(game, &parts);
         save_autosave_step(&save->autosave, &world->edit, &parts, game->tick_count);
     }
+    PROFILER_END(game->borrowed_lane_sim);
 }
 
 /* An item picked up goes to the inventory, or with none to the hand. What does not fit stays on the ground. */
@@ -1246,11 +1260,14 @@ static void game_mobs_tick(game_t *game) {
 }
 
 static void game_sim_tick(game_t *game, int64_t tick_ns) {
+    profiler_lane_t *const lane = game->borrowed_lane_sim;
+    PROFILER_BEGIN(lane, "sim_tick");
     arena_reset(&game->arena_tick);
     if (game->borrowed_player != nullptr) {
         player_survival_day_set(&game->borrowed_player->survival,
                                 (float64_t)atomic_load_explicit(&game->day_units, memory_order_relaxed) /
                                     4294967296.0f64);
+        PROFILER_BEGIN(lane, "tick_hands");
         /* First, so that the body and its next aim both meet the world as the hands leave it. */
         game_interact_tick(game, tick_ns);
         if (game_has_screens(game)) {
@@ -1259,6 +1276,8 @@ static void game_sim_tick(game_t *game, int64_t tick_ns) {
         if (game->borrowed_item != nullptr) {
             item_world_tick(game->borrowed_item, &game->borrowed_world->edit, game_spill, game);
         }
+        PROFILER_END(lane);
+        PROFILER_BEGIN(lane, "tick_mobs");
         /* Before the bodies move, so that what it answers is of the world as the hands left it. */
         if (game->borrowed_mob != nullptr) {
             mob_tick(game->borrowed_mob);
@@ -1269,13 +1288,19 @@ static void game_sim_tick(game_t *game, int64_t tick_ns) {
             }
             game_items_tick(game);
         }
+        PROFILER_END(lane);
+        PROFILER_BEGIN(lane, "tick_player");
         player_tick(game->borrowed_player, &game->borrowed_world->map, tick_ns);
         game_survive_tick(game);
+        PROFILER_END(lane);
     }
+    PROFILER_BEGIN(lane, "tick_world");
     world_tick_step(&game->borrowed_world->tick);
+    PROFILER_END(lane);
     game_entities_publish(game);
     game_hud_publish(game);
     game->tick_count++;
+    PROFILER_END(lane);
 }
 
 static void game_center_on_eye(game_t *game) {
@@ -1327,14 +1352,34 @@ static void game_fps_note(game_t *game, uint32_t pictures, float32_t seconds) {
     }
 }
 
+/* What the card's clock said, on the host's timeline: end to end, the last ending now, as the wait for it has just come back. See
+ * run/src/profiler/README.md. */
+static void game_kernels_note(game_t *game, const frame_timings_t *timings) {
+    profiler_lane_t *const lane = game->borrowed_lane_card;
+    if (lane == nullptr) {
+        return;
+    }
+    int64_t start_ns = time_now_ns() - (int64_t)((float64_t)timings->total_ms * (float64_t)TIME_NS_PER_MS);
+    for (uint32_t i = 0u; i < FRAME_KERNEL_COUNT; i++) {
+        if ((timings->kernels_ran & (1u << i)) != 0u) {
+            const int64_t duration_ns = (int64_t)((float64_t)timings->kernel_ms[i] * (float64_t)TIME_NS_PER_MS);
+            profiler_span_add(lane, frame_kernel_name((frame_kernel_t)i), start_ns, duration_ns);
+            start_ns += duration_ns;
+        }
+    }
+}
+
 /* One frame, and what each pass of it took, as the difference it made to the frame's books. */
 static gpu_status_t game_frame_draw(game_t *game, const render_camera_t *camera) {
     render_t *const render = game->borrowed_render;
     const render_frame_stats_t before = render->frame.stats;
+    PROFILER_BEGIN(game->borrowed_lane_gpu, "frame_draw");
     const gpu_status_t status = render_frame_draw(&render->frame, &render->buffers, camera);
+    PROFILER_END(game->borrowed_lane_gpu);
     if (status != GPU_STATUS_OK) {
         return status;
     }
+    game_kernels_note(game, &render->frame.last_timings);
     const render_frame_stats_t *const after = &render->frame.stats;
     for (uint32_t pass = 0u; pass < FRAME_PASS_COUNT; pass++) {
         atomic_store_explicit(&game->hud_pass_us[pass],
@@ -1393,8 +1438,7 @@ static const uint8_t *game_hud_compose(game_t *game, const uint8_t *drawn) {
     return ui_frame_end(ui, screen_up);
 }
 
-static bool game_scene_tick(void *context, const display_headless_tick_t *tick) {
-    game_t *const game = context;
+static bool game_scene_tick_timed(game_t *game, const display_headless_tick_t *tick) {
     render_fly_input_t input;
     game_fly_from_script(tick->state, &input);
     /* Time here is the count of ticks, so one script gives one path. */
@@ -1435,12 +1479,21 @@ static bool game_scene_tick(void *context, const display_headless_tick_t *tick) 
     return true;
 }
 
-static bool game_scene_draw(void *context, const display_headless_tick_t *tick, display_buffer_t *frame) {
-    (void)tick;
+static bool game_scene_tick(void *context, const display_headless_tick_t *tick) {
     game_t *const game = context;
+    PROFILER_BEGIN(game->borrowed_lane_main, "scene_tick");
+    const bool ok = game_scene_tick_timed(game, tick);
+    PROFILER_END(game->borrowed_lane_main);
+    return ok;
+}
+
+static bool game_scene_draw_timed(game_t *game, display_buffer_t *frame) {
     render_t *const render = game->borrowed_render;
     arena_reset(&game->arena_frame);
-    if (!game_settle(game)) {
+    PROFILER_BEGIN(game->borrowed_lane_main, "settle");
+    const bool settled = game_settle(game);
+    PROFILER_END(game->borrowed_lane_main);
+    if (!settled) {
         return false;
     }
     /* What later stages draw each frame goes in here. */
@@ -1456,8 +1509,22 @@ static bool game_scene_draw(void *context, const display_headless_tick_t *tick, 
     game->borrowed_last_picture = picture; /* what a pause screen goes over */
     game->view_held = 0u;
     game->view_stale = 0u;
-    render_frame_present_full(game_hud_compose(game, picture), frame);
+    PROFILER_BEGIN(game->borrowed_lane_main, "hud_compose");
+    const uint8_t *const shown = game_hud_compose(game, picture);
+    PROFILER_END(game->borrowed_lane_main);
+    PROFILER_BEGIN(game->borrowed_lane_main, "present");
+    render_frame_present_full(shown, frame);
+    PROFILER_END(game->borrowed_lane_main);
     return true;
+}
+
+static bool game_scene_draw(void *context, const display_headless_tick_t *tick, display_buffer_t *frame) {
+    (void)tick;
+    game_t *const game = context;
+    PROFILER_BEGIN(game->borrowed_lane_main, "scene_draw");
+    const bool ok = game_scene_draw_timed(game, frame);
+    PROFILER_END(game->borrowed_lane_main);
+    return ok;
 }
 
 bool game_view_refresh(game_t *game) {
@@ -1537,15 +1604,19 @@ static void game_gpu_thread(void *borrowed_argument) {
         if (render_exchange_take(&game->cameras, &slot)) {
             camera = &game->camera_slots[slot];
         }
+        PROFILER_BEGIN(game->borrowed_lane_gpu, "upload");
         gpu_status_t status = render_upload_frame(&render->upload);
+        PROFILER_END(game->borrowed_lane_gpu);
         if (status != GPU_STATUS_OK) {
             gpu_error_log(&render->buffers.last_error);
             atomic_store_explicit(&game->failed, 1u, memory_order_release);
             return;
         }
         if (render->borrowed_lod != nullptr) {
+            PROFILER_BEGIN(game->borrowed_lane_gpu, "lod_frame");
             game_far_changes_take(game);
             status = render_lod_frame(render->borrowed_lod, camera->position);
+            PROFILER_END(game->borrowed_lane_gpu);
             if (status != GPU_STATUS_OK) {
                 atomic_store_explicit(&game->failed, 1u, memory_order_release);
                 return; /* it has said why */
@@ -1563,6 +1634,12 @@ static void game_gpu_thread(void *borrowed_argument) {
     }
 }
 
+/* Whose lanes the sim's and the gpu's work goes on. Written only with neither thread running, so their start and join order it. */
+static void game_lanes_threads(game_t *game, bool threads) {
+    game->borrowed_lane_sim = threads ? game->borrowed_lane_sim_thread : game->borrowed_lane_main;
+    game->borrowed_lane_gpu = threads ? game->borrowed_lane_gpu_thread : game->borrowed_lane_main;
+}
+
 /* Both threads, from the camera as it stands. False, having said why, with neither running. */
 static bool game_threads_start(game_t *game) {
     render_exchange_start(&game->cameras);
@@ -1571,12 +1648,15 @@ static bool game_threads_start(game_t *game) {
         game->camera_slots[i] = game->camera;
     }
     atomic_store_explicit(&game->stop, 0u, memory_order_relaxed);
+    game_lanes_threads(game, true);
     if (!thread_start(&game->sim_thread, game->borrowed_topology, THREAD_ROLE_SIM, 0u, game_sim_thread, game)) {
+        game_lanes_threads(game, false);
         return false; /* it has said why */
     }
     if (!thread_start(&game->gpu_thread, game->borrowed_topology, THREAD_ROLE_GPU, 0u, game_gpu_thread, game)) {
         atomic_store_explicit(&game->stop, 1u, memory_order_release);
         thread_join(&game->sim_thread);
+        game_lanes_threads(game, false);
         return false; /* it has said why */
     }
     game->threads_running = 1u;
@@ -1593,6 +1673,8 @@ bool game_loop_start(game_t *game, input_t *input) {
 }
 
 bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t seconds, display_buffer_t *target) {
+    profiler_lane_t *const lane = game->borrowed_lane_main;
+    PROFILER_BEGIN(lane, "loop_frame");
     arena_reset(&game->arena_frame);
     if (game->borrowed_player != nullptr) {
         game_walk_view(game, time_now_ns());
@@ -1613,12 +1695,17 @@ bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t se
     game_fps_note(game, picture != nullptr ? 1u : 0u, seconds);
     if (game->borrowed_last_picture != nullptr) {
         const int64_t started_ns = time_now_ns();
+        PROFILER_BEGIN(lane, "hud_compose");
         const uint8_t *const shown = game_hud_compose(game, game->borrowed_last_picture);
+        PROFILER_END(lane);
         const int64_t composed_ns = time_now_ns();
+        PROFILER_BEGIN(lane, "present");
         render_frame_present_full(shown, target);
+        PROFILER_END(lane);
         game->hud_compose_us = (uint32_t)((composed_ns - started_ns) / 1000);
         game->hud_present_us = (uint32_t)((time_now_ns() - composed_ns) / 1000);
     }
+    PROFILER_END(lane);
     return atomic_load_explicit(&game->failed, memory_order_acquire) == 0u;
 }
 
@@ -1626,6 +1713,7 @@ bool game_loop_stop(game_t *game) {
     atomic_store_explicit(&game->stop, 1u, memory_order_release);
     thread_join(&game->sim_thread);
     thread_join(&game->gpu_thread);
+    game_lanes_threads(game, false);
     game->threads_running = 0u;
     game->loop_ended_ns = time_now_ns();
     return atomic_load_explicit(&game->failed, memory_order_acquire) == 0u;
