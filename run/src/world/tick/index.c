@@ -149,6 +149,7 @@ static world_tick_column_t *tick_column(world_tick_t *tick, uint32_t slot) {
                 tick_page_release(tick, &column->pages[i]);
             }
         }
+        column->saved_sections = 0u;
         column->generation = generation;
     }
     return column;
@@ -967,6 +968,104 @@ void world_tick_section_levels_restore(world_tick_t *tick, int32_t chunk_x, int3
     }
 }
 
+/* A fluid that would do something if it had a tick: tick_fluid's own questions, as far as they can be answered without doing any of it. */
+static bool tick_fluid_able(const world_tick_t *tick, uint16_t fluid, int32_t x, int32_t y, int32_t z) {
+    if (world_tick_fluid_level(tick, x, y, z) != WORLD_TICK_LEVEL_SOURCE) {
+        return true; /* what feeds it may have gone */
+    }
+    const bool lava = fluid == BLOCK_ID_LAVA;
+    const uint16_t below = tick_look(tick, x, y, z - 1);
+    if (tick_is_open(below) || (lava && (below == BLOCK_ID_WATER || tick_look(tick, x, y, z + 1) == BLOCK_ID_WATER))) {
+        return true;
+    }
+    for (uint32_t side = 0u; side < 4u; side++) {
+        const uint16_t beside = tick_look(tick, x + TICK_SIDE_X[side], y + TICK_SIDE_Y[side], z);
+        if (tick_is_open(beside) || (lava && beside == BLOCK_ID_WATER)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Unlike tick_wake, nothing next to this has just changed: so only what has something to do now. A sea whose section was saved must not be 4096 ticks to find
+ * that out. */
+static void tick_wake_if_able(world_tick_t *tick, int32_t x, int32_t y, int32_t z) {
+    const uint16_t state = tick_look(tick, x, y, z);
+    if (!tick_is_block(state)) {
+        return;
+    }
+    if (tick_is_fluid(state)) {
+        if (tick_fluid_able(tick, state, x, y, z)) {
+            tick_wake(tick, x, y, z);
+        }
+    } else if (state == BLOCK_ID_FARMLAND) {
+        if (tick_is_solid(tick_look(tick, x, y, z + 1))) {
+            tick_wake(tick, x, y, z);
+        }
+    } else if (tick_is_wheat(state)) {
+        if (tick_look(tick, x, y, z - 1) != BLOCK_ID_FARMLAND) {
+            tick_wake(tick, x, y, z);
+        }
+    } else {
+        tick_wake(tick, x, y, z); /* it asks for itself whether a block that falls has anywhere to go */
+    }
+}
+
+/* Inclusive of both ends, in blocks. */
+static void tick_wake_box(world_tick_t *tick, const int32_t low[3], const int32_t high[3]) {
+    for (int32_t z = low[2]; z <= high[2]; z++) {
+        for (int32_t y = low[1]; y <= high[1]; y++) {
+            for (int32_t x = low[0]; x <= high[0]; x++) {
+                tick_wake_if_able(tick, x, y, z);
+            }
+        }
+    }
+}
+
+static int32_t tick_section_base_z(uint32_t section) {
+    return COLUMN_Z_STORAGE_MIN + (int32_t)(section * SECTION_SIZE);
+}
+
+/* Both sides of where two columns meet, for the height of one section. Side is an index into TICK_SIDE_X: the neighbour is that way from base. */
+static void tick_wake_seam(world_tick_t *tick, int32_t base_x, int32_t base_y, uint32_t side, uint32_t section) {
+    const int32_t size = (int32_t)COLUMN_SIZE;
+    const int32_t dx = TICK_SIDE_X[side], dy = TICK_SIDE_Y[side];
+    const int32_t z_low = tick_section_base_z(section);
+    /* The row of this column against that side, and the row past it. */
+    const int32_t low_x = dx > 0 ? base_x + size - 1 : (dx < 0 ? base_x - 1 : base_x);
+    const int32_t low_y = dy > 0 ? base_y + size - 1 : (dy < 0 ? base_y - 1 : base_y);
+    const int32_t low[3] = {low_x, low_y, z_low};
+    const int32_t high[3] = {dx != 0 ? low_x + 1 : base_x + size - 1, dy != 0 ? low_y + 1 : base_y + size - 1,
+                             z_low + (int32_t)SECTION_SIZE - 1};
+    tick_wake_box(tick, low, high);
+}
+
+void world_tick_column_saved(world_tick_t *tick, uint32_t slot, int32_t chunk_x, int32_t chunk_y,
+                             uint64_t saved_sections) {
+    ASSERT_ALWAYS(slot < tick->borrowed_map->slot_count);
+    tick_column(tick, slot)->saved_sections = saved_sections;
+    const int32_t base_x = chunk_x * (int32_t)COLUMN_SIZE, base_y = chunk_y * (int32_t)COLUMN_SIZE;
+    for (uint64_t left = saved_sections; left != 0u; left &= left - 1u) {
+        const int32_t z_low = tick_section_base_z((uint32_t)__builtin_ctzll(left));
+        /* And the one voxel past each way: what waited there was waiting on a change in here. */
+        const int32_t low[3] = {base_x - 1, base_y - 1, z_low - 1};
+        const int32_t high[3] = {base_x + (int32_t)COLUMN_SIZE, base_y + (int32_t)COLUMN_SIZE,
+                                 z_low + (int32_t)SECTION_SIZE};
+        tick_wake_box(tick, low, high);
+    }
+    for (uint32_t side = 0u; side < 4u; side++) {
+        uint32_t other = 0u;
+        const int32_t other_x = chunk_x + TICK_SIDE_X[side], other_y = chunk_y + TICK_SIDE_Y[side];
+        if (!world_map_slot_of(tick->borrowed_map, other_x, other_y, &other) ||
+            world_map_column_at(tick->borrowed_map, other_x, other_y) == nullptr) {
+            continue;
+        }
+        for (uint64_t left = tick_column(tick, other)->saved_sections; left != 0u; left &= left - 1u) {
+            tick_wake_seam(tick, base_x, base_y, side, (uint32_t)__builtin_ctzll(left));
+        }
+    }
+}
+
 void world_tick_now_set(world_tick_t *tick, uint64_t now) {
     ASSERT_ALWAYS(tick->node_live == 0u); /* a node is filed under the count it is due at */
     tick->now = now;
@@ -980,4 +1079,5 @@ void world_tick_column_leaving(world_tick_t *tick, uint32_t slot) {
             tick_page_release(tick, &column->pages[i]);
         }
     }
+    column->saved_sections = 0u;
 }

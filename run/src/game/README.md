@@ -18,6 +18,7 @@
 - `game_loop_source_begin`, `game_loop_source`, `game_loop_discard`: what `display_frames_run` calls: the threads start on its first frame, then real keys and a real mouse to `game_loop_frame`, and Esc to stop.
 - `game_loop_threads_ensure`, `game_loop_input_frame`, `game_loop_input_clear`: the same in parts, for `session`, which wants Esc for itself.
 - `game_pause_set`: stops the world's clock, or starts it.
+- `game_far_changes_take`: what has been captured, told to the far field, by whichever thread calls `render_lod_frame`.
 - `game_save_finish`: all there is, saved here and now, as a world closes: see `run/src/save/autosave/`. A `game_open` with a save takes up where the state in it left off, and `game_sim_step` calls `save_autosave_step`.
 - `game_open_alive_set`: someone to tell that a long `game_open` is still going.
 - `game_fly_from_script`, `game_fly_from_input`: either kind of input to a step of flying.
@@ -98,6 +99,8 @@ No world is closed, no player or item is touched, and the world's time goes on. 
 If the far field will not fit on the card, the world stops at full detail, the fog comes in to meet it, and it says so. Only a frame that cannot be had back, or threads that will not start, ends the game.
 
 ## The time of day
+
+The far field samples terrain and writes over it what the save holds: `save_world_far_line`, set by `game_open` and `game_reconfigure`. It hears of what is captured from `game_far_changes_take`, just before each `render_lod_frame`. So an edit reaches the far field when it is captured: at the next autosave, within 30 s of world time, or when its column leaves, whichever is first. Until then it is near enough to be drawn block by block in all but the ring the map keeps past `full_detail`. A game with no save has no overlay, and only terrain out there: only `--menu` has a save.
 
 A world opened through `game/session` has a `save_t` as well: `game_save_set` before it opens. Each column job then writes what is saved over what it generates, and `game_sim_step` captures a column's changes before it unloads it. If that fails, the column stays, and is offered again next step. See `run/src/save/world/README.md`.
 

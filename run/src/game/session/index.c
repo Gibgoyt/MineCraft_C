@@ -91,28 +91,39 @@ static void game_session_world_close(game_session_t *session) {
     }
 }
 
-/* The world's files, if this game keeps any. False, having said why, if it cannot have them, and they are left as they were. */
-static bool game_session_save_open(const game_session_t *session, const ui_menu_world_t *world) {
+/* The world's files, if this game keeps any. Anything but SAVE_WORLD_OK has said why, in the log, and they are left as they were. */
+static save_world_status_t game_session_save_open(const game_session_t *session, const ui_menu_world_t *world) {
     save_t *const save = session->borrowed_game->borrowed_save;
     if (save == nullptr) {
-        return true;
+        return SAVE_WORLD_OK;
     }
     char directory[FILE_PATH_BYTES];
     const int32_t written =
         snprintf(directory, sizeof(directory), "%s/%s", session->borrowed_ui->menu.borrowed_saves, world->directory);
     if (written <= 0 || written >= FILE_PATH_BYTES) {
         LOG_ERROR("session: the path of world '%s' is too long", world->name);
-        return false;
+        return SAVE_WORLD_ERROR_PATH;
     }
     const save_world_status_t status = save_open(save, directory, world->seed);
     if (status != SAVE_WORLD_OK) {
         LOG_ERROR("session: world '%s' will not be opened: %s", world->name, save_world_status_name(status));
-        return false;
     }
-    return true;
+    return status;
 }
 
-/* A world's terrain is its seed's and nothing else's, so each opening makes it again. False, having said why, on failure. */
+/* A world whose files say no is that world's trouble and not the program's: back to the list, which says why, for a person to choose another. Under KMS the log is
+ * nothing anyone can read. */
+static void game_session_world_refused(game_session_t *session, save_world_status_t status) {
+    ui_menu_t *const menu = &session->borrowed_ui->menu;
+    ui_menu_open(menu, UI_MENU_SCREEN_SELECT);
+    char message[UI_MENU_MESSAGE_BYTES];
+    (void)snprintf(message, sizeof(message), "Could not open it: %s", save_world_status_name(status));
+    ui_menu_message_set(menu, message);
+    session->state = GAME_SESSION_MENU;
+}
+
+/* A world's terrain is its seed's and nothing else's, so each opening makes it again. False, having said why, if the program cannot go on. True and still on the menus
+ * if only this world's files were refused. */
 static bool game_session_world_open(game_session_t *session) {
     game_t *const game = session->borrowed_game;
     const ui_menu_world_t *const world = &session->borrowed_ui->menu.chosen;
@@ -121,8 +132,13 @@ static bool game_session_world_open(game_session_t *session) {
         game_session_config_from_settings(session);
     }
     terrain_deinit(session->borrowed_terrain);
-    if (!terrain_init(session->borrowed_terrain, world->seed) || !game_session_save_open(session, world)) {
+    if (!terrain_init(session->borrowed_terrain, world->seed)) {
         return false;
+    }
+    const save_world_status_t saved = game_session_save_open(session, world);
+    if (saved != SAVE_WORLD_OK) {
+        game_session_world_refused(session, saved);
+        return true;
     }
     if (!game_open(game, &session->config)) {
         if (game->borrowed_save != nullptr) {
@@ -136,6 +152,7 @@ static bool game_session_world_open(game_session_t *session) {
         game_loop_source_begin(game, session->borrowed_input);
     }
     session->worlds_opened++;
+    session->state = GAME_SESSION_PLAYING;
     return true;
 }
 
@@ -149,7 +166,6 @@ static bool game_session_advance(game_session_t *session) {
             session->failed = 1u;
             return false;
         }
-        session->state = GAME_SESSION_PLAYING;
         return true;
     case GAME_SESSION_NEXT_TITLE:
         game_session_world_close(session);

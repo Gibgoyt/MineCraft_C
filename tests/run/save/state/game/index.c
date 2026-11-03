@@ -496,6 +496,148 @@ TEST(the_game_keeps_what_flows_the_tick_count_and_what_a_chest_gone_this_tick_he
     ss_temp_remove(t, root);
 }
 
+TEST(what_was_waiting_for_its_first_tick_goes_on_after_a_reload) {
+    char *const root = ss_temp_directory(t);
+    REQUIRE(root != nullptr);
+    ss_game_rig_t *const rig = test_alloc(t, sizeof(ss_game_rig_t));
+    REQUIRE(ss_game_begin(t, rig, false));
+    game_t *const game = rig->game;
+    save_t *const save = rig->save;
+    world_t *const world = rig->world;
+    REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
+    const game_config_t config = {.render_distance = 3u, .width = 64u, .height = 36u, ._pad0 = {0}};
+    REQUIRE(game_open(game, &config));
+    REQUIRE(game_settle(game));
+    const int32_t home_x = atomic_load(&game->center_x) * 16, home_y = atomic_load(&game->center_y) * 16;
+    const int32_t z = 400;
+    for (int32_t y = 0; y < 16; y++) {
+        for (int32_t x = 0; x < 16; x++) {
+            REQUIRE(world_edit_block_set(&world->edit, home_x + x, home_y + y, z - 1, BLOCK_ID_STONE) ==
+                    WORLD_EDIT_STATUS_CHANGED);
+        }
+    }
+    /* Not one tick goes by: a source just placed, and sand just placed in the air. */
+    REQUIRE(world_edit_block_set(&world->edit, home_x + 8, home_y + 8, z, BLOCK_ID_WATER) == WORLD_EDIT_STATUS_CHANGED);
+    REQUIRE(world_edit_block_set(&world->edit, home_x + 2, home_y + 2, z + 3, BLOCK_ID_SAND) ==
+            WORLD_EDIT_STATUS_CHANGED);
+    CHECK_EQ_U64(world_tick_pending(&world->tick), 0u);
+    REQUIRE(game_save_finish(game) == SAVE_WORLD_OK);
+    game_close(game);
+    save_close(save);
+
+    REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
+    REQUIRE(game_open(game, &config));
+    REQUIRE(game_settle(game));
+    uint16_t block = BLOCK_ID_AIR;
+    REQUIRE(world_map_block_get(&world->map, home_x + 2, home_y + 2, z + 3, &block) == WORLD_MAP_STATUS_OK);
+    CHECK_EQ_U64(block, BLOCK_ID_SAND);
+    CHECK(world_tick_pending(&world->tick) >= 2u);
+    for (uint32_t i = 0u; i < 100u; i++) {
+        world_tick_step(&world->tick);
+    }
+    REQUIRE(world_map_block_get(&world->map, home_x + 2, home_y + 2, z + 3, &block) == WORLD_MAP_STATUS_OK);
+    CHECK_EQ_U64(block, BLOCK_ID_AIR);
+    REQUIRE(world_map_block_get(&world->map, home_x + 2, home_y + 2, z, &block) == WORLD_MAP_STATUS_OK);
+    CHECK_EQ_U64(block, BLOCK_ID_SAND);
+    REQUIRE(world_map_block_get(&world->map, home_x + 9, home_y + 8, z, &block) == WORLD_MAP_STATUS_OK);
+    CHECK_EQ_U64(block, BLOCK_ID_WATER);
+    CHECK_EQ_U64(world_tick_fluid_level(&world->tick, home_x + 9, home_y + 8, z), 1u);
+    game_close(game);
+    save_close(save);
+    ss_game_end(t, rig);
+    ss_temp_remove(t, root);
+}
+
+/* What the finest level has at a chunk: its highest voxel as the table says, in blocks of storage height. */
+static int32_t ss_far_top(const game_t *game, int32_t chunk_x, int32_t chunk_y) {
+    const render_lod_level_t *const level = &game->borrowed_render->borrowed_lod->levels[0];
+    uint32_t slot = 0u;
+    if (!world_buffers_slot_of(&level->buffers.window, chunk_x >> level->shift, chunk_y >> level->shift, &slot)) {
+        return INT32_MIN;
+    }
+    return ((int32_t)level->buffers.borrowed_shadow[slot].top_z - COLUMN_Z_STORAGE_MIN) << level->shift;
+}
+
+TEST(the_far_field_shows_what_a_save_holds_and_makes_again_what_is_captured) {
+    char *const root = ss_temp_directory(t);
+    REQUIRE(root != nullptr);
+    ss_game_rig_t *const rig = test_alloc(t, sizeof(ss_game_rig_t));
+    REQUIRE(ss_game_begin(t, rig, false));
+    game_t *const game = rig->game;
+    save_t *const save = rig->save;
+    world_t *const world = rig->world;
+    REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
+    const game_config_t config = {.render_distance = 8u, .full_detail = 4u, .width = 64u, .height = 36u, ._pad0 = {0}};
+    REQUIRE(game_open(game, &config));
+    REQUIRE(game_settle(game));
+    render_lod_t *const lod = rig->render->borrowed_lod;
+    REQUIRE(lod != nullptr && lod->level_count >= 1u);
+    REQUIRE(lod->overlay != nullptr);
+    const int32_t chunk_x = atomic_load(&game->center_x), chunk_y = atomic_load(&game->center_y);
+    const int32_t ground = ss_far_top(game, chunk_x, chunk_y);
+    const int32_t tower_top = COLUMN_Z_GAMEPLAY_MAX;
+    const int32_t tower_bottom = tower_top - 2 * (int32_t)SECTION_SIZE;
+    const int32_t tower_storage = (tower_top - COLUMN_Z_STORAGE_MIN) >> lod->levels[0].shift << lod->levels[0].shift;
+    REQUIRE(ground < tower_storage);
+
+    /* Asked of nothing: it is not caught up until a capture says so. */
+    const int32_t base_x = chunk_x * 16, base_y = chunk_y * 16;
+    for (int32_t z = tower_bottom; z <= tower_top; z++) {
+        for (int32_t y = 0; y < 16; y++) {
+            for (int32_t x = 0; x < 16; x++) {
+                REQUIRE(world_edit_block_set(&world->edit, base_x + x, base_y + y, z, BLOCK_ID_STONE) ==
+                        WORLD_EDIT_STATUS_CHANGED);
+            }
+        }
+    }
+    const uint64_t built = lod->stats.columns_built;
+    const uint32_t shown = lod->levels[0].shown_side;
+    REQUIRE(game_settle(game));
+    CHECK_EQ_U64(lod->stats.columns_built, built);
+    REQUIRE(save_world_capture_dirty(&save->world, &world->edit) == SAVE_WORLD_OK);
+    game_far_changes_take(game);
+    /* What was there stays shown until what replaces it has come, though it is worked out again in the meantime as it is for any column that comes in. */
+    lod->levels[0].shown_stale = 1u;
+    REQUIRE(render_lod_frame(lod, game->camera.position) == GPU_STATUS_OK);
+    CHECK_EQ_U64(lod->levels[0].shown_side, shown);
+    REQUIRE(game_settle(game));
+    CHECK_EQ_U64(lod->levels[0].shown_side, shown);
+    CHECK(lod->stats.columns_built >= built + 1u);
+    CHECK(lod->stats.columns_built <= built + lod->level_count);
+    CHECK_EQ_I64(ss_far_top(game, chunk_x, chunk_y), tower_storage);
+
+    /* From the files alone, in a far field that starts with a new world. */
+    REQUIRE(game_save_finish(game) == SAVE_WORLD_OK);
+    game_close(game);
+    save_close(save);
+    REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
+    REQUIRE(game_open(game, &config));
+    REQUIRE(game_settle(game));
+    CHECK_EQ_I64(ss_far_top(game, chunk_x, chunk_y), tower_storage);
+    /* Loading it for the far field is not loading it for the game. */
+    const uint64_t loaded = atomic_load(&save->world.sections_loaded);
+
+    /* And gone again, with what was over the ground's top given back. */
+    for (int32_t z = tower_bottom; z <= tower_top; z++) {
+        for (int32_t y = 0; y < 16; y++) {
+            for (int32_t x = 0; x < 16; x++) {
+                REQUIRE(world_edit_block_set(&world->edit, base_x + x, base_y + y, z, BLOCK_ID_AIR) ==
+                        WORLD_EDIT_STATUS_CHANGED);
+            }
+        }
+    }
+    REQUIRE(save_world_capture_dirty(&save->world, &world->edit) == SAVE_WORLD_OK);
+    game_far_changes_take(game);
+    REQUIRE(game_settle(game));
+    CHECK_EQ_I64(ss_far_top(game, chunk_x, chunk_y), ground);
+    CHECK_EQ_U64(atomic_load(&save->world.sections_loaded), loaded);
+    CHECK_EQ_U64(atomic_load(&save->world.sections_damaged), 0u);
+    game_close(game);
+    save_close(save);
+    ss_game_end(t, rig);
+    ss_temp_remove(t, root);
+}
+
 /* ---- The built program ---------------------------------------------------------------------------------------------------- */
 
 /* Opens the first world on the list, looks down, digs, and goes on until it is killed or a very long way past any save. At 640 by 480, scale 2: see
@@ -663,6 +805,77 @@ TEST(the_built_program_killed_in_play_goes_on_from_its_last_autosave) {
     CHECK(time_after.world_ticks > time.world_ticks);
     CHECK(time_after.world_ticks <= time.world_ticks + 20u);
     save_deinit(after);
+    ss_temp_remove(t, root);
+}
+
+/* Two worlds, as the list sorts them. The first: click its row, Play, and be refused, with the list up again. Then the pointer goes down a row for the second, and Play. */
+static const char SS_REFUSED_SCRIPT[] = "1 move 0 -40\n"
+                                        "+1 button left down\n+1 button left up\n"
+                                        "+1 move -132 196\n"
+                                        "+2 screenshot before.png\n"
+                                        "+1 move 112 -318\n"
+                                        "+1 button left down\n+1 button left up\n"
+                                        "+1 move -112 318\n"
+                                        "+1 button left down\n+1 button left up\n"
+                                        "+2 screenshot refused.png\n"
+                                        "+1 move 112 -270\n"
+                                        "+1 button left down\n+1 button left up\n"
+                                        "+1 move -112 270\n"
+                                        "+1 button left down\n+1 button left up\n"
+                                        "+6 end\n";
+
+TEST(a_world_refused_at_open_is_said_on_the_list_and_another_can_be_played) {
+    REQUIRE(t->arg_count >= 1);
+    char *const root = ss_temp_directory(t);
+    REQUIRE(root != nullptr);
+    char *const saves = ss_join(t, root, "saves");
+    ui_menu_world_t bad, good;
+    REQUIRE(ui_menu_catalog_create(saves, "a bad one", 77u, &bad) == FILE_OK);
+    REQUIRE(ui_menu_catalog_create(saves, "b good one", 78u, &good) == FILE_OK);
+    /* Saved by a later build than this. Whoever has that build wants these bytes back. */
+    char *const blocks = ss_join(t, ss_join(t, saves, bad.directory), "blocks");
+    REQUIRE(file_make_dirs(blocks) == FILE_OK);
+    char *const manifest = ss_join(t, blocks, "manifest");
+    static const uint8_t SS_NOT_A_MANIFEST[] = "this is not a manifest, and nothing should change it";
+    REQUIRE(file_write_atomic(manifest, SS_NOT_A_MANIFEST, sizeof(SS_NOT_A_MANIFEST)) == FILE_OK);
+
+    char *const script = ss_join(t, root, "refused.script");
+    REQUIRE(file_write_atomic(script, SS_REFUSED_SCRIPT, strlen(SS_REFUSED_SCRIPT)) == FILE_OK);
+    char *const argv[] = {t->borrowed_args[0],
+                          (char *)"--headless",
+                          (char *)"--menu",
+                          (char *)"--saves",
+                          saves,
+                          (char *)"--script",
+                          script,
+                          (char *)"--screenshot-dir",
+                          root,
+                          (char *)"--width",
+                          (char *)"640",
+                          (char *)"--height",
+                          (char *)"480",
+                          (char *)"--render-distance",
+                          (char *)"4",
+                          nullptr};
+    test_process_t process;
+    test_process_run(t, argv, 120000u, &process);
+    REQUIRE(process.started != 0u);
+    if (!CHECK_EQ_I64(process.exit_code, 0)) {
+        printf("%s\n", process.output);
+    }
+    CHECK_CONTAINS(process.output, "world 'a bad one' will not be opened: damaged");
+    CHECK_CONTAINS(process.output, "world 'b good one' is open");
+    CHECK_CONTAINS(process.output, " 0 bytes live");
+    uint64_t bytes = 0u;
+    const uint8_t *const kept = ss_slurp(t, manifest, &bytes);
+    REQUIRE(bytes == sizeof(SS_NOT_A_MANIFEST));
+    CHECK_MEM_EQ(kept, SS_NOT_A_MANIFEST, bytes);
+    /* The same screen with the pointer in the same place, nothing chosen in either: all that can differ is what it says. */
+    uint64_t before_bytes = 0u, refused_bytes = 0u;
+    const uint8_t *const before = ss_slurp(t, ss_join(t, root, "before.png"), &before_bytes);
+    const uint8_t *const refused = ss_slurp(t, ss_join(t, root, "refused.png"), &refused_bytes);
+    REQUIRE(before_bytes > 0u && refused_bytes > 0u);
+    CHECK(before_bytes != refused_bytes || memcmp(before, refused, before_bytes) != 0);
     ss_temp_remove(t, root);
 }
 

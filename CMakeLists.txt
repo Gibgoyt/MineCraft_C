@@ -3,10 +3,10 @@
 cmake_minimum_required(VERSION 4.4)
 project(minecraft_c LANGUAGES C ASM_NASM CUDA)
 
-set(MC_PRESET "" CACHE STRING "The configure preset: debug, sanitize, release or profile")
-set(MC_PRESETS debug sanitize release profile)
+set(MC_PRESET "" CACHE STRING "The configure preset: debug, sanitize, tsan, release or profile")
+set(MC_PRESETS debug sanitize tsan release profile)
 if(NOT MC_PRESET IN_LIST MC_PRESETS)
-  message(FATAL_ERROR "MC_PRESET is '${MC_PRESET}'. Configure with: cmake --preset debug|sanitize|release|profile")
+  message(FATAL_ERROR "MC_PRESET is '${MC_PRESET}'. Configure with: cmake --preset debug|sanitize|tsan|release|profile")
 endif()
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")

@@ -31,6 +31,8 @@ enum : uint32_t {
     /* What one set of captured sections may hold before it must be written. */
     SAVE_WORLD_PENDING_SECTIONS = 1u << 15,
     SAVE_WORLD_PENDING_HASH_SLOTS = SAVE_WORLD_PENDING_SECTIONS * 2u,
+    /* Columns captured that the far field has not heard of yet. Past this it is told that it has lost count, and looks again at everything. */
+    SAVE_WORLD_FAR_RING = 1u << 12,
 };
 static_assert(SAVE_WORLD_RECORD_BYTES_MAX == 8196u);
 static_assert(COLUMN_SECTIONS <= 64u); /* a mask of a column's sections fits a uint64_t */
@@ -216,6 +218,22 @@ typedef enum save_world_step_t : uint8_t {
 
 typedef void (*save_world_step_hook_t)(void *context, save_world_step_t step);
 
+/* Which columns have been captured, from the sim to whoever calls render_lod_frame. In the arena and not in save_world_t, whose size is a part of main's frame. */
+typedef struct save_world_far_t {
+    _Atomic uint32_t head;                  /* 0: the sim's: release when a pair has been written */
+    _Atomic uint32_t tail;                  /* 4: the far field's: release when a pair has been read */
+    _Atomic uint32_t lost;                  /* 8: pairs that had no room */
+    uint8_t _pad0[4];                       /* 12 */
+    int32_t ring[2u * SAVE_WORLD_FAR_RING]; /* 16: chunk_x, chunk_y */
+} save_world_far_t;
+static_assert(sizeof(save_world_far_t) == 16u + 2u * SAVE_WORLD_FAR_RING * sizeof(int32_t));
+static_assert(alignof(save_world_far_t) == 4);
+static_assert(offsetof(save_world_far_t, head) == 0);
+static_assert(offsetof(save_world_far_t, tail) == 4);
+static_assert(offsetof(save_world_far_t, lost) == 8);
+static_assert(offsetof(save_world_far_t, _pad0) == 12);
+static_assert(offsetof(save_world_far_t, ring) == 16);
+
 /* One world's delta files, and what is on its way to them. See the README for who may call what, when. */
 typedef struct save_world_t {
     pthread_mutex_t mutex;                         /* 0: over pending and which manifest is current */
@@ -228,25 +246,26 @@ typedef struct save_world_t {
     save_world_column_entry_t *borrowed_table_new; /* 168 */
     uint8_t *borrowed_manifest_bytes;              /* 176: the manifest as a file */
     uint8_t *borrowed_record;                      /* 184: SAVE_WORLD_ENTRY_BYTES_MAX: an old record to a new file */
-    uint16_t *borrowed_states;                     /* 192: SECTION_VOXELS: a section being captured */
-    uint16_t *borrowed_palette_slots;              /* 200: 65536: a state's place in a palette being built, + 1 */
-    char *borrowed_directory;                      /* 208: <world>/blocks */
-    save_world_step_hook_t step_hook;              /* 216: nullptr but in a test */
-    void *borrowed_step_context;                   /* 224 */
-    const world_tick_t *borrowed_tick;             /* 232: where a section's levels are, or nullptr to keep none */
-    uint64_t seed;                                 /* 232 */
-    uint64_t generation;                           /* 240: of the current manifest */
-    uint64_t table_hash;                           /* 248 */
-    _Atomic uint64_t sections_loaded;              /* 256: put over generated columns, ever */
-    _Atomic uint64_t sections_damaged;             /* 264: on disk and past reading, each time they were wanted */
-    uint64_t sections_written;                     /* 272: by saves */
-    uint64_t saves_done;                           /* 280: saves that wrote anything */
-    file_t lock;                                   /* 288: held open while this has the world */
-    uint32_t region_count;                         /* 296: in the current manifest */
-    uint8_t file_status; /* 300: file_status_t: what the disk said, for SAVE_WORLD_ERROR_FILE */
-    uint8_t current;     /* 301: which manifest is current */
-    uint8_t active;      /* 302: which of pending is captured to: the other is being written */
-    uint8_t open;        /* 303 */
+    uint16_t *
+        borrowed_states; /* 192: SECTION_VOXELS: a section being captured, then 65536: a state's place in a palette being built, + 1 */
+    save_world_far_t *borrowed_far;    /* 200 */
+    char *borrowed_directory;          /* 208: <world>/blocks */
+    save_world_step_hook_t step_hook;  /* 216: nullptr but in a test */
+    void *borrowed_step_context;       /* 224 */
+    const world_tick_t *borrowed_tick; /* 232: where a section's levels are, or nullptr to keep none */
+    uint64_t seed;                     /* 240 */
+    uint64_t generation;               /* 248: of the current manifest */
+    uint64_t table_hash;               /* 256 */
+    _Atomic uint64_t sections_loaded;  /* 256: put over generated columns, ever */
+    _Atomic uint64_t sections_damaged; /* 264: on disk and past reading, each time they were wanted */
+    uint64_t sections_written;         /* 272: by saves */
+    uint64_t saves_done;               /* 280: saves that wrote anything */
+    file_t lock;                       /* 288: held open while this has the world */
+    uint32_t region_count;             /* 296: in the current manifest */
+    uint8_t file_status;               /* 300: file_status_t: what the disk said, for SAVE_WORLD_ERROR_FILE */
+    uint8_t current;                   /* 301: which manifest is current */
+    uint8_t active;                    /* 310: which of pending is captured to: the other is being written */
+    uint8_t open;                      /* 311 */
 } save_world_t;
 static_assert(sizeof(save_world_t) == 312);
 static_assert(alignof(save_world_t) == 8);
@@ -261,7 +280,7 @@ static_assert(offsetof(save_world_t, borrowed_table_new) == 168);
 static_assert(offsetof(save_world_t, borrowed_manifest_bytes) == 176);
 static_assert(offsetof(save_world_t, borrowed_record) == 184);
 static_assert(offsetof(save_world_t, borrowed_states) == 192);
-static_assert(offsetof(save_world_t, borrowed_palette_slots) == 200);
+static_assert(offsetof(save_world_t, borrowed_far) == 200);
 static_assert(offsetof(save_world_t, borrowed_directory) == 208);
 static_assert(offsetof(save_world_t, step_hook) == 216);
 static_assert(offsetof(save_world_t, borrowed_step_context) == 224);
@@ -290,11 +309,15 @@ enum : uint64_t {
         SAVE_WORLD_PENDING_SECTIONS * sizeof(save_world_sort_key_t) +
         2u * SAVE_WORLD_REGION_COLUMNS * sizeof(save_world_column_entry_t) + sizeof(save_world_manifest_header_t) +
         SAVE_WORLD_REGIONS_MAX * sizeof(save_world_region_t) + SAVE_WORLD_ENTRY_BYTES_MAX +
-        SECTION_VOXELS * sizeof(uint16_t) + 65536u * sizeof(uint16_t) + FILE_PATH_BYTES + 32u * 64u,
+        SECTION_VOXELS * sizeof(uint16_t) + 65536u * sizeof(uint16_t) + FILE_PATH_BYTES + sizeof(save_world_far_t) +
+        32u * 64u,
     /* What a caller of save_world_column_overlay lends it. */
     SAVE_WORLD_OVERLAY_SCRATCH_BYTES = SAVE_WORLD_ENTRY_BYTES_MAX,
     /* What save_world_column_overlay_levels writes levels into. */
     SAVE_WORLD_OVERLAY_LEVELS_BYTES = (uint64_t)COLUMN_SECTIONS * SAVE_WORLD_RECORD_LEVELS_BYTES,
+    /* What save_world_far_line works in: a place for what it last read, a whole column's states, and a record. */
+    SAVE_WORLD_FAR_SCRATCH_BYTES =
+        64u + (uint64_t)COLUMN_SECTIONS * SECTION_VOXELS * sizeof(uint16_t) + SAVE_WORLD_ENTRY_BYTES_MAX,
 };
 
 /* A status as text for a log line. */
@@ -366,5 +389,17 @@ uint64_t save_world_column_overlay(save_world_t *save, int32_t chunk_x, int32_t 
  * floods. */
 uint64_t save_world_column_overlay_levels(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
                                           uint8_t *levels, uint64_t *out_levels_mask, uint8_t *scratch);
+
+/* For the far field, on a worker: what is saved of one line of blocks from the bottom of the world to the top, written over out, at the storage height of each.
+ * scratch is SAVE_WORLD_FAR_SCRATCH_BYTES, 64 byte aligned and the first 64 zero, kept from one call to the next, as a line usually has neighbours in its
+ * column. Those read are not counted as sections_loaded, which says what a game has loaded. */
+void save_world_far_line(void *borrowed_save, int32_t x, int32_t y, uint16_t *out, uint8_t *scratch);
+
+/* The next column whose sections have been captured since the far field last asked, oldest first, as soon as a reader can get them. One thread asks, and it is
+ * not the sim. False if there is none. */
+bool save_world_far_next(save_world_t *save, int32_t *out_chunk_x, int32_t *out_chunk_y);
+
+/* Whether any have been lost for want of room since this was last asked. If so, it is all of the far field that may be out of date. */
+bool save_world_far_lost_take(save_world_t *save);
 
 #endif

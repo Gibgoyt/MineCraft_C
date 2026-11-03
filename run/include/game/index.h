@@ -81,8 +81,10 @@ typedef struct game_column_job_t {
     uint8_t _pad0[3];            /* 45 */
     save_world_t *borrowed_save; /* 48: what has changed there, or nullptr */
     uint64_t levels_mask;        /* 56: which sections the save gave levels for, in borrowed_opened past its scratch */
+    uint64_t saved_sections;     /* 64: which sections the save gave at all */
+    uint8_t _pad1[56];           /* 72 */
 } game_column_job_t;
-static_assert(sizeof(game_column_job_t) == MC_CPU_CACHE_LINE_BYTES);
+static_assert(sizeof(game_column_job_t) == 2u * MC_CPU_CACHE_LINE_BYTES);
 
 /* The game: what the sim, gpu and main threads share, and the three arenas whose lifetimes it decides. There is one, under
  * app_t. Everything past the borrowed pointers is zero bytes outside game_open. */
@@ -231,6 +233,10 @@ void game_deinit(game_t *game);
 /* All there is, saved now, on this thread: the threads must have stopped, and the world be open. SAVE_WORLD_OK if there is no save to make, or
  * it is all on disk. */
 [[nodiscard]] save_world_status_t game_save_finish(game_t *game);
+
+/* What the far field shows may have changed: every column captured for a save since this was last called is made again. By whichever thread calls render_lod_frame,
+ * just before it. */
+void game_far_changes_take(game_t *game);
 
 /* Someone to tell, from the thread calling it, that a game_open that may take seconds is still going: looking for dry land in an
  * ocean does. A frame source that opens a world needs this, for vt_guard's watchdog. nullptr for nobody. */

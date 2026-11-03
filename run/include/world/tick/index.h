@@ -41,9 +41,12 @@ enum : uint8_t {
 /* What is known about the column in one slot of the map. Zero bytes mean nothing. */
 typedef struct world_tick_column_t {
     uint16_t pages[COLUMN_SECTIONS]; /* 0: a section's page of levels, plus 1, or 0 for none */
-    uint32_t generation;             /* 96: the map's, for the load these describe */
+    uint64_t
+        saved_sections; /* 96: which sections a save gave this load: a neighbour that comes later looks at what faces it */
+    uint32_t generation; /* 104: the map's, for the load these describe */
+    uint8_t _pad0[4];    /* 108 */
 } world_tick_column_t;
-static_assert(sizeof(world_tick_column_t) == 100);
+static_assert(sizeof(world_tick_column_t) == 112);
 
 /* One voxel waiting for its tick. */
 typedef struct world_tick_node_t {
@@ -144,6 +147,13 @@ const uint8_t *world_tick_section_levels(const world_tick_t *tick, uint32_t slot
  * that what was flowing goes on. */
 void world_tick_section_levels_restore(world_tick_t *tick, int32_t chunk_x, int32_t chunk_y, uint32_t section,
                                        const uint8_t *levels);
+
+/* A column just filled, with its levels in place, and which of its sections a save gave it, which may be none. Nothing says what was waiting for a tick when
+ * those were saved, so whatever in them, or touching them, has something to do as it now stands is woken: a source with room, a block with nothing under it. A
+ * neighbour that came first or comes later is covered, by what each remembers of the other. Generated ground is left as it is, as it is at rest. Called for
+ * every column of a world that has a save, even with no sections: it may be what a neighbour's saved sections were waiting for. */
+void world_tick_column_saved(world_tick_t *tick, uint32_t slot, int32_t chunk_x, int32_t chunk_y,
+                             uint64_t saved_sections);
 
 /* Where a world that has been saved takes up its count of ticks, before anything is waiting: the random ticks' numbers come from it. */
 void world_tick_now_set(world_tick_t *tick, uint64_t now);

@@ -4,6 +4,9 @@
 #
 # A list of allowed names rather than a ban on libstdc++, so any other library that sneaks in fails as well.
 set(mc_allowed libc.so.6 libm.so.6 ld-linux-x86-64.so.2)
+if(MC_PRESET STREQUAL "tsan")
+  list(APPEND mc_allowed libtsan.so.2)
+endif()
 if(MC_PRESET STREQUAL "sanitize")
   list(APPEND mc_allowed libasan.so.8 libubsan.so.1)
 endif()

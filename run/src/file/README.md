@@ -16,7 +16,7 @@ move the file position.
 - `file_size`, `file_sync`: of an open file.
 - `file_read_whole`: a whole file into the caller's buffer, including files in `/proc` and `/sys`.
 - `file_write_atomic`: replaces a file so that a crash leaves old or new, never a mix.
-- `file_path_size`, `file_remove`, `file_rename`, `file_make_dirs`, `file_sync_dir`: by path.
+- `file_path_size`, `file_remove`, `file_rename`, `file_make_dirs`, `file_sync_dir`: by path. `file_make_dirs` syncs the parent of each directory it makes, so that what comes to be written in one is not lost with its name in a power cut.
 
 **May be called by:** everything in `run/` from this layer up.
 **Depends on:** glibc.

@@ -12,6 +12,7 @@
 - `world_tick_seed_set`: where the random ticks' numbers come from.
 - `world_tick_column_leaving`: gives back a column's levels.
 - `world_tick_section_levels`, `world_tick_section_levels_restore`: a section's levels, to a save and back.
+- `world_tick_column_saved`: a column just in, and which of its sections a save gave it: what has something to do as it stands wakes.
 - `world_tick_now_set`: where a saved world's count of ticks takes up.
 - `world_tick_step`: one tick of game time.
 - `world_tick_fluid_level`: a fluid voxel's level, for whoever needs to draw or save one.
@@ -47,6 +48,8 @@ One block per state, for now (see `compile/src/game_tables/blocks/README.md`), a
 If pages run out, or the pool has no room, the fluid stays where it is, the count says so, and that voxel tries again 20 ticks later.
 
 Levels go to a save with the blocks of their section: `run/src/save/world/` reads `world_tick_section_levels` as it captures, and `run/src/game/` gives what it read back to `world_tick_section_levels_restore` as a column comes in, which wakes each flowing voxel so that what was running goes on. A level changing with no block changing flags its section for the save itself, as no log record does. The renderer still draws every fluid voxel at full height.
+
+What is waiting for a tick is not saved. It need not be: `run/src/game/` calls `world_tick_column_saved` for every column as it comes in, and each voxel in a saved section, or touching one, is looked at as it stands: a fluid with somewhere to go or that is not a source, a block that falls with nothing under it, wheat off its farmland, farmland under something solid. Those wake, however long they had been waiting, and nothing else does, so a sea whose section was saved does not take a tick per voxel. A column remembers which sections a save gave it, so that a neighbour coming in later wakes what faces them. Ground that has only ever been generated is left at rest, as it always was. So a column that left and came back in one session goes on just the same. Measured: see Stage 16.2's issue 9.
 
 ## The rules
 

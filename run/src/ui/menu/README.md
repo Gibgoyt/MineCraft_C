@@ -11,6 +11,7 @@
 - `ui_menu_saves_set`: where worlds live, and what a blank seed means.
 - `ui_menu_settings_enable`: gives the Settings button something to ask for.
 - `ui_menu_open`: go to a screen.
+- `ui_menu_message_set`: say something on the screen now up, until the next `ui_menu_open`.
 - `ui_menu_frame`: one frame of it, and what it wants done.
 
 **May be called by:** `ui`, and `game/session`, which is what runs it.

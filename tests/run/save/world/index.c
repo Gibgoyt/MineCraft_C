@@ -1833,7 +1833,7 @@ TEST(the_built_program_keeps_what_was_dug_and_a_world_refuses_another_seed) {
     /* Standing on the ground changes nothing, though time passes and things fall. */
     CHECK(header.generation >= 1u);
 
-    /* The same directory told it is another world: the program stops, says why, and has touched nothing. */
+    /* The same directory told it is another world: the program stays on the list and says why, the script runs out there, and nothing has been touched. */
     uint64_t manifest_bytes = 0u;
     const uint8_t *const manifest = sw_slurp(t, sw_join(t, reader.blocks, "manifest"), &manifest_bytes);
     char *const meta = sw_join(t, world_directory, "world.meta");
@@ -1841,7 +1841,7 @@ TEST(the_built_program_keeps_what_was_dug_and_a_world_refuses_another_seed) {
     REQUIRE(file_write_atomic(meta, other_meta, sizeof(other_meta) - 1u) == FILE_OK);
     sw_program_run(t, root, saves, "other.script", SW_LOOK_SCRIPT, &process);
     REQUIRE(process.started != 0u);
-    CHECK(process.exit_code != 0);
+    CHECK_EQ_I64(process.exit_code, 0);
     CHECK_CONTAINS(process.output, "holds changes to the world of seed");
     CHECK_CONTAINS(process.output, "will not be opened");
     uint64_t after_bytes = 0u;

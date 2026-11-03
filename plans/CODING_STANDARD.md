@@ -448,7 +448,7 @@ CMake still adds `-lcudadevrt -lrt -lpthread -ldl` and an unused `-rpath`. None 
 | Recursion | Call-graph check from GCC's `-fcallgraph-info`, on every preset |
 | Large stack frames | `-Wframe-larger-than=` |
 | Leaks | Heap counters must read zero at exit; sanitize preset |
-| Ownership prefixes, thread rules | Review; the lint checks prefixes where it can |
+| Ownership prefixes, thread rules | Review; the lint checks prefixes where it can; the `tsan` preset, run by hand, for what threads do to each other's memory |
 
 ---
 

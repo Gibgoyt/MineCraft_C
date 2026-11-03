@@ -21,6 +21,8 @@ typedef enum render_lod_column_state_t : uint8_t {
     RENDER_LOD_COLUMN_BUILDING = 1,
     RENDER_LOD_COLUMN_BUILT = 2,
     RENDER_LOD_COLUMN_NO_ROOM = 3,
+    RENDER_LOD_COLUMN_STALE = 4,      /* built and shown, and wanted again: what is under it has changed */
+    RENDER_LOD_COLUMN_REBUILDING = 5, /* built and shown, and being made again */
 } render_lod_column_state_t;
 
 enum : uint64_t {
@@ -35,6 +37,12 @@ static_assert((int32_t)RENDER_LOD_HEIGHT_BLOCKS == COLUMN_Z_STORAGE_END - COLUMN
 
 int32_t render_lod_column_of(float64_t blocks, uint32_t shift) {
     return (int32_t)floor(blocks) >> (4u + shift);
+}
+
+/* Whether a slot holds a column that can be drawn. */
+static bool render_lod_state_built(uint8_t state) {
+    return state == RENDER_LOD_COLUMN_BUILT || state == RENDER_LOD_COLUMN_STALE ||
+           state == RENDER_LOD_COLUMN_REBUILDING;
 }
 
 static uint32_t render_lod_side(uint32_t radius) {
@@ -173,6 +181,11 @@ static void render_lod_job_run(job_worker_t *worker, void *borrowed_job) {
         arena_alloc(&worker->arena_job, RENDER_LOD_HEIGHT_BLOCKS * sizeof(uint16_t), alignof(uint16_t));
     uint16_t *const cells = arena_alloc_zeroed(
         &worker->arena_job, (uint64_t)sections * SECTION_VOXELS * sizeof(uint16_t), alignof(uint16_t));
+    uint8_t *overlay_scratch = nullptr;
+    if (lod->overlay != nullptr) {
+        overlay_scratch = arena_alloc(&worker->arena_job, lod->overlay_scratch_bytes, MC_CPU_CACHE_LINE_BYTES);
+        memset(overlay_scratch, 0, MC_CPU_CACHE_LINE_BYTES);
+    }
     int32_t top = -1;
     for (uint32_t y = 0u; y < COLUMN_SIZE; y++) {
         for (uint32_t x = 0u; x < COLUMN_SIZE; x++) {
@@ -182,6 +195,9 @@ static void render_lod_job_run(job_worker_t *worker, void *borrowed_job) {
             const int32_t world_y =
                 (job->chunk_y * (int32_t)COLUMN_SIZE + (int32_t)y) * (int32_t)size + (int32_t)(size / 2u);
             lod->sample(lod->borrowed_sample_context, world_x, world_y, shift, samples);
+            if (lod->overlay != nullptr) {
+                lod->overlay(lod->borrowed_overlay_context, world_x, world_y, samples, overlay_scratch);
+            }
             const int32_t highest = render_lod_cells_from_column(samples, shift, (uint64_t)COLUMN_SIZE * COLUMN_SIZE,
                                                                  cells + section_voxel_index(x, y, 0u));
             top = highest > top ? highest : top;
@@ -294,6 +310,61 @@ gpu_status_t render_lod_init(render_lod_t *lod, arena_t *arena, device_memory_t 
     return GPU_STATUS_OK;
 }
 
+void render_lod_overlay_set(render_lod_t *lod, render_lod_overlay_t overlay, void *borrowed_context,
+                            uint64_t scratch_bytes) {
+    ASSERT_ALWAYS(lod->jobs_in_use == 0u);
+    lod->overlay = overlay;
+    lod->borrowed_overlay_context = borrowed_context;
+    lod->overlay_scratch_bytes = scratch_bytes;
+}
+
+/* One column of one level. What a worker has begun has perhaps read what changed already, so it goes round again when it is done. */
+static void render_lod_level_column_changed(render_lod_t *lod, uint32_t index, int32_t column_x, int32_t column_y) {
+    render_lod_level_t *const level = &lod->levels[index];
+    uint32_t slot = 0u;
+    if (level->centered == 0u || !world_buffers_slot_of(&level->buffers.window, column_x, column_y, &slot)) {
+        return; /* what comes into the window later reads it as it then is */
+    }
+    for (uint32_t i = 0u; i < RENDER_LOD_JOBS; i++) {
+        render_lod_job_t *const job = &lod->borrowed_jobs[i];
+        if (job->in_use != 0u && job->level == index && job->chunk_x == column_x && job->chunk_y == column_y) {
+            job->stale = 1u;
+        }
+    }
+    const uint8_t state = level->borrowed_state[slot];
+    if (state == RENDER_LOD_COLUMN_BUILT) {
+        level->borrowed_state[slot] = RENDER_LOD_COLUMN_STALE;
+        level->request_cursor = 0u;
+    } else if (state == RENDER_LOD_COLUMN_NO_ROOM) {
+        level->borrowed_state[slot] = RENDER_LOD_COLUMN_WANTED;
+        level->request_cursor = 0u;
+    }
+}
+
+void render_lod_column_changed(render_lod_t *lod, int32_t chunk_x, int32_t chunk_y) {
+    for (uint32_t i = 0u; i < lod->level_count; i++) {
+        const uint32_t shift = lod->levels[i].shift;
+        render_lod_level_column_changed(lod, i, chunk_x >> shift, chunk_y >> shift);
+    }
+}
+
+void render_lod_all_changed(render_lod_t *lod) {
+    for (uint32_t i = 0u; i < RENDER_LOD_JOBS; i++) {
+        lod->borrowed_jobs[i].stale = lod->borrowed_jobs[i].in_use;
+    }
+    for (uint32_t i = 0u; i < lod->level_count; i++) {
+        render_lod_level_t *const level = &lod->levels[i];
+        for (uint32_t slot = 0u; slot < level->column_count; slot++) {
+            if (level->borrowed_state[slot] == RENDER_LOD_COLUMN_BUILT) {
+                level->borrowed_state[slot] = RENDER_LOD_COLUMN_STALE;
+            } else if (level->borrowed_state[slot] == RENDER_LOD_COLUMN_NO_ROOM) {
+                level->borrowed_state[slot] = RENDER_LOD_COLUMN_WANTED;
+            }
+        }
+        level->request_cursor = 0u;
+    }
+}
+
 void render_lod_deinit(render_lod_t *lod) {
     if (lod->borrowed_job == nullptr) {
         return;
@@ -327,7 +398,7 @@ static void render_lod_level_follow(render_lod_t *lod, uint32_t index, const flo
         }
         const world_buffers_column_t *const column = &level->buffers.borrowed_shadow[slot];
         uint32_t still = 0u;
-        const bool kept = state == RENDER_LOD_COLUMN_BUILT &&
+        const bool kept = render_lod_state_built(state) &&
                           world_buffers_slot_of(&window, column->chunk_x, column->chunk_y, &still) && still == slot;
         if (!kept) {
             world_buffers_column_clear(&level->buffers, slot);
@@ -339,7 +410,8 @@ static void render_lod_level_follow(render_lod_t *lod, uint32_t index, const flo
         const render_lod_job_t *const job = &lod->borrowed_jobs[i];
         uint32_t slot = 0u;
         if (job->in_use != 0u && job->level == index &&
-            world_buffers_slot_of(&window, job->chunk_x, job->chunk_y, &slot)) {
+            world_buffers_slot_of(&window, job->chunk_x, job->chunk_y, &slot) &&
+            level->borrowed_state[slot] == RENDER_LOD_COLUMN_WANTED) {
             level->borrowed_state[slot] = RENDER_LOD_COLUMN_BUILDING;
         }
     }
@@ -364,7 +436,7 @@ static void render_lod_level_show(render_lod_level_t *level) {
             for (int32_t dx = -ring; dx <= ring && whole; dx += step) {
                 uint32_t slot = 0u;
                 whole = world_buffers_slot_of(window, level->center_x + dx, level->center_y + dy, &slot) &&
-                        level->borrowed_state[slot] == RENDER_LOD_COLUMN_BUILT;
+                        render_lod_state_built(level->borrowed_state[slot]);
             }
         }
         if (!whole) {
@@ -382,7 +454,8 @@ static gpu_status_t render_lod_column_send(render_lod_t *lod, render_lod_job_t *
     render_lod_level_t *const level = &lod->levels[job->level];
     uint32_t slot = 0u;
     if (!world_buffers_slot_of(&level->buffers.window, job->chunk_x, job->chunk_y, &slot) ||
-        level->borrowed_state[slot] != RENDER_LOD_COLUMN_BUILDING) {
+        (level->borrowed_state[slot] != RENDER_LOD_COLUMN_BUILDING &&
+         level->borrowed_state[slot] != RENDER_LOD_COLUMN_REBUILDING)) {
         lod->stats.columns_dropped++;
         return GPU_STATUS_OK;
     }
@@ -419,7 +492,10 @@ static gpu_status_t render_lod_column_send(render_lod_t *lod, render_lod_job_t *
         lod->stats.bytes_sent += bytes;
     }
     level->top_voxel = job->top_voxel > level->top_voxel ? job->top_voxel : level->top_voxel;
-    level->borrowed_state[slot] = RENDER_LOD_COLUMN_BUILT;
+    level->borrowed_state[slot] = job->stale != 0u ? RENDER_LOD_COLUMN_STALE : RENDER_LOD_COLUMN_BUILT;
+    if (job->stale != 0u) {
+        level->request_cursor = 0u;
+    }
     level->shown_stale = 1u;
     lod->stats.columns_built++;
     return GPU_STATUS_OK;
@@ -457,7 +533,8 @@ static void render_lod_jobs_request(render_lod_t *lod) {
             const int32_t chunk_x = level->center_x + offset[0], chunk_y = level->center_y + offset[1];
             uint32_t slot = 0u;
             ASSERT_ALWAYS(world_buffers_slot_of(&level->buffers.window, chunk_x, chunk_y, &slot));
-            if (level->borrowed_state[slot] != RENDER_LOD_COLUMN_WANTED) {
+            const uint8_t state = level->borrowed_state[slot];
+            if (state != RENDER_LOD_COLUMN_WANTED && state != RENDER_LOD_COLUMN_STALE) {
                 level->request_cursor++;
                 continue;
             }
@@ -472,13 +549,15 @@ static void render_lod_jobs_request(render_lod_t *lod) {
             job->chunk_y = chunk_y;
             job->level = (uint8_t)index;
             job->top_voxel = -1;
+            job->stale = 0u;
             atomic_store_explicit(&job->done, 0u, memory_order_relaxed);
             if (!job_try_submit(lod->borrowed_job, &lod->group, render_lod_job_run, job)) {
                 return; /* the shared queue is full: it is offered again next frame */
             }
             job->in_use = 1u;
             lod->jobs_in_use++;
-            level->borrowed_state[slot] = RENDER_LOD_COLUMN_BUILDING;
+            level->borrowed_state[slot] =
+                state == RENDER_LOD_COLUMN_STALE ? RENDER_LOD_COLUMN_REBUILDING : RENDER_LOD_COLUMN_BUILDING;
             level->request_cursor++;
         }
     }

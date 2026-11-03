@@ -161,6 +161,32 @@ static bool game_picture_full_room(game_t *game) {
     return game->owned_view.bytes >= bytes || heap_reserve(bytes, &game->owned_view);
 }
 
+/* The far field, which shows what a save holds over what generates. */
+static gpu_status_t game_lod_open(game_t *game, const render_lod_plan_t *plan) {
+    render_t *const render = game->borrowed_render;
+    const gpu_status_t status = render_open_lod(render, plan, render_lod_sample_terrain, game->borrowed_terrain);
+    save_t *const save = game->borrowed_save;
+    if (status == GPU_STATUS_OK && save != nullptr && save->world.open != 0u) {
+        render_lod_overlay_set(render->borrowed_lod, save_world_far_line, &save->world, SAVE_WORLD_FAR_SCRATCH_BYTES);
+    }
+    return status;
+}
+
+void game_far_changes_take(game_t *game) {
+    render_lod_t *const lod = game->borrowed_render->borrowed_lod;
+    save_t *const save = game->borrowed_save;
+    if (lod == nullptr || save == nullptr || save->world.open == 0u) {
+        return;
+    }
+    int32_t chunk_x = 0, chunk_y = 0;
+    while (save_world_far_next(&save->world, &chunk_x, &chunk_y)) {
+        render_lod_column_changed(lod, chunk_x, chunk_y);
+    }
+    if (save_world_far_lost_take(&save->world)) {
+        render_lod_all_changed(lod);
+    }
+}
+
 /* The map, and what the card holds of it. Each says why if it cannot, and whatever came before it is given back. */
 static bool game_open_parts(game_t *game, const game_config_t *config, int32_t chunk_x, int32_t chunk_y) {
     world_t *const world = game->borrowed_world;
@@ -190,8 +216,7 @@ static bool game_open_parts(game_t *game, const game_config_t *config, int32_t c
         return false;
     }
     if (view->lod.level_count != 0u) {
-        const gpu_status_t status =
-            render_open_lod(render, &view->lod, render_lod_sample_terrain, game->borrowed_terrain);
+        const gpu_status_t status = game_lod_open(game, &view->lod);
         if (status != GPU_STATUS_OK) {
             render_close(render);
             world_close(world);
@@ -520,7 +545,7 @@ static bool game_view_change(game_t *game, game_view_t *now) {
     }
     world_map_set_view_radius(&game->borrowed_world->map, now->full_detail);
     if (now->lod.level_count != 0u && render->borrowed_lod == nullptr &&
-        render_open_lod(render, &now->lod, render_lod_sample_terrain, game->borrowed_terrain) != GPU_STATUS_OK) {
+        game_lod_open(game, &now->lod) != GPU_STATUS_OK) {
         /* The world still works, to where full detail goes, and the fog comes in to meet it. */
         LOG_WARN("game: no room on the card for a far field, so the world stops at %" PRIu32 " chunks",
                  now->full_detail);
@@ -588,7 +613,7 @@ static void game_column_job_run(job_worker_t *worker, void *borrowed_job) {
         /* Terrain has finished with what it worked in, which is far larger than this needs. */
         static_assert((uint64_t)GAME_COLUMN_VOXELS >=
                       (uint64_t)SAVE_WORLD_OVERLAY_SCRATCH_BYTES + (uint64_t)SAVE_WORLD_OVERLAY_LEVELS_BYTES);
-        (void)save_world_column_overlay_levels(
+        job->saved_sections = save_world_column_overlay_levels(
             job->borrowed_save, job->request.chunk_x, job->request.chunk_y, job->borrowed_states,
             job->borrowed_opened + SAVE_WORLD_OVERLAY_SCRATCH_BYTES, &job->levels_mask, job->borrowed_opened);
     }
@@ -620,6 +645,8 @@ static bool game_column_fill(game_t *game, const game_column_job_t *job) {
                                               job->borrowed_opened + SAVE_WORLD_OVERLAY_SCRATCH_BYTES +
                                                   (uint64_t)section * SAVE_WORLD_RECORD_LEVELS_BYTES);
         }
+        world_tick_column_saved(&world->tick, job->request.slot, job->request.chunk_x, job->request.chunk_y,
+                                job->saved_sections);
     }
     /* Short of memory, it says so, and world_light_update tries again. */
     (void)world_light_column_added(&world->light, job->request.slot);
@@ -1517,6 +1544,7 @@ static void game_gpu_thread(void *borrowed_argument) {
             return;
         }
         if (render->borrowed_lod != nullptr) {
+            game_far_changes_take(game);
             status = render_lod_frame(render->borrowed_lod, camera->position);
             if (status != GPU_STATUS_OK) {
                 atomic_store_explicit(&game->failed, 1u, memory_order_release);

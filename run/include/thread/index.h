@@ -3,7 +3,22 @@
 #define MC_RUN_THREAD_INDEX_H
 
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdint.h>
+
+/* A seq_cst fence. GCC refuses atomic_thread_fence under -fsanitize=thread, which does not model one, and the standard allows no -Wno- to say otherwise. In that
+ * build alone it is a locked instruction on a local, which is what such a fence is on this machine. Nothing the sanitizer looks at leans on these: they order a store
+ * against a later load, and what hands memory from thread to thread is the acquires and releases around them. */
+#ifdef __SANITIZE_THREAD__
+static inline void thread_fence_seq_cst(void) {
+    _Atomic uint32_t here = 0u;
+    (void)atomic_fetch_add_explicit(&here, 1u, memory_order_seq_cst);
+}
+#else
+static inline void thread_fence_seq_cst(void) {
+    atomic_thread_fence(memory_order_seq_cst);
+}
+#endif
 
 enum : uint64_t {
     /* Virtual: only the pages a thread touches cost anything. Past our own code, which -Wframe-larger-than= keeps

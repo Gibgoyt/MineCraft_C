@@ -1,6 +1,8 @@
 /* See README.md. Everything a look needs, and the outline. Nothing here allocates. */
 #include "player/camera/index.h"
 
+#include "thread/index.h"
+
 #include <math.h>
 #include <stdatomic.h>
 #include <string.h>
@@ -224,5 +226,5 @@ void player_camera_outline_draw(const render_camera_t *camera, const player_targ
     }
     /* Scanout memory is write-combined: the picture's copy ended with a fence, and these writes are after it. A seq_cst fence is
      * a locked instruction on this machine, which is what empties those buffers. */
-    atomic_thread_fence(memory_order_seq_cst);
+    thread_fence_seq_cst();
 }

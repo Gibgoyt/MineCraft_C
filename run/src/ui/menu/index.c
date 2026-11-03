@@ -120,6 +120,10 @@ void ui_menu_open(ui_menu_t *menu, ui_menu_screen_t screen) {
     }
 }
 
+void ui_menu_message_set(ui_menu_t *menu, const char *text) {
+    (void)snprintf(menu->message, sizeof(menu->message), "%s", text);
+}
+
 /* ---- What several screens share -------------------------------------------------------------------------------------- */
 
 static int32_t ui_menu_scale(const ui_menu_t *menu) {

@@ -360,6 +360,7 @@ static void main_settings_read(app_t *app, const main_options_t *options) {
 /* The CPU check comes first: everything after it assumes these instructions exist. --report only prints, so it starts
  * nothing, and --test-pattern needs only the display. The topology is read before main pins itself, since afterwards
  * the answer would be that one CPU. */
+[[gnu::noinline]]
 static main_exit_t app_init(app_t *app, const main_options_t *options) {
     memset(app, 0, sizeof(*app));
     app->cpu_required = cpu_check_required();
@@ -552,6 +553,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
     return MAIN_EXIT_OK;
 }
 
+[[gnu::noinline]]
 static void app_deinit(app_t *app) {
     game_deinit(&app->game);
     input_deinit(&app->input);
@@ -585,6 +587,7 @@ static void main_job_count(job_worker_t *worker, void *borrowed_argument) {
 /* What a run with no flags does until a menu opens a world: one round of real jobs through the real workers, so a runtime
  * that cannot run anything fails here and not in the first stage that needs it. The group's wait carries the ordering, so the
  * load below may be relaxed. */
+[[gnu::noinline]]
 static bool main_run(app_t *app) {
     const int64_t started_ns = time_now_ns();
     _Atomic uint64_t done = 0;
@@ -614,6 +617,7 @@ static main_exit_t main_exit_from_display(display_status_t status) {
 }
 
 /* KMS with no world. Only this flag and --test-world open the display, so that nothing ctest runs can reach the card. */
+[[gnu::noinline]]
 static main_exit_t main_run_test_pattern(app_t *app, const main_options_t *options, int64_t started_ns) {
     display_config_t config;
     display_config_from_machine(&config);
@@ -637,6 +641,7 @@ static main_exit_t main_run_test_pattern(app_t *app, const main_options_t *optio
 }
 
 /* Replays input with no display at all, on the demo scene, which needs no card: see run/src/game/README.md. */
+[[gnu::noinline]]
 static main_exit_t main_run_headless(app_t *app, const main_options_t *options) {
     display_headless_config_t config;
     display_offscreen_config_from_machine(&config);
@@ -659,6 +664,7 @@ static main_exit_t main_run_headless(app_t *app, const main_options_t *options) 
 }
 
 /* A generated world, with no display at all: what a script does to the free-fly camera, in PNGs. */
+[[gnu::noinline]]
 static main_exit_t main_run_test_world_headless(app_t *app, const main_options_t *options) {
     display_headless_config_t config;
     display_offscreen_config_from_machine(&config);
@@ -697,6 +703,7 @@ static main_exit_t main_run_test_world_headless(app_t *app, const main_options_t
 
 /* A generated world through KMS. The display comes first: under a display server it refuses before anything has been looked at
  * or started, and input only ever opens once it said yes. */
+[[gnu::noinline]]
 static main_exit_t main_run_test_world(app_t *app, const main_options_t *options) {
     display_config_t config;
     display_config_from_machine(&config);
@@ -748,6 +755,7 @@ static game_config_t main_menu_game_config(const main_options_t *options, uint32
 }
 
 /* The game through KMS. As with --test-world, the display comes first, and input only once it said yes. */
+[[gnu::noinline]]
 static main_exit_t main_run_menu(app_t *app, const main_options_t *options) {
     display_config_t config;
     display_config_from_machine(&config);
@@ -779,6 +787,7 @@ static main_exit_t main_run_menu(app_t *app, const main_options_t *options) {
 
 /* The same with no display at all: a script clicks through the menus into PNGs. A blank seed is always the default one, so that
  * one script always gives one set of pictures. */
+[[gnu::noinline]]
 static main_exit_t main_run_menu_headless(app_t *app, const main_options_t *options) {
     display_headless_config_t config;
     display_offscreen_config_from_machine(&config);
@@ -811,6 +820,7 @@ static main_exit_t main_run_menu_headless(app_t *app, const main_options_t *opti
 
 /* Stage 02.3 asks the binary to report its defines, to show a yaml change reaching compiled code. This path must never
  * touch a display or an input device: ctest runs it. */
+[[gnu::noinline]]
 static void main_report(const app_t *app) {
     char names[128];
     printf("MC_PLATFORM_POSIX=%" PRId32 "\n", (int32_t)MC_PLATFORM_POSIX);
@@ -825,6 +835,7 @@ static void main_report(const app_t *app) {
     printf("cpu missing: %s\n", names);
 }
 
+/* app_t is most of what a frame may hold, so what main calls keeps its locals in frames of its own. At -O3 with -flto, inlined here, they came to 16448 bytes against 16384. */
 int32_t main(int32_t argc, char **argv) {
     const int64_t started_ns = time_now_ns();
     main_options_t options;

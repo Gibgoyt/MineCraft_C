@@ -22,6 +22,12 @@
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
     },
     {
+      "name": "tsan",
+      "displayName": "Tsan: ThreadSanitizer on C",
+      "inherits": "base",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+    },
+    {
       "name": "release",
       "displayName": "Release: -O3 -flto",
       "inherits": "base",
@@ -37,6 +43,7 @@
   "buildPresets": [
     { "name": "debug", "configurePreset": "debug" },
     { "name": "sanitize", "configurePreset": "sanitize" },
+    { "name": "tsan", "configurePreset": "tsan" },
     { "name": "release", "configurePreset": "release" },
     { "name": "profile", "configurePreset": "profile" }
   ],
@@ -49,6 +56,7 @@
     },
     { "name": "debug", "inherits": "base", "configurePreset": "debug" },
     { "name": "sanitize", "inherits": "base", "configurePreset": "sanitize" },
+    { "name": "tsan", "inherits": "base", "configurePreset": "tsan" },
     { "name": "release", "inherits": "base", "configurePreset": "release" },
     { "name": "profile", "inherits": "base", "configurePreset": "profile" }
   ]
