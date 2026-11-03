@@ -65,8 +65,9 @@ enum : uint32_t {
     SHADE_FEATURE_OUTLINE =
         1u << 14,                 /* what is aimed at has an outline, and what is being mined its crack, or neither */
     SHADE_FEATURE_LOD = 1u << 15, /* the world goes on past full detail in coarse grids, or stops there */
-    /* A last surface's sun ray has a kernel of its own, even with AO off: the same picture, for less time, and the hits block then ends up
-     * holding those surfaces. No setting turns this off. What wants the frame's own hits afterwards, a test that holds them to something, leaves it out. */
+    /* To render_frame_features_set only, and past that post_temporal_t.sun_apart, as it is no effect that shows: a last surface's sun ray has a
+     * kernel of its own, even with AO off: the same picture, for less time, and the hits block then ends up holding those surfaces. No setting
+     * turns this off. What wants the frame's own hits afterwards, a test that holds them to something, leaves it out. */
     SHADE_FEATURE_SUN_APART = 1u << 16,
     /* What a picture is drawn with on its own, from nothing: no frame of these reads what the last one left. What render_frame_init
      * starts with, and so what a test that wants one exact picture gets. */
@@ -619,7 +620,7 @@ SHADE_BOTH_SIDES static inline bool shade_own_kind_behind(uint32_t last_material
 
 /* One colour per pixel of hits, into pixels, each row after row at the camera's size. A ray that lands on a texel of alpha 0 goes
  * on through world, which must be the one the hits came from, as one does through glass and water. post is the same sky and fog
- * post_frame is about to use: what shows behind glass, and in water, is shaded here. Starts a kernel and returns; it runs in order
+ * post_frame is about to use: what shows behind glass, and in water, is shaded here. Starts its kernels and returns; they run in order
  * with any other. Nothing here allocates. On failure error says why, and nothing was started. */
 gpu_status_t shade_frame(gpu_error_t *error, const shade_scene_t *scene, const post_settings_t *post,
                          const traverse_world_t *world, const traverse_camera_t *camera, const device_block_t *hits,

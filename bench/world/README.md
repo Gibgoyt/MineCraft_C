@@ -103,4 +103,31 @@ The rest of what the plan's section 2 asks about, from the same run:
 
 `Opened in` at render distance 128 and 512 says what filling a far field costs: two minutes, against 6 s with none. Stage 17.3 owns all of these.
 
-Picture hashes, which should be the same on a later run unless the pictures were meant to change: `plains/orbit` 80C74A8FF0FD45DA, `plains/flight` 6791AAFFA070C066, `plains/orbit-godrays` B76C95FBB42A4EF5, `jungle/orbit` 7DDE85AE81B7E425, `jagged_peaks/orbit` D72C5736B759759F, `deep_ocean/orbit` 6CE16CAB894553F4, `cave/orbit` 3825C2ED4113BFFD, `night/walk-mobs` FE63E7196A02774C, `plains/orbit-r512` 17F0F18FC001E5DF.
+### 2026-11-03, Stage 17.3: after the top-cost pass
+
+The same command, exit status 0, 449.6 s, and the same machine. **11 of the 12 rows at render distance 32 meet 120 fps, and 1 misses: `deep_ocean/orbit`, at 117.0 fps, by 0.21 ms.** The whole account is in `plans/001-ahmed-bohemoth-minecraft-from-scratch-phase-17-stage-3-cost-pass.md`.
+
+| Row | Way | fps | Mean | p99 | Coarse | Primary | Shade | Post | Readback | Opened in, s | |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `plains/orbit` | settled | 150.7 | 6.64 | 6.92 | 0.63 | 0.55 | 3.37 | 0.80 | 1.28 | 4.8 | met |
+| `plains/flight` | settled | 152.1 | 6.58 | 6.79 | 0.46 | 0.55 | 3.62 | 0.67 | 1.28 | 5.0 | met |
+| `plains/flight-live` | live | 129.4 | 7.36 | 9.13 | 0.35 | 0.53 | 4.50 | 0.64 | 1.28 | 5.0 | met |
+| `plains/orbit-godrays` | settled | 143.6 | 6.97 | 7.25 | 0.65 | 0.55 | 3.38 | 1.11 | 1.28 | 9.9 | met |
+| `jungle/orbit` | settled | 123.5 | 8.10 | 8.60 | 0.53 | 0.52 | 4.97 | 0.81 | 1.28 | 9.0 | met |
+| `jungle/flight-live` | live | 154.8 | 6.31 | 8.14 | 0.24 | 0.48 | 3.50 | 0.58 | 1.28 | 9.3 | met |
+| `jagged_peaks/orbit` | settled | 174.4 | 5.73 | 6.33 | 0.30 | 0.42 | 2.92 | 0.81 | 1.28 | 8.4 | met |
+| `jagged_peaks/flight-live` | live | 235.2 | 4.01 | 5.03 | 0.14 | 0.31 | 1.73 | 0.51 | 1.28 | 8.4 | met |
+| `deep_ocean/orbit` | settled | 117.0 | 8.54 | 8.91 | 0.65 | 0.51 | 5.30 | 0.81 | 1.28 | 14.1 | MISSED |
+| `deep_ocean/flight-live` | live | 173.0 | 5.65 | 7.13 | 0.16 | 0.37 | 3.08 | 0.58 | 1.28 | 8.3 | met |
+| `cave/orbit` | settled | 193.6 | 5.17 | 5.27 | 0.05 | 0.34 | 2.71 | 0.80 | 1.28 | 18.5 | met |
+| `night/walk-mobs` | settled | 164.9 | 6.07 | 6.91 | 0.04 | 0.43 | 3.32 | 0.99 | 1.28 | 7.2 | met |
+| `plains/flight-live-r128` | live | 152.2 | 6.77 | 9.61 | 0.15 | 1.99 | 2.39 | 0.65 | 1.32 | 105.0 | no target |
+| `plains/orbit-r512` | settled | 109.6 | 9.12 | 9.48 | 0.65 | 2.94 | 3.44 | 0.81 | 1.28 | 117.8 | no target |
+
+- **Tick at 100 mobs, target 5 ms:** in this run the p99 was 8.90, so **MISSED**, in the group a hot CPU is held down to. From a cool one, 8 runs of 9 in a row came to 2.97 to 4.05. See "Reading these numbers".
+- **Heap calls while timed:** 0 in every row, as before.
+- **VRAM:** frames are 204 MiB, 220 at render distance 128 and 512, up 16 MiB for AO's list. The rest as before. All inside the budgets.
+
+A live row now draws more of the world than it did, as the picture costs less, so it can go down when a row keeps up better: `plains/flight-live` made 2303 columns in this run and 1187 in the last.
+
+Picture hashes, which should be the same on a later run unless the pictures were meant to change. A pixel's light is now added up in another order, so most moved, by 1 in 255 on at most 0.001% of channels: `plains/orbit` CB2E45E9179493B0, `plains/flight` 850D8837E1C32C4E, `plains/orbit-godrays` B3456ACD4DE95E4C, `jungle/orbit` 3482D4FFA58BBC2B, `jagged_peaks/orbit` 5DFEC9A05B5E3633, `deep_ocean/orbit` 6CE16CAB894553F4, `cave/orbit` 3825C2ED4113BFFD, `night/walk-mobs` F279DFD63D183B1E, `plains/orbit-r512` 1F9DDD009389C74E.

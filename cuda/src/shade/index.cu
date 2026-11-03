@@ -1312,8 +1312,8 @@ gpu_status_t shade_frame_entities(gpu_error_t *error, const shade_scene_t *scene
     const shade_ao_pixel_t *ao_last = nullptr;
     shade_ao_pixel_t *ao_next = nullptr;
     const uint64_t ao_bytes = shade_ao_bytes(camera->width, camera->height);
-    const bool ao_blocks = (ao_on || (scene->features & SHADE_FEATURE_SUN_APART) != 0u) &&
-                           scene->borrowed_temporal != nullptr &&
+    const bool ao_blocks = scene->borrowed_temporal != nullptr &&
+                           (ao_on || scene->borrowed_temporal->sun_apart != 0u) &&
                            shade_block_fits(scene->borrowed_temporal->borrowed_ao_last, ao_bytes) &&
                            shade_block_fits(scene->borrowed_temporal->borrowed_ao_next, ao_bytes);
     if (ao_on && !ao_blocks) {

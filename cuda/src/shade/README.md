@@ -19,7 +19,7 @@
 
 ## Why it is several kernels
 
-A warp is 32 threads running one instruction stream, and threads that come to the same code at different times each run it while the rest wait. So where the rays of one pixel's sun or AO sat inside the loop over a pixel's surfaces, the pixels of a warp that got to them at different layers took turns, each paying for a whole trace, and a warp with one pixel of AO to do took as long as if all 32 had it. Taking those rays out to kernels of their own is what took `jungle/orbit` from 37 to 125 pictures a second with the same picture, and the numbers are in `plans/001-ahmed-bohemoth-minecraft-from-scratch-phase-17-stage-3-cost-pass.md`.
+A warp is 32 threads running one instruction stream, and threads that come to the same code at different times each run it while the rest wait. So where the rays of one pixel's sun or AO sat inside the loop over a pixel's surfaces, the pixels of a warp that got to them at different layers took turns, each paying for a whole trace, and a warp with one pixel of AO to do took as long as if all 32 had it. Taking those rays out to kernels of their own is what took `jungle/orbit` from 37 to 124 pictures a second with the same picture, and the numbers are in `plans/001-ahmed-bohemoth-minecraft-from-scratch-phase-17-stage-3-cost-pass.md`.
 
 A frame's shading, in stream order:
 

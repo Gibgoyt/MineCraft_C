@@ -399,7 +399,8 @@ static void frame_settings_apply(render_frame_t *frame) {
 }
 
 void render_frame_features_set(render_frame_t *frame, uint32_t features) {
-    frame->scene.features = features & (SHADE_FEATURES_EVERY | SHADE_FEATURE_SUN_APART);
+    frame->scene.features = features & SHADE_FEATURES_EVERY;
+    frame->temporal.sun_apart = (features & SHADE_FEATURE_SUN_APART) != 0u ? 1u : 0u;
     frame_settings_apply(frame);
 }
 
