@@ -618,4 +618,123 @@ Split it into sub-directories. Remember that going deeper changes the tier: code
 | Who allocates anything | `run/src/heap/`, then depth 1 of the system |
 | Type rules, padding, memory law | `plans/CODING_STANDARD.md` |
 | Whose textures these are, and what shipping them owes | `textures/ATTRIBUTION.md` |
+| How another platform or a CPU-only renderer would come in | Section 15 of this file |
 | What's done and what's next | `plans/001-*-phase-*.md` |
+
+---
+
+## 15. Portability seams
+
+The game targets one machine: Linux, x86-64 with AVX2, one NVIDIA card through CUDA, the screen through KMS. These are the places another platform would come in. **None has been built for a second platform, so none has been proven.** What follows was read from the tree and, where it says measured, run, on 2026-11-04 (Stage 18.4).
+
+Two things to know first:
+
+- **There is no runtime choice of platform.** `main` picks KMS or `headless` from the command line, by calling one or the other. The yaml keys that name a platform choose nothing: see 15.1.
+- **`display_ops_t` and `input_ops_t` are for tests, not for other systems.** They stand in for Linux's own calls, `ioctl_call` with its request numbers included. Another OS does not fill in these tables. It goes in above them.
+
+### 15.1 `config/machine.yaml`
+
+**Cut at:** one file, read by a fixed path in `cmake/machine.cmake`, generating `MC_*` for C, CUDA, NASM and CMake. It holds no selector for a second machine: a port edits this file or adds one.
+
+| Keys | What they do today |
+|---|---|
+| `cpu.arch_flag`, `cpu.simd.*` | Real. `-march` and `-mtune`, `main/cpu_check`, `asm/src/cpuid`, `REQUIRE_CPU` |
+| `threads.*`, `memory.*` | Real. Pinning, workers, the heap's budget. But see `threads.gpu` below |
+| `display.device`, `connector`, `width`, `height`, `refresh_hz` | Real. `display_config_from_machine` |
+| `gpu.architecture`, `gpu.budget.*` | Real. `CMAKE_CUDA_ARCHITECTURES`, and `gpu_bridge_limits_default` |
+| `gpu.enabled` | Guards one call, `gpu_bridge_init` in `run/src/main/`. **It does not give a game without a card:** see 15.5 |
+| `threads.gpu` | `0` is accepted (measured), but `game` starts its gpu thread regardless, and `thread_cpu_for` asserts `index < count` (read, not run) |
+| `platform.posix` | Printed by `--report`. Nothing branches on it |
+| `platform.os`, `gpu.api`, `display.backend` | No consumer in `run/`, `cuda/`, `asm/` or `cmake/`. One word allowed each, and any other is refused at configure (measured): `platform.os must be one of: linux` |
+
+**To add a platform:** add the word to its row in `machine_keys` in `compile/src/machine_config/`, which also gives it a define such as `MC_DISPLAY_BACKEND_KMS`, then make something read that define. Today nothing does.
+
+### 15.2 `run/src/display`
+
+**Cut at:** the picture. Whoever draws sees only a `display_buffer_t` (`run/include/display/flip/`): XRGB8888, rows `pitch` bytes apart, written and never read. The same type goes to the drawer under both backends.
+
+| Backend | Starts with | The drawer plugs in through |
+|---|---|---|
+| KMS | `display_init` | `display_frame_source_t`, called by `display_frames_run` once per frame |
+| `headless` | `display_offscreen_init` | `display_headless_scene_t`, called by `display_headless_run` once per tick |
+
+**To add a backend:** follow `headless`, the one precedent. Add `run/src/display/<backend>/` with a struct of its own beside `display_t` (which is all KMS), give it a loop calling a frame source with a `display_buffer_t` over memory it can show, and add the `main` paths that start it. `display/vt_guard`, the refusals and the guardian process are about taking a Linux console from a display server, and stay with KMS.
+
+**What leaks through:**
+
+- `display_buffer_t` carries KMS's `handle` and `fb_id`. `headless` leaves them zero, and a new backend can too.
+- `main` and `game/session` name `display_t` and `display_frames_run` directly. There is no table of backends, so a new one adds a branch in both.
+- `asm/src/copy` is written for scanout memory: non-temporal stores and a fence. `headless` shows it works on ordinary memory. Whether it is still the fast choice on a backend's own memory has not been measured.
+
+### 15.3 `run/src/input`
+
+**Cut at:** one frame of input. `input_poll` returns an `input_frame_t`: what is held, pressed, released and repeated, and mouse and wheel counts. `input_kinds_now` says which kinds of device are there. Nothing in `game` or `ui` reads a device. Under `headless` a script stands in, through `game_input_from_script` in `run/src/game/input/`.
+
+**To add a platform:** keep those two functions and `input_frame_t`, and replace what is behind them. `discovery`, `events` and `ops` are evdev and inotify throughout. `input_init` takes a directory of device nodes, so its signature changes too.
+
+**What leaks through:**
+
+- **The key codes are Linux's.** `INPUT_KEY_CODES` is `KEY_CNT` from `<linux/input-event-codes.h>`, and `game`, `game/session`, `ui`, `ui/widget`, `display/headless/script` and their tests say `KEY_W` and `BTN_LEFT`. The cheapest port translates native keys to these codes and carries its own copy of the numbers.
+- `mouse_dx` and `mouse_dy` are raw counts with no acceleration. A system that only reports a pointer position has to match that, or mouse look changes.
+- The emergency exit in `display/vt_guard` opens keyboards for itself through `display_ops_t`. It does not use this system.
+
+### 15.4 `run/src/gpu_bridge`
+
+**Cut at:** the C declarations in `run/include/gpu_bridge/<area>/index.h`. Nothing in `run/` includes a CUDA header or calls a CUDA function. `run/src/gpu_bridge/` has C for the Owner and `status`; everything else is implemented in `cuda/src/<area>/`. So another GPU API, or the CPU, would supply these same declarations, and `render` and `game` should not have to change. That has not been tried.
+
+| Area | What an implementation must provide |
+|---|---|
+| `device_memory` | Blocks by pool, with budgets, explicit write, read and zero, and the leak check |
+| `world_buffers` | The section pool and column table. The format is in this header, and `render/encode` writes to it on the CPU |
+| `traverse`, `entity_rays`, `lod` | Rays: the coarse pass, primary rays, boxes and the outline, the far field |
+| `shade`, `post` | Textures, light, shadows, water; sky, fog, TAA, the tone map to XRGB8888 |
+| `frame` | One frame's kernels in order, their timings, and the picture copied to host memory |
+
+**What leaks through:**
+
+- **The build needs CUDA whatever the yaml says.** `project()` names `CUDA` as a language, `mc_cuda` is always compiled, and `mc_link_game` always links `cudart_static`. `gpu.architecture` must be `sm_<number>`. This is the first thing a port has to change.
+- `frame_host_pin` exists because a pinned copy is faster on this card. Elsewhere it may do nothing, but it must still be there.
+- `main` starts the bridge before pinning itself, so that CUDA's threads do not inherit one CPU. Another API may not care, but the order is fixed in `main`.
+- Other headers borrow the bridge's types, not its code: `player/camera` from `traverse`, `settings/persist` from `shade`. They stay as they are as long as the headers do.
+
+### 15.5 Future work: a CPU-only render backend
+
+**Status: recorded, not started, not scheduled.** There is no CPU-only way to draw a world today, and no stage in plan 001 builds one.
+
+**What `gpu.enabled: false` does now.** Measured on a debug build with only that key changed:
+
+| Check | Result |
+|---|---|
+| The build | Still compiles every CUDA kernel and links `cudart_static`. `project()` still requires nvcc |
+| `--report` | `MC_GPU_ENABLED=0`, exit 0 |
+| `--headless` (the demo scene, no world) | Runs, exit 0 |
+| `--headless --test-world` | Exit 5: `gpu: allocating from a closed device_memory_t: invalid argument` |
+
+So the switch skips starting the card and nothing replaces it. A world fails on its first allocation, cleanly and with no leak.
+
+**The shape it would take**, from the seam in 15.4. This is a sketch, not a design anyone has tested:
+
+1. **Make CUDA optional in the build.** `gpu.enabled`, or a new `gpu.api` word, decides whether `CUDA` is a language, whether `mc_cuda` exists and whether `cudart_static` is linked. `tests/cuda/` needs the same decision.
+2. **Implement every area in 15.4 in C**, keeping the headers. `run/src/gpu_bridge/<area>/` holds only a README today, and discovery would pick up an `index.c` there. The tiers hold: the Owner `gpu_bridge` reserves from `run/src/heap/`, under `memory.process_budget_mib`, and its parts take arenas. `device_memory` turns into host regions, and `frame_host_pin` does nothing.
+3. **Run the kernels on `job`'s workers**, a tile of the picture at a time. The gpu thread can stay as the one that drives a frame and waits. Terrain and encoding use the same workers, so a frame competes with them.
+4. **Any SIMD goes in `asm/`, as everywhere.** C is built with `-fno-tree-vectorize`, so a wide ray loop means new NASM kernels, each with a scalar reference and a benchmark that shows a gain.
+
+**What can be built on:** the `.cu` sources, which keep to a C-like subset; the bitmask tree's format, which is plain data in `gpu_bridge/world_buffers`; and the exact `float64_t` trace in `tests/cuda/traverse/`, which is a test's reference on a dense array and not a renderer, but is what a new traversal should be held to.
+
+**How to know it is right:** the tests under `tests/cuda/` and `tests/run/render/frame/` that hold the card to an exact trace and to golden PNGs run against it. Whether they match byte for byte, or the goldens need a tolerance across `float32_t` on two kinds of hardware, is an open question.
+
+**What is not known:** what it costs. No CPU frame has been measured, so no frame rate or usable render distance is promised here. A first measurement belongs in `bench/world/`, on its standard worlds and camera paths.
+
+### 15.6 What has no seam
+
+These call Linux or the CPU directly, with nothing to swap. A port to another OS or CPU changes them in place.
+
+| Where | What it assumes |
+|---|---|
+| `run/src/heap/` | `mmap`, `madvise` for huge pages |
+| `run/src/thread/`, `run/src/job/` | `pthread_setaffinity_np`, `sched.h`, the futex syscall |
+| `run/src/file/`, `run/src/time/`, `run/src/log/` | POSIX file calls with `fsync` and rename, `CLOCK_MONOTONIC` |
+| `run/src/save/`, `run/src/ui/menu/catalog/` | `dirent.h`, `flock`, and what `fsync` and rename promise on Linux, which `run_save_power` tests against |
+| `asm/` | x86-64, NASM, the System V calling convention. `run/src/simd/reference/` has a scalar C version of `copy`, `blend`, `bitmask`, `noise` and `vec_batch`, which a CPU without these instructions could start from. `cpuid` and `embed_assets` have none |
+| `cmake/flags.cmake`, `cmake/check_link.cmake` | GCC's flags, `readelf`, and `ld-linux-x86-64.so.2` in the allowed list |
+| `static_assert`s on struct sizes | 64-bit pointers: `sizeof(input_ops_t) == 48`, and many like it |
