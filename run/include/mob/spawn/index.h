@@ -1,0 +1,92 @@
+/* See run/src/mob/spawn/README.md. */
+#ifndef MC_RUN_MOB_SPAWN_INDEX_H
+#define MC_RUN_MOB_SPAWN_INDEX_H
+
+#include "arena/index.h"
+#include "entity/store/index.h"
+#include "physics/index.h"
+#include "tables/mobs/index.h"
+#include "terrain/rng/index.h"
+#include "types/index.h"
+#include "world/map/index.h"
+
+#include <stddef.h>
+#include <stdint.h>
+
+enum : uint32_t {
+    /* Places looked at per tick. Each costs at most MOB_SPAWN_SCAN_CELLS reads of a block. */
+    MOB_SPAWN_TRIES_PER_TICK = 32u,
+    /* How far down a try looks for a floor. A try starting further above one than this finds none, which is cheap. */
+    MOB_SPAWN_SCAN_CELLS = 48u,
+    /* How far from the player, along x or y, a try starts, in blocks. */
+    MOB_SPAWN_REACH = 128u,
+    /* The most mobs at once, when MOB_SPAWN_CAP_COLUMNS or more columns are loaded; fewer columns hold fewer, in proportion. */
+    MOB_SPAWN_CAP = 70u,
+    MOB_SPAWN_CAP_COLUMNS = 289u,
+    /* The most each step between one of a pack and the next moves along x or along y, in blocks. */
+    MOB_SPAWN_PACK_STEP = 5u,
+    /* The sky at midnight gives this much less than at noon. */
+    MOB_SPAWN_DARKEN_MAX = 11u,
+};
+
+/* What a store's world is like to the rules, this tick. */
+typedef struct mob_spawn_view_t {
+    float64_t position[COLLISION_AXES]; /* 0: the player's feet */
+    float64_t day_fraction;             /* 24: 0 is midnight and 0.5 is noon */
+} mob_spawn_view_t;
+static_assert(sizeof(mob_spawn_view_t) == 32);
+
+/* Why a place will not do. */
+typedef enum mob_spawn_status_t : uint8_t {
+    MOB_SPAWN_OK = 0,
+    MOB_SPAWN_TOO_NEAR = 1,    /* the player would see it arrive */
+    MOB_SPAWN_TOO_FAR = 2,     /* it would be taken away again at once */
+    MOB_SPAWN_NOT_LOADED = 3,  /* a column there, or under its box, is not loaded */
+    MOB_SPAWN_TOO_BRIGHT = 4,  /* by block light, or by the sky at this time of day */
+    MOB_SPAWN_BAD_SURFACE = 5, /* what is under its feet is not whole and opaque, or is on its never_on */
+    MOB_SPAWN_NO_ROOM = 6,     /* something solid is in its box */
+    MOB_SPAWN_IN_FLUID = 7,    /* water or lava is in its box */
+} mob_spawn_status_t;
+
+/* Spawning and despawning in one world. Plain numbers, so that the same world and the same calls give the same bytes. The sim's. */
+typedef struct mob_spawn_t {
+    uint32_t *borrowed_idle;  /* 0: ENTITY_STORE_CAPACITY, by a handle's slot: ticks it has been past despawn_near */
+    terrain_rng_t random;     /* 8 */
+    uint64_t spawned_count;   /* 16 */
+    uint64_t despawned_count; /* 24 */
+    uint64_t refused_count;   /* 32: chosen, and the store was full */
+} mob_spawn_t;
+static_assert(sizeof(mob_spawn_t) == 40);
+
+/* What a spawn takes from its arena: the idle counts, with an alignment's slack. */
+enum : uint64_t {
+    MOB_SPAWN_BYTES = (uint64_t)ENTITY_STORE_CAPACITY * sizeof(uint32_t) + 64ull,
+};
+
+/* Nothing has come or gone yet, and what comes next depends only on this seed. From the arena, which lasts as long as the world. */
+void mob_spawn_start(mob_spawn_t *spawn, arena_t *arena, uint64_t seed);
+
+/* How much less the sky gives at this time of day, from 0 at noon to MOB_SPAWN_DARKEN_MAX at midnight. Any fraction, wrapped. */
+uint32_t mob_spawn_sky_darken(float64_t day_fraction);
+
+/* What a body of this mob with its feet at position would make of being put there, on a roll of light_roll, which is drawn from 0 to
+ * its max_light by the tick. Position is the middle of the soles of its feet. Looks and changes nothing. */
+mob_spawn_status_t mob_spawn_check(physics_t *physics, const world_map_t *map, mob_id_t mob,
+                                   const float64_t position[COLLISION_AXES], const mob_spawn_view_t *view,
+                                   uint32_t light_roll);
+
+/* The body of this mob, at this place and facing, at its full health, by no rule at all: what the rules choose goes through here, and
+ * so does anything else that makes a mob. ENTITY_HANDLE_NONE if the store is full, which is counted. */
+entity_handle_t mob_spawn_body(mob_spawn_t *spawn, entity_store_t *store, mob_id_t mob,
+                               const float64_t position[COLLISION_AXES], float32_t yaw);
+
+/* The most mobs at once, with this many columns loaded. */
+uint32_t mob_spawn_cap(uint64_t columns_loaded);
+
+/* One tick: takes away the bodies the despawn rules say, then tries MOB_SPAWN_TRIES_PER_TICK places for packs. Only a body whose kind
+ * is a mob_id_t but none is a mob: nothing else is touched or counted. Before entity_tick, so that the grid sees what this leaves.
+ * Never waits and never touches the heap. */
+void mob_spawn_tick(mob_spawn_t *spawn, entity_store_t *store, physics_t *physics, const world_map_t *map,
+                    const mob_spawn_view_t *view);
+
+#endif

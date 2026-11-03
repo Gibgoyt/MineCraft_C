@@ -1,0 +1,31 @@
+name: creeper
+texture: mobs/creeper
+texture_width: 64
+texture_height: 32
+health: 20
+speed: 0.125
+half_width: 0.3
+height: 1.7
+drops:
+  - { item: gunpowder, count: 0, max: 2 }
+spawn:
+  weight: 100
+  pack_min: 4
+  pack_max: 4
+  max_light: 7
+  max_block_light: 0
+  min_distance: 24
+  never_on: [bedrock]
+despawn:
+  near: 32
+  far: 128
+  idle_ticks: 600
+  one_in: 800
+parts:
+  - { size: [8, 8, 8], pivot: [0, 0, 18], offset: [0, 0, 4], uv: [0, 0], moves: head }
+  - { size: [4, 8, 12], pivot: [0, 0, 18], offset: [0, 0, -6], uv: [16, 16] }
+  # The two on a diagonal swing together, as a walking animal's do.
+  - { size: [4, 4, 6], pivot: [4, 2, 6], offset: [0, 0, -3], walk_swing: 1.4, uv: [0, 16] }
+  - { size: [4, 4, 6], pivot: [4, -2, 6], offset: [0, 0, -3], walk_swing: -1.4, uv: [0, 16] }
+  - { size: [4, 4, 6], pivot: [-4, 2, 6], offset: [0, 0, -3], walk_swing: -1.4, uv: [0, 16] }
+  - { size: [4, 4, 6], pivot: [-4, -2, 6], offset: [0, 0, -3], walk_swing: 1.4, uv: [0, 16] }

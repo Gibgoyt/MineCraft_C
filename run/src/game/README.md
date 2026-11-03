@@ -19,7 +19,7 @@
 - `game_open_alive_set`: someone to tell that a long `game_open` is still going.
 - `game_fly_from_script`, `game_fly_from_input`: either kind of input to a step of flying.
 - `game_player_set`, `game_walk_send`, `game_hands_send`: walk through the world with this player and not fly; what the mouse and keys want of it; what its two buttons are doing.
-- `game_entity_set`: what the player breaks comes out as items in the world, which it can pick up.
+- `game_entity_set`: what the player breaks comes out as items in the world, which it can pick up, and mobs come and go in it by `run/src/mob/spawn/`, which `game_t` holds until a `mob` Owner does.
 - `game_mob_set`: `run/src/mob/` opens and closes with the world, and has a tick before the bodies move.
 - `game_item_set`: what it picks up goes into an inventory, and the hotbar slot in hand is what it places.
 - `game_hotbar_send`: the number keys and the wheel.

@@ -3,6 +3,7 @@
 #define MC_RUN_ENTITY_ANIMATION_INDEX_H
 
 #include "entity/store/index.h"
+#include "tables/mobs/index.h"
 #include "types/index.h"
 
 #include <stddef.h>
@@ -10,7 +11,7 @@
 
 enum : uint32_t {
     /* Most in a rig: a head, a body and four limbs. */
-    ENTITY_ANIMATION_PARTS_MAX = 6u,
+    ENTITY_ANIMATION_PARTS_MAX = MOB_PARTS_MAX,
     /* How long an attack's swing takes, in ticks. */
     ENTITY_ANIMATION_SWING_TICKS = 6u,
 };
@@ -24,22 +25,12 @@ enum : uint32_t { ENTITY_ANIMATION_FORWARD = 0u, ENTITY_ANIMATION_LEFT = 1u, ENT
 
 /* What moves a part besides walking. */
 enum : uint8_t {
-    ENTITY_ANIMATION_PART_HEAD = 1u << 0u, /* it turns by the head's yaw and pitch */
-    ENTITY_ANIMATION_PART_ARM = 1u << 1u,  /* it swings to attack and rises to aim */
+    ENTITY_ANIMATION_PART_HEAD = MOB_PART_MOVES_HEAD, /* it turns by the head's yaw and pitch */
+    ENTITY_ANIMATION_PART_ARM = MOB_PART_MOVES_ARM,   /* it swings to attack and rises to aim */
 };
 
-/* One box of a body. Plain data, in the shape config/mobs/ will bring it in once Stage 15.3 has that. */
-typedef struct entity_animation_part_t {
-    float32_t size[3];    /* 0: pixels */
-    float32_t pivot[3];   /* 12: pixels from the middle of the soles of the feet: what it turns about */
-    float32_t offset[3];  /* 24: pixels: the box's middle from its pivot, at rest */
-    float32_t rest_pitch; /* 36: radians about its left axis: more points what hangs from it forward and up */
-    float32_t walk_swing; /* 40: radians at a full stride, at the phase's start. The other sign swings the other way */
-    uint16_t texture_u;   /* 44: the corner of its box-mapped unwrap in the rig's texture */
-    uint16_t texture_v;   /* 46 */
-    uint8_t flags;        /* 48 */
-    uint8_t _pad0[3];     /* 49 */
-} entity_animation_part_t;
+/* One box of a body, as config/mobs/ says it: see tables/mobs/. */
+typedef mob_part_t entity_animation_part_t;
 static_assert(sizeof(entity_animation_part_t) == 52);
 
 /* A body's parts, and the size of the texture they are unwrapped on. */

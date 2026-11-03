@@ -11,6 +11,7 @@
 #include "item/index.h"
 #include "job/index.h"
 #include "machine/index.h"
+#include "mob/spawn/index.h"
 #include "player/index.h"
 #include "render/index.h"
 #include "terrain/index.h"
@@ -139,8 +140,11 @@ typedef struct game_t {
     uint8_t hud_debug;         /* 1376: the debug overlay is up */
     uint8_t hud_debug_key;     /* 1377: its key was down, last time anyone looked */
     uint8_t _pad6[30];         /* 1378 */
+    /* A line of its own from here: the sim's. */
+    mob_spawn_t mob_spawn; /* 1408: which mobs come and go in the entity store; only with a borrowed_entity */
+    uint8_t _pad7[24];     /* 1448 */
 } game_t;
-static_assert(sizeof(game_t) == 1408);
+static_assert(sizeof(game_t) == 1472);
 static_assert(alignof(game_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(game_t, group) == 192);
 static_assert(offsetof(game_t, cameras) == 256);
@@ -151,6 +155,7 @@ static_assert(offsetof(game_t, day_fraction) == 896);
 static_assert(offsetof(game_t, hud_hotbar) == 1152);
 static_assert(offsetof(game_t, hud_pass_us) == 1280);
 static_assert(offsetof(game_t, borrowed_ui) == 1344);
+static_assert(offsetof(game_t, mob_spawn) == 1408);
 
 /* Remembers what it will run on, and takes nothing. All must outlive it, and topology must have been read before the caller
  * pinned itself. */
