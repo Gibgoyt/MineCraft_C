@@ -19,8 +19,8 @@ enum : uint64_t {
     /* A whole column of states, section after section, each in section_voxel_index order. */
     GAME_COLUMN_VOXELS = (uint64_t)COLUMN_SECTIONS * SECTION_VOXELS,
     GAME_COLUMN_BYTES = GAME_COLUMN_VOXELS * sizeof(uint16_t),
-    GAME_WORLD_ARENA_BYTES =
-        GAME_STREAM_JOBS * (GAME_COLUMN_BYTES + GAME_COLUMN_VOXELS + sizeof(game_column_job_t)) + 2ull * 4096ull,
+    GAME_WORLD_ARENA_BYTES = GAME_STREAM_JOBS * (GAME_COLUMN_BYTES + GAME_COLUMN_VOXELS + sizeof(game_column_job_t)) +
+                             2ull * 4096ull + MOB_SPAWN_BYTES,
 };
 enum : int64_t {
     GAME_SIM_IDLE_NS = 1000000,  /* the sim looks for finished columns this often when it has nothing to do */
@@ -277,6 +277,9 @@ bool game_open(game_t *game, const game_config_t *config) {
     game_day_apply(game);
     if (game->borrowed_entity != nullptr) {
         entity_open(game->borrowed_entity, terrain_rng_derive(terrain->seed, terrain_rng_salt("entity")));
+        /* A stream of its own, so that what falls and scatters is the same whether or not a mob came. */
+        mob_spawn_start(&game->mob_spawn, &game->arena_world,
+                        terrain_rng_derive(terrain->seed, terrain_rng_salt("mob/spawn")));
     }
     if (game->borrowed_item != nullptr) {
         item_open(game->borrowed_item);
@@ -299,6 +302,7 @@ void game_close(game_t *game) {
     }
     if (game->borrowed_entity != nullptr) {
         entity_close(game->borrowed_entity);
+        memset(&game->mob_spawn, 0, sizeof(game->mob_spawn));
     }
     render_close(game->borrowed_render);
     world_close(game->borrowed_world);
@@ -545,6 +549,12 @@ static void game_items_tick(game_t *game) {
         player_interaction_drops_spawn(&player->interaction, broken.block, broken.x, broken.y, broken.z);
         game_drops_spawn(game);
     }
+    /* Before the tick, so that the grid it builds knows what came and went. */
+    const mob_spawn_view_t view = {
+        .position = {player->movement.position[0], player->movement.position[1], player->movement.position[2]},
+        .day_fraction = player->survival.day_fraction,
+    };
+    mob_spawn_tick(&game->mob_spawn, &entity->store, entity->borrowed_physics, &game->borrowed_world->map, &view);
     entity_tick(entity, &game->borrowed_world->map);
     collision_box_t reach;
     player_pickup_reach(player, &reach);
@@ -1034,6 +1044,10 @@ void game_report(game_t *game) {
                  "holds %" PRIu32 " of %s",
                  hands->mined_count, hands->placed_count, block_defs[hands->last_mined].name,
                  (uint32_t)hands->hand_count, hands->hand_count != 0u ? block_defs[hands->hand_block].name : "nothing");
+    }
+    if (game->borrowed_entity != nullptr && game->mob_spawn.borrowed_idle != nullptr) {
+        LOG_INFO("game: %" PRIu64 " mobs came, %" PRIu64 " went, and %" PRIu32 " are in the world",
+                 game->mob_spawn.spawned_count, game->mob_spawn.despawned_count, game->borrowed_entity->store.count);
     }
     if (game->borrowed_item != nullptr && game->borrowed_item->inventory.borrowed_slots != nullptr) {
         const inventory_t *const inventory = &game->borrowed_item->inventory;

@@ -1,7 +1,7 @@
 # run/src/entity/animation
 
 **Purpose:** what a body looks like as boxes: the parts of each kind of body, how walking, looking, attacking, aiming and swelling move them, and where they all are at a moment.
-**Tier:** Arena by its depth. It allocates nothing: rigs are constants, what moves is in `entity_store_t`, and a pose goes where it is told.
+**Tier:** Arena by its depth. It allocates nothing: rigs are constants over the generated `tables/mobs/`, what moves is in `entity_store_t`, and a pose goes where it is told.
 **Owns:** nothing.
 **Lifetime:** Process for the rigs; what moves is the store's.
 **Threads:** `entity_animation_tick` and `entity_animation_swing` on `sim`. A rig may be read by anyone, and `entity_animation_pose` takes what it is given, so it can run anywhere.
@@ -20,7 +20,7 @@
 
 **A part** is one box in a model's pixels, 16 to a block: its size, the pivot it turns about, measured from the middle of the soles of the feet, where the box's middle is from that pivot, its pitch at rest, how far a full stride swings it, and the corner of its box-mapped unwrap on the texture. Axes are forward, left and up, with forward where the yaw points, as `render_entities_item_t`'s are.
 
-**The rigs** are plain tables, in the shape `config/mobs/<mob>/index.yaml`'s body parts can arrive in once Stage 15.3 has that:
+**The rigs** are the `parts` of `config/mobs/<mob>/index.yaml`, and `entity_animation_part_t` is `tables/mobs/`'s `mob_part_t`:
 
 | Rig | Parts | Texture |
 |---|---|---|

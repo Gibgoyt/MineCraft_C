@@ -1,104 +1,27 @@
-/* See README.md. The Arena tier by its depth, and it allocates nothing: its rigs are constants, and what moves is in the store. */
+/* See README.md. The Arena tier by its depth, and it allocates nothing: its rigs are constants, from config/mobs/, and what moves is in the store. */
 #include "entity/animation/index.h"
 
 #include <math.h>
 
 #define ENTITY_ANIMATION_PI 3.14159265358979f32
-/* An arm held straight out. */
+/* An arm held straight out: what aiming raises it to. */
 #define ENTITY_ANIMATION_LEVEL (ENTITY_ANIMATION_PI * 0.5f32)
 /* The published numbers. A stride's rate and size, and how fast a body takes up its pace. */
 #define ENTITY_ANIMATION_STRIDE_RATE 0.6662f32
 #define ENTITY_ANIMATION_STRIDE_PERIOD (2.0f32 * ENTITY_ANIMATION_PI / ENTITY_ANIMATION_STRIDE_RATE)
-#define ENTITY_ANIMATION_LEG_SWING 1.4f32
-#define ENTITY_ANIMATION_ARM_SWING 1.0f32
 #define ENTITY_ANIMATION_PACE_PER_SPEED 4.0f32
 #define ENTITY_ANIMATION_PACE_EASE 0.4f32
 /* How far an attack lifts an arm at its height, and how much a burst swells a body. */
 #define ENTITY_ANIMATION_SWING_LIFT 1.2f32
 #define ENTITY_ANIMATION_SWELL_GROWTH 0.2f32
 
-/* The heads and bodies are alike, and in the same place in each texture: see textures/mobs/. */
-#define ENTITY_ANIMATION_HEAD(neck)                                                                                    \
-    {.size = {8.0f32, 8.0f32, 8.0f32},                                                                                 \
-     .pivot = {0.0f32, 0.0f32, (neck)},                                                                                \
-     .offset = {0.0f32, 0.0f32, 4.0f32},                                                                               \
-     .texture_u = 0u,                                                                                                  \
-     .texture_v = 0u,                                                                                                  \
-     .flags = ENTITY_ANIMATION_PART_HEAD}
-#define ENTITY_ANIMATION_BODY(neck)                                                                                    \
-    {.size = {4.0f32, 8.0f32, 12.0f32},                                                                                \
-     .pivot = {0.0f32, 0.0f32, (neck)},                                                                                \
-     .offset = {0.0f32, 0.0f32, -6.0f32},                                                                              \
-     .texture_u = 16u,                                                                                                 \
-     .texture_v = 16u}
-/* A leg, hanging from its top: across a side, half_tall half its length. */
-#define ENTITY_ANIMATION_LEG(across, forward, left, half_tall, swing)                                                  \
-    {.size = {(across), (across), (half_tall) * 2.0f32},                                                               \
-     .pivot = {(forward), (left), (half_tall) * 2.0f32},                                                               \
-     .offset = {0.0f32, 0.0f32, -(half_tall)},                                                                         \
-     .walk_swing = (swing),                                                                                            \
-     .texture_u = 0u,                                                                                                  \
-     .texture_v = 16u}
-
-static const entity_animation_part_t ENTITY_ANIMATION_ZOMBIE_PARTS[] = {
-    ENTITY_ANIMATION_HEAD(24.0f32),
-    ENTITY_ANIMATION_BODY(24.0f32),
-    /* An arm's pivot is 2 down from the top of its 12: what is below it is not half, so its middle is given apart. */
-    {.size = {4.0f32, 4.0f32, 12.0f32},
-     .pivot = {0.0f32, 5.0f32, 22.0f32},
-     .offset = {0.0f32, 1.0f32, -4.0f32},
-     .rest_pitch = ENTITY_ANIMATION_LEVEL,
-     .texture_u = 40u,
-     .texture_v = 16u,
-     .flags = ENTITY_ANIMATION_PART_ARM},
-    {.size = {4.0f32, 4.0f32, 12.0f32},
-     .pivot = {0.0f32, -5.0f32, 22.0f32},
-     .offset = {0.0f32, -1.0f32, -4.0f32},
-     .rest_pitch = ENTITY_ANIMATION_LEVEL,
-     .texture_u = 40u,
-     .texture_v = 16u,
-     .flags = ENTITY_ANIMATION_PART_ARM},
-    ENTITY_ANIMATION_LEG(4.0f32, 0.0f32, 1.9f32, 6.0f32, -ENTITY_ANIMATION_LEG_SWING),
-    ENTITY_ANIMATION_LEG(4.0f32, 0.0f32, -1.9f32, 6.0f32, ENTITY_ANIMATION_LEG_SWING),
-};
-static const entity_animation_part_t ENTITY_ANIMATION_SKELETON_PARTS[] = {
-    ENTITY_ANIMATION_HEAD(24.0f32),
-    ENTITY_ANIMATION_BODY(24.0f32),
-    {.size = {2.0f32, 2.0f32, 12.0f32},
-     .pivot = {0.0f32, 5.0f32, 22.0f32},
-     .offset = {0.0f32, 0.0f32, -4.0f32},
-     .walk_swing = ENTITY_ANIMATION_ARM_SWING,
-     .texture_u = 40u,
-     .texture_v = 16u,
-     .flags = ENTITY_ANIMATION_PART_ARM},
-    {.size = {2.0f32, 2.0f32, 12.0f32},
-     .pivot = {0.0f32, -5.0f32, 22.0f32},
-     .offset = {0.0f32, 0.0f32, -4.0f32},
-     .walk_swing = -ENTITY_ANIMATION_ARM_SWING,
-     .texture_u = 40u,
-     .texture_v = 16u,
-     .flags = ENTITY_ANIMATION_PART_ARM},
-    ENTITY_ANIMATION_LEG(2.0f32, 0.0f32, 2.0f32, 6.0f32, -ENTITY_ANIMATION_LEG_SWING),
-    ENTITY_ANIMATION_LEG(2.0f32, 0.0f32, -2.0f32, 6.0f32, ENTITY_ANIMATION_LEG_SWING),
-};
-static const entity_animation_part_t ENTITY_ANIMATION_CREEPER_PARTS[] = {
-    ENTITY_ANIMATION_HEAD(18.0f32),
-    ENTITY_ANIMATION_BODY(18.0f32),
-    /* The two on a diagonal swing together, as a walking animal's do. */
-    ENTITY_ANIMATION_LEG(4.0f32, 4.0f32, 2.0f32, 3.0f32, ENTITY_ANIMATION_LEG_SWING),
-    ENTITY_ANIMATION_LEG(4.0f32, 4.0f32, -2.0f32, 3.0f32, -ENTITY_ANIMATION_LEG_SWING),
-    ENTITY_ANIMATION_LEG(4.0f32, -4.0f32, 2.0f32, 3.0f32, -ENTITY_ANIMATION_LEG_SWING),
-    ENTITY_ANIMATION_LEG(4.0f32, -4.0f32, -2.0f32, 3.0f32, ENTITY_ANIMATION_LEG_SWING),
-};
-static_assert(sizeof(ENTITY_ANIMATION_ZOMBIE_PARTS) / sizeof(entity_animation_part_t) == 6u);
-static_assert(sizeof(ENTITY_ANIMATION_SKELETON_PARTS) / sizeof(entity_animation_part_t) == 6u);
-static_assert(sizeof(ENTITY_ANIMATION_CREEPER_PARTS) / sizeof(entity_animation_part_t) == 6u);
-static_assert(ENTITY_ANIMATION_PARTS_MAX == 6u);
-
 static const entity_animation_rig_t ENTITY_ANIMATION_RIGS[ENTITY_ANIMATION_RIG_COUNT] = {
-    [ENTITY_ANIMATION_RIG_ZOMBIE] = {ENTITY_ANIMATION_ZOMBIE_PARTS, 6u, 64u, 32u},
-    [ENTITY_ANIMATION_RIG_SKELETON] = {ENTITY_ANIMATION_SKELETON_PARTS, 6u, 64u, 32u},
-    [ENTITY_ANIMATION_RIG_CREEPER] = {ENTITY_ANIMATION_CREEPER_PARTS, 6u, 64u, 32u},
+    [ENTITY_ANIMATION_RIG_ZOMBIE] = {&mob_parts[MOB_ZOMBIE_FIRST_PART], MOB_ZOMBIE_PART_COUNT, MOB_ZOMBIE_TEXTURE_WIDTH,
+                                     MOB_ZOMBIE_TEXTURE_HEIGHT},
+    [ENTITY_ANIMATION_RIG_SKELETON] = {&mob_parts[MOB_SKELETON_FIRST_PART], MOB_SKELETON_PART_COUNT,
+                                       MOB_SKELETON_TEXTURE_WIDTH, MOB_SKELETON_TEXTURE_HEIGHT},
+    [ENTITY_ANIMATION_RIG_CREEPER] = {&mob_parts[MOB_CREEPER_FIRST_PART], MOB_CREEPER_PART_COUNT,
+                                      MOB_CREEPER_TEXTURE_WIDTH, MOB_CREEPER_TEXTURE_HEIGHT},
 };
 
 const entity_animation_rig_t *entity_animation_rig(entity_animation_rig_id_t rig) {

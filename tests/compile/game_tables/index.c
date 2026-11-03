@@ -1032,6 +1032,138 @@ TEST(a_kind_of_place_with_no_biome_is_refused) {
     CHECK_CONTAINS(run.output, "no biome has where: river");
 }
 
+/* Mobs: a tree with a whole mob, into which each mistake goes one at a time. */
+#define GTT_MOB_HEAD "name: pebble\ntexture: mobs/pebble\ntexture_width: 64\ntexture_height: 32\n"
+#define GTT_MOB_BODY "health: 20\nspeed: 0.1\nhalf_width: 0.3\nheight: 1.9\n"
+#define GTT_MOB_DROPS "drops: [{ item: coal, count: 0, max: 2 }]\n"
+#define GTT_MOB_SPAWN                                                                                                  \
+    "spawn: { weight: 1, pack_min: 1, pack_max: 2, max_light: 7, max_block_light: 0, min_distance: 24, never_on: "     \
+    "[stone] }\n"
+#define GTT_MOB_DESPAWN "despawn: { near: 32, far: 128, idle_ticks: 600, one_in: 800 }\n"
+#define GTT_MOB_PARTS                                                                                                  \
+    "parts:\n  - { size: [1, 2, 3], pivot: [0, -1.5, 3], offset: [0, 0, -1], uv: [8, 16], moves: arm }\n"
+#define GTT_MOB_GOOD GTT_MOB_HEAD GTT_MOB_BODY GTT_MOB_DROPS GTT_MOB_SPAWN GTT_MOB_DESPAWN GTT_MOB_PARTS
+
+static const gtt_bad_case_t GTT_BAD_MOBS[] = {
+    {GTT_MOB_GOOD "colour: grey\n", ":14:", "unknown field 'colour' in a mob"},
+    {"texture: mobs/pebble\n", ":1:", "missing field 'name'"},
+    {"name: rock\n", ":1:", "is not its directory's"},
+    {"name: pebble\ntexture: items/coal\n", ":2:", "is not of the form mobs/<name>"},
+    {"name: pebble\ntexture: mobs/nothing\n", ":2:", "texture 'mobs/nothing' does not exist"},
+    {GTT_MOB_GOOD "health: 1\n", ":14:", "duplicate key"},
+    {"name: pebble\nhealth: 0\n", ":2:", "health '0' must be above 0, up to 1024"},
+    {"name: pebble\nspeed: 2\n", ":2:", "speed '2' must be above 0, up to 1"},
+    {"name: pebble\nhalf_width: 3\n", ":2:", "half_width '3' must be above 0, up to 2"},
+    {"name: pebble\nheight: -1\n", ":2:", "height '-1' must be above 0, up to 4"},
+    {"name: pebble\nheight: 0.0000000001\n", ":2:", "with at most 9 decimals"},
+    {"name: pebble\ntexture_width: 0\n", ":2:", "texture_width is 0"},
+    {"name: pebble\ndrops: { item: coal }\n", ":2:", "drops must be a list"},
+    {"name: pebble\ndrops: [coal]\n", ":2:", "a drop must be a mapping"},
+    {"name: pebble\ndrops: [{ item: nothing, count: 1 }]\n", ":2:", "drop item 'nothing' does not exist"},
+    {"name: pebble\ndrops: [{ count: 1 }]\n", ":2:", "missing field 'item' in a drop"},
+    {"name: pebble\ndrops: [{ item: coal, count: 65 }]\n", ":2:", "count is 65"},
+    {"name: pebble\ndrops: [{ item: coal, count: 2, max: 1 }]\n", ":2:", "drop max is below its count"},
+    {"name: pebble\ndrops: [{ item: coal, count: 0 }]\n", ":2:", "can never give anything"},
+    {"name: pebble\ndrops: [{ item: coal, count: 1, chance: 0 }]\n", ":2:", "must be above 0"},
+    {"name: pebble\ndrops: [{ item: coal, count: 1, chance: 1.5 }]\n", ":2:", "must be above 0"},
+    {"name: pebble\ndrops: [{ item: coal, count: 1, shine: 1 }]\n", ":2:", "unknown field 'shine' in a drop"},
+    {"name: pebble\nspawn: 3\n", ":2:", "spawn must be a mapping"},
+    {"name: pebble\nspawn: { sparkle: 1 }\n", ":2:", "unknown field 'sparkle' in spawn"},
+    {"name: pebble\nspawn: { weight: 1001 }\n", ":2:", "weight is 1001"},
+    {"name: pebble\nspawn: { pack_min: 0 }\n", ":2:", "pack_min is 0"},
+    {"name: pebble\nspawn: { pack_min: 3, pack_max: 2 }\n", ":2:", "pack_max is below pack_min"},
+    {"name: pebble\nspawn: { max_light: 16 }\n", ":2:", "max_light is 16"},
+    {"name: pebble\nspawn: { max_block_light: 16 }\n", ":2:", "max_block_light is 16"},
+    {"name: pebble\nspawn: { min_distance: 129 }\n", ":2:", "min_distance is 129"},
+    {"name: pebble\nspawn: { never_on: stone }\n", ":2:", "never_on must be a list"},
+    {"name: pebble\nspawn: { never_on: [nothing] }\n", ":2:", "never_on block 'nothing' does not exist"},
+    {"name: pebble\nspawn:\n  weight: 1\n", ":2:", "missing field 'pack_min'"},
+    {"name: pebble\ndespawn: 3\n", ":2:", "despawn must be a mapping"},
+    {"name: pebble\ndespawn: { rust: 1 }\n", ":2:", "unknown field 'rust' in despawn"},
+    {"name: pebble\ndespawn: { near: 32, far: 32 }\n", ":2:", "far must be above near"},
+    {"name: pebble\nspawn: { min_distance: 24 }\ndespawn: { near: 8, far: 24 }\n",
+     ":3:", "far must be above spawn's min_distance"},
+    {"name: pebble\ndespawn: { one_in: 0 }\n", ":2:", "one_in is 0"},
+    {"name: pebble\ndespawn: { idle_ticks: -1 }\n", ":2:", "idle_ticks is -1"},
+    {"name: pebble\nparts: []\n", ":2:", "parts must be a list of 1 to 6"},
+    {"name: pebble\nparts: 3\n", ":2:", "parts must be a list of 1 to 6"},
+    {"name: pebble\nparts: [a, b, c, d, e, f, g]\n", ":2:", "parts must be a list of 1 to 6"},
+    {"name: pebble\nparts: [leg]\n", ":2:", "a part must be a mapping"},
+    {"name: pebble\nparts: [{ wing: 1 }]\n", ":2:", "unknown field 'wing' in a part"},
+    {"name: pebble\nparts: [{ pivot: [0, 0, 0] }]\n", ":2:", "missing field 'size' in a part"},
+    {"name: pebble\nparts: [{ size: [1, 2] }]\n", ":2:", "size must be a list of 3 numbers"},
+    {"name: pebble\nparts: [{ size: [1, 0, 3] }]\n", ":2:", "size '0' must be above 0"},
+    {"name: pebble\nparts: [{ pivot: [65, 0, 0] }]\n", ":2:", "pivot '65' must be of a size up to 64"},
+    {"name: pebble\nparts: [{ uv: [1] }]\n", ":2:", "uv must be a list of 2 numbers"},
+    {"name: pebble\nparts: [{ uv: [1, 2000] }]\n", ":2:", "uv is 2000"},
+    {"name: pebble\nparts: [{ moves: tail }]\n", ":2:", "unknown moves 'tail'"},
+    {"name: pebble\nparts: [{ walk_swing: 8 }]\n", ":2:", "walk_swing '8' must be of a size up to 7"},
+    {"- just\n- a list\n", ":1:", "a mob's file must be a mapping"},
+};
+enum { GTT_BAD_MOB_COUNT = sizeof(GTT_BAD_MOBS) / sizeof(GTT_BAD_MOBS[0]) };
+
+static void gtt_mob_tree(test_context_t *t, const gtt_tree_t *tree) {
+    gtt_mkdirs(t, gtt_path(t, tree->borrowed_config, "mobs/pebble"));
+    gtt_mkdirs(t, gtt_path(t, tree->borrowed_textures, "mobs/pebble"));
+    gtt_write(t, gtt_path(t, tree->borrowed_textures, "mobs/pebble/index.mctex"), "");
+}
+
+TEST(each_bad_mob_is_refused_at_its_line_and_nothing_is_written) {
+    const gtt_tree_t tree = gtt_tree_make(t, "bad_mobs");
+    gtt_mob_tree(t, &tree);
+    char *const file = gtt_path(t, tree.borrowed_config, "mobs/pebble/index.yaml");
+    char *const table = gtt_path(t, tree.borrowed_out, "mobs/index.h");
+    for (uint32_t i = 0u; i < GTT_BAD_MOB_COUNT; i++) {
+        gtt_write(t, file, GTT_BAD_MOBS[i].text);
+        test_process_t run;
+        gtt_tree_run(t, &tree, &run);
+        CHECK_EQ_I64(run.exit_code, 1);
+        CHECK_CONTAINS(run.output, GTT_BAD_MOBS[i].position);
+        CHECK_CONTAINS(run.output, GTT_BAD_MOBS[i].message);
+        CHECK(access(table, F_OK) != 0);
+    }
+}
+
+TEST(a_good_mob_makes_tables_with_row_0_for_none_and_a_tree_with_none_needs_none) {
+    const gtt_tree_t tree = gtt_tree_make(t, "good_mobs");
+    char *const header = gtt_path(t, tree.borrowed_out, "mobs/index.h");
+    char *const source = gtt_path(t, tree.borrowed_out, "mobs/index.c");
+    test_process_t run;
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 0);
+    CHECK(access(header, F_OK) != 0);
+
+    gtt_mob_tree(t, &tree);
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 1);
+    CHECK_CONTAINS(run.output, "missing");
+
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "mobs/pebble/index.yaml"), GTT_MOB_GOOD);
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 0);
+    uint64_t length = 0u;
+    const char *const declared = gtt_read(t, header, &length);
+    CHECK_CONTAINS(declared, "MOB_ID_NONE = 0");
+    CHECK_CONTAINS(declared, "MOB_ID_PEBBLE = 1");
+    CHECK_CONTAINS(declared, "#define MOB_COUNT 2u");
+    CHECK_CONTAINS(declared, "#define MOB_PART_COUNT 2u");
+    CHECK_CONTAINS(declared, "#define MOB_PEBBLE_FIRST_PART 1u");
+    CHECK_CONTAINS(declared, "#define MOB_PEBBLE_PART_COUNT 1u");
+    const char *const defined = gtt_read(t, source, &length);
+    CHECK_CONTAINS(defined, ".first_drop = 1, .first_never_on = 1, .first_part = 1");
+    CHECK_CONTAINS(defined, ".item = ITEM_ID_COAL, .count_min = 0, .count_max = 2");
+    CHECK_CONTAINS(defined, "BLOCK_ID_STONE,");
+    CHECK_CONTAINS(defined, ".pivot = {0e0f32, -15e-1f32, 3e0f32}");
+    CHECK_CONTAINS(defined, ".flags = MOB_PART_MOVES_ARM");
+
+    /* A directory of them with nothing in it is a mistake too, and it must be told apart from no directory. */
+    const gtt_tree_t empty = gtt_tree_make(t, "empty_mobs");
+    gtt_mkdirs(t, gtt_path(t, empty.borrowed_config, "mobs"));
+    gtt_tree_run(t, &empty, &run);
+    CHECK_EQ_I64(run.exit_code, 1);
+    CHECK_CONTAINS(run.output, "there must be a mob");
+}
+
 TEST(a_bad_command_line_says_how) {
     char *const argv[] = {(char *)gtt_arg(t, 0), (char *)"--config", (char *)"x", nullptr};
     test_process_t run;

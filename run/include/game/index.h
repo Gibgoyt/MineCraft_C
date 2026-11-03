@@ -10,6 +10,7 @@
 #include "item/index.h"
 #include "job/index.h"
 #include "machine/index.h"
+#include "mob/spawn/index.h"
 #include "player/index.h"
 #include "render/index.h"
 #include "terrain/index.h"
@@ -112,8 +113,11 @@ typedef struct game_t {
     uint8_t _pad2[8];                                       /* 1080 */
     render_camera_t shown_camera; /* 1088: main's: what borrowed_last_picture was drawn from */
     uint8_t _pad3[24];            /* 1128 */
+    /* A line of its own from here: the sim's. */
+    mob_spawn_t mob_spawn; /* 1152: which mobs come and go in the entity store; only with a borrowed_entity */
+    uint8_t _pad4[24];     /* 1192 */
 } game_t;
-static_assert(sizeof(game_t) == 1152);
+static_assert(sizeof(game_t) == 1216);
 static_assert(alignof(game_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(game_t, group) == 192);
 static_assert(offsetof(game_t, cameras) == 256);
@@ -121,6 +125,7 @@ static_assert(offsetof(game_t, owned_region) == 608);
 static_assert(offsetof(game_t, center_x) == 816);
 static_assert(offsetof(game_t, tick_count) == 832);
 static_assert(offsetof(game_t, day_fraction) == 896);
+static_assert(offsetof(game_t, mob_spawn) == 1152);
 
 /* Remembers what it will run on, and takes nothing. All must outlive it, and topology must have been read before the caller
  * pinned itself. */
