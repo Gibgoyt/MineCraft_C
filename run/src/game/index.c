@@ -323,6 +323,8 @@ bool game_open(game_t *game, const game_config_t *config) {
     }
     if (game->borrowed_mob != nullptr) {
         mob_open(game->borrowed_mob, game->borrowed_world);
+        mob_creeper_seed_set(&game->borrowed_mob->creeper,
+                             terrain_rng_derive(terrain->seed, terrain_rng_salt("mob/creeper")));
     }
     if (game->borrowed_item != nullptr) {
         item_open(game->borrowed_item);
@@ -654,6 +656,16 @@ static void game_items_tick(game_t *game) {
         .day_fraction = player->survival.day_fraction,
     };
     mob_spawn_tick(&game->mob_spawn, &entity->store, entity->borrowed_physics, &game->borrowed_world->map, &view);
+    if (game->borrowed_mob != nullptr) {
+        const mob_creeper_scene_t scene = {
+            .borrowed_entity = entity,
+            .borrowed_path = &game->borrowed_mob->path,
+            .borrowed_edit = &game->borrowed_world->edit,
+            .borrowed_movement = &player->movement,
+            .borrowed_survival = &player->survival,
+        };
+        mob_creeper_tick(&game->borrowed_mob->creeper, &scene);
+    }
     entity_tick(entity, &game->borrowed_world->map);
     collision_box_t reach;
     player_pickup_reach(player, &reach);
@@ -1383,6 +1395,13 @@ void game_report(game_t *game) {
     if (game->borrowed_entity != nullptr && game->mob_spawn.borrowed_idle != nullptr) {
         LOG_INFO("game: %" PRIu64 " mobs came, %" PRIu64 " went, and %" PRIu32 " are in the world",
                  game->mob_spawn.spawned_count, game->mob_spawn.despawned_count, game->borrowed_entity->store.count);
+        LOG_INFO("game: %" PRIu32 " blasts broke %" PRIu64 " blocks", game->borrowed_entity->explosion.blast_count,
+                 game->borrowed_entity->explosion.broken_count);
+    }
+    if (game->borrowed_mob != nullptr && game->borrowed_mob->creeper.borrowed_bodies != nullptr) {
+        LOG_INFO("game: %" PRIu64 " creepers burst, and %" PRIu64 " died, leaving %" PRIu64 " items",
+                 game->borrowed_mob->creeper.burst_count, game->borrowed_mob->creeper.died_count,
+                 game->borrowed_mob->creeper.dropped_count);
     }
     if (game->borrowed_item != nullptr && game->borrowed_item->inventory.borrowed_slots != nullptr) {
         const inventory_t *const inventory = &game->borrowed_item->inventory;

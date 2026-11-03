@@ -5,6 +5,7 @@
 #include "arena/index.h"
 #include "heap/index.h"
 #include "job/index.h"
+#include "mob/creeper/index.h"
 #include "mob/path/index.h"
 #include "world/index.h"
 
@@ -16,7 +17,7 @@ typedef struct mob_t {
     arena_t arena_world;        /* 0: over owned_region; World: reset at each mob_open and mob_close */
     heap_region_t owned_region; /* 64 */
     job_system_t *borrowed_job; /* 80: what its searches run on */
-    uint8_t _pad0[40];          /* 88 */
+    mob_creeper_t creeper;      /* 88 */
     mob_path_t path;            /* 128 */
 } mob_t;
 static_assert(sizeof(mob_t) == 448);
@@ -36,7 +37,8 @@ void mob_open(mob_t *mob, const world_t *world);
  * Before the world closes. Safe if none is open. */
 void mob_close(mob_t *mob);
 
-/* One tick, on the thread holding the world's map. Never touches the heap. */
+/* One tick of what answers them, on the thread holding the world's map. Never touches the heap. The minds themselves, which need the
+ * player, are ticked by run/src/game/ after this, before the bodies move. */
 void mob_tick(mob_t *mob);
 
 #endif

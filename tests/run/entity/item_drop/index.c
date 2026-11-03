@@ -748,8 +748,8 @@ TEST(the_owner_gives_back_all_it_took_and_opens_again_and_again) {
         const float64_t middle[COLLISION_AXES] = {0.5f64, 0.5f64, 0.5f64};
         item_drop_spawn(&entity->item_drops, di_item_of(BLOCK_ID_DIRT), 1u, middle);
         CHECK_EQ_U64(entity->item_drops.count, 1u);
-        CHECK(entity->arena_world.used <=
-              (uint64_t)ITEM_DROP_STORE_BYTES + (uint64_t)ENTITY_STORE_BYTES + (uint64_t)ENTITY_GRID_BYTES);
+        CHECK(entity->arena_world.used <= (uint64_t)ITEM_DROP_STORE_BYTES + (uint64_t)ENTITY_STORE_BYTES +
+                                              (uint64_t)ENTITY_GRID_BYTES + (uint64_t)EXPLOSION_BYTES);
         entity_close(entity);
         CHECK_EQ_U64(entity->arena_world.used, 0u);
         CHECK_EQ_U64(entity->item_drops.count, 0u);

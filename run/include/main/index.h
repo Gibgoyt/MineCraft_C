@@ -29,7 +29,7 @@ typedef struct app_t {
     job_system_t job; /* first: its alignment is what gives app_t its own */
     simd_t simd;
     texture_t texture;
-    ui_t ui;                       /* reads its textures at start; game draws the HUD and the game screens with it, and --menu its menus */
+    ui_t ui; /* reads its textures at start; game draws the HUD and the game screens with it, and --menu its menus */
     world_t world;                 /* nothing runs in it until game does (Stage 08.4) */
     terrain_t terrain;             /* the same */
     physics_t physics;             /* only --walk moves anything with it */
@@ -49,7 +49,7 @@ typedef struct app_t {
     math_t math;
     uint8_t _pad0[40];
 } app_t;
-static_assert(sizeof(app_t) == 14080);
+static_assert(sizeof(app_t) == 14464);
 static_assert(alignof(app_t) == 64);
 
 /* The exit codes of minecraft_c. */
