@@ -1,0 +1,21 @@
+# The window's top left is at (72, 37), and the test has opened the screen, with the pointer at (160, 120).
+# Hotbar 0, at (89, 188): the logs by shift into the chest, to its first free slot.
+0 move -71 68
+1 key lshift down
+2 button left down
+3 button left up
+4 key lshift up
+# Chest slot 13, at (161, 82): the larger half of three diamonds.
+5 move 72 -106
+6 button right down
+7 button right up
+8 screenshot chest_carrying.png
+# Chest slot 4, at (161, 64): the coal by shift into the inventory.
+9 move 0 -18
+10 key lshift down
+11 button left down
+12 button left up
+13 key lshift up
+# Esc closes, and the diamonds go home.
+14 key escape down
+15 key escape up

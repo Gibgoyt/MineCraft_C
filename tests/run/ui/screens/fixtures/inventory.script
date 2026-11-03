@@ -1,0 +1,35 @@
+# The window's top left is at (72, 37) on 320 by 240, and the pointer starts at (160, 120). A slot's middle is 9 in from its own top left.
+0 key e down
+1 key e up
+# Hotbar 0, at (89, 188): all ten logs on the pointer.
+2 move -71 68
+3 button left down
+4 button left up
+# The grid's first cell, at (169, 72): one log, which makes planks.
+5 move 80 -116
+6 button right down
+7 button right up
+8 screenshot inventory_carrying.png
+# Back to hotbar 0 with the other nine.
+9 move -80 116
+10 button left down
+11 button left up
+# The output, at (231, 82): one making, onto an empty pointer.
+12 move 142 -106
+13 button left down
+14 button left up
+# Hotbar 3, at (143, 188).
+15 move -88 106
+16 button left down
+17 button left up
+# The helmet in row slot 9, at (89, 130), by shift: it goes on its slot.
+18 move -54 -58
+19 key lshift down
+20 button left down
+21 button left up
+22 key lshift up
+# Rests on the worn pickaxe, in hotbar 1, at (107, 188), for its tooltip.
+23 move 18 58
+24 screenshot inventory_tooltip.png
+25 key e down
+26 key e up

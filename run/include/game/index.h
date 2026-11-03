@@ -98,7 +98,8 @@ typedef struct game_t {
     uint8_t pool_full_said;    /* 863 */
     player_t *borrowed_player; /* 864: walking if not nullptr; set before a world opens, and only read after */
     uint32_t commit_next;      /* 872: the job the next step looks at first */
-    uint8_t _pad0[4];          /* 876 */
+    uint8_t use_was_held;      /* 876: the sim's: the right button, last tick */
+    uint8_t _pad0[3];          /* 877 */
     entity_t *borrowed_entity; /* 880: what a player's drops go into; set before a world opens, and only read after */
     item_t *borrowed_item;     /* 888: what a player carries; set before a world opens, and only read after */
     /* A line of its own, written by main every frame. */
@@ -163,7 +164,9 @@ void game_entity_set(game_t *game, entity_t *entity);
 void game_item_set(game_t *game, item_t *item);
 
 /* From here on each picture shown has the HUD drawn on a copy of it with this, if a player is walking, and the debug overlay if asked
- * for. Must outlive it. Before game_open. Without it pictures go out as they were drawn. */
+ * for, and E, and the right button on a crafting table, furnace or chest, bring up the game screens on it. Must outlive it. Before
+ * game_open. Without it pictures go out as they were drawn. The screens take a game_item_set and a game_player_set as well, and without
+ * them there are none. */
 void game_ui_set(game_t *game, ui_t *ui);
 
 /* Stops whatever is running, and closes any world. Safe on a zeroed game_t. */
@@ -233,6 +236,13 @@ void game_debug_send(game_t *game, bool down);
 /* What the HUD and the debug overlay show now, from what the other threads last said. The main thread. Never waits. */
 void game_hud_state_read(const game_t *game, ui_hud_state_t *out);
 void game_hud_debug_read(const game_t *game, ui_hud_debug_t *out);
+
+/* One poll's input for the game screens. True if one is up, which has this input: the caller then sends the player no keys or buttons,
+ * and Esc does not end the run. The thread that owns input, before game_walk_send. */
+bool game_screen_input(game_t *game, const input_frame_t *frame);
+
+/* What a script's tick looks like as a poll of real input. */
+void game_input_from_script(const display_headless_tick_t *tick, input_frame_t *out);
 
 /* Turning either kind of input into a step of flying. */
 void game_fly_from_script(const display_script_state_t *state, render_fly_input_t *out);

@@ -117,6 +117,10 @@ void player_send(player_t *player, const player_intent_t *intent, int64_t now_ns
     }
 }
 
+bool player_sneak_sent(const player_t *player) {
+    return player_intent_unpack(atomic_load_explicit(&player->intent_word, memory_order_relaxed)).sneak != 0u;
+}
+
 void player_hands_send(player_t *player, bool attack, bool place) {
     const uint32_t hands = (attack ? (uint32_t)PLAYER_HAND_ATTACK : 0u) | (place ? (uint32_t)PLAYER_HAND_PLACE : 0u);
     atomic_store_explicit(&player->hands_word, hands, memory_order_relaxed);
@@ -128,6 +132,9 @@ void player_hands_send(player_t *player, bool attack, bool place) {
 void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns) {
     uint32_t hands = atomic_load_explicit(&player->hands_word, memory_order_relaxed);
     hands |= atomic_exchange_explicit(&player->hands_latch, 0u, memory_order_relaxed);
+    if (player->hands_held_off != 0u) {
+        hands = 0u;
+    }
     /* Looked at and left for player_tick, whose jump it is. */
     const player_intent_t intent =
         player_intent_unpack(atomic_load_explicit(&player->intent_word, memory_order_relaxed));

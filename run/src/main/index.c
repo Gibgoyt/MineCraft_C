@@ -104,7 +104,9 @@ static void main_print_usage(const char *program) {
         "  --walk                   with --test-world: walk and do not fly. WASD walks, Space jumps, swims up and "
         "climbs,\n"
         "                           Shift sneaks, Ctrl sprints, the mouse looks, the left button mines and the right\n"
-        "                           button places what was mined\n",
+        "                           button places what was mined. E opens the inventory, the right button on a "
+        "crafting\n"
+        "                           table, furnace or chest opens that, and E or Esc closes it\n",
         program, program, program, program);
 }
 
