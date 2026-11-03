@@ -3,6 +3,7 @@
 #include "game/index.h"
 
 #include "assert/index.h"
+#include "entity/animation/index.h"
 #include "item/stack/index.h"
 #include "game/view/index.h"
 #include "log/index.h"
@@ -955,6 +956,45 @@ static void game_survive_tick(game_t *game) {
     }
 }
 
+/* The light in the air at a place. A column not loaded holds none, and whatever is there is not drawn. */
+static uint8_t game_stored_light(const world_map_t *map, const float64_t position[3]) {
+    uint8_t stored = SHADE_LIGHT_OPEN_SKY;
+    if (world_map_light_get(map, (int32_t)floor(position[0]), (int32_t)floor(position[1]), (int32_t)floor(position[2]),
+                            &stored) != WORLD_MAP_STATUS_OK) {
+        stored = SHADE_LIGHT_OPEN_SKY;
+    }
+    return stored;
+}
+
+/* Every mob, as its parts stand now: one box for each, with its share of the mob's skin. A body waiting for its column is not there. */
+static void game_mobs_publish(game_t *game, render_entities_t *entities, const world_map_t *map) {
+    const entity_store_t *const store = &game->borrowed_entity->store;
+    for (uint32_t i = 0u; i < store->count; i++) {
+        const uint16_t kind = store->borrowed_kind[i];
+        if (kind == (uint16_t)MOB_ID_NONE || (uint32_t)kind >= MOB_COUNT ||
+            (store->borrowed_flags[i] & ENTITY_STORE_FLAG_WAITING) != 0u) {
+            continue;
+        }
+        const entity_animation_rig_t *const rig =
+            entity_animation_rig(kind == (uint16_t)MOB_ID_ZOMBIE     ? ENTITY_ANIMATION_RIG_ZOMBIE
+                                 : kind == (uint16_t)MOB_ID_SKELETON ? ENTITY_ANIMATION_RIG_SKELETON
+                                                                     : ENTITY_ANIMATION_RIG_CREEPER);
+        const float64_t feet[3] = {store->borrowed_position[0][i], store->borrowed_position[1][i],
+                                   store->borrowed_position[2][i]};
+        const float64_t middle[3] = {feet[0], feet[1], feet[2] + (float64_t)store->borrowed_height[i] * 0.5f64};
+        const uint8_t stored = game_stored_light(map, middle);
+        entity_animation_state_t state;
+        entity_animation_state_read(store, i, &state);
+        entity_animation_pose_t poses[ENTITY_ANIMATION_PARTS_MAX];
+        const uint32_t parts = entity_animation_pose(rig, &state, feet, poses);
+        for (uint32_t p = 0u; p < parts; p++) {
+            const entity_animation_part_t *const part = &rig->borrowed_parts[p];
+            render_entities_add_mob_part(entities, kind, poses[p].center, poses[p].half, poses[p].yaw, poses[p].pitch,
+                                         part->texture_u, part->texture_v, part->size, stored);
+        }
+    }
+}
+
 /* What the next frames draw: every item as it now lies, what is aimed at and how far along mining it is. Nobody draws anything before
  * a frame is open, and with neither a body nor items there is nothing to say. */
 static void game_entities_publish(game_t *game) {
@@ -968,27 +1008,17 @@ static void game_entities_publish(game_t *game) {
         const item_drop_store_t *const drops = &game->borrowed_entity->item_drops;
         for (uint32_t i = 0u; i < drops->count; i++) {
             const item_drop_t *const drop = &drops->borrowed_items[i];
-            uint8_t stored = SHADE_LIGHT_OPEN_SKY;
-            /* A column not loaded holds no light, and whatever it is, it is not drawn. */
-            if (world_map_light_get(map, (int32_t)floor(drop->position[0]), (int32_t)floor(drop->position[1]),
-                                    (int32_t)floor(drop->position[2]), &stored) != WORLD_MAP_STATUS_OK) {
-                stored = SHADE_LIGHT_OPEN_SKY;
-            }
             render_entities_add_item_drop(entities, drop->item, drop->position, (float32_t)ITEM_DROP_SIZE, drop->age,
-                                          stored);
+                                          game_stored_light(map, drop->position));
         }
         /* An arrow is drawn as the item it is, not turning. */
         const projectile_store_t *const arrows = &game->borrowed_entity->projectiles;
         for (uint32_t i = 0u; i < arrows->count; i++) {
             const projectile_t *const arrow = &arrows->borrowed_items[i];
-            uint8_t stored = SHADE_LIGHT_OPEN_SKY;
-            if (world_map_light_get(map, (int32_t)floor(arrow->position[0]), (int32_t)floor(arrow->position[1]),
-                                    (int32_t)floor(arrow->position[2]), &stored) != WORLD_MAP_STATUS_OK) {
-                stored = SHADE_LIGHT_OPEN_SKY;
-            }
             render_entities_add_item_drop(entities, item_stack_drop_row(ITEM_ID_ARROW), arrow->position,
-                                          (float32_t)ITEM_DROP_SIZE, 0u, stored);
+                                          (float32_t)ITEM_DROP_SIZE, 0u, game_stored_light(map, arrow->position));
         }
+        game_mobs_publish(game, entities, map);
     }
     if (game->borrowed_player != nullptr) {
         const player_t *const player = game->borrowed_player;

@@ -8,6 +8,7 @@
 #include "gpu_bridge/shade/index.h"
 #include "machine/index.h"
 #include "render/frame/index.h"
+#include "tables/mobs/index.h"
 #include "texture/index.h"
 #include "types/index.h"
 
@@ -23,15 +24,18 @@
 
 /* One box as the sim knows it. */
 typedef struct render_entities_item_t {
-    float64_t center[3]; /* 0 */
-    float32_t half[3];   /* 24 */
-    float32_t yaw;       /* 36 */
-    uint16_t material;   /* 40: ENTITY_RAYS_NO_MATERIAL for none */
-    uint16_t texture;    /* 42: with no material: a row of the frame's own table */
-    uint8_t stored;      /* 44 */
-    uint8_t _pad0[3];    /* 45 */
+    float64_t center[3];  /* 0 */
+    float32_t half[3];    /* 24 */
+    float32_t yaw;        /* 36 */
+    float32_t pitch;      /* 40: about its own left axis, before the yaw */
+    uint16_t material;    /* 44: ENTITY_RAYS_NO_MATERIAL for none */
+    uint16_t texture;     /* 46: with no material: a row of the frame's own table */
+    uint16_t skin_u;      /* 48: see entity_rays_box_t */
+    uint16_t skin_v;      /* 50 */
+    uint8_t stored;       /* 52 */
+    uint8_t skin_size[3]; /* 53: all 0 for no skin */
 } render_entities_item_t;
-static_assert(sizeof(render_entities_item_t) == 48);
+static_assert(sizeof(render_entities_item_t) == 56);
 
 /* What the player is aiming at and mining as the sim knows it. */
 typedef struct render_entities_target_t {
@@ -80,14 +84,15 @@ typedef struct render_entities_t {
     uint32_t width;                                      /* 568 */
     uint32_t height;                                     /* 572 */
     uint32_t reading;                                    /* 576: the gpu thread's: the slot it last took */
-    uint8_t _pad0[60];                                   /* 580 */
+    uint16_t mob_textures[MOB_COUNT]; /* 580: each mob's row of the frame's own table; set once, by init */
+    uint8_t _pad0[52];                /* 588 */
 } render_entities_t;
 static_assert(sizeof(render_entities_t) == 640);
 static_assert(alignof(render_entities_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(render_entities_t, slots) == 192);
 static_assert(offsetof(render_entities_t, borrowed_memory) == 456);
 static_assert(offsetof(render_entities_t, stats) == 520);
-static_assert(offsetof(render_entities_t, _pad0) == 580);
+static_assert(offsetof(render_entities_t, _pad0) == 588);
 
 /* Sizes, for the Owner to take memory and blocks. The lists hold the frame's own textures after everything else. */
 uint64_t render_entities_arena_bytes(uint32_t width, uint32_t height);
@@ -110,6 +115,11 @@ void render_entities_add(render_entities_t *entities, const render_entities_item
 /* A dropped item: its box at this place, by what it is, and turning by its age as it lies there. stored is the light around it. */
 void render_entities_add_item_drop(render_entities_t *entities, uint16_t item, const float64_t position[3],
                                    float32_t size, uint32_t age, uint8_t stored);
+/* One part of a mob's body, by what mob it is, as entity_animation_pose places it, with that part's share of the skin. size is in texels.
+ * stored is the light around it. */
+void render_entities_add_mob_part(render_entities_t *entities, uint16_t mob, const float64_t center[3],
+                                  const float32_t half[3], float32_t yaw, float32_t pitch, uint16_t skin_u,
+                                  uint16_t skin_v, const float32_t size[3], uint8_t stored);
 void render_entities_target_set(render_entities_t *entities, const render_entities_target_t *target);
 void render_entities_publish(render_entities_t *entities);
 

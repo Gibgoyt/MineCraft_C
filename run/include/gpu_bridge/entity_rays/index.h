@@ -44,6 +44,8 @@ enum : uint32_t {
     ENTITY_RAYS_OUTLINE_WATER_LAYERS = 12u,
 };
 
+/* A body part's skin has this many texels to a block: the size of what config/mobs/ measures a part in. */
+#define ENTITY_RAYS_SKIN_TEXELS_PER_BLOCK F32(16.0)
 /* What the outline's lines are: black. */
 #define ENTITY_RAYS_OUTLINE_XRGB 0x00000000u
 /* Nothing a ray meets nearer than this along itself is a line: it would fill the picture. */
@@ -52,28 +54,38 @@ enum : uint32_t {
 #define ENTITY_RAYS_OUTLINE_DEPTH_BLOCKS F32(0.05)
 #define ENTITY_RAYS_OUTLINE_DEPTH_PIXELS F32(8.0)
 
-/* One box, for one frame. Rotated by yaw about z through its middle. Plain floats from the frame's eye, which the host works out in
- * float64_t, so that a box is as exact far from the origin as near it. */
+/* One box, for one frame. Tilted by pitch about its own left axis (more points its forward up), then turned by yaw about z, both through
+ * its middle. Plain floats from the frame's eye, which the host works out in float64_t, so that a box is as exact far from the origin as
+ * near it. */
 typedef struct entity_rays_box_t {
     float32_t center[3]; /* 0: from the eye */
     float32_t half[3];   /* 12: half its size, each way along its own axes */
     float32_t cos_yaw;   /* 24 */
     float32_t sin_yaw;   /* 28 */
-    uint16_t material;   /* 32: a row of the scene's face table, or ENTITY_RAYS_NO_MATERIAL */
-    uint16_t texture;    /* 34: with no material, a row of the frame's own table, or ENTITY_RAYS_NO_TEXTURE */
-    uint8_t stored;      /* 36: the light in the air around it, as a voxel's stored light */
-    uint8_t _pad0[3];    /* 37 */
+    float32_t cos_pitch; /* 32 */
+    float32_t sin_pitch; /* 36 */
+    uint16_t material;   /* 40: a row of the scene's face table, or ENTITY_RAYS_NO_MATERIAL */
+    uint16_t texture;    /* 42: with no material, a row of the frame's own table, or ENTITY_RAYS_NO_TEXTURE */
+    uint16_t skin_u;     /* 44: with a skin, the corner of its unwrap in the texture, in texels */
+    uint16_t skin_v;     /* 46 */
+    uint8_t stored;      /* 48: the light in the air around it, as a voxel's stored light */
+    uint8_t skin_size
+        [3]; /* 49: forward, left and up, in texels: a body part's unwrap. All 0: the whole texture on every face */
 } entity_rays_box_t;
-static_assert(sizeof(entity_rays_box_t) == 40);
+static_assert(sizeof(entity_rays_box_t) == 52);
 static_assert(alignof(entity_rays_box_t) == 4);
 static_assert(offsetof(entity_rays_box_t, center) == 0);
 static_assert(offsetof(entity_rays_box_t, half) == 12);
 static_assert(offsetof(entity_rays_box_t, cos_yaw) == 24);
 static_assert(offsetof(entity_rays_box_t, sin_yaw) == 28);
-static_assert(offsetof(entity_rays_box_t, material) == 32);
-static_assert(offsetof(entity_rays_box_t, texture) == 34);
-static_assert(offsetof(entity_rays_box_t, stored) == 36);
-static_assert(offsetof(entity_rays_box_t, _pad0) == 37);
+static_assert(offsetof(entity_rays_box_t, cos_pitch) == 32);
+static_assert(offsetof(entity_rays_box_t, sin_pitch) == 36);
+static_assert(offsetof(entity_rays_box_t, material) == 40);
+static_assert(offsetof(entity_rays_box_t, texture) == 42);
+static_assert(offsetof(entity_rays_box_t, skin_u) == 44);
+static_assert(offsetof(entity_rays_box_t, skin_v) == 46);
+static_assert(offsetof(entity_rays_box_t, stored) == 48);
+static_assert(offsetof(entity_rays_box_t, skin_size) == 49);
 
 /* The nearest box along a pixel's ray. */
 typedef struct entity_rays_hit_t {
@@ -149,9 +161,10 @@ static inline uint64_t entity_rays_textures_offset(uint32_t width, uint32_t heig
 /* A point from the world's axes to a box's own. */
 ENTITY_RAYS_BOTH_SIDES static inline void entity_rays_to_box(const entity_rays_box_t *box, const float32_t point[3],
                                                              float32_t out[3]) {
-    out[0] = box->cos_yaw * point[0] + box->sin_yaw * point[1];
+    const float32_t level = box->cos_yaw * point[0] + box->sin_yaw * point[1];
+    out[0] = box->cos_pitch * level + box->sin_pitch * point[2];
     out[1] = box->cos_yaw * point[1] - box->sin_yaw * point[0];
-    out[2] = point[2];
+    out[2] = box->cos_pitch * point[2] - box->sin_pitch * level;
 }
 
 /* The way a face of a box looks, on the world's axes. */
@@ -159,9 +172,49 @@ ENTITY_RAYS_BOTH_SIDES static inline void entity_rays_normal(const entity_rays_b
                                                              float32_t out[3]) {
     const float32_t sign = (face & 1u) != 0u ? F32(1.0) : -F32(1.0);
     const uint32_t axis = face >> 1;
-    out[0] = axis == 0u ? sign * box->cos_yaw : (axis == 1u ? -sign * box->sin_yaw : F32(0.0));
-    out[1] = axis == 0u ? sign * box->sin_yaw : (axis == 1u ? sign * box->cos_yaw : F32(0.0));
-    out[2] = axis == 2u ? sign : F32(0.0);
+    /* Along the ground, its own forward or up comes to this much, and the rest of it is up. */
+    const float32_t level = axis == 0u ? box->cos_pitch : -box->sin_pitch;
+    out[0] = axis == 1u ? -sign * box->sin_yaw : sign * level * box->cos_yaw;
+    out[1] = axis == 1u ? sign * box->cos_yaw : sign * level * box->sin_yaw;
+    out[2] = axis == 0u ? sign * box->sin_pitch : (axis == 2u ? sign * box->cos_pitch : F32(0.0));
+}
+
+/* Where on a skin a place on a face of a body part is, as parts of the texture's width and height. local is from 0 to 1 along each of the
+ * box's own axes. A skin is unwrapped as a player's: from its corner, a row with the top and the bottom, each as many texels down as the
+ * part is deep, and under it a row round the sides: its right, its front, its left and its back. Each is as seen from outside, with a
+ * side's top up, and the top's front edge down. */
+ENTITY_RAYS_BOTH_SIDES static inline void entity_rays_skin_uv(const entity_rays_box_t *box, uint32_t face,
+                                                              const float32_t local[3], uint32_t width, uint32_t height,
+                                                              float32_t *out_u, float32_t *out_v) {
+    const float32_t deep = (float32_t)box->skin_size[0], wide = (float32_t)box->skin_size[1],
+                    tall = (float32_t)box->skin_size[2];
+    float32_t from_u = deep, from_v = deep, across = wide, down = tall;
+    float32_t part_u = local[1], part_v = F32(1.0) - local[2];
+    if (face == TRAVERSE_FACE_POS_Z) {
+        from_v = F32(0.0);
+        down = deep;
+        part_v = local[0];
+    } else if (face == TRAVERSE_FACE_NEG_Z) {
+        from_u = deep + wide;
+        from_v = F32(0.0);
+        down = deep;
+        part_v = F32(1.0) - local[0];
+    } else if (face == TRAVERSE_FACE_NEG_Y) {
+        from_u = F32(0.0);
+        across = deep;
+        part_u = local[0];
+    } else if (face == TRAVERSE_FACE_POS_Y) {
+        from_u = deep + wide;
+        across = deep;
+        part_u = F32(1.0) - local[0];
+    } else if (face == TRAVERSE_FACE_NEG_X) {
+        from_u = deep + wide + deep;
+        part_u = F32(1.0) - local[1];
+    }
+    /* Never quite to its far edge, which is the first texel of whatever lies next on the skin. */
+    const float32_t inside = F32(0.998);
+    *out_u = ((float32_t)box->skin_u + from_u + (part_u * inside + F32(0.001)) * across) / (float32_t)width;
+    *out_v = ((float32_t)box->skin_v + from_v + (part_v * inside + F32(0.001)) * down) / (float32_t)height;
 }
 
 /* A ray from the eye, along a unit direction, against a box: the slabs of its own axes. False if it misses, if the box is behind, or

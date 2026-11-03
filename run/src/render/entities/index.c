@@ -9,7 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static_assert((uint32_t)BLOCK_DROP_ITEM_NO_BLOCK_COUNT + 1u <= (uint32_t)ENTITY_RAYS_TEXTURES_MAX);
+static_assert((uint32_t)BLOCK_DROP_ITEM_NO_BLOCK_COUNT + 1u + MOB_COUNT <= (uint32_t)ENTITY_RAYS_TEXTURES_MAX);
 static_assert((uint32_t)TRAVERSE_TILE_PIXELS == 8u);
 static_assert((uint32_t)ENTITY_RAYS_BOXES_MAX < (uint32_t)ENTITY_RAYS_NO_BOX);
 static_assert((uint32_t)ENTITY_RAYS_NO_MATERIAL == (uint32_t)SHADE_NO_MATERIAL);
@@ -108,6 +108,19 @@ gpu_status_t render_entities_init(render_entities_t *entities, arena_t *arena, d
             LOG_WARN("render: no texture %s, so that item draws as missing", name);
         }
     }
+    for (uint32_t mob = 0u; mob < MOB_COUNT; mob++) {
+        entities->mob_textures[mob] = ENTITY_RAYS_NO_TEXTURE;
+        if (mob_defs[mob].texture == nullptr) {
+            continue;
+        }
+        /* As with an item: a mob with none draws in the colour that says so. */
+        if (entities_texture_row(texture, mob_defs[mob].texture, &table[rows])) {
+            entities->mob_textures[mob] = (uint16_t)rows;
+            rows++;
+        } else {
+            LOG_WARN("render: no texture %s, so that mob draws as missing", mob_defs[mob].texture);
+        }
+    }
     const gpu_status_t status = device_memory_write(memory, lists, entity_rays_textures_offset(width, height), table,
                                                     (uint64_t)rows * sizeof(shade_texture_t));
     if (status != GPU_STATUS_OK) {
@@ -151,6 +164,24 @@ void render_entities_add_item_drop(render_entities_t *entities, uint16_t item, c
         .material = block != BLOCK_NO_ID ? block : (uint16_t)ENTITY_RAYS_NO_MATERIAL,
         .texture = block != BLOCK_NO_ID ? (uint16_t)ENTITY_RAYS_NO_TEXTURE : entities->borrowed_item_textures[item],
         .stored = stored,
+    };
+    render_entities_add(entities, &row);
+}
+
+void render_entities_add_mob_part(render_entities_t *entities, uint16_t mob, const float64_t center[3],
+                                  const float32_t half[3], float32_t yaw, float32_t pitch, uint16_t skin_u,
+                                  uint16_t skin_v, const float32_t size[3], uint8_t stored) {
+    const render_entities_item_t row = {
+        .center = {center[0], center[1], center[2]},
+        .half = {half[0], half[1], half[2]},
+        .yaw = yaw,
+        .pitch = pitch,
+        .material = ENTITY_RAYS_NO_MATERIAL,
+        .texture = mob < MOB_COUNT ? entities->mob_textures[mob] : (uint16_t)ENTITY_RAYS_NO_TEXTURE,
+        .skin_u = skin_u,
+        .skin_v = skin_v,
+        .stored = stored,
+        .skin_size = {(uint8_t)size[0], (uint8_t)size[1], (uint8_t)size[2]},
     };
     render_entities_add(entities, &row);
 }
@@ -281,8 +312,13 @@ static uint32_t entities_keep(render_entities_t *entities, const render_entities
             const float32_t cos_yaw = cosf(item->yaw), sin_yaw = sinf(item->yaw);
             uint32_t pixels[4];
             const float32_t size = sqrtf(entities_dot(item->half, item->half));
+            const float32_t cos_pitch = cosf(item->pitch), sin_pitch = sinf(item->pitch);
+            /* What it reaches once tilted: a box with no pitch this big holds all of it, and that is what the corners take. */
+            const float32_t reach[3] = {fabsf(cos_pitch) * item->half[0] + fabsf(sin_pitch) * item->half[2],
+                                        item->half[1],
+                                        fabsf(sin_pitch) * item->half[0] + fabsf(cos_pitch) * item->half[2]};
             if ((far > 0.0f32 && distance - size >= far) ||
-                !render_entities_pixels(camera, center, item->half, cos_yaw, sin_yaw, RENDER_ENTITIES_MARGIN_PIXELS,
+                !render_entities_pixels(camera, center, reach, cos_yaw, sin_yaw, RENDER_ENTITIES_MARGIN_PIXELS,
                                         pixels)) {
                 entities->stats.out_of_sight++;
                 continue;
@@ -300,9 +336,14 @@ static uint32_t entities_keep(render_entities_t *entities, const render_entities
                 .half = {item->half[0], item->half[1], item->half[2]},
                 .cos_yaw = cos_yaw,
                 .sin_yaw = sin_yaw,
+                .cos_pitch = cos_pitch,
+                .sin_pitch = sin_pitch,
                 .material = item->material,
                 .texture = item->texture,
+                .skin_u = item->skin_u,
+                .skin_v = item->skin_v,
                 .stored = item->stored,
+                .skin_size = {item->skin_size[0], item->skin_size[1], item->skin_size[2]},
             };
             uint16_t *const rect = &entities->borrowed_rects[(uint64_t)kept * 4u];
             rect[0] = (uint16_t)tile_x;

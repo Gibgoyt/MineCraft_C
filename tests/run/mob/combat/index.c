@@ -25,7 +25,9 @@
 #include "world/index.h"
 
 #include <linux/input-event-codes.h>
+#include <inttypes.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -1285,6 +1287,105 @@ static void mco_game_in_front(const mco_game_rig_t *rig, uint32_t index, float64
     store->borrowed_position[0][index] = feet[0] + 1.5f64 * cos((float64_t)yaw);
     store->borrowed_position[1][index] = feet[1] + 1.5f64 * sin((float64_t)yaw);
     store->borrowed_position[2][index] = feet_z;
+}
+
+/* How many boxes of this mob's skin are in the fullest snapshot, and whether any is near a place. */
+static uint32_t mco_drawn_parts(const mco_game_rig_t *rig, uint16_t mob, const float64_t near[3], bool *out_near) {
+    const render_entities_t *const entities = rig->render->borrowed_entities;
+    uint32_t most = 0u;
+    *out_near = false;
+    for (uint32_t s = 0u; s < RENDER_EXCHANGE_SLOTS; s++) {
+        const render_entities_slot_t *const slot = &entities->slots[s];
+        uint32_t parts = 0u;
+        for (uint32_t i = 0u; i < slot->count; i++) {
+            const render_entities_item_t *const item = &slot->borrowed_items[i];
+            if (item->skin_size[0] == 0u || item->texture != entities->mob_textures[mob]) {
+                continue;
+            }
+            parts++;
+            const float64_t x = item->center[0] - near[0], y = item->center[1] - near[1], z = item->center[2] - near[2];
+            *out_near = *out_near || sqrt(x * x + y * y + z * z) < 3.0f64;
+        }
+        most = parts > most ? parts : most;
+    }
+    return most;
+}
+
+/* A zombie put down on known ground, through all of the wiring in run/src/game/: it is in what the frames draw, part by part, it notices,
+ * walks over and strikes, and the blow lands on the body. */
+TEST(in_a_real_game_a_zombie_walks_up_is_drawn_and_strikes) {
+    mco_game_rig_t rig;
+    REQUIRE(mco_game_begin(t, &rig));
+    game_t *const game = rig.game;
+    const game_config_t config = {.render_distance = 5u, .width = 320u, .height = 180u, ._pad0 = {0}};
+    REQUIRE(game_open(game, &config));
+    REQUIRE(game_settle(game));
+    mco_script_t *const script = test_alloc(t, sizeof(mco_script_t));
+    memset(script, 0, sizeof(*script));
+    game_headless_scene(game, &script->scene);
+    const int32_t pad_x = (int32_t)floor(rig.player->movement.position[0]);
+    const int32_t pad_y = (int32_t)floor(rig.player->movement.position[1]);
+    const int32_t pad_z = (int32_t)floor(rig.player->movement.position[2]);
+    for (int32_t x = pad_x - 14; x <= pad_x + 14; x++) {
+        for (int32_t y = pad_y - 14; y <= pad_y + 14; y++) {
+            for (int32_t z = pad_z - 1; z <= pad_z + 8; z++) {
+                const world_edit_status_t status =
+                    world_edit_block_set(&rig.world->edit, x, y, z, z < pad_z ? BLOCK_ID_STONE : BLOCK_ID_AIR);
+                REQUIRE(status == WORLD_EDIT_STATUS_CHANGED || status == WORLD_EDIT_STATUS_UNCHANGED);
+            }
+        }
+    }
+    REQUIRE(mco_script_ticks(script, 20u));
+    entity_store_t *const store = &rig.entity->store;
+    while (store->count > 0u) {
+        (void)entity_store_remove(store, store->borrowed_handle[store->count - 1u]);
+    }
+    const float64_t *const feet = rig.player->movement.position;
+    const mob_def_t *const def = &mob_defs[MOB_ID_ZOMBIE];
+    const entity_store_spawn_t body = {
+        .position = {feet[0] + 9.0f64, feet[1], feet[2]},
+        .half_width = def->half_width,
+        .height = def->height,
+        .health = def->health,
+        .kind = (uint16_t)MOB_ID_ZOMBIE,
+    };
+    const entity_handle_t handle = entity_store_spawn(store, &body);
+    REQUIRE(handle != ENTITY_HANDLE_NONE);
+    REQUIRE(mco_script_ticks(script, 3u));
+    uint32_t index = 0u;
+    REQUIRE(entity_store_index_of(store, handle, &index));
+    const float64_t place[3] = {store->borrowed_position[0][index], store->borrowed_position[1][index],
+                                store->borrowed_position[2][index]};
+    bool near = false;
+    const uint32_t parts = mco_drawn_parts(&rig, (uint16_t)MOB_ID_ZOMBIE, place, &near);
+    CHECK(parts >= MOB_ZOMBIE_PART_COUNT);
+    CHECK_EQ_U64(parts % MOB_ZOMBIE_PART_COUNT, 0u);
+    CHECK(near);
+
+    const uint64_t hurts = rig.player->survival.hurt_count;
+    const float32_t health = rig.player->survival.health;
+    const uint64_t struck = rig.mob->zombie.struck_count;
+    uint32_t waited = 0u;
+    for (; waited < 400u && rig.mob->zombie.struck_count == struck; waited++) {
+        REQUIRE(mco_script_ticks(script, 1u));
+    }
+    printf("  struck after %" PRIu32 " ticks\n", waited);
+    CHECK(rig.mob->zombie.struck_count > struck);
+    /* It walked 8 blocks or so, at its speed, and no faster. */
+    CHECK(waited >= 8.0f32 / def->speed * 0.8f32);
+    REQUIRE(mco_script_ticks(script, 1u));
+    CHECK(rig.player->survival.hurt_count > hurts);
+    CHECK(rig.player->survival.health < health);
+    REQUIRE(entity_store_index_of(store, handle, &index));
+    CHECK(mob_zombie_in_reach(store, index,
+                              &(mob_zombie_view_t){.position = {feet[0], feet[1], feet[2]},
+                                                   .eye = rig.player->movement.eye_height,
+                                                   .half_width = 0.3f64,
+                                                   .height = 1.8f64,
+                                                   .alive = 1u,
+                                                   ._pad0 = {0}}));
+    game_close(game);
+    mco_game_end(t, &rig);
 }
 
 /* All of the wiring in run/src/game/, on its own tick: the script's button is a blow with the sword in hand, which wears it and tires the

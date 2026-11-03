@@ -38,6 +38,7 @@ void mob_open(mob_t *mob, const world_t *world, uint64_t seed) {
 void mob_close(mob_t *mob) {
     mob_path_stop(&mob->path);
     memset(&mob->zombie, 0, sizeof(mob->zombie));
+    memset(&mob->skeleton, 0, sizeof(mob->skeleton));
     memset(&mob->creeper, 0, sizeof(mob->creeper));
     memset(&mob->combat, 0, sizeof(mob->combat));
     arena_reset(&mob->arena_world);
