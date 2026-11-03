@@ -62,7 +62,9 @@ if(MC_PRESET STREQUAL "debug")
   list(APPEND MC_NASM_FLAGS -g -Fdwarf)
 elseif(MC_PRESET STREQUAL "sanitize")
   set(mc_sanitize -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer)
-  list(APPEND MC_C_FLAGS -O1 -g3 ${mc_sanitize})
+  # ASan adds red zones round every local, and app_t on main's stack (section 4) is already most of the limit: measured
+  # 18112 bytes against 16384, Stage 15.3. The other presets are what hold the limit; the last flag given is the one that counts.
+  list(APPEND MC_C_FLAGS -O1 -g3 ${mc_sanitize} -Wframe-larger-than=32768)
   set(MC_C_CALLGRAPH ON)
   list(APPEND MC_CUDA_FLAGS -g)
   list(APPEND MC_NASM_FLAGS -g -Fdwarf)

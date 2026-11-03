@@ -27,3 +27,5 @@ A box is turned about z by its own yaw, for the mobs of Stage 15 and for an item
 It is hidden by what the pixel shows at a nearer distance, by more than `ENTITY_RAYS_OUTLINE_DEPTH_BLOCKS` and 8 pixels' width, so that the surface it lies on and those flush with it do not hide it. `shade_pixel_t.t` is the *first* surface drawn, and that may be water, which a player aims through and which is drawn at distance 0 around an eye under it. So a pixel that seems hidden asks one more thing: whether a ray meets anything but water before the line. Glass does hide it, as glass can be aimed at.
 
 Lines read depth from the frame's jittered rays and draw on the picture's unjittered pixels, so a line along the edge of something in front of it can move by a pixel from frame to frame.
+
+**A box may lean,** by a pitch about its own left axis before its yaw, as a limb does: `entity_rays_to_box` and `entity_rays_normal` in the bridge header are all that knows. A body part also has a share of a skin, by `entity_rays_skin_uv`, which `cuda/src/shade/` samples instead of one texture over the whole of each face.

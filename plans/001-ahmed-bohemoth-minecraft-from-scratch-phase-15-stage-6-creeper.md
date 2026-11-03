@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 15, stage 6: Creeper
 
-**Status:** done, apart from seeing one in play, which needs mobs to be drawn: Issue 4   (updated 2026-11-03)
+**Status:** done   (updated 2026-11-03)
 
 ## Goal
 
@@ -57,3 +57,4 @@ Appended as they land:
 6. **A line along the floor saw under a wall, in the first design.** A creeper's blast is at its soles, so z = 0, and so is the lowest row of a body's grid. A line in exactly that plane only touches the wall's low face, and if touching never counted, a fifth of a body behind a wall on the same floor was exposed. Found by working the numbers before running them. `explosion_line_enters` now takes a low face as in the cell, which is what the cell walk says, and `a_blow_is_what_the_published_sum_says` checks it.
 7. **Wiring outside the owned paths,** each the least that would do: fields in `entity_t` (`explosion`, from its padding) and `mob_t` (`creeper`, from its padding); starting and ending them in `run/src/entity/index.c` and `run/src/mob/index.c`; `mob_creeper_seed_set`, `mob_creeper_tick` and two report lines in `run/src/game/index.c`; the arena limits in `tests/run/entity/item_drop/`, `tests/run/entity/store/` and `tests/run/mob/path/`, which count what a world takes; and the READMEs of `entity`, `mob` and `game`. `clang_format` was failing at the base on one comment's alignment each in `run/include/game/index.h` and `run/include/main/index.h`, from the same merges as Issue 1, and those two lines are reformatted.
 8. **A burst has been seen only in the test, not in the running game.** A headless `--walk` run of 300 ticks (`exit 0`) printed `5 mobs came`, `0 blasts broke 0 blocks` and `0 creepers burst`: `mob_creeper_tick` runs there, and no creeper got to the player in that time. Every step of a burst is tested on real ticks in `run_mob_creeper`, in the game's order, but not through `game_sim_step`. Left to the phase gate's night.
+9. **Issue 4 is closed, but for seeing it in play on a real display (phase gate check, 2026-11-03).** It is drawn and swells, and a headless screenshot shows it. Ahmed's night test is what remains. A blast through the game's tick in a real run: `1 creepers burst`, `1 blasts broke 53 blocks` in the midnight run, so Issue 8 is closed too.

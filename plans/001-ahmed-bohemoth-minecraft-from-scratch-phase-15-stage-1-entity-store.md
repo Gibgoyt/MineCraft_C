@@ -82,3 +82,4 @@ Appended as they land:
    - `bench_think` only turns, jumps and asks the grid, because pathfinding and behaviour do not exist yet. The phase gate needs stages 15.2 to 15.7 to add their work to it.
 6. **The step and fluid lines are copied, not shared, from `run/src/player/movement/`.**
    - That code is static and takes a player's struct, and it is outside this stage's paths. What is really shared is `physics_move` and `physics_box_is_clear`. A change to the player's step or fluid rules must be made in both places.
+7. **Issues 4 and 5 are closed (phase gate check, 2026-11-03).** Mobs are drawn, and `bench_mobs` runs the real minds in the game's order: see the phase file's Issues 1 and 2.

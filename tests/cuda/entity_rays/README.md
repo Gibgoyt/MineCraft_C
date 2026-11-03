@@ -13,11 +13,11 @@ Compute only. It opens no display and no input device, and runs the built progra
 
 What it checks:
 
-- **By hand:** a ray against a box, turned or not, and a line, the crack's frames and the lists' layout, on numbers worked out on paper. A box's light against a block's on the same face.
+- **By hand:** a ray against a box, turned or leaning or not, a skin's unwrap, and a line, the crack's frames and the lists' layout, on numbers worked out on paper. A box's light against a block's on the same face.
 - **Against a march:** random rays against random turned boxes, against a march in tiny steps in `float64_t`.
 - **The lists:** every box any ray of a tile can meet, with the most jitter a frame has, is in that tile's list, and the lists are not much longer than they must be. What is behind the eye or past the fog takes nothing. A full snapshot counts what it leaves out, and full lists leave out what is far.
 - **On the card:** the kernel's nearest box, read back at every pixel, against the host's, with and without jitter.
-- **The picture:** a box's pixels against its texture and each face's brightness. Every other pixel is as with no box, and with the setting off, or a wall in front, the whole picture is, to the byte. An item that is no block has its own texture. A box with no texture is the colour that says so. Under a roof its top lacks exactly the sun, and with no light around it, it has exactly the least. It shows through glass, and water's tint stops at it whatever is below.
+- **The picture:** a box's pixels against its texture and each face's brightness, and a mob's part, leaning or not, against its share of its skin. Every other pixel is as with no box, and with the setting off, or a wall in front, the whole picture is, to the byte. An item that is no block has its own texture. A box with no texture is the colour that says so. Under a roof its top lacks exactly the sun, and with no light around it, it has exactly the least. It shows through glass, and water's tint stops at it whatever is below.
 - **The outline:** the edges a cube shows and no others, in the outline's colour and nothing else. A wall hides it, and so does a box in front. Water does not, from above or under it. Glass does. Twelve frames of TAA and AO with eight of them outlined are the same bytes as twelve with none.
 - **The crack:** each of its ten frames on the block's pixels against its texture, and every other pixel the same. It spreads as mining goes on.
 - **The machine:** no heap in a frame, and a kernel asked for what is too small says so and starts nothing.

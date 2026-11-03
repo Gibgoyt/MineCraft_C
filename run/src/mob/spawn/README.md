@@ -1,7 +1,7 @@
 # run/src/mob/spawn
 
 **Purpose:** which mobs come into the world where and when, by light level, surface and distance, and which ones leave. What each mob's numbers are is in `config/mobs/`.
-**Tier:** Arena (depth 2): `mob_spawn_start` takes one array from the arena its parent gives. Its parent for now is `run/src/game/`, whose `arena_world` it shares and whose `game_t` holds the `mob_spawn_t`, since no `mob` Owner has landed yet and `entity`, a lower layer, may not include it: see Stage 15.3's Wiring.
+**Tier:** Arena (depth 2): `mob_spawn_start` takes one array from the arena its parent gives. Its parent is `run/src/game/`, whose `arena_world` it shares and whose `game_t` holds the `mob_spawn_t`: `entity`, a lower layer, may not include it. See Stage 15.3's Wiring and the phase's Issues.
 **Owns:** nothing. The array is borrowed from the arena.
 **Lifetime:** World.
 **Threads:** the sim's, as the store is.
