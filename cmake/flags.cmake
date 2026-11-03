@@ -120,6 +120,11 @@ function(mc_callgraph_compile_options target)
   target_compile_options(${target} PRIVATE -O0 -fno-lto -fcallgraph-info=su)
 endfunction()
 
+# What tests/fuzz/ compiles the code it tests with, in the sanitize preset: a call at every basic block, to its own callback. See cmake/hardening.cmake.
+function(mc_fuzz_compile_options target)
+  target_compile_options(${target} PRIVATE -fsanitize-coverage=trace-pc)
+endfunction()
+
 # Any linker warning is a failure too. A missing .note.GNU-stack, for one, shows up here.
 list(APPEND MC_LINK_FLAGS -Wl,--fatal-warnings -Wl,-z,noexecstack)
 

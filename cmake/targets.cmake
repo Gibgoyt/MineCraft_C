@@ -11,6 +11,7 @@
 #                            Not under tests/harness, tests/fuzz, tests/soak or any fixtures/ directory
 #   tests/**/test.cmake      optional settings for the test next to it; see mc_add_test
 #   bench/**/index.c         the program bench_<path with / as _>, linked like a game test, built but not registered
+#   tests/fuzz, tests/soak   their own targets, in cmake/hardening.cmake
 
 # Stage 01.1. gcc, not g++ or nvcc, performs the final link, and it does not know where cudart lives.
 if(NOT IS_DIRECTORY "${CMAKE_CUDA_COMPILER_TOOLKIT_LIBRARY_ROOT}/lib64")
@@ -205,3 +206,5 @@ foreach(mc_source IN LISTS mc_bench_sources)
   mc_link_game(mc_bench_${mc_name})
   set_target_properties(mc_bench_${mc_name} PROPERTIES OUTPUT_NAME "bench_${mc_name}")
 endforeach()
+
+include(cmake/hardening.cmake)

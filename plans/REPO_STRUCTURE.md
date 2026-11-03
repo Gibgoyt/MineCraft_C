@@ -455,7 +455,8 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/cuda/traverse/` | ctest `cuda_traverse`, with an encoder of its own for `world_buffers`' format: known hits, random rays and whole frames against an exact CPU reference in `float64_t`, the coarse pass never overestimating, and Stage 01.3's worlds. Timing on request |
 | `tests/asm/` | NASM kernels against scalar C references |
 | `tests/asm/abi/` | ctest `asm_abi`: every kernel keeps the callee-saved registers and leaves no dirty YMM state, by machine state, not by output |
-| `tests/fuzz/`, `tests/soak/` | Fuzzing and long runs (Stage 18.1) |
+| `tests/fuzz/` | Coverage-guided fuzzers of our own, sanitize preset only: `support` (the fuzzer), `yaml`, `png`, `save`, each also a 20 s ctest `fuzz_<name>`, and `planted`, ctest `fuzz_planted`, that it finds what is there (Stage 18.1) |
+| `tests/soak/` | The program `soak`, of every preset, run by hand for hours: the threaded game and the built program with `--headless`, again and again on the same worlds (Stage 18.1) |
 
 Tests need no server and no display, and run under `timeout`.
 
@@ -475,6 +476,7 @@ tools/test-or-build.sh cmake --build --preset debug
 | `cmake/flags.cmake` | Flags per language and preset |
 | `cmake/generated.cmake` | Custom commands for tables and textures |
 | `cmake/targets.cmake` | `mc_asm`, `mc_cuda`, `mc_run`, `minecraft_c`, tools, tests, benchmarks; all found by path. Also runs `struct_offsets`, which `mc_asm` waits for |
+| `cmake/hardening.cmake` | The targets of `tests/fuzz/` and `tests/soak/`, which discovery leaves out |
 | `cmake/check_link.cmake` | Fails the build if `minecraft_c` needs a library the standard does not allow, or has an executable stack |
 | `cmake/standards_lint.cmake` | Runs the lint before anything else compiles, runs the recursion check on every preset, and registers ctests `standards_lint` and `clang_format` |
 | `cmake/check_format.cmake` | Run by ctest `clang_format`: fails if any C or CUDA file does not match `.clang-format` |
@@ -500,7 +502,7 @@ Presets: `debug`, `sanitize`, `tsan`, `release`, `profile`. Output goes to `buil
 | `bench/**/index.c` | Target `mc_bench_<name>` and program `bin/bench_<name>`, the path with `/` as `_`, linked like a game test. Not a ctest |
 | `tests/**/index.c` | Target `mc_test_<name>` and ctest `<name>`, the path with `/` as `_`: `tests/run/world/section/` is `run_world_section` |
 
-Under `tests/`, nothing in `harness/`, `fuzz/`, `soak/` or any `fixtures/` directory is registered as a test.
+Under `tests/`, nothing in `harness/`, `fuzz/`, `soak/` or any `fixtures/` directory is registered as a test by discovery. `cmake/hardening.cmake` registers the fuzzers itself.
 
 A `test.cmake` next to a test's `index.c` may set `MC_TEST_NAME`, `MC_TEST_ARGS`, `MC_TEST_LIBS` and `MC_TEST_TIMEOUT`,
 and may call `add_test` for more runs. A step that has to run before anything compiles, such as the lint, is added with
