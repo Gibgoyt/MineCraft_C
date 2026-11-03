@@ -67,6 +67,8 @@ The Before column is from reading the code as it stood, not from running it.
 Appended as they land:
 
 - `0d1b098` Failure handling: a lost or hung card saves the world and exits 9, a pulled device pauses play, a full disk is said on the screen and holds nobody, and a VT switch during a load is answered at once.
+- `6019af7` Record the failure handling commit in its stage file.
+- `abd0923` Move what the failure tests share into a fixture to keep the file under the split limit, and record the full suite and sanitizer results for failure handling.
 
 ## Issues found
 
