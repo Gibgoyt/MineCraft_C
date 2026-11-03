@@ -40,6 +40,10 @@ The HUD, all game screens, menus and settings work, including render distance in
 
 Appended as they land:
 
+- `f7940b7` Show a new field of view behind the Settings screen, hold menu flags to what settings can hold, split input out of game, and repair the format and region count the merges broke.
+- `6554ef6` Merge the integration branch, with game_settle split out as well to keep game under the size for splitting.
+- `afed598` Record the Phase 14 gate check, and let the sanitize preset build and run_render_frame wait for real pictures.
+
 ## Issues found
 
 Gate check of 2026-11-03, from a clean build of the integration branch at `28f1566`, merged up to `ff8d27b` along the way. Each is written up in its stage file.
