@@ -83,7 +83,9 @@ typedef struct traverse_world_t {
     world_buffers_window_t window;         /* 16 */
     const device_block_t *borrowed_shapes; /* 40: shape_count traverse_shape_t, by material, or nullptr */
     uint32_t shape_count;                  /* 48 */
-    uint8_t _pad0[4];                      /* 52 */
+    /* 52: as a storage height, no block in any column of the window is at or above this, so a ray rising past it has met all it will
+     * meet, without asking each column it crosses. 0 for not known. It may be high, and never low. */
+    uint32_t top_limit;
 } traverse_world_t;
 static_assert(sizeof(traverse_world_t) == 56);
 static_assert(alignof(traverse_world_t) == 8);
@@ -92,7 +94,7 @@ static_assert(offsetof(traverse_world_t, borrowed_pool) == 8);
 static_assert(offsetof(traverse_world_t, window) == 16);
 static_assert(offsetof(traverse_world_t, borrowed_shapes) == 40);
 static_assert(offsetof(traverse_world_t, shape_count) == 48);
-static_assert(offsetof(traverse_world_t, _pad0) == 52);
+static_assert(offsetof(traverse_world_t, top_limit) == 52);
 
 /* The eye is a whole block and a fraction, so that a ray is computed relative to the eye and is as exact at x = 10000000 as at
  * the origin. width and height are the size being rendered, which may be below the display's: Stage 01.3's fallback. For

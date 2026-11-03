@@ -400,6 +400,7 @@ static void frame_settings_apply(render_frame_t *frame) {
 
 void render_frame_features_set(render_frame_t *frame, uint32_t features) {
     frame->scene.features = features & SHADE_FEATURES_EVERY;
+    frame->temporal.sun_apart = (features & SHADE_FEATURE_SUN_APART) != 0u ? 1u : 0u;
     frame_settings_apply(frame);
 }
 
@@ -438,6 +439,7 @@ gpu_status_t render_frame_draw(render_frame_t *frame, const world_buffers_t *buf
         .window = buffers->window,
         .borrowed_shapes = (frame->scene.features & SHADE_FEATURE_SHAPES) != 0u ? frame->borrowed_shapes : nullptr,
         .shape_count = BLOCK_COUNT,
+        .top_limit = buffers->top_limit,
     };
     entity_rays_scene_t entities;
     if (frame->borrowed_entities != nullptr) {

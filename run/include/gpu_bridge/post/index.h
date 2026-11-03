@@ -90,7 +90,8 @@ typedef struct post_temporal_t {
     uint32_t frame;                              /* 128: counts every frame drawn, so that nothing random repeats */
     uint8_t ao_valid;                            /* 132: the last frame wrote borrowed_ao_last */
     uint8_t history_valid;                       /* 133: the last frame wrote borrowed_history_last */
-    uint8_t _pad0[2];                            /* 134 */
+    uint8_t sun_apart;                           /* 134: see SHADE_FEATURE_SUN_APART */
+    uint8_t _pad0[1];                            /* 135 */
 } post_temporal_t;
 static_assert(sizeof(post_temporal_t) == 136);
 static_assert(alignof(post_temporal_t) == 8);
@@ -105,7 +106,8 @@ static_assert(offsetof(post_temporal_t, shaft_colour) == 116);
 static_assert(offsetof(post_temporal_t, frame) == 128);
 static_assert(offsetof(post_temporal_t, ao_valid) == 132);
 static_assert(offsetof(post_temporal_t, history_valid) == 133);
-static_assert(offsetof(post_temporal_t, _pad0) == 134);
+static_assert(offsetof(post_temporal_t, sun_apart) == 134);
+static_assert(offsetof(post_temporal_t, _pad0) == 135);
 
 enum : uint32_t {
     /* How many frames the jitter takes to come back to where it was. */

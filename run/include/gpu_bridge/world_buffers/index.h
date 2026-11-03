@@ -82,16 +82,25 @@ enum : uint32_t {
     WORLD_BUFFERS_SECTION_BYTES_UNIFORM = 24u,
 };
 
+enum : uint32_t {
+    /* A square of this many columns each way, on the world's own grid, has one top: a power of 2. */
+    WORLD_BUFFERS_REGION_COLUMNS = 8u,
+    WORLD_BUFFERS_REGION_SHIFT = 3u,
+};
+static_assert(WORLD_BUFFERS_REGION_COLUMNS == 1u << WORLD_BUFFERS_REGION_SHIFT);
+
 /* One slot of the toroidal table, on the card and in the host's copy. All zero is a slot with no column. A stride of four
  * cache lines, so that a slot's address is a shift. */
 typedef struct world_buffers_column_t {
-    uint64_t section_mask;                            /* 0: one bit per section with bytes in the pool */
-    int32_t chunk_x;                                  /* 8 */
-    int32_t chunk_y;                                  /* 12 */
-    uint32_t generation;                              /* 16: the map's, for the load this describes */
-    int16_t top_z;                                    /* 20: no block above this, so a ray above it leaves the column */
-    uint8_t ready;                                    /* 22: 1 if a column is here */
-    uint8_t _pad0[1];                                 /* 23 */
+    uint64_t section_mask; /* 0: one bit per section with bytes in the pool */
+    int32_t chunk_x;       /* 8 */
+    int32_t chunk_y;       /* 12 */
+    uint32_t generation;   /* 16: the map's, for the load this describes */
+    int16_t top_z;         /* 20: no block above this, so a ray above it leaves the column */
+    uint8_t ready;         /* 22: 1 if a column is here */
+    /* 23: in sections of height, one above the highest block of the WORLD_BUFFERS_REGION_COLUMNS square of columns this one is in: a ray over this
+     * crosses the whole square in a step. 0 for not known. It may be high, and never low. See world_buffers_region_note. */
+    uint8_t region_top;
     uint32_t sections[WORLD_BUFFERS_COLUMN_SECTIONS]; /* 24: 0 for none, or 1 + the section's granule in the pool */
     uint8_t _pad1[40];                                /* 216 */
 } world_buffers_column_t;
@@ -103,7 +112,7 @@ static_assert(offsetof(world_buffers_column_t, chunk_y) == 12);
 static_assert(offsetof(world_buffers_column_t, generation) == 16);
 static_assert(offsetof(world_buffers_column_t, top_z) == 20);
 static_assert(offsetof(world_buffers_column_t, ready) == 22);
-static_assert(offsetof(world_buffers_column_t, _pad0) == 23);
+static_assert(offsetof(world_buffers_column_t, region_top) == 23);
 static_assert(offsetof(world_buffers_column_t, sections) == 24);
 static_assert(offsetof(world_buffers_column_t, _pad1) == 216);
 
@@ -162,7 +171,10 @@ typedef struct world_buffers_t {
     uint64_t pool_bytes;                     /* 120: a whole number of pages */
     uint64_t slab_bytes;                     /* 128: held by sections, slack included */
     uint64_t flush_bytes;                    /* 136: sent to the card's table so far */
-    uint64_t pool_full_count;                /* 144: writes refused for lack of a slab */
+    uint32_t pool_full_count;                /* 144: writes refused for lack of a slab */
+    /* 148: traverse_world_t.top_limit: over every column_set since init, the highest. It never comes down, as finding that out would take
+     * a walk of the table, and a limit too high costs only some steps. */
+    uint32_t top_limit;
     uint32_t class_pages[WORLD_BUFFERS_CLASS_COUNT]; /* 152: per class, a list of pages with room */
     uint32_t free_pages;                             /* 200: a list of pages given back */
     uint32_t page_count;                             /* 204 */
@@ -189,6 +201,7 @@ static_assert(offsetof(world_buffers_t, pool_bytes) == 120);
 static_assert(offsetof(world_buffers_t, slab_bytes) == 128);
 static_assert(offsetof(world_buffers_t, flush_bytes) == 136);
 static_assert(offsetof(world_buffers_t, pool_full_count) == 144);
+static_assert(offsetof(world_buffers_t, top_limit) == 148);
 static_assert(offsetof(world_buffers_t, class_pages) == 152);
 static_assert(offsetof(world_buffers_t, free_pages) == 200);
 static_assert(offsetof(world_buffers_t, page_count) == 204);
@@ -257,6 +270,11 @@ void world_buffers_set_window(world_buffers_t *buffers, world_buffers_window_t w
  * the pool, since the new load starts all air. Nothing reaches the card until world_buffers_flush. */
 void world_buffers_column_set(world_buffers_t *buffers, uint32_t slot, int32_t chunk_x, int32_t chunk_y,
                               uint32_t generation, int16_t top_z);
+
+/* The column now in a slot may have changed its square's top, so this brings that top up to date in every column of the square that is here, as
+ * no column can see that alone. Costs a look at each of them, and a column's worth of the table for each that changes. Without it, a square has
+ * no top, which is safe, and costs a ray a step per column. */
+void world_buffers_region_note(world_buffers_t *buffers, uint32_t slot);
 
 /* No column there any more. Its sections go back to the pool. */
 void world_buffers_column_clear(world_buffers_t *buffers, uint32_t slot);

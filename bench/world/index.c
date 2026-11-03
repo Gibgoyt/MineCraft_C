@@ -204,13 +204,15 @@ static_assert(sizeof(bench_result_t) == 312);
 
 /* What the command line asked for. */
 typedef struct bench_options_t {
-    const char *only;   /* 0: rows whose name holds this */
-    const char *record; /* 8: the history to add to */
-    const char *label;  /* 16: says what was being measured, in that history */
-    const char *trace;  /* 24: a profile of the one row */
-    const char *shots;  /* 32: a picture of the end of each row goes here */
+    const char *only;      /* 0: rows whose name holds this */
+    const char *record;    /* 8: the history to add to */
+    const char *label;     /* 16: says what was being measured, in that history */
+    const char *trace;     /* 24: a profile of the one row */
+    const char *shots;     /* 32: a picture of the end of each row goes here */
+    uint32_t features_off; /* 40: SHADE_FEATURE_* to take away, to see what each costs */
+    uint8_t _pad0[4];      /* 44 */
 } bench_options_t;
-static_assert(sizeof(bench_options_t) == 40);
+static_assert(sizeof(bench_options_t) == 48);
 
 typedef struct bench_t {
     heap_region_t owned_memory;                   /* 0 */
@@ -950,7 +952,7 @@ static bool bench_row(bench_t *bench, const bench_row_t *row, const bench_option
     const game_config_t config = {.render_distance = row->render_distance,
                                   .width = BENCH_WIDTH,
                                   .height = BENCH_HEIGHT,
-                                  .features_off = (uint16_t)SHADE_FEATURE_DAY_CYCLE,
+                                  .features_off = (uint16_t)((uint32_t)SHADE_FEATURE_DAY_CYCLE | options->features_off),
                                   .god_rays = row->god_rays,
                                   .uncapped = row->mode == BENCH_MODE_LIVE ? 1u : 0u};
     const int64_t opening_ns = time_now_ns();
@@ -1083,7 +1085,8 @@ static void bench_usage(const char *program) {
     fprintf(stderr,
             "usage: %s [--only <text>] [--record <file>] [--label <text>] [--shots <dir>] [--trace <file>] "
             "[--list]\n"
-            "  --only <text>    only the rows whose name holds this\n"
+            "  --only <text>    only the rows whose name holds this, or =<name> for just that row\n"
+            "  --features-off <hex>  take these SHADE_FEATURE_* bits away, to see what each costs\n"
             "  --record <file>  add a line per row to this history: bench/world/history.tsv is the repository's\n"
             "  --label <text>   says what was measured, in the history: no tabs\n"
             "  --shots <dir>    write the last picture of each row here, as a PNG\n"
@@ -1095,6 +1098,9 @@ static void bench_usage(const char *program) {
 }
 
 static bool bench_row_chosen(uint32_t row, const char *only) {
+    if (only != nullptr && only[0] == '=') {
+        return strcmp(BENCH_ROW_LIST[row].name, only + 1) == 0;
+    }
     return only == nullptr || strstr(BENCH_ROW_LIST[row].name, only) != nullptr;
 }
 
@@ -1187,6 +1193,9 @@ static bool bench_parse(int32_t argc, char **argv, bench_options_t *out, bool *o
         const bool has_value = i + 1 < argc;
         if (strcmp(argv[i], "--list") == 0) {
             *out_list = true;
+        } else if (strcmp(argv[i], "--features-off") == 0 && has_value) {
+            i++;
+            out->features_off = (uint32_t)strtoul(argv[i], nullptr, 16);
         } else if (strcmp(argv[i], "--only") == 0 && has_value) {
             out->only = argv[++i];
         } else if (strcmp(argv[i], "--record") == 0 && has_value) {

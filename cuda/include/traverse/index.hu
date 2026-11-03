@@ -23,7 +23,8 @@ typedef struct traverse_view_t {
     uint32_t columns_wide;                        /* 48 */
     uint32_t window_blocks;                       /* 52 */
     uint32_t max_steps;                           /* 56: see traverse_view_from for why this is enough */
-    uint32_t shape_count;                         /* 60 */
+    uint16_t shape_count;                         /* 60 */
+    uint16_t top_limit;                           /* 62: see traverse_world_t; TRAVERSE_HEIGHT_BLOCKS when not known */
 } traverse_view_t;
 static_assert(sizeof(traverse_view_t) == 64);
 static_assert(alignof(traverse_view_t) == 8);
@@ -282,6 +283,8 @@ static __device__ __forceinline__ void traverse_trace(const traverse_view_t *vie
     const int32_t window_x = view->window_min_block[0], window_y = view->window_min_block[1];
     const uint32_t width = view->window_blocks;
     const int32_t height = (int32_t)TRAVERSE_HEIGHT_BLOCKS;
+    /* A rising ray at this height has only sky left. A falling one needs no number here: it leaves by the floor. */
+    const int32_t gone_at = dz > 0.0F ? (int32_t)view->top_limit : height;
 
     /* Clip to the window, from the eye: its planes are whole numbers relative to the eye cell, so nothing is lost. */
     const float32_t ax = ((float32_t)(window_x - ex) - fx) * ix,
@@ -303,6 +306,7 @@ static __device__ __forceinline__ void traverse_trace(const traverse_view_t *vie
     int32_t cached_section = -1, cached_brick = -1;
     const world_buffers_column_t *column = nullptr;
     int32_t column_top = 0;
+    int32_t region_top = height;
     uint64_t column_mask = 0u;
     const uint8_t *encoded = nullptr;
     world_buffers_section_t header = {};
@@ -311,7 +315,7 @@ static __device__ __forceinline__ void traverse_trace(const traverse_view_t *vie
     uint32_t steps = 0u;
     for (; steps < view->max_steps; steps += 1u) {
         if (((uint32_t)(x - window_x) >= width) | ((uint32_t)(y - window_y) >= width) |
-            ((uint32_t)z >= (uint32_t)height)) {
+            ((uint32_t)z >= (uint32_t)gone_at)) {
             traverse_hit_missed(steps, false, hit);
             return;
         }
@@ -320,14 +324,22 @@ static __device__ __forceinline__ void traverse_trace(const traverse_view_t *vie
             column = &view->borrowed_table[slot];
             column_top = traverse_column_top(column, x >> 4, y >> 4);
             column_mask = column->section_mask;
+            /* A slot holding another column has no say about this place. */
+            region_top = column_top != 0 && column->region_top != 0u ? (int32_t)column->region_top << 4 : height;
             cached_slot = slot;
             cached_section = -1;
         }
         int32_t shift = 4;
         int32_t z_low, z_high;
         if (z >= column_top) {
-            /* Above everything in this column: the node goes up to the top of the world, the early exit for sky rays. */
-            z_low = column_top;
+            /* Above everything in this column: the node goes up to the top of the world, the early exit for sky rays. Above its whole
+             * square as well, the node is the whole square, for a ray that goes a long way low over the ground. */
+            if (z >= region_top) {
+                shift = (int32_t)WORLD_BUFFERS_REGION_SHIFT + 4;
+                z_low = region_top;
+            } else {
+                z_low = column_top;
+            }
             z_high = height;
         } else {
             const int32_t section_z = z >> 4;
@@ -388,20 +400,17 @@ static __device__ __forceinline__ void traverse_trace(const traverse_view_t *vie
         const int32_t x_min = dx > 0.0F ? x : x_low, x_max = dx > 0.0F ? x_high - 1 : x;
         const int32_t y_min = dy > 0.0F ? y : y_low, y_max = dy > 0.0F ? y_high - 1 : y;
         const int32_t z_min = dz > 0.0F ? z : z_low, z_max = dz > 0.0F ? z_high - 1 : z;
-        int32_t next_x, next_y, next_z;
-        if (tx <= ty && tx <= tz) {
-            next_x = dx > 0.0F ? x_high : x_low - 1;
-            next_y = traverse_clamp((int32_t)floorf(fy + dy * tx) + ey, y_min, y_max);
-            next_z = traverse_clamp((int32_t)floorf(fz + dz * tx) + ez, z_min, z_max);
-        } else if (ty <= tz) {
-            next_x = traverse_clamp((int32_t)floorf(fx + dx * ty) + ex, x_min, x_max);
-            next_y = dy > 0.0F ? y_high : y_low - 1;
-            next_z = traverse_clamp((int32_t)floorf(fz + dz * ty) + ez, z_min, z_max);
-        } else {
-            next_x = traverse_clamp((int32_t)floorf(fx + dx * tz) + ex, x_min, x_max);
-            next_y = traverse_clamp((int32_t)floorf(fy + dy * tz) + ey, y_min, y_max);
-            next_z = dz > 0.0F ? z_high : z_low - 1;
-        }
+        /* Every coordinate worked out, and one kept, with no branch on which axis: rays of a warp that part here would each run their
+         * own side while the others wait, on every step. See the phase 17 stage 3 file. */
+        const bool step_x = tx <= ty && tx <= tz;
+        const bool step_y = !step_x && ty <= tz;
+        const float32_t t_step = step_x ? tx : (step_y ? ty : tz);
+        const int32_t along_x = traverse_clamp((int32_t)floorf(fx + dx * t_step) + ex, x_min, x_max);
+        const int32_t along_y = traverse_clamp((int32_t)floorf(fy + dy * t_step) + ey, y_min, y_max);
+        const int32_t along_z = traverse_clamp((int32_t)floorf(fz + dz * t_step) + ez, z_min, z_max);
+        const int32_t next_x = step_x ? (dx > 0.0F ? x_high : x_low - 1) : along_x;
+        const int32_t next_y = step_y ? (dy > 0.0F ? y_high : y_low - 1) : along_y;
+        const int32_t next_z = !step_x && !step_y ? (dz > 0.0F ? z_high : z_low - 1) : along_z;
         x = next_x;
         y = next_y;
         z = next_z;
@@ -449,7 +458,10 @@ static inline gpu_status_t traverse_view_from(gpu_error_t *error, const traverse
     view->columns_wide = window->side;
     view->window_blocks = (uint32_t)blocks;
     view->max_steps = (uint32_t)(blocks * 2u) + 2u * TRAVERSE_HEIGHT_BLOCKS + 16u;
-    view->shape_count = world->borrowed_shapes != nullptr ? world->shape_count : 0u;
+    view->shape_count = world->borrowed_shapes != nullptr ? (uint16_t)world->shape_count : (uint16_t)0u;
+    view->top_limit = world->top_limit != 0u && world->top_limit < TRAVERSE_HEIGHT_BLOCKS
+                          ? (uint16_t)world->top_limit
+                          : (uint16_t)TRAVERSE_HEIGHT_BLOCKS;
     return GPU_STATUS_OK;
 }
 

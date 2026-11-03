@@ -65,6 +65,10 @@ enum : uint32_t {
     SHADE_FEATURE_OUTLINE =
         1u << 14,                 /* what is aimed at has an outline, and what is being mined its crack, or neither */
     SHADE_FEATURE_LOD = 1u << 15, /* the world goes on past full detail in coarse grids, or stops there */
+    /* To render_frame_features_set only, and past that post_temporal_t.sun_apart, as it is no effect that shows: a last surface's sun ray has a
+     * kernel of its own, even with AO off: the same picture, for less time, and the hits block then ends up holding those surfaces. No setting
+     * turns this off. What wants the frame's own hits afterwards, a test that holds them to something, leaves it out. */
+    SHADE_FEATURE_SUN_APART = 1u << 16,
     /* What a picture is drawn with on its own, from nothing: no frame of these reads what the last one left. What render_frame_init
      * starts with, and so what a test that wants one exact picture gets. */
     SHADE_FEATURES_ALL = SHADE_FEATURE_SHAPES | SHADE_FEATURE_ALPHA | SHADE_FEATURE_SKY | SHADE_FEATURE_DAY_CYCLE |
@@ -129,6 +133,77 @@ enum : uint32_t {
 #define SHADE_WATER_ABSORB_SUN F32(0.10)
 /* Past this many blocks of water nothing behind it can be told from none, so a ray with tint on looks no further. */
 #define SHADE_WATER_SEEN_BLOCKS F32(48.0)
+
+#ifdef __CUDA_ARCH__
+#define SHADE_TABLE static __constant__ const
+#else
+#define SHADE_TABLE static const
+#endif
+
+/* powf costs more than most of a surface's other arithmetic, and a surface asks it three times for its colour and twice for its light,
+ * of a value that can only be one of these. The numbers are what this card's powf gives, printed as they are, so that a picture stays what
+ * it was to the bit: the phase 17 stage 3 file has what that saved. run_gpu_bridge's shade test holds them to the functions they stand for. */
+SHADE_TABLE float32_t SHADE_SRGB_BYTE[256] = {
+    F32(0x0p+0),         F32(0x1.3e4568p-12), F32(0x1.3e4568p-11), F32(0x1.dd681cp-11), F32(0x1.3e4568p-10),
+    F32(0x1.8dd6c2p-10), F32(0x1.dd681cp-10), F32(0x1.167cbap-9),  F32(0x1.3e4568p-9),  F32(0x1.660e16p-9),
+    F32(0x1.8dd6c2p-9),  F32(0x1.b6a31ap-9),  F32(0x1.e1e31ap-9),  F32(0x1.07c38cp-8),  F32(0x1.1fcc2cp-8),
+    F32(0x1.390ffap-8),  F32(0x1.53936ep-8),  F32(0x1.6f5adep-8),  F32(0x1.8c6a92p-8),  F32(0x1.aac6c2p-8),
+    F32(0x1.ca7382p-8),  F32(0x1.eb74ep-8),   F32(0x1.06e76ap-7),  F32(0x1.18c2a4p-7),  F32(0x1.2b4e06p-7),
+    F32(0x1.3e8b7cp-7),  F32(0x1.527cd6p-7),  F32(0x1.6723eep-7),  F32(0x1.7c8292p-7),  F32(0x1.929a86p-7),
+    F32(0x1.a96d8ep-7),  F32(0x1.c0fd62p-7),  F32(0x1.d94bbep-7),  F32(0x1.f25a44p-7),  F32(0x1.06155p-6),
+    F32(0x1.135f3ep-6),  F32(0x1.210bb6p-6),  F32(0x1.2f1b8ap-6),  F32(0x1.3d8f84p-6),  F32(0x1.4c6866p-6),
+    F32(0x1.5ba6fap-6),  F32(0x1.6b4c02p-6),  F32(0x1.7b584p-6),   F32(0x1.8bcc72p-6),  F32(0x1.9ca954p-6),
+    F32(0x1.adefaap-6),  F32(0x1.bfa02p-6),   F32(0x1.d1bb72p-6),  F32(0x1.e44258p-6),  F32(0x1.f73582p-6),
+    F32(0x1.054ad2p-5),  F32(0x1.0f31b8p-5),  F32(0x1.194fccp-5),  F32(0x1.23a55ep-5),  F32(0x1.2e32c6p-5),
+    F32(0x1.38f85cp-5),  F32(0x1.43f678p-5),  F32(0x1.4f2d64p-5),  F32(0x1.5a9d76p-5),  F32(0x1.664702p-5),
+    F32(0x1.722a56p-5),  F32(0x1.7e47c6p-5),  F32(0x1.8a9fa2p-5),  F32(0x1.973238p-5),  F32(0x1.a3ffdep-5),
+    F32(0x1.b108d4p-5),  F32(0x1.be4d6ep-5),  F32(0x1.cbcdfcp-5),  F32(0x1.d98ac8p-5),  F32(0x1.e7841ep-5),
+    F32(0x1.f5ba52p-5),  F32(0x1.0216cep-4),  F32(0x1.096f2ap-4),  F32(0x1.10e66p-4),   F32(0x1.187c94p-4),
+    F32(0x1.2031ecp-4),  F32(0x1.28068ap-4),  F32(0x1.2ffa94p-4),  F32(0x1.380e2cp-4),  F32(0x1.404176p-4),
+    F32(0x1.489496p-4),  F32(0x1.5107aep-4),  F32(0x1.599aep-4),   F32(0x1.624e5p-4),   F32(0x1.6b2224p-4),
+    F32(0x1.741676p-4),  F32(0x1.7d2b6ap-4),  F32(0x1.866124p-4),  F32(0x1.8fb7c4p-4),  F32(0x1.992f6cp-4),
+    F32(0x1.a2c83ep-4),  F32(0x1.ac825ap-4),  F32(0x1.b65ddep-4),  F32(0x1.c05aeep-4),  F32(0x1.ca79aap-4),
+    F32(0x1.d4ba32p-4),  F32(0x1.df1ca4p-4),  F32(0x1.e9a122p-4),  F32(0x1.f447dp-4),   F32(0x1.ff10c2p-4),
+    F32(0x1.04fe0ep-3),  F32(0x1.0a85p-3),    F32(0x1.101d46p-3),  F32(0x1.15c6fp-3),   F32(0x1.1b820ap-3),
+    F32(0x1.214ea8p-3),  F32(0x1.272cd6p-3),  F32(0x1.2d1ca2p-3),  F32(0x1.331e2p-3),   F32(0x1.39315ap-3),
+    F32(0x1.3f566p-3),   F32(0x1.458d46p-3),  F32(0x1.4bd612p-3),  F32(0x1.5230d8p-3),  F32(0x1.589dap-3),
+    F32(0x1.5f1c82p-3),  F32(0x1.65ad8ap-3),  F32(0x1.6c50c2p-3),  F32(0x1.73063cp-3),  F32(0x1.79ce06p-3),
+    F32(0x1.80a82cp-3),  F32(0x1.8794bep-3),  F32(0x1.8e93c8p-3),  F32(0x1.95a55cp-3),  F32(0x1.9cc984p-3),
+    F32(0x1.a4004ep-3),  F32(0x1.ab49ccp-3),  F32(0x1.b2a606p-3),  F32(0x1.ba1516p-3),  F32(0x1.c196f8p-3),
+    F32(0x1.c92bcp-3),   F32(0x1.d0d37ep-3),  F32(0x1.d88e4p-3),   F32(0x1.e05c18p-3),  F32(0x1.e83d08p-3),
+    F32(0x1.f0312p-3),   F32(0x1.f8387p-3),   F32(0x1.002984p-2),  F32(0x1.044078p-2),  F32(0x1.08611ap-2),
+    F32(0x1.0c8b74p-2),  F32(0x1.10bf8ap-2),  F32(0x1.14fd64p-2),  F32(0x1.194506p-2),  F32(0x1.1d967ap-2),
+    F32(0x1.21f1c2p-2),  F32(0x1.2656e8p-2),  F32(0x1.2ac5fp-2),   F32(0x1.2f3ee2p-2),  F32(0x1.33c1c4p-2),
+    F32(0x1.384e9cp-2),  F32(0x1.3ce56ep-2),  F32(0x1.418644p-2),  F32(0x1.463124p-2),  F32(0x1.4ae61p-2),
+    F32(0x1.4fa512p-2),  F32(0x1.546e3p-2),   F32(0x1.59416ep-2),  F32(0x1.5e1ed4p-2),  F32(0x1.630666p-2),
+    F32(0x1.67f83p-2),   F32(0x1.6cf43p-2),   F32(0x1.71fa6ep-2),  F32(0x1.770af2p-2),  F32(0x1.7c25cp-2),
+    F32(0x1.814ae2p-2),  F32(0x1.867a5ap-2),  F32(0x1.8bb42ep-2),  F32(0x1.90f866p-2),  F32(0x1.964706p-2),
+    F32(0x1.9ba016p-2),  F32(0x1.a10398p-2),  F32(0x1.a67198p-2),  F32(0x1.abea14p-2),  F32(0x1.b16d1ap-2),
+    F32(0x1.b6faa8p-2),  F32(0x1.bc92cap-2),  F32(0x1.c23582p-2),  F32(0x1.c7e2d6p-2),  F32(0x1.cd9acep-2),
+    F32(0x1.d35d6cp-2),  F32(0x1.d92abap-2),  F32(0x1.df02bap-2),  F32(0x1.e4e574p-2),  F32(0x1.ead2ecp-2),
+    F32(0x1.f0cb28p-2),  F32(0x1.f6ce2ep-2),  F32(0x1.fcdc04p-2),  F32(0x1.017a5ap-1),  F32(0x1.048c1cp-1),
+    F32(0x1.07a34ep-1),  F32(0x1.0abff2p-1),  F32(0x1.0de20cp-1),  F32(0x1.11099ep-1),  F32(0x1.1436acp-1),
+    F32(0x1.176936p-1),  F32(0x1.1aa14p-1),   F32(0x1.1ddecep-1),  F32(0x1.2121e2p-1),  F32(0x1.246a7cp-1),
+    F32(0x1.27b8a2p-1),  F32(0x1.2b0c56p-1),  F32(0x1.2e659ap-1),  F32(0x1.31c472p-1),  F32(0x1.3528dep-1),
+    F32(0x1.3892e2p-1),  F32(0x1.3c0282p-1),  F32(0x1.3f77bep-1),  F32(0x1.42f29cp-1),  F32(0x1.46731cp-1),
+    F32(0x1.49f94p-1),   F32(0x1.4d850cp-1),  F32(0x1.511684p-1),  F32(0x1.54ada6p-1),  F32(0x1.584a7ap-1),
+    F32(0x1.5becfep-1),  F32(0x1.5f953cp-1),  F32(0x1.63432ep-1),  F32(0x1.66f6d8p-1),  F32(0x1.6ab04p-1),
+    F32(0x1.6e6f66p-1),  F32(0x1.72344cp-1),  F32(0x1.75fef8p-1),  F32(0x1.79cf68p-1),  F32(0x1.7da5a4p-1),
+    F32(0x1.8181a8p-1),  F32(0x1.85637cp-1),  F32(0x1.894b2p-1),   F32(0x1.8d3896p-1),  F32(0x1.912be2p-1),
+    F32(0x1.952504p-1),  F32(0x1.992402p-1),  F32(0x1.9d28dcp-1),  F32(0x1.a13396p-1),  F32(0x1.a5443p-1),
+    F32(0x1.a95aaep-1),  F32(0x1.ad7714p-1),  F32(0x1.b19962p-1),  F32(0x1.b5c19ap-1),  F32(0x1.b9efcp-1),
+    F32(0x1.be23d8p-1),  F32(0x1.c25ddcp-1),  F32(0x1.c69ddep-1),  F32(0x1.cae3d2p-1),  F32(0x1.cf2fc6p-1),
+    F32(0x1.d381acp-1),  F32(0x1.d7d99ap-1),  F32(0x1.dc377ep-1),  F32(0x1.e09b7p-1),   F32(0x1.e5055ep-1),
+    F32(0x1.e9755cp-1),  F32(0x1.edeb5cp-1),  F32(0x1.f2677p-1),   F32(0x1.f6e98cp-1),  F32(0x1.fb71cp-1),
+    F32(0x1p+0),
+};
+/* 0.8 to the power of 15 - level: see shade_sky_level. */
+SHADE_TABLE float32_t SHADE_LEVEL_LIGHT[16] = {
+    F32(0x1.203afep-5), F32(0x1.6849bep-5), F32(0x1.c25c2cp-5), F32(0x1.19799cp-4),
+    F32(0x1.5fd802p-4), F32(0x1.b7ce02p-4), F32(0x1.12e0cp-3),  F32(0x1.5798fp-3),
+    F32(0x1.ad7f2cp-3), F32(0x1.0c6f7cp-2), F32(0x1.4f8b5ap-2), F32(0x1.a36e3p-2),
+    F32(0x1.0624dep-1), F32(0x1.47ae16p-1), F32(0x1.99999ap-1), F32(0x1p+0),
+};
 
 /* What a kernel needs of one texture, from its entry in the blob. */
 typedef struct shade_texture_t {
@@ -224,8 +299,10 @@ static inline uint64_t shade_pixels_bytes(uint32_t width, uint32_t height) {
     return (uint64_t)width * height * sizeof(shade_pixel_t);
 }
 
+/* A pixel's shade_ao_pixel_t, then behind them all a uint32_t per pixel and one more: a list of the pixels with nothing to go on, and how long it
+ * is, for one frame, so that their rays run together: see cuda/src/shade/README.md. */
 static inline uint64_t shade_ao_bytes(uint32_t width, uint32_t height) {
-    return (uint64_t)width * height * sizeof(shade_ao_pixel_t);
+    return (uint64_t)width * height * (sizeof(shade_ao_pixel_t) + sizeof(uint32_t)) + sizeof(uint32_t);
 }
 
 /* Whether this is a pixel's frame to send its AO ray. By groups of 8 by 4 pixels and not pixel by pixel, because that is a warp of a
@@ -337,17 +414,11 @@ SHADE_BOTH_SIDES static inline float32_t shade_face_towards(uint32_t face, const
 /* A stored level of 0 to 15 as light: each step down is 0.8 of the one above, so a level of 15 is exactly 1. Sky light of 0 is
  * still a little, as a cave is not pitch black; block light of 0 is none, or a world with no torch would pay for one. */
 SHADE_BOTH_SIDES static inline float32_t shade_sky_level(uint32_t level) {
-    if (level >= SHADE_LIGHT_LEVEL_MAX) {
-        return F32(1.0);
-    }
-    return powf(F32(0.8), (float32_t)(SHADE_LIGHT_LEVEL_MAX - level));
+    return SHADE_LEVEL_LIGHT[level >= SHADE_LIGHT_LEVEL_MAX ? SHADE_LIGHT_LEVEL_MAX : level];
 }
 
 SHADE_BOTH_SIDES static inline float32_t shade_block_level(uint32_t level) {
-    if (level == 0u) {
-        return F32(0.0);
-    }
-    return level >= SHADE_LIGHT_LEVEL_MAX ? F32(1.0) : powf(F32(0.8), (float32_t)(SHADE_LIGHT_LEVEL_MAX - level));
+    return level == 0u ? F32(0.0) : shade_sky_level(level);
 }
 
 /* How much of the sun a voxel with this stored light may get before asking a ray: none, where no sky light reaches. */
@@ -366,6 +437,16 @@ SHADE_BOTH_SIDES static inline void shade_surface_light_near(const shade_sun_t *
     for (uint32_t i = 0u; i < 3u; i += 1u) {
         out[i] = brightness * (sun->ambient[i] * sky + sun->block[i] * block) * visible +
                  sun->direct[i] * towards * sun_seen;
+    }
+}
+
+/* Of that, the part AO takes from: what comes out for a visible of 1, with no sun. */
+SHADE_BOTH_SIDES static inline void shade_surface_light_stored(const shade_sun_t *sun, uint32_t face, uint32_t stored,
+                                                               float32_t out[3]) {
+    const float32_t brightness = shade_face_brightness(face);
+    const float32_t sky = shade_sky_level(stored >> 4), block = shade_block_level(stored & 15u);
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        out[i] = brightness * (sun->ambient[i] * sky + sun->block[i] * block);
     }
 }
 
@@ -456,6 +537,11 @@ SHADE_BOTH_SIDES static inline float32_t shade_srgb_to_linear(float32_t encoded)
     return powf((encoded + F32(0.055)) / F32(1.055), F32(2.4));
 }
 
+/* The same for a texel's byte, which is all a kernel ever has: see SHADE_SRGB_BYTE. */
+SHADE_BOTH_SIDES static inline float32_t shade_srgb_byte(uint32_t byte) {
+    return SHADE_SRGB_BYTE[byte];
+}
+
 /* How long a camera's pixel is, per block of distance: see traverse_camera_t for what up carries. */
 SHADE_BOTH_SIDES static inline float32_t shade_pixel_tangent(const traverse_camera_t *camera) {
     const float32_t squared =
@@ -501,7 +587,7 @@ SHADE_BOTH_SIDES static inline void shade_far_colour(const shade_sun_t *sun, con
     const float32_t share = reflect && !in_water ? shade_water_fresnel(cosine) : F32(0.0);
     const float32_t cover = in_water ? F32(0.0) : (float32_t)mean_rgba[3] / F32(255.0);
     for (uint32_t i = 0u; i < 3u; i += 1u) {
-        const float32_t mean = shade_srgb_to_linear((float32_t)mean_rgba[i] / F32(255.0));
+        const float32_t mean = shade_srgb_byte(mean_rgba[i]);
         const float32_t own = deep_water ? mean * cover + deep[i] * (F32(1.0) - cover) : mean;
         out[i] = own * light[i] * (F32(1.0) - share) + sky[i] * share;
     }
@@ -534,7 +620,7 @@ SHADE_BOTH_SIDES static inline bool shade_own_kind_behind(uint32_t last_material
 
 /* One colour per pixel of hits, into pixels, each row after row at the camera's size. A ray that lands on a texel of alpha 0 goes
  * on through world, which must be the one the hits came from, as one does through glass and water. post is the same sky and fog
- * post_frame is about to use: what shows behind glass, and in water, is shaded here. Starts a kernel and returns; it runs in order
+ * post_frame is about to use: what shows behind glass, and in water, is shaded here. Starts its kernels and returns; they run in order
  * with any other. Nothing here allocates. On failure error says why, and nothing was started. */
 gpu_status_t shade_frame(gpu_error_t *error, const shade_scene_t *scene, const post_settings_t *post,
                          const traverse_world_t *world, const traverse_camera_t *camera, const device_block_t *hits,

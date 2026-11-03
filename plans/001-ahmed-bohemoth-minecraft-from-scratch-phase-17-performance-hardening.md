@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 17: Performance hardening
 
-**Status:** not started   (updated 2026-11-01)
+**Status:** done   (updated 2026-11-03)
 
 ## Goal
 
@@ -16,10 +16,10 @@ The game is profiled and tuned, and the plan's target table is filled in with me
 
 ## Todo
 
-- [ ] Stage 17.1: Profiler
-- [ ] Stage 17.2: Benchmark worlds
-- [ ] Stage 17.3: Top-cost pass
-- [ ] Phase gate passed
+- [x] Stage 17.1: Profiler
+- [x] Stage 17.2: Benchmark worlds
+- [x] Stage 17.3: Top-cost pass
+- [x] Phase gate passed: the table is filled in with measured numbers, and two misses are stated plainly below
 
 ## Verification
 
@@ -29,10 +29,23 @@ The game is profiled and tuned, and the plan's target table is filled in with me
     tools/test-or-build.sh timeout 600 build/profile/bin/bench_world
     pgrep -a minecraft_c    # must print nothing
 
+## The plan's section 2 targets, as measured
+
+2026-11-03, on this machine, at 1920 by 1080, with the desktop on the same card, under the build lock. The evidence and every before and after are in the stage 3 file. **These are misses: 120 fps on `deep_ocean/orbit`, by 0.21 ms, and the sim tick and terrain once a hot CPU is held down.**
+
+| Metric | Target | Measured | |
+|---|---|---|---|
+| Frame rate at 1080p, render distance 32, all effects | 120 FPS (8.33 ms) | 11 of 12 rows. Slowest `deep_ocean/orbit` **117.0 fps, 8.54 ms**; next `jungle/orbit` 123.5. With god rays 143.6. Before this phase's pass: 5 of 12, slowest 34 to 37 | **MISSED** on one row, by 2.5% |
+| Render distance setting | 2 to 512 chunks | 2 runs. 128: 152.2 fps live. 512: 109.6 fps | met |
+| Terrain | ≥ 1000 columns/s on 16 workers | Slowest place, `jungle`: **1080** from a cool CPU, release preset. **707** straight after other runs, profile preset | met cool, **MISSED hot** |
+| Sim tick at 100 mobs | ≤ 5 ms of the 50 ms budget | Whole game, p99: **3.0 to 4.0 ms** in 8 runs of 9 in a row, and **9.0** in the 9th, with the CPU held down. Mobs alone, `bench_mobs`: 1.72 at worst | met cool, **MISSED held down** |
+| Allocations during play | 0 calls to the OS heap in hot paths | 0 in all 14 rows | met |
+| VRAM | ≤ 6 GiB voxels, 256 MiB textures, 256 MiB frame buffers | 2164 MiB voxels at most, 2 MiB textures, 220 MiB frames | met |
+
 ## Commits
 
 Appended as they land:
 
 ## Issues found
 
-None.
+See each stage's. The one that reaches past its stage: **the machine's own CPU heat decides whether two of these targets are met**: Stage 17.3 issue 1.

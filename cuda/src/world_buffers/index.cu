@@ -252,7 +252,52 @@ void world_buffers_column_set(world_buffers_t *buffers, uint32_t slot, int32_t c
     column->generation = generation;
     column->top_z = top_z;
     column->ready = 1u;
+    /* Until world_buffers_region_note says: what it held was another column's square. */
+    column->region_top = 0u;
+    /* One above it, as a storage height: 1 at the least, as 0 means not known. */
+    const int32_t above = (int32_t)top_z + (int32_t)WORLD_BUFFERS_Z_ORIGIN + 1;
+    if (above > 0 && (uint32_t)above > buffers->top_limit) {
+        buffers->top_limit = (uint32_t)above;
+    } else if (buffers->top_limit == 0u) {
+        buffers->top_limit = 1u;
+    }
     world_buffers_mark(buffers, slot);
+}
+
+void world_buffers_region_note(world_buffers_t *buffers, uint32_t slot) {
+    const world_buffers_column_t *const own = &buffers->borrowed_shadow[slot];
+    const int32_t region_mask = (int32_t)WORLD_BUFFERS_REGION_COLUMNS - 1;
+    const int32_t first_x = own->chunk_x & ~region_mask, first_y = own->chunk_y & ~region_mask;
+    int32_t highest = 0;
+    uint32_t slots[WORLD_BUFFERS_REGION_COLUMNS * WORLD_BUFFERS_REGION_COLUMNS];
+    uint32_t count = 0u;
+    for (uint32_t dy = 0u; dy < WORLD_BUFFERS_REGION_COLUMNS; dy++) {
+        for (uint32_t dx = 0u; dx < WORLD_BUFFERS_REGION_COLUMNS; dx++) {
+            const int32_t chunk_x = first_x + (int32_t)dx, chunk_y = first_y + (int32_t)dy;
+            uint32_t other = 0u;
+            if (!world_buffers_slot_of(&buffers->window, chunk_x, chunk_y, &other)) {
+                continue;
+            }
+            const world_buffers_column_t *const column = &buffers->borrowed_shadow[other];
+            if (column->ready == 0u || column->chunk_x != chunk_x || column->chunk_y != chunk_y) {
+                continue;
+            }
+            const int32_t above = (int32_t)column->top_z + (int32_t)WORLD_BUFFERS_Z_ORIGIN + 1;
+            highest = above > highest ? above : highest;
+            slots[count] = other;
+            count++;
+        }
+    }
+    /* Up to whole sections, and past nothing it could hold. */
+    const int32_t sections = (highest + 15) >> 4;
+    const uint8_t top = (uint8_t)(sections < 1 ? 1 : (sections > (int32_t)UINT8_MAX ? (int32_t)UINT8_MAX : sections));
+    for (uint32_t i = 0u; i < count; i++) {
+        world_buffers_column_t *const column = &buffers->borrowed_shadow[slots[i]];
+        if (column->region_top != top) {
+            column->region_top = top;
+            world_buffers_mark(buffers, slots[i]);
+        }
+    }
 }
 
 void world_buffers_column_clear(world_buffers_t *buffers, uint32_t slot) {

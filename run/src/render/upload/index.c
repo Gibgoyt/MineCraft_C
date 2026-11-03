@@ -70,6 +70,13 @@ static void upload_table_apply(render_upload_t *upload, const world_edit_snapsho
             world_buffers_column_clear(buffers, slot);
         }
     }
+    /* After all of them, as a square's top is about its neighbours as well. A column that changed is the one with no top now. */
+    for (uint32_t slot = 0; slot < view->slot_count; slot++) {
+        const world_buffers_column_t *const column = &buffers->borrowed_shadow[slot];
+        if (column->ready != 0u && column->region_top == 0u) {
+            world_buffers_region_note(buffers, slot);
+        }
+    }
 }
 
 /* Workers read the view until each says it is finished, so the next can only be taken once all of this one's are dealt with. */
