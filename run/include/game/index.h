@@ -105,13 +105,16 @@ typedef struct game_t {
     _Atomic uint32_t
         day_units; /* 904: main to gpu and sim: the same, in 1/2^32 of a day, relaxed: the look and whether a bed works depend on it, and neither to the tick */
     _Atomic uint32_t
-        morning_latch; /* 908: sim to main: a night was slept through, so the day goes on from morning; relaxed */
-    uint8_t _pad1[48]; /* 912 */
+        morning_latch;       /* 908: sim to main: a night was slept through, so the day goes on from morning; relaxed */
+    _Atomic uint32_t paused; /* 912: main to sim: no ticks while it is set, and streaming goes on; relaxed */
+    uint8_t _pad1[44];       /* 916 */
     /* A line of its own from here: the gpu thread writes these, and main what is after them. */
     render_camera_t picture_cameras[RENDER_EXCHANGE_SLOTS]; /* 960: what the picture in each slot was drawn from */
     uint8_t _pad2[8];                                       /* 1080 */
-    render_camera_t shown_camera; /* 1088: main's: what borrowed_last_picture was drawn from */
-    uint8_t _pad3[24];            /* 1128 */
+    render_camera_t shown_camera;      /* 1088: main's: what borrowed_last_picture was drawn from */
+    void (*open_alive)(void *context); /* 1128: called now and then during a long game_open; nullptr for nobody */
+    void *borrowed_open_alive_context; /* 1136 */
+    uint8_t _pad3[8];                  /* 1144 */
 } game_t;
 static_assert(sizeof(game_t) == 1152);
 static_assert(alignof(game_t) == MC_CPU_CACHE_LINE_BYTES);
@@ -140,6 +143,10 @@ void game_item_set(game_t *game, item_t *item);
 
 /* Stops whatever is running, and closes any world. Safe on a zeroed game_t. */
 void game_deinit(game_t *game);
+
+/* Someone to tell, from the thread calling it, that a game_open that may take seconds is still going: looking for dry land in an
+ * ocean does. A frame source that opens a world needs this, for vt_guard's watchdog. nullptr for nobody. */
+void game_open_alive_set(game_t *game, void (*alive)(void *context), void *context);
 
 /* Opens a world around the place the eye starts: its map, its blocks on the card, its pictures. On failure logs why, leaves
  * nothing behind and returns false. */
@@ -182,6 +189,19 @@ void game_headless_scene(game_t *game, display_headless_scene_t *out);
  * run, and game_loop_frame by the clock. game_loop_stop still ends it, and says if the threads could not start. */
 void game_loop_source_begin(game_t *game, input_t *input);
 bool game_loop_source(void *context, display_buffer_t *back);
+
+/* What game_loop_source does after the poll and the Esc, for a caller that wants Esc for itself: threads_ensure on each frame
+ * first, then one input_frame_t to the player and the eye, and game_loop_frame by the clock. */
+[[nodiscard]] bool game_loop_threads_ensure(game_t *game);
+[[nodiscard]] bool game_loop_input_frame(game_t *game, const input_frame_t *frame, display_buffer_t *back);
+
+/* Walking: nothing is held and no button is down, as far as the sim's next tick knows. The thread that owns input. */
+void game_loop_input_clear(game_t *game);
+
+/* Stops the world's clock, or starts it again: no ticks and no time of day, while columns go on streaming so that a pause does
+ * not leave holes. A caller that pauses does not call game_loop_frame, or the headless scene's tick, until it is over. The time
+ * in between does not count as time spent, since the last frame's clock starts again here. */
+void game_pause_set(game_t *game, bool paused);
 
 /* What display_frames_run calls on coming back from another VT, with a game_t * as context: nothing typed there counts here. */
 void game_loop_discard(void *context);
