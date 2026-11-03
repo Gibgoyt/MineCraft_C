@@ -1325,9 +1325,18 @@ TEST(the_real_threads_draw_what_one_thread_draws_with_nothing_from_the_heap) {
     heap_counters_t before = {0};
     uint32_t same = 0u;
     int64_t started_ns = time_now_ns();
+    uint64_t pictures = game->pictures_shown;
     for (;;) {
         REQUIRE(game_loop_frame(game, &still, 1.0f32 / 120.0f32, &target));
-        same = memcmp(screen, last, bytes) == 0 ? same + 1u : 0u;
+        /* Only a new picture says anything, and only once the sim has no more columns to come: on a loaded machine, frames can be the same for
+         * seconds because nothing has been drawn. The sim's word is read only to wait, as its last word comes round again. */
+        const bool quiet = __atomic_load_n(&game->stream_quiet, __ATOMIC_RELAXED) != 0u;
+        if (!quiet) {
+            same = 0u;
+        } else if (game->pictures_shown != pictures) {
+            same = memcmp(screen, last, bytes) == 0 ? same + 1u : 0u;
+        }
+        pictures = game->pictures_shown;
         memcpy(last, screen, bytes);
         if (same == 200u) {
             heap_counters_read(&before);

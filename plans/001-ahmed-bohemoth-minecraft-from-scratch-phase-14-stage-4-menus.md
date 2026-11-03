@@ -69,3 +69,8 @@ A menu no one can reach is not one, and `run/src/main/README.md` said the menu w
 **4. Settings is a disabled button.** Stage 14.5's screen did not exist when this was done. It should call `ui_menu_settings_enable` and answer `UI_MENU_ACTION_SETTINGS` in `game_session_action`, in `run/src/game/session/index.c`. `run_ui_menu` checks the action comes back once enabled.
 
 **5. The HUD and the other game screens are not in the world's frames.** Those are Stages 14.2 and 14.3, in `game_loop_frame` and `game_scene_draw`. What this stage draws goes through `game_session_screen_frame`, on the last picture of those frames, so it goes over whatever they put in the picture only if they draw there. Whoever merges those should check that a pause goes over the HUD or hides it, as they mean to: `borrowed_last_picture` has no HUD in it.
+
+## Phase gate check, 2026-11-03
+
+- Issue 4: closed by Stage 14.5. Settings is enabled by `game_session_settings_set`, in both ways of running.
+- Issue 5, which asked for a check: a pause goes over the picture with no HUD in it, because `borrowed_last_picture` is the picture before the HUD. So the HUD goes away while paused, and comes back on Resume. Seen in `pause_after_2.png`. Left that way, since nothing in the plan asks for it to show. Ahmed may prefer it dimmed.
