@@ -52,4 +52,16 @@ The Settings button, on the main screen or a pause, brings up `run/src/ui/screen
 
 ## Saving
 
-Each world opened has its files opened first, `save_open` on `<saves>/<directory>`, with the seed in `world.meta`, and one it refuses is not opened: the session fails with why in the log, and the files stay as they were. Closing a world saves all it has changed, before `game_close`, and a save that fails makes the session's exit a failure. See `run/src/save/world/README.md`. Saves during play are Stage 16.2's.
+Each world opened has its files opened first, `save_open` on `<saves>/<directory>`, with the seed in `world.meta`, and one it refuses is not opened: the session fails with why in the log, and the files stay as they were. Closing a world saves all it has changed, before `game_close`, and a save that fails at the end of a run makes the session's exit a failure. See `run/src/save/world/README.md`. Saves during play are Stage 16.2's.
+
+## When things go away
+
+**The disk fills.** Saves go on failing where a person can see it: the HUD and the pause screen say so. Quit to Title saves first, with the threads stopped. If that fails the world stays open on the pause screen, which says why and offers Leave Unsaved, as a person can make room from another VT and quit again, or Resume and play on. Nobody is held there, and nothing is lost unless they say so. Leave Unsaved is no failure: it is what they chose. A run ended from outside, by a signal or the display going, gets one try with nobody to ask, and a failure says so in the log and the exit status.
+
+**A keyboard or mouse goes.** `game_session_devices_look`, each frame. A world with a person in it pauses, as what they held has just been let go of and they may have no way to reach Esc, and the screen says which device has gone until one is back. Coming back ends the words and not the pause: that is for a person to do, with the hands they have now. On the menus it only says so.
+
+**The card goes.** The run ends through `failed`, the world is saved as it closes, and the log says what happened once the console can show it. See `run/src/game/README.md`. If it went by hanging, the world is left open for `main`'s `_exit`.
+
+**The display goes.** `display_frames_run` stops with its error and `game_session_run` closes the world as always, so it is saved, and the exit is 7.
+
+**Another VT is asked for while a world opens.** `game_session_open_alive` answers at once, inside the long frame: see `display_vt_guard_long_work`. Opening goes on, on the other VT's time, as it touches no display. If the person has come back by the end of the frame it flips as usual, and if not nothing goes to the card until they do. What was typed meanwhile is thrown away on the way back, whichever way it went.

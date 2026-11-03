@@ -106,6 +106,13 @@ void ui_hud_draw(const ui_hud_t *hud, ui_canvas_t *canvas, const ui_font_t *font
 /* The frames per second and each stage's time, on a dark panel at the top left. No allocation. */
 void ui_hud_debug_draw(ui_canvas_t *canvas, const ui_font_t *font, const ui_hud_debug_t *debug);
 
+enum : uint32_t {
+    UI_HUD_NOTICE_BYTES = 64u, /* with its NUL */
+};
+
+/* One line in red across the top of the canvas, of something a person playing needs to know and has no other way to learn. */
+void ui_hud_notice_draw(ui_canvas_t *canvas, const ui_font_t *font, const char *text);
+
 /* Where that panel lies on a canvas of this size, which nothing else in the overlay goes outside. */
 ui_rect_t ui_hud_debug_panel(uint32_t canvas_width, uint32_t canvas_height);
 

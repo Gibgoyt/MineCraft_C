@@ -10,6 +10,7 @@ parts it starts: `events`, `discovery`. `ops` is a table and needs no starting.
 
 - `input_init`, `input_deinit`: a pair. `_init` logs what it found; no devices is a warning, since one may yet be plugged in.
 - `input_poll`: the frame since the last poll. Never blocks, allocates or logs, so it can run while the console is dark.
+- `input_kinds_now`: which kinds of device are plugged in now, for whoever must stop a world when the last one goes.
 - `input_report`: logs what the polls counted. For after the console is back.
 - `input_cursor_move`: moves a position by a frame's mouse movement, inside a rectangle.
 - `input_test_pattern_cursor`: what `--test-pattern` draws its cursor square from. Esc ends the run; holding a key or button changes the square's colour.
@@ -38,3 +39,7 @@ emergency exit reads the keyboards for itself, in another process, and uses noth
 Nothing here is polled while another VT is showing, but the evdev queues go on filling. What they hold on the way back was typed
 at something else, so `input_test_pattern_discard` takes it in without acting on it: an Esc pressed in X does not end the run. It
 reads it because the state of what is held has to stay right, and it keeps nothing else.
+
+## A device pulled out
+
+A read that says anything but "nothing yet" is a device gone: `input_discovery_lost` lets go of whatever it held, in that same frame, closes it, and looks again soon. A node coming back is picked up by inotify. `game/session` looks at `input_kinds_now` each frame, and stops a world with a person in it when a kind has gone: see `run/src/game/session/README.md`. The emergency exit has its own keyboards, and looks for them again by itself: see `display/vt_guard`.

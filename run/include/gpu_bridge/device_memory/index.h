@@ -95,7 +95,8 @@ typedef struct device_memory_t {
     char device_name[64];                          /* 192: what the driver calls the card */
     int32_t device_count;                          /* 256: int32_t because the runtime asks for one by pointer */
     uint8_t open;                                  /* 260 */
-    uint8_t _pad0[3];                              /* 261 */
+    uint8_t lost;                                  /* 261: the card has gone, and what it held went with it */
+    uint8_t _pad0[2];                              /* 262 */
 } device_memory_t;
 static_assert(sizeof(device_memory_t) == 264);
 static_assert(alignof(device_memory_t) == 8);
@@ -112,7 +113,8 @@ static_assert(offsetof(device_memory_t, last_error) == 160);
 static_assert(offsetof(device_memory_t, device_name) == 192);
 static_assert(offsetof(device_memory_t, device_count) == 256);
 static_assert(offsetof(device_memory_t, open) == 260);
-static_assert(offsetof(device_memory_t, _pad0) == 261);
+static_assert(offsetof(device_memory_t, lost) == 261);
+static_assert(offsetof(device_memory_t, _pad0) == 262);
 
 /* Finds the card and starts CUDA, which takes a good fraction of a second the first time in a process. records is borrowed
  * and must outlive this, and its capacity is the most blocks that can be live at once. Takes no device memory. On failure
@@ -148,9 +150,19 @@ gpu_status_t device_memory_zero(device_memory_t *memory, const device_block_t *b
  * compares, and frees it. So a card that cannot run what the build compiled for it fails here, and not in the first frame. */
 gpu_status_t device_memory_self_check(device_memory_t *memory);
 
-/* The table from the runtime's error numbers to our statuses. 0 is OK. Public so that a test can read it, since a card
- * will not fault on request. */
+/* The table from the runtime's error numbers to our statuses. 0 is OK. Public so that a test can read it, as a card will
+ * make only some of these on request. */
 gpu_status_t device_memory_status_from_cuda(int32_t cuda_code);
+
+/* The card has gone: GPU_STATUS_DEVICE_LOST came back from somewhere. Every block counts as given back from now on, as nothing can
+ * free what the driver will take with this process, and asking again would only say the same thing for each of them. */
+void device_memory_lost_set(device_memory_t *memory);
+
+/* Makes this process's context on the card fault for real, by a kernel that writes where no memory is, and waits for what the runtime
+ * says of it: GPU_STATUS_DEVICE_LOST, in last_error, and in every call from then on. It takes only this process's context with it: the
+ * kernel's log gets a line for it, and the desktop on the same card goes on. For --pretend-gpu-lost and tests. There is no way back but
+ * to end the process. */
+gpu_status_t device_memory_fault_now(device_memory_t *memory);
 
 #ifdef __cplusplus
 }

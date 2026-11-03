@@ -12,6 +12,8 @@
 - `save_autosave_request`: a column cannot leave until there is room for it.
 - `save_autosave_finish`: all of it now, as a world closes.
 - `save_autosave_interval_set`: a test's way in.
+- `save_autosave_resume`: goes on after a `save_autosave_finish` that failed, with the world staying open.
+- `save_autosave_trouble`: what the disk said to the last save, for a person to read, or nullptr.
 
 **May be called by:** `save`, and `game`.
 **Depends on:** `save/world`, `save/state`, `job`, `time`, `log`, `assert`.
@@ -32,6 +34,8 @@ Until the job has finished the sim starts no other and leaves the image and the 
 ## When the disk says no
 
 The game goes on, it says so once, and it keeps what it has: the set that failed is held, and its readers still see it. The same set and the same image go again at the next interval, so that they stay one moment. Nothing is written more often than that while the disk is refusing, even if something has asked.
+
+A log is nothing a person at a console can read, so `save_autosave_trouble` says it too: the HUD has it in a band across the top while it lasts, and the pause screen says it. As a world closes, `save_autosave_finish` fails the same way, and `game/session` keeps the world open: see `run/src/game/session/README.md`. Whatever had got as far as a temporary file is removed, so a failed save gives back the room it took, and once a person has made room the next interval takes all of it. `tests/run/failure/` does this on a disk that is really full.
 
 ## Only one writer
 

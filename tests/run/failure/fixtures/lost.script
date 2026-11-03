@@ -1,0 +1,18 @@
+# Worked out by hand from the layout in run/src/ui/menu/index.c, at 640 by 480, as tests/run/ui/menu/fixtures/flow.script is.
+# The pointer starts in the middle, at 320, 240, once tick 0 has shown it the canvas.
+
+1 move 0 -40                    # 320, 200: Singleplayer
++1 button left down
++1 button left up
+
++1 move 132 196                 # 452, 396: Create New World
++1 button left down
++1 button left up
++1 key f down
++1 key f up
++1 key enter down               # opens the world, between this tick and the next
++1 key enter up
+
+# --pretend-gpu-lost goes off in here, and the run stops at that picture.
++10 key w down
++10 key w up

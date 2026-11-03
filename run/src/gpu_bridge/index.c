@@ -69,7 +69,8 @@ void gpu_bridge_deinit(gpu_bridge_t *bridge) {
 
 bool gpu_bridge_exit_check(const gpu_bridge_t *bridge) {
     const device_memory_t *const memory = &bridge->device_memory;
-    if (memory->open == 0 || memory->live_blocks == 0u) {
+    /* With the card gone they are the driver's, and no bug: a run that stopped in the middle of things need not have given back what it could not. */
+    if (memory->open == 0 || memory->lost != 0u || memory->live_blocks == 0u) {
         return true;
     }
     for (uint64_t i = 0; i < memory->record_capacity; i++) {

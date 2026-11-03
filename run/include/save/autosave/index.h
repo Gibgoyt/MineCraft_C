@@ -38,7 +38,8 @@ typedef struct save_autosave_t {
     int64_t capture_ns_most;      /* 144: the longest the sim gave one */
     int64_t write_ns_most;        /* 152: the longest a worker gave one: the worker's, read under writing */
     uint8_t outstanding;          /* 160: a write has been handed over, and what it said has not been looked at */
-    uint8_t _pad0[31];            /* 161 */
+    _Atomic uint8_t trouble; /* 161: worker to anyone, relaxed: 0, or 1 + the file_status_t the last write came to */
+    uint8_t _pad0[30];       /* 162 */
 } save_autosave_t;
 static_assert(sizeof(save_autosave_t) == 192);
 static_assert(alignof(save_autosave_t) == MC_CPU_CACHE_LINE_BYTES);
@@ -61,7 +62,8 @@ static_assert(offsetof(save_autosave_t, saves_failed) == 136);
 static_assert(offsetof(save_autosave_t, capture_ns_most) == 144);
 static_assert(offsetof(save_autosave_t, write_ns_most) == 152);
 static_assert(offsetof(save_autosave_t, outstanding) == 160);
-static_assert(offsetof(save_autosave_t, _pad0) == 161);
+static_assert(offsetof(save_autosave_t, trouble) == 161);
+static_assert(offsetof(save_autosave_t, _pad0) == 162);
 
 /* From now on saves come every SAVE_AUTOSAVE_INTERVAL_TICKS after this tick, by save_autosave_step. Before the threads start. All must outlive it. */
 void save_autosave_start(save_autosave_t *autosave, job_system_t *job, save_world_t *world, save_state_t *state,
@@ -88,5 +90,12 @@ void save_autosave_step(save_autosave_t *autosave, world_edit_t *edit, const sav
  * SAVE_WORLD_OK has logged why, and what was last saved is as it was. */
 [[nodiscard]] save_world_status_t save_autosave_finish(save_autosave_t *autosave, world_edit_t *edit,
                                                        const save_state_parts_t *parts);
+
+/* Goes on saving after a save_autosave_finish that failed and a world that stays open: what was not written is still held, and goes first. Before the threads
+ * start again. */
+void save_autosave_resume(save_autosave_t *autosave, uint64_t tick);
+
+/* What the disk said to the last save, for a person to read: "disk full" and so on. nullptr if it went well, or none has been tried. From any thread. */
+[[nodiscard]] const char *save_autosave_trouble(const save_autosave_t *autosave);
 
 #endif

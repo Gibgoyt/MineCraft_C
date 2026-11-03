@@ -45,9 +45,17 @@ typedef struct game_session_t {
     uint8_t loading_frames;        /* 108: of the loading screen still to show, under KMS, before a world opens */
     uint8_t settings_up;           /* 109: the Settings screen is what shows, over whichever screen brought it up */
     uint8_t apply_frames;          /* 110: frames until what was changed goes to the world open; 0 for nothing to do */
-    uint8_t save_failed; /* 111: Done has failed to keep them once and said so, so another Done leaves anyway */
+    uint8_t save_failed;   /* 111: Done has failed to keep them once and said so, so another Done leaves anyway */
+    uint8_t input_kinds;   /* 112: INPUT_KIND_*: what was plugged in, last frame */
+    uint8_t kinds_missing; /* 113: INPUT_KIND_*: what has gone, and the screen is saying so until it is back */
+    uint8_t leave_unsaved; /* 114: Leave Unsaved was chosen: what could not be saved is given up */
+    uint8_t world_saved;   /* 115: all of this world is on disk, and closing it has nothing more to save */
+    uint8_t _pad0[4];      /* 116 */
+    display_frame_source_t source; /* 120: under KMS, while it runs: what each frame calls */
+    void *
+        borrowed_source_context; /* 128: and with what. What comes back from another VT is the session's, whatever a test has wrapped around the source */
 } game_session_t;
-static_assert(sizeof(game_session_t) == 112);
+static_assert(sizeof(game_session_t) == 136);
 
 /* Starts on the main screen. All of these must outlive it, game must have its player set, and saves is where worlds live.
  * blank_seed is what a world made with no seed gets. input is nullptr under --headless. */

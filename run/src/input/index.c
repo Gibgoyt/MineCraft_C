@@ -68,6 +68,17 @@ const input_frame_t *input_poll(input_t *input) {
     return input->events.borrowed_frame;
 }
 
+uint8_t input_kinds_now(const input_t *input) {
+    uint8_t kinds = 0u;
+    for (uint32_t i = 0; i < INPUT_DISCOVERY_MAX_DEVICES; i++) {
+        const input_device_t *const device = &input->discovery.borrowed_devices[i];
+        if (device->in_use != 0u) {
+            kinds |= device->kinds;
+        }
+    }
+    return kinds;
+}
+
 void input_report(const input_t *input) {
     if (input->running == 0u) {
         return;

@@ -44,6 +44,7 @@ enum : uint32_t {
     UI_MENU_ID_CANCEL = 10u,
     UI_MENU_ID_RESUME = 11u,
     UI_MENU_ID_TITLE = 12u,
+    UI_MENU_ID_LEAVE_UNSAVED = 13u,
     UI_MENU_ID_ROW = 16u,
 };
 
@@ -101,6 +102,7 @@ void ui_menu_open(ui_menu_t *menu, ui_menu_screen_t screen) {
     ui_widget_t *const widget = menu->borrowed_widget;
     menu->screen = (uint8_t)screen;
     menu->message[0] = '\0';
+    menu->leave_offered = 0u;
     widget->focus_id = 0u;
     switch (screen) {
     case UI_MENU_SCREEN_SELECT:
@@ -118,6 +120,10 @@ void ui_menu_open(ui_menu_t *menu, ui_menu_screen_t screen) {
     case UI_MENU_SCREEN_LOADING:
         break;
     }
+}
+
+void ui_menu_leave_offer(ui_menu_t *menu) {
+    menu->leave_offered = 1u;
 }
 
 void ui_menu_message_set(ui_menu_t *menu, const char *text) {
@@ -191,6 +197,7 @@ static ui_menu_action_t ui_menu_main_frame(ui_menu_t *menu) {
     const bool settings = ui_widget_button(widget, UI_MENU_ID_SETTINGS, ui_menu_button_rect(menu, top, 1), "Settings",
                                            menu->settings_enabled != 0u);
     const bool quit = ui_widget_button(widget, UI_MENU_ID_QUIT, ui_menu_button_rect(menu, top, 2), "Quit Game", true);
+    ui_menu_message_draw(menu, ui_menu_button_rect(menu, top, 3).y);
     if (singleplayer) {
         ui_menu_open(menu, UI_MENU_SCREEN_SELECT);
     }
@@ -360,6 +367,13 @@ static ui_menu_action_t ui_menu_pause_frame(ui_menu_t *menu, bool escape) {
                                            menu->settings_enabled != 0u);
     const bool title =
         ui_widget_button(widget, UI_MENU_ID_TITLE, ui_menu_button_rect(menu, top, 2), "Quit to Title", true);
+    const bool offered = menu->leave_offered != 0u;
+    const bool leave = offered && ui_widget_button(widget, UI_MENU_ID_LEAVE_UNSAVED, ui_menu_button_rect(menu, top, 3),
+                                                   "Leave Unsaved", true);
+    ui_menu_message_draw(menu, ui_menu_button_rect(menu, top, offered ? 4 : 3).y);
+    if (leave) {
+        return UI_MENU_ACTION_LEAVE_UNSAVED;
+    }
     if (title) {
         return UI_MENU_ACTION_QUIT_TO_TITLE;
     }

@@ -2,6 +2,7 @@
 #include "save/autosave/index.h"
 
 #include "assert/index.h"
+#include "file/index.h"
 #include "log/index.h"
 #include "time/index.h"
 
@@ -34,13 +35,41 @@ void save_autosave_stop(save_autosave_t *autosave) {
     autosave->started = 0u;
 }
 
+void save_autosave_resume(save_autosave_t *autosave, uint64_t tick) {
+    ASSERT_ALWAYS(autosave->started == 0u);
+    job_group_init(&autosave->group);
+    autosave->requested = 0u;
+    autosave->retry = 0u;
+    autosave->outstanding = 0u;
+    autosave->next_tick = tick + autosave->interval_ticks;
+    autosave->started = 1u;
+}
+
 void save_autosave_request(save_autosave_t *autosave) {
     autosave->requested = 1u;
+}
+
+const char *save_autosave_trouble(const save_autosave_t *autosave) {
+    const uint8_t trouble = atomic_load_explicit(&autosave->trouble, memory_order_relaxed);
+    return trouble == 0u ? nullptr : file_status_name((file_status_t)(trouble - 1u));
+}
+
+/* Whichever of the two refused, as the first to refuse is the last to have been asked. Only ever a failure of a write this thread has just made. */
+static void save_autosave_trouble_note(save_autosave_t *autosave, save_world_status_t status) {
+    uint8_t trouble = 0u;
+    if (status != SAVE_WORLD_OK) {
+        const uint8_t said = autosave->borrowed_state->file_status != FILE_OK ? autosave->borrowed_state->file_status
+                                                                              : autosave->borrowed_world->file_status;
+        trouble = (uint8_t)(1u + (said != FILE_OK ? said : (uint8_t)FILE_ERROR_IO));
+    }
+    atomic_store_explicit(&autosave->trouble, trouble, memory_order_relaxed);
 }
 
 /* The state goes first, under the name of the save it goes with. The manifest's rename then makes both of them the world at once: see the README. */
 static save_world_status_t save_autosave_write(save_world_t *world, save_state_t *state, uint64_t generation,
                                                bool has_blocks) {
+    world->file_status = FILE_OK;
+    state->file_status = FILE_OK;
     const save_world_status_t stated = save_state_write(state, generation);
     if (stated != SAVE_WORLD_OK || !has_blocks) {
         return stated;
@@ -69,6 +98,7 @@ static void save_autosave_job(job_worker_t *worker, void *borrowed_argument) {
     } else {
         autosave->saves_failed++;
     }
+    save_autosave_trouble_note(autosave, status);
     atomic_store_explicit(&autosave->written_status, status, memory_order_relaxed);
     atomic_store_explicit(&autosave->writing, 0u, memory_order_release);
 }
@@ -151,6 +181,7 @@ save_world_status_t save_autosave_finish(save_autosave_t *autosave, world_edit_t
         const bool has_blocks = save_world_commit_begin(world);
         const save_world_status_t written =
             save_autosave_write(world, state, world->generation + (has_blocks ? 1u : 0u), has_blocks);
+        save_autosave_trouble_note(autosave, written);
         if (written != SAVE_WORLD_OK) {
             autosave->saves_failed++;
             return written;

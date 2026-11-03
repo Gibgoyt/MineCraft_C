@@ -984,7 +984,10 @@ TEST(the_keys_mean_nothing_while_another_vt_is_showing) {
     CHECK(WIFEXITED(status));
     CHECK_EQ_I64(WEXITSTATUS(status), RIG_CHILD_FINE);
     CHECK_EQ_U64(rig_count(rig, VT_ACTIVATE, 2u), 0u);
-    CHECK_EQ_U64(rig_count(rig, KDSETMODE, KD_TEXT), 1u);
+    /* With another VT showing the console is not taken at all until ours is back (Stage 18.2), so nothing was asked to go back to text either, and the emergency keys
+     * did not end it. */
+    CHECK_EQ_U64(rig_count(rig, KDSETMODE, KD_GRAPHICS), 0u);
+    CHECK_EQ_U64(rig_count(rig, KDSETMODE, KD_TEXT), 0u);
 }
 
 TEST(ctrl_alt_f_asks_for_that_vt_but_not_our_own) {

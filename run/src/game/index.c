@@ -13,6 +13,7 @@
 
 #include <inttypes.h>
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 enum : uint64_t {
@@ -28,6 +29,9 @@ enum : uint64_t {
 enum : int64_t {
     GAME_SIM_IDLE_NS = 1000000, /* the sim looks for finished columns this often when it has nothing to do */
     GAME_GPU_IDLE_NS = 100000,  /* the gpu thread waits this long for main to take the picture it just made */
+    GAME_GPU_STUCK_NS =
+        10000000000, /* no round of its loop for this long: nothing it does takes a hundredth of that, and a card that hangs may say nothing */
+    GAME_GPU_WATCH_GAP_NS = 1000000000, /* main itself was away this long, on another VT or stopped */
     GAME_COMMIT_BUDGET_NS =
         4000000, /* the most a sim step spends on finished columns, each with its light, past the first */
     GAME_TICK_NS = 1000000000 / MC_GAME_TICK_HZ,
@@ -150,6 +154,84 @@ void game_deinit(game_t *game) {
     game_close(game);
 }
 
+/* ---- When the card goes ------------------------------------------------------------------------------------------- */
+
+void game_gpu_failed_note(game_t *game, gpu_status_t status) {
+    atomic_store_explicit(&game->gpu_failure, (uint32_t)status, memory_order_relaxed);
+    if (status == GPU_STATUS_DEVICE_LOST) {
+        device_memory_lost_set(game->borrowed_render->borrowed_memory);
+    }
+}
+
+bool game_gpu_alive(game_t *game) {
+    if (game->threads_running == 0u || game->gpu_stuck != 0u ||
+        atomic_load_explicit(&game->failed, memory_order_acquire) != 0u) {
+        return game->gpu_stuck == 0u; /* a thread that failed has stopped going round, and has said why */
+    }
+    const int64_t now_ns = time_now_ns();
+    const int64_t gap_ns = now_ns - game->gpu_watched_ns;
+    game->gpu_watched_ns = now_ns;
+    const uint64_t beats = atomic_load_explicit(&game->gpu_beats, memory_order_relaxed);
+    /* If this thread has been away itself, on another VT or stopped, what it did not see proves nothing. */
+    if (beats != game->gpu_beats_seen || gap_ns > GAME_GPU_WATCH_GAP_NS) {
+        game->gpu_beats_seen = beats;
+        game->gpu_beats_seen_ns = now_ns;
+        return true;
+    }
+    if (now_ns - game->gpu_beats_seen_ns <= GAME_GPU_STUCK_NS) {
+        return true;
+    }
+    LOG_ERROR("gpu: the card has not answered for %.1f s, inside a call that has not come back",
+              (libc_double_t)time_ns_to_seconds(now_ns - game->gpu_beats_seen_ns));
+    game->gpu_stuck = 1u;
+    game_gpu_failed_note(game, GPU_STATUS_DEVICE_LOST);
+    atomic_store_explicit(&game->failed, 1u, memory_order_release);
+    return false;
+}
+
+bool game_gpu_lost(const game_t *game) {
+    const render_t *const render = game->borrowed_render;
+    if (render != nullptr && render->borrowed_memory != nullptr && render->borrowed_memory->lost != 0u) {
+        return true;
+    }
+    switch ((gpu_status_t)atomic_load_explicit(&game->gpu_failure, memory_order_relaxed)) {
+    case GPU_STATUS_DEVICE_LOST:
+    case GPU_STATUS_NO_DEVICE:
+    case GPU_STATUS_DRIVER:
+    case GPU_STATUS_CUDA_OTHER:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool game_gpu_stuck(const game_t *game) {
+    return game->gpu_stuck != 0u;
+}
+
+void game_gpu_pretend_set(game_t *game, uint32_t pictures, bool stuck) {
+    game->gpu_pretend_pictures = pictures;
+    game->gpu_pretend_stuck = stuck ? 1u : 0u;
+}
+
+/* What --pretend-gpu-lost asked of this picture. The card's own answer, so everything after this is as it would be. */
+static gpu_status_t game_gpu_pretend_step(game_t *game) {
+    if (game->gpu_pretend_pictures == 0u) {
+        return GPU_STATUS_OK;
+    }
+    game->gpu_pretend_pictures--;
+    if (game->gpu_pretend_pictures != 0u) {
+        return GPU_STATUS_OK;
+    }
+    while (game->gpu_pretend_stuck != 0u) {
+        time_sleep_ns(GAME_GPU_IDLE_NS); /* as a call into a driver that has gone: nothing brings it back */
+    }
+    render_t *const render = game->borrowed_render;
+    const gpu_status_t status = device_memory_fault_now(render->borrowed_memory);
+    render->frame.gpu.last_error = render->borrowed_memory->last_error;
+    return status;
+}
+
 /* ---- Opening and closing a world ---------------------------------------------------------------------------------- */
 
 static void game_arenas_start(game_t *game) {
@@ -216,16 +298,19 @@ static bool game_open_parts(game_t *game, const game_config_t *config, int32_t c
         .sections = RENDER_UPLOAD_BUDGET_SECTIONS_DEFAULT,
         ._pad0 = {0},
     };
+    game_open_alive_tell(game);
     if (render_open(render, &world->snapshot, render_pool_bytes_for(render, world->map.slot_count), budget) !=
         GPU_STATUS_OK) {
         world_close(world);
         return false;
     }
+    game_open_alive_tell(game);
     if (render_open_frame(render, game->borrowed_texture, view->width, view->height, view->fog_end) != GPU_STATUS_OK) {
         render_close(render);
         world_close(world);
         return false;
     }
+    game_open_alive_tell(game);
     if (view->lod.level_count != 0u) {
         const gpu_status_t status = game_lod_open(game, &view->lod);
         if (status != GPU_STATUS_OK) {
@@ -310,9 +395,7 @@ static void game_spawn_find(const game_t *game, const terrain_t *terrain, const 
     *out_x = middle_x;
     *out_y = middle_y;
     for (int32_t ring = 0; ring <= GAME_SPAWN_RINGS; ring++) {
-        if (game->open_alive != nullptr) {
-            game->open_alive(game->borrowed_open_alive_context);
-        }
+        game_open_alive_tell(game);
         for (int32_t dy = -ring; dy <= ring; dy++) {
             /* The inside of a square has been looked at already: only its first and last columns remain on these rows. */
             const int32_t across = dy == -ring || dy == ring ? 1 : (ring == 0 ? 1 : 2 * ring);
@@ -349,6 +432,12 @@ static void game_hud_start(game_t *game) {
 void game_open_alive_set(game_t *game, void (*alive)(void *context), void *context) {
     game->open_alive = alive;
     game->borrowed_open_alive_context = context;
+}
+
+void game_open_alive_tell(const game_t *game) {
+    if (game->open_alive != nullptr) {
+        game->open_alive(game->borrowed_open_alive_context);
+    }
 }
 
 bool game_open(game_t *game, const game_config_t *config) {
@@ -429,6 +518,7 @@ bool game_open(game_t *game, const game_config_t *config) {
         heap_release(&game->owned_region);
         return false;
     }
+    game_open_alive_tell(game);
     game_day_set(game, GAME_DAY_START);
     game_day_apply(game);
     game_hud_start(game);
@@ -594,7 +684,9 @@ bool game_reconfigure(game_t *game, const game_config_t *config) {
     if (running && !game_loop_stop(game)) {
         return false; /* a thread has said why it failed */
     }
+    game_open_alive_tell(game);
     const bool changed = game_view_change(game, &now);
+    game_open_alive_tell(game);
     game->config = *config;
     game->view = now;
     game->view_stale = 1u;
@@ -1373,6 +1465,10 @@ static void game_kernels_note(game_t *game, const frame_timings_t *timings) {
 static gpu_status_t game_frame_draw(game_t *game, const render_camera_t *camera) {
     render_t *const render = game->borrowed_render;
     const render_frame_stats_t before = render->frame.stats;
+    const gpu_status_t pretended = game_gpu_pretend_step(game);
+    if (pretended != GPU_STATUS_OK) {
+        return pretended;
+    }
     PROFILER_BEGIN(game->borrowed_lane_gpu, "frame_draw");
     const gpu_status_t status = render_frame_draw(&render->frame, &render->buffers, camera);
     PROFILER_END(game->borrowed_lane_gpu);
@@ -1411,6 +1507,20 @@ const uint8_t *game_picture_held(game_t *game) {
 
 /* What goes to the screen: picture itself if there is nothing to draw on it, or if the memory for a copy could not be had, as a picture
  * with no HUD is better than none. The copy leaves picture as it was, since it may be shown again. */
+/* Under KMS nobody can read the log, and a person playing on would otherwise find out what the disk has been saying only on leaving. */
+static void game_hud_trouble_draw(game_t *game) {
+    const save_t *const save = game->borrowed_save;
+    if (save == nullptr || save->world.open == 0u) {
+        return;
+    }
+    const char *const trouble = save_autosave_trouble(&save->autosave);
+    if (trouble != nullptr) {
+        char text[UI_HUD_NOTICE_BYTES];
+        (void)snprintf(text, sizeof(text), "Not saving: %s", trouble);
+        ui_hud_notice_draw(&game->borrowed_ui->canvas, &game->borrowed_ui->font, text);
+    }
+}
+
 static const uint8_t *game_hud_compose(game_t *game, const uint8_t *drawn) {
     ui_t *const ui = game->borrowed_ui;
     const bool walking = game->borrowed_player != nullptr;
@@ -1426,6 +1536,7 @@ static const uint8_t *game_hud_compose(game_t *game, const uint8_t *drawn) {
         ui_hud_state_t state;
         game_hud_state_read(game, &state);
         ui_hud_draw(&ui->hud, &ui->canvas, &ui->font, &state);
+        game_hud_trouble_draw(game);
     }
     if (game->hud_debug != 0u) {
         ui_hud_debug_t debug;
@@ -1501,6 +1612,7 @@ static bool game_scene_draw_timed(game_t *game, display_buffer_t *frame) {
     const gpu_status_t status = game_frame_draw(game, &game->camera);
     if (status != GPU_STATUS_OK) {
         gpu_error_log(&render->frame.gpu.last_error);
+        game_gpu_failed_note(game, status);
         return false;
     }
     const uint8_t *const picture = render_frame_take(&render->frame);
@@ -1536,6 +1648,7 @@ bool game_view_refresh(game_t *game) {
             game->view_held = 0u;
             game->shown_camera = game->picture_cameras[render->frame.pictures.front];
         }
+        (void)game_gpu_alive(game); /* it says so, and that is failed */
         return atomic_load_explicit(&game->failed, memory_order_acquire) == 0u;
     }
     if (game->view_stale == 0u) {
@@ -1549,6 +1662,7 @@ bool game_view_refresh(game_t *game) {
     const gpu_status_t status = game_frame_draw(game, &game->camera);
     if (status != GPU_STATUS_OK) {
         gpu_error_log(&render->frame.gpu.last_error);
+        game_gpu_failed_note(game, status);
         return false;
     }
     game->borrowed_last_picture = render_frame_take(&render->frame);
@@ -1592,6 +1706,7 @@ static void game_gpu_thread(void *borrowed_argument) {
     render_t *const render = game->borrowed_render;
     const render_camera_t *camera = &game->camera_slots[game->cameras.front];
     while (atomic_load_explicit(&game->stop, memory_order_acquire) == 0u) {
+        atomic_fetch_add_explicit(&game->gpu_beats, 1u, memory_order_relaxed);
         /* A picture no one has taken yet is plenty: drawing past the display's rate would only heat the card. Uncapped is someone asking for
          * that, for as long as anyone is looking. */
         const bool draw_on = atomic_load_explicit(&game->uncapped, memory_order_relaxed) != 0u &&
@@ -1609,6 +1724,7 @@ static void game_gpu_thread(void *borrowed_argument) {
         PROFILER_END(game->borrowed_lane_gpu);
         if (status != GPU_STATUS_OK) {
             gpu_error_log(&render->buffers.last_error);
+            game_gpu_failed_note(game, status);
             atomic_store_explicit(&game->failed, 1u, memory_order_release);
             return;
         }
@@ -1618,6 +1734,7 @@ static void game_gpu_thread(void *borrowed_argument) {
             status = render_lod_frame(render->borrowed_lod, camera->position);
             PROFILER_END(game->borrowed_lane_gpu);
             if (status != GPU_STATUS_OK) {
+                game_gpu_failed_note(game, status);
                 atomic_store_explicit(&game->failed, 1u, memory_order_release);
                 return; /* it has said why */
             }
@@ -1628,6 +1745,7 @@ static void game_gpu_thread(void *borrowed_argument) {
         status = game_frame_draw(game, camera);
         if (status != GPU_STATUS_OK) {
             gpu_error_log(&render->frame.gpu.last_error);
+            game_gpu_failed_note(game, status);
             atomic_store_explicit(&game->failed, 1u, memory_order_release);
             return;
         }
@@ -1648,6 +1766,9 @@ static bool game_threads_start(game_t *game) {
         game->camera_slots[i] = game->camera;
     }
     atomic_store_explicit(&game->stop, 0u, memory_order_relaxed);
+    game->gpu_beats_seen = atomic_load_explicit(&game->gpu_beats, memory_order_relaxed);
+    game->gpu_beats_seen_ns = time_now_ns();
+    game->gpu_watched_ns = game->gpu_beats_seen_ns;
     game_lanes_threads(game, true);
     if (!thread_start(&game->sim_thread, game->borrowed_topology, THREAD_ROLE_SIM, 0u, game_sim_thread, game)) {
         game_lanes_threads(game, false);
@@ -1706,13 +1827,17 @@ bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t se
         game->hud_present_us = (uint32_t)((time_now_ns() - composed_ns) / 1000);
     }
     PROFILER_END(lane);
+    (void)game_gpu_alive(game); /* it says so, and that is failed */
     return atomic_load_explicit(&game->failed, memory_order_acquire) == 0u;
 }
 
 bool game_loop_stop(game_t *game) {
     atomic_store_explicit(&game->stop, 1u, memory_order_release);
     thread_join(&game->sim_thread);
-    thread_join(&game->gpu_thread);
+    if (game->gpu_stuck == 0u) {
+        thread_join(
+            &game->gpu_thread); /* one that is stuck would never answer, and this would be one more thread stuck */
+    }
     game_lanes_threads(game, false);
     game->threads_running = 0u;
     game->loop_ended_ns = time_now_ns();

@@ -68,6 +68,8 @@ typedef enum main_exit_t : uint8_t {
     MAIN_EXIT_DISPLAY_REFUSED = 6, /* the display is not ours to take: nothing on it was changed */
     MAIN_EXIT_DISPLAY_ERROR = 7,   /* KMS failed partway; the console was given back */
     MAIN_EXIT_HEADLESS = 8,        /* --headless: a bad script, or a screenshot that could not be written */
+    MAIN_EXIT_GPU_LOST =
+        9, /* the card went during the run. The world was saved if the log says so, and the console was given back */
 } main_exit_t;
 
 #endif
