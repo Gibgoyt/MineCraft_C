@@ -243,6 +243,8 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `session` | From the title screen to Quit Game: runs the menus, opens the world chosen, pauses it, closes it. Not in the plan's list: `ui` must not call `game`, and `main` may not hold this much | 14.4 |
 | | `report` | What the HUD shows now and the log's lines at the end of a run. Not in the plan's list: split off at Stage 14.5 for size | 14.5 |
 | | `view` | What a config comes to for what is drawn, and bringing a picture up to the display's size. Not in the plan's list: `game_reconfigure` needs it, and `game` had reached its size for splitting | 14.5 |
+| | `settle` | One thread, until all the eye's place wants is on the card. Not in the plan's list: split off at the Phase 14 gate, as `input` was | 14 gate |
+| | `input` | A poll of real input or a script's tick turned into flying, the body's wishes, the hotbar and the overlay's key. Not in the plan's list: split off at the Phase 14 gate, when `game` passed its size for splitting | 14 gate |
 | `physics` | `collision raycast` | Swept AABB; DDA block targeting | 12.1, 12.2 |
 | `player` | `movement camera` | Walk, jump, swim, look | 12.1, 12.2 |
 | | `combat` | The attack: aim, swing, strength | 15.7 |

@@ -25,9 +25,8 @@ enum : uint64_t {
                              2ull * 4096ull + MOB_SPAWN_BYTES,
 };
 enum : int64_t {
-    GAME_SIM_IDLE_NS = 1000000,  /* the sim looks for finished columns this often when it has nothing to do */
-    GAME_GPU_IDLE_NS = 100000,   /* the gpu thread waits this long for main to take the picture it just made */
-    GAME_SETTLE_IDLE_NS = 50000, /* a run with no threads waits this long for a worker */
+    GAME_SIM_IDLE_NS = 1000000, /* the sim looks for finished columns this often when it has nothing to do */
+    GAME_GPU_IDLE_NS = 100000,  /* the gpu thread waits this long for main to take the picture it just made */
     GAME_COMMIT_BUDGET_NS =
         4000000, /* the most a sim step spends on finished columns, each with its light, past the first */
     GAME_TICK_NS = 1000000000 / MC_GAME_TICK_HZ,
@@ -458,13 +457,22 @@ bool game_reconfigure(game_t *game, const game_config_t *config) {
     ASSERT_ALWAYS(game->open != 0u);
     ASSERT_ALWAYS(config->width == game->config.width && config->height == game->config.height);
     ASSERT_ALWAYS(config->render_distance != 0u && config->render_distance <= MC_GAME_RENDER_DISTANCE_MAX);
-    game->camera.half_fov_tangent = game_view_half_fov_tangent(config->fov_degrees);
+    const float32_t half_fov_tangent = game_view_half_fov_tangent(config->fov_degrees);
+    const bool fov_changed = half_fov_tangent != game->camera.half_fov_tangent;
+    game->camera.half_fov_tangent = half_fov_tangent;
     atomic_store_explicit(&game->uncapped, config->uncapped, memory_order_relaxed);
     game_view_t now;
     const uint32_t table_chunks = game->borrowed_world->map.table_radius - WORLD_MAP_KEEP_EXTRA;
     game_view_work_out(config, table_chunks, &now);
     if (memcmp(&now, &game->view, sizeof(now)) == 0) {
         game->config = *config;
+        /* game_loop_frame is what publishes a camera, and it does not run in a pause, where a person is looking behind the screen for this. */
+        if (fov_changed && game->threads_running != 0u) {
+            game->camera_slots[game->cameras.back] = game->camera;
+            render_exchange_publish(&game->cameras);
+        } else if (fov_changed) {
+            game->view_stale = 1u;
+        }
         return true;
     }
     const bool running = game->threads_running != 0u;
@@ -1105,88 +1113,10 @@ void game_fly(game_t *game, const render_fly_input_t *input, float32_t seconds) 
     game_center_on_eye(game);
 }
 
-void game_walk_send(game_t *game, const render_fly_input_t *input, bool jump, bool sneak, int64_t now_ns) {
-    player_camera_look(&game->camera,
-                       game_view_look_scaled(input->mouse_dx, game->config.sensitivity_percent, &game->look_rest[0]),
-                       game_view_look_scaled(input->mouse_dy, game->config.sensitivity_percent, &game->look_rest[1]));
-    player_look_send(game->borrowed_player, game->camera.yaw, game->camera.pitch);
-    const player_intent_t intent = {.yaw = game->camera.yaw,
-                                    .forward = input->forward,
-                                    .right = input->right,
-                                    .jump = jump ? 1u : 0u,
-                                    .sneak = sneak ? 1u : 0u,
-                                    .sprint = input->fast,
-                                    ._pad0 = {0}};
-    player_send(game->borrowed_player, &intent, now_ns);
-}
-
-void game_hands_send(game_t *game, bool attack, bool place) {
-    player_hands_send(game->borrowed_player, attack, place);
-}
-
-void game_hotbar_send(game_t *game, const bool keys[INVENTORY_HOTBAR_SLOTS], int64_t wheel) {
-    item_t *const item = game->borrowed_item;
-    if (item == nullptr) {
-        return;
-    }
-    for (uint32_t slot = 0u; slot < INVENTORY_HOTBAR_SLOTS; slot++) {
-        if (keys[slot]) {
-            item_hotbar_send(item, slot);
-        }
-    }
-    /* Round the ends comes to the same, so that a wheel never overflows what it goes through. */
-    item_hotbar_scroll_send(item, -(int32_t)(wheel % (int64_t)INVENTORY_HOTBAR_SLOTS));
-}
-
 /* The eye goes where the ticks have got to, by now_ns. */
 static void game_walk_view(game_t *game, int64_t now_ns) {
     player_eye_at(game->borrowed_player, now_ns, game->camera.position);
     game_center_on_eye(game);
-}
-
-/* ---- A run on one thread ------------------------------------------------------------------------------------------ */
-
-/* Whether every section the eye's place wants is on the card, or as much of it as the pool will take. */
-static bool game_is_settled(const game_t *game) {
-    const world_t *const world = game->borrowed_world;
-    const render_t *const render = game->borrowed_render;
-    const world_edit_snapshot_t *const snapshot = &world->snapshot;
-    const bool unread = snapshot->published_count != snapshot->acquired_count + snapshot->overwritten_count;
-    const bool sections_waiting =
-        world->edit.queue_count[WORLD_EDIT_CONSUMER_RENDER] != 0u && render->buffers.pool_full_count == 0u;
-    return game->stream_quiet != 0u && world->map.pending_count == 0u && !unread && !sections_waiting &&
-           render_upload_idle(&render->upload) &&
-           (render->borrowed_lod == nullptr || render_lod_idle(render->borrowed_lod));
-}
-
-bool game_settle(game_t *game) {
-    render_t *const render = game->borrowed_render;
-    for (;;) {
-        const uint32_t waiting_before = game->jobs_in_use;
-        game_sim_step(game);
-        const gpu_status_t status = render_upload_frame(&render->upload);
-        if (status != GPU_STATUS_OK) {
-            gpu_error_log(&render->buffers.last_error);
-            return false;
-        }
-        const uint64_t far_built = render->borrowed_lod != nullptr ? render->borrowed_lod->stats.columns_built : 0u;
-        if (render->borrowed_lod != nullptr &&
-            render_lod_frame(render->borrowed_lod, game->camera.position) != GPU_STATUS_OK) {
-            return false; /* it has said why */
-        }
-        if (render->buffers.pool_full_count != 0u && game->pool_full_said == 0u) {
-            LOG_WARN("game: the section pool is full, so part of the world will not be drawn");
-            game->pool_full_said = 1u;
-        }
-        if (game_is_settled(game)) {
-            return true;
-        }
-        const bool far_waiting = render->borrowed_lod != nullptr && render->borrowed_lod->jobs_in_use != 0u &&
-                                 far_built == render->borrowed_lod->stats.columns_built;
-        if (far_waiting || (waiting_before != 0u && waiting_before == game->jobs_in_use)) {
-            time_sleep_ns(GAME_SETTLE_IDLE_NS);
-        }
-    }
 }
 
 bool game_screen_input(game_t *game, const input_frame_t *frame) {
@@ -1194,50 +1124,6 @@ bool game_screen_input(game_t *game, const input_frame_t *frame) {
         return false;
     }
     return ui_screen_input(game->borrowed_ui, frame, game->config.width, game->config.height);
-}
-
-void game_input_from_script(const display_headless_tick_t *tick, input_frame_t *out) {
-    static_assert(sizeof(tick->state->down) == sizeof(out->down.words));
-    memset(out, 0, sizeof(*out));
-    memcpy(out->down.words, tick->state->down, sizeof(out->down.words));
-    out->mouse_dx = tick->state->tick_dx;
-    out->mouse_dy = tick->state->tick_dy;
-    out->wheel = tick->state->tick_wheel;
-    for (uint32_t i = 0u; i < tick->event_count; i++) {
-        const display_script_event_t *const event = &tick->events[i];
-        if (event->kind == DISPLAY_SCRIPT_KEY) {
-            input_keys_t *const keys = event->pressed != 0u ? &out->pressed : &out->released;
-            keys->words[event->code / 64u] |= 1ull << (event->code % 64u);
-        }
-    }
-}
-
-void game_fly_from_script(const display_script_state_t *state, render_fly_input_t *out) {
-    memset(out, 0, sizeof(*out));
-    out->mouse_dx = state->tick_dx;
-    out->mouse_dy = state->tick_dy;
-    out->wheel = state->tick_wheel;
-    out->forward = (int8_t)((display_script_state_is_down(state, KEY_W) ? 1 : 0) -
-                            (display_script_state_is_down(state, KEY_S) ? 1 : 0));
-    out->right = (int8_t)((display_script_state_is_down(state, KEY_D) ? 1 : 0) -
-                          (display_script_state_is_down(state, KEY_A) ? 1 : 0));
-    out->up = (int8_t)((display_script_state_is_down(state, KEY_SPACE) ? 1 : 0) -
-                       (display_script_state_is_down(state, KEY_LEFTSHIFT) ? 1 : 0));
-    out->fast = display_script_state_is_down(state, KEY_LEFTCTRL) ? 1u : 0u;
-}
-
-void game_fly_from_input(const input_frame_t *frame, render_fly_input_t *out) {
-    memset(out, 0, sizeof(*out));
-    out->mouse_dx = frame->mouse_dx;
-    out->mouse_dy = frame->mouse_dy;
-    out->wheel = frame->wheel;
-    out->forward =
-        (int8_t)((input_keys_has(&frame->down, KEY_W) ? 1 : 0) - (input_keys_has(&frame->down, KEY_S) ? 1 : 0));
-    out->right =
-        (int8_t)((input_keys_has(&frame->down, KEY_D) ? 1 : 0) - (input_keys_has(&frame->down, KEY_A) ? 1 : 0));
-    out->up = (int8_t)((input_keys_has(&frame->down, KEY_SPACE) ? 1 : 0) -
-                       (input_keys_has(&frame->down, KEY_LEFTSHIFT) ? 1 : 0));
-    out->fast = input_keys_has(&frame->down, KEY_LEFTCTRL) ? 1u : 0u;
 }
 
 /* ---- What is drawn on a picture ------------------------------------------------------------------------------------- */
@@ -1249,13 +1135,6 @@ static_assert((uint32_t)UI_HUD_STAGE_SHADE == (uint32_t)FRAME_PASS_SHADE);
 static_assert((uint32_t)UI_HUD_STAGE_POST == (uint32_t)FRAME_PASS_POST);
 static_assert((uint32_t)UI_HUD_STAGE_READBACK == (uint32_t)FRAME_PASS_READBACK);
 static_assert((uint32_t)UI_HUD_STAGE_GPU_TOTAL == (uint32_t)FRAME_PASS_COUNT);
-
-void game_debug_send(game_t *game, bool down) {
-    if (down && game->hud_debug_key == 0u) {
-        game->hud_debug ^= 1u;
-    }
-    game->hud_debug_key = down ? 1u : 0u;
-}
 
 /* Counts new pictures over at least GAME_FPS_WINDOW_SECONDS of what it is told has passed. */
 static void game_fps_note(game_t *game, uint32_t pictures, float32_t seconds) {
@@ -1590,35 +1469,6 @@ bool game_screen_up(game_t *game) {
     return game_has_screens(game) && ui_screen_up(game->borrowed_ui);
 }
 
-bool game_loop_input_frame(game_t *game, const input_frame_t *frame, display_buffer_t *back) {
-    const bool screen_up = game_screen_input(game, frame);
-    /* A tap over between two polls is in pressed and not in down. */
-    game_debug_send(game, input_keys_has(&frame->down, KEY_F3) || input_keys_has(&frame->pressed, KEY_F3));
-    const int64_t now_ns = time_now_ns();
-    const float32_t seconds = (float32_t)time_ns_to_seconds(now_ns - game->last_frame_ns);
-    game->last_frame_ns = now_ns;
-    render_fly_input_t input;
-    game_fly_from_input(frame, &input);
-    if (screen_up) {
-        /* The body stands, and the mouse is the pointer. Sent all the same, or the sim would take it that nobody is at the controls. */
-        memset(&input, 0, sizeof(input));
-        game_walk_send(game, &input, false, false, now_ns);
-        game_hands_send(game, false, false);
-    } else if (game->borrowed_player != nullptr) {
-        game_walk_send(game, &input, input_keys_has(&frame->down, KEY_SPACE),
-                       input_keys_has(&frame->down, KEY_LEFTSHIFT), now_ns);
-        /* A click over between two polls is in pressed and not in down. */
-        game_hands_send(game, input_keys_has(&frame->down, BTN_LEFT) || input_keys_has(&frame->pressed, BTN_LEFT),
-                        input_keys_has(&frame->down, BTN_RIGHT) || input_keys_has(&frame->pressed, BTN_RIGHT));
-        bool hotbar[INVENTORY_HOTBAR_SLOTS];
-        for (uint32_t slot = 0u; slot < INVENTORY_HOTBAR_SLOTS; slot++) {
-            hotbar[slot] = input_keys_has(&frame->pressed, KEY_1 + slot);
-        }
-        game_hotbar_send(game, hotbar, frame->wheel);
-    }
-    return game_loop_frame(game, &input, seconds, back);
-}
-
 bool game_loop_source(void *context, display_buffer_t *back) {
     game_t *const game = context;
     if (!game_loop_threads_ensure(game)) {
@@ -1630,14 +1480,6 @@ bool game_loop_source(void *context, display_buffer_t *back) {
         return false;
     }
     return game_loop_input_frame(game, frame, back);
-}
-
-void game_loop_input_clear(game_t *game) {
-    if (game->borrowed_player != nullptr) {
-        const render_fly_input_t none = {0};
-        game_walk_send(game, &none, false, false, time_now_ns());
-        game_hands_send(game, false, false);
-    }
 }
 
 void game_pause_set(game_t *game, bool paused) {

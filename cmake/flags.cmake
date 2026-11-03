@@ -46,6 +46,11 @@ set(MC_C_FLAGS
 # plans/CODING_STANDARD.md section 4: thread stacks are small and fixed, and large data goes in an arena. The value is
 # Stage 02.4's choice; the standard names the flag but no number.
 set(MC_FRAME_LIMIT_BYTES 16384)
+# ASan's red zones are its own and not this program's: app_t, 15104 bytes on main's stack, took a frame of 18112 there. Every other preset holds to
+# the number above, and they are what says whether this code fits.
+if(MC_PRESET STREQUAL "sanitize")
+  set(MC_FRAME_LIMIT_BYTES 32768)
+endif()
 list(APPEND MC_C_FLAGS -Wframe-larger-than=${MC_FRAME_LIMIT_BYTES})
 # nvcc rejects these three bare ("Unknown option '-fno-exceptions'"), so they go through -Xcompiler.
 # Without them the C link fails on __cxa_guard_* and __gxx_personality_v0 (Stage 01.1).

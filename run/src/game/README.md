@@ -35,7 +35,7 @@
 **May be called by:** `run/src/main/`, and its part `session`.
 **Depends on:** `mob`, `player`, `entity`, `item`, `ui`, `render`, `world`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
 
-**Parts:** `session`: from the title screen to Quit Game, on top of the rest of this. `view`: what a config comes to, and bringing a picture up to the display's size. `report`: what it says about itself.
+**Parts:** `session`: from the title screen to Quit Game, on top of the rest of this. `view`: what a config comes to, and bringing a picture up to the display's size. `report`: what it says about itself. `input`: what a person's hands come to. `settle`: everything on the card, on one thread.
 
 A column's blocks are `terrain_generate_box`, on a worker, over all of the column's storage. Each job lends it the states and a byte per voxel.
 
@@ -83,7 +83,7 @@ With a real clock the sim's tick, the copy and drawing, and copying out are time
 
 `game_reconfigure` is how render distance, and everything else on the Settings screen, takes effect without closing anything. It is called on `main` between frames.
 
-What needs only a word goes at once: field of view into the camera `main` publishes anyway, sensitivity for the next counts, and uncapped to the gpu thread as a relaxed atomic. A config that comes to the same `game_view_t` stops at that.
+What needs only a word goes at once: field of view into the camera, published there and then since `game_loop_frame` publishes none in a pause, sensitivity for the next counts, and uncapped to the gpu thread as a relaxed atomic. A config that comes to the same `game_view_t` stops at that.
 
 Anything else stops the threads, changes what they use, and starts them again. That is a frame's wait for the gpu thread, against the alternative of those two taking blocks on the card away from each other under a lock neither holds. Between the stop and the start, in order:
 

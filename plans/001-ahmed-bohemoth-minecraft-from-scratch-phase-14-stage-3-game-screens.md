@@ -58,3 +58,12 @@ Appended as they land:
 - Two mutations to show the tests can fail, both restored: a wear bar one pixel shorter failed `inventory_carrying.png` by 14 bytes, and one item too many in the books failed the random clicks, 1236 of their checks.
 - The table arena holds 648384 bytes of its 1.5 MiB with all of `ui` loaded.
 - `ctest --preset debug -j3 -E 'render_feature_(sky|lod|shapes|water|post)|^cuda'`: 73 of 74 passed, the other being issue 8. The tests that this leaves out were not run: they use no player or `ui`, and take minutes each on the card.
+
+## Phase gate check, 2026-11-03
+
+**9. `run_render_frame` (issue 8 above, and Stage 14.5 issue 6): the wait in the test, now fixed.**
+
+- Reproduced at the gate: failed in both `ctest -j3` and `-j4` runs of the whole suite, and passed all 6 runs alone. The test took 400 identical frames as all having arrived, and `game_loop_frame` shows the same picture again when no new one has come, so a loaded machine ended the wait with columns still coming.
+- Done: in `tests/run/render/frame/index.c`, only a new picture counts, and only with the sim's `stream_quiet` set. Then 3 of 3 passed alongside three heavy tests at `-j4`. Nothing in `game` or `ui` changed for this. That is good evidence for the reading in Stage 14.5 issue 6, but no failure was caught in the act before the change.
+
+Issue 3 above, met at the merge: `game_hud_compose` draws the HUD, then the overlay, then a screen, within one frame. Seen in a screenshot of the built program, with F3 on and the inventory up.

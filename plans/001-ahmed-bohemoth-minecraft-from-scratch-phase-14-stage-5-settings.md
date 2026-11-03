@@ -132,3 +132,39 @@ These cannot be done from here: no agent may take the console.
     ./build/release/bin/minecraft_c
 
 Esc in a world, Settings: the slider's change shows behind the screen a moment after the wheel stops; Done, Esc, and the world goes on. Quit, start again: it is where it was left, from `settings.yaml`. VSync off: see whether the driver takes it, and what the frame rate does, with F3.
+
+## Phase gate check, 2026-11-03
+
+Found by the gate check of the phase, from a clean build of the integration branch at `28f1566`, then again after merging `ff8d27b`. The stage's tests all passed as they stood.
+
+**7. A new field of view did not show behind the screen.**
+
+- Expected: as the section above says, the slider's change shows behind the screen a moment after the wheel stops. `run/src/game/README.md` said field of view went "into the camera `main` publishes anyway".
+- Actual: `main` publishes no camera in a pause, and a config with the same `game_view_t` returned before anything was redrawn. In a script that took the wheel to 110, the picture behind stayed at 70 until a later change to render scale brought it in. The existing test drew a new frame by hand, so it could not see this.
+- Done: fixed in `game_reconfigure`: with threads it publishes the camera there and then, and on one thread it marks the view stale. `the_field_of_view_scale_effects...` holds the one-thread picture to it, and `render_distance_changes_through_the_screen...` holds `shown_camera` to it on the real threads. Mutation: both branches off failed both tests. Restored.
+
+**8. A flag could put a value in settings that no slider or file can.**
+
+- Expected: every value in range, and the usage text true, which said flags go over the file "for the run".
+- Actual: `main_settings_read` did not clamp, so `--menu --full-detail 99` opened a table past the 48 that leaves room on the card, and `--render-distance 1` sat below the slider's end. And a flag is kept if Settings is then left with Done, as the screen saves the values it holds.
+- Done: the values are clamped there, with test `a_flag_past_what_settings_can_hold_is_held_to_it`. Keeping flags on Done is left as it is, since telling a flag's value from a slider's would take a second set of values for a developer's flag, and the usage text now says what happens.
+
+**9. `run/src/game/index.c` was past the size for splitting, against this stage's claim.**
+
+- Expected: under 1500 lines, as the wiring above says of moving `report` out.
+- Actual: 1610 lines at `28f1566`, and 1541 even with `input` out once the combat stage merged. The lint stops only at 2000.
+- Done: `run/src/game/input/` and `run/src/game/settle/`, moved with no change in what they do. 1495 lines. `plans/REPO_STRUCTURE.md` lists them. The next stage to grow `game` will have to split again.
+
+**10. `run_types` failed on the integration branch.**
+
+- Expected: pass. Actual: `tests/run/types/index.c:914: result.output does not contain "heap at exit: 13 reserved, 13 released, 0 bytes live"`, with 14 in the output, and the same at line 922. This stage and the mob stages each added a region, and the merge kept one number.
+- Done: 14 in both places.
+
+**11. The sanitize preset did not build, so ASan and UBSan had stopped running on all of this.**
+
+- Expected: the build this stage's and others' evidence cites. Actual: `run/src/main/index.c:852: error: the frame size of 18112 bytes is larger than 16384 bytes`, with `app_t` at 15104 bytes and ASan's red zones round it.
+- Done: `MC_FRAME_LIMIT_BYTES` is 32768 on the sanitize preset only, in `cmake/flags.cmake`, and other presets keep 16384, which is what says whether the code fits. The fixture `frame_too_large` goes from 20000 to 40000 bytes, to fail on every preset. `app_t` is 1280 bytes from the real limit, so it will be hit by whatever grows it next.
+
+**12. `render_distance_past_full_detail_in_the_built_program_on_request` passes under ctest with 0 checks.**
+
+- Its README says so, and it is the only proof of a far field settled in the built program. It now prints that it did not run. Run by hand on a release build for this gate: see the phase file.

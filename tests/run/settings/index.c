@@ -1121,6 +1121,8 @@ TEST(render_distance_changes_live_in_the_built_program_and_is_kept_and_the_pictu
  * preset: SETTINGS_FAR=1 build/release/bin/tests/run_settings build/release/bin/minecraft_c. */
 TEST(render_distance_past_full_detail_in_the_built_program_on_request) {
     if (getenv("SETTINGS_FAR") == nullptr) {
+        printf(
+            "not run, and so proves nothing here: it needs SETTINGS_FAR=1 and a release build, as the README says\n");
         return;
     }
     REQUIRE(t->arg_count >= 1);
@@ -1264,6 +1266,44 @@ TEST(from_the_title_screen_it_is_kept_for_the_first_world_and_a_full_disk_does_n
     REQUIRE(picture_load(t, path_join(t, shots_2, "left_again.png"), &left_2));
     CHECK(picture_different(&stayed, &title_2) > 100u); /* it is still the screen */
     CHECK_EQ_U64(picture_different(&left_2, &title_2), 0u);
+    temp_directory_remove(t, root);
+}
+
+TEST(a_flag_past_what_settings_can_hold_is_held_to_it) {
+    REQUIRE(t->arg_count >= 1);
+    char *const root = temp_directory(t);
+    REQUIRE(root != nullptr);
+    char *const saves = path_join(t, root, "saves");
+    char *const shots = path_join(t, root, "shots");
+    char *const file = path_join(t, root, "settings.yaml");
+    char *const argv[] = {t->borrowed_args[0],
+                          (char *)"--headless",
+                          (char *)"--menu",
+                          (char *)"--render-distance",
+                          (char *)"1",
+                          (char *)"--full-detail",
+                          (char *)"99",
+                          (char *)"--saves",
+                          saves,
+                          (char *)"--settings",
+                          file,
+                          (char *)"--script",
+                          (char *)"tests/run/settings/fixtures/title.script",
+                          (char *)"--screenshot-dir",
+                          shots,
+                          (char *)"--width",
+                          (char *)"640",
+                          (char *)"--height",
+                          (char *)"480",
+                          nullptr};
+    test_process_t process;
+    run_program(t, argv, &process);
+    uint64_t bytes = 0u;
+    const uint8_t *const kept = file_slurp(t, file, &bytes);
+    REQUIRE(kept != nullptr);
+    /* 2, the least a slider has, and the script's 5. */
+    CHECK_CONTAINS((const char *)kept, "render_distance: 7\n");
+    CHECK_CONTAINS((const char *)kept, "full_detail: 48\n");
     temp_directory_remove(t, root);
 }
 
