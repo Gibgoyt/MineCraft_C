@@ -3,9 +3,11 @@
 #define MC_RUN_MOB_INDEX_H
 
 #include "arena/index.h"
+#include "entity/index.h"
 #include "heap/index.h"
 #include "job/index.h"
 #include "mob/path/index.h"
+#include "mob/zombie/index.h"
 #include "world/index.h"
 
 #include <stddef.h>
@@ -16,7 +18,7 @@ typedef struct mob_t {
     arena_t arena_world;        /* 0: over owned_region; World: reset at each mob_open and mob_close */
     heap_region_t owned_region; /* 64 */
     job_system_t *borrowed_job; /* 80: what its searches run on */
-    uint8_t _pad0[40];          /* 88 */
+    mob_zombie_t zombie;        /* 88 */
     mob_path_t path;            /* 128 */
 } mob_t;
 static_assert(sizeof(mob_t) == 448);
@@ -29,8 +31,9 @@ static_assert(alignof(mob_t) == 64);
 /* Gives it back. Safe on a zeroed mob_t. */
 void mob_deinit(mob_t *mob);
 
-/* Nothing asked and nothing known. Before the threads start, with the world open, which must stay open until mob_close. */
-void mob_open(mob_t *mob, const world_t *world);
+/* Nothing asked and nothing known, and what its parts choose depends only on this seed. Before the threads start, with the world open,
+ * which must stay open until mob_close. */
+void mob_open(mob_t *mob, const world_t *world, uint64_t seed);
 
 /* What was known about the world is gone. The threads must have stopped, and this waits for any search job still out. Not on a worker.
  * Before the world closes. Safe if none is open. */
@@ -38,5 +41,9 @@ void mob_close(mob_t *mob);
 
 /* One tick, on the thread holding the world's map. Never touches the heap. */
 void mob_tick(mob_t *mob);
+
+/* One tick of what every mob does, after mob_tick and before the bodies move, in the entity the bodies are in. Returns the blow view takes,
+ * and 0 if none. Never touches the heap. */
+float32_t mob_minds_tick(mob_t *mob, entity_t *entity, const mob_zombie_view_t *view);
 
 #endif
