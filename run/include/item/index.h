@@ -68,6 +68,10 @@ void item_world_begin(item_t *item, const world_edit_t *edit);
  * map. Never waits and never touches the heap. */
 void item_world_tick(item_t *item, world_edit_t *edit, item_spill_t *spill, void *borrowed_context);
 
+/* Only the first half of a tick: what the log says of chests and furnaces, up to now. For a save, whose blocks would otherwise say a chest has gone while its
+ * record still holds what should have spilled, and no log comes after a reload to say so. */
+void item_world_edits_read(item_t *item, world_edit_t *edit, item_spill_t *spill, void *borrowed_context);
+
 /* The sim takes what has been asked for since it last looked: the slot, and then the scroll on from there. */
 void item_hotbar_apply(item_t *item);
 

@@ -96,13 +96,17 @@ static void save_autosave_look(save_autosave_t *autosave, uint64_t tick) {
     autosave->next_tick = tick + autosave->interval_ticks;
 }
 
-void save_autosave_step(save_autosave_t *autosave, world_edit_t *edit, const save_state_parts_t *parts, uint64_t tick) {
+bool save_autosave_due(save_autosave_t *autosave, uint64_t tick) {
     if (autosave->started == 0u || atomic_load_explicit(&autosave->writing, memory_order_acquire) != 0u) {
-        return;
+        return false;
     }
     save_autosave_look(autosave, tick);
     /* While the disk is refusing, what is asking waits with everything else, or a full disk is written to at every step. */
-    if (tick < autosave->next_tick && (autosave->requested == 0u || autosave->failed_said != 0u)) {
+    return tick >= autosave->next_tick || (autosave->requested != 0u && autosave->failed_said == 0u);
+}
+
+void save_autosave_step(save_autosave_t *autosave, world_edit_t *edit, const save_state_parts_t *parts, uint64_t tick) {
+    if (!save_autosave_due(autosave, tick)) {
         return;
     }
     const int64_t started_ns = time_now_ns();

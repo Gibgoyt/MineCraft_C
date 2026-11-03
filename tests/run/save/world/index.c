@@ -498,7 +498,7 @@ TEST(a_new_world_is_one_manifest_and_its_bytes_are_known) {
     CHECK_EQ_U64(value, 14695981039346656037ull); /* the checksum of nothing */
     uint32_t word = 0u;
     memcpy(&word, file + 40u, 4u);
-    CHECK_EQ_U64(word, 1u);
+    CHECK_EQ_U64(word, SAVE_WORLD_VERSION);
     memcpy(&word, file + 44u, 4u);
     CHECK_EQ_U64(word, 64u);
     memcpy(&word, file + 48u, 4u);

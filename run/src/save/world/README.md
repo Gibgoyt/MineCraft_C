@@ -11,12 +11,13 @@
 - `save_world_capture_dirty`, `save_world_capture_column`: copy changed sections out of the world, flags and all.
 - `save_world_commit_begin`, `save_world_commit_write`: one save, split so that the writing can be on a worker.
 - `save_world_flush`: capture and write until nothing is unsaved.
-- `save_world_column_overlay`: what is saved of a column, over what generates there.
-- `save_world_record_encode`, `save_world_record_decode`, `save_world_table_hash`: the record format and what its numbers mean.
+- `save_world_column_overlay`: what is saved of a column, over what generates there. `save_world_column_overlay_levels`: and its levels, for `world_tick_section_levels_restore`.
+- `save_world_levels_from`: where captures read levels from, which `game_open` sets.
+- `save_world_record_encode`, `save_world_record_decode`, `save_world_record_levels`, `save_world_table_hash`: the record format and what its numbers mean.
 - `save_world_status_name`, `save_world_step_hook_set`: a status for a log line; a test's way to die at a known step.
 
 **May be called by:** `save`, `save/autosave`, and `game`, which runs it.
-**Depends on:** `file`, `arena`, `log`, `assert`, `world/edit`, `world/column`, `world/section`, the generated block table, and glibc's `opendir`, `flock`, `qsort` and pthreads.
+**Depends on:** `file`, `arena`, `log`, `assert`, `world/edit`, `world/column`, `world/section`, `world/tick`, the generated block table, and glibc's `opendir`, `flock`, `qsort` and pthreads.
 
 ## On disk
 
@@ -26,11 +27,11 @@
     <world>/blocks/damaged.<x>.<y>.<g> a delta file a later save replaced and could not wholly read: kept for whoever wants what is left
     <world>/blocks/lock                empty; held with flock while a game has the world
 
-A world is `terrain_generate_box` of its seed, with these sections written over the result. A section that has not changed is not on disk at all, and a world nobody has touched is one manifest of 64 bytes. Only blocks are kept: light is worked out again when a column comes in, as for one that has never been saved, and that is why a change of light alone never dirties anything for saving.
+A world is `terrain_generate_box` of its seed, with these sections written over the result. A section that has not changed is not on disk at all, and a world nobody has touched is one manifest of 64 bytes. Blocks are kept, and the levels of what flows among them, since a voxel of fluid with no level is a source and a world read back without them floods. Light is worked out again when a column comes in, as for one that has never been saved, and that is why a change of light alone never dirties anything for saving. A level changing with no block changing flags its section itself: see `run/src/world/tick/`.
 
 All numbers are little-endian. Every struct, its size and each field's offset are in the header, and no byte is left to a compiler's padding. A file's `version` is `SAVE_WORLD_VERSION`. Each file has a checksum of its header, and each column's list of sections and each section's record have their own, so that one bad byte costs what it is in and is never believed.
 
-A record is `uint16_t bits, uint16_t palette_count`, the palette in the order states first appear in `section_voxel_index` order, then one index per voxel, packed from the low bits of each byte. Bits is 0, with one state; 1, 2, 4 or 8, the fewest that hold the palette, up to 256 states; or 16, with no palette and the 4096 states themselves. So the same blocks are always the same bytes, whatever forms the section went through in memory.
+A record is `uint16_t bits, uint16_t palette_count`, the palette in the order states first appear in `section_voxel_index` order, then one index per voxel, packed from the low bits of each byte. Bits is 0, with one state; 1, 2, 4 or 8, the fewest that hold the palette, up to 256 states; or 16, with no palette and the 4096 states themselves. So the same blocks are always the same bytes, whatever forms the section went through in memory. A section with any flowing fluid has the top bit of `bits` set and ends in `world_tick_section_levels`' 2048 bytes, half a byte per voxel, each nibble 0 to 8 or the record is refused. Version 1 had no levels, and is refused as another version.
 
 `manifest.table_hash` is a hash of the block table's names, in order. State numbers are places in that table, so a build that adds a block in the middle of it would read the same bytes as other blocks: it refuses such a world rather than turn stone into something else. A migration, when one is needed, starts at this check.
 

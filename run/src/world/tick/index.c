@@ -504,6 +504,20 @@ static bool tick_fluid_spread_sides(world_tick_t *tick, uint16_t fluid, int32_t 
     return all_done;
 }
 
+/* A save holds levels with the blocks, and goes by what is dirty: a level changing with no block changing has to say so itself. */
+static void tick_level_save_flag(world_tick_t *tick, int32_t x, int32_t y, int32_t z) {
+    uint32_t slot = 0u;
+    const int32_t chunk_x = column_chunk_of(x), chunk_y = column_chunk_of(y);
+    if (world_map_slot_of(tick->borrowed_map, chunk_x, chunk_y, &slot)) {
+        const world_edit_dirty_t dirty = {.section_mask = 1ull << column_section_of(z),
+                                          .chunk_x = chunk_x,
+                                          .chunk_y = chunk_y,
+                                          .slot = slot,
+                                          .generation = tick->borrowed_map->borrowed_slots[slot].generation};
+        world_edit_dirty_restore(tick->borrowed_edit, &dirty, WORLD_EDIT_CONSUMER_SAVE);
+    }
+}
+
 static void tick_fluid(world_tick_t *tick, uint16_t fluid, int32_t x, int32_t y, int32_t z) {
     const bool lava = fluid == BLOCK_ID_LAVA;
     const uint32_t step = lava ? TICK_STEP_LAVA : TICK_STEP_WATER;
@@ -562,6 +576,7 @@ static void tick_fluid(world_tick_t *tick, uint16_t fluid, int32_t x, int32_t y,
             /* It has a page already, and going down to a source gives it back. No block changes, so no log record tells anyone. */
             (void)tick_level_set(tick, x, y, z, (uint8_t)wanted);
             level = (uint8_t)wanted;
+            tick_level_save_flag(tick, x, y, z);
             tick_wake_around(tick, x, y, z);
         }
     }
@@ -921,6 +936,40 @@ void world_tick_deinit(world_tick_t *tick) {
 
 void world_tick_seed_set(world_tick_t *tick, uint64_t seed) {
     tick->seed = seed;
+}
+
+const uint8_t *world_tick_section_levels(const world_tick_t *tick, uint32_t slot, uint32_t section) {
+    ASSERT_ALWAYS(slot < tick->borrowed_map->slot_count && section < COLUMN_SECTIONS);
+    const world_tick_column_t *const column = &tick->borrowed_columns[slot];
+    const uint16_t entry = column->pages[section];
+    if (entry == 0u || column->generation != tick->borrowed_map->borrowed_slots[slot].generation) {
+        return nullptr;
+    }
+    return tick->borrowed_pages + (uint64_t)(entry - 1u) * WORLD_TICK_PAGE_BYTES;
+}
+
+void world_tick_section_levels_restore(world_tick_t *tick, int32_t chunk_x, int32_t chunk_y, uint32_t section,
+                                       const uint8_t *levels) {
+    ASSERT_ALWAYS(section < COLUMN_SECTIONS);
+    const int32_t base_x = chunk_x * (int32_t)COLUMN_SIZE, base_y = chunk_y * (int32_t)COLUMN_SIZE;
+    const int32_t base_z = COLUMN_Z_STORAGE_MIN + (int32_t)(section * SECTION_SIZE);
+    for (uint32_t voxel = 0u; voxel < SECTION_VOXELS; voxel++) {
+        const uint8_t level = (uint8_t)(((uint32_t)levels[voxel / 2u] >> ((voxel & 1u) * 4u)) & 15u);
+        if (level == WORLD_TICK_LEVEL_SOURCE || level > WORLD_TICK_LEVEL_FALLING) {
+            continue;
+        }
+        const int32_t x = base_x + (int32_t)(voxel & 15u), y = base_y + (int32_t)((voxel >> 4) & 15u);
+        const int32_t z = base_z + (int32_t)(voxel >> 8);
+        /* Short of pages it stays a source until something changes it, and page_full_count says so. */
+        if (tick_is_fluid(tick_look(tick, x, y, z)) && tick_level_set(tick, x, y, z, level)) {
+            tick_wake(tick, x, y, z);
+        }
+    }
+}
+
+void world_tick_now_set(world_tick_t *tick, uint64_t now) {
+    ASSERT_ALWAYS(tick->node_live == 0u); /* a node is filed under the count it is due at */
+    tick->now = now;
 }
 
 void world_tick_column_leaving(world_tick_t *tick, uint32_t slot) {

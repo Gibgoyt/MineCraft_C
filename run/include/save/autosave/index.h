@@ -77,6 +77,9 @@ void save_autosave_stop(save_autosave_t *autosave);
  * interval all the same. */
 void save_autosave_request(save_autosave_t *autosave);
 
+/* Whether save_autosave_step would start a save at this tick, for whoever has something to finish first. By the sim, as that is. */
+[[nodiscard]] bool save_autosave_due(save_autosave_t *autosave, uint64_t tick);
+
 /* From each step of the sim, with the thread holding the map. Looks at what the last write said. If one is due and none is running, copies out
  * everything and hands the writing to a worker. Never waits, for a worker or a disk, and never touches the heap. */
 void save_autosave_step(save_autosave_t *autosave, world_edit_t *edit, const save_state_parts_t *parts, uint64_t tick);

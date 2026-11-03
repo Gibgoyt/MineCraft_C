@@ -11,6 +11,8 @@
 - `world_tick_broken_next`: the oldest block with drops that went by itself, for whoever makes the items.
 - `world_tick_seed_set`: where the random ticks' numbers come from.
 - `world_tick_column_leaving`: gives back a column's levels.
+- `world_tick_section_levels`, `world_tick_section_levels_restore`: a section's levels, to a save and back.
+- `world_tick_now_set`: where a saved world's count of ticks takes up.
 - `world_tick_step`: one tick of game time.
 - `world_tick_fluid_level`: a fluid voxel's level, for whoever needs to draw or save one.
 - `world_tick_pending`: voxels waiting for a tick.
@@ -44,7 +46,7 @@ One block per state, for now (see `compile/src/game_tables/blocks/README.md`), a
 
 If pages run out, or the pool has no room, the fluid stays where it is, the count says so, and that voxel tries again 20 ticks later.
 
-Levels do not leave this module yet. Stage 16.1 has to save them with the blocks, or a load will make every flowing voxel a source, and it will flood. The renderer draws every fluid voxel at full height, for the same reason.
+Levels go to a save with the blocks of their section: `run/src/save/world/` reads `world_tick_section_levels` as it captures, and `run/src/game/` gives what it read back to `world_tick_section_levels_restore` as a column comes in, which wakes each flowing voxel so that what was running goes on. A level changing with no block changing flags its section for the save itself, as no log record does. The renderer still draws every fluid voxel at full height.
 
 ## The rules
 

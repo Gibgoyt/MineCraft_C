@@ -1147,6 +1147,178 @@ TEST(a_save_costs_the_sim_a_fraction_of_a_tick_and_no_heap) {
     ss_temp_remove(t, root);
 }
 
+/* ---- Flowing fluid: a voxel of water with no level is a source, so blocks without levels flood ---------------------------- */
+
+enum : int32_t {
+    SS_WATER_FROM = -16,
+    SS_WATER_TO = 31,
+    SS_WATER_Z = 15, /* the top of a section, with the next above it */
+};
+enum : uint32_t {
+    SS_WATER_SIDE = (uint32_t)(SS_WATER_TO - SS_WATER_FROM) + 1u,
+    SS_WATER_CELLS = SS_WATER_SIDE * SS_WATER_SIDE * 2u,
+};
+
+/* Every block and level of the two layers water is in. */
+static void ss_water_look(const test_world_t *w, uint16_t *blocks, uint8_t *levels) {
+    uint32_t at = 0u;
+    for (int32_t z = SS_WATER_Z; z <= SS_WATER_Z + 1; z++) {
+        for (int32_t y = SS_WATER_FROM; y <= SS_WATER_TO; y++) {
+            for (int32_t x = SS_WATER_FROM; x <= SS_WATER_TO; x++) {
+                blocks[at] = BLOCK_ID_AIR;
+                (void)world_map_block_get(w->map, x, y, z, &blocks[at]);
+                levels[at] = world_tick_fluid_level(&w->world->tick, x, y, z);
+                at++;
+            }
+        }
+    }
+}
+
+static void ss_water_begin(test_context_t *t, test_world_t *w) {
+    if (test_world_begin(t, w)) {
+        test_world_fill(t, w, SS_WATER_FROM, SS_WATER_FROM, SS_WATER_Z - 1, SS_WATER_TO, SS_WATER_TO, SS_WATER_Z - 1,
+                        BLOCK_ID_STONE);
+    }
+}
+
+TEST(a_record_can_end_in_levels_and_levels_no_fluid_has_are_refused) {
+    uint16_t *const states = test_alloc(t, SECTION_VOXELS * sizeof(uint16_t));
+    uint16_t *const back = test_alloc(t, SECTION_VOXELS * sizeof(uint16_t));
+    uint16_t *const palette_slots = test_alloc(t, 65536u * sizeof(uint16_t));
+    uint8_t *const record = test_alloc(t, SAVE_WORLD_ENTRY_BYTES_MAX);
+    for (uint32_t i = 0u; i < SECTION_VOXELS; i++) {
+        states[i] = BLOCK_ID_WATER;
+    }
+    const uint32_t bytes = save_world_record_encode(states, palette_slots, record);
+    CHECK(save_world_record_levels(record, bytes) == nullptr);
+    /* By hand: the top bit of the first number, and half a byte per voxel after what there was. */
+    record[1] |= 0x80u;
+    memset(record + bytes, 0x81, SAVE_WORLD_RECORD_LEVELS_BYTES);
+    const uint32_t with = bytes + SAVE_WORLD_RECORD_LEVELS_BYTES;
+    REQUIRE(save_world_record_decode(record, with, back));
+    CHECK_MEM_EQ(back, states, SECTION_VOXELS * sizeof(uint16_t));
+    CHECK(save_world_record_levels(record, with) == record + bytes);
+    CHECK(!save_world_record_decode(record, bytes, back));
+    CHECK(!save_world_record_decode(record, with - 1u, back));
+    record[with - 1u] = 0x09u;
+    CHECK(!save_world_record_decode(record, with, back));
+    record[with - 1u] = 0x90u;
+    CHECK(!save_world_record_decode(record, with, back));
+}
+
+TEST(flowing_water_comes_back_with_its_levels_goes_on_and_does_not_flood) {
+    char *const root = ss_temp_directory(t);
+    REQUIRE(root != nullptr);
+    test_world_t *const w = test_alloc(t, sizeof(test_world_t));
+    ss_water_begin(t, w);
+    save_t *const save = test_world_aligned(t, sizeof(save_t));
+    REQUIRE(save_init(save));
+    REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
+    world_tick_t *tick = &w->world->tick;
+    world_edit_t *edit = &w->world->edit;
+    save_world_levels_from(&save->world, tick);
+    REQUIRE(world_edit_block_set(edit, 8, 8, SS_WATER_Z, BLOCK_ID_WATER) == WORLD_EDIT_STATUS_CHANGED);
+    for (uint32_t i = 0u; i < 100u; i++) {
+        world_tick_step(tick);
+    }
+    CHECK_EQ_U64(world_tick_fluid_level(tick, 8, 8, SS_WATER_Z), WORLD_TICK_LEVEL_SOURCE);
+    CHECK_EQ_U64(world_tick_fluid_level(tick, 9, 8, SS_WATER_Z), 1u);
+    CHECK_EQ_U64(world_tick_fluid_level(tick, 15, 8, SS_WATER_Z), 7u);
+    REQUIRE(save_world_flush(&save->world, edit) == SAVE_WORLD_OK);
+
+    /* Water let in above: the layer under it starts falling, with no block in its section changing. So only the level can say that section is dirty. */
+    uint32_t slot = 0u;
+    REQUIRE(world_map_slot_of(w->map, 0, 0, &slot));
+    CHECK_EQ_U64(world_edit_dirty_peek(edit, slot, WORLD_EDIT_CONSUMER_SAVE), 0u);
+    REQUIRE(world_edit_block_set(edit, 12, 8, SS_WATER_Z + 1, BLOCK_ID_WATER) == WORLD_EDIT_STATUS_CHANGED);
+    for (uint32_t i = 0u; i < 12u; i++) {
+        world_tick_step(tick);
+    }
+    CHECK_EQ_U64(world_tick_fluid_level(tick, 12, 8, SS_WATER_Z), WORLD_TICK_LEVEL_FALLING);
+    CHECK((world_edit_dirty_peek(edit, slot, WORLD_EDIT_CONSUMER_SAVE) & (1ull << column_section_of(SS_WATER_Z))) !=
+          0u);
+    for (uint32_t i = 0u; i < 100u; i++) {
+        world_tick_step(tick);
+    }
+    uint16_t *const blocks = test_alloc(t, SS_WATER_CELLS * sizeof(uint16_t));
+    uint8_t *const levels = test_alloc(t, SS_WATER_CELLS);
+    ss_water_look(w, blocks, levels);
+    REQUIRE(save_world_flush(&save->world, edit) == SAVE_WORLD_OK);
+    save_close(save);
+    test_world_end(w);
+
+    /* A new world, and what the game does as each column comes in. */
+    ss_water_begin(t, w);
+    REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
+    tick = &w->world->tick;
+    edit = &w->world->edit;
+    save_world_levels_from(&save->world, tick);
+    uint16_t *const states = test_alloc(t, SS_COLUMN_VOXELS * sizeof(uint16_t));
+    uint8_t *const scratch = test_alloc(t, SAVE_WORLD_OVERLAY_SCRATCH_BYTES);
+    uint8_t *const pages = test_alloc(t, SAVE_WORLD_OVERLAY_LEVELS_BYTES);
+    uint64_t pages_found = 0u;
+    for (int32_t chunk_y = -1; chunk_y <= 1; chunk_y++) {
+        for (int32_t chunk_x = -1; chunk_x <= 1; chunk_x++) {
+            uint64_t levels_mask = 0u;
+            const uint64_t mask =
+                save_world_column_overlay_levels(&save->world, chunk_x, chunk_y, states, pages, &levels_mask, scratch);
+            CHECK_EQ_U64(levels_mask & ~mask, 0u);
+            column_t *const column = world_map_column_at(w->map, chunk_x, chunk_y);
+            REQUIRE(column != nullptr);
+            for (uint32_t section = 0u; section < COLUMN_SECTIONS; section++) {
+                if ((mask & (1ull << section)) != 0u) {
+                    CHECK(section_blocks_import(&column->sections[section], &w->world->section_pool,
+                                                states + (uint64_t)section * SECTION_VOXELS));
+                }
+                if ((levels_mask & (1ull << section)) != 0u) {
+                    world_tick_section_levels_restore(tick, chunk_x, chunk_y, section,
+                                                      pages + (uint64_t)section * SAVE_WORLD_RECORD_LEVELS_BYTES);
+                    pages_found++;
+                }
+            }
+        }
+    }
+    CHECK(pages_found >= 2u);
+    uint16_t *const blocks_back = test_alloc(t, SS_WATER_CELLS * sizeof(uint16_t));
+    uint8_t *const levels_back = test_alloc(t, SS_WATER_CELLS);
+    ss_water_look(w, blocks_back, levels_back);
+    CHECK_MEM_EQ(blocks_back, blocks, SS_WATER_CELLS * sizeof(uint16_t));
+    CHECK_MEM_EQ(levels_back, levels, SS_WATER_CELLS);
+    /* What was flowing has been woken. */
+    CHECK(world_tick_pending(tick) > 0u);
+
+    /* A later save of something else in that region keeps them: the old file's record goes over as it was. */
+    REQUIRE(world_edit_block_set(edit, 1, 1, 100, BLOCK_ID_STONE) == WORLD_EDIT_STATUS_CHANGED);
+    REQUIRE(save_world_flush(&save->world, edit) == SAVE_WORLD_OK);
+    uint64_t levels_mask = 0u;
+    (void)save_world_column_overlay_levels(&save->world, 0, 0, states, pages, &levels_mask, scratch);
+    CHECK((levels_mask & (1ull << column_section_of(SS_WATER_Z))) != 0u);
+
+    /* It settled before the save, so left alone it stays as it was. */
+    for (uint32_t i = 0u; i < 40u; i++) {
+        world_tick_step(tick);
+    }
+    ss_water_look(w, blocks_back, levels_back);
+    CHECK_MEM_EQ(blocks_back, blocks, SS_WATER_CELLS * sizeof(uint16_t));
+    CHECK_MEM_EQ(levels_back, levels, SS_WATER_CELLS);
+
+    /* And with its two sources gone it all runs dry: had it come back as sources, every voxel of it would stay, and feed more. */
+    REQUIRE(world_edit_block_set(edit, 8, 8, SS_WATER_Z, BLOCK_ID_AIR) == WORLD_EDIT_STATUS_CHANGED);
+    REQUIRE(world_edit_block_set(edit, 12, 8, SS_WATER_Z + 1, BLOCK_ID_AIR) == WORLD_EDIT_STATUS_CHANGED);
+    for (uint32_t i = 0u; i < 800u; i++) {
+        world_tick_step(tick);
+    }
+    ss_water_look(w, blocks_back, levels_back);
+    uint32_t water_left = 0u;
+    for (uint32_t i = 0u; i < SS_WATER_CELLS; i++) {
+        water_left += blocks_back[i] == BLOCK_ID_WATER ? 1u : 0u;
+    }
+    CHECK_EQ_U64(water_left, 0u);
+    save_deinit(save);
+    test_world_end(w);
+    ss_temp_remove(t, root);
+}
+
 TEST(the_owner_holds_one_region_and_a_second_arena_for_the_state) {
     char *const root = ss_temp_directory(t);
     REQUIRE(root != nullptr);
