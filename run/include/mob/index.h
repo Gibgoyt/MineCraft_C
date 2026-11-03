@@ -7,6 +7,7 @@
 #include "heap/index.h"
 #include "job/index.h"
 #include "mob/path/index.h"
+#include "mob/skeleton/index.h"
 #include "mob/zombie/index.h"
 #include "world/index.h"
 
@@ -19,9 +20,11 @@ typedef struct mob_t {
     heap_region_t owned_region; /* 64 */
     job_system_t *borrowed_job; /* 80: what its searches run on */
     mob_zombie_t zombie;        /* 88 */
-    mob_path_t path;            /* 128 */
+    mob_skeleton_t skeleton;    /* 128: run/src/game/ ticks it, between this tick and the bodies' */
+    uint8_t _pad0[24];          /* 168 */
+    mob_path_t path;            /* 192 */
 } mob_t;
-static_assert(sizeof(mob_t) == 448);
+static_assert(sizeof(mob_t) == 512);
 static_assert(alignof(mob_t) == 64);
 
 /* Reserves the region, and remembers what it runs its searches on, which must outlive it. nullptr runs them on the sim. On failure logs

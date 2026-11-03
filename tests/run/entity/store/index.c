@@ -1176,8 +1176,8 @@ TEST(a_tick_takes_no_heap_keeps_to_its_arena_and_the_world_starts_again_empty) {
     CHECK_EQ_U64(rig.entity->arena_world.used, peak);
     CHECK_EQ_U64(rig.entity->arena_world.alloc_count, allocs);
     /* All that a world takes is what the Owner's assert counted on. */
-    CHECK(rig.entity->arena_world.used <=
-          (uint64_t)ITEM_DROP_STORE_BYTES + (uint64_t)ENTITY_STORE_BYTES + (uint64_t)ENTITY_GRID_BYTES);
+    CHECK(rig.entity->arena_world.used <= (uint64_t)ITEM_DROP_STORE_BYTES + (uint64_t)ENTITY_STORE_BYTES +
+                                              (uint64_t)ENTITY_GRID_BYTES + (uint64_t)PROJECTILE_STORE_BYTES);
 
     entity_close(rig.entity);
     CHECK_EQ_U64(rig.entity->store.count, 0u);

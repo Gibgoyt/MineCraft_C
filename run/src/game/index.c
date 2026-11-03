@@ -3,6 +3,7 @@
 #include "game/index.h"
 
 #include "assert/index.h"
+#include "item/stack/index.h"
 #include "log/index.h"
 #include "render/entities/index.h"
 #include "tables/blocks/index.h"
@@ -637,6 +638,49 @@ static void game_drops_spawn(game_t *game) {
     }
 }
 
+/* An arrow has hit the player: armor and a moment's invulnerability are the body's own business, and a blow it did not feel moves it not. */
+static void game_arrow_hurt(void *borrowed_context, float32_t amount, const float64_t direction[COLLISION_AXES]) {
+    player_t *const player = ((game_t *)borrowed_context)->borrowed_player;
+    if (player_survival_hurt(&player->survival, amount, PLAYER_SURVIVAL_CAUSE_ATTACK) > 0.0f32) {
+        projectile_knockback(player->movement.velocity, direction, player->movement.on_ground != 0u);
+    }
+}
+
+/* A body that is down is no more to be aimed at than to be hit. */
+static bool game_player_is_a_target(const player_t *player) {
+    return player->survival.state != PLAYER_SURVIVAL_DEAD && player->survival.placing == 0u;
+}
+
+static float64_t game_player_height(const player_t *player) {
+    return player->movement.crouched != 0u ? PLAYER_MOVEMENT_HEIGHT_CROUCHED : PLAYER_MOVEMENT_HEIGHT_STANDING;
+}
+
+/* The skeletons think about where the player is now, and shoot. Before the bodies move, as their walking is a wish for this tick. */
+static void game_skeletons_tick(game_t *game) {
+    if (game->borrowed_mob == nullptr) {
+        return;
+    }
+    const player_t *const player = game->borrowed_player;
+    const player_movement_t *const movement = &player->movement;
+    const mob_skeleton_view_t view = {
+        .position = {movement->position[0], movement->position[1], movement->position[2]},
+        .eye_height = movement->eye_height,
+        .height = game_player_height(player),
+        .alive = (uint8_t)(game_player_is_a_target(player) ? 1u : 0u),
+    };
+    mob_skeleton_tick(&game->borrowed_mob->skeleton, &game->borrowed_mob->path, game->borrowed_entity,
+                      &game->borrowed_world->map, &view);
+}
+
+static void game_arrows_tick(game_t *game) {
+    entity_t *const entity = game->borrowed_entity;
+    const player_t *const player = game->borrowed_player;
+    collision_box_t box;
+    player_movement_box(player->movement.position, game_player_height(player), &box);
+    projectile_tick(&entity->projectiles, &entity->store, &entity->grid, &game->borrowed_world->map,
+                    game_player_is_a_target(player) ? &box : nullptr, game_arrow_hurt, game);
+}
+
 /* What the hands just broke, and what went by itself, comes out into the world, everything there moves, and the body picks up what it
  * now reaches. One block at a time out of the tick's ring: all of it at once could be more than the hands' ring holds. */
 static void game_items_tick(game_t *game) {
@@ -654,7 +698,9 @@ static void game_items_tick(game_t *game) {
         .day_fraction = player->survival.day_fraction,
     };
     mob_spawn_tick(&game->mob_spawn, &entity->store, entity->borrowed_physics, &game->borrowed_world->map, &view);
+    game_skeletons_tick(game);
     entity_tick(entity, &game->borrowed_world->map);
+    game_arrows_tick(game);
     collision_box_t reach;
     player_pickup_reach(player, &reach);
     /* A dead body takes nothing, or it would take back what it just spilled. */
@@ -753,6 +799,18 @@ static void game_entities_publish(game_t *game) {
             }
             render_entities_add_item_drop(entities, drop->item, drop->position, (float32_t)ITEM_DROP_SIZE, drop->age,
                                           stored);
+        }
+        /* An arrow is drawn as the item it is, not turning. */
+        const projectile_store_t *const arrows = &game->borrowed_entity->projectiles;
+        for (uint32_t i = 0u; i < arrows->count; i++) {
+            const projectile_t *const arrow = &arrows->borrowed_items[i];
+            uint8_t stored = SHADE_LIGHT_OPEN_SKY;
+            if (world_map_light_get(map, (int32_t)floor(arrow->position[0]), (int32_t)floor(arrow->position[1]),
+                                    (int32_t)floor(arrow->position[2]), &stored) != WORLD_MAP_STATUS_OK) {
+                stored = SHADE_LIGHT_OPEN_SKY;
+            }
+            render_entities_add_item_drop(entities, item_stack_drop_row(ITEM_ID_ARROW), arrow->position,
+                                          (float32_t)ITEM_DROP_SIZE, 0u, stored);
         }
     }
     if (game->borrowed_player != nullptr) {
