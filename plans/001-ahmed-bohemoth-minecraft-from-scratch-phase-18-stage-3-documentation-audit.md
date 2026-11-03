@@ -35,6 +35,8 @@ Run on 2026-11-04, after a full `debug` build: `standards_lint` passed, the `fin
 
 Appended as they land:
 
+- `07a239a` Audit the documentation against the tree: bring stale READMEs and the repository map up to date, and say in the attribution what the pack's history leaves unproven.
+
 ## Issues found
 
 All 2026-11-04, by this stage.
