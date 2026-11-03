@@ -7,6 +7,7 @@
 **Threads:** main, with each test on the card in a child of its own; the real `sim`, `gpu` and guardian in those.
 **Public functions:** none; a test program.
 **May be called by:** ctest.
+**Files:** `index.c` holds the tests; `fixtures/rig.h` what they share, as it came to more than the 1500 lines a file may have; `fixtures/*.script` the two scripts for the built program.
 **Depends on:** `tests/harness/`, `tests/run/display/mode/fixtures/`, `tests/run/input/fixtures/`, `tests/run/physics/fixtures/`, everything under `run/`, the built program, a card, and user namespaces.
 
 What is real and what is not:

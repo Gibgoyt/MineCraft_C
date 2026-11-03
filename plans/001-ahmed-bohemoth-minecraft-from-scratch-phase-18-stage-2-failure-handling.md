@@ -60,7 +60,7 @@ The Before column is from reading the code as it stood, not from running it.
 - `run/src/ui/menu/` (Leave Unsaved, the message on the main and pause screens) and `run/src/ui/hud/` (`ui_hud_notice_draw`).
 - `tests/run/display/mode/fixtures/fake_card.h`: `vt_release_stays`. `tests/run/settings/session/index.c`: the size of a struct holding `game_session_t`. `tests/run/display/vt_guard/index.c`: issue 8.
 
-**Results.** See Commits for the sha. The whole debug suite, 97 tests in 20 min 36 s: all but issue 8, which then passed with `run_failure`, `standards_lint` and `clang_format`. `run_failure`: 13 tests, 0 failed, 22 s. Two mutations were checked to fail it, then undone: answering a switch only with a pet (`away_in_open`, `answered_in_open` fail) and flipping while away (`flips_while_away` fails). Real fault's words: `cudaErrorIllegalAddress: an illegal memory access was encountered`, and a write afterwards fails the same way. Xorg stayed up through every run (`pgrep`), and the kernel's log shows `NVRM: Xid 31` for this program's pid only.
+**Results.** See Commits for the sha. The whole debug suite again on the merged tree, with issue 8 fixed: 97 of 97 in 20 min 52 s. After issue 9's move of test code: `run_failure`, `standards_lint`, `clang_format` pass. `sanitize` preset: `run_failure` passes (27 s). `tsan` preset: see issue 10. `run_failure`: 13 tests, 0 failed, 22 s. Two mutations were checked to fail it, then undone: answering a switch only with a pet (`away_in_open`, `answered_in_open` fail) and flipping while away (`flips_while_away` fails). Real fault's words: `cudaErrorIllegalAddress: an illegal memory access was encountered`, and a write afterwards fails the same way. Xorg stayed up through every run (`pgrep`), and the kernel's log shows `NVRM: Xid 31` for this program's pid only.
 
 ## Commits
 
@@ -98,6 +98,17 @@ Appended as they land:
 8. **`run_display_vt_guard` held to the old behaviour in one check.**
    - Expected: nothing else changes. Actual: the whole suite gave 96 of 97, with `the_keys_mean_nothing_while_another_vt_is_showing: CHECK failed: rig_count(rig, KDSETMODE, KD_TEXT) == 1u: 0 != 1`. That test takes the console with another VT showing, which is now a console not taken: no `KD_GRAPHICS`, so no `KD_TEXT` owed.
    - Fixed in the test, which also checks there was no `KD_GRAPHICS`. What it is for, that the keys do nothing there, still holds. `run_display_vt_guard` passes.
+
+9. **`tests/run/failure/index.c` was 1626 lines.**
+   - Expected: split at 1500 (`plans/CODING_STANDARD.md`, line 286). Actual: over it. `standards_lint` only enforces the 2000, so nothing said so.
+   - Fixed: what the tests share went to `fixtures/rig.h` (496 lines), leaving `index.c` at 1138. One program still, and no test changed.
+   - `run/src/game/index.c` is at 1889 and was already past 1500 before this stage (1756). Not split here, as it is outside this stage's paths beyond wiring.
+
+10. **`run_failure` fails under the `tsan` preset, on what the test itself does.**
+   - Expected: no report. Actual: `ctest --preset tsan -R '^run_failure$'` fails in 44 s with 10 `data race` reports from 6 pairs of places, and 2 refused mounts. No other check failed; each child failed only by TSan's exit status or by the mount.
+   - Each report has a test's side on it: `fail_step_do` (`fixtures/rig.h:451`) reading the sim's `game_t.tick_count` from main, against `game_sim_tick` (`run/src/game/index.c:1394`); and `vt_coming_back_thread` and `vt_second_back_thread` (`index.c:907`, `:1091`, `:1093`) reading `guard.away`, `game.open`, `card.flips`, `kd_mode` and `alive_script`. None is between two places of the program's own.
+   - The two disk tests did not run: `unshare: Invalid argument`, as TSan's own background thread makes every process threaded, and `unshare(CLONE_NEWUSER)` refuses that. So the disk full paths have had ASan and UBSan and not TSan.
+   - Left alone: the tests read those to watch from outside, and the preset is run by hand (`plans/CODING_STANDARD.md`, line 451). Quieting them would mean making `tick_count` atomic for a test.
 
 ## For Ahmed
 
