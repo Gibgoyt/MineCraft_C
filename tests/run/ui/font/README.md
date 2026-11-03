@@ -1,6 +1,6 @@
 # tests/run/ui/font
 
-**Purpose:** ctest `run_ui_font`. Tests `run/src/ui/` with `compose`, `font` and `widget`.
+**Purpose:** ctest `run_ui_font`. Tests `run/src/ui/` with `compose`, `font` and `widget`. `hud` has `tests/run/ui/hud/`.
 **Tier:** test.
 **Owns:** the test arena, and a `ui_t`'s and a `texture_t`'s regions, given back by the end of each test.
 **Lifetime:** One run.

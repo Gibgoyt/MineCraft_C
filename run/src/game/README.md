@@ -19,10 +19,13 @@
 - `game_entity_set`: what the player breaks comes out as items in the world, which it can pick up.
 - `game_item_set`: what it picks up goes into an inventory, and the hotbar slot in hand is what it places.
 - `game_hotbar_send`: the number keys and the wheel.
+- `game_ui_set`: draw on each picture shown with this `ui_t`.
+- `game_debug_send`: the debug overlay's key, F3.
+- `game_hud_state_read`, `game_hud_debug_read`: what the HUD and the overlay show now.
 - `game_report`: what the frames took, and the books of what was dropped.
 
 **May be called by:** `run/src/main/`.
-**Depends on:** `player`, `entity`, `item`, `render`, `world`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
+**Depends on:** `player`, `entity`, `item`, `ui`, `render`, `world`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
 
 A column's blocks are `terrain_generate_box`, on a worker, over all of the column's storage. Each job lends it the states and a byte per voxel.
 
@@ -56,6 +59,14 @@ With `game_player_set`, as `--walk` does, the eye stops flying and follows a bod
 - With a player, `game` is also what joins `run/src/player/survival/` to everything else. Before each tick it tells it the time of day and what food is in hand, and what it ate comes off that slot, a stew leaving its bowl. After each tick, one that has died has all it carried and what is in its crafting grids thrown out through `game_spill`, and picks nothing up until it is back. A night slept through sets `morning_latch`, which main turns into `game_day_set` in `game_day_advance`.
 - A world whose render distance is past `game_config_t.full_detail` draws the rest as coarse grids, in `run/src/render/lod/`. The map and the sim never hear of it: the map loads only what is drawn block by block, and the gpu thread, or `game_settle` with no threads, keeps the grids up with the eye.
 - Without a player everything flies as before, so the golden pictures of `tests/run/render/frame/` stay as they were.
+
+## The HUD
+
+`main` draws it, as the plan's thread table says, in `game_hud_compose`, on a copy of whichever picture is going out, because that same picture may go out again: see `run/src/ui/README.md`. With a player it draws `run/src/ui/hud/`, and with F3 on, in any run, the debug overlay. With neither it does no copy at all, so the pictures of a run that flies are the same bytes they were. Under `--headless` F3 comes from the script.
+
+What it shows comes from the other threads as single relaxed atomics, because nothing but the screen depends on them and a word cannot tear. Each tick the sim stores each hotbar stack as one word, and which is in hand; `player_vitals_read` is the same idea for health and food. After each picture the gpu thread stores what each pass took, as the difference that picture made to `render_frame_stats_t`. It reads `stats` itself, as the only thread that writes it. Slots from two ticks can show side by side for one frame, which nobody could see.
+
+With a real clock the sim's tick, the copy and drawing, and copying out are timed too. Under `--headless`, nothing reads a clock: those stay 0, and frames per second count pictures per tick's worth of script. A run with the overlay on in `--headless` is the one kind whose pictures are not the same each time, as they show the card's clock.
 
 ## The time of day
 

@@ -427,6 +427,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
     }
     /* Takes nothing until game_open. */
     game_init(&app->game, &app->world, &app->terrain, &app->render, &app->job, &app->texture, &app->topology);
+    game_ui_set(&app->game, &app->ui);
     if (options->walk != 0) {
         game_player_set(&app->game, &app->player);
         game_entity_set(&app->game, &app->entity);

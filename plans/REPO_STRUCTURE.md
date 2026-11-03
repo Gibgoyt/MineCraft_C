@@ -262,7 +262,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | `ui` | (the Owner) | `ui_init`, `ui_deinit`: the region and arenas its parts borrow; `ui_frame_begin`, `ui_frame_begin_over`, `ui_frame_end`: a frame on a canvas | 14.1 |
 | | `compose` | Canvas, clipping, images and nine parts: every pixel through `asm/src/blend`. Not in the plan's list: `font` and `widget` both draw through it, and sit beside it | 14.1 |
 | | `font widget` | Bitmap font, widgets | 14.1 |
-| | `hud` | Crosshair, hotbar, hearts, debug overlay | 14.2 |
+| | `hud` | Crosshair, hotbar, hearts, drumsticks, debug overlay with FPS and per-stage times | 14.2 |
 | | `screen_inventory screen_crafting screen_furnace screen_chest` | Game screens | 14.3 |
 | | `menu` | Main menu, world select, pause | 14.4 |
 | | `screen_settings` | **Render distance and all options** | 14.5 |
@@ -419,6 +419,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/player/movement/` | ctest `run_player_movement`: `run/src/player/` with `movement`: each mode's measured speeds against the numbers in its README, the same bytes from the same intents, the threads' exchange and interpolation, and `run/src/game/`'s walking on the real card and threads, on fake input, and in the built program |
 | `tests/run/game/` | ctest `run_game`: the real loop on the real card and threads through `display_frames_run`, on fake kernels, with the guardian really forked |
 | `tests/run/ui/font/` | ctest `run_ui_font`, named by its path: `run/src/ui/` with `compose`, `font` and `widget`: the font against its recipe by hand, text, fills and images against a pixel-at-a-time model on `simd_reference_blend_over` with guard pixels round the canvas, each widget on made-up input frames, every key of a US keyboard, a picture left alone by what is drawn over it, no heap in 200 frames, a sheet of all of it held to a hash set after looking at it, and the built program |
+| `tests/run/ui/hud/` | ctest `run_ui_hud`: `run/src/ui/hud/`, with what `run/src/game/` does with it: where things go by hand, random states against a pixel-at-a-time model with guard pixels round the canvas, golden PNGs in `fixtures/`, no heap in 200 frames, the real game on the card with one thread and with its real threads, and a script in the built program |
 | `tests/run/render/upload/` | ctest `run_render_upload`, covering `run/src/render/` with `upload`, and `cuda/src/world_buffers/`, on the real card: a real kernel's answers against the world voxel for voxel, the slab pool against a model, the budget, and a real sim thread |
 | `tests/cuda/<area>/` | Headless GPU tests; golden PNGs |
 | `tests/cuda/shapes/` | ctest `render_feature_shapes`, named in its `test.cmake`: each shape by hand, a block of each shape and its holes against an exact trace from all sides, the settings, the coarse pass, how many holes a pixel goes through, golden PNGs in `fixtures/`, and the cost, on the real card |
