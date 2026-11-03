@@ -31,6 +31,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `9d86acb` Add bench_world, with standard worlds and camera paths run on the whole game with no display, and a results history in bench/world.
+
 ## What was done
 
 - `bench/world/index.c`: 6 standard worlds, 3 paths, 14 rows, settled or live, at 1920 by 1080 on the default seed. It runs the whole game with no display, each row in its own process, and keeps under 3584 MiB of the card. Flags: `--only`, `--record`, `--label`, `--shots`, `--trace`, `--list`.
