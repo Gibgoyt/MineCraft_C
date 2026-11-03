@@ -27,6 +27,8 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `0ba9fc1` Section 15 of `plans/REPO_STRUCTURE.md`, and a row for it in section 14's "Where is...?", which is the one line outside the new section.
+
 ## Issues found
 
 **1. `gpu.enabled: false` does not give a game without a card.** Found 2026-11-04 writing section 15.5. Left alone: this stage documents, and the CPU-only backend is the future work that would change it.
