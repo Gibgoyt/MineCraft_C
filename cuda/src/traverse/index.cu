@@ -163,7 +163,7 @@ static __device__ __forceinline__ float32_t traverse_coarse_tile(const traverse_
     const int32_t window_low[3] = {view->window_min_block[0], view->window_min_block[1], 0};
     const int32_t window_high[3] = {view->window_min_block[0] + (int32_t)view->window_blocks,
                                     view->window_min_block[1] + (int32_t)view->window_blocks,
-                                    (int32_t)TRAVERSE_HEIGHT_BLOCKS};
+                                    (int32_t)view->top_limit};
     float32_t t = 0.0F;
     for (uint32_t step = 0u; step < TRAVERSE_COARSE_MAX_STEPS; step += 1u) {
         /* Every ray of the tile is past this side of the window and only moves further out: nothing more can be hit. Which can

@@ -162,7 +162,10 @@ typedef struct world_buffers_t {
     uint64_t pool_bytes;                     /* 120: a whole number of pages */
     uint64_t slab_bytes;                     /* 128: held by sections, slack included */
     uint64_t flush_bytes;                    /* 136: sent to the card's table so far */
-    uint64_t pool_full_count;                /* 144: writes refused for lack of a slab */
+    uint32_t pool_full_count;                /* 144: writes refused for lack of a slab */
+    /* 148: traverse_world_t.top_limit: over every column_set since init, the highest. It never comes down, as finding that out would take
+     * a walk of the table, and a limit too high costs only some steps. */
+    uint32_t top_limit;
     uint32_t class_pages[WORLD_BUFFERS_CLASS_COUNT]; /* 152: per class, a list of pages with room */
     uint32_t free_pages;                             /* 200: a list of pages given back */
     uint32_t page_count;                             /* 204 */
@@ -189,6 +192,7 @@ static_assert(offsetof(world_buffers_t, pool_bytes) == 120);
 static_assert(offsetof(world_buffers_t, slab_bytes) == 128);
 static_assert(offsetof(world_buffers_t, flush_bytes) == 136);
 static_assert(offsetof(world_buffers_t, pool_full_count) == 144);
+static_assert(offsetof(world_buffers_t, top_limit) == 148);
 static_assert(offsetof(world_buffers_t, class_pages) == 152);
 static_assert(offsetof(world_buffers_t, free_pages) == 200);
 static_assert(offsetof(world_buffers_t, page_count) == 204);

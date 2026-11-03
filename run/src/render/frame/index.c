@@ -438,6 +438,7 @@ gpu_status_t render_frame_draw(render_frame_t *frame, const world_buffers_t *buf
         .window = buffers->window,
         .borrowed_shapes = (frame->scene.features & SHADE_FEATURE_SHAPES) != 0u ? frame->borrowed_shapes : nullptr,
         .shape_count = BLOCK_COUNT,
+        .top_limit = buffers->top_limit,
     };
     entity_rays_scene_t entities;
     if (frame->borrowed_entities != nullptr) {

@@ -252,6 +252,13 @@ void world_buffers_column_set(world_buffers_t *buffers, uint32_t slot, int32_t c
     column->generation = generation;
     column->top_z = top_z;
     column->ready = 1u;
+    /* One above it, as a storage height: 1 at the least, as 0 means not known. */
+    const int32_t above = (int32_t)top_z + (int32_t)WORLD_BUFFERS_Z_ORIGIN + 1;
+    if (above > 0 && (uint32_t)above > buffers->top_limit) {
+        buffers->top_limit = (uint32_t)above;
+    } else if (buffers->top_limit == 0u) {
+        buffers->top_limit = 1u;
+    }
     world_buffers_mark(buffers, slot);
 }
 

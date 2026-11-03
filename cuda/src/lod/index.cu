@@ -276,7 +276,7 @@ static gpu_status_t lod_view_from(gpu_error_t *error, const lod_scene_t *scene, 
     for (uint32_t i = 0u; i < scene->level_count; i += 1u) {
         const lod_level_t *const level = &scene->levels[i];
         const traverse_world_t world = {level->borrowed_table, level->borrowed_pool, level->window, nullptr, 0u,
-                                        {0u, 0u, 0u, 0u}};
+                                        0u};
         lod_view_level_t *const into = &out->levels[i];
         const gpu_status_t status = traverse_view_from(error, &world, &into->view);
         if (status != GPU_STATUS_OK) {
