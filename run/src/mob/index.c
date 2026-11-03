@@ -6,7 +6,7 @@
 enum : uint64_t {
     MOB_REGION_BYTES = 4ull << 20,
 };
-static_assert((uint64_t)MOB_PATH_BYTES <= (uint64_t)MOB_REGION_BYTES);
+static_assert((uint64_t)MOB_PATH_BYTES + (uint64_t)MOB_SKELETON_BYTES <= (uint64_t)MOB_REGION_BYTES);
 
 bool mob_init(mob_t *mob, job_system_t *job) {
     memset(mob, 0, sizeof(*mob));
@@ -27,6 +27,8 @@ void mob_deinit(mob_t *mob) {
 void mob_open(mob_t *mob, const world_t *world) {
     arena_reset(&mob->arena_world);
     mob_path_start(&mob->path, &mob->arena_world, &world->map, &world->edit, mob->borrowed_job);
+    /* Whoever knows the world's seed tells it, with mob_skeleton_seed. */
+    mob_skeleton_start(&mob->skeleton, &mob->arena_world, 0u);
 }
 
 void mob_close(mob_t *mob) {

@@ -6,6 +6,7 @@
 #include "heap/index.h"
 #include "job/index.h"
 #include "mob/path/index.h"
+#include "mob/skeleton/index.h"
 #include "world/index.h"
 
 #include <stddef.h>
@@ -16,7 +17,7 @@ typedef struct mob_t {
     arena_t arena_world;        /* 0: over owned_region; World: reset at each mob_open and mob_close */
     heap_region_t owned_region; /* 64 */
     job_system_t *borrowed_job; /* 80: what its searches run on */
-    uint8_t _pad0[40];          /* 88 */
+    mob_skeleton_t skeleton;    /* 88: run/src/game/ ticks it, between this tick and the bodies' */
     mob_path_t path;            /* 128 */
 } mob_t;
 static_assert(sizeof(mob_t) == 448);

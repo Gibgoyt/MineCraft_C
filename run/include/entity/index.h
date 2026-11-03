@@ -6,6 +6,7 @@
 #include "entity/animation/index.h"
 #include "entity/grid/index.h"
 #include "entity/item_drop/index.h"
+#include "entity/projectile/index.h"
 #include "entity/store/index.h"
 #include "heap/index.h"
 #include "physics/index.h"
@@ -16,15 +17,17 @@
 
 /* Everything in a world that moves and is not a block or the player. There is one, under app_t. Zero bytes mean not running. */
 typedef struct entity_t {
-    arena_t arena_world;          /* 0: over owned_region; World: reset at each entity_open and entity_close */
-    heap_region_t owned_region;   /* 64 */
-    physics_t *borrowed_physics;  /* 80 */
-    item_drop_store_t item_drops; /* 88 */
-    entity_store_t store;         /* 184: every body with a mind of its own; run/src/mob/ gives them one */
-    entity_grid_t grid;           /* 464: where they were at the end of the last tick */
-    uint8_t _pad0[40];            /* 536 */
+    arena_t arena_world;            /* 0: over owned_region; World: reset at each entity_open and entity_close */
+    heap_region_t owned_region;     /* 64 */
+    physics_t *borrowed_physics;    /* 80 */
+    item_drop_store_t item_drops;   /* 88 */
+    entity_store_t store;           /* 184: every body with a mind of its own; run/src/mob/ gives them one */
+    entity_grid_t grid;             /* 464: where they were at the end of the last tick */
+    uint8_t _pad0[40];              /* 536 */
+    projectile_store_t projectiles; /* 576: arrows; run/src/game/ ticks them, as only it knows the player's box */
+    uint8_t _pad1[48];              /* 656 */
 } entity_t;
-static_assert(sizeof(entity_t) == 576);
+static_assert(sizeof(entity_t) == 704);
 static_assert(alignof(entity_t) == 64);
 
 /* Reserves the region, and remembers what it moves things with, which must outlive it and be the thread's whose ticks these are. On
