@@ -699,6 +699,16 @@ static void game_items_tick(game_t *game) {
     };
     mob_spawn_tick(&game->mob_spawn, &entity->store, entity->borrowed_physics, &game->borrowed_world->map, &view);
     game_skeletons_tick(game);
+    if (game->borrowed_mob != nullptr) {
+        const mob_creeper_scene_t scene = {
+            .borrowed_entity = entity,
+            .borrowed_path = &game->borrowed_mob->path,
+            .borrowed_edit = &game->borrowed_world->edit,
+            .borrowed_movement = &player->movement,
+            .borrowed_survival = &player->survival,
+        };
+        mob_creeper_tick(&game->borrowed_mob->creeper, &scene);
+    }
     entity_tick(entity, &game->borrowed_world->map);
     game_arrows_tick(game);
     collision_box_t reach;
@@ -1467,6 +1477,13 @@ void game_report(game_t *game) {
             LOG_INFO("game: zombies struck %" PRIu64 " blows, %" PRIu64 " died and left %" PRIu64 " items",
                      zombie->struck_count, zombie->died_count, zombie->dropped_count);
         }
+        LOG_INFO("game: %" PRIu32 " blasts broke %" PRIu64 " blocks", game->borrowed_entity->explosion.blast_count,
+                 game->borrowed_entity->explosion.broken_count);
+    }
+    if (game->borrowed_mob != nullptr && game->borrowed_mob->creeper.borrowed_bodies != nullptr) {
+        LOG_INFO("game: %" PRIu64 " creepers burst, and %" PRIu64 " died, leaving %" PRIu64 " items",
+                 game->borrowed_mob->creeper.burst_count, game->borrowed_mob->creeper.died_count,
+                 game->borrowed_mob->creeper.dropped_count);
     }
     if (game->borrowed_item != nullptr && game->borrowed_item->inventory.borrowed_slots != nullptr) {
         const inventory_t *const inventory = &game->borrowed_item->inventory;

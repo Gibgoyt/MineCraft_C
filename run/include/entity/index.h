@@ -4,6 +4,7 @@
 
 #include "arena/index.h"
 #include "entity/animation/index.h"
+#include "entity/explosion/index.h"
 #include "entity/grid/index.h"
 #include "entity/item_drop/index.h"
 #include "entity/projectile/index.h"
@@ -23,9 +24,9 @@ typedef struct entity_t {
     item_drop_store_t item_drops;   /* 88 */
     entity_store_t store;           /* 184: every body with a mind of its own; run/src/mob/ gives them one */
     entity_grid_t grid;             /* 464: where they were at the end of the last tick */
-    uint8_t _pad0[40];              /* 536 */
+    explosion_t explosion;          /* 536: what blasts work in */
     projectile_store_t projectiles; /* 576: arrows; run/src/game/ ticks them, as only it knows the player's box */
-    uint8_t _pad1[48];              /* 656 */
+    uint8_t _pad0[48];              /* 656 */
 } entity_t;
 static_assert(sizeof(entity_t) == 704);
 static_assert(alignof(entity_t) == 64);

@@ -6,6 +6,7 @@
 #include "entity/index.h"
 #include "heap/index.h"
 #include "job/index.h"
+#include "mob/creeper/index.h"
 #include "mob/path/index.h"
 #include "mob/skeleton/index.h"
 #include "mob/zombie/index.h"
@@ -21,10 +22,11 @@ typedef struct mob_t {
     job_system_t *borrowed_job; /* 80: what its searches run on */
     mob_zombie_t zombie;        /* 88 */
     mob_skeleton_t skeleton;    /* 128: run/src/game/ ticks it, between this tick and the bodies' */
-    uint8_t _pad0[24];          /* 168 */
-    mob_path_t path;            /* 192 */
+    mob_creeper_t creeper;      /* 168 */
+    uint8_t _pad0[48];          /* 208 */
+    mob_path_t path;            /* 256 */
 } mob_t;
-static_assert(sizeof(mob_t) == 512);
+static_assert(sizeof(mob_t) == 576);
 static_assert(alignof(mob_t) == 64);
 
 /* Reserves the region, and remembers what it runs its searches on, which must outlive it. nullptr runs them on the sim. On failure logs
@@ -42,7 +44,8 @@ void mob_open(mob_t *mob, const world_t *world, uint64_t seed);
  * Before the world closes. Safe if none is open. */
 void mob_close(mob_t *mob);
 
-/* One tick, on the thread holding the world's map. Never touches the heap. */
+/* One tick of what answers them, on the thread holding the world's map. Never touches the heap. The minds themselves, which need the
+ * player, are ticked by run/src/game/ after this, before the bodies move. */
 void mob_tick(mob_t *mob);
 
 /* One tick of what every mob does, after mob_tick and before the bodies move, in the entity the bodies are in. Returns the blow view takes,
