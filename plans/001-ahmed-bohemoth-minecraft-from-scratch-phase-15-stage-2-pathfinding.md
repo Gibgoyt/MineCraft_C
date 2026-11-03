@@ -29,7 +29,7 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 All run on 2026-11-03.
 
 - Debug build: clean, `standards_lint` clean, no recursion.
-- `run_mob_path`: 41 tests, 413230 checks, 0 failed, in debug, release and sanitize.
+- `run_mob_path`: passed in debug, release and sanitize: 41 tests, 0 failed, 413230 checks in release.
 - `standards_lint`, `clang_format`, `run_game`, `run_entity_drop`, `run_entity_store`, `run_player_interaction`: passed. The full ctest suite was not run.
 - Against a separate shortest-path search in the test, over 20 random worlds: 387 ways the same cost, 13 with no way in either.
 - Through 4000 random steps of edits and asks: 1787 exact cache answers were byte for byte what a search run then gave, and 189 answers by the rest of a way cost what a search run then found. 2001 entries were spoiled by edits or map changes on the way.
@@ -37,7 +37,7 @@ All run on 2026-11-03.
 - Real bodies through `entity_tick` walked what it found: round a wall, over blocks, off a ledge, up a slab and stairs, through a pool, up a ladder, stuck on a new wall and round it, and 16 in a crowd.
 - Release, on a machine shared with other agents' builds, a whole round's budget of 8192 nodes spent on a goal that cannot be reached: 1.2 to 2.0 ms on workers; alone, as with every worker busy, 4.4 to 5.1 ms, with one run of 9.4 ms. So that worst case can reach or pass the plan's 5 ms sim tick. Not yet judged by `bench_mobs`, which has no AI until Stages 15.4 to 15.6.
 
-Nothing asks for a path in the game yet: Stage 15.4's zombie is the first. In the game itself only opening, ticking with nothing asked and closing has run, through `--walk` in `run_entity_drop` and `run_game`.
+Nothing asks for a path in the game yet: Stage 15.4's zombie is the first. In the game itself only opening, ticking with nothing asked and closing has run, through `--walk` in `run_entity_drop`.
 
 ## Wiring outside the owned paths
 
@@ -55,6 +55,8 @@ Nothing asks for a path in the game yet: Stage 15.4's zombie is the first. In th
 ## Commits
 
 Appended as they land:
+
+- `2a120a7` Add the mob Owner tier and bounded A* pathfinding, run on workers in batches with a cache that edits spoil.
 
 ## Issues found
 
