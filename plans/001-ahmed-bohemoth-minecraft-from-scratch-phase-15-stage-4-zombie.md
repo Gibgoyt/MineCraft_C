@@ -53,6 +53,8 @@ All run on 2026-11-03.
 
 Appended as they land:
 
+- `2547ce3` Give zombies a mind: they stroll, notice and chase the player, strike it in melee, and leave their drops when they die.
+
 ## Issues found
 
 1. **Nothing draws a zombie.** Stage 15.1's issue 4, which named this stage as the natural place.
