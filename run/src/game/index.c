@@ -65,6 +65,11 @@ void game_entity_set(game_t *game, entity_t *entity) {
     game->borrowed_entity = entity;
 }
 
+void game_mob_set(game_t *game, mob_t *mob) {
+    ASSERT_ALWAYS(game->open == 0u);
+    game->borrowed_mob = mob;
+}
+
 void game_item_set(game_t *game, item_t *item) {
     ASSERT_ALWAYS(game->open == 0u);
     game->borrowed_item = item;
@@ -278,6 +283,9 @@ bool game_open(game_t *game, const game_config_t *config) {
     if (game->borrowed_entity != nullptr) {
         entity_open(game->borrowed_entity, terrain_rng_derive(terrain->seed, terrain_rng_salt("entity")));
     }
+    if (game->borrowed_mob != nullptr) {
+        mob_open(game->borrowed_mob, game->borrowed_world);
+    }
     if (game->borrowed_item != nullptr) {
         item_open(game->borrowed_item);
         item_world_begin(game->borrowed_item, &game->borrowed_world->edit);
@@ -296,6 +304,9 @@ void game_close(game_t *game) {
     job_group_deinit(&game->group);
     if (game->borrowed_item != nullptr) {
         item_close(game->borrowed_item);
+    }
+    if (game->borrowed_mob != nullptr) {
+        mob_close(game->borrowed_mob);
     }
     if (game->borrowed_entity != nullptr) {
         entity_close(game->borrowed_entity);
@@ -668,6 +679,10 @@ static void game_sim_tick(game_t *game, int64_t tick_ns) {
         game_interact_tick(game, tick_ns);
         if (game->borrowed_item != nullptr) {
             item_world_tick(game->borrowed_item, &game->borrowed_world->edit, game_spill, game);
+        }
+        /* Before the bodies move, so that what it answers is of the world as the hands left it. */
+        if (game->borrowed_mob != nullptr) {
+            mob_tick(game->borrowed_mob);
         }
         if (game->borrowed_entity != nullptr) {
             game_items_tick(game);

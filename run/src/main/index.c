@@ -5,6 +5,7 @@
 #include "display/headless/demo/index.h"
 #include "display/index.h"
 #include "entity/index.h"
+#include "mob/index.h"
 #include "item/index.h"
 #include "game/index.h"
 #include "gpu_bridge/index.h"
@@ -396,7 +397,22 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         math_deinit(&app->math);
         return MAIN_EXIT_RUNTIME;
     }
+    if (!mob_init(&app->mob, &app->job)) {
+        item_deinit(&app->item);
+        entity_deinit(&app->entity);
+        player_deinit(&app->player);
+        physics_deinit(&app->physics);
+        terrain_deinit(&app->terrain);
+        world_deinit(&app->world);
+        gpu_bridge_deinit(&app->gpu_bridge);
+        job_deinit(&app->job);
+        texture_deinit(&app->texture);
+        simd_deinit(&app->simd);
+        math_deinit(&app->math);
+        return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
+    }
     if (!render_init(&app->render, &app->gpu_bridge.device_memory, &app->job, render_limits_default())) {
+        mob_deinit(&app->mob);
         item_deinit(&app->item);
         entity_deinit(&app->entity);
         player_deinit(&app->player);
@@ -412,6 +428,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
     }
     if (!ui_init(&app->ui, &app->texture)) {
         render_deinit(&app->render);
+        mob_deinit(&app->mob);
         item_deinit(&app->item);
         entity_deinit(&app->entity);
         player_deinit(&app->player);
@@ -430,6 +447,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
     if (options->walk != 0) {
         game_player_set(&app->game, &app->player);
         game_entity_set(&app->game, &app->entity);
+        game_mob_set(&app->game, &app->mob);
         game_item_set(&app->game, &app->item);
     }
     return MAIN_EXIT_OK;
@@ -442,6 +460,7 @@ static void app_deinit(app_t *app) {
     display_deinit(&app->display);
     ui_deinit(&app->ui);
     render_deinit(&app->render);
+    mob_deinit(&app->mob);
     item_deinit(&app->item);
     entity_deinit(&app->entity);
     player_deinit(&app->player);
