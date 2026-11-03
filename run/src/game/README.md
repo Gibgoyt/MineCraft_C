@@ -20,6 +20,7 @@
 - `game_fly_from_script`, `game_fly_from_input`: either kind of input to a step of flying.
 - `game_player_set`, `game_walk_send`, `game_hands_send`: walk through the world with this player and not fly; what the mouse and keys want of it; what its two buttons are doing.
 - `game_entity_set`: what the player breaks comes out as items in the world, which it can pick up.
+- `game_mob_set`: `run/src/mob/` opens and closes with the world, and has a tick before the bodies move.
 - `game_item_set`: what it picks up goes into an inventory, and the hotbar slot in hand is what it places.
 - `game_hotbar_send`: the number keys and the wheel.
 - `game_ui_set`: draw on each picture shown with this `ui_t`, and the game screens come up on it.
@@ -30,7 +31,7 @@
 - `game_report`: what the frames took, and the books of what was dropped.
 
 **May be called by:** `run/src/main/`, and its part `session`.
-**Depends on:** `player`, `entity`, `item`, `ui`, `render`, `world`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
+**Depends on:** `mob`, `player`, `entity`, `item`, `ui`, `render`, `world`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
 
 **Parts:** `session`: from the title screen to Quit Game, on top of the rest of this.
 

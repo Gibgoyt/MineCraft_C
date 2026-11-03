@@ -5,6 +5,7 @@
 #include "arena/index.h"
 #include "display/index.h"
 #include "entity/index.h"
+#include "mob/index.h"
 #include "heap/index.h"
 #include "input/index.h"
 #include "item/index.h"
@@ -116,7 +117,8 @@ typedef struct game_t {
     render_camera_t shown_camera;      /* 1088: main's: what borrowed_last_picture was drawn from */
     void (*open_alive)(void *context); /* 1128: called now and then during a long game_open; nullptr for nobody */
     void *borrowed_open_alive_context; /* 1136 */
-    uint8_t _pad3[8];                  /* 1144 */
+    /* Read once a tick by the sim. Set before a world opens, so no write of main's touches it, only its line. */
+    mob_t *borrowed_mob;               /* 1144: what asks for paths; set before a world opens, and only read after */
     /* What the HUD shows. All relaxed: only what is on the screen depends on it, each word stays whole, and a frame of a tick-old slot
      * beside a new one is gone by the next. A line of its own from here: the sim writes these, once a tick. */
     _Atomic uint64_t hud_hotbar[INVENTORY_HOTBAR_SLOTS]; /* 1152: sim to main: each an item_stack_t's bytes */
@@ -161,6 +163,10 @@ void game_player_set(game_t *game, player_t *player);
 /* From here on what a player breaks comes out as items in the world, which it can pick up, and these open and close with the world.
  * Must outlive it. Before game_open. Without it the drops stay in the player's ring, and nothing reaches its hand. */
 void game_entity_set(game_t *game, entity_t *entity);
+
+/* From here on the minds of what walks the world open and close with it, and have a tick before the bodies move. Must outlive it. Before
+ * game_open. */
+void game_mob_set(game_t *game, mob_t *mob);
 
 /* From here on what a player picks up goes into this inventory, the hotbar slot in hand is what it places, and these open and close
  * with the world. Must outlive it. Before game_open. Without it what is picked up goes straight to the player's one-slot hand. */

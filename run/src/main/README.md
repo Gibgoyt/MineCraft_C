@@ -2,7 +2,7 @@
 
 **Purpose:** the program's entry point: holds `app_t` on the stack, checks the CPU, starts each system and stops it again.
 **Tier:** Root. Allocates nothing.
-**Owns:** `app_t app`, which everything else in the program hangs from. So far that is `job_system_t job`, `simd_t simd`, `texture_t texture`, `ui_t ui`, `world_t world`, `terrain_t terrain`, `physics_t physics`, `player_t player`, `entity_t entity`, `item_t item`, `gpu_bridge_t gpu_bridge`, `render_t render`, `game_t game`, `math_t math`, `display_t display`, `display_offscreen_t offscreen` and `input_t input`.
+**Owns:** `app_t app`, which everything else in the program hangs from. So far that is `job_system_t job`, `simd_t simd`, `texture_t texture`, `ui_t ui`, `world_t world`, `terrain_t terrain`, `physics_t physics`, `player_t player`, `entity_t entity`, `mob_t mob`, `item_t item`, `gpu_bridge_t gpu_bridge`, `render_t render`, `game_t game`, `math_t math`, `display_t display`, `display_offscreen_t offscreen` and `input_t input`.
 **Lifetime:** Process.
 **Threads:** main, which it pins to its place in `config/machine.yaml`.
 **Public functions:** `main`. A command line:
