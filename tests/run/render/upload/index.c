@@ -606,6 +606,54 @@ TEST(a_full_pool_refuses_keeps_what_was_there_and_recovers) {
     upload_buffers_end(t, b);
 }
 
+TEST(a_square_of_columns_has_one_top_and_the_world_one_limit) {
+    upload_buffers_t *const b = upload_test_aligned(t, sizeof(*b));
+    REQUIRE(upload_buffers_begin(t, b, 16u, WORLD_BUFFERS_PAGE_BYTES));
+    world_buffers_t *const buffers = &b->buffers;
+    const world_buffers_window_t window = buffers->window;
+    /* Two neighbours in one square of 8, and one in the next, as storage heights of 100, 40 and 300. */
+    const int32_t low_z = 100 - 1 - (int32_t)WORLD_BUFFERS_Z_ORIGIN, lower_z = 40 - 1 - (int32_t)WORLD_BUFFERS_Z_ORIGIN;
+    const int32_t next_z = 300 - 1 - (int32_t)WORLD_BUFFERS_Z_ORIGIN;
+    const int32_t x0 = window.min_x + (int32_t)(WORLD_BUFFERS_REGION_COLUMNS - 1u -
+                                                ((uint32_t)window.min_x & (WORLD_BUFFERS_REGION_COLUMNS - 1u)));
+    const int32_t y0 = window.min_y;
+    /* x0 is the last of its square, so x0 + 1 is the first of the next. */
+    uint32_t a = 0u, c = 0u, d = 0u;
+    REQUIRE(world_buffers_slot_of(&window, x0, y0, &a));
+    REQUIRE(world_buffers_slot_of(&window, x0 - 1, y0, &c));
+    REQUIRE(world_buffers_slot_of(&window, x0 + 1, y0, &d));
+    CHECK_EQ_U64(buffers->top_limit, 0u);
+    world_buffers_column_set(buffers, a, x0, y0, 1u, (int16_t)lower_z);
+    CHECK_EQ_U64(buffers->top_limit, 40u);
+    CHECK_EQ_U64(buffers->borrowed_shadow[a].region_top, 0u); /* not known until it is asked for */
+    world_buffers_region_note(buffers, a);
+    CHECK_EQ_U64(buffers->borrowed_shadow[a].region_top, 3u); /* 40 blocks, up to whole sections */
+
+    world_buffers_column_set(buffers, c, x0 - 1, y0, 1u, (int16_t)low_z);
+    world_buffers_region_note(buffers, c);
+    CHECK_EQ_U64(buffers->top_limit, 100u);
+    CHECK_EQ_U64(buffers->borrowed_shadow[a].region_top, 7u); /* its neighbour's top reached it */
+    CHECK_EQ_U64(buffers->borrowed_shadow[c].region_top, 7u);
+
+    world_buffers_column_set(buffers, d, x0 + 1, y0, 1u, (int16_t)next_z);
+    world_buffers_region_note(buffers, d);
+    CHECK_EQ_U64(buffers->top_limit, 300u);
+    CHECK_EQ_U64(buffers->borrowed_shadow[d].region_top, 19u);
+    CHECK_EQ_U64(buffers->borrowed_shadow[a].region_top, 7u); /* the next square's is its own */
+
+    /* A column that comes down takes its square's top with it, and the world's limit stays, as that is only allowed to be high. */
+    world_buffers_column_set(buffers, c, x0 - 1, y0, 1u, (int16_t)lower_z);
+    CHECK_EQ_U64(buffers->borrowed_shadow[c].region_top, 0u);
+    world_buffers_region_note(buffers, c);
+    CHECK_EQ_U64(buffers->borrowed_shadow[a].region_top, 3u);
+    CHECK_EQ_U64(buffers->top_limit, 300u);
+
+    /* What has gone from a slot has no say. */
+    world_buffers_column_clear(buffers, d);
+    CHECK_EQ_U64(buffers->borrowed_shadow[d].region_top, 0u);
+    upload_buffers_end(t, b);
+}
+
 TEST(a_page_taken_back_into_its_list_when_a_slab_returns_serves_again) {
     upload_buffers_t *const b = upload_test_aligned(t, sizeof(*b));
     REQUIRE(upload_buffers_begin(t, b, 4u, 2ull * WORLD_BUFFERS_PAGE_BYTES));

@@ -377,7 +377,7 @@ TEST(the_real_threads_load_the_default_render_distance_when_asked) {
            wanted, game->columns_made, (libc_double_t)time_ns_to_ms(first_picture_ns),
            (libc_double_t)time_ns_to_ms(all_in_ns), frames, (libc_double_t)time_ns_to_ms(longest_frame_ns),
            (libc_double_t)rig.render->buffers.slab_bytes / (libc_double_t)(1u << 20),
-           rig.render->buffers.pool_full_count);
+           (uint64_t)rig.render->buffers.pool_full_count);
     CHECK_EQ_U64(rig.render->buffers.pool_full_count, 0u);
     game_report(game);
     game_close(game);

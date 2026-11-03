@@ -204,11 +204,11 @@ static_assert(sizeof(bench_result_t) == 312);
 
 /* What the command line asked for. */
 typedef struct bench_options_t {
-    const char *only;   /* 0: rows whose name holds this */
-    const char *record; /* 8: the history to add to */
-    const char *label;  /* 16: says what was being measured, in that history */
-    const char *trace;  /* 24: a profile of the one row */
-    const char *shots;  /* 32: a picture of the end of each row goes here */
+    const char *only;      /* 0: rows whose name holds this */
+    const char *record;    /* 8: the history to add to */
+    const char *label;     /* 16: says what was being measured, in that history */
+    const char *trace;     /* 24: a profile of the one row */
+    const char *shots;     /* 32: a picture of the end of each row goes here */
     uint32_t features_off; /* 40: SHADE_FEATURE_* to take away, to see what each costs */
     uint8_t _pad0[4];      /* 44 */
 } bench_options_t;

@@ -180,6 +180,16 @@ TEST(the_mip_is_the_level_whose_texels_are_nearest_a_pixel) {
 }
 
 TEST(the_curves_are_the_published_ones) {
+    /* The tables stand for these functions: the numbers are the card's powf, so they need only agree with this CPU's about as far as two
+     * good powfs do. Relative, as the low end is small. */
+    for (uint32_t byte = 0u; byte < 256u; byte++) {
+        const float32_t direct = shade_srgb_to_linear((float32_t)byte / 255.0f32);
+        CHECK_NEAR(shade_srgb_byte(byte), direct, direct * 1e-6f32 + 1e-9f32);
+    }
+    for (uint32_t level = 0u; level < SHADE_LIGHT_LEVEL_MAX; level++) {
+        const float32_t direct = powf(0.8f32, (float32_t)(SHADE_LIGHT_LEVEL_MAX - level));
+        CHECK_NEAR(shade_sky_level(level), direct, direct * 1e-6f32);
+    }
     CHECK_NEAR(shade_srgb_to_linear(0.0f32), 0.0f32, 1e-6f32);
     CHECK_NEAR(shade_srgb_to_linear(1.0f32), 1.0f32, 1e-5f32);
     CHECK_NEAR(shade_srgb_to_linear(0.04045f32), 0.0031308f32, 1e-5f32);

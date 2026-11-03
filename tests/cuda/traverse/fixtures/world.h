@@ -241,6 +241,34 @@ static void tw_encode(tw_world_t *world, world_buffers_column_t *table, uint8_t 
     world->pool_bytes = granule * WORLD_BUFFERS_GRANULE_BYTES;
 }
 
+/* What the game's upload and frame tell a ray of the tops, worked out here from the table alone, so that every test in this file also says that
+ * what a ray skips by them changes no answer. Its squares are the world's own, however the window lies across them. */
+static void tw_tops_set(tw_world_t *world, world_buffers_column_t *table) {
+    const uint32_t wide = world->columns_wide;
+    const int32_t min_x = world->min_block[0] / 16, min_y = world->min_block[1] / 16;
+    const int32_t mask = (int32_t)WORLD_BUFFERS_REGION_COLUMNS - 1;
+    int32_t highest_of_all = 1;
+    for (uint32_t i = 0u; i < wide * wide; i += 1u) {
+        world_buffers_column_t *const column = &table[i];
+        int32_t highest = 1;
+        for (int32_t dy = 0; dy <= mask; dy += 1) {
+            for (int32_t dx = 0; dx <= mask; dx += 1) {
+                const int32_t x = (column->chunk_x & ~mask) + dx, y = (column->chunk_y & ~mask) + dy;
+                if (x < min_x || y < min_y || x >= min_x + (int32_t)wide || y >= min_y + (int32_t)wide) {
+                    continue;
+                }
+                const world_buffers_column_t *const other =
+                    &table[tw_floor_mod(y, wide) * wide + tw_floor_mod(x, wide)];
+                const int32_t above = (int32_t)other->top_z - TRAVERSE_Z_BASE + 1;
+                highest = above > highest ? above : highest;
+            }
+        }
+        column->region_top = (uint8_t)((highest + 15) >> 4);
+        highest_of_all = highest > highest_of_all ? highest : highest_of_all;
+    }
+    world->view.top_limit = (uint32_t)highest_of_all;
+}
+
 static bool tw_block_up(test_context_t *t, device_memory_t *memory, device_block_t *block, const void *source,
                         uint64_t bytes, const char *name) {
     const uint64_t size = bytes > 64u ? bytes : 64u; /* an empty pool still has an address */
@@ -268,6 +296,7 @@ static bool tw_world_upload(test_context_t *t, device_memory_t *memory, tw_world
     uint8_t *const pool = region.owned_base;
     memset(pool, 0, world->pool_bytes + 64u);
     tw_encode(world, table, pool);
+    tw_tops_set(world, table);
     const bool sent =
         tw_block_up(t, memory, &world->table, table, slots * sizeof(world_buffers_column_t), "tw table") &&
         tw_block_up(t, memory, &world->pool, pool, world->pool_bytes, "tw pool");

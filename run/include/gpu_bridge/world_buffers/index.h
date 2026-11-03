@@ -92,12 +92,12 @@ static_assert(WORLD_BUFFERS_REGION_COLUMNS == 1u << WORLD_BUFFERS_REGION_SHIFT);
 /* One slot of the toroidal table, on the card and in the host's copy. All zero is a slot with no column. A stride of four
  * cache lines, so that a slot's address is a shift. */
 typedef struct world_buffers_column_t {
-    uint64_t section_mask;                            /* 0: one bit per section with bytes in the pool */
-    int32_t chunk_x;                                  /* 8 */
-    int32_t chunk_y;                                  /* 12 */
-    uint32_t generation;                              /* 16: the map's, for the load this describes */
-    int16_t top_z;                                    /* 20: no block above this, so a ray above it leaves the column */
-    uint8_t ready;                                    /* 22: 1 if a column is here */
+    uint64_t section_mask; /* 0: one bit per section with bytes in the pool */
+    int32_t chunk_x;       /* 8 */
+    int32_t chunk_y;       /* 12 */
+    uint32_t generation;   /* 16: the map's, for the load this describes */
+    int16_t top_z;         /* 20: no block above this, so a ray above it leaves the column */
+    uint8_t ready;         /* 22: 1 if a column is here */
     /* 23: in sections of height, one above the highest block of the WORLD_BUFFERS_REGION_COLUMNS square of columns this one is in: a ray over this
      * crosses the whole square in a step. 0 for not known. It may be high, and never low. See world_buffers_region_note. */
     uint8_t region_top;
