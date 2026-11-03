@@ -54,11 +54,13 @@ Whether the tests can fail: with `save_world_commit_write` changed to retire its
 
 Appended as they land:
 
+- `f7e78c7` Keep a world on disk as its seed and the sections that changed, with versioned headers and a crash-safe rename.
+
 ## Issues found
 
 1. **Expected:** the test rig's square window all streamed in. **Actual:** `CHECK failed: column != nullptr` and `WORLD_EDIT_STATUS_NOT_LOADED`, as the map streams a circle of `table_radius`, not its square, so corners are never offered. **Done:** the rig opens a table large enough for the square to fit inside its circle. The test was wrong, not the map.
 2. **Expected:** only structs that go to disk need `alignof` and every `offsetof`. **Actual:** `struct_no_offsetof_assert`, 51 breaches: `lint_catalog_struct_is_shared` goes by path, so every struct under `run/include/save/` counts as shared. **Done:** asserted all of them, the in-memory ones too. Stage 16.2's headers will meet the same rule.
-3. **Process slip:** the one mutation run above ran the test binary directly and not through `tools/test-or-build.sh`, for one test of a few seconds. Everything else went through the wrapper.
+3. **Process slip:** twice the test binary ran directly and not through `tools/test-or-build.sh`: the mutation run above, and once more by mistake under `timeout 100` just before the first commit, with its output thrown away, so it counts for nothing here. Everything reported under Results went through the wrapper.
 4. **Left for Stage 16.2, by its scope:** a save happens only at a world's close, and when a set fills up as columns leave. A kill during play loses everything since the world opened. `save_world_capture_dirty`, `save_world_commit_begin` and `save_world_commit_write` are split so that its autosave can run the write on a worker. It must also keep `game_column_leaving_save`'s own write from running during one of its own, and the phase gate's "at most one autosave interval" is not met until then.
 5. **Not verified: a power cut.** `SIGKILL` tests show a process's death at every step and at random moments, which leaves the page cache intact. Whether the data really reaches the platter depends on the order of `fsync`s, which is by reading the code: temporary file, rename, directory, then manifest through `file_write_atomic`. `strace` is not installed here to show the order of the calls, and no test here can cut the power.
 6. **Product gaps found, not fixed, out of this stage's scope:**
