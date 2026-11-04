@@ -25,6 +25,6 @@ What it checks:
 - **The real threads:** `sim`, `gpu` and a `main` loop on a plain buffer draw the same picture as a run with no threads, take nothing from the heap once running, and stop clean.
 - **What a frame refuses:** targets too small, and a material with no texture, which draws magenta.
 
-`fixtures/` holds only those pictures, with every effect on. Any change to the terrain, the textures or an effect changes them, and they are made again and looked at.
+`fixtures/` holds only those pictures, with every effect on. Any change to the terrain, the textures or an effect changes them, and they are made again and looked at. Last made for plan 003 phase 8 stage 7: the new land, on which the default seed now starts in a desert. `start.png`, `north_low.png` and `down.png` were read by eye.
 
 The real loop through `display_frames_run`, with the guardian forked, is `tests/run/game/`.
