@@ -109,6 +109,7 @@ Appended as they land:
 
 - `49f56e0` Raise the top of the world to z = 1250 with 96 sections a column, two-word section masks everywhere, and save format version 3.
 - `404e237` Say in the repository's structure that terrain's range now reaches z = 1250.
+- `2dcbdb7` Record the taller world's todos, measurements before and after, and issues in its plan file.
 
 ## Issues found
 
