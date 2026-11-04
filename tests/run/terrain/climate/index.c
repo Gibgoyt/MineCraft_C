@@ -40,7 +40,7 @@ static const uint64_t CLIMATE_WORLD = 0x1234567890ABCDEFull;
 
 /* Pinned: see README.md. */
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t CLIMATE_DIGEST_PIN = 0xED7C11C4E27FB004ull;
+static const uint64_t CLIMATE_DIGEST_PIN = 0xB97D2A98FDF4D13Aull;
 
 static const char *const CLIMATE_NAMES[CLIMATE_FIELDS] = {
     "continentalness", "erosion", "ridges", "temperature", "humidity", "weirdness",

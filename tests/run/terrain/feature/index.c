@@ -26,7 +26,7 @@ enum : uint32_t {
     /* The search for places: this many chunks a side, this many chunks apart. */
     FEA_SEARCH_SIDE = 256u,
     FEA_SEARCH_STEP = 16u,
-    FEA_PLACES_EACH = 3u,
+    FEA_PLACES_EACH = 5u,
     /* How many layers round the ground a place's box holds. */
     FEA_BELOW = 16u,
     FEA_ABOVE = 40u,
@@ -41,9 +41,9 @@ static const uint64_t FEA_WORLD = 0x1234567890ABCDEFull;
 
 /* Pinned: see README.md. */
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t FEA_DIGEST_PIN = 0x0A01D5EEC98538B8ull;
+static const uint64_t FEA_DIGEST_PIN = 0x8F70D3BFF3EBF987ull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t FEA_FOREST_PIN = 0x36437B9DC5B9B018ull;
+static const uint64_t FEA_FOREST_PIN = 0xD5BB72B7CF06584Bull;
 
 static uint64_t fea_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -1224,20 +1224,24 @@ TEST(only_what_is_open_changes_and_no_voxel_outside_the_world) {
         fea_stages(&terrain, &box, opened, before);
         memcpy(after, before, voxels * sizeof(uint16_t));
         terrain_feature_fill_box(terrain.borrowed_feature, &box, after);
+        const uint64_t layer = (uint64_t)box.count_x * box.count_y;
         uint64_t replaced = 0u;
         uint64_t changed = 0u;
         for (uint64_t i = 0u; i < voxels; i++) {
             if (before[i] != after[i]) {
                 changed++;
+                /* A lake cuts ground, and in the cold its top layer is ice with only sky over it. Where it is 1 deep, that is all of it. */
+                const bool frozen_lake =
+                    after[i] == BLOCK_ID_ICE && i + layer < voxels && after[i + layer] == BLOCK_ID_AIR;
                 if (before[i] != BLOCK_ID_AIR && before[i] != BLOCK_ID_WATER && after[i] != BLOCK_ID_AIR &&
-                    after[i] != BLOCK_ID_WATER) {
+                    after[i] != BLOCK_ID_WATER && !frozen_lake) {
                     replaced++;
                 }
             }
         }
         printf("    %" PRIu64 " voxels changed, %" PRIu64 " of solid to solid\n", changed, replaced);
         CHECK(changed > 0u);
-        /* Nothing solid is ever turned to anything else solid, but for ice, which is on water. */
+        /* Nothing solid is ever turned to anything else solid, but for a lake's ice. */
         CHECK_EQ_U64(replaced, 0u);
     }
     /* Well above the world: all air, nothing written. */

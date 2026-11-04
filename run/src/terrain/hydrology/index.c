@@ -49,8 +49,8 @@ static const float32_t HYDROLOGY_RIVER_GONE_C = 0.35f32;
 static const float32_t HYDROLOGY_BED_EXTRA =
     (float32_t)(TERRAIN_HYDROLOGY_BED_SHALLOWEST - TERRAIN_HYDROLOGY_BED_DEEPEST);
 static const float32_t HYDROLOGY_DEEP_OCEAN_BELOW = -60.0f32;
-static const float32_t HYDROLOGY_OCEAN_C_MAX = -0.47f32;
-static const float32_t HYDROLOGY_COAST_C_MAX = -0.25f32;
+static const float32_t HYDROLOGY_OCEAN_C_MAX = -0.45f32;
+static const float32_t HYDROLOGY_COAST_C_MAX = -0.24f32;
 static const float32_t HYDROLOGY_SHORE_UNDER = -6.0f32;
 static const float32_t HYDROLOGY_SAND_TOP_MIN = 2.0f32;
 static const float32_t HYDROLOGY_STEEP_FROM = 1.5f32;

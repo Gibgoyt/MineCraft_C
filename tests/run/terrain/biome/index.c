@@ -44,9 +44,9 @@ static const int32_t BIO_CAVE_LEVEL_Z[BIO_CAVE_LEVELS] = {-210, -170, -100, -60,
 
 /* Pinned: see README.md. */
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t BIO_DIGEST_PIN = 0xFC0F7CDAC76C048Dull;
+static const uint64_t BIO_DIGEST_PIN = 0x45BCC435B8BE3468ull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t BIO_COLUMNS_PIN = 0xD691605E6DE554B9ull;
+static const uint64_t BIO_COLUMNS_PIN = 0xD8F41C421E9A02CCull;
 
 static uint64_t bio_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

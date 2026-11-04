@@ -35,7 +35,7 @@ static const uint64_t ORE_WORLD = 0x1234567890ABCDEFull;
 
 /* Pinned: see README.md. */
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t ORE_DIGEST_PIN = 0x4697100F5496AFC8ull;
+static const uint64_t ORE_DIGEST_PIN = 0x40D60AF9C75AFA9Cull;
 
 static uint64_t ore_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

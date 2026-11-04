@@ -9,7 +9,7 @@ enum : uint32_t {
 };
 
 /* What each field looks like. The README says why these. Changing any number here changes every world. */
-static const float32_t CLIMATE_WEIGHTS_CONTINENTALNESS[] = {0.5f32, 1.0f32, 2.0f32, 2.0f32, 2.0f32, 1.0f32, 1.0f32};
+static const float32_t CLIMATE_WEIGHTS_CONTINENTALNESS[] = {0.3f32, 1.0f32, 2.0f32, 2.0f32, 2.0f32, 1.0f32, 1.0f32};
 static const terrain_noise_shape_t CLIMATE_SHAPE_CONTINENTALNESS = {
     .frequency_x = 1.0f64 / 3072.0f64,
     .frequency_y = 1.0f64 / 3072.0f64,

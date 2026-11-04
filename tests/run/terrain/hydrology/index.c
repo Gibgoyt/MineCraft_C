@@ -44,11 +44,11 @@ static const int32_t HYDRO_MAP_MIN = -3;
 
 /* Pinned: see README.md. */
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t HYDRO_DIGEST_PIN = 0x0C619E86DAF9E85Eull;
+static const uint64_t HYDRO_DIGEST_PIN = 0xBACEEECDA34F1B77ull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t HYDRO_COLUMNS_PIN = 0x02771DC92D08E5E1ull;
+static const uint64_t HYDRO_COLUMNS_PIN = 0x3B586D0C472E58FDull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t HYDRO_FLOOD_PIN = 0xD0CF65F7671C45DEull;
+static const uint64_t HYDRO_FLOOD_PIN = 0x8BE0CD3D93BD59ADull;
 
 static uint64_t hydro_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -125,10 +125,10 @@ static terrain_hydrology_column_t hydro_expected_column(const terrain_hydrology_
     const float32_t sand_top = 2.0f32 + 1.5f32 * (in->shore + 1.0f32);
     if (in->height >= 0.0f32 && ground <= 0.0f32) {
         kind = TERRAIN_HYDROLOGY_KIND_RIVER;
-    } else if (river < 0.5f32 && in->continentalness <= -0.25f32 && ground >= -6.0f32 && ground <= sand_top + 1.0f32) {
+    } else if (river < 0.5f32 && in->continentalness <= -0.24f32 && ground >= -6.0f32 && ground <= sand_top + 1.0f32) {
         kind = in->steepness >= 1.5f32 ? TERRAIN_HYDROLOGY_KIND_STONY_SHORE : TERRAIN_HYDROLOGY_KIND_BEACH;
     } else if (ground < 0.0f32) {
-        if (in->continentalness > -0.47f32) {
+        if (in->continentalness > -0.45f32) {
             kind = TERRAIN_HYDROLOGY_KIND_LAKE;
         } else {
             kind = ground < -60.0f32 ? TERRAIN_HYDROLOGY_KIND_DEEP_OCEAN : TERRAIN_HYDROLOGY_KIND_OCEAN;
@@ -149,8 +149,8 @@ TEST(a_column_is_worked_out_as_the_readme_says) {
     static const float32_t heights[] = {-116.0f32, -60.5f32, -7.0f32, -0.5f32, 0.0f32,
                                         1.0f32,    6.0f32,   40.0f32, 454.0f32};
     static const float32_t softness[] = {4.0f32, 30.0f32};
-    static const float32_t continents[] = {-1.0f32,  -0.48f32, -0.47f32, -0.46f32, -0.3f32,
-                                           -0.25f32, -0.24f32, 0.025f32, 0.35f32,  1.0f32};
+    static const float32_t continents[] = {-1.0f32,  -0.46f32, -0.45f32, -0.44f32, -0.3f32,
+                                           -0.24f32, -0.23f32, 0.025f32, 0.35f32,  1.0f32};
     static const float32_t weird[] = {-1.0f32, -0.1f32, -0.03f32, 0.0f32, 0.02f32,
                                       0.05f32, 0.09f32, 0.15f32,  0.2f32, 1.0f32};
     static const float32_t noise[] = {-1.0f32, -0.3f32, 0.0f32, 0.5f32, 1.0f32};

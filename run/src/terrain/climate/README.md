@@ -21,14 +21,14 @@ All six are from -1 to 1. A climate belongs to a column: it has no height in it,
 
 | Field | Means, from -1 to 1 | Cell, in blocks | Octaves |
 |---|---|---|---|
-| `continentalness` | Deep ocean to far inland | 3072 | 7, weighted 0.5, 1, 2, 2, 2, 1, 1 |
+| `continentalness` | Deep ocean to far inland | 3072 | 7, weighted 0.3, 1, 2, 2, 2, 1, 1 |
 | `erosion` | Sharp high ground to worn-flat ground | 1536 | 5, weighted 1, 1, 2, 1, 1 |
 | `temperature` | Frozen to scorching | 4096 | 4 |
 | `humidity` | Arid to soaked | 2048 | 4 |
 | `weirdness` | Picks the odd variant of a biome: the sign and size are for the biome table | 512 | 4 |
 | `ridges` | Valley floor to ridge top: `1 - |3 * |weirdness| - 2||` | From weirdness | None of its own |
 
-**Why continentalness is weighted.** Halving each octave leaves the largest so far ahead that a coast is one smooth blob. With these weights the octaves of 3072, 1536 and 768 blocks count the same, 512 and 256 after them, so seas have bays and islands and no one scale rules. A heavier first octave makes bigger seas, but over a 16 km map the sea's share then wanders from seed to seed: at a cell of 4096 and a weight of 1 it came to 28.6 to 42.0% on 3 seeds. Land is joined up, whatever the scale, because the sea is well under half of the world: a line of a smooth field that holds under half of it cannot run on forever, so every sea ends. `run/src/terrain/density/README.md` says where the coast is.
+**Why continentalness is weighted.** Halving each octave leaves the largest so far ahead that a coast is one smooth blob. With these weights the octaves of 1536 and 768 blocks count the most, then 3072 and 384, so seas have bays and islands and no one scale rules. A heavier first octave makes bigger seas, but over a 16 km map the sea's share then wanders from seed to seed: at a cell of 4096 and a weight of 1 it came to 28.6 to 42.0% on 3 seeds, and at 3072 it took a weight of 0.3, not 0.5, to hold 8 seeds inside the target of 25 to 30%. Land is joined up, whatever the scale, because the sea is well under half of the world: a line of a smooth field that holds under half of it cannot run on forever, so every sea ends. `run/src/terrain/density/README.md` says where the coast is.
 
 So `ridges` and `weirdness` are the same noise, twice. That keeps ridges and the odd biomes in the same places, as they should
 be, and `ridges` costs no noise of its own. Ridges has a crease at its top on purpose: that is the line of a ridge. Whoever

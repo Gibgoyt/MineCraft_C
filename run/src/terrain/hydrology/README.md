@@ -41,10 +41,10 @@ The cut is a limit on height: **ground stays ground up to `carve_top`, and nothi
 | Kind | When, first match | For |
 |---|---|---|
 | River | `h >= 0` and `ground <= 0`: the cut has brought it to the water | Stage 10.6's rivers |
-| Beach | `river < 0.5`, `c <= -0.25`, `ground` from -6 to one above `sand_top`, and not steep | Shores |
+| Beach | `river < 0.5`, `c <= -0.24`, `ground` from -6 to one above `sand_top`, and not steep | Shores |
 | Stony shore | The same, but 1.5 blocks of ground to the block or steeper, on the cell's four edges | Shores |
 | Land | `ground >= 0` | |
-| Lake | `ground < 0` with `c > -0.47`: low ground far from the sea, where water still stands at `z = 0` | Stage 10.7's lakes may add to these |
+| Lake | `ground < 0` with `c > -0.45`: low ground far from the sea, where water still stands at `z = 0` | Stage 10.7's lakes may add to these |
 | Deep ocean | `ground < -60` | All oceans |
 | Ocean | Any other `ground < 0` | All oceans |
 

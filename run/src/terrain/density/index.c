@@ -29,11 +29,11 @@ typedef struct density_knot_t {
 static_assert(sizeof(density_knot_t) == 16);
 
 static const density_knot_t DENSITY_KNOTS_CONTINENTAL[] = {
-    {-1.0f64, -110.0f64}, {-0.88f64, -90.0f64}, {-0.77f64, -64.0f64}, {-0.62f64, -36.0f64}, {-0.52f64, -10.0f64},
-    {-0.47f64, 3.0f64},   {-0.35f64, 10.0f64},  {-0.07f64, 24.0f64},  {0.43f64, 44.0f64},   {1.0f64, 64.0f64},
+    {-1.0f64, -110.0f64}, {-0.88f64, -90.0f64}, {-0.77f64, -64.0f64}, {-0.6f64, -36.0f64}, {-0.5f64, -10.0f64},
+    {-0.45f64, 3.0f64},   {-0.34f64, 10.0f64},  {-0.07f64, 24.0f64},  {0.43f64, 44.0f64},  {1.0f64, 64.0f64},
 };
 static const density_knot_t DENSITY_KNOTS_INLAND[] = {
-    {-1.0f64, 0.0f64}, {-0.52f64, 0.0f64}, {-0.35f64, 0.1f64}, {-0.07f64, 0.6f64}, {0.21f64, 1.0f64}, {1.0f64, 1.0f64},
+    {-1.0f64, 0.0f64}, {-0.5f64, 0.0f64}, {-0.34f64, 0.1f64}, {-0.07f64, 0.6f64}, {0.21f64, 1.0f64}, {1.0f64, 1.0f64},
 };
 static const density_knot_t DENSITY_KNOTS_RELIEF[] = {
     {-1.0f64, 1.0f64}, {-0.5f64, 0.9f64}, {-0.2f64, 0.55f64}, {0.1f64, 0.2f64},
@@ -52,14 +52,14 @@ static const density_knot_t DENSITY_KNOTS_VALLEY[] = {
 };
 static const density_knot_t DENSITY_KNOTS_HILL_LAND[] = {
     {-1.0f64, 0.0f64},
-    {-0.47f64, 0.0f64},
-    {-0.22f64, 1.0f64},
+    {-0.45f64, 0.0f64},
+    {-0.2f64, 1.0f64},
     {1.0f64, 1.0f64},
 };
 static const density_knot_t DENSITY_KNOTS_HILL_SEA[] = {
     {-1.0f64, 1.0f64},
-    {-0.6f64, 1.0f64},
-    {-0.53f64, 0.0f64},
+    {-0.58f64, 1.0f64},
+    {-0.51f64, 0.0f64},
     {1.0f64, 0.0f64},
 };
 static const density_knot_t DENSITY_KNOTS_HILL_RELIEF[] = {

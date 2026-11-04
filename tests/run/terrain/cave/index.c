@@ -38,7 +38,7 @@ static const uint64_t CAVE_SEED_LIST[CAVE_SEEDS] = {0x1234567890ABCDEFull, 1ull,
 
 /* Pinned: see README.md. */
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t CAVE_DIGEST_PIN = 0xBF4EDFC5DDD83518ull;
+static const uint64_t CAVE_DIGEST_PIN = 0x3BFEBDD9E240B6F3ull;
 
 static uint64_t cave_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
