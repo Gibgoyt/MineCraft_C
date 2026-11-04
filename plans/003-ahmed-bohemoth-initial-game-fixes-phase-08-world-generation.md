@@ -44,7 +44,7 @@ Cloned to `/tmp/mc_c_assets/worldgen/` to read. Nothing was built or run.
 
 ## Proposed targets
 
-**A starting point, for Ahmed to tune using the map.** Heights assume today's limit of 500, and scale up if phase 11 goes ahead.
+**A starting point, for Ahmed to tune using the map.** Ahmed has decided the world goes up to +1250 (phase 11, built first). These bands were written for the old limit of 500, so **stage 1 resets the two "Reaching" rows and adds higher bands** once the map shows what the new height can do.
 
 | Measure | Today | Target |
 |---|---|---|
