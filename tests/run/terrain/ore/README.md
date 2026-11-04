@@ -1,6 +1,6 @@
 # tests/run/terrain/ore
 
-**Purpose:** ctest `run_terrain_ore`. Tests `run/src/terrain/ore/`: the table against its README, each ore at its depths, deepslate by depth, the deepslate form only in deepslate, veins worked out by hand, veins across chunks, and the same bytes with 1 worker and with 16, in any order and any split of the work.
+**Purpose:** ctest `run_terrain_ore`. Tests `run/src/terrain/ore/`: the table against its README, each ore at its depths, rock above the old top of the world having its ore up to the last layer, rows left out over the rock moving nothing, deepslate by depth, the deepslate form only in deepslate, veins worked out by hand, veins across chunks, and the same bytes with 1 worker and with 16, in any order and any split of the work.
 **Tier:** test.
 **Owns:** nothing. Memory comes from the harness's test arena, and each test starts and stops its own systems.
 **Lifetime:** One run.

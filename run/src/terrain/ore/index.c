@@ -13,6 +13,7 @@ enum : uint32_t {
     ORE_PER_CHUNK_PART = (1u << ORE_PER_CHUNK_WHOLE_SHIFT),
 };
 static_assert(MC_WORLD_CHUNK_SIZE == 1 << ORE_CHUNK_SHIFT);
+static_assert(BLOCK_ID_AIR == 0u); /* ore_top_of_anything ors a layer together */
 
 /* The table. The README says where each number comes from. Changing any of them changes every world. */
 #define ORE_ROW(name, block_id, deep_id, low, high, vein, per_256, how, min_height)                                    \
@@ -45,11 +46,14 @@ static const terrain_ore_row_t ORE_TABLE[TERRAIN_ORE_ROWS] = {
     ORE_ROCK("ore/andesite_low", BLOCK_ID_ANDESITE, -123, -6, 64, 4u * 256u),
     ORE_ROCK("ore/andesite_high", BLOCK_ID_ANDESITE, 2, 127, 64, 85u),
     ORE_ROCK("ore/tuff", BLOCK_ID_TUFF, -250, -123, 64, 4u * 256u),
+    ORE_ROCK("ore/gravel_peak", BLOCK_ID_GRAVEL, 501, 1250, 33, 28u * 256u),
     /* Ore, which replaces all rock but dirt and gravel. */
     ORE_U("ore/coal_high", BLOCK_ID_COAL_ORE, BLOCK_ID_DEEPSLATE_COAL_ORE, 142, 500, 17, 60u * 256u),
+    ORE_U("ore/coal_peak", BLOCK_ID_COAL_ORE, BLOCK_ID_DEEPSLATE_COAL_ORE, 501, 1250, 17, 125u * 256u),
     ORE_T("ore/coal_low", BLOCK_ID_COAL_ORE, BLOCK_ID_DEEPSLATE_COAL_ORE, -123, 252, 17, 40u * 256u),
     ORE_T("ore/copper", BLOCK_ID_COPPER_ORE, BLOCK_ID_DEEPSLATE_COPPER_ORE, -185, 96, 10, 32u * 256u),
     ORE_T("ore/iron_high", BLOCK_ID_IRON_ORE, BLOCK_ID_DEEPSLATE_IRON_ORE, 33, 500, 9, 180u * 256u),
+    ORE_U("ore/iron_peak", BLOCK_ID_IRON_ORE, BLOCK_ID_DEEPSLATE_IRON_ORE, 501, 1250, 9, 60u * 256u),
     ORE_T("ore/iron_middle", BLOCK_ID_IRON_ORE, BLOCK_ID_DEEPSLATE_IRON_ORE, -170, -14, 9, 20u * 256u),
     ORE_U("ore/iron_low", BLOCK_ID_IRON_ORE, BLOCK_ID_DEEPSLATE_IRON_ORE, -250, 18, 4, 20u * 256u),
     ORE_T("ore/gold", BLOCK_ID_GOLD_ORE, BLOCK_ID_DEEPSLATE_GOLD_ORE, -250, -60, 9, 8u * 256u),
@@ -60,6 +64,8 @@ static const terrain_ore_row_t ORE_TABLE[TERRAIN_ORE_ROWS] = {
     ORE_T("ore/diamond_large", BLOCK_ID_DIAMOND_ORE, BLOCK_ID_DEEPSLATE_DIAMOND_ORE, -406, -92, 12, 57u),
     /* High ground only: a mountain's. */
     ORE_ROW("ore/emerald", BLOCK_ID_EMERALD_ORE, BLOCK_ID_DEEPSLATE_EMERALD_ORE, -154, 500, 3, 16u * 256u,
+            TERRAIN_ORE_UNIFORM, 120),
+    ORE_ROW("ore/emerald_peak", BLOCK_ID_EMERALD_ORE, BLOCK_ID_DEEPSLATE_EMERALD_ORE, 501, 1250, 3, 18u * 256u,
             TERRAIN_ORE_UNIFORM, 120),
 };
 
@@ -142,6 +148,23 @@ static void ore_strata(const terrain_ore_t *ore, const terrain_density_box_t *bo
             }
         }
     }
+}
+
+/* The top of what is in the box and is not air. A vein replaces nothing that is air, so a row wholly over this cannot change the box, and leaving it
+ * out moves nothing. Most of a tall column is air, so this is the cost of rows only mountains can use. */
+static int64_t ore_top_of_anything(const terrain_density_box_t *box, const uint16_t *blocks) {
+    const uint64_t layer = (uint64_t)box->count_x * box->count_y;
+    for (uint32_t iz = box->count_z; iz-- > 0u;) {
+        const uint16_t *const voxels = blocks + (uint64_t)iz * layer;
+        uint16_t any = BLOCK_ID_AIR;
+        for (uint64_t i = 0u; i < layer; i++) {
+            any |= voxels[i];
+        }
+        if (any != BLOCK_ID_AIR) {
+            return (int64_t)box->origin_z + (int64_t)iz;
+        }
+    }
+    return (int64_t)box->origin_z - 1;
 }
 
 /* ---- Veins -------------------------------------------------------------------------------------------------------- */
@@ -295,7 +318,7 @@ void terrain_ore_fill_box(const terrain_ore_t *ore, const terrain_density_box_t 
     }
     ore_strata(ore, box, blocks);
     const int64_t z_first = box->origin_z;
-    const int64_t z_last = z_first + (int64_t)box->count_z - 1;
+    const int64_t z_last = ore_top_of_anything(box, blocks);
     /* Row by row, then chunk by chunk from the south-west, as the README says: leaving out a vein that misses a voxel cannot move
      * what the others do to it, so any box of it gets the same answer. */
     for (uint32_t r = 0u; r < TERRAIN_ORE_ROWS; r++) {

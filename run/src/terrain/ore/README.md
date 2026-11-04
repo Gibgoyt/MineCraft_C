@@ -33,10 +33,13 @@ The depths start from what was remembered of a familiar game's published ore dis
 | `ore/andesite_low` | andesite | -123 | -6 | uniform | 64 | 4 | |
 | `ore/andesite_high` | andesite | 2 | 127 | uniform | 64 | 0.33 | |
 | `ore/tuff` | tuff | -250 | -123 | uniform | 64 | 4 | Only in the deep rock |
+| `ore/gravel_peak` | gravel | 501 | 1250 | uniform | 33 | 28 | `ore/gravel` goes on, as much in a layer, above the height the world first stopped at |
 | `ore/coal_high` | coal | 142 | 500 | uniform | 17 | 60 | Mountains are rich in it |
+| `ore/coal_peak` | coal | 501 | 1250 | uniform | 17 | 125 | `ore/coal_high` goes on, as much in a layer |
 | `ore/coal_low` | coal | -123 | 252 | triangle | 17 | 40 | Most at about 65 |
 | `ore/copper` | copper | -185 | 96 | triangle | 10 | 32 | Most at about -45 |
 | `ore/iron_high` | iron | 33 | 500 | triangle | 9 | 180 | High in mountains |
+| `ore/iron_peak` | iron | 501 | 1250 | uniform | 9 | 60 | What `ore/iron_high` has in a layer at about 450, held to the top. Its triangle is down to nothing at 500 |
 | `ore/iron_middle` | iron | -170 | -14 | triangle | 9 | 20 | Most at about -92 |
 | `ore/iron_low` | iron | -250 | 18 | uniform | 4 | 20 | A little everywhere below the sea |
 | `ore/gold` | gold | -250 | -60 | triangle | 9 | 8 | Most at about -155 |
@@ -46,6 +49,9 @@ The depths start from what was remembered of a familiar game's published ore dis
 | `ore/diamond_small` | diamond | -406 | -92 | triangle | 4 | 14 | The triangle's peak is at -249, the bottom of the world, and veins that land below it are lost, so diamonds grow more common with depth |
 | `ore/diamond_large` | diamond | -406 | -92 | triangle | 12 | 0.22 | One big one, now and then |
 | `ore/emerald` | emerald | -154 | 500 | uniform | 3 | 16 | Only where a chunk's middle column is at least 120 high: a mountain's. This module knows no biomes, and this is the part of "mountain" that needs none. Fewer tried than the remembered number gives, as our veins of 3 really come to about 3: see Stage 10.5's issue 2 |
+| `ore/emerald_peak` | emerald | 501 | 1250 | uniform | 3 | 18 | `ore/emerald` goes on, as much in a layer, under the same rule |
+
+**Above 500 is four rows of its own.** The world first stopped at 500, and a row's number changing moves every vein of that row, so the rows that reached that height stay as they were and the `_peak` rows go on from there. No terrain reaches them yet, and a row whose reach is wholly over everything in a box that is not air is left out for that box, which moves nothing, as a vein replaces no air.
 
 There is no redstone: `config/blocks/` has no such block. A row for one goes here when it does.
 
@@ -90,4 +96,4 @@ A familiar game's ores sometimes refuse to touch air. That asks what is next to 
 
 ## What it costs
 
-A row costs nothing if its depths miss the box. Otherwise it costs a few draws per vein for the 9 chunks round a chunk, whether or not they touch it, and for the few that do, up to about 60 voxels a ball. What a chunk costs is in the stage file.
+A row costs nothing if its depths miss the box. Otherwise it costs a few draws per vein for the 9 chunks round a chunk, whether or not they touch it, and for the few that do, up to about 60 voxels a ball. What a chunk costs is in the stage file. Finding the top of what is not air costs one pass over a box's layers of air, down to the first that is not, for each box.

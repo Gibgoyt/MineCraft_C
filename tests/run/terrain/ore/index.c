@@ -90,10 +90,13 @@ static const ore_expected_row_t ORE_EXPECTED[TERRAIN_ORE_ROWS] = {
     {"ore/andesite_low", 1024u, -123, -6, ANY, BLOCK_ID_ANDESITE, BLOCK_ID_ANDESITE, 64u, U},
     {"ore/andesite_high", 85u, 2, 127, ANY, BLOCK_ID_ANDESITE, BLOCK_ID_ANDESITE, 64u, U},
     {"ore/tuff", 1024u, -250, -123, ANY, BLOCK_ID_TUFF, BLOCK_ID_TUFF, 64u, U},
+    {"ore/gravel_peak", 7168u, 501, 1250, ANY, BLOCK_ID_GRAVEL, BLOCK_ID_GRAVEL, 33u, U},
     {"ore/coal_high", 15360u, 142, 500, ANY, BLOCK_ID_COAL_ORE, BLOCK_ID_DEEPSLATE_COAL_ORE, 17u, U},
+    {"ore/coal_peak", 32000u, 501, 1250, ANY, BLOCK_ID_COAL_ORE, BLOCK_ID_DEEPSLATE_COAL_ORE, 17u, U},
     {"ore/coal_low", 10240u, -123, 252, ANY, BLOCK_ID_COAL_ORE, BLOCK_ID_DEEPSLATE_COAL_ORE, 17u, T},
     {"ore/copper", 8192u, -185, 96, ANY, BLOCK_ID_COPPER_ORE, BLOCK_ID_DEEPSLATE_COPPER_ORE, 10u, T},
     {"ore/iron_high", 46080u, 33, 500, ANY, BLOCK_ID_IRON_ORE, BLOCK_ID_DEEPSLATE_IRON_ORE, 9u, T},
+    {"ore/iron_peak", 15360u, 501, 1250, ANY, BLOCK_ID_IRON_ORE, BLOCK_ID_DEEPSLATE_IRON_ORE, 9u, U},
     {"ore/iron_middle", 5120u, -170, -14, ANY, BLOCK_ID_IRON_ORE, BLOCK_ID_DEEPSLATE_IRON_ORE, 9u, T},
     {"ore/iron_low", 5120u, -250, 18, ANY, BLOCK_ID_IRON_ORE, BLOCK_ID_DEEPSLATE_IRON_ORE, 4u, U},
     {"ore/gold", 2048u, -250, -60, ANY, BLOCK_ID_GOLD_ORE, BLOCK_ID_DEEPSLATE_GOLD_ORE, 9u, T},
@@ -103,6 +106,7 @@ static const ore_expected_row_t ORE_EXPECTED[TERRAIN_ORE_ROWS] = {
     {"ore/diamond_small", 3584u, -406, -92, ANY, BLOCK_ID_DIAMOND_ORE, BLOCK_ID_DEEPSLATE_DIAMOND_ORE, 4u, T},
     {"ore/diamond_large", 57u, -406, -92, ANY, BLOCK_ID_DIAMOND_ORE, BLOCK_ID_DEEPSLATE_DIAMOND_ORE, 12u, T},
     {"ore/emerald", 4096u, -154, 500, 120, BLOCK_ID_EMERALD_ORE, BLOCK_ID_DEEPSLATE_EMERALD_ORE, 3u, U},
+    {"ore/emerald_peak", 4608u, 501, 1250, 120, BLOCK_ID_EMERALD_ORE, BLOCK_ID_DEEPSLATE_EMERALD_ORE, 3u, U},
 };
 
 TEST(the_table_is_the_one_the_readme_gives) {
@@ -342,6 +346,82 @@ TEST(diamonds_are_more_common_the_deeper_they_are) {
     terrain_deinit(&terrain);
 }
 
+/* Above where the world first stopped, up to its last layer: rock of a mountain nobody has made yet has its ore. Each row's own block, in each of three
+ * bands, and no deepslate form so high. */
+TEST(rock_above_the_old_top_has_ore_up_to_the_last_layer) {
+    enum : uint32_t {
+        ACROSS = 64u,
+        TALL = 750u,
+        VOXELS = ACROSS * ACROSS * TALL,
+        BANDS = 3u,
+        BAND_LAYERS = TALL / BANDS
+    };
+    terrain_t terrain;
+    REQUIRE(terrain_init(&terrain, ORE_WORLD));
+    uint16_t *const blocks = test_alloc(t, (uint64_t)VOXELS * sizeof(uint16_t));
+    const terrain_density_box_t box = {
+        .origin_x = 96, .origin_y = -64, .origin_z = 501, .count_x = ACROSS, .count_y = ACROSS, .count_z = TALL};
+    ore_fill_with(blocks, VOXELS, BLOCK_ID_STONE);
+    terrain_ore_fill_box(terrain.borrowed_ore, &box, blocks);
+    uint64_t gravel[BANDS] = {0u}, coal[BANDS] = {0u}, iron[BANDS] = {0u};
+    uint64_t deep = 0u;
+    for (uint32_t i = 0u; i < VOXELS; i++) {
+        const uint32_t band = (i / (ACROSS * ACROSS)) / BAND_LAYERS;
+        gravel[band] += blocks[i] == BLOCK_ID_GRAVEL ? 1u : 0u;
+        coal[band] += blocks[i] == BLOCK_ID_COAL_ORE ? 1u : 0u;
+        iron[band] += blocks[i] == BLOCK_ID_IRON_ORE ? 1u : 0u;
+        deep += blocks[i] == BLOCK_ID_DEEPSLATE || blocks[i] == BLOCK_ID_DEEPSLATE_COAL_ORE ? 1u : 0u;
+    }
+    for (uint32_t band = 0u; band < BANDS; band++) {
+        printf("above 500, band %" PRIu32 ": gravel %" PRIu64 ", coal %" PRIu64 ", iron %" PRIu64 "\n", band,
+               gravel[band], coal[band], iron[band]);
+        CHECK(gravel[band] > 1000u);
+        CHECK(coal[band] > 1000u);
+        CHECK(iron[band] > 500u);
+    }
+    CHECK_EQ_U64(deep, 0u);
+    terrain_deinit(&terrain);
+}
+
+/* Rows over everything in a box are left out for it, and that can move nothing: rock up to a height comes out as the same box all of rock does, to that
+ * height, and what is air stays air. A box all of air is left all air. */
+TEST(leaving_out_rows_over_the_rock_moves_nothing) {
+    enum : uint32_t { ACROSS = 32u, TALL = 900u, LAYER = ACROSS * ACROSS, VOXELS = LAYER * TALL, ROCK_LAYERS = 620u };
+    terrain_t terrain;
+    REQUIRE(terrain_init(&terrain, ORE_WORLD));
+    uint16_t *const whole = test_alloc(t, (uint64_t)VOXELS * sizeof(uint16_t));
+    uint16_t *const lower = test_alloc(t, (uint64_t)VOXELS * sizeof(uint16_t));
+    const terrain_density_box_t box = {
+        .origin_x = -32, .origin_y = 48, .origin_z = 0, .count_x = ACROSS, .count_y = ACROSS, .count_z = TALL};
+    ore_fill_with(whole, VOXELS, BLOCK_ID_STONE);
+    ore_fill_with(lower, VOXELS, BLOCK_ID_AIR);
+    ore_fill_with(lower, (uint64_t)LAYER * ROCK_LAYERS, BLOCK_ID_STONE);
+    terrain_ore_fill_box(terrain.borrowed_ore, &box, whole);
+    terrain_ore_fill_box(terrain.borrowed_ore, &box, lower);
+    uint64_t wrong = 0u, changed_above_rock = 0u, peak_ore = 0u;
+    for (uint32_t i = 0u; i < VOXELS; i++) {
+        if (i < (uint64_t)LAYER * ROCK_LAYERS) {
+            wrong += lower[i] != whole[i] ? 1u : 0u;
+            /* z = 501 and up, in that rock: what comes from the rows the upper layers do not ask for. */
+            peak_ore += i >= (uint64_t)LAYER * 501u && lower[i] != BLOCK_ID_STONE ? 1u : 0u;
+        } else {
+            changed_above_rock += lower[i] != BLOCK_ID_AIR ? 1u : 0u;
+        }
+    }
+    printf("rock to z = %" PRIu32 ": %" PRIu64 " voxels of ore above 500\n", (uint32_t)ROCK_LAYERS - 1u, peak_ore);
+    CHECK_EQ_U64(wrong, 0u);
+    CHECK_EQ_U64(changed_above_rock, 0u);
+    CHECK(peak_ore > 1000u);
+    ore_fill_with(lower, VOXELS, BLOCK_ID_AIR);
+    terrain_ore_fill_box(terrain.borrowed_ore, &box, lower);
+    uint64_t in_air = 0u;
+    for (uint32_t i = 0u; i < VOXELS; i++) {
+        in_air += lower[i] != BLOCK_ID_AIR ? 1u : 0u;
+    }
+    CHECK_EQ_U64(in_air, 0u);
+    terrain_deinit(&terrain);
+}
+
 /* Veins come to about the size the table asks for. Each is laid alone, into a world of stone, for each kind of row. */
 TEST(a_vein_comes_to_about_the_size_the_table_asks_for) {
     enum : uint32_t { ACROSS = 256u, TALL = 80u, VOXELS = ACROSS * ACROSS * TALL };
@@ -365,7 +445,7 @@ TEST(a_vein_comes_to_about_the_size_the_table_asks_for) {
         coal += blocks[i] == BLOCK_ID_COAL_ORE ? 1u : 0u;
     }
     /* How many veins started in that volume, on average, from the triangle: 40 a chunk over 376 layers, peak at the middle. */
-    const uint32_t row = 10u;
+    const uint32_t row = 12u;
     CHECK_STR_EQ(table[row].borrowed_name, "ore/coal_low");
     const float64_t chunks = (float64_t)ACROSS * (float64_t)ACROSS / 256.0f64;
     const float64_t range = (float64_t)((int32_t)table[row].z_high - (int32_t)table[row].z_low);
