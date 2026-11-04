@@ -10,7 +10,7 @@
 #include <string.h>
 
 enum : uint64_t {
-    LIGHT_TEST_ARENA_BYTES = 64ull << 20,
+    LIGHT_TEST_ARENA_BYTES = 128ull << 20,
     LIGHT_TEST_POOL_BYTES = 96ull << 20,
 };
 enum : uint32_t {
@@ -378,11 +378,11 @@ TEST(an_empty_column_is_open_sky_and_takes_no_arrays) {
     light_test_t *const test = light_test_begin(t, 0u);
     light_test_commit_all(t, test);
     light_test_add_all(t, test);
-    CHECK_EQ_U64(light_test_at(t, test, 3, 3, 500), SECTION_LIGHT_OPEN_SKY);
+    CHECK_EQ_U64(light_test_at(t, test, 3, 3, 1250), SECTION_LIGHT_OPEN_SKY);
     CHECK_EQ_U64(light_test_at(t, test, 3, 3, -250), SECTION_LIGHT_OPEN_SKY);
     CHECK_EQ_U64(test->pool.live_bytes, 0u);
     /* Nothing changed, so a renderer has nothing to fetch. */
-    CHECK_EQ_U64(world_edit_dirty_peek(&test->edit, 0u, WORLD_EDIT_CONSUMER_RENDER), 0u);
+    CHECK(!column_mask_any(world_edit_dirty_peek(&test->edit, 0u, WORLD_EDIT_CONSUMER_RENDER)));
     light_test_end(test);
 }
 
@@ -890,7 +890,9 @@ TEST(sections_written_past_the_log_are_put_right_when_told_of) {
         CHECK(section_block_set(&column->sections[18], &test->pool, (uint32_t)((q >> 16) & (SECTION_VOXELS - 1u)),
                                 light_test_random_block(&rng)));
     }
-    CHECK_EQ_U64(world_light_sections_replaced(&test->light, slot, (1ull << 16) | (1ull << 18)), WORLD_LIGHT_STATUS_OK);
+    CHECK_EQ_U64(
+        world_light_sections_replaced(&test->light, slot, column_mask_or(column_mask_of(16u), column_mask_of(18u))),
+        WORLD_LIGHT_STATUS_OK);
     light_reference_t reference;
     light_reference_of_band(t, &reference, -1, -1, 3u);
     light_reference_compute(&reference, &test->map);
@@ -1019,7 +1021,7 @@ TEST(every_section_whose_light_changed_is_flagged_for_render_and_not_for_save) {
             }
         }
         light_test_edit_randomly(test, &rng, 5u, -16, -16, 48u);
-        uint64_t edited[16];
+        column_mask_t edited[16];
         for (uint32_t i = 0u; i < columns; i++) {
             edited[i] = world_edit_dirty_peek(&test->edit, test->map.borrowed_active[i], WORLD_EDIT_CONSUMER_SAVE);
         }
@@ -1027,14 +1029,14 @@ TEST(every_section_whose_light_changed_is_flagged_for_render_and_not_for_save) {
         uint8_t now[SECTION_VOXELS];
         for (uint32_t i = 0u; i < columns; i++) {
             const uint32_t slot = test->map.borrowed_active[i];
-            const uint64_t render = world_edit_dirty_peek(&test->edit, slot, WORLD_EDIT_CONSUMER_RENDER);
-            CHECK_EQ_U64(world_edit_dirty_peek(&test->edit, slot, WORLD_EDIT_CONSUMER_LIGHT), 0u);
+            const column_mask_t render = world_edit_dirty_peek(&test->edit, slot, WORLD_EDIT_CONSUMER_RENDER);
+            CHECK(!column_mask_any(world_edit_dirty_peek(&test->edit, slot, WORLD_EDIT_CONSUMER_LIGHT)));
             /* Only the blocks themselves are for saving. Light is not. */
-            CHECK_EQ_U64(world_edit_dirty_peek(&test->edit, slot, WORLD_EDIT_CONSUMER_SAVE), edited[i]);
+            CHECK(column_mask_equal(world_edit_dirty_peek(&test->edit, slot, WORLD_EDIT_CONSUMER_SAVE), edited[i]));
             for (uint32_t s = 0u; s < COLUMN_SECTIONS; s++) {
                 section_lights_export(&test->map.borrowed_columns[slot].sections[s], now);
                 if (memcmp(now, before + ((uint64_t)i * COLUMN_SECTIONS + s) * SECTION_VOXELS, SECTION_VOXELS) != 0) {
-                    CHECK((render & (1ull << s)) != 0u);
+                    CHECK(column_mask_has(render, s));
                 }
             }
         }

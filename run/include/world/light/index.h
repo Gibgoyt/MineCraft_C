@@ -16,10 +16,10 @@ enum : uint32_t {
     WORLD_LIGHT_LEVELS = SECTION_LIGHT_MAX + 1u,
 };
 enum : uint64_t {
-    /* What world_open gives one pass. One block taken away can darken at most about 330 000 voxels: a diamond of radius 14 at
-     * every height below it. A new column can raise about 1.5 million. Past this a pass stops and everything is worked out
+    /* What world_open gives one pass. One block taken away can darken at most about 660 000 voxels: a diamond of radius 14 at
+     * every height below it. A new column can raise about 3 million. Past this a pass stops and everything is worked out
      * again, which is correct and slow. Costs no pages until used. */
-    WORLD_LIGHT_WAVE_CAPACITY_DEFAULT = 1ull << 21,
+    WORLD_LIGHT_WAVE_CAPACITY_DEFAULT = 1ull << 22,
 };
 
 typedef enum world_light_status_t : uint8_t {
@@ -35,7 +35,7 @@ typedef struct world_light_t {
     world_edit_t *borrowed_edit;         /* 0 */
     world_map_t *borrowed_map;           /* 8 */
     uint32_t *borrowed_lit;              /* 16: per slot, the map's generation of the column lit there, or 0 */
-    uint64_t *borrowed_touched;          /* 24: per slot, the sections this call wrote */
+    column_mask_t *borrowed_touched;     /* 24: per slot, the sections this call wrote */
     uint32_t *borrowed_touched_slots;    /* 32: the slots with any */
     uint64_t *borrowed_wave;             /* 40: voxels gone dark or to look at; see light_wave_push */
     uint64_t *borrowed_nodes;            /* 48: voxels getting brighter, in lists by level */
@@ -63,7 +63,7 @@ static_assert(sizeof(world_light_t) == 224);
 
 /* What world_light_init takes from its arena: per slot of the map, per unit of wave capacity, and besides. */
 enum : uint64_t {
-    WORLD_LIGHT_BYTES_PER_SLOT = sizeof(uint32_t) + sizeof(uint64_t) + sizeof(uint32_t),
+    WORLD_LIGHT_BYTES_PER_SLOT = sizeof(uint32_t) + sizeof(column_mask_t) + sizeof(uint32_t),
     WORLD_LIGHT_BYTES_PER_WAVE = sizeof(uint64_t) + sizeof(uint64_t) + sizeof(uint32_t),
     WORLD_LIGHT_BYTES_FIXED = 16ull * 64ull + SECTION_VOXELS + WORLD_LIGHT_RECORDS * sizeof(world_edit_record_t),
 };
@@ -88,7 +88,7 @@ world_light_status_t world_light_update(world_light_t *light);
 
 /* For whoever wrote blocks of a lit column's sections directly, past the log. Those are the only writes the log does not tell
  * of. section_mask is bits of a column, as in world_edit_sections_mark. */
-world_light_status_t world_light_sections_replaced(world_light_t *light, uint32_t slot, uint64_t section_mask);
+world_light_status_t world_light_sections_replaced(world_light_t *light, uint32_t slot, column_mask_t section_mask);
 
 /* Works out all light in every lit column from nothing, needing no queue and no memory but the sections'. Slow, and what the
  * functions above fall back on when they must. Every section of those columns is flagged for RENDER. */

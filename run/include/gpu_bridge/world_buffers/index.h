@@ -21,7 +21,9 @@ extern "C" {
 #endif
 
 enum : uint32_t {
-    WORLD_BUFFERS_COLUMN_SECTIONS = 48u,
+    WORLD_BUFFERS_COLUMN_SECTIONS = 96u,
+    /* A column's section_mask, in words: more sections than a word has bits. */
+    WORLD_BUFFERS_MASK_WORDS = 2u,
     WORLD_BUFFERS_SECTION_VOXELS = 4096u,
     WORLD_BUFFERS_BRICKS = 64u, /* 4x4x4 of them in a section, and 4x4x4 voxels in each */
     /* How far below z = 0 a column's lowest section starts. */
@@ -89,32 +91,33 @@ enum : uint32_t {
 };
 static_assert(WORLD_BUFFERS_REGION_COLUMNS == 1u << WORLD_BUFFERS_REGION_SHIFT);
 
-/* One slot of the toroidal table, on the card and in the host's copy. All zero is a slot with no column. A stride of four
+/* One slot of the toroidal table, on the card and in the host's copy. All zero is a slot with no column. A stride of eight
  * cache lines, so that a slot's address is a shift. */
 typedef struct world_buffers_column_t {
-    uint64_t section_mask; /* 0: one bit per section with bytes in the pool */
-    int32_t chunk_x;       /* 8 */
-    int32_t chunk_y;       /* 12 */
-    uint32_t generation;   /* 16: the map's, for the load this describes */
-    int16_t top_z;         /* 20: no block above this, so a ray above it leaves the column */
-    uint8_t ready;         /* 22: 1 if a column is here */
-    /* 23: in sections of height, one above the highest block of the WORLD_BUFFERS_REGION_COLUMNS square of columns this one is in: a ray over this
+    uint64_t section_mask[WORLD_BUFFERS_MASK_WORDS]; /* 0: one bit per section with bytes in the pool */
+    int32_t chunk_x;                                 /* 16 */
+    int32_t chunk_y;                                 /* 20 */
+    uint32_t generation;                             /* 24: the map's, for the load this describes */
+    int16_t top_z;                                   /* 28: no block above this, so a ray above it leaves the column */
+    uint8_t ready;                                   /* 30: 1 if a column is here */
+    /* 31: in sections of height, one above the highest block of the WORLD_BUFFERS_REGION_COLUMNS square of columns this one is in: a ray over this
      * crosses the whole square in a step. 0 for not known. It may be high, and never low. See world_buffers_region_note. */
     uint8_t region_top;
-    uint32_t sections[WORLD_BUFFERS_COLUMN_SECTIONS]; /* 24: 0 for none, or 1 + the section's granule in the pool */
-    uint8_t _pad1[40];                                /* 216 */
+    uint32_t sections[WORLD_BUFFERS_COLUMN_SECTIONS]; /* 32: 0 for none, or 1 + the section's granule in the pool */
+    uint8_t _pad1[96];                                /* 416 */
 } world_buffers_column_t;
-static_assert(sizeof(world_buffers_column_t) == 256);
+static_assert(sizeof(world_buffers_column_t) == 512);
 static_assert(alignof(world_buffers_column_t) == 8);
 static_assert(offsetof(world_buffers_column_t, section_mask) == 0);
-static_assert(offsetof(world_buffers_column_t, chunk_x) == 8);
-static_assert(offsetof(world_buffers_column_t, chunk_y) == 12);
-static_assert(offsetof(world_buffers_column_t, generation) == 16);
-static_assert(offsetof(world_buffers_column_t, top_z) == 20);
-static_assert(offsetof(world_buffers_column_t, ready) == 22);
-static_assert(offsetof(world_buffers_column_t, region_top) == 23);
-static_assert(offsetof(world_buffers_column_t, sections) == 24);
-static_assert(offsetof(world_buffers_column_t, _pad1) == 216);
+static_assert(offsetof(world_buffers_column_t, chunk_x) == 16);
+static_assert(offsetof(world_buffers_column_t, chunk_y) == 20);
+static_assert(offsetof(world_buffers_column_t, generation) == 24);
+static_assert(offsetof(world_buffers_column_t, top_z) == 28);
+static_assert(offsetof(world_buffers_column_t, ready) == 30);
+static_assert(offsetof(world_buffers_column_t, region_top) == 31);
+static_assert(offsetof(world_buffers_column_t, sections) == 32);
+static_assert(offsetof(world_buffers_column_t, _pad1) == 416);
+static_assert(WORLD_BUFFERS_COLUMN_SECTIONS > 64u && WORLD_BUFFERS_COLUMN_SECTIONS <= WORLD_BUFFERS_MASK_WORDS * 64u);
 
 /* Which chunks the table holds right now. It scrolls without moving anything, exactly as the world's map does. */
 typedef struct world_buffers_window_t {
@@ -303,6 +306,12 @@ WORLD_BUFFERS_BOTH_SIDES static inline uint32_t world_buffers_popcount(uint64_t 
 #else
     return (uint32_t)__builtin_popcountll(word);
 #endif
+}
+
+/* Whether a column's section_mask, or a copy of its two words, has this section. */
+WORLD_BUFFERS_BOTH_SIDES static inline bool world_buffers_mask_has(const uint64_t mask[WORLD_BUFFERS_MASK_WORDS],
+                                                                   uint32_t section) {
+    return ((mask[section >> 6] >> (section & 63u)) & 1ull) != 0ull;
 }
 
 /* Which brick, and which voxel in it, for a place in a section. Each coordinate is from 0 to 15. */

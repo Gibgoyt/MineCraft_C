@@ -149,7 +149,7 @@ static world_tick_column_t *tick_column(world_tick_t *tick, uint32_t slot) {
                 tick_page_release(tick, &column->pages[i]);
             }
         }
-        column->saved_sections = 0u;
+        column->saved_sections = COLUMN_MASK_NONE;
         column->generation = generation;
     }
     return column;
@@ -510,7 +510,7 @@ static void tick_level_save_flag(world_tick_t *tick, int32_t x, int32_t y, int32
     uint32_t slot = 0u;
     const int32_t chunk_x = column_chunk_of(x), chunk_y = column_chunk_of(y);
     if (world_map_slot_of(tick->borrowed_map, chunk_x, chunk_y, &slot)) {
-        const world_edit_dirty_t dirty = {.section_mask = 1ull << column_section_of(z),
+        const world_edit_dirty_t dirty = {.section_mask = column_mask_of(column_section_of(z)),
                                           .chunk_x = chunk_x,
                                           .chunk_y = chunk_y,
                                           .slot = slot,
@@ -1041,12 +1041,12 @@ static void tick_wake_seam(world_tick_t *tick, int32_t base_x, int32_t base_y, u
 }
 
 void world_tick_column_saved(world_tick_t *tick, uint32_t slot, int32_t chunk_x, int32_t chunk_y,
-                             uint64_t saved_sections) {
+                             column_mask_t saved_sections) {
     ASSERT_ALWAYS(slot < tick->borrowed_map->slot_count);
     tick_column(tick, slot)->saved_sections = saved_sections;
     const int32_t base_x = chunk_x * (int32_t)COLUMN_SIZE, base_y = chunk_y * (int32_t)COLUMN_SIZE;
-    for (uint64_t left = saved_sections; left != 0u; left &= left - 1u) {
-        const int32_t z_low = tick_section_base_z((uint32_t)__builtin_ctzll(left));
+    for (column_mask_t left = saved_sections; column_mask_any(left); left = column_mask_drop_lowest(left)) {
+        const int32_t z_low = tick_section_base_z(column_mask_lowest(left));
         /* And the one voxel past each way: what waited there was waiting on a change in here. */
         const int32_t low[3] = {base_x - 1, base_y - 1, z_low - 1};
         const int32_t high[3] = {base_x + (int32_t)COLUMN_SIZE, base_y + (int32_t)COLUMN_SIZE,
@@ -1060,8 +1060,9 @@ void world_tick_column_saved(world_tick_t *tick, uint32_t slot, int32_t chunk_x,
             world_map_column_at(tick->borrowed_map, other_x, other_y) == nullptr) {
             continue;
         }
-        for (uint64_t left = tick_column(tick, other)->saved_sections; left != 0u; left &= left - 1u) {
-            tick_wake_seam(tick, base_x, base_y, side, (uint32_t)__builtin_ctzll(left));
+        for (column_mask_t left = tick_column(tick, other)->saved_sections; column_mask_any(left);
+             left = column_mask_drop_lowest(left)) {
+            tick_wake_seam(tick, base_x, base_y, side, column_mask_lowest(left));
         }
     }
 }
@@ -1079,5 +1080,5 @@ void world_tick_column_leaving(world_tick_t *tick, uint32_t slot) {
             tick_page_release(tick, &column->pages[i]);
         }
     }
-    column->saved_sections = 0u;
+    column->saved_sections = COLUMN_MASK_NONE;
 }

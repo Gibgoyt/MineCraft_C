@@ -10,7 +10,7 @@
 #include <string.h>
 
 enum : uint64_t {
-    MAP_TEST_ARENA_BYTES = 32ull << 20,
+    MAP_TEST_ARENA_BYTES = 64ull << 20,
     MAP_TEST_POOL_BYTES = 16ull << 20,
 };
 enum : uint32_t {
@@ -462,26 +462,26 @@ TEST(z_is_refused_past_gameplay_whether_or_not_a_column_is_there) {
     uint8_t light = 77u;
     /* Nothing loaded. */
     CHECK_EQ_U64(world_map_block_get(map, 0, 0, -251, &block), WORLD_MAP_STATUS_Z_OUT_OF_RANGE);
-    CHECK_EQ_U64(world_map_block_get(map, 0, 0, 501, &block), WORLD_MAP_STATUS_Z_OUT_OF_RANGE);
+    CHECK_EQ_U64(world_map_block_get(map, 0, 0, 1251, &block), WORLD_MAP_STATUS_Z_OUT_OF_RANGE);
     CHECK_EQ_U64(world_map_block_get(map, 0, 0, -250, &block), WORLD_MAP_STATUS_NOT_LOADED);
-    CHECK_EQ_U64(world_map_block_get(map, 0, 0, 500, &block), WORLD_MAP_STATUS_NOT_LOADED);
+    CHECK_EQ_U64(world_map_block_get(map, 0, 0, 1250, &block), WORLD_MAP_STATUS_NOT_LOADED);
     CHECK_EQ_U64(world_map_light_get(map, 0, 0, -251, &light), WORLD_MAP_STATUS_Z_OUT_OF_RANGE);
-    CHECK_EQ_U64(world_map_light_get(map, 0, 0, 501, &light), WORLD_MAP_STATUS_Z_OUT_OF_RANGE);
-    CHECK_EQ_U64(world_map_light_get(map, 0, 0, 500, &light), WORLD_MAP_STATUS_NOT_LOADED);
+    CHECK_EQ_U64(world_map_light_get(map, 0, 0, 1251, &light), WORLD_MAP_STATUS_Z_OUT_OF_RANGE);
+    CHECK_EQ_U64(world_map_light_get(map, 0, 0, 1250, &light), WORLD_MAP_STATUS_NOT_LOADED);
     map_test_fill_all(t, map);
     /* Loaded. */
     CHECK_EQ_U64(world_map_block_get(map, 0, 0, -251, &block), WORLD_MAP_STATUS_Z_OUT_OF_RANGE);
-    CHECK_EQ_U64(world_map_block_get(map, 0, 0, 501, &block), WORLD_MAP_STATUS_Z_OUT_OF_RANGE);
+    CHECK_EQ_U64(world_map_block_get(map, 0, 0, 1251, &block), WORLD_MAP_STATUS_Z_OUT_OF_RANGE);
     CHECK_EQ_U64(world_map_light_get(map, 0, 0, -251, &light), WORLD_MAP_STATUS_Z_OUT_OF_RANGE);
-    CHECK_EQ_U64(world_map_light_get(map, 0, 0, 501, &light), WORLD_MAP_STATUS_Z_OUT_OF_RANGE);
+    CHECK_EQ_U64(world_map_light_get(map, 0, 0, 1251, &light), WORLD_MAP_STATUS_Z_OUT_OF_RANGE);
     CHECK_EQ_U64(block, 77u);
     CHECK_EQ_U64(light, 77u);
     CHECK_EQ_U64(world_map_block_get(map, 0, 0, -250, &block), WORLD_MAP_STATUS_OK);
     CHECK_EQ_U64(block, BLOCK_ID_AIR);
     block = 77u;
-    CHECK_EQ_U64(world_map_block_get(map, 0, 0, 500, &block), WORLD_MAP_STATUS_OK);
+    CHECK_EQ_U64(world_map_block_get(map, 0, 0, 1250, &block), WORLD_MAP_STATUS_OK);
     CHECK_EQ_U64(block, BLOCK_ID_AIR);
-    CHECK_EQ_U64(world_map_light_get(map, 0, 0, 500, &light), WORLD_MAP_STATUS_OK);
+    CHECK_EQ_U64(world_map_light_get(map, 0, 0, 1250, &light), WORLD_MAP_STATUS_OK);
     CHECK_EQ_U64(light, SECTION_LIGHT_OPEN_SKY);
     map_test_end(test);
 }

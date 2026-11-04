@@ -38,4 +38,4 @@ What each costs: `set_center` one look at each live or pending column. `stream_t
 
 ## Memory
 
-`WORLD_MAP_BYTES_PER_SLOT` is 36 bytes for each slot beside the 1160 of its `column_t`. `borrowed_columns` is not touched until a column streams in, so a large table costs little where nothing is loaded. The other tables are touched by init, in proportion to the table: so ask for the radius you mean to use.
+`WORLD_MAP_BYTES_PER_SLOT` is 36 bytes for each slot beside the 2312 of its `column_t`. `borrowed_columns` is not touched until a column streams in, so a large table costs little where nothing is loaded. The other tables are touched by init, in proportion to the table: so ask for the radius you mean to use.

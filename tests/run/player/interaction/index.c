@@ -988,7 +988,7 @@ TEST(mined_and_placed_blocks_go_on_the_books_for_everyone_who_reads_them) {
     for (uint32_t consumer = 0u; consumer < WORLD_EDIT_CONSUMER_COUNT; consumer++) {
         world_edit_dirty_t dirty;
         REQUIRE(world_edit_dirty_next(edit, (world_edit_consumer_t)consumer, &dirty));
-        CHECK_EQ_U64(dirty.section_mask, 1ull << column_section_of(5));
+        CHECK(column_mask_equal(dirty.section_mask, column_mask_of(column_section_of(5))));
     }
     /* And placing it back is one more. */
     pi_drops_to_hand(&rig.hands);

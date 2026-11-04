@@ -157,7 +157,7 @@ static gpu_status_t upload_sections_send(render_upload_t *upload) {
             upload->borrowed_staging + (uint64_t)section * WORLD_BUFFERS_SECTION_BYTES_MAX, bytes);
         if (written == GPU_STATUS_OVER_BUDGET) {
             const world_edit_dirty_t dirty = {
-                .section_mask = 1ull << entry->section_index,
+                .section_mask = column_mask_of(entry->section_index),
                 .chunk_x = entry->chunk_x,
                 .chunk_y = entry->chunk_y,
                 .slot = entry->slot,

@@ -76,15 +76,15 @@ static_assert(sizeof(game_view_t) == 40);
 typedef struct game_column_job_t {
     alignas(MC_CPU_CACHE_LINE_BYTES) const terrain_t *borrowed_terrain; /* 0 */
     uint16_t *borrowed_states;                                          /* 8: a whole column's */
-    uint8_t *borrowed_opened;    /* 16: a byte per voxel, for terrain to work in */
-    world_map_request_t request; /* 24 */
-    _Atomic uint32_t done;       /* 40: release when finished */
-    uint8_t in_use;              /* 44 */
-    uint8_t _pad0[3];            /* 45 */
-    save_world_t *borrowed_save; /* 48: what has changed there, or nullptr */
-    uint64_t levels_mask;        /* 56: which sections the save gave levels for, in borrowed_opened past its scratch */
-    uint64_t saved_sections;     /* 64: which sections the save gave at all */
-    uint8_t _pad1[56];           /* 72 */
+    uint8_t *borrowed_opened;     /* 16: a byte per voxel, for terrain to work in */
+    world_map_request_t request;  /* 24 */
+    _Atomic uint32_t done;        /* 40: release when finished */
+    uint8_t in_use;               /* 44 */
+    uint8_t _pad0[3];             /* 45 */
+    save_world_t *borrowed_save;  /* 48: what has changed there, or nullptr */
+    column_mask_t levels_mask;    /* 56: which sections the save gave levels for, in borrowed_opened past its scratch */
+    column_mask_t saved_sections; /* 72: which sections the save gave at all */
+    uint8_t _pad1[40];            /* 88 */
 } game_column_job_t;
 static_assert(sizeof(game_column_job_t) == 2u * MC_CPU_CACHE_LINE_BYTES);
 

@@ -231,7 +231,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | `terrain` | (the Owner) | `terrain_init`, `terrain_deinit`: one seed, and the region and arena its parts borrow | 10.1 |
 | | `rng noise` | Seeded streams and position hashes; fractal fields sampled in bulk on `asm/src/noise` | 10.1 |
 | | `climate` | Continentalness, erosion, ridges, temperature, humidity, weirdness | 10.2 |
-| | `density` | Height splines and 3D terrain shape, `z ∈ [-250, 500]`; bedrock at `-250`, water up to `0` | 10.3 |
+| | `density` | Height splines and 3D terrain shape, `z ∈ [-250, 1250]`; bedrock at `-250`, water up to `0` | 10.3 |
 | | `hydrology` | Sea level 0, rivers, oceans, beaches, aquifers, the lava level under the world at `-230` | 10.4 |
 | | `cave ore` | Cheese, spaghetti and noodle caves cut from any box; deepslate by depth, and the table of rock and ore veins by depth | 10.5 |
 | | `biome surface` | All Overworld biomes, chosen from the climate by `config/biomes/`; what each lays on the ground and lines its caves with | 10.6 |

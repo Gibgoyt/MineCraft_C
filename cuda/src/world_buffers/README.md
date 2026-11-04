@@ -30,7 +30,7 @@ The links live on the host in `borrowed_slab_next`, 2 bytes per granule. A 6 GiB
 
 ## The table
 
-256 bytes a slot. Section places are `1 + granule`, so an all-zero slot is an empty one. The host keeps a copy and sends only what changed: one copy per slot, or all of it at once when one slot in 64 or more changed. A flush has no budget, because a slab reused this frame must not be reachable through the card's old table.
+512 bytes a slot. Section places are `1 + granule`, so an all-zero slot is an empty one. The host keeps a copy and sends only what changed: one copy per slot, or all of it at once when one slot in 64 or more changed. A flush has no budget, because a slab reused this frame must not be reachable through the card's old table.
 
 ## The rules
 

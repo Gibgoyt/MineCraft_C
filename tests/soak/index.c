@@ -606,8 +606,8 @@ static void soak_world_verify(soak_t *soak, save_t *save, const char *directory,
                 regions[r].region_x * (int32_t)SAVE_WORLD_REGION_SIDE + (int32_t)(local % SAVE_WORLD_REGION_SIDE);
             const int32_t chunk_y =
                 regions[r].region_y * (int32_t)SAVE_WORLD_REGION_SIDE + (int32_t)(local / SAVE_WORLD_REGION_SIDE);
-            const uint64_t mask = save_world_column_overlay(&save->world, chunk_x, chunk_y, states, scratch);
-            sections += (uint64_t)__builtin_popcountll(mask);
+            const column_mask_t mask = save_world_column_overlay(&save->world, chunk_x, chunk_y, states, scratch);
+            sections += (uint64_t)column_mask_count(mask);
         }
     }
     const uint64_t damaged = atomic_load(&save->world.sections_damaged);
