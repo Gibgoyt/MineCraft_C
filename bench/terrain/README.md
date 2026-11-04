@@ -15,7 +15,23 @@ A **column** here is what it is in the plan and in `run/src/world/column/`: a ch
 
 ## Results
 
-### 2026-11-05, plan 003 phase 8 stage 7: on the final land
+### 2026-11-05, plan 003 phase 8 stage 7, final: every place beats it
+
+The same land and seed, after features stopped making a whole chunk's own ground a second time. Three runs in a row, load average about 1 to 3 before each, nothing else of ours on the lock. Target 1000 on 16 workers: **met by all 9, exit status 0 on all three**. The margin of the slowest is 6.5% to 11%.
+
+| Place | 1 worker | 16 workers, three runs |
+|---|---|---|
+| `plains` | 230-236 | 1859, 1817, 1942 |
+| `forest` | 164-166 | 1382, 1341, 1423 |
+| `jungle` | 144-146 | 1191, 1221, 1204 |
+| `dark_forest` | 165-169 | 1441, 1409, 1418 |
+| `mangrove_swamp` | 194-200 | 1572, 1514, 1645 |
+| `desert` | 230-234 | 1890, 1822, 1904 |
+| `snowy_taiga` | 126-128 | 1065, 1108, 1091 |
+| `jagged_peaks` | 140-144 | 1204, 1169, 1149 |
+| `deep_ocean` | 322-326 | 2422, 2374, 2429 |
+
+### 2026-11-05, plan 003 phase 8 stage 7: on the final land, before that
 
 Same seed and same bench, three runs in a row with nothing else of ours on the lock. Target 1000 on 16 workers: **missed by one place, by 0.4% to 3%, exit status 1 on all three.** Before stage 7's change to lining, on the same land, three runs read `jagged_peaks` 854, 840 and 847.
 

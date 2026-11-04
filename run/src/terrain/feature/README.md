@@ -9,6 +9,7 @@
 
 - `terrain_feature_init`, `terrain_feature_deinit`: a pair.
 - `terrain_feature_fill_box`: everything here, for one box.
+- `terrain_feature_chunk_read_box`, `terrain_feature_fill_chunk_box`: the same for a box that is one whole chunk, reading the chunk's own columns from the blocks at hand, as `terrain_generate_box` does. Those blocks have to be as the stages up to the flood left them, since lining and ore can change a top, so the first is called before those, and the second after. It gives the same bytes, and costs no second run of the stages over that chunk: `tests/run/terrain/feature/own/` holds it to that.
 - `terrain_feature_chunk_columns`, `terrain_feature_chunk_lake`: what a chunk has on it before anything grows, and its lake.
 - `terrain_feature_tree_reach`, `terrain_feature_tree_is_wide`, `terrain_feature_canvas_of`, `terrain_feature_paint_tree`, `terrain_feature_lake_depth`: the shapes, as plain arithmetic, for `tests/run/terrain/feature/` to hold to account.
 
