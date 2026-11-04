@@ -58,5 +58,5 @@ Reached only by tests, on purpose, until Stage 14.3 has screens: `crafting_grid_
 
 **Awaits Ahmed:**
 
-1. No bed can be got in a played game: `config/recipes/README.md` gives it no recipe for want of wool, and there is no wool. A recipe with none would be invented, so it is his to decide. Everything else about the bed is tested.
+1. (Answered for now on 2026-11-04 by the final completeness check, phase 18: `config/recipes/bed/` is 3 wheat over 3 planks, and it is his to change.) No bed could be got in a played game: `config/recipes/README.md` gives it no recipe for want of wool, and there is no wool. A recipe with none would be invented, so it is his to decide. Everything else about the bed is tested.
 2. The number keys and the wheel on real input, which no test here may open. Stage 13.1 issue 5.
