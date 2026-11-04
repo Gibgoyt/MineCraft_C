@@ -567,18 +567,20 @@ TEST(the_overlays_numbers_change_only_their_own_line_and_it_stays_on_its_panel) 
     /* At scale 2 the text is scale 1: margin 2, and lines 9 apart. */
     CHECK_EQ_I64(panel.x, 2);
     CHECK_EQ_I64(panel.y, 2);
-    CHECK_EQ_I64(panel.width, 108);
-    CHECK_EQ_I64(panel.height, 94);
+    CHECK_EQ_I64(panel.width, 180);
+    CHECK_EQ_I64(panel.height, 103);
     const box_t all = sheets_box(&clean, &a);
     CHECK_EQ_I64(all.left, panel.x);
     CHECK_EQ_I64(all.top, panel.y);
     CHECK_EQ_I64(all.right, panel.x + panel.width - 1);
     CHECK_EQ_I64(all.bottom, panel.y + panel.height - 1);
 
-    for (uint32_t i = 0u; i <= UI_HUD_STAGE_COUNT; i++) {
+    for (uint32_t i = 0u; i <= UI_HUD_STAGE_COUNT + 1u; i++) {
         ui_hud_debug_t other = debug;
         if (i == 0u) {
             other.fps = 144.5f32;
+        } else if (i == UI_HUD_STAGE_COUNT + 1u) {
+            other.block[2] = -123;
         } else {
             other.stage_ms[i - 1u] = 7.77f32;
         }
@@ -591,6 +593,11 @@ TEST(the_overlays_numbers_change_only_their_own_line_and_it_stays_on_its_panel) 
         CHECK(line.top >= top);
         CHECK(line.bottom < top + 9);
     }
+
+    /* The furthest a body could be off, in the deepest a body can go, fits inside it: nothing is cut off. */
+    const ui_text_size_t furthest = ui_font_measure(&f->ui.font, "x -30000000 y -30000000 z -250", 1u);
+    printf("the longest coordinates are %" PRIu32 " wide, on %" PRId32 "\n", furthest.width, panel.width - 4);
+    CHECK((int32_t)furthest.width <= panel.width - 4);
 
     /* Times no one should see stay on the panel. */
     for (uint32_t i = 0u; i < UI_HUD_STAGE_COUNT; i++) {
@@ -613,6 +620,61 @@ TEST(the_overlays_numbers_change_only_their_own_line_and_it_stays_on_its_panel) 
     sheet_clear(&tiny);
     REQUIRE(sheet_canvas(&tiny, &canvas));
     ui_hud_debug_draw(&canvas, &f->ui.font, &debug);
+    sheet_guard_check(t, &tiny);
+    fixture_stop(f);
+}
+
+TEST(coordinates_stay_on_their_own_small_panel_and_move_below_a_notice) {
+    fixture_t *const f = fixture_start(t);
+    REQUIRE(f != nullptr);
+    sheet_t clean = sheet_make(t, GOLD_WIDTH, GOLD_HEIGHT);
+    sheet_t a = sheet_make(t, GOLD_WIDTH, GOLD_HEIGHT);
+    sheet_t b = sheet_make(t, GOLD_WIDTH, GOLD_HEIGHT);
+    sheet_clear(&clean);
+    ui_canvas_t canvas;
+    const int32_t block[3] = {123, -45, 67};
+
+    sheet_clear(&a);
+    REQUIRE(sheet_canvas(&a, &canvas));
+    ui_hud_coordinates_draw(&canvas, &f->ui.font, block, false);
+    const box_t top = sheets_box(&clean, &a);
+    /* At scale 2 the text is scale 1: margin 2, then a line of 9 with a margin above and below, and it is no wider than it needs. */
+    CHECK_EQ_I64(top.left, 2);
+    CHECK_EQ_I64(top.top, 2);
+    const ui_text_size_t size = ui_font_measure(&f->ui.font, "x 123 y -45 z 67", 1u);
+    CHECK_EQ_I64(top.right, 2 + (int32_t)size.width + 4 - 1);
+    CHECK_EQ_I64(top.bottom, 2 + (int32_t)size.height + 4 - 1);
+    sheet_guard_check(t, &a);
+
+    /* Any number changes what it shows. */
+    for (uint32_t axis = 0u; axis < 3u; axis++) {
+        int32_t other[3] = {block[0], block[1], block[2]};
+        other[axis] -= 1;
+        sheet_clear(&b);
+        REQUIRE(sheet_canvas(&b, &canvas));
+        ui_hud_coordinates_draw(&canvas, &f->ui.font, other, false);
+        const box_t changed = sheets_box(&a, &b);
+        CHECK(changed.left <= changed.right);
+    }
+
+    /* Under a notice nothing of the one covers the other: it starts where the band ends. */
+    sheet_clear(&a);
+    REQUIRE(sheet_canvas(&a, &canvas));
+    ui_hud_notice_draw(&canvas, &f->ui.font, "You died.");
+    const box_t band = sheets_box(&clean, &a);
+    sheet_clear(&b);
+    REQUIRE(sheet_canvas(&b, &canvas));
+    ui_hud_coordinates_draw(&canvas, &f->ui.font, block, true);
+    const box_t below = sheets_box(&clean, &b);
+    CHECK_EQ_I64(below.top, band.bottom + 1);
+    CHECK_EQ_I64(below.left, 2);
+
+    /* The longest there can be, on a canvas too small for it: nothing lands outside. */
+    sheet_t tiny = sheet_make(t, 40u, 30u);
+    sheet_clear(&tiny);
+    REQUIRE(sheet_canvas(&tiny, &canvas));
+    const int32_t longest[3] = {INT32_MIN, INT32_MIN, INT32_MIN};
+    ui_hud_coordinates_draw(&canvas, &f->ui.font, longest, true);
     sheet_guard_check(t, &tiny);
     fixture_stop(f);
 }
@@ -728,6 +790,9 @@ static void debug_golden(ui_hud_debug_t *debug) {
     debug->stage_ms[UI_HUD_STAGE_SIM_TICK] = 0.18f32;
     debug->stage_ms[UI_HUD_STAGE_HUD] = 0.65f32;
     debug->stage_ms[UI_HUD_STAGE_PRESENT] = 1.02f32;
+    debug->block[0] = -1234;
+    debug->block[1] = 567;
+    debug->block[2] = -89;
 }
 
 TEST(golden_pictures_match) {
@@ -758,6 +823,15 @@ TEST(golden_pictures_match) {
     ui_hud_draw(&f->ui.hud, &canvas, &f->ui.font, &state);
     ui_hud_debug_draw(&canvas, &f->ui.font, &debug);
     golden_compare(t, "tests/run/ui/hud/fixtures/debug_640x480.png", &large);
+
+    /* The setting on, and full_640x480.png above is the same state with it off. */
+    state_golden_full(&state);
+    sheet_clear(&large);
+    REQUIRE(sheet_canvas(&large, &canvas));
+    ui_hud_draw(&f->ui.hud, &canvas, &f->ui.font, &state);
+    const int32_t block[3] = {-1234, 567, -89};
+    ui_hud_coordinates_draw(&canvas, &f->ui.font, block, false);
+    golden_compare(t, "tests/run/ui/hud/fixtures/coordinates_640x480.png", &large);
     fixture_stop(f);
 }
 
@@ -959,6 +1033,52 @@ TEST(in_the_real_game_the_screen_is_the_hud_over_the_picture_and_the_picture_is_
     game_debug_send(game, false);
     game_debug_send(game, true);
     CHECK_EQ_U64(game->hud_debug, 0u);
+
+    /* Where the body is: whole blocks, down for a part of one on any side of 0, and sea level is z 0. */
+    int32_t block[3];
+    game_hud_block_read(game, block);
+    const player_movement_t *const movement = &rig.player->movement;
+    CHECK_EQ_I64(block[0], (int64_t)floor(movement->position[0]));
+    CHECK_EQ_I64(block[1], (int64_t)floor(movement->position[1]));
+    CHECK_EQ_I64(block[2], (int64_t)floor(movement->position[2]) - MC_WORLD_Z_SEA);
+    float64_t kept[3];
+    memcpy(kept, rig.player->movement.position, sizeof(kept));
+    rig.player->movement.position[0] = -0.5f64;
+    rig.player->movement.position[1] = 12.99f64;
+    rig.player->movement.position[2] = -3.25f64;
+    game_hud_position_publish(game);
+    game_hud_block_read(game, block);
+    CHECK_EQ_I64(block[0], -1);
+    CHECK_EQ_I64(block[1], 12);
+    CHECK_EQ_I64(block[2], -4 - MC_WORLD_Z_SEA);
+    memcpy(rig.player->movement.position, kept, sizeof(kept));
+    game_hud_position_publish(game);
+    game_hud_block_read(game, block);
+
+    /* Off, as in everything above, there is no sign of them; on, they are drawn over the HUD where the model says. */
+    display_buffer_t with_coordinates = rig_target(t);
+    game->config.show_coordinates = 1u;
+    REQUIRE(rig_scene_frame(t, &scene, &with_coordinates));
+    rig_expect(&rig, frame->borrowed_pictures[frame->pictures.front], &model);
+    uint64_t without = target_differs(&with_coordinates, &model);
+    CHECK(without > 100u);
+    ui_canvas_t model_canvas;
+    REQUIRE(sheet_canvas(&model, &model_canvas));
+    ui_hud_coordinates_draw(&model_canvas, &rig.ui->font, block, false);
+    CHECK_EQ_U64(target_differs(&with_coordinates, &model), 0u);
+
+    /* With F3 up they are on the overlay's panel, so its one line is not also drawn in that corner: two dark panels would be darker than one. */
+    game_debug_send(game, false);
+    game_debug_send(game, true);
+    CHECK_EQ_U64(game->hud_debug, 1u);
+    REQUIRE(rig_scene_frame(t, &scene, &with_coordinates));
+    rig_expect(&rig, frame->borrowed_pictures[frame->pictures.front], &model);
+    REQUIRE(sheet_canvas(&model, &model_canvas));
+    ui_compose_fill(&model_canvas, panel, 0xA0000000u);
+    const uint32_t *const corner = (const uint32_t *)(const void *)with_coordinates.owned_map;
+    const uint64_t blank = (uint64_t)(panel.y + 1) * GAME_WIDTH + (uint64_t)(panel.x + 1);
+    CHECK_EQ_U64(corner[blank] & 0xFFFFFFu, sheet_at(&model, panel.x + 1, panel.y + 1) & 0xFFFFFFu);
+    game->config.show_coordinates = 0u;
     game_close(game);
     rig_end(t, &rig);
 }
@@ -982,6 +1102,12 @@ TEST(flying_with_no_overlay_is_the_picture_itself_byte_for_byte_and_f3_works_the
     REQUIRE(rig_scene_frame(t, &scene, &target));
     CHECK(memcmp(frame->borrowed_pictures[frame->pictures.front], target.owned_map,
                  (uint64_t)GAME_WIDTH * GAME_HEIGHT * 4u) != 0);
+    /* With no body, the overlay's coordinates are the flying eye's. */
+    ui_hud_debug_t flying;
+    game_hud_debug_read(game, &flying);
+    CHECK_EQ_I64(flying.block[0], (int64_t)floor(game->camera.position[0]));
+    CHECK_EQ_I64(flying.block[1], (int64_t)floor(game->camera.position[1]));
+    CHECK_EQ_I64(flying.block[2], (int64_t)floor(game->camera.position[2]) - MC_WORLD_Z_SEA);
     /* The HUD itself stays away: no hotbar at the bottom with no one to hold it. */
     const uint8_t *const picture = frame->borrowed_pictures[frame->pictures.front];
     CHECK_MEM_EQ(picture + (uint64_t)(GAME_HEIGHT - 30u) * GAME_WIDTH * 4u,
@@ -1062,6 +1188,11 @@ TEST(on_the_real_threads_the_hotbar_reaches_the_screen_the_numbers_are_real_and_
 
     /* What is on the screen, in a place the overlay and the world do not reach: the first slot's icon. */
     CHECK(game_loop_stop(game));
+    /* Where the body is came across from the sim's last tick, to the overlay's numbers too. */
+    game_hud_debug_read(game, &debug);
+    CHECK_EQ_I64(debug.block[0], (int64_t)floor(rig.player->movement.position[0]));
+    CHECK_EQ_I64(debug.block[1], (int64_t)floor(rig.player->movement.position[1]));
+    CHECK_EQ_I64(debug.block[2], (int64_t)floor(rig.player->movement.position[2]) - MC_WORLD_Z_SEA);
     const int32_t size = (int32_t)ui_hud_layout(GAME_WIDTH, GAME_HEIGHT).scale;
     const ui_hud_layout_t layout = ui_hud_layout(GAME_WIDTH, GAME_HEIGHT);
     const ui_image_t *const icon = &rig.ui->hud.borrowed_icons[ITEM_ID_COBBLESTONE];

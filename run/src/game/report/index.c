@@ -7,6 +7,7 @@
 #include "time/index.h"
 
 #include <inttypes.h>
+#include <math.h>
 #include <stdatomic.h>
 #include <string.h>
 
@@ -24,6 +25,20 @@ void game_hud_state_read(const game_t *game, ui_hud_state_t *out) {
     }
 }
 
+void game_hud_block_read(const game_t *game, int32_t out[3]) {
+    if (game->borrowed_player != nullptr) {
+        for (uint32_t axis = 0u; axis < 3u; axis++) {
+            out[axis] = atomic_load_explicit(&game->hud_block[axis], memory_order_relaxed);
+        }
+        return;
+    }
+    /* Flying, there is no sim to ask: the eye is main's own. */
+    const float64_t *const position = game->camera.position;
+    out[0] = (int32_t)floor(position[0]);
+    out[1] = (int32_t)floor(position[1]);
+    out[2] = (int32_t)floor(position[2]) - MC_WORLD_Z_SEA;
+}
+
 static float32_t game_hud_ms(uint32_t microseconds) {
     return (float32_t)microseconds / 1000.0f32;
 }
@@ -39,6 +54,7 @@ void game_hud_debug_read(const game_t *game, ui_hud_debug_t *out) {
     out->stage_ms[UI_HUD_STAGE_SIM_TICK] = game_hud_ms(atomic_load_explicit(&game->hud_tick_us, memory_order_relaxed));
     out->stage_ms[UI_HUD_STAGE_HUD] = game_hud_ms(game->hud_compose_us);
     out->stage_ms[UI_HUD_STAGE_PRESENT] = game_hud_ms(game->hud_present_us);
+    game_hud_block_read(game, out->block);
 }
 
 void game_report(game_t *game) {

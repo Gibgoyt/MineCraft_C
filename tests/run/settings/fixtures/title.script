@@ -7,7 +7,7 @@
 +1 screenshot screen.png
 +1 move 0 -180                  # 320, 68: the first slider
 +1 wheel 5
-+1 move 100 288                 # 420, 356: Effects..., the right half of row 6
++1 move 100 288                 # 420, 356: Effects..., the right of row 6
 +1 button left down
 +1 button left up
 +1 screenshot effects.png

@@ -8,6 +8,7 @@
 **Public functions** (declared with the rest of `game`, in `run/include/game/index.h`):
 
 - `game_hud_state_read`, `game_hud_debug_read`: what the HUD and the overlay show now, from what the other threads last said.
+- `game_hud_block_read`: the whole block the body's feet are in, from what the sim last said, or the flying eye's.
 - `game_report`: what the frames took, and the books of what was dropped.
 
 **May be called by:** `run/src/game/` and its callers.

@@ -74,6 +74,7 @@ void settings_persist_defaults(settings_values_t *out) {
                                .worker_count = SETTINGS_WORKERS_MAX,
                                .effects = SHADE_FEATURES_PLAY,
                                .vsync = 1u,
+                               .show_coordinates = 1u,
                                ._pad0 = {0}};
 }
 
@@ -89,6 +90,7 @@ void settings_persist_clamp(settings_values_t *values) {
     }
     values->effects &= SHADE_FEATURES_EVERY;
     values->vsync = values->vsync != 0u ? 1u : 0u;
+    values->show_coordinates = values->show_coordinates != 0u ? 1u : 0u;
 }
 
 /* ---- Reading ---------------------------------------------------------------------------------------------------------- */
@@ -159,11 +161,12 @@ static settings_line_result_t settings_line_apply(const uint8_t *key, uint64_t k
         }
     }
     bool on = false;
-    if (settings_key_is(key, key_length, "vsync")) {
+    const bool is_vsync = settings_key_is(key, key_length, "vsync");
+    if (is_vsync || settings_key_is(key, key_length, "show_coordinates")) {
         if (!settings_bool_parse(value, value_length, &on)) {
             return SETTINGS_LINE_BAD;
         }
-        values->vsync = on ? 1u : 0u;
+        *(is_vsync ? &values->vsync : &values->show_coordinates) = on ? 1u : 0u;
         return SETTINGS_LINE_SET;
     }
     for (uint32_t i = 0u; i < SETTINGS_EFFECT_COUNT; i++) {
@@ -321,6 +324,9 @@ bool settings_persist_write(const settings_values_t *values, uint8_t *out, uint6
         }
     }
     if (!settings_append(out, capacity, &at, "vsync", values->vsync != 0u ? "true" : "false")) {
+        return false;
+    }
+    if (!settings_append(out, capacity, &at, "show_coordinates", values->show_coordinates != 0u ? "true" : "false")) {
         return false;
     }
     for (uint32_t i = 0u; i < SETTINGS_EFFECT_COUNT; i++) {

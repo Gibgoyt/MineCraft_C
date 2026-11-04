@@ -33,7 +33,8 @@
 - `game_screen_input`, `game_screen_up`: a poll's input for the game screens, and whether one is up, which then has Esc.
 - `game_input_from_script`: a script's tick as a poll of real input.
 - `game_debug_send`: the debug overlay's key, F3.
-- `game_hud_state_read`, `game_hud_debug_read`: what the HUD and the overlay show now.
+- `game_hud_state_read`, `game_hud_debug_read`, `game_hud_block_read`: what the HUD and the overlay show now, and where the body is.
+- `game_hud_position_publish`: tells main where the body is, each tick and as a world opens.
 - `game_report`: what the frames took, and the books of what was dropped.
 
 **May be called by:** `run/src/main/`, and its part `session`.
@@ -79,7 +80,7 @@ With `game_player_set`, as `--walk` does, the eye stops flying and follows a bod
 
 `main` draws it, as the plan's thread table says, in `game_hud_compose`, on a copy of whichever picture is going out, because that same picture may go out again: see `run/src/ui/README.md`. With a player it draws `run/src/ui/hud/`, and with F3 on, in any run, the debug overlay. With neither it does no copy at all, so the pictures of a run that flies are the same bytes they were. Under `--headless` F3 comes from the script.
 
-What it shows comes from the other threads as single relaxed atomics, because nothing but the screen depends on them and a word cannot tear. Each tick the sim stores each hotbar stack as one word, and which is in hand; `player_vitals_read` is the same idea for health and food. After each picture the gpu thread stores what each pass took, as the difference that picture made to `render_frame_stats_t`. It reads `stats` itself, as the only thread that writes it. Slots from two ticks can show side by side for one frame, which nobody could see.
+What it shows comes from the other threads as single relaxed atomics, because nothing but the screen depends on them and a word cannot tear. Each tick the sim stores each hotbar stack as one word, and which is in hand; `player_vitals_read` is the same idea for health and food. After each picture the gpu thread stores what each pass took, as the difference that picture made to `render_frame_stats_t`. It reads `stats` itself, as the only thread that writes it. Slots from two ticks can show side by side for one frame, which nobody could see. Where the body is goes the same way, as three words, and for the same reason: x from one tick beside y from the one before is gone by the next frame. `game_config_t.show_coordinates` says whether they are drawn in the corner. They are not while F3 is up, as the overlay has them too, on a panel in that corner.
 
 With a real clock the sim's tick, the copy and drawing, and copying out are timed too. Under `--headless`, nothing reads a clock: those stay 0, and frames per second count pictures per tick's worth of script. A run with the overlay on in `--headless` is the one kind whose pictures are not the same each time, as they show the card's clock.
 

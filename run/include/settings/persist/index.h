@@ -44,7 +44,8 @@ typedef struct settings_values_t {
     uint32_t worker_count;         /* 20: of MC_THREADS_WORKERS, from the next start */
     uint32_t effects;              /* 24: SHADE_FEATURE_* that are on */
     uint8_t vsync;                 /* 28: flips wait for a vblank, and no picture is drawn past it */
-    uint8_t _pad0[3];              /* 29 */
+    uint8_t show_coordinates;      /* 29: x, y and z in the top left corner, while playing */
+    uint8_t _pad0[2];              /* 30 */
 } settings_values_t;
 static_assert(sizeof(settings_values_t) == 32);
 

@@ -14,12 +14,12 @@ enum : uint32_t {
     UI_HUD_TEXTURE_CLOSE_X = 160u, /* the two columns that close its last slot */
     UI_HUD_TEXTURE_CLOSE_W = 2u,
     UI_HUD_WEAR_HEIGHT = 2u,
-    UI_HUD_COUNT_RIGHT = 17u, /* from the item's left to where its count ends */
-    UI_HUD_COUNT_TOP = 9u,    /* from the item's top to its count's */
-    UI_HUD_TEXT_BUFFER = 64u, /* past the longest a float32_t can print */
-    UI_HUD_DEBUG_LINES = 1u + (uint32_t)UI_HUD_STAGE_COUNT,
+    UI_HUD_COUNT_RIGHT = 17u,                                    /* from the item's left to where its count ends */
+    UI_HUD_COUNT_TOP = 9u,                                       /* from the item's top to its count's */
+    UI_HUD_TEXT_BUFFER = 64u,                                    /* past the longest a float32_t can print */
+    UI_HUD_DEBUG_LINES = 1u + (uint32_t)UI_HUD_STAGE_COUNT + 1u, /* with the coordinates */
     UI_HUD_DEBUG_MARGIN = 2u,  /* font pixels, from the canvas to the panel and from the panel to its text */
-    UI_HUD_DEBUG_WIDTH = 104u, /* font pixels of text: the longest label, and a time of four digits */
+    UI_HUD_DEBUG_WIDTH = 176u, /* font pixels of text: coordinates of eight digits each way, which a test measures */
     UI_HUD_COLOR_TEXT = 0xFFFFFFFFu,
     UI_HUD_COLOR_SHADOW = 0xFF3F3F3Fu,
     UI_HUD_COLOR_FPS = 0xFFFFFF60u,
@@ -207,6 +207,24 @@ void ui_hud_notice_draw(ui_canvas_t *canvas, const ui_font_t *font, const char *
     ui_font_draw(font, canvas, ((int32_t)canvas->width - (int32_t)measured.width) / 2, band.y + margin, text, style);
 }
 
+static void ui_hud_coordinates_text(char *text, uint64_t bytes, const int32_t block[3]) {
+    snprintf(text, bytes, "x %" PRId32 " y %" PRId32 " z %" PRId32, block[0], block[1], block[2]);
+}
+
+void ui_hud_coordinates_draw(ui_canvas_t *canvas, const ui_font_t *font, const int32_t block[3], bool below_notice) {
+    const uint32_t scale = ui_hud_debug_scale(canvas->width, canvas->height);
+    const int32_t margin = (int32_t)UI_HUD_DEBUG_MARGIN * (int32_t)scale;
+    char text[UI_HUD_TEXT_BUFFER];
+    ui_hud_coordinates_text(text, sizeof(text), block);
+    const ui_text_size_t measured = ui_font_measure(font, text, scale);
+    const int32_t height = (int32_t)measured.height + 2 * margin;
+    /* A band starts a margin down and is as tall as this panel. */
+    const int32_t top = below_notice ? margin + height : margin;
+    ui_compose_fill(canvas, (ui_rect_t){margin, top, (int32_t)measured.width + 2 * margin, height}, UI_HUD_COLOR_PANEL);
+    const ui_text_style_t style = {.color = UI_HUD_COLOR_TEXT, .shadow = UI_HUD_COLOR_SHADOW, .scale = scale};
+    ui_font_draw(font, canvas, margin + margin, top + margin, text, style);
+}
+
 void ui_hud_debug_draw(ui_canvas_t *canvas, const ui_font_t *font, const ui_hud_debug_t *debug) {
     const uint32_t scale = ui_hud_debug_scale(canvas->width, canvas->height);
     const int32_t size = (int32_t)scale;
@@ -231,5 +249,8 @@ void ui_hud_debug_draw(ui_canvas_t *canvas, const ui_font_t *font, const ui_hud_
         const ui_text_size_t measured = ui_font_measure(font, text, scale);
         ui_font_draw(font, canvas, right - (int32_t)measured.width, y, text, style);
     }
+    y += line;
+    ui_hud_coordinates_text(text, sizeof(text), debug->block);
+    ui_font_draw(font, canvas, left, y, text, style);
     (void)ui_canvas_clip_set(canvas, clip_before);
 }

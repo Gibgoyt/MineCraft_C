@@ -27,10 +27,13 @@
     render_scale_percent: 100
     worker_count: 16
     vsync: true
+    show_coordinates: true
     effect_shapes: true
     ...
 
 It is the flat part of YAML and nothing more, so a person can read and change it, and any YAML tool agrees.
+
+A line a file does not have leaves that setting at its default, with no warning. So a file from before `show_coordinates` was added needs no new version: it loads, and shows them.
 
 - The first line that says anything says which version this is. Any other version sets nothing, since its lines may mean something else.
 - Lines come in any order, and the last of two for one key wins. What is missing stays what it was.

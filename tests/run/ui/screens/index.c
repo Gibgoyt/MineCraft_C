@@ -233,6 +233,80 @@ TEST(a_block_opens_only_its_own_screen) {
     CHECK_EQ_U64(ui_screen_kind_of_block(BLOCK_ID_CHEST), UI_SCREEN_CHEST);
 }
 
+/* ---- The Settings screen's box for coordinates ----------------------------------------------------------------------------- */
+
+/* One frame of the Settings screen, with what the pointer did. The picture it made is left in out. */
+static ui_screen_settings_action_t us_settings_frame(us_rig_t *rig, const input_frame_t *frame, uint8_t *out) {
+    ui_t *const ui = rig->ui;
+    ui_widget_input_feed(&ui->widget, frame);
+    if (!ui_frame_begin_blank(ui, US_WIDTH, US_HEIGHT)) {
+        return (ui_screen_settings_action_t)255u;
+    }
+    const ui_screen_settings_action_t action = ui_screen_settings_frame(&ui->settings_screen, false);
+    memcpy(out, ui_frame_end(ui, false), (uint64_t)US_WIDTH * US_HEIGHT * 4u);
+    return action;
+}
+
+/* A click, and the picture of the frame after, with no button on it and the pointer still over the same place. */
+static ui_screen_settings_action_t us_settings_click(us_rig_t *rig, int32_t x, int32_t y, uint8_t *out) {
+    input_frame_t frame;
+    memset(&frame, 0, sizeof(frame));
+    frame.mouse_dx = (int64_t)x - rig->ui->widget.input.pointer_x;
+    frame.mouse_dy = (int64_t)y - rig->ui->widget.input.pointer_y;
+    (void)us_settings_frame(rig, &frame, out);
+    memset(&frame, 0, sizeof(frame));
+    us_key_set(&frame.pressed, BTN_LEFT);
+    us_key_set(&frame.down, BTN_LEFT);
+    (void)us_settings_frame(rig, &frame, out);
+    memset(&frame, 0, sizeof(frame));
+    us_key_set(&frame.released, BTN_LEFT);
+    const ui_screen_settings_action_t action = us_settings_frame(rig, &frame, out);
+    memset(&frame, 0, sizeof(frame));
+    (void)us_settings_frame(rig, &frame, out);
+    return action;
+}
+
+TEST(the_coordinates_box_changes_that_setting_and_nothing_else_and_shows_it) {
+    /* At 320 by 240 the scale is 1: row 6 starts at 60 across and 24 + 6 * 24 down, is 20 tall, and the box starts 50 along it. */
+    enum : int32_t { BOX_X = 114 + 4, BOX_Y = 168 + 10 };
+    us_rig_t *const rig = test_alloc(t, sizeof(us_rig_t));
+    REQUIRE(us_rig_start(t, rig));
+    settings_values_t values;
+    settings_persist_defaults(&values);
+    CHECK_EQ_U64(values.show_coordinates, 1u);
+    settings_values_t expected = values;
+    ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &values, 0u, MC_THREADS_WORKERS, false);
+    const uint64_t bytes = (uint64_t)US_WIDTH * US_HEIGHT * 4u;
+    uint8_t *const on = test_alloc(t, bytes);
+    uint8_t *const off = test_alloc(t, bytes);
+    uint8_t *const on_again = test_alloc(t, bytes);
+    const input_frame_t nothing = {0};
+    (void)us_settings_frame(rig, &nothing, on); /* so that the widgets know the canvas */
+
+    /* Hovering shows, so what is compared is the box over the box, with the pointer there each time. */
+    input_frame_t over;
+    memset(&over, 0, sizeof(over));
+    over.mouse_dx = (int64_t)BOX_X - rig->ui->widget.input.pointer_x;
+    over.mouse_dy = (int64_t)BOX_Y - rig->ui->widget.input.pointer_y;
+    CHECK_EQ_U64(us_settings_frame(rig, &over, on), UI_SCREEN_SETTINGS_NONE);
+    CHECK_EQ_U64(us_settings_click(rig, BOX_X, BOX_Y, off), UI_SCREEN_SETTINGS_CHANGED);
+    expected.show_coordinates = 0u;
+    CHECK_MEM_EQ(&values, &expected, sizeof(expected));
+    CHECK(memcmp(on, off, bytes) != 0);
+    CHECK_EQ_U64(us_settings_click(rig, BOX_X, BOX_Y, on_again), UI_SCREEN_SETTINGS_CHANGED);
+    expected.show_coordinates = 1u;
+    CHECK_MEM_EQ(&values, &expected, sizeof(expected));
+    CHECK_MEM_EQ(on, on_again, bytes);
+
+    /* It is the box's own business: VSync, on its left, and Effects..., on its right, have not moved under the pointer. */
+    CHECK_EQ_U64(us_settings_click(rig, 60 + 4, BOX_Y, off), UI_SCREEN_SETTINGS_CHANGED);
+    CHECK_EQ_U64(values.vsync, 0u);
+    CHECK_EQ_U64(values.show_coordinates, 1u);
+    (void)us_settings_click(rig, 260 - 4, BOX_Y, off);
+    CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_EFFECTS);
+    us_rig_stop(rig);
+}
+
 /* ---- Replays and golden pictures -------------------------------------------------------------------------------------------- */
 
 static void us_golden_compare(test_context_t *t, const char *path, const uint8_t *picture) {

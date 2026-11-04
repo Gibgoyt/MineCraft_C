@@ -1,0 +1,87 @@
+# The Coordinates box, in a world that stays open, in the built program, at 640 by 480, scale 2. The settings file it starts from does not mention it, so
+# it starts on. Worked out by hand from the layouts in run/src/ui/menu/index.c and run/src/ui/screen_settings/index.c. The pointer starts at 320, 240 once
+# tick 0 has shown it the canvas, and it moves only on screens. It leaves the setting off, for what again.script finds in the file.
+
+1 move 0 -40                    # 320, 200: Singleplayer
++1 button left down
++1 button left up
++1 move 132 196                 # 452, 396: Create New World
++1 button left down
++1 button left up
++1 key l down
++1 key l up
++1 key i down
++1 key i up
++1 key v down
++1 key v up
++1 key e down
++1 key e up
++1 move -132 -194               # 320, 202: the seed field
++1 button left down
++1 button left up
++1 key 1 down
++1 key 1 up
++1 key 2 down
++1 key 2 up
++1 key 3 down
++1 key 3 up
++1 key enter down               # opens the world, between this tick and the next
++1 key enter up
+
++7 screenshot on.png
+
+# Esc, Settings, the box, Done, Esc: off.
++1 key escape down
++1 key escape up
++1 move 0 46                    # 320, 248: Settings, on the pause screen
++1 button left down
++1 button left up
++1 move -20 108                 # 300, 356: Coordinates, the middle of row 6
++1 button left down
++1 button left up
++1 screenshot screen_coordinates.png
++1 move 20 96                   # 320, 452: Done
++1 button left down
++1 button left up
++1 key escape down
++1 key escape up
++3 screenshot off.png
+
+# The same, for on.
++1 key escape down
++1 key escape up
++1 move 0 -204                  # 320, 248
++1 button left down
++1 button left up
++1 move -20 108                 # 300, 356
++1 button left down
++1 button left up
++1 move 20 96                   # 320, 452
++1 button left down
++1 button left up
++1 key escape down
++1 key escape up
++3 screenshot on_again.png
+
+# And off, as the file ends up.
++1 key escape down
++1 key escape up
++1 move 0 -204                  # 320, 248
++1 button left down
++1 button left up
++1 move -20 108                 # 300, 356
++1 button left down
++1 button left up
++1 move 20 96                   # 320, 452
++1 button left down
++1 button left up
++1 key escape down
++1 key escape up
++1 key escape down
++1 key escape up
++1 move 0 -156                  # 320, 296: Quit to Title
++1 button left down
++1 button left up
++1 button left down             # the same place: Quit Game
++1 button left up
++1 end

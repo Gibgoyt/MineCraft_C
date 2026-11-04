@@ -1,6 +1,6 @@
 # run/src/settings
 
-**Purpose:** every setting a person can change, and keeping them between runs: render distance from 2 to 512 chunks, how far of that is drawn block by block, field of view, mouse sensitivity, vsync or uncapped, each of the sixteen graphics effects, render scale and worker count.
+**Purpose:** every setting a person can change, and keeping them between runs: render distance from 2 to 512 chunks, how far of that is drawn block by block, field of view, mouse sensitivity, vsync or uncapped, whether coordinates show, each of the sixteen graphics effects, render scale and worker count.
 **Tier:** Owner.
 **Owns:** `owned_region`, with `arena` over it, which holds the path and one file's worth of text. Both live as long as the `settings_t`.
 **Lifetime:** Process.
@@ -28,6 +28,7 @@
 | Each effect | At once |
 | Render scale | At once: new pictures on the card, brought up to the display's size. See `run/src/game/README.md` |
 | Vsync or uncapped | At once. Uncapped is a flip that does not wait for a vblank, if the driver allows it, and otherwise one that does; the gpu thread stops waiting for a picture to be taken |
+| Coordinates | At once: nothing on the card is touched, and `main` draws them or not on the next frame |
 | Worker count | At the next start, and the screen says so. Workers start before anything else that uses them, and everything that uses them keeps jobs on them |
 
 ## The file
