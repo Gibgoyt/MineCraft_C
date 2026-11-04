@@ -50,7 +50,7 @@ At 0 health the body is dead. It keeps falling, and nothing it is told moves it.
 
 **Where.** The last bed it used, or otherwise where the world started it. The ground there may not be loaded, so it holds still until it is. Then a bed that has gone counts for nothing, and it goes to the world's place. It stands beside a bed if it can and on it if not, and at the world's place it goes up as far as it takes to fit.
 
-There is no death screen: the view lowers to the ground and stays until a press.
+There is no death screen: the view lowers to the ground and stays until a press, with a line across the top of the HUD saying what to press, which `run/src/game/` draws.
 
 ## The bed
 

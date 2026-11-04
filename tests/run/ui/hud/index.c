@@ -24,6 +24,7 @@
 #include "world/index.h"
 
 #include <inttypes.h>
+#include <linux/input.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1296,6 +1297,51 @@ TEST(the_program_shows_the_hud_and_f3_changes_only_the_panel) {
     static const char *const names[] = {"shot.png", "run.script"};
     temp_dir_remove(&plain, names, 2u);
     temp_dir_remove(&overlay, names, 2u);
+}
+
+/* The view on the ground says nothing of how to get up. A red band across the top does, and only while it is so. */
+TEST(a_dead_player_is_told_how_to_come_back) {
+    rig_t rig;
+    REQUIRE(rig_begin(t, &rig, true));
+    game_t *const game = rig.game;
+    game_ui_set(game, rig.ui);
+    REQUIRE(game_open(game, &rig_small_game));
+    REQUIRE(game_settle(game));
+    display_headless_scene_t scene;
+    game_headless_scene(game, &scene);
+    display_script_state_t *const script = test_alloc(t, sizeof(*script));
+    memset(script, 0, sizeof(*script));
+    display_headless_tick_t tick;
+    memset(&tick, 0, sizeof(tick));
+    tick.state = script;
+    display_buffer_t target = rig_target(t);
+    const uint32_t *const shown = (const uint32_t *)(const void *)target.owned_map;
+    /* Inside the band, whatever the scale, and left of any words. */
+    const uint64_t band_pixel = (uint64_t)8u * GAME_WIDTH + 1u;
+    REQUIRE(scene.tick(scene.borrowed_context, &tick));
+    REQUIRE(rig_scene_frame(t, &scene, &target));
+    CHECK(((shown[band_pixel] >> 16u) & 0xFFu) < 2u * (shown[band_pixel] & 0xFFu));
+
+    player_survival_hurt(&rig.player->survival, 100.0f32, PLAYER_SURVIVAL_CAUSE_ATTACK);
+    REQUIRE(scene.tick(scene.borrowed_context, &tick));
+    CHECK_EQ_U64(player_vitals_read(rig.player).state, PLAYER_SURVIVAL_DEAD);
+    REQUIRE(rig_scene_frame(t, &scene, &target));
+    CHECK(((shown[band_pixel] >> 16u) & 0xFFu) >= 2u * (shown[band_pixel] & 0xFFu));
+
+    /* Past the wait, a press: up again, and the band has gone. */
+    for (uint32_t i = 0u; i <= PLAYER_SURVIVAL_RESPAWN_WAIT_TICKS; i++) {
+        REQUIRE(scene.tick(scene.borrowed_context, &tick));
+    }
+    script->down[BTN_LEFT / 64u] |= 1ull << (BTN_LEFT % 64u);
+    REQUIRE(scene.tick(scene.borrowed_context, &tick));
+    script->down[BTN_LEFT / 64u] &= ~(1ull << (BTN_LEFT % 64u));
+    REQUIRE(scene.tick(scene.borrowed_context, &tick));
+    CHECK_EQ_U64(rig.player->survival.respawned_count, 1u);
+    REQUIRE(rig_scene_frame(t, &scene, &target));
+    CHECK(((shown[band_pixel] >> 16u) & 0xFFu) < 2u * (shown[band_pixel] & 0xFFu));
+
+    game_close(game);
+    rig_end(t, &rig);
 }
 
 TEST_MAIN()

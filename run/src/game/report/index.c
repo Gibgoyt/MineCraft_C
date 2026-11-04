@@ -69,6 +69,11 @@ void game_report(game_t *game) {
             LOG_INFO("game: zombies struck %" PRIu64 " blows, %" PRIu64 " died and left %" PRIu64 " items",
                      zombie->struck_count, zombie->died_count, zombie->dropped_count);
         }
+        if (game->borrowed_mob != nullptr) {
+            const mob_skeleton_t *const skeleton = &game->borrowed_mob->skeleton;
+            LOG_INFO("game: skeletons loosed %" PRIu64 " arrows, %" PRIu64 " died and left %" PRIu64 " items",
+                     (uint64_t)skeleton->shot_count, (uint64_t)skeleton->died_count, (uint64_t)skeleton->dropped_count);
+        }
         LOG_INFO("game: %" PRIu32 " blasts broke %" PRIu64 " blocks", game->borrowed_entity->explosion.blast_count,
                  game->borrowed_entity->explosion.broken_count);
     }

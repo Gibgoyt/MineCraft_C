@@ -1015,7 +1015,13 @@ static const uint8_t *game_hud_compose(game_t *game, const uint8_t *drawn) {
         ui_hud_state_t state;
         game_hud_state_read(game, &state);
         ui_hud_draw(&ui->hud, &ui->canvas, &ui->font, &state);
-        game_hud_trouble_draw(game);
+        if (player_vitals_read(game->borrowed_player).state == (uint8_t)PLAYER_SURVIVAL_DEAD) {
+            /* There is no death screen, and the view on the ground says nothing of how to get up. This comes before a full disk: a person
+             * who cannot get up can do nothing about that. */
+            ui_hud_notice_draw(&ui->canvas, &ui->font, "You died. Press a mouse button or Space to come back.");
+        } else {
+            game_hud_trouble_draw(game);
+        }
     }
     if (game->hud_debug != 0u) {
         ui_hud_debug_t debug;
