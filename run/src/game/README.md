@@ -20,7 +20,6 @@
 - `game_pause_set`: stops the world's clock, or starts it.
 - `game_far_changes_take`: what has been captured, told to the far field, by whichever thread calls `render_lod_frame`.
 - `game_save_finish`: all there is, saved here and now, as a world closes: see `run/src/save/autosave/`. A `game_open` with a save takes up where the state in it left off, and `game_sim_step` calls `save_autosave_step`.
-- `game_ground_z`, `game_spawn_find`: a column's top, and where a new world's body starts. `bench/world_map/` reports the same place.
 - `game_open_alive_set`, `game_open_alive_tell`: someone to tell that a long `game_open` is still going, and telling them.
 - `game_gpu_alive`, `game_gpu_lost`, `game_gpu_stuck`, `game_gpu_failed_note`, `game_gpu_pretend_set`: when the card goes. See below.
 - `game_fly_from_script`, `game_fly_from_input`: either kind of input to a step of flying.
@@ -41,7 +40,7 @@
 **May be called by:** `run/src/main/`, and its part `session`.
 **Depends on:** `mob`, `player`, `entity`, `item`, `ui`, `render`, `world`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
 
-**Parts:** `tick`: one tick of the world, `game_sim_tick`. `session`: from the title screen to Quit Game, on top of the rest of this. `view`: what a config comes to, and bringing a picture up to the display's size. `report`: what it says about itself. `input`: what a person's hands come to. `settle`: everything on the card, on one thread.
+**Parts:** `tick`: one tick of the world, `game_sim_tick`. `spawn`: where a new world's body starts, `game_ground_z` and `game_spawn_find`, which `bench/world_map/` asks too. `session`: from the title screen to Quit Game, on top of the rest of this. `view`: what a config comes to, and bringing a picture up to the display's size. `report`: what it says about itself. `input`: what a person's hands come to. `settle`: everything on the card, on one thread.
 
 A column's blocks are `terrain_generate_box`, on a worker, over all of the column's storage. Each job lends it the states and a byte per voxel.
 

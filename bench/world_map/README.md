@@ -70,3 +70,18 @@ Release build, 8 seeds, exit status 0. About 50 s a seed: 18 s for the map, 26 s
 | 20261104 | 51.2% | 13.9% | 5.1% | 26.7% | 4.75% | 0.62% | 0 | 456 | 768 | 0 | 0.4 | 17.8% | 47.23 | 4.66 | 0 | sand |
 | 9999999999999 | 44.9% | 9.9% | 5.9% | 31.3% | 4.62% | 0.64% | 0 | 472 | 1088 | 0 | 0.5 | 15.9% | 41.21 | 6.45 | 0 | sand |
 | 18446744073709551557 | 50.8% | 12.9% | 5.1% | 28.3% | 4.26% | 0.54% | 0 | 474 | 896 | 0 | 0.4 | 15.9% | 41.22 | 4.31 | 8 | ice |
+
+### 2026-11-04, after plan 003 phase 8 stage 2, starting on land
+
+Same 8 seeds and build type, exit status 0. Terrain did not change, and every column of the table but the last two, and `to high` which follows them, is as above. No seed starts on ice now, and every one has 0 to land.
+
+| Seed | Spawn at x, y, z | Spawn on | To land | To high |
+|---|---|---|---|---|
+| 2198175988018515243 | -280, -280, 5 | snow_block | 0 | 1033 |
+| 12636146071196537873 | 8, -8, 38 | snow_block | 0 | 2171 |
+| 5569068473609503046 (the default) | -8, -8, 84 | grass_block | 0 | 211 |
+| 1 | 216, 216, 1 | sand | 0 | 1666 |
+| 42 | 24, 8, 35 | snow_block | 0 | 40 |
+| 20261104 | 200, 200, 6 | sand | 0 | 688 |
+| 9999999999999 | -344, -344, 6 | sand | 0 | 442 |
+| 18446744073709551557 | -8, 8, 34 | snow_block | 0 | 895 |

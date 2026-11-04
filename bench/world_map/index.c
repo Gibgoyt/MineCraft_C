@@ -1,6 +1,7 @@
 /* bench_world_map: what a seed's world looks like and measures, with no display and no card. See README.md. */
 #include "display/headless/png/index.h"
 #include "game/index.h"
+#include "game/spawn/index.h"
 #include "heap/index.h"
 #include "job/index.h"
 #include "machine/index.h"
@@ -930,7 +931,7 @@ static float64_t map_km2_of_pixels(uint64_t pixels) {
 }
 
 /* How far to the nearest pixel whose class is land, in blocks. -1 if none. */
-static float64_t map_nearest_land(const map_column_t *columns, uint32_t px, uint32_t py) {
+static float64_t map_nearest_land(const map_column_t *columns, int32_t px, int32_t py) {
     uint64_t best = UINT64_MAX;
     for (uint32_t y = 0u; y < MAP_SIDE; y++) {
         for (uint32_t x = 0u; x < MAP_SIDE; x++) {
@@ -946,7 +947,7 @@ static float64_t map_nearest_land(const map_column_t *columns, uint32_t px, uint
 }
 
 /* The nearest pixel that mask has at 2, and how far, in blocks. False if none. */
-static bool map_nearest_mask(const uint8_t *mask, uint32_t px, uint32_t py, uint32_t *out_at, float64_t *out_blocks) {
+static bool map_nearest_mask(const uint8_t *mask, int32_t px, int32_t py, uint32_t *out_at, float64_t *out_blocks) {
     bool found = false;
     uint64_t best = UINT64_MAX;
     for (uint32_t y = 0u; y < MAP_SIDE; y++) {
@@ -1174,19 +1175,22 @@ static bool map_seed(job_system_t *system, map_run_t *run, const map_memory_t *m
     map_measure(run, memory, table);
 
     /* Where the game starts a body, by its own search. */
-    game_spawn_find(nullptr, &terrain, one_column, GAME_WORLD_MIDDLE, GAME_WORLD_MIDDLE, &table->spawn_x,
-                    &table->spawn_y);
+    if (!game_spawn_find(nullptr, &terrain, one_column, GAME_WORLD_MIDDLE, GAME_WORLD_MIDDLE, &table->spawn_x,
+                         &table->spawn_y)) {
+        printf("  no dry land for a body to start on within %d blocks\n", GAME_SPAWN_REACH);
+    }
     table->spawn_z = game_ground_z(&terrain, one_column, table->spawn_x, table->spawn_y);
     table->spawn_top = one_column->borrowed_states[table->spawn_z - COLUMN_Z_STORAGE_MIN];
-    const uint32_t spawn_px = (uint32_t)((table->spawn_x - run->origin_x) / (int32_t)MAP_STEP);
-    const uint32_t spawn_py = (uint32_t)((table->spawn_y - run->origin_y) / (int32_t)MAP_STEP);
+    /* The search goes further than the map, so this may be off it. What reads it takes a place outside. */
+    const int32_t spawn_px = (table->spawn_x - run->origin_x) / (int32_t)MAP_STEP;
+    const int32_t spawn_py = (table->spawn_y - run->origin_y) / (int32_t)MAP_STEP;
     uint32_t mountain_at = 0u;
     table->spawn_to_land = map_nearest_land(run->borrowed_columns, spawn_px, spawn_py);
     const bool mountain_found =
         map_nearest_mask(memory->mask, spawn_px, spawn_py, &mountain_at, &table->spawn_to_mountain);
 
     map_draw(run->borrowed_columns, memory->pixels);
-    map_mark(memory->pixels, (int32_t)spawn_px, (int32_t)spawn_py, MAP_COLOUR_SPAWN);
+    map_mark(memory->pixels, spawn_px, spawn_py, MAP_COLOUR_SPAWN);
     if (mountain_found) {
         map_mark(memory->pixels, (int32_t)(mountain_at % MAP_SIDE), (int32_t)(mountain_at / MAP_SIDE),
                  MAP_COLOUR_MOUNTAIN);
