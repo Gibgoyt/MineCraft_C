@@ -41,6 +41,7 @@ Appended as they land:
 - `7972ff4` Record the coordinates phase as built, with what was added, what was tested and the one rule broken on the way.
 - `308c5b1` Test that a tick alone moves the coordinates and that a reopened world shows the saved block before any tick, and put the tick comment back on its function.
 - `ca7ad78` Record the coordinates gate check, with what it proved, what it corrected and that the whole suite did not finish.
+- `25d5b93` Record the second coordinates gate check, with the whole suite passing and the numbers, the setting and the notice band seen in play.
 ## Issues found
 
 **On by default, for now.** It's useful while you're testing the world. It's one line to change.
