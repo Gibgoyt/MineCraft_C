@@ -744,6 +744,12 @@ TEST(the_built_program_killed_in_play_goes_on_from_its_last_autosave) {
     REQUIRE(waitpid(child, &status, 0) == child);
     /* timeout itself dies by that signal too. */
     CHECK(WIFSIGNALED(status) && WTERMSIG(status) == SIGKILL);
+    /* That was timeout. The game under it is its orphan, whose lock on the world goes only when its exit is done, and that takes as long as its memory
+     * does to give back. So the group is waited on too, or a busy machine has the save refused as open in another game. */
+    const int64_t gone_by = time_now_ns() + 60ll * TIME_NS_PER_SECOND;
+    while (kill(-child, 0) == 0 && time_now_ns() < gone_by) {
+        time_sleep_ns(5000000);
+    }
     if (!CHECK(generation >= 1u)) {
         uint64_t bytes = 0u;
         const uint8_t *const log_bytes = ss_slurp(t, log_path, &bytes);
@@ -814,6 +820,135 @@ TEST(the_built_program_killed_in_play_goes_on_from_its_last_autosave) {
     CHECK(time_after.world_ticks > time.world_ticks);
     CHECK(time_after.world_ticks <= time.world_ticks + 20u);
     save_deinit(after);
+    ss_temp_remove(t, root);
+}
+
+/* The top of the world in the built program, with real keys and real hands. The save puts a stone floor just under the last layer and the player on it,
+ * with dirt in hand and looking along +x. Then: looks down at the floor two blocks on, and places on it, which is the last layer. Looks up to that
+ * block's top, and places, which is past the last layer. And jumps up onto it, where the body is above the top. */
+enum : int32_t {
+    SS_TOP_LOOK_FLOOR_COUNTS = 272,
+    SS_TOP_LOOK_TOP_COUNTS = 120,
+};
+static const char SS_TOP_SCRIPT_FORMAT[] = "1 move 0 -40\n"
+                                           "+1 button left down\n+1 button left up\n"
+                                           "+1 move -20 -122\n"
+                                           "+1 button left down\n+1 button left up\n"
+                                           "+1 move -112 318\n"
+                                           "+1 button left down\n+1 button left up\n"
+                                           "+6 screenshot arrived.png\n"
+                                           "+1 move 0 %d\n"
+                                           "+1 button right down\n"
+                                           "+2 button right up\n"
+                                           "+10 screenshot placed.png\n"
+                                           "+1 move 0 %d\n"
+                                           "+1 button right down\n"
+                                           "+4 button right up\n"
+                                           "+10 screenshot refused.png\n"
+                                           "+1 key w down\n"
+                                           "+3 key space down\n"
+                                           "+6 key space up\n"
+                                           "+2 key w up\n"
+                                           "+30 screenshot stood.png\n"
+                                           "+1 end\n";
+
+TEST(the_built_program_places_at_the_top_of_the_world_and_not_past_it_and_stands_above_it) {
+    REQUIRE(t->arg_count >= 1);
+    char *const root = ss_temp_directory(t);
+    REQUIRE(root != nullptr);
+    char *const saves = ss_join(t, root, "saves");
+    ui_menu_world_t made;
+    REQUIRE(ui_menu_catalog_create(saves, "top", SS_SEED, &made) == FILE_OK);
+    char *const world_directory = ss_join(t, saves, made.directory);
+
+    ss_game_rig_t *rig = test_alloc(t, sizeof(ss_game_rig_t));
+    REQUIRE(ss_game_begin(t, rig, true));
+    REQUIRE(save_open(rig->save, world_directory, SS_SEED) == SAVE_WORLD_OK);
+    const game_config_t config = {.render_distance = 4u, .width = 64u, .height = 36u, ._pad0 = {0}};
+    REQUIRE(game_open(rig->game, &config));
+    REQUIRE(game_settle(rig->game));
+    const int32_t cell_x = (int32_t)floor(rig->player->movement.position[0]);
+    const int32_t cell_y = (int32_t)floor(rig->player->movement.position[1]);
+    const int32_t top = COLUMN_Z_GAMEPLAY_MAX;
+    for (int32_t y = cell_y - 6; y <= cell_y + 6; y++) {
+        for (int32_t x = cell_x - 6; x <= cell_x + 6; x++) {
+            REQUIRE(world_edit_block_set(&rig->world->edit, x, y, top - 1, BLOCK_ID_STONE) ==
+                    WORLD_EDIT_STATUS_CHANGED);
+        }
+    }
+    player_spawn(rig->player, (float64_t)cell_x + 0.5f64, (float64_t)cell_y + 0.5f64, (float64_t)top);
+    rig->game->camera.yaw = 0.0f32;
+    rig->game->camera.pitch = 0.0f32;
+    player_look_send(rig->player, 0.0f32, 0.0f32);
+    REQUIRE(inventory_add(&rig->item->inventory, ITEM_ID_DIRT, 8u) == 8u);
+    REQUIRE(game_save_finish(rig->game) == SAVE_WORLD_OK);
+    game_close(rig->game);
+    save_close(rig->save);
+    ss_game_end(t, rig);
+
+    char *const play = ss_join(t, root, "top.script");
+    char script[sizeof(SS_TOP_SCRIPT_FORMAT) + 32u];
+    const int32_t written = snprintf(script, sizeof(script), SS_TOP_SCRIPT_FORMAT, (int32_t)SS_TOP_LOOK_FLOOR_COUNTS,
+                                     (int32_t)SS_TOP_LOOK_TOP_COUNTS - (int32_t)SS_TOP_LOOK_FLOOR_COUNTS);
+    REQUIRE(written > 0 && (uint64_t)written < sizeof(script));
+    REQUIRE(file_write_atomic(play, script, (uint64_t)written) == FILE_OK);
+    char *const settings = ss_join(t, root, "settings.yaml");
+    char *const argv[] = {t->borrowed_args[0],
+                          (char *)"--headless",
+                          (char *)"--menu",
+                          (char *)"--saves",
+                          saves,
+                          (char *)"--settings",
+                          settings,
+                          (char *)"--script",
+                          play,
+                          (char *)"--screenshot-dir",
+                          root,
+                          (char *)"--width",
+                          (char *)"640",
+                          (char *)"--height",
+                          (char *)"480",
+                          (char *)"--render-distance",
+                          (char *)"4",
+                          nullptr};
+    test_process_t process;
+    test_process_run(t, argv, 120000u, &process);
+    REQUIRE(process.started != 0u);
+    if (!CHECK_EQ_I64(process.exit_code, 0)) {
+        printf("%s\n", process.output);
+    }
+    CHECK_CONTAINS(process.output, "the player goes on from");
+    CHECK_CONTAINS(process.output, " 0 past reading");
+
+    /* What it left, read back. */
+    rig = test_alloc(t, sizeof(ss_game_rig_t));
+    REQUIRE(ss_game_begin(t, rig, true));
+    REQUIRE(save_open(rig->save, world_directory, SS_SEED) == SAVE_WORLD_OK);
+    REQUIRE(game_open(rig->game, &config));
+    REQUIRE(game_settle(rig->game));
+    uint16_t block = BLOCK_ID_STONE;
+    REQUIRE(world_map_block_get(&rig->world->map, cell_x + 2, cell_y, top, &block) == WORLD_MAP_STATUS_OK);
+    CHECK_EQ_U64(block, BLOCK_ID_DIRT);
+    /* Storage has a layer past it, and nothing the player did reached that. */
+    CHECK_EQ_U64(world_map_block_get(&rig->world->map, cell_x + 2, cell_y, top + 1, &block),
+                 WORLD_MAP_STATUS_Z_OUT_OF_RANGE);
+    const column_t *const column =
+        world_map_column_at(&rig->world->map, column_chunk_of(cell_x + 2), column_chunk_of(cell_y));
+    REQUIRE(column != nullptr);
+    CHECK_EQ_U64(section_block_get(&column->sections[column_section_of(top + 1)],
+                                   section_voxel_index(column_local_of(cell_x + 2), column_local_of(cell_y),
+                                                       column_section_local_of(top + 1))),
+                 BLOCK_ID_AIR);
+    /* One went into the world. The second press took nothing from the hand. */
+    CHECK_EQ_U64(inventory_count(&rig->item->inventory, ITEM_ID_DIRT), 7u);
+    /* On that block, with the feet on a height no block may fill. */
+    printf("  top of the world: feet at %.3f, %.3f, %.3f\n", (libc_double_t)rig->player->movement.position[0],
+           (libc_double_t)rig->player->movement.position[1], (libc_double_t)rig->player->movement.position[2]);
+    CHECK(rig->player->movement.position[2] == (float64_t)(top + 1));
+    CHECK(rig->player->movement.position[0] > (float64_t)(cell_x + 1));
+    game_close(rig->game);
+    save_close(rig->save);
+    ss_game_end(t, rig);
     ss_temp_remove(t, root);
 }
 
