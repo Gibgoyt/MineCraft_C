@@ -19,7 +19,7 @@
 enum : uint32_t {
     TOUR_CHUNK = TERRAIN_FEATURE_CHUNK,
     TOUR_COLUMNS_PER_CHUNK = TERRAIN_FEATURE_CHUNK_COLUMNS,
-    TOUR_LAYERS = 751u, /* the plan's -250 to 500, both included */
+    TOUR_LAYERS = 1501u, /* the world, -250 to 1250, both included */
     TOUR_CHUNK_VOXELS = TOUR_COLUMNS_PER_CHUNK * TOUR_LAYERS,
     TOUR_MAP_CHUNKS = 8u,
     TOUR_MAP_ACROSS = TOUR_MAP_CHUNKS * TOUR_CHUNK, /* blocks */

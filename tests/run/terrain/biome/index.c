@@ -21,7 +21,7 @@ static_assert(MC_THREADS_WORKERS <= 64); /* the worker mask below */
 
 enum : uint32_t {
     BIO_LAYERS =
-        751u, /* -250 to 500, both included: all terrain makes, so the pinned digests say a taller world moved nothing */
+        1501u, /* -250 to 1250, both included: all terrain makes, as plan 003 phase 8 stage 4's ranges use the height */
     BIO_CHUNK = 16u,
     BIO_CHUNK_COLUMNS = BIO_CHUNK * BIO_CHUNK,
     BIO_CHUNK_VOXELS = BIO_CHUNK_COLUMNS * BIO_LAYERS,
@@ -44,9 +44,11 @@ static const int32_t BIO_CAVE_LEVEL_Z[BIO_CAVE_LEVELS] = {-210, -170, -100, -60,
 
 /* Pinned: see README.md. */
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t BIO_DIGEST_PIN = 0x45BCC435B8BE3468ull;
+/* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
+static const uint64_t BIO_DIGEST_PIN = 0x2AA130675ADB29A7ull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t BIO_COLUMNS_PIN = 0xD8F41C421E9A02CCull;
+/* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
+static const uint64_t BIO_COLUMNS_PIN = 0xE2B794623CAD0800ull;
 
 static uint64_t bio_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

@@ -104,4 +104,11 @@ void terrain_noise_sample_grid(const terrain_noise_field_t *field, const terrain
 void terrain_noise_sample_points(const terrain_noise_field_t *field, const float64_t *xs, const float64_t *ys,
                                  const float64_t *zs, uint64_t count, float32_t *out);
 
+/* The same, and also what the first first_octaves octaves alone sum to, into out_first: the field with its fine detail left
+ * out, for no more noise than the field costs anyway. first_octaves is from 1 to the field's octaves. The two arrays may not
+ * overlap. */
+void terrain_noise_sample_points_split(const terrain_noise_field_t *field, const float64_t *xs, const float64_t *ys,
+                                       const float64_t *zs, uint64_t count, uint32_t first_octaves,
+                                       float32_t *out_first, float32_t *out);
+
 #endif

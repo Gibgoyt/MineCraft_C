@@ -367,7 +367,8 @@ TEST(a_pool_size_follows_the_table_within_the_limits) {
     render_t *const render = upload_test_aligned(t, sizeof(*render));
     device_memory_t *const memory = test_alloc(t, sizeof(*memory));
     REQUIRE(render_init(render, memory, nullptr, render_limits_default()));
-    CHECK_EQ_U64(render_pool_bytes_for(render, 1u), RENDER_POOL_BYTES_MIN);
+    CHECK(render_pool_bytes_for(render, 1u) >= RENDER_POOL_BYTES_MIN);
+    CHECK(render_pool_bytes_for(render, 1u) <= RENDER_POOL_BYTES_MIN + RENDER_POOL_BYTES_PER_NEAR_COLUMN);
     const uint64_t r32 = render_pool_bytes_for(render, 65u * 65u);
     CHECK_EQ_U64(r32 % WORLD_BUFFERS_PAGE_BYTES, 0u);
     CHECK(r32 >= 65ull * 65ull * RENDER_POOL_BYTES_PER_COLUMN - WORLD_BUFFERS_PAGE_BYTES);

@@ -13,10 +13,11 @@ static bool game_is_settled(const game_t *game) {
     const render_t *const render = game->borrowed_render;
     const world_edit_snapshot_t *const snapshot = &world->snapshot;
     const bool unread = snapshot->published_count != snapshot->acquired_count + snapshot->overwritten_count;
-    const bool sections_waiting =
-        world->edit.queue_count[WORLD_EDIT_CONSUMER_RENDER] != 0u && render->buffers.pool_full_count == 0u;
-    return game->stream_quiet != 0u && world->map.pending_count == 0u && !unread && !sections_waiting &&
-           render_upload_idle(&render->upload) &&
+    /* A full pool sends what it refused round again, which publishes a view each time, so with one nothing below would ever go quiet. */
+    const bool pool_full = render->buffers.pool_full_count != 0u;
+    const bool sections_waiting = world->edit.queue_count[WORLD_EDIT_CONSUMER_RENDER] != 0u && !pool_full;
+    return game->stream_quiet != 0u && world->map.pending_count == 0u && (!unread || pool_full) && !sections_waiting &&
+           (render_upload_idle(&render->upload) || pool_full) &&
            (render->borrowed_lod == nullptr || render_lod_idle(render->borrowed_lod));
 }
 

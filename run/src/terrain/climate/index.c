@@ -56,6 +56,11 @@ static const terrain_noise_shape_t CLIMATE_SHAPE_WARP = {
     .octaves = 3u,
 };
 
+/* How many of continentalness's octaves make its broad form. Down to a cell of 768 blocks. */
+enum : uint32_t {
+    CLIMATE_BROAD_OCTAVES = 3u,
+};
+
 /* A raw value at this far from 0 becomes -1 or 1. Each is about twice what that field measures as its standard deviation:
  * the README has the numbers, and tests/run/terrain/climate/ holds the result to the spread the README promises. */
 static const float64_t CLIMATE_LIMIT_CONTINENTALNESS = 0.259f64;
@@ -142,7 +147,17 @@ static void climate_sample_batch(const terrain_climate_t *climate, const float64
         warped_y[i] = ys[i] + (float64_t)warp[i] * CLIMATE_WARP_BLOCKS;
     }
 
-    if (out->continentalness != nullptr) {
+    if (out->broad != nullptr) {
+        float32_t continentalness_held[CLIMATE_BATCH_COLUMNS];
+        float32_t *const whole = out->continentalness != nullptr ? out->continentalness + at : continentalness_held;
+        float32_t *const broad = out->broad + at;
+        terrain_noise_sample_points_split(climate->borrowed_continentalness, warped_x, warped_y, zs, count,
+                                          CLIMATE_BROAD_OCTAVES, broad, whole);
+        for (uint32_t i = 0u; i < count; i++) {
+            whole[i] = climate_spread(whole[i], CLIMATE_LIMIT_CONTINENTALNESS);
+            broad[i] = climate_spread(broad[i], CLIMATE_LIMIT_CONTINENTALNESS);
+        }
+    } else if (out->continentalness != nullptr) {
         climate_fill(climate->borrowed_continentalness, CLIMATE_LIMIT_CONTINENTALNESS, warped_x, warped_y, zs, count,
                      out->continentalness + at);
     }
@@ -219,6 +234,7 @@ void terrain_climate_at(const terrain_climate_t *climate, int32_t x, int32_t y, 
         .temperature = &out->temperature,
         .humidity = &out->humidity,
         .weirdness = &out->weirdness,
+        .broad = &out->broad,
     };
     climate_sample_batch(climate, &column_x, &column_y, 1u, &arrays, 0u);
 }

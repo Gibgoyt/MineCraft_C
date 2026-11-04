@@ -22,7 +22,7 @@ static_assert(MC_THREADS_WORKERS <= 64); /* the worker mask below */
 
 enum : uint32_t {
     HYDRO_LAYERS =
-        751u, /* -250 to 500, both included: all terrain makes, so the pinned digests say a taller world moved nothing */
+        1501u, /* -250 to 1250, both included: all terrain makes, as plan 003 phase 8 stage 4's ranges use the height */
     HYDRO_WORKERS_MANY = 16u,
     HYDRO_CHUNK = 16u,
     HYDRO_CHUNK_VOXELS = HYDRO_CHUNK * HYDRO_CHUNK * HYDRO_LAYERS,
@@ -44,11 +44,14 @@ static const int32_t HYDRO_MAP_MIN = -3;
 
 /* Pinned: see README.md. */
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t HYDRO_DIGEST_PIN = 0xBACEEECDA34F1B77ull;
+/* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
+static const uint64_t HYDRO_DIGEST_PIN = 0xE9CD1E3FCA812648ull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t HYDRO_COLUMNS_PIN = 0x3B586D0C472E58FDull;
+/* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
+static const uint64_t HYDRO_COLUMNS_PIN = 0xECA6C70A31BC9567ull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t HYDRO_FLOOD_PIN = 0x8BE0CD3D93BD59ADull;
+/* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
+static const uint64_t HYDRO_FLOOD_PIN = 0x2AFF9FC4F8B39776ull;
 
 static uint64_t hydro_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -100,21 +103,29 @@ static terrain_hydrology_column_t hydro_expected_column(const terrain_hydrology_
     const float32_t wide = (in->width + 1.0f32) * 0.5f32;
     const float32_t near = fabsf(in->weirdness);
     float32_t reach = 1.0f32;
-    if (in->continentalness >= 0.35f32) {
+    if (in->continentalness >= 0.15f32) {
         reach = 0.0f32;
     } else if (in->continentalness > -0.3f32) {
-        const float32_t u = (0.35f32 - in->continentalness) / (0.35f32 - -0.3f32);
+        const float32_t u = (0.15f32 - in->continentalness) / (0.15f32 - -0.3f32);
         reach = u * u * (3.0f32 - 2.0f32 * u);
     }
+    float32_t high_up = 1.0f32;
+    if (in->height >= 120.0f32) {
+        high_up = 0.0f32;
+    } else if (in->height > 45.0f32) {
+        const float32_t u = (120.0f32 - in->height) / (120.0f32 - 45.0f32);
+        high_up = u * u * (3.0f32 - 2.0f32 * u);
+    }
+    const float32_t depth = reach * high_up;
     const float32_t bank = 0.12f32 * reach;
     const float32_t inner = (0.03f32 + 0.04f32 * wide) * reach;
     const float32_t outer = inner + bank;
     float32_t river = 0.0f32;
     if (near <= inner) {
-        river = reach;
+        river = depth;
     } else if (near < outer) {
         const float32_t s = (outer - near) / bank;
-        river = reach * s * s * (3.0f32 - 2.0f32 * s);
+        river = depth * s * s * (3.0f32 - 2.0f32 * s);
     }
     const float32_t top = in->height + in->softness + 9.0f32;
     const float32_t bed = -3.0f32 - 4.0f32 * wide;
@@ -146,11 +157,11 @@ static terrain_hydrology_column_t hydro_expected_column(const terrain_hydrology_
 }
 
 TEST(a_column_is_worked_out_as_the_readme_says) {
-    static const float32_t heights[] = {-116.0f32, -60.5f32, -7.0f32, -0.5f32, 0.0f32,
-                                        1.0f32,    6.0f32,   40.0f32, 454.0f32};
-    static const float32_t softness[] = {4.0f32, 30.0f32};
-    static const float32_t continents[] = {-1.0f32,  -0.46f32, -0.45f32, -0.44f32, -0.3f32,
-                                           -0.24f32, -0.23f32, 0.025f32, 0.35f32,  1.0f32};
+    static const float32_t heights[] = {-116.0f32, -60.5f32, -7.0f32, -0.5f32, 0.0f32,   1.0f32,
+                                        6.0f32,    40.0f32,  45.0f32, 80.0f32, 120.0f32, 1190.0f32};
+    static const float32_t softness[] = {4.0f32, 26.0f32};
+    static const float32_t continents[] = {-1.0f32,  -0.46f32, -0.45f32,  -0.44f32, -0.3f32,
+                                           -0.24f32, -0.23f32, -0.075f32, 0.15f32,  1.0f32};
     static const float32_t weird[] = {-1.0f32, -0.1f32, -0.03f32, 0.0f32, 0.02f32,
                                       0.05f32, 0.09f32, 0.15f32,  0.2f32, 1.0f32};
     static const float32_t noise[] = {-1.0f32, -0.3f32, 0.0f32, 0.5f32, 1.0f32};
@@ -227,7 +238,7 @@ TEST(a_column_is_worked_out_as_the_readme_says) {
     CHECK_EQ_U64(column.kind, TERRAIN_HYDROLOGY_KIND_OCEAN);
     /* Half way inland a river is half a river: half its width, and a gully that does not reach the water. */
     in.height = 20.0f32;
-    in.continentalness = 0.025f32;
+    in.continentalness = -0.075f32;
     column = terrain_hydrology_column_from(&in);
     CHECK(fabsf(column.river - 0.5f32) < 1.0e-5f32);
     CHECK(fabsf(column.carve_top - (-3.0f32 + 36.0f32 * 0.25f32)) < 1.0e-3f32);
@@ -237,7 +248,7 @@ TEST(a_column_is_worked_out_as_the_readme_says) {
     CHECK(column.river == 0.0f32);
     /* Far inland there are none, on the very line where one would run. */
     in.weirdness = 0.0f32;
-    in.continentalness = 0.35f32;
+    in.continentalness = 0.15f32;
     column = terrain_hydrology_column_from(&in);
     CHECK(column.river == 0.0f32);
     CHECK(column.ground == 20.0f32);

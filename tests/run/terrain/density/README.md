@@ -17,4 +17,6 @@ makes it believable is `each_value_is_worked_out_as_the_readme_says`, which work
 scalar reference kernel, with the sizes and the limits typed out again. The pin stops a value changing between runs and presets,
 which would change every world.
 
+`mountain_ranges_run_on_for_a_distance_and_are_common` and `the_land_is_not_mostly_walls` hold the shape plan 003 phase 8 stage 4 asked for, by the fields: at least 3 joined pieces at 150 or more of 1 km^2 on each of 8 seeds, 2 at least 4 km long, one at least 5 km, and on 3 seeds under 15% of the land rising 3 for 1 and under 2% rising 6 for 1.
+
 **What it does not say.** Nothing here says the land looks good. That is for the phase gate's biome tour.

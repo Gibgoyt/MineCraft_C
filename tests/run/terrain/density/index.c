@@ -24,7 +24,7 @@ static_assert(MC_THREADS_WORKERS <= 64); /* the worker mask below */
 
 enum : uint32_t {
     DENSITY_LAYERS =
-        751u, /* -250 to 500, both included: all terrain makes, so the pinned digests say a taller world moved nothing */
+        1501u, /* -250 to 1250, both included: all terrain makes, as plan 003 phase 8 stage 4's ranges use the height */
     DENSITY_WORKERS_MANY = 16u,
     DENSITY_CHUNK = 16u,
     DENSITY_CHUNK_VOXELS = DENSITY_CHUNK * DENSITY_CHUNK * DENSITY_LAYERS,
@@ -50,8 +50,8 @@ static const uint64_t DENSITY_SEEDS[DENSITY_WIDE_SEEDS] = {
 };
 
 /* Pinned: see README.md. */
-/* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t DENSITY_DIGEST_PIN = 0xA93E464A25949316ull;
+/* Plan 003 phase 8 stage 3 moved the coast and the rivers, and stage 4 raised the land and made its ranges. */
+static const uint64_t DENSITY_DIGEST_PIN = 0x43B361CB121B3276ull;
 
 static uint64_t density_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -86,11 +86,11 @@ TEST(the_limits_are_the_ones_the_plan_and_the_yaml_give) {
     CHECK_EQ_I64(COLUMN_Z_GAMEPLAY_MIN, MC_WORLD_Z_MIN);
     CHECK_EQ_I64(COLUMN_Z_GAMEPLAY_MAX, MC_WORLD_Z_MAX);
     /* The limits in the header, added up from the README's table, not read from the header's sums. */
-    CHECK_EQ_I64(TERRAIN_DENSITY_HEIGHT_MAX, 64 + 320 + 36 + 34);
+    CHECK_EQ_I64(TERRAIN_DENSITY_HEIGHT_MAX, 100 + 1030 + 46 + 14);
     CHECK_EQ_I64(TERRAIN_DENSITY_HEIGHT_MIN, -110 - 6);
-    CHECK_EQ_I64(TERRAIN_DENSITY_SOFTNESS_MAX, 4 + 26);
-    CHECK_EQ_I64(TERRAIN_DENSITY_ALWAYS_SOLID_TOP, -155);
-    CHECK_EQ_I64(TERRAIN_DENSITY_NEVER_SOLID_FROM, 492);
+    CHECK_EQ_I64(TERRAIN_DENSITY_SOFTNESS_MAX, 4 + 22);
+    CHECK_EQ_I64(TERRAIN_DENSITY_ALWAYS_SOLID_TOP, -151);
+    CHECK_EQ_I64(TERRAIN_DENSITY_NEVER_SOLID_FROM, 1224);
 }
 
 /* ---- Splines ------------------------------------------------------------------------------------------------------ */
@@ -146,15 +146,23 @@ TEST(splines_go_through_their_knots_and_never_past_them) {
     terrain_t terrain;
     REQUIRE(terrain_init(&terrain, DENSITY_WORLD));
     const terrain_density_t *const density = terrain.borrowed_density;
-    DENSITY_CHECK_SPLINE(continental, {-1.0f64, -110.0f64}, {-0.88f64, -90.0f64}, {-0.77f64, -64.0f64},
+    DENSITY_CHECK_SPLINE(continental, {-1.0f64, -110.0f64}, {-0.88f64, -90.0f64}, {-0.78f64, -64.0f64},
                          {-0.6f64, -36.0f64}, {-0.5f64, -10.0f64}, {-0.45f64, 3.0f64}, {-0.34f64, 10.0f64},
-                         {-0.07f64, 24.0f64}, {0.43f64, 44.0f64}, {1.0f64, 64.0f64});
-    DENSITY_CHECK_SPLINE(inland, {-1.0f64, 0.0f64}, {-0.5f64, 0.0f64}, {-0.34f64, 0.1f64}, {-0.07f64, 0.6f64},
-                         {0.21f64, 1.0f64}, {1.0f64, 1.0f64});
+                         {-0.07f64, 26.0f64}, {0.43f64, 54.0f64}, {1.0f64, 100.0f64});
+    DENSITY_CHECK_SPLINE(inland, {-1.0f64, 0.0f64}, {-0.5f64, 0.0f64}, {-0.36f64, 0.12f64}, {-0.1f64, 0.6f64},
+                         {0.12f64, 1.0f64}, {1.0f64, 1.0f64});
+    DENSITY_CHECK_SPLINE(range_land, {-1.0f64, 0.0f64}, {-0.38f64, 0.0f64}, {-0.1f64, 0.5f64}, {0.2f64, 1.0f64},
+                         {1.0f64, 1.0f64});
+    DENSITY_CHECK_SPLINE(wetland, {-1.0f64, 0.0f64}, {0.35f64, 0.0f64}, {0.6f64, 1.0f64}, {1.0f64, 1.0f64});
+    DENSITY_CHECK_SPLINE(belt, {0.0f64, 0.0f64}, {0.52f64, 0.0f64}, {0.68f64, 0.32f64}, {0.82f64, 0.68f64},
+                         {0.94f64, 1.0f64}, {1.0f64, 1.0f64});
+    DENSITY_CHECK_SPLINE(massif, {-1.0f64, 0.35f64}, {-0.2f64, 0.58f64}, {0.4f64, 0.82f64}, {0.75f64, 1.0f64},
+                         {1.0f64, 1.0f64});
+    DENSITY_CHECK_SPLINE(crest, {0.0f64, 0.5f64}, {0.4f64, 0.66f64}, {0.8f64, 0.94f64}, {1.0f64, 1.0f64});
     DENSITY_CHECK_SPLINE(relief, {-1.0f64, 1.0f64}, {-0.5f64, 0.9f64}, {-0.2f64, 0.55f64}, {0.1f64, 0.2f64},
                          {0.4f64, 0.05f64}, {0.7f64, 0.0f64}, {1.0f64, 0.0f64});
-    DENSITY_CHECK_SPLINE(peak, {-1.0f64, 0.0f64}, {-0.5f64, 0.029023f64}, {0.0f64, 0.111111f64}, {0.25f64, 0.197688f64},
-                         {0.5f64, 0.343292f64}, {0.75f64, 0.588169f64}, {1.0f64, 1.0f64});
+    DENSITY_CHECK_SPLINE(peak, {-1.0f64, 0.0f64}, {-0.5f64, 0.08f64}, {0.0f64, 0.3f64}, {0.5f64, 0.65f64},
+                         {1.0f64, 1.0f64});
     DENSITY_CHECK_SPLINE(valley, {-1.0f64, 0.3f64}, {-0.6f64, 0.65f64}, {-0.2f64, 1.0f64}, {1.0f64, 1.0f64});
     DENSITY_CHECK_SPLINE(hill_land, {-1.0f64, 0.0f64}, {-0.45f64, 0.0f64}, {-0.2f64, 1.0f64}, {1.0f64, 1.0f64});
     DENSITY_CHECK_SPLINE(hill_sea, {-1.0f64, 1.0f64}, {-0.58f64, 1.0f64}, {-0.51f64, 0.0f64}, {1.0f64, 0.0f64});
@@ -168,26 +176,31 @@ static terrain_density_profile_t density_expected_profile(const terrain_density_
     const float64_t c = (float64_t)in->continentalness;
     const float64_t e = (float64_t)in->erosion;
     const float64_t r = (float64_t)in->ridges;
+    const float64_t valley = terrain_density_spline_at(&density->valley, r);
     float64_t base = terrain_density_spline_at(&density->continental, c);
     if (base > 0.0f64) {
-        base *= terrain_density_spline_at(&density->valley, r);
+        base = base * valley - 14.0f64 * (1.0f64 - valley) * terrain_density_spline_at(&density->wetland, e);
     }
+    const float64_t body = terrain_density_spline_at(&density->range_land, (float64_t)in->broad) *
+                           terrain_density_spline_at(&density->belt, 1.0f64 - fabs((float64_t)in->range)) *
+                           terrain_density_spline_at(&density->massif, (float64_t)in->massif);
+    const float64_t rise = body * terrain_density_spline_at(&density->crest, 1.0f64 - fabs((float64_t)in->crest));
     const float64_t high =
         terrain_density_spline_at(&density->inland, c) * terrain_density_spline_at(&density->relief, e);
-    const float64_t mountain = high * terrain_density_spline_at(&density->peak, r);
-    const float64_t hill = terrain_density_spline_at(&density->hill_land, c) *
-                               (6.0f64 + 30.0f64 * terrain_density_spline_at(&density->hill_relief, e)) +
+    const float64_t foothill = (1.0f64 - body) * high * terrain_density_spline_at(&density->peak, r);
+    const float64_t hill = terrain_density_spline_at(&density->hill_land, c) * valley *
+                               (8.0f64 + 38.0f64 * terrain_density_spline_at(&density->hill_relief, e)) +
                            terrain_density_spline_at(&density->hill_sea, c) * 6.0f64;
     return (terrain_density_profile_t){
-        .height = (float32_t)(base + 320.0f64 * mountain + hill * (float64_t)in->hills +
-                              34.0f64 * mountain * (float64_t)in->jagged),
-        .softness = (float32_t)(4.0f64 + 26.0f64 * high),
+        .height = (float32_t)(base + 1030.0f64 * rise + 60.0f64 * foothill + hill * (float64_t)in->hills +
+                              14.0f64 * body * (float64_t)in->jagged),
+        .softness = (float32_t)(4.0f64 + 22.0f64 * (high + body - high * body)),
     };
 }
 
 /* Every corner of what the noise can give, and a grid through the middle: there is no climate that can reach past a limit. */
 TEST(no_climate_at_all_can_reach_past_the_height_limits) {
-    enum : uint32_t { STEPS = 16u };
+    enum : uint32_t { STEPS = 8u };
     terrain_t terrain;
     REQUIRE(terrain_init(&terrain, DENSITY_WORLD));
     const terrain_density_t *const density = terrain.borrowed_density;
@@ -198,13 +211,18 @@ TEST(no_climate_at_all_can_reach_past_the_height_limits) {
     for (uint32_t ic = 0u; ic <= STEPS; ic++) {
         for (uint32_t ie = 0u; ie <= STEPS; ie++) {
             for (uint32_t ir = 0u; ir <= STEPS; ir++) {
-                for (uint32_t noise = 0u; noise < 9u; noise++) {
+                for (uint32_t noise = 0u; noise < 729u; noise++) {
+                    /* Each of the six other inputs at -1, 0 and 1, so every corner of them too. */
                     const terrain_density_inputs_t inputs = {
                         .continentalness = (float32_t)ic / (float32_t)STEPS * 2.0f32 - 1.0f32,
                         .erosion = (float32_t)ie / (float32_t)STEPS * 2.0f32 - 1.0f32,
                         .ridges = (float32_t)ir / (float32_t)STEPS * 2.0f32 - 1.0f32,
                         .hills = (float32_t)(noise % 3u) - 1.0f32,
-                        .jagged = (float32_t)(noise / 3u) - 1.0f32,
+                        .jagged = (float32_t)(noise / 3u % 3u) - 1.0f32,
+                        .range = (float32_t)(noise / 9u % 3u) - 1.0f32,
+                        .massif = (float32_t)(noise / 27u % 3u) - 1.0f32,
+                        .crest = (float32_t)(noise / 81u % 3u) - 1.0f32,
+                        .broad = (float32_t)(noise / 243u % 3u) - 1.0f32,
                     };
                     const terrain_density_profile_t profile = terrain_density_profile_from(density, &inputs);
                     const terrain_density_profile_t expected = density_expected_profile(density, &inputs);
@@ -439,6 +457,10 @@ static float32_t density_expected_corner(const terrain_t *terrain, int32_t x, in
         .ridges = climate.ridges,
         .hills = density_expected_spread(density_scalar_field(density->borrowed_hills, x, y, 0.0f64), 0.34f64),
         .jagged = density_expected_spread(density_scalar_field(density->borrowed_jagged, x, y, 0.0f64), 0.39f64),
+        .range = density_expected_spread(density_scalar_field(density->borrowed_range, x, y, 0.0f64), 0.36f64),
+        .massif = density_expected_spread(density_scalar_field(density->borrowed_massif, x, y, 0.0f64), 0.39f64),
+        .crest = density_expected_spread(density_scalar_field(density->borrowed_crest, x, y, 0.0f64), 0.35f64),
+        .broad = climate.broad,
     };
     const terrain_density_profile_t profile = density_expected_profile(density, &inputs);
     const float32_t depth = (profile.height - (float32_t)z) / profile.softness;
@@ -523,9 +545,12 @@ TEST(raw_noise_measures_what_the_limits_were_chosen_for) {
     float64_t *const ys = test_alloc(t, LOTS * sizeof(float64_t));
     float64_t *const zs = test_alloc(t, LOTS * sizeof(float64_t));
     const terrain_noise_field_t *const fields[TERRAIN_DENSITY_NOISE_FIELDS] = {
-        density->borrowed_hills, density->borrowed_jagged, density->borrowed_detail};
-    static const float64_t limits[TERRAIN_DENSITY_NOISE_FIELDS] = {0.34f64, 0.39f64, 0.35f64};
-    static const char *const names[TERRAIN_DENSITY_NOISE_FIELDS] = {"hills", "jagged", "detail"};
+        density->borrowed_hills, density->borrowed_jagged, density->borrowed_detail,
+        density->borrowed_range, density->borrowed_massif, density->borrowed_crest};
+    static const float64_t limits[TERRAIN_DENSITY_NOISE_FIELDS] = {0.34f64, 0.39f64, 0.35f64,
+                                                                   0.36f64, 0.39f64, 0.35f64};
+    static const char *const names[TERRAIN_DENSITY_NOISE_FIELDS] = {"hills", "jagged", "detail",
+                                                                    "range", "massif", "crest"};
     for (uint32_t i = 0u; i < LOTS; i++) {
         xs[i] = (float64_t)((int32_t)(i % 1024u) * 83 - 42000);
         ys[i] = (float64_t)((int32_t)(i / 1024u) * 89 - 45000);
@@ -598,10 +623,129 @@ TEST(the_world_has_seas_plains_and_mountains_in_believable_shares) {
     CHECK((float64_t)sea / all > 0.2f64 && (float64_t)sea / all < 0.35f64);
     CHECK((float64_t)deep / all > 0.05f64);
     CHECK((float64_t)low_land / all > 0.2f64);
-    CHECK((float64_t)high / all > 0.01f64);
-    CHECK((float64_t)very_high / all > 0.0001f64);
-    CHECK(highest > 350.0f32);
+    CHECK((float64_t)high / all > 0.15f64 && (float64_t)high / all < 0.32f64);
+    CHECK((float64_t)very_high / all > 0.07f64 && (float64_t)very_high / all < 0.2f64);
+    CHECK(highest > 1000.0f32);
+    CHECK(highest < (float32_t)MC_WORLD_Z_MAX - 26.0f32);
     CHECK(lowest < -90.0f32);
+}
+
+/* A range is many kilometres of one joined piece of high ground, not a lone peak and not a maze of thin lines. Over 16 km of each seed, by
+ * the fields: what the map tool reads by the blocks, on every stage. */
+TEST(mountain_ranges_run_on_for_a_distance_and_are_common) {
+    enum : uint32_t {
+        RANGE_STEP = 32u,
+        RANGE_SIDE = 512u,
+        RANGE_COLUMNS = RANGE_SIDE * RANGE_SIDE,
+        /* Columns in a km^2, at this step. */
+        RANGE_KM2 = (1000u * 1000u) / (RANGE_STEP * RANGE_STEP),
+        RANGE_LONG_COLUMNS = 4000u / RANGE_STEP,
+    };
+    float32_t *const heights = test_alloc(t, (uint64_t)RANGE_COLUMNS * sizeof(float32_t));
+    float32_t *const softness = test_alloc(t, (uint64_t)RANGE_COLUMNS * sizeof(float32_t));
+    uint32_t *const stack = test_alloc(t, (uint64_t)RANGE_COLUMNS * sizeof(uint32_t));
+    uint8_t *const seen = test_alloc(t, (uint64_t)RANGE_COLUMNS);
+    for (uint32_t s = 0u; s < DENSITY_WIDE_SEEDS; s++) {
+        terrain_t terrain;
+        REQUIRE(terrain_init(&terrain, DENSITY_SEEDS[s]));
+        const int32_t half = (int32_t)(RANGE_SIDE / 2u * RANGE_STEP);
+        const terrain_climate_area_t area = {
+            .origin_x = -half,
+            .origin_y = -half,
+            .step_x = (int32_t)RANGE_STEP,
+            .step_y = (int32_t)RANGE_STEP,
+            .count_x = RANGE_SIDE,
+            .count_y = RANGE_SIDE,
+        };
+        terrain_density_profile_area(terrain.borrowed_density, &area, heights, softness);
+        terrain_deinit(&terrain);
+        memset(seen, 0, RANGE_COLUMNS);
+        uint32_t big = 0u;
+        uint32_t long_ones = 0u;
+        uint32_t widest = 0u;
+        for (uint32_t first = 0u; first < RANGE_COLUMNS; first++) {
+            if (seen[first] != 0u || heights[first] < 150.0f32) {
+                continue;
+            }
+            uint32_t held = 1u;
+            uint32_t size = 0u;
+            uint32_t x_low = RANGE_SIDE, x_high = 0u, y_low = RANGE_SIDE, y_high = 0u;
+            stack[0] = first;
+            seen[first] = 1u;
+            while (held > 0u) {
+                const uint32_t at = stack[--held];
+                const uint32_t x = at % RANGE_SIDE, y = at / RANGE_SIDE;
+                size++;
+                x_low = x < x_low ? x : x_low;
+                x_high = x > x_high ? x : x_high;
+                y_low = y < y_low ? y : y_low;
+                y_high = y > y_high ? y : y_high;
+                const uint32_t around[4] = {x > 0u ? at - 1u : at, x + 1u < RANGE_SIDE ? at + 1u : at,
+                                            y > 0u ? at - RANGE_SIDE : at, y + 1u < RANGE_SIDE ? at + RANGE_SIDE : at};
+                for (uint32_t i = 0u; i < 4u; i++) {
+                    if (seen[around[i]] == 0u && heights[around[i]] >= 150.0f32) {
+                        seen[around[i]] = 1u;
+                        stack[held++] = around[i];
+                    }
+                }
+            }
+            const uint32_t across = x_high - x_low > y_high - y_low ? x_high - x_low : y_high - y_low;
+            big += size >= RANGE_KM2 ? 1u : 0u;
+            long_ones += across >= RANGE_LONG_COLUMNS ? 1u : 0u;
+            widest = across > widest ? across : widest;
+        }
+        printf("seed %" PRIu64 ": %" PRIu32 " pieces of 150 or more of at least 1 km^2, %" PRIu32
+               " at least 4 km long, the longest %" PRIu32 " blocks\n",
+               DENSITY_SEEDS[s], big, long_ones, widest * RANGE_STEP);
+        CHECK(big >= 3u);
+        CHECK(long_ones >= 2u);
+        CHECK(widest * RANGE_STEP >= 5000u);
+    }
+}
+
+/* What climbs a range has to be ground and not a wall: the height's own steps stay small enough for that, over nearly all of the land. */
+TEST(the_land_is_not_mostly_walls) {
+    enum : uint32_t { WALL_STEP = 8u, WALL_SIDE = 1024u, WALL_COLUMNS = WALL_SIDE * WALL_SIDE };
+    float32_t *const heights = test_alloc(t, (uint64_t)WALL_COLUMNS * sizeof(float32_t));
+    float32_t *const softness = test_alloc(t, (uint64_t)WALL_COLUMNS * sizeof(float32_t));
+    for (uint32_t s = 0u; s < 3u; s++) {
+        terrain_t terrain;
+        REQUIRE(terrain_init(&terrain, DENSITY_SEEDS[s]));
+        const int32_t half = (int32_t)(WALL_SIDE / 2u * WALL_STEP);
+        const terrain_climate_area_t area = {
+            .origin_x = -half,
+            .origin_y = -half,
+            .step_x = (int32_t)WALL_STEP,
+            .step_y = (int32_t)WALL_STEP,
+            .count_x = WALL_SIDE,
+            .count_y = WALL_SIDE,
+        };
+        terrain_density_profile_area(terrain.borrowed_density, &area, heights, softness);
+        terrain_deinit(&terrain);
+        uint64_t land = 0u;
+        uint64_t steep = 0u;
+        uint64_t sheer = 0u;
+        for (uint32_t y = 0u; y + 1u < WALL_SIDE; y++) {
+            for (uint32_t x = 0u; x + 1u < WALL_SIDE; x++) {
+                const uint32_t at = x + WALL_SIDE * y;
+                if (heights[at] < 0.0f32) {
+                    continue;
+                }
+                const float32_t rise =
+                    fmaxf(fabsf(heights[at + 1u] - heights[at]), fabsf(heights[at + WALL_SIDE] - heights[at])) /
+                    (float32_t)WALL_STEP;
+                land++;
+                steep += rise >= 3.0f32 ? 1u : 0u;
+                sheer += rise >= 6.0f32 ? 1u : 0u;
+            }
+        }
+        const float64_t steep_share = (float64_t)steep / (float64_t)land;
+        const float64_t sheer_share = (float64_t)sheer / (float64_t)land;
+        printf("seed %" PRIu64 ": %.2f%% of the land rises 3 blocks for 1 over 8 blocks, %.3f%% rises 6\n",
+               DENSITY_SEEDS[s], (libc_double_t)(steep_share * 100.0f64), (libc_double_t)(sheer_share * 100.0f64));
+        CHECK(steep_share < 0.15f64);
+        CHECK(sheer_share < 0.02f64);
+    }
 }
 
 /* What is above and what is below a column's ground: stone, then open. Whether it ever goes open and back is what 3D is for. */
@@ -1152,7 +1296,8 @@ TEST(terrain_starts_the_density_and_stops_it) {
     const terrain_density_t *const density = terrain.borrowed_density;
     CHECK(density->borrowed_climate == terrain.borrowed_climate);
     const terrain_noise_field_t *const fields[TERRAIN_DENSITY_NOISE_FIELDS] = {
-        density->borrowed_hills, density->borrowed_jagged, density->borrowed_detail};
+        density->borrowed_hills, density->borrowed_jagged, density->borrowed_detail,
+        density->borrowed_range, density->borrowed_massif, density->borrowed_crest};
     for (uint32_t f = 0u; f < TERRAIN_DENSITY_NOISE_FIELDS; f++) {
         REQUIRE(fields[f] != nullptr);
         for (uint32_t o = 0u; o < fields[f]->octave_count; o++) {

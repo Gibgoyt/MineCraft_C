@@ -46,8 +46,9 @@ typedef struct terrain_climate_arrays_t {
     float32_t *temperature;     /* 24 */
     float32_t *humidity;        /* 32 */
     float32_t *weirdness;       /* 40 */
+    float32_t *broad;           /* 48: continentalness from its largest octaves alone, so with no bays or capes in it */
 } terrain_climate_arrays_t;
-static_assert(sizeof(terrain_climate_arrays_t) == 48);
+static_assert(sizeof(terrain_climate_arrays_t) == 56);
 
 /* All six at one column. Every value is from -1 to 1: see the README for what each means and how often it comes up. */
 typedef struct terrain_climate_point_t {
@@ -57,8 +58,9 @@ typedef struct terrain_climate_point_t {
     float32_t temperature;     /* 12 */
     float32_t humidity;        /* 16 */
     float32_t weirdness;       /* 20 */
+    float32_t broad;           /* 24: continentalness from its largest octaves alone */
 } terrain_climate_point_t;
-static_assert(sizeof(terrain_climate_point_t) == 24);
+static_assert(sizeof(terrain_climate_point_t) == 28);
 
 /* Takes the climate from arena and adds its fields to bank, for bank's seed. For use while terrain_init runs. If the bank
  * refuses a field, which has logged why, sets *out to nullptr and returns false. Fields added before that stay in the bank,

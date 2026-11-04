@@ -9,7 +9,7 @@
 
 - `render_limits_default`: `gpu.budget` from `config/machine.yaml`, and a table for the largest render distance.
 - `render_init`, `render_deinit`: reserve host memory and take nothing on the card; release it. Deinit is safe on a zeroed `render_t`.
-- `render_pool_bytes_for`: a pool size for a table of this many slots.
+- `render_pool_bytes_for`: a pool size for a table of this many slots: room for the 256 nearest columns to be a whole range high, and for 32 sections in each of the rest.
 - `render_open`, `render_close`: take and give back the blocks on the card, for one world.
 - `render_open_frame`, `render_close_frame`: the same for drawing: textures, tables, a frame's targets, and the pictures.
 - `render_open_lod`, `render_close_lod`: the same for the far field: each level's table and pool, a frame's far hits, and `owned_lod_host` with `arena_lod` over it.

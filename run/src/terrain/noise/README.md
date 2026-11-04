@@ -11,6 +11,7 @@
 - `terrain_noise_bank_add`: makes a field from the seed, a name and a shape.
 - `terrain_noise_grid_points`: how many floats a grid fills.
 - `terrain_noise_sample_grid`, `terrain_noise_sample_points`: the bulk sampling.
+- `terrain_noise_sample_points_split`: the same, and also what the first octaves alone sum to, for no more noise.
 
 **May be called by:** `terrain` and its parts.
 **Depends on:** `simd/noise` (the kernel, by its prototype), `terrain/rng` (its sibling, for each octave's seed and offsets), `arena`, `log`, `types`.

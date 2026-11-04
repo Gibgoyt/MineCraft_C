@@ -4,6 +4,7 @@
 #include "assert/index.h"
 #include "tables/blocks/index.h"
 
+#include <math.h>
 #include <string.h>
 
 enum : uint32_t {
@@ -29,25 +30,51 @@ typedef struct density_knot_t {
 static_assert(sizeof(density_knot_t) == 16);
 
 static const density_knot_t DENSITY_KNOTS_CONTINENTAL[] = {
-    {-1.0f64, -110.0f64}, {-0.88f64, -90.0f64}, {-0.77f64, -64.0f64}, {-0.6f64, -36.0f64}, {-0.5f64, -10.0f64},
-    {-0.45f64, 3.0f64},   {-0.34f64, 10.0f64},  {-0.07f64, 24.0f64},  {0.43f64, 44.0f64},  {1.0f64, 64.0f64},
+    {-1.0f64, -110.0f64}, {-0.88f64, -90.0f64}, {-0.78f64, -64.0f64}, {-0.6f64, -36.0f64}, {-0.5f64, -10.0f64},
+    {-0.45f64, 3.0f64},   {-0.34f64, 10.0f64},  {-0.07f64, 26.0f64},  {0.43f64, 54.0f64},  {1.0f64, 100.0f64},
 };
 static const density_knot_t DENSITY_KNOTS_INLAND[] = {
-    {-1.0f64, 0.0f64}, {-0.5f64, 0.0f64}, {-0.34f64, 0.1f64}, {-0.07f64, 0.6f64}, {0.21f64, 1.0f64}, {1.0f64, 1.0f64},
+    {-1.0f64, 0.0f64}, {-0.5f64, 0.0f64}, {-0.36f64, 0.12f64}, {-0.1f64, 0.6f64}, {0.12f64, 1.0f64}, {1.0f64, 1.0f64},
 };
 static const density_knot_t DENSITY_KNOTS_RELIEF[] = {
     {-1.0f64, 1.0f64}, {-0.5f64, 0.9f64}, {-0.2f64, 0.55f64}, {0.1f64, 0.2f64},
     {0.4f64, 0.05f64}, {0.7f64, 0.0f64},  {1.0f64, 0.0f64},
 };
-/* (2^(3 * (r + 1)) - 1) / 63 at these r: an exponential, so that most of the world's ridges are low and a few are huge. */
+/* Foothills on ridges. It tops out gently, as a steep top on a field this fine is what used to make needles. */
 static const density_knot_t DENSITY_KNOTS_PEAK[] = {
-    {-1.0f64, 0.0f64},     {-0.5f64, 0.029023f64}, {0.0f64, 0.111111f64}, {0.25f64, 0.197688f64},
-    {0.5f64, 0.343292f64}, {0.75f64, 0.588169f64}, {1.0f64, 1.0f64},
+    {-1.0f64, 0.0f64}, {-0.5f64, 0.08f64}, {0.0f64, 0.3f64}, {0.5f64, 0.65f64}, {1.0f64, 1.0f64},
+};
+/* How much range the land allows, from continentalness without its finest octaves. Those are what make a coast's bays and capes,
+ * and a range taken down over them would stand in the sea as a wall. */
+static const density_knot_t DENSITY_KNOTS_RANGE_LAND[] = {
+    {-1.0f64, 0.0f64}, {-0.38f64, 0.0f64}, {-0.1f64, 0.5f64}, {0.2f64, 1.0f64}, {1.0f64, 1.0f64},
+};
+/* From how near a column is to a range's line, 1 on the line itself, to how much of the range is there. */
+static const density_knot_t DENSITY_KNOTS_BELT[] = {
+    {0.0f64, 0.0f64}, {0.52f64, 0.0f64}, {0.68f64, 0.32f64}, {0.82f64, 0.68f64}, {0.94f64, 1.0f64}, {1.0f64, 1.0f64},
+};
+/* How tall a stretch of range stands, along its length: passes, and here and there the great heights. */
+static const density_knot_t DENSITY_KNOTS_MASSIF[] = {
+    {-1.0f64, 0.35f64}, {-0.2f64, 0.58f64}, {0.4f64, 0.82f64}, {0.75f64, 1.0f64}, {1.0f64, 1.0f64},
+};
+/* From how near a column is to one of a range's crests, 1 on the crest, to the share of the range's height it stands at. */
+static const density_knot_t DENSITY_KNOTS_CREST[] = {
+    {0.0f64, 0.5f64},
+    {0.4f64, 0.66f64},
+    {0.8f64, 0.94f64},
+    {1.0f64, 1.0f64},
 };
 static const density_knot_t DENSITY_KNOTS_VALLEY[] = {
     {-1.0f64, 0.3f64},
     {-0.6f64, 0.65f64},
     {-0.2f64, 1.0f64},
+    {1.0f64, 1.0f64},
+};
+/* How far worn ground's valley floors sink below what the land's height leaves them, as a share of DENSITY_WETLAND_BLOCKS. */
+static const density_knot_t DENSITY_KNOTS_WETLAND[] = {
+    {-1.0f64, 0.0f64},
+    {0.35f64, 0.0f64},
+    {0.6f64, 1.0f64},
     {1.0f64, 1.0f64},
 };
 static const density_knot_t DENSITY_KNOTS_HILL_LAND[] = {
@@ -70,13 +97,15 @@ static const density_knot_t DENSITY_KNOTS_HILL_RELIEF[] = {
 };
 
 /* The height formula's sizes, in blocks. The limits in the header are their sum. */
-static const float64_t DENSITY_MOUNTAIN_BLOCKS = 320.0f64;
-static const float64_t DENSITY_JAGGED_BLOCKS = 34.0f64;
-static const float64_t DENSITY_HILL_BLOCKS_MIN = 6.0f64;
-static const float64_t DENSITY_HILL_BLOCKS_EXTRA = 30.0f64;
+static const float64_t DENSITY_RANGE_BLOCKS = 1030.0f64;
+static const float64_t DENSITY_WETLAND_BLOCKS = 14.0f64;
+static const float64_t DENSITY_FOOTHILL_BLOCKS = 60.0f64;
+static const float64_t DENSITY_JAGGED_BLOCKS = 14.0f64;
+static const float64_t DENSITY_HILL_BLOCKS_MIN = 8.0f64;
+static const float64_t DENSITY_HILL_BLOCKS_EXTRA = 38.0f64;
 static const float64_t DENSITY_HILL_BLOCKS_SEA = 6.0f64;
 static const float64_t DENSITY_SOFTNESS_MIN = 4.0f64;
-static const float64_t DENSITY_SOFTNESS_EXTRA = 26.0f64;
+static const float64_t DENSITY_SOFTNESS_EXTRA = 22.0f64;
 
 /* What each field looks like. */
 static const terrain_noise_shape_t DENSITY_SHAPE_HILLS = {
@@ -93,6 +122,28 @@ static const terrain_noise_shape_t DENSITY_SHAPE_JAGGED = {
     .persistence = 0.5f32,
     .octaves = 2u,
 };
+/* Where it is 0 is a range's line. A line where a smooth field is 0 has no ends, and this field's size sets how far apart they lie. */
+static const terrain_noise_shape_t DENSITY_SHAPE_RANGE = {
+    .frequency_x = 1.0f64 / 4096.0f64,
+    .frequency_y = 1.0f64 / 4096.0f64,
+    .lacunarity = 2.0f32,
+    .persistence = 0.45f32,
+    .octaves = 3u,
+};
+static const terrain_noise_shape_t DENSITY_SHAPE_MASSIF = {
+    .frequency_x = 1.0f64 / 2048.0f64,
+    .frequency_y = 1.0f64 / 2048.0f64,
+    .lacunarity = 2.0f32,
+    .persistence = 0.5f32,
+    .octaves = 2u,
+};
+static const terrain_noise_shape_t DENSITY_SHAPE_CREST = {
+    .frequency_x = 1.0f64 / 896.0f64,
+    .frequency_y = 1.0f64 / 896.0f64,
+    .lacunarity = 2.0f32,
+    .persistence = 0.5f32,
+    .octaves = 3u,
+};
 /* Its last octave's cell is 16 blocks, as fine as a lattice 8 apart can hold. */
 static const terrain_noise_shape_t DENSITY_SHAPE_DETAIL = {
     .frequency_x = 1.0f64 / 64.0f64,
@@ -107,9 +158,12 @@ static const terrain_noise_shape_t DENSITY_SHAPE_DETAIL = {
 static const float64_t DENSITY_LIMIT_HILLS = 0.34f64;
 static const float64_t DENSITY_LIMIT_JAGGED = 0.39f64;
 static const float64_t DENSITY_LIMIT_DETAIL = 0.35f64;
+static const float64_t DENSITY_LIMIT_RANGE = 0.36f64;
+static const float64_t DENSITY_LIMIT_MASSIF = 0.39f64;
+static const float64_t DENSITY_LIMIT_CREST = 0.35f64;
 
-/* Corners at least this far from 0 mean a whole cell has that sign, rounding and all. The largest density is about 180, and
- * a float32_t's rounding there is about 0.00002. */
+/* Corners at least this far from 0 mean a whole cell has that sign, rounding and all. The largest density is about 370, at 4
+ * blocks of softness, and a float32_t's rounding there is about 0.00003. */
 static const float32_t DENSITY_SURE_MARGIN = 0.001f32;
 
 /* ---- Splines ----------------------------------------------------------------------------------------------------- */
@@ -173,30 +227,50 @@ float64_t terrain_density_spline_at(const terrain_density_spline_t *spline, floa
     return value < low ? low : (value > high ? high : value);
 }
 
+static float64_t density_fold(float32_t value) {
+    return 1.0f64 - fabs((float64_t)value);
+}
+
+/* How much of a range this column has, from 0 to 1, without the two fields that only matter where that is above 0. */
+static float64_t density_range_reach(const terrain_density_t *density, float32_t broad, float32_t range) {
+    return terrain_density_spline_at(&density->range_land, (float64_t)broad) *
+           terrain_density_spline_at(&density->belt, density_fold(range));
+}
+
 terrain_density_profile_t terrain_density_profile_from(const terrain_density_t *density,
                                                        const terrain_density_inputs_t *inputs) {
     const float64_t continentalness = (float64_t)inputs->continentalness;
     const float64_t erosion = (float64_t)inputs->erosion;
     const float64_t ridges = (float64_t)inputs->ridges;
 
+    const float64_t valley = terrain_density_spline_at(&density->valley, ridges);
     float64_t base = terrain_density_spline_at(&density->continental, continentalness);
     if (base > 0.0f64) {
-        base *= terrain_density_spline_at(&density->valley, ridges);
+        /* What the valley spline leaves of the land, less a worn valley's sinking, so that its floor can hold water far from the sea. The
+         * sinking goes with 1 - valley, so that it is gone by the time the ground is no valley, and the height has no step. */
+        base = base * valley -
+               DENSITY_WETLAND_BLOCKS * (1.0f64 - valley) * terrain_density_spline_at(&density->wetland, erosion);
     }
+    const float64_t body = density_range_reach(density, inputs->broad, inputs->range) *
+                           terrain_density_spline_at(&density->massif, (float64_t)inputs->massif);
+    const float64_t rise = body * terrain_density_spline_at(&density->crest, density_fold(inputs->crest));
     const float64_t high_ground = terrain_density_spline_at(&density->inland, continentalness) *
                                   terrain_density_spline_at(&density->relief, erosion);
-    const float64_t mountain = high_ground * terrain_density_spline_at(&density->peak, ridges);
+    const float64_t foothill = (1.0f64 - body) * high_ground * terrain_density_spline_at(&density->peak, ridges);
+    /* A valley's floor sinks with its hills, so that a river can run on through the hills without a break. */
     const float64_t hill_blocks =
-        terrain_density_spline_at(&density->hill_land, continentalness) *
+        terrain_density_spline_at(&density->hill_land, continentalness) * valley *
             (DENSITY_HILL_BLOCKS_MIN +
              DENSITY_HILL_BLOCKS_EXTRA * terrain_density_spline_at(&density->hill_relief, erosion)) +
         terrain_density_spline_at(&density->hill_sea, continentalness) * DENSITY_HILL_BLOCKS_SEA;
 
-    const float64_t height = base + DENSITY_MOUNTAIN_BLOCKS * mountain + hill_blocks * (float64_t)inputs->hills +
-                             DENSITY_JAGGED_BLOCKS * mountain * (float64_t)inputs->jagged;
+    const float64_t height = base + DENSITY_RANGE_BLOCKS * rise + DENSITY_FOOTHILL_BLOCKS * foothill +
+                             hill_blocks * (float64_t)inputs->hills +
+                             DENSITY_JAGGED_BLOCKS * body * (float64_t)inputs->jagged;
     return (terrain_density_profile_t){
         .height = (float32_t)height,
-        .softness = (float32_t)(DENSITY_SOFTNESS_MIN + DENSITY_SOFTNESS_EXTRA * high_ground),
+        .softness =
+            (float32_t)(DENSITY_SOFTNESS_MIN + DENSITY_SOFTNESS_EXTRA * (high_ground + body - high_ground * body)),
     };
 }
 
@@ -217,12 +291,20 @@ bool terrain_density_init(terrain_density_t **out, arena_t *arena, terrain_noise
     DENSITY_BUILD(hill_land, DENSITY_KNOTS_HILL_LAND);
     DENSITY_BUILD(hill_sea, DENSITY_KNOTS_HILL_SEA);
     DENSITY_BUILD(hill_relief, DENSITY_KNOTS_HILL_RELIEF);
+    DENSITY_BUILD(wetland, DENSITY_KNOTS_WETLAND);
+    DENSITY_BUILD(belt, DENSITY_KNOTS_BELT);
+    DENSITY_BUILD(massif, DENSITY_KNOTS_MASSIF);
+    DENSITY_BUILD(crest, DENSITY_KNOTS_CREST);
+    DENSITY_BUILD(range_land, DENSITY_KNOTS_RANGE_LAND);
 #undef DENSITY_BUILD
     /* One at a time, and all of them, so that the log names the field the bank refused. The order moves nothing: a field
      * comes from its name. */
     if (!terrain_noise_bank_add(bank, "density/hills", &DENSITY_SHAPE_HILLS, &density->borrowed_hills) ||
         !terrain_noise_bank_add(bank, "density/jagged", &DENSITY_SHAPE_JAGGED, &density->borrowed_jagged) ||
-        !terrain_noise_bank_add(bank, "density/detail", &DENSITY_SHAPE_DETAIL, &density->borrowed_detail)) {
+        !terrain_noise_bank_add(bank, "density/detail", &DENSITY_SHAPE_DETAIL, &density->borrowed_detail) ||
+        !terrain_noise_bank_add(bank, "density/range", &DENSITY_SHAPE_RANGE, &density->borrowed_range) ||
+        !terrain_noise_bank_add(bank, "density/massif", &DENSITY_SHAPE_MASSIF, &density->borrowed_massif) ||
+        !terrain_noise_bank_add(bank, "density/crest", &DENSITY_SHAPE_CREST, &density->borrowed_crest)) {
         return false;
     }
     *out = density;
@@ -249,18 +331,54 @@ static void density_profile_batch(const terrain_density_t *density, const float6
     float32_t continentalness[DENSITY_BATCH_COLUMNS];
     float32_t erosion[DENSITY_BATCH_COLUMNS];
     float32_t ridges[DENSITY_BATCH_COLUMNS];
+    float32_t broad[DENSITY_BATCH_COLUMNS];
     float32_t hills[DENSITY_BATCH_COLUMNS];
     float32_t jagged[DENSITY_BATCH_COLUMNS];
-    const float64_t zs[DENSITY_BATCH_COLUMNS] = {0.0f64}; /* neither 2D field has a frequency on z */
+    float32_t range[DENSITY_BATCH_COLUMNS];
+    float32_t massif[DENSITY_BATCH_COLUMNS];
+    float32_t crest[DENSITY_BATCH_COLUMNS];
+    float64_t xs_in_range[DENSITY_BATCH_COLUMNS];
+    float64_t ys_in_range[DENSITY_BATCH_COLUMNS];
+    uint8_t which[DENSITY_BATCH_COLUMNS];
+    static_assert(DENSITY_BATCH_COLUMNS <= UINT8_MAX);
+    const float64_t zs[DENSITY_BATCH_COLUMNS] = {0.0f64}; /* no 2D field has a frequency on z */
 
     const terrain_climate_arrays_t climate = {
         .continentalness = continentalness,
         .erosion = erosion,
         .ridges = ridges,
+        .broad = broad,
     };
     terrain_climate_sample_points(density->borrowed_climate, xs, ys, count, &climate);
     terrain_noise_sample_points(density->borrowed_hills, xs, ys, zs, count, hills);
     terrain_noise_sample_points(density->borrowed_jagged, xs, ys, zs, count, jagged);
+    terrain_noise_sample_points(density->borrowed_range, xs, ys, zs, count, range);
+
+    /* Massif and crest only multiply a range, so outside one they are not worth their octaves, and any value gives the same ground. */
+    uint32_t reached = 0u;
+    for (uint32_t i = 0u; i < count; i++) {
+        range[i] = density_spread(range[i], DENSITY_LIMIT_RANGE);
+        massif[i] = 0.0f32;
+        crest[i] = 0.0f32;
+        if (density_range_reach(density, broad[i], range[i]) > 0.0f64) {
+            xs_in_range[reached] = xs[i];
+            ys_in_range[reached] = ys[i];
+            which[reached] = (uint8_t)i;
+            reached++;
+        }
+    }
+    if (reached > 0u) {
+        float32_t raw[DENSITY_BATCH_COLUMNS];
+        terrain_noise_sample_points(density->borrowed_massif, xs_in_range, ys_in_range, zs, reached, raw);
+        for (uint32_t r = 0u; r < reached; r++) {
+            massif[which[r]] = density_spread(raw[r], DENSITY_LIMIT_MASSIF);
+        }
+        terrain_noise_sample_points(density->borrowed_crest, xs_in_range, ys_in_range, zs, reached, raw);
+        for (uint32_t r = 0u; r < reached; r++) {
+            crest[which[r]] = density_spread(raw[r], DENSITY_LIMIT_CREST);
+        }
+    }
+
     for (uint32_t i = 0u; i < count; i++) {
         const terrain_density_inputs_t inputs = {
             .continentalness = continentalness[i],
@@ -268,6 +386,10 @@ static void density_profile_batch(const terrain_density_t *density, const float6
             .ridges = ridges[i],
             .hills = density_spread(hills[i], DENSITY_LIMIT_HILLS),
             .jagged = density_spread(jagged[i], DENSITY_LIMIT_JAGGED),
+            .range = range[i],
+            .massif = massif[i],
+            .crest = crest[i],
+            .broad = broad[i],
         };
         const terrain_density_profile_t profile = terrain_density_profile_from(density, &inputs);
         heights[i] = profile.height;

@@ -45,7 +45,11 @@ static const float32_t HYDROLOGY_RIVER_INNER_WIDE = 0.04f32;
 static const float32_t HYDROLOGY_RIVER_BANK = 0.12f32;
 /* How far inland a river runs: whole up to the first, and gone from the second, narrowing and shallowing between. */
 static const float32_t HYDROLOGY_RIVER_WHOLE_C = -0.3f32;
-static const float32_t HYDROLOGY_RIVER_GONE_C = 0.35f32;
+static const float32_t HYDROLOGY_RIVER_GONE_C = 0.15f32;
+/* The same going up: a river is whole on low ground and gone on high ground, so a mountain has no canyon cut to the sea. Only
+ * its depth fades this way, and not its width: a cut that narrowed too would end as a notch with sheer sides. */
+static const float32_t HYDROLOGY_RIVER_WHOLE_HEIGHT = 45.0f32;
+static const float32_t HYDROLOGY_RIVER_GONE_HEIGHT = 120.0f32;
 static const float32_t HYDROLOGY_BED_EXTRA =
     (float32_t)(TERRAIN_HYDROLOGY_BED_SHALLOWEST - TERRAIN_HYDROLOGY_BED_DEEPEST);
 static const float32_t HYDROLOGY_DEEP_OCEAN_BELOW = -60.0f32;
@@ -182,32 +186,35 @@ static terrain_hydrology_kind_t hydrology_kind_of(const terrain_hydrology_inputs
     return ground < HYDROLOGY_DEEP_OCEAN_BELOW ? TERRAIN_HYDROLOGY_KIND_DEEP_OCEAN : TERRAIN_HYDROLOGY_KIND_OCEAN;
 }
 
-/* 1 near the coast and 0 far inland, smoothly: how much of a river there is at this continentalness. */
-static float32_t hydrology_river_reach(float32_t continentalness) {
-    if (continentalness <= HYDROLOGY_RIVER_WHOLE_C) {
+/* 1 for low ground near the coast, and 0 far inland or high up, smoothly: how much of a river there is. */
+static float32_t hydrology_river_fade(float32_t value, float32_t whole, float32_t gone) {
+    if (value <= whole) {
         return 1.0f32;
     }
-    if (continentalness >= HYDROLOGY_RIVER_GONE_C) {
+    if (value >= gone) {
         return 0.0f32;
     }
-    const float32_t t = (HYDROLOGY_RIVER_GONE_C - continentalness) / (HYDROLOGY_RIVER_GONE_C - HYDROLOGY_RIVER_WHOLE_C);
+    const float32_t t = (gone - value) / (gone - whole);
     return t * t * (3.0f32 - 2.0f32 * t);
 }
 
 terrain_hydrology_column_t terrain_hydrology_column_from(const terrain_hydrology_inputs_t *inputs) {
     const float32_t wide = (inputs->width + 1.0f32) * 0.5f32;
     const float32_t near = inputs->weirdness < 0.0f32 ? -inputs->weirdness : inputs->weirdness;
-    const float32_t reach = hydrology_river_reach(inputs->continentalness);
+    const float32_t reach =
+        hydrology_river_fade(inputs->continentalness, HYDROLOGY_RIVER_WHOLE_C, HYDROLOGY_RIVER_GONE_C);
+    const float32_t depth =
+        reach * hydrology_river_fade(inputs->height, HYDROLOGY_RIVER_WHOLE_HEIGHT, HYDROLOGY_RIVER_GONE_HEIGHT);
     const float32_t bank = HYDROLOGY_RIVER_BANK * reach;
     const float32_t inner = (HYDROLOGY_RIVER_INNER + HYDROLOGY_RIVER_INNER_WIDE * wide) * reach;
     const float32_t outer = inner + bank;
 
     float32_t river = 0.0f32;
     if (near <= inner) {
-        river = reach;
+        river = depth;
     } else if (near < outer) {
         const float32_t t = (outer - near) / bank;
-        river = reach * t * t * (3.0f32 - 2.0f32 * t);
+        river = depth * t * t * (3.0f32 - 2.0f32 * t);
     }
 
     /* From above any ground this column could have, at no river, down to the bed in the channel's middle. */

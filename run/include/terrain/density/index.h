@@ -13,7 +13,7 @@
 
 enum : uint32_t {
     /* The noise fields one world's density takes from the bank. */
-    TERRAIN_DENSITY_NOISE_FIELDS = 3u,
+    TERRAIN_DENSITY_NOISE_FIELDS = 6u,
     /* Knots one spline can have. */
     TERRAIN_DENSITY_SPLINE_KNOTS_MAX = 12u,
     /* Density is worked out on a lattice this many blocks apart and interpolated between. */
@@ -25,9 +25,9 @@ enum : uint32_t {
  * these, and real columns of real seeds. Each is written out from the numbers in the README's table. */
 enum : int32_t {
     TERRAIN_DENSITY_HEIGHT_MIN = -116,
-    TERRAIN_DENSITY_HEIGHT_MAX = 454,
+    TERRAIN_DENSITY_HEIGHT_MAX = 1190,
     TERRAIN_DENSITY_SOFTNESS_MIN = 4,
-    TERRAIN_DENSITY_SOFTNESS_MAX = 30,
+    TERRAIN_DENSITY_SOFTNESS_MAX = 26,
     /* From the bedrock's layer up to here is always stone before caves cut it. */
     TERRAIN_DENSITY_ALWAYS_SOLID_TOP =
         TERRAIN_DENSITY_HEIGHT_MIN - TERRAIN_DENSITY_SOFTNESS_MAX - (int32_t)TERRAIN_DENSITY_CELL_Z - 1,
@@ -54,17 +54,25 @@ typedef struct terrain_density_t {
     terrain_density_spline_t continental;         /* 0: continentalness to blocks */
     terrain_density_spline_t inland;              /* 296: continentalness to how much mountain the ground allows */
     terrain_density_spline_t relief;              /* 592: erosion to how high the high ground goes */
-    terrain_density_spline_t peak;                /* 888: ridges to the share of a mountain's height */
+    terrain_density_spline_t peak;                /* 888: ridges to the share of a foothill's height */
     terrain_density_spline_t valley;              /* 1184: ridges to what is left of the land's height */
     terrain_density_spline_t hill_land;           /* 1480: continentalness to how much hills show on land */
     terrain_density_spline_t hill_sea;            /* 1776: continentalness to how much they show on the sea bed */
     terrain_density_spline_t hill_relief;         /* 2072: erosion to how big the hills are */
-    const terrain_climate_t *borrowed_climate;    /* 2368 */
-    const terrain_noise_field_t *borrowed_hills;  /* 2376 */
-    const terrain_noise_field_t *borrowed_jagged; /* 2384 */
-    const terrain_noise_field_t *borrowed_detail; /* 2392: the one field that changes with height */
+    terrain_density_spline_t belt;                /* 2368: nearness to a range's line to how much range is there */
+    terrain_density_spline_t massif;              /* 2664: the massif field to how tall that stretch stands */
+    terrain_density_spline_t crest;               /* 2960: nearness to a crest to the share of the range's height */
+    terrain_density_spline_t range_land;          /* 3256: broad continentalness to how much range the land allows */
+    terrain_density_spline_t wetland;             /* 3552: erosion to how far a valley's floor sinks */
+    const terrain_climate_t *borrowed_climate;    /* 3848 */
+    const terrain_noise_field_t *borrowed_hills;  /* 3856 */
+    const terrain_noise_field_t *borrowed_jagged; /* 3864 */
+    const terrain_noise_field_t *borrowed_detail; /* 3872: the one field that changes with height */
+    const terrain_noise_field_t *borrowed_range;  /* 3880 */
+    const terrain_noise_field_t *borrowed_massif; /* 3888 */
+    const terrain_noise_field_t *borrowed_crest;  /* 3896 */
 } terrain_density_t;
-static_assert(sizeof(terrain_density_t) == 2400);
+static_assert(sizeof(terrain_density_t) == 3904);
 
 /* What a column's ground is. */
 typedef struct terrain_density_profile_t {
@@ -80,8 +88,12 @@ typedef struct terrain_density_inputs_t {
     float32_t ridges;          /* 8 */
     float32_t hills;           /* 12 */
     float32_t jagged;          /* 16 */
+    float32_t range;           /* 20: 0 on a range's line */
+    float32_t massif;          /* 24 */
+    float32_t crest;           /* 28: 0 on a crest */
+    float32_t broad;           /* 32: continentalness from its largest octaves alone */
 } terrain_density_inputs_t;
-static_assert(sizeof(terrain_density_inputs_t) == 20);
+static_assert(sizeof(terrain_density_inputs_t) == 36);
 
 /* Blocks next to each other. Filled with x changing fastest, then y, then z, as a section's voxels are stored:
  * out[ix + count_x * (iy + count_y * iz)] is the voxel origin + i. */

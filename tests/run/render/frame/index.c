@@ -1006,8 +1006,11 @@ TEST(the_columns_the_game_streams_are_what_terrain_generates) {
     uint64_t columns = 0u, wrong = 0u, stored_outside = 0u;
     uint8_t *const seen = test_alloc(t, BLOCK_COUNT);
     memset(seen, 0, BLOCK_COUNT);
-    for (int32_t chunk_y = -reach; chunk_y <= reach; chunk_y++) {
-        for (int32_t chunk_x = -reach; chunk_x <= reach; chunk_x++) {
+    /* Round where the eye started, which is where the game looks for land and not always the world's middle. */
+    const int32_t eye_chunk_x = column_chunk_of((int32_t)floor(rig.game->camera.position[0]));
+    const int32_t eye_chunk_y = column_chunk_of((int32_t)floor(rig.game->camera.position[1]));
+    for (int32_t chunk_y = eye_chunk_y - reach; chunk_y <= eye_chunk_y + reach; chunk_y++) {
+        for (int32_t chunk_x = eye_chunk_x - reach; chunk_x <= eye_chunk_x + reach; chunk_x++) {
             const column_t *const column = world_map_column_at(&rig.world->map, chunk_x, chunk_y);
             if (column == nullptr) {
                 continue;

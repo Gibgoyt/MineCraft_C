@@ -21,7 +21,7 @@ static_assert(MC_THREADS_WORKERS <= 64); /* the worker mask below */
 
 enum : uint32_t {
     ORE_LAYERS =
-        751u, /* -250 to 500, both included: all terrain makes, so the pinned digests say a taller world moved nothing */
+        1501u, /* -250 to 1250, both included: all terrain makes, as plan 003 phase 8 stage 4's ranges use the height */
     ORE_WORKERS_MANY = 16u,
     ORE_CHUNK = 16u,
     ORE_CHUNK_VOXELS = ORE_CHUNK * ORE_CHUNK * ORE_LAYERS,
@@ -35,7 +35,8 @@ static const uint64_t ORE_WORLD = 0x1234567890ABCDEFull;
 
 /* Pinned: see README.md. */
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t ORE_DIGEST_PIN = 0x40D60AF9C75AFA9Cull;
+/* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
+static const uint64_t ORE_DIGEST_PIN = 0x71CE2FCA20DF29DDull;
 
 static uint64_t ore_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -609,7 +610,7 @@ static void ore_expected_chunk(const ore_expected_row_t *row, uint64_t seed, int
 }
 
 TEST(each_vein_is_laid_as_the_readme_says) {
-    enum : uint32_t { ACROSS = 40u, TALL = 751u, VOXELS = ACROSS * ACROSS * TALL };
+    enum : uint32_t { ACROSS = 40u, TALL = 1501u, VOXELS = ACROSS * ACROSS * TALL };
     terrain_t terrain;
     REQUIRE(terrain_init(&terrain, ORE_WORLD));
     const terrain_ore_t *const ore = terrain.borrowed_ore;
