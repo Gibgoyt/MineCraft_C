@@ -63,6 +63,7 @@ Run 2026-11-04 by the gate checker, from a clean `build/release`, after merging 
 Appended as they land:
 
 - `eaf161c` Make a save refuse the numbers the game cannot live with and write only what it believes, drop records no reader takes, stop a manifest's count going round, refuse a game with no gpu thread, split the two source files past the standard's limit, and take the fuzzer's hold-backs out.
+- `e535239` Record the release hardening gate check: what was run, what was fixed, and what awaits Ahmed.
 
 ## Issues found
 
