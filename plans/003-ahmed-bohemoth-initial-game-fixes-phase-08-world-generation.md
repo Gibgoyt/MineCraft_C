@@ -252,6 +252,12 @@ Appended as they land:
 - `6e3002e` Move the biomes' boxes to the terrain as it now stands, with woods up a range's foot, peaks only from 500 and a snow line on warm ones, mushroom fields on the coast and swamps down to it, and add bench_biome_map to show who holds each height.
 - `e79e287` Say in the repository's structure what bench/biome_map is.
 - `3a7cee7` Record stage 6 of world generation in its plan file: every biome was still found, but the boxes did not suit the new terrain, what moved and why, and what is left to Ahmed and stage 7.
+- `bc74f1e` Record which generator made a world in its manifest, and refuse a save from any other, or from before it could say, with a message a person can read, rather than stitch it to a different landscape.
+- `fd38d63` Stop lining caves asking the caves a second time for what the mask already says. Its subject also says this brings the slowest place back over 1000 columns a second: it does not, issue 46.
+- `b923bdc` Add --seed for a test world, stand the walking tests on seed 11 and the first day on seed 36, as the default ground no longer holds what their scripts need, so that they pass on the final land.
+- `973b4f7` Make the golden pictures of real terrain again on the final land, each read by eye, with the far one now over the peaks as the middle of the world is inside a range.
+- `5345622` Record in the terrain bench README what the final land measures, with one place still just under the target.
+- `580a0fa` Record stage 7 of world generation in its plan file: the generator version, every red test passing on chosen seeds, new pictures, and terrain speed still just short at one place.
 
 ## Issues found
 
