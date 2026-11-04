@@ -5,6 +5,7 @@
 #include "job/index.h"
 #include "machine/index.h"
 #include "simd/reference/index.h"
+#include "tables/blocks/index.h"
 #include "terrain/index.h"
 #include "thread/index.h"
 #include "time/index.h"
@@ -724,6 +725,81 @@ TEST(init_and_deinit_are_a_pair) {
     terrain_deinit(&zeroed);
     heap_counters_read(&after);
     CHECK_EQ_U64(after.live_bytes, before.live_bytes);
+}
+
+/* Air above TERRAIN_MADE_TOP is only true if the stages make nothing there: each stage by hand, on a whole column of the world, in the tallest place a walk
+ * over the map finds and in a few plain ones, against terrain_generate_box. */
+TEST(nothing_is_lost_above_where_terrain_stops_making) {
+    enum : uint32_t { LAYERS = (uint32_t)MC_WORLD_Z_MAX - (uint32_t)MC_WORLD_Z_MIN + 1u, VOXELS = 16u * 16u * LAYERS };
+    enum : uint32_t { WALK = 128u, PLACES = 4u };
+    terrain_t terrain;
+    REQUIRE(terrain_init(&terrain, TERRAIN_SEED_DEFAULT));
+    float32_t tallest = -1000.0f32;
+    int32_t tallest_x = 0, tallest_y = 0;
+    for (uint32_t iy = 0u; iy < WALK; iy++) {
+        for (uint32_t ix = 0u; ix < WALK; ix++) {
+            const int32_t x = ((int32_t)ix - (int32_t)WALK / 2) * 256, y = ((int32_t)iy - (int32_t)WALK / 2) * 256;
+            const terrain_climate_area_t area = {
+                .origin_x = x, .origin_y = y, .step_x = 1, .step_y = 1, .count_x = 1u, .count_y = 1u};
+            float32_t height = 0.0f32, softness = 0.0f32;
+            terrain_density_profile_area(terrain.borrowed_density, &area, &height, &softness);
+            if (height > tallest) {
+                tallest = height;
+                tallest_x = x;
+                tallest_y = y;
+            }
+        }
+    }
+    printf("the tallest place on the walk: %.0f high, at %" PRId32 ", %" PRId32 "\n", (libc_double_t)tallest, tallest_x,
+           tallest_y);
+    uint16_t *const by_hand = test_alloc(t, (uint64_t)VOXELS * sizeof(uint16_t));
+    uint16_t *const generated = test_alloc(t, (uint64_t)VOXELS * sizeof(uint16_t));
+    uint8_t *const opened = test_alloc(t, VOXELS);
+    const int32_t places[PLACES][2] = {{tallest_x, tallest_y}, {0, 0}, {2944, 3584}, {-768, -768}};
+    for (uint32_t p = 0u; p < PLACES; p++) {
+        const terrain_density_box_t box = {.origin_x = places[p][0] & ~15,
+                                           .origin_y = places[p][1] & ~15,
+                                           .origin_z = MC_WORLD_Z_MIN,
+                                           .count_x = 16u,
+                                           .count_y = 16u,
+                                           .count_z = LAYERS};
+        terrain_hydrology_fill_box(terrain.borrowed_hydrology, &box, by_hand);
+        terrain_surface_fill_box(terrain.borrowed_surface, &box, by_hand);
+        terrain_cave_mask_box(terrain.borrowed_cave, &box, opened);
+        terrain_cave_cut_with_mask(&box, opened, by_hand);
+        terrain_hydrology_flood_box(terrain.borrowed_hydrology, &box, opened, by_hand);
+        terrain_surface_line_caves_box(terrain.borrowed_surface, &box, by_hand);
+        terrain_ore_fill_box(terrain.borrowed_ore, &box, by_hand);
+        terrain_feature_fill_box(terrain.borrowed_feature, &box, by_hand);
+        terrain_generate_box(&terrain, &box, opened, generated);
+        CHECK(memcmp(by_hand, generated, (uint64_t)VOXELS * sizeof(uint16_t)) == 0);
+        uint32_t top_layer = 0u;
+        for (uint32_t i = 0u; i < VOXELS; i++) {
+            top_layer = by_hand[i] != BLOCK_ID_AIR ? i / (16u * 16u) : top_layer;
+        }
+        printf("  at %" PRId32 ", %" PRId32 ": the top of the column is at %" PRId32
+               ", and nothing is made past %" PRId32 "\n",
+               box.origin_x, box.origin_y, MC_WORLD_Z_MIN + (int32_t)top_layer, (int32_t)TERRAIN_MADE_TOP);
+        CHECK(MC_WORLD_Z_MIN + (int32_t)top_layer <= (int32_t)TERRAIN_MADE_TOP);
+    }
+    /* A box wholly over it, and one that starts below it and ends over it. */
+    const terrain_density_box_t above = {.origin_x = 0,
+                                         .origin_y = 0,
+                                         .origin_z = (int32_t)TERRAIN_MADE_TOP + 1,
+                                         .count_x = 16u,
+                                         .count_y = 16u,
+                                         .count_z = 32u};
+    memset(generated, 0xAB, (uint64_t)16u * 16u * 32u * sizeof(uint16_t));
+    memset(opened, 0xAB, (uint64_t)16u * 16u * 32u);
+    terrain_generate_box(&terrain, &above, opened, generated);
+    uint64_t not_air = 0u, not_shut = 0u;
+    for (uint32_t i = 0u; i < 16u * 16u * 32u; i++) {
+        not_air += generated[i] != BLOCK_ID_AIR ? 1u : 0u;
+        not_shut += opened[i] != 0u ? 1u : 0u;
+    }
+    CHECK_EQ_U64(not_air, 0u);
+    CHECK_EQ_U64(not_shut, 0u);
+    terrain_deinit(&terrain);
 }
 
 TEST_MAIN()

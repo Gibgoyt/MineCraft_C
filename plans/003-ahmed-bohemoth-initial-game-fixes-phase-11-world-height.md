@@ -1,6 +1,6 @@
 # 003-ahmed-bohemoth-initial-game-fixes — phase 11: Taller world
 
-**Status:** done, except Ahmed's own flight to the limit   (updated 2026-11-04)
+**Status:** in progress: everything an agent can run passes, and Ahmed's own flight to the limit is what waits   (updated 2026-11-04)
 
 ## Goal
 
@@ -89,6 +89,10 @@ Slowest place 900 before and 923 after, target 1000: not met either time, and `b
 
 **For Ahmed to judge:** on these rows the picture's cost is within the bench's noise, and VRAM is up 1 to 3 MiB. The cost is on the CPU: up to 31% fewer columns a second, and up to 60% longer to open a world, from one run each way. It wasn't profiled. Terrain still stops at 454, so walking layers of air is the likely cause, not a proven one. **These rows have no taller terrain in them, so they say nothing yet about taller mountains' cost, which is the risk this file named. Phase 8 has to measure that.**
 
+**After the gate check's fix, issue 11. Terrain, chunk columns a second on 16 workers, one run on a cooled CPU, against the "After" column above:** plains 2380 (was 1827), forest 1462 (1210), jungle 1077 (923), dark_forest 2189 (1700), mangrove_swamp 2638 (1760), desert 2052 (1646), snowy_taiga 1409 (1070), jagged_peaks 1519 (1228), deep_ocean 3280 (2301). So the cost was the layers of air, and it is gone. Every place meets 1000, exit 0, on three runs of 1077 to 1090. Straight after the whole suite it was 993, exit 1: phase 17 recorded the same, met cool and missed hot. These runs are not the same heat as the table above, so read them as the target being met again, not as exact gains.
+
+**`bench_world` after it, one run:** exit 0, 10 of 12 rows at the target. `jungle/orbit` 119.6 and `deep_ocean/orbit` 112.1 still miss, as they did before this phase. Opening a world: `plains/orbit` 6.4 s, `jungle/orbit` 12.0, `jagged_peaks/orbit` 10.1, `deep_ocean/orbit` 17.9, `cave/orbit` 20.4, r128 117.9, r512 126.8. Most are about where they were with the taller table, so what opening costs is not mainly terrain, and it was not profiled. All nine settled rows' `picture` hashes are ones `bench/world/history.tsv` already holds, so the fog change touched no picture in these rows.
+
 ## Verification
 
     tools/test-or-build.sh cmake --build --preset release
@@ -103,6 +107,8 @@ Ahmed: build a tower, or fly with `--test-world`, up to the limit.
 
 Run for this phase: release build clean with lint; ctest 100 of 100 in 757.7 s; `bench_world` exit 0 in 508.7 s; `bench_terrain` exit 1, its target not met, as before the change. Nothing of ours left running. Not run: `--windowed`, which is Ahmed's.
 
+Run by the gate check, on a clean build of `ee105e0` with main merged: release build with lint, exit 0; serial ctest 100 of 100 in 679.7 s; `bench_world` exit 0 in 507.0 s; `bench_terrain` exit 1 at 993 straight after the suite and exit 0 at 1077 four minutes later, see Measured. Scripted flight with `--headless --test-world --render-distance 32`, to about z = 1243, pictures read: see issue 9. `pgrep -a minecraft_c` and `pgrep -af "$PWD/build"` print nothing. Not run: `--windowed`, which is Ahmed's.
+
 ## Commits
 
 Appended as they land:
@@ -110,6 +116,13 @@ Appended as they land:
 - `49f56e0` Raise the top of the world to z = 1250 with 96 sections a column, two-word section masks everywhere, and save format version 3.
 - `404e237` Say in the repository's structure that terrain's range now reaches z = 1250.
 - `2dcbdb7` Record the taller world's todos, measurements before and after, and issues in its plan file.
+- `78f01e2` Test the top of the world in the built program with real keys and hands, and wait for a killed game's whole process group so its lock on the world is gone.
+- `672a209` Give rock above z = 500 its gravel, coal, iron and emerald with rows of their own, and leave out rows that are wholly over everything in a box.
+- `2171826` Count what a ray goes up or down for the fog only as far as where fog starts, so the ground stays in sight from the top of the world at any render distance.
+- `d3e21f4` Run the save test that times waits between pictures with nothing beside it under ctest -j.
+- `bedad80` Say in the repository's structure where the sky test's new fixtures are.
+- `ee105e0` Run terrain's stages only up to the highest layer they can make and leave the rest of a column air, which gives back what the taller world cost and meets the 1000 columns a second again.
+- `856657d` Record the taller world's gate check, with the whole suite and both benches run, and the fog, ore, terrain cost and timing test it fixed, and leave its status in progress for Ahmed's flight.
 
 ## Issues found
 
@@ -130,3 +143,19 @@ Appended as they land:
 **6. The plan's ctest timeout is too short.** This file said 1200 s, and `suite.log` from the phase before took 1347 s, though this run took 758 s. Changed to 2400 here.
 
 **7. Work found already in this worktree.** At the start of this run the worktree held 46 uncommitted changed files, a release build and before-numbers from 10:18 to 10:56 that day, from an earlier attempt at this phase cut off during its test run, with this file still saying not started. Read through and kept, not redone. The before-numbers' binary was built from `7e36574` before the first edit, at 10:20, and ran at 10:21 and 10:29, by the logs' times.
+
+**8. An earlier gate check left this file behind.** Expected: results and entries for what it found. Actual: its serial ctest and both benches had no result, this file still said done, `78f01e2` was not listed, and its `build/` was not removed. Done: all of it is run and recorded here, by this gate check. Its own worktree's `build/` is not this one's to touch, and this one's is removed.
+
+**9. From the top of the world, the default render distance showed only sky.** Expected: flying to the limit shows the world below. Actual, from that gate check: fog is whole at 496 blocks from the eye at render distance 32, so the ground was gone by about +1000. It called this Ahmed's design call and left it. Done: fixed, since fog is there to hide the edge of what is loaded, and that edge is out to the side. `post_fog_along` in `run/include/gpu_bridge/post/index.h` counts what a ray goes up or down only as far as `fog_start`. A ray going up or down by less than that gets the old fog to the byte. `shade_fog_behind` and what `render_entities` leaves out go the same way. Evidence: `from_high_above_the_ground_shows_under_the_eye_and_melts_into_the_sky_at_the_side` in `tests/cuda/sky/fixtures/from_above.h`, from 160 and 1240 blocks up; and the flight's `down_top.png`, read, showing rivers, land and mountains under the eye.
+
+**What it does not do, for Ahmed to judge.** Ground shows only within about 71% of the fog's reach to the side, 354 blocks at render distance 32. From the top, that is a patch straight below, about 17 degrees from straight down, and looking level, or even well below level, is still only sky. `slant_top.png` and `level_top.png` show this. Render distance 128 shows far more. Making the default show more would mean changing the render distance with height, or a bigger default, which is his call.
+
+**One golden picture changed.** `tests/run/render/frame/fixtures/down.png`, whose game has render distance 6 and looks steeply down from high, so its rays do go past `fog_start`: 4302 pixels past the tolerance, in the distant water. Before and after were both looked at: the same view, the water a little clearer. It was made again with `MC_GOLDEN_WRITE=1`. The other two in that test came out exact, and the sky test's goldens pass unchanged.
+
+**10. Ore stopped at z = 500.** Expected: rock of a mountain above 500 has ore. Actual: `ore/gravel`, `coal_high`, `iron_high` and `emerald` end at 500 in `run/src/terrain/ore/index.c`. Nothing was lost while terrain stops at 454, but phase 8 would have hit it. Done: four rows of their own, `ore/gravel_peak`, `coal_peak`, `iron_peak` and `emerald_peak`, from 501 to 1250, as much in a layer as the rows they go on from. Iron has what `iron_high` has at about 450, as its triangle is down to nothing at 500. Changing the old rows' numbers would have moved every vein in them, so they stay, and `run_terrain_ore`'s pinned digest passes unchanged. These numbers are a starting point, and no real mountain has reached them. Evidence: `rock_above_the_old_top_has_ore_up_to_the_last_layer` and `leaving_out_rows_over_the_rock_moves_nothing`.
+
+**11. The taller world had cost the terrain target, and this file had not said so.** Expected: this file said `bench_terrain` missed "as before the change", at 900 before and 923 after. Actual: phase 17 recorded 1080 and 1094 from a cool CPU, and this gate check measured 974 at 62 C and 977 at 76 C, with the fix for issue 10 in place and not this one. So the 900 was a hot number, and the height did cost the target. No profiler is on this machine. Done: `terrain_generate_box` runs its stages only up to `TERRAIN_MADE_TOP`, 518, which is `TERRAIN_DENSITY_NEVER_SOLID_FROM + TERRAIN_FEATURE_TALLEST`, and fills the rest with air. Those are the limits the density's and the feature's own tests hold, so it follows when phase 8 raises them. Evidence: 1081, 1090 and 1077, exit 0, and `nothing_is_lost_above_where_terrain_stops_making` in `tests/run/terrain/seed/`, every stage by hand against it on whole columns, in the tallest place of a walk over the map, 407 high, and three plain ones. **Phase 8 must update `TERRAIN_DENSITY_HEIGHT_MAX` when it raises mountains, or terrain above this top is cut off.** The density's tests fail if it doesn't.
+
+**12. `run_save_state_game`'s frame check failed once under `-j3`.** Expected: confirm whether that was load only. Actual: its longest wait between pictures during saves, 23.96 ms, against about 19.1, which fits the check of the longest without saves plus 16.667. Alone, five runs: median 2.11 to 2.14 ms both ways, longest at most 4.51 ms, all pass. Beside `render_feature_lod` and `render_feature_post`, four runs: all pass, but the longest rises to 8.6 to 17.5 with saves and 5.6 to 36.6 without, so the load moves it whichever way, and more than saves do. The failure itself was not reproduced, so load is the strong reading and not a proof. Done: `MC_TEST_RUN_SERIAL` in `cmake/targets.cmake`, set in that test's `test.cmake`, so ctest starts nothing beside it. `ctest -j3` was run with it, and it ran last and alone and passed.
+
+**13. A test passed only because fog hid a change.** Expected: with `--no-day-cycle`, two pictures of `render_feature_sky`'s script are the same bytes. Actual: once the fog changed, 1 pixel of 57600 differed by 1 of 255, at (201, 165), the same on three runs. With the old fog and `--no-fog`, it is 2 pixels at the same place. So the difference was there all along and fog hid it. Something in the world moves that little in 198 ticks, and what was not traced. Done: the test now allows at most 8 pixels off by one step, none by more, and also checks that the clock moving really does move more than 8. That test and its helpers moved to `tests/cuda/sky/fixtures/program.h`, which also takes `index.c` back under the 1500 lines where the standard asks for a split: it had been at 1513.

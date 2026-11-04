@@ -389,7 +389,7 @@ static void frame_day_plain(post_settings_t *post, shade_sun_t *sun) {
 static void frame_settings_apply(render_frame_t *frame) {
     const bool fog = (frame->scene.features & SHADE_FEATURE_FOG) != 0u;
     /* Off, nothing is fog but what hit nothing at all: TRAVERSE_COARSE_SKY is at this end, and every hit is before this start. */
-    frame->post.fog_start = fog ? frame->fog_end * 0.7f32 : TRAVERSE_COARSE_SKY * 0.5f32;
+    frame->post.fog_start = fog ? frame->fog_end * POST_FOG_START_SHARE : TRAVERSE_COARSE_SKY * 0.5f32;
     frame->post.fog_end = fog ? frame->fog_end : TRAVERSE_COARSE_SKY;
     if ((frame->scene.features & SHADE_FEATURE_SKY) != 0u) {
         render_day_fill(frame->day_fraction, &frame->post, &frame->scene.sun);

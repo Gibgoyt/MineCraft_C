@@ -12,7 +12,7 @@
 
 enum : uint32_t {
     /* Rows in the table, rock first and then ore. */
-    TERRAIN_ORE_ROWS = 22u,
+    TERRAIN_ORE_ROWS = 26u,
     /* The balls of one vein. */
     TERRAIN_ORE_BALLS = 3u,
 };
@@ -62,7 +62,7 @@ typedef struct terrain_ore_t {
     const terrain_density_t *borrowed_density;      /* 352: where a column's ground is */
     uint64_t strata_seed;                           /* 360 */
 } terrain_ore_t;
-static_assert(sizeof(terrain_ore_t) == 368);
+static_assert(sizeof(terrain_ore_t) == 432);
 
 /* Takes the ores from arena, for this world's seed. For use while terrain_init runs. density must outlive it. */
 void terrain_ore_init(terrain_ore_t **out, arena_t *arena, uint64_t seed, const terrain_density_t *density);

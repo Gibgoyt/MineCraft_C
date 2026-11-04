@@ -1,6 +1,6 @@
 # tests/run/terrain/seed
 
-**Purpose:** ctest `run_terrain_seed`. Tests `run/src/terrain/` with `rng` and `noise`: the same seed gives the same bits with 1 worker and with 16, in any order and any split of the work.
+**Purpose:** ctest `run_terrain_seed`. Tests `run/src/terrain/` with `rng` and `noise`: the same seed gives the same bits with 1 worker and with 16, in any order and any split of the work; and that nothing is lost by making only air above `TERRAIN_MADE_TOP`, stage by stage against `terrain_generate_box`.
 **Tier:** test.
 **Owns:** nothing. Memory comes from the harness's test arena, and each test starts and stops its own systems.
 **Lifetime:** One run.

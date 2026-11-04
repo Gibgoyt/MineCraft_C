@@ -566,7 +566,7 @@ static __device__ __forceinline__ void shade_reflection(const shade_context_t *c
             colour[1] *= light[1];
             colour[2] *= light[2];
         }
-        const float32_t fog = shade_fog_behind(context->post, first_t, whole_way);
+        const float32_t fog = shade_fog_behind(context->post, direction[2], first_t, whole_way);
         for (uint32_t i = 0u; i < 3u; i += 1u) {
             out[i] = colour[i] + (sky[i] - colour[i]) * fog;
         }
@@ -1042,7 +1042,8 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
             first_t = drawn ? first_t : entity.t;
             float32_t colour[3];
             shade_box_colour(&context, &entity_boxes[entity.box], entity_textures, &entity, direction, colour);
-            shade_add(sum, through, colour, sky, drawn ? shade_fog_behind(&post, first_t, entity.t) : 0.0F, 1.0F);
+            shade_add(sum, through, colour, sky,
+                      drawn ? shade_fog_behind(&post, direction[2], first_t, entity.t) : 0.0F, 1.0F);
             result.t = first_t;
             break;
         }
@@ -1059,7 +1060,8 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
                                  water && (features & SHADE_FEATURE_WATER_REFLECTION) != 0u,
                                  water && last_material == water_material, &far, direction, sky, colour);
             }
-            shade_add(sum, through, colour, sky, drawn ? shade_fog_behind(&post, first_t, far.t) : 0.0F, 1.0F);
+            shade_add(sum, through, colour, sky, drawn ? shade_fog_behind(&post, direction[2], first_t, far.t) : 0.0F,
+                      1.0F);
             result.t = first_t;
             break;
         }
@@ -1080,7 +1082,8 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
         if (surface.texture == nullptr) {
             first_t = drawn ? first_t : hit.t;
             const float32_t missing[3] = {SHADE_MISSING_R, SHADE_MISSING_G, SHADE_MISSING_B};
-            shade_add(sum, through, missing, sky, drawn ? shade_fog_behind(&post, first_t, hit.t) : 0.0F, 1.0F);
+            shade_add(sum, through, missing, sky, drawn ? shade_fog_behind(&post, direction[2], first_t, hit.t) : 0.0F,
+                      1.0F);
             result.t = first_t;
             break;
         }
@@ -1096,7 +1099,7 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
             last_material = surface.material == glass_material ? surface.material : (uint32_t)SHADE_NO_MATERIAL;
         } else {
             first_t = drawn ? first_t : hit.t;
-            const float32_t fog = drawn ? shade_fog_behind(&post, first_t, hit.t) : 0.0F;
+            const float32_t fog = drawn ? shade_fog_behind(&post, direction[2], first_t, hit.t) : 0.0F;
             drawn = true;
             const bool part_covered = see_through && may_go_on && alpha != SHADE_ALPHA_OPAQUE;
             /* From inside water, or going on through water from water, there is no face: only what is behind. */

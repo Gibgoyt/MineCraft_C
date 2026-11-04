@@ -44,7 +44,7 @@ __global__ void post_kernel(const post_settings_t settings, const traverse_camer
     float32_t sky[3];
     post_sky(&settings, direction, sky);
     /* TRAVERSE_COARSE_SKY is past any fog_end, so sky needs no case of its own but its discs. */
-    const float32_t fog = post_fog(&settings, pixel.t);
+    const float32_t fog = post_fog_along(&settings, direction[2], pixel.t);
     float32_t seen[3];
     for (uint32_t i = 0u; i < 3u; i += 1u) {
         seen[i] = pixel.rgb[i] + (sky[i] - pixel.rgb[i]) * fog;

@@ -86,10 +86,10 @@ TEST(reflection_tint_and_fog_behind_add_up_as_on_paper) {
 
     /* What is behind, with what post then does for the whole pixel, comes to its own distance's fog. */
     const post_settings_t post = {.fog_start = 20.0f32, .fog_end = 30.0f32};
-    CHECK_NEAR(shade_fog_behind(&post, 10.0f32, 15.0f32), 0.0f32, 0.0f32);
-    CHECK_NEAR(shade_fog_behind(&post, 10.0f32, 25.0f32), 0.25f32, WA_NEAR_NOTHING);
-    CHECK_NEAR(shade_fog_behind(&post, 40.0f32, 50.0f32), 0.0f32, 0.0f32);
-    const float32_t first = post_fog(&post, 24.0f32), behind = shade_fog_behind(&post, 24.0f32, 28.0f32);
+    CHECK_NEAR(shade_fog_behind(&post, 0.0f32, 10.0f32, 15.0f32), 0.0f32, 0.0f32);
+    CHECK_NEAR(shade_fog_behind(&post, 0.0f32, 10.0f32, 25.0f32), 0.25f32, WA_NEAR_NOTHING);
+    CHECK_NEAR(shade_fog_behind(&post, 0.0f32, 40.0f32, 50.0f32), 0.0f32, 0.0f32);
+    const float32_t first = post_fog(&post, 24.0f32), behind = shade_fog_behind(&post, 0.0f32, 24.0f32, 28.0f32);
     CHECK_NEAR(1.0f32 - (1.0f32 - first) * (1.0f32 - behind), post_fog(&post, 28.0f32), WA_NEAR_NOTHING);
 
     /* The next voxel along, of the same block, come into across the shared face. */
@@ -482,7 +482,7 @@ static void wa_reflection(test_context_t *t, const wa_ask_t *ask, const float64_
         out->mirrored_hit = 1u;
         float32_t light[3];
         shade_surface_light(&frame->scene.sun, found.face, ask->scene->lights[wa_index(found.cell)], 1.0f32, light);
-        const float32_t fog = shade_fog_behind(post, (float32_t)first, (float32_t)whole_way);
+        const float32_t fog = shade_fog_behind(post, (float32_t)direction[2], (float32_t)first, (float32_t)whole_way);
         const float32_t cover = (float32_t)texel[3] / 255.0f32;
         for (uint32_t i = 0u; i < 3u; i++) {
             const float32_t shown = shade_srgb_to_linear((float32_t)texel[i] / 255.0f32);
@@ -547,7 +547,8 @@ static void wa_trace(test_context_t *t, const wa_ask_t *ask, const float64_t eye
             out->glass_passed += found.state == BLOCK_ID_GLASS ? 1u : 0u;
         } else {
             first = drawn ? first : found.t;
-            const float32_t fog = drawn ? shade_fog_behind(post, (float32_t)first, (float32_t)found.t) : 0.0f32;
+            const float32_t fog =
+                drawn ? shade_fog_behind(post, (float32_t)direction[2], (float32_t)first, (float32_t)found.t) : 0.0f32;
             drawn = true;
             out->hit = 1u;
             const uint32_t stored = ask->scene->lights[wa_index(found.cell)];
@@ -631,7 +632,7 @@ static void wa_trace(test_context_t *t, const wa_ask_t *ask, const float64_t eye
     }
     float32_t seen[3];
     if (drawn) {
-        const float32_t fog = post_fog(post, (float32_t)first);
+        const float32_t fog = post_fog_along(post, (float32_t)direction[2], (float32_t)first);
         for (uint32_t i = 0u; i < 3u; i++) {
             seen[i] = sum[i] + (sky[i] - sum[i]) * fog;
         }

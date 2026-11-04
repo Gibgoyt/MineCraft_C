@@ -317,7 +317,7 @@ static uint32_t entities_keep(render_entities_t *entities, const render_entities
             const float32_t reach[3] = {fabsf(cos_pitch) * item->half[0] + fabsf(sin_pitch) * item->half[2],
                                         item->half[1],
                                         fabsf(sin_pitch) * item->half[0] + fabsf(cos_pitch) * item->half[2]};
-            if ((far > 0.0f32 && distance - size >= far) ||
+            if ((far > 0.0f32 && post_fog_way(far * POST_FOG_START_SHARE, distance, center[2]) - size >= far) ||
                 !render_entities_pixels(camera, center, reach, cos_yaw, sin_yaw, RENDER_ENTITIES_MARGIN_PIXELS,
                                         pixels)) {
                 entities->stats.out_of_sight++;

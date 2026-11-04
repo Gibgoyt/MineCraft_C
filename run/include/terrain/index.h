@@ -38,6 +38,12 @@ static_assert((uint32_t)TERRAIN_CLIMATE_NOISE_FIELDS + (uint32_t)TERRAIN_DENSITY
                   (uint32_t)TERRAIN_SURFACE_NOISE_FIELDS <=
               (uint32_t)TERRAIN_NOISE_FIELDS_MAX);
 
+/* Nothing a stage makes is above this: what grows, at its tallest, on the highest ground there can be. It follows the density's own limit. */
+enum : int32_t {
+    TERRAIN_MADE_TOP = TERRAIN_DENSITY_NEVER_SOLID_FROM + TERRAIN_FEATURE_TALLEST,
+};
+static_assert(TERRAIN_MADE_TOP <= MC_WORLD_Z_MAX);
+
 /* All of one world's terrain, for its one seed. There is one, under app_t. After terrain_init nothing changes it, so any
  * number of workers may read it, and that is why they all get the same bytes. */
 typedef struct terrain_t {
