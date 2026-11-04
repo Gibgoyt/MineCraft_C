@@ -594,11 +594,12 @@ SHADE_BOTH_SIDES static inline void shade_far_colour(const shade_sun_t *sun, con
 }
 
 /* Post fogs a whole pixel by its first surface. What is seen behind that, at t, needs only the rest of its own fog on top, so that
- * both together come to post_fog at t. */
-SHADE_BOTH_SIDES static inline float32_t shade_fog_behind(const post_settings_t *settings, float32_t first,
-                                                          float32_t t) {
-    const float32_t near_part = post_fog(settings, first);
-    return near_part >= F32(1.0) ? F32(0.0) : (post_fog(settings, t) - near_part) / (F32(1.0) - near_part);
+ * both together come to post_fog_along at t. direction_z is the z of the eye's own ray, and a way that a mirror bent is taken as if it had gone on along that. */
+SHADE_BOTH_SIDES static inline float32_t shade_fog_behind(const post_settings_t *settings, float32_t direction_z,
+                                                          float32_t first, float32_t t) {
+    const float32_t near_part = post_fog_along(settings, direction_z, first);
+    return near_part >= F32(1.0) ? F32(0.0)
+                                 : (post_fog_along(settings, direction_z, t) - near_part) / (F32(1.0) - near_part);
 }
 
 /* Whether a surface is only the far side of the see-through voxel a ray just left: the same block, and next to it across the face

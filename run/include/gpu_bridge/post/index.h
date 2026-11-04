@@ -275,6 +275,32 @@ POST_BOTH_SIDES static inline float32_t post_fog(const post_settings_t *settings
     return x * x;
 }
 
+/* Where fog starts, as a share of where it is whole. */
+#define POST_FOG_START_SHARE F32(0.7)
+
+/* How far a way counts for the fog, of length t that goes up or down by height. Fog is there to hide the edge of what is loaded, and that edge is out to
+ * the side: straight down or up from the eye the world goes on, whatever the distance. So what is up or down counts only as far as where fog starts, and
+ * a way going up or down by less than that counts whole, to the byte. From high above, the ground below stays in sight, in clear air under the eye and
+ * melting into the sky out towards the edge. */
+POST_BOTH_SIDES static inline float32_t post_fog_way(float32_t fog_start, float32_t t, float32_t height) {
+    const float32_t up_or_down = fabsf(height);
+    if (up_or_down <= fog_start) {
+        return t;
+    }
+    /* Rounding can make the side a touch below nothing, straight down. */
+    const float32_t side_squared = fmaxf(t * t - up_or_down * up_or_down, F32(0.0));
+    return sqrtf(side_squared + fog_start * fog_start);
+}
+
+/* How much of a hit at distance t, along a ray whose unit direction has this z, is fog, from 0 to 1. Sky is past any fog and has no way to speak of. */
+POST_BOTH_SIDES static inline float32_t post_fog_along(const post_settings_t *settings, float32_t direction_z,
+                                                       float32_t t) {
+    if (t <= settings->fog_start || t >= TRAVERSE_COARSE_SKY) {
+        return post_fog(settings, t);
+    }
+    return post_fog(settings, post_fog_way(settings->fog_start, t, direction_z * t));
+}
+
 /* Linear light, of any size above 0, to a byte: a straight line up to POST_SHOULDER, a smooth roll towards 1 past it, then the
  * sRGB curve. No dither: one script gives one picture, byte for byte. */
 POST_BOTH_SIDES static inline uint32_t post_tone_map(float32_t linear) {

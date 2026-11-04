@@ -10,7 +10,7 @@
 - `post_frame`: the kernel, with nothing from any other frame.
 - `post_frame_temporal`: the same with god rays on top, and with the temporal pass after it, as asked.
 - `post_xrgb_bytes`, `post_history_bytes`, `post_shafts_bytes`, `post_shafts_across`: what its targets need.
-- `post_sky`, `post_sky_discs`, `post_fog`, `post_tone_map`, `post_xrgb`, `post_jitter`, `post_camera_jitter`, `post_reproject`, `post_taa_squeeze`, `post_taa_unsqueeze`, `post_catmull_rom`: its arithmetic, inline on host and device, so that a test on the host runs the same lines.
+- `post_sky`, `post_sky_discs`, `post_fog`, `post_fog_way`, `post_fog_along`, `post_tone_map`, `post_xrgb`, `post_jitter`, `post_camera_jitter`, `post_reproject`, `post_taa_squeeze`, `post_taa_unsqueeze`, `post_catmull_rom`: its arithmetic, inline on host and device, so that a test on the host runs the same lines.
 
 **May be called by:** `render`, `cuda/src/frame/`.
 **Depends on:** `gpu_bridge/device_memory`, `gpu_bridge/status`, `gpu_bridge/traverse`, `gpu_bridge/shade` for the form of its input, and `cuda/include/traverse/` for a pixel's direction.
@@ -26,6 +26,8 @@ A straight line up to 0.8, and a smooth roll towards 1 past it, then the sRGB cu
 ## The fog
 
 From nothing at 70 % of `fog_end` to all sky at `fog_end`, which is a chunk short of what is loaded, so that the edge of the loaded world melts into the sky. Its colour is `post_sky` in that pixel's direction: the same glow, so fog takes colour from the sun, and no disc, as a sun does not show through a hill. With `SHADE_FEATURE_FOG` off, `render_frame_t` sets a range only `TRAVERSE_COARSE_SKY` is past, so that the kernel has no case for it.
+
+**That edge is out to the side, so it is the side that counts.** `post_fog_along` takes what a ray goes up or down only as far as `fog_start`, by `post_fog_way`, so from `z = 1250` the ground under the eye stays in sight at any render distance, clear below and melting into the sky by `sqrt(fog_end^2 - fog_start^2)` out, about 71 % of `fog_end`. A ray going up or down by less than `fog_start`, which is all of them at ordinary heights, gets exactly `post_fog`. `shade_fog_behind` and what `render_entities` leaves out go by the same way. A reflection's way, which a mirror bent, counts as if it had gone on along the eye's ray.
 
 ## The temporal pass
 
