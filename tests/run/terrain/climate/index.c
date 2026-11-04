@@ -39,7 +39,8 @@ static const int64_t CLIMATE_WAIT_NS = 60 * TIME_NS_PER_SECOND;
 static const uint64_t CLIMATE_WORLD = 0x1234567890ABCDEFull;
 
 /* Pinned: see README.md. */
-static const uint64_t CLIMATE_DIGEST_PIN = 0x1FC7F7D28F24CAA7ull;
+/* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
+static const uint64_t CLIMATE_DIGEST_PIN = 0xED7C11C4E27FB004ull;
 
 static const char *const CLIMATE_NAMES[CLIMATE_FIELDS] = {
     "continentalness", "erosion", "ridges", "temperature", "humidity", "weirdness",
@@ -149,8 +150,8 @@ TEST(each_value_is_worked_out_as_the_readme_says) {
         const float32_t weirdness =
             climate_expected_spread(climate_scalar_field(climate->borrowed_weirdness, wx, wy), 0.35f64);
         const float32_t expected[CLIMATE_FIELDS] = {
-            climate_expected_spread(climate_scalar_field(climate->borrowed_continentalness, wx, wy), 0.33f64),
-            climate_expected_spread(climate_scalar_field(climate->borrowed_erosion, wx, wy), 0.33f64),
+            climate_expected_spread(climate_scalar_field(climate->borrowed_continentalness, wx, wy), 0.259f64),
+            climate_expected_spread(climate_scalar_field(climate->borrowed_erosion, wx, wy), 0.31f64),
             1.0f32 - fabsf(3.0f32 * fabsf(weirdness) - 2.0f32),
             climate_expected_spread(climate_scalar_field(climate->borrowed_temperature, wx, wy), 0.35f64),
             climate_expected_spread(climate_scalar_field(climate->borrowed_humidity, wx, wy), 0.35f64),
@@ -256,7 +257,7 @@ TEST(raw_noise_measures_what_the_limits_were_chosen_for) {
         xs[i] = (float64_t)(-half + (int32_t)(i % CLIMATE_SPREAD_SIDE) * CLIMATE_SPREAD_STEP);
         ys[i] = (float64_t)(-half + (int32_t)(i / CLIMATE_SPREAD_SIDE) * CLIMATE_SPREAD_STEP);
     }
-    static const float64_t limits[TERRAIN_CLIMATE_NOISE_FIELDS - 2u] = {0.33f64, 0.33f64, 0.35f64, 0.35f64, 0.35f64};
+    static const float64_t limits[TERRAIN_CLIMATE_NOISE_FIELDS - 2u] = {0.259f64, 0.31f64, 0.35f64, 0.35f64, 0.35f64};
     static const char *const names[TERRAIN_CLIMATE_NOISE_FIELDS] = {
         "continentalness", "erosion", "temperature", "humidity", "weirdness", "warp_x", "warp_y",
     };

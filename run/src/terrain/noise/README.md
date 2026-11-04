@@ -21,6 +21,8 @@ For a point `p` in blocks, with `amp`, `freq`, `off` and `seed` from the octave:
 
     value = sum over octaves, in order, of  amp * noise3(float32(p.x * freq.x + off.x), ..., seed)
 
+`amp` is `persistence` to the octave's number, times the shape's weight for it if it has weights, all scaled so that a field's add up to 1. A weight lives only here: the kernel takes one octave at a time, so `asm/src/noise/` has no part in it, and `tests/run/terrain/seed/` holds a weighted field from the kernel to the scalar reference's sum. A weight of 1 multiplies exactly, so a shape with no weights gives the same bits as before they existed. Weights move no lattice, as an octave's seed and offset come from its number.
+
 Nothing in that depends on the batch, the order or the thread, so splitting work differently cannot change a bit. No stream
 is carried across points. `tests/run/terrain/seed/` pins the result, and it passes the same pin on the debug and release
 presets: see the stage file.

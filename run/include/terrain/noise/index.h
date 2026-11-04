@@ -14,7 +14,9 @@ enum : uint32_t {
 
 /* What a field looks like, before a seed makes it one world's. A frequency is lattice cells per block, for the first
  * octave, and each later octave multiplies it by lacunarity and its amplitude by persistence. A frequency of 0 on an axis
- * makes the field ignore that axis, which is how a 2D field is asked for. No octave's frequency may pass 1. */
+ * makes the field ignore that axis, which is how a 2D field is asked for. No octave's frequency may pass 1. Weights, one
+ * per octave, then multiply each amplitude, so that the middle scales of a field can count for more than persistence alone
+ * gives them. */
 typedef struct terrain_noise_shape_t {
     float64_t frequency_x; /* 0 */
     float64_t frequency_y; /* 8 */
@@ -23,8 +25,11 @@ typedef struct terrain_noise_shape_t {
     float32_t persistence; /* 28: above 0, up to 1 */
     uint32_t octaves;      /* 32: from 1 to TERRAIN_NOISE_OCTAVES_MAX */
     uint8_t _pad0[4];      /* 36 */
+    /* 40: octaves of them, each above 0 and up to 16. nullptr is a weight of 1 on each. Read only by
+     * terrain_noise_bank_add, so it need not outlive that call. */
+    const float32_t *borrowed_weights;
 } terrain_noise_shape_t;
-static_assert(sizeof(terrain_noise_shape_t) == 40);
+static_assert(sizeof(terrain_noise_shape_t) == 48);
 
 /* One octave, all worked out. */
 typedef struct terrain_noise_octave_t {

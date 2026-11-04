@@ -897,14 +897,16 @@ typedef struct map_table_t {
     float64_t steep;                  /* 136: share of the land, in percent, 3 blocks up for 1 across or more */
     map_regions_t seas;               /* 144 */
     map_regions_t ranges;             /* 176 */
-    int32_t highest_ground;           /* 208 */
-    int32_t spawn_x;                  /* 212 */
-    int32_t spawn_y;                  /* 216 */
-    int32_t spawn_z;                  /* 220 */
-    uint16_t spawn_top;               /* 224 */
-    uint8_t _pad0[6];                 /* 226 */
+    float64_t land_joined;            /* 208: the largest piece's share of all that is not sea, in percent */
+    float64_t dry_joined;             /* 216: the same of dry land, which a river or a lake breaks */
+    int32_t highest_ground;           /* 224 */
+    int32_t spawn_x;                  /* 228 */
+    int32_t spawn_y;                  /* 232 */
+    int32_t spawn_z;                  /* 236 */
+    uint16_t spawn_top;               /* 240 */
+    uint8_t _pad0[6];                 /* 242 */
 } map_table_t;
-static_assert(sizeof(map_table_t) == 232);
+static_assert(sizeof(map_table_t) == 248);
 
 /* Buffers for a seed, all in the one region. */
 typedef struct map_memory_t {
@@ -1026,6 +1028,19 @@ static void map_measure(const map_run_t *run, const map_memory_t *memory, map_ta
     }
     map_regions_find(memory->mask, memory->queue, &table->seas);
 
+    /* Is it one world or many islands? Once with rivers and lakes as part of the land, and once as what cuts it up. */
+    map_regions_t pieces;
+    for (uint32_t i = 0u; i < MAP_PIXELS; i++) {
+        memory->mask[i] = columns[i].klass != (uint8_t)MAP_CLASS_SEA ? 1u : 0u;
+    }
+    map_regions_find(memory->mask, memory->queue, &pieces);
+    table->land_joined = map_percent(pieces.largest_pixels, land + inland);
+    for (uint32_t i = 0u; i < MAP_PIXELS; i++) {
+        memory->mask[i] = columns[i].klass == (uint8_t)MAP_CLASS_LAND ? 1u : 0u;
+    }
+    map_regions_find(memory->mask, memory->queue, &pieces);
+    table->dry_joined = map_percent(pieces.largest_pixels, land);
+
     for (uint32_t i = 0u; i < MAP_PIXELS; i++) {
         memory->mask[i] = columns[i].klass == (uint8_t)MAP_CLASS_LAND && columns[i].ground >= MAP_MOUNTAIN_Z ? 1u : 0u;
     }
@@ -1134,7 +1149,7 @@ static bool map_slice_make(job_system_t *system, map_run_t *run, const map_memor
 
 /* The whole of one seed. Returns false if anything could not be done or did not check out. */
 static bool map_seed(job_system_t *system, map_run_t *run, const map_memory_t *memory, uint64_t seed,
-                     const game_column_job_t *one_column, map_table_t *table) {
+                     const game_column_job_t *one_column, bool map_only, map_table_t *table) {
     terrain_t terrain;
     if (!terrain_init(&terrain, seed)) {
         return false;
@@ -1202,6 +1217,23 @@ static bool map_seed(job_system_t *system, map_run_t *run, const map_memory_t *m
            run->origin_x + (int32_t)(MAP_ACROSS_BLOCKS - MAP_STEP), run->origin_y,
            run->origin_y + (int32_t)(MAP_ACROSS_BLOCKS - MAP_STEP), MAP_STEP, path);
 
+    printf("  seas of at least 0.1 km^2: %u, %u of them 1 km^2; the largest %.1f km^2, %.1f km across, reaching %u of "
+           "the map's 4 sides, %.0f%% of all sea\n",
+           table->seas.count, table->seas.big, (libc_double_t)map_km2_of_pixels(table->seas.largest_pixels),
+           (libc_double_t)((float64_t)(table->seas.largest_extent * MAP_STEP) / 1000.0f64), table->seas.largest_edges,
+           (libc_double_t)(table->seas.kept_pixels > 0u
+                               ? map_percent(table->seas.largest_pixels, table->seas.kept_pixels)
+                               : 0.0f64));
+    printf(
+        "  the largest piece of land holds %.1f%% of all that is not sea, and %.1f%% of dry land if rivers and lakes "
+        "cut it\n",
+        (libc_double_t)table->land_joined, (libc_double_t)table->dry_joined);
+    if (map_only) {
+        fflush(stdout);
+        terrain_deinit(&terrain);
+        return ok;
+    }
+
     ok = map_slice_make(system, run, memory, table->spawn_x, table->spawn_y, seed, "slice_spawn") && ok;
     if (mountain_found) {
         const int32_t x = run->origin_x + (int32_t)((mountain_at % MAP_SIDE) * MAP_STEP);
@@ -1246,13 +1278,6 @@ static bool map_seed(job_system_t *system, map_run_t *run, const map_memory_t *m
     }
     printf("\n");
 
-    printf("  seas of at least 0.1 km^2: %u, %u of them 1 km^2; the largest %.1f km^2, %.1f km across, reaching %u of "
-           "the map's 4 sides, %.0f%% of all sea\n",
-           table->seas.count, table->seas.big, (libc_double_t)map_km2_of_pixels(table->seas.largest_pixels),
-           (libc_double_t)((float64_t)(table->seas.largest_extent * MAP_STEP) / 1000.0f64), table->seas.largest_edges,
-           (libc_double_t)(table->seas.kept_pixels > 0u
-                               ? map_percent(table->seas.largest_pixels, table->seas.kept_pixels)
-                               : 0.0f64));
     printf("  ground at %d or more, in pieces of at least 0.1 km^2: %u, %u of them 1 km^2; the largest %.1f km^2, %.1f "
            "km across; highest ground %d\n",
            MAP_MOUNTAIN_Z, table->ranges.count, table->ranges.big,
@@ -1269,8 +1294,14 @@ static bool map_seed(job_system_t *system, map_run_t *run, const map_memory_t *m
 }
 
 int32_t main(int32_t argc, char **argv) {
+    /* For tuning: the map and what it measures alone, a third of the time, with no slices and no cave tiles. */
+    const bool map_only = argc > 1 && strcmp(argv[1], "--map-only") == 0;
+    if (map_only) {
+        argc--;
+        argv++;
+    }
     if (argc < 2 || argc - 2 > (int32_t)MAP_SEEDS_MAX) {
-        fprintf(stderr, "usage: bench_world_map <directory for the pictures> [seed...]\n");
+        fprintf(stderr, "usage: bench_world_map [--map-only] <directory for the pictures> [seed...]\n");
         return 2;
     }
     const char *const directory = argv[1];
@@ -1351,13 +1382,13 @@ int32_t main(int32_t argc, char **argv) {
     int32_t status = 0;
     for (uint32_t s = 0u; s < seeds; s++) {
         const uint64_t seed = argc > 2 ? strtoull(argv[2 + s], nullptr, 0) : (uint64_t)TERRAIN_SEED_DEFAULT;
-        if (!map_seed(&system, &run, &memory, seed, &one_column, &tables[s])) {
+        if (!map_seed(&system, &run, &memory, seed, &one_column, map_only, &tables[s])) {
             status = 1;
         }
     }
 
     /* All the seeds, one line each, the table the plan's targets are written against. */
-    printf("\nseed                   sea    ice  inland  0..60");
+    printf("\nseed                   sea    ice  inland joined    dry  0..60");
     for (uint32_t r = 0u; r < MAP_BANDS_REACH; r++) {
         printf("  >=%-4d", MAP_REACH[r]);
     }
@@ -1365,8 +1396,9 @@ int32_t main(int32_t argc, char **argv) {
            "deep/km2  to land  to high  spawn on\n");
     for (uint32_t s = 0u; s < seeds; s++) {
         const map_table_t *const t = &tables[s];
-        printf("%-20" PRIu64 " %5.1f%% %5.1f%% %5.1f%% %5.1f%%", t->seed, (libc_double_t)t->sea, (libc_double_t)t->ice,
-               (libc_double_t)t->inland_water, (libc_double_t)t->land_low);
+        printf("%-20" PRIu64 " %5.1f%% %5.1f%% %5.1f%% %5.1f%% %5.1f%% %5.1f%%", t->seed, (libc_double_t)t->sea,
+               (libc_double_t)t->ice, (libc_double_t)t->inland_water, (libc_double_t)t->land_joined,
+               (libc_double_t)t->dry_joined, (libc_double_t)t->land_low);
         for (uint32_t r = 0u; r < MAP_BANDS_REACH; r++) {
             printf(" %5.2f%%", (libc_double_t)t->reach[r]);
         }

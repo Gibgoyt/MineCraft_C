@@ -50,7 +50,8 @@ static const uint64_t DENSITY_SEEDS[DENSITY_WIDE_SEEDS] = {
 };
 
 /* Pinned: see README.md. */
-static const uint64_t DENSITY_DIGEST_PIN = 0x91901C14200BDA7Eull;
+/* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
+static const uint64_t DENSITY_DIGEST_PIN = 0x2E475FECA46EAE66ull;
 
 static uint64_t density_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -145,18 +146,18 @@ TEST(splines_go_through_their_knots_and_never_past_them) {
     terrain_t terrain;
     REQUIRE(terrain_init(&terrain, DENSITY_WORLD));
     const terrain_density_t *const density = terrain.borrowed_density;
-    DENSITY_CHECK_SPLINE(continental, {-1.0f64, -110.0f64}, {-0.6f64, -90.0f64}, {-0.35f64, -64.0f64},
-                         {-0.2f64, -36.0f64}, {-0.1f64, -10.0f64}, {-0.04f64, 3.0f64}, {0.05f64, 10.0f64},
-                         {0.25f64, 24.0f64}, {0.6f64, 44.0f64}, {1.0f64, 64.0f64});
-    DENSITY_CHECK_SPLINE(inland, {-1.0f64, 0.0f64}, {-0.1f64, 0.0f64}, {0.05f64, 0.1f64}, {0.25f64, 0.6f64},
-                         {0.45f64, 1.0f64}, {1.0f64, 1.0f64});
+    DENSITY_CHECK_SPLINE(continental, {-1.0f64, -110.0f64}, {-0.88f64, -90.0f64}, {-0.77f64, -64.0f64},
+                         {-0.62f64, -36.0f64}, {-0.52f64, -10.0f64}, {-0.47f64, 3.0f64}, {-0.35f64, 10.0f64},
+                         {-0.07f64, 24.0f64}, {0.43f64, 44.0f64}, {1.0f64, 64.0f64});
+    DENSITY_CHECK_SPLINE(inland, {-1.0f64, 0.0f64}, {-0.52f64, 0.0f64}, {-0.35f64, 0.1f64}, {-0.07f64, 0.6f64},
+                         {0.21f64, 1.0f64}, {1.0f64, 1.0f64});
     DENSITY_CHECK_SPLINE(relief, {-1.0f64, 1.0f64}, {-0.5f64, 0.9f64}, {-0.2f64, 0.55f64}, {0.1f64, 0.2f64},
                          {0.4f64, 0.05f64}, {0.7f64, 0.0f64}, {1.0f64, 0.0f64});
     DENSITY_CHECK_SPLINE(peak, {-1.0f64, 0.0f64}, {-0.5f64, 0.029023f64}, {0.0f64, 0.111111f64}, {0.25f64, 0.197688f64},
                          {0.5f64, 0.343292f64}, {0.75f64, 0.588169f64}, {1.0f64, 1.0f64});
     DENSITY_CHECK_SPLINE(valley, {-1.0f64, 0.3f64}, {-0.6f64, 0.65f64}, {-0.2f64, 1.0f64}, {1.0f64, 1.0f64});
-    DENSITY_CHECK_SPLINE(hill_land, {-1.0f64, 0.0f64}, {-0.04f64, 0.0f64}, {0.15f64, 1.0f64}, {1.0f64, 1.0f64});
-    DENSITY_CHECK_SPLINE(hill_sea, {-1.0f64, 1.0f64}, {-0.25f64, 1.0f64}, {-0.12f64, 0.0f64}, {1.0f64, 0.0f64});
+    DENSITY_CHECK_SPLINE(hill_land, {-1.0f64, 0.0f64}, {-0.47f64, 0.0f64}, {-0.22f64, 1.0f64}, {1.0f64, 1.0f64});
+    DENSITY_CHECK_SPLINE(hill_sea, {-1.0f64, 1.0f64}, {-0.6f64, 1.0f64}, {-0.53f64, 0.0f64}, {1.0f64, 0.0f64});
     DENSITY_CHECK_SPLINE(hill_relief, {-1.0f64, 1.0f64}, {0.0f64, 0.5f64}, {0.6f64, 0.12f64}, {1.0f64, 0.0f64});
     terrain_deinit(&terrain);
 }
@@ -594,7 +595,7 @@ TEST(the_world_has_seas_plains_and_mountains_in_believable_shares) {
            (libc_double_t)((float64_t)sea / all), (libc_double_t)((float64_t)deep / all),
            (libc_double_t)((float64_t)low_land / all), (libc_double_t)((float64_t)high / all),
            (libc_double_t)((float64_t)very_high / all), (libc_double_t)lowest, (libc_double_t)highest);
-    CHECK((float64_t)sea / all > 0.3f64 && (float64_t)sea / all < 0.6f64);
+    CHECK((float64_t)sea / all > 0.2f64 && (float64_t)sea / all < 0.35f64);
     CHECK((float64_t)deep / all > 0.05f64);
     CHECK((float64_t)low_land / all > 0.2f64);
     CHECK((float64_t)high / all > 0.01f64);

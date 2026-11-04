@@ -5,7 +5,7 @@
 **Owns:** one heap region for its buffers, released before it exits, and one `terrain_t` a seed.
 **Lifetime:** Process.
 **Threads:** main, and 16 job workers.
-**Public functions:** `main`. Run `tools/test-or-build.sh timeout 600 build/release/bin/bench_world_map <directory> [seed...]`. The default seed is `TERRAIN_SEED_DEFAULT`. A seed is decimal, or hex with `0x`. Exit status 0, 1 if a picture could not be written or a column's check differed, or 2 if it could not start.
+**Public functions:** `main`. Run `tools/test-or-build.sh timeout 600 build/release/bin/bench_world_map [--map-only] <directory> [seed...]`. `--map-only` is for tuning: about 18 s a seed, the map and its table with no slices and no cave tiles, so those columns of the table read 0. The default seed is `TERRAIN_SEED_DEFAULT`. A seed is decimal, or hex with `0x`. Exit status 0, 1 if a picture could not be written or a column's check differed, or 2 if it could not start.
 **May be called by:** people.
 **Depends on:** `terrain`, `game` for its spawn search, `display/headless/png`, `job`, `thread`, `heap`, `time`, `world/column`, and the generated `tables/blocks/` and `tables/biomes/`.
 
@@ -38,6 +38,7 @@
 | sea | Water or ice on top at the sea's level, and not a river or a lake |
 | ice | Ice on top of water, of any kind. Part of the sea or the inland water. Ice on rock, as a cold peak has, is land |
 | inland | Rivers and lakes, and any water with its top not at the sea's level |
+| joined, dry | Is it one world or islands? The largest connected piece of all that is not sea, as a share of all that is not sea. Then the same of dry land alone, which a river or a lake cuts |
 | 0..60 | Dry land from 0 to 60 |
 | `>=150` to `>=1000` | Dry land at least that high. What grows on it does not count. These are shares of the whole map, not of its land |
 | top | The highest dry ground on the map |

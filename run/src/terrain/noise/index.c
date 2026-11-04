@@ -21,6 +21,8 @@ static const float64_t NOISE_OFFSET_CELLS = 256.0f64;
 /* A lattice finer than a block only aliases: it is a mistake in the shape, not a look anyone asked for. */
 static const float64_t NOISE_FREQUENCY_MAX = 1.0f64;
 static const float32_t NOISE_LACUNARITY_MAX = 16.0f32;
+/* An octave worth more than this many of its neighbours is a different field, not a weighted one. */
+static const float32_t NOISE_WEIGHT_MAX = 16.0f32;
 
 void terrain_noise_bank_init(terrain_noise_bank_t *bank, arena_t *arena, uint64_t seed, uint32_t capacity) {
     memset(bank, 0, sizeof(*bank));
@@ -34,6 +36,11 @@ void terrain_noise_bank_deinit(terrain_noise_bank_t *bank) {
     memset(bank, 0, sizeof(*bank));
 }
 
+/* An octave's weight. A weight of 1 multiplies exactly, so a shape with none gives the bits it gave before weights existed. */
+static float64_t noise_weight_of(const terrain_noise_shape_t *shape, uint32_t octave) {
+    return shape->borrowed_weights != nullptr ? (float64_t)shape->borrowed_weights[octave] : 1.0f64;
+}
+
 /* Written so that NaN fails each test. */
 static bool noise_shape_is_good(const terrain_noise_shape_t *shape) {
     if (shape->octaves == 0u || shape->octaves > TERRAIN_NOISE_OCTAVES_MAX) {
@@ -44,6 +51,13 @@ static bool noise_shape_is_good(const terrain_noise_shape_t *shape) {
     }
     if (!(shape->persistence > 0.0f32 && shape->persistence <= 1.0f32)) {
         return false;
+    }
+    if (shape->borrowed_weights != nullptr) {
+        for (uint32_t i = 0u; i < shape->octaves; i++) {
+            if (!(shape->borrowed_weights[i] > 0.0f32 && shape->borrowed_weights[i] <= NOISE_WEIGHT_MAX)) {
+                return false;
+            }
+        }
     }
     float64_t top_scale = 1.0f64;
     for (uint32_t i = 1u; i < shape->octaves; i++) {
@@ -100,13 +114,13 @@ bool terrain_noise_bank_add(terrain_noise_bank_t *bank, const char *name, const 
         octave->frequency_x = shape->frequency_x * scale;
         octave->frequency_y = shape->frequency_y * scale;
         octave->frequency_z = shape->frequency_z * scale;
-        amplitude_total += amplitude;
+        amplitude_total += amplitude * noise_weight_of(shape, i);
         scale *= (float64_t)shape->lacunarity;
         amplitude *= (float64_t)shape->persistence;
     }
     amplitude = 1.0f64;
     for (uint32_t i = 0u; i < shape->octaves; i++) {
-        field->octaves[i].amplitude = (float32_t)(amplitude / amplitude_total);
+        field->octaves[i].amplitude = (float32_t)(amplitude * noise_weight_of(shape, i) / amplitude_total);
         amplitude *= (float64_t)shape->persistence;
     }
     bank->count++;

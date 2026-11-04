@@ -9,19 +9,23 @@ enum : uint32_t {
 };
 
 /* What each field looks like. The README says why these. Changing any number here changes every world. */
+static const float32_t CLIMATE_WEIGHTS_CONTINENTALNESS[] = {0.5f32, 1.0f32, 2.0f32, 2.0f32, 2.0f32, 1.0f32, 1.0f32};
 static const terrain_noise_shape_t CLIMATE_SHAPE_CONTINENTALNESS = {
-    .frequency_x = 1.0f64 / 2048.0f64,
-    .frequency_y = 1.0f64 / 2048.0f64,
+    .frequency_x = 1.0f64 / 3072.0f64,
+    .frequency_y = 1.0f64 / 3072.0f64,
     .lacunarity = 2.0f32,
     .persistence = 0.5f32,
-    .octaves = 6u,
+    .octaves = sizeof(CLIMATE_WEIGHTS_CONTINENTALNESS) / sizeof(CLIMATE_WEIGHTS_CONTINENTALNESS[0]),
+    .borrowed_weights = CLIMATE_WEIGHTS_CONTINENTALNESS,
 };
+static const float32_t CLIMATE_WEIGHTS_EROSION[] = {1.0f32, 1.0f32, 2.0f32, 1.0f32, 1.0f32};
 static const terrain_noise_shape_t CLIMATE_SHAPE_EROSION = {
     .frequency_x = 1.0f64 / 1536.0f64,
     .frequency_y = 1.0f64 / 1536.0f64,
     .lacunarity = 2.0f32,
     .persistence = 0.5f32,
-    .octaves = 5u,
+    .octaves = sizeof(CLIMATE_WEIGHTS_EROSION) / sizeof(CLIMATE_WEIGHTS_EROSION[0]),
+    .borrowed_weights = CLIMATE_WEIGHTS_EROSION,
 };
 static const terrain_noise_shape_t CLIMATE_SHAPE_TEMPERATURE = {
     .frequency_x = 1.0f64 / 4096.0f64,
@@ -54,8 +58,8 @@ static const terrain_noise_shape_t CLIMATE_SHAPE_WARP = {
 
 /* A raw value at this far from 0 becomes -1 or 1. Each is about twice what that field measures as its standard deviation:
  * the README has the numbers, and tests/run/terrain/climate/ holds the result to the spread the README promises. */
-static const float64_t CLIMATE_LIMIT_CONTINENTALNESS = 0.33f64;
-static const float64_t CLIMATE_LIMIT_EROSION = 0.33f64;
+static const float64_t CLIMATE_LIMIT_CONTINENTALNESS = 0.259f64;
+static const float64_t CLIMATE_LIMIT_EROSION = 0.31f64;
 static const float64_t CLIMATE_LIMIT_TEMPERATURE = 0.35f64;
 static const float64_t CLIMATE_LIMIT_HUMIDITY = 0.35f64;
 static const float64_t CLIMATE_LIMIT_WEIRDNESS = 0.35f64;

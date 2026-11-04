@@ -51,13 +51,13 @@ Each of those names is a spline through these knots, each written `x: y`:
 
 | Spline | Knots | Why |
 |---|---|---|
-| `continental` | -1: -110, -0.6: -90, -0.35: -64, -0.2: -36, -0.1: -10, -0.04: 3, 0.05: 10, 0.25: 24, 0.6: 44, 1: 64 | Sea bed, a shelf, the coast at about `c = -0.06`, and land rising slowly inland |
-| `inland` | -1: 0, -0.1: 0, 0.05: 0.1, 0.25: 0.6, 0.45: 1, 1: 1 | No mountains in the sea or on the shore |
+| `continental` | -1: -110, -0.88: -90, -0.77: -64, -0.62: -36, -0.52: -10, -0.47: 3, -0.35: 10, -0.07: 24, 0.43: 44, 1: 64 | Sea bed, a wide shelf, the coast at about `c = -0.49`, and land rising slowly inland. So about 26% of the world is under the sea: `bench/world_map/` reads 23.8 to 30.6% on 8 seeds |
+| `inland` | -1: 0, -0.52: 0, -0.35: 0.1, -0.07: 0.6, 0.21: 1, 1: 1 | No mountains in the sea or on the shore |
 | `relief` | -1: 1, -0.5: 0.9, -0.2: 0.55, 0.1: 0.2, 0.4: 0.05, 0.7: 0, 1: 0 | Eroded ground is flat |
 | `peak` | -1: 0, -0.5: 0.029023, 0: 0.111111, 0.25: 0.197688, 0.5: 0.343292, 0.75: 0.588169, 1: 1 | `(2^(3 * (r + 1)) - 1) / 63`: an exponential, so that a few ridges tower over the many that do not |
 | `valley` | -1: 0.3, -0.6: 0.65, -0.2: 1, 1: 1 | Valley floors sink towards the sea, where Stage 10.4 can put rivers |
-| `hill_land` | -1: 0, -0.04: 0, 0.15: 1, 1: 1 | No hills on a beach |
-| `hill_sea` | -1: 1, -0.25: 1, -0.12: 0, 1: 0 | A sea bed is not quite flat, except near the coast |
+| `hill_land` | -1: 0, -0.47: 0, -0.22: 1, 1: 1 | No hills on a beach |
+| `hill_sea` | -1: 1, -0.6: 1, -0.53: 0, 1: 0 | A sea bed is not quite flat, except near the coast |
 | `hill_relief` | -1: 1, 0: 0.5, 0.6: 0.12, 1: 0 | Worn ground has small hills |
 
 The numbers are about twice a familiar game's above and below the sea, as our range is about twice as tall.
@@ -104,7 +104,7 @@ A knot, a shape, a limit or a size changing changes every world, and `tests/run/
 
 ## What it costs
 
-A lattice column costs the climate's warp, continentalness, erosion and ridges, 21 octaves, and hills and jagged, 5 more. Each level
+A lattice column costs the climate's warp, continentalness, erosion and ridges, 22 octaves, and hills and jagged, 5 more. Each level
 within reach of the noise costs 3 octaves for each lattice column. A box is cut into tiles of 32 blocks a side, lined up on the
 world, only so that its lattice fits on the stack.
 

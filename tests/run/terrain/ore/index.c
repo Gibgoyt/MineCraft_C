@@ -34,7 +34,8 @@ static const int64_t ORE_WAIT_NS = 60 * TIME_NS_PER_SECOND;
 static const uint64_t ORE_WORLD = 0x1234567890ABCDEFull;
 
 /* Pinned: see README.md. */
-static const uint64_t ORE_DIGEST_PIN = 0x74124D5C8C1EB588ull;
+/* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
+static const uint64_t ORE_DIGEST_PIN = 0x4697100F5496AFC8ull;
 
 static uint64_t ore_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

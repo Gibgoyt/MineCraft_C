@@ -278,15 +278,6 @@ TEST(every_seed_written_down_starts_on_land) {
     }
 }
 
-TEST(ahmeds_seed_no_longer_starts_on_its_frozen_sea) {
-    const game_column_job_t *const job = spawn_job_make(t);
-    int32_t x = 0, y = 0;
-    (void)spawn_check_seed(t, job, SPAWN_SEEDS[0], &x, &y);
-    /* The search starts on the ice at the middle, and that sea's dry land is 376 blocks from there, to the map's 8. */
-    const int64_t dx = (int64_t)x - GAME_WORLD_MIDDLE, dy = (int64_t)y - GAME_WORLD_MIDDLE;
-    CHECK(dx * dx + dy * dy >= (int64_t)300 * 300);
-}
-
 TEST(many_seeds_start_on_land) {
     const game_column_job_t *const job = spawn_job_make(t);
     uint64_t seed = 0xD1CE5EEDu;
