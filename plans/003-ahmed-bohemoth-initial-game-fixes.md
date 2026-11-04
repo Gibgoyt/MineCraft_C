@@ -22,18 +22,28 @@ This is a living file, by Ahmed's direction, unlike plan 001, which `plans/READM
 | 4 | A woodworking bench for all woodworking; benches are 2x1x1 on x, y, z | `...-phase-04-woodworking-bench.md` | Not started |
 | 5 | Can't make copper armour | `...-phase-06-copper-armour.md` | Not started |
 | 6 | Tree feller: no more floating wood, and Hypixel has one | `...-phase-07-tree-feller.md` | Not started |
+| 7 | One mountain and a huge ocean: proper world generation, mountains, caves, a large continuous world | `...-phase-08-world-generation.md` | Not started |
+| 8 | Breath while under water | `...-phase-09-breath-underwater.md` | Not started |
+| 9 | Coordinates, as an option in settings | `...-phase-10-coordinates.md` | Not started |
+| 10 | World up to +1250 "I think" (it was asked for and built as +500) | `...-phase-11-world-height.md` | Blocked: confirm the number |
 
 ## Phases, in the order to build them
 
-| Phase | What | Why here |
-|---|---|---|
-| 1 | Worlds survive new blocks. **Not requested: needed by the rest** | Adding any block today makes the game refuse every saved world |
-| 2 | Wall torches | Smallest user-facing change, and proves phase 1 |
-| 3 | Stairs from every wood | Adds blocks phase 4 then moves to the bench |
-| 4 | Woodworking bench | Needs phase 3's recipes |
-| 5 | Basic sound | Independent, the most new code, and starts with a test only Ahmed can hear |
-| 6 | Copper armour | Only needs phase 1, and is small, so it can go any time after that |
-| 7 | Tree feller | Adds no blocks or items, so it needs nothing else and can go any time |
+File numbers are the order they were written. This is the order to build them, with the world first, because it's the biggest thing wrong and everything else is played in it.
+
+| Order | Phase | What | Why here |
+|---|---|---|---|
+| 1 | 10 | Coordinates | Small, and helps judge everything after |
+| 2 | 11 | Taller world, if confirmed | Before terrain is tuned, so it's only tuned once |
+| 3 | 8 | World generation | The biggest problem. Starts with a map tool |
+| 4 | 9 | Breath and seeing under water | Small, and prevents invisible deaths |
+| 5 | 1 | Worlds survive new blocks. **Not requested: needed by the rest** | Adding any block today makes the game refuse every saved world |
+| 6 | 2 | Wall torches | Smallest change that adds blocks, and proves phase 1 |
+| 7 | 7 | Tree feller | Needs nothing else, so it can move earlier |
+| 8 | 6 | Copper armour | Needs phase 1 |
+| 9 | 3 | Stairs from every wood | Adds blocks that phase 4 then moves to the bench |
+| 10 | 4 | Woodworking bench | Needs phase 3's recipes |
+| 11 | 5 | Basic sound | Independent, the most new code, and starts with a test only Ahmed can hear |
 
 ## Questions for Ahmed
 
@@ -52,6 +62,9 @@ Each is also in its phase file. None blocks collecting more notes.
 | 7 | Should bare hands fell trees too? | No, axes only |
 | 7 | Should each log wear the axe? | Yes, one use per log |
 | 7 | Sneak to chop just one log? | Yes |
+| 8 | Are the world targets right: about 25–30% sea, and mountain ranges? | Decide by looking at the map |
+| 10 | Show coordinates by default? | Yes, while testing |
+| 11 | Is the height limit +1250, or does it stay +500? | **No default: blocks phase 11** |
 
 ## Decisions Ahmed has made
 
@@ -59,6 +72,7 @@ Each is also in its phase file. None blocks collecting more notes.
 |---|---|
 | 2026-11-04 | Sound uses a second local socket, for the sound server |
 | 2026-11-04 | After touching each plan file, commit it |
+| 2026-11-04 | Open-source generators may be cloned to `/tmp/` to learn from |
 
 ## Seen in the logs, not yet asked for
 
