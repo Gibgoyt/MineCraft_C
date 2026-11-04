@@ -134,6 +134,7 @@ Appended as they land:
 
 - `8759778` Add bench_world_map, a 16 km map, side-on slices and a table of any seed's real world with no display and no card, and let it ask the game's own spawn search where a body starts.
 - `df4c419` Say in the repository's structure what bench/world_map is.
+- `049f621` Record stage 1 of world generation in its plan file: what the map shows on 8 seeds, that the one real bug is starting on a frozen sea, and height targets reset for the taller world.
 
 ## Issues found
 
