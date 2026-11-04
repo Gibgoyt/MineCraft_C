@@ -1,4 +1,4 @@
-/* See README.md. The Owner of the KMS backend: its parts borrow the arena here, and this is the only file in the system
+/* See README.md. The Owner of the KMS and window backends: their parts borrow the arena here, and this is the only file in the system
  * that reserves memory. */
 #include "display/index.h"
 
@@ -9,7 +9,9 @@
 
 #include <inttypes.h>
 #include <signal.h>
+#include <stdio.h>
 #include <stdatomic.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum : uint64_t {
@@ -36,9 +38,52 @@ void display_config_from_machine(display_config_t *out) {
                               .console_fd = 0};
 }
 
+/* The window, and what it needs reserved. KMS's parts stay zeroed and are never started. */
+static display_status_t display_window_start(display_t *display, const display_config_t *config) {
+    if (config->crash_test != DISPLAY_CRASH_TEST_NONE) {
+        LOG_ERROR("display: --crash-test is for KMS, where a console must come back: on a desktop a crash only ends "
+                  "the window");
+        return DISPLAY_STATUS_REFUSED;
+    }
+    const uint64_t bytes = DISPLAY_SETUP_BYTES;
+    static_assert(sizeof(display_x11_t) < 4096u);
+    if (display_x11_arena_bytes() + 4096u > bytes) {
+        LOG_ERROR("display: the window needs more than its %" PRIu64 " bytes", bytes);
+        return DISPLAY_STATUS_ERROR;
+    }
+    if (!heap_reserve(bytes, &display->owned_region)) {
+        return DISPLAY_STATUS_ERROR;
+    }
+    arena_init(&display->arena_setup, "display_setup", display->owned_region.owned_base, display->owned_region.bytes);
+    display->borrowed_x11 = arena_alloc(&display->arena_setup, sizeof(display_x11_t), alignof(display_x11_t));
+    const display_x11_config_t window = {
+        .width = config->width, .height = config->height, .fullscreen = config->fullscreen};
+    /* XAUTHORITY if it is set, and otherwise where it is by default. */
+    char auth_default[256];
+    const char *auth_path = getenv("XAUTHORITY");
+    const char *const home = getenv("HOME");
+    if (auth_path == nullptr && home != nullptr) {
+        snprintf(auth_default, sizeof(auth_default), "%s/.Xauthority", home);
+        auth_path = auth_default;
+    }
+    if (!display_x11_init(display->borrowed_x11, &display->arena_setup, &window, getenv("DISPLAY"), auth_path)) {
+        arena_deinit(&display->arena_setup);
+        heap_release(&display->owned_region);
+        display->borrowed_x11 = nullptr;
+        return DISPLAY_STATUS_ERROR;
+    }
+    display->flip.buffers[0] = display->borrowed_x11->buffer;
+    display->window = 1u;
+    display->running = 1u;
+    return DISPLAY_STATUS_OK;
+}
+
 display_status_t display_init(display_t *display, const display_config_t *config, const display_ops_t *ops,
                               void *context) {
     memset(display, 0, sizeof(*display));
+    if (config->window != 0u) {
+        return display_window_start(display, config);
+    }
     /* First, and before any memory: under a display server this is as far as the program gets. */
     uint32_t console_minor = 0;
     const display_refusal_t refusal = display_device_check_console(ops, context, config->console_fd, &console_minor);
@@ -88,6 +133,13 @@ cleanup_memory:
 
 void display_deinit(display_t *display) {
     if (display->running == 0u) {
+        return;
+    }
+    if (display->window != 0u) {
+        display_x11_deinit(display->borrowed_x11);
+        arena_deinit(&display->arena_setup);
+        heap_release(&display->owned_region);
+        display->running = 0u;
         return;
     }
     display_vt_guard_deinit(&display->guard);
@@ -176,8 +228,7 @@ static void display_signals_restore(const display_signals_t *signals) {
 }
 
 /* The back buffer's picture for this frame. Returns false if the cursor's source says to stop. */
-static bool display_draw_frame(display_t *display, uint64_t frame) {
-    display_buffer_t *const back = display_flip_back(&display->flip);
+static bool display_draw_frame(display_t *display, display_buffer_t *back, uint64_t frame) {
     if (display->frame_source != nullptr) {
         return display->frame_source(display->borrowed_cursor_context, back);
     }
@@ -195,7 +246,8 @@ static bool display_draw_frame(display_t *display, uint64_t frame) {
     }
     /* Erasing the cursor puts back the bare pattern, so if it was over the notice, the notice goes back on as well: it is the
      * only thing on screen that says how to get out. */
-    const bool repair_notice = back->has_cursor != 0u && back->cursor_y < display_vt_guard_notice_bottom(back);
+    const bool repair_notice =
+        display->window == 0u && back->has_cursor != 0u && back->cursor_y < display_vt_guard_notice_bottom(back);
     display_flip_pattern_cursor_erase(back);
     display_flip_pattern_frame(back, frame);
     if (repair_notice) {
@@ -209,7 +261,7 @@ static bool display_draw_frame(display_t *display, uint64_t frame) {
 static bool display_flip_once(display_t *display, uint64_t frame) {
     display_flip_t *const flip = &display->flip;
     const display_vt_guard_t *const guard = &display->guard;
-    if (!display_draw_frame(display, frame)) {
+    if (!display_draw_frame(display, display_flip_back(flip), frame)) {
         return false;
     }
     /* A long frame answers VT switches as it goes: see display_vt_guard_long_work. */
@@ -329,7 +381,77 @@ static display_status_t display_run_taken(display_t *display, int64_t started_ns
     return ok ? DISPLAY_STATUS_OK : DISPLAY_STATUS_ERROR;
 }
 
+void display_long_work(display_t *display) {
+    if (display->window == 0u) {
+        display_vt_guard_long_work(&display->guard);
+    }
+}
+
+void display_window_poll(display_t *display, const display_x11_sink_t *sink) {
+    if (display->window != 0u) {
+        display_x11_poll(display->borrowed_x11, sink);
+    }
+}
+
+/* The window's loop: nothing to take over and nothing to give back, and the terminal can be told things all along. A duration of
+ * 0 has no deadline. */
+static display_status_t display_window_run(display_t *display, int64_t started_ns, int64_t duration_ns,
+                                           const char *what) {
+    display_x11_t *const x11 = display->borrowed_x11;
+    display_signals_t signals;
+    display_signals_install(&signals);
+    LOG_INFO(
+        "%s: in a window. It holds the mouse while it has focus: Alt+Tab lets go, and clicking it takes the mouse back",
+        what);
+    const int64_t loop_started_ns = time_now_ns();
+    int64_t next_ns = loop_started_ns;
+    uint64_t frame = 0;
+    bool stopped = false;
+    while (!stopped && atomic_load_explicit(&display_stop_signal, memory_order_relaxed) == 0 &&
+           (duration_ns == 0 || time_now_ns() - started_ns < duration_ns)) {
+        if (!display_x11_service(x11) || !display_x11_wait_ready(x11)) {
+            break;
+        }
+        if (!display_draw_frame(display, &x11->buffer, frame)) {
+            stopped = true;
+        } else if (!display_x11_present(x11)) {
+            break;
+        }
+        frame++;
+        /* No vblank to wait on through X, so vsync on means keeping to the mode's rate by the clock. */
+        if (display->flip.uncapped == 0u) {
+            next_ns += TIME_NS_PER_SECOND / (int64_t)MC_DISPLAY_REFRESH_HZ;
+            const int64_t now_ns = time_now_ns();
+            next_ns = next_ns < now_ns ? now_ns : next_ns;
+            time_sleep_until_ns(next_ns);
+        }
+    }
+    const int32_t stopped_by = atomic_load_explicit(&display_stop_signal, memory_order_relaxed);
+    display_signals_restore(&signals);
+    const int64_t ran_ns = time_now_ns() - loop_started_ns;
+    const float64_t seconds = time_ns_to_seconds(ran_ns);
+    const float64_t rate = seconds > 0.0f64 ? (float64_t)x11->frames / seconds : 0.0f64;
+    LOG_INFO("%s: %" PRIu64 " frames in %.1f s, %.1f fps", what, x11->frames, (libc_double_t)seconds,
+             (libc_double_t)rate);
+    if (stopped_by != 0) {
+        LOG_INFO("%s: stopped early by signal %" PRId32, what, stopped_by);
+    }
+    if (x11->events_lost != 0u) {
+        LOG_WARN("%s: %" PRIu64 " input events lost to a full queue", what, x11->events_lost);
+    }
+    if (x11->failed_call != nullptr) {
+        LOG_ERROR("%s: %s%s%s", what, x11->failed_call, x11->failed_errno != 0 ? ": " : "",
+                  x11->failed_errno != 0 ? strerror(x11->failed_errno) : "");
+        return DISPLAY_STATUS_ERROR;
+    }
+    return DISPLAY_STATUS_OK;
+}
+
 display_status_t display_test_pattern_run(display_t *display, int64_t started_ns, int64_t duration_ns) {
+    if (display->window != 0u) {
+        display_flip_pattern_fill(&display->borrowed_x11->buffer);
+        return display_window_run(display, started_ns, duration_ns, "test pattern");
+    }
     display_flip_t *const flip = &display->flip;
     for (uint32_t i = 0; i < DISPLAY_FLIP_BUFFERS; i++) {
         display_flip_pattern_fill(&flip->buffers[i]);
@@ -340,12 +462,15 @@ display_status_t display_test_pattern_run(display_t *display, int64_t started_ns
 
 display_status_t display_frames_run(display_t *display, display_frame_source_t source, display_cursor_discard_t discard,
                                     void *context) {
+    display->frame_source = source;
+    display->cursor_discard = discard;
+    display->borrowed_cursor_context = context;
+    if (display->window != 0u) {
+        return display_window_run(display, time_now_ns(), 0, "frames");
+    }
     display_flip_t *const flip = &display->flip;
     for (uint32_t i = 0; i < DISPLAY_FLIP_BUFFERS; i++) {
         memset(flip->buffers[i].owned_map, 0, flip->buffers[i].map_bytes);
     }
-    display->frame_source = source;
-    display->cursor_discard = discard;
-    display->borrowed_cursor_context = context;
     return display_run_taken(display, time_now_ns(), 0, "frames");
 }

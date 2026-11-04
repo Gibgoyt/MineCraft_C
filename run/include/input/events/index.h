@@ -78,6 +78,9 @@ void input_events_stream_start(input_stream_t *stream, int32_t fd);
  * Returns 0, or -errno when the device can no longer be read, which is how an unplugged device usually first shows up. */
 int32_t input_events_drain(input_events_t *events, input_stream_t *stream);
 
+/* The same for one key or button that did not come from a descriptor. value is 0 up, 1 down, 2 repeat. */
+void input_events_take_key(input_events_t *events, input_stream_t *stream, uint32_t code, int32_t value);
+
 /* Lets go of everything this stream holds, for a device that has gone. */
 void input_events_stream_release(input_events_t *events, input_stream_t *stream);
 

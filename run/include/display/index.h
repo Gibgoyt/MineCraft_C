@@ -8,6 +8,7 @@
 #include "display/headless/index.h"
 #include "display/mode/index.h"
 #include "display/vt_guard/index.h"
+#include "display/x11/index.h"
 #include "heap/index.h"
 
 #include <stdint.h>
@@ -27,7 +28,9 @@ typedef struct display_config_t {
     uint32_t refresh_hz;
     int32_t console_fd;              /* the console that must be ours: stdin */
     display_crash_test_t crash_test; /* --crash-test: how the test pattern is to die */
-    uint8_t _pad0[7];
+    uint8_t window;                  /* a window on the X server in DISPLAY, and not KMS */
+    uint8_t fullscreen;              /* with window: as big as the screen allows, with no borders */
+    uint8_t _pad0[5];
 } display_config_t;
 static_assert(sizeof(display_config_t) == 40);
 
@@ -58,10 +61,13 @@ typedef struct display_t {
     display_cursor_discard_t cursor_discard; /* nullptr if the source has nothing to throw away */
     void *borrowed_cursor_context;
     display_frame_source_t frame_source; /* nullptr for the test pattern. Its context is borrowed_cursor_context */
+    display_x11_t *borrowed_x11;         /* the window, from arena_setup, if window says so */
     uint8_t refusal;                     /* display_refusal_t, when _init refused */
     uint8_t running;
     uint8_t crash_test; /* display_crash_test_t */
-    uint8_t _pad0[21];
+    uint8_t
+        window; /* this is a window on an X server: of the parts above, only arena_setup and flip's sizes mean anything */
+    uint8_t _pad0[12];
 } display_t;
 static_assert(sizeof(display_t) == 832);
 static_assert(alignof(display_t) == 64);
@@ -87,7 +93,14 @@ void display_offscreen_config_from_machine(display_headless_config_t *out);
 bool display_offscreen_init(display_offscreen_t *offscreen, const display_headless_config_t *config);
 void display_offscreen_deinit(display_offscreen_t *offscreen);
 
-/* Refuses, with a message naming what to do, unless this process is on the visible text console and can become the
+/* A world being opened, inside one frame: a VT switch must be answered meanwhile, and the watchdog told it is not a hang. */
+void display_long_work(display_t *display);
+
+/* What a window has in the way of input goes to sink, with the same meaning as evdev's. Does nothing for KMS. */
+void display_window_poll(display_t *display, const display_x11_sink_t *sink);
+
+/* With config->window: a window on the X server named by DISPLAY, whose size then is in flip.buffers[0]. Otherwise:
+ * refuses, with a message naming what to do, unless this process is on the visible text console and can become the
  * card's master. Then picks an output and makes its buffers, and changes nothing on screen. ops is
  * display_device_real_ops() outside tests. */
 display_status_t display_init(display_t *display, const display_config_t *config, const display_ops_t *ops,

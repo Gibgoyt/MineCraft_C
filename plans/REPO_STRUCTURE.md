@@ -196,6 +196,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | `display` | `device mode flip` | Raw-ioctl KMS: card, connector, mode, dumb buffers, page flip | 05.1 |
 | | `vt_guard` | Console takeover; always restores, even on a crash | 05.2 |
 | | `headless` | No-display backend, scripted input replay, PNG screenshots for tests and agents | 05.4 |
+| | `x11` `x11/wire` | A window on the local X server: our own protocol over a Unix socket, frames in MIT-SHM. See plan 002 | plan 002 |
 | | `headless/png` `headless/script` `headless/demo` | Stored-DEFLATE PNG encoder; the script language; the scene `--headless` shows without `--test-world`, which needs no card | 05.4 |
 | `input` | `ops discovery events` | evdev discovery by capability, raw keyboard and mouse events, hot-plug | 05.3 |
 
@@ -398,6 +399,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/math/` | ctest `run_math_owner` for `run/src/math/` itself, named in its `test.cmake`, and `run_math_<part>` for each part |
 | `tests/run/display/mode/` | ctest `run_display_mode`, covering `run/src/display/` with `device`, `mode` and `flip`, on `fixtures/fake_card.h`, a fake kernel behind `display_ops_t` |
 | `tests/run/display/vt_guard/` | ctest `run_display_vt_guard`, in forked children that really die, over a fake kernel reporting down a pipe and keys fed down another. Shares `../mode/fixtures/fake_card.h` |
+| `tests/run/display/x11/` | ctest `run_display_x11`, covering `run/src/display/x11/wire/`: the protocol as bytes, with no server |
 | `tests/run/display/headless/` | ctest `run_display_headless`, covering `run/src/display/headless/` with `png`, `script` and `demo`, and the built program from script to file. Links `compile/src/png` to decode what it writes |
 | `tests/run/input/` | ctest `run_input`, covering `run/src/input/` with `ops`, `discovery` and `events`, on replay data, this machine's capability bitmaps copied from `/proc/bus/input/devices` and the fake kernel in `fixtures/`, never on a real device |
 | `tests/run/world/section/` | ctest `run_world_section`: random edits against a brute-force array, each change of form, running out of room, and the bytes each form holds |

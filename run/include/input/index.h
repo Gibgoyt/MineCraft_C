@@ -22,6 +22,19 @@ typedef struct input_cursor_t {
 } input_cursor_t;
 static_assert(sizeof(input_cursor_t) == 24);
 
+typedef struct input_t input_t;
+
+/* Called by input_poll with no devices to read: it hands over what it has through input_fed_key and input_fed_motion. */
+typedef void (*input_pump_t)(void *context, input_t *input);
+
+/* Input that comes from a window and not from /dev/input. Taken from the arena, and only by input_init_fed. */
+typedef struct input_fed_t {
+    input_stream_t stream; /* holds what the window says is down */
+    input_pump_t pump;
+    void *borrowed_context;
+} input_fed_t;
+static_assert(sizeof(input_fed_t) == 120);
+
 /* Zeroed means not running, so _deinit is safe whether or not _init ever ran. */
 typedef struct input_t {
     arena_t arena_setup; /* Process lifetime: what the parts ask for at _init */
@@ -40,6 +53,16 @@ static_assert(alignof(input_t) == 64);
  * not be had. ops is input_ops_real() outside tests. Call this before the console goes dark, and only when this process
  * holds the console: see the README. */
 bool input_init(input_t *input, const char *directory, const input_ops_t *ops, void *context);
+
+/* For a window, whose server already decides who gets the keyboard: no device is ever opened, and each poll asks pump. Returns
+ * false, leaving nothing behind, only if memory could not be had. */
+bool input_init_fed(input_t *input, input_pump_t pump, void *context);
+
+/* What pump hands over. value is 0 up, 1 down, 2 repeat. */
+void input_fed_key(input_t *input, uint32_t code, int32_t value);
+void input_fed_motion(input_t *input, int32_t dx, int32_t dy);
+void input_fed_wheel(input_t *input, int32_t vertical, int32_t horizontal);
+void input_fed_release_all(input_t *input);
 
 /* Closes every device and releases everything. */
 void input_deinit(input_t *input);

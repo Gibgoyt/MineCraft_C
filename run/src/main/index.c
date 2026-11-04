@@ -62,12 +62,18 @@ typedef struct main_options_t {
     const char *settings;       /* --settings, or nullptr for MAIN_SETTINGS_DEFAULT */
     const char *profile;        /* --profile, or nullptr for none */
     uint32_t pretend_gpu_lost;  /* --pretend-gpu-lost: pictures until the card really faults; 0 for never */
-    uint8_t _pad0[4];
+    uint8_t windowed;           /* --windowed */
+    uint8_t _pad0[3];
 } main_options_t;
 static_assert(sizeof(main_options_t) == 104);
 
 /* Where worlds live unless told otherwise: beside where the program was started, like everything else it reads. */
 static const char MAIN_SAVES_DEFAULT[] = "saves";
+
+enum : uint32_t {
+    MAIN_WINDOW_WIDTH = 1280u, /* --windowed, with no --width and --height */
+    MAIN_WINDOW_HEIGHT = 720u,
+};
 /* And where what a person chose on the Settings screen is kept. */
 static const char MAIN_SETTINGS_DEFAULT[] = "settings.yaml";
 
@@ -75,7 +81,7 @@ static void main_print_usage(const char *program) {
     fprintf(
         stderr,
         "usage: %s [--report] [--pretend-missing-cpu <cpu.simd key>] [--pretend-leak] [--pretend-gpu-lost <pictures>]\n"
-        "       %s --test-pattern [--card <path>] [--connector <name>] [--crash-test[=<how>]]\n"
+        "       %s --test-pattern [--card <path>] [--connector <name>] [--crash-test[=<how>]] [--windowed]\n"
         "       %s --headless [--script <path>] [--screenshot-dir <dir>] [--ticks <n>] [--width <w>] [--height <h>]\n"
         "       %s --test-world [--walk] [--render-distance <chunks>] [--time-of-day <0 to 1>]\n"
         "           [--no-shapes] [--no-alpha] [--no-sky] [--no-day-cycle] [--no-fog]\n"
@@ -86,7 +92,8 @@ static void main_print_usage(const char *program) {
         "  --report                 print the build's defines and CPU features, then exit\n"
         "  --pretend-missing-cpu    treat this feature as absent, to see the CPU check fail; may repeat\n"
         "  --pretend-leak           skip the shutdown, to see the leak check at exit fail\n"
-        "  --test-pattern           show a test pattern through KMS; only from a text console, never inside X.\n"
+        "  --test-pattern           show a test pattern through KMS; in a window on a desktop, or through KMS from a "
+        "text console.\n"
         "                           The mouse moves a square, a held key or button turns it red, Esc ends the run\n"
         "  --card, --connector      with --test-pattern: use these and not display: in config/machine.yaml\n"
         "  --crash-test[=<how>]     with --test-pattern: die on purpose after 240 frames, to see the console come\n"
@@ -111,7 +118,8 @@ static void main_print_usage(const char *program) {
         "  --no-lod                 with --test-world: the world stops where full detail does\n"
         "  --god-rays               with --test-world: the air shows the sun's light where it reaches\n"
         "  --time-of-day <0 to 1>   with --test-world: the time to start at: 0 midnight, 0.25 sunrise, 0.5 noon\n"
-        "  --test-world             fly through a generated world: through KMS from a text console, never inside X,\n"
+        "  --test-world             fly through a generated world: in a window on a desktop, or through KMS from a "
+        "text console,\n"
         "                           where WASD, Space and Shift move, the mouse looks, the wheel sets the speed, Ctrl\n"
         "                           goes faster and Esc ends the run. With --headless, the script does all of that\n"
         "  --walk                   with --test-world: walk and do not fly. WASD walks, Space jumps, swims up and "
@@ -134,6 +142,11 @@ static void main_print_usage(const char *program) {
         "                           with the rest if the Settings screen is left with Done\n"
         "  --profile <path>         time the run: a trace for about:tracing or Perfetto goes to <path> at exit, and a\n"
         "                           table to stderr. Not in a release build: see run/src/profiler/README.md\n",
+        stderr);
+    fputs(
+        "  --windowed               on a desktop, a 1280x720 window, or --width and --height, in place of full screen\n"
+        "                           From a terminal on a desktop every mode above opens a window: Alt+Tab lets go of "
+        "the mouse\n",
         stderr);
 }
 
@@ -182,6 +195,8 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
                 return false;
             }
             out->crash_test = (uint8_t)how;
+        } else if (strcmp(argv[i], "--windowed") == 0) {
+            out->windowed = 1;
         } else if (strcmp(argv[i], "--headless") == 0) {
             out->headless = 1;
         } else if (strcmp(argv[i], "--test-world") == 0) {
@@ -294,15 +309,24 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
         fprintf(stderr, "%s: --card and --connector only mean something with --test-pattern\n", argv[0]);
         return false;
     }
+    /* --windowed says how to show the game, so with no mode of its own it is the game, and the flags for that go with it. */
+    if (out->windowed != 0 && out->test_world == 0 && out->test_pattern == 0 && out->report == 0 &&
+        out->headless == 0 && isatty(STDIN_FILENO) != 0) {
+        out->menu = 1u;
+    }
     if (out->crash_test != DISPLAY_CRASH_TEST_NONE && out->test_pattern == 0) {
         fprintf(stderr, "%s: --crash-test only means something with --test-pattern\n", argv[0]);
         return false;
     }
+    if (out->windowed != 0 && out->headless != 0) {
+        fprintf(stderr, "%s: --windowed does not go with --headless, which has no window\n", argv[0]);
+        return false;
+    }
     if (out->headless == 0 && (out->script != nullptr || out->screenshot_dir != nullptr || out->ticks != 0u ||
-                               out->width != 0u || out->height != 0u)) {
+                               (out->windowed == 0 && (out->width != 0u || out->height != 0u)))) {
         fprintf(stderr,
                 "%s: --script, --screenshot-dir, --ticks, --width and --height only mean something with "
-                "--headless\n",
+                "--headless, and the last two with --windowed\n",
                 argv[0]);
         return false;
     }
@@ -364,7 +388,7 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
         return false;
     }
     /* The game, for a person who just runs it. Only on a terminal: anything else that starts the program with no flags, such as
-     * ctest, with stdin from /dev/null, gets the check of the runtime and is nowhere near the display. Inside X this is refused. */
+     * ctest, with stdin from /dev/null, gets the check of the runtime and is nowhere near the display. Inside X it is a window. */
     if (argc == 1 && isatty(STDIN_FILENO) != 0) {
         out->menu = 1u;
     }
@@ -676,6 +700,55 @@ static main_exit_t main_exit_from_display(display_status_t status) {
     return MAIN_EXIT_DISPLAY_ERROR;
 }
 
+/* A window only for a person at a terminal on a desktop. ctest gives every program it runs /dev/null for stdin, so nothing it runs
+ * ever opens one: those go on to KMS's checks, which refuse them. */
+static void main_window_config(display_config_t *config, const main_options_t *options) {
+    if (getenv("DISPLAY") == nullptr || isatty(STDIN_FILENO) == 0) {
+        return;
+    }
+    config->window = 1u;
+    config->fullscreen = (uint8_t)(options->windowed != 0u ? 0u : 1u);
+    if (options->windowed != 0u) {
+        config->width = options->width != 0u ? options->width : MAIN_WINDOW_WIDTH;
+        config->height = options->height != 0u ? options->height : MAIN_WINDOW_HEIGHT;
+    }
+}
+
+static void main_sink_key(void *context, uint32_t code, int32_t value) {
+    input_fed_key(context, code, value);
+}
+
+static void main_sink_motion(void *context, int32_t dx, int32_t dy) {
+    input_fed_motion(context, dx, dy);
+}
+
+static void main_sink_wheel(void *context, int32_t vertical, int32_t horizontal) {
+    input_fed_wheel(context, vertical, horizontal);
+}
+
+static void main_sink_release_all(void *context) {
+    input_fed_release_all(context);
+}
+
+/* Joins the window's events to input, neither of which includes the other. */
+static void main_window_pump(void *context, input_t *input) {
+    const display_x11_sink_t sink = {.key = main_sink_key,
+                                     .motion = main_sink_motion,
+                                     .wheel = main_sink_wheel,
+                                     .release_all = main_sink_release_all,
+                                     .context = input};
+    display_window_poll(context, &sink);
+}
+
+/* Devices if this took the console, and the window's own events if it is a window: /dev/input would be reading what is typed at other
+ * windows. */
+static bool main_input_start(app_t *app) {
+    if (app->display.window != 0u) {
+        return input_init_fed(&app->input, main_window_pump, &app->display);
+    }
+    return input_init(&app->input, INPUT_DEVICE_DIRECTORY, input_ops_real(), nullptr);
+}
+
 /* KMS with no world. Only this flag and --test-world open the display, so that nothing ctest runs can reach the card. */
 [[gnu::noinline]]
 static main_exit_t main_run_test_pattern(app_t *app, const main_options_t *options, int64_t started_ns) {
@@ -685,13 +758,14 @@ static main_exit_t main_run_test_pattern(app_t *app, const main_options_t *optio
     config.connector_name = options->connector != nullptr ? options->connector : config.connector_name;
     config.console_fd = STDIN_FILENO;
     config.crash_test = (display_crash_test_t)options->crash_test;
+    main_window_config(&config, options);
     const display_status_t status = display_init(&app->display, &config, display_device_real_ops(), nullptr);
     if (status != DISPLAY_STATUS_OK) {
         return main_exit_from_display(status);
     }
     /* Only now: reading /dev/input reads whoever is at the machine, and display_init said that this process holds the
      * console. Under X, in a pipe or under ctest, it has refused by this point. */
-    if (!input_init(&app->input, INPUT_DEVICE_DIRECTORY, input_ops_real(), nullptr)) {
+    if (!main_input_start(app)) {
         return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
     }
     display_test_pattern_set_cursor(&app->display, input_test_pattern_cursor, input_test_pattern_discard, &app->input);
@@ -772,11 +846,12 @@ static main_exit_t main_run_test_world(app_t *app, const main_options_t *options
     display_config_t config;
     display_config_from_machine(&config);
     config.console_fd = STDIN_FILENO;
+    main_window_config(&config, options);
     const display_status_t status = display_init(&app->display, &config, display_device_real_ops(), nullptr);
     if (status != DISPLAY_STATUS_OK) {
         return main_exit_from_display(status);
     }
-    if (!input_init(&app->input, INPUT_DEVICE_DIRECTORY, input_ops_real(), nullptr)) {
+    if (!main_input_start(app)) {
         return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
     }
     const display_buffer_t *const buffer = &app->display.flip.buffers[0];
@@ -829,11 +904,12 @@ static main_exit_t main_run_menu(app_t *app, const main_options_t *options) {
     display_config_t config;
     display_config_from_machine(&config);
     config.console_fd = STDIN_FILENO;
+    main_window_config(&config, options);
     const display_status_t status = display_init(&app->display, &config, display_device_real_ops(), nullptr);
     if (status != DISPLAY_STATUS_OK) {
         return main_exit_from_display(status);
     }
-    if (!input_init(&app->input, INPUT_DEVICE_DIRECTORY, input_ops_real(), nullptr)) {
+    if (!main_input_start(app)) {
         return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
     }
     const display_buffer_t *const buffer = &app->display.flip.buffers[0];

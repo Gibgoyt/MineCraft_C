@@ -497,7 +497,7 @@ void game_session_discard(void *context) {
  * meanwhile must not wait for the end of it. */
 static void game_session_open_alive(void *context) {
     display_t *const display = context;
-    display_vt_guard_long_work(&display->guard);
+    display_long_work(display);
 }
 
 static bool game_session_run_source(void *context, display_buffer_t *back) {

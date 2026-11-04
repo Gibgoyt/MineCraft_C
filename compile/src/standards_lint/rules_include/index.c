@@ -96,7 +96,11 @@ static bool include_is_banned(const char *path, const include_banned_t *row) {
 /* Both spellings: GCC falls back to the system directories for #include "immintrin.h". */
 static void include_check_banned(const lint_file_t *file, const lint_include_t *include) {
     for (uint32_t i = 0; i < INCLUDE_BANNED_COUNT; i++) {
-        if (include_is_banned(include->path, &include_banned[i])) {
+        /* Section 1's one exception: a Unix socket to the X server on this machine. */
+        const bool unix_socket_for_x =
+            (strcmp(include->path, "sys/socket.h") == 0 || strcmp(include->path, "sys/un.h") == 0) &&
+            lint_path_matches("run/src/display/x11/index.c", file->path);
+        if (!unix_socket_for_x && include_is_banned(include->path, &include_banned[i])) {
             lint_breach(file->report, file->path, include->line, include_banned[i].rule,
                         "<%s> is not allowed; see plans/CODING_STANDARD.md sections 1 and 7", include->path);
         }

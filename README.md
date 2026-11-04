@@ -14,11 +14,12 @@ The presets are `debug`, `sanitize`, `tsan`, `release` and `profile`, in `CMakeP
 
 ## Run
 
-On a text console, as it takes the display: Ctrl+Alt+F3, log in, then
+From a terminal on your desktop, in a window of its own (Alt+Tab lets go of the mouse):
 
-    ./build/release/bin/minecraft_c
+    ./build/release/bin/minecraft_c              # full screen
+    ./build/release/bin/minecraft_c --windowed   # 1280x720, or add --width and --height
 
-It refuses, and changes nothing, when a display server owns the card. `--headless` runs with no display, and a flag it does not know prints the others.
+Or from a text console (Ctrl+Alt+F3, log in), through KMS with no desktop at all, with the same command. `DISPLAY` decides which. `--headless` runs with no display, and a flag it does not know prints the others.
 
 ## Where things are
 

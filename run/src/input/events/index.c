@@ -197,6 +197,11 @@ int32_t input_events_drain(input_events_t *events, input_stream_t *stream) {
     return 0;
 }
 
+void input_events_take_key(input_events_t *events, input_stream_t *stream, uint32_t code, int32_t value) {
+    events->stats.events++;
+    events_take_key(events, stream, code, value);
+}
+
 void input_events_stream_release(input_events_t *events, input_stream_t *stream) {
     for (uint32_t code = 0; code < INPUT_KEY_CODES; code++) {
         events_key_up(events, stream, code);

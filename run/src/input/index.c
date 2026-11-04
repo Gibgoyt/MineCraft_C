@@ -45,11 +45,52 @@ bool input_init(input_t *input, const char *directory, const input_ops_t *ops, v
     return true;
 }
 
+/* A fed input has no ops, as nothing is read from a descriptor, and events' context is its input_fed_t. Kept there and not in a field of
+ * input_t, since that sits in app_t, which main's frame only just holds. */
+static input_fed_t *input_fed_of(const input_t *input) {
+    return input->events.borrowed_ops == nullptr ? input->events.borrowed_context : nullptr;
+}
+
+bool input_init_fed(input_t *input, input_pump_t pump, void *context) {
+    memset(input, 0, sizeof(*input));
+    if (!heap_reserve(INPUT_SETUP_BYTES, &input->owned_region)) {
+        return false;
+    }
+    arena_init(&input->arena_setup, "input_setup", input->owned_region.owned_base, input->owned_region.bytes);
+    input_fed_t *const fed = arena_alloc_zeroed(&input->arena_setup, sizeof(input_fed_t), alignof(input_fed_t));
+    input_events_init(&input->events, &input->arena_setup, nullptr, fed);
+    input_events_stream_start(&fed->stream, -1);
+    fed->pump = pump;
+    fed->borrowed_context = context;
+    input->running = 1u;
+    return true;
+}
+
+void input_fed_key(input_t *input, uint32_t code, int32_t value) {
+    input_events_take_key(&input->events, &input_fed_of(input)->stream, code, value);
+}
+
+void input_fed_motion(input_t *input, int32_t dx, int32_t dy) {
+    input->events.borrowed_frame->mouse_dx += dx;
+    input->events.borrowed_frame->mouse_dy += dy;
+}
+
+void input_fed_wheel(input_t *input, int32_t vertical, int32_t horizontal) {
+    input->events.borrowed_frame->wheel += vertical;
+    input->events.borrowed_frame->wheel_horizontal += horizontal;
+}
+
+void input_fed_release_all(input_t *input) {
+    input_events_stream_release(&input->events, &input_fed_of(input)->stream);
+}
+
 void input_deinit(input_t *input) {
     if (input->running == 0u) {
         return;
     }
-    input_discovery_deinit(&input->discovery);
+    if (input_fed_of(input) == nullptr) {
+        input_discovery_deinit(&input->discovery);
+    }
     input_events_deinit(&input->events);
     arena_deinit(&input->arena_setup);
     heap_release(&input->owned_region);
@@ -58,6 +99,11 @@ void input_deinit(input_t *input) {
 
 const input_frame_t *input_poll(input_t *input) {
     input_events_begin_frame(&input->events);
+    const input_fed_t *const fed = input_fed_of(input);
+    if (fed != nullptr) {
+        fed->pump(fed->borrowed_context, input);
+        return input->events.borrowed_frame;
+    }
     input_discovery_poll(&input->discovery, &input->events);
     for (uint32_t i = 0; i < INPUT_DISCOVERY_MAX_DEVICES; i++) {
         input_device_t *const device = &input->discovery.borrowed_devices[i];
@@ -69,6 +115,9 @@ const input_frame_t *input_poll(input_t *input) {
 }
 
 uint8_t input_kinds_now(const input_t *input) {
+    if (input_fed_of(input) != nullptr) {
+        return INPUT_KIND_KEYBOARD | INPUT_KIND_MOUSE; /* a window always has both, as far as anyone here can tell */
+    }
     uint8_t kinds = 0u;
     for (uint32_t i = 0; i < INPUT_DISCOVERY_MAX_DEVICES; i++) {
         const input_device_t *const device = &input->discovery.borrowed_devices[i];
