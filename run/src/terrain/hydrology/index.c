@@ -43,11 +43,14 @@ static_assert((uint32_t)HYDROLOGY_TILE <=
 static const float32_t HYDROLOGY_RIVER_INNER = 0.03f32;
 static const float32_t HYDROLOGY_RIVER_INNER_WIDE = 0.04f32;
 static const float32_t HYDROLOGY_RIVER_BANK = 0.12f32;
+/* How far inland a river runs: whole up to the first, and gone from the second, narrowing and shallowing between. */
+static const float32_t HYDROLOGY_RIVER_WHOLE_C = -0.3f32;
+static const float32_t HYDROLOGY_RIVER_GONE_C = 0.35f32;
 static const float32_t HYDROLOGY_BED_EXTRA =
     (float32_t)(TERRAIN_HYDROLOGY_BED_SHALLOWEST - TERRAIN_HYDROLOGY_BED_DEEPEST);
 static const float32_t HYDROLOGY_DEEP_OCEAN_BELOW = -60.0f32;
-static const float32_t HYDROLOGY_OCEAN_C_MAX = -0.04f32;
-static const float32_t HYDROLOGY_COAST_C_MAX = 0.12f32;
+static const float32_t HYDROLOGY_OCEAN_C_MAX = -0.45f32;
+static const float32_t HYDROLOGY_COAST_C_MAX = -0.24f32;
 static const float32_t HYDROLOGY_SHORE_UNDER = -6.0f32;
 static const float32_t HYDROLOGY_SAND_TOP_MIN = 2.0f32;
 static const float32_t HYDROLOGY_STEEP_FROM = 1.5f32;
@@ -179,18 +182,32 @@ static terrain_hydrology_kind_t hydrology_kind_of(const terrain_hydrology_inputs
     return ground < HYDROLOGY_DEEP_OCEAN_BELOW ? TERRAIN_HYDROLOGY_KIND_DEEP_OCEAN : TERRAIN_HYDROLOGY_KIND_OCEAN;
 }
 
+/* 1 near the coast and 0 far inland, smoothly: how much of a river there is at this continentalness. */
+static float32_t hydrology_river_reach(float32_t continentalness) {
+    if (continentalness <= HYDROLOGY_RIVER_WHOLE_C) {
+        return 1.0f32;
+    }
+    if (continentalness >= HYDROLOGY_RIVER_GONE_C) {
+        return 0.0f32;
+    }
+    const float32_t t = (HYDROLOGY_RIVER_GONE_C - continentalness) / (HYDROLOGY_RIVER_GONE_C - HYDROLOGY_RIVER_WHOLE_C);
+    return t * t * (3.0f32 - 2.0f32 * t);
+}
+
 terrain_hydrology_column_t terrain_hydrology_column_from(const terrain_hydrology_inputs_t *inputs) {
     const float32_t wide = (inputs->width + 1.0f32) * 0.5f32;
     const float32_t near = inputs->weirdness < 0.0f32 ? -inputs->weirdness : inputs->weirdness;
-    const float32_t inner = HYDROLOGY_RIVER_INNER + HYDROLOGY_RIVER_INNER_WIDE * wide;
-    const float32_t outer = inner + HYDROLOGY_RIVER_BANK;
+    const float32_t reach = hydrology_river_reach(inputs->continentalness);
+    const float32_t bank = HYDROLOGY_RIVER_BANK * reach;
+    const float32_t inner = (HYDROLOGY_RIVER_INNER + HYDROLOGY_RIVER_INNER_WIDE * wide) * reach;
+    const float32_t outer = inner + bank;
 
     float32_t river = 0.0f32;
     if (near <= inner) {
-        river = 1.0f32;
+        river = reach;
     } else if (near < outer) {
-        const float32_t t = (outer - near) / HYDROLOGY_RIVER_BANK;
-        river = t * t * (3.0f32 - 2.0f32 * t);
+        const float32_t t = (outer - near) / bank;
+        river = reach * t * t * (3.0f32 - 2.0f32 * t);
     }
 
     /* From above any ground this column could have, at no river, down to the bed in the channel's middle. */

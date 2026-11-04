@@ -367,6 +367,71 @@ TEST(field_is_the_sum_of_its_octaves) {
 }
 
 /* Every way of cutting a grid must give the same bits, including cuts that land on either side of a batch's end. */
+/* Weights multiply each octave's amplitude before they are made to add up to 1, and nothing else moves. The kernel takes one
+ * octave at a time and knows nothing of them, so the field from NASM is held to the scalar reference's sum of its octaves. */
+TEST(weights_change_how_much_each_octave_counts_and_nothing_else) {
+    static const float32_t weights_of_one[] = {1.0f32, 1.0f32, 1.0f32, 1.0f32};
+    static const float32_t weights[] = {1.0f32, 1.0f32, 2.0f32, 0.5f32};
+    terrain_t plain_world, ones_world, weighted_world;
+    REQUIRE(terrain_init(&plain_world, SEED_WORLD));
+    REQUIRE(terrain_init(&ones_world, SEED_WORLD));
+    REQUIRE(terrain_init(&weighted_world, SEED_WORLD));
+    terrain_noise_shape_t shape = SEED_SHAPE_SOLID;
+    const terrain_noise_field_t *plain = nullptr;
+    const terrain_noise_field_t *ones = nullptr;
+    const terrain_noise_field_t *weighted = nullptr;
+    REQUIRE(terrain_noise_bank_add(&plain_world.noise_bank, "test/weighted", &shape, &plain));
+    shape.borrowed_weights = weights_of_one;
+    REQUIRE(terrain_noise_bank_add(&ones_world.noise_bank, "test/weighted", &shape, &ones));
+    shape.borrowed_weights = weights;
+    REQUIRE(terrain_noise_bank_add(&weighted_world.noise_bank, "test/weighted", &shape, &weighted));
+
+    /* 1, 1/2, 1/4, 1/8 by persistence, times the weights: 1, 1/2, 1/2, 1/16, which add up to 33/16. */
+    const float32_t expected[] = {16.0f32 / 33.0f32, 8.0f32 / 33.0f32, 8.0f32 / 33.0f32, 1.0f32 / 33.0f32};
+    for (uint32_t o = 0u; o < 4u; o++) {
+        const terrain_noise_octave_t *const octave = &weighted->octaves[o];
+        CHECK_EQ_U64(seed_bits_of(ones->octaves[o].amplitude), seed_bits_of(plain->octaves[o].amplitude));
+        CHECK_EQ_U64(seed_bits_of(octave->amplitude), seed_bits_of(expected[o]));
+        /* The same lattices as with no weights. */
+        CHECK_EQ_U64(octave->seed, plain->octaves[o].seed);
+        CHECK(octave->offset_x == plain->octaves[o].offset_x);
+        CHECK(octave->frequency_x == plain->octaves[o].frequency_x);
+    }
+
+    const terrain_noise_grid_t grid = seed_solid_grid(-48, 112);
+    float32_t *const got = test_alloc(t, SEED_SOLID_POINTS * sizeof(float32_t));
+    float32_t *const got_plain = test_alloc(t, SEED_SOLID_POINTS * sizeof(float32_t));
+    float32_t *const got_ones = test_alloc(t, SEED_SOLID_POINTS * sizeof(float32_t));
+    terrain_noise_sample_grid(weighted, &grid, got);
+    terrain_noise_sample_grid(plain, &grid, got_plain);
+    terrain_noise_sample_grid(ones, &grid, got_ones);
+    for (uint32_t i = 0u; i < SEED_SOLID_POINTS; i++) {
+        const int32_t ix = (int32_t)(i % SEED_SOLID_ACROSS);
+        const int32_t iy = (int32_t)(i / SEED_SOLID_ACROSS % SEED_SOLID_ACROSS);
+        const int32_t iz = (int32_t)(i / SEED_SOLID_ACROSS / SEED_SOLID_ACROSS);
+        const float64_t x = (float64_t)(-48 + ix * 4);
+        const float64_t y = (float64_t)(112 + iy * 4);
+        const float64_t z = (float64_t)(SEED_SOLID_Z_MIN + iz * 4);
+        float32_t sum = 0.0f32;
+        for (uint32_t o = 0u; o < 4u; o++) {
+            const terrain_noise_octave_t *const octave = &weighted->octaves[o];
+            const float32_t cell_x = (float32_t)(x * octave->frequency_x + octave->offset_x);
+            const float32_t cell_y = (float32_t)(y * octave->frequency_y + octave->offset_y);
+            const float32_t cell_z = (float32_t)(z * octave->frequency_z + octave->offset_z);
+            float32_t value = 0.0f32;
+            simd_reference_noise3(&value, &cell_x, &cell_y, &cell_z, 1u, octave->seed);
+            sum += value * octave->amplitude;
+        }
+        if (!CHECK_EQ_U64(seed_bits_of(got[i]), seed_bits_of(sum)) ||
+            !CHECK_EQ_U64(seed_bits_of(got_ones[i]), seed_bits_of(got_plain[i]))) {
+            break;
+        }
+    }
+    terrain_deinit(&weighted_world);
+    terrain_deinit(&ones_world);
+    terrain_deinit(&plain_world);
+}
+
 TEST(any_split_of_the_work_gives_the_same_bits) {
     enum : uint32_t { ACROSS = 128u, POINTS = ACROSS * ACROSS };
     terrain_t terrain;
@@ -656,10 +721,18 @@ TEST(a_bank_refuses_what_is_wrong) {
     terrain_noise_bank_t *const bank = &terrain.noise_bank;
     const terrain_noise_field_t *field = &(terrain_noise_field_t){.octave_count = 99u};
 
-    terrain_noise_shape_t bad[9];
-    for (uint32_t i = 0u; i < 9u; i++) {
+    static const float32_t weight_of_nothing[] = {1.0f32, 0.0f32, 1.0f32, 1.0f32};
+    static const float32_t weight_below_nothing[] = {1.0f32, 1.0f32, -1.0f32, 1.0f32};
+    static const float32_t weight_too_much[] = {1.0f32, 1.0f32, 1.0f32, 17.0f32};
+    const float32_t weight_not_a_number[] = {nanf(""), 1.0f32, 1.0f32, 1.0f32};
+    terrain_noise_shape_t bad[13];
+    for (uint32_t i = 0u; i < 13u; i++) {
         bad[i] = SEED_SHAPE_SOLID;
     }
+    bad[9].borrowed_weights = weight_of_nothing;
+    bad[10].borrowed_weights = weight_below_nothing;
+    bad[11].borrowed_weights = weight_too_much;
+    bad[12].borrowed_weights = weight_not_a_number;
     bad[0].octaves = 0u;
     bad[1].octaves = TERRAIN_NOISE_OCTAVES_MAX + 1u;
     bad[2].lacunarity = 0.5f32;
@@ -671,7 +744,7 @@ TEST(a_bank_refuses_what_is_wrong) {
     bad[8].frequency_x = 0.0f64;
     bad[8].frequency_y = 0.0f64;
     bad[8].frequency_z = 0.0f64;
-    for (uint32_t i = 0u; i < 9u; i++) {
+    for (uint32_t i = 0u; i < 13u; i++) {
         CHECK(!terrain_noise_bank_add(bank, "test/bad", &bad[i], &field));
         CHECK(field == nullptr);
     }

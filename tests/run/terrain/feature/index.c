@@ -26,6 +26,7 @@ enum : uint32_t {
     /* The search for places: this many chunks a side, this many chunks apart. */
     FEA_SEARCH_SIDE = 256u,
     FEA_SEARCH_STEP = 16u,
+    FEA_PLACES_EACH = 5u,
     /* How many layers round the ground a place's box holds. */
     FEA_BELOW = 16u,
     FEA_ABOVE = 40u,
@@ -39,8 +40,10 @@ enum : uint32_t {
 static const uint64_t FEA_WORLD = 0x1234567890ABCDEFull;
 
 /* Pinned: see README.md. */
-static const uint64_t FEA_DIGEST_PIN = 0x5EEB5051896D759Dull;
-static const uint64_t FEA_FOREST_PIN = 0x4311581F6DB47BB3ull;
+/* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
+static const uint64_t FEA_DIGEST_PIN = 0x8F70D3BFF3EBF987ull;
+/* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
+static const uint64_t FEA_FOREST_PIN = 0xD5BB72B7CF06584Bull;
 
 static uint64_t fea_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -86,8 +89,9 @@ typedef struct fea_place_t {
 static_assert(sizeof(fea_place_t) == 16);
 
 /* Each biome's first chunk whose middle and corners hold it, so a box round it is mostly it. */
-static void fea_find_places(test_context_t *t, const terrain_t *terrain, fea_place_t *places) {
+static void fea_find_places_after(test_context_t *t, const terrain_t *terrain, fea_place_t *places, uint32_t skip) {
     memset(places, 0, BIOME_COUNT * sizeof(*places));
+    uint32_t passed[BIOME_COUNT] = {0u};
     terrain_biome_column_t *const columns = test_alloc(t, FEA_SEARCH_SIDE * sizeof(*columns));
     const int32_t half = (int32_t)(FEA_SEARCH_SIDE * FEA_SEARCH_STEP / 2u);
     for (uint32_t row = 0u; row < FEA_SEARCH_SIDE; row++) {
@@ -106,6 +110,10 @@ static void fea_find_places(test_context_t *t, const terrain_t *terrain, fea_pla
             if (place->found != 0u) {
                 continue;
             }
+            if (passed[columns[i].biome] < skip) {
+                passed[columns[i].biome]++;
+                continue;
+            }
             *place = (fea_place_t){
                 .chunk_x = (int32_t)(i * FEA_SEARCH_STEP) - half,
                 .chunk_y = chunk_y,
@@ -114,6 +122,10 @@ static void fea_find_places(test_context_t *t, const terrain_t *terrain, fea_pla
             };
         }
     }
+}
+
+static void fea_find_places(test_context_t *t, const terrain_t *terrain, fea_place_t *places) {
+    fea_find_places_after(t, terrain, places, 0u);
 }
 
 /* A box of whole chunks round a place, from under its ground to over anything on it. */
@@ -861,62 +873,69 @@ TEST(everything_stands_where_it_may_in_every_biome) {
     fea_count_t *const count = test_alloc(t, sizeof(*count));
     memset(count, 0, sizeof(*count));
     uint64_t checks = 0u;
-    for (uint32_t b = 0u; b < BIOME_COUNT; b++) {
-        if (places[b].found == 0u || biome_defs[b].where == BIOME_WHERE_UNDERGROUND) {
-            continue;
+    /* A biome's first place may be a sliver of it, too small for what it grows, so each is looked at in a few. */
+    for (uint32_t pass = 0u; pass < FEA_PLACES_EACH; pass++) {
+        if (pass > 0u) {
+            fea_find_places_after(t, &terrain, places, pass);
         }
-        const terrain_density_box_t box = fea_map_box(&places[b]);
-        fea_stages(&terrain, &box, opened, before);
-        terrain_generate_box(&terrain, &box, opened, blocks);
-        const uint64_t layer = (uint64_t)box.count_x * box.count_y;
-        for (uint32_t iz = 1u; iz + 1u < box.count_z; iz++) {
-            for (uint32_t iy = 1u; iy + 1u < box.count_y; iy++) {
-                for (uint32_t ix = 1u; ix + 1u < box.count_x; ix++) {
-                    const uint64_t at = ix + (uint64_t)box.count_x * iy + layer * iz;
-                    const uint16_t block = blocks[at];
-                    count->by_block[block]++;
-                    const uint16_t under = blocks[at - layer];
-                    if (fea_is_land_plant(block)) {
-                        CHECK(fea_is_soil(under) || under == BLOCK_ID_SNOW_BLOCK);
-                        checks++;
-                    } else if (block == BLOCK_ID_DEAD_BUSH) {
-                        CHECK(under == BLOCK_ID_SAND || under == BLOCK_ID_RED_SAND || under == BLOCK_ID_COARSE_DIRT ||
-                              under == BLOCK_ID_DIRT || under == BLOCK_ID_TERRACOTTA);
-                        checks++;
-                    } else if (block == BLOCK_ID_CACTUS) {
-                        CHECK(under == BLOCK_ID_SAND || under == BLOCK_ID_RED_SAND || under == BLOCK_ID_CACTUS);
-                        checks++;
-                    } else if (block == BLOCK_ID_SUGAR_CANE) {
-                        CHECK(under == BLOCK_ID_SUGAR_CANE || fea_is_soil(under) || under == BLOCK_ID_SAND ||
-                              under == BLOCK_ID_RED_SAND);
-                        if (under != BLOCK_ID_SUGAR_CANE) {
-                            const bool wet = blocks[at - layer + 1u] == BLOCK_ID_WATER ||
-                                             blocks[at - layer - 1u] == BLOCK_ID_WATER ||
-                                             blocks[at - layer + box.count_x] == BLOCK_ID_WATER ||
-                                             blocks[at - layer - box.count_x] == BLOCK_ID_WATER;
-                            CHECK(wet);
+        for (uint32_t b = 0u; b < BIOME_COUNT; b++) {
+            if (places[b].found == 0u || biome_defs[b].where == BIOME_WHERE_UNDERGROUND) {
+                continue;
+            }
+            const terrain_density_box_t box = fea_map_box(&places[b]);
+            fea_stages(&terrain, &box, opened, before);
+            terrain_generate_box(&terrain, &box, opened, blocks);
+            const uint64_t layer = (uint64_t)box.count_x * box.count_y;
+            for (uint32_t iz = 1u; iz + 1u < box.count_z; iz++) {
+                for (uint32_t iy = 1u; iy + 1u < box.count_y; iy++) {
+                    for (uint32_t ix = 1u; ix + 1u < box.count_x; ix++) {
+                        const uint64_t at = ix + (uint64_t)box.count_x * iy + layer * iz;
+                        const uint16_t block = blocks[at];
+                        count->by_block[block]++;
+                        const uint16_t under = blocks[at - layer];
+                        if (fea_is_land_plant(block)) {
+                            CHECK(fea_is_soil(under) || under == BLOCK_ID_SNOW_BLOCK);
+                            checks++;
+                        } else if (block == BLOCK_ID_DEAD_BUSH) {
+                            CHECK(under == BLOCK_ID_SAND || under == BLOCK_ID_RED_SAND ||
+                                  under == BLOCK_ID_COARSE_DIRT || under == BLOCK_ID_DIRT ||
+                                  under == BLOCK_ID_TERRACOTTA);
+                            checks++;
+                        } else if (block == BLOCK_ID_CACTUS) {
+                            CHECK(under == BLOCK_ID_SAND || under == BLOCK_ID_RED_SAND || under == BLOCK_ID_CACTUS);
+                            checks++;
+                        } else if (block == BLOCK_ID_SUGAR_CANE) {
+                            CHECK(under == BLOCK_ID_SUGAR_CANE || fea_is_soil(under) || under == BLOCK_ID_SAND ||
+                                  under == BLOCK_ID_RED_SAND);
+                            if (under != BLOCK_ID_SUGAR_CANE) {
+                                const bool wet = blocks[at - layer + 1u] == BLOCK_ID_WATER ||
+                                                 blocks[at - layer - 1u] == BLOCK_ID_WATER ||
+                                                 blocks[at - layer + box.count_x] == BLOCK_ID_WATER ||
+                                                 blocks[at - layer - box.count_x] == BLOCK_ID_WATER;
+                                CHECK(wet);
+                            }
+                            checks++;
+                        } else if (block == BLOCK_ID_LILY_PAD) {
+                            CHECK(under == BLOCK_ID_WATER);
+                            checks++;
+                        } else if (block == BLOCK_ID_SEAGRASS) {
+                            CHECK(blocks[at + layer] == BLOCK_ID_WATER || blocks[at + layer] == BLOCK_ID_ICE ||
+                                  blocks[at + layer] == BLOCK_ID_KELP || blocks[at + layer] == BLOCK_ID_MANGROVE_LOG);
+                            checks++;
+                        } else if (block == BLOCK_ID_KELP) {
+                            CHECK(blocks[at + layer] == BLOCK_ID_WATER || blocks[at + layer] == BLOCK_ID_KELP ||
+                                  blocks[at + layer] == BLOCK_ID_ICE);
+                            checks++;
+                        } else if (block == BLOCK_ID_SNOW_BLOCK && before[at] != BLOCK_ID_SNOW_BLOCK) {
+                            /* What the surface lays can have a cave under it. What is put here cannot. */
+                            CHECK(under != BLOCK_ID_AIR && under != BLOCK_ID_WATER && under != BLOCK_ID_LAVA);
+                            CHECK(under != BLOCK_ID_SNOW_BLOCK && under != BLOCK_ID_ICE);
+                            checks++;
+                        } else if (fea_is_dry_log(block)) {
+                            /* Only a mangrove stands in water. */
+                            CHECK(under != BLOCK_ID_WATER);
+                            checks++;
                         }
-                        checks++;
-                    } else if (block == BLOCK_ID_LILY_PAD) {
-                        CHECK(under == BLOCK_ID_WATER);
-                        checks++;
-                    } else if (block == BLOCK_ID_SEAGRASS) {
-                        CHECK(blocks[at + layer] == BLOCK_ID_WATER || blocks[at + layer] == BLOCK_ID_ICE ||
-                              blocks[at + layer] == BLOCK_ID_KELP || blocks[at + layer] == BLOCK_ID_MANGROVE_LOG);
-                        checks++;
-                    } else if (block == BLOCK_ID_KELP) {
-                        CHECK(blocks[at + layer] == BLOCK_ID_WATER || blocks[at + layer] == BLOCK_ID_KELP ||
-                              blocks[at + layer] == BLOCK_ID_ICE);
-                        checks++;
-                    } else if (block == BLOCK_ID_SNOW_BLOCK && before[at] != BLOCK_ID_SNOW_BLOCK) {
-                        /* What the surface lays can have a cave under it. What is put here cannot. */
-                        CHECK(under != BLOCK_ID_AIR && under != BLOCK_ID_WATER && under != BLOCK_ID_LAVA);
-                        CHECK(under != BLOCK_ID_SNOW_BLOCK && under != BLOCK_ID_ICE);
-                        checks++;
-                    } else if (fea_is_dry_log(block)) {
-                        /* Only a mangrove stands in water. */
-                        CHECK(under != BLOCK_ID_WATER);
-                        checks++;
                     }
                 }
             }
@@ -1205,20 +1224,24 @@ TEST(only_what_is_open_changes_and_no_voxel_outside_the_world) {
         fea_stages(&terrain, &box, opened, before);
         memcpy(after, before, voxels * sizeof(uint16_t));
         terrain_feature_fill_box(terrain.borrowed_feature, &box, after);
+        const uint64_t layer = (uint64_t)box.count_x * box.count_y;
         uint64_t replaced = 0u;
         uint64_t changed = 0u;
         for (uint64_t i = 0u; i < voxels; i++) {
             if (before[i] != after[i]) {
                 changed++;
+                /* A lake cuts ground, and in the cold its top layer is ice with only sky over it. Where it is 1 deep, that is all of it. */
+                const bool frozen_lake =
+                    after[i] == BLOCK_ID_ICE && i + layer < voxels && after[i + layer] == BLOCK_ID_AIR;
                 if (before[i] != BLOCK_ID_AIR && before[i] != BLOCK_ID_WATER && after[i] != BLOCK_ID_AIR &&
-                    after[i] != BLOCK_ID_WATER) {
+                    after[i] != BLOCK_ID_WATER && !frozen_lake) {
                     replaced++;
                 }
             }
         }
         printf("    %" PRIu64 " voxels changed, %" PRIu64 " of solid to solid\n", changed, replaced);
         CHECK(changed > 0u);
-        /* Nothing solid is ever turned to anything else solid, but for ice, which is on water. */
+        /* Nothing solid is ever turned to anything else solid, but for a lake's ice. */
         CHECK_EQ_U64(replaced, 0u);
     }
     /* Well above the world: all air, nothing written. */

@@ -21,12 +21,14 @@ All six are from -1 to 1. A climate belongs to a column: it has no height in it,
 
 | Field | Means, from -1 to 1 | Cell, in blocks | Octaves |
 |---|---|---|---|
-| `continentalness` | Deep ocean to far inland | 2048 | 6 |
-| `erosion` | Sharp high ground to worn-flat ground | 1536 | 5 |
+| `continentalness` | Deep ocean to far inland | 3072 | 7, weighted 0.3, 1, 2, 2, 2, 1, 1 |
+| `erosion` | Sharp high ground to worn-flat ground | 1536 | 5, weighted 1, 1, 2, 1, 1 |
 | `temperature` | Frozen to scorching | 4096 | 4 |
 | `humidity` | Arid to soaked | 2048 | 4 |
 | `weirdness` | Picks the odd variant of a biome: the sign and size are for the biome table | 512 | 4 |
 | `ridges` | Valley floor to ridge top: `1 - |3 * |weirdness| - 2||` | From weirdness | None of its own |
+
+**Why continentalness is weighted.** Halving each octave leaves the largest so far ahead that a coast is one smooth blob. With these weights the octaves of 1536 and 768 blocks count the most, then 3072 and 384, so seas have bays and islands and no one scale rules. A heavier first octave makes bigger seas, but over a 16 km map the sea's share then wanders from seed to seed: at a cell of 4096 and a weight of 1 it came to 28.6 to 42.0% on 3 seeds, and at 3072 it took a weight of 0.3, not 0.5, to hold 8 seeds inside the target of 25 to 30%. Land is joined up, whatever the scale, because the sea is well under half of the world: a line of a smooth field that holds under half of it cannot run on forever, so every sea ends. `run/src/terrain/density/README.md` says where the coast is.
 
 So `ridges` and `weirdness` are the same noise, twice. That keeps ridges and the odd biomes in the same places, as they should
 be, and `ridges` costs no noise of its own. Ridges has a crease at its top on purpose: that is the line of a ridge. Whoever
@@ -58,7 +60,7 @@ For a column `(x, y)`, with `raw(field, x, y)` as `terrain_noise_sample_points` 
 
 The warp is what keeps borders from showing the noise's square lattice, and all the fields share it, so a coast and the
 climate edge beside it bend together. A raw warp measures a standard deviation of 0.18, so a column typically moves about 17
-blocks, and the warp is 6 of the 29 octaves a column costs.
+blocks, and the warp is 6 of the 30 octaves a column costs.
 
 Why the spread: a sum of octaves piles up around 0, so most of the world would sit in a small part of the range. A cubic does
 nearly what a bell curve's own distribution function would, without libm, so the same bits come out on any machine.
@@ -68,7 +70,8 @@ Each limit was read off the measured raw values at each share: it is about twice
 
 | Field | Limit | Standard deviation measured |
 |---|---|---|
-| `continentalness`, `erosion` | 0.33 | 0.160 |
+| `continentalness` | 0.259 | 0.128 |
+| `erosion` | 0.31 | 0.151 |
 | `temperature` | 0.35 | 0.172 |
 | `humidity` | 0.35 | 0.173 |
 | `weirdness` | 0.35 | 0.170 |
@@ -77,5 +80,5 @@ A shape, a limit or the warp changing changes every world, and `tests/run/terrai
 
 ## What it costs
 
-29 octaves a column for all six fields, in batches of 128. A caller that needs only some asks for only those, since a `nullptr`
+30 octaves a column for all six fields, in batches of 128. A caller that needs only some asks for only those, since a `nullptr`
 array skips that field's octaves. The warp is always paid. Height sampled every four blocks and interpolated costs a sixteenth.

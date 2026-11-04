@@ -21,26 +21,30 @@
 The climate and the ground are read on the density's own lattice, every 4 blocks, and interpolated, always in the same order, `x` and then `y`. So a column's bits never depend on which box or tile asked. With `h` the height, `s` the softness, `c` continentalness, `w` weirdness, and `width` and `shore` two 2D fields of this stage:
 
     wide      = (width + 1) / 2
-    inner     = 0.03 + 0.04 * wide
-    outer     = inner + 0.12
-    river     = 1 when |w| <= inner;  0 from outer;  between, t * t * (3 - 2 * t) with t = (outer - |w|) / 0.12
+    reach     = 1 when c <= -0.3;  0 from c = 0.35;  between, u * u * (3 - 2 * u) with u = (0.35 - c) / 0.65
+    bank      = 0.12 * reach
+    inner     = (0.03 + 0.04 * wide) * reach
+    outer     = inner + bank
+    river     = reach when |w| <= inner;  0 from outer;  between, reach * t * t * (3 - 2 * t) with t = (outer - |w|) / bank
 
     top       = h + s + 9                         above any ground this column can have
     bed       = -3 - 4 * wide
     carve_top = bed + (top - bed) * (1 - river)^2 when river > 0, else top
     ground    = min(h, carve_top)
 
-**A river runs where weirdness is 0.** That is where `ridges` is -1, the valley floors the density's `valley` spline has already sunk and where mountains cannot be, since `peak` is 0 there. A line where a smooth field is 0 has no ends. It closes on itself or runs on until it meets the sea, so rivers do not stop in the middle of nowhere, which noise could not otherwise promise without looking far away. All rivers stand at sea level, `z = 0`, and only the ground is moved to make room.
+**A river runs where weirdness is 0.** That is where `ridges` is -1, the valley floors the density's `valley` spline has already sunk and where mountains cannot be, since `peak` is 0 there. A line where a smooth field is 0 has no ends. It closes on itself or runs on until it meets the sea.
+
+**A river belongs to the coast, by `reach`.** Weirdness's cell is 512 blocks, so its lines lie everywhere, and cutting them all to sea level left a maze of water with the land in pieces: 7 to 8% of the map, and on one seed the largest piece of dry land held 35.1% of it. So a river is whole near the coast, narrows and shallows going inland, stops holding water where its cut no longer reaches the sea's level, goes on as a dry gully, and is gone by `c = 0.35`, so the far inland has none. Bank and channel narrow together and `river` falls with them, so the end leaves no step. All rivers stand at sea level, `z = 0`, and only the ground is moved to make room.
 
 The cut is a limit on height: **ground stays ground up to `carve_top`, and nothing above it does**. So it needs no 3D noise of its own, and it joins the unchanged ground smoothly, since `carve_top` comes down from `top`, above any ground there is. It never fills anything in, so where the sea bed is already lower than a river's bed, the river makes no difference.
 
 | Kind | When, first match | For |
 |---|---|---|
 | River | `h >= 0` and `ground <= 0`: the cut has brought it to the water | Stage 10.6's rivers |
-| Beach | `river < 0.5`, `c <= 0.12`, `ground` from -6 to one above `sand_top`, and not steep | Shores |
+| Beach | `river < 0.5`, `c <= -0.24`, `ground` from -6 to one above `sand_top`, and not steep | Shores |
 | Stony shore | The same, but 1.5 blocks of ground to the block or steeper, on the cell's four edges | Shores |
 | Land | `ground >= 0` | |
-| Lake | `ground < 0` with `c > -0.04`: low ground far from the sea, where water still stands at `z = 0` | Stage 10.7's lakes may add to these |
+| Lake | `ground < 0` with `c > -0.45`: low ground far from the sea, where water still stands at `z = 0` | Stage 10.7's lakes may add to these |
 | Deep ocean | `ground < -60` | All oceans |
 | Ocean | Any other `ground < 0` | All oceans |
 
@@ -109,4 +113,4 @@ Each limit is about twice what that field measures: `raw_noise_measures_what_the
 
 ## What it costs
 
-A lattice column costs the density's 26 octaves over again, plus continentalness and weirdness through the climate, and the 4 of the two 2D fields. The fill asks for the lattice of a 16-block tile on top of what the density asks for: the stage file has the numbers. A flood costs nothing in a tile with nothing opened. In one that has, it looks at up to 49 lattice columns and the 27 cells round each aquifer cell it enters. A voxel above all 27 levels costs one comparison.
+A lattice column costs the density's 27 octaves over again, plus continentalness and weirdness through the climate, and the 4 of the two 2D fields. The fill asks for the lattice of a 16-block tile on top of what the density asks for: the stage file has the numbers. A flood costs nothing in a tile with nothing opened. In one that has, it looks at up to 49 lattice columns and the 27 cells round each aquifer cell it enters. A voxel above all 27 levels costs one comparison.

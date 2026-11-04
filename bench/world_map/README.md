@@ -5,7 +5,7 @@
 **Owns:** one heap region for its buffers, released before it exits, and one `terrain_t` a seed.
 **Lifetime:** Process.
 **Threads:** main, and 16 job workers.
-**Public functions:** `main`. Run `tools/test-or-build.sh timeout 600 build/release/bin/bench_world_map <directory> [seed...]`. The default seed is `TERRAIN_SEED_DEFAULT`. A seed is decimal, or hex with `0x`. Exit status 0, 1 if a picture could not be written or a column's check differed, or 2 if it could not start.
+**Public functions:** `main`. Run `tools/test-or-build.sh timeout 600 build/release/bin/bench_world_map [--map-only] <directory> [seed...]`. `--map-only` is for tuning: about 18 s a seed, the map and its table with no slices and no cave tiles, so those columns of the table read 0. The default seed is `TERRAIN_SEED_DEFAULT`. A seed is decimal, or hex with `0x`. Exit status 0, 1 if a picture could not be written or a column's check differed, or 2 if it could not start.
 **May be called by:** people.
 **Depends on:** `terrain`, `game` for its spawn search, `display/headless/png`, `job`, `thread`, `heap`, `time`, `world/column`, and the generated `tables/blocks/` and `tables/biomes/`.
 
@@ -38,6 +38,7 @@
 | sea | Water or ice on top at the sea's level, and not a river or a lake |
 | ice | Ice on top of water, of any kind. Part of the sea or the inland water. Ice on rock, as a cold peak has, is land |
 | inland | Rivers and lakes, and any water with its top not at the sea's level |
+| joined, dry | Is it one world or islands? The largest connected piece of all that is not sea, as a share of all that is not sea. Then the same of dry land alone, which a river or a lake cuts |
 | 0..60 | Dry land from 0 to 60 |
 | `>=150` to `>=1000` | Dry land at least that high. What grows on it does not count. These are shares of the whole map, not of its land |
 | top | The highest dry ground on the map |
@@ -85,3 +86,33 @@ Same 8 seeds and build type, exit status 0. Terrain did not change, and every co
 | 20261104 | 200, 200, 6 | sand | 0 | 688 |
 | 9999999999999 | -344, -344, 6 | sand | 0 | 442 |
 | 18446744073709551557 | -8, 8, 34 | snow_block | 0 | 895 |
+
+### 2026-11-04, after plan 003 phase 8 stage 3, continents
+
+Same 8 seeds and build type, exit status 0, 0 columns differing. Height bands barely move, as stage 4 owns mountains. `Joined` and `dry` are the new columns.
+
+| Seed | Sea | Ice | Inland | Joined | Dry | 0..60 | >=150 | Seas of 1 km^2 | Largest sea, km^2 | Reaches of 4 sides | Openings | Spawn at x, y, z | Spawn on |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2198175988018515243 | 29.9% | 15.6% | 2.8% | 98.1% | 95.0% | 44.0% | 5.66% | 10 | 26.2 | 1 | 47.43 | -184, -40, 14 | snow_block |
+| 12636146071196537873 | 26.8% | 8.7% | 2.9% | 99.2% | 94.9% | 45.9% | 5.72% | 18 | 14.1 | 1 | 33.64 | 8, 8, 31 | snow_block |
+| 5569068473609503046 (the default) | 30.6% | 9.3% | 2.9% | 99.1% | 86.1% | 44.4% | 5.72% | 11 | 23.6 | 1 | 48.00 | -8, -8, 98 | grass_block |
+| 1 | 29.6% | 7.7% | 2.8% | 98.6% | 97.3% | 44.6% | 5.58% | 13 | 24.2 | 0 | 42.55 | -40, 56, 1 | sand |
+| 42 | 29.1% | 10.7% | 3.0% | 97.8% | 96.7% | 46.0% | 5.40% | 15 | 22.4 | 2 | 36.60 | -8, -8, 32 | snow_block |
+| 20261104 | 24.3% | 5.6% | 2.6% | 96.5% | 93.7% | 44.6% | 7.69% | 18 | 8.9 | 2 | 47.80 | 184, 152, 5 | sand |
+| 9999999999999 | 23.8% | 5.1% | 2.8% | 99.4% | 98.0% | 44.8% | 7.18% | 12 | 8.1 | 1 | 44.18 | 8, 8, 42 | coarse_dirt |
+| 18446744073709551557 | 27.5% | 8.2% | 3.0% | 99.1% | 97.7% | 45.3% | 5.97% | 15 | 14.3 | 0 | 50.34 | -8, 8, 44 | snow_block |
+
+### 2026-11-04, stage 3's last tuning: the first octave's weight 0.3, and the coast at about -0.46
+
+Same 8 seeds and build type, exit status 0, 0 columns differing. All 8 are now inside the sea target, with a mean of 28.2%. 8 other seeds, on `--map-only`, read 21.0 to 28.1%, and 3 of those are under 25%: 21.0 on seed 0, 24.9 on 1234 and 24.7 on 271828.
+
+| Seed | Sea | Ice | Inland | Joined | Dry | 0..60 | >=150 | Seas of 1 km^2 | Largest sea, km^2 | Reaches of 4 sides | Spawn at x, y, z | Spawn on |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 2198175988018515243 | 29.9% | 14.4% | 2.6% | 96.5% | 95.6% | 43.5% | 5.89% | 10 | 22.0 | 1 | -184, -40, 10 | snow_block |
+| 12636146071196537873 | 28.0% | 9.2% | 2.7% | 96.3% | 95.3% | 44.4% | 5.93% | 18 | 13.2 | 1 | 8, 8, 32 | snow_block |
+| 5569068473609503046 (the default) | 29.5% | 9.2% | 2.7% | 99.4% | 97.0% | 44.2% | 6.03% | 18 | 11.8 | 1 | -8, -8, 97 | grass_block |
+| 1 | 29.4% | 7.5% | 2.7% | 98.8% | 97.7% | 44.4% | 5.70% | 16 | 9.6 | 0 | 8, 40, 7 | sand |
+| 42 | 28.9% | 10.8% | 2.8% | 98.9% | 96.2% | 45.8% | 5.54% | 17 | 11.1 | 0 | -8, -8, 31 | snow_block |
+| 20261104 | 25.6% | 6.2% | 2.5% | 99.7% | 95.3% | 43.5% | 7.68% | 21 | 7.5 | 1 | 168, 184, 4 | sand |
+| 9999999999999 | 26.3% | 5.3% | 2.6% | 99.6% | 98.6% | 43.0% | 7.03% | 18 | 6.1 | 1 | 8, 8, 50 | stone |
+| 18446744073709551557 | 28.1% | 7.7% | 2.8% | 99.5% | 98.4% | 44.4% | 6.08% | 16 | 11.9 | 0 | 8, 8, 24 | snow_block |
