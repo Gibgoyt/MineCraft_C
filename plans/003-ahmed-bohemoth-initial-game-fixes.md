@@ -25,7 +25,7 @@ This is a living file, by Ahmed's direction, unlike plan 001, which `plans/READM
 | 7 | One mountain and a huge ocean: proper world generation, mountains, caves, a large continuous world | `...-phase-08-world-generation.md` | Not started |
 | 8 | Breath while under water | `...-phase-09-breath-underwater.md` | Not started |
 | 9 | Coordinates, as an option in settings | `...-phase-10-coordinates.md` | Not started |
-| 10 | World up to +1250 "I think" (it was asked for and built as +500) | `...-phase-11-world-height.md` | Blocked: confirm the number |
+| 10 | World from -250 to +1250 (it was first asked for and built as +500) | `...-phase-11-world-height.md` | Not started |
 
 ## Phases, in the order to build them
 
@@ -34,7 +34,7 @@ File numbers are the order they were written. This is the order to build them, w
 | Order | Phase | What | Why here |
 |---|---|---|---|
 | 1 | 10 | Coordinates | Small, and helps judge everything after |
-| 2 | 11 | Taller world, if confirmed | Before terrain is tuned, so it's only tuned once |
+| 2 | 11 | Taller world, to +1250 | Before terrain is tuned, so it's only tuned once |
 | 3 | 8 | World generation | The biggest problem. Starts with a map tool |
 | 4 | 9 | Breath and seeing under water | Small, and prevents invisible deaths |
 | 5 | 1 | Worlds survive new blocks. **Not requested: needed by the rest** | Adding any block today makes the game refuse every saved world |
@@ -64,7 +64,6 @@ Each is also in its phase file. None blocks collecting more notes.
 | 7 | Sneak to chop just one log? | Yes |
 | 8 | Are the world targets right: about 25–30% sea, and mountain ranges? | Decide by looking at the map |
 | 10 | Show coordinates by default? | Yes, while testing |
-| 11 | Is the height limit +1250, or does it stay +500? | **No default: blocks phase 11** |
 
 ## Decisions Ahmed has made
 
@@ -73,6 +72,7 @@ Each is also in its phase file. None blocks collecting more notes.
 | 2026-11-04 | Sound uses a second local socket, for the sound server |
 | 2026-11-04 | After touching each plan file, commit it |
 | 2026-11-04 | Open-source generators may be cloned to `/tmp/` to learn from |
+| 2026-11-04 | The world runs from -250 to +1250, replacing the original +500 |
 
 ## Seen in the logs, not yet asked for
 
