@@ -15,6 +15,24 @@ A **column** here is what it is in the plan and in `run/src/world/column/`: a ch
 
 ## Results
 
+### 2026-11-05, plan 003 phase 8 stage 7: on the final land
+
+Same seed and same bench, three runs in a row with nothing else of ours on the lock. Target 1000 on 16 workers: **missed by one place, by 0.4% to 3%, exit status 1 on all three.** Before stage 7's change to lining, on the same land, three runs read `jagged_peaks` 854, 840 and 847.
+
+| Place | 1 worker | 16 workers, three runs |
+|---|---|---|
+| `plains` | 200 | 1460, 1649, 1607 |
+| `forest` | 148 | 1105, 1207, 1192 |
+| `jungle` | 138 | 1146, 1153, 1172 |
+| `dark_forest` | 160 | 1339, 1311, 1385 |
+| `mangrove_swamp` | 187 | 1551, 1409, 1464 |
+| `desert` | 207 | 1593, 1626, 1680 |
+| `snowy_taiga` | 114 | 980, 969, 996 |
+| `jagged_peaks` | 126 | 1077, 1033, 1099 |
+| `deep_ocean` | 283 | 2220, 2238, 2243 |
+
+Each place is the first column of that biome the search meets, and they moved with the land, so this is not like for like with the table below. In `snowy_taiga` about 57% of the time is `terrain_feature_fill_box`.
+
 ### 2026-11-02, the phase 10 gate
 
 `build/release/bin/bench_terrain`, seed `0x4D494E4543524146`, chunk columns a second, exit status 0. Target 1000 on 16 workers: every place beat it, the slowest, `jungle`, by about 10%, which is not much room.
