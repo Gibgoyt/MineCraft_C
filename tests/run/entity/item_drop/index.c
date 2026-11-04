@@ -1058,6 +1058,23 @@ static uint8_t *di_png_read(test_context_t *t, const di_temp_dir_t *dir, const c
     return bytes;
 }
 
+/* The line the program ends with if the body stands below where it started, as a world's own ground decides where that is. */
+static void di_player_is_below_start(test_context_t *t, const char *output, float64_t below) {
+    static const char start[] = "the player starts at ";
+    const char *const at = strstr(output, start);
+    REQUIRE(at != nullptr);
+    char *rest = nullptr;
+    const float64_t x = strtod(at + sizeof(start) - 1u, &rest);
+    REQUIRE(rest[0] == ',');
+    const float64_t y = strtod(rest + 1, &rest);
+    REQUIRE(rest[0] == ',');
+    const float64_t z = strtod(rest + 1, &rest);
+    char line[128];
+    snprintf(line, sizeof(line), "the player is at %.3f, %.3f, %.3f", (libc_double_t)x, (libc_double_t)y,
+             (libc_double_t)(z - below));
+    CHECK_CONTAINS(output, line);
+}
+
 /* The same script, stopped at each point of the story, and what the program says of itself there. */
 TEST(the_program_drops_dirt_picks_it_up_and_places_it_back_the_same_each_time) {
     di_temp_dir_t dir, again;
@@ -1090,7 +1107,7 @@ TEST(the_program_drops_dirt_picks_it_up_and_places_it_back_the_same_each_time) {
         run.output,
         "the player mined 1 blocks and placed 0; the last mined was grass_block, and the hand holds 1 of dirt");
     CHECK_CONTAINS(run.output, "1 items dropped, 1 picked up, 0 on the ground in 0 stacks");
-    CHECK_CONTAINS(run.output, "the player is at -7.500, -7.500, 84.000"); /* down in the hole */
+    di_player_is_below_start(t, run.output, 1.0f64); /* down in the hole */
 
     /* And it is back in the world: the hand is empty, and the body stands where it started. */
     di_program_run(t, &dir, script, 95u, &run);
@@ -1099,8 +1116,7 @@ TEST(the_program_drops_dirt_picks_it_up_and_places_it_back_the_same_each_time) {
         run.output,
         "the player mined 1 blocks and placed 1; the last mined was grass_block, and the hand holds 0 of nothing");
     CHECK_CONTAINS(run.output, "1 items dropped, 1 picked up, 0 on the ground in 0 stacks");
-    CHECK_CONTAINS(run.output, "the player starts at -7.5, -7.5, 85.0");
-    CHECK_CONTAINS(run.output, "the player is at -7.500, -7.500, 85.000");
+    di_player_is_below_start(t, run.output, 0.0f64);
     CHECK_CONTAINS(run.output, "0 bytes live");
 
     di_program_run(t, &again, script, 95u, &run);

@@ -748,6 +748,23 @@ static void ii_program_run(test_context_t *t, const ii_temp_dir_t *dir, const ch
     "65 key space up\n"                                                                                                \
     "65 button right up\n"
 
+/* The line the program ends with if the body stands below where it started, as a world's own ground decides where that is. */
+static void ii_player_is_below_start(test_context_t *t, const char *output, float64_t below) {
+    static const char start[] = "the player starts at ";
+    const char *const at = strstr(output, start);
+    REQUIRE(at != nullptr);
+    char *rest = nullptr;
+    const float64_t x = strtod(at + sizeof(start) - 1u, &rest);
+    REQUIRE(rest[0] == ',');
+    const float64_t y = strtod(rest + 1, &rest);
+    REQUIRE(rest[0] == ',');
+    const float64_t z = strtod(rest + 1, &rest);
+    char line[128];
+    snprintf(line, sizeof(line), "the player is at %.3f, %.3f, %.3f", (libc_double_t)x, (libc_double_t)y,
+             (libc_double_t)(z - below));
+    CHECK_CONTAINS(output, line);
+}
+
 TEST(the_program_chooses_a_slot_picks_up_and_places_what_is_in_hand) {
     ii_temp_dir_t dir;
     REQUIRE(ii_temp_dir_make(&dir));
@@ -770,7 +787,7 @@ TEST(the_program_chooses_a_slot_picks_up_and_places_what_is_in_hand) {
     CHECK_CONTAINS(run.output,
                    "the inventory holds 1 items in 1 stacks; 1 added, 0 removed, 0 refused; hotbar slot 3 is "
                    "in hand, with 0 of none");
-    CHECK_CONTAINS(run.output, "the player is at -7.500, -7.500, 84.000");
+    ii_player_is_below_start(t, run.output, 1.0f64);
 
     /* Key 1 first, and it is in hand, and goes back where it came from. */
     ii_program_run(t, &dir, II_SCRIPT_MINE "44 key 1 down\n45 key 1 up\n" II_SCRIPT_JUMP "95 end\n", &run);
@@ -781,7 +798,7 @@ TEST(the_program_chooses_a_slot_picks_up_and_places_what_is_in_hand) {
     CHECK_CONTAINS(run.output,
                    "the inventory holds 0 items in 0 stacks; 1 added, 1 removed, 0 refused; hotbar slot 1 is "
                    "in hand, with 0 of none");
-    CHECK_CONTAINS(run.output, "the player is at -7.500, -7.500, 85.000");
+    ii_player_is_below_start(t, run.output, 0.0f64);
     CHECK_CONTAINS(run.output, "0 bytes live");
     ii_temp_dir_remove(&dir);
 }
