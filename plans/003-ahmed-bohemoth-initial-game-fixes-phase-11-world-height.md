@@ -122,6 +122,7 @@ Appended as they land:
 - `d3e21f4` Run the save test that times waits between pictures with nothing beside it under ctest -j.
 - `bedad80` Say in the repository's structure where the sky test's new fixtures are.
 - `ee105e0` Run terrain's stages only up to the highest layer they can make and leave the rest of a column air, which gives back what the taller world cost and meets the 1000 columns a second again.
+- `856657d` Record the taller world's gate check, with the whole suite and both benches run, and the fog, ore, terrain cost and timing test it fixed, and leave its status in progress for Ahmed's flight.
 
 ## Issues found
 
