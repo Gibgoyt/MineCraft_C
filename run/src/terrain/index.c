@@ -51,10 +51,10 @@ static void terrain_stages_run(const terrain_t *terrain, const terrain_density_b
     terrain_hydrology_fill_box(terrain->borrowed_hydrology, box, blocks);
     terrain_surface_fill_box(terrain->borrowed_surface, box, blocks);
     terrain_cave_mask_box(terrain->borrowed_cave, box, opened);
-    /* Only what a cave truly cuts takes its fill from the flood. */
-    terrain_cave_cut_with_mask(box, opened, blocks);
+    /* Only what a cave truly cuts takes its fill from the flood. Lining reads what caves wanted, which the mask keeps, so it costs no second look at them. */
+    terrain_cave_cut_keeping_wanted(box, opened, blocks);
     terrain_hydrology_flood_box(terrain->borrowed_hydrology, box, opened, blocks);
-    terrain_surface_line_caves_box(terrain->borrowed_surface, box, blocks);
+    terrain_surface_line_caves_with_mask(terrain->borrowed_surface, box, opened, blocks);
     terrain_ore_fill_box(terrain->borrowed_ore, box, blocks);
     terrain_feature_fill_box(terrain->borrowed_feature, box, blocks);
 }

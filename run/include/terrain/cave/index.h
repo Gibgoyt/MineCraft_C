@@ -23,6 +23,8 @@ enum : uint8_t {
     TERRAIN_CAVE_CHEESE = 1u,
     TERRAIN_CAVE_SPAGHETTI = 2u,
     TERRAIN_CAVE_NOODLE = 4u,
+    /* Not a cave: see terrain_cave_cut_keeping_wanted. */
+    TERRAIN_CAVE_WANTED_UNCUT = 0x80u,
 };
 
 enum : int32_t {
@@ -79,6 +81,10 @@ uint64_t terrain_cave_carve_box(const terrain_cave_t *cave, const terrain_densit
 /* terrain_cave_carve_box from a mask already asked for, which costs nothing more: blocks becomes what carving gives, and mask
  * becomes 1 at each voxel this changed, 0 elsewhere, which is what terrain_hydrology_flood_box takes. */
 void terrain_cave_cut_with_mask(const terrain_density_box_t *box, uint8_t *mask, uint16_t *blocks);
+
+/* The same, for a caller that has one more stage to run on the mask: a voxel a cave wanted and that held nothing to cut is TERRAIN_CAVE_WANTED_UNCUT, not 0, so that
+ * mask != 0 is still what terrain_cave_mask_box said, and terrain_surface_line_caves_with_mask need not ask for it again. terrain_hydrology_flood_box takes this too. */
+void terrain_cave_cut_keeping_wanted(const terrain_density_box_t *box, uint8_t *mask, uint16_t *blocks);
 
 /* The mask at one voxel, for something that asks about a single place. Voxels in bulk cost far less each through a box. */
 uint8_t terrain_cave_at(const terrain_cave_t *cave, int32_t x, int32_t y, int32_t z);

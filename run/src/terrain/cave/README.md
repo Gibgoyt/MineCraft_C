@@ -11,6 +11,7 @@
 - `terrain_cave_mask_box`: what would cut each voxel of a box, by kind.
 - `terrain_cave_carve_box`: cuts a box of blocks.
 - `terrain_cave_cut_with_mask`: the same, from a mask already asked for, which costs nothing more.
+- `terrain_cave_cut_keeping_wanted`: the same, with the mask still saying what caves wanted, so `terrain_surface_line_caves_with_mask` need not ask them again. `terrain_generate_box` uses this.
 - `terrain_cave_at`: the mask at one voxel.
 
 **May be called by:** `terrain` and its parts.

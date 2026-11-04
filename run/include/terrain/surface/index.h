@@ -101,4 +101,9 @@ void terrain_surface_fill_tile_box(const terrain_surface_t *surface, terrain_sur
 void terrain_surface_line_caves_box(const terrain_surface_t *surface, const terrain_density_box_t *box,
                                     uint16_t *blocks);
 
+/* The same blocks, from a mask of this very box where mask != 0 is what terrain_cave_mask_box said, so that the caves are asked again only for the layers just past
+ * its two ends. On a tall column of a range, asking again was the third of its time. */
+void terrain_surface_line_caves_with_mask(const terrain_surface_t *surface, const terrain_density_box_t *box,
+                                          const uint8_t *mask, uint16_t *blocks);
+
 #endif

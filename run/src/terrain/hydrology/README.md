@@ -14,7 +14,7 @@
 - `terrain_hydrology_flood_box`, `terrain_hydrology_fluid_at`: what a voxel holds once something has opened it, for caves (Stage 10.5).
 
 **May be called by:** `terrain` and its parts.
-**Depends on:** `terrain/climate`, `terrain/density`, `terrain/noise` and `terrain/rng` (its siblings), `arena`, `assert`, `machine`, `types`, and the generated `tables/blocks/`, for the block ids.
+**Depends on:** `terrain/climate`, `terrain/density`, `terrain/noise` and `terrain/rng` (its siblings), `terrain/cave` for one mask value, `arena`, `assert`, `machine`, `types`, and the generated `tables/blocks/`, for the block ids.
 
 ## A column
 

@@ -3,6 +3,7 @@
 
 #include "assert/index.h"
 #include "tables/blocks/index.h"
+#include "terrain/cave/index.h"
 #include "terrain/rng/index.h"
 
 #include <string.h>
@@ -856,7 +857,7 @@ static void hydrology_flood_tile(const terrain_hydrology_t *hydrology, const ter
         const uint8_t *const layer = opened + (uint64_t)iz * layer_stride + corner;
         for (uint32_t iy = 0u; iy < height && !any; iy++) {
             for (uint32_t ix = 0u; ix < width && !any; ix++) {
-                any = layer[ix + row_stride * iy] != 0u;
+                any = (layer[ix + row_stride * iy] & ~(uint32_t)TERRAIN_CAVE_WANTED_UNCUT) != 0u;
             }
         }
     }
@@ -890,7 +891,7 @@ static void hydrology_flood_tile(const terrain_hydrology_t *hydrology, const ter
         for (uint32_t iy = 0u; iy < height; iy++) {
             for (uint32_t ix = 0u; ix < width; ix++) {
                 const uint64_t at = layer_at + ix + row_stride * iy;
-                if (opened[at] == 0u) {
+                if ((opened[at] & ~(uint32_t)TERRAIN_CAVE_WANTED_UNCUT) == 0u) {
                     continue;
                 }
                 const uint32_t b = (ix + 1u) + band_side * (iy + 1u);

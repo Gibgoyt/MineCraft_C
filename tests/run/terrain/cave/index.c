@@ -1141,6 +1141,20 @@ TEST(a_mask_cuts_only_rock_and_says_what_it_cut) {
         CHECK_EQ_U64(blocks[KINDS + i], is_cut[i] ? (uint16_t)BLOCK_ID_AIR : kinds[i]);
         CHECK_EQ_U64(mask[KINDS + i], is_cut[i] ? 1u : 0u);
     }
+    /* Keeping what was wanted: the same blocks and the same voxels cut, and a voxel wanted and not cut still says so. */
+    for (uint32_t i = 0u; i < KINDS; i++) {
+        blocks[i] = kinds[i];
+        mask[i] = 0u;
+        blocks[KINDS + i] = kinds[i];
+        mask[KINDS + i] = TERRAIN_CAVE_SPAGHETTI;
+    }
+    terrain_cave_cut_keeping_wanted(&box, mask, blocks);
+    for (uint32_t i = 0u; i < KINDS; i++) {
+        CHECK_EQ_U64(blocks[i], kinds[i]);
+        CHECK_EQ_U64(mask[i], 0u);
+        CHECK_EQ_U64(blocks[KINDS + i], is_cut[i] ? (uint16_t)BLOCK_ID_AIR : kinds[i]);
+        CHECK_EQ_U64(mask[KINDS + i], is_cut[i] ? 1u : TERRAIN_CAVE_WANTED_UNCUT);
+    }
 }
 
 TEST(a_full_bank_is_refused) {
