@@ -1,6 +1,6 @@
 # 002-ahmed-window-on-the-desktop
 
-**Status:** in progress   (updated 2026-11-04)
+**Status:** done   (updated 2026-11-04)
 
 ## Goal
 
@@ -25,7 +25,7 @@ Plan 001 named raw X11 as the known alternative to KMS. The rules hold: no libX1
 - [x] Connection, window, shared-memory frames, pointer and keyboard
 - [x] Wire into `display`, `input`, `main`; allow the socket in `standards_lint` for one file only
 - [x] Checked on a private `Xvfb`, with no window on the desktop: test pattern, then the real game, driven by `xdotool`
-- [ ] Ahmed runs it on XFCE
+- [x] Ahmed runs it on XFCE
 
 ## Verification
 
@@ -47,3 +47,10 @@ Appended as they land:
 All agent-runnable checks passed on 2026-11-04: `ctest --preset release`, 100 of 100. On a private `Xvfb`, with the real `xfwm4`: full screen at the screen's size, pointer held while focused and let go when focus went to another window, held again on return, and the close button ending the run with nothing leaked. A block mined by real clicks was gone in the next picture. None of it ran on the live desktop, which is the box still open.
 
 Known limits, in `run/src/display/x11/README.md`: pointer acceleration applies, no vsync, one window size per run. Alt+Tab itself was not pressed in these tests: `xdotool windowactivate` moved the focus, since `xfwm4` on `Xvfb` had no key settings to read.
+
+### Ahmed's first run on the live XFCE desktop, 2026-11-04
+
+`--windowed`, three world sessions. It worked: 129 input events, 12 blocks mined, a world saved and reloaded from where it was left, Quit Game, `heap at exit: 27 reserved, 27 released, 0 bytes live`. Two things his log shows, neither fixed yet:
+
+- **Two worlds got one seed.** Expected: a world made with no seed is new each time. Actual: `test_1` and `test_2` both report seed 2198175988018515243, in one run of the program. Evidence: `run/src/main/index.c` works out `blank_seed` once, before `game_session_init`, and his log lines from `save/world/index.c:621`. Left alone: he asked for a commit, and it is his to prioritize. Starting the program again gives a new seed.
+- **64 FPS in play, against frames of about 9 ms.** Expected: about 110 pictures a second from a 9 ms frame. Actual: `1529 new pictures on the screen in 23.9 s: 64.1 FPS` with `total mean 8.875 ms`; the second session, with `shade` at 3 ms, gave 106.4. Cause not found. Left alone, for the same reason. The window's own loop ran at 119.9 fps throughout, so it is not the X11 present holding it back.
