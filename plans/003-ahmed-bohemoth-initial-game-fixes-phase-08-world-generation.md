@@ -264,6 +264,8 @@ Appended as they land:
 - `0eece6c` Let features read a chunk's own ground from the blocks terrain_generate_box already has rather than make it again, which puts every place in bench_terrain over 1000 columns a second with the same land, and add a test holding the shortcut to the walk it replaces.
 - `d4350f9` Record in the terrain bench and feature READMEs that every place now beats the target, and how features read a whole chunk's own ground.
 - `eb53c7a` Say in the repository's structure what tests/run/terrain/feature/own is.
+- `c462da8` Say in the terrain bench README only what was read of the machine's load during its last runs.
+- `6d08a11` Record stage 7's last pass in the world generation plan file: terrain speed over the target at every place with the same land, why the sprint script spends no food, and a test failure I could not explain.
 
 ## Issues found
 
