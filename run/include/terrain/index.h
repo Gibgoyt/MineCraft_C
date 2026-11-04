@@ -27,6 +27,9 @@ enum : uint64_t {
 enum : uint32_t {
     /* Noise fields one world can have. */
     TERRAIN_NOISE_FIELDS_MAX = 64u,
+    /* Which land a seed makes. Raised by any change that gives any seed other blocks: a save holds only what changed, so a world saved on other land is refused, and
+     * never stitched to a different landscape. tests/run/terrain/feature/ holds this number to the land. */
+    TERRAIN_GENERATOR_VERSION = 1u,
 };
 static_assert(TERRAIN_NOISE_FIELDS_MAX * sizeof(terrain_noise_field_t) + sizeof(terrain_climate_t) +
                   sizeof(terrain_density_t) + sizeof(terrain_hydrology_t) + sizeof(terrain_cave_t) +

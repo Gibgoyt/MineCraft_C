@@ -4,6 +4,7 @@
 #include "assert/index.h"
 #include "log/index.h"
 #include "tables/blocks/index.h"
+#include "terrain/index.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -78,6 +79,8 @@ const char *save_world_status_name(save_world_status_t status) {
         return "too many regions";
     case SAVE_WORLD_ERROR_PATH:
         return "path too long";
+    case SAVE_WORLD_ERROR_GENERATOR:
+        return "its land is from another game version";
     }
     return "?";
 }
@@ -344,6 +347,7 @@ static uint64_t save_world_manifest_build(const save_world_t *save, const save_w
     header.version = SAVE_WORLD_VERSION;
     header.header_bytes = sizeof(header);
     header.region_count = region_count;
+    header.generator = TERRAIN_GENERATOR_VERSION;
     header.checksum = save_world_hash(&header, offsetof(save_world_manifest_header_t, checksum));
     memcpy(out, &header, sizeof(header));
     return sizeof(header) + regions_bytes;
@@ -364,6 +368,13 @@ static save_world_status_t save_world_manifest_parse(save_world_t *save, uint64_
         return SAVE_WORLD_ERROR_DAMAGED;
     }
     /* All of these are read only once the checksum says they are what was written. */
+    if (header.version < SAVE_WORLD_VERSION_FIRST_WITH_GENERATOR) {
+        LOG_ERROR("save: %s is in version %" PRIu32
+                  " of the format, from before a world said what made its land, so its changes would be stitched to a "
+                  "different landscape. This game makes land with generator %" PRIu32,
+                  save->borrowed_directory, header.version, (uint32_t)TERRAIN_GENERATOR_VERSION);
+        return SAVE_WORLD_ERROR_GENERATOR;
+    }
     if (header.version != SAVE_WORLD_VERSION) {
         LOG_ERROR("save: %s is in version %" PRIu32 " of the format, and this game reads version %" PRIu32,
                   save->borrowed_directory, header.version, (uint32_t)SAVE_WORLD_VERSION);
@@ -373,6 +384,13 @@ static save_world_status_t save_world_manifest_parse(save_world_t *save, uint64_
         LOG_ERROR("save: %s holds changes to the world of seed %" PRIu64 ", and was opened as seed %" PRIu64,
                   save->borrowed_directory, header.seed, save->seed);
         return SAVE_WORLD_ERROR_SEED;
+    }
+    if (header.generator != TERRAIN_GENERATOR_VERSION) {
+        LOG_ERROR("save: %s holds changes to land made by generator %" PRIu32
+                  ", and this game makes land with generator %" PRIu32
+                  ", so they would be stitched to a different landscape",
+                  save->borrowed_directory, header.generator, (uint32_t)TERRAIN_GENERATOR_VERSION);
+        return SAVE_WORLD_ERROR_GENERATOR;
     }
     if (header.table_hash != save->table_hash) {
         LOG_ERROR("save: %s was saved with another block table, so its numbers would mean the wrong blocks",

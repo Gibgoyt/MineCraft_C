@@ -503,6 +503,8 @@ TEST(a_new_world_is_one_manifest_and_its_bytes_are_known) {
     CHECK_EQ_U64(word, 64u);
     memcpy(&word, file + 48u, 4u);
     CHECK_EQ_U64(word, 0u);
+    memcpy(&word, file + 52u, 4u);
+    CHECK_EQ_U64(word, TERRAIN_GENERATOR_VERSION);
     memcpy(&value, file + 56u, 8u);
     CHECK_EQ_U64(value, sw_fnv(file, 56u));
     CHECK_EQ_U64(sw_directory_count(blocks, "r.", ""), 0u);
@@ -929,11 +931,28 @@ TEST(what_cannot_be_trusted_is_refused_and_left_as_it_was) {
     sw_manifest_forge(t, manifest, 40u, &later, sizeof(later));
     CHECK_EQ_U64(sw_open_status(save, root, SW_SEED), SAVE_WORLD_ERROR_VERSION);
     CHECK_EQ_U64(file_write_atomic(manifest, good, good_bytes), FILE_OK);
-    /* An older format: a world from before the top went up to 1250, whose columns hold one word of mask. */
+    /* An older format: it could not say what made its land, and that is what the person is told. */
     const uint32_t older = SAVE_WORLD_VERSION - 1u;
     sw_manifest_forge(t, manifest, 40u, &older, sizeof(older));
-    CHECK_EQ_U64(sw_open_status(save, root, SW_SEED), SAVE_WORLD_ERROR_VERSION);
+    CHECK_EQ_U64(sw_open_status(save, root, SW_SEED), SAVE_WORLD_ERROR_GENERATOR);
     CHECK_EQ_U64(file_write_atomic(manifest, good, good_bytes), FILE_OK);
+    /* Land from a generator older or newer than this game's, in this format. Refused, and the manifest is left saying so. */
+    static const uint32_t other_generators[] = {0u, TERRAIN_GENERATOR_VERSION - 1u, TERRAIN_GENERATOR_VERSION + 1u};
+    for (uint32_t i = 0u; i < 3u; i++) {
+        sw_manifest_forge(t, manifest, offsetof(save_world_manifest_header_t, generator), &other_generators[i],
+                          sizeof(other_generators[i]));
+        CHECK_EQ_U64(sw_open_status(save, root, SW_SEED), SAVE_WORLD_ERROR_GENERATOR);
+        uint64_t left_bytes = 0u;
+        const uint8_t *const left = sw_slurp(t, manifest, &left_bytes);
+        REQUIRE(left_bytes == good_bytes);
+        save_world_manifest_header_t left_header;
+        memcpy(&left_header, left, sizeof(left_header));
+        CHECK_EQ_U64(left_header.generator, other_generators[i]);
+        CHECK_EQ_U64(file_write_atomic(manifest, good, good_bytes), FILE_OK);
+    }
+    /* What a person is told fits the menu's line after "Could not open it: ". */
+    CHECK(strlen("Could not open it: ") + strlen(save_world_status_name(SAVE_WORLD_ERROR_GENERATOR)) <
+          UI_MENU_MESSAGE_BYTES);
     /* Another block table. */
     const uint64_t other_table = 12345u;
     sw_manifest_forge(t, manifest, 24u, &other_table, sizeof(other_table));

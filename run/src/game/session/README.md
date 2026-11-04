@@ -18,7 +18,7 @@
 
 ## How it goes
 
-A world whose files refuse to open, as damaged, from another version, on another seed or open in another game, is that world's trouble and not the program's: the list comes back saying why, the files as they were, for a person to choose another. Under KMS nobody can read the log. A `game_open` that fails is still the end of the run, as that is the card or the memory.
+A world whose files refuse to open, as damaged, from another version, on another seed, on land another generator made or open in another game, is that world's trouble and not the program's: the list comes back saying why, the files as they were, for a person to choose another. Under KMS nobody can read the log. A `game_open` that fails is still the end of the run, as that is the card or the memory.
 
 | State | Each frame | Goes to |
 |---|---|---|

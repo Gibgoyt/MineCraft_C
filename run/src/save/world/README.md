@@ -19,7 +19,7 @@
 - `save_world_status_name`, `save_world_step_hook_set`: a status for a log line; a test's way to die at a known step.
 
 **May be called by:** `save`, `save/autosave`, and `game`, which runs it.
-**Depends on:** `file`, `arena`, `log`, `assert`, `world/edit`, `world/column`, `world/section`, `world/tick`, the generated block table, and glibc's `opendir`, `flock`, `qsort` and pthreads.
+**Depends on:** `file`, `arena`, `log`, `assert`, `world/edit`, `world/column`, `world/section`, `world/tick`, `TERRAIN_GENERATOR_VERSION` from `terrain`'s header, the generated block table, and glibc's `opendir`, `flock`, `qsort` and pthreads.
 
 ## On disk
 
@@ -33,9 +33,11 @@ A world is `terrain_generate_box` of its seed, with these sections written over 
 
 All numbers are little-endian. Every struct, its size and each field's offset are in the header, and no byte is left to a compiler's padding. A file's `version` is `SAVE_WORLD_VERSION`. Each file has a checksum of its header, and each column's list of sections and each section's record have their own, so that one bad byte costs what it is in and is never believed.
 
-A record is `uint16_t bits, uint16_t palette_count`, the palette in the order states first appear in `section_voxel_index` order, then one index per voxel, packed from the low bits of each byte. Bits is 0, with one state; 1, 2, 4 or 8, the fewest that hold the palette, up to 256 states; or 16, with no palette and the 4096 states themselves. So the same blocks are always the same bytes, whatever forms the section went through in memory. A section with any flowing fluid has the top bit of `bits` set and ends in `world_tick_section_levels`' 2048 bytes, half a byte per voxel, each nibble 0 to 8 or the record is refused. Version 1 had no levels, and is refused as another version.
+A record is `uint16_t bits, uint16_t palette_count`, the palette in the order states first appear in `section_voxel_index` order, then one index per voxel, packed from the low bits of each byte. Bits is 0, with one state; 1, 2, 4 or 8, the fewest that hold the palette, up to 256 states; or 16, with no palette and the 4096 states themselves. So the same blocks are always the same bytes, whatever forms the section went through in memory. A section with any flowing fluid has the top bit of `bits` set and ends in `world_tick_section_levels`' 2048 bytes, half a byte per voxel, each nibble 0 to 8 or the record is refused. Version 1 had no levels.
 
 `manifest.table_hash` is a hash of the block table's names, in order. State numbers are places in that table, so a build that adds a block in the middle of it would read the same bytes as other blocks: it refuses such a world rather than turn stone into something else. A migration, when one is needed, starts at this check.
+
+`manifest.generator` is the `TERRAIN_GENERATOR_VERSION` of the land the deltas were cut from. A column is that land with what the deltas say over it, so on another generator's land a saved edit would meet a seam, or lie inside a new mountain. Such a world gets `SAVE_WORLD_ERROR_GENERATOR`, and the list says why. The format before version 4 could not say, and each such world was made on an older shape, so it gets the same answer. There is no migration: it stays on the disk as it was.
 
 ## A save, and what a crash does to one
 
@@ -46,7 +48,7 @@ A record is `uint16_t bits, uint16_t palette_count`, the palette in the order st
 
 A kill or a power cut anywhere leaves extra files at worst. `save_world_open` removes `*.tmp` and any `r.*` the manifest does not name. It never removes `damaged.*`, or a name it does not make. No world is ever a mix of two saves, and `run/src/save/state/` keeps its file beside a generation.
 
-`save_world_open` refuses, changing nothing, for: a bad header or list, another version, another seed, another block table, a file the manifest names being missing or of the wrong size, and delta files with no manifest. It also refuses a world another game has open. None of these can be a crash's doing. A bad section or column in a file that is otherwise fine does not stop a world: that place gets what generates there, it is logged and counted in `sections_damaged`, and the next save of that region drops it and keeps the old file as `damaged.*`. That goes for a record whose checksum is good and whose contents no reader takes, too. A manifest at the last generation there is, which only an edit can make, opens, and every save of it fails with `SAVE_WORLD_ERROR_TOO_MANY` and leaves it as it was, as the count going round would make a world that will not open.
+`save_world_open` refuses, changing nothing, for: a bad header or list, another version, another seed, another generator, another block table, a file the manifest names being missing or of the wrong size, and delta files with no manifest. It also refuses a world another game has open. None of these can be a crash's doing. A bad section or column in a file that is otherwise fine does not stop a world: that place gets what generates there, it is logged and counted in `sections_damaged`, and the next save of that region drops it and keeps the old file as `damaged.*`. That goes for a record whose checksum is good and whose contents no reader takes, too. A manifest at the last generation there is, which only an edit can make, opens, and every save of it fails with `SAVE_WORLD_ERROR_TOO_MANY` and leaves it as it was, as the count going round would make a world that will not open.
 
 ## Who does what, when
 
