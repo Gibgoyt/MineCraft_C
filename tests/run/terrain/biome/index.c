@@ -45,7 +45,8 @@ static const int32_t BIO_CAVE_LEVEL_Z[BIO_CAVE_LEVELS] = {-210, -170, -100, -60,
 /* Pinned: see README.md. */
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
-static const uint64_t BIO_DIGEST_PIN = 0x2AA130675ADB29A7ull;
+/* Plan 003 phase 8 stage 5 brought spaghetti closer together and dried out most aquifer cells. */
+static const uint64_t BIO_DIGEST_PIN = 0xACC2D9D213D61821ull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 static const uint64_t BIO_COLUMNS_PIN = 0xE2B794623CAD0800ull;

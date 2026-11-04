@@ -39,7 +39,8 @@ static const uint64_t CAVE_SEED_LIST[CAVE_SEEDS] = {0x1234567890ABCDEFull, 1ull,
 /* Pinned: see README.md. */
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
-static const uint64_t CAVE_DIGEST_PIN = 0xE9A38FEA90F39FC8ull;
+/* Plan 003 phase 8 stage 5 brought spaghetti closer together and dried out most aquifer cells. */
+static const uint64_t CAVE_DIGEST_PIN = 0x50BBC3BDBF35A1E4ull;
 
 static uint64_t cave_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -516,8 +517,8 @@ TEST(only_spaghetti_opens_to_the_sky) {
      * only ever a block short of the 5 asked for here: plan 003 phase 8's issues have the one seen. */
     CHECK(open_roof[1] * 100000u <= roofed[1]);
     CHECK(mouths > 0u);
-    /* Rare, so that the ground is not a colander: at most about one column in 200. */
-    CHECK(mouths < (uint64_t)SIDE * SIDE * ACROSS * ACROSS / 100u);
+    /* Easy to find, as plan 003 phase 8 stage 5 asks, and still not a colander: it read 1 in 65 when this was set. */
+    CHECK(mouths < (uint64_t)SIDE * SIDE * ACROSS * ACROSS / 40u);
     terrain_deinit(&terrain);
 }
 
@@ -670,14 +671,14 @@ static cave_expected_t cave_expected_corner(const terrain_cave_t *cave, int32_t 
         out.cheese = cheese_gate * wanted - (1.0f32 - cheese_gate);
     }
     if (spaghetti_gate > 0.0f32) {
-        const float32_t needed = -0.15f32 + 0.65f32 * surface;
+        const float32_t needed = -0.55f32 + 0.70f32 * surface;
         const float32_t open = cave_expected_clamp(
             (cave_expected_spread(cave_scalar_field(cave->borrowed_spaghetti_gate, fx, fy, fw), 0.54f32) - needed) /
             0.2f32);
         const float32_t share =
             0.5f32 +
             0.5f32 * cave_expected_spread(cave_scalar_field(cave->borrowed_spaghetti_width, fx, fy, fw), 0.54f32);
-        out.spaghetti_limit = (0.04f32 + (0.085f32 - 0.04f32) * share) * open * spaghetti_gate;
+        out.spaghetti_limit = (0.065f32 + (0.13f32 - 0.065f32) * share) * open * spaghetti_gate;
     }
     if (noodle_gate > 0.0f32) {
         const float32_t open = cave_expected_clamp(

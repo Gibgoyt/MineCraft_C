@@ -13,4 +13,4 @@ Several tests print what they measure, so a change of shape can be judged by its
 
 **Where the pinned number comes from.** The digest is a pin, not a proof: it was printed by this test's first passing run. What makes it believable is `each_voxel_is_worked_out_as_the_readme_says`, which works voxels out from the README's sums, on the scalar reference kernel, with every number typed out again, away from a cave's very edge, where the scalar and batch kernels may differ in the last bit. The pin stops a value changing between runs and presets, which would change every world.
 
-**What it does not say.** Nothing here says the caves look good, or that a player can walk through them. That is for the phase gate's biome tour.
+**What it does not say.** Nothing here says the caves look good, or that a player can walk through them. `tests/run/terrain/cave/walk/` holds the walking, and the phase gate's biome tour the looks.
