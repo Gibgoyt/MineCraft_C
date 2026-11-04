@@ -20,7 +20,8 @@ static_assert(MC_THREADS_WORKERS >= 16); /* the plan's gate says 16 */
 static_assert(MC_THREADS_WORKERS <= 64); /* the worker mask below */
 
 enum : uint32_t {
-    ORE_LAYERS = 751u, /* the plan's -250 to 500, both included */
+    ORE_LAYERS =
+        751u, /* -250 to 500, both included: all terrain makes, so the pinned digests say a taller world moved nothing */
     ORE_WORKERS_MANY = 16u,
     ORE_CHUNK = 16u,
     ORE_CHUNK_VOXELS = ORE_CHUNK * ORE_CHUNK * ORE_LAYERS,

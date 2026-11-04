@@ -24,7 +24,7 @@ static_assert((int32_t)TRAVERSE_Z_BASE == (int32_t)COLUMN_Z_STORAGE_MIN);
 static_assert((int32_t)TRAVERSE_HEIGHT_BLOCKS == (COLUMN_Z_STORAGE_END - COLUMN_Z_STORAGE_MIN));
 
 enum : uint32_t {
-    TW_DENSE_HEIGHT = 512u, /* storage heights above this are air in every world here, and it saves most of the array */
+    TW_DENSE_HEIGHT = 1536u, /* the whole of a column */
     TW_THREADS = 8u,
     TW_RECORDS = 32u,
     TW_MATERIAL_HASHED = 200u, /* a material whose value differs voxel by voxel, so that bricks hold voxels */
@@ -222,7 +222,7 @@ static void tw_encode(tw_world_t *world, world_buffers_column_t *table, uint8_t 
                 if (bytes == 0u) {
                     continue;
                 }
-                column.section_mask |= 1ull << section_z;
+                column.section_mask[section_z >> 6] |= 1ull << (section_z & 63u);
                 column.sections[section_z] = (uint32_t)granule + 1u;
                 granule += (bytes + WORLD_BUFFERS_GRANULE_BYTES - 1u) / WORLD_BUFFERS_GRANULE_BYTES;
                 world->section_count += 1u;

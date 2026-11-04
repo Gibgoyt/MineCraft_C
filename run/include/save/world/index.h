@@ -15,8 +15,9 @@
 #include <stdint.h>
 
 enum : uint32_t {
-    /* Raised by any change an older reader could not read. A file of another version is refused and left alone. Version 2: a record may end in levels. */
-    SAVE_WORLD_VERSION = 2u,
+    /* Raised by any change an older reader could not read. A file of another version is refused and left alone. Version 2: a record may end in levels.
+     * Version 3: a column has 96 sections, up to z = 1250, so its mask in a delta file takes two words. */
+    SAVE_WORLD_VERSION = 3u,
     /* A delta file holds a square of columns this many on a side: half a kilometre of blocks. */
     SAVE_WORLD_REGION_SHIFT = 5u,
     SAVE_WORLD_REGION_SIDE = 1u << SAVE_WORLD_REGION_SHIFT,
@@ -41,7 +42,6 @@ enum : uint32_t {
     SAVE_WORLD_PALETTE_MAX = 256u,
 };
 static_assert(SAVE_WORLD_RECORD_BYTES_MAX == 8196u);
-static_assert(COLUMN_SECTIONS <= 64u); /* a mask of a column's sections fits a uint64_t */
 
 enum : uint64_t {
     SAVE_WORLD_PENDING_BYTES = 64ull << 20,
@@ -124,15 +124,15 @@ static_assert(offsetof(save_world_delta_header_t, checksum) == 56);
 
 /* One column in a delta file, at local y * SAVE_WORLD_REGION_SIDE + local x. All zeros for a column with nothing. */
 typedef struct save_world_column_entry_t {
-    uint64_t section_mask;   /* 0: one bit per section saved; the entries are for these, lowest first */
-    uint64_t entries_offset; /* 8 */
-    uint64_t checksum;       /* 16: of the two fields above, then of the entries */
+    column_mask_t section_mask; /* 0: one bit per section saved; the entries are for these, lowest first */
+    uint64_t entries_offset;    /* 16 */
+    uint64_t checksum;          /* 24: of the two fields above, then of the entries */
 } save_world_column_entry_t;
-static_assert(sizeof(save_world_column_entry_t) == 24);
+static_assert(sizeof(save_world_column_entry_t) == 32);
 static_assert(alignof(save_world_column_entry_t) == 8);
 static_assert(offsetof(save_world_column_entry_t, section_mask) == 0);
-static_assert(offsetof(save_world_column_entry_t, entries_offset) == 8);
-static_assert(offsetof(save_world_column_entry_t, checksum) == 16);
+static_assert(offsetof(save_world_column_entry_t, entries_offset) == 16);
+static_assert(offsetof(save_world_column_entry_t, checksum) == 24);
 
 /* Where one section's record is. */
 typedef struct save_world_section_entry_t {
@@ -391,14 +391,14 @@ void save_world_step_hook_set(save_world_t *save, save_world_step_hook_t hook, v
  * only on the way there. For a column not in the map: a live one's edits are not here. Returns a mask of the sections it wrote. Those
  * it could not read keep what was generated, and it logs them, and a later edit of one replaces it. scratch is
  * SAVE_WORLD_OVERLAY_SCRATCH_BYTES of the caller's. Calls no heap. Does nothing on one not open. */
-uint64_t save_world_column_overlay(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
-                                   uint8_t *scratch);
+column_mask_t save_world_column_overlay(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
+                                        uint8_t *scratch);
 
 /* The same, and the levels of each section it wrote that has any, at levels + section * SAVE_WORLD_RECORD_LEVELS_BYTES, out of
  * SAVE_WORLD_OVERLAY_LEVELS_BYTES, with a mask of those in *out_levels_mask. A voxel of fluid with no level saved is a source, so a save read without them
  * floods. */
-uint64_t save_world_column_overlay_levels(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
-                                          uint8_t *levels, uint64_t *out_levels_mask, uint8_t *scratch);
+column_mask_t save_world_column_overlay_levels(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
+                                               uint8_t *levels, column_mask_t *out_levels_mask, uint8_t *scratch);
 
 /* For the far field, on a worker: what is saved of one line of blocks from the bottom of the world to the top, written over out, at the storage height of each.
  * scratch is SAVE_WORLD_FAR_SCRATCH_BYTES, 64 byte aligned and the first 64 zero, kept from one call to the next, as a line usually has neighbours in its

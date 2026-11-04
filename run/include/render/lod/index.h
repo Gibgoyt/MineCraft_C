@@ -24,8 +24,8 @@ enum : uint32_t {
     RENDER_LOD_MARGIN_COLUMNS = 2u,
     /* Columns being built at once, across all levels. */
     RENDER_LOD_JOBS = 48u,
-    /* Column heights in blocks, and in sections at the finest level: 768 blocks in voxels of 2. */
-    RENDER_LOD_HEIGHT_BLOCKS = 768u,
+    /* Column heights in blocks, and in sections at the finest level: 1536 blocks in voxels of 2. */
+    RENDER_LOD_HEIGHT_BLOCKS = 1536u,
     RENDER_LOD_SECTIONS_MAX = (RENDER_LOD_HEIGHT_BLOCKS >> LOD_SHIFT_MIN) / 16u,
     /* The coarsest voxel a world's ground grows anything for, as a shift: 8 blocks. What grows is nearly all of what a sample of real
      * terrain costs, and past this a tree is under half of its voxel, so it would not be drawn: the stage file's cost section. */

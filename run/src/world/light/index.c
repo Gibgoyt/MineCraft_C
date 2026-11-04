@@ -20,12 +20,12 @@ enum : uint32_t {
     LIGHT_Y_STEP = SECTION_SIZE,
     LIGHT_Z_STEP = SECTION_SIZE * SECTION_SIZE,
     LIGHT_Z_TOP = COLUMN_SECTIONS * SECTION_SIZE - 1u,
-    /* In a queue's entry: a value in 4 bits, the voxel in 18, and the slot above them. */
+    /* In a queue's entry: a value in 4 bits, the voxel in 19, and the slot above them. */
     LIGHT_ENTRY_VOXEL_SHIFT = 4u,
-    LIGHT_ENTRY_SLOT_SHIFT = 22u,
-    LIGHT_ENTRY_VOXEL_MASK = (1u << 18) - 1u,
+    LIGHT_ENTRY_SLOT_SHIFT = 23u,
+    LIGHT_ENTRY_VOXEL_MASK = (1u << 19) - 1u,
 };
-static_assert(COLUMN_SECTIONS <= 1u << (18u - 12u)); /* a voxel's number fits its 18 bits */
+static_assert(COLUMN_SECTIONS <= 1u << (19u - 12u)); /* a voxel's number fits its 19 bits */
 static_assert(WORLD_LIGHT_LEVELS == 16u);
 static_assert((uint32_t)LIGHT_OPAQUE == (uint32_t)SECTION_LIGHT_MAX);
 
@@ -187,12 +187,12 @@ static inline bool light_neighbour(const world_light_t *light, uint32_t slot, ui
 
 /* ---- Writing ------------------------------------------------------------------------------------------------------ */
 
-static void light_touch(world_light_t *light, uint32_t slot, uint64_t section_mask) {
-    if (light->borrowed_touched[slot] == 0u) {
+static void light_touch(world_light_t *light, uint32_t slot, column_mask_t section_mask) {
+    if (!column_mask_any(light->borrowed_touched[slot])) {
         light->borrowed_touched_slots[light->touched_count] = slot;
         light->touched_count++;
     }
-    light->borrowed_touched[slot] |= section_mask;
+    light->borrowed_touched[slot] = column_mask_or(light->borrowed_touched[slot], section_mask);
 }
 
 static void light_note_no_memory(world_light_t *light) {
@@ -211,7 +211,7 @@ static bool light_write(world_light_t *light, uint32_t slot, uint32_t voxel, uin
         return false;
     }
     light->voxels_written++;
-    light_touch(light, slot, 1ull << section_index);
+    light_touch(light, slot, column_mask_of(section_index));
     return true;
 }
 
@@ -439,7 +439,7 @@ static void light_section_fill(world_light_t *light, uint32_t slot, uint32_t sec
     section_t *const section = &light_column(light, slot)->sections[section_index];
     if (section->borrowed_light != nullptr || section->light_uniform != packed) {
         section_light_fill(section, light->borrowed_map->borrowed_pool, packed);
-        light_touch(light, slot, 1ull << section_index);
+        light_touch(light, slot, column_mask_of(section_index));
     }
 }
 
@@ -470,7 +470,7 @@ static void light_section_fall(world_light_t *light, uint32_t slot, uint32_t sec
         light_note_no_memory(light);
         return;
     }
-    light_touch(light, slot, 1ull << section_index);
+    light_touch(light, slot, column_mask_of(section_index));
 }
 
 /* A whole column, with nothing from the side. */
@@ -642,13 +642,11 @@ static world_light_status_t light_finish(world_light_t *light) {
     section_pool_t *const pool = light->borrowed_map->borrowed_pool;
     for (uint32_t i = 0u; i < light->touched_count; i++) {
         const uint32_t slot = light->borrowed_touched_slots[i];
-        const uint64_t mask = light->borrowed_touched[slot];
-        light->borrowed_touched[slot] = 0u;
+        const column_mask_t mask = light->borrowed_touched[slot];
+        light->borrowed_touched[slot] = COLUMN_MASK_NONE;
         column_t *const column = light_column(light, slot);
-        for (uint32_t s = 0u; s < COLUMN_SECTIONS; s++) {
-            if ((mask & (1ull << s)) != 0u) {
-                section_compact(&column->sections[s], pool);
-            }
+        for (column_mask_t left = mask; column_mask_any(left); left = column_mask_drop_lowest(left)) {
+            section_compact(&column->sections[column_mask_lowest(left)], pool);
         }
         world_edit_sections_mark(light->borrowed_edit, slot, mask, WORLD_EDIT_FOR_RENDER);
     }
@@ -673,7 +671,7 @@ void world_light_init(world_light_t *light, arena_t *arena, world_edit_t *edit, 
     light->log_cursor = world_edit_log_position(edit);
     light->borrowed_lit = arena_alloc_zeroed(arena, (uint64_t)map->slot_count * sizeof(uint32_t), alignof(uint32_t));
     light->borrowed_touched =
-        arena_alloc_zeroed(arena, (uint64_t)map->slot_count * sizeof(uint64_t), alignof(uint64_t));
+        arena_alloc_zeroed(arena, (uint64_t)map->slot_count * sizeof(column_mask_t), alignof(column_mask_t));
     light->borrowed_touched_slots = arena_alloc_array(arena, map->slot_count, sizeof(uint32_t), alignof(uint32_t));
     light->borrowed_wave = arena_alloc_array(arena, wave_capacity, sizeof(uint64_t), alignof(uint64_t));
     light->borrowed_nodes = arena_alloc_array(arena, wave_capacity, sizeof(uint64_t), alignof(uint64_t));
@@ -939,16 +937,16 @@ world_light_status_t world_light_update(world_light_t *light) {
     return light_finish(light);
 }
 
-world_light_status_t world_light_sections_replaced(world_light_t *light, uint32_t slot, uint64_t section_mask) {
-    ASSERT_ALWAYS(slot < light->borrowed_map->slot_count && (section_mask & ~WORLD_EDIT_SECTIONS_ALL) == 0u);
+world_light_status_t world_light_sections_replaced(world_light_t *light, uint32_t slot, column_mask_t section_mask) {
+    ASSERT_ALWAYS(slot < light->borrowed_map->slot_count &&
+                  !column_mask_any(column_mask_without(section_mask, WORLD_EDIT_SECTIONS_ALL)));
     light_catch_up(light);
     if (light_slot_is_lit(light, slot)) {
         for (uint32_t channel = 0u; channel < LIGHT_CHANNELS; channel++) {
-            for (uint32_t s = 0u; s < COLUMN_SECTIONS; s++) {
-                if ((section_mask & (1ull << s)) != 0u) {
-                    for (uint32_t i = 0u; i < SECTION_VOXELS; i++) {
-                        light_seed(light, slot, (s << LIGHT_SECTION_SHIFT) | i, channel);
-                    }
+            for (column_mask_t left = section_mask; column_mask_any(left); left = column_mask_drop_lowest(left)) {
+                const uint32_t s = column_mask_lowest(left);
+                for (uint32_t i = 0u; i < SECTION_VOXELS; i++) {
+                    light_seed(light, slot, (s << LIGHT_SECTION_SHIFT) | i, channel);
                 }
             }
             light_pass(light, channel);

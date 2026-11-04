@@ -57,11 +57,11 @@ static void edit_queue_push(world_edit_t *edit, uint32_t slot, world_edit_column
     column->queued |= bit;
 }
 
-static void edit_flag(world_edit_t *edit, uint32_t slot, world_edit_column_t *column, uint64_t section_mask,
+static void edit_flag(world_edit_t *edit, uint32_t slot, world_edit_column_t *column, column_mask_t section_mask,
                       uint32_t consumers) {
     for (uint32_t i = 0; i < WORLD_EDIT_CONSUMER_COUNT; i++) {
         if ((consumers & (1u << i)) != 0u) {
-            column->dirty[i] |= section_mask;
+            column->dirty[i] = column_mask_or(column->dirty[i], section_mask);
             edit_queue_push(edit, slot, column, i);
         }
     }
@@ -119,7 +119,7 @@ world_edit_status_t world_edit_block_set(world_edit_t *edit, int32_t x, int32_t 
     ASSERT_ALWAYS(in_window);
     const uint32_t section_index = column_section_of(z);
     world_edit_column_t *const column = edit_column(edit, slot);
-    edit_flag(edit, slot, column, 1ull << section_index, WORLD_EDIT_FOR_ALL);
+    edit_flag(edit, slot, column, column_mask_of(section_index), WORLD_EDIT_FOR_ALL);
     edit_top_update(column, live, section_index);
     edit->revision++;
     column->revision = edit->revision;
@@ -152,16 +152,16 @@ world_edit_status_t world_edit_light_set(world_edit_t *edit, int32_t x, int32_t 
     const bool in_window = world_map_slot_of(map, chunk_x, chunk_y, &slot);
     ASSERT_ALWAYS(in_window);
     world_edit_column_t *const column = edit_column(edit, slot);
-    edit_flag(edit, slot, column, 1ull << column_section_of(z), WORLD_EDIT_FOR_RENDER);
+    edit_flag(edit, slot, column, column_mask_of(column_section_of(z)), WORLD_EDIT_FOR_RENDER);
     edit->revision++;
     column->revision = edit->revision;
     return WORLD_EDIT_STATUS_CHANGED;
 }
 
-void world_edit_sections_mark(world_edit_t *edit, uint32_t slot, uint64_t section_mask, uint32_t consumers) {
+void world_edit_sections_mark(world_edit_t *edit, uint32_t slot, column_mask_t section_mask, uint32_t consumers) {
     ASSERT_ALWAYS(edit_slot_is_ready(edit, slot));
-    ASSERT_ALWAYS((section_mask & ~WORLD_EDIT_SECTIONS_ALL) == 0u);
-    if (section_mask == 0u) {
+    ASSERT_ALWAYS(!column_mask_any(column_mask_without(section_mask, WORLD_EDIT_SECTIONS_ALL)));
+    if (!column_mask_any(section_mask)) {
         return;
     }
     world_edit_column_t *const column = edit_column(edit, slot);
@@ -174,12 +174,12 @@ void world_edit_sections_mark(world_edit_t *edit, uint32_t slot, uint64_t sectio
 void world_edit_column_filled(world_edit_t *edit, uint32_t slot) {
     ASSERT_ALWAYS(edit_slot_is_ready(edit, slot));
     const column_t *const live = &edit->borrowed_map->borrowed_columns[slot];
-    uint64_t mask = 0;
+    column_mask_t mask = COLUMN_MASK_NONE;
     for (uint32_t i = 0; i < COLUMN_SECTIONS; i++) {
         const section_t *const section = &live->sections[i];
         if (edit_section_has_blocks(section) || section->borrowed_light != nullptr ||
             section->light_uniform != SECTION_LIGHT_OPEN_SKY) {
-            mask |= 1ull << i;
+            mask = column_mask_or(mask, column_mask_of(i));
         }
     }
     world_edit_sections_mark(edit, slot, mask, WORLD_EDIT_FOR_RENDER | WORLD_EDIT_FOR_LIGHT);
@@ -211,10 +211,10 @@ bool world_edit_dirty_next(world_edit_t *edit, world_edit_consumer_t consumer, w
         edit->queue_count[consumer]--;
         world_edit_column_t *const column = edit_column(edit, slot);
         column->queued &= (uint8_t)~(1u << consumer);
-        const uint64_t mask = column->dirty[consumer];
-        column->dirty[consumer] = 0u;
+        const column_mask_t mask = column->dirty[consumer];
+        column->dirty[consumer] = COLUMN_MASK_NONE;
         const world_map_slot_t *const entry = &edit->borrowed_map->borrowed_slots[slot];
-        if (mask == 0u || entry->state != WORLD_MAP_STATE_READY) {
+        if (!column_mask_any(mask) || entry->state != WORLD_MAP_STATE_READY) {
             continue; /* cleared by hand, or the column it was for has gone */
         }
         *out = (world_edit_dirty_t){mask, entry->chunk_x, entry->chunk_y, slot, entry->generation};
@@ -233,16 +233,18 @@ void world_edit_dirty_restore(world_edit_t *edit, const world_edit_dirty_t *dirt
     edit_flag(edit, dirty->slot, column, dirty->section_mask, 1u << consumer);
 }
 
-uint64_t world_edit_dirty_peek(world_edit_t *edit, uint32_t slot, world_edit_consumer_t consumer) {
+column_mask_t world_edit_dirty_peek(world_edit_t *edit, uint32_t slot, world_edit_consumer_t consumer) {
     if (!edit_slot_is_ready(edit, slot)) {
-        return 0u;
+        return COLUMN_MASK_NONE;
     }
     return edit_column(edit, slot)->dirty[consumer];
 }
 
-void world_edit_dirty_clear(world_edit_t *edit, uint32_t slot, world_edit_consumer_t consumer, uint64_t section_mask) {
+void world_edit_dirty_clear(world_edit_t *edit, uint32_t slot, world_edit_consumer_t consumer,
+                            column_mask_t section_mask) {
     if (edit_slot_is_ready(edit, slot)) {
-        edit_column(edit, slot)->dirty[consumer] &= ~section_mask;
+        world_edit_column_t *const column = edit_column(edit, slot);
+        column->dirty[consumer] = column_mask_without(column->dirty[consumer], section_mask);
     }
 }
 
@@ -353,19 +355,13 @@ static void snapshot_sections_fill(world_edit_snapshot_t *snapshot, world_edit_s
     world_edit_dirty_t dirty;
     while (view->section_count < snapshot->section_capacity &&
            world_edit_dirty_next(edit, WORLD_EDIT_CONSUMER_RENDER, &dirty)) {
-        uint64_t remaining = dirty.section_mask;
-        for (uint32_t i = 0; i < COLUMN_SECTIONS && remaining != 0u; i++) {
-            const uint64_t bit = 1ull << i;
-            if ((remaining & bit) == 0u) {
-                continue;
-            }
-            if (view->section_count == snapshot->section_capacity) {
-                break;
-            }
+        column_mask_t remaining = dirty.section_mask;
+        while (column_mask_any(remaining) && view->section_count != snapshot->section_capacity) {
+            const uint32_t i = column_mask_lowest(remaining);
             snapshot_section_copy(view, &dirty, &columns[dirty.slot].sections[i], i);
-            remaining &= ~bit;
+            remaining = column_mask_drop_lowest(remaining);
         }
-        if (remaining != 0u) {
+        if (column_mask_any(remaining)) {
             dirty.section_mask = remaining;
             world_edit_dirty_restore(edit, &dirty, WORLD_EDIT_CONSUMER_RENDER);
         }
@@ -377,7 +373,7 @@ static void snapshot_sections_return(world_edit_t *edit, const world_edit_snapsh
     for (uint32_t i = 0; i < view->section_count; i++) {
         const world_edit_snapshot_section_t *const entry = &view->borrowed_sections[i];
         const world_edit_dirty_t dirty = {
-            .section_mask = 1ull << entry->section_index,
+            .section_mask = column_mask_of(entry->section_index),
             .chunk_x = entry->chunk_x,
             .chunk_y = entry->chunk_y,
             .slot = entry->slot,

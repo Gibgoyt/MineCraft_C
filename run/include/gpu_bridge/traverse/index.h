@@ -17,8 +17,8 @@ extern "C" {
 
 enum : uint32_t {
     TRAVERSE_COLUMN_BLOCKS = 16u,
-    TRAVERSE_COLUMN_SECTIONS = 48u,
-    TRAVERSE_HEIGHT_BLOCKS = 768u, /* a world z of TRAVERSE_Z_BASE is storage height 0 */
+    TRAVERSE_COLUMN_SECTIONS = 96u,
+    TRAVERSE_HEIGHT_BLOCKS = 1536u, /* a world z of TRAVERSE_Z_BASE is storage height 0 */
     /* One block of threads, one coarse value. Stage 01.3 measured 8x8 best or tied for best of those it tried. */
     TRAVERSE_TILE_PIXELS = 8u,
     /* traverse_hit_t.value: the voxel's material in the low 16 bits, and its light in the 8 above them. */

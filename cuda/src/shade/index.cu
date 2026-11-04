@@ -106,7 +106,8 @@ static __device__ __forceinline__ uint32_t shade_cell_material(const traverse_vi
         return SHADE_NO_MATERIAL;
     }
     const world_buffers_column_t *const column = &view->borrowed_table[traverse_slot(view, x >> 4, y >> 4)];
-    if (z >= traverse_column_top(column, x >> 4, y >> 4) || ((column->section_mask >> (z >> 4)) & 1u) == 0u) {
+    if (z >= traverse_column_top(column, x >> 4, y >> 4) ||
+        !world_buffers_mask_has(column->section_mask, (uint32_t)z >> 4)) {
         return SHADE_NO_MATERIAL;
     }
     const uint8_t *const encoded = traverse_section_bytes(view, column->sections[z >> 4]);
@@ -169,7 +170,7 @@ static __device__ __forceinline__ uint32_t shade_cell_material_kept(const traver
         cursor->brick_count = 0u;
         const world_buffers_column_t *const column = &view->borrowed_table[traverse_slot(view, x >> 4, y >> 4)];
         cursor->top = traverse_column_top(column, x >> 4, y >> 4);
-        if (((column->section_mask >> (z >> 4)) & 1u) != 0u) {
+        if (world_buffers_mask_has(column->section_mask, (uint32_t)z >> 4)) {
             cursor->encoded = traverse_section_bytes(view, column->sections[z >> 4]);
             const world_buffers_section_t header = *(const world_buffers_section_t *)(const void *)cursor->encoded;
             cursor->brick_count = header.brick_count;

@@ -14,7 +14,7 @@ enum : uint64_t {
     COLUMN_TEST_COUNT = 16ull,
 };
 enum : uint32_t {
-    /* z from -250 to 500, both included, in a 16x16 column. */
+    /* z from -250 to 1250, both included, in a 16x16 column. */
     COLUMN_TEST_HEIGHT = COLUMN_Z_GAMEPLAY_MAX - COLUMN_Z_GAMEPLAY_MIN + 1,
     COLUMN_TEST_VOXELS = COLUMN_SIZE * COLUMN_SIZE * COLUMN_TEST_HEIGHT,
 };
@@ -25,7 +25,7 @@ typedef struct column_test_t {
     column_t column;
     uint8_t _pad0[56];
 } column_test_t;
-static_assert(sizeof(column_test_t) == 3264);
+static_assert(sizeof(column_test_t) == 4416);
 
 static column_test_t *column_test_begin(test_context_t *t) {
     column_test_t *const raw = test_alloc(t, sizeof(column_test_t) + 64u);
@@ -59,14 +59,14 @@ static uint32_t column_test_flat_index(uint32_t x, uint32_t y, int32_t z) {
 
 TEST(the_limits_are_the_ones_the_plan_and_the_yaml_give) {
     CHECK_EQ_I64(COLUMN_Z_STORAGE_MIN, -256);
-    CHECK_EQ_I64(COLUMN_Z_STORAGE_END, 512);
+    CHECK_EQ_I64(COLUMN_Z_STORAGE_END, 1280);
     CHECK_EQ_I64(COLUMN_Z_GAMEPLAY_MIN, -250);
-    CHECK_EQ_I64(COLUMN_Z_GAMEPLAY_MAX, 500);
+    CHECK_EQ_I64(COLUMN_Z_GAMEPLAY_MAX, 1250);
     CHECK_EQ_I64(COLUMN_Z_GAMEPLAY_MIN, MC_WORLD_Z_MIN);
     CHECK_EQ_I64(COLUMN_Z_GAMEPLAY_MAX, MC_WORLD_Z_MAX);
-    CHECK_EQ_U64(COLUMN_SECTIONS, 48u);
+    CHECK_EQ_U64(COLUMN_SECTIONS, 96u);
     CHECK_EQ_U64(COLUMN_SIZE, 16u);
-    CHECK_EQ_U64(sizeof(((column_t *)nullptr)->sections) / sizeof(section_t), 48u);
+    CHECK_EQ_U64(sizeof(((column_t *)nullptr)->sections) / sizeof(section_t), 96u);
 }
 
 /* Each against floor division done by hand, not by the shift it is testing. */
@@ -104,10 +104,10 @@ TEST(every_z_in_storage_has_a_section_and_a_place_and_no_two_share_them) {
     CHECK_EQ_U64(column_section_local_of(-1), 15u);
     CHECK_EQ_U64(column_section_of(0), 16u);
     CHECK_EQ_U64(column_section_local_of(0), 0u);
-    CHECK_EQ_U64(column_section_of(500), 47u);
-    CHECK_EQ_U64(column_section_local_of(500), 4u);
-    CHECK_EQ_U64(column_section_of(511), 47u);
-    CHECK_EQ_U64(column_section_local_of(511), 15u);
+    CHECK_EQ_U64(column_section_of(1250), 94u);
+    CHECK_EQ_U64(column_section_local_of(1250), 2u);
+    CHECK_EQ_U64(column_section_of(1279), 95u);
+    CHECK_EQ_U64(column_section_local_of(1279), 15u);
     uint32_t next = 0;
     for (int32_t z = COLUMN_Z_STORAGE_MIN; z < COLUMN_Z_STORAGE_END; z++) {
         CHECK(column_z_in_storage(z));
@@ -116,33 +116,70 @@ TEST(every_z_in_storage_has_a_section_and_a_place_and_no_two_share_them) {
     }
     CHECK_EQ_U64(next, COLUMN_SECTIONS * SECTION_SIZE);
     CHECK(!column_z_in_storage(-257));
-    CHECK(!column_z_in_storage(512));
+    CHECK(!column_z_in_storage(1280));
 }
 
-TEST(gameplay_stops_at_minus_250_and_at_500) {
+TEST(gameplay_stops_at_minus_250_and_at_1250) {
     CHECK(column_z_in_gameplay(-250));
     CHECK(column_z_in_gameplay(0));
-    CHECK(column_z_in_gameplay(500));
+    CHECK(column_z_in_gameplay(1250));
     CHECK(!column_z_in_gameplay(-251));
-    CHECK(!column_z_in_gameplay(501));
+    CHECK(!column_z_in_gameplay(1251));
     CHECK(!column_z_in_gameplay(INT32_MIN));
     CHECK(!column_z_in_gameplay(INT32_MAX));
     CHECK_EQ_I64(column_z_clamp(-251), -250);
     CHECK_EQ_I64(column_z_clamp(-250), -250);
     CHECK_EQ_I64(column_z_clamp(0), 0);
-    CHECK_EQ_I64(column_z_clamp(500), 500);
-    CHECK_EQ_I64(column_z_clamp(501), 500);
+    CHECK_EQ_I64(column_z_clamp(1250), 1250);
+    CHECK_EQ_I64(column_z_clamp(1251), 1250);
     CHECK_EQ_I64(column_z_clamp(INT32_MIN), -250);
-    CHECK_EQ_I64(column_z_clamp(INT32_MAX), 500);
+    CHECK_EQ_I64(column_z_clamp(INT32_MAX), 1250);
+}
+
+/* ---- A mask of a column's sections ------------------------------------------------------------------------------- */
+
+TEST(a_mask_holds_every_section_on_both_sides_of_its_word_boundary) {
+    CHECK_EQ_U64(column_mask_count(COLUMN_MASK_ALL), COLUMN_SECTIONS);
+    CHECK_EQ_U64(column_mask_count(COLUMN_MASK_NONE), 0u);
+    CHECK(!column_mask_any(COLUMN_MASK_NONE));
+    column_mask_t walked = COLUMN_MASK_NONE;
+    for (uint32_t s = 0u; s < COLUMN_SECTIONS; s++) {
+        const column_mask_t one = column_mask_of(s);
+        CHECK_EQ_U64(column_mask_count(one), 1u);
+        CHECK_EQ_U64(column_mask_lowest(one), s);
+        CHECK(column_mask_has(one, s));
+        CHECK(column_mask_has(COLUMN_MASK_ALL, s));
+        CHECK(!column_mask_any(column_mask_drop_lowest(one)));
+        CHECK(!column_mask_any(column_mask_without(one, COLUMN_MASK_ALL)));
+        walked = column_mask_or(walked, one);
+    }
+    CHECK(column_mask_equal(walked, COLUMN_MASK_ALL));
+    /* Lowest first, across the boundary. */
+    const column_mask_t some =
+        column_mask_or(column_mask_or(column_mask_of(95u), column_mask_of(64u)), column_mask_of(63u));
+    const uint32_t expected[3] = {63u, 64u, 95u};
+    uint32_t seen = 0u;
+    for (column_mask_t left = some; column_mask_any(left); left = column_mask_drop_lowest(left)) {
+        REQUIRE(seen < 3u);
+        CHECK_EQ_U64(column_mask_lowest(left), expected[seen]);
+        seen++;
+    }
+    CHECK_EQ_U64(seen, 3u);
+    CHECK(column_mask_equal(column_mask_and(some, column_mask_of(64u)), column_mask_of(64u)));
+    CHECK(column_mask_equal(column_mask_without(some, column_mask_of(64u)),
+                            column_mask_or(column_mask_of(63u), column_mask_of(95u))));
+    /* A bit past the last section is not one of them: a save file's mask is checked against this. */
+    const column_mask_t past = {{0ull, 1ull << (COLUMN_SECTIONS - COLUMN_MASK_WORD_BITS)}};
+    CHECK(column_mask_any(column_mask_without(past, COLUMN_MASK_ALL)));
 }
 
 /* ---- The limits, on a real column --------------------------------------------------------------------------------- */
 
-TEST(a_write_at_minus_251_or_501_is_rejected_and_touches_nothing) {
+TEST(a_write_at_minus_251_or_1251_is_rejected_and_touches_nothing) {
     column_test_t *const test = column_test_begin(t);
     REQUIRE(test != nullptr);
     section_pool_t *const pool = &test->world.section_pool;
-    static const int32_t bad[] = {-251, 501, -256, 511, -257, 512, INT32_MIN, INT32_MAX};
+    static const int32_t bad[] = {-251, 1251, -256, 1279, -257, 1280, INT32_MIN, INT32_MAX};
     for (uint32_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
         CHECK_EQ_U64(column_block_set(&test->column, pool, 0u, 0u, bad[i], 1u), COLUMN_STATUS_Z_OUT_OF_RANGE);
         CHECK_EQ_U64(column_light_set(&test->column, pool, 0u, 0u, bad[i], 1u), COLUMN_STATUS_Z_OUT_OF_RANGE);
@@ -159,26 +196,26 @@ TEST(a_write_at_minus_251_or_501_is_rejected_and_touches_nothing) {
     column_test_end(test);
 }
 
-TEST(a_write_at_minus_250_or_500_is_accepted_and_lands_in_the_end_sections) {
+TEST(a_write_at_minus_250_or_1250_is_accepted_and_lands_in_the_end_sections) {
     column_test_t *const test = column_test_begin(t);
     REQUIRE(test != nullptr);
     section_pool_t *const pool = &test->world.section_pool;
     CHECK_EQ_U64(column_block_set(&test->column, pool, 1u, 2u, -250, 7u), COLUMN_STATUS_OK);
-    CHECK_EQ_U64(column_block_set(&test->column, pool, 3u, 4u, 500, 8u), COLUMN_STATUS_OK);
+    CHECK_EQ_U64(column_block_set(&test->column, pool, 3u, 4u, 1250, 8u), COLUMN_STATUS_OK);
     CHECK_EQ_U64(column_light_set(&test->column, pool, 1u, 2u, -250, 0x12u), COLUMN_STATUS_OK);
-    CHECK_EQ_U64(column_light_set(&test->column, pool, 3u, 4u, 500, 0x34u), COLUMN_STATUS_OK);
+    CHECK_EQ_U64(column_light_set(&test->column, pool, 3u, 4u, 1250, 0x34u), COLUMN_STATUS_OK);
     uint16_t block = 0;
     uint8_t light = 0;
     CHECK(column_block_get(&test->column, 1u, 2u, -250, &block));
     CHECK_EQ_U64(block, 7u);
-    CHECK(column_block_get(&test->column, 3u, 4u, 500, &block));
+    CHECK(column_block_get(&test->column, 3u, 4u, 1250, &block));
     CHECK_EQ_U64(block, 8u);
     CHECK(column_light_get(&test->column, 1u, 2u, -250, &light));
     CHECK_EQ_U64(light, 0x12u);
-    CHECK(column_light_get(&test->column, 3u, 4u, 500, &light));
+    CHECK(column_light_get(&test->column, 3u, 4u, 1250, &light));
     CHECK_EQ_U64(light, 0x34u);
     CHECK_EQ_U64(section_block_get(&test->column.sections[0], section_voxel_index(1u, 2u, 6u)), 7u);
-    CHECK_EQ_U64(section_block_get(&test->column.sections[47], section_voxel_index(3u, 4u, 4u)), 8u);
+    CHECK_EQ_U64(section_block_get(&test->column.sections[94], section_voxel_index(3u, 4u, 2u)), 8u);
     column_test_end(test);
 }
 
@@ -273,15 +310,15 @@ TEST(random_edits_of_blocks_and_light_match_a_plain_array_of_the_whole_range) {
         }
     }
     CHECK(same);
-    /* Storage outside the gameplay range was never written: those sections' first six and last eleven layers are untouched. */
+    /* Storage outside the gameplay range was never written: those sections' first six layers, and all above z = 1250, are untouched. */
     const section_t *const lowest = &test->column.sections[0];
-    const section_t *const highest = &test->column.sections[47];
+    const section_t *const highest = &test->column.sections[94];
     for (uint32_t y = 0; y < SECTION_SIZE; y++) {
         for (uint32_t x = 0; x < SECTION_SIZE; x++) {
             for (uint32_t local_z = 0; local_z < 6u; local_z++) {
                 CHECK_EQ_U64(section_block_get(lowest, section_voxel_index(x, y, local_z)), BLOCK_ID_AIR);
             }
-            for (uint32_t local_z = 5; local_z < 16u; local_z++) {
+            for (uint32_t local_z = 3; local_z < 16u; local_z++) {
                 CHECK_EQ_U64(section_block_get(highest, section_voxel_index(x, y, local_z)), BLOCK_ID_AIR);
             }
         }

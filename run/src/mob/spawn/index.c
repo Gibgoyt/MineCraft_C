@@ -14,6 +14,8 @@
 
 /* The opacity of a block that lets nothing through. */
 enum : uint8_t { MOB_SPAWN_OPAQUE = 15u };
+/* Layers from the bottom of the world a try always looks among. */
+enum : uint32_t { MOB_SPAWN_TALL_LEAST = 751u };
 
 void mob_spawn_start(mob_spawn_t *spawn, arena_t *arena, uint64_t seed) {
     memset(spawn, 0, sizeof(*spawn));
@@ -268,18 +270,35 @@ static uint32_t mob_spawn_pack(mob_spawn_t *spawn, entity_store_t *store, physic
     return made;
 }
 
+/* How many layers from the bottom of the world a try looks among in this column. Empty sky is not worth a try: a world made taller must not make the ground it has spawn less, and
+ * a column that reaches above MOB_SPAWN_TALL_LEAST layers is looked at all the way up. */
+static uint32_t mob_spawn_tall(const column_t *column) {
+    if (column != nullptr) {
+        const uint32_t always = column_section_of(COLUMN_Z_GAMEPLAY_MIN + (int32_t)MOB_SPAWN_TALL_LEAST - 1);
+        for (uint32_t i = COLUMN_SECTIONS - 1u; i > always; i--) {
+            const section_t *const section = &column->sections[i];
+            if (section->bits != SECTION_BITS_UNIFORM || section->block_uniform != BLOCK_ID_AIR) {
+                const int32_t top = COLUMN_Z_STORAGE_MIN + (int32_t)((i + 1u) * SECTION_SIZE) - 1;
+                return (uint32_t)(column_z_clamp(top) - COLUMN_Z_GAMEPLAY_MIN) + 1u;
+            }
+        }
+    }
+    return MOB_SPAWN_TALL_LEAST;
+}
+
 void mob_spawn_tick(mob_spawn_t *spawn, entity_store_t *store, physics_t *physics, const world_map_t *map,
                     const mob_spawn_view_t *view) {
     uint32_t alive = mob_spawn_despawn(spawn, store, view);
     const uint32_t cap = mob_spawn_cap(map->ready_count);
     const int32_t player_x = (int32_t)floor(view->position[0]), player_y = (int32_t)floor(view->position[1]);
     const uint32_t across = 2u * MOB_SPAWN_REACH + 1u;
-    const uint32_t tall = (uint32_t)(COLUMN_Z_GAMEPLAY_MAX - COLUMN_Z_GAMEPLAY_MIN) + 1u;
     for (uint32_t i = 0u; i < MOB_SPAWN_TRIES_PER_TICK && alive < cap; i++) {
         const int32_t x = player_x - (int32_t)MOB_SPAWN_REACH + (int32_t)terrain_rng_next_below(&spawn->random, across);
         const int32_t y = player_y - (int32_t)MOB_SPAWN_REACH + (int32_t)terrain_rng_next_below(&spawn->random, across);
-        const int32_t z = COLUMN_Z_GAMEPLAY_MIN + (int32_t)terrain_rng_next_below(&spawn->random, tall);
-        if (world_map_column_at(map, column_chunk_of(x), column_chunk_of(y)) == nullptr) {
+        const column_t *const column = world_map_column_at(map, column_chunk_of(x), column_chunk_of(y));
+        const int32_t z =
+            COLUMN_Z_GAMEPLAY_MIN + (int32_t)terrain_rng_next_below(&spawn->random, mob_spawn_tall(column));
+        if (column == nullptr) {
             continue;
         }
         int32_t floor_z = 0;

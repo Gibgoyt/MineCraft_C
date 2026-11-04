@@ -420,14 +420,14 @@ static void fs_world_read(fs_context_t *fs, int32_t region_x, int32_t region_y) 
     for (uint32_t local = 0u; local < SAVE_WORLD_REGION_COLUMNS; local++) {
         const int32_t chunk_x = (int32_t)(first_x + local % SAVE_WORLD_REGION_SIDE);
         const int32_t chunk_y = (int32_t)(first_y + local / SAVE_WORLD_REGION_SIDE);
-        uint64_t levels_mask = 0u;
-        const uint64_t mask =
+        column_mask_t levels_mask = COLUMN_MASK_NONE;
+        const column_mask_t mask =
             save_world_column_overlay_levels(world, chunk_x, chunk_y, states, levels, &levels_mask, scratch);
-        if ((levels_mask & ~mask) != 0u) {
+        if (column_mask_any(column_mask_without(levels_mask, mask))) {
             fuzz_fail("levels for a section that was not read");
         }
         for (uint32_t section = 0u; section < COLUMN_SECTIONS; section++) {
-            if ((mask & (1ull << section)) == 0u) {
+            if (!column_mask_has(mask, section)) {
                 continue;
             }
             for (uint32_t i = 0u; i < SECTION_VOXELS; i++) {
@@ -541,9 +541,9 @@ static void fs_world_fix(uint8_t *body, uint64_t length, fuzz_rng_t *rng) {
                 delta + sizeof(delta_header) + (uint64_t)column * sizeof(save_world_column_entry_t);
             save_world_column_entry_t entry;
             memcpy(&entry, entry_at, sizeof(entry));
-            const uint64_t count = (uint64_t)__builtin_popcountll(entry.section_mask);
+            const uint64_t count = (uint64_t)column_mask_count(entry.section_mask);
             const uint64_t entries_bytes = count * sizeof(save_world_section_entry_t);
-            if (entry.section_mask == 0u || entry.entries_offset > delta_bytes ||
+            if (!column_mask_any(entry.section_mask) || entry.entries_offset > delta_bytes ||
                 entries_bytes > delta_bytes - entry.entries_offset) {
                 continue;
             }

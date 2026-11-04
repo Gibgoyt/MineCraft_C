@@ -741,8 +741,8 @@ static bool game_column_fill(game_t *game, const game_column_job_t *job) {
     }
     world_edit_column_filled(&world->edit, job->request.slot);
     if (job->borrowed_save != nullptr) {
-        for (uint64_t left = job->levels_mask; left != 0u; left &= left - 1u) {
-            const uint32_t section = (uint32_t)__builtin_ctzll(left);
+        for (column_mask_t left = job->levels_mask; column_mask_any(left); left = column_mask_drop_lowest(left)) {
+            const uint32_t section = column_mask_lowest(left);
             world_tick_section_levels_restore(&world->tick, job->request.chunk_x, job->request.chunk_y, section,
                                               job->borrowed_opened + SAVE_WORLD_OVERLAY_SCRATCH_BYTES +
                                                   (uint64_t)section * SAVE_WORLD_RECORD_LEVELS_BYTES);

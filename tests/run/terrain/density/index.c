@@ -23,7 +23,8 @@ static_assert(MC_THREADS_WORKERS >= 16); /* the plan's gate says 16 */
 static_assert(MC_THREADS_WORKERS <= 64); /* the worker mask below */
 
 enum : uint32_t {
-    DENSITY_LAYERS = 751u, /* the plan's -250 to 500, both included */
+    DENSITY_LAYERS =
+        751u, /* -250 to 500, both included: all terrain makes, so the pinned digests say a taller world moved nothing */
     DENSITY_WORKERS_MANY = 16u,
     DENSITY_CHUNK = 16u,
     DENSITY_CHUNK_VOXELS = DENSITY_CHUNK * DENSITY_CHUNK * DENSITY_LAYERS,
@@ -79,8 +80,8 @@ static uint64_t density_voxel(const terrain_density_box_t *box, uint32_t ix, uin
 TEST(the_limits_are_the_ones_the_plan_and_the_yaml_give) {
     CHECK_EQ_I64(MC_WORLD_Z_MIN, -250);
     CHECK_EQ_I64(MC_WORLD_Z_SEA, 0);
-    CHECK_EQ_I64(MC_WORLD_Z_MAX, 500);
-    CHECK_EQ_I64(MC_WORLD_Z_MAX - MC_WORLD_Z_MIN + 1, DENSITY_LAYERS);
+    CHECK_EQ_I64(MC_WORLD_Z_MAX, 1250);
+    CHECK_EQ_I64(MC_WORLD_Z_MAX - MC_WORLD_Z_MIN + 1, 1501);
     CHECK_EQ_I64(COLUMN_Z_GAMEPLAY_MIN, MC_WORLD_Z_MIN);
     CHECK_EQ_I64(COLUMN_Z_GAMEPLAY_MAX, MC_WORLD_Z_MAX);
     /* The limits in the header, added up from the README's table, not read from the header's sums. */

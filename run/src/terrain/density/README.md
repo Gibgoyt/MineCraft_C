@@ -18,15 +18,15 @@
 
 ## The limits
 
-The plan's range, from `config/machine.yaml`, both ends included: `z = -250 ... +500`.
+The world's range, from `config/machine.yaml`, both ends included: `z = -250 ... +1250`.
 
 | `z` | What is there | Held by |
 |---|---|---|
-| below -250, above 500 | Air, always. Storage reaches `-256` and `511`, so a box may cover whole sections | `density_block_of` |
+| below -250, above 1250 | Air, always. Storage reaches `-256` and `1279`, so a box may cover whole sections | `density_block_of` |
 | -250 | Bedrock, always, one layer | `density_block_of` |
 | -249 to -155 | Stone, always, before caves (10.5) cut it | The sums below |
 | -154 to 491 | Stone where the density is above 0 | The density |
-| 492 to 500 | Never stone. What grows on a peak (10.7) has this room | The sums below |
+| 492 to 1250 | Never stone. What grows on a peak (10.7) has this room | The sums below |
 | up to 0, if not stone | Water, so water's top block is at `z = 0` | `density_block_of` |
 | above 0, if not stone | Air | `density_block_of` |
 

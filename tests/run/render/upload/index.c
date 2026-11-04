@@ -301,7 +301,7 @@ static void upload_compare_table(test_context_t *t, upload_fixture_t *f) {
         CHECK_EQ_I64(column->top_z, world_edit_column_top_z(&f->world.edit, slot));
         for (uint32_t i = 0; i < COLUMN_SECTIONS; i++) {
             const bool has = column->sections[i] != 0u;
-            CHECK_EQ_U64((column->section_mask >> i) & 1u, has ? 1u : 0u);
+            CHECK_EQ_U64(world_buffers_mask_has(column->section_mask, i) ? 1u : 0u, has ? 1u : 0u);
             sections += has ? 1u : 0u;
         }
         /* What a ray skips by has to be high enough, through the real upload: every top in this column's square, and in the world. Too low would
@@ -496,7 +496,7 @@ static void upload_model_compare(test_context_t *t, upload_buffers_t *b, const u
         const world_buffers_column_t *const column = &table[slot];
         for (uint32_t i = 0; i < WORLD_BUFFERS_COLUMN_SECTIONS; i++) {
             const upload_model_t *const entry = &model[slot * WORLD_BUFFERS_COLUMN_SECTIONS + i];
-            CHECK_EQ_U64((column->section_mask >> i) & 1u, entry->bytes != 0u ? 1u : 0u);
+            CHECK_EQ_U64(world_buffers_mask_has(column->section_mask, i) ? 1u : 0u, entry->bytes != 0u ? 1u : 0u);
             if (entry->bytes == 0u) {
                 CHECK_EQ_U64(column->sections[i], 0u);
                 continue;
@@ -589,7 +589,7 @@ TEST(a_full_pool_refuses_keeps_what_was_there_and_recovers) {
     CHECK_EQ_U64(world_buffers_section_write(buffers, 2u, 0u, pattern, WORLD_BUFFERS_SECTION_BYTES_MAX),
                  GPU_STATUS_OVER_BUDGET);
     CHECK_EQ_U64(buffers->pool_full_count, 2u);
-    CHECK_EQ_U64(buffers->borrowed_shadow[2].section_mask, 0u);
+    CHECK_EQ_U64(buffers->borrowed_shadow[2].section_mask[0] | buffers->borrowed_shadow[2].section_mask[1], 0u);
 
     /* A section that would move to a smaller size stays whole where it is, with no slab of that size. */
     upload_pattern(pattern, 100u, 999u);
@@ -707,7 +707,8 @@ TEST(a_write_to_a_place_that_cannot_exist_is_refused) {
     CHECK_EQ_U64(world_buffers_section_write(buffers, 0u, 0u, &byte, 1u), GPU_STATUS_INVALID_ARGUMENT); /* no column */
     world_buffers_column_set(buffers, 0u, 0, 0, 1u, 0);
     CHECK_EQ_U64(world_buffers_section_write(buffers, 4u, 0u, &byte, 1u), GPU_STATUS_INVALID_ARGUMENT);
-    CHECK_EQ_U64(world_buffers_section_write(buffers, 0u, 48u, &byte, 1u), GPU_STATUS_INVALID_ARGUMENT);
+    CHECK_EQ_U64(world_buffers_section_write(buffers, 0u, WORLD_BUFFERS_COLUMN_SECTIONS, &byte, 1u),
+                 GPU_STATUS_INVALID_ARGUMENT);
     CHECK_EQ_U64(world_buffers_section_write(buffers, 0u, 0u, &byte, WORLD_BUFFERS_SECTION_BYTES_MAX + 1ull),
                  GPU_STATUS_INVALID_ARGUMENT);
     CHECK_EQ_U64(buffers->section_count, 0u);
@@ -813,7 +814,7 @@ TEST(a_new_load_of_a_slot_starts_empty_and_its_old_slabs_come_back) {
     /* A new load does not, even in the same chunk. */
     world_buffers_column_set(buffers, 1u, 7, 8, 2u, 9);
     CHECK_EQ_U64(buffers->section_count, 0u);
-    CHECK_EQ_U64(buffers->borrowed_shadow[1].section_mask, 0u);
+    CHECK_EQ_U64(buffers->borrowed_shadow[1].section_mask[0] | buffers->borrowed_shadow[1].section_mask[1], 0u);
     CHECK_EQ_U64(buffers->slab_bytes, 0u);
     upload_buffers_end(t, b);
 }
@@ -903,6 +904,40 @@ TEST(edits_and_light_reach_the_card_and_an_emptied_section_gives_its_slab_back) 
     upload_fixture_end(t, f);
 }
 
+/* A column's mask takes two words on the card, and the top of the world is in the second. */
+TEST(blocks_up_to_the_top_of_the_world_reach_the_card) {
+    upload_fixture_t *const f = upload_test_aligned(t, sizeof(*f));
+    REQUIRE(upload_fixture_begin(t, f, 1u, UPLOAD_TEST_POOL_BYTES, upload_test_budget_large));
+    upload_world_stream(t, f);
+    REQUIRE(upload_pump(t, f));
+    world_edit_t *const edit = &f->world.edit;
+    static const int32_t heights[4] = {767, 768, 1000, COLUMN_Z_GAMEPLAY_MAX};
+    for (uint32_t i = 0u; i < 4u; i++) {
+        CHECK_EQ_U64(world_edit_block_set(edit, 3, 3, heights[i], 5u), WORLD_EDIT_STATUS_CHANGED);
+    }
+    /* And no further. */
+    CHECK_EQ_U64(world_edit_block_set(edit, 3, 3, COLUMN_Z_GAMEPLAY_MAX + 1, 5u), WORLD_EDIT_STATUS_Z_OUT_OF_RANGE);
+    REQUIRE(upload_pump(t, f));
+    CHECK_EQ_U64(upload_compare_world(t, f), 0u);
+    upload_compare_table(t, f);
+    uint32_t slot = 0u;
+    REQUIRE(world_map_slot_of(&f->world.map, 0, 0, &slot));
+    const world_buffers_column_t *const column = &f->render.buffers.borrowed_shadow[slot];
+    for (uint32_t i = 0u; i < 4u; i++) {
+        CHECK(world_buffers_mask_has(column->section_mask, column_section_of(heights[i])));
+    }
+    CHECK_EQ_I64(column->top_z, 1263);
+    /* Taken away again, the second word empties. */
+    for (uint32_t i = 0u; i < 4u; i++) {
+        CHECK_EQ_U64(world_edit_block_set(edit, 3, 3, heights[i], 0u), WORLD_EDIT_STATUS_CHANGED);
+    }
+    REQUIRE(upload_pump(t, f));
+    CHECK_EQ_U64(upload_compare_world(t, f), 0u);
+    upload_compare_table(t, f);
+    CHECK_EQ_U64(column->section_mask[1], 0u);
+    upload_fixture_end(t, f);
+}
+
 TEST(walking_scrolls_the_table_and_what_is_left_behind_comes_back) {
     upload_fixture_t *const f = upload_test_aligned(t, sizeof(*f));
     REQUIRE(upload_fixture_begin(t, f, 2u, UPLOAD_TEST_POOL_BYTES, upload_test_budget_large));
@@ -989,8 +1024,8 @@ TEST(a_full_pool_sends_sections_back_and_they_arrive_once_there_is_room) {
     world_edit_dirty_t refused;
     memcpy(&refused, upload->resend.borrowed_storage + (last & (RENDER_UPLOAD_RESEND_CAPACITY - 1u)) * sizeof(refused),
            sizeof(refused));
-    const uint32_t refused_index = (uint32_t)__builtin_ctzll(refused.section_mask);
-    CHECK_EQ_U64((f->render.buffers.borrowed_shadow[refused.slot].section_mask >> refused_index) & 1u, 0u);
+    const uint32_t refused_index = column_mask_lowest(refused.section_mask);
+    CHECK(!world_buffers_mask_has(f->render.buffers.borrowed_shadow[refused.slot].section_mask, refused_index));
 
     /* All but its column leaves, which makes room. */
     world_map_set_view_radius(&f->world.map, 0u);
@@ -1001,7 +1036,7 @@ TEST(a_full_pool_sends_sections_back_and_they_arrive_once_there_is_room) {
     }
     REQUIRE(upload_pump(t, f));
     CHECK_EQ_U64(f->world.map.ready_count, 1u);
-    CHECK_EQ_U64((f->render.buffers.borrowed_shadow[refused.slot].section_mask >> refused_index) & 1u, 1u);
+    CHECK(world_buffers_mask_has(f->render.buffers.borrowed_shadow[refused.slot].section_mask, refused_index));
     CHECK_EQ_U64(upload_compare_world(t, f), 0u);
     upload_compare_table(t, f);
     upload_fixture_end(t, f);

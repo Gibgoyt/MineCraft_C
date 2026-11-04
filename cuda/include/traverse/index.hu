@@ -307,7 +307,7 @@ static __device__ __forceinline__ void traverse_trace(const traverse_view_t *vie
     const world_buffers_column_t *column = nullptr;
     int32_t column_top = 0;
     int32_t region_top = height;
-    uint64_t column_mask = 0u;
+    uint64_t column_mask[WORLD_BUFFERS_MASK_WORDS] = {0u, 0u};
     const uint8_t *encoded = nullptr;
     world_buffers_section_t header = {};
     uint64_t brick_mask = 0u;
@@ -323,7 +323,8 @@ static __device__ __forceinline__ void traverse_trace(const traverse_view_t *vie
         if (slot != cached_slot) {
             column = &view->borrowed_table[slot];
             column_top = traverse_column_top(column, x >> 4, y >> 4);
-            column_mask = column->section_mask;
+            column_mask[0] = column->section_mask[0];
+            column_mask[1] = column->section_mask[1];
             /* A slot holding another column has no say about this place. */
             region_top = column_top != 0 && column->region_top != 0u ? (int32_t)column->region_top << 4 : height;
             cached_slot = slot;
@@ -343,7 +344,7 @@ static __device__ __forceinline__ void traverse_trace(const traverse_view_t *vie
             z_high = height;
         } else {
             const int32_t section_z = z >> 4;
-            if ((column_mask >> section_z) & 1u) {
+            if (world_buffers_mask_has(column_mask, (uint32_t)section_z)) {
                 if (section_z != cached_section) {
                     encoded = traverse_section_bytes(view, column->sections[section_z]);
                     header = *(const world_buffers_section_t *)(const void *)encoded;

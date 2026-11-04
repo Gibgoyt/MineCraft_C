@@ -88,6 +88,33 @@ TEST(each_face_is_named_with_its_distance) {
     tw_close(t, &memory);
 }
 
+/* A column's mask takes two words, and the top of the world is in the second. */
+TEST(blocks_in_either_word_of_a_columns_mask_are_hit_up_to_the_top_of_the_world) {
+    device_memory_t memory;
+    REQUIRE(tw_open(t, &memory));
+    tw_world_t *const world = tw_world_begin(t, 4u, 0, 0);
+    /* z = 767 is the last of section 63, 768 the first of section 64, and 1250 the top of the world, in section 94. */
+    tw_set(world, 8, 8, 767, 7u);
+    tw_set(world, 24, 8, 768, 8u);
+    tw_set(world, 40, 8, 1250, 9u);
+    tw_set(world, 56, 8, 1250, 10u);
+    REQUIRE(tw_world_upload(t, &memory, world));
+    const traverse_ray_t rays[6] = {
+        tw_ray(8, 8, 755, 0.0f32, 0.0f32, 1.0f32),    tw_ray(24, 8, 780, 0.0f32, 0.0f32, -1.0f32),
+        tw_ray(40, 8, 1238, 0.0f32, 0.0f32, 1.0f32),  tw_ray(40, 8, 1262, 0.0f32, 0.0f32, -1.0f32),
+        tw_ray(44, 8, 1250, -1.0f32, 0.0f32, 0.0f32), tw_ray(56, 8, 100, 0.0f32, 0.0f32, 1.0f32),
+    };
+    traverse_hit_t hits[6];
+    REQUIRE(tw_cast(t, &memory, world, rays, 6u, hits));
+    tw_check_hit(t, &hits[0], TRAVERSE_FACE_NEG_Z, 11.5f32, 0, 0, 12, 7u);
+    tw_check_hit(t, &hits[1], TRAVERSE_FACE_POS_Z, 11.5f32, 0, 0, -12, 8u);
+    tw_check_hit(t, &hits[2], TRAVERSE_FACE_NEG_Z, 11.5f32, 0, 0, 12, 9u);
+    tw_check_hit(t, &hits[3], TRAVERSE_FACE_POS_Z, 11.5f32, 0, 0, -12, 9u);
+    tw_check_hit(t, &hits[4], TRAVERSE_FACE_POS_X, 3.5f32, -4, 0, 0, 9u);
+    tw_check_hit(t, &hits[5], TRAVERSE_FACE_NEG_Z, 1149.5f32, 0, 0, 1150, 10u);
+    tw_close(t, &memory);
+}
+
 TEST(a_slanted_ray_arrives_where_the_arithmetic_says) {
     device_memory_t memory;
     REQUIRE(tw_open(t, &memory));
@@ -878,6 +905,53 @@ TEST(the_coarse_pass_knows_a_lone_voxel_and_the_sky) {
     CHECK(middle > 80.0f32);
     CHECK(sky >= tiles * tiles - 16u);
     tw_targets_free(t, &memory, &targets);
+    tw_close(t, &memory);
+}
+
+/* The coarse pass reads the same mask its own way: it must not call a box empty that has a block in the second word, nor one across the two. */
+TEST(the_coarse_pass_sees_blocks_in_either_word_of_a_columns_mask) {
+    device_memory_t memory;
+    REQUIRE(tw_open(t, &memory));
+    tw_world_t *const world = tw_world_begin(t, 16u, 0, 0);
+    /* A plate as in the test of a lone voxel, high in the second word. */
+    for (int32_t dz = -3; dz <= 3; dz += 1) {
+        for (int32_t dy = -3; dy <= 3; dy += 1) {
+            tw_set(world, 200, 128 + dy, 1100 + dz, 7u);
+        }
+    }
+    REQUIRE(tw_world_upload(t, &memory, world));
+    const float32_t eye[3] = {100.5f32, 128.5f32, 1100.5f32 + 256.0f32};
+    const traverse_camera_t camera = tw_camera(world, eye, 0.0f32, 0.0f32, 0.5f32, 64u, 64u);
+    tw_targets_t targets;
+    REQUIRE(tw_targets_make(t, &memory, 64u, 64u, &targets));
+    REQUIRE(tw_frame_run(t, &memory, world, &camera, &targets, true));
+    const uint32_t tiles = traverse_tiles_across(64u);
+    uint32_t hit_pixel = 0u;
+    for (uint32_t i = 0u; i < 64u * 64u; i += 1u) {
+        hit_pixel += traverse_hit_face(targets.host_hits[i].info) != TRAVERSE_FACE_MISS ? 1u : 0u;
+    }
+    CHECK(hit_pixel > 0u);
+    const float32_t middle = targets.host_coarse[(tiles / 2u) * tiles + tiles / 2u];
+    CHECK(middle < 99.5f32);
+    CHECK(middle > 80.0f32);
+    tw_targets_free(t, &memory, &targets);
+    /* Now one across the boundary, z = 760 to 775, looked at from the side. */
+    tw_world_t *const across = tw_world_begin(t, 16u, 0, 0);
+    for (int32_t z = 760; z <= 775; z += 1) {
+        for (int32_t dy = -3; dy <= 3; dy += 1) {
+            tw_set(across, 200, 128 + dy, z, 7u);
+        }
+    }
+    REQUIRE(tw_world_upload(t, &memory, across));
+    const float32_t eye_across[3] = {100.5f32, 128.5f32, 767.5f32 + 256.0f32};
+    const traverse_camera_t camera_across = tw_camera(across, eye_across, 0.0f32, 0.0f32, 0.5f32, 64u, 64u);
+    tw_targets_t targets_across;
+    REQUIRE(tw_targets_make(t, &memory, 64u, 64u, &targets_across));
+    REQUIRE(tw_frame_run(t, &memory, across, &camera_across, &targets_across, true));
+    const float32_t middle_across = targets_across.host_coarse[(tiles / 2u) * tiles + tiles / 2u];
+    CHECK(middle_across < 99.5f32);
+    CHECK(middle_across > 80.0f32);
+    tw_targets_free(t, &memory, &targets_across);
     tw_close(t, &memory);
 }
 

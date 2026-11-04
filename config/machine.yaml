@@ -21,4 +21,4 @@ gpu:
 display: { backend: kms, device: /dev/dri/card1, connector: auto, width: 1920, height: 1080, refresh_hz: 120 }
 memory: { huge_page_bytes: 2097152, process_budget_mib: 16384 }
 game: { render_distance_default: 32, render_distance_max: 512, tick_hz: 20 }
-world: { z_min: -250, z_sea: 0, z_max: 500, chunk_size: 16, section_size: 16 }
+world: { z_min: -250, z_sea: 0, z_max: 1250, chunk_size: 16, section_size: 16 }

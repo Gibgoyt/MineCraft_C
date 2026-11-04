@@ -165,10 +165,10 @@ static bool ss_rig_begin(test_context_t *t, ss_rig_t *rig, const char *root, boo
     /* What a column coming in has: what is saved of it over what generates there, or the next save of those sections would lose it. */
     uint16_t *const states = test_alloc(t, SS_COLUMN_VOXELS * sizeof(uint16_t));
     uint8_t *const scratch = test_alloc(t, SAVE_WORLD_OVERLAY_SCRATCH_BYTES);
-    const uint64_t mask = save_world_column_overlay(&rig->save->world, 0, 0, states, scratch);
+    const column_mask_t mask = save_world_column_overlay(&rig->save->world, 0, 0, states, scratch);
     column_t *const column = world_map_column_at(rig->w.map, 0, 0);
     for (uint32_t section = 0u; section < COLUMN_SECTIONS && column != nullptr; section++) {
-        if ((mask & (1ull << section)) != 0u) {
+        if (column_mask_has(mask, section)) {
             CHECK(section_blocks_import(&column->sections[section], &rig->w.world->section_pool,
                                         states + (uint64_t)section * SECTION_VOXELS));
         }
@@ -735,6 +735,39 @@ static void ss_hold_hook(void *context, save_world_step_t step) {
     }
 }
 
+/* A column's mask takes two words in a file, and the top of the world is in the second. */
+TEST(blocks_up_to_the_top_of_the_world_are_saved_and_come_back) {
+    char *const root = ss_temp_directory(t);
+    REQUIRE(root != nullptr);
+    ss_rig_t *const rig = test_alloc(t, sizeof(ss_rig_t));
+    REQUIRE(ss_rig_begin(t, rig, root, false));
+    save_t *const save = rig->save;
+    world_edit_t *const edit = &rig->w.world->edit;
+    static const int32_t heights[4] = {767, 768, 1000, COLUMN_Z_GAMEPLAY_MAX};
+    column_mask_t expected = COLUMN_MASK_NONE;
+    for (uint32_t i = 0u; i < 4u; i++) {
+        REQUIRE(world_edit_block_set(edit, 3, 4, heights[i], BLOCK_ID_STONE) == WORLD_EDIT_STATUS_CHANGED);
+        expected = column_mask_or(expected, column_mask_of(column_section_of(heights[i])));
+    }
+    CHECK_EQ_U64(world_edit_block_set(edit, 3, 4, COLUMN_Z_GAMEPLAY_MAX + 1, BLOCK_ID_STONE),
+                 WORLD_EDIT_STATUS_Z_OUT_OF_RANGE);
+    uint16_t *const states = test_alloc(t, SS_COLUMN_VOXELS * sizeof(uint16_t));
+    uint8_t *const scratch = test_alloc(t, SAVE_WORLD_OVERLAY_SCRATCH_BYTES);
+    /* Once on its way, and then from the file. */
+    for (uint32_t round = 0u; round < 2u; round++) {
+        REQUIRE((round == 0u ? save_world_capture_dirty(&save->world, edit) : save_world_flush(&save->world, edit)) ==
+                SAVE_WORLD_OK);
+        CHECK(column_mask_equal(save_world_column_overlay(&save->world, 0, 0, states, scratch), expected));
+        for (uint32_t i = 0u; i < 4u; i++) {
+            const uint64_t at = (uint64_t)column_section_of(heights[i]) * SECTION_VOXELS +
+                                section_voxel_index(3u, 4u, column_section_local_of(heights[i]));
+            CHECK_EQ_U64(states[at], BLOCK_ID_STONE);
+        }
+    }
+    ss_rig_end(rig);
+    ss_temp_remove(t, root);
+}
+
 TEST(a_stuck_write_holds_up_nothing_and_there_is_only_ever_one) {
     char *const root = ss_temp_directory(t);
     REQUIRE(root != nullptr);
@@ -784,7 +817,7 @@ TEST(a_stuck_write_holds_up_nothing_and_there_is_only_ever_one) {
     /* What the sim sees during it, is what is on its way: a column coming in meanwhile gets its changes. */
     uint16_t *const states = test_alloc(t, SS_COLUMN_VOXELS * sizeof(uint16_t));
     uint8_t *const scratch = test_alloc(t, SAVE_WORLD_OVERLAY_SCRATCH_BYTES);
-    CHECK(save_world_column_overlay(&save->world, 0, 0, states, scratch) != 0u);
+    CHECK(column_mask_any(save_world_column_overlay(&save->world, 0, 0, states, scratch)));
     atomic_store(&hold.release, 1u);
     ss_step_until_written(autosave, edit, &rig->parts, 199u);
     CHECK_EQ_U64(save->world.generation, 1u);
@@ -1300,14 +1333,13 @@ TEST(flowing_water_comes_back_with_its_levels_goes_on_and_does_not_flood) {
     /* Water let in above: the layer under it starts falling, with no block in its section changing. So only the level can say that section is dirty. */
     uint32_t slot = 0u;
     REQUIRE(world_map_slot_of(w->map, 0, 0, &slot));
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, slot, WORLD_EDIT_CONSUMER_SAVE), 0u);
+    CHECK(!column_mask_any(world_edit_dirty_peek(edit, slot, WORLD_EDIT_CONSUMER_SAVE)));
     REQUIRE(world_edit_block_set(edit, 12, 8, SS_WATER_Z + 1, BLOCK_ID_WATER) == WORLD_EDIT_STATUS_CHANGED);
     for (uint32_t i = 0u; i < 12u; i++) {
         world_tick_step(tick);
     }
     CHECK_EQ_U64(world_tick_fluid_level(tick, 12, 8, SS_WATER_Z), WORLD_TICK_LEVEL_FALLING);
-    CHECK((world_edit_dirty_peek(edit, slot, WORLD_EDIT_CONSUMER_SAVE) & (1ull << column_section_of(SS_WATER_Z))) !=
-          0u);
+    CHECK(column_mask_has(world_edit_dirty_peek(edit, slot, WORLD_EDIT_CONSUMER_SAVE), column_section_of(SS_WATER_Z)));
     for (uint32_t i = 0u; i < 100u; i++) {
         world_tick_step(tick);
     }
@@ -1330,18 +1362,18 @@ TEST(flowing_water_comes_back_with_its_levels_goes_on_and_does_not_flood) {
     uint64_t pages_found = 0u;
     for (int32_t chunk_y = -1; chunk_y <= 1; chunk_y++) {
         for (int32_t chunk_x = -1; chunk_x <= 1; chunk_x++) {
-            uint64_t levels_mask = 0u;
-            const uint64_t mask =
+            column_mask_t levels_mask = COLUMN_MASK_NONE;
+            const column_mask_t mask =
                 save_world_column_overlay_levels(&save->world, chunk_x, chunk_y, states, pages, &levels_mask, scratch);
-            CHECK_EQ_U64(levels_mask & ~mask, 0u);
+            CHECK(!column_mask_any(column_mask_without(levels_mask, mask)));
             column_t *const column = world_map_column_at(w->map, chunk_x, chunk_y);
             REQUIRE(column != nullptr);
             for (uint32_t section = 0u; section < COLUMN_SECTIONS; section++) {
-                if ((mask & (1ull << section)) != 0u) {
+                if (column_mask_has(mask, section)) {
                     CHECK(section_blocks_import(&column->sections[section], &w->world->section_pool,
                                                 states + (uint64_t)section * SECTION_VOXELS));
                 }
-                if ((levels_mask & (1ull << section)) != 0u) {
+                if (column_mask_has(levels_mask, section)) {
                     world_tick_section_levels_restore(tick, chunk_x, chunk_y, section,
                                                       pages + (uint64_t)section * SAVE_WORLD_RECORD_LEVELS_BYTES);
                     pages_found++;
@@ -1361,9 +1393,9 @@ TEST(flowing_water_comes_back_with_its_levels_goes_on_and_does_not_flood) {
     /* A later save of something else in that region keeps them: the old file's record goes over as it was. */
     REQUIRE(world_edit_block_set(edit, 1, 1, 100, BLOCK_ID_STONE) == WORLD_EDIT_STATUS_CHANGED);
     REQUIRE(save_world_flush(&save->world, edit) == SAVE_WORLD_OK);
-    uint64_t levels_mask = 0u;
+    column_mask_t levels_mask = COLUMN_MASK_NONE;
     (void)save_world_column_overlay_levels(&save->world, 0, 0, states, pages, &levels_mask, scratch);
-    CHECK((levels_mask & (1ull << column_section_of(SS_WATER_Z))) != 0u);
+    CHECK(column_mask_has(levels_mask, column_section_of(SS_WATER_Z)));
 
     /* It settled before the save, so left alone it stays as it was. */
     for (uint32_t i = 0u; i < 40u; i++) {

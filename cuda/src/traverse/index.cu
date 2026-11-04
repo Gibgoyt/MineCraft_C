@@ -58,8 +58,15 @@ static __device__ __forceinline__ bool traverse_box_is_empty(const traverse_view
                 continue;
             }
             const int32_t section_0 = z0 >> 4, section_1 = z_end >> 4;
-            uint64_t found = column->section_mask & (((1ull << (section_1 - section_0 + 1)) - 1ull) << section_0);
-            if (found == 0u) {
+            /* Each word of the mask, cut down to the sections the box is in. */
+            uint64_t found[WORLD_BUFFERS_MASK_WORDS];
+            for (int32_t word = 0; word < (int32_t)WORLD_BUFFERS_MASK_WORDS; word += 1) {
+                const int32_t first = section_0 > word * 64 ? section_0 - word * 64 : 0;
+                const int32_t last = section_1 < word * 64 + 63 ? section_1 - word * 64 : 63;
+                found[word] =
+                    first > last ? 0ull : column->section_mask[word] & ((~0ull >> (63 - (last - first))) << first);
+            }
+            if ((found[0] | found[1]) == 0u) {
                 continue;
             }
             if (!look_inside) {
@@ -71,9 +78,10 @@ static __device__ __forceinline__ bool traverse_box_is_empty(const traverse_view
             const int32_t brick_x1 = ((x1 < left + 15 ? x1 : left + 15) - left) >> 2;
             const int32_t brick_y0 = ((y0 > bottom ? y0 : bottom) - bottom) >> 2;
             const int32_t brick_y1 = ((y1 < bottom + 15 ? y1 : bottom + 15) - bottom) >> 2;
-            while (found != 0u) {
-                const int32_t section_z = __ffsll((int64_t)found) - 1;
-                found &= found - 1u;
+            while ((found[0] | found[1]) != 0u) {
+                const int32_t word = found[0] != 0u ? 0 : 1;
+                const int32_t section_z = word * 64 + __ffsll((int64_t)found[word]) - 1;
+                found[word] &= found[word] - 1u;
                 const uint8_t *const encoded = traverse_section_bytes(view, column->sections[section_z]);
                 const world_buffers_section_t header = *(const world_buffers_section_t *)(const void *)encoded;
                 if (header.brick_count == 0u) {

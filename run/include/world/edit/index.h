@@ -25,13 +25,12 @@ enum : uint32_t {
     WORLD_EDIT_FOR_LIGHT = 1u << WORLD_EDIT_CONSUMER_LIGHT,
     WORLD_EDIT_FOR_ALL = WORLD_EDIT_FOR_RENDER | WORLD_EDIT_FOR_SAVE | WORLD_EDIT_FOR_LIGHT,
 };
+/* One bit per section of a column. */
+#define WORLD_EDIT_SECTIONS_ALL COLUMN_MASK_ALL
 enum : uint64_t {
-    /* One bit per section of a column. */
-    WORLD_EDIT_SECTIONS_ALL = (1ull << COLUMN_SECTIONS) - 1ull,
     /* What world_open gives the log: at 16 bytes each, 1 MiB. Far more than a tick's worth of a large explosion. */
     WORLD_EDIT_LOG_CAPACITY_DEFAULT = 1ull << 16,
 };
-static_assert(COLUMN_SECTIONS < 64u); /* the mask above */
 
 /* The highest z with a block in a column with none. */
 #define WORLD_EDIT_TOP_Z_NONE ((int16_t)(COLUMN_Z_STORAGE_MIN - 1))
@@ -48,24 +47,24 @@ static_assert(sizeof(world_edit_record_t) == 16);
 
 /* What is known about the column in one slot of the map. Zero bytes mean nothing is known. */
 typedef struct world_edit_column_t {
-    uint64_t dirty[WORLD_EDIT_CONSUMER_COUNT]; /* 0: one bit per section, one mask per consumer */
-    uint64_t revision;                         /* 24: of the last change here; see world_edit_t.revision */
-    uint32_t generation;                       /* 32: the map's, for the load all this describes */
-    int16_t top_z;                             /* 36: no block is above the top of this section */
-    uint8_t queued;                            /* 38: WORLD_EDIT_FOR_*: this slot is waiting in that queue */
-    uint8_t _pad0[1];                          /* 39 */
+    column_mask_t dirty[WORLD_EDIT_CONSUMER_COUNT]; /* 0: one bit per section, one mask per consumer */
+    uint64_t revision;                              /* 48: of the last change here; see world_edit_t.revision */
+    uint32_t generation;                            /* 56: the map's, for the load all this describes */
+    int16_t top_z;                                  /* 60: no block is above the top of this section */
+    uint8_t queued;                                 /* 62: WORLD_EDIT_FOR_*: this slot is waiting in that queue */
+    uint8_t _pad0[1];                               /* 63 */
 } world_edit_column_t;
-static_assert(sizeof(world_edit_column_t) == 40);
+static_assert(sizeof(world_edit_column_t) == 64);
 
 /* Dirty sections of one column, for one consumer. */
 typedef struct world_edit_dirty_t {
-    uint64_t section_mask; /* 0 */
-    int32_t chunk_x;       /* 8 */
-    int32_t chunk_y;       /* 12 */
-    uint32_t slot;         /* 16 */
-    uint32_t generation;   /* 20 */
+    column_mask_t section_mask; /* 0 */
+    int32_t chunk_x;            /* 16 */
+    int32_t chunk_y;            /* 20 */
+    uint32_t slot;              /* 24 */
+    uint32_t generation;        /* 28 */
 } world_edit_dirty_t;
-static_assert(sizeof(world_edit_dirty_t) == 24);
+static_assert(sizeof(world_edit_dirty_t) == 32);
 
 typedef enum world_edit_status_t : uint8_t {
     WORLD_EDIT_STATUS_CHANGED = 0,
@@ -107,7 +106,7 @@ world_edit_status_t world_edit_block_set(world_edit_t *edit, int32_t x, int32_t 
 world_edit_status_t world_edit_light_set(world_edit_t *edit, int32_t x, int32_t y, int32_t z, uint8_t packed);
 
 /* For whoever just wrote a live column's sections directly: flags those sections, for those consumers. */
-void world_edit_sections_mark(world_edit_t *edit, uint32_t slot, uint64_t section_mask, uint32_t consumers);
+void world_edit_sections_mark(world_edit_t *edit, uint32_t slot, column_mask_t section_mask, uint32_t consumers);
 
 /* For a column just committed and filled with what generates there: it is not an edit and so is not logged and not for
  * SAVE. A section still all air under open sky is what a renderer starts with, so only the others are flagged. */
@@ -134,10 +133,11 @@ void world_edit_dirty_restore(world_edit_t *edit, const world_edit_dirty_t *dirt
 
 /* Without taking them: for a column that world_map_stream_leaving offers, whether it has anything unsaved. 0 for no column.
  */
-uint64_t world_edit_dirty_peek(world_edit_t *edit, uint32_t slot, world_edit_consumer_t consumer);
+column_mask_t world_edit_dirty_peek(world_edit_t *edit, uint32_t slot, world_edit_consumer_t consumer);
 
 /* Clears flags without handing anything over. */
-void world_edit_dirty_clear(world_edit_t *edit, uint32_t slot, world_edit_consumer_t consumer, uint64_t section_mask);
+void world_edit_dirty_clear(world_edit_t *edit, uint32_t slot, world_edit_consumer_t consumer,
+                            column_mask_t section_mask);
 
 /* The last change to a live column, and the top of its highest section with a block. A section whose array has gone back
  * to all air, unnoticed until section_compact, still counts: so this is never below the true top, and may be above it. */

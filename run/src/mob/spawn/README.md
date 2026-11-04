@@ -20,7 +20,7 @@
 
 Each tick tries `MOB_SPAWN_TRIES_PER_TICK` places, until the cap is reached. The published game looks at a place per chunk per tick and most fail, so this is the same search at a rate a tick can afford.
 
-1. A random place within `MOB_SPAWN_REACH` of the player along x and y, in a loaded column, at a random height in gameplay's range. Inside something solid is a miss.
+1. A random place within `MOB_SPAWN_REACH` of the player along x and y, in a loaded column, at a random height among the lowest 751 layers of gameplay's range, or up to the top of what the column holds if it reaches higher, so that empty sky in a taller world costs no tries. Inside something solid is a miss.
 2. Down from there to the first floor, at most `MOB_SPAWN_SCAN_CELLS`. That the published game looks only at the height it rolled, and misses, is what this saves.
 3. A mob by `weight`, and `pack_min` to `pack_max` of it, each a step of up to `MOB_SPAWN_PACK_STEP` from the last at that same height. Each goes through `mob_spawn_check` by itself, so a pack can come partly or not at all.
 

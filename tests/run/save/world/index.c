@@ -691,10 +691,11 @@ TEST(what_is_on_its_way_is_read_before_any_file) {
     CHECK_EQ_U64(save->generation, 2u);
     /* The mask says what was written over, one section. */
     sw_generate(SW_CENTER_X, SW_CENTER_Y, states);
-    CHECK_EQ_U64(save_world_column_overlay(save, SW_CENTER_X, SW_CENTER_Y, states, rig->scratch), 1ull << section);
+    CHECK(column_mask_equal(save_world_column_overlay(save, SW_CENTER_X, SW_CENTER_Y, states, rig->scratch),
+                            column_mask_of(section)));
     /* And a column nothing happened to in a region with a file is left alone. */
     sw_generate(SW_CENTER_X + 1, SW_CENTER_Y, states);
-    CHECK_EQ_U64(save_world_column_overlay(save, SW_CENTER_X + 1, SW_CENTER_Y, states, rig->scratch), 0u);
+    CHECK(!column_mask_any(save_world_column_overlay(save, SW_CENTER_X + 1, SW_CENTER_Y, states, rig->scratch)));
 #undef SW_SEEN
     sw_session_end(rig);
     sw_temp_remove(t, root);
@@ -711,7 +712,7 @@ TEST(a_column_on_its_way_out_keeps_its_changes_and_comes_back_with_them) {
     for (uint32_t slot = 0u; slot < world->map.slot_count; slot++) {
         if (world->map.borrowed_slots[slot].state == WORLD_MAP_STATE_READY) {
             REQUIRE(save_world_capture_column(&rig->save->world, &world->edit, slot) == SAVE_WORLD_OK);
-            CHECK_EQ_U64(world_edit_dirty_peek(&world->edit, slot, WORLD_EDIT_CONSUMER_SAVE), 0u);
+            CHECK(!column_mask_any(world_edit_dirty_peek(&world->edit, slot, WORLD_EDIT_CONSUMER_SAVE)));
             world_map_unload(&world->map, slot);
         }
     }
@@ -751,11 +752,11 @@ TEST(when_there_is_no_room_nothing_is_lost) {
     /* A column whose flags are left says so too, and keeps them. */
     bool found = false;
     for (uint32_t slot = 0u; slot < world->map.slot_count && !found; slot++) {
-        const uint64_t before = world_edit_dirty_peek(&world->edit, slot, WORLD_EDIT_CONSUMER_SAVE);
-        if (before != 0u) {
+        const column_mask_t before = world_edit_dirty_peek(&world->edit, slot, WORLD_EDIT_CONSUMER_SAVE);
+        if (column_mask_any(before)) {
             found = true;
             CHECK_EQ_U64(save_world_capture_column(save, &world->edit, slot), SAVE_WORLD_FULL);
-            CHECK_EQ_U64(world_edit_dirty_peek(&world->edit, slot, WORLD_EDIT_CONSUMER_SAVE), before);
+            CHECK(column_mask_equal(world_edit_dirty_peek(&world->edit, slot, WORLD_EDIT_CONSUMER_SAVE), before));
         }
     }
     CHECK(found);
@@ -928,6 +929,11 @@ TEST(what_cannot_be_trusted_is_refused_and_left_as_it_was) {
     sw_manifest_forge(t, manifest, 40u, &later, sizeof(later));
     CHECK_EQ_U64(sw_open_status(save, root, SW_SEED), SAVE_WORLD_ERROR_VERSION);
     CHECK_EQ_U64(file_write_atomic(manifest, good, good_bytes), FILE_OK);
+    /* An older format: a world from before the top went up to 1250, whose columns hold one word of mask. */
+    const uint32_t older = SAVE_WORLD_VERSION - 1u;
+    sw_manifest_forge(t, manifest, 40u, &older, sizeof(older));
+    CHECK_EQ_U64(sw_open_status(save, root, SW_SEED), SAVE_WORLD_ERROR_VERSION);
+    CHECK_EQ_U64(file_write_atomic(manifest, good, good_bytes), FILE_OK);
     /* Another block table. */
     const uint64_t other_table = 12345u;
     sw_manifest_forge(t, manifest, 24u, &other_table, sizeof(other_table));
@@ -1047,13 +1053,13 @@ TEST(a_bad_byte_in_a_delta_costs_only_what_it_is_in) {
                 continue;
             }
             sw_generate(chunk_x, chunk_y, states);
-            const uint64_t mask = save_world_column_overlay(&save->world, chunk_x, chunk_y, states, rig->scratch);
+            const column_mask_t mask = save_world_column_overlay(&save->world, chunk_x, chunk_y, states, rig->scratch);
             /* Each section is the save's exactly, or what generates there exactly: never something between, and never a wrong block. */
             sw_generate(chunk_x, chunk_y, generated);
             for (uint32_t section = 0u; section < COLUMN_SECTIONS; section++) {
                 const uint64_t voxel = (uint64_t)section * SECTION_VOXELS;
                 const uint16_t *const expected =
-                    ((mask >> section) & 1u) != 0u ? sw_model_column(rig, chunk_x, chunk_y) : generated;
+                    column_mask_has(mask, section) ? sw_model_column(rig, chunk_x, chunk_y) : generated;
                 if (!CHECK_MEM_EQ(states + voxel, expected + voxel, SECTION_VOXELS * sizeof(uint16_t))) {
                     printf("  a flip at byte %" PRIu64 " gave a wrong section\n", at);
                 }
@@ -1159,13 +1165,13 @@ TEST(a_save_drops_a_record_no_reader_will_take_though_its_checksum_is_good) {
     uint32_t local = 0u;
     for (; local < SAVE_WORLD_REGION_COLUMNS; local++) {
         memcpy(&column, table + (uint64_t)local * sizeof(column), sizeof(column));
-        if (column.section_mask != 0u) {
+        if (column_mask_any(column.section_mask)) {
             break;
         }
     }
     REQUIRE(local < SAVE_WORLD_REGION_COLUMNS);
     const uint64_t entries_bytes =
-        (uint64_t)__builtin_popcountll(column.section_mask) * sizeof(save_world_section_entry_t);
+        (uint64_t)column_mask_count(column.section_mask) * sizeof(save_world_section_entry_t);
     save_world_section_entry_t entry;
     memcpy(&entry, file + column.entries_offset, sizeof(entry));
     const uint16_t nothing = 0xFFFFu;
@@ -1892,8 +1898,8 @@ TEST(the_built_program_keeps_what_was_dug_and_a_world_refuses_another_seed) {
             const int32_t chunk_y =
                 regions[r].region_y * (int32_t)SAVE_WORLD_REGION_SIDE + (int32_t)(local / SAVE_WORLD_REGION_SIDE);
             memset(saved, 0, SW_COLUMN_BYTES);
-            const uint64_t mask = save_world_column_overlay(&save->world, chunk_x, chunk_y, saved, opened);
-            if (mask == 0u) {
+            const column_mask_t mask = save_world_column_overlay(&save->world, chunk_x, chunk_y, saved, opened);
+            if (!column_mask_any(mask)) {
                 continue;
             }
             const terrain_density_box_t box = {.origin_x = chunk_x * (int32_t)COLUMN_SIZE,
@@ -1904,7 +1910,7 @@ TEST(the_built_program_keeps_what_was_dug_and_a_world_refuses_another_seed) {
                                                .count_z = (uint32_t)(COLUMN_Z_STORAGE_END - COLUMN_Z_STORAGE_MIN)};
             terrain_generate_box(terrain, &box, opened, generated);
             for (uint32_t section = 0u; section < COLUMN_SECTIONS; section++) {
-                if ((mask & (1ull << section)) == 0u) {
+                if (!column_mask_has(mask, section)) {
                     continue;
                 }
                 sections++;

@@ -20,7 +20,8 @@ static_assert(MC_THREADS_WORKERS >= 16); /* the plan's gate says 16 */
 static_assert(MC_THREADS_WORKERS <= 64); /* the worker mask below */
 
 enum : uint32_t {
-    BIO_LAYERS = 751u, /* the plan's -250 to 500, both included */
+    BIO_LAYERS =
+        751u, /* -250 to 500, both included: all terrain makes, so the pinned digests say a taller world moved nothing */
     BIO_CHUNK = 16u,
     BIO_CHUNK_COLUMNS = BIO_CHUNK * BIO_CHUNK,
     BIO_CHUNK_VOXELS = BIO_CHUNK_COLUMNS * BIO_LAYERS,

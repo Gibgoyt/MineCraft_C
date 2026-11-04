@@ -234,7 +234,8 @@ static void world_buffers_sections_release(world_buffers_t *buffers, world_buffe
             buffers->section_count--;
         }
     }
-    column->section_mask = 0u;
+    column->section_mask[0] = 0u;
+    column->section_mask[1] = 0u;
 }
 
 void world_buffers_column_set(world_buffers_t *buffers, uint32_t slot, int32_t chunk_x, int32_t chunk_y,
@@ -322,7 +323,7 @@ gpu_status_t world_buffers_section_write(world_buffers_t *buffers, uint32_t slot
         if (old_entry != 0u) {
             world_buffers_slab_give(buffers, old_entry - 1u);
             column->sections[section_index] = 0u;
-            column->section_mask &= ~(1ull << section_index);
+            column->section_mask[section_index >> 6] &= ~(1ull << (section_index & 63u));
             buffers->section_count--;
             world_buffers_mark(buffers, slot);
         }
@@ -358,7 +359,7 @@ gpu_status_t world_buffers_section_write(world_buffers_t *buffers, uint32_t slot
         buffers->section_count++;
     }
     column->sections[section_index] = granule + 1u;
-    column->section_mask |= 1ull << section_index;
+    column->section_mask[section_index >> 6] |= 1ull << (section_index & 63u);
     world_buffers_mark(buffers, slot);
     return GPU_STATUS_OK;
 }

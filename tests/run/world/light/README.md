@@ -11,6 +11,6 @@
 
 `light_reference_compute` is the full recompute: a flat array, starting from nothing and going over every voxel until nothing changes, sharing no code with what it checks. `the_reference_agrees_with_hand_worked_values` is there because a reference wrong the same way as the code would prove nothing.
 
-A box of `z` from -1 to 63 holds all the light the random tests can make, since their blocks stop at 47 and block light dies in 14 more. `light_reference_differences` still looks at all 768 levels of every column: above the box it wants open sky, and below it darkness.
+A box of `z` from -1 to 63 holds all the light the random tests can make, since their blocks stop at 47 and block light dies in 14 more. `light_reference_differences` still looks at all 1536 levels of every column: above the box it wants open sky, and below it darkness.
 
 `cost_on_this_machine` prints what the operations cost, for the stage file, and checks nothing about it, since a timing on a shared machine would make a flaky test.

@@ -27,10 +27,9 @@ enum : uint64_t {
     SAVE_WORLD_RECORDS_START = sizeof(save_world_delta_header_t) + SAVE_WORLD_TABLE_BYTES,
     SAVE_WORLD_MANIFEST_BYTES_MAX =
         sizeof(save_world_manifest_header_t) + SAVE_WORLD_REGIONS_MAX * sizeof(save_world_region_t),
-    SAVE_WORLD_COLUMN_MASK_ALL = (1ull << COLUMN_SECTIONS) - 1ull,
 };
 enum : uint32_t {
-    SAVE_WORLD_PLACE_SECTIONS = 64u,
+    SAVE_WORLD_PLACE_SECTIONS = 128u,
     /* How many times a reader follows a file replaced under it before it calls that damage. Each is a whole save happening between two
      * of its own steps, so even a second is rare. */
     SAVE_WORLD_READ_TRIES = 64u,
@@ -225,16 +224,17 @@ bool save_world_far_lost_take(save_world_t *save) {
 }
 
 /* What of mask it could not capture. */
-static uint64_t save_world_capture_mask(save_world_t *save, const column_t *column, uint32_t slot, uint64_t mask) {
-    const uint64_t asked = mask;
-    while (mask != 0u) {
-        const uint32_t section = (uint32_t)__builtin_ctzll(mask);
+static column_mask_t save_world_capture_mask(save_world_t *save, const column_t *column, uint32_t slot,
+                                             column_mask_t mask) {
+    const column_mask_t asked = mask;
+    while (column_mask_any(mask)) {
+        const uint32_t section = column_mask_lowest(mask);
         if (!save_world_capture_section(save, column, slot, section)) {
             break;
         }
-        mask &= mask - 1u;
+        mask = column_mask_drop_lowest(mask);
     }
-    if (mask != asked) {
+    if (!column_mask_equal(mask, asked)) {
         save_world_far_note(save, column->chunk_x, column->chunk_y);
     }
     return mask;
@@ -244,8 +244,8 @@ save_world_status_t save_world_capture_dirty(save_world_t *save, world_edit_t *e
     world_edit_dirty_t dirty;
     while (world_edit_dirty_next(edit, WORLD_EDIT_CONSUMER_SAVE, &dirty)) {
         const column_t *const column = &edit->borrowed_map->borrowed_columns[dirty.slot];
-        const uint64_t left = save_world_capture_mask(save, column, dirty.slot, dirty.section_mask);
-        if (left != 0u) {
+        const column_mask_t left = save_world_capture_mask(save, column, dirty.slot, dirty.section_mask);
+        if (column_mask_any(left)) {
             dirty.section_mask = left;
             world_edit_dirty_restore(edit, &dirty, WORLD_EDIT_CONSUMER_SAVE);
             return SAVE_WORLD_FULL;
@@ -255,13 +255,13 @@ save_world_status_t save_world_capture_dirty(save_world_t *save, world_edit_t *e
 }
 
 save_world_status_t save_world_capture_column(save_world_t *save, world_edit_t *edit, uint32_t slot) {
-    const uint64_t mask = world_edit_dirty_peek(edit, slot, WORLD_EDIT_CONSUMER_SAVE);
-    if (mask == 0u) {
+    const column_mask_t mask = world_edit_dirty_peek(edit, slot, WORLD_EDIT_CONSUMER_SAVE);
+    if (!column_mask_any(mask)) {
         return SAVE_WORLD_OK;
     }
-    const uint64_t left = save_world_capture_mask(save, &edit->borrowed_map->borrowed_columns[slot], slot, mask);
-    world_edit_dirty_clear(edit, slot, WORLD_EDIT_CONSUMER_SAVE, mask & ~left);
-    return left == 0u ? SAVE_WORLD_OK : SAVE_WORLD_FULL;
+    const column_mask_t left = save_world_capture_mask(save, &edit->borrowed_map->borrowed_columns[slot], slot, mask);
+    world_edit_dirty_clear(edit, slot, WORLD_EDIT_CONSUMER_SAVE, column_mask_without(mask, left));
+    return !column_mask_any(left) ? SAVE_WORLD_OK : SAVE_WORLD_FULL;
 }
 
 bool save_world_commit_begin(save_world_t *save) {
@@ -677,10 +677,10 @@ static bool save_world_within(uint64_t offset, uint64_t bytes, uint64_t file_byt
 static bool save_world_entries_read(const file_t *file, uint64_t file_bytes, const save_world_column_entry_t *column,
                                     save_world_section_entry_t *out, file_status_t *out_status) {
     *out_status = FILE_OK;
-    if ((column->section_mask & ~(uint64_t)SAVE_WORLD_COLUMN_MASK_ALL) != 0u) {
+    if (column_mask_any(column_mask_without(column->section_mask, COLUMN_MASK_ALL))) {
         return false;
     }
-    const uint64_t bytes = (uint64_t)__builtin_popcountll(column->section_mask) * sizeof(save_world_section_entry_t);
+    const uint64_t bytes = (uint64_t)column_mask_count(column->section_mask) * sizeof(save_world_section_entry_t);
     if (!save_world_within(column->entries_offset, bytes, file_bytes)) {
         return false;
     }
@@ -724,23 +724,23 @@ static file_status_t save_world_delta_column(const save_world_t *save, save_worl
     save_world_section_entry_t old_entries[COLUMN_SECTIONS];
     save_world_section_entry_t new_entries[COLUMN_SECTIONS];
     const save_world_column_entry_t *const old_column = &save->borrowed_table_old[local];
-    uint64_t old_mask = old_column->section_mask;
+    column_mask_t old_mask = old_column->section_mask;
     file_status_t status = FILE_OK;
-    if (old_mask != 0u &&
+    if (column_mask_any(old_mask) &&
         !save_world_entries_read(writer->borrowed_old_file, writer->old_bytes, old_column, old_entries, &status)) {
         if (status != FILE_OK) {
             return status;
         }
-        writer->damaged += (uint32_t)__builtin_popcountll(old_mask & SAVE_WORLD_COLUMN_MASK_ALL);
-        old_mask = 0u;
+        writer->damaged += column_mask_count(column_mask_and(old_mask, COLUMN_MASK_ALL));
+        old_mask = COLUMN_MASK_NONE;
         LOG_ERROR("save: column %" PRIu32 " of region %" PRId32 ", %" PRId32 " is past reading", local,
                   writer->region_x, writer->region_y);
     }
-    uint64_t new_mask = 0u;
+    column_mask_t new_mask = COLUMN_MASK_NONE;
     uint32_t new_count = 0u;
     uint32_t old_index = 0u;
     for (uint32_t section = 0u; section < COLUMN_SECTIONS; section++) {
-        const bool in_old = (old_mask & (1ull << section)) != 0u;
+        const bool in_old = column_mask_has(old_mask, section);
         const uint32_t place = local * SAVE_WORLD_PLACE_SECTIONS + section;
         const bool in_set = writer->key < writer->key_count && writer->borrowed_keys[writer->key].place == place;
         const uint8_t *record = nullptr;
@@ -779,7 +779,7 @@ static file_status_t save_world_delta_column(const save_world_t *save, save_worl
         new_entries[new_count] =
             (save_world_section_entry_t){.offset = writer->at, .bytes = bytes, .checksum = checksum};
         new_count++;
-        new_mask |= 1ull << section;
+        new_mask = column_mask_or(new_mask, column_mask_of(section));
         writer->at += bytes;
     }
     if (new_count == 0u) {
@@ -1143,25 +1143,26 @@ save_world_status_t save_world_flush(save_world_t *save, world_edit_t *edit) {
 
 /* A section just read: its levels too, if it has any and they are wanted. */
 static void save_world_overlay_levels_take(const uint8_t *record, uint64_t bytes, uint32_t section, uint8_t *levels,
-                                           uint64_t *levels_mask) {
+                                           column_mask_t *levels_mask) {
     const uint8_t *const held = save_world_record_levels(record, bytes);
     if (levels != nullptr && held != nullptr) {
         memcpy(levels + (uint64_t)section * SAVE_WORLD_RECORD_LEVELS_BYTES, held, SAVE_WORLD_RECORD_LEVELS_BYTES);
-        *levels_mask |= 1ull << section;
+        *levels_mask = column_mask_or(*levels_mask, column_mask_of(section));
     }
 }
 
 /* The records of one column of an open file, past what is already in *mask. Returns how many it could not read. */
-static uint64_t save_world_overlay_records(const file_t *file, const save_world_region_t *region, uint64_t section_mask,
-                                           const save_world_section_entry_t *entries, uint64_t *mask, uint16_t *states,
-                                           uint8_t *levels, uint64_t *levels_mask, uint8_t *scratch) {
+static uint64_t save_world_overlay_records(const file_t *file, const save_world_region_t *region,
+                                           column_mask_t section_mask, const save_world_section_entry_t *entries,
+                                           column_mask_t *mask, uint16_t *states, uint8_t *levels,
+                                           column_mask_t *levels_mask, uint8_t *scratch) {
     uint64_t damaged = 0u;
     uint32_t index = 0u;
-    for (uint64_t left = section_mask; left != 0u; left &= left - 1u) {
-        const uint32_t section = (uint32_t)__builtin_ctzll(left);
+    for (column_mask_t left = section_mask; column_mask_any(left); left = column_mask_drop_lowest(left)) {
+        const uint32_t section = column_mask_lowest(left);
         const save_world_section_entry_t *const entry = &entries[index];
         index++;
-        if ((*mask & (1ull << section)) != 0u) {
+        if (column_mask_has(*mask, section)) {
             continue;
         }
         const bool good = entry->bytes <= SAVE_WORLD_ENTRY_BYTES_MAX &&
@@ -1170,7 +1171,7 @@ static uint64_t save_world_overlay_records(const file_t *file, const save_world_
                           save_world_record_checksum(scratch, entry->bytes) == entry->checksum &&
                           save_world_record_decode(scratch, entry->bytes, states + (uint64_t)section * SECTION_VOXELS);
         if (good) {
-            *mask |= 1ull << section;
+            *mask = column_mask_or(*mask, column_mask_of(section));
             save_world_overlay_levels_take(scratch, entry->bytes, section, levels, levels_mask);
         } else {
             damaged++;
@@ -1183,7 +1184,7 @@ static uint64_t save_world_overlay_records(const file_t *file, const save_world_
 
 /* What this file has of a column, past what is already in *mask. False if a save has replaced it, so look again. */
 static bool save_world_overlay_file(save_world_t *save, const save_world_region_t *region, uint32_t local,
-                                    uint64_t *mask, uint16_t *states, uint8_t *levels, uint64_t *levels_mask,
+                                    column_mask_t *mask, uint16_t *states, uint8_t *levels, column_mask_t *levels_mask,
                                     uint8_t *scratch) {
     char path[FILE_PATH_BYTES];
     file_t file = {.fd = -1, ._pad0 = {0}};
@@ -1202,19 +1203,19 @@ static bool save_world_overlay_file(save_world_t *save, const save_world_region_
     }
     if (damaged == 0u) {
         save_world_delta_header_t header;
-        save_world_column_entry_t column = {0};
+        save_world_column_entry_t column = {.section_mask = COLUMN_MASK_NONE, .entries_offset = 0u, .checksum = 0u};
         save_world_section_entry_t entries[COLUMN_SECTIONS];
         file_status_t entries_status = FILE_OK;
         const bool good = file_read_at(&file, 0u, &header, sizeof(header)) == FILE_OK &&
                           save_world_delta_header_good(save, &header, region) &&
                           file_read_at(&file, sizeof(header) + (uint64_t)local * sizeof(column), &column,
                                        sizeof(column)) == FILE_OK &&
-                          (column.section_mask == 0u ||
+                          (!column_mask_any(column.section_mask) ||
                            save_world_entries_read(&file, region->file_bytes, &column, entries, &entries_status));
         if (!good) {
             LOG_ERROR("save: column %" PRIu32 " of %s is past reading, so what generates there is used", local, path);
             damaged = 1u;
-        } else if (column.section_mask != 0u) {
+        } else if (column_mask_any(column.section_mask)) {
             damaged = save_world_overlay_records(&file, region, column.section_mask, entries, mask, states, levels,
                                                  levels_mask, scratch);
         }
@@ -1227,20 +1228,20 @@ static bool save_world_overlay_file(save_world_t *save, const save_world_region_
     return true;
 }
 
-static uint64_t save_world_overlay_read(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
-                                        uint8_t *levels, uint64_t *out_levels_mask, uint8_t *scratch) {
-    uint64_t levels_mask = 0u;
+static column_mask_t save_world_overlay_read(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
+                                             uint8_t *levels, column_mask_t *out_levels_mask, uint8_t *scratch) {
+    column_mask_t levels_mask = COLUMN_MASK_NONE;
     if (out_levels_mask != nullptr) {
-        *out_levels_mask = 0u;
+        *out_levels_mask = COLUMN_MASK_NONE;
     }
     if (save->open == 0u) {
-        return 0u;
+        return COLUMN_MASK_NONE;
     }
     const int32_t region_x = chunk_x >> SAVE_WORLD_REGION_SHIFT;
     const int32_t region_y = chunk_y >> SAVE_WORLD_REGION_SHIFT;
     const uint32_t local = (((uint32_t)chunk_y & (SAVE_WORLD_REGION_SIDE - 1u)) << SAVE_WORLD_REGION_SHIFT) |
                            ((uint32_t)chunk_x & (SAVE_WORLD_REGION_SIDE - 1u));
-    uint64_t mask = 0u;
+    column_mask_t mask = COLUMN_MASK_NONE;
     /* What is on its way first, the newest of it first, and only then the file: a section moves that way and no other, and a column not in the
      * map gets no newer. So a section in neither set when they were looked at is in whichever file is current by the time that is looked at. */
     (void)pthread_mutex_lock(&save->mutex);
@@ -1248,7 +1249,7 @@ static uint64_t save_world_overlay_read(save_world_t *save, int32_t chunk_x, int
         const save_world_pending_t *const pending =
             &save->pending[which == 0u ? save->active : (save->active == 0u ? 1u : 0u)];
         for (uint32_t section = 0u; section < COLUMN_SECTIONS && pending->count != 0u; section++) {
-            if ((mask & (1ull << section)) != 0u) {
+            if (column_mask_has(mask, section)) {
                 continue;
             }
             const save_world_pending_ref_t *const ref = save_world_pending_find(pending, chunk_x, chunk_y, section);
@@ -1257,7 +1258,7 @@ static uint64_t save_world_overlay_read(save_world_t *save, int32_t chunk_x, int
                 const bool good = save_world_record_decode(pending->borrowed_bytes + ref->offset, ref->bytes,
                                                            states + (uint64_t)section * SECTION_VOXELS);
                 ASSERT_ALWAYS(good);
-                mask |= 1ull << section;
+                mask = column_mask_or(mask, column_mask_of(section));
                 save_world_overlay_levels_take(pending->borrowed_bytes + ref->offset, ref->bytes, section, levels,
                                                &levels_mask);
             }
@@ -1290,17 +1291,18 @@ static uint64_t save_world_overlay_read(save_world_t *save, int32_t chunk_x, int
     return mask;
 }
 
-uint64_t save_world_column_overlay_levels(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
-                                          uint8_t *levels, uint64_t *out_levels_mask, uint8_t *scratch) {
-    const uint64_t mask = save_world_overlay_read(save, chunk_x, chunk_y, states, levels, out_levels_mask, scratch);
-    if (mask != 0u) {
-        atomic_fetch_add_explicit(&save->sections_loaded, (uint64_t)__builtin_popcountll(mask), memory_order_relaxed);
+column_mask_t save_world_column_overlay_levels(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
+                                               uint8_t *levels, column_mask_t *out_levels_mask, uint8_t *scratch) {
+    const column_mask_t mask =
+        save_world_overlay_read(save, chunk_x, chunk_y, states, levels, out_levels_mask, scratch);
+    if (column_mask_any(mask)) {
+        atomic_fetch_add_explicit(&save->sections_loaded, (uint64_t)column_mask_count(mask), memory_order_relaxed);
     }
     return mask;
 }
 
-uint64_t save_world_column_overlay(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
-                                   uint8_t *scratch) {
+column_mask_t save_world_column_overlay(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint16_t *states,
+                                        uint8_t *scratch) {
     return save_world_column_overlay_levels(save, chunk_x, chunk_y, states, nullptr, nullptr, scratch);
 }
 
@@ -1308,11 +1310,11 @@ uint64_t save_world_column_overlay(save_world_t *save, int32_t chunk_x, int32_t 
 
 /* What save_world_far_line keeps at the start of its scratch. */
 typedef struct save_world_far_cache_t {
-    uint64_t mask;     /* 0: the sections it holds */
-    int32_t chunk_x;   /* 8 */
-    int32_t chunk_y;   /* 12 */
-    uint8_t filled;    /* 16: zero bytes say nothing has been read yet */
-    uint8_t _pad0[47]; /* 17 */
+    column_mask_t mask; /* 0: the sections it holds */
+    int32_t chunk_x;    /* 16 */
+    int32_t chunk_y;    /* 20 */
+    uint8_t filled;     /* 24: zero bytes say nothing has been read yet */
+    uint8_t _pad0[39];  /* 25 */
 } save_world_far_cache_t;
 static_assert(sizeof(save_world_far_cache_t) == 64);
 
@@ -1329,8 +1331,8 @@ void save_world_far_line(void *borrowed_save, int32_t x, int32_t y, uint16_t *ou
         cache->filled = 1u;
     }
     const uint32_t local_x = column_local_of(x), local_y = column_local_of(y);
-    for (uint64_t left = cache->mask; left != 0u; left &= left - 1u) {
-        const uint32_t section = (uint32_t)__builtin_ctzll(left);
+    for (column_mask_t left = cache->mask; column_mask_any(left); left = column_mask_drop_lowest(left)) {
+        const uint32_t section = column_mask_lowest(left);
         for (uint32_t z = 0u; z < SECTION_SIZE; z++) {
             out[section * SECTION_SIZE + z] =
                 states[(uint64_t)section * SECTION_VOXELS + section_voxel_index(local_x, local_y, z)];

@@ -18,7 +18,7 @@ enum : uint64_t {
     EDIT_TEST_POOL_BYTES = 192ull << 20,
 };
 enum : uint32_t {
-    /* z from -250 to 500, both included, in a 16x16 column. */
+    /* z from -250 to 1250, both included, in a 16x16 column. */
     EDIT_TEST_HEIGHT = COLUMN_Z_GAMEPLAY_MAX - COLUMN_Z_GAMEPLAY_MIN + 1,
     EDIT_TEST_COLUMN_VOXELS = COLUMN_SIZE * COLUMN_SIZE * EDIT_TEST_HEIGHT,
     EDIT_TEST_STONE = 1u,
@@ -98,8 +98,8 @@ static uint32_t edit_test_slot(const edit_test_t *test, int32_t chunk_x, int32_t
     return found ? slot : UINT32_MAX;
 }
 
-static uint64_t edit_test_section_bit(int32_t z) {
-    return 1ull << column_section_of(z);
+static column_mask_t edit_test_section_bit(int32_t z) {
+    return column_mask_of(column_section_of(z));
 }
 
 /* ---- One edit ------------------------------------------------------------------------------------------------------ */
@@ -126,7 +126,8 @@ TEST(a_write_is_logged_and_flagged_for_every_consumer_with_before_and_after) {
     CHECK_EQ_U64(records[1].before, 9u);
     CHECK_EQ_U64(records[1].after, 11u);
     for (uint32_t i = 0; i < WORLD_EDIT_CONSUMER_COUNT; i++) {
-        CHECK_EQ_U64(world_edit_dirty_peek(edit, slot, (world_edit_consumer_t)i), edit_test_section_bit(40));
+        CHECK(
+            column_mask_equal(world_edit_dirty_peek(edit, slot, (world_edit_consumer_t)i), edit_test_section_bit(40)));
     }
     CHECK_EQ_U64(world_edit_column_revision(edit, slot), edit->revision);
     edit_test_end(test);
@@ -141,9 +142,9 @@ TEST(a_light_write_is_for_the_renderer_alone_and_not_logged) {
     CHECK_EQ_U64(world_map_light_get(&test->map, 3, 4, -5, &light), WORLD_MAP_STATUS_OK);
     CHECK_EQ_U64(light, 0x3Au);
     CHECK_EQ_U64(world_edit_log_position(edit), 0u);
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, slot, WORLD_EDIT_CONSUMER_RENDER), edit_test_section_bit(-5));
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, slot, WORLD_EDIT_CONSUMER_SAVE), 0u);
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, slot, WORLD_EDIT_CONSUMER_LIGHT), 0u);
+    CHECK(column_mask_equal(world_edit_dirty_peek(edit, slot, WORLD_EDIT_CONSUMER_RENDER), edit_test_section_bit(-5)));
+    CHECK(!column_mask_any(world_edit_dirty_peek(edit, slot, WORLD_EDIT_CONSUMER_SAVE)));
+    CHECK(!column_mask_any(world_edit_dirty_peek(edit, slot, WORLD_EDIT_CONSUMER_LIGHT)));
     CHECK_EQ_U64(world_edit_column_revision(edit, slot), edit->revision);
     edit_test_end(test);
 }
@@ -155,11 +156,11 @@ TEST(what_changes_nothing_leaves_no_trace) {
     const uint64_t revision = edit->revision;
     /* Past the limits, with a column there. */
     CHECK_EQ_U64(world_edit_block_set(edit, 0, 0, -251, 1u), WORLD_EDIT_STATUS_Z_OUT_OF_RANGE);
-    CHECK_EQ_U64(world_edit_block_set(edit, 0, 0, 501, 1u), WORLD_EDIT_STATUS_Z_OUT_OF_RANGE);
+    CHECK_EQ_U64(world_edit_block_set(edit, 0, 0, 1251, 1u), WORLD_EDIT_STATUS_Z_OUT_OF_RANGE);
     CHECK_EQ_U64(world_edit_light_set(edit, 0, 0, -251, 1u), WORLD_EDIT_STATUS_Z_OUT_OF_RANGE);
-    CHECK_EQ_U64(world_edit_light_set(edit, 0, 0, 501, 1u), WORLD_EDIT_STATUS_Z_OUT_OF_RANGE);
+    CHECK_EQ_U64(world_edit_light_set(edit, 0, 0, 1251, 1u), WORLD_EDIT_STATUS_Z_OUT_OF_RANGE);
     /* And with none. */
-    CHECK_EQ_U64(world_edit_block_set(edit, 4096, 0, 501, 1u), WORLD_EDIT_STATUS_Z_OUT_OF_RANGE);
+    CHECK_EQ_U64(world_edit_block_set(edit, 4096, 0, 1251, 1u), WORLD_EDIT_STATUS_Z_OUT_OF_RANGE);
     /* No column: outside the window, and in a corner of it that was never asked for. */
     CHECK_EQ_U64(world_edit_block_set(edit, 4096, 0, 0, 1u), WORLD_EDIT_STATUS_NOT_LOADED);
     CHECK_EQ_U64(world_edit_block_set(edit, -1, -1, 0, 1u), WORLD_EDIT_STATUS_NOT_LOADED);
@@ -176,7 +177,9 @@ TEST(what_changes_nothing_leaves_no_trace) {
     }
     /* Both ends of the range do work. */
     CHECK_EQ_U64(world_edit_block_set(edit, 0, 0, -250, 1u), WORLD_EDIT_STATUS_CHANGED);
-    CHECK_EQ_U64(world_edit_block_set(edit, 0, 0, 500, 1u), WORLD_EDIT_STATUS_CHANGED);
+    CHECK_EQ_U64(world_edit_block_set(edit, 0, 0, 1250, 1u), WORLD_EDIT_STATUS_CHANGED);
+    CHECK(column_mask_equal(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_SAVE),
+                            column_mask_or(edit_test_section_bit(-250), edit_test_section_bit(1250))));
     edit_test_end(test);
 }
 
@@ -244,21 +247,21 @@ TEST(each_consumer_has_its_own_flags_oldest_column_first) {
     CHECK_EQ_U64(world_edit_block_set(edit, -1, 0, 100, 1u), WORLD_EDIT_STATUS_CHANGED);
     /* A second write to the first column must not put it behind: it has waited longest. */
     CHECK_EQ_U64(world_edit_block_set(edit, 16, 0, 200, 1u), WORLD_EDIT_STATUS_CHANGED);
-    const uint64_t east_mask = edit_test_section_bit(0) | edit_test_section_bit(200);
+    const column_mask_t east_mask = column_mask_or(edit_test_section_bit(0), edit_test_section_bit(200));
     CHECK_EQ_U64(edit->queue_count[WORLD_EDIT_CONSUMER_RENDER], 2u);
     world_edit_dirty_t dirty;
     REQUIRE(world_edit_dirty_next(edit, WORLD_EDIT_CONSUMER_RENDER, &dirty));
     CHECK_EQ_U64(dirty.slot, east);
-    CHECK_EQ_U64(dirty.section_mask, east_mask);
+    CHECK(column_mask_equal(dirty.section_mask, east_mask));
     CHECK_EQ_I64(dirty.chunk_x, 1);
     CHECK_EQ_I64(dirty.chunk_y, 0);
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, east, WORLD_EDIT_CONSUMER_RENDER), 0u);
+    CHECK(!column_mask_any(world_edit_dirty_peek(edit, east, WORLD_EDIT_CONSUMER_RENDER)));
     /* The others' flags are still there. */
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, east, WORLD_EDIT_CONSUMER_SAVE), east_mask);
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, east, WORLD_EDIT_CONSUMER_LIGHT), east_mask);
+    CHECK(column_mask_equal(world_edit_dirty_peek(edit, east, WORLD_EDIT_CONSUMER_SAVE), east_mask));
+    CHECK(column_mask_equal(world_edit_dirty_peek(edit, east, WORLD_EDIT_CONSUMER_LIGHT), east_mask));
     REQUIRE(world_edit_dirty_next(edit, WORLD_EDIT_CONSUMER_RENDER, &dirty));
     CHECK_EQ_U64(dirty.slot, west);
-    CHECK_EQ_U64(dirty.section_mask, edit_test_section_bit(100));
+    CHECK(column_mask_equal(dirty.section_mask, edit_test_section_bit(100)));
     CHECK(!world_edit_dirty_next(edit, WORLD_EDIT_CONSUMER_RENDER, &dirty));
     REQUIRE(world_edit_dirty_next(edit, WORLD_EDIT_CONSUMER_SAVE, &dirty));
     CHECK_EQ_U64(dirty.slot, east);
@@ -277,7 +280,7 @@ TEST(flags_given_back_wait_their_turn_and_flags_cleared_are_never_handed_over) {
     const uint64_t revision = edit->revision;
     world_edit_dirty_restore(edit, &first, WORLD_EDIT_CONSUMER_SAVE);
     CHECK_EQ_U64(edit->revision, revision); /* nothing in the world changed */
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, east, WORLD_EDIT_CONSUMER_SAVE), first.section_mask);
+    CHECK(column_mask_equal(world_edit_dirty_peek(edit, east, WORLD_EDIT_CONSUMER_SAVE), first.section_mask));
     world_edit_dirty_t second;
     REQUIRE(world_edit_dirty_next(edit, WORLD_EDIT_CONSUMER_SAVE, &second));
     CHECK(second.slot != east);
@@ -289,14 +292,14 @@ TEST(flags_given_back_wait_their_turn_and_flags_cleared_are_never_handed_over) {
     CHECK_EQ_U64(world_edit_block_set(edit, 16, 0, 100, 2u), WORLD_EDIT_STATUS_CHANGED);
     CHECK_EQ_U64(world_edit_block_set(edit, 16, 0, 200, 2u), WORLD_EDIT_STATUS_CHANGED);
     world_edit_dirty_clear(edit, east, WORLD_EDIT_CONSUMER_SAVE, edit_test_section_bit(100));
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, east, WORLD_EDIT_CONSUMER_SAVE), edit_test_section_bit(200));
+    CHECK(column_mask_equal(world_edit_dirty_peek(edit, east, WORLD_EDIT_CONSUMER_SAVE), edit_test_section_bit(200)));
     world_edit_dirty_clear(edit, east, WORLD_EDIT_CONSUMER_SAVE, WORLD_EDIT_SECTIONS_ALL);
     CHECK(!world_edit_dirty_next(edit, WORLD_EDIT_CONSUMER_SAVE, &second));
     CHECK_EQ_U64(edit->queue_count[WORLD_EDIT_CONSUMER_SAVE], 0u);
     /* And the column can queue again afterwards. */
     CHECK_EQ_U64(world_edit_block_set(edit, 16, 0, 300, 2u), WORLD_EDIT_STATUS_CHANGED);
     REQUIRE(world_edit_dirty_next(edit, WORLD_EDIT_CONSUMER_SAVE, &second));
-    CHECK_EQ_U64(second.section_mask, edit_test_section_bit(300));
+    CHECK(column_mask_equal(second.section_mask, edit_test_section_bit(300)));
     edit_test_end(test);
 }
 
@@ -309,10 +312,10 @@ TEST(a_column_that_goes_takes_its_flags_with_it) {
     world_edit_dirty_t held;
     REQUIRE(world_edit_dirty_next(edit, WORLD_EDIT_CONSUMER_RENDER, &held));
     CHECK_EQ_U64(world_edit_block_set(edit, 0, 0, 100, 1u), WORLD_EDIT_STATUS_CHANGED);
-    CHECK(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_SAVE) != 0u);
+    CHECK(column_mask_any(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_SAVE)));
     world_map_unload(map, 0u);
     /* Nothing is left of it, even with no new column there. */
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_SAVE), 0u);
+    CHECK(!column_mask_any(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_SAVE)));
     world_edit_dirty_t dirty;
     CHECK(!world_edit_dirty_next(edit, WORLD_EDIT_CONSUMER_SAVE, &dirty));
     /* A flag given back for a column gone does nothing, once more with a new one there. */
@@ -324,13 +327,13 @@ TEST(a_column_that_goes_takes_its_flags_with_it) {
     REQUIRE(world_map_stream_take(map, &request, 1u) == 1u);
     REQUIRE(world_map_stream_commit(map, &request) != nullptr);
     world_edit_dirty_restore(edit, &held, WORLD_EDIT_CONSUMER_RENDER);
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_RENDER), 0u);
+    CHECK(!column_mask_any(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_RENDER)));
     CHECK(!world_edit_dirty_next(edit, WORLD_EDIT_CONSUMER_RENDER, &dirty));
     /* It starts clean, with a top that knows nothing of the old column. */
     CHECK_EQ_I64(world_edit_column_top_z(edit, 0u), WORLD_EDIT_TOP_Z_NONE);
     CHECK_EQ_U64(world_edit_block_set(edit, 0, 0, 1, 1u), WORLD_EDIT_STATUS_CHANGED);
     REQUIRE(world_edit_dirty_next(edit, WORLD_EDIT_CONSUMER_RENDER, &dirty));
-    CHECK_EQ_U64(dirty.section_mask, edit_test_section_bit(1));
+    CHECK(column_mask_equal(dirty.section_mask, edit_test_section_bit(1)));
     CHECK(dirty.generation != held.generation);
     edit_test_end(test);
 }
@@ -363,7 +366,7 @@ TEST(columns_coming_and_going_cannot_overflow_a_queue) {
     world_edit_dirty_t dirty;
     uint32_t handed = 0;
     while (world_edit_dirty_next(edit, WORLD_EDIT_CONSUMER_SAVE, &dirty)) {
-        CHECK_EQ_U64(dirty.section_mask, edit_test_section_bit(0));
+        CHECK(column_mask_equal(dirty.section_mask, edit_test_section_bit(0)));
         CHECK(world_map_column_at(map, dirty.chunk_x, dirty.chunk_y) != nullptr);
         handed++;
     }
@@ -384,11 +387,11 @@ TEST(a_column_just_filled_is_for_render_and_light_and_is_not_logged_or_saved) {
     /* A uniform section of stone, a section of air with other light, and all the rest as they were. */
     section_block_fill(&column->sections[column_section_of(-16)], &test->pool, EDIT_TEST_STONE);
     section_light_fill(&column->sections[column_section_of(100)], &test->pool, 0x70u);
-    const uint64_t mask = edit_test_section_bit(-16) | edit_test_section_bit(100);
+    const column_mask_t mask = column_mask_or(edit_test_section_bit(-16), edit_test_section_bit(100));
     world_edit_column_filled(edit, 0u);
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_RENDER), mask);
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_LIGHT), mask);
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_SAVE), 0u);
+    CHECK(column_mask_equal(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_RENDER), mask));
+    CHECK(column_mask_equal(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_LIGHT), mask));
+    CHECK(!column_mask_any(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_SAVE)));
     CHECK_EQ_U64(world_edit_log_position(edit), 0u);
     /* Light is not a block. The section of -16 is from -16 to -1. */
     CHECK_EQ_I64(world_edit_column_top_z(edit, 0u), -1);
@@ -404,12 +407,12 @@ TEST(sections_marked_are_flagged_for_those_asked_and_the_top_is_looked_for) {
     const uint64_t revision = edit->revision;
     world_edit_sections_mark(edit, 0u, edit_test_section_bit(32), WORLD_EDIT_FOR_RENDER | WORLD_EDIT_FOR_SAVE);
     CHECK_EQ_U64(edit->revision, revision + 1u);
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_RENDER), edit_test_section_bit(32));
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_SAVE), edit_test_section_bit(32));
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_LIGHT), 0u);
+    CHECK(column_mask_equal(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_RENDER), edit_test_section_bit(32)));
+    CHECK(column_mask_equal(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_SAVE), edit_test_section_bit(32)));
+    CHECK(!column_mask_any(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_LIGHT)));
     CHECK_EQ_I64(world_edit_column_top_z(edit, 0u), 47);
     /* A mask of nothing is nothing. */
-    world_edit_sections_mark(edit, 0u, 0u, WORLD_EDIT_FOR_ALL);
+    world_edit_sections_mark(edit, 0u, COLUMN_MASK_NONE, WORLD_EDIT_FOR_ALL);
     CHECK_EQ_U64(edit->revision, revision + 1u);
     /* Emptied by hand: the top goes when told. */
     section_block_fill(&column->sections[column_section_of(32)], &test->pool, BLOCK_ID_AIR);
@@ -430,9 +433,9 @@ TEST(the_top_follows_blocks_up_and_down) {
     CHECK_EQ_U64(world_edit_block_set(edit, 2, 0, -200, 1u), WORLD_EDIT_STATUS_CHANGED);
     CHECK_EQ_I64(world_edit_column_top_z(edit, 0u), 111);
     /* The very top of the world, and the very bottom. */
-    CHECK_EQ_U64(world_edit_block_set(edit, 3, 0, 500, 1u), WORLD_EDIT_STATUS_CHANGED);
-    CHECK_EQ_I64(world_edit_column_top_z(edit, 0u), 511);
-    CHECK_EQ_U64(world_edit_block_set(edit, 3, 0, 500, BLOCK_ID_AIR), WORLD_EDIT_STATUS_CHANGED);
+    CHECK_EQ_U64(world_edit_block_set(edit, 3, 0, 1250, 1u), WORLD_EDIT_STATUS_CHANGED);
+    CHECK_EQ_I64(world_edit_column_top_z(edit, 0u), 1263);
+    CHECK_EQ_U64(world_edit_block_set(edit, 3, 0, 1250, BLOCK_ID_AIR), WORLD_EDIT_STATUS_CHANGED);
     CHECK_EQ_I64(world_edit_column_top_z(edit, 0u), 111);
     /* Emptying a section under the top leaves it. */
     CHECK_EQ_U64(world_edit_block_set(edit, 0, 0, 0, BLOCK_ID_AIR), WORLD_EDIT_STATUS_CHANGED);
@@ -465,7 +468,8 @@ TEST(random_edits_agree_with_a_brute_force_array_and_brute_force_flags) {
     uint16_t *const blocks = test_alloc(t, (uint64_t)map->slot_count * EDIT_TEST_COLUMN_VOXELS * sizeof(uint16_t));
     uint8_t *const light = test_alloc(t, (uint64_t)map->slot_count * EDIT_TEST_COLUMN_VOXELS);
     uint32_t *const solid = test_alloc(t, (uint64_t)map->slot_count * COLUMN_SECTIONS * sizeof(uint32_t));
-    uint64_t *const dirty = test_alloc(t, (uint64_t)map->slot_count * WORLD_EDIT_CONSUMER_COUNT * sizeof(uint64_t));
+    column_mask_t *const dirty =
+        test_alloc(t, (uint64_t)map->slot_count * WORLD_EDIT_CONSUMER_COUNT * sizeof(column_mask_t));
     world_edit_record_t *const records = test_alloc(t, sizeof(world_edit_record_t) * (1u << 12));
     memset(light, SECTION_LIGHT_OPEN_SKY, (uint64_t)map->slot_count * EDIT_TEST_COLUMN_VOXELS);
     world_edit_record_t *const expected_log = test_alloc(t, sizeof(world_edit_record_t) * (1u << 20));
@@ -500,7 +504,7 @@ TEST(random_edits_agree_with_a_brute_force_array_and_brute_force_flags) {
         const bool loaded = world_map_column_at(map, chunk_x, chunk_y) != nullptr;
         const bool cross = chunk_x * chunk_x + chunk_y * chunk_y <= 1;
         CHECK_EQ_U64(loaded ? 1u : 0u, cross ? 1u : 0u);
-        const bool in_range = z >= -250 && z <= 500;
+        const bool in_range = z >= -250 && z <= 1250;
         const uint32_t slot = loaded ? edit_test_slot(test, chunk_x, chunk_y) : 0u;
         const uint64_t base = (uint64_t)slot * EDIT_TEST_COLUMN_VOXELS;
         const uint32_t flat = in_range ? edit_flat_index(column_local_of(x), column_local_of(y), z) : 0u;
@@ -520,7 +524,8 @@ TEST(random_edits_agree_with_a_brute_force_array_and_brute_force_flags) {
             } else {
                 CHECK_EQ_U64(status, WORLD_EDIT_STATUS_CHANGED);
                 light[base + flat] = packed;
-                dirty[slot * WORLD_EDIT_CONSUMER_COUNT + WORLD_EDIT_CONSUMER_RENDER] |= edit_test_section_bit(z);
+                dirty[slot * WORLD_EDIT_CONSUMER_COUNT + WORLD_EDIT_CONSUMER_RENDER] = column_mask_or(
+                    dirty[slot * WORLD_EDIT_CONSUMER_COUNT + WORLD_EDIT_CONSUMER_RENDER], edit_test_section_bit(z));
             }
         } else {
             /* Blocks. A wide run of states for a while, so that sections go all the way to direct form. */
@@ -549,7 +554,8 @@ TEST(random_edits_agree_with_a_brute_force_array_and_brute_force_flags) {
                 expected_log_count++;
                 blocks[base + flat] = state;
                 for (uint32_t i = 0; i < WORLD_EDIT_CONSUMER_COUNT; i++) {
-                    dirty[slot * WORLD_EDIT_CONSUMER_COUNT + i] |= edit_test_section_bit(z);
+                    dirty[slot * WORLD_EDIT_CONSUMER_COUNT + i] =
+                        column_mask_or(dirty[slot * WORLD_EDIT_CONSUMER_COUNT + i], edit_test_section_bit(z));
                 }
             }
         }
@@ -562,7 +568,7 @@ TEST(random_edits_agree_with_a_brute_force_array_and_brute_force_flags) {
                 const uint32_t lx = i & 15u;
                 const uint32_t ly = (i >> 4) & 15u;
                 const int32_t vz = section_z + (int32_t)(i >> 8);
-                if (vz < -250 || vz > 500) {
+                if (vz < -250 || vz > 1250) {
                     continue;
                 }
                 const int32_t vx = chunk_x * 16 + (int32_t)lx;
@@ -577,7 +583,8 @@ TEST(random_edits_agree_with_a_brute_force_array_and_brute_force_flags) {
                     blocks[base + vflat] = BLOCK_ID_AIR;
                     solid[(uint64_t)slot * COLUMN_SECTIONS + column_section_of(vz)]--;
                     for (uint32_t c = 0; c < WORLD_EDIT_CONSUMER_COUNT; c++) {
-                        dirty[slot * WORLD_EDIT_CONSUMER_COUNT + c] |= edit_test_section_bit(vz);
+                        dirty[slot * WORLD_EDIT_CONSUMER_COUNT + c] =
+                            column_mask_or(dirty[slot * WORLD_EDIT_CONSUMER_COUNT + c], edit_test_section_bit(vz));
                     }
                 }
             }
@@ -605,9 +612,9 @@ TEST(random_edits_agree_with_a_brute_force_array_and_brute_force_flags) {
             world_edit_dirty_t handed;
             uint32_t want = (uint32_t)(edit_test_random(&rng) % 4u);
             while (want > 0u && world_edit_dirty_next(edit, consumer, &handed)) {
-                uint64_t *const expected = &dirty[handed.slot * WORLD_EDIT_CONSUMER_COUNT + (uint32_t)consumer];
-                CHECK_EQ_U64(handed.section_mask, *expected);
-                *expected = 0u;
+                column_mask_t *const expected = &dirty[handed.slot * WORLD_EDIT_CONSUMER_COUNT + (uint32_t)consumer];
+                CHECK(column_mask_equal(handed.section_mask, *expected));
+                *expected = COLUMN_MASK_NONE;
                 want--;
             }
         }
@@ -678,8 +685,8 @@ TEST(random_edits_agree_with_a_brute_force_array_and_brute_force_flags) {
     /* What is still flagged is what brute force still holds. */
     for (uint32_t slot = 0; slot < map->slot_count; slot++) {
         for (uint32_t c = 0; c < WORLD_EDIT_CONSUMER_COUNT; c++) {
-            CHECK_EQ_U64(world_edit_dirty_peek(edit, slot, (world_edit_consumer_t)c),
-                         dirty[slot * WORLD_EDIT_CONSUMER_COUNT + c]);
+            CHECK(column_mask_equal(world_edit_dirty_peek(edit, slot, (world_edit_consumer_t)c),
+                                    dirty[slot * WORLD_EDIT_CONSUMER_COUNT + c]));
         }
     }
     edit_test_end(test);
@@ -793,7 +800,7 @@ TEST(a_view_carries_each_section_as_it_was) {
     const world_edit_snapshot_view_t *const view = world_edit_snapshot_acquire(snapshot);
     REQUIRE(view != nullptr);
     CHECK_EQ_U64(view->section_count, 3u);
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_RENDER), 0u);
+    CHECK(!column_mask_any(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_RENDER)));
     /* Lowest first, within a column. */
     CHECK_EQ_U64(view->borrowed_sections[0].section_index, column_section_of(-32));
     CHECK_EQ_U64(view->borrowed_sections[1].section_index, column_section_of(3));
@@ -819,7 +826,7 @@ TEST(a_view_carries_each_section_as_it_was) {
         CHECK_EQ_U64(mismatches, 0u);
     }
     /* The other consumers are not touched by a publish. */
-    CHECK(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_SAVE) != 0u);
+    CHECK(column_mask_any(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_SAVE)));
     edit_test_end(test);
 }
 
@@ -897,13 +904,13 @@ TEST(a_view_nobody_read_gives_its_sections_back) {
     world_edit_snapshot_t *const snapshot = &test->snapshot;
     CHECK_EQ_U64(world_edit_block_set(edit, 0, 0, 0, 1u), WORLD_EDIT_STATUS_CHANGED);
     REQUIRE(world_edit_snapshot_publish(snapshot));
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, edit_test_slot(test, 0, 0), WORLD_EDIT_CONSUMER_RENDER), 0u);
+    CHECK(!column_mask_any(world_edit_dirty_peek(edit, edit_test_slot(test, 0, 0), WORLD_EDIT_CONSUMER_RENDER)));
     CHECK_EQ_U64(world_edit_block_set(edit, 16, 0, 16, 2u), WORLD_EDIT_STATUS_CHANGED);
     /* Replaces the first view, which nobody took. */
     REQUIRE(world_edit_snapshot_publish(snapshot));
     CHECK_EQ_U64(snapshot->overwritten_count, 1u);
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, edit_test_slot(test, 0, 0), WORLD_EDIT_CONSUMER_RENDER),
-                 edit_test_section_bit(0));
+    CHECK(column_mask_equal(world_edit_dirty_peek(edit, edit_test_slot(test, 0, 0), WORLD_EDIT_CONSUMER_RENDER),
+                            edit_test_section_bit(0)));
     /* Changed since: what goes out is the newer. */
     CHECK_EQ_U64(world_edit_block_set(edit, 0, 0, 0, 3u), WORLD_EDIT_STATUS_CHANGED);
     /* The second view is what the reader gets, with only what the second publish had. */
@@ -964,7 +971,7 @@ TEST(a_section_of_a_column_gone_does_not_come_back_with_a_view_nobody_read) {
     REQUIRE(world_map_stream_commit(map, &request) != nullptr);
     REQUIRE(world_edit_snapshot_publish(snapshot));
     CHECK_EQ_U64(snapshot->overwritten_count, 1u);
-    CHECK_EQ_U64(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_RENDER), 0u);
+    CHECK(!column_mask_any(world_edit_dirty_peek(edit, 0u, WORLD_EDIT_CONSUMER_RENDER)));
     /* The reader's table has the new generation, and no section for it. */
     const world_edit_snapshot_view_t *const view = world_edit_snapshot_acquire(snapshot);
     REQUIRE(view != nullptr);

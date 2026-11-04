@@ -1,6 +1,6 @@
 # run/src/world/column
 
-**Purpose:** a 16x16 column of 48 sections covering `z` in `[-256, 512)`, the coordinate helpers, and the limits that keep gameplay to `z = -250 ... +500`.
+**Purpose:** a 16x16 column of 96 sections covering `z` in `[-256, 1280)`, the coordinate helpers, a mask with one bit per section (`column_mask_t`, two words, since 96 sections do not fit one), and the limits that keep gameplay to `z = -250 ... +1250`.
 **Tier:** Arena (depth 2): `column_array_alloc` takes from an `arena_t *` its Owner gives.
 **Owns:** nothing. Its sections hold their arrays from the `section_pool_t` passed to each call.
 **Lifetime:** World.
@@ -20,8 +20,8 @@
 
 ## Two ranges
 
-Storage covers `[-256, 512)`, because 48 sections of 16 must start and end on a multiple of 16. Gameplay is `[-250, 500]`, from `world:` in `config/machine.yaml`. So the lowest and highest sections hold layers nothing may write: 6 under `-250`, and 11 above `500`.
+Storage covers `[-256, 1280)`, because 96 sections of 16 must start and end on a multiple of 16. Gameplay is `[-250, 1250]`, from `world:` in `config/machine.yaml`. So the lowest sections hold layers nothing may write: 6 under `-250`, and 29 above `1250`.
 
-`column_block_set` and the others refuse those with `COLUMN_STATUS_Z_OUT_OF_RANGE`, and reads return false and leave `*out` alone, so a `z` of `-251` or `501` cannot reach a block by any function here. `column_z_clamp` is for something that should stop at the limit and not be refused: a player's feet, a tree's top. A renderer or a light pass that wants a section whole reads `column.sections[]` directly, by `column_section_of`.
+`column_block_set` and the others refuse those with `COLUMN_STATUS_Z_OUT_OF_RANGE`, and reads return false and leave `*out` alone, so a `z` of `-251` or `1251` cannot reach a block by any function here. `column_z_clamp` is for something that should stop at the limit and not be refused: a player's feet, a tree's top. A renderer or a light pass that wants a section whole reads `column.sections[]` directly, by `column_section_of`.
 
-A section with nothing in it costs 24 bytes in the column, so a column is 1160 bytes before any array. All-air sections above the ground and solid ones below it need nothing more.
+A section with nothing in it costs 24 bytes in the column, so a column is 2312 bytes before any array. All-air sections above the ground and solid ones below it need nothing more.
