@@ -220,6 +220,9 @@ Appended as they land:
 - `0d0a790` Record stage 3's second pass in its plan file: all 8 seeds inside the sea target, each of the 9 red tests read, 4 now passing, and why the other 5 wait for stage 7.
 - `a54a446` Give the world mountain ranges that run on for kilometres up to about 1200 high, with valleys, wetlands and rivers that stop at high ground, start a new world on low gentle ground, and stop a full section pool hanging a headless run.
 - `14a89c0` Record stage 4 of world generation in its plan file: ranges on target in the map's numbers, the choices made in tuning, the pool bug found, and the 8 tests left for stage 7.
+- `84e2608` Bring spaghetti closer together and dry out most aquifer cells so a body on foot can find caves and walk down to the deep levels, with bench_cave_walk and a test that walks the real game into one.
+- `3a5d2cb` Say in the repository's structure what bench/cave_walk and tests/run/terrain/cave/walk are.
+- `886962d` Record stage 5 of world generation in its plan file. Its subject says "up to 4 times as many" ways in: the table's ratio per seed is 2.8 to 4.6.
 
 ## Issues found
 
