@@ -1480,10 +1480,11 @@ static void pi_temp_dir_remove(const pi_temp_dir_t *dir) {
     rmdir(dir->path);
 }
 
-/* Walks down the hill the default seed starts on, looks straight down, and mines through the grass under its feet and the dirt under
- * that, falling as each goes. Then it turns uphill, looks level at the wall of its hole, mines that, and puts one back. */
+/* Takes a step on the grass seed 11 starts on, looks straight down, and mines through the grass under its feet and the dirt under
+ * that, falling as each goes. Then it turns, looks level at the wall of its hole, which at its eyes is the grass again, mines that, and
+ * puts one back. A longer step leaves it on the edge of a block, and it does not fall. */
 static const char pi_mine_script[] = "1 key w down\n"
-                                     "21 key w up\n"
+                                     "2 key w up\n"
                                      "22 move 0 500\n"
                                      "30 screenshot before.png\n"
                                      "31 button left down\n"
@@ -1503,6 +1504,8 @@ static void pi_program_run(test_context_t *t, const pi_temp_dir_t *dir, const ch
     char *const argv[] = {t->borrowed_args[0],
                           (char *)"--headless",
                           (char *)"--test-world",
+                          (char *)"--seed",
+                          (char *)"11",
                           (char *)"--walk",
                           (char *)"--render-distance",
                           (char *)"4",
@@ -1540,9 +1543,10 @@ TEST(the_program_walks_mines_to_dirt_and_places_it_back_the_same_each_time) {
     pi_program_run(t, &first, script, &run);
     REQUIRE(run.started != 0u);
     CHECK_EQ_I64(run.exit_code, MAIN_EXIT_OK);
-    /* Grass and two of dirt, each giving dirt, and one of them placed back. */
-    CHECK_CONTAINS(run.output,
-                   "the player mined 3 blocks and placed 1; the last mined was dirt, and the hand holds 2 of dirt");
+    /* Grass, dirt and grass, each giving dirt, and one of them placed back. */
+    CHECK_CONTAINS(
+        run.output,
+        "the player mined 3 blocks and placed 1; the last mined was grass_block, and the hand holds 2 of dirt");
     CHECK_CONTAINS(run.output, "0 bytes live");
     pi_program_run(t, &second, script, &run);
     REQUIRE(run.started != 0u);

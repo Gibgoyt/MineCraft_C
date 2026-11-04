@@ -1548,7 +1548,7 @@ static void ps_temp_dir_remove(const ps_temp_dir_t *dir) {
     rmdir(dir->path);
 }
 
-/* Sprints and jumps down the hill the default seed starts on, for 15 s. */
+/* Sprints and jumps from where seed 11 starts, on land with a fall to it, for 15 s. The default seed's start spent no food on this script. */
 static const char ps_run_script[] = "1 key lctrl down\n"
                                     "1 key w down\n"
                                     "1 key space down\n"
@@ -1558,6 +1558,8 @@ static void ps_program_run(test_context_t *t, const ps_temp_dir_t *dir, const ch
     char *const argv[] = {t->borrowed_args[0],
                           (char *)"--headless",
                           (char *)"--test-world",
+                          (char *)"--seed",
+                          (char *)"11",
                           (char *)"--walk",
                           (char *)"--render-distance",
                           (char *)"4",

@@ -718,6 +718,8 @@ static void ii_program_run(test_context_t *t, const ii_temp_dir_t *dir, const ch
     char *const argv[] = {t->borrowed_args[0],
                           (char *)"--headless",
                           (char *)"--test-world",
+                          (char *)"--seed",
+                          (char *)"11",
                           (char *)"--walk",
                           (char *)"--render-distance",
                           (char *)"3",
@@ -733,7 +735,7 @@ static void ii_program_run(test_context_t *t, const ii_temp_dir_t *dir, const ch
     test_process_run(t, argv, II_PROGRAM_TIMEOUT_MS, out);
 }
 
-/* The player looks down, and chooses the third slot before mining the grass under its feet, which takes 18 ticks by hand. It falls into
+/* On seed 11, whose start is on grass, the player looks down, and chooses the third slot before mining the grass under its feet, which takes 18 ticks by hand. It falls into
  * the hole with the dirt, which it can pick up 10 ticks after it came out, and that goes to the first empty slot and not to the third. */
 #define II_SCRIPT_MINE                                                                                                 \
     "1 move 0 500\n"                                                                                                   \

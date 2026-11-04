@@ -253,7 +253,7 @@ static void en_temp_dir_remove(const en_temp_dir_t *dir) {
     rmdir(dir->path);
 }
 
-/* Looks straight down, digs the grass underfoot, and looks: a crack half way, and dirt lying in the hole after. */
+/* On seed 11, whose start is on grass: looks straight down, digs the grass underfoot, and looks: a crack half way, and dirt lying in the hole after. */
 static const char en_script[] = "1 move 0 500\n"
                                 "5 screenshot before.png\n"
                                 "6 button left down\n"
@@ -267,6 +267,8 @@ static void en_program_run(test_context_t *t, const en_temp_dir_t *dir, const ch
     char *argv[] = {t->borrowed_args[0],
                     (char *)"--headless",
                     (char *)"--test-world",
+                    (char *)"--seed",
+                    (char *)"11",
                     (char *)"--walk",
                     (char *)"--no-taa",
                     (char *)"--no-ao",
@@ -349,6 +351,8 @@ TEST(the_program_shows_the_dirt_it_dropped_the_crack_and_the_outline) {
     char *const none_argv[] = {t->borrowed_args[0],
                                (char *)"--headless",
                                (char *)"--test-world",
+                               (char *)"--seed",
+                               (char *)"11",
                                (char *)"--walk",
                                (char *)"--no-taa",
                                (char *)"--no-ao",
@@ -370,6 +374,8 @@ TEST(the_program_shows_the_dirt_it_dropped_the_crack_and_the_outline) {
     char *const line_argv[] = {t->borrowed_args[0],
                                (char *)"--headless",
                                (char *)"--test-world",
+                               (char *)"--seed",
+                               (char *)"11",
                                (char *)"--walk",
                                (char *)"--no-taa",
                                (char *)"--no-ao",

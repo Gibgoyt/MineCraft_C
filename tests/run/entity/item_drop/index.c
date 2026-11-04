@@ -992,7 +992,7 @@ static void di_temp_dir_remove(const di_temp_dir_t *dir) {
     rmdir(dir->path);
 }
 
-/* Stands where the default seed starts it, looks straight down and mines the grass under its feet, which takes 18 ticks by hand and
+/* Stands where seed 11 starts it, on grass as the default seed no longer is, looks straight down and mines the grass under its feet, which takes 18 ticks by hand and
  * drops dirt. It falls into the hole with the item, which it can pick up 10 ticks after it came out. Then it jumps, and with its feet
  * clear of the hole it places the dirt back under them, and lands where it started. */
 typedef struct di_script_line_t {
@@ -1032,6 +1032,8 @@ static void di_program_run(test_context_t *t, const di_temp_dir_t *dir, const ch
     char *const argv[] = {t->borrowed_args[0],
                           (char *)"--headless",
                           (char *)"--test-world",
+                          (char *)"--seed",
+                          (char *)"11",
                           (char *)"--walk",
                           (char *)"--render-distance",
                           (char *)"3",

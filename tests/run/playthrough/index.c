@@ -104,9 +104,9 @@ TEST(a_first_day_mines_dirt_picks_it_up_crafts_changes_the_distance_and_comes_ba
     pt_run(t, "tests/run/playthrough/fixtures/day.script", root, PT_DAY_MS, &process);
     const char *const output = process.output;
 
-    /* Podzol, as it is here, drops dirt: the one line a person would look for. */
-    CHECK_CONTAINS(output, "the last mined was jungle_log");
-    /* Dirt, a log left over, three planks, the pickaxe and two sticks, once on the way out and once again from the save. */
+    /* A mangrove's trunk, on seed 36: the one line a person would look for. */
+    CHECK_CONTAINS(output, "the last mined was mangrove_log");
+    /* Mud, a log left over, three planks, the pickaxe and two sticks, once on the way out and once again from the save. */
     CHECK_EQ_U64(pt_count(output, "the inventory holds 8 items in 5 stacks"), 2u);
     CHECK_EQ_U64(pt_count(output, "hotbar slot 4 is in hand, with 1 of wood_pickaxe"), 2u);
     CHECK_EQ_U64(pt_count(output, "the player mined 5 blocks and placed 1"), 2u);
