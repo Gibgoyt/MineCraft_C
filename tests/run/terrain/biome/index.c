@@ -1324,6 +1324,10 @@ TEST(the_caves_of_each_underground_biome_are_lined_and_nothing_else_is) {
             }
         }
         CHECK(memcmp(split, after, VOXELS * sizeof(uint16_t)) == 0);
+        /* From a mask of the box already asked for, the same blocks, as generating a world takes it. */
+        memcpy(split, before, VOXELS * sizeof(uint16_t));
+        terrain_surface_line_caves_with_mask(terrain.borrowed_surface, &box, mask + (uint64_t)COLUMNS, split);
+        CHECK(memcmp(split, after, VOXELS * sizeof(uint16_t)) == 0);
         printf("%s: %" PRIu64 " floors, %" PRIu64 " ceilings\n", def->name, floors, ceilings);
         CHECK(floors != 0u);
         CHECK(ceilings != 0u);

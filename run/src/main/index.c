@@ -28,6 +28,7 @@
 #include "types/index.h"
 #include "world/index.h"
 
+#include <errno.h>
 #include <inttypes.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -63,9 +64,11 @@ typedef struct main_options_t {
     const char *profile;        /* --profile, or nullptr for none */
     uint32_t pretend_gpu_lost;  /* --pretend-gpu-lost: pictures until the card really faults; 0 for never */
     uint8_t windowed;           /* --windowed */
-    uint8_t _pad0[3];
+    uint8_t has_seed;           /* --seed */
+    uint8_t _pad0[2];
+    uint64_t seed; /* --seed */
 } main_options_t;
-static_assert(sizeof(main_options_t) == 104);
+static_assert(sizeof(main_options_t) == 112);
 
 /* Where worlds live unless told otherwise: beside where the program was started, like everything else it reads. */
 static const char MAIN_SAVES_DEFAULT[] = "saves";
@@ -83,7 +86,7 @@ static void main_print_usage(const char *program) {
         "usage: %s [--report] [--pretend-missing-cpu <cpu.simd key>] [--pretend-leak] [--pretend-gpu-lost <pictures>]\n"
         "       %s --test-pattern [--card <path>] [--connector <name>] [--crash-test[=<how>]] [--windowed]\n"
         "       %s --headless [--script <path>] [--screenshot-dir <dir>] [--ticks <n>] [--width <w>] [--height <h>]\n"
-        "       %s --test-world [--walk] [--render-distance <chunks>] [--time-of-day <0 to 1>]\n"
+        "       %s --test-world [--seed <n>] [--walk] [--render-distance <chunks>] [--time-of-day <0 to 1>]\n"
         "           [--no-shapes] [--no-alpha] [--no-sky] [--no-day-cycle] [--no-fog]\n"
         "           [--no-shadows] [--no-stored-light] [--no-transparency] [--no-water-reflection]\n"
         "           [--no-water-tint] [--no-ao] [--no-taa] [--god-rays] [--no-entities]\n"
@@ -130,6 +133,7 @@ static void main_print_usage(const char *program) {
         "                           table, furnace or chest opens that, and E or Esc closes it\n",
         program, program, program, program, program);
     fputs(
+        "  --seed <n>               with --test-world: this seed's land and not the default's, 0x for hex\n"
         "  --pretend-gpu-lost       make the card fault for real after this many pictures, to see a world saved\n"
         "                           and the run end. Takes only this program's context; the kernel's log has a line\n"
         "  (no flags, on a terminal) the same as --menu\n"
@@ -265,6 +269,17 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
             if (!main_parse_count("--render-distance", argv[i], &out->render_distance)) {
                 return false;
             }
+        } else if (strcmp(argv[i], "--seed") == 0 && i + 1 < argc) {
+            i++;
+            char *seed_end = nullptr;
+            errno = 0;
+            out->seed = strtoull(argv[i], &seed_end, 0);
+            if (errno != 0 || seed_end == argv[i] || *seed_end != '\0' || argv[i][0] == '-') {
+                fprintf(stderr, "%s: --seed wants a whole number from 0 to 2^64 - 1, and '%s' is not one\n", argv[0],
+                        argv[i]);
+                return false;
+            }
+            out->has_seed = 1u;
         } else if (strcmp(argv[i], "--script") == 0 && i + 1 < argc) {
             i++;
             out->script = argv[i];
@@ -358,6 +373,10 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
     }
     if (out->has_time_of_day != 0u && out->test_world == 0) {
         fprintf(stderr, "%s: --time-of-day only means something with --test-world\n", argv[0]);
+        return false;
+    }
+    if (out->has_seed != 0u && out->test_world == 0) {
+        fprintf(stderr, "%s: --seed only means something with --test-world\n", argv[0]);
         return false;
     }
     if (out->walk != 0 && out->test_world == 0) {
@@ -479,7 +498,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         math_deinit(&app->math);
         return MAIN_EXIT_RUNTIME;
     }
-    if (!terrain_init(&app->terrain, TERRAIN_SEED_DEFAULT)) {
+    if (!terrain_init(&app->terrain, options->has_seed != 0u ? options->seed : TERRAIN_SEED_DEFAULT)) {
         world_deinit(&app->world);
         gpu_bridge_deinit(&app->gpu_bridge);
         job_deinit(&app->job);

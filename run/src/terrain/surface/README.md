@@ -11,7 +11,7 @@
 - `terrain_surface_block_from`, `terrain_surface_cave_block_from`: the rules, as plain arithmetic.
 - `terrain_surface_fill_box`: covers the ground of a box.
 - `terrain_surface_tile_read`, `terrain_surface_fill_tile_box`: the same fill, for what asks for one chunk in slices, reading what does not change with the layers once.
-- `terrain_surface_line_caves_box`: lines the caves of a box.
+- `terrain_surface_line_caves_box`: lines the caves of a box. `terrain_surface_line_caves_with_mask`: the same blocks, from a mask of that box, which asks the caves only for the layers just past its ends. On a tall column of a range the second look at the caves took a third of its time, so `terrain_generate_box` uses this.
 
 **May be called by:** `terrain` and its parts.
 **Depends on:** `terrain/biome`, `terrain/cave`, `terrain/density`, `terrain/hydrology`, `terrain/noise` and `terrain/rng` (its siblings), `arena`, `assert`, `machine`, `types`, and the generated `tables/biomes/` and `tables/blocks/`.

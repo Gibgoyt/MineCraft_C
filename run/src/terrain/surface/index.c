@@ -463,7 +463,47 @@ void terrain_surface_fill_tile_box(const terrain_surface_t *surface, terrain_sur
 
 /* ---- Under the ground --------------------------------------------------------------------------------------------- */
 
-/* One slice of one tile: from z_first up to z_last, both inside the box. */
+/* Where a run of layers finds what caves want: cut[corner + ix + row * iy + layer * (z - z_origin)]. */
+typedef struct surface_cut_t {
+    const uint8_t *borrowed_cut; /* 0 */
+    uint64_t corner;             /* 8 */
+    uint64_t row;                /* 16 */
+    uint64_t layer;              /* 24 */
+    int64_t z_origin;            /* 32 */
+} surface_cut_t;
+static_assert(sizeof(surface_cut_t) == 40);
+
+/* One tile's layers from z_first up to z_last, all inside the box, with what caves want on and just beyond each. */
+static void surface_line_layers(const terrain_density_box_t *box, const surface_span_t *span,
+                                const terrain_biome_column_t *columns, const float32_t *patch, int32_t z_first,
+                                int32_t z_last, const surface_cut_t *from, uint16_t *blocks) {
+    const uint64_t layer = (uint64_t)box->count_x * box->count_y;
+    for (int32_t z = z_first; z <= z_last; z++) {
+        const uint64_t bz = (uint64_t)((int64_t)z - (int64_t)box->origin_z);
+        const uint64_t cz = (uint64_t)((int64_t)z - from->z_origin);
+        for (uint32_t iy = 0u; iy < span->count_y; iy++) {
+            for (uint32_t ix = 0u; ix < span->count_x; ix++) {
+                const uint32_t i = ix + span->count_x * iy;
+                if (columns[i].caves == 0u) {
+                    continue;
+                }
+                const biome_id_t id = terrain_biome_of_voxel(&columns[i], z);
+                const biome_def_t *const def = &biome_defs[id];
+                if (def->where != BIOME_WHERE_UNDERGROUND) {
+                    continue;
+                }
+                uint16_t *const voxel =
+                    &blocks[(uint64_t)(span->ix + ix) + (uint64_t)box->count_x * (span->iy + iy) + layer * bz];
+                const uint64_t cut_at = from->corner + ix + from->row * iy + from->layer * cz;
+                const bool above = from->borrowed_cut[cut_at + from->layer] != 0u;
+                const bool below = from->borrowed_cut[cut_at - from->layer] != 0u;
+                *voxel = terrain_surface_cave_block_from(def, *voxel, patch[i], above, below);
+            }
+        }
+    }
+}
+
+/* One slice of one tile: from z_first up to z_last, both inside the box, asking the caves for it. */
 [[gnu::noinline]]
 static void surface_line_slice(const terrain_surface_t *surface, const terrain_density_box_t *box,
                                const surface_span_t *span, const terrain_biome_column_t *columns,
@@ -479,34 +519,18 @@ static void surface_line_slice(const terrain_surface_t *surface, const terrain_d
         .count_z = layers,
     };
     terrain_cave_mask_box(surface->borrowed_cave, &around, cut);
-    const uint64_t cut_layer = (uint64_t)span->count_x * span->count_y;
-    const uint64_t layer = (uint64_t)box->count_x * box->count_y;
-    for (int32_t z = z_first; z <= z_last; z++) {
-        const uint32_t cz = (uint32_t)(z - z_first) + 1u;
-        const uint32_t bz = (uint32_t)(z - box->origin_z);
-        for (uint32_t iy = 0u; iy < span->count_y; iy++) {
-            for (uint32_t ix = 0u; ix < span->count_x; ix++) {
-                const uint32_t i = ix + span->count_x * iy;
-                if (columns[i].caves == 0u) {
-                    continue;
-                }
-                const biome_id_t id = terrain_biome_of_voxel(&columns[i], z);
-                const biome_def_t *const def = &biome_defs[id];
-                if (def->where != BIOME_WHERE_UNDERGROUND) {
-                    continue;
-                }
-                uint16_t *const voxel =
-                    &blocks[(uint64_t)(span->ix + ix) + (uint64_t)box->count_x * (span->iy + iy) + layer * bz];
-                const bool above = cut[i + cut_layer * (cz + 1u)] != 0u;
-                const bool below = cut[i + cut_layer * (cz - 1u)] != 0u;
-                *voxel = terrain_surface_cave_block_from(def, *voxel, patch[i], above, below);
-            }
-        }
-    }
+    const surface_cut_t from = {
+        .borrowed_cut = cut,
+        .corner = 0u,
+        .row = span->count_x,
+        .layer = (uint64_t)span->count_x * span->count_y,
+        .z_origin = (int64_t)z_first - 1,
+    };
+    surface_line_layers(box, span, columns, patch, z_first, z_last, &from, blocks);
 }
 
 static void surface_line_tile(const terrain_surface_t *surface, const terrain_density_box_t *box,
-                              const surface_span_t *span, uint16_t *blocks) {
+                              const surface_span_t *span, const uint8_t *mask, uint16_t *blocks) {
     terrain_biome_column_t columns[SURFACE_TILE_COLUMNS];
     const terrain_climate_area_t area = {
         .origin_x = span->x,
@@ -558,16 +582,31 @@ static void surface_line_tile(const terrain_surface_t *surface, const terrain_de
     /* Slices lined up on the world, so what is asked of the caves does not change with the box. */
     const int32_t first = box->origin_z > (int32_t)lowest - 1 ? box->origin_z : (int32_t)lowest - 1;
     const int32_t last = box_top < highest + 1.0f32 ? (int32_t)box_top : (int32_t)highest + 1;
+    const int32_t box_last = box->origin_z + (int32_t)box->count_z - 1;
+    const surface_cut_t from_mask = {
+        .borrowed_cut = mask,
+        .corner = (uint64_t)span->ix + (uint64_t)box->count_x * span->iy,
+        .row = box->count_x,
+        .layer = (uint64_t)box->count_x * box->count_y,
+        .z_origin = (int64_t)box->origin_z,
+    };
     for (int32_t z = first; z <= last;) {
+        /* With a mask, a layer with both its neighbours in the box has nothing to ask. The box's two end layers still do. */
+        if (mask != nullptr && z > box->origin_z && z < box_last) {
+            const int32_t inner_last = last < box_last - 1 ? last : box_last - 1;
+            surface_line_layers(box, span, columns, patch, z, inner_last, &from_mask, blocks);
+            z = inner_last + 1;
+            continue;
+        }
         const int32_t slice_end = (z >> 4) * 16 + 15;
-        const int32_t z_last = slice_end < last ? slice_end : last;
+        const int32_t z_last = mask != nullptr ? z : (slice_end < last ? slice_end : last);
         surface_line_slice(surface, box, span, columns, patch, z, z_last, blocks);
         z = z_last + 1;
     }
 }
 
-void terrain_surface_line_caves_box(const terrain_surface_t *surface, const terrain_density_box_t *box,
-                                    uint16_t *blocks) {
+static void surface_line_box(const terrain_surface_t *surface, const terrain_density_box_t *box, const uint8_t *mask,
+                             uint16_t *blocks) {
     const int64_t tile = (int64_t)SURFACE_TILE;
     for (uint32_t iy = 0u; iy < box->count_y;) {
         const int64_t y = (int64_t)box->origin_y + (int64_t)iy;
@@ -587,9 +626,19 @@ void terrain_surface_line_caves_box(const terrain_surface_t *surface, const terr
                 .count_x = count_x,
                 .count_y = count_y,
             };
-            surface_line_tile(surface, box, &span, blocks);
+            surface_line_tile(surface, box, &span, mask, blocks);
             ix += count_x;
         }
         iy += count_y;
     }
+}
+
+void terrain_surface_line_caves_box(const terrain_surface_t *surface, const terrain_density_box_t *box,
+                                    uint16_t *blocks) {
+    surface_line_box(surface, box, nullptr, blocks);
+}
+
+void terrain_surface_line_caves_with_mask(const terrain_surface_t *surface, const terrain_density_box_t *box,
+                                          const uint8_t *mask, uint16_t *blocks) {
+    surface_line_box(surface, box, mask, blocks);
 }

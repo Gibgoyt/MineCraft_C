@@ -83,7 +83,7 @@ TEST(golden_pictures_match) {
     REQUIRE(game_settle(real.game));
     render_camera_t real_eye = real.game->camera;
     real_eye.position[2] += 20.0f64;
-    real_eye.pitch = -0.2f32;
+    real_eye.pitch = -0.45f32; /* the ground at the start is low now, and -0.2 was nearly all sky */
     render_frame_time_set(&real.render->frame, 0.38f32);
     for (uint32_t i = 0u; i < LD_GOLDEN_FRAMES; i++) {
         picture = sk_draw(t, &real, &real_eye);
@@ -104,7 +104,8 @@ TEST(golden_pictures_match) {
     render_frame_features_set(&distant.render->frame, SHADE_FEATURES_PLAY);
     render_frame_time_set(&distant.render->frame, 0.38f32);
     render_camera_t distant_eye;
-    render_camera_start(&distant_eye, 8.5f64, 8.5f64, 420.5f64, 0.7f32, -0.12f32);
+    /* Over every peak: at the 420 this first had, the middle of the world is inside a range now, and the eye saw only rock. */
+    render_camera_start(&distant_eye, 8.5f64, 8.5f64, 1240.5f64, 0.7f32, -0.12f32);
     REQUIRE(ld_settle(t, &distant, distant_eye.position));
     for (uint32_t i = 0u; i < LD_GOLDEN_FRAMES; i++) {
         picture = sk_draw(t, &distant, &distant_eye);

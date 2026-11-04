@@ -44,7 +44,13 @@ static const uint64_t FEA_WORLD = 0x1234567890ABCDEFull;
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 003 phase 8 stage 5 brought spaghetti closer together and dried out most aquifer cells. */
 /* Plan 003 phase 8 stage 6 moved the biomes' boxes to the coast and the height the terrain now has. */
-static const uint64_t FEA_DIGEST_PIN = 0x83D8E5C1176914F4ull;
+/* The land each TERRAIN_GENERATOR_VERSION makes, by that version, as a save is held to it. If this test says the land has changed and that is meant, raise the version
+ * and add a row with a line saying why. Changing a row leaves worlds saved on the old land opening on the new. */
+static const uint64_t FEA_DIGEST_OF_GENERATOR[] = {
+    0u,                    /* no generator: a save of a format from before they had one */
+    0x83D8E5C1176914F4ull, /* 1: plan 003 phase 8, the land its 7 stages ended on */
+};
+static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0]) == TERRAIN_GENERATOR_VERSION + 1u);
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 003 phase 8 stage 5 brought spaghetti closer together and dried out most aquifer cells. */
@@ -315,7 +321,7 @@ TEST(one_and_sixteen_workers_give_the_same_bytes_in_any_order) {
     CHECK_EQ_U64(many, one);
     CHECK_EQ_U64(scattered, one);
     printf("    digest: 0x%016" PRIX64 "\n", one);
-    CHECK_EQ_U64(one, FEA_DIGEST_PIN);
+    CHECK_EQ_U64(one, FEA_DIGEST_OF_GENERATOR[TERRAIN_GENERATOR_VERSION]);
     terrain_deinit(&terrain);
 }
 

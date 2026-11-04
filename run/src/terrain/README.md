@@ -13,6 +13,10 @@
 **May be called by:** `main`, which starts and stops it, and `game`, which borrows it and makes every column of the world with `terrain_generate_box`. `render/lod` samples the same stages for what the far field shows, on workers.
 **Depends on:** `heap`, `arena`, and its parts.
 
+## Which land a seed makes
+
+`TERRAIN_GENERATOR_VERSION`, in the header, names the land. Any change that gives any seed other blocks raises it, and a save made on another version is refused: see `run/src/save/world/`. `FEA_DIGEST_OF_GENERATOR` in `tests/run/terrain/feature/` has a row for each version, so a change to the land fails that test until the version goes up with it.
+
 ## Parts
 
 | Part | Job | Stage |

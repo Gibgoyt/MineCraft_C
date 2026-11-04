@@ -14,6 +14,7 @@
 #include "settings/persist/index.h"
 #include "tables/blocks/index.h"
 #include "tables/items/index.h"
+#include "terrain/index.h"
 #include "ui/menu/catalog/index.h"
 
 #include <dirent.h>
@@ -589,6 +590,7 @@ static void fs_world_fix(uint8_t *body, uint64_t length, fuzz_rng_t *rng) {
             header.seed = FS_SEED;
             header.table_hash = save_world_table_hash();
             header.version = SAVE_WORLD_VERSION;
+            header.generator = TERRAIN_GENERATOR_VERSION;
             header.header_bytes = sizeof(header);
             header.region_count = (uint32_t)((manifest_bytes - sizeof(header)) / sizeof(save_world_region_t));
             if (has_region) {

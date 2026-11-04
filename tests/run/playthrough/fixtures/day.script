@@ -1,4 +1,4 @@
-# A person's first few minutes in the built program, at 640 by 480 and seed 123. Worked out by hand from screenshots: see ../README.md.
+# A person's first few minutes in the built program, at 640 by 480 and seed 36. Worked out by hand from screenshots: see ../README.md.
 1 move 0 -40
 +1 button left down
 +1 button left up
@@ -16,52 +16,46 @@
 +1 move -132 -194
 +1 button left down
 +1 button left up
-+1 key 1 down
-+1 key 1 up
-+1 key 2 down
-+1 key 2 up
 +1 key 3 down
 +1 key 3 up
++1 key 6 down
++1 key 6 up
 +1 key enter down
 +1 key enter up
 +3 screenshot spawn.png
 +1 move 0 250
-# Mine the podzol underfoot, which drops dirt, walk over the drop and put it back further on.
+# Mine the mud underfoot, and stand in the hole until the drop is in hand.
 +1 button left down
 +22 button left up
-+1 key w down
-+6 key w up
-+10 screenshot picked_up.png
-# Down the slope, and to the tree.
-+1 move -30 0
++14 screenshot picked_up.png
+# Back to looking level, out of the hole, and to the tree.
++1 move 0 -250
 +1 key space down
 +1 key w down
-+1 key space up
-+14 key w up
-+6 move -200 -120
-+1 key w down
-+20 key w up
-# Four logs from one trunk, top down, then walk under what they left.
-+6 button left down
-+70 button left up
-+1 move 0 -60
++4 key space up
++12 key w up
++6 screenshot at_tree.png
+# Four logs: the root ahead, then the trunk to its right, up it from the level of the eye, standing still.
 +1 button left down
 +70 button left up
-+1 move 0 80
++1 screenshot log1.png
++1 move 125 0
 +1 button left down
 +70 button left up
-+1 move 0 60
++1 screenshot log2.png
++1 move 0 -80
 +1 button left down
 +70 button left up
-+20 key w down
-+10 key w up
-+11 button left down
-+70 button left up
-+1 move 0 100
++1 screenshot log3.png
++1 move 0 -70
 +1 button left down
 +70 button left up
++1 screenshot log4.png
++1 move 0 150
 +1 key w down
 +15 key w up
+# Back the way it came, where the ground is clear for a table.
++1 move 628 0
 +20 screenshot logs.png
 # The inventory's grid, by clicking: planks, a crafting table, more planks, sticks. It opens with the pointer at 320, 240.
 +1 key e down

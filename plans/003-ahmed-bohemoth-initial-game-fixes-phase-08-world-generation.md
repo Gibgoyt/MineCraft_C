@@ -1,6 +1,6 @@
 # 003-ahmed-bohemoth-initial-game-fixes — phase 8: World generation
 
-**Status:** in progress: stages 1 to 6 are done, and stage 7 is not started. The same 8 tests outside terrain stay red for stage 7, issues 25, 36 and 41   (updated 2026-11-04)
+**Status:** in progress: all 7 stages are done as far as an agent can run them, the whole suite passes, 103 of 103, and `bench_terrain` beats its target at all 9 places, issue 49. Whether the world looks and feels right is Ahmed's to say, and waits for him   (updated 2026-11-05)
 
 ## Goal
 
@@ -111,16 +111,19 @@ Cloned to `/tmp/mc_c_assets/worldgen/` to read. Nothing was built or run.
 
 **Stage 7: finish.**
 
-- [ ] Add a generator version to the world's save, so that a world from an older shape is refused with a clear message, not stitched to a different landscape
-- [ ] Update the pinned digests and golden pictures, each with a line saying why
-- [ ] Make the 5 tests stage 3 left red pass on the final terrain: issue 18 lists them, and scripted walks need re-aiming, not only new pins
-- [ ] Check terrain speed with `bench_terrain`, as more octaves cost time. The plan 001 target is 1000 columns a second, and it's already only just met
+- [x] Add a generator version to the world's save, so that a world from an older shape is refused with a clear message, not stitched to a different landscape: issue 43
+- [x] Update the pinned digests and golden pictures, each with a line saying why. No digest moved at this stage, and 5 pictures did: issue 45
+- [x] Make the 5 tests stage 3 left red pass on the final terrain: issue 18 lists them, and scripted walks need re-aiming, not only new pins. All 8 of issue 41 pass: issue 44
+- [x] Check terrain speed with `bench_terrain`, as more octaves cost time. The plan 001 target is 1000 columns a second, and it's already only just met. Missed at first, by one place of 9, issue 46, and **now met by all 9**, the slowest at 1065 to 1108: issue 49
 
 ## Verification
 
     tools/test-or-build.sh cmake --build --preset release
-    tools/test-or-build.sh timeout 600 build/release/bin/bench_world_map /tmp/mc_c_maps 2198175988018515243 12636146071196537873 0x4D494E4543524146 1 42 20261104 9999999999999 18446744073709551557
-    tools/test-or-build.sh timeout 1200 ctest --preset release -R '^run_terrain_.*$' --output-on-failure
+    tools/test-or-build.sh timeout 590 build/release/bin/bench_world_map /tmp/mc_c_maps 2198175988018515243 12636146071196537873 0x4D494E4543524146 1
+    tools/test-or-build.sh timeout 590 build/release/bin/bench_world_map /tmp/mc_c_maps 42 20261104 9999999999999 18446744073709551557
+    tools/test-or-build.sh timeout 590 ctest --preset release -R '^run_terrain_.*$' --output-on-failure
+    tools/test-or-build.sh timeout 300 build/release/bin/bench_terrain
+    tools/test-or-build.sh timeout 280 ctest --preset release -R '^run_save_world$' --output-on-failure
     pgrep -a minecraft_c    # must print nothing
 
 Ahmed looks at the maps and says if it looks right, then:
@@ -140,6 +143,10 @@ Run for stage 4: release build with lint, exit 0. `bench_world_map` on the 8 see
 Run for stage 5: release build with lint, exit 0. `bench_cave_walk` on the 8 seeds above, exit 0: both walks found and walked on all 8. `bench_world_map` on the 8 seeds, in two runs of 4, as issue 24 says, exit 0 both, 0 columns differing of 1024 on each. The whole suite: `ctest --preset release`, 94 of 102, in 820.8 s, with issue 36 listing the 8, including all 9 `run_terrain_*`, `clang_format` and the lints. `minecraft_c --headless --test-world --walk` on the default seed's scripts, issues 33 and 34. Read by eye: 2 spawn slices, Ahmed's before and after, 4 unrolled routes, 2 mouth slices, 3 of the game's screenshots and a sheet of 33. `bench_terrain`, once, slowest jungle at 702, target missed as before: issue 35. `pgrep -af "$PWD/build"` prints nothing, and no private X server was started. Not run: `--windowed`, and whether the caves feel right, which are Ahmed's.
 
 Run for stage 6: release build with lint, exit 0. `bench_biome_map` on the 8 seeds above, exit 0, no biome missing from any map. `bench_terrain_tour`, exit 0, 0 not found, its sheet read by eye. `bench_world_map` on the 8 seeds, in two runs of 4, exit 0 both, 0 columns differing of 1024 on each. `run_terrain_biome`, 23 of 23, with `every_biome_turns_up_in_every_world_searched` passing before any change and after. The whole suite: `ctest --preset release`, 93 of 102, in 779 s: issue 41 has the 9, one of which, `clang_format`, was then fixed. 8 of the 9 then run again with their output, with `run_terrain_biome`: `clang_format` and it pass, and `render_feature_lod` was not run again. Read by eye: Ahmed's biome map before and after, 2 of the game's screenshots in `--headless --test-world`. `pgrep -af "$PWD/build"` prints nothing, and no private X server was started. Not run: `bench_terrain`, as stage 7's. Not run: `--windowed`, and whether the biomes look right, which are Ahmed's.
+
+Run for stage 7: release build with lint, exit 0. `ctest --preset release`, in parts: 100 of 100 in 472 s without the two below, `render_feature_lod` passing in 249 s after its pictures were made, and `run_playthrough` passing in 41 s, so 102 of 102 on this code, apart from a README. `run_terrain_*`, 9 of 9, no digest changed. `fuzz_save` on the sanitize preset, passing. `bench_world_map` on the 8 seeds, in two runs of 4, exit 0 both, 0 columns differing of 1024 on each, sea 24.87 to 29.13%. `bench_terrain` 3 times, exit 1 each, slowest `snowy_taiga` at 980, 969 and 996: issue 46. A real saved world with its generator forged, opened through the real menus in `--headless --menu`: refused, the list says so, as read in a screenshot, and its manifest's bytes unchanged. Read by eye: 5 new golden pictures, 2 sheets of a re-aimed day, a sheet of 24 seeds' starts. `pgrep -af "$PWD/build"` prints nothing, and no private X server was started. Not run: the debug preset, the rest of the sanitize preset, and tsan. Not run: `--windowed`, and whether the world looks right, which are Ahmed's.
+
+Run for stage 7's last pass: release build with lint, exit 0. `ctest --preset release`, in parts and in order, not with `-j`: 101 of 101 in 481 s without the two below, and `render_feature_lod` and `run_playthrough` passing in 301 s, so 103 of 103 on this code, apart from READMEs. That includes all 10 `run_terrain_*`, with no digest changed, and the new `run_terrain_feature_own`, on 432 chunks and then 108 with 18 lakes. `bench_terrain` 3 times, exit 0 each, slowest `snowy_taiga` at 1065, 1108 and 1091. `bench_world_map` on the 8 seeds, in two runs of 4, exit 0 both, 0 columns differing of 1024 on each. On the sanitize preset: `run_game_spawn`, `run_save_*`, `run_settings`, `run_terrain_feature_own`, `run_terrain_seed` and `fuzz_save`, 9 of 9. On the tsan preset: `run_game_spawn` and `run_terrain_feature_own` pass, and `run_terrain_feature` **timed out**, both under ctest and at 590 s run directly: 13 of its tests passed, including 1 and 16 workers giving the same bytes, with no report from the sanitizer, and it did not finish. `pgrep -af "$PWD/build"` prints nothing, and no private X server was started. Not run: the debug preset, the rest of sanitize and tsan. Not run: `--windowed`, and whether the world looks right, which are Ahmed's.
 
     tools/test-or-build.sh timeout 280 build/release/bin/bench_biome_map /tmp/mc_c_maps 2198175988018515243 12636146071196537873 0x4D494E4543524146 1 42 20261104 9999999999999 18446744073709551557
     tools/test-or-build.sh timeout 280 ctest --preset release -R '^run_terrain_biome$' --output-on-failure
@@ -247,6 +254,18 @@ Appended as they land:
 - `6e3002e` Move the biomes' boxes to the terrain as it now stands, with woods up a range's foot, peaks only from 500 and a snow line on warm ones, mushroom fields on the coast and swamps down to it, and add bench_biome_map to show who holds each height.
 - `e79e287` Say in the repository's structure what bench/biome_map is.
 - `3a7cee7` Record stage 6 of world generation in its plan file: every biome was still found, but the boxes did not suit the new terrain, what moved and why, and what is left to Ahmed and stage 7.
+- `bc74f1e` Record which generator made a world in its manifest, and refuse a save from any other, or from before it could say, with a message a person can read, rather than stitch it to a different landscape.
+- `fd38d63` Stop lining caves asking the caves a second time for what the mask already says. Its subject also says this brings the slowest place back over 1000 columns a second: it does not, issue 46.
+- `b923bdc` Add --seed for a test world, stand the walking tests on seed 11 and the first day on seed 36, as the default ground no longer holds what their scripts need, so that they pass on the final land.
+- `973b4f7` Make the golden pictures of real terrain again on the final land, each read by eye, with the far one now over the peaks as the middle of the world is inside a range.
+- `5345622` Record in the terrain bench README what the final land measures, with one place still just under the target.
+- `580a0fa` Record stage 7 of world generation in its plan file: the generator version, every red test passing on chosen seeds, new pictures, and terrain speed still just short at one place.
+- `85ff146` List stage 7 of world generation commits in its plan file.
+- `0eece6c` Let features read a chunk's own ground from the blocks terrain_generate_box already has rather than make it again, which puts every place in bench_terrain over 1000 columns a second with the same land, and add a test holding the shortcut to the walk it replaces.
+- `d4350f9` Record in the terrain bench and feature READMEs that every place now beats the target, and how features read a whole chunk's own ground.
+- `eb53c7a` Say in the repository's structure what tests/run/terrain/feature/own is.
+- `c462da8` Say in the terrain bench README only what was read of the machine's load during its last runs.
+- `6d08a11` Record stage 7's last pass in the world generation plan file: terrain speed over the target at every place with the same land, why the sprint script spends no food, and a test failure I could not explain.
 
 ## Issues found
 
@@ -420,6 +439,53 @@ Evidence, from `run_game_spawn`: Ahmed's seed starts at -280, -280 on snow, with
 - **The edges are sharp.** In one screenshot of the game a range's badlands stop at a clean line at about 500, with stone above it. Biomes change on one number, and the surface does not blend them. It reads like a rock line. Whether it looks right is Ahmed's.
 - **`bench_terrain`** was not run: its `jagged_peaks` place has moved, as that biome now starts at 500, so stage 7's reading for it is not like for like with issue 35's.
 - **Where the tool is thin.** `bench_biome_map` reads the fields' `ground`, not real blocks, and these 8 maps are one area each. How a biome looks is only in the 2 screenshots, the tour's sheet and the map.
+
+**43. Stage 7: the generator version.** Expected: a number in the save. Done: `TERRAIN_GENERATOR_VERSION`, 1, in `run/include/terrain/index.h`, at offset 52 of the manifest, where padding was, so the header stays 64 bytes. `SAVE_WORLD_VERSION` is 4. A manifest with another generator, or in a format older than 4, which could not say, gets the new `SAVE_WORLD_ERROR_GENERATOR` and changes nothing. A later format still gets `SAVE_WORLD_ERROR_VERSION`. There is no migration, as today's worlds were deleted. **A world nobody has touched is refused too,** though it has nothing to stitch: its state file still says where the body stood. Evidence: `what_cannot_be_trusted_is_refused_and_left_as_it_was` in `run_save_world`, generators 0 and 2 and format 3. And end to end, a world made by the day's script with its generator forged to 0, through the real menus: the log gives both numbers, the list shows `Could not open it: its land is from another game version`, and `sha256sum` of the manifest is unchanged. That line just fits at 640 wide, from x = 11 to 629. `fuzz_save` had the new field added, or it would have stopped at the door.
+
+**A person has to raise that number,** so `FEA_DIGEST_OF_GENERATOR` in `tests/run/terrain/feature/` replaces `FEA_DIGEST_PIN`, with a row per version: changed land fails that test, and the row to add sits beside the version. Someone could still change the row and not the version: the comment asks them not to, and nothing stops them. The digest is of a test map, so land changed only outside that map would not show.
+
+**44. Stage 7: the red tests, all 8 of issue 41, and a flag the plan did not ask for.** Expected: to re-aim scripts on the default seed's ground. Actual: that start is on sand by the sea, so a script about grass and dirt has nothing to do there, and it would break again at the next change. Done: **`--seed <n>`, with `--test-world`**, which also lets a seed from the map tool be walked on. Refused without `--test-world`, or with a bad number, as `run_render_frame` checks. Then:
+
+| Test | What changed | Result |
+|---|---|---|
+| `run_entity_drop`, `run_item_inventory`, `render_feature_entities` | `--seed 11`, whose start is on grass. Scripts and checks otherwise as they were | Pass |
+| `run_player_survival` | `--seed 11`. At the end of the script: 12.8 health, 18 food, 0 saturation, hurt once | Pass |
+| `run_player_interaction` | `--seed 11`. A step of 1 tick not 20, as a longer one leaves the body on a block's edge and it does not fall. The last mined is now `grass_block`, as the wall at eye height is the top block | Pass |
+| `run_playthrough`, day | Rewritten between the menus and the crafting for seed 36, by screenshots: mud underfoot, then 4 logs from a mangrove, turning back for clear ground for the table. The crafting clicks did not change | Pass |
+| `run_playthrough`, night | **Nothing changed.** Seed 2: 622 mobs, 198 blows then 199, 18 deaths, 1 blast, 39 arrows | Pass. Only 1 blast, against the test's at least 1, so that is the check most likely to fail next |
+| `run_render_frame`, `render_feature_lod` | New pictures: issue 45 | Pass |
+
+**These seeds' ground is pinned by the scripts,** so any raised generator version may need them re-aimed. `tests/run/playthrough/README.md` already warns of that.
+
+Seen and not read further: on some seeds this sprint script spends nothing in 300 ticks: seed 1, 9 and 14 end on 20 food, 5.0 saturation, hurt 0, and the default seed's run failed the same way. A body stopped at a wall or in water would do that, but I did not check. It may be nothing, or it may be a real gap in hunger, so it is written down here.
+
+**45. Stage 7: pins and pictures.** No digest moved, as nothing here changes land. New pictures, each read by eye: `run_render_frame`'s 3 and `render_feature_lod`'s `real_near` and `real_far`, with a line saying why in each test's README. `hills*` came out the same bytes, and `render_feature_entities`' pictures passed as they were, as they stand on made-up ground. **Two eyes moved, as the new pictures showed nothing:** `real_far` was at z = 420 at the world's middle, now inside a range, and showed only grey rock, so it is at z = 1240, where it shows ranges, rivers and seas. `real_near` looked at nearly all sky, and looks further down. It is still mostly sky and haze, so it is a weak picture.
+
+**46. Stage 7: `bench_terrain`, better, and still a little short.** Expected: to check. Actual, before any change, 3 runs on the final land: slowest `jagged_peaks` 854, 840, 847, then `snowy_taiga` 883 to 926. A temporary timer on each stage, since removed, showed `jagged_peaks` at 30 to 33% in lining caves, as `terrain_surface_line_caves_box` asked the caves again for every layer a column might line, and they now go to the top of a range. **Done, with no change of land:** `terrain_cave_cut_keeping_wanted` keeps what caves wanted in the mask, and `terrain_surface_line_caves_with_mask` reads that, asking only for the layers past the box's ends. Evidence that the blocks are the same: all digests hold, `run_terrain_seed` compares `terrain_generate_box` with the old path by hand at the tallest place on its walk and 3 others, and `run_terrain_biome` compares the two lining functions on every underground biome. Lining fell to 12%.
+
+**Result, 3 runs: `jagged_peaks` 1077, 1033, 1099, and `snowy_taiga` 980, 969, 996, exit 1 each.** So 8 places of 9 meet 1000, and 1 misses it by 0.4 to 3%, with 57% of its time in features. `bench/terrain/README.md` has the table. One run with the timer in read 1030, so that one run is not to be believed over these three. I stopped here, as the rest is in features, whose second look at each site's ground is not a repeat of the same work, and a shortcut there risks the land. **Not met, and left for Ahmed to weigh:** what a player feels of this was not measured. The dropped octave issue 14 suggests would change the land, so it was not tried.
+
+**A commit's subject is wrong.** `fd38d63` says this brings the slowest place "back over 1000 columns a second", from the one timed run. The three clean runs after it say otherwise. History is not rewritten, so this corrects it.
+
+**47. Stage 7: the Verification section changed,** as issue 24 asked. `bench_world_map` is now two runs of 4, each of which exits 0 inside its `timeout 590`, and the `run_terrain_*` line has the timeout a tool call allows.
+
+**48. How this stage's work went wrong, for the record.** The temporary timer was in the tree for some builds and came out with `git checkout` of those two files, before any commit: `git log -p` of `run/src/terrain/index.c` shows only the real change. I wrote a placeholder name in a test while drafting and took the lines out before any build, as that test had no terrain to flood. Two commands were refused by the worktree guard as too complex to check, and I split them into plain ones, as it said. The first `bench_terrain` ran at a load average of 37, from other work on the machine. Its numbers agree with the two after it at load 24, which is not idle either, so the mutex does not make these clean.
+
+**49. Stage 7's last pass: `bench_terrain` now beats its target at all 9 places, with the same land.** Expected: to close issue 46. A temporary timer, removed before any commit, showed why `snowy_taiga` was slow: 8.5 ms a column, 4.95 ms of it in features, of which 3.6 ms in 5.06 walks down a chunk, each about 4.9 slices through the stages. One of those walks was of the chunk in hand, whose blocks `terrain_generate_box` had just made. **Done:** just after the flood it reads that chunk's tops from the box, `terrain_feature_chunk_read_box`, and gives them to `terrain_feature_fill_chunk_box`. Issue 46 stopped at this door for fear of changing the land, as lining and ore can change a top, so the read comes before them, where the walk's stages stop too. A box that is not one whole chunk, or that does not reach all its ground, goes the old way, and `render/lod` calls that way directly, unchanged.
+
+**Evidence that the land is the same.** No digest moved in `run_terrain_*`, and `TERRAIN_GENERATOR_VERSION` stays 1. The new `run_terrain_feature_own`, on 3 seeds: the tops read equal the walk's on 432 chunks (74334 dry columns, 36257 under water, 1 with no ground in range), and `terrain_generate_box` equals every stage by hand with features finding their own on 108 chunks and 18 with a lake, the one case that now reads the surface's noise only when it gets there. Samples, not a proof. `run_terrain_seed`'s by-hand check still passes too.
+
+**Result, 3 runs, exit 0 each, against 969 to 996 before:** `snowy_taiga` 1065, 1108, 1091, and `jagged_peaks` 1204, 1169, 1149, the rest higher. `bench/terrain/README.md` has the table. So `fd38d63`'s subject, wrong when written, is true of the code from `0eece6c`. The margin is 6.5 to 11%, so a later stage adding work to a column could use it up again. The machine was quieter for these runs (`uptime` read 2.7 just after them) than for issue 46's (about 24), so part of the gain may be that. A run of the old code at the start of this pass read 991, and its 1-worker number rose from 115 to 126-128, about 10%, which is the fairer measure of the change.
+
+**50. Stage 7's last pass: the sprint that spends no food is not a gap in hunger.** Expected, from issue 44's open question: an answer. Seeds 1, 9 and 14 were run with the same script, and on 14 with a temporary line per tick, removed before any commit. Seed 14 is **in water**, by the trace: it goes in at 45.7, -85.3 at about tick 28, in a dark corner at z about 62, and stays there, with the mode water, sprinting off, and `exhaustion` ending at 0.57 of the 4 it takes to spend anything. Seed 1 ends at 72, 73, z = 0.6, on the open sea, by a screenshot. Seed 9 ends at z = 0.98, at sea level, which is taken to be the same, and was not traced or looked at. Swimming costs 0.01 a block, as `run_player_survival` checks by the published numbers, so 300 ticks there spend nothing. **Nothing to fix in hunger.** The default seed's was not run again, and issue 44 has it on sand by the sea. Seed 14's pond looks odd in the picture, a body-wide corner of dark rock, and was not looked into further.
+
+**51. A failure I could not explain, in how I ran it.** Once, with `ctest -j 4`, which this phase's runs do not use, `run_physics_raycast` failed. Its output was then overwritten by my rerun, so **the reason is not known**. Alone it passed, then 30 times of 30 with `--repeat until-fail:30 -j 8`, and passed in the suite in order. It has a real-thread test with a time limit of 40 s, which may be what load upset, but that is a guess. Left alone.
+
+**For Ahmed.** Nothing here asks him for a decision to go on. What waits is his look at the world, below, and issues 42 and 44.
+
+**Wiring for stage 7's last pass, outside its own files.** `run/src/terrain/index.c`: the read and the choice of fill. `run/include/terrain/feature/index.h`: `feature_chunk_t` moves here as `terrain_feature_chunk_t`, as the Owner now holds one, and gains `tops_known`. `tests/run/terrain/feature/own/` is new. `plans/REPO_STRUCTURE.md`: that test. `bench/terrain/README.md`: results.
+
+**Wiring for stage 7, outside its own files.** `run/src/main/`: `--seed`. `tests/fuzz/save/`, `tests/run/save/world/`: the new field. `run/src/terrain/hydrology/` and its README: the mask's new value. `bench/terrain/README.md`: results. `run/src/game/session/README.md`: one phrase.
 
 **Wiring for stage 6, outside its own files.** `bench/biome_map/` is new. `compile/src/game_tables/biomes/index.c`: `GZ_HEIGHT_LIMIT`. `run/src/terrain/hydrology/index.c`: issue 40. `tests/run/terrain/feature/index.c`: its pin. `plans/REPO_STRUCTURE.md`: `bench/biome_map`.
 

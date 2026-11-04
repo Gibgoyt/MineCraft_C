@@ -1292,6 +1292,15 @@ TEST(the_program_refuses_what_makes_no_sense) {
     test_process_run(t, distance_alone, FR_PROGRAM_TIMEOUT_MS, &run);
     CHECK_EQ_I64(run.exit_code, MAIN_EXIT_USAGE);
     CHECK_CONTAINS(run.output, "only means something with --test-world");
+    char *const seed_alone[] = {t->borrowed_args[0], (char *)"--headless", (char *)"--seed", (char *)"7", nullptr};
+    test_process_run(t, seed_alone, FR_PROGRAM_TIMEOUT_MS, &run);
+    CHECK_EQ_I64(run.exit_code, MAIN_EXIT_USAGE);
+    CHECK_CONTAINS(run.output, "--seed only means something with --test-world");
+    char *const seed_wrong[] = {t->borrowed_args[0], (char *)"--headless", (char *)"--test-world",
+                                (char *)"--seed",    (char *)"7up",        nullptr};
+    test_process_run(t, seed_wrong, FR_PROGRAM_TIMEOUT_MS, &run);
+    CHECK_EQ_I64(run.exit_code, MAIN_EXIT_USAGE);
+    CHECK_CONTAINS(run.output, "--seed wants a whole number");
     char *const too_far[] = {t->borrowed_args[0],         (char *)"--headless", (char *)"--test-world",
                              (char *)"--render-distance", (char *)"513",        nullptr};
     test_process_run(t, too_far, FR_PROGRAM_TIMEOUT_MS, &run);

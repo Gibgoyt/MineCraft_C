@@ -16,8 +16,10 @@
 
 enum : uint32_t {
     /* Raised by any change an older reader could not read. A file of another version is refused and left alone. Version 2: a record may end in levels.
-     * Version 3: a column has 96 sections, up to z = 1250, so its mask in a delta file takes two words. */
-    SAVE_WORLD_VERSION = 3u,
+     * Version 3: a column has 96 sections, up to z = 1250, so its mask in a delta file takes two words.
+     * Version 4: a manifest says which generator made the land under it. What came before could not say, and is taken as an older generator's. */
+    SAVE_WORLD_VERSION = 4u,
+    SAVE_WORLD_VERSION_FIRST_WITH_GENERATOR = 4u,
     /* A delta file holds a square of columns this many on a side: half a kilometre of blocks. */
     SAVE_WORLD_REGION_SHIFT = 5u,
     SAVE_WORLD_REGION_SIDE = 1u << SAVE_WORLD_REGION_SHIFT,
@@ -59,7 +61,7 @@ typedef struct save_world_manifest_header_t {
     uint32_t version;          /* 40: SAVE_WORLD_VERSION */
     uint32_t header_bytes;     /* 44: sizeof this */
     uint32_t region_count;     /* 48 */
-    uint8_t _pad0[4];          /* 52 */
+    uint32_t generator;        /* 52: TERRAIN_GENERATOR_VERSION of the land the deltas were cut from */
     uint64_t checksum;         /* 56: of the 56 bytes before this */
 } save_world_manifest_header_t;
 static_assert(sizeof(save_world_manifest_header_t) == 64);
@@ -72,7 +74,7 @@ static_assert(offsetof(save_world_manifest_header_t, regions_checksum) == 32);
 static_assert(offsetof(save_world_manifest_header_t, version) == 40);
 static_assert(offsetof(save_world_manifest_header_t, header_bytes) == 44);
 static_assert(offsetof(save_world_manifest_header_t, region_count) == 48);
-static_assert(offsetof(save_world_manifest_header_t, _pad0) == 52);
+static_assert(offsetof(save_world_manifest_header_t, generator) == 52);
 static_assert(offsetof(save_world_manifest_header_t, checksum) == 56);
 
 /* Which delta file a region's sections are in now: <world>/blocks/r.<region_x>.<region_y>.<generation>. */
@@ -209,6 +211,8 @@ typedef enum save_world_status_t : uint8_t {
     SAVE_WORLD_ERROR_TABLES = 7,  /* the deltas' states mean other blocks than this build's. Nothing has been changed */
     SAVE_WORLD_ERROR_TOO_MANY = 8, /* past SAVE_WORLD_REGIONS_MAX. Nothing saved has been touched */
     SAVE_WORLD_ERROR_PATH = 9,     /* the directory's name is too long */
+    SAVE_WORLD_ERROR_GENERATOR =
+        10, /* another generator made its land: its changes would be stitched to a different landscape. Nothing has been changed */
 } save_world_status_t;
 
 /* Where a save has got to, for a test to die at. In the order they happen. */
