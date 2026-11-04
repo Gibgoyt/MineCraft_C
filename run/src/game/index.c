@@ -367,7 +367,7 @@ static terrain_density_box_t game_column_box(int32_t x, int32_t y, uint32_t acro
 }
 
 /* The highest z with anything in it at this x and y, water and what grows included. Works in a job's memory, before any job runs. */
-static int32_t game_ground_z(const terrain_t *terrain, const game_column_job_t *job, int32_t x, int32_t y) {
+int32_t game_ground_z(const terrain_t *terrain, const game_column_job_t *job, int32_t x, int32_t y) {
     const terrain_density_box_t box = game_column_box(x, y, 1u);
     terrain_generate_box(terrain, &box, job->borrowed_opened, job->borrowed_states);
     for (int32_t storage = (int32_t)box.count_z - 1; storage > 0; storage--) {
@@ -387,12 +387,14 @@ static bool game_top_is_dry_land(const game_column_job_t *job, int32_t ground_z)
 
 /* The nearest dry land to the world's middle, ring by ring of a square around it, and the middle itself if there is none. The same
  * seed gives the same place. */
-static void game_spawn_find(const game_t *game, const terrain_t *terrain, const game_column_job_t *job,
-                            int32_t middle_x, int32_t middle_y, int32_t *out_x, int32_t *out_y) {
+void game_spawn_find(const game_t *game, const terrain_t *terrain, const game_column_job_t *job, int32_t middle_x,
+                     int32_t middle_y, int32_t *out_x, int32_t *out_y) {
     *out_x = middle_x;
     *out_y = middle_y;
     for (int32_t ring = 0; ring <= GAME_SPAWN_RINGS; ring++) {
-        game_open_alive_tell(game);
+        if (game != nullptr) {
+            game_open_alive_tell(game);
+        }
         for (int32_t dy = -ring; dy <= ring; dy++) {
             /* The inside of a square has been looked at already: only its first and last columns remain on these rows. */
             const int32_t across = dy == -ring || dy == ring ? 1 : (ring == 0 ? 1 : 2 * ring);
@@ -463,7 +465,7 @@ bool game_open(game_t *game, const game_config_t *config) {
     }
 
     /* Flying: a little above whatever is at the world's middle, water included, looking out and down. Walking: on dry land near it. */
-    int32_t start_x = 8, start_y = 8;
+    int32_t start_x = GAME_WORLD_MIDDLE, start_y = GAME_WORLD_MIDDLE;
     /* A world that has been saved takes up where the player was, with no looking for land. */
     float64_t kept_feet[3] = {0.0f64, 0.0f64, 0.0f64};
     float32_t kept_yaw = 0.0f32, kept_pitch = 0.0f32;
