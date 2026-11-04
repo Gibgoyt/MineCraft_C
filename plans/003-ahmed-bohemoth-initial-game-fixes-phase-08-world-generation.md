@@ -1,6 +1,6 @@
 # 003-ahmed-bohemoth-initial-game-fixes — phase 8: World generation
 
-**Status:** in progress: stages 1 to 4 are done, and stages 5 to 7 are not started. Stage 4 leaves 8 tests outside terrain red for stage 7, issue 25   (updated 2026-11-04)
+**Status:** in progress: stages 1 to 5 are done, and stages 6 and 7 are not started. The same 8 tests outside terrain stay red for stage 7, issues 25 and 36   (updated 2026-11-04)
 
 ## Goal
 
@@ -103,7 +103,7 @@ Cloned to `/tmp/mc_c_assets/worldgen/` to read. Nothing was built or run.
 
 **Stage 5: caves.**
 
-- [ ] Using the numbers from stage 1, tune `run/src/terrain/cave/` so openings are easy to find, and the deep levels down to -250 have something to explore
+- [x] Using the numbers from stage 1, tune `run/src/terrain/cave/` so openings are easy to find, and the deep levels down to -250 have something to explore. Whether it feels so on foot is Ahmed's
 
 **Stage 6: biomes follow.**
 
@@ -136,6 +136,11 @@ Run for stage 3: release build with lint, exit 0. `bench_world_map` on the 8 see
 Run for stage 3's last tuning, issue 18: release build with lint, exit 0. `bench_world_map` on the 8 seeds above, exit 0, 0 columns differing of 1024 on each, sea 25.6 to 29.9% with a mean of 28.2%, every seed starting on dry land with 0 to land. `--map-only` on 8 other seeds, 21.0 to 28.1%. Read by eye: Ahmed's and seed 42's maps, the default's spawn slice. The whole suite, `ctest --preset release`, 96 of 101, including all 8 `run_terrain_*`, `run_game_spawn`, `clang_format` and the lints. `bench_terrain`, slowest forest at 951, target missed: issue 14. `pgrep -af "$PWD/build"` and `pgrep -a minecraft_c` print nothing. Not run: `--windowed`, and whether the world looks right, which are Ahmed's.
 
 Run for stage 4: release build with lint, exit 0. `bench_world_map` on the 8 seeds above, in two runs of 4, as issue 24 says, exit 0 both, 0 columns differing of 1024 on each. `run_terrain_*` and `run_game_spawn`, all passing, in the whole suite's run below. The whole suite: `ctest --preset release`, 93 of 101, in 769.8 s, with issue 25 listing the 8, including all 8 `run_terrain_*`, `run_game_spawn`, `clang_format` and the lints. Read by eye: the maps of Ahmed's seed and of seed 42, slices of Ahmed's seed, seed 1 and the default, and real screenshots through `minecraft_c --headless --test-world`, from about 500 blocks over a range at a render distance of 256, and through `--walk` on the ground at 128. `bench_terrain`, slowest jungle at 693, target missed: issue 23. `pgrep -a minecraft_c` showed only a game run from the main checkout, not this worktree's, and `pgrep -af "$PWD/build"` nothing of mine. Not run: `--windowed`, and whether the world looks right, which are Ahmed's.
+
+Run for stage 5: release build with lint, exit 0. `bench_cave_walk` on the 8 seeds above, exit 0: both walks found and walked on all 8. `bench_world_map` on the 8 seeds, in two runs of 4, as issue 24 says, exit 0 both, 0 columns differing of 1024 on each. The whole suite: `ctest --preset release`, 94 of 102, in 820.8 s, with issue 36 listing the 8, including all 9 `run_terrain_*`, `clang_format` and the lints. `minecraft_c --headless --test-world --walk` on the default seed's scripts, issues 33 and 34. Read by eye: 2 spawn slices, Ahmed's before and after, 4 unrolled routes, 2 mouth slices, 3 of the game's screenshots and a sheet of 33. `bench_terrain`, once, slowest jungle at 702, target missed as before: issue 35. `pgrep -af "$PWD/build"` prints nothing, and no private X server was started. Not run: `--windowed`, and whether the caves feel right, which are Ahmed's.
+
+    tools/test-or-build.sh timeout 590 build/release/bin/bench_cave_walk /tmp/mc_c_maps 2198175988018515243 12636146071196537873 0x4D494E4543524146 1 42 20261104 9999999999999 18446744073709551557
+    tools/test-or-build.sh timeout 280 ctest --preset release -R '^run_terrain_cave_walk$' --output-on-failure
 
 ## After stage 3
 
@@ -171,6 +176,30 @@ On the 8 seeds, over the whole map, read from `bench_world_map`. `bench/world_ma
 | Sheer ground, rising 3 for 1 | 12.5-15.6% | 10.2-11.1% | Lower, though heights are up 2.5 times |
 | Rock that floats, pieces per km^2 of land | 742-994 before stage 3 | 581-730 | Watch |
 | Rivers and lakes | 2.5-2.8% | 1.7-2.0% | Issue 21 |
+
+## After stage 5
+
+On the 8 seeds. `bench/cave_walk/README.md` and `bench/world_map/README.md` have each seed. A way in is touching surface columns from which a body gets to a place at least 20 under its ground, on foot, with no swimming, digging or fall over 3. A share is of the places to stand in caves in that band, walked to from the sky inside an area of 512 by 512, so it reads low.
+
+| Measure | After stage 4 | After stage 5 |
+|---|---|---|
+| Ways in per km^2 of land | 157-445 | 723-1718 |
+| Half of land is within, to a way in | 56-88 blocks | 32-56 blocks |
+| 90% of land is within | 128-312 blocks | 88-168 blocks |
+| Land within 128 blocks of one | 66-91% | 85-97% |
+| Share walked to, z -250 to -151 | 0-0.1% | 11.5-39.1% |
+| z -150 to -51 | 0-5.1% | 17.2-49.4% |
+| z -50 to -1 | 0.2-18.2% | 26.1-53.0% |
+| z 0 to 49 | 7.1-14.4% | 43.4-61.2% |
+| z 50 and over | 8.1-14.0% | 48.9-60.9% |
+| Lowest walked to | -22 to -183 | -229 on all 8, the last before the lava |
+| Steps from the start to 24 under | 65-593 | 80-454 |
+| Steps from the start to z = -150, with a real body | Not asked | 618-1139, on all 8 |
+| Openings at least 8 deep, per km^2 | 33-45 | 158-181 |
+| Openings at least 20 deep, per km^2 | Not recorded | 22.8-33.2 |
+| Caves' share of the rock, by band under z = -200 / elsewhere | About 4-11% at stage 1 | 5.1-6.5% / 7.7-13.4% |
+| Rock that floats, pieces per km^2 of land | 581-730 | 1096-1433: **twice as many**, issue 32 |
+| Slowest place, `bench_terrain` | 693 | 702 |
 
 ## Commits
 
@@ -319,6 +348,27 @@ Evidence, from `run_game_spawn`: Ahmed's seed starts at -280, -280 on snow, with
 **28. A new world's body now starts on gentle ground, which issue 19 asked for.** Expected: to look again after this stage. Actual: on the default seed, the nearest dry land to the middle was z = 970, on a peak. Done, in `run/src/game/spawn/`: `game_spawn_find` looks first for ground at most 120 high, within 6 blocks of the ground 8 away and 14 of that 24 away, by the fields, then holds real ground within 6 of that 4 away. If a whole walk finds none, it takes any dry land. **A flying eye now starts over the same place,** not the middle, as `--test-world` started inside a range: it brought `render_feature_post`, `_shapes`, `_sky` and `_water` back without new pictures. Evidence, from `run_game_spawn`: all 8 seeds and 64 others meet it, the furthest start 296 blocks out, the slowest search 59.9 ms. The highest start is z = 116, as feet. Whether the fallback ever runs was not tested on real terrain, as with issue 8. Also: a start can be right under a wall, as one screenshot on the default seed shows a cliff close by, and that is on purpose. No check asks how far it is to ground 30 higher.
 
 **29. A test mistake of this stage's.** Twice I ran heavy commands badly: one background run as `timeout 100 tools/test-or-build.sh ...`, which `.claude/rules/test-or-build-mutex.md` forbids. It finished by itself. And a kill of my own whole-suite run was refused by the permission system, and was not worked round, so that run went on to its end, holding the lock about 25 minutes while others might have waited.
+
+**30. Stage 5: a map's openings could not say whether caves can be found, so a tool walks them.** Expected: to tune from stage 1's openings. Actual: on those, caves looked plentiful, and a body walking from the sky reached 0 to 0.1% of the places to stand under z = -150, and lowest z = -22 on one seed. Done: `bench/cave_walk/`, needing no display and no card. An earlier attempt at this stage died in this worktree and left the tool and a first tuning uncommitted, with no record. I read both, kept the tool and measured everything here again, from the old numbers up.
+
+**31. Stage 5: what moved the numbers, in order tried, each on real runs.** Numbers `from -> to` are the share walked to under z = -150.
+
+- **Mouths and wider tubes alone:** `CAVE_SPAGHETTI_GATE` -0.15 to -0.55, `_ENTRANCE` 0.65 to 0.70, widths 0.04-0.085 to 0.05-0.10. Ways in doubled, to 360-943 per km^2. 0-0.1% -> 0-3.7%. Not enough, and 3 seeds stopped by z = -121.
+- **Fewer wet aquifer cells, which is issue 2's square water:** `HYDROLOGY_FLOOD_WET_FROM` 0.3 to 0.65. Each wet cell walls off its neighbours where it holds something, and on the default seed, z -150 to -51, 15.9% of what caves cut came back as water and 9.8% as stone, against 7.9% and 5.4% now. 1.4-8.1%, with all 8 seeds down to -229. But from where a game starts, 3 seeds of 8 still had no way to z = -150. **This changes hydrology, a change the plan did not spell out.** Square water is rarer, and not gone: rule 1 still needs its walls.
+- **Steeper tubes, tried and undone:** a's and b's cell in z 44 to 72. On 3 seeds it read 0.0, 0.9 and 0.1%, worse, as tubes lie further apart.
+- **Closer tubes, the one that did it:** a's and b's cell from 64 by 44 to 48 by 32, widths to 0.065-0.13 so a tube is about as wide. This is percolation, so it is sudden: 11.5-39.1%, and all 8 seeds reach z = -150 from the start. Spaghetti is 3.4-3.8% of rock in `run_terrain_cave`'s bands, and any cave 9.3-10.7%. These are the final numbers.
+
+**32. Stage 5 doubled the rock that floats.** Expected: to watch it, as issue 2 asked. Actual: 581-730 pieces per km^2 of land became 1096-1433, 3254 to 3857 pieces in the tiles, 4572 to 16593 voxels, the largest 183 to 4494, on seed 20261104. Most are a few voxels, as before. Which tube cut each was not separated, and no slice read shows one standing out, though slices show only one line. Left alone: these are shreds round mouths, and fewer mouths is what was asked against. **Ahmed may see more of them on hillsides.** `CAVE_SPAGHETTI_GATE_ENTRANCE` is what to raise.
+
+**33. The real game walks the short way in.** Expected: the game ends where the tool's body did. Actual, on the default seed, with threads, mobs and the renderer: the tool's body ended at -113.500, 397.641, 23.000 after 830 ticks, and the game's at -113.500, 397.300, 23.000 after the script's last line, at 20.0 health, hurt 0 times. Its screenshots show a rock passage, then a dark tunnel. `run_terrain_cave_walk` holds this, within 1 block across, with the script written new each run. **A mob on that way could fail that test,** and none has in the runs so far.
+
+**34. The real game's body did not finish the deep walk: skeletons killed it.** Expected: to reach z = -150. Actual, on the default seed: hurt 13 times, skeletons loosed 14 arrows, died 1, came back at the start, and walked the rest of the script on the surface, ending at -80.300, 436.872, 4.000. A run cut at tick 4501 stands dead at -280.899, 518.700, 24.000, so it was shot about 50 blocks inside the way in. `--no-entities` only stops drawing mobs, and gave the same end. So **the walk to z = -150 is proved only with the tool's body:** the real `player_movement_tick` on real blocks and no mobs or damage. Its unrolled pictures do show the route in rock all the way. Not fixed: no flag keeps mobs out, and adding one was not this stage's. Falls over 3 on a stair of drops, which the tool does not check, were not seen to hurt on the short walk and were not separated on the long one. Whether caves this dark and this full of skeletons are fun is Ahmed's: **torches are the player's answer, and the screenshots are near black a little way in.**
+
+**35. Limits of what the tool says.** A body here cannot swim, so with an earlier tuning a body from the default seed's start reached only about 135000 places in its square of 1024, as water cuts it off, and Ahmed's seed's first route, 454 steps, crosses a frozen sea on its ice, which the unrolled picture shows. It may read high against a person who dislikes that walk, and low against one who swims or digs. Ways in per km^2 count mouths that lead down on foot, and not how they look from the surface, which no picture here shows. `bench_terrain` is one run, slowest jungle 702, against 693, and the bench can read 4 times low when busy, issue 23: nothing here says that caves cost nothing.
+
+**36. A check loosened, and what stays red.** `only_spaghetti_opens_to_the_sky` allowed mouths of 1 column in 100, and read 4002 of 262144, 1 in 65. It now allows 1 in 40, since this stage was asked for more of them. 6 digests moved, each with a line saying so: `CAVE_DIGEST_PIN`, `HYDRO_FLOOD_PIN`, `ORE_DIGEST_PIN`, `BIO_DIGEST_PIN`, `FEA_DIGEST_PIN`, `FEA_FOREST_PIN`. They were pinned after every other check in those tests passed. The suite's 8 failures are by name the same as issue 25's: `render_feature_entities`, `render_feature_lod`, `run_entity_drop`, `run_item_inventory`, `run_player_interaction`, `run_player_survival`, `run_playthrough`, `run_render_frame`. Read from `LastTest.log`, each fails on what issue 25 says: mined counts, the last mined, `1 items dropped`, the day's clicks, food, and golden pictures, 53478 to 57306 pixels on `run_render_frame` and 47810 and 52793 on `render_feature_lod`. Left for stage 7. **For stage 7:** `render_feature_lod` took 260.7 s of the suite, and the default seed's start did not move.
+
+**Wiring for stage 5, outside its own files.** `run/src/terrain/hydrology/index.c` and its README: `HYDROLOGY_FLOOD_WET_FROM`, issue 31. `tests/run/terrain/hydrology/` restates it. `tests/run/terrain/biome/`, `feature/`, `ore/`: pins only. `bench/world_map/README.md`: results.
 
 **Open for Ahmed:** the first guess at the height bands is close, with a little too much at 300 and too little at 750. The map's squiggles and how steep a range's sides are, up to about 3 for 1 where it nears a sea, are the things most likely to want tuning. `DENSITY_RANGE_BLOCKS`, the cell of `DENSITY_SHAPE_RANGE` and the knots of `belt` are where to do it.
 
