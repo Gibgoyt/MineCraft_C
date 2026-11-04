@@ -108,6 +108,7 @@ Appended as they land:
 - `eaf161c` Make a save refuse the numbers the game cannot live with and write only what it believes, drop records no reader takes, stop a manifest's count going round, refuse a game with no gpu thread, split the two source files past the standard's limit, and take the fuzzer's hold-backs out.
 - `e535239` Record the release hardening gate check: what was run, what was fixed, and what awaits Ahmed.
 - `593b043` Tell a dead player how to come back, give the bed a recipe, report skeletons, and add tests that play the built game through and look at each mob on the picture.
+- `de27a7e` Record the first final completeness check: what was played, what the suites gave, what was fixed and what is left.
 
 ## Issues found
 
