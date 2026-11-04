@@ -20,6 +20,7 @@ This is a living file, by Ahmed's direction, unlike plan 001, which `plans/READM
 | 2 | Basic sound: crunches when mining different blocks | `...-phase-05-sound.md` | Not started |
 | 3 | Can't make wooden stairs on a crafting table | `...-phase-03-wood-stairs.md` | Not started |
 | 4 | A woodworking bench for all woodworking; benches are 2x1x1 on x, y, z | `...-phase-04-woodworking-bench.md` | Not started |
+| 5 | Can't make copper armour | `...-phase-06-copper-armour.md` | Not started |
 
 ## Phases, in the order to build them
 
@@ -30,6 +31,7 @@ This is a living file, by Ahmed's direction, unlike plan 001, which `plans/READM
 | 3 | Stairs from every wood | Adds blocks phase 4 then moves to the bench |
 | 4 | Woodworking bench | Needs phase 3's recipes |
 | 5 | Basic sound | Independent, the most new code, and starts with a test only Ahmed can hear |
+| 6 | Copper armour | Only needs phase 1, and is small, so it can go any time after that |
 
 ## Questions for Ahmed
 
@@ -42,8 +44,16 @@ Each is also in its phase file. None blocks collecting more notes.
 | 3 | Should slabs get every wood too? | No |
 | 4 | Do wooden tools move to the bench? | Yes, as "all wood working" |
 | 4 | Bench recipe: 3 planks over 2 sticks? | Yes |
-| 5 | Allow a second local socket, for the sound server? | **No default: needed before phase 5 starts** |
 | 5 | Use the spare CPU thread for audio? | Yes |
+| 6 | Are the proposed copper armour stats OK? | Yes |
+| 6 | Copper tools too? | No |
+
+## Decisions Ahmed has made
+
+| Date | Decision |
+|---|---|
+| 2026-11-04 | Sound uses a second local socket, for the sound server |
+| 2026-11-04 | After touching each plan file, commit it |
 
 ## Seen in the logs, not yet asked for
 
