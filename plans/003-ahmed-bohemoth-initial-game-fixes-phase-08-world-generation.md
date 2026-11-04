@@ -1,6 +1,6 @@
 # 003-ahmed-bohemoth-initial-game-fixes — phase 8: World generation
 
-**Status:** in progress: stage 1 is done, and stages 2 to 7 are not started   (updated 2026-11-04)
+**Status:** in progress: stages 1 and 2 are done, and stages 3 to 7 are not started   (updated 2026-11-04)
 
 ## Goal
 
@@ -10,7 +10,7 @@ A world is a large continuous landscape: mostly land, with real mountain ranges,
 
 ## Is world generation implemented correctly?
 
-**Stage 1 settled this: world generation has no real bug beyond its tuning, and one real bug next to it, in where you start.** Every stage runs and does what its README says. It makes a varied world with continents and seas. Its shape is tuned to produce what you saw. The bug is `game_top_is_dry_land`, which took the frozen sea for land: **on your seed, `2198175988018515243`, you start at 8, 8, 0 on ice, in a frozen sea of about 83 km^2, 376 blocks from dry land.** That is why it looked like one piece of land and a huge ocean. The bug is stage 2's. Issues 1 to 3 give the evidence.
+**Stage 1 settled this: world generation has no real bug beyond its tuning, and one real bug next to it, in where you start.** Every stage runs and does what its README says. It makes a varied world with continents and seas. Its shape is tuned to produce what you saw. The bug is `game_top_is_dry_land`, which took the frozen sea for land: **on your seed, `2198175988018515243`, you start at 8, 8, 0 on ice, in a frozen sea of about 83 km^2, 376 blocks from dry land.** That is why it looked like one piece of land and a huge ocean. Stage 2 has fixed that bug: your seed now starts at -280, -280, on land by that sea. Issues 1 to 3 and 7 give the evidence.
 
 The table below is from before the map, by reading the code, and the map confirmed it, with one change: the mountains are worse than it says. See "What the map showed".
 
@@ -89,7 +89,7 @@ Cloned to `/tmp/mc_c_assets/worldgen/` to read. Nothing was built or run.
 
 **Stage 2: start on land.**
 
-- [ ] Fix `game_top_is_dry_land` so ice isn't land, with a test. Search further than today's `GAME_SPAWN_RINGS`, which reach only about 1 km, and handle a seed with no land nearby
+- [x] Fix `game_top_is_dry_land` so ice isn't land, with a test. Search further than today's `GAME_SPAWN_RINGS`, which reach only about 1 km, and handle a seed with no land nearby
 
 **Stage 3: continents.**
 
@@ -128,6 +128,8 @@ Ahmed looks at the maps and says if it looks right, then:
 
 Run for stage 1: release build with lint, exit 0. `bench_world_map` on the 8 seeds above, exit 0 in under 590 s, with 0 columns differing of 1024 on each. Run again, Ahmed's seed gave the same bytes for its map and its slice (`cmp`). `ctest -R '^(run_terrain_.*|run_game.*|clang_format|standards_lint.*)$'`, 12 of 12, on the code as it stands, which changes no terrain. All 8 maps and 5 slices were read by eye. `pgrep -a minecraft_c` and `pgrep -af "$PWD/build"` print nothing. Not run: `--windowed`, and whether the maps look right to Ahmed, which are his.
 
+Run for stage 2: release build with lint, exit 0. `bench_world_map` on the 8 seeds above, exit 0, 0 columns differing of 1024 on each, no seed on ice and `to land` 0 on all 8, and every other measure as stage 1's, as the terrain did not change. Ahmed's map and spawn slice read by eye: the mark is on the shore of the frozen sea. `ctest -R '^(run_terrain_.*|run_game.*|clang_format|standards_lint.*)$'`, 13 run with 1 failure, clang_format on the new test. Formatted, then `run_game_spawn`, `clang_format` and the lints pass. 32 tests that open a game or run the built program also pass, `run_playthrough` among them, on the same code. `minecraft_c --headless --test-world --walk` logs the player starting at -7.5, -7.5, 85.0, the default seed's place. `pgrep -a minecraft_c` and `pgrep -af "$PWD/build"` print nothing. Not run: the rest of ctest, as nothing else calls this code. Not run: `--windowed`, and whether the start feels right to Ahmed, which are his.
+
 ## Commits
 
 Appended as they land:
@@ -144,7 +146,7 @@ Appended as they land:
 
 **Open for Ahmed:** are the targets the right kind of world? The map is there so that you can decide by looking.
 
-**1. A real bug, stage 2's and not fixed here: a frozen sea counts as dry land.** Expected: a body starts on land. Actual: `game_spawn_find`, asked by `bench_world_map`, puts it on `ice` on 4 of 8 seeds, Ahmed's among them, at 8, 8, 0, 376 blocks from dry land. On the other 3 it is in the search's first ring, with dry land 8 to 11 blocks away, as the search stops at the first ice. Left for stage 2, which owns the fix, with the tool's `spawn on` and `to land` columns to check it with.
+**1. A real bug, stage 2's and not fixed here: a frozen sea counts as dry land.** Expected: a body starts on land. Actual: `game_spawn_find`, asked by `bench_world_map`, puts it on `ice` on 4 of 8 seeds, Ahmed's among them, at 8, 8, 0, 376 blocks from dry land. On the other 3 it is in the search's first ring, with dry land 8 to 11 blocks away, as the search stops at the first ice. Left for stage 2, which owns the fix, with the tool's `spawn on` and `to land` columns to check it with. Fixed: see issue 7.
 
 **2. No other real bug found. What was checked, and what is left to tuning.** Expected: a bug on top of the tuning might show. Actual, on 8 seeds:
 
@@ -168,5 +170,17 @@ Left to tuning, and not bugs, as each is what its README says it does:
 **5. The tool's first table was wrong, and reading a map caught it.** Expected: ice on the map is frozen water. Actual: a cold peak's own surface of ice and packed ice was painted as sea ice, in hatching on a mountain, and counted as rivers and lakes, which read 6.9% on Ahmed's seed where it is 5.6%, and left it out of the height bands, 5.05% against 6.03% at 150. Done: ice is frozen water only with water under it, or at the sea's level. All the numbers here are from after that.
 
 **6. For whoever raises the mountains.** `bench/terrain/tour/`'s `TOUR_LAYERS` is 751, and stops at z = 500. `TERRAIN_DENSITY_HEIGHT_MAX` has to rise, as phase 11's issue 11 says. The terrain tests keep 751 layers, phase 11's issue 5. What taller mountains cost in frame rate and terrain speed is unmeasured, and phase 11 left that to this phase.
+
+**7. Stage 2: ice was not the only way the search could go wrong.** Expected: a body starts on land. Actual: besides ice, the old test took snow lying on ice, anything lying directly on water, and a cactus, which hurts. A seed with no land stopped at 1 km with no message. And the old search could cost 16641 columns at about 1.2 ms each, some 20 s. Done, in the new `run/src/game/spawn/`: all of those are refused, and a cold peak's bare ice with them. The search goes on to 32768 blocks each way in three bands, 143425 places. It reads a column's fields before making its blocks, so a whole walk of fields alone took 438 ms. With no land it returns false, `game_open` warns, and the body starts at the middle.
+
+Evidence, from `run_game_spawn`: Ahmed's seed starts at -280, -280 on snow, with the search taking 4.8 ms. The 8 seeds and 64 others all start on real land, the furthest 616 blocks out and the slowest search 20.2 ms. Of 1600 random columns made with every stage, 843 were ruled out by their fields and none of those was land. That is a sample, not a proof, of `game_spawn_may_be_dry`. The walk's order near the middle did not change, so a seed that started on bare land should keep its place. No old and new places were compared directly, but no golden or pin needed changing, and the tests holding them all pass.
+
+**8. No seed tried reaches the no-land path on real terrain.** Expected: to test it on a real seed. Actual: none of 72 needed even the second band, and such a seed can't be made on purpose. Done: the walk is tested with a probe that finds nothing, and `game_open`'s warning itself has never been seen to print. Left alone, as it is one log line.
+
+**9. For stages 3 and 4.** `ahmeds_seed_no_longer_starts_on_its_frozen_sea` in `tests/run/game/spawn/` holds this terrain's shape: a start at least 300 blocks from the middle. **It should fail once the sea moves.** Delete it then, as `every_seed_written_down_starts_on_land` is the lasting check. Also, a start can be high up: 3 of the 64 other seeds start at z = 289 to 310, on stone or calcite. Whether that is a ridge or a spire with a dangerous drop was not checked, and no test asks for flat ground. Stage 4 is changing those shapes, so look again after it, with `bench_world_map`'s spawn slice.
+
+**10. A mistake of this stage's, in running things.** The first `cmake --preset release` ran as `timeout 590 tools/test-or-build.sh ...`, with `timeout` outside the wrapper, which `.claude/rules/test-or-build-mutex.md` forbids. It finished in about 3 s and killed nothing. Every later command had it inside.
+
+**Wiring for stage 2, outside its own files.** `game_ground_z` and `game_spawn_find` moved from `run/src/game/index.c` and `run/include/game/index.h` to `run/src/game/spawn/index.c` and `run/include/game/spawn/index.h`, and `game_spawn_find` now returns whether it found land. `game_open` warns if not. `bench/world_map/index.c` includes the new header and takes a start off its map, as the search now reaches past the map's 8 km. `run/src/game/README.md` and `run/src/game/session/README.md` say so.
 
 **Wiring outside this stage's files.** `game_ground_z` and `game_spawn_find` in `run/src/game/index.c` are no longer static, and are declared in `run/include/game/index.h`. `GAME_WORLD_MIDDLE` names the 8 the game started from. `game_spawn_find` takes a `nullptr` game, for the tool. This way the tool reports where the game truly starts, and stage 2's fix will show in it. No behaviour of the game changes.
