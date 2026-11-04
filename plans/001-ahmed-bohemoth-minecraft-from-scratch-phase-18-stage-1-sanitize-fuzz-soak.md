@@ -1,6 +1,6 @@
 # 001-ahmed-bohemoth-minecraft-from-scratch — phase 18, stage 1: Sanitizers, fuzz and soak
 
-**Status:** in progress: all done but the multi-hour soak, which is Ahmed's; issues 1, 2 and 8 are open, for Stage 18.2 or Ahmed   (updated 2026-11-03)
+**Status:** in progress: all done but the multi-hour soak, which is Ahmed's; issues 1, 2 and 8 are fixed   (updated 2026-11-04)
 
 ## Goal
 
@@ -39,6 +39,7 @@ Appended as they land:
 - `ad11ca9`
 - `c7e87f0`
 - `d0af4f6`
+- `eaf161c` the gate checker's, for issues 1, 2 and 8
 
 ## Results
 
@@ -75,5 +76,12 @@ That was the first attempt. **Second attempt, the soak as it now is:** `tools/te
 9. **The soak's threaded player hardly dug.** Expected: "a body walking, digging and placing". Actual: `3 blocks dug` in each 60 s round: a new thing every 60 to 300 frames at about 440 frames a second, with the view turning in every frame. The earlier note that saves fell off because of this was only part of it: see Results. Fixed in `tests/soak/`: by the clock, half its time standing and digging, and a round that digs nothing fails. A session's digging was too short for stone, 10 to 99 ticks of the 150 it takes, and now runs 30 to 297.
 10. **A session's length is only a guess,** measured 221 s of a planned 135, and at the default that could use up the 300 s to the timeout and lose every result. Fixed: a session still going a sixty-fourth of the soak past its end is stopped and not judged.
 11. **`fuzz_save` said minds could not be ticked, and they could.** The first attempt's README said searches need job threads, which do not survive the fork. Actual: `mob_init(mob, nullptr)` runs them on the calling thread, and it was already called so. Also the seed's zombie had no `owner`, so its mind started over, and only 1 state of 1,427 searched. Fixed: minds and blasts tick in the order of `game_sim_tick`, and the seed has a zombie chasing and a creeper about to burst. That is what found the rest of issue 1, within a minute.
+
+**Gate check, 2026-11-04: issues 1, 2 and 8 fixed,** in `run/src/save/`, which was left for 18.2 and which 18.2 did not take. Results are in the phase file. The Results above are from before this, with those inputs held back.
+
+- **Issue 1.** `save_state_check` now refuses a speed or wish past 1024 blocks a tick, an eye past 1024, a fall or survival tally past 1e6, air outside what the game ever has, and a zombie's `asked` past the place limit. What is alive can still pass them, as an arrow keeps flying, so bounds alone would only move the failure: `save_state_capture` writes such a number at its limit in the file, and what is not a number as 0. Tested by `numbers_past_what_a_file_may_say_are_written_at_the_limit_and_the_file_is_believed` and new forgeries in `run_save_state`.
+- **Issue 2.** `save_world_old_record_read` also asks `save_world_record_valid`, so such a record is dropped and the old file kept as `damaged.*`, as the README said. Test: `a_save_drops_a_record_no_reader_will_take_though_its_checksum_is_good`. It costs a save a look at each record it carries over, on the worker.
+- **Issue 8.** A save from `UINT64_MAX` is refused with `SAVE_WORLD_ERROR_TOO_MANY`, and the autosave counts it as a failed save, which is what puts the notice on the HUD (read in `save/autosave`, not run with this status). The world still opens. Refusing the open instead would leave `UINT64_MAX - 1` able to save itself into a world that will not open. Test: `a_manifest_at_the_last_generation_opens_refuses_to_save_and_still_opens`. A failed try leaves a `state.0`, which the next open tidies away.
+- **The fuzzer.** `fs_state_meets_known_defect`, `MC_FUZZ_KNOWN_DEFECTS` and its count are gone. After a save, no damage may be found in the region it wrote. Four new seeds have the numbers at the limits. **Defect of this check's own, found at once and fixed:** `.count_name_count = 11u` was written by hand, so taking a name out read past the array: ASan, `fuzz_run_all`, `tests/fuzz/support/index.c:791`. It now takes the array's size.
 
 **Wiring outside the owned paths:** `cmake/hardening.cmake` (new, the targets), one `include` and one comment line in `cmake/targets.cmake`, `mc_fuzz_compile_options` in `cmake/flags.cmake` (the lint allows `target_compile_options` nowhere else), and `plans/REPO_STRUCTURE.md`. ctest gains `fuzz_yaml`, `fuzz_png`, `fuzz_save` and `fuzz_planted`, in the sanitize preset only.

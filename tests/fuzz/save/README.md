@@ -15,6 +15,8 @@ The first byte says which of the five. A state or a world has every length and h
 
 A state or a record is mostly changed in place, by `mutate`: a section, each the same, and a value inside it, often one a float or a count should never be. A change of length or a byte thrown anywhere is refused on sight, which measured 6 states getting in out of 6000.
 
+Four state seeds have the numbers at what `save_state_check` takes and no further, as a random poke hardly ever lands in that range: without `save_state_capture` stopping numbers at those limits, a run fails within a minute.
+
 ## What it holds them to
 
 - **Record:** a refusal writes nothing. An acceptance gives only states in the table and levels up to 8, and those blocks come back through the encoder as the same blocks. It does not say the bytes come back: an encoder always chooses the same palette order, and a reader does not ask for it.
