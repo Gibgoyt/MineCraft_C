@@ -1,6 +1,6 @@
 name: meadow
 where: land
-climate: { temperature: [-0.15, 0.2], humidity: [-1, 0.1], height: [110, 170] }
+climate: { temperature: [-0.15, 0.2], humidity: [-1, 0.1], height: [300, 500] }
 surface:
   top: grass_block
   filler: dirt

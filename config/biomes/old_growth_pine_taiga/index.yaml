@@ -1,7 +1,7 @@
 name: old_growth_pine_taiga
 where: land
 priority: 1
-climate: { temperature: [-0.45, -0.15], humidity: [0.15, 0.4], weirdness: [0.2, 1], height: [-1000, 110] }
+climate: { temperature: [-0.45, -0.15], humidity: [0.15, 0.4], weirdness: [0.2, 1], height: [-1000, 300] }
 surface:
   top: podzol
   filler: dirt

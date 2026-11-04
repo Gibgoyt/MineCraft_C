@@ -1,10 +1,11 @@
 name: stony_peaks
 where: land
-climate: { temperature: [-0.15, 1], height: [170, 1000] }
+climate: { temperature: [-0.15, 1], height: [500, 1250] }
 surface:
   top: stone
   filler: stone
   filler_depth: 0
+  high: { block: snow_block, from: 800 }
   patches:
     - { block: calcite, from: 0.1, to: 0.6 }
     - { block: gravel, from: 0.75, to: 1 }

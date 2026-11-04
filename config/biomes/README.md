@@ -6,7 +6,7 @@ One directory per biome, and to see what a biome is, open its one file:
 # config/biomes/taiga/index.yaml
 name: taiga
 where: land
-climate: { temperature: [-0.45, -0.15], humidity: [0.15, 0.4], height: [-1000, 110] }
+climate: { temperature: [-0.45, -0.15], humidity: [0.15, 0.4], height: [-1000, 300] }
 surface:
   top: grass_block
   filler: dirt
@@ -36,8 +36,8 @@ Each is `[low, high]`, low below high, both ends in the range.
 | Field | Values | Means |
 |---|---|---|
 | `temperature`, `humidity`, `continentalness`, `erosion`, `weirdness` | -1 to 1 | `run/src/terrain/climate/README.md` says what each means. About `(v + 1) / 2` of the world is below a value `v` |
-| `height` | -1000 to 1000 | The ground, in blocks. Not for `underground` |
-| `z` | -1000 to 1000 | The voxels it can hold, and only for `underground` |
+| `height` | -1250 to 1250 | The ground, in blocks. Not for `underground` |
+| `z` | -1250 to 1250 | The voxels it can hold, and only for `underground` |
 
 ### Surface
 

@@ -43,7 +43,8 @@ static const uint64_t FEA_WORLD = 0x1234567890ABCDEFull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 003 phase 8 stage 5 brought spaghetti closer together and dried out most aquifer cells. */
-static const uint64_t FEA_DIGEST_PIN = 0x31CD8957A6CA7510ull;
+/* Plan 003 phase 8 stage 6 moved the biomes' boxes to the coast and the height the terrain now has. */
+static const uint64_t FEA_DIGEST_PIN = 0x83D8E5C1176914F4ull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 003 phase 8 stage 5 brought spaghetti closer together and dried out most aquifer cells. */

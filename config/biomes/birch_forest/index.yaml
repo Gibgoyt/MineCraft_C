@@ -1,6 +1,6 @@
 name: birch_forest
 where: land
-climate: { temperature: [-0.15, 0.2], humidity: [0.15, 0.4], height: [-1000, 110] }
+climate: { temperature: [-0.15, 0.2], humidity: [0.15, 0.4], height: [-1000, 300] }
 surface:
   top: grass_block
   filler: dirt

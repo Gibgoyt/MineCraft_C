@@ -1,6 +1,6 @@
 name: grove
 where: land
-climate: { temperature: [-1, -0.15], humidity: [0, 1], height: [110, 170] }
+climate: { temperature: [-1, -0.15], humidity: [0, 1], height: [300, 500] }
 surface:
   top: snow_block
   filler: dirt

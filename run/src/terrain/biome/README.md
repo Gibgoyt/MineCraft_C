@@ -58,8 +58,9 @@ Anywhere else, a voxel has its column's biome. `terrain_biome_column_t` keeps wh
 `config/biomes/README.md` has the fields, and `compile/src/game_tables/biomes/` makes the table.
 
 - **The boxes come from the climate's own shares.** Since a value `v` has about `(v + 1) / 2` of the world below it, `temperature` from -0.45 to -0.15 is about 15% of the world. Bands of temperature and humidity go as they do in a familiar game's published tables, as remembered and not checked; nothing was read from its files.
-- **Mushroom fields are not islands.** The density has no land at `c` below about -0.46, so a far-out island cannot be chosen here: it would have to be made by the density. They take the oddest stretches of coast instead. Stage 10.6's issue 3 says more.
-- **Height is what makes the high biomes.** Peaks are from 170 up and slopes, groves and meadows from 110 to 170, since a ridge's height does not follow from any one axis.
+- **Mushroom fields are not islands.** The density has no land at `c` below about -0.46, so a far-out island cannot be chosen here: it would have to be made by the density. They take the oddest stretches of coast instead, from the land line to `c = -0.24`, where hydrology's beaches end. Stage 10.6's issue 3 says more.
+- **Height is what makes the high biomes.** Slopes, groves and meadows are from 300 to 500, and bare peaks from 500 to the top of the world, since a range's height does not follow from any one axis. Woods go on up to 300, so a range has a forested foot, then high pasture, then rock, and a warm peak has snow from 800. The numbers come from the land's own shares: `bench/biome_map/` prints who holds each height.
+- **Swamps go right down to the sea,** and are held to low, worn ground by `height` and `erosion`.
 
 `tests/run/terrain/biome/` prints every biome's share of three worlds, and holds each to turning up in all three.
 

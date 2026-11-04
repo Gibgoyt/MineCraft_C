@@ -1,6 +1,6 @@
 name: savanna_plateau
 where: land
-climate: { temperature: [0.2, 0.55], humidity: [-1, 0.1], height: [70, 170] }
+climate: { temperature: [0.2, 0.55], humidity: [-1, 0.1], height: [150, 500] }
 surface:
   top: grass_block
   filler: dirt

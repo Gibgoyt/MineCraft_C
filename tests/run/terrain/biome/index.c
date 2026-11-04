@@ -36,6 +36,8 @@ enum : uint32_t {
     BIO_SEEDS = 3u,
     /* What the search tries each column's underground biomes at. */
     BIO_CAVE_LEVELS = 6u,
+    /* How far is near the sea: 2 cells of the search, so 256 blocks. */
+    BIO_COAST_CELLS = 2u,
 };
 static const int64_t BIO_WAIT_NS = 60 * TIME_NS_PER_SECOND;
 static const uint64_t BIO_WORLD = 0x1234567890ABCDEFull;
@@ -46,10 +48,12 @@ static const int32_t BIO_CAVE_LEVEL_Z[BIO_CAVE_LEVELS] = {-210, -170, -100, -60,
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 003 phase 8 stage 5 brought spaghetti closer together and dried out most aquifer cells. */
-static const uint64_t BIO_DIGEST_PIN = 0xACC2D9D213D61821ull;
+/* Plan 003 phase 8 stage 6 moved the biomes' boxes to the coast and the height the terrain now has. */
+static const uint64_t BIO_DIGEST_PIN = 0xA2542A356D572927ull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
-static const uint64_t BIO_COLUMNS_PIN = 0xE2B794623CAD0800ull;
+/* Plan 003 phase 8 stage 6 moved the biomes' boxes to the coast and the height the terrain now has. */
+static const uint64_t BIO_COLUMNS_PIN = 0x2A6B1DA319C1E091ull;
 
 static uint64_t bio_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -183,7 +187,7 @@ TEST(the_table_says_what_the_files_say) {
     CHECK(desert->temperature.low == 0.55f32 && desert->temperature.high == 1.0f32);
     CHECK(desert->humidity.low == -1.0f32 && desert->humidity.high == 0.3f32);
     CHECK(desert->erosion.low == -1.0f32 && desert->erosion.high == 1.0f32); /* absent means all of it */
-    CHECK(desert->height.low == -1000.0f32 && desert->height.high == 170.0f32);
+    CHECK(desert->height.low == -1000.0f32 && desert->height.high == 500.0f32);
 
     const biome_def_t *const badlands = &biome_defs[BIOME_ID_BADLANDS];
     CHECK_EQ_U64(badlands->top, BLOCK_ID_RED_SAND);
@@ -199,13 +203,13 @@ TEST(the_table_says_what_the_files_say) {
     CHECK_EQ_U64(lush->floor, BLOCK_ID_MOSS_BLOCK);
     CHECK_EQ_U64(lush->ceiling, BLOCK_ID_ROOTED_DIRT);
     CHECK_EQ_U64(lush->top, BLOCK_ID_AIR);
-    CHECK(lush->height.low == -120.0f32 && lush->height.high == 300.0f32);
+    CHECK(lush->height.low == -120.0f32 && lush->height.high == 1250.0f32);
 
     const biome_def_t *const windswept = &biome_defs[BIOME_ID_WINDSWEPT_HILLS];
     CHECK_EQ_U64(windswept->steep, BLOCK_ID_STONE);
     CHECK(windswept->steep_from == 1.0f32);
     CHECK_EQ_U64(windswept->high, BLOCK_ID_SNOW_BLOCK);
-    CHECK_EQ_I64(windswept->high_from, 140);
+    CHECK_EQ_I64(windswept->high_from, 400);
 
     const biome_def_t *const taiga = &biome_defs[BIOME_ID_OLD_GROWTH_SPRUCE_TAIGA];
     REQUIRE(taiga->patch_count == 2u);
@@ -268,6 +272,8 @@ static const bio_hand_t BIO_HAND[] = {
     /* Swamps are flat, wet and low; hot ones are mangroves. */
     BIO_CASE(0.0f32, 0.2f32, 0.2f32, 0.7f32, 0.0f32, 10.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_SWAMP),
     BIO_CASE(0.8f32, 0.2f32, 0.2f32, 0.7f32, 0.0f32, 10.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_MANGROVE_SWAMP),
+    /* And right down to the sea. */
+    BIO_CASE(0.0f32, 0.2f32, -0.4f32, 0.7f32, 0.0f32, 10.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_SWAMP),
     /* A lake is land under water, so it has land's biomes. */
     BIO_CASE(0.0f32, 0.2f32, 0.2f32, 0.7f32, 0.0f32, -3.0f32, TERRAIN_HYDROLOGY_KIND_LAKE, BIOME_ID_SWAMP),
     BIO_CASE(0.0f32, -0.5f32, 0.5f32, 0.0f32, 0.0f32, -3.0f32, TERRAIN_HYDROLOGY_KIND_LAKE, BIOME_ID_PLAINS),
@@ -282,16 +288,19 @@ static const bio_hand_t BIO_HAND[] = {
     BIO_CASE(0.0f32, 0.0f32, 0.5f32, 0.0f32, 0.9f32, 60.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_WINDSWEPT_FOREST),
     BIO_CASE(0.4f32, -0.5f32, 0.5f32, 0.0f32, 0.9f32, 60.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_WINDSWEPT_SAVANNA),
     /* Height: a warm plateau, and what is on the high ground. */
-    BIO_CASE(0.4f32, -0.5f32, 0.5f32, 0.0f32, 0.0f32, 100.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_SAVANNA_PLATEAU),
-    BIO_CASE(0.0f32, -0.5f32, 0.8f32, -0.5f32, 0.0f32, 130.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_MEADOW),
-    BIO_CASE(0.0f32, 0.5f32, 0.8f32, -0.5f32, 0.0f32, 130.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_CHERRY_GROVE),
-    BIO_CASE(-0.5f32, 0.5f32, 0.8f32, -0.5f32, 0.0f32, 130.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_GROVE),
-    BIO_CASE(-0.5f32, -0.5f32, 0.8f32, -0.5f32, 0.0f32, 130.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_SNOWY_SLOPES),
-    BIO_CASE(-0.5f32, 0.0f32, 0.8f32, -0.8f32, 0.6f32, 250.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_JAGGED_PEAKS),
-    BIO_CASE(-0.5f32, 0.0f32, 0.8f32, -0.8f32, -0.6f32, 250.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_FROZEN_PEAKS),
-    BIO_CASE(0.5f32, 0.0f32, 0.8f32, -0.8f32, 0.6f32, 250.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_STONY_PEAKS),
+    BIO_CASE(0.4f32, -0.5f32, 0.5f32, 0.0f32, 0.0f32, 200.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_SAVANNA_PLATEAU),
+    BIO_CASE(0.0f32, -0.5f32, 0.8f32, -0.5f32, 0.0f32, 400.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_MEADOW),
+    BIO_CASE(0.0f32, 0.5f32, 0.8f32, -0.5f32, 0.0f32, 400.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_CHERRY_GROVE),
+    BIO_CASE(-0.5f32, 0.5f32, 0.8f32, -0.5f32, 0.0f32, 400.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_GROVE),
+    BIO_CASE(-0.5f32, -0.5f32, 0.8f32, -0.5f32, 0.0f32, 400.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_SNOWY_SLOPES),
+    BIO_CASE(-0.5f32, 0.0f32, 0.8f32, -0.8f32, 0.6f32, 600.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_JAGGED_PEAKS),
+    BIO_CASE(-0.5f32, 0.0f32, 0.8f32, -0.8f32, -0.6f32, 600.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_FROZEN_PEAKS),
+    BIO_CASE(0.5f32, 0.0f32, 0.8f32, -0.8f32, 0.6f32, 600.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_STONY_PEAKS),
+    /* Low woods go on up a range's foot, and bare peaks start only high up. */
+    BIO_CASE(0.0f32, 0.0f32, 0.5f32, 0.0f32, 0.0f32, 280.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_FOREST),
+    BIO_CASE(0.5f32, 0.0f32, 0.8f32, -0.8f32, 0.0f32, 1200.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_STONY_PEAKS),
     /* The rarest, on the coast. */
-    BIO_CASE(0.2f32, 0.0f32, 0.0f32, 0.0f32, -0.7f32, 12.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_MUSHROOM_FIELDS),
+    BIO_CASE(0.2f32, 0.0f32, -0.35f32, 0.0f32, -0.7f32, 12.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_MUSHROOM_FIELDS),
     /* What hydrology says the column is decides which rows are looked at, whatever the climate. */
     BIO_CASE(0.0f32, -0.5f32, -0.5f32, 0.0f32, 0.0f32, -30.0f32, TERRAIN_HYDROLOGY_KIND_OCEAN, BIOME_ID_OCEAN),
     BIO_CASE(0.8f32, 0.0f32, -0.5f32, 0.0f32, 0.0f32, -30.0f32, TERRAIN_HYDROLOGY_KIND_OCEAN, BIOME_ID_WARM_OCEAN),
@@ -515,6 +524,120 @@ TEST(every_biome_turns_up_in_every_world_searched) {
     }
 }
 
+static bool bio_is_sea(uint8_t biome) {
+    return biome_defs[biome].where == BIOME_WHERE_OCEAN || biome_defs[biome].where == BIOME_WHERE_DEEP_OCEAN;
+}
+
+static bool bio_is_peak(uint8_t biome) {
+    return biome == BIOME_ID_STONY_PEAKS || biome == BIOME_ID_JAGGED_PEAKS || biome == BIOME_ID_FROZEN_PEAKS;
+}
+
+static bool bio_is_wooded(uint8_t biome) {
+    for (uint32_t tree = BIOME_FEATURE_TREE_OAK; tree <= BIOME_FEATURE_TREE_CHERRY; tree++) {
+        if (biome_features[biome][tree] >= 1.0f32) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Is there sea within BIO_COAST_CELLS of this cell of the search? */
+static bool bio_sea_is_near(const uint8_t *biomes, uint32_t ix, uint32_t iy) {
+    const uint32_t y_first = iy > BIO_COAST_CELLS ? iy - BIO_COAST_CELLS : 0u;
+    const uint32_t x_first = ix > BIO_COAST_CELLS ? ix - BIO_COAST_CELLS : 0u;
+    for (uint32_t y = y_first; y <= iy + BIO_COAST_CELLS && y < BIO_SEARCH_SIDE; y++) {
+        for (uint32_t x = x_first; x <= ix + BIO_COAST_CELLS && x < BIO_SEARCH_SIDE; x++) {
+            if (bio_is_sea(biomes[x + BIO_SEARCH_SIDE * y])) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/* Plan 003 phase 8 stage 6: the table is set for the terrain there is, with its coast at about c = -0.46 and its ranges up to about
+ * 1200. */
+TEST(the_biomes_follow_the_terrain) {
+    uint8_t *const biomes = test_alloc(t, (uint64_t)BIO_SEARCH_SIDE * BIO_SEARCH_SIDE);
+    float32_t *const grounds = test_alloc(t, (uint64_t)BIO_SEARCH_SIDE * BIO_SEARCH_SIDE * sizeof(float32_t));
+    terrain_biome_column_t *const columns = test_alloc(t, (uint64_t)BIO_SEARCH_SIDE * sizeof(terrain_biome_column_t));
+    const int32_t half = (int32_t)(BIO_SEARCH_SIDE / 2u * BIO_SEARCH_STEP);
+    for (uint32_t s = 0u; s < BIO_SEEDS; s++) {
+        terrain_t terrain;
+        REQUIRE(terrain_init(&terrain, BIO_SEED_LIST[s]));
+        for (uint32_t iy = 0u; iy < BIO_SEARCH_SIDE; iy++) {
+            const terrain_climate_area_t area = {
+                .origin_x = -half,
+                .origin_y = -half + (int32_t)(iy * BIO_SEARCH_STEP),
+                .step_x = (int32_t)BIO_SEARCH_STEP,
+                .step_y = 1,
+                .count_x = BIO_SEARCH_SIDE,
+                .count_y = 1u,
+            };
+            terrain_biome_columns_area(terrain.borrowed_biome, &area, columns);
+            for (uint32_t ix = 0u; ix < BIO_SEARCH_SIDE; ix++) {
+                biomes[ix + BIO_SEARCH_SIDE * iy] = columns[ix].biome;
+                grounds[ix + BIO_SEARCH_SIDE * iy] = columns[ix].ground;
+            }
+        }
+        terrain_deinit(&terrain);
+
+        uint64_t land = 0u, peaks = 0u, under_peaks = 0u, far_under_peaks = 0u, low = 0u, low_wooded = 0u,
+                 high_not_peak = 0u;
+        uint64_t mushrooms = 0u, mushrooms_by_sea = 0u, swamps = 0u, swamps_by_sea = 0u, plains = 0u,
+                 plains_by_sea = 0u;
+        for (uint32_t iy = 0u; iy < BIO_SEARCH_SIDE; iy++) {
+            for (uint32_t ix = 0u; ix < BIO_SEARCH_SIDE; ix++) {
+                const uint32_t at = ix + BIO_SEARCH_SIDE * iy;
+                const uint8_t biome = biomes[at];
+                if (biome_defs[biome].where != BIOME_WHERE_LAND) {
+                    continue;
+                }
+                land++;
+                peaks += bio_is_peak(biome) ? 1u : 0u;
+                under_peaks += bio_is_peak(biome) && grounds[at] < 500.0f32 ? 1u : 0u;
+                far_under_peaks += bio_is_peak(biome) && grounds[at] < 384.0f32 ? 1u : 0u;
+                high_not_peak += !bio_is_peak(biome) && grounds[at] >= 500.0f32 ? 1u : 0u;
+                if (grounds[at] < 300.0f32) {
+                    low++;
+                    low_wooded += bio_is_wooded(biome) ? 1u : 0u;
+                }
+                if (biome == BIOME_ID_MUSHROOM_FIELDS) {
+                    mushrooms++;
+                    mushrooms_by_sea += bio_sea_is_near(biomes, ix, iy) ? 1u : 0u;
+                } else if (biome == BIOME_ID_SWAMP || biome == BIOME_ID_MANGROVE_SWAMP) {
+                    swamps++;
+                    swamps_by_sea += bio_sea_is_near(biomes, ix, iy) ? 1u : 0u;
+                } else if (biome == BIOME_ID_PLAINS) {
+                    plains++;
+                    plains_by_sea += bio_sea_is_near(biomes, ix, iy) ? 1u : 0u;
+                }
+            }
+        }
+        printf("seed 0x%016" PRIX64 ": of %" PRIu64 " land: peaks %.1f%%, under_peaks %" PRIu64
+               ", high_not_peak %" PRIu64 "; under 300, wooded %.1f%%; within %u blocks of the sea: mushroom fields "
+               "%.1f%%, swamps %.1f%%, plains %.1f%%\n",
+               BIO_SEED_LIST[s], land, (libc_double_t)((float64_t)peaks * 100.0f64 / (float64_t)land), under_peaks,
+               high_not_peak, (libc_double_t)((float64_t)low_wooded * 100.0f64 / (float64_t)low),
+               BIO_COAST_CELLS * BIO_SEARCH_STEP,
+               (libc_double_t)((float64_t)mushrooms_by_sea * 100.0f64 / (float64_t)mushrooms),
+               (libc_double_t)((float64_t)swamps_by_sea * 100.0f64 / (float64_t)swamps),
+               (libc_double_t)((float64_t)plains_by_sea * 100.0f64 / (float64_t)plains));
+        /* Bare rock is the top of a range and not half of it. */
+        CHECK(peaks * 100u < land * 15u);
+        CHECK(peaks * 100u > land * 3u);
+        /* Peaks only high up, and high up only peaks: the two sides of the same height. A column in no box of its height goes to the
+         * nearest, so a few peaks start a little under 500, and at 116 under it the climate's largest gap outweighs the height's. */
+        CHECK(under_peaks * 50u < peaks);
+        CHECK_EQ_U64(far_under_peaks, 0u);
+        CHECK_EQ_U64(high_not_peak, 0u);
+        /* The oddest stretches of coast, and not anywhere inland. */
+        CHECK(mushrooms_by_sea * 100u > mushrooms * 85u);
+        /* Under the tree line, most of the land has woods. */
+        CHECK(low_wooded * 2u > low);
+    }
+}
+
 TEST(a_column_is_the_climate_on_the_lattice_and_what_hydrology_says_it_is) {
     terrain_t terrain;
     REQUIRE(terrain_init(&terrain, BIO_WORLD));
@@ -723,10 +846,10 @@ TEST(the_rules_are_worked_out_by_hand) {
     CHECK_EQ_U64(bio_rule(hills, bands, 90, 0u, stone, false, 0.0f32, 0.0f32, 0.99f32), BLOCK_ID_GRASS_BLOCK);
     CHECK_EQ_U64(bio_rule(hills, bands, 90, 0u, stone, false, 0.0f32, 0.0f32, 1.0f32), BLOCK_ID_STONE);
     CHECK_EQ_U64(bio_rule(hills, bands, 89, 1u, stone, false, 0.0f32, 0.0f32, 1.0f32), BLOCK_ID_STONE);
-    CHECK_EQ_U64(bio_rule(hills, bands, 139, 0u, stone, false, 0.0f32, 0.0f32, 0.0f32), BLOCK_ID_GRASS_BLOCK);
-    CHECK_EQ_U64(bio_rule(hills, bands, 140, 0u, stone, false, 0.0f32, 0.0f32, 0.0f32), BLOCK_ID_SNOW_BLOCK);
-    CHECK_EQ_U64(bio_rule(hills, bands, 140, 0u, stone, false, 0.0f32, 0.0f32, 1.0f32), BLOCK_ID_STONE);
-    CHECK_EQ_U64(bio_rule(hills, bands, 139, 1u, stone, false, 0.0f32, 0.0f32, 0.0f32), BLOCK_ID_DIRT);
+    CHECK_EQ_U64(bio_rule(hills, bands, 399, 0u, stone, false, 0.0f32, 0.0f32, 0.0f32), BLOCK_ID_GRASS_BLOCK);
+    CHECK_EQ_U64(bio_rule(hills, bands, 400, 0u, stone, false, 0.0f32, 0.0f32, 0.0f32), BLOCK_ID_SNOW_BLOCK);
+    CHECK_EQ_U64(bio_rule(hills, bands, 400, 0u, stone, false, 0.0f32, 0.0f32, 1.0f32), BLOCK_ID_STONE);
+    CHECK_EQ_U64(bio_rule(hills, bands, 399, 1u, stone, false, 0.0f32, 0.0f32, 0.0f32), BLOCK_ID_DIRT);
 
     /* Badlands: red sand and sandstone low down, then bands all the way, from 40, by layer. */
     const biome_def_t *const badlands = &biome_defs[BIOME_ID_BADLANDS];
@@ -741,15 +864,21 @@ TEST(the_rules_are_worked_out_by_hand) {
     CHECK_EQ_U64(bio_rule(badlands, bands, 300, 0u, stone, false, -1.0f32, 0.0f32, 0.0f32), 1044u);
     /* Woods on top of the bands, high up. */
     const biome_def_t *const wooded = &biome_defs[BIOME_ID_WOODED_BADLANDS];
-    CHECK_EQ_U64(bio_rule(wooded, bands, 69, 0u, stone, false, -1.0f32, 0.0f32, 0.0f32), 1069u);
-    CHECK_EQ_U64(bio_rule(wooded, bands, 70, 0u, stone, false, -1.0f32, 0.0f32, 0.0f32), BLOCK_ID_COARSE_DIRT);
-    CHECK_EQ_U64(bio_rule(wooded, bands, 70, 0u, stone, false, -1.0f32, 0.5f32, 0.0f32), BLOCK_ID_GRASS_BLOCK);
-    CHECK_EQ_U64(bio_rule(wooded, bands, 69, 1u, stone, false, -1.0f32, 0.5f32, 0.0f32), 1069u);
+    CHECK_EQ_U64(bio_rule(wooded, bands, 149, 0u, stone, false, -1.0f32, 0.0f32, 0.0f32), 1149u);
+    CHECK_EQ_U64(bio_rule(wooded, bands, 150, 0u, stone, false, -1.0f32, 0.0f32, 0.0f32), BLOCK_ID_COARSE_DIRT);
+    CHECK_EQ_U64(bio_rule(wooded, bands, 150, 0u, stone, false, -1.0f32, 0.5f32, 0.0f32), BLOCK_ID_GRASS_BLOCK);
+    CHECK_EQ_U64(bio_rule(wooded, bands, 149, 1u, stone, false, -1.0f32, 0.5f32, 0.0f32), 1149u);
 
     /* No filler at all on a peak: snow, then stone. */
     const biome_def_t *const jagged = &biome_defs[BIOME_ID_JAGGED_PEAKS];
     CHECK_EQ_U64(bio_rule(jagged, bands, 300, 0u, stone, false, 1.0f32, 0.0f32, 0.0f32), BLOCK_ID_SNOW_BLOCK);
     CHECK_EQ_U64(bio_rule(jagged, bands, 299, 1u, stone, false, 1.0f32, 0.0f32, 0.0f32), BLOCK_ID_STONE);
+
+    /* A warm peak is bare, up to its snow line. */
+    const biome_def_t *const stony = &biome_defs[BIOME_ID_STONY_PEAKS];
+    CHECK_EQ_U64(bio_rule(stony, bands, 799, 0u, stone, false, 0.0f32, 0.0f32, 0.0f32), BLOCK_ID_STONE);
+    CHECK_EQ_U64(bio_rule(stony, bands, 800, 0u, stone, false, 0.0f32, 0.0f32, 0.0f32), BLOCK_ID_SNOW_BLOCK);
+    CHECK_EQ_U64(bio_rule(stony, bands, 799, 1u, stone, false, 0.0f32, 0.0f32, 0.0f32), BLOCK_ID_STONE);
 
     /* And under the ground. */
     const biome_def_t *const lush = &biome_defs[BIOME_ID_LUSH_CAVES];

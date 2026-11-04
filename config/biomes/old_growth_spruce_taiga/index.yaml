@@ -1,6 +1,6 @@
 name: old_growth_spruce_taiga
 where: land
-climate: { temperature: [-0.45, -0.15], humidity: [0.4, 1], height: [-1000, 110] }
+climate: { temperature: [-0.45, -0.15], humidity: [0.4, 1], height: [-1000, 300] }
 surface:
   top: podzol
   filler: dirt
