@@ -18,7 +18,7 @@ Plan 001 left audio out of the first release, so this is new work. Music, footst
 
 **Why not the sound card directly:** raw ALSA ioctls on `/dev/snd/pcmC0D0p` would need the device PipeWire uses. Either the game or the desktop would lose its sound, and it would skip the desktop's volume and output choice.
 
-**This needs Ahmed's yes.** It's a second exception to the no-sockets rule in `plans/CODING_STANDARD.md` section 1. It's local only, with no TCP.
+**Decided by Ahmed, 2026-11-04: sound uses a second socket.** It's the second exception to the no-sockets rule, recorded in `plans/CODING_STANDARD.md` section 1. It's local only, with no TCP, and only `run/src/audio/pulse/index.c` may use it. The first is the X server's, in `run/src/display/x11/index.c`.
 
 **Unknowns, settled in stage 1:** no official protocol document turned up. The wire format would come from reading PulseAudio's source and a Rust reimplementation, used as reference only. Whether `pipewire-pulse` behaves the same as PulseAudio for this is unconfirmed.
 
@@ -79,7 +79,7 @@ Sounds fade with distance and pan left or right, since mobs and explosions will 
 **Stage 3: playing**
 
 - [ ] Add `run/src/audio/pulse/wire/` with unit tests that need no server, like `tests/run/display/x11/`
-- [ ] Add `run/src/audio/pulse/`, `run/src/audio/mixer/` and `run/src/audio/`, with allowance in `standards_lint` for this one file and the standard updated
+- [ ] Add `run/src/audio/pulse/`, `run/src/audio/mixer/` and `run/src/audio/`, with allowance in `standards_lint` for `run/src/audio/pulse/index.c` only
 - [ ] Post events from `run/src/player/interaction/` for digging, breaking and placing
 - [ ] Add the volume setting, and make no sound server mean silence and one log line, never a failure
 - [ ] Test the mixer by writing its output to memory and checking the samples, so `ctest` makes no sound
@@ -105,7 +105,6 @@ Appended as they land:
 
 **Open for Ahmed:**
 
-1. A second local socket, for the sound server: yes or no?
-2. Is a thread from the spare OK, leaving none reserved for the OS?
+1. Is a thread from the spare OK, leaving none reserved for the OS?
 
 **Sources:** [Kenney Impact Sounds](https://kenney.nl/assets/impact-sounds), [pulseaudio Rust crate](https://docs.rs/crate/pulseaudio/latest), [PulseAudio protocol-native.h](https://code.delx.au/pulseaudio/blob/81447ed392e57f822e09cf648cb16732a3e3773f:/src/protocol-native.h).
