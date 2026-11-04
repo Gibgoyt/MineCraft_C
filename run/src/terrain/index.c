@@ -1,6 +1,8 @@
 /* See README.md. The Owner: it holds the region, and lends its arena to the parts. */
 #include "terrain/index.h"
 
+#include "tables/blocks/index.h"
+
 #include <string.h>
 
 bool terrain_init(terrain_t *terrain, uint64_t seed) {
@@ -43,8 +45,9 @@ bool terrain_init(terrain_t *terrain, uint64_t seed) {
     return true;
 }
 
-void terrain_generate_box(const terrain_t *terrain, const terrain_density_box_t *box, uint8_t *opened,
-                          uint16_t *blocks) {
+/* Every stage, on a box that may reach TERRAIN_MADE_TOP and no further. */
+static void terrain_stages_run(const terrain_t *terrain, const terrain_density_box_t *box, uint8_t *opened,
+                               uint16_t *blocks) {
     terrain_hydrology_fill_box(terrain->borrowed_hydrology, box, blocks);
     terrain_surface_fill_box(terrain->borrowed_surface, box, blocks);
     terrain_cave_mask_box(terrain->borrowed_cave, box, opened);
@@ -54,6 +57,29 @@ void terrain_generate_box(const terrain_t *terrain, const terrain_density_box_t 
     terrain_surface_line_caves_box(terrain->borrowed_surface, box, blocks);
     terrain_ore_fill_box(terrain->borrowed_ore, box, blocks);
     terrain_feature_fill_box(terrain->borrowed_feature, box, blocks);
+}
+
+/* A column is mostly air above what terrain can reach, and the stages walk their layers. So they get the box up to TERRAIN_MADE_TOP, which is the first
+ * part of what the caller lent, as z is the slowest way through it, and the rest is air. */
+static_assert(BLOCK_ID_AIR == 0u);
+
+void terrain_generate_box(const terrain_t *terrain, const terrain_density_box_t *box, uint8_t *opened,
+                          uint16_t *blocks) {
+    const int64_t layers_made = (int64_t)TERRAIN_MADE_TOP - (int64_t)box->origin_z + 1;
+    if (layers_made >= (int64_t)box->count_z) {
+        terrain_stages_run(terrain, box, opened, blocks);
+        return;
+    }
+    const uint64_t layer = (uint64_t)box->count_x * box->count_y;
+    const uint64_t made = layers_made > 0 ? (uint64_t)layers_made : 0u;
+    if (made > 0u) {
+        terrain_density_box_t lower = *box;
+        lower.count_z = (uint32_t)made;
+        terrain_stages_run(terrain, &lower, opened, blocks);
+    }
+    const uint64_t rest = ((uint64_t)box->count_z - made) * layer;
+    memset(opened + made * layer, 0, rest);
+    memset(blocks + made * layer, 0, rest * sizeof(uint16_t));
 }
 
 void terrain_deinit(terrain_t *terrain) {
