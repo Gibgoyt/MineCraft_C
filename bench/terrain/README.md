@@ -17,7 +17,7 @@ A **column** here is what it is in the plan and in `run/src/world/column/`: a ch
 
 ### 2026-11-05, plan 003 phase 8 stage 7, final: every place beats it
 
-The same land and seed, after features stopped making a whole chunk's own ground a second time. Three runs in a row, load average about 1 to 3 before each, nothing else of ours on the lock. Target 1000 on 16 workers: **met by all 9, exit status 0 on all three**. The margin of the slowest is 6.5% to 11%.
+The same land and seed, after features stopped making a whole chunk's own ground a second time. Three runs in a row, nothing else of ours on the lock, with `uptime` reading a load average of 2.7 just after them. Target 1000 on 16 workers: **met by all 9, exit status 0 on all three**. The margin of the slowest is 6.5% to 11%.
 
 | Place | 1 worker | 16 workers, three runs |
 |---|---|---|
