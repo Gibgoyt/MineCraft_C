@@ -26,7 +26,7 @@ code calls libm, and neither C++ library is loaded at run time. Shared `libcudar
 both of them.
 
 Banned: OpenGL, Vulkan, EGL, GBM, libdrm, X11, xcb, Wayland, SDL, GLFW, OptiX, stb, zlib, libpng, libyaml, and any
-other third-party code. No networking: no TCP and no server. **One socket exists:** the Unix socket to the X server on this machine, in `run/src/display/x11/index.c` only, speaking our own protocol code (decided by Ahmed, 2026-11-04, to run on the XFCE desktop). Its shared-memory pixels are like the dumb buffer: shared with something outside the process, not heap.
+other third-party code. No networking: no TCP and no server. **Two local Unix sockets are allowed, each in one file, speaking our own protocol code, and both decided by Ahmed on 2026-11-04.** The first is to the X server, in `run/src/display/x11/index.c`, to run on the XFCE desktop. The second is to the sound server, in `run/src/audio/pulse/index.c`, for plan 003 phase 5, and isn't built yet. The X server's shared-memory pixels are like the dumb buffer: shared with something outside the process, not heap.
 
 We write it ourselves: YAML parsing, PNG decoding, vectors, KMS, input.
 
