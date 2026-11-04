@@ -1,6 +1,6 @@
 # 003-ahmed-bohemoth-initial-game-fixes — phase 10: Coordinates on screen
 
-**Status:** in progress: the code and its checks pass, but the gate's whole-suite run is unfinished (21 of 100 entries) and Ahmed's own look is still to come   (updated 2026-11-04)
+**Status:** in progress: every agent-runnable check passes, including the whole suite (100 of 100); only Ahmed's own look on a real screen is pending   (updated 2026-11-04)
 
 ## Goal
 
@@ -76,3 +76,13 @@ Appended as they land:
 - Expected: the comment on `game_sim_tick` to sit on it. Actual: adding `game_hud_position_publish` left it on that function (`run/src/game/tick/index.c`). Done: moved.
 - Not done: the whole suite. It was stopped at entry 22 of 100, with 21 passed and none failed, because this agent was told to return. The other entries are unverified on this branch. Run `tools/test-or-build.sh timeout 3400 ctest --preset debug --output-on-failure`.
 - Not seen live: the notice band with the panel beneath it. Only `coordinates_stay_on_their_own_small_panel_and_move_below_a_notice` covers it.
+
+**Second gate check, 2026-11-04, on `9a7fe2d` (main merged), from a clean `build/`.**
+
+- Expected: the whole suite to run to its end, the open defect of the check above. Actual: it did. Evidence: `tools/test-or-build.sh timeout 3400 ctest --preset debug --output-on-failure` printed `100% tests passed out of 100` in 1347 s, none skipped, with `run_settings`, `run_ui_hud`, `run_ui_screens`, `standards_lint` and `clang_format` among them. Done: defect closed, no code change. `render_feature_lod`, where the last run stopped, passed; that run was cut short, not stuck.
+- Played headless at 640x480, on one world and one settings file holding only `version: 1`, PNGs read. Seed 123: `x 24 y 24 z 72`, walked to `x 34 y 30 z 54`, strafed to `x 38 y 26 z 48`. Digging there stopped at z 46 on a log, as bare hands do not fell trees, so it proved little. Seed 777, digging straight down: z 75, 72, 70, 69, 68, 67, with x and y staying at 8.
+- Kept across programs: Settings box off in a world wrote `show_coordinates: false`, and the corner panel went at once. F3 still showed `x 38 y 25 z 46`. A new program opened with no panel. Box on wrote `true`, and a new program opened with `x 38 y 25 z 46`.
+- The notice band, which the check above had not seen live, now has been. With the world's directory made read-only, the autosave at 30 seconds failed. The picture has the band `Not saving: access denied` with the panel just under it, not hidden. That run exited 5, as a refused save should.
+- Hunted, nothing found: no stub or TODO in the files this phase changed, every source file under the line limit (the longest, `tests/run/ui/hud/index.c`, has 1487), every new function called, and the new tests' checks compare real values.
+- A release build of `minecraft_c` links, and `--report` runs. It was deleted with `build/`, so build it before Ahmed's line above, as that note says.
+- Not done: Ahmed's look on a real screen. No window was opened here. Scripts and pictures were in the scratchpad, and are not kept.
