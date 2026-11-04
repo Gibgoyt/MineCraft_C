@@ -38,6 +38,7 @@ Appended as they land:
 
 - `e6afbcd` Show the player's x, y and z in the top left corner and on the F3 overlay, with a Coordinates box in Settings that is kept and on by default.
 - `dd34279` Say in the repo structure that the HUD and its overlay show coordinates.
+- `7972ff4` Record the coordinates phase as built, with what was added, what was tested and the one rule broken on the way.
 ## Issues found
 
 **On by default, for now.** It's useful while you're testing the world. It's one line to change.
