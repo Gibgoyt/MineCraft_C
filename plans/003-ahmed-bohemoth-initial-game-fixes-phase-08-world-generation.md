@@ -189,6 +189,8 @@ Appended as they land:
 - `46e1271` Hold every one of the 8 seeds inside the sea target by giving continentalness's first octave less weight and moving the coast to match, and let a lake's ice over cut ground pass the feature test.
 - `28e62e5` Have the drop and inventory tests read where the body started from the program's own line, so new ground does not fail them, and let the frozen sky test allow a few pixels of a block's own tick.
 - `0d0a790` Record stage 3's second pass in its plan file: all 8 seeds inside the sea target, each of the 9 red tests read, 4 now passing, and why the other 5 wait for stage 7.
+- `a54a446` Give the world mountain ranges that run on for kilometres up to about 1200 high, with valleys, wetlands and rivers that stop at high ground, start a new world on low gentle ground, and stop a full section pool hanging a headless run.
+- `14a89c0` Record stage 4 of world generation in its plan file: ranges on target in the map's numbers, the choices made in tuning, the pool bug found, and the 8 tests left for stage 7.
 
 ## Issues found
 
