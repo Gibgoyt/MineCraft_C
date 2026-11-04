@@ -1054,6 +1054,15 @@ TEST(in_the_real_game_the_screen_is_the_hud_over_the_picture_and_the_picture_is_
     memcpy(rig.player->movement.position, kept, sizeof(kept));
     game_hud_position_publish(game);
     game_hud_block_read(game, block);
+    /* A tick alone tells main where the body has gone, with nobody calling for it: this is what makes the numbers change as a person walks. */
+    const int32_t before_tick = block[0];
+    rig.player->movement.position[0] += 3.0f64;
+    REQUIRE(scene.tick(scene.borrowed_context, &tick));
+    game_hud_block_read(game, block);
+    CHECK(block[0] != before_tick);
+    CHECK_EQ_I64(block[0], (int64_t)floor(movement->position[0]));
+    CHECK_EQ_I64(block[1], (int64_t)floor(movement->position[1]));
+    CHECK_EQ_I64(block[2], (int64_t)floor(movement->position[2]) - MC_WORLD_Z_SEA);
 
     /* Off, as in everything above, there is no sign of them; on, they are drawn over the HUD where the model says. */
     display_buffer_t with_coordinates = rig_target(t);
