@@ -40,6 +40,10 @@ Ahmed, from a terminal on the desktop:
 
 Appended as they land:
 
+- `faaf936` Run the game in a window on an X desktop such as XFCE, through our own X11 protocol code over the local Unix socket with frames in shared memory.
+
 ## Issues found
 
-None.
+All agent-runnable checks passed on 2026-11-04: `ctest --preset release`, 100 of 100. On a private `Xvfb`, with the real `xfwm4`: full screen at the screen's size, pointer held while focused and let go when focus went to another window, held again on return, and the close button ending the run with nothing leaked. A block mined by real clicks was gone in the next picture. None of it ran on the live desktop, which is the box still open.
+
+Known limits, in `run/src/display/x11/README.md`: pointer acceleration applies, no vsync, one window size per run. Alt+Tab itself was not pressed in these tests: `xdotool windowactivate` moved the focus, since `xfwm4` on `Xvfb` had no key settings to read.
