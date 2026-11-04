@@ -270,7 +270,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | `ui` | (the Owner) | `ui_init`, `ui_deinit`: the region and arenas its parts borrow; `ui_frame_begin`, `ui_frame_begin_over`, `ui_frame_end`: a frame on a canvas | 14.1 |
 | | `compose` | Canvas, clipping, images and nine parts: every pixel through `asm/src/blend`. Not in the plan's list: `font` and `widget` both draw through it, and sit beside it | 14.1 |
 | | `font widget` | Bitmap font, widgets | 14.1 |
-| | `hud` | Crosshair, hotbar, hearts, drumsticks, debug overlay with FPS and per-stage times | 14.2 |
+| | `hud` | Crosshair, hotbar, hearts, drumsticks, coordinates, debug overlay with FPS, per-stage times and coordinates | 14.2 |
 | | `screen_inventory screen_crafting screen_furnace screen_chest` | Game screens. `screen_inventory` also holds what all four share: the ring from `main` to `sim`, the views back, the item pictures and the window, and the other three include it, as its README allows | 14.3 |
 | | `menu` | Main menu, world create and select, pause, loading | 14.4 |
 | | `menu/catalog` | Worlds on disk: each one's `world.meta`, what a typed name and seed turn into | 14.4 |
