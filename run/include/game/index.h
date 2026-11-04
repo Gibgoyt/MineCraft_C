@@ -220,14 +220,6 @@ static_assert(offsetof(game_t, mob_spawn) == 1408);
 void game_init(game_t *game, world_t *world, terrain_t *terrain, render_t *render, job_system_t *job,
                const texture_t *texture, const thread_topology_t *topology);
 
-/* The highest z with anything in it at this x and y, water and what grows included. Only job's two buffers are used. */
-int32_t game_ground_z(const terrain_t *terrain, const game_column_job_t *job, int32_t x, int32_t y);
-
-/* Where a new world's body starts: the search's comment says how. Only job's two buffers are used. game, which may be nullptr, is told it
- * is still going once a ring. bench/world_map/ asks this too, so that what it reports is where the game really starts. */
-void game_spawn_find(const game_t *game, const terrain_t *terrain, const game_column_job_t *job, int32_t middle_x,
-                     int32_t middle_y, int32_t *out_x, int32_t *out_y);
-
 /* From here on a world is walked through and not flown through, by this player, which must outlive it. Before game_open. */
 void game_player_set(game_t *game, player_t *player);
 

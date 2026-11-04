@@ -31,7 +31,7 @@ A world whose files refuse to open, as damaged, from another version, on another
 **So a world opens and closes inside a frame**, the only frames that take long or log, against what `display_frame_source_t` asks of a source:
 
 - First the loading screen, in both buffers, so that it is on the screen whichever is showing. It stays there until the world's first picture lands in that buffer.
-- Then that frame: `terrain_deinit` and `terrain_init` with the chosen seed, as `run/include/terrain/index.h` says another seed takes, and `game_open`, which starts the player, inventory and drops anew. The guardian's watchdog ends the program if it hears nothing for 8 seconds, and an all-ocean seed can take longer than that to find dry land, up to 16641 columns, so `game_open_alive_set` keeps it told once for each ring of that search. The log says how long it took.
+- Then that frame: `terrain_deinit` and `terrain_init` with the chosen seed, as `run/include/terrain/index.h` says another seed takes, and `game_open`, which starts the player, inventory and drops anew. The guardian's watchdog ends the program if it hears nothing for 8 seconds, and finding dry land can take longer than that, as `run/src/game/spawn/` says, so `game_open_alive_set` keeps it told once for each square of that search. The log says how long it took.
 - A log line on a console in graphics mode does no harm: it is not drawn, and it is there when the console comes back. Nothing else logs but a change of settings going through.
 - `game_loop_threads_ensure` starts the threads on the next frame, after the guardian's fork as under `--test-world`, and what is pinned for this world is pinned after that fork too.
 

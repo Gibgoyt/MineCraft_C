@@ -4,6 +4,7 @@
 #include "assert/index.h"
 #include "entity/animation/index.h"
 #include "item/stack/index.h"
+#include "game/spawn/index.h"
 #include "game/view/index.h"
 #include "log/index.h"
 #include "render/entities/index.h"
@@ -34,13 +35,6 @@ enum : int64_t {
     GAME_COMMIT_BUDGET_NS =
         4000000, /* the most a sim step spends on finished columns, each with its light, past the first */
     GAME_TICK_NS = 1000000000 / MC_GAME_TICK_HZ,
-};
-
-/* How far from the world's middle a body looks for dry land, in squares this many blocks apart. A world with none in 1 km of the
- * middle starts it in the water it would have had anyway. */
-enum : int32_t {
-    GAME_SPAWN_STEP = 16,
-    GAME_SPAWN_RINGS = 64,
 };
 
 #define GAME_START_EYE_HEIGHT 24.5f64
@@ -366,50 +360,6 @@ static terrain_density_box_t game_column_box(int32_t x, int32_t y, uint32_t acro
     };
 }
 
-/* The highest z with anything in it at this x and y, water and what grows included. Works in a job's memory, before any job runs. */
-int32_t game_ground_z(const terrain_t *terrain, const game_column_job_t *job, int32_t x, int32_t y) {
-    const terrain_density_box_t box = game_column_box(x, y, 1u);
-    terrain_generate_box(terrain, &box, job->borrowed_opened, job->borrowed_states);
-    for (int32_t storage = (int32_t)box.count_z - 1; storage > 0; storage--) {
-        if (job->borrowed_states[storage] != BLOCK_ID_AIR) {
-            return storage + COLUMN_Z_STORAGE_MIN;
-        }
-    }
-    return COLUMN_Z_STORAGE_MIN;
-}
-
-/* Whether a body could stand on this column's top: not water, not a flower, and not a tree's leaves. Reads what game_ground_z left in
- * the job's memory. */
-static bool game_top_is_dry_land(const game_column_job_t *job, int32_t ground_z) {
-    const uint16_t top = job->borrowed_states[ground_z - COLUMN_Z_STORAGE_MIN];
-    return (block_defs[top].flags & BLOCK_FLAG_SOLID) != 0u && (block_defs[top].flags & BLOCK_FLAG_DECAYS) == 0u;
-}
-
-/* The nearest dry land to the world's middle, ring by ring of a square around it, and the middle itself if there is none. The same
- * seed gives the same place. */
-void game_spawn_find(const game_t *game, const terrain_t *terrain, const game_column_job_t *job, int32_t middle_x,
-                     int32_t middle_y, int32_t *out_x, int32_t *out_y) {
-    *out_x = middle_x;
-    *out_y = middle_y;
-    for (int32_t ring = 0; ring <= GAME_SPAWN_RINGS; ring++) {
-        if (game != nullptr) {
-            game_open_alive_tell(game);
-        }
-        for (int32_t dy = -ring; dy <= ring; dy++) {
-            /* The inside of a square has been looked at already: only its first and last columns remain on these rows. */
-            const int32_t across = dy == -ring || dy == ring ? 1 : (ring == 0 ? 1 : 2 * ring);
-            for (int32_t dx = -ring; dx <= ring; dx += across) {
-                const int32_t x = middle_x + dx * GAME_SPAWN_STEP, y = middle_y + dy * GAME_SPAWN_STEP;
-                if (game_top_is_dry_land(job, game_ground_z(terrain, job, x, y))) {
-                    *out_x = x;
-                    *out_y = y;
-                    return;
-                }
-            }
-        }
-    }
-}
-
 /* A new world's HUD: nothing carried, and nothing timed yet. The overlay stays as the player left it. */
 static void game_hud_start(game_t *game) {
     for (uint32_t slot = 0u; slot < INVENTORY_HOTBAR_SLOTS; slot++) {
@@ -483,7 +433,10 @@ bool game_open(game_t *game, const game_config_t *config) {
                  (libc_double_t)kept_feet[1], (libc_double_t)kept_feet[2]);
     } else {
         if (game->borrowed_player != nullptr) {
-            game_spawn_find(game, terrain, &game->borrowed_jobs[0], start_x, start_y, &start_x, &start_y);
+            if (!game_spawn_find(game, terrain, &game->borrowed_jobs[0], start_x, start_y, &start_x, &start_y)) {
+                LOG_WARN("game: no dry land within %d blocks of the world's middle, so the body starts at the middle",
+                         GAME_SPAWN_REACH);
+            }
         }
         const float64_t ground = (float64_t)game_ground_z(terrain, &game->borrowed_jobs[0], start_x, start_y);
         const float64_t middle_x = (float64_t)start_x + 0.5f64, middle_y = (float64_t)start_y + 0.5f64;
