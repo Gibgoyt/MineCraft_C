@@ -156,6 +156,9 @@ Appended as they land:
 - `837d96b` Start a new world's body on real dry land: ice and anything floating on water no longer count, and the search now reaches 32 km, cheaply, with a part and a test of its own.
 - `f302a67` Say in the repository's structure what tests/run/game/spawn is.
 - `66facd6` Record stage 2 of world generation in its plan file: every seed tried now starts on land, how far the search goes, and what the later stages should watch.
+- `ab2f98e` Make the world one large continuous land with about 27% sea, in seas that end, by weighting noise octaves, moving the coast to match, keeping rivers near the coast, and having the map tool report how much of the land is joined up.
+- `840e97e` Record in the map tool's README what the 8 seeds measure now that the world has its continents.
+- `6de702f` Record stage 3 of world generation in its plan file: the sea on target in one joined land, the choices made in tuning, and the 9 tests left for stage 7.
 
 ## Issues found
 
