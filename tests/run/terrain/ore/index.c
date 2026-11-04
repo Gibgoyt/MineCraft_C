@@ -36,7 +36,8 @@ static const uint64_t ORE_WORLD = 0x1234567890ABCDEFull;
 /* Pinned: see README.md. */
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
-static const uint64_t ORE_DIGEST_PIN = 0x71CE2FCA20DF29DDull;
+/* Plan 003 phase 8 stage 5 brought spaghetti closer together and dried out most aquifer cells. */
+static const uint64_t ORE_DIGEST_PIN = 0xF75A81855572048Aull;
 
 static uint64_t ore_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

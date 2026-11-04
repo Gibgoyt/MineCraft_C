@@ -88,11 +88,13 @@ This is for whatever opens the ground after the fill, as caves do, and `terrain_
 
 **Aquifer cells** are cubes of 32 blocks, lined up on the world, with one site each, from 10 to 22 blocks into the cell on each axis, from a hash of the cell. A voxel belongs to the cell whose site is nearest. A cell's own numbers come from noise at its site:
 
-    flood < 0.3                                                    dry
+    flood < 0.65                                                   dry
     otherwise: level = 40 * floor(site_z / 40) + 20 + 3 * trunc(4 * level_noise)
     holding lava if level <= -160 and lava_noise >= 0.4, else water
 
 and it holds its fluid from its level down. Levels on steps of 3 mean neighbours often agree, and then they are one body of water.
+
+**Why 0.65.** A wet cell walls off every neighbour holding something else at that height, rule 1 below, and that wall is what shows as square water. It also stops a cave. At 0.3, 10% of what caves cut came back as stone and 16% as water, and a body could walk to 0 to 4% of the places to stand under `z = -150`. At 0.65, 5% and 8%. Plan 003 phase 8 stage 5 has the numbers.
 
 **The 27 cells round a voxel's cell always hold its nearest site.** Its own site is at most `22 * sqrt(3) = 38.2` away, and a site two cells off at least `32 + 10 = 42`.
 

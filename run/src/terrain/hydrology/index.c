@@ -74,7 +74,7 @@ static const float32_t HYDROLOGY_CLAY_FROM = 0.5f32;
 static const float32_t HYDROLOGY_RIVER_GRAVEL_BELOW = -0.2f32;
 
 /* Aquifers. */
-static const float32_t HYDROLOGY_FLOOD_WET_FROM = 0.3f32;
+static const float32_t HYDROLOGY_FLOOD_WET_FROM = 0.65f32;
 static const float32_t HYDROLOGY_LAVA_FROM = 0.4f32;
 static const int32_t HYDROLOGY_LEVEL_BAND = 40;
 static const int32_t HYDROLOGY_LEVEL_MIDDLE = 20;

@@ -51,7 +51,8 @@ static const uint64_t HYDRO_DIGEST_PIN = 0xE9CD1E3FCA812648ull;
 static const uint64_t HYDRO_COLUMNS_PIN = 0xECA6C70A31BC9567ull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
-static const uint64_t HYDRO_FLOOD_PIN = 0x2AFF9FC4F8B39776ull;
+/* Plan 003 phase 8 stage 5 brought spaghetti closer together and dried out most aquifer cells. */
+static const uint64_t HYDRO_FLOOD_PIN = 0xBE11C306DD69D466ull;
 
 static uint64_t hydro_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -810,7 +811,7 @@ static uint16_t hydro_expected_aquifer(const terrain_hydrology_t *hydrology, int
                 site->fluid = BLOCK_ID_AIR;
                 const float32_t flood = hydro_expected_spread(
                     hydro_field_at(hydrology->borrowed_flood, site->x, site->y, site->z), 0.42f64);
-                if (flood >= 0.3f32) {
+                if (flood >= 0.65f32) {
                     const float32_t spread = hydro_expected_spread(
                         hydro_field_at(hydrology->borrowed_level, site->x, site->y, site->z), 0.42f64);
                     const float32_t lava = hydro_expected_spread(

@@ -21,7 +21,7 @@
 | Kind | What it is | How |
 |---|---|---|
 | Cheese | Wide, flattish caverns | A noise field above a threshold: holes in a block of cheese |
-| Spaghetti | Long winding tunnels, 3 to 6 blocks across | Where two noise fields are both near 0: each is 0 on a sheet, and two sheets cross on a line |
+| Spaghetti | Long winding tunnels, about 3 to 6 blocks across, close enough to join up | Where two noise fields are both near 0: each is 0 on a sheet, and two sheets cross on a line |
 | Noodle | Thin winding passages, 1 to 3 blocks across | The same, on finer fields, with a smaller width |
 
 A voxel can be in more than one, and that is how a tunnel opens into a cavern.
@@ -43,9 +43,9 @@ All at a lattice of points, 4 blocks apart on every axis, lined up on the world:
 
     cheese    = gate_c * (spread(cheese) + 0.35 * spread(region) - 0.90) - (1 - gate_c)
 
-    needed    = -0.15 + 0.65 * surface
+    needed    = -0.55 + 0.70 * surface
     open_s    = clamp((spread(sp_gate) - needed) / 0.2)
-    width_s   = 0.04 + 0.045 * (0.5 + 0.5 * spread(sp_width))
+    width_s   = 0.065 + 0.065 * (0.5 + 0.5 * spread(sp_width))
     limit_s   = width_s * open_s * gate_s
 
     open_n    = clamp((spread(no_gate) - 0.1) / 0.2)
@@ -64,7 +64,7 @@ A voxel blends each of `cheese`, `limit_s`, `a_s`, `b_s`, `limit_n`, `a_n`, `b_n
 |---|---|---|---|---|
 | `cave/cheese` | 80 | 40 | 2 | 0.40 |
 | `cave/cheese_region` | 256 | 128 | 1 | 0.54 |
-| `cave/spaghetti_a`, `_b` | 64 | 44 | 1 | none: used raw |
+| `cave/spaghetti_a`, `_b` | 48 | 32 | 1 | none: used raw |
 | `cave/spaghetti_gate` | 128 | 128 | 1 | 0.54 |
 | `cave/spaghetti_width` | 48 | 48 | 1 | 0.54 |
 | `cave/noodle_a`, `_b` | 32 | 24 | 1 | none: used raw |
@@ -81,11 +81,15 @@ A number, a shape or a size changing changes every world, and `tests/run/terrain
 | No cave at or below `z = -242`, so stone under every cave | `floor` is 0 at `-242`, and a voxel at or below that blends only from points where it is 0 |
 | No cheese or noodle opens to the sky | `gate_c` and `gate_n` leave 8 and 6 blocks of ground the 3D noise cannot have taken |
 | No cave reaches the sea | `gate_s` asks the same up to `z = 2`, and every voxel up to the sea's surface, `z = 0`, blends only from points up to there. The two others always ask. Cover of at least `softness + 8 + 6` at a corner within 4 blocks means ground the sea cannot be in, and how steep the ground gets at a shore is measured by `no_cut_voxel_ever_touches_the_sea` |
-| Spaghetti does open to the sky, but rarely | Above `z = 2` nothing but `needed` holds it back, and `needed` rises near the ground, so only the strong parts of the gate reach it: those are a cave's mouths |
+| Spaghetti does open to the sky, about 1 column in 65 | Above `z = 2` nothing but `needed` holds it back, and `needed` rises near the ground, so only the strong parts of the gate reach it: those are a cave's mouths |
 
 `z` is a level's only part in what caves want, so `terrain_cave_mask_box` says what a cave wants of any voxel, rock or not. `terrain_cave_carve_box` cuts anything but air, water, lava and bedrock.
 
 Water and lava in a cave are Stage 10.4's. A cave cut below the sea is air here, and it has rock all round it.
+
+## Why these numbers: a body has to be able to walk down them
+
+Plan 003 phase 8 stage 5 tuned spaghetti with `bench/cave_walk/`, which walks a body from the sky. Tubes are what join the caverns, and whether they join up is a matter of how close they lie, which is sudden: with cells of 64 by 44, a body got to 1 to 5% of the places to stand under `z = -150`, and with 48 by 32 to 11 to 36% on the same seeds. A cell of 64 by 72, tubes that stand steeper but lie further apart, was worse. Shrinking a cell thins a tube, as its fields change faster, so `width_s` grew by the same 4/3, and it stays about as wide. Flooding matters as much: `terrain/hydrology`'s README says why fewer aquifer cells hold anything.
 
 ## What it costs
 
