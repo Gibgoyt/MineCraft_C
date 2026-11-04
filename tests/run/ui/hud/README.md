@@ -16,6 +16,7 @@ What it holds to:
 - A half shows the side nearest the full ones. Slots, counts and wear each change only their own part.
 - The overlay's numbers change only their own line, and it stays on its panel.
 - No heap and no table memory in 200 frames.
+- Coordinates: a small panel just as wide as its text, each number changing it, below a notice's band, and on the overlay's panel with room for the longest. On the real game, whole blocks from the sim and rounded down past 0, drawn only when the config says, and not twice with F3 up.
 - **The real game, one thread:** with a `ui_t`, the target is the model drawn over the picture the card made, and that picture is not touched. Without one, the target is the picture, byte for byte. F3 turns the overlay on and off, flying too.
 - **The real threads:** what is put on the hotbar reaches the screen across threads, the overlay's numbers are real ones, and a frame takes nothing from the heap.
 - **Real keys, on a fake device:** F3 through `game_loop_source`: one press however long it is held, and a tap over inside one poll still counts.

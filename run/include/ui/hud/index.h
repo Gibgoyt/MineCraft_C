@@ -70,8 +70,9 @@ static_assert(sizeof(ui_hud_state_t) == 76);
 typedef struct ui_hud_debug_t {
     float32_t fps;                          /* 0 */
     float32_t stage_ms[UI_HUD_STAGE_COUNT]; /* 4 */
+    int32_t block[3];                       /* 40: x, y and z: see ui_hud_coordinates_draw */
 } ui_hud_debug_t;
-static_assert(sizeof(ui_hud_debug_t) == 40);
+static_assert(sizeof(ui_hud_debug_t) == 52);
 
 /* Where things go on a canvas of some size, in its pixels. */
 typedef struct ui_hud_layout_t {
@@ -103,7 +104,7 @@ void ui_hud_item_draw(const ui_hud_t *hud, ui_canvas_t *canvas, const ui_font_t 
 /* The crosshair, the hotbar with what is on it, the hearts and the drumsticks. No allocation. */
 void ui_hud_draw(const ui_hud_t *hud, ui_canvas_t *canvas, const ui_font_t *font, const ui_hud_state_t *state);
 
-/* The frames per second and each stage's time, on a dark panel at the top left. No allocation. */
+/* The frames per second, each stage's time and where the body is, on a dark panel at the top left. No allocation. */
 void ui_hud_debug_draw(ui_canvas_t *canvas, const ui_font_t *font, const ui_hud_debug_t *debug);
 
 enum : uint32_t {
@@ -112,6 +113,10 @@ enum : uint32_t {
 
 /* One line in red across the top of the canvas, of something a person playing needs to know and has no other way to learn. */
 void ui_hud_notice_draw(ui_canvas_t *canvas, const ui_font_t *font, const char *text);
+
+/* x, y and z in whole blocks, on a dark panel at the top left. z is up, and 0 is sea level. below_notice is for when ui_hud_notice_draw has drawn on
+ * this canvas, as that band crosses the top left too. No allocation. */
+void ui_hud_coordinates_draw(ui_canvas_t *canvas, const ui_font_t *font, const int32_t block[3], bool below_notice);
 
 /* Where that panel lies on a canvas of this size, which nothing else in the overlay goes outside. */
 ui_rect_t ui_hud_debug_panel(uint32_t canvas_width, uint32_t canvas_height);

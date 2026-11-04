@@ -13,6 +13,7 @@
 - `ui_hud_item_draw`: one item with its wear and count, for any slot.
 - `ui_hud_draw`: all of the HUD, from a `ui_hud_state_t`.
 - `ui_hud_debug_draw`, `ui_hud_debug_panel`: the overlay, from a `ui_hud_debug_t`, and where it lies.
+- `ui_hud_coordinates_draw`: x, y and z on a small panel at the top left, under a notice if there is one.
 - `ui_hud_notice_draw`: one line in a red band across the top, for what a person playing has no other way to learn: `game` uses it when saves are failing.
 
 **May be called by:** `ui`, `run/src/game/` and the screens under `ui`.
@@ -39,9 +40,15 @@ In texture pixels, all times `ui_hud_layout`'s scale, which is the widgets':
 
 A half shows the half nearest the full ones. Each number is rounded up to a half, so that any health left shows. A canvas smaller than all this draws what fits: `ui_compose_*` clip, and nothing outside the canvas is touched.
 
+## Coordinates
+
+Whole blocks, rounded down, so that the block you stand in has the numbers of its low corner, on either side of 0. z is up, and 0 is sea level, so the numbers are the ones the world's limits are given in. They come from the feet.
+
+The panel is as wide as its text, in the overlay's text size. `game` draws it only if the setting is on, and not while the overlay is up. Under a notice's band it goes one panel lower, as a body that has died is the one that most wants to know where.
+
 ## The debug overlay
 
-F3 turns it on and off, on top of the HUD and over any kind of run, flying or walking. It lists what `ui_hud_stage_t` does: the five passes of the card and its total, from the card's own clock; the sim's last tick; and on `main`, what the HUD and copying the picture out took. Frames per second count **new pictures**, as `game_report` does, not how often `main` went round. The window is half a second, in `run/src/game/`.
+F3 turns it on and off, on top of the HUD and over any kind of run, flying or walking. It lists what `ui_hud_stage_t` does: the five passes of the card and its total, from the card's own clock; the sim's last tick; and on `main`, what the HUD and copying the picture out took. Its last line is the coordinates, whatever the setting says, and its panel is wide enough for eight digits each way. With no body, they are the flying eye's. Frames per second count **new pictures**, as `game_report` does, not how often `main` went round. The window is half a second, in `run/src/game/`.
 
 Its text is half the HUD's scale, rounding up.
 

@@ -55,7 +55,8 @@ typedef struct game_config_t {
     uint32_t
         render_scale_percent; /* 32: pictures are drawn this much of width and height, and brought up; 0 means 100 */
     uint8_t uncapped; /* 36: the gpu thread draws as fast as it can, and does not wait for a picture to be taken */
-    uint8_t _pad1[3]; /* 37 */
+    uint8_t show_coordinates; /* 37: x, y and z in the top left corner of what a body sees */
+    uint8_t _pad1[2];         /* 38 */
 } game_config_t;
 static_assert(sizeof(game_config_t) == 40);
 
@@ -155,7 +156,8 @@ typedef struct game_t {
     _Atomic uint32_t hud_tick_us;                        /* 1228: sim to main: what its last tick took */
     profiler_lane_t *borrowed_lane_sim;                  /* 1232: whichever thread is doing the sim's work now */
     profiler_lane_t *borrowed_lane_sim_thread;           /* 1240: that of the sim thread, while it runs */
-    uint8_t _pad4[32];                                   /* 1248 */
+    _Atomic int32_t hud_block[3]; /* 1248: sim to main: the block the body's feet are in, z from sea level */
+    uint8_t _pad4[20];            /* 1260 */
     /* A line of its own: the gpu thread writes these, once a picture. */
     _Atomic uint32_t hud_pass_us[FRAME_PASS_COUNT]; /* 1280: gpu to main: the card's clock, on the last picture */
     _Atomic uint32_t hud_total_us;                  /* 1300 */
@@ -318,6 +320,9 @@ void game_fly(game_t *game, const render_fly_input_t *input, float32_t seconds);
 
 /* One tick of the world: run/src/game/tick/. The sim thread, or the one thread of a run with none. */
 void game_sim_tick(game_t *game, int64_t tick_ns);
+/* Tells main where the body is now: each tick, and once as a world opens, so that no picture says 0, 0, 0 before the first tick. The sim's, or before
+ * it runs, whoever is opening the world. */
+void game_hud_position_publish(game_t *game);
 
 /* What a tick or a screen could not keep goes on the ground at this cell. The sim's. */
 void game_spill(void *borrowed_game, const item_stack_t *stack, const int32_t cell[3]);
@@ -385,6 +390,8 @@ void game_debug_send(game_t *game, bool down);
 
 /* What the HUD and the debug overlay show now, from what the other threads last said. The main thread. Never waits. */
 void game_hud_state_read(const game_t *game, ui_hud_state_t *out);
+/* The whole block the body's feet are in, or with no body the block the flying eye is in; z counts from sea level. */
+void game_hud_block_read(const game_t *game, int32_t out[3]);
 void game_hud_debug_read(const game_t *game, ui_hud_debug_t *out);
 
 /* One poll's input for the game screens. True if one is up, which has this input: the caller then sends the player no keys or buttons,

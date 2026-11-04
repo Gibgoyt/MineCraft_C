@@ -45,6 +45,7 @@ static void game_session_config_from_settings(game_session_t *session) {
     config->sensitivity_percent = values->sensitivity_percent;
     config->render_scale_percent = values->render_scale_percent;
     config->uncapped = (uint8_t)(values->vsync != 0u ? 0u : 1u);
+    config->show_coordinates = values->show_coordinates;
 }
 
 void game_session_settings_set(game_session_t *session, settings_t *settings) {

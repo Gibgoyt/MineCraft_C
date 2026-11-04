@@ -450,8 +450,19 @@ static void game_screen_tick(game_t *game) {
 }
 
 /* One tick of simulated time, due at tick_ns: this is where Stages 11 to 15 add theirs. */
+void game_hud_position_publish(game_t *game) {
+    if (game->borrowed_player == nullptr) {
+        return;
+    }
+    const float64_t *const position = game->borrowed_player->movement.position;
+    atomic_store_explicit(&game->hud_block[0], (int32_t)floor(position[0]), memory_order_relaxed);
+    atomic_store_explicit(&game->hud_block[1], (int32_t)floor(position[1]), memory_order_relaxed);
+    atomic_store_explicit(&game->hud_block[2], (int32_t)floor(position[2]) - MC_WORLD_Z_SEA, memory_order_relaxed);
+}
+
 /* What the HUD shows of the inventory goes to main as it stands after this tick. */
 static void game_hud_publish(game_t *game) {
+    game_hud_position_publish(game);
     if (game->borrowed_item == nullptr || game->borrowed_item->inventory.borrowed_slots == nullptr) {
         return;
     }

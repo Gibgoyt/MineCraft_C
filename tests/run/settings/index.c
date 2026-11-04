@@ -38,6 +38,7 @@ enum : int32_t {
     AT_SLIDER_LEFT_X = 120,
     AT_SLIDER_RIGHT_X = 519,
     AT_VSYNC_X = 130,
+    AT_COORDINATES_X = 300, /* 120 + 2 * (46 + 4) is where it starts, and 2 * 82 how wide */
     AT_EFFECTS_X = 420,
     AT_ROW_6_Y = 356,
     AT_DONE_Y = 452,
@@ -117,6 +118,7 @@ TEST(the_defaults_are_the_plans_and_every_effect_has_its_own_bit) {
     CHECK_EQ_U64(values.worker_count, MC_THREADS_WORKERS);
     CHECK_EQ_U64(values.effects, SHADE_FEATURES_PLAY);
     CHECK_EQ_U64(values.vsync, 1u);
+    CHECK_EQ_U64(values.show_coordinates, 1u);
     CHECK_EQ_U64(SETTINGS_RENDER_DISTANCE_MIN, 2u);
     CHECK_EQ_U64(SETTINGS_RENDER_DISTANCE_MAX, 512u);
     uint32_t seen = 0u;
@@ -141,6 +143,7 @@ TEST(the_file_for_the_defaults_is_exactly_this) {
                                    "render_scale_percent: 100\n"
                                    "worker_count: 16\n"
                                    "vsync: true\n"
+                                   "show_coordinates: true\n"
                                    "effect_shapes: true\n"
                                    "effect_alpha: true\n"
                                    "effect_sky: true\n"
@@ -187,6 +190,7 @@ TEST(any_values_written_read_back_the_same) {
                                     .worker_count = random[5],
                                     .effects = random[6],
                                     .vsync = (uint8_t)(random[7] & 1u),
+                                    .show_coordinates = (uint8_t)((random[7] >> 1u) & 1u),
                                     ._pad0 = {0}};
         settings_persist_clamp(&values);
         CHECK(values.render_distance >= 2u && values.render_distance <= 512u);
@@ -196,11 +200,12 @@ TEST(any_values_written_read_back_the_same) {
         /* Over values that are as far from these as can be, so that each line has to have done it. */
         settings_values_t back = {.render_distance = values.render_distance == 2u ? 3u : 2u,
                                   .effects = ~values.effects & SHADE_FEATURES_EVERY,
-                                  .vsync = (uint8_t)(values.vsync != 0u ? 0u : 1u)};
+                                  .vsync = (uint8_t)(values.vsync != 0u ? 0u : 1u),
+                                  .show_coordinates = (uint8_t)(values.show_coordinates != 0u ? 0u : 1u)};
         settings_persist_report_t report;
         settings_persist_parse(text, bytes, &back, &report);
         CHECK_EQ_U64(report.problems, 0u);
-        CHECK_EQ_U64(report.applied, 6u + 1u + SETTINGS_EFFECT_COUNT);
+        CHECK_EQ_U64(report.applied, 6u + 2u + SETTINGS_EFFECT_COUNT);
         CHECK_MEM_EQ(&back, &values, sizeof(values));
     }
 }
@@ -227,6 +232,36 @@ TEST(a_file_is_read_in_any_order_with_comments_and_the_last_line_wins) {
     CHECK_EQ_U64(values.effects & SHADE_FEATURE_FOG, SHADE_FEATURE_FOG);
 }
 
+/* What a file written before the setting existed says, every line of it: not a thing to warn about, and it comes up as it does on a new install. */
+TEST(a_file_from_before_show_coordinates_still_loads_and_shows_them) {
+    static const char old_file[] = "version: 1\n"
+                                   "render_distance: 12\n"
+                                   "full_detail: 8\n"
+                                   "fov_degrees: 80\n"
+                                   "sensitivity_percent: 100\n"
+                                   "render_scale_percent: 100\n"
+                                   "worker_count: 5\n"
+                                   "vsync: false\n"
+                                   "effect_fog: false\n";
+    settings_values_t values = values_defaults();
+    const settings_persist_report_t report = parse_text(old_file, &values);
+    CHECK_EQ_U64(report.problems, 0u);
+    CHECK_EQ_U64(report.applied, 8u);
+    CHECK_EQ_U64(values.render_distance, 12u);
+    CHECK_EQ_U64(values.vsync, 0u);
+    CHECK_EQ_U64(values.show_coordinates, 1u);
+    /* And each way it can be said from then on. */
+    CHECK_EQ_U64(parse_text("version: 1\nshow_coordinates: false\n", &values).problems, 0u);
+    CHECK_EQ_U64(values.show_coordinates, 0u);
+    CHECK_EQ_U64(values.vsync, 0u);
+    CHECK_EQ_U64(parse_text("version: 1\nshow_coordinates: true\n", &values).problems, 0u);
+    CHECK_EQ_U64(values.show_coordinates, 1u);
+    /* Whatever a flag or a person left in the byte, it comes out as one of the two. */
+    values.show_coordinates = 7u;
+    settings_persist_clamp(&values);
+    CHECK_EQ_U64(values.show_coordinates, 1u);
+}
+
 TEST(a_line_that_is_wrong_is_ignored_and_the_rest_are_read) {
     static const char *const wrong[] = {
         "render_distance",
@@ -244,6 +279,8 @@ TEST(a_line_that_is_wrong_is_ignored_and_the_rest_are_read) {
         "vsync: 1",
         "vsync: yes",
         "vsync: True",
+        "show_coordinates: 0",
+        "show_coordinates: no",
         "effect_fog: maybe",
         "effect_no_such: true",
         "render_distance = 64",
@@ -259,6 +296,7 @@ TEST(a_line_that_is_wrong_is_ignored_and_the_rest_are_read) {
         CHECK_EQ_U64(report.applied, 2u);
         CHECK_EQ_U64(values.render_distance, 32u);
         CHECK_EQ_U64(values.vsync, 1u);
+        CHECK_EQ_U64(values.show_coordinates, 1u);
         CHECK_EQ_U64(values.full_detail, 8u);
         CHECK_EQ_U64(values.fov_degrees, 80u);
     }
@@ -356,6 +394,7 @@ TEST(settings_are_kept_and_found_again_and_a_failed_save_leaves_what_was_there) 
     settings->values.render_scale_percent = 75u;
     settings->values.worker_count = 3u;
     settings->values.vsync = 0u;
+    settings->values.show_coordinates = 0u;
     settings->values.effects = SHADE_FEATURE_SKY | SHADE_FEATURE_GOD_RAYS;
     const settings_values_t chosen = settings->values;
     REQUIRE(settings_save(settings) == FILE_OK);
@@ -558,7 +597,7 @@ TEST(the_wheel_over_nothing_changes_nothing_and_many_detents_are_held_at_the_end
     rig_end(rig);
 }
 
-TEST(vsync_and_each_effect_flip_alone_and_done_and_esc_go_where_they_say) {
+TEST(vsync_coordinates_and_each_effect_flip_alone_and_done_and_esc_go_where_they_say) {
     screen_rig_t *const rig = aligned_alloc_64(t, sizeof(screen_rig_t));
     REQUIRE(rig_begin(t, rig, SHEET_WIDTH, SHEET_HEIGHT));
     settings_values_t expected = rig->values;
@@ -567,6 +606,12 @@ TEST(vsync_and_each_effect_flip_alone_and_done_and_esc_go_where_they_say) {
     CHECK_MEM_EQ(&rig->values, &expected, sizeof(expected));
     (void)rig_click(rig, AT_VSYNC_X, AT_ROW_6_Y);
     expected.vsync = 1u;
+    CHECK_MEM_EQ(&rig->values, &expected, sizeof(expected));
+    CHECK_EQ_U64(rig_click(rig, AT_COORDINATES_X, AT_ROW_6_Y), UI_SCREEN_SETTINGS_CHANGED);
+    expected.show_coordinates = 0u;
+    CHECK_MEM_EQ(&rig->values, &expected, sizeof(expected));
+    (void)rig_click(rig, AT_COORDINATES_X, AT_ROW_6_Y);
+    expected.show_coordinates = 1u;
     CHECK_MEM_EQ(&rig->values, &expected, sizeof(expected));
 
     CHECK_EQ_U64(rig_click(rig, AT_EFFECTS_X, AT_ROW_6_Y), UI_SCREEN_SETTINGS_NONE);
@@ -1266,6 +1311,116 @@ TEST(from_the_title_screen_it_is_kept_for_the_first_world_and_a_full_disk_does_n
     REQUIRE(picture_load(t, path_join(t, shots_2, "left_again.png"), &left_2));
     CHECK(picture_different(&stayed, &title_2) > 100u); /* it is still the screen */
     CHECK_EQ_U64(picture_different(&left_2, &title_2), 0u);
+    temp_directory_remove(t, root);
+}
+
+/* Pixels more than a little different inside a rectangle of both pictures, and outside it. */
+static void picture_different_in(const picture_t *a, const picture_t *b, uint32_t right, uint32_t bottom,
+                                 uint64_t *out_inside, uint64_t *out_outside) {
+    *out_inside = 0u;
+    *out_outside = 0u;
+    for (uint32_t y = 0u; y < a->height; y++) {
+        for (uint32_t x = 0u; x < a->width; x++) {
+            const uint64_t at = ((uint64_t)y * a->width + x) * 4u;
+            bool differs = false;
+            for (uint32_t channel = 0u; channel < 3u; channel++) {
+                const int32_t step = (int32_t)a->rgba[at + channel] - (int32_t)b->rgba[at + channel];
+                differs = differs || step > 8 || step < -8;
+            }
+            if (differs) {
+                *(x < right && y < bottom ? out_inside : out_outside) += 1u;
+            }
+        }
+    }
+}
+
+/* A file from before the setting, so it comes up on; the box takes it off in a world that stays open, with nothing else changing; a new program finds it
+ * off in the file, and on the screen. At 640 by 480 the panel is 2 from the corner, and well inside this. */
+TEST(coordinates_come_off_live_in_the_built_program_and_stay_off_in_the_next) {
+    REQUIRE(t->arg_count >= 1);
+    enum : uint32_t { PANEL_RIGHT = 160u, PANEL_BOTTOM = 16u };
+    char *const root = temp_directory(t);
+    REQUIRE(root != nullptr);
+    char *const saves = path_join(t, root, "saves");
+    char *const shots = path_join(t, root, "shots");
+    char *const again = path_join(t, root, "again");
+    char *const file = path_join(t, root, "settings.yaml");
+    settings_write(t, file, PROGRAM_START);
+    char *const argv[] = {t->borrowed_args[0],
+                          (char *)"--headless",
+                          (char *)"--menu",
+                          (char *)"--saves",
+                          saves,
+                          (char *)"--settings",
+                          file,
+                          (char *)"--script",
+                          (char *)"tests/run/settings/fixtures/coordinates.script",
+                          (char *)"--screenshot-dir",
+                          shots,
+                          (char *)"--width",
+                          (char *)"640",
+                          (char *)"--height",
+                          (char *)"480",
+                          nullptr};
+    test_process_t process;
+    run_program(t, argv, &process);
+    if (t->failure_count != 0u) {
+        return;
+    }
+    CHECK_EQ_U64(count_of(process.output, "session: world 'live' is open"), 1u);
+    CHECK(strstr(process.output, "game: now drawing") == nullptr); /* a box on the HUD asks nothing of the card */
+    uint64_t bytes = 0u;
+    const uint8_t *const kept = file_slurp(t, file, &bytes);
+    REQUIRE(kept != nullptr);
+    CHECK_CONTAINS((const char *)kept, "show_coordinates: false\n");
+    picture_t on, off, on_again, opened;
+    REQUIRE(picture_load(t, path_join(t, shots, "on.png"), &on));
+    REQUIRE(picture_load(t, path_join(t, shots, "off.png"), &off));
+    REQUIRE(picture_load(t, path_join(t, shots, "on_again.png"), &on_again));
+    uint64_t inside = 0u, outside = 0u;
+    picture_different_in(&on, &off, PANEL_RIGHT, PANEL_BOTTOM, &inside, &outside);
+    printf("on from off: %" PRIu64 " pixels in the corner, %" PRIu64 " past it\n", inside, outside);
+    CHECK(inside > 200u);
+    CHECK(outside < 1000u); /* of 307200: the world stands still, near enough */
+    picture_different_in(&on, &on_again, PANEL_RIGHT, PANEL_BOTTOM, &inside, &outside);
+    printf("on from on again: %" PRIu64 " pixels in the corner, %" PRIu64 " past it\n", inside, outside);
+    CHECK(inside < 10u);
+
+    char *const argv_again[] = {t->borrowed_args[0],
+                                (char *)"--headless",
+                                (char *)"--menu",
+                                (char *)"--saves",
+                                saves,
+                                (char *)"--settings",
+                                file,
+                                (char *)"--script",
+                                (char *)"tests/run/settings/fixtures/again.script",
+                                (char *)"--screenshot-dir",
+                                again,
+                                (char *)"--width",
+                                (char *)"640",
+                                (char *)"--height",
+                                (char *)"480",
+                                nullptr};
+    run_program(t, argv_again, &process);
+    CHECK_CONTAINS(process.output, "session: world 'live' is open");
+    REQUIRE(picture_load(t, path_join(t, again, "opened.png"), &opened));
+    picture_different_in(&opened, &off, PANEL_RIGHT, PANEL_BOTTOM, &inside, &outside);
+    printf("a new run from off: %" PRIu64 " pixels in the corner, %" PRIu64 " past it\n", inside, outside);
+    CHECK(inside < 10u);
+    picture_different_in(&opened, &on, PANEL_RIGHT, PANEL_BOTTOM, &inside, &outside);
+    printf("a new run from on: %" PRIu64 " pixels in the corner, %" PRIu64 " past it\n", inside, outside);
+    CHECK(inside > 200u);
+    const char *const keep = getenv("SETTINGS_PNG_DIR");
+    if (keep != nullptr) {
+        static const char *const names[] = {"on.png", "off.png", "on_again.png", "screen_coordinates.png"};
+        for (uint32_t i = 0u; i < sizeof(names) / sizeof(names[0]); i++) {
+            uint64_t size = 0u;
+            const uint8_t *const png = file_slurp(t, path_join(t, shots, names[i]), &size);
+            REQUIRE(png != nullptr);
+            REQUIRE(file_write_atomic(path_join(t, keep, names[i]), png, size) == FILE_OK);
+        }
+    }
     temp_directory_remove(t, root);
 }
 

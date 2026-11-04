@@ -18,6 +18,9 @@ enum : int32_t {
     SETTINGS_GAP = 4,
     SETTINGS_EFFECT_WIDTH = 120,
     SETTINGS_EFFECT_ROWS = 8,
+    /* Row 6, left to right, with SETTINGS_GAP between: each as wide as its box and its words want, and Effects... has what is left. */
+    SETTINGS_VSYNC_WIDTH = 46,
+    SETTINGS_COORDINATES_WIDTH = 82,
     SETTINGS_DONE_ROW = 8,
     SETTINGS_MESSAGE_ROW = 7,
 };
@@ -32,6 +35,7 @@ enum : uint32_t {
     SETTINGS_ID_VSYNC = 106u,
     SETTINGS_ID_EFFECTS = 107u,
     SETTINGS_ID_DONE = 108u,
+    SETTINGS_ID_COORDINATES = 109u,
     SETTINGS_ID_EFFECT_0 = 120u,
     SETTINGS_TEXT_COLOR = 0xFFFFFFFFu,
     SETTINGS_ERROR_COLOR = 0xFFFF6060u,
@@ -109,14 +113,26 @@ static bool ui_screen_settings_main_page(ui_screen_settings_t *screen, bool *out
                                          SETTINGS_WORKERS_MIN, SETTINGS_WORKERS_MAX);
 
     const ui_rect_t row = ui_screen_settings_row(widget, 6, SETTINGS_ROW_WIDTH);
-    const int32_t half = (row.width - SETTINGS_GAP * scale) / 2;
+    const int32_t vsync_width = SETTINGS_VSYNC_WIDTH * scale;
+    const int32_t coordinates_width = SETTINGS_COORDINATES_WIDTH * scale;
+    const int32_t coordinates_x = row.x + vsync_width + SETTINGS_GAP * scale;
+    const int32_t effects_x = coordinates_x + coordinates_width + SETTINGS_GAP * scale;
     bool vsync = values->vsync != 0u;
-    if (ui_widget_checkbox(widget, SETTINGS_ID_VSYNC, (ui_rect_t){row.x, row.y, half, row.height}, "VSync", &vsync)) {
+    if (ui_widget_checkbox(widget, SETTINGS_ID_VSYNC, (ui_rect_t){row.x, row.y, vsync_width, row.height}, "VSync",
+                           &vsync)) {
         values->vsync = vsync ? 1u : 0u;
         changed = true;
     }
-    if (ui_widget_button(widget, SETTINGS_ID_EFFECTS, (ui_rect_t){row.x + row.width - half, row.y, half, row.height},
-                         "Effects...", true)) {
+    bool coordinates = values->show_coordinates != 0u;
+    if (ui_widget_checkbox(widget, SETTINGS_ID_COORDINATES,
+                           (ui_rect_t){coordinates_x, row.y, coordinates_width, row.height}, "Coordinates",
+                           &coordinates)) {
+        values->show_coordinates = coordinates ? 1u : 0u;
+        changed = true;
+    }
+    if (ui_widget_button(widget, SETTINGS_ID_EFFECTS,
+                         (ui_rect_t){effects_x, row.y, row.x + row.width - effects_x, row.height}, "Effects...",
+                         true)) {
         screen->page = UI_SCREEN_SETTINGS_PAGE_EFFECTS;
     }
     if (ui_widget_button(widget, SETTINGS_ID_DONE,

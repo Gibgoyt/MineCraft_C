@@ -414,6 +414,7 @@ static void game_hud_start(game_t *game) {
         atomic_store_explicit(&game->hud_hotbar[slot], 0u, memory_order_relaxed);
     }
     atomic_store_explicit(&game->hud_selected, 0u, memory_order_relaxed);
+    game_hud_position_publish(game);
     atomic_store_explicit(&game->hud_tick_us, 0u, memory_order_relaxed);
     for (uint32_t pass = 0u; pass < FRAME_PASS_COUNT; pass++) {
         atomic_store_explicit(&game->hud_pass_us[pass], 0u, memory_order_relaxed);
@@ -987,10 +988,10 @@ const uint8_t *game_picture_held(game_t *game) {
 /* What goes to the screen: picture itself if there is nothing to draw on it, or if the memory for a copy could not be had, as a picture
  * with no HUD is better than none. The copy leaves picture as it was, since it may be shown again. */
 /* Under KMS nobody can read the log, and a person playing on would otherwise find out what the disk has been saying only on leaving. */
-static void game_hud_trouble_draw(game_t *game) {
+static bool game_hud_trouble_draw(game_t *game) {
     const save_t *const save = game->borrowed_save;
     if (save == nullptr || save->world.open == 0u) {
-        return;
+        return false;
     }
     const char *const trouble = save_autosave_trouble(&save->autosave);
     if (trouble != nullptr) {
@@ -998,6 +999,7 @@ static void game_hud_trouble_draw(game_t *game) {
         (void)snprintf(text, sizeof(text), "Not saving: %s", trouble);
         ui_hud_notice_draw(&game->borrowed_ui->canvas, &game->borrowed_ui->font, text);
     }
+    return trouble != nullptr;
 }
 
 static const uint8_t *game_hud_compose(game_t *game, const uint8_t *drawn) {
@@ -1015,12 +1017,20 @@ static const uint8_t *game_hud_compose(game_t *game, const uint8_t *drawn) {
         ui_hud_state_t state;
         game_hud_state_read(game, &state);
         ui_hud_draw(&ui->hud, &ui->canvas, &ui->font, &state);
+        bool notice = false;
         if (player_vitals_read(game->borrowed_player).state == (uint8_t)PLAYER_SURVIVAL_DEAD) {
+            notice = true;
             /* There is no death screen, and the view on the ground says nothing of how to get up. This comes before a full disk: a person
              * who cannot get up can do nothing about that. */
             ui_hud_notice_draw(&ui->canvas, &ui->font, "You died. Press a mouse button or Space to come back.");
         } else {
-            game_hud_trouble_draw(game);
+            notice = game_hud_trouble_draw(game);
+        }
+        /* The overlay has them too, on a panel in the same corner. */
+        if (game->config.show_coordinates != 0u && game->hud_debug == 0u) {
+            int32_t block[3];
+            game_hud_block_read(game, block);
+            ui_hud_coordinates_draw(&ui->canvas, &ui->font, block, notice);
         }
     }
     if (game->hud_debug != 0u) {
