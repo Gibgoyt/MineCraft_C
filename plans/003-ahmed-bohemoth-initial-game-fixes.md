@@ -21,6 +21,7 @@ This is a living file, by Ahmed's direction, unlike plan 001, which `plans/READM
 | 3 | Can't make wooden stairs on a crafting table | `...-phase-03-wood-stairs.md` | Not started |
 | 4 | A woodworking bench for all woodworking; benches are 2x1x1 on x, y, z | `...-phase-04-woodworking-bench.md` | Not started |
 | 5 | Can't make copper armour | `...-phase-06-copper-armour.md` | Not started |
+| 6 | Tree feller: no more floating wood, and Hypixel has one | `...-phase-07-tree-feller.md` | Not started |
 
 ## Phases, in the order to build them
 
@@ -32,6 +33,7 @@ This is a living file, by Ahmed's direction, unlike plan 001, which `plans/READM
 | 4 | Woodworking bench | Needs phase 3's recipes |
 | 5 | Basic sound | Independent, the most new code, and starts with a test only Ahmed can hear |
 | 6 | Copper armour | Only needs phase 1, and is small, so it can go any time after that |
+| 7 | Tree feller | Adds no blocks or items, so it needs nothing else and can go any time |
 
 ## Questions for Ahmed
 
@@ -47,6 +49,9 @@ Each is also in its phase file. None blocks collecting more notes.
 | 5 | Use the spare CPU thread for audio? | Yes |
 | 6 | Are the proposed copper armour stats OK? | Yes |
 | 6 | Copper tools too? | No |
+| 7 | Should bare hands fell trees too? | No, axes only |
+| 7 | Should each log wear the axe? | Yes, one use per log |
+| 7 | Sneak to chop just one log? | Yes |
 
 ## Decisions Ahmed has made
 
