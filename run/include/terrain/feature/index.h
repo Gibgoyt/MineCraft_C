@@ -109,6 +109,20 @@ typedef struct terrain_feature_canvas_t {
 } terrain_feature_canvas_t;
 static_assert(sizeof(terrain_feature_canvas_t) == 40);
 
+/* One chunk, as a tile's pass works with it. */
+typedef struct terrain_feature_chunk_t {
+    terrain_feature_column_t columns[TERRAIN_FEATURE_CHUNK_COLUMNS]; /* 0: top and water are good once walked is 1 */
+    terrain_feature_lake_t lake;                                     /* 2048: good once walked is 1 */
+    int32_t chunk_x;                                                 /* 2060 */
+    int32_t chunk_y;                                                 /* 2064 */
+    int32_t z_low;      /* 2068: at or under this, no column's top is sought */
+    int32_t z_high;     /* 2072: over this, all is air or the sea */
+    uint8_t walked;     /* 2076 */
+    uint8_t tops_known; /* 2077: top and water came from a box's blocks, and only the lake is left to find */
+    uint8_t _pad0[2];   /* 2078 */
+} terrain_feature_chunk_t;
+static_assert(sizeof(terrain_feature_chunk_t) == 2080);
+
 /* Takes the features from arena, for this world's seed. For use while terrain_init runs. What it is given must outlive it. */
 void terrain_feature_init(terrain_feature_t **out, arena_t *arena, uint64_t seed, const terrain_biome_t *biome,
                           const terrain_hydrology_t *hydrology, const terrain_surface_t *surface,
@@ -145,5 +159,16 @@ terrain_feature_lake_t terrain_feature_chunk_lake(const terrain_feature_t *featu
  * every earlier stage in it: see the README's order. Allocates nothing, and given what those stages left, a voxel is a pure
  * function of the features and the voxel: splitting a box into parts, in any order, on any thread, gives the same bytes. */
 void terrain_feature_fill_box(const terrain_feature_t *feature, const terrain_density_box_t *box, uint16_t *blocks);
+
+/* The same, for a box that is one whole chunk, whose own columns were read by terrain_feature_chunk_read_box. Costs a look at the
+ * chunks round it, and none at its own, and gives the same bytes. */
+void terrain_feature_fill_chunk_box(const terrain_feature_t *feature, const terrain_density_box_t *box,
+                                    terrain_feature_chunk_t *chunk, uint16_t *blocks);
+
+/* If the box is one whole chunk and reaches all the layers its ground can be in, fills out from blocks and returns true. blocks
+ * must be just as the stages up to the flood left them, as lining and ore can change a top. Otherwise returns false, and out is
+ * not for use: terrain_feature_fill_box finds the same for itself. */
+bool terrain_feature_chunk_read_box(const terrain_feature_t *feature, const terrain_density_box_t *box,
+                                    const uint16_t *blocks, terrain_feature_chunk_t *out);
 
 #endif
