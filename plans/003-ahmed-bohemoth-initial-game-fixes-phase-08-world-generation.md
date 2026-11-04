@@ -1,6 +1,6 @@
 # 003-ahmed-bohemoth-initial-game-fixes — phase 8: World generation
 
-**Status:** in progress: stages 1 to 3 are done, and stages 4 to 7 are not started. Stage 3 leaves 5 tests outside terrain red for stage 7, issue 18   (updated 2026-11-04)
+**Status:** in progress: stages 1 to 4 are done, and stages 5 to 7 are not started. Stage 4 leaves 8 tests outside terrain red for stage 7, issue 25   (updated 2026-11-04)
 
 ## Goal
 
@@ -98,8 +98,8 @@ Cloned to `/tmp/mc_c_assets/worldgen/` to read. Nothing was built or run.
 
 **Stage 4: mountains and valleys.**
 
-- [ ] Raise inland land heights and hills, and add mountain ranges that don't need all three gates to line up
-- [ ] Check with the map that ranges run on for a distance, and aren't lone peaks
+- [x] Raise inland land heights and hills, and add mountain ranges that don't need all three gates to line up
+- [x] Check with the map that ranges run on for a distance, and aren't lone peaks
 
 **Stage 5: caves.**
 
@@ -135,6 +135,8 @@ Run for stage 3: release build with lint, exit 0. `bench_world_map` on the 8 see
 
 Run for stage 3's last tuning, issue 18: release build with lint, exit 0. `bench_world_map` on the 8 seeds above, exit 0, 0 columns differing of 1024 on each, sea 25.6 to 29.9% with a mean of 28.2%, every seed starting on dry land with 0 to land. `--map-only` on 8 other seeds, 21.0 to 28.1%. Read by eye: Ahmed's and seed 42's maps, the default's spawn slice. The whole suite, `ctest --preset release`, 96 of 101, including all 8 `run_terrain_*`, `run_game_spawn`, `clang_format` and the lints. `bench_terrain`, slowest forest at 951, target missed: issue 14. `pgrep -af "$PWD/build"` and `pgrep -a minecraft_c` print nothing. Not run: `--windowed`, and whether the world looks right, which are Ahmed's.
 
+Run for stage 4: release build with lint, exit 0. `bench_world_map` on the 8 seeds above, in two runs of 4, as issue 24 says, exit 0 both, 0 columns differing of 1024 on each. `run_terrain_*` and `run_game_spawn`, all passing, in the whole suite's run below. The whole suite: `ctest --preset release`, 93 of 101, in 769.8 s, with issue 25 listing the 8, including all 8 `run_terrain_*`, `run_game_spawn`, `clang_format` and the lints. Read by eye: the maps of Ahmed's seed and of seed 42, slices of Ahmed's seed, seed 1 and the default, and real screenshots through `minecraft_c --headless --test-world`, from about 500 blocks over a range at a render distance of 256, and through `--walk` on the ground at 128. `bench_terrain`, slowest jungle at 693, target missed: issue 23. `pgrep -a minecraft_c` showed only a game run from the main checkout, not this worktree's, and `pgrep -af "$PWD/build"` nothing of mine. Not run: `--windowed`, and whether the world looks right, which are Ahmed's.
+
 ## After stage 3
 
 | Measure | Before | After stage 3 | Target |
@@ -147,6 +149,28 @@ Run for stage 3's last tuning, issue 18: release build with lint, exit 0. `bench
 | Largest piece of dry land | Not measured | 95.3-98.6% | |
 | Rivers and lakes | 5.1-5.9% | 2.5-2.8% | |
 | Sheer ground | 15-19.5% of land | 12.5-15.6% | |
+
+## After stage 4
+
+On the 8 seeds, over the whole map, read from `bench_world_map`. `bench/world_map/README.md` has each seed. The targets are the first guess from above, for Ahmed to overrule.
+
+| Measure | After stage 3 | After stage 4 | Target |
+|---|---|---|---|
+| Sea | 25.6-29.9% | 24.9-29.1% | About 25-30%, so one seed is just under |
+| Land at 0 to 60 | 43.0-45.8% | 27.7-30.2% | About 30% |
+| Reaching 150 | 5.54-7.68% | 19.48-24.06% | About 20-25%, so one seed is just under |
+| Reaching 300 | Under 1% | 11.09-14.18% | About 10-12%, so **most seeds are a little over** |
+| Reaching 500 | 0 | 4.84-6.13% | About 4-6% |
+| Reaching 750 | 0 | 1.22-1.62% | About 1.5-2.5%, so **most seeds are a little under** |
+| Reaching 1000 | 0 | 0.17-0.29% | About 0.2-0.5%, so one seed is just under |
+| Highest ground | About 470 | 1151-1209 | About 1100-1200, so one seed is 9 over. Nothing is cut flat |
+| Pieces of 1 km^2 or more at 150 or over | 0 | 11-18 | Several |
+| The largest of them | Under 1 km^2, 0.9-2.2 km across | 8.5-14.1 km^2, 6.1-8.7 km across | At least 5 km across |
+| Typical distance to high ground | 768-1856 before stage 3 | 192-256 blocks | Under about 1000 |
+| The far 10% | | 1024-1280 blocks | |
+| Sheer ground, rising 3 for 1 | 12.5-15.6% | 10.2-11.1% | Lower, though heights are up 2.5 times |
+| Rock that floats, pieces per km^2 of land | 742-994 before stage 3 | 581-730 | Watch |
+| Rivers and lakes | 2.5-2.8% | 1.7-2.0% | Issue 21 |
 
 ## Commits
 
@@ -260,6 +284,43 @@ Evidence, from `run_game_spawn`: Ahmed's seed starts at -280, -280 on snow, with
 **Why those 5 were not re-aimed now.** Stage 4 changes this same ground next, so each script and picture would be done again, and the pictures would add binary files to git for nothing. Stage 7 has the todo. **Until then these 5 fail on main.** Stage 4: please read this list before taking a failure as yours.
 
 **19. For stage 4, from the same reading.** The default seed's start, -7.5, -7.5, 98, is on a ledge over a sheer 37-block fall, and sprinting from it kills. The default's spawn slice shows needles still, tens of blocks wide and over 100 tall, and rivers in sheer cuts. Issue 9's worry, a start with a dangerous drop, is thus real on the default seed. No test asks for gentle ground at the start, and one should.
+
+**20. Stage 4: what a range is, and why.** Expected, from the plan: raise the land and add ranges. Done, in `run/src/terrain/density/`, whose README has it in full: three new 2D fields. `range`, cell 4096, makes each range the line where it is 0, and a line where a smooth field is 0 has no ends. `massif`, cell 2048, sets how tall a stretch stands, and `crest`, cell 896, cuts it into crests and side valleys. The old mountain formula stays, at 60 blocks, as foothills. Choices, each from a map or slice:
+
+- **The first try, with `range` at a cell of 3072 and gated on continentalness, had the numbers but not the shape:** 500-high mesas with walls of 5 blocks up for 1 across, standing in the sea. Two causes. A fine field under a large height is a wall, so the cell went to 4096. And `c` has octaves down to 48 blocks, so a range taken down to the sea on it falls off the coast's every bay. So there is now **broad continentalness**, `c`'s first 3 octaves alone, at no extra noise, through the new `terrain_noise_sample_points_split`, and `range_land` reads that. A range can then run out as a headland. It costs the sea about 0.3 of a point. Steep ground went from 13.7% to 11.1% on Ahmed's seed, and the slice then looked like a mountain.
+- **Needles.** `jagged` went from 34 blocks to 14, and `peak` is no longer exponential, as ridges is the steepest field there is. The foothills went from 320 blocks to 60, and that is most of what took the thin mazes away. Some small rough ground still reaches 150 and shows as squiggles of contour on the map, in pieces under 1 km^2.
+- **The limit.** `TERRAIN_DENSITY_HEIGHT_MAX` is 1190, as `TERRAIN_MADE_TOP` must stay in the world: 1190 + 26 + 8 + 26 = 1250. So softness came down from 30 to 26. So a voxel's ground can read a little over 1190, and the highest seen is 1209, on seed 1.
+- **This changes the sums other parts read,** which all follow from the header: `TERRAIN_DENSITY_ALWAYS_SOLID_TOP` is -151, `TERRAIN_DENSITY_NEVER_SOLID_FROM` 1224.
+
+**21. Stage 4: rivers changed again, a change of design the plan did not spell out.** Expected: rivers to stand. Actual: with a river's `reach` also fading by height, its end was a notch a few blocks wide with sheer walls about 100 tall, seen at x = about 300 and 440 on a slice of Ahmed's seed. Done: only its depth fades with height, from 45 to 120, and not its width. Then `rivers_hold_water_and_reach_the_sea_and_the_coast_has_beaches` fell to 87%, with hills and ranges cutting rivers into pieces. Done: hills sink with a valley's floor, and `reach` now ends at `c = 0.15` and not 0.35. It reads 11751 of 12989, **90.5%, against its 90%: close again, as issue 18 said it was.** The check was not loosened. Rivers and lakes are 1.7 to 2.0% of the map, from 2.5 to 2.8%. Ahmed asked for rivers, and may find these too few: the cost is that fewer run far inland. A river met by a range stops at its foot.
+
+**22. Stage 4 found swamps had no water, and fixed it from the terrain's side.** Expected: `lily_pads_grow_on_a_swamps_standing_water` to pass. Actual: 0 pads on 334 wet chunks of land. Swamps are `c` of -0.2 to 0.5, and sinking hills in a valley left no low ground there under the sea's level. Tried first: moving swamps' `continentalness` to the coast, as issue 17 proposes. It found no more pads and broke `the_choice_is_worked_out_by_hand`, so it was undone, and **`config/biomes/` was not changed: that stays stage 6's.** Done: a `wetland` spline, by which worn ground's valley floors sink a further 14 blocks at most. 24 pads on 517 chunks. It also gives lakes far inland, 1.09% of `run_terrain_hydrology`'s map.
+
+**23. `bench_terrain`: slower, and left for stage 7.** Expected: stage 3's slowest of 951. Actual, on `TOUR_LAYERS` of 1501: slowest jungle 693, forest 940, and every other place from 1213 to 2108, once, after the terrain's final tuning. So that target is missed by more than it was. Not like for like, as each place is the first column of that biome, which has moved. Two runs earlier in the day read 173 to 369 with the same binary as one that then read 765 to 1527, so **this bench can read 4 times low when the machine is busy:** a game from the main checkout was running at the time, and I did not separate which. Nothing was tuned for it. For stage 7: a tall column costs more in caves, whose 3D fields are read every 4 blocks all the way to the top of the ground. Not measured on its own. Not sampling them far inside a range would save most of it. The far field at a render distance of 512 was ready in 149.6 s, 2315 s of workers' time, against stage 3's 149.9 s and 2344.8 s.
+
+**24. `bench_world_map` on 8 seeds no longer fits this file's `timeout 600`.** Expected: under 590 s. Actual: exit 124 on the seventh seed, at about 84 s a seed, as cave tiles over high ground cost more. Done: run in two batches of 4. `--map-only` still takes about 19 s a seed. Verification above is left as it was written, and **stage 7 should change that line or the speed.**
+
+**25. Stage 4 leaves 8 tests outside terrain red for stage 7.** All have no crash, and each holds the default seed's start, which moved again: -120, 440, z = 14, on sand, by the sea. Each failure was read from its check and its output in the whole suite, not from a run of its own:
+
+| Test | Failing check | Cause, and how sure |
+|---|---|---|
+| `run_render_frame`, `render_feature_lod` | Golden pictures only | Ground moved. New pictures should wait for stage 7 |
+| `run_player_interaction` | `mined 3 blocks` | The script's walk ends on other ground. As issue 18 |
+| `run_player_survival` | Food and saturation | As issue 18's, by the check, and not read further |
+| `run_playthrough` | Its day's clicks | As issue 18 |
+| `run_entity_drop`, `run_item_inventory`, `render_feature_entities` | `the last mined was grass_block`, and `1 items dropped` | These passed after stage 3. They mine the block under the start, which is now sand: the run's own line reads `the last mined was sand`. Scripts need re-aiming, or a place written into them |
+
+**26. A real bug, found by this stage's height: a full section pool hung `--headless` for ever.** Expected: `game_is_settled`'s comment says "or as much of it as the pool will take". Actual: `render_feature_entities`, `_post`, `_shapes`, `_sky`, `_water` all at their 280 s timeout, and `run_player_movement` killed, with `game: the section pool is full`. A flying eye at a render distance of 4 on a peak of the default seed needs about 96 sections a column, and the pool was sized for 24. The pool sends what it refused round again, publishing a view each time, so `unread` never cleared. Evidence: under `timeout 60 gdb`, no end; with the fix, 0.9 s. Fixed in `run/src/game/settle/index.c`, which now takes a full pool as the end of the wait. The threaded game never waited here, so **in play it would only have drawn part of the world.**
+
+**27. The pool is bigger, and that takes more of the card.** `RENDER_POOL_BYTES_PER_COLUMN` goes from 24 sections to 32, and the 256 slots nearest the eye get 96 each. At a render distance of 32, 4225 slots, that is about 2.3 GiB, from about 1.6 GiB. Measured at the default seed's middle, among ranges: 1761.7 MiB of slabs held, 49.5 sections a column. 40 sections took `render_feature_lod`'s pool past its `3ull << 30`, so it was 32. `tests/run/render/upload` holds the new floor. Nothing was measured for frame rate on the real card with the taller world, and phase 11 left that here: `frame` means from headless runs read 4.1 to 6.2 ms at 1280x720, which is not what Ahmed plays at. **His to judge.**
+
+**28. A new world's body now starts on gentle ground, which issue 19 asked for.** Expected: to look again after this stage. Actual: on the default seed, the nearest dry land to the middle was z = 970, on a peak. Done, in `run/src/game/spawn/`: `game_spawn_find` looks first for ground at most 120 high, within 6 blocks of the ground 8 away and 14 of that 24 away, by the fields, then holds real ground within 6 of that 4 away. If a whole walk finds none, it takes any dry land. **A flying eye now starts over the same place,** not the middle, as `--test-world` started inside a range: it brought `render_feature_post`, `_shapes`, `_sky` and `_water` back without new pictures. Evidence, from `run_game_spawn`: all 8 seeds and 64 others meet it, the furthest start 296 blocks out, the slowest search 59.9 ms. The highest start is z = 116, as feet. Whether the fallback ever runs was not tested on real terrain, as with issue 8. Also: a start can be right under a wall, as one screenshot on the default seed shows a cliff close by, and that is on purpose. No check asks how far it is to ground 30 higher.
+
+**29. A test mistake of this stage's.** Twice I ran heavy commands badly: one background run as `timeout 100 tools/test-or-build.sh ...`, which `.claude/rules/test-or-build-mutex.md` forbids. It finished by itself. And a kill of my own whole-suite run was refused by the permission system, and was not worked round, so that run went on to its end, holding the lock about 25 minutes while others might have waited.
+
+**Open for Ahmed:** the first guess at the height bands is close, with a little too much at 300 and too little at 750. The map's squiggles and how steep a range's sides are, up to about 3 for 1 where it nears a sea, are the things most likely to want tuning. `DENSITY_RANGE_BLOCKS`, the cell of `DENSITY_SHAPE_RANGE` and the knots of `belt` are where to do it.
+
+**Wiring for stage 4, outside its own files.** `run/src/terrain/noise/`: `terrain_noise_sample_points_split`. `run/src/terrain/climate/`: `broad`, which also grows `terrain_climate_arrays_t` and `terrain_climate_point_t`. `run/src/terrain/hydrology/`: issue 21. `run/src/game/spawn/`, `run/src/game/index.c`: issue 28. `run/src/game/settle/`: issue 26. `run/include/render/index.h`, `run/src/render/index.c`: issue 27. `bench/terrain/tour/`: `TOUR_LAYERS` 1501, as issue 6 asked. The terrain tests' layers go from 751 to 1501, and `tests/run/terrain/feature/`'s `trees_in_the_world_have_their_crowns_across_chunk_lines` now takes solid ground beside a trunk as well as leaves, as a hillside can stand there: air still fails. `tests/run/render/frame/` compares columns round the eye, not the middle. 10 digests in `tests/run/terrain/` moved, each with a line saying so.
 
 **Wiring for stage 3, outside its own files.** `run/src/terrain/biome/README.md`, one number. `tests/run/game/spawn/index.c`, the deletion above. `bench/world_map/` gains `--map-only` and the `joined` and `dry` columns, and its table's struct grows.
 
