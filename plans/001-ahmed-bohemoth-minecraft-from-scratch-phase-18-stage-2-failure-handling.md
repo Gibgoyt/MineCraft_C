@@ -112,6 +112,8 @@ Appended as they land:
    - The two disk tests did not run: `unshare: Invalid argument`, as TSan's own background thread makes every process threaded, and `unshare(CLONE_NEWUSER)` refuses that. So the disk full paths have had ASan and UBSan and not TSan.
    - Left alone: the tests read those to watch from outside, and the preset is run by hand (`plans/CODING_STANDARD.md`, line 451). Quieting them would mean making `tick_count` atomic for a test.
 
+11. **Gate check, 2026-11-04.** `run_failure`, `standards_lint` and `clang_format` re-run and passing; the test file read through. The unplug and VT boxes stay open. `run/src/game/index.c`, issue 9's other file, is now split: Phase 18's issue 2. Also fixed under `run/src/save/`, as this stage owned it and did not take them: Stage 18.1 issues 1, 2 and 8, which that stage left "for Stage 18.2 or Ahmed".
+
 ## For Ahmed
 
 On a text console (Ctrl+Alt+F3, log in):

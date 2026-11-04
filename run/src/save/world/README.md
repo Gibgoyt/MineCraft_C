@@ -15,7 +15,7 @@
 - `save_world_levels_from`: where captures read levels from, which `game_open` sets.
 - `save_world_far_line`: for the far field, on workers: what is saved of one line of blocks, over what it sampled.
 - `save_world_far_next`, `save_world_far_lost_take`: which columns have been captured since the far field last asked, through a ring from the sim to the gpu thread; or that it lost count and should look at everything.
-- `save_world_record_encode`, `save_world_record_decode`, `save_world_record_levels`, `save_world_table_hash`: the record format and what its numbers mean.
+- `save_world_record_encode`, `save_world_record_decode`, `save_world_record_levels`, `save_world_record_valid`, in `record`, and `save_world_table_hash`: the record format and what its numbers mean.
 - `save_world_status_name`, `save_world_step_hook_set`: a status for a log line; a test's way to die at a known step.
 
 **May be called by:** `save`, `save/autosave`, and `game`, which runs it.
@@ -46,7 +46,7 @@ A record is `uint16_t bits, uint16_t palette_count`, the palette in the order st
 
 A kill or a power cut anywhere leaves extra files at worst. `save_world_open` removes `*.tmp` and any `r.*` the manifest does not name. It never removes `damaged.*`, or a name it does not make. No world is ever a mix of two saves, and `run/src/save/state/` keeps its file beside a generation.
 
-`save_world_open` refuses, changing nothing, for: a bad header or list, another version, another seed, another block table, a file the manifest names being missing or of the wrong size, and delta files with no manifest. It also refuses a world another game has open. None of these can be a crash's doing. A bad section or column in a file that is otherwise fine does not stop a world: that place gets what generates there, it is logged and counted in `sections_damaged`, and the next save of that region drops it and keeps the old file as `damaged.*`.
+`save_world_open` refuses, changing nothing, for: a bad header or list, another version, another seed, another block table, a file the manifest names being missing or of the wrong size, and delta files with no manifest. It also refuses a world another game has open. None of these can be a crash's doing. A bad section or column in a file that is otherwise fine does not stop a world: that place gets what generates there, it is logged and counted in `sections_damaged`, and the next save of that region drops it and keeps the old file as `damaged.*`. That goes for a record whose checksum is good and whose contents no reader takes, too. A manifest at the last generation there is, which only an edit can make, opens, and every save of it fails with `SAVE_WORLD_ERROR_TOO_MANY` and leaves it as it was, as the count going round would make a world that will not open.
 
 ## Who does what, when
 

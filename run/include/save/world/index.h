@@ -34,6 +34,12 @@ enum : uint32_t {
     /* Columns captured that the far field has not heard of yet. Past this it is told that it has lost count, and looks again at everything. */
     SAVE_WORLD_FAR_RING = 1u << 12,
 };
+enum : uint32_t {
+    SAVE_WORLD_RECORD_HEAD_BYTES = 4u,
+    /* In a record's first number, which otherwise says how many bits an index takes. */
+    SAVE_WORLD_RECORD_HAS_LEVELS = 0x8000u,
+    SAVE_WORLD_PALETTE_MAX = 256u,
+};
 static_assert(SAVE_WORLD_RECORD_BYTES_MAX == 8196u);
 static_assert(COLUMN_SECTIONS <= 64u); /* a mask of a column's sections fits a uint64_t */
 
@@ -333,6 +339,10 @@ uint32_t save_world_record_encode(const uint16_t *states, uint16_t *palette_slot
 
 /* And back. False, with out untouched, if these bytes are not exactly a record an encoder could mean. Trusts nothing. */
 bool save_world_record_decode(const uint8_t *record, uint64_t bytes, uint16_t *out);
+
+/* Whether a record is one save_world_record_decode would take, with its bits, palette count and palette, of SAVE_WORLD_PALETTE_MAX, if so. Writes nothing else. */
+bool save_world_record_valid(const uint8_t *record, uint64_t bytes, uint32_t *out_bits, uint32_t *out_palette_count,
+                             uint16_t *out_palette);
 
 /* A record that holds levels ends in them. For one save_world_record_decode took: the levels, which it has checked, or nullptr if it has none. */
 const uint8_t *save_world_record_levels(const uint8_t *record, uint64_t bytes);

@@ -51,14 +51,6 @@ enum : uint32_t {
     FS_NAME_BYTES = 2048u,
     FS_RECORD_LEVELS = 0x8000u,
 };
-/* Well under PHYSICS_MOVE_BLOCKS_MAX, for what a tick adds to it. */
-#define FS_SPEED_MOST 1024.0f64
-/* Well under SAVE_STATE_PLACE_MOST, which is 1e9: what is at it moves past it in a tick, and the file then written is refused. */
-#define FS_PLACE_MOST 999000000.0f64
-/* Far from either end of an int32_t, which a tick adds to and takes from. */
-#define FS_AIR_MOST 1000000
-/* Far from what a float32_t holds. */
-#define FS_FALL_MOST 1000000.0f64
 
 typedef struct fs_context_t {
     test_context_t *borrowed_test; /* 0 */
@@ -106,9 +98,8 @@ enum : uint32_t {
     FS_COUNT_WORLD_REOPENED = 5u,
     FS_COUNT_META = 6u,
     FS_COUNT_SETTINGS_SET = 7u,
-    FS_COUNT_KNOWN_DEFECT = 8u,
-    FS_COUNT_SEARCHES = 9u,
-    FS_COUNT_BLASTS = 10u,
+    FS_COUNT_SEARCHES = 8u,
+    FS_COUNT_BLASTS = 9u,
 };
 static const char *const fs_count_names[] = {"records accepted",
                                              "states opened",
@@ -118,7 +109,6 @@ static const char *const fs_count_names[] = {"records accepted",
                                              "worlds opened again",
                                              "world.meta accepted",
                                              "settings files that set something",
-                                             "inputs held back from a known defect: issues 1 and 8",
                                              "states whose minds searched for a way",
                                              "states a creeper burst in"};
 
@@ -281,74 +271,6 @@ static void fs_no_spill(void *context, const item_stack_t *stack, const int32_t 
     (void)cell;
 }
 
-/* A number save_state_check lets through and the game then cannot live with: a velocity no tick of physics will take, which ASSERT_ALWAYS ends the program for, a place right
- * at what it believes, which goes past it in a tick, an eye so far up that a line to it overflows, air at the end of its range, or a fall past what a float32_t holds: the stage file's issue 1. It is not this
- * stage's code to mend, and every run would stop there and see nothing behind it. So until it is mended, what would meet it is opened and written back but not ticked, and the
- * run counts how many: see FS_COUNT_KNOWN_DEFECT. MC_FUZZ_KNOWN_DEFECTS=1 in the environment takes this away. */
-static bool fs_state_meets_known_defect(const save_state_t *state) {
-    const uint8_t *const file = state->borrowed_image;
-    const uint64_t bytes = state->image_bytes;
-    uint64_t size = 0u;
-    bool past = false;
-    const uint8_t *data = save_state_section_find(file, bytes, SAVE_STATE_SECTION_PLAYER, &size);
-    if (data != nullptr) {
-        save_state_player_t player;
-        memcpy(&player, data, sizeof(player));
-        for (uint32_t a = 0u; a < COLLISION_AXES; a++) {
-            past = past || fabs(player.movement.velocity[a]) > FS_SPEED_MOST ||
-                   fabs(player.movement.position[a]) > FS_PLACE_MOST;
-        }
-        past = past || fabs(player.movement.eye_height) > FS_SPEED_MOST || player.survival.air > FS_AIR_MOST ||
-               player.survival.air < -FS_AIR_MOST;
-        /* A fall that far is more damage than a float32_t holds, so a body hurt by infinity, and last_hurt is then what the check refuses. */
-        past = past || fabs(player.movement.fall_distance) > FS_FALL_MOST ||
-               fabs(player.movement.landed_fall) > FS_FALL_MOST;
-    }
-    data = save_state_section_find(file, bytes, SAVE_STATE_SECTION_DROPS, &size);
-    if (data != nullptr) {
-        save_state_drops_t head;
-        memcpy(&head, data, sizeof(head));
-        for (uint32_t i = 0u; i < head.count; i++) {
-            item_drop_t drop;
-            memcpy(&drop, data + sizeof(head) + (uint64_t)i * sizeof(drop), sizeof(drop));
-            for (uint32_t a = 0u; a < COLLISION_AXES; a++) {
-                past = past || fabs(drop.velocity[a]) > FS_SPEED_MOST || fabs(drop.position[a]) > FS_PLACE_MOST;
-            }
-        }
-    }
-    /* An arrow goes round physics, and instead flies out past the place a check believes: the file then written is refused. */
-    data = save_state_section_find(file, bytes, SAVE_STATE_SECTION_ARROWS, &size);
-    if (data != nullptr) {
-        save_state_arrows_t head;
-        memcpy(&head, data, sizeof(head));
-        for (uint32_t i = 0u; i < head.count; i++) {
-            projectile_t arrow;
-            memcpy(&arrow, data + sizeof(head) + (uint64_t)i * sizeof(arrow), sizeof(arrow));
-            for (uint32_t a = 0u; a < COLLISION_AXES; a++) {
-                past = past || fabs(arrow.velocity[a]) > FS_SPEED_MOST || fabs(arrow.position[a]) > FS_PLACE_MOST;
-            }
-        }
-    }
-    data = save_state_section_find(file, bytes, SAVE_STATE_SECTION_BODIES, &size);
-    if (data != nullptr) {
-        save_state_bodies_t head;
-        memcpy(&head, data, sizeof(head));
-        const uint8_t *const arrays = data + sizeof(head) + 3ull * ENTITY_STORE_CAPACITY * sizeof(uint32_t);
-        /* The seventh on, of the 13 arrays of 8 byte numbers, as velocity and wish alike go into a move: see save_state_check_bodies. */
-        for (uint32_t i = 0u; i < 7u * head.count; i++) {
-            float64_t value;
-            memcpy(&value, arrays + 6ull * head.count * sizeof(value) + (uint64_t)i * sizeof(value), sizeof(value));
-            past = past || fabs(value) > FS_SPEED_MOST;
-        }
-        for (uint32_t i = 0u; i < 3u * head.count; i++) {
-            float64_t value;
-            memcpy(&value, arrays + (uint64_t)i * sizeof(value), sizeof(value));
-            past = past || fabs(value) > FS_PLACE_MOST;
-        }
-    }
-    return past;
-}
-
 /* What goes on in a game loaded from this, in the order of game_sim_tick. The searches run on this thread, as mob_init was given no job system: see README.md. */
 static void fs_state_ticks(fs_context_t *fs) {
     entity_t *const entity = fs->entity;
@@ -437,11 +359,7 @@ static void fs_state_execute(fs_context_t *fs, const uint8_t *body, uint64_t len
     if (!save_state_apply(&state, &parts)) {
         fuzz_fail("a file that passed would not apply");
     }
-    if (fs_state_meets_known_defect(&state) && getenv("MC_FUZZ_KNOWN_DEFECTS") == nullptr) {
-        fuzz_count(FS_COUNT_KNOWN_DEFECT);
-    } else {
-        fs_state_ticks(fs);
-    }
+    fs_state_ticks(fs);
 
     /* What the game then saves, it must itself believe. */
     save_state_capture(&state, &parts);
@@ -567,8 +485,6 @@ static void fs_world_execute(fs_context_t *fs, const uint8_t *body, uint64_t len
     fuzz_count(FS_COUNT_WORLD_OPENED);
     fs_world_read(fs, region_x, region_y);
     const uint64_t damaged_first = save->world.sections_damaged;
-    /* The stage file's issue 8: the next save counts round to 0, and the regions it kept are then newer than the manifest, which is refused. */
-    const bool generation_wraps = save->world.generation == UINT64_MAX;
 
     /* A save over what is there, in the region the map can reach: this is what reads the old file to make the new one. */
     fs->exec_count++;
@@ -583,21 +499,16 @@ static void fs_world_execute(fs_context_t *fs, const uint8_t *body, uint64_t len
         return;
     }
 
-    if (generation_wraps && getenv("MC_FUZZ_KNOWN_DEFECTS") == nullptr) {
-        fuzz_count(FS_COUNT_KNOWN_DEFECT);
-        return;
-    }
     fuzz_count(FS_COUNT_WORLD_SAVED);
-    /* The game must always be able to open what it just saved, and nothing that was good before may be damaged now. A save does carry over a record whose checksum
-     * is good and whose contents are not: see the stage file's issue 2. So what it found before is what it may find now, and no more. */
+    /* The game must always be able to open what it just saved. A save drops what it could not read and keeps the old file, so of the region it wrote, nothing is left to find damaged. */
     const save_world_status_t reopened = save_open(save, fs->root, FS_SEED);
     if (reopened != SAVE_WORLD_OK) {
         fuzz_fail("the game wrote a world it then refuses: %s", save_world_status_name(reopened));
     }
     fuzz_count(FS_COUNT_WORLD_REOPENED);
     fs_world_read(fs, 0, 0);
-    if (save->world.sections_damaged > damaged_first) {
-        fuzz_fail("a save read %" PRIu64 " damaged sections, and left %" PRIu64 " in what it wrote", damaged_first,
+    if (save->world.sections_damaged != 0u) {
+        fuzz_fail("a save found %" PRIu64 " damaged sections, and left %" PRIu64 " in what it wrote", damaged_first,
                   (uint64_t)save->world.sections_damaged);
     }
     save_close(save);
@@ -928,6 +839,79 @@ static void fs_seeds_world(test_context_t *t, fs_context_t *fs, fuzz_corpus_t *c
 }
 
 /* A state with something in every part. */
+/* The seed's numbers all at what save_state_check takes and no further, so that what the game does with the most it believes gets looked at: places and speeds by turns,
+ * with signs that send things outward or apart. A random poke hardly ever lands in that range. */
+static void fs_seed_at_limits(fs_context_t *fs, fuzz_corpus_t *corpus, uint8_t *seed, uint64_t bytes, uint32_t kind) {
+    uint8_t *const file = seed + 1u;
+    const float64_t sign = (kind & 1u) != 0u ? -1.0f64 : 1.0f64;
+    const float64_t speed = sign * 1024.0f64;
+    const float64_t place = sign * 1000000000.0f64;
+    uint64_t size = 0u;
+    uint8_t *data = (uint8_t *)save_state_section_find(file, bytes, SAVE_STATE_SECTION_PLAYER, &size);
+    FS_MUST(data != nullptr);
+    save_state_player_t player;
+    memcpy(&player, data, sizeof(player));
+    for (uint32_t a = 0u; a < COLLISION_AXES; a++) {
+        if (kind < 2u) {
+            player.movement.velocity[a] = speed;
+        } else {
+            player.movement.position[a] = place;
+            player.movement.previous[a] = place;
+        }
+    }
+    player.movement.fall_distance = 1000000.0f64;
+    player.movement.landed_fall = 1000000.0f64;
+    player.movement.eye_height = 1024.0f64 * sign;
+    player.survival.air =
+        (kind & 1u) != 0u ? -(int32_t)PLAYER_SURVIVAL_DROWN_EVERY_TICKS : (int32_t)PLAYER_SURVIVAL_AIR_MAX;
+    player.survival.exhaustion = 1000000.0f32;
+    player.survival.armor_points = 1000000.0f32 * (float32_t)sign;
+    memcpy(data, &player, sizeof(player));
+
+    data = (uint8_t *)save_state_section_find(file, bytes, SAVE_STATE_SECTION_DROPS, &size);
+    FS_MUST(data != nullptr);
+    item_drop_t drop;
+    memcpy(&drop, data + sizeof(save_state_drops_t), sizeof(drop));
+    for (uint32_t a = 0u; a < COLLISION_AXES; a++) {
+        if (kind < 2u) {
+            drop.velocity[a] = speed;
+        } else {
+            drop.position[a] = -place;
+        }
+    }
+    memcpy(data + sizeof(save_state_drops_t), &drop, sizeof(drop));
+
+    data = (uint8_t *)save_state_section_find(file, bytes, SAVE_STATE_SECTION_ARROWS, &size);
+    FS_MUST(data != nullptr);
+    projectile_t arrow;
+    memcpy(&arrow, data + sizeof(save_state_arrows_t), sizeof(arrow));
+    for (uint32_t a = 0u; a < COLLISION_AXES; a++) {
+        arrow.velocity[a] = speed;
+        if (kind >= 2u) {
+            arrow.position[a] = place;
+        }
+    }
+    memcpy(data + sizeof(save_state_arrows_t), &arrow, sizeof(arrow));
+
+    /* In the order of the file: six arrays of place, five of speed, two of fall. */
+    data = (uint8_t *)save_state_section_find(file, bytes, SAVE_STATE_SECTION_BODIES, &size);
+    FS_MUST(data != nullptr);
+    save_state_bodies_t head;
+    memcpy(&head, data, sizeof(head));
+    uint8_t *const arrays = data + sizeof(head) + 3ull * ENTITY_STORE_CAPACITY * sizeof(uint32_t);
+    for (uint32_t field = kind < 2u ? 6u : 0u; field < (kind < 2u ? 13u : 6u); field++) {
+        const float64_t value = field < 6u ? (field % 2u == 0u ? place : -place) : (field < 11u ? speed : 1000000.0f64);
+        for (uint32_t i = 0u; i < head.count; i++) {
+            memcpy(arrays + (uint64_t)field * head.count * sizeof(value) + (uint64_t)i * sizeof(value), &value,
+                   sizeof(value));
+        }
+    }
+    fuzz_rng_t rng = {.state = 3u};
+    fs_state_fix(fs, file, bytes, &rng);
+    FS_MUST(save_state_check(file, bytes, FS_SEED, FS_GENERATION) == SAVE_WORLD_OK);
+    fuzz_seed_add(corpus, seed, bytes + 1u);
+}
+
 static void fs_seeds_state(test_context_t *t, fs_context_t *fs, fuzz_corpus_t *corpus) {
     fs_directory_empty(fs->root);
     arena_reset(fs->state_arena);
@@ -997,6 +981,11 @@ static void fs_seeds_state(test_context_t *t, fs_context_t *fs, fuzz_corpus_t *c
     fuzz_seed_add(corpus, seed, bytes + 1u);
     fs->state_seed = seed;
     fs->state_seed_bytes = bytes + 1u;
+    for (uint32_t kind = 0u; kind < 4u; kind++) {
+        uint8_t *const limits = test_alloc(t, bytes + 1u);
+        memcpy(limits, seed, bytes + 1u);
+        fs_seed_at_limits(fs, corpus, limits, bytes, kind);
+    }
     fs_directory_empty(fs->root);
 }
 
@@ -1060,7 +1049,7 @@ TEST(save) {
                                   .execute = fs_execute,
                                   .borrowed_count_names = fs_count_names,
                                   .token_count = 0u,
-                                  .count_name_count = 11u,
+                                  .count_name_count = (uint32_t)(sizeof(fs_count_names) / sizeof(fs_count_names[0])),
                                   .kind_count = FS_MODE_COUNT,
                                   ._pad0 = {0}};
     fuzz_run(t, &target);

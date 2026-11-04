@@ -1130,6 +1130,112 @@ TEST(a_save_over_a_damaged_delta_keeps_it_and_everything_it_could_read) {
     sw_temp_remove(t, root);
 }
 
+/* With every hash right, so that only what it says is wrong: a palette naming a block there is not. A save used to carry this over, to be counted damaged for ever. */
+TEST(a_save_drops_a_record_no_reader_will_take_though_its_checksum_is_good) {
+    char *const root = sw_temp_directory(t);
+    REQUIRE(root != nullptr);
+    sw_rig_t *const rig = sw_rig_new(t, root, SW_RADIUS);
+    REQUIRE(sw_session_begin(t, rig));
+    const int32_t x = SW_CENTER_X * 16;
+    const int32_t y = SW_CENTER_Y * 16;
+    REQUIRE(world_edit_block_set(&rig->world->edit, x, y, 0, 3u) == WORLD_EDIT_STATUS_CHANGED);
+    REQUIRE(world_edit_block_set(&rig->world->edit, x, y, 160, 3u) == WORLD_EDIT_STATUS_CHANGED);
+    REQUIRE(save_world_flush(&rig->save->world, &rig->world->edit) == SAVE_WORLD_OK);
+    sw_session_end(rig);
+    save_world_manifest_header_t header;
+    const save_world_region_t *regions = nullptr;
+    sw_manifest_read(t, rig, &header, &regions);
+    REQUIRE(header.region_count == 1u);
+    char name[96];
+    snprintf(name, sizeof(name), "r.%" PRId32 ".%" PRId32 ".%" PRIu64, regions[0].region_x, regions[0].region_y,
+             regions[0].generation);
+    char *const delta = sw_join(t, rig->blocks, name);
+    uint64_t bytes = 0u;
+    uint8_t *const file = sw_slurp(t, delta, &bytes);
+
+    /* The first column there is, and its first section. */
+    uint8_t *const table = file + sizeof(save_world_delta_header_t);
+    save_world_column_entry_t column;
+    uint32_t local = 0u;
+    for (; local < SAVE_WORLD_REGION_COLUMNS; local++) {
+        memcpy(&column, table + (uint64_t)local * sizeof(column), sizeof(column));
+        if (column.section_mask != 0u) {
+            break;
+        }
+    }
+    REQUIRE(local < SAVE_WORLD_REGION_COLUMNS);
+    const uint64_t entries_bytes =
+        (uint64_t)__builtin_popcountll(column.section_mask) * sizeof(save_world_section_entry_t);
+    save_world_section_entry_t entry;
+    memcpy(&entry, file + column.entries_offset, sizeof(entry));
+    const uint16_t nothing = 0xFFFFu;
+    memcpy(file + entry.offset + 4u, &nothing, sizeof(nothing));
+    const uint64_t record_hash = sw_fnv(file + entry.offset, entry.bytes);
+    entry.checksum = (uint32_t)(record_hash ^ (record_hash >> 32));
+    memcpy(file + column.entries_offset, &entry, sizeof(entry));
+    uint64_t column_hash = sw_fnv(&column, offsetof(save_world_column_entry_t, checksum));
+    for (uint64_t i = 0u; i < entries_bytes; i++) {
+        column_hash = (column_hash ^ file[column.entries_offset + i]) * 0x100000001B3ull;
+    }
+    column.checksum = column_hash;
+    memcpy(table + (uint64_t)local * sizeof(column), &column, sizeof(column));
+    REQUIRE(file_write_atomic(delta, file, bytes) == FILE_OK);
+
+    const int32_t quiet = sw_quiet_begin();
+    REQUIRE(sw_session_begin(t, rig));
+    CHECK(atomic_load(&rig->save->world.sections_damaged) != 0u);
+    REQUIRE(world_edit_block_set(&rig->world->edit, x, y, 320, 4u) == WORLD_EDIT_STATUS_CHANGED);
+    REQUIRE(save_world_flush(&rig->save->world, &rig->world->edit) == SAVE_WORLD_OK);
+    sw_session_end(rig);
+    sw_quiet_end(quiet);
+    CHECK_EQ_U64(sw_directory_count(rig->blocks, "damaged.", ""), 1u);
+    sw_manifest_read(t, rig, &header, &regions);
+    REQUIRE(header.region_count == 1u);
+    CHECK_EQ_U64(regions[0].section_count, 2u);
+    REQUIRE(sw_session_begin(t, rig));
+    CHECK_EQ_U64(atomic_load(&rig->save->world.sections_damaged), 0u);
+    uint16_t block = 0u;
+    REQUIRE(world_map_block_get(&rig->world->map, x, y, 160, &block) == WORLD_MAP_STATUS_OK);
+    CHECK_EQ_U64(block, 3u);
+    REQUIRE(world_map_block_get(&rig->world->map, x, y, 320, &block) == WORLD_MAP_STATUS_OK);
+    CHECK_EQ_U64(block, 4u);
+    sw_session_end(rig);
+    sw_temp_remove(t, root);
+}
+
+/* Only an edited manifest says this. The count going round to 0 would leave the regions newer than the manifest, and a world that will not open. */
+TEST(a_manifest_at_the_last_generation_opens_refuses_to_save_and_still_opens) {
+    char *const root = sw_temp_directory(t);
+    REQUIRE(root != nullptr);
+    sw_rig_t *const rig = sw_saved_world(t, root);
+    char *const manifest = sw_join(t, rig->blocks, "manifest");
+    const uint64_t last = UINT64_MAX;
+    sw_manifest_forge(t, manifest, offsetof(save_world_manifest_header_t, generation), &last, sizeof(last));
+    uint64_t before_bytes = 0u;
+    const uint8_t *const before = sw_slurp(t, manifest, &before_bytes);
+    const int32_t quiet = sw_quiet_begin();
+    REQUIRE(sw_session_begin(t, rig));
+    const int32_t x = SW_CENTER_X * 16;
+    const int32_t y = SW_CENTER_Y * 16;
+    REQUIRE(world_edit_block_set(&rig->world->edit, x, y, 320, 4u) == WORLD_EDIT_STATUS_CHANGED);
+    CHECK_EQ_U64(save_world_flush(&rig->save->world, &rig->world->edit), SAVE_WORLD_ERROR_TOO_MANY);
+    CHECK_EQ_U64(rig->save->world.generation, UINT64_MAX);
+    sw_session_end(rig);
+    sw_quiet_end(quiet);
+    uint64_t after_bytes = 0u;
+    const uint8_t *const after = sw_slurp(t, manifest, &after_bytes);
+    REQUIRE(after_bytes == before_bytes);
+    CHECK_MEM_EQ(after, before, before_bytes);
+    CHECK_EQ_U64(sw_directory_count(rig->blocks, "r.", ".tmp"), 0u);
+    /* And what it does not count as lost can be told by opening it again. */
+    const int32_t quiet_again = sw_quiet_begin();
+    REQUIRE(sw_session_begin(t, rig));
+    CHECK_EQ_U64(rig->save->world.generation, UINT64_MAX);
+    sw_session_end(rig);
+    sw_quiet_end(quiet_again);
+    sw_temp_remove(t, root);
+}
+
 TEST(what_a_crash_leaves_is_tidied_and_nothing_else) {
     char *const root = sw_temp_directory(t);
     REQUIRE(root != nullptr);

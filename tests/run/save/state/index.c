@@ -498,6 +498,23 @@ TEST(what_cannot_be_believed_is_refused_and_left_as_it_was) {
         {sizeof(save_state_drops_t) + offsetof(item_drop_t, count), 0u, SAVE_STATE_SECTION_DROPS, 2u},
         {offsetof(save_state_arrows_t, count), PROJECTILE_CAPACITY + 1u, SAVE_STATE_SECTION_ARROWS, 4u},
         {sizeof(save_state_arrows_t), 0x7FF0000000000000ull, SAVE_STATE_SECTION_ARROWS, 8u},
+        /* Finite, and more than the game can live with: 2000 blocks a tick, a fall of 1e7, an eye at 1e300. See SAVE_STATE_SPEED_MOST and the rest. */
+        {offsetof(save_state_player_t, movement) + offsetof(player_movement_t, velocity), 0x409F400000000000ull,
+         SAVE_STATE_SECTION_PLAYER, 8u},
+        {offsetof(save_state_player_t, movement) + offsetof(player_movement_t, fall_distance), 0x416312D000000000ull,
+         SAVE_STATE_SECTION_PLAYER, 8u},
+        {offsetof(save_state_player_t, movement) + offsetof(player_movement_t, landed_fall), 0x416312D000000000ull,
+         SAVE_STATE_SECTION_PLAYER, 8u},
+        {offsetof(save_state_player_t, movement) + offsetof(player_movement_t, eye_height), 0x7E37E43C8800759Cull,
+         SAVE_STATE_SECTION_PLAYER, 8u},
+        {offsetof(save_state_player_t, survival) + offsetof(player_survival_t, air), 0x7FFFFFFFu,
+         SAVE_STATE_SECTION_PLAYER, 4u},
+        {offsetof(save_state_player_t, survival) + offsetof(player_survival_t, air), 0x80000000u,
+         SAVE_STATE_SECTION_PLAYER, 4u},
+        {sizeof(save_state_drops_t) + offsetof(item_drop_t, velocity), 0x409F400000000000ull, SAVE_STATE_SECTION_DROPS,
+         8u},
+        {sizeof(save_state_arrows_t) + offsetof(projectile_t, velocity), 0x409F400000000000ull,
+         SAVE_STATE_SECTION_ARROWS, 8u},
         {offsetof(save_state_bodies_t, count), ENTITY_STORE_CAPACITY + 1u, SAVE_STATE_SECTION_BODIES, 4u},
         {offsetof(save_state_bodies_t, free_head), ENTITY_STORE_CAPACITY, SAVE_STATE_SECTION_BODIES, 4u},
         /* A slot's body somewhere else; a free slot already taken, by the first in the free ring being body 0's. */
@@ -582,6 +599,60 @@ TEST(what_cannot_be_believed_is_refused_and_left_as_it_was) {
     save_deinit(save);
     ss_quiet_end(quiet);
     printf("  %" PRIu32 " flipped bits and %" PRIu32 " forged numbers refused\n", flips, forgery_count);
+    ss_temp_remove(t, root);
+}
+
+/* What is alive goes where a check will not follow: an arrow keeps flying and a fall keeps adding up. What the game then writes it must believe, or the world will not open again. */
+TEST(numbers_past_what_a_file_may_say_are_written_at_the_limit_and_the_file_is_believed) {
+    char *const root = ss_temp_directory(t);
+    REQUIRE(root != nullptr);
+    ss_rig_t *const rig = test_alloc(t, sizeof(ss_rig_t));
+    REQUIRE(ss_rig_begin(t, rig, root, false));
+    ss_fill(rig);
+    player_movement_t *const movement = &rig->player->movement;
+    movement->position[0] = 2000000000.5f64;
+    movement->previous[1] = -2000000000.5f64;
+    movement->velocity[1] = -5000.0f64;
+    movement->fall_distance = HUGE_VAL;
+    movement->eye_height = 5.0e237f64;
+    rig->player->survival.last_hurt = HUGE_VALF;
+    rig->player->survival.spawn[2] = 3.0e9f64;
+    entity_t *const entity = rig->entity;
+    REQUIRE(entity->item_drops.count != 0u);
+    REQUIRE(entity->projectiles.count != 0u);
+    REQUIRE(entity->store.count != 0u);
+    entity->item_drops.borrowed_items[0].velocity[0] = nan("");
+    entity->projectiles.borrowed_items[0].position[2] = 1.5e9f64;
+    entity->store.borrowed_velocity[0][0] = 1.0e12f64;
+    entity->store.borrowed_fall_distance[0] = 1.0e30f64;
+    entity->store.borrowed_health[0] = -HUGE_VALF;
+
+    save_state_capture(&rig->save->state, &rig->parts);
+    REQUIRE(save_state_write(&rig->save->state, 0u) == SAVE_WORLD_OK);
+    /* The game itself is not moved by being saved. */
+    CHECK(movement->position[0] > 2000000000.0f64);
+    ss_rig_end(rig);
+
+    uint64_t bytes = 0u;
+    const uint8_t *const file = ss_slurp(t, ss_state_path(t, root, 0u), &bytes);
+    REQUIRE(bytes > 0u);
+    CHECK_EQ_U64(save_state_check(file, bytes, SS_SEED, 0u), SAVE_WORLD_OK);
+    uint64_t section_bytes = 0u;
+    const uint8_t *const section = save_state_section_find(file, bytes, SAVE_STATE_SECTION_PLAYER, &section_bytes);
+    REQUIRE(section != nullptr);
+    save_state_player_t player;
+    REQUIRE(section_bytes == sizeof(player));
+    memcpy(&player, section, sizeof(player));
+    CHECK(player.movement.position[0] == 1.0e9f64);
+    CHECK(player.movement.previous[1] == -1.0e9f64);
+    CHECK(player.movement.velocity[1] == -1024.0f64);
+    CHECK(player.movement.fall_distance == 0.0f64); /* not a number to go on from */
+    CHECK(player.movement.eye_height == 1024.0f64);
+    CHECK(player.survival.last_hurt == 0.0f32);
+    CHECK(player.survival.spawn[2] == 1.0e9f64);
+    /* What was in range comes through as it was. */
+    CHECK(player.movement.velocity[2] == -0.125f64);
+    CHECK(player.survival.saturation == 2.5f32);
     ss_temp_remove(t, root);
 }
 

@@ -61,6 +61,8 @@ All 2026-11-04, by this stage.
 8. **Process.** The first `cmake --preset debug` here, and `ctest -N`, ran without the mutex, though configuring builds the machine tool; later commands used it. `texture_pack verify` and `texture_vector check` ran bare, under `timeout`, as they are a second each. The worktree isolation check refused several compound commands, and they were re-run as plain ones.
 9. **Nothing at the repository's root says what this is.** There is no root `README.md`: `plans/REPO_STRUCTURE.md` does not list one and the lint does not ask for one. Left alone, as adding a document is not auditing one. Worth having before a release.
 
+10. **Gate check, 2026-11-04.** Of issue 5's list, the stale `app_t` comments, the log line in `run/src/main/index.c` and line 8 of `plans/CODING_STANDARD.md` are fixed, and of issue 9, the root `README.md` is written. Its commands were read against the tree. The phase file's status is true now. Phase 18 leaves this stage's box open only for the licence decisions below.
+
 ## For Ahmed
 
 Licence decisions, carried over from Stage 06.2's "For Ahmed", whose commands still apply:

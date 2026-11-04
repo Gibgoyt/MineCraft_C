@@ -15,6 +15,8 @@ The first byte says which of the five. A state or a world has every length and h
 
 A state or a record is mostly changed in place, by `mutate`: a section, each the same, and a value inside it, often one a float or a count should never be. A change of length or a byte thrown anywhere is refused on sight, which measured 6 states getting in out of 6000.
 
+Four state seeds have the numbers at what `save_state_check` takes and no further, as a random poke hardly ever lands in that range: without `save_state_capture` stopping numbers at those limits, a run fails within a minute.
+
 ## What it holds them to
 
 - **Record:** a refusal writes nothing. An acceptance gives only states in the table and levels up to 8, and those blocks come back through the encoder as the same blocks. It does not say the bytes come back: an encoder always chooses the same palette order, and a reader does not ask for it.
@@ -24,7 +26,5 @@ A state or a record is mostly changed in place, by `mutate`: a section, each the
 - **`settings.yaml`:** nothing past its range. What is written reads back the same, with no problems.
 
 ## What it does not do
-
-A state with a number the game cannot live with, such as a speed past what physics takes, is not ticked, and each is counted as a known defect: see `fs_state_meets_known_defect` and issue 1 of `plans/001-ahmed-bohemoth-minecraft-from-scratch-phase-18-stage-1-sanitize-fuzz-soak.md`. `MC_FUZZ_KNOWN_DEFECTS=1` in the environment ticks them, and a run stops within seconds. A manifest at the last generation there is, issue 8, is not opened again after its save, and counted the same. Take the skips out when these are mended.
 
 A search does not run on a worker, as a job system's threads would not survive the fork: `mob_init` is given none, which is its way of running them on the sim. An arrow is not given the player to hit. An input may leave a block changed in the world in memory, for the next to meet, though a blast's floor is put back, so a failure that needs that may not come again with `--replay`.

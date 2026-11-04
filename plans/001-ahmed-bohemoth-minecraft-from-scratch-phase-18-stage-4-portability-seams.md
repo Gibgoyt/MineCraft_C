@@ -27,6 +27,7 @@ Read `plans/README.md`, `plans/CODING_STANDARD.md` and `plans/REPO_STRUCTURE.md`
 
 Appended as they land:
 
+- `eaf161c` the gate checker's, for issue 3
 - `0ba9fc1` Section 15 of `plans/REPO_STRUCTURE.md`, and a row for it in section 14's "Where is...?", which is the one line outside the new section.
 
 ## Issues found
@@ -42,4 +43,4 @@ Appended as they land:
 - `platform.os`, `gpu.api` and `display.backend` have no consumer. `machine_config` refuses any other word, measured with a copy of the yaml: `platform.os must be one of: linux`, `display.backend must be one of: kms`, `gpu.api must be one of: cuda`, each exit 1.
 - `platform.posix` is only printed by `--report`.
 
-**3. `threads.gpu: 0` passes the config check and looks fatal later.** Found 2026-11-04. Left alone. `machine_config` accepted a copy of the yaml with it (exit 0), and its comment in `compile/src/machine_config/index.c` says the gpu thread goes away on a build with no GPU. But `run/src/game/index.c:1777` always starts that thread, and `thread_cpu_for` has `ASSERT_ALWAYS(index < count)` (`run/src/thread/index.c`). This is from reading the code. A threaded game with that value was not run.
+**3. `threads.gpu: 0` passes the config check and looks fatal later.** Found 2026-11-04. **Fixed the same day by the gate checker:** `machine_config` refuses it while `gpu.enabled` is true, `threads.gpu must be 1 while gpu.enabled is true`, a new case in `compile_machine_config`, and section 15.1 says so. What was first written: `machine_config` accepted a copy of the yaml with it (exit 0), and its comment in `compile/src/machine_config/index.c` says the gpu thread goes away on a build with no GPU. But `run/src/game/index.c:1777` always starts that thread, and `thread_cpu_for` has `ASSERT_ALWAYS(index < count)` (`run/src/thread/index.c`). This is from reading the code. A threaded game with that value was not run.

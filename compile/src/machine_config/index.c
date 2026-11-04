@@ -120,7 +120,7 @@ static const machine_key_t machine_keys[KEY_COUNT] = {
     [KEY_CPU_HAS_LZCNT] = KEY_BOOL("cpu.simd.lzcnt", "MC_CPU_HAS_LZCNT"),
     [KEY_CPU_HAS_F16C] = KEY_BOOL("cpu.simd.f16c", "MC_CPU_HAS_F16C"),
     [KEY_CPU_HAS_AVX512] = KEY_BOOL("cpu.simd.avx512", "MC_CPU_HAS_AVX512"),
-    /* Plan section 2 has one main thread and one sim thread. The gpu thread goes away on a build with no GPU. */
+    /* Plan section 2 has one main thread and one sim thread. threads.gpu may be 0 only with gpu.enabled false. */
     [KEY_THREADS_MAIN] = KEY_INT("threads.main", "MC_THREADS_MAIN", 1, 1),
     [KEY_THREADS_SIM] = KEY_INT("threads.sim", "MC_THREADS_SIM", 1, 1),
     [KEY_THREADS_GPU] = KEY_INT("threads.gpu", "MC_THREADS_GPU", 0, 1),
@@ -394,6 +394,10 @@ static bool machine_check_consistency(const machine_value_t *values, yaml_error_
         return yaml_fail_at_node(NODE(KEY_GPU_BUDGET_VOXELS_MIB), error,
                                  "gpu.budget adds up to %" PRId64 " MiB, past gpu.vram_mib of %" PRId64, budget,
                                  NUMBER(KEY_GPU_VRAM_MIB));
+    }
+    /* game starts its gpu thread whenever a world opens, and asking where to pin one there is no room for stops the program. */
+    if (NUMBER(KEY_GPU_ENABLED) != 0 && NUMBER(KEY_THREADS_GPU) == 0) {
+        return yaml_fail_at_node(NODE(KEY_THREADS_GPU), error, "threads.gpu must be 1 while gpu.enabled is true");
     }
     if (NUMBER(KEY_GAME_RENDER_DISTANCE_DEFAULT) > NUMBER(KEY_GAME_RENDER_DISTANCE_MAX)) {
         return yaml_fail_at_node(NODE(KEY_GAME_RENDER_DISTANCE_DEFAULT), error,
