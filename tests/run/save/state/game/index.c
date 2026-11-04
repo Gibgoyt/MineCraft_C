@@ -301,7 +301,10 @@ TEST(the_real_game_frames_during_autosaves_and_reloads_byte_for_byte) {
     CHECK(time_ns_to_ms(gap_with[gaps_with / 2u]) <= time_ns_to_ms(gap_without[gaps_without / 2u]) + 8.333f64);
     CHECK(time_ns_to_ms(gap_with[gaps_with - 1u]) <= time_ns_to_ms(gap_without[gaps_without - 1u]) + 16.667f64);
 
-    /* All of it, as a world closes, and then the same world from those files alone, with nothing having ticked. */
+    /* All of it, as a world closes, and then the same world from those files alone, with nothing having ticked. Three blocks from where it stood, so that
+     * where the save says and where a new world would spawn are not one block. */
+    rig->player->movement.position[0] += 3.0f64;
+    rig->player->movement.position[1] += 3.0f64;
     REQUIRE(game_save_finish(game) == SAVE_WORLD_OK);
     const uint64_t generation = save->world.generation;
     CHECK(generation >= 1u);
@@ -322,6 +325,12 @@ TEST(the_real_game_frames_during_autosaves_and_reloads_byte_for_byte) {
     REQUIRE(game_open(game, &config));
     CHECK(rig->player->movement.position[0] == feet[0] && rig->player->movement.position[1] == feet[1] &&
           rig->player->movement.position[2] == feet[2]);
+    /* With nothing having ticked, the first picture's coordinates are already where the save put the body, not where the world's spawn is. */
+    int32_t shown[3];
+    game_hud_block_read(game, shown);
+    CHECK_EQ_I64(shown[0], (int64_t)floor(feet[0]));
+    CHECK_EQ_I64(shown[1], (int64_t)floor(feet[1]));
+    CHECK_EQ_I64(shown[2], (int64_t)floor(feet[2]) - MC_WORLD_Z_SEA);
     CHECK_EQ_U64(rig->player->interaction.mined_count, mined);
     CHECK_EQ_U64(game->tick_count, ticks);
     CHECK_EQ_U64(atomic_load(&game->day_units), units);

@@ -449,7 +449,6 @@ static void game_screen_tick(game_t *game) {
     ui_screen_sim_step(ui, &sim, true);
 }
 
-/* One tick of simulated time, due at tick_ns: this is where Stages 11 to 15 add theirs. */
 void game_hud_position_publish(game_t *game) {
     if (game->borrowed_player == nullptr) {
         return;
@@ -493,6 +492,7 @@ static void game_mobs_tick(game_t *game) {
     }
 }
 
+/* One tick of simulated time, due at tick_ns: this is where Stages 11 to 15 add theirs. */
 void game_sim_tick(game_t *game, int64_t tick_ns) {
     profiler_lane_t *const lane = game->borrowed_lane_sim;
     PROFILER_BEGIN(lane, "sim_tick");
