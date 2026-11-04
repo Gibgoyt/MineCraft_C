@@ -472,7 +472,7 @@ linked into minecraft_c, read through run/src/texture/
 
 Tests need no server and no display, and run under `timeout`.
 
-**`bench/`**: `simd`, `terrain`, `mobs`, `world`, `world_map`, `cave_walk`, each `index.c` with a `README.md` and a results history. `terrain/tour` is the phase gate's biome tour: a picture of every biome, with no display and no card. `world_map` shows a seed's whole world: a 16 km map, slices and a table of what it measures, with no display and no card. `world` holds the standard worlds and camera paths, and adds to `bench/world/history.tsv`, a line per row per recorded run.
+**`bench/`**: `simd`, `terrain`, `mobs`, `world`, `world_map`, `biome_map`, `cave_walk`, each `index.c` with a `README.md` and a results history. `terrain/tour` is the phase gate's biome tour: a picture of every biome, with no display and no card. `world_map` shows a seed's whole world: a 16 km map, slices and a table of what it measures, with no display and no card. `biome_map` lays the biomes over the same 16 km and says who holds each height, with no display and no card. `world` holds the standard worlds and camera paths, and adds to `bench/world/history.tsv`, a line per row per recorded run.
 
 **`tools/test-or-build.sh`**: `flock` around heavy commands, so parallel agents never run builds at the same time:
 
