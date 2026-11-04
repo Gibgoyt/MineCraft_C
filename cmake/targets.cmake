@@ -142,6 +142,7 @@ set(mc_game_objects_no_main
 #   MC_TEST_ARGS     arguments; generator expressions such as $<TARGET_FILE:mc_tool_x> work
 #   MC_TEST_LIBS     more libraries to link
 #   MC_TEST_TIMEOUT  seconds, default 300
+#   MC_TEST_RUN_SERIAL  TRUE for a test that times itself, so that ctest -j starts nothing beside it
 # It may also call add_test itself to register more runs of the same or another target.
 function(mc_add_test source)
   cmake_path(GET source PARENT_PATH dir)
@@ -151,6 +152,7 @@ function(mc_add_test source)
   set(MC_TEST_ARGS)
   set(MC_TEST_LIBS)
   set(MC_TEST_TIMEOUT 300)
+  set(MC_TEST_RUN_SERIAL FALSE)
   if(EXISTS "${dir}/test.cmake")
     include("${dir}/test.cmake")
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${dir}/test.cmake")
@@ -173,7 +175,7 @@ function(mc_add_test source)
   set_target_properties(${target} PROPERTIES
     OUTPUT_NAME "${MC_TEST_NAME}" RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/tests")
   add_test(NAME ${MC_TEST_NAME} COMMAND ${target} ${MC_TEST_ARGS} WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
-  set_tests_properties(${MC_TEST_NAME} PROPERTIES TIMEOUT ${MC_TEST_TIMEOUT})
+  set_tests_properties(${MC_TEST_NAME} PROPERTIES TIMEOUT ${MC_TEST_TIMEOUT} RUN_SERIAL ${MC_TEST_RUN_SERIAL})
 endfunction()
 
 file(GLOB_RECURSE mc_test_sources CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/tests/*/index.c")
