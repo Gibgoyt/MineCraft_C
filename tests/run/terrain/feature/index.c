@@ -35,15 +35,17 @@ enum : uint32_t {
     FEA_MAP_CHUNKS = FEA_MAP_SIDE * FEA_MAP_SIDE,
     FEA_MAP_ACROSS = FEA_MAP_SIDE * FEA_CHUNK,
     /* A whole column of the world, for the worker comparison. */
-    FEA_LAYERS = 751u,
+    FEA_LAYERS = 1501u,
 };
 static const uint64_t FEA_WORLD = 0x1234567890ABCDEFull;
 
 /* Pinned: see README.md. */
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t FEA_DIGEST_PIN = 0x8F70D3BFF3EBF987ull;
+/* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
+static const uint64_t FEA_DIGEST_PIN = 0x693A20B33CE62824ull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t FEA_FOREST_PIN = 0xD5BB72B7CF06584Bull;
+/* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
+static const uint64_t FEA_FOREST_PIN = 0x8C19317348243537ull;
 
 static uint64_t fea_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -712,6 +714,11 @@ static bool fea_is_land_plant(uint16_t block) {
            block == BLOCK_ID_RED_MUSHROOM || block == BLOCK_ID_MELON || block == BLOCK_ID_PUMPKIN;
 }
 
+/* What a crown leaves beside a trunk: its leaves, or the ground of a hill it could not grow into. Air there is a crown cut off at the line. */
+static bool fea_crown_holds(uint16_t block) {
+    return block != BLOCK_ID_AIR && (block_defs[block].flags & BLOCK_FLAG_SOLID) != 0u;
+}
+
 static bool fea_is_dry_log(uint16_t block) {
     return block == BLOCK_ID_OAK_LOG || block == BLOCK_ID_BIRCH_LOG || block == BLOCK_ID_SPRUCE_LOG ||
            block == BLOCK_ID_JUNGLE_LOG || block == BLOCK_ID_ACACIA_LOG || block == BLOCK_ID_DARK_OAK_LOG ||
@@ -771,22 +778,22 @@ TEST(trees_in_the_world_have_their_crowns_across_chunk_lines) {
                     /* Each side off this chunk, in the chunk over the line. */
                     if (ox == 15u) {
                         const uint16_t *const over = blocks + (uint64_t)(cx + 1u + CHUNKS * cy) * voxels;
-                        CHECK(fea_is_leaf(over[0u + FEA_CHUNK * oy + FEA_COLUMNS * z]));
+                        CHECK(fea_crown_holds(over[0u + FEA_CHUNK * oy + FEA_COLUMNS * z]));
                         edges++;
                     }
                     if (ox == 0u) {
                         const uint16_t *const over = blocks + (uint64_t)(cx - 1u + CHUNKS * cy) * voxels;
-                        CHECK(fea_is_leaf(over[15u + FEA_CHUNK * oy + FEA_COLUMNS * z]));
+                        CHECK(fea_crown_holds(over[15u + FEA_CHUNK * oy + FEA_COLUMNS * z]));
                         edges++;
                     }
                     if (oy == 15u) {
                         const uint16_t *const over = blocks + (uint64_t)(cx + CHUNKS * (cy + 1u)) * voxels;
-                        CHECK(fea_is_leaf(over[ox + FEA_COLUMNS * z]));
+                        CHECK(fea_crown_holds(over[ox + FEA_COLUMNS * z]));
                         edges++;
                     }
                     if (oy == 0u) {
                         const uint16_t *const over = blocks + (uint64_t)(cx + CHUNKS * (cy - 1u)) * voxels;
-                        CHECK(fea_is_leaf(over[ox + 15u * FEA_CHUNK + FEA_COLUMNS * z]));
+                        CHECK(fea_crown_holds(over[ox + 15u * FEA_CHUNK + FEA_COLUMNS * z]));
                         edges++;
                     }
                 }

@@ -22,6 +22,10 @@ enum : uint32_t {
     /* Columns made whole for each seed, to hold the fields to the blocks. */
     SPAWN_SHORE_COLUMNS = 200u,
 };
+enum : int32_t {
+    /* How far the ground 4 blocks from a start may differ from the start's own, which stands on grass or the like. */
+    SPAWN_NEAR_DIFFER_MAX = 7,
+};
 /* Plan 003 phase 8's seeds. Ahmed's is the first: it starts on a frozen sea 376 blocks from land if ice counts. */
 static const uint64_t SPAWN_SEEDS[] = {
     2198175988018515243ull, 12636146071196537873ull, 0x4D494E4543524146ull, 1ull, 42ull, 20261104ull,
@@ -262,6 +266,15 @@ static int64_t spawn_check_seed(test_context_t *t, const game_column_job_t *job,
     CHECK(game_spawn_top_is_dry_land(job->borrowed_states, ground_z));
     CHECK(top != BLOCK_ID_ICE && top != BLOCK_ID_PACKED_ICE && top != BLOCK_ID_BLUE_ICE && top != BLOCK_ID_WATER);
     CHECK(ground_z >= MC_WORLD_Z_SEA);
+    /* Low and gentle, by the real blocks as well as the fields: no fall or wall in reach of the first few steps, what grows left out. */
+    CHECK(game_spawn_is_gentle(&terrain, x, y));
+    CHECK(ground_z <= 150);
+    static const int32_t AXES[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    for (uint32_t axis = 0u; axis < 4u; axis++) {
+        const int32_t z_near = game_spawn_bare_ground_z(&terrain, job, x + AXES[axis][0] * 4, y + AXES[axis][1] * 4);
+        const int32_t near_differs = z_near < ground_z ? ground_z - z_near : z_near - ground_z;
+        CHECK(near_differs <= SPAWN_NEAR_DIFFER_MAX);
+    }
     printf("seed %" PRIu64 ": starts at %d, %d, %d on %s, found in %.1f ms\n", seed, x, y, ground_z + 1,
            block_defs[top].name, (libc_double_t)((float64_t)took / 1.0e6f64));
     terrain_deinit(&terrain);

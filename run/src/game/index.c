@@ -432,11 +432,10 @@ bool game_open(game_t *game, const game_config_t *config) {
         LOG_INFO("game: the player goes on from %.1f, %.1f, %.1f", (libc_double_t)kept_feet[0],
                  (libc_double_t)kept_feet[1], (libc_double_t)kept_feet[2]);
     } else {
-        if (game->borrowed_player != nullptr) {
-            if (!game_spawn_find(game, terrain, &game->borrowed_jobs[0], start_x, start_y, &start_x, &start_y)) {
-                LOG_WARN("game: no dry land within %d blocks of the world's middle, so the body starts at the middle",
-                         GAME_SPAWN_REACH);
-            }
+        /* A flying eye starts where a body would, over ground worth seeing, and not inside a range that stands at the middle. */
+        if (!game_spawn_find(game, terrain, &game->borrowed_jobs[0], start_x, start_y, &start_x, &start_y)) {
+            LOG_WARN("game: no dry land within %d blocks of the world's middle, so the body starts at the middle",
+                     GAME_SPAWN_REACH);
         }
         const float64_t ground = (float64_t)game_ground_z(terrain, &game->borrowed_jobs[0], start_x, start_y);
         const float64_t middle_x = (float64_t)start_x + 0.5f64, middle_y = (float64_t)start_y + 0.5f64;

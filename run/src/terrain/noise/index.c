@@ -1,6 +1,7 @@
 /* See README.md. */
 #include "terrain/noise/index.h"
 
+#include "assert/index.h"
 #include "log/index.h"
 #include "simd/noise/index.h"
 #include "terrain/rng/index.h"
@@ -134,8 +135,9 @@ uint64_t terrain_noise_grid_points(const terrain_noise_grid_t *grid) {
 
 /* Up to NOISE_BATCH_POINTS points. Each coordinate is worked out in float64_t and only then narrowed, so that it comes out
  * the same from any caller, and the narrowing is the only rounding the kernel's input has seen. */
-static void noise_sample_batch(const terrain_noise_field_t *field, const float64_t *xs, const float64_t *ys,
-                               const float64_t *zs, uint32_t count, float32_t *out) {
+static void noise_sample_batch_split(const terrain_noise_field_t *field, const float64_t *xs, const float64_t *ys,
+                                     const float64_t *zs, uint32_t count, uint32_t first_octaves, float32_t *out_first,
+                                     float32_t *out) {
     float32_t cell_x[NOISE_BATCH_POINTS];
     float32_t cell_y[NOISE_BATCH_POINTS];
     float32_t cell_z[NOISE_BATCH_POINTS];
@@ -154,7 +156,15 @@ static void noise_sample_batch(const terrain_noise_field_t *field, const float64
         for (uint32_t i = 0u; i < count; i++) {
             out[i] += value[i] * octave->amplitude;
         }
+        if (o + 1u == first_octaves) {
+            memcpy(out_first, out, (uint64_t)count * sizeof(float32_t));
+        }
     }
+}
+
+static void noise_sample_batch(const terrain_noise_field_t *field, const float64_t *xs, const float64_t *ys,
+                               const float64_t *zs, uint32_t count, float32_t *out) {
+    noise_sample_batch_split(field, xs, ys, zs, count, 0u, nullptr, out);
 }
 
 void terrain_noise_sample_points(const terrain_noise_field_t *field, const float64_t *xs, const float64_t *ys,
@@ -163,6 +173,19 @@ void terrain_noise_sample_points(const terrain_noise_field_t *field, const float
         const uint64_t left = count - done;
         const uint32_t batch = left < NOISE_BATCH_POINTS ? (uint32_t)left : NOISE_BATCH_POINTS;
         noise_sample_batch(field, xs + done, ys + done, zs + done, batch, out + done);
+        done += batch;
+    }
+}
+
+void terrain_noise_sample_points_split(const terrain_noise_field_t *field, const float64_t *xs, const float64_t *ys,
+                                       const float64_t *zs, uint64_t count, uint32_t first_octaves,
+                                       float32_t *out_first, float32_t *out) {
+    ASSERT(first_octaves >= 1u && first_octaves <= field->octave_count);
+    for (uint64_t done = 0u; done < count;) {
+        const uint64_t left = count - done;
+        const uint32_t batch = left < NOISE_BATCH_POINTS ? (uint32_t)left : NOISE_BATCH_POINTS;
+        noise_sample_batch_split(field, xs + done, ys + done, zs + done, batch, first_octaves, out_first + done,
+                                 out + done);
         done += batch;
     }
 }

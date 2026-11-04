@@ -22,7 +22,7 @@ static_assert(MC_THREADS_WORKERS <= 64); /* the worker mask below */
 
 enum : uint32_t {
     CAVE_LAYERS =
-        751u, /* -250 to 500, both included: all terrain makes, so the pinned digests say a taller world moved nothing */
+        1501u, /* -250 to 1250, both included: all terrain makes, as plan 003 phase 8 stage 4's ranges use the height */
     CAVE_WORKERS_MANY = 16u,
     CAVE_CHUNK = 16u,
     CAVE_CHUNK_VOXELS = CAVE_CHUNK * CAVE_CHUNK * CAVE_LAYERS,
@@ -38,7 +38,8 @@ static const uint64_t CAVE_SEED_LIST[CAVE_SEEDS] = {0x1234567890ABCDEFull, 1ull,
 
 /* Pinned: see README.md. */
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
-static const uint64_t CAVE_DIGEST_PIN = 0x3BFEBDD9E240B6F3ull;
+/* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
+static const uint64_t CAVE_DIGEST_PIN = 0xE9A38FEA90F39FC8ull;
 
 static uint64_t cave_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

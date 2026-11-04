@@ -8,8 +8,10 @@
 **Public functions** (`run/include/game/spawn/index.h`):
 
 - `game_ground_z`: a column's highest block, of any kind.
+- `game_spawn_bare_ground_z`: the same with what grows on it left out.
 - `game_spawn_top_is_dry_land`: whether that block is land to start on.
 - `game_spawn_may_be_dry`: whether a column's fields let it be, without making its blocks.
+- `game_spawn_is_gentle`: whether the ground round a place is fit to start on, from its fields.
 - `game_spawn_walk`: squares about the middle, nearest first, asking a probe.
 - `game_spawn_find`: the walk, over real terrain.
 
@@ -28,6 +30,10 @@ The column's very top, made by every stage. It is land if it is solid and is non
 | Snow on any of those | As dry as what it lies on |
 | Anything right on water or lava | It is floating |
 | Cactus | It hurts to stand on |
+
+## Gentle ground
+
+A mountain range can stand at the world's middle: on the default seed, the nearest dry land to it is at z = 970. And a body should not start on a ledge. So `game_spawn_find` first looks for dry land with ground at most 120 high, differing by at most 6 blocks from the ground 8 blocks away along each axis, and by at most 14 from that 24 blocks away. This reads the fields, 9 columns of them, and that first. The fields leave out caves and ponds, so a place that passes then has its real ground held to within 6 blocks of that 4 blocks away along each axis, what grows left out, which is 5 columns' blocks at about 1.2 ms each, on few places. Only if a whole walk finds none does it take the nearest dry land of any kind.
 
 ## How the search goes
 

@@ -12,3 +12,5 @@
 No display, no card and no input device.
 
 A seed with no land within reach cannot be found on purpose, so `no_land_anywhere_ends_at_the_middle_having_looked_everywhere` gives the walk a probe that finds nothing. That walk is what `game_spawn_find` runs, through a probe that reads real blocks, which `every_seed_written_down_starts_on_land` and `many_seeds_start_on_land` hold to `terrain_generate_box`.
+
+Every seed's start is also held to gentle ground: `game_spawn_is_gentle`, at most z = 150, and the bare ground 4 blocks off each way within 7 blocks.

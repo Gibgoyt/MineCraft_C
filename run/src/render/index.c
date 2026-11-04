@@ -55,7 +55,9 @@ void render_deinit(render_t *render) {
 uint64_t render_pool_bytes_for(const render_t *render, uint32_t slot_count) {
     /* On top of the floor, and not up to it: each size of slab holds a page of its own however little of it is in use, so a
      * small table with the floor alone ran out: Stage 08.4 issue 3. */
-    uint64_t bytes = (uint64_t)slot_count * RENDER_POOL_BYTES_PER_COLUMN + RENDER_POOL_BYTES_MIN;
+    const uint64_t near = slot_count < RENDER_POOL_NEAR_COLUMNS ? slot_count : RENDER_POOL_NEAR_COLUMNS;
+    uint64_t bytes = near * RENDER_POOL_BYTES_PER_NEAR_COLUMN +
+                     ((uint64_t)slot_count - near) * RENDER_POOL_BYTES_PER_COLUMN + RENDER_POOL_BYTES_MIN;
     bytes = bytes > render->limits.pool_bytes ? render->limits.pool_bytes : bytes;
     return bytes / WORLD_BUFFERS_PAGE_BYTES * WORLD_BUFFERS_PAGE_BYTES;
 }

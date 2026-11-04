@@ -21,11 +21,12 @@
 The climate and the ground are read on the density's own lattice, every 4 blocks, and interpolated, always in the same order, `x` and then `y`. So a column's bits never depend on which box or tile asked. With `h` the height, `s` the softness, `c` continentalness, `w` weirdness, and `width` and `shore` two 2D fields of this stage:
 
     wide      = (width + 1) / 2
-    reach     = 1 when c <= -0.3;  0 from c = 0.35;  between, u * u * (3 - 2 * u) with u = (0.35 - c) / 0.65
+    reach     = 1 when c <= -0.3;  0 from c = 0.15;  between, u * u * (3 - 2 * u) with u = (0.15 - c) / 0.45
+    depth     = reach * (1 when h <= 45;  0 from h = 120;  between, v * v * (3 - 2 * v) with v = (120 - h) / 75)
     bank      = 0.12 * reach
     inner     = (0.03 + 0.04 * wide) * reach
     outer     = inner + bank
-    river     = reach when |w| <= inner;  0 from outer;  between, reach * t * t * (3 - 2 * t) with t = (outer - |w|) / bank
+    river     = depth when |w| <= inner;  0 from outer;  between, depth * t * t * (3 - 2 * t) with t = (outer - |w|) / bank
 
     top       = h + s + 9                         above any ground this column can have
     bed       = -3 - 4 * wide
@@ -34,7 +35,9 @@ The climate and the ground are read on the density's own lattice, every 4 blocks
 
 **A river runs where weirdness is 0.** That is where `ridges` is -1, the valley floors the density's `valley` spline has already sunk and where mountains cannot be, since `peak` is 0 there. A line where a smooth field is 0 has no ends. It closes on itself or runs on until it meets the sea.
 
-**A river belongs to the coast, by `reach`.** Weirdness's cell is 512 blocks, so its lines lie everywhere, and cutting them all to sea level left a maze of water with the land in pieces: 7 to 8% of the map, and on one seed the largest piece of dry land held 35.1% of it. So a river is whole near the coast, narrows and shallows going inland, stops holding water where its cut no longer reaches the sea's level, goes on as a dry gully, and is gone by `c = 0.35`, so the far inland has none. Bank and channel narrow together and `river` falls with them, so the end leaves no step. All rivers stand at sea level, `z = 0`, and only the ground is moved to make room.
+**A river belongs to the coast, by `reach`.** Weirdness's cell is 512 blocks, so its lines lie everywhere, and cutting them all to sea level left a maze of water with the land in pieces: 7 to 8% of the map, and on one seed the largest piece of dry land held 35.1% of it. So a river is whole near the coast, narrows and shallows going inland, stops holding water where its cut no longer reaches the sea's level, goes on as a dry gully, and is gone by `c = 0.15`, so the far inland has none. Bank and channel narrow together and `river` falls with them, so the end leaves no step. All rivers stand at sea level, `z = 0`, and only the ground is moved to make room.
+
+**A river stops at high ground, by `depth`.** A range is no place for a canyon cut down to the sea, so a river fades over heights of 45 to 120. Only its depth fades this way, and not its width: when both did, its end was a notch a few blocks wide with sheer walls, as the slices showed. A river met by a range goes dry and shallow at the range's foot, and may start again on the far side, where it is a short piece that does not reach the sea. `rivers_hold_water_and_reach_the_sea_and_the_coast_has_beaches` finds 90.5% joined, against its 90%, which is close, and a failure there most likely means this.
 
 The cut is a limit on height: **ground stays ground up to `carve_top`, and nothing above it does**. So it needs no 3D noise of its own, and it joins the unchanged ground smoothly, since `carve_top` comes down from `top`, above any ground there is. It never fills anything in, so where the sea bed is already lower than a river's bed, the river makes no difference.
 
@@ -99,7 +102,7 @@ and it holds its fluid from its level down. Levels on steps of 3 mean neighbours
 2. A deeper voxel beside the sea's rule, or under it, is stone where that rule says water at that height or over it. Where the rule says air, it stays open if it is air, so a cave above the sea's level can reach the surface, and is stone if it would hold fluid.
 3. Water directly on the lava level, at `z = -229`, is stone.
 
-The near-surface rule can reach no lower than `-116 - 30 - 12 = -158`, and aquifer lava no higher than -160, so the sea cannot touch lava. Whole-number sums do the plane test, with no `sqrt`: the difference of two squared distances is the distance from the plane times twice the distance between the sites.
+The near-surface rule can reach no lower than `-116 - 26 - 12 = -154`, and aquifer lava no higher than -160, so the sea cannot touch lava. Whole-number sums do the plane test, with no `sqrt`: the difference of two squared distances is the distance from the plane times twice the distance between the sites.
 
 | Field | Cell, in blocks | Octaves | Dimensions | Limit |
 |---|---|---|---|---|
@@ -113,4 +116,4 @@ Each limit is about twice what that field measures: `raw_noise_measures_what_the
 
 ## What it costs
 
-A lattice column costs the density's 27 octaves over again, plus continentalness and weirdness through the climate, and the 4 of the two 2D fields. The fill asks for the lattice of a 16-block tile on top of what the density asks for: the stage file has the numbers. A flood costs nothing in a tile with nothing opened. In one that has, it looks at up to 49 lattice columns and the 27 cells round each aquifer cell it enters. A voxel above all 27 levels costs one comparison.
+A lattice column costs the density's 30 to 35 octaves over again, plus continentalness and weirdness through the climate, and the 4 of the two 2D fields. The fill asks for the lattice of a 16-block tile on top of what the density asks for: the stage file has the numbers. A flood costs nothing in a tile with nothing opened. In one that has, it looks at up to 49 lattice columns and the 27 cells round each aquifer cell it enters. A voxel above all 27 levels costs one comparison.

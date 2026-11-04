@@ -11,7 +11,7 @@
 
 Only a release build's numbers mean anything: debug is at `-O0`.
 
-A **column** here is what it is in the plan and in `run/src/world/column/`: a chunk's, 16 by 16 and 1536 layers, the very box the game asks for. A round is 36 of them, each in its own box. Each place keeps its best of 3 rounds, and the gate is on its 16-worker number, as the plan's target is. The `tour` directory beside this is the phase gate's biome tour.
+A **column** here is what it is in the plan and in `run/src/world/column/`: a chunk's, 16 by 16 and 1536 layers, the very box the game asks for. A round is 36 of them, each in its own box. Each place keeps its best of 3 rounds, and the gate is on its 16-worker number, as the plan's target is. The `tour` directory beside this is the phase gate's biome tour, over every layer of the world, -250 to 1250.
 
 ## Results
 

@@ -28,10 +28,15 @@ enum : uint64_t {
     RENDER_POOL_BYTES_DEFAULT =
         (RENDER_VOXEL_BUDGET_BYTES - RENDER_COLUMN_COUNT_DEFAULT * sizeof(world_buffers_column_t)) /
         WORLD_BUFFERS_PAGE_BYTES * WORLD_BUFFERS_PAGE_BYTES,
-    /* The pool render_pool_bytes_for gives each column. Real terrain, measured in the phase 10 gate on 100 columns scattered over
-     * 1280 blocks: a mean of 216 KiB a column, 20.2 sections with something other than one block all through, at about 10.7 KiB
-     * each. This is 24 sections, in 16 KiB of slab each, for slab waste and for columns under mountains. */
-    RENDER_POOL_BYTES_PER_COLUMN = 24ull * 16384ull,
+    /* The pool render_pool_bytes_for gives each column. Real terrain, measured at the default seed's middle, among plan 003 phase 8 stage 4's
+     * ranges, at a render distance of 32: a mean of 562 KiB a column, 49.5 sections with something other than one block all through, at
+     * about 11.4 KiB each, over the 3209 columns of 4225 slots that such a distance fills. This is 32 sections for each slot, in 16 KiB of
+     * slab each, and so 25% over that most crowded place, as most of the world needs less. */
+    RENDER_POOL_BYTES_PER_COLUMN = 32ull * 16384ull,
+    /* And the columns nearest the eye can all be a whole range's height: 96 sections each, for this many. So a short render distance on a
+     * peak still draws all of it. */
+    RENDER_POOL_BYTES_PER_NEAR_COLUMN = 96ull * 16384ull,
+    RENDER_POOL_NEAR_COLUMNS = 256ull,
     /* Never smaller than this: a world of a few columns still has every slab size to serve, each with a page of its own. */
     RENDER_POOL_BYTES_MIN = (uint64_t)WORLD_BUFFERS_CLASS_COUNT * WORLD_BUFFERS_PAGE_BYTES,
 };
