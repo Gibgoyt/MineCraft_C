@@ -244,6 +244,9 @@ Appended as they land:
 - `84e2608` Bring spaghetti closer together and dry out most aquifer cells so a body on foot can find caves and walk down to the deep levels, with bench_cave_walk and a test that walks the real game into one.
 - `3a5d2cb` Say in the repository's structure what bench/cave_walk and tests/run/terrain/cave/walk are.
 - `886962d` Record stage 5 of world generation in its plan file. Its subject says "up to 4 times as many" ways in: the ratio per seed is 3.3 to 4.6.
+- `6e3002e` Move the biomes' boxes to the terrain as it now stands, with woods up a range's foot, peaks only from 500 and a snow line on warm ones, mushroom fields on the coast and swamps down to it, and add bench_biome_map to show who holds each height.
+- `e79e287` Say in the repository's structure what bench/biome_map is.
+- `3a7cee7` Record stage 6 of world generation in its plan file: every biome was still found, but the boxes did not suit the new terrain, what moved and why, and what is left to Ahmed and stage 7.
 
 ## Issues found
 
