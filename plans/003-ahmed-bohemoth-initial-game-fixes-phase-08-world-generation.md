@@ -164,6 +164,7 @@ Appended as they land:
 - `a170675` List stage 3's commits in the world generation plan file.
 - `46e1271` Hold every one of the 8 seeds inside the sea target by giving continentalness's first octave less weight and moving the coast to match, and let a lake's ice over cut ground pass the feature test.
 - `28e62e5` Have the drop and inventory tests read where the body started from the program's own line, so new ground does not fail them, and let the frozen sky test allow a few pixels of a block's own tick.
+- `0d0a790` Record stage 3's second pass in its plan file: all 8 seeds inside the sea target, each of the 9 red tests read, 4 now passing, and why the other 5 wait for stage 7.
 
 ## Issues found
 
