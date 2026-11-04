@@ -24,7 +24,7 @@
 /* What the rules can add to filler_depth at most: run/src/terrain/surface/ asks the header for this. */
 #define GZ_FILLER_WOBBLE 3
 #define GZ_MAX_FEATURE_RATE 256
-#define GZ_HEIGHT_LIMIT 1000
+#define GZ_HEIGHT_LIMIT 1250
 #define GZ_STEEP_LIMIT 16
 /* Numbers are compared in millionths. A finer decimal than that is a typo. */
 #define GZ_SCALE 1000000

@@ -1,7 +1,7 @@
 name: wooded_badlands
 where: land
 priority: 1
-climate: { temperature: [0.55, 1], humidity: [0.1, 1], erosion: [-1, 0.2], height: [30, 170] }
+climate: { temperature: [0.55, 1], humidity: [0.1, 1], erosion: [-1, 0.2], height: [30, 500] }
 surface:
   top: red_sand
   filler: red_sand
@@ -9,7 +9,7 @@ surface:
   under: red_sandstone
   under_depth: 3
   bands: { depth: 14, from: 40 }
-  high: { block: coarse_dirt, from: 70 }
+  high: { block: coarse_dirt, from: 150 }
   patches:
     - { block: grass_block, from: 0.2, to: 1 }
 features: { tree_oak: 2, grass: 2, dead_bush: 1 }

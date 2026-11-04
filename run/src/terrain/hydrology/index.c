@@ -359,6 +359,7 @@ static terrain_hydrology_column_t hydrology_column_in(const hydrology_lattice_t 
     return terrain_hydrology_column_from(&inputs);
 }
 
+[[gnu::noinline]]
 void terrain_hydrology_columns_area(const terrain_hydrology_t *hydrology, const terrain_climate_area_t *area,
                                     terrain_hydrology_column_t *columns) {
     ASSERT(area->step_x > 0 && area->step_y > 0);
