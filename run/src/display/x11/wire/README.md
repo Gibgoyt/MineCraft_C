@@ -13,5 +13,5 @@
 - `wire_key_code`, `wire_button`, `wire_is_auto_repeat`: what an event means in evdev's terms, which is what the game reads.
 - `wire_pointer_start`, `wire_pointer_take`, `wire_pointer_wants_warp`: mouse movement from a pointer held in the window.
 
-**May be called by:** `display/x11`.
+**May be called by:** `display/x11`, and `audio` for `wire_display_number` alone, to tell a test's private display from a person's.
 **Depends on:** nothing of ours.

@@ -23,7 +23,6 @@ typedef enum pulse_wire_command_t : uint32_t {
     PULSE_WIRE_TIMEOUT = 1u,
     PULSE_WIRE_REPLY = 2u,
     PULSE_WIRE_CREATE_PLAYBACK_STREAM = 3u,
-    PULSE_WIRE_DELETE_PLAYBACK_STREAM = 4u,
     PULSE_WIRE_AUTH = 8u,
     PULSE_WIRE_SET_CLIENT_NAME = 9u,
     PULSE_WIRE_REQUEST = 61u,
@@ -75,7 +74,6 @@ uint32_t pulse_wire_client_name(uint8_t *out, uint32_t capacity, uint32_t tag, c
  * silent asks for. Otherwise the volume is the server's to remember, so the desktop's mixer keeps its say. */
 uint32_t pulse_wire_create_stream(uint8_t *out, uint32_t capacity, uint32_t tag, const char *name, uint32_t tlength,
                                   bool muted);
-uint32_t pulse_wire_delete_stream(uint8_t *out, uint32_t capacity, uint32_t tag, uint32_t channel);
 
 /* Decoders: false, touching nothing else, on anything malformed or cut short. */
 [[nodiscard]] bool pulse_wire_head_parse(const uint8_t *bytes, uint32_t size, pulse_wire_head_t *out);
