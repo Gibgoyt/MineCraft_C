@@ -58,6 +58,7 @@ Appended as they land:
 
 - `a0cb295` Let a torch go on the side of a block, leaning out from it as one of four new blocks, lit and drawn by steps, and dropped when the block behind it goes by mining, a blast or anything else.
 - `78a5859` List the wall torch directory and its test in the repository structure.
+- `9bf478a` Record phase 2 of the game fixes in its plan file: every box an agent can tick, the results, and what was found on the way.
 
 ## Issues found
 
