@@ -61,7 +61,8 @@ static uint64_t pt_number_before(const char *text, const char *needle) {
     return start == at - 1 ? UINT64_MAX : strtoull(start, nullptr, 10);
 }
 
-static void pt_run(test_context_t *t, const char *script, const char *root, uint32_t timeout_ms,
+/* titles is how many times the script comes back to the title screen, the last on the way to Quit Game. */
+static void pt_run(test_context_t *t, const char *script, const char *root, uint32_t timeout_ms, uint64_t titles,
                    test_process_t *process) {
     char *const argv[] = {t->borrowed_args[0],
                           (char *)"--headless",
@@ -89,7 +90,7 @@ static void pt_run(test_context_t *t, const char *script, const char *root, uint
     }
     CHECK_CONTAINS(process->output, " 0 bytes live");
     /* Saved on the way to the title, opened from what was saved, and out by Quit Game. */
-    CHECK_EQ_U64(pt_count(process->output, "session: back on the title screen"), 2u);
+    CHECK_EQ_U64(pt_count(process->output, "session: back on the title screen"), titles);
     CHECK_EQ_U64(pt_count(process->output, "session: quit"), 1u);
     CHECK_CONTAINS(process->output, "game: the player goes on from");
     CHECK_CONTAINS(process->output, " was read");
@@ -101,7 +102,7 @@ TEST(a_first_day_mines_dirt_picks_it_up_crafts_changes_the_distance_and_comes_ba
     char *const root = pt_temp(t);
     REQUIRE(root != nullptr);
     test_process_t process;
-    pt_run(t, "tests/run/playthrough/fixtures/day.script", root, PT_DAY_MS, &process);
+    pt_run(t, "tests/run/playthrough/fixtures/day.script", root, PT_DAY_MS, 2u, &process);
     const char *const output = process.output;
 
     /* A mangrove's trunk, on seed 36: the one line a person would look for. */
@@ -144,7 +145,7 @@ TEST(mangrove_planks_make_stairs_on_a_bench_that_is_placed_broken_and_all_of_it_
     char *const root = pt_temp(t);
     REQUIRE(root != nullptr);
     test_process_t process;
-    pt_run(t, "tests/run/playthrough/fixtures/stairs.script", root, PT_DAY_MS, &process);
+    pt_run(t, "tests/run/playthrough/fixtures/stairs.script", root, PT_DAY_MS, 2u, &process);
     const char *const output = process.output;
 
     /* Four made and in slot 4, two put down and one back: three in hand, once on the way out and once again from the save. */
@@ -172,12 +173,43 @@ TEST(mangrove_planks_make_stairs_on_a_bench_that_is_placed_broken_and_all_of_it_
     }
 }
 
+/* What the stairs do not reach: a bench closed with planks on its grid and on the pointer, a bench that stands through a save, and its west half. */
+TEST(a_bench_gives_its_grid_back_stands_through_a_save_and_goes_by_its_west_half) {
+    REQUIRE(t->arg_count >= 1);
+    char *const root = pt_temp(t);
+    REQUIRE(root != nullptr);
+    test_process_t process;
+    pt_run(t, "tests/run/playthrough/fixtures/bench.script", root, PT_DAY_MS, 3u, &process);
+    const char *const output = process.output;
+
+    /* Saved with it standing. Mud, seven planks and two sticks: the two on the grid and the five on the pointer came back. */
+    CHECK_EQ_U64(pt_count(output, "the player mined 5 blocks and placed 2"), 1u);
+    CHECK_EQ_U64(pt_count(output, "the inventory holds 10 items in 3 stacks"), 1u);
+    /* From that save its west half is still there to be mined, once in the books, and the one bench it gives is picked up. So it is after the second. */
+    CHECK_EQ_U64(pt_count(output, "the player mined 6 blocks and placed 2"), 2u);
+    CHECK_EQ_U64(pt_count(output, "the last mined was woodworking_bench_west"), 2u);
+    CHECK_EQ_U64(pt_count(output, "the inventory holds 11 items in 4 stacks"), 2u);
+
+    static const char *const shots[] = {"bench_placed.png", "grid_two.png", "grid_back.png",   "reloaded.png",
+                                        "reopened.png",     "west_aim.png", "west_broken.png", "gone_reloaded.png"};
+    for (uint64_t i = 0u; i < sizeof(shots) / sizeof(shots[0]); i++) {
+        uint64_t size = 0u;
+        CHECK_EQ_U64(file_path_size(pt_join(t, pt_join(t, root, "shots"), shots[i]), &size), FILE_OK);
+        CHECK(size > 1000u);
+    }
+    if (getenv("MC_PLAYTHROUGH_KEEP") != nullptr) {
+        printf("  kept in %s\n", root);
+    } else {
+        pt_temp_remove(t, root);
+    }
+}
+
 TEST(a_night_in_the_open_meets_zombies_skeletons_and_creepers_and_is_saved_with_them) {
     REQUIRE(t->arg_count >= 1);
     char *const root = pt_temp(t);
     REQUIRE(root != nullptr);
     test_process_t process;
-    pt_run(t, "tests/run/playthrough/fixtures/night.script", root, PT_NIGHT_MS, &process);
+    pt_run(t, "tests/run/playthrough/fixtures/night.script", root, PT_NIGHT_MS, 2u, &process);
     const char *const output = process.output;
 
     CHECK(pt_number_before(output, "mobs came") >= 10u);

@@ -13,7 +13,7 @@ No card, no display, and the program itself is not run. What it checks:
 
 - **Placing:** the west half goes where aimed and the east half at `x + 1`, for one item.
 - **Refusing:** a block in the east cell, the player in either cell, and a column not loaded for the east half each place nothing and keep the item. What can be overwritten, as tall grass or water, is overwritten.
-- **Breaking:** mining either half takes both and drops exactly one bench, with what stood on or hung from either half going too. A bench beside it stays.
+- **Breaking:** mining either half takes both and drops exactly one bench, with what stood on or hung from either half going too. A bench beside it stays. It is the same across the edge of a column.
 - **A half alone** breaks by itself with one bench. If its other half's column is not loaded, it stays until it is.
 
 A blast is in `tests/run/mob/creeper/`, and the whole of it played through the built program in `tests/run/playthrough/`.
