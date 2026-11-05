@@ -26,6 +26,7 @@
     sensitivity_percent: 100
     render_scale_percent: 100
     worker_count: 16
+    sound_volume_percent: 70
     vsync: true
     show_coordinates: true
     effect_shapes: true

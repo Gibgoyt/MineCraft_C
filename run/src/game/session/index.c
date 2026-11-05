@@ -273,6 +273,12 @@ static void game_session_settings_open(game_session_t *session) {
 /* Hands what has changed on: to the world if one is open, and to the display. False if the card failed, having said why. */
 static bool game_session_settings_apply(game_session_t *session) {
     game_session_config_from_settings(session);
+    audio_t *const audio = session->borrowed_game->borrowed_audio;
+    const uint32_t volume = session->borrowed_settings->values.sound_volume_percent;
+    /* With a sound to judge it by, as this comes when a hand lets go of the slider. */
+    if (audio != nullptr && audio_volume_get(audio) != volume) {
+        audio_volume_set(audio, volume, true);
+    }
     if (session->borrowed_display != nullptr) {
         display_flip_vsync_set(&session->borrowed_display->flip, session->config.uncapped == 0u);
     }

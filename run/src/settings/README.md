@@ -29,6 +29,7 @@
 | Render scale | At once: new pictures on the card, brought up to the display's size. See `run/src/game/README.md` |
 | Vsync or uncapped | At once. Uncapped is a flip that does not wait for a vblank, if the driver allows it, and otherwise one that does; the gpu thread stops waiting for a picture to be taken |
 | Coordinates | At once: nothing on the card is touched, and `main` draws them or not on the next frame |
+| Sound volume | At once, when a hand lets go of the slider, with one sound to judge it by. In the mixer, so it is on top of what the desktop's own mixer says |
 | Worker count | At the next start, and the screen says so. Workers start before anything else that uses them, and everything that uses them keeps jobs on them |
 
 ## The file

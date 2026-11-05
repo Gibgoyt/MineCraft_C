@@ -23,8 +23,8 @@ static const char *const device_memory_only[] = {"cuda/src/device_memory/index.c
 /* Section 4: "Every such static ... is listed in the lint's allowlist." */
 static const char *const borrowed_static_files[] = {"run/src/display/vt_guard/index.c", nullptr};
 
-/* Section 1: the one exception to no sockets, a Unix socket to the X server on this machine. */
-static const char *const x11_socket[] = {"run/src/display/x11/index.c", nullptr};
+/* Section 1: the two exceptions to no sockets, each a Unix socket to a server on this machine: X, and the sound server. */
+static const char *const local_socket[] = {"run/src/display/x11/index.c", "run/src/audio/pulse/index.c", nullptr};
 
 static const char why_type[] = "says nothing about its size; use the sized types in plans/CODING_STANDARD.md section 2";
 static const char why_float[] = "is a floating-point base type; use float32_t or float64_t";
@@ -139,17 +139,17 @@ static const lint_word_t lint_words[] = {
     MC_WORD("cudaMallocHost", why_device, device_memory_only, LINT_LANGUAGE_BOTH, 1),
     MC_WORD("cudaFreeHost", why_device, device_memory_only, LINT_LANGUAGE_BOTH, 1),
     /* Section 1: no networking. */
-    MC_WORD("socket", why_net, x11_socket, LINT_LANGUAGE_BOTH, 1),
+    MC_WORD("socket", why_net, local_socket, LINT_LANGUAGE_BOTH, 1),
     MC_WORD("socketpair", why_net, nullptr, LINT_LANGUAGE_BOTH, 1),
-    MC_WORD("connect", why_net, x11_socket, LINT_LANGUAGE_BOTH, 1),
+    MC_WORD("connect", why_net, local_socket, LINT_LANGUAGE_BOTH, 1),
     MC_WORD("bind", why_net, nullptr, LINT_LANGUAGE_BOTH, 1),
     MC_WORD("listen", why_net, nullptr, LINT_LANGUAGE_BOTH, 1),
     MC_WORD("accept", why_net, nullptr, LINT_LANGUAGE_BOTH, 1),
     MC_WORD("accept4", why_net, nullptr, LINT_LANGUAGE_BOTH, 1),
-    MC_WORD("send", why_net, x11_socket, LINT_LANGUAGE_BOTH, 1),
+    MC_WORD("send", why_net, local_socket, LINT_LANGUAGE_BOTH, 1),
     MC_WORD("sendto", why_net, nullptr, LINT_LANGUAGE_BOTH, 1),
     MC_WORD("sendmsg", why_net, nullptr, LINT_LANGUAGE_BOTH, 1),
-    MC_WORD("recv", why_net, x11_socket, LINT_LANGUAGE_BOTH, 1),
+    MC_WORD("recv", why_net, local_socket, LINT_LANGUAGE_BOTH, 1),
     MC_WORD("recvfrom", why_net, nullptr, LINT_LANGUAGE_BOTH, 1),
     MC_WORD("recvmsg", why_net, nullptr, LINT_LANGUAGE_BOTH, 1),
     MC_WORD("getaddrinfo", why_net, nullptr, LINT_LANGUAGE_BOTH, 1),

@@ -20,7 +20,7 @@ thread, but one `thread_t` by one thread at a time.
 ## Placement
 
 The order is the first CPU of each physical core, in rising order, then every other CPU, in rising order. Roles take
-places in it: main, sim, gpu, then workers, using the counts in `threads:`. `threads.reserved_os` is whatever remains at
+places in it: main, sim, gpu, workers, then audio, using the counts in `threads:`. `threads.reserved_os`, 0 now that audio has the spare, is whatever remains at
 the end. On the i9-10900K, whose CPU N and CPU N+10 share a core:
 
 | CPUs | Who |
@@ -28,7 +28,7 @@ the end. On the i9-10900K, whose CPU N and CPU N+10 share a core:
 | 0, 1, 2 | main, sim, gpu |
 | 3 to 9 | workers 0 to 6, each with a core to itself until the next row starts |
 | 10 to 18 | workers 7 to 15, on the second hyperthread of cores 0 to 8 |
-| 19 | left for the OS |
+| 19 | audio |
 
 With `pin_physical_first: false`, the order is simply rising. With fewer CPUs than threads, for instance under `taskset`,
 places wrap round and threads share, after a warning, so that the game still runs.

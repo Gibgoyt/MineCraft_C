@@ -65,6 +65,7 @@ typedef enum machine_key_id_t : uint8_t {
     KEY_THREADS_SIM,
     KEY_THREADS_GPU,
     KEY_THREADS_WORKERS,
+    KEY_THREADS_AUDIO,
     KEY_THREADS_RESERVED_OS,
     KEY_THREADS_PIN_PHYSICAL_FIRST,
     KEY_GPU_ENABLED,
@@ -125,6 +126,7 @@ static const machine_key_t machine_keys[KEY_COUNT] = {
     [KEY_THREADS_SIM] = KEY_INT("threads.sim", "MC_THREADS_SIM", 1, 1),
     [KEY_THREADS_GPU] = KEY_INT("threads.gpu", "MC_THREADS_GPU", 0, 1),
     [KEY_THREADS_WORKERS] = KEY_INT("threads.workers", "MC_THREADS_WORKERS", 1, 4096),
+    [KEY_THREADS_AUDIO] = KEY_INT("threads.audio", "MC_THREADS_AUDIO", 0, 1),
     [KEY_THREADS_RESERVED_OS] = KEY_INT("threads.reserved_os", "MC_THREADS_RESERVED_OS", 0, 4096),
     [KEY_THREADS_PIN_PHYSICAL_FIRST] = KEY_BOOL("threads.pin_physical_first", "MC_THREADS_PIN_PHYSICAL_FIRST"),
     [KEY_GPU_ENABLED] = KEY_BOOL("gpu.enabled", "MC_GPU_ENABLED"),
@@ -356,7 +358,7 @@ static bool machine_check_consistency(const machine_value_t *values, yaml_error_
 #define NODE(id) (values[id].borrowed_node)
     /* Threads are pinned one to a logical CPU (plan section 2), so asking for more than exist cannot work. */
     const int64_t threads = NUMBER(KEY_THREADS_MAIN) + NUMBER(KEY_THREADS_SIM) + NUMBER(KEY_THREADS_GPU) +
-                            NUMBER(KEY_THREADS_WORKERS) + NUMBER(KEY_THREADS_RESERVED_OS);
+                            NUMBER(KEY_THREADS_WORKERS) + NUMBER(KEY_THREADS_AUDIO) + NUMBER(KEY_THREADS_RESERVED_OS);
     if (threads > NUMBER(KEY_CPU_LOGICAL_THREADS)) {
         return yaml_fail_at_node(NODE(KEY_THREADS_WORKERS), error,
                                  "threads add up to %" PRId64 ", past cpu.logical_threads of %" PRId64, threads,

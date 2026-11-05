@@ -21,8 +21,8 @@ enum : int32_t {
     /* Row 6, left to right, with SETTINGS_GAP between: each as wide as its box and its words want, and Effects... has what is left. */
     SETTINGS_VSYNC_WIDTH = 46,
     SETTINGS_COORDINATES_WIDTH = 82,
+    SETTINGS_VOLUME_ROW = 7,
     SETTINGS_DONE_ROW = 8,
-    SETTINGS_MESSAGE_ROW = 7,
 };
 
 enum : uint32_t {
@@ -36,6 +36,7 @@ enum : uint32_t {
     SETTINGS_ID_EFFECTS = 107u,
     SETTINGS_ID_DONE = 108u,
     SETTINGS_ID_COORDINATES = 109u,
+    SETTINGS_ID_VOLUME = 110u,
     SETTINGS_ID_EFFECT_0 = 120u,
     SETTINGS_TEXT_COLOR = 0xFFFFFFFFu,
     SETTINGS_ERROR_COLOR = 0xFFFF6060u,
@@ -112,6 +113,12 @@ static bool ui_screen_settings_main_page(ui_screen_settings_t *screen, bool *out
     changed |= ui_screen_settings_slider(widget, SETTINGS_ID_WORKERS, 5, label, &values->worker_count,
                                          SETTINGS_WORKERS_MIN, SETTINGS_WORKERS_MAX);
 
+    uint32_t volume = values->sound_volume_percent;
+    (void)snprintf(label, sizeof(label), "Sound volume: %" PRIu32 "%%", volume);
+    changed |= ui_screen_settings_slider(widget, SETTINGS_ID_VOLUME, SETTINGS_VOLUME_ROW, label, &volume,
+                                         SETTINGS_SOUND_VOLUME_MIN, SETTINGS_SOUND_VOLUME_MAX);
+    values->sound_volume_percent = (uint8_t)volume;
+
     const ui_rect_t row = ui_screen_settings_row(widget, 6, SETTINGS_ROW_WIDTH);
     const int32_t vsync_width = SETTINGS_VSYNC_WIDTH * scale;
     const int32_t coordinates_width = SETTINGS_COORDINATES_WIDTH * scale;
@@ -180,14 +187,13 @@ ui_screen_settings_action_t ui_screen_settings_frame(ui_screen_settings_t *scree
     const bool effects_page = screen->page == UI_SCREEN_SETTINGS_PAGE_EFFECTS;
     const ui_rect_t title = {0, ui_screen_settings_top(widget) + SETTINGS_TITLE_Y * scale, whole.width,
                              SETTINGS_TITLE_HEIGHT * scale};
-    ui_widget_label_centered(widget, title, effects_page ? "Effects" : "Settings", SETTINGS_TEXT_COLOR, true);
+    /* What went wrong with keeping them takes the title's place: every row below has its use. */
+    const bool has_message = !effects_page && screen->message[0] != '\0';
+    ui_widget_label_centered(widget, title, has_message ? screen->message : (effects_page ? "Effects" : "Settings"),
+                             has_message ? SETTINGS_ERROR_COLOR : SETTINGS_TEXT_COLOR, true);
     bool done = false;
     const bool changed =
         effects_page ? ui_screen_settings_effects_page(screen) : ui_screen_settings_main_page(screen, &done);
-    if (!effects_page && screen->message[0] != '\0') {
-        const ui_rect_t line = ui_screen_settings_row(widget, SETTINGS_MESSAGE_ROW, SETTINGS_ROW_WIDTH);
-        ui_widget_label_centered(widget, line, screen->message, SETTINGS_ERROR_COLOR, true);
-    }
     if (escape) {
         if (effects_page) {
             screen->page = UI_SCREEN_SETTINGS_PAGE_MAIN;

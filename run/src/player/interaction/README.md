@@ -11,6 +11,7 @@
 - `player_interaction_harvests`, `player_interaction_speed_milli`, `player_interaction_ticks`: the rules below, for any block and tool.
 - `player_interaction_tick`: one tick of both buttons.
 - `player_interaction_progress`: how far along the block being mined is, for Stage 09.5's breaking overlay.
+- `player_sounds_post`, `player_sounds_next`: what can be heard, into a ring and out of it. The hands post a hit every 4 ticks of mining, a break and a place, if the input has somewhere to put them. Nothing in the world or the save depends on them, and they take no random number.
 - `player_interaction_drops_spawn`, `player_interaction_drop_next`: rolls a block's table into the ring; takes the oldest out of it.
 - `player_interaction_stack_break`: what stood on a block just broken, and what hung on its sides, goes with it, for whatever else breaks one: `run/src/player/felling/`.
 - `player_interaction_hand_give`, `player_interaction_hand_set`, `player_interaction_hand_take`: the one slot placing takes from.

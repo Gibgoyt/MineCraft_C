@@ -147,7 +147,8 @@ bool thread_topology_read(thread_topology_t *out) {
     if (!thread_topology_read_from(out, "/sys/devices/system/cpu", &allowed, MC_THREADS_PIN_PHYSICAL_FIRST != 0)) {
         return false;
     }
-    const uint32_t threads_wanted = MC_THREADS_MAIN + MC_THREADS_SIM + MC_THREADS_GPU + MC_THREADS_WORKERS;
+    const uint32_t threads_wanted =
+        MC_THREADS_MAIN + MC_THREADS_SIM + MC_THREADS_GPU + MC_THREADS_WORKERS + MC_THREADS_AUDIO;
     if (out->cpu_count != MC_CPU_LOGICAL_THREADS || out->physical_count != MC_CPU_PHYSICAL_CORES ||
         out->cpu_count < threads_wanted + MC_THREADS_RESERVED_OS) {
         LOG_WARN("config/machine.yaml has %u logical CPUs on %u cores and places %u threads, leaving %u spare; this "
@@ -177,6 +178,10 @@ uint32_t thread_cpu_for(const thread_topology_t *topology, thread_role_t role, u
     case THREAD_ROLE_WORKER:
         first_slot = MC_THREADS_MAIN + MC_THREADS_SIM + MC_THREADS_GPU;
         count = MC_THREADS_WORKERS;
+        break;
+    case THREAD_ROLE_AUDIO:
+        first_slot = MC_THREADS_MAIN + MC_THREADS_SIM + MC_THREADS_GPU + MC_THREADS_WORKERS;
+        count = MC_THREADS_AUDIO;
         break;
     }
     ASSERT_ALWAYS(index < count);
@@ -211,6 +216,9 @@ static void thread_make_name(char *out, thread_role_t role, uint32_t index) {
         role_name = "gpu";
         break;
     case THREAD_ROLE_WORKER:
+        break;
+    case THREAD_ROLE_AUDIO:
+        role_name = "audio";
         break;
     }
     /* Too many workers to fit would only cut the name, which is fine. */

@@ -71,6 +71,11 @@ void game_ui_set(game_t *game, ui_t *ui) {
     game->borrowed_ui = ui;
 }
 
+void game_audio_set(game_t *game, audio_t *audio) {
+    ASSERT_ALWAYS(game->open == 0u);
+    game->borrowed_audio = audio;
+}
+
 void game_save_set(game_t *game, save_t *save) {
     ASSERT_ALWAYS(game->open == 0u);
     game->borrowed_save = save;
@@ -417,6 +422,8 @@ bool game_open(game_t *game, const game_config_t *config) {
     if (game->borrowed_player != nullptr) {
         game->borrowed_felling = arena_alloc(&game->arena_world, sizeof(player_felling_t), alignof(player_felling_t));
         player_felling_start(game->borrowed_felling);
+        game->borrowed_sounds =
+            arena_alloc_zeroed(&game->arena_world, sizeof(player_sounds_t), alignof(player_sounds_t));
     }
 
     /* Flying: a little above whatever is at the world's middle, water included, looking out and down. Walking: on dry land near it. */
@@ -532,6 +539,7 @@ void game_close(game_t *game) {
     render_close(game->borrowed_render);
     world_close(game->borrowed_world);
     game->borrowed_felling = nullptr;
+    game->borrowed_sounds = nullptr;
     game_arenas_stop(game);
     heap_release(&game->owned_region);
     heap_release(&game->owned_view);

@@ -28,6 +28,9 @@ enum : uint32_t {
     SETTINGS_RENDER_SCALE_MAX = 100u,
     SETTINGS_WORKERS_MIN = 1u,
     SETTINGS_WORKERS_MAX = MC_THREADS_WORKERS,
+    SETTINGS_SOUND_VOLUME_MIN = 0u,
+    SETTINGS_SOUND_VOLUME_DEFAULT = 70u,
+    SETTINGS_SOUND_VOLUME_MAX = 100u,
     SETTINGS_EFFECT_COUNT = 17u,
     SETTINGS_LINE_BYTES = 120u, /* a line past this is not one this program wrote, and is not read */
     /* What settings_persist_write can ever need, with room for a person's comments in what is read. */
@@ -45,7 +48,9 @@ typedef struct settings_values_t {
     uint32_t effects;              /* 24: SHADE_FEATURE_* that are on */
     uint8_t vsync;                 /* 28: flips wait for a vblank, and no picture is drawn past it */
     uint8_t show_coordinates;      /* 29: x, y and z in the top left corner, while playing */
-    uint8_t _pad0[2];              /* 30 */
+    uint8_t
+        sound_volume_percent; /* 30: what the game's sounds are turned down to, on top of the desktop's own volume */
+    uint8_t _pad0[1];         /* 31 */
 } settings_values_t;
 static_assert(sizeof(settings_values_t) == 32);
 

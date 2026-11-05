@@ -191,6 +191,45 @@ uint32_t player_interaction_hand_take(player_interaction_t *interaction, uint16_
     return taken;
 }
 
+/* ---- Sounds ------------------------------------------------------------------------------------------------------- */
+
+void player_sounds_post(player_sounds_t *sounds, uint16_t block, sound_kind_t kind, int32_t x, int32_t y, int32_t z) {
+    const uint8_t family = block_defs[block].sound;
+    if (family == SOUND_FAMILY_NONE) {
+        return;
+    }
+    if (sounds->count == PLAYER_SOUNDS_RING) {
+        sounds->head = (sounds->head + 1u) % PLAYER_SOUNDS_RING;
+        sounds->count--;
+        sounds->lost_count++;
+    }
+    sounds->sounds[(sounds->head + sounds->count) % PLAYER_SOUNDS_RING] = (player_sound_t){
+        .cell = {x, y, z},
+        .family = family,
+        .kind = (uint8_t)kind,
+        ._pad0 = {0},
+    };
+    sounds->count++;
+}
+
+bool player_sounds_next(player_sounds_t *sounds, player_sound_t *out) {
+    if (sounds->count == 0u) {
+        return false;
+    }
+    *out = sounds->sounds[sounds->head];
+    sounds->head = (sounds->head + 1u) % PLAYER_SOUNDS_RING;
+    sounds->count--;
+    return true;
+}
+
+/* Into the input's, if it came with somewhere to put them. */
+static void interaction_sound(const player_interaction_input_t *input, uint16_t block, sound_kind_t kind, int32_t x,
+                              int32_t y, int32_t z) {
+    if (input->borrowed_sounds != nullptr) {
+        player_sounds_post(input->borrowed_sounds, block, kind, x, y, z);
+    }
+}
+
 /* ---- Mining ------------------------------------------------------------------------------------------------------- */
 
 static void interaction_mining_stop(player_interaction_t *interaction) {
@@ -267,6 +306,17 @@ static bool interaction_bench_other_break(player_interaction_t *interaction, wor
     return true;
 }
 
+/* The button is on this block and it has not gone: a short hit, every so often, starting at once. */
+static void interaction_hit(player_interaction_t *interaction, const player_interaction_input_t *input, uint16_t block,
+                            int32_t x, int32_t y, int32_t z) {
+    if (interaction->hit_wait != 0u) {
+        interaction->hit_wait--;
+        return;
+    }
+    interaction->hit_wait = PLAYER_INTERACTION_HIT_EVERY_TICKS - 1u;
+    interaction_sound(input, block, SOUND_KIND_HIT, x, y, z);
+}
+
 static void interaction_mine(player_interaction_t *interaction, world_edit_t *edit,
                              const player_interaction_input_t *input, const raycast_hit_t *hit) {
     const int32_t x = hit->cell[0], y = hit->cell[1], z = hit->cell[2];
@@ -280,8 +330,10 @@ static void interaction_mine(player_interaction_t *interaction, world_edit_t *ed
         interaction->cell[1] = y;
         interaction->cell[2] = z;
         interaction->progress = 0u;
+        interaction->hit_wait = 0u;
     }
     if ((block_defs[block].flags & BLOCK_FLAG_UNBREAKABLE) != 0u) {
+        interaction_hit(interaction, input, block, x, y, z);
         return;
     }
     const uint8_t tool = interaction->held_tool, tier = interaction->held_tier;
@@ -293,7 +345,11 @@ static void interaction_mine(player_interaction_t *interaction, world_edit_t *ed
     const uint64_t work = interaction_work(speed_milli, input->borrowed_movement->on_ground != 0u,
                                            input->borrowed_movement->eyes_under_water != 0u);
     interaction->progress += work;
-    if (interaction->progress < required || !interaction_bench_other_break(interaction, edit, block, x, y, z)) {
+    if (interaction->progress < required) {
+        interaction_hit(interaction, input, block, x, y, z);
+        return;
+    }
+    if (!interaction_bench_other_break(interaction, edit, block, x, y, z)) {
         return;
     }
     const world_edit_status_t status = world_edit_block_set(edit, x, y, z, BLOCK_ID_AIR);
@@ -308,6 +364,7 @@ static void interaction_mine(player_interaction_t *interaction, world_edit_t *ed
     }
     interaction->mined_count++;
     interaction->last_mined = block;
+    interaction_sound(input, block, SOUND_KIND_BREAK, x, y, z);
     /* Shears on their own block give that block and nothing else. run/src/game/ brings it out, as only it knows items. */
     const bool shorn = tool == BLOCK_TOOL_SHEARS && block_defs[block].tool == BLOCK_TOOL_SHEARS;
     if (!shorn && player_interaction_harvests(block, tool, tier)) {
@@ -438,6 +495,7 @@ static void interaction_place(player_interaction_t *interaction, world_edit_t *e
     }
     interaction->hand_count--;
     interaction->placed_count++;
+    interaction_sound(input, block, SOUND_KIND_PLACE, cell[0], cell[1], cell[2]);
     interaction->place_delay = PLAYER_INTERACTION_PLACE_EVERY_TICKS - 1u;
 }
 

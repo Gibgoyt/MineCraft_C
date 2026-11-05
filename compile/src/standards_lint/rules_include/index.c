@@ -62,14 +62,14 @@ enum { INCLUDE_RANK_CUDA = 7 };
  * cuda/, so those get the rows between render and terrain. A lower row may never include a higher one. The diagram does
  * not show profiler; instrumentation has to be callable from the job row upward, so it shares that row. */
 static const include_system_t include_systems[] = {
-    {"main", 1, 0},     {"game", 2, 0},    {"ui", 3, 0},       {"save", 3, 0},
-    {"settings", 3, 0}, {"mob", 4, 0},     {"player", 4, 0},   {"entity", 5, 0},
-    {"item", 5, 0},     {"physics", 5, 0}, {"render", 6, 0},   {"gpu_bridge", INCLUDE_RANK_CUDA, 0},
-    {"terrain", 9, 0},  {"world", 9, 0},   {"display", 10, 0}, {"input", 10, 0},
-    {"texture", 10, 0}, {"job", 11, 0},    {"thread", 11, 0},  {"file", 11, 0},
-    {"time", 11, 0},    {"math", 11, 0},   {"simd", 11, 0},    {"profiler", 11, 0},
-    {"arena", 12, 0},   {"heap", 12, 0},   {"log", 12, 0},     {"assert", 12, 0},
-    {"types", 12, 0},
+    {"main", 1, 0},      {"game", 2, 0},    {"ui", 3, 0},       {"save", 3, 0},
+    {"settings", 3, 0},  {"mob", 4, 0},     {"player", 4, 0},   {"entity", 5, 0},
+    {"item", 5, 0},      {"physics", 5, 0}, {"render", 6, 0},   {"gpu_bridge", INCLUDE_RANK_CUDA, 0},
+    {"terrain", 9, 0},   {"world", 9, 0},   {"display", 10, 0}, {"input", 10, 0},
+    {"texture", 10, 0},  {"audio", 10, 0},  {"job", 11, 0},     {"thread", 11, 0},
+    {"file", 11, 0},     {"time", 11, 0},   {"math", 11, 0},    {"simd", 11, 0},
+    {"profiler", 11, 0}, {"arena", 12, 0},  {"heap", 12, 0},    {"log", 12, 0},
+    {"assert", 12, 0},   {"types", 12, 0},
 };
 enum { INCLUDE_SYSTEM_COUNT = sizeof(include_systems) / sizeof(include_systems[0]) };
 
@@ -96,11 +96,12 @@ static bool include_is_banned(const char *path, const include_banned_t *row) {
 /* Both spellings: GCC falls back to the system directories for #include "immintrin.h". */
 static void include_check_banned(const lint_file_t *file, const lint_include_t *include) {
     for (uint32_t i = 0; i < INCLUDE_BANNED_COUNT; i++) {
-        /* Section 1's one exception: a Unix socket to the X server on this machine. */
-        const bool unix_socket_for_x =
+        /* Section 1's two exceptions: a Unix socket to the X server on this machine, and one to the sound server. */
+        const bool local_socket =
             (strcmp(include->path, "sys/socket.h") == 0 || strcmp(include->path, "sys/un.h") == 0) &&
-            lint_path_matches("run/src/display/x11/index.c", file->path);
-        if (!unix_socket_for_x && include_is_banned(include->path, &include_banned[i])) {
+            (lint_path_matches("run/src/display/x11/index.c", file->path) ||
+             lint_path_matches("run/src/audio/pulse/index.c", file->path));
+        if (!local_socket && include_is_banned(include->path, &include_banned[i])) {
             lint_breach(file->report, file->path, include->line, include_banned[i].rule,
                         "<%s> is not allowed; see plans/CODING_STANDARD.md sections 1 and 7", include->path);
         }

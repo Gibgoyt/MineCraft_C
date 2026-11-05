@@ -37,6 +37,7 @@ typedef enum thread_role_t : uint8_t {
     THREAD_ROLE_SIM,
     THREAD_ROLE_GPU,
     THREAD_ROLE_WORKER,
+    THREAD_ROLE_AUDIO,
 } thread_role_t;
 
 /* One bit per CPU. */
@@ -78,7 +79,7 @@ bool thread_topology_read(thread_topology_t *out);
 bool thread_topology_read_from(thread_topology_t *out, const char *sysfs_cpu_dir, const thread_cpu_mask_t *allowed,
                                bool physical_first);
 
-/* The CPU for the index-th thread of a role, from the counts in config/machine.yaml: main, then sim, gpu, and workers,
+/* The CPU for the index-th thread of a role, from the counts in config/machine.yaml: main, then sim, gpu, workers and audio,
  * so threads.reserved_os is what remains at the end of the order. With too few CPUs this wraps round and threads share.
  * An index past the role's count is a bug and asserts. */
 uint32_t thread_cpu_for(const thread_topology_t *topology, thread_role_t role, uint32_t index);

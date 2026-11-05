@@ -62,15 +62,15 @@ static const char MCT_FIXTURE[] =
     "  l2_kib: 256\n"                                                                                           /* 10 */
     "  l3_mib: 20\n"                                                                                            /* 11 */
     "  simd: { sse42: true, avx: true, avx2: true, fma3: true, bmi1: true, bmi2: true, popcnt: true, "
-    "lzcnt: true, f16c: true, avx512: false }\n"                                                    /* 12 */
-    "threads: { main: 1, sim: 1, gpu: 1, workers: 16, reserved_os: 1, pin_physical_first: true }\n" /* 13 */
-    "gpu:\n"                                                                                        /* 14 */
-    "  enabled: true\n"                                                                             /* 15 */
-    "  api: cuda\n"                                                                                 /* 16 */
-    "  model: RTX 2080 Super\n"                                                                     /* 17 */
-    "  architecture: sm_75\n"                                                                       /* 18 */
-    "  vram_mib: 8192\n"                                                                            /* 19 */
-    "  budget: { voxels_mib: 6144, textures_mib: 256, frames_mib: 256 }\n"                          /* 20 */
+    "lzcnt: true, f16c: true, avx512: false }\n"                                                              /* 12 */
+    "threads: { main: 1, sim: 1, gpu: 1, workers: 16, audio: 1, reserved_os: 0, pin_physical_first: true }\n" /* 13 */
+    "gpu:\n"                                                                                                  /* 14 */
+    "  enabled: true\n"                                                                                       /* 15 */
+    "  api: cuda\n"                                                                                           /* 16 */
+    "  model: RTX 2080 Super\n"                                                                               /* 17 */
+    "  architecture: sm_75\n"                                                                                 /* 18 */
+    "  vram_mib: 8192\n"                                                                                      /* 19 */
+    "  budget: { voxels_mib: 6144, textures_mib: 256, frames_mib: 256 }\n"                                    /* 20 */
     "display: { backend: kms, device: /dev/dri/card1, connector: auto, width: 1920, height: 1080, refresh_hz: 120 "
     "}\n"                                                                               /* 21 */
     "memory: { huge_page_bytes: 2097152, process_budget_mib: 16384 }\n"                 /* 22 */

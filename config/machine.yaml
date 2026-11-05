@@ -10,7 +10,7 @@ cpu:
   l2_kib: 256
   l3_mib: 20
   simd: { sse42: true, avx: true, avx2: true, fma3: true, bmi1: true, bmi2: true, popcnt: true, lzcnt: true, f16c: true, avx512: false }
-threads: { main: 1, sim: 1, gpu: 1, workers: 16, reserved_os: 1, pin_physical_first: true }
+threads: { main: 1, sim: 1, gpu: 1, workers: 16, audio: 1, reserved_os: 0, pin_physical_first: true }
 gpu:
   enabled: true
   api: cuda
