@@ -4,7 +4,9 @@
 
 ## Goal
 
-Holding a block, you see a translucent blue copy of it exactly where it would go, in its real shape, before you click.
+Holding **any** block, you see a translucent blue copy of it exactly where it would go, in its real shape and facing, before you click. That includes the next block of a 1×1 bridge.
+
+**Later words from Ahmed:** "any block needs blue opaque before placing, such as when creating a 1x1 bridge, I can easily see when I am placing a block in-front to extend the bridge!" Placing ahead while bridging is phase 13, and facing and turning are phase 12.
 
 **Ahmed's words:** "similar to hypixel we need to be able to see blocks in like a translucent blue color before placing them!", then "placement failing shows red! I can also rotate it with some button I am not sure which!"
 
@@ -18,7 +20,8 @@ The game outlines the block you're aiming at, but shows nothing of where a held 
 - **What:** the real block that would be placed, in its real shape: the right wall torch for the face, both halves of a bench, all four cells of a smith table, and a door's two halves when doors exist.
 - **How it looks:** translucent blue, about half see-through, over the world, drawn on the card by the same boxes used for blocks and entities (`cuda/src/entity_rays/`, `run/src/render/entities/`).
 - **When placing would fail:** blocked, no ground for a torch, or a column not loaded. **It shows red,** as Ahmed decided.
-- **Rotating before placing:** a key turns the preview a quarter turn each press, and placing uses that turn. **Proposed key: R,** which nothing in the game uses yet. It's Ahmed's to change. **This needs blocks that can face a way,** which today they can't (phase 2's question). Until then, R does nothing for a block with no facings.
+- **Facing and turning:** the preview faces the way the block will be placed, which by default is the player's direction. R turns it a quarter turn each press. Both come from phase 12, which this needs first. **Proposed key: R,** which nothing in the game uses yet. It's Ahmed's to change.
+- **Bridging:** when the aim hits nothing but phase 13's forward cell applies, the preview shows that cell, so you see the next bridge block first.
 - **Setting:** on by default, with a box in Settings beside Coordinates.
 
 ## Todo
