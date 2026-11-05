@@ -525,6 +525,61 @@ TEST(what_a_build_does_not_have_goes_and_the_log_says_what_and_the_world_opens) 
     ns_temp_remove(t, root);
 }
 
+TEST(a_block_being_mined_that_has_gone_stops_the_mining_and_a_stack_keeps_to_what_its_item_is_today) {
+    char *const root = ns_temp_directory(t);
+    REQUIRE(root != nullptr);
+    /* Dirt, under a name no build has, at its own number, and items that moved, so that the file is from other tables. */
+    ns_table_t tables[SAVE_NAMES_KIND_COUNT];
+    ns_table_renamed(t, &tables[SAVE_NAMES_KIND_BLOCKS], SAVE_NAMES_KIND_BLOCKS, BLOCK_ID_DIRT, "gone_block");
+    ns_table_without(t, &tables[SAVE_NAMES_KIND_DROPS], SAVE_NAMES_KIND_DROPS, item_stack_drop_row(1u));
+    ns_table_without(t, &tables[SAVE_NAMES_KIND_ITEMS], SAVE_NAMES_KIND_ITEMS, 1u);
+    ns_table_without(t, &tables[SAVE_NAMES_KIND_MOBS], SAVE_NAMES_KIND_MOBS, 1u);
+
+    ns_rig_t *const first = test_alloc(t, sizeof(ns_rig_t));
+    REQUIRE(ns_rig_begin(t, first, root, SAVE_WORLD_OK));
+    entity_handle_t bodies[3];
+    ns_old_fill(first, &tables[SAVE_NAMES_KIND_BLOCKS], &tables[SAVE_NAMES_KIND_DROPS], &tables[SAVE_NAMES_KIND_ITEMS],
+                &tables[SAVE_NAMES_KIND_MOBS], bodies);
+    /* What an older build's limits allowed: more of it in a slot than today, worn further than it lasts today, and worn where nothing wears today. */
+    const uint32_t lasts = item_defs[ITEM_ID_DIAMOND_SWORD].durability;
+    REQUIRE(lasts > 1u);
+    REQUIRE(item_stack_max(ITEM_ID_DIAMOND_SWORD) < 5u);
+    item_stack_t *const swords = inventory_slot(&first->item->inventory, 2u);
+    *swords = ns_stack(&tables[SAVE_NAMES_KIND_ITEMS], ITEM_ID_DIAMOND_SWORD, 1u);
+    swords->count = 5u;
+    swords->wear = (uint16_t)(lasts + 40u);
+    item_stack_t *const worn_stone = inventory_slot(&first->item->inventory, 3u);
+    *worn_stone = ns_stack(&tables[SAVE_NAMES_KIND_ITEMS], ITEM_ID_STONE, 2u);
+    worn_stone->wear = 7u;
+    ns_old_write(t, first, tables);
+    ns_rig_end(first);
+
+    ns_rig_t *const rig = test_alloc(t, sizeof(ns_rig_t));
+    REQUIRE(ns_rig_begin(t, rig, root, SAVE_WORLD_OK));
+    REQUIRE(save_state_apply(&rig->save->state, &rig->parts));
+    const player_interaction_t *const hands = &rig->player->interaction;
+    CHECK_EQ_U64(hands->mining, 0u);
+    CHECK_EQ_U64(hands->progress, 0u);
+    CHECK_EQ_U64(hands->mining_block, BLOCK_ID_AIR);
+    CHECK_EQ_U64(hands->last_mined, BLOCK_ID_AIR);
+    /* The stone in hand was never what went. */
+    CHECK_EQ_U64(hands->hand_block, BLOCK_ID_STONE);
+    CHECK_EQ_U64(hands->hand_count, 9u);
+
+    const item_stack_t *const swords_now = inventory_slot(&rig->item->inventory, 2u);
+    CHECK_EQ_U64(swords_now->item, ITEM_ID_DIAMOND_SWORD);
+    CHECK_EQ_U64(swords_now->count, item_stack_max(ITEM_ID_DIAMOND_SWORD));
+    CHECK_EQ_U64(swords_now->wear, lasts - 1u);
+    CHECK(item_stack_is_valid(swords_now));
+    const item_stack_t *const stone_now = inventory_slot(&rig->item->inventory, 3u);
+    CHECK_EQ_U64(stone_now->item, ITEM_ID_STONE);
+    CHECK_EQ_U64(stone_now->count, 2u);
+    CHECK_EQ_U64(stone_now->wear, 0u);
+    ns_saved_again_is_believed(t, rig);
+    ns_rig_end(rig);
+    ns_temp_remove(t, root);
+}
+
 /* ---- Recipes, which have no names ---------------------------------------------------------------------------------------- */
 
 TEST(what_a_grid_makes_comes_from_this_builds_recipes_and_no_file_can_stop_a_world_with_it) {

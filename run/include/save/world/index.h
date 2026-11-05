@@ -363,12 +363,10 @@ uint32_t save_world_record_encode(const uint16_t *states, uint16_t *palette_slot
 /* And back. False, with out untouched, if these bytes are not exactly a record an encoder could mean. Trusts nothing. */
 bool save_world_record_decode(const uint8_t *record, uint64_t bytes, uint16_t *out);
 
-/* Whether a record is one save_world_record_decode would take, with its bits, palette count and palette, of SAVE_WORLD_PALETTE_MAX, if so. Writes nothing else. */
-bool save_world_record_valid(const uint8_t *record, uint64_t bytes, uint32_t *out_bits, uint32_t *out_palette_count,
-                             uint16_t *out_palette);
-
-/* The same two, for a file whose list has state_count names rather than this build's table. The numbers out are still the file's. */
+/* The same, for a file whose list has state_count names rather than this build's table. The numbers out are still the file's. */
 bool save_world_record_decode_within(const uint8_t *record, uint64_t bytes, uint32_t state_count, uint16_t *out);
+
+/* Whether a record is one save_world_record_decode_within would take, with its bits, palette count and palette, of SAVE_WORLD_PALETTE_MAX, if so. Writes nothing else. */
 bool save_world_record_valid_within(const uint8_t *record, uint64_t bytes, uint32_t state_count, uint32_t *out_bits,
                                     uint32_t *out_palette_count, uint16_t *out_palette);
 

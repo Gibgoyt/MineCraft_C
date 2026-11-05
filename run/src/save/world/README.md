@@ -15,7 +15,7 @@
 - `save_world_levels_from`: where captures read levels from, which `game_open` sets.
 - `save_world_far_line`: for the far field, on workers: what is saved of one line of blocks, over what it sampled.
 - `save_world_far_next`, `save_world_far_lost_take`: which columns have been captured since the far field last asked, through a ring from the sim to the gpu thread; or that it lost count and should look at everything.
-- `save_world_record_encode`, `save_world_record_decode`, `save_world_record_levels`, `save_world_record_valid`, `save_world_record_decode_within`, `save_world_record_valid_within`, in `record`, and `save_world_table_hash`: the record format and what a build's numbers mean.
+- `save_world_record_encode`, `save_world_record_decode`, `save_world_record_decode_within`, `save_world_record_valid_within`, `save_world_record_levels`, in `record`, and `save_world_table_hash`: the record format and what a build's numbers mean.
 - `save_world_status_name`, `save_world_step_hook_set`: a status for a log line; a test's way to die at a known step.
 
 **May be called by:** `save`, `save/autosave`, and `game`, which runs it.

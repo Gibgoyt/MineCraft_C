@@ -88,11 +88,6 @@ static bool save_world_levels_valid(const uint8_t *levels) {
     return true;
 }
 
-bool save_world_record_valid(const uint8_t *record, uint64_t bytes, uint32_t *out_bits, uint32_t *out_palette_count,
-                             uint16_t *out_palette) {
-    return save_world_record_valid_within(record, bytes, BLOCK_COUNT, out_bits, out_palette_count, out_palette);
-}
-
 /* All of a record but its states being written: so that a bad one leaves what it was to go over alone. */
 bool save_world_record_valid_within(const uint8_t *record, uint64_t bytes, uint32_t state_count, uint32_t *out_bits,
                                     uint32_t *out_palette_count, uint16_t *out_palette) {

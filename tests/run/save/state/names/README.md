@@ -1,6 +1,6 @@
 # tests/run/save/state/names
 
-**Purpose:** ctest `run_save_state_names`. Tests `run/src/save/state/translate/`, and what `run/src/save/state/` does with its section of names: a state saved under block, drop, item and mob tables that have since moved, at the start of each table and in the middle, with every stack, drop, block number, held item and body compared; a build that has not got something, which takes that out, says so in the log, and leaves a file it believes; what a grid makes coming from this build's recipes; a state in the old format refused and left as it was; and numbers no list has.
+**Purpose:** ctest `run_save_state_names`. Tests `run/src/save/state/translate/`, and what `run/src/save/state/` does with its section of names: a state saved under block, drop, item and mob tables that have since moved, at the start of each table and in the middle, with every stack, drop, block number, held item and body compared; a build that has not got something, which takes that out, says so in the log, and leaves a file it believes; a block being mined that has gone, and a stack past what its item allows today; what a grid makes coming from this build's recipes; a state in the old format refused and left as it was; and numbers no list has.
 **Tier:** test.
 **Owns:** nothing outside what each test starts and stops, and a directory under `/tmp` for each, removed at its end. Other memory comes from the harness's test arena.
 **Lifetime:** One run.
