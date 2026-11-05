@@ -1052,10 +1052,12 @@ TEST(walking_times_the_tick_in_its_parts) {
 }
 
 /* Looks at the ground and mines it: an outline, then what was mined lying there in a box. */
-static const char pr_mining_script[] = "1 move 0 500\n"
-                                       "20 button left down\n"
-                                       "120 button left up\n"
-                                       "160 end\n";
+/* Up at the sky first, since nothing says a hill is not in reach of a level eye where a body starts, then down at the ground. */
+static const char pr_mining_script[] = "1 move 0 -500\n"
+                                       "20 move 0 1000\n"
+                                       "40 button left down\n"
+                                       "140 button left up\n"
+                                       "180 end\n";
 
 TEST(what_is_aimed_at_and_what_lies_there_have_kernels_when_they_are_there) {
     char script[512], path[512];

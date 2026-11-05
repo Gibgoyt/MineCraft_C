@@ -1,6 +1,6 @@
 # tests/run/player/felling
 
-**Purpose:** ctest `run_player_felling`. Tests `run/src/player/felling/` with the hands of `run/src/player/interaction/` and the leaf sweep of `run/src/world/tick/`: every kind of tree the generator draws comes down whole, the limit is measured against the biggest, and what it must leave stays.
+**Purpose:** ctest `run_player_felling`. Tests `run/src/player/felling/` with the hands of `run/src/player/interaction/` and the leaf sweep of `run/src/world/tick/`: every kind of tree the generator draws comes down whole, the limit is measured against the biggest, what it must leave stays, and wherever a tree is cut no wood or vine is left floating.
 **Tier:** test.
 **Owns:** the test arena, and a small empty world for each test, given back by the end of it.
 **Lifetime:** One run.

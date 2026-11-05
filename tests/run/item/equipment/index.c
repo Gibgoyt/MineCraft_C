@@ -1602,6 +1602,45 @@ TEST(in_a_real_game_an_axe_fells_a_tree_wears_a_use_a_log_and_stops_when_it_brea
     ie_script_end(t, rig);
 }
 
+TEST(in_a_real_game_a_sneaking_body_and_bare_hands_cut_one_log) {
+    enum : int32_t { TALL = 8 };
+    ie_script_game_t *const rig = test_alloc(t, sizeof(ie_script_game_t));
+    REQUIRE(ie_script_begin(t, rig));
+    inventory_t *const inventory = &rig->item->inventory;
+    rig->game->camera.yaw = 0.0f32;
+    rig->game->camera.pitch = 0.0f32;
+    const int32_t row = rig->pad_cell[1];
+    const uint64_t felled = rig->game->borrowed_felling->felled_count;
+    /* The left shift, as it comes from a keyboard, and an axe in hand. */
+    ie_tree(t, rig, row, TALL);
+    ie_put(inventory, 0u, ITEM_ID_WOOD_AXE, 0u);
+    ie_script_key(rig, KEY_LEFTSHIFT, true);
+    REQUIRE(ie_script_ticks(rig, 6u));
+    REQUIRE(rig->player->movement.crouched != 0u);
+    REQUIRE(rig->player->target.hit.block == BLOCK_ID_OAK_LOG);
+    REQUIRE(ie_chop(rig));
+    REQUIRE(ie_script_ticks(rig, 20u));
+    CHECK_EQ_U64(ie_logs_in(rig, row, TALL), (uint32_t)TALL - 1u);
+    CHECK_EQ_U64(rig->game->borrowed_felling->felled_count, felled);
+    CHECK_EQ_U64(inventory_slot_read(inventory, 0u)->wear, 1u);
+    ie_script_key(rig, KEY_LEFTSHIFT, false);
+    /* Nothing in hand, on a tree of its own, across from the first as in the test above. */
+    CHECK_EQ_U64(inventory_selected_take(inventory, 1u), 1u);
+    ie_tree(t, rig, row + 2, TALL);
+    REQUIRE(world_edit_block_set(&rig->world->edit, rig->pad_cell[0] + 1, row, rig->pad_cell[2] + 1, BLOCK_ID_AIR) ==
+            WORLD_EDIT_STATUS_CHANGED);
+    rig->game->camera.yaw = 1.1071487f32;
+    REQUIRE(ie_script_ticks(rig, 6u));
+    REQUIRE(rig->player->movement.crouched == 0u);
+    REQUIRE(rig->player->target.hit.block == BLOCK_ID_OAK_LOG);
+    REQUIRE(rig->player->target.hit.cell[1] == row + 2);
+    REQUIRE(ie_chop(rig));
+    REQUIRE(ie_script_ticks(rig, 20u));
+    CHECK_EQ_U64(ie_logs_in(rig, row + 2, TALL), (uint32_t)TALL - 1u);
+    CHECK_EQ_U64(rig->game->borrowed_felling->felled_count, felled);
+    ie_script_end(t, rig);
+}
+
 TEST(a_press_that_wakes_or_brings_back_a_body_does_nothing_else) {
     ie_script_game_t *const rig = test_alloc(t, sizeof(ie_script_game_t));
     REQUIRE(ie_script_begin(t, rig));

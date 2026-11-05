@@ -41,3 +41,5 @@ The hands' ring holds 32 drops, and a full ring loses the oldest. A giant jungle
 ## The leaves
 
 When the queue ends, however it ends, the box of what went is handed to `world_tick_leaves_check`, which is what makes them go over about a second and a half through the rule of a random tick, with its drops, instead of waiting for random ticks to find them.
+
+Leaves that touch what stays are held by it, by the same rule. A cut at the foot or where the eye is takes every leaf, as a stump that low touches none. A cut up in the crown leaves the leaves that reach what is left of the trunk, on it and joined to it, so they do not float. ctest `run_player_felling` measures both, in `wherever_a_tree_is_cut_no_wood_is_left_floating`.
