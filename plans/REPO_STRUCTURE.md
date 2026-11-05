@@ -35,6 +35,7 @@ Three rules make the tree predictable:
 | `cuda/` | Ray-casting kernels and device code | Run time, GPU |
 | `asm/` | NASM batch SIMD kernels, and embedded data | Run time, CPU |
 | `textures/` | Translated texture data, recipes, licences | Input to `compile/` |
+| `sounds/` | Recipes and recordings for mining and placing sounds, with licences. See its `README.md` | Input to `compile/` |
 | `tests/` | Tests mirroring source paths. No server, no display | `ctest` |
 | `bench/` | Benchmarks and recorded results | On demand |
 | `cmake/` | Build logic | Configure time |
@@ -153,6 +154,7 @@ Layout: `compile/src/<tool>/index.c`, `compile/include/<tool>/index.h`, `README.
 | `texture_pack` | Open pack in `/tmp/mc_c_assets/` → `textures/`; `verify` checks that tree with no pack. Parts: `support mctex manifest pack output verify`. Run by hand, never by the build | 06.2 |
 | `texture_vector` | Procedural recipes -> `textures/`, and vector data per texture (`.mcvec`); `check` holds the tree to `textures/vector.yaml`. Parts: `analyze palette mcvec materials recipe`. `recipes` and `check` are run by hand and by its test; 06.4's blob step runs `vectors` | 06.3 |
 | `texture_blob` | Mip chains, and every texture with its vector data in one blob, in `build/<preset>/generated/textures/`, run by `cmake/generated.cmake`. Part: `mip`. The format is `run/include/types/texture_blob/` | 06.4 |
+| `sound_pack` | `sounds/` → one blob in `build/<preset>/generated/sounds/`, making each sound from its recipe or recording, run by `cmake/generated.cmake`. `verify` checks the tree and `import` takes in one recording, both by hand. Parts: `mcsnd synth tree blob import`. The format is `run/include/types/sound_blob/` | 003 phase 5 |
 | `game_tables` | `config/{blocks,items,recipes,biomes,mobs}` → C tables in `build/<preset>/generated/tables/`, compiled into `mc_run` and included as `"tables/blocks/index.h"`, run by `cmake/generated.cmake`. Parts: `blocks` (07.1), `biomes` (10.6), `items` (13.1), `recipes` (13.2), `mobs` (15.3) | 07.1 |
 
 ---
@@ -168,6 +170,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | `main` | `cpu_check` | Entry point, `app_t`, CPUID check against the build's flags, init and deinit order | 03.1 |
 | `types` | | The only home of `float32_t`, `float64_t` | 03.1 |
 | | `texture_blob` | The texture blob's format, in the one place both `compile/` and `run/` may include | 06.4 |
+| | `sound_blob` | The sound blob's format and the sound families, in that same place, so that `compile/src/game_tables/blocks/` and `compile/src/sound_pack/` mean one family by one number | 003 phase 5 |
 | `assert` | | Assertions | 03.1 |
 | `log` | | Logging | 03.1 |
 | `heap` | | **Only OS allocator user**; counts everything, holds to `memory.process_budget_mib` | 03.2 |
@@ -335,7 +338,7 @@ Layout: `asm/src/<dir>/index.asm`, `asm/include/<dir>/index.inc`, `README.md`. C
 | `bitmask` | Popcount and mask kernels | 04.2 |
 | `noise` | 8-wide gradient noise | 04.3 |
 | `vec_batch` | Batch vector transforms | 04.3 |
-| `embed_assets` | `incbin` of generated texture blobs | 06.4 |
+| `embed_assets` | `incbin` of the generated texture and sound blobs | 06.4, 003 phase 5 |
 
 C calls these through prototypes in `run/include/simd/<name>/index.h`.
 
@@ -380,6 +383,10 @@ linked into minecraft_c, read through run/src/texture/
 
 **No Mojang textures and no decompiled code.** Open-licensed packs and our own recipes only.
 
+### `sounds/`
+
+`sounds/<family>/<hit|break|place>_<n>/` holds `index.yaml`, `README.md`, and `index.mcsnd` if it's a recording. A recipe is made into samples while building, so a build needs no network and no `ffmpeg`. `compile/src/sound_pack` → `build/<preset>/generated/sounds/index.mcsb` → `asm/src/embed_assets` → linked into `minecraft_c`. Recordings must be `CC0-1.0` and credited in `sounds/ATTRIBUTION.md`. **No Minecraft sounds.**
+
 ---
 
 ## 10. `tests/`, `bench/`, `tools/`, `cmake/`
@@ -395,6 +402,8 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/compile/texture_pack/` | ctest `compile_texture_pack`: builds its own small pack at run time, and checks the committed `textures/` with no pack |
 | `tests/compile/texture_vector/` | ctest `compile_texture_vector`: vector data worked by hand, every recipe operation, bad input, and the committed `textures/` |
 | `tests/compile/texture_blob/` | ctest `compile_texture_blob`: the mip rules by hand-worked images, the blob's layout, and bad input |
+| `tests/compile/sound_pack/` | ctest `compile_sound_pack`: recipes by length, ends, peak and repeatability, the committed `sounds/` and its blob, damage to a blob, each mistake in a tree, and importing a recording |
+| `tests/run/audio/sound_blob/` | ctest `run_audio_sound_blob`: the blob linked in is the one the build made, and every block that can be mined finds a sound of each kind |
 | `tests/compile/game_tables/` | ctest `compile_game_tables`: the real block tables against what `config/blocks/` says, dirt drops dirt, and each bad file refused at its line, blocks and biomes both. `cmake/targets.cmake` compiles the generated tables into it |
 | `tests/compile/{inflate,png}/fixtures/` | Committed streams and images from independent encoders, with `generate.py`, which wrote them and is not part of the build |
 | `tests/run/<system>/<part>/` | Game tests |
