@@ -69,6 +69,8 @@ Appended as they land:
 - `a0cb295` Let a torch go on the side of a block, leaning out from it as one of four new blocks, lit and drawn by steps, and dropped when the block behind it goes by mining, a blast or anything else.
 - `78a5859` List the wall torch directory and its test in the repository structure.
 - `9bf478a` Record phase 2 of the game fixes in its plan file: every box an agent can tick, the results, and what was found on the way.
+- `cb740c6` Make a torch on a wall always give its torch in a blast, as it gave one only one time in three at a creeper's power, and make the felling tests count the torches that come down.
+- `d857683` Record the gate check of phase 2 in its plan file: the real program played by script, a blast's missing torches fixed, two tests made to count, and that only Ahmed is left.
 
 ## Issues found
 
