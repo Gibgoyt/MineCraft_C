@@ -385,7 +385,7 @@ linked into minecraft_c, read through run/src/texture/
 
 ### `sounds/`
 
-`sounds/<family>/<hit|break|place>_<n>/` holds `index.yaml`, `README.md`, and `index.mcsnd` if it's a recording. A recipe is made into samples while building, so a build needs no network and no `ffmpeg`. `compile/src/sound_pack` → `build/<preset>/generated/sounds/index.mcsb` → `asm/src/embed_assets` → linked into `minecraft_c`. Recordings must be `CC0-1.0` and credited in `sounds/ATTRIBUTION.md`. **No Minecraft sounds.**
+`sounds/<family>/<hit|break|place>_<n>/` holds `index.yaml`, `README.md`, and `index.mcsnd` if it's a recording. All 90 are recordings today. A recipe, the fallback, is made into samples while building. Either way a build needs no network and no `ffmpeg`. `compile/src/sound_pack` → `build/<preset>/generated/sounds/index.mcsb` → `asm/src/embed_assets` → linked into `minecraft_c`. Recordings must be `CC0-1.0` and credited in `sounds/ATTRIBUTION.md`. **No Minecraft sounds.**
 
 ---
 
@@ -402,7 +402,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/compile/texture_pack/` | ctest `compile_texture_pack`: builds its own small pack at run time, and checks the committed `textures/` with no pack |
 | `tests/compile/texture_vector/` | ctest `compile_texture_vector`: vector data worked by hand, every recipe operation, bad input, and the committed `textures/` |
 | `tests/compile/texture_blob/` | ctest `compile_texture_blob`: the mip rules by hand-worked images, the blob's layout, and bad input |
-| `tests/compile/sound_pack/` | ctest `compile_sound_pack`: recipes by length, ends, peak and repeatability, the committed `sounds/` and its blob, damage to a blob, each mistake in a tree, and importing a recording |
+| `tests/compile/sound_pack/` | ctest `compile_sound_pack`: recipes by length, ends, peak and repeatability, the committed `sounds/` and its blob, a recipe standing in for a recording, damage to a blob, each mistake in a tree, and importing a recording |
 | `tests/run/audio/sound_blob/` | ctest `run_audio_sound_blob`: the blob linked in is the one the build made, and every block that can be mined finds a sound of each kind |
 | `tests/compile/game_tables/` | ctest `compile_game_tables`: the real block tables against what `config/blocks/` says, dirt drops dirt, and each bad file refused at its line, blocks and biomes both. `cmake/targets.cmake` compiles the generated tables into it |
 | `tests/compile/{inflate,png}/fixtures/` | Committed streams and images from independent encoders, with `generate.py`, which wrote them and is not part of the build |
