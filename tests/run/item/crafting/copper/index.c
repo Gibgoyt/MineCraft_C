@@ -57,6 +57,12 @@ static uint32_t cc_ingot_cell(const cc_piece_t *piece, uint32_t n) {
     return RECIPE_CELLS;
 }
 
+/* What these cells make, and no item if they make nothing: a row is only there to read if there is a row. */
+static uint32_t cc_makes(const item_stack_t *cells, uint32_t side) {
+    const uint32_t recipe = crafting_match(cells, side);
+    return recipe == CRAFTING_NO_RECIPE ? ITEM_ID_NONE : recipe_defs[recipe].gives;
+}
+
 TEST(smelting_copper_gives_the_ingot_that_all_of_this_is_made_from) {
     static const uint16_t sources[] = {ITEM_ID_RAW_COPPER, ITEM_ID_COPPER_ORE, ITEM_ID_DEEPSLATE_COPPER_ORE};
     for (uint32_t i = 0u; i < sizeof(sources) / sizeof(sources[0]); i++) {
@@ -112,8 +118,7 @@ TEST(a_grid_of_two_makes_none_of_them) {
         memset(cells, 0, sizeof(cells));
         for (uint32_t cell = 0u; cell < 4u; cell++) {
             cells[cell] = item_stack_make(ITEM_ID_COPPER_INGOT, 1u);
-            CHECK(crafting_match(cells, CRAFTING_SIDE_HANDS) == CRAFTING_NO_RECIPE ||
-                  recipe_defs[crafting_match(cells, CRAFTING_SIDE_HANDS)].gives != piece->item);
+            CHECK(cc_makes(cells, CRAFTING_SIDE_HANDS) != piece->item);
         }
     }
 }
@@ -130,11 +135,10 @@ TEST(one_ingot_short_is_not_the_piece_and_one_of_iron_is_nothing) {
             for (uint32_t m = 0u; m < piece->ingots; m++) {
                 cells[cc_ingot_cell(piece, m)] = item_stack_make(ITEM_ID_COPPER_INGOT, 1u);
             }
-            CHECK_EQ_U64(recipe_defs[crafting_match(cells, CRAFTING_SIDE_TABLE)].gives, piece->item);
+            CHECK_EQ_U64(cc_makes(cells, CRAFTING_SIDE_TABLE), piece->item);
 
             cells[changed] = (item_stack_t){0};
-            const uint32_t short_one = crafting_match(cells, CRAFTING_SIDE_TABLE);
-            CHECK(short_one == CRAFTING_NO_RECIPE || recipe_defs[short_one].gives != piece->item);
+            CHECK(cc_makes(cells, CRAFTING_SIDE_TABLE) != piece->item);
 
             cells[changed] = item_stack_make(ITEM_ID_IRON_INGOT, 1u);
             CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE), CRAFTING_NO_RECIPE);
@@ -144,7 +148,7 @@ TEST(one_ingot_short_is_not_the_piece_and_one_of_iron_is_nothing) {
     item_stack_t cells[RECIPE_CELLS];
     memset(cells, 0, sizeof(cells));
     cells[0] = cells[2] = cells[3] = cells[5] = item_stack_make(ITEM_ID_COPPER_INGOT, 1u);
-    CHECK_EQ_U64(recipe_defs[crafting_match(cells, CRAFTING_SIDE_TABLE)].gives, ITEM_ID_COPPER_BOOTS);
+    CHECK_EQ_U64(cc_makes(cells, CRAFTING_SIDE_TABLE), ITEM_ID_COPPER_BOOTS);
 }
 
 /* Copper did not stop iron being what its own ingots make. */
