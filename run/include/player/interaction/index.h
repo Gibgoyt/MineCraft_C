@@ -5,6 +5,7 @@
 #include "player/camera/index.h"
 #include "player/movement/index.h"
 #include "types/index.h"
+#include "types/sound_blob/index.h"
 #include "world/edit/index.h"
 
 #include <stddef.h>
@@ -18,6 +19,10 @@ enum : uint32_t {
     /* With the button held, a block goes down this often: Minecraft's published rate. */
     PLAYER_INTERACTION_PLACE_EVERY_TICKS = 4u,
     PLAYER_INTERACTION_HAND_MAX = 64u,
+    /* A short hit, this often, while the button stays on one block. Minecraft's published rate. */
+    PLAYER_INTERACTION_HIT_EVERY_TICKS = 4u,
+    /* What one tick can make is a hit or a break, a place, and a log of a tree coming down. Whoever takes them does so each tick. */
+    PLAYER_SOUNDS_RING = 8u,
     /* How many plants standing on one another go with what they stood on. Sugar cane is the tallest, by far. */
     PLAYER_INTERACTION_STACK_MAX = 32u,
     /* player_interaction_ticks for what can never be mined. */
@@ -32,6 +37,25 @@ typedef struct player_drop_t {
     uint8_t _pad0[5];                   /* 27 */
 } player_drop_t;
 static_assert(sizeof(player_drop_t) == 32);
+
+/* Something the hands did that can be heard. */
+typedef struct player_sound_t {
+    int32_t cell[COLLISION_AXES]; /* 0: where it happened */
+    uint8_t family;               /* 12: sound_family_t */
+    uint8_t kind;                 /* 13: sound_kind_t */
+    uint8_t _pad0[2];             /* 14 */
+} player_sound_t;
+static_assert(sizeof(player_sound_t) == 16);
+
+/* Those waiting for whoever plays them. A ring, as drops are, that loses its oldest if nobody comes. It is apart from player_interaction_t, as it is not saved, and nothing
+ * else depends on it: the same world and buttons give the same drops and the same bytes with sound or without. */
+typedef struct player_sounds_t {
+    player_sound_t sounds[PLAYER_SOUNDS_RING]; /* 0 */
+    uint64_t lost_count;                       /* 128: pushed out before anyone took them */
+    uint32_t head;                             /* 136 */
+    uint32_t count;                            /* 140 */
+} player_sounds_t;
+static_assert(sizeof(player_sounds_t) == 144);
 
 /* What a player's hands are doing. Plain numbers, so that the same world and buttons always give the same bytes. The sim's. */
 typedef struct player_interaction_t {
@@ -56,7 +80,8 @@ typedef struct player_interaction_t {
     uint8_t mine_delay;                            /* 1110: ticks until it may mine again */
     uint8_t place_delay;                           /* 1111: ticks until it may place again */
     uint32_t held_speed_milli;                     /* 1112: on its own blocks, if not 0, over what its tier says */
-    uint8_t _pad0[36];                             /* 1116 */
+    uint8_t hit_wait;                              /* 1116: ticks of mining until the next hit is heard */
+    uint8_t _pad0[35];                             /* 1117 */
 } player_interaction_t;
 static_assert(sizeof(player_interaction_t) == 1152);
 static_assert(alignof(player_interaction_t) == 8);
@@ -72,8 +97,9 @@ typedef struct player_interaction_input_t {
     uint8_t attack;                     /* 24: the left button */
     uint8_t place;                      /* 25: the right button */
     uint8_t _pad0[6];                   /* 26 */
+    player_sounds_t *borrowed_sounds;   /* 32: what it does that can be heard goes here, or nullptr for silent hands */
 } player_interaction_input_t;
-static_assert(sizeof(player_interaction_input_t) == 32);
+static_assert(sizeof(player_interaction_input_t) == 40);
 
 /* Empty hands, nothing under way, and random numbers from this seed. */
 void player_interaction_start(player_interaction_t *interaction, uint64_t seed);
@@ -112,6 +138,12 @@ void player_interaction_stack_break(player_interaction_t *interaction, world_edi
 
 /* The oldest drop waiting, which is now the caller's. False if there is none. */
 bool player_interaction_drop_next(player_interaction_t *interaction, player_drop_t *out);
+
+/* A block's sound of this kind, at this cell, for whoever plays them. A block whose family is none is not heard. */
+void player_sounds_post(player_sounds_t *sounds, uint16_t block, sound_kind_t kind, int32_t x, int32_t y, int32_t z);
+
+/* The oldest sound waiting, which is now the caller's. False if there is none. */
+bool player_sounds_next(player_sounds_t *sounds, player_sound_t *out);
 
 /* In the hand, up to PLAYER_INTERACTION_HAND_MAX. A different block takes the place of what is there, as there is one slot. */
 void player_interaction_hand_give(player_interaction_t *interaction, uint16_t block, uint32_t count);

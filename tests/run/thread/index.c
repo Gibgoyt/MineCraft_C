@@ -350,6 +350,9 @@ TEST(roles_take_their_places_from_machine_yaml) {
     for (uint32_t i = 0; i < MC_THREADS_WORKERS; i++) {
         CHECK_EQ_U64(thread_cpu_for(&topology, THREAD_ROLE_WORKER, i), 1000u + place++);
     }
+    for (uint32_t i = 0; i < MC_THREADS_AUDIO; i++) {
+        CHECK_EQ_U64(thread_cpu_for(&topology, THREAD_ROLE_AUDIO, i), 1000u + place++);
+    }
     /* What is left over is left for the OS. */
     CHECK(place + MC_THREADS_RESERVED_OS <= MC_CPU_LOGICAL_THREADS);
 }
@@ -428,7 +431,7 @@ TEST(every_role_runs_where_it_was_placed) {
     thread_topology_t topology;
     REQUIRE(thread_topology_read(&topology));
 
-    enum { COUNT = MC_THREADS_SIM + MC_THREADS_GPU + MC_THREADS_WORKERS };
+    enum { COUNT = MC_THREADS_SIM + MC_THREADS_GPU + MC_THREADS_WORKERS + MC_THREADS_AUDIO };
     static_assert(COUNT <= 64);
     thread_t threads[COUNT];
     pin_report_t reports[COUNT];
@@ -448,6 +451,11 @@ TEST(every_role_runs_where_it_was_placed) {
     for (uint32_t i = 0; all_started && i < MC_THREADS_WORKERS; i++) {
         all_started =
             thread_start(&threads[started], &topology, THREAD_ROLE_WORKER, i, pin_report_thread, &reports[started]);
+        started += all_started ? 1u : 0u;
+    }
+    for (uint32_t i = 0; all_started && i < MC_THREADS_AUDIO; i++) {
+        all_started =
+            thread_start(&threads[started], &topology, THREAD_ROLE_AUDIO, i, pin_report_thread, &reports[started]);
         started += all_started ? 1u : 0u;
     }
     for (uint32_t i = 0; i < started; i++) {

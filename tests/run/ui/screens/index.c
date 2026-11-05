@@ -270,6 +270,31 @@ static ui_screen_settings_action_t us_settings_click(us_rig_t *rig, int32_t x, i
     return action;
 }
 
+TEST(the_volume_slider_changes_that_setting_and_nothing_else) {
+    /* At 320 by 240 the scale is 1: row 7 starts at 60 across and 24 + 7 * 24 down, is 200 wide and 20 tall. */
+    enum : int32_t { SLIDER_X = 60, SLIDER_Y = 192 + 10 };
+    us_rig_t *const rig = test_alloc(t, sizeof(us_rig_t));
+    REQUIRE(us_rig_start(t, rig));
+    settings_values_t values;
+    settings_persist_defaults(&values);
+    CHECK_EQ_U64(values.sound_volume_percent, SETTINGS_SOUND_VOLUME_DEFAULT);
+    const settings_values_t before = values;
+    ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &values, 0u, MC_THREADS_WORKERS, false);
+    const uint64_t bytes = (uint64_t)US_WIDTH * US_HEIGHT * 4u;
+    uint8_t *const pixels = test_alloc(t, bytes);
+    const input_frame_t nothing = {0};
+    (void)us_settings_frame(rig, &nothing, pixels);
+    /* A click at each end of it. */
+    (void)us_settings_click(rig, SLIDER_X + 1, SLIDER_Y, pixels);
+    CHECK_EQ_U64(values.sound_volume_percent, SETTINGS_SOUND_VOLUME_MIN);
+    (void)us_settings_click(rig, SLIDER_X + 199, SLIDER_Y, pixels);
+    CHECK(values.sound_volume_percent >= SETTINGS_SOUND_VOLUME_MAX - 1u);
+    settings_values_t expected = before;
+    expected.sound_volume_percent = values.sound_volume_percent;
+    CHECK_MEM_EQ(&values, &expected, sizeof(expected));
+    us_rig_stop(rig);
+}
+
 TEST(the_coordinates_box_changes_that_setting_and_nothing_else_and_shows_it) {
     /* At 320 by 240 the scale is 1: row 6 starts at 60 across and 24 + 6 * 24 down, is 20 tall, and the box starts 50 along it. */
     enum : int32_t { BOX_X = 114 + 4, BOX_Y = 168 + 10 };

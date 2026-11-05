@@ -66,8 +66,11 @@ typedef struct main_options_t {
     uint8_t god_rays;           /* --god-rays */
     uint8_t menu;               /* --menu, or no flags at all on a terminal */
     uint64_t seed;              /* --seed */
+    const char *sound_file;     /* --sound-file */
+    uint8_t no_sound;           /* --no-sound */
+    uint8_t _pad0[7];
 } main_options_t;
-static_assert(sizeof(main_options_t) == 112);
+static_assert(sizeof(main_options_t) == 128);
 
 /* Where worlds live unless told otherwise: beside where the program was started, like everything else it reads. */
 static const char MAIN_SAVES_DEFAULT[] = "saves";
@@ -145,6 +148,11 @@ static void main_print_usage(const char *program) {
         "  --settings <file>        with --menu: where settings are kept. Default settings.yaml, under where it was\n"
         "                           started. Flags that say the same go over it, held to its ranges, and are kept\n"
         "                           with the rest if the Settings screen is left with Done\n"
+        "  --no-sound               with --menu or --walk: nothing to the sound server. A run not started on a\n"
+        "                           terminal, on a display from :80 up or --headless never makes a sound anyway\n"
+        "  --sound-file <path>      with --headless and --menu or --walk: what would have played goes here, as raw "
+        "s16le\n"
+        "                           stereo at 48000 Hz, at the speed it would play. It makes no sound\n"
         "  --profile <path>         time the run: a trace for about:tracing or Perfetto goes to <path> at exit, and a\n"
         "                           table to stderr. Not in a release build: see run/src/profiler/README.md\n",
         stderr);
@@ -219,6 +227,11 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
         } else if (strcmp(argv[i], "--settings") == 0 && i + 1 < argc) {
             i++;
             out->settings = argv[i];
+        } else if (strcmp(argv[i], "--no-sound") == 0) {
+            out->no_sound = 1u;
+        } else if (strcmp(argv[i], "--sound-file") == 0 && i + 1 < argc) {
+            i++;
+            out->sound_file = argv[i];
         } else if (strcmp(argv[i], "--profile") == 0 && i + 1 < argc) {
             i++;
             out->profile = argv[i];
@@ -353,6 +366,10 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
         fprintf(stderr, "%s: --saves only means something with --menu\n", argv[0]);
         return false;
     }
+    if (out->sound_file != nullptr && (out->headless == 0 || (out->menu == 0u && out->walk == 0))) {
+        fprintf(stderr, "%s: --sound-file only means something with --headless and --menu or --walk\n", argv[0]);
+        return false;
+    }
     if (out->settings != nullptr && out->menu == 0u) {
         fprintf(stderr, "%s: --settings only means something with --menu\n", argv[0]);
         return false;
@@ -428,6 +445,37 @@ static void main_settings_read(app_t *app, const main_options_t *options) {
     values->effects |= options->god_rays != 0u ? (uint32_t)SHADE_FEATURE_GOD_RAYS : 0u;
     /* A flag can say what the file cannot: a full detail too big for the card, or a distance no slider has. */
     settings_persist_clamp(values);
+}
+
+/* What the hands do is heard if a person started this on a terminal and is looking at their own desktop, and only then: a test, a script and an agent running this program
+ * have no terminal, or for a window a made-up one and a private Xvfb, and must never be heard on the machine it runs on. Comes after the rest, on a thread of its own, and
+ * nothing about it can stop the game. */
+static void main_audio_start(app_t *app, const main_options_t *options) {
+    const bool has_hands = options->walk != 0 || options->menu != 0u;
+    audio_options_t audio = {.socket_path = nullptr,
+                             .cookie_path = nullptr,
+                             .file_path = options->sound_file,
+                             .read_fd = -1,
+                             .write_fd = -1,
+                             .volume_percent = app->settings.values.sound_volume_percent,
+                             .retry_ms = 0u,
+                             .output = AUDIO_OUTPUT_NONE,
+                             ._pad0 = {0}};
+    if (options->sound_file != nullptr) {
+        audio.output = AUDIO_OUTPUT_FILE;
+    } else if (has_hands && options->no_sound == 0u && options->headless == 0) {
+        if (isatty(STDIN_FILENO) == 0) {
+            LOG_INFO("audio: not started from a terminal, so nothing is heard");
+        } else if (audio_display_is_private(getenv("DISPLAY"))) {
+            LOG_INFO("audio: on a test's private display, so nothing is heard");
+        } else {
+            audio.output = AUDIO_OUTPUT_SERVER;
+        }
+    }
+    audio_init(&app->audio, &audio, &app->topology);
+    if (has_hands) {
+        game_audio_set(&app->game, &app->audio);
+    }
 }
 
 /* The CPU check comes first: everything after it assumes these instructions exist. --report only prints, so it starts
@@ -631,6 +679,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
     if (options->menu != 0u) {
         game_save_set(&app->game, &app->save);
     }
+    main_audio_start(app, options);
     return MAIN_EXIT_OK;
 }
 
@@ -653,6 +702,7 @@ static bool main_profile_finish(app_t *app, const char *path) {
 [[gnu::noinline]]
 static bool app_deinit(app_t *app, const char *profile_path) {
     game_deinit(&app->game);
+    audio_deinit(&app->audio); /* after game: the sim posts to it until game has stopped */
     input_deinit(&app->input);
     display_offscreen_deinit(&app->offscreen);
     display_deinit(&app->display);

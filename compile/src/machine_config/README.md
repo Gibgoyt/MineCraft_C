@@ -58,7 +58,7 @@ line. The tool refuses:
   past `render_distance_max`, and `z_sea` outside `z_min` to `z_max`.
 
 Because threads are pinned one to a logical CPU, `threads.workers` above 16 on this machine's yaml is an error until
-`threads.reserved_os` or `cpu.logical_threads` changes to allow it.
+`threads.audio`, `threads.reserved_os` or `cpu.logical_threads` changes to allow it.
 
 ## `report/`
 

@@ -728,6 +728,188 @@ TEST(the_same_seed_gives_the_same_bytes_and_nothing_comes_from_the_heap) {
     pi_end(rig);
 }
 
+/* ---- What can be heard ------------------------------------------------------------------------------------------------ */
+
+static void pi_tick_heard(pi_rig_t *rig, player_sounds_t *sounds, bool attack, bool place) {
+    const player_interaction_input_t input = {.borrowed_target = &rig->target,
+                                              .borrowed_movement = &rig->movement,
+                                              .attack = attack ? 1u : 0u,
+                                              .place = place ? 1u : 0u,
+                                              ._pad0 = {0},
+                                              .borrowed_sounds = sounds};
+    player_interaction_tick(&rig->hands, pi_edit(rig), &input);
+}
+
+TEST(mining_is_heard_every_four_ticks_from_the_first_and_then_as_one_break) {
+    pi_rig_t *const rig = test_alloc(t, sizeof(pi_rig_t));
+    REQUIRE(pi_begin(t, rig));
+    player_sounds_t sounds;
+    memset(&sounds, 0, sizeof(sounds));
+    pi_put(t, rig, 3, 3, 5, BLOCK_ID_STONE);
+    pi_aim(rig, 3, 3, 5);
+    const uint32_t ticks = player_interaction_ticks(BLOCK_ID_STONE, BLOCK_TOOL_NONE, BLOCK_TIER_NONE, true, false);
+    REQUIRE(ticks > 8u);
+    for (uint32_t tick = 0u; tick + 1u < ticks; tick++) {
+        pi_tick_heard(rig, &sounds, true, false);
+        player_sound_t sound;
+        const bool heard = player_sounds_next(&sounds, &sound);
+        CHECK_EQ_U64(heard ? 1u : 0u, tick % PLAYER_INTERACTION_HIT_EVERY_TICKS == 0u ? 1u : 0u);
+        if (heard) {
+            CHECK_EQ_U64(sound.family, SOUND_FAMILY_STONE);
+            CHECK_EQ_U64(sound.kind, SOUND_KIND_HIT);
+            CHECK_EQ_I64(sound.cell[0], 3);
+            CHECK_EQ_I64(sound.cell[1], 3);
+            CHECK_EQ_I64(sound.cell[2], 5);
+        }
+        CHECK_EQ_U64(pi_block(rig, 3, 3, 5), BLOCK_ID_STONE);
+    }
+    pi_tick_heard(rig, &sounds, true, false);
+    CHECK_EQ_U64(pi_block(rig, 3, 3, 5), BLOCK_ID_AIR);
+    player_sound_t sound;
+    REQUIRE(player_sounds_next(&sounds, &sound));
+    CHECK_EQ_U64(sound.family, SOUND_FAMILY_STONE);
+    CHECK_EQ_U64(sound.kind, SOUND_KIND_BREAK);
+    CHECK(!player_sounds_next(&sounds, &sound));
+    pi_end(rig);
+}
+
+TEST(each_block_is_heard_as_its_own_family_and_at_a_touch_only_breaks) {
+    pi_rig_t *const rig = test_alloc(t, sizeof(pi_rig_t));
+    REQUIRE(pi_begin(t, rig));
+    player_sounds_t sounds;
+    memset(&sounds, 0, sizeof(sounds));
+    /* Every block that can be mined: its first sound is of what its table says. A hit, unless it goes at a touch. */
+    for (uint32_t block = 1u; block < BLOCK_COUNT; block++) {
+        const block_def_t *const def = &block_defs[block];
+        if (def->shape == BLOCK_SHAPE_FLUID || def->sound == SOUND_FAMILY_NONE ||
+            block == BLOCK_ID_WOODWORKING_BENCH_WEST || block == BLOCK_ID_WOODWORKING_BENCH_EAST) {
+            continue;
+        }
+        player_interaction_start(&rig->hands, 1u);
+        pi_put(t, rig, 4, 4, 5, (uint16_t)block);
+        pi_aim(rig, 4, 4, 5);
+        pi_tick_heard(rig, &sounds, true, false);
+        player_sound_t sound;
+        REQUIRE(player_sounds_next(&sounds, &sound));
+        CHECK_EQ_U64(sound.family, def->sound);
+        const bool gone = pi_block(rig, 4, 4, 5) == BLOCK_ID_AIR;
+        CHECK_EQ_U64(sound.kind, gone ? SOUND_KIND_BREAK : SOUND_KIND_HIT);
+        while (player_sounds_next(&sounds, &sound)) {
+        }
+        (void)world_edit_block_set(pi_edit(rig), 4, 4, 5, BLOCK_ID_AIR);
+    }
+    pi_end(rig);
+}
+
+TEST(letting_go_or_a_new_block_starts_the_hits_at_once_and_bedrock_is_heard_for_ever) {
+    pi_rig_t *const rig = test_alloc(t, sizeof(pi_rig_t));
+    REQUIRE(pi_begin(t, rig));
+    player_sounds_t sounds;
+    memset(&sounds, 0, sizeof(sounds));
+    player_sound_t sound;
+    pi_put(t, rig, 3, 3, 5, BLOCK_ID_STONE);
+    pi_put(t, rig, 3, 4, 5, BLOCK_ID_STONE);
+    pi_aim(rig, 3, 3, 5);
+    pi_tick_heard(rig, &sounds, true, false);
+    CHECK(player_sounds_next(&sounds, &sound));
+    pi_tick_heard(rig, &sounds, true, false);
+    CHECK(!player_sounds_next(&sounds, &sound));
+    /* Another block, straight away. */
+    pi_aim(rig, 3, 4, 5);
+    pi_tick_heard(rig, &sounds, true, false);
+    CHECK(player_sounds_next(&sounds, &sound));
+    CHECK_EQ_I64(sound.cell[1], 4);
+    /* Let go, and back on the same one. */
+    pi_tick_heard(rig, &sounds, false, false);
+    CHECK(!player_sounds_next(&sounds, &sound));
+    pi_tick_heard(rig, &sounds, true, false);
+    CHECK(player_sounds_next(&sounds, &sound));
+    /* What never breaks goes on making its hit. */
+    const uint16_t bedrock = pi_block_named("bedrock");
+    REQUIRE(bedrock != BLOCK_NO_ID);
+    pi_put(t, rig, 3, 5, 5, bedrock);
+    pi_aim(rig, 3, 5, 5);
+    uint32_t hits = 0u;
+    for (uint32_t tick = 0u; tick < 4u * PLAYER_INTERACTION_HIT_EVERY_TICKS; tick++) {
+        pi_tick_heard(rig, &sounds, true, false);
+        while (player_sounds_next(&sounds, &sound)) {
+            CHECK_EQ_U64(sound.kind, SOUND_KIND_HIT);
+            hits++;
+        }
+    }
+    CHECK_EQ_U64(hits, 4u);
+    pi_end(rig);
+}
+
+TEST(placing_is_heard_where_the_block_went_and_nothing_that_was_not_placed_is) {
+    pi_rig_t *const rig = test_alloc(t, sizeof(pi_rig_t));
+    REQUIRE(pi_begin(t, rig));
+    player_sounds_t sounds;
+    memset(&sounds, 0, sizeof(sounds));
+    player_sound_t sound;
+    pi_put(t, rig, 3, 3, 5, BLOCK_ID_STONE);
+    pi_aim(rig, 3, 3, 5);
+    /* An empty hand. */
+    pi_tick_heard(rig, &sounds, false, true);
+    CHECK(!player_sounds_next(&sounds, &sound));
+    player_interaction_hand_give(&rig->hands, BLOCK_ID_DIRT, 2u);
+    pi_tick_heard(rig, &sounds, false, true);
+    REQUIRE(player_sounds_next(&sounds, &sound));
+    CHECK_EQ_U64(sound.family, block_defs[BLOCK_ID_DIRT].sound);
+    CHECK_EQ_U64(sound.kind, SOUND_KIND_PLACE);
+    CHECK_EQ_I64(sound.cell[2], 6);
+    /* The button still down, and not yet its time. */
+    pi_tick_heard(rig, &sounds, false, true);
+    CHECK(!player_sounds_next(&sounds, &sound));
+    pi_end(rig);
+}
+
+TEST(with_or_without_anywhere_for_sounds_the_hands_do_the_same_to_the_byte) {
+    pi_rig_t *const rig = test_alloc(t, sizeof(pi_rig_t));
+    REQUIRE(pi_begin(t, rig));
+    player_interaction_t *const copy = test_alloc(t, sizeof(player_interaction_t));
+    const uint16_t gravel = pi_block_named("gravel");
+    REQUIRE(gravel != BLOCK_NO_ID);
+    for (uint32_t pass = 0u; pass < 2u; pass++) {
+        player_sounds_t sounds;
+        memset(&sounds, 0, sizeof(sounds));
+        player_interaction_start(&rig->hands, 4242u);
+        pi_put(t, rig, 3, 3, 5, BLOCK_ID_STONE);
+        for (uint32_t i = 0u; i < 400u; i++) {
+            if (pi_block(rig, 3, 3, 5) == BLOCK_ID_AIR) {
+                CHECK_EQ_U64(world_edit_block_set(pi_edit(rig), 3, 3, 5, gravel), WORLD_EDIT_STATUS_CHANGED);
+            }
+            pi_aim(rig, 3, 3, 5);
+            pi_tick_heard(rig, pass == 0u ? nullptr : &sounds, true, false);
+        }
+        if (pass == 0u) {
+            memcpy(copy, &rig->hands, sizeof(*copy));
+            (void)world_edit_block_set(pi_edit(rig), 3, 3, 5, BLOCK_ID_AIR);
+        } else {
+            CHECK_MEM_EQ(copy, &rig->hands, sizeof(*copy));
+            CHECK(sounds.count != 0u);
+        }
+    }
+    pi_end(rig);
+}
+
+TEST(a_full_ring_of_sounds_loses_the_oldest_and_counts_them_and_what_has_no_family_is_not_heard) {
+    player_sounds_t sounds;
+    memset(&sounds, 0, sizeof(sounds));
+    player_sound_t sound;
+    player_sounds_post(&sounds, BLOCK_ID_AIR, SOUND_KIND_BREAK, 0, 0, 0);
+    CHECK(!player_sounds_next(&sounds, &sound));
+    for (int32_t i = 0; i < (int32_t)PLAYER_SOUNDS_RING + 3; i++) {
+        player_sounds_post(&sounds, BLOCK_ID_STONE, SOUND_KIND_HIT, i, 0, 0);
+    }
+    CHECK_EQ_U64(sounds.lost_count, 3u);
+    for (int32_t i = 3; i < (int32_t)PLAYER_SOUNDS_RING + 3; i++) {
+        REQUIRE(player_sounds_next(&sounds, &sound));
+        CHECK_EQ_I64(sound.cell[0], i);
+    }
+    CHECK(!player_sounds_next(&sounds, &sound));
+}
+
 /* ---- Placing ---------------------------------------------------------------------------------------------------------- */
 
 /* A face aimed at, and the cell that puts a block in. */

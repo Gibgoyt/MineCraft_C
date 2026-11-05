@@ -1,6 +1,7 @@
 /* See README.md. */
 #include "game/index.h"
 
+#include "audio/index.h"
 #include "entity/animation/index.h"
 #include "item/stack/index.h"
 #include "render/entities/index.h"
@@ -80,6 +81,35 @@ static void game_tool_after_break(game_t *game, uint16_t held_item) {
     (void)equipment_tool_block_broken(&item->equipment, &item->inventory, hands->last_mined);
 }
 
+/* What the hands did this tick is heard from where they did it. Taken with or without anyone to hear, so that a run with sound and one without go the same. */
+static void game_sounds_tick(game_t *game) {
+    player_t *const player = game->borrowed_player;
+    player_sound_t sound;
+    while (player_sounds_next(game->borrowed_sounds, &sound)) {
+        if (game->borrowed_audio == nullptr) {
+            continue;
+        }
+        const float64_t ear[3] = {player->movement.position[0], player->movement.position[1],
+                                  player->movement.position[2] + player->movement.eye_height};
+        const float64_t source[3] = {(float64_t)sound.cell[0] + 0.5f64, (float64_t)sound.cell[1] + 0.5f64,
+                                     (float64_t)sound.cell[2] + 0.5f64};
+        float64_t forward[3];
+        player_camera_direction(player_yaw_sent(player), 0.0f32, forward);
+        uint16_t left = 0u, right = 0u;
+        audio_mixer_gains(ear, forward, source, &left, &right);
+        (void)audio_post(game->borrowed_audio, sound.family, sound.kind, left, right);
+    }
+}
+
+/* A tree coming down: one crunch a tick and not eight, heard from where it was cut. */
+static void game_fell_sound(game_t *game, uint32_t felled) {
+    if (felled != 0u) {
+        const int32_t *const cell = game->borrowed_player->interaction.cell;
+        player_sounds_post(game->borrowed_sounds, game->borrowed_felling->last_block, SOUND_KIND_BREAK, cell[0],
+                           cell[1], cell[2]);
+    }
+}
+
 /* What is left of a tree the hands cut comes down, a few logs a tick. Each is a use of the axe in hand, so it goes no further than that axe does,
  * and with no axe in hand any more the rest stay. A run with no inventory has an axe's uses without end. */
 static void game_fell_tick(game_t *game) {
@@ -88,14 +118,15 @@ static void game_fell_tick(game_t *game) {
     world_t *const world = game->borrowed_world;
     if (item == nullptr) {
         const bool axe = player->interaction.held_tool == BLOCK_TOOL_AXE;
-        (void)player_felling_tick(game->borrowed_felling, &player->interaction, &world->edit, &world->tick,
-                                  axe ? UINT32_MAX : 0u);
+        game_fell_sound(game, player_felling_tick(game->borrowed_felling, &player->interaction, &world->edit,
+                                                  &world->tick, axe ? UINT32_MAX : 0u));
         return;
     }
     const item_stack_t *const held = inventory_selected(&item->inventory);
     const uint32_t uses = item_defs[held->item].tool == BLOCK_TOOL_AXE ? equipment_uses_left(held) : 0u;
     const uint32_t felled =
         player_felling_tick(game->borrowed_felling, &player->interaction, &world->edit, &world->tick, uses);
+    game_fell_sound(game, felled);
     for (uint32_t i = 0u; i < felled; i++) {
         (void)equipment_tool_block_broken(&item->equipment, &item->inventory, game->borrowed_felling->last_block);
     }
@@ -165,7 +196,8 @@ static void game_interact_tick(game_t *game, int64_t tick_ns) {
     item_t *const item = game->borrowed_item;
     if (item == nullptr) {
         game_attack_tick(game, tick_ns);
-        player_interact_fell_tick(player, &game->borrowed_world->edit, game->borrowed_felling, tick_ns);
+        player_interact_fell_tick(player, &game->borrowed_world->edit, game->borrowed_felling, game->borrowed_sounds,
+                                  tick_ns);
         game_fell_tick(game);
         return;
     }
@@ -187,7 +219,8 @@ static void game_interact_tick(game_t *game, int64_t tick_ns) {
     const uint64_t mined_before = player->interaction.mined_count;
     const uint64_t eaten = player->survival.eaten_count;
     const uint16_t held_item = inventory_selected(&item->inventory)->item;
-    player_interact_fell_tick(player, &game->borrowed_world->edit, game->borrowed_felling, tick_ns);
+    player_interact_fell_tick(player, &game->borrowed_world->edit, game->borrowed_felling, game->borrowed_sounds,
+                              tick_ns);
     (void)inventory_selected_take(&item->inventory, before - (uint32_t)player->interaction.hand_count);
     if (player->interaction.mined_count != mined_before) {
         game_tool_after_break(game, held_item);
@@ -527,6 +560,7 @@ void game_sim_tick(game_t *game, int64_t tick_ns) {
         PROFILER_BEGIN(lane, "tick_hands");
         /* First, so that the body and its next aim both meet the world as the hands leave it. */
         game_interact_tick(game, tick_ns);
+        game_sounds_tick(game);
         if (game_has_screens(game)) {
             game_screen_tick(game);
         }

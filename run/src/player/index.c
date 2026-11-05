@@ -119,6 +119,13 @@ void player_send(player_t *player, const player_intent_t *intent, int64_t now_ns
     }
 }
 
+float32_t player_yaw_sent(const player_t *player) {
+    const uint32_t yaw_bits = (uint32_t)atomic_load_explicit(&player->look_word, memory_order_relaxed);
+    float32_t yaw = 0.0f32;
+    memcpy(&yaw, &yaw_bits, sizeof(yaw));
+    return yaw;
+}
+
 bool player_sneak_sent(const player_t *player) {
     return player_intent_unpack(atomic_load_explicit(&player->intent_word, memory_order_relaxed)).sneak != 0u;
 }
@@ -132,10 +139,11 @@ void player_hands_send(player_t *player, bool attack, bool place) {
 }
 
 void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns) {
-    player_interact_fell_tick(player, edit, nullptr, tick_ns);
+    player_interact_fell_tick(player, edit, nullptr, nullptr, tick_ns);
 }
 
-void player_interact_fell_tick(player_t *player, world_edit_t *edit, player_felling_t *felling, int64_t tick_ns) {
+void player_interact_fell_tick(player_t *player, world_edit_t *edit, player_felling_t *felling, player_sounds_t *sounds,
+                               int64_t tick_ns) {
     uint32_t hands = atomic_load_explicit(&player->hands_word, memory_order_relaxed);
     hands |= atomic_exchange_explicit(&player->hands_latch, 0u, memory_order_relaxed);
     if (player->hands_held_off != 0u) {
@@ -177,6 +185,7 @@ void player_interact_fell_tick(player_t *player, world_edit_t *edit, player_fell
         .attack = buttons.attack,
         .place = buttons.place,
         ._pad0 = {0},
+        .borrowed_sounds = sounds,
     };
     player_interaction_tick(&player->interaction, edit, &input);
 }

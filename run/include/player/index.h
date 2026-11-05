@@ -100,6 +100,9 @@ void player_spawn(player_t *player, float64_t x, float64_t y, float64_t z);
  * two ticks still jumps. Never waits. */
 void player_send(player_t *player, const player_intent_t *intent, int64_t now_ns);
 
+/* Which way main last said the player looks, turned in radians. The sim. */
+float32_t player_yaw_sent(const player_t *player);
+
 /* Whether the keys main sent last say to sneak. The sim. */
 bool player_sneak_sent(const player_t *player);
 
@@ -115,9 +118,11 @@ void player_hands_send(player_t *player, bool attack, bool place);
  * touches the heap. What it broke waits in the interaction's ring, for whoever puts items in the world. */
 void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns);
 
-/* The same, with somewhere for a log an axe cuts to set the rest of its tree going: player_interact_tick is this with nullptr, and an axe cuts one log.
+/* The same, with somewhere for a log an axe cuts to set the rest of its tree going, and somewhere for what can be heard: player_interact_tick is this with nullptrs, and an
+ * axe cuts one log, silently.
  * The caller then runs player_felling_tick. */
-void player_interact_fell_tick(player_t *player, world_edit_t *edit, player_felling_t *felling, int64_t tick_ns);
+void player_interact_fell_tick(player_t *player, world_edit_t *edit, player_felling_t *felling, player_sounds_t *sounds,
+                               int64_t tick_ns);
 
 /* The hand's tick, right before player_interact_tick on the same thread: a press of the left button on a body in reach returns true and
  * says what it does, for the caller to apply. While the button is on a body the hands that follow do not mine. A run that does not call this

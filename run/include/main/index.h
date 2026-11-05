@@ -2,6 +2,7 @@
 #ifndef MC_RUN_MAIN_INDEX_H
 #define MC_RUN_MAIN_INDEX_H
 
+#include "audio/index.h"
 #include "display/index.h"
 #include "entity/index.h"
 #include "mob/index.h"
@@ -50,7 +51,8 @@ typedef struct app_t {
     uint32_t cpu_required;         /* CPU_FEATURE_* the build uses */
     uint32_t cpu_present;          /* CPU_FEATURE_* this machine has */
     math_t math;
-    uint8_t _pad0[40];
+    audio_t
+        audio; /* only a game with hands starts it, and then it takes its own region: nothing can stop the game for it */
     settings_t settings; /* read only for --menu, which is the default: everything else runs on its flags */
     save_t save;         /* only --menu, the default, has worlds to keep */
     profiler_t profiler; /* only --profile starts it, first of all, and it stops last: job and game hold lanes in it */

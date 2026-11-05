@@ -76,6 +76,7 @@ void settings_persist_defaults(settings_values_t *out) {
                                .effects = SHADE_FEATURES_PLAY,
                                .vsync = 1u,
                                .show_coordinates = 1u,
+                               .sound_volume_percent = SETTINGS_SOUND_VOLUME_DEFAULT,
                                ._pad0 = {0}};
 }
 
@@ -92,6 +93,9 @@ void settings_persist_clamp(settings_values_t *values) {
     values->effects &= SHADE_FEATURES_EVERY;
     values->vsync = values->vsync != 0u ? 1u : 0u;
     values->show_coordinates = values->show_coordinates != 0u ? 1u : 0u;
+    values->sound_volume_percent = values->sound_volume_percent > SETTINGS_SOUND_VOLUME_MAX
+                                       ? (uint8_t)SETTINGS_SOUND_VOLUME_MAX
+                                       : values->sound_volume_percent;
 }
 
 /* ---- Reading ---------------------------------------------------------------------------------------------------------- */
@@ -160,6 +164,16 @@ static settings_line_result_t settings_line_apply(const uint8_t *key, uint64_t k
         if (settings_key_is(key, key_length, SETTINGS_NUMBERS[i].key)) {
             return settings_line_number(&SETTINGS_NUMBERS[i], value, value_length, values);
         }
+    }
+    /* A byte, with no room in the table's words. */
+    if (settings_key_is(key, key_length, "sound_volume_percent")) {
+        uint32_t parsed = 0u;
+        if (!settings_number_parse(value, value_length, &parsed)) {
+            return SETTINGS_LINE_BAD;
+        }
+        const uint32_t held = parsed > SETTINGS_SOUND_VOLUME_MAX ? SETTINGS_SOUND_VOLUME_MAX : parsed;
+        values->sound_volume_percent = (uint8_t)held;
+        return held == parsed ? SETTINGS_LINE_SET : SETTINGS_LINE_HELD;
     }
     bool on = false;
     const bool is_vsync = settings_key_is(key, key_length, "vsync");
@@ -323,6 +337,11 @@ bool settings_persist_write(const settings_values_t *values, uint8_t *out, uint6
         if (!settings_append(out, capacity, &at, SETTINGS_NUMBERS[i].key, number)) {
             return false;
         }
+    }
+    char volume[16];
+    (void)snprintf(volume, sizeof(volume), "%" PRIu32, (uint32_t)values->sound_volume_percent);
+    if (!settings_append(out, capacity, &at, "sound_volume_percent", volume)) {
+        return false;
     }
     if (!settings_append(out, capacity, &at, "vsync", values->vsync != 0u ? "true" : "false")) {
         return false;

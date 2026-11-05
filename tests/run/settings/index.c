@@ -142,6 +142,7 @@ TEST(the_file_for_the_defaults_is_exactly_this) {
                                    "sensitivity_percent: 100\n"
                                    "render_scale_percent: 100\n"
                                    "worker_count: 16\n"
+                                   "sound_volume_percent: 70\n"
                                    "vsync: true\n"
                                    "show_coordinates: true\n"
                                    "effect_shapes: true\n"
@@ -192,6 +193,7 @@ TEST(any_values_written_read_back_the_same) {
                                     .effects = random[6],
                                     .vsync = (uint8_t)(random[7] & 1u),
                                     .show_coordinates = (uint8_t)((random[7] >> 1u) & 1u),
+                                    .sound_volume_percent = (uint8_t)(random[7] >> 8u),
                                     ._pad0 = {0}};
         settings_persist_clamp(&values);
         CHECK(values.render_distance >= 2u && values.render_distance <= 512u);
@@ -206,7 +208,7 @@ TEST(any_values_written_read_back_the_same) {
         settings_persist_report_t report;
         settings_persist_parse(text, bytes, &back, &report);
         CHECK_EQ_U64(report.problems, 0u);
-        CHECK_EQ_U64(report.applied, 6u + 2u + SETTINGS_EFFECT_COUNT);
+        CHECK_EQ_U64(report.applied, 7u + 2u + SETTINGS_EFFECT_COUNT);
         CHECK_MEM_EQ(&back, &values, sizeof(values));
     }
 }
@@ -234,6 +236,20 @@ TEST(a_file_is_read_in_any_order_with_comments_and_the_last_line_wins) {
 }
 
 /* What a file written before the setting existed says, every line of it: not a thing to warn about, and it comes up as it does on a new install. */
+TEST(the_sound_volume_is_kept_held_to_its_range_and_a_file_from_before_it_has_the_default) {
+    settings_values_t values;
+    settings_persist_defaults(&values);
+    CHECK_EQ_U64(values.sound_volume_percent, SETTINGS_SOUND_VOLUME_DEFAULT);
+    CHECK_EQ_U64(parse_text("version: 1\nfov_degrees: 80\n", &values).problems, 0u);
+    CHECK_EQ_U64(values.sound_volume_percent, SETTINGS_SOUND_VOLUME_DEFAULT);
+    CHECK_EQ_U64(parse_text("version: 1\nsound_volume_percent: 0\n", &values).problems, 0u);
+    CHECK_EQ_U64(values.sound_volume_percent, 0u);
+    CHECK_EQ_U64(parse_text("version: 1\nsound_volume_percent: 35\n", &values).problems, 0u);
+    CHECK_EQ_U64(values.sound_volume_percent, 35u);
+    CHECK_EQ_U64(parse_text("version: 1\nsound_volume_percent: 900\n", &values).problems, 1u);
+    CHECK_EQ_U64(values.sound_volume_percent, SETTINGS_SOUND_VOLUME_MAX);
+}
+
 TEST(a_file_from_before_show_coordinates_still_loads_and_shows_them) {
     static const char old_file[] = "version: 1\n"
                                    "render_distance: 12\n"

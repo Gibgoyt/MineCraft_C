@@ -3,6 +3,7 @@
 #define MC_RUN_GAME_INDEX_H
 
 #include "arena/index.h"
+#include "audio/index.h"
 #include "display/index.h"
 #include "entity/index.h"
 #include "mob/index.h"
@@ -147,7 +148,9 @@ typedef struct game_t {
     uint8_t _pad1[4];        /* 916 */
     /* The sim's: a tree on its way down, from arena_world while a world is open. Only the pointer's here, as this is under app_t on main's stack. */
     player_felling_t *borrowed_felling; /* 920 */
-    uint8_t _pad8[32];                  /* 928 */
+    player_sounds_t
+        *borrowed_sounds; /* 928: the same: what the hands did that can be heard, and each tick it is taken */
+    uint8_t _pad8[24];    /* 936 */
     /* A line of its own from here: the gpu thread writes these, and main what is after them. */
     render_camera_t picture_cameras[RENDER_EXCHANGE_SLOTS]; /* 960: what the picture in each slot was drawn from */
     uint8_t _pad2[8];                                       /* 1080 */
@@ -190,7 +193,9 @@ typedef struct game_t {
     /* A line of its own from here: the sim's. */
     mob_spawn_t mob_spawn; /* 1408: which mobs come and go in the entity store; only with a borrowed_entity */
     save_t *borrowed_save; /* 1448: where a world's changes go; set before a world opens, and only read after */
-    uint8_t _pad7[16];     /* 1456 */
+    audio_t *
+        borrowed_audio; /* 1456: what the hands did is posted here, or nullptr; set before a world opens, and only read after */
+    uint8_t _pad7[8]; /* 1464 */
     /* A line of its own and some: main's, but for uncapped. */
     heap_region_t owned_view; /* 1472: a picture at the display's size, once something has needed one */
     game_config_t config;     /* 1488: what this world is running with now */
@@ -248,6 +253,9 @@ void game_ui_set(game_t *game, ui_t *ui);
  * it is saved in the background every SAVE_AUTOSAVE_INTERVAL_TICKS. With no world open in it, none of that happens. Must outlive it. Before
  * game_open. */
 void game_save_set(game_t *game, save_t *save);
+
+/* Where what a player's hands did is heard. A run that does not call this is silent. Call it before a world opens: only the sim reads it after. */
+void game_audio_set(game_t *game, audio_t *audio);
 
 /* From here on what its threads do, and what the card does, is timed in this profiler's lanes. The profiler must outlive it. Before
  * game_open. Without it, nothing is timed. */
