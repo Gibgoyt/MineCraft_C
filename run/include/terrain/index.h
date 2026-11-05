@@ -86,7 +86,8 @@ static_assert(offsetof(terrain_t, borrowed_feature) == 168);
 void terrain_deinit(terrain_t *terrain);
 
 /* Every stage in its order, for one box: the blocks of the world there. blocks holds terrain_density_box_voxels(box) values in x,
- * then y, then z order, and opened that many bytes the caller lends for working. Allocates nothing, and a voxel is a pure function
+ * then y, then z order, and opened that many bytes the caller lends for working, which it leaves as TERRAIN_CAVE_WANTED_UNCUT where a cave wanted a voxel that held nothing to cut, and
+ * some other bit set where a cave cut one: test it with ~TERRAIN_CAVE_WANTED_UNCUT, not against 0. Allocates nothing, and a voxel is a pure function
  * of the terrain and the voxel: splitting a box into parts, in any order, on any thread, gives the same bytes. */
 void terrain_generate_box(const terrain_t *terrain, const terrain_density_box_t *box, uint8_t *opened,
                           uint16_t *blocks);

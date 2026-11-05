@@ -97,7 +97,8 @@ TEST(every_stage_gives_the_same_bytes_as_features_walking_the_chunk_for_themselv
     uint16_t *const by_hand = test_alloc(t, (uint64_t)OWN_VOXELS * sizeof(uint16_t));
     uint16_t *const generated = test_alloc(t, (uint64_t)OWN_VOXELS * sizeof(uint16_t));
     uint8_t *const opened = test_alloc(t, OWN_VOXELS);
-    uint64_t chunks = 0u, lakes = 0u;
+    uint8_t *const by_hand_opened = test_alloc(t, OWN_VOXELS);
+    uint64_t chunks = 0u, lakes = 0u, cut = 0u, wanted_only = 0u;
     for (uint32_t w = 0u; w < OWN_SEEDS; w++) {
         terrain_t terrain;
         REQUIRE(terrain_init(&terrain, OWN_WORLDS[w]));
@@ -107,9 +108,18 @@ TEST(every_stage_gives_the_same_bytes_as_features_walking_the_chunk_for_themselv
                 ((int32_t)(g % OWN_GRID_SIDE) - (int32_t)OWN_GRID_SIDE / 2) * (int32_t)OWN_GRID_STEP;
             const int32_t chunk_y = ((int32_t)(g / 3u) - (int32_t)OWN_GRID_SIDE / 2) * (int32_t)OWN_GRID_STEP + 5;
             const terrain_density_box_t box = own_box(chunk_x, chunk_y);
-            own_by_hand(&terrain, &box, opened, by_hand);
+            own_by_hand(&terrain, &box, by_hand_opened, by_hand);
             terrain_generate_box(&terrain, &box, opened, generated);
             CHECK(memcmp(by_hand, generated, (uint64_t)OWN_VOXELS * sizeof(uint16_t)) == 0);
+            /* What the map and walk tools read from opened: where a cave truly cut, and no more. */
+            uint64_t differ = 0u;
+            for (uint64_t i = 0u; i < OWN_VOXELS; i++) {
+                const bool says_cut = (opened[i] & ~(uint32_t)TERRAIN_CAVE_WANTED_UNCUT) != 0u;
+                differ += says_cut != (by_hand_opened[i] != 0u) ? 1u : 0u;
+                cut += says_cut ? 1u : 0u;
+                wanted_only += opened[i] == TERRAIN_CAVE_WANTED_UNCUT ? 1u : 0u;
+            }
+            CHECK_EQ_U64(differ, 0u);
             chunks++;
         }
         /* And chunks with a lake, the one case that reads the surface's noise only when it gets there. */
@@ -129,8 +139,13 @@ TEST(every_stage_gives_the_same_bytes_as_features_walking_the_chunk_for_themselv
         lakes += found;
         terrain_deinit(&terrain);
     }
-    printf("%" PRIu64 " chunks of ground and %" PRIu64 " with a lake\n", chunks, lakes);
+    printf("%" PRIu64 " chunks of ground and %" PRIu64 " with a lake; %" PRIu64 " voxels cut, %" PRIu64
+           " wanted and left\n",
+           chunks, lakes, cut, wanted_only);
     CHECK(lakes > 0u);
+    /* Both must turn up, or the check above says nothing. */
+    CHECK(cut > 0u);
+    CHECK(wanted_only > 0u);
 }
 
 TEST(a_box_that_is_not_one_whole_chunk_with_all_its_ground_is_left_to_find_its_own) {

@@ -435,7 +435,7 @@ static void map_cave_job(job_worker_t *worker, void *borrowed_argument) {
                     if (!map_is_growth(blocks[voxel])) {
                         break;
                     }
-                    open_to_sky += opened[voxel] != 0u ? 1u : 0u;
+                    open_to_sky += (opened[voxel] & ~(uint32_t)TERRAIN_CAVE_WANTED_UNCUT) != 0u ? 1u : 0u;
                     layer--;
                 }
                 const uint16_t top =
@@ -462,7 +462,7 @@ static void map_cave_job(job_worker_t *worker, void *borrowed_argument) {
                     }
                     const uint64_t voxel = (uint64_t)column + (uint64_t)TERRAIN_FEATURE_CHUNK_COLUMNS * l;
                     const bool is_rock = map_is_rock(blocks[voxel]);
-                    if (opened[voxel] != 0u) {
+                    if ((opened[voxel] & ~(uint32_t)TERRAIN_CAVE_WANTED_UNCUT) != 0u) {
                         counts.opened[band]++;
                     } else if (is_rock) {
                         counts.standing[band]++;
@@ -773,9 +773,9 @@ static void map_draw(const map_column_t *columns, uint32_t *pixels) {
 static uint32_t map_slice_colour(uint16_t block, uint8_t opened) {
     switch (block) {
     case BLOCK_ID_AIR:
-        return opened != 0u ? 0x101010u : 0xA8D0F0u;
+        return (opened & ~(uint32_t)TERRAIN_CAVE_WANTED_UNCUT) != 0u ? 0x101010u : 0xA8D0F0u;
     case BLOCK_ID_WATER:
-        return opened != 0u ? 0x103890u : 0x2F68D8u;
+        return (opened & ~(uint32_t)TERRAIN_CAVE_WANTED_UNCUT) != 0u ? 0x103890u : 0x2F68D8u;
     case BLOCK_ID_LAVA:
         return 0xFF5000u;
     case BLOCK_ID_BEDROCK:

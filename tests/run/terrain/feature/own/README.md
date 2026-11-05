@@ -9,4 +9,6 @@
 **May be called by:** ctest.
 **Depends on:** `tests/harness/`, `run/src/terrain/` and every stage under it, and `run/src/world/column/`'s layers.
 
+**It also holds what the mask says after `terrain_generate_box`.** `bench_world_map` and `bench_cave_walk` read `opened` to know where a cave truly cut. Once the mask also kept what caves wanted and did not cut, both tools counted that too, so each chunk of ground compares it with the by-hand mask.
+
 **What it does not say.** These are samples, of 3 worlds: a place where the two ways differ and no chunk here lands would not show. The digests in `tests/run/terrain/` hold the land itself as well.

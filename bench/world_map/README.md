@@ -146,3 +146,18 @@ Same 8 seeds and build type, in two runs of 4, exit status 0, 0 columns differin
 | 20261104 | 1233.1 | 3857 | 16593 | 4494 | 175.84 | 31.97 |
 | 9999999999999 | 1095.5 | 3254 | 4572 | 183 | 158.23 | 28.28 |
 | 18446744073709551557 | 1200.6 | 3797 | 7853 | 1848 | 177.07 | 33.20 |
+
+### 2026-11-05, plan 003 phase 8's gate: openings read wrong for a while
+
+From `fd38d63` on, `terrain_generate_box` leaves `TERRAIN_CAVE_WANTED_UNCUT` in the mask, and this tool took that for a cut. So openings read 225 to 254 per km^2 and deep ones 61 to 75, slices painted sea and sky a cave wanted as a cave's, and the caves' share of rock read high. No number in this file was recorded in that time. Since the fix, on the same 8 seeds, in two runs of 4, exit status 0, 0 columns differing:
+
+| Seed | Openings/km^2 | Deep/km^2 |
+|---|---|---|
+| 2198175988018515243 | 161.61 | 24.10 |
+| 12636146071196537873 | 170.26 | 24.47 |
+| 5569068473609503046 (the default) | 181.45 | 24.56 |
+| 1 | 166.10 | 22.71 |
+| 42 | 170.54 | 27.17 |
+| 20261104 | 170.83 | 31.37 |
+| 9999999999999 | 155.80 | 27.79 |
+| 18446744073709551557 | 174.69 | 32.77 |

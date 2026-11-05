@@ -247,7 +247,7 @@ static void walk_chunks_job(job_worker_t *worker, void *borrowed_argument) {
                 cell |= (block_defs[block].flags & BLOCK_FLAG_SOLID) != 0u ? WALK_SOLID : 0u;
                 cell |= block == BLOCK_ID_WATER || block == BLOCK_ID_LAVA ? WALK_LIQUID : 0u;
                 cell |= block == BLOCK_ID_LAVA ? WALK_LAVA : 0u;
-                cell |= opened[voxel] != 0u ? WALK_CUT : 0u;
+                cell |= (opened[voxel] & ~(uint32_t)TERRAIN_CAVE_WANTED_UNCUT) != 0u ? WALK_CUT : 0u;
                 area->borrowed_cells[in_area + area->layer * l] = cell;
                 if (top == INT16_MIN && (block == BLOCK_ID_WATER || block == BLOCK_ID_LAVA ||
                                          ((cell & WALK_SOLID) != 0u && !walk_is_growth(block)))) {
