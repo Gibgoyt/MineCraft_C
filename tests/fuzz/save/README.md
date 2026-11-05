@@ -15,7 +15,7 @@ The first byte says which of the five. A state or a world has every length and h
 
 A state or a record is mostly changed in place, by `mutate`: a section, each the same, and a value inside it, often one a float or a count should never be. A change of length or a byte thrown anywhere is refused on sight, which measured 6 states getting in out of 6000.
 
-Four state seeds have the numbers at what `save_state_check` takes and no further, as a random poke hardly ever lands in that range: without `save_state_capture` stopping numbers at those limits, a run fails within a minute.
+One state seed says it is from other tables, so that the one time in eight its hash is left alone it goes through `save_state_translate`, on whatever a mutation has made of its numbers and its section of names. A world's hash is put right from whatever its list says, so a mutated list is what gets looked at. Four state seeds have the numbers at what `save_state_check` takes and no further, as a random poke hardly ever lands in that range: without `save_state_capture` stopping numbers at those limits, a run fails within a minute.
 
 ## What it holds them to
 

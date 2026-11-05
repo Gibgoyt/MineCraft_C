@@ -27,7 +27,6 @@ enum : uint64_t {
 enum : uint32_t {
     /* Three axes three times, the two of wish, two falls, ten numbers of 4 bytes, and the handle, age, kind, flags and swing. */
     SAVE_STATE_BODY_FIELDS = 9u + 2u + 2u + 10u + 5u,
-    SAVE_STATE_SLOT_TABLES = 3u,
     SAVE_STATE_SEEN_WORDS = ENTITY_STORE_CAPACITY / 64u,
 };
 static_assert(ENTITY_STORE_CAPACITY % 64u == 0u);
@@ -327,6 +326,14 @@ static void save_state_out_spawn(save_state_out_t *out, const mob_spawn_t *spawn
     save_state_out_end(out);
 }
 
+/* Always there, and always last: what every number before it means. */
+static void save_state_out_names(save_state_out_t *out) {
+    save_state_out_begin(out, SAVE_STATE_SECTION_NAMES);
+    ASSERT_ALWAYS(out->used + SAVE_STATE_NAMES_BYTES_MAX <= SAVE_STATE_IMAGE_BYTES);
+    out->used += save_names_write_all(out->borrowed_file + out->used);
+    save_state_out_end(out);
+}
+
 static void save_state_out_minds(save_state_out_t *out, const mob_t *mob) {
     const save_state_minds_t head = {.zombie_random = mob->zombie.random.state,
                                      .zombie_struck = mob->zombie.struck_count,
@@ -380,6 +387,7 @@ void save_state_capture(save_state_t *state, const save_state_parts_t *parts) {
     if (parts->borrowed_mob != nullptr) {
         save_state_out_minds(&out, parts->borrowed_mob);
     }
+    save_state_out_names(&out);
     save_state_header_t header;
     memset(&header, 0, sizeof(header));
     memcpy(header.magic, SAVE_STATE_MAGIC, sizeof(header.magic));
@@ -540,9 +548,9 @@ static bool save_state_check_player(const uint8_t *data, uint64_t bytes) {
     return true;
 }
 
+/* Not what it makes: save_state_apply works that out from the cells, as this build's recipes need not be those it was saved with. */
 static bool save_state_check_grid(const crafting_grid_t *grid, uint8_t side) {
-    return grid->side == side && (grid->recipe == CRAFTING_NO_RECIPE || grid->recipe < RECIPE_COUNT) &&
-           save_state_stacks_fine(grid->cells, RECIPE_CELLS) && item_stack_is_valid(&grid->output);
+    return grid->side == side && save_state_stacks_fine(grid->cells, RECIPE_CELLS);
 }
 
 static bool save_state_check_items(const uint8_t *data, uint64_t bytes) {
@@ -705,6 +713,15 @@ static bool save_state_check_bodies(const uint8_t *data, uint64_t bytes) {
         }
     }
     const uint8_t *const handles = floats + 10ull * head.count * sizeof(float32_t);
+    /* After the handles and the ages, and what a mind looks in mob_defs by. */
+    const uint8_t *const kinds = handles + 2ull * head.count * sizeof(uint32_t);
+    for (uint32_t i = 0u; i < head.count; i++) {
+        uint16_t kind = 0u;
+        memcpy(&kind, kinds + (uint64_t)i * sizeof(kind), sizeof(kind));
+        if (kind >= MOB_COUNT) {
+            return false;
+        }
+    }
     return save_state_check_slots(tables, handles, head.count, head.free_head);
 }
 
@@ -759,16 +776,21 @@ static bool save_state_check_one(uint32_t id, const uint8_t *data, uint64_t byte
         return save_state_check_spawn(bytes);
     case SAVE_STATE_SECTION_MINDS:
         return save_state_check_minds(data, bytes);
+    case SAVE_STATE_SECTION_NAMES:
+        return save_names_are_live(data, bytes);
     }
-    return false; /* an id from nowhere: version 1 has only those */
+    return false; /* an id from nowhere: this version has only those */
 }
 
-save_world_status_t save_state_check(const uint8_t *file, uint64_t bytes, uint64_t seed, uint64_t generation) {
+/* All of a file's header but what its numbers mean. */
+static save_world_status_t save_state_check_header(const uint8_t *file, uint64_t bytes, uint64_t seed,
+                                                   uint64_t generation, save_state_header_t *out) {
     save_state_header_t header;
     if (bytes < sizeof(header)) {
         return SAVE_WORLD_ERROR_DAMAGED;
     }
     memcpy(&header, file, sizeof(header));
+    *out = header;
     if (memcmp(header.magic, SAVE_STATE_MAGIC, sizeof(header.magic)) != 0) {
         return SAVE_WORLD_ERROR_DAMAGED;
     }
@@ -787,6 +809,15 @@ save_world_status_t save_state_check(const uint8_t *file, uint64_t bytes, uint64
     }
     if (header.seed != seed) {
         return SAVE_WORLD_ERROR_SEED;
+    }
+    return SAVE_WORLD_OK;
+}
+
+save_world_status_t save_state_check(const uint8_t *file, uint64_t bytes, uint64_t seed, uint64_t generation) {
+    save_state_header_t header;
+    const save_world_status_t head_status = save_state_check_header(file, bytes, seed, generation, &header);
+    if (head_status != SAVE_WORLD_OK) {
+        return head_status;
     }
     if (header.table_hash != save_state_table_hash()) {
         return SAVE_WORLD_ERROR_TABLES;
@@ -817,13 +848,54 @@ save_world_status_t save_state_check(const uint8_t *file, uint64_t bytes, uint64
         at += padded;
         count++;
     }
-    if (count != header.section_count || (seen & (1u << SAVE_STATE_SECTION_TIME)) == 0u) {
+    if (count != header.section_count || (seen & (1u << SAVE_STATE_SECTION_TIME)) == 0u ||
+        (seen & (1u << SAVE_STATE_SECTION_NAMES)) == 0u) {
         return SAVE_WORLD_ERROR_DAMAGED;
     }
     return SAVE_WORLD_OK;
 }
 
 /* ---- Opening ---------------------------------------------------------------------------------------------------------- */
+
+/* A file just read, if it was saved with other tables: its numbers in this build's, its hashes those of what it is now. In memory only: the next save writes it. Anything
+ * wrong with it that is not its tables is left for save_state_check to say. */
+static save_world_status_t save_state_translate_kept(save_state_t *state, uint64_t *in_out_bytes, uint64_t generation) {
+    save_state_header_t header;
+    if (save_state_check_header(state->borrowed_image, *in_out_bytes, state->seed, generation, &header) !=
+            SAVE_WORLD_OK ||
+        header.table_hash == save_state_table_hash()) {
+        return SAVE_WORLD_OK;
+    }
+    uint32_t section_count = 0u;
+    const save_world_status_t translated =
+        save_state_translate(state->borrowed_image, in_out_bytes, SAVE_STATE_IMAGE_BYTES, state->borrowed_maps,
+                             state->borrowed_directory, &section_count);
+    if (translated != SAVE_WORLD_OK) {
+        return translated;
+    }
+    header.table_hash = save_state_table_hash();
+    header.sections_bytes = *in_out_bytes - sizeof(header);
+    header.section_count = section_count;
+    header.sections_hash =
+        save_state_hash_more(SAVE_STATE_HASH_START, state->borrowed_image + sizeof(header), header.sections_bytes);
+    header.checksum = save_state_hash_more(SAVE_STATE_HASH_START, &header, offsetof(save_state_header_t, checksum));
+    memcpy(state->borrowed_image, &header, sizeof(header));
+    return SAVE_WORLD_OK;
+}
+
+/* Why a file is refused, in words, where the words are not the same for all of them. */
+static void save_state_refusal_log(const uint8_t *file, uint64_t bytes, const char *path) {
+    save_state_header_t header;
+    if (bytes >= sizeof(header)) {
+        memcpy(&header, file, sizeof(header));
+        if (header.version < SAVE_STATE_VERSION_FIRST_WITH_NAMES) {
+            LOG_ERROR("save: %s is in version %" PRIu32
+                      " of the format, from before a state kept the names of its tables, so nothing says what its "
+                      "numbers mean. It is left as it was",
+                      path, header.version);
+        }
+    }
+}
 
 /* Whether a name is one this module makes: state.<digits>, with .tmp or without. Gives its number. */
 static bool save_state_name_parse(const char *name, uint64_t *out_generation, bool *out_temporary) {
@@ -868,14 +940,21 @@ save_world_status_t save_state_open(save_state_t *state, arena_t *arena, const c
     }
     state->borrowed_image = arena_alloc(arena, SAVE_STATE_IMAGE_BYTES, 64u);
     state->borrowed_directory = arena_alloc(arena, directory_bytes, 1u);
+    state->borrowed_maps = arena_alloc(arena, SAVE_STATE_TRANSLATE_MAPS_BYTES, alignof(uint16_t));
     memcpy(state->borrowed_directory, world_directory, directory_bytes);
     state->seed = seed;
     state->table_hash = save_state_table_hash();
     uint64_t bytes = 0u;
     const file_status_t status = file_read_whole(path, state->borrowed_image, SAVE_STATE_IMAGE_BYTES, &bytes);
     if (status == FILE_OK) {
-        const save_world_status_t checked = save_state_check(state->borrowed_image, bytes, seed, generation);
+        save_world_status_t checked = save_state_translate_kept(state, &bytes, generation);
+        if (checked == SAVE_WORLD_OK) {
+            checked = save_state_check(state->borrowed_image, bytes, seed, generation);
+        }
         if (checked != SAVE_WORLD_OK) {
+            if (checked == SAVE_WORLD_ERROR_VERSION) {
+                save_state_refusal_log(state->borrowed_image, bytes, path);
+            }
             LOG_ERROR("save: %s cannot be believed: %s", path, save_world_status_name(checked));
             memset(state, 0, sizeof(*state));
             return checked;
@@ -965,6 +1044,9 @@ static void save_state_in_items(item_t *item, item_stack_t *held, const uint8_t 
     if (held != nullptr) {
         *held = head.held;
     }
+    /* What each makes, from this build's recipes, as those may be others than a file's. With the same recipes this is what the file said. */
+    crafting_grid_changed(&item->crafting_hands);
+    crafting_grid_changed(&item->crafting_table);
 }
 
 static void save_state_in_drops(item_drop_store_t *drops, const uint8_t *data) {

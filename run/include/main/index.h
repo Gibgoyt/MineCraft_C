@@ -55,7 +55,7 @@ typedef struct app_t {
     save_t save;         /* only --menu, the default, has worlds to keep */
     profiler_t profiler; /* only --profile starts it, first of all, and it stops last: job and game hold lanes in it */
 } app_t;
-static_assert(sizeof(app_t) == 16000);
+static_assert(sizeof(app_t) == 16064);
 static_assert(alignof(app_t) == 64);
 
 /* The exit codes of minecraft_c. */

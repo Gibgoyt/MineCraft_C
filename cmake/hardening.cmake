@@ -29,7 +29,9 @@ if(MC_PRESET STREQUAL "sanitize")
   add_library(mc_fuzz_save_code OBJECT
     "${CMAKE_SOURCE_DIR}/run/src/save/world/index.c"
     "${CMAKE_SOURCE_DIR}/run/src/save/world/record/index.c"
+    "${CMAKE_SOURCE_DIR}/run/src/save/names/index.c"
     "${CMAKE_SOURCE_DIR}/run/src/save/state/index.c"
+    "${CMAKE_SOURCE_DIR}/run/src/save/state/translate/index.c"
     "${CMAKE_SOURCE_DIR}/run/src/ui/menu/catalog/index.c"
     "${CMAKE_SOURCE_DIR}/run/src/settings/persist/index.c")
   target_include_directories(mc_fuzz_save_code PRIVATE "${CMAKE_SOURCE_DIR}/run/include" "${MC_GENERATED_DIR}")
@@ -38,7 +40,7 @@ if(MC_PRESET STREQUAL "sanitize")
 
   set(mc_fuzz_game_objects
     $<TARGET_OBJECTS:mc_asm> $<TARGET_OBJECTS:mc_cuda> ${mc_sanitize_objects}
-    "$<FILTER:$<TARGET_OBJECTS:mc_run>,EXCLUDE,mc_run[.]dir/([.]/)?run/src/(main|save/world|save/world/record|save/state|ui/menu/catalog|settings/persist)/index[.]c[.]o$>")
+    "$<FILTER:$<TARGET_OBJECTS:mc_run>,EXCLUDE,mc_run[.]dir/([.]/)?run/src/(main|save/names|save/world|save/world/record|save/state|save/state/translate|ui/menu/catalog|settings/persist)/index[.]c[.]o$>")
 
   function(mc_fuzz_add name)
     set(target mc_fuzz_${name})
