@@ -54,3 +54,5 @@ Appended as they land:
 ## Issues found
 
 **Open for Ahmed: option A (16 blocks per door) or option B (a real block state, then doors)?** B is my recommendation, because it also fixes stairs and ladders facing one way, and lets benches turn.
+
+**2026-11-06: B is now phase 12.** Ahmed asked for stairs and the woodworking bench to face the player and turn before placing, which needs a block state. So doors build on phase 12, and option A isn't needed unless Ahmed says otherwise.
