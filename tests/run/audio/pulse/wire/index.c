@@ -131,14 +131,6 @@ TEST(a_stream_is_what_was_proved_on_the_real_server) {
     }
 }
 
-TEST(deleting_a_stream_names_its_channel) {
-    uint8_t out[32];
-    const uint32_t bytes = pulse_wire_delete_stream(out, sizeof(out), 9u, 0x0102u);
-    static const uint8_t expected[] = {'L', 0u, 0u, 0u, 4u, 'L', 0u, 0u, 0u, 9u, 'L', 0u, 0u, 1u, 2u};
-    CHECK_EQ_U64(bytes, sizeof(expected));
-    CHECK_MEM_EQ(out, expected, sizeof(expected));
-}
-
 TEST(an_encoder_with_too_little_room_says_so_and_stays_inside_it) {
     uint8_t cookie[PULSE_WIRE_COOKIE_BYTES] = {0};
     uint8_t out[64];

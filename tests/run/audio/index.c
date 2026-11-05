@@ -14,6 +14,7 @@
 #include "types/index.h"
 
 #include <inttypes.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +26,8 @@ enum : uint32_t {
     AU_WAIT_MS = 15000u,
     AU_PROGRAM_TIMEOUT_MS = 240000u,
     AU_FILE_BYTES = 64u << 20u,
+    AU_MATCH_FRAMES = 240u, /* 5 ms: short, as a later sound of a held button may come in on top after this */
+    AU_MATCH_SKIP = 512u,
 };
 
 typedef struct au_rig_t {
@@ -504,6 +507,35 @@ static const char au_mine_script[] = "1 key w down\n"
                                      "119 button right up\n"
                                      "125 end\n";
 
+/* Which sound the frames from here on are, in the left ear, as its gain leaves the shape alone: the one whose start is most like them, from 1 down, and how like. A
+ * quiet first sample rounds to nothing, so what is heard first may be a little way into the sound. */
+static const sound_blob_entry_t *au_most_like(const int16_t *stereo, const sound_blob_view_t *view,
+                                              float64_t *out_likeness) {
+    const sound_blob_entry_t *best = nullptr;
+    *out_likeness = -1.0f64;
+    float64_t heard_energy = 0.0f64;
+    for (uint32_t i = 0u; i < AU_MATCH_FRAMES; i++) {
+        heard_energy += (float64_t)stereo[i * 2u] * (float64_t)stereo[i * 2u];
+    }
+    for (uint32_t e = 0u; e < view->sound_count; e++) {
+        const sound_blob_entry_t *const entry = &view->borrowed_entries[e];
+        const int16_t *const samples = sound_blob_samples(view, entry);
+        for (uint32_t skip = 0u; skip < AU_MATCH_SKIP && skip + AU_MATCH_FRAMES <= entry->sample_count; skip++) {
+            float64_t both = 0.0f64, energy = 0.0f64;
+            for (uint32_t i = 0u; i < AU_MATCH_FRAMES; i++) {
+                both += (float64_t)stereo[i * 2u] * (float64_t)samples[skip + i];
+                energy += (float64_t)samples[skip + i] * (float64_t)samples[skip + i];
+            }
+            const float64_t likeness = energy > 0.0f64 && heard_energy > 0.0f64 ? both / sqrt(energy * heard_energy) : 0.0f64;
+            if (likeness > *out_likeness) {
+                *out_likeness = likeness;
+                best = entry;
+            }
+        }
+    }
+    return best;
+}
+
 /* stdin from /dev/null, as the harness always does, and --headless, so this can make no sound, whatever else is wrong. The file proves it reached the mixer. */
 TEST(the_program_with_its_sound_in_a_file_mines_and_what_would_have_played_is_there) {
     if (t->arg_count < 1) {
@@ -547,14 +579,28 @@ TEST(the_program_with_its_sound_in_a_file_mines_and_what_would_have_played_is_th
     (void)unlink(script);
     (void)rmdir(dir);
     const int16_t *const samples = (const int16_t *)(const void *)bytes;
-    uint64_t loud = 0u, differ = 0u;
+    uint64_t loud = 0u, differ = 0u, first_loud = UINT64_MAX;
     for (uint64_t i = 0u; i + 1u < size / sizeof(int16_t); i += 2u) {
-        loud += samples[i] != 0 || samples[i + 1u] != 0 ? 1u : 0u;
+        const bool heard = samples[i] != 0 || samples[i + 1u] != 0;
+        loud += heard ? 1u : 0u;
+        first_loud = heard && first_loud == UINT64_MAX ? i : first_loud;
         differ += samples[i] != samples[i + 1u] ? 1u : 0u;
     }
     printf("%" PRIu64 " frames, %" PRIu64 " not silent, %" PRIu64 " with the ears apart\n", size / 4u, loud, differ);
     CHECK(size >= 4u);
-    CHECK(loud > 0u);
+    REQUIRE(loud > 0u);
+    REQUIRE(first_loud + AU_MATCH_FRAMES * 2u <= size / sizeof(int16_t));
+    /* Heard, and heard as what was dug: the first thing the script's hands touch is grass. This run's ticks go faster than the file's 10 ms, so a few hits can start on one
+     * frame, and their sum is only so like any one of them. Which of the family it is, or whether a hit or a break of the same recording, it cannot say. */
+    sound_blob_view_t view;
+    REQUIRE(sound_blob_check(embed_assets_sound_blob, embed_assets_sound_blob_bytes, &view) == SOUND_BLOB_OK);
+    float64_t likeness = 0.0f64;
+    const sound_blob_entry_t *const best = au_most_like(&samples[first_loud], &view, &likeness);
+    REQUIRE(best != nullptr);
+    printf("first sound: family %" PRIu32 ", kind %" PRIu32 ", likeness %" PRId64 " in 1000\n", (uint32_t)best->family,
+           (uint32_t)best->kind, (int64_t)(likeness * 1000.0f64));
+    CHECK_EQ_U64(best->family, SOUND_FAMILY_GRASS);
+    CHECK(likeness > 0.5f64);
 }
 
 TEST_MAIN()

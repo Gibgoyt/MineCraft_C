@@ -9,7 +9,7 @@
 
 - `pulse_wire_socket_path`, `pulse_wire_cookie_path`: which server, and the cookie it may want. A `PULSE_SERVER` naming another machine is refused, as there is no TCP here.
 - `pulse_wire_descriptor`, `pulse_wire_descriptor_parse`: the 20 bytes before every packet.
-- `pulse_wire_auth`, `pulse_wire_client_name`, `pulse_wire_create_stream`, `pulse_wire_delete_stream`: one each, writing into the caller's buffer.
+- `pulse_wire_auth`, `pulse_wire_client_name`, `pulse_wire_create_stream`: one each, writing into the caller's buffer.
 - `pulse_wire_head_parse`, `pulse_wire_u32_parse`, `pulse_wire_stream_parse`, `pulse_wire_request_parse`: what the server says. Each refuses anything malformed or cut short.
 
 **May be called by:** `audio/pulse`, and `tests/run/audio/pulse/`, whose stand-in for a server speaks the same bytes.

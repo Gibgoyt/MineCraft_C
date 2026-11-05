@@ -213,12 +213,6 @@ uint32_t pulse_wire_create_stream(uint8_t *out, uint32_t capacity, uint32_t tag,
     return wire_finish(&writer);
 }
 
-uint32_t pulse_wire_delete_stream(uint8_t *out, uint32_t capacity, uint32_t tag, uint32_t channel) {
-    wire_writer_t writer = wire_command(out, capacity, PULSE_WIRE_DELETE_PLAYBACK_STREAM, tag);
-    wire_u32(&writer, channel);
-    return wire_finish(&writer);
-}
-
 /* ---- What comes in ----------------------------------------------------------------------------------------------- */
 
 bool pulse_wire_u32_parse(const uint8_t *bytes, uint32_t size, uint32_t after, uint32_t *out) {
