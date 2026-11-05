@@ -26,6 +26,9 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 10 | A translucent blue preview of a block before placing it, like Hypixel | `...-phase-10-placement-preview.md` | Only an outline of the aimed-at block exists | Not started |
 | 11 | Stations: stoneworking bench, a 2×2×1 smith table for iron, copper and gold, a leather tanning rack and a leather workbench. **No** iron-working bench. No armour without the leather workbench. Realistic furnaces | `...-phase-06-crafting-stations.md` | New stations | Part of phase 6 |
 | 12 | More ores and alloys: chromium ore with its spawn rate in YAML, and stainless steel from 9 iron and 1 chromium | `...-phase-11-ores-and-alloys.md` | Ores are a table in code, not YAML; no alloys exist | Not started |
+| 13 | Stairs and the woodworking bench only face north: face the player, and turn before placing | `...-phase-12-block-facing.md` | A voxel holds only an id, so no block can face a way | Not started |
+| 14 | A blue preview for every block, including the next block of a 1×1 bridge | Added to `...-phase-10-placement-preview.md` | — | Part of phase 10 |
+| 15 | Place a block ahead while looking forward, like Bedrock, without turning to the edge | `...-phase-13-forward-placement.md` | Placing needs the aim to hit a block face, and looking ahead off a bridge it hits nothing | Not started |
 
 ## Order to build
 
@@ -36,19 +39,22 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 3 | 1 Tree feller | Small, and plays every session |
 | 4 | 5 Armour bar | Small |
 | 5 | 8 Render distance | Small, and needs a measurement |
-| 6 | 2 Doors | Bigger, and if Ahmed picks a real block state, that comes first |
-| 7 | 4 Animals | Needs phase 3's spawn changes, and gives the hides phase 6 needs |
-| 8 | 9 Default textures | Independent of the rest; ready to go |
-| 9 | 11 Ores and alloys | Moving ores to YAML can go any time. Alloys need phase 6's smith table |
-| 10 | 6 Crafting stations | When Ahmed's research is done. Needs phases 4 and 11 |
-| 11 | 10 Placement preview | Best last, so it knows every shape; rotating needs phase 2's block state |
+| 6 | 12 Blocks that face a way | The biggest change, needed by doors, the smith table and turning |
+| 7 | 10 Placement preview | With facing and turning from phase 12 |
+| 8 | 13 Placing ahead | Shares phase 10's placement function |
+| 9 | 2 Doors | On phase 12's block state |
+| 10 | 4 Animals | Needs phase 3's spawn changes, and gives the hides phase 6 needs |
+| 11 | 9 Default textures | Independent of the rest; ready to go |
+| 12 | 11 Ores and alloys | Moving ores to YAML can go any time. Alloys need phase 6's smith table |
+| 13 | 6 Crafting stations | When Ahmed's research is done. Needs phases 4, 11 and 12 |
 
 ## Questions for Ahmed
 
 | Phase | Question | Default if not answered |
 |---|---|---|
 | 1 | Keep sneak to chop one log? | No: always on, no exceptions |
-| 2 | Doors as 16 blocks each, or build a real block state first? | **Recommended: a block state first**; until then, 16 blocks each |
+| 12 | A block state for facing, rather than more blocks per facing? | A block state, now phase 12 |
+| 13 | How far down must you look to place ahead? | Anything from level down |
 | 4 | Should the bed be two blocks long like Minecraft's? | No, it stays one |
 | 4 | Breeding, now that animals are male and female? | Not in this plan |
 | 4 | Do bulls, rams and billy goats fight back? | No, all flee |
@@ -73,6 +79,8 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 2026-11-06 | Animals are male or female. Only females give milk or eggs. Goats give hides, not wool. Mountain goats live in mountains |
 | 2026-11-06 | Stainless steel is 9 iron + 1 chromium. Chromium ore, with its spawn rate in its YAML |
 | 2026-11-06 | It should feel like a real game, not a Minecraft sandbox |
+| 2026-11-06 | Blocks face the player when placed, and can be turned before placing, starting with stairs and the woodworking bench |
+| 2026-11-06 | Every block gets the blue preview, including bridging, and a block can be placed ahead while looking forward |
 
 ## How to test the game now
 
