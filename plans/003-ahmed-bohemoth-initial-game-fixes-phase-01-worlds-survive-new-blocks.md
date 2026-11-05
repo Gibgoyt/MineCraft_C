@@ -47,6 +47,10 @@ Results, on this phase's code:
 
 Appended as they land:
 
+- `a33ed30` Keep the names of what its numbers mean in each saved world and state, and find every block, item and mob by name on opening, so that adding one to a table no longer ends any world, and what a build has not got goes with a line in the log.
+- `9f27353` List the save names directory, the state translation and their two new tests in the repository structure.
+- `0d2fea2` Record phase 1 of the game fixes in its plan file: every box an agent can tick, the results, a real rebuild with a new block, and what was found on the way.
+
 ## Issues found
 
 **1. What a state file holds that is a place in a table, which the plan only partly listed.** Expected: inventories, chests, furnaces, crafting grids, dropped items. Found, by reading `run/include/` for every struct in `save_state_player_t`, `save_state_items_t`, chests, furnaces, drops and bodies:
