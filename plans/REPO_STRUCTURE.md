@@ -221,6 +221,9 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `entities` | Boxes from the sim to the gpu thread, per-tile entity lists, what is aimed at and mined | 09.5 |
 | | `lod` | Build coarse far-field grids on workers, each a level in the format of `world_buffers`, following the eye | 09.6 |
 | `texture` | `blob registry` | Checks the embedded blob; finds a texture, a mip level or its vector data by name or id | 06.4 |
+| `audio` | (the Owner) | `audio_init`, `audio_deinit`: a region only for a run with sound, the `audio` thread, and the ring into it; `audio_post`, `audio_volume_set`. Silence and one log line if there is no sound server, and nothing ever connects from a run with no terminal, or on a display from `:80` up | 003 phase 5 |
+| | `mixer` | Up to 8 voices from the sound blob, panned, added up and turned down, to samples in memory; what a place in the world comes to for each ear | 003 phase 5 |
+| | `pulse` | Our client of the desktop's sound server, over the second of the two sockets the standard allows. `pulse/wire` is its protocol as bytes | 003 phase 5 |
 
 ### World
 
@@ -403,6 +406,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/compile/texture_vector/` | ctest `compile_texture_vector`: vector data worked by hand, every recipe operation, bad input, and the committed `textures/` |
 | `tests/compile/texture_blob/` | ctest `compile_texture_blob`: the mip rules by hand-worked images, the blob's layout, and bad input |
 | `tests/compile/sound_pack/` | ctest `compile_sound_pack`: recipes by length, ends, peak and repeatability, the committed `sounds/` and its blob, a recipe standing in for a recording, damage to a blob, each mistake in a tree, and importing a recording |
+| `tests/run/audio/` | ctest `run_audio`: the whole of sound, thread and all, to a stand-in or a file, and the program mining with its sound in a file. `fixtures/` is the stand-in, a server over two pipes that keeps every sample in memory. `run_audio_mixer` under `mixer/` checks samples in memory, `run_audio_pulse` under `pulse/` the client, and `run_audio_pulse_wire` under `pulse/wire/` the bytes. None can be heard |
 | `tests/run/audio/sound_blob/` | ctest `run_audio_sound_blob`: the blob linked in is the one the build made, and every block that can be mined finds a sound of each kind |
 | `tests/compile/game_tables/` | ctest `compile_game_tables`: the real block tables against what `config/blocks/` says, dirt drops dirt, and each bad file refused at its line, blocks and biomes both. `cmake/targets.cmake` compiles the generated tables into it |
 | `tests/compile/{inflate,png}/fixtures/` | Committed streams and images from independent encoders, with `generate.py`, which wrote them and is not part of the build |
@@ -560,7 +564,7 @@ main
      ├─ entity, item, physics
      ├─ render ─► gpu_bridge ─► (cuda/)
      ├─ terrain, world
-     ├─ display, input, texture
+     ├─ display, input, texture, audio
      └─ job, thread, file, time, math, simd, profiler ─► (asm/)
          └─ arena, heap, log, assert, types
 ```
@@ -581,6 +585,7 @@ main
 | `sim` | `game` | `game`, `player`, `mob`, `entity`, `world/tick`, `world/light` |
 | `gpu` | `game` | `render/frame`, `render/upload`, `gpu_bridge`, `cuda/` |
 | `worker` × 16 | `job` | `terrain`, `render/encode`, `save`, mob AI batches |
+| `audio` | `audio` | `audio`, on the CPU `threads.audio` in `config/machine.yaml` gives it, after the workers |
 
 ---
 
