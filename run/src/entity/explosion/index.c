@@ -360,8 +360,8 @@ static void explosion_drops_spawn(explosion_t *explosion, item_drop_store_t *dro
     }
 }
 
-/* One block goes, and one in power of them gives what it gives. False if the edit found no room for it. A block already gone is no
- * failure: what stood on one broken earlier may be on the list as well. */
+/* One block goes, and one in power of them gives what it gives, but for a torch on a wall, which always gives its torch. False if the
+ * edit found no room for it. A block already gone is no failure: what stood on one broken earlier may be on the list as well. */
 static bool explosion_break_one(explosion_t *explosion, world_edit_t *edit, item_drop_store_t *drops, uint16_t block,
                                 const int32_t cell[COLLISION_AXES], float64_t power, uint32_t *broken) {
     const world_edit_status_t status = world_edit_block_set(edit, cell[0], cell[1], cell[2], BLOCK_ID_AIR);
@@ -369,7 +369,9 @@ static bool explosion_break_one(explosion_t *explosion, world_edit_t *edit, item
         return status != WORLD_EDIT_STATUS_NO_MEMORY;
     }
     (*broken)++;
-    if (terrain_rng_next_f64(&explosion->random) * power < 1.0f64) {
+    /* The number is taken whatever comes of it, so that a torch does not shift what the blocks after it give. */
+    const bool lucky = terrain_rng_next_f64(&explosion->random) * power < 1.0f64;
+    if (lucky || wall_torch_out(block, nullptr, nullptr)) {
         explosion_drops_spawn(explosion, drops, block, cell[0], cell[1], cell[2]);
     }
     return true;
