@@ -42,7 +42,9 @@ bool ui_hud_init(ui_hud_t *hud, arena_t *arena, const texture_t *texture) {
         !ui_image_load(&hud->health, arena, texture, "ui/icon_health") ||
         !ui_image_load(&hud->health_empty, arena, texture, "ui/icon_health_empty") ||
         !ui_image_load(&hud->food, arena, texture, "ui/icon_hunger") ||
-        !ui_image_load(&hud->food_empty, arena, texture, "ui/icon_hunger_empty")) {
+        !ui_image_load(&hud->food_empty, arena, texture, "ui/icon_hunger_empty") ||
+        !ui_image_load(&hud->air, arena, texture, "ui/icon_breath") ||
+        !ui_image_load(&hud->air_empty, arena, texture, "ui/icon_breath_empty")) {
         return false; /* it has said why */
     }
     ASSERT_ALWAYS(hud->hotbar.width == UI_HUD_TEXTURE_CLOSE_X + UI_HUD_TEXTURE_CLOSE_W &&
@@ -73,6 +75,13 @@ uint32_t ui_hud_half_units(float32_t value, uint32_t maximum) {
     return value > (float32_t)whole ? whole + 1u : whole;
 }
 
+uint32_t ui_hud_bubbles(uint32_t air, uint32_t maximum) {
+    if (air >= maximum) {
+        return UI_HUD_ICONS;
+    }
+    return (air * UI_HUD_ICONS + maximum - 1u) / maximum;
+}
+
 ui_hud_layout_t ui_hud_layout(uint32_t canvas_width, uint32_t canvas_height) {
     const uint32_t scale = ui_widget_scale_for(canvas_width, canvas_height);
     const int32_t size = (int32_t)scale;
@@ -82,11 +91,13 @@ ui_hud_layout_t ui_hud_layout(uint32_t canvas_width, uint32_t canvas_height) {
     const ui_rect_t whole = {0, 0, (int32_t)canvas_width, (int32_t)canvas_height};
     ui_rect_t hotbar = ui_rect_center(whole, bar_width, bar_height);
     hotbar.y = (int32_t)canvas_height - bar_height;
+    const int32_t row_y = hotbar.y - (int32_t)UI_HUD_ROW_ABOVE * size;
     return (ui_hud_layout_t){
         .hotbar = hotbar,
         .crosshair = ui_rect_center(whole, cross, cross),
-        .row_y = hotbar.y - (int32_t)UI_HUD_ROW_ABOVE * size,
+        .row_y = row_y,
         .scale = scale,
+        .air_y = row_y - (int32_t)UI_HUD_ROW_ABOVE * size,
     };
 }
 
@@ -110,14 +121,14 @@ static void ui_hud_hotbar_draw(const ui_hud_t *hud, ui_canvas_t *canvas, const u
 
 /* A row of ten, each half or whole. Hearts go from the left, and drumsticks from the right, each half showing the side nearest the full ones. */
 static void ui_hud_row_draw(ui_canvas_t *canvas, const ui_hud_layout_t *layout, const ui_image_t *full,
-                            const ui_image_t *empty, uint32_t units, bool from_right) {
+                            const ui_image_t *empty, int32_t y, uint32_t units, bool from_right) {
     const int32_t size = (int32_t)layout->scale;
     const int32_t icon = (int32_t)UI_HUD_ICON_SIZE * size;
     const int32_t half = icon / 2;
     for (uint32_t i = 0u; i < UI_HUD_ICONS; i++) {
         const int32_t x = from_right ? layout->hotbar.x + layout->hotbar.width - (int32_t)(i + 1u) * icon
                                      : layout->hotbar.x + (int32_t)i * icon;
-        const ui_rect_t rect = {x, layout->row_y, icon, icon};
+        const ui_rect_t rect = {x, y, icon, icon};
         ui_compose_image_whole(canvas, empty, rect);
         if (units >= (i + 1u) * 2u) {
             ui_compose_image_whole(canvas, full, rect);
@@ -125,7 +136,7 @@ static void ui_hud_row_draw(ui_canvas_t *canvas, const ui_hud_layout_t *layout, 
             const int32_t source_half = (int32_t)full->width / 2;
             const ui_rect_t source = {from_right ? (int32_t)full->width - source_half : 0, 0, source_half,
                                       (int32_t)full->height};
-            const ui_rect_t part = {from_right ? x + icon - half : x, layout->row_y, half, icon};
+            const ui_rect_t part = {from_right ? x + icon - half : x, y, half, icon};
             ui_compose_image(canvas, full, source, part);
         }
     }
@@ -181,8 +192,12 @@ void ui_hud_draw(const ui_hud_t *hud, ui_canvas_t *canvas, const ui_font_t *font
         ui_hud_item_draw(hud, canvas, font, &state->hotbar[slot], layout.hotbar.x + (int32_t)slot * pitch + inset,
                          layout.hotbar.y + inset, layout.scale);
     }
-    ui_hud_row_draw(canvas, &layout, &hud->health, &hud->health_empty, state->health, false);
-    ui_hud_row_draw(canvas, &layout, &hud->food, &hud->food_empty, state->food, true);
+    ui_hud_row_draw(canvas, &layout, &hud->health, &hud->health_empty, layout.row_y, state->health, false);
+    ui_hud_row_draw(canvas, &layout, &hud->food, &hud->food_empty, layout.row_y, state->food, true);
+    if (state->bubbles_shown != 0u) {
+        /* The row counts in halves, and a bubble is only ever whole. */
+        ui_hud_row_draw(canvas, &layout, &hud->air, &hud->air_empty, layout.air_y, (uint32_t)state->bubbles * 2u, true);
+    }
 }
 
 /* Half the HUD's size, rounding up: a tenth of the screen's height is plenty for a thing only looked at to read numbers. */

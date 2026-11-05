@@ -418,6 +418,85 @@ TEST(under_water_the_air_lasts_300_ticks_then_it_drowns_and_comes_back_at_4_a_ti
     ps_end(&rig);
 }
 
+/* Through the same call the HUD makes, on a game with nothing in it but the body: that is all this call reads that matters here. */
+static ui_hud_state_t ps_bar(const game_t *game) {
+    ui_hud_state_t state;
+    game_hud_state_read(game, &state);
+    return state;
+}
+
+TEST(the_bar_counts_down_with_the_air_and_is_empty_when_the_hearts_start_to_go) {
+    ps_rig_t rig;
+    REQUIRE(ps_begin(t, &rig));
+    player_survival_t *const survival = &rig.player->survival;
+    ps_no_healing(survival);
+    game_t *const game = test_world_aligned(t, sizeof(game_t));
+    memset(game, 0, sizeof(*game));
+    game->borrowed_player = rig.player;
+
+    /* On land with all its air, it is not up. */
+    ps_idle(&rig, 1u);
+    REQUIRE(rig.player->movement.eyes_under_water == 0u);
+    CHECK_EQ_U64(ps_bar(game).bubbles_shown, 0u);
+
+    /* In over its head, one bubble goes each 30 ticks, and no heart while there is one. */
+    test_world_fill(t, &rig.world, -3, -3, 0, 3, 3, 5, BLOCK_ID_WATER);
+    uint32_t under = 0u;
+    while (survival->air > 0 && under < 400u) {
+        ps_idle(&rig, 1u);
+        under++;
+        const ui_hud_state_t state = ps_bar(game);
+        CHECK_EQ_U64(state.bubbles_shown, 1u);
+        CHECK_EQ_I64(survival->air, 300 - (int32_t)under);
+        CHECK_EQ_U64(state.bubbles, (300u - under + 29u) / 30u);
+        CHECK_NEAR(survival->health, 20.0f32, 0.0f32);
+    }
+    /* 15 seconds, to the tick, with the last bubble going on the last of them. */
+    CHECK_EQ_U64(under, 300u);
+    CHECK_EQ_U64(ps_bar(game).bubbles, 0u);
+
+    /* The row stays empty for the one second to the first gasp, which comes when the sim has always had it. */
+    uint32_t past = 0u;
+    while (survival->health >= 20.0f32 && past < 100u) {
+        CHECK_EQ_U64(ps_bar(game).bubbles, 0u);
+        ps_idle(&rig, 1u);
+        past++;
+    }
+    CHECK_EQ_U64(past, 20u);
+    CHECK_NEAR(survival->health, 18.0f32, 0.0f32);
+    /* And while it drowns the row stays up and empty, though the sim's own number has gone back to 0 and below. */
+    for (uint32_t i = 0u; i < 25u; i++) {
+        const ui_hud_state_t state = ps_bar(game);
+        CHECK_EQ_U64(state.bubbles_shown, 1u);
+        CHECK_EQ_U64(state.bubbles, 0u);
+        ps_idle(&rig, 1u);
+    }
+
+    /* Out of the water they come back at 4 ticks' worth a tick, and go only when all are back. */
+    test_world_fill(t, &rig.world, -3, -3, 0, 3, 3, 5, BLOCK_ID_AIR);
+    ps_idle(&rig, 1u);
+    CHECK_EQ_I64(survival->air, 4);
+    CHECK_EQ_U64(ps_bar(game).bubbles, 1u);
+    CHECK_EQ_U64(ps_bar(game).bubbles_shown, 1u);
+    ps_idle(&rig, 73u);
+    CHECK_EQ_I64(survival->air, 296);
+    CHECK_EQ_U64(ps_bar(game).bubbles, 10u);
+    CHECK_EQ_U64(ps_bar(game).bubbles_shown, 1u);
+    ps_idle(&rig, 1u);
+    CHECK_EQ_I64(survival->air, 300);
+    CHECK_EQ_U64(ps_bar(game).bubbles_shown, 0u);
+
+    /* Dead, under water or not, nothing about air is up. */
+    test_world_fill(t, &rig.world, -3, -3, 0, 3, 3, 5, BLOCK_ID_WATER);
+    ps_idle(&rig, 5u);
+    CHECK_EQ_U64(ps_bar(game).bubbles_shown, 1u);
+    (void)player_survival_hurt(survival, 100.0f32, PLAYER_SURVIVAL_CAUSE_ATTACK);
+    REQUIRE(survival->state == PLAYER_SURVIVAL_DEAD);
+    ps_idle(&rig, 1u);
+    CHECK_EQ_U64(ps_bar(game).bubbles_shown, 0u);
+    ps_end(&rig);
+}
+
 TEST(a_full_opaque_cube_at_the_eyes_smothers_and_glass_and_leaves_do_not) {
     ps_rig_t rig;
     REQUIRE(ps_begin(t, &rig));

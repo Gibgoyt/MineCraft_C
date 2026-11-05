@@ -19,9 +19,9 @@ enum : uint32_t {
     UI_HUD_HOTBAR_HEIGHT = 22u,
     UI_HUD_SELECTED_SIZE = 24u,
     UI_HUD_CROSSHAIR_SIZE = 6u,
-    UI_HUD_ICON_SIZE = 9u,   /* a heart or a drumstick */
+    UI_HUD_ICON_SIZE = 9u,   /* a heart, a drumstick or a bubble */
     UI_HUD_ICONS = 10u,      /* of each, a row */
-    UI_HUD_ROW_ABOVE = 10u,  /* from the top of the row to the top of the hotbar */
+    UI_HUD_ROW_ABOVE = 10u,  /* from the top of the row to the top of the hotbar, and of the bubbles to the row's */
     UI_HUD_ITEM_SIZE = 16u,  /* an item, inside its slot */
     UI_HUD_ITEM_INSET = 3u,  /* from a slot's left and top to the item */
     UI_HUD_WEAR_WIDTH = 13u, /* the bar on what is worn */
@@ -52,9 +52,11 @@ typedef struct ui_hud_t {
     ui_image_t health_empty;          /* 64 */
     ui_image_t food;                  /* 80 */
     ui_image_t food_empty;            /* 96 */
-    const ui_image_t *borrowed_icons; /* 112: ITEM_COUNT by item_id_t; ITEM_ID_NONE's has no pixels */
+    ui_image_t air;                   /* 112 */
+    ui_image_t air_empty;             /* 128 */
+    const ui_image_t *borrowed_icons; /* 144: ITEM_COUNT by item_id_t; ITEM_ID_NONE's has no pixels */
 } ui_hud_t;
-static_assert(sizeof(ui_hud_t) == 120);
+static_assert(sizeof(ui_hud_t) == 152);
 
 /* All the game tells the HUD, for one frame. Plain values, so that this module knows no player and no thread. */
 typedef struct ui_hud_state_t {
@@ -62,9 +64,11 @@ typedef struct ui_hud_state_t {
     uint8_t selected;                            /* 72: which of them is in hand; past the end marks none */
     uint8_t health;                              /* 73: half hearts, 0 to 20 */
     uint8_t food;                                /* 74: half drumsticks, 0 to 20 */
-    uint8_t _pad0[1];                            /* 75 */
+    uint8_t bubbles;                             /* 75: of air, 0 to UI_HUD_ICONS: see ui_hud_bubbles */
+    uint8_t bubbles_shown;                       /* 76: whether that row is up at all: not on land with all its air */
+    uint8_t _pad0[1];                            /* 77 */
 } ui_hud_state_t;
-static_assert(sizeof(ui_hud_state_t) == 76);
+static_assert(sizeof(ui_hud_state_t) == 78);
 
 /* All the debug overlay shows. */
 typedef struct ui_hud_debug_t {
@@ -80,8 +84,9 @@ typedef struct ui_hud_layout_t {
     ui_rect_t crosshair; /* 16 */
     int32_t row_y;       /* 32: the top of the hearts and the drumsticks */
     uint32_t scale;      /* 36: screen pixels per texture pixel */
+    int32_t air_y;       /* 40: the top of the bubbles, over the drumsticks */
 } ui_hud_layout_t;
-static_assert(sizeof(ui_hud_layout_t) == 40);
+static_assert(sizeof(ui_hud_layout_t) == 44);
 
 /* Reads every texture the HUD is drawn with, and every item's, into memory from arena. False, having logged why, if one is missing. */
 bool ui_hud_init(ui_hud_t *hud, arena_t *arena, const texture_t *texture);
@@ -93,6 +98,10 @@ void ui_hud_deinit(ui_hud_t *hud);
  * shows some. Nothing for 0 or below, and for what is no number. */
 uint32_t ui_hud_half_units(float32_t value, uint32_t maximum);
 
+/* Air out of maximum, as the bubbles of a row of UI_HUD_ICONS: any part of a bubble's share shows as a whole one, so that the last goes just as the air
+ * runs out, and not before. */
+uint32_t ui_hud_bubbles(uint32_t air, uint32_t maximum);
+
 /* The same scale as the widgets: ui_widget_scale_for. A canvas too small to hold it all still gets this, and the clip does the rest. */
 ui_hud_layout_t ui_hud_layout(uint32_t canvas_width, uint32_t canvas_height);
 
@@ -101,7 +110,7 @@ ui_hud_layout_t ui_hud_layout(uint32_t canvas_width, uint32_t canvas_height);
 void ui_hud_item_draw(const ui_hud_t *hud, ui_canvas_t *canvas, const ui_font_t *font, const item_stack_t *stack,
                       int32_t x, int32_t y, uint32_t scale);
 
-/* The crosshair, the hotbar with what is on it, the hearts and the drumsticks. No allocation. */
+/* The crosshair, the hotbar with what is on it, the hearts, the drumsticks, and the bubbles if they are up. No allocation. */
 void ui_hud_draw(const ui_hud_t *hud, ui_canvas_t *canvas, const ui_font_t *font, const ui_hud_state_t *state);
 
 /* The frames per second, each stage's time and where the body is, on a dark panel at the top left. No allocation. */

@@ -22,6 +22,10 @@ void game_hud_state_read(const game_t *game, ui_hud_state_t *out) {
         const player_vitals_t vitals = player_vitals_read(game->borrowed_player);
         out->health = (uint8_t)ui_hud_half_units(vitals.health, PLAYER_SURVIVAL_HEALTH_MAX);
         out->food = (uint8_t)ui_hud_half_units((float32_t)vitals.food, PLAYER_SURVIVAL_FOOD_MAX);
+        out->bubbles = (uint8_t)ui_hud_bubbles(vitals.air, PLAYER_SURVIVAL_AIR_MAX);
+        /* A tick under water always leaves it short of the most, and a tick out of it reaches the most only when full again. So this is "under water or
+         * still refilling", with nothing more to send. A dead body's air stands still until it comes back, and means nothing. */
+        out->bubbles_shown = vitals.air < PLAYER_SURVIVAL_AIR_MAX && vitals.state != (uint8_t)PLAYER_SURVIVAL_DEAD;
     }
 }
 
