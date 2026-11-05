@@ -4,3 +4,4 @@ pattern: ["PPP", "PPP", " S "]
 keys: { P: group_planks, S: stick }
 gives: oak_sign
 count: 3
+station: woodworking

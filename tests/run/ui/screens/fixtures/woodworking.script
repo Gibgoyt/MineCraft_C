@@ -1,0 +1,38 @@
+# The window's top left is at (72, 37), and the test has opened the screen, with the pointer at (160, 120).
+# Hotbar 0, at (89, 188): three planks on the pointer.
+0 move -71 68
+1 button left down
+2 button left up
+# One in each of the top row's cells, at (111, 63), (129, 63) and (147, 63).
+3 move 22 -125
+4 button right down
+5 button right up
+6 move 18 0
+7 button right down
+8 button right up
+9 move 18 0
+10 button right down
+11 button right up
+# Hotbar 1, at (107, 188): the two sticks.
+12 move -40 125
+13 button left down
+14 button left up
+# One in the middle, at (129, 81), and one below it.
+15 move 22 -107
+16 button right down
+17 button right up
+18 move 0 18
+19 button right down
+20 button right up
+21 screenshot woodworking_ready.png
+# The output, at (199, 81).
+22 move 70 -18
+23 button left down
+24 button left up
+# Hotbar 8, at (233, 188).
+25 move 34 107
+26 button left down
+27 button left up
+28 screenshot woodworking_done.png
+29 key e down
+30 key e up

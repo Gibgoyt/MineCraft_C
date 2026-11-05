@@ -8,7 +8,9 @@
 enum : uint64_t {
     ITEM_REGION_BYTES = 2ull << 20,
 };
-static_assert((uint64_t)INVENTORY_BYTES + CONTAINER_BYTES + SMELTING_BYTES <= (uint64_t)ITEM_REGION_BYTES);
+static_assert((uint64_t)INVENTORY_BYTES + CONTAINER_BYTES + SMELTING_BYTES + sizeof(crafting_grid_t) +
+                  alignof(crafting_grid_t) <=
+              (uint64_t)ITEM_REGION_BYTES);
 
 enum : uint32_t {
     /* Records read from the world's log at once. It goes round again until there are none. */
@@ -49,8 +51,11 @@ void item_open(item_t *item) {
     inventory_start(&item->inventory, &item->arena_world);
     container_start(&item->chests, &item->arena_world);
     smelting_start(&item->furnaces, &item->arena_world);
-    crafting_grid_start(&item->crafting_hands, CRAFTING_SIDE_HANDS);
-    crafting_grid_start(&item->crafting_table, CRAFTING_SIDE_TABLE);
+    crafting_grid_start(&item->crafting_hands, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE);
+    crafting_grid_start(&item->crafting_table, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE);
+    item->borrowed_crafting_bench =
+        arena_alloc_zeroed(&item->arena_world, sizeof(crafting_grid_t), alignof(crafting_grid_t));
+    crafting_grid_start(item->borrowed_crafting_bench, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING);
     equipment_start(&item->equipment);
     item->edit_cursor = 0u;
     item->spilled_count = 0u;
@@ -63,6 +68,7 @@ void item_close(item_t *item) {
     memset(&item->inventory, 0, sizeof(item->inventory));
     memset(&item->crafting_hands, 0, sizeof(item->crafting_hands));
     memset(&item->crafting_table, 0, sizeof(item->crafting_table));
+    item->borrowed_crafting_bench = nullptr;
     memset(&item->chests, 0, sizeof(item->chests));
     memset(&item->furnaces, 0, sizeof(item->furnaces));
     memset(&item->equipment, 0, sizeof(item->equipment));

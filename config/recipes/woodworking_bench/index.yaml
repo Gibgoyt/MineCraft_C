@@ -1,0 +1,5 @@
+name: woodworking_bench
+kind: shaped
+pattern: ["PPP", "S S"]
+keys: { P: group_planks, S: stick }
+gives: woodworking_bench

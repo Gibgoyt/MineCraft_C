@@ -36,6 +36,7 @@ typedef enum ui_screen_kind_t : uint8_t {
     UI_SCREEN_CRAFTING = 2,
     UI_SCREEN_FURNACE = 3,
     UI_SCREEN_CHEST = 4,
+    UI_SCREEN_WOODWORKING = 5,
 } ui_screen_kind_t;
 
 /* What part of a screen a point or a click is on. */

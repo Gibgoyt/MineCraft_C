@@ -106,10 +106,11 @@ TEST(a_first_day_mines_dirt_picks_it_up_crafts_changes_the_distance_and_comes_ba
 
     /* A mangrove's trunk, on seed 36: the one line a person would look for. */
     CHECK_CONTAINS(output, "the last mined was mangrove_log");
-    /* Mud, a log left over, three planks, the pickaxe and two sticks, once on the way out and once again from the save. */
-    CHECK_EQ_U64(pt_count(output, "the inventory holds 8 items in 5 stacks"), 2u);
+    /* Mud, a log left over and the pickaxe, as the bench took what the planks and sticks were, once on the way out and once again from the save. */
+    CHECK_EQ_U64(pt_count(output, "the inventory holds 3 items in 3 stacks"), 2u);
     CHECK_EQ_U64(pt_count(output, "hotbar slot 4 is in hand, with 1 of wood_pickaxe"), 2u);
-    CHECK_EQ_U64(pt_count(output, "the player mined 5 blocks and placed 1"), 2u);
+    /* A table and a bench, the bench two blocks for one placing. */
+    CHECK_EQ_U64(pt_count(output, "the player mined 5 blocks and placed 2"), 2u);
     CHECK_CONTAINS(output, "render distance 2");
     CHECK_CONTAINS(output, "render distance 8");
 
@@ -120,9 +121,10 @@ TEST(a_first_day_mines_dirt_picks_it_up_crafts_changes_the_distance_and_comes_ba
     CHECK_CONTAINS((const char *)settings, "render_distance: 8");
 
     /* What a person sees of it is the picture, so each is at least there. A person reads them with MC_PLAYTHROUGH_KEEP. */
-    static const char *const shots[] = {"spawn.png", "picked_up.png",     "logs.png",     "crafted.png",
-                                        "table.png", "pickaxe.png",       "settings.png", "at_2.png",
-                                        "at_8.png",  "back_on_title.png", "reloaded.png"};
+    static const char *const shots[] = {"spawn.png",      "picked_up.png",        "logs.png",       "crafted.png",
+                                        "table.png",      "table_no_pickaxe.png", "bench_made.png", "bench_placed.png",
+                                        "bench_open.png", "pickaxe.png",          "settings.png",   "at_2.png",
+                                        "at_8.png",       "back_on_title.png",    "reloaded.png"};
     for (uint64_t i = 0u; i < sizeof(shots) / sizeof(shots[0]); i++) {
         uint64_t size = 0u;
         CHECK_EQ_U64(file_path_size(pt_join(t, pt_join(t, root, "shots"), shots[i]), &size), FILE_OK);
@@ -135,8 +137,9 @@ TEST(a_first_day_mines_dirt_picks_it_up_crafts_changes_the_distance_and_comes_ba
     }
 }
 
-/* Ahmed's words: "creating stairs with wood on a crafting table is not possible". Seed 36's tree is a mangrove, whose planks had no stairs. */
-TEST(mangrove_planks_make_stairs_on_a_table_that_go_down_come_back_and_are_saved) {
+/* Ahmed's words: "creating stairs with wood on a crafting table is not possible", and then "all wood working is done on this bench". Seed 36's
+ * tree is a mangrove, whose planks had no stairs. So the pattern makes nothing on the table, a bench is made there, and makes four on it. */
+TEST(mangrove_planks_make_stairs_on_a_bench_that_is_placed_broken_and_all_of_it_saved) {
     REQUIRE(t->arg_count >= 1);
     char *const root = pt_temp(t);
     REQUIRE(root != nullptr);
@@ -146,12 +149,17 @@ TEST(mangrove_planks_make_stairs_on_a_table_that_go_down_come_back_and_are_saved
 
     /* Four made and in slot 4, two put down and one back: three in hand, once on the way out and once again from the save. */
     CHECK_EQ_U64(pt_count(output, "hotbar slot 4 is in hand, with 3 of mangrove_stairs"), 2u);
-    /* Five for the planks and a sixth for the stairs; the table and two stairs placed. */
-    CHECK_EQ_U64(pt_count(output, "the player mined 6 blocks and placed 3"), 2u);
-    CHECK_EQ_U64(pt_count(output, "the last mined was mangrove_stairs"), 2u);
+    /* Five for the planks, a sixth for the stairs and a seventh for the bench; the table, the bench and two stairs placed. */
+    CHECK_EQ_U64(pt_count(output, "the player mined 7 blocks and placed 4"), 2u);
+    /* Mining one half is one block in the books, and the half is the one aimed at. */
+    CHECK_EQ_U64(pt_count(output, "the last mined was woodworking_bench_east"), 2u);
+    /* Mud, a plank, three stairs, two sticks, and the one bench that came down and was picked up. */
+    CHECK_EQ_U64(pt_count(output, "the inventory holds 8 items in 5 stacks"), 2u);
 
-    static const char *const shots[] = {"stairs_ready.png", "stairs_in_slot.png", "stairs_placed.png",
-                                        "stairs_mined.png", "stairs_reloaded.png"};
+    static const char *const shots[] = {"table_no_stairs.png",    "bench_made.png",     "bench_placed.png",
+                                        "bench_open.png",         "stairs_ready.png",   "stairs_in_slot.png",
+                                        "stairs_placed.png",      "stairs_mined.png",   "bench_broken.png",
+                                        "bench_in_inventory.png", "stairs_reloaded.png"};
     for (uint64_t i = 0u; i < sizeof(shots) / sizeof(shots[0]); i++) {
         uint64_t size = 0u;
         CHECK_EQ_U64(file_path_size(pt_join(t, pt_join(t, root, "shots"), shots[i]), &size), FILE_OK);

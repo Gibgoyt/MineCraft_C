@@ -214,7 +214,7 @@ TEST(every_recipe_matches_with_everything_each_cell_can_be_everywhere_it_fits_an
                             cells[to] = ic_one(i == cell ? recipe_choice_items[choice->first + option]
                                                          : ic_first_of(recipe->cells[i]));
                         }
-                        CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE), row);
+                        CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, recipe->station), row);
                         tried++;
                     }
                 }
@@ -233,7 +233,7 @@ TEST(every_recipe_matches_with_everything_each_cell_can_be_everywhere_it_fits_an
                         for (uint32_t mirror = 0u; mirror < 2u; mirror++) {
                             ic_lay_shaped(recipe, cells, CRAFTING_SIDE_TABLE, left, top, mirror != 0u, at,
                                           recipe_choice_items[choice->first + option]);
-                            CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE), row);
+                            CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, recipe->station), row);
                             tried++;
                         }
                     }
@@ -255,7 +255,7 @@ TEST(a_grid_of_two_makes_what_fits_in_it_and_nothing_bigger) {
         if (recipe->width <= CRAFTING_SIDE_HANDS && recipe->height <= CRAFTING_SIDE_HANDS) {
             item_stack_t cells[RECIPE_CELLS];
             ic_lay_shaped(recipe, cells, CRAFTING_SIDE_HANDS, 0u, 0u, false, RECIPE_CELLS, ITEM_ID_NONE);
-            CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_HANDS), row);
+            CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_HANDS, recipe->station), row);
             fit++;
         } else {
             not_fit++;
@@ -269,50 +269,53 @@ TEST(a_grid_of_two_makes_what_fits_in_it_and_nothing_bigger) {
     for (uint32_t i = 0u; i < 4u; i++) {
         cells[i] = ic_one(ITEM_ID_OAK_PLANKS);
     }
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_HANDS), ic_recipe_named(t, "crafting_table"));
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE),
+                 ic_recipe_named(t, "crafting_table"));
     /* In a table, the same four in a square in any corner are the same thing. */
     ic_cells_clear(cells);
     cells[4] = cells[5] = cells[7] = cells[8] = ic_one(ITEM_ID_SPRUCE_PLANKS);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE), ic_recipe_named(t, "crafting_table"));
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE),
+                 ic_recipe_named(t, "crafting_table"));
 }
 
 TEST(what_is_almost_a_recipe_is_nothing) {
     item_stack_t cells[RECIPE_CELLS];
     ic_cells_clear(cells);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE), CRAFTING_NO_RECIPE);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_HANDS), CRAFTING_NO_RECIPE);
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE), CRAFTING_NO_RECIPE);
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE), CRAFTING_NO_RECIPE);
 
     /* A stick is two planks one above the other: with a gap between them, or side by side, it is not. */
     cells[0] = cells[3] = ic_one(ITEM_ID_OAK_PLANKS);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE), ic_recipe_named(t, "stick"));
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE), ic_recipe_named(t, "stick"));
     cells[3] = (item_stack_t){0};
     cells[6] = ic_one(ITEM_ID_OAK_PLANKS);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE), CRAFTING_NO_RECIPE);
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE), CRAFTING_NO_RECIPE);
     ic_cells_clear(cells);
     cells[0] = cells[1] = ic_one(ITEM_ID_OAK_PLANKS);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE), CRAFTING_NO_RECIPE);
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE), CRAFTING_NO_RECIPE);
 
     /* A chest with its middle filled is nothing, and with one plank short it is nothing. */
     ic_cells_clear(cells);
     for (uint32_t i = 0u; i < RECIPE_CELLS; i++) {
         cells[i] = ic_one(ITEM_ID_OAK_PLANKS);
     }
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE), CRAFTING_NO_RECIPE);
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING), CRAFTING_NO_RECIPE);
     cells[4] = (item_stack_t){0};
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE), ic_recipe_named(t, "chest"));
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING), ic_recipe_named(t, "chest"));
     cells[0] = (item_stack_t){0};
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE), CRAFTING_NO_RECIPE);
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING), CRAFTING_NO_RECIPE);
 
     /* A shapeless one wants all of its things, and no more. */
     ic_cells_clear(cells);
     cells[0] = ic_one(ITEM_ID_IRON_INGOT);
     cells[8] = ic_one(ITEM_ID_FLINT);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE), ic_recipe_named(t, "flint_and_steel"));
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE),
+                 ic_recipe_named(t, "flint_and_steel"));
     cells[4] = ic_one(ITEM_ID_FLINT);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE), CRAFTING_NO_RECIPE);
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE), CRAFTING_NO_RECIPE);
     cells[4] = (item_stack_t){0};
     cells[8] = ic_one(ITEM_ID_IRON_INGOT);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE), CRAFTING_NO_RECIPE);
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE), CRAFTING_NO_RECIPE);
 
     /* A pickaxe mixes woods, but a plank is no stick. */
     ic_cells_clear(cells);
@@ -320,14 +323,15 @@ TEST(what_is_almost_a_recipe_is_nothing) {
     cells[1] = ic_one(ITEM_ID_CHERRY_PLANKS);
     cells[2] = ic_one(ITEM_ID_JUNGLE_PLANKS);
     cells[4] = cells[7] = ic_one(ITEM_ID_STICK);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE), ic_recipe_named(t, "wood_pickaxe"));
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING),
+                 ic_recipe_named(t, "wood_pickaxe"));
     cells[7] = ic_one(ITEM_ID_OAK_PLANKS);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE), CRAFTING_NO_RECIPE);
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING), CRAFTING_NO_RECIPE);
 
     /* How many a cell holds, and wear, do not change it. */
     ic_cells_clear(cells);
     cells[0] = item_stack_make(ITEM_ID_OAK_LOG, 64u);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_HANDS), ic_recipe_named(t, "oak_planks"));
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE), ic_recipe_named(t, "oak_planks"));
 }
 
 /* Tried a different way from what is under test: each recipe laid in every place on an empty grid and compared whole, and each order of a
@@ -422,6 +426,7 @@ TEST(at_random_matching_agrees_with_trying_it_the_long_way) {
     for (uint32_t round = 0u; round < IC_FUZZ_ROUNDS; round++) {
         const recipe_def_t *const recipe = &recipe_defs[ic_random(&state) % RECIPE_COUNT];
         const uint32_t side = ic_random(&state) % 4u == 0u ? CRAFTING_SIDE_HANDS : CRAFTING_SIDE_TABLE;
+        const uint32_t station = ic_random(&state) % 8u == 0u ? (uint32_t)RECIPE_STATION_TABLE : recipe->station;
         item_stack_t cells[RECIPE_CELLS];
         ic_cells_clear(cells);
         if (recipe->kind == RECIPE_KIND_SHAPED) {
@@ -445,11 +450,14 @@ TEST(at_random_matching_agrees_with_trying_it_the_long_way) {
         uint32_t expected = CRAFTING_NO_RECIPE;
         for (uint32_t row = 0u; row < RECIPE_COUNT && expected == CRAFTING_NO_RECIPE; row++) {
             const recipe_def_t *const candidate = &recipe_defs[row];
+            if (candidate->station != station) {
+                continue;
+            }
             const bool fits = candidate->kind == RECIPE_KIND_SHAPELESS ? ic_shapeless_by_orders(candidate, cells, side)
                                                                        : ic_shaped_by_placing(candidate, cells, side);
             expected = fits ? row : CRAFTING_NO_RECIPE;
         }
-        CHECK_EQ_U64(crafting_match(cells, side), expected);
+        CHECK_EQ_U64(crafting_match(cells, side, station), expected);
         matched += expected != CRAFTING_NO_RECIPE ? 1u : 0u;
         unmatched += expected == CRAFTING_NO_RECIPE ? 1u : 0u;
     }
@@ -471,8 +479,8 @@ TEST(from_a_log_to_a_pickaxe_as_a_player_would) {
     inventory_t inventory;
     ic_inventory(t, &inventory, &arena);
     crafting_grid_t hands, table;
-    crafting_grid_start(&hands, CRAFTING_SIDE_HANDS);
-    crafting_grid_start(&table, CRAFTING_SIDE_TABLE);
+    crafting_grid_start(&hands, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE);
+    crafting_grid_start(&table, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING);
     CHECK_EQ_U64(crafting_grid_cells(&hands), 4u);
     CHECK_EQ_U64(crafting_grid_cells(&table), 9u);
     CHECK(crafting_grid_cell(&hands, 4u) == nullptr);
@@ -515,7 +523,7 @@ TEST(from_a_log_to_a_pickaxe_as_a_player_would) {
     CHECK_EQ_U64(hands.output.item, ITEM_ID_STICK);
     CHECK_EQ_U64(crafting_grid_take(&hands, &cursor), 4u);
 
-    /* At the table: the pickaxe. */
+    /* At the bench, which this grid is: the pickaxe. A table makes none: see tests/run/item/crafting/station/. */
     ic_put(&table, 0u, ITEM_ID_OAK_PLANKS, 1u);
     ic_put(&table, 1u, ITEM_ID_OAK_PLANKS, 1u);
     ic_put(&table, 2u, ITEM_ID_OAK_PLANKS, 1u);
@@ -538,7 +546,7 @@ TEST(from_a_log_to_a_pickaxe_as_a_player_would) {
 
 TEST(the_output_comes_whole_or_not_at_all) {
     crafting_grid_t grid;
-    crafting_grid_start(&grid, CRAFTING_SIDE_HANDS);
+    crafting_grid_start(&grid, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE);
     ic_put(&grid, 0u, ITEM_ID_OAK_LOG, 2u);
 
     /* The pointer holds something else. */
@@ -566,7 +574,7 @@ TEST(a_shift_click_takes_what_the_cells_and_the_inventory_allow) {
     inventory_t inventory;
     ic_inventory(t, &inventory, &arena);
     crafting_grid_t grid;
-    crafting_grid_start(&grid, CRAFTING_SIDE_HANDS);
+    crafting_grid_start(&grid, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE);
     ic_put(&grid, 0u, ITEM_ID_OAK_LOG, 64u);
     CHECK_EQ_U64(crafting_grid_take_all(&grid, &inventory), 256u);
     CHECK_EQ_U64(inventory_count(&inventory, ITEM_ID_OAK_PLANKS), 256u);
@@ -593,7 +601,7 @@ TEST(closing_a_screen_gives_back_what_fits_and_leaves_the_rest) {
     inventory_t inventory;
     ic_inventory(t, &inventory, &arena);
     crafting_grid_t grid;
-    crafting_grid_start(&grid, CRAFTING_SIDE_TABLE);
+    crafting_grid_start(&grid, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE);
     ic_put(&grid, 0u, ITEM_ID_COAL, 10u);
     ic_put(&grid, 8u, ITEM_ID_STICK, 7u);
     CHECK_EQ_U64(crafting_grid_give_back(&grid, &inventory), 0u);

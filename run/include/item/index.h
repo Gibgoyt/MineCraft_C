@@ -21,7 +21,8 @@ typedef struct item_t {
     arena_t arena_world;        /* 0: over owned_region; World: reset at each item_open and item_close */
     heap_region_t owned_region; /* 64 */
     inventory_t inventory;      /* 80: the sim's */
-    uint8_t _pad0[8];           /* 120 */
+    /* The 3x3 at a woodworking bench, the sim's, from arena_world: main's stack has no room for it in this struct (plan 003 phase 4, issue 1). */
+    crafting_grid_t *borrowed_crafting_bench; /* 120 */
     /* A line of its own: main writes these when a key goes down, and the sim reads them each tick. */
     _Atomic uint32_t hotbar_key;  /* 128: main to sim: the slot asked for, plus one, and 0 for none */
     _Atomic int32_t hotbar_wheel; /* 132: main to sim: slots to the right, not yet taken */

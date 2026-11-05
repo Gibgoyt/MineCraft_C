@@ -1,0 +1,21 @@
+name: woodworking_bench_top_west
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: The west half of a woodworking bench's long top, with its vise, whose planks run on into the east half.
+  seed: 9201
+  ops:
+    - { op: fill, color: "#b98f57" }
+    - { op: noise, amount: 12, cell_x: 8, cell_y: 1, seed: 77 }
+    - { op: fill, color: "#8d6b3d", x: 0, y: 5, w: 16, h: 1 }
+    - { op: fill, color: "#8d6b3d", x: 0, y: 10, w: 16, h: 1 }
+    - { op: fill, color: "#7b5a32", x: 0, y: 0, w: 16, h: 1 }
+    - { op: fill, color: "#7b5a32", x: 0, y: 15, w: 16, h: 1 }
+    - { op: fill, color: "#7b5a32", x: 0, y: 0, w: 1, h: 16 }
+    - { op: fill, color: "#8d9399", x: 2, y: 2, w: 5, h: 2 }
+    - { op: fill, color: "#5d6267", x: 2, y: 4, w: 5, h: 1 }
+    - { op: fill, color: "#5d6267", x: 4, y: 1, w: 1, h: 1 }
+    - { op: fill, color: "#2e2115", x: 3, y: 12, w: 1, h: 2 }
+    - { op: fill, color: "#2e2115", x: 8, y: 12, w: 1, h: 2 }
+    - { op: fill, color: "#2e2115", x: 13, y: 12, w: 1, h: 2 }

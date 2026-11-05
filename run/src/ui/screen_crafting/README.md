@@ -1,8 +1,8 @@
 # run/src/ui/screen_crafting
 
-**Purpose:** the screen of a crafting table: the grid of three, its output, and the player's rows.
+**Purpose:** the screen of a crafting table or a woodworking bench: the grid of three, its output, and the player's rows. The two differ only by their title and whose grid it is, and what that grid can make is its station's.
 **Tier:** Arena, and it allocates nothing.
-**Owns:** nothing. The grid is `item_t.crafting_table`.
+**Owns:** nothing. The grid is `item_t.crafting_table` or `item_t.borrowed_crafting_bench`, which `ui` passes in.
 **Lifetime:** Nothing outlives a call.
 **Threads:** `ui_screen_crafting_places` and `ui_screen_crafting_draw` are `main`'s, and `ui_screen_crafting_view` and `ui_screen_crafting_click` the `sim`'s. See `run/src/ui/README.md`.
 **Public functions** (`run/include/ui/screen_crafting/index.h`):

@@ -310,6 +310,12 @@ needs:
     - wood_door
     - wood_trapdoor
     - wood_trapdoor_side
+    - woodworking_bench_bottom
+    - woodworking_bench_end
+    - woodworking_bench_side_left
+    - woodworking_bench_side_right
+    - woodworking_bench_top_east
+    - woodworking_bench_top_west
     - wool_black
     - wool_blue
     - wool_brown
@@ -450,6 +456,7 @@ needs:
     - wood_pickaxe
     - wood_shovel
     - wood_sword
+    - woodworking_bench
   mobs:
     - arrow
     - creeper

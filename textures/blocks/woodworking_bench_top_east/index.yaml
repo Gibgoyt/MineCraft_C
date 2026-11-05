@@ -1,0 +1,21 @@
+name: woodworking_bench_top_east
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: The east half of a woodworking bench's long top, with a saw lying on it, whose planks run on from the west half.
+  seed: 9201
+  ops:
+    - { op: fill, color: "#b98f57" }
+    - { op: noise, amount: 12, cell_x: 8, cell_y: 1, seed: 77 }
+    - { op: fill, color: "#8d6b3d", x: 0, y: 5, w: 16, h: 1 }
+    - { op: fill, color: "#8d6b3d", x: 0, y: 10, w: 16, h: 1 }
+    - { op: fill, color: "#7b5a32", x: 0, y: 0, w: 16, h: 1 }
+    - { op: fill, color: "#7b5a32", x: 0, y: 15, w: 16, h: 1 }
+    - { op: fill, color: "#7b5a32", x: 15, y: 0, w: 1, h: 16 }
+    - { op: fill, color: "#a9afb5", x: 3, y: 7, w: 7, h: 2 }
+    - { op: fill, color: "#8d9399", x: 3, y: 9, w: 7, h: 1 }
+    - { op: fill, color: "#6b3f1e", x: 10, y: 6, w: 3, h: 4 }
+    - { op: fill, color: "#2e2115", x: 2, y: 12, w: 1, h: 2 }
+    - { op: fill, color: "#2e2115", x: 7, y: 12, w: 1, h: 2 }
+    - { op: fill, color: "#2e2115", x: 12, y: 12, w: 1, h: 2 }

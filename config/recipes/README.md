@@ -19,8 +19,8 @@ The directory is usually the name of what it gives. A second way to the same thi
 
 | `kind` | What it is | Fields, other than `name` and `kind` |
 |---|---|---|
-| `shaped` | A pattern in a grid | `pattern`, `keys`, `gives`, `count` |
-| `shapeless` | These things, anywhere in a grid | `ingredients`, `gives`, `count` |
+| `shaped` | A pattern in a grid | `pattern`, `keys`, `gives`, `count`, `station` |
+| `shapeless` | These things, anywhere in a grid | `ingredients`, `gives`, `count`, `station` |
 | `smelt` | What a furnace makes of something | `input`, `gives`, `count`, `ticks` |
 | `fuel` | What burns, and for how long | `items`, `ticks`, `leaves` |
 | `group` | A name for several items, wherever a recipe takes one | `items` |
@@ -38,8 +38,18 @@ The directory is usually the name of what it gives. A second way to the same thi
 | `ticks` | fuel | 1 to 65535. For a smelt, how long one takes, and for a fuel, how long one burns, at 20 a second | 200, for a smelt |
 | `items` | fuel, group | A list of items. A fuel's may name groups too; a group's may not | |
 | `leaves` | | A fuel's: the item left in the slot after it burns, as a lava bucket leaves a bucket | nothing |
+| `station` | | A shaped or shapeless recipe's: `table` or `woodworking`, where it is made | `table` |
 
-A pattern of more than 2 by 2 can only be made at a crafting table. Nothing else says which grid a recipe wants.
+## Stations
+
+A recipe says where it is made, and a grid makes only its own station's recipes.
+
+| Station | Its grids |
+|---|---|
+| `table` | The 3 by 3 of a crafting table, and the 2 by 2 in the inventory, so a recipe of 2 by 2 or less is made with bare hands too |
+| `woodworking` | The 3 by 3 of a woodworking bench |
+
+Anything made only of wood is `woodworking`, but for what it takes to get a bench: planks, sticks, the table and the bench itself. Two recipes of different stations may have the same pattern, as no grid can match both. A new station is one word here, one word in `GR_STATIONS` in `compile/src/game_tables/recipes/`, and one more grid in `run/src/item/`.
 
 ## Where these depart from the published recipes
 

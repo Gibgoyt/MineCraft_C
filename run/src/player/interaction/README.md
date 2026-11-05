@@ -16,7 +16,7 @@
 - `player_interaction_hand_give`, `player_interaction_hand_set`, `player_interaction_hand_take`: the one slot placing takes from.
 
 **May be called by:** `run/src/player/`. `run/src/game/` takes the drops from `player_interaction_drop_next` and sets the hand to the hotbar slot in hand with `player_interaction_hand_set`, or in a run with no inventory gives what is picked up to `player_interaction_hand_take`, and `player_interaction_hold_tool` and `player_interaction_hold_speed` with what `run/src/item/equipment/` says of that slot.
-**Depends on:** `world/edit`, `world/map`, `world/wall_torch`, `physics/collision`, `physics/raycast`, `player/camera` and `player/movement` for their types, `player/felling` for what a log cut with an axe sets going, and the generated `tables/blocks`.
+**Depends on:** `world/edit`, `world/map`, `world/wall_torch`, `world/bench`, `physics/collision`, `physics/raycast`, `player/camera` and `player/movement` for their types, `player/felling` for what a log cut with an axe sets going, and the generated `tables/blocks`.
 
 ## Mining
 

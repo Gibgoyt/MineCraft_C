@@ -23,17 +23,18 @@ typedef struct crafting_grid_t {
     uint64_t crafted_count;           /* 80: items that have come out */
     uint32_t recipe;                  /* 88: the row of recipe_defs, or CRAFTING_NO_RECIPE */
     uint8_t side;                     /* 92 */
-    uint8_t _pad0[3];                 /* 93 */
+    uint8_t station;                  /* 93: a recipe_station_t: only that station's recipes are made here */
+    uint8_t _pad0[2];                 /* 94 */
 } crafting_grid_t;
 static_assert(sizeof(crafting_grid_t) == 96);
 static_assert(alignof(crafting_grid_t) == 8);
 
-/* Which recipe these cells make: side to a row, side * side of them. The grid's place in the cells does not matter, nor does a shaped
- * recipe being the other way round, left to right. Only item matters: how worn a cell is, and how many it holds, do not. */
-uint32_t crafting_match(const item_stack_t *cells, uint32_t side);
+/* Which of this station's recipes these cells make: side to a row, side * side of them. The grid's place in the cells does not matter, nor
+ * does a shaped recipe being the other way round, left to right. Only item matters: how worn a cell is, and how many it holds, do not. */
+uint32_t crafting_match(const item_stack_t *cells, uint32_t side, uint32_t station);
 
-/* An empty grid of this side: CRAFTING_SIDE_HANDS or CRAFTING_SIDE_TABLE. */
-void crafting_grid_start(crafting_grid_t *grid, uint32_t side);
+/* An empty grid of this side, CRAFTING_SIDE_HANDS or CRAFTING_SIDE_TABLE, that makes this recipe_station_t's recipes. */
+void crafting_grid_start(crafting_grid_t *grid, uint32_t side, uint32_t station);
 
 /* How many cells it has. */
 uint32_t crafting_grid_cells(const crafting_grid_t *grid);

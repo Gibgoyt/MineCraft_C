@@ -59,7 +59,7 @@ static uint32_t cc_ingot_cell(const cc_piece_t *piece, uint32_t n) {
 
 /* What these cells make, and no item if they make nothing: a row is only there to read if there is a row. */
 static uint32_t cc_makes(const item_stack_t *cells, uint32_t side) {
-    const uint32_t recipe = crafting_match(cells, side);
+    const uint32_t recipe = crafting_match(cells, side, RECIPE_STATION_TABLE);
     return recipe == CRAFTING_NO_RECIPE ? ITEM_ID_NONE : recipe_defs[recipe].gives;
 }
 
@@ -78,7 +78,7 @@ TEST(each_pattern_of_copper_ingots_makes_its_piece_on_the_table_at_every_height_
         const cc_piece_t *const piece = &CC_PIECE_ROWS[i];
         for (uint32_t top = 0u; top + piece->height <= CRAFTING_SIDE_TABLE; top++) {
             crafting_grid_t table;
-            crafting_grid_start(&table, CRAFTING_SIDE_TABLE);
+            crafting_grid_start(&table, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE);
             item_stack_t cursor = item_stack_make(ITEM_ID_COPPER_INGOT, 64u);
             cc_lay(&table, piece, top, &cursor);
             CHECK_EQ_U64(cursor.count, 64u - piece->ingots);
@@ -141,7 +141,7 @@ TEST(one_ingot_short_is_not_the_piece_and_one_of_iron_is_nothing) {
             CHECK(cc_makes(cells, CRAFTING_SIDE_TABLE) != piece->item);
 
             cells[changed] = item_stack_make(ITEM_ID_IRON_INGOT, 1u);
-            CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE), CRAFTING_NO_RECIPE);
+            CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE), CRAFTING_NO_RECIPE);
         }
     }
     /* A helmet without the middle of its top row is the shape of boots, as in iron. */
@@ -156,7 +156,7 @@ TEST(the_same_shapes_in_iron_still_make_iron) {
     for (uint32_t i = 0u; i < CC_PIECES; i++) {
         const cc_piece_t *const piece = &CC_PIECE_ROWS[i];
         crafting_grid_t table;
-        crafting_grid_start(&table, CRAFTING_SIDE_TABLE);
+        crafting_grid_start(&table, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE);
         item_stack_t cursor = item_stack_make(ITEM_ID_IRON_INGOT, 64u);
         cc_lay(&table, piece, 0u, &cursor);
         CHECK_EQ_U64(table.output.item, piece->iron);
@@ -165,7 +165,7 @@ TEST(the_same_shapes_in_iron_still_make_iron) {
 
 TEST(a_whole_set_from_a_stack_of_ingots_goes_on_and_counts) {
     crafting_grid_t table;
-    crafting_grid_start(&table, CRAFTING_SIDE_TABLE);
+    crafting_grid_start(&table, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE);
     equipment_t equipment;
     equipment_start(&equipment);
     item_stack_t ingots = item_stack_make(ITEM_ID_COPPER_INGOT, (uint16_t)CC_INGOTS_FOR_A_SET);

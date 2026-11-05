@@ -1,0 +1,7 @@
+# textures/blocks/woodworking_bench_side_right
+
+The right half of a woodworking bench's long side as a person faces it, with its apron, a leg, and a saw hung in the dark under it.
+
+Our own: painted by the recipe in `index.yaml`, from nothing but that recipe. It uses no pack's pixels, and owes no credit.
+
+Written by `compile/src/texture_vector`, which `textures/README.md` describes.

@@ -65,13 +65,13 @@ static const cs_wood_t CS_WOOD_ROWS[CS_WOODS] = {
     {"spruce", ITEM_ID_SPRUCE_PLANKS, ITEM_ID_SPRUCE_STAIRS, BLOCK_ID_SPRUCE_STAIRS, {0}},
 };
 
-/* The cells of the pattern on a table, and the same mirrored. */
+/* The cells of the pattern on a bench, and the same mirrored. */
 static const uint8_t CS_PATTERN[CS_PLANKS_IN_PATTERN] = {0u, 3u, 4u, 6u, 7u, 8u};
 static const uint8_t CS_PATTERN_MIRRORED[CS_PLANKS_IN_PATTERN] = {2u, 4u, 5u, 6u, 7u, 8u};
 
 /* What these cells make, and no item if they make nothing: a row is only there to read if there is a row. */
 static uint32_t cs_makes(const item_stack_t *cells, uint32_t side) {
-    const uint32_t recipe = crafting_match(cells, side);
+    const uint32_t recipe = crafting_match(cells, side, RECIPE_STATION_WOODWORKING);
     return recipe == CRAFTING_NO_RECIPE ? ITEM_ID_NONE : recipe_defs[recipe].gives;
 }
 
@@ -83,13 +83,13 @@ static void cs_fill(item_stack_t *cells, const uint8_t *pattern, uint16_t item) 
 }
 
 /* Oak was the only one for a long time, and this test was run on it by itself before there were others: see plan 003 phase 3. */
-TEST(each_wood_makes_four_of_its_own_stairs_on_a_table_and_uses_every_plank) {
+TEST(each_wood_makes_four_of_its_own_stairs_on_a_bench_and_uses_every_plank) {
     for (uint32_t i = 0u; i < CS_WOODS; i++) {
         const cs_wood_t *const wood = &CS_WOOD_ROWS[i];
         const uint8_t *const patterns[2] = {CS_PATTERN, CS_PATTERN_MIRRORED};
         for (uint32_t which = 0u; which < 2u; which++) {
             crafting_grid_t table;
-            crafting_grid_start(&table, CRAFTING_SIDE_TABLE);
+            crafting_grid_start(&table, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING);
             item_stack_t cursor = item_stack_make(wood->planks, 64u);
             for (uint32_t cell = 0u; cell < CS_PLANKS_IN_PATTERN; cell++) {
                 crafting_grid_click_secondary(&table, patterns[which][cell], &cursor);
@@ -138,7 +138,8 @@ TEST(one_plank_of_another_wood_anywhere_makes_nothing) {
                 item_stack_t cells[RECIPE_CELLS];
                 cs_fill(cells, CS_PATTERN, CS_WOOD_ROWS[i].planks);
                 cells[CS_PATTERN[spoiled]] = item_stack_make(CS_WOOD_ROWS[other].planks, 1u);
-                CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE), CRAFTING_NO_RECIPE);
+                CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING),
+                             CRAFTING_NO_RECIPE);
             }
         }
     }
@@ -150,7 +151,7 @@ TEST(a_pattern_of_all_different_woods_makes_nothing) {
     for (uint32_t i = 0u; i < CS_PLANKS_IN_PATTERN; i++) {
         cells[CS_PATTERN[i]] = item_stack_make(CS_WOOD_ROWS[i].planks, 1u);
     }
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE), CRAFTING_NO_RECIPE);
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING), CRAFTING_NO_RECIPE);
 }
 
 TEST(one_plank_short_is_not_stairs) {
@@ -234,7 +235,11 @@ TEST(no_wood_is_left_out) {
 TEST(cobblestone_stairs_are_still_cobblestone) {
     item_stack_t cells[RECIPE_CELLS];
     cs_fill(cells, CS_PATTERN, ITEM_ID_COBBLESTONE);
-    CHECK_EQ_U64(cs_makes(cells, CRAFTING_SIDE_TABLE), ITEM_ID_COBBLESTONE_STAIRS);
+    /* And stone is no woodworking: on a table they are, and on a bench they are not. */
+    const uint32_t recipe = crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE);
+    REQUIRE(recipe != CRAFTING_NO_RECIPE);
+    CHECK_EQ_U64(recipe_defs[recipe].gives, ITEM_ID_COBBLESTONE_STAIRS);
+    CHECK_EQ_U64(cs_makes(cells, CRAFTING_SIDE_TABLE), ITEM_ID_NONE);
 }
 
 /* ---- A real picture ------------------------------------------------------------------------------------------------- */

@@ -7,7 +7,7 @@
 **Threads:** the sim's alone, as with the inventory.
 **Public functions** (`run/include/item/crafting/index.h`):
 
-- `crafting_match`: which row of `recipe_defs` some cells make.
+- `crafting_match`: which row of `recipe_defs` some cells make, among one station's recipes. A grid knows its station: `crafting_table` and `crafting_hands` are the table's, and `borrowed_crafting_bench` is `woodworking`'s. See `config/recipes/README.md`.
 - `crafting_grid_start`, `crafting_grid_cells`, `crafting_grid_cell`, `crafting_grid_changed`: a grid, its cells, and bringing its output up to date.
 - `crafting_grid_click_primary`, `crafting_grid_click_secondary`: the two clicks of a screen on a cell.
 - `crafting_grid_take`, `crafting_grid_take_all`: a click and a shift-click on the output.

@@ -56,7 +56,7 @@ static bool crafting_shapeless_fits(const recipe_def_t *recipe, const uint16_t *
     return reachable[all] != 0u;
 }
 
-uint32_t crafting_match(const item_stack_t *cells, uint32_t side) {
+uint32_t crafting_match(const item_stack_t *cells, uint32_t side, uint32_t station) {
     uint16_t items[RECIPE_CELLS];
     uint32_t count = 0u, left = side, right = 0u, top = side, bottom = 0u;
     for (uint32_t y = 0u; y < side; y++) {
@@ -78,7 +78,7 @@ uint32_t crafting_match(const item_stack_t *cells, uint32_t side) {
     const uint32_t width = right - left + 1u, height = bottom - top + 1u;
     for (uint32_t row = 0u; row < RECIPE_COUNT; row++) {
         const recipe_def_t *const recipe = &recipe_defs[row];
-        if (recipe->cell_count != count) {
+        if (recipe->cell_count != count || recipe->station != station) {
             continue;
         }
         if (recipe->kind == RECIPE_KIND_SHAPELESS) {
@@ -94,9 +94,10 @@ uint32_t crafting_match(const item_stack_t *cells, uint32_t side) {
     return CRAFTING_NO_RECIPE;
 }
 
-void crafting_grid_start(crafting_grid_t *grid, uint32_t side) {
+void crafting_grid_start(crafting_grid_t *grid, uint32_t side, uint32_t station) {
     memset(grid, 0, sizeof(*grid));
     grid->side = (uint8_t)side;
+    grid->station = (uint8_t)station;
     grid->recipe = CRAFTING_NO_RECIPE;
 }
 
@@ -109,7 +110,7 @@ item_stack_t *crafting_grid_cell(crafting_grid_t *grid, uint32_t cell) {
 }
 
 void crafting_grid_changed(crafting_grid_t *grid) {
-    grid->recipe = crafting_match(grid->cells, grid->side);
+    grid->recipe = crafting_match(grid->cells, grid->side, grid->station);
     grid->output = grid->recipe == CRAFTING_NO_RECIPE
                        ? (item_stack_t){0}
                        : item_stack_make(recipe_defs[grid->recipe].gives, recipe_defs[grid->recipe].count);

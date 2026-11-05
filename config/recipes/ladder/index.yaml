@@ -4,3 +4,4 @@ pattern: ["S S", "SSS", "S S"]
 keys: { S: stick }
 gives: ladder
 count: 3
+station: woodworking

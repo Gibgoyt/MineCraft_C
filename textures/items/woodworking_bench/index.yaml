@@ -1,0 +1,17 @@
+name: woodworking_bench
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: A woodworking bench as a thing to carry, a long top on two legs with a brace and a vise.
+  seed: 9207
+  ops:
+    - { op: fill, color: "#00000000" }
+    - { op: fill, color: "#b98f57", x: 0, y: 4, w: 16, h: 3 }
+    - { op: fill, color: "#7b5a32", x: 0, y: 7, w: 16, h: 1 }
+    - { op: fill, color: "#8f6a3c", x: 1, y: 8, w: 3, h: 7 }
+    - { op: fill, color: "#8f6a3c", x: 12, y: 8, w: 3, h: 7 }
+    - { op: fill, color: "#a37c48", x: 4, y: 11, w: 8, h: 2 }
+    - { op: fill, color: "#8d9399", x: 2, y: 2, w: 4, h: 2 }
+    - { op: fill, color: "#6b3f1e", x: 10, y: 3, w: 4, h: 1 }
+    - { op: noise, amount: 7, cell: 1 }

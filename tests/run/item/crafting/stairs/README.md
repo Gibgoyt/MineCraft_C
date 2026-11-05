@@ -13,7 +13,7 @@ Compute only. No display, console or input device is opened, and the program its
 
 What it checks:
 
-- Each wood's planks, laid with the right button in the pattern written by hand in the test, make 4 of that wood's stairs on a table, and taking them uses every plank. The pattern mirrored does the same.
+- Each wood's planks, laid with the right button in the pattern written by hand in the test, make 4 of that wood's stairs on a woodworking bench, and taking them uses every plank. The pattern mirrored does the same.
 - A grid of two cannot make them: the pattern is three by three.
 - One plank of any other wood, in any cell, makes nothing, for every pair of woods. So does a pattern with six different woods.
 - One plank short is not stairs.

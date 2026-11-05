@@ -1,0 +1,18 @@
+name: woodworking_bench_side_right
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: The right half of a woodworking bench's long side as a person faces it, with its apron, a leg, and a saw hung in the dark under it.
+  seed: 9204
+  ops:
+    - { op: fill, color: "#2e2115" }
+    - { op: fill, color: "#b98f57", x: 0, y: 0, w: 16, h: 3 }
+    - { op: fill, color: "#7b5a32", x: 0, y: 3, w: 16, h: 1 }
+    - { op: fill, color: "#8f6a3c", x: 12, y: 4, w: 4, h: 12 }
+    - { op: fill, color: "#5f4526", x: 11, y: 4, w: 1, h: 12 }
+    - { op: fill, color: "#a37c48", x: 0, y: 12, w: 11, h: 2 }
+    - { op: fill, color: "#a9afb5", x: 2, y: 5, w: 6, h: 2 }
+    - { op: fill, color: "#8d9399", x: 2, y: 7, w: 6, h: 1 }
+    - { op: fill, color: "#6b3f1e", x: 8, y: 5, w: 2, h: 3 }
+    - { op: noise, amount: 7, cell: 1 }

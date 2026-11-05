@@ -3,6 +3,7 @@
 
 #include "assert/index.h"
 #include "tables/blocks/index.h"
+#include "world/bench/index.h"
 #include "world/wall_torch/index.h"
 
 #include <math.h>
@@ -367,8 +368,9 @@ static void explosion_drops_spawn(explosion_t *explosion, item_drop_store_t *dro
     }
 }
 
-/* One block goes, and one in power of them gives what it gives, but for a torch on a wall, which always gives its torch. False if the
- * edit found no room for it. A block already gone is no failure: what stood on one broken earlier may be on the list as well. */
+/* One block goes, and one in power of them gives what it gives, but for a torch on a wall, which always gives its torch, and half a bench,
+ * which always gives the one bench the two halves come to. False if the edit found no room for it. A block already gone is no failure: what
+ * stood on one broken earlier may be on the list as well, and so may the other half of a bench. */
 static bool explosion_break_one(explosion_t *explosion, world_edit_t *edit, item_drop_store_t *drops, uint16_t block,
                                 const int32_t cell[COLLISION_AXES], float64_t power, uint32_t *broken) {
     const world_edit_status_t status = world_edit_block_set(edit, cell[0], cell[1], cell[2], BLOCK_ID_AIR);
@@ -378,7 +380,9 @@ static bool explosion_break_one(explosion_t *explosion, world_edit_t *edit, item
     (*broken)++;
     /* The number is taken whatever comes of it, so that a torch does not shift what the blocks after it give. */
     const bool lucky = terrain_rng_next_f64(&explosion->random) * power < 1.0f64;
-    if (lucky || wall_torch_out(block, nullptr, nullptr)) {
+    int32_t bench_step = 0;
+    uint16_t bench_other = BLOCK_ID_AIR;
+    if (lucky || wall_torch_out(block, nullptr, nullptr) || bench_half_other(block, &bench_step, &bench_other)) {
         explosion_drops_spawn(explosion, drops, block, cell[0], cell[1], cell[2]);
     }
     return true;
@@ -405,24 +409,81 @@ static void explosion_wall_torches_break(explosion_t *explosion, world_edit_t *e
     }
 }
 
+/* What goes with a block just gone: what hung on its sides, and what stood on it. */
+static void explosion_around_break(explosion_t *explosion, world_edit_t *edit, item_drop_store_t *drops,
+                                   const int32_t gone[COLLISION_AXES], float64_t power, uint32_t *broken) {
+    int32_t cell[COLLISION_AXES] = {gone[0], gone[1], gone[2]};
+    explosion_wall_torches_break(explosion, edit, drops, cell, power, broken);
+    for (uint32_t up = 0u; up < EXPLOSION_STACK_MAX; up++) {
+        cell[2]++;
+        uint16_t block = BLOCK_ID_AIR;
+        if (world_map_block_get(edit->borrowed_map, cell[0], cell[1], cell[2], &block) != WORLD_MAP_STATUS_OK ||
+            !explosion_needs_ground(block) ||
+            !explosion_break_one(explosion, edit, drops, block, cell, power, broken)) {
+            break;
+        }
+    }
+}
+
+/* What a blast does to the other half of a bench it has listed. It goes first and gives nothing, as the half listed gives the one bench.
+ * False if it cannot go, by not being loaded or by the edit finding no room, and then the bench stands whole. out_other_gone says that it
+ * went, and what it was is in out_other, for putting back if the half listed then finds no room. */
+static bool explosion_bench_other_break(world_edit_t *edit, uint16_t block, const int32_t cell[COLLISION_AXES],
+                                        int32_t other_cell[COLLISION_AXES], uint16_t *out_other, bool *out_other_gone,
+                                        uint32_t *broken) {
+    int32_t step_x = 0;
+    *out_other_gone = false;
+    if (!bench_half_other(block, &step_x, out_other)) {
+        return true;
+    }
+    other_cell[0] = cell[0] + step_x;
+    other_cell[1] = cell[1];
+    other_cell[2] = cell[2];
+    /* Listed once already and gone with the other half, this one has no bench left to speak for. */
+    uint16_t here = BLOCK_ID_AIR;
+    if (world_map_block_get(edit->borrowed_map, cell[0], cell[1], cell[2], &here) != WORLD_MAP_STATUS_OK ||
+        here != block) {
+        return true;
+    }
+    uint16_t there = BLOCK_ID_AIR;
+    if (world_map_block_get(edit->borrowed_map, other_cell[0], other_cell[1], other_cell[2], &there) !=
+        WORLD_MAP_STATUS_OK) {
+        return false;
+    }
+    if (there != *out_other) {
+        return true;
+    }
+    if (world_edit_block_set(edit, other_cell[0], other_cell[1], other_cell[2], BLOCK_ID_AIR) !=
+        WORLD_EDIT_STATUS_CHANGED) {
+        return false;
+    }
+    (*broken)++;
+    *out_other_gone = true;
+    return true;
+}
+
 uint32_t explosion_finish(explosion_t *explosion, world_edit_t *edit, item_drop_store_t *drops, float64_t power) {
     uint32_t broken = 0u;
     for (uint32_t i = 0u; i < explosion->count; i++) {
         const explosion_cell_t *const listed = &explosion->borrowed_cells[i];
-        int32_t cell[COLLISION_AXES] = {listed->x, listed->y, listed->z};
-        if (!explosion_break_one(explosion, edit, drops, listed->block, cell, power, &broken)) {
+        const int32_t cell[COLLISION_AXES] = {listed->x, listed->y, listed->z};
+        int32_t other_cell[COLLISION_AXES] = {0, 0, 0};
+        uint16_t other = BLOCK_ID_AIR;
+        bool other_gone = false;
+        if (!explosion_bench_other_break(edit, listed->block, cell, other_cell, &other, &other_gone, &broken)) {
             continue;
         }
-        explosion_wall_torches_break(explosion, edit, drops, cell, power, &broken);
-        for (uint32_t up = 0u; up < EXPLOSION_STACK_MAX; up++) {
-            cell[2]++;
-            uint16_t block = BLOCK_ID_AIR;
-            if (world_map_block_get(edit->borrowed_map, cell[0], cell[1], cell[2], &block) != WORLD_MAP_STATUS_OK ||
-                !explosion_needs_ground(block) ||
-                !explosion_break_one(explosion, edit, drops, block, cell, power, &broken)) {
-                break;
+        if (!explosion_break_one(explosion, edit, drops, listed->block, cell, power, &broken)) {
+            if (other_gone) {
+                (void)world_edit_block_set(edit, other_cell[0], other_cell[1], other_cell[2], other);
+                broken--;
             }
+            continue;
         }
+        if (other_gone) {
+            explosion_around_break(explosion, edit, drops, other_cell, power, &broken);
+        }
+        explosion_around_break(explosion, edit, drops, cell, power, &broken);
     }
     explosion->broken_count += broken;
     explosion->count = 0u;

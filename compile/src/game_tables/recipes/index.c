@@ -39,14 +39,22 @@ typedef enum gr_kind_t : uint8_t {
 } gr_kind_t;
 static const char *const GR_KINDS[GR_KIND_COUNT] = {"shaped", "shapeless", "smelt", "fuel", "group"};
 
-static const char *const GR_FIELDS_SHAPED[] = {"name", "kind", "pattern", "keys", "gives", "count"};
-static const char *const GR_FIELDS_SHAPELESS[] = {"name", "kind", "ingredients", "gives", "count"};
+/* Where a recipe is made, in the order of the numbers the tables hold. The first is what no line means. */
+typedef enum gr_station_t : uint8_t {
+    GR_STATION_TABLE = 0,
+    GR_STATION_WOODWORKING = 1,
+    GR_STATION_COUNT = 2,
+} gr_station_t;
+static const char *const GR_STATIONS[GR_STATION_COUNT] = {"table", "woodworking"};
+
+static const char *const GR_FIELDS_SHAPED[] = {"name", "kind", "pattern", "keys", "gives", "count", "station"};
+static const char *const GR_FIELDS_SHAPELESS[] = {"name", "kind", "ingredients", "gives", "count", "station"};
 static const char *const GR_FIELDS_SMELT[] = {"name", "kind", "input", "gives", "count", "ticks"};
 static const char *const GR_FIELDS_FUEL[] = {"name", "kind", "items", "ticks", "leaves"};
 static const char *const GR_FIELDS_GROUP[] = {"name", "kind", "items"};
 static const char *const *const GR_FIELDS[GR_KIND_COUNT] = {GR_FIELDS_SHAPED, GR_FIELDS_SHAPELESS, GR_FIELDS_SMELT,
                                                             GR_FIELDS_FUEL, GR_FIELDS_GROUP};
-static const uint8_t GR_FIELD_COUNTS[GR_KIND_COUNT] = {6u, 5u, 6u, 5u, 3u};
+static const uint8_t GR_FIELD_COUNTS[GR_KIND_COUNT] = {7u, 6u, 6u, 5u, 3u};
 
 /* One file, as read. Everything it points to is in the arena. A cell, an input and a list member may each name a group. */
 typedef struct gr_recipe_t {
@@ -64,7 +72,8 @@ typedef struct gr_recipe_t {
     uint8_t height;                       /* 123 */
     uint8_t cell_count;                   /* 124: cells that hold something */
     uint8_t good;                         /* 125: it read with no problem, so its names can be looked into */
-    uint8_t _pad0[2];                     /* 126 */
+    uint8_t station;                      /* 126: a gr_station_t */
+    uint8_t _pad0[1];                     /* 127 */
 } gr_recipe_t;
 static_assert(sizeof(gr_recipe_t) == 128);
 
@@ -412,6 +421,27 @@ static void gr_read_fuel(gr_context_t *context, const yaml_document_t *document,
     }
 }
 
+/* Where it is made: the table, if the file does not say. */
+static void gr_read_station(gr_context_t *context, const yaml_document_t *document, const yaml_node_t *root,
+                            gr_recipe_t *recipe) {
+    recipe->station = GR_STATION_TABLE;
+    const yaml_node_t *const node = yaml_map_get(document, root, "station");
+    if (node == nullptr) {
+        return;
+    }
+    const char *const word = gr_read_text(context, node);
+    if (word == nullptr) {
+        return;
+    }
+    for (uint32_t i = 0u; i < GR_STATION_COUNT; i++) {
+        if (strcmp(word, GR_STATIONS[i]) == 0) {
+            recipe->station = (uint8_t)i;
+            return;
+        }
+    }
+    gr_report(context, node->line, node->column, "unknown station '%s': see config/recipes/README.md", word);
+}
+
 /* One parsed file into one recipe. */
 static void gr_read_fields(gr_context_t *context, const yaml_document_t *document, const yaml_node_t *root,
                            gr_recipe_t *recipe) {
@@ -463,10 +493,12 @@ static void gr_read_fields(gr_context_t *context, const yaml_document_t *documen
     case GR_KIND_SHAPED:
         gr_read_shaped(context, document, root, recipe);
         gr_read_gives(context, document, root, recipe);
+        gr_read_station(context, document, root, recipe);
         break;
     case GR_KIND_SHAPELESS:
         gr_read_shapeless(context, document, root, recipe);
         gr_read_gives(context, document, root, recipe);
+        gr_read_station(context, document, root, recipe);
         break;
     case GR_KIND_SMELT:
         gr_read_smelt(context, document, root, recipe);
@@ -629,7 +661,8 @@ static bool gr_any_order_clash(const gr_recipe_t *recipes, uint32_t count, const
     return reachable[all];
 }
 
-/* Two that a grid could match both of would make what comes out depend on which is first. */
+/* Two that a grid could match both of would make what comes out depend on which is first. A grid has one station, so two of different
+ * stations never meet. */
 static void gr_check_clashes(gr_context_t *context, const gr_recipe_t *recipes, uint32_t count) {
     for (uint32_t i = 0u; i < count; i++) {
         const gr_recipe_t *const a = &recipes[i];
@@ -638,7 +671,8 @@ static void gr_check_clashes(gr_context_t *context, const gr_recipe_t *recipes, 
         }
         for (uint32_t j = i + 1u; j < count; j++) {
             const gr_recipe_t *const b = &recipes[j];
-            if ((b->kind != GR_KIND_SHAPED && b->kind != GR_KIND_SHAPELESS) || b->good == 0u) {
+            if ((b->kind != GR_KIND_SHAPED && b->kind != GR_KIND_SHAPELESS) || b->good == 0u ||
+                b->station != a->station) {
                 continue;
             }
             const bool both_shaped = a->kind == GR_KIND_SHAPED && b->kind == GR_KIND_SHAPED;
@@ -717,6 +751,11 @@ static void gr_emit_header(tp_builder_t *out, uint32_t crafts, uint32_t choices,
         "typedef enum recipe_kind_t : uint8_t {\n    RECIPE_KIND_SHAPED = %u,\n    RECIPE_KIND_SHAPELESS = %u,\n"
         "} recipe_kind_t;\n\n",
         GR_KIND_SHAPED, GR_KIND_SHAPELESS);
+    tp_builder_add(out,
+                   "/* Where a recipe is made. A grid makes only its own station's. */\n"
+                   "typedef enum recipe_station_t : uint8_t {\n    RECIPE_STATION_TABLE = %u,\n"
+                   "    RECIPE_STATION_WOODWORKING = %u,\n} recipe_station_t;\n\n",
+                   GR_STATION_TABLE, GR_STATION_WOODWORKING);
     tp_builder_add(out, "/* One way to fill a cell: any of these items. */\n"
                         "typedef struct recipe_choice_t {\n"
                         "    uint16_t first; /* 0: into recipe_choice_items */\n"
@@ -734,7 +773,8 @@ static void gr_emit_header(tp_builder_t *out, uint32_t crafts, uint32_t choices,
                         "    uint8_t width;               /* 30: 0 if shapeless */\n"
                         "    uint8_t height;              /* 31: 0 if shapeless */\n"
                         "    uint8_t cell_count;          /* 32: cells that are not empty */\n"
-                        "    uint8_t _pad0[7];            /* 33 */\n"
+                        "    uint8_t station;             /* 33: a recipe_station_t */\n"
+                        "    uint8_t _pad0[6];            /* 34 */\n"
                         "} recipe_def_t;\n"
                         "static_assert(sizeof(recipe_def_t) == 40);\n\n"
                         "/* What a furnace makes of one input. */\n"
@@ -782,10 +822,11 @@ static void gr_emit_crafts(tp_arena_t *arena, tp_builder_t *out, const gr_recipe
                                       : gr_choice_index(choices, choice_count, recipe->borrowed_cells[c]) + 1u;
             tp_builder_add(out, "%s%u", c == 0u ? "" : ", ", cell);
         }
-        tp_builder_add(
-            out, "}, .gives = ITEM_ID_%s, .count = %u, .kind = %u, .width = %u, .height = %u, .cell_count = %u},\n",
-            gr_upper(arena, recipe->borrowed_gives), recipe->count, recipe->kind, recipe->width, recipe->height,
-            recipe->cell_count);
+        tp_builder_add(out,
+                       "}, .gives = ITEM_ID_%s, .count = %u, .kind = %u, .width = %u, .height = %u, .cell_count = %u, "
+                       ".station = %u},\n",
+                       gr_upper(arena, recipe->borrowed_gives), recipe->count, recipe->kind, recipe->width,
+                       recipe->height, recipe->cell_count, recipe->station);
     }
     tp_builder_add(out, "};\n\n");
 }
