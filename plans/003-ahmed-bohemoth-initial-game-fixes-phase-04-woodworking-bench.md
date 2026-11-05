@@ -100,6 +100,7 @@ Appended as they land:
 - `8031328` Record phase 4 of the game fixes in its plan file: every box an agent can tick, the results, what was found on the way, and that only Ahmed is left.
 - `1cce0b1` Play a bench that gives its grid back, stands through a save and goes by its west half, and test one across the edge of a column.
 - `c5715e7` Name the bench playthrough in the repository structure.
+- `54acde8` Record the gate check of the woodworking bench in its plan file.
 
 ## Issues found
 
