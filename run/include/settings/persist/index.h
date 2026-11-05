@@ -50,7 +50,7 @@ typedef struct settings_values_t {
     uint8_t show_coordinates;      /* 29: x, y and z in the top left corner, while playing */
     uint8_t
         sound_volume_percent; /* 30: what the game's sounds are turned down to, on top of the desktop's own volume */
-    uint8_t _pad0[1];         /* 31 */
+    uint8_t show_date;        /* 31: the date line in the top right corner, while playing */
 } settings_values_t;
 static_assert(sizeof(settings_values_t) == 32);
 

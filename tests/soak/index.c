@@ -692,7 +692,7 @@ static void soak_threaded_child(test_context_t *t, const char *directory, uint64
 
     REQUIRE(save_open(rig.save, directory, SOAK_SEED) == SAVE_WORLD_OK);
     const game_config_t config = {
-        .render_distance = SOAK_RENDER_DISTANCE, .width = SOAK_WIDTH, .height = SOAK_HEIGHT, ._pad0 = {0}};
+        .render_distance = SOAK_RENDER_DISTANCE, .width = SOAK_WIDTH, .height = SOAK_HEIGHT, .show_date = 0u};
     REQUIRE(game_open(rig.game, &config));
     REQUIRE(game_settle(rig.game));
     save_autosave_interval_set(&rig.save->autosave, SOAK_AUTOSAVE_TICKS);

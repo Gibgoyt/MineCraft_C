@@ -77,7 +77,7 @@ TEST(golden_pictures_match) {
                                   .height = LD_HEIGHT,
                                   .features_off = 0u,
                                   .god_rays = 0u,
-                                  ._pad0 = {0},
+                                  .show_date = 0u,
                                   .full_detail = 2u};
     REQUIRE(game_open(real.game, &config));
     REQUIRE(game_settle(real.game));
@@ -165,7 +165,7 @@ TEST(the_cost_at_a_render_distance_of_512_is_measured_on_real_terrain) {
                                   .height = LD_COST_HEIGHT,
                                   .features_off = 0u,
                                   .god_rays = 0u,
-                                  ._pad0 = {0},
+                                  .show_date = 0u,
                                   .full_detail = full_detail};
     REQUIRE(game_open(game, &config));
     const int64_t start_ns = time_now_ns();
@@ -224,7 +224,7 @@ TEST(the_real_threads_build_the_far_field_and_keep_up_with_an_eye_that_flies) {
                                   .height = LD_HEIGHT,
                                   .features_off = 0u,
                                   .god_rays = 0u,
-                                  ._pad0 = {0},
+                                  .show_date = 0u,
                                   .full_detail = 2u};
     REQUIRE(game_open(game, &config));
     const uint64_t bytes = post_xrgb_bytes(LD_WIDTH, LD_HEIGHT);

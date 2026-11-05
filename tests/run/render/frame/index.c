@@ -974,7 +974,7 @@ static const game_config_t fr_small_game = {.render_distance = 6u,
                                             .height = FR_HEIGHT,
                                             .features_off =
                                                 SHADE_FEATURE_DAY_CYCLE | SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
-                                            ._pad0 = {0}};
+                                            .show_date = 0u};
 
 static void fr_check_tally(test_context_t *t, const fr_terrain_tally_t *tally) {
     printf("  %" PRIu64 " pixels, %" PRIu64 " hits, picture wrong on %" PRIu64 "; %" PRIu64
@@ -1442,7 +1442,7 @@ TEST(a_world_can_be_opened_again_after_one_is_closed_and_nothing_is_left) {
         game_close(game);
         CHECK(gpu_bridge_exit_check(rig.bridge));
     }
-    const game_config_t no_distance = {.render_distance = 0u, .width = FR_WIDTH, .height = FR_HEIGHT, ._pad0 = {0}};
+    const game_config_t no_distance = {.render_distance = 0u, .width = FR_WIDTH, .height = FR_HEIGHT, .show_date = 0u};
     CHECK(!game_open(game, &no_distance));
     fr_rig_end(t, &rig);
 }

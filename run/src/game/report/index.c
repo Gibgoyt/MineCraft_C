@@ -43,6 +43,21 @@ void game_hud_block_read(const game_t *game, int32_t out[3]) {
     out[2] = (int32_t)floor(position[2]) - MC_WORLD_Z_SEA;
 }
 
+calendar_date_t game_calendar_date(const game_t *game) {
+    return calendar_date_of(game->day_zero, atomic_load_explicit(&game->clock_units, memory_order_relaxed));
+}
+
+bool game_calendar_south(const game_t *game) {
+    int32_t block[3];
+    game_hud_block_read(game, block);
+    return block[1] < 0;
+}
+
+void game_calendar_line(const game_t *game, char *out, uint64_t bytes) {
+    const calendar_date_t date = game_calendar_date(game);
+    (void)calendar_date_line(&date, calendar_season_temperate(date.day_of_year, game_calendar_south(game)), out, bytes);
+}
+
 static float32_t game_hud_ms(uint32_t microseconds) {
     return (float32_t)microseconds / 1000.0f32;
 }

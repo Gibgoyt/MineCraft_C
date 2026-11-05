@@ -1050,7 +1050,7 @@ TEST(in_a_real_game_tools_mine_and_wear_and_break_a_hoe_tills_and_armor_goes_on)
     game_player_set(game, player);
     game_entity_set(game, entity);
     game_item_set(game, item);
-    static const game_config_t small = {.render_distance = 5u, .width = IE_WIDTH, .height = IE_HEIGHT, ._pad0 = {0}};
+    static const game_config_t small = {.render_distance = 5u, .width = IE_WIDTH, .height = IE_HEIGHT, .show_date = 0u};
     REQUIRE(game_open(game, &small));
     REQUIRE(game_settle(game));
 
@@ -1269,7 +1269,7 @@ static bool ie_script_begin(test_context_t *t, ie_script_game_t *rig) {
     game_player_set(rig->game, rig->player);
     game_entity_set(rig->game, rig->entity);
     game_item_set(rig->game, rig->item);
-    static const game_config_t small = {.render_distance = 5u, .width = IE_WIDTH, .height = IE_HEIGHT, ._pad0 = {0}};
+    static const game_config_t small = {.render_distance = 5u, .width = IE_WIDTH, .height = IE_HEIGHT, .show_date = 0u};
     if (!CHECK(game_open(rig->game, &small)) || !CHECK(game_settle(rig->game))) {
         return false;
     }

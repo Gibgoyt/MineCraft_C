@@ -1348,7 +1348,7 @@ TEST(the_cost_is_measured_on_real_terrain) {
                                   .height = PO_COST_HEIGHT,
                                   .features_off = 0u,
                                   .god_rays = 0u,
-                                  ._pad0 = {0}};
+                                  .show_date = 0u};
     REQUIRE(game_open(game, &config));
     CHECK_EQ_U64(rig.render->frame.scene.features, SHADE_FEATURES_PLAY);
     REQUIRE(game_settle(game));

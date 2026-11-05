@@ -1799,7 +1799,7 @@ TEST(the_game_saves_a_column_that_leaves_and_finds_it_when_it_comes_back) {
     game_init(game, world, terrain, render, job, texture, topology);
     game_save_set(game, save);
     REQUIRE(save_open(save, root, SW_SEED) == SAVE_WORLD_OK);
-    const game_config_t config = {.render_distance = 3u, .width = 64u, .height = 36u, ._pad0 = {0}};
+    const game_config_t config = {.render_distance = 3u, .width = 64u, .height = 36u, .show_date = 0u};
     REQUIRE(game_open(game, &config));
     const int32_t home_x = atomic_load(&game->center_x);
     const int32_t home_y = atomic_load(&game->center_y);

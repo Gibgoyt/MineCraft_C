@@ -4,9 +4,11 @@
 #include "audio/index.h"
 #include "entity/animation/index.h"
 #include "item/stack/index.h"
+#include "log/index.h"
 #include "render/entities/index.h"
 #include "tables/blocks/index.h"
 
+#include <inttypes.h>
 #include <math.h>
 #include <string.h>
 
@@ -549,10 +551,51 @@ static void game_mobs_tick(game_t *game) {
 }
 
 /* One tick of simulated time, due at tick_ns: this is where Stages 11 to 15 add theirs. */
+/* Plan 004 section 4.2: has the week number gone up since the last census? Never "is it 06:00 this tick", so a tick just past
+ * 06:00, a night slept through and a jump of many days each run every week they passed, once, in order. True if a census has
+ * just stopped the world for its screen, and this tick must not run. */
+static bool game_census_check(game_t *game) {
+    const calendar_clock_t clock = atomic_load_explicit(&game->clock_units, memory_order_relaxed);
+    const uint64_t week = calendar_week_of(game->day_zero, clock);
+    if (week <= game->last_census_week) {
+        return false;
+    }
+    const calendar_census_plan_t plan = calendar_census_plan(game->last_census_week, week);
+    for (uint64_t w = plan.first_week; w <= plan.last_week; w++) {
+        if (game->census_week != nullptr) {
+            game->census_week(game->borrowed_census_context, w, w < plan.first_week + plan.fast_weeks);
+        }
+        game->census_runs++;
+    }
+    /* Before the screen is answered: a save while it is up already holds this week, so being killed then cannot run it twice. */
+    game->last_census_week = week;
+    LOG_INFO("calendar: census for week %" PRIu64 " (%" PRIu64 " weeks, %" PRIu64 " of them fast)", week, plan.count,
+             plan.fast_weeks);
+    if (game->census_screens == 0u) {
+        return false; /* nobody to show it to: the world goes on */
+    }
+    atomic_store_explicit(&game->paused, 1u, memory_order_relaxed);
+    atomic_store_explicit(&game->census_latch, week + 1u, memory_order_release);
+    return true;
+}
+
+bool game_census_take(game_t *game, uint64_t *out_week) {
+    const uint64_t latch = atomic_exchange_explicit(&game->census_latch, 0u, memory_order_acquire);
+    if (latch == 0u) {
+        return false;
+    }
+    *out_week = latch - 1u;
+    return true;
+}
+
 void game_sim_tick(game_t *game, int64_t tick_ns) {
     profiler_lane_t *const lane = game->borrowed_lane_sim;
     PROFILER_BEGIN(lane, "sim_tick");
     arena_reset(&game->arena_tick);
+    if (game_census_check(game)) {
+        PROFILER_END(lane);
+        return; /* this tick never happened: tick_count stays */
+    }
     if (game->borrowed_player != nullptr) {
         player_survival_day_set(&game->borrowed_player->survival,
                                 (float64_t)atomic_load_explicit(&game->day_units, memory_order_relaxed) /

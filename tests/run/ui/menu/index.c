@@ -1268,7 +1268,7 @@ TEST(the_whole_round_runs_through_the_display_loop_on_the_real_threads) {
                                  .width = buffer->width,
                                  .height = buffer->height,
                                  .features_off = SHADE_FEATURE_DAY_CYCLE | SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
-                                 ._pad0 = {0}};
+                                 .show_date = 0u};
     game_session_t session;
     game_session_init(&session, game, ui, terrain, input, &small, path_join(t, root, "saves"), 4242u);
     round_run_t run = {.borrowed_session = &session,

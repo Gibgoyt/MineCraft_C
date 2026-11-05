@@ -3,6 +3,7 @@
 
 #include "run/physics/fixtures/test_world.h"
 
+#include "calendar/index.h"
 #include "file/index.h"
 #include "heap/index.h"
 #include "job/index.h"
@@ -131,7 +132,7 @@ typedef struct ss_rig_t {
     const char *root;            /* 96 */
     save_state_parts_t parts;    /* 104 */
 } ss_rig_t;
-static_assert(sizeof(ss_rig_t) == 176);
+static_assert(sizeof(ss_rig_t) == 200);
 
 static bool ss_rig_begin(test_context_t *t, ss_rig_t *rig, const char *root, bool with_jobs) {
     memset(rig, 0, sizeof(*rig));
@@ -290,6 +291,9 @@ static void ss_fill(ss_rig_t *rig) {
 
     rig->parts.time = (save_state_time_t){
         .world_ticks = 1234u, .day_units = 0x12345678u, .yaw = 1.25f32, .pitch = -0.5f32, ._pad0 = {0}};
+    /* The plan's world 1000 days old, whose census has run for week 154. */
+    rig->parts.calendar = (save_state_calendar_t){
+        .clock_days = 1000u, .last_census_week = 154u, .day_zero = CALENDAR_DAY_ZERO, ._pad0 = {0}};
 }
 
 static void ss_no_spill(void *context, const item_stack_t *stack, const int32_t cell[3]) {
@@ -318,11 +322,13 @@ TEST(a_file_is_these_bytes_by_hand) {
     REQUIRE(save_init(save));
     REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
     CHECK_EQ_U64(ss_state_files(root), 0u);
-    const save_state_parts_t parts = {.time = {.world_ticks = 0x0102030405060708ull,
-                                               .day_units = 0x11223344u,
-                                               .yaw = 1.5f32,
-                                               .pitch = -2.0f32,
-                                               ._pad0 = {0}}};
+    const save_state_parts_t parts = {
+        .time = {.world_ticks = 0x0102030405060708ull,
+                 .day_units = 0x11223344u,
+                 .yaw = 1.5f32,
+                 .pitch = -2.0f32,
+                 ._pad0 = {0}},
+        .calendar = {.clock_days = 1000u, .last_census_week = 154u, .day_zero = CALENDAR_DAY_ZERO, ._pad0 = {0}}};
     save_state_capture(&save->state, &parts);
     REQUIRE(save_state_write(&save->state, 0u) == SAVE_WORLD_OK);
     uint64_t bytes = 0u;
@@ -330,7 +336,7 @@ TEST(a_file_is_these_bytes_by_hand) {
     /* The names are always there, and always last: their own bytes are run_save_world_names's. */
     uint8_t *const names = test_alloc(t, SAVE_STATE_NAMES_BYTES_MAX);
     const uint64_t names_bytes = save_names_write_all(names);
-    const uint64_t whole = 112u + sizeof(save_state_section_t) + names_bytes;
+    const uint64_t whole = 152u + sizeof(save_state_section_t) + names_bytes;
     REQUIRE(bytes == whole);
 
     uint8_t *const expected = test_alloc(t, whole);
@@ -342,7 +348,7 @@ TEST(a_file_is_these_bytes_by_hand) {
     memcpy(expected + 24, &table_hash, 8u);
     const uint64_t sections_bytes = whole - 72u;
     memcpy(expected + 32, &sections_bytes, 8u);
-    const uint32_t version = 3u, header_bytes = 72u, section_count = 2u;
+    const uint32_t version = 4u, header_bytes = 72u, section_count = 3u;
     memcpy(expected + 48, &version, 4u);
     memcpy(expected + 52, &header_bytes, 4u);
     memcpy(expected + 56, &section_count, 4u);
@@ -355,10 +361,17 @@ TEST(a_file_is_these_bytes_by_hand) {
     memcpy(expected + 96, &parts.time.day_units, 4u);
     memcpy(expected + 100, &parts.time.yaw, 4u);
     memcpy(expected + 104, &parts.time.pitch, 4u);
+    /* Then the calendar: 24 bytes of id 12, right after the time. */
+    const uint32_t calendar_id = 12u;
+    memcpy(expected + 112, &section_bytes, 8u);
+    memcpy(expected + 120, &calendar_id, 4u);
+    memcpy(expected + 128, &parts.calendar.clock_days, 8u);
+    memcpy(expected + 136, &parts.calendar.last_census_week, 8u);
+    memcpy(expected + 144, &parts.calendar.day_zero, 4u);
     const uint32_t names_id = SAVE_STATE_SECTION_NAMES;
-    memcpy(expected + 112, &names_bytes, 8u);
-    memcpy(expected + 120, &names_id, 4u);
-    memcpy(expected + 128, names, names_bytes);
+    memcpy(expected + 152, &names_bytes, 8u);
+    memcpy(expected + 160, &names_id, 4u);
+    memcpy(expected + 168, names, names_bytes);
     const uint64_t sections_hash = ss_fnv(expected + 72, sections_bytes);
     memcpy(expected + 40, &sections_hash, 8u);
     const uint64_t checksum = ss_fnv(expected, 64u);
@@ -412,6 +425,9 @@ TEST(every_part_reloads_byte_for_byte_and_goes_on_the_same) {
     REQUIRE(save_state_apply(&second->save->state, &second->parts));
     CHECK_EQ_U64(second->parts.time.world_ticks, 1234u);
     CHECK_EQ_U64(second->parts.time.day_units, 0x12345678u);
+    CHECK_EQ_U64(second->parts.calendar.clock_days, 1000u);
+    CHECK_EQ_U64(second->parts.calendar.last_census_week, 154u);
+    CHECK_EQ_U64(second->parts.calendar.day_zero, CALENDAR_DAY_ZERO);
     CHECK_EQ_U64(inventory_count(&second->item->inventory, ITEM_ID_DIRT), 40u);
     CHECK_EQ_U64(second->held->count, 3u);
     CHECK_EQ_U64(second->item->equipment.armor[1].item, ITEM_ID_COPPER_CHESTPLATE);
@@ -632,6 +648,154 @@ TEST(what_cannot_be_believed_is_refused_and_left_as_it_was) {
 }
 
 /* What is alive goes where a check will not follow: an arrow keeps flying and a fall keeps adding up. What the game then writes it must believe, or the world will not open again. */
+/* ---- The calendar: plan 004 phase 01 ---------------------------------------------------------------------------------- */
+
+/* Where the calendar section's head is in a file ss_fill's rig wrote: right after the time's. */
+enum : uint64_t {
+    SS_CALENDAR_AT = sizeof(save_state_header_t) + sizeof(save_state_section_t) + sizeof(save_state_time_t),
+    SS_CALENDAR_SPAN = sizeof(save_state_section_t) + sizeof(save_state_calendar_t),
+};
+
+/* A file of ss_fill's rig, written and read back: in out, which holds bytes + SS_CALENDAR_SPAN. */
+static const uint8_t *ss_calendar_file(test_context_t *t, const char *root, uint64_t *out_bytes) {
+    ss_rig_t *const rig = test_alloc(t, sizeof(ss_rig_t));
+    if (!ss_rig_begin(t, rig, root, false)) {
+        return nullptr;
+    }
+    ss_fill(rig);
+    save_state_capture(&rig->save->state, &rig->parts);
+    const bool written = save_state_write(&rig->save->state, 0u) == SAVE_WORLD_OK;
+    ss_rig_end(rig);
+    if (!written) {
+        return nullptr;
+    }
+    return ss_slurp(t, ss_state_path(t, root, 0u), out_bytes);
+}
+
+/* The same file with its calendar section taken out, and the header saying version. What version 3 wrote, as it had none. */
+static uint64_t ss_calendar_strip(uint8_t *file, uint64_t bytes, uint32_t version) {
+    memmove(file + SS_CALENDAR_AT, file + SS_CALENDAR_AT + SS_CALENDAR_SPAN, bytes - SS_CALENDAR_AT - SS_CALENDAR_SPAN);
+    const uint64_t stripped = bytes - SS_CALENDAR_SPAN;
+    save_state_header_t header;
+    memcpy(&header, file, sizeof(header));
+    header.version = version;
+    header.section_count--;
+    header.sections_bytes = stripped - sizeof(header);
+    memcpy(file, &header, sizeof(header));
+    ss_rehash(file, stripped);
+    return stripped;
+}
+
+TEST(a_version_3_file_still_opens_with_a_new_calendar) {
+    char *const root = ss_temp_directory(t);
+    REQUIRE(root != nullptr);
+    uint64_t bytes = 0u;
+    const uint8_t *const good = ss_calendar_file(t, root, &bytes);
+    REQUIRE(good != nullptr);
+    /* The section is where this test thinks it is. */
+    save_state_section_t head;
+    memcpy(&head, good + SS_CALENDAR_AT, sizeof(head));
+    REQUIRE(head.id == SAVE_STATE_SECTION_CALENDAR && head.bytes == sizeof(save_state_calendar_t));
+    uint8_t *const old = test_alloc(t, bytes);
+    memcpy(old, good, bytes);
+    const uint64_t old_bytes = ss_calendar_strip(old, bytes, SAVE_STATE_VERSION_READ_MIN);
+    CHECK_EQ_U64(SAVE_STATE_VERSION_READ_MIN, 3u);
+    CHECK_EQ_U64(save_state_check(old, old_bytes, SS_SEED, 0u), SAVE_WORLD_OK);
+    REQUIRE(file_write_atomic(ss_state_path(t, root, 0u), old, old_bytes) == FILE_OK);
+
+    /* Believed, and the caller's calendar, a new world's, is left as it was; everything else comes back. */
+    ss_rig_t *const rig = test_alloc(t, sizeof(ss_rig_t));
+    REQUIRE(ss_rig_begin(t, rig, root, false));
+    CHECK_EQ_U64(rig->save->state.kept, 1u);
+    const save_state_calendar_t fresh = {.clock_days = 0u, .last_census_week = 11u, .day_zero = CALENDAR_DAY_ZERO};
+    rig->parts.calendar = fresh;
+    REQUIRE(save_state_apply(&rig->save->state, &rig->parts));
+    CHECK_MEM_EQ(&rig->parts.calendar, &fresh, sizeof(fresh));
+    CHECK_EQ_U64(rig->parts.time.world_ticks, 1234u);
+    CHECK_EQ_U64(inventory_count(&rig->item->inventory, ITEM_ID_DIRT), 40u);
+    /* Its next save is version 4, with the calendar it went on with. */
+    save_state_capture(&rig->save->state, &rig->parts);
+    REQUIRE(save_state_write(&rig->save->state, 0u) == SAVE_WORLD_OK);
+    uint64_t new_bytes = 0u;
+    const uint8_t *const now = ss_slurp(t, ss_state_path(t, root, 0u), &new_bytes);
+    save_state_header_t header;
+    memcpy(&header, now, sizeof(header));
+    CHECK_EQ_U64(header.version, SAVE_STATE_VERSION);
+    uint64_t calendar_bytes = 0u;
+    const uint8_t *const calendar =
+        save_state_section_find(now, new_bytes, SAVE_STATE_SECTION_CALENDAR, &calendar_bytes);
+    REQUIRE(calendar != nullptr && calendar_bytes == sizeof(fresh));
+    CHECK_MEM_EQ(calendar, &fresh, sizeof(fresh));
+    ss_rig_end(rig);
+    ss_temp_remove(t, root);
+}
+
+TEST(a_calendar_that_cannot_be_true_is_refused) {
+    char *const root = ss_temp_directory(t);
+    REQUIRE(root != nullptr);
+    uint64_t bytes = 0u;
+    const uint8_t *const good = ss_calendar_file(t, root, &bytes);
+    REQUIRE(good != nullptr);
+    CHECK_EQ_U64(save_state_check(good, bytes, SS_SEED, 0u), SAVE_WORLD_OK);
+    uint8_t *const copy = test_alloc(t, bytes);
+    const uint64_t data_at = SS_CALENDAR_AT + sizeof(save_state_section_t);
+    const int32_t quiet = ss_quiet_begin();
+
+    /* Each with good hashes, so only what it says is wrong. clock_days 1000 and D0 79 reach week (79 + 1000 + 1) / 7 = 154. */
+    typedef struct ss_calendar_case_t {
+        save_state_calendar_t calendar; /* 0 */
+        uint64_t believed;              /* 24 */
+    } ss_calendar_case_t;
+    static_assert(sizeof(ss_calendar_case_t) == 32);
+    const ss_calendar_case_t cases[] = {
+        {{.clock_days = 1000u, .last_census_week = 154u, .day_zero = 79u}, 1u},
+        {{.clock_days = 1ull << 32, .last_census_week = 0u, .day_zero = 79u}, 0u},
+        {{.clock_days = (1ull << 32) - 1u, .last_census_week = 0u, .day_zero = 79u}, 1u},
+        {{.clock_days = 1000u, .last_census_week = 0u, .day_zero = 365u}, 0u},
+        {{.clock_days = 1000u, .last_census_week = 0u, .day_zero = 364u}, 1u},
+        {{.clock_days = 1000u, .last_census_week = 200u, .day_zero = 79u}, 0u},
+        {{.clock_days = 1000u, .last_census_week = 155u, .day_zero = 79u}, 0u},
+        {{.clock_days = 1000u, .last_census_week = 154u, .day_zero = 79u, ._pad0 = {0, 0, 1, 0}}, 0u},
+    };
+    for (uint32_t i = 0u; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        memcpy(copy, good, bytes);
+        memcpy(copy + data_at, &cases[i].calendar, sizeof(cases[i].calendar));
+        ss_rehash(copy, bytes);
+        CHECK_EQ_U64((uint64_t)i * 100u + (save_state_check(copy, bytes, SS_SEED, 0u) == SAVE_WORLD_OK ? 1u : 0u),
+                     (uint64_t)i * 100u + cases[i].believed);
+    }
+    /* Too short a section, with the rest moved up to suit. */
+    memcpy(copy, good, bytes);
+    save_state_section_t head;
+    memcpy(&head, copy + SS_CALENDAR_AT, sizeof(head));
+    head.bytes = 16u;
+    memcpy(copy + SS_CALENDAR_AT, &head, sizeof(head));
+    memmove(copy + data_at + 16u, copy + data_at + 24u, bytes - data_at - 24u);
+    save_state_header_t header;
+    memcpy(&header, copy, sizeof(header));
+    header.sections_bytes -= 8u;
+    memcpy(copy, &header, sizeof(header));
+    ss_rehash(copy, bytes - 8u);
+    CHECK_EQ_U64(save_state_check(copy, bytes - 8u, SS_SEED, 0u), SAVE_WORLD_ERROR_DAMAGED);
+    /* A version 4 file with no calendar, and a version 3 file with one. */
+    memcpy(copy, good, bytes);
+    const uint64_t stripped = ss_calendar_strip(copy, bytes, SAVE_STATE_VERSION);
+    CHECK_EQ_U64(save_state_check(copy, stripped, SS_SEED, 0u), SAVE_WORLD_ERROR_DAMAGED);
+    memcpy(copy, good, bytes);
+    memcpy(&header, copy, sizeof(header));
+    header.version = SAVE_STATE_VERSION_READ_MIN;
+    memcpy(copy, &header, sizeof(header));
+    ss_rehash(copy, bytes);
+    CHECK_EQ_U64(save_state_check(copy, bytes, SS_SEED, 0u), SAVE_WORLD_ERROR_DAMAGED);
+    /* Older than any version still read. */
+    header.version = SAVE_STATE_VERSION_READ_MIN - 1u;
+    memcpy(copy, &header, sizeof(header));
+    ss_rehash(copy, bytes);
+    CHECK_EQ_U64(save_state_check(copy, bytes, SS_SEED, 0u), SAVE_WORLD_ERROR_VERSION);
+    ss_quiet_end(quiet);
+    ss_temp_remove(t, root);
+}
+
 TEST(numbers_past_what_a_file_may_say_are_written_at_the_limit_and_the_file_is_believed) {
     char *const root = ss_temp_directory(t);
     REQUIRE(root != nullptr);

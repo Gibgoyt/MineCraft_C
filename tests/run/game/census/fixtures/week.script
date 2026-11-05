@@ -1,0 +1,34 @@
+# A new world through the menus, across its first census, and Continue: plan 004 phase 01. At 640 by 480, scale 2, with the
+# menus' places worked out as tests/run/ui/menu/fixtures/flow.script works them out. The pointer starts in the middle, at 320, 240.
+# Once the world is open, run_game_census puts the clock 40 ticks before 06:00 on clock day 5, so the census comes about 40 ticks
+# after the world opens.
+
+1 move 0 -40                    # 320, 200: Singleplayer
++1 button left down
++1 button left up
++1 move 132 196                 # 452, 396: Create New World
++1 button left down
++1 button left up
++1 key w down
++1 key w up
++1 key e down
++1 key e up
++1 key e down
++1 key e up
++1 key k down
++1 key k up
++1 move -132 -194               # 320, 202: the seed field
++1 button left down
++1 button left up
++1 key 7 down
++1 key 7 up
++1 key enter down               # opens the world, between this tick and the next
++1 key enter up
+
++30 screenshot before.png       # playing, about 10 ticks before the census
++30 screenshot census.png       # the census screen, over the stopped world
++1 move 0 250                   # 320, 452: Continue, on row 8
++1 button left down
++1 button left up
++20 screenshot after.png        # playing again
++1 end

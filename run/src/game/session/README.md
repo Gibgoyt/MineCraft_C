@@ -24,7 +24,8 @@ A world whose files refuse to open, as damaged, from another version, on another
 |---|---|---|
 | Menu | Menus on a blank frame | Playing, on Play; done, on Quit Game |
 | Playing | One real frame of `game` | Paused, on Esc |
-| Paused | The pause screen over the last picture | Playing, on Resume or Esc; Menu, on Quit to Title |
+| Paused | The pause screen over the last picture | Playing, on Resume or Esc; Census, on Resume when a census came meanwhile; Menu, on Quit to Title |
+| Census | The census screen, `run/src/ui/screen_census/`, over the last picture, with the world stopped: plan 004 phase 01 | Playing, on Continue or Esc |
 
 **It all runs on one taking of the console:** one `display_frames_run`, one guardian. Giving the console back between a menu and a world is not an option: `display_flip_restore` and `display/vt_guard`'s restore steps each run once for a run of the program, on purpose, and each taking holds the emergency notice up for three seconds with keys going to the shell in between. The first try at this stage did that, and `the_whole_round_...` found it leaving the console in graphics mode. See the stage file's issue 1.
 
@@ -34,6 +35,8 @@ A world whose files refuse to open, as damaged, from another version, on another
 - Then that frame: `terrain_deinit` and `terrain_init` with the chosen seed, as `run/include/terrain/index.h` says another seed takes, and `game_open`, which starts the player, inventory and drops anew. The guardian's watchdog ends the program if it hears nothing for 8 seconds, and finding dry land can take longer than that, as `run/src/game/spawn/` says, so `game_open_alive_set` keeps it told once for each square of that search. The log says how long it took.
 - A log line on a console in graphics mode does no harm: it is not drawn, and it is there when the console comes back. Nothing else logs but a change of settings going through.
 - `game_loop_threads_ensure` starts the threads on the next frame, after the guardian's fork as under `--test-world`, and what is pinned for this world is pinned after that fork too.
+
+**A census stops the world.** Each world opens with `game_census_screens_set`, so when the week number goes up at 06:00 the sim pauses the world itself and raises a latch. Under KMS each playing frame looks for it before the input frame, under `--headless` after each tick, and on Resume from the pause screen, which closes the one race of a census in the frame Esc came. Taking it lets go of everything held, opens the census screen with the clock, `D0`, how many weeks were worked out since the last screen (`census_runs_seen`) and the hemisphere, and the Esc that came with it is not an answer to it. Continue, or Esc, unpauses.
 
 **A pause stops the world's time and nothing else.** `game_pause_set` stops the sim's ticks and the day. Columns go on streaming, and pictures already being drawn finish. The gpu thread waits when no one takes its pictures, so a pause costs almost nothing on the card. On pausing, everything held is let go, so nothing is still walking or mining in the one tick before the first frame after Resume says otherwise. The same Esc that pauses cannot resume: `escape_used`.
 

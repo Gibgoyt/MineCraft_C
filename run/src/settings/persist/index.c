@@ -77,7 +77,7 @@ void settings_persist_defaults(settings_values_t *out) {
                                .vsync = 1u,
                                .show_coordinates = 1u,
                                .sound_volume_percent = SETTINGS_SOUND_VOLUME_DEFAULT,
-                               ._pad0 = {0}};
+                               .show_date = 1u};
 }
 
 static uint32_t *settings_number_at(settings_values_t *values, const settings_number_t *number) {
@@ -93,6 +93,7 @@ void settings_persist_clamp(settings_values_t *values) {
     values->effects &= SHADE_FEATURES_EVERY;
     values->vsync = values->vsync != 0u ? 1u : 0u;
     values->show_coordinates = values->show_coordinates != 0u ? 1u : 0u;
+    values->show_date = values->show_date != 0u ? 1u : 0u;
     values->sound_volume_percent = values->sound_volume_percent > SETTINGS_SOUND_VOLUME_MAX
                                        ? (uint8_t)SETTINGS_SOUND_VOLUME_MAX
                                        : values->sound_volume_percent;
@@ -176,12 +177,19 @@ static settings_line_result_t settings_line_apply(const uint8_t *key, uint64_t k
         return held == parsed ? SETTINGS_LINE_SET : SETTINGS_LINE_HELD;
     }
     bool on = false;
-    const bool is_vsync = settings_key_is(key, key_length, "vsync");
-    if (is_vsync || settings_key_is(key, key_length, "show_coordinates")) {
+    uint8_t *flag = nullptr;
+    if (settings_key_is(key, key_length, "vsync")) {
+        flag = &values->vsync;
+    } else if (settings_key_is(key, key_length, "show_coordinates")) {
+        flag = &values->show_coordinates;
+    } else if (settings_key_is(key, key_length, "show_date")) {
+        flag = &values->show_date;
+    }
+    if (flag != nullptr) {
         if (!settings_bool_parse(value, value_length, &on)) {
             return SETTINGS_LINE_BAD;
         }
-        *(is_vsync ? &values->vsync : &values->show_coordinates) = on ? 1u : 0u;
+        *flag = on ? 1u : 0u;
         return SETTINGS_LINE_SET;
     }
     for (uint32_t i = 0u; i < SETTINGS_EFFECT_COUNT; i++) {
@@ -347,6 +355,9 @@ bool settings_persist_write(const settings_values_t *values, uint8_t *out, uint6
         return false;
     }
     if (!settings_append(out, capacity, &at, "show_coordinates", values->show_coordinates != 0u ? "true" : "false")) {
+        return false;
+    }
+    if (!settings_append(out, capacity, &at, "show_date", values->show_date != 0u ? "true" : "false")) {
         return false;
     }
     for (uint32_t i = 0u; i < SETTINGS_EFFECT_COUNT; i++) {

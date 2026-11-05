@@ -111,7 +111,7 @@ static const game_config_t small_game = {.render_distance = 6u,
                                          .width = GAME_WIDTH,
                                          .height = GAME_HEIGHT,
                                          .features_off = SHADE_FEATURE_DAY_CYCLE | SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
-                                         ._pad0 = {0},
+                                         .show_date = 0u,
                                          .full_detail = 6u,
                                          .table_chunks = 6u};
 
@@ -593,7 +593,7 @@ TEST(render_distance_changes_through_the_screen_in_a_pause_with_the_real_threads
     const uint64_t bytes = 640ull * 480ull * 4ull;
     rig->buffer = (display_buffer_t){
         .owned_map = test_alloc(t, bytes), .map_bytes = bytes, .pitch = 640u * 4u, .width = 640u, .height = 480u};
-    const game_config_t config = {.width = 640u, .height = 480u, ._pad0 = {0}};
+    const game_config_t config = {.width = 640u, .height = 480u, .show_date = 0u};
     game_session_init(&rig->session, game, ui, terrain, input, &config, saves, 4242u);
     game_session_settings_set(&rig->session, settings);
     session_frames(t, rig, 2u);

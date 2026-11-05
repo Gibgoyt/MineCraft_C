@@ -17,6 +17,8 @@ typedef enum game_session_state_t : uint8_t {
     GAME_SESSION_PAUSED =
         2,                 /* a world open, with no time passing in it, and its last picture behind the pause screen */
     GAME_SESSION_DONE = 3, /* Quit Game: nothing is left to do */
+    /* a world open with its clock stopped by a census, and the census screen over its last picture: plan 004 phase 01 */
+    GAME_SESSION_CENSUS = 4,
 } game_session_state_t;
 
 /* What a frame asked for, which a later one does. */
@@ -50,7 +52,8 @@ typedef struct game_session_t {
     uint8_t kinds_missing; /* 113: INPUT_KIND_*: what has gone, and the screen is saying so until it is back */
     uint8_t leave_unsaved; /* 114: Leave Unsaved was chosen: what could not be saved is given up */
     uint8_t world_saved;   /* 115: all of this world is on disk, and closing it has nothing more to save */
-    uint8_t _pad0[4];      /* 116 */
+    uint32_t
+        census_runs_seen; /* 116: game_t.census_runs when the last census screen opened, to say how many weeks the next ran */
     display_frame_source_t source; /* 120: under KMS, while it runs: what each frame calls */
     void *
         borrowed_source_context; /* 128: and with what. What comes back from another VT is the session's, whatever a test has wrapped around the source */

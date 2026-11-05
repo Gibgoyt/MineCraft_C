@@ -145,6 +145,7 @@ TEST(the_file_for_the_defaults_is_exactly_this) {
                                    "sound_volume_percent: 70\n"
                                    "vsync: true\n"
                                    "show_coordinates: true\n"
+                                   "show_date: true\n"
                                    "effect_shapes: true\n"
                                    "effect_alpha: true\n"
                                    "effect_sky: true\n"
@@ -194,7 +195,7 @@ TEST(any_values_written_read_back_the_same) {
                                     .vsync = (uint8_t)(random[7] & 1u),
                                     .show_coordinates = (uint8_t)((random[7] >> 1u) & 1u),
                                     .sound_volume_percent = (uint8_t)(random[7] >> 8u),
-                                    ._pad0 = {0}};
+                                    .show_date = (uint8_t)((random[7] >> 2u) & 1u)};
         settings_persist_clamp(&values);
         CHECK(values.render_distance >= 2u && values.render_distance <= 512u);
         uint8_t text[SETTINGS_TEXT_BYTES];
@@ -204,11 +205,12 @@ TEST(any_values_written_read_back_the_same) {
         settings_values_t back = {.render_distance = values.render_distance == 2u ? 3u : 2u,
                                   .effects = ~values.effects & SHADE_FEATURES_EVERY,
                                   .vsync = (uint8_t)(values.vsync != 0u ? 0u : 1u),
-                                  .show_coordinates = (uint8_t)(values.show_coordinates != 0u ? 0u : 1u)};
+                                  .show_coordinates = (uint8_t)(values.show_coordinates != 0u ? 0u : 1u),
+                                  .show_date = (uint8_t)(values.show_date != 0u ? 0u : 1u)};
         settings_persist_report_t report;
         settings_persist_parse(text, bytes, &back, &report);
         CHECK_EQ_U64(report.problems, 0u);
-        CHECK_EQ_U64(report.applied, 7u + 2u + SETTINGS_EFFECT_COUNT);
+        CHECK_EQ_U64(report.applied, 7u + 3u + SETTINGS_EFFECT_COUNT);
         CHECK_MEM_EQ(&back, &values, sizeof(values));
     }
 }
@@ -277,6 +279,41 @@ TEST(a_file_from_before_show_coordinates_still_loads_and_shows_them) {
     values.show_coordinates = 7u;
     settings_persist_clamp(&values);
     CHECK_EQ_U64(values.show_coordinates, 1u);
+}
+
+/* Plan 004 phase 01: the date line's box is kept both ways, and a file from before it shows the date. */
+TEST(show_date_is_kept_and_a_file_without_it_shows_the_date) {
+    settings_values_t values = values_defaults();
+    CHECK_EQ_U64(values.show_date, 1u);
+    for (uint32_t on = 0u; on < 2u; on++) {
+        values.show_date = (uint8_t)on;
+        uint8_t text[SETTINGS_TEXT_BYTES];
+        uint64_t bytes = 0u;
+        REQUIRE(settings_persist_write(&values, text, sizeof(text), &bytes));
+        settings_values_t back = values_defaults();
+        back.show_date = (uint8_t)(on != 0u ? 0u : 1u);
+        settings_persist_report_t report;
+        settings_persist_parse(text, bytes, &back, &report);
+        CHECK_EQ_U64(report.problems, 0u);
+        CHECK_EQ_U64(back.show_date, on);
+        CHECK_MEM_EQ(&back, &values, sizeof(values));
+    }
+    /* A file from before the date line: no warning, and the date shows. */
+    static const char old_file[] = "version: 1\n"
+                                   "render_distance: 12\n"
+                                   "show_coordinates: false\n";
+    settings_values_t old = values_defaults();
+    const settings_persist_report_t report = parse_text(old_file, &old);
+    CHECK_EQ_U64(report.problems, 0u);
+    CHECK_EQ_U64(report.applied, 2u);
+    CHECK_EQ_U64(old.show_date, 1u);
+    CHECK_EQ_U64(parse_text("version: 1\nshow_date: false\n", &old).problems, 0u);
+    CHECK_EQ_U64(old.show_date, 0u);
+    CHECK_EQ_U64(parse_text("version: 1\nshow_date: sometimes\n", &old).problems, 1u);
+    CHECK_EQ_U64(old.show_date, 0u);
+    old.show_date = 9u;
+    settings_persist_clamp(&old);
+    CHECK_EQ_U64(old.show_date, 1u);
 }
 
 TEST(a_line_that_is_wrong_is_ignored_and_the_rest_are_read) {
@@ -723,7 +760,7 @@ TEST(what_takes_more_than_this_screen_says_so) {
 /* ---- What a config comes to, by hand ----------------------------------------------------------------------------------- */
 
 TEST(a_config_comes_to_this_by_hand) {
-    game_config_t config = {.render_distance = 32u, .width = 1920u, .height = 1080u, ._pad0 = {0}};
+    game_config_t config = {.render_distance = 32u, .width = 1920u, .height = 1080u, .show_date = 0u};
     game_view_t view;
     /* All at full detail, by default: no far field, and fog a chunk short of it. */
     CHECK_EQ_U64(game_view_table_chunks(&config), 32u);

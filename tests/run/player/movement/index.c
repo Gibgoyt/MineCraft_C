@@ -1114,7 +1114,7 @@ static void pm_rig_end(test_context_t *t, pm_rig_t *rig) {
 }
 
 static const game_config_t pm_small_game = {
-    .render_distance = 5u, .width = PM_WIDTH, .height = PM_HEIGHT, ._pad0 = {0}};
+    .render_distance = 5u, .width = PM_WIDTH, .height = PM_HEIGHT, .show_date = 0u};
 
 static float64_t pm_flat_distance(const float64_t from[3], const float64_t to[3]) {
     const float64_t x = to[0] - from[0], y = to[1] - from[1];

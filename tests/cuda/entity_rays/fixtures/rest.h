@@ -181,7 +181,7 @@ TEST(the_cost_is_measured_on_real_terrain) {
                                   .height = EN_COST_HEIGHT,
                                   .features_off = 0u,
                                   .god_rays = 0u,
-                                  ._pad0 = {0}};
+                                  .show_date = 0u};
     REQUIRE(game_open(game, &config));
     REQUIRE(game_settle(game));
     render_camera_t camera = game->camera;

@@ -2,6 +2,7 @@
 #include "save/state/index.h"
 
 #include "assert/index.h"
+#include "calendar/index.h"
 #include "log/index.h"
 #include "tables/blocks/index.h"
 #include "tables/items/index.h"
@@ -179,6 +180,14 @@ static void save_state_out_end(save_state_out_t *out) {
 static void save_state_out_time(save_state_out_t *out, const save_state_time_t *time) {
     save_state_out_begin(out, SAVE_STATE_SECTION_TIME);
     save_state_out_bytes(out, time, sizeof(*time));
+    save_state_out_end(out);
+}
+
+static void save_state_out_calendar(save_state_out_t *out, const save_state_calendar_t *calendar) {
+    save_state_calendar_t written = *calendar;
+    memset(written._pad0, 0, sizeof(written._pad0));
+    save_state_out_begin(out, SAVE_STATE_SECTION_CALENDAR);
+    save_state_out_bytes(out, &written, sizeof(written));
     save_state_out_end(out);
 }
 
@@ -373,6 +382,7 @@ void save_state_capture(save_state_t *state, const save_state_parts_t *parts) {
     ASSERT_ALWAYS(state->open != 0u);
     save_state_out_t out = {.borrowed_file = state->borrowed_image, .used = sizeof(save_state_header_t)};
     save_state_out_time(&out, &parts->time);
+    save_state_out_calendar(&out, &parts->calendar);
     if (parts->borrowed_player != nullptr) {
         save_state_out_player(&out, parts->borrowed_player);
     }
@@ -503,6 +513,23 @@ static bool save_state_check_time(const uint8_t *data, uint64_t bytes) {
     }
     memcpy(&time, data, sizeof(time));
     return isfinite(time.yaw) && isfinite(time.pitch);
+}
+
+/* A census cannot have run for a week the saved clock has not reached: the + 1 covers the time of day. */
+static bool save_state_check_calendar(const uint8_t *data, uint64_t bytes) {
+    save_state_calendar_t calendar;
+    if (bytes != sizeof(calendar)) {
+        return false;
+    }
+    memcpy(&calendar, data, sizeof(calendar));
+    for (uint32_t i = 0u; i < sizeof(calendar._pad0); i++) {
+        if (calendar._pad0[i] != 0u) {
+            return false;
+        }
+    }
+    return calendar.clock_days < CALENDAR_CLOCK_DAY && calendar.day_zero < CALENDAR_DAYS_PER_YEAR &&
+           calendar.last_census_week <=
+               ((uint64_t)calendar.day_zero + calendar.clock_days + 1u) / CALENDAR_DAYS_PER_WEEK;
 }
 
 static bool save_state_check_player(const uint8_t *data, uint64_t bytes) {
@@ -781,6 +808,8 @@ static bool save_state_check_one(uint32_t id, const uint8_t *data, uint64_t byte
         return save_state_check_minds(data, bytes);
     case SAVE_STATE_SECTION_NAMES:
         return save_names_are_live(data, bytes);
+    case SAVE_STATE_SECTION_CALENDAR:
+        return save_state_check_calendar(data, bytes);
     }
     return false; /* an id from nowhere: this version has only those */
 }
@@ -801,7 +830,7 @@ static save_world_status_t save_state_check_header(const uint8_t *file, uint64_t
         save_state_hash_more(SAVE_STATE_HASH_START, &header, offsetof(save_state_header_t, checksum))) {
         return SAVE_WORLD_ERROR_DAMAGED;
     }
-    if (header.version != SAVE_STATE_VERSION) {
+    if (header.version < SAVE_STATE_VERSION_READ_MIN || header.version > SAVE_STATE_VERSION) {
         return SAVE_WORLD_ERROR_VERSION;
     }
     if (header.header_bytes != sizeof(header) || header.generation != generation ||
@@ -853,6 +882,11 @@ save_world_status_t save_state_check(const uint8_t *file, uint64_t bytes, uint64
     }
     if (count != header.section_count || (seen & (1u << SAVE_STATE_SECTION_TIME)) == 0u ||
         (seen & (1u << SAVE_STATE_SECTION_NAMES)) == 0u) {
+        return SAVE_WORLD_ERROR_DAMAGED;
+    }
+    /* Every file of a version with a calendar holds one, as every file holds its time, and none from before has one. */
+    const bool calendar = (seen & (1u << SAVE_STATE_SECTION_CALENDAR)) != 0u;
+    if (calendar != (header.version >= SAVE_STATE_VERSION_FIRST_WITH_CALENDAR)) {
         return SAVE_WORLD_ERROR_DAMAGED;
     }
     return SAVE_WORLD_OK;
@@ -1162,6 +1196,12 @@ bool save_state_apply(const save_state_t *state, save_state_parts_t *parts) {
     const uint8_t *data = save_state_section_find(file, file_bytes, SAVE_STATE_SECTION_TIME, &bytes);
     if (data != nullptr) {
         memcpy(&parts->time, data, sizeof(parts->time));
+    }
+    data = save_state_section_find(file, file_bytes, SAVE_STATE_SECTION_CALENDAR, &bytes);
+    if (data != nullptr) {
+        memcpy(&parts->calendar, data, sizeof(parts->calendar));
+    } else {
+        LOG_INFO("save: %s has no calendar, and starts one", state->borrowed_directory);
     }
     data = save_state_section_find(file, file_bytes, SAVE_STATE_SECTION_PLAYER, &bytes);
     if (data != nullptr && parts->borrowed_player != nullptr) {

@@ -105,7 +105,7 @@ static const game_config_t gl_small_game = {.render_distance = 6u,
                                             .height = GL_HEIGHT,
                                             .features_off =
                                                 SHADE_FEATURE_DAY_CYCLE | SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
-                                            ._pad0 = {0}};
+                                            .show_date = 0u};
 
 static input_t *gl_input_start(test_context_t *t, fake_evdev_t *fake) {
     input_t *const input = gl_aligned(t, sizeof(input_t));
@@ -275,7 +275,7 @@ TEST(a_world_runs_through_the_display_loop_with_a_real_guardian_forked) {
                                  .width = buffer->width,
                                  .height = buffer->height,
                                  .features_off = SHADE_FEATURE_DAY_CYCLE | SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
-                                 ._pad0 = {0}};
+                                 .show_date = 0u};
     REQUIRE(game_open(game, &small));
     fake_evdev_t *const fake = fake_new(t);
     fake_device_t *const keyboard = fake_add(fake, "event1", "Keyboard", fake_caps_keyboard, true);
@@ -343,7 +343,7 @@ TEST(the_real_threads_load_the_default_render_distance_when_asked) {
     REQUIRE(gl_rig_begin(t, &rig));
     game_t *const game = rig.game;
     const game_config_t full = {
-        .render_distance = MC_GAME_RENDER_DISTANCE_DEFAULT, .width = 1920u, .height = 1080u, ._pad0 = {0}};
+        .render_distance = MC_GAME_RENDER_DISTANCE_DEFAULT, .width = 1920u, .height = 1080u, .show_date = 0u};
     REQUIRE(game_open(game, &full));
     const uint64_t bytes = post_xrgb_bytes(full.width, full.height);
     uint8_t *const screen = gl_aligned(t, bytes);

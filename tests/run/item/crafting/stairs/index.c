@@ -283,7 +283,8 @@ static bool cs_game_begin(test_context_t *t, cs_game_t *g) {
         return false;
     }
     game_init(g->game, g->world, g->terrain, g->render, g->job, g->texture, g->topology);
-    static const game_config_t config = {.render_distance = 4u, .width = CS_WIDTH, .height = CS_HEIGHT, ._pad0 = {0}};
+    static const game_config_t config = {
+        .render_distance = 4u, .width = CS_WIDTH, .height = CS_HEIGHT, .show_date = 0u};
     if (!CHECK(game_open(g->game, &config)) || !CHECK(game_settle(g->game))) {
         return false;
     }

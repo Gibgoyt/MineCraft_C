@@ -1237,7 +1237,7 @@ TEST(the_cost_is_measured_on_real_terrain_and_on_a_field_of_plants) {
                                   .width = SH_COST_WIDTH,
                                   .height = SH_COST_HEIGHT,
                                   .features_off = 0u,
-                                  ._pad0 = {0}};
+                                  .show_date = 0u};
     REQUIRE(game_open(game, &config));
     REQUIRE(game_settle(game));
     render_t *const render = rig.render;
