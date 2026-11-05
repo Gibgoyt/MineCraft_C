@@ -13,7 +13,7 @@ Compute only. It opens no display and no input device, and runs the built progra
 
 What it checks:
 
-- **By hand:** one ray against each shape, from each side that matters, with its `t` and face worked out on paper. A slab's top at a half, the step of the stairs, a plate one texel thick, a torch, rays that pass a box by inside its voxel, a ray from inside a box, one told to start past a box, a section all of one shape with no masks to go by, a material with no row, and a table too short.
+- **By hand:** one ray against each shape, from each side that matters, with its `t` and face worked out on paper. A slab's top at a half, the step of the stairs, a plate one texel thick, a torch, a torch on a wall leaning each of its four ways, rays that pass a box by inside its voxel, a ray from inside a box, one told to start past a box, a section all of one shape with no masks to go by, a material with no row, and a table too short.
 - **Under plain light:** everything here draws with shapes and holes alone, so the reference needs only each kind of face's one brightness. The sun, stored light and fog are `tests/cuda/sky/`'s.
 - **Against an exact reference:** a floor and a block of each shape, from all sides and from near and far. Every pixel against a trace in `float64_t` over its own list of boxes, written apart from the card's table, from surface to surface through holes in the real textures. Pixels near enough an edge for rounding to choose are left out, as `tests/run/render/frame/` does, and at least 24 pictures' worth must be left in, with every block and face seen.
 - **The settings:** the same comparison with shapes off, with alpha off, and with both off, each held to what it says.

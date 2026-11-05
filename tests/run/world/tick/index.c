@@ -990,6 +990,40 @@ TEST(wheat_goes_with_its_farmland_and_farmland_goes_under_a_block) {
     sim_end(sim);
 }
 
+TEST(a_torch_whose_wall_goes_any_other_way_goes_too_and_water_washes_it_away) {
+    sim_t *const sim = sim_begin(t);
+    sim_floor(t, sim, BLOCK_ID_STONE);
+    /* Sand holding a torch, with room to fall. */
+    sim_set(t, sim, 4, 4, 6, BLOCK_ID_SAND);
+    sim_set(t, sim, 5, 4, 6, BLOCK_ID_TORCH_WALL_EAST);
+    /* One with a wall that stays. */
+    sim_set(t, sim, 8, 4, 6, BLOCK_ID_STONE);
+    sim_set(t, sim, 9, 4, 6, BLOCK_ID_TORCH_WALL_EAST);
+    (void)sim_settle(t, sim);
+    CHECK_EQ_U64(sim_at(t, sim, 4, 4, 6), BLOCK_ID_AIR);
+    CHECK_EQ_U64(sim_at(t, sim, 4, 4, 1), BLOCK_ID_SAND);
+    CHECK_EQ_U64(sim_at(t, sim, 5, 4, 6), BLOCK_ID_AIR);
+    CHECK_EQ_U64(sim_at(t, sim, 9, 4, 6), BLOCK_ID_TORCH_WALL_EAST);
+    world_tick_broken_t broken;
+    uint32_t went = 0u;
+    while (world_tick_broken_next(&sim->tick, &broken)) {
+        CHECK_EQ_U64(broken.block, BLOCK_ID_TORCH_WALL_EAST);
+        CHECK_EQ_U64((uint64_t)(int64_t)broken.x, 5u);
+        went++;
+    }
+    CHECK_EQ_U64(went, 1u);
+    /* Water comes down on the one that stayed. */
+    sim_set(t, sim, 9, 4, 7, BLOCK_ID_WATER);
+    (void)sim_settle(t, sim);
+    CHECK_EQ_U64(sim_at(t, sim, 9, 4, 6), BLOCK_ID_WATER);
+    went = 0u;
+    while (world_tick_broken_next(&sim->tick, &broken)) {
+        went += broken.block == BLOCK_ID_TORCH_WALL_EAST ? 1u : 0u;
+    }
+    CHECK_EQ_U64(went, 1u);
+    sim_end(sim);
+}
+
 TEST(farmland_with_no_water_and_no_crop_goes_to_dirt_and_with_either_stays) {
     sim_t *const sim = sim_begin(t);
     sim_floor(t, sim, BLOCK_ID_STONE);

@@ -5,6 +5,7 @@
 #include "physics/collision/index.h"
 #include "player/felling/index.h"
 #include "tables/blocks/index.h"
+#include "world/wall_torch/index.h"
 
 #include <math.h>
 #include <string.h>
@@ -202,8 +203,29 @@ static bool interaction_needs_ground(uint16_t block) {
     return shape == BLOCK_SHAPE_CROSS || shape == BLOCK_SHAPE_CROP || shape == BLOCK_SHAPE_TORCH;
 }
 
+/* What hung on the sides of a block just broken. Only a torch that leans away from it: another beside it has its own wall. */
+static void interaction_wall_torches_break(player_interaction_t *interaction, world_edit_t *edit, int32_t x, int32_t y,
+                                           int32_t z) {
+    for (uint32_t side = 0u; side < WALL_TORCH_SIDES; side++) {
+        const uint16_t torch = WALL_TORCH_BLOCKS[side];
+        int32_t out_x = 0, out_y = 0;
+        (void)wall_torch_out(torch, &out_x, &out_y);
+        uint16_t block = BLOCK_ID_AIR;
+        if (world_map_block_get(edit->borrowed_map, x + out_x, y + out_y, z, &block) != WORLD_MAP_STATUS_OK ||
+            block != torch) {
+            continue;
+        }
+        if (world_edit_block_set(edit, x + out_x, y + out_y, z, BLOCK_ID_AIR) != WORLD_EDIT_STATUS_CHANGED) {
+            interaction->no_memory_count++;
+            continue;
+        }
+        player_interaction_drops_spawn(interaction, torch, x + out_x, y + out_y, z);
+    }
+}
+
 void player_interaction_stack_break(player_interaction_t *interaction, world_edit_t *edit, int32_t x, int32_t y,
                                     int32_t z) {
+    interaction_wall_torches_break(interaction, edit, x, y, z);
     for (int32_t above = z + 1; above <= z + (int32_t)PLAYER_INTERACTION_STACK_MAX; above++) {
         uint16_t block = BLOCK_ID_AIR;
         if (world_map_block_get(edit->borrowed_map, x, y, above, &block) != WORLD_MAP_STATUS_OK ||
@@ -306,6 +328,28 @@ static bool interaction_cell_takes(const world_map_t *map, uint16_t block, uint1
            (block_defs[below].flags & BLOCK_FLAG_SOLID) != 0u;
 }
 
+/* What a hand puts down, aiming at this face, into this cell. All but a torch go as they are. A torch goes by the face: on a side, it
+ * hangs from the block behind it if that is solid, and otherwise, as on a top, it stands on the floor. On a block's underside it has
+ * nothing to stand on or hang from, so BLOCK_NO_ID. */
+static uint16_t interaction_block_to_place(const world_map_t *map, const raycast_hit_t *hit, uint16_t held,
+                                           const int32_t cell[COLLISION_AXES]) {
+    if (held != BLOCK_ID_TORCH) {
+        return held;
+    }
+    if (hit->axis == COLLISION_AXIS_Z) {
+        const bool aimed_into = cell[COLLISION_AXIS_Z] == hit->cell[COLLISION_AXIS_Z];
+        return hit->normal_sign < 0 && !aimed_into ? BLOCK_NO_ID : BLOCK_ID_TORCH;
+    }
+    const int32_t out_x = hit->axis == COLLISION_AXIS_X ? (int32_t)hit->normal_sign : 0;
+    const int32_t out_y = hit->axis == COLLISION_AXIS_Y ? (int32_t)hit->normal_sign : 0;
+    uint16_t behind = BLOCK_ID_AIR;
+    if (world_map_block_get(map, cell[0] - out_x, cell[1] - out_y, cell[2], &behind) == WORLD_MAP_STATUS_OK &&
+        (block_defs[behind].flags & BLOCK_FLAG_SOLID) != 0u) {
+        return wall_torch_of(out_x, out_y);
+    }
+    return BLOCK_ID_TORCH;
+}
+
 static void interaction_place(player_interaction_t *interaction, world_edit_t *edit,
                               const player_interaction_input_t *input, const raycast_hit_t *hit) {
     if (interaction->hand_count == 0u || hit->axis == RAYCAST_AXIS_NONE) {
@@ -317,7 +361,10 @@ static void interaction_place(player_interaction_t *interaction, world_edit_t *e
         raycast_hit_in_front(hit, cell);
     }
     uint16_t there = BLOCK_ID_AIR;
-    const uint16_t block = interaction->hand_block;
+    const uint16_t block = interaction_block_to_place(edit->borrowed_map, hit, interaction->hand_block, cell);
+    if (block == BLOCK_NO_ID) {
+        return;
+    }
     /* Outside gameplay's heights, and in a column that has not come, this is not OK. */
     if (world_map_block_get(edit->borrowed_map, cell[0], cell[1], cell[2], &there) != WORLD_MAP_STATUS_OK ||
         !interaction_cell_takes(edit->borrowed_map, block, there, cell[0], cell[1], cell[2]) ||

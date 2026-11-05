@@ -1,0 +1,14 @@
+name: torch_lean_cap
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: The top and bottom of a torch on a wall, wood but for where each of the four has its flame.
+  seed: 9102
+  ops:
+    - { op: fill, color: "#6e5439" }
+    - { op: noise, amount: 8, cell: 1 }
+    - { op: fill, color: "#ffc23a", x: 4, y: 7, w: 2, h: 2 }
+    - { op: fill, color: "#ffc23a", x: 10, y: 7, w: 2, h: 2 }
+    - { op: fill, color: "#ffc23a", x: 7, y: 4, w: 2, h: 2 }
+    - { op: fill, color: "#ffc23a", x: 7, y: 10, w: 2, h: 2 }

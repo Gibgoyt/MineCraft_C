@@ -16,7 +16,7 @@
 - `explosion_finish`: breaks it.
 
 **May be called by:** `run/src/entity/` for the start, and `run/src/mob/` and anything else that blows up. `explosion_line_clear` is also how a mob sees.
-**Depends on:** `entity/store`, `entity/item_drop`, `physics/collision`, `world/map`, `world/edit`, `terrain/rng`, `arena`, `assert`, the generated `tables/blocks`, libm.
+**Depends on:** `entity/store`, `entity/item_drop`, `physics/collision`, `world/map`, `world/edit`, `world/wall_torch`, `terrain/rng`, `arena`, `assert`, the generated `tables/blocks`, libm.
 
 ## What it does
 
@@ -28,7 +28,7 @@ The numbers are Minecraft's published ones, in blocks and half hearts, and z is 
 
 **Resistance.** The published number. Most blocks' is their hardness, so only the others are written down, in a `switch` in `index.c`. Bedrock is 3600000, and water and lava 100, which no blast this size gets through, so fluids stay and what is under water is safe. Plants are 0: a ray only pays the 0.3 for them.
 
-**What goes with it.** What stood on a broken block and needs the ground goes too, as for mining: cross, crop and torch shapes, up to 16 high. Falling sand, flowing water and the spilling of a chest follow from the edit log, as they do for anything that changes a block.
+**What goes with it.** What stood on a broken block and needs the ground goes too, as for mining: cross, crop and torch shapes, up to 16 high, and any torch on one of its four sides, wherever the blast reached. Falling sand, flowing water and the spilling of a chest follow from the edit log, as they do for anything that changes a block.
 
 **What comes out.** One block in `power` gives its drops, rolled as for a hand but with no tool asked for.
 

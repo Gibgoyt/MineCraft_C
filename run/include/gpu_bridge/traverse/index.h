@@ -67,7 +67,12 @@ typedef enum traverse_shape_t : uint8_t {
     TRAVERSE_SHAPE_TORCH = 5,  /* a stick in the middle, standing on the floor */
     TRAVERSE_SHAPE_PLATE = 6,  /* a thin plate against the +y side: a ladder, a vine */
     TRAVERSE_SHAPE_FLAT = 7,   /* a thin plate on the floor: a lily pad */
-    TRAVERSE_SHAPE_COUNT = 8,
+    /* A torch on a wall, stepping out from it the way it is named: the wall is on the other side of the voxel. */
+    TRAVERSE_SHAPE_TORCH_EAST = 8,
+    TRAVERSE_SHAPE_TORCH_WEST = 9,
+    TRAVERSE_SHAPE_TORCH_NORTH = 10,
+    TRAVERSE_SHAPE_TORCH_SOUTH = 11,
+    TRAVERSE_SHAPE_COUNT = 12,
 } traverse_shape_t;
 static_assert(sizeof(traverse_shape_t) == 1);
 

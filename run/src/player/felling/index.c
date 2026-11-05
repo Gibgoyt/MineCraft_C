@@ -2,6 +2,7 @@
 #include "player/felling/index.h"
 
 #include "tables/blocks/index.h"
+#include "world/wall_torch/index.h"
 
 #include <string.h>
 
@@ -122,7 +123,8 @@ uint32_t player_felling_cut(player_felling_t *felling, const world_map_t *map, u
 
 /* Whether its drops, and a little over, fit in the ring as it stands. */
 static bool felling_has_room(const player_interaction_t *hands, uint16_t block) {
-    return hands->drop_count + (uint32_t)block_defs[block].drop_count + FELLING_ROOM_SPARE <= PLAYER_INTERACTION_DROPS;
+    return hands->drop_count + (uint32_t)block_defs[block].drop_count + FELLING_ROOM_SPARE + WALL_TORCH_SIDES <=
+           PLAYER_INTERACTION_DROPS;
 }
 
 uint32_t player_felling_tick(player_felling_t *felling, player_interaction_t *hands, world_edit_t *edit,

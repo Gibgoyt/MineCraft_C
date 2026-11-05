@@ -22,6 +22,11 @@ static const raycast_part_t RAYCAST_PART_CROSS = {{4u, 4u, 0u}, {28u, 28u, 32u}}
 static const raycast_part_t RAYCAST_PART_TORCH = {{12u, 12u, 0u}, {20u, 20u, 20u}};
 static const raycast_part_t RAYCAST_PART_PLATE = {{0u, 30u, 0u}, {32u, 32u, 32u}};
 static const raycast_part_t RAYCAST_PART_FLAT = {{0u, 0u, 0u}, {32u, 32u, 2u}};
+/* Around all the steps of a torch on a wall, and twice the stick's width across, as for a torch on the floor. */
+static const raycast_part_t RAYCAST_PART_TORCH_EAST = {{0u, 12u, 6u}, {12u, 20u, 28u}};
+static const raycast_part_t RAYCAST_PART_TORCH_WEST = {{20u, 12u, 6u}, {32u, 20u, 28u}};
+static const raycast_part_t RAYCAST_PART_TORCH_NORTH = {{12u, 0u, 6u}, {20u, 12u, 28u}};
+static const raycast_part_t RAYCAST_PART_TORCH_SOUTH = {{12u, 20u, 6u}, {20u, 32u, 28u}};
 #define RAYCAST_PART_UNIT (1.0f64 / 32.0f64)
 
 static uint32_t raycast_part_box(const raycast_part_t *part, int32_t x, int32_t y, int32_t z, collision_box_t *out) {
@@ -46,6 +51,14 @@ uint32_t raycast_block_boxes(uint16_t block, int32_t x, int32_t y, int32_t z, co
         return raycast_part_box(&RAYCAST_PART_CROSS, x, y, z, out);
     case BLOCK_SHAPE_TORCH:
         return raycast_part_box(&RAYCAST_PART_TORCH, x, y, z, out);
+    case BLOCK_SHAPE_TORCH_EAST:
+        return raycast_part_box(&RAYCAST_PART_TORCH_EAST, x, y, z, out);
+    case BLOCK_SHAPE_TORCH_WEST:
+        return raycast_part_box(&RAYCAST_PART_TORCH_WEST, x, y, z, out);
+    case BLOCK_SHAPE_TORCH_NORTH:
+        return raycast_part_box(&RAYCAST_PART_TORCH_NORTH, x, y, z, out);
+    case BLOCK_SHAPE_TORCH_SOUTH:
+        return raycast_part_box(&RAYCAST_PART_TORCH_SOUTH, x, y, z, out);
     case BLOCK_SHAPE_THIN:
         /* The same two as render/frame's table: a lily pad lies on the floor, and the others stand against the +y side. */
         return raycast_part_box(block == BLOCK_ID_LILY_PAD ? &RAYCAST_PART_FLAT : &RAYCAST_PART_PLATE, x, y, z, out);

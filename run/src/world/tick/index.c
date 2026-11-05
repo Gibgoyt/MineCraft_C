@@ -3,6 +3,7 @@
 
 #include "assert/index.h"
 #include "tables/blocks/index.h"
+#include "world/wall_torch/index.h"
 
 #include <string.h>
 
@@ -92,7 +93,7 @@ static bool tick_is_open(uint16_t state) {
     }
     const uint8_t shape = block_defs[state].shape;
     return shape == BLOCK_SHAPE_NONE || shape == BLOCK_SHAPE_CROSS || shape == BLOCK_SHAPE_CROP ||
-           shape == BLOCK_SHAPE_TORCH;
+           shape == BLOCK_SHAPE_TORCH || wall_torch_out(state, nullptr, nullptr);
 }
 
 static bool tick_is_log(uint16_t state) {
@@ -314,7 +315,7 @@ static void tick_wake(world_tick_t *tick, int32_t x, int32_t y, int32_t z) {
         if (tick_can_fall_into(tick_look(tick, x, y, z - 1))) {
             tick_schedule(tick, x, y, z, TICK_DELAY_FALL);
         }
-    } else if (tick_is_wheat(state) || state == BLOCK_ID_FARMLAND) {
+    } else if (tick_is_wheat(state) || state == BLOCK_ID_FARMLAND || wall_torch_out(state, nullptr, nullptr)) {
         tick_schedule(tick, x, y, z, TICK_DELAY_SUPPORT);
     }
 }
@@ -616,10 +617,20 @@ static void tick_fall(world_tick_t *tick, uint16_t state, int32_t x, int32_t y, 
 
 /* ---- What needs something under or over it -------------------------------------------------------------------------- */
 
+/* Whether a torch on a wall still has that wall. Mining and blasts take it with them: this is for all else, sand falling, leaves going. */
+static bool tick_wall_torch_held(const world_tick_t *tick, uint16_t state, int32_t x, int32_t y, int32_t z) {
+    int32_t out_x = 0, out_y = 0;
+    return !wall_torch_out(state, &out_x, &out_y) || tick_is_solid(tick_look(tick, x - out_x, y - out_y, z));
+}
+
 static void tick_support(world_tick_t *tick, uint16_t state, int32_t x, int32_t y, int32_t z) {
     if (state == BLOCK_ID_FARMLAND) {
         if (tick_is_solid(tick_look(tick, x, y, z + 1))) {
             (void)tick_block_write(tick, x, y, z, BLOCK_ID_DIRT);
+        }
+    } else if (wall_torch_out(state, nullptr, nullptr)) {
+        if (!tick_wall_torch_held(tick, state, x, y, z) && tick_block_write(tick, x, y, z, BLOCK_ID_AIR)) {
+            tick_broken_note(tick, state, x, y, z);
         }
     } else if (tick_look(tick, x, y, z - 1) != BLOCK_ID_FARMLAND && tick_block_write(tick, x, y, z, BLOCK_ID_AIR)) {
         tick_broken_note(tick, state, x, y, z);
@@ -951,7 +962,7 @@ static void tick_fire_due(world_tick_t *tick) {
             tick_fluid(tick, state, x, y, z);
         } else if (tick_is_block(state) && (block_defs[state].flags & BLOCK_FLAG_FALLS) != 0u) {
             tick_fall(tick, state, x, y, z);
-        } else if (tick_is_wheat(state) || state == BLOCK_ID_FARMLAND) {
+        } else if (tick_is_wheat(state) || state == BLOCK_ID_FARMLAND || wall_torch_out(state, nullptr, nullptr)) {
             tick_support(tick, state, x, y, z);
         }
     }
@@ -1091,6 +1102,10 @@ static void tick_wake_if_able(world_tick_t *tick, int32_t x, int32_t y, int32_t 
         }
     } else if (tick_is_wheat(state)) {
         if (tick_look(tick, x, y, z - 1) != BLOCK_ID_FARMLAND) {
+            tick_wake(tick, x, y, z);
+        }
+    } else if (wall_torch_out(state, nullptr, nullptr)) {
+        if (!tick_wall_torch_held(tick, state, x, y, z)) {
             tick_wake(tick, x, y, z);
         }
     } else {

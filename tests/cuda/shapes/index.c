@@ -31,8 +31,8 @@ enum : uint32_t {
     SH_GOLDEN_TOLERANCE = 2u,
     SH_PROGRAM_TIMEOUT_MS = 120000u,
     SH_BOXES_MAX = 64u,
-    SH_BLOCKS_MAX = 16u,
-    SH_BOXES_PER_BLOCK_MAX = 4u,
+    SH_BLOCKS_MAX = 18u,
+    SH_BOXES_PER_BLOCK_MAX = 5u,
     SH_COST_FRAMES = 30u,
     SH_COST_WIDTH = 1920u,
     SH_COST_HEIGHT = 1080u,
@@ -205,6 +205,28 @@ static uint32_t sh_boxes_of(uint32_t state, sh_box_t *out) {
     case BLOCK_SHAPE_TORCH:
         out[0] = (sh_box_t){{7.0f64 / 16.0f64, 7.0f64 / 16.0f64, none}, {9.0f64 / 16.0f64, 9.0f64 / 16.0f64, 0.625f64}};
         return 1u;
+    case BLOCK_SHAPE_TORCH_EAST:
+    case BLOCK_SHAPE_TORCH_WEST:
+    case BLOCK_SHAPE_TORCH_NORTH:
+    case BLOCK_SHAPE_TORCH_SOUTH: {
+        /* From the wall out, by steps of one texel out for two up: a stick two texels square, and three tall at the flame. */
+        const uint32_t shape = block_defs[state].shape;
+        const bool along_x = shape == BLOCK_SHAPE_TORCH_EAST || shape == BLOCK_SHAPE_TORCH_WEST;
+        const bool from_far = shape == BLOCK_SHAPE_TORCH_WEST || shape == BLOCK_SHAPE_TORCH_SOUTH;
+        for (uint32_t step = 0u; step < 5u; step++) {
+            const float64_t texel = 1.0f64 / 16.0f64;
+            const float64_t out_low = (float64_t)step * texel;
+            const float64_t out_high = out_low + 2.0f64 * texel;
+            const float64_t low = from_far ? 1.0f64 - out_high : out_low;
+            const float64_t high = from_far ? 1.0f64 - out_low : out_high;
+            const float64_t z_low = (3.0f64 + 2.0f64 * (float64_t)step) * texel;
+            const float64_t z_high = z_low + (step == 4u ? 3.0f64 : 2.0f64) * texel;
+            const float64_t across_low = 7.0f64 * texel, across_high = 9.0f64 * texel;
+            out[step] = along_x ? (sh_box_t){{low, across_low, z_low}, {high, across_high, z_high}}
+                                : (sh_box_t){{across_low, low, z_low}, {across_high, high, z_high}};
+        }
+        return 5u;
+    }
     case BLOCK_SHAPE_THIN:
         if (state == BLOCK_ID_LILY_PAD) {
             out[0] = (sh_box_t){{none, none, none}, {whole, whole, 1.0f64 / 16.0f64}};
@@ -324,6 +346,98 @@ static const sh_ray_case_t sh_ray_cases[] = {
     {BLOCK_ID_TORCH, {0}, {-2, 0, 0}, {0.5f32, 0.3f32, 0.25f32}, {1, 0, 0}, 0.0f32, 0.0f32, TRAVERSE_FACE_MISS},
     {BLOCK_ID_TORCH, {0}, {-2, 0, 0}, {0.5f32, 0.5f32, 0.75f32}, {1, 0, 0}, 0.0f32, 0.0f32, TRAVERSE_FACE_MISS},
     {BLOCK_ID_TORCH, {0}, {0, 0, 3}, {0.5f32, 0.5f32, 0.5f32}, {0, 0, -1}, 0.0f32, 2.875f32, TRAVERSE_FACE_POS_Z},
+    /* A torch on a wall, leaning east: seen from the side, its foot at the wall, and each step a texel further out with each two up. The
+     * eye is 2 away from the low corner's cell, so that what is in the stick's way is worked out from whole 32nds. */
+    {BLOCK_ID_TORCH_WALL_EAST,
+     {0},
+     {0, -2, 0},
+     {0.0625f32, 0.5f32, 0.25f32},
+     {0, 1, 0},
+     0.0f32,
+     1.5f32 + SH_32NDS(14),
+     TRAVERSE_FACE_NEG_Y},
+    {BLOCK_ID_TORCH_WALL_EAST,
+     {0},
+     {0, -2, 0},
+     {0.3f32, 0.5f32, 0.25f32},
+     {0, 1, 0},
+     0.0f32,
+     0.0f32,
+     TRAVERSE_FACE_MISS},
+    {BLOCK_ID_TORCH_WALL_EAST,
+     {0},
+     {0, -2, 0},
+     {0.3125f32, 0.5f32, 0.75f32},
+     {0, 1, 0},
+     0.0f32,
+     1.5f32 + SH_32NDS(14),
+     TRAVERSE_FACE_NEG_Y},
+    {BLOCK_ID_TORCH_WALL_EAST,
+     {0},
+     {0, -2, 0},
+     {0.0625f32, 0.5f32, 0.75f32},
+     {0, 1, 0},
+     0.0f32,
+     0.0f32,
+     TRAVERSE_FACE_MISS},
+    /* From the east, along the way it leans, the flame's end first. */
+    {BLOCK_ID_TORCH_WALL_EAST,
+     {0},
+     {2, 0, 0},
+     {0.5f32, 0.5f32, 0.75f32},
+     {-1, 0, 0},
+     0.0f32,
+     2.5f32 - SH_32NDS(12),
+     TRAVERSE_FACE_POS_X},
+    /* The same torch leaning each other way, at the flame's height, from the side: it is only where its name says. */
+    {BLOCK_ID_TORCH_WALL_WEST,
+     {0},
+     {0, -2, 0},
+     {0.6875f32, 0.5f32, 0.75f32},
+     {0, 1, 0},
+     0.0f32,
+     1.5f32 + SH_32NDS(14),
+     TRAVERSE_FACE_NEG_Y},
+    {BLOCK_ID_TORCH_WALL_WEST,
+     {0},
+     {0, -2, 0},
+     {0.3125f32, 0.5f32, 0.75f32},
+     {0, 1, 0},
+     0.0f32,
+     0.0f32,
+     TRAVERSE_FACE_MISS},
+    {BLOCK_ID_TORCH_WALL_NORTH,
+     {0},
+     {-2, 0, 0},
+     {0.5f32, 0.3125f32, 0.75f32},
+     {1, 0, 0},
+     0.0f32,
+     1.5f32 + SH_32NDS(14),
+     TRAVERSE_FACE_NEG_X},
+    {BLOCK_ID_TORCH_WALL_NORTH,
+     {0},
+     {-2, 0, 0},
+     {0.5f32, 0.6875f32, 0.75f32},
+     {1, 0, 0},
+     0.0f32,
+     0.0f32,
+     TRAVERSE_FACE_MISS},
+    {BLOCK_ID_TORCH_WALL_SOUTH,
+     {0},
+     {-2, 0, 0},
+     {0.5f32, 0.6875f32, 0.75f32},
+     {1, 0, 0},
+     0.0f32,
+     1.5f32 + SH_32NDS(14),
+     TRAVERSE_FACE_NEG_X},
+    {BLOCK_ID_TORCH_WALL_SOUTH,
+     {0},
+     {-2, 0, 0},
+     {0.5f32, 0.3125f32, 0.75f32},
+     {1, 0, 0},
+     0.0f32,
+     0.0f32,
+     TRAVERSE_FACE_MISS},
     /* A ladder, on its one side for now, and a lily pad on the floor. */
     {BLOCK_ID_LADDER,
      {0},
@@ -388,8 +502,8 @@ static bool sh_cast(test_context_t *t, sh_rig_t *rig, const traverse_world_t *wo
 /* Each case gets a place of its own, on a diagonal: no ray of one can meet the block of another. The map loads a circle of
  * columns, so the radius below is well past the far corner of this. */
 static void sh_case_cell(uint32_t index, int32_t cell[3]) {
-    cell[0] = -36 + (int32_t)index * 3;
-    cell[1] = -36 + (int32_t)index * 3;
+    cell[0] = -72 + (int32_t)index * 3;
+    cell[1] = -72 + (int32_t)index * 3;
     cell[2] = 8;
 }
 
@@ -512,11 +626,24 @@ static_assert(sizeof(sh_scene_block_t) == 16);
 
 /* What each block's shape is seen for, from every side. */
 static const sh_scene_block_t sh_scene_blocks[] = {
-    {{2, 2, 0}, BLOCK_ID_STONE_SLAB},    {{5, 2, 0}, BLOCK_ID_OAK_STAIRS},  {{8, 2, 0}, BLOCK_ID_COBBLESTONE_STAIRS},
-    {{11, 2, 0}, BLOCK_ID_OAK_SLAB},     {{2, 6, 0}, BLOCK_ID_TALL_GRASS},  {{5, 6, 0}, BLOCK_ID_DANDELION},
-    {{8, 6, 0}, BLOCK_ID_WHEAT_STAGE_8}, {{11, 6, 0}, BLOCK_ID_TORCH},      {{2, 10, 0}, BLOCK_ID_LADDER},
-    {{5, 10, 0}, BLOCK_ID_LILY_PAD},     {{8, 10, 0}, BLOCK_ID_OAK_LEAVES}, {{11, 10, 0}, BLOCK_ID_STONE},
-    {{8, 11, 0}, BLOCK_ID_OAK_LEAVES},   {{3, 13, 0}, BLOCK_ID_FERN},
+    {{2, 2, 0}, BLOCK_ID_STONE_SLAB},
+    {{5, 2, 0}, BLOCK_ID_OAK_STAIRS},
+    {{8, 2, 0}, BLOCK_ID_COBBLESTONE_STAIRS},
+    {{11, 2, 0}, BLOCK_ID_OAK_SLAB},
+    {{2, 6, 0}, BLOCK_ID_TALL_GRASS},
+    {{5, 6, 0}, BLOCK_ID_DANDELION},
+    {{8, 6, 0}, BLOCK_ID_WHEAT_STAGE_8},
+    {{11, 6, 0}, BLOCK_ID_TORCH},
+    {{2, 10, 0}, BLOCK_ID_LADDER},
+    {{5, 10, 0}, BLOCK_ID_LILY_PAD},
+    {{8, 10, 0}, BLOCK_ID_OAK_LEAVES},
+    {{11, 10, 0}, BLOCK_ID_STONE},
+    {{8, 11, 0}, BLOCK_ID_OAK_LEAVES},
+    {{3, 13, 0}, BLOCK_ID_FERN},
+    {{6, 13, 0}, BLOCK_ID_TORCH_WALL_EAST},
+    {{8, 13, 0}, BLOCK_ID_TORCH_WALL_WEST},
+    {{10, 13, 0}, BLOCK_ID_TORCH_WALL_NORTH},
+    {{12, 13, 0}, BLOCK_ID_TORCH_WALL_SOUTH},
 };
 enum : uint32_t { SH_SCENE_BLOCKS = sizeof(sh_scene_blocks) / sizeof(sh_scene_blocks[0]) };
 static_assert((uint32_t)SH_SCENE_BLOCKS <= (uint32_t)SH_BLOCKS_MAX);

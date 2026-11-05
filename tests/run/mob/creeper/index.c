@@ -518,6 +518,38 @@ TEST(what_needs_the_ground_goes_with_it) {
     mc_end(&rig);
 }
 
+TEST(what_hangs_on_a_broken_block_goes_with_it_though_the_blast_did_not_reach_it) {
+    mc_rig_t rig;
+    REQUIRE(mc_begin(t, &rig, 13u));
+    explosion_t *const explosion = &rig.entity->explosion;
+    item_drop_store_t *const drops = &rig.entity->item_drops;
+    mc_put(t, &rig, 8, 8, 0, BLOCK_ID_DIRT);
+    mc_put(t, &rig, 9, 8, 0, BLOCK_ID_TORCH_WALL_EAST);
+    mc_put(t, &rig, 7, 8, 0, BLOCK_ID_TORCH_WALL_WEST);
+    mc_put(t, &rig, 8, 9, 0, BLOCK_ID_TORCH_WALL_NORTH);
+    mc_put(t, &rig, 8, 7, 0, BLOCK_ID_TORCH_WALL_SOUTH);
+    /* On another block, beside this one: it leans the wrong way to hang from the dirt. */
+    mc_put(t, &rig, 11, 8, 0, BLOCK_ID_STONE);
+    mc_put(t, &rig, 10, 8, 0, BLOCK_ID_TORCH_WALL_WEST);
+    /* The list a blast would have made with only the dirt on it, so that no ray can be what took them. A power of 1: all give what they give. */
+    explosion->borrowed_cells[0] = (explosion_cell_t){.x = 8, .y = 8, .z = 0, .block = BLOCK_ID_DIRT, ._pad0 = {0}};
+    explosion->count = 1u;
+    CHECK_EQ_U64(explosion_finish(explosion, &rig.world.world->edit, drops, 1.0f64), 5u);
+    CHECK_EQ_U64(mc_block(&rig, 8, 8, 0), BLOCK_ID_AIR);
+    CHECK_EQ_U64(mc_block(&rig, 9, 8, 0), BLOCK_ID_AIR);
+    CHECK_EQ_U64(mc_block(&rig, 7, 8, 0), BLOCK_ID_AIR);
+    CHECK_EQ_U64(mc_block(&rig, 8, 9, 0), BLOCK_ID_AIR);
+    CHECK_EQ_U64(mc_block(&rig, 8, 7, 0), BLOCK_ID_AIR);
+    CHECK_EQ_U64(mc_block(&rig, 10, 8, 0), BLOCK_ID_TORCH_WALL_WEST);
+    uint32_t torches = 0u;
+    for (uint32_t i = 0u; i < drops->count; i++) {
+        const item_drop_t *const stack = &drops->borrowed_items[i];
+        torches += strcmp(block_drop_items[stack->item].name, "torch") == 0 ? stack->count : 0u;
+    }
+    CHECK_EQ_U64(torches, 4u);
+    mc_end(&rig);
+}
+
 TEST(one_block_in_power_gives_what_it_gives) {
     mc_rig_t rig;
     REQUIRE(mc_begin(t, &rig, 12u));

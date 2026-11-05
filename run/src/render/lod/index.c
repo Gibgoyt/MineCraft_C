@@ -123,6 +123,10 @@ static bool render_lod_counts(uint16_t block) {
     case BLOCK_SHAPE_CROP:
     case BLOCK_SHAPE_TORCH:
     case BLOCK_SHAPE_THIN:
+    case BLOCK_SHAPE_TORCH_EAST:
+    case BLOCK_SHAPE_TORCH_WEST:
+    case BLOCK_SHAPE_TORCH_NORTH:
+    case BLOCK_SHAPE_TORCH_SOUTH:
         break;
     }
     return false;

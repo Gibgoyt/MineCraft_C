@@ -1,0 +1,16 @@
+name: torch_lean_side
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: The sides of a torch on a wall, whose colour goes by height alone, so that it reads the same from any side of a stick that leans.
+  seed: 9101
+  ops:
+    - { op: fill, color: "#6e5439" }
+    - { op: fill, color: "#ffa726", x: 0, y: 0, w: 16, h: 3 }
+    - { op: fill, color: "#ffd65c", x: 0, y: 3, w: 16, h: 1 }
+    - { op: fill, color: "#ff9d1e", x: 0, y: 4, w: 16, h: 1 }
+    - { op: fill, color: "#a8481a", x: 0, y: 5, w: 16, h: 1 }
+    - { op: fill, color: "#3b2c21", x: 0, y: 6, w: 16, h: 1 }
+    - { op: fill, color: "#5a4530", x: 0, y: 11, w: 16, h: 2 }
+    - { op: noise, amount: 8, cell: 1 }

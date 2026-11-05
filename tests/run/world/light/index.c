@@ -391,6 +391,10 @@ TEST(a_torch_lights_by_manhattan_distance_over_sections_and_columns) {
     light_test_commit_all(t, test);
     light_test_add_all(t, test);
     /* At a corner of a column and of a section: chunk 0, x = 0, and the top of section 16. */
+    light_test_set(t, test, 0, 0, 15, BLOCK_ID_TORCH_WALL_NORTH);
+    CHECK_EQ_U64(world_light_update(&test->light), WORLD_LIGHT_STATUS_OK);
+    CHECK_EQ_U64(block_defs[BLOCK_ID_TORCH_WALL_NORTH].light, block_defs[BLOCK_ID_TORCH].light);
+    CHECK_EQ_U64(section_light_block(light_test_at(t, test, 0, 0, 15)), block_defs[BLOCK_ID_TORCH].light);
     light_test_set(t, test, 0, 0, 15, BLOCK_ID_TORCH);
     CHECK_EQ_U64(world_light_update(&test->light), WORLD_LIGHT_STATUS_OK);
     const uint32_t torch = block_defs[BLOCK_ID_TORCH].light;

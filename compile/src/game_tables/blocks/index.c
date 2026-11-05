@@ -44,8 +44,9 @@ typedef enum gb_face_t : uint8_t {
 static const char *const GB_FACE_NAMES[GB_FACE_COUNT] = {"west", "east", "south", "north", "bottom", "top"};
 
 enum { GB_SHAPE_NONE = 0, GB_SHAPE_CUBE = 1 };
-static const char *const GB_SHAPE_NAMES[] = {"none", "cube",  "slab", "stairs", "cross",
-                                             "crop", "torch", "thin", "fluid"};
+static const char *const GB_SHAPE_NAMES[] = {"none",       "cube",        "slab",       "stairs", "cross",
+                                             "crop",       "torch",       "thin",       "fluid",  "torch_east",
+                                             "torch_west", "torch_north", "torch_south"};
 enum { GB_SHAPE_COUNT = sizeof(GB_SHAPE_NAMES) / sizeof(GB_SHAPE_NAMES[0]) };
 
 /* What a shape means when a file says nothing else. Air is the only shape without a texture. */
@@ -57,7 +58,8 @@ typedef struct gb_shape_t {
 static_assert(sizeof(gb_shape_t) == 3);
 
 static const gb_shape_t GB_SHAPES[GB_SHAPE_COUNT] = {
-    {0, 0, 1}, {1, 15, 0}, {1, 0, 0}, {1, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 1},
+    {0, 0, 1}, {1, 15, 0}, {1, 0, 0}, {1, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0},
+    {0, 0, 0}, {0, 0, 1},  {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0},
 };
 
 enum { GB_TOOL_NONE = 0, GB_TOOL_SHEARS = 5 };

@@ -41,6 +41,8 @@ A ray with `resume` set is going on past a surface at `t_start`, and takes only 
 
 From inside a box a ray says `TRAVERSE_FACE_INSIDE` for a slab or stairs. For a plate or a torch it sees on past: someone flying through grass does not want the screen to go dark.
 
+A torch on a wall is four shapes, one for each way it leans, of five boxes each: the table holds boxes along the axes, so a stick leans by steps. `run/src/world/wall_torch/README.md` says why its colours go by height alone.
+
 Plants are a `+` and not Minecraft's `X`: the table holds boxes along the axes, as the plan says, so the two plates are square to the world. No block has a facing yet, so stairs rise towards `+y`, and a ladder or a vine is on the `+y` side: `plans/001-ahmed-bohemoth-minecraft-from-scratch-phase-09-stage-1-non-cube-shapes.md`, issue 1.
 
 ## What a ray skips
