@@ -597,6 +597,9 @@ int32_t main(int32_t argc, char **argv) {
 Appended as they land:
 
 - `80620b3` Record that our own client talks to the real sound server with silence only, and keep the spike that proved it.
+- `b8b314a` Give every block a sound family and embed crunches for all ten families, made at build time by our own synthesizer because the pack's download was refused.
+- `9c87f80` Name the sound tool, the sound tree and their tests in the repository structure.
+- `a2f15a5` Record that the sound pack could not be downloaded, and that every family now has synthesized sounds nobody has heard yet.
 
 ## Issues found
 
