@@ -271,8 +271,9 @@ static ui_screen_settings_action_t us_settings_click(us_rig_t *rig, int32_t x, i
 }
 
 TEST(the_volume_slider_changes_that_setting_and_nothing_else) {
-    /* At 320 by 240 the scale is 1: row 7 starts at 60 across and 24 + 7 * 24 down, is 200 wide and 20 tall. */
-    enum : int32_t { SLIDER_X = 60, SLIDER_Y = 192 + 10 };
+    /* At 320 by 240 the scale is 1: row 7 starts at 60 across and 24 + 7 * 24 down, and is 20 tall. The Date box takes its first
+     * 40 and a gap of 4, so the slider is from 104 to 260. */
+    enum : int32_t { SLIDER_X = 104, SLIDER_WIDTH = 156, SLIDER_Y = 192 + 10 };
     us_rig_t *const rig = test_alloc(t, sizeof(us_rig_t));
     REQUIRE(us_rig_start(t, rig));
     settings_values_t values;
@@ -287,7 +288,7 @@ TEST(the_volume_slider_changes_that_setting_and_nothing_else) {
     /* A click at each end of it. */
     (void)us_settings_click(rig, SLIDER_X + 1, SLIDER_Y, pixels);
     CHECK_EQ_U64(values.sound_volume_percent, SETTINGS_SOUND_VOLUME_MIN);
-    (void)us_settings_click(rig, SLIDER_X + 199, SLIDER_Y, pixels);
+    (void)us_settings_click(rig, SLIDER_X + SLIDER_WIDTH - 1, SLIDER_Y, pixels);
     CHECK(values.sound_volume_percent >= SETTINGS_SOUND_VOLUME_MAX - 1u);
     settings_values_t expected = before;
     expected.sound_volume_percent = values.sound_volume_percent;
@@ -333,6 +334,126 @@ TEST(the_coordinates_box_changes_that_setting_and_nothing_else_and_shows_it) {
     CHECK_EQ_U64(values.show_coordinates, 1u);
     (void)us_settings_click(rig, 260 - 4, BOX_Y, off);
     CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_EFFECTS);
+    us_rig_stop(rig);
+}
+
+TEST(the_date_box_changes_that_setting_and_nothing_else) {
+    /* At 320 by 240 the scale is 1: row 7 starts 60 across and 24 + 7 * 24 = 192 down, and the Date box is its first 40. */
+    enum : int32_t { BOX_X = 64, BOX_Y = 192 + 10, ROW_6_Y = 168 + 10 };
+    us_rig_t *const rig = test_alloc(t, sizeof(us_rig_t));
+    REQUIRE(us_rig_start(t, rig));
+    settings_values_t values;
+    settings_persist_defaults(&values);
+    CHECK_EQ_U64(values.show_date, 1u);
+    settings_values_t expected = values;
+    ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &values, 0u, MC_THREADS_WORKERS, false);
+    const uint64_t bytes = (uint64_t)US_WIDTH * US_HEIGHT * 4u;
+    uint8_t *const on = test_alloc(t, bytes);
+    uint8_t *const off = test_alloc(t, bytes);
+    uint8_t *const on_again = test_alloc(t, bytes);
+    const input_frame_t nothing = {0};
+    (void)us_settings_frame(rig, &nothing, on);
+    input_frame_t over;
+    memset(&over, 0, sizeof(over));
+    over.mouse_dx = (int64_t)BOX_X - rig->ui->widget.input.pointer_x;
+    over.mouse_dy = (int64_t)BOX_Y - rig->ui->widget.input.pointer_y;
+    CHECK_EQ_U64(us_settings_frame(rig, &over, on), UI_SCREEN_SETTINGS_NONE);
+    CHECK_EQ_U64(us_settings_click(rig, BOX_X, BOX_Y, off), UI_SCREEN_SETTINGS_CHANGED);
+    expected.show_date = 0u;
+    CHECK_MEM_EQ(&values, &expected, sizeof(expected));
+    CHECK(memcmp(on, off, bytes) != 0);
+    CHECK_EQ_U64(us_settings_click(rig, BOX_X, BOX_Y, on_again), UI_SCREEN_SETTINGS_CHANGED);
+    expected.show_date = 1u;
+    CHECK_MEM_EQ(&values, &expected, sizeof(expected));
+    CHECK_MEM_EQ(on, on_again, bytes);
+    /* Row 6 above it is where it was: VSync and Coordinates each still flip only themselves. */
+    CHECK_EQ_U64(us_settings_click(rig, 60 + 4, ROW_6_Y, off), UI_SCREEN_SETTINGS_CHANGED);
+    expected.vsync = 0u;
+    CHECK_MEM_EQ(&values, &expected, sizeof(expected));
+    CHECK_EQ_U64(us_settings_click(rig, 114 + 4, ROW_6_Y, off), UI_SCREEN_SETTINGS_CHANGED);
+    expected.show_coordinates = 0u;
+    CHECK_MEM_EQ(&values, &expected, sizeof(expected));
+    CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_MAIN);
+    us_rig_stop(rig);
+}
+
+/* ---- The census screen: plan 004 phase 01 ---------------------------------------------------------------------------------- */
+
+/* One frame of it over the rig's picture, with what the pointer did and Esc. The picture is left in out. */
+static ui_screen_census_action_t us_census_frame(us_rig_t *rig, const input_frame_t *frame, bool escape, uint8_t *out) {
+    ui_t *const ui = rig->ui;
+    ui_widget_input_feed(&ui->widget, frame);
+    if (!ui_frame_begin_over(ui, rig->picture, US_WIDTH, US_HEIGHT)) {
+        return (ui_screen_census_action_t)255u;
+    }
+    const ui_screen_census_action_t action = ui_screen_census_frame(&ui->census_screen, &ui->widget, escape);
+    memcpy(out, ui_frame_end(ui, false), (uint64_t)US_WIDTH * US_HEIGHT * 4u);
+    return action;
+}
+
+static void us_golden_compare(test_context_t *t, const char *path, const uint8_t *picture);
+
+TEST(the_census_screen_shows_the_week_and_the_date_and_continue_closes_it) {
+    us_rig_t *const rig = test_alloc(t, sizeof(us_rig_t));
+    REQUIRE(us_rig_start(t, rig));
+    /* A new world's first census: 06:00 on clock day 5, week 12, Day 85, after 1 week. */
+    const calendar_clock_t clock = 5ull * CALENDAR_CLOCK_DAY + CALENDAR_CLOCK_DAY_START;
+    ui_screen_census_open(&rig->ui->census_screen, &rig->ui->widget, CALENDAR_DAY_ZERO, clock, 1u, false);
+    const calendar_date_t date = calendar_date_of(CALENDAR_DAY_ZERO, clock);
+    CHECK_EQ_U64(date.week, 12u);
+    CHECK_EQ_U64(date.day_of_year + 1u, 85u);
+    const uint64_t bytes = (uint64_t)US_WIDTH * US_HEIGHT * 4u;
+    uint8_t *const shown = test_alloc(t, bytes);
+    uint8_t *const scratch = test_alloc(t, bytes);
+    const input_frame_t nothing = {0};
+    CHECK_EQ_U64(us_census_frame(rig, &nothing, false, shown), UI_SCREEN_CENSUS_NONE);
+    /* The pointer far from the button, so the picture has no hover in it. */
+    us_golden_compare(t, "tests/run/ui/screens/fixtures/census.png", shown);
+    /* It is drawn over the world, which shows through, and is not the world. */
+    CHECK(memcmp(shown, rig->picture, bytes) != 0);
+
+    /* Nothing but Continue or Esc answers it: a click anywhere else, and frames with nothing. Continue is row 8: 60 across, 24 +
+     * 8 * 24 = 216 down, 200 by 20. */
+    enum : int32_t { CONTINUE_X = 160, CONTINUE_Y = 216 + 10 };
+    const int32_t elsewhere[4][2] = {{160, 30}, {10, 226}, {310, 226}, {160, 120}};
+    for (uint32_t i = 0u; i < 4u; i++) {
+        input_frame_t frame;
+        memset(&frame, 0, sizeof(frame));
+        frame.mouse_dx = (int64_t)elsewhere[i][0] - rig->ui->widget.input.pointer_x;
+        frame.mouse_dy = (int64_t)elsewhere[i][1] - rig->ui->widget.input.pointer_y;
+        CHECK_EQ_U64(us_census_frame(rig, &frame, false, scratch), UI_SCREEN_CENSUS_NONE);
+        memset(&frame, 0, sizeof(frame));
+        us_key_set(&frame.pressed, BTN_LEFT);
+        us_key_set(&frame.down, BTN_LEFT);
+        CHECK_EQ_U64(us_census_frame(rig, &frame, false, scratch), UI_SCREEN_CENSUS_NONE);
+        memset(&frame, 0, sizeof(frame));
+        us_key_set(&frame.released, BTN_LEFT);
+        CHECK_EQ_U64(us_census_frame(rig, &frame, false, scratch), UI_SCREEN_CENSUS_NONE);
+    }
+    /* Esc continues. */
+    CHECK_EQ_U64(us_census_frame(rig, &nothing, true, scratch), UI_SCREEN_CENSUS_CONTINUE);
+    /* A click on Continue does too, on its release, as every button does. */
+    input_frame_t frame;
+    memset(&frame, 0, sizeof(frame));
+    frame.mouse_dx = (int64_t)CONTINUE_X - rig->ui->widget.input.pointer_x;
+    frame.mouse_dy = (int64_t)CONTINUE_Y - rig->ui->widget.input.pointer_y;
+    CHECK_EQ_U64(us_census_frame(rig, &frame, false, scratch), UI_SCREEN_CENSUS_NONE);
+    memset(&frame, 0, sizeof(frame));
+    us_key_set(&frame.pressed, BTN_LEFT);
+    us_key_set(&frame.down, BTN_LEFT);
+    const ui_screen_census_action_t pressed = us_census_frame(rig, &frame, false, scratch);
+    memset(&frame, 0, sizeof(frame));
+    us_key_set(&frame.released, BTN_LEFT);
+    const ui_screen_census_action_t released = us_census_frame(rig, &frame, false, scratch);
+    CHECK((pressed == UI_SCREEN_CENSUS_CONTINUE) != (released == UI_SCREEN_CENSUS_CONTINUE));
+
+    /* More than one week says so, on a row of its own. */
+    uint8_t *const many = test_alloc(t, bytes);
+    ui_screen_census_open(&rig->ui->census_screen, &rig->ui->widget, CALENDAR_DAY_ZERO, clock, 1u, false);
+    (void)us_census_frame(rig, &nothing, false, scratch);
+    ui_screen_census_open(&rig->ui->census_screen, &rig->ui->widget, CALENDAR_DAY_ZERO, clock, 14u, false);
+    (void)us_census_frame(rig, &nothing, false, many);
+    CHECK(memcmp(many, scratch, bytes) != 0);
     us_rig_stop(rig);
 }
 
@@ -856,7 +977,7 @@ static bool us_game_start(test_context_t *t, us_game_t *g) {
     game_entity_set(g->game, g->entity);
     game_item_set(g->game, g->item);
     game_ui_set(g->game, g->ui);
-    static const game_config_t small = {.render_distance = 4u, .width = US_WIDTH, .height = US_HEIGHT, ._pad0 = {0}};
+    static const game_config_t small = {.render_distance = 4u, .width = US_WIDTH, .height = US_HEIGHT, .show_date = 0u};
     if (!game_open(g->game, &small) || !game_settle(g->game)) {
         return false;
     }

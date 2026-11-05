@@ -134,12 +134,12 @@ static const float64_t HYDROLOGY_LIMIT_LAVA = 0.54f64;
 /* ---- Init --------------------------------------------------------------------------------------------------------- */
 
 bool terrain_hydrology_init(terrain_hydrology_t **out, arena_t *arena, terrain_noise_bank_t *bank,
-                            const terrain_density_t *density, const terrain_climate_t *climate) {
+                            const terrain_density_t *density, const terrain_fields_t *fields) {
     *out = nullptr;
     terrain_hydrology_t *const hydrology = arena_alloc(arena, sizeof(*hydrology), alignof(terrain_hydrology_t));
     memset(hydrology, 0, sizeof(*hydrology));
     hydrology->borrowed_density = density;
-    hydrology->borrowed_climate = climate;
+    hydrology->borrowed_fields = fields;
     hydrology->aquifer_seed = terrain_rng_derive(bank->seed, terrain_rng_salt("hydrology/aquifer"));
     if (!terrain_noise_bank_add(bank, "hydrology/width", &HYDROLOGY_SHAPE_WIDTH, &hydrology->borrowed_width) ||
         !terrain_noise_bank_add(bank, "hydrology/shore", &HYDROLOGY_SHAPE_SHORE, &hydrology->borrowed_shore) ||
@@ -273,7 +273,7 @@ static void hydrology_lattice_fill(const terrain_hydrology_t *hydrology, const h
     lattice->side_y = (uint32_t)(((span->y_last + ring) >> HYDROLOGY_CELL_SHIFT) - lattice->cell_y) + 2u;
     ASSERT(lattice->side_x * lattice->side_y <= HYDROLOGY_LATTICE);
 
-    const terrain_climate_area_t area = {
+    const terrain_fields_area_t area = {
         .origin_x = (int32_t)(lattice->cell_x * (int64_t)HYDROLOGY_CELL),
         .origin_y = (int32_t)(lattice->cell_y * (int64_t)HYDROLOGY_CELL),
         .step_x = (int32_t)HYDROLOGY_CELL,
@@ -281,12 +281,12 @@ static void hydrology_lattice_fill(const terrain_hydrology_t *hydrology, const h
         .count_x = lattice->side_x,
         .count_y = lattice->side_y,
     };
-    const terrain_climate_arrays_t climate = {
+    const terrain_fields_arrays_t fields = {
         .continentalness = lattice->continentalness,
         .weirdness = lattice->weirdness,
     };
     terrain_density_profile_area(hydrology->borrowed_density, &area, lattice->heights, lattice->softness);
-    terrain_climate_sample_area(hydrology->borrowed_climate, &area, &climate);
+    terrain_fields_sample_area(hydrology->borrowed_fields, &area, &fields);
 
     float64_t xs[HYDROLOGY_LATTICE];
     float64_t ys[HYDROLOGY_LATTICE];
@@ -361,7 +361,7 @@ static terrain_hydrology_column_t hydrology_column_in(const hydrology_lattice_t 
 }
 
 [[gnu::noinline]]
-void terrain_hydrology_columns_area(const terrain_hydrology_t *hydrology, const terrain_climate_area_t *area,
+void terrain_hydrology_columns_area(const terrain_hydrology_t *hydrology, const terrain_fields_area_t *area,
                                     terrain_hydrology_column_t *columns) {
     ASSERT(area->step_x > 0 && area->step_y > 0);
     const int64_t tile = (int64_t)HYDROLOGY_TILE;
@@ -403,7 +403,7 @@ void terrain_hydrology_columns_area(const terrain_hydrology_t *hydrology, const 
 }
 
 terrain_hydrology_column_t terrain_hydrology_column_at(const terrain_hydrology_t *hydrology, int32_t x, int32_t y) {
-    const terrain_climate_area_t area = {
+    const terrain_fields_area_t area = {
         .origin_x = x, .origin_y = y, .step_x = 1, .step_y = 1, .count_x = 1u, .count_y = 1u};
     terrain_hydrology_column_t column;
     terrain_hydrology_columns_area(hydrology, &area, &column);

@@ -451,18 +451,18 @@ static float32_t density_scalar_field(const terrain_noise_field_t *field, float6
 /* The density at a lattice point, from the README and the scalar kernel. */
 static float32_t density_expected_corner(const terrain_t *terrain, int32_t x, int32_t y, int32_t z) {
     const terrain_density_t *const density = terrain->borrowed_density;
-    terrain_climate_point_t climate;
-    terrain_climate_at(terrain->borrowed_climate, x, y, &climate);
+    terrain_fields_point_t fields;
+    terrain_fields_at(terrain->borrowed_fields, x, y, &fields);
     const terrain_density_inputs_t inputs = {
-        .continentalness = climate.continentalness,
-        .erosion = climate.erosion,
-        .ridges = climate.ridges,
+        .continentalness = fields.continentalness,
+        .erosion = fields.erosion,
+        .ridges = fields.ridges,
         .hills = density_expected_spread(density_scalar_field(density->borrowed_hills, x, y, 0.0f64), 0.34f64),
         .jagged = density_expected_spread(density_scalar_field(density->borrowed_jagged, x, y, 0.0f64), 0.39f64),
         .range = density_expected_spread(density_scalar_field(density->borrowed_range, x, y, 0.0f64), 0.36f64),
         .massif = density_expected_spread(density_scalar_field(density->borrowed_massif, x, y, 0.0f64), 0.39f64),
         .crest = density_expected_spread(density_scalar_field(density->borrowed_crest, x, y, 0.0f64), 0.35f64),
-        .broad = climate.broad,
+        .broad = fields.broad,
     };
     const terrain_density_profile_t profile = density_expected_profile(density, &inputs);
     const float32_t depth = (profile.height - (float32_t)z) / profile.softness;
@@ -488,7 +488,7 @@ TEST(each_value_is_worked_out_as_the_readme_says) {
     enum : uint32_t { SEARCH_SIDE = 256u, SEARCH_COLUMNS = SEARCH_SIDE * SEARCH_SIDE, PLACES = 96u };
     float32_t *const heights = test_alloc(t, SEARCH_COLUMNS * sizeof(float32_t));
     float32_t *const softness = test_alloc(t, SEARCH_COLUMNS * sizeof(float32_t));
-    const terrain_climate_area_t search = {
+    const terrain_fields_area_t search = {
         .origin_x = -32768,
         .origin_y = -32768,
         .step_x = 256,
@@ -593,7 +593,7 @@ TEST(the_world_has_seas_plains_and_mountains_in_believable_shares) {
         terrain_t terrain;
         REQUIRE(terrain_init(&terrain, DENSITY_SEEDS[s]));
         const int32_t half = (int32_t)(DENSITY_WIDE_SIDE / 2u) * DENSITY_WIDE_STEP;
-        const terrain_climate_area_t area = {
+        const terrain_fields_area_t area = {
             .origin_x = -half,
             .origin_y = -half,
             .step_x = DENSITY_WIDE_STEP,
@@ -651,7 +651,7 @@ TEST(mountain_ranges_run_on_for_a_distance_and_are_common) {
         terrain_t terrain;
         REQUIRE(terrain_init(&terrain, DENSITY_SEEDS[s]));
         const int32_t half = (int32_t)(RANGE_SIDE / 2u * RANGE_STEP);
-        const terrain_climate_area_t area = {
+        const terrain_fields_area_t area = {
             .origin_x = -half,
             .origin_y = -half,
             .step_x = (int32_t)RANGE_STEP,
@@ -714,7 +714,7 @@ TEST(the_land_is_not_mostly_walls) {
         terrain_t terrain;
         REQUIRE(terrain_init(&terrain, DENSITY_SEEDS[s]));
         const int32_t half = (int32_t)(WALL_SIDE / 2u * WALL_STEP);
-        const terrain_climate_area_t area = {
+        const terrain_fields_area_t area = {
             .origin_x = -half,
             .origin_y = -half,
             .step_x = (int32_t)WALL_STEP,
@@ -776,7 +776,7 @@ TEST(the_density_is_really_3d_in_the_mountains_and_plain_on_the_plains) {
     const terrain_density_t *const density = terrain.borrowed_density;
     float32_t *const heights = test_alloc(t, SEARCH_COLUMNS * sizeof(float32_t));
     float32_t *const softness = test_alloc(t, SEARCH_COLUMNS * sizeof(float32_t));
-    const terrain_climate_area_t search = {
+    const terrain_fields_area_t search = {
         .origin_x = -65536,
         .origin_y = -65536,
         .step_x = 256,
@@ -976,7 +976,7 @@ TEST(profiles_do_not_depend_on_the_area_asked_for) {
     const terrain_density_t *const density = terrain.borrowed_density;
     float32_t *const heights = test_alloc(t, COLUMNS * sizeof(float32_t));
     float32_t *const softness = test_alloc(t, COLUMNS * sizeof(float32_t));
-    const terrain_climate_area_t area = {
+    const terrain_fields_area_t area = {
         .origin_x = -48,
         .origin_y = 1000,
         .step_x = 1,
@@ -984,10 +984,10 @@ TEST(profiles_do_not_depend_on_the_area_asked_for) {
         .count_x = ACROSS,
         .count_y = ACROSS,
     };
-    CHECK_EQ_U64(terrain_climate_area_columns(&area), COLUMNS);
+    CHECK_EQ_U64(terrain_fields_area_columns(&area), COLUMNS);
     terrain_density_profile_area(density, &area, heights, softness);
     for (uint32_t i = 0u; i < COLUMNS; i += 13u) {
-        const terrain_climate_area_t one = {
+        const terrain_fields_area_t one = {
             .origin_x = area.origin_x + (int32_t)(i % ACROSS),
             .origin_y = area.origin_y + (int32_t)(i / ACROSS),
             .step_x = 1,
@@ -1189,7 +1189,7 @@ TEST(sampling_stays_inside_its_output_and_allocates_nothing) {
         .count_y = ACROSS,
         .count_z = TALL,
     };
-    const terrain_climate_area_t area = {
+    const terrain_fields_area_t area = {
         .origin_x = 3,
         .origin_y = -9,
         .step_x = 1,
@@ -1250,15 +1250,15 @@ TEST(a_seed_gives_its_own_world_and_the_same_one_every_time) {
         .octaves = 2u,
     };
     CHECK(terrain_noise_bank_add(&bank, "test/before", &shape, &extra));
-    terrain_climate_t *climate = nullptr;
-    CHECK(terrain_climate_init(&climate, &arena, &bank));
-    REQUIRE(climate != nullptr);
+    terrain_fields_t *fields = nullptr;
+    CHECK(terrain_fields_init(&fields, &arena, &bank));
+    REQUIRE(fields != nullptr);
     terrain_density_t *density = nullptr;
-    CHECK(terrain_density_init(&density, &arena, &bank, climate));
+    CHECK(terrain_density_init(&density, &arena, &bank, fields));
     REQUIRE(density != nullptr);
     terrain_density_fill_box(density, &box, again);
     terrain_density_deinit(density);
-    terrain_climate_deinit(climate);
+    terrain_fields_deinit(fields);
     terrain_noise_bank_deinit(&bank);
     arena_deinit(&arena);
 
@@ -1277,14 +1277,14 @@ TEST(a_full_bank_is_refused_and_nothing_is_left_behind) {
     arena_init(&arena, "test", memory, BYTES);
     terrain_noise_bank_t bank;
     terrain_noise_bank_init(&bank, &arena, DENSITY_WORLD,
-                            TERRAIN_CLIMATE_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS - 1u);
-    terrain_climate_t *climate = nullptr;
-    CHECK(terrain_climate_init(&climate, &arena, &bank));
-    REQUIRE(climate != nullptr);
+                            TERRAIN_FIELDS_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS - 1u);
+    terrain_fields_t *fields = nullptr;
+    CHECK(terrain_fields_init(&fields, &arena, &bank));
+    REQUIRE(fields != nullptr);
     terrain_density_t *density = (terrain_density_t *)(uintptr_t)1u;
-    CHECK(!terrain_density_init(&density, &arena, &bank, climate));
+    CHECK(!terrain_density_init(&density, &arena, &bank, fields));
     CHECK(density == nullptr);
-    terrain_climate_deinit(climate);
+    terrain_fields_deinit(fields);
     terrain_noise_bank_deinit(&bank);
     arena_deinit(&arena);
 }
@@ -1296,7 +1296,7 @@ TEST(terrain_starts_the_density_and_stops_it) {
     REQUIRE(terrain_init(&terrain, DENSITY_WORLD));
     REQUIRE(terrain.borrowed_density != nullptr);
     const terrain_density_t *const density = terrain.borrowed_density;
-    CHECK(density->borrowed_climate == terrain.borrowed_climate);
+    CHECK(density->borrowed_fields == terrain.borrowed_fields);
     const terrain_noise_field_t *const fields[TERRAIN_DENSITY_NOISE_FIELDS] = {
         density->borrowed_hills, density->borrowed_jagged, density->borrowed_detail,
         density->borrowed_range, density->borrowed_massif, density->borrowed_crest};

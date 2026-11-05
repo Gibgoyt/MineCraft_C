@@ -479,7 +479,7 @@ TEST(emeralds_only_lie_under_high_ground) {
     float32_t *const heights = test_alloc(t, SEARCH_COLUMNS * sizeof(float32_t));
     float32_t *const softness = test_alloc(t, SEARCH_COLUMNS * sizeof(float32_t));
     uint16_t *const blocks = test_alloc(t, (uint64_t)ACROSS * ACROSS * ORE_LAYERS * sizeof(uint16_t));
-    const terrain_climate_area_t search = {
+    const terrain_fields_area_t search = {
         .origin_x = -32768 + 8,
         .origin_y = -32768 + 8,
         .step_x = 256,
@@ -1031,7 +1031,7 @@ TEST(terrain_starts_the_ores_and_stops_them) {
     REQUIRE(terrain_init(&terrain, ORE_WORLD));
     REQUIRE(terrain.borrowed_ore != nullptr);
     const uint64_t in_bank = terrain.noise_bank.count;
-    CHECK_EQ_U64(in_bank, TERRAIN_CLIMATE_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS + TERRAIN_HYDROLOGY_NOISE_FIELDS +
+    CHECK_EQ_U64(in_bank, TERRAIN_FIELDS_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS + TERRAIN_HYDROLOGY_NOISE_FIELDS +
                               TERRAIN_CAVE_NOISE_FIELDS + TERRAIN_SURFACE_NOISE_FIELDS);
     /* Each row has its own stream: two with the same blocks and depths would otherwise lay the same veins. */
     for (uint32_t a = 0u; a < TERRAIN_ORE_ROWS; a++) {

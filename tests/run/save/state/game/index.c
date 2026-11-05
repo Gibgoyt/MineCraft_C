@@ -252,7 +252,7 @@ TEST(the_real_game_frames_during_autosaves_and_reloads_byte_for_byte) {
     game_t *const game = rig->game;
     save_t *const save = rig->save;
     REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
-    const game_config_t config = {.render_distance = 4u, .width = SS_WIDTH, .height = SS_HEIGHT, ._pad0 = {0}};
+    const game_config_t config = {.render_distance = 4u, .width = SS_WIDTH, .height = SS_HEIGHT, .show_date = 0u};
     REQUIRE(game_open(game, &config));
     REQUIRE(game_settle(game));
     CHECK_EQ_U64(save->autosave.started, 1u);
@@ -369,7 +369,7 @@ TEST(a_column_that_will_not_fit_waits_for_a_save_and_only_the_autosave_writes) {
     save_t *const save = rig->save;
     world_t *const world = rig->world;
     REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
-    const game_config_t config = {.render_distance = 3u, .width = 64u, .height = 36u, ._pad0 = {0}};
+    const game_config_t config = {.render_distance = 3u, .width = 64u, .height = 36u, .show_date = 0u};
     REQUIRE(game_open(game, &config));
     const int32_t home_x = atomic_load(&game->center_x);
     const int32_t home_y = atomic_load(&game->center_y);
@@ -441,7 +441,7 @@ TEST(the_game_keeps_what_flows_the_tick_count_and_what_a_chest_gone_this_tick_he
     save_t *const save = rig->save;
     world_t *const world = rig->world;
     REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
-    const game_config_t config = {.render_distance = 3u, .width = 64u, .height = 36u, ._pad0 = {0}};
+    const game_config_t config = {.render_distance = 3u, .width = 64u, .height = 36u, .show_date = 0u};
     REQUIRE(game_open(game, &config));
     REQUIRE(game_settle(game));
     const int32_t home_x = atomic_load(&game->center_x) * 16, home_y = atomic_load(&game->center_y) * 16;
@@ -514,7 +514,7 @@ TEST(what_was_waiting_for_its_first_tick_goes_on_after_a_reload) {
     save_t *const save = rig->save;
     world_t *const world = rig->world;
     REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
-    const game_config_t config = {.render_distance = 3u, .width = 64u, .height = 36u, ._pad0 = {0}};
+    const game_config_t config = {.render_distance = 3u, .width = 64u, .height = 36u, .show_date = 0u};
     REQUIRE(game_open(game, &config));
     REQUIRE(game_settle(game));
     const int32_t home_x = atomic_load(&game->center_x) * 16, home_y = atomic_load(&game->center_y) * 16;
@@ -576,7 +576,8 @@ TEST(the_far_field_shows_what_a_save_holds_and_makes_again_what_is_captured) {
     save_t *const save = rig->save;
     world_t *const world = rig->world;
     REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
-    const game_config_t config = {.render_distance = 8u, .full_detail = 4u, .width = 64u, .height = 36u, ._pad0 = {0}};
+    const game_config_t config = {
+        .render_distance = 8u, .full_detail = 4u, .width = 64u, .height = 36u, .show_date = 0u};
     REQUIRE(game_open(game, &config));
     REQUIRE(game_settle(game));
     render_lod_t *const lod = rig->render->borrowed_lod;
@@ -864,7 +865,7 @@ TEST(the_built_program_places_at_the_top_of_the_world_and_not_past_it_and_stands
     ss_game_rig_t *rig = test_alloc(t, sizeof(ss_game_rig_t));
     REQUIRE(ss_game_begin(t, rig, true));
     REQUIRE(save_open(rig->save, world_directory, SS_SEED) == SAVE_WORLD_OK);
-    const game_config_t config = {.render_distance = 4u, .width = 64u, .height = 36u, ._pad0 = {0}};
+    const game_config_t config = {.render_distance = 4u, .width = 64u, .height = 36u, .show_date = 0u};
     REQUIRE(game_open(rig->game, &config));
     REQUIRE(game_settle(rig->game));
     const int32_t cell_x = (int32_t)floor(rig->player->movement.position[0]);

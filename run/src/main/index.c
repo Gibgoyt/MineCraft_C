@@ -890,7 +890,7 @@ static main_exit_t main_run_test_world_headless(app_t *app, const main_options_t
                                 .features_off = options->features_off,
                                 .god_rays = options->god_rays,
                                 .full_detail = options->full_detail,
-                                ._pad0 = {0}};
+                                .show_date = 0u};
     if (!game_open(&app->game, &game)) {
         return MAIN_EXIT_RUNTIME;
     }
@@ -935,7 +935,7 @@ static main_exit_t main_run_test_world(app_t *app, const main_options_t *options
                                 .features_off = options->features_off,
                                 .god_rays = options->god_rays,
                                 .full_detail = options->full_detail,
-                                ._pad0 = {0}};
+                                .show_date = 0u};
     if (!game_open(&app->game, &game)) {
         return MAIN_EXIT_RUNTIME;
     }
@@ -968,7 +968,7 @@ static game_config_t main_menu_game_config(const main_options_t *options, uint32
                            .features_off = options->features_off,
                            .god_rays = options->god_rays,
                            .full_detail = options->full_detail,
-                           ._pad0 = {0}};
+                           .show_date = 0u};
 }
 
 /* The game through KMS. As with --test-world, the display comes first, and input only once it said yes. */

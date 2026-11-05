@@ -277,11 +277,11 @@ terrain_density_profile_t terrain_density_profile_from(const terrain_density_t *
 /* ---- Init -------------------------------------------------------------------------------------------------------- */
 
 bool terrain_density_init(terrain_density_t **out, arena_t *arena, terrain_noise_bank_t *bank,
-                          const terrain_climate_t *climate) {
+                          const terrain_fields_t *fields) {
     *out = nullptr;
     terrain_density_t *const density = arena_alloc(arena, sizeof(*density), alignof(terrain_density_t));
     memset(density, 0, sizeof(*density));
-    density->borrowed_climate = climate;
+    density->borrowed_fields = fields;
 #define DENSITY_BUILD(field, knots) density_spline_build(&density->field, knots, sizeof(knots) / sizeof(knots[0]))
     DENSITY_BUILD(continental, DENSITY_KNOTS_CONTINENTAL);
     DENSITY_BUILD(inland, DENSITY_KNOTS_INLAND);
@@ -343,13 +343,13 @@ static void density_profile_batch(const terrain_density_t *density, const float6
     static_assert(DENSITY_BATCH_COLUMNS <= UINT8_MAX);
     const float64_t zs[DENSITY_BATCH_COLUMNS] = {0.0f64}; /* no 2D field has a frequency on z */
 
-    const terrain_climate_arrays_t climate = {
+    const terrain_fields_arrays_t fields = {
         .continentalness = continentalness,
         .erosion = erosion,
         .ridges = ridges,
         .broad = broad,
     };
-    terrain_climate_sample_points(density->borrowed_climate, xs, ys, count, &climate);
+    terrain_fields_sample_points(density->borrowed_fields, xs, ys, count, &fields);
     terrain_noise_sample_points(density->borrowed_hills, xs, ys, zs, count, hills);
     terrain_noise_sample_points(density->borrowed_jagged, xs, ys, zs, count, jagged);
     terrain_noise_sample_points(density->borrowed_range, xs, ys, zs, count, range);
@@ -397,7 +397,7 @@ static void density_profile_batch(const terrain_density_t *density, const float6
     }
 }
 
-void terrain_density_profile_area(const terrain_density_t *density, const terrain_climate_area_t *area,
+void terrain_density_profile_area(const terrain_density_t *density, const terrain_fields_area_t *area,
                                   float32_t *heights, float32_t *softness) {
     float64_t xs[DENSITY_BATCH_COLUMNS];
     float64_t ys[DENSITY_BATCH_COLUMNS];

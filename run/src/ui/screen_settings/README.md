@@ -18,7 +18,7 @@
 
 It changes the values it is given and nothing else. It does not know what a render distance does, or that a file exists. What runs it, `run/src/game/session/`, hands the values on to `game_reconfigure` and to `settings_save`: see `run/src/settings/README.md`.
 
-Fits 320 by 240 at any scale, like the menus, with one column of nine rows: six sliders, VSync and Coordinates beside Effects..., a row for what went wrong, and Done. The seventeen effects are a second page, two columns of eight, each with a box, with the last on the row of Back, to its left. Esc goes back a page, and from the main page leaves, like Done.
+Fits 320 by 240 at any scale, like the menus, with one column of nine rows: six sliders, VSync and Coordinates beside Effects..., the Date box (the HUD's date line, plan 004 phase 01) beside the sound volume's slider, and Done. What went wrong with keeping them takes the title's place. The seventeen effects are a second page, two columns of eight, each with a box, with the last on the row of Back, to its left. Esc goes back a page, and from the main page leaves, like Done.
 
 A slider takes a drag, or a step for each detent of the wheel over it, so that every value from 2 to 512 can be reached.
 

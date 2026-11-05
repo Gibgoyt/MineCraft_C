@@ -18,8 +18,12 @@
 
 enum : uint32_t {
     /* Raised by any change an older reader could not read. A file of another version is refused and left alone. Version 2: a file ends in the names of
-     * the tables its numbers are places in, and a build with other tables translates them. Version 3: a third crafting grid, the woodworking bench's. */
-    SAVE_STATE_VERSION = 3u,
+     * the tables its numbers are places in, and a build with other tables translates them. Version 3: a third crafting grid, the woodworking bench's.
+     * Version 4: a calendar section, plan 004 phase 01. */
+    SAVE_STATE_VERSION = 4u,
+    /* The oldest version still read. Version 3 has no calendar, and opens with a new one. */
+    SAVE_STATE_VERSION_READ_MIN = 3u,
+    SAVE_STATE_VERSION_FIRST_WITH_CALENDAR = 4u,
     SAVE_STATE_VERSION_FIRST_WITH_NAMES = 2u,
     /* The slot tables a file's bodies come with. */
     SAVE_STATE_SLOT_TABLES = 3u,
@@ -41,7 +45,8 @@ typedef enum save_state_section_id_t : uint32_t {
     SAVE_STATE_SECTION_MINDS = 10,   /* one save_state_minds_t, then zombie, skeleton, creeper and combat bodies */
     SAVE_STATE_SECTION_NAMES =
         11, /* the lists of run/src/save/names/, one after another: what every number here means */
-    SAVE_STATE_SECTION_COUNT = 11,
+    SAVE_STATE_SECTION_CALENDAR = 12, /* one save_state_calendar_t; in every file from version 4 */
+    SAVE_STATE_SECTION_COUNT = 12,
 } save_state_section_id_t;
 
 /* ---- The file: all little-endian, as written by the only machine this builds for ------------------------------------ */
@@ -101,6 +106,20 @@ static_assert(offsetof(save_state_time_t, day_units) == 8);
 static_assert(offsetof(save_state_time_t, yaw) == 12);
 static_assert(offsetof(save_state_time_t, pitch) == 16);
 static_assert(offsetof(save_state_time_t, _pad0) == 20);
+
+/* The world clock's whole days and the census, beside save_state_time_t's time of day: plan 004 phase 01. */
+typedef struct save_state_calendar_t {
+    uint64_t clock_days; /* 0: game_t.clock_days: whole days since the midnight before the world's first morning */
+    uint64_t last_census_week; /* 8: the newest week a census has run for */
+    uint32_t day_zero;         /* 16: D0, the calendar day the world started on */
+    uint8_t _pad0[4];          /* 20 */
+} save_state_calendar_t;
+static_assert(sizeof(save_state_calendar_t) == 24);
+static_assert(alignof(save_state_calendar_t) == 8);
+static_assert(offsetof(save_state_calendar_t, clock_days) == 0);
+static_assert(offsetof(save_state_calendar_t, last_census_week) == 8);
+static_assert(offsetof(save_state_calendar_t, day_zero) == 16);
+static_assert(offsetof(save_state_calendar_t, _pad0) == 20);
 
 /* The sim's plain numbers of a player. What it aims at is found again by its next tick. */
 typedef struct save_state_player_t {
@@ -281,17 +300,19 @@ static_assert(offsetof(save_state_minds_t, combat_knocked) == 112);
 
 /* ---- In memory ------------------------------------------------------------------------------------------------------ */
 
-/* What a save is of. Any but the time may be nullptr, and then that part is not in the file, and what is in a file for it is not used. */
+/* What a save is of. Any but the time and the calendar may be nullptr, and then that part is not in the file, and what is in a file for it is not
+ * used. */
 typedef struct save_state_parts_t {
-    player_t *borrowed_player;   /* 0 */
-    item_t *borrowed_item;       /* 8 */
-    entity_t *borrowed_entity;   /* 16 */
-    mob_t *borrowed_mob;         /* 24 */
-    mob_spawn_t *borrowed_spawn; /* 32 */
-    item_stack_t *borrowed_held; /* 40: what the pointer carries on a screen, which goes with borrowed_item */
-    save_state_time_t time;      /* 48 */
+    player_t *borrowed_player;      /* 0 */
+    item_t *borrowed_item;          /* 8 */
+    entity_t *borrowed_entity;      /* 16 */
+    mob_t *borrowed_mob;            /* 24 */
+    mob_spawn_t *borrowed_spawn;    /* 32 */
+    item_stack_t *borrowed_held;    /* 40: what the pointer carries on a screen, which goes with borrowed_item */
+    save_state_time_t time;         /* 48 */
+    save_state_calendar_t calendar; /* 72: always written, like time */
 } save_state_parts_t;
-static_assert(sizeof(save_state_parts_t) == 72);
+static_assert(sizeof(save_state_parts_t) == 96);
 static_assert(alignof(save_state_parts_t) == 8);
 static_assert(offsetof(save_state_parts_t, borrowed_player) == 0);
 static_assert(offsetof(save_state_parts_t, borrowed_item) == 8);
@@ -300,6 +321,7 @@ static_assert(offsetof(save_state_parts_t, borrowed_mob) == 24);
 static_assert(offsetof(save_state_parts_t, borrowed_spawn) == 32);
 static_assert(offsetof(save_state_parts_t, borrowed_held) == 40);
 static_assert(offsetof(save_state_parts_t, time) == 48);
+static_assert(offsetof(save_state_parts_t, calendar) == 72);
 
 /* One world's state, as last read or copied out. */
 typedef struct save_state_t {
@@ -338,8 +360,8 @@ enum : uint64_t {
 enum : uint64_t {
     SAVE_STATE_IMAGE_BYTES =
         sizeof(save_state_header_t) + (uint64_t)SAVE_STATE_SECTION_COUNT * (sizeof(save_state_section_t) + 8u) +
-        sizeof(save_state_time_t) + sizeof(save_state_player_t) + sizeof(save_state_items_t) +
-        (uint64_t)CONTAINER_CHESTS * sizeof(container_chest_t) +
+        sizeof(save_state_time_t) + sizeof(save_state_calendar_t) + sizeof(save_state_player_t) +
+        sizeof(save_state_items_t) + (uint64_t)CONTAINER_CHESTS * sizeof(container_chest_t) +
         (uint64_t)SMELTING_FURNACES * sizeof(smelting_furnace_t) + sizeof(save_state_drops_t) +
         (uint64_t)ITEM_DROP_CAPACITY * sizeof(item_drop_t) + sizeof(save_state_arrows_t) +
         (uint64_t)PROJECTILE_CAPACITY * sizeof(projectile_t) + sizeof(save_state_bodies_t) +
@@ -365,8 +387,9 @@ void save_state_close(save_state_t *state);
 bool save_state_kept_start(const save_state_t *state, float64_t out_feet[COLLISION_AXES], float32_t *out_yaw,
                            float32_t *out_pitch);
 
-/* Puts what a file that was read holds into these parts, which have been started, and into parts->time. Every part with nothing in the file stays
- * as it is. False if there is no file. Before the threads start. */
+/* Puts what a file that was read holds into these parts, which have been started, and into parts->time and parts->calendar. Every part with
+ * nothing in the file stays as it is: a version 3 file has no calendar, and the caller's is kept. False if there is no file. Before the threads
+ * start. */
 bool save_state_apply(const save_state_t *state, save_state_parts_t *parts);
 
 /* All of these parts, copied to the image, a file but for its generation and hashes. Whoever holds them, with nothing else using the image: no

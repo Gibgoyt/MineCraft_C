@@ -931,6 +931,76 @@ TEST(golden_pictures_match) {
     fixture_stop(f);
 }
 
+/* Plan 004 phase 01's date line: in the top right, on a panel of its own, and below a notice band when there is one. */
+TEST(the_date_line_sits_in_the_top_right_and_moves_below_a_notice) {
+    fixture_t *const f = fixture_start(t);
+    REQUIRE(f != nullptr);
+    static const char line[] = "Year 1, Day 80, Early spring";
+    sheet_t clean = sheet_make(t, GOLD_WIDTH, GOLD_HEIGHT);
+    sheet_t a = sheet_make(t, GOLD_WIDTH, GOLD_HEIGHT);
+    sheet_t b = sheet_make(t, GOLD_WIDTH, GOLD_HEIGHT);
+    sheet_clear(&clean);
+    ui_canvas_t canvas;
+    sheet_clear(&a);
+    REQUIRE(sheet_canvas(&a, &canvas));
+    ui_hud_date_draw(&canvas, &f->ui.font, line, false);
+    const box_t top = sheets_box(&clean, &a);
+    /* At scale 2 the text is scale 1: a margin of 2 from the top and from the right, and no wider than it needs. */
+    const ui_text_size_t size = ui_font_measure(&f->ui.font, line, 1u);
+    CHECK_EQ_I64(top.right, (int64_t)GOLD_WIDTH - 2 - 1);
+    CHECK_EQ_I64(top.left, (int64_t)GOLD_WIDTH - 2 - ((int32_t)size.width + 4));
+    CHECK_EQ_I64(top.top, 2);
+    CHECK_EQ_I64(top.bottom, 2 + (int32_t)size.height + 4 - 1);
+    sheet_guard_check(t, &a);
+    /* Nothing left of the panel changed: the coordinates' corner and the overlay are the other side. */
+    for (int32_t y = 0; y < (int32_t)GOLD_HEIGHT; y++) {
+        for (int32_t x = 0; x < top.left; x++) {
+            if (sheet_at(&a, x, y) != sheet_at(&clean, x, y)) {
+                CHECK(false);
+                y = (int32_t)GOLD_HEIGHT;
+                break;
+            }
+        }
+    }
+    /* Beside the coordinates, neither covers the other. */
+    sheet_clear(&b);
+    REQUIRE(sheet_canvas(&b, &canvas));
+    const int32_t block[3] = {-1234, 567, -89};
+    ui_hud_coordinates_draw(&canvas, &f->ui.font, block, false);
+    const box_t coordinates = sheets_box(&clean, &b);
+    CHECK(coordinates.right < top.left);
+
+    /* Under a notice it starts where the band ends, as the coordinates do. */
+    sheet_clear(&a);
+    REQUIRE(sheet_canvas(&a, &canvas));
+    ui_hud_notice_draw(&canvas, &f->ui.font, "You died.");
+    const box_t band = sheets_box(&clean, &a);
+    sheet_clear(&b);
+    REQUIRE(sheet_canvas(&b, &canvas));
+    ui_hud_date_draw(&canvas, &f->ui.font, line, true);
+    const box_t below = sheets_box(&clean, &b);
+    CHECK_EQ_I64(below.top, band.bottom + 1);
+    CHECK_EQ_I64(below.top - top.top, band.bottom - band.top + 1);
+    CHECK_EQ_I64(below.right, top.right);
+
+    /* The longest line there can be, on a canvas too small for it: nothing lands outside. */
+    sheet_t tiny = sheet_make(t, 40u, 30u);
+    sheet_clear(&tiny);
+    REQUIRE(sheet_canvas(&tiny, &canvas));
+    ui_hud_date_draw(&canvas, &f->ui.font, "Year 4294967295, Day 365, Early spring", true);
+    sheet_guard_check(t, &tiny);
+
+    /* The golden picture: the full HUD and the line. */
+    ui_hud_state_t state;
+    state_golden_full(&state);
+    sheet_clear(&a);
+    REQUIRE(sheet_canvas(&a, &canvas));
+    ui_hud_draw(&f->ui.hud, &canvas, &f->ui.font, &state);
+    ui_hud_date_draw(&canvas, &f->ui.font, line, false);
+    golden_compare(t, "tests/run/ui/hud/fixtures/date_640x480.png", &a);
+    fixture_stop(f);
+}
+
 /* ---- The real game -------------------------------------------------------------------------------------------------------- */
 
 static void *world_aligned(test_context_t *t, uint64_t bytes) {
@@ -1001,7 +1071,7 @@ static void rig_end(test_context_t *t, rig_t *rig) {
 }
 
 static const game_config_t rig_small_game = {
-    .render_distance = 4u, .width = GAME_WIDTH, .height = GAME_HEIGHT, ._pad0 = {0}};
+    .render_distance = 4u, .width = GAME_WIDTH, .height = GAME_HEIGHT, .show_date = 0u};
 
 /* A display's buffer in plain memory. */
 static display_buffer_t rig_target(test_context_t *t) {

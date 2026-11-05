@@ -17,6 +17,7 @@ What it holds to:
 - Bubbles: 30 ticks each by hand; full, half and empty over the drumsticks, changing nothing else; not there on land; and through the real game, up and gone as air refills.
 - The overlay's numbers change only their own line, and it stays on its panel.
 - No heap and no table memory in 200 frames.
+- The date line, plan 004 phase 01: a small panel at the top right just as wide as its text, nothing left of it touched, beside the coordinates and not over them, below a notice's band, nothing outside a tiny canvas, and the golden `fixtures/date_640x480.png`. Its real-game test is in `tests/run/game/census/`, as that test opens a world for the census already.
 - Coordinates: a small panel just as wide as its text, each number changing it, below a notice's band, and on the overlay's panel with room for the longest. On the real game, whole blocks from the sim and rounded down past 0, drawn only when the config says, and not twice with F3 up.
 - **The real game, one thread:** with a `ui_t`, the target is the model drawn over the picture the card made, and that picture is not touched. Without one, the target is the picture, byte for byte. F3 turns the overlay on and off, flying too.
 - **The real threads:** what is put on the hotbar reaches the screen across threads, the overlay's numbers are real ones, and a frame takes nothing from the heap.

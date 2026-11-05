@@ -4,7 +4,7 @@
 
 #include "arena/index.h"
 #include "machine/index.h"
-#include "terrain/climate/index.h"
+#include "terrain/fields/index.h"
 #include "terrain/noise/index.h"
 #include "types/index.h"
 
@@ -64,7 +64,7 @@ typedef struct terrain_density_t {
     terrain_density_spline_t crest;               /* 2960: nearness to a crest to the share of the range's height */
     terrain_density_spline_t range_land;          /* 3256: broad continentalness to how much range the land allows */
     terrain_density_spline_t wetland;             /* 3552: erosion to how far a valley's floor sinks */
-    const terrain_climate_t *borrowed_climate;    /* 3848 */
+    const terrain_fields_t *borrowed_fields;      /* 3848 */
     const terrain_noise_field_t *borrowed_hills;  /* 3856 */
     const terrain_noise_field_t *borrowed_jagged; /* 3864 */
     const terrain_noise_field_t *borrowed_detail; /* 3872: the one field that changes with height */
@@ -111,7 +111,7 @@ static_assert(sizeof(terrain_density_box_t) == 24);
  * outlive it. If the bank refuses a field, which has logged why, sets *out to nullptr and returns false. Fields added before
  * that stay in the bank, so the caller gives up on the whole terrain_t. */
 [[nodiscard]] bool terrain_density_init(terrain_density_t **out, arena_t *arena, terrain_noise_bank_t *bank,
-                                        const terrain_climate_t *climate);
+                                        const terrain_fields_t *fields);
 
 /* Empties the handle. The memory goes back with the arena. */
 void terrain_density_deinit(terrain_density_t *density);
@@ -125,8 +125,8 @@ terrain_density_profile_t terrain_density_profile_from(const terrain_density_t *
 
 /* A column's ground at each column of an area, as the climate lays one out. For anything that wants the shape of the land
  * without its blocks, such as hydrology and biomes. Allocates nothing, and each value is a pure function of the density and
- * the column. height and softness each hold terrain_climate_area_columns(area) values. */
-void terrain_density_profile_area(const terrain_density_t *density, const terrain_climate_area_t *area,
+ * the column. height and softness each hold terrain_fields_area_columns(area) values. */
+void terrain_density_profile_area(const terrain_density_t *density, const terrain_fields_area_t *area,
                                   float32_t *heights, float32_t *softness);
 
 /* How many values a box fills. */

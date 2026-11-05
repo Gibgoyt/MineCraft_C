@@ -8,6 +8,7 @@
 #include "ui/compose/index.h"
 #include "ui/font/index.h"
 #include "ui/hud/index.h"
+#include "ui/screen_census/index.h"
 #include "ui/screen_chest/index.h"
 #include "ui/screen_crafting/index.h"
 #include "ui/screen_furnace/index.h"
@@ -32,7 +33,7 @@ typedef struct ui_t {
     ui_screens_t *borrowed_screens;       /* 728: from arena_tables: what the game screens share */
     ui_menu_t menu;                       /* 736 */
     ui_screen_settings_t settings_screen; /* 1040 */
-    uint8_t _pad0[16];                    /* 1136 */
+    ui_screen_census_t census_screen;     /* 1136 */
 } ui_t;
 static_assert(sizeof(ui_t) == 1152);
 static_assert(alignof(ui_t) == 64);

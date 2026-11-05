@@ -15,6 +15,7 @@
 - `ui_hud_draw`: all of the HUD, from a `ui_hud_state_t`.
 - `ui_hud_debug_draw`, `ui_hud_debug_panel`: the overlay, from a `ui_hud_debug_t`, and where it lies.
 - `ui_hud_coordinates_draw`: x, y and z on a small panel at the top left, under a notice if there is one.
+- `ui_hud_date_draw`: plan 004 phase 01's date line, such as `Year 1, Day 80, Early spring`, on a small panel at the top right, built as the coordinates' panel is and under a notice the same way.
 - `ui_hud_notice_draw`: one line in a red band across the top, for what a person playing has no other way to learn: `game` uses it when saves are failing.
 
 **May be called by:** `ui`, `run/src/game/` and the screens under `ui`.

@@ -4,6 +4,7 @@
 
 #include "arena/index.h"
 #include "audio/index.h"
+#include "calendar/index.h"
 #include "display/index.h"
 #include "entity/index.h"
 #include "mob/index.h"
@@ -56,7 +57,7 @@ typedef struct game_config_t {
     uint8_t uncapped; /* 36: the gpu thread draws as fast as it can, and does not wait for a picture to be taken */
     uint8_t show_coordinates; /* 37: x, y and z in the top left corner of what a body sees */
     uint8_t god_rays;         /* 38: on top of what features_off leaves, being optional */
-    uint8_t _pad0[1];         /* 39 */
+    uint8_t show_date;        /* 39: the date line in the top right corner of what a body sees */
 } game_config_t;
 static_assert(sizeof(game_config_t) == 40);
 
@@ -92,6 +93,10 @@ enum : int32_t {
     /* The x and the y of the column a new world starts looking for its body's place from. */
     GAME_WORLD_MIDDLE = 8,
 };
+
+/* Plan 004 phase 07's work for one census week, run on the sim thread, in order, once per week. fast is plan 004 section
+ * 4.2's fast mode, for weeks more than CALENDAR_FULL_WEEKS_MAX late. */
+typedef void game_census_week_fn(void *context, uint64_t week, bool fast);
 
 /* The game: what the sim, gpu and main threads share, and the three arenas whose lifetimes it decides. There is one, under
  * app_t. Everything past the borrowed pointers is zero bytes outside game_open. */
@@ -135,7 +140,9 @@ typedef struct game_t {
     uint32_t commit_next;      /* 872: the job the next step looks at first */
     uint8_t use_was_held;      /* 876: the sim's: the right button, last tick */
     uint8_t save_failed_said;  /* 877: the sim's: saving a column on its way out failed, and it has said so */
-    uint8_t _pad0[2];          /* 878 */
+    /* 878: a census stops the world and waits for its screen; set before a world opens, and only read after */
+    uint8_t census_screens;
+    uint8_t _pad0[1];          /* 879 */
     entity_t *borrowed_entity; /* 880: what a player's drops go into; set before a world opens, and only read after */
     item_t *borrowed_item;     /* 888: what a player carries; set before a world opens, and only read after */
     /* A line of its own, written by main every frame. */
@@ -143,14 +150,19 @@ typedef struct game_t {
     _Atomic uint32_t
         day_units; /* 904: main to gpu and sim: the same, in 1/2^32 of a day, relaxed: the look and whether a bed works depend on it, and neither to the tick */
     _Atomic uint32_t
-        morning_latch;       /* 908: sim to main: a night was slept through, so the day goes on from morning; relaxed */
-    _Atomic uint32_t paused; /* 912: main to sim: no ticks while it is set, and streaming goes on; relaxed */
-    uint8_t _pad1[4];        /* 916 */
+        morning_latch; /* 908: sim to main: a night was slept through, so the day goes on from morning; relaxed */
+    /* 912: main to sim, and the sim to itself as a census opens: no ticks while it is set, and streaming goes on; relaxed */
+    _Atomic uint32_t paused;
+    uint32_t day_zero; /* 916: D0 of this world; set as it opens, before any thread, and only read after */
     /* The sim's: a tree on its way down, from arena_world while a world is open. Only the pointer's here, as this is under app_t on main's stack. */
     player_felling_t *borrowed_felling; /* 920 */
     player_sounds_t
         *borrowed_sounds; /* 928: the same: what the hands did that can be heard, and each tick it is taken */
-    uint8_t _pad8[24];    /* 936 */
+    /* 936: main to gpu and sim: clock_days << 32 | day_units, a calendar_clock_t; relaxed, as only the date depends on it */
+    _Atomic uint64_t clock_units;
+    uint64_t clock_days; /* 944: main's: whole days since the midnight before the world's first morning */
+    /* 952: sim to main: the week whose census screen should open, plus 1; 0 for none. Release, and taken by an acquire exchange */
+    _Atomic uint64_t census_latch;
     /* A line of its own from here: the gpu thread writes these, and main what is after them. */
     render_camera_t picture_cameras[RENDER_EXCHANGE_SLOTS]; /* 960: what the picture in each slot was drawn from */
     uint8_t _pad2[8];                                       /* 1080 */
@@ -166,8 +178,10 @@ typedef struct game_t {
     _Atomic uint32_t hud_tick_us;                        /* 1228: sim to main: what its last tick took */
     profiler_lane_t *borrowed_lane_sim;                  /* 1232: whichever thread is doing the sim's work now */
     profiler_lane_t *borrowed_lane_sim_thread;           /* 1240: that of the sim thread, while it runs */
-    _Atomic int32_t hud_block[3]; /* 1248: sim to main: the block the body's feet are in, z from sea level */
-    uint8_t _pad4[20];            /* 1260 */
+    _Atomic int32_t hud_block[3];     /* 1248: sim to main: the block the body's feet are in, z from sea level */
+    uint8_t _pad4[4];                 /* 1260 */
+    game_census_week_fn *census_week; /* 1264: nullptr for none; set before a world opens, and only read after */
+    void *borrowed_census_context;    /* 1272: passed to census_week */
     /* A line of its own: the gpu thread writes these, once a picture. */
     _Atomic uint32_t hud_pass_us[FRAME_PASS_COUNT]; /* 1280: gpu to main: the card's clock, on the last picture */
     _Atomic uint32_t hud_total_us;                  /* 1300 */
@@ -186,7 +200,9 @@ typedef struct game_t {
     uint32_t hud_present_us;   /* 1372: what copying it out took */
     uint8_t hud_debug;         /* 1376: the debug overlay is up */
     uint8_t hud_debug_key;     /* 1377: its key was down, last time anyone looked */
-    uint8_t _pad6[6];          /* 1378 */
+    uint8_t _pad6[2];          /* 1378 */
+    uint32_t
+        census_runs; /* 1380: the sim's, on a census only: weeks run since the world opened, for tests and the log */
     profiler_lane_t *borrowed_lane_main; /* 1384: this thread's, and the others' while there are no threads */
     uint64_t gpu_beats_seen;             /* 1392: main's */
     int64_t gpu_beats_seen_ns;           /* 1400: main's: when that last changed */
@@ -195,7 +211,7 @@ typedef struct game_t {
     save_t *borrowed_save; /* 1448: where a world's changes go; set before a world opens, and only read after */
     audio_t *
         borrowed_audio; /* 1456: what the hands did is posted here, or nullptr; set before a world opens, and only read after */
-    uint8_t _pad7[8]; /* 1464 */
+    uint64_t last_census_week; /* 1464: the sim's: the newest week a census has run for; saved */
     /* A line of its own and some: main's, but for uncapped. */
     heap_region_t owned_view; /* 1472: a picture at the display's size, once something has needed one */
     game_config_t config;     /* 1488: what this world is running with now */
@@ -221,6 +237,13 @@ static_assert(offsetof(game_t, hud_hotbar) == 1152);
 static_assert(offsetof(game_t, hud_pass_us) == 1280);
 static_assert(offsetof(game_t, borrowed_ui) == 1344);
 static_assert(offsetof(game_t, mob_spawn) == 1408);
+static_assert(offsetof(game_t, census_screens) == 878);
+static_assert(offsetof(game_t, day_zero) == 916);
+static_assert(offsetof(game_t, clock_units) == 936);
+static_assert(offsetof(game_t, census_latch) == 952);
+static_assert(offsetof(game_t, census_week) == 1264);
+static_assert(offsetof(game_t, census_runs) == 1380);
+static_assert(offsetof(game_t, last_census_week) == 1464);
 
 /* Remembers what it will run on, and takes nothing. All must outlive it, and topology must have been read before the caller
  * pinned itself. */
@@ -329,6 +352,28 @@ void game_sim_step(game_t *game);
  * SHADE_FEATURE_DAY_CYCLE on, it goes on from here by a day per GAME_DAY_SECONDS of what game_loop_frame and the headless scene are
  * told has passed, and with it off it stays, until a night is slept through. */
 void game_day_set(game_t *game, float64_t day_fraction);
+
+/* Sets the whole world clock: clock_days whole days since the midnight before the world's first morning, and the time of day,
+ * from 0 to 1. game_day_set leaves the days alone. The thread that owns input, or before the threads start. clock_days must be
+ * below 2^32. */
+void game_clock_set(game_t *game, uint64_t clock_days, float64_t day_fraction);
+
+/* From here on a census stops the world and waits: game_census_take says when. Without it a census runs and the world goes on.
+ * Before game_open. */
+void game_census_screens_set(game_t *game, bool screens);
+
+/* What a census runs for each week: plan 004 phase 07's. nullptr for nothing. Before game_open. */
+void game_census_hook_set(game_t *game, game_census_week_fn *week, void *context);
+
+/* True once for each census that has stopped the world, with the week it was for. Main, any time: an exchange, so never
+ * twice. */
+bool game_census_take(game_t *game, uint64_t *out_week);
+
+/* Main's clock as a date, and the date line for the HUD at the eye's place: its season is named for the half of the world
+ * the body or the eye is in, y >= 0 north, until plan 004 phase 02 brings latitude. */
+calendar_date_t game_calendar_date(const game_t *game);
+bool game_calendar_south(const game_t *game);
+void game_calendar_line(const game_t *game, char *out, uint64_t bytes);
 
 /* Moves the eye. The thread that owns input. */
 void game_fly(game_t *game, const render_fly_input_t *input, float32_t seconds);

@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 1: Calendar and the weekly pause
 
-**Status:** not started   (updated 2026-11-04)
+**Status:** done, waiting on Ahmed's gate   (updated 2026-11-06)
 
 Read `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` first, then section 4 of the master plan, `plans/004-ahmed-bohemoth-climate-system.md`. This file is the breakdown of the master plan's phase 01. Where the code made part of the master plan impossible as written, this file says so in **Issues found**, and the design below follows the default given there.
 
@@ -605,22 +605,22 @@ Wiring outside them, kept to the lines this file names:
 
 ## Todo
 
-- [ ] Rename `run/{src,include}/terrain/climate/` and `tests/run/terrain/climate/` to `.../terrain/fields/` with `git mv`, and every name in the table. Noise bank names unchanged
-- [ ] Every pinned terrain digest holds; `run_terrain_fields` prints `0x1FC7F7D28F24CAA7`; the grep for the old names outside `plans/` prints nothing
-- [ ] `plans/REPO_STRUCTURE.md` updated for the rename
-- [ ] `run/{src,include}/calendar/`: day, year, day of year, week, clock hour and minute, the season label's date part, the date line, the census plan, from the world clock, $D_0$ and $t_0$
-- [ ] `calendar` in the lint's system table and the dependency diagram
-- [ ] The world clock: `clock_days`, `clock_units`, `day_zero` in `game_t`; `game_day_advance` keeps whole days; waking goes to the next 06:00; `game_clock_set`
-- [ ] Save `last_census_week`, `clock_days` and $D_0$ in a new calendar section. Bump `SAVE_STATE_VERSION` to 2, reading version 1 with a new calendar (see Issues found 1 for why not `SAVE_WORLD_VERSION`)
-- [ ] The trigger in the sim's tick (master plan 4.2): one hook call per missed week, in order, older-than-52 flagged fast, the latch, the pause
-- [ ] `run/src/ui/screen_census/`: the shell, with the week, the date and time, and Continue
-- [ ] The session: `GAME_SESSION_CENSUS`, the latch under KMS, in Resume and under `--headless`, and Continue
-- [ ] The HUD date line in the top right, with a Date box in Settings, kept as `show_date`
-- [ ] Tests: the census fires exactly once a week through plain ticks, sleeping through a night, and a 100-day jump (once per missed week, in order), and never twice after a save and load mid-week
-- [ ] Tests: day 364 rolls to day 0 of the next year, and week numbers carry across years
-- [ ] Tests: the worked examples (day 1000 is year 3, day 350, week 154; a new world is day 80, week 11)
-- [ ] Two new golden pictures made, looked at, and committed
-- [ ] READMEs and `plans/REPO_STRUCTURE.md` for `calendar`, `screen_census` and the new tests
+- [x] Rename `run/{src,include}/terrain/climate/` and `tests/run/terrain/climate/` to `.../terrain/fields/` with `git mv`, and every name in the table. Noise bank names unchanged
+- [x] Every pinned terrain digest holds; `run_terrain_fields` prints `0x1FC7F7D28F24CAA7` (now `0xB97D2A98FDF4D13A`: Issues found 6); the grep for the old names outside `plans/` prints nothing
+- [x] `plans/REPO_STRUCTURE.md` updated for the rename
+- [x] `run/{src,include}/calendar/`: day, year, day of year, week, clock hour and minute, the season label's date part, the date line, the census plan, from the world clock, $D_0$ and $t_0$
+- [x] `calendar` in the lint's system table and the dependency diagram
+- [x] The world clock: `clock_days`, `clock_units`, `day_zero` in `game_t`; `game_day_advance` keeps whole days; waking goes to the next 06:00; `game_clock_set`
+- [x] Save `last_census_week`, `clock_days` and $D_0$ in a new calendar section. Bump `SAVE_STATE_VERSION` to 2, reading version 1 with a new calendar (done as version 4, section 12, reading version 3: Issues found 10) (see Issues found 1 for why not `SAVE_WORLD_VERSION`)
+- [x] The trigger in the sim's tick (master plan 4.2): one hook call per missed week, in order, older-than-52 flagged fast, the latch, the pause
+- [x] `run/src/ui/screen_census/`: the shell, with the week, the date and time, and Continue
+- [x] The session: `GAME_SESSION_CENSUS`, the latch under KMS, in Resume and under `--headless`, and Continue
+- [x] The HUD date line in the top right, with a Date box in Settings, kept as `show_date`
+- [x] Tests: the census fires exactly once a week through plain ticks, sleeping through a night, and a 100-day jump (once per missed week, in order), and never twice after a save and load mid-week
+- [x] Tests: day 364 rolls to day 0 of the next year, and week numbers carry across years
+- [x] Tests: the worked examples (day 1000 is year 3, day 350, week 154; a new world is day 80, week 11)
+- [x] Two new golden pictures made, looked at, and committed
+- [x] READMEs and `plans/REPO_STRUCTURE.md` for `calendar`, `screen_census` and the new tests
 
 ## Tests
 
@@ -729,6 +729,18 @@ A quick look without playing for hours: the headless test makes the census scree
 
 Appended as they land:
 
+- `e6d90e1` Rename terrain/climate to terrain/fields.
+- `8148786` REPO_STRUCTURE for the rename.
+- `c16200d` Tick the rename in this file.
+- `b2428d8` The calendar, `run_calendar`, the lint row.
+- `47fbac9` The world clock, the census trigger, hook and latch, the save section, the census screen, the session, the HUD date line and `show_date`, and their tests.
+- `8823b42` REPO_STRUCTURE for the calendar, the census screen and their tests.
+- `b659ed1` The calendar save tests moved to their own ctest, `run_save_state_calendar` (Issues found 13).
+- `260388c` REPO_STRUCTURE for `tests/run/save/state/calendar/`.
+- `780b251` Todos ticked and issues 7 to 16 logged in this file.
+
+Verification, 2026-11-06: debug, the eight terrain tests pass and `run_terrain_fields` prints `0xB97D2A98FDF4D13A`; the phase's list of 15 (with `run_save_state_calendar`) passes; the whole suite passes, 122 of 122 in 1784 s. The release build links with no warning, so `main()`'s frame is still under 16 KiB. On release the four terrain tests pass and `run_terrain_fields` prints `0xB97D2A98FDF4D13A` again. `pgrep -a minecraft_c` printed nothing after each run. The Gate is Ahmed's and has not been played.
+
 ## Issues found
 
 Found while writing this file, 2026-11-04, before any code. Each is a conflict between the master plan and the code, or within the master plan, with what this file does about it.
@@ -762,3 +774,72 @@ Found while writing this file, 2026-11-04, before any code. Each is a conflict b
 - **Expected (master plan 4.1 and 9.1):** "Mid summer · Hurricane season".
 - **Actual:** the font draws ASCII 32 to 126 only (`UI_FONT_FIRST = 32u`, `UI_FONT_GLYPHS = 96u`, `run/include/ui/font/index.h:17-18`), and shows anything else as `?`.
 - **Done in this file:** commas: `Year 1, Day 80, Early spring`. Adding a glyph to the font texture is possible later, and is not this phase's.
+
+Found while doing the work, 2026-11-06.
+
+**6. The fields digest pin had already moved before the rename.**
+
+- **Expected (this file, step 1):** `run_terrain_fields` prints `0x1FC7F7D28F24CAA7`.
+- **Actual:** the pin on main before the rename was already `0xB97D2A98FDF4D13A` (`tests/run/terrain/climate/index.c:43` at `f663337`), changed by plan 003's world generation work after this file was written. After the rename, `run_terrain_fields` prints `digest 0xB97D2A98FDF4D13A` and passes, and the eight terrain tests pass on debug.
+- **Done:** the pin stays `0xB97D2A98FDF4D13A`, the value from before the rename, which is what "unchanged" means. The constant is now `FIELDS_DIGEST_PIN`. The test's file-local `CLIMATE_FIELDS` became `FIELDS_COUNT`, not `FIELDS_FIELDS`, and a local array in `init_and_deinit_are_a_pair` became `noises`, since `fields` is now the name of the struct pointer beside it.
+
+
+**7. 0.35 of a day is not exact in binary, so a new world's clock reads 08:23 rounded down.**
+
+- **Expected (Tests, `a_new_world_starts_on_day_80_of_year_1_in_week_11_at_08_24`):** 08:24 at a clock of 0.35.
+- **Actual:** `game_day_units_of` truncates: 0.35 as a `float64_t` is 0.34999999999999997..., times 2^32 is 1503238553.6, kept as ...553, and that is 503.9999 minutes, which rounds down to 08:23.
+- **Done:** `calendar_date_of` rounds the hour and minute down, which keeps 05:59 the day before at any clock. `run_calendar` writes its clocks to the nearest unit, ...554, which is 08:24. The game's truncation is left as it was, so no existing picture, save or sky test moves. Nothing the player sees shows the time of a new world: the date line has no time, and the census screen shows 06:00, reached by a tick past 06:00 or by waking at exactly 2^30.
+
+**8. `game_t` had changed since this file was written: other offsets, and `census_runs` is 32 bits.**
+
+- **Expected (Design, "The world clock in `game_t`"):** `paused` then `day_zero` at 916, `clock_units` at 920, `census_week` at 1264, `last_census_week` at 1456, `census_runs` at 1464.
+- **Actual:** `borrowed_felling` is at 920, `borrowed_sounds` at 928 and `borrowed_audio` at 1456 (plan 003). The padding left was `_pad0[2]` at 878, `_pad1[4]` at 916, `_pad8[24]` at 936, `_pad4[20]` at 1260, `_pad6[6]` at 1378 and `_pad7[8]` at 1464. `game_t` must stay 1600 bytes.
+- **Done:** `census_screens` 878, `day_zero` 916, `clock_units` 936, `clock_days` 944, `census_latch` 952, `census_week` 1264, `borrowed_census_context` 1272, `census_runs` 1380 as a `uint32_t` (in main's line, written by the sim only on a census), `last_census_week` 1464. Each has a `static_assert`. `game_t` is still 1600 bytes and `app_t` 16064.
+
+**9. `game_config_t` had no room for `show_date` at 38.**
+
+- **Expected:** `show_date` at 38, `_pad1[1]` at 39.
+- **Actual:** 38 is `god_rays`, and `_pad0[1]` at 39 was the only free byte. `game_config_t` is inside `game_t` and the session, so it cannot grow.
+- **Done:** `show_date` at 39, and the struct has no padding left. Every `game_config_t` initialiser that named `._pad0 = {0}`, 52 of them in 32 files (`run/src/main/index.c`, and tests under `tests/run/`, `tests/cuda/` and `tests/soak/`), now names `.show_date = 0u`, so no existing picture changes. That is wiring outside the owned paths, one token per initialiser, found by the compiler.
+
+**10. The state file was already at version 3, with section 11 taken.**
+
+- **Expected:** `SAVE_STATE_VERSION` 1 to 2, `SAVE_STATE_SECTION_CALENDAR = 11`, read version 1.
+- **Actual:** version 3 (2: names, 3: the woodworking bench's grid), section 11 is `SAVE_STATE_SECTION_NAMES`, and only exactly version 3 was read.
+- **Done:** the calendar is section 12, `SAVE_STATE_VERSION` is 4, and `SAVE_STATE_VERSION_READ_MIN` is 3, the newest version without a calendar. A version 4 file must hold the calendar and a version 3 file must not. The translate step (`run/src/save/state/translate/`) passes section 12 through, as no number in it is a place in a table. The tests are named for version 3: `a_version_3_file_still_opens_with_a_new_calendar`. `tests/run/save/state/` and `tests/run/save/state/names/` each assert their rig's size, which grew by 24 with `save_state_parts_t` (wiring). `tests/fuzz/save/` still builds.
+
+**11. `ui_t` had 16 bytes left, not 48, so the census screen holds the clock and not the date.**
+
+- **Expected:** `ui_screen_census_t` of 40 bytes at 1104, out of `_pad0[48]`.
+- **Actual:** `ui_t` is `settings_screen` at 1040 (96 bytes) and `_pad0[16]` at 1136. Growing `ui_t` grows `app_t`, which is on main's stack at the 16 KiB frame limit.
+- **Done:** a 16-byte `ui_screen_census_t` at 1136: the clock, the week count, `D0` and the hemisphere. The date is worked out from the clock as it is drawn, and the widget is passed to `ui_screen_census_frame` instead of being borrowed. `ui_t` is still 1152 bytes.
+
+**12. The Settings screen's row 7 is the sound volume's slider now.**
+
+- **Expected:** a Date box at the left of row 7, where the "Could not keep them" message goes, hidden while the message is up; `SETTINGS_ID_DATE = 110u`.
+- **Actual:** plan 003 phase 5 put the sound volume slider on row 7 with id 110, and the message now takes the title's place.
+- **Done:** the Date box is the first 40 units of row 7 (`SETTINGS_DATE_WIDTH`), id 111, and the volume slider takes the 156 after a gap of 4. The box never hides. The test `the_volume_slider_changes_that_setting_and_nothing_else` now clicks the slider at 104 and 259 instead of 60 and 259 (`tests/run/ui/screens/`). The click at (64, 202) in `the_date_box_changes_that_setting_and_nothing_else` is the box, as this file said.
+
+**13. The real-game date-line test is in `run_game_census`, and some test files are past 1500 lines.**
+
+- **Expected:** `the_date_line_follows_the_setting_in_the_real_game` in `tests/run/ui/hud/`.
+- **Actual:** `tests/run/ui/hud/index.c` was already 1603 lines on main, past the standard's 1500. The golden test added here takes it to 1673. `tests/run/settings/index.c` was 1495 and is 1530 with `show_date_is_kept_and_a_file_without_it_shows_the_date`. `tests/run/save/state/index.c` was 1481 and would have been 1645 with the calendar tests.
+- **Done:** the real-game test is in `tests/run/game/census/`, which opens real worlds anyway, and compares each frame against the card's own picture under it, as two frames are not the same picture to the byte even with TAA and the day cycle off. The calendar save tests are their own ctest, `run_save_state_calendar` in `tests/run/save/state/calendar/`, so `tests/run/save/state/index.c` is 1497 lines. `tests/run/ui/hud/index.c` (1673) and `tests/run/settings/index.c` (1530) are left past 1500 and under the 2000 the lint enforces; splitting them is for whoever next works there.
+
+**14. Main's clock stands still while paused.**
+
+- **Expected (Design):** the clock stands still while paused "because main doesn't run `game_loop_frame`".
+- **Actual:** a census pauses the world from the sim thread, and main may run a frame or two of `game_loop_frame` before it takes the latch.
+- **Done:** `game_day_advance` applies a waking morning and then does nothing while `paused` is set. `game_pause_set`'s promise that a caller does not run frames while paused makes this change nothing for anything that was already there; `render_feature_sky`, `run_game` and `run_player_survival` pass unchanged.
+
+**15. The plain-ticks test needs no shortcut.**
+
+- **Expected:** if 192 000 ticks take more than 60 s, tick from an hour before each boundary instead.
+- **Actual:** flying, the headless scene's 192 000 ticks take 0.2 s on debug.
+- **Done:** all 192 000 ticks run.
+
+**16. The session test sets the clock once the world is open.**
+
+- **Expected:** `fixtures/week.script` with "ticks across Day 85 06:00".
+- **Actual:** from a new world that is 117 600 ticks of a walking world.
+- **Done:** the script opens a new world through the menus, and the test then puts the clock 40 ticks before 06:00 on clock day 5 with `game_clock_set`, as a console could. The census came on script tick 60, the screen shaded 921 273 of 1 228 800 bytes, and after Continue the world ticked on and the screen was gone. The pictures were looked at (`MC_CENSUS_PNG_DIR`).

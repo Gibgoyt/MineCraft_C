@@ -127,6 +127,10 @@ void ui_hud_notice_draw(ui_canvas_t *canvas, const ui_font_t *font, const char *
  * this canvas, as that band crosses the top left too. No allocation. */
 void ui_hud_coordinates_draw(ui_canvas_t *canvas, const ui_font_t *font, const int32_t block[3], bool below_notice);
 
+/* The date line, plan 004 phase 01, on a dark panel at the top right, as the coordinates are at the top left. below_notice as for those. No
+ * allocation. */
+void ui_hud_date_draw(ui_canvas_t *canvas, const ui_font_t *font, const char *text, bool below_notice);
+
 /* Where that panel lies on a canvas of this size, which nothing else in the overlay goes outside. */
 ui_rect_t ui_hud_debug_panel(uint32_t canvas_width, uint32_t canvas_height);
 

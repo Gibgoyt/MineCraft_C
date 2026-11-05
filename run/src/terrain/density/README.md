@@ -14,7 +14,7 @@
 - `terrain_density_at`, `terrain_density_block_at`: one voxel.
 
 **May be called by:** `terrain` and its parts.
-**Depends on:** `terrain/climate` and `terrain/noise` (its siblings, for the climate and the fields), `arena`, `assert`, `machine`, `types`, and the generated `tables/blocks/`, for the block ids.
+**Depends on:** `terrain/fields` and `terrain/noise` (its siblings, for the climate and the fields), `arena`, `assert`, `machine`, `types`, and the generated `tables/blocks/`, for the block ids.
 
 ## The limits
 

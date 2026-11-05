@@ -302,7 +302,7 @@ static bool fail_rig_begin(test_context_t *t, fail_rig_t *rig, const char *root)
                                  .width = buffer->width,
                                  .height = buffer->height,
                                  .features_off = SHADE_FEATURE_DAY_CYCLE | SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
-                                 ._pad0 = {0}};
+                                 .show_date = 0u};
     game_session_init(rig->session, rig->game, rig->ui, rig->terrain, rig->input, &small, rig->saves, FAIL_SEED);
     return true;
 }

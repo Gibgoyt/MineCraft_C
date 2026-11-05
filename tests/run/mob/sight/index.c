@@ -183,7 +183,7 @@ TEST(in_a_real_game_each_mob_is_on_the_picture_in_its_own_skin) {
     sight_rig_t rig;
     REQUIRE(sight_begin(t, &rig));
     game_t *const game = rig.game;
-    const game_config_t config = {.render_distance = 5u, .width = SIGHT_WIDTH, .height = SIGHT_HEIGHT, ._pad0 = {0}};
+    const game_config_t config = {.render_distance = 5u, .width = SIGHT_WIDTH, .height = SIGHT_HEIGHT, .show_date = 0u};
     REQUIRE(game_open(game, &config));
     REQUIRE(game_settle(game));
     display_headless_scene_t scene;

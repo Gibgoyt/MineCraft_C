@@ -1374,7 +1374,7 @@ TEST(in_a_real_game_a_broken_chest_spills_on_the_ground_and_a_furnace_burns) {
     game_player_set(game, player);
     game_entity_set(game, entity);
     game_item_set(game, held);
-    static const game_config_t small = {.render_distance = 5u, .width = IC_WIDTH, .height = IC_HEIGHT, ._pad0 = {0}};
+    static const game_config_t small = {.render_distance = 5u, .width = IC_WIDTH, .height = IC_HEIGHT, .show_date = 0u};
     REQUIRE(game_open(game, &small));
     REQUIRE(game_settle(game));
 

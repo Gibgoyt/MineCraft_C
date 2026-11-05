@@ -1350,7 +1350,7 @@ TEST(the_cost_is_measured_on_real_terrain_and_over_a_sea) {
                                   .width = WA_COST_WIDTH,
                                   .height = WA_COST_HEIGHT,
                                   .features_off = 0u,
-                                  ._pad0 = {0}};
+                                  .show_date = 0u};
     REQUIRE(game_open(game, &config));
     REQUIRE(game_settle(game));
     render_t *const render = rig.render;

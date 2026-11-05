@@ -91,6 +91,17 @@ void game_item_set(game_t *game, item_t *item) {
     game->borrowed_item = item;
 }
 
+void game_census_screens_set(game_t *game, bool screens) {
+    ASSERT_ALWAYS(game->open == 0u);
+    game->census_screens = screens ? 1u : 0u;
+}
+
+void game_census_hook_set(game_t *game, game_census_week_fn *week, void *context) {
+    ASSERT_ALWAYS(game->open == 0u);
+    game->census_week = week;
+    game->borrowed_census_context = context;
+}
+
 void game_profiler_set(game_t *game, profiler_t *profiler) {
     ASSERT_ALWAYS(game->open == 0u);
     game->borrowed_lane_main = profiler_lane_claim(profiler, "main");
@@ -119,6 +130,11 @@ static void game_save_parts(game_t *game, save_state_parts_t *out) {
                  .yaw = 0.0f32,
                  .pitch = 0.0f32,
                  ._pad0 = {0}},
+        /* The days from the clock main last published, as day_units is: a save on the sim thread never reads main's own. */
+        .calendar = {.clock_days = atomic_load_explicit(&game->clock_units, memory_order_relaxed) >> 32,
+                     .last_census_week = game->last_census_week,
+                     .day_zero = game->day_zero,
+                     ._pad0 = {0}},
     };
     memcpy(&out->time.yaw, &yaw_bits, sizeof(yaw_bits));
     memcpy(&out->time.pitch, &pitch_bits, sizeof(pitch_bits));
@@ -335,15 +351,39 @@ static float32_t game_day_of_units(uint32_t units) {
 
 void game_day_set(game_t *game, float64_t day_fraction) {
     game->day_fraction = day_fraction - floor(day_fraction);
-    atomic_store_explicit(&game->day_units, game_day_units_of(game->day_fraction), memory_order_relaxed);
+    const uint32_t units = game_day_units_of(game->day_fraction);
+    atomic_store_explicit(&game->day_units, units, memory_order_relaxed);
+    atomic_store_explicit(&game->clock_units, game->clock_days << 32 | units, memory_order_relaxed);
 }
 
+void game_clock_set(game_t *game, uint64_t clock_days, float64_t day_fraction) {
+    ASSERT_ALWAYS(clock_days < CALENDAR_CLOCK_DAY);
+    /* A fraction of 1 or more carries into the days, as the clock moving on does. */
+    const float64_t whole = floor(day_fraction);
+    ASSERT_ALWAYS(whole >= 0.0f64);
+    game->clock_days = clock_days + (uint64_t)whole;
+    game_day_set(game, day_fraction - whole);
+}
+
+/* Main's: the world clock moves on by what it is told has passed, keeping the whole days, which the date is made of. Standing
+ * still while paused, as a census pauses the world before main has seen it. */
 static void game_day_advance(game_t *game, float32_t seconds) {
     if (atomic_exchange_explicit(&game->morning_latch, 0u, memory_order_relaxed) != 0u) {
+        /* To the next 06:00: from 23:00 a day on, from 01:00 the same day. At 06:00 itself a whole day, as plan 004 phase 02's
+         * polar night can be slept through there. */
+        if (game->day_fraction >= PLAYER_SURVIVAL_MORNING) {
+            game->clock_days++;
+        }
         game_day_set(game, PLAYER_SURVIVAL_MORNING);
     }
+    if (atomic_load_explicit(&game->paused, memory_order_relaxed) != 0u) {
+        return;
+    }
     if ((game->borrowed_render->frame.scene.features & SHADE_FEATURE_DAY_CYCLE) != 0u) {
-        game_day_set(game, game->day_fraction + (float64_t)seconds / GAME_DAY_SECONDS);
+        const float64_t moved = game->day_fraction + (float64_t)seconds / GAME_DAY_SECONDS;
+        const float64_t whole = floor(moved);
+        game->clock_days += (uint64_t)whole;
+        game_day_set(game, moved - whole);
     }
 }
 
@@ -483,7 +523,13 @@ bool game_open(game_t *game, const game_config_t *config) {
         return false;
     }
     game_open_alive_tell(game);
-    game_day_set(game, GAME_DAY_START);
+    /* A new world's calendar: Year 1, Day 80, week 11, with no census owed. A saved one replaces it below. */
+    game->day_zero = CALENDAR_DAY_ZERO;
+    game_clock_set(game, 0u, GAME_DAY_START);
+    game->last_census_week =
+        calendar_week_of(game->day_zero, atomic_load_explicit(&game->clock_units, memory_order_relaxed));
+    game->census_runs = 0u;
+    atomic_store_explicit(&game->census_latch, 0u, memory_order_relaxed);
     game_day_apply(game);
     game_hud_start(game);
     if (game->borrowed_entity != nullptr) {
@@ -510,7 +556,9 @@ bool game_open(game_t *game, const game_config_t *config) {
         game->tick_count = parts.time.world_ticks;
         world_tick_now_set(&game->borrowed_world->tick, game->tick_count);
         save_world_levels_from(&save->world, &game->borrowed_world->tick);
-        game_day_set(game, (float64_t)parts.time.day_units / 4294967296.0f64);
+        game->day_zero = parts.calendar.day_zero;
+        game->last_census_week = parts.calendar.last_census_week;
+        game_clock_set(game, parts.calendar.clock_days, (float64_t)parts.time.day_units / 4294967296.0f64);
         game_day_apply(game);
         save_autosave_start(&save->autosave, game->borrowed_job, &save->world, &save->state, game->tick_count);
     }
@@ -1002,6 +1050,12 @@ static const uint8_t *game_hud_compose(game_t *game, const uint8_t *drawn) {
             game_hud_block_read(game, block);
             ui_hud_coordinates_draw(&ui->canvas, &ui->font, block, notice);
         }
+        /* In the other corner, so the overlay on the left leaves it be. */
+        if (game->config.show_date != 0u) {
+            char line[CALENDAR_LINE_BYTES];
+            game_calendar_line(game, line, sizeof(line));
+            ui_hud_date_draw(&ui->canvas, &ui->font, line, notice);
+        }
     }
     if (game->hud_debug != 0u) {
         ui_hud_debug_t debug;
@@ -1015,6 +1069,10 @@ static const uint8_t *game_hud_compose(game_t *game, const uint8_t *drawn) {
 }
 
 static bool game_scene_tick_timed(game_t *game, const display_headless_tick_t *tick) {
+    /* Stopped, by a census or by whoever paused: neither the clock nor the world moves, as with threads. */
+    if (atomic_load_explicit(&game->paused, memory_order_relaxed) != 0u) {
+        return true;
+    }
     render_fly_input_t input;
     game_fly_from_script(tick->state, &input);
     /* Time here is the count of ticks, so one script gives one path. */

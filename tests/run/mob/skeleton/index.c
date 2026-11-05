@@ -1127,7 +1127,7 @@ TEST(in_a_real_game_a_skeleton_shoots_the_player_and_leaves_its_drops) {
     msk_game_rig_t rig;
     REQUIRE(msk_game_begin(t, &rig));
     game_t *const game = rig.game;
-    const game_config_t config = {.render_distance = 5u, .width = 320u, .height = 180u, ._pad0 = {0}};
+    const game_config_t config = {.render_distance = 5u, .width = 320u, .height = 180u, .show_date = 0u};
     REQUIRE(game_open(game, &config));
     REQUIRE(game_settle(game));
     display_headless_scene_t scene;

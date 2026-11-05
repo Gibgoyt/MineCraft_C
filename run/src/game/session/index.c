@@ -46,6 +46,7 @@ static void game_session_config_from_settings(game_session_t *session) {
     config->render_scale_percent = values->render_scale_percent;
     config->uncapped = (uint8_t)(values->vsync != 0u ? 0u : 1u);
     config->show_coordinates = values->show_coordinates;
+    config->show_date = values->show_date;
 }
 
 void game_session_settings_set(game_session_t *session, settings_t *settings) {
@@ -170,6 +171,9 @@ static bool game_session_world_open(game_session_t *session) {
         game_session_world_refused(session, saved);
         return true;
     }
+    /* A person is here to answer the census screen, so a census stops the world and waits for them. */
+    game_census_screens_set(game, true);
+    session->census_runs_seen = 0u;
     if (!game_open(game, &session->config)) {
         if (game->borrowed_save != nullptr) {
             save_close(game->borrowed_save);
@@ -329,7 +333,12 @@ static bool game_session_menu_draw(game_session_t *session, const input_frame_t 
     if (!started) {
         return false;
     }
-    if (session->settings_up != 0u) {
+    if (session->state == GAME_SESSION_CENSUS) {
+        if (ui_screen_census_frame(&ui->census_screen, &ui->widget, escape) == UI_SCREEN_CENSUS_CONTINUE) {
+            game_pause_set(session->borrowed_game, false);
+            session->state = GAME_SESSION_PLAYING;
+        }
+    } else if (session->settings_up != 0u) {
         game_session_settings_answer(session, ui_screen_settings_frame(&ui->settings_screen, escape));
     } else {
         *out_action = ui_menu_frame(&ui->menu, escape);
@@ -337,6 +346,37 @@ static bool game_session_menu_draw(game_session_t *session, const input_frame_t 
     const uint8_t *const drawn = ui_frame_end(ui, true);
     const uint64_t row_bytes = (uint64_t)target->width * sizeof(uint32_t);
     copy_stream_rows_batch(target->owned_map, target->pitch, drawn, row_bytes, row_bytes, target->height);
+    return true;
+}
+
+/* ---- The census screen ------------------------------------------------------------------------------------------------ */
+
+/* The sim has stopped the world for the census of week: the screen comes up over its last picture. The world is paused already;
+ * game_pause_set again starts the frame clock afresh, so the time on the screen is not owed afterwards. */
+static void game_session_census_open(game_session_t *session, uint64_t week) {
+    game_t *const game = session->borrowed_game;
+    ui_t *const ui = session->borrowed_ui;
+    game_loop_input_clear(game);
+    game_pause_set(game, true);
+    /* census_runs is the sim's, written before the latch's release, which game_census_take acquired. */
+    const uint32_t weeks = game->census_runs - session->census_runs_seen;
+    session->census_runs_seen = game->census_runs;
+    ui_screen_census_open(&ui->census_screen, &ui->widget, game->day_zero,
+                          atomic_load_explicit(&game->clock_units, memory_order_relaxed), weeks,
+                          game_calendar_south(game));
+    LOG_INFO("session: the census screen for week %" PRIu64 " is up, after %" PRIu32 " weeks", week, weeks);
+    session->state = GAME_SESSION_CENSUS;
+    /* The Esc that may have come with it is not also an answer to it. */
+    session->escape_used = 1u;
+}
+
+/* True if a census had stopped the world, and its screen is now up. */
+static bool game_session_census_look(game_session_t *session) {
+    uint64_t week = 0u;
+    if (!game_census_take(session->borrowed_game, &week)) {
+        return false;
+    }
+    game_session_census_open(session, week);
     return true;
 }
 
@@ -357,6 +397,10 @@ static bool game_session_action(game_session_t *session, ui_menu_action_t action
         session->next = GAME_SESSION_NEXT_TITLE;
         return true;
     case UI_MENU_ACTION_RESUME:
+        /* A census may have stopped the world while the pause screen was up, even in the frame Esc came: its screen first. */
+        if (game_session_census_look(session)) {
+            return false;
+        }
         game_pause_set(session->borrowed_game, false);
         session->state = GAME_SESSION_PLAYING;
         return false;
@@ -424,7 +468,8 @@ static bool game_session_screen_frame(game_session_t *session, const input_frame
         session->failed = 1u;
         return false;
     }
-    const uint8_t *const picture = session->state == GAME_SESSION_PAUSED ? game_picture_held(game) : nullptr;
+    const bool over_world = session->state == GAME_SESSION_PAUSED || session->state == GAME_SESSION_CENSUS;
+    const uint8_t *const picture = over_world ? game_picture_held(game) : nullptr;
     ui_menu_action_t action = UI_MENU_ACTION_NONE;
     if (!game_session_menu_draw(session, frame, escape && session->escape_used == 0u, picture, back, &action)) {
         session->failed = 1u;
@@ -461,16 +506,20 @@ bool game_session_source(void *context, display_buffer_t *back) {
             session->failed = 1u;
             return false;
         }
-        if (!escape || game_screen_up(game)) {
-            if (game_loop_input_frame(game, frame, back)) {
-                return true;
+        /* A census that has stopped the world makes this frame the census screen's. */
+        if (!game_session_census_look(session)) {
+            if (!escape || game_screen_up(game)) {
+                if (game_loop_input_frame(game, frame, back)) {
+                    return true;
+                }
+                session->failed = 1u;
+                return false;
             }
-            session->failed = 1u;
-            return false;
+            /* Whatever was held stays held in nobody's hands: the sim keeps the last it was told, and is told again on
+             * resuming. */
+            game_loop_input_clear(game);
+            game_session_pause(session);
         }
-        /* Whatever was held stays held in nobody's hands: the sim keeps the last it was told, and is told again on resuming. */
-        game_loop_input_clear(game);
-        game_session_pause(session);
     }
     (void)game_gpu_alive(game); /* it says so, and that is failed */
     if (atomic_load_explicit(&game->failed, memory_order_acquire) != 0u) {
@@ -564,7 +613,10 @@ static bool game_session_scene_tick(void *context, const display_headless_tick_t
     }
     display_headless_scene_t scene;
     game_headless_scene(session->borrowed_game, &scene);
-    return scene.tick(scene.borrowed_context, tick);
+    const bool ticked = scene.tick(scene.borrowed_context, tick);
+    /* The next draw shows the census, if this tick's sim began one. */
+    (void)game_session_census_look(session);
+    return ticked;
 }
 
 static bool game_session_scene_draw(void *context, const display_headless_tick_t *tick, display_buffer_t *frame) {

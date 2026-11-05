@@ -1317,7 +1317,7 @@ TEST(in_a_real_game_a_zombie_walks_up_is_drawn_and_strikes) {
     mco_game_rig_t rig;
     REQUIRE(mco_game_begin(t, &rig));
     game_t *const game = rig.game;
-    const game_config_t config = {.render_distance = 5u, .width = 320u, .height = 180u, ._pad0 = {0}};
+    const game_config_t config = {.render_distance = 5u, .width = 320u, .height = 180u, .show_date = 0u};
     REQUIRE(game_open(game, &config));
     REQUIRE(game_settle(game));
     mco_script_t *const script = test_alloc(t, sizeof(mco_script_t));
@@ -1394,7 +1394,7 @@ TEST(in_a_real_game_a_click_hits_with_the_sword_in_hand_and_three_kill_a_zombie)
     mco_game_rig_t rig;
     REQUIRE(mco_game_begin(t, &rig));
     game_t *const game = rig.game;
-    const game_config_t config = {.render_distance = 5u, .width = 320u, .height = 180u, ._pad0 = {0}};
+    const game_config_t config = {.render_distance = 5u, .width = 320u, .height = 180u, .show_date = 0u};
     REQUIRE(game_open(game, &config));
     REQUIRE(game_settle(game));
     mco_script_t *const script = test_alloc(t, sizeof(mco_script_t));

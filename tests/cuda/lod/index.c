@@ -1085,7 +1085,7 @@ TEST(the_far_field_stands_for_real_terrain) {
                                   .height = LD_HEIGHT,
                                   .features_off = 0u,
                                   .god_rays = 0u,
-                                  ._pad0 = {0},
+                                  .show_date = 0u,
                                   .full_detail = 2u};
     REQUIRE(game_open(game, &config));
     REQUIRE(game_settle(game));

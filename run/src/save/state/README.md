@@ -26,7 +26,7 @@ Its child `translate` rewrites a file from other tables, as `save_state_open` re
     <world>/state.<g>       this file; g is the save of the blocks it goes with
     <world>/state.<g>.tmp   one on its way there, which is never believed
 
-All numbers are little-endian. A file is a `save_state_header_t`, then sections, each a `save_state_section_t` and its bytes, padded with zeros to 8. Section ids and their contents are in the header, with every size and offset asserted. A section is there at most once. The time is always there, and the rest only if the game that wrote it has that part: a game with no mobs writes no minds, and a file's minds are not used by one. An id that this version does not have is damage. Names are always there, last.
+All numbers are little-endian. A file is a `save_state_header_t`, then sections, each a `save_state_section_t` and its bytes, padded with zeros to 8. Section ids and their contents are in the header, with every size and offset asserted. A section is there at most once. The time is always there, and from version 4 the calendar right after it (`save_state_calendar_t`: the world clock's whole days, the last census week and `D0`, plan 004 phase 01), and the rest only if the game that wrote it has that part: a game with no mobs writes no minds, and a file's minds are not used by one. An id that this version does not have is damage. Names are always there, last.
 
 | Section | Holds |
 |---|---|
@@ -49,7 +49,7 @@ A state does not need what `run/src/save/world/` needs, a list of its own for ev
 
 A grid's `recipe` and `output` are not believed from any file, as `recipe_defs` has no name to find a row by: `save_state_apply` works them out from its cells, so a change of recipes neither refuses a world nor leaves it with a grid offering what it no longer makes.
 
-A file from before version 2 has no names, and gets `SAVE_WORLD_ERROR_VERSION` and a line in the log. A world that old has been refused for its blocks already.
+Versions 3 and 4 are read. A version 3 file has no calendar section, and must not have one; `save_state_apply` then leaves the caller's calendar as it was, so the world opens on a new one, Year 1, Day 80, week 11, with no census owed, and says so in the log. A version 4 file must have one, with zero padding, fewer than 2^32 days, `D0` below 365, and a last census week the saved clock has reached: at most `(D0 + days + 1) / 7`. A file from before version 2 has no names, and gets `SAVE_WORLD_ERROR_VERSION` and a line in the log. A world that old has been refused for its blocks already.
 
 Same numbers, same bytes: reloading a world, saving it with nothing having ticked and comparing gives no difference, and `tests/run/save/state/` does exactly that.
 

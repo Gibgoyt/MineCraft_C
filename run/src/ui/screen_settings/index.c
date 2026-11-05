@@ -21,6 +21,8 @@ enum : int32_t {
     /* Row 6, left to right, with SETTINGS_GAP between: each as wide as its box and its words want, and Effects... has what is left. */
     SETTINGS_VSYNC_WIDTH = 46,
     SETTINGS_COORDINATES_WIDTH = 82,
+    /* Row 7: the Date box, plan 004 phase 01, and the sound volume's slider in what is left. */
+    SETTINGS_DATE_WIDTH = 40,
     SETTINGS_VOLUME_ROW = 7,
     SETTINGS_DONE_ROW = 8,
 };
@@ -37,6 +39,7 @@ enum : uint32_t {
     SETTINGS_ID_DONE = 108u,
     SETTINGS_ID_COORDINATES = 109u,
     SETTINGS_ID_VOLUME = 110u,
+    SETTINGS_ID_DATE = 111u,
     SETTINGS_ID_EFFECT_0 = 120u,
     SETTINGS_TEXT_COLOR = 0xFFFFFFFFu,
     SETTINGS_ERROR_COLOR = 0xFFFF6060u,
@@ -113,10 +116,21 @@ static bool ui_screen_settings_main_page(ui_screen_settings_t *screen, bool *out
     changed |= ui_screen_settings_slider(widget, SETTINGS_ID_WORKERS, 5, label, &values->worker_count,
                                          SETTINGS_WORKERS_MIN, SETTINGS_WORKERS_MAX);
 
-    uint32_t volume = values->sound_volume_percent;
-    (void)snprintf(label, sizeof(label), "Sound volume: %" PRIu32 "%%", volume);
-    changed |= ui_screen_settings_slider(widget, SETTINGS_ID_VOLUME, SETTINGS_VOLUME_ROW, label, &volume,
-                                         SETTINGS_SOUND_VOLUME_MIN, SETTINGS_SOUND_VOLUME_MAX);
+    const ui_rect_t volume_row = ui_screen_settings_row(widget, SETTINGS_VOLUME_ROW, SETTINGS_ROW_WIDTH);
+    const int32_t date_width = SETTINGS_DATE_WIDTH * scale;
+    bool date = values->show_date != 0u;
+    if (ui_widget_checkbox(widget, SETTINGS_ID_DATE,
+                           (ui_rect_t){volume_row.x, volume_row.y, date_width, volume_row.height}, "Date", &date)) {
+        values->show_date = date ? 1u : 0u;
+        changed = true;
+    }
+    const int32_t volume_x = volume_row.x + date_width + SETTINGS_GAP * scale;
+    int32_t volume = (int32_t)values->sound_volume_percent;
+    (void)snprintf(label, sizeof(label), "Sound volume: %" PRId32 "%%", volume);
+    changed |= ui_widget_slider(
+        widget, SETTINGS_ID_VOLUME,
+        (ui_rect_t){volume_x, volume_row.y, volume_row.x + volume_row.width - volume_x, volume_row.height}, label,
+        &volume, (int32_t)SETTINGS_SOUND_VOLUME_MIN, (int32_t)SETTINGS_SOUND_VOLUME_MAX);
     values->sound_volume_percent = (uint8_t)volume;
 
     const ui_rect_t row = ui_screen_settings_row(widget, 6, SETTINGS_ROW_WIDTH);

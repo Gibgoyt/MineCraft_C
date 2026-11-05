@@ -240,6 +240,19 @@ void ui_hud_coordinates_draw(ui_canvas_t *canvas, const ui_font_t *font, const i
     ui_font_draw(font, canvas, margin + margin, top + margin, text, style);
 }
 
+void ui_hud_date_draw(ui_canvas_t *canvas, const ui_font_t *font, const char *text, bool below_notice) {
+    const uint32_t scale = ui_hud_debug_scale(canvas->width, canvas->height);
+    const int32_t margin = (int32_t)UI_HUD_DEBUG_MARGIN * (int32_t)scale;
+    const ui_text_size_t measured = ui_font_measure(font, text, scale);
+    const int32_t width = (int32_t)measured.width + 2 * margin;
+    const int32_t height = (int32_t)measured.height + 2 * margin;
+    const int32_t top = below_notice ? margin + height : margin;
+    const int32_t left = (int32_t)canvas->width - margin - width;
+    ui_compose_fill(canvas, (ui_rect_t){left, top, width, height}, UI_HUD_COLOR_PANEL);
+    const ui_text_style_t style = {.color = UI_HUD_COLOR_TEXT, .shadow = UI_HUD_COLOR_SHADOW, .scale = scale};
+    ui_font_draw(font, canvas, left + margin, top + margin, text, style);
+}
+
 void ui_hud_debug_draw(ui_canvas_t *canvas, const ui_font_t *font, const ui_hud_debug_t *debug) {
     const uint32_t scale = ui_hud_debug_scale(canvas->width, canvas->height);
     const int32_t size = (int32_t)scale;

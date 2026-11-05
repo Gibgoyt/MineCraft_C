@@ -377,7 +377,7 @@ static int32_t bench_ground_z(const bench_t *bench, int32_t x, int32_t y) {
 }
 
 static bool bench_biome_is(const terrain_t *terrain, int32_t x, int32_t y, uint8_t biome) {
-    const terrain_climate_area_t area = {
+    const terrain_fields_area_t area = {
         .origin_x = x - (int32_t)BENCH_PLACE_INSIDE,
         .origin_y = y - (int32_t)BENCH_PLACE_INSIDE,
         .step_x = (int32_t)BENCH_PLACE_INSIDE,

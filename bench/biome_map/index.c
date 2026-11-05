@@ -132,7 +132,7 @@ static void bmap_row_job(job_worker_t *worker, void *borrowed_argument) {
         if (row >= BMAP_SIDE) {
             break;
         }
-        const terrain_climate_area_t area = {
+        const terrain_fields_area_t area = {
             .origin_x = run->origin_x,
             .origin_y = run->origin_y + (int32_t)(row * BMAP_STEP),
             .step_x = (int32_t)BMAP_STEP,

@@ -1115,7 +1115,7 @@ TEST(the_clock_runs_through_the_real_threads_and_the_setting_stops_it) {
                                       .width = width,
                                       .height = height,
                                       .features_off = pass == 0u ? 0u : (uint16_t)SHADE_FEATURE_DAY_CYCLE,
-                                      ._pad0 = {0}};
+                                      .show_date = 0u};
         REQUIRE(game_open(game, &config));
         CHECK_NEAR(game->day_fraction, GAME_DAY_START, 0.0f64);
         game_day_set(game, 0.9f64);
@@ -1287,7 +1287,7 @@ TEST(the_cost_is_measured_on_real_terrain_and_under_a_forest) {
                                   .width = SK_COST_WIDTH,
                                   .height = SK_COST_HEIGHT,
                                   .features_off = 0u,
-                                  ._pad0 = {0}};
+                                  .show_date = 0u};
     REQUIRE(game_open(game, &config));
     REQUIRE(game_settle(game));
     render_t *const render = rig.render;

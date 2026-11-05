@@ -1174,8 +1174,11 @@ TEST(the_real_threads_each_keep_to_their_own_lane) {
     CHECK(game->borrowed_lane_gpu == main_lane);
 
     enum : uint32_t { WIDTH = 160u, HEIGHT = 90u };
-    const game_config_t config = {
-        .render_distance = 4u, .width = WIDTH, .height = HEIGHT, .features_off = SHADE_FEATURE_DAY_CYCLE, ._pad0 = {0}};
+    const game_config_t config = {.render_distance = 4u,
+                                  .width = WIDTH,
+                                  .height = HEIGHT,
+                                  .features_off = SHADE_FEATURE_DAY_CYCLE,
+                                  .show_date = 0u};
     REQUIRE(game_open(game, &config));
     const uint64_t bytes = post_xrgb_bytes(WIDTH, HEIGHT);
     uint8_t *const screen = pr_aligned(t, bytes);

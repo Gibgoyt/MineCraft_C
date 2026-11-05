@@ -238,7 +238,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `bench` | Which block is half a bench two voxels long, and where its other half is, for placing, mining and blasts alike. Not in the plan's list | 003 phase 4 |
 | `terrain` | (the Owner) | `terrain_init`, `terrain_deinit`: one seed, and the region and arena its parts borrow | 10.1 |
 | | `rng noise` | Seeded streams and position hashes; fractal fields sampled in bulk on `asm/src/noise` | 10.1 |
-| | `climate` | Continentalness, erosion, ridges, temperature, humidity, weirdness | 10.2 |
+| | `fields` | Continentalness, erosion, ridges, temperature, humidity, weirdness | 10.2 |
 | | `density` | Height splines and 3D terrain shape, `z ∈ [-250, 1250]`; bedrock at `-250`, water up to `0` | 10.3 |
 | | `hydrology` | Sea level 0, rivers, oceans, beaches, aquifers, the lava level under the world at `-230` | 10.4 |
 | | `cave ore` | Cheese, spaghetti and noodle caves cut from any box; deepslate by depth, and the table of rock and ore veins by depth | 10.5 |
@@ -256,6 +256,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `settle` | One thread, until all the eye's place wants is on the card. Not in the plan's list: split off at the Phase 14 gate, as `input` was | 14 gate |
 | | `tick` | One tick of the world, `game_sim_tick`. Not in the plan's list: split off at the Phase 18 gate, at the standard's 1500 lines | 18 gate |
 | | `input` | A poll of real input or a script's tick turned into flying, the body's wishes, the hotbar and the overlay's key. Not in the plan's list: split off at the Phase 14 gate, when `game` passed its size for splitting | 14 gate |
+| `calendar` | | The date from the world clock: year, day of the year, week, season label, the HUD's date line, and which weeks a late census runs. Pure arithmetic with no state, on the bottom row of section 11 beside `math` and `time` | Plan 004 phase 1 |
 | `physics` | `collision raycast` | Swept AABB; DDA block targeting | 12.1, 12.2 |
 | `player` | `movement camera` | Walk, jump, swim, look | 12.1, 12.2 |
 | | `combat` | The attack: aim, swing, strength | 15.7 |
@@ -278,18 +279,19 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | `ui` | (the Owner) | `ui_init`, `ui_deinit`: the region and arenas its parts borrow; `ui_frame_begin`, `ui_frame_begin_over`, `ui_frame_end`: a frame on a canvas | 14.1 |
 | | `compose` | Canvas, clipping, images and nine parts: every pixel through `asm/src/blend`. Not in the plan's list: `font` and `widget` both draw through it, and sit beside it | 14.1 |
 | | `font widget` | Bitmap font, widgets | 14.1 |
-| | `hud` | Crosshair, hotbar, hearts, drumsticks, bubbles of air, coordinates, debug overlay with FPS, per-stage times and coordinates | 14.2 |
+| | `hud` | Crosshair, hotbar, hearts, drumsticks, bubbles of air, coordinates, the date line, debug overlay with FPS, per-stage times and coordinates | 14.2, plan 004 phase 1 |
 | | `screen_inventory screen_crafting screen_furnace screen_chest` | Game screens. `screen_inventory` also holds what all four share: the ring from `main` to `sim`, the views back, the item pictures and the window, and the other three include it, as its README allows | 14.3 |
 | | `menu` | Main menu, world create and select, pause, loading | 14.4 |
 | | `menu/catalog` | Worlds on disk: each one's `world.meta`, what a typed name and seed turn into | 14.4 |
 | | `screen_settings` | **Render distance and all options** | 14.5 |
+| | `screen_census` | The weekly census screen over the stopped world: the week, the date and time, and Continue | Plan 004 phase 1 |
 | `settings` | (the Owner) | `settings_init`, `settings_deinit`, `settings_load`, `settings_save`: the values, and where they are kept | 14.5 |
 | | `persist` | Their ranges and defaults, and the file, with our own runtime parser | 14.5 |
 | `save` | (the Owner) | `save_init`, `save_deinit`, `save_open`, `save_close`: the region and arena its parts borrow, and the one world open | 16.1 |
 | | `world` | Seed + changed-section deltas, with versioned headers, replaced through a crash-safe rename | 16.1 |
 | | `world/record` | One section's record, to and from a delta file. Split off at the Phase 18 gate, at the standard's 1500 lines | 18 gate |
 | | `names` | A table's names as a list on disk, and what a saved list's numbers mean in this build, so that a new block or item ends no world | Plan 003 phase 1 |
-| | `state` | Player, inventory, entities, mobs, time, chests and furnaces, in a file that goes with one save of the blocks | 16.2 |
+| | `state` | Player, inventory, entities, mobs, time, the calendar, chests and furnaces, in a file that goes with one save of the blocks | 16.2, plan 004 phase 1 |
 | | `state/translate` | A state file from other tables rewritten in memory to this build's, by name, as it is opened | Plan 003 phase 1 |
 | | `autosave` | Every 30 s of world time: the sim copies out, a worker writes; the only writer while a game runs | 16.2 |
 
@@ -425,8 +427,9 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/world/edit/` | ctest `run_world_edit`: random edits against a brute-force array and brute-force flags, the log, each consumer's flags, and snapshots, with a real reader thread |
 | `tests/run/world/light/` | ctest `run_world_light`: incremental light against a separate full recompute on random edits, columns coming and going, running out of room or memory, exact values worked out by hand, and what an opaque block's faces see |
 | `tests/run/world/tick/` | ctest `run_world_sim` (named in its `test.cmake`): `run/src/world/tick/`: flow worked out by hand and against a separate flood fill, lava and water, falling blocks, leaf decay, crops, grass, columns coming and going, running out of room, the same world from the same seed, real terrain left alone, each rule's number from both sides, and light against a rebuild after real terrain has been simulated |
+| `tests/run/calendar/` | ctest `run_calendar`: `run/src/calendar/`, with no card: the worked examples, the day starting at 06:00, years rolling over with weeks carrying on, every week 7 days, every season boundary north and south, the date line, the census plan, and the same dates from 16 threads |
 | `tests/run/terrain/seed/` | ctest `run_terrain_seed`: `run/src/terrain/` with `rng` and `noise`, the same bytes from 1 worker and 16, any split of the work, and values pinned from a separate program and the scalar kernel |
-| `tests/run/terrain/climate/` | ctest `run_terrain_climate`: `run/src/terrain/climate/`: ranges, the spread its README promises, the same bytes from 1 worker and 16, any split of the work, and each value worked out by hand from its noise |
+| `tests/run/terrain/fields/` | ctest `run_terrain_fields`: `run/src/terrain/fields/`: ranges, the spread its README promises, the same bytes from 1 worker and 16, any split of the work, and each value worked out by hand from its noise |
 | `tests/run/terrain/density/` | ctest `run_terrain_density`: `run/src/terrain/density/`: the range limits on every corner of the climate and on real columns, bedrock at `-250`, water's top at `0`, values worked out by hand, any split of the work, and the same bytes from 1 worker and 16 |
 | `tests/run/terrain/hydrology/` | ctest `run_terrain_hydrology`: `run/src/terrain/hydrology/`: each column worked out by hand, rivers that hold water and reach the sea, oceans, beaches, aquifers that cannot flow, the lava level, any split of the work, and the same bytes from 1 worker and 16 |
 | `tests/run/terrain/cave/walk/` | ctest `run_terrain_cave_walk`: `bench/cave_walk/` finds and walks a way into a cave and down to `z = -150` on the default seed, and the built game walks the first by the tool's script and ends where the tool's body did |
@@ -467,6 +470,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/player/survival/` | ctest `run_player_survival`: `run/src/player/survival/`, with what `run/src/player/` and `run/src/game/` do with it: every rule's numbers by hand and by a real body in a real world, death and coming back, the bed, the same bytes, no heap, a real game on the card, and a script in the built program |
 | `tests/run/player/movement/` | ctest `run_player_movement`: `run/src/player/` with `movement`: each mode's measured speeds against the numbers in its README, the same bytes from the same intents, the threads' exchange and interpolation, and `run/src/game/`'s walking on the real card and threads, on fake input, and in the built program |
 | `tests/run/game/` | ctest `run_game`: the real loop on the real card and threads through `display_frames_run`, on fake kernels, with the guardian really forked |
+| `tests/run/game/census/` | ctest `run_game_census`: plan 004 phase 01's weekly census in a real game on the card: plain ticks, screens on and Continue, the day cycle off, a night slept through, a 100-day jump on the real threads, saves mid-week and with the screen up, the date line in the real game, and `fixtures/week.script` through the session's headless scene |
 | `tests/run/game/spawn/` | ctest `run_game_spawn`: `run/src/game/spawn/`, with no display and no card: what counts as land, the search's walk on made-up land and on none, and real seeds starting on real land |
 | `tests/run/ui/screens/` | ctest `run_ui_screens`, named by its path: `run/src/ui/` with its four `screen_*`, and what `run/src/game/` does with them: every slot's place at three scales, replays of real scripts in `fixtures/` held byte for byte to golden PNGs beside them, 20000 random clicks on each screen, closing with no room, the ring, no heap, every way a screen comes up and goes on the real card, a click over the real threads, and the built program |
 | `tests/run/ui/menu/` | ctest `run_ui_menu`: `run/src/ui/menu/` with `catalog`, and `run/src/game/session/`: what is typed against published vectors and by hand, worlds on disk with what is wrong with them, each screen on made-up input by numbers worked out by hand, every size, no heap, pictures held to hashes set after looking at them, the built program all the way round under `--headless` and its refusals, and the whole round on fake kernels with the real threads and a real guardian |
@@ -474,6 +478,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/save/state/` | ctest `run_save_state`: `run/src/save/state/` and `autosave/` on a small world: a file's bytes by hand, every part reloaded byte for byte and going on the same, flipped bits and forged numbers refused, a stuck write the sim does not wait for, a disk that refuses, children killed at every step of a save and at random moments with blocks and state checked to be one save, and what a save takes from the sim |
 | `tests/run/save/world/names/` | ctest `run_save_world_names`: a world saved under another list of blocks: one added at either end, one gone, each voxel compared by name, nothing on disk changed by opening, and an old-format or forged list refused |
 | `tests/run/save/state/names/` | ctest `run_save_state_names`: a state saved under other tables: every stack, drop, block number and body compared by name, what has gone taken out and the file still believed, recipes worked out again, and an old-format file refused |
+| `tests/run/save/state/calendar/` | ctest `run_save_state_calendar`: the calendar section of plan 004 phase 01: it reloads exactly, a version 3 file without one opens with the caller's new calendar and saves as version 4, and calendars that cannot be true are refused |
 | `tests/run/save/state/game/` | ctest `run_save_state_game`: frames of the real threaded game on the card with and without saves, that game reloaded byte for byte, a column that will not fit, and the built program killed in play and run on |
 | `tests/run/save/power/` | ctest `run_save_power`: every file system call of a world being made and saved recorded, then each thing a power cut could leave of it, by what `fsync` promises, opened and checked as one whole save no older than the last one reported |
 | `tests/run/failure/` | ctest `run_failure`: what happens when things go away. A real fault on the real card under a real game, and a hang; the kernel's own `ENOSPC` on a small `tmpfs` in a user namespace, with no card and under a game; keyboards, mice and the display pulled out, and a VT switch while a world opens and before the console is taken, on fake kernels. What the tests share is in `fixtures/rig.h` |
@@ -565,7 +570,7 @@ main
      ├─ render ─► gpu_bridge ─► (cuda/)
      ├─ terrain, world
      ├─ display, input, texture, audio
-     └─ job, thread, file, time, math, simd, profiler ─► (asm/)
+     └─ job, thread, file, time, math, calendar, simd, profiler ─► (asm/)
          └─ arena, heap, log, assert, types
 ```
 
@@ -640,6 +645,7 @@ Split it into sub-directories. Remember that going deeper changes the tier: code
 | How an axe brings down a tree | `run/src/player/felling/` |
 | Height limit and sea level | `config/machine.yaml`, `world:` |
 | Render distance setting | `run/src/ui/screen_settings/`, `run/src/settings/` |
+| The date and the census | `run/src/calendar/`, the world clock and the census in `run/src/game/README.md`, the screen in `run/src/ui/screen_census/` |
 | What is on disk for a world, and what a crash does to it | `run/src/save/world/README.md` |
 | What a save holds besides blocks, and how the two stay one save | `run/src/save/state/README.md` |
 | When saves happen, and what they cost a frame | `run/src/save/autosave/README.md` |

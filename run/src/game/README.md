@@ -11,7 +11,10 @@
 - `game_open`, `game_close`: a world, its blocks on the card, and its pictures, with the effects `game_config_t.features_off` leaves on.
 - `game_reconfigure`: the same world goes on with another config.
 - `game_view_refresh`, `game_picture_held`: what a changed config has done to the picture, and the last picture at the display's size, for what shows one with no frame going.
-- `game_day_set`: the time of day, from where the clock goes on. Mid-morning unless told otherwise.
+- `game_day_set`: the time of day, from where the clock goes on. Mid-morning unless told otherwise. It leaves the world clock's whole days alone.
+- `game_clock_set`: the whole world clock, days and time of day: for tests and, from plan 004 phase 02, `--day-of-year`.
+- `game_census_screens_set`, `game_census_hook_set`, `game_census_take`: the weekly census, plan 004 phase 01. Below.
+- `game_calendar_date`, `game_calendar_south`, `game_calendar_line`: main's clock as a date, and the HUD's date line, in `report/`.
 - `game_sim_step`, `game_fly`, `game_settle`: a step of streaming, a step of flying, and running the sim and upload here until the card holds all the eye's place wants.
 - `game_headless_scene`: what `display_headless_run` drives. One thread, no clock, and one script gives one set of pictures.
 - `game_loop_start`, `game_loop_frame`, `game_loop_stop`: the real threads, and a frame on the main thread.
@@ -109,6 +112,12 @@ The far field samples terrain and writes over it what the save holds: `save_worl
 A world opened through `game/session` has a `save_t` as well: `game_save_set` before it opens. Each column job then writes what is saved over what it generates, and `game_sim_step` captures a column's changes before it unloads it. If that fails, the column stays, and is offered again next step. See `run/src/save/world/README.md`.
 
 One day is 1200 seconds, of whatever `game_loop_frame` or a script's ticks say has passed, so a script's pictures depend on its ticks and on nothing else. `main` keeps it, as a real frame already knows how long it took, and the gpu thread reads it before each frame. A frame out of date by one is the sun a few millionths of a day behind, so a relaxed atomic is plenty. `SHADE_FEATURE_DAY_CYCLE` off stops the clock where it is. A save's time of day goes through `game_day_set` when a world opens: `run/src/save/state/`.
+
+## The world clock and the census
+
+Plan 004 phase 01. Beside the time of day main keeps `clock_days`, the whole days since the midnight before the world's first morning, and hands both to the other threads as one relaxed 64-bit atomic, `clock_units`: days in the top 32 bits, the time of day in 1/2^32 of a day below, a `calendar_clock_t`. The clock keeps the days a frame carries past midnight, waking from a night goes to the next 06:00 (a day on if it is 06:00 or later), and it stands still while paused or with the day cycle off. `run/src/calendar/` makes a date of it. A new world is `D0 = 79`, Year 1, Day 80, week 11. The calendar is saved in the state file's calendar section, with `last_census_week`.
+
+At the start of every tick, `game_census_check` in `tick/` asks whether the week number has gone up since `last_census_week`. If it has, it calls `census_week` once for each week passed, in order, the oldest past `CALENDAR_FULL_WEEKS_MAX` flagged fast, moves `last_census_week` on, and logs it. Phase 07 puts its weekly climate work in that hook; with nothing there nothing happens. With `game_census_screens_set`, which the session calls before a world opens, it then sets `paused` and `census_latch`, with release, and that tick does not run: `tick_count` stays. The session takes the latch with `game_census_take` and opens the census screen. Without it, as in `--test-world` and tests that drive a `game_t`, the world goes on. `last_census_week` moves on before the screen is answered, so a save while it is up holds the new week, and being killed then cannot run it twice.
 
 ## The guardian's fork
 

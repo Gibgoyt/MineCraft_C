@@ -555,7 +555,7 @@ static void cave_tile(const terrain_cave_t *cave, cave_output_t *output, const c
     cave_plane_t plane_a;
     cave_plane_t plane_b;
     lattice.count = span->side_x * span->side_y;
-    const terrain_climate_area_t area = {
+    const terrain_fields_area_t area = {
         .origin_x = (int32_t)(span->cell_x * (int64_t)TERRAIN_CAVE_CELL),
         .origin_y = (int32_t)(span->cell_y * (int64_t)TERRAIN_CAVE_CELL),
         .step_x = (int32_t)TERRAIN_CAVE_CELL,

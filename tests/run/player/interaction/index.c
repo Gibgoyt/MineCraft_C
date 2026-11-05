@@ -1404,7 +1404,7 @@ static void pi_game_end(test_context_t *t, pi_game_rig_t *rig) {
 }
 
 static const game_config_t pi_small_game = {
-    .render_distance = 5u, .width = PI_WIDTH, .height = PI_HEIGHT, ._pad0 = {0}};
+    .render_distance = 5u, .width = PI_WIDTH, .height = PI_HEIGHT, .show_date = 0u};
 
 /* Frames with these buttons, until the condition holds or the seconds have gone. */
 static bool pi_frames(pi_game_rig_t *rig, display_buffer_t *target, bool attack, bool place, bool jump,

@@ -3,6 +3,7 @@
 
 #include "run/physics/fixtures/test_world.h"
 
+#include "calendar/index.h"
 #include "file/index.h"
 #include "heap/index.h"
 #include "job/index.h"
@@ -131,7 +132,7 @@ typedef struct ss_rig_t {
     const char *root;            /* 96 */
     save_state_parts_t parts;    /* 104 */
 } ss_rig_t;
-static_assert(sizeof(ss_rig_t) == 176);
+static_assert(sizeof(ss_rig_t) == 200);
 
 static bool ss_rig_begin(test_context_t *t, ss_rig_t *rig, const char *root, bool with_jobs) {
     memset(rig, 0, sizeof(*rig));
@@ -290,6 +291,9 @@ static void ss_fill(ss_rig_t *rig) {
 
     rig->parts.time = (save_state_time_t){
         .world_ticks = 1234u, .day_units = 0x12345678u, .yaw = 1.25f32, .pitch = -0.5f32, ._pad0 = {0}};
+    /* The plan's world 1000 days old, whose census has run for week 154. */
+    rig->parts.calendar = (save_state_calendar_t){
+        .clock_days = 1000u, .last_census_week = 154u, .day_zero = CALENDAR_DAY_ZERO, ._pad0 = {0}};
 }
 
 static void ss_no_spill(void *context, const item_stack_t *stack, const int32_t cell[3]) {
@@ -318,11 +322,13 @@ TEST(a_file_is_these_bytes_by_hand) {
     REQUIRE(save_init(save));
     REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
     CHECK_EQ_U64(ss_state_files(root), 0u);
-    const save_state_parts_t parts = {.time = {.world_ticks = 0x0102030405060708ull,
-                                               .day_units = 0x11223344u,
-                                               .yaw = 1.5f32,
-                                               .pitch = -2.0f32,
-                                               ._pad0 = {0}}};
+    const save_state_parts_t parts = {
+        .time = {.world_ticks = 0x0102030405060708ull,
+                 .day_units = 0x11223344u,
+                 .yaw = 1.5f32,
+                 .pitch = -2.0f32,
+                 ._pad0 = {0}},
+        .calendar = {.clock_days = 1000u, .last_census_week = 154u, .day_zero = CALENDAR_DAY_ZERO, ._pad0 = {0}}};
     save_state_capture(&save->state, &parts);
     REQUIRE(save_state_write(&save->state, 0u) == SAVE_WORLD_OK);
     uint64_t bytes = 0u;
@@ -330,7 +336,7 @@ TEST(a_file_is_these_bytes_by_hand) {
     /* The names are always there, and always last: their own bytes are run_save_world_names's. */
     uint8_t *const names = test_alloc(t, SAVE_STATE_NAMES_BYTES_MAX);
     const uint64_t names_bytes = save_names_write_all(names);
-    const uint64_t whole = 112u + sizeof(save_state_section_t) + names_bytes;
+    const uint64_t whole = 152u + sizeof(save_state_section_t) + names_bytes;
     REQUIRE(bytes == whole);
 
     uint8_t *const expected = test_alloc(t, whole);
@@ -342,7 +348,7 @@ TEST(a_file_is_these_bytes_by_hand) {
     memcpy(expected + 24, &table_hash, 8u);
     const uint64_t sections_bytes = whole - 72u;
     memcpy(expected + 32, &sections_bytes, 8u);
-    const uint32_t version = 3u, header_bytes = 72u, section_count = 2u;
+    const uint32_t version = 4u, header_bytes = 72u, section_count = 3u;
     memcpy(expected + 48, &version, 4u);
     memcpy(expected + 52, &header_bytes, 4u);
     memcpy(expected + 56, &section_count, 4u);
@@ -355,10 +361,17 @@ TEST(a_file_is_these_bytes_by_hand) {
     memcpy(expected + 96, &parts.time.day_units, 4u);
     memcpy(expected + 100, &parts.time.yaw, 4u);
     memcpy(expected + 104, &parts.time.pitch, 4u);
+    /* Then the calendar: 24 bytes of id 12, right after the time. */
+    const uint32_t calendar_id = 12u;
+    memcpy(expected + 112, &section_bytes, 8u);
+    memcpy(expected + 120, &calendar_id, 4u);
+    memcpy(expected + 128, &parts.calendar.clock_days, 8u);
+    memcpy(expected + 136, &parts.calendar.last_census_week, 8u);
+    memcpy(expected + 144, &parts.calendar.day_zero, 4u);
     const uint32_t names_id = SAVE_STATE_SECTION_NAMES;
-    memcpy(expected + 112, &names_bytes, 8u);
-    memcpy(expected + 120, &names_id, 4u);
-    memcpy(expected + 128, names, names_bytes);
+    memcpy(expected + 152, &names_bytes, 8u);
+    memcpy(expected + 160, &names_id, 4u);
+    memcpy(expected + 168, names, names_bytes);
     const uint64_t sections_hash = ss_fnv(expected + 72, sections_bytes);
     memcpy(expected + 40, &sections_hash, 8u);
     const uint64_t checksum = ss_fnv(expected, 64u);
@@ -412,6 +425,9 @@ TEST(every_part_reloads_byte_for_byte_and_goes_on_the_same) {
     REQUIRE(save_state_apply(&second->save->state, &second->parts));
     CHECK_EQ_U64(second->parts.time.world_ticks, 1234u);
     CHECK_EQ_U64(second->parts.time.day_units, 0x12345678u);
+    CHECK_EQ_U64(second->parts.calendar.clock_days, 1000u);
+    CHECK_EQ_U64(second->parts.calendar.last_census_week, 154u);
+    CHECK_EQ_U64(second->parts.calendar.day_zero, CALENDAR_DAY_ZERO);
     CHECK_EQ_U64(inventory_count(&second->item->inventory, ITEM_ID_DIRT), 40u);
     CHECK_EQ_U64(second->held->count, 3u);
     CHECK_EQ_U64(second->item->equipment.armor[1].item, ITEM_ID_COPPER_CHESTPLATE);

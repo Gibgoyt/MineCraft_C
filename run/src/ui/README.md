@@ -1,6 +1,6 @@
 # run/src/ui
 
-**Purpose:** what the player sees on top of the world. The Owner of `compose`, `font`, `widget`, `hud`, the game screens, `menu` and `screen_settings`.
+**Purpose:** what the player sees on top of the world. The Owner of `compose`, `font`, `widget`, `hud`, the game screens, `menu`, `screen_settings` and `screen_census`.
 **Tier:** Owner.
 **Owns:** `owned_region`, 2 MiB, with `arena_tables` (1.5 MiB, of which about 0.95 is in use with the HUD's and the game screens' item pictures) and `arena_frame` (0.5 MiB) over it, and `owned_composite`, one frame's pixels, reserved the first time a picture of that size needs it and grown only if a larger one comes. A mode changes far less often than a frame comes, so the heap's counters stay flat in play: ctest `run_ui_font` checks it.
 **Lifetime:** Process for `ui_t`, its region and `arena_tables`. Frame for `arena_frame`, reset by each `ui_frame_begin`.
@@ -19,7 +19,7 @@ Between begin and end, `ui->canvas`, `ui->font`, `ui->widget`, `ui->hud` and `ui
 **May be called by:** `run/src/main/` for the pair, and `run/src/game/` for the frame.
 **Depends on:** `heap`, `arena`, `assert`, `texture`, and its parts below.
 
-**Parts:** `compose`: rects, images, and every pixel through the blend kernel. `font`: the bitmap font. `widget`: panels, labels, buttons, checkboxes, sliders, text fields, slots, bars, tooltips and the pointer. `hud`: the crosshair, hotbar, hearts, drumsticks and debug overlay. `screen_inventory`: the inventory, and what all the game screens share. `screen_crafting`, `screen_furnace`, `screen_chest`: the others. `menu`: the main menu, the list of worlds, making a world, and pause. `screen_settings`: the Settings screen.
+**Parts:** `compose`: rects, images, and every pixel through the blend kernel. `font`: the bitmap font. `widget`: panels, labels, buttons, checkboxes, sliders, text fields, slots, bars, tooltips and the pointer. `hud`: the crosshair, hotbar, hearts, drumsticks and debug overlay. `screen_inventory`: the inventory, and what all the game screens share. `screen_crafting`, `screen_furnace`, `screen_chest`: the others. `menu`: the main menu, the list of worlds, making a world, and pause. `screen_settings`: the Settings screen. `screen_census`: the weekly census screen, plan 004 phase 01.
 
 ## The path of a frame
 

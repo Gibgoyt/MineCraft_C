@@ -6,7 +6,7 @@
 #include "heap/index.h"
 #include "terrain/biome/index.h"
 #include "terrain/cave/index.h"
-#include "terrain/climate/index.h"
+#include "terrain/fields/index.h"
 #include "terrain/density/index.h"
 #include "terrain/feature/index.h"
 #include "terrain/hydrology/index.h"
@@ -31,12 +31,12 @@ enum : uint32_t {
      * never stitched to a different landscape. tests/run/terrain/feature/ holds this number to the land. */
     TERRAIN_GENERATOR_VERSION = 1u,
 };
-static_assert(TERRAIN_NOISE_FIELDS_MAX * sizeof(terrain_noise_field_t) + sizeof(terrain_climate_t) +
+static_assert(TERRAIN_NOISE_FIELDS_MAX * sizeof(terrain_noise_field_t) + sizeof(terrain_fields_t) +
                   sizeof(terrain_density_t) + sizeof(terrain_hydrology_t) + sizeof(terrain_cave_t) +
                   sizeof(terrain_ore_t) + sizeof(terrain_biome_t) + sizeof(terrain_surface_t) +
                   sizeof(terrain_feature_t) <
               TERRAIN_TABLES_BYTES);
-static_assert((uint32_t)TERRAIN_CLIMATE_NOISE_FIELDS + (uint32_t)TERRAIN_DENSITY_NOISE_FIELDS +
+static_assert((uint32_t)TERRAIN_FIELDS_NOISE_FIELDS + (uint32_t)TERRAIN_DENSITY_NOISE_FIELDS +
                   (uint32_t)TERRAIN_HYDROLOGY_NOISE_FIELDS + (uint32_t)TERRAIN_CAVE_NOISE_FIELDS +
                   (uint32_t)TERRAIN_SURFACE_NOISE_FIELDS <=
               (uint32_t)TERRAIN_NOISE_FIELDS_MAX);
@@ -54,7 +54,7 @@ typedef struct terrain_t {
     heap_region_t owned_tables;              /* 64 */
     terrain_noise_bank_t noise_bank;         /* 80 */
     uint64_t seed;                           /* 104 */
-    terrain_climate_t *borrowed_climate;     /* 112: in arena_tables */
+    terrain_fields_t *borrowed_fields;       /* 112: in arena_tables */
     terrain_density_t *borrowed_density;     /* 120: in arena_tables */
     terrain_hydrology_t *borrowed_hydrology; /* 128: in arena_tables */
     terrain_cave_t *borrowed_cave;           /* 136: in arena_tables */
@@ -69,7 +69,7 @@ static_assert(alignof(terrain_t) == 64);
 static_assert(offsetof(terrain_t, owned_tables) == 64);
 static_assert(offsetof(terrain_t, noise_bank) == 80);
 static_assert(offsetof(terrain_t, seed) == 104);
-static_assert(offsetof(terrain_t, borrowed_climate) == 112);
+static_assert(offsetof(terrain_t, borrowed_fields) == 112);
 static_assert(offsetof(terrain_t, borrowed_density) == 120);
 static_assert(offsetof(terrain_t, borrowed_hydrology) == 128);
 static_assert(offsetof(terrain_t, borrowed_cave) == 136);

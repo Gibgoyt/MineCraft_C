@@ -13,7 +13,7 @@
 - `terrain_biome_columns_area`, `terrain_biome_column_at`, `terrain_biome_at`: the same from the world.
 
 **May be called by:** `terrain` and its parts.
-**Depends on:** `terrain/climate` and `terrain/hydrology` (its siblings), `arena`, `assert`, `types`, and the generated `tables/biomes/`.
+**Depends on:** `terrain/fields` and `terrain/hydrology` (its siblings), `arena`, `assert`, `types`, and the generated `tables/biomes/`.
 
 ## Choosing a column's biome
 

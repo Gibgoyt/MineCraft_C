@@ -29,12 +29,13 @@
     sound_volume_percent: 70
     vsync: true
     show_coordinates: true
+    show_date: true
     effect_shapes: true
     ...
 
 It is the flat part of YAML and nothing more, so a person can read and change it, and any YAML tool agrees.
 
-A line a file does not have leaves that setting at its default, with no warning. So a file from before `show_coordinates` was added needs no new version: it loads, and shows them.
+A line a file does not have leaves that setting at its default, with no warning. So a file from before `show_coordinates` was added needs no new version: it loads, and shows them. The same for `show_date`, the HUD's date line from plan 004 phase 01: a file without it shows the date.
 
 - The first line that says anything says which version this is. Any other version sets nothing, since its lines may mean something else.
 - Lines come in any order, and the last of two for one key wins. What is missing stays what it was.

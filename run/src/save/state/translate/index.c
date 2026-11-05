@@ -365,6 +365,7 @@ static bool state_translate_section(state_translate_t *translate, uint32_t id, u
     case SAVE_STATE_SECTION_SPAWN:
     case SAVE_STATE_SECTION_MINDS:
     case SAVE_STATE_SECTION_NAMES:
+    case SAVE_STATE_SECTION_CALENDAR:
         return true; /* no number in these is a place in a table */
     }
     return false;

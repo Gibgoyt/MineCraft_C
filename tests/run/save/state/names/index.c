@@ -36,7 +36,7 @@ typedef struct ns_rig_t {
     const char *root;         /* 80 */
     save_state_parts_t parts; /* 88 */
 } ns_rig_t;
-static_assert(sizeof(ns_rig_t) == 160);
+static_assert(sizeof(ns_rig_t) == 184);
 
 /* An older build's table, this one's with one name left out, or with a name no build has in its place. */
 typedef struct ns_table_t {

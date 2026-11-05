@@ -437,7 +437,7 @@ static void feature_stages(const terrain_feature_t *feature, terrain_surface_til
 static void feature_chunk_load(const terrain_feature_t *feature, int32_t chunk_x, int32_t chunk_y,
                                terrain_feature_chunk_t *chunk) {
     terrain_biome_column_t columns[TERRAIN_FEATURE_CHUNK_COLUMNS];
-    const terrain_climate_area_t area = {
+    const terrain_fields_area_t area = {
         .origin_x = chunk_x * (int32_t)TERRAIN_FEATURE_CHUNK,
         .origin_y = chunk_y * (int32_t)TERRAIN_FEATURE_CHUNK,
         .step_x = 1,
@@ -448,7 +448,7 @@ static void feature_chunk_load(const terrain_feature_t *feature, int32_t chunk_x
     terrain_biome_columns_area(feature->borrowed_biome, &area, columns);
 
     terrain_hydrology_column_t lattice[FEATURE_LATTICE];
-    const terrain_climate_area_t around = {
+    const terrain_fields_area_t around = {
         .origin_x = area.origin_x,
         .origin_y = area.origin_y,
         .step_x = (int32_t)FEATURE_LATTICE_STEP,

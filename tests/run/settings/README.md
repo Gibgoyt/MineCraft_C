@@ -13,7 +13,7 @@ Compute only. No real display, console or input device is opened: the flips are 
 
 What it holds to:
 
-- **Kept:** the defaults, the file for them byte for byte, 20000 random sets of values written and read back, a file in any order with comments, every kind of wrong line and each setting past both ends, another version setting nothing, a file from before `show_coordinates` loading and showing them, a save over what was there and one that cannot be done, all through `settings_load` and `settings_save` too.
+- **Kept:** the defaults, the file for them byte for byte, 20000 random sets of values written and read back, a file in any order with comments, every kind of wrong line and each setting past both ends, another version setting nothing, a file from before `show_coordinates` loading and showing them, `show_date` kept both ways and a file without it showing the date, a save over what was there and one that cannot be done, all through `settings_load` and `settings_save` too.
 - **The screen,** on input frames made here, clicking where the layout puts things, by numbers worked out by hand: each slider through every value by the wheel and to each end by a drag, VSync, Coordinates and all seventeen effects each flipping its one bit, Done, Back and Esc, the labels for what takes a new world or a new start, no heap in 200 frames, and every size.
 - **By hand:** what a config comes to, field of view, the mouse with what is past a whole count kept, a small picture brought up, and how many workers run.
 - **Flips,** on a fake kernel watched at the ioctl: with and without a wait, and a driver that says no.

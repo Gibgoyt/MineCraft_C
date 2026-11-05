@@ -1362,7 +1362,7 @@ static void ps_game_end(test_context_t *t, ps_game_rig_t *rig) {
 }
 
 static const game_config_t ps_small_game = {
-    .render_distance = 5u, .width = PS_WIDTH, .height = PS_HEIGHT, ._pad0 = {0}};
+    .render_distance = 5u, .width = PS_WIDTH, .height = PS_HEIGHT, .show_date = 0u};
 
 /* The headless scene's ticks, as a script gives them. */
 typedef struct ps_script_t {

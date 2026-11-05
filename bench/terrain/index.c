@@ -96,7 +96,7 @@ static bool bench_find(const terrain_t *terrain, biome_id_t biome, int32_t *out_
     const int32_t half = (int32_t)(BENCH_SEARCH_SIDE * BENCH_SEARCH_STEP / 2u);
     for (uint32_t row = 0u; row < BENCH_SEARCH_SIDE; row++) {
         for (uint32_t part = 0u; part < BENCH_SEARCH_SIDE / 256u; part++) {
-            const terrain_climate_area_t area = {
+            const terrain_fields_area_t area = {
                 .origin_x = -half + (int32_t)(part * 256u * BENCH_SEARCH_STEP),
                 .origin_y = -half + (int32_t)(row * BENCH_SEARCH_STEP),
                 .step_x = (int32_t)BENCH_SEARCH_STEP,
