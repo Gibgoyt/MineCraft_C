@@ -26,6 +26,9 @@ enum : int32_t {
     /* What the ground may fall away by under a wide trunk, by feature_tree_stands, and more than that under a mangrove's roots. */
     PF_FOOT_GAP = 2,
     PF_ROOT_GAP = 6,
+    /* Heights a tree is cut at, from the foot, and the highest of them that the eye of a body on the ground is on. */
+    PF_CUT_LEVELS = 9,
+    PF_CUT_LEVEL_EYE = 1,
 };
 
 enum : uint32_t {
@@ -38,6 +41,7 @@ enum : uint32_t {
     PF_TICKS_MAX = 400u,
     PF_WALL_SIZE = 5u,
     PF_UNLIMITED = UINT32_MAX,
+    PF_SEEDS_CUT = 2u,
 };
 
 typedef struct pf_rig_t {
@@ -602,6 +606,126 @@ TEST(a_column_not_loaded_stops_the_walk_and_nothing_goes_wrong) {
     /* Against what is not loaded, which might hold it: the rule says it stays. The other has only air between. */
     CHECK_EQ_U64(pf_block(rig, edge, PF_Y + 1, PF_Z + 5), BLOCK_ID_OAK_LEAVES);
     CHECK_EQ_U64(pf_block(rig, edge - 1, PF_Y, PF_Z + 5), BLOCK_ID_AIR);
+    pf_end(rig);
+}
+
+/* ---- Wherever it is cut ------------------------------------------------------------------------------------------------ */
+
+/* Logs of this wood the ground does not hold: not joined, by the corners the walk goes by, to one at the level of the foot. */
+static uint32_t pf_logs_floating(const pf_rig_t *rig, uint16_t log, uint8_t *held, uint32_t *queue) {
+    const terrain_density_box_t box = pf_tree_box();
+    const uint32_t across = box.count_x, floor_size = box.count_x * box.count_y;
+    uint32_t tail = 0u, logs = 0u;
+    for (uint32_t i = 0u; i < PF_VOXELS; i++) {
+        int32_t x = 0, y = 0, z = 0;
+        pf_voxel_place(&box, i, &x, &y, &z);
+        held[i] = 0u;
+        if (pf_block(rig, x, y, z) == log) {
+            logs++;
+            if (z <= PF_Z) {
+                held[i] = 1u;
+                queue[tail++] = i;
+            }
+        }
+    }
+    for (uint32_t head = 0u; head < tail; head++) {
+        int32_t x = 0, y = 0, z = 0;
+        pf_voxel_place(&box, queue[head], &x, &y, &z);
+        for (int32_t dz = -1; dz <= 1; dz++) {
+            for (int32_t dy = -1; dy <= 1; dy++) {
+                for (int32_t dx = -1; dx <= 1; dx++) {
+                    const int32_t at_x = x + dx - box.origin_x, at_y = y + dy - box.origin_y;
+                    const int32_t at_z = z + dz - box.origin_z;
+                    if (at_x < 0 || at_y < 0 || at_z < 0 || at_x >= PF_ACROSS || at_y >= PF_ACROSS || at_z >= PF_TALL) {
+                        continue;
+                    }
+                    const uint32_t next = (uint32_t)at_z * floor_size + (uint32_t)at_y * across + (uint32_t)at_x;
+                    if (held[next] == 0u && pf_block(rig, x + dx, y + dy, z + dz) == log) {
+                        held[next] = 1u;
+                        queue[tail++] = next;
+                    }
+                }
+            }
+        }
+    }
+    return logs - tail;
+}
+
+static bool pf_is_solid(const pf_rig_t *rig, int32_t x, int32_t y, int32_t z) {
+    return (block_defs[pf_block(rig, x, y, z)].flags & BLOCK_FLAG_SOLID) != 0u;
+}
+
+/* Vines with nothing beside or over them, or over the strand they hang from. */
+static uint32_t pf_vines_floating(const pf_rig_t *rig) {
+    const terrain_density_box_t box = pf_tree_box();
+    uint32_t floating = 0u;
+    for (uint32_t i = 0u; i < PF_VOXELS; i++) {
+        int32_t x = 0, y = 0, z = 0;
+        pf_voxel_place(&box, i, &x, &y, &z);
+        if (pf_block(rig, x, y, z) != BLOCK_ID_VINE) {
+            continue;
+        }
+        bool held = false;
+        for (int32_t at = z; !held; at++) {
+            held = pf_is_solid(rig, x, y, at + 1) || pf_is_solid(rig, x + 1, y, at) || pf_is_solid(rig, x - 1, y, at) ||
+                   pf_is_solid(rig, x, y + 1, at) || pf_is_solid(rig, x, y - 1, at);
+            if (pf_block(rig, x, y, at + 1) != BLOCK_ID_VINE) {
+                break;
+            }
+        }
+        floating += held ? 0u : 1u;
+    }
+    return floating;
+}
+
+/* The tests above cut at the foot. A person cuts where the eye is, or higher, and on a tree with branches. Above a fork, what the other branch holds
+ * stands on the stump and so stays: that is no floating wood. */
+TEST(wherever_a_tree_is_cut_no_wood_is_left_floating) {
+    uint16_t *const blocks = test_alloc(t, PF_VOXELS * sizeof(uint16_t));
+    uint8_t *const held = test_alloc(t, PF_VOXELS);
+    uint32_t *const queue = test_alloc(t, PF_VOXELS * sizeof(uint32_t));
+    pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
+    REQUIRE(pf_begin(t, rig));
+    const terrain_density_box_t box = pf_tree_box();
+    uint32_t cuts = 0u;
+    for (uint32_t k = 0u; k < TERRAIN_FEATURE_TREES; k++) {
+        const terrain_feature_tree_t kind = (terrain_feature_tree_t)k;
+        const uint16_t log = pf_kind_log(kind);
+        for (uint32_t s = 0u; s < PF_SEEDS_CUT; s++) {
+            pf_paint(blocks, kind, 0x51ull * s + k, 0, pf_lift_of(kind));
+            for (int32_t level = 0; level < PF_CUT_LEVELS; level++) {
+                int32_t cut_x = 0, cut_y = 0;
+                const int32_t cut_z = PF_Z + level;
+                bool found = false;
+                for (uint32_t i = 0u; i < PF_VOXELS && !found; i++) {
+                    int32_t x = 0, y = 0, z = 0;
+                    pf_voxel_place(&box, i, &x, &y, &z);
+                    if (blocks[i] == log && z == cut_z) {
+                        cut_x = x;
+                        cut_y = y;
+                        found = true;
+                    }
+                }
+                if (!found) {
+                    continue;
+                }
+                pf_place_tree(t, rig, blocks);
+                CHECK(pf_chop(rig, cut_x, cut_y, cut_z));
+                CHECK(pf_settle(rig));
+                cuts++;
+                CHECK_EQ_U64(pf_logs_floating(rig, log, held, queue), 0u);
+                CHECK_EQ_U64(pf_vines_floating(rig), 0u);
+                uint32_t logs = 0u, leaves = 0u, vines = 0u;
+                pf_left(rig, log, cut_z, &logs, &leaves, &vines);
+                /* At the foot, and where the eye is: a stump that low touches no leaf. Higher, a stump in the crown keeps what touches it, by the rule of a leaf. */
+                if (level <= PF_CUT_LEVEL_EYE) {
+                    CHECK_EQ_U64(leaves, 0u);
+                }
+            }
+        }
+    }
+    printf("    %" PRIu32 " cuts, none left wood floating\n", cuts);
+    CHECK(cuts >= TERRAIN_FEATURE_TREES * PF_SEEDS_CUT);
     pf_end(rig);
 }
 
