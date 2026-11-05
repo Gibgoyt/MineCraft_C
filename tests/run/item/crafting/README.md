@@ -13,7 +13,7 @@ Compute only. No real display, console or input device is opened: the program al
 
 What it checks:
 
-- **The tables:** every item has a row to lie on the ground by; every row of every table is possible; the basic set is there, with the published burn times.
+- **The tables:** every item has a row to lie on the ground by; every row of every table is possible; the basic set is there, with the published burn times. Copper armour's patterns, written out by hand, are in `copper/`, ctest `run_item_crafting_copper`.
 - **Matching:** every recipe, with everything each cell can be, in every place it fits, both ways round, against the whole table. A grid of two makes what fits and no more. What is almost a recipe is nothing. 40000 grids at random, half of them spoiled, against a second way of working it out: a recipe laid in every place and compared whole, and each order of a shapeless one tried by Heap's algorithm.
 - **A grid:** from a log to a pickaxe, as a player clicks it. The output whole or not at all; a shift-click up to what the cells and the inventory allow; closing a screen.
 - **A furnace:** one coal is 8 items at 200 ticks each, to the tick; every smelt and every fuel in the tables; fuel only goes on for what can cook; cooling, and starting over; a lava bucket; the slot rules a screen must follow; a store's capacity; and the same clicks giving the same bytes.
