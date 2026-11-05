@@ -526,7 +526,8 @@ static const sound_blob_entry_t *au_most_like(const int16_t *stereo, const sound
                 both += (float64_t)stereo[i * 2u] * (float64_t)samples[skip + i];
                 energy += (float64_t)samples[skip + i] * (float64_t)samples[skip + i];
             }
-            const float64_t likeness = energy > 0.0f64 && heard_energy > 0.0f64 ? both / sqrt(energy * heard_energy) : 0.0f64;
+            const float64_t likeness =
+                energy > 0.0f64 && heard_energy > 0.0f64 ? both / sqrt(energy * heard_energy) : 0.0f64;
             if (likeness > *out_likeness) {
                 *out_likeness = likeness;
                 best = entry;
