@@ -204,6 +204,9 @@ No build, test or code changes in this phase.
 
 Appended as they land:
 
+- `4efbaae` Mark the climate system master plan approved on 2026-11-06.
+- `323a31c` Check the climate plan files and mark phase 0 of plan 004 done.
+
 ## Issues found
 
 - 2026-11-06, the verbatim copy. Expected: a byte compare against `~/.claude/plans/<slug>.md`. Actual: no file there mentions climate (`grep -l climate ~/.claude/plans/*.md` prints nothing), so no compare is possible. Evidence it is unchanged: `git log -- plans/004-ahmed-bohemoth-climate-system.md` shows only `01f5505` (Ahmed, "climate system starting point") before this phase. Done: accepted the committed file as the agreed text; only its Status line was changed.
