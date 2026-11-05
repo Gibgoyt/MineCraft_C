@@ -134,7 +134,7 @@
 +1 screenshot crafted.png
 +1 key e down
 +1 key e up
-# The table in hand, placed, and opened: a wooden axe at its grid.
+# The table in hand, placed, and opened: wood is not worked on it, and a bench is made there, into hotbar slot 4.
 +1 key 4 down
 +1 key 4 up
 +1 move 0 200
@@ -143,6 +143,68 @@
 +3 button right down
 +1 button right up
 +3 screenshot table.png
++1 move -70 135
++1 button left down
++1 button left up
++1 move -28 -249
++1 button right down
++1 button right up
++1 move 36 0
++1 button right down
++1 button right up
++1 move 36 0
++1 button right down
++1 button right up
++1 move -44 249
++1 button left down
++1 button left up
++1 move 72 0
++1 button left down
++1 button left up
++1 move -64 -213
++1 button right down
++1 button right up
++1 move 0 36
++1 button right down
++1 button right up
++1 screenshot table_no_pickaxe.png
+# The sticks left go back, and the two on the grid go one each side of the row below the planks: a bench, and into hotbar slot 4.
++1 move 64 177
++1 button left down
++1 button left up
++1 move -64 -213
++1 button left down
++1 button left up
++1 move -36 0
++1 button left down
++1 button left up
++1 move 36 36
++1 button left down
++1 button left up
++1 move 36 -36
++1 button left down
++1 button left up
++1 screenshot bench_ready.png
++1 move 103 0
++1 button left down
++1 button left up
++1 move -111 213
++1 button left down
++1 button left up
++1 screenshot bench_made.png
++1 key e down
++1 key e up
+# The bench in hand, put down off to one side of the table, as day.script does, and opened: a wooden axe at its grid.
++1 key 4 down
++1 key 4 up
++1 move 600 0
++6 screenshot bench_aim.png
++1 button right down
++1 button right up
++6 screenshot bench_placed.png
++3 button right down
++1 button right up
++3 screenshot bench_open.png
 +1 move -70 135
 +1 button left down
 +1 button left up
@@ -181,6 +243,11 @@
 +1 key e up
 +1 key 4 down
 +1 key 4 up
+# The bench stands on the way to the trees, so it is mined with the new axe and picked up, and then back to facing the table, where the rest of this was aimed from.
++1 button left down
++60 button left up
++20 screenshot bench_gone.png
++1 move -600 0
 # The chop: pictures of the tree, before and after.
 # Turned to the trees that way, up the bank, and back a little, to see a whole tree before.
 +1 move 628 -240
@@ -213,4 +280,32 @@
 +1 screenshot during.png
 +40 screenshot after.png
 +60 screenshot later.png
+# The inventory, there and back, to have the pointer at 320, 240 for the pause menu. Saved with the tree down, opened again, and out.
++1 key e down
++1 key e up
++1 key e down
++1 key e up
++1 key escape down
++1 key escape up
++1 move 0 56
++1 button left down
++1 button left up
++3 screenshot back_on_title.png
++1 move 0 -96
++1 button left down
++1 button left up
++1 move -20 -122
++1 button left down
++1 button left up
++1 move -112 318
++1 button left down
++1 button left up
++15 screenshot reloaded.png
++1 key escape down
++1 key escape up
++1 move 132 -100
++1 button left down
++1 button left up
++2 button left down
++1 button left up
 +1 end

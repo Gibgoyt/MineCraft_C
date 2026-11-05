@@ -8,3 +8,5 @@
 **Public functions:** none; a test program.
 **May be called by:** ctest.
 **Depends on:** `tests/harness/`, `run/src/save/`, `run/src/game/`, `run/src/ui/menu/catalog/`, the card (compute only), and the built program, which `test.cmake` names and which runs only with `--headless`, under `/usr/bin/timeout`.
+
+The built program's pictures at the top of the world, `arrived`, `placed`, `refused` and `stood`, stay on disk for a person to read when `MC_TOP_KEEP` is set. The test prints where.

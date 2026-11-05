@@ -949,7 +949,12 @@ TEST(the_built_program_places_at_the_top_of_the_world_and_not_past_it_and_stands
     game_close(rig->game);
     save_close(rig->save);
     ss_game_end(t, rig);
-    ss_temp_remove(t, root);
+    /* What a person reads of it is its four pictures: see the README. */
+    if (getenv("MC_TOP_KEEP") != nullptr) {
+        printf("  kept in %s\n", root);
+    } else {
+        ss_temp_remove(t, root);
+    }
 }
 
 /* Two worlds, as the list sorts them. The first: click its row, Play, and be refused, with the list up again. Then the pointer goes down a row for the second, and Play. */

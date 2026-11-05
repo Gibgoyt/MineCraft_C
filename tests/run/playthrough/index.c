@@ -204,6 +204,38 @@ TEST(a_bench_gives_its_grid_back_stands_through_a_save_and_goes_by_its_west_half
     }
 }
 
+/* Ahmed's words: "tree feller". The axe comes from a bench as a person's would, so where wooden tools are made, or the way to the tree, cannot change and leave
+ * this script clicking on nothing with no one told: it went stale that way once, when wooden tools moved to the bench. */
+TEST(an_axe_from_a_bench_brings_down_a_real_tree_with_one_cut_and_it_stays_down_through_a_save) {
+    REQUIRE(t->arg_count >= 1);
+    char *const root = pt_temp(t);
+    REQUIRE(root != nullptr);
+    test_process_t process;
+    pt_run(t, "tests/run/player/felling/fixtures/fell.script", root, PT_DAY_MS, 2u, &process);
+    const char *const output = process.output;
+
+    CHECK_EQ_U64(pt_count(output, "hotbar slot 4 is in hand, with 1 of wood_axe"), 2u);
+    CHECK_EQ_U64(pt_count(output, "the last mined was mangrove_log"), 2u);
+    /* Seed 36's mangroves whose roots touch come down together: 47 logs on the day this was written. Fewer than the log count of one tree would not be felling. */
+    const char *const felled = strstr(output, "an axe felled ");
+    REQUIRE(felled != nullptr);
+    CHECK(strtoull(felled + strlen("an axe felled "), nullptr, 10) >= 30u);
+
+    static const char *const shots[] = {"bench_placed.png", "bench_open.png", "axe.png",
+                                        "bench_gone.png",   "before.png",     "cut.png",
+                                        "during.png",       "later.png",      "reloaded.png"};
+    for (uint64_t i = 0u; i < sizeof(shots) / sizeof(shots[0]); i++) {
+        uint64_t size = 0u;
+        CHECK_EQ_U64(file_path_size(pt_join(t, pt_join(t, root, "shots"), shots[i]), &size), FILE_OK);
+        CHECK(size > 1000u);
+    }
+    if (getenv("MC_PLAYTHROUGH_KEEP") != nullptr) {
+        printf("  kept in %s\n", root);
+    } else {
+        pt_temp_remove(t, root);
+    }
+}
+
 TEST(a_night_in_the_open_meets_zombies_skeletons_and_creepers_and_is_saved_with_them) {
     REQUIRE(t->arg_count >= 1);
     char *const root = pt_temp(t);
