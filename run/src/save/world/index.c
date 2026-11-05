@@ -26,8 +26,8 @@ enum : uint64_t {
     SAVE_WORLD_HASH_PRIME = 0x100000001B3ull,
     SAVE_WORLD_TABLE_BYTES = SAVE_WORLD_REGION_COLUMNS * sizeof(save_world_column_entry_t),
     SAVE_WORLD_RECORDS_START = sizeof(save_world_delta_header_t) + SAVE_WORLD_TABLE_BYTES,
-    SAVE_WORLD_MANIFEST_BYTES_MAX =
-        sizeof(save_world_manifest_header_t) + SAVE_WORLD_REGIONS_MAX * sizeof(save_world_region_t),
+    SAVE_WORLD_MANIFEST_BYTES_MAX = sizeof(save_world_manifest_header_t) +
+                                    SAVE_WORLD_REGIONS_MAX * sizeof(save_world_region_t) + SAVE_NAMES_TABLE_BYTES_MAX,
 };
 enum : uint32_t {
     SAVE_WORLD_PLACE_SECTIONS = 128u,
@@ -74,7 +74,7 @@ const char *save_world_status_name(save_world_status_t status) {
     case SAVE_WORLD_ERROR_SEED:
         return "made on another seed";
     case SAVE_WORLD_ERROR_TABLES:
-        return "made with other blocks";
+        return "its list of blocks is wrong";
     case SAVE_WORLD_ERROR_TOO_MANY:
         return "too many regions";
     case SAVE_WORLD_ERROR_PATH:
@@ -92,6 +92,107 @@ uint64_t save_world_table_hash(void) {
         hash = save_world_hash_more(hash, block_defs[i].name, strlen(block_defs[i].name) + 1u);
     }
     return hash;
+}
+
+/* ---- What its numbers mean -------------------------------------------------------------------------------------------- */
+
+/* A section's states as they go into a record: places in this world's list. */
+static void save_world_states_to_file(const save_world_t *save, uint16_t *states) {
+    if (save->names_same != 0u) {
+        return;
+    }
+    for (uint32_t i = 0u; i < SECTION_VOXELS; i++) {
+        states[i] = save->borrowed_live_to_file[states[i]];
+    }
+}
+
+/* And what one read means now. A record has been checked against the list, so each is in the map. */
+static void save_world_states_to_live(const save_world_t *save, uint16_t *states) {
+    if (save->names_same != 0u) {
+        return;
+    }
+    for (uint32_t i = 0u; i < SECTION_VOXELS; i++) {
+        states[i] = save->borrowed_file_to_live[states[i]];
+    }
+}
+
+/* One more name on the end of the world's list. False if the list has no room. */
+static bool save_world_names_append(save_world_t *save, const char *name) {
+    save_names_head_t head;
+    memcpy(&head, save->borrowed_names, sizeof(head));
+    const uint64_t bytes = strlen(name) + 1u;
+    const uint64_t names_end = sizeof(head) + (uint64_t)head.bytes;
+    if (head.count >= SAVE_NAMES_ENTRIES_MAX || names_end + bytes + 8u > SAVE_NAMES_TABLE_BYTES_MAX) {
+        return false;
+    }
+    memcpy(save->borrowed_names + names_end, name, bytes);
+    head.count++;
+    head.bytes += (uint32_t)bytes;
+    memcpy(save->borrowed_names, &head, sizeof(head));
+    const uint64_t total = (names_end + bytes + 7u) & ~(uint64_t)7u;
+    memset(save->borrowed_names + names_end + bytes, 0, total - names_end - bytes);
+    save->names_bytes = total;
+    return true;
+}
+
+/* From what is in borrowed_names, which has been read: both maps, any name this build has that the list has not, and what it now hashes to. Only memory
+ * changes: the list reaches the disk in the same rename as the first record that uses a new name. */
+static save_world_status_t save_world_names_settle(save_world_t *save) {
+    save_names_view_t view;
+    const bool readable = save_names_read(save->borrowed_names, save->names_bytes, &view);
+    ASSERT_ALWAYS(readable);
+    const uint32_t lost = save_names_map(&view, SAVE_NAMES_KIND_BLOCKS, save->borrowed_file_to_live);
+    for (uint32_t live = 0u; live < BLOCK_COUNT; live++) {
+        save->borrowed_live_to_file[live] = SAVE_NAMES_LOST;
+    }
+    /* From the end, so that a name twice in a list that says so means its first place. */
+    for (uint32_t file = view.count; file > 0u; file--) {
+        const uint16_t live = save->borrowed_file_to_live[file - 1u];
+        if (live != SAVE_NAMES_LOST) {
+            save->borrowed_live_to_file[live] = (uint16_t)(file - 1u);
+        }
+    }
+    if (lost != 0u) {
+        save_names_lost_log(&view, save->borrowed_file_to_live, save->borrowed_directory, "block",
+                            "it reads as air, and is air once its section is next saved");
+        for (uint32_t file = 0u; file < view.count; file++) {
+            if (save->borrowed_file_to_live[file] == SAVE_NAMES_LOST) {
+                save->borrowed_file_to_live[file] = BLOCK_ID_AIR;
+            }
+        }
+    }
+    uint32_t count = view.count;
+    uint32_t added = 0u;
+    for (uint32_t live = 0u; live < BLOCK_COUNT; live++) {
+        if (save->borrowed_live_to_file[live] != SAVE_NAMES_LOST) {
+            continue;
+        }
+        if (!save_world_names_append(save, block_defs[live].name)) {
+            LOG_ERROR("save: the list of blocks of %s has no room for '%s'", save->borrowed_directory,
+                      block_defs[live].name);
+            return SAVE_WORLD_ERROR_TABLES;
+        }
+        save->borrowed_live_to_file[live] = (uint16_t)count;
+        save->borrowed_file_to_live[count] = (uint16_t)live;
+        count++;
+        added++;
+    }
+    bool same = count == BLOCK_COUNT;
+    for (uint32_t file = 0u; file < count && same; file++) {
+        same = save->borrowed_file_to_live[file] == file;
+    }
+    if (!same) {
+        LOG_INFO("save: %s was saved with other blocks: %" PRIu32 " new here, %" PRIu32
+                 " gone from here, and everything else is what it was",
+                 save->borrowed_directory, added, lost);
+    }
+    save->names_count = count;
+    save->names_same = same ? 1u : 0u;
+    /* Its list as a build's table would hash: the names with their NULs, without the head or the zeros. */
+    save_names_head_t head;
+    memcpy(&head, save->borrowed_names, sizeof(head));
+    save->table_hash = save_world_hash(save->borrowed_names + sizeof(head), head.bytes);
+    return SAVE_WORLD_OK;
 }
 
 static void save_world_step(const save_world_t *save, save_world_step_t step) {
@@ -151,6 +252,7 @@ static bool save_world_capture_section(save_world_t *save, const column_t *colum
         return false;
     }
     section_blocks_export(&column->sections[section], save->borrowed_states);
+    save_world_states_to_file(save, save->borrowed_states);
     /* Past used, no reader looks: so this needs no lock, and only the moment it comes to be seen does. */
     uint8_t *const record = pending->borrowed_bytes + pending->used;
     uint32_t bytes = save_world_record_encode(save->borrowed_states, save->borrowed_states + SECTION_VOXELS, record);
@@ -343,14 +445,15 @@ static uint64_t save_world_manifest_build(const save_world_t *save, const save_w
         region.damaged = 0u;
         memcpy(out_regions + (uint64_t)i * sizeof(region), &region, sizeof(region));
     }
-    header.regions_checksum = save_world_hash(out_regions, regions_bytes);
+    memcpy(out_regions + regions_bytes, save->borrowed_names, save->names_bytes);
+    header.regions_checksum = save_world_hash(out_regions, regions_bytes + save->names_bytes);
     header.version = SAVE_WORLD_VERSION;
     header.header_bytes = sizeof(header);
     header.region_count = region_count;
     header.generator = TERRAIN_GENERATOR_VERSION;
     header.checksum = save_world_hash(&header, offsetof(save_world_manifest_header_t, checksum));
     memcpy(out, &header, sizeof(header));
-    return sizeof(header) + regions_bytes;
+    return sizeof(header) + regions_bytes + save->names_bytes;
 }
 
 /* What is in borrowed_manifest_bytes, as read, into the current manifest. */
@@ -375,6 +478,13 @@ static save_world_status_t save_world_manifest_parse(save_world_t *save, uint64_
                   save->borrowed_directory, header.version, (uint32_t)TERRAIN_GENERATOR_VERSION);
         return SAVE_WORLD_ERROR_GENERATOR;
     }
+    if (header.version < SAVE_WORLD_VERSION_FIRST_WITH_NAMES) {
+        LOG_ERROR("save: %s is in version %" PRIu32 " of the format, from before a world kept the names of its blocks, "
+                  "so nothing says what its numbers mean. It "
+                  "is left as it was, and a new world is what this game can offer",
+                  save->borrowed_directory, header.version);
+        return SAVE_WORLD_ERROR_VERSION;
+    }
     if (header.version != SAVE_WORLD_VERSION) {
         LOG_ERROR("save: %s is in version %" PRIu32 " of the format, and this game reads version %" PRIu32,
                   save->borrowed_directory, header.version, (uint32_t)SAVE_WORLD_VERSION);
@@ -392,20 +502,29 @@ static save_world_status_t save_world_manifest_parse(save_world_t *save, uint64_
                   save->borrowed_directory, header.generator, (uint32_t)TERRAIN_GENERATOR_VERSION);
         return SAVE_WORLD_ERROR_GENERATOR;
     }
-    if (header.table_hash != save->table_hash) {
-        LOG_ERROR("save: %s was saved with another block table, so its numbers would mean the wrong blocks",
-                  save->borrowed_directory);
-        return SAVE_WORLD_ERROR_TABLES;
-    }
     if (header.header_bytes != sizeof(header) || header.region_count > SAVE_WORLD_REGIONS_MAX) {
         LOG_ERROR("save: the manifest of %s has a bad header", save->borrowed_directory);
         return SAVE_WORLD_ERROR_DAMAGED;
     }
     const uint64_t regions_bytes = (uint64_t)header.region_count * sizeof(save_world_region_t);
-    if (bytes != sizeof(header) + regions_bytes ||
-        header.regions_checksum != save_world_hash(save->borrowed_manifest_bytes + sizeof(header), regions_bytes)) {
+    if (bytes < sizeof(header) + regions_bytes ||
+        header.regions_checksum !=
+            save_world_hash(save->borrowed_manifest_bytes + sizeof(header), bytes - sizeof(header))) {
         LOG_ERROR("save: the manifest of %s has a bad list of regions", save->borrowed_directory);
         return SAVE_WORLD_ERROR_DAMAGED;
+    }
+    const uint8_t *const names = save->borrowed_manifest_bytes + sizeof(header) + regions_bytes;
+    const uint64_t names_bytes = bytes - sizeof(header) - regions_bytes;
+    save_names_view_t view;
+    if (!save_names_read(names, names_bytes, &view) || view.total_bytes != names_bytes) {
+        LOG_ERROR("save: the manifest of %s has a bad list of blocks", save->borrowed_directory);
+        return SAVE_WORLD_ERROR_DAMAGED;
+    }
+    if (header.table_hash != save_world_hash(view.borrowed_names, view.names_bytes)) {
+        LOG_ERROR(
+            "save: the list of blocks of %s is not the one its manifest says, so nothing says what its numbers mean",
+            save->borrowed_directory);
+        return SAVE_WORLD_ERROR_TABLES;
     }
     save_world_region_t *const regions = save->borrowed_manifest[0];
     memcpy(regions, save->borrowed_manifest_bytes + sizeof(header), regions_bytes);
@@ -416,6 +535,13 @@ static save_world_status_t save_world_manifest_parse(save_world_t *save, uint64_
             LOG_ERROR("save: the manifest of %s has a bad list of regions", save->borrowed_directory);
             return SAVE_WORLD_ERROR_DAMAGED;
         }
+    }
+    /* After the last thing that could refuse it for what it says: a log of what has gone is only for a world that will open. */
+    memcpy(save->borrowed_names, names, names_bytes);
+    save->names_bytes = names_bytes;
+    const save_world_status_t settled = save_world_names_settle(save);
+    if (settled != SAVE_WORLD_OK) {
+        return settled;
     }
     save->generation = header.generation;
     save->region_count = header.region_count;
@@ -549,6 +675,11 @@ static save_world_status_t save_world_open_new(save_world_t *save, const char *p
     if (status != SAVE_WORLD_OK) {
         return status;
     }
+    save->names_bytes = save_names_write(SAVE_NAMES_KIND_BLOCKS, save->borrowed_names);
+    status = save_world_names_settle(save);
+    if (status != SAVE_WORLD_OK) {
+        return status;
+    }
     const uint64_t bytes = save_world_manifest_build(save, nullptr, 0u, 0u);
     const file_status_t written = file_write_atomic(path, save->borrowed_manifest_bytes, bytes);
     return written == FILE_OK ? SAVE_WORLD_OK : save_world_file_failed(save, "write", path, written);
@@ -624,6 +755,9 @@ save_world_status_t save_world_open(save_world_t *save, arena_t *arena, const ch
     save->borrowed_states = arena_alloc_zeroed(arena, (SECTION_VOXELS + 65536u) * sizeof(uint16_t), alignof(uint16_t));
     save->borrowed_far = arena_alloc_zeroed(arena, sizeof(save_world_far_t), alignof(save_world_far_t));
     save->borrowed_directory = arena_alloc(arena, FILE_PATH_BYTES, 1u);
+    save->borrowed_names = arena_alloc(arena, SAVE_NAMES_TABLE_BYTES_MAX, 8u);
+    save->borrowed_file_to_live = arena_alloc(arena, SAVE_NAMES_MAP_BYTES, alignof(uint16_t));
+    save->borrowed_live_to_file = arena_alloc(arena, SAVE_NAMES_MAP_BYTES, alignof(uint16_t));
     save->seed = seed;
     save->table_hash = save_world_table_hash();
     const save_world_status_t status = save_world_open_files(save, world_directory);
@@ -733,7 +867,8 @@ static bool save_world_old_record_read(const save_world_t *save, const save_worl
     uint16_t palette[SAVE_WORLD_PALETTE_MAX];
     uint32_t bits = 0u;
     uint32_t palette_count = 0u;
-    return save_world_record_valid(save->borrowed_record, entry->bytes, &bits, &palette_count, palette);
+    return save_world_record_valid_within(save->borrowed_record, entry->bytes, save->names_count, &bits, &palette_count,
+                                          palette);
 }
 
 /* One column of the new file: at local, its old sections with the set's over them. */
@@ -1170,10 +1305,11 @@ static void save_world_overlay_levels_take(const uint8_t *record, uint64_t bytes
 }
 
 /* The records of one column of an open file, past what is already in *mask. Returns how many it could not read. */
-static uint64_t save_world_overlay_records(const file_t *file, const save_world_region_t *region,
-                                           column_mask_t section_mask, const save_world_section_entry_t *entries,
-                                           column_mask_t *mask, uint16_t *states, uint8_t *levels,
-                                           column_mask_t *levels_mask, uint8_t *scratch) {
+static uint64_t save_world_overlay_records(const save_world_t *save, const file_t *file,
+                                           const save_world_region_t *region, column_mask_t section_mask,
+                                           const save_world_section_entry_t *entries, column_mask_t *mask,
+                                           uint16_t *states, uint8_t *levels, column_mask_t *levels_mask,
+                                           uint8_t *scratch) {
     uint64_t damaged = 0u;
     uint32_t index = 0u;
     for (column_mask_t left = section_mask; column_mask_any(left); left = column_mask_drop_lowest(left)) {
@@ -1187,8 +1323,10 @@ static uint64_t save_world_overlay_records(const file_t *file, const save_world_
                           save_world_within(entry->offset, entry->bytes, region->file_bytes) &&
                           file_read_at(file, entry->offset, scratch, entry->bytes) == FILE_OK &&
                           save_world_record_checksum(scratch, entry->bytes) == entry->checksum &&
-                          save_world_record_decode(scratch, entry->bytes, states + (uint64_t)section * SECTION_VOXELS);
+                          save_world_record_decode_within(scratch, entry->bytes, save->names_count,
+                                                          states + (uint64_t)section * SECTION_VOXELS);
         if (good) {
+            save_world_states_to_live(save, states + (uint64_t)section * SECTION_VOXELS);
             *mask = column_mask_or(*mask, column_mask_of(section));
             save_world_overlay_levels_take(scratch, entry->bytes, section, levels, levels_mask);
         } else {
@@ -1234,8 +1372,8 @@ static bool save_world_overlay_file(save_world_t *save, const save_world_region_
             LOG_ERROR("save: column %" PRIu32 " of %s is past reading, so what generates there is used", local, path);
             damaged = 1u;
         } else if (column_mask_any(column.section_mask)) {
-            damaged = save_world_overlay_records(&file, region, column.section_mask, entries, mask, states, levels,
-                                                 levels_mask, scratch);
+            damaged = save_world_overlay_records(save, &file, region, column.section_mask, entries, mask, states,
+                                                 levels, levels_mask, scratch);
         }
     }
     /* It was only read. */
@@ -1273,9 +1411,11 @@ static column_mask_t save_world_overlay_read(save_world_t *save, int32_t chunk_x
             const save_world_pending_ref_t *const ref = save_world_pending_find(pending, chunk_x, chunk_y, section);
             if (ref != nullptr) {
                 /* It came from a section in memory, and so it is good. */
-                const bool good = save_world_record_decode(pending->borrowed_bytes + ref->offset, ref->bytes,
-                                                           states + (uint64_t)section * SECTION_VOXELS);
+                const bool good =
+                    save_world_record_decode_within(pending->borrowed_bytes + ref->offset, ref->bytes,
+                                                    save->names_count, states + (uint64_t)section * SECTION_VOXELS);
                 ASSERT_ALWAYS(good);
+                save_world_states_to_live(save, states + (uint64_t)section * SECTION_VOXELS);
                 mask = column_mask_or(mask, column_mask_of(section));
                 save_world_overlay_levels_take(pending->borrowed_bytes + ref->offset, ref->bytes, section, levels,
                                                &levels_mask);

@@ -13,6 +13,8 @@ texture: { all: blocks/dirt }
 
 To add a block: make `config/blocks/<name>/index.yaml`, and build. `compile/src/game_tables/blocks/` turns these into the tables, and refuses a field it does not know or a reference to something missing, with the line.
 
+**Adding a block keeps every world**, though the ids go by the alphabet and a new one moves those after it. A world keeps the names its numbers mean, and they are found by name when it opens: see `run/src/save/world/README.md` and `run/src/save/state/README.md`. Taking a block out keeps the world too: that block reads as air, and the log says so. The same goes for items and mobs. What does change with the ids is the numbers in pinned digests of terrain and in golden pictures that show them: those are a test's to say, and are not about worlds.
+
 ## Fields
 
 | Field | Needed | Values | Default |

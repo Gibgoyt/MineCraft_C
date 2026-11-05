@@ -88,9 +88,14 @@ static bool save_world_levels_valid(const uint8_t *levels) {
     return true;
 }
 
-/* All of a record but its states being written: so that a bad one leaves what it was to go over alone. */
 bool save_world_record_valid(const uint8_t *record, uint64_t bytes, uint32_t *out_bits, uint32_t *out_palette_count,
                              uint16_t *out_palette) {
+    return save_world_record_valid_within(record, bytes, BLOCK_COUNT, out_bits, out_palette_count, out_palette);
+}
+
+/* All of a record but its states being written: so that a bad one leaves what it was to go over alone. */
+bool save_world_record_valid_within(const uint8_t *record, uint64_t bytes, uint32_t state_count, uint32_t *out_bits,
+                                    uint32_t *out_palette_count, uint16_t *out_palette) {
     if (bytes < SAVE_WORLD_RECORD_HEAD_BYTES || bytes > SAVE_WORLD_ENTRY_BYTES_MAX) {
         return false;
     }
@@ -115,7 +120,7 @@ bool save_world_record_valid(const uint8_t *record, uint64_t bytes, uint32_t *ou
         for (uint32_t i = 0u; i < SECTION_VOXELS; i++) {
             uint16_t state = 0u;
             memcpy(&state, body + (uint64_t)i * sizeof(state), sizeof(state));
-            if (state >= BLOCK_COUNT) {
+            if (state >= state_count) {
                 return false;
             }
         }
@@ -127,7 +132,7 @@ bool save_world_record_valid(const uint8_t *record, uint64_t bytes, uint32_t *ou
     }
     memcpy(out_palette, body, (uint64_t)palette_count * sizeof(uint16_t));
     for (uint32_t i = 0u; i < palette_count; i++) {
-        if (out_palette[i] >= BLOCK_COUNT) {
+        if (out_palette[i] >= state_count) {
             return false;
         }
     }
@@ -146,10 +151,14 @@ bool save_world_record_valid(const uint8_t *record, uint64_t bytes, uint32_t *ou
 }
 
 bool save_world_record_decode(const uint8_t *record, uint64_t bytes, uint16_t *out) {
+    return save_world_record_decode_within(record, bytes, BLOCK_COUNT, out);
+}
+
+bool save_world_record_decode_within(const uint8_t *record, uint64_t bytes, uint32_t state_count, uint16_t *out) {
     uint16_t palette[SAVE_WORLD_PALETTE_MAX];
     uint32_t bits = 0u;
     uint32_t palette_count = 0u;
-    if (!save_world_record_valid(record, bytes, &bits, &palette_count, palette)) {
+    if (!save_world_record_valid_within(record, bytes, state_count, &bits, &palette_count, palette)) {
         return false;
     }
     const uint8_t *const body = record + SAVE_WORLD_RECORD_HEAD_BYTES;

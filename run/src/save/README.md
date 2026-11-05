@@ -17,6 +17,7 @@
 
 | Part | Job |
 |---|---|
+| `names` | A table's names as a list on disk, and what a saved list's numbers mean in this build |
 | `world` | Seed and changed-section deltas, with versioned headers, replaced through a crash-safe rename |
 | `state` | Player, inventory, entities and time, in a file that goes with one save of the blocks |
 | `autosave` | Every 30 seconds of world time: the sim copies it all out, and a worker writes it |

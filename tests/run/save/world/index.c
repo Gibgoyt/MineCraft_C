@@ -477,7 +477,10 @@ TEST(a_new_world_is_one_manifest_and_its_bytes_are_known) {
     char *const blocks = sw_join(t, root, "blocks");
     uint64_t bytes = 0u;
     const uint8_t *const file = sw_slurp(t, sw_join(t, blocks, "manifest"), &bytes);
-    REQUIRE(bytes == 64u);
+    uint8_t *const names = test_alloc(t, SAVE_NAMES_TABLE_BYTES_MAX);
+    const uint64_t names_bytes = save_names_write(SAVE_NAMES_KIND_BLOCKS, names);
+    REQUIRE(bytes == 64u + names_bytes);
+    CHECK_MEM_EQ(file + 64u, names, names_bytes);
     CHECK_MEM_EQ(file, "MCWORLDM", 8u);
     static const uint8_t seed[8] = {0x88u, 0x77u, 0x66u, 0x55u, 0x44u, 0x33u, 0x22u, 0x11u};
     CHECK_MEM_EQ(file + 8u, seed, 8u);
@@ -495,7 +498,7 @@ TEST(a_new_world_is_one_manifest_and_its_bytes_are_known) {
     }
     CHECK_EQ_U64(value, table);
     memcpy(&value, file + 32u, 8u);
-    CHECK_EQ_U64(value, 14695981039346656037ull); /* the checksum of nothing */
+    CHECK_EQ_U64(value, sw_fnv(names, names_bytes)); /* no regions, and the list */
     uint32_t word = 0u;
     memcpy(&word, file + 40u, 4u);
     CHECK_EQ_U64(word, SAVE_WORLD_VERSION);
@@ -932,7 +935,7 @@ TEST(what_cannot_be_trusted_is_refused_and_left_as_it_was) {
     CHECK_EQ_U64(sw_open_status(save, root, SW_SEED), SAVE_WORLD_ERROR_VERSION);
     CHECK_EQ_U64(file_write_atomic(manifest, good, good_bytes), FILE_OK);
     /* An older format: it could not say what made its land, and that is what the person is told. */
-    const uint32_t older = SAVE_WORLD_VERSION - 1u;
+    const uint32_t older = SAVE_WORLD_VERSION_FIRST_WITH_GENERATOR - 1u;
     sw_manifest_forge(t, manifest, 40u, &older, sizeof(older));
     CHECK_EQ_U64(sw_open_status(save, root, SW_SEED), SAVE_WORLD_ERROR_GENERATOR);
     CHECK_EQ_U64(file_write_atomic(manifest, good, good_bytes), FILE_OK);

@@ -17,17 +17,19 @@ typedef struct save_t {
     arena_t arena_state;        /* 64: over owned_region, for state; World: reset at save_close */
     heap_region_t owned_region; /* 128 */
     save_world_t world;         /* 144 */
-    save_state_t state;         /* 456 */
-    save_autosave_t autosave;   /* 512: started by game_open, since it runs with a game */
+    save_state_t state;         /* 496 */
+    uint8_t _pad0[16];          /* 560 */
+    save_autosave_t autosave;   /* 576: started by game_open, since it runs with a game */
 } save_t;
-static_assert(sizeof(save_t) == 704);
+static_assert(sizeof(save_t) == 768);
 static_assert(alignof(save_t) == 64);
 static_assert(offsetof(save_t, arena_world) == 0);
 static_assert(offsetof(save_t, arena_state) == 64);
 static_assert(offsetof(save_t, owned_region) == 128);
 static_assert(offsetof(save_t, world) == 144);
-static_assert(offsetof(save_t, state) == 456);
-static_assert(offsetof(save_t, autosave) == 512);
+static_assert(offsetof(save_t, state) == 496);
+static_assert(offsetof(save_t, _pad0) == 560);
+static_assert(offsetof(save_t, autosave) == 576);
 
 /* Reserves the region. On failure logs why, leaves nothing behind and returns false. */
 [[nodiscard]] bool save_init(save_t *save);

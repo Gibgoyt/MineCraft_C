@@ -9,14 +9,20 @@
 #include "mob/index.h"
 #include "mob/spawn/index.h"
 #include "player/index.h"
+#include "save/names/index.h"
+#include "save/state/translate/index.h"
 #include "save/world/index.h"
 
 #include <stddef.h>
 #include <stdint.h>
 
 enum : uint32_t {
-    /* Raised by any change a version 1 reader could not read. A file of another version is refused and left alone. */
-    SAVE_STATE_VERSION = 1u,
+    /* Raised by any change an older reader could not read. A file of another version is refused and left alone. Version 2: a file ends in the names of
+     * the tables its numbers are places in, and a build with other tables translates them. */
+    SAVE_STATE_VERSION = 2u,
+    SAVE_STATE_VERSION_FIRST_WITH_NAMES = 2u,
+    /* The slot tables a file's bodies come with. */
+    SAVE_STATE_SLOT_TABLES = 3u,
     /* What one body comes to in a file: see save_state_body_fields. */
     SAVE_STATE_BODY_BYTES = 156u,
 };
@@ -33,7 +39,9 @@ typedef enum save_state_section_id_t : uint32_t {
     SAVE_STATE_SECTION_BODIES = 8,   /* one save_state_bodies_t, three slot tables, then each array for count bodies */
     SAVE_STATE_SECTION_SPAWN = 9,    /* one save_state_spawn_t, then the idle counts */
     SAVE_STATE_SECTION_MINDS = 10,   /* one save_state_minds_t, then zombie, skeleton, creeper and combat bodies */
-    SAVE_STATE_SECTION_COUNT = 10,
+    SAVE_STATE_SECTION_NAMES =
+        11, /* the lists of run/src/save/names/, one after another: what every number here means */
+    SAVE_STATE_SECTION_COUNT = 11,
 } save_state_section_id_t;
 
 /* ---- The file: all little-endian, as written by the only machine this builds for ------------------------------------ */
@@ -43,7 +51,7 @@ typedef struct save_state_header_t {
     uint8_t magic[8];        /* 0: "MCSTATE1" */
     uint64_t seed;           /* 8 */
     uint64_t generation;     /* 16: the save of the blocks this goes with: the N of its name */
-    uint64_t table_hash;     /* 24: of the tables the numbers in here mean */
+    uint64_t table_hash;     /* 24: of the names in the last section, as save_state_table_hash does a build's */
     uint64_t sections_bytes; /* 32: what follows this header */
     uint64_t sections_hash;  /* 40: of those bytes */
     uint32_t version;        /* 48: SAVE_STATE_VERSION */
@@ -303,8 +311,9 @@ typedef struct save_state_t {
     uint8_t kept;             /* 49: the image is a file that was read, and nothing has replaced it */
     uint8_t file_status;      /* 50: file_status_t: what the disk last said */
     uint8_t _pad0[5];         /* 51 */
+    uint16_t *borrowed_maps;  /* 56: SAVE_STATE_TRANSLATE_MAPS_BYTES: for a file from other tables, on opening it */
 } save_state_t;
-static_assert(sizeof(save_state_t) == 56);
+static_assert(sizeof(save_state_t) == 64);
 static_assert(alignof(save_state_t) == 8);
 static_assert(offsetof(save_state_t, borrowed_image) == 0);
 static_assert(offsetof(save_state_t, borrowed_directory) == 8);
@@ -316,6 +325,12 @@ static_assert(offsetof(save_state_t, open) == 48);
 static_assert(offsetof(save_state_t, kept) == 49);
 static_assert(offsetof(save_state_t, file_status) == 50);
 static_assert(offsetof(save_state_t, _pad0) == 51);
+static_assert(offsetof(save_state_t, borrowed_maps) == 56);
+
+/* The most its section of names can be. */
+enum : uint64_t {
+    SAVE_STATE_NAMES_BYTES_MAX = (uint64_t)SAVE_NAMES_KIND_COUNT * SAVE_NAMES_TABLE_BYTES_MAX,
+};
 
 /* The largest a file can be, with every store full, and what save_state_open takes from its arena. */
 enum : uint64_t {
@@ -329,12 +344,13 @@ enum : uint64_t {
         3ull * ENTITY_STORE_CAPACITY * sizeof(uint32_t) + (uint64_t)ENTITY_STORE_CAPACITY * SAVE_STATE_BODY_BYTES +
         sizeof(save_state_spawn_t) + ENTITY_STORE_CAPACITY * sizeof(uint32_t) + sizeof(save_state_minds_t) +
         (uint64_t)ENTITY_STORE_CAPACITY * (sizeof(mob_zombie_body_t) + sizeof(mob_skeleton_body_t) +
-                                           sizeof(mob_creeper_body_t) + sizeof(mob_combat_body_t)),
-    SAVE_STATE_ARENA_BYTES = SAVE_STATE_IMAGE_BYTES + FILE_PATH_BYTES + 2u * 64u,
+                                           sizeof(mob_creeper_body_t) + sizeof(mob_combat_body_t)) +
+        SAVE_STATE_NAMES_BYTES_MAX,
+    SAVE_STATE_ARENA_BYTES = SAVE_STATE_IMAGE_BYTES + FILE_PATH_BYTES + SAVE_STATE_TRANSLATE_MAPS_BYTES + 3u * 64u,
 };
 
 /* Starts on <world_directory>/state.<generation>, which goes with that save of the blocks: reads it if it is there, and believes none of it until
- * all of it has been looked at. With no such file a world starts its state afresh, and says so: a save of the blocks only ever comes after its
+ * all of it has been looked at. One saved with other tables is translated by name first, in memory: what this build has not got goes, and the log says so. With no such file a world starts its state afresh, and says so: a save of the blocks only ever comes after its
  * state file, so a crash does not cause this. Removes what any other save left, only once it knows what it has. Anything but SAVE_WORLD_OK has
  * logged why, holds nothing, and has changed nothing. */
 [[nodiscard]] save_world_status_t save_state_open(save_state_t *state, arena_t *arena, const char *world_directory,
@@ -362,7 +378,8 @@ void save_state_capture(save_state_t *state, const save_state_parts_t *parts);
 /* A file no save refers to any more goes. If that fails, the next open tidies it. */
 void save_state_forget(const save_state_t *state, uint64_t generation);
 
-/* Whether these are a file of this seed and generation that can be believed, and if not why. Nothing is changed. */
+/* Whether these are a file of this seed and generation that can be believed in this build's tables, and if not why. SAVE_WORLD_ERROR_TABLES is one from others, which
+ * save_state_open would have translated first. Nothing is changed. */
 [[nodiscard]] save_world_status_t save_state_check(const uint8_t *file, uint64_t bytes, uint64_t seed,
                                                    uint64_t generation);
 

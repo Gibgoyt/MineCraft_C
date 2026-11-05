@@ -237,6 +237,9 @@ static void ss_fill(ss_rig_t *rig) {
     item->crafting_hands.cells[0] = item_stack_make(ITEM_ID_DIRT, 2u);
     item->crafting_table.cells[8] = item_stack_make(ITEM_ID_COAL, 3u);
     item->crafting_table.crafted_count = 4u;
+    /* What the game does after writing a cell, and what save_state_apply works out again. */
+    crafting_grid_changed(&item->crafting_hands);
+    crafting_grid_changed(&item->crafting_table);
     *rig->held = item_stack_make(ITEM_ID_DIRT, 3u);
     item->spilled_count = 6u;
     container_chest_t *const chest = container_open(&item->chests, 7, 8, 1);
@@ -318,16 +321,22 @@ TEST(a_file_is_these_bytes_by_hand) {
     REQUIRE(save_state_write(&save->state, 0u) == SAVE_WORLD_OK);
     uint64_t bytes = 0u;
     const uint8_t *const file = ss_slurp(t, ss_state_path(t, root, 0u), &bytes);
-    REQUIRE(bytes == 112u);
+    /* The names are always there, and always last: their own bytes are run_save_world_names's. */
+    uint8_t *const names = test_alloc(t, SAVE_STATE_NAMES_BYTES_MAX);
+    const uint64_t names_bytes = save_names_write_all(names);
+    const uint64_t whole = 112u + sizeof(save_state_section_t) + names_bytes;
+    REQUIRE(bytes == whole);
 
-    uint8_t expected[112] = {'M', 'C', 'S', 'T', 'A', 'T', 'E', '1'};
+    uint8_t *const expected = test_alloc(t, whole);
+    memset(expected, 0, whole);
+    memcpy(expected, "MCSTATE1", 8u);
     memcpy(expected + 8, &SS_SEED, 8u);
     /* generation is 0 at 16 */
     const uint64_t table_hash = save_state_table_hash();
     memcpy(expected + 24, &table_hash, 8u);
-    const uint64_t sections_bytes = 40u;
+    const uint64_t sections_bytes = whole - 72u;
     memcpy(expected + 32, &sections_bytes, 8u);
-    const uint32_t version = 1u, header_bytes = 72u, section_count = 1u;
+    const uint32_t version = 2u, header_bytes = 72u, section_count = 2u;
     memcpy(expected + 48, &version, 4u);
     memcpy(expected + 52, &header_bytes, 4u);
     memcpy(expected + 56, &section_count, 4u);
@@ -340,11 +349,15 @@ TEST(a_file_is_these_bytes_by_hand) {
     memcpy(expected + 96, &parts.time.day_units, 4u);
     memcpy(expected + 100, &parts.time.yaw, 4u);
     memcpy(expected + 104, &parts.time.pitch, 4u);
-    const uint64_t sections_hash = ss_fnv(expected + 72, 40u);
+    const uint32_t names_id = SAVE_STATE_SECTION_NAMES;
+    memcpy(expected + 112, &names_bytes, 8u);
+    memcpy(expected + 120, &names_id, 4u);
+    memcpy(expected + 128, names, names_bytes);
+    const uint64_t sections_hash = ss_fnv(expected + 72, sections_bytes);
     memcpy(expected + 40, &sections_hash, 8u);
     const uint64_t checksum = ss_fnv(expected, 64u);
     memcpy(expected + 64, &checksum, 8u);
-    CHECK_MEM_EQ(file, expected, 112u);
+    CHECK_MEM_EQ(file, expected, whole);
     CHECK_EQ_U64(save_state_check(file, bytes, SS_SEED, 0u), SAVE_WORLD_OK);
     /* The same number is not the same moment if it says it is another save. */
     CHECK_EQ_U64(save_state_check(file, bytes, SS_SEED, 1u), SAVE_WORLD_ERROR_DAMAGED);
@@ -1230,7 +1243,7 @@ TEST(a_save_costs_the_sim_a_fraction_of_a_tick_and_no_heap) {
     const int64_t full_ns = ss_sim_cost(t, rig, 8u, &tick);
     const uint64_t full_bytes = save->state.image_bytes;
     CHECK(full_bytes <= SAVE_STATE_IMAGE_BYTES);
-    CHECK(full_bytes > SAVE_STATE_IMAGE_BYTES - 16384u);
+    CHECK(full_bytes > SAVE_STATE_IMAGE_BYTES - SAVE_STATE_NAMES_BYTES_MAX - 16384u);
     const int64_t many_ns = ss_sim_cost(t, rig, 64u, &tick);
     const int64_t most_ns = ss_sim_cost(t, rig, 512u, &tick);
     printf("  the sim's part of a save: %.3f ms with few things (%" PRIu64 " bytes); with every store full (%" PRIu64

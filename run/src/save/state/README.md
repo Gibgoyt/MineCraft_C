@@ -12,8 +12,10 @@
 - `save_state_capture`, `save_state_write`, `save_state_forget`: one save, split so that the writing can be on a worker.
 - `save_state_check`, `save_state_section_find`, `save_state_table_hash`: what a file may say, for this and for a test.
 
+Its child `translate` rewrites a file from other tables, as `save_state_open` reads it.
+
 **May be called by:** `save`, `save/autosave`, and `game`, which opens a world with it.
-**Depends on:** `save/world`, for its statuses, `file`, `arena`, `log`, `assert`, the stores in `player`, `item`, `entity` and `mob`, whose fields it reads and writes as a file's numbers, the generated tables, and glibc's `opendir`.
+**Depends on:** `save/world`, for its statuses, `save/names`, `save/state/translate`, `file`, `arena`, `log`, `assert`, the stores in `player`, `item`, `entity` and `mob`, whose fields it reads and writes as a file's numbers, the generated tables, and glibc's `opendir`.
 
 ## What a file may say, and what the game then writes
 
@@ -24,7 +26,7 @@
     <world>/state.<g>       this file; g is the save of the blocks it goes with
     <world>/state.<g>.tmp   one on its way there, which is never believed
 
-All numbers are little-endian. A file is a `save_state_header_t`, then sections, each a `save_state_section_t` and its bytes, padded with zeros to 8. Section ids and their contents are in the header, with every size and offset asserted. A section is there at most once. The time is always there, and the rest only if the game that wrote it has that part: a game with no mobs writes no minds, and a file's minds are not used by one. An id that version 1 does not have is damage.
+All numbers are little-endian. A file is a `save_state_header_t`, then sections, each a `save_state_section_t` and its bytes, padded with zeros to 8. Section ids and their contents are in the header, with every size and offset asserted. A section is there at most once. The time is always there, and the rest only if the game that wrote it has that part: a game with no mobs writes no minds, and a file's minds are not used by one. An id that this version does not have is damage. Names are always there, last.
 
 | Section | Holds |
 |---|---|
@@ -35,8 +37,19 @@ All numbers are little-endian. A file is a `save_state_header_t`, then sections,
 | Drops, arrows | Each one, and how the next will scatter |
 | Bodies | Every array of the entity store for its bodies, the slot tables, the numbers blasts go on with |
 | Spawn, minds | What each mind is up to, indexed by slot, and each one's random numbers |
+| Names | The block, drop, item and mob tables' names, as `run/src/save/names/` lists them: what every number above means |
 
-`header.table_hash` covers the names of the block, drop, item and mob tables, in order. A build that moves one would read other things from the same numbers, so it refuses the file. `header.sections_hash` covers everything after the header.
+`header.table_hash` covers the names of the block, drop, item and mob tables, in order. `header.sections_hash` covers everything after the header.
+
+## A build with other tables
+
+The file names the tables its numbers are places in. If its `table_hash` is not this build's, `save_state_open` hands it to `translate/`, which rewrites it in memory to this build's numbers, by name, and only then does the usual check look at it. A world keeps every stack and body of a thing that has merely moved. One whose name has gone from a table is taken out, and the log names what went: `translate/README.md` has the table of it. The file on disk stays as it was until the next save writes this image over it.
+
+A state does not need what `run/src/save/world/` needs, a list of its own for ever, as a whole file is written at every save: each is in the numbers of the build that wrote it.
+
+A grid's `recipe` and `output` are not believed from any file, as `recipe_defs` has no name to find a row by: `save_state_apply` works them out from its cells, so a change of recipes neither refuses a world nor leaves it with a grid offering what it no longer makes.
+
+A file from before version 2 has no names, and gets `SAVE_WORLD_ERROR_VERSION` and a line in the log. A world that old has been refused for its blocks already.
 
 Same numbers, same bytes: reloading a world, saving it with nothing having ticked and comparing gives no difference, and `tests/run/save/state/` does exactly that.
 

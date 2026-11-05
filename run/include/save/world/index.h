@@ -4,6 +4,7 @@
 
 #include "arena/index.h"
 #include "file/index.h"
+#include "save/names/index.h"
 #include "world/column/index.h"
 #include "world/edit/index.h"
 #include "world/section/index.h"
@@ -17,9 +18,11 @@
 enum : uint32_t {
     /* Raised by any change an older reader could not read. A file of another version is refused and left alone. Version 2: a record may end in levels.
      * Version 3: a column has 96 sections, up to z = 1250, so its mask in a delta file takes two words.
-     * Version 4: a manifest says which generator made the land under it. What came before could not say, and is taken as an older generator's. */
-    SAVE_WORLD_VERSION = 4u,
+     * Version 4: a manifest says which generator made the land under it. What came before could not say, and is taken as an older generator's.
+     * Version 5: a manifest ends in the names of the blocks, and a state number in a delta is a place in that list, so a new block ends no world. */
+    SAVE_WORLD_VERSION = 5u,
     SAVE_WORLD_VERSION_FIRST_WITH_GENERATOR = 4u,
+    SAVE_WORLD_VERSION_FIRST_WITH_NAMES = 5u,
     /* A delta file holds a square of columns this many on a side: half a kilometre of blocks. */
     SAVE_WORLD_REGION_SHIFT = 5u,
     SAVE_WORLD_REGION_SIDE = 1u << SAVE_WORLD_REGION_SHIFT,
@@ -51,13 +54,14 @@ enum : uint64_t {
 
 /* ---- The files: all little-endian, as written by the only machine this builds for ---------------------------------- */
 
-/* At the start of <world>/blocks/manifest. After it, region_count save_world_region_t, sorted by region. */
+/* At the start of <world>/blocks/manifest. After it, region_count save_world_region_t, sorted by region, and then the list of names that the
+ * state numbers in the deltas are places in: see run/src/save/names/. */
 typedef struct save_world_manifest_header_t {
     uint8_t magic[8];          /* 0: "MCWORLDM" */
     uint64_t seed;             /* 8: all a column needs when it has no delta */
     uint64_t generation;       /* 16: counts saves; 0 is the world as it was made */
-    uint64_t table_hash;       /* 24: of the block table the states in the deltas mean */
-    uint64_t regions_checksum; /* 32: of what follows this header */
+    uint64_t table_hash;       /* 24: of the names in the list at the end, as save_world_table_hash does a build's */
+    uint64_t regions_checksum; /* 32: of all that follows this header: regions and names */
     uint32_t version;          /* 40: SAVE_WORLD_VERSION */
     uint32_t header_bytes;     /* 44: sizeof this */
     uint32_t region_count;     /* 48 */
@@ -208,7 +212,8 @@ typedef enum save_world_status_t : uint8_t {
     SAVE_WORLD_ERROR_DAMAGED = 4, /* a file a world needs is wrong or missing. Nothing has been changed */
     SAVE_WORLD_ERROR_VERSION = 5, /* it is from another version of the format. Nothing has been changed */
     SAVE_WORLD_ERROR_SEED = 6,    /* the deltas were made on another world's terrain. Nothing has been changed */
-    SAVE_WORLD_ERROR_TABLES = 7,  /* the deltas' states mean other blocks than this build's. Nothing has been changed */
+    SAVE_WORLD_ERROR_TABLES =
+        7, /* its list of blocks is not the one its manifest says, or has no room for this build's. Nothing has been changed */
     SAVE_WORLD_ERROR_TOO_MANY = 8, /* past SAVE_WORLD_REGIONS_MAX. Nothing saved has been touched */
     SAVE_WORLD_ERROR_PATH = 9,     /* the directory's name is too long */
     SAVE_WORLD_ERROR_GENERATOR =
@@ -276,8 +281,15 @@ typedef struct save_world_t {
     uint8_t current;                   /* 301: which manifest is current */
     uint8_t active;                    /* 310: which of pending is captured to: the other is being written */
     uint8_t open;                      /* 311 */
+    uint8_t *borrowed_names; /* 312: SAVE_NAMES_TABLE_BYTES_MAX: this world's list, which the next manifest ends in */
+    uint16_t *borrowed_file_to_live; /* 320: SAVE_NAMES_ENTRIES_MAX: this build's block for a state number on disk */
+    uint16_t *borrowed_live_to_file; /* 328: BLOCK_COUNT: and back */
+    uint64_t names_bytes;            /* 336: of the list */
+    uint32_t names_count;            /* 344: in the list: no state number on disk is this or more */
+    uint8_t names_same;              /* 348: the list is this build's, so the two numberings are one */
+    uint8_t _pad0[3];                /* 349 */
 } save_world_t;
-static_assert(sizeof(save_world_t) == 312);
+static_assert(sizeof(save_world_t) == 352);
 static_assert(alignof(save_world_t) == 8);
 static_assert(offsetof(save_world_t, mutex) == 0);
 static_assert(offsetof(save_world_t, pending) == 40);
@@ -308,6 +320,13 @@ static_assert(offsetof(save_world_t, file_status) == 308);
 static_assert(offsetof(save_world_t, current) == 309);
 static_assert(offsetof(save_world_t, active) == 310);
 static_assert(offsetof(save_world_t, open) == 311);
+static_assert(offsetof(save_world_t, borrowed_names) == 312);
+static_assert(offsetof(save_world_t, borrowed_file_to_live) == 320);
+static_assert(offsetof(save_world_t, borrowed_live_to_file) == 328);
+static_assert(offsetof(save_world_t, names_bytes) == 336);
+static_assert(offsetof(save_world_t, names_count) == 344);
+static_assert(offsetof(save_world_t, names_same) == 348);
+static_assert(offsetof(save_world_t, _pad0) == 349);
 
 /* What save_world_open takes from its arena. */
 enum : uint64_t {
@@ -320,7 +339,7 @@ enum : uint64_t {
         2u * SAVE_WORLD_REGION_COLUMNS * sizeof(save_world_column_entry_t) + sizeof(save_world_manifest_header_t) +
         SAVE_WORLD_REGIONS_MAX * sizeof(save_world_region_t) + SAVE_WORLD_ENTRY_BYTES_MAX +
         SECTION_VOXELS * sizeof(uint16_t) + 65536u * sizeof(uint16_t) + FILE_PATH_BYTES + sizeof(save_world_far_t) +
-        32u * 64u,
+        2u * SAVE_NAMES_TABLE_BYTES_MAX + 2u * SAVE_NAMES_MAP_BYTES + 32u * 64u,
     /* What a caller of save_world_column_overlay lends it. */
     SAVE_WORLD_OVERLAY_SCRATCH_BYTES = SAVE_WORLD_ENTRY_BYTES_MAX,
     /* What save_world_column_overlay_levels writes levels into. */
@@ -333,7 +352,7 @@ enum : uint64_t {
 /* A status as text for a log line. */
 const char *save_world_status_name(save_world_status_t status);
 
-/* What states this build's numbers mean: a hash of the block table's names, in order. */
+/* What this build's numbers mean: a hash of the block table's names, in order. */
 uint64_t save_world_table_hash(void);
 
 /* One section's record: SECTION_VOXELS states in section_voxel_index order, to out, which has room for
@@ -348,10 +367,17 @@ bool save_world_record_decode(const uint8_t *record, uint64_t bytes, uint16_t *o
 bool save_world_record_valid(const uint8_t *record, uint64_t bytes, uint32_t *out_bits, uint32_t *out_palette_count,
                              uint16_t *out_palette);
 
+/* The same two, for a file whose list has state_count names rather than this build's table. The numbers out are still the file's. */
+bool save_world_record_decode_within(const uint8_t *record, uint64_t bytes, uint32_t state_count, uint16_t *out);
+bool save_world_record_valid_within(const uint8_t *record, uint64_t bytes, uint32_t state_count, uint32_t *out_bits,
+                                    uint32_t *out_palette_count, uint16_t *out_palette);
+
 /* A record that holds levels ends in them. For one save_world_record_decode took: the levels, which it has checked, or nullptr if it has none. */
 const uint8_t *save_world_record_levels(const uint8_t *record, uint64_t bytes);
 
-/* Starts on <world_directory>/blocks, made if it is not there, for a world of this seed: a new world gets a manifest with no regions.
+/* Starts on <world_directory>/blocks, made if it is not there, for a world of this seed: a new world gets a manifest with no regions and this
+ * build's names. A world saved with other names opens, each number meaning the block it was saved as: one this build has not got reads as air, and
+ * the log says which. New names join its list at its next save, and nothing on the disk changes before that.
  * Takes the world's lock, removes what an interrupted save left, and takes from the arena, which must outlive this. Anything but
  * SAVE_WORLD_OK has logged why, holds nothing, and has written nothing over what was there. */
 [[nodiscard]] save_world_status_t save_world_open(save_world_t *save, arena_t *arena, const char *world_directory,

@@ -529,7 +529,16 @@ static void fs_world_fix(uint8_t *body, uint64_t length, fuzz_rng_t *rng) {
     const uint64_t delta_bytes = length - 4u - manifest_bytes;
     save_world_region_t region;
     memset(&region, 0, sizeof(region));
-    const bool has_region = manifest_bytes >= sizeof(save_world_manifest_header_t) + sizeof(region);
+    /* What follows the regions is the list of names, which is no region. */
+    uint32_t region_count = 0u;
+    if (manifest_bytes >= sizeof(save_world_manifest_header_t)) {
+        memcpy(&region_count, manifest + offsetof(save_world_manifest_header_t, region_count), sizeof(region_count));
+    }
+    const uint64_t regions_room = manifest_bytes >= sizeof(save_world_manifest_header_t)
+                                      ? (manifest_bytes - sizeof(save_world_manifest_header_t)) / sizeof(region)
+                                      : 0u;
+    region_count = region_count > regions_room ? (uint32_t)regions_room : region_count;
+    const bool has_region = region_count != 0u;
     if (has_region) {
         memcpy(&region, manifest + sizeof(save_world_manifest_header_t), sizeof(region));
     }
@@ -588,11 +597,16 @@ static void fs_world_fix(uint8_t *body, uint64_t length, fuzz_rng_t *rng) {
         if (fuzz_rng_below(rng, 16u) != 0u) {
             memcpy(header.magic, "MCWORLDM", sizeof(header.magic));
             header.seed = FS_SEED;
-            header.table_hash = save_world_table_hash();
+            /* Of whatever its list says, if it is a list: a world from other tables is what is meant to get in. */
+            save_names_view_t names;
+            const uint64_t names_at = sizeof(header) + (uint64_t)region_count * sizeof(region);
+            header.table_hash = save_names_read(manifest + names_at, manifest_bytes - names_at, &names)
+                                    ? fs_hash(names.borrowed_names, names.names_bytes)
+                                    : save_world_table_hash();
             header.version = SAVE_WORLD_VERSION;
             header.generator = TERRAIN_GENERATOR_VERSION;
             header.header_bytes = sizeof(header);
-            header.region_count = (uint32_t)((manifest_bytes - sizeof(header)) / sizeof(save_world_region_t));
+            header.region_count = region_count;
             if (has_region) {
                 region.file_bytes = delta_bytes;
                 region.damaged = 0u;
@@ -983,6 +997,15 @@ static void fs_seeds_state(test_context_t *t, fs_context_t *fs, fuzz_corpus_t *c
     fuzz_seed_add(corpus, seed, bytes + 1u);
     fs->state_seed = seed;
     fs->state_seed_bytes = bytes + 1u;
+    /* One that says it is from other tables, which goes through translating it, each time fs_state_fix leaves its hash alone. */
+    uint8_t *const other_tables = test_alloc(t, bytes + 1u);
+    memcpy(other_tables, seed, bytes + 1u);
+    save_state_header_t other_header;
+    memcpy(&other_header, other_tables + 1u, sizeof(other_header));
+    other_header.table_hash ^= 1u;
+    other_header.checksum = fs_hash(&other_header, offsetof(save_state_header_t, checksum));
+    memcpy(other_tables + 1u, &other_header, sizeof(other_header));
+    fuzz_seed_add(corpus, other_tables, bytes + 1u);
     for (uint32_t kind = 0u; kind < 4u; kind++) {
         uint8_t *const limits = test_alloc(t, bytes + 1u);
         memcpy(limits, seed, bytes + 1u);
