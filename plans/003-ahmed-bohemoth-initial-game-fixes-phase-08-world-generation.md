@@ -276,6 +276,7 @@ Appended as they land:
 
 - `3be7e08` Make bench_world_map and bench_cave_walk count only what a cave truly cut, as they had taken the mask's wanted but uncut voxels for caves since fd38d63, and hold that mask to the by-hand one in run_terrain_feature_own.
 - `d4a5f2b` Show frozen seas as ice at every level of the far field, where they read as open water until full detail drew them, with one golden picture made again.
+- `f6ea553` Record the gate check of world generation in its plan file: every check an agent can run passes, two defects found and fixed, and what the running game showed on Ahmed's seed.
 
 ## Issues found
 
