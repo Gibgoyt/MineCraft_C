@@ -594,6 +594,8 @@ int32_t main(int32_t argc, char **argv) {
 
 Appended as they land:
 
+- `80620b3` Record that our own client talks to the real sound server with silence only, and keep the spike that proved it.
+
 ## Issues found
 
 **Stage 1 result, 2026-11-05: the protocol works against the real `pipewire-pulse` 1.6.9, with silence only. Nobody has heard anything yet.**
