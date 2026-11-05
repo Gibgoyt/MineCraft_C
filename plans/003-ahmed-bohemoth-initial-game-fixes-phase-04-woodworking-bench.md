@@ -92,6 +92,10 @@ Results:
 
 Appended as they land:
 
+- `9ba8d07` Add a woodworking bench two voxels long along x, with its own screen and grid, a station on each recipe so that everything made only of wood but what it takes to get a bench moves to it, breaking by either half and by a blast that takes both and gives one, and a played proof through the built program.
+- `e9a78e9` List the bench module and its two tests in the repository structure.
+- `8031328` Record phase 4 of the game fixes in its plan file: every box an agent can tick, the results, what was found on the way, and that only Ahmed is left.
+
 ## Issues found
 
 **Open for Ahmed.** He was away, so the plan's defaults stand: wooden tools moved, and the recipe is 3 planks over 2 sticks.
@@ -120,7 +124,7 @@ Appended as they land:
 | The other half's cell not checked when placing | `a_block_in_the_east_cell_refuses_and_keeps_the_item`, `aimed_into_what_is_there_a_block_in_either_cell_refuses`, `the_player_in_either_cell_refuses` |
 | A blast does not always give the bench | `a_blast_at_either_half_or_both_takes_the_bench_and_gives_one`, `no_real_blast_leaves_half_a_bench_and_each_bench_gone_gives_one` |
 | The bench's screen clicks on the table's grid | 3 tests in `run_ui_screens` |
-| `bench_half_other`'s answer ignored by mining and placing | 9 tests in `run_player_interaction_bench` |
+| `bench_half_other`'s answer ignored by mining and placing | 10 tests in `run_player_interaction_bench` |
 | The same, by a blast | 4 tests in `run_mob_creeper` |
 
 The first attempt at this built nothing, as the broken lines failed `-Werror`, and ctest passed on the old programs. That result was thrown away, and the lines rewritten to compile.
