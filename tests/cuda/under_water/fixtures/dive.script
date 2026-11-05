@@ -1,0 +1,11 @@
+# A real body on the default seed, at noon: from the start over the beach and out to sea, jumping all the way, then down.
+# Ticks found by looking: it is in the sea by tick 400, past 80, 570 by tick 1960, and at z = -19, at the bottom, by tick 2100.
+0 key w down
+0 key space down
+100 screenshot land.png
+1960 key space up
+1960 key w up
+1960 key lshift down
+2100 screenshot sea.png
+2280 screenshot sea_no_air.png
+2281 end

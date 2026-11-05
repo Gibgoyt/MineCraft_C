@@ -58,6 +58,9 @@ __global__ void post_kernel(const post_settings_t settings, const traverse_camer
         seen[1] += amount * shaft_g;
         seen[2] += amount * shaft_b;
     }
+    if (settings.under_water != 0u) {
+        post_under_water(&settings, pixel.t, seen);
+    }
     if (keep) {
         post_taa_squeeze(seen);
         pixels[index].rgb[0] = seen[0];
@@ -180,6 +183,9 @@ gpu_status_t post_frame_temporal(gpu_error_t *error, const post_settings_t *sett
     }
     if (!(settings->fog_end > settings->fog_start)) {
         return post_refuse(error, "post: fog that ends before it starts");
+    }
+    if (settings->under_water != 0u && !(settings->water_fog_end > 0.0F)) {
+        return post_refuse(error, "post: under water, with no distance for its fog");
     }
     if ((taa || shafts) && temporal == nullptr) {
         return post_refuse(error, "post: an effect that needs what goes from frame to frame, with none");

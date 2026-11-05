@@ -943,6 +943,7 @@ static void save_state_in_player(player_t *player, const uint8_t *data) {
     uint64_t word = 0u;
     memcpy(&word, &vitals, sizeof(word));
     atomic_store_explicit(&player->vitals_word, word, memory_order_relaxed);
+    atomic_store_explicit(&player->eyes_under_water, player->movement.eyes_under_water, memory_order_relaxed);
 }
 
 static void save_state_in_items(item_t *item, item_stack_t *held, const uint8_t *data) {

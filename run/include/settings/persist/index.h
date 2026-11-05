@@ -28,7 +28,7 @@ enum : uint32_t {
     SETTINGS_RENDER_SCALE_MAX = 100u,
     SETTINGS_WORKERS_MIN = 1u,
     SETTINGS_WORKERS_MAX = MC_THREADS_WORKERS,
-    SETTINGS_EFFECT_COUNT = 16u,
+    SETTINGS_EFFECT_COUNT = 17u,
     SETTINGS_LINE_BYTES = 120u, /* a line past this is not one this program wrote, and is not read */
     /* What settings_persist_write can ever need, with room for a person's comments in what is read. */
     SETTINGS_TEXT_BYTES = 8192u,

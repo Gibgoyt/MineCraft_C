@@ -72,8 +72,10 @@ typedef struct player_t {
     /* Sim to main: the newest player_vitals_t, relaxed, as only what is on the screen depends on it. */
     _Atomic uint64_t vitals_word; /* 2088 */
     uint8_t hands_held_off;       /* 2096: the sim's: a screen has the buttons, so the hands do nothing */
-    uint8_t _pad0[7];             /* 2097 */
-    player_combat_t combat;       /* 2104: the sim's: what the hand remembers of swinging */
+    uint8_t _pad0[3];             /* 2097 */
+    /* Sim to the thread that draws: movement.eyes_under_water, relaxed, as only the picture depends on it. */
+    _Atomic uint32_t eyes_under_water; /* 2100 */
+    player_combat_t combat;            /* 2104: the sim's: what the hand remembers of swinging */
     /* A line of its own: main writes the line above all the time. */
     player_survival_t survival; /* 2112: the sim's */
 } player_t;
@@ -139,6 +141,9 @@ void player_survive_tick(player_t *player, const world_map_t *map);
 
 /* The body's health as of the last tick. Main, as often as it likes. Never waits. */
 player_vitals_t player_vitals_read(const player_t *player);
+
+/* Whether the eyes were under water as of the last tick. Any thread. */
+bool player_eyes_under_water_read(const player_t *player);
 
 /* Where the eye is to be drawn at now_ns: from a tick's start to its end, over the tick after it was due, so that a picture
  * moves smoothly at any rate and is never more than a tick behind. Main. Never waits. */

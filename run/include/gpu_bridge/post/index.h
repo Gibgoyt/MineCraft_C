@@ -46,8 +46,14 @@ typedef struct post_settings_t {
         sun_glow[3]; /* 44: added around the sun, and so to the fog: this is where a red evening's fog comes from */
     float32_t sun_disc[3];  /* 56 */
     float32_t moon_disc[3]; /* 68 */
+    /* The eyes are under water, for this frame. All below is only read then: see post_under_water. */
+    float32_t water_tint[3];   /* 80: what each channel of the picture is multiplied by */
+    float32_t water_colour[3]; /* 92: what the distance goes to, in linear light, by the time of day */
+    float32_t water_fog_end;   /* 104: in blocks, where nothing but water_colour is left. Above 0 */
+    uint32_t
+        under_water; /* 108: 1 if the eyes are under water and the setting is on, and shade counts a ray's way from where the water stops */
 } post_settings_t;
-static_assert(sizeof(post_settings_t) == 80);
+static_assert(sizeof(post_settings_t) == 112);
 static_assert(alignof(post_settings_t) == 4);
 static_assert(offsetof(post_settings_t, sky_zenith) == 0);
 static_assert(offsetof(post_settings_t, sky_horizon) == 12);
@@ -57,6 +63,10 @@ static_assert(offsetof(post_settings_t, sun_direction) == 32);
 static_assert(offsetof(post_settings_t, sun_glow) == 44);
 static_assert(offsetof(post_settings_t, sun_disc) == 56);
 static_assert(offsetof(post_settings_t, moon_disc) == 68);
+static_assert(offsetof(post_settings_t, water_tint) == 80);
+static_assert(offsetof(post_settings_t, water_colour) == 92);
+static_assert(offsetof(post_settings_t, water_fog_end) == 104);
+static_assert(offsetof(post_settings_t, under_water) == 108);
 
 /* What the temporal pass keeps of a pixel from frame to frame: see post_taa_squeeze for what the numbers mean. */
 typedef struct post_taa_pixel_t {
@@ -299,6 +309,37 @@ POST_BOTH_SIDES static inline float32_t post_fog_along(const post_settings_t *se
         return post_fog(settings, t);
     }
     return post_fog(settings, post_fog_way(settings->fog_start, t, direction_z * t));
+}
+
+/* How much of the picture is water even right at the eye: stored light in the sea runs out with depth, and the bed at arm's length would be black. */
+#define POST_WATER_FOG_NEAR F32(0.12)
+/* Where only water is left, in blocks. */
+#define POST_WATER_FOG_END F32(28.0)
+/* What the picture is multiplied by under water. */
+#define POST_WATER_TINT_R F32(0.62)
+#define POST_WATER_TINT_G F32(0.86)
+#define POST_WATER_TINT_B F32(1.0)
+/* What the distance goes to at noon, in linear light. */
+#define POST_WATER_COLOUR_R F32(0.018)
+#define POST_WATER_COLOUR_G F32(0.13)
+#define POST_WATER_COLOUR_B F32(0.27)
+/* The share of that colour at midnight: dark, and still not a void. */
+#define POST_WATER_COLOUR_NIGHT F32(0.22)
+
+/* How much of what is at distance t is water, seen from under water: from POST_WATER_FOG_NEAR at the eye, quickly at first, to all of it at water_fog_end. */
+POST_BOTH_SIDES static inline float32_t post_water_fog(const post_settings_t *settings, float32_t t) {
+    const float32_t x =
+        t >= settings->water_fog_end ? F32(1.0) : (t > F32(0.0) ? t / settings->water_fog_end : F32(0.0));
+    return POST_WATER_FOG_NEAR + (F32(1.0) - POST_WATER_FOG_NEAR) * x * (F32(2.0) - x);
+}
+
+/* The picture as eyes under water see it: tinted, then going to water with distance. Goes over the sky and its fog, as it is nearer than either. */
+POST_BOTH_SIDES static inline void post_under_water(const post_settings_t *settings, float32_t t, float32_t in_out[3]) {
+    const float32_t fog = post_water_fog(settings, t);
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        const float32_t tinted = in_out[i] * settings->water_tint[i];
+        in_out[i] = tinted + (settings->water_colour[i] - tinted) * fog;
+    }
 }
 
 /* Linear light, of any size above 0, to a byte: a straight line up to POST_SHOULDER, a smooth roll towards 1 past it, then the

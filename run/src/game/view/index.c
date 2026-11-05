@@ -48,7 +48,7 @@ void game_view_work_out(const game_config_t *config, uint32_t table_chunks, game
     out->height = game_view_scaled(config->height, config->render_scale_percent);
     out->fog_end = game_view_fog_end(far_field ? config->render_distance : out->full_detail);
     const uint32_t optional = config->god_rays != 0u ? (uint32_t)SHADE_FEATURE_GOD_RAYS : 0u;
-    out->features = (SHADE_FEATURES_PLAY | optional) & ~(uint32_t)config->features_off;
+    out->features = (SHADE_FEATURES_PLAY | optional) & ~config->features_off;
 }
 
 float32_t game_view_half_fov_tangent(uint32_t fov_degrees) {

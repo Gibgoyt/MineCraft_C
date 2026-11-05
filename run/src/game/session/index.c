@@ -39,7 +39,7 @@ static void game_session_config_from_settings(game_session_t *session) {
     config->render_distance = values->render_distance;
     config->full_detail = values->full_detail;
     config->table_chunks = values->full_detail;
-    config->features_off = (uint16_t)(SHADE_FEATURES_PLAY & ~values->effects);
+    config->features_off = SHADE_FEATURES_PLAY & ~values->effects;
     config->god_rays = (values->effects & SHADE_FEATURE_GOD_RAYS) != 0u ? 1u : 0u;
     config->fov_degrees = values->fov_degrees;
     config->sensitivity_percent = values->sensitivity_percent;
