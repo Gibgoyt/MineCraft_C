@@ -86,6 +86,8 @@ Appended as they land:
 - `9a8c337` Have the profiler's mining script look up at the sky first, as the new world starts a walking body with a hill in reach of a level eye.
 - `42f793a` Record the tree feller's gate check in its plan file: what was tested anew, what it found, and the run_profiler fix, with only Ahmed playing it left.
 - `b40b86c` List the gate check's commits in the tree feller's plan file, and correct two of its counts.
+- `97515e9` Make the felling script take its axe from a bench as wood now must, run it in the playthrough test so it cannot go stale again, and let the top of the world test keep its pictures.
+- `8a14302` Record in the tree feller plan file that the final check found its felling script stale and fixed it.
 
 ## Issues found
 
@@ -139,3 +141,7 @@ The whole suite, `tools/test-or-build.sh timeout 1900 ctest --preset debug --out
 **12. The proof by eye once more, on this merge.** `fell.script` as in `tests/run/player/felling/README.md`: `the player mined 53 blocks and placed 1`, `an axe felled 47 logs past what it cut`, `0 destroyed, 0 lost`. I read `before.png`, `aimed.png`, `during.png` and `later.png`. Aimed at a mangrove log with its outline. Before, trunks and crowns fill the view. After, they have gone with open sky there, logs on the ground and leaf drops in the air, and later the drops have landed. Nothing hangs in the air in view. It is one kind of tree on one seed, and other kinds are shown by the tests above. Issue 4's question, a neighbour going too, stays for Ahmed: 47 is still more than one mangrove.
 
 **13. All of it again in one run, as main had moved on while I worked.** Expected my branch to hold what is finished. Actual: `git diff main` showed the under-water work of phase 9, merged to main after I began. So I merged main (`e279141`), configured and built debug afresh, and ran `tools/test-or-build.sh timeout 1900 ctest --preset debug --output-on-failure`: `100% tests passed out of 105`, in 1774 seconds. That settles the caveat of issue 11. On the same merge the release program built, and `fell.script` gave the same numbers as issue 12, 53 mined, 47 felled, 0 destroyed, and `later.png` showed nothing hanging in the air in view.
+
+### From the final check, round 1, 2026-11-05
+
+**14. `fell.script` had gone stale, as issue 6 said it would, and nobody had fixed it.** Expected: the README's command fells a tree. Actual, on a clean debug build of main at `c56e17e`: `the player mined 5 blocks and placed 2; the last mined was mangrove_log`, with no line about felling. The pictures showed the axe's pattern making nothing on the table, the clicks after it placing the bench by accident and opening it, and no axe made. Done in `97515e9`: the script now makes a bench on the table, a wooden axe on the bench, mines the bench out of the path to the trees, cuts, and saves and opens the world again. `run_playthrough` now runs it and reads the report, so it cannot go stale silently again. Played: `the player mined 55 blocks and placed 2`, `an axe felled 47 logs past what it cut`, `hotbar slot 4 is in hand, with 1 of wood_axe`. Read `axe.png` (Wood Axe, 59 of 59 uses, on the Woodworking screen), `bench_gone.png`, `before.png`, `cut.png` and `later.png`: the mangroves in front are gone, with drops on the ground and no log left in the air.

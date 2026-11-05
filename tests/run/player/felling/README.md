@@ -13,7 +13,7 @@ Needs no card, no display and no input device. What the axe in a real inventory 
 
 ## The proof by eye
 
-`fixtures/fell.script` is a person's first few minutes on seed 36, as in `tests/run/playthrough/`: mud, four logs by hand from one mangrove, planks, a table and sticks in the inventory, a wooden axe at the table, then one cut at the foot of another mangrove with the left button. It looks at the tree from the same place before and after. It is not a ctest, because it is aimed by hand from screenshots and a change to terrain or to where wooden tools are made leaves it clicking on nothing:
+`fixtures/fell.script` is a person's first few minutes on seed 36, as in `tests/run/playthrough/`: mud, four logs by hand from one mangrove, planks, a table and sticks in the inventory, a bench at the table, a wooden axe on the bench, the bench mined out of the way, then one cut at the foot of another mangrove with the left button. It looks at the tree from the same place before and after, and it saves and opens the world again. `run_playthrough` in `tests/run/playthrough/` runs it and reads the report, since a change to where wooden tools are made left it clicking on nothing once. The pictures are for a person:
 
     tools/test-or-build.sh timeout 400 build/debug/bin/minecraft_c --headless --menu --saves /tmp/fell/saves --settings /tmp/fell/settings.yaml --script tests/run/player/felling/fixtures/fell.script --screenshot-dir /tmp/fell/shots --width 640 --height 480 --render-distance 8
 

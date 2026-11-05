@@ -52,6 +52,11 @@ static ap_rig_t *ap_rig(test_context_t *t) {
     return rig;
 }
 
+/* The pair of ap_rig: its arena given back, which takes ASan's poison off it, as the harness zeroes what a test used. */
+static void ap_rig_end(ap_rig_t *rig) {
+    arena_deinit(&rig->arena);
+}
+
 static audio_pulse_open_t ap_open(const ap_rig_t *rig, const char *cookie, bool muted) {
     return (audio_pulse_open_t){.cookie_path = cookie,
                                 .name = "ap test",
@@ -112,6 +117,7 @@ TEST(hello_opens_a_stream_on_the_servers_numbers_and_asks_for_what_was_decided) 
     CHECK_MEM_EQ(rig->fake.create, expected, expected_bytes);
     audio_pulse_close(&rig->pulse);
     fake_pulse_stop(&rig->fake);
+    ap_rig_end(rig);
 }
 
 TEST(muted_is_said_to_the_server) {
@@ -126,6 +132,7 @@ TEST(muted_is_said_to_the_server) {
     CHECK_MEM_EQ(rig->fake.create, expected, expected_bytes);
     audio_pulse_close(&rig->pulse);
     fake_pulse_stop(&rig->fake);
+    ap_rig_end(rig);
 }
 
 TEST(the_cookie_file_is_sent_whole_and_with_none_or_a_short_one_zeros_are) {
@@ -156,6 +163,7 @@ TEST(the_cookie_file_is_sent_whole_and_with_none_or_a_short_one_zeros_are) {
         CHECK(cleared);
         audio_pulse_close(&rig->pulse);
         fake_pulse_stop(&rig->fake);
+        ap_rig_end(rig);
     }
     (void)unlink(path);
 }
@@ -182,6 +190,7 @@ TEST(what_is_sent_arrives_exactly_and_what_it_asks_for_is_counted) {
     CHECK_EQ_U64(audio_pulse_frames_owed(&rig->pulse), frames);
     audio_pulse_close(&rig->pulse);
     fake_pulse_stop(&rig->fake);
+    ap_rig_end(rig);
 }
 
 TEST(a_big_request_is_sent_in_pieces_none_over_the_buffer) {
@@ -193,6 +202,7 @@ TEST(a_big_request_is_sent_in_pieces_none_over_the_buffer) {
     CHECK_EQ_U64(audio_pulse_frames_owed(&rig->pulse), 1u);
     rig->pulse.owed = 3u;
     CHECK_EQ_U64(audio_pulse_frames_owed(&rig->pulse), 0u);
+    ap_rig_end(rig);
 }
 
 TEST(notices_it_has_no_use_for_change_nothing) {
@@ -210,6 +220,7 @@ TEST(notices_it_has_no_use_for_change_nothing) {
     CHECK_EQ_U64(audio_pulse_frames_owed(&rig->pulse), FAKE_PULSE_OWED / PULSE_WIRE_FRAME_BYTES);
     audio_pulse_close(&rig->pulse);
     fake_pulse_stop(&rig->fake);
+    ap_rig_end(rig);
 }
 
 TEST(a_server_that_refuses_is_a_failure_that_says_so) {
@@ -221,6 +232,7 @@ TEST(a_server_that_refuses_is_a_failure_that_says_so) {
     CHECK_CONTAINS(rig->pulse.why, "refused");
     CHECK_EQ_U64(rig->pulse.attached, 0u);
     fake_pulse_stop(&rig->fake);
+    ap_rig_end(rig);
 }
 
 TEST(a_server_that_never_answers_gives_up_when_told_to) {
@@ -234,6 +246,7 @@ TEST(a_server_that_never_answers_gives_up_when_told_to) {
     CHECK(time_now_ns() - started_ns < 500000000ll);
     CHECK_CONTAINS(rig->pulse.why, "stopped");
     fake_pulse_stop(&rig->fake);
+    ap_rig_end(rig);
 }
 
 TEST(a_server_that_never_answers_is_given_up_on_in_the_end) {
@@ -246,6 +259,7 @@ TEST(a_server_that_never_answers_is_given_up_on_in_the_end) {
     CHECK(time_now_ns() - started_ns < 5000000000ll);
     CHECK_CONTAINS(rig->pulse.why, "did not answer");
     fake_pulse_stop(&rig->fake);
+    ap_rig_end(rig);
 }
 
 TEST(a_server_going_away_ends_it_and_says_so_with_no_signal) {
@@ -259,6 +273,7 @@ TEST(a_server_going_away_ends_it_and_says_so_with_no_signal) {
     CHECK_CONTAINS(rig->pulse.why, "closed");
     audio_pulse_close(&rig->pulse);
     fake_pulse_stop(&rig->fake);
+    ap_rig_end(rig);
 }
 
 TEST(sending_to_a_server_that_went_away_ends_it_too) {
@@ -273,6 +288,7 @@ TEST(sending_to_a_server_that_went_away_ends_it_too) {
     CHECK_CONTAINS(rig->pulse.why, "sending");
     audio_pulse_close(&rig->pulse);
     fake_pulse_stop(&rig->fake);
+    ap_rig_end(rig);
 }
 
 TEST(a_stream_taken_away_ends_it) {
@@ -286,6 +302,7 @@ TEST(a_stream_taken_away_ends_it) {
     CHECK_CONTAINS(rig->pulse.why, "took the stream away");
     audio_pulse_close(&rig->pulse);
     fake_pulse_stop(&rig->fake);
+    ap_rig_end(rig);
 }
 
 TEST(nonsense_ends_it_and_so_does_a_packet_too_long_to_be_real) {
@@ -300,6 +317,7 @@ TEST(nonsense_ends_it_and_so_does_a_packet_too_long_to_be_real) {
         CHECK_CONTAINS(rig->pulse.why, pass == 0u ? "makes no sense" : "too long");
         audio_pulse_close(&rig->pulse);
         fake_pulse_stop(&rig->fake);
+        ap_rig_end(rig);
     }
 }
 
@@ -321,6 +339,7 @@ TEST(no_server_at_the_socket_is_a_plain_failure_that_leaves_nothing_open) {
     CHECK_CONTAINS(rig->pulse.why, "too long");
     /* And closing what is not open does nothing. */
     audio_pulse_close(&rig->pulse);
+    ap_rig_end(rig);
 }
 
 TEST(sending_and_taking_touch_no_heap) {
@@ -340,6 +359,7 @@ TEST(sending_and_taking_touch_no_heap) {
     CHECK_MEM_EQ(&before, &after, sizeof(before));
     audio_pulse_close(&rig->pulse);
     fake_pulse_stop(&rig->fake);
+    ap_rig_end(rig);
 }
 
 /* Never by ctest, which gives no argument: only by hand, as in the plan's Verification, to show the real client talks to the real server. Muted at the server, and every
@@ -359,6 +379,7 @@ TEST(with_its_flag_the_real_server_is_sent_one_second_of_silence_and_nothing_els
     if (!audio_pulse_connect(&rig->pulse, path, &open)) {
         printf("no real server: %s\n", rig->pulse.why);
         CHECK(false);
+        ap_rig_end(rig);
         return;
     }
     printf("socket %s, channel %" PRIu32 ", tlength %" PRIu32 ", prebuf %" PRIu32 ", minreq %" PRIu32
@@ -386,6 +407,7 @@ TEST(with_its_flag_the_real_server_is_sent_one_second_of_silence_and_nothing_els
     printf("sent %" PRIu64 " zero bytes in %" PRIu64 " requests: %" PRIu64 " underflows, %" PRIu64 " overflows\n",
            rig->pulse.sent_bytes, rig->pulse.request_count, rig->pulse.underflow_count, rig->pulse.overflow_count);
     audio_pulse_close(&rig->pulse);
+    ap_rig_end(rig);
 }
 
 TEST_MAIN()

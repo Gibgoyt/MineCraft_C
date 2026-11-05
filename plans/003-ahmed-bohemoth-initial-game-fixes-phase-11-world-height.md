@@ -123,6 +123,8 @@ Appended as they land:
 - `bedad80` Say in the repository's structure where the sky test's new fixtures are.
 - `ee105e0` Run terrain's stages only up to the highest layer they can make and leave the rest of a column air, which gives back what the taller world cost and meets the 1000 columns a second again.
 - `856657d` Record the taller world's gate check, with the whole suite and both benches run, and the fog, ore, terrain cost and timing test it fixed, and leave its status in progress for Ahmed's flight.
+- `97515e9` Make the felling script take its axe from a bench as wood now must, run it in the playthrough test so it cannot go stale again, and let the top of the world test keep its pictures.
+- `8fd9365` Record in the taller world plan file that the final check read the top of the world in the built program.
 
 ## Issues found
 
@@ -159,3 +161,7 @@ Appended as they land:
 **12. `run_save_state_game`'s frame check failed once under `-j3`.** Expected: confirm whether that was load only. Actual: its longest wait between pictures during saves, 23.96 ms, against about 19.1, which fits the check of the longest without saves plus 16.667. Alone, five runs: median 2.11 to 2.14 ms both ways, longest at most 4.51 ms, all pass. Beside `render_feature_lod` and `render_feature_post`, four runs: all pass, but the longest rises to 8.6 to 17.5 with saves and 5.6 to 36.6 without, so the load moves it whichever way, and more than saves do. The failure itself was not reproduced, so load is the strong reading and not a proof. Done: `MC_TEST_RUN_SERIAL` in `cmake/targets.cmake`, set in that test's `test.cmake`, so ctest starts nothing beside it. `ctest -j3` was run with it, and it ran last and alone and passed.
 
 **13. A test passed only because fog hid a change.** Expected: with `--no-day-cycle`, two pictures of `render_feature_sky`'s script are the same bytes. Actual: once the fog changed, 1 pixel of 57600 differed by 1 of 255, at (201, 165), the same on three runs. With the old fog and `--no-fog`, it is 2 pixels at the same place. So the difference was there all along and fog hid it. Something in the world moves that little in 198 ticks, and what was not traced. Done: the test now allows at most 8 pixels off by one step, none by more, and also checks that the clock moving really does move more than 8. That test and its helpers moved to `tests/cuda/sky/fixtures/program.h`, which also takes `index.c` back under the 1500 lines where the standard asks for a split: it had been at 1513.
+
+### From the final check, round 1, 2026-11-05
+
+**14. The top of the world, seen in the built program.** Expected: a block goes at z = 1250 and not at 1251. `run_save_state_game`'s test of it removed its pictures, so nobody could look. Done in `97515e9`: with `MC_TOP_KEEP=1` they stay. Run: `tools/test-or-build.sh env MC_TOP_KEEP=1 timeout 300 ctest --preset debug -R '^run_save_state_game$'`, passed. Read: `arrived.png` with `z 1250` on screen and a stone floor at 1249, `placed.png` with one dirt block standing on it and 7 left in hand, `refused.png` aimed at that block's top with still 7 in hand, and `stood.png` at `z 1251` on top of it. Nothing else changed in this phase.
