@@ -38,7 +38,8 @@ static const uint64_t ORE_WORLD = 0x1234567890ABCDEFull;
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 003 phase 8 stage 5 brought spaghetti closer together and dried out most aquifer cells. */
 /* Plan 003 phase 2 added four blocks. The land is the same, as its issue 2 shows: the numbers of the blocks after them in the alphabet moved. */
-static const uint64_t ORE_DIGEST_PIN = 0xFFD441113E545FEAull;
+/* Plan 003 phase 3 added seven blocks. The land is the same, as its issue 3 shows: the numbers of the blocks after them in the alphabet moved. */
+static const uint64_t ORE_DIGEST_PIN = 0xBAE1CCF9EFA8C5B7ull;
 
 static uint64_t ore_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

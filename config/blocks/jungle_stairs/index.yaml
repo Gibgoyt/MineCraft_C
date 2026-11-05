@@ -1,0 +1,6 @@
+name: jungle_stairs
+hardness: 2
+tool: axe
+drops: [{ item: jungle_stairs, count: 1 }]
+shape: stairs
+texture: { all: blocks/jungle_planks }

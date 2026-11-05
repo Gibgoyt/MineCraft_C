@@ -1,0 +1,6 @@
+name: mangrove_stairs
+kind: shaped
+pattern: ["P  ", "PP ", "PPP"]
+keys: { P: mangrove_planks }
+gives: mangrove_stairs
+count: 4

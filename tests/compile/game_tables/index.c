@@ -98,8 +98,8 @@ static bool gtt_load_vector_yaml(test_context_t *t, yaml_document_t *document) {
 
 /* ---- The real tables ---------------------------------------------------------------------------------------------- */
 
-TEST(about_120_blocks_with_air_first) {
-    CHECK(BLOCK_COUNT >= 110u && BLOCK_COUNT <= 140u);
+TEST(between_110_and_170_blocks_with_air_first) {
+    CHECK(BLOCK_COUNT >= 110u && BLOCK_COUNT <= 170u);
     CHECK_EQ_U64(BLOCK_ID_AIR, 0u);
     CHECK_STR_EQ(block_defs[BLOCK_ID_AIR].name, "air");
     CHECK_EQ_U64(block_defs[BLOCK_ID_AIR].shape, BLOCK_SHAPE_NONE);

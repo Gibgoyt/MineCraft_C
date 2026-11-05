@@ -1,0 +1,6 @@
+name: birch_stairs
+kind: shaped
+pattern: ["P  ", "PP ", "PPP"]
+keys: { P: birch_planks }
+gives: birch_stairs
+count: 4

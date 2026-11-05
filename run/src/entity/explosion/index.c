@@ -62,9 +62,13 @@ float64_t explosion_resistance(uint16_t block) {
     case BLOCK_ID_YELLOW_TERRACOTTA:
         return 4.2f64;
     case BLOCK_ID_ACACIA_PLANKS:
+    case BLOCK_ID_ACACIA_STAIRS:
     case BLOCK_ID_BIRCH_PLANKS:
+    case BLOCK_ID_BIRCH_STAIRS:
     case BLOCK_ID_CHERRY_PLANKS:
+    case BLOCK_ID_CHERRY_STAIRS:
     case BLOCK_ID_DARK_OAK_PLANKS:
+    case BLOCK_ID_DARK_OAK_STAIRS:
     case BLOCK_ID_DEEPSLATE_COAL_ORE:
     case BLOCK_ID_DEEPSLATE_COPPER_ORE:
     case BLOCK_ID_DEEPSLATE_DIAMOND_ORE:
@@ -73,11 +77,14 @@ float64_t explosion_resistance(uint16_t block) {
     case BLOCK_ID_DEEPSLATE_IRON_ORE:
     case BLOCK_ID_DEEPSLATE_LAPIS_ORE:
     case BLOCK_ID_JUNGLE_PLANKS:
+    case BLOCK_ID_JUNGLE_STAIRS:
     case BLOCK_ID_MANGROVE_PLANKS:
+    case BLOCK_ID_MANGROVE_STAIRS:
     case BLOCK_ID_OAK_PLANKS:
     case BLOCK_ID_OAK_SLAB:
     case BLOCK_ID_OAK_STAIRS:
     case BLOCK_ID_SPRUCE_PLANKS:
+    case BLOCK_ID_SPRUCE_STAIRS:
         return 3.0f64;
     case BLOCK_ID_DRIPSTONE_BLOCK:
         return 1.0f64;

@@ -1,0 +1,6 @@
+name: jungle_stairs
+kind: shaped
+pattern: ["P  ", "PP ", "PPP"]
+keys: { P: jungle_planks }
+gives: jungle_stairs
+count: 4

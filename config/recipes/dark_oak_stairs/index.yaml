@@ -1,0 +1,6 @@
+name: dark_oak_stairs
+kind: shaped
+pattern: ["P  ", "PP ", "PPP"]
+keys: { P: dark_oak_planks }
+gives: dark_oak_stairs
+count: 4
