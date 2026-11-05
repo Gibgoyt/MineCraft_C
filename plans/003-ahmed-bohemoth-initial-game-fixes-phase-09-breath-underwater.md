@@ -49,6 +49,7 @@ Appended as they land:
 - `efc0e1b` Say in the repository structure that the HUD draws bubbles of air.
 - `9f4dbe4` Tint the picture blue and add short fog when a body's eyes are under water, with a setting and a flag, so that the sea no longer looks like a black void.
 - `9df6873` Say in the repository structure where the test of what eyes under water see lives.
+- `937feed` Record stage 2 of the breath phase in its plan file: the void was black water, it is fixed and tested, with its commits and what was found.
 
 ## Issues found
 
