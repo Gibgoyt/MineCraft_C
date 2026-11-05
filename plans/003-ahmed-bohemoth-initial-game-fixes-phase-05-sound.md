@@ -601,6 +601,10 @@ Appended as they land:
 - `b8b314a` Give every block a sound family and embed crunches for all ten families, made at build time by our own synthesizer because the pack's download was refused.
 - `9c87f80` Name the sound tool, the sound tree and their tests in the repository structure.
 - `a2f15a5` Record that the sound pack could not be downloaded, and that every family now has synthesized sounds nobody has heard yet.
+- `0b2aedd` List the commits of the sound stage in its plan file.
+- `255781f` Replace every synthesized block sound with CC0 recordings from OpenGameArt, cut and levelled, keeping recipes as the fallback for a material with no recording.
+- `1e5d020` Say in the repository structure that the committed sounds are recordings, with recipes as the fallback.
+- `ad92ca6` Record that all ninety sounds are now CC0 recordings nobody has heard yet, how they were chosen, and what is still open.
 
 ## Issues found
 
