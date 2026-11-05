@@ -617,6 +617,9 @@ Appended as they land:
 - `00dec0d` Name the audio system, its parts and its tests in the repository structure, and put its thread and its place in the dependency diagram.
 - `5afdd67` Stop saying in the coding standard that the sound server's socket is not built yet.
 - `32ba285` Record that the sound stage is done and proved in memory and with silence on the real server, what was chosen, and what is left for Ahmed to hear.
+- `26ed656` Hold the program's sound test to the family of what was dug, drop a stream encoder nothing sent, and say that audio reads the X display number.
+- `cc81162` Format the sound test's new likeness line as clang-format wants it.
+- `3be0279` Record that the sound phase's gate passed every check an agent can run, what it proved in the running game, and the three defects it fixed.
 
 ## Issues found
 
