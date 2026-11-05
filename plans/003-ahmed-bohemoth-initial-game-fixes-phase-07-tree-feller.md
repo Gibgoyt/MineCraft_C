@@ -86,6 +86,8 @@ Appended as they land:
 - `9a8c337` Have the profiler's mining script look up at the sky first, as the new world starts a walking body with a hill in reach of a level eye.
 - `42f793a` Record the tree feller's gate check in its plan file: what was tested anew, what it found, and the run_profiler fix, with only Ahmed playing it left.
 - `b40b86c` List the gate check's commits in the tree feller's plan file, and correct two of its counts.
+- `97515e9` Make the felling script take its axe from a bench as wood now must, run it in the playthrough test so it cannot go stale again, and let the top of the world test keep its pictures.
+- `8a14302` Record in the tree feller plan file that the final check found its felling script stale and fixed it.
 
 ## Issues found
 
