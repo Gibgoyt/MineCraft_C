@@ -275,6 +275,29 @@ TEST(a_bench_beside_it_stays) {
     test_world_end(&rig.world);
 }
 
+/* One bench in sixteen lies across two columns, and these are loaded. */
+TEST(across_the_edge_of_a_column_it_is_placed_and_mined_as_one) {
+    static const int32_t wests[] = {15, -1, 31};
+    for (uint32_t i = 0u; i < sizeof(wests) / sizeof(wests[0]); i++) {
+        for (uint32_t which = 0u; which < 2u; which++) {
+            ib_rig_t rig;
+            REQUIRE(ib_begin(t, &rig));
+            const int32_t west = wests[i];
+            ib_place_on(t, &rig, west, 3, 5);
+            CHECK_EQ_U64(ib_block(&rig, west, 3, 6), BLOCK_ID_WOODWORKING_BENCH_WEST);
+            CHECK_EQ_U64(ib_block(&rig, west + 1, 3, 6), BLOCK_ID_WOODWORKING_BENCH_EAST);
+            CHECK_EQ_U64(rig.hands.hand_count, 1u);
+            ib_mine(&rig, west + (int32_t)which, 3, 6);
+            CHECK_EQ_U64(ib_block(&rig, west, 3, 6), BLOCK_ID_AIR);
+            CHECK_EQ_U64(ib_block(&rig, west + 1, 3, 6), BLOCK_ID_AIR);
+            uint32_t others = 0u;
+            CHECK_EQ_U64(ib_drops_count(&rig, ITEM_ID_WOODWORKING_BENCH, &others), 1u);
+            CHECK_EQ_U64(others, 0u);
+            test_world_end(&rig.world);
+        }
+    }
+}
+
 TEST(a_half_alone_breaks_alone_and_gives_one_bench) {
     ib_rig_t rig;
     REQUIRE(ib_begin(t, &rig));
