@@ -1,0 +1,6 @@
+name: cherry_stairs
+hardness: 2
+tool: axe
+drops: [{ item: cherry_stairs, count: 1 }]
+shape: stairs
+texture: { all: blocks/cherry_planks }

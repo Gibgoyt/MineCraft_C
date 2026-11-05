@@ -1,0 +1,6 @@
+name: acacia_stairs
+hardness: 2
+tool: axe
+drops: [{ item: acacia_stairs, count: 1 }]
+shape: stairs
+texture: { all: blocks/acacia_planks }

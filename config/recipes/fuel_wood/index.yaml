@@ -1,4 +1,4 @@
 name: fuel_wood
 kind: fuel
-items: [group_planks, group_logs, crafting_table, chest, ladder, oak_stairs, wood_door, oak_sign, boat]
+items: [group_planks, group_logs, crafting_table, chest, ladder, oak_stairs, acacia_stairs, birch_stairs, cherry_stairs, dark_oak_stairs, jungle_stairs, mangrove_stairs, spruce_stairs, wood_door, oak_sign, boat]
 ticks: 300

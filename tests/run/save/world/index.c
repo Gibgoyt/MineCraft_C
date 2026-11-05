@@ -548,6 +548,15 @@ TEST(a_world_reloads_byte_for_byte_over_many_saves) {
     sw_temp_remove(t, root);
 }
 
+/* Puts a block other than the one there in this cell, in the world and the model. What a column generates goes by BLOCK_COUNT, so no one
+ * number is sure to be a change in a given cell once a block is added. */
+static void sw_cell_change(test_context_t *t, sw_rig_t *rig, int32_t x, int32_t y, int32_t z) {
+    uint16_t *const voxel = sw_model_voxel(rig, x, y, z);
+    const uint16_t state = (uint16_t)(1u + *voxel % (BLOCK_COUNT - 1u));
+    REQUIRE(world_edit_block_set(&rig->world->edit, x, y, z, state) == WORLD_EDIT_STATUS_CHANGED);
+    *voxel = state;
+}
+
 TEST(only_what_changed_is_on_disk) {
     char *const root = sw_temp_directory(t);
     REQUIRE(root != nullptr);
@@ -557,12 +566,9 @@ TEST(only_what_changed_is_on_disk) {
     REQUIRE(save_world_flush(&rig->save->world, &rig->world->edit) == SAVE_WORLD_OK);
     CHECK_EQ_U64(rig->save->world.generation, 0u);
     /* Three sections of one column, then a second save of another region's one, and two edits of the first section again. */
-    REQUIRE(world_edit_block_set(&rig->world->edit, -33 * 16, 33 * 16, 0, 3u) == WORLD_EDIT_STATUS_CHANGED);
-    *sw_model_voxel(rig, -33 * 16, 33 * 16, 0) = 3u;
-    REQUIRE(world_edit_block_set(&rig->world->edit, -33 * 16, 33 * 16, 16, 3u) == WORLD_EDIT_STATUS_CHANGED);
-    *sw_model_voxel(rig, -33 * 16, 33 * 16, 16) = 3u;
-    REQUIRE(world_edit_block_set(&rig->world->edit, -33 * 16, 33 * 16, -16, 3u) == WORLD_EDIT_STATUS_CHANGED);
-    *sw_model_voxel(rig, -33 * 16, 33 * 16, -16) = 3u;
+    sw_cell_change(t, rig, -33 * 16, 33 * 16, 0);
+    sw_cell_change(t, rig, -33 * 16, 33 * 16, 16);
+    sw_cell_change(t, rig, -33 * 16, 33 * 16, -16);
     REQUIRE(save_world_flush(&rig->save->world, &rig->world->edit) == SAVE_WORLD_OK);
     CHECK_EQ_U64(rig->save->world.sections_written, 3u);
     save_world_manifest_header_t header;
@@ -573,8 +579,7 @@ TEST(only_what_changed_is_on_disk) {
     CHECK_EQ_I64(regions[0].region_y, 1);  /* 33 >> 5 */
     CHECK_EQ_U64(regions[0].section_count, 3u);
     CHECK_EQ_U64(regions[0].generation, 1u);
-    REQUIRE(world_edit_block_set(&rig->world->edit, -31 * 16, 31 * 16, 0, 4u) == WORLD_EDIT_STATUS_CHANGED);
-    *sw_model_voxel(rig, -31 * 16, 31 * 16, 0) = 4u;
+    sw_cell_change(t, rig, -31 * 16, 31 * 16, 0);
     REQUIRE(save_world_flush(&rig->save->world, &rig->world->edit) == SAVE_WORLD_OK);
     sw_manifest_read(t, rig, &header, &regions);
     REQUIRE(header.region_count == 2u);
@@ -587,8 +592,7 @@ TEST(only_what_changed_is_on_disk) {
     CHECK_EQ_U64(regions[1].generation, 2u);
     CHECK(file_path_size(sw_join(t, rig->blocks, "r.-2.1.1"), &(uint64_t){0u}) == FILE_OK);
     /* A section edited again replaces itself: the same region, the old file gone. */
-    REQUIRE(world_edit_block_set(&rig->world->edit, -33 * 16, 33 * 16, 0, 5u) == WORLD_EDIT_STATUS_CHANGED);
-    *sw_model_voxel(rig, -33 * 16, 33 * 16, 0) = 5u;
+    sw_cell_change(t, rig, -33 * 16, 33 * 16, 0);
     REQUIRE(save_world_flush(&rig->save->world, &rig->world->edit) == SAVE_WORLD_OK);
     sw_manifest_read(t, rig, &header, &regions);
     CHECK_EQ_U64(regions[0].section_count, 3u);
