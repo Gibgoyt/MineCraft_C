@@ -1,6 +1,6 @@
 # 003-ahmed-bohemoth-initial-game-fixes — phase 5: Basic sound
 
-**Status:** in progress: stage 1 proved with silence, and Ahmed still has to hear the tone; stage 2 done with CC0 recordings from OpenGameArt, because Kenney's download was refused, and Ahmed still has to hear them; stage 3 not started   (updated 2026-11-05)
+**Status:** in progress: stage 1 proved with silence; stage 2 done with CC0 recordings from OpenGameArt, because Kenney's download was refused; stage 3 done and proved in memory and with silence on the real server. All that is left is Ahmed's, as no one has heard any of it   (updated 2026-11-05)
 
 ## Goal
 
@@ -83,12 +83,13 @@ Sounds fade with distance and pan left or right, since mobs and explosions will 
 
 **Stage 3: playing**
 
-- [ ] Add `run/src/audio/pulse/wire/` with unit tests that need no server, like `tests/run/display/x11/`
-- [ ] Add `run/src/audio/pulse/`, `run/src/audio/mixer/` and `run/src/audio/`, with allowance in `standards_lint` for `run/src/audio/pulse/index.c` only
-- [ ] Post events from `run/src/player/interaction/` for digging, breaking and placing
-- [ ] Add the volume setting, and make no sound server mean silence and one log line, never a failure
-- [ ] Test the mixer by writing its output to memory and checking the samples, so `ctest` makes no sound
-- [ ] Update `plans/REPO_STRUCTURE.md`
+- [x] Add `run/src/audio/pulse/wire/` with unit tests that need no server, like `tests/run/display/x11/`: `run_audio_pulse_wire`
+- [x] Add `run/src/audio/pulse/`, `run/src/audio/mixer/` and `run/src/audio/`, with allowance in `standards_lint` for `run/src/audio/pulse/index.c` only
+- [x] Post events from `run/src/player/interaction/` for digging, breaking and placing
+- [x] Add the volume setting, and make no sound server mean silence and one log line, never a failure
+- [x] Test the mixer by writing its output to memory and checking the samples, so `ctest` makes no sound: `run_audio_mixer`
+- [x] Update `plans/REPO_STRUCTURE.md`
+- [ ] **Ahmed plays and listens:** the commands under Verification. No agent has heard a sample
 
 ## Verification
 
@@ -96,8 +97,15 @@ Sounds fade with distance and pan left or right, since mobs and explosions will 
     tools/test-or-build.sh timeout 600 ctest --preset debug -R '^(run_audio.*|compile_sound_pack|compile_game_tables|run_player_interaction|standards_lint|clang_format)$' --output-on-failure
     pgrep -a minecraft_c    # must print nothing
 
+**The real server, silence only, by hand and never by ctest.** The first opens a muted stream at volume 0 and looks at every sample before sending it. The second is the real thread with nothing posted and volume 0:
+
+    tools/test-or-build.sh timeout -k 3 60 build/debug/bin/tests/run_audio_pulse --real-server-silence
+    tools/test-or-build.sh timeout -k 3 120 build/debug/bin/tests/run_audio build/debug/bin/minecraft_c --real-server-silence
+
 **Only Ahmed can check how it sounds.** Agents can test the bytes but can't hear them, and must not play sound on his desktop while testing:
 
+    tools/test-or-build.sh cmake --preset release
+    tools/test-or-build.sh cmake --build --preset release
     ./build/release/bin/minecraft_c --windowed
 
 Mine stone, wood, dirt, sand and leaves, and listen. Change the volume. Play something else at the same time, to confirm both are heard.
@@ -658,11 +666,28 @@ Appended as they land:
 - **Not run:** the wider suite. `run_display_headless` passed alone as the one check that the game still runs with the larger blob. `run_display_mode`, `run_display_vt_guard` and `run_display_x11` weren't run, as this doesn't touch them. `render_feature_sky`'s failure under `-j 6` still has no proved cause.
 - **Refused commands:** several shell commands with loops or heredocs were refused as too complex to check against the worktree. **Done:** as the refusals said, split them and wrote scripts with the editor.
 
+**Stage 3 result, 2026-11-05: mining, breaking and placing are wired through to the sound server. Nobody has heard any of it.**
+
+- **Real server, silence only.** `run_audio_pulse --real-server-silence`, muted: `tlength 5760, prebuf 3844, minreq 1920`, 192000 zero bytes in 91 requests, 0 underflows, 0 overflows. `run_audio ... --real-server-silence`, the real thread for 3 s, unmuted, nothing posted, volume 0: 573056 bytes in 277 requests, 0 underflows, 0 overflows, and `pactl` showed `MineCraft_C`, `s16le 2ch 48000Hz` while it ran and nothing after. The 40 ms asked for became 30 ms, as stage 1's 75% said.
+- **A mined block reaches the mixer.** `run_audio` runs the real program, `--headless --sound-file`, on the stage's mining script: 40320 frames, 2399 not silent, 956 with the ears apart. That proves the path from the sim to samples, not how it sounds. The whole-sound check is against the stand-in: a posted stone break came out sample for sample in both ears, within 4800 frames of the post, then silence.
+- **No server.** In the real program on a private Xvfb and a made-up terminal, with `PULSE_SERVER` at a path with nothing there: one line, `audio: no sound server, so the game plays silently: ... No such file or directory`, then it played to its timeout and `0 bytes live` at exit. `run_audio` holds it to one line over repeated looks, and over a server going away. That run came before the private-display guard below, and is now only reachable on a real display, so it wasn't repeated.
+- **Keeping agents off the speakers. Expected:** "not on a terminal" would do. **Actual:** a window needs a terminal, so an agent testing one gives it a made-up terminal, and with the real environment that game would have connected, and mining would have been heard. **Done:** a third guard, `audio_display_is_private`: an X display from `:80` up, where agents' Xvfbs go, is never heard. Checked on `:87` with a made-up terminal and the real environment: `audio: on a test's private display, so nothing is heard`, and `pactl` showed no such client or stream. So sound takes a terminal, a display below `:80` or none, not `--headless` and not `--no-sound`. An agent breaking the display rule could still be heard; no code can tell that from Ahmed.
+- **`app_t` had no room. Expected:** `audio_t` under `app_t`, as the design says. **Actual:** `run/src/main/index.c:1107: the frame size of 18688 bytes is larger than 16384 bytes`: `app_t` was already at its limit, with no bytes to spare. **Done:** kept the limit. `audio_t` is 40 bytes in what was padding in `app_t` and everything else is in a region it reserves, only for a run with sound. `settings_values_t` took a padding byte, so the volume is a `uint8_t` beside the table of numbers. The sounds' ring is from `arena_world`, as `player_felling_t` is. `app_t`, `player_t` and `settings_t` stay the size they were. **Worth knowing:** main's frame is now exactly 16384, so one more byte anywhere under it fails the build. `main_options_t` grew 16 bytes for the two flags.
+- **Tests have no socket. Expected:** a stand-in server on a socket. **Actual:** the lint allows sockets in `run/src/audio/pulse/index.c` alone, as this stage asks, and that covers tests. **Done:** `audio_pulse_attach` takes two descriptors, and the stand-in in `tests/run/audio/fixtures/` speaks over pipes. So `send` and `connect` in that file are run only against the real server, by hand, as above, and not by ctest.
+- **Choices worth a look, none of them in the plan:** the default volume is 70. The slider is a square, so half way is a quarter of the amplitude. Letting go of the slider plays one stone place to judge it by. Settings had no free row, so volume took the row the save-failure message used, and that message now takes the title's place. A tree coming down makes one crunch per tick from where it was cut, not eight. Bedrock goes on making its hit. Hits are every 4 ticks, from the first. Plants that go with what they stood on make no sound of their own. Distance loses nothing up to 6 blocks and everything at 32; the far ear loses at most half. Between sounds the stream sends zeros, about 90 times a second, so a sink that would suspend stays awake while the game runs. A server that goes away is looked for again every 5 s, without another line.
+- **`hit_wait` went in `player_interaction_t`'s padding**, which is saved as bytes. Its size is unchanged, and old saves read it as 0. The ring of sounds isn't saved. The drop rolls take no number from sound, and `run_player_interaction` checks the hands come to the same bytes with or without somewhere for sounds to go. Which variant plays is the mixer's own random, so it isn't repeatable between runs, and nothing else hears of it.
+- **The spare thread:** `threads: { audio: 1, reserved_os: 0 }` by the plan's default answer. **Not measured: whether it costs frames.** All there is: 8 voices cost 37.6 ms per 20 s of sound, 0.19% of one thread, in a debug build, on `run_audio_mixer`'s timer, so no NASM kernel. The thread wakes at most every 5 ms. A before and after under real play is Ahmed's.
+- **Wiring outside this stage's paths:** `config/machine.yaml`, `compile/src/machine_config/`, `run/src/thread/`, `tests/run/thread/`, `tests/compile/machine_config/` for the new role; `compile/src/standards_lint/{catalog,rules_include}/` for the socket and for `audio` in the dependency diagram, at the same rank as `display`, `input` and `texture`; `run/src/main/`, `run/src/game/{index,tick,session}`, `run/src/player/{index,README}`, `run/src/settings/`, `run/src/ui/screen_settings/`, `tests/run/{settings,ui/screens,player/interaction}/`; `plans/CODING_STANDARD.md` no longer says the socket isn't built. New flags: `--no-sound` and `--sound-file`.
+- **Tested with:** 23 and then 20 and 4 tests through the mutex, serially, all passing, among them everything in Verification, `run_settings_session`, `run_save_state_game`, `run_player_felling`, `run_failure`, `run_playthrough`, `run_ui_hud` and `run_item_equipment`. `run_audio` and `run_audio_pulse` also ran under the `tsan` preset with no warning; the program test in `run_audio` failed there only because `minecraft_c` wasn't built in that preset. The release preset builds `minecraft_c`, and wasn't run.
+- **Not run:** the rest of the suite, and `run_display_mode` and `run_display_vt_guard`. Real PulseAudio, which does check the cookie, isn't on this machine, so only `pipewire-pulse` is proved. `OVERFLOW`, `UNDERFLOW` and `STREAM_KILLED` have only ever come from the stand-in.
+- **Mistake of mine:** one run of `run_audio`, about 4 s and with the program in it, went outside the mutex while I was reading its output. All the others went through it.
+- **Refused commands:** long shell commands that edited files or chained a test with other commands were refused as too complex to check against the worktree. **Done:** as the refusals said, wrote the edits as a script with the editor and ran plain commands. Nothing was bypassed.
+
 **Open for Ahmed:**
 
-1. Is a thread from the spare OK, leaving none reserved for the OS?
+1. Is a thread from the spare OK, leaving none reserved for the OS? It's in, by the plan's default. Does it cost frames? See stage 3's result.
 2. Does `pulse_tone` make a clean one-second tone? See "Stage 1 spike". This box stays open until he's listened.
-3. Do these recordings sound right per material? Once stage 3 can play them, mine stone, wood, dirt, sand and leaves. To change one, follow "To change a sound" in `sounds/README.md`.
+3. Do these recordings sound right per material? Stage 3 can play them now: mine stone, wood, dirt, sand and leaves. To change one, follow "To change a sound" in `sounds/README.md`.
 4. Kenney's pack could still be better. If wanted: download it in a browser to `/tmp/mc_c_assets/`, read its licence, and import from it.
 
 **Sources:** [Kenney Impact Sounds](https://kenney.nl/assets/impact-sounds), [OpenGameArt](https://opengameart.org), with each pack in `sounds/ATTRIBUTION.md`, [pulseaudio Rust crate](https://docs.rs/crate/pulseaudio/latest), [PulseAudio protocol-native.h](https://code.delx.au/pulseaudio/blob/81447ed392e57f822e09cf648cb16732a3e3773f:/src/protocol-native.h).
