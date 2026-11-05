@@ -613,6 +613,10 @@ Appended as they land:
 - `255781f` Replace every synthesized block sound with CC0 recordings from OpenGameArt, cut and levelled, keeping recipes as the fallback for a material with no recording.
 - `1e5d020` Say in the repository structure that the committed sounds are recordings, with recipes as the fallback.
 - `ad92ca6` Record that all ninety sounds are now CC0 recordings nobody has heard yet, how they were chosen, and what is still open.
+- `c8429fe` Play mining, breaking and placing sounds through our own sound server client, with a volume setting and silence when there is no server.
+- `00dec0d` Name the audio system, its parts and its tests in the repository structure, and put its thread and its place in the dependency diagram.
+- `5afdd67` Stop saying in the coding standard that the sound server's socket is not built yet.
+- `32ba285` Record that the sound stage is done and proved in memory and with silence on the real server, what was chosen, and what is left for Ahmed to hear.
 
 ## Issues found
 
