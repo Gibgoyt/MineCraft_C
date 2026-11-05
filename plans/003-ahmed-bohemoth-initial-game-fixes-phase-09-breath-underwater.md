@@ -51,6 +51,7 @@ Appended as they land:
 - `9df6873` Say in the repository structure where the test of what eyes under water see lives.
 - `937feed` Record stage 2 of the breath phase in its plan file: the void was black water, it is fixed and tested, with its commits and what was found.
 - `b5f01ee` Count kelp and seagrass in the sea as water, so that an eye in a stalk neither breathes nor sees black water, and draw no dark box around a stalk seen from under water.
+- `a5a932a` Record the gate check of the breath phase in its plan file: kelp and seagrass were the one real defect, and only Ahmed's check is left.
 
 ## Issues found
 
