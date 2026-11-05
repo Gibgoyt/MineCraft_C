@@ -78,6 +78,7 @@ Appended as they land:
 - `3c52c92` Name the items in the HUD golden pictures, as the nth item that wears moved when copper armour came before diamond in the table.
 - `fd77417` Record copper armour in its plan file: every box an agent can tick, the results, the HUD pictures it moved, and that only Ahmed is left.
 - `bb4f397` Make the copper crafting test say what a missing recipe made, as it read the recipe table at row UINT32_MAX when a pattern made nothing.
+- `533409e` Record the gate check of copper armour in its plan file: the built program played by script, the Verification command that missed its own tests, the whole suite in one run, and that only Ahmed is left.
 
 ## Issues found
 
