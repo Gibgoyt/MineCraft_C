@@ -80,6 +80,7 @@ Appended as they land:
 - `b7daaed` Say in the repository structure where an axe bringing down a tree lives, and what the proof by eye is.
 - `19ca349` Keep what is coming down of a tree out of the player and out of app_t, whose stack frame has no byte to spare in the release build.
 - `d5b76cf` Record in its plan file that the tree feller is built and what the work found, with only Ahmed playing it left.
+- `c7cb697` Record in the tree feller's plan file the whole suite and the proof by eye on the merged code, with run_profiler's failure, which is not the feller's.
 
 ## Issues found
 
