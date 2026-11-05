@@ -13,7 +13,7 @@ Compute only. No real display, console or input device is opened: the program al
 
 What it checks:
 
-- **The tables:** every tool's and every piece of armor's durability and points against the published numbers, what wears stacking to one, and which slot each piece takes.
+- **The tables:** every tool's and every piece of armor's durability and points against the published numbers, what wears stacking to one, and which slot each piece takes. Copper has no published numbers, so its own are in `copper/`, ctest `run_item_equipment_copper`.
 - **Mining:** what the slot in hand counts as, gold's tier, and a wooden pickaxe's and a hand's ticks on stone.
 - **Wear:** what a block and a hit cost, worked out by hand; every item that wears lasting exactly its durability and leaving by the books; two uses with one left; only the slot in hand.
 - **Shears and a hoe:** the block brought out, and never twice; what tills, what does not and costs nothing, a hoe's last use; the button held, every four ticks.

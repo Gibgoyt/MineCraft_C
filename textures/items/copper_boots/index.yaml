@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: copper_boots
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A pair of copper boots."
+  seed: 2071334104
+  ops:
+    - op: art
+      palette: { l: "#f4b48c", m: "#c9764c", d: "#84482c" }
+      rows:
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "...lmd....lmd..."
+        - "...lmd....lmd..."
+        - "...lmd....lmd..."
+        - "...lmd....lmd..."
+        - "...lmd....lmd..."
+        - "..lmmd...lmmd..."
+        - ".lmmmd..lmmmd..."
+        - ".ddddd..ddddd..."
+        - "................"
+        - "................"
+        - "................"

@@ -1,0 +1,5 @@
+name: copper_leggings
+kind: shaped
+pattern: ["MMM", "M M", "M M"]
+keys: { M: copper_ingot }
+gives: copper_leggings

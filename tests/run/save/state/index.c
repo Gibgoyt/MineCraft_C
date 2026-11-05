@@ -233,6 +233,9 @@ static void ss_fill(ss_rig_t *rig) {
     item_stack_t helmet = item_stack_make(ITEM_ID_IRON_HELMET, 1u);
     helmet.wear = 3u;
     item->equipment.armor[0] = helmet;
+    item_stack_t chestplate = item_stack_make(ITEM_ID_COPPER_CHESTPLATE, 1u);
+    chestplate.wear = 5u;
+    item->equipment.armor[1] = chestplate;
     item->equipment.tools_broken_count = 2u;
     item->crafting_hands.cells[0] = item_stack_make(ITEM_ID_DIRT, 2u);
     item->crafting_table.cells[8] = item_stack_make(ITEM_ID_COAL, 3u);
@@ -408,6 +411,8 @@ TEST(every_part_reloads_byte_for_byte_and_goes_on_the_same) {
     CHECK_EQ_U64(second->parts.time.day_units, 0x12345678u);
     CHECK_EQ_U64(inventory_count(&second->item->inventory, ITEM_ID_DIRT), 40u);
     CHECK_EQ_U64(second->held->count, 3u);
+    CHECK_EQ_U64(second->item->equipment.armor[1].item, ITEM_ID_COPPER_CHESTPLATE);
+    CHECK_EQ_U64(second->item->equipment.armor[1].wear, 5u);
     CHECK(second->player->survival.health == 13.5f32);
     CHECK_EQ_U64(player_vitals_read(second->player).food, 11u);
     REQUIRE(container_at(&second->item->chests, 7, 8, 1) != nullptr);
