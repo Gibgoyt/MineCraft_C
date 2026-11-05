@@ -620,6 +620,8 @@ Appended as they land:
 - `26ed656` Hold the program's sound test to the family of what was dug, drop a stream encoder nothing sent, and say that audio reads the X display number.
 - `cc81162` Format the sound test's new likeness line as clang-format wants it.
 - `3be0279` Record that the sound phase's gate passed every check an agent can run, what it proved in the running game, and the three defects it fixed.
+- `be6395a` Give each sound server test rig its arena back at the end, so the sanitize preset no longer stops the test on poison left in the harness arena.
+- `815e813` Record in the sound plan file that the final check found the sound server test failing under sanitize and fixed it.
 
 ## Issues found
 
