@@ -79,6 +79,7 @@ enum : uint32_t {
 /* And where what a person chose on the Settings screen is kept. */
 static const char MAIN_SETTINGS_DEFAULT[] = "settings.yaml";
 
+[[gnu::noinline]]
 static void main_print_usage(const char *program) {
     fprintf(
         stderr,
@@ -177,6 +178,7 @@ static bool main_parse_count(const char *flag, const char *text, uint32_t *out) 
     return true;
 }
 
+[[gnu::noinline]]
 static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out) {
     memset(out, 0, sizeof(*out));
     for (int32_t i = 1; i < argc; i++) {
