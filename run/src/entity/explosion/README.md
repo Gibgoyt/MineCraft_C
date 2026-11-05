@@ -16,7 +16,7 @@
 - `explosion_finish`: breaks it.
 
 **May be called by:** `run/src/entity/` for the start, and `run/src/mob/` and anything else that blows up. `explosion_line_clear` is also how a mob sees.
-**Depends on:** `entity/store`, `entity/item_drop`, `physics/collision`, `world/map`, `world/edit`, `world/wall_torch`, `terrain/rng`, `arena`, `assert`, the generated `tables/blocks`, libm.
+**Depends on:** `entity/store`, `entity/item_drop`, `physics/collision`, `world/map`, `world/edit`, `world/wall_torch`, `world/bench`, `terrain/rng`, `arena`, `assert`, the generated `tables/blocks`, libm.
 
 ## What it does
 
@@ -31,6 +31,8 @@ The numbers are Minecraft's published ones, in blocks and half hearts, and z is 
 **What goes with it.** What stood on a broken block and needs the ground goes too, as for mining: cross, crop and torch shapes, up to 16 high, and any torch on one of its four sides, wherever the blast reached. Falling sand, flowing water and the spilling of a chest follow from the edit log, as they do for anything that changes a block.
 
 **What comes out.** One block in `power` gives its drops, rolled as for a hand but with no tool asked for. A torch on a wall always gives its torch, whether the blast took it or the block it hung from.
+
+**A bench is two blocks that are one.** Either half on the list takes the other with it, and what stood on or hung from that one too, and the one on the list always gives the one bench, so a blast never leaves half of one or loses the only one a player made. If the other half's column is not loaded, the half stays: see `run/src/world/bench/`.
 
 **What it does to a body** with its feet `dist` from the middle, with `reach = 2 * power`:
 

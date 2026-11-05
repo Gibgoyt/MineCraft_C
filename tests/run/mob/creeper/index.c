@@ -15,6 +15,7 @@
 
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 /* Everything happens around here, in the middle of the loaded square, on a floor whose top is at z = 0. */
@@ -547,6 +548,108 @@ TEST(what_hangs_on_a_broken_block_goes_with_it_though_the_blast_did_not_reach_it
         torches += strcmp(block_drop_items[stack->item].name, "torch") == 0 ? stack->count : 0u;
     }
     CHECK_EQ_U64(torches, 4u);
+    mc_end(&rig);
+}
+
+/* What lies in the world of this item. */
+static uint32_t mc_drops_of(const item_drop_store_t *drops, uint16_t item) {
+    uint32_t count = 0u;
+    for (uint32_t i = 0u; i < drops->count; i++) {
+        count += block_drop_items[drops->borrowed_items[i].item].item == item ? drops->borrowed_items[i].count : 0u;
+    }
+    return count;
+}
+
+/* Ahmed's bench is two blocks that are one. Whichever half a blast lists, and if it lists both, both go and one bench comes out, at a power
+ * where one block in three would give what it gives. */
+TEST(a_blast_at_either_half_or_both_takes_the_bench_and_gives_one) {
+    mc_rig_t rig;
+    REQUIRE(mc_begin(t, &rig, 15u));
+    explosion_t *const explosion = &rig.entity->explosion;
+    item_drop_store_t *const drops = &rig.entity->item_drops;
+    enum : uint32_t { ROUNDS = 12u };
+    uint32_t benches = 0u;
+    for (uint32_t round = 0u; round < ROUNDS; round++) {
+        mc_put(t, &rig, 8, 8, 0, BLOCK_ID_WOODWORKING_BENCH_WEST);
+        mc_put(t, &rig, 9, 8, 0, BLOCK_ID_WOODWORKING_BENCH_EAST);
+        const explosion_cell_t west = {.x = 8, .y = 8, .z = 0, .block = BLOCK_ID_WOODWORKING_BENCH_WEST, ._pad0 = {0}};
+        const explosion_cell_t east = {.x = 9, .y = 8, .z = 0, .block = BLOCK_ID_WOODWORKING_BENCH_EAST, ._pad0 = {0}};
+        const uint32_t way = round % 4u;
+        explosion->borrowed_cells[0] = way == 1u || way == 3u ? east : west;
+        explosion->borrowed_cells[1] = way == 3u ? west : east;
+        explosion->count = way < 2u ? 1u : 2u;
+        CHECK_EQ_U64(explosion_finish(explosion, &rig.world.world->edit, drops, MC_POWER), 2u);
+        CHECK_EQ_U64(mc_block(&rig, 8, 8, 0), BLOCK_ID_AIR);
+        CHECK_EQ_U64(mc_block(&rig, 9, 8, 0), BLOCK_ID_AIR);
+        benches++;
+        CHECK_EQ_U64(mc_drops_of(drops, ITEM_ID_WOODWORKING_BENCH), benches);
+    }
+    mc_end(&rig);
+}
+
+TEST(what_stood_on_or_hung_from_the_other_half_goes_in_a_blast_too) {
+    mc_rig_t rig;
+    REQUIRE(mc_begin(t, &rig, 16u));
+    explosion_t *const explosion = &rig.entity->explosion;
+    item_drop_store_t *const drops = &rig.entity->item_drops;
+    mc_put(t, &rig, 8, 8, 0, BLOCK_ID_WOODWORKING_BENCH_WEST);
+    mc_put(t, &rig, 9, 8, 0, BLOCK_ID_WOODWORKING_BENCH_EAST);
+    mc_put(t, &rig, 9, 8, 1, BLOCK_ID_TORCH);
+    mc_put(t, &rig, 10, 8, 0, BLOCK_ID_TORCH_WALL_EAST);
+    explosion->borrowed_cells[0] =
+        (explosion_cell_t){.x = 8, .y = 8, .z = 0, .block = BLOCK_ID_WOODWORKING_BENCH_WEST, ._pad0 = {0}};
+    explosion->count = 1u;
+    CHECK_EQ_U64(explosion_finish(explosion, &rig.world.world->edit, drops, 1.0f64), 4u);
+    CHECK_EQ_U64(mc_block(&rig, 9, 8, 1), BLOCK_ID_AIR);
+    CHECK_EQ_U64(mc_block(&rig, 10, 8, 0), BLOCK_ID_AIR);
+    CHECK_EQ_U64(mc_drops_of(drops, ITEM_ID_WOODWORKING_BENCH), 1u);
+    CHECK_EQ_U64(mc_drops_of(drops, ITEM_ID_TORCH), 2u);
+    mc_end(&rig);
+}
+
+/* The real rays, from all sorts of places, whichever cells they reach and however many blocks they find. */
+TEST(no_real_blast_leaves_half_a_bench_and_each_bench_gone_gives_one) {
+    mc_rig_t rig;
+    REQUIRE(mc_begin(t, &rig, 17u));
+    item_drop_store_t *const drops = &rig.entity->item_drops;
+    uint32_t taken = 0u, stood = 0u;
+    for (uint32_t round = 0u; round < 40u; round++) {
+        mc_put(t, &rig, 8, 8, 1, BLOCK_ID_WOODWORKING_BENCH_WEST);
+        mc_put(t, &rig, 9, 8, 1, BLOCK_ID_WOODWORKING_BENCH_EAST);
+        drops->count = 0u;
+        /* From beside the bench, a little further off each round, so that some reach one half and some do not. */
+        const float64_t center[COLLISION_AXES] = {8.5f64 - (float64_t)(round % 8u) * 0.75f64, 8.5f64, 1.5f64};
+        mc_blast(&rig, center, MC_POWER);
+        const uint16_t west = mc_block(&rig, 8, 8, 1), east = mc_block(&rig, 9, 8, 1);
+        CHECK((west == BLOCK_ID_AIR) == (east == BLOCK_ID_AIR));
+        taken += west == BLOCK_ID_AIR ? 1u : 0u;
+        stood += west == BLOCK_ID_AIR ? 0u : 1u;
+        CHECK_EQ_U64(mc_drops_of(drops, ITEM_ID_WOODWORKING_BENCH), west == BLOCK_ID_AIR ? 1u : 0u);
+        if (west != BLOCK_ID_AIR) {
+            mc_put(t, &rig, 8, 8, 1, BLOCK_ID_AIR);
+            mc_put(t, &rig, 9, 8, 1, BLOCK_ID_AIR);
+        }
+    }
+    CHECK(taken > 0u);
+    printf("  %u benches gone, %u stood\n", taken, stood);
+    mc_end(&rig);
+}
+
+/* Which column is the last loaded is said by TEST_WORLD_RADIUS: a chunk's square up to 64. */
+TEST(with_its_other_half_not_loaded_a_listed_half_stands) {
+    mc_rig_t rig;
+    REQUIRE(mc_begin(t, &rig, 18u));
+    explosion_t *const explosion = &rig.entity->explosion;
+    item_drop_store_t *const drops = &rig.entity->item_drops;
+    mc_put(t, &rig, 63, 8, 0, BLOCK_ID_WOODWORKING_BENCH_WEST);
+    uint16_t block = BLOCK_ID_AIR;
+    REQUIRE(world_map_block_get(rig.world.map, 64, 8, 0, &block) == WORLD_MAP_STATUS_NOT_LOADED);
+    explosion->borrowed_cells[0] =
+        (explosion_cell_t){.x = 63, .y = 8, .z = 0, .block = BLOCK_ID_WOODWORKING_BENCH_WEST, ._pad0 = {0}};
+    explosion->count = 1u;
+    CHECK_EQ_U64(explosion_finish(explosion, &rig.world.world->edit, drops, 1.0f64), 0u);
+    CHECK_EQ_U64(mc_block(&rig, 63, 8, 0), BLOCK_ID_WOODWORKING_BENCH_WEST);
+    CHECK_EQ_U64(mc_drops_of(drops, ITEM_ID_WOODWORKING_BENCH), 0u);
     mc_end(&rig);
 }
 

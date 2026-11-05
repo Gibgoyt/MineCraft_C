@@ -3,3 +3,4 @@ kind: shaped
 pattern: ["M", "S", "S"]
 keys: { M: group_planks, S: stick }
 gives: wood_shovel
+station: woodworking

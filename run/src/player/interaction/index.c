@@ -5,6 +5,7 @@
 #include "physics/collision/index.h"
 #include "player/felling/index.h"
 #include "tables/blocks/index.h"
+#include "world/bench/index.h"
 #include "world/wall_torch/index.h"
 
 #include <math.h>
@@ -242,6 +243,30 @@ void player_interaction_stack_break(player_interaction_t *interaction, world_edi
     }
 }
 
+/* The other half of a bench goes first and gives nothing, as the one mined gives the one bench. False if it cannot go yet, which leaves the
+ * bench whole and all but broken for the next tick. If the half mined then finds no room, the next tick breaks it alone, and it drops. */
+static bool interaction_bench_other_break(player_interaction_t *interaction, world_edit_t *edit, uint16_t block,
+                                          int32_t x, int32_t y, int32_t z) {
+    int32_t step_x = 0;
+    uint16_t other = BLOCK_ID_AIR;
+    if (!bench_half_other(block, &step_x, &other)) {
+        return true;
+    }
+    uint16_t there = BLOCK_ID_AIR;
+    if (world_map_block_get(edit->borrowed_map, x + step_x, y, z, &there) != WORLD_MAP_STATUS_OK) {
+        return false;
+    }
+    if (there != other) {
+        return true;
+    }
+    if (world_edit_block_set(edit, x + step_x, y, z, BLOCK_ID_AIR) != WORLD_EDIT_STATUS_CHANGED) {
+        interaction->no_memory_count++;
+        return false;
+    }
+    player_interaction_stack_break(interaction, edit, x + step_x, y, z);
+    return true;
+}
+
 static void interaction_mine(player_interaction_t *interaction, world_edit_t *edit,
                              const player_interaction_input_t *input, const raycast_hit_t *hit) {
     const int32_t x = hit->cell[0], y = hit->cell[1], z = hit->cell[2];
@@ -268,7 +293,7 @@ static void interaction_mine(player_interaction_t *interaction, world_edit_t *ed
     const uint64_t work = interaction_work(speed_milli, input->borrowed_movement->on_ground != 0u,
                                            input->borrowed_movement->eyes_under_water != 0u);
     interaction->progress += work;
-    if (interaction->progress < required) {
+    if (interaction->progress < required || !interaction_bench_other_break(interaction, edit, block, x, y, z)) {
         return;
     }
     const world_edit_status_t status = world_edit_block_set(edit, x, y, z, BLOCK_ID_AIR);
@@ -350,6 +375,38 @@ static uint16_t interaction_block_to_place(const world_map_t *map, const raycast
     return BLOCK_ID_TORCH;
 }
 
+/* Whether a block's other half, if it is half a bench, can go beside it. A column not loaded refuses, and so do heights not in gameplay's. */
+static bool interaction_other_half_fits(const world_map_t *map, uint16_t block, const int32_t cell[COLLISION_AXES],
+                                        const player_movement_t *movement) {
+    int32_t step_x = 0;
+    uint16_t other = BLOCK_ID_AIR;
+    if (!bench_half_other(block, &step_x, &other)) {
+        return true;
+    }
+    const int32_t x = cell[0] + step_x;
+    uint16_t there = BLOCK_ID_AIR;
+    return world_map_block_get(map, x, cell[1], cell[2], &there) == WORLD_MAP_STATUS_OK &&
+           interaction_cell_takes(map, other, there, x, cell[1], cell[2]) &&
+           interaction_fits(other, x, cell[1], cell[2], movement);
+}
+
+/* The other half of what was just put down, if there is one. If it finds no room, the first half comes back out and false says nothing
+ * was placed: half a bench is never left. */
+static bool interaction_other_half_place(player_interaction_t *interaction, world_edit_t *edit, uint16_t block,
+                                         uint16_t was_there, const int32_t cell[COLLISION_AXES]) {
+    int32_t step_x = 0;
+    uint16_t other = BLOCK_ID_AIR;
+    if (!bench_half_other(block, &step_x, &other)) {
+        return true;
+    }
+    if (world_edit_block_set(edit, cell[0] + step_x, cell[1], cell[2], other) == WORLD_EDIT_STATUS_CHANGED) {
+        return true;
+    }
+    interaction->no_memory_count++;
+    (void)world_edit_block_set(edit, cell[0], cell[1], cell[2], was_there);
+    return false;
+}
+
 static void interaction_place(player_interaction_t *interaction, world_edit_t *edit,
                               const player_interaction_input_t *input, const raycast_hit_t *hit) {
     if (interaction->hand_count == 0u || hit->axis == RAYCAST_AXIS_NONE) {
@@ -368,14 +425,15 @@ static void interaction_place(player_interaction_t *interaction, world_edit_t *e
     /* Outside gameplay's heights, and in a column that has not come, this is not OK. */
     if (world_map_block_get(edit->borrowed_map, cell[0], cell[1], cell[2], &there) != WORLD_MAP_STATUS_OK ||
         !interaction_cell_takes(edit->borrowed_map, block, there, cell[0], cell[1], cell[2]) ||
-        !interaction_fits(block, cell[0], cell[1], cell[2], input->borrowed_movement)) {
+        !interaction_fits(block, cell[0], cell[1], cell[2], input->borrowed_movement) ||
+        !interaction_other_half_fits(edit->borrowed_map, block, cell, input->borrowed_movement)) {
         return;
     }
     const world_edit_status_t status = world_edit_block_set(edit, cell[0], cell[1], cell[2], block);
     if (status == WORLD_EDIT_STATUS_NO_MEMORY) {
         interaction->no_memory_count++;
     }
-    if (status != WORLD_EDIT_STATUS_CHANGED) {
+    if (status != WORLD_EDIT_STATUS_CHANGED || !interaction_other_half_place(interaction, edit, block, there, cell)) {
         return;
     }
     interaction->hand_count--;

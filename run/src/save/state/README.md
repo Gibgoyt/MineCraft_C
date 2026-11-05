@@ -32,7 +32,7 @@ All numbers are little-endian. A file is a `save_state_header_t`, then sections,
 |---|---|
 | Time | World ticks, the time of day, where the player looks |
 | Player | Body, health, hands and swing, as they are |
-| Items | Inventory, the two crafting grids, armor, what the pointer carries, and the books |
+| Items | Inventory, the three crafting grids, armor, what the pointer carries, and the books |
 | Chests, furnaces | Each one, by the cell it stands in |
 | Drops, arrows | Each one, and how the next will scatter |
 | Bodies | Every array of the entity store for its bodies, the slot tables, the numbers blasts go on with |

@@ -1,0 +1,17 @@
+name: woodworking_bench_end
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: The end of a woodworking bench, with its apron and two legs and a brace between them.
+  seed: 9205
+  ops:
+    - { op: fill, color: "#2e2115" }
+    - { op: fill, color: "#b98f57", x: 0, y: 0, w: 16, h: 3 }
+    - { op: fill, color: "#7b5a32", x: 0, y: 3, w: 16, h: 1 }
+    - { op: fill, color: "#8f6a3c", x: 0, y: 4, w: 4, h: 12 }
+    - { op: fill, color: "#5f4526", x: 4, y: 4, w: 1, h: 12 }
+    - { op: fill, color: "#8f6a3c", x: 12, y: 4, w: 4, h: 12 }
+    - { op: fill, color: "#5f4526", x: 11, y: 4, w: 1, h: 12 }
+    - { op: fill, color: "#a37c48", x: 5, y: 12, w: 6, h: 2 }
+    - { op: noise, amount: 7, cell: 1 }

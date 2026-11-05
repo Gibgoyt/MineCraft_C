@@ -1,0 +1,12 @@
+name: woodworking_bench_bottom
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: The underside of a woodworking bench, of dark boards along its length.
+  seed: 9206
+  ops:
+    - { op: fill, color: "#6f5431" }
+    - { op: noise, amount: 10, cell_x: 8, cell_y: 1 }
+    - { op: fill, color: "#4f3b21", x: 0, y: 5, w: 16, h: 1 }
+    - { op: fill, color: "#4f3b21", x: 0, y: 10, w: 16, h: 1 }

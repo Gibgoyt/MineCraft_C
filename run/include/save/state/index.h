@@ -18,8 +18,8 @@
 
 enum : uint32_t {
     /* Raised by any change an older reader could not read. A file of another version is refused and left alone. Version 2: a file ends in the names of
-     * the tables its numbers are places in, and a build with other tables translates them. */
-    SAVE_STATE_VERSION = 2u,
+     * the tables its numbers are places in, and a build with other tables translates them. Version 3: a third crafting grid, the woodworking bench's. */
+    SAVE_STATE_VERSION = 3u,
     SAVE_STATE_VERSION_FIRST_WITH_NAMES = 2u,
     /* The slot tables a file's bodies come with. */
     SAVE_STATE_SLOT_TABLES = 3u,
@@ -122,37 +122,39 @@ static_assert(offsetof(save_state_player_t, tick_count) == 1464);
 typedef struct save_state_items_t {
     crafting_grid_t crafting_hands;      /* 0 */
     crafting_grid_t crafting_table;      /* 96 */
-    equipment_t equipment;               /* 192 */
-    uint64_t added_count;                /* 240 */
-    uint64_t removed_count;              /* 248 */
-    uint64_t refused_count;              /* 256 */
-    uint64_t spilled_count;              /* 264 */
-    uint64_t chests_refused_count;       /* 272 */
-    uint64_t smelted_count;              /* 280 */
-    uint64_t burned_count;               /* 288 */
-    uint64_t furnaces_refused_count;     /* 296 */
-    item_stack_t slots[INVENTORY_SLOTS]; /* 304 */
-    item_stack_t held;                   /* 592: what the pointer carries on a screen */
-    uint8_t selected;                    /* 600 */
-    uint8_t _pad0[7];                    /* 601 */
+    crafting_grid_t crafting_bench;      /* 192 */
+    equipment_t equipment;               /* 288 */
+    uint64_t added_count;                /* 336 */
+    uint64_t removed_count;              /* 344 */
+    uint64_t refused_count;              /* 352 */
+    uint64_t spilled_count;              /* 360 */
+    uint64_t chests_refused_count;       /* 368 */
+    uint64_t smelted_count;              /* 376 */
+    uint64_t burned_count;               /* 384 */
+    uint64_t furnaces_refused_count;     /* 392 */
+    item_stack_t slots[INVENTORY_SLOTS]; /* 400 */
+    item_stack_t held;                   /* 688: what the pointer carries on a screen */
+    uint8_t selected;                    /* 696 */
+    uint8_t _pad0[7];                    /* 697 */
 } save_state_items_t;
-static_assert(sizeof(save_state_items_t) == 608);
+static_assert(sizeof(save_state_items_t) == 704);
 static_assert(alignof(save_state_items_t) == 8);
 static_assert(offsetof(save_state_items_t, crafting_hands) == 0);
 static_assert(offsetof(save_state_items_t, crafting_table) == 96);
-static_assert(offsetof(save_state_items_t, equipment) == 192);
-static_assert(offsetof(save_state_items_t, added_count) == 240);
-static_assert(offsetof(save_state_items_t, removed_count) == 248);
-static_assert(offsetof(save_state_items_t, refused_count) == 256);
-static_assert(offsetof(save_state_items_t, spilled_count) == 264);
-static_assert(offsetof(save_state_items_t, chests_refused_count) == 272);
-static_assert(offsetof(save_state_items_t, smelted_count) == 280);
-static_assert(offsetof(save_state_items_t, burned_count) == 288);
-static_assert(offsetof(save_state_items_t, furnaces_refused_count) == 296);
-static_assert(offsetof(save_state_items_t, slots) == 304);
-static_assert(offsetof(save_state_items_t, held) == 592);
-static_assert(offsetof(save_state_items_t, selected) == 600);
-static_assert(offsetof(save_state_items_t, _pad0) == 601);
+static_assert(offsetof(save_state_items_t, crafting_bench) == 192);
+static_assert(offsetof(save_state_items_t, equipment) == 288);
+static_assert(offsetof(save_state_items_t, added_count) == 336);
+static_assert(offsetof(save_state_items_t, removed_count) == 344);
+static_assert(offsetof(save_state_items_t, refused_count) == 352);
+static_assert(offsetof(save_state_items_t, spilled_count) == 360);
+static_assert(offsetof(save_state_items_t, chests_refused_count) == 368);
+static_assert(offsetof(save_state_items_t, smelted_count) == 376);
+static_assert(offsetof(save_state_items_t, burned_count) == 384);
+static_assert(offsetof(save_state_items_t, furnaces_refused_count) == 392);
+static_assert(offsetof(save_state_items_t, slots) == 400);
+static_assert(offsetof(save_state_items_t, held) == 688);
+static_assert(offsetof(save_state_items_t, selected) == 696);
+static_assert(offsetof(save_state_items_t, _pad0) == 697);
 
 typedef struct save_state_drops_t {
     uint64_t random;          /* 0 */

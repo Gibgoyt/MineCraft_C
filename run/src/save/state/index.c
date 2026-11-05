@@ -215,6 +215,7 @@ static void save_state_out_items(save_state_out_t *out, const item_t *item, cons
     memset(&head, 0, sizeof(head));
     head.crafting_hands = item->crafting_hands;
     head.crafting_table = item->crafting_table;
+    head.crafting_bench = *item->borrowed_crafting_bench;
     head.equipment = item->equipment;
     head.added_count = item->inventory.added_count;
     head.removed_count = item->inventory.removed_count;
@@ -549,8 +550,8 @@ static bool save_state_check_player(const uint8_t *data, uint64_t bytes) {
 }
 
 /* Not what it makes: save_state_apply works that out from the cells, as this build's recipes need not be those it was saved with. */
-static bool save_state_check_grid(const crafting_grid_t *grid, uint8_t side) {
-    return grid->side == side && save_state_stacks_fine(grid->cells, RECIPE_CELLS);
+static bool save_state_check_grid(const crafting_grid_t *grid, uint8_t side, uint8_t station) {
+    return grid->side == side && grid->station == station && save_state_stacks_fine(grid->cells, RECIPE_CELLS);
 }
 
 static bool save_state_check_items(const uint8_t *data, uint64_t bytes) {
@@ -560,8 +561,10 @@ static bool save_state_check_items(const uint8_t *data, uint64_t bytes) {
     }
     memcpy(&items, data, sizeof(items));
     return items.selected < INVENTORY_HOTBAR_SLOTS && save_state_stacks_fine(items.slots, INVENTORY_SLOTS) &&
-           item_stack_is_valid(&items.held) && save_state_check_grid(&items.crafting_hands, CRAFTING_SIDE_HANDS) &&
-           save_state_check_grid(&items.crafting_table, CRAFTING_SIDE_TABLE) &&
+           item_stack_is_valid(&items.held) &&
+           save_state_check_grid(&items.crafting_hands, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE) &&
+           save_state_check_grid(&items.crafting_table, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE) &&
+           save_state_check_grid(&items.crafting_bench, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING) &&
            save_state_stacks_fine(items.equipment.armor, EQUIPMENT_ARMOR_SLOTS);
 }
 
@@ -1030,6 +1033,7 @@ static void save_state_in_items(item_t *item, item_stack_t *held, const uint8_t 
     memcpy(&head, data, sizeof(head));
     item->crafting_hands = head.crafting_hands;
     item->crafting_table = head.crafting_table;
+    *item->borrowed_crafting_bench = head.crafting_bench;
     item->equipment = head.equipment;
     item->inventory.added_count = head.added_count;
     item->inventory.removed_count = head.removed_count;
@@ -1047,6 +1051,7 @@ static void save_state_in_items(item_t *item, item_stack_t *held, const uint8_t 
     /* What each makes, from this build's recipes, as those may be others than a file's. With the same recipes this is what the file said. */
     crafting_grid_changed(&item->crafting_hands);
     crafting_grid_changed(&item->crafting_table);
+    crafting_grid_changed(item->borrowed_crafting_bench);
 }
 
 static void save_state_in_drops(item_drop_store_t *drops, const uint8_t *data) {

@@ -3,3 +3,4 @@ kind: shaped
 pattern: ["PPP", "P P", "PPP"]
 keys: { P: group_planks }
 gives: chest
+station: woodworking

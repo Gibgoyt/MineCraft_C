@@ -32,20 +32,21 @@ uint32_t ui_screen_crafting_places(ui_screen_place_t *out) {
     return count;
 }
 
-void ui_screen_crafting_view(const item_t *item, ui_screen_view_t *view) {
-    memcpy(view->grid, item->crafting_table.cells, sizeof(view->grid));
-    view->output = item->crafting_table.output;
+void ui_screen_crafting_view(const crafting_grid_t *grid, ui_screen_view_t *view) {
+    memcpy(view->grid, grid->cells, sizeof(view->grid));
+    view->output = grid->output;
 }
 
-void ui_screen_crafting_draw(ui_widget_t *widget, const ui_screens_t *screens, const ui_screen_view_t *view) {
+void ui_screen_crafting_draw(ui_widget_t *widget, const ui_screens_t *screens, const ui_screen_view_t *view,
+                             const char *title) {
     const ui_canvas_t *const canvas = widget->borrowed_canvas;
     const ui_rect_t window = ui_screen_window(canvas->width, canvas->height);
-    ui_screen_draw_title(widget, window, UI_SCREEN_CRAFTING_TITLE_X, UI_SCREEN_CRAFTING_TITLE_Y, "Crafting");
+    ui_screen_draw_title(widget, window, UI_SCREEN_CRAFTING_TITLE_X, UI_SCREEN_CRAFTING_TITLE_Y, title);
     ui_screen_draw_arrow(widget, screens, window, UI_SCREEN_CRAFTING_ARROW_X, UI_SCREEN_CRAFTING_ARROW_Y,
                          item_stack_is_empty(&view->output) ? 0.0f32 : 1.0f32);
 }
 
-void ui_screen_crafting_click(item_t *item, ui_screen_action_t action, item_stack_t *cursor) {
+void ui_screen_crafting_click(item_t *item, crafting_grid_t *grid, ui_screen_action_t action, item_stack_t *cursor) {
     switch ((ui_screen_zone_t)action.zone) {
     case UI_SCREEN_ZONE_PLAYER:
         if ((action.flags & UI_SCREEN_FLAG_SHIFT) != 0u) {
@@ -56,7 +57,7 @@ void ui_screen_crafting_click(item_t *item, ui_screen_action_t action, item_stac
         break;
     case UI_SCREEN_ZONE_GRID:
     case UI_SCREEN_ZONE_OUTPUT:
-        ui_screen_grid_click(&item->crafting_table, &item->inventory, action, cursor);
+        ui_screen_grid_click(grid, &item->inventory, action, cursor);
         break;
     case UI_SCREEN_ZONE_WINDOW:
     case UI_SCREEN_ZONE_OUTSIDE:

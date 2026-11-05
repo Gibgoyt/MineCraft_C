@@ -120,6 +120,7 @@ static uint32_t us_places_of(ui_screen_kind_t kind, ui_screen_place_t *out) {
     case UI_SCREEN_INVENTORY:
         return ui_screen_inventory_places(out);
     case UI_SCREEN_CRAFTING:
+    case UI_SCREEN_WOODWORKING:
         return ui_screen_crafting_places(out);
     case UI_SCREEN_FURNACE:
         return ui_screen_furnace_places(out);
@@ -160,6 +161,7 @@ TEST(each_screen_has_the_slots_it_should_in_the_window_and_none_on_another) {
     static const us_screen_count_t screens[] = {
         {.count = 36u + 4u + 4u + 1u, .kind = UI_SCREEN_INVENTORY},
         {.count = 36u + 9u + 1u, .kind = UI_SCREEN_CRAFTING},
+        {.count = 36u + 9u + 1u, .kind = UI_SCREEN_WOODWORKING},
         {.count = 36u + 3u, .kind = UI_SCREEN_FURNACE},
         {.count = 36u + 27u, .kind = UI_SCREEN_CHEST},
     };
@@ -226,8 +228,10 @@ TEST(a_block_opens_only_its_own_screen) {
     for (uint32_t block = 0u; block < BLOCK_COUNT; block++) {
         screens += ui_screen_kind_of_block((uint16_t)block) != UI_SCREEN_NONE ? 1u : 0u;
     }
-    CHECK_EQ_U64(screens, 4u);
+    CHECK_EQ_U64(screens, 6u);
     CHECK_EQ_U64(ui_screen_kind_of_block(BLOCK_ID_CRAFTING_TABLE), UI_SCREEN_CRAFTING);
+    CHECK_EQ_U64(ui_screen_kind_of_block(BLOCK_ID_WOODWORKING_BENCH_WEST), UI_SCREEN_WOODWORKING);
+    CHECK_EQ_U64(ui_screen_kind_of_block(BLOCK_ID_WOODWORKING_BENCH_EAST), UI_SCREEN_WOODWORKING);
     CHECK_EQ_U64(ui_screen_kind_of_block(BLOCK_ID_FURNACE), UI_SCREEN_FURNACE);
     CHECK_EQ_U64(ui_screen_kind_of_block(BLOCK_ID_FURNACE_LIT), UI_SCREEN_FURNACE);
     CHECK_EQ_U64(ui_screen_kind_of_block(BLOCK_ID_CHEST), UI_SCREEN_CHEST);
@@ -409,18 +413,73 @@ TEST(the_inventory_replay_crafts_by_hand_wears_a_helmet_and_looks_as_it_should) 
     us_rig_stop(&rig);
 }
 
-TEST(the_crafting_replay_makes_a_pickaxe_at_a_table_and_looks_as_it_should) {
+TEST(the_crafting_replay_makes_a_stone_pickaxe_at_a_table_and_looks_as_it_should) {
+    us_rig_t rig;
+    REQUIRE(us_rig_start(t, &rig));
+    inventory_t *const inventory = &rig.item->inventory;
+    *inventory_slot(inventory, 0u) = item_stack_make(ITEM_ID_COBBLESTONE, 3u);
+    *inventory_slot(inventory, 1u) = item_stack_make(ITEM_ID_STICK, 2u);
+    us_open(&rig, UI_SCREEN_CRAFTING);
+    us_replay(t, &rig, "crafting", nullptr);
+    CHECK_EQ_U64(ui_screen_sim_kind(rig.ui), UI_SCREEN_NONE);
+    CHECK_EQ_U64(inventory_slot(inventory, 8u)->item, ITEM_ID_STONE_PICKAXE);
+    CHECK_EQ_U64(rig.item->crafting_table.crafted_count, 1u);
+    CHECK_EQ_U64(inventory_items_held(inventory), 1u);
+    us_rig_stop(&rig);
+}
+
+TEST(the_woodworking_replay_makes_a_wooden_pickaxe_at_a_bench_with_its_own_grid_and_title) {
     us_rig_t rig;
     REQUIRE(us_rig_start(t, &rig));
     inventory_t *const inventory = &rig.item->inventory;
     *inventory_slot(inventory, 0u) = item_stack_make(ITEM_ID_OAK_PLANKS, 3u);
     *inventory_slot(inventory, 1u) = item_stack_make(ITEM_ID_STICK, 2u);
-    us_open(&rig, UI_SCREEN_CRAFTING);
-    us_replay(t, &rig, "crafting", nullptr);
+    us_open(&rig, UI_SCREEN_WOODWORKING);
+    us_replay(t, &rig, "woodworking", nullptr);
     CHECK_EQ_U64(ui_screen_sim_kind(rig.ui), UI_SCREEN_NONE);
     CHECK_EQ_U64(inventory_slot(inventory, 8u)->item, ITEM_ID_WOOD_PICKAXE);
-    CHECK_EQ_U64(rig.item->crafting_table.crafted_count, 1u);
+    CHECK_EQ_U64(rig.item->borrowed_crafting_bench->crafted_count, 1u);
+    CHECK_EQ_U64(rig.item->crafting_table.crafted_count, 0u);
     CHECK_EQ_U64(inventory_items_held(inventory), 1u);
+    us_rig_stop(&rig);
+}
+
+/* The screen's own road for what a player would do, on what is on each screen's grid. */
+static void us_grid_click(us_rig_t *rig, uint32_t cell, uint32_t flags) {
+    ui_screens_send(rig->ui->borrowed_screens, (ui_screen_action_t){.op = UI_SCREEN_OP_CLICK,
+                                                                    .zone = UI_SCREEN_ZONE_GRID,
+                                                                    .slot = (uint8_t)cell,
+                                                                    .flags = (uint8_t)flags});
+    ui_screen_sim_step(rig->ui, &rig->sim, false);
+}
+
+TEST(the_same_wood_on_a_table_makes_nothing_and_closing_a_bench_gives_its_grid_back) {
+    us_rig_t rig;
+    REQUIRE(us_rig_start(t, &rig));
+    inventory_t *const inventory = &rig.item->inventory;
+    us_open(&rig, UI_SCREEN_CRAFTING);
+    ui_screens_t *const screens = rig.ui->borrowed_screens;
+    screens->cursor = item_stack_make(ITEM_ID_OAK_PLANKS, 3u);
+    for (uint32_t cell = 0u; cell < 3u; cell++) {
+        us_grid_click(&rig, cell, UI_SCREEN_FLAG_SECONDARY);
+    }
+    screens->cursor = item_stack_make(ITEM_ID_STICK, 2u);
+    us_grid_click(&rig, 4u, UI_SCREEN_FLAG_SECONDARY);
+    us_grid_click(&rig, 7u, UI_SCREEN_FLAG_SECONDARY);
+    CHECK_EQ_U64(rig.item->crafting_table.cells[7].item, ITEM_ID_STICK);
+    CHECK(item_stack_is_empty(&rig.item->crafting_table.output));
+    ui_screen_sim_close(rig.ui, &rig.sim);
+    CHECK_EQ_U64(inventory_count(inventory, ITEM_ID_OAK_PLANKS), 3u);
+    CHECK_EQ_U64(inventory_count(inventory, ITEM_ID_STICK), 2u);
+
+    us_open(&rig, UI_SCREEN_WOODWORKING);
+    screens->cursor = item_stack_make(ITEM_ID_COAL, 1u);
+    us_grid_click(&rig, 5u, 0u);
+    CHECK_EQ_U64(rig.item->borrowed_crafting_bench->cells[5].item, ITEM_ID_COAL);
+    CHECK(item_stack_is_empty(&rig.item->crafting_table.cells[5]));
+    ui_screen_sim_close(rig.ui, &rig.sim);
+    CHECK(item_stack_is_empty(&rig.item->borrowed_crafting_bench->cells[5]));
+    CHECK_EQ_U64(inventory_count(inventory, ITEM_ID_COAL), 1u);
     us_rig_stop(&rig);
 }
 
@@ -492,6 +551,8 @@ static uint32_t us_all_stacks(us_rig_t *rig, ui_screen_kind_t kind, const item_s
             out[count++] = &rig->item->crafting_hands.cells[i];
         } else if (kind == UI_SCREEN_CRAFTING) {
             out[count++] = &rig->item->crafting_table.cells[i];
+        } else if (kind == UI_SCREEN_WOODWORKING) {
+            out[count++] = &rig->item->borrowed_crafting_bench->cells[i];
         }
     }
     if (kind == UI_SCREEN_FURNACE) {
@@ -512,7 +573,7 @@ static uint32_t us_all_stacks(us_rig_t *rig, ui_screen_kind_t kind, const item_s
 
 TEST(random_clicks_on_every_screen_lose_nothing_and_keep_the_books_and_every_stack_good) {
     static const ui_screen_kind_t kinds[] = {UI_SCREEN_INVENTORY, UI_SCREEN_CRAFTING, UI_SCREEN_FURNACE,
-                                             UI_SCREEN_CHEST};
+                                             UI_SCREEN_CHEST, UI_SCREEN_WOODWORKING};
     static const uint16_t items[] = {ITEM_ID_OAK_LOG,     ITEM_ID_COAL,       ITEM_ID_SAND,  ITEM_ID_IRON_PICKAXE,
                                      ITEM_ID_IRON_HELMET, ITEM_ID_IRON_BOOTS, ITEM_ID_BREAD, ITEM_ID_OAK_PLANKS};
     for (uint32_t k = 0u; k < sizeof(kinds) / sizeof(kinds[0]); k++) {
@@ -875,6 +936,8 @@ TEST(in_a_real_game_e_and_the_right_button_bring_up_each_screen_and_the_hands_an
         {.block = BLOCK_ID_CHEST, .kind = UI_SCREEN_CHEST},
         {.block = BLOCK_ID_FURNACE, .kind = UI_SCREEN_FURNACE},
         {.block = BLOCK_ID_CRAFTING_TABLE, .kind = UI_SCREEN_CRAFTING},
+        {.block = BLOCK_ID_WOODWORKING_BENCH_WEST, .kind = UI_SCREEN_WOODWORKING},
+        {.block = BLOCK_ID_WOODWORKING_BENCH_EAST, .kind = UI_SCREEN_WOODWORKING},
     };
     const uint64_t bytes = post_xrgb_bytes(US_WIDTH, US_HEIGHT);
     uint8_t *const shown = test_alloc(t, bytes);
@@ -901,7 +964,7 @@ TEST(in_a_real_game_e_and_the_right_button_bring_up_each_screen_and_the_hands_an
         us_game_key(t, g, BTN_RIGHT, false);
         us_game_ticks(t, g, 1u);
     }
-    CHECK_EQ_U64(g->ui->borrowed_screens->opened_count, 4u);
+    CHECK_EQ_U64(g->ui->borrowed_screens->opened_count, 6u);
 
     /* Into a real chest by the mouse, and the chest breaks with the screen up and logs on the pointer. */
     REQUIRE(world_edit_block_set(&g->world->edit, cell[0], cell[1], cell[2], BLOCK_ID_CHEST) ==

@@ -112,6 +112,7 @@ static uint32_t ui_screen_places_of(uint8_t kind, ui_screen_place_t *out) {
     case UI_SCREEN_INVENTORY:
         return ui_screen_inventory_places(out);
     case UI_SCREEN_CRAFTING:
+    case UI_SCREEN_WOODWORKING:
         return ui_screen_crafting_places(out);
     case UI_SCREEN_FURNACE:
         return ui_screen_furnace_places(out);
@@ -181,7 +182,10 @@ void ui_screen_draw(ui_t *ui) {
         ui_screen_inventory_draw(&ui->widget, screens, view);
         break;
     case UI_SCREEN_CRAFTING:
-        ui_screen_crafting_draw(&ui->widget, screens, view);
+        ui_screen_crafting_draw(&ui->widget, screens, view, "Crafting");
+        break;
+    case UI_SCREEN_WOODWORKING:
+        ui_screen_crafting_draw(&ui->widget, screens, view, "Woodworking");
         break;
     case UI_SCREEN_FURNACE:
         ui_screen_furnace_draw(&ui->widget, screens, view);
@@ -207,6 +211,9 @@ ui_screen_kind_t ui_screen_kind_of_block(uint16_t block) {
     if (block == BLOCK_ID_CRAFTING_TABLE) {
         return UI_SCREEN_CRAFTING;
     }
+    if (block == BLOCK_ID_WOODWORKING_BENCH_WEST || block == BLOCK_ID_WOODWORKING_BENCH_EAST) {
+        return UI_SCREEN_WOODWORKING;
+    }
     if (block == BLOCK_ID_CHEST) {
         return UI_SCREEN_CHEST;
     }
@@ -230,7 +237,10 @@ static void ui_screen_publish(ui_screens_t *screens, item_t *item) {
         ui_screen_inventory_view(item, view);
         break;
     case UI_SCREEN_CRAFTING:
-        ui_screen_crafting_view(item, view);
+        ui_screen_crafting_view(&item->crafting_table, view);
+        break;
+    case UI_SCREEN_WOODWORKING:
+        ui_screen_crafting_view(item->borrowed_crafting_bench, view);
         break;
     case UI_SCREEN_FURNACE: {
         const smelting_furnace_t *const furnace = smelting_at(&item->furnaces, cell[0], cell[1], cell[2]);
@@ -281,9 +291,10 @@ void ui_screen_sim_close(ui_t *ui, const ui_screen_sim_t *sim) {
         return;
     }
     item_t *const item = sim->borrowed_item;
-    crafting_grid_t *const grid = screens->kind == UI_SCREEN_INVENTORY  ? &item->crafting_hands
-                                  : screens->kind == UI_SCREEN_CRAFTING ? &item->crafting_table
-                                                                        : nullptr;
+    crafting_grid_t *const grid = screens->kind == UI_SCREEN_INVENTORY     ? &item->crafting_hands
+                                  : screens->kind == UI_SCREEN_CRAFTING    ? &item->crafting_table
+                                  : screens->kind == UI_SCREEN_WOODWORKING ? item->borrowed_crafting_bench
+                                                                           : nullptr;
     if (grid != nullptr && crafting_grid_give_back(grid, &item->inventory) != 0u) {
         for (uint32_t c = 0u; c < crafting_grid_cells(grid); c++) {
             item_stack_t *const cell = crafting_grid_cell(grid, c);
@@ -330,7 +341,10 @@ static void ui_screen_click(ui_screens_t *screens, const ui_screen_sim_t *sim, u
         ui_screen_inventory_click(item, action, &screens->cursor);
         break;
     case UI_SCREEN_CRAFTING:
-        ui_screen_crafting_click(item, action, &screens->cursor);
+        ui_screen_crafting_click(item, &item->crafting_table, action, &screens->cursor);
+        break;
+    case UI_SCREEN_WOODWORKING:
+        ui_screen_crafting_click(item, item->borrowed_crafting_bench, action, &screens->cursor);
         break;
     case UI_SCREEN_FURNACE: {
         smelting_furnace_t *const furnace = smelting_at(&item->furnaces, cell[0], cell[1], cell[2]);

@@ -785,6 +785,16 @@ static const gtt_bad_case_t GTT_BAD_RECIPES[] = {
      ":1:", "one grid can match this and bad"},
     {"name: bad\nkind: shapeless\ningredients: [coal, stone]\ngives: stone\n",
      ":1:", "one grid can match this and bad"},
+    /* A station is one of the words, and only what a grid makes has one. */
+    {GTT_SHAPED "pattern: [\"C\"]\nkeys: { C: coal }\n" GTT_GIVES "station: shed\n", ":6:", "unknown station 'shed'"},
+    {"name: bad\nkind: shapeless\ningredients: [stone]\ngives: coal\nstation: shed\n", ":5:", "unknown station 'shed'"},
+    {"name: bad\nkind: smelt\ninput: coal\ngives: coal\nstation: woodworking\n",
+     ":5:", "unknown field 'station' in a smelt"},
+    {"name: bad\nkind: fuel\nitems: [coal]\nticks: 1\nstation: woodworking\n",
+     ":5:", "unknown field 'station' in a fuel"},
+    /* Saying the table is the same as saying nothing, so this is still the one grid. */
+    {GTT_SHAPED "pattern: [\"SC\"]\nkeys: { S: stone, C: coal }\ngives: stone\nstation: table\n",
+     ":1:", "one grid can match this and bad"},
     /* An item smelts one way and burns one way. */
     {"name: bad\nkind: smelt\ninput: group_rock\ngives: stone\n", ":1:", "'stone' smelts here and in bad"},
     {"name: bad\nkind: fuel\nitems: [coal, coal]\nticks: 1\n", ":1:", "'coal' burns here and in bad"},
@@ -833,6 +843,21 @@ TEST(good_recipes_make_tables_and_a_tree_with_none_needs_none) {
     CHECK_CONTAINS(source, "{.name = \"ok_smelt\", .gives = ITEM_ID_COAL, .ticks = 200, .count = 1}");
     CHECK_CONTAINS(source, "[ITEM_ID_STONE] = 1,");
     CHECK_CONTAINS(source, "[ITEM_ID_STONE] = {.ticks = 7, .leaves = ITEM_ID_COAL},");
+
+    /* What says nothing is the table's. A pattern another station's recipe has is no clash, as no grid is both. */
+    CHECK_CONTAINS(source, ".cell_count = 2, .station = 0}");
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "recipes/ok_bench"));
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "recipes/ok_bench/index.yaml"),
+              "name: ok_bench\nkind: shaped\npattern: [\"SC\"]\nkeys: { S: stone, C: coal }\ngives: stone\n"
+              "station: woodworking\n");
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 0);
+    CHECK_STR_EQ(run.output, "");
+    const char *const with_bench = gtt_read(t, gtt_path(t, tree.borrowed_out, "recipes/index.c"), &length);
+    REQUIRE(with_bench != nullptr);
+    CHECK_CONTAINS(with_bench, ".width = 2, .height = 1, .cell_count = 2, .station = 1}");
+    unlink(gtt_path(t, tree.borrowed_config, "recipes/ok_bench/index.yaml"));
+    rmdir(gtt_path(t, tree.borrowed_config, "recipes/ok_bench"));
 
     /* A directory of recipes that makes nothing is a mistake. */
     unlink(gtt_path(t, tree.borrowed_config, "recipes/ok_smelt/index.yaml"));

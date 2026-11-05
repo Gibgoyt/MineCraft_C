@@ -4,3 +4,4 @@ pattern: ["P P", " P "]
 keys: { P: group_planks }
 gives: bowl
 count: 4
+station: woodworking

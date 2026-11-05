@@ -1,0 +1,5 @@
+name: woodworking_bench_west
+hardness: 2.5
+tool: axe
+drops: [{ item: woodworking_bench, count: 1 }]
+texture: { top: blocks/woodworking_bench_top_west, bottom: blocks/woodworking_bench_bottom, side: blocks/woodworking_bench_end, south: blocks/woodworking_bench_side_left, north: blocks/woodworking_bench_side_right }

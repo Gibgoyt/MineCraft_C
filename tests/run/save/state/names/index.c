@@ -254,6 +254,7 @@ static void ns_old_fill(ns_rig_t *rig, const ns_table_t *blocks, const ns_table_
     item->equipment.armor[0] = helmet;
     item->crafting_hands.cells[0] = ns_stack(items, ITEM_ID_OAK_LOG, 1u);
     item->crafting_table.cells[8] = ns_stack(items, ITEM_ID_RAW_IRON, 3u);
+    item->borrowed_crafting_bench->cells[4] = ns_stack(items, ITEM_ID_STICK, 2u);
     *rig->held = ns_stack(items, ITEM_ID_STONE, 3u);
     container_chest_t *const chest = container_open(&item->chests, 7, 8, 1);
     *container_slot(chest, 26u) = ns_stack(items, ITEM_ID_STONE, 12u);
@@ -362,6 +363,8 @@ static void ns_moved_test(test_context_t *t, uint32_t skip_block, uint32_t skip_
     CHECK_EQ_U64(item->equipment.armor[0].wear, 3u);
     CHECK_EQ_U64(item->crafting_hands.cells[0].item, ITEM_ID_OAK_LOG);
     CHECK_EQ_U64(item->crafting_table.cells[8].item, ITEM_ID_RAW_IRON);
+    CHECK_EQ_U64(item->borrowed_crafting_bench->cells[4].item, ITEM_ID_STICK);
+    CHECK_EQ_U64(item->borrowed_crafting_bench->cells[4].count, 2u);
     CHECK_EQ_U64(rig->held->item, ITEM_ID_STONE);
     container_chest_t *const chest = container_at(&item->chests, 7, 8, 1);
     REQUIRE(chest != nullptr);
@@ -375,7 +378,8 @@ static void ns_moved_test(test_context_t *t, uint32_t skip_block, uint32_t skip_
     CHECK_EQ_U64(furnace->cooking, ITEM_ID_RAW_IRON);
     CHECK_EQ_U64(furnace->cook_ticks, 5u);
     /* What a log in a grid makes, by this build's recipes. */
-    CHECK_EQ_U64(item->crafting_hands.recipe, crafting_match(item->crafting_hands.cells, CRAFTING_SIDE_HANDS));
+    CHECK_EQ_U64(item->crafting_hands.recipe,
+                 crafting_match(item->crafting_hands.cells, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE));
     CHECK(item->crafting_hands.recipe != CRAFTING_NO_RECIPE);
     CHECK(!item_stack_is_empty(&item->crafting_hands.output));
 
@@ -600,7 +604,7 @@ TEST(what_a_grid_makes_comes_from_this_builds_recipes_and_no_file_can_stop_a_wor
     REQUIRE(ns_rig_begin(t, rig, root, SAVE_WORLD_OK));
     REQUIRE(save_state_apply(&rig->save->state, &rig->parts));
     const crafting_grid_t *const hands = &rig->item->crafting_hands;
-    CHECK_EQ_U64(hands->recipe, crafting_match(hands->cells, CRAFTING_SIDE_HANDS));
+    CHECK_EQ_U64(hands->recipe, crafting_match(hands->cells, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE));
     CHECK(hands->recipe < RECIPE_COUNT);
     CHECK_EQ_U64(hands->output.item, recipe_defs[hands->recipe].gives);
     CHECK_EQ_U64(rig->item->crafting_table.recipe, CRAFTING_NO_RECIPE);

@@ -240,9 +240,12 @@ static void ss_fill(ss_rig_t *rig) {
     item->crafting_hands.cells[0] = item_stack_make(ITEM_ID_DIRT, 2u);
     item->crafting_table.cells[8] = item_stack_make(ITEM_ID_COAL, 3u);
     item->crafting_table.crafted_count = 4u;
+    item->borrowed_crafting_bench->cells[4] = item_stack_make(ITEM_ID_STICK, 5u);
+    item->borrowed_crafting_bench->crafted_count = 7u;
     /* What the game does after writing a cell, and what save_state_apply works out again. */
     crafting_grid_changed(&item->crafting_hands);
     crafting_grid_changed(&item->crafting_table);
+    crafting_grid_changed(item->borrowed_crafting_bench);
     *rig->held = item_stack_make(ITEM_ID_DIRT, 3u);
     item->spilled_count = 6u;
     container_chest_t *const chest = container_open(&item->chests, 7, 8, 1);
@@ -339,7 +342,7 @@ TEST(a_file_is_these_bytes_by_hand) {
     memcpy(expected + 24, &table_hash, 8u);
     const uint64_t sections_bytes = whole - 72u;
     memcpy(expected + 32, &sections_bytes, 8u);
-    const uint32_t version = 2u, header_bytes = 72u, section_count = 2u;
+    const uint32_t version = 3u, header_bytes = 72u, section_count = 2u;
     memcpy(expected + 48, &version, 4u);
     memcpy(expected + 52, &header_bytes, 4u);
     memcpy(expected + 56, &section_count, 4u);
@@ -509,6 +512,14 @@ TEST(what_cannot_be_believed_is_refused_and_left_as_it_was) {
         {offsetof(save_state_items_t, held) + offsetof(item_stack_t, count), 200u, SAVE_STATE_SECTION_ITEMS, 1u},
         {offsetof(save_state_items_t, crafting_hands) + offsetof(crafting_grid_t, side), 3u, SAVE_STATE_SECTION_ITEMS,
          1u},
+        {offsetof(save_state_items_t, crafting_bench) + offsetof(crafting_grid_t, side), 2u, SAVE_STATE_SECTION_ITEMS,
+         1u},
+        {offsetof(save_state_items_t, crafting_bench) + offsetof(crafting_grid_t, station), RECIPE_STATION_TABLE,
+         SAVE_STATE_SECTION_ITEMS, 1u},
+        {offsetof(save_state_items_t, crafting_table) + offsetof(crafting_grid_t, station), RECIPE_STATION_WOODWORKING,
+         SAVE_STATE_SECTION_ITEMS, 1u},
+        {offsetof(save_state_items_t, crafting_bench) + offsetof(crafting_grid_t, cells), 60000u,
+         SAVE_STATE_SECTION_ITEMS, 2u},
         {offsetof(container_chest_t, slots) + offsetof(item_stack_t, item), 60000u, SAVE_STATE_SECTION_CHESTS, 2u},
         {offsetof(smelting_furnace_t, cooking), 60000u, SAVE_STATE_SECTION_FURNACES, 2u},
         {offsetof(save_state_drops_t, count), ITEM_DROP_CAPACITY + 1u, SAVE_STATE_SECTION_DROPS, 4u},

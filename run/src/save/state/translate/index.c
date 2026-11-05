@@ -167,12 +167,15 @@ static bool state_translate_items(state_translate_t *translate, uint8_t *data, u
     memcpy(&items, data, sizeof(items));
     items.crafting_hands.output = (item_stack_t){0};
     items.crafting_table.output = (item_stack_t){0};
+    items.crafting_bench.output = (item_stack_t){0};
     items.crafting_hands.recipe = CRAFTING_NO_RECIPE;
     items.crafting_table.recipe = CRAFTING_NO_RECIPE;
+    items.crafting_bench.recipe = CRAFTING_NO_RECIPE;
     if (!state_translate_stacks(translate, items.slots, INVENTORY_SLOTS) ||
         !state_translate_stack(translate, &items.held) ||
         !state_translate_stacks(translate, items.crafting_hands.cells, RECIPE_CELLS) ||
         !state_translate_stacks(translate, items.crafting_table.cells, RECIPE_CELLS) ||
+        !state_translate_stacks(translate, items.crafting_bench.cells, RECIPE_CELLS) ||
         !state_translate_stacks(translate, items.equipment.armor, EQUIPMENT_ARMOR_SLOTS)) {
         return false;
     }

@@ -4,3 +4,4 @@ pattern: ["P  ", "PP ", "PPP"]
 keys: { P: birch_planks }
 gives: birch_stairs
 count: 4
+station: woodworking

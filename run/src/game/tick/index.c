@@ -334,8 +334,8 @@ static void game_death_spill(game_t *game) {
             *stack = (item_stack_t){0};
         }
     }
-    crafting_grid_t *const grids[2] = {&item->crafting_hands, &item->crafting_table};
-    for (uint32_t g = 0u; g < 2u; g++) {
+    crafting_grid_t *const grids[3] = {&item->crafting_hands, &item->crafting_table, item->borrowed_crafting_bench};
+    for (uint32_t g = 0u; g < 3u; g++) {
         for (uint32_t c = 0u; c < crafting_grid_cells(grids[g]); c++) {
             item_stack_t *const stack = crafting_grid_cell(grids[g], c);
             if (!item_stack_is_empty(stack)) {

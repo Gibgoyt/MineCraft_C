@@ -1,6 +1,6 @@
 # tests/run/ui/screens
 
-**Purpose:** ctest `run_ui_screens`. Tests `run/src/ui/` with `screen_inventory`, `screen_crafting`, `screen_furnace` and `screen_chest`, and what `run/src/game/` does with them.
+**Purpose:** ctest `run_ui_screens`. Tests `run/src/ui/` with `screen_inventory`, `screen_crafting` as a table and as a woodworking bench, `screen_furnace` and `screen_chest`, and what `run/src/game/` does with them.
 **Tier:** test.
 **Owns:** the test arena, and the regions of what it starts, given back by the end of each test.
 **Lifetime:** One run.
