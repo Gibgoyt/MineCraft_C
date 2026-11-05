@@ -1,0 +1,216 @@
+# Plan 003 phase 7: a real tree felled in the built program, at 640 by 480 and seed 36, with an axe made through the real screens. See ../README.md.
+1 move 0 -40
++1 button left down
++1 button left up
++1 move 132 196
++1 button left down
++1 button left up
++1 key p down
++1 key p up
++1 key l down
++1 key l up
++1 key a down
++1 key a up
++1 key y down
++1 key y up
++1 move -132 -194
++1 button left down
++1 button left up
++1 key 3 down
++1 key 3 up
++1 key 6 down
++1 key 6 up
++1 key enter down
++1 key enter up
++3 screenshot spawn.png
++1 move 0 250
+# Mine the mud underfoot, and stand in the hole until the drop is in hand.
++1 button left down
++22 button left up
++14 screenshot picked_up.png
+# Back to looking level, out of the hole, and to the tree.
++1 move 0 -250
++1 key space down
++1 key w down
++4 key space up
++12 key w up
++6 screenshot at_tree.png
+# Four logs: the root ahead, then the trunk to its right, up it from the level of the eye, standing still.
++1 button left down
++70 button left up
++1 screenshot log1.png
++1 move 125 0
++1 button left down
++70 button left up
++1 screenshot log2.png
++1 move 0 -80
++1 button left down
++70 button left up
++1 screenshot log3.png
++1 move 0 -70
++1 button left down
++70 button left up
++1 screenshot log4.png
++1 move 0 150
++1 key w down
++15 key w up
+# Back the way it came, where the ground is clear for a table.
++1 move 628 0
++20 screenshot logs.png
+# The inventory's grid, by clicking: planks, a crafting table, more planks, sticks. It opens with the pointer at 320, 240.
++1 key e down
++1 key e up
++1 move -106 135
++1 button left down
++1 button left up
++1 move 124 -230
++1 button right down
++1 button right up
++1 move -124 230
++1 button left down
++1 button left up
++1 move 248 -212
++1 button left down
++1 button left up
++1 move -212 212
++1 button left down
++1 button left up
++1 button left down
++1 button left up
++1 move 88 -230
++1 button right down
++1 button right up
++1 move 36 0
++1 button right down
++1 button right up
++1 move 0 36
++1 button right down
++1 button right up
++1 move -36 0
++1 button right down
++1 button right up
++1 move 124 -18
++1 button left down
++1 button left up
++1 move -176 212
++1 button left down
++1 button left up
++1 move -72 0
++1 button left down
++1 button left up
++1 move 124 -230
++1 button right down
++1 button right up
++1 button right down
++1 button right up
++1 move -124 230
++1 button left down
++1 button left up
++1 move 248 -212
++1 button left down
++1 button left up
++1 button left down
++1 button left up
++1 move -212 212
++1 button left down
++1 button left up
++1 button left down
++1 button left up
++1 move 88 -230
++1 button right down
++1 button right up
++1 move 0 36
++1 button right down
++1 button right up
++1 move -88 194
++1 button left down
++1 button left up
++1 move 212 -212
++1 button left down
++1 button left up
++1 move -140 212
++1 button left down
++1 button left up
++1 screenshot crafted.png
++1 key e down
++1 key e up
+# The table in hand, placed, and opened: a wooden axe at its grid.
++1 key 4 down
++1 key 4 up
++1 move 0 200
++2 button right down
++1 button right up
++3 button right down
++1 button right up
++3 screenshot table.png
++1 move -70 135
++1 button left down
++1 button left up
++1 move -28 -249
++1 button right down
++1 button right up
++1 move 36 0
++1 button right down
++1 button right up
++1 move -36 36
++1 button right down
++1 button right up
++1 move 28 213
++1 button left down
++1 button left up
++1 move 72 0
++1 button left down
++1 button left up
++1 move -64 -213
++1 button right down
++1 button right up
++1 move 0 36
++1 button right down
++1 button right up
++1 move 64 177
++1 button left down
++1 button left up
++1 move 75 -213
++1 button left down
++1 button left up
++1 move -111 213
++1 button left down
++1 button left up
++1 screenshot axe.png
++1 key e down
++1 key e up
++1 key 4 down
++1 key 4 up
+# The chop: pictures of the tree, before and after.
+# Turned to the trees that way, up the bank, and back a little, to see a whole tree before.
++1 move 628 -240
++1 key space down
++1 key w down
++4 key space up
++14 key w up
++8 move 100 -60
++1 key w down
++8 key w up
++8 move 20 40
++1 key s down
++6 key s up
++8 move 0 -220
++6 screenshot before.png
+# To the trunk, and the left button held for the 30 ticks a wooden axe takes on a log, with some to spare.
++1 move 0 220
++1 move 170 -70
++1 key w down
++12 key w up
++6 screenshot aimed.png
++1 button left down
++45 button left up
++1 screenshot cut.png
+# Back where before.png was looked from, near enough, to see what is left.
++1 key s down
++12 key s up
++1 move -170 70
++1 move 0 -220
++1 screenshot during.png
++40 screenshot after.png
++60 screenshot later.png
++1 end

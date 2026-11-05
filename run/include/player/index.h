@@ -6,6 +6,7 @@
 #include "physics/index.h"
 #include "player/camera/index.h"
 #include "player/combat/index.h"
+#include "player/felling/index.h"
 #include "player/interaction/index.h"
 #include "player/movement/index.h"
 #include "player/survival/index.h"
@@ -111,6 +112,10 @@ void player_hands_send(player_t *player, bool attack, bool place);
  * the map, right before player_tick, so that the body and the next aim both meet the world as this leaves it. Never waits and never
  * touches the heap. What it broke waits in the interaction's ring, for whoever puts items in the world. */
 void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns);
+
+/* The same, with somewhere for a log an axe cuts to set the rest of its tree going: player_interact_tick is this with nullptr, and an axe cuts one log.
+ * The caller then runs player_felling_tick. */
+void player_interact_fell_tick(player_t *player, world_edit_t *edit, player_felling_t *felling, int64_t tick_ns);
 
 /* The hand's tick, right before player_interact_tick on the same thread: a press of the left button on a body in reach returns true and
  * says what it does, for the caller to apply. While the button is on a body the hands that follow do not mine. A run that does not call this

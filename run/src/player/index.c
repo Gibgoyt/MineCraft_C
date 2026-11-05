@@ -131,6 +131,10 @@ void player_hands_send(player_t *player, bool attack, bool place) {
 }
 
 void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns) {
+    player_interact_fell_tick(player, edit, nullptr, tick_ns);
+}
+
+void player_interact_fell_tick(player_t *player, world_edit_t *edit, player_felling_t *felling, int64_t tick_ns) {
     uint32_t hands = atomic_load_explicit(&player->hands_word, memory_order_relaxed);
     hands |= atomic_exchange_explicit(&player->hands_latch, 0u, memory_order_relaxed);
     if (player->hands_held_off != 0u) {
@@ -168,6 +172,7 @@ void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns)
     const player_interaction_input_t input = {
         .borrowed_target = &player->target,
         .borrowed_movement = &player->movement,
+        .borrowed_felling = felling,
         .attack = buttons.attack,
         .place = buttons.place,
         ._pad0 = {0},

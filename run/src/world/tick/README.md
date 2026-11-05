@@ -8,6 +8,7 @@
 **Public functions** (`run/include/world/tick/index.h`):
 
 - `world_tick_init`, `world_tick_deinit`: the tables.
+- `world_tick_leaves_check`, `world_tick_sweeps_pending`: logs have gone from a box, for `run/src/player/felling/`, so its leaves are looked at now; how many such boxes are left.
 - `world_tick_broken_next`: the oldest block with drops that went by itself, for whoever makes the items.
 - `world_tick_seed_set`: where the random ticks' numbers come from.
 - `world_tick_column_leaving`: gives back a column's levels.
@@ -79,6 +80,7 @@ Sideways it goes only towards the nearest way down within reach, 3 steps past th
 
 Each tick, in each column within 8 chunks of the map's center, each section picks 3 voxels. A section all of something that does nothing is skipped without a look. The numbers come from the seed, the tick, the column and the section and nothing else, and columns go in order of place: so the same columns give the same results, whichever order they streamed in.
 
+- **A box of leaves.** `world_tick_leaves_check` is for a tree that has just come down, with no need to wait for random ticks to find what it held. The box, grown by the 6 steps a leaf can reach, is gone through from the top in `WORLD_TICK_SWEEP_TICKS` ticks, however big, and each leaf is put to the same rule as a random tick, with the same drops. So a whole crown goes over a second and a half, and another tree's leaves in the box stay. A vine goes if nothing solid other than leaves is beside it or above it and no vine is above it: it goes from the top, so the one above has had its turn. Nothing else makes a vine go, and a tree's would otherwise stay floating. While the ring of what went by itself is half full the box waits, so that nothing in it is lost. Up to `WORLD_TICK_SWEEPS` boxes at once, and past that the last takes in the new one. Boxes are not saved: what they do not get to, random ticks do.
 - **Leaves** (`BLOCK_FLAG_DECAYS`) go if no log is within 6 steps through other leaves. A column not loaded counts as if it had one, so a tree on the edge of the world does not fall apart. Leaves a player places decay the same way until something can say who placed them.
 - **Wheat** needs light 9, at the crop. With water within 4 sideways of its farmland, at that height or one above, it goes up a stage in 1 tick of 7. Without, 1 of 13.
 - **Grass** turns to dirt under anything opaque or any fluid. Otherwise, with light 9 above it, it makes 4 tries at a random voxel at most 1 away sideways, from 3 below to 1 above: dirt there with light 4 above it, and nothing opaque or fluid, turns to grass.
