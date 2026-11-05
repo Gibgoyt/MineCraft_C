@@ -54,7 +54,8 @@ typedef struct pf_rig_t {
     uint64_t felled;            /* 6576: what player_felling_tick said went, so many uses of the axe */
     uint32_t uses;              /* 6584: given to player_felling_tick */
     uint8_t drain;              /* 6588: whether anyone is taking the drops */
-    uint8_t _pad0[3];           /* 6589 */
+    uint8_t torches_dropped;    /* 6589 */
+    uint8_t _pad0[2];           /* 6590 */
 } pf_rig_t;
 static_assert(sizeof(pf_rig_t) == 6592);
 
@@ -98,6 +99,9 @@ static void pf_drop_count(pf_rig_t *rig) {
         const uint16_t block = block_drop_items[drop.item].block;
         if (block != BLOCK_NO_ID && (block_defs[block].flags & BLOCK_FLAG_LOG) != 0u) {
             rig->logs_dropped += drop.count;
+        }
+        if (block == BLOCK_ID_TORCH) {
+            rig->torches_dropped = (uint8_t)(rig->torches_dropped + drop.count);
         }
     }
 }
@@ -800,6 +804,7 @@ TEST(a_torch_on_a_log_goes_with_it_and_gives_itself_up) {
     CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y + 1, PF_Z + 3), BLOCK_ID_AIR);
     CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y - 1, PF_Z + 3), BLOCK_ID_AIR);
     CHECK_EQ_U64(rig->hands.drops_lost_count, 0u);
+    CHECK_EQ_U64(rig->torches_dropped, 4u);
     pf_end(rig);
 }
 
@@ -827,6 +832,7 @@ TEST(a_log_with_a_torch_on_every_side_waits_for_room_in_the_ring_and_nothing_is_
     CHECK_EQ_U64(rig->hands.drops_lost_count, 0u);
     CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y, PF_Z + PF_TORCH_LOGS - 1), BLOCK_ID_AIR);
     CHECK_EQ_U64(pf_block(rig, PF_X + 1, PF_Y, PF_Z + PF_TORCH_LOGS - 1), BLOCK_ID_AIR);
+    CHECK_EQ_U64(rig->torches_dropped, 4u * (uint64_t)PF_TORCH_LOGS);
     pf_end(rig);
 }
 

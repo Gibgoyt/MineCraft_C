@@ -11,7 +11,7 @@
 - `wall_torch_of`: the torch that leans a given way.
 - `WALL_TORCH_BLOCKS`: all four.
 
-**May be called by:** `run/src/world/tick/`, `run/src/player/interaction/`, `run/src/entity/explosion/`.
+**May be called by:** `run/src/world/tick/`, `run/src/player/interaction/`, `run/src/player/felling/`, `run/src/entity/explosion/`.
 **Depends on:** the generated `tables/blocks/`.
 
 ## The four

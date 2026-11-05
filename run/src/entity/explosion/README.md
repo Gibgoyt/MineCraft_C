@@ -30,7 +30,7 @@ The numbers are Minecraft's published ones, in blocks and half hearts, and z is 
 
 **What goes with it.** What stood on a broken block and needs the ground goes too, as for mining: cross, crop and torch shapes, up to 16 high, and any torch on one of its four sides, wherever the blast reached. Falling sand, flowing water and the spilling of a chest follow from the edit log, as they do for anything that changes a block.
 
-**What comes out.** One block in `power` gives its drops, rolled as for a hand but with no tool asked for.
+**What comes out.** One block in `power` gives its drops, rolled as for a hand but with no tool asked for. A torch on a wall always gives its torch, whether the blast took it or the block it hung from.
 
 **What it does to a body** with its feet `dist` from the middle, with `reach = 2 * power`:
 

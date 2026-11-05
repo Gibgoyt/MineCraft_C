@@ -550,6 +550,36 @@ TEST(what_hangs_on_a_broken_block_goes_with_it_though_the_blast_did_not_reach_it
     mc_end(&rig);
 }
 
+/* At a real blast's power, where one block in three gives what it gives: a torch on a wall still gives its own, whichever order the list has it. */
+TEST(a_torch_on_a_wall_gives_a_torch_at_any_power_on_the_list_or_not) {
+    mc_rig_t rig;
+    REQUIRE(mc_begin(t, &rig, 14u));
+    explosion_t *const explosion = &rig.entity->explosion;
+    item_drop_store_t *const drops = &rig.entity->item_drops;
+    enum : uint32_t { ROUNDS = 16u };
+    uint32_t torches = 0u;
+    for (uint32_t round = 0u; round < ROUNDS; round++) {
+        mc_put(t, &rig, 8, 8, 0, BLOCK_ID_DIRT);
+        mc_put(t, &rig, 9, 8, 0, BLOCK_ID_TORCH_WALL_EAST);
+        mc_put(t, &rig, 7, 8, 0, BLOCK_ID_TORCH_WALL_WEST);
+        mc_put(t, &rig, 8, 9, 0, BLOCK_ID_TORCH_WALL_NORTH);
+        mc_put(t, &rig, 8, 7, 0, BLOCK_ID_TORCH_WALL_SOUTH);
+        /* One taken by the blast itself, ahead of the dirt. The other three go because the dirt did. */
+        explosion->borrowed_cells[0] =
+            (explosion_cell_t){.x = 9, .y = 8, .z = 0, .block = BLOCK_ID_TORCH_WALL_EAST, ._pad0 = {0}};
+        explosion->borrowed_cells[1] = (explosion_cell_t){.x = 8, .y = 8, .z = 0, .block = BLOCK_ID_DIRT, ._pad0 = {0}};
+        explosion->count = 2u;
+        CHECK_EQ_U64(explosion_finish(explosion, &rig.world.world->edit, drops, MC_POWER), 5u);
+        for (uint32_t i = 0u; i < drops->count; i++) {
+            const item_drop_t *const stack = &drops->borrowed_items[i];
+            torches += strcmp(block_drop_items[stack->item].name, "torch") == 0 ? stack->count : 0u;
+        }
+        drops->count = 0u;
+    }
+    CHECK_EQ_U64(torches, 4u * ROUNDS);
+    mc_end(&rig);
+}
+
 TEST(one_block_in_power_gives_what_it_gives) {
     mc_rig_t rig;
     REQUIRE(mc_begin(t, &rig, 12u));
