@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 1: Calendar and the weekly pause
 
-**Status:** not started   (updated 2026-11-04)
+**Status:** in progress   (updated 2026-11-06)
 
 Read `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` first, then section 4 of the master plan, `plans/004-ahmed-bohemoth-climate-system.md`. This file is the breakdown of the master plan's phase 01. Where the code made part of the master plan impossible as written, this file says so in **Issues found**, and the design below follows the default given there.
 
@@ -605,9 +605,9 @@ Wiring outside them, kept to the lines this file names:
 
 ## Todo
 
-- [ ] Rename `run/{src,include}/terrain/climate/` and `tests/run/terrain/climate/` to `.../terrain/fields/` with `git mv`, and every name in the table. Noise bank names unchanged
-- [ ] Every pinned terrain digest holds; `run_terrain_fields` prints `0x1FC7F7D28F24CAA7`; the grep for the old names outside `plans/` prints nothing
-- [ ] `plans/REPO_STRUCTURE.md` updated for the rename
+- [x] Rename `run/{src,include}/terrain/climate/` and `tests/run/terrain/climate/` to `.../terrain/fields/` with `git mv`, and every name in the table. Noise bank names unchanged
+- [x] Every pinned terrain digest holds; `run_terrain_fields` prints `0x1FC7F7D28F24CAA7` (now `0xB97D2A98FDF4D13A`: Issues found 6); the grep for the old names outside `plans/` prints nothing
+- [x] `plans/REPO_STRUCTURE.md` updated for the rename
 - [ ] `run/{src,include}/calendar/`: day, year, day of year, week, clock hour and minute, the season label's date part, the date line, the census plan, from the world clock, $D_0$ and $t_0$
 - [ ] `calendar` in the lint's system table and the dependency diagram
 - [ ] The world clock: `clock_days`, `clock_units`, `day_zero` in `game_t`; `game_day_advance` keeps whole days; waking goes to the next 06:00; `game_clock_set`
@@ -762,3 +762,12 @@ Found while writing this file, 2026-11-04, before any code. Each is a conflict b
 - **Expected (master plan 4.1 and 9.1):** "Mid summer · Hurricane season".
 - **Actual:** the font draws ASCII 32 to 126 only (`UI_FONT_FIRST = 32u`, `UI_FONT_GLYPHS = 96u`, `run/include/ui/font/index.h:17-18`), and shows anything else as `?`.
 - **Done in this file:** commas: `Year 1, Day 80, Early spring`. Adding a glyph to the font texture is possible later, and is not this phase's.
+
+Found while doing the work, 2026-11-06.
+
+**6. The fields digest pin had already moved before the rename.**
+
+- **Expected (this file, step 1):** `run_terrain_fields` prints `0x1FC7F7D28F24CAA7`.
+- **Actual:** the pin on main before the rename was already `0xB97D2A98FDF4D13A` (`tests/run/terrain/climate/index.c:43` at `f663337`), changed by plan 003's world generation work after this file was written. After the rename, `run_terrain_fields` prints `digest 0xB97D2A98FDF4D13A` and passes, and the eight terrain tests pass on debug.
+- **Done:** the pin stays `0xB97D2A98FDF4D13A`, the value from before the rename, which is what "unchanged" means. The constant is now `FIELDS_DIGEST_PIN`. The test's file-local `CLIMATE_FIELDS` became `FIELDS_COUNT`, not `FIELDS_FIELDS`, and a local array in `init_and_deinit_are_a_pair` became `noises`, since `fields` is now the name of the struct pointer beside it.
+
