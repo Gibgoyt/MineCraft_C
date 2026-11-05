@@ -450,7 +450,7 @@ static void bio_search(test_context_t *t, const terrain_t *terrain, bio_found_t 
     terrain_biome_column_t *const columns = test_alloc(t, (uint64_t)BIO_SEARCH_SIDE * sizeof(terrain_biome_column_t));
     const int32_t half = (int32_t)(BIO_SEARCH_SIDE / 2u * BIO_SEARCH_STEP);
     for (uint32_t iy = 0u; iy < BIO_SEARCH_SIDE; iy++) {
-        const terrain_climate_area_t area = {
+        const terrain_fields_area_t area = {
             .origin_x = -half,
             .origin_y = -half + (int32_t)(iy * BIO_SEARCH_STEP),
             .step_x = (int32_t)BIO_SEARCH_STEP,
@@ -568,7 +568,7 @@ TEST(the_biomes_follow_the_terrain) {
         terrain_t terrain;
         REQUIRE(terrain_init(&terrain, BIO_SEED_LIST[s]));
         for (uint32_t iy = 0u; iy < BIO_SEARCH_SIDE; iy++) {
-            const terrain_climate_area_t area = {
+            const terrain_fields_area_t area = {
                 .origin_x = -half,
                 .origin_y = -half + (int32_t)(iy * BIO_SEARCH_STEP),
                 .step_x = (int32_t)BIO_SEARCH_STEP,
@@ -658,11 +658,11 @@ TEST(a_column_is_the_climate_on_the_lattice_and_what_hydrology_says_it_is) {
                 const int32_t cy = y & ~3;
                 const float32_t tx = (float32_t)(x - cx) / 4.0f32;
                 const float32_t ty = (float32_t)(y - cy) / 4.0f32;
-                terrain_climate_point_t corner[4];
-                terrain_climate_at(terrain.borrowed_climate, cx, cy, &corner[0]);
-                terrain_climate_at(terrain.borrowed_climate, cx + 4, cy, &corner[1]);
-                terrain_climate_at(terrain.borrowed_climate, cx, cy + 4, &corner[2]);
-                terrain_climate_at(terrain.borrowed_climate, cx + 4, cy + 4, &corner[3]);
+                terrain_fields_point_t corner[4];
+                terrain_fields_at(terrain.borrowed_fields, cx, cy, &corner[0]);
+                terrain_fields_at(terrain.borrowed_fields, cx + 4, cy, &corner[1]);
+                terrain_fields_at(terrain.borrowed_fields, cx, cy + 4, &corner[2]);
+                terrain_fields_at(terrain.borrowed_fields, cx + 4, cy + 4, &corner[3]);
 #define BIO_BLEND(field)                                                                                               \
     (corner[0].field + tx * (corner[1].field - corner[0].field) +                                                      \
      ty * ((corner[2].field + tx * (corner[3].field - corner[2].field)) -                                              \
@@ -720,7 +720,7 @@ TEST(columns_do_not_depend_on_the_area_asked_for) {
     REQUIRE(terrain_init(&terrain, BIO_WORLD));
     enum : uint32_t { SIDE = 37u, WIDE = 9u };
     terrain_biome_column_t *const all = test_alloc(t, SIDE * SIDE * sizeof(terrain_biome_column_t));
-    const terrain_climate_area_t area = {
+    const terrain_fields_area_t area = {
         .origin_x = -19, .origin_y = 1003, .step_x = 1, .step_y = 1, .count_x = SIDE, .count_y = SIDE};
     terrain_biome_columns_area(terrain.borrowed_biome, &area, all);
     for (uint32_t iy = 0u; iy < SIDE; iy += 5u) {
@@ -734,7 +734,7 @@ TEST(columns_do_not_depend_on_the_area_asked_for) {
         }
     }
     terrain_biome_column_t wide[WIDE * WIDE];
-    const terrain_climate_area_t apart = {
+    const terrain_fields_area_t apart = {
         .origin_x = -19, .origin_y = 1003, .step_x = 4, .step_y = 3, .count_x = WIDE, .count_y = WIDE};
     terrain_biome_columns_area(terrain.borrowed_biome, &apart, wide);
     for (uint32_t iy = 0u; iy < WIDE; iy++) {
@@ -951,7 +951,7 @@ static void bio_expected_chunk(test_context_t *t, const terrain_t *terrain, int3
     terrain_hydrology_fill_box(terrain->borrowed_hydrology, &box, out);
 
     terrain_biome_column_t *const columns = test_alloc(t, BIO_CHUNK_COLUMNS * sizeof(terrain_biome_column_t));
-    const terrain_climate_area_t area = {
+    const terrain_fields_area_t area = {
         .origin_x = cx, .origin_y = cy, .step_x = 1, .step_y = 1, .count_x = BIO_CHUNK, .count_y = BIO_CHUNK};
     terrain_biome_columns_area(terrain->borrowed_biome, &area, columns);
 
@@ -974,7 +974,7 @@ static void bio_expected_chunk(test_context_t *t, const terrain_t *terrain, int3
 
     /* The steepness, from the lattice's ground. */
     terrain_hydrology_column_t lattice[25];
-    const terrain_climate_area_t corners = {
+    const terrain_fields_area_t corners = {
         .origin_x = cx, .origin_y = cy, .step_x = 4, .step_y = 4, .count_x = 5u, .count_y = 5u};
     terrain_hydrology_columns_area(terrain->borrowed_hydrology, &corners, lattice);
 
@@ -1069,7 +1069,7 @@ TEST(each_biome_shows_its_own_top_in_a_real_world) {
             const terrain_density_box_t box = bio_tall_box(cx, cy, BIO_CHUNK);
             terrain_hydrology_fill_box(terrain.borrowed_hydrology, &box, blocks);
             terrain_surface_fill_box(terrain.borrowed_surface, &box, blocks);
-            const terrain_climate_area_t area = {
+            const terrain_fields_area_t area = {
                 .origin_x = cx, .origin_y = cy, .step_x = 1, .step_y = 1, .count_x = BIO_CHUNK, .count_y = BIO_CHUNK};
             terrain_biome_columns_area(terrain.borrowed_biome, &area, columns);
             for (uint32_t i = 0u; i < BIO_CHUNK_COLUMNS; i++) {
@@ -1248,12 +1248,12 @@ TEST(the_caves_of_each_underground_biome_are_lined_and_nothing_else_is) {
         memcpy(after, before, VOXELS * sizeof(uint16_t));
         terrain_surface_line_caves_box(terrain.borrowed_surface, &box, after);
 
-        const terrain_climate_area_t area = {.origin_x = box.origin_x,
-                                             .origin_y = box.origin_y,
-                                             .step_x = 1,
-                                             .step_y = 1,
-                                             .count_x = ACROSS,
-                                             .count_y = ACROSS};
+        const terrain_fields_area_t area = {.origin_x = box.origin_x,
+                                            .origin_y = box.origin_y,
+                                            .step_x = 1,
+                                            .step_y = 1,
+                                            .count_x = ACROSS,
+                                            .count_y = ACROSS};
         terrain_biome_columns_area(terrain.borrowed_biome, &area, columns);
         float32_t *const patch = test_alloc(t, COLUMNS * sizeof(float32_t));
         const terrain_noise_grid_t grid = {
@@ -1505,7 +1505,7 @@ TEST(the_columns_of_a_wide_map_are_pinned) {
     REQUIRE(terrain_init(&terrain, BIO_WORLD));
     enum : uint32_t { SIDE = 256u };
     terrain_biome_column_t *const columns = test_alloc(t, SIDE * SIDE * sizeof(terrain_biome_column_t));
-    const terrain_climate_area_t area = {
+    const terrain_fields_area_t area = {
         .origin_x = -32768, .origin_y = -32768, .step_x = 256, .step_y = 256, .count_x = SIDE, .count_y = SIDE};
     terrain_biome_columns_area(terrain.borrowed_biome, &area, columns);
     const uint64_t digest = bio_digest(0xCBF29CE484222325ull, columns, SIDE * SIDE * sizeof(terrain_biome_column_t));
@@ -1593,11 +1593,11 @@ TEST(terrain_starts_the_biomes_and_surface_and_stops_them) {
     REQUIRE(terrain_init(&terrain, BIO_WORLD));
     REQUIRE(terrain.borrowed_biome != nullptr);
     REQUIRE(terrain.borrowed_surface != nullptr);
-    CHECK(terrain.borrowed_biome->borrowed_climate == terrain.borrowed_climate);
+    CHECK(terrain.borrowed_biome->borrowed_fields == terrain.borrowed_fields);
     CHECK(terrain.borrowed_biome->borrowed_hydrology == terrain.borrowed_hydrology);
     CHECK(terrain.borrowed_surface->borrowed_biome == terrain.borrowed_biome);
     CHECK(terrain.borrowed_surface->borrowed_cave == terrain.borrowed_cave);
-    CHECK_EQ_U64(terrain.noise_bank.count, TERRAIN_CLIMATE_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS +
+    CHECK_EQ_U64(terrain.noise_bank.count, TERRAIN_FIELDS_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS +
                                                TERRAIN_HYDROLOGY_NOISE_FIELDS + TERRAIN_CAVE_NOISE_FIELDS +
                                                TERRAIN_SURFACE_NOISE_FIELDS);
     /* A column's rules come from 2D fields. */

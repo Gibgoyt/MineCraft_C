@@ -1,16 +1,16 @@
-# run/src/terrain/climate
+# run/src/terrain/fields
 
 **Purpose:** six numbers for any column of the world, from which height (10.3) and biome (10.6) are chosen: continentalness, erosion, ridges, temperature, humidity and weirdness.
 **Tier:** Arena: its one struct comes from an `arena_t *` its parent gives it. Sampling allocates nothing.
 **Owns:** nothing. Its struct is in the arena `terrain_init` lends, and its fields are in the bank.
-**Lifetime:** World: a climate is made for one seed.
-**Threads:** `terrain_climate_init` and `terrain_climate_deinit` on the thread running `terrain_init`. Sampling from any thread at once, since nothing changes once it is made and each call works in its own stack frame.
+**Lifetime:** World: one set of fields is made for each seed.
+**Threads:** `terrain_fields_init` and `terrain_fields_deinit` on the thread running `terrain_init`. Sampling from any thread at once, since nothing changes once it is made and each call works in its own stack frame.
 **Public functions:**
 
-- `terrain_climate_init`, `terrain_climate_deinit`: a pair.
-- `terrain_climate_area_columns`: how many values an area fills.
-- `terrain_climate_sample_area`, `terrain_climate_sample_points`: the bulk sampling. A `nullptr` array skips that field.
-- `terrain_climate_at`: one column.
+- `terrain_fields_init`, `terrain_fields_deinit`: a pair.
+- `terrain_fields_area_columns`: how many values an area fills.
+- `terrain_fields_sample_area`, `terrain_fields_sample_points`: the bulk sampling. A `nullptr` array skips that field.
+- `terrain_fields_at`: one column.
 
 **May be called by:** `terrain` and its parts.
 **Depends on:** `terrain/noise` (its sibling, for the fields), `arena`, `types`.
@@ -40,7 +40,7 @@ wants it smooth interpolates.
 
 For every field but `ridges`, **a value `v` has about `(v + 1) / 2` of the world below it**. So a table can be written in
 shares of the world: `temperature < -0.5` is about the coldest quarter, and `continentalness < -0.2` is about 40% of the
-world. `tests/run/terrain/climate/` holds each one to that within 2 points of share, at seven cuts, over eight seeds.
+world. `tests/run/terrain/fields/` holds each one to that within 2 points of share, at seven cuts, over eight seeds.
 
 `ridges` is weirdness folded, so it is not spread evenly: the share below `r` is about `(r + 1) / 3`, plus `r / 3` if `r > 0`,
 which the test holds to 6 points. The real share runs up to 5 points above that just over 0, because every column where weirdness sits at -1 or 1
@@ -78,7 +78,7 @@ Each limit was read off the measured raw values at each share: it is about twice
 | `humidity` | 0.35 | 0.173 |
 | `weirdness` | 0.35 | 0.170 |
 
-A shape, a limit or the warp changing changes every world, and `tests/run/terrain/climate/` pins them.
+A shape, a limit or the warp changing changes every world, and `tests/run/terrain/fields/` pins them.
 
 ## What it costs
 

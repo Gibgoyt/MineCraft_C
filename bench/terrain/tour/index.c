@@ -283,7 +283,7 @@ static void tour_search(const terrain_t *terrain, tour_stop_t *stops) {
     const int32_t half = (int32_t)(TOUR_SEARCH_SIDE * TOUR_SEARCH_STEP / 2u);
     for (uint32_t row = 0u; row < TOUR_SEARCH_SIDE; row++) {
         for (uint32_t part = 0u; part < TOUR_SEARCH_SIDE / 256u; part++) {
-            const terrain_climate_area_t area = {
+            const terrain_fields_area_t area = {
                 .origin_x = -half + (int32_t)(part * 256u * TOUR_SEARCH_STEP),
                 .origin_y = -half + (int32_t)(row * TOUR_SEARCH_STEP),
                 .step_x = (int32_t)TOUR_SEARCH_STEP,

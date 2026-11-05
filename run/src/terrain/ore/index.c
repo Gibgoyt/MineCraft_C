@@ -298,7 +298,7 @@ static bool ore_chunk_allowed(const terrain_ore_t *ore, const terrain_ore_row_t 
     if (x > INT32_MAX || y > INT32_MAX || x < INT32_MIN || y < INT32_MIN) {
         return false; /* a chunk's middle off the end of the coordinates: never a mountain */
     }
-    const terrain_climate_area_t area = {
+    const terrain_fields_area_t area = {
         .origin_x = (int32_t)x,
         .origin_y = (int32_t)y,
         .step_x = 1,

@@ -110,7 +110,7 @@ static void fea_find_places_after(test_context_t *t, const terrain_t *terrain, f
     const int32_t half = (int32_t)(FEA_SEARCH_SIDE * FEA_SEARCH_STEP / 2u);
     for (uint32_t row = 0u; row < FEA_SEARCH_SIDE; row++) {
         const int32_t chunk_y = (int32_t)(row * FEA_SEARCH_STEP) - half;
-        const terrain_climate_area_t area = {
+        const terrain_fields_area_t area = {
             .origin_x = -half * (int32_t)FEA_CHUNK + (int32_t)FEA_CHUNK / 2,
             .origin_y = chunk_y * (int32_t)FEA_CHUNK + (int32_t)FEA_CHUNK / 2,
             .step_x = (int32_t)(FEA_SEARCH_STEP * FEA_CHUNK),
@@ -832,7 +832,7 @@ TEST(lily_pads_grow_on_a_swamps_standing_water) {
     uint64_t logs = 0u;
     const int32_t z_low = MC_WORLD_Z_SEA - 20;
     for (uint32_t row = 0u; row < FEA_SEARCH_SIDE && chunks < 600u; row++) {
-        const terrain_climate_area_t area = {
+        const terrain_fields_area_t area = {
             .origin_x = -half,
             .origin_y = -half + (int32_t)(row * 16u * FEA_CHUNK),
             .step_x = (int32_t)(16u * FEA_CHUNK),

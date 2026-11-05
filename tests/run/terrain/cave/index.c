@@ -401,7 +401,7 @@ TEST(no_cut_voxel_ever_touches_the_sea) {
     for (uint32_t s = 0u; s < CAVE_SEEDS; s++) {
         terrain_t terrain;
         REQUIRE(terrain_init(&terrain, CAVE_SEED_LIST[s]));
-        const terrain_climate_area_t search = {
+        const terrain_fields_area_t search = {
             .origin_x = -24000,
             .origin_y = -24000,
             .step_x = 251,
@@ -639,7 +639,7 @@ typedef struct cave_expected_t {
 static_assert(sizeof(cave_expected_t) == 28);
 
 static cave_expected_t cave_expected_corner(const terrain_cave_t *cave, int32_t x, int32_t y, int32_t z) {
-    const terrain_climate_area_t one = {
+    const terrain_fields_area_t one = {
         .origin_x = x, .origin_y = y, .step_x = 1, .step_y = 1, .count_x = 1u, .count_y = 1u};
     float32_t height = 0.0f32;
     float32_t softness = 0.0f32;

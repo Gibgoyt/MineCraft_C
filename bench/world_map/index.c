@@ -268,7 +268,7 @@ static void map_row_job(job_worker_t *worker, void *borrowed_argument) {
         if (row >= MAP_SIDE) {
             break;
         }
-        const terrain_climate_area_t area = {
+        const terrain_fields_area_t area = {
             .origin_x = run->origin_x,
             .origin_y = run->origin_y + (int32_t)(row * MAP_STEP),
             .step_x = (int32_t)MAP_STEP,

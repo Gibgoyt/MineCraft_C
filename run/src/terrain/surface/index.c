@@ -263,7 +263,7 @@ static surface_bounds_t surface_lattice_read(const terrain_surface_t *surface, c
     const uint32_t side_x = (uint32_t)((x_last >> SURFACE_CELL_SHIFT) - cell_x) + 2u;
     const uint32_t side_y = (uint32_t)((y_last >> SURFACE_CELL_SHIFT) - cell_y) + 2u;
     terrain_hydrology_column_t lattice[SURFACE_LATTICE];
-    const terrain_climate_area_t area = {
+    const terrain_fields_area_t area = {
         .origin_x = (int32_t)(cell_x * (int64_t)SURFACE_CELL),
         .origin_y = (int32_t)(cell_y * (int64_t)SURFACE_CELL),
         .step_x = (int32_t)SURFACE_CELL,
@@ -338,7 +338,7 @@ static int32_t surface_band_z(int32_t z, float32_t wander) {
 /* What does not change with the layers. The noise waits until a voxel asks for it. */
 static void surface_tile_read(const terrain_surface_t *surface, const surface_span_t *span,
                               terrain_surface_tile_t *tile) {
-    const terrain_climate_area_t area = {
+    const terrain_fields_area_t area = {
         .origin_x = span->x,
         .origin_y = span->y,
         .step_x = 1,
@@ -532,7 +532,7 @@ static void surface_line_slice(const terrain_surface_t *surface, const terrain_d
 static void surface_line_tile(const terrain_surface_t *surface, const terrain_density_box_t *box,
                               const surface_span_t *span, const uint8_t *mask, uint16_t *blocks) {
     terrain_biome_column_t columns[SURFACE_TILE_COLUMNS];
-    const terrain_climate_area_t area = {
+    const terrain_fields_area_t area = {
         .origin_x = span->x,
         .origin_y = span->y,
         .step_x = 1,

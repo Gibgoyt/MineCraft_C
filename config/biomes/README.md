@@ -35,7 +35,7 @@ Each is `[low, high]`, low below high, both ends in the range.
 
 | Field | Values | Means |
 |---|---|---|
-| `temperature`, `humidity`, `continentalness`, `erosion`, `weirdness` | -1 to 1 | `run/src/terrain/climate/README.md` says what each means. About `(v + 1) / 2` of the world is below a value `v` |
+| `temperature`, `humidity`, `continentalness`, `erosion`, `weirdness` | -1 to 1 | `run/src/terrain/fields/README.md` says what each means. About `(v + 1) / 2` of the world is below a value `v` |
 | `height` | -1250 to 1250 | The ground, in blocks. Not for `underground` |
 | `z` | -1250 to 1250 | The voxels it can hold, and only for `underground` |
 

@@ -4,7 +4,7 @@
 
 #include "arena/index.h"
 #include "machine/index.h"
-#include "terrain/climate/index.h"
+#include "terrain/fields/index.h"
 #include "terrain/density/index.h"
 #include "terrain/noise/index.h"
 #include "types/index.h"
@@ -55,7 +55,7 @@ typedef enum terrain_hydrology_kind_t : uint8_t {
 /* One world's hydrology. Nothing changes it after terrain_hydrology_init, so any number of workers may read it. */
 typedef struct terrain_hydrology_t {
     const terrain_density_t *borrowed_density;   /* 0 */
-    const terrain_climate_t *borrowed_climate;   /* 8 */
+    const terrain_fields_t *borrowed_fields;     /* 8 */
     const terrain_noise_field_t *borrowed_width; /* 16: how wide and deep a river is */
     const terrain_noise_field_t *borrowed_shore; /* 24: where sand, clay and gravel lie */
     const terrain_noise_field_t *borrowed_flood; /* 32: which aquifer cells hold anything */
@@ -94,7 +94,7 @@ static_assert(sizeof(terrain_hydrology_column_t) == 28);
  * climate must outlive it. If the bank refuses a field, which has logged why, sets *out to nullptr and returns false. Fields
  * added before that stay in the bank, so the caller gives up on the whole terrain_t. */
 [[nodiscard]] bool terrain_hydrology_init(terrain_hydrology_t **out, arena_t *arena, terrain_noise_bank_t *bank,
-                                          const terrain_density_t *density, const terrain_climate_t *climate);
+                                          const terrain_density_t *density, const terrain_fields_t *fields);
 
 /* Empties the handle. The memory goes back with the arena. */
 void terrain_hydrology_deinit(terrain_hydrology_t *hydrology);
@@ -103,9 +103,9 @@ void terrain_hydrology_deinit(terrain_hydrology_t *hydrology);
 terrain_hydrology_column_t terrain_hydrology_column_from(const terrain_hydrology_inputs_t *inputs);
 
 /* Each column of an area, as the climate lays one out, but the steps must be above 0. columns holds
- * terrain_climate_area_columns(area) values. Allocates nothing, and each value is a pure function of the hydrology and the
+ * terrain_fields_area_columns(area) values. Allocates nothing, and each value is a pure function of the hydrology and the
  * column. */
-void terrain_hydrology_columns_area(const terrain_hydrology_t *hydrology, const terrain_climate_area_t *area,
+void terrain_hydrology_columns_area(const terrain_hydrology_t *hydrology, const terrain_fields_area_t *area,
                                     terrain_hydrology_column_t *columns);
 
 /* The same at one column. Columns in bulk cost far less each through an area. */

@@ -708,7 +708,7 @@ TEST(a_field_does_not_depend_on_what_was_added_before_it) {
     CHECK(terrain_noise_bank_add(&second.noise_bank, "test/before", &SEED_SHAPE_SOLID, &ignored));
     CHECK(terrain_noise_bank_add(&second.noise_bank, "test/flat", &SEED_SHAPE_FLAT, &crowded));
     CHECK_MEM_EQ(alone->octaves, crowded->octaves, sizeof(alone->octaves));
-    CHECK_EQ_U64(second.noise_bank.count, TERRAIN_CLIMATE_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS +
+    CHECK_EQ_U64(second.noise_bank.count, TERRAIN_FIELDS_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS +
                                               TERRAIN_HYDROLOGY_NOISE_FIELDS + TERRAIN_CAVE_NOISE_FIELDS +
                                               TERRAIN_SURFACE_NOISE_FIELDS + 2u);
     terrain_deinit(&second);
@@ -750,7 +750,7 @@ TEST(a_bank_refuses_what_is_wrong) {
     }
     /* What terrain_init added for itself is already there. */
     const uint32_t count_at_start = bank->count;
-    CHECK_EQ_U64(count_at_start, TERRAIN_CLIMATE_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS +
+    CHECK_EQ_U64(count_at_start, TERRAIN_FIELDS_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS +
                                      TERRAIN_HYDROLOGY_NOISE_FIELDS + TERRAIN_CAVE_NOISE_FIELDS +
                                      TERRAIN_SURFACE_NOISE_FIELDS);
 
@@ -812,7 +812,7 @@ TEST(nothing_is_lost_above_where_terrain_stops_making) {
     for (uint32_t iy = 0u; iy < WALK; iy++) {
         for (uint32_t ix = 0u; ix < WALK; ix++) {
             const int32_t x = ((int32_t)ix - (int32_t)WALK / 2) * 256, y = ((int32_t)iy - (int32_t)WALK / 2) * 256;
-            const terrain_climate_area_t area = {
+            const terrain_fields_area_t area = {
                 .origin_x = x, .origin_y = y, .step_x = 1, .step_y = 1, .count_x = 1u, .count_y = 1u};
             float32_t height = 0.0f32, softness = 0.0f32;
             terrain_density_profile_area(terrain.borrowed_density, &area, &height, &softness);

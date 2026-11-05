@@ -34,10 +34,10 @@ static const uint8_t BIOME_WHERE_OF_KIND[TERRAIN_HYDROLOGY_KIND_COUNT] = {
     [TERRAIN_HYDROLOGY_KIND_STONY_SHORE] = BIOME_WHERE_STONY_SHORE,
 };
 
-void terrain_biome_init(terrain_biome_t **out, arena_t *arena, const terrain_climate_t *climate,
+void terrain_biome_init(terrain_biome_t **out, arena_t *arena, const terrain_fields_t *fields,
                         const terrain_hydrology_t *hydrology) {
     terrain_biome_t *const biome = arena_alloc(arena, sizeof(*biome), alignof(terrain_biome_t));
-    biome->borrowed_climate = climate;
+    biome->borrowed_fields = fields;
     biome->borrowed_hydrology = hydrology;
     *out = biome;
 }
@@ -135,7 +135,7 @@ typedef struct biome_span_t {
 } biome_span_t;
 static_assert(sizeof(biome_span_t) == 48);
 
-static void biome_tile(const terrain_biome_t *biome, const terrain_climate_area_t *area, const biome_span_t *span,
+static void biome_tile(const terrain_biome_t *biome, const terrain_fields_area_t *area, const biome_span_t *span,
                        terrain_biome_column_t *columns) {
     const int64_t x_last = span->x_first + span->step_x * (int64_t)(span->count_x - 1u);
     const int64_t y_last = span->y_first + span->step_y * (int64_t)(span->count_y - 1u);
@@ -150,7 +150,7 @@ static void biome_tile(const terrain_biome_t *biome, const terrain_climate_area_
     float32_t continentalness[BIOME_LATTICE];
     float32_t erosion[BIOME_LATTICE];
     float32_t weirdness[BIOME_LATTICE];
-    const terrain_climate_area_t lattice = {
+    const terrain_fields_area_t lattice = {
         .origin_x = (int32_t)(cell_x * (int64_t)BIOME_CELL),
         .origin_y = (int32_t)(cell_y * (int64_t)BIOME_CELL),
         .step_x = (int32_t)BIOME_CELL,
@@ -158,17 +158,17 @@ static void biome_tile(const terrain_biome_t *biome, const terrain_climate_area_
         .count_x = side_x,
         .count_y = side_y,
     };
-    const terrain_climate_arrays_t arrays = {
+    const terrain_fields_arrays_t arrays = {
         .continentalness = continentalness,
         .erosion = erosion,
         .temperature = temperature,
         .humidity = humidity,
         .weirdness = weirdness,
     };
-    terrain_climate_sample_area(biome->borrowed_climate, &lattice, &arrays);
+    terrain_fields_sample_area(biome->borrowed_fields, &lattice, &arrays);
 
     terrain_hydrology_column_t water[BIOME_TILE_COLUMNS];
-    const terrain_climate_area_t tile = {
+    const terrain_fields_area_t tile = {
         .origin_x = (int32_t)span->x_first,
         .origin_y = (int32_t)span->y_first,
         .step_x = (int32_t)span->step_x,
@@ -209,7 +209,7 @@ static void biome_tile(const terrain_biome_t *biome, const terrain_climate_area_
     }
 }
 
-void terrain_biome_columns_area(const terrain_biome_t *biome, const terrain_climate_area_t *area,
+void terrain_biome_columns_area(const terrain_biome_t *biome, const terrain_fields_area_t *area,
                                 terrain_biome_column_t *columns) {
     ASSERT(area->step_x > 0 && area->step_y > 0);
     const int64_t tile = (int64_t)BIOME_TILE;
@@ -249,7 +249,7 @@ void terrain_biome_columns_area(const terrain_biome_t *biome, const terrain_clim
 }
 
 terrain_biome_column_t terrain_biome_column_at(const terrain_biome_t *biome, int32_t x, int32_t y) {
-    const terrain_climate_area_t area = {
+    const terrain_fields_area_t area = {
         .origin_x = x, .origin_y = y, .step_x = 1, .step_y = 1, .count_x = 1u, .count_y = 1u};
     terrain_biome_column_t column;
     terrain_biome_columns_area(biome, &area, &column);

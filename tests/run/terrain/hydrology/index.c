@@ -302,7 +302,7 @@ TEST(columns_do_not_depend_on_the_area_asked_for) {
     const terrain_hydrology_t *const hydrology = terrain.borrowed_hydrology;
     enum : uint32_t { SIDE = 37u };
     terrain_hydrology_column_t *const all = test_alloc(t, SIDE * SIDE * sizeof(terrain_hydrology_column_t));
-    const terrain_climate_area_t area = {
+    const terrain_fields_area_t area = {
         .origin_x = -19, .origin_y = 1003, .step_x = 1, .step_y = 1, .count_x = SIDE, .count_y = SIDE};
     terrain_hydrology_columns_area(hydrology, &area, all);
     for (uint32_t iy = 0u; iy < SIDE; iy += 5u) {
@@ -317,7 +317,7 @@ TEST(columns_do_not_depend_on_the_area_asked_for) {
     /* And steps wider than a tile. */
     enum : uint32_t { WIDE = 9u };
     terrain_hydrology_column_t wide[WIDE * WIDE];
-    const terrain_climate_area_t apart = {
+    const terrain_fields_area_t apart = {
         .origin_x = -19, .origin_y = 1003, .step_x = 4, .step_y = 3, .count_x = WIDE, .count_y = WIDE};
     terrain_hydrology_columns_area(hydrology, &apart, wide);
     for (uint32_t iy = 0u; iy < WIDE; iy++) {
@@ -391,7 +391,7 @@ static void hydro_check_chunk(test_context_t *t, const terrain_t *terrain, int32
     const terrain_density_box_t box = hydro_tall_box(x, y, HYDRO_CHUNK);
     terrain_hydrology_fill_box(hydrology, &box, blocks);
     terrain_density_fill_box(terrain->borrowed_density, &box, natural);
-    const terrain_climate_area_t area = {
+    const terrain_fields_area_t area = {
         .origin_x = x, .origin_y = y, .step_x = 1, .step_y = 1, .count_x = HYDRO_CHUNK, .count_y = HYDRO_CHUNK};
     terrain_hydrology_columns_area(hydrology, &area, columns);
 
@@ -453,12 +453,12 @@ TEST(the_blocks_are_the_density_with_the_rivers_cut_and_the_shore_laid_on) {
     for (uint32_t seed = 0u; seed < 2u; seed++) {
         terrain_t terrain;
         REQUIRE(terrain_init(&terrain, HYDRO_SEED_LIST[seed]));
-        const terrain_climate_area_t search = {.origin_x = -8192,
-                                               .origin_y = -8192,
-                                               .step_x = 64,
-                                               .step_y = 64,
-                                               .count_x = SEARCH_SIDE,
-                                               .count_y = SEARCH_SIDE};
+        const terrain_fields_area_t search = {.origin_x = -8192,
+                                              .origin_y = -8192,
+                                              .step_x = 64,
+                                              .step_y = 64,
+                                              .count_x = SEARCH_SIDE,
+                                              .count_y = SEARCH_SIDE};
         terrain_hydrology_columns_area(terrain.borrowed_hydrology, &search, map);
         uint32_t found[TERRAIN_HYDROLOGY_KIND_COUNT] = {0u};
         for (uint32_t i = 0u; i < SEARCH_SIDE * SEARCH_SIDE; i++) {
@@ -515,7 +515,7 @@ TEST(rivers_hold_water_and_reach_the_sea_and_the_coast_has_beaches) {
     for (uint32_t seed = 0u; seed < HYDRO_SEEDS; seed++) {
         terrain_t terrain;
         REQUIRE(terrain_init(&terrain, HYDRO_SEED_LIST[seed]));
-        const terrain_climate_area_t area = {
+        const terrain_fields_area_t area = {
             .origin_x = -1024 - (int32_t)seed * 8192,
             .origin_y = -1024,
             .step_x = (int32_t)HYDRO_MAP_STEP,
@@ -1003,7 +1003,7 @@ TEST(any_split_of_the_work_gives_the_same_bytes) {
     /* Places along a coast and across a river, found by asking. */
     enum : uint32_t { SEARCH = 512u };
     terrain_hydrology_column_t *const map = test_alloc(t, SEARCH * SEARCH * sizeof(terrain_hydrology_column_t));
-    const terrain_climate_area_t search = {
+    const terrain_fields_area_t search = {
         .origin_x = -4096, .origin_y = -4096, .step_x = 16, .step_y = 16, .count_x = SEARCH, .count_y = SEARCH};
     terrain_hydrology_columns_area(hydrology, &search, map);
     uint32_t places = 0u;
@@ -1209,7 +1209,7 @@ TEST(columns_and_the_flood_are_pinned) {
     uint16_t *const blocks = test_alloc(t, VOXELS * sizeof(uint16_t));
     terrain_t terrain;
     REQUIRE(terrain_init(&terrain, HYDRO_WORLD));
-    const terrain_climate_area_t area = {
+    const terrain_fields_area_t area = {
         .origin_x = -8192, .origin_y = -8192, .step_x = 64, .step_y = 64, .count_x = SIDE, .count_y = SIDE};
     terrain_hydrology_columns_area(terrain.borrowed_hydrology, &area, map);
     uint32_t seen[TERRAIN_HYDROLOGY_KIND_COUNT] = {0u};
@@ -1337,7 +1337,7 @@ TEST(a_full_bank_is_refused_and_nothing_is_left_behind) {
     terrain_noise_bank_t bank;
     terrain_noise_bank_init(&bank, &arena, HYDRO_WORLD, TERRAIN_HYDROLOGY_NOISE_FIELDS - 1u);
     terrain_hydrology_t *hydrology = (terrain_hydrology_t *)&bank; /* something that is not nullptr */
-    CHECK(!terrain_hydrology_init(&hydrology, &arena, &bank, terrain.borrowed_density, terrain.borrowed_climate));
+    CHECK(!terrain_hydrology_init(&hydrology, &arena, &bank, terrain.borrowed_density, terrain.borrowed_fields));
     CHECK(hydrology == nullptr);
     terrain_noise_bank_deinit(&bank);
     arena_deinit(&arena);
@@ -1352,8 +1352,8 @@ TEST(terrain_starts_the_hydrology_and_stops_it) {
     REQUIRE(terrain.borrowed_hydrology != nullptr);
     const terrain_hydrology_t *const hydrology = terrain.borrowed_hydrology;
     CHECK(hydrology->borrowed_density == terrain.borrowed_density);
-    CHECK(hydrology->borrowed_climate == terrain.borrowed_climate);
-    CHECK_EQ_U64(terrain.noise_bank.count, TERRAIN_CLIMATE_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS +
+    CHECK(hydrology->borrowed_fields == terrain.borrowed_fields);
+    CHECK_EQ_U64(terrain.noise_bank.count, TERRAIN_FIELDS_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS +
                                                TERRAIN_HYDROLOGY_NOISE_FIELDS + TERRAIN_CAVE_NOISE_FIELDS +
                                                TERRAIN_SURFACE_NOISE_FIELDS);
     /* The river's fields are 2D, as a column has no height in it, and the aquifers' are 3D. */

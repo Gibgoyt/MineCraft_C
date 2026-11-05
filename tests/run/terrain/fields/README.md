@@ -1,6 +1,6 @@
-# tests/run/terrain/climate
+# tests/run/terrain/fields
 
-**Purpose:** ctest `run_terrain_climate`. Tests `run/src/terrain/climate/`: all six fields stay from -1 to 1, are spread out as its README promises, and give the same bits with 1 worker and with 16, in any order and any split of the work.
+**Purpose:** ctest `run_terrain_fields`. Tests `run/src/terrain/fields/`: all six fields stay from -1 to 1, are spread out as its README promises, and give the same bits with 1 worker and with 16, in any order and any split of the work.
 **Tier:** test.
 **Owns:** nothing. Memory comes from the harness's test arena, and each test starts and stops its own systems.
 **Lifetime:** One run.

@@ -13,17 +13,17 @@ bool terrain_init(terrain_t *terrain, uint64_t seed) {
     arena_init(&terrain->arena_tables, "terrain_tables", terrain->owned_tables.owned_base, terrain->owned_tables.bytes);
     terrain->seed = seed;
     terrain_noise_bank_init(&terrain->noise_bank, &terrain->arena_tables, seed, TERRAIN_NOISE_FIELDS_MAX);
-    if (!terrain_climate_init(&terrain->borrowed_climate, &terrain->arena_tables, &terrain->noise_bank)) {
+    if (!terrain_fields_init(&terrain->borrowed_fields, &terrain->arena_tables, &terrain->noise_bank)) {
         terrain_deinit(terrain); /* it has said why */
         return false;
     }
     if (!terrain_density_init(&terrain->borrowed_density, &terrain->arena_tables, &terrain->noise_bank,
-                              terrain->borrowed_climate)) {
+                              terrain->borrowed_fields)) {
         terrain_deinit(terrain); /* it has said why */
         return false;
     }
     if (!terrain_hydrology_init(&terrain->borrowed_hydrology, &terrain->arena_tables, &terrain->noise_bank,
-                                terrain->borrowed_density, terrain->borrowed_climate)) {
+                                terrain->borrowed_density, terrain->borrowed_fields)) {
         terrain_deinit(terrain); /* it has said why */
         return false;
     }
@@ -33,7 +33,7 @@ bool terrain_init(terrain_t *terrain, uint64_t seed) {
         return false;
     }
     terrain_ore_init(&terrain->borrowed_ore, &terrain->arena_tables, seed, terrain->borrowed_density);
-    terrain_biome_init(&terrain->borrowed_biome, &terrain->arena_tables, terrain->borrowed_climate,
+    terrain_biome_init(&terrain->borrowed_biome, &terrain->arena_tables, terrain->borrowed_fields,
                        terrain->borrowed_hydrology);
     if (!terrain_surface_init(&terrain->borrowed_surface, &terrain->arena_tables, &terrain->noise_bank, seed,
                               terrain->borrowed_biome, terrain->borrowed_hydrology, terrain->borrowed_cave)) {
@@ -111,8 +111,8 @@ void terrain_deinit(terrain_t *terrain) {
     if (terrain->borrowed_density != nullptr) {
         terrain_density_deinit(terrain->borrowed_density);
     }
-    if (terrain->borrowed_climate != nullptr) {
-        terrain_climate_deinit(terrain->borrowed_climate);
+    if (terrain->borrowed_fields != nullptr) {
+        terrain_fields_deinit(terrain->borrowed_fields);
     }
     terrain_noise_bank_deinit(&terrain->noise_bank);
     arena_deinit(&terrain->arena_tables);

@@ -4,7 +4,7 @@
 
 #include "arena/index.h"
 #include "tables/biomes/index.h"
-#include "terrain/climate/index.h"
+#include "terrain/fields/index.h"
 #include "terrain/hydrology/index.h"
 #include "types/index.h"
 
@@ -19,7 +19,7 @@ static_assert(BIOME_UNDERGROUND_COUNT <= 8u); /* terrain_biome_column_t's caves 
 
 /* One world's biomes. Nothing changes it after terrain_biome_init, so any number of workers may read it. */
 typedef struct terrain_biome_t {
-    const terrain_climate_t *borrowed_climate;     /* 0 */
+    const terrain_fields_t *borrowed_fields;       /* 0 */
     const terrain_hydrology_t *borrowed_hydrology; /* 8 */
 } terrain_biome_t;
 static_assert(sizeof(terrain_biome_t) == 16);
@@ -49,7 +49,7 @@ typedef struct terrain_biome_column_t {
 static_assert(sizeof(terrain_biome_column_t) == 16);
 
 /* Takes the biomes from arena. For use while terrain_init runs. climate and hydrology must outlive it. */
-void terrain_biome_init(terrain_biome_t **out, arena_t *arena, const terrain_climate_t *climate,
+void terrain_biome_init(terrain_biome_t **out, arena_t *arena, const terrain_fields_t *fields,
                         const terrain_hydrology_t *hydrology);
 
 /* Empties the handle. The memory goes back with the arena. */
@@ -68,9 +68,9 @@ uint8_t terrain_biome_caves_of(const terrain_biome_inputs_t *inputs);
 biome_id_t terrain_biome_of_voxel(const terrain_biome_column_t *column, int32_t z);
 
 /* Each column of an area, as the climate lays one out, but the steps must be above 0. columns holds
- * terrain_climate_area_columns(area) values. Allocates nothing, and each value is a pure function of the biomes and the
+ * terrain_fields_area_columns(area) values. Allocates nothing, and each value is a pure function of the biomes and the
  * column: splitting an area into parts, in any order, on any thread, gives the same bytes. */
-void terrain_biome_columns_area(const terrain_biome_t *biome, const terrain_climate_area_t *area,
+void terrain_biome_columns_area(const terrain_biome_t *biome, const terrain_fields_area_t *area,
                                 terrain_biome_column_t *columns);
 
 /* The same at one column, and one voxel. Columns in bulk cost far less each through an area. */
