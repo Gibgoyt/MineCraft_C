@@ -75,6 +75,12 @@ Ahmed: chop an oak, a jungle giant and an acacia at the base, then one tree mid-
 
 Appended as they land:
 
+- `37588e0` Make an axe bring down the rest of a tree, a few logs a tick with a drop and a use for each, and have the leaves and vines it held go straight after, leaving a log wall, a stump and other wood alone.
+- `06e2620` List the tree feller test in the repository structure.
+- `b7daaed` Say in the repository structure where an axe bringing down a tree lives, and what the proof by eye is.
+- `19ca349` Keep what is coming down of a tree out of the player and out of app_t, whose stack frame has no byte to spare in the release build.
+- `d5b76cf` Record in its plan file that the tree feller is built and what the work found, with only Ahmed playing it left.
+
 ## Issues found
 
 **No dependency on phase 1:** this adds no blocks or items, so it can be built at any time and doesn't touch saved worlds.
