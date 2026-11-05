@@ -714,3 +714,7 @@ Appended as they land:
 4. Kenney's pack could still be better. If wanted: download it in a browser to `/tmp/mc_c_assets/`, read its licence, and import from it.
 
 **Sources:** [Kenney Impact Sounds](https://kenney.nl/assets/impact-sounds), [OpenGameArt](https://opengameart.org), with each pack in `sounds/ATTRIBUTION.md`, [pulseaudio Rust crate](https://docs.rs/crate/pulseaudio/latest), [PulseAudio protocol-native.h](https://code.delx.au/pulseaudio/blob/81447ed392e57f822e09cf648cb16732a3e3773f:/src/protocol-native.h).
+
+### From the final check, round 1, 2026-11-05
+
+**`run_audio_pulse` failed under the sanitize preset, and no one had run it there.** Expected: the whole sanitize suite passes. Actual: `tools/test-or-build.sh timeout 3500 ctest --preset sanitize --output-on-failure`, 122 of 123, with `run_audio_pulse` stopping after its first test: `AddressSanitizer: use-after-poison ... in test_main tests/harness/index.c:243`, the harness zeroing what the test used. Cause: `ap_rig` gives each rig an `arena_t` on test memory with `arena_init`, which poisons it for ASan, and no test called `arena_deinit`. The game's code was not wrong; the test was. Fixed in `be6395a`: `ap_rig_end` gives the arena back at the end of every test. After it: `run_audio`, `run_audio_mixer`, `run_audio_pulse` and `run_audio_pulse_wire` 4 of 4 under sanitize, and `run_audio_pulse`, `clang_format` and `standards_lint` in debug. No sound was made: no test here talks to the real server.
