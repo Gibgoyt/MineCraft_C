@@ -65,6 +65,10 @@ Results, debug preset:
 
 Appended as they land:
 
+- `cc0f2e3` Add stairs of acacia, birch, cherry, dark oak, jungle, mangrove and spruce, each made from its own planks on a table in its own colour, and test that each wood makes its own and mixed planks make nothing.
+- `292d1f7` List the stairs test directory in the repository structure.
+- `79248ce` Record phase 3 of the game fixes in its plan file: every box an agent can tick, the results, what was found on the way, and that only Ahmed is left.
+
 ## Issues found
 
 **Open for Ahmed: should slabs get the same treatment?** `oak_slab` has the same oak-only limit. Adding seven more slabs is the same kind of work, and I'd do it in this phase if you want it. Ahmed was away, so the plan's default stands: slabs stay oak only.
