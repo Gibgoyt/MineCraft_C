@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — master plan
 
-**Status:** proposed, waiting for Ahmed's approval (section 11 has what's still open)   (updated 2026-11-04)
+**Status:** approved on 2026-11-06   (updated 2026-11-06)
 
 On approval, `plans/README.md` applies: this file is copied verbatim, a setup agent creates one phase file per phase in section 10, and no code is written until Ahmed says go. **Nothing is pushed** (Ahmed, 2026-11-04: "No please don't push!").
 
