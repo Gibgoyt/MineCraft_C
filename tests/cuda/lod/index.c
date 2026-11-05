@@ -358,6 +358,25 @@ TEST(a_coarse_voxel_is_as_on_paper) {
     CHECK_EQ_I64(render_lod_cells_from_column(column, 6u, 1u, cells), 1);
     CHECK_EQ_U64(cells[1], BLOCK_ID_GRASS_BLOCK);
     CHECK_EQ_U64(cells[0], BLOCK_ID_STONE);
+    /* A frozen sea: water to 99, ice at 100. In voxels of 2, a voxel of ice and air is half ice. In voxels of 16 the half rule takes it, and it shows on the water it lay on, at the water's height. */
+    memset(column, 0, sizeof(column));
+    for (uint32_t z = 0u; z < 100u; z++) {
+        column[z] = BLOCK_ID_WATER;
+    }
+    column[100] = BLOCK_ID_ICE;
+    CHECK_EQ_I64(render_lod_cells_from_column(column, 1u, 1u, cells), 50);
+    CHECK_EQ_U64(cells[50], BLOCK_ID_ICE);
+    CHECK_EQ_U64(cells[49], BLOCK_ID_WATER);
+    CHECK_EQ_I64(render_lod_cells_from_column(column, 4u, 1u, cells), 5);
+    CHECK_EQ_U64(cells[6], BLOCK_ID_AIR);
+    CHECK_EQ_U64(cells[5], BLOCK_ID_ICE);
+    CHECK_EQ_U64(cells[4], BLOCK_ID_WATER);
+    /* Ice over rock stays what the half rule says: only water takes it. */
+    for (uint32_t z = 0u; z < 100u; z++) {
+        column[z] = BLOCK_ID_STONE;
+    }
+    CHECK_EQ_I64(render_lod_cells_from_column(column, 4u, 1u, cells), 5);
+    CHECK_EQ_U64(cells[5], BLOCK_ID_STONE);
     /* Nothing at all. */
     memset(column, 0, sizeof(column));
     CHECK_EQ_I64(render_lod_cells_from_column(column, 1u, 1u, cells), -1);

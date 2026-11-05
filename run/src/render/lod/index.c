@@ -6,6 +6,7 @@
 #include "gpu_bridge/shade/index.h"
 #include "log/index.h"
 #include "render/encode/index.h"
+#include "tables/biomes/index.h"
 #include "tables/blocks/index.h"
 #include "terrain/index.h"
 #include "time/index.h"
@@ -127,6 +128,21 @@ static bool render_lod_counts(uint16_t block) {
     return false;
 }
 
+/* What feature_cold_paint does to water, for a level too coarse for features: a column's own biome, and only if its top is water. */
+static void render_lod_sample_freeze(const terrain_t *terrain, int32_t x, int32_t y, uint16_t *column) {
+    uint32_t top = RENDER_LOD_HEIGHT_BLOCKS;
+    while (top > 0u && column[top - 1u] == BLOCK_ID_AIR) {
+        top--;
+    }
+    if (top == 0u || column[top - 1u] != BLOCK_ID_WATER) {
+        return;
+    }
+    const uint8_t biome = terrain_biome_column_at(terrain->borrowed_biome, x, y).biome;
+    if (biome_features[biome][BIOME_FEATURE_ICE] > 0.0f32) {
+        column[top - 1u] = BLOCK_ID_ICE;
+    }
+}
+
 int32_t render_lod_cells_from_column(const uint16_t *column, uint32_t shift, uint64_t stride, uint16_t *out) {
     const uint32_t size = 1u << shift;
     const uint32_t voxels = RENDER_LOD_HEIGHT_BLOCKS >> shift;
@@ -135,8 +151,10 @@ int32_t render_lod_cells_from_column(const uint16_t *column, uint32_t shift, uin
         const uint32_t floor_block = voxel << shift;
         uint32_t count = 0u;
         uint16_t highest = BLOCK_ID_AIR;
+        bool holds_ice = false;
         for (uint32_t block = 0u; block < size; block++) {
             const uint16_t state = column[floor_block + block];
+            holds_ice = holds_ice || state == BLOCK_ID_ICE;
             if (render_lod_counts(state)) {
                 count++;
                 highest = state;
@@ -144,6 +162,10 @@ int32_t render_lod_cells_from_column(const uint16_t *column, uint32_t shift, uin
         }
         const uint16_t kept = count * 2u >= size ? highest : (uint16_t)BLOCK_ID_AIR;
         out[voxel * stride] = kept;
+        /* Ice is one block thick, so the half rule takes it: a frozen sea would read as open water until full detail drew it. The ice shows on the water it lay on. */
+        if (kept == BLOCK_ID_AIR && holds_ice && voxel > 0u && out[(voxel - 1u) * stride] == BLOCK_ID_WATER) {
+            out[(voxel - 1u) * stride] = BLOCK_ID_ICE;
+        }
         if (kept != BLOCK_ID_AIR) {
             top = (int32_t)voxel;
         }
@@ -165,6 +187,8 @@ void render_lod_sample_terrain(const void *borrowed_context, int32_t x, int32_t 
     terrain_surface_fill_box(terrain->borrowed_surface, &box, out);
     if (shift <= RENDER_LOD_FEATURES_SHIFT_MAX) {
         terrain_feature_fill_box(terrain->borrowed_feature, &box, out);
+    } else {
+        render_lod_sample_freeze(terrain, x, y, out);
     }
 }
 
