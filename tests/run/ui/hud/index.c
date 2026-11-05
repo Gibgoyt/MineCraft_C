@@ -787,11 +787,12 @@ static void state_golden_full(ui_hud_state_t *state) {
     state->hotbar[0] = item_stack_make(ITEM_ID_DIRT, 64u);
     state->hotbar[1] = item_stack_make(ITEM_ID_COBBLESTONE, 12u);
     state->hotbar[2] = item_stack_make(ITEM_ID_APPLE, 1u);
-    state->hotbar[3] = item_stack_make(item_that_wears(0u), 1u);
-    state->hotbar[4] = item_stack_make(item_that_wears(4u), 1u);
-    state->hotbar[4].wear = (uint16_t)(item_defs[item_that_wears(4u)].durability / 2u);
-    state->hotbar[5] = item_stack_make(item_that_wears(8u), 1u);
-    state->hotbar[5].wear = (uint16_t)(item_defs[item_that_wears(8u)].durability - 1u);
+    /* By name, since these are in the pictures: a new item that wears must not change what is drawn here. */
+    state->hotbar[3] = item_stack_make(ITEM_ID_BOW, 1u);
+    state->hotbar[4] = item_stack_make(ITEM_ID_DIAMOND_HELMET, 1u);
+    state->hotbar[4].wear = (uint16_t)(item_defs[ITEM_ID_DIAMOND_HELMET].durability / 2u);
+    state->hotbar[5] = item_stack_make(ITEM_ID_DIAMOND_SHOVEL, 1u);
+    state->hotbar[5].wear = (uint16_t)(item_defs[ITEM_ID_DIAMOND_SHOVEL].durability - 1u);
     state->hotbar[8] = item_stack_make(ITEM_ID_COAL, 9u);
 }
 
