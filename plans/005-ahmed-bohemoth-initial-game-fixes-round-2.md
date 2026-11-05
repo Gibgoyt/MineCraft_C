@@ -22,7 +22,9 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 6 | Woodworking bench can't make planks or sticks, overlaps the table; a stoneworking bench; the table only makes benches | `...-phase-06-crafting-stations.md` | Planks and sticks were kept on the table to reach the bench | **Blocked: Ahmed's Hypixel research** |
 | 7 | Very laggy after a long time in another window | `...-phase-07-lag-after-alt-tab.md` | Likely the world filling to its 70-mob cap while it never paused. Not proven | Not started |
 | 8 | Can't see very far; what's a chunk? | `...-phase-08-render-distance.md` | Working as set: 32 chunks is 512 blocks, and nothing is drawn past full detail at 32 | Not started |
-| 9 | Use Minecraft's default textures, not Pixel Perfection | `...-phase-09-default-textures.md` | Mojang's art can't go in the repo | **Blocked: where the copy comes from** |
+| 9 | Use Minecraft's default textures, not Pixel Perfection: download it, keep Pixel Perfection | `...-phase-09-default-textures.md` | The repo is public, and the texture folders hold the pixels too, so the default pack goes in a git-ignored copy | Not started |
+| 10 | A translucent blue preview of a block before placing it, like Hypixel | `...-phase-10-placement-preview.md` | Only an outline of the aimed-at block exists | Not started |
+| 11 | Stoneworking and iron-working benches; wooden, stone and iron tools; maybe a 2×2×1 smith table for metal ores, metal tools and all armour | Added to `...-phase-06-crafting-stations.md` | New stations | Part of phase 6 |
 
 ## Order to build
 
@@ -35,8 +37,9 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 5 | 8 Render distance | Small, and needs a measurement |
 | 6 | 2 Doors | Bigger, and if Ahmed picks a real block state, that comes first |
 | 7 | 4 Sheep and bed | Needs phase 3's spawn changes |
-| 8 | 6 Crafting stations | When Ahmed's research is done |
-| 9 | 9 Default textures | When Ahmed says where the copy comes from |
+| 8 | 9 Default textures | Independent of the rest; ready to go |
+| 9 | 10 Placement preview | Best after doors and stations exist, so it knows every shape |
+| 10 | 6 Crafting stations | When Ahmed's research is done |
 
 ## Questions for Ahmed
 
@@ -47,7 +50,16 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 4 | Should the bed be two blocks long like Minecraft's? | No, it stays one |
 | 6 | The order of stations, and where mixed materials such as torches and iron tools go | **No default: blocks phase 6** |
 | 7 | Pause when the window loses focus? | Yes, with a setting |
-| 9 | Where the Minecraft copy comes from: install, download, or an open lookalike | **No default: blocks phase 9** |
+| 6 | Is the smith table the iron-working bench, or are both wanted? | One station: the smith table |
+| 6 | Does "any metal" include diamond tools, and "armour only here" include leather? | Yes to both |
+| 10 | When placing would fail, show nothing or red? | Nothing |
+
+## Decisions Ahmed has made
+
+| Date | Decision |
+|---|---|
+| 2026-11-05 | Default textures: downloaded from Mojang, kept out of git, with Pixel Perfection kept |
+| 2026-11-05 | Stations: woodworking, stoneworking, iron-working, and maybe a 2×2×1 smith table that alone makes armour |
 
 ## How to test the game now
 
