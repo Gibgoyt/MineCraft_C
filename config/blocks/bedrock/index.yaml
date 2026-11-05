@@ -2,3 +2,4 @@ name: bedrock
 hardness: unbreakable
 drops: []
 texture: { all: blocks/bedrock }
+sound: stone

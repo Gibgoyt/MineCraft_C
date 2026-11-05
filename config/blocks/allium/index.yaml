@@ -3,3 +3,4 @@ hardness: 0
 drops: [{ item: allium, count: 1 }]
 shape: cross
 texture: { all: blocks/allium }
+sound: grass

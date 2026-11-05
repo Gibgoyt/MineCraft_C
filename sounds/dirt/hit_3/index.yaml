@@ -1,0 +1,9 @@
+# Written by compile/src/sound_pack import. A re-import replaces it.
+name: hit_3
+family: dirt
+source:
+  kind: recorded
+  origin: "themightyglider, Shovel Sound"
+  file: "shovel.ogg"
+  url: "https://opengameart.org/content/shovel-sound"
+  licence: CC0-1.0

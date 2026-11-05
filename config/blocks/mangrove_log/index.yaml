@@ -4,3 +4,4 @@ tool: axe
 log: true
 drops: [{ item: mangrove_log, count: 1 }]
 texture: { top: blocks/mangrove_log_top, bottom: blocks/mangrove_log_top, side: blocks/mangrove_log }
+sound: wood

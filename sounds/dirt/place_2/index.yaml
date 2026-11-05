@@ -1,0 +1,9 @@
+# Written by compile/src/sound_pack import. A re-import replaces it.
+name: place_2
+family: dirt
+source:
+  kind: recorded
+  origin: "Independent.nu, 5 break, crunch impacts"
+  file: "impactcrunch04.mp3.flac"
+  url: "https://opengameart.org/content/5-break-crunch-impacts"
+  licence: CC0-1.0

@@ -1,0 +1,9 @@
+# Written by compile/src/sound_pack import. A re-import replaces it.
+name: break_3
+family: wood
+source:
+  kind: recorded
+  origin: "Independent.nu, 35 wooden cracks, hits and destructions"
+  file: "crack09.mp3.flac"
+  url: "https://opengameart.org/content/35-wooden-crackshitsdestructions"
+  licence: CC0-1.0

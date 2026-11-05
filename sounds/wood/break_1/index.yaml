@@ -1,0 +1,9 @@
+# Written by compile/src/sound_pack import. A re-import replaces it.
+name: break_1
+family: wood
+source:
+  kind: recorded
+  origin: "rubberduck, 100 CC0 metal and wood SFX"
+  file: "wood_breaking_01.ogg"
+  url: "https://opengameart.org/content/100-cc0-metal-and-wood-sfx"
+  licence: CC0-1.0

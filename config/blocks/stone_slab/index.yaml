@@ -5,3 +5,4 @@ tier: wood
 drops: [{ item: stone_slab, count: 1 }]
 shape: slab
 texture: { all: blocks/smooth_stone }
+sound: stone

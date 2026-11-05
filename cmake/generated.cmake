@@ -28,6 +28,31 @@ add_custom_command(OUTPUT "${mc_texture_blob_file}"
 # Only order: NASM's -MD lists what it incbins, so a new blob rebuilds asm/src/embed_assets/ by its depfile.
 add_custom_target(mc_texture_blob DEPENDS "${mc_texture_blob_file}")
 
+# ---- Sound blob: plan 003 phase 5 --------------------------------------------------------------------------------------
+
+# sounds/ -> one file, with every recipe made into samples here -> asm/src/embed_assets/. It needs no network and no ffmpeg.
+set(mc_sound_blob_file "${MC_GENERATED_DIR}/sounds/index.mcsb")
+file(GLOB mc_sound_inputs CONFIGURE_DEPENDS
+  "${CMAKE_SOURCE_DIR}/sounds/ATTRIBUTION.md"
+  "${CMAKE_SOURCE_DIR}/sounds/*/README.md"
+  "${CMAKE_SOURCE_DIR}/sounds/*/*/index.yaml"
+  "${CMAKE_SOURCE_DIR}/sounds/*/*/index.mcsnd"
+  "${CMAKE_SOURCE_DIR}/sounds/*/*/README.md")
+
+# As for textures: a deleted sound changes this list, and Ninja would not otherwise notice it had gone.
+string(JOIN "\n" mc_sound_input_list ${mc_sound_inputs})
+file(CONFIGURE OUTPUT "${MC_GENERATED_DIR}/sounds/inputs.txt" CONTENT "${mc_sound_input_list}\n" @ONLY)
+
+# The touch, for the reason the texture blob has one.
+add_custom_command(OUTPUT "${mc_sound_blob_file}"
+  COMMAND mc_tool_sound_pack blob --sounds "${CMAKE_SOURCE_DIR}/sounds" --out "${mc_sound_blob_file}"
+  COMMAND "${CMAKE_COMMAND}" -E touch "${mc_sound_blob_file}"
+  DEPENDS mc_tool_sound_pack ${mc_sound_inputs} "${MC_GENERATED_DIR}/sounds/inputs.txt"
+  COMMENT "Generating the sound blob"
+  VERBATIM)
+# Only order: NASM's -MD lists what it incbins, so a new blob rebuilds asm/src/embed_assets/ by its depfile.
+add_custom_target(mc_sound_blob DEPENDS "${mc_sound_blob_file}")
+
 # ---- Game tables: Stage 07.1 --------------------------------------------------------------------------------------------
 
 # config/blocks/ -> build/<preset>/generated/tables/blocks/index.{h,c}. The tool checks references into textures/ and

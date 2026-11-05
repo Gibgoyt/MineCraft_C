@@ -3,3 +3,4 @@ hardness: 2
 tool: axe
 drops: [{ item: dark_oak_planks, count: 1 }]
 texture: { all: blocks/dark_oak_planks }
+sound: wood

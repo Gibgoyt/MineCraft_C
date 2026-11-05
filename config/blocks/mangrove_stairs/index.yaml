@@ -4,3 +4,4 @@ tool: axe
 drops: [{ item: mangrove_stairs, count: 1 }]
 shape: stairs
 texture: { all: blocks/mangrove_planks }
+sound: wood

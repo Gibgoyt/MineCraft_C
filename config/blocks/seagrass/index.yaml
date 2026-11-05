@@ -5,3 +5,4 @@ drops: []
 shape: cross
 replaceable: true
 texture: { all: blocks/seagrass }
+sound: grass

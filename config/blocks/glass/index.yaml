@@ -3,3 +3,4 @@ hardness: 0.3
 drops: []
 opacity: 0
 texture: { all: blocks/glass }
+sound: glass

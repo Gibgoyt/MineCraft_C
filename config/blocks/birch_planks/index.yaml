@@ -3,3 +3,4 @@ hardness: 2
 tool: axe
 drops: [{ item: birch_planks, count: 1 }]
 texture: { all: blocks/birch_planks }
+sound: wood

@@ -1,0 +1,9 @@
+# Written by compile/src/sound_pack import. A re-import replaces it.
+name: hit_2
+family: snow
+source:
+  kind: recorded
+  origin: "qubodup, 4 dry snow steps"
+  file: "snow_step_dry-03.flac"
+  url: "https://opengameart.org/content/4-dry-snow-steps"
+  licence: CC0-1.0

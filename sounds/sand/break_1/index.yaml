@@ -1,0 +1,9 @@
+# Written by compile/src/sound_pack import. A re-import replaces it.
+name: break_1
+family: sand
+source:
+  kind: recorded
+  origin: "Peludo, Water Splash and sand footsteps"
+  file: "sand_footsteps_0.mp3"
+  url: "https://opengameart.org/content/water-splash-and-sand-footsteps"
+  licence: CC0-1.0

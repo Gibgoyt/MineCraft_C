@@ -6,3 +6,4 @@ drops:
   - { item: flint, count: 1, chance: 0.1 }
 falls: true
 texture: { all: blocks/gravel }
+sound: gravel

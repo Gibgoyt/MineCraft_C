@@ -1,0 +1,9 @@
+# Written by compile/src/sound_pack import. A re-import replaces it.
+name: place_2
+family: metal
+source:
+  kind: recorded
+  origin: "Brian MacIntosh (BMacZero), Metal Impact Sounds"
+  file: "thud3.wav"
+  url: "https://opengameart.org/content/metal-impact-sounds"
+  licence: CC0-1.0

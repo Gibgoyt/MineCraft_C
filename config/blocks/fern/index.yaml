@@ -5,3 +5,4 @@ drops: [{ item: wheat_seeds, count: 1, chance: 0.125 }]
 shape: cross
 replaceable: true
 texture: { all: blocks/fern }
+sound: grass

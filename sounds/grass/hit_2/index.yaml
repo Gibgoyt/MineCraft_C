@@ -1,0 +1,9 @@
+# Written by compile/src/sound_pack import. A re-import replaces it.
+name: hit_2
+family: grass
+source:
+  kind: recorded
+  origin: "Fantozzi, footsteps on grass, sand and stone"
+  file: "Fantozzi-SandR1.flac"
+  url: "https://opengameart.org/content/fantozzis-footsteps-grasssand-stone"
+  licence: CC0-1.0

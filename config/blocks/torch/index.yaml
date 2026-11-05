@@ -4,3 +4,4 @@ drops: [{ item: torch, count: 1 }]
 shape: torch
 light: 14
 texture: { all: blocks/torch_floor }
+sound: wood

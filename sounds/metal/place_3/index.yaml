@@ -1,0 +1,9 @@
+# Written by compile/src/sound_pack import. A re-import replaces it.
+name: place_3
+family: metal
+source:
+  kind: recorded
+  origin: "rubberduck, 75 CC0 breaking, falling and hit sfx"
+  file: "bfh1_metal_hit_05.ogg"
+  url: "https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx"
+  licence: CC0-1.0

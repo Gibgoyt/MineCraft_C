@@ -9,6 +9,7 @@ hardness: 0.5
 tool: shovel
 drops: [{ item: dirt, count: 1 }]
 texture: { all: blocks/dirt }
+sound: dirt
 ```
 
 To add a block: make `config/blocks/<name>/index.yaml`, and build. `compile/src/game_tables/blocks/` turns these into the tables, and refuses a field it does not know or a reference to something missing, with the line.
@@ -22,6 +23,7 @@ To add a block: make `config/blocks/<name>/index.yaml`, and build. `compile/src/
 | `name` | yes | The directory's name: lower case, digits, underscores | |
 | `hardness` | yes | 0 to 1000, or `unbreakable`. 0 breaks at a touch | |
 | `drops` | yes | A list of rows, or `[]` for nothing. A row is below | |
+| `sound` | yes | `stone wood dirt gravel sand grass leaves snow glass metal`: what mining and placing it sounds like, from `sounds/`. `none` only for air and fluids, which are never dug | |
 | `texture` | unless `shape: none` | A map of faces, below | |
 | `tool` | | `none pickaxe axe shovel hoe shears sword`: what breaks it fastest | `none` |
 | `tier` | | `none wood stone iron diamond`: the lowest of `tool` that gets the drops at all. Needs a `tool` other than `none` or `shears` | `none` |

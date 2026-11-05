@@ -1,0 +1,9 @@
+# Written by compile/src/sound_pack import. A re-import replaces it.
+name: place_1
+family: leaves
+source:
+  kind: recorded
+  origin: "TinyWorlds, Different steps on wood, stone, leaves, gravel and mud"
+  file: "leaves02.ogg"
+  url: "https://opengameart.org/content/different-steps-on-wood-stone-leaves-gravel-and-mud"
+  licence: CC0-1.0

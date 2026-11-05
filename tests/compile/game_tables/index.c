@@ -107,6 +107,32 @@ TEST(between_110_and_170_blocks_with_air_first) {
     CHECK_EQ_U64(block_defs[BLOCK_ID_AIR].faces[BLOCK_FACE_TOP], BLOCK_NO_TEXTURE);
 }
 
+TEST(every_block_sounds_like_what_it_is) {
+    CHECK_EQ_U64(block_defs[BLOCK_ID_AIR].sound, SOUND_FAMILY_NONE);
+    CHECK_EQ_U64(block_defs[BLOCK_ID_WATER].sound, SOUND_FAMILY_NONE);
+    CHECK_EQ_U64(block_defs[BLOCK_ID_LAVA].sound, SOUND_FAMILY_NONE);
+    CHECK_EQ_U64(block_defs[BLOCK_ID_STONE].sound, SOUND_FAMILY_STONE);
+    CHECK_EQ_U64(block_defs[BLOCK_ID_IRON_ORE].sound, SOUND_FAMILY_STONE);
+    CHECK_EQ_U64(block_defs[BLOCK_ID_OAK_LOG].sound, SOUND_FAMILY_WOOD);
+    CHECK_EQ_U64(block_defs[BLOCK_ID_OAK_PLANKS].sound, SOUND_FAMILY_WOOD);
+    CHECK_EQ_U64(block_defs[BLOCK_ID_DIRT].sound, SOUND_FAMILY_DIRT);
+    CHECK_EQ_U64(block_defs[BLOCK_ID_GRAVEL].sound, SOUND_FAMILY_GRAVEL);
+    CHECK_EQ_U64(block_defs[BLOCK_ID_SAND].sound, SOUND_FAMILY_SAND);
+    CHECK_EQ_U64(block_defs[BLOCK_ID_GRASS_BLOCK].sound, SOUND_FAMILY_GRASS);
+    CHECK_EQ_U64(block_defs[BLOCK_ID_OAK_LEAVES].sound, SOUND_FAMILY_LEAVES);
+    CHECK_EQ_U64(block_defs[BLOCK_ID_SNOW_BLOCK].sound, SOUND_FAMILY_SNOW);
+    CHECK_EQ_U64(block_defs[BLOCK_ID_GLASS].sound, SOUND_FAMILY_GLASS);
+    /* Anything a player can break has a sound. Only air and fluids are silent, and the tool holds them to that too. */
+    for (uint32_t b = 0; b < BLOCK_COUNT; b++) {
+        const bool never_dug = block_defs[b].shape == BLOCK_SHAPE_NONE || block_defs[b].shape == BLOCK_SHAPE_FLUID;
+        if (!never_dug && block_defs[b].sound == SOUND_FAMILY_NONE) {
+            fprintf(stderr, "%s has no sound\n", block_defs[b].name);
+        }
+        CHECK(never_dug || block_defs[b].sound != SOUND_FAMILY_NONE);
+        CHECK(block_defs[b].sound < SOUND_FAMILY_COUNT);
+    }
+}
+
 TEST(dirt_drops_dirt) {
     const block_def_t *dirt = &block_defs[BLOCK_ID_DIRT];
     CHECK_STR_EQ(dirt->name, "dirt");
@@ -322,7 +348,8 @@ static const char GTT_STONE[] = "name: stone\n"
                                 "tool: pickaxe\n"
                                 "tier: wood\n"
                                 "drops: [{ item: coal, count: 1 }]\n"
-                                "texture: { all: blocks/stone }\n";
+                                "texture: { all: blocks/stone }\n"
+                                "sound: stone\n";
 
 typedef struct gtt_tree_t {
     char *borrowed_root;     /* 0 */
@@ -348,7 +375,7 @@ static gtt_tree_t gtt_tree_make(test_context_t *t, const char *name) {
     gtt_mkdirs(t, gtt_path(t, tree.borrowed_textures, "blocks/stone"));
     gtt_mkdirs(t, gtt_path(t, tree.borrowed_textures, "items/coal"));
     gtt_write(t, gtt_path(t, tree.borrowed_config, "blocks/air/index.yaml"),
-              "name: air\nhardness: 0\nshape: none\ndrops: []\n");
+              "name: air\nhardness: 0\nshape: none\ndrops: []\nsound: none\n");
     gtt_write(t, tree.borrowed_stone, GTT_STONE);
     gtt_write(t, gtt_path(t, tree.borrowed_textures, "blocks/stone/index.mctex"), "");
     gtt_write(t, gtt_path(t, tree.borrowed_textures, "items/coal/index.mctex"), "");
@@ -376,9 +403,15 @@ static_assert(sizeof(gtt_bad_case_t) == 24);
 
 #define GTT_STONE_START "name: stone\nhardness: 1.5\n"
 #define GTT_STONE_DROPS "drops: [{ item: coal, count: 1 }]\n"
-#define GTT_STONE_TEXTURE "texture: { all: blocks/stone }\n"
+/* Last in the file, so it moves no line a case below is held to. */
+#define GTT_STONE_TEXTURE "texture: { all: blocks/stone }\nsound: stone\n"
 
 static const gtt_bad_case_t GTT_BAD_CASES[] = {
+    /* What it sounds like: every block must say, and only what is never dug may say none. */
+    {GTT_STONE_START GTT_STONE_DROPS "texture: { all: blocks/stone }\n", ":1:", "missing field 'sound'"},
+    {GTT_STONE_START GTT_STONE_DROPS "texture: { all: blocks/stone }\nsound: squeak\n",
+     ":5:", "unknown sound 'squeak'"},
+    {GTT_STONE_START GTT_STONE_DROPS "texture: { all: blocks/stone }\nsound: none\n", ":5:", "sound none is only for"},
     /* Unknown fields, at each level. */
     {GTT_STONE_START "colour: grey\n" GTT_STONE_DROPS GTT_STONE_TEXTURE, ":3:", "unknown field 'colour' in a block"},
     {GTT_STONE_START "drops: [{ item: coal, count: 1, luck: 3 }]\n" GTT_STONE_TEXTURE,
@@ -469,8 +502,9 @@ TEST(air_stays_block_0_and_the_rest_sort_by_name) {
     const gtt_tree_t tree = gtt_tree_make(t, "order");
     /* "aaa" sorts before "air", and air must stay 0 anyway. */
     gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "blocks/aaa"));
-    gtt_write(t, gtt_path(t, tree.borrowed_config, "blocks/aaa/index.yaml"),
-              "name: aaa\nhardness: 0\ndrops: [{ item: stone, count: 1 }]\ntexture: { all: blocks/stone }\n");
+    gtt_write(
+        t, gtt_path(t, tree.borrowed_config, "blocks/aaa/index.yaml"),
+        "name: aaa\nhardness: 0\ndrops: [{ item: stone, count: 1 }]\ntexture: { all: blocks/stone }\nsound: wood\n");
     test_process_t run;
     gtt_tree_run(t, &tree, &run);
     CHECK_EQ_I64(run.exit_code, 0);
@@ -506,7 +540,7 @@ TEST(a_flag_in_the_file_beats_its_shape_either_way) {
     CHECK_EQ_I64(run.exit_code, 0);
     const char *source = gtt_read(t, gtt_path(t, tree.borrowed_out, "blocks/index.c"), nullptr);
     REQUIRE(source != nullptr);
-    CHECK_CONTAINS(source, ".flags = BLOCK_FLAG_REPLACEABLE | BLOCK_FLAG_FALLS}");
+    CHECK_CONTAINS(source, ".flags = BLOCK_FLAG_REPLACEABLE | BLOCK_FLAG_FALLS, .sound = SOUND_FAMILY_STONE}");
 
     gtt_write(t, tree.borrowed_stone,
               GTT_STONE_START "shape: fluid\nreplaceable: false\n" GTT_STONE_DROPS GTT_STONE_TEXTURE);
@@ -514,7 +548,8 @@ TEST(a_flag_in_the_file_beats_its_shape_either_way) {
     CHECK_EQ_I64(run.exit_code, 0);
     source = gtt_read(t, gtt_path(t, tree.borrowed_out, "blocks/index.c"), nullptr);
     REQUIRE(source != nullptr);
-    CHECK_CONTAINS(source, ".shape = BLOCK_SHAPE_FLUID, .light = 0, .opacity = 0, .flags = 0u}");
+    CHECK_CONTAINS(source,
+                   ".shape = BLOCK_SHAPE_FLUID, .light = 0, .opacity = 0, .flags = 0u, .sound = SOUND_FAMILY_STONE}");
 }
 
 TEST(each_mistake_is_refused_at_its_line) {
@@ -543,7 +578,7 @@ TEST(each_mistake_is_refused_at_its_line) {
 TEST(all_the_problems_are_shown_at_once) {
     const gtt_tree_t tree = gtt_tree_make(t, "many");
     gtt_write(t, tree.borrowed_stone,
-              "name: stone\nhardness: soft\ncolour: grey\ndrops: []\ntexture: { all: blocks/nothing }\n");
+              "name: stone\nhardness: soft\ncolour: grey\ndrops: []\ntexture: { all: blocks/nothing }\nsound: stone\n");
     test_process_t run;
     gtt_tree_run(t, &tree, &run);
     CHECK_EQ_I64(run.exit_code, 1);

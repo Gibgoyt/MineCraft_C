@@ -3,3 +3,4 @@ hardness: 2
 tool: axe
 drops: [{ item: cherry_planks, count: 1 }]
 texture: { all: blocks/cherry_planks }
+sound: wood

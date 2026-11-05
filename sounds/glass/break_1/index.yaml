@@ -1,0 +1,9 @@
+# Written by compile/src/sound_pack import. A re-import replaces it.
+name: break_1
+family: glass
+source:
+  kind: recorded
+  origin: "Till Behrend, Glass Break"
+  file: "glass_breaking.wav"
+  url: "https://opengameart.org/content/glass-break"
+  licence: CC0-1.0

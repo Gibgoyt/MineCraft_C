@@ -4,3 +4,4 @@ tool: axe
 drops: [{ item: dark_oak_stairs, count: 1 }]
 shape: stairs
 texture: { all: blocks/dark_oak_planks }
+sound: wood

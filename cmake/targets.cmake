@@ -118,7 +118,7 @@ add_custom_target(mc_struct_offsets DEPENDS ${mc_struct_offset_outputs})
 add_dependencies(mc_asm mc_struct_offsets)
 
 # cmake/generated.cmake makes it, and asm/src/embed_assets/ incbins it.
-add_dependencies(mc_asm mc_texture_blob)
+add_dependencies(mc_asm mc_texture_blob mc_sound_blob)
 
 # ---- Tests -----------------------------------------------------------------------------------------
 

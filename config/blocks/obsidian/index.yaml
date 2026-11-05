@@ -4,3 +4,4 @@ tool: pickaxe
 tier: diamond
 drops: [{ item: obsidian, count: 1 }]
 texture: { all: blocks/obsidian }
+sound: stone

@@ -4,3 +4,4 @@ tool: pickaxe
 drops: []
 opacity: 2
 texture: { all: blocks/ice }
+sound: glass

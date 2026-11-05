@@ -1,0 +1,9 @@
+# Written by compile/src/sound_pack import. A re-import replaces it.
+name: break_1
+family: leaves
+source:
+  kind: recorded
+  origin: "qubodup, 20 Rustles of dry leaves"
+  file: "rustle02.flac"
+  url: "https://opengameart.org/content/20-rustles-dry-leaves"
+  licence: CC0-1.0

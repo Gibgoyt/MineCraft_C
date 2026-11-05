@@ -1,0 +1,9 @@
+# Written by compile/src/sound_pack import. A re-import replaces it.
+name: place_2
+family: gravel
+source:
+  kind: recorded
+  origin: "Corsica_S, 42 Snow and Gravel Footsteps"
+  file: "Corsica_S-Walking_on_snow_covered_gravel_and_ice_07.flac"
+  url: "https://opengameart.org/content/42-snow-and-gravel-footsteps"
+  licence: CC0-1.0
