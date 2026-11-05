@@ -903,6 +903,8 @@ static gpu_status_t game_frame_draw(game_t *game, const render_camera_t *camera)
     if (pretended != GPU_STATUS_OK) {
         return pretended;
     }
+    render_frame_under_water_set(&render->frame, game->borrowed_player != nullptr &&
+                                                     player_eyes_under_water_read(game->borrowed_player));
     PROFILER_BEGIN(game->borrowed_lane_gpu, "frame_draw");
     const gpu_status_t status = render_frame_draw(&render->frame, &render->buffers, camera);
     PROFILER_END(game->borrowed_lane_gpu);

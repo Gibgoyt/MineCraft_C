@@ -54,9 +54,7 @@ typedef struct main_options_t {
     uint8_t test_world;         /* --test-world */
     uint8_t walk;               /* --walk */
     uint8_t has_time_of_day;    /* --time-of-day */
-    uint16_t features_off;      /* --no-shapes, --no-alpha, --no-sky and on: SHADE_FEATURE_* */
-    uint8_t god_rays;           /* --god-rays */
-    uint8_t menu;               /* --menu, or no flags at all on a terminal */
+    uint32_t features_off;      /* --no-shapes, --no-alpha, --no-sky and on: SHADE_FEATURE_* */
     float32_t time_of_day;      /* --time-of-day */
     uint32_t full_detail;       /* --full-detail, or 0 for RENDER_LOD_FULL_DETAIL_DEFAULT */
     const char *saves;          /* --saves, or nullptr for MAIN_SAVES_DEFAULT */
@@ -65,8 +63,9 @@ typedef struct main_options_t {
     uint32_t pretend_gpu_lost;  /* --pretend-gpu-lost: pictures until the card really faults; 0 for never */
     uint8_t windowed;           /* --windowed */
     uint8_t has_seed;           /* --seed */
-    uint8_t _pad0[2];
-    uint64_t seed; /* --seed */
+    uint8_t god_rays;           /* --god-rays */
+    uint8_t menu;               /* --menu, or no flags at all on a terminal */
+    uint64_t seed;              /* --seed */
 } main_options_t;
 static_assert(sizeof(main_options_t) == 112);
 
@@ -89,7 +88,7 @@ static void main_print_usage(const char *program) {
         "       %s --test-world [--seed <n>] [--walk] [--render-distance <chunks>] [--time-of-day <0 to 1>]\n"
         "           [--no-shapes] [--no-alpha] [--no-sky] [--no-day-cycle] [--no-fog]\n"
         "           [--no-shadows] [--no-stored-light] [--no-transparency] [--no-water-reflection]\n"
-        "           [--no-water-tint] [--no-ao] [--no-taa] [--god-rays] [--no-entities]\n"
+        "           [--no-water-tint] [--no-under-water] [--no-ao] [--no-taa] [--god-rays] [--no-entities]\n"
         "           [--no-outline] [--full-detail <chunks>] [--no-lod] [--headless ...]\n"
         "       %s --menu [--saves <dir>] [--settings <file>] [--render-distance <chunks>] [--headless ...]\n"
         "  --report                 print the build's defines and CPU features, then exit\n"
@@ -120,7 +119,6 @@ static void main_print_usage(const char *program) {
         "                           --render-distance, coarse grids take over. Default 32\n"
         "  --no-lod                 with --test-world: the world stops where full detail does\n"
         "  --god-rays               with --test-world: the air shows the sun's light where it reaches\n"
-        "  --time-of-day <0 to 1>   with --test-world: the time to start at: 0 midnight, 0.25 sunrise, 0.5 noon\n"
         "  --test-world             fly through a generated world: in a window on a desktop, or through KMS from a "
         "text console,\n"
         "                           where WASD, Space and Shift move, the mouse looks, the wheel sets the speed, Ctrl\n"
@@ -133,6 +131,8 @@ static void main_print_usage(const char *program) {
         "                           table, furnace or chest opens that, and E or Esc closes it\n",
         program, program, program, program, program);
     fputs(
+        "  --no-under-water         with --test-world: a body's eyes under water see no blue and no short fog\n"
+        "  --time-of-day <0 to 1>   with --test-world: the time to start at: 0 midnight, 0.25 sunrise, 0.5 noon\n"
         "  --seed <n>               with --test-world: this seed's land and not the default's, 0x for hex\n"
         "  --pretend-gpu-lost       make the card fault for real after this many pictures, to see a world saved\n"
         "                           and the run end. Takes only this program's context; the kernel's log has a line\n"
@@ -206,9 +206,9 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
         } else if (strcmp(argv[i], "--test-world") == 0) {
             out->test_world = 1;
         } else if (strcmp(argv[i], "--no-shapes") == 0) {
-            out->features_off |= (uint16_t)SHADE_FEATURE_SHAPES;
+            out->features_off |= (uint32_t)SHADE_FEATURE_SHAPES;
         } else if (strcmp(argv[i], "--no-alpha") == 0) {
-            out->features_off |= (uint16_t)SHADE_FEATURE_ALPHA;
+            out->features_off |= (uint32_t)SHADE_FEATURE_ALPHA;
         } else if (strcmp(argv[i], "--menu") == 0) {
             out->menu = 1u;
         } else if (strcmp(argv[i], "--saves") == 0 && i + 1 < argc) {
@@ -223,25 +223,27 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
         } else if (strcmp(argv[i], "--walk") == 0) {
             out->walk = 1;
         } else if (strcmp(argv[i], "--no-sky") == 0) {
-            out->features_off |= (uint16_t)SHADE_FEATURE_SKY;
+            out->features_off |= (uint32_t)SHADE_FEATURE_SKY;
         } else if (strcmp(argv[i], "--no-day-cycle") == 0) {
-            out->features_off |= (uint16_t)SHADE_FEATURE_DAY_CYCLE;
+            out->features_off |= (uint32_t)SHADE_FEATURE_DAY_CYCLE;
         } else if (strcmp(argv[i], "--no-transparency") == 0) {
-            out->features_off |= (uint16_t)SHADE_FEATURE_TRANSPARENCY;
+            out->features_off |= (uint32_t)SHADE_FEATURE_TRANSPARENCY;
         } else if (strcmp(argv[i], "--no-water-reflection") == 0) {
-            out->features_off |= (uint16_t)SHADE_FEATURE_WATER_REFLECTION;
+            out->features_off |= (uint32_t)SHADE_FEATURE_WATER_REFLECTION;
         } else if (strcmp(argv[i], "--no-water-tint") == 0) {
-            out->features_off |= (uint16_t)SHADE_FEATURE_WATER_TINT;
+            out->features_off |= (uint32_t)SHADE_FEATURE_WATER_TINT;
+        } else if (strcmp(argv[i], "--no-under-water") == 0) {
+            out->features_off |= (uint32_t)SHADE_FEATURE_UNDER_WATER;
         } else if (strcmp(argv[i], "--no-entities") == 0) {
-            out->features_off |= (uint16_t)SHADE_FEATURE_ENTITIES;
+            out->features_off |= (uint32_t)SHADE_FEATURE_ENTITIES;
         } else if (strcmp(argv[i], "--no-outline") == 0) {
-            out->features_off |= (uint16_t)SHADE_FEATURE_OUTLINE;
+            out->features_off |= (uint32_t)SHADE_FEATURE_OUTLINE;
         } else if (strcmp(argv[i], "--no-ao") == 0) {
-            out->features_off |= (uint16_t)SHADE_FEATURE_AO;
+            out->features_off |= (uint32_t)SHADE_FEATURE_AO;
         } else if (strcmp(argv[i], "--no-taa") == 0) {
-            out->features_off |= (uint16_t)SHADE_FEATURE_TAA;
+            out->features_off |= (uint32_t)SHADE_FEATURE_TAA;
         } else if (strcmp(argv[i], "--no-lod") == 0) {
-            out->features_off |= (uint16_t)SHADE_FEATURE_LOD;
+            out->features_off |= (uint32_t)SHADE_FEATURE_LOD;
         } else if (strcmp(argv[i], "--full-detail") == 0 && i + 1 < argc) {
             i++;
             if (!main_parse_count("--full-detail", argv[i], &out->full_detail)) {
@@ -250,11 +252,11 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
         } else if (strcmp(argv[i], "--god-rays") == 0) {
             out->god_rays = 1u;
         } else if (strcmp(argv[i], "--no-fog") == 0) {
-            out->features_off |= (uint16_t)SHADE_FEATURE_FOG;
+            out->features_off |= (uint32_t)SHADE_FEATURE_FOG;
         } else if (strcmp(argv[i], "--no-shadows") == 0) {
-            out->features_off |= (uint16_t)SHADE_FEATURE_SHADOW;
+            out->features_off |= (uint32_t)SHADE_FEATURE_SHADOW;
         } else if (strcmp(argv[i], "--no-stored-light") == 0) {
-            out->features_off |= (uint16_t)SHADE_FEATURE_LIGHT;
+            out->features_off |= (uint32_t)SHADE_FEATURE_LIGHT;
         } else if (strcmp(argv[i], "--time-of-day") == 0 && i + 1 < argc) {
             i++;
             char *end = nullptr;

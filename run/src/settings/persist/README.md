@@ -9,7 +9,7 @@
 
 - `settings_persist_defaults`: what a new install runs with.
 - `settings_persist_clamp`: each value into its range.
-- `settings_persist_effect`: the sixteen graphics effects, for the file and the screen.
+- `settings_persist_effect`: the seventeen graphics effects, for the file and the screen.
 - `settings_persist_parse`: text to values. Never fails: each problem is logged with its line.
 - `settings_persist_write`: values to text.
 

@@ -40,7 +40,7 @@ static const settings_number_t SETTINGS_NUMBERS[] = {
 };
 enum : uint32_t { SETTINGS_NUMBER_COUNT = sizeof(SETTINGS_NUMBERS) / sizeof(SETTINGS_NUMBERS[0]) };
 
-/* Two columns of eight on the screen. */
+/* Two columns of eight on the screen, and one more under them. */
 static const settings_effect_t SETTINGS_EFFECTS[SETTINGS_EFFECT_COUNT] = {
     {"effect_shapes", "Block shapes", SHADE_FEATURE_SHAPES, {0}},
     {"effect_alpha", "See-through", SHADE_FEATURE_ALPHA, {0}},
@@ -58,6 +58,7 @@ static const settings_effect_t SETTINGS_EFFECTS[SETTINGS_EFFECT_COUNT] = {
     {"effect_entities", "Entities", SHADE_FEATURE_ENTITIES, {0}},
     {"effect_outline", "Block outline", SHADE_FEATURE_OUTLINE, {0}},
     {"effect_far_field", "Far field", SHADE_FEATURE_LOD, {0}},
+    {"effect_under_water", "Under water", SHADE_FEATURE_UNDER_WATER, {0}},
 };
 
 const settings_effect_t *settings_persist_effect(uint32_t index) {

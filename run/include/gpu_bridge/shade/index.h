@@ -69,12 +69,14 @@ enum : uint32_t {
      * kernel of its own, even with AO off: the same picture, for less time, and the hits block then ends up holding those surfaces. No setting
      * turns this off. What wants the frame's own hits afterwards, a test that holds them to something, leaves it out. */
     SHADE_FEATURE_SUN_APART = 1u << 16,
+    /* From under water the picture is blue and the distance goes in fog, or it is what the rays alone make of it, often black. */
+    SHADE_FEATURE_UNDER_WATER = 1u << 17,
     /* What a picture is drawn with on its own, from nothing: no frame of these reads what the last one left. What render_frame_init
      * starts with, and so what a test that wants one exact picture gets. */
     SHADE_FEATURES_ALL = SHADE_FEATURE_SHAPES | SHADE_FEATURE_ALPHA | SHADE_FEATURE_SKY | SHADE_FEATURE_DAY_CYCLE |
                          SHADE_FEATURE_FOG | SHADE_FEATURE_SHADOW | SHADE_FEATURE_LIGHT | SHADE_FEATURE_TRANSPARENCY |
                          SHADE_FEATURE_WATER_REFLECTION | SHADE_FEATURE_WATER_TINT | SHADE_FEATURE_ENTITIES |
-                         SHADE_FEATURE_OUTLINE | SHADE_FEATURE_LOD,
+                         SHADE_FEATURE_OUTLINE | SHADE_FEATURE_LOD | SHADE_FEATURE_UNDER_WATER,
     /* What a world is played with unless told otherwise. God rays are optional, so they are asked for. */
     SHADE_FEATURES_PLAY = SHADE_FEATURES_ALL | SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
     SHADE_FEATURES_EVERY = SHADE_FEATURES_PLAY | SHADE_FEATURE_GOD_RAYS,

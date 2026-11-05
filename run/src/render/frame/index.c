@@ -385,6 +385,24 @@ static void frame_day_plain(post_settings_t *post, shade_sun_t *sun) {
                               .sun_direction = {0.0f32, 0.0f32, 1.0f32}};
 }
 
+/* What eyes under water see: a colour that follows the light of the day, and is still there at midnight. By how much light the sky gives, and
+ * not by how deep the eyes are, as post has only this one colour for all of a picture. */
+static void frame_water_apply(render_frame_t *frame) {
+    post_settings_t *const post = &frame->post;
+    static const float32_t tint[3] = {POST_WATER_TINT_R, POST_WATER_TINT_G, POST_WATER_TINT_B};
+    static const float32_t colour[3] = {POST_WATER_COLOUR_R, POST_WATER_COLOUR_G, POST_WATER_COLOUR_B};
+    /* The sky's light in green, against what noon has: render_day_fill's ambient_day. */
+    const float32_t light = frame->scene.sun.ambient[1] >= 0.62f32 ? 1.0f32 : frame->scene.sun.ambient[1] / 0.62f32;
+    const float32_t share = POST_WATER_COLOUR_NIGHT + (1.0f32 - POST_WATER_COLOUR_NIGHT) * light;
+    for (uint32_t i = 0u; i < 3u; i++) {
+        post->water_tint[i] = tint[i];
+        post->water_colour[i] = colour[i] * share;
+    }
+    post->water_fog_end = POST_WATER_FOG_END;
+    post->under_water =
+        frame->eyes_under_water != 0u && (frame->scene.features & SHADE_FEATURE_UNDER_WATER) != 0u ? 1u : 0u;
+}
+
 /* Everything the kernels read that follows from the settings and the time. */
 static void frame_settings_apply(render_frame_t *frame) {
     const bool fog = (frame->scene.features & SHADE_FEATURE_FOG) != 0u;
@@ -396,6 +414,7 @@ static void frame_settings_apply(render_frame_t *frame) {
     } else {
         frame_day_plain(&frame->post, &frame->scene.sun);
     }
+    frame_water_apply(frame);
 }
 
 void render_frame_features_set(render_frame_t *frame, uint32_t features) {
@@ -412,6 +431,11 @@ void render_frame_fog_set(render_frame_t *frame, float32_t fog_end) {
 void render_frame_time_set(render_frame_t *frame, float32_t day_fraction) {
     frame->day_fraction = day_fraction - floorf(day_fraction);
     frame_settings_apply(frame);
+}
+
+void render_frame_under_water_set(render_frame_t *frame, bool under_water) {
+    frame->eyes_under_water = under_water ? 1u : 0u;
+    frame_water_apply(frame);
 }
 
 gpu_status_t render_frame_draw(render_frame_t *frame, const world_buffers_t *buffers, const render_camera_t *camera) {

@@ -18,6 +18,7 @@
 - `player_tick`: one tick of the sim's: the body moves, then what it aims at is worked out from where it now stands.
 - `player_survive_tick`: one tick of the sim's, right after `player_tick`, for what keeps the body going.
 - `player_vitals_read`: main asks how the body is, for a screen.
+- `player_eyes_under_water_read`: the thread that draws asks whether the eyes were under water as of the last tick.
 - `player_eye_at`: main asks where to draw the eye right now.
 - `player_target_view`: main asks what that tick aimed at, to draw its outline.
 

@@ -81,6 +81,7 @@ static void player_vitals_publish(player_t *player) {
     uint64_t word = 0u;
     memcpy(&word, &vitals, sizeof(word));
     atomic_store_explicit(&player->vitals_word, word, memory_order_relaxed);
+    atomic_store_explicit(&player->eyes_under_water, player->movement.eyes_under_water, memory_order_relaxed);
 }
 
 void player_spawn(player_t *player, float64_t x, float64_t y, float64_t z) {
@@ -268,6 +269,10 @@ void player_survive_tick(player_t *player, const world_map_t *map) {
     player_survival_tick(&player->survival, &player->movement, player->borrowed_physics, map,
                          player->interaction.mined_count);
     player_vitals_publish(player);
+}
+
+bool player_eyes_under_water_read(const player_t *player) {
+    return atomic_load_explicit(&player->eyes_under_water, memory_order_relaxed) != 0u;
 }
 
 player_vitals_t player_vitals_read(const player_t *player) {

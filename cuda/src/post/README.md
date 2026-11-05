@@ -1,6 +1,6 @@
 # cuda/src/post
 
-**Purpose:** from shade's pixels to what goes on the screen: the sky where nothing was hit, with the sun and moon, distance fog, god rays, the temporal pass, and the tone map to XRGB8888.
+**Purpose:** from shade's pixels to what goes on the screen: the sky where nothing was hit, with the sun and moon, distance fog, god rays, what eyes under water see, the temporal pass, and the tone map to XRGB8888.
 **Tier:** a CUDA area. It holds no memory. Device blocks come from its caller, and are checked against what is asked of them.
 **Owns:** nothing.
 **Lifetime:** each call starts a kernel and returns.
@@ -10,7 +10,7 @@
 - `post_frame`: the kernel, with nothing from any other frame.
 - `post_frame_temporal`: the same with god rays on top, and with the temporal pass after it, as asked.
 - `post_xrgb_bytes`, `post_history_bytes`, `post_shafts_bytes`, `post_shafts_across`: what its targets need.
-- `post_sky`, `post_sky_discs`, `post_fog`, `post_fog_way`, `post_fog_along`, `post_tone_map`, `post_xrgb`, `post_jitter`, `post_camera_jitter`, `post_reproject`, `post_taa_squeeze`, `post_taa_unsqueeze`, `post_catmull_rom`: its arithmetic, inline on host and device, so that a test on the host runs the same lines.
+- `post_sky`, `post_sky_discs`, `post_fog`, `post_fog_way`, `post_fog_along`, `post_water_fog`, `post_under_water`, `post_tone_map`, `post_xrgb`, `post_jitter`, `post_camera_jitter`, `post_reproject`, `post_taa_squeeze`, `post_taa_unsqueeze`, `post_catmull_rom`: its arithmetic, inline on host and device, so that a test on the host runs the same lines.
 
 **May be called by:** `render`, `cuda/src/frame/`.
 **Depends on:** `gpu_bridge/device_memory`, `gpu_bridge/status`, `gpu_bridge/traverse`, `gpu_bridge/shade` for the form of its input, and `cuda/include/traverse/` for a pixel's direction.
@@ -28,6 +28,18 @@ A straight line up to 0.8, and a smooth roll towards 1 past it, then the sRGB cu
 From nothing at 70 % of `fog_end` to all sky at `fog_end`, which is a chunk short of what is loaded, so that the edge of the loaded world melts into the sky. Its colour is `post_sky` in that pixel's direction: the same glow, so fog takes colour from the sun, and no disc, as a sun does not show through a hill. With `SHADE_FEATURE_FOG` off, `render_frame_t` sets a range only `TRAVERSE_COARSE_SKY` is past, so that the kernel has no case for it.
 
 **That edge is out to the side, so it is the side that counts.** `post_fog_along` takes what a ray goes up or down only as far as `fog_start`, by `post_fog_way`, so from `z = 1250` the ground under the eye stays in sight at any render distance, clear below and melting into the sky by `sqrt(fog_end^2 - fog_start^2)` out, about 71 % of `fog_end`. A ray going up or down by less than `fog_start`, which is all of them at ordinary heights, gets exactly `post_fog`. `shade_fog_behind` and what `render_entities` leaves out go by the same way. A reflection's way, which a mirror bent, counts as if it had gone on along the eye's ray.
+
+## Under water
+
+`SHADE_FEATURE_UNDER_WATER`, and `post_settings_t.under_water` for a frame whose eyes are in water: `render_frame_under_water_set` says so, from `movement.eyes_under_water` by way of `game`. `post_under_water` multiplies the picture by a blue tint, then takes it to `water_colour` with distance, after the sky's fog and any god rays and before the temporal pass.
+
+**The fog is what keeps it from being a void.** Stored light runs out in the sea, so a bed 13 blocks down is nearly black at noon, and 23 blocks down all of it, however near. A tint alone would multiply black. So the fog's colour comes from no light in the world, only from the sky's, and 12 % of it is there at the eye. It goes to all water by `POST_WATER_FOG_END`, 28 blocks, quickly at first. `render_frame_t` takes the colour down to 22 % at midnight: dark, but still water. It does not know how deep the eyes are, or what is over them, so a pool in a cave is as blue as a sea at noon.
+
+**The distance is where the water stops.** An eye in the water starts inside a surface at no distance. `shade_kernel` left that as the pixel's `t`, as it wants for its own fog, and with `under_water` it gives the distance the water goes on for, or to the box in it. The temporal pass reads the same `t`, so under water it now reprojects a real place, and only there.
+
+A body's flag is as of the last tick, and the eye is drawn between ticks, so coming up the picture can be blue for up to a tick with the eye just out. A flying eye has no body and no flag, so it never sees this.
+
+Cost at 1920 by 1080, under a sea with every pixel water: post 0.251 ms against 0.246 ms with the setting off, frame 15.17 against 15.18, which is less than the two differ by from run to run.
 
 ## The temporal pass
 

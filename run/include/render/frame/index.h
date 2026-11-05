@@ -131,33 +131,34 @@ typedef struct render_frame_t {
     frame_targets_t targets;                           /* 312 */
     shade_scene_t scene;                               /* 344 */
     post_settings_t post;                              /* 448 */
-    render_frame_stats_t stats;                        /* 528 */
-    device_memory_t *borrowed_memory;                  /* 616 */
-    uint8_t *borrowed_pictures[RENDER_EXCHANGE_SLOTS]; /* 624: width * height * 4 each */
-    float32_t *borrowed_samples;                       /* 648: RENDER_FRAME_SAMPLES of total_ms */
-    uint64_t picture_bytes;                            /* 656 */
-    uint32_t width;                                    /* 664 */
-    uint32_t height;                                   /* 668 */
-    const device_block_t *borrowed_shapes;             /* 672: a traverse_shape_t per block */
-    post_temporal_t temporal;                          /* 680: what scene.borrowed_temporal points to */
-    float32_t fog_end;                                 /* 816: in blocks, as it was asked for */
-    float32_t day_fraction;                            /* 820: what scene.sun and post were last worked out for */
-    uint32_t drawn_features;                           /* 824: what the last frame was drawn with */
-    uint8_t pinned;                                    /* 828: how many of the pictures are pinned */
-    uint8_t _pad0[3];                                  /* 829 */
-    render_entities_t *borrowed_entities; /* 832: what each frame draws of them, from the Owner, or nullptr */
-    render_lod_t *borrowed_lod;           /* 840: what each frame draws past full detail, from the Owner, or nullptr */
-    frame_timings_t last_timings;         /* 848: what the last frame took, kernel by kernel, on the card's clock */
-    uint8_t _pad1[48];                    /* 912 */
+    render_frame_stats_t stats;                        /* 560 */
+    device_memory_t *borrowed_memory;                  /* 648 */
+    uint8_t *borrowed_pictures[RENDER_EXCHANGE_SLOTS]; /* 656: width * height * 4 each */
+    float32_t *borrowed_samples;                       /* 680: RENDER_FRAME_SAMPLES of total_ms */
+    uint64_t picture_bytes;                            /* 688 */
+    uint32_t width;                                    /* 696 */
+    uint32_t height;                                   /* 700 */
+    const device_block_t *borrowed_shapes;             /* 704: a traverse_shape_t per block */
+    post_temporal_t temporal;                          /* 712: what scene.borrowed_temporal points to */
+    float32_t fog_end;                                 /* 848: in blocks, as it was asked for */
+    float32_t day_fraction;                            /* 852: what scene.sun and post were last worked out for */
+    uint32_t drawn_features;                           /* 856: what the last frame was drawn with */
+    uint8_t pinned;                                    /* 860: how many of the pictures are pinned */
+    uint8_t eyes_under_water;                          /* 861: as last told, by render_frame_under_water_set */
+    uint8_t _pad0[2];                                  /* 862 */
+    render_entities_t *borrowed_entities; /* 864: what each frame draws of them, from the Owner, or nullptr */
+    render_lod_t *borrowed_lod;           /* 872: what each frame draws past full detail, from the Owner, or nullptr */
+    frame_timings_t last_timings;         /* 880: what the last frame took, kernel by kernel, on the card's clock */
+    uint8_t _pad1[16];                    /* 944 */
 } render_frame_t;
 static_assert(sizeof(render_frame_t) == 960);
 static_assert(alignof(render_frame_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(render_frame_t, gpu) == 192);
-static_assert(offsetof(render_frame_t, borrowed_memory) == 616);
-static_assert(offsetof(render_frame_t, temporal) == 680);
-static_assert(offsetof(render_frame_t, pinned) == 828);
-static_assert(offsetof(render_frame_t, borrowed_entities) == 832);
-static_assert(offsetof(render_frame_t, borrowed_lod) == 840);
+static_assert(offsetof(render_frame_t, borrowed_memory) == 648);
+static_assert(offsetof(render_frame_t, temporal) == 712);
+static_assert(offsetof(render_frame_t, pinned) == 860);
+static_assert(offsetof(render_frame_t, borrowed_entities) == 864);
+static_assert(offsetof(render_frame_t, borrowed_lod) == 872);
 
 /* Sizes, for the Owner to take blocks and memory. */
 uint64_t render_frame_texture_table_bytes(void);
@@ -185,6 +186,9 @@ void render_frame_fog_set(render_frame_t *frame, float32_t fog_end);
  * Noon from render_frame_init. Between frames, on the thread that draws. With SHADE_FEATURE_DAY_CYCLE off this still moves the sun:
  * it is whoever calls this that keeps time, and the setting tells it not to. */
 void render_frame_time_set(render_frame_t *frame, float32_t day_fraction);
+
+/* Whether the eyes are in water, for the next frames. Between frames, on the thread that draws. Nothing shows of it with SHADE_FEATURE_UNDER_WATER off. */
+void render_frame_under_water_set(render_frame_t *frame, bool under_water);
 
 /* What the sky and the light are at a time of day: where the sun and moon are, and all their colours. Touches nothing else, so a
  * test can ask without a card. Leaves post's fog alone. */

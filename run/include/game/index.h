@@ -41,9 +41,7 @@ typedef struct game_config_t {
     uint32_t render_distance; /* 0: in chunks */
     uint32_t width;           /* 4: of the picture */
     uint32_t height;          /* 8 */
-    uint16_t features_off;    /* 12: SHADE_FEATURE_* to leave off; 0 draws all of SHADE_FEATURES_PLAY */
-    uint8_t god_rays;         /* 14: and these on top, being optional */
-    uint8_t _pad0[1];         /* 15 */
+    uint32_t features_off;    /* 12: SHADE_FEATURE_* to leave off; 0 draws all of SHADE_FEATURES_PLAY */
     /* 16: how far the world is drawn block by block, in chunks. Past it, to render_distance, coarse grids take over. 0 means
      * RENDER_LOD_FULL_DETAIL_DEFAULT. */
     uint32_t full_detail;
@@ -56,7 +54,8 @@ typedef struct game_config_t {
         render_scale_percent; /* 32: pictures are drawn this much of width and height, and brought up; 0 means 100 */
     uint8_t uncapped; /* 36: the gpu thread draws as fast as it can, and does not wait for a picture to be taken */
     uint8_t show_coordinates; /* 37: x, y and z in the top left corner of what a body sees */
-    uint8_t _pad1[2];         /* 38 */
+    uint8_t god_rays;         /* 38: on top of what features_off leaves, being optional */
+    uint8_t _pad0[1];         /* 39 */
 } game_config_t;
 static_assert(sizeof(game_config_t) == 40);
 
