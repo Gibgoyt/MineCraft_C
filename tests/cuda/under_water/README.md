@@ -15,7 +15,7 @@ What it checks:
 
 - **By hand:** how much is water at each distance, and what comes of a colour, on numbers worked out on paper.
 - **The settings:** the colour follows the day and is still there at midnight, the flag survives a change of time and of effects, and with the setting off nothing shows of it.
-- **A sea of our own:** flag off, or setting off, is the same picture to the byte. On, far water is exactly the water's colour, which only holds if a ray from an eye in the water counts by how far off the water stops. A bed further off is nearer the water's colour, and the sky through the surface still shows.
+- **A sea of our own:** flag off, or setting off, is the same picture to the byte. On, far water is exactly the water's colour, which only holds if a ray from an eye in the water counts by how far off the water stops. A bed further off is nearer the water's colour, the sky through the surface still shows, and an eye in a kelp stalk, which has no water in its own cell, still sees far water and not black.
 - **The real thing:** `fixtures/dive.script`, in the built program, with a real body from the start of the default seed out to sea and down: nothing changes on land, what was black is not, and the pictures match. Golden pictures at most 2 out of 255 apart on any channel. To make them again, after looking at them:
 
       MC_GOLDEN_WRITE=1 tools/test-or-build.sh timeout 600 ctest --preset debug -R '^render_feature_under_water$'

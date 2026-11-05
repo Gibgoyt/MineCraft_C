@@ -497,6 +497,47 @@ TEST(the_bar_counts_down_with_the_air_and_is_empty_when_the_hearts_start_to_go) 
     ps_end(&rig);
 }
 
+TEST(kelp_and_seagrass_in_the_sea_give_no_air_and_kelp_on_land_takes_none) {
+    ps_rig_t rig;
+    REQUIRE(ps_begin(t, &rig));
+    player_survival_t *const survival = &rig.player->survival;
+    ps_no_healing(survival);
+    game_t *const game = test_world_aligned(t, sizeof(game_t));
+    memset(game, 0, sizeof(*game));
+    game->borrowed_player = rig.player;
+    const player_movement_t *const movement = &rig.player->movement;
+
+    /* The eye is in the cell at z = 1. Each of them there, with the sea going on over it: the air goes on going, one a tick, and it swims. */
+    test_world_fill(t, &rig.world, -3, -3, 0, 3, 3, 5, BLOCK_ID_WATER);
+    ps_idle(&rig, 10u);
+    CHECK_EQ_I64(survival->air, 290);
+    test_world_fill(t, &rig.world, 0, 0, 0, 0, 0, 1, BLOCK_ID_KELP);
+    ps_idle(&rig, 10u);
+    CHECK_EQ_U64(movement->eyes_under_water, 1u);
+    CHECK_EQ_I64(survival->air, 280);
+    test_world_fill(t, &rig.world, 0, 0, 0, 0, 0, 1, BLOCK_ID_SEAGRASS);
+    ps_idle(&rig, 10u);
+    CHECK_EQ_U64(movement->eyes_under_water, 1u);
+    CHECK_EQ_I64(survival->air, 270);
+    CHECK_EQ_U64(ps_bar(game).bubbles_shown, 1u);
+    CHECK_EQ_U64(ps_bar(game).bubbles, 9u);
+
+    /* A whole stalk, feet to over the head, and nothing but it around the body: still the sea. */
+    test_world_fill(t, &rig.world, 0, 0, 0, 0, 0, 4, BLOCK_ID_KELP);
+    ps_idle(&rig, 10u);
+    CHECK_EQ_U64(movement->mode, PLAYER_MOVEMENT_MODE_WATER);
+    CHECK_EQ_I64(survival->air, 260);
+
+    /* The sea gone from over and around it: kelp on land is a plant, and the air comes back. */
+    test_world_fill(t, &rig.world, -3, -3, 0, 3, 3, 5, BLOCK_ID_AIR);
+    test_world_fill(t, &rig.world, 0, 0, 0, 0, 0, 2, BLOCK_ID_KELP);
+    ps_idle(&rig, 1u);
+    CHECK_EQ_U64(movement->eyes_under_water, 0u);
+    CHECK_EQ_I64(survival->air, 264);
+    CHECK(movement->mode != PLAYER_MOVEMENT_MODE_WATER);
+    ps_end(&rig);
+}
+
 TEST(a_full_opaque_cube_at_the_eyes_smothers_and_glass_and_leaves_do_not) {
     ps_rig_t rig;
     REQUIRE(ps_begin(t, &rig));

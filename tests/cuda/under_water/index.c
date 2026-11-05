@@ -220,6 +220,26 @@ TEST(flag_off_or_setting_off_is_the_same_picture_and_on_is_water) {
     printf("  up at the surface: %06x\n", up);
     CHECK(uw_gap(up, water) > 8u);
     CHECK((up & 255u) > (water & 255u));
+
+    /* Kelp at the eye, which takes that cell's water away: nothing there is at no distance, so what is clear of the plant is still far water, and not black. */
+    const uint32_t far_water = uw_middle(under);
+    for (int32_t z = -31 + 1; z < -2; z++) {
+        REQUIRE(
+            CHECK_EQ_U64(world_edit_block_set(&rig.world->edit, 8, 8, z, BLOCK_ID_KELP), WORLD_EDIT_STATUS_CHANGED));
+    }
+    REQUIRE(sk_hand_world_sync(t, &rig));
+    render_camera_start(&camera, 8.5f64, 8.5f64, -15.5f64, 0.0f32, 0.0f32);
+    picture = sk_draw(t, &rig, &camera);
+    REQUIRE(picture != nullptr);
+    uint64_t still_water = 0u;
+    for (uint32_t y = 0u; y < UW_HEIGHT; y++) {
+        for (uint32_t x = 0u; x < UW_WIDTH; x++) {
+            still_water += uw_gap(sk_pixel(picture, UW_WIDTH, x, y), far_water) <= 2u ? 1u : 0u;
+        }
+    }
+    printf("  an eye in kelp: %" PRIu64 " pixels of %" PRIu64 " are far water\n", still_water,
+           (uint64_t)UW_WIDTH * UW_HEIGHT);
+    CHECK(still_water > (uint64_t)UW_WIDTH * UW_HEIGHT / 2u);
     sk_hand_world_close(&rig);
     sk_rig_end(t, &rig);
 }

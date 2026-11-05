@@ -83,6 +83,20 @@ static void movement_box_moved(const collision_box_t *box, float64_t x, float64_
     };
 }
 
+/* Whether a cell is water to a body. Kelp and seagrass take a water cell's place in the world and stand in the sea all the same, so a stalk counts by what is over
+ * it: never out of the water, and kelp placed on land is not a sea. */
+static bool movement_cell_is_water(const world_map_t *map, int32_t x, int32_t y, int32_t z, uint16_t block) {
+    uint16_t over = block;
+    int32_t above = z;
+    while (over == BLOCK_ID_KELP || over == BLOCK_ID_SEAGRASS) {
+        above++;
+        if (!collision_cell_read(map, x, y, above, &over)) {
+            return false;
+        }
+    }
+    return over == BLOCK_ID_WATER;
+}
+
 /* What it is in. A ladder or vine counts only in the cell of its feet, so it can step off the top and away. */
 static movement_touch_t movement_touches(const player_movement_t *movement, const world_map_t *map, float64_t height) {
     movement_touch_t touch = {0u, 0u, 0u, 0u};
@@ -99,7 +113,7 @@ static movement_touch_t movement_touches(const player_movement_t *movement, cons
             for (int32_t z = z_from; z <= z_to; z++) {
                 uint16_t block = BLOCK_ID_AIR;
                 if (collision_cell_read(map, x, y, z, &block)) {
-                    touch.water = block == BLOCK_ID_WATER ? 1u : touch.water;
+                    touch.water = movement_cell_is_water(map, x, y, z, block) ? 1u : touch.water;
                     touch.lava = block == BLOCK_ID_LAVA ? 1u : touch.lava;
                 }
             }
@@ -114,7 +128,7 @@ static movement_touch_t movement_touches(const player_movement_t *movement, cons
     uint16_t eyes = BLOCK_ID_AIR;
     const int32_t eyes_z = (int32_t)floor(movement->position[2] + movement->eye_height);
     if (collision_cell_read(map, feet_x, feet_y, eyes_z, &eyes)) {
-        touch.eyes_water = eyes == BLOCK_ID_WATER ? 1u : 0u;
+        touch.eyes_water = movement_cell_is_water(map, feet_x, feet_y, eyes_z, eyes) ? 1u : 0u;
     }
     return touch;
 }
