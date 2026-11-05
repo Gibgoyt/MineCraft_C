@@ -1193,6 +1193,10 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
                         through[i] *= passed[i];
                     }
                 }
+                if (post.under_water != 0u && layer == 0u && !has_face) {
+                    /* An eye in the water: the surface it started in is at no distance, and post goes by how far off the water stops. */
+                    first_t = fminf(walk.out, entity.t);
+                }
                 if (walk.cut_short != 0u && entity.t >= walk.out) {
                     /* Nothing that far down can be told from more water, and the tint up to here has taken nearly all of it. */
                     result.t = first_t;

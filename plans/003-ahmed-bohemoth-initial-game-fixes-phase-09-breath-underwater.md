@@ -1,6 +1,6 @@
 # 003-ahmed-bohemoth-initial-game-fixes — phase 9: Breath bar and seeing underwater
 
-**Status:** in progress: stage 1 done apart from Ahmed's check, stage 2 not started   (updated 2026-11-05)
+**Status:** in progress: stages 1 and 2 done, and only Ahmed's check is left   (updated 2026-11-05)
 
 ## Goal
 
@@ -26,15 +26,15 @@ The textures are already there, unused: `textures/ui/bubble`, `bar_breath`, `ico
 
 **Stage 2: seeing.** Ahmed didn't ask for this directly, but it's what caused the confusion.
 
-- [ ] Take a headless screenshot under water in today's game, and look, to confirm what's wrong
-- [ ] Send whether the eyes are under water to the card, using `movement->eyes_under_water`
-- [ ] When they are, tint the picture blue and add short fog, in `cuda/src/post/`, with a setting beside the other effects
-- [ ] Add a golden picture from under the sea, and record the cost in ms
+- [x] Take a headless screenshot under water in today's game, and look, to confirm what's wrong
+- [x] Send whether the eyes are under water to the card, using `movement->eyes_under_water`
+- [x] When they are, tint the picture blue and add short fog, in `cuda/src/post/`, with a setting beside the other effects
+- [x] Add a golden picture from under the sea, and record the cost in ms
 
 ## Verification
 
     tools/test-or-build.sh cmake --build --preset debug
-    tools/test-or-build.sh timeout 600 ctest --preset debug -R '^(run_ui_hud|run_player_survival|run_render_frame|standards_lint|clang_format)$' --output-on-failure
+    tools/test-or-build.sh timeout 600 ctest --preset debug -R '^(run_ui_hud|run_player_survival|run_render_frame|render_feature_under_water|standards_lint|clang_format)$' --output-on-failure
     pgrep -a minecraft_c    # must print nothing
 
 Ahmed: jump in the sea and stay under. Bubbles should run out over 15 seconds, then hearts should start to go. Coming up should refill them, and the water should clearly look like water.
@@ -47,6 +47,9 @@ Appended as they land:
 
 - `3530bd5` Draw a row of ten bubbles over the drumsticks while the body is under water or refilling its air, so that drowning no longer comes without warning.
 - `efc0e1b` Say in the repository structure that the HUD draws bubbles of air.
+- `9f4dbe4` Tint the picture blue and add short fog when a body's eyes are under water, with a setting and a flag, so that the sea no longer looks like a black void.
+- `9df6873` Say in the repository structure where the test of what eyes under water see lives.
+- `937feed` Record stage 2 of the breath phase in its plan file: the void was black water, it is fixed and tested, with its commits and what was found.
 
 ## Issues found
 
@@ -59,5 +62,26 @@ Appended as they land:
 **Stage 1, not yet seen over real water (2026-11-05).** Expected: the bubbles read clearly under water. Actual: only checked on the test gradient, in `tests/run/ui/hud/fixtures/air_640x480.png`, which I looked at. The full bubble is a hollow blue ring and the empty one a dark ring at low alpha, so either could be faint on blue. Left for Ahmed's check below, and stage 2's screenshot can show it too.
 
 **Stage 1, the new tests fail when the code is wrong (2026-11-05).** Rounding bubbles down and showing the row at full air, both by hand and then reverted, failed `run_player_survival` (294 of 15149 checks) and `run_ui_hud` (`a_bubble_is_30_ticks...` and the real game test). The existing goldens came out unchanged under `MC_GOLDEN_WRITE=1`, by `git status`.
+
+**Stage 2, the void is confirmed, and it is black water (2026-11-05).** Expected from the plan: water from inside looked wrong, cause unconfirmed. Actual: flying down into the sea of the default seed at noon, x 77, y 575, was dark teal at z = -3, nearly black at -13 and all black at -23. Stored light runs out with depth. Under the sea with a real body, in `sea.png`'s place with the setting off, 34491 of 57600 pixels are under 12 on every channel, and none are with it on. Ahmed had also broken through ice, which stops the sky's light sooner. So a tint alone, as the plan had it, would multiply black: the fog is what fixes this, and its colour comes from the sky's light and not the world's, with 12 % of it even at the eye.
+
+**Stage 2, an eye in the water had no distance (2026-11-05).** Expected: `post` could fog by `shade_pixel_t.t`. Actual: `shade_kernel` starts on the water around the eye at a `t` of about 0, so every pixel said it was at the eye. Far water came out `174c72` and not the water's colour `24658e`. Fixed in `cuda/src/shade/index.cu`: with `post.under_water`, that pixel's `t` is where the water stops, or a box in it. This is wiring outside `cuda/src/post/`. With the flag off the kernel's result is unchanged, and `render_feature_water`'s goldens and exact trace still pass. Taking the fix out by hand failed 4 checks of the new test.
+
+**Stage 2, wiring the todo did not name (2026-11-05).** All the 16 bits of `game_config_t.features_off` were taken, and it was `uint16_t` in `main_options_t` too, so both are `uint32_t` now, with `god_rays` and `menu` moved so that neither struct changes size. `post_settings_t` grew from 80 to 112 bytes, out of `render_frame_t._pad1`, so `render_t` stays the same size. `player_vitals_t` has no byte left, so the flag crosses in its own relaxed word, `player_t.eyes_under_water`, out of `_pad0`, and is drawn by `render_frame_under_water_set` in `game_frame_draw`. The main help text's first string passed C's 4095-byte limit, so `--time-of-day` moved to the next one.
+
+**Stage 2, the Settings page changed shape (2026-11-05).** Expected: one more box among the effects. Actual: it was two columns of eight with Back filling row 8. "Under water" now has the left of that row and Back the right, so no box moved. A person who clicks Back in the very middle of the screen now hits the gap: `tests/run/settings/index.c` clicks further right. I looked at `effects.png` at 640 by 480 and it fits. Not checked on the smaller sizes by eye, only by the existing test of every size.
+
+**Stage 2, what it does not do (2026-11-05).** All left as they are, as the plan asks for no more:
+
+- A flying eye, `--test-world` with no `--walk`, has no body and so no flag: it still sees the black water. Nobody plays that way.
+- The colour goes by the time of day and not by depth or what is overhead, so a pool in a sealed cave is as blue as a sea at noon, and a deep sea no darker than a shallow one.
+- The flag is as of the last tick and the eye is drawn between ticks, so crossing the surface can show the wrong picture for up to a tick. Seen only in arithmetic, not looked at in motion.
+- The bed right beside the eye is still dark at depth, at 12 % water, as `sea.png` shows at its left. It reads as a dark hill, not a void. Ahmed's call if it should be lighter: it's `POST_WATER_FOG_NEAR`.
+
+**Stage 2, how far it was seen (2026-11-05).** `tests/cuda/under_water/fixtures/dive.script` is a real body in the built program: walks and swims from the default seed's start to the sea, then down to z = -19, at noon. I looked at `land.png`, `sea.png` and `sea_no_air.png`, and two runs came out exact, 57600 of 57600 pixels. This also answers stage 1's open point: the bubbles read over real water, full and empty, in `sea.png`. It was not seen at night or in motion, which is for Ahmed. Taking the flag out of `game_frame_draw` by hand failed 3 checks.
+
+**Stage 2, the cost is too small to measure (2026-11-05).** `render_feature_under_water`, debug build, 1920 by 1080, on the card's clock, 30 frames, under a hand-made sea with no entities: setting off, post 0.246 ms, shade 12.884 ms, frame 15.184 ms; on, post 0.251 ms, shade 12.829 ms, frame 15.173 ms. The frame's difference is noise.
+
+**A product bug out of scope: `run_profiler` fails, before and after this work (2026-11-05).** Expected: `what_is_aimed_at_and_what_lies_there_have_kernels_when_they_are_there` passes. Actual: `tests/run/profiler/index.c:1095`, `overlay > 0u && overlay < frames`, with `161 frames: entity_rays in 116, entity_overlay in 161`. A clean build of `3c6d85f`, the main this branch merged, gives the same numbers and the same failure, so it isn't this stage's. It looks as though the body now always aims at a block, from the new dry-land start, so that the test's idea of a frame with no outline is out of date, but I didn't confirm that. Left alone, as it's outside this stage. It's the only one of the 104 tests failing: full `ctest --preset debug` said 103 passed.
 
 **Needs no new blocks or items,** so it doesn't touch saved worlds, and can be built any time.

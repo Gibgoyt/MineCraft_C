@@ -149,9 +149,11 @@ static bool ui_screen_settings_effects_page(ui_screen_settings_t *screen) {
     bool changed = false;
     for (uint32_t i = 0u; i < SETTINGS_EFFECT_COUNT; i++) {
         const settings_effect_t *const effect = settings_persist_effect(i);
-        const int32_t row = (int32_t)i % SETTINGS_EFFECT_ROWS;
+        /* Two columns of eight, and what is past them on the row of Back, whose place is its right. */
+        const bool past = (int32_t)i >= 2 * SETTINGS_EFFECT_ROWS;
+        const int32_t row = past ? SETTINGS_DONE_ROW : (int32_t)i % SETTINGS_EFFECT_ROWS;
         const ui_rect_t middle = ui_screen_settings_row(widget, row, 0);
-        const int32_t x = (int32_t)i < SETTINGS_EFFECT_ROWS
+        const int32_t x = (int32_t)i < SETTINGS_EFFECT_ROWS || past
                               ? middle.x - (SETTINGS_EFFECT_WIDTH + SETTINGS_GAP / 2) * scale
                               : middle.x + SETTINGS_GAP / 2 * scale;
         const ui_rect_t rect = {x, middle.y, SETTINGS_EFFECT_WIDTH * scale, middle.height};
@@ -161,8 +163,10 @@ static bool ui_screen_settings_effects_page(ui_screen_settings_t *screen) {
             changed = true;
         }
     }
-    if (ui_widget_button(widget, SETTINGS_ID_DONE,
-                         ui_screen_settings_row(widget, SETTINGS_DONE_ROW, SETTINGS_ROW_WIDTH), "Back", true)) {
+    const ui_rect_t back_row = ui_screen_settings_row(widget, SETTINGS_DONE_ROW, 0);
+    const ui_rect_t back = {back_row.x + SETTINGS_GAP / 2 * scale, back_row.y, SETTINGS_EFFECT_WIDTH * scale,
+                            back_row.height};
+    if (ui_widget_button(widget, SETTINGS_ID_DONE, back, "Back", true)) {
         screen->page = UI_SCREEN_SETTINGS_PAGE_MAIN;
     }
     return changed;

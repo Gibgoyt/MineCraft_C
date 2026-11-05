@@ -1,6 +1,6 @@
 # run/src/settings
 
-**Purpose:** every setting a person can change, and keeping them between runs: render distance from 2 to 512 chunks, how far of that is drawn block by block, field of view, mouse sensitivity, vsync or uncapped, whether coordinates show, each of the sixteen graphics effects, render scale and worker count.
+**Purpose:** every setting a person can change, and keeping them between runs: render distance from 2 to 512 chunks, how far of that is drawn block by block, field of view, mouse sensitivity, vsync or uncapped, whether coordinates show, each of the seventeen graphics effects, render scale and worker count.
 **Tier:** Owner.
 **Owns:** `owned_region`, with `arena` over it, which holds the path and one file's worth of text. Both live as long as the `settings_t`.
 **Lifetime:** Process.
