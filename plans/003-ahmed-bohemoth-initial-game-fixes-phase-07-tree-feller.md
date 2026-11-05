@@ -1,6 +1,6 @@
 # 003-ahmed-bohemoth-initial-game-fixes — phase 7: Tree feller
 
-**Status:** in progress: every check an agent can run passes after the gate check, on the merged code, in debug and with the release program built. The whole suite is 104 of 104, in the way issue 11 says. Only Ahmed playing it waits   (updated 2026-11-05)
+**Status:** in progress: every check an agent can run passes after the gate check, on the merged code, in debug and with the release program built. The whole suite is 105 of 105 in one run: issue 13. Only Ahmed playing it waits   (updated 2026-11-05)
 
 ## Goal
 
@@ -85,6 +85,7 @@ Appended as they land:
 - `7f70b3c` Test that no wood or vine is left floating wherever a tree is cut, and that sneaking and bare hands cut one log in a real game with the real shift key.
 - `9a8c337` Have the profiler's mining script look up at the sky first, as the new world starts a walking body with a hill in reach of a level eye.
 - `42f793a` Record the tree feller's gate check in its plan file: what was tested anew, what it found, and the run_profiler fix, with only Ahmed playing it left.
+- `b40b86c` List the gate check's commits in the tree feller's plan file, and correct two of its counts.
 
 ## Issues found
 
@@ -136,3 +137,5 @@ To see that the tests can fail, I broke the code and ran them, one at a time, th
 The whole suite, `tools/test-or-build.sh timeout 1900 ctest --preset debug --output-on-failure`: 102 of 104 in one run, the failures being `run_item_equipment` and `run_player_felling`. **Those two were my own doing:** I had put the broken-on-purpose source back without rebuilding, so those two programs were the broken builds, failing on just the broken checks (`in_a_real_game_a_sneaking_body_...`, `no_drop_is_lost_...`). After a rebuild with no change of source, both pass, with `run_player_interaction`, `run_world_sim`, `run_playthrough`, `run_profiler`, `standards_lint` and `clang_format`. So every test has passed on this source, though not all in the one run. The release program builds: `tools/test-or-build.sh timeout 280 cmake --build --preset release --target minecraft_c`, so the stack limit of issue 3 holds.
 
 **12. The proof by eye once more, on this merge.** `fell.script` as in `tests/run/player/felling/README.md`: `the player mined 53 blocks and placed 1`, `an axe felled 47 logs past what it cut`, `0 destroyed, 0 lost`. I read `before.png`, `aimed.png`, `during.png` and `later.png`. Aimed at a mangrove log with its outline. Before, trunks and crowns fill the view. After, they have gone with open sky there, logs on the ground and leaf drops in the air, and later the drops have landed. Nothing hangs in the air in view. It is one kind of tree on one seed, and other kinds are shown by the tests above. Issue 4's question, a neighbour going too, stays for Ahmed: 47 is still more than one mangrove.
+
+**13. All of it again in one run, as main had moved on while I worked.** Expected my branch to hold what is finished. Actual: `git diff main` showed the under-water work of phase 9, merged to main after I began. So I merged main (`e279141`), configured and built debug afresh, and ran `tools/test-or-build.sh timeout 1900 ctest --preset debug --output-on-failure`: `100% tests passed out of 105`, in 1774 seconds. That settles the caveat of issue 11. On the same merge the release program built, and `fell.script` gave the same numbers as issue 12, 53 mined, 47 felled, 0 destroyed, and `later.png` showed nothing hanging in the air in view.
