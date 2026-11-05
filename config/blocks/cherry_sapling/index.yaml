@@ -3,3 +3,4 @@ hardness: 0
 drops: [{ item: cherry_sapling, count: 1 }]
 shape: cross
 texture: { all: blocks/cherry_sapling }
+sound: grass

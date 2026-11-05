@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: hit_3
+family: metal
+source: { kind: synth }
+recipe: { seed: 894481268, ms: 76, grains: 2, grain_ms: 4, low_hz: 861, high_hz: 6948, tone_hz: 1364, overtone_hz: 3073, tone_ms: 90, tone_level: 72, level: 62 }

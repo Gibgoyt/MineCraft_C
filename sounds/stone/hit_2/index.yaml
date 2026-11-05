@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: hit_2
+family: stone
+source: { kind: synth }
+recipe: { seed: 976446740, ms: 79, grains: 3, grain_ms: 7, low_hz: 335, high_hz: 5140, tone_hz: 199, overtone_hz: 0, tone_ms: 14, tone_level: 28, level: 62 }

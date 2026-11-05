@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: break_3
+family: wood
+source: { kind: synth }
+recipe: { seed: 1763482138, ms: 289, grains: 6, grain_ms: 9, low_hz: 169, high_hz: 2239, tone_hz: 252, overtone_hz: 608, tone_ms: 30, tone_level: 90, level: 88 }

@@ -4,3 +4,4 @@ drops: [{ item: torch, count: 1 }]
 shape: torch_east
 light: 14
 texture: { top: blocks/torch_lean_cap, bottom: blocks/torch_lean_cap, side: blocks/torch_lean_side }
+sound: wood

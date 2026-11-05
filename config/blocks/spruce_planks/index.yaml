@@ -3,3 +3,4 @@ hardness: 2
 tool: axe
 drops: [{ item: spruce_planks, count: 1 }]
 texture: { all: blocks/spruce_planks }
+sound: wood

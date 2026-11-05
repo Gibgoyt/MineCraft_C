@@ -6,5 +6,8 @@
 %define EMBED_ASSETS_TEXTURE_BLOB_PATH "textures/index.mctb"
 ; TEXTURE_BLOB_ALIGNMENT in run/include/types/texture_blob/index.h. The blob's reader refuses anything less.
 %define EMBED_ASSETS_TEXTURE_BLOB_ALIGN 64
+; The same root and the same reasoning: SOUND_BLOB_ALIGNMENT in run/include/types/sound_blob/index.h.
+%define EMBED_ASSETS_SOUND_BLOB_PATH "sounds/index.mcsb"
+%define EMBED_ASSETS_SOUND_BLOB_ALIGN 64
 
 %endif

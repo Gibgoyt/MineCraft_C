@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: break_2
+family: metal
+source: { kind: synth }
+recipe: { seed: 161845463, ms: 297, grains: 4, grain_ms: 4, low_hz: 971, high_hz: 6803, tone_hz: 1256, overtone_hz: 3348, tone_ms: 90, tone_level: 90, level: 88 }

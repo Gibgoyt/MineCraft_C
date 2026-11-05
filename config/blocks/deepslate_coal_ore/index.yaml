@@ -4,3 +4,4 @@ tool: pickaxe
 tier: wood
 drops: [{ item: coal, count: 1 }]
 texture: { all: blocks/deepslate_coal_ore }
+sound: stone

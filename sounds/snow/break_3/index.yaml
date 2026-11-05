@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: break_3
+family: snow
+source: { kind: synth }
+recipe: { seed: 1882379380, ms: 271, grains: 60, grain_ms: 6, low_hz: 387, high_hz: 3116, tone_hz: 103, overtone_hz: 0, tone_ms: 15, tone_level: 15, level: 88 }

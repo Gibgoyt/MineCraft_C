@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: hit_1
+family: wood
+source: { kind: synth }
+recipe: { seed: 1311252530, ms: 72, grains: 2, grain_ms: 9, low_hz: 181, high_hz: 2550, tone_hz: 252, overtone_hz: 614, tone_ms: 30, tone_level: 72, level: 62 }

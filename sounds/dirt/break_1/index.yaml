@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: break_1
+family: dirt
+source: { kind: synth }
+recipe: { seed: 1906991698, ms: 238, grains: 21, grain_ms: 12, low_hz: 103, high_hz: 1499, tone_hz: 81, overtone_hz: 0, tone_ms: 30, tone_level: 45, level: 88 }

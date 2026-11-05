@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: break_3
+family: glass
+source: { kind: synth }
+recipe: { seed: 539295064, ms: 283, grains: 9, grain_ms: 3, low_hz: 2300, high_hz: 11718, tone_hz: 3230, overtone_hz: 5481, tone_ms: 40, tone_level: 70, level: 88 }

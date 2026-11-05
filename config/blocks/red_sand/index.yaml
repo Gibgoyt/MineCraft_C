@@ -4,3 +4,4 @@ tool: shovel
 drops: [{ item: red_sand, count: 1 }]
 falls: true
 texture: { all: blocks/red_sand }
+sound: sand

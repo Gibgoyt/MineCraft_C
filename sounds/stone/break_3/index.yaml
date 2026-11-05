@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: break_3
+family: stone
+source: { kind: synth }
+recipe: { seed: 481412088, ms: 240, grains: 12, grain_ms: 7, low_hz: 336, high_hz: 5516, tone_hz: 189, overtone_hz: 0, tone_ms: 14, tone_level: 35, level: 88 }

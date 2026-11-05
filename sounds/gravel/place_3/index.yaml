@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: place_3
+family: gravel
+source: { kind: synth }
+recipe: { seed: 2082302185, ms: 109, grains: 13, grain_ms: 5, low_hz: 277, high_hz: 4106, tone_hz: 120, overtone_hz: 0, tone_ms: 18, tone_level: 32, level: 72 }

@@ -4,3 +4,4 @@ tool: axe
 log: true
 drops: [{ item: jungle_log, count: 1 }]
 texture: { top: blocks/jungle_log_top, bottom: blocks/jungle_log_top, side: blocks/jungle_log }
+sound: wood

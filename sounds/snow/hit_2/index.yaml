@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: hit_2
+family: snow
+source: { kind: synth }
+recipe: { seed: 1495352454, ms: 75, grains: 16, grain_ms: 6, low_hz: 410, high_hz: 3408, tone_hz: 96, overtone_hz: 0, tone_ms: 15, tone_level: 12, level: 62 }

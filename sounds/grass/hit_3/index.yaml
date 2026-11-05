@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: hit_3
+family: grass
+source: { kind: synth }
+recipe: { seed: 1969057919, ms: 78, grains: 10, grain_ms: 9, low_hz: 1014, high_hz: 7347, tone_hz: 0, overtone_hz: 0, tone_ms: 0, tone_level: 0, level: 62 }

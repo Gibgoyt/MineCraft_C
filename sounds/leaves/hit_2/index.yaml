@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: hit_2
+family: leaves
+source: { kind: synth }
+recipe: { seed: 1182952367, ms: 72, grains: 14, grain_ms: 7, low_hz: 2181, high_hz: 10914, tone_hz: 0, overtone_hz: 0, tone_ms: 0, tone_level: 0, level: 62 }

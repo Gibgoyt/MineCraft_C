@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: place_3
+family: leaves
+source: { kind: synth }
+recipe: { seed: 985768856, ms: 93, grains: 17, grain_ms: 7, low_hz: 1254, high_hz: 5861, tone_hz: 133, overtone_hz: 0, tone_ms: 18, tone_level: 30, level: 72 }

@@ -5,3 +5,4 @@ drops: []
 shape: thin
 replaceable: true
 texture: { all: blocks/vine }
+sound: grass

@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: hit_3
+family: dirt
+source: { kind: synth }
+recipe: { seed: 1778246185, ms: 74, grains: 6, grain_ms: 12, low_hz: 106, high_hz: 1504, tone_hz: 86, overtone_hz: 0, tone_ms: 30, tone_level: 36, level: 62 }

@@ -4,3 +4,4 @@ tool: pickaxe
 tier: wood
 drops: [{ item: smooth_stone, count: 1 }]
 texture: { all: blocks/smooth_stone }
+sound: stone

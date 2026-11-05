@@ -4,3 +4,4 @@ tool: axe
 drops: [{ item: bed, count: 1 }]
 shape: slab
 texture: { top: blocks/bed_top_2, bottom: blocks/oak_planks, side: blocks/oak_planks }
+sound: wood

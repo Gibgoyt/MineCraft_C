@@ -4,3 +4,4 @@ tool: pickaxe
 tier: iron
 drops: [{ item: diamond, count: 1 }]
 texture: { all: blocks/deepslate_diamond_ore }
+sound: stone

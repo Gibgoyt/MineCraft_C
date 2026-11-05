@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: hit_1
+family: glass
+source: { kind: synth }
+recipe: { seed: 803494760, ms: 79, grains: 2, grain_ms: 3, low_hz: 2209, high_hz: 11944, tone_hz: 3072, overtone_hz: 5149, tone_ms: 40, tone_level: 56, level: 62 }

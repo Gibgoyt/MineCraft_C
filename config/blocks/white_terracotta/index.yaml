@@ -4,3 +4,4 @@ tool: pickaxe
 tier: wood
 drops: [{ item: white_terracotta, count: 1 }]
 texture: { all: blocks/white_terracotta }
+sound: stone

@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: place_2
+family: stone
+source: { kind: synth }
+recipe: { seed: 1084839159, ms: 118, grains: 4, grain_ms: 7, low_hz: 215, high_hz: 3205, tone_hz: 201, overtone_hz: 0, tone_ms: 14, tone_level: 46, level: 72 }

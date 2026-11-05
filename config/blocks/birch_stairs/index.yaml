@@ -4,3 +4,4 @@ tool: axe
 drops: [{ item: birch_stairs, count: 1 }]
 shape: stairs
 texture: { all: blocks/birch_planks }
+sound: wood

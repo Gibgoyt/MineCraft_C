@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: place_2
+family: glass
+source: { kind: synth }
+recipe: { seed: 727145161, ms: 100, grains: 3, grain_ms: 3, low_hz: 1448, high_hz: 7573, tone_hz: 3187, overtone_hz: 5037, tone_ms: 40, tone_level: 91, level: 72 }

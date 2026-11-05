@@ -8,4 +8,8 @@
 extern const uint8_t embed_assets_texture_blob[];
 extern const uint64_t embed_assets_texture_blob_bytes;
 
+/* The sound blob: see types/sound_blob/index.h. The same promises. */
+extern const uint8_t embed_assets_sound_blob[];
+extern const uint64_t embed_assets_sound_blob_bytes;
+
 #endif

@@ -3,3 +3,4 @@ hardness: 0.6
 tool: shovel
 drops: [{ item: dirt, count: 1 }]
 texture: { top: blocks/mycelium_top, bottom: blocks/dirt, side: blocks/mycelium_side }
+sound: grass

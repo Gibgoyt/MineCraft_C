@@ -3,3 +3,4 @@ hardness: 1
 tool: axe
 drops: [{ item: melon_slice, count: 3, max: 7 }]
 texture: { top: blocks/melon_top, bottom: blocks/melon_top, side: blocks/melon_side }
+sound: wood

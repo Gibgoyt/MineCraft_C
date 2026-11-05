@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: place_1
+family: dirt
+source: { kind: synth }
+recipe: { seed: 353792442, ms: 105, grains: 7, grain_ms: 12, low_hz: 62, high_hz: 908, tone_hz: 85, overtone_hz: 0, tone_ms: 30, tone_level: 58, level: 72 }

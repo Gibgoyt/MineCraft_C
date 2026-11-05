@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: hit_2
+family: sand
+source: { kind: synth }
+recipe: { seed: 2023464719, ms: 72, grains: 24, grain_ms: 4, low_hz: 1347, high_hz: 9624, tone_hz: 0, overtone_hz: 0, tone_ms: 0, tone_level: 0, level: 62 }

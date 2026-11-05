@@ -4,3 +4,4 @@ tool: pickaxe
 tier: wood
 drops: [{ item: andesite, count: 1 }]
 texture: { all: blocks/andesite }
+sound: stone

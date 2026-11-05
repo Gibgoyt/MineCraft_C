@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: break_3
+family: grass
+source: { kind: synth }
+recipe: { seed: 882098314, ms: 264, grains: 36, grain_ms: 9, low_hz: 1158, high_hz: 6819, tone_hz: 0, overtone_hz: 0, tone_ms: 0, tone_level: 0, level: 88 }

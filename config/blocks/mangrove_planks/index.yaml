@@ -3,3 +3,4 @@ hardness: 2
 tool: axe
 drops: [{ item: mangrove_planks, count: 1 }]
 texture: { all: blocks/mangrove_planks }
+sound: wood

@@ -3,3 +3,4 @@ hardness: 2.5
 tool: axe
 drops: [{ item: chest, count: 1 }]
 texture: { top: blocks/chest_top, bottom: blocks/chest_top, side: blocks/chest_side, north: blocks/chest_front }
+sound: wood

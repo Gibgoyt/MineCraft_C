@@ -4,3 +4,4 @@ tool: shovel
 tier: wood
 drops: [{ item: snowball, count: 4 }]
 texture: { all: blocks/snow }
+sound: snow

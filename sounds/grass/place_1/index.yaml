@@ -1,0 +1,5 @@
+# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+name: place_1
+family: grass
+source: { kind: synth }
+recipe: { seed: 2122530603, ms: 94, grains: 12, grain_ms: 9, low_hz: 684, high_hz: 3868, tone_hz: 123, overtone_hz: 0, tone_ms: 18, tone_level: 30, level: 72 }
