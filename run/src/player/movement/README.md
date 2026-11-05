@@ -38,7 +38,7 @@ The body is 0.6 wide and 1.8 tall, 1.5 crouched, with its eyes at 1.62 and 1.27.
 ## The modes, in the order they are decided
 
 1. **Waiting:** the column its feet are in is not loaded. It stays exactly where it is, and all its speed is gone.
-2. **Lava, then water:** any cell its box overlaps. Slow to start and stop, with slow sinking. Space rises, sneak sinks. Swimming into a bank whose top is less than a step above hops out.
+2. **Lava, then water:** any cell its box overlaps, and kelp or seagrass with water over it, which take a water cell's place in the world. Slow to start and stop, with slow sinking. Space rises, sneak sinks. Swimming into a bank whose top is less than a step above hops out.
 3. **Climb:** a ladder or a vine in the cell of its feet, which is where a body stands to use one. Sideways speed and falling are limited. Space or pressing against a wall goes up, and sneak holds still. The climbing is not a flag in `config/blocks/`, since these two blocks are all that have it: lily pads are the same `thin` shape and nobody climbs one.
 4. **Ground or air:** whether the last move came down on something.
 

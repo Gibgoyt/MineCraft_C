@@ -1026,6 +1026,8 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
     float32_t through[3] = {1.0F, 1.0F, 1.0F};
     float32_t first_t = 0.0F;
     bool drawn = false;
+    /* Nothing but water has been drawn on this ray: for post_under_water, whose distance is to the first thing that is not water. */
+    bool only_water = true;
     uint32_t last_material = SHADE_NO_MATERIAL;
     int16_t last_offset[3] = {0, 0, 0};
     shade_pixel_t result;
@@ -1104,6 +1106,7 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
             const bool part_covered = see_through && may_go_on && alpha != SHADE_ALPHA_OPAQUE;
             /* From inside water, or going on through water from water, there is no face: only what is behind. */
             const bool has_face = !is_water || (face != TRAVERSE_FACE_INSIDE && !own_kind);
+            only_water = only_water && is_water;
             float32_t light[3] = {0.0F, 0.0F, 0.0F};
             /* What AO and the sun ray will find on a last surface is added by their own kernels. With no shadows there is no ray, and the
              * sun is here. */
@@ -1193,8 +1196,9 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
                         through[i] *= passed[i];
                     }
                 }
-                if (post.under_water != 0u && layer == 0u && !has_face) {
-                    /* An eye in the water: the surface it started in is at no distance, and post goes by how far off the water stops. */
+                if (post.under_water != 0u && only_water) {
+                    /* An eye in the water: the surface it started in is at no distance, and post goes by how far off the water stops. An
+                     * eye among kelp comes to its first water with a face and past a clear texel, and that is no different. */
                     first_t = fminf(walk.out, entity.t);
                 }
                 if (walk.cut_short != 0u && entity.t >= walk.out) {
