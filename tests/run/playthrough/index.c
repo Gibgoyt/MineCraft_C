@@ -135,6 +135,35 @@ TEST(a_first_day_mines_dirt_picks_it_up_crafts_changes_the_distance_and_comes_ba
     }
 }
 
+/* Ahmed's words: "creating stairs with wood on a crafting table is not possible". Seed 36's tree is a mangrove, whose planks had no stairs. */
+TEST(mangrove_planks_make_stairs_on_a_table_that_go_down_come_back_and_are_saved) {
+    REQUIRE(t->arg_count >= 1);
+    char *const root = pt_temp(t);
+    REQUIRE(root != nullptr);
+    test_process_t process;
+    pt_run(t, "tests/run/playthrough/fixtures/stairs.script", root, PT_DAY_MS, &process);
+    const char *const output = process.output;
+
+    /* Four made and in slot 4, two put down and one back: three in hand, once on the way out and once again from the save. */
+    CHECK_EQ_U64(pt_count(output, "hotbar slot 4 is in hand, with 3 of mangrove_stairs"), 2u);
+    /* Five for the planks and a sixth for the stairs; the table and two stairs placed. */
+    CHECK_EQ_U64(pt_count(output, "the player mined 6 blocks and placed 3"), 2u);
+    CHECK_EQ_U64(pt_count(output, "the last mined was mangrove_stairs"), 2u);
+
+    static const char *const shots[] = {"stairs_ready.png", "stairs_in_slot.png", "stairs_placed.png",
+                                        "stairs_mined.png", "stairs_reloaded.png"};
+    for (uint64_t i = 0u; i < sizeof(shots) / sizeof(shots[0]); i++) {
+        uint64_t size = 0u;
+        CHECK_EQ_U64(file_path_size(pt_join(t, pt_join(t, root, "shots"), shots[i]), &size), FILE_OK);
+        CHECK(size > 1000u);
+    }
+    if (getenv("MC_PLAYTHROUGH_KEEP") != nullptr) {
+        printf("  kept in %s\n", root);
+    } else {
+        pt_temp_remove(t, root);
+    }
+}
+
 TEST(a_night_in_the_open_meets_zombies_skeletons_and_creepers_and_is_saved_with_them) {
     REQUIRE(t->arg_count >= 1);
     char *const root = pt_temp(t);
