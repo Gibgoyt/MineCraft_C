@@ -32,7 +32,7 @@ typedef struct player_felling_cell_t {
 } player_felling_cell_t;
 static_assert(sizeof(player_felling_cell_t) == 12);
 
-/* A tree on its way down. Plain numbers, and the sim's. Lent to the player by whoever opens a world. It is not saved, as it lives about a second: to quit in that second leaves the
+/* A tree on its way down. Plain numbers, and the sim's. Kept by whoever opens a world. It is not saved, as it lives about a second: to quit in that second leaves the
  * rest of that tree standing. */
 typedef struct player_felling_t {
     uint64_t felled_count;                                /* 0: logs that have gone, not counting the one cut */

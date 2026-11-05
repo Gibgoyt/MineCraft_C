@@ -88,14 +88,16 @@ static void game_fell_tick(game_t *game) {
     world_t *const world = game->borrowed_world;
     if (item == nullptr) {
         const bool axe = player->interaction.held_tool == BLOCK_TOOL_AXE;
-        (void)player_fell_tick(player, &world->edit, &world->tick, axe ? UINT32_MAX : 0u);
+        (void)player_felling_tick(game->borrowed_felling, &player->interaction, &world->edit, &world->tick,
+                                  axe ? UINT32_MAX : 0u);
         return;
     }
     const item_stack_t *const held = inventory_selected(&item->inventory);
     const uint32_t uses = item_defs[held->item].tool == BLOCK_TOOL_AXE ? equipment_uses_left(held) : 0u;
-    const uint32_t felled = player_fell_tick(player, &world->edit, &world->tick, uses);
+    const uint32_t felled =
+        player_felling_tick(game->borrowed_felling, &player->interaction, &world->edit, &world->tick, uses);
     for (uint32_t i = 0u; i < felled; i++) {
-        (void)equipment_tool_block_broken(&item->equipment, &item->inventory, player->borrowed_felling->last_block);
+        (void)equipment_tool_block_broken(&item->equipment, &item->inventory, game->borrowed_felling->last_block);
     }
 }
 
@@ -163,7 +165,7 @@ static void game_interact_tick(game_t *game, int64_t tick_ns) {
     item_t *const item = game->borrowed_item;
     if (item == nullptr) {
         game_attack_tick(game, tick_ns);
-        player_interact_tick(player, &game->borrowed_world->edit, tick_ns);
+        player_interact_fell_tick(player, &game->borrowed_world->edit, game->borrowed_felling, tick_ns);
         game_fell_tick(game);
         return;
     }
@@ -185,7 +187,7 @@ static void game_interact_tick(game_t *game, int64_t tick_ns) {
     const uint64_t mined_before = player->interaction.mined_count;
     const uint64_t eaten = player->survival.eaten_count;
     const uint16_t held_item = inventory_selected(&item->inventory)->item;
-    player_interact_tick(player, &game->borrowed_world->edit, tick_ns);
+    player_interact_fell_tick(player, &game->borrowed_world->edit, game->borrowed_felling, tick_ns);
     (void)inventory_selected_take(&item->inventory, before - (uint32_t)player->interaction.hand_count);
     if (player->interaction.mined_count != mined_before) {
         game_tool_after_break(game, held_item);

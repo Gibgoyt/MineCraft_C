@@ -3,7 +3,7 @@
 **Purpose:** the tree feller: an axe that cuts a log brings down the rest of the tree, so that no wood is left floating.
 **Tier:** Arena. Takes nothing, as a tier may allocate less than it is allowed: all it needs is in `player_felling_t`.
 **Owns:** nothing.
-**Lifetime:** World. The struct is over 5 KiB and `app_t` is on main's stack, so `run/src/game/` takes it from its world arena and lends it with `player_felling_lend`, and `player_felling_start` starts it for a world. It is not saved: a queue lasts about a second, and to quit in that second leaves the rest of that tree standing. The saved `player_interaction_t` does not hold it, so this changes no save.
+**Lifetime:** World. The struct is over 5 KiB and `app_t` is on main's stack, so `run/src/game/` takes it from its world arena, keeps only the pointer, and starts it with `player_felling_start`. `player_t` holds nothing of it: `app_t` has no byte to spare, its frame being exactly at the limit in the release build. It is not saved: a queue lasts about a second, and to quit in that second leaves the rest of that tree standing. The saved `player_interaction_t` does not hold it, so this changes no save.
 **Threads:** the one holding the map, which is `sim` in a real run.
 **Public functions** (`run/include/player/felling/index.h`):
 
@@ -12,7 +12,7 @@
 - `player_felling_tick`: one tick of logs going.
 - `player_felling_pending`: logs waiting.
 
-**May be called by:** `run/src/player/` for the start and the tick, and `run/src/player/interaction/` for the cut. `run/src/game/` reads `felled_count` and `last_block`, and says how many uses the axe has left through `player_fell_tick`.
+**May be called by:** `run/src/game/` for the start and the tick, which says how many uses the axe has left and reads `felled_count` and `last_block`, and `run/src/player/interaction/` for the cut.
 **Depends on:** `player/interaction` for the hands' ring, their counts and what stood on a log, `world/edit`, `world/map`, `world/tick` for the leaves, and the generated `tables/blocks`.
 
 ## What counts as the tree

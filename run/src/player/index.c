@@ -83,10 +83,6 @@ static void player_vitals_publish(player_t *player) {
     atomic_store_explicit(&player->vitals_word, word, memory_order_relaxed);
 }
 
-void player_felling_lend(player_t *player, player_felling_t *felling) {
-    player->borrowed_felling = felling;
-}
-
 void player_spawn(player_t *player, float64_t x, float64_t y, float64_t z) {
     player_movement_start(&player->movement, x, y, z);
     player_survival_start(&player->survival, x, y, z);
@@ -108,9 +104,6 @@ void player_spawn(player_t *player, float64_t x, float64_t y, float64_t z) {
     atomic_store_explicit(&player->hands_latch, 0u, memory_order_relaxed);
     player_interaction_start(&player->interaction, PLAYER_DROP_SEED);
     player_combat_start(&player->combat);
-    if (player->borrowed_felling != nullptr) {
-        player_felling_start(player->borrowed_felling);
-    }
 }
 
 void player_look_send(player_t *player, float32_t yaw, float32_t pitch) {
@@ -138,6 +131,10 @@ void player_hands_send(player_t *player, bool attack, bool place) {
 }
 
 void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns) {
+    player_interact_fell_tick(player, edit, nullptr, tick_ns);
+}
+
+void player_interact_fell_tick(player_t *player, world_edit_t *edit, player_felling_t *felling, int64_t tick_ns) {
     uint32_t hands = atomic_load_explicit(&player->hands_word, memory_order_relaxed);
     hands |= atomic_exchange_explicit(&player->hands_latch, 0u, memory_order_relaxed);
     if (player->hands_held_off != 0u) {
@@ -175,19 +172,12 @@ void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns)
     const player_interaction_input_t input = {
         .borrowed_target = &player->target,
         .borrowed_movement = &player->movement,
-        .borrowed_felling = player->borrowed_felling,
+        .borrowed_felling = felling,
         .attack = buttons.attack,
         .place = buttons.place,
         ._pad0 = {0},
     };
     player_interaction_tick(&player->interaction, edit, &input);
-}
-
-uint32_t player_fell_tick(player_t *player, world_edit_t *edit, world_tick_t *tick, uint32_t uses_left) {
-    if (player->borrowed_felling == nullptr) {
-        return 0u;
-    }
-    return player_felling_tick(player->borrowed_felling, &player->interaction, edit, tick, uses_left);
 }
 
 bool player_attack_tick(player_t *player, const entity_store_t *store, const world_map_t *map,

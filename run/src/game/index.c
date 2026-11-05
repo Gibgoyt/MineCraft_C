@@ -415,8 +415,8 @@ bool game_open(game_t *game, const game_config_t *config) {
     }
 
     if (game->borrowed_player != nullptr) {
-        player_felling_lend(game->borrowed_player,
-                            arena_alloc(&game->arena_world, sizeof(player_felling_t), alignof(player_felling_t)));
+        game->borrowed_felling = arena_alloc(&game->arena_world, sizeof(player_felling_t), alignof(player_felling_t));
+        player_felling_start(game->borrowed_felling);
     }
 
     /* Flying: a little above whatever is at the world's middle, water included, looking out and down. Walking: on dry land near it. */
@@ -531,9 +531,7 @@ void game_close(game_t *game) {
     }
     render_close(game->borrowed_render);
     world_close(game->borrowed_world);
-    if (game->borrowed_player != nullptr) {
-        player_felling_lend(game->borrowed_player, nullptr);
-    }
+    game->borrowed_felling = nullptr;
     game_arenas_stop(game);
     heap_release(&game->owned_region);
     heap_release(&game->owned_view);

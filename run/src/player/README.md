@@ -13,8 +13,7 @@
 - `player_look_send`: main says where the player looks, for what it aims at.
 - `player_hands_send`: main says what the two mouse buttons are doing.
 - `player_interact_tick`: one tick of the sim's for the hands, on what the last tick aimed at, before `player_tick`.
-- `player_felling_lend`: where what is coming down is kept, for as long as a world is open.
-- `player_fell_tick`: one tick of the sim's for what is left of a tree an axe cut, right after `player_interact_tick`, given how many uses the axe has left.
+- `player_interact_fell_tick`: `player_interact_tick`, with somewhere for a log an axe cuts to set the rest of its tree going: `run/src/game/` keeps that, and runs `player_felling_tick`.
 - `player_attack_tick`, `player_attack_landed`: one tick of the sim's for the hand, right before `player_interact_tick`: what a press on a body in reach does, for the caller to apply; and that it landed.
 - `player_pickup_reach`: the box an item has to overlap to be picked up, with the body where it now is.
 - `player_tick`: one tick of the sim's: the body moves, then what it aims at is worked out from where it now stands.

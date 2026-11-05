@@ -76,27 +76,20 @@ typedef struct player_t {
     player_combat_t combat;       /* 2104: the sim's: what the hand remembers of swinging */
     /* A line of its own: main writes the line above all the time. */
     player_survival_t survival; /* 2112: the sim's */
-    /* The sim's: a tree on its way down. Too big for app_t, which is on main's stack, so whoever opens a world lends it, and nullptr has axes cut one log. */
-    player_felling_t *borrowed_felling; /* 2304 */
-    uint8_t _pad1[56];                  /* 2312 */
 } player_t;
-static_assert(sizeof(player_t) == 2368);
+static_assert(sizeof(player_t) == 2304);
 static_assert(alignof(player_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(player_t, views) == 128);
 static_assert(offsetof(player_t, target) == 800);
 static_assert(offsetof(player_t, interaction) == 896);
 static_assert(offsetof(player_t, intent_word) == 2048);
 static_assert(offsetof(player_t, survival) == 2112);
-static_assert(offsetof(player_t, borrowed_felling) == 2304);
 
 /* Remembers what it moves with, and takes nothing. Physics must outlive it. */
 void player_init(player_t *player, physics_t *physics);
 
 /* Safe on a zeroed player_t. */
 void player_deinit(player_t *player);
-
-/* Where what is coming down is kept from now on: for as long as a world is open, or nullptr when it is not. Before the threads start. */
-void player_felling_lend(player_t *player, player_felling_t *felling);
 
 /* A body at rest, its feet at this place, with nothing wanted yet. Before the threads start. */
 void player_spawn(player_t *player, float64_t x, float64_t y, float64_t z);
@@ -120,9 +113,9 @@ void player_hands_send(player_t *player, bool attack, bool place);
  * touches the heap. What it broke waits in the interaction's ring, for whoever puts items in the world. */
 void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns);
 
-/* What is left of a tree an axe cut, right after player_interact_tick on the same thread: up to uses_left logs go, as player_felling_tick says,
- * and as many uses are the caller's to wear. A run that does not call this has hands that only cut one log. */
-uint32_t player_fell_tick(player_t *player, world_edit_t *edit, world_tick_t *tick, uint32_t uses_left);
+/* The same, with somewhere for a log an axe cuts to set the rest of its tree going: player_interact_tick is this with nullptr, and an axe cuts one log.
+ * The caller then runs player_felling_tick. */
+void player_interact_fell_tick(player_t *player, world_edit_t *edit, player_felling_t *felling, int64_t tick_ns);
 
 /* The hand's tick, right before player_interact_tick on the same thread: a press of the left button on a body in reach returns true and
  * says what it does, for the caller to apply. While the button is on a body the hands that follow do not mine. A run that does not call this

@@ -1562,7 +1562,7 @@ TEST(in_a_real_game_an_axe_fells_a_tree_wears_a_use_a_log_and_stops_when_it_brea
     REQUIRE(ie_script_ticks(rig, 4u));
     /* All of it but the one under the eye, a use for every log, and the axe still in hand. */
     CHECK_EQ_U64(ie_logs_in(rig, row, TALL), 1u);
-    CHECK_EQ_U64(rig->player->borrowed_felling->felled_count, (uint64_t)(TALL - CUT));
+    CHECK_EQ_U64(rig->game->borrowed_felling->felled_count, (uint64_t)(TALL - CUT));
     CHECK_EQ_U64(inventory_slot_read(inventory, 0u)->wear, (uint64_t)(TALL - CUT + 1));
     CHECK_EQ_U64(rig->player->interaction.drops_lost_count, 0u);
     /* What fell is all there, on the ground or taken in by the body as it lands. The leaves go too, in their time. */
@@ -1580,7 +1580,7 @@ TEST(in_a_real_game_an_axe_fells_a_tree_wears_a_use_a_log_and_stops_when_it_brea
     (void)world_map_block_get(&rig->world->map, rig->pad_cell[0] + 2, row, rig->pad_cell[2] + TALL, &leaf);
     CHECK_EQ_U64(leaf, BLOCK_ID_AIR);
 
-    const uint64_t felled = rig->player->borrowed_felling->felled_count;
+    const uint64_t felled = rig->game->borrowed_felling->felled_count;
     /* Three uses left: the cut and two more, and it is gone with the rest of the tree still up. */
     const uint32_t broken_before = (uint32_t)item->equipment.tools_broken_count;
     CHECK_EQ_U64(inventory_selected_take(inventory, 1u), 1u);
@@ -1594,7 +1594,7 @@ TEST(in_a_real_game_an_axe_fells_a_tree_wears_a_use_a_log_and_stops_when_it_brea
     REQUIRE(rig->player->target.hit.block == BLOCK_ID_OAK_LOG);
     REQUIRE(ie_chop(rig));
     REQUIRE(ie_script_ticks(rig, 10u));
-    CHECK_EQ_U64(rig->player->borrowed_felling->felled_count, felled + 2u);
+    CHECK_EQ_U64(rig->game->borrowed_felling->felled_count, felled + 2u);
     CHECK_EQ_U64(ie_logs_in(rig, row + 2, TALL), (uint32_t)TALL - 3u);
     CHECK(item_stack_is_empty(inventory_slot_read(inventory, 0u)));
     CHECK_EQ_U64(item->equipment.tools_broken_count, broken_before + 1u);

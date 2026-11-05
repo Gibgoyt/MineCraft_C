@@ -145,7 +145,10 @@ typedef struct game_t {
     _Atomic uint32_t
         morning_latch;       /* 908: sim to main: a night was slept through, so the day goes on from morning; relaxed */
     _Atomic uint32_t paused; /* 912: main to sim: no ticks while it is set, and streaming goes on; relaxed */
-    uint8_t _pad1[44];       /* 916 */
+    uint8_t _pad1[4];        /* 916 */
+    /* The sim's: a tree on its way down, from arena_world while a world is open. Only the pointer's here, as this is under app_t on main's stack. */
+    player_felling_t *borrowed_felling; /* 920 */
+    uint8_t _pad8[32];                  /* 928 */
     /* A line of its own from here: the gpu thread writes these, and main what is after them. */
     render_camera_t picture_cameras[RENDER_EXCHANGE_SLOTS]; /* 960: what the picture in each slot was drawn from */
     uint8_t _pad2[8];                                       /* 1080 */
