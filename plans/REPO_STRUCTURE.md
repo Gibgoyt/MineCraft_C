@@ -238,7 +238,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `bench` | Which block is half a bench two voxels long, and where its other half is, for placing, mining and blasts alike. Not in the plan's list | 003 phase 4 |
 | `terrain` | (the Owner) | `terrain_init`, `terrain_deinit`: one seed, and the region and arena its parts borrow | 10.1 |
 | | `rng noise` | Seeded streams and position hashes; fractal fields sampled in bulk on `asm/src/noise` | 10.1 |
-| | `climate` | Continentalness, erosion, ridges, temperature, humidity, weirdness | 10.2 |
+| | `fields` | Continentalness, erosion, ridges, temperature, humidity, weirdness | 10.2 |
 | | `density` | Height splines and 3D terrain shape, `z ∈ [-250, 1250]`; bedrock at `-250`, water up to `0` | 10.3 |
 | | `hydrology` | Sea level 0, rivers, oceans, beaches, aquifers, the lava level under the world at `-230` | 10.4 |
 | | `cave ore` | Cheese, spaghetti and noodle caves cut from any box; deepslate by depth, and the table of rock and ore veins by depth | 10.5 |
@@ -426,7 +426,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/world/light/` | ctest `run_world_light`: incremental light against a separate full recompute on random edits, columns coming and going, running out of room or memory, exact values worked out by hand, and what an opaque block's faces see |
 | `tests/run/world/tick/` | ctest `run_world_sim` (named in its `test.cmake`): `run/src/world/tick/`: flow worked out by hand and against a separate flood fill, lava and water, falling blocks, leaf decay, crops, grass, columns coming and going, running out of room, the same world from the same seed, real terrain left alone, each rule's number from both sides, and light against a rebuild after real terrain has been simulated |
 | `tests/run/terrain/seed/` | ctest `run_terrain_seed`: `run/src/terrain/` with `rng` and `noise`, the same bytes from 1 worker and 16, any split of the work, and values pinned from a separate program and the scalar kernel |
-| `tests/run/terrain/climate/` | ctest `run_terrain_climate`: `run/src/terrain/climate/`: ranges, the spread its README promises, the same bytes from 1 worker and 16, any split of the work, and each value worked out by hand from its noise |
+| `tests/run/terrain/fields/` | ctest `run_terrain_fields`: `run/src/terrain/fields/`: ranges, the spread its README promises, the same bytes from 1 worker and 16, any split of the work, and each value worked out by hand from its noise |
 | `tests/run/terrain/density/` | ctest `run_terrain_density`: `run/src/terrain/density/`: the range limits on every corner of the climate and on real columns, bedrock at `-250`, water's top at `0`, values worked out by hand, any split of the work, and the same bytes from 1 worker and 16 |
 | `tests/run/terrain/hydrology/` | ctest `run_terrain_hydrology`: `run/src/terrain/hydrology/`: each column worked out by hand, rivers that hold water and reach the sea, oceans, beaches, aquifers that cannot flow, the lava level, any split of the work, and the same bytes from 1 worker and 16 |
 | `tests/run/terrain/cave/walk/` | ctest `run_terrain_cave_walk`: `bench/cave_walk/` finds and walks a way into a cave and down to `z = -150` on the default seed, and the built game walks the first by the tool's script and ends where the tool's body did |
