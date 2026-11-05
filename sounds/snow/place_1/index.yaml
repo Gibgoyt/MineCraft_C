@@ -1,5 +1,9 @@
-# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+# Written by compile/src/sound_pack import. A re-import replaces it.
 name: place_1
 family: snow
-source: { kind: synth }
-recipe: { seed: 179042992, ms: 106, grains: 20, grain_ms: 6, low_hz: 217, high_hz: 1942, tone_hz: 97, overtone_hz: 0, tone_ms: 15, tone_level: 20, level: 72 }
+source:
+  kind: recorded
+  origin: "qubodup, 4 dry snow steps"
+  file: "snow_step_dry-04.flac"
+  url: "https://opengameart.org/content/4-dry-snow-steps"
+  licence: CC0-1.0

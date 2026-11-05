@@ -1,5 +1,9 @@
-# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+# Written by compile/src/sound_pack import. A re-import replaces it.
 name: hit_2
 family: wood
-source: { kind: synth }
-recipe: { seed: 653477602, ms: 83, grains: 2, grain_ms: 9, low_hz: 186, high_hz: 2234, tone_hz: 228, overtone_hz: 588, tone_ms: 30, tone_level: 72, level: 62 }
+source:
+  kind: recorded
+  origin: "rubberduck, 75 CC0 breaking, falling and hit sfx"
+  file: "bfh1_wood_hit_02.ogg"
+  url: "https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx"
+  licence: CC0-1.0

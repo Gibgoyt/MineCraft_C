@@ -1,5 +1,9 @@
-# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+# Written by compile/src/sound_pack import. A re-import replaces it.
 name: place_3
 family: leaves
-source: { kind: synth }
-recipe: { seed: 985768856, ms: 93, grains: 17, grain_ms: 7, low_hz: 1254, high_hz: 5861, tone_hz: 133, overtone_hz: 0, tone_ms: 18, tone_level: 30, level: 72 }
+source:
+  kind: recorded
+  origin: "qubodup, 20 Rustles of dry leaves"
+  file: "rustle12.flac"
+  url: "https://opengameart.org/content/20-rustles-dry-leaves"
+  licence: CC0-1.0

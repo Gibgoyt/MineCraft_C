@@ -1,5 +1,9 @@
 # sounds/metal/hit_2
 
-A short hit, each few ticks while mining, of metal.
+From Brian MacIntosh (BMacZero), Metal Impact Sounds, file `clink2.wav`: https://opengameart.org/content/metal-impact-sounds
 
-Ours: `compile/src/sound_pack/synth/` makes it from the recipe in `index.yaml` while building. No recording is involved, and it owes no credit.
+Licence: CC0-1.0. See `sounds/ATTRIBUTION.md`.
+
+Changed from the original: converted to mono 16-bit at 48000 Hz, in `index.mcsnd`; high pass at 50 Hz, cut to 112 ms from 0.038 s, faded at both ends, gain -9.0 dB.
+
+Written by `compile/src/sound_pack`, which `sounds/README.md` describes.

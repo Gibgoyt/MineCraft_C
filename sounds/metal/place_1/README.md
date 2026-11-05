@@ -1,5 +1,9 @@
 # sounds/metal/place_1
 
-A short thud when the block is placed, of metal.
+From Brian MacIntosh (BMacZero), Metal Impact Sounds, file `thud2.wav`: https://opengameart.org/content/metal-impact-sounds
 
-Ours: `compile/src/sound_pack/synth/` makes it from the recipe in `index.yaml` while building. No recording is involved, and it owes no credit.
+Licence: CC0-1.0. See `sounds/ATTRIBUTION.md`.
+
+Changed from the original: converted to mono 16-bit at 48000 Hz, in `index.mcsnd`; high pass at 50 Hz, cut to 217 ms from 0.028 s, faded at both ends, gain +1.8 dB.
+
+Written by `compile/src/sound_pack`, which `sounds/README.md` describes.

@@ -38,8 +38,8 @@ static bool si_check(const sound_import_t *import) {
         return tp_fail("licence is not %s, the only one sounds may have", SI_LICENCE);
     }
     if (!si_text_is_quotable(import->origin) || !si_text_is_quotable(import->file) ||
-        !si_text_is_quotable(import->url)) {
-        return tp_fail("origin, file and url must be plain text with no quote or backslash");
+        !si_text_is_quotable(import->url) || !si_text_is_quotable(import->changes)) {
+        return tp_fail("origin, file, url and changes must be plain text with no quote or backslash");
     }
     return true;
 }
@@ -70,7 +70,9 @@ bool sound_pack_import(tp_arena_t *arena, const sound_import_t *import) {
     tp_builder_add(&readme, "# sounds/%s/%s\n\n", import->family, import->name);
     tp_builder_add(&readme, "From %s, file `%s`: %s\n\nLicence: %s. See `sounds/ATTRIBUTION.md`.\n\n", import->origin,
                    import->file, import->url, import->licence);
-    tp_builder_add(&readme, "Changed from the original: converted to mono 16-bit at 48000 Hz, in `index.mcsnd`.\n\n");
+    tp_builder_add(&readme,
+                   "Changed from the original: converted to mono 16-bit at 48000 Hz, in `index.mcsnd`; %s.\n\n",
+                   import->changes);
     tp_builder_add(&readme, "Written by `compile/src/sound_pack`, which `sounds/README.md` describes.\n");
 
     return tp_make_directories(arena, directory) &&

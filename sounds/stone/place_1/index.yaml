@@ -1,5 +1,9 @@
-# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+# Written by compile/src/sound_pack import. A re-import replaces it.
 name: place_1
 family: stone
-source: { kind: synth }
-recipe: { seed: 1652365004, ms: 98, grains: 4, grain_ms: 7, low_hz: 194, high_hz: 3123, tone_hz: 192, overtone_hz: 0, tone_ms: 14, tone_level: 46, level: 72 }
+source:
+  kind: recorded
+  origin: "TinyWorlds, Different steps on wood, stone, leaves, gravel and mud"
+  file: "stone01.ogg"
+  url: "https://opengameart.org/content/different-steps-on-wood-stone-leaves-gravel-and-mud"
+  licence: CC0-1.0

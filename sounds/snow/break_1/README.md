@@ -1,5 +1,9 @@
 # sounds/snow/break_1
 
-The fuller crunch when the block breaks, of snow.
+From qubodup, 4 dry snow steps, file `snow_step_dry-02.flac`: https://opengameart.org/content/4-dry-snow-steps
 
-Ours: `compile/src/sound_pack/synth/` makes it from the recipe in `index.yaml` while building. No recording is involved, and it owes no credit.
+Licence: CC0-1.0. See `sounds/ATTRIBUTION.md`.
+
+Changed from the original: converted to mono 16-bit at 48000 Hz, in `index.mcsnd`; high pass at 50 Hz, cut to 617 ms from 0.013 s, faded at both ends, gain +17.4 dB.
+
+Written by `compile/src/sound_pack`, which `sounds/README.md` describes.

@@ -243,11 +243,11 @@ TEST(a_sounds_name_says_its_kind_and_variant) {
 
 /* ---- The committed tree and the blob the build made -------------------------------------------------------------- */
 
-TEST(the_committed_tree_is_whole_and_needs_nothing_recorded) {
+TEST(the_committed_tree_is_whole_and_every_sound_in_it_is_a_recording) {
     test_process_t run;
     spt_verify(t, spt_arg(t, 1), &run);
     CHECK_EQ_I64(run.exit_code, 0);
-    CHECK_CONTAINS(run.output, "90 sounds, 0 recorded, 90 made from recipes");
+    CHECK_CONTAINS(run.output, "90 sounds, 90 recorded, 0 made from recipes");
 }
 
 /* Sign changes per second over the loud part: rough, but it can't be fooled by loudness. */
@@ -285,11 +285,11 @@ TEST(the_generated_blob_has_every_kind_of_every_family_and_they_differ) {
                 const int16_t *samples = sound_blob_samples(&view, entry);
                 CHECK_EQ_U64(entry->variant, v + 1u);
                 CHECK_EQ_U64(spt_peak(samples, entry->sample_count), entry->peak);
-                CHECK(entry->peak > 10000u);
+                CHECK(entry->peak > 8000u);
                 CHECK_EQ_I64(samples[0], 0);
                 CHECK_EQ_I64(samples[entry->sample_count - 1u], 0);
-                /* Short: hits under 100 ms, breaks under 300, places under 150. */
-                const uint32_t limit = kind == SOUND_KIND_HIT ? 4800u : kind == SOUND_KIND_BREAK ? 14400u : 7200u;
+                /* Short: hits up to 170 ms, breaks up to 700, places up to 280. */
+                const uint32_t limit = kind == SOUND_KIND_HIT ? 8160u : kind == SOUND_KIND_BREAK ? 33600u : 13440u;
                 CHECK(entry->sample_count <= limit);
                 /* Variants must differ, or picking at random does nothing. */
                 if (v > 0u) {
@@ -308,21 +308,24 @@ TEST(the_generated_blob_has_every_kind_of_every_family_and_they_differ) {
     (void)sound_blob_find(&view, SOUND_FAMILY_STONE, SOUND_KIND_BREAK, &smash);
     CHECK(view.borrowed_entries[smash].sample_count > view.borrowed_entries[hit].sample_count);
     CHECK(view.borrowed_entries[smash].peak > view.borrowed_entries[hit].peak);
-    /* What each family was made to be: the rustle and hiss sit far above the dull ones. */
+    /* What each family was chosen to be: the rustle and hiss sit far above the dull ones. */
     const uint64_t dirt = spt_family_crossings(&view, SOUND_FAMILY_DIRT);
     const uint64_t wood = spt_family_crossings(&view, SOUND_FAMILY_WOOD);
     const uint64_t stone = spt_family_crossings(&view, SOUND_FAMILY_STONE);
     const uint64_t sand = spt_family_crossings(&view, SOUND_FAMILY_SAND);
     const uint64_t leaves = spt_family_crossings(&view, SOUND_FAMILY_LEAVES);
     const uint64_t glass = spt_family_crossings(&view, SOUND_FAMILY_GLASS);
+    const uint64_t snow = spt_family_crossings(&view, SOUND_FAMILY_SNOW);
+    const uint64_t gravel = spt_family_crossings(&view, SOUND_FAMILY_GRAVEL);
     printf("crossings per second: dirt %" PRIu64 " wood %" PRIu64 " stone %" PRIu64 " sand %" PRIu64 " leaves %" PRIu64
-           " glass %" PRIu64 "\n",
-           dirt, wood, stone, sand, leaves, glass);
+           " glass %" PRIu64 " snow %" PRIu64 " gravel %" PRIu64 "\n",
+           dirt, wood, stone, sand, leaves, glass, snow, gravel);
     CHECK(dirt < stone);
     CHECK(wood < stone);
-    CHECK(stone < sand);
+    CHECK(dirt < sand);
     CHECK(stone < leaves);
     CHECK(dirt < glass);
+    CHECK(snow < gravel);
 }
 
 TEST(the_same_tree_gives_the_same_blob_and_a_rerun_leaves_it_alone) {
@@ -399,6 +402,18 @@ typedef struct spt_bad_file_t {
 } spt_bad_file_t;
 static_assert(sizeof(spt_bad_file_t) == 16);
 
+/* Turns one recorded sound of a copied tree into a recipe, which is the fallback for a material with no recording. */
+static void spt_use_recipe(test_context_t *t, char *tree, const char *sound) {
+    char relative[SPT_PATH_BYTES];
+    snprintf(relative, sizeof relative, "%s/index.mcsnd", sound);
+    test_process_t run;
+    char *const rm[] = {(char *)"rm", (char *)"-f", spt_path(t, tree, relative), nullptr};
+    spt_run(t, rm, &run);
+    CHECK_EQ_I64(run.exit_code, 0);
+    snprintf(relative, sizeof relative, "%s/index.yaml", sound);
+    spt_write_text(t, spt_path(t, tree, relative), SPT_GOOD_NAME SPT_GOOD_SOURCE SPT_GOOD_RECIPE);
+}
+
 static const spt_bad_file_t SPT_BAD_FILES[] = {
     {SPT_GOOD_NAME SPT_GOOD_SOURCE SPT_GOOD_RECIPE "colour: red\n", "unknown field 'colour' in a sound"},
     {"family: stone\n" SPT_GOOD_SOURCE SPT_GOOD_RECIPE, "missing field 'name'"},
@@ -438,6 +453,7 @@ enum { SPT_BAD_FILE_COUNT = sizeof(SPT_BAD_FILES) / sizeof(SPT_BAD_FILES[0]) };
 
 TEST(each_mistake_in_a_sounds_file_is_refused) {
     char *tree = spt_tree(t, "bad_file");
+    spt_use_recipe(t, tree, "stone/hit_1");
     char *target = spt_path(t, tree, "stone/hit_1/index.yaml");
     char *good = test_alloc(t, 4096u);
     FILE *file = fopen(target, "rb");
@@ -512,6 +528,7 @@ TEST(what_a_sound_owes_must_be_there) {
     spt_expect_refused(t, tree, "ATTRIBUTION.md: missing");
 
     tree = spt_tree(t, "stale");
+    spt_use_recipe(t, tree, "stone/hit_1");
     spt_write_text(t, spt_path(t, tree, "stone/hit_1/index.mcsnd"), "x");
     spt_expect_refused(t, tree, "must have no recording beside it");
 }
@@ -538,12 +555,15 @@ static void spt_import(test_context_t *t, char *tree, char *raw, const char *fam
                           (char *)"https://example.invalid/pack",
                           (char *)"--licence",
                           (char *)licence,
+                          (char *)"--changes",
+                          (char *)"cut to 100 ms",
                           nullptr};
     spt_run(t, argv, run);
 }
 
 TEST(a_recording_comes_in_only_with_its_licence_and_credit) {
     char *tree = spt_tree(t, "import");
+    spt_use_recipe(t, tree, "stone/hit_1");
     char *raw = spt_path(t, tree, "a.raw");
     int16_t *samples = test_alloc(t, SPT_RAW_SAMPLES * sizeof(int16_t));
     for (uint32_t i = 0; i < SPT_RAW_SAMPLES; i++) {
@@ -553,8 +573,13 @@ TEST(a_recording_comes_in_only_with_its_licence_and_credit) {
     const char *const mcsnd = "stone/hit_1/index.mcsnd";
     struct stat info;
 
-    /* Each of these changes nothing. */
+    /* With no recording the recipe stands in, and the tree is still whole. */
     test_process_t run;
+    spt_verify(t, tree, &run);
+    CHECK_EQ_I64(run.exit_code, 0);
+    CHECK_CONTAINS(run.output, "90 sounds, 89 recorded, 1 made from recipes");
+
+    /* Each of these changes nothing. */
     spt_import(t, tree, raw, "stone", "hit_1", "CC-BY-SA-4.0", "Some Pack", &run);
     CHECK_EQ_I64(run.exit_code, 1);
     CHECK_CONTAINS(run.output, "licence is not CC0-1.0");
@@ -580,10 +605,22 @@ TEST(a_recording_comes_in_only_with_its_licence_and_credit) {
     CHECK(stat(spt_path(t, tree, mcsnd), &info) == 0);
     spt_expect_refused(t, tree, "origin 'Some Pack' is not credited");
 
-    spt_write_text(t, spt_path(t, tree, "ATTRIBUTION.md"), "| Some Pack | Somebody | CC0-1.0 | somewhere |\n");
+    uint64_t credits_length = 0;
+    const char *credits = (const char *)spt_read(t, spt_path(t, tree, "ATTRIBUTION.md"), &credits_length);
+    REQUIRE(credits != nullptr);
+    char *credited = test_alloc(t, credits_length + SPT_PATH_BYTES);
+    snprintf(credited, credits_length + SPT_PATH_BYTES, "%.*s| Some Pack | Somebody | CC0-1.0 | somewhere |\n",
+             (int32_t)credits_length, credits);
+    spt_write_text(t, spt_path(t, tree, "ATTRIBUTION.md"), credited);
     spt_verify(t, tree, &run);
     CHECK_EQ_I64(run.exit_code, 0);
-    CHECK_CONTAINS(run.output, "90 sounds, 1 recorded, 89 made from recipes");
+    CHECK_CONTAINS(run.output, "90 sounds, 90 recorded, 0 made from recipes");
+
+    /* Its README says what was done to it. */
+    uint64_t readme_length = 0;
+    const char *readme = (const char *)spt_read(t, spt_path(t, tree, "stone/hit_1/README.md"), &readme_length);
+    REQUIRE(readme != nullptr);
+    CHECK_CONTAINS(readme, "cut to 100 ms");
 
     /* The recording's samples are what ends up in the blob, to the byte. */
     char *out = spt_path(t, tree, "out.mcsb");

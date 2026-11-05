@@ -1,6 +1,6 @@
 # compile/src/sound_pack/synth
 
-**Purpose:** makes a crunch from the recipe in a sound's `index.yaml`, while building, so that every family has sound with no network and no recording.
+**Purpose:** makes a crunch from the recipe in a sound's `index.yaml`, while building, for a material with no recording. `sounds/` holds recordings for all of them today, so no committed sound uses this, and a test keeps it working.
 **Tier:** Arena (depth 2), though it allocates nothing. The caller gives it the buffers.
 **Owns:** nothing.
 **Lifetime:** the call.

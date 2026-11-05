@@ -1,5 +1,9 @@
-# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+# Written by compile/src/sound_pack import. A re-import replaces it.
 name: break_2
 family: stone
-source: { kind: synth }
-recipe: { seed: 1051596941, ms: 282, grains: 12, grain_ms: 7, low_hz: 367, high_hz: 4788, tone_hz: 194, overtone_hz: 0, tone_ms: 14, tone_level: 35, level: 88 }
+source:
+  kind: recorded
+  origin: "rubberduck, 75 CC0 breaking, falling and hit sfx"
+  file: "bfh1_rock_breaking_02.ogg"
+  url: "https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx"
+  licence: CC0-1.0

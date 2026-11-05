@@ -12,4 +12,4 @@
 **May be called by:** `sound_pack`.
 **Depends on:** `sound_pack/mcsnd`, `sound_pack/tree`, `compile/src/texture_pack/support/`.
 
-A refused recording changes nothing. Only `CC0-1.0` is accepted. The tool doesn't read a pack's licence for you: a person does that, and names it here. Then `sound_pack verify` refuses the sound until `sounds/ATTRIBUTION.md` credits its origin.
+A refused recording changes nothing. Only `CC0-1.0` is accepted. The tool doesn't read a pack's licence for you: a person does that, and names it here. `--changes` says what was done beyond the format, such as trimming, filtering or gain, and goes in the sound's `README.md`. Then `sound_pack verify` refuses the sound until `sounds/ATTRIBUTION.md` credits its origin.

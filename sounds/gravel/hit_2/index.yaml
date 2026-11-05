@@ -1,5 +1,9 @@
-# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+# Written by compile/src/sound_pack import. A re-import replaces it.
 name: hit_2
 family: gravel
-source: { kind: synth }
-recipe: { seed: 90156545, ms: 81, grains: 10, grain_ms: 5, low_hz: 435, high_hz: 6209, tone_hz: 114, overtone_hz: 0, tone_ms: 18, tone_level: 20, level: 62 }
+source:
+  kind: recorded
+  origin: "TinyWorlds, Different steps on wood, stone, leaves, gravel and mud"
+  file: "gravel.ogg"
+  url: "https://opengameart.org/content/different-steps-on-wood-stone-leaves-gravel-and-mud"
+  licence: CC0-1.0

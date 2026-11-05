@@ -1,5 +1,9 @@
-# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+# Written by compile/src/sound_pack import. A re-import replaces it.
 name: break_2
 family: gravel
-source: { kind: synth }
-recipe: { seed: 1423539162, ms: 293, grains: 39, grain_ms: 5, low_hz: 430, high_hz: 6318, tone_hz: 124, overtone_hz: 0, tone_ms: 18, tone_level: 25, level: 88 }
+source:
+  kind: recorded
+  origin: "Corsica_S, 42 Snow and Gravel Footsteps"
+  file: "Corsica_S-Walking_on_snow_covered_gravel_and_ice_03.flac"
+  url: "https://opengameart.org/content/42-snow-and-gravel-footsteps"
+  licence: CC0-1.0

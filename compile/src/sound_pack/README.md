@@ -9,7 +9,7 @@
 
 - `sound_pack blob --sounds sounds --out <generated>/sounds/index.mcsb`: what the build runs.
 - `sound_pack verify --sounds sounds`: the same checks, with a one-line count.
-- `sound_pack import --sounds sounds --raw <file> --family <family> --name <hit_1> --origin <text> --file <text> --url <text> --licence CC0-1.0`: one recording into the tree, run by hand and never by the build.
+- `sound_pack import --sounds sounds --raw <file> --family <family> --name <hit_1> --origin <text> --file <text> --url <text> --licence CC0-1.0 --changes <text>`: one recording into the tree, run by hand and never by the build.
 
 Exit 0, or 1 with every problem on stderr, or 2 on a bad command line.
 

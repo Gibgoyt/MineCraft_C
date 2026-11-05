@@ -14,8 +14,9 @@ typedef struct sound_import_t {
     const char *file;    /* 40: which file of the pack */
     const char *url;     /* 48: where the pack and its licence are */
     const char *licence; /* 56: must be CC0-1.0 */
+    const char *changes; /* 64: what was done to it beyond the format, for its README */
 } sound_import_t;
-static_assert(sizeof(sound_import_t) == 64);
+static_assert(sizeof(sound_import_t) == 72);
 
 /* Checks everything first, so a refused recording changes nothing. Replaces whatever that sound was. */
 bool sound_pack_import(tp_arena_t *arena, const sound_import_t *import);

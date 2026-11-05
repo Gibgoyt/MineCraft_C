@@ -1,5 +1,9 @@
-# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+# Written by compile/src/sound_pack import. A re-import replaces it.
 name: break_3
 family: metal
-source: { kind: synth }
-recipe: { seed: 381930288, ms: 224, grains: 4, grain_ms: 4, low_hz: 882, high_hz: 6466, tone_hz: 1326, overtone_hz: 2981, tone_ms: 90, tone_level: 90, level: 88 }
+source:
+  kind: recorded
+  origin: "rubberduck, 75 CC0 breaking, falling and hit sfx"
+  file: "bfh1_metal_hit_06.ogg"
+  url: "https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx"
+  licence: CC0-1.0

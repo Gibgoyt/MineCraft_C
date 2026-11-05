@@ -1,5 +1,9 @@
 # sounds/sand/place_2
 
-A short thud when the block is placed, of sand.
+From Peludo, Water Splash and sand footsteps, file `sand_footsteps_0.mp3`: https://opengameart.org/content/water-splash-and-sand-footsteps
 
-Ours: `compile/src/sound_pack/synth/` makes it from the recipe in `index.yaml` while building. No recording is involved, and it owes no credit.
+Licence: CC0-1.0. See `sounds/ATTRIBUTION.md`.
+
+Changed from the original: converted to mono 16-bit at 48000 Hz, in `index.mcsnd`; high pass at 50 Hz, cut to 220 ms from 4.803 s, faded at both ends, gain +1.1 dB.
+
+Written by `compile/src/sound_pack`, which `sounds/README.md` describes.

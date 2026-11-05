@@ -1,5 +1,9 @@
 # sounds/stone/place_3
 
-A short thud when the block is placed, of stone.
+From Fantozzi, footsteps on grass, sand and stone, file `Fantozzi-StoneR2.flac`: https://opengameart.org/content/fantozzis-footsteps-grasssand-stone
 
-Ours: `compile/src/sound_pack/synth/` makes it from the recipe in `index.yaml` while building. No recording is involved, and it owes no credit.
+Licence: CC0-1.0. See `sounds/ATTRIBUTION.md`.
+
+Changed from the original: converted to mono 16-bit at 48000 Hz, in `index.mcsnd`; high pass at 50 Hz, cut to 280 ms from 0.013 s, faded at both ends, gain -2.8 dB.
+
+Written by `compile/src/sound_pack`, which `sounds/README.md` describes.

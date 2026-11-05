@@ -23,11 +23,11 @@ typedef enum sp_command_t : uint8_t {
 
 typedef struct sp_arguments_t {
     sound_import_t import; /* 0: sounds is here for every command */
-    const char *out;       /* 64 */
-    uint8_t command;       /* 72: a sp_command_t */
-    uint8_t _pad0[7];      /* 73 */
+    const char *out;       /* 72 */
+    uint8_t command;       /* 80: a sp_command_t */
+    uint8_t _pad0[7];      /* 81 */
 } sp_arguments_t;
-static_assert(sizeof(sp_arguments_t) == 80);
+static_assert(sizeof(sp_arguments_t) == 88);
 
 static bool sp_arguments_parse(int32_t argc, char **argv, sp_arguments_t *out) {
     memset(out, 0, sizeof(*out));
@@ -68,6 +68,8 @@ static bool sp_arguments_parse(int32_t argc, char **argv, sp_arguments_t *out) {
             out->import.url = value;
         } else if (strcmp(key, "--licence") == 0 && importing) {
             out->import.licence = value;
+        } else if (strcmp(key, "--changes") == 0 && importing) {
+            out->import.changes = value;
         } else {
             return false;
         }
@@ -83,7 +85,7 @@ static bool sp_arguments_parse(int32_t argc, char **argv, sp_arguments_t *out) {
     default:
         return out->import.raw != nullptr && out->import.family != nullptr && out->import.name != nullptr &&
                out->import.origin != nullptr && out->import.file != nullptr && out->import.url != nullptr &&
-               out->import.licence != nullptr;
+               out->import.licence != nullptr && out->import.changes != nullptr;
     }
 }
 
@@ -106,12 +108,12 @@ static bool sp_run(tp_arena_t *arena, const sp_arguments_t *arguments) {
 int32_t main(int32_t argc, char **argv) {
     sp_arguments_t arguments;
     if (!sp_arguments_parse(argc, argv, &arguments)) {
-        fprintf(
-            stderr,
-            "usage: sound_pack blob --sounds <directory> --out <file>\n"
-            "       sound_pack verify --sounds <directory>\n"
-            "       sound_pack import --sounds <directory> --raw <s16le mono 48000 Hz file> --family <family>\n"
-            "                         --name <hit_1> --origin <text> --file <text> --url <text> --licence CC0-1.0\n");
+        fprintf(stderr,
+                "usage: sound_pack blob --sounds <directory> --out <file>\n"
+                "       sound_pack verify --sounds <directory>\n"
+                "       sound_pack import --sounds <directory> --raw <s16le mono 48000 Hz file> --family <family>\n"
+                "                         --name <hit_1> --origin <text> --file <text> --url <text> --licence CC0-1.0\n"
+                "                         --changes <text>\n");
         return SOUND_PACK_EXIT_USAGE;
     }
     void *owned_region =

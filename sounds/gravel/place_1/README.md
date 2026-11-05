@@ -1,5 +1,9 @@
 # sounds/gravel/place_1
 
-A short thud when the block is placed, of gravel.
+From Corsica_S, 42 Snow and Gravel Footsteps, file `Corsica_S-Walking_on_snow_covered_gravel_and_ice_08.flac`: https://opengameart.org/content/42-snow-and-gravel-footsteps
 
-Ours: `compile/src/sound_pack/synth/` makes it from the recipe in `index.yaml` while building. No recording is involved, and it owes no credit.
+Licence: CC0-1.0. See `sounds/ATTRIBUTION.md`.
+
+Changed from the original: converted to mono 16-bit at 48000 Hz, in `index.mcsnd`; high pass at 50 Hz, cut to 280 ms from 0.003 s, faded at both ends, gain +8.4 dB.
+
+Written by `compile/src/sound_pack`, which `sounds/README.md` describes.

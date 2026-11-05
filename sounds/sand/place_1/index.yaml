@@ -1,5 +1,9 @@
-# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+# Written by compile/src/sound_pack import. A re-import replaces it.
 name: place_1
 family: sand
-source: { kind: synth }
-recipe: { seed: 2116276673, ms: 96, grains: 30, grain_ms: 4, low_hz: 788, high_hz: 5721, tone_hz: 132, overtone_hz: 0, tone_ms: 18, tone_level: 30, level: 72 }
+source:
+  kind: recorded
+  origin: "Peludo, Water Splash and sand footsteps"
+  file: "sand_footsteps_0.mp3"
+  url: "https://opengameart.org/content/water-splash-and-sand-footsteps"
+  licence: CC0-1.0

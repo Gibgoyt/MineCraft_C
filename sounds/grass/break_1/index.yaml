@@ -1,5 +1,9 @@
-# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+# Written by compile/src/sound_pack import. A re-import replaces it.
 name: break_1
 family: grass
-source: { kind: synth }
-recipe: { seed: 4194652, ms: 247, grains: 36, grain_ms: 9, low_hz: 1050, high_hz: 7139, tone_hz: 0, overtone_hz: 0, tone_ms: 0, tone_level: 0, level: 88 }
+source:
+  kind: recorded
+  origin: "Fantozzi, footsteps on grass, sand and stone"
+  file: "Fantozzi-SandR3.flac"
+  url: "https://opengameart.org/content/fantozzis-footsteps-grasssand-stone"
+  licence: CC0-1.0

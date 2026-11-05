@@ -1,5 +1,9 @@
-# Made from this recipe while building: see compile/src/sound_pack/synth/README.md.
+# Written by compile/src/sound_pack import. A re-import replaces it.
 name: place_1
 family: metal
-source: { kind: synth }
-recipe: { seed: 830234141, ms: 92, grains: 2, grain_ms: 4, low_hz: 582, high_hz: 4337, tone_hz: 1379, overtone_hz: 3215, tone_ms: 90, tone_level: 100, level: 72 }
+source:
+  kind: recorded
+  origin: "Brian MacIntosh (BMacZero), Metal Impact Sounds"
+  file: "thud2.wav"
+  url: "https://opengameart.org/content/metal-impact-sounds"
+  licence: CC0-1.0
