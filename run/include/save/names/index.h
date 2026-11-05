@@ -53,7 +53,7 @@ static_assert(offsetof(save_names_view_t, total_bytes) == 8);
 static_assert(offsetof(save_names_view_t, count) == 16);
 static_assert(offsetof(save_names_view_t, names_bytes) == 20);
 
-/* This build's table: how many it has, what the one at this id is called, and a name's hash over all of them in order, with their NULs. */
+/* This build's table: how many it has, and what the one at this id is called. */
 uint32_t save_names_live_count(save_names_kind_t kind);
 const char *save_names_live_name(save_names_kind_t kind, uint32_t id);
 
