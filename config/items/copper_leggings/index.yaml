@@ -1,0 +1,5 @@
+name: copper_leggings
+texture: items/copper_leggings
+stack: 1
+durability: 165
+armor: { slot: legs, points: 3 }

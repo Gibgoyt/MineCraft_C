@@ -1,0 +1,5 @@
+name: copper_helmet
+texture: items/copper_helmet
+stack: 1
+durability: 121
+armor: { slot: head, points: 2 }

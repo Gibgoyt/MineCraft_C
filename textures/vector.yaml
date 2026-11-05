@@ -346,7 +346,11 @@ needs:
     - clay_ball
     - coal
     - cookie
+    - copper_boots
+    - copper_chestplate
+    - copper_helmet
     - copper_ingot
+    - copper_leggings
     - diamond
     - diamond_axe
     - diamond_boots
