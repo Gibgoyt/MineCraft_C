@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 1: Calendar and the weekly pause
 
-**Status:** in progress   (updated 2026-11-06)
+**Status:** done, waiting on Ahmed's gate   (updated 2026-11-06)
 
 Read `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` first, then section 4 of the master plan, `plans/004-ahmed-bohemoth-climate-system.md`. This file is the breakdown of the master plan's phase 01. Where the code made part of the master plan impossible as written, this file says so in **Issues found**, and the design below follows the default given there.
 
@@ -728,6 +728,18 @@ A quick look without playing for hours: the headless test makes the census scree
 ## Commits
 
 Appended as they land:
+
+- `e6d90e1` Rename terrain/climate to terrain/fields.
+- `8148786` REPO_STRUCTURE for the rename.
+- `c16200d` Tick the rename in this file.
+- `b2428d8` The calendar, `run_calendar`, the lint row.
+- `47fbac9` The world clock, the census trigger, hook and latch, the save section, the census screen, the session, the HUD date line and `show_date`, and their tests.
+- `8823b42` REPO_STRUCTURE for the calendar, the census screen and their tests.
+- `b659ed1` The calendar save tests moved to their own ctest, `run_save_state_calendar` (Issues found 13).
+- `260388c` REPO_STRUCTURE for `tests/run/save/state/calendar/`.
+- `780b251` Todos ticked and issues 7 to 16 logged in this file.
+
+Verification, 2026-11-06: debug, the eight terrain tests pass and `run_terrain_fields` prints `0xB97D2A98FDF4D13A`; the phase's list of 15 (with `run_save_state_calendar`) passes; the whole suite passes, 122 of 122 in 1784 s. The release build links with no warning, so `main()`'s frame is still under 16 KiB. On release the four terrain tests pass and `run_terrain_fields` prints `0xB97D2A98FDF4D13A` again. `pgrep -a minecraft_c` printed nothing after each run. The Gate is Ahmed's and has not been played.
 
 ## Issues found
 
