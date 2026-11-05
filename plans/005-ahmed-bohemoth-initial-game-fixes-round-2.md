@@ -17,14 +17,15 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 1 | The tree feller must always be on, not need an axe | `...-phase-01-tree-feller-always-on.md` | Plan 003's "axes only" default | Not started |
 | 2 | Doors can't be placed | `...-phase-02-doors.md` | Door blocks were never added | Not started |
 | 3 | Turn off zombies, skeletons and creepers, for Ahmed's own mobs later | `...-phase-03-turn-off-hostile-mobs.md` | Data change: `weight: 0` | Not started |
-| 4 | Sheep, and a bed, to sleep through the night | `...-phase-04-sheep-wool-bed.md` | No sheep or wool exist; the bed's recipe uses wheat | Not started |
+| 4 | Animals with males and females: cattle, sheep, pigs, goats, mountain goats, chickens. Females give milk or eggs, males are food. A bed from wool | `...-phase-04-animals.md` | No animals, wool, hides or meat exist; mobs spawn only in the dark; a bed works but needs wheat | Not started |
 | 5 | No armour bar | `...-phase-05-armour-bar.md` | It was never drawn | Not started |
 | 6 | Woodworking bench can't make planks or sticks, overlaps the table; a stoneworking bench; the table only makes benches | `...-phase-06-crafting-stations.md` | Planks and sticks were kept on the table to reach the bench | **Blocked: Ahmed's Hypixel research** |
 | 7 | Very laggy after a long time in another window | `...-phase-07-lag-after-alt-tab.md` | Likely the world filling to its 70-mob cap while it never paused. Not proven | Not started |
 | 8 | Can't see very far; what's a chunk? | `...-phase-08-render-distance.md` | Working as set: 32 chunks is 512 blocks, and nothing is drawn past full detail at 32 | Not started |
 | 9 | Use Minecraft's default textures, not Pixel Perfection: download it, keep Pixel Perfection | `...-phase-09-default-textures.md` | The repo is public, and the texture folders hold the pixels too, so the default pack goes in a git-ignored copy | Not started |
 | 10 | A translucent blue preview of a block before placing it, like Hypixel | `...-phase-10-placement-preview.md` | Only an outline of the aimed-at block exists | Not started |
-| 11 | Stoneworking and iron-working benches; wooden, stone and iron tools; maybe a 2×2×1 smith table for metal ores, metal tools and all armour | Added to `...-phase-06-crafting-stations.md` | New stations | Part of phase 6 |
+| 11 | Stations: stoneworking bench, a 2×2×1 smith table for iron, copper and gold, a leather tanning rack and a leather workbench. **No** iron-working bench. No armour without the leather workbench. Realistic furnaces | `...-phase-06-crafting-stations.md` | New stations | Part of phase 6 |
+| 12 | More ores and alloys: chromium ore with its spawn rate in YAML, and stainless steel from 9 iron and 1 chromium | `...-phase-11-ores-and-alloys.md` | Ores are a table in code, not YAML; no alloys exist | Not started |
 
 ## Order to build
 
@@ -36,10 +37,11 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 4 | 5 Armour bar | Small |
 | 5 | 8 Render distance | Small, and needs a measurement |
 | 6 | 2 Doors | Bigger, and if Ahmed picks a real block state, that comes first |
-| 7 | 4 Sheep and bed | Needs phase 3's spawn changes |
+| 7 | 4 Animals | Needs phase 3's spawn changes, and gives the hides phase 6 needs |
 | 8 | 9 Default textures | Independent of the rest; ready to go |
-| 9 | 10 Placement preview | Best after doors and stations exist, so it knows every shape |
-| 10 | 6 Crafting stations | When Ahmed's research is done |
+| 9 | 11 Ores and alloys | Moving ores to YAML can go any time. Alloys need phase 6's smith table |
+| 10 | 6 Crafting stations | When Ahmed's research is done. Needs phases 4 and 11 |
+| 11 | 10 Placement preview | Best last, so it knows every shape; rotating needs phase 2's block state |
 
 ## Questions for Ahmed
 
@@ -48,18 +50,29 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 1 | Keep sneak to chop one log? | No: always on, no exceptions |
 | 2 | Doors as 16 blocks each, or build a real block state first? | **Recommended: a block state first**; until then, 16 blocks each |
 | 4 | Should the bed be two blocks long like Minecraft's? | No, it stays one |
-| 6 | The order of stations, and where mixed materials such as torches and iron tools go | **No default: blocks phase 6** |
+| 4 | Breeding, now that animals are male and female? | Not in this plan |
+| 4 | Do bulls, rams and billy goats fight back? | No, all flee |
+| 6 | The order of stations, and where torches, beds and bows go | **No default: blocks phase 6** |
+| 6 | A blast furnace for iron, chromium and alloys, with the furnace for copper, gold, food and glass? | Yes |
+| 6 | How much metal turns a leather armour piece into a metal one? | Minecraft's ingot count for that piece |
 | 7 | Pause when the window loses focus? | Yes, with a setting |
-| 6 | Is the smith table the iron-working bench, or are both wanted? | One station: the smith table |
-| 6 | Does "any metal" include diamond tools, and "armour only here" include leather? | Yes to both |
-| 10 | When placing would fail, show nothing or red? | Nothing |
+| 10 | Which key rotates the preview? | R |
+| 11 | Do 9 iron + 1 chromium make 10 stainless steel? | Yes, 10 |
+| 11 | Which more ores: tin, zinc, nickel, silver? | None until Ahmed picks |
 
 ## Decisions Ahmed has made
 
 | Date | Decision |
 |---|---|
 | 2026-11-05 | Default textures: downloaded from Mojang, kept out of git, with Pixel Perfection kept |
-| 2026-11-05 | Stations: woodworking, stoneworking, iron-working, and maybe a 2×2×1 smith table that alone makes armour |
+| 2026-11-05 | Stations: woodworking, stoneworking, and a 2×2×1 smith table |
+| 2026-11-06 | **No iron-working bench.** The smith table works iron, copper and gold, and alloys |
+| 2026-11-06 | Diamond can't be worked by anything for now, and that's fine |
+| 2026-11-06 | Leather tanning rack and leather workbench, like Hytale. No armour without the leather workbench |
+| 2026-11-06 | A failed placement shows red, and the preview can be rotated |
+| 2026-11-06 | Animals are male or female. Only females give milk or eggs. Goats give hides, not wool. Mountain goats live in mountains |
+| 2026-11-06 | Stainless steel is 9 iron + 1 chromium. Chromium ore, with its spawn rate in its YAML |
+| 2026-11-06 | It should feel like a real game, not a Minecraft sandbox |
 
 ## How to test the game now
 
