@@ -69,6 +69,9 @@ Appended as they land:
 - `cc0f2e3` Add stairs of acacia, birch, cherry, dark oak, jungle, mangrove and spruce, each made from its own planks on a table in its own colour, and test that each wood makes its own and mixed planks make nothing.
 - `292d1f7` List the stairs test directory in the repository structure.
 - `79248ce` Record phase 3 of the game fixes in its plan file: every box an agent can tick, the results, what was found on the way, and that only Ahmed is left.
+- `fcdbc4d` Play stairs through the built program: mangrove planks on a real table make four stairs, two go down, one is mined back, and all of it is saved and opened again.
+- `ad472f0` Name the stairs playthrough and the seed the day now uses in the repository structure.
+- `bd2998b` Record the gate check of stairs in its plan file: played through the built program, the whole suite in one run, and that only Ahmed is left.
 
 ## Issues found
 
