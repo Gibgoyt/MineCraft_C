@@ -12,11 +12,11 @@
 - `player_interaction_tick`: one tick of both buttons.
 - `player_interaction_progress`: how far along the block being mined is, for Stage 09.5's breaking overlay.
 - `player_interaction_drops_spawn`, `player_interaction_drop_next`: rolls a block's table into the ring; takes the oldest out of it.
-- `player_interaction_stack_break`: what stood on a block just broken goes with it, for whatever else breaks one: `run/src/player/felling/`.
+- `player_interaction_stack_break`: what stood on a block just broken, and what hung on its sides, goes with it, for whatever else breaks one: `run/src/player/felling/`.
 - `player_interaction_hand_give`, `player_interaction_hand_set`, `player_interaction_hand_take`: the one slot placing takes from.
 
 **May be called by:** `run/src/player/`. `run/src/game/` takes the drops from `player_interaction_drop_next` and sets the hand to the hotbar slot in hand with `player_interaction_hand_set`, or in a run with no inventory gives what is picked up to `player_interaction_hand_take`, and `player_interaction_hold_tool` and `player_interaction_hold_speed` with what `run/src/item/equipment/` says of that slot.
-**Depends on:** `world/edit`, `world/map`, `physics/collision`, `physics/raycast`, `player/camera` and `player/movement` for their types, `player/felling` for what a log cut with an axe sets going, and the generated `tables/blocks`.
+**Depends on:** `world/edit`, `world/map`, `world/wall_torch`, `physics/collision`, `physics/raycast`, `player/camera` and `player/movement` for their types, `player/felling` for what a log cut with an axe sets going, and the generated `tables/blocks`.
 
 ## Mining
 
@@ -36,7 +36,8 @@ So dirt by hand is 15 ticks, stone by hand is 150 with nothing to show for it, a
 - Letting go, aiming at something else, or the block changing starts the count again.
 - After a break that took more than a tick, nothing is mined for 5 ticks. What breaks at a touch can be swept through, one a tick.
 - A log (`log: true`) cut with an axe, not sneaking, sets going what `run/src/player/felling/` does with the rest of its tree, if `borrowed_felling` is given.
-- What stands on the ground (`cross crop torch`) goes with what it stood on, up to 32 of them, and gives what it would to a hand. No other module does this: `world/tick` only takes crops off what is no longer farmland, with no drops.
+- A torch goes by the face aimed at: on a side it hangs from that block, one of the four `torch_wall_*`, on a top it stands, and on an underside it does not go at all. Aimed at the side of what is not solid, it stands on the floor if there is one. What is held and counted stays `torch`, whichever it became.
+- What stands on the ground (`cross crop torch`) goes with what it stood on, up to 32 of them, and gives what it would to a hand. So does a torch hanging from one of the block's four sides. No other module does this: `world/tick` only takes crops off what is no longer farmland, with no drops.
 
 ## Drops
 

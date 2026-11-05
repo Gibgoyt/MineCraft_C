@@ -32,4 +32,5 @@ Amanatides & Woo 1987, in `float64_t`. Each next wall's distance is worked out f
 | `shape: cross` | Three quarters of the cell's width and all its height, around two plates no one could aim at |
 | `shape: crop` | The whole cell |
 | `shape: torch` | Twice the stick's width, and its height |
+| `shape: torch_east` and the others on a wall | Around all its steps, from the wall out, and twice the stick's width across |
 | `shape: thin` | The plate as drawn: the +y side, or the floor for a lily pad |

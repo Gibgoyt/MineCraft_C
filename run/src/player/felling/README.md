@@ -13,7 +13,7 @@
 - `player_felling_pending`: logs waiting.
 
 **May be called by:** `run/src/game/` for the start and the tick, which says how many uses the axe has left and reads `felled_count` and `last_block`, and `run/src/player/interaction/` for the cut.
-**Depends on:** `player/interaction` for the hands' ring, their counts and what stood on a log, `world/edit`, `world/map`, `world/tick` for the leaves, and the generated `tables/blocks`.
+**Depends on:** `player/interaction` for the hands' ring, their counts and what stood on a log, `world/edit`, `world/map`, `world/tick` for the leaves, `world/wall_torch`, as each of a log's sides may have a torch to drop, and the generated `tables/blocks`.
 
 ## What counts as the tree
 

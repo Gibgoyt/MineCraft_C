@@ -193,6 +193,14 @@ static uint8_t frame_shape_of(uint32_t block) {
         return TRAVERSE_SHAPE_TORCH;
     case BLOCK_SHAPE_THIN:
         return block == BLOCK_ID_LILY_PAD ? TRAVERSE_SHAPE_FLAT : TRAVERSE_SHAPE_PLATE;
+    case BLOCK_SHAPE_TORCH_EAST:
+        return TRAVERSE_SHAPE_TORCH_EAST;
+    case BLOCK_SHAPE_TORCH_WEST:
+        return TRAVERSE_SHAPE_TORCH_WEST;
+    case BLOCK_SHAPE_TORCH_NORTH:
+        return TRAVERSE_SHAPE_TORCH_NORTH;
+    case BLOCK_SHAPE_TORCH_SOUTH:
+        return TRAVERSE_SHAPE_TORCH_SOUTH;
     case BLOCK_SHAPE_NONE:
     case BLOCK_SHAPE_CUBE:
     case BLOCK_SHAPE_FLUID:

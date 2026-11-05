@@ -784,6 +784,52 @@ TEST(what_stood_on_a_log_goes_with_it) {
     pf_end(rig);
 }
 
+TEST(a_torch_on_a_log_goes_with_it_and_gives_itself_up) {
+    pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
+    REQUIRE(pf_begin(t, rig));
+    pf_trunk(t, rig, PF_X, PF_Y, PF_Z, PF_Z + 4, BLOCK_ID_OAK_LOG);
+    pf_put(t, rig, PF_X + 1, PF_Y, PF_Z + 4, BLOCK_ID_OAK_LEAVES);
+    pf_put(t, rig, PF_X + 1, PF_Y, PF_Z + 3, BLOCK_ID_TORCH_WALL_EAST);
+    pf_put(t, rig, PF_X - 1, PF_Y, PF_Z + 3, BLOCK_ID_TORCH_WALL_WEST);
+    pf_put(t, rig, PF_X, PF_Y + 1, PF_Z + 3, BLOCK_ID_TORCH_WALL_NORTH);
+    pf_put(t, rig, PF_X, PF_Y - 1, PF_Z + 3, BLOCK_ID_TORCH_WALL_SOUTH);
+    REQUIRE(pf_chop(rig, PF_X, PF_Y, PF_Z));
+    REQUIRE(pf_settle(rig));
+    CHECK_EQ_U64(pf_block(rig, PF_X + 1, PF_Y, PF_Z + 3), BLOCK_ID_AIR);
+    CHECK_EQ_U64(pf_block(rig, PF_X - 1, PF_Y, PF_Z + 3), BLOCK_ID_AIR);
+    CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y + 1, PF_Z + 3), BLOCK_ID_AIR);
+    CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y - 1, PF_Z + 3), BLOCK_ID_AIR);
+    CHECK_EQ_U64(rig->hands.drops_lost_count, 0u);
+    pf_end(rig);
+}
+
+/* Five drops to a log, and a full ring loses the oldest: so it waits while no one takes them. */
+TEST(a_log_with_a_torch_on_every_side_waits_for_room_in_the_ring_and_nothing_is_lost) {
+    pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
+    REQUIRE(pf_begin(t, rig));
+    enum : int32_t { PF_TORCH_LOGS = 12 };
+    pf_trunk(t, rig, PF_X, PF_Y, PF_Z, PF_Z + PF_TORCH_LOGS - 1, BLOCK_ID_OAK_LOG);
+    pf_put(t, rig, PF_X, PF_Y, PF_Z + PF_TORCH_LOGS, BLOCK_ID_OAK_LEAVES);
+    for (int32_t z = PF_Z; z < PF_Z + PF_TORCH_LOGS; z++) {
+        pf_put(t, rig, PF_X + 1, PF_Y, z, BLOCK_ID_TORCH_WALL_EAST);
+        pf_put(t, rig, PF_X - 1, PF_Y, z, BLOCK_ID_TORCH_WALL_WEST);
+        pf_put(t, rig, PF_X, PF_Y + 1, z, BLOCK_ID_TORCH_WALL_NORTH);
+        pf_put(t, rig, PF_X, PF_Y - 1, z, BLOCK_ID_TORCH_WALL_SOUTH);
+    }
+    REQUIRE(pf_chop(rig, PF_X, PF_Y, PF_Z));
+    rig->drain = 0u;
+    for (uint32_t tick = 0u; tick < 40u; tick++) {
+        pf_tick(rig, false);
+    }
+    CHECK_EQ_U64(rig->hands.drops_lost_count, 0u);
+    rig->drain = 1u;
+    REQUIRE(pf_settle(rig));
+    CHECK_EQ_U64(rig->hands.drops_lost_count, 0u);
+    CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y, PF_Z + PF_TORCH_LOGS - 1), BLOCK_ID_AIR);
+    CHECK_EQ_U64(pf_block(rig, PF_X + 1, PF_Y, PF_Z + PF_TORCH_LOGS - 1), BLOCK_ID_AIR);
+    pf_end(rig);
+}
+
 TEST(a_tree_beside_it_keeps_its_leaves) {
     pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
     REQUIRE(pf_begin(t, rig));

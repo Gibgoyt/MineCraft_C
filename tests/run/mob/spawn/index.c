@@ -303,8 +303,9 @@ TEST(only_a_whole_opaque_block_is_a_floor) {
         ms_put(t, &rig, MS_PLACE_X, MS_PLACE_Y, -1, GOOD[i]);
         CHECK_EQ_U64(ms_check_at(&rig, MOB_ID_ZOMBIE, MS_PLACE_X, MS_PLACE_Y, 0, &view, 7u), MOB_SPAWN_OK);
     }
-    static const uint16_t BAD[] = {BLOCK_ID_AIR,   BLOCK_ID_GLASS, BLOCK_ID_OAK_LEAVES, BLOCK_ID_OAK_SLAB,
-                                   BLOCK_ID_WATER, BLOCK_ID_LAVA,  BLOCK_ID_BEDROCK,    BLOCK_ID_TORCH};
+    static const uint16_t BAD[] = {BLOCK_ID_AIR,      BLOCK_ID_GLASS, BLOCK_ID_OAK_LEAVES,
+                                   BLOCK_ID_OAK_SLAB, BLOCK_ID_WATER, BLOCK_ID_LAVA,
+                                   BLOCK_ID_BEDROCK,  BLOCK_ID_TORCH, BLOCK_ID_TORCH_WALL_EAST};
     for (uint32_t i = 0u; i < sizeof(BAD) / sizeof(BAD[0]); i++) {
         ms_put(t, &rig, MS_PLACE_X, MS_PLACE_Y, -1, BAD[i]);
         CHECK_EQ_U64(ms_check_at(&rig, MOB_ID_ZOMBIE, MS_PLACE_X, MS_PLACE_Y, 0, &view, 7u), MOB_SPAWN_BAD_SURFACE);

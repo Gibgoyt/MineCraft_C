@@ -3,6 +3,7 @@
 
 #include "assert/index.h"
 #include "tables/blocks/index.h"
+#include "world/wall_torch/index.h"
 
 #include <math.h>
 #include <string.h>
@@ -380,6 +381,21 @@ static bool explosion_needs_ground(uint16_t block) {
     return shape == BLOCK_SHAPE_CROSS || shape == BLOCK_SHAPE_CROP || shape == BLOCK_SHAPE_TORCH;
 }
 
+/* What hung on a block's sides goes with it, whether or not the blast would have reached it. */
+static void explosion_wall_torches_break(explosion_t *explosion, world_edit_t *edit, item_drop_store_t *drops,
+                                         const int32_t cell[COLLISION_AXES], float64_t power, uint32_t *broken) {
+    for (uint32_t side = 0u; side < WALL_TORCH_SIDES; side++) {
+        int32_t out_x = 0, out_y = 0;
+        (void)wall_torch_out(WALL_TORCH_BLOCKS[side], &out_x, &out_y);
+        const int32_t there[COLLISION_AXES] = {cell[0] + out_x, cell[1] + out_y, cell[2]};
+        uint16_t block = BLOCK_ID_AIR;
+        if (world_map_block_get(edit->borrowed_map, there[0], there[1], there[2], &block) == WORLD_MAP_STATUS_OK &&
+            block == WALL_TORCH_BLOCKS[side]) {
+            (void)explosion_break_one(explosion, edit, drops, block, there, power, broken);
+        }
+    }
+}
+
 uint32_t explosion_finish(explosion_t *explosion, world_edit_t *edit, item_drop_store_t *drops, float64_t power) {
     uint32_t broken = 0u;
     for (uint32_t i = 0u; i < explosion->count; i++) {
@@ -388,6 +404,7 @@ uint32_t explosion_finish(explosion_t *explosion, world_edit_t *edit, item_drop_
         if (!explosion_break_one(explosion, edit, drops, listed->block, cell, power, &broken)) {
             continue;
         }
+        explosion_wall_torches_break(explosion, edit, drops, cell, power, &broken);
         for (uint32_t up = 0u; up < EXPLOSION_STACK_MAX; up++) {
             cell[2]++;
             uint16_t block = BLOCK_ID_AIR;

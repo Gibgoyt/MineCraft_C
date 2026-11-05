@@ -29,7 +29,7 @@ Each round finds the earliest moment any box's faces meet on every axis at once:
 
 | In `config/blocks/` | Boxes |
 |---|---|
-| Not `solid`: air, fluids, plants, torches, ladders, vines, lily pads | None |
+| Not `solid`: air, fluids, plants, torches on a floor or a wall, ladders, vines, lily pads | None |
 | `shape: slab` | The lower half |
 | `shape: stairs` | The lower half, and the upper half of the north side: a block has no facing yet |
 | Anything else solid | The whole cell |

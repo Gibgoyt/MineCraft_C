@@ -8,6 +8,8 @@ materials:
   - { texture: blocks/torch_floor, emissive: 14, min_luma: 130, warm: true }
   - { texture: blocks/torch_wall, emissive: 14, min_luma: 130, warm: true }
   - { texture: blocks/torch_ceiling, emissive: 14, min_luma: 130, warm: true }
+  - { texture: blocks/torch_lean_side, emissive: 14, min_luma: 130, warm: true }
+  - { texture: blocks/torch_lean_cap, emissive: 14, min_luma: 130, warm: true }
   - { texture: blocks/furnace_front_lit, emissive: 13, min_luma: 90, warm: true, alpha: opaque }
   - { texture: blocks/tnt_top_burning, emissive: 8 }
   - { texture: blocks/jack_o_lantern, emissive: 15, min_luma: 150, warm: true }
@@ -286,6 +288,8 @@ needs:
     - tnt_top_burning
     - torch_ceiling
     - torch_floor
+    - torch_lean_cap
+    - torch_lean_side
     - torch_wall
     - tuff
     - tulip

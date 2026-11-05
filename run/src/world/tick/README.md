@@ -20,11 +20,11 @@
 - `world_tick_pending`: voxels waiting for a tick.
 
 **May be called by:** `run/src/world/`, `game`.
-**Depends on:** `world/section`, `world/column`, `world/map`, `world/edit`, `arena`, `assert`, and the generated `tables/blocks/`.
+**Depends on:** `world/section`, `world/column`, `world/map`, `world/edit`, `world/wall_torch`, `arena`, `assert`, and the generated `tables/blocks/`.
 
 ## How a change gets noticed
 
-This reads the edit log, with a cursor of its own, as `world/light` does. Nobody has to call it about an edit. Each record wakes the voxel and its six neighbours, and of those only what could do something gets a tick: a fluid, a block that falls with room to, wheat, farmland.
+This reads the edit log, with a cursor of its own, as `world/light` does. Nobody has to call it about an edit. Each record wakes the voxel and its six neighbours, and of those only what could do something gets a tick: a fluid, a block that falls with room to, wheat, farmland, a torch on a wall.
 
 So terrain does nothing until something touches it. A column coming in writes past the log, and generated water stays as it was made, however it hangs, until a block next to it changes. That is on purpose: otherwise every cave wall with an aquifer behind it would start to run as the player walked past.
 
@@ -66,7 +66,7 @@ If a neighbouring column is not loaded, step 3 cannot be trusted, so it keeps it
 
 Sideways it goes only towards the nearest way down within reach, 3 steps past the voxel beside it for water and 1 for lava, and to every direction that ties. With none in reach, it goes all ways. It runs through what it could enter and through its own kind, but not through a source.
 
-**What it enters:** air, and things small enough to wash away: `cross`, `crop` and `torch` shapes. Not `kelp` or `seagrass`, which live in water, and not `thin`: a ladder holds water back. What water washes away, a falling block buries, leaves that decay and a crop left with no farmland under it go in a ring, for `world_tick_broken_next`: `run/src/game/` rolls their drops and puts them on the ground. Lava burns what it enters to nothing, and a flowing fluid does not yet carry an item along.
+**What it enters:** air, and things small enough to wash away: `cross`, `crop` and `torch` shapes, and a torch on a wall. Not `kelp` or `seagrass`, which live in water, and not `thin`: a ladder holds water back. What water washes away, a falling block buries, leaves that decay, a crop left with no farmland under it and a torch whose wall went by any way but mining or a blast go in a ring, for `world_tick_broken_next`: `run/src/game/` rolls their drops and puts them on the ground. Lava burns what it enters to nothing, and a flowing fluid does not yet carry an item along.
 
 **Lava and water.** Lava with water beside it or above it hardens when its tick comes: a source to obsidian, flowing lava to cobblestone. Lava going down into water leaves stone there. Water does not enter lava.
 

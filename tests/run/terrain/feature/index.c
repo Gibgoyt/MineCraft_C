@@ -47,14 +47,16 @@ static const uint64_t FEA_WORLD = 0x1234567890ABCDEFull;
 /* The land each TERRAIN_GENERATOR_VERSION makes, by that version, as a save is held to it. If this test says the land has changed and that is meant, raise the version
  * and add a row with a line saying why. Changing a row leaves worlds saved on the old land opening on the new. */
 static const uint64_t FEA_DIGEST_OF_GENERATOR[] = {
-    0u,                    /* no generator: a save of a format from before they had one */
-    0x83D8E5C1176914F4ull, /* 1: plan 003 phase 8, the land its 7 stages ended on */
+    0u, /* no generator: a save of a format from before they had one */
+    /* 1: plan 003 phase 8, the land its 7 stages ended on. The version stays: plan 003 phase 2 moved block numbers and not the land (its issue 2). */
+    0x3F7EB8177D0CF7B4ull,
 };
 static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0]) == TERRAIN_GENERATOR_VERSION + 1u);
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 003 phase 8 stage 5 brought spaghetti closer together and dried out most aquifer cells. */
-static const uint64_t FEA_FOREST_PIN = 0xAB5C1A83C5FB475Dull;
+/* Plan 003 phase 2 added four blocks. The land is the same, as its issue 2 shows: the numbers of the blocks after them in the alphabet moved. */
+static const uint64_t FEA_FOREST_PIN = 0x4D8EFDA3AA086B1Dull;
 
 static uint64_t fea_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

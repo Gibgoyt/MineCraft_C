@@ -73,6 +73,28 @@ static __constant__ const traverse_box_t traverse_boxes[] = {
     {{14, 14, 0}, {18, 18, 20}}, /* 9: torch: two texels wide and ten tall, where the texture has it */
     {{0, 30, 0}, {32, 32, 32}},  /* 10: plate */
     {{0, 0, 0}, {32, 32, 2}},    /* 11: flat */
+    /* A torch on a wall: a stick two texels square, from the wall at a quarter of the height to a flame near the top, a texel further
+     * out with each two up. The table holds boxes along the axes, so it leans by steps. Each block is named for the way it leans. */
+    {{0, 14, 6}, {4, 18, 10}},    /* 12: leaning east, at the wall */
+    {{2, 14, 10}, {6, 18, 14}},   /* 13 */
+    {{4, 14, 14}, {8, 18, 18}},   /* 14 */
+    {{6, 14, 18}, {10, 18, 22}},  /* 15 */
+    {{8, 14, 22}, {12, 18, 28}},  /* 16: its flame */
+    {{28, 14, 6}, {32, 18, 10}},  /* 17: leaning west, at the wall */
+    {{26, 14, 10}, {30, 18, 14}}, /* 18 */
+    {{24, 14, 14}, {28, 18, 18}}, /* 19 */
+    {{22, 14, 18}, {26, 18, 22}}, /* 20 */
+    {{20, 14, 22}, {24, 18, 28}}, /* 21: its flame */
+    {{14, 0, 6}, {18, 4, 10}},    /* 22: leaning north, at the wall */
+    {{14, 2, 10}, {18, 6, 14}},   /* 23 */
+    {{14, 4, 14}, {18, 8, 18}},   /* 24 */
+    {{14, 6, 18}, {18, 10, 22}},  /* 25 */
+    {{14, 8, 22}, {18, 12, 28}},  /* 26: its flame */
+    {{14, 28, 6}, {18, 32, 10}},  /* 27: leaning south, at the wall */
+    {{14, 26, 10}, {18, 30, 14}}, /* 28 */
+    {{14, 24, 14}, {18, 28, 18}}, /* 29 */
+    {{14, 22, 18}, {18, 26, 22}}, /* 30 */
+    {{14, 20, 22}, {18, 24, 28}}, /* 31: its flame */
 };
 static __constant__ const traverse_shape_row_t traverse_shape_rows[TRAVERSE_SHAPE_COUNT] = {
     {0u, 1u},  /* TRAVERSE_SHAPE_CUBE */
@@ -83,6 +105,10 @@ static __constant__ const traverse_shape_row_t traverse_shape_rows[TRAVERSE_SHAP
     {9u, 1u},  /* TRAVERSE_SHAPE_TORCH */
     {10u, 1u}, /* TRAVERSE_SHAPE_PLATE */
     {11u, 1u}, /* TRAVERSE_SHAPE_FLAT */
+    {12u, 5u}, /* TRAVERSE_SHAPE_TORCH_EAST */
+    {17u, 5u}, /* TRAVERSE_SHAPE_TORCH_WEST */
+    {22u, 5u}, /* TRAVERSE_SHAPE_TORCH_NORTH */
+    {27u, 5u}, /* TRAVERSE_SHAPE_TORCH_SOUTH */
 };
 
 /* A pixel's unit direction: see traverse_camera_t. Shade and post need the same ray as traversal did. */

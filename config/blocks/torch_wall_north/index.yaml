@@ -1,0 +1,6 @@
+name: torch_wall_north
+hardness: 0
+drops: [{ item: torch, count: 1 }]
+shape: torch_north
+light: 14
+texture: { top: blocks/torch_lean_cap, bottom: blocks/torch_lean_cap, side: blocks/torch_lean_side }
