@@ -1,6 +1,6 @@
 # 003-ahmed-bohemoth-initial-game-fixes — phase 6: Copper armour
 
-**Status:** in progress: everything an agent can do is done and checked, the whole debug suite 110 of 110 (run in pieces: issue 2). Only Ahmed's own check is left   (updated 2026-11-05)
+**Status:** in progress: everything an agent can do is done and checked, the whole debug suite 110 of 110 in one run, and copper played through the built program (issue 7). Only Ahmed's own check is left   (updated 2026-11-05)
 
 ## Goal
 
@@ -42,7 +42,7 @@ No game code needs changing. Armour is read from each item's YAML, and `equipmen
 ## Verification
 
     tools/test-or-build.sh cmake --build --preset debug
-    tools/test-or-build.sh timeout 600 ctest --preset debug -R '^(run_item_crafting|run_item_equipment|run_save_state|compile_game_tables|compile_texture_vector|standards_lint|clang_format)$' --output-on-failure
+    tools/test-or-build.sh timeout 600 ctest --preset debug -R '^(run_item_crafting|run_item_crafting_copper|run_item_equipment|run_item_equipment_copper|run_save_state|compile_game_tables|compile_texture_vector|standards_lint|clang_format)$' --output-on-failure
     pgrep -a minecraft_c    # must print nothing
 
 - [ ] Ahmed: smelt copper, make all four pieces on a crafting table, wear them, and check the pictures look right.
@@ -58,6 +58,16 @@ Results, 2026-11-05, debug preset:
 - The tests catch bad data. With the copper helmet at 3 points and the boots keyed on `iron_nugget`, both copper tests failed: `table.recipe != CRAFTING_NO_RECIPE`, and `armor_points 3 != 2`. Restored afterwards.
 - The pictures were drawn in a sheet next to iron and gold at 12 times size, and they have the same shapes in a copper colour. Ahmed still judges them in the game.
 
+Gate check, in a clean build of this branch with main merged:
+
+| Check | Result |
+|---|---|
+| The Verification commands above | 9 of 9 |
+| Whole debug suite, `ctest --preset debug -j1`, in one run: issue 2 no longer stands | 110 of 110, in 1725 s |
+| `run_item_crafting_copper`, `run_item_equipment_copper`, sanitize preset | 2 of 2 |
+| The built program played by script, debug and release: issue 7 | Smelted, all four made, worn, protecting, wearing out, saved and reopened |
+| `pgrep -af "$PWD/build"` after the last run | Nothing of this worktree's |
+
 ## Commits
 
 Appended as they land:
@@ -67,6 +77,8 @@ Appended as they land:
 - `522fddc` List the two copper armour test directories in the repository structure.
 - `3c52c92` Name the items in the HUD golden pictures, as the nth item that wears moved when copper armour came before diamond in the table.
 - `fd77417` Record copper armour in its plan file: every box an agent can tick, the results, the HUD pictures it moved, and that only Ahmed is left.
+- `bb4f397` Make the copper crafting test say what a missing recipe made, as it read the recipe table at row UINT32_MAX when a pattern made nothing.
+- `533409e` Record the gate check of copper armour in its plan file: the built program played by script, the Verification command that missed its own tests, the whole suite in one run, and that only Ahmed is left.
 
 ## Issues found
 
@@ -83,3 +95,26 @@ Appended as they land:
 **3. Not played in the built program.** Crafting, wearing and wear are tested through `run/src/item/` on real tables, and a worn copper chestplate through `run_save_state`. What the running game does with armour is covered for iron in `run_item_equipment`, and copper takes the same code, as only `armor:` in the YAML says what it is. No script drove copper through the real program. Ahmed's check above covers that.
 
 **4. The work was already in this worktree, uncommitted.** Expected: a clean tree after the merge. Actual: copper's items, recipes, pictures and tests were sitting uncommitted, dated about half an hour before this run's agent started, most likely from an earlier interrupted attempt. Nothing was thrown away: all of it was read against this plan, built and tested as above, and then committed.
+
+**5. Gate check: the phase's own Verification did not run its own tests.** Expected: the command above runs the copper tests. Actual: its `-R` listed the old names, anchored, so it ran 7 and neither `run_item_crafting_copper` nor `run_item_equipment_copper`. The results said they were "added to the list", and only there. Fixed: both are in the command.
+
+**6. Gate check: the crafting test read past its table when a recipe was gone.** Expected: a pattern that makes nothing fails with a message. Actual: three lines read `recipe_defs[crafting_match(...)]`, and `CRAFTING_NO_RECIPE` is `UINT32_MAX`, a read far past the table. Only a broken recipe gets there, so it never showed while the data was right. Fixed in `bb4f397` with a helper, `cc_makes`. With the boots keyed on `iron_nugget` and the leggings on `slot: feet`, both tests failed with messages, such as `cc_makes(cells, CRAFTING_SIDE_TABLE) == piece->item: 0 != 50` and `equipment_armor_slot_of(piece->item) == slot: 3 != 2`, and did not crash. Data restored. Both pass under the sanitize preset. Nothing was wrong in the game.
+
+**7. Gate check: the built program, played by script, closes issue 3.** Expected: Ahmed's words hold in `minecraft_c --headless --menu`. Done, at 640x480, seed 36: the menu made and saved a world. Only then was its state file edited, by a script outside the repo, as in phase 2's issue 10: a furnace, a table, 24 raw copper and 3 coal in the hotbar, with the books and hashes put right. Everything after that was real keys and mouse:
+
+| What | Result |
+|---|---|
+| Smelted on a placed furnace | Report: "24 items smelted, 3 of fuel burned"; picture: 24 ingots in the output |
+| All four on a placed table | Pictures: each pattern, then its piece on the output, with "Copper Helmet, 121 of 121 uses", and 176, 165 and 143 for the others |
+| Worn three ways | Helmet by the right button in hand, chestplate by shift-click, leggings and boots by the pointer. Leggings on the head were refused, staying on the pointer. Report: "10 armor points worn" |
+| Saved and reopened | All four in the state file with their wear, and 10 points after reopening |
+| Protects: the same night of 1600 ticks, in copper and with nothing on, 4 zombie blows of 3 each | Health 14.91 against 10.83. The difference, 4.08, is exactly what the formula gives: 4 x (3 - 1.98) |
+| Wears | 4 blows, wear 4 on every piece; the wear bars show in the inventory |
+| Wears out | Helmet at 120 of 121 and boots at 142 of 143: 2 more blows, "7 armor points worn... 2 pieces of armor have broken", their slots empty, chestplate and leggings worn on by 2 |
+| Dying | All 4 spilled on the ground, by the drops in the state file. 13 blows to die in copper, 8 with nothing on |
+| Copper from ore | A placed `copper_ore` mined with a stone pickaxe dropped 5 `raw_copper`, by the state file |
+| Release | The same smelt, craft and wear script gives the same report, and `inventory_worn.png` byte for byte the same as debug's |
+
+Debug: heap "0 bytes live" at each exit. Also checked: each picture's rows are the same as iron's, with a copper palette; `texture_vector recipes` on a copy of `textures/` changed 0 files. Not in the repo: the scripts were written for this one check, and no test drives copper through the built program. The in-game code is the one iron's tests in `run_item_equipment` hold, so no new test was added. How the pictures look stays Ahmed's.
+
+**8. Gate check, out of scope: the world gives items away by itself.** Seen in the same report as phase 2's issue 13: 119 items dropped in 5251 ticks with nothing mined, on seed 36. Left alone, as it's already written down there.
