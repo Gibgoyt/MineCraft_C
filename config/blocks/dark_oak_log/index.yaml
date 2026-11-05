@@ -1,5 +1,6 @@
 name: dark_oak_log
 hardness: 2
 tool: axe
+log: true
 drops: [{ item: dark_oak_log, count: 1 }]
 texture: { top: blocks/dark_oak_log_top, bottom: blocks/dark_oak_log_top, side: blocks/dark_oak_log }

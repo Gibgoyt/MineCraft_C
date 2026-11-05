@@ -80,6 +80,27 @@ static void game_tool_after_break(game_t *game, uint16_t held_item) {
     (void)equipment_tool_block_broken(&item->equipment, &item->inventory, hands->last_mined);
 }
 
+/* What is left of a tree the hands cut comes down, a few logs a tick. Each is a use of the axe in hand, so it goes no further than that axe does,
+ * and with no axe in hand any more the rest stay. A run with no inventory has an axe's uses without end. */
+static void game_fell_tick(game_t *game) {
+    player_t *const player = game->borrowed_player;
+    item_t *const item = game->borrowed_item;
+    world_t *const world = game->borrowed_world;
+    if (item == nullptr) {
+        const bool axe = player->interaction.held_tool == BLOCK_TOOL_AXE;
+        (void)player_felling_tick(game->borrowed_felling, &player->interaction, &world->edit, &world->tick,
+                                  axe ? UINT32_MAX : 0u);
+        return;
+    }
+    const item_stack_t *const held = inventory_selected(&item->inventory);
+    const uint32_t uses = item_defs[held->item].tool == BLOCK_TOOL_AXE ? equipment_uses_left(held) : 0u;
+    const uint32_t felled =
+        player_felling_tick(game->borrowed_felling, &player->interaction, &world->edit, &world->tick, uses);
+    for (uint32_t i = 0u; i < felled; i++) {
+        (void)equipment_tool_block_broken(&item->equipment, &item->inventory, game->borrowed_felling->last_block);
+    }
+}
+
 /* The right button on a block with a screen brings it up, as it goes down. A held button that comes to rest on one does not, or a screen
  * just closed would come straight back. While a screen is up, or the button is on such a block, the hands do nothing: a chest is not built on,
  * and sneaking is how to build on one. */
@@ -144,7 +165,8 @@ static void game_interact_tick(game_t *game, int64_t tick_ns) {
     item_t *const item = game->borrowed_item;
     if (item == nullptr) {
         game_attack_tick(game, tick_ns);
-        player_interact_tick(player, &game->borrowed_world->edit, tick_ns);
+        player_interact_fell_tick(player, &game->borrowed_world->edit, game->borrowed_felling, tick_ns);
+        game_fell_tick(game);
         return;
     }
     item_hotbar_apply(item);
@@ -165,11 +187,12 @@ static void game_interact_tick(game_t *game, int64_t tick_ns) {
     const uint64_t mined_before = player->interaction.mined_count;
     const uint64_t eaten = player->survival.eaten_count;
     const uint16_t held_item = inventory_selected(&item->inventory)->item;
-    player_interact_tick(player, &game->borrowed_world->edit, tick_ns);
+    player_interact_fell_tick(player, &game->borrowed_world->edit, game->borrowed_felling, tick_ns);
     (void)inventory_selected_take(&item->inventory, before - (uint32_t)player->interaction.hand_count);
     if (player->interaction.mined_count != mined_before) {
         game_tool_after_break(game, held_item);
     }
+    game_fell_tick(game);
     if (player->survival.eaten_count != eaten) {
         (void)inventory_selected_take(&item->inventory, 1u);
         /* What a stew came in stays in hand. A stew stacks to one, so the slot it left is empty. */

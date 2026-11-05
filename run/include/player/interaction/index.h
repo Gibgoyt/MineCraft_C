@@ -61,15 +61,19 @@ typedef struct player_interaction_t {
 static_assert(sizeof(player_interaction_t) == 1152);
 static_assert(alignof(player_interaction_t) == 8);
 
+/* See run/include/player/felling/index.h, which needs what is in here. */
+typedef struct player_felling_t player_felling_t;
+
 /* What one tick is given. All of it is read and none of it kept. */
 typedef struct player_interaction_input_t {
     const player_target_t *borrowed_target;     /* 0: what the player sees outlined */
     const player_movement_t *borrowed_movement; /* 8: the body, which nothing may be placed into */
-    uint8_t attack;                             /* 16: the left button */
-    uint8_t place;                              /* 17: the right button */
-    uint8_t _pad0[6];                           /* 18 */
+    player_felling_t *borrowed_felling; /* 16: what a log cut with an axe sets going, or nullptr for one block */
+    uint8_t attack;                     /* 24: the left button */
+    uint8_t place;                      /* 25: the right button */
+    uint8_t _pad0[6];                   /* 26 */
 } player_interaction_input_t;
-static_assert(sizeof(player_interaction_input_t) == 24);
+static_assert(sizeof(player_interaction_input_t) == 32);
 
 /* Empty hands, nothing under way, and random numbers from this seed. */
 void player_interaction_start(player_interaction_t *interaction, uint64_t seed);
@@ -101,6 +105,10 @@ void player_interaction_tick(player_interaction_t *interaction, world_edit_t *ed
 
 /* Rolls a block's table, as breaking it with the right tool would, and adds what comes out to the ring. */
 void player_interaction_drops_spawn(player_interaction_t *interaction, uint16_t block, int32_t x, int32_t y, int32_t z);
+
+/* What stood on a block just broken goes with it, and gives what it gives to a hand. */
+void player_interaction_stack_break(player_interaction_t *interaction, world_edit_t *edit, int32_t x, int32_t y,
+                                    int32_t z);
 
 /* The oldest drop waiting, which is now the caller's. False if there is none. */
 bool player_interaction_drop_next(player_interaction_t *interaction, player_drop_t *out);

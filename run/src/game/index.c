@@ -414,6 +414,11 @@ bool game_open(game_t *game, const game_config_t *config) {
         job->borrowed_opened = arena_alloc(&game->arena_world, GAME_COLUMN_VOXELS, alignof(uint64_t));
     }
 
+    if (game->borrowed_player != nullptr) {
+        game->borrowed_felling = arena_alloc(&game->arena_world, sizeof(player_felling_t), alignof(player_felling_t));
+        player_felling_start(game->borrowed_felling);
+    }
+
     /* Flying: a little above whatever is at the world's middle, water included, looking out and down. Walking: on dry land near it. */
     int32_t start_x = GAME_WORLD_MIDDLE, start_y = GAME_WORLD_MIDDLE;
     /* A world that has been saved takes up where the player was, with no looking for land. */
@@ -526,6 +531,7 @@ void game_close(game_t *game) {
     }
     render_close(game->borrowed_render);
     world_close(game->borrowed_world);
+    game->borrowed_felling = nullptr;
     game_arenas_stop(game);
     heap_release(&game->owned_region);
     heap_release(&game->owned_view);

@@ -35,6 +35,7 @@ A file that is missing altogether has no line to point at, and is reported as `p
 | `block_drops[BLOCK_DROP_COUNT]` | `block_drop_t`: a block's rows are `first_drop` and `drop_count` of them |
 | `block_drop_items[BLOCK_DROP_ITEM_COUNT]` | Every item in `config/items/`, as anything can lie on the ground, sorted so that row i is the `item_id_t` i + 1, with the block of that name or `BLOCK_NO_ID`, and its `item_id_t` |
 | `block_texture_names[BLOCK_TEXTURE_COUNT]` | `"blocks/dirt"`. Faces index this |
+| `log: true` in a block's file | `BLOCK_FLAG_LOG`: what holds leaves up, and what an axe fells. `run/src/world/tick/` and `run/src/player/felling/` both go by it |
 | `block_shape_t`, `block_tool_t`, `block_tier_t`, `block_face_t`, `BLOCK_FLAG_*` | The words the yaml uses, as numbers |
 
 - **Faces are names, not texture ids.** The ids belong to the blob, and `run/src/texture/registry/` finds them by name. A caller that needs ids makes them once at startup.
