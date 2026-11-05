@@ -66,6 +66,7 @@ Appended as they land:
 - `a0f022c` Test copper armour: each pattern on the table, each piece in its own slot with its points and wear, and a worn piece saved and loaded.
 - `522fddc` List the two copper armour test directories in the repository structure.
 - `3c52c92` Name the items in the HUD golden pictures, as the nth item that wears moved when copper armour came before diamond in the table.
+- `fd77417` Record copper armour in its plan file: every box an agent can tick, the results, the HUD pictures it moved, and that only Ahmed is left.
 
 ## Issues found
 
