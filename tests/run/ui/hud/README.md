@@ -14,6 +14,7 @@ What it holds to:
 - Where things go, by hand, at three sizes; half units by hand; every item has an icon.
 - Random states against a separate model, a pixel at a time on `simd_reference_blend_over`, with every byte of the guard band round the canvas unchanged, at sizes from a pixel to 1080p.
 - A half shows the side nearest the full ones. Slots, counts and wear each change only their own part.
+- Bubbles: 30 ticks each by hand; full, half and empty over the drumsticks, changing nothing else; not there on land; and through the real game, up and gone as air refills.
 - The overlay's numbers change only their own line, and it stays on its panel.
 - No heap and no table memory in 200 frames.
 - Coordinates: a small panel just as wide as its text, each number changing it, below a notice's band, and on the overlay's panel with room for the longest. On the real game, whole blocks from the sim and rounded down past 0, drawn only when the config says, and not twice with F3 up.

@@ -246,6 +246,10 @@ static void model_hud(sheet_t *sheet, const ui_hud_t *hud, const ui_font_t *font
     const int32_t row_y = bar_y - 10 * scale;
     model_row(sheet, &hud->health, &hud->health_empty, bar_x, bar_x + 182 * scale, row_y, scale, state->health, false);
     model_row(sheet, &hud->food, &hud->food_empty, bar_x, bar_x + 182 * scale, row_y, scale, state->food, true);
+    if (state->bubbles_shown != 0u) {
+        model_row(sheet, &hud->air, &hud->air_empty, bar_x, bar_x + 182 * scale, row_y - 10 * scale, scale,
+                  (uint32_t)state->bubbles * 2u, true);
+    }
 }
 
 /* A real item that wears, and one that stacks. */
@@ -274,6 +278,8 @@ static void state_random(ui_hud_state_t *state, uint64_t *rng) {
     state->selected = (uint8_t)(rng_next(rng) % 11u); /* past the end marks none */
     state->health = (uint8_t)(rng_next(rng) % 21u);
     state->food = (uint8_t)(rng_next(rng) % 21u);
+    state->bubbles = (uint8_t)(rng_next(rng) % 11u);
+    state->bubbles_shown = (uint8_t)(rng_next(rng) % 2u);
     for (uint32_t slot = 0u; slot < INVENTORY_HOTBAR_SLOTS; slot++) {
         const uint64_t kind = rng_next(rng) % 4u;
         if (kind == 0u) {
@@ -306,6 +312,20 @@ TEST(half_units_go_up_to_the_next_half_and_stop_at_the_ends) {
     CHECK_EQ_U64(ui_hud_half_units(nan_value, 20u), 0u);
 }
 
+TEST(a_bubble_is_30_ticks_of_air_and_the_last_goes_only_as_the_air_does) {
+    CHECK_EQ_U64(ui_hud_bubbles(0u, 300u), 0u);
+    CHECK_EQ_U64(ui_hud_bubbles(1u, 300u), 1u);
+    CHECK_EQ_U64(ui_hud_bubbles(30u, 300u), 1u);
+    CHECK_EQ_U64(ui_hud_bubbles(31u, 300u), 2u);
+    CHECK_EQ_U64(ui_hud_bubbles(150u, 300u), 5u);
+    CHECK_EQ_U64(ui_hud_bubbles(151u, 300u), 6u);
+    CHECK_EQ_U64(ui_hud_bubbles(270u, 300u), 9u);
+    CHECK_EQ_U64(ui_hud_bubbles(271u, 300u), 10u);
+    CHECK_EQ_U64(ui_hud_bubbles(299u, 300u), 10u);
+    CHECK_EQ_U64(ui_hud_bubbles(300u, 300u), 10u);
+    CHECK_EQ_U64(ui_hud_bubbles(65535u, 300u), 10u);
+}
+
 TEST(things_go_where_the_readme_says_at_three_sizes) {
     ui_hud_layout_t layout = ui_hud_layout(320u, 240u);
     CHECK_EQ_U64(layout.scale, 1u);
@@ -316,6 +336,7 @@ TEST(things_go_where_the_readme_says_at_three_sizes) {
     CHECK_EQ_I64(layout.crosshair.x, 157);
     CHECK_EQ_I64(layout.crosshair.y, 117);
     CHECK_EQ_I64(layout.row_y, 208);
+    CHECK_EQ_I64(layout.air_y, 198);
 
     layout = ui_hud_layout(640u, 480u);
     CHECK_EQ_U64(layout.scale, 2u);
@@ -323,6 +344,7 @@ TEST(things_go_where_the_readme_says_at_three_sizes) {
     CHECK_EQ_I64(layout.hotbar.y, 436);
     CHECK_EQ_I64(layout.crosshair.width, 12);
     CHECK_EQ_I64(layout.row_y, 416);
+    CHECK_EQ_I64(layout.air_y, 396);
 
     layout = ui_hud_layout(1920u, 1080u);
     CHECK_EQ_U64(layout.scale, 4u);
@@ -332,6 +354,7 @@ TEST(things_go_where_the_readme_says_at_three_sizes) {
     CHECK_EQ_I64(layout.crosshair.x, 948);
     CHECK_EQ_I64(layout.crosshair.y, 528);
     CHECK_EQ_I64(layout.row_y, 952);
+    CHECK_EQ_I64(layout.air_y, 912);
 }
 
 TEST(every_item_has_an_icon_and_the_textures_are_the_sizes_this_draws_them_at) {
@@ -349,6 +372,8 @@ TEST(every_item_has_an_icon_and_the_textures_are_the_sizes_this_draws_them_at) {
     CHECK_EQ_U64(hud->crosshair.width, UI_HUD_CROSSHAIR_SIZE);
     CHECK_EQ_U64(hud->health.width, 18u);
     CHECK_EQ_U64(hud->food.width, 18u);
+    CHECK_EQ_U64(hud->air.width, 9u);
+    CHECK_EQ_U64(hud->air_empty.width, 9u);
     /* What the budget in run/src/ui/index.c says about the tables. */
     CHECK(f->ui.arena_tables.used < 1024u * 1024u);
     CHECK_EQ_U64(f->ui.arena_tables.failed_count, 0u);
@@ -795,6 +820,67 @@ static void debug_golden(ui_hud_debug_t *debug) {
     debug->block[2] = -89;
 }
 
+TEST(bubbles_are_full_half_empty_or_not_there_and_only_over_the_drumsticks) {
+    fixture_t *const f = fixture_start(t);
+    REQUIRE(f != nullptr);
+    const ui_hud_layout_t layout = ui_hud_layout(GOLD_WIDTH, GOLD_HEIGHT);
+    sheet_t land = sheet_make(t, GOLD_WIDTH, GOLD_HEIGHT);
+    sheet_t full = sheet_make(t, GOLD_WIDTH, GOLD_HEIGHT);
+    sheet_t half = sheet_make(t, GOLD_WIDTH, GOLD_HEIGHT);
+    sheet_t empty = sheet_make(t, GOLD_WIDTH, GOLD_HEIGHT);
+    sheet_t model = sheet_make(t, GOLD_WIDTH, GOLD_HEIGHT);
+    sheet_t none = sheet_make(t, GOLD_WIDTH, GOLD_HEIGHT);
+    sheet_clear(&none);
+    ui_hud_state_t state;
+    state_golden_full(&state);
+    const int32_t icon = 18; /* at scale 2 */
+    const int32_t right = layout.hotbar.x + layout.hotbar.width;
+    const int32_t top = layout.row_y - 20;
+
+    /* Hidden, whatever the number says: where they would be is only what is under them. */
+    state.bubbles = 10u;
+    state.bubbles_shown = 0u;
+    against_model(t, f, &land, &model, &state);
+    for (int32_t y = top; y < top + icon; y++) {
+        for (int32_t x = right - 10 * icon; x < right; x++) {
+            CHECK_EQ_U64(sheet_at(&land, x, y), sheet_at(&none, x, y));
+        }
+    }
+    state.bubbles_shown = 1u;
+    against_model(t, f, &full, &model, &state);
+    state.bubbles = 5u;
+    against_model(t, f, &half, &model, &state);
+    state.bubbles = 0u;
+    against_model(t, f, &empty, &model, &state);
+
+    /* Up, full or empty, they change their own row of ten and nothing else, and an empty row can be seen. */
+    const box_t row = sheets_box(&land, &full);
+    CHECK(row.left >= right - 10 * icon && row.right < right);
+    CHECK(row.top >= top && row.bottom < top + icon);
+    const box_t row_empty = sheets_box(&land, &empty);
+    CHECK(row_empty.left <= row_empty.right);
+    CHECK(row_empty.left >= right - 10 * icon && row_empty.right < right);
+    CHECK(row_empty.top >= top && row_empty.bottom < top + icon);
+    CHECK(sheets_differ(&full, &empty) >= 0);
+
+    /* Half is the five on the right whole, and the five on the left gone. */
+    for (int32_t y = top; y < top + icon; y++) {
+        for (int32_t x = 0; x < 5 * icon; x++) {
+            CHECK_EQ_U64(sheet_at(&half, right - 1 - x, y), sheet_at(&full, right - 1 - x, y));
+            CHECK_EQ_U64(sheet_at(&half, right - 5 * icon - 1 - x, y), sheet_at(&empty, right - 5 * icon - 1 - x, y));
+        }
+    }
+    const box_t half_change = sheets_box(&full, &half);
+    CHECK(half_change.left <= half_change.right);
+    CHECK(half_change.right < right - 5 * icon);
+
+    /* A number past the row, which nothing sends, stays on it. */
+    state.bubbles = 255u;
+    against_model(t, f, &half, &model, &state);
+    CHECK_EQ_I64(sheets_differ(&half, &full), -1);
+    fixture_stop(f);
+}
+
 TEST(golden_pictures_match) {
     fixture_t *const f = fixture_start(t);
     REQUIRE(f != nullptr);
@@ -832,6 +918,15 @@ TEST(golden_pictures_match) {
     const int32_t block[3] = {-1234, 567, -89};
     ui_hud_coordinates_draw(&canvas, &f->ui.font, block, false);
     golden_compare(t, "tests/run/ui/hud/fixtures/coordinates_640x480.png", &large);
+
+    /* Under water with half its air gone, and hurt. */
+    state_golden_low(&state);
+    state.bubbles = 5u;
+    state.bubbles_shown = 1u;
+    sheet_clear(&large);
+    REQUIRE(sheet_canvas(&large, &canvas));
+    ui_hud_draw(&f->ui.hud, &canvas, &f->ui.font, &state);
+    golden_compare(t, "tests/run/ui/hud/fixtures/air_640x480.png", &large);
     fixture_stop(f);
 }
 
@@ -980,6 +1075,8 @@ TEST(in_the_real_game_the_screen_is_the_hud_over_the_picture_and_the_picture_is_
     CHECK_EQ_U64(state.selected, 2u);
     CHECK_EQ_U64(state.health, 20u);
     CHECK_EQ_U64(state.food, 20u);
+    /* On land with all its air, the bubbles are not up. */
+    CHECK_EQ_U64(state.bubbles_shown, 0u);
 
     display_buffer_t target = rig_target(t);
     sheet_t model = sheet_make(t, GAME_WIDTH, GAME_HEIGHT);
@@ -996,6 +1093,24 @@ TEST(in_the_real_game_the_screen_is_the_hud_over_the_picture_and_the_picture_is_
     REQUIRE(scene.tick(scene.borrowed_context, &tick));
     game_hud_state_read(game, &state);
     CHECK(state.health < 20u && state.health >= 14u);
+    REQUIRE(rig_scene_frame(t, &scene, &target));
+    rig_expect(&rig, frame->borrowed_pictures[frame->pictures.front], &model);
+    CHECK_EQ_U64(target_differs(&target, &model), 0u);
+
+    /* Short of air, it refills at 4 a tick with the bubbles up, the screen knows by the next tick, and they go when it is full. */
+    REQUIRE(rig.player->movement.eyes_under_water == 0u);
+    rig.player->survival.air = 150;
+    REQUIRE(scene.tick(scene.borrowed_context, &tick));
+    game_hud_state_read(game, &state);
+    CHECK_EQ_U64(state.bubbles_shown, 1u);
+    CHECK_EQ_U64(state.bubbles, 6u); /* 154 ticks */
+    REQUIRE(rig_scene_frame(t, &scene, &target));
+    rig_expect(&rig, frame->borrowed_pictures[frame->pictures.front], &model);
+    CHECK_EQ_U64(target_differs(&target, &model), 0u);
+    rig.player->survival.air = 296;
+    REQUIRE(scene.tick(scene.borrowed_context, &tick));
+    game_hud_state_read(game, &state);
+    CHECK_EQ_U64(state.bubbles_shown, 0u);
     REQUIRE(rig_scene_frame(t, &scene, &target));
     rig_expect(&rig, frame->borrowed_pictures[frame->pictures.front], &model);
     CHECK_EQ_U64(target_differs(&target, &model), 0u);

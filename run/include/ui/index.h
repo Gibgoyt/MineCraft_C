@@ -29,10 +29,10 @@ typedef struct ui_t {
     ui_canvas_t canvas;                   /* 176 */
     ui_widget_t widget;                   /* 240 */
     ui_hud_t hud;                         /* 576 */
-    ui_screens_t *borrowed_screens;       /* 696: from arena_tables: what the game screens share */
-    ui_menu_t menu;                       /* 704 */
-    ui_screen_settings_t settings_screen; /* 1008 */
-    uint8_t _pad0[48];                    /* 1104 */
+    ui_screens_t *borrowed_screens;       /* 728: from arena_tables: what the game screens share */
+    ui_menu_t menu;                       /* 736 */
+    ui_screen_settings_t settings_screen; /* 1040 */
+    uint8_t _pad0[16];                    /* 1136 */
 } ui_t;
 static_assert(sizeof(ui_t) == 1152);
 static_assert(alignof(ui_t) == 64);

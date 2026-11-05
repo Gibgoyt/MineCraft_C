@@ -1,6 +1,6 @@
 # run/src/ui/hud
 
-**Purpose:** what is on the screen while playing: the crosshair, the hotbar with what is on it, the hearts and the drumsticks, and the debug overlay with the frames per second and each stage's time.
+**Purpose:** what is on the screen while playing: the crosshair, the hotbar with what is on it, the hearts and the drumsticks, the bubbles while short of air, and the debug overlay with the frames per second and each stage's time.
 **Tier:** Arena: its textures come from the arena its Owner gives. Nothing is allocated once it has started.
 **Owns:** nothing.
 **Lifetime:** Process, for the textures.
@@ -9,6 +9,7 @@
 
 - `ui_hud_init`, `ui_hud_deinit`: read the textures, and an icon for each item; empty the handle.
 - `ui_hud_half_units`: a body's number as the halves of a row.
+- `ui_hud_bubbles`: air as the bubbles of a row.
 - `ui_hud_layout`: where things go on a canvas of some size.
 - `ui_hud_item_draw`: one item with its wear and count, for any slot.
 - `ui_hud_draw`: all of the HUD, from a `ui_hud_state_t`.
@@ -37,8 +38,9 @@ In texture pixels, all times `ui_hud_layout`'s scale, which is the widgets':
 | A count | white with a shadow, ending 17 in from the item's left, 9 down |
 | Hearts | ten of 9 square, no gap, from the hotbar's left, 10 above its top |
 | Drumsticks | the same, from the hotbar's right, going left |
+| Bubbles | the same as the drumsticks, 10 above their top, and only while `bubbles_shown` says |
 
-A half shows the half nearest the full ones. Each number is rounded up to a half, so that any health left shows. A canvas smaller than all this draws what fits: `ui_compose_*` clip, and nothing outside the canvas is touched.
+A half shows the half nearest the full ones. Each number is rounded up to a half, so that any health left shows. Bubbles have no halves: one for each 30 ticks of air, rounded up, so that the last goes just as the air runs out. `game` puts them up while the body is under water or still refilling, and not when it is dead. A canvas smaller than all this draws what fits: `ui_compose_*` clip, and nothing outside the canvas is touched.
 
 ## Coordinates
 
@@ -52,6 +54,6 @@ F3 turns it on and off, on top of the HUD and over any kind of run, flying or wa
 
 Its text is half the HUD's scale, rounding up.
 
-An item is drawn flat from its own texture, a block as one face of it. Air, armor points and a bar for either are not in this stage. The textures `ui/icon_breath`, `ui/bubble` and `ui/icon_armor` are there for them.
+An item is drawn flat from its own texture, a block as one face of it. Armor points and a bar for them are not in this stage. The texture `ui/icon_armor` is there for them.
 
 Tested by ctest `run_ui_hud`, against a model, against golden pictures and in the real game.
