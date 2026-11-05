@@ -123,6 +123,8 @@ Appended as they land:
 - `bedad80` Say in the repository's structure where the sky test's new fixtures are.
 - `ee105e0` Run terrain's stages only up to the highest layer they can make and leave the rest of a column air, which gives back what the taller world cost and meets the 1000 columns a second again.
 - `856657d` Record the taller world's gate check, with the whole suite and both benches run, and the fog, ore, terrain cost and timing test it fixed, and leave its status in progress for Ahmed's flight.
+- `97515e9` Make the felling script take its axe from a bench as wood now must, run it in the playthrough test so it cannot go stale again, and let the top of the world test keep its pictures.
+- `8fd9365` Record in the taller world plan file that the final check read the top of the world in the built program.
 
 ## Issues found
 
