@@ -1,6 +1,6 @@
 # 003-ahmed-bohemoth-initial-game-fixes — phase 3: Stairs from every wood
 
-**Status:** in progress: everything an agent can do in this phase is done and checked. Not played through the built program (issue 6). Only Ahmed's own check is left   (updated 2026-11-05)
+**Status:** in progress: the gate check played stairs through the built program and every agent-runnable check passes, the whole suite 111 of 111. Only Ahmed's own check is left, in the last todo   (updated 2026-11-05)
 
 ## Goal
 
@@ -37,7 +37,7 @@ Ahmed asked for stairs on the crafting table, and also for all woodworking to mo
 ## Verification
 
     tools/test-or-build.sh cmake --build --preset debug
-    tools/test-or-build.sh timeout 600 ctest --preset debug -R '^(run_item_crafting|run_item_crafting_stairs|run_save_world|run_terrain_biome|run_terrain_density|run_terrain_feature|run_terrain_hydrology|run_terrain_ore|compile_game_tables|standards_lint|clang_format)$' --output-on-failure
+    tools/test-or-build.sh timeout 600 ctest --preset debug -R '^(run_item_crafting|run_item_crafting_stairs|run_playthrough|run_save_world|run_terrain_biome|run_terrain_density|run_terrain_feature|run_terrain_hydrology|run_terrain_ore|compile_game_tables|standards_lint|clang_format)$' --output-on-failure
     pgrep -a minecraft_c    # must print nothing
 
 Ahmed: make stairs from at least oak and spruce, and place them.
@@ -55,8 +55,9 @@ Results, debug preset:
 
 | Check | Result |
 |---|---|
-| The commands above | 11 of 11 |
+| The commands above, before the gate check added `run_playthrough` to them | 11 of 11 |
 | Whole debug suite, `-j1`, before the new picture test and the fixes in issues 3 and 4 | 105 of 111 in 1727 s: the six failures are issues 3 and 4, and all six passed once fixed |
+| Whole debug suite, `-j1`, at the gate check, with the new playthrough | 111 of 111 in 1769 s; `run_playthrough` 81.5 s |
 | Five lines broken on purpose (issue 5) | All five caught |
 | Most card memory the new test held | 420 MiB, by `nvidia-smi` |
 | `pgrep -af "$PWD/build"` and `pgrep -a minecraft_c` after the last run | Printed nothing |
@@ -88,3 +89,13 @@ Appended as they land:
 **6. Beyond the plan's list: the card, but not the built program.** The Goal says "in that wood's colour", which the plan's tests would only have shown as a name in a table. So `the_card_draws_each_wood_in_its_own_colour` places each wood by the hands and reads the real picture from above: each wood's stairs came within 1 of its planks on each colour channel (spruce 97 74 57 for both, cherry 209 170 164 and 210 171 165), and nearest to its own of all eight. `all_eight.png` was also looked at by eye: eight stairs on stone in eight colours, each rising to the north. **Not done:** no script drove the crafting screen in the built program. Those clicks are the code every recipe goes through, and `run_ui_screens` covers that code, but stairs on the real screen are left to Ahmed's check above.
 
 **7. Plan's Verification left out what this phase needed.** It had no `run_item_crafting_stairs`, which it could not have named, and none of the tests of issues 3 and 4, which only the whole suite found. Added above. The full suite was not run a second time after the fixes, as those were in tests alone and it holds the machine-wide lock for half an hour: the six that failed and the new test passed, as listed above.
+
+**8. Gate check: issue 6's gap closed, with stairs played in the built program.** Expected: Ahmed's "creating stairs with wood on a crafting table is not possible" is shown false where he said it, on the screen, and not only through `crafting_grid_click_secondary`. Actual, before this check: no script did it, as issue 6 said. Done: `tests/run/playthrough/fixtures/stairs.script`, seed 36, whose first tree is a mangrove, the wood with no stairs before this phase. It starts a new world from the title, mines four logs, crafts planks, a table and sticks, places the table, lays six planks in the pattern, takes the stairs, puts two down, mines one back with no tool, quits to the title and opens the world again. The test `mangrove_planks_make_stairs_on_a_table_that_go_down_come_back_and_are_saved` in `run_playthrough` holds the report to it, twice, before and after the save: `hotbar slot 4 is in hand, with 3 of mangrove_stairs`, `the player mined 6 blocks and placed 3`, `the last mined was mangrove_stairs`. Pictures read by eye: `stairs_ready.png` has the pattern with `Mangrove Planks` in the cells and 4 in the output, `stairs_in_slot.png` has `Mangrove Stairs` in the slot, `stairs_placed.png` has red stepped blocks on the ground beside the table, and in `stairs_reloaded.png` the one left is still there after the save. Only mangrove was played, as it is the tree the seed has. The other seven go through the same clicks and differ by table rows, which `run_item_crafting_stairs` covers. Phase 4 must move this script to the bench, under its todo for the playthrough scripts.
+
+**9. Gate check: what else was looked for.** Nothing wrong in any of these, so nothing changed:
+
+- Each of the seven woods' block, item and recipe files is oak's with the name changed, checked by `cmp` after `sed`, 21 files.
+- `OAK_STAIRS` in `run/`, `cuda/`, `compile/`, `asm/`, `bench/` and `tools/` appears only in `entity/explosion`, as the todo says. `oak_stairs` in `config/` appears only in its own files and `fuel_wood`.
+- `tests/run/item/crafting/stairs/index.c` was read through: no stub, no TODO, and each test can fail. The picture test really uses the card: it logged the RTX 2080 Super and the eight colours. It takes only 1 s, which looked too quick until then. `all_eight.png` was read: eight stairs in eight colours.
+- The whole suite passes with the fixes of issues 3 and 4 in place, the run issue 7 said had not been done.
+- Six comment lines in the stairs test run past 120 columns. `clang_format` allows it and the tests around it do the same, so they stay.
