@@ -1,0 +1,112 @@
+# 005-ahmed-bohemoth-initial-game-fixes-round-2 — phase 11: Ores and alloys
+
+**Status:** not started   (updated 2026-11-06)
+
+## Goal
+
+Each ore's spawn rate lives in its own YAML file, so it can be read and tuned in one place. Chromium ore exists, and stainless steel can be made from 9 iron and 1 chromium. More ores and alloys can be added the same way.
+
+**Ahmed's words:** "we can also make alloys! so let's also create many more ores. stainless steel let's add that for now please that is 9xiron and 1xchromium please! we have to add chromium ore! inside its yaml file you can create its spawn rate please!"
+
+## How it is today
+
+**Ores aren't in YAML at all.** Where each ore spawns is a table in code, `run/src/terrain/ore/index.c:53`:
+
+```c
+ORE_T("ore/copper", BLOCK_ID_COPPER_ORE, BLOCK_ID_DEEPSLATE_COPPER_ORE, -185, 96, 10, 32u * 256u),
+```
+
+Each row has: name, the ore block, its deepslate block, lowest and highest z, vein size, and veins per 256 chunks. Ores today: coal, copper, iron, gold, lapis, diamond, emerald.
+
+**No alloys exist:** no way to mix metals, and no recipe takes counts, only one item per grid cell.
+
+## Design
+
+### An ore in one file
+
+```yaml
+# config/ores/chromium/index.yaml
+name: chromium
+block: chromium_ore            # in stone
+deep_block: deepslate_chromium_ore
+drops: raw_chromium
+z_min: -250
+z_max: -40
+vein: 6                        # blocks in one vein
+per_256_chunks: 1024           # veins: about 4 a chunk
+```
+
+`compile/src/game_tables/` reads these into the table `run/src/terrain/ore/` uses now, so moving the existing ores to YAML changes no world. The tests' pinned digests prove that.
+
+**Chromium's numbers are a starting point:** rare, and deep only, below iron. Ahmed can tune them in the file.
+
+### Alloys at the smith table
+
+A grid cell takes one item, and 9 iron + 1 chromium is 10, so alloying gets **its own slots** on the smith table: a crucible with counted inputs.
+
+```yaml
+# config/recipes/alloy_stainless_steel/index.yaml
+name: alloy_stainless_steel
+kind: alloy
+station: smithing
+inputs: [{ item: iron_ingot, count: 9 }, { item: chromium_ingot, count: 1 }]
+gives: stainless_steel_ingot
+count: 10                      # to decide: 10 in, 10 out
+heat: blast_furnace            # if phase 6 adds one
+```
+
+### Chromium and stainless steel
+
+| Item | From |
+|---|---|
+| `raw_chromium` | Mining chromium ore, with an iron pickaxe or better |
+| `chromium_ingot` | Smelting raw chromium, at high heat (phase 6's blast furnace, if added) |
+| `stainless_steel_ingot` | Alloying: 9 iron ingots + 1 chromium ingot |
+| Stainless steel tools and armour | Smith table, a tier above iron |
+
+### More ores, waiting for Ahmed's yes
+
+"Many more ores": these each make a well-known alloy, so they suit the smith table.
+
+| Ore | Alloy it makes |
+|---|---|
+| Tin | **Bronze:** copper + tin |
+| Zinc | **Brass:** copper + zinc |
+| Nickel | Nickel steel, and part of some stainless steels |
+| Silver | Sterling silver, coins and the like |
+
+**Not in this phase until Ahmed picks.** Each is one YAML file, two blocks, an item and a recipe, once this phase exists.
+
+## Todo
+
+- [ ] Add `config/ores/` and its README. Read it in `compile/src/game_tables/`, and generate the table `run/src/terrain/ore/index.c` uses
+- [ ] Move every existing ore row to `config/ores/<ore>/index.yaml`. Check the terrain digests don't change, which proves the move changed no world
+- [ ] Add `chromium_ore` and `deepslate_chromium_ore` blocks, `raw_chromium` and `chromium_ingot` items, and their textures as our recipes
+- [ ] Add a `chromium` ore file with the spawn numbers above, and measure how many veins a chunk gets with `bench_world_map`
+- [ ] Add an `alloy` recipe kind with counted inputs, in `compile/src/game_tables/recipes/` and `config/recipes/README.md`
+- [ ] Add alloy slots to the smith table screen from phase 6, and make stainless steel from 9 iron and 1 chromium
+- [ ] Add stainless steel tools and armour, a tier above iron. Armour comes from leather armour, as phase 6 says
+- [ ] Add tests: chromium spawns only in its z range and at about its rate; 9 iron and 1 chromium make stainless steel, and nothing else does; a stack of 8 iron makes nothing; moving ores to YAML changed no world
+
+## Verification
+
+    tools/test-or-build.sh cmake --build --preset debug
+    tools/test-or-build.sh timeout 1200 ctest --preset debug -R '^(run_terrain_.*|run_item_.*|compile_game_tables|standards_lint|clang_format)$' --output-on-failure
+    tools/test-or-build.sh timeout 600 build/debug/bin/bench_world_map /tmp/mc_c_maps
+    pgrep -a minecraft_c    # must print nothing
+
+Ahmed: dig deep for chromium, smelt it, and make stainless steel at the smith table.
+
+## Commits
+
+Appended as they land:
+
+## Issues found
+
+**Needs phase 6's smith table** for alloying, and its blast furnace for high heat, if Ahmed agrees to one.
+
+**Open for Ahmed:**
+
+1. Do 9 iron + 1 chromium make 10 stainless steel ingots? Default: 10.
+2. Which of tin, zinc, nickel and silver to add, and when? Default: none until you say.
+3. Chromium's depth and rarity. Default: z -250 to -40, about 4 veins a chunk.
