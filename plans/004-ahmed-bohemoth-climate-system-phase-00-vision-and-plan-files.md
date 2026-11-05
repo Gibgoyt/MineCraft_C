@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 0: The vision, and the plan files
 
-**Status:** not started   (updated 2026-11-04)
+**Status:** done   (updated 2026-11-06)
 
 **Read this file before any other file of plan 004.** Every phase file of this plan assumes you know what is here. An agent who builds the climate without knowing what it's *for* will build something that passes its tests and is useless to the plans after it.
 
@@ -185,12 +185,12 @@ Shipments always exist as numbers. If a route crosses loaded chunks, a real cara
 
 ## Todo
 
-- [ ] Allocate `004` (already chosen by Ahmed) and check nothing else uses it: `ls plans/004-*`
-- [ ] Copy the approved master plan to `plans/004-ahmed-bohemoth-climate-system.md`, byte for byte, from `~/.claude/plans/<slug>.md`, or check it's already there unchanged
-- [ ] Create phase files 01 to 11, as `plans/004-ahmed-bohemoth-climate-system-phase-NN-<name>.md`, with every box unticked and the status `not started`
-- [ ] Check every phase file has a Goal, Todo, Verification, Commits and Issues found section, as the README's template asks
-- [ ] Check every phase file links back to this file for the vision
-- [ ] Report the paths created
+- [x] Allocate `004` (already chosen by Ahmed) and check nothing else uses it: `ls plans/004-*` lists only `004-ahmed-bohemoth-climate-system*`
+- [x] Copy the approved master plan to `plans/004-ahmed-bohemoth-climate-system.md`, byte for byte, from `~/.claude/plans/<slug>.md`, or check it's already there unchanged: already there, unchanged since Ahmed's commit `01f5505` (see Issues found). Its Status line set to approved on 2026-11-06, nothing else changed
+- [x] Create phase files 01 to 11, as `plans/004-ahmed-bohemoth-climate-system-phase-NN-<name>.md`, with every box unticked and the status `not started`: all 11 already exist from Ahmed's planning session, one per phase of master section 10, 0 ticked boxes, all `not started`
+- [x] Check every phase file has a Goal, Todo, Verification, Commits and Issues found section, as the README's template asks
+- [x] Check every phase file links back to this file for the vision: each of 01 to 11 names `phase-00-vision`
+- [x] Report the paths created: none created; the 13 files listed by `ls plans/004-ahmed-bohemoth-climate-system*` were already there
 
 ## Verification
 
@@ -204,6 +204,11 @@ No build, test or code changes in this phase.
 
 Appended as they land:
 
+- `4efbaae` Mark the climate system master plan approved on 2026-11-06.
+- `323a31c` Check the climate plan files and mark phase 0 of plan 004 done.
+
 ## Issues found
 
-None.
+- 2026-11-06, the verbatim copy. Expected: a byte compare against `~/.claude/plans/<slug>.md`. Actual: no file there mentions climate (`grep -l climate ~/.claude/plans/*.md` prints nothing), so no compare is possible. Evidence it is unchanged: `git log -- plans/004-ahmed-bohemoth-climate-system.md` shows only `01f5505` (Ahmed, "climate system starting point") before this phase. Done: accepted the committed file as the agreed text; only its Status line was changed.
+- 2026-11-06, the phase files already existed (written by Ahmed's planning session), so this phase checked them instead of creating them. None was rewritten.
+- 2026-11-06, master section 10's own Phase 00 checkbox stays unticked, because the master is only edited on its Status line.
