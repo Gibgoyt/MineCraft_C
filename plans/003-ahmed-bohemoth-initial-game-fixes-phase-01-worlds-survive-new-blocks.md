@@ -61,6 +61,8 @@ Appended as they land:
 - `a33ed30` Keep the names of what its numbers mean in each saved world and state, and find every block, item and mob by name on opening, so that adding one to a table no longer ends any world, and what a build has not got goes with a line in the log.
 - `9f27353` List the save names directory, the state translation and their two new tests in the repository structure.
 - `0d2fea2` Record phase 1 of the game fixes in its plan file: every box an agent can tick, the results, a real rebuild with a new block, and what was found on the way.
+- `c3f3940` Test what a block being mined and a stack past its limits come to in a translated state, and take out a record check that nothing called any more.
+- `b882544` Record the gate check of phase 1 in its plan file: a real world through a real rebuild, what breaking its code showed, and that only Ahmed is left.
 
 ## Issues found
 
