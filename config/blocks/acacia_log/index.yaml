@@ -1,5 +1,6 @@
 name: acacia_log
 hardness: 2
 tool: axe
+log: true
 drops: [{ item: acacia_log, count: 1 }]
 texture: { top: blocks/acacia_log_top, bottom: blocks/acacia_log_top, side: blocks/acacia_log }

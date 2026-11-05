@@ -41,7 +41,6 @@ typedef struct sim_t {
     world_edit_t edit;
     world_light_t light;
     world_tick_t tick;
-    uint8_t _pad0[8];
 } sim_t;
 static_assert(sizeof(sim_t) == 1408);
 
@@ -761,6 +760,119 @@ TEST(every_block_named_as_a_log_counts_as_one) {
         CHECK_EQ_U64(sim_at(t, sim, 1, 0, 20), BLOCK_ID_OAK_LEAVES);
         sim_end(sim);
     }
+}
+
+/* The flag is what felling and this agree on, so nothing else may have it. */
+TEST(the_log_flag_is_on_every_block_named_a_log_and_no_other) {
+    uint32_t logs = 0u;
+    for (uint32_t block = 0u; block < BLOCK_COUNT; block++) {
+        const char *const name = block_defs[block].name;
+        const uint64_t length = strlen(name);
+        const bool named = length >= 4u && strcmp(name + length - 4u, "_log") == 0;
+        CHECK_EQ_U64((block_defs[block].flags & BLOCK_FLAG_LOG) != 0u ? 1u : 0u, named ? 1u : 0u);
+        logs += named ? 1u : 0u;
+    }
+    CHECK_EQ_U64(logs, 8u);
+}
+
+/* What a felled tree asks for. No random ticks here at all, so that only the box can have done this. */
+TEST(a_box_of_leaves_goes_in_its_ticks_by_the_rule_of_a_random_tick) {
+    sim_t *const sim = sim_begin(t);
+    sim->tick.random_per_section = 0u;
+    for (int32_t step = 0; step < 7; step++) {
+        sim_set(t, sim, 4 + step, 0, 20, BLOCK_ID_OAK_LEAVES);
+    }
+    /* Held by a log, whatever the box says. */
+    sim_set(t, sim, 16, 0, 20, BLOCK_ID_OAK_LOG);
+    sim_set(t, sim, 15, 0, 20, BLOCK_ID_OAK_LEAVES);
+    /* Vines with nothing to hang on, one on a wall, and one under that. */
+    sim_set(t, sim, 2, 0, 24, BLOCK_ID_VINE);
+    sim_set(t, sim, 2, 0, 23, BLOCK_ID_VINE);
+    sim_set(t, sim, -2, 0, 24, BLOCK_ID_VINE);
+    sim_set(t, sim, -3, 0, 24, BLOCK_ID_STONE);
+    sim_set(t, sim, -2, 0, 23, BLOCK_ID_VINE);
+    (void)sim_settle(t, sim);
+    const int32_t low[3] = {2, 0, 20}, high[3] = {9, 0, 20};
+    world_tick_leaves_check(&sim->tick, low, high);
+    CHECK_EQ_U64(world_tick_sweeps_pending(&sim->tick), 1u);
+    sim_run(sim, WORLD_TICK_SWEEP_TICKS - 1u);
+    CHECK_EQ_U64(world_tick_sweeps_pending(&sim->tick), 1u);
+    sim_run(sim, 1u);
+    CHECK_EQ_U64(world_tick_sweeps_pending(&sim->tick), 0u);
+    for (int32_t step = 0; step < 7; step++) {
+        CHECK_EQ_U64(sim_at(t, sim, 4 + step, 0, 20), BLOCK_ID_AIR);
+    }
+    CHECK_EQ_U64(sim_at(t, sim, 15, 0, 20), BLOCK_ID_OAK_LEAVES);
+    CHECK_EQ_U64(sim_at(t, sim, 2, 0, 24), BLOCK_ID_AIR);
+    CHECK_EQ_U64(sim_at(t, sim, 2, 0, 23), BLOCK_ID_AIR);
+    CHECK_EQ_U64(sim_at(t, sim, -2, 0, 24), BLOCK_ID_VINE);
+    CHECK_EQ_U64(sim_at(t, sim, -2, 0, 23), BLOCK_ID_VINE);
+    world_tick_broken_t broken;
+    uint32_t went = 0u;
+    while (world_tick_broken_next(&sim->tick, &broken)) {
+        CHECK_EQ_U64(broken.block, BLOCK_ID_OAK_LEAVES);
+        went++;
+    }
+    CHECK_EQ_U64(went, 7u);
+    sim_end(sim);
+}
+
+/* A big crown on a slow reader: the ring never overflows, and whoever comes finds every leaf. */
+TEST(a_box_of_leaves_holds_back_rather_than_lose_what_it_broke) {
+    sim_t *const sim = sim_begin(t);
+    sim->tick.random_per_section = 0u;
+    uint32_t leaves = 0u;
+    for (int32_t y = -3; y <= 3; y++) {
+        for (int32_t x = -3; x <= 3; x++) {
+            for (int32_t z = 20; z < 23; z++) {
+                sim_set(t, sim, x, y, z, BLOCK_ID_OAK_LEAVES);
+                leaves++;
+            }
+        }
+    }
+    (void)sim_settle(t, sim);
+    const int32_t at[3] = {0, 0, 21};
+    world_tick_leaves_check(&sim->tick, at, at);
+    sim_run(sim, 2u * WORLD_TICK_SWEEP_TICKS);
+    CHECK_EQ_U64(sim->tick.broken_count, WORLD_TICK_BROKEN / 2u);
+    CHECK_EQ_U64(world_tick_sweeps_pending(&sim->tick), 1u);
+    uint32_t went = 0u;
+    world_tick_broken_t broken;
+    for (uint32_t tick = 0u; tick < 200u; tick++) {
+        while (world_tick_broken_next(&sim->tick, &broken)) {
+            went++;
+        }
+        sim_run(sim, 1u);
+    }
+    CHECK_EQ_U64(world_tick_sweeps_pending(&sim->tick), 0u);
+    while (world_tick_broken_next(&sim->tick, &broken)) {
+        went++;
+    }
+    CHECK_EQ_U64(went, leaves);
+    CHECK_EQ_U64(sim->tick.broken_lost_count, 0u);
+    sim_end(sim);
+}
+
+/* More boxes than it keeps: the last takes in the new one, and every box still gets done. */
+TEST(more_boxes_of_leaves_than_it_keeps_all_get_looked_at) {
+    sim_t *const sim = sim_begin(t);
+    sim->tick.random_per_section = 0u;
+    const uint32_t boxes = 2u * WORLD_TICK_SWEEPS;
+    for (uint32_t i = 0u; i < boxes; i++) {
+        sim_set(t, sim, 2 * (int32_t)i - 16, 0, 20, BLOCK_ID_OAK_LEAVES);
+    }
+    (void)sim_settle(t, sim);
+    for (uint32_t i = 0u; i < boxes; i++) {
+        const int32_t at[3] = {2 * (int32_t)i - 16, 0, 20};
+        world_tick_leaves_check(&sim->tick, at, at);
+    }
+    CHECK_EQ_U64(world_tick_sweeps_pending(&sim->tick), WORLD_TICK_SWEEPS);
+    sim_run(sim, WORLD_TICK_SWEEP_TICKS);
+    CHECK_EQ_U64(world_tick_sweeps_pending(&sim->tick), 0u);
+    for (uint32_t i = 0u; i < boxes; i++) {
+        CHECK_EQ_U64(sim_at(t, sim, 2 * (int32_t)i - 16, 0, 20), BLOCK_ID_AIR);
+    }
+    sim_end(sim);
 }
 
 /* ---- Crops ----------------------------------------------------------------------------------------------------------- */

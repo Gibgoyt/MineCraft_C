@@ -3,6 +3,7 @@
 #include "player/interaction/index.h"
 
 #include "physics/collision/index.h"
+#include "player/felling/index.h"
 #include "tables/blocks/index.h"
 
 #include <math.h>
@@ -201,8 +202,7 @@ static bool interaction_needs_ground(uint16_t block) {
     return shape == BLOCK_SHAPE_CROSS || shape == BLOCK_SHAPE_CROP || shape == BLOCK_SHAPE_TORCH;
 }
 
-/* What stood on a block just broken goes with it, and gives what it gives to a hand. */
-static void interaction_stack_break(player_interaction_t *interaction, world_edit_t *edit, int32_t x, int32_t y,
+void player_interaction_stack_break(player_interaction_t *interaction, world_edit_t *edit, int32_t x, int32_t y,
                                     int32_t z) {
     for (int32_t above = z + 1; above <= z + (int32_t)PLAYER_INTERACTION_STACK_MAX; above++) {
         uint16_t block = BLOCK_ID_AIR;
@@ -266,7 +266,12 @@ static void interaction_mine(player_interaction_t *interaction, world_edit_t *ed
     if (!shorn && player_interaction_harvests(block, tool, tier)) {
         player_interaction_drops_spawn(interaction, block, x, y, z);
     }
-    interaction_stack_break(interaction, edit, x, y, z);
+    player_interaction_stack_break(interaction, edit, x, y, z);
+    /* An axe brings the rest of a tree down, and to sneak is to take just the one. */
+    if (input->borrowed_felling != nullptr && tool == BLOCK_TOOL_AXE && input->borrowed_movement->crouched == 0u &&
+        (block_defs[block].flags & BLOCK_FLAG_LOG) != 0u) {
+        (void)player_felling_cut(input->borrowed_felling, edit->borrowed_map, block, x, y, z);
+    }
     /* What breaks at a touch can be swept through. */
     interaction->mine_delay = required > work ? PLAYER_INTERACTION_MINE_DELAY_TICKS : 0u;
 }

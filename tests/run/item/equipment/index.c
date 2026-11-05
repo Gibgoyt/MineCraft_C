@@ -1508,6 +1508,100 @@ TEST(in_a_real_game_a_chest_spills_a_worn_tool_as_worn_and_gold_mines_at_its_own
     ie_script_end(t, rig);
 }
 
+/* A trunk one cell ahead of the body, the way it looks with a yaw of 0, on the floor, with leaves on top. */
+static void ie_tree(test_context_t *t, ie_script_game_t *rig, int32_t y, int32_t tall) {
+    world_edit_t *const edit = &rig->world->edit;
+    const int32_t x = rig->pad_cell[0] + 1, floor_above = rig->pad_cell[2] + 1;
+    for (int32_t z = floor_above; z < floor_above + tall; z++) {
+        CHECK(world_edit_block_set(edit, x, y, z, BLOCK_ID_OAK_LOG) == WORLD_EDIT_STATUS_CHANGED);
+    }
+    CHECK(world_edit_block_set(edit, x + 1, y, floor_above + tall - 1, BLOCK_ID_OAK_LEAVES) ==
+          WORLD_EDIT_STATUS_CHANGED);
+}
+
+static uint32_t ie_logs_in(const ie_script_game_t *rig, int32_t y, int32_t tall) {
+    uint32_t logs = 0u;
+    const int32_t x = rig->pad_cell[0] + 1, floor_above = rig->pad_cell[2] + 1;
+    for (int32_t z = floor_above; z < floor_above + tall; z++) {
+        uint16_t block = BLOCK_ID_AIR;
+        (void)world_map_block_get(&rig->world->map, x, y, z, &block);
+        logs += block == BLOCK_ID_OAK_LOG ? 1u : 0u;
+    }
+    return logs;
+}
+
+/* Holds the left button until the hands have cut something. */
+static bool ie_chop(ie_script_game_t *rig) {
+    const uint64_t mined = rig->player->interaction.mined_count;
+    ie_script_key(rig, BTN_LEFT, true);
+    bool cut = false;
+    for (uint32_t i = 0u; i < 400u && !cut; i++) {
+        cut = ie_script_ticks(rig, 1u) && rig->player->interaction.mined_count != mined;
+    }
+    ie_script_key(rig, BTN_LEFT, false);
+    return cut;
+}
+
+TEST(in_a_real_game_an_axe_fells_a_tree_wears_a_use_a_log_and_stops_when_it_breaks) {
+    enum : int32_t { TALL = 14, CUT = 2 }; /* the eye is on the second log up, so one stays under it */
+    ie_script_game_t *const rig = test_alloc(t, sizeof(ie_script_game_t));
+    REQUIRE(ie_script_begin(t, rig));
+    item_t *const item = rig->item;
+    inventory_t *const inventory = &item->inventory;
+    const uint32_t logs_before = inventory_count(inventory, ITEM_ID_OAK_LOG);
+    rig->game->camera.yaw = 0.0f32;
+    rig->game->camera.pitch = 0.0f32;
+    const int32_t row = rig->pad_cell[1];
+    ie_tree(t, rig, row, TALL);
+    ie_put(inventory, 0u, ITEM_ID_WOOD_AXE, 0u);
+    REQUIRE(ie_script_ticks(rig, 3u));
+    REQUIRE(rig->player->target.hit.block == BLOCK_ID_OAK_LOG);
+    CHECK_EQ_I64(rig->player->target.hit.cell[2], rig->pad_cell[2] + CUT);
+
+    REQUIRE(ie_chop(rig));
+    REQUIRE(ie_script_ticks(rig, 4u));
+    /* All of it but the one under the eye, a use for every log, and the axe still in hand. */
+    CHECK_EQ_U64(ie_logs_in(rig, row, TALL), 1u);
+    CHECK_EQ_U64(rig->player->borrowed_felling->felled_count, (uint64_t)(TALL - CUT));
+    CHECK_EQ_U64(inventory_slot_read(inventory, 0u)->wear, (uint64_t)(TALL - CUT + 1));
+    CHECK_EQ_U64(rig->player->interaction.drops_lost_count, 0u);
+    /* What fell is all there, on the ground or taken in by the body as it lands. The leaves go too, in their time. */
+    REQUIRE(ie_script_ticks(rig, 120u));
+    uint32_t on_ground = 0u;
+    const item_drop_store_t *const drops = &rig->entity->item_drops;
+    for (uint32_t i = 0u; i < drops->count; i++) {
+        on_ground += drops->borrowed_items[i].item == item_stack_drop_row(ITEM_ID_OAK_LOG)
+                         ? (uint32_t)drops->borrowed_items[i].count
+                         : 0u;
+    }
+    CHECK(inventory_count(inventory, ITEM_ID_OAK_LOG) > logs_before);
+    CHECK_EQ_U64(inventory_count(inventory, ITEM_ID_OAK_LOG) + on_ground, logs_before + (uint32_t)(TALL - CUT + 1));
+    uint16_t leaf = BLOCK_ID_OAK_LEAVES;
+    (void)world_map_block_get(&rig->world->map, rig->pad_cell[0] + 2, row, rig->pad_cell[2] + TALL, &leaf);
+    CHECK_EQ_U64(leaf, BLOCK_ID_AIR);
+
+    const uint64_t felled = rig->player->borrowed_felling->felled_count;
+    /* Three uses left: the cut and two more, and it is gone with the rest of the tree still up. */
+    const uint32_t broken_before = (uint32_t)item->equipment.tools_broken_count;
+    CHECK_EQ_U64(inventory_selected_take(inventory, 1u), 1u);
+    ie_put(inventory, 0u, ITEM_ID_WOOD_AXE, 56u);
+    ie_tree(t, rig, row + 2, TALL);
+    REQUIRE(world_edit_block_set(&rig->world->edit, rig->pad_cell[0] + 1, row, rig->pad_cell[2] + 1, BLOCK_ID_AIR) ==
+            WORLD_EDIT_STATUS_CHANGED);
+    /* Across to the second tree, over the second log of it. */
+    rig->game->camera.yaw = 1.1071487f32;
+    REQUIRE(ie_script_ticks(rig, 3u));
+    REQUIRE(rig->player->target.hit.block == BLOCK_ID_OAK_LOG);
+    REQUIRE(ie_chop(rig));
+    REQUIRE(ie_script_ticks(rig, 10u));
+    CHECK_EQ_U64(rig->player->borrowed_felling->felled_count, felled + 2u);
+    CHECK_EQ_U64(ie_logs_in(rig, row + 2, TALL), (uint32_t)TALL - 3u);
+    CHECK(item_stack_is_empty(inventory_slot_read(inventory, 0u)));
+    CHECK_EQ_U64(item->equipment.tools_broken_count, broken_before + 1u);
+    CHECK(ie_books_balance(inventory));
+    ie_script_end(t, rig);
+}
+
 TEST(a_press_that_wakes_or_brings_back_a_body_does_nothing_else) {
     ie_script_game_t *const rig = test_alloc(t, sizeof(ie_script_game_t));
     REQUIRE(ie_script_begin(t, rig));

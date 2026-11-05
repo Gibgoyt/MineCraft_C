@@ -29,6 +29,10 @@ enum : uint32_t {
     WORLD_TICK_WRITES_PER_TICK = 16384u,
     /* Blocks gone by themselves between two looks. More than this at once and the oldest gives nothing. */
     WORLD_TICK_BROKEN = 64u,
+    /* Boxes of leaves being looked at, at once. More than this and the last takes in the new one. */
+    WORLD_TICK_SWEEPS = 4u,
+    /* A box of leaves is gone through in this many ticks, however big: a second and a half, top first. */
+    WORLD_TICK_SWEEP_TICKS = 30u,
 };
 
 /* A fluid voxel's level. Water with no level written down is a source, so that water terrain made needs no memory here. */
@@ -69,6 +73,15 @@ typedef struct world_tick_broken_t {
 } world_tick_broken_t;
 static_assert(sizeof(world_tick_broken_t) == 16);
 
+/* A box of voxels with leaves that may just have lost their tree. */
+typedef struct world_tick_sweep_t {
+    int32_t low[3];    /* 0 */
+    int32_t high[3];   /* 12 */
+    int32_t at[3];     /* 24: the next voxel to look at */
+    uint32_t per_tick; /* 36: how many a tick */
+} world_tick_sweep_t;
+static_assert(sizeof(world_tick_sweep_t) == 40);
+
 /* Everything that happens to blocks by itself: flow, falling, decay, growth. One thread at a time, the one holding the map. */
 typedef struct world_tick_t {
     world_edit_t *borrowed_edit;           /* 0 */
@@ -106,17 +119,21 @@ typedef struct world_tick_t {
     uint32_t broken_head;                  /* 712: the oldest in the ring */
     uint32_t broken_count;                 /* 716 */
     uint16_t page_free;                    /* 720: a page's number plus 1, or 0 */
-    uint8_t _pad0[6];                      /* 722 */
+    uint8_t _pad0[2];                      /* 722 */
+    uint32_t sweep_count;                  /* 724 */
+    world_tick_sweep_t
+        *borrowed_sweeps; /* 728: WORLD_TICK_SWEEPS. Not saved: what they do not get to, random ticks do */
 } world_tick_t;
-static_assert(sizeof(world_tick_t) == 728);
+static_assert(sizeof(world_tick_t) == 736);
 
 /* What world_tick_init takes from its arena: per slot of the map, per node, per page, and besides. */
 enum : uint64_t {
     WORLD_TICK_BYTES_PER_SLOT = sizeof(world_tick_column_t),
     WORLD_TICK_BYTES_PER_NODE = sizeof(world_tick_node_t) + 2ull * sizeof(uint32_t),
     WORLD_TICK_BYTES_PER_PAGE = WORLD_TICK_PAGE_BYTES + 2ull * sizeof(uint16_t),
-    WORLD_TICK_BYTES_FIXED = 9ull * 64ull + WORLD_TICK_RECORDS * sizeof(world_edit_record_t) +
-                             WORLD_TICK_BROKEN * sizeof(world_tick_broken_t),
+    WORLD_TICK_BYTES_FIXED = 10ull * 64ull + WORLD_TICK_RECORDS * sizeof(world_edit_record_t) +
+                             WORLD_TICK_BROKEN * sizeof(world_tick_broken_t) +
+                             WORLD_TICK_SWEEPS * sizeof(world_tick_sweep_t),
 };
 
 /* node_capacity is a power of two, at least 2, and page_capacity from 1 to 65535. Takes from the arena, which must outlive this,
@@ -134,6 +151,16 @@ void world_tick_column_leaving(world_tick_t *tick, uint32_t slot);
 /* One tick of game time: wakes what the edit log says changed, runs what is due, and runs the random ticks. Its writes go through
  * world_edit_block_set, so light and the renderer see them as any other edit. */
 void world_tick_step(world_tick_t *tick);
+
+/* Logs have gone from this box, both corners included. Over the next WORLD_TICK_SWEEP_TICKS ticks every leaf they could have held is put to the rule
+ * of a random tick, and vines with nothing left to hang on go too. Holds back while the ring of what went by itself is half full, so that none of it is
+ * lost. */
+void world_tick_leaves_check(world_tick_t *tick, const int32_t low[3], const int32_t high[3]);
+
+/* Boxes of leaves not yet gone through. */
+static inline uint32_t world_tick_sweeps_pending(const world_tick_t *tick) {
+    return tick->sweep_count;
+}
 
 /* The oldest block that went by itself and has not been asked for, which is now the caller's. False if there is none. Whoever puts
  * items in the world rolls its drops: this stays on the block's side of that line. */

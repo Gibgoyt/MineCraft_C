@@ -96,19 +96,7 @@ static bool tick_is_open(uint16_t state) {
 }
 
 static bool tick_is_log(uint16_t state) {
-    switch (state) {
-    case BLOCK_ID_ACACIA_LOG:
-    case BLOCK_ID_BIRCH_LOG:
-    case BLOCK_ID_CHERRY_LOG:
-    case BLOCK_ID_DARK_OAK_LOG:
-    case BLOCK_ID_JUNGLE_LOG:
-    case BLOCK_ID_MANGROVE_LOG:
-    case BLOCK_ID_OAK_LOG:
-    case BLOCK_ID_SPRUCE_LOG:
-        return true;
-    default:
-        return false;
-    }
+    return tick_is_block(state) && (block_defs[state].flags & BLOCK_FLAG_LOG) != 0u;
 }
 
 static bool tick_is_leaf(uint16_t state) {
@@ -691,6 +679,13 @@ static bool tick_leaf_held(const world_tick_t *tick, int32_t x, int32_t y, int32
     return false;
 }
 
+/* The rule, for a leaf whatever brought it up. */
+static void tick_leaf_decay(world_tick_t *tick, uint16_t state, int32_t x, int32_t y, int32_t z) {
+    if (!tick_leaf_held(tick, x, y, z) && tick_block_write(tick, x, y, z, BLOCK_ID_AIR)) {
+        tick_broken_note(tick, state, x, y, z);
+    }
+}
+
 static bool tick_farmland_hydrated(const world_tick_t *tick, int32_t x, int32_t y, int32_t z) {
     const int32_t reach = (int32_t)TICK_HYDRATE_REACH;
     for (int32_t dz = 0; dz <= 1; dz++) {
@@ -765,8 +760,8 @@ static void tick_random_voxel(world_tick_t *tick, uint64_t *rng, uint16_t state,
         tick_random_farmland(tick, rng, x, y, z);
     } else if (tick_is_wheat(state)) {
         tick_random_wheat(tick, rng, state, x, y, z);
-    } else if (!tick_leaf_held(tick, x, y, z) && tick_block_write(tick, x, y, z, BLOCK_ID_AIR)) {
-        tick_broken_note(tick, state, x, y, z);
+    } else {
+        tick_leaf_decay(tick, state, x, y, z);
     }
 }
 
@@ -811,6 +806,95 @@ static void tick_random_all(world_tick_t *tick) {
             }
         }
     }
+}
+
+/* ---- Leaves that may have lost their tree ------------------------------------------------------------------------- */
+
+/* Whether something that stays holds up this vine: a solid side or top, as leaves are on their way, or the vine above it. Boxes go from the top, so
+ * that one above has already had its turn. A column not loaded might hold it. */
+static bool tick_vine_held(const world_tick_t *tick, int32_t x, int32_t y, int32_t z) {
+    const uint16_t above = tick_look(tick, x, y, z + 1);
+    if (above == TICK_LOOK_UNLOADED || above == BLOCK_ID_VINE || (tick_is_solid(above) && !tick_is_leaf(above))) {
+        return true;
+    }
+    for (uint32_t side = 0u; side < 4u; side++) {
+        const uint16_t beside = tick_look(tick, x + TICK_SIDE_X[side], y + TICK_SIDE_Y[side], z);
+        if (beside == TICK_LOOK_UNLOADED || (tick_is_solid(beside) && !tick_is_leaf(beside))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void tick_sweep_voxel(world_tick_t *tick, int32_t x, int32_t y, int32_t z) {
+    const uint16_t state = tick_look(tick, x, y, z);
+    if (tick_is_leaf(state)) {
+        tick_leaf_decay(tick, state, x, y, z);
+    } else if (state == BLOCK_ID_VINE && !tick_vine_held(tick, x, y, z)) {
+        (void)tick_block_write(tick, x, y, z, BLOCK_ID_AIR);
+    }
+}
+
+/* A tick's share of a box. Whether it has come to the end. */
+static bool tick_sweep_step(world_tick_t *tick, world_tick_sweep_t *sweep) {
+    for (uint32_t visit = 0u; visit < sweep->per_tick; visit++) {
+        /* The rest wait for whoever empties the ring, and random ticks keep their room in it. */
+        if (tick->broken_count >= WORLD_TICK_BROKEN / 2u) {
+            return false;
+        }
+        tick_sweep_voxel(tick, sweep->at[0], sweep->at[1], sweep->at[2]);
+        sweep->at[0]++;
+        if (sweep->at[0] > sweep->high[0]) {
+            sweep->at[0] = sweep->low[0];
+            sweep->at[1]++;
+        }
+        if (sweep->at[1] > sweep->high[1]) {
+            sweep->at[1] = sweep->low[1];
+            sweep->at[2]--;
+        }
+        if (sweep->at[2] < sweep->low[2]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void tick_sweep_all(world_tick_t *tick) {
+    uint32_t kept = 0u;
+    for (uint32_t i = 0u; i < tick->sweep_count; i++) {
+        if (!tick_sweep_step(tick, &tick->borrowed_sweeps[i])) {
+            tick->borrowed_sweeps[kept] = tick->borrowed_sweeps[i];
+            kept++;
+        }
+    }
+    tick->sweep_count = kept;
+}
+
+void world_tick_leaves_check(world_tick_t *tick, const int32_t low[3], const int32_t high[3]) {
+    int32_t from[3], to[3];
+    for (uint32_t axis = 0u; axis < 3u; axis++) {
+        from[axis] = low[axis] - (int32_t)TICK_LEAF_REACH;
+        to[axis] = high[axis] + (int32_t)TICK_LEAF_REACH;
+    }
+    world_tick_sweep_t *sweep = &tick->borrowed_sweeps[WORLD_TICK_SWEEPS - 1u];
+    if (tick->sweep_count < WORLD_TICK_SWEEPS) {
+        sweep = &tick->borrowed_sweeps[tick->sweep_count];
+        tick->sweep_count++;
+    } else {
+        for (uint32_t axis = 0u; axis < 3u; axis++) {
+            from[axis] = sweep->low[axis] < from[axis] ? sweep->low[axis] : from[axis];
+            to[axis] = sweep->high[axis] > to[axis] ? sweep->high[axis] : to[axis];
+        }
+    }
+    uint64_t voxels = 1u;
+    for (uint32_t axis = 0u; axis < 3u; axis++) {
+        sweep->low[axis] = from[axis];
+        sweep->high[axis] = to[axis];
+        sweep->at[axis] = axis == 2u ? to[axis] : from[axis];
+        voxels *= (uint64_t)(to[axis] - from[axis] + 1);
+    }
+    /* Rounded up, so that it is done in time. The queue's logs are all within reach of each other, so nothing like 2^32 voxels. */
+    sweep->per_tick = (uint32_t)((voxels + WORLD_TICK_SWEEP_TICKS - 1u) / WORLD_TICK_SWEEP_TICKS);
 }
 
 /* ---- A step ------------------------------------------------------------------------------------------------------ */
@@ -889,6 +973,7 @@ void world_tick_step(world_tick_t *tick) {
     tick->now++;
     tick_log_drain(tick);
     tick_fire_due(tick);
+    tick_sweep_all(tick);
     tick_random_all(tick);
     /* Now, not next tick, so that each delay is exactly what it says. */
     tick_log_drain(tick);
@@ -918,6 +1003,8 @@ void world_tick_init(world_tick_t *tick, arena_t *arena, world_edit_t *edit, uin
         arena_alloc_array(arena, WORLD_TICK_RECORDS, sizeof(world_edit_record_t), alignof(world_edit_record_t));
     tick->borrowed_broken =
         arena_alloc_array(arena, WORLD_TICK_BROKEN, sizeof(world_tick_broken_t), alignof(world_tick_broken_t));
+    tick->borrowed_sweeps =
+        arena_alloc_array(arena, WORLD_TICK_SWEEPS, sizeof(world_tick_sweep_t), alignof(world_tick_sweep_t));
     tick->log_cursor = world_edit_log_position(edit);
     tick->node_capacity = node_capacity;
     tick->node_free = TICK_NODE_NONE;

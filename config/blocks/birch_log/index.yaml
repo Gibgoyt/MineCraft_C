@@ -1,5 +1,6 @@
 name: birch_log
 hardness: 2
 tool: axe
+log: true
 drops: [{ item: birch_log, count: 1 }]
 texture: { top: blocks/birch_log_top, bottom: blocks/birch_log_top, side: blocks/birch_log }
