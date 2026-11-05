@@ -1,86 +1,104 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2 — phase 6: Crafting stations
 
-**Status:** blocked: waiting for Ahmed's research into Hypixel's crafting, and his choice of how it works   (updated 2026-11-05)
+**Status:** blocked: waiting for Ahmed's research into Hypixel's crafting, and his answers below   (updated 2026-11-06)
 
 ## Goal
 
-Each kind of crafting has its own bench: all woodworking on the woodworking bench, all stoneworking on a new stoneworking bench, and the crafting table only for making benches. You start with nothing, and can reach each bench in a clear order.
+Each kind of crafting has its own station, and the crafting table only makes stations. You start with nothing, and can reach each station in a clear order. It should feel like a real game where things make sense, **not a Minecraft sandbox**.
 
 **Ahmed's words:**
 
-- "I can not create a stick from 2 logs on the wood bench???? the wood bench has interception with the crafting table please add all wood working stuff on the woodworking bench!!"
+- "I can not create a stick from 2 logs on the wood bench???? ... please add all wood working stuff on the woodworking bench!!"
 - "can't convert logs to planks also! planks to sticks!"
-- "we also need a stone-working bench for stone pick-axes and tools etc..."
 - "crafting table should only make the other benches I think very similar to hypixel but I need to properly research and implement these mechanics!"
-- Later: "we also need to make a stoneworking bench, and an iron-working bench please. wooden tools, stone tools, iron tools. perhaps even a iron smith table that takes up 2x2x1 that I can use to smelt iron any metal ores, make any metal tools from here, I can only make armour from here too"
+- "No I don't want an iron working bench anymore!"
+- "perhaps even a iron smith table that takes up 2x2x1 that I can use to smelt iron any metal ores, make any metal tools from here, I can only make armour from here too"
+- "any metal does not cover diamond! it covers iron, copper, and gold, we can also make alloys!"
+- "right now nothing is able to work to forge diamond that is perfectly fine tho!"
+- "similar to hytale please let's create 2 tables for leather stuff 1. leather tanning rack 2. leather workbench"
+- "no armour can be created without leather workbench! ... I think leather armor + iron put into the iron smith should make it into iron armour"
+- "furnace + other stuff should probably make an iron smith table! but the furnace itself not sure what the heck that should be able to do!"
+- "it should also be realistic, as not sure which ores need a furnace and which need a blast furnace???"
 
-## Stations Ahmed has asked for
+## Stations
 
 | Station | Size | Makes |
 |---|---|---|
-| Crafting table | 1×1×1 | Only the other stations |
-| Woodworking bench | 2×1×1 | Everything wooden, including wooden tools |
-| Stoneworking bench | 2×1×1 | Everything stone, including stone tools |
-| Iron-working bench | 2×1×1 | Iron tools |
-| Smith table ("perhaps") | **2×2×1** | Smelts any metal ore, makes any metal tool, and is **the only place armour is made** |
+| Crafting table | 1×1×1 | **Only the other stations** |
+| Woodworking bench | 2×1×1 | Logs → planks, planks → sticks, 2 logs → sticks, everything wooden, **wooden tools** |
+| Stoneworking bench | 2×1×1 | Everything stone, **stone tools** |
+| Smith table | **2×2×1** | Works **iron, copper and gold**, and alloys such as stainless steel (phase 11): **all metal tools**, and **metal armour from leather armour** |
+| Leather tanning rack | size to decide | Hides → leather, over time |
+| Leather workbench | size to decide | Leather → **leather armour**, and other leather goods |
+| Furnace | 1×1×1 | Food, glass, charcoal, bricks, and the low-heat ores (below) |
+| Blast furnace | size to decide | The high-heat ores and alloys (below), **if Ahmed wants it** |
 
-**Open for Ahmed:** the iron-working bench and the smith table both make iron tools. Is the smith table the iron-working bench grown up, so one station, or are both wanted? The default is **one station, the smith table**, because two stations making the same thing is the overlap he disliked between the table and the woodworking bench.
+**There's no iron-working bench.** Ahmed dropped it.
 
-**Default reading, until Ahmed says otherwise:**
+**Diamond:** nothing can work diamond for now, so diamond tools and armour can't be made. Ahmed said that's fine. Their recipes are turned off, and diamonds stay as mined items.
 
-- "Any metal": iron, gold and copper. Diamond isn't a metal, so diamond tools also go to the smith table until Ahmed says otherwise.
-- "Armour only here": **all** armour, leather included.
-- "Smelt any metal ore": the furnace stops taking metal ores, and keeps food, glass, stone and charcoal.
+## Armour comes from the leather workbench
 
-**2×2×1 is new:** the bench model is 2 voxels along x. The smith table is four voxels, 2 along x and 2 along y: four blocks, placed and broken together. It faces no way, as blocks have no facing (phase 2's question).
+1. Hides from animals (phase 4) → **tanning rack** → leather.
+2. Leather → **leather workbench** → leather armour, in four pieces.
+3. Leather armour piece + metal at the **smith table** → that metal's armour piece: iron, copper, gold or stainless steel.
 
-## Why it happens
+So no armour exists without the leather workbench, as Ahmed asked. Step 3 is my suggestion for his "leather armor + iron put into the iron smith": the metal is riveted onto the leather, as real lamellar and brigandine armour was. **To be confirmed:** how much metal each piece takes. A starting point is the same count Minecraft uses for that piece in ingots.
 
-Plan 003 phase 4 moved only part of the woodworking. It kept planks, sticks and the crafting table off the bench, because you need those to get a bench in the first place:
+## Furnace or blast furnace: what real metals need
 
-| Recipe | Where today |
-|---|---|
-| Logs → planks (`oak_planks` etc.) | Hands or table |
-| Planks → sticks (`stick`) | Hands or table |
-| Crafting table (4 planks) | Hands |
-| Woodworking bench (3 planks over 2 sticks) | Table |
-| Wood stairs, slab, door, sign, ladder, chest, boat, bowl, wooden tools | **Bench only** (20 recipes) |
-| Stone tools, cobblestone stairs, furnace, torch and everything else | Table |
+**General metallurgy, from what I know, not looked up:**
 
-So the bench can't make planks or sticks, both stations feel like they overlap, and there's no stoneworking bench. **No recipe makes sticks from logs anywhere.**
+| Metal | Melts at | How it was really made | Suggested station |
+|---|---|---|---|
+| Gold | 1064 °C | Often found almost pure; melted, not smelted | Furnace |
+| Copper | 1085 °C | Smelted from ore in simple furnaces, from about 5000 BC | Furnace |
+| Iron | 1538 °C | A bloomery reduced ore to a spongy bloom at about 1200 °C, hammered out. A blast furnace melts it | **Blast furnace** |
+| Stainless steel | about 1400–1450 °C | Iron with chromium; today made in electric arc furnaces | **Blast furnace** |
+| Chromium | 1907 °C | Not smelted in any old furnace; made by special methods | **Blast furnace,** as a game simplification |
+
+So the furnace does food, glass, charcoal, bricks, copper and gold, and the blast furnace does iron, chromium and alloys. **The numbers are from general knowledge,** and phase 11's alloys are a game take on them.
+
+**"Furnace + other stuff makes the smith table":** suggested recipe, a furnace + iron ingots + stone, made on the crafting table. Exact pattern to choose.
 
 ## The order you'd unlock things
 
-If planks and sticks go only on the bench, something has to come before it, or a new world can never get one. **This is a proposal, for Ahmed to change after his research:**
+**A proposal, for Ahmed to change after his research:**
 
-1. **Hands (2×2):** 4 logs → crafting table. Nothing else.
-2. **Crafting table:** makes benches only. Logs → woodworking bench. Cobblestone with a little wood → stoneworking bench.
-3. **Woodworking bench:** logs → planks, planks → sticks, 2 logs → sticks (Ahmed asked for this one), and everything else made only of wood, including wooden tools.
-4. **Stoneworking bench:** stone tools, cobblestone stairs and slabs, stone bricks, furnace.
-5. **Smith table (2×2×1),** made on the crafting table from iron and stone: smelts metal ores, makes every metal tool and every piece of armour.
-6. **Mixed materials,** such as torches, beds and bows: which station each goes to is Ahmed's call. Until then the table keeps them, which breaks "the crafting table only makes benches" for now.
+1. **Hands (2×2):** 4 logs → crafting table.
+2. **Crafting table:** logs → woodworking bench; cobblestone → stoneworking bench; furnace + iron + stone → smith table; leather tanning rack and leather workbench from wood and sticks.
+3. **Woodworking bench:** planks, sticks, wooden tools.
+4. **Stoneworking bench:** stone tools, furnace, blast furnace.
+5. **Furnace:** copper and gold, from early on, as cooking is.
+6. **Smith table:** copper and gold tools first, then iron once the blast furnace gives iron.
+7. **Tanning rack and leather workbench:** once animals give hides.
+
+A test will walk this order from a world with only logs and cobblestone, and fail if any recipe can't be reached.
 
 ## Todo
 
-- [ ] **Ahmed:** finish the Hypixel research, and confirm or change the order above, including where mixed materials go
-- [ ] Add a `stoneworking` station to `compile/src/game_tables/recipes/` and `config/recipes/README.md`, with its grid in `run/src/item/`, saved in `run/src/save/state/`
-- [ ] Add a stoneworking bench, two voxels long like the woodworking bench: blocks, item, textures, screen, placing and breaking
-- [ ] Add the smith table: four blocks in 2×2×1, placed only where all four cells are free, broken together dropping one. Its screen has a crafting grid and a smelting slot with fuel, as the furnace does
-- [ ] Add a `smithing` station: every metal tool and every piece of armour moves there. Metal ores move from the furnace to the smith table's smelting
-- [ ] Add a test that armour can be made at the smith table and nowhere else
-- [ ] Move each recipe to its station as decided, and add the new ones: crafting table from 4 logs, woodworking bench from logs, sticks from logs
-- [ ] Add a test that **every** recipe is reachable from a world with only logs and cobblestone, by walking the stations in order. So no recipe can be stranded, and no station is circular
-- [ ] Add a test that each recipe works on its own station and nowhere else, and that nothing is made in two places, so stations don't overlap
-- [ ] Update `run_playthrough` and its scripts, `tests/run/player/felling/fixtures/fell.script`, and any test that crafts
-- [ ] Update `config/recipes/README.md` with the order, so it reads as one page
+- [ ] **Ahmed:** confirm the order, the blast furnace, and where mixed things go: torches, beds, bows
+- [ ] Add stations to `compile/src/game_tables/recipes/` and `config/recipes/README.md`: `woodworking`, `stoneworking`, `smithing`, `leatherworking`, plus tanning as a timed process like smelting
+- [ ] Add the stoneworking bench, 2×1×1, like the woodworking bench
+- [ ] Add the smith table: four blocks in 2×2×1, placed only where all four cells are free, broken together dropping one. Its screen has a crafting grid and alloying slots (phase 11)
+- [ ] Add the tanning rack: hides in, leather out over time, saved with the world
+- [ ] Add the leather workbench: leather armour and other leather goods
+- [ ] Add the blast furnace, if Ahmed agrees: like the furnace, for high-heat ores
+- [ ] Move every recipe to its station: all wood to woodworking, all stone to stoneworking, metal tools and metal armour to smithing, leather armour to leatherworking, high-heat ores to the blast furnace. The crafting table keeps only stations
+- [ ] Add copper tools, and a copper tier in `config/items/README.md`'s tool tiers. Today it's a fixed list in code (`wood stone iron diamond gold`)
+- [ ] Turn off diamond tool and armour recipes, saying why in their YAML
+- [ ] Add a test that **every** recipe is reachable from logs and cobblestone, walking the stations in order, with nothing circular
+- [ ] Add a test that each recipe works on its own station only, and nothing is made in two places
+- [ ] Add a test that armour can't be made without the leather workbench in the chain
+- [ ] Update `run_playthrough` and every script and test that crafts
 
 ## Verification
 
     tools/test-or-build.sh cmake --build --preset debug
-    tools/test-or-build.sh timeout 900 ctest --preset debug -R '^(run_item_crafting.*|run_ui_screens|run_player_interaction.*|run_playthrough|run_save_state|compile_game_tables|standards_lint|clang_format)$' --output-on-failure
+    tools/test-or-build.sh timeout 1200 ctest --preset debug -R '^(run_item_.*|run_ui_screens|run_player_interaction.*|run_playthrough|run_save_state|compile_game_tables|standards_lint|clang_format)$' --output-on-failure
     pgrep -a minecraft_c    # must print nothing
 
-Ahmed: start a new world with nothing, and work up through each bench to a stone pickaxe.
+Ahmed: start a new world with nothing, and work up through each station to iron armour.
 
 ## Commits
 
@@ -88,6 +106,14 @@ Appended as they land:
 
 ## Issues found
 
-**Blocked on purpose.** Ahmed wants to research Hypixel's crafting before deciding: "I need to properly research Hypixel mechanics before I so bluntly speak on it!!". So this phase doesn't start until he confirms the order.
+**Blocked on purpose.** Ahmed is researching Hypixel and Hytale before deciding, so this doesn't start until he confirms the order.
 
-**This changes the early game a lot.** Every test and script that crafts anything will need updating.
+**Needs phases 4 and 11:** hides come from animals, and alloys and chromium from ores.
+
+**This changes the whole early game.** Every test and script that crafts will need updating.
+
+**Open for Ahmed:**
+
+1. A blast furnace for iron, chromium and alloys, with the furnace for copper, gold, food and glass? Default: yes.
+2. Sizes for the tanning rack, leather workbench and blast furnace? Default: 2×1×1, 2×1×1 and 1×1×1.
+3. How much metal makes each metal armour piece from its leather one? Default: Minecraft's ingot count for that piece.
