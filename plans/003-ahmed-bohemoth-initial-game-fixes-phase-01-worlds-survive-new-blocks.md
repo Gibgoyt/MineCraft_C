@@ -1,6 +1,6 @@
 # 003-ahmed-bohemoth-initial-game-fixes — phase 1: Worlds survive new blocks
 
-**Status:** in progress: everything an agent can run passes, the whole suite 107 of 107, and a real rebuild with a new block keeps a real world. Only Ahmed's own check after phase 2 is left   (updated 2026-11-05)
+**Status:** in progress: the gate check found the phase real, fixed the small things it found, and every agent-runnable check passes, the whole suite 107 of 107. Only Ahmed's own check after phase 2 is left   (updated 2026-11-05)
 
 ## Goal
 
@@ -42,6 +42,17 @@ Results, on this phase's code:
 | Whole debug suite, `ctest --preset debug -j1` | 107 of 107 |
 | Sanitize: `run_save_world_names`, `run_save_state_names`, `run_save_state`, `fuzz_save` | All passed |
 | `build/sanitize/bin/fuzz_save --seconds 120` | 79015 inputs, 0 found wrong: 4240 states opened and 7214 worlds opened, saved over and opened again |
+
+The gate check, in its own clean build, on main merged with `c3f3940`:
+
+| Check | Result |
+|---|---|
+| The phase's commands | 7 of 7 passed, and `pgrep` printed nothing |
+| Whole debug suite, `ctest --preset debug -j1` | 107 of 107, in 1663 s |
+| Sanitize: `run_save_state_names`, `run_save_world_names` | Passed |
+| `build/sanitize/bin/fuzz_save --seconds 90` | 4664 checks, 0 failed |
+| A real world through real rebuilds | Issue 11 |
+| 28 lines of the code broken one at a time | Issue 12 |
 
 ## Commits
 
@@ -91,3 +102,23 @@ This goes a step past Ahmed's check, and does not replace it.
 **9. A refused-for-old-format world has only been seen forged.** The check and its message are tested on a manifest and a state file with an older version written in, as today's old-format worlds were deleted and no build of the old format is kept. The bytes of such a file past its header are not read before the refusal, so this should be the same as a real one.
 
 **10. Existing worlds cannot be carried over once.** Worlds saved before this phase, such as `test_1`, have no name table, so they are refused. Ahmed deleted today's test worlds, so nothing is lost, and the table's default stands. Worlds made after this phase survive from then on.
+
+**11. Gate check: a real world through a real new block, read from the pictures.** Expected: what Ahmed would see, with nothing done behind the game. In `--headless --menu`, on a scratch `--saves` directory, under the mutex:
+
+1. `tests/run/playthrough/fixtures/day.script`, seed 36, on this build: a person mines mud and mangrove logs, crafts, places a crafting table and makes a wooden pickaxe. The world and its inventory were read from `world.png` and `inventory.png`: the table underfoot, and mud, a log, 3 planks, the pickaxe and 2 sticks.
+2. The world was copied. A control copy was opened in the same build and looked at with a script.
+3. `config/blocks/aaa_probe/` and `config/items/aaa_probe/` were added, never committed, and the game rebuilt: `BLOCK_ID_AAA_PROBE = 1`, `BLOCK_COUNT` 135, so every id but air's moved. The other copy was opened with the same script: "saved with other blocks: 1 new here", and **both screenshots were byte for byte the control's** (sha256 `c8b0e168...` inventory, `b5f59061...` world). The log said the same 5 blocks mined, last `mangrove_log`, 8 items in 5 stacks, slot 4 `wood_pickaxe`, 0 sections past reading, 0 bytes live, exit 0. The manifest ended `yellow_terracotta`, `aaa_probe`.
+4. The probe was removed and the game rebuilt. That world opened: a warning naming `aaa_probe` for each of block, dropped item and item, the same report, the same inventory in the picture, 0 past reading, 0 bytes live, exit 0.
+5. A copy with version 4 forged into its manifest, with the header's checksum good: the log said "is in version 4 of the format, from before a world kept the names of its blocks", the world list showed "Could not open it: from another version" in red, Play was left greyed, the program went on, and the state file stayed the same bytes.
+
+A placed block with a moved number and a chest did not go through this, as a script has no way to come by a probe block: `run_save_world_names` and `run_save_state_names` cover them, and issue 12 says those tests notice. Ahmed's check is still his.
+
+**12. Gate check: whether the tests notice. They mostly did, and missed four lines.** Expected: breaking the translation fails a test. 28 single lines of `run/src/save/state/translate/`, `run/src/save/world/` and `run/src/save/names/` were broken one at a time, and `run_save_state_names` and `run_save_world_names` run against each, the sources restored after each.
+
+- Caught at once: 24, including a chest, furnace, armour, pointer, ground drop, ring drop, body kind or held item not translated, a world's reads or writes not translated, a gone block not air or not logged, a new name not put on the list, an old world not refused, a map by number only, and any character allowed in a name.
+- **Missed, three behaviours the translate README claims and no test looked at:** a block being mined that has gone (`mining` and `progress` left set, and with them `mining_block`), a stack over its item's limit today, and wear past `durability` or on what no longer wears. Fixed: new test `a_block_being_mined_that_has_gone_stops_the_mining_and_a_stack_keeps_to_what_its_item_is_today`. Those lines broken again were all caught. The code was already right.
+- Missed and left: zeroing a grid's `output` in `state_translate_items`. `save_state_apply` works it out again anyway, so nothing can tell. It stays, so that a translated file never holds a number from another table.
+
+**13. Gate check: code nothing called.** Expected: none. Actual: `save_world_record_valid` had no caller left once the `_within` forms came in, in `run/` or `tests/`, though two READMEs still named it. Fixed: taken out, and the READMEs corrected. `save_world_record_decode` is only called by `tests/run/save/state/index.c`, and stays, with its README saying so. The comment over `save_names_live_count` promised a hash function that does not exist, and was corrected.
+
+**14. Gate check: what else was looked for and not found.** No stubs or TODOs. Every table name allowed by `compile/src/game_tables/` is a name `save_names_read` accepts, both at most 64 bytes of `a-z 0-9 _`, so a build cannot write a list it would refuse. Nothing else on disk holds a table's number: `file_write_atomic` and `FILE_MODE_WRITE` outside `run/src/save/` are the screenshot, the profiler's report, `world.meta` and the settings, and those last two hold no id. Other `uint16_t` fields in the player, item, entity and mob structs saved are counts and ticks; `entity_explosion`'s `block` is not saved. Issue 7 stays as it was: not this phase's goal, and escalated there.
