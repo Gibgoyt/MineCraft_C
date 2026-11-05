@@ -1,6 +1,6 @@
 # 003-ahmed-bohemoth-initial-game-fixes — phase 2: Wall torches
 
-**Status:** in progress: everything an agent can do is done and checked, the whole debug suite 108 of 108. Only Ahmed's own check is left   (updated 2026-11-05)
+**Status:** in progress: everything an agent can do is done and checked, gate check included, the whole debug suite 108 of 108. Only Ahmed's own check is left   (updated 2026-11-05)
 
 ## Goal
 
@@ -52,6 +52,16 @@ Results, on this phase's code:
 | A real world from before this phase | Opened with the same pictures, byte for byte: issue 5 |
 | 15 lines of the code broken one at a time | All 15 caught in the end, after two new test cases: issue 6 |
 
+Gate check, in a clean build of this branch with main merged:
+
+| Check | Result |
+|---|---|
+| The Verification commands above | 8 of 8 |
+| Whole debug suite, `-j1`, with the blast fix | 108 of 108, in 1821 s. The felling test's two new checks came after it: `run_player_felling`, `run_mob_creeper`, `standards_lint`, `clang_format`, 4 of 4 |
+| Release: `minecraft_c` built, then the same scripted play | Same report as debug |
+| The built program played by script, debug and release: issue 10 | All four sides, a floor torch, the wall mined, the torch mined, torches picked up, and all kept through a reopening |
+| `pgrep -af "$PWD/build"` after the last run | Printed nothing |
+
 ## Commits
 
 Appended as they land:
@@ -84,3 +94,11 @@ They also go through `render_feature_shapes` against its exact reference, writte
 **8. The plan's Verification named a test that does not exist.** `run_world_tick` matches nothing: `tests/run/world/tick/` is ctest `run_world_sim`, by its `test.cmake`. Corrected above, with the new ctest added.
 
 **9. Sizes.** `tests/run/player/interaction/index.c` was at 1573 lines before this phase, so the new tests went in a directory of their own. `tests/run/world/tick/index.c` is now over 1900, under the 2000 that fail the build. Left for whoever adds to it next. `cuda/src/shade/index.cu` was at 1461 and was not touched.
+
+**10. Gate check: the real program, played by script.** Expected: Ahmed's words hold in `minecraft_c --headless --menu`, not only in the test's scene, which issue 4 had to use. Done: the menu made a world on seed 36 and saved it. Only then was the save edited, by a script outside the repo: 32 torches and 32 dirt in the hotbar, the view and the time of day, with its hashes put right. So the hands were given their items, and everything after that was real input through the real program. The script placed a dirt block and aimed a torch at its near side, four ways. Report: "mined 3 blocks and placed 9; the last mined was torch_wall_north", "2 picked up". Mined means the dirt behind one, the mud under it as the button stayed down, and another torch by itself. The pictures, read at noon and at midnight: each torch on its wall with its flame, the dirt lit at night, the outline around the aimed-at torch, a torch item on the ground where the wall went and back in the hotbar after walking over it (27 to 28), and a floor torch on a top. Reopened, the midnight world still had its torch on its wall and lit: "0 past reading". Nothing to fix here.
+
+**11. Gate check: a torch whose wall was blown up mostly gave nothing.** Expected, from the Goal: "It drops a torch if it's broken or if the block holding it goes." Actual: `explosion_break_one` gives drops one time in `power`, and a creeper's power is 3. The earlier test passed because it called `explosion_finish` with a power of 1. New test `a_torch_on_a_wall_gives_a_torch_at_any_power_on_the_list_or_not`, at power 3: `20 != 64` before the fix. Fixed in `cb740c6`: a torch on a wall always gives its torch, and the random number is still taken, so that what other blocks give does not shift. 64 of 64 after. A floor torch still goes by chance, as it did before this phase. Left alone: not asked for, and vanilla-like for what a blast takes.
+
+**12. Gate check: two tests did not check what they say.** `a_torch_on_a_log_goes_with_it_and_gives_itself_up` and `a_log_with_a_torch_on_every_side_waits_for_room_in_the_ring_and_nothing_is_lost` checked that no drop left the ring early, and never counted a torch. Fixed in `cb740c6`: they now count 4 and 48. Both pass, so the code was right. Also in that commit: `run/src/world/wall_torch/README.md` left `player/felling` out of who may call it.
+
+**13. Gate check, out of scope: a new world drops items by itself.** Seen in the report, with no block touched: 3 items on the ground after 53 ticks and 29 after about 150, on seed 36, with nothing mined. Expected: nothing dropped until something is broken. Likely leaf decay on the mangroves, as that is what drops with no player, but the cause was not looked for: this phase's code is not on that path, as it happened before any torch existed in the world. Left alone, and written down for whoever works on the trees.
