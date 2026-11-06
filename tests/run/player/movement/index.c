@@ -1424,4 +1424,7 @@ TEST(the_program_refuses_a_walk_with_no_world) {
     CHECK_CONTAINS(run.output, "--walk only means something with --test-world");
 }
 
+/* Plan 004 phase 08: the wind. */
+#include "run/player/movement/fixtures/wind.h"
+
 TEST_MAIN()
