@@ -5,3 +5,7 @@ date	label	preset	seed	workers	generated_tiles	kept_tiles	first_ms	median_ms	tar
 2026-11-06T17:37:00Z	the same, again	profile	4D494E4543524146	16	100	196	1150.8	251.2	250	MISSED
 2026-11-06T17:39:00Z	the same, again	profile	4D494E4543524146	16	100	196	1103.6	253.6	250	MISSED
 2026-11-06T17:41:00Z	the same, again	profile	4D494E4543524146	16	100	196	1113.9	256.1	250	MISSED
+2026-11-06T18:19:00Z	before the days are split, load average 4	profile	4D494E4543524146	16	100	196	1078.1	252.1	250	MISSED
+2026-11-06T19:20:00Z	each block's 7 days as jobs of their own, full suite just run, load average 1	profile	4D494E4543524146	16	100	196	1000.8	209.6	250	MET
+2026-11-06T19:22:00Z	the same, the full profile build just linked, load average 60	profile	4D494E4543524146	16	100	196	1074.6	227.1	250	MET
+2026-11-06T19:23:00Z	the same, again	profile	4D494E4543524146	16	100	196	1084.0	233.3	250	MET

@@ -35,3 +35,13 @@ Before the changes in the phase 07 file's Issues found 15, the same run gave a m
 ### 2026-11-06, the gate's reruns: 251 to 262 ms, at the target, not under it
 
 The full profile build, run four more times while the machine's load average was 51 (other agents' work): medians 261.6, 251.2, 253.6 and 256.1 ms (all MISSED), first censuses 1.10 to 1.15 s. So the census is at the 250 ms budget, not safely under it: the 226.5 above was a quieter moment. The blocks' jobs are 49 on 16 workers, so the last round runs one job alone; splitting the work by day as well as by block is the next step if a quiet machine also misses (Risks R1).
+
+### 2026-11-06, each block's days as jobs of their own: 209.6 to 233.3 ms, met
+
+Before the change, a rerun at load average 4 still gave 252.1 ms (MISSED): the 64 block jobs (the 2 by 2 grid does not line up with the land, so some blocks hold 1 or 2 tiles) cost 20 to 60 ms each, and 16 workers wait on the last few. Now a block's job reads its cells and normals, then spawns its 7 days as jobs any worker steals (each 3 to 10 ms), and the last day does the update (the phase 07 file's Issues found 20). The bytes are the same: a digest of every tile and the events after week 17 was `f4d08f588a2c1506` before and after.
+
+| | |
+|---|---|
+| Quiet (load average 1) | weeks 13 to 17: 357.8, 190.2, 209.6, 238.1, 175.7 ms; median **209.6 ms**; first census 1000.8 ms |
+| Just after the full profile build linked (load average 60 falling) | medians **227.1** and **233.3 ms**; first censuses 1.07 and 1.08 s |
+| What the jobs spent a week, summed | day lists 1.0 to 1.6 s (a little more than before, as up to 16 are built at once), normals and wind 0.47 s, noise 0.23 s, days 0.3 to 3.2 s |
