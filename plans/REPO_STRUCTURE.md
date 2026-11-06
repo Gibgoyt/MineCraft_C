@@ -256,7 +256,9 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `settle` | One thread, until all the eye's place wants is on the card. Not in the plan's list: split off at the Phase 14 gate, as `input` was | 14 gate |
 | | `tick` | One tick of the world, `game_sim_tick`. Not in the plan's list: split off at the Phase 18 gate, at the standard's 1500 lines | 18 gate |
 | | `input` | A poll of real input or a script's tick turned into flying, the body's wishes, the hotbar and the overlay's key. Not in the plan's list: split off at the Phase 14 gate, when `game` passed its size for splitting | 14 gate |
-| `calendar` | | The date from the world clock: year, day of the year, week, season label, the HUD's date line, and which weeks a late census runs. Pure arithmetic with no state, on the bottom row of section 11 beside `math` and `time` | Plan 004 phase 1 |
+| `calendar` | | The date from the world clock: year, day of the year (whole, and continuous for the sun), week, season label, the HUD's date line, and which weeks a late census runs. Pure arithmetic with no state, on the bottom row of section 11 beside `math` and `time` | Plan 004 phases 1, 2 |
+| `climate` | | Plan 004's climate, worked out top to bottom. For now the latitude of a place from its y alone, a triangle wave with the tropic at y = 10,000 and a pole at 38,298. Pure, no state; reserves nothing yet (phase 03 adds the tile cache). Ranked between `render` and `terrain` in section 11 | Plan 004 phase 2 |
+| | `sun` | Declination by day of the year, sunset hour angle and day length, and the sun's direction, elevation and azimuth at a latitude and moment, or from the world clock and a y. Pure, allocates nothing | Plan 004 phase 2 |
 | `physics` | `collision raycast` | Swept AABB; DDA block targeting | 12.1, 12.2 |
 | `player` | `movement camera` | Walk, jump, swim, look | 12.1, 12.2 |
 | | `combat` | The attack: aim, swing, strength | 15.7 |
@@ -427,7 +429,9 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/world/edit/` | ctest `run_world_edit`: random edits against a brute-force array and brute-force flags, the log, each consumer's flags, and snapshots, with a real reader thread |
 | `tests/run/world/light/` | ctest `run_world_light`: incremental light against a separate full recompute on random edits, columns coming and going, running out of room or memory, exact values worked out by hand, and what an opaque block's faces see |
 | `tests/run/world/tick/` | ctest `run_world_sim` (named in its `test.cmake`): `run/src/world/tick/`: flow worked out by hand and against a separate flood fill, lava and water, falling blocks, leaf decay, crops, grass, columns coming and going, running out of room, the same world from the same seed, real terrain left alone, each rule's number from both sides, and light against a rebuild after real terrain has been simulated |
-| `tests/run/calendar/` | ctest `run_calendar`: `run/src/calendar/`, with no card: the worked examples, the day starting at 06:00, years rolling over with weeks carrying on, every week 7 days, every season boundary north and south, the date line, the census plan, and the same dates from 16 threads |
+| `tests/run/calendar/` | ctest `run_calendar`: `run/src/calendar/`, with no card: the worked examples, the day starting at 06:00, years rolling over with weeks carrying on, every week 7 days, every season boundary north and south, the date line, the census plan, the continuous year position, and the same dates from 16 threads |
+| `tests/run/climate/` | ctest `run_climate`: `run/src/climate/`, with no card: latitude at the equator, tropic, polar circle and poles, the worked examples, the fold past a pole, the period far out, the even rise, and the same bits from 16 threads |
+| `tests/run/climate/sun/` | ctest `run_climate_sun`: `run/src/climate/sun/`, with no card: declination at the equinoxes and solstices, day length at 60 degrees, 12-hour equinox days, polar day and night, the south, the unit vector, every worked example of the phase 02 file, today's fixed sun as a special case, the sun from the clock, and the same bits from 16 threads |
 | `tests/run/terrain/seed/` | ctest `run_terrain_seed`: `run/src/terrain/` with `rng` and `noise`, the same bytes from 1 worker and 16, any split of the work, and values pinned from a separate program and the scalar kernel |
 | `tests/run/terrain/fields/` | ctest `run_terrain_fields`: `run/src/terrain/fields/`: ranges, the spread its README promises, the same bytes from 1 worker and 16, any split of the work, and each value worked out by hand from its noise |
 | `tests/run/terrain/density/` | ctest `run_terrain_density`: `run/src/terrain/density/`: the range limits on every corner of the climate and on real columns, bedrock at `-250`, water's top at `0`, values worked out by hand, any split of the work, and the same bytes from 1 worker and 16 |
@@ -471,6 +475,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/player/movement/` | ctest `run_player_movement`: `run/src/player/` with `movement`: each mode's measured speeds against the numbers in its README, the same bytes from the same intents, the threads' exchange and interpolation, and `run/src/game/`'s walking on the real card and threads, on fake input, and in the built program |
 | `tests/run/game/` | ctest `run_game`: the real loop on the real card and threads through `display_frames_run`, on fake kernels, with the guardian really forked |
 | `tests/run/game/census/` | ctest `run_game_census`: plan 004 phase 01's weekly census in a real game on the card: plain ticks, screens on and Continue, the day cycle off, a night slept through, a 100-day jump on the real threads, saves mid-week and with the screen up, the date line in the real game, and `fixtures/week.script` through the session's headless scene |
+| `tests/run/game/sun/` | ctest `run_game_sun`: plan 004 phase 02 on the real game and card: the picture's sun at the eye's latitude, a lit midnight sky past the polar circle, a bed at 60 degrees north on a midsummer midnight, mobs at noon at 80 degrees north in midwinter, the polar season labels, and `--day-of-year` on the built program |
 | `tests/run/game/spawn/` | ctest `run_game_spawn`: `run/src/game/spawn/`, with no display and no card: what counts as land, the search's walk on made-up land and on none, and real seeds starting on real land |
 | `tests/run/ui/screens/` | ctest `run_ui_screens`, named by its path: `run/src/ui/` with its four `screen_*`, and what `run/src/game/` does with them: every slot's place at three scales, replays of real scripts in `fixtures/` held byte for byte to golden PNGs beside them, 20000 random clicks on each screen, closing with no room, the ring, no heap, every way a screen comes up and goes on the real card, a click over the real threads, and the built program |
 | `tests/run/ui/menu/` | ctest `run_ui_menu`: `run/src/ui/menu/` with `catalog`, and `run/src/game/session/`: what is typed against published vectors and by hand, worlds on disk with what is wrong with them, each screen on made-up input by numbers worked out by hand, every size, no heap, pictures held to hashes set after looking at them, the built program all the way round under `--headless` and its refusals, and the whole round on fake kernels with the real threads and a real guardian |
@@ -568,6 +573,7 @@ main
      ├─ mob, player
      ├─ entity, item, physics
      ├─ render ─► gpu_bridge ─► (cuda/)
+     ├─ climate
      ├─ terrain, world
      ├─ display, input, texture, audio
      └─ job, thread, file, time, math, calendar, simd, profiler ─► (asm/)
@@ -646,6 +652,7 @@ Split it into sub-directories. Remember that going deeper changes the tier: code
 | Height limit and sea level | `config/machine.yaml`, `world:` |
 | Render distance setting | `run/src/ui/screen_settings/`, `run/src/settings/` |
 | The date and the census | `run/src/calendar/`, the world clock and the census in `run/src/game/README.md`, the screen in `run/src/ui/screen_census/` |
+| Latitude and where the sun is | `run/src/climate/` (latitude from y), `run/src/climate/sun/` (declination, day length, direction); the picture's sun in `run/src/game/README.md` and `render_frame_sun_set` in `run/src/render/frame/` |
 | What is on disk for a world, and what a crash does to it | `run/src/save/world/README.md` |
 | What a save holds besides blocks, and how the two stay one save | `run/src/save/state/README.md` |
 | When saves happen, and what they cost a frame | `run/src/save/autosave/README.md` |
