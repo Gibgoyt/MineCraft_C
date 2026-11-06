@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 6: Weather systems
 
-**Status:** in progress: built and verified on 2026-11-06 (every Verification command below run and passing); only Ahmed's gate, watching a season in the frames, is left   (updated 2026-11-06)
+**Status:** in progress: built and verified on 2026-11-06, and the gate checker reran every Verification command in a clean worktree and they all pass. Two things wait for Ahmed: his gate (watching a season in the frames) and Issues found 21 (no hurricanes form on real seeds because the open-sea rule almost never holds)   (updated 2026-11-06)
 
 Read `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` first, then sections 2.3, 2.5, 7.1 to 7.4 of `plans/004-ahmed-bohemoth-climate-system.md`, then the phase 03, 04 and 05 files of this plan, which this phase builds on. Every number here comes from the master plan. Where this file adds a number the master plan does not give, it says "this phase" and gives the reason.
 
@@ -893,6 +893,27 @@ Measured along the way (`run_climate_systems`, release): the inverse CDF over 10
 | `pgrep -a minecraft_c` | nothing |
 
 
+### Gate check, 2026-11-06 (skeptical checker, worktree `wf_6f8a0c68-47a-32`, main merged at `ca8ead0d`)
+
+Every command above rerun in a clean build of this worktree, through the build lock:
+
+| Command | Result |
+|---|---|
+| `cmake --build --preset debug` | built, `standards_lint` clean, no recursion |
+| `ctest --preset debug -R '^run_climate_.*$' -E '^run_climate_systems_rain$'` | 13 of 13 passed (`run_climate_systems` 19 tests, `run_climate_layer` among them) |
+| `ctest --preset debug -R '^(standards_lint|clang_format)$'` | both passed |
+| `ctest --preset debug -E '^run_climate_systems_rain$'` | 137 of 137 passed, 1924 s |
+| `cmake --build --preset release` | built and linked (LTO, frame limit), `standards_lint` clean |
+| `ctest --preset release -R '^run_climate_systems_rain$'` | passed: 0 of 128 cells outside 15%, worst 0.140, 0 failed days |
+| `ctest --preset release -R '^run_climate_systems$'` | passed; digest `0x69B94D8AD6C147C9`, equal to debug's and the pin |
+| `bench_climate --systems` | exit 0: warm median 0.354 ms (target 2 ms), cold 33.0 ms, cells at 2 km 24.3 ms |
+| `bench_climate --season /tmp/mc_c_season 2198175988018515243 150 300 0.5` | exit 0, 301 moments, 1205 files, 3.6 GB, 204 s; 0 hurricanes; folder deleted |
+| `pgrep -a minecraft_c` | nothing |
+
+Worked examples run through the real code by a separate program linked against the debug objects (not a test): hurricane $A = -60$, $R = 2500$, $r_m = 100$ gives $v_{\max} = 51.5$, wind 25.75 at 50, 51.5 at 100, 12.936 at 1000; pressure -46.728 at 1250, -22.073 at 2500, 0 at 7600; eyewall peak 26.667 mm an hour; $v_{\max}(-90) = 70$, $v_{\max}(-15) = 16.5$, "Hurricane Tavela". A low of -20 at 45° N blows $(0, +8.000)$ at $r_m$ east, at 45° S $(0, -8.000)$. $\psi(15°, 200) = 3.2501$ (the plan's 3.25). The Tracks worked example, from $(0, 6383)$ on day 200 with $c = 1$ and $\psi_{\text{turn}} = 22$ on all-sea ground: $(-3500, +525)$ a day exactly, $\varphi$ up 1.234° a day, $\psi$ 13.2° by day 208, so it never recurves, as the plan says; it weakens from day 206.75 (sea below 26 °C at 23° N) and dies at sample 35. $T_{\text{sea},0}$ at 15° N on day 215: 27.950. Thunder base at 30 °C, wet, monsoon: 1.98 = 9 × 0.22. Reaches 84.0, 63.1, 71.2 and 4.2 km. All match.
+
+Frames read (day 220 of the gate run): the systems layer shows a low's orange circle with its white track from the west and its blue front running south-west; the pressure layer shows the belts with 4 hPa lines and a red L at the low; the radar shows a low's shield and the background; the thunder layer shows cell discs. No stubs, TODOs or empty tests found in the phase's code or tests; every public function has a caller. No defect needed fixing. What is left is Ahmed's gate and Issues found 21.
+
 ## Gate
 
 **Ahmed watches a hurricane season go by** (master plan phase 06 gate). The Atlas doesn't exist yet, so the season is a folder of frames.
@@ -921,6 +942,7 @@ Appended as they land:
 - `da6bfbd3` List the phase file commit in this file.
 - `8b33af74` Move the cell speed cap into `climate_systems_thunder_velocity` and test it over 15 blocks a second (Issues found 19).
 - `940f9efa` Record the cap test and the verification rerun in this file.
+- `1b29be67` Record the gate check in this file: verification rerun, worked examples, Issues found 21.
 
 ## Issues found
 
@@ -1000,3 +1022,5 @@ Found while building, 2026-11-06 (the implementing agent, worktree `wf_6f8a0c68-
 19. **The 15 blocks a second cap on cells is never reached by real winds.** Phase 04's winds stay under 15, so `cells_move_with_the_day_s_wind_and_never_faster_than_15` checks every cell is at most 18,000 blocks a day and equals the noon wind times 1200, but has no case over the cap. Done (second agent, worktree `wf_6f8a0c68-47a-30`): the cap moved, with the same arithmetic, into the pure `climate_systems_thunder_velocity`, which the cell builder calls; the new test `a_cell_s_speed_is_capped_at_15_blocks_a_second` gives it winds of 10, 15, 20 and 40 blocks a second and still air: under the cap the wind times 1200, over it 18,000 blocks a day with the direction kept. The pinned digest did not move.
 
 20. **The gate's view spans 145° of latitude.** 64 km at 64 blocks a pixel, as the file says, is 1.7 times the equator-to-pole distance: the frames run from 59.5° S to 85.5° N (past the pole, mirrored). Stored PNGs make the 1204 frames 3.6 GB; the run took 207 s for 301 moments. The folder was deleted after checking, to spare `/tmp`'s memory; Ahmed makes it with the command under Gate.
+
+21. **No hurricanes form near spawn on any seed tried, so there is nothing for Ahmed to see in the gate frames.** Found by the gate checker, worktree `wf_6f8a0c68-47a-32`. Expected (section 11, Q5): about 7 hurricanes a season, tuned by playing. Actual: `bench_climate --season` on seeds 2198175988018515243 (days 150 to 300), 1 and 42 (days 200 to 260): each view's band from 10° to 25° N is about 33% sea on the coarse mask and **0% open sea**, and 0 hurricanes formed. The terrain's water comes in patches a few km across, so the rule "water 2048 blocks away on all four sides" almost never holds. The machinery works: the forced-season test and the all-sea tests make hurricanes that move, turn and weaken as the plan says, and the worked track above does too. Done: nothing changed. Changing `CLIMATE_HURRICANE_OPEN_SEA_BLOCKS` or the open-sea rule is Issues found 14's decision for Ahmed, and it would move the pinned digest. **For Ahmed:** as things stand, the game has almost no hurricanes on real seeds. Lower the open-sea distance (for example to 512), check only the spawn point, or keep it as it is.
