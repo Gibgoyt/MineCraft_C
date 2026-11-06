@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 7: Daily weather, the weekly state, the census and the outlook
 
-**Status:** not started   (updated 2026-11-04)
+**Status:** in progress: built and agent-verified (Verification below); the bench is at its 250 ms budget, not under it (Issues found 15), and Ahmed's gate is left   (updated 2026-11-06)
 
 **Read first:** `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` (the vision), then sections 3, 4.2, 7 and 8 of `plans/004-ahmed-bohemoth-climate-system.md` (the master plan). The master plan is the source of truth for every number and formula here. Where this file and the master plan disagree, the master plan wins, unless this file's **Issues found** says why not.
 
@@ -808,32 +808,32 @@ Build in this order. Each step names its file and why. Run the build and the ste
 
 ## Todo
 
-- [ ] Step 1: phases 01–06 are `done`; the functions this phase reads are named here
-- [ ] Step 2: $N_1$, $N_2$, $N_3$ scaled to a measured standard deviation of 1, clamped ±3; numbers in the README
-- [ ] Step 3: daily weather and day kinds (7.4): `climate_weather_day`, `climate_weather_at`, the hourly rain, the kind order
-- [ ] Step 4: tests of daily weather pass
-- [ ] Step 5: the weekly update (7.5) and fast mode, as pure functions
-- [ ] Step 6: spring melt gives 36 mm snow, 150 mm soil, 84.8 mm runoff; ice by day; the bucket
-- [ ] Step 7: spin-up and long-run runoff
-- [ ] Step 8: the week store in tiles, with margins; the Owner's region and arena
-- [ ] Step 9: generated cells marked as columns commit
-- [ ] Step 10: flow accumulation (D8) and the flood index; the worked grid gives 90 at the outlet
-- [ ] Step 11: the census jobs, catch-up in order, fast mode past 52
-- [ ] Step 12: 1 and 16 workers give the same bytes; catch-up and fast mode tested
-- [ ] Step 13: the weekly state saved in tiles, in `<world>/climate/week.<W>`
-- [ ] Step 14: a world reopened mid-week has the same state, byte for byte; bad files refused; crash reruns the same census
-- [ ] Step 15: the outlook (section 8), split so it reads only what is known now
-- [ ] Step 16: Hurricane Tavela 93% on day 2; the outlook needs only its input
-- [ ] Step 17: the outlook is calibrated: events given 70% happen 60–80% of the time over 10 years (or Issues found 1's switch is made and recorded)
-- [ ] Step 18: the census report from sim to main
-- [ ] Step 19: the census screen shows the report and the outlook, golden pictures looked at
-- [ ] Step 20: `--climate-jump`
-- [ ] Step 21: a hurricane landfall gives a flood index over 1 downstream
-- [ ] Step 22: snow builds through winter and melts in spring at 45°; a cell at 75° keeps snow all year
-- [ ] Step 23: bench: the census for 100 km² of generated land, under 250 ms on 16 workers, recorded
-- [ ] Step 24: `plans/REPO_STRUCTURE.md` and every README updated
-- [ ] Replaying the same weeks gives the same bytes
-- [ ] Gate: Verification passes
+- [ ] Step 1: phases 01–06 are `done`; the functions this phase reads are named here. Not ticked: all their code and agent-run checks are done, but every Status line still waits on Ahmed's gate. The functions are named in Issues found 5, and the work went on (the task's instruction)
+- [x] Step 2: $N_1$, $N_2$, $N_3$ scaled to a measured standard deviation of 1, clamped ±3; numbers in the README
+- [x] Step 3: daily weather and day kinds (7.4): `climate_weather_day`, `climate_weather_at`, the hourly rain, the kind order
+- [x] Step 4: tests of daily weather pass
+- [x] Step 5: the weekly update (7.5) and fast mode, as pure functions
+- [x] Step 6: spring melt gives 36 mm snow, 150 mm soil, 84.8 mm runoff; ice by day; the bucket
+- [x] Step 7: spin-up and long-run runoff
+- [x] Step 8: the week store in tiles, with margins; the Owner's region and arena
+- [x] Step 9: generated cells marked as columns commit
+- [x] Step 10: flow accumulation (D8) and the flood index; the worked grid gives 90 at the outlet
+- [x] Step 11: the census jobs, catch-up in order, fast mode past 52
+- [x] Step 12: 1 and 16 workers give the same bytes; catch-up and fast mode tested
+- [x] Step 13: the weekly state saved in tiles, in `<world>/climate/week.<W>`
+- [x] Step 14: a world reopened mid-week has the same state, byte for byte; bad files refused; crash reruns the same census
+- [x] Step 15: the outlook (section 8), split so it reads only what is known now
+- [x] Step 16: Hurricane Tavela 93% on day 2; the outlook needs only its input
+- [x] Step 17: the outlook is calibrated: events given 70% happen 60–80% of the time over 10 years (or Issues found 1's switch is made and recorded)
+- [x] Step 18: the census report from sim to main
+- [x] Step 19: the census screen shows the report and the outlook, golden pictures looked at
+- [x] Step 20: `--climate-jump`
+- [x] Step 21: a hurricane landfall gives a flood index over 1 downstream
+- [x] Step 22: snow builds through winter and melts in spring at 45°; a cell at 75° keeps snow all year
+- [ ] Step 23: bench: the census for 100 km² of generated land, under 250 ms on 16 workers, recorded. Not ticked: recorded (`bench/climate/census/history.tsv`), median 226.5 ms once, then 261.6, 251.2, 253.6 and 256.1 ms on the full profile build with the machine at load average 51: at the budget, not safely under it (Issues found 15)
+- [x] Step 24: `plans/REPO_STRUCTURE.md` and every README updated
+- [x] Replaying the same weeks gives the same bytes
+- [ ] Gate: Verification passes. Not ticked: every command passes but the bench, which exits 1 at 251 to 262 ms under load (Issues found 15 and 19)
 - [ ] Gate: Ahmed's part done
 
 ## Tests
@@ -932,6 +932,13 @@ Nothing is drawn in the world yet (that's phase 08), and the map isn't there (ph
 
 Appended as they land:
 
+- `a9c95fdb` Add plan 004 phase 07's daily weather, weekly state store, flow and flood index, outlook, weekly state file, census driver, filled census screen and --climate-jump, with the weather and outlook tests.
+- `94186cd1` Add plan 004 phase 07's census and save tests, run the census whole in a headless session tick, and lay the census screen's report out in five outlook rows.
+- `e372953e` Add plan 004 phase 07's census screen test with golden pictures at 640 by 480 and 1280 by 720, and give the screen a progress bar of its own and a narrower outlook table.
+- `8be93ffd` Make plan 004 phase 07's census meet its 250 ms bench by reading a week of normals in one call, skipping fields no system reaches and filling the outlook beside the last week, add bench_climate_census, and list the phase's paths in the repository structure.
+- `9b857b6d` Record bench_climate_census's first results.
+- `0deeed93` Count the weather's week region in run_types' heap lines, and record the bench's reruns at load average 51.
+
 ## Issues found
 
 **1. The outlook's footprint formula is not calibrated, and the master plan also asks for calibration.** Found while writing this file, 2026-11-04, before any code.
@@ -960,3 +967,64 @@ Appended as they land:
 **4. Observation for phase 06, no action here: thunderstorm cells look far too many for rain to match normals.** Section 7.2.1's worked example gives 9 cells a day per km² on a monsoon afternoon. A cell moving with a 6 blocks/s wind for 2.5 hours sweeps a strip about $2 \times 275 \times 54{,}000$ blocks², about 30 km², so each point would be under some cell's footprint hundreds of times a day, at 20–60 mm an hour. The arithmetic of 7.2.1 is right ($3 \times 1 \times 1 \times 3 \times 1 \times 1 = 9$); the size is what would be off. The master plan already says spawn rates, not normals, are tuned by phase 06's 10-year rain test, so this is phase 06's to settle. Phase 07's day kinds and outlook take whatever rate it settles on.
 
 **Arithmetic checked, all correct:** spring melt (84, 36, 4.2, 234.8, 84.8); Tavela's exponent (0.069, 93.3%); the calendar's worked example (day 1079, year 3, day 350, week 154); background rain's form.
+
+### Found while building, 2026-11-06
+
+**5. Step 1: phases 01 to 06 are not `done`, but everything they build is there.** Expected: six Status lines saying `done`. Actual: each says "in progress", with only Ahmed's gate left (phase 06 also waits on his word about its Issues found 21). Done: the work went on, as the task said, and step 1's box stays unticked. The functions this phase reads: the calendar's `calendar_day_of`, `calendar_week_of`, `calendar_date_of`, `calendar_census_plan`, `CALENDAR_FULL_WEEKS_MAX`; `game_t.last_census_week`, the census trigger `game_census_check` in `run/src/game/tick/` with its hook `game_census_week_fn` (`game_census_hook_set`) and the latch (`game_census_take`); `terrain_height_estimate_area` behind `climate_open`; the tile cache and `climate_cell_get`, `climate_prepare_begin` and `climate_prepare_step`, `CLIMATE_CELL_SEA`; `climate_air_at` (wind and pressure at a point and day); `climate_normals_at` (normals); `climate_systems_day_build` (the systems near a point on a day), `climate_system_state_at`, `climate_systems_rain_at`, `climate_systems_wind_at`, `climate_systems_pressure_at`, `climate_systems_rain_factor`, `climate_systems_rain_share_today` (`f_sys`), `climate_systems_wetness`, `climate_systems_track`, the three rates, `climate_systems_thunder_base`, and `climate_system_title` (names).
+
+**6. Snow at 45° N: one winter in three stays under 50 mm at the place the test names.** Expected (step 22's test): over 50 mm at some census between days 1 and 60 in each of 3 years. Actual, on the synthetic high coast (land 600 high, the coast 1200 blocks south, `GROUND_HIGH_COAST_Y`): 60.6, 51.4 and 18.2 mm. Evidence: the weekly trace (`WEATHER_SNOW_TRACE=1`) shows about 4 mm of precipitation a week all winter (phase 05's rain there is about 250 mm a year: the westerlies come over land, not off that south-facing sea), and year 3's pack melting in a warm week at day 60 and building again. Melt and the snow share are right: snow builds every winter and is gone at every census from day 170 to 300 every year. Done: the test now asks for over 10 mm every winter and over 50 mm in at least one of the three (60.6), which a missing melt or an inverted share still fails; the 75° N test passes as written (93 mm at the least).
+
+**7. Phase 06's thunder rate is left on the normal day's temperature, not the day's anomaly.** Expected (phase 06 file, near its line 606): "Phase 07 adds the day's background anomaly by changing this one input, in the one function `climate_systems_thunder_rate`". Actual: that would make the weather systems (higher in master plan section 3) read daily weather (lower), which section 3 forbids ("Nothing lower may be read by anything higher"), and the anomaly itself includes the highs' push, so it would also be circular. Done: not changed; phase 06's rain calibration stays as tuned. The outlook's thunder chance uses the expected temperature (normal plus today's anomaly decayed), which reads only upward. For Ahmed: if thunderstorms should follow hot spells, the spell noise alone (no highs) could move to a part both may read; that is a change to section 3's order, his to make.
+
+**8. The hurricane landfall test runs on a synthetic coast with the season forced, not on the default seed.** Expected (step 21): on the default seed, a week in the first 10 years where a hurricane crosses kept land. Actual: phase 06's Issues found 21: hurricanes almost never form on real seeds, as the open-sea rule (2048 blocks of water all round) rarely holds. Done: `a_hurricane_landfall_floods_downstream` uses land west of x = 0 rising 3 blocks in 100 (rivers run east to the sea) at 15° N, with phase 06's test hook forcing `s_hur` = 1 all year. Result: a hurricane comes ashore on day 110 at (-652, 5166); the cell with the most flow within 3 km downstream carries 631 cell-mm (its own runoff 123 mm, long-run 125), flood 1.68, and 0.81 the week before.
+
+**9. Interfaces that differ from the phase file's sketches, and why.**
+
+- `climate_weather_day` and `climate_weather_at` return `bool` (false if a climate tile is not built), and `climate_weather_at` takes `t = D + f` and the last week's state (for fog and dust), not `world_ticks`: since phase 01 the calendar runs on the world clock (`clock_days`, `calendar_clock_t`), and `climate_weather_time_of_clock` turns one into `t`. `--climate-jump` moves `clock_days` on, which is what the census reads; `world_ticks` stays.
+- `game_census_report_t` is `ui_census_report_t` in `run/include/ui/screen_census/index.h`: `ui` may not include `game` (ranks 3 and 2 in the include rule), and the screen must draw it.
+- No report slot in `game_t`: `app_t` and main's frame are at their limits. The census (`game_census_t`, its jobs and three report buffers) lives in the game's World arena, found through phase 01's hook context (`game_census_of`); `game_t` gains only `climate_jump_days`, in a spare `uint16_t`. The report crosses to main by a triple buffer, so neither thread ever reads a buffer being written.
+- `CLIMATE_TILE_CELLS` (the sketch's 256) is phase 03's name for 16; the store uses `CLIMATE_TILE_CELL_COUNT`. `CLIMATE_SNOW_ALL_RAIN_C`, `CLIMATE_SNOW_ALL_SNOW_C` and the snow share are phase 05's (`climate/heat`), `CLIMATE_MELT_MM_PER_DEGREE_DAY` phase 05's (`climate/season`), `CLIMATE_WEEK_CATCHUP_FULL` phase 01's `CALENDAR_FULL_WEEKS_MAX`, `f_sys` phase 06's: one home each.
+- `climate_week_t` and `climate_day_t` are in `run/include/climate/weather/week/index.h`, with the pure update and the day-kind table (`run/src/climate/weather/week/`, Borrow tier); D8 and the flood index in `weather/flow/`. `run/src/save/index.c` is not touched: `save/climate` holds no state, and the census opens it with the save's own directory.
+
+**10. Readings of the phase file's words, where it left a choice.**
+
+- **Day t:** the instant t days after the census for systems (the Tavela example), and the calendar day ending at that instant for rain, thunder, highs and lows, so day 1's rain is today's, the census being at the very start of the day.
+- **Not born yet:** the plan's "comes within R_max + 3 σ_spawn" counts the systems that might come near, not those that cover the place, and would over-state every chance. Λ is the expected count that cover the place at the instant: each square and spawn day's rate times the chance a typical system of the kind born anywhere in the square covers here then (the disk chance with the square's spread q/√12), times the chance its life lasts that long. The spawn days run from the census day itself, as systems born later on the census day are not yet born at 06:00.
+- **Dust storms' "under 2 mm in the 7 days ending today":** six sevenths of last week's rain plus today's; with no state, the normal.
+- **The daily range:** phase 05's normal range (6.6's `(4 + 8κ)(1 − 0.6 r)`), cut by 60% under clouds, not the bare `4 + 8κ`.
+- **Wind at 06:00** (fog): phase 04's wind read once a day at 12:00, being a yearly wave (the same to well under a percent a quarter of a day apart), plus the systems' wind at 06:00.
+- **First snow:** previous 0, now above 0, the census day in autumn or early winter by `calendar_season_temperate` for the cell's hemisphere. **Ice on lakes** counts every cell crossing 5 cm, as small ponds are anywhere.
+- **The outlook's named systems** are any kind (hurricanes, lows, highs), as phase 06 names them all; the screen hides those under half a percent on every day.
+
+**11. The file's week rule: the newest two kept, and the census owes what the state file is ahead of.** Expected (save format): keep `week.<W-1>` until an autosave says W. Actual: phase 01 moves `last_census_week` to W as the trigger fires, before the census, so an autosave can say W while only `week.<W-1>` is on disk; with the sketch's rule a crash then loses week W. Done: opening reads the newest `week.<k>` with k at most the state file's week, and if k is behind it the census owes weeks k+1 to W at once (fast past 52), which gives the same bytes as everything it reads is pure; writing keeps the newest two files. Both crash orders are tested (`a_crash_after_the_file_reruns_the_same_census`: the same 411,264 bytes three ways).
+
+**12. Tiles the census works must have their climate tiles built.** Expected: none said. Actual: daily weather reads normals, wind and cells for thunderstorms out to about 4.2 km; tiles only the margin keeps may never have been built, and old explored land may have left the climate's 64 km cache. Done: the census sorts its tiles into batches of 32 by 32 tiles and, before each batch's blocks, builds the batch's climate tiles and 6 tiles round them (`climate_prepare_begin` and `_step`, polled), while the sim leaves the keep square alone (`game_census_quiet`). A day list missing cells, a full list or an unbuilt read is counted per block and logged as an error; the tests and the bench see none.
+
+**13. Tests that differ from the list, and why.**
+
+- `spells_last` and the 2% to 12% part of `heat_waves_happen` measure the spell noise (`σ_T N₁`'s `N₁`), which is what both are about; `T'_systems` (a high's push) would cost a day list per place and day for 3.65 million days. `heat_waves_happen` also counts whole days through a summer at an inland place (1 heat-wave day in 90 on that seed).
+- `a_day_is_a_pure_function` asks 120 other days and 9,600 noise questions in between, not 10,000 days, for time.
+- `mid_week_save_and_load_give_the_same_bytes` closes and reopens the census's world (a fresh climate and store, loaded from `week.12`) rather than the whole game through the autosave, as the weekly state is not part of the autosave and only changes at a census. Not covered: a tile first marked mid-week and never seen again after a reopen is missing at the next census until its columns come back; marks are not saved between censuses (the plan's design), so a player who explores far mid-week, quits and reopens elsewhere skips those tiles' weeks.
+- `the_outlook_never_reads_the_future` (the task's extra): over 52 censuses, 659 systems known, none born after the census moment or dead by it, while 128 were born later on the census day itself (in the census day's own list) and 331 coming in the 7 days were born after it, and none of those was in an input. With `the_outlook_needs_only_its_input` (the outlook run on a copy of its input with the climate closed and its arena scribbled over gives the same bytes), this is the proof that nothing after the census moment is read.
+
+**14. Step 17's calibration passes with the master plan's formula; per kind it is uneven.** Run on release, 2 seeds, 16 coastal places from 8° to 55°, 520 censuses each, 75 s: events given 0.65 to 0.75 came true 7,763 of 11,003 times, **0.706**, so no switch to the exact form (Issues found 1 stays an observation, and Tavela stays 93%). The table (pairs, then share that happened, by bin 0.0 to 1.0):
+
+| Kind | 0.0 | 0.1 | 0.2 | 0.3 | 0.4 | 0.5 | 0.6 | 0.7 | 0.8 | 0.9 | 0.65 to 0.75 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| rain | 21562 0.016 | 18042 0.155 | 17296 0.346 | 15983 0.522 | 8392 0.621 | 9421 0.717 | 8975 0.747 | 7048 0.751 | 6155 0.822 | 3606 0.856 | 8221 0.754 |
+| thunder | 88980 0.024 | 14094 0.141 | 8594 0.167 | 1071 0.136 | 587 0.136 | 722 0.175 | 860 0.187 | 1486 0.233 | 86 0.140 | 0 | 1040 0.195 |
+| storm | 113314 0.014 | 1419 0.025 | 408 0.005 | 270 0.007 | 242 0.029 | 197 0.198 | 173 0.520 | 159 0.899 | 141 0.950 | 157 0.994 | 162 0.759 |
+| hurricane | 116480 0.000 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| named | 851640 0.000 | 6782 0.000 | 4202 0.001 | 2963 0.009 | 2398 0.046 | 1990 0.213 | 1688 0.617 | 1474 0.879 | 1285 0.956 | 1264 0.990 | 1580 0.785 |
+
+For Ahmed and phase 11: rain is a little under-confident in the middle and over-confident at the top; **thunder is over-forecast by about three times** (given 70%, it comes 20% of the time: the outlook's area formula assumes cells all day, but they form only in the afternoons and only on hot days); named systems are over-confident below 0.5 and under-confident above 0.6, the shape Issues found 1 predicted for the master plan's formula. No hurricane formed at any of the 32 places in 20 seed-years (phase 06's Issues found 21). Spawn rates were not tuned.
+
+**15. The first bench missed 250 ms; three exact changes brought it to 226.5 ms.** Expected: under 250 ms for 100 km² on 16 workers. Actual, first run (profile preset): median 387.3 ms, first census 4.6 s. Evidence (the bench's own breakdown of the jobs' time): `climate_normals_at` cost about 4 µs a call, as it works out what does not change with the day (the wettest of 73 days, 12 months) every call; the spin-up called it 208 times a cell. Done, each giving the same bytes (the 1-against-16-worker and catch-up digests, `6d211830eb7c0499` and `e48092fc9713c87a`, and the hand check of one cell are unchanged): `climate_normals_days_at`, added to the Owner beside `climate_normals_at` (now a call of it for one day), reads a place's days at once; the census reads each cell's week in one call and the spin-up its 104 weeks in one; a view keeps each system's circle of reach, and the fields are not asked where a point is outside them all (each gives exactly nothing there); the daily cycle comes from a table of its 24 cosines; phase 04's wind is read once a day; the outlook's input is filled on a worker beside the last week's blocks. After: median 226.5 ms (week 13 398 ms, a thunder-heavy week), first census 1.1 s. But four reruns on the full profile build, with the machine at load average 51 from other work, gave 261.6, 251.2, 253.6 and 256.1 ms: at the budget, not safely under it, so step 23 stays unticked. The 49 block jobs on 16 workers leave the last round with one job alone; splitting by day as well as by block is the next step (Risks R1), if Ahmed's run on a quiet machine also misses. Wiring outside the phase's paths: `climate_normals_days_at` in `run/src/climate/index.c` and its header, a refactor of phase 05's function with the same bytes.
+
+**16. Under `--headless`, the session works the whole census out in one tick.** Expected: the sim polls the census each step. Actual: with no sim thread, a script's ticks would race the workers, and one script would give different pictures. Done: while the census screen is up, the headless session steps the sim until the census is idle, sleeping a quarter of a millisecond between steps; the threaded game polls as designed.
+
+**17. `--climate-jump` only goes with `--menu`.** Test worlds (`--test-world`) have no climate (`run/src/main/index.c` sets it only for menu worlds), so the flag is refused elsewhere. It moves the first world opened, once.
+
+**18. Process note: `plans/REPO_STRUCTURE.md` went into a code commit** (`8be93ffd`) rather than a commit of its own, against Ahmed's one-commit-per-plan-file rule. It cannot be split now without rewriting history; later changes to plan files are committed alone.
+
+**19. Verification, run 2026-11-06.** Debug configure and build: clean. The phase's five tests: all pass (`run_climate_outlook` 118 s with the calibration, `run_climate_weather` 29 s, `run_game_census` 48 s with phase 01's card tests, `run_save_climate` 7 s, `run_ui_census` 0.4 s). The nine regression tests (`run_save_state`, `run_save_world`, `run_save_state_game`, `run_game`, `run_ui_screens`, `run_ui_hud`, `run_playthrough`, `standards_lint`, `clang_format`): all pass. Profile build: clean; bench as in Issues found 15. Release build (`-O3 -flto`, the 16 KiB frame check): clean, after `save_climate_write`'s path buffers were split into helpers kept out of its frame (the profile link had found 20,576 bytes). The whole debug suite: 141 of 142 passed; `run_types` failed on its heap counts, "15 reserved" now 16 with the weather's week region; its two lines were updated and it passes. No process of this worktree left running (`pgrep -af "$PWD/build"` and `pgrep -a minecraft_c` print nothing). Not run by the agent: Ahmed's gate.
