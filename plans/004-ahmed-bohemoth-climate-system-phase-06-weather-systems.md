@@ -899,6 +899,7 @@ Appended as they land:
 
 - `1e4f94d7` Add plan 004 phase 06's weather systems (code, tests, bench), with the tuned rates of Issues found 12 and 14: `CLIMATE_THUNDER_RATE_GAIN` 1 to 0.22, lows 0.08 and 0.04 to 0.18 and 0.09, lows' drift 0.15 to 0.08, hurricanes 0.02 to 0.034, `f_sys` 20° to 35° to 25° to 50° and 0.4 past 60° to 70°; measured before and after in Issues found 12's table (110 cells outside, then 0, worst 0.140).
 - `749a25d5` List the weather systems in `plans/REPO_STRUCTURE.md`.
+- `6298210e` Record the phase in this file: todos, results, the tuning and the issues found.
 
 ## Issues found
 
