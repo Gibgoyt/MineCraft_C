@@ -138,6 +138,8 @@ void game_census_detach(game_t *game);
 game_census_t *game_census_of(const game_t *game);
 /* The sim's step: the census's step for where the body or eye is. True if the climate's keep square must stay put. */
 bool game_census_sim(game_t *game);
+/* Whether the game has no census, or it is idle: what a headless session steps the sim until. */
+bool game_census_settled(const game_t *game);
 /* The sim, as a column commits: its 64-block cell holds generated land. */
 void game_census_mark(game_t *game, int32_t chunk_x, int32_t chunk_y);
 

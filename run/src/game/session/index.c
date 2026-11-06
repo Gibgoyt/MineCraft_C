@@ -642,8 +642,12 @@ static void game_session_script_frame(const display_headless_tick_t *tick, input
 static bool game_session_scene_tick(void *context, const display_headless_tick_t *tick) {
     game_session_t *const session = context;
     if (session->state == GAME_SESSION_CENSUS) {
-        /* With no sim thread the census moves on here, a step a tick, while its screen is up. */
-        game_sim_step(session->borrowed_game);
+        /* With no sim thread the census is worked out here, whole, in one tick: so one script gives one set of pictures,
+         * whatever the workers' speed. */
+        while (!game_census_settled(session->borrowed_game)) {
+            game_sim_step(session->borrowed_game);
+            time_sleep_ns(TIME_NS_PER_MS / 4);
+        }
         return true;
     }
     if (session->state != GAME_SESSION_PLAYING) {

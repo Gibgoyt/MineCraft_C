@@ -21,6 +21,9 @@
 #include "ui/index.h"
 #include "world/index.h"
 
+#include "climate/weather/flow/index.h"
+#include "run/game/census/fixtures/weather.h"
+
 #include <inttypes.h>
 #include <linux/input-event-codes.h>
 #include <math.h>
@@ -723,6 +726,347 @@ TEST(the_session_opens_the_census_screen_and_continue_resumes) {
     CHECK(game_session_end(session));
     game_session_deinit(session);
     gc_rig_end(t, &rig);
+}
+
+/* ---- Plan 004 phase 07: the census's weather, with no game and no card ------------------------------------------------- */
+
+/* The phase 07 file's worked grid, north up: rows 0 to 2 are y 2 to 0. */
+static void gw_grid(climate_flow_cell_t cells[9], float32_t runoff) {
+    static const float32_t HEIGHTS[3][3] = {
+        {50.0f32, 48.0f32, 47.0f32}, {45.0f32, 40.0f32, 38.0f32}, {44.0f32, 36.0f32, 30.0f32}};
+    memset(cells, 0, 9u * sizeof(climate_flow_cell_t));
+    for (uint32_t row = 0u; row < 3u; row++) {
+        for (uint32_t col = 0u; col < 3u; col++) {
+            climate_flow_cell_t *const cell = &cells[row * 3u + col];
+            cell->cell_x = (int32_t)col;
+            cell->cell_y = 2 - (int32_t)row;
+            cell->height = HEIGHTS[row][col];
+            cell->runoff = runoff;
+            cell->mean = runoff;
+        }
+    }
+}
+
+static uint32_t gw_grid_find(const void *borrowed_context, int32_t cell_x, int32_t cell_y) {
+    (void)borrowed_context;
+    if (cell_x < 0 || cell_x > 2 || cell_y < 0 || cell_y > 2) {
+        return CLIMATE_FLOW_NONE;
+    }
+    return (uint32_t)(2 - cell_y) * 3u + (uint32_t)cell_x;
+}
+
+TEST(d8_matches_the_worked_grid) {
+    climate_flow_cell_t cells[9];
+    gw_grid(cells, 10.0f32);
+    climate_flow_receivers(cells, 9u, gw_grid_find, nullptr);
+    /* Receivers by row and column, as the table says: (1,1), (1,2), (1,2) / (2,1), (2,2), (2,2) / (2,1), (2,2), none. */
+    static const uint32_t RECEIVERS[9] = {4u, 5u, 5u, 7u, 8u, 8u, 7u, 8u, CLIMATE_FLOW_NONE};
+    static const float64_t TOTALS[9] = {10.0f64, 10.0f64, 10.0f64, 10.0f64, 20.0f64,
+                                        30.0f64, 10.0f64, 30.0f64, 90.0f64};
+    uint32_t index[9], scratch[9];
+    climate_flow_accumulate(cells, 9u, index, scratch);
+    for (uint32_t i = 0u; i < 9u; i++) {
+        printf("  cell (%u, %u): height %.0f, receiver %d, total %.0f\n", i / 3u, i % 3u,
+               (libc_double_t)cells[i].height, cells[i].receiver == CLIMATE_FLOW_NONE ? -1 : (int32_t)cells[i].receiver,
+               (libc_double_t)cells[i].q_week);
+        CHECK_EQ_U64(cells[i].receiver, RECEIVERS[i]);
+        CHECK_NEAR(cells[i].q_week, TOTALS[i], 1.0e-9f64);
+    }
+    /* A sea cell keeps its water whatever is below it. */
+    gw_grid(cells, 10.0f32);
+    cells[4].sea = 1u;
+    climate_flow_receivers(cells, 9u, gw_grid_find, nullptr);
+    CHECK_EQ_U64(cells[4].receiver, CLIMATE_FLOW_NONE);
+    CHECK_EQ_U64(cells[0].receiver, 4u);
+}
+
+TEST(flood_index_by_hand) {
+    const float32_t usual = climate_flow_flood(90.0f64, 40.0f64);
+    const float32_t hurricane = climate_flow_flood(1305.0f64, 40.0f64);
+    const float32_t drizzle = climate_flow_flood(10.0f64, 0.0f64);
+    printf("Qbar 40, Q 90: %.4f; Q 1305: %.4f; Qbar 0, Q 10: %.4f\n", (libc_double_t)usual, (libc_double_t)hurricane,
+           (libc_double_t)drizzle);
+    CHECK_NEAR(usual, 0.75f32, 1.0e-6f32);
+    CHECK_NEAR(hurricane, 10.875f32, 1.0e-5f32);
+    CHECK_NEAR(drizzle, 0.5f32, 1.0e-6f32);
+}
+
+/* One tile of land by the coast marked as generated, so 25 kept tiles with the margin; weeks 12 to 12 + weeks - 1. */
+static uint64_t gw_run_weeks(test_context_t *t, uint32_t workers, uint32_t weeks, const char *directory,
+                             uint64_t *out_file_digest) {
+    gw_rig_t rig;
+    if (!gw_start(t, &rig, workers)) {
+        return 0u;
+    }
+    gw_open(&rig, directory, 11u);
+    gw_mark_tiles(&rig, -2, 6, -2, 6);
+    gw_weeks(&rig, 12u, 11u + weeks, 0u);
+    const uint64_t digest = gw_digest(t, rig.climate);
+    if (out_file_digest != nullptr && directory != nullptr) {
+        char path[FILE_PATH_BYTES];
+        uint64_t bytes = 0u;
+        (void)save_climate_path(directory, 11u + weeks, path);
+        const uint8_t *const file = gw_file(t, path, &bytes);
+        *out_file_digest = file != nullptr ? save_climate_hash(0xCBF29CE484222325ull, file, bytes) : 0u;
+    }
+    gw_stop(&rig);
+    return digest;
+}
+
+TEST(one_and_sixteen_workers_give_the_same_bytes) {
+    char *const one = gw_directory(t);
+    char *const sixteen = gw_directory(t);
+    REQUIRE(one != nullptr && sixteen != nullptr);
+    uint64_t file_one = 0u, file_sixteen = 0u;
+    const int64_t started = time_now_ns();
+    const uint64_t a = gw_run_weeks(t, 1u, 3u, one, &file_one);
+    const int64_t middle = time_now_ns();
+    const uint64_t b = gw_run_weeks(t, MC_THREADS_WORKERS, 3u, sixteen, &file_sixteen);
+    printf("3 weeks over 25 tiles: 1 worker %.0f ms, %u workers %.0f ms; store %016" PRIx64 " and %016" PRIx64
+           ", file %016" PRIx64 " and %016" PRIx64 "\n",
+           (libc_double_t)time_ns_to_ms(middle - started), (uint32_t)MC_THREADS_WORKERS,
+           (libc_double_t)time_ns_to_ms(time_now_ns() - middle), a, b, file_one, file_sixteen);
+    CHECK(a != 0u && file_one != 0u);
+    CHECK(a == b);
+    CHECK(file_one == file_sixteen);
+    gw_remove(t, one);
+    gw_remove(t, sixteen);
+}
+
+TEST(catch_up_runs_each_week_in_order) {
+    /* --climate-jump 100 from a new world owes weeks 12 to 25: once all together, and once a census at a time. */
+    gw_rig_t rig;
+    REQUIRE(gw_start(t, &rig, MC_THREADS_WORKERS));
+    gw_open(&rig, nullptr, 11u);
+    gw_mark_tiles(&rig, -2, 6, -2, 6);
+    for (uint64_t w = 12u; w <= 25u; w++) {
+        game_census_week(rig.census, w, false);
+    }
+    CHECK_EQ_U64(game_census_report(rig.census)->weeks_total, 14u);
+    gw_settle(&rig, -1500.0f64, (float64_t)GW_Y);
+    const ui_census_report_t *const report = game_census_report(rig.census);
+    const uint64_t together = gw_digest(t, rig.climate);
+    const climate_week_store_t *const store = climate_week_store(rig.climate);
+    uint32_t at_25 = 0u;
+    for (uint32_t i = 0u; i < store->tile_count; i++) {
+        at_25 += store->borrowed_tiles[i].week == 25u ? 1u : 0u;
+    }
+    printf("14 weeks at once: %u of %u weeks done, %u of %u tiles at week 25, written %u\n", report->weeks_done,
+           report->weeks_total, at_25, store->tile_count, (uint32_t)report->written);
+    CHECK_EQ_U64(report->weeks_done, 14u);
+    CHECK_EQ_U64(report->written, 1u);
+    CHECK_EQ_U64(at_25, store->tile_count);
+    CHECK_EQ_U64(store->week, 25u);
+    gw_stop(&rig);
+
+    REQUIRE(gw_start(t, &rig, MC_THREADS_WORKERS));
+    gw_open(&rig, nullptr, 11u);
+    gw_mark_tiles(&rig, -2, 6, -2, 6);
+    for (uint64_t w = 12u; w <= 25u; w++) {
+        gw_weeks(&rig, w, w, 0u);
+        CHECK_EQ_U64(climate_week_store(rig.climate)->week, w);
+    }
+    const uint64_t one_by_one = gw_digest(t, rig.climate);
+    printf("together %016" PRIx64 ", one census at a time %016" PRIx64 "\n", together, one_by_one);
+    CHECK(together == one_by_one);
+    gw_stop(&rig);
+}
+
+TEST(fast_mode_past_52_weeks) {
+    /* A jump of 60 weeks: the oldest 8 fast, then 52 full, against 60 full. */
+    gw_rig_t fast, full;
+    REQUIRE(gw_start(t, &fast, MC_THREADS_WORKERS));
+    gw_open(&fast, nullptr, 11u);
+    gw_mark_tiles(&fast, -2, 6, -2, 6);
+    const int64_t started = time_now_ns();
+    gw_weeks(&fast, 12u, 71u, 19u);
+    const int64_t fast_ns = time_now_ns() - started;
+    REQUIRE(gw_start(t, &full, MC_THREADS_WORKERS));
+    gw_open(&full, nullptr, 11u);
+    gw_mark_tiles(&full, -2, 6, -2, 6);
+    gw_weeks(&full, 12u, 71u, 0u);
+    const climate_week_store_t *const a = climate_week_store(fast.climate);
+    const climate_week_store_t *const b = climate_week_store(full.climate);
+    REQUIRE(a->tile_count == b->tile_count);
+    uint32_t cells = 0u, close = 0u, kinds_same = 0u, floods = 0u, days = 0u;
+    for (uint32_t i = 0u; i < a->tile_count; i++) {
+        const climate_week_tile_t *const ta = &a->borrowed_tiles[i];
+        uint32_t j = 0u;
+        const climate_week_tile_t *const tb = climate_week_store_find(b, ta->tile_x, ta->tile_y, &j);
+        REQUIRE(tb != nullptr);
+        for (uint32_t c = 0u; c < CLIMATE_TILE_CELL_COUNT; c++) {
+            const climate_week_t *const ca = &ta->cells[c], *const cb = &tb->cells[c];
+            cells++;
+            close += fabsf(ca->snow_mm - cb->snow_mm) < 5.0f32 && fabsf(ca->soil_mm - cb->soil_mm) < 5.0f32 ? 1u : 0u;
+            kinds_same += memcmp(ca->day_kind, cb->day_kind, sizeof(ca->day_kind)) == 0 ? 1u : 0u;
+            floods += ca->flood > 0.0f32 ? 1u : 0u;
+            for (uint32_t d = 0u; d < CLIMATE_WEEK_DAYS; d++) {
+                days += ca->day_kind[d] != CLIMATE_DAY_CLEAR ? 1u : 0u;
+            }
+        }
+    }
+    const float64_t share = (float64_t)close / (float64_t)cells;
+    printf("8 fast then 52 full (%.0f ms) against 60 full: snow and soil within 5 mm in %.1f%% of %u cells; the last "
+           "week's kinds the same in %u, %u cells with a flood index, %u days not clear\n",
+           (libc_double_t)time_ns_to_ms(fast_ns), (libc_double_t)(100.0f64 * share), cells, kinds_same, floods, days);
+    /* Fast mode is an approximation; 52 full weeks after it wash most of the difference out. */
+    CHECK(share >= 0.95f64);
+    CHECK(floods > 0u);
+    CHECK(days > 0u);
+    gw_stop(&fast);
+    gw_stop(&full);
+}
+
+TEST(replaying_the_same_weeks_gives_the_same_bytes) {
+    gw_rig_t a, b;
+    REQUIRE(gw_start(t, &a, MC_THREADS_WORKERS));
+    gw_open(&a, nullptr, 11u);
+    gw_mark_tiles(&a, -2, 6, -2, 6);
+    REQUIRE(gw_start(t, &b, 4u));
+    gw_open(&b, nullptr, 11u);
+    gw_mark_tiles(&b, -2, 6, -2, 6);
+    uint32_t same = 0u;
+    for (uint64_t w = 12u; w < 32u; w++) {
+        gw_weeks(&a, w, w, 0u);
+        gw_weeks(&b, w, w, 0u);
+        same += gw_digest(t, a.climate) == gw_digest(t, b.climate) ? 1u : 0u;
+    }
+    printf("20 censuses replayed on 16 and on 4 workers: %u of 20 stores the same\n", same);
+    CHECK_EQ_U64(same, 20u);
+    gw_stop(&a);
+    gw_stop(&b);
+}
+
+/* A hurricane's centre over kept land: the day, and where, within 10 years. */
+static bool gw_landfall(gw_rig_t *rig, arena_t *arena, int64_t *out_day, float64_t *out_x, float64_t *out_y) {
+    for (int64_t day = 100; day < 3650; day++) {
+        arena_reset(arena);
+        climate_systems_day_t list;
+        if (!climate_systems_day_build(rig->climate, arena, -1500.0f64, (float64_t)GW_Y, 6000.0f32, 0.0f32, day,
+                                       1u << CLIMATE_SYSTEM_HURRICANE, &list)) {
+            return false;
+        }
+        for (uint32_t i = 0u; i < list.system_count; i++) {
+            const climate_system_t *const system = &list.borrowed_systems[i];
+            for (uint32_t k = 0u; k < system->sample_count; k++) {
+                const climate_track_sample_t *const s = &system->samples[k];
+                const float64_t t_k = system->spawn_day + 0.25f64 * (float64_t)k;
+                if (t_k >= (float64_t)day && t_k < (float64_t)day + 1.0f64 && s->over_land != 0u && s->x > -2000.0f64 &&
+                    s->x < -200.0f64 && fabs(s->y - (float64_t)GW_Y) < 3000.0f64) {
+                    *out_day = day;
+                    *out_x = s->x;
+                    *out_y = s->y;
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+TEST(a_hurricane_landfall_floods_downstream) {
+    /* Issues found 8: hurricanes almost never form on real seeds (phase 06, Issues found 21), so a sloped coast at 15 N with
+     * the hurricane season forced on all year, by phase 06's test hook. */
+    gw_rig_t rig;
+    REQUIRE(gw_start(t, &rig, MC_THREADS_WORKERS));
+    const climate_systems_hooks_t hooks = {.hurricane_s = 1.0f32,
+                                           .hurricane_current_c = 0.0f32,
+                                           .hurricane_first = 0u,
+                                           .hurricane_last = 364u,
+                                           .big_off = 0u};
+    climate_systems_hooks_set(rig.climate, &hooks);
+    arena_t *const arena = gw_aligned(t, sizeof(arena_t));
+    arena_init(arena, "test_landfall", gw_aligned(t, 8ull << 20), 8ull << 20);
+    int64_t day = 0;
+    float64_t x = 0.0f64, y = 0.0f64;
+    REQUIRE(gw_landfall(&rig, arena, &day, &x, &y));
+    const uint64_t week = (uint64_t)(day / 7) + 1u; /* the census whose 7 days hold the landfall */
+    printf("a hurricane comes ashore on day %" PRId64 " at %.0f, %.0f: census week %" PRIu64 "\n", day,
+           (libc_double_t)x, (libc_double_t)y, week);
+    gw_open(&rig, nullptr, week - 2u);
+    const int32_t tile_x = (int32_t)floor(x / 1024.0f64), tile_y = (int32_t)floor(y / 1024.0f64);
+    gw_mark_tiles(&rig, tile_x - 1, tile_y - 1, tile_x + 1, tile_y + 1);
+    gw_weeks(&rig, week - 1u, week - 1u, 0u);
+    const climate_week_store_t *const store = climate_week_store(rig.climate);
+    float32_t *const before = test_alloc(t, store->tile_count * CLIMATE_TILE_CELL_COUNT * sizeof(float32_t));
+    for (uint32_t i = 0u; i < store->tile_count; i++) {
+        for (uint32_t c = 0u; c < CLIMATE_TILE_CELL_COUNT; c++) {
+            before[i * CLIMATE_TILE_CELL_COUNT + c] = store->borrowed_tiles[i].cells[c].flood;
+        }
+    }
+    gw_weeks(&rig, week, week, 0u);
+    /* The cell with the most flow within 3 km downstream of the landfall: east of it, toward the sea, on land. */
+    uint32_t best = CLIMATE_FLOW_NONE;
+    for (uint32_t k = 0u; k < store->tile_count * CLIMATE_TILE_CELL_COUNT; k++) {
+        const climate_flow_cell_t *const cell = &store->borrowed_flow[k];
+        const float64_t cx = (float64_t)cell->cell_x * 64.0f64 + 32.0f64,
+                        cy = (float64_t)cell->cell_y * 64.0f64 + 32.0f64;
+        const float64_t dx = cx - x, dy = cy - y;
+        if (cell->sea != 0u || dx < 0.0f64 || dx * dx + dy * dy > 3000.0f64 * 3000.0f64) {
+            continue;
+        }
+        if (best == CLIMATE_FLOW_NONE || cell->q_week > store->borrowed_flow[best].q_week) {
+            best = k;
+        }
+    }
+    REQUIRE(best != CLIMATE_FLOW_NONE);
+    const climate_week_t *const cell =
+        &store->borrowed_tiles[best / CLIMATE_TILE_CELL_COUNT].cells[best % CLIMATE_TILE_CELL_COUNT];
+    const climate_flow_cell_t *const flow = &store->borrowed_flow[best];
+    printf(
+        "downstream cell %d, %d: flow %.0f cell-mm (long-run %.1f), rain %.0f mm, runoff %.0f mm, flood %.2f, the week "
+        "before %.2f; day kinds %u %u %u %u %u %u %u\n",
+        flow->cell_x, flow->cell_y, (libc_double_t)flow->q_week, (libc_double_t)flow->q_mean,
+        (libc_double_t)cell->rain_mm, (libc_double_t)cell->runoff_mm, (libc_double_t)cell->flood,
+        (libc_double_t)before[best], cell->day_kind[0], cell->day_kind[1], cell->day_kind[2], cell->day_kind[3],
+        cell->day_kind[4], cell->day_kind[5], cell->day_kind[6]);
+    CHECK(flow->q_week > (float64_t)cell->runoff_mm); /* water came from upstream */
+    CHECK(cell->flood > 1.0f32);
+    CHECK(before[best] < 1.0f32);
+    gw_stop(&rig);
+}
+
+TEST(the_program_jumps_100_days_and_continues) {
+    char *const root = gw_directory(t);
+    REQUIRE(root != nullptr);
+    char saves[GW_PATH_BYTES], shots[GW_PATH_BYTES];
+    snprintf(saves, sizeof(saves), "%s/saves", root);
+    snprintf(shots, sizeof(shots), "%s/shots", root);
+    char *const argv[] = {t->borrowed_args[0],
+                          (char *)"--menu",
+                          (char *)"--headless",
+                          (char *)"--no-sound",
+                          (char *)"--climate-jump",
+                          (char *)"100",
+                          (char *)"--render-distance",
+                          (char *)"3",
+                          (char *)"--width",
+                          (char *)"640",
+                          (char *)"--height",
+                          (char *)"480",
+                          (char *)"--saves",
+                          saves,
+                          (char *)"--script",
+                          (char *)"tests/run/game/census/fixtures/jump.script",
+                          (char *)"--screenshot-dir",
+                          shots,
+                          nullptr};
+    test_process_t run;
+    test_process_run(t, argv, 900000u, &run);
+    REQUIRE(run.started != 0u);
+    CHECK_EQ_I64(run.exit_code, 0);
+    CHECK_CONTAINS(run.output, "--climate-jump moves this world's clock on 100 days");
+    CHECK_CONTAINS(run.output, "calendar: census for week 25 (14 weeks, 0 of them fast)");
+    CHECK_CONTAINS(run.output, "census: weeks 12 to 25 worked out");
+    CHECK_CONTAINS(run.output, "the census screen for week 25 is up");
+    char path[GW_PATH_BYTES + 16u];
+    uint64_t bytes = 0u;
+    snprintf(path, sizeof(path), "%s/after.png", shots);
+    CHECK(gw_file(t, path, &bytes) != nullptr && bytes > 0u);
+    if (t->failure_count != 0u) {
+        fputs(run.output, stdout);
+    }
+    gw_remove(t, root);
 }
 
 TEST_MAIN()

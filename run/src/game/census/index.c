@@ -587,6 +587,11 @@ bool game_census_sim(game_t *game) {
     return game_census_quiet(census);
 }
 
+bool game_census_settled(const game_t *game) {
+    const game_census_t *const census = game_census_of(game);
+    return census == nullptr || game_census_idle(census);
+}
+
 void game_census_mark(game_t *game, int32_t chunk_x, int32_t chunk_y) {
     if (game_census_of(game) == nullptr) {
         return;

@@ -31,10 +31,10 @@ enum : int32_t {
     /* The report's rows, from the screen's top. */
     CENSUS_Y_TITLE = 3,
     CENSUS_Y_HERE = 14,
-    CENSUS_Y_EVENTS = 45,
-    CENSUS_Y_OUTLOOK = 103,
-    CENSUS_Y_SYSTEMS = 157,
-    CENSUS_Y_STATUS = 196,
+    CENSUS_Y_EVENTS = 43,
+    CENSUS_Y_OUTLOOK = 99,
+    CENSUS_Y_SYSTEMS = 155,
+    CENSUS_Y_STATUS = 194,
 };
 
 enum : uint32_t {
@@ -187,8 +187,8 @@ static void ui_screen_census_outlook(ui_widget_t *widget, const ui_census_report
     }
     (void)snprintf(label, sizeof(label), "Outlook (highs and lows +-%.1f C)", (libc_double_t)outlook->days[0].spread_c);
     ui_screen_census_text(widget, CENSUS_MARGIN, CENSUS_Y_OUTLOOK, label, CENSUS_HEAD_COLOR);
-    static const char *const ROWS[6] = {"Day", "Rain %", "Thunder %", "Storm %", "High C", "Low C"};
-    for (uint32_t row = 0u; row < 6u; row++) {
+    static const char *const ROWS[5] = {"Day", "Rain %", "Thunder %", "Storm %", "High/low C"};
+    for (uint32_t row = 0u; row < 5u; row++) {
         const int32_t y = CENSUS_Y_OUTLOOK + CENSUS_LINE * (int32_t)(row + 1u);
         ui_screen_census_text(widget, CENSUS_MARGIN, y, ROWS[row], row == 0u ? CENSUS_DIM_COLOR : CENSUS_TEXT_COLOR);
         for (uint32_t day = 0u; day < CLIMATE_OUTLOOK_DAYS; day++) {
@@ -206,32 +206,34 @@ static void ui_screen_census_outlook(ui_widget_t *widget, const ui_census_report
             case 3u:
                 (void)snprintf(label, sizeof(label), "%" PRIu32, ui_screen_census_percent(d->storm));
                 break;
-            case 4u:
-                (void)snprintf(label, sizeof(label), "%.0f", (libc_double_t)d->high_c);
-                break;
             default:
-                (void)snprintf(label, sizeof(label), "%.0f", (libc_double_t)d->low_c);
+                (void)snprintf(label, sizeof(label), "%.0f/%.0f", (libc_double_t)d->high_c, (libc_double_t)d->low_c);
                 break;
             }
             ui_screen_census_text(widget, CENSUS_TABLE_LABEL + (int32_t)day * CENSUS_TABLE_COLUMN, y, label,
                                   row == 0u ? CENSUS_DIM_COLOR : CENSUS_TEXT_COLOR);
         }
     }
-    for (uint32_t i = 0u; i < outlook->system_count && i < CENSUS_ROWS_SYSTEMS * 2u; i++) {
+    uint32_t shown = 0u;
+    for (uint32_t i = 0u; i < outlook->system_count && shown < CENSUS_ROWS_SYSTEMS * 2u; i++) {
         const climate_outlook_system_t *const system = &outlook->systems[i];
         uint32_t best = 0u;
         for (uint32_t day = 1u; day < CLIMATE_OUTLOOK_DAYS; day++) {
             best = system->chance[day] > system->chance[best] ? day : best;
+        }
+        if (ui_screen_census_percent(system->chance[best]) == 0u) {
+            continue; /* named, but under half a percent on every day: nothing to prepare for */
         }
         /* Half the screen each: "Tropical storm" shortened so the longest name, chance and day fit. */
         const char *const name = strncmp(system->name, "Tropical storm ", 15u) == 0 ? system->name + 15 : system->name;
         (void)snprintf(label, sizeof(label), "%s%.23s %" PRIu32 "%% d%" PRIu32,
                        name != system->name ? "Trop. storm " : "", name, ui_screen_census_percent(system->chance[best]),
                        best + 1u);
-        const int32_t x = CENSUS_MARGIN + (int32_t)(i / CENSUS_ROWS_SYSTEMS) * CENSUS_COLUMN;
-        const int32_t y = CENSUS_Y_SYSTEMS + CENSUS_LINE * (int32_t)(i % CENSUS_ROWS_SYSTEMS);
+        const int32_t x = CENSUS_MARGIN + (int32_t)(shown / CENSUS_ROWS_SYSTEMS) * CENSUS_COLUMN;
+        const int32_t y = CENSUS_Y_SYSTEMS + CENSUS_LINE * (int32_t)(shown % CENSUS_ROWS_SYSTEMS);
         ui_screen_census_text(widget, x, y, label,
                               system->kind == CLIMATE_SYSTEM_HURRICANE ? CENSUS_WARN_COLOR : CENSUS_TEXT_COLOR);
+        shown++;
     }
 }
 
