@@ -76,6 +76,31 @@ static float32_t weather_scaled(float32_t raw, float32_t raw_sd) {
     return v > CLIMATE_SPELL_CLAMP ? CLIMATE_SPELL_CLAMP : (v < -CLIMATE_SPELL_CLAMP ? -CLIMATE_SPELL_CLAMP : v);
 }
 
+/* What a place is, whatever the day: the header's climate_week_place_t, which a work holds for each cell of its block. */
+typedef struct climate_week_place_t {
+    float64_t x;            /* 0 */
+    float64_t y;            /* 8 */
+    float32_t sigma_t;      /* 16 */
+    float32_t lat_deg;      /* 20 */
+    float32_t sea_distance; /* 24 */
+    float32_t valley_depth; /* 28 */
+    uint8_t desert;         /* 32 */
+    uint8_t cold_current;   /* 33 */
+    uint8_t south;          /* 34 */
+    uint8_t _pad0[5];       /* 35 */
+} climate_week_place_t;
+static_assert(sizeof(climate_week_place_t) == 40);
+typedef climate_week_place_t weather_place_t;
+
+/* A work's arrays, each on its own cache lines, fit its share of the week region. */
+enum : uint32_t {
+    WEATHER_WORK_CELLS = CLIMATE_WEEK_BLOCK_TILES * CLIMATE_TILE_CELL_COUNT,
+};
+static_assert(WEATHER_WORK_CELLS * (sizeof(weather_place_t) + sizeof(bool) +
+                                    CLIMATE_WEEK_DAYS * (sizeof(climate_normals_at_t) + sizeof(climate_day_t))) +
+                  4u * 64u + sizeof(climate_week_work_t) <=
+              CLIMATE_WEEK_WORK_BYTES);
+
 /* ---- The weather's region ------------------------------------------------------------------------------------------ */
 
 bool climate_weather_open(climate_weather_t *weather, uint8_t *region, uint64_t bytes, uint64_t seed) {
@@ -100,6 +125,16 @@ bool climate_weather_open(climate_weather_t *weather, uint8_t *region, uint64_t 
     store->borrowed_flow = arena_alloc_array(arena, cells, sizeof(climate_flow_cell_t), 64u);
     store->borrowed_flow_index = arena_alloc_array(arena, 2u * cells, sizeof(uint32_t), 64u);
     store->borrowed_pending = arena_alloc_array(arena, 2u * (uint64_t)CLIMATE_WEEK_PENDING_MAX, sizeof(int32_t), 64u);
+    store->borrowed_work = arena_alloc_zeroed(arena, CLIMATE_WEEK_WORK_SLOTS * sizeof(climate_week_work_t), 64u);
+    for (uint32_t s = 0u; s < CLIMATE_WEEK_WORK_SLOTS; s++) {
+        climate_week_work_t *const work = &store->borrowed_work[s];
+        work->borrowed_places = arena_alloc_array(arena, WEATHER_WORK_CELLS, sizeof(weather_place_t), 64u);
+        work->borrowed_normals = arena_alloc_array(arena, (uint64_t)WEATHER_WORK_CELLS * CLIMATE_WEEK_DAYS,
+                                                   sizeof(climate_normals_at_t), 64u);
+        work->borrowed_days =
+            arena_alloc_array(arena, (uint64_t)WEATHER_WORK_CELLS * CLIMATE_WEEK_DAYS, sizeof(climate_day_t), 64u);
+        work->borrowed_placed = arena_alloc_array(arena, WEATHER_WORK_CELLS, sizeof(bool), 64u);
+    }
     climate_week_store_empty(store);
     return true;
 }
@@ -150,21 +185,6 @@ float32_t climate_weather_hours(const climate_t *climate, float64_t x, float64_t
 }
 
 /* ---- One place, one day -------------------------------------------------------------------------------------------- */
-
-/* What a place is, whatever the day. */
-typedef struct weather_place_t {
-    float64_t x;            /* 0 */
-    float64_t y;            /* 8 */
-    float32_t sigma_t;      /* 16 */
-    float32_t lat_deg;      /* 20 */
-    float32_t sea_distance; /* 24 */
-    float32_t valley_depth; /* 28 */
-    uint8_t desert;         /* 32 */
-    uint8_t cold_current;   /* 33 */
-    uint8_t south;          /* 34 */
-    uint8_t _pad0[5];       /* 35 */
-} weather_place_t;
-static_assert(sizeof(weather_place_t) == 40);
 
 static bool weather_place_fill(const climate_t *climate, float64_t x, float64_t y, weather_place_t *out) {
     const int32_t bx = (int32_t)floor(x), by = (int32_t)floor(y);
@@ -1006,16 +1026,32 @@ static bool weather_tile_ready(const climate_t *climate, climate_week_tile_t *ti
     return true;
 }
 
-static void weather_hurricane_note(climate_week_side_t *side, const climate_system_t *hurricane, float64_t t) {
-    for (uint32_t i = 0u; i < side->hurricane_count; i++) {
-        if (side->hurricane_ids[i] == hurricane->id) {
+/* A day's hurricane over a tile, if it is new to the day and there is room: its name at the first hour it was there. */
+static void weather_hurricane_note(climate_week_notes_t *notes, const climate_system_t *hurricane, float64_t t) {
+    for (uint32_t i = 0u; i < notes->count; i++) {
+        if (notes->ids[i] == hurricane->id) {
             return;
         }
     }
-    if (side->hurricane_count < CLIMATE_WEEK_HURRICANES) {
-        side->hurricane_ids[side->hurricane_count] = hurricane->id;
-        climate_system_title(hurricane, t, side->hurricanes[side->hurricane_count]);
-        side->hurricane_count++;
+    if (notes->count < CLIMATE_WEEK_HURRICANES) {
+        notes->ids[notes->count] = hurricane->id;
+        climate_system_title(hurricane, t, notes->titles[notes->count]);
+        notes->count++;
+    }
+}
+
+/* The week's names over a tile: each day's notes in day order, each hurricane once, the first CLIMATE_WEEK_HURRICANES. */
+static void weather_hurricane_take(climate_week_side_t *side, const climate_week_notes_t *notes) {
+    for (uint32_t n = 0u; n < notes->count; n++) {
+        bool seen = false;
+        for (uint32_t i = 0u; i < side->hurricane_count; i++) {
+            seen = seen || side->hurricane_ids[i] == notes->ids[n];
+        }
+        if (!seen && side->hurricane_count < CLIMATE_WEEK_HURRICANES) {
+            side->hurricane_ids[side->hurricane_count] = notes->ids[n];
+            memcpy(side->hurricanes[side->hurricane_count], notes->titles[n], CLIMATE_WEEK_TITLE_BYTES);
+            side->hurricane_count++;
+        }
     }
 }
 
@@ -1039,12 +1075,10 @@ static uint8_t weather_events(const climate_week_t *before, const climate_week_t
     return events;
 }
 
-void climate_week_block_run(const climate_t *climate, climate_week_store_t *store, uint64_t week, bool fast,
-                            bool record_events, arena_t *arena, climate_week_block_t *block) {
-    ASSERT_ALWAYS(week >= 1u && block->count >= 1u && block->count <= CLIMATE_WEEK_BLOCK_TILES);
-    const int64_t started = time_now_ns();
-    climate_week_tile_t *tiles[CLIMATE_WEEK_BLOCK_TILES];
-    climate_week_side_t *sides[CLIMATE_WEEK_BLOCK_TILES];
+/* The block's tiles and sides, and the rectangle of its cells' centres. */
+static weather_box_t weather_block_tiles(const climate_week_store_t *store, const climate_week_block_t *block,
+                                         climate_week_tile_t *tiles[CLIMATE_WEEK_BLOCK_TILES],
+                                         climate_week_side_t *sides[CLIMATE_WEEK_BLOCK_TILES]) {
     weather_box_t box = {INFINITY, INFINITY, -INFINITY, -INFINITY};
     for (uint32_t k = 0u; k < block->count; k++) {
         tiles[k] = &store->borrowed_tiles[block->slots[k]];
@@ -1056,6 +1090,18 @@ void climate_week_block_run(const climate_t *climate, climate_week_store_t *stor
         box.y_min = fmin(box.y_min, y0);
         box.x_max = fmax(box.x_max, x0 + span);
         box.y_max = fmax(box.y_max, y0 + span);
+    }
+    return box;
+}
+
+bool climate_week_block_begin(const climate_t *climate, climate_week_store_t *store, uint64_t week, bool fast,
+                              bool record_events, climate_week_block_t *block, climate_week_work_t *work) {
+    ASSERT_ALWAYS(week >= 1u && block->count >= 1u && block->count <= CLIMATE_WEEK_BLOCK_TILES);
+    const int64_t started = time_now_ns();
+    climate_week_tile_t *tiles[CLIMATE_WEEK_BLOCK_TILES];
+    climate_week_side_t *sides[CLIMATE_WEEK_BLOCK_TILES];
+    (void)weather_block_tiles(store, block, tiles, sides);
+    for (uint32_t k = 0u; k < block->count; k++) {
         const int64_t ready_started = time_now_ns();
         if (!weather_tile_ready(climate, tiles[k], sides[k], week)) {
             block->failed++;
@@ -1077,13 +1123,44 @@ void climate_week_block_run(const climate_t *climate, climate_week_store_t *stor
             tiles[k]->week = (uint32_t)week;
         }
         block->ns_cells += (uint64_t)(time_now_ns() - started);
-        return;
+        return false;
     }
+    /* Each cell's normals for the 7 days in one read: the same bytes as a read a day. */
+    float32_t week_days[CLIMATE_WEEK_DAYS];
+    for (uint32_t d = 0u; d < CLIMATE_WEEK_DAYS; d++) {
+        week_days[d] = weather_day_of_year(7 * ((int64_t)week - 1) + (int64_t)d);
+    }
+    const int64_t reads_started = time_now_ns();
+    for (uint32_t k = 0u; k < block->count; k++) {
+        for (uint32_t c = 0u; c < CLIMATE_TILE_CELL_COUNT; c++) {
+            const uint32_t i = k * CLIMATE_TILE_CELL_COUNT + c;
+            weather_place_t *const place = &work->borrowed_places[i];
+            work->borrowed_placed[i] =
+                weather_place_fill(climate, weather_centre(weather_cell_x(tiles[k], c)),
+                                   weather_centre(weather_cell_y(tiles[k], c)), place) &&
+                climate_normals_days_at(climate, place->x, place->y, nanf(""), week_days, CLIMATE_WEEK_DAYS,
+                                        &work->borrowed_normals[(uint64_t)i * CLIMATE_WEEK_DAYS]);
+            block->failed += work->borrowed_placed[i] ? 0u : 1u;
+        }
+    }
+    block->ns_reads += (uint64_t)(time_now_ns() - reads_started);
+    work->ns_begin = (uint64_t)(time_now_ns() - started);
+    return true;
+}
 
+void climate_week_block_day(const climate_t *climate, const climate_week_store_t *store, uint64_t week, uint32_t i_day,
+                            arena_t *arena, const climate_week_block_t *block, climate_week_work_t *work) {
+    ASSERT_ALWAYS(week >= 1u && i_day < CLIMATE_WEEK_DAYS && block->count >= 1u &&
+                  block->count <= CLIMATE_WEEK_BLOCK_TILES);
+    const int64_t started = time_now_ns();
+    climate_week_day_stats_t *const stats = &work->stats[i_day];
+    memset(stats, 0, sizeof(*stats));
+    climate_week_tile_t *tiles[CLIMATE_WEEK_BLOCK_TILES];
+    climate_week_side_t *sides[CLIMATE_WEEK_BLOCK_TILES];
+    const weather_box_t box = weather_block_tiles(store, block, tiles, sides);
     const uint32_t cells = block->count * CLIMATE_TILE_CELL_COUNT;
-    weather_place_t *const places = arena_alloc_array(arena, cells, sizeof(weather_place_t), alignof(weather_place_t));
-    climate_day_t *const days =
-        arena_alloc_array(arena, (uint64_t)cells * CLIMATE_WEEK_DAYS, sizeof(climate_day_t), alignof(climate_day_t));
+    const int64_t day = 7 * ((int64_t)week - 1) + (int64_t)i_day;
+    const weather_place_t *const places = work->borrowed_places;
     float64_t *const xs = arena_alloc_array(arena, (uint64_t)cells * CLIMATE_HOURS_A_DAY, sizeof(float64_t), 8u);
     float64_t *const ys = arena_alloc_array(arena, (uint64_t)cells * CLIMATE_HOURS_A_DAY, sizeof(float64_t), 8u);
     float64_t *const zs = arena_alloc_array(arena, (uint64_t)cells * CLIMATE_HOURS_A_DAY, sizeof(float64_t), 8u);
@@ -1093,87 +1170,94 @@ void climate_week_block_run(const climate_t *climate, climate_week_store_t *stor
     arena_t *const day_arena = arena_alloc(arena, sizeof(arena_t), alignof(arena_t));
     arena_init(day_arena, "climate_week_day", arena_alloc(arena, WEATHER_DAY_ARENA_BYTES, 64u),
                WEATHER_DAY_ARENA_BYTES);
-    bool *const placed = arena_alloc_zeroed(arena, cells, 1u);
-    /* Each cell's normals for the 7 days in one read: the same bytes as a read a day. */
-    climate_normals_at_t *const normals = arena_alloc_array(
-        arena, (uint64_t)cells * CLIMATE_WEEK_DAYS, sizeof(climate_normals_at_t), alignof(climate_normals_at_t));
-    float32_t week_days[CLIMATE_WEEK_DAYS];
-    for (uint32_t d = 0u; d < CLIMATE_WEEK_DAYS; d++) {
-        week_days[d] = weather_day_of_year(7 * ((int64_t)week - 1) + (int64_t)d);
+    const int64_t list_started = time_now_ns();
+    climate_systems_day_t list;
+    weather_view_t views[CLIMATE_WEEK_INSTANTS];
+    if (!weather_list_build(climate, day_arena, &box, day, &list) ||
+        !weather_views_build(&list, &box, day, day_arena, views, &stats->overflowed)) {
+        /* A bug (the arena is too small): the day is all zeros and said so. */
+        for (uint32_t i = 0u; i < cells; i++) {
+            memset(&work->borrowed_days[(uint64_t)i * CLIMATE_WEEK_DAYS + i_day], 0, sizeof(climate_day_t));
+        }
+        stats->failed++;
+        stats->ns_total = (uint64_t)(time_now_ns() - started);
+        return;
     }
-    const int64_t reads_started = time_now_ns();
+    stats->incomplete += list.thunder_complete == 0u ? 1u : 0u;
+    stats->overflowed += list.overflowed;
+    stats->ns_lists += (uint64_t)(time_now_ns() - list_started);
+    /* The noises in bulk: the same bits as one at a time. */
+    const climate_weather_t *const weather = climate->borrowed_weather;
+    const int64_t noise_started = time_now_ns();
+    for (uint32_t i = 0u; i < cells; i++) {
+        xs[i] = places[i].x;
+        ys[i] = places[i].y;
+        zs[i] = (float64_t)day;
+    }
+    terrain_noise_sample_points(weather->spell, xs, ys, zs, cells, spell);
+    terrain_noise_sample_points(weather->amount, xs, ys, zs, cells, amount);
+    for (uint32_t i = 0u; i < cells; i++) {
+        for (uint32_t h = 0u; h < CLIMATE_HOURS_A_DAY; h++) {
+            xs[i * CLIMATE_HOURS_A_DAY + h] = places[i].x;
+            ys[i * CLIMATE_HOURS_A_DAY + h] = places[i].y;
+            zs[i * CLIMATE_HOURS_A_DAY + h] = 24.0f64 * (float64_t)day + (float64_t)h;
+        }
+    }
+    terrain_noise_sample_points(weather->hours, xs, ys, zs, (uint64_t)cells * CLIMATE_HOURS_A_DAY, raw);
+    stats->ns_noise += (uint64_t)(time_now_ns() - noise_started);
     for (uint32_t k = 0u; k < block->count; k++) {
         for (uint32_t c = 0u; c < CLIMATE_TILE_CELL_COUNT; c++) {
             const uint32_t i = k * CLIMATE_TILE_CELL_COUNT + c;
-            placed[i] = weather_place_fill(climate, weather_centre(weather_cell_x(tiles[k], c)),
-                                           weather_centre(weather_cell_y(tiles[k], c)), &places[i]) &&
-                        climate_normals_days_at(climate, places[i].x, places[i].y, nanf(""), week_days,
-                                                CLIMATE_WEEK_DAYS, &normals[(uint64_t)i * CLIMATE_WEEK_DAYS]);
-            block->failed += placed[i] ? 0u : 1u;
+            climate_day_t *const out = &work->borrowed_days[(uint64_t)i * CLIMATE_WEEK_DAYS + i_day];
+            weather_day_in_t in;
+            const int64_t read_started = time_now_ns();
+            const bool read =
+                work->borrowed_placed[i] &&
+                weather_day_in_climate(climate, &places[i], day,
+                                       &work->borrowed_normals[(uint64_t)i * CLIMATE_WEEK_DAYS + i_day], &in);
+            const int64_t day_started = time_now_ns();
+            stats->ns_reads += (uint64_t)(day_started - read_started);
+            if (!read) {
+                memset(out, 0, sizeof(*out));
+                stats->failed++;
+                continue;
+            }
+            in.spell = weather_scaled(spell[i], CLIMATE_SPELL_RAW_SD);
+            in.amount = weather_scaled(amount[i], CLIMATE_RAIN_AMOUNT_RAW_SD);
+            for (uint32_t h = 0u; h < CLIMATE_HOURS_A_DAY; h++) {
+                in.hours[h] = weather_scaled(raw[i * CLIMATE_HOURS_A_DAY + h], CLIMATE_RAIN_HOURS_RAW_SD);
+            }
+            weather_day_out_t extra;
+            weather_day_compute(&places[i], &in, views, &tiles[k]->cells[c], out, &extra);
+            if (extra.hurricane != nullptr) {
+                weather_hurricane_note(&stats->notes[k], extra.hurricane, extra.hurricane_t);
+            }
+            stats->ns_days += (uint64_t)(time_now_ns() - day_started);
         }
     }
-    block->ns_reads += (uint64_t)(time_now_ns() - reads_started);
-    const climate_weather_t *const weather = climate->borrowed_weather;
-    for (uint32_t i_day = 0u; i_day < CLIMATE_WEEK_DAYS; i_day++) {
-        const int64_t day = 7 * ((int64_t)week - 1) + (int64_t)i_day;
-        arena_reset(day_arena);
-        const int64_t list_started = time_now_ns();
-        climate_systems_day_t list;
-        weather_view_t views[CLIMATE_WEEK_INSTANTS];
-        if (!weather_list_build(climate, day_arena, &box, day, &list) ||
-            !weather_views_build(&list, &box, day, day_arena, views, &block->overflowed)) {
-            block->failed++;
-            continue;
-        }
-        block->incomplete += list.thunder_complete == 0u ? 1u : 0u;
-        block->overflowed += list.overflowed;
-        block->ns_lists += (uint64_t)(time_now_ns() - list_started);
-        /* The noises in bulk: the same bits as one at a time. */
-        const int64_t noise_started = time_now_ns();
-        for (uint32_t i = 0u; i < cells; i++) {
-            xs[i] = places[i].x;
-            ys[i] = places[i].y;
-            zs[i] = (float64_t)day;
-        }
-        terrain_noise_sample_points(weather->spell, xs, ys, zs, cells, spell);
-        terrain_noise_sample_points(weather->amount, xs, ys, zs, cells, amount);
-        for (uint32_t i = 0u; i < cells; i++) {
-            for (uint32_t h = 0u; h < CLIMATE_HOURS_A_DAY; h++) {
-                xs[i * CLIMATE_HOURS_A_DAY + h] = places[i].x;
-                ys[i * CLIMATE_HOURS_A_DAY + h] = places[i].y;
-                zs[i * CLIMATE_HOURS_A_DAY + h] = 24.0f64 * (float64_t)day + (float64_t)h;
-            }
-        }
-        terrain_noise_sample_points(weather->hours, xs, ys, zs, (uint64_t)cells * CLIMATE_HOURS_A_DAY, raw);
-        block->ns_noise += (uint64_t)(time_now_ns() - noise_started);
-        for (uint32_t k = 0u; k < block->count; k++) {
-            for (uint32_t c = 0u; c < CLIMATE_TILE_CELL_COUNT; c++) {
-                const uint32_t i = k * CLIMATE_TILE_CELL_COUNT + c;
-                climate_day_t *const out = &days[(uint64_t)i * CLIMATE_WEEK_DAYS + i_day];
-                weather_day_in_t in;
-                const int64_t read_started = time_now_ns();
-                const bool read =
-                    placed[i] && weather_day_in_climate(climate, &places[i], day,
-                                                        &normals[(uint64_t)i * CLIMATE_WEEK_DAYS + i_day], &in);
-                const int64_t day_started = time_now_ns();
-                block->ns_reads += (uint64_t)(day_started - read_started);
-                if (!read) {
-                    memset(out, 0, sizeof(*out));
-                    block->failed++;
-                    continue;
-                }
-                in.spell = weather_scaled(spell[i], CLIMATE_SPELL_RAW_SD);
-                in.amount = weather_scaled(amount[i], CLIMATE_RAIN_AMOUNT_RAW_SD);
-                for (uint32_t h = 0u; h < CLIMATE_HOURS_A_DAY; h++) {
-                    in.hours[h] = weather_scaled(raw[i * CLIMATE_HOURS_A_DAY + h], CLIMATE_RAIN_HOURS_RAW_SD);
-                }
-                weather_day_out_t extra;
-                weather_day_compute(&places[i], &in, views, &tiles[k]->cells[c], out, &extra);
-                if (record_events && extra.hurricane != nullptr) {
-                    weather_hurricane_note(sides[k], extra.hurricane, extra.hurricane_t);
-                }
-                block->ns_days += (uint64_t)(time_now_ns() - day_started);
-            }
+    stats->ns_total = (uint64_t)(time_now_ns() - started);
+}
+
+void climate_week_block_end(climate_week_store_t *store, uint64_t week, bool record_events, climate_week_block_t *block,
+                            const climate_week_work_t *work) {
+    ASSERT_ALWAYS(week >= 1u && block->count >= 1u && block->count <= CLIMATE_WEEK_BLOCK_TILES);
+    const int64_t started = time_now_ns();
+    climate_week_tile_t *tiles[CLIMATE_WEEK_BLOCK_TILES];
+    climate_week_side_t *sides[CLIMATE_WEEK_BLOCK_TILES];
+    (void)weather_block_tiles(store, block, tiles, sides);
+    uint64_t days_ns = 0u;
+    for (uint32_t d = 0u; d < CLIMATE_WEEK_DAYS; d++) {
+        const climate_week_day_stats_t *const stats = &work->stats[d];
+        block->incomplete += stats->incomplete;
+        block->overflowed += stats->overflowed;
+        block->failed += stats->failed;
+        block->ns_lists += stats->ns_lists;
+        block->ns_reads += stats->ns_reads;
+        block->ns_noise += stats->ns_noise;
+        block->ns_days += stats->ns_days;
+        days_ns += stats->ns_total > stats->ns_lists ? stats->ns_total - stats->ns_lists : 0u;
+        for (uint32_t k = 0u; record_events && k < block->count; k++) {
+            weather_hurricane_take(sides[k], &stats->notes[k]);
         }
     }
     const uint16_t census_day = (uint16_t)weather_day_of_year(7 * (int64_t)week);
@@ -1181,15 +1265,15 @@ void climate_week_block_run(const climate_t *climate, climate_week_store_t *stor
         for (uint32_t c = 0u; c < CLIMATE_TILE_CELL_COUNT; c++) {
             const uint32_t i = k * CLIMATE_TILE_CELL_COUNT + c;
             const climate_week_t before = tiles[k]->cells[c];
-            climate_week_update(&before, &days[(uint64_t)i * CLIMATE_WEEK_DAYS], &tiles[k]->cells[c]);
+            climate_week_update(&before, &work->borrowed_days[(uint64_t)i * CLIMATE_WEEK_DAYS], &tiles[k]->cells[c]);
             if (record_events) {
-                sides[k]->events[c] = weather_events(&before, &tiles[k]->cells[c], census_day, places[i].south != 0u);
+                sides[k]->events[c] =
+                    weather_events(&before, &tiles[k]->cells[c], census_day, work->borrowed_places[i].south != 0u);
             }
         }
         tiles[k]->week = (uint32_t)week;
     }
-    const uint64_t total = (uint64_t)(time_now_ns() - started);
-    block->ns_cells += total > block->ns_lists ? total - block->ns_lists : 0u;
+    block->ns_cells += work->ns_begin + days_ns + (uint64_t)(time_now_ns() - started);
 }
 
 /* ---- Flow accumulation over the kept cells ------------------------------------------------------------------------- */

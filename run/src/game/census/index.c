@@ -64,6 +64,17 @@ void game_census_open(game_census_t *census, arena_t *arena, climate_t *climate,
     census->borrowed_reports =
         arena_alloc_zeroed(arena, GAME_CENSUS_REPORTS * sizeof(ui_census_report_t), alignof(ui_census_report_t));
     census->borrowed_work = arena_alloc_zeroed(arena, sizeof(ui_census_report_t), alignof(ui_census_report_t));
+    census->borrowed_slots =
+        arena_alloc_zeroed(arena, CLIMATE_WEEK_WORK_SLOTS * sizeof(game_census_slot_t), alignof(game_census_slot_t));
+    for (uint32_t s = 0u; s < CLIMATE_WEEK_WORK_SLOTS; s++) {
+        game_census_slot_t *const slot = &census->borrowed_slots[s];
+        slot->borrowed_census = census;
+        slot->borrowed_work = &climate_week_store(climate)->borrowed_work[s];
+        for (uint32_t d = 0u; d < CLIMATE_WEEK_DAYS; d++) {
+            slot->days[d].borrowed_slot = slot;
+            slot->days[d].day = d;
+        }
+    }
     census->back = 0u;
     atomic_store_explicit(&census->middle, 1u, memory_order_relaxed);
     census->front = 2u;
@@ -132,12 +143,53 @@ bool game_census_quiet(const game_census_t *census) {
 
 /* ---- Jobs ---------------------------------------------------------------------------------------------------------- */
 
-static void census_block_job(job_worker_t *worker, void *borrowed_argument) {
-    game_census_job_t *const job = borrowed_argument;
-    const game_census_t *const census = job->borrowed_census;
-    climate_week_block_run(census->borrowed_climate, census_store(census), census->job_week, census->job_fast != 0u,
-                           census->job_events != 0u, &worker->arena_job, &job->block);
+static void census_day_job(job_worker_t *worker, void *borrowed_argument);
+
+/* The slot takes the batch's next block, until there are none: reads it, then hands its 7 days to any worker. A fast week is
+ * done in the reading, so the slot goes straight on to the next. */
+static void census_slot_take(job_worker_t *worker, game_census_slot_t *slot) {
+    game_census_t *const census = slot->borrowed_census;
+    for (;;) {
+        const uint32_t j = atomic_fetch_add_explicit(&census->claim, 1u, memory_order_relaxed);
+        if (j >= census->claim_end) {
+            /* Last: once every slot is idle the sim may hand the slots to the next batch or week. */
+            atomic_fetch_add_explicit(&census->slots_idle, 1u, memory_order_release);
+            return;
+        }
+        game_census_job_t *const job = &census->borrowed_jobs[j];
+        slot->job = j;
+        if (climate_week_block_begin(census->borrowed_climate, census_store(census), census->job_week,
+                                     census->job_fast != 0u, census->job_events != 0u, &job->block,
+                                     slot->borrowed_work)) {
+            atomic_store_explicit(&slot->days_left, CLIMATE_WEEK_DAYS, memory_order_relaxed);
+            for (uint32_t d = 0u; d < CLIMATE_WEEK_DAYS; d++) {
+                job_spawn(worker, &census->group, census_day_job, &slot->days[d]);
+            }
+            return;
+        }
+        atomic_store_explicit(&job->done, 1u, memory_order_release);
+    }
+}
+
+static void census_slot_job(job_worker_t *worker, void *borrowed_argument) {
+    census_slot_take(worker, borrowed_argument);
+}
+
+/* One day of the slot's block; the last of its 7 to finish does the update, marks the block done and takes the next. */
+static void census_day_job(job_worker_t *worker, void *borrowed_argument) {
+    const game_census_day_t *const day = borrowed_argument;
+    game_census_slot_t *const slot = day->borrowed_slot;
+    game_census_t *const census = slot->borrowed_census;
+    game_census_job_t *const job = &census->borrowed_jobs[slot->job];
+    climate_week_block_day(census->borrowed_climate, census_store(census), census->job_week, day->day,
+                           &worker->arena_job, &job->block, slot->borrowed_work);
+    if (atomic_fetch_sub_explicit(&slot->days_left, 1u, memory_order_acq_rel) != 1u) {
+        return;
+    }
+    climate_week_block_end(census_store(census), census->job_week, census->job_events != 0u, &job->block,
+                           slot->borrowed_work);
     atomic_store_explicit(&job->done, 1u, memory_order_release);
+    census_slot_take(worker, slot);
 }
 
 static void census_flow_job(job_worker_t *worker, void *borrowed_argument) {
@@ -376,7 +428,7 @@ static uint32_t census_batch_tiles(const game_census_t *census, uint32_t *out_do
     for (uint32_t j = first; j < end; j++) {
         const game_census_job_t *const job = &census->borrowed_jobs[j];
         tiles += job->block.count;
-        if (j < first + census->submitted && atomic_load_explicit(&job->done, memory_order_acquire) != 0u) {
+        if (atomic_load_explicit(&job->done, memory_order_acquire) != 0u) {
             done += job->block.count;
         }
     }
@@ -473,21 +525,30 @@ void game_census_step(game_census_t *census, float64_t player_x, float64_t playe
             return;
         }
         census->stage = GAME_CENSUS_BLOCKS;
-        census->submitted = 0u;
-    }
-    if (census->stage == GAME_CENSUS_BLOCKS) {
-        const uint32_t first = census->borrowed_batches[census->batch],
-                       end = census->borrowed_batches[census->batch + 1u];
-        while (first + census->submitted < end) {
-            game_census_job_t *const job = &census->borrowed_jobs[first + census->submitted];
+        /* The batch's blocks, ready to be taken by the slots in order. */
+        for (uint32_t j = first; j < end; j++) {
+            game_census_job_t *const job = &census->borrowed_jobs[j];
             job->block.incomplete = 0u;
             job->block.overflowed = 0u;
             job->block.failed = 0u;
             atomic_store_explicit(&job->done, 0u, memory_order_relaxed);
-            if (!job_try_submit(census->borrowed_job, &census->group, census_block_job, job)) {
+        }
+        census->claim_end = end;
+        atomic_store_explicit(&census->claim, first, memory_order_relaxed);
+        atomic_store_explicit(&census->slots_idle, 0u, memory_order_relaxed);
+        census->slots_submitted = 0u;
+    }
+    if (census->stage == GAME_CENSUS_BLOCKS) {
+        const uint32_t first = census->borrowed_batches[census->batch],
+                       end = census->borrowed_batches[census->batch + 1u];
+        const uint32_t slots = end - first < CLIMATE_WEEK_WORK_SLOTS ? end - first : CLIMATE_WEEK_WORK_SLOTS;
+        while (census->slots_submitted < slots) {
+            /* The queue's trip hands the job everything set above. */
+            if (!job_try_submit(census->borrowed_job, &census->group, census_slot_job,
+                                &census->borrowed_slots[census->slots_submitted])) {
                 break; /* the queue is full: next step */
             }
-            census->submitted++;
+            census->slots_submitted++;
         }
         uint32_t tiles_done = 0u;
         if (census->job_events != 0u && census->input_submitted == 0u) {
@@ -501,7 +562,8 @@ void game_census_step(game_census_t *census, float64_t player_x, float64_t playe
         work->tiles_total = census_batch_tiles(census, &tiles_done);
         work->tiles_done = tiles_done;
         census_publish(census);
-        if (first + census->submitted < end || tiles_done < work->tiles_total) {
+        if (census->slots_submitted < slots || tiles_done < work->tiles_total ||
+            atomic_load_explicit(&census->slots_idle, memory_order_acquire) < slots) {
             return;
         }
         uint32_t incomplete = 0u, overflowed = 0u, failed = 0u;

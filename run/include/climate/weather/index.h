@@ -141,6 +141,12 @@ typedef struct climate_week_side_t {
 } climate_week_side_t;
 static_assert(sizeof(climate_week_side_t) == 2704);
 
+/* A block's week worked by day on many workers: the block's reads, then its 7 days each on its own, then the update. */
+typedef struct climate_week_work_t climate_week_work_t;
+enum : uint32_t {
+    CLIMATE_WEEK_WORK_SLOTS = 32u, /* blocks worked by day at once, each with one of the store's works */
+};
+
 /* The kept tiles: a hash table of up to CLIMATE_WEEK_TILES_MAX, which only grows. Tiles are in the order they were added,
  * which can differ from run to run; whatever reads them in order sorts them (climate_week_store_sorted). */
 typedef struct climate_week_store_t {
@@ -150,15 +156,16 @@ typedef struct climate_week_store_t {
     climate_flow_cell_t *borrowed_flow;  /* 24: CLIMATE_WEEK_TILES_MAX x 256, the flow job's */
     uint32_t *borrowed_flow_index;       /* 32: the same count, twice: order and the sort's scratch */
     int32_t *borrowed_pending;           /* 40: CLIMATE_WEEK_PENDING_MAX cells, x then y */
-    uint64_t week;                       /* 48: the census week every tile is at; 0 before any */
-    uint32_t tile_count;                 /* 56 */
-    uint32_t pending_count;              /* 60 */
-    uint8_t busy;                        /* 64: a census runs: marks wait in pending */
-    uint8_t full;                        /* 65: a tile could not be added: CLIMATE_WEEK_TILES_MAX was reached */
-    uint8_t pending_lost;                /* 66: pending overflowed: those cells are marked when next seen */
-    uint8_t _pad0[5];                    /* 67 */
+    climate_week_work_t *borrowed_work;  /* 48: CLIMATE_WEEK_WORK_SLOTS, each the one block's that holds it */
+    uint64_t week;                       /* 56: the census week every tile is at; 0 before any */
+    uint32_t tile_count;                 /* 64 */
+    uint32_t pending_count;              /* 68 */
+    uint8_t busy;                        /* 72: a census runs: marks wait in pending */
+    uint8_t full;                        /* 73: a tile could not be added: CLIMATE_WEEK_TILES_MAX was reached */
+    uint8_t pending_lost;                /* 74: pending overflowed: those cells are marked when next seen */
+    uint8_t _pad0[5];                    /* 75 */
 } climate_week_store_t;
-static_assert(sizeof(climate_week_store_t) == 72);
+static_assert(sizeof(climate_week_store_t) == 80);
 
 /* The weather's part of the climate, at the start of the climate's week region: what climate_open seeds. */
 typedef struct climate_weather_t {
@@ -168,7 +175,6 @@ typedef struct climate_weather_t {
     const terrain_noise_field_t *amount; /* 96: N_2 */
     const terrain_noise_field_t *hours;  /* 104: N_3 */
     climate_week_store_t store;          /* 112 */
-    uint8_t _pad0[8];                    /* 184 */
 } climate_weather_t;
 static_assert(sizeof(climate_weather_t) == 192);
 static_assert(alignof(climate_weather_t) == 64);
@@ -176,10 +182,13 @@ static_assert(alignof(climate_weather_t) == 64);
 /* What the week region holds, laid out in this order after climate_weather_t; the Owner reserves the sum. */
 enum : uint64_t {
     CLIMATE_WEEK_REGION_BYTES = 320ull << 20,
+    /* What one work takes of the region at most: its arrays for a block's cells and 7 days (weather/index.c asserts it). */
+    CLIMATE_WEEK_WORK_BYTES = 1ull << 20,
 };
 static_assert((uint64_t)CLIMATE_WEEK_TILES_MAX * (sizeof(climate_week_tile_t) + sizeof(climate_week_side_t) +
                                                   CLIMATE_TILE_CELL_COUNT * (sizeof(climate_flow_cell_t) + 8u)) +
-                  CLIMATE_WEEK_TABLE_SLOTS * 4u + CLIMATE_WEEK_PENDING_MAX * 8u + (1u << 20) <=
+                  CLIMATE_WEEK_TABLE_SLOTS * 4u + CLIMATE_WEEK_PENDING_MAX * 8u +
+                  CLIMATE_WEEK_WORK_SLOTS * CLIMATE_WEEK_WORK_BYTES + (1u << 20) <=
               CLIMATE_WEEK_REGION_BYTES);
 
 /* One block of tiles worked in one job: up to 2 by 2 tiles, which share one list of weather systems a day. */
@@ -203,6 +212,50 @@ typedef struct climate_week_block_t {
     uint64_t ns_days;                         /* 72: each day of each cell from its inputs and views */
 } climate_week_block_t;
 static_assert(sizeof(climate_week_block_t) == 80);
+
+/* The first hurricanes over each tile of a block on one day, each once, in the order of the cells. The week's names are the
+ * days' in day order, each once, the first CLIMATE_WEEK_HURRICANES of them: a day's first CLIMATE_WEEK_HURRICANES are
+ * enough, as every id seen before it is one of the names already. */
+typedef struct climate_week_notes_t {
+    uint64_t ids[CLIMATE_WEEK_HURRICANES];                          /* 0 */
+    char titles[CLIMATE_WEEK_HURRICANES][CLIMATE_WEEK_TITLE_BYTES]; /* 32: the name at its first hour over the tile */
+    uint32_t count;                                                 /* 128 */
+    uint8_t _pad0[4];                                               /* 132 */
+} climate_week_notes_t;
+static_assert(sizeof(climate_week_notes_t) == 136);
+
+/* What one day of a block did, written only by that day's job. */
+typedef struct climate_week_day_stats_t {
+    uint32_t incomplete;                                  /* 0: as climate_week_block_t's */
+    uint32_t overflowed;                                  /* 4 */
+    uint32_t failed;                                      /* 8 */
+    uint8_t _pad0[4];                                     /* 12 */
+    uint64_t ns_lists;                                    /* 16 */
+    uint64_t ns_reads;                                    /* 24 */
+    uint64_t ns_noise;                                    /* 32 */
+    uint64_t ns_days;                                     /* 40 */
+    uint64_t ns_total;                                    /* 48: the day's whole call */
+    climate_week_notes_t notes[CLIMATE_WEEK_BLOCK_TILES]; /* 56 */
+} climate_week_day_stats_t;
+static_assert(sizeof(climate_week_day_stats_t) == 600);
+
+/* A place as the days read it: weather/index.c's. */
+typedef struct climate_week_place_t climate_week_place_t;
+
+/* One block's week in flight: its cells' places and normals from climate_week_block_begin, each day's results from that
+ * day's climate_week_block_day, all read by climate_week_block_end. Arrays in the week region, CLIMATE_WEEK_WORK_BYTES. */
+typedef struct climate_week_work_t {
+    climate_week_place_t *borrowed_places;             /* 0: CLIMATE_WEEK_BLOCK_TILES x 256 cells */
+    climate_normals_at_t *borrowed_normals;            /* 8: the cells x 7 days, cell by cell */
+    climate_day_t *borrowed_days;                      /* 16: the same */
+    bool *borrowed_placed;                             /* 24: the cells: place and normals were read */
+    climate_week_day_stats_t stats[CLIMATE_WEEK_DAYS]; /* 32 */
+    uint64_t ns_begin;                                 /* 4232: climate_week_block_begin's whole call */
+    uint8_t _pad0[16];                                 /* 4240 */
+} climate_week_work_t;
+static_assert(sizeof(climate_week_work_t) == 4256);
+static_assert(offsetof(climate_week_work_t, stats) == 32);
+static_assert(offsetof(climate_week_work_t, ns_begin) == 4232);
 
 /* ---- The weather's own region: the Owner's calls --------------------------------------------------------------------- */
 
@@ -269,12 +322,23 @@ void climate_week_store_empty(climate_week_store_t *store);
 /* The cell's state, or nullptr if its tile is not kept. */
 const climate_week_t *climate_week_store_cell(const climate_week_store_t *store, int32_t cell_x, int32_t cell_y);
 
-/* One census week for one block of up to 4 tiles, on a worker: fresh tiles start at the spin-up of week - 1, side data is
- * filled where missing, then the 7 days ending at the week's 06:00 (days 7 (week - 1) to 7 week - 1) for every cell, and the
- * update; or in fast mode the fast week. Each tile's week becomes week. record_events fills side.events and the hurricane
- * names. Reads and writes only its own tiles' cells and sides. Every climate tile within 6 km of the block must be built. */
-void climate_week_block_run(const climate_t *climate, climate_week_store_t *store, uint64_t week, bool fast,
-                            bool record_events, arena_t *arena, climate_week_block_t *block);
+/* One census week for one block of up to 4 tiles, in three parts that may run on different workers, each part after the one
+ * before (the 7 days in any order, or all at once): the bytes are the same however they are spread. Each reads and writes
+ * only its own block's tiles, sides and work. Every climate tile within 6 km of the block must be built.
+ *
+ * begin: fresh tiles start at the spin-up of week - 1, side data is filled where missing, and record_events clears the
+ * tiles' events. In fast mode the fast week is the whole of it: each tile's week becomes week and it returns false.
+ * Otherwise it reads every cell's place and normals for the 7 days into work and returns true: the days and end follow. */
+bool climate_week_block_begin(const climate_t *climate, climate_week_store_t *store, uint64_t week, bool fast,
+                              bool record_events, climate_week_block_t *block, climate_week_work_t *work);
+/* day: day i_day (0 to 6) of the 7 ending at the week's 06:00 (days 7 (week - 1) to 7 week - 1) for every cell, into work,
+ * the day's lists and scratch from arena (about 22 MiB). */
+void climate_week_block_day(const climate_t *climate, const climate_week_store_t *store, uint64_t week, uint32_t i_day,
+                            arena_t *arena, const climate_week_block_t *block, climate_week_work_t *work);
+/* end: each cell's update from its 7 days, and with record_events side.events and the hurricane names. Each tile's week
+ * becomes week, and the days' counts and times are added to block. */
+void climate_week_block_end(climate_week_store_t *store, uint64_t week, bool record_events, climate_week_block_t *block,
+                            const climate_week_work_t *work);
 
 /* Flow accumulation over every kept cell, and each cell's flood index. One thread, when no block job runs. */
 void climate_week_flow_run(climate_week_store_t *store);

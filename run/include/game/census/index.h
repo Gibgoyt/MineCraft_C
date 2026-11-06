@@ -53,6 +53,29 @@ typedef struct game_census_job_t {
 } game_census_job_t;
 static_assert(sizeof(game_census_job_t) == 2u * MC_CPU_CACHE_LINE_BYTES);
 
+/* A block's week is worked by day: one job reads the block, 7 jobs work a day each, and the last of them to finish does the
+ * update, then takes the batch's next block into the same slot. A slot holds one of the store's works. */
+typedef struct game_census_slot_t game_census_slot_t;
+
+/* One day job's argument. */
+typedef struct game_census_day_t {
+    game_census_slot_t *borrowed_slot; /* 0 */
+    uint32_t day;                      /* 8: 0 to 6 */
+    uint8_t _pad0[4];                  /* 12 */
+} game_census_day_t;
+static_assert(sizeof(game_census_day_t) == 16);
+
+typedef struct game_census_slot_t {
+    alignas(MC_CPU_CACHE_LINE_BYTES) game_census_t *borrowed_census; /* 0 */
+    climate_week_work_t *borrowed_work;                              /* 8: the store's, for this slot alone */
+    uint32_t job;                                                    /* 16: the census job it works now */
+    _Atomic uint32_t days_left;                                      /* 20: of that job's 7 days */
+    game_census_day_t days[CLIMATE_WEEK_DAYS];                       /* 24 */
+    uint8_t _pad0[3u * MC_CPU_CACHE_LINE_BYTES - 136u];              /* 136 */
+} game_census_slot_t;
+static_assert(sizeof(game_census_slot_t) == 3u * MC_CPU_CACHE_LINE_BYTES);
+static_assert(offsetof(game_census_slot_t, days) == 24);
+
 /* A census's state: the sim's, but for done flags and the report buffers, whose owners are said. In the game's World arena. */
 typedef struct game_census_t {
     job_group_t group;                       /* 0: every census job */
@@ -79,7 +102,7 @@ typedef struct game_census_t {
     uint32_t job_count;                      /* 224 */
     uint32_t batch_count;                    /* 228 */
     uint32_t batch;                          /* 232 */
-    uint32_t submitted;                      /* 236: of this batch's jobs */
+    uint8_t _pad2[4];                        /* 236 */
     uint32_t radius_blocks;                  /* 240: the render distance, for the events */
     uint32_t job_week;                       /* 244: what this batch's jobs work: set before they go in */
     uint8_t job_fast;                        /* 248 */
@@ -91,19 +114,27 @@ typedef struct game_census_t {
     uint8_t prepare_begun;                   /* 254 */
     uint8_t _pad0[1];                        /* 255 */
     /* A line of its own: the single jobs write done, main and the sim swap the report buffers. */
-    _Atomic uint32_t single_done;                /* 256: release when the flow, outlook or file job has finished */
-    _Atomic uint32_t middle;                     /* 260: the report buffer between the two, and a bit if it is new */
-    uint32_t back;                               /* 264: the sim's buffer */
-    uint32_t front;                              /* 268: main's buffer */
-    _Atomic uint32_t input_done;                 /* 272: release when the outlook's input job has finished */
-    uint32_t input_known;                        /* 276: it could be filled */
-    uint64_t input_week;                         /* 280: the week it was filled for; 0 for none */
-    uint8_t input_submitted;                     /* 288: the sim's */
-    uint8_t _pad1[MC_CPU_CACHE_LINE_BYTES - 33]; /* 289 */
+    _Atomic uint32_t single_done;       /* 256: release when the flow, outlook or file job has finished */
+    _Atomic uint32_t middle;            /* 260: the report buffer between the two, and a bit if it is new */
+    uint32_t back;                      /* 264: the sim's buffer */
+    uint32_t front;                     /* 268: main's buffer */
+    _Atomic uint32_t input_done;        /* 272: release when the outlook's input job has finished */
+    uint32_t input_known;               /* 276: it could be filled */
+    uint64_t input_week;                /* 280: the week it was filled for; 0 for none */
+    uint8_t input_submitted;            /* 288: the sim's */
+    uint8_t slots_submitted;            /* 289: the sim's: slot jobs in for this batch */
+    uint8_t _pad1[2];                   /* 290 */
+    _Atomic uint32_t claim;             /* 292: the batch's next job a slot takes; past claim_end, none */
+    uint32_t claim_end;                 /* 296: the batch's end, set before its slot jobs go in */
+    _Atomic uint32_t slots_idle;        /* 300: slots that found no block left: the batch is over at slots_submitted */
+    game_census_slot_t *borrowed_slots; /* 304: CLIMATE_WEEK_WORK_SLOTS */
+    uint8_t _pad3[8];                   /* 312 */
 } game_census_t;
 static_assert(sizeof(game_census_t) == 320);
 static_assert(alignof(game_census_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(game_census_t, single_done) == 256);
+static_assert(offsetof(game_census_t, claim) == 292);
+static_assert(offsetof(game_census_t, borrowed_slots) == 304);
 
 /* Takes what it needs from arena (World), loads the weekly state saved at or before last_census_week from directory (nullptr
  * for none), and owes the weeks between that file and last_census_week, if a crash left any. Not on a worker. */
