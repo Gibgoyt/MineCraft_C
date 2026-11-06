@@ -758,6 +758,8 @@ Appended as they land:
 - `97db1df` Record plan 004 phase 04 in its phase file: todos, results, the bench and the issues found.
 - `da455ec` List the phase file commit of plan 004 phase 04 in its phase file.
 - `4cd0c0f` Record the second verification pass of plan 004 phase 04 in its phase file.
+- `9fefcb6` List the second pass commit of plan 004 phase 04 in its phase file.
+- `49b2ed9` Record the gate check of plan 004 phase 04 in its phase file.
 
 ## Issues found
 
