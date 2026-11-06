@@ -943,6 +943,7 @@ Appended as they land:
 - `fb2bcc66` Record bench_climate_census after the days are split: 209.6 ms quiet, 227.1 and 233.3 ms under load.
 - `602471ba` Remove the duplicated comment line above weather_day_compute in climate/weather.
 - `142d9b3c` Record plan 004 phase 07's day-split census in its phase file: the bench under budget, Verification passing, and the issues found.
+- `46e04468` Record plan 004 phase 07 gate check three: the whole debug suite, the bench at 225.2 ms and the release link all pass.
 
 ## Issues found
 
