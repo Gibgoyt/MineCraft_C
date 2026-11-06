@@ -3,6 +3,7 @@
 #define MC_RUN_MAIN_INDEX_H
 
 #include "audio/index.h"
+#include "climate/index.h"
 #include "display/index.h"
 #include "entity/index.h"
 #include "mob/index.h"
@@ -34,17 +35,18 @@ typedef struct app_t {
     simd_t simd;
     texture_t texture;
     ui_t ui; /* reads its textures at start; game draws the HUD and the game screens with it, and --menu its menus */
-    world_t world;                 /* nothing runs in it until game does (Stage 08.4) */
-    terrain_t terrain;             /* the same */
-    physics_t physics;             /* borrowed by player, entity and the world's columns */
-    player_t player;               /* the sim moves it */
-    entity_t entity;               /* the sim's bodies, drops and arrows */
-    mob_t mob;                     /* the same */
-    item_t item;                   /* the same */
-    gpu_bridge_t gpu_bridge;       /* the default run and --headless start it, unless gpu.enabled says otherwise */
-    render_t render;               /* takes nothing on the card until game opens a world */
-    game_t game;                   /* takes nothing until a world opens */
-    display_t display;             /* whatever draws to a screen starts it, never --headless */
+    world_t world;           /* nothing runs in it until game does (Stage 08.4) */
+    terrain_t terrain;       /* the same */
+    climate_t climate;       /* its region only: a world's menu session opens it over the terrain, game borrows it */
+    physics_t physics;       /* borrowed by player, entity and the world's columns */
+    player_t player;         /* the sim moves it */
+    entity_t entity;         /* the sim's bodies, drops and arrows */
+    mob_t mob;               /* the same */
+    item_t item;             /* the same */
+    gpu_bridge_t gpu_bridge; /* the default run and --headless start it, unless gpu.enabled says otherwise */
+    render_t render;         /* takes nothing on the card until game opens a world */
+    game_t game;             /* takes nothing until a world opens */
+    display_t display;       /* whatever draws to a screen starts it, never --headless */
     display_offscreen_t offscreen; /* only --headless starts it */
     input_t input;                 /* only after display_init said OK */
     thread_topology_t topology;    /* read once, before main pins itself, and kept for the threads game starts */
@@ -57,7 +59,7 @@ typedef struct app_t {
     save_t save;         /* only --menu, the default, has worlds to keep */
     profiler_t profiler; /* only --profile starts it, first of all, and it stops last: job and game hold lanes in it */
 } app_t;
-static_assert(sizeof(app_t) == 16064);
+static_assert(sizeof(app_t) == 16128);
 static_assert(alignof(app_t) == 64);
 
 /* The exit codes of minecraft_c. */

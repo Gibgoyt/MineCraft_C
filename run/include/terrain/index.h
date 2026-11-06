@@ -92,4 +92,16 @@ void terrain_deinit(terrain_t *terrain);
 void terrain_generate_box(const terrain_t *terrain, const terrain_density_box_t *box, uint8_t *opened,
                           uint16_t *blocks);
 
+/* The ground the terrain's 2D splines give at a column, with no 3D density and no chunk: the profile at the four lattice
+ * columns round it (TERRAIN_DENSITY_CELL_XY apart), blended along x, then y, as terrain_density's boxes blend them. A pure
+ * function of the terrain and the column. The climate reads the ground through this and nothing else: plan 004, 6.1. */
+terrain_density_profile_t terrain_height_estimate_profile(const terrain_t *terrain, int32_t x, int32_t y);
+float32_t terrain_height_estimate(const terrain_t *terrain, int32_t x, int32_t y); /* .height of the above */
+
+/* The same at count_x by count_y columns step blocks apart, x changing fastest. origin_x, origin_y and step must be whole
+ * multiples of TERRAIN_DENSITY_CELL_XY (asserted): every column is then a lattice column, the blend's fractions are 0, and
+ * each value is bit for bit the single-column answer. Allocates nothing: works through the stack in pieces of 128. */
+void terrain_height_estimate_area(const terrain_t *terrain, int32_t origin_x, int32_t origin_y, int32_t step,
+                                  uint32_t count_x, uint32_t count_y, float32_t *heights);
+
 #endif

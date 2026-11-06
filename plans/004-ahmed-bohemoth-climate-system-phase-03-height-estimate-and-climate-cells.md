@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 3: Height estimate and climate cells
 
-**Status:** not started   (updated 2026-11-04)
+**Status:** in progress: built and agent-verified; only Ahmed's gate (the pictures, and the loading line on a real screen) is left   (updated 2026-11-06)
 
 Read `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` first, then sections 3, 6.1, 6.2 and 6.9 of `plans/004-ahmed-bohemoth-climate-system.md`. Every number here comes from the master plan. Where this file adds a number the master plan does not give, it says so and gives the reason.
 
@@ -722,23 +722,23 @@ Build order. Each step builds and passes its own tests before the next starts.
 
 ## Todo
 
-- [ ] Phase 02's names found; `climate` in the lint table at rank 8; `climate_t` shape settled
-- [ ] `terrain_density_profile_points` in `run/src/terrain/density/`
-- [ ] `terrain_height_estimate_profile`, `terrain_height_estimate`, `terrain_height_estimate_area` in `run/src/terrain/`, public, with a test that it agrees with real ground to within the density's softness over 10,000 columns
-- [ ] Every `run_terrain_.*` pin unchanged
-- [ ] `run/src/climate/sea/`: the flood fill from open ocean (the window rule), and the distance transform, both ways
-- [ ] `run/src/climate/cache/`: the two toroidal tables, the reader count, claim, publish and evict
-- [ ] `run/src/climate/mask/`: the coarse land-mask pages in a sparse table, and the window
-- [ ] `run/src/climate/cell/`: `climate_cell_t` (128 bytes), the tile build with its 8 km margin and 8192 cap, $\kappa$, and the warped bilinear blend
-- [ ] The tile cache: background jobs ahead of chunk generation, nearest the player first; chunk generation waits for its tile
-- [ ] Precomputed over render distance plus 2 km when a world is created, behind a progress bar
-- [ ] Map layers: sea distance, continentality, sea and lakes, latitude lines, in `run/src/climate/layer/`
-- [ ] Tests: distance against a brute-force search on synthetic coasts; a tile's cells are the same whichever neighbours were worked out first; 1 and 16 workers give the same bytes
-- [ ] Bench: one tile on one worker, target under 100 ms, in `bench/climate/`
-- [ ] A `README.md` in every new source directory, exactly one `index.*` in each
-- [ ] `plans/REPO_STRUCTURE.md` updated
-- [ ] The whole debug suite passes; `standards_lint` and `clang_format` pass
-- [ ] Gate pictures drawn and shown to Ahmed
+- [x] Phase 02's names found; `climate` in the lint table at rank 8; `climate_t` shape settled (Issues 1, 4)
+- [x] `terrain_density_profile_points` in `run/src/terrain/density/`
+- [x] `terrain_height_estimate_profile`, `terrain_height_estimate`, `terrain_height_estimate_area` in `run/src/terrain/`, public, with a test that it agrees with real ground to within the density's softness over 10,000 columns (share 1.0000, worst 0.91 blocks past the softness; hard bound held on all 10,000)
+- [x] Every `run_terrain_.*` pin unchanged (all 10 `run_terrain_*` tests passed in the full debug run)
+- [x] `run/src/climate/sea/`: the flood fill from open ocean (the window rule), and the distance transform, both ways
+- [x] `run/src/climate/cache/`: the two toroidal tables, the reader count, claim, publish and evict
+- [x] `run/src/climate/mask/`: the coarse land-mask pages in a sparse table, and the window
+- [x] `run/src/climate/cell/`: `climate_cell_t` (128 bytes), the tile build with its 8 km margin and 8192 cap, $\kappa$, and the warped bilinear blend
+- [x] The tile cache: background jobs ahead of chunk generation, nearest the player first; chunk generation waits for its tile (`climate_schedule` in `game_sim_step`, the gate in `game_columns_request`; tested by `a_column_is_not_asked_for_before_its_tiles_are_built` and by the `--menu` tests of the suite, which now run with it)
+- [x] Precomputed over render distance plus 2 km when a world is created, behind a progress bar (`game_open` begins it, and the session steps it once a loading frame, the line "Working out the climate: N%" drawn each frame, before the threads start: Issue 20. Through `display_frames_run` on the fake card in `run_ui_menu`: 48 and 45 loading frames for its two worlds, the line up to 99%. Seeing it on a real screen is Ahmed's)
+- [x] Map layers: sea distance, continentality, sea and lakes, latitude lines, in `run/src/climate/layer/`
+- [x] Tests: distance against a brute-force search on synthetic coasts; a tile's cells are the same whichever neighbours were worked out first; 1 and 16 workers give the same bytes
+- [x] Bench: one tile on one worker, target under 100 ms, in `bench/climate/` (slowest cold tile 30.7 ms, release)
+- [x] A `README.md` in every new source directory, exactly one `index.*` in each (`standards_lint` clean)
+- [x] `plans/REPO_STRUCTURE.md` updated
+- [x] The whole debug suite passes; `standards_lint` and `clang_format` pass (first full run: 129 of 130, `run_types` (Issue 18) fixed. Second full run, after the sea rule and Issue 20, 1805 s: 129 of 130, only `clang_format` on one comment line of the new test, which was formatted and then passed with `standards_lint`)
+- [ ] Gate pictures drawn and shown to Ahmed (drawn: `/tmp/mc_c_climate/` and `/tmp/mc_c_climate_<seed>/`; not yet shown)
 
 ## Tests
 
@@ -844,10 +844,62 @@ Either way, Ahmed opens the PNGs from `/tmp/mc_c_climate/` (or the map tool's di
 | Phase 01 renames `run/src/terrain/climate/` to `run/src/terrain/fields/`, so `terrain_climate_area_t` may have a new name | This phase's terrain functions take plain integers, so they don't depend on that type's name |
 | The added `land_distance` and `land_direction` | Inside the master plan's spare bytes. If Ahmed prefers them elsewhere, phase 04 can recompute them from the window instead |
 
+## Results, 2026-11-06
+
+Verification as run, each through `tools/test-or-build.sh`:
+
+- Debug build: clean. `run_terrain_*`: all pass (the agreement test: 10,000 columns, 0 outside the bound, share 1.0000). `run_climate_*`: all 7 pass. `standards_lint` and `clang_format`: pass.
+- Full debug suite (1752 s): 129 of 130; `run_types` (Issue 18) fixed and passes. Not rerun whole after Issue 17's change; what was rerun after it: all `run_climate*`, `run_ui_menu`, `run_save_world`, `run_save_state_game`, `run_game_census`, `run_game_sun`, `run_settings`, `run_settings_session`, `run_playthrough`, `run_failure`, `run_types`: all pass.
+- tsan: `run_climate_cache` and `run_climate_cell` pass with no report (Issue 19).
+- Release build, LTO link with `-Wframe-larger-than=16384`: clean. `run_climate_cell` release: digest `0x61708389BBF3789B`, the same as debug.
+- `bench_climate` release: exit 0; cold tile 28.8 to 30.7 ms, warm 5.65 ms, spawn precompute 23.8 ms on 16 workers (`bench/climate/README.md`).
+- `bench_climate --pictures`: `/tmp/mc_c_climate/` (seed 2198175988018515243), `/tmp/mc_c_climate_1311768467294899695/`, `/tmp/mc_c_climate_5569200986553504070/`.
+- `pgrep -af "$PWD/build"`: nothing of this worktree left running.
+
+### Second pass, 2026-11-06 (a fresh worktree, after merging main and the first pass)
+
+- Issue 20 built: the climate is worked out over the loading screen's frames.
+- Debug build clean. `run_climate_*` all pass; the new stepped-precompute test: 275 unfinished steps (debug), 144 (release), 640 of 640, digest `0x61708389BBF3789B`.
+- `run_ui_menu`, `run_failure`, `run_settings_session`, `run_playthrough`: pass. `run_ui_menu`'s whole round on the fake card: "the climate round the start was worked out over 48 loading frames", then 45 for the second world; 93 counted by the test, line up to 99%.
+- Full debug suite, 1805 s: 129 of 130; `clang_format` failed on one line of `tests/run/ui/menu/index.c`, formatted, then `clang_format` and `standards_lint` pass.
+- Whole `tsan` preset built (502 steps, no warnings): `run_climate_cache` (60.7 s) and `run_climate_cell` (5.1 s) pass, no report.
+- Release build with the LTO link and `-Wframe-larger-than=16384`: clean. `run_climate_cell` release: digest `0x61708389BBF3789B`, 0 neighbouring cells more than 64 blocks apart.
+- `bench_climate` release: exit 0; cold tile 27.7 to 28.0 ms, warm 5.31 ms, spawn precompute 36 tiles and 484 pages in 24.0 ms.
+- `bench_climate --pictures /tmp/mc_c_climate 2198175988018515243`: 28.8% sea, 0.8% small lake; looked at `continentality.png`: no steps at tile borders.
+
 ## Commits
 
 Appended as they land:
 
+- `360b711` Add the height estimate and the climate cells of plan 004 phase 03: land mask pages, sea and lakes by window, distance transforms, continentality, the tile cache and its jobs, map layers, the bench and the game wiring.
+- `af67e59` Make a water body sea when it reaches the sea floor rather than the window edge, so climate tiles agree at their borders, and record the climate bench.
+- `1de7fc0` List the climate cells of plan 004 phase 03, their tests and bench in the repository structure.
+- `e61f5c9` Record plan 004 phase 03 in its phase file: todos, results and the issues found.
+- `c860326` List the phase file commit of plan 004 phase 03 in its phase file.
+- `aa86123` Work out a new world's climate over the loading screen's frames, a step a frame, so the climate percent line is shown as it fills before the threads start.
+- `3945039` Record the second pass of plan 004 phase 03 in its phase file: the live loading line, the full suite, tsan, release and bench results.
+
 ## Issues found
 
-None.
+All 2026-11-06, while building the phase.
+
+1. **Phase 02's names.** Latitude is `climate_latitude_deg(float64_t y)`, as this file says. `run/src/climate/` existed with `sun/`; no `climate_t` existed; `{"climate", 8, 0}` was already in the lint table. Nothing to change.
+2. **The agreement test's box was too short.** Expected: a 1 by 1 by 751 box from `MC_WORLD_Z_MIN` holds the top stone. Actual: 751 layers reach only z = 500, and since 003 phase 11 the ground reaches 1190. Done: the box runs to `TERRAIN_DENSITY_NEVER_SOLID_FROM` (1475 layers). Result: 10,000 columns, 0 outside the hard bound, share within softness + 2 = 1.0000, worst 0.91 past the softness at (-1413, -2355).
+3. **The 6 by 6 worked example's component A has 11 cells, not 12.** Counting the file's own picture: column 0 (6) plus (1,0), (2,0), (1,1), (1,4), (1,5). B 3 and C 4 are right; 11 + 3 + 4 = 18 water cells. The test checks 11.
+4. **`climate_t` (320 bytes) cannot sit in `app_t`.** main's frame was at the 16 KiB limit. Done: `climate_t` in `app_t` is a 64-byte handle (the region and a pointer); the plan's struct is `climate_state_t` at the region's start. `app_t` went from 16064 to 16128 bytes, and main's frame then measured 16448 at -O0 (`-Wframe-larger-than=16384` failed). Done: main's body after argument parsing moved to `[[gnu::noinline]] main_with_app`; `app_t` is still declared in `main`. The limit is unchanged.
+5. **`game_t` padding.** `_pad1[44]` at 916 named here was used by phases 01 and 02. Done: `open_percent` (one `uint8_t`, 0 to 100, in place of done and total) at 879 from `_pad0[1]`, and `borrowed_climate` at 1080 from `_pad2[8]`. `sizeof(game_t)` stays 1600. `ui_menu_t.loading_percent` is at 299 as planned.
+6. **Small lakes get a flag.** The water layer needs to tell small lakes from land, and the cell had no way to. Done: `CLIMATE_CELL_LAKE_SMALL = 1 << 4`, maps only; small lakes stay land for every climate purpose. The test is `flags_mark_sea_large_lakes_and_small_lakes_and_nothing_else`.
+7. **Distance-transform scratch** is `5 * side + 1` words, not `3 * side + 1`: the sweep's input, output, arg-min, parabolas and a copy of one column of the row pass's nearest x. In `run/src/climate/sea/README.md`.
+8. **`bench/world_map/` exists now**, so the gate's first option was open. Not taken: the Verification section's command is `bench_climate --pictures`, which this phase built. Adding the four layers to `bench_world_map` through `climate_layer_draw` is left for phase 09 or a follow-up.
+9. **The progress bar is not seen while it fills** (fixed later: Issue 20). Expected: the loading screen shows "Working out the climate: N%". Actual: under KMS (and in a window) the loading screen is drawn once before the frame that opens the world, and nothing presents a frame from inside `game_open`, so the line is never on screen. What is built: `game_open` calls `climate_prepare_area` with a progress callback that sets `game_t.open_percent` and calls `game_open_alive_tell`; the session's alive callback copies it into `ui_menu_t.loading_percent`; `ui_menu_loading_frame` draws the line when the percent is above 0; the log records the time. Presenting a frame from inside `game_open` needs display work outside this phase. The todo box is left unticked.
+10. **Who closes the climate.** The session opens it over the terrain, and `game_close` closes it after waiting for the jobs the sim queued, as it does for column jobs. The session also closes it before `terrain_deinit` and on each failed open, so `climate_deinit` (which asserts it is closed) is safe on every path.
+11. **Added `climate_prepare_tile`**, which is not in the plan's list: one tile in one job, its window's pages built inside that job. The bench's cold and warm tiles and several tests need it.
+12. **Radius source.** The sim reads `world_map_t.view_radius` (the chunks the map streams, so the chunks the gate holds back) × 16 + 2048, not `game_config_t.render_distance`, because `config` is main's to change.
+13. **Climate only for menu worlds.** `game_climate_set` is called only for `--menu` runs. Test worlds (`--test-world`, the headless pictures) run as before, so their pinned pictures cannot move.
+14. **The cache race test starved its evictor.** First run: 224 s. Eight readers back to back nearly always hold the slot, and by design the protocol gives an evictor no turn (it tries again in a later step). Done: readers pause about 1024 loads between reads, as real readers do. Now 0.63 s: 100,000 swaps, 1,228,254 whole reads, 0 torn.
+15. **The gate test drives no `world_map_t`.** `game_columns_request` is static. The test drives `climate_area_ready` and `climate_schedule` the way that function does: the player's tile is queued first, at most 4 are in flight, and the column's gate opens. The real gate runs in every `--menu` test of the suite.
+16. **With the planned window rule, almost no water was sea.** Seed `0x1234567890ABCDEF`, 8 by 8 tiles round 0: 59 sea cells and 3361 large-lake cells of 16,384. The 16 km pictures for seeds 2198175988018515243, 1311768467294899695 and 5569200986553504070 gave 0.0%, 0.4% and 0.0% sea, and 22.2%, 18.8% and 22.1% large lake. This terrain's seas are enclosed basins of a few km to about 25 km², under 33.6 km², so only a body that happened to reach a window's edge was sea.
+17. **The window rule left steps at tile borders, and the plan's fallback would not remove them.** Evidence: `continentality.png` for seed 2198175988018515243 showed κ stepping along straight lines on tile borders. One tile's window reached a body's far side and called it sea; the next tile's window did not, and called the same body a lake (the Risks table predicted this). The planned fallback (an edge-touching body also needs 489 cells) does not change what the second tile sees. **Done:** a body is sea if any of its cells is at or below `CLIMATE_SEA_FLOOR_BLOCKS = -30` (the terrain's sea bed falls below -30 at continentalness about -0.57), or it has 8192 cells. Touching the window's edge no longer counts. Depth is a fact about one cell, so tiles disagree only about a shallow arm more than 8 km from its body's deep part. Result on the same three seeds: 28.8%, 26.6% and 30.4% sea, 0.0% large lake, 0.8% small lake, and no steps in the pictures. A new test holds it: over 8 by 8 tiles, no two neighbouring cells differ by more than 64 blocks in sea distance (0 found, debug and release). That check was not run against the old rule; the old pictures are the evidence for the steps. The digest pin moved from `0xE2FA8EB862075544` to `0x61708389BBF3789B`. **For Ahmed:** this changes the plan's sea rule, so it is his to overrule. A side effect: on real terrain no lake reaches 2 km² without also reaching -30, so `CLIMATE_CELL_LAKE` does not happen on these seeds (it is tested on synthetic ground).
+18. **`run_types` pins the number of heap regions.** It expected "14 reserved" and "leak at exit: 14 regions"; the climate's region makes 15. Updated in `tests/run/types/index.c`, with a comment saying why.
+19. **tsan was built for the two climate test targets only** at first (the second pass built the whole preset: see Results), not the whole `tsan` preset, to save time and disk. `run_climate_cache` (37.8 s, 100,000 swaps, 0 torn) and `run_climate_cell` (4.8 s) both pass under tsan with no report.
+20. **The loading line, made live (second pass).** Expected: the line "Working out the climate: N%" shows while it fills (Issue 9). Done without display work: `climate_prepare_begin` queues the precompute and returns, and `climate_prepare_step` moves it on without waiting (the pages' round, then the tiles'), with its state in a new 64-byte `climate_prepare_t` in `climate_state_t` (now 384 bytes, still under `CLIMATE_TABLES_OFFSET`); `climate_prepare_area` is begin plus steps. `game_open` only begins it; `game_open_climate_step` (new) steps it and sets `open_percent`. Under KMS, `game_session_source` steps it once a frame and draws the loading screen with the percent until it is done, and only then starts the threads; with no display (`--headless`) `game_session_world_open` steps it to the end itself, so headless runs and their pictures are as before. `game_t._pad4[4]` at 1260 became `open_climate_frames`, for the log. `--menu` never opens a window (KMS only), so on this machine it was seen only on the fake card: `run_ui_menu`'s whole round now gives each world a climate, and checks the loading screen is drawn after opening before the threads start. Wiring outside the owned paths: `run/src/game/session/` (the frame step), `tests/run/ui/menu/` (the climate in the round test), and their READMEs.

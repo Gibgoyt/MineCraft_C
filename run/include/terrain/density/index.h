@@ -129,6 +129,11 @@ terrain_density_profile_t terrain_density_profile_from(const terrain_density_t *
 void terrain_density_profile_area(const terrain_density_t *density, const terrain_fields_area_t *area,
                                   float32_t *heights, float32_t *softness);
 
+/* The profile at count columns anywhere, in blocks, through the same batch the box uses: the very bits a box's lattice
+ * gets at a whole-number column. Allocates nothing. Must be finite. */
+void terrain_density_profile_points(const terrain_density_t *density, const float64_t *xs, const float64_t *ys,
+                                    uint64_t count, float32_t *heights, float32_t *softness);
+
 /* How many values a box fills. */
 uint64_t terrain_density_box_voxels(const terrain_density_box_t *box);
 

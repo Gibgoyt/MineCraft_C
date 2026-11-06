@@ -1325,4 +1325,121 @@ TEST(terrain_starts_the_density_and_stops_it) {
     CHECK_EQ_U64(after.live_bytes, before.live_bytes);
 }
 
+/* ---- Plan 004 phase 03: the height estimate ----------------------------------------------------------------------- */
+
+/* 10,000 columns, 157 blocks apart, so most sit between lattice columns. The top stone always lies in the bound the
+ * density's own construction gives (see run/src/terrain/README.md), and nearly always within the estimate's softness. */
+TEST(the_height_estimate_agrees_with_the_real_ground_within_the_softness) {
+    enum : uint32_t {
+        ESTIMATE_SIDE = 50u,
+        ESTIMATE_SEEDS = 4u,
+        /* Up to where stone can never be, so a column under the highest peak is whole. */
+        ESTIMATE_LAYERS = (uint32_t)(TERRAIN_DENSITY_NEVER_SOLID_FROM - MC_WORLD_Z_MIN + 1),
+    };
+    static const int32_t ESTIMATE_STEP = 157;
+    static const uint64_t ESTIMATE_SEED_LIST[ESTIMATE_SEEDS] = {0x1234567890ABCDEFull, 1ull, 2ull,
+                                                                0x4D494E4543524146ull};
+    uint16_t *const blocks = test_alloc(t, (uint64_t)ESTIMATE_LAYERS * sizeof(uint16_t));
+    uint64_t columns = 0u;
+    uint64_t within = 0u;
+    uint64_t hard_misses = 0u;
+    float32_t worst = 0.0f32;
+    int32_t worst_x = 0, worst_y = 0;
+    for (uint32_t s = 0u; s < ESTIMATE_SEEDS; s++) {
+        terrain_t terrain;
+        REQUIRE(terrain_init(&terrain, ESTIMATE_SEED_LIST[s]));
+        for (uint32_t j = 0u; j < ESTIMATE_SIDE; j++) {
+            for (uint32_t i = 0u; i < ESTIMATE_SIDE; i++) {
+                const int32_t x = ((int32_t)i - (int32_t)(ESTIMATE_SIDE / 2u)) * ESTIMATE_STEP;
+                const int32_t y = ((int32_t)j - (int32_t)(ESTIMATE_SIDE / 2u)) * ESTIMATE_STEP;
+                const terrain_density_box_t box = {.origin_x = x,
+                                                   .origin_y = y,
+                                                   .origin_z = MC_WORLD_Z_MIN,
+                                                   .count_x = 1u,
+                                                   .count_y = 1u,
+                                                   .count_z = ESTIMATE_LAYERS};
+                terrain_density_fill_box(terrain.borrowed_density, &box, blocks);
+                int32_t top = MC_WORLD_Z_MIN;
+                for (uint32_t z = 0u; z < ESTIMATE_LAYERS; z++) {
+                    top = blocks[z] == BLOCK_ID_STONE ? MC_WORLD_Z_MIN + (int32_t)z : top;
+                }
+                /* The four lattice corners, floored as the density floors. */
+                const float64_t west = (float64_t)((x >> 2) * 4), south = (float64_t)((y >> 2) * 4);
+                const float64_t xs[4] = {west, west + 4.0f64, west, west + 4.0f64};
+                const float64_t ys[4] = {south, south, south + 4.0f64, south + 4.0f64};
+                float32_t h[4], soft[4];
+                terrain_density_profile_points(terrain.borrowed_density, xs, ys, 4u, h, soft);
+                float32_t low = 1.0e9f32, high = -1.0e9f32;
+                for (uint32_t c = 0u; c < 4u; c++) {
+                    low = fminf(low, h[c] - soft[c]);
+                    high = fmaxf(high, h[c] + soft[c]);
+                }
+                const float32_t z_top = (float32_t)top;
+                if (z_top < low - (float32_t)TERRAIN_DENSITY_CELL_Z ||
+                    z_top > high + (float32_t)TERRAIN_DENSITY_CELL_Z) {
+                    hard_misses++;
+                    printf("outside the bound at %d, %d, seed %u: top %d, bound %.2f to %.2f\n", x, y, s, top,
+                           (libc_double_t)(low - 8.0f32), (libc_double_t)(high + 8.0f32));
+                }
+                const terrain_density_profile_t estimate = terrain_height_estimate_profile(&terrain, x, y);
+                const float32_t gap = fabsf(z_top + 1.0f32 - estimate.height);
+                const float32_t excess = gap - estimate.softness;
+                if (excess <= 2.0f32) {
+                    within++;
+                }
+                if (excess > worst) {
+                    worst = excess;
+                    worst_x = x;
+                    worst_y = y;
+                }
+                columns++;
+            }
+        }
+        terrain_deinit(&terrain);
+    }
+    const float64_t share = (float64_t)within / (float64_t)columns;
+    printf("%" PRIu64 " columns: %.4f within the softness and 2 blocks; the worst is %.2f past it, at %d, %d\n",
+           columns, (libc_double_t)share, (libc_double_t)worst, worst_x, worst_y);
+    CHECK_EQ_U64(columns, 10000u);
+    CHECK_EQ_U64(hard_misses, 0u);
+    CHECK(share >= 0.95f64);
+}
+
+/* On the lattice the estimate is the profile itself, bit for bit, whichever way it is asked for. */
+TEST(the_height_estimate_is_the_profile_on_the_lattice) {
+    enum : uint32_t { LATTICE_SIDE = 64u, LATTICE_COLUMNS = LATTICE_SIDE * LATTICE_SIDE };
+    static const int32_t LATTICE_STEP = 36; /* a multiple of 4, and the area reaches past 0 both ways */
+    float32_t *const area_heights = test_alloc(t, LATTICE_COLUMNS * sizeof(float32_t));
+    float32_t *const profile_heights = test_alloc(t, LATTICE_COLUMNS * sizeof(float32_t));
+    float32_t *const profile_softness = test_alloc(t, LATTICE_COLUMNS * sizeof(float32_t));
+    terrain_t terrain;
+    REQUIRE(terrain_init(&terrain, DENSITY_WORLD));
+    const int32_t origin = -(int32_t)(LATTICE_SIDE / 2u) * LATTICE_STEP;
+    const terrain_fields_area_t area = {
+        .origin_x = origin,
+        .origin_y = origin - 1000,
+        .step_x = LATTICE_STEP,
+        .step_y = LATTICE_STEP,
+        .count_x = LATTICE_SIDE,
+        .count_y = LATTICE_SIDE,
+    };
+    terrain_density_profile_area(terrain.borrowed_density, &area, profile_heights, profile_softness);
+    terrain_height_estimate_area(&terrain, area.origin_x, area.origin_y, LATTICE_STEP, LATTICE_SIDE, LATTICE_SIDE,
+                                 area_heights);
+    uint64_t same = 0u;
+    for (uint32_t j = 0u; j < LATTICE_SIDE; j++) {
+        for (uint32_t i = 0u; i < LATTICE_SIDE; i++) {
+            const uint32_t at = i + LATTICE_SIDE * j;
+            const float32_t one = terrain_height_estimate(&terrain, area.origin_x + LATTICE_STEP * (int32_t)i,
+                                                          area.origin_y + LATTICE_STEP * (int32_t)j);
+            same += (memcmp(&one, &profile_heights[at], sizeof(one)) == 0 &&
+                     memcmp(&one, &area_heights[at], sizeof(one)) == 0)
+                        ? 1u
+                        : 0u;
+        }
+    }
+    CHECK_EQ_U64(same, LATTICE_COLUMNS);
+    terrain_deinit(&terrain);
+}
+
 TEST_MAIN()

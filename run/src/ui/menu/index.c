@@ -103,6 +103,7 @@ void ui_menu_open(ui_menu_t *menu, ui_menu_screen_t screen) {
     menu->screen = (uint8_t)screen;
     menu->message[0] = '\0';
     menu->leave_offered = 0u;
+    menu->loading_percent = 0u;
     widget->focus_id = 0u;
     switch (screen) {
     case UI_MENU_SCREEN_SELECT:
@@ -391,6 +392,12 @@ static void ui_menu_loading_frame(ui_menu_t *menu) {
     ui_menu_background_draw(menu);
     ui_menu_title_draw(menu, whole.height / 2 - line, "Loading world...");
     ui_menu_title_draw(menu, whole.height / 2, menu->chosen.name);
+    /* Plan 004 phase 03: a new world's climate tiles, as they are worked out. Nothing until the first is. */
+    if (menu->loading_percent != 0u) {
+        char text[48];
+        (void)snprintf(text, sizeof(text), "Working out the climate: %u%%", (uint32_t)menu->loading_percent);
+        ui_menu_title_draw(menu, whole.height / 2 + line, text);
+    }
 }
 
 ui_menu_action_t ui_menu_frame(ui_menu_t *menu, bool escape) {

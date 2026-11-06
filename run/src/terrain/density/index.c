@@ -421,6 +421,15 @@ void terrain_density_profile_area(const terrain_density_t *density, const terrai
     }
 }
 
+void terrain_density_profile_points(const terrain_density_t *density, const float64_t *xs, const float64_t *ys,
+                                    uint64_t count, float32_t *heights, float32_t *softness) {
+    for (uint64_t done = 0u; done < count; done += DENSITY_BATCH_COLUMNS) {
+        const uint64_t left = count - done;
+        const uint32_t batch = left < DENSITY_BATCH_COLUMNS ? (uint32_t)left : DENSITY_BATCH_COLUMNS;
+        density_profile_batch(density, xs + done, ys + done, batch, heights + done, softness + done);
+    }
+}
+
 /* ---- The lattice ------------------------------------------------------------------------------------------------- */
 
 /* The columns of one tile that a box needs, and their ground. */

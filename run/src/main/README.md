@@ -62,5 +62,5 @@ Later systems' `_init` calls go in `app_init` after the CPU check, and their `_d
 **May be called by:** the OS. Tests link everything but this file, and run the built program.
 **Saves:** with `--menu`, `save_init` and `game_save_set`; nothing else has a world on disk. See `run/src/save/README.md`.
 **Settings:** with `--menu`, `settings_load` comes before `job_init`, as the worker count is in it, and `game_session_settings_set` hands them to the session. See `run/src/settings/README.md`.
-**Depends on:** `display`, `game`, `physics`, `player`, `entity`, `item`, `mob`, `simd`, `settings`, `ui`, `profiler`, `gpu_bridge`, `input`, `job`, `math`, `render`, `save`, `terrain`, `texture`, `world`, `thread`, `time`, `heap` (only its counters and leak check), `log`, `types`, `main/cpu_check`, the
+**Depends on:** `display`, `game`, `climate` (`climate_init` after `terrain_init` and `climate_deinit` before `terrain_deinit`; `--menu` runs lend it to `game`), `physics`, `player`, `entity`, `item`, `mob`, `simd`, `settings`, `ui`, `profiler`, `gpu_bridge`, `input`, `job`, `math`, `render`, `save`, `terrain`, `texture`, `world`, `thread`, `time`, `heap` (only its counters and leak check), `log`, `types`, `main/cpu_check`, the
 generated `machine/index.h`.

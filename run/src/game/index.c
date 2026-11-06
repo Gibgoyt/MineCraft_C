@@ -37,6 +37,9 @@ enum : int64_t {
         4000000, /* the most a sim step spends on finished columns, each with its light, past the first */
     GAME_TICK_NS = 1000000000 / MC_GAME_TICK_HZ,
 };
+enum : uint32_t {
+    GAME_CLIMATE_AHEAD_BLOCKS = 2048u, /* climate tiles are kept this far past the render distance: plan 004, 6.9 */
+};
 
 #define GAME_START_EYE_HEIGHT 24.5f64
 /* What the debug overlay's frames per second are counted over. */
@@ -75,6 +78,23 @@ void game_ui_set(game_t *game, ui_t *ui) {
 void game_audio_set(game_t *game, audio_t *audio) {
     ASSERT_ALWAYS(game->open == 0u);
     game->borrowed_audio = audio;
+}
+
+void game_climate_set(game_t *game, climate_t *climate) {
+    ASSERT_ALWAYS(game->open == 0u);
+    game->borrowed_climate = climate;
+}
+
+/* The climate, if this world has one open. */
+static climate_t *game_climate(const game_t *game) {
+    climate_t *const climate = game->borrowed_climate;
+    return climate != nullptr && climate_is_open(climate) ? climate : nullptr;
+}
+
+/* How far round the player the climate's tiles are kept ready, in blocks: master plan, "render distance plus 2 km". The
+ * render distance as the map has it, columns this near being the ones it asks for; the sim's to read. */
+static uint32_t game_climate_radius(const world_map_t *map) {
+    return map->view_radius * (uint32_t)COLUMN_SIZE + GAME_CLIMATE_AHEAD_BLOCKS;
 }
 
 void game_save_set(game_t *game, save_t *save) {
@@ -437,6 +457,34 @@ void game_open_alive_tell(const game_t *game) {
     }
 }
 
+/* The climate's tiles round where the eye starts, before any column is asked for, so the first ones are not held back
+ * by the gate: plan 004 phase 03, "Precompute at world creation". On every worker; game_open_climate_step takes it on, so
+ * a loading screen can be drawn meanwhile. */
+static void game_open_climate(game_t *game, int32_t start_x, int32_t start_y) {
+    climate_t *const climate = game_climate(game);
+    game->open_percent = 0u;
+    game->open_climate_frames = 0u;
+    if (climate == nullptr) {
+        return;
+    }
+    const int32_t reach = (int32_t)game_climate_radius(&game->borrowed_world->map);
+    climate_prepare_begin(climate, game->borrowed_job, start_x - reach, start_y - reach, start_x + reach,
+                          start_y + reach);
+    LOG_INFO("game: working out the climate within %d blocks of %d, %d", reach, start_x, start_y);
+}
+
+bool game_open_climate_step(game_t *game) {
+    climate_t *const climate = game_climate(game);
+    uint32_t done = 0u, total = 0u;
+    if (climate == nullptr || climate_prepare_step(climate, game->borrowed_job, &done, &total)) {
+        game->open_percent = 100u;
+        return true;
+    }
+    game->open_percent = (uint8_t)(total == 0u ? 0u : (uint64_t)done * 100u / total);
+    game->open_climate_frames++;
+    return false;
+}
+
 bool game_open(game_t *game, const game_config_t *config) {
     ASSERT_ALWAYS(game->open == 0u);
     if (config->render_distance == 0u || config->render_distance > MC_GAME_RENDER_DISTANCE_MAX) {
@@ -525,6 +573,7 @@ bool game_open(game_t *game, const game_config_t *config) {
         return false;
     }
     game_open_alive_tell(game);
+    game_open_climate(game, start_x, start_y);
     /* A new world's calendar: Year 1, Day 80, week 11, with no census owed. A saved one replaces it below. */
     game->day_zero = CALENDAR_DAY_ZERO;
     game_clock_set(game, 0u, GAME_DAY_START);
@@ -576,6 +625,9 @@ void game_close(game_t *game) {
     /* Nothing may be writing into the jobs' memory when it goes. */
     job_group_wait(game->borrowed_job, &game->group);
     job_group_deinit(&game->group);
+    if (game->borrowed_climate != nullptr) {
+        climate_close(game->borrowed_climate, game->borrowed_job); /* waits for the tiles the sim queued */
+    }
     if (game->borrowed_item != nullptr) {
         item_close(game->borrowed_item);
     }
@@ -825,6 +877,15 @@ static void game_columns_request(game_t *game) {
             game->stream_quiet = game->jobs_in_use == 0u ? 1u : 0u;
             return;
         }
+        /* A column waits for its climate tiles: a job may not wait, so the waiting is here. The map offers the same nearest
+         * column again next step, and the tiles come nearest the player first. */
+        const climate_t *const climate = game_climate(game);
+        const int32_t west = request.chunk_x * (int32_t)COLUMN_SIZE, south = request.chunk_y * (int32_t)COLUMN_SIZE;
+        if (climate != nullptr && !climate_area_ready(climate, west, south, west + (int32_t)COLUMN_SIZE - 1,
+                                                      south + (int32_t)COLUMN_SIZE - 1)) {
+            (void)world_map_stream_cancel(map, &request);
+            return;
+        }
         job->request = request;
         atomic_store_explicit(&job->done, 0u, memory_order_relaxed);
         if (!job_try_submit(game->borrowed_job, &game->group, game_column_job_run, job)) {
@@ -878,6 +939,12 @@ void game_sim_step(game_t *game) {
         world_map_unload(map, leaving.slot);
     }
     game_columns_commit(game);
+    climate_t *const climate = game_climate(game);
+    if (climate != nullptr) {
+        const int32_t half = (int32_t)COLUMN_SIZE / 2;
+        climate_schedule(climate, game->borrowed_job, map->center_x * (int32_t)COLUMN_SIZE + half,
+                         map->center_y * (int32_t)COLUMN_SIZE + half, game_climate_radius(map));
+    }
     game_columns_request(game);
     (void)world_light_update(&world->light);
     (void)render_upload_resend_drain(&game->borrowed_render->upload, &world->edit);

@@ -14,7 +14,7 @@
 - `game_session_headless_scene`, `game_session_end`: all of it for `display_headless_run`, and closing what is left.
 
 **May be called by:** `run/src/main/`.
-**Depends on:** `game`, `save`, `ui`, `ui/menu` and `ui/screen_settings`, `settings`, `terrain`, `input`, `display`, `simd/copy`, `time`, `log`, `assert`.
+**Depends on:** `game`, `save`, `ui`, `ui/menu` and `ui/screen_settings`, `settings`, `climate` (closed before the terrain goes and opened over the new one, when the game has one; the alive callback copies the game's `open_percent` into the loading screen's `loading_percent`), `terrain`, `input`, `display`, `simd/copy`, `time`, `log`, `assert`.
 
 ## How it goes
 
@@ -34,7 +34,8 @@ A world whose files refuse to open, as damaged, from another version, on another
 - First the loading screen, in both buffers, so that it is on the screen whichever is showing. It stays there until the world's first picture lands in that buffer.
 - Then that frame: `terrain_deinit` and `terrain_init` with the chosen seed, as `run/include/terrain/index.h` says another seed takes, and `game_open`, which starts the player, inventory and drops anew. The guardian's watchdog ends the program if it hears nothing for 8 seconds, and finding dry land can take longer than that, as `run/src/game/spawn/` says, so `game_open_alive_set` keeps it told once for each square of that search. The log says how long it took.
 - A log line on a console in graphics mode does no harm: it is not drawn, and it is there when the console comes back. Nothing else logs but a change of settings going through.
-- `game_loop_threads_ensure` starts the threads on the next frame, after the guardian's fork as under `--test-world`, and what is pinned for this world is pinned after that fork too.
+- If the world has a climate (plan 004 phase 03), `game_open` has only begun working out its tiles round the start. Each frame after it, until they are all built, is the loading screen again with "Working out the climate: N%", from `game_open_climate_step`, and the log says over how many frames. Under `--headless`, with no screen, the opening frame steps it to the end itself.
+- `game_loop_threads_ensure` then starts the threads on the next frame, after the guardian's fork as under `--test-world`, and what is pinned for this world is pinned after that fork too.
 
 **A census stops the world.** Each world opens with `game_census_screens_set`, so when the week number goes up at 06:00 the sim pauses the world itself and raises a latch. Under KMS each playing frame looks for it before the input frame, under `--headless` after each tick, and on Resume from the pause screen, which closes the one race of a census in the frame Esc came. Taking it lets go of everything held, opens the census screen with the clock, `D0`, how many weeks were worked out since the last screen (`census_runs_seen`) and the hemisphere, and the Esc that came with it is not an answer to it. Continue, or Esc, unpauses.
 

@@ -257,8 +257,13 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `tick` | One tick of the world, `game_sim_tick`. Not in the plan's list: split off at the Phase 18 gate, at the standard's 1500 lines | 18 gate |
 | | `input` | A poll of real input or a script's tick turned into flying, the body's wishes, the hotbar and the overlay's key. Not in the plan's list: split off at the Phase 14 gate, when `game` passed its size for splitting | 14 gate |
 | `calendar` | | The date from the world clock: year, day of the year (whole, and continuous for the sun), week, season label, the HUD's date line, and which weeks a late census runs. Pure arithmetic with no state, on the bottom row of section 11 beside `math` and `time` | Plan 004 phases 1, 2 |
-| `climate` | | Plan 004's climate, worked out top to bottom. For now the latitude of a place from its y alone, a triangle wave with the tropic at y = 10,000 and a pole at 38,298. Pure, no state; reserves nothing yet (phase 03 adds the tile cache). Ranked between `render` and `terrain` in section 11 | Plan 004 phase 2 |
+| `climate` | | Plan 004's climate, worked out top to bottom. The latitude of a place from its y alone, a triangle wave with the tropic at y = 10,000 and a pole at 38,298. The Owner of the climate cells: one region (146 MiB of address space) for the tile cells, the land-mask pages and both tables' slots, with a 64-byte `climate_t` in `app_t`; the warp fields, the tile and page jobs, the sim's scheduler, the spawn precompute and the reads (`climate_cell_get`, the warped bilinear `climate_sample_at`). Reads the ground only through `terrain_height_estimate_area`. Ranked between `render` and `terrain` in section 11 | Plan 004 phases 2, 3 |
 | | `sun` | Declination by day of the year, sunset hour angle and day length, and the sun's direction, elevation and azimuth at a latitude and moment, or from the world clock and a y. Pure, allocates nothing | Plan 004 phase 2 |
+| | `sea` | Which water is sea (its body reaches the sea floor's depth, or is over 33.6 km²), a large lake (over 2 km²) or a small one, by a 4-connected flood fill; and Felzenszwalb and Huttenlocher's exact distance transform with the nearest cell. On grids the caller lends; knows nothing of tiles | Plan 004 phase 3 |
+| | `cache` | The slots of the two toroidal tables (64 by 64 tiles, 128 by 128 mask pages): the key, the state, the reader count, the keep square, and claim, publish and evict, seq_cst on both sides | Plan 004 phase 3 |
+| | `mask` | The coarse land mask: a page of 256 cell-centre heights per tile in the sparse table, and a tile's 272 by 272 window of 17 by 17 pages, building a missing page into the table or privately, never waiting | Plan 004 phase 3 |
+| | `cell` | `climate_cell_t` (128 bytes), one tile's 256 cells from its window (sea and land distances and directions, κ, `z_ground`, latitude, flags), the bilinear blend, and the climate's constants and ground-function type | Plan 004 phase 3 |
+| | `layer` | Climate map layers to XRGB8888 pixels: sea distance, continentality, sea and lakes, latitude lines. The Atlas and the map tools draw with it | Plan 004 phase 3 |
 | `physics` | `collision raycast` | Swept AABB; DDA block targeting | 12.1, 12.2 |
 | `player` | `movement camera` | Walk, jump, swim, look | 12.1, 12.2 |
 | | `combat` | The attack: aim, swing, strength | 15.7 |
@@ -432,6 +437,12 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/calendar/` | ctest `run_calendar`: `run/src/calendar/`, with no card: the worked examples, the day starting at 06:00, years rolling over with weeks carrying on, every week 7 days, every season boundary north and south, the date line, the census plan, the continuous year position, and the same dates from 16 threads |
 | `tests/run/climate/` | ctest `run_climate`: `run/src/climate/`, with no card: latitude at the equator, tropic, polar circle and poles, the worked examples, the fold past a pole, the period far out, the even rise, and the same bits from 16 threads |
 | `tests/run/climate/sun/` | ctest `run_climate_sun`: `run/src/climate/sun/`, with no card: declination at the equinoxes and solstices, day length at 60 degrees, 12-hour equinox days, polar day and night, the south, the unit vector, every worked example of the phase 02 file, today's fixed sun as a special case, the sun from the clock, and the same bits from 16 threads |
+| `tests/run/climate/sea/` | ctest `run_climate_sea`: `run/src/climate/sea/` on synthetic grids: the worked example's components, deep water making a body sea, the sea and lake thresholds, a one-cell channel against a corner, and the distance transform against a brute-force search on synthetic coasts, with guard words |
+| `tests/run/climate/cache/` | ctest `run_climate_cache`: `run/src/climate/cache/`: slots modulo the side, the keep square, replacement, a reader stopping an eviction, and 8 readers against a replacing thread 100,000 times on real threads; by hand under `tsan` too |
+| `tests/run/climate/mask/` | ctest `run_climate_mask`: `run/src/climate/mask/`: pages at the cell centres, a real page equal to the height estimate bit for bit, a window as its 17 by 17 pages, and a page someone else holds copied privately |
+| `tests/run/climate/cell/` | ctest `run_climate_cell`: the cells through `run/src/climate/` on real workers: the worked examples, a straight coast, the flags, `z_ground`, exact latitude, the blend, the warp's reach, a tile the same whatever was built first, 1 and 16 workers the same bytes held to a pinned digest, negative coordinates, reads false until built, and the column gate with the scheduler |
+| `tests/run/climate/layer/` | ctest `run_climate_layer`: `run/src/climate/layer/`: each layer's colours, the latitude lines on their rows, grey where unbuilt, and the layers' hashes on a real seed (printed until Ahmed has seen the pictures) |
+| `tests/run/climate/fixtures/` | Not a test: `ground.h`, synthetic grounds (a plane, a ramp, all land, all sea, a straight coast, a sea in one corner, lakes, an island) shared by the climate's tests |
 | `tests/run/terrain/seed/` | ctest `run_terrain_seed`: `run/src/terrain/` with `rng` and `noise`, the same bytes from 1 worker and 16, any split of the work, and values pinned from a separate program and the scalar kernel |
 | `tests/run/terrain/fields/` | ctest `run_terrain_fields`: `run/src/terrain/fields/`: ranges, the spread its README promises, the same bytes from 1 worker and 16, any split of the work, and each value worked out by hand from its noise |
 | `tests/run/terrain/density/` | ctest `run_terrain_density`: `run/src/terrain/density/`: the range limits on every corner of the climate and on real columns, bedrock at `-250`, water's top at `0`, values worked out by hand, any split of the work, and the same bytes from 1 worker and 16 |
@@ -510,7 +521,7 @@ linked into minecraft_c, read through run/src/texture/
 
 Tests need no server and no display, and run under `timeout`.
 
-**`bench/`**: `simd`, `terrain`, `mobs`, `world`, `world_map`, `biome_map`, `cave_walk`, each `index.c` with a `README.md` and a results history. `terrain/tour` is the phase gate's biome tour: a picture of every biome, with no display and no card. `world_map` shows a seed's whole world: a 16 km map, slices and a table of what it measures, with no display and no card. `biome_map` lays the biomes over the same 16 km and says who holds each height, with no display and no card. `world` holds the standard worlds and camera paths, and adds to `bench/world/history.tsv`, a line per row per recorded run.
+**`bench/`**: `simd`, `terrain`, `mobs`, `world`, `world_map`, `biome_map`, `cave_walk`, `climate`, each `index.c` with a `README.md` and a results history. `terrain/tour` is the phase gate's biome tour: a picture of every biome, with no display and no card. `world_map` shows a seed's whole world: a 16 km map, slices and a table of what it measures, with no display and no card. `biome_map` lays the biomes over the same 16 km and says who holds each height, with no display and no card. `climate` times a climate tile cold and warm on one worker (target under 100 ms) and the spawn precompute on 16, and with `--pictures` draws the four phase 03 climate layers of a seed's 16 km to PNGs, with no display and no card. `world` holds the standard worlds and camera paths, and adds to `bench/world/history.tsv`, a line per row per recorded run.
 
 **`tools/test-or-build.sh`**: `flock` around heavy commands, so parallel agents never run builds at the same time:
 
@@ -573,7 +584,7 @@ main
      ├─ mob, player
      ├─ entity, item, physics
      ├─ render ─► gpu_bridge ─► (cuda/)
-     ├─ climate
+     ├─ climate (reads terrain only through its height estimate)
      ├─ terrain, world
      ├─ display, input, texture, audio
      └─ job, thread, file, time, math, calendar, simd, profiler ─► (asm/)
@@ -653,6 +664,7 @@ Split it into sub-directories. Remember that going deeper changes the tier: code
 | Render distance setting | `run/src/ui/screen_settings/`, `run/src/settings/` |
 | The date and the census | `run/src/calendar/`, the world clock and the census in `run/src/game/README.md`, the screen in `run/src/ui/screen_census/` |
 | Latitude and where the sun is | `run/src/climate/` (latitude from y), `run/src/climate/sun/` (declination, day length, direction); the picture's sun in `run/src/game/README.md` and `render_frame_sun_set` in `run/src/render/frame/` |
+| Climate cells: sea distance, continentality, sea and lakes | `run/src/climate/` (the tile cache, jobs and reads) with `sea/`, `cache/`, `mask/`, `cell/` and `layer/`; the ground it reads is `terrain_height_estimate` in `run/src/terrain/`; the column gate and the spawn precompute in `run/src/game/` |
 | What is on disk for a world, and what a crash does to it | `run/src/save/world/README.md` |
 | What a save holds besides blocks, and how the two stay one save | `run/src/save/state/README.md` |
 | When saves happen, and what they cost a frame | `run/src/save/autosave/README.md` |

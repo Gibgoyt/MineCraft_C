@@ -1,6 +1,7 @@
 /* See README.md. The Owner: it holds the region, and lends its arena to the parts. */
 #include "terrain/index.h"
 
+#include "assert/index.h"
 #include "tables/blocks/index.h"
 
 #include <string.h>
@@ -118,4 +119,68 @@ void terrain_deinit(terrain_t *terrain) {
     arena_deinit(&terrain->arena_tables);
     heap_release(&terrain->owned_tables);
     memset(terrain, 0, sizeof(*terrain));
+}
+
+/* ---- The height estimate: plan 004 section 6.1 ---------------------------------------------------------------------- */
+
+enum : uint32_t {
+    TERRAIN_ESTIMATE_SHIFT = 2u,   /* floor to the lattice, as terrain_density's boxes do */
+    TERRAIN_ESTIMATE_PIECE = 128u, /* columns per call of the profile, on the stack */
+};
+static_assert(TERRAIN_DENSITY_CELL_XY == 1u << TERRAIN_ESTIMATE_SHIFT);
+
+terrain_density_profile_t terrain_height_estimate_profile(const terrain_t *terrain, int32_t x, int32_t y) {
+    const int64_t cell = (int64_t)TERRAIN_DENSITY_CELL_XY;
+    const int64_t west = ((int64_t)x >> TERRAIN_ESTIMATE_SHIFT) * cell;
+    const int64_t south = ((int64_t)y >> TERRAIN_ESTIMATE_SHIFT) * cell;
+    const float32_t per_block = 1.0f32 / (float32_t)TERRAIN_DENSITY_CELL_XY;
+    const float32_t t_x = (float32_t)(x & (int32_t)(TERRAIN_DENSITY_CELL_XY - 1u)) * per_block;
+    const float32_t t_y = (float32_t)(y & (int32_t)(TERRAIN_DENSITY_CELL_XY - 1u)) * per_block;
+    /* South-west, south-east, north-west, north-east. */
+    const float64_t xs[4] = {(float64_t)west, (float64_t)(west + cell), (float64_t)west, (float64_t)(west + cell)};
+    const float64_t ys[4] = {(float64_t)south, (float64_t)south, (float64_t)(south + cell), (float64_t)(south + cell)};
+    float32_t h[4];
+    float32_t s[4];
+    terrain_density_profile_points(terrain->borrowed_density, xs, ys, 4u, h, s);
+    /* As density_write_voxels blends, in this order, so the bits are a box's. */
+    const float32_t h_near = h[0] + t_x * (h[1] - h[0]);
+    const float32_t h_far = h[2] + t_x * (h[3] - h[2]);
+    const float32_t s_near = s[0] + t_x * (s[1] - s[0]);
+    const float32_t s_far = s[2] + t_x * (s[3] - s[2]);
+    return (terrain_density_profile_t){
+        .height = h_near + t_y * (h_far - h_near),
+        .softness = s_near + t_y * (s_far - s_near),
+    };
+}
+
+float32_t terrain_height_estimate(const terrain_t *terrain, int32_t x, int32_t y) {
+    return terrain_height_estimate_profile(terrain, x, y).height;
+}
+
+void terrain_height_estimate_area(const terrain_t *terrain, int32_t origin_x, int32_t origin_y, int32_t step,
+                                  uint32_t count_x, uint32_t count_y, float32_t *heights) {
+    const int32_t lattice_mask = (int32_t)(TERRAIN_DENSITY_CELL_XY - 1u);
+    ASSERT((origin_x & lattice_mask) == 0 && (origin_y & lattice_mask) == 0 && (step & lattice_mask) == 0);
+    /* On the lattice t_x = t_y = 0, and a + 0 * (b - a) is a exactly: the profile itself is the blend's answer. */
+    float64_t xs[TERRAIN_ESTIMATE_PIECE];
+    float64_t ys[TERRAIN_ESTIMATE_PIECE];
+    float32_t softness[TERRAIN_ESTIMATE_PIECE];
+    uint32_t held = 0u;
+    uint64_t done = 0u;
+    for (uint32_t iy = 0u; iy < count_y; iy++) {
+        const float64_t y = (float64_t)((int64_t)origin_y + (int64_t)step * (int64_t)iy);
+        for (uint32_t ix = 0u; ix < count_x; ix++) {
+            xs[held] = (float64_t)((int64_t)origin_x + (int64_t)step * (int64_t)ix);
+            ys[held] = y;
+            held++;
+            if (held == TERRAIN_ESTIMATE_PIECE) {
+                terrain_density_profile_points(terrain->borrowed_density, xs, ys, held, heights + done, softness);
+                done += held;
+                held = 0u;
+            }
+        }
+    }
+    if (held > 0u) {
+        terrain_density_profile_points(terrain->borrowed_density, xs, ys, held, heights + done, softness);
+    }
 }
