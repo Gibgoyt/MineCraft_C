@@ -325,4 +325,127 @@ TEST(each_new_layer_is_held_to_a_hash) {
     terrain_deinit(&terrain);
 }
 
+/* ---- Phase 05's layers ---------------------------------------------------------------------------------------------- */
+
+TEST(each_phase_05_layer_is_the_colour_the_readme_says) {
+    climate_normals_at_t n;
+    memset(&n, 0, sizeof(n));
+    n.t_day_c = 0.0f32;
+    CHECK_EQ_U64(climate_layer_normals_colour(CLIMATE_LAYER_TEMPERATURE_DAY, &n), 0xF0F0F0u);
+    n.t_mean_c = 15.0f32;
+    CHECK_EQ_U64(climate_layer_normals_colour(CLIMATE_LAYER_TEMPERATURE_MEAN, &n), 0xF0D060u);
+    n.t_max_month_c = 60.0f32; /* held past the last stop */
+    CHECK_EQ_U64(climate_layer_normals_colour(CLIMATE_LAYER_TEMPERATURE_WARMEST, &n), 0x801010u);
+    n.t_min_month_c = -50.0f32;
+    CHECK_EQ_U64(climate_layer_normals_colour(CLIMATE_LAYER_TEMPERATURE_COLDEST, &n), 0x3040A0u);
+    CHECK_EQ_U64(climate_layer_temperature_colour(-20.0f32), 0x4870C0u); /* halfway from -30 to -10 */
+    n.rain_mm_year = 1000.0f32;
+    CHECK_EQ_U64(climate_layer_normals_colour(CLIMATE_LAYER_RAIN_YEAR, &n), 0x40A040u);
+    n.rain_mm_day = 2000.0f32 / 365.0f32;
+    CHECK_EQ_U64(climate_layer_normals_colour(CLIMATE_LAYER_RAIN_DAY, &n), 0x2070C0u);
+    n.climate_class = CLIMATE_CLASS_DESERT;
+    CHECK_EQ_U64(climate_layer_normals_colour(CLIMATE_LAYER_CLIMATE_CLASS, &n), 0xF0D080u);
+    n.climate_class = CLIMATE_CLASS_BOREAL;
+    CHECK_EQ_U64(climate_layer_normals_colour(CLIMATE_LAYER_CLIMATE_CLASS, &n), 0x305060u);
+    /* Snow balance: above it white, 50 below light grey, 2000 below dark. */
+    n.z = 900.0f32;
+    n.snow_balance_z = 800.0f32;
+    CHECK_EQ_U64(climate_layer_normals_colour(CLIMATE_LAYER_SNOW_BALANCE, &n), 0xFFFFFFu);
+    n.snow_balance_z = 950.0f32;
+    CHECK_EQ_U64(climate_layer_normals_colour(CLIMATE_LAYER_SNOW_BALANCE, &n), 0xA0A0A0u);
+    n.snow_balance_z = 9999.0f32;
+    CHECK_EQ_U64(climate_layer_normals_colour(CLIMATE_LAYER_SNOW_BALANCE, &n), 0x404040u);
+    /* Seasons over the water layer. */
+    n.flags = CLIMATE_CELL_SEA;
+    n.hurricane_s = 1.0f32;
+    CHECK_EQ_U64(climate_layer_normals_colour(CLIMATE_LAYER_HURRICANE_SEASON, &n), 0xFF2020u);
+    n.hurricane_s = 0.0f32;
+    CHECK_EQ_U64(climate_layer_normals_colour(CLIMATE_LAYER_HURRICANE_SEASON, &n), 0x103070u);
+    CHECK_EQ_U64(climate_layer_normals_colour(CLIMATE_LAYER_SNOW_BALANCE, &n), 0x103070u);
+    n.climate_class = CLIMATE_CLASS_NONE;
+    CHECK_EQ_U64(climate_layer_normals_colour(CLIMATE_LAYER_CLIMATE_CLASS, &n), 0x103070u);
+    n.flags = CLIMATE_CELL_HURRICANE_COAST;
+    n.hurricane_season = 1u;
+    CHECK_EQ_U64(climate_layer_normals_colour(CLIMATE_LAYER_HURRICANE_SEASON, &n), 0xFF9040u);
+    n.flags = CLIMATE_CELL_MONSOON;
+    CHECK_EQ_U64(climate_layer_normals_colour(CLIMATE_LAYER_MONSOON, &n), 0x208080u);
+    n.monsoon_today = 1u;
+    CHECK_EQ_U64(climate_layer_normals_colour(CLIMATE_LAYER_MONSOON, &n), 0x30E0E0u);
+    CHECK_EQ_U64(climate_layer_normals_colour(CLIMATE_LAYER_WATER, &n), 0x808080u);
+}
+
+TEST(the_day_moves_the_day_layers_and_not_the_others) {
+    layer_rig_t rig;
+    REQUIRE(layer_rig_start(t, &rig));
+    const ground_t land = {.kind = GROUND_ALL_LAND};
+    REQUIRE(climate_open_ground(rig.climate, 1u, ground_fn, &land));
+    climate_prepare_area(rig.climate, rig.job, 0, 17000, 1023, 18023, nullptr, nullptr); /* 40 N */
+    enum : uint32_t { SIDE = 16u };
+    uint8_t *const january = test_alloc(t, SIDE * SIDE * 4u);
+    uint8_t *const july = test_alloc(t, SIDE * SIDE * 4u);
+    static const climate_layer_t LAYERS[4] = {CLIMATE_LAYER_TEMPERATURE_DAY, CLIMATE_LAYER_TEMPERATURE_MEAN,
+                                              CLIMATE_LAYER_TEMPERATURE_WARMEST, CLIMATE_LAYER_RAIN_YEAR};
+    static const bool MOVES[4] = {true, false, false, false};
+    for (uint32_t l = 0u; l < 4u; l++) {
+        climate_layer_draw(rig.climate, LAYERS[l], 100, 17900, 32, SIDE, SIDE, 15u, january, SIDE * 4u);
+        climate_layer_draw(rig.climate, LAYERS[l], 100, 17900, 32, SIDE, SIDE, 197u, july, SIDE * 4u);
+        CHECK(MOVES[l] == (memcmp(january, july, SIDE * SIDE * 4u) != 0));
+    }
+    layer_rig_stop(&rig);
+}
+
+TEST(phase_05_layers_are_grey_where_unbuilt) {
+    layer_rig_t rig;
+    REQUIRE(layer_rig_start(t, &rig));
+    const ground_t land = {.kind = GROUND_ALL_LAND};
+    REQUIRE(climate_open_ground(rig.climate, 1u, ground_fn, &land));
+    enum : uint32_t { SIDE = 16u };
+    uint8_t *const pixels = test_alloc(t, SIDE * SIDE * 4u);
+    for (uint32_t layer = CLIMATE_LAYER_TEMPERATURE_DAY; layer < CLIMATE_LAYER_COUNT; layer++) {
+        climate_layer_draw(rig.climate, (climate_layer_t)layer, 0, 1024, 64, SIDE, SIDE, 100u, pixels, SIDE * 4u);
+        uint64_t grey = 0u;
+        for (uint32_t i = 0u; i < SIDE * SIDE; i++) {
+            grey += layer_pixel(pixels, SIDE * 4u, i % SIDE, i / SIDE) == 0x808080u ? 1u : 0u;
+        }
+        CHECK_EQ_U64(grey, SIDE * SIDE);
+    }
+    layer_rig_stop(&rig);
+}
+
+/* Phase 05's ten layers on the real seed, the day ones on days 15 and 197. Printed and held to themselves until Ahmed has
+ * seen the pictures (bench_climate --pictures): the hashes are pinned only after he says yes. */
+TEST(each_phase_05_layer_is_held_to_a_hash) {
+    enum : uint32_t { SIDE = 512u };
+    layer_rig_t rig;
+    REQUIRE(layer_rig_start(t, &rig));
+    terrain_t terrain;
+    REQUIRE(terrain_init(&terrain, 2198175988018515243ull));
+    REQUIRE(climate_open(rig.climate, &terrain));
+    climate_prepare_area(rig.climate, rig.job, -4096, -4096, 4095, 4095, nullptr, nullptr);
+    uint8_t *const first = test_alloc(t, SIDE * SIDE * 4u);
+    uint8_t *const second = test_alloc(t, SIDE * SIDE * 4u);
+    static const char *const NAMES[10] = {
+        "temperature day",  "temperature mean", "temperature warmest", "temperature coldest", "rain year", "rain day",
+        "hurricane season", "monsoon",          "climate class",       "snow balance"};
+    static const bool BY_DAY[10] = {true, false, false, false, false, true, true, true, false, false};
+    static const uint32_t DAYS[2] = {15u, 197u};
+    for (uint32_t l = 0u; l < 10u; l++) {
+        const climate_layer_t layer = (climate_layer_t)(CLIMATE_LAYER_TEMPERATURE_DAY + l);
+        for (uint32_t d = 0u; d < (BY_DAY[l] ? 2u : 1u); d++) {
+            climate_layer_draw(rig.climate, layer, -4096, 4096, 16, SIDE, SIDE, DAYS[d], first, SIDE * 4u);
+            climate_layer_draw(rig.climate, layer, -4096, 4096, 16, SIDE, SIDE, DAYS[d], second, SIDE * 4u);
+            const uint64_t hash = layer_digest(first, SIDE * SIDE * 4u);
+            printf("%s, day %u: 0x%016" PRIX64 "\n", NAMES[l], DAYS[d], hash);
+            CHECK_EQ_U64(hash, layer_digest(second, SIDE * SIDE * 4u));
+            uint64_t grey = 0u;
+            for (uint32_t i = 0u; i < SIDE * SIDE; i++) {
+                grey += layer_pixel(first, SIDE * 4u, i % SIDE, i / SIDE) == 0x808080u ? 1u : 0u;
+            }
+            CHECK_EQ_U64(grey, 0u);
+        }
+    }
+    layer_rig_stop(&rig);
+    terrain_deinit(&terrain);
+}
+
 TEST_MAIN()

@@ -21,7 +21,11 @@ static const uint64_t CELL_SEED = 0x1234567890ABCDEFull;
 /* Plan 004 phase 03, first pin 0xE2FA8EB862075544 with the window-edge sea rule: 59 sea cells, 3361 large lake. Moved by the
  * sea-floor rule (the phase file's Issues found 17): 4055 sea cells, no large lake. */
 /* Moved by plan 004 phase 04, which fills currents, swing, lag, wind and pressure (from 0x61708389BBF3789B). */
-static const uint64_t CELL_DIGEST_PIN = 0x4950918E191FF004ull;
+/* Moved by plan 004 phase 05, which fills t_mean, rain, snow balance, class and seasons, and sets the monsoon and
+ * hurricane-coast flags (from 0x4950918E191FF004). */
+static const uint64_t CELL_DIGEST_PIN = 0xB667CA61EBBB4C6Full;
+/* Phase 03's own flags, what these tests check: phase 05 adds the monsoon and hurricane-coast flags beside them. */
+static const uint8_t CELL_KIND_FLAGS = CLIMATE_CELL_SEA | CLIMATE_CELL_LAKE | CLIMATE_CELL_LAKE_SMALL;
 
 /* A job system and a climate, for one test. */
 typedef struct cell_rig_t {
@@ -83,7 +87,7 @@ TEST(kappa_and_distances_are_the_worked_examples) {
     CHECK_NEAR(inland.sea_direction[0], -0.6f32, 1e-6f32);
     CHECK_NEAR(inland.sea_direction[1], -0.8f32, 1e-6f32);
     CHECK_NEAR(inland.kappa, 0.1747f32, 1e-4f32);
-    CHECK_EQ_U64(inland.flags, 0u);
+    CHECK_EQ_U64(inland.flags & CELL_KIND_FLAGS, 0u);
     CHECK_NEAR(inland.land_distance, 0.0f32, 0.0f32);
     /* Cell (0, 0) is next to the sea: D = 1, 32 blocks. */
     const climate_cell_t coast = cell_at(t, rig.climate, 0, 0);
@@ -118,13 +122,14 @@ TEST(a_straight_coast_gives_distance_rising_by_sixty_four_a_cell) {
         const climate_cell_t sea = cell_at(t, rig.climate, -1 - k, 5);
         const float32_t expected = 32.0f32 + 64.0f32 * (float32_t)k;
         right += (land.sea_distance == expected && land.sea_direction[0] == -1.0f32 &&
-                  land.sea_direction[1] == 0.0f32 && land.flags == 0u)
+                  land.sea_direction[1] == 0.0f32 && (land.flags & CELL_KIND_FLAGS) == 0u)
                      ? 1u
                      : 0u;
-        right += (sea.land_distance == expected && sea.land_direction[0] == 1.0f32 && sea.land_direction[1] == 0.0f32 &&
-                  sea.flags == CLIMATE_CELL_SEA && sea.sea_distance == 0.0f32 && sea.kappa == 0.0f32)
-                     ? 1u
-                     : 0u;
+        right +=
+            (sea.land_distance == expected && sea.land_direction[0] == 1.0f32 && sea.land_direction[1] == 0.0f32 &&
+             (sea.flags & CELL_KIND_FLAGS) == CLIMATE_CELL_SEA && sea.sea_distance == 0.0f32 && sea.kappa == 0.0f32)
+                ? 1u
+                : 0u;
     }
     CHECK_EQ_U64(right, 32u);
     cell_rig_stop(&rig);
@@ -142,13 +147,13 @@ TEST(flags_mark_sea_large_lakes_and_small_lakes_and_nothing_else) {
     climate_prepare_tile(rig.climate, rig.job, 0, -3);
     climate_prepare_tile(rig.climate, rig.job, -1, 0);
     const climate_cell_t large = cell_at(t, rig.climate, 5, 5);
-    CHECK_EQ_U64(large.flags, CLIMATE_CELL_LAKE);
+    CHECK_EQ_U64(large.flags & CELL_KIND_FLAGS, CLIMATE_CELL_LAKE);
     CHECK(large.land_distance > 0.0f32 && large.sea_distance > 0.0f32 && large.kappa > 0.0f32);
-    CHECK_EQ_U64(cell_at(t, rig.climate, 6, -35).flags, CLIMATE_CELL_LAKE_SMALL);
+    CHECK_EQ_U64(cell_at(t, rig.climate, 6, -35).flags & CELL_KIND_FLAGS, CLIMATE_CELL_LAKE_SMALL);
     CHECK_NEAR(cell_at(t, rig.climate, 6, -35).land_distance, 0.0f32, 0.0f32);
-    CHECK_EQ_U64(cell_at(t, rig.climate, 1, 5).flags, 0u);
-    CHECK_EQ_U64(cell_at(t, rig.climate, 0, 15).flags, 0u);
-    CHECK_EQ_U64(cell_at(t, rig.climate, -3, 5).flags, CLIMATE_CELL_SEA);
+    CHECK_EQ_U64(cell_at(t, rig.climate, 1, 5).flags & CELL_KIND_FLAGS, 0u);
+    CHECK_EQ_U64(cell_at(t, rig.climate, 0, 15).flags & CELL_KIND_FLAGS, 0u);
+    CHECK_EQ_U64(cell_at(t, rig.climate, -3, 5).flags & CELL_KIND_FLAGS, CLIMATE_CELL_SEA);
     /* Lakes never lower kappa: the land cell beside the large lake is as far from the sea as its x says. */
     CHECK_NEAR(cell_at(t, rig.climate, 1, 5).sea_distance, 96.0f32, 0.0f32);
     cell_rig_stop(&rig);
@@ -510,7 +515,7 @@ static void cell_brute_force_tile(test_context_t *t, const terrain_t *terrain, c
                 land_cells++;
                 const float64_t kappa = 1.0f64 - exp(-blocks / 1500.0f64);
                 static const uint8_t FLAGS[4] = {0u, 0u, CLIMATE_CELL_LAKE, CLIMATE_CELL_LAKE_SMALL};
-                ok = ok && cell.flags == FLAGS[sea[at]];
+                ok = ok && (cell.flags & CELL_KIND_FLAGS) == FLAGS[sea[at]];
                 ok = ok && fabs((float64_t)cell.sea_distance - blocks) < 1e-3f64;
                 ok = ok && fabs((float64_t)cell.kappa - kappa) < 1e-5f64;
                 const float64_t length = hypot((float64_t)cell.sea_direction[0], (float64_t)cell.sea_direction[1]);

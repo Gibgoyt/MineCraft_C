@@ -35,11 +35,91 @@ uint32_t climate_layer_colour(climate_layer_t layer, const climate_sample_t *sam
             return CLIMATE_LAYER_LAKE_SMALL;
         }
         return layer_mix(CLIMATE_LAYER_LAND_LOW, CLIMATE_LAYER_LAND_HIGH, sample->z_ground / CLIMATE_LAYER_LAND_TOP);
-    case CLIMATE_LAYER_LATITUDE:
-    case CLIMATE_LAYER_CURRENTS:
-    case CLIMATE_LAYER_PRESSURE:
-    case CLIMATE_LAYER_WIND:
-    case CLIMATE_LAYER_COUNT:
+    default:
+        break;
+    }
+    return CLIMATE_LAYER_GREY;
+}
+
+/* ---- Phase 05: temperature, rain, seasons, classes, snow ----------------------------------------------------------- */
+
+/* A value along stops: linear between the two round it, held past the ends. */
+static uint32_t layer_stops(const float32_t *at, const uint32_t *colours, uint32_t count, float32_t value) {
+    if (!(value > at[0])) {
+        return colours[0]; /* NaN too */
+    }
+    for (uint32_t k = 1u; k < count; k++) {
+        if (value < at[k]) {
+            return layer_mix(colours[k - 1u], colours[k], (value - at[k - 1u]) / (at[k] - at[k - 1u]));
+        }
+    }
+    return colours[count - 1u];
+}
+
+uint32_t climate_layer_temperature_colour(float32_t c) {
+    return layer_stops(CLIMATE_LAYER_TEMPERATURE_C, CLIMATE_LAYER_TEMPERATURE_RGB, CLIMATE_LAYER_TEMPERATURE_STOPS, c);
+}
+
+uint32_t climate_layer_rain_colour(float32_t mm_year) {
+    return layer_stops(CLIMATE_LAYER_RAIN_MM, CLIMATE_LAYER_RAIN_RGB, CLIMATE_LAYER_RAIN_STOPS, mm_year);
+}
+
+/* Phase 03's water layer under a place's normals. */
+static uint32_t layer_water_under(const climate_normals_at_t *normals) {
+    climate_sample_t sample;
+    memset(&sample, 0, sizeof(sample));
+    sample.z_ground = normals->z;
+    sample.flags = normals->flags;
+    return climate_layer_colour(CLIMATE_LAYER_WATER, &sample);
+}
+
+uint32_t climate_layer_normals_colour(climate_layer_t layer, const climate_normals_at_t *normals) {
+    const bool sea = (normals->flags & CLIMATE_CELL_SEA) != 0u;
+    const bool water = (normals->flags & (CLIMATE_CELL_SEA | CLIMATE_CELL_LAKE)) != 0u;
+    switch (layer) {
+    case CLIMATE_LAYER_TEMPERATURE_DAY:
+        return climate_layer_temperature_colour(normals->t_day_c);
+    case CLIMATE_LAYER_TEMPERATURE_MEAN:
+        return climate_layer_temperature_colour(normals->t_mean_c);
+    case CLIMATE_LAYER_TEMPERATURE_WARMEST:
+        return climate_layer_temperature_colour(normals->t_max_month_c);
+    case CLIMATE_LAYER_TEMPERATURE_COLDEST:
+        return climate_layer_temperature_colour(normals->t_min_month_c);
+    case CLIMATE_LAYER_RAIN_YEAR:
+        return climate_layer_rain_colour(normals->rain_mm_year);
+    case CLIMATE_LAYER_RAIN_DAY:
+        return climate_layer_rain_colour(normals->rain_mm_day * CLIMATE_DAYS_A_YEAR);
+    case CLIMATE_LAYER_HURRICANE_SEASON:
+        if (sea && normals->hurricane_s > 0.0f32) {
+            return layer_mix(CLIMATE_LAYER_HURRICANE_LOW, CLIMATE_LAYER_HURRICANE_HIGH, normals->hurricane_s);
+        }
+        if ((normals->flags & CLIMATE_CELL_HURRICANE_COAST) != 0u && normals->hurricane_season != 0u) {
+            return CLIMATE_LAYER_HURRICANE_COAST;
+        }
+        return layer_water_under(normals);
+    case CLIMATE_LAYER_MONSOON:
+        if (normals->monsoon_today != 0u) {
+            return CLIMATE_LAYER_MONSOON_TODAY;
+        }
+        return (normals->flags & CLIMATE_CELL_MONSOON) != 0u ? CLIMATE_LAYER_MONSOON_LAND : layer_water_under(normals);
+    case CLIMATE_LAYER_CLIMATE_CLASS:
+        if (normals->climate_class == CLIMATE_CLASS_NONE || normals->climate_class >= CLIMATE_CLASS_COUNT) {
+            return layer_water_under(normals);
+        }
+        return CLIMATE_LAYER_CLASS_RGB[normals->climate_class];
+    case CLIMATE_LAYER_SNOW_BALANCE: {
+        if (water) {
+            return layer_water_under(normals);
+        }
+        const float32_t below = normals->snow_balance_z - normals->z;
+        if (below <= 0.0f32) {
+            return CLIMATE_LAYER_SNOW_ABOVE;
+        }
+        return layer_mix(CLIMATE_LAYER_SNOW_NEAR, CLIMATE_LAYER_SNOW_FAR,
+                         (below - CLIMATE_LAYER_SNOW_NEAR_BLOCKS) /
+                             (CLIMATE_LAYER_SNOW_FAR_BLOCKS - CLIMATE_LAYER_SNOW_NEAR_BLOCKS));
+    }
+    default:
         break;
     }
     return CLIMATE_LAYER_GREY;
@@ -266,6 +346,13 @@ void climate_layer_draw(const climate_t *climate, climate_layer_t layer, int32_t
         const float64_t y = layer_view_y(&view, row);
         for (uint32_t column = 0u; column < width; column++) {
             const float64_t x = layer_view_x(&view, column);
+            if (layer >= CLIMATE_LAYER_TEMPERATURE_DAY && layer < CLIMATE_LAYER_COUNT) {
+                climate_normals_at_t normals;
+                const bool built = climate_normals_at(climate, x, y, nanf(""), on_day, &normals);
+                layer_put(pixels, pitch, column, row,
+                          built ? climate_layer_normals_colour(layer, &normals) : CLIMATE_LAYER_GREY);
+                continue;
+            }
             if (layer == CLIMATE_LAYER_PRESSURE || layer == CLIMATE_LAYER_WIND) {
                 climate_air_t air;
                 const bool built = climate_air_at(climate, x, y, on_day, &air);

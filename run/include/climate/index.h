@@ -6,9 +6,12 @@
 #include "climate/air/index.h"
 #include "climate/cache/index.h"
 #include "climate/cell/index.h"
+#include "climate/heat/index.h"
 #include "climate/mask/index.h"
 #include "climate/normals/index.h"
+#include "climate/rain/index.h"
 #include "climate/sea/index.h"
+#include "climate/season/index.h"
 #include "heap/index.h"
 #include "job/index.h"
 #include "machine/index.h"
@@ -100,7 +103,7 @@ typedef struct climate_state_t {
     uint8_t warp_off;                             /* 225: a test's: reads are not warped */
     uint8_t _pad0[6];                             /* 226 */
     const climate_normals_t *borrowed_normals;    /* 232: phase 04's curves, in arena_normals; from climate_init */
-    uint8_t _pad2[16];                            /* 240 */
+    climate_test_hooks_t hooks;                   /* 240: phase 05, a test's: all zeros in every real run */
     /* A line of its own: the sim writes the keep square, workers count down. */
     _Atomic int32_t keep_tile_x;                 /* 256 */
     _Atomic int32_t keep_tile_y;                 /* 260 */
@@ -112,6 +115,7 @@ typedef struct climate_state_t {
 } climate_state_t;
 static_assert(sizeof(climate_state_t) == 448);
 static_assert(offsetof(climate_state_t, borrowed_normals) == 232);
+static_assert(offsetof(climate_state_t, hooks) == 240);
 static_assert(offsetof(climate_state_t, arena_normals) == 384);
 static_assert(offsetof(climate_state_t, prepare) == 320);
 static_assert(alignof(climate_state_t) == 64);
@@ -205,5 +209,43 @@ void climate_current_flow(const climate_cell_t *cell, float32_t y_centre, float3
 
 /* The curves climate_init built, for the layers and tests. */
 const climate_normals_t *climate_normals(const climate_t *climate);
+
+/* ---- Temperature, rain and storm seasons: plan 004 phase 05 ---------------------------------------------------------- */
+
+/* A place's normals on a day: what it is usually like there. The phase 05 file's climate_normals_t, named apart from phase
+ * 04's knot curves, which hold that name (Issues found in the phase 05 file). */
+typedef struct climate_normals_at_t {
+    float32_t t_mean_c;          /* 0: yearly mean at z */
+    float32_t t_day_c;           /* 4: the normal daily mean on day, at z */
+    float32_t t_range_c;         /* 8: the normal daily range on day */
+    float32_t t_high_c;          /* 12: t_day + range / 2 */
+    float32_t t_low_c;           /* 16: t_day - range / 2 */
+    float32_t t_max_month_c;     /* 20: warmest month mean at z */
+    float32_t t_min_month_c;     /* 24: coldest month mean at z */
+    float32_t rain_mm_day;       /* 28: P(day) / 7, clamped at 0 */
+    float32_t rain_mm_year;      /* 32: P0 x 365 / 7 */
+    float32_t rain_max_mm_day;   /* 36: the wettest day of this place's year, from 73 days 5 apart: phase 06 reads it */
+    float32_t snow_share;        /* 40: f_s(t_day) */
+    float32_t snow_balance_z;    /* 44: blocks, blended */
+    float32_t sea_temperature_c; /* 48: for the nearest cell if it is sea, else NaN */
+    float32_t hurricane_s;       /* 52: s_hur today, for the nearest cell if sea; 0 otherwise */
+    uint8_t climate_class;       /* 56: the nearest cell's */
+    uint8_t flags;               /* 57: the nearest cell's CLIMATE_CELL_* */
+    uint8_t hurricane_season;    /* 58: 1 if today is inside the nearest cell's stored season */
+    uint8_t monsoon_today;       /* 59: 1 if climate_season_monsoon_today holds for the nearest cell */
+    float32_t z;                 /* 60: the height all of it is at: z, or the blended ground when z was NaN */
+} climate_normals_at_t;
+static_assert(sizeof(climate_normals_at_t) == 64);
+
+/* The normals at a block and height on a day: t_mean, t_swing, t_lag_days, kappa, rain and snow_balance_z blended between
+ * the four cells climate_sample_at blends, at the same warped point, then evaluated; categories from the nearest cell to the
+ * warped point. z is the player's height for the HUD; NaN means the blended ground, for maps. B applies below 0 when the
+ * nearest cell is neither sea nor a large lake. False, writing nothing, if a tile it needs is not built. Any thread. day
+ * from 0 to below 365. */
+bool climate_normals_at(const climate_t *climate, float64_t x, float64_t y, float32_t z, float32_t day,
+                        climate_normals_at_t *out);
+
+/* For tests only: the hooks every tile built from now on uses (climate_open puts them back to all off). */
+void climate_test_hooks_set(climate_t *climate, const climate_test_hooks_t *hooks);
 
 #endif

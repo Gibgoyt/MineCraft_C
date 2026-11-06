@@ -21,4 +21,11 @@ void climate_harmonic_fit1(const float32_t values[CLIMATE_FIT_DAYS], float32_t o
 /* The wave on any day, d from 0 to below 365, fractions allowed. Pure. */
 float32_t climate_harmonic_at1(const float32_t coefficients[3], float32_t day);
 
+/* Phase 05: the least-squares fit of P0 + P1c cos theta + P1s sin theta + P2c cos 2 theta + P2s sin 2 theta to values on
+ * the CLIMATE_FIT_DAYS days d_k. Sums in float64_t, in k order. out = {P0, P1c, P1s, P2c, P2s}. Pure. */
+void climate_harmonic_fit2(const float32_t values[CLIMATE_FIT_DAYS], float32_t out[5]);
+
+/* The two-wave curve on any day, from 0 to below 365, fractions allowed. Not clamped: callers clamp rain at 0. Pure. */
+float32_t climate_harmonic_at2(const float32_t coefficients[5], float32_t day);
+
 #endif
