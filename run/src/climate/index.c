@@ -3,7 +3,9 @@
 #include "climate/index.h"
 
 #include "assert/index.h"
+#include "climate/systems/index.h"
 #include "log/index.h"
+#include "terrain/rng/index.h"
 #include "time/index.h"
 
 #include <math.h>
@@ -96,6 +98,10 @@ bool climate_open_ground(climate_t *climate, uint64_t seed, climate_ground_fn_t 
     state->borrowed_ground_context = borrowed_context;
     state->warp_off = 0u;
     memset(&state->hooks, 0, sizeof(state->hooks));
+    memset(&state->systems_hooks, 0, sizeof(state->systems_hooks));
+    for (uint8_t kind = 0u; kind < CLIMATE_SYSTEM_KINDS; kind++) {
+        state->systems_seed[kind] = terrain_rng_derive(seed, terrain_rng_salt(CLIMATE_SYSTEMS_SALT_NAMES[kind]));
+    }
     atomic_store_explicit(&state->keep_tile_x, 0, memory_order_relaxed);
     atomic_store_explicit(&state->keep_tile_y, 0, memory_order_relaxed);
     atomic_store_explicit(&state->jobs_in_flight, 0u, memory_order_relaxed);
@@ -690,4 +696,87 @@ bool climate_normals_at(const climate_t *climate, float64_t x, float64_t y, floa
     out->hurricane_season = climate_season_hurricane_today(nearest->hurricane_days, day) ? 1u : 0u;
     out->monsoon_today = climate_season_monsoon_today(nearest, day) ? 1u : 0u;
     return true;
+}
+
+/* ---- Weather systems: phase 06 ------------------------------------------------------------------------------------- */
+
+uint64_t climate_seed(const climate_t *climate) {
+    return climate->borrowed_state->seed;
+}
+
+uint64_t climate_systems_seed(const climate_t *climate, uint8_t kind) {
+    ASSERT(kind < CLIMATE_SYSTEM_KINDS);
+    return climate->borrowed_state->systems_seed[kind];
+}
+
+void climate_systems_hooks_set(climate_t *climate, const climate_systems_hooks_t *hooks) {
+    climate->borrowed_state->systems_hooks = *hooks;
+}
+
+climate_systems_hooks_t climate_systems_hooks(const climate_t *climate) {
+    return climate->borrowed_state->systems_hooks;
+}
+
+climate_mask_source_t climate_mask_page_read(const climate_t *climate, int32_t tile_x, int32_t tile_y, float32_t *out) {
+    const climate_state_t *const state = climate->borrowed_state;
+    const climate_mask_t mask = climate_mask_of(state);
+    return climate_mask_page_get(&mask, tile_x, tile_y, atomic_load_explicit(&state->keep_tile_x, memory_order_relaxed),
+                                 atomic_load_explicit(&state->keep_tile_y, memory_order_relaxed), out);
+}
+
+/* The cell holding (x, y): its tile, and its index in the tile's page. */
+static void climate_mask_cell_of(float64_t x, float64_t y, int64_t *cell_x, int64_t *cell_y, int32_t *tile_x,
+                                 int32_t *tile_y, uint64_t *index) {
+    *cell_x = (int64_t)floor(x / (float64_t)CLIMATE_CELL_BLOCKS);
+    *cell_y = (int64_t)floor(y / (float64_t)CLIMATE_CELL_BLOCKS);
+    *tile_x = (int32_t)(*cell_x >> (CLIMATE_TILE_SHIFT - CLIMATE_CELL_SHIFT));
+    *tile_y = (int32_t)(*cell_y >> (CLIMATE_TILE_SHIFT - CLIMATE_CELL_SHIFT));
+    const int64_t in_tile = (int64_t)CLIMATE_TILE_CELLS - 1;
+    *index = (uint64_t)((*cell_y & in_tile) * CLIMATE_TILE_CELLS + (*cell_x & in_tile));
+}
+
+bool climate_mask_page_kept(const climate_t *climate, int32_t tile_x, int32_t tile_y) {
+    const climate_state_t *const state = climate->borrowed_state;
+    return climate_cache_keeps(tile_x, tile_y, atomic_load_explicit(&state->keep_tile_x, memory_order_relaxed),
+                               atomic_load_explicit(&state->keep_tile_y, memory_order_relaxed), CLIMATE_MASK_SIDE);
+}
+
+float32_t climate_mask_point(const climate_t *climate, float64_t x, float64_t y) {
+    const climate_state_t *const state = climate->borrowed_state;
+    int64_t cell_x = 0, cell_y = 0;
+    int32_t tile_x = 0, tile_y = 0;
+    uint64_t index = 0u;
+    climate_mask_cell_of(x, y, &cell_x, &cell_y, &tile_x, &tile_y, &index);
+    /* The ground is a pure function of each column (climate_ground_fn_t), so one column alone is the page's value: the
+     * mask test holds a real page to single estimates bit for bit. */
+    float32_t height = 0.0f32;
+    const int64_t centre_x = cell_x * CLIMATE_CELL_BLOCKS + CLIMATE_CELL_BLOCKS / 2;
+    const int64_t centre_y = cell_y * CLIMATE_CELL_BLOCKS + CLIMATE_CELL_BLOCKS / 2;
+    state->ground(state->borrowed_ground_context, (int32_t)centre_x, (int32_t)centre_y, CLIMATE_CELL_BLOCKS, 1u, 1u,
+                  &height);
+    return height;
+}
+
+float32_t climate_mask_height_at(const climate_t *climate, arena_t *arena, float64_t x, float64_t y) {
+    const climate_state_t *const state = climate->borrowed_state;
+    int64_t cell_x = 0, cell_y = 0;
+    int32_t tile_x = 0, tile_y = 0;
+    uint64_t index = 0u;
+    climate_mask_cell_of(x, y, &cell_x, &cell_y, &tile_x, &tile_y, &index);
+    /* The one value, if the page is there: no copy of the other 255. */
+    const uint32_t slot_index = climate_cache_slot_index(tile_x, tile_y, CLIMATE_MASK_SIDE);
+    climate_slot_t *const slot = &state->borrowed_mask_slots[slot_index];
+    if (climate_cache_read_begin(slot, climate_cache_key(tile_x, tile_y))) {
+        const float32_t height =
+            state->borrowed_mask_heights[(uint64_t)slot_index * (uint64_t)CLIMATE_TILE_CELL_COUNT + index];
+        climate_cache_read_end(slot);
+        return height;
+    }
+    if (!climate_mask_page_kept(climate, tile_x, tile_y)) {
+        return climate_mask_point(climate, x, y); /* a page could not be kept here: one column, not 256 */
+    }
+    float32_t *const page =
+        arena_alloc_array(arena, (uint64_t)CLIMATE_TILE_CELL_COUNT, sizeof(float32_t), alignof(float32_t));
+    (void)climate_mask_page_read(climate, tile_x, tile_y, page);
+    return page[index];
 }

@@ -3,6 +3,7 @@
 #define MC_RUN_CLIMATE_LAYER_INDEX_H
 
 #include "climate/index.h"
+#include "climate/systems/index.h"
 #include "types/index.h"
 
 #include <stdint.h>
@@ -27,7 +28,14 @@ typedef enum climate_layer_t : uint32_t {
     CLIMATE_LAYER_MONSOON = 14,             /* the water layer, monsoon land teal, brighter when monsoon today */
     CLIMATE_LAYER_CLIMATE_CLASS = 15,       /* each class its colour, the sea as the water layer */
     CLIMATE_LAYER_SNOW_BALANCE = 16,        /* land above its snow balance white, below it grey by how far */
-    CLIMATE_LAYER_COUNT = 17,
+    CLIMATE_LAYER_COUNT = 17,               /* the layers climate_layer_draw draws: everything above */
+    /* Phase 06: "now" layers, drawn by climate_layer_draw_now at a moment from a day list. */
+    CLIMATE_LAYER_PRESSURE_NOW = 17, /* belt + heat low + systems as colour, lines every 4 hPa, H and L at centres */
+    CLIMATE_LAYER_SYSTEMS = 18,      /* the water layer, each big system's circle, eye, track behind it and front */
+    CLIMATE_LAYER_RAIN_RADAR = 19,   /* background expected rain plus systems, times the high's cut, mm an hour */
+    CLIMATE_LAYER_THUNDER = 20,      /* the water layer, each alive cell a disc with a lightning mark */
+    CLIMATE_LAYER_WIND_NOW = 21,     /* phase 04's wind with each system's circling wind added */
+    CLIMATE_LAYER_NOW_END = 22,
 } climate_layer_t;
 
 /* The colours the README gives, 0x00RRGGBB. */
@@ -66,7 +74,26 @@ enum : uint32_t {
     CLIMATE_LAYER_SNOW_FAR = 0x404040u,        /* 2000 or more below it */
     CLIMATE_LAYER_TEMPERATURE_STOPS = 6u,
     CLIMATE_LAYER_RAIN_STOPS = 6u,
+    /* Phase 06 */
+    CLIMATE_LAYER_HIGH_MARK = 0x2040C0u,      /* the H at a high's centre */
+    CLIMATE_LAYER_LOW_MARK = 0xC02020u,       /* the L at a low's or hurricane's centre */
+    CLIMATE_LAYER_HURRICANE_RING = 0xFF3030u, /* a hurricane's circle at R, and its eye */
+    CLIMATE_LAYER_LOW_RING = 0xFF9020u,       /* a low's circle */
+    CLIMATE_LAYER_HIGH_RING = 0x3080FFu,      /* a high's circle */
+    CLIMATE_LAYER_TRACK = 0xFFFFFFu,          /* the track behind a system */
+    CLIMATE_LAYER_FRONT = 0x2050FFu,          /* a cold front, a tooth every 16 pixels */
+    CLIMATE_LAYER_FRONT_TOOTH_SPACING = 16u,
+    CLIMATE_LAYER_THUNDER_DISC = 0xC0C0FFu, /* an alive cell at R */
+    CLIMATE_LAYER_LIGHTNING = 0xFFE020u,    /* the lightning mark at a cell's centre */
+    CLIMATE_LAYER_RADAR_STOPS = 6u,
+    CLIMATE_LAYER_MARK_WIDTH = 5u, /* the H and L bitmaps */
+    CLIMATE_LAYER_MARK_HEIGHT = 7u,
 };
+/* The radar's steps, mm an hour: each colour from its rate up to the next; under the first, the water layer shows. */
+static const float32_t CLIMATE_LAYER_RADAR_MM_HOUR[CLIMATE_LAYER_RADAR_STOPS] = {0.1f32,  1.0f32,  4.0f32,
+                                                                                 10.0f32, 25.0f32, 50.0f32};
+static const uint32_t CLIMATE_LAYER_RADAR_RGB[CLIMATE_LAYER_RADAR_STOPS] = {0x80C0FFu, 0x40A040u, 0xE0E040u,
+                                                                            0xF08020u, 0xE02020u, 0xC020C0u};
 static const float32_t CLIMATE_LAYER_PRESSURE_LOW_HPA = 990.0f32;
 static const float32_t CLIMATE_LAYER_PRESSURE_MID_HPA = 1013.0f32;
 static const float32_t CLIMATE_LAYER_PRESSURE_HIGH_HPA = 1030.0f32;
@@ -115,5 +142,18 @@ uint32_t climate_layer_temperature_colour(float32_t c);
 uint32_t climate_layer_rain_colour(float32_t mm_year);
 /* The colour of one place's normals in a phase 05 layer, grey for any other layer. Pure. */
 uint32_t climate_layer_normals_colour(climate_layer_t layer, const climate_normals_at_t *normals);
+
+/* Phase 06: a "now" layer at time t from a day list built for floor(t), centred where the picture is. Grey where a tile is
+ * not built, with systems over grey drawn as outlines only (their circles, and in the systems layer their tracks), so storms
+ * show before they reach explored land (master plan 2.4). Pixels as climate_layer_draw's. Any thread. */
+void climate_layer_draw_now(const climate_t *climate, const climate_systems_day_t *day, climate_layer_t layer,
+                            float64_t t, int32_t west_x, int32_t north_y, int32_t blocks_per_pixel, uint32_t width,
+                            uint32_t height, uint8_t *pixels, uint32_t pitch);
+/* The radar's colour for a rain rate: false under 0.1 mm an hour, where the water layer shows instead. */
+bool climate_layer_radar_colour(float32_t mm_hour, uint32_t *out);
+/* The rain the radar shows at a place and moment, mm an hour: the background's expected rate, the normal times 1 - f_sys,
+ * plus the systems', times the high's cut. False where a tile is not built. */
+bool climate_layer_rain_now(const climate_t *climate, const climate_systems_day_t *day, float64_t x, float64_t y,
+                            float64_t t, float32_t *out);
 
 #endif

@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 6: Weather systems
 
-**Status:** not started   (updated 2026-11-04)
+**Status:** in progress: built and verified on 2026-11-06 (every Verification command below run and passing); only Ahmed's gate, watching a season in the frames, is left   (updated 2026-11-06)
 
 Read `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` first, then sections 2.3, 2.5, 7.1 to 7.4 of `plans/004-ahmed-bohemoth-climate-system.md`, then the phase 03, 04 and 05 files of this plan, which this phase builds on. Every number here comes from the master plan. Where this file adds a number the master plan does not give, it says "this phase" and gives the reason.
 
@@ -772,24 +772,24 @@ Build order. Each step builds and passes its own tests before the next starts.
 
 ## Todo
 
-- [ ] Phases 01 to 05's names found; differences written under Issues found
-- [ ] `climate_mask_height_at` in `run/src/climate/mask/`, if absent
-- [ ] `run/src/climate/systems/`: kinds, constants, `climate_system_t` (1448 bytes), `climate_thunder_t` (64), `climate_systems_day_t` (72), asserts, kind seeds in `climate_t`
-- [ ] Spawn by hash per square and day (7.2): inverse-CDF Poisson counts, the 12-draw stream, thinning by place and season
-- [ ] Rates: hurricanes by $s_{\text{hur}}$ on open sea, lows by season in 35° to 65°, highs in 20° to 45° and winter interiors
-- [ ] Tracks (7.3): hurricanes west, turn, east; lows and highs east with drift; drift stops; weakening over land and cool sea; life curves; death
-- [ ] Names from syllables, in `run/src/climate/systems/name/`
-- [ ] The daily list of systems near a point, sorted, and interpolation between samples within the day
-- [ ] Pressure, wind and rain from each system (7.3), fronts, the high's cut, $f_{\text{sys}}$, in `run/src/climate/systems/field/`
-- [ ] Thunderstorm cells (7.2.1): rate from normals, afternoon and front processes, high thinning, straight-line motion
-- [ ] Map layers: pressure now with H and L, systems with tracks, rain radar, thunderstorm cells, wind now; systems over grey as outlines
-- [ ] Tests: hurricanes only spawn in season and never within 5° of the equator; they turn poleward and weaken over land; winds circle lows anticlockwise in the north and clockwise in the south; a system's track is the same whichever day it's first asked for; cells under a high's centre over 1000 days (Issues found 5)
-- [ ] Test: over 10 years on 8 seeds, each cell's rain is within 15% of its normal (7.4); rates tuned and recorded
-- [ ] Bench: the systems near a point, under 2 ms
-- [ ] 1 and 16 workers give the same bytes; release prints the same digest as debug
-- [ ] A `README.md` in every new source directory, exactly one `index.*` in each
-- [ ] `plans/REPO_STRUCTURE.md` updated
-- [ ] The whole debug suite passes; `standards_lint` and `clang_format` pass
+- [x] Phases 01 to 05's names found; differences written under Issues found
+- [x] `climate_mask_height_at` in `run/src/climate/mask/`, if absent: absent, and added in the Owner instead (`mask/` cannot see `climate_t`), with `climate_mask_page_read`, `climate_mask_page_kept` and `climate_mask_point` (Issues found 9, 17)
+- [x] `run/src/climate/systems/`: kinds, constants, `climate_system_t` (1448 bytes), `climate_thunder_t` (64), `climate_systems_day_t` (72), asserts, kind seeds in `climate_t`
+- [x] Spawn by hash per square and day (7.2): inverse-CDF Poisson counts, the 12-draw stream, thinning by place and season
+- [x] Rates: hurricanes by $s_{\text{hur}}$ on open sea, lows by season in 35° to 65°, highs in 20° to 45° and winter interiors
+- [x] Tracks (7.3): hurricanes west, turn, east; lows and highs east with drift; drift stops; weakening over land and cool sea; life curves; death
+- [x] Names from syllables, in `run/src/climate/systems/name/`
+- [x] The daily list of systems near a point, sorted, and interpolation between samples within the day
+- [x] Pressure, wind and rain from each system (7.3), fronts, the high's cut, $f_{\text{sys}}$, in `run/src/climate/systems/field/`
+- [x] Thunderstorm cells (7.2.1): rate from normals, afternoon and front processes, high thinning, straight-line motion
+- [x] Map layers: pressure now with H and L, systems with tracks, rain radar, thunderstorm cells, wind now; systems over grey as outlines
+- [x] Tests: hurricanes only spawn in season and never within 5° of the equator; they turn poleward and weaken over land; winds circle lows anticlockwise in the north and clockwise in the south; a system's track is the same whichever day it's first asked for; cells under a high's centre over 1000 days (Issues found 5)
+- [x] Test: over 10 years on 8 seeds, each cell's rain is within 15% of its normal (7.4); rates tuned and recorded
+- [x] Bench: the systems near a point, under 2 ms
+- [x] 1 and 16 workers give the same bytes; release prints the same digest as debug
+- [x] A `README.md` in every new source directory, exactly one `index.*` in each
+- [x] `plans/REPO_STRUCTURE.md` updated
+- [x] The whole debug suite passes; `standards_lint` and `clang_format` pass
 - [ ] Gate: Ahmed watches a hurricane season go by in the frames
 
 ## Tests
@@ -812,6 +812,7 @@ Names in the repo's sentence style. "Fails if" says what a wrong build looks lik
 - **`thunderstorm_rate_is_the_worked_example`.** At a synthetic cell with $T_{\text{day}} = 30$, $\bar P = \bar P_{\max}$, monsoon today, $G = 1$: $\lambda_{\text{base}} = 9.000$. Measured over $10^5$ square-days: afternoon cells $9.00 \pm 0.05$ a day, front cells on a fixed front $36.0 \pm 0.2$, under a fixed high $1.80 \pm 0.02$. $T_{\text{day}} = 15$: exactly 0 cells.
 - **`cells_start_in_the_afternoon_unless_on_a_front`.** Every afternoon cell starts between 13:00 and 19:00 ($f \in [7/24, 13/24]$); front cells spread over the whole day (each 4-hour bin within 20% of a sixth).
 - **`cells_move_with_the_day_s_wind_and_never_faster_than_15`.** Velocity equals phase 04's wind at the start at noon times 1200, capped at $18\,000$ blocks a day.
+- **`a_cell_s_speed_is_capped_at_15_blocks_a_second`** (added, Issues found 19). `climate_systems_thunder_velocity` at winds of 10, 15, 20 and 40 blocks a second and 0: the wind times 1200 under the cap, 18,000 blocks a day with its direction kept over it.
 - **`names_are_made_from_syllables`.** Seed 4161 gives "Tavela", 262 gives "Orin". Over $10^6$ seeds no name is over 8 letters, every name starts upper case, and the longest title fits in 24 bytes with its zero.
 - **`lows_carry_a_front_toward_the_equator`.** A low at 45° N: the front's far end is south-west of the centre; at 45° S, north-west; the "on front" test is true 300 blocks from the line and false at 500.
 - **`no_track_reaches_a_pole_and_no_high_reaches_the_equator`.** 20 years of all kinds on all-sea and all-land grounds, every sample: $\lvert\varphi\rvert \le 85° + 0.25 \times 7204/425.5$ (one step past the stop), highs $\ge 5° - $ one step.
@@ -853,6 +854,45 @@ The 10-year test runs on release, where it takes minutes rather than an hour; it
 - **Cells near the player** at 2 km: reported.
 - Prints counts hashed, candidates, kept, track steps and mask reads per call.
 
+### Results, 2026-11-06
+
+Every command above was run through the build lock in the worktree, apart from Ahmed's gate:
+
+| Command | Result |
+|---|---|
+| `cmake --build --preset debug` | built, `standards_lint` clean |
+| `ctest --preset debug -R '^run_climate_systems$'` | passed, 18 tests |
+| `ctest --preset debug -R '^run_climate_layer$'` | passed, 15 tests (3 new) |
+| `ctest --preset debug -R '^run_climate_.*$' -E '^run_climate_systems_rain$'` | 13 of 13 passed |
+| `ctest --preset debug -R '^(standards_lint|clang_format)$'` | both passed |
+| `ctest --preset debug -E '^run_climate_systems_rain$'` (the whole suite) | 137 of 137 passed, 2017 s |
+| `cmake --build --preset release` | built and linked (`-flto`, the frame limit at link): `climate_t` is unchanged at 64 bytes, so main's frame is not touched |
+| `ctest --preset release -R '^run_climate_systems_rain$'` | passed: 0 of 128 cells outside 15%, worst 0.140; 5 sites ran 30 years under the noise rule; 17 s |
+| `ctest --preset release -R '^run_climate_systems$'` | passed; digest `0x69B94D8AD6C147C9`, the same as debug's and pinned |
+| `bench_climate --systems` | exit 0: warm median **0.357 ms** (slowest 0.967), target 2 ms; cold median 33.8 ms; with cells at 2 km 23.8 ms, 9.8 cells a list. Per call 2191 square-days hashed, 135.6 candidates, 25.4 kept, 587 track steps, 599 mask reads |
+| `bench_climate --season /tmp/mc_c_season 2198175988018515243 150 300 0.5` | exit 0: 1204 frames and `systems.txt` in 203 s; view round (-67232, 7446); on average 10.8 lows, 2.0 highs and 465 cells near the view a day, **no hurricanes** (Issues found 14). Folder deleted after checking (3.6 GB in `/tmp`'s memory) |
+| `pgrep -a minecraft_c` | nothing |
+
+Measured along the way (`run_climate_systems`, release): the inverse CDF over 10^6 hashes, mean 0.01991, 0.08006 and 9.004 at λ 0.02, 0.08 and 9; the forced 120-day season 4.125 hurricanes a square at 0.034 (2.361 at 0.02); the real all-sea count 1.02 a square a year; 15° N on day 215, 27.950 °C and `s_hur` 0.7250, with +4, 31.950 and 1; 20 years on 32 squares of sea, 321 hurricanes, lowest sample 5.04°; hurricane worked example 12.936 at 1000 blocks, -46.728 and -22.073 hPa; a hurricane over land 0.5000001 after 4 samples; afternoon cells 8.9985 a square-day at λ 9, 1.8003 under a high, 36.016 on a front; within 0.3 R of a high's centre 1.794 per km² a day against 8.969 without; the largest lists 17 big systems at 40 km and 567 cells at 8 km; 6400 lists in 4.2 s on 1 worker and 0.69 s on 16.
+
+
+### Results rerun, 2026-11-06 (second agent, worktree `wf_6f8a0c68-47a-30`, after the cap test of Issues found 19)
+
+| Command | Result |
+|---|---|
+| `cmake --build --preset debug` | built, `standards_lint` clean |
+| `ctest --preset debug -R '^run_climate_systems$'` | passed, 19 tests |
+| `ctest --preset debug -R '^run_climate_.*$' -E '^run_climate_systems_rain$'` | 13 of 13 passed (`run_climate_layer` among them) |
+| `ctest --preset debug -R '^(standards_lint|clang_format)$'` | both passed |
+| `ctest --preset debug -E '^run_climate_systems_rain$'` | 137 of 137 passed, 1902 s |
+| `cmake --build --preset release` | built and linked, frame check included |
+| `ctest --preset release -R '^run_climate_systems_rain$'` | passed: 0 of 128 cells outside 15%, worst 0.140, 17 s |
+| `ctest --preset release -R '^run_climate_systems$'` | passed, 19 tests; digest `0x69B94D8AD6C147C9`, the pin, unchanged |
+| `bench_climate --systems` | warm median 0.363 ms (target 2 ms, met), cold 34.5 ms, cells at 2 km 23.2 ms |
+| `bench_climate --season /tmp/mc_c_season 2198175988018515243 150 300 0.5` | exit 0, 301 moments in 203 s, 0 hurricanes (Issues found 14); folder deleted |
+| `pgrep -a minecraft_c` | nothing |
+
+
 ## Gate
 
 **Ahmed watches a hurricane season go by** (master plan phase 06 gate). The Atlas doesn't exist yet, so the season is a folder of frames.
@@ -874,6 +914,13 @@ The 10-year test runs on release, where it takes minutes rather than an hour; it
 ## Commits
 
 Appended as they land:
+
+- `1e4f94d7` Add plan 004 phase 06's weather systems (code, tests, bench), with the tuned rates of Issues found 12 and 14: `CLIMATE_THUNDER_RATE_GAIN` 1 to 0.22, lows 0.08 and 0.04 to 0.18 and 0.09, lows' drift 0.15 to 0.08, hurricanes 0.02 to 0.034, `f_sys` 20° to 35° to 25° to 50° and 0.4 past 60° to 70°; measured before and after in Issues found 12's table (110 cells outside, then 0, worst 0.140).
+- `749a25d5` List the weather systems in `plans/REPO_STRUCTURE.md`.
+- `6298210e` Record the phase in this file: todos, results, the tuning and the issues found.
+- `da6bfbd3` List the phase file commit in this file.
+- `8b33af74` Move the cell speed cap into `climate_systems_thunder_velocity` and test it over 15 blocks a second (Issues found 19).
+- `940f9efa` Record the cap test and the verification rerun in this file.
 
 ## Issues found
 
@@ -912,3 +959,44 @@ Found while writing this file, by checking the master plan's arithmetic against 
 7. **One home for $f_{\text{sys}}$.** Phase 07's file lists `CLIMATE_SYSTEM_RAIN_SHARE_MID` and `_TROPICS` among its constants. This phase lands first and needs them for the rain test, so they live in `run/include/climate/systems/index.h`, and phase 07 includes them (vision rule 5). The master plan gives 0.5 and 0.3 "about"; this phase blends them by smoothstep between 20° and 35°.
 
 8. **Arithmetic checked and correct:** 7.2's $0.02 \times 120 = 2.4$ and "about 7" for three squares; 7.2.1's $3 \times 1 \times 1 \times 3 \times 1 \times 1 = 9$; 7.3's 33 and 70 blocks a second at -30 and -90 hPa; 7.3's $(25 + 25 + 16) \times 14 = 924$ hashes for the squares it counted.
+
+Found while building, 2026-11-06 (the implementing agent, worktree `wf_6f8a0c68-47a-29`):
+
+9. **Names in the built code (step 1).** Expected: the names this file uses. Actual, and used as built: the day count $D$ is phase 01's calendar day (`calendar_day_of`, day 0 the world's first, which is day of the year 79), and the day of the year is $D \bmod 365$; latitude `climate_latitude_deg`; declination `climate_sun_declination_deg`; the mirror sign `climate_air_mirror_sign`; $\psi$ `climate_air_wind_latitude`; the track-time sea temperature is phase 04's `climate_air_sea_temperature` with the hooks' current as its current; `climate_season_hurricane_s` as named; phase 05's normals are `climate_normals_at_t` (phase 05's rename), read with `climate_normals_at`. Phase 03 had no point read, so `climate_mask_height_at` was added, **in the Owner** (`run/{src,include}/climate/index.*`), not in `mask/`: `mask/` is lower and cannot see `climate_t`, so its signature could not live there. With it: `climate_mask_page_read`, `climate_mask_page_kept`, `climate_mask_point`. The four kind seeds and the hooks did not fit `climate_state_t`'s 6 spare bytes, so the state grew from 448 to its limit of 512 bytes (`CLIMATE_TABLES_OFFSET`), with `climate_seed`, `climate_systems_seed` and `climate_systems_hooks` to read them. `climate_systems_mask_init` was renamed `climate_systems_mask_start`: `standards_lint` (`init_deinit_pair`) wants a `_deinit` beside any `_init`, and the cache has nothing to release.
+
+10. **Winter interior highs spawned on the equator.** Expected (`no_track_reaches_a_pole_and_no_high_reaches_the_equator`): no high below 5°. Actual: 1701 high samples below the limit on all-land ground: the interior rule (`|ψ| ≤ 70°`, land all round, $s_h \cos(\ldots) < 0$) has no lower bound, and "winter" on the equator is just the sign of a cosine. Done: interior highs only from 20° (`CLIMATE_HIGH_PSI_MIN_DEG`) to 70°. The test passes; highest $|\varphi|$ of any track 85.5°.
+
+11. **The 10-year test cannot pass with spawn rates alone: normals change up to 20 times within a 4 km box.** Expected (7.4): tune the rates until each cell is within 15%. Actual, run 1 with the master plan's rates (log kept in the agent's scratch space): 110 of 128 cells outside, ratios 0.8 to 83. Within one box the 10-year normals run from 465 mm to 33,423 mm (seed 2 at 15° N), because phase 05's orographic rain and rain shadows change on a cell's scale. A cell moves up to 3 km and a low is up to 7 km across, so the rain any rate gives lands nearly evenly over a box, while the normal it must match does not: no rate can put a 20-fold range inside a window of 0.15 to 0.45 of the normal. Done: **wetness**: the rain a system brings to a place is its raw rain times the place's normal on the day over 5 mm (`CLIMATE_SYSTEM_RAIN_WET_MM_DAY`, `climate_systems_wetness`), applied by whoever adds rain up (the radar, this test, phase 07). Storms rain hard where it is usually wet. The raw fields are unchanged. **For Ahmed:** this phase's choice; with it the long-run rain follows the normals at every scale.
+
+12. **With wetness, 7.2.1's factors counted the wet season twice, and a constant $f_{\text{sys}}$ did not fit where no system forms.** Expected: the rates tuned and nothing else. Actual, by runs of the test (each 15 s on release; per-kind shares from its table fitted to find the next step):
+
+    | Run | Change | Cells outside 15% |
+    |---|---|---|
+    | 1 | the master plan's rates | 110 |
+    | 2 | wetness (Issues found 11) | 124 (fit: 29 at the best rates) |
+    | 3 | each cell's rain times `1 / (P̄/P̄_max (1 + 2 f_monsoon))` | fit: 24 |
+    | 4 | that scale also over heat (floor 0.2); gain 0.07; lows 0.2 and 0.1; lows' drift 0.08; $f_{\text{sys}}$ blended 25° to 50° | 29 |
+    | 5 | each low's rain times the mean low rate over its birth rate; $f_{\text{sys}}$ down to 0.4 from 60° to 70° | 7 |
+    | 6 | cells 3 times as many and a third as heavy (`CLIMATE_THUNDER_RAIN_SCALE_BASE`), gain 0.2; 30 years where noise is over 5% | 4 |
+    | 7 | $f_{\text{sys}}$ only on days some system can rain there (`climate_systems_rain_share_today`); gain 0.22 | 1 |
+    | 8 | lows 0.184 and 0.092 | 1 (1.150) |
+    | 9 | lows 0.18 and 0.09 | **0, worst 0.140** |
+    | final | hurricanes 0.034 (Issues found 14) | **0, worst 0.140** |
+
+    Why each: 7.2.1 makes cells more often when hot, in the wet season and in the monsoon; with rain following the normal, the wet season is in the normal already, so each cell is made lighter by the same factors (`climate_systems_thunder_rain_scale`) and the rain cells bring follows the normal while how often they form is still 7.2.1's. Lows: twice as many in winter, each lighter in step, for the same reason. The test's sampling noise: at the master plan's gain a 4 km box at the equator saw only 168 cell passages in 10 years (noise 7.7%), so cells were made more and lighter, and the file's own Risks rule (30 years where the noise is over 5%) is in the test: 5 of 8 sites run 30 years. $f_{\text{sys}}$ (0.3, 0.5, "about" in 7.4): at 45° in summer $|\psi|$ is under 35° (no lows) and a cool cell has no cells, so a summer-wet cell there got half the systems' rain it needed; on such days the background now brings the whole normal. Tuned values, in the header and marked: `CLIMATE_THUNDER_RATE_GAIN` 1 to 0.22 (Issues found 4 expected 0.05 to 0.1 before the rain scale), `CLIMATE_LOW_RATE_WINTER` 0.08 to 0.18, `CLIMATE_LOW_RATE_SUMMER` 0.04 to 0.09, `CLIMATE_LOW_POLEWARD` 0.15 to 0.08, `CLIMATE_SYSTEM_RAIN_SHARE_BLEND_DEG` 20 to 35 to 25 to 50, new `CLIMATE_SYSTEM_RAIN_SHARE_POLAR` 0.4 from 60° to 70°; `CLIMATE_HIGH_RATE` unchanged at 0.03. The front's showers go with the low's shield (3 × shield / 2.5) so a low's season scale reaches its front. Normals unchanged. **For Ahmed:** these are this phase's choices on the master plan's model; the frequencies (7.2, 7.2.1) are as written, the amounts follow the normals.
+
+13. **The test builds more than 16 tiles.** Expected: 16 tiles a box. Actual: cells that rain on a box start up to 4.2 km outside it, and a cell is only spawned where its square's tile is built, so with 16 tiles the edge cells lose rain and `thunder_complete` is 0. Done: the box plus 4.2 km and a square is built, 225 tiles a seed, 2 s for all 8 on release. `thunder_complete` is checked on every day.
+
+14. **Hurricanes at 0.034 a square-day, and none near spawn on Ahmed's seed.** Expected (section 11, Q5, the default this run was given): about 7 hurricanes a season off a warm coast, tuned by playing. Actual: at 0.02 with the track-time sea, an open-sea square at 15° gets 1.43 a year (Issues found 1); 0.034 gives the master plan's 2.4, the figure behind "about 7". Set to 0.034; the machinery test now checks `120 × rate` (4.08; measured 4.125). The real all-sea count is 1.02 a square a year. **But** on seed 2198175988018515243, the gate's, the band from 10° to 25° N within 100 km of spawn is at best 32% sea on the coarse mask and **1% open sea** (water 2048 blocks round on all sides), so `bench_climate --season` sees no hurricane from day 150 to 300: its seas are inlets and lakes. The rain test's 8 boxes are all on land and saw none either, so hurricane rain is not exercised by the calibration. **For Ahmed:** keep 2048 blocks of open sea (default), or lower `CLIMATE_HURRICANE_OPEN_SEA_BLOCKS`, or look at a seed with open ocean.
+
+15. **Cells are ordered by spawn time, then id.** Expected: by spawn time, then square, then index. Actual: `climate_thunder_t` (64 bytes, as specified) has no square or index. `id` is the derived hash of the square-day and index, unique, and independent of the scan, so the order is total and the bytes the same however the list is found.
+
+16. **Big systems for cells are found 1250 blocks further out.** Cells started on day D - 1 (at most 4 clock hours before D) are kept or thinned by the fronts and highs over their start; at 7204 blocks a day a big system moves up to 1201 blocks in 4 hours, so when cells are asked for, big systems are found out to `thunder_radius + 4200 + 1250` (`CLIMATE_THUNDER_BIG_MARGIN`). Without it a cell's thinning could depend on the radius asked.
+
+17. **Outside the keep square, one column, not a private page.** The file says a private page (256 estimates) per mask read there. A hurricane's reach is 84 km and the mask's keep square is 64 km each way, so most of a list's far reads are outside it. `climate_mask_point` reads the one column from the ground; `tests/run/climate/mask/` already holds a real page to single estimates bit for bit, and `the_mask_point_read_matches_the_window` holds the point read to the page on 1000 cells, inside and outside the keep square. The warm list is 0.35 ms, the cold one 33 ms.
+
+18. **Two test fixes, not product bugs.** `hurricanes_turn_poleward_and_then_east` first failed (164 of 191 a day into the turn 24° off poleward): the test used 0 for "no turn yet", and a hurricane may turn at its spawn; fixed in the test, after which the worst is under 5°. `hurricanes_only_spawn_in_season_and_never_within_5_degrees` counted a day-32 hurricane at 10° to 20° in the **south**, where day 32 is summer; the check is north only.
+
+19. **The 15 blocks a second cap on cells is never reached by real winds.** Phase 04's winds stay under 15, so `cells_move_with_the_day_s_wind_and_never_faster_than_15` checks every cell is at most 18,000 blocks a day and equals the noon wind times 1200, but has no case over the cap. Done (second agent, worktree `wf_6f8a0c68-47a-30`): the cap moved, with the same arithmetic, into the pure `climate_systems_thunder_velocity`, which the cell builder calls; the new test `a_cell_s_speed_is_capped_at_15_blocks_a_second` gives it winds of 10, 15, 20 and 40 blocks a second and still air: under the cap the wind times 1200, over it 18,000 blocks a day with the direction kept. The pinned digest did not move.
+
+20. **The gate's view spans 145° of latitude.** 64 km at 64 blocks a pixel, as the file says, is 1.7 times the equator-to-pole distance: the frames run from 59.5° S to 85.5° N (past the pole, mirrored). Stored PNGs make the 1204 frames 3.6 GB; the run took 207 s for 301 moments. The folder was deleted after checking, to spare `/tmp`'s memory; Ahmed makes it with the command under Gate.

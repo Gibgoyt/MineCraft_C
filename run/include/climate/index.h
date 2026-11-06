@@ -84,6 +84,17 @@ typedef struct climate_prepare_t {
 } climate_prepare_t;
 static_assert(sizeof(climate_prepare_t) == 64);
 
+/* Plan 004 phase 06, for tests only: each field at 0 means off. In climate_state_t; climate_open puts it back to all off. */
+typedef struct climate_systems_hooks_t {
+    float32_t hurricane_s;         /* 0: if above 0, s_hur is this between hurricane_first and hurricane_last, else 0 */
+    float32_t hurricane_current_c; /* 4: added to the track-time sea temperature */
+    uint16_t hurricane_first;      /* 8: days of the year */
+    uint16_t hurricane_last;       /* 10 */
+    uint8_t big_off;               /* 12: bit per kind: no spawns of that kind */
+    uint8_t _pad0[3];              /* 13 */
+} climate_systems_hooks_t;
+static_assert(sizeof(climate_systems_hooks_t) == 16);
+
 /* One world's climate cells, at the start of the climate's region. Written by the sim (scheduling), workers (tiles, pages)
  * and readers (the reader counts), so the atomics have a line of their own. */
 typedef struct climate_state_t {
@@ -112,8 +123,13 @@ typedef struct climate_state_t {
     uint8_t _pad1[MC_CPU_CACHE_LINE_BYTES - 16]; /* 272 */
     climate_prepare_t prepare;                   /* 320: main's, between climate_prepare_begin and its last step */
     arena_t arena_normals;                       /* 384: the normals' curves; Process lifetime, built in climate_init */
+    uint64_t systems_seed[4];                    /* 448: phase 06: each weather system kind's dice, from climate_open */
+    climate_systems_hooks_t systems_hooks;       /* 480: phase 06, a test's: all zeros in every real run */
+    uint8_t _pad2[16];                           /* 496 */
 } climate_state_t;
-static_assert(sizeof(climate_state_t) == 448);
+static_assert(sizeof(climate_state_t) == 512);
+static_assert(offsetof(climate_state_t, systems_seed) == 448);
+static_assert(offsetof(climate_state_t, systems_hooks) == 480);
 static_assert(offsetof(climate_state_t, borrowed_normals) == 232);
 static_assert(offsetof(climate_state_t, hooks) == 240);
 static_assert(offsetof(climate_state_t, arena_normals) == 384);
@@ -247,5 +263,32 @@ bool climate_normals_at(const climate_t *climate, float64_t x, float64_t y, floa
 
 /* For tests only: the hooks every tile built from now on uses (climate_open puts them back to all off). */
 void climate_test_hooks_set(climate_t *climate, const climate_test_hooks_t *hooks);
+
+/* ---- Weather systems: plan 004 phase 06 ------------------------------------------------------------------------------ */
+
+/* The climate's world seed, once open. */
+uint64_t climate_seed(const climate_t *climate);
+/* Weather system kind k's dice (0 to 3: hurricane, low, high, thunder): terrain_rng_derive(seed, terrain_rng_salt(name)),
+ * worked out once in climate_open. */
+uint64_t climate_systems_seed(const climate_t *climate, uint8_t kind);
+/* For tests only: the weather systems' hooks from now on (climate_open puts them back to all off). */
+void climate_systems_hooks_set(climate_t *climate, const climate_systems_hooks_t *hooks);
+/* The hooks now: all zeros in every real run. */
+climate_systems_hooks_t climate_systems_hooks(const climate_t *climate);
+
+/* The coarse land mask's page for tile (tile_x, tile_y), into out (256 heights at the cell centres): from the table under
+ * the read protocol, or claimed and built there inside the keep square, or built privately outside it or while someone
+ * else holds its claim. The same heights whichever way. Never waits. Any thread. */
+climate_mask_source_t climate_mask_page_read(const climate_t *climate, int32_t tile_x, int32_t tile_y, float32_t *out);
+/* Whether a mask page may be kept in the table: inside the mask's keep square. Any thread. */
+bool climate_mask_page_kept(const climate_t *climate, int32_t tile_x, int32_t tile_y);
+/* The coarse land mask's height at the 64-block cell holding (x, y) from the ground alone, one column: the same bits as the
+ * page's value there. Any thread. */
+float32_t climate_mask_point(const climate_t *climate, float64_t x, float64_t y);
+/* The coarse land mask's height at the 64-block cell holding (x, y): the one value from the cached page under the read
+ * protocol, or by claiming and building the page inside the keep square (1 KiB of arena for the copy), or outside it from
+ * the ground's one column there, which is the page's value. The same number whichever way. Any thread. In the Owner, not in
+ * mask/, which cannot see climate_t. */
+float32_t climate_mask_height_at(const climate_t *climate, arena_t *arena, float64_t x, float64_t y);
 
 #endif
