@@ -875,6 +875,9 @@ Appended as they land:
 - `af67e59` Make a water body sea when it reaches the sea floor rather than the window edge, so climate tiles agree at their borders, and record the climate bench.
 - `1de7fc0` List the climate cells of plan 004 phase 03, their tests and bench in the repository structure.
 - `e61f5c9` Record plan 004 phase 03 in its phase file: todos, results and the issues found.
+- `c860326` List the phase file commit of plan 004 phase 03 in its phase file.
+- `aa86123` Work out a new world's climate over the loading screen's frames, a step a frame, so the climate percent line is shown as it fills before the threads start.
+- `3945039` Record the second pass of plan 004 phase 03 in its phase file: the live loading line, the full suite, tsan, release and bench results.
 
 ## Issues found
 
