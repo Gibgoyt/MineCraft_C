@@ -812,6 +812,7 @@ Names in the repo's sentence style. "Fails if" says what a wrong build looks lik
 - **`thunderstorm_rate_is_the_worked_example`.** At a synthetic cell with $T_{\text{day}} = 30$, $\bar P = \bar P_{\max}$, monsoon today, $G = 1$: $\lambda_{\text{base}} = 9.000$. Measured over $10^5$ square-days: afternoon cells $9.00 \pm 0.05$ a day, front cells on a fixed front $36.0 \pm 0.2$, under a fixed high $1.80 \pm 0.02$. $T_{\text{day}} = 15$: exactly 0 cells.
 - **`cells_start_in_the_afternoon_unless_on_a_front`.** Every afternoon cell starts between 13:00 and 19:00 ($f \in [7/24, 13/24]$); front cells spread over the whole day (each 4-hour bin within 20% of a sixth).
 - **`cells_move_with_the_day_s_wind_and_never_faster_than_15`.** Velocity equals phase 04's wind at the start at noon times 1200, capped at $18\,000$ blocks a day.
+- **`a_cell_s_speed_is_capped_at_15_blocks_a_second`** (added, Issues found 19). `climate_systems_thunder_velocity` at winds of 10, 15, 20 and 40 blocks a second and 0: the wind times 1200 under the cap, 18,000 blocks a day with its direction kept over it.
 - **`names_are_made_from_syllables`.** Seed 4161 gives "Tavela", 262 gives "Orin". Over $10^6$ seeds no name is over 8 letters, every name starts upper case, and the longest title fits in 24 bytes with its zero.
 - **`lows_carry_a_front_toward_the_equator`.** A low at 45° N: the front's far end is south-west of the centre; at 45° S, north-west; the "on front" test is true 300 blocks from the line and false at 500.
 - **`no_track_reaches_a_pole_and_no_high_reaches_the_equator`.** 20 years of all kinds on all-sea and all-land grounds, every sample: $\lvert\varphi\rvert \le 85° + 0.25 \times 7204/425.5$ (one step past the stop), highs $\ge 5° - $ one step.
@@ -875,6 +876,23 @@ Every command above was run through the build lock in the worktree, apart from A
 Measured along the way (`run_climate_systems`, release): the inverse CDF over 10^6 hashes, mean 0.01991, 0.08006 and 9.004 at λ 0.02, 0.08 and 9; the forced 120-day season 4.125 hurricanes a square at 0.034 (2.361 at 0.02); the real all-sea count 1.02 a square a year; 15° N on day 215, 27.950 °C and `s_hur` 0.7250, with +4, 31.950 and 1; 20 years on 32 squares of sea, 321 hurricanes, lowest sample 5.04°; hurricane worked example 12.936 at 1000 blocks, -46.728 and -22.073 hPa; a hurricane over land 0.5000001 after 4 samples; afternoon cells 8.9985 a square-day at λ 9, 1.8003 under a high, 36.016 on a front; within 0.3 R of a high's centre 1.794 per km² a day against 8.969 without; the largest lists 17 big systems at 40 km and 567 cells at 8 km; 6400 lists in 4.2 s on 1 worker and 0.69 s on 16.
 
 
+### Results rerun, 2026-11-06 (second agent, worktree `wf_6f8a0c68-47a-30`, after the cap test of Issues found 19)
+
+| Command | Result |
+|---|---|
+| `cmake --build --preset debug` | built, `standards_lint` clean |
+| `ctest --preset debug -R '^run_climate_systems$'` | passed, 19 tests |
+| `ctest --preset debug -R '^run_climate_.*$' -E '^run_climate_systems_rain$'` | 13 of 13 passed (`run_climate_layer` among them) |
+| `ctest --preset debug -R '^(standards_lint|clang_format)$'` | both passed |
+| `ctest --preset debug -E '^run_climate_systems_rain$'` | 137 of 137 passed, 1902 s |
+| `cmake --build --preset release` | built and linked, frame check included |
+| `ctest --preset release -R '^run_climate_systems_rain$'` | passed: 0 of 128 cells outside 15%, worst 0.140, 17 s |
+| `ctest --preset release -R '^run_climate_systems$'` | passed, 19 tests; digest `0x69B94D8AD6C147C9`, the pin, unchanged |
+| `bench_climate --systems` | warm median 0.363 ms (target 2 ms, met), cold 34.5 ms, cells at 2 km 23.2 ms |
+| `bench_climate --season /tmp/mc_c_season 2198175988018515243 150 300 0.5` | exit 0, 301 moments in 203 s, 0 hurricanes (Issues found 14); folder deleted |
+| `pgrep -a minecraft_c` | nothing |
+
+
 ## Gate
 
 **Ahmed watches a hurricane season go by** (master plan phase 06 gate). The Atlas doesn't exist yet, so the season is a folder of frames.
@@ -900,6 +918,8 @@ Appended as they land:
 - `1e4f94d7` Add plan 004 phase 06's weather systems (code, tests, bench), with the tuned rates of Issues found 12 and 14: `CLIMATE_THUNDER_RATE_GAIN` 1 to 0.22, lows 0.08 and 0.04 to 0.18 and 0.09, lows' drift 0.15 to 0.08, hurricanes 0.02 to 0.034, `f_sys` 20° to 35° to 25° to 50° and 0.4 past 60° to 70°; measured before and after in Issues found 12's table (110 cells outside, then 0, worst 0.140).
 - `749a25d5` List the weather systems in `plans/REPO_STRUCTURE.md`.
 - `6298210e` Record the phase in this file: todos, results, the tuning and the issues found.
+- `da6bfbd3` List the phase file commit in this file.
+- `8b33af74` Move the cell speed cap into `climate_systems_thunder_velocity` and test it over 15 blocks a second (Issues found 19).
 
 ## Issues found
 
@@ -976,6 +996,6 @@ Found while building, 2026-11-06 (the implementing agent, worktree `wf_6f8a0c68-
 
 18. **Two test fixes, not product bugs.** `hurricanes_turn_poleward_and_then_east` first failed (164 of 191 a day into the turn 24° off poleward): the test used 0 for "no turn yet", and a hurricane may turn at its spawn; fixed in the test, after which the worst is under 5°. `hurricanes_only_spawn_in_season_and_never_within_5_degrees` counted a day-32 hurricane at 10° to 20° in the **south**, where day 32 is summer; the check is north only.
 
-19. **The 15 blocks a second cap on cells is never reached by real winds.** Phase 04's winds stay under 15, so `cells_move_with_the_day_s_wind_and_never_faster_than_15` checks every cell is at most 18,000 blocks a day and equals the noon wind times 1200, but has no case over the cap.
+19. **The 15 blocks a second cap on cells is never reached by real winds.** Phase 04's winds stay under 15, so `cells_move_with_the_day_s_wind_and_never_faster_than_15` checks every cell is at most 18,000 blocks a day and equals the noon wind times 1200, but has no case over the cap. Done (second agent, worktree `wf_6f8a0c68-47a-30`): the cap moved, with the same arithmetic, into the pure `climate_systems_thunder_velocity`, which the cell builder calls; the new test `a_cell_s_speed_is_capped_at_15_blocks_a_second` gives it winds of 10, 15, 20 and 40 blocks a second and still air: under the cap the wind times 1200, over it 18,000 blocks a day with the direction kept. The pinned digest did not move.
 
 20. **The gate's view spans 145° of latitude.** 64 km at 64 blocks a pixel, as the file says, is 1.7 times the equator-to-pole distance: the frames run from 59.5° S to 85.5° N (past the pole, mirrored). Stored PNGs make the 1204 frames 3.6 GB; the run took 207 s for 301 moments. The folder was deleted after checking, to spare `/tmp`'s memory; Ahmed makes it with the command under Gate.
