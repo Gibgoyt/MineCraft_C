@@ -901,6 +901,7 @@ Appended as they land:
 - `e3f4a989` List the climate's heat, rain and season parts of plan 004 phase 05 and their tests in the repository structure.
 - `688cc91e` Record plan 004 phase 05 in its phase file: todos, results, the bench and the issues found.
 - `30094dea` Gate check: blend the snow balance height in climate_normals_at over the corners that are not sea (Issues found 12).
+- `5a401ec5` Record the gate check of plan 004 phase 05 in its phase file.
 
 ## Issues found
 
