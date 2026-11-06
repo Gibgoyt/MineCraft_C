@@ -72,7 +72,8 @@ typedef enum traverse_shape_t : uint8_t {
     TRAVERSE_SHAPE_TORCH_WEST = 9,
     TRAVERSE_SHAPE_TORCH_NORTH = 10,
     TRAVERSE_SHAPE_TORCH_SOUTH = 11,
-    TRAVERSE_SHAPE_COUNT = 12,
+    TRAVERSE_SHAPE_LAYER = 12, /* an eighth of a block on the floor: the census's snow layer (plan 004 phase 08) */
+    TRAVERSE_SHAPE_COUNT = 13,
 } traverse_shape_t;
 static_assert(sizeof(traverse_shape_t) == 1);
 

@@ -170,6 +170,7 @@ static gpu_status_t render_frame_blocks_take(render_t *render, const texture_t *
          DEVICE_POOL_FRAMES,
          {0}},
         {&render->owned_entity_hits, "entity hits", entity_rays_hits_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
+        {&render->owned_weather_map, "rain top", post_weather_map_bytes(), DEVICE_POOL_FRAMES, {0}},
     };
     for (uint32_t i = 0u; i < sizeof(wanted) / sizeof(wanted[0]); i++) {
         const gpu_status_t status = device_memory_alloc(memory, wanted[i].pool, wanted[i].bytes,
@@ -185,10 +186,10 @@ static gpu_status_t render_frame_blocks_take(render_t *render, const texture_t *
 static void render_frame_blocks_give_back(render_t *render) {
     device_memory_t *const memory = render->borrowed_memory;
     device_block_t *const blocks[] = {
-        &render->owned_entity_hits, &render->owned_entity_lists, &render->owned_shafts,  &render->owned_history[1],
-        &render->owned_history[0],  &render->owned_ao[1],        &render->owned_ao[0],   &render->owned_xrgb,
-        &render->owned_shaded,      &render->owned_hits,         &render->owned_coarse,  &render->owned_tex_pixels,
-        &render->owned_shapes,      &render->owned_faces,        &render->owned_textures};
+        &render->owned_weather_map, &render->owned_entity_hits, &render->owned_entity_lists, &render->owned_shafts,
+        &render->owned_history[1],  &render->owned_history[0],  &render->owned_ao[1],        &render->owned_ao[0],
+        &render->owned_xrgb,        &render->owned_shaded,      &render->owned_hits,         &render->owned_coarse,
+        &render->owned_tex_pixels,  &render->owned_shapes,      &render->owned_faces,        &render->owned_textures};
     for (uint32_t i = 0u; i < sizeof(blocks) / sizeof(blocks[0]); i++) {
         if (device_memory_free(memory, blocks[i]) != GPU_STATUS_OK) {
             gpu_error_log(&memory->last_error);

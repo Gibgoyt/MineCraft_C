@@ -61,7 +61,9 @@ uint32_t raycast_block_boxes(uint16_t block, int32_t x, int32_t y, int32_t z, co
         return raycast_part_box(&RAYCAST_PART_TORCH_SOUTH, x, y, z, out);
     case BLOCK_SHAPE_THIN:
         /* The same two as render/frame's table: a lily pad lies on the floor, and the others stand against the +y side. */
-        return raycast_part_box(block == BLOCK_ID_LILY_PAD ? &RAYCAST_PART_FLAT : &RAYCAST_PART_PLATE, x, y, z, out);
+        return raycast_part_box(block == BLOCK_ID_LILY_PAD || block == BLOCK_ID_SNOW_LAYER ? &RAYCAST_PART_FLAT
+                                                                                           : &RAYCAST_PART_PLATE,
+                                x, y, z, out);
     case BLOCK_SHAPE_CROP:
     case BLOCK_SHAPE_CUBE:
     case BLOCK_SHAPE_SLAB:

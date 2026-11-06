@@ -192,7 +192,10 @@ static uint8_t frame_shape_of(uint32_t block) {
     case BLOCK_SHAPE_TORCH:
         return TRAVERSE_SHAPE_TORCH;
     case BLOCK_SHAPE_THIN:
-        return block == BLOCK_ID_LILY_PAD ? TRAVERSE_SHAPE_FLAT : TRAVERSE_SHAPE_PLATE;
+        /* The census's snow layer lies on the floor too, a little thicker (plan 004 phase 08). */
+        return block == BLOCK_ID_LILY_PAD     ? TRAVERSE_SHAPE_FLAT
+               : block == BLOCK_ID_SNOW_LAYER ? TRAVERSE_SHAPE_LAYER
+                                              : TRAVERSE_SHAPE_PLATE;
     case BLOCK_SHAPE_TORCH_EAST:
         return TRAVERSE_SHAPE_TORCH_EAST;
     case BLOCK_SHAPE_TORCH_WEST:
@@ -461,7 +464,175 @@ void render_frame_under_water_set(render_frame_t *frame, bool under_water) {
     frame_water_apply(frame);
 }
 
+/* ---- Weather ------------------------------------------------------------------------------------------------------ */
+
+float32_t render_weather_visibility(float32_t fog_end, float32_t fog, float32_t dust, float32_t rain_mm_h) {
+    const float32_t thick = fog > dust ? fog : dust;
+    const float32_t rain = rain_mm_h > 0.0f32 ? rain_mm_h : 0.0f32;
+    const float32_t seen = fog_end * (1.0f32 - RENDER_FOG_WEATHER_CUT * thick) / (1.0f32 + rain / RENDER_FOG_RAIN_MM_H);
+    return seen > RENDER_FOG_VISIBILITY_MIN ? seen : RENDER_FOG_VISIBILITY_MIN;
+}
+
+float32_t render_weather_flicker(float32_t age) {
+    if (!(age >= 0.0f32) || age >= RENDER_WEATHER_BOLT_SECONDS) {
+        return 0.0f32;
+    }
+    const float32_t third = RENDER_WEATHER_BOLT_SECONDS / 3.0f32;
+    return age >= third && age < 2.0f32 * third ? 0.5f32 : 1.0f32;
+}
+
+/* Drops, by rain rate: none without rain, and between the two limits with it. */
+static float32_t frame_weather_density(float32_t rain_mm_h) {
+    if (!(rain_mm_h > 0.0f32)) {
+        return 0.0f32;
+    }
+    const float32_t density = rain_mm_h / POST_RAIN_DENSITY_MM_H;
+    return density < POST_WEATHER_DENSITY_MIN
+               ? POST_WEATHER_DENSITY_MIN
+               : (density > POST_WEATHER_DENSITY_MAX ? POST_WEATHER_DENSITY_MAX : density);
+}
+
+static float32_t frame_ease(float32_t from, float32_t to, float32_t share) {
+    const float32_t eased = from + (to - from) * share;
+    /* Close enough is there, so weather that has gone is the clear day's bytes again. */
+    return fabsf(to - eased) < 1e-3f32 ? to : eased;
+}
+
+gpu_status_t render_weather_take(render_weather_t *weather, const render_weather_slot_t *slot, int64_t now_ns,
+                                 device_memory_t *memory, const device_block_t *map_block) {
+    if (slot != nullptr) {
+        if (slot->sent == 0u) {
+            memset(weather, 0, sizeof(*weather));
+            return GPU_STATUS_OK;
+        }
+        /* By the ticks between, so the same slots give the same numbers however often frames are drawn. */
+        const uint64_t ticks = slot->world_ticks > weather->world_ticks ? slot->world_ticks - weather->world_ticks : 0u;
+        const float32_t seconds = (float32_t)(ticks < 72000u ? ticks : 72000u) / (float32_t)MC_GAME_TICK_HZ;
+        const bool at_once = weather->active == 0u || slot->forced != 0u;
+        const float32_t share = at_once ? 1.0f32 : 1.0f32 - expf(-seconds / RENDER_WEATHER_EASE_SECONDS);
+        weather->density = frame_ease(weather->density, frame_weather_density(slot->rain_mm_h), share);
+        weather->cloud = frame_ease(weather->cloud, slot->cloud, share);
+        weather->fog = frame_ease(weather->fog, slot->fog, share);
+        weather->dust = frame_ease(weather->dust, slot->dust, share);
+        weather->rain_mm_h = frame_ease(weather->rain_mm_h, slot->rain_mm_h, share);
+        weather->snow_share = slot->snow_share;
+        memcpy(weather->wind, slot->wind, sizeof(weather->wind));
+        weather->flash = slot->flash;
+        weather->bolt_age = slot->bolt_age;
+        weather->bolt_distance = slot->bolt_distance;
+        memcpy(weather->bolt, slot->bolt, sizeof(weather->bolt));
+        memcpy(weather->bolt_origin, slot->bolt_origin, sizeof(weather->bolt_origin));
+        memcpy(weather->map_origin, slot->map_origin, sizeof(weather->map_origin));
+        weather->world_ticks = slot->world_ticks;
+        weather->tick_ns = slot->tick_ns;
+        weather->forced = slot->forced;
+        weather->active = 1u;
+        if (map_block != nullptr && (weather->map_sent == 0u || weather->map_revision != slot->map_revision)) {
+            const gpu_status_t status = device_memory_write(memory, map_block, 0u, slot->map, sizeof(slot->map));
+            if (status != GPU_STATUS_OK) {
+                return status;
+            }
+            weather->map_revision = slot->map_revision;
+            weather->map_sent = 1u;
+        }
+    }
+    if (weather->active == 0u) {
+        return GPU_STATUS_OK;
+    }
+    /* Between ticks with threads, the drops go on falling; with none, one slot is one picture. */
+    float32_t ahead = 0.0f32;
+    if (now_ns != 0 && weather->tick_ns != 0 && now_ns > weather->tick_ns) {
+        const float32_t past = (float32_t)(now_ns - weather->tick_ns) * 1e-9f32;
+        ahead = past < RENDER_WEATHER_TIME_AHEAD ? past : RENDER_WEATHER_TIME_AHEAD;
+    }
+    weather->time_s =
+        (float32_t)(weather->world_ticks % RENDER_WEATHER_WRAP_TICKS) / (float32_t)MC_GAME_TICK_HZ + ahead;
+    weather->age_now = weather->bolt_age >= 0.0f32 ? weather->bolt_age + ahead : -1.0f32;
+    return GPU_STATUS_OK;
+}
+
+void render_weather_apply(const render_weather_t *weather, const int32_t eye_cell[3], bool fog_on, float32_t fog_end,
+                          post_settings_t *post, shade_sun_t *sun, post_weather_t *out) {
+    memset(out, 0, sizeof(*out));
+    const float32_t cloud = weather->cloud;
+    if (cloud > 0.0f32) {
+        /* Toward the sky's own brightness, a little blue: an overcast sky is grey, not black. */
+        static const float32_t grey_tint[3] = {0.92f32, 0.95f32, 1.0f32};
+        float32_t *const skies[2] = {post->sky_zenith, post->sky_horizon};
+        for (uint32_t s = 0u; s < 2u; s++) {
+            float32_t *const sky = skies[s];
+            const float32_t brightness = 0.3f32 * sky[0] + 0.59f32 * sky[1] + 0.11f32 * sky[2];
+            for (uint32_t i = 0u; i < 3u; i++) {
+                sky[i] += (brightness * grey_tint[i] - sky[i]) * RENDER_CLOUD_SKY_GREY * cloud;
+            }
+        }
+        for (uint32_t i = 0u; i < 3u; i++) {
+            post->sun_glow[i] *= 1.0f32 - cloud;
+            post->sun_disc[i] *= 1.0f32 - RENDER_CLOUD_DISC_CUT * cloud;
+            post->moon_disc[i] *= 1.0f32 - RENDER_CLOUD_DISC_CUT * cloud;
+            sun->direct[i] *= 1.0f32 - RENDER_CLOUD_DIRECT_CUT * cloud;
+            sun->ambient[i] *= 1.0f32 - RENDER_CLOUD_AMBIENT_CUT * cloud;
+        }
+    }
+    const float32_t flash = weather->flash * render_weather_flicker(weather->age_now);
+    if (flash > 0.0f32) {
+        for (uint32_t i = 0u; i < 3u; i++) {
+            post->sky_zenith[i] += POST_FLASH_SKY * flash;
+            post->sky_horizon[i] += POST_FLASH_SKY * flash;
+            sun->ambient[i] += POST_FLASH_AMBIENT * flash;
+        }
+    }
+    if (fog_on) {
+        const float32_t seen = render_weather_visibility(fog_end, weather->fog, weather->dust, weather->rain_mm_h);
+        if (seen < fog_end) {
+            post->fog_end = seen;
+            post->fog_start = seen * RENDER_FOG_WEATHER_START;
+        }
+    }
+    /* Fog tends to grey under cloud and in fog, by as much daylight as there is, and to brown in dust. */
+    const float32_t daylight = sun->ambient[1] >= 0.62f32 ? 1.0f32 : sun->ambient[1] / 0.62f32;
+    const float32_t grey_share = cloud > weather->fog ? cloud : weather->fog;
+    static const float32_t grey[3] = {0.55f32, 0.57f32, 0.60f32}, dust[3] = {0.62f32, 0.47f32, 0.30f32};
+    if (weather->dust > grey_share) {
+        for (uint32_t i = 0u; i < 3u; i++) {
+            out->fog_rgb[i] = dust[i] * daylight;
+        }
+        out->fog_mix = weather->dust;
+    } else if (grey_share > 0.0f32) {
+        for (uint32_t i = 0u; i < 3u; i++) {
+            out->fog_rgb[i] = grey[i] * daylight;
+        }
+        out->fog_mix = grey_share;
+    }
+    out->density = weather->density;
+    out->snow_share = weather->snow_share;
+    out->wind[0] = weather->wind[0];
+    out->wind[1] = weather->wind[1];
+    out->time_s = weather->time_s;
+    out->flash = flash;
+    memcpy(out->drop_rgb, sun->ambient, sizeof(out->drop_rgb));
+    out->map_origin[0] = weather->map_origin[0] - eye_cell[0];
+    out->map_origin[1] = weather->map_origin[1] - eye_cell[1];
+    const float32_t flicker = render_weather_flicker(weather->age_now);
+    if (flicker > 0.0f32) {
+        out->bolt_alpha = flicker;
+        out->bolt_width = POST_BOLT_WIDTH + POST_BOLT_WIDTH_PER_BLOCK * weather->bolt_distance;
+        for (uint32_t j = 0u; j <= POST_BOLT_SEGMENTS; j++) {
+            for (uint32_t i = 0u; i < 3u; i++) {
+                /* The whole blocks first: their difference is exact in an integer, and small enough for a float. */
+                out->bolt[j][i] = (float32_t)(weather->bolt_origin[i] - eye_cell[i]) + weather->bolt[j][i];
+            }
+        }
+    }
+}
+
 gpu_status_t render_frame_draw(render_frame_t *frame, const world_buffers_t *buffers, const render_camera_t *camera) {
+    return render_frame_draw_weather(frame, buffers, camera, nullptr, nullptr);
+}
+
+gpu_status_t render_frame_draw_weather(render_frame_t *frame, const world_buffers_t *buffers,
+                                       const render_camera_t *camera, const render_weather_t *weather,
+                                       const device_block_t *map_block) {
     traverse_camera_t view;
     render_camera_to_traverse(camera, frame->width, frame->height, &view);
     /* What the history is reprojected with has no jitter: otherwise a still camera would see its own picture move. */
@@ -477,8 +648,17 @@ gpu_status_t render_frame_draw(render_frame_t *frame, const world_buffers_t *buf
         post_jitter(temporal->frame, temporal->jitter);
         post_camera_jitter(&view, temporal->jitter);
     }
+    /* This frame's sky, light and fog: the clear day's, and the weather over them on copies, so nothing of it stays. */
+    shade_scene_t scene = frame->scene;
+    post_settings_t post = frame->post;
+    post_weather_t kernel_weather = {};
+    const bool weathered = weather != nullptr && weather->active != 0u && (features & SHADE_FEATURE_WEATHER) != 0u;
+    if (weathered) {
+        render_weather_apply(weather, view.eye_cell, (features & SHADE_FEATURE_FOG) != 0u, frame->fog_end, &post,
+                             &scene.sun, &kernel_weather);
+    }
     for (uint32_t i = 0u; i < 3u; i++) {
-        temporal->shaft_colour[i] = frame->scene.sun.direct[i] * SHADE_SHAFT_STRENGTH;
+        temporal->shaft_colour[i] = scene.sun.direct[i] * SHADE_SHAFT_STRENGTH;
     }
     const traverse_world_t world = {
         .borrowed_table = buffers->borrowed_table,
@@ -503,7 +683,7 @@ gpu_status_t render_frame_draw(render_frame_t *frame, const world_buffers_t *buf
     if (far) {
         render_lod_scene(frame->borrowed_lod, &far_scene);
     }
-    const shade_sun_t *const sun = &frame->scene.sun;
+    const shade_sun_t *const sun = &scene.sun;
     /* With no sun to speak of, nothing is lost by no rays towards it. */
     const bool sun_shines = sun->direct[0] + sun->direct[1] + sun->direct[2] > 0.0f32;
     const lod_light_t far_light = {
@@ -514,12 +694,15 @@ gpu_status_t render_frame_draw(render_frame_t *frame, const world_buffers_t *buf
         .shadows = (features & SHADE_FEATURE_SHADOW) != 0u && sun_shines ? 1u : 0u,
     };
     frame->scene.borrowed_lod_hits = far ? far_scene.borrowed_hits : nullptr;
+    scene.borrowed_lod_hits = frame->scene.borrowed_lod_hits;
     const frame_args_t args = {
         .borrowed_lod = far ? &far_scene : nullptr,
         .borrowed_lod_light = far ? &far_light : nullptr,
         .borrowed_world = &world,
-        .borrowed_scene = &frame->scene,
-        .borrowed_post = &frame->post,
+        .borrowed_scene = &scene,
+        .borrowed_post = &post,
+        .borrowed_weather = weathered ? &kernel_weather : nullptr,
+        .borrowed_weather_map = weathered && weather->map_sent != 0u ? map_block : nullptr,
         .borrowed_camera = &view,
         .borrowed_targets = &frame->targets,
         .borrowed_host_xrgb = frame->borrowed_pictures[frame->pictures.back],

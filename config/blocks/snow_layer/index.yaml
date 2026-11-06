@@ -1,0 +1,8 @@
+name: snow_layer
+hardness: 0.1
+tool: shovel
+drops: [{ item: snowball, count: 1 }]
+shape: thin
+replaceable: true
+texture: { all: blocks/snow }
+sound: snow

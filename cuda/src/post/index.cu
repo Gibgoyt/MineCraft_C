@@ -31,7 +31,8 @@ static __device__ __forceinline__ float32_t post_shaft_at(const post_shaft_t *sh
  * from. Without it, this is the end, and writes the picture. */
 __global__ void post_kernel(const post_settings_t settings, const traverse_camera_t camera, shade_pixel_t *pixels,
                             uint32_t *xrgb, const post_shaft_t *shafts, float32_t shaft_r, float32_t shaft_g,
-                            float32_t shaft_b, bool keep) {
+                            float32_t shaft_b, bool keep, const post_weather_t weather, bool weather_on,
+                            const int16_t *weather_map) {
     const uint32_t pixel_x = blockIdx.x * blockDim.x + threadIdx.x;
     const uint32_t pixel_y = blockIdx.y * blockDim.y + threadIdx.y;
     if (pixel_x >= camera.width || pixel_y >= camera.height) {
@@ -43,6 +44,14 @@ __global__ void post_kernel(const post_settings_t settings, const traverse_camer
     traverse_camera_direction(&camera, (float32_t)pixel_x + 0.5F, (float32_t)pixel_y + 0.5F, direction);
     float32_t sky[3];
     post_sky(&settings, direction, sky);
+    /* Weather fog goes toward its own colour: steady from frame to frame, so before the history, as fog always was. */
+    if (weather_on && weather.fog_mix > 0.0F) {
+        float32_t toward[3];
+        post_weather_fog_colour(&weather, sky, toward);
+        sky[0] = toward[0];
+        sky[1] = toward[1];
+        sky[2] = toward[2];
+    }
     /* TRAVERSE_COARSE_SKY is past any fog_end, so sky needs no case of its own but its discs. */
     const float32_t fog = post_fog_along(&settings, direction[2], pixel.t);
     float32_t seen[3];
@@ -67,6 +76,9 @@ __global__ void post_kernel(const post_settings_t settings, const traverse_camer
         pixels[index].rgb[1] = seen[1];
         pixels[index].rgb[2] = seen[2];
         return;
+    }
+    if (weather_on) {
+        post_weather_apply(&weather, &camera, weather_map, direction, pixel.t, seen);
     }
     xrgb[index] = post_xrgb(post_tone_map(seen[0]), post_tone_map(seen[1]), post_tone_map(seen[2]));
 }
@@ -110,7 +122,8 @@ static __device__ __forceinline__ void post_history_at(const post_taa_pixel_t *h
 /* The temporal pass: see README.md. */
 __global__ void post_taa_kernel(const traverse_camera_t camera, const post_temporal_t temporal,
                                 const shade_pixel_t *pixels, const post_taa_pixel_t *history_last,
-                                post_taa_pixel_t *history_next, uint32_t *xrgb) {
+                                post_taa_pixel_t *history_next, uint32_t *xrgb, const post_weather_t weather,
+                                bool weather_on, const int16_t *weather_map) {
     const uint32_t pixel_x = blockIdx.x * blockDim.x + threadIdx.x;
     const uint32_t pixel_y = blockIdx.y * blockDim.y + threadIdx.y;
     if (pixel_x >= camera.width || pixel_y >= camera.height) {
@@ -151,6 +164,14 @@ __global__ void post_taa_kernel(const traverse_camera_t camera, const post_tempo
     }
     history_next[index] = post_taa_pixel_t{{result[0], result[1], result[2]}};
     post_taa_unsqueeze(result);
+    /* After the history: a drop moves several pixels a frame, and mixed into it would smear into haze and leave ghosts. Along the
+     * pixel's ray with no jitter, so the drops do not shake while the history settles under them. */
+    if (weather_on) {
+        float32_t steady[3];
+        traverse_camera_direction(&camera, (float32_t)pixel_x + 0.5F - temporal.jitter[0],
+                                  (float32_t)pixel_y + 0.5F - temporal.jitter[1], steady);
+        post_weather_apply(&weather, &camera, weather_map, steady, pixel.t, result);
+    }
     xrgb[index] = post_xrgb(post_tone_map(result[0]), post_tone_map(result[1]), post_tone_map(result[2]));
 }
 
@@ -166,12 +187,13 @@ static bool post_block_fits(const device_block_t *block, uint64_t bytes) {
 
 gpu_status_t post_frame(gpu_error_t *error, const post_settings_t *settings, const traverse_camera_t *camera,
                         const device_block_t *pixels, const device_block_t *xrgb) {
-    return post_frame_temporal(error, settings, nullptr, false, false, camera, pixels, xrgb);
+    return post_frame_temporal(error, settings, nullptr, false, false, camera, pixels, xrgb, nullptr, nullptr);
 }
 
 gpu_status_t post_frame_temporal(gpu_error_t *error, const post_settings_t *settings, const post_temporal_t *temporal,
                                  bool taa, bool shafts, const traverse_camera_t *camera, const device_block_t *pixels,
-                                 const device_block_t *xrgb) {
+                                 const device_block_t *xrgb, const post_weather_t *weather,
+                                 const device_block_t *weather_map) {
     if (camera->width == 0u || camera->height == 0u) {
         return post_refuse(error, "post: the camera has no pixels");
     }
@@ -200,6 +222,16 @@ gpu_status_t post_frame_temporal(gpu_error_t *error, const post_settings_t *sett
             return post_refuse(error, "post: TAA is on, and its history is missing or too small for the camera");
         }
     }
+    if (weather != nullptr && weather_map != nullptr && !post_block_fits(weather_map, post_weather_map_bytes())) {
+        return post_refuse(error, "post: the rain top map is smaller than its side asks");
+    }
+    /* No weather is a weather of zeros, which the kernels never look at. */
+    const post_weather_t none = {};
+    const bool weather_on = weather != nullptr;
+    const post_weather_t weather_given = weather_on ? *weather : none;
+    const int16_t *const map = weather_on && weather_map != nullptr
+                                   ? (const int16_t *)(const void *)device_memory_pointer(weather_map)
+                                   : nullptr;
     const dim3 grid(traverse_tiles_across(camera->width), traverse_tiles_across(camera->height));
     const dim3 tile(TRAVERSE_TILE_PIXELS, TRAVERSE_TILE_PIXELS);
     shade_pixel_t *const shaded = (shade_pixel_t *)(void *)device_memory_pointer(pixels);
@@ -208,7 +240,7 @@ gpu_status_t post_frame_temporal(gpu_error_t *error, const post_settings_t *sett
         shafts ? (const post_shaft_t *)(const void *)device_memory_pointer(temporal->borrowed_shafts) : nullptr;
     post_kernel<<<grid, tile>>>(*settings, *camera, shaded, picture, shaft_texels,
                                 shafts ? temporal->shaft_colour[0] : 0.0F, shafts ? temporal->shaft_colour[1] : 0.0F,
-                                shafts ? temporal->shaft_colour[2] : 0.0F, taa);
+                                shafts ? temporal->shaft_colour[2] : 0.0F, taa, weather_given, weather_on, map);
     gpu_status_t status = device_memory_check(error, cudaGetLastError(), "post: starting the kernel");
     if (status != GPU_STATUS_OK || !taa) {
         return status;
@@ -216,6 +248,7 @@ gpu_status_t post_frame_temporal(gpu_error_t *error, const post_settings_t *sett
     post_taa_kernel<<<grid, tile>>>(
         *camera, *temporal, shaded,
         (const post_taa_pixel_t *)(const void *)device_memory_pointer(temporal->borrowed_history_last),
-        (post_taa_pixel_t *)(void *)device_memory_pointer(temporal->borrowed_history_next), picture);
+        (post_taa_pixel_t *)(void *)device_memory_pointer(temporal->borrowed_history_next), picture, weather_given,
+        weather_on, map);
     return device_memory_check(error, cudaGetLastError(), "post: starting the temporal pass");
 }

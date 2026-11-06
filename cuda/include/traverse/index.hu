@@ -95,6 +95,7 @@ static __constant__ const traverse_box_t traverse_boxes[] = {
     {{14, 24, 14}, {18, 28, 18}}, /* 29 */
     {{14, 22, 18}, {18, 26, 22}}, /* 30 */
     {{14, 20, 22}, {18, 24, 28}}, /* 31: its flame */
+    {{0, 0, 0}, {32, 32, 4}},     /* 32: layer: enough to see from afar, low enough to walk over */
 };
 static __constant__ const traverse_shape_row_t traverse_shape_rows[TRAVERSE_SHAPE_COUNT] = {
     {0u, 1u},  /* TRAVERSE_SHAPE_CUBE */
@@ -109,6 +110,7 @@ static __constant__ const traverse_shape_row_t traverse_shape_rows[TRAVERSE_SHAP
     {17u, 5u}, /* TRAVERSE_SHAPE_TORCH_WEST */
     {22u, 5u}, /* TRAVERSE_SHAPE_TORCH_NORTH */
     {27u, 5u}, /* TRAVERSE_SHAPE_TORCH_SOUTH */
+    {32u, 1u}, /* TRAVERSE_SHAPE_LAYER */
 };
 
 /* A pixel's unit direction: see traverse_camera_t. Shade and post need the same ray as traversal did. */
