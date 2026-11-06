@@ -738,8 +738,9 @@ Appended as they land:
 - `b659ed1` The calendar save tests moved to their own ctest, `run_save_state_calendar` (Issues found 13).
 - `260388c` REPO_STRUCTURE for `tests/run/save/state/calendar/`.
 - `780b251` Todos ticked and issues 7 to 16 logged in this file.
-- `8e8056a` Gate check: main merged in.
+- `8e8056a` Gate check: main, merged in by fast-forward, is the base checked.
 - `c032c1a` Gate check: the comment on `game_sim_tick` moved back above it (Issues found 17).
+- `f589f26` Gate check: Status, Issues found 17 and these commits recorded here.
 
 Verification, 2026-11-06: debug, the eight terrain tests pass and `run_terrain_fields` prints `0xB97D2A98FDF4D13A`; the phase's list of 15 (with `run_save_state_calendar`) passes; the whole suite passes, 122 of 122 in 1784 s. The release build links with no warning, so `main()`'s frame is still under 16 KiB. On release the four terrain tests pass and `run_terrain_fields` prints `0xB97D2A98FDF4D13A` again. `pgrep -a minecraft_c` printed nothing after each run. The Gate is Ahmed's and has not been played.
 
