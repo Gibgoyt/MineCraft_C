@@ -717,6 +717,18 @@ Numbers the tests print, for Ahmed:
 - Real tile (0, 0) of seed `0x1234567890ABCDEF`: the heat-low wave reproduces its 12 days to 6e-8 hPa; the wind wave's largest miss on a fit day is **4.98 blocks a second** (one wave smoothing a belt change, as the Risks table says).
 - Layer hashes on seed 2198175988018515243, 256 by 256 at 16 blocks a pixel round (0, 0), the same in debug and release, printed and not pinned until Ahmed has looked: currents `0xAC3FAB076FA5F7B6`; pressure on days 15, 105, 196, 288: `0x7DA7F01C0FDEF985`, `0xC57981BF50840875`, `0x0578CFB18C1C37EE`, `0xE723D99B428F8176`; wind: `0x5E90DAB5164B3792`, `0x69E2EB2713DCD9ED`, `0x09EE2604946E84B7`, `0x424676382ABD6462`.
 
+**Second pass, 2026-11-06** (a fresh agent, branch `worktree-wf_6f8a0c68-47a-21`, merged main and the first pass with no change to the code; re-ran the Verification section through `tools/test-or-build.sh`):
+
+| Check | Result |
+|---|---|
+| Debug build; `run_terrain_density`, `run_climate_*`, `standards_lint`, `clang_format` | 12 of 12 pass |
+| Full debug suite | 133 of 133 pass (1896 s) |
+| Release build (`-O3 -flto`, frame limit) | Builds and links clean |
+| `run_climate_*`, release | 9 of 9 pass; cell digest `0x4950918E191FF004`, the same as debug |
+| `bench_climate` (release) | Exit 0; slowest cold tile 28.63 ms (target 100), warm 5.53 ms, spawn precompute 23.5 ms |
+| `--pictures` seed 2198175988018515243, `--synthetic` | Exit 0; all PNGs written. The agent looked at `north50_currents.png`: red arrows north on the west coast, blue south on the east |
+| Gate's two other seeds | `--pictures /tmp/mc_c_climate_seed2 1` and `--pictures /tmp/mc_c_climate_seed3 1311768467294899695`, both exit 0, ready for Ahmed |
+
 **Wiring outside the owned paths:** none beyond the plan's list. `run/{src,include}/terrain/density/` gained only `terrain_density_spline_build` and its README lines; `tests/run/climate/cell/README.md`, `tests/run/climate/layer/README.md` and `bench/climate/README.md` describe the new pin, tests and pictures.
 
 ## Commits
