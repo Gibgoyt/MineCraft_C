@@ -920,6 +920,7 @@ Appended as they land:
 - `6298210e` Record the phase in this file: todos, results, the tuning and the issues found.
 - `da6bfbd3` List the phase file commit in this file.
 - `8b33af74` Move the cell speed cap into `climate_systems_thunder_velocity` and test it over 15 blocks a second (Issues found 19).
+- `940f9efa` Record the cap test and the verification rerun in this file.
 
 ## Issues found
 
