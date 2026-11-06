@@ -616,6 +616,14 @@ Results, 2026-11-06, debug preset, RTX 2080 Super:
 
 Re-run, 2026-11-06, in a fresh worktree after merging `main` and the earlier branch (same code): configure and debug build clean; the 15 tests of the first, second and fourth groups pass; the six `render_feature_*` plus `render_feature_under_water` pass; the release build links clean. Whole suite not re-run (code unchanged since its run above).
 
+Skeptical gate check, 2026-11-06, a fresh worktree after merging `main` at `40bfc46`, clean debug build:
+
+- All four Verification groups pass (12 + 10 tests, with `render_feature_under_water`); the whole suite passes, 125 of 125 (1832 s); the release build (`-O3 -flto`, frame limit) links clean.
+- Worked examples through the built objects, against an independent Python calculation: $\varphi(19149) = 45.00015$, $\varphi(30000) = 70.5$, $\varphi(100000) = -55.0$, $\varphi(50000) = 62.5$; 60° N gives 18.5148 h and 5.4852 h; 45° N, equinox, 09:00 gives $\vec s = (0.70711, -0.5, 0.5)$, $e = 30.0000$, $A = 125.2644$; 70° N midsummer midnight $+3.5°$ due north; 80° N midwinter noon $-13.5°$, 0 h; 30° S equinox noon 60° up due north; a new world's 08:24 is $d_c = 79.1$. All agree to the digits printed.
+- In the built program (release, `--headless --test-world --day-of-year 171 --time-of-day 0.0`, F3 on), screenshots read: at spawn `lat 1.04 N  sun -65.5`, a dark night sky and land; flying north the F3 line reads 17.81 N, 29.88 N, 54.01 N, then `lat 73.20 N  sun 6.7` with the HUD's date reading `Year 1, Day 170, Midnight sun` (each sun height is $\varphi + \delta - 90°$ at midnight). The sky picture at 70.5° N was read through `run_game_sun`'s real draw (temporarily dumped to PNG, not committed): dark blue at the equator, a bright warm twilight sky at 70.5° N at midnight.
+- Hunted for stubs, TODOs, empty tests, uncalled code and standards breaches the lint misses (`int`/`float`/`double`, layout, README per directory): none found in this phase's code. Determinism across 16 threads is tested by `run_climate` and `run_climate_sun` (equal bits). Issues found 12 and 13 note two things outside this phase.
+- `pgrep -af` on this worktree's `build/`: nothing left running. No display, window, input device or sound was opened.
+
 ## Gate
 
 Ahmed, on a release build (`tools/test-or-build.sh cmake --preset release`, then `tools/test-or-build.sh cmake --build --preset release`):
@@ -654,6 +662,7 @@ Appended as they land:
 - `0e1a791` Record phase 2 of plan 004 as done but for Ahmed's gate, with its ticked todos, measured results and the issues found on the way.
 - `748cc79` List the commits of phase 2 of plan 004 in its phase file.
 - `43ba75f` Record the re-run of phase 2 of plan 004 checks in a fresh worktree, all passing.
+- `a88d4a9` Record the skeptical gate check of phase 2 of plan 004: every agent-run check passes and only Ahmed's gate is left.
 
 ## Issues found
 
@@ -723,3 +732,17 @@ Found while implementing, 2026-11-06.
 
 - The plan's `player_survival_init` is `player_survival_start` in the code; it sets `sun_height = 1.0` there.
 - I once ran the built `run_game_sun` binary directly, not through `tools/test-or-build.sh` (about 4 s on the card). Every other build and test went through the wrapper.
+
+Found by the skeptical gate check, 2026-11-06.
+
+**12. A fast headless flight shows a black picture far from spawn, sky included; not this phase's sun.**
+
+- **Expected (Gate, step 3):** flying north to the polar circle at midsummer midnight shows a lit sky.
+- **Actual:** in `--headless` runs flying with Ctrl (about 90 blocks a tick), every picture past about y = 7,500 is black, sky and all, with the F3 line and HUD correct (`lat 73.20 N  sun 6.7`, `Midnight sun`); still black 12,000 ticks after stopping. The same flight with `--no-sky` (the sun straight up, no `render_sky_fill`) and at equinox noon is black too, and a slow flight shows land and sky at 29.7° N. So it is the world not yet loaded round the eye, which headless ticks outrun (they do not wait for the wall clock), not the sun. Through `run_game_sun`'s real draw, where the eye is moved without ticks, the 70.5° N midnight sky is drawn lit.
+- **Done:** nothing changed in code. Ahmed's gate on a real display runs at 20 ticks a second, so the land has wall time to load; the Gate's own risk row already says to slow down near the polar circle. If the picture stays black there in his play, it belongs to the world loading, not to plan 004.
+
+**13. `tests/run/player/survival/index.c` is past the 1,500-line split point.**
+
+- **Expected (coding standard):** split at 1,500 lines; hard limit 2,000.
+- **Actual:** 1,788 lines; about 1,740 before this phase, which added about 45. Under the hard limit, so the lint passes.
+- **Done:** left as it is; splitting that suite is not this phase's work. Noted for whoever next grows it.
