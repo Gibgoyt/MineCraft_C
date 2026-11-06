@@ -70,7 +70,8 @@ typedef struct main_options_t {
     uint8_t no_sound;           /* --no-sound */
     uint8_t has_day_of_year;    /* --day-of-year */
     uint16_t day_of_year;       /* --day-of-year: 1 to 365, as the HUD shows it */
-    uint8_t _pad0[4];
+    uint16_t climate_jump;      /* --climate-jump: days, 0 for none */
+    uint8_t _pad0[2];
 } main_options_t;
 static_assert(sizeof(main_options_t) == 128);
 
@@ -97,7 +98,8 @@ static void main_print_usage(const char *program) {
         "           [--no-shadows] [--no-stored-light] [--no-transparency] [--no-water-reflection]\n"
         "           [--no-water-tint] [--no-under-water] [--no-ao] [--no-taa] [--god-rays] [--no-entities]\n"
         "           [--no-outline] [--full-detail <chunks>] [--no-lod] [--headless ...]\n"
-        "       %s --menu [--saves <dir>] [--settings <file>] [--render-distance <chunks>] [--headless ...]\n"
+        "       %s --menu [--saves <dir>] [--settings <file>] [--render-distance <chunks>] [--climate-jump <days>]\n"
+        "           [--headless ...]\n"
         "  --report                 print the build's defines and CPU features, then exit\n"
         "  --pretend-missing-cpu    treat this feature as absent, to see the CPU check fail; may repeat\n"
         "  --pretend-leak           skip the shutdown, to see the leak check at exit fail\n"
@@ -144,6 +146,8 @@ static void main_print_usage(const char *program) {
         "                           equinox, 171 midsummer, 354 midwinter. A calendar day starts at 06:00, so before\n"
         "                           that the HUD still shows the day before\n"
         "  --seed <n>               with --test-world: this seed's land and not the default's, 0x for hex\n"
+        "  --climate-jump <days>    with --menu: the first world opened moves its clock on this many days, as playing\n"
+        "                           them would, so the weekly census catches up (plan 004 phase 07)\n"
         "  --pretend-gpu-lost       make the card fault for real after this many pictures, to see a world saved\n"
         "                           and the run end. Takes only this program's context; the kernel's log has a line\n"
         "  (no flags, on a terminal) the same as --menu\n"
@@ -287,6 +291,18 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
                 return false;
             }
             out->has_time_of_day = 1u;
+        } else if (strcmp(argv[i], "--climate-jump") == 0 && i + 1 < argc) {
+            i++;
+            uint32_t days = 0u;
+            if (!main_parse_count("--climate-jump", argv[i], &days)) {
+                return false;
+            }
+            if (days == 0u || days > UINT16_MAX) {
+                fprintf(stderr, "%s: --climate-jump takes days from 1 to %u, not %s\n", argv[0], (uint32_t)UINT16_MAX,
+                        argv[i]);
+                return false;
+            }
+            out->climate_jump = (uint16_t)days;
         } else if (strcmp(argv[i], "--day-of-year") == 0 && i + 1 < argc) {
             i++;
             uint32_t day = 0u;
@@ -417,6 +433,10 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
     }
     if (out->has_day_of_year != 0u && out->test_world == 0) {
         fprintf(stderr, "%s: --day-of-year only means something with --test-world\n", argv[0]);
+        return false;
+    }
+    if (out->climate_jump != 0u && out->menu == 0u) {
+        fprintf(stderr, "%s: --climate-jump only means something with --menu, whose worlds have a climate\n", argv[0]);
         return false;
     }
     if (out->has_seed != 0u && out->test_world == 0) {
@@ -712,6 +732,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
     game_ui_set(&app->game, &app->ui);
     game_profiler_set(&app->game, &app->profiler);
     game_gpu_pretend_set(&app->game, options->pretend_gpu_lost, false);
+    game_climate_jump_set(&app->game, options->climate_jump);
     if (options->walk != 0 || options->menu != 0u) {
         game_player_set(&app->game, &app->player);
         game_entity_set(&app->game, &app->entity);

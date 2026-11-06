@@ -4,6 +4,7 @@
 
 #include "assert/index.h"
 #include "climate/systems/index.h"
+#include "climate/weather/index.h"
 #include "log/index.h"
 #include "terrain/rng/index.h"
 #include "time/index.h"
@@ -54,6 +55,13 @@ bool climate_init(climate_t *climate) {
     state->borrowed_cells = (climate_cell_t *)(void *)(base + CLIMATE_CELLS_OFFSET);
     state->borrowed_mask_heights = (float32_t *)(void *)(base + CLIMATE_MASK_OFFSET);
     climate->borrowed_state = state;
+    /* Phase 07: the weather's own region, its store's tiles touched only as tiles are kept. */
+    if (!heap_reserve(CLIMATE_WEEK_REGION_BYTES, &climate->owned_week_region)) {
+        climate_deinit(climate);
+        return false; /* it has said why */
+    }
+    climate->borrowed_weather = (climate_weather_t *)(void *)climate->owned_week_region.owned_base;
+    memset(climate->borrowed_weather, 0, sizeof(climate_weather_t));
     return true;
 }
 
@@ -66,6 +74,8 @@ void climate_deinit(climate_t *climate) {
         arena_deinit(&state->arena_normals);
         arena_deinit(&state->arena_tables);
     }
+    climate->borrowed_weather = nullptr;
+    heap_release(&climate->owned_week_region);
     heap_release(&climate->owned_region);
     memset(climate, 0, sizeof(*climate));
 }
@@ -107,6 +117,11 @@ bool climate_open_ground(climate_t *climate, uint64_t seed, climate_ground_fn_t 
     atomic_store_explicit(&state->jobs_in_flight, 0u, memory_order_relaxed);
     atomic_store_explicit(&state->jobs_done, 0u, memory_order_relaxed);
     memset(&state->prepare, 0, sizeof(state->prepare));
+    if (!climate_weather_open(climate->borrowed_weather, climate->owned_week_region.owned_base,
+                              climate->owned_week_region.bytes, seed)) {
+        terrain_noise_bank_deinit(&state->warp_bank);
+        return false; /* it has said why */
+    }
     state->open = 1u;
     return true;
 }
@@ -124,6 +139,7 @@ void climate_close(climate_t *climate, const job_system_t *system) {
     state->borrowed_ground_context = nullptr;
     state->borrowed_warp_x = nullptr;
     state->borrowed_warp_y = nullptr;
+    climate_weather_close(climate->borrowed_weather);
     state->open = 0u;
 }
 

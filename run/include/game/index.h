@@ -202,7 +202,8 @@ typedef struct game_t {
     uint32_t hud_present_us;   /* 1372: what copying it out took */
     uint8_t hud_debug;         /* 1376: the debug overlay is up */
     uint8_t hud_debug_key;     /* 1377: its key was down, last time anyone looked */
-    uint8_t _pad6[2];          /* 1378 */
+    uint16_t
+        climate_jump_days; /* 1378: --climate-jump: days the next world opened moves its clock on; main's, before game_open */
     uint32_t
         census_runs; /* 1380: the sim's, on a census only: weeks run since the world opened, for tests and the log */
     profiler_lane_t *borrowed_lane_main; /* 1384: this thread's, and the others' while there are no threads */
@@ -377,6 +378,10 @@ void game_census_screens_set(game_t *game, bool screens);
 
 /* What a census runs for each week: plan 004 phase 07's. nullptr for nothing. Before game_open. */
 void game_census_hook_set(game_t *game, game_census_week_fn *week, void *context);
+
+/* --climate-jump: the next world opened moves its clock on this many days as it opens, so the census catches up, as playing
+ * them would (plan 004 phase 07). Before game_open; it is used once. */
+void game_climate_jump_set(game_t *game, uint16_t days);
 
 /* True once for each census that has stopped the world, with the week it was for. Main, any time: an exchange, so never
  * twice. */

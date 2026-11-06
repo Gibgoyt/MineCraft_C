@@ -1,0 +1,18 @@
+# run/src/climate/outlook
+
+**Purpose:** plan 004 phase 07's outlook: chances for each of the next 7 days at a place, never the actual future (master plan 8). In two halves, so that it provably cannot read ahead:
+
+1. `climate_outlook_input_fill` reads the climate at the census moment into a plain block of fixed size, `climate_outlook_input_t`: the systems alive then (born by then and not yet dead, the nearest 64), each with where its own steering rules take it at each of the 7 instants and its title; the place's normal highs, lows and rain for each day ahead; today's anomaly (`σ_T N₁` and any high's push); the thunderstorm cells' rate at each day's expected heat (normal plus today's anomaly decayed by `e^{−t/10}`); the day's normal wind; and **Λ**, the expected count of hurricanes and of lows not yet born that cover the place at each instant: every spawn square in a kind's reach and every day from the census day to the one before the instant, its rate (phase 06's) times the chance a typical system of the kind (the middle of every range) born anywhere in the square covers the place then: the disk chance below with the square's spread `q/√12`, times the chance its life lasts that long.
+2. `climate_outlook_run` reads only that block. A known system's forecast centre is its steered centre plus a Gaussian error of `σ(t) = 200 + 400 t` blocks per axis, drawn by hash from the seed, the system, the census week and the day (Box-Muller), so reopening gives the same; its chance of covering the place is the footprint form in force (`CLIMATE_OUTLOOK_FOOTPRINT`). Then, each day: hurricane `1 − Π(1 − p_i) e^{−Λ_hur}` over known hurricanes; storm the same over known hurricanes and lows deeper than 20 hPa then, with `Λ_hur + ½ Λ_low`; thunder `1 − e^{−λ a}`, `a = (2 r̄ v̄ L̄ + π r̄²)/10⁶` km², `r̄ = 275`, `L̄ = 2.5` hours, `v̄` the normal wind in blocks a game hour; rain "at least one" of the background `1 − e^{−P̄/6}`, the thunder chance, each known hurricane and low, and `Λ_hur + Λ_low`; high and low the normals plus today's anomaly times `e^{−t/10}`, spread `±1.5 σ_T`. The named systems are the 8 with the highest chance on any day, then by id.
+
+**Day t:** the instant t days after the census for systems (the master plan's Tavela example), and the calendar day ending then for rain, thunder, highs and lows.
+
+**The footprint:** the master plan's `exp(−d²/(2(σ² + R²)))`, or the exact chance that a centre scattered as a Gaussian of spread σ lands within R, `climate_outlook_disk_chance`: Simpson's rule in 512 steps over `x = R sin φ`, the x density times `erf(R cos φ / (σ√2))`. Which one is in force is the calibration test's decision (the phase file's Issues found 1).
+
+**Tier:** Arena: allocates only from the scratch arena it is given (the day list and the mask pages of the steered tracks); `climate_outlook_run` allocates nothing.
+**Owns:** nothing.
+**Lifetime:** none.
+**Threads:** any.
+**Public functions:** `climate_outlook_input_fill`, `climate_outlook_run`, and its parts `climate_outlook_sigma`, `climate_outlook_disk_chance`, `climate_outlook_footprint`, `climate_outlook_background_rain`, `climate_outlook_at_least_one`, `climate_outlook_error`.
+**May be called by:** `game` (the census), phase 10's warnings, the tests.
+**Depends on:** the Owner's reads, `climate/systems`, `climate/systems/field` and `climate/systems/name` (phase 06's lists, tracks, rates and titles), `climate/weather` (the spell noise, σ_T and the storm depth), `terrain` (the hashes), `arena`, `types`, libm.
