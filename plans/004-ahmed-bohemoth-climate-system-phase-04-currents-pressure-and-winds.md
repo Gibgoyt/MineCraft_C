@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 4: Currents, pressure and winds
 
-**Status:** in progress: built and agent-verified (full debug suite, release, bench, pictures); only Ahmed's gate is left (the pictures, the layer hashes and the monsoon question)   (updated 2026-11-06)
+**Status:** in progress: built and agent-verified three times, the last by the gate check (full debug suite, release, bench, pictures, worked examples, 1 against 16 workers); only Ahmed's gate is left (the pictures, the layer hashes and the monsoon question)   (updated 2026-11-06)
 
 Read `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` first, then sections 3, 6.3, 6.4, 6.5 and 6.9 of `plans/004-ahmed-bohemoth-climate-system.md`, then the phase 03 file, `plans/004-ahmed-bohemoth-climate-system-phase-03-height-estimate-and-climate-cells.md`, whose cells and window this phase fills in. Every number here comes from the master plan. Where this file adds a number the master plan does not give, it says so and gives the reason.
 
@@ -729,6 +729,22 @@ Numbers the tests print, for Ahmed:
 | `--pictures` seed 2198175988018515243, `--synthetic` | Exit 0; all PNGs written. The agent looked at `north50_currents.png`: red arrows north on the west coast, blue south on the east |
 | Gate's two other seeds | `--pictures /tmp/mc_c_climate_seed2 1` and `--pictures /tmp/mc_c_climate_seed3 1311768467294899695`, both exit 0, ready for Ahmed |
 
+**Third pass, the gate check, 2026-11-06** (branch `worktree-wf_6f8a0c68-47a-23`, main merged, clean build, no code changed):
+
+| Check | Result |
+|---|---|
+| Debug build; `run_terrain_density`, `run_climate_*`, `standards_lint`, `clang_format` | 12 of 12 pass |
+| Full debug suite | 133 of 133 pass (2030 s) |
+| Release build (`-O3 -flto`, frame limit) | Builds and links clean |
+| `run_climate_*`, release | 9 of 9 pass; cell digest `0x4950918E191FF004`, the same as debug |
+| `bench_climate` (release) | Exit 0; slowest cold tile 28.40 ms (target 100), warm 5.54 ms, spawn precompute 23.5 ms |
+| `--pictures` seed 2198175988018515243, `--synthetic` | Exit 0. Looked at: `south30_currents.png` blue arrows north on the west coast, red south on the east, grey crosses on the north and south coasts; `north50_pressure_day196.png` a heat low over the continent; `wind_day196.png` trades from the east, a dark calm band north of the equator (the belts moved north in July), brighter wind on high ground; `currents.png` warm only, as a map within 19° of the equator should be |
+| Worked examples through the real functions, from a scratch program linked to the debug objects (not committed) | Steering $(8, 0)$: $(5.7600, -2.2400)$, speed 6.1802. Heat low $\kappa = 0.9$, $A = 12$: $-6.4800$. The 45° N cell at 3450 blocks: $\kappa = 0.8997$, $A = 12.848$, $\ell = 27.01$, $\Delta p(197) = -6.9357$, fit $(0.00000, 6.7206, 1.7139)$. 20° N, 3000 inland: $\kappa = 0.8647$, $A = 5.960$, peak $-3.092$. Pressure wind $R_{-70°}(0, 0.0078) \times 900 = (6.5966, 2.4010)$. Sea at 15° N warm: 31.950, 28.050, no current 24.050. The table at 8 latitudes as 6.3 says. All as this file says |
+| 1 worker against 16 on seed 2198175988018515243, 8 by 8 km round 0 | Every cell and `climate_air_at` at 1089 points on 5 days: the same bytes |
+| `pgrep -af $PWD/build`, `pgrep -a minecraft_c` | Nothing |
+
+No stub, TODO or empty test found; every test of this phase checks something. Only the gate is left for Ahmed.
+
 **Wiring outside the owned paths:** none beyond the plan's list. `run/{src,include}/terrain/density/` gained only `terrain_density_spline_build` and its README lines; `tests/run/climate/cell/README.md`, `tests/run/climate/layer/README.md` and `bench/climate/README.md` describe the new pin, tests and pictures.
 
 ## Commits
@@ -742,6 +758,8 @@ Appended as they land:
 - `97db1df` Record plan 004 phase 04 in its phase file: todos, results, the bench and the issues found.
 - `da455ec` List the phase file commit of plan 004 phase 04 in its phase file.
 - `4cd0c0f` Record the second verification pass of plan 004 phase 04 in its phase file.
+- `9fefcb6` List the second pass commit of plan 004 phase 04 in its phase file.
+- `49b2ed9` Record the gate check of plan 004 phase 04 in its phase file.
 
 ## Issues found
 
@@ -784,3 +802,10 @@ Found while building, 2026-11-06:
     - **Actual:** -2.54 and -0.04 from the stored waves, while the pressure wind itself (0.464) matches the plan's 0.43. The difference is the one-wave fit: at 20° N the true belt wind steps between the trades and the horse latitudes through the year, and one wave smooths the winter's onshore spell away (the wind's largest miss on a real tile is 4.98 blocks a second); and altitude multiplies by 1.025 on land 20 blocks up.
     - **What was done:** printed, not checked, as the plan says. It strengthens Issue 1: with the master plan's numbers and one wave, the 20° N coast gets no onshore season at all. Ahmed's options in Issue 1 stand; a second wave for wind (Risks table) would bring the winter onshore spell back.
 11. **Neutral currents carry strength 0, and the layer marks them with a grey cross.** NONE has no flow, so the plan's grey arrow could not point anywhere. A sea cell within 600 blocks of land whose current is neutral gets a 3-pixel grey cross instead. A neutral cell's `current_strength` is 0, so its `current_c` is 0 either way.
+
+Found by the gate check, 2026-11-06:
+
+12. **The layers are not drawn in `bench/world_map/`.**
+    - **Expected** (Gate): "If `bench/world_map/` exists by then, the layers are added to it and drawn there".
+    - **Actual:** `bench/world_map/` exists now and draws no climate layer (`grep climate bench/world_map/index.c` finds nothing). The pictures come from `bench_climate --pictures`, through the same `climate_layer_draw`.
+    - **What was done:** nothing changed. Phase 03 made the same choice (its Issues found 8) and left adding layers to `bench_world_map` for phase 09 or a follow-up; this phase follows it. The Gate's commands use `bench_climate`.
