@@ -1,6 +1,6 @@
 # bench/climate
 
-**Purpose:** what a climate tile costs (plan 004 phase 03's target: one cold tile on one worker under 100 ms), and the phase gate's pictures of the four climate layers.
+**Purpose:** what a climate tile costs (plan 004 phase 03's target, which phase 04 keeps: one cold tile on one worker under 100 ms), and the phase gates' pictures of the climate layers.
 **Tier:** none; benchmarks are not tiered.
 **Owns:** the climate's region through its `climate_t`, and one heap region for the pictures, both released before it exits.
 **Lifetime:** Process.
@@ -8,10 +8,11 @@
 **Public functions:** `main`.
 
 - `tools/test-or-build.sh timeout 300 build/release/bin/bench_climate`: the timings. Exit status 0, 1 if any cold tile's best is over 100 ms, or 2 if it could not start.
-- `tools/test-or-build.sh timeout 300 build/release/bin/bench_climate --pictures /tmp/mc_c_climate 2198175988018515243`: `sea_distance.png`, `continentality.png`, `water.png` and `latitude.png` (latitude drawn over water), 1024 by 1024 pixels at 16 blocks a pixel, 16 km a side round (0, 0), with `display_png_encode` and the same `climate_layer_draw` the Atlas will use. It draws no terrain: it is not a second map tool. It also prints the shares of land, sea, large lake and small lake cells.
+- `tools/test-or-build.sh timeout 300 build/release/bin/bench_climate --pictures /tmp/mc_c_climate 2198175988018515243`: `sea_distance.png`, `continentality.png`, `water.png` and `latitude.png` (latitude drawn over water), 1024 by 1024 pixels at 16 blocks a pixel, 16 km a side round (0, 0), with `display_png_encode` and the same `climate_layer_draw` the Atlas will use. It draws no terrain: it is not a second map tool. It also prints the shares of land, sea, large lake and small lake cells. From phase 04 also `currents.png` (with the latitude lines over it), and `pressure_dayDDD.png` and `wind_dayDDD.png` for days 15, 105, 196 and 288, the same 16 km.
+- `tools/test-or-build.sh timeout 300 build/release/bin/bench_climate --synthetic /tmp/mc_c_climate_synthetic`: phase 04's two synthetic continents, 4 km squares of land at 30° S (`south30_*.png`) and 50° N (`north50_*.png`), each drawn 8 km a side at 8 blocks a pixel: currents, and pressure and wind on the four days. They show the master plan's table with no real coast's noise.
 
 **May be called by:** people.
-**Depends on:** `climate` and its `layer/`, `terrain`, `job`, `thread`, `heap`, `time`, `display/headless/png`.
+**Depends on:** `climate` and its `layer/` and `air/`, `terrain`, `job`, `thread`, `heap`, `time`, `display/headless/png`.
 
 Only a release build's numbers mean anything: debug is at `-O0`.
 
