@@ -550,7 +550,6 @@ static void game_mobs_tick(game_t *game) {
     }
 }
 
-/* One tick of simulated time, due at tick_ns: this is where Stages 11 to 15 add theirs. */
 /* Plan 004 section 4.2: has the week number gone up since the last census? Never "is it 06:00 this tick", so a tick just past
  * 06:00, a night slept through and a jump of many days each run every week they passed, once, in order. True if a census has
  * just stopped the world for its screen, and this tick must not run. */
@@ -588,6 +587,7 @@ bool game_census_take(game_t *game, uint64_t *out_week) {
     return true;
 }
 
+/* One tick of simulated time, due at tick_ns: this is where Stages 11 to 15 add theirs. */
 void game_sim_tick(game_t *game, int64_t tick_ns) {
     profiler_lane_t *const lane = game->borrowed_lane_sim;
     PROFILER_BEGIN(lane, "sim_tick");
