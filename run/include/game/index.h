@@ -5,6 +5,7 @@
 #include "arena/index.h"
 #include "audio/index.h"
 #include "calendar/index.h"
+#include "climate/index.h"
 #include "display/index.h"
 #include "entity/index.h"
 #include "mob/index.h"
@@ -142,7 +143,7 @@ typedef struct game_t {
     uint8_t save_failed_said;  /* 877: the sim's: saving a column on its way out failed, and it has said so */
     /* 878: a census stops the world and waits for its screen; set before a world opens, and only read after */
     uint8_t census_screens;
-    uint8_t _pad0[1];          /* 879 */
+    uint8_t open_percent; /* 879: how much of a new world's climate is worked out, 0 to 100, while game_open runs */
     entity_t *borrowed_entity; /* 880: what a player's drops go into; set before a world opens, and only read after */
     item_t *borrowed_item;     /* 888: what a player carries; set before a world opens, and only read after */
     /* A line of its own, written by main every frame. */
@@ -165,7 +166,8 @@ typedef struct game_t {
     _Atomic uint64_t census_latch;
     /* A line of its own from here: the gpu thread writes these, and main what is after them. */
     render_camera_t picture_cameras[RENDER_EXCHANGE_SLOTS]; /* 960: what the picture in each slot was drawn from */
-    uint8_t _pad2[8];                                       /* 1080 */
+    /* 1080: plan 004's climate cells, or nullptr for none; set before a world opens, and only read after */
+    climate_t *borrowed_climate;
     render_camera_t shown_camera;      /* 1088: main's: what borrowed_last_picture was drawn from */
     void (*open_alive)(void *context); /* 1128: called now and then during a long game_open; nullptr for nobody */
     void *borrowed_open_alive_context; /* 1136 */
@@ -279,6 +281,12 @@ void game_save_set(game_t *game, save_t *save);
 
 /* Where what a player's hands did is heard. A run that does not call this is silent. Call it before a world opens: only the sim reads it after. */
 void game_audio_set(game_t *game, audio_t *audio);
+
+/* From here on a world has climate cells (plan 004 phase 03): whoever opens the world opens this climate over its terrain
+ * first. game_open works out the tiles round the place the eye starts before it returns, telling open_alive as it goes;
+ * the sim keeps tiles coming ahead of the player; and no column is asked for until its tiles are built. game_close waits
+ * for the climate's jobs and closes it. Must outlive it. Before game_open. Without it, or with it closed, none of that. */
+void game_climate_set(game_t *game, climate_t *climate);
 
 /* From here on what its threads do, and what the card does, is timed in this profiler's lanes. The profiler must outlive it. Before
  * game_open. Without it, nothing is timed. */

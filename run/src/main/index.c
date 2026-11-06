@@ -583,7 +583,20 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         math_deinit(&app->math);
         return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
     }
+    /* Only its region: a world's session opens it over the terrain it makes. */
+    if (!climate_init(&app->climate)) {
+        terrain_deinit(&app->terrain);
+        world_deinit(&app->world);
+        gpu_bridge_deinit(&app->gpu_bridge);
+        job_deinit(&app->job);
+        settings_deinit(&app->settings);
+        texture_deinit(&app->texture);
+        simd_deinit(&app->simd);
+        math_deinit(&app->math);
+        return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
+    }
     if (!physics_init(&app->physics)) {
+        climate_deinit(&app->climate);
         terrain_deinit(&app->terrain);
         world_deinit(&app->world);
         gpu_bridge_deinit(&app->gpu_bridge);
@@ -598,6 +611,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
     if (!entity_init(&app->entity, &app->physics)) {
         player_deinit(&app->player);
         physics_deinit(&app->physics);
+        climate_deinit(&app->climate);
         terrain_deinit(&app->terrain);
         world_deinit(&app->world);
         gpu_bridge_deinit(&app->gpu_bridge);
@@ -612,6 +626,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         entity_deinit(&app->entity);
         player_deinit(&app->player);
         physics_deinit(&app->physics);
+        climate_deinit(&app->climate);
         terrain_deinit(&app->terrain);
         world_deinit(&app->world);
         gpu_bridge_deinit(&app->gpu_bridge);
@@ -627,6 +642,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         entity_deinit(&app->entity);
         player_deinit(&app->player);
         physics_deinit(&app->physics);
+        climate_deinit(&app->climate);
         terrain_deinit(&app->terrain);
         world_deinit(&app->world);
         gpu_bridge_deinit(&app->gpu_bridge);
@@ -643,6 +659,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         entity_deinit(&app->entity);
         player_deinit(&app->player);
         physics_deinit(&app->physics);
+        climate_deinit(&app->climate);
         terrain_deinit(&app->terrain);
         world_deinit(&app->world);
         gpu_bridge_deinit(&app->gpu_bridge);
@@ -660,6 +677,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         entity_deinit(&app->entity);
         player_deinit(&app->player);
         physics_deinit(&app->physics);
+        climate_deinit(&app->climate);
         terrain_deinit(&app->terrain);
         world_deinit(&app->world);
         gpu_bridge_deinit(&app->gpu_bridge);
@@ -678,6 +696,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         entity_deinit(&app->entity);
         player_deinit(&app->player);
         physics_deinit(&app->physics);
+        climate_deinit(&app->climate);
         terrain_deinit(&app->terrain);
         world_deinit(&app->world);
         gpu_bridge_deinit(&app->gpu_bridge);
@@ -701,6 +720,8 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
     }
     if (options->menu != 0u) {
         game_save_set(&app->game, &app->save);
+        /* A world opened from the menus has its climate cells; test worlds and their pictures go on without. */
+        game_climate_set(&app->game, &app->climate);
     }
     main_audio_start(app, options);
     return MAIN_EXIT_OK;
@@ -737,6 +758,7 @@ static bool app_deinit(app_t *app, const char *profile_path) {
     entity_deinit(&app->entity);
     player_deinit(&app->player);
     physics_deinit(&app->physics);
+    climate_deinit(&app->climate); /* game_deinit has closed any world, and with it the climate */
     terrain_deinit(&app->terrain);
     world_deinit(&app->world);
     gpu_bridge_deinit(&app->gpu_bridge);
@@ -1096,40 +1118,35 @@ static void main_report(const app_t *app) {
 }
 
 /* app_t is most of what a frame may hold, so what main calls keeps its locals in frames of its own. At -O3 with -flto, inlined here, they came to 16448 bytes against 16384. */
-int32_t main(int32_t argc, char **argv) {
-    const int64_t started_ns = time_now_ns();
-    main_options_t options;
-    if (!main_parse_arguments(argc, argv, &options)) {
-        main_print_usage(argv[0]);
-        return MAIN_EXIT_USAGE;
-    }
-
-    app_t app;
-    main_exit_t status = app_init(&app, &options);
+/* All main does with app, in a frame of its own, so that main's holds app_t, the options and little else. Plan 004 phase 03's
+ * climate_t took app_t to 16128 bytes, and main's frame, with this inlined, to 16448 at -O0 against 16384. */
+[[gnu::noinline]]
+static int32_t main_with_app(app_t *app, const main_options_t *options, int64_t started_ns) {
+    main_exit_t status = app_init(app, options);
     if (status != MAIN_EXIT_OK) {
-        profiler_deinit(&app.profiler); /* all else that failed has gone; this came first */
+        profiler_deinit(&app->profiler); /* all else that failed has gone; this came first */
         return status;
     }
-    if (options.report != 0) {
-        main_report(&app);
-    } else if (options.test_pattern != 0) {
-        status = main_run_test_pattern(&app, &options, started_ns);
-    } else if (options.menu != 0u) {
-        status = options.headless != 0 ? main_run_menu_headless(&app, &options) : main_run_menu(&app, &options);
-    } else if (options.test_world != 0) {
+    if (options->report != 0) {
+        main_report(app);
+    } else if (options->test_pattern != 0) {
+        status = main_run_test_pattern(app, options, started_ns);
+    } else if (options->menu != 0u) {
+        status = options->headless != 0 ? main_run_menu_headless(app, options) : main_run_menu(app, options);
+    } else if (options->test_world != 0) {
         status =
-            options.headless != 0 ? main_run_test_world_headless(&app, &options) : main_run_test_world(&app, &options);
-    } else if (options.headless != 0) {
-        status = main_run_headless(&app, &options);
-    } else if (!main_run(&app)) {
+            options->headless != 0 ? main_run_test_world_headless(app, options) : main_run_test_world(app, options);
+    } else if (options->headless != 0) {
+        status = main_run_headless(app, options);
+    } else if (!main_run(app)) {
         status = MAIN_EXIT_RUNTIME;
     }
     /* Before deinit, which frees whatever is left on the card. */
-    const bool gpu_clean = gpu_bridge_exit_check(&app.gpu_bridge);
-    if (options.pretend_leak == 0 && !app_deinit(&app, options.profile) && status == MAIN_EXIT_OK) {
+    const bool gpu_clean = gpu_bridge_exit_check(&app->gpu_bridge);
+    if (options->pretend_leak == 0 && !app_deinit(app, options->profile) && status == MAIN_EXIT_OK) {
         status = MAIN_EXIT_RUNTIME;
     }
-    if (options.report == 0) {
+    if (options->report == 0) {
         heap_counters_t counters;
         heap_counters_read(&counters);
         LOG_INFO("heap at exit: %" PRIu64 " reserved, %" PRIu64 " released, %" PRIu64 " bytes live",
@@ -1138,9 +1155,20 @@ int32_t main(int32_t argc, char **argv) {
     /* Everything is deinitialized by now, so anything still live is a leak: plans/CODING_STANDARD.md section 10. */
     const bool heap_clean = heap_exit_check();
     const main_exit_t final_status = heap_clean && gpu_clean ? status : MAIN_EXIT_LEAK;
-    if (options.pretend_leak != 0) {
-        /* The workers are still running and looking at app, on this stack, so main must not return under them. */
+    if (options->pretend_leak != 0) {
+        /* The workers are still running and looking at app, on main's stack, so main must not return under them. */
         _exit(final_status);
     }
     return final_status;
+}
+
+int32_t main(int32_t argc, char **argv) {
+    const int64_t started_ns = time_now_ns();
+    main_options_t options;
+    if (!main_parse_arguments(argc, argv, &options)) {
+        main_print_usage(argv[0]);
+        return MAIN_EXIT_USAGE;
+    }
+    app_t app;
+    return main_with_app(&app, &options, started_ns);
 }

@@ -10,6 +10,7 @@
 - `terrain_density_init`, `terrain_density_deinit`: a pair.
 - `terrain_density_spline_at`, `terrain_density_profile_from`: the height splines, as plain arithmetic.
 - `terrain_density_profile_area`: where the ground is, without its blocks, for hydrology and biomes.
+- `terrain_density_profile_points`: the same at columns anywhere, through the very batch a box's lattice uses, so a whole-number column gets a box's bits. A wrapper over that batch only, which moves no number; the height estimate in `run/src/terrain/` is built on it.
 - `terrain_density_box_voxels`, `terrain_density_sample_box`, `terrain_density_fill_box`: the bulk sampling.
 - `terrain_density_at`, `terrain_density_block_at`: one voxel.
 

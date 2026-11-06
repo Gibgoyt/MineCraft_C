@@ -159,15 +159,26 @@ static bool game_session_world_open(game_session_t *session) {
     if (session->borrowed_settings != nullptr) {
         game_session_config_from_settings(session);
     }
+    /* The climate's cells come from the terrain, so they go first and come back after it. */
+    climate_t *const climate = game->borrowed_climate;
+    if (climate != nullptr) {
+        climate_close(climate, game->borrowed_job);
+    }
     terrain_deinit(session->borrowed_terrain);
     game_open_alive_tell(game);
     if (!terrain_init(session->borrowed_terrain, world->seed)) {
         return false;
     }
+    if (climate != nullptr && !climate_open(climate, session->borrowed_terrain)) {
+        return false; /* it has said why */
+    }
     game_open_alive_tell(game);
     const save_world_status_t saved = game_session_save_open(session, world);
     game_open_alive_tell(game);
     if (saved != SAVE_WORLD_OK) {
+        if (climate != nullptr) {
+            climate_close(climate, game->borrowed_job);
+        }
         game_session_world_refused(session, saved);
         return true;
     }
@@ -177,6 +188,9 @@ static bool game_session_world_open(game_session_t *session) {
     if (!game_open(game, &session->config)) {
         if (game->borrowed_save != nullptr) {
             save_close(game->borrowed_save);
+        }
+        if (climate != nullptr) {
+            climate_close(climate, game->borrowed_job);
         }
         return false;
     }
@@ -552,8 +566,10 @@ void game_session_discard(void *context) {
 /* A world can take many seconds to open on an unlucky seed, inside one frame. The watchdog must not take that for a hang, and a person who asks for another VT
  * meanwhile must not wait for the end of it. */
 static void game_session_open_alive(void *context) {
-    display_t *const display = context;
-    display_long_work(display);
+    game_session_t *const session = context;
+    /* How much of the new world's climate is worked out, for the loading screen's third line. */
+    session->borrowed_ui->menu.loading_percent = session->borrowed_game->open_percent;
+    display_long_work(session->borrowed_display);
 }
 
 static bool game_session_run_source(void *context, display_buffer_t *back) {
@@ -565,8 +581,8 @@ display_status_t game_session_run(game_session_t *session, display_t *display, d
                                   void *context) {
     session->source = source;
     session->borrowed_source_context = context;
-    game_open_alive_set(session->borrowed_game, game_session_open_alive, display);
     session->borrowed_display = display;
+    game_open_alive_set(session->borrowed_game, game_session_open_alive, session);
     display_flip_vsync_set(&display->flip, session->config.uncapped == 0u);
     const display_status_t status = display_frames_run(display, game_session_run_source, game_session_discard, session);
     game_session_world_close(session);

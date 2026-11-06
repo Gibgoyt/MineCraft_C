@@ -54,8 +54,9 @@ typedef struct ui_menu_t {
     int32_t selected;                        /* 292: in borrowed_worlds; -1 is none */
     uint8_t screen;                          /* 296: ui_menu_screen_t */
     uint8_t settings_enabled;                /* 297 */
-    uint8_t leave_offered; /* 298: the pause screen has a way out with no save, until the next ui_menu_open */
-    uint8_t _pad0[5];      /* 299 */
+    uint8_t leave_offered;   /* 298: the pause screen has a way out with no save, until the next ui_menu_open */
+    uint8_t loading_percent; /* 299: of a new world's climate worked out, for the loading screen; 0 for no line */
+    uint8_t _pad0[4];        /* 300 */
 } ui_menu_t;
 static_assert(sizeof(ui_menu_t) == 304);
 
