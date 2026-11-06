@@ -911,7 +911,8 @@ TEST(game_runs_the_core_runtime_and_ends_with_nothing_live) {
     snprintf(expected, sizeof(expected), "%d workers ran %d jobs", MC_THREADS_WORKERS, MC_THREADS_WORKERS);
     CHECK_CONTAINS(result.output, expected);
     CHECK_CONTAINS(result.output, "no terminal, so no game");
-    CHECK_CONTAINS(result.output, "heap at exit: 14 reserved, 14 released, 0 bytes live");
+    /* 15 since plan 004 phase 03 added the climate's region. */
+    CHECK_CONTAINS(result.output, "heap at exit: 15 reserved, 15 released, 0 bytes live");
 }
 
 TEST(game_exits_with_its_own_status_on_a_leak) {
@@ -919,7 +920,7 @@ TEST(game_exits_with_its_own_status_on_a_leak) {
     test_process_t result;
     game_run(t, pretend_leak, nullptr, &result);
     CHECK_EQ_I64(result.exit_code, MAIN_EXIT_LEAK);
-    CHECK_CONTAINS(result.output, "heap: leak at exit: 14 regions");
+    CHECK_CONTAINS(result.output, "heap: leak at exit: 15 regions");
 }
 
 TEST(game_reports_its_compiled_defines) {

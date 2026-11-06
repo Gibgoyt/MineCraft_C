@@ -24,3 +24,17 @@ Only a release build's numbers mean anything: debug is at `-O0`.
 ## Results
 
 Appended as they are taken, newest first.
+
+### 2026-11-06, plan 004 phase 03: the target is met with room to spare
+
+Release build, through the build lock, seed `0x1234567890ABCDEF`, after the sea-floor rule. Exit status 0.
+
+| Measure | Result |
+|---|---|
+| Cold tile, 1 worker, 9 places, best of 3 | 28.8 to 30.7 ms (target 100). 78,080 estimates each, about 2.6 million a second; 91% of the time is the ground function |
+| Warm tile, 1 worker (17 new pages) | 5.65 ms at the slowest place |
+| Spawn precompute, 16 workers, render distance 32 plus 2 km | 36 tiles and 484 mask pages, 271,360 estimates, in 23.8 ms |
+
+`--pictures` over 16 km round (0, 0), cells: seed 2198175988018515243, 70.5% land, 28.8% sea, 0.0% large lake, 0.8% small lake (155.9 ms to work out); seed 1311768467294899695 (`0x1234567890ABCDEF`), 72.6%, 26.6%, 0.0%, 0.8%; seed 5569200986553504070 (the default), 68.9%, 30.4%, 0.0%, 0.8%.
+
+Before the sea-floor rule (the plan's window-edge rule), the same three seeds gave 0.0%, 0.4% and 0.0% sea and 18.8% to 22.2% large lake, and continentality stepped in straight lines at tile borders: the reason for the change.

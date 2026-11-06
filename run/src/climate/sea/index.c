@@ -22,12 +22,12 @@ uint32_t climate_sea_classify(const uint8_t *water, uint32_t side, uint32_t *lab
         uint32_t tail = 0u;
         queue[tail++] = first;
         labels[first] = count;
-        bool edge = false;
+        bool deep = false;
         while (head < tail) {
             const uint32_t at = queue[head++];
             const uint32_t x = at % side;
             const uint32_t y = at / side;
-            edge = edge || x == 0u || y == 0u || x == side - 1u || y == side - 1u;
+            deep = deep || water[at] >= CLIMATE_SEA_WATER_DEEP;
             /* North, south, east and west only: water does not leak through a corner where two land cells meet. */
             const uint32_t next[4] = {
                 y + 1u < side ? at + side : at,
@@ -44,7 +44,7 @@ uint32_t climate_sea_classify(const uint8_t *water, uint32_t side, uint32_t *lab
             }
         }
         uint8_t component = CLIMATE_SEA_KIND_LAKE_SMALL;
-        if (edge || tail >= CLIMATE_SEA_AREA_MIN_CELLS) {
+        if (deep || tail >= CLIMATE_SEA_AREA_MIN_CELLS) {
             component = CLIMATE_SEA_KIND_SEA;
         } else if (tail >= CLIMATE_LAKE_LARGE_CELLS) {
             component = CLIMATE_SEA_KIND_LAKE_LARGE;

@@ -18,8 +18,9 @@ static const uint64_t CELL_SEED = 0x1234567890ABCDEFull;
 /* Pinned: an FNV-1a digest over the 16,384 cells of the 8 by 8 tiles round 0 for CELL_SEED, as run_terrain_density pins its
  * blocks. Any change to the height estimate, the sea rule, the distance transform, the ground samples or kappa moves it, on
  * purpose: say why here when it does. */
-/* Plan 004 phase 03, first pin: 59 sea cells and 3361 large-lake cells of the 16,384. */
-static const uint64_t CELL_DIGEST_PIN = 0xE2FA8EB862075544ull;
+/* Plan 004 phase 03, first pin 0xE2FA8EB862075544 with the window-edge sea rule: 59 sea cells, 3361 large lake. Moved by the
+ * sea-floor rule (the phase file's Issues found 17): 4055 sea cells, no large lake. */
+static const uint64_t CELL_DIGEST_PIN = 0x61708389BBF3789Bull;
 
 /* A job system and a climate, for one test. */
 typedef struct cell_rig_t {
@@ -318,6 +319,12 @@ static void cell_eight_by_eight(test_context_t *t, uint32_t workers, const terra
     cell_rig_stop(&rig);
 }
 
+/* Cell (cx, cy), each from -64 to 63, of what cell_eight_by_eight copied out. */
+static const climate_cell_t *cell_of_eight(const climate_cell_t *cells, int32_t cx, int32_t cy) {
+    const uint64_t tile = (uint64_t)((cy >> 4) + 4) * 8u + (uint64_t)((cx >> 4) + 4);
+    return &cells[tile * 256u + (uint64_t)(cy & 15) * 16u + (uint64_t)(cx & 15)];
+}
+
 TEST(one_and_sixteen_workers_give_the_same_bytes) {
     enum : uint64_t { EIGHT_CELLS = 64u * 256u };
     terrain_t terrain;
@@ -339,6 +346,25 @@ TEST(one_and_sixteen_workers_give_the_same_bytes) {
            digest, CELL_DIGEST_PIN, sea, lake, (uint64_t)EIGHT_CELLS, (libc_double_t)time_ns_to_ms(one_ns),
            (libc_double_t)time_ns_to_ms(many_ns));
     CHECK_EQ_U64(digest, CELL_DIGEST_PIN);
+    /* No steps at tile borders: a distance to one set of sea cells moves by at most a cell, 64 blocks, between neighbours.
+     * Two tiles that disagreed on what is sea would break that along their border (Issues found 16 and 17). */
+    uint64_t steps = 0u, border_steps = 0u;
+    for (int32_t cy = -64; cy < 64; cy++) {
+        for (int32_t cx = -64; cx < 64; cx++) {
+            const climate_cell_t *const here = cell_of_eight(many, cx, cy);
+            const climate_cell_t *const east = cx + 1 < 64 ? cell_of_eight(many, cx + 1, cy) : here;
+            const climate_cell_t *const north = cy + 1 < 64 ? cell_of_eight(many, cx, cy + 1) : here;
+            const bool step_east = fabsf(here->sea_distance - east->sea_distance) > 64.0f32 + 1e-3f32;
+            const bool step_north = fabsf(here->sea_distance - north->sea_distance) > 64.0f32 + 1e-3f32;
+            steps += (step_east ? 1u : 0u) + (step_north ? 1u : 0u);
+            border_steps +=
+                (step_east && ((cx + 1) & 15) == 0 ? 1u : 0u) + (step_north && ((cy + 1) & 15) == 0 ? 1u : 0u);
+        }
+    }
+    printf("neighbouring cells more than 64 blocks apart in sea distance: %" PRIu64 ", %" PRIu64
+           " of them at tile borders\n",
+           steps, border_steps);
+    CHECK_EQ_U64(steps, 0u);
     terrain_deinit(&terrain);
 }
 

@@ -33,8 +33,11 @@ static_assert(CLIMATE_WINDOW_CELLS == CLIMATE_WINDOW_TILES * CLIMATE_TILE_CELLS)
 static_assert(CLIMATE_GROUND_SAMPLES_SIDE * CLIMATE_GROUND_SAMPLE_STEP == CLIMATE_CELL_BLOCKS);
 static_assert(CLIMATE_READ_REACH_BLOCKS == CLIMATE_CELL_BLOCKS + CLIMATE_WARP_BLOCKS);
 
-static const float32_t CLIMATE_SEA_DISTANCE_MAX = 8192.0f32;       /* blocks: master plan 6.2 */
-static const float32_t CLIMATE_KAPPA_SCALE = 1500.0f32;            /* blocks: master plan 6.2 */
+static const float32_t CLIMATE_SEA_DISTANCE_MAX = 8192.0f32; /* blocks: master plan 6.2 */
+static const float32_t CLIMATE_KAPPA_SCALE = 1500.0f32;      /* blocks: master plan 6.2 */
+/* Phase 03, Issues found 17: water this deep somewhere makes its whole body sea. The terrain's sea bed falls below -30 from
+ * continentalness about -0.57 (DENSITY_KNOTS_CONTINENTAL); inland only the deepest hill hollows reach it. */
+static const float32_t CLIMATE_SEA_FLOOR_BLOCKS = -30.0f32;
 static const float32_t CLIMATE_WARP_FREQUENCY = 1.0f32 / 256.0f32; /* phase 03: cycles per block, first octave */
 
 /* One 64 by 64 block cell's climate normals: worked out once from the seed, never saved, never changed by play. Master plan

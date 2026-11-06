@@ -57,9 +57,12 @@ void climate_cell_build_tile(arena_t *arena, climate_ground_fn_t ground, const v
     const uint32_t samples_side = (uint32_t)CLIMATE_TILE_SAMPLES_SIDE;
     float32_t *const samples = arena_alloc_array(arena, samples_side * samples_side, sizeof(float32_t), 64u);
 
-    /* 2. Water is ground at or below sea level, MC_WORLD_Z_SEA = 0, at the cell's centre. */
+    /* 2. Water is ground at or below sea level, MC_WORLD_Z_SEA = 0, at the cell's centre; deep water is a sea floor's. */
     for (uint32_t i = 0u; i < count; i++) {
-        water[i] = window_heights[i] <= 0.0f32 ? 1u : 0u;
+        const float32_t h = window_heights[i];
+        water[i] = h <= CLIMATE_SEA_FLOOR_BLOCKS ? CLIMATE_SEA_WATER_DEEP
+                   : h <= 0.0f32                 ? CLIMATE_SEA_WATER_SHALLOW
+                                                 : CLIMATE_SEA_WATER_NONE;
     }
     /* 3. Which water is sea, in this window alone. */
     (void)climate_sea_classify(water, side, labels, queue, kind);

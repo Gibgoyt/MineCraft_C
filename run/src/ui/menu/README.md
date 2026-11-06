@@ -28,7 +28,7 @@
 | Select | The worlds with their seeds, Play Selected (or Enter), Create New World, Back. The wheel scrolls | To Main |
 | Create | World Name, Seed, Create (or Enter), Cancel. Typing goes to the name from the start | To Select |
 | Pause | Over the world's last picture, shaded: Resume, Settings, Quit to Title, and Leave Unsaved when offered | Resume |
-| Loading | Says which world, and does nothing | Nothing |
+| Loading | Says which world, and does nothing; with `loading_percent` above 0, a third line, "Working out the climate: N%" (plan 004 phase 03), which `ui_menu_open` sets back to 0 | Nothing |
 
 Moving between Main, Select and Create is this module's own. What it cannot do itself comes back from `ui_menu_frame` as a `ui_menu_action_t`, with the world to open in `chosen` for `UI_MENU_ACTION_PLAY`. Who opens what, and when, is `run/src/game/session/`.
 

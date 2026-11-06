@@ -79,9 +79,10 @@ TEST(components_are_labelled_as_the_worked_example_says) {
     for (uint32_t r = 0u; r < 6u; r++) {
         const uint32_t y = 5u - r;
         for (uint32_t x = 0u; x < 6u; x++) {
-            grid.water[y * 6u + x] = ROWS[r][x] == '.' ? 1u : 0u;
+            grid.water[y * 6u + x] = ROWS[r][x] == '.' ? CLIMATE_SEA_WATER_SHALLOW : CLIMATE_SEA_WATER_NONE;
         }
     }
+    grid.water[5u * 6u + 0u] = CLIMATE_SEA_WATER_DEEP; /* A reaches the sea floor at (0, 5) */
     const uint32_t count = climate_sea_classify(grid.water, 6u, grid.labels, grid.queue, grid.kind);
     CHECK_EQ_U64(count, 3u);
     uint32_t sizes[4] = {0u, 0u, 0u, 0u};
@@ -98,7 +99,7 @@ TEST(components_are_labelled_as_the_worked_example_says) {
     /* (4, 1) is B's and (3, 3) is C's: a diagonal does not join them. */
     CHECK_EQ_U64(grid.labels[1 * 6u + 4u], 2u);
     CHECK_EQ_U64(grid.kind[0], CLIMATE_SEA_KIND_SEA);
-    CHECK_EQ_U64(grid.kind[4], CLIMATE_SEA_KIND_SEA);
+    CHECK_EQ_U64(grid.kind[4], CLIMATE_SEA_KIND_LAKE_SMALL); /* B touches the edge, which counts for nothing */
     CHECK_EQ_U64(grid.kind[3 * 6u + 3u], CLIMATE_SEA_KIND_LAKE_SMALL);
     CHECK_EQ_U64(grid.kind[2 * 6u + 2u], CLIMATE_SEA_KIND_LAND);
     CHECK(sea_guards_hold(grid.labels, 36u) && sea_guards_hold(grid.queue, 36u));
@@ -112,13 +113,17 @@ static uint8_t sea_square_kind(test_context_t *t, uint32_t w, uint32_t h) {
     return grid.kind[41u * SEA_WINDOW + 41u];
 }
 
-TEST(water_touching_the_window_edge_is_sea) {
+/* Issues found 17: the rule in place of "touching the window's edge". */
+TEST(deep_water_makes_its_whole_body_sea_and_the_window_edge_does_not) {
     sea_grid_t grid = sea_grid(t, SEA_WINDOW);
-    sea_square(&grid, 0u, 0u, 5u, SEA_WINDOW); /* a band along the west edge: 1360 cells, far under 8192 */
-    sea_square(&grid, 100u, 100u, 5u, 5u);
+    sea_square(&grid, 0u, 0u, 5u, SEA_WINDOW); /* a shallow band along the west edge: 1360 cells, under 8192 */
+    sea_square(&grid, 100u, 100u, 5u, 5u);     /* 25 shallow cells, one of them deep */
+    grid.water[104u * SEA_WINDOW + 104u] = CLIMATE_SEA_WATER_DEEP;
+    sea_square(&grid, 200u, 200u, 5u, 5u); /* 25 shallow cells */
     (void)climate_sea_classify(grid.water, SEA_WINDOW, grid.labels, grid.queue, grid.kind);
-    CHECK_EQ_U64(grid.kind[100u * SEA_WINDOW + 2u], CLIMATE_SEA_KIND_SEA);
-    CHECK_EQ_U64(grid.kind[102u * SEA_WINDOW + 102u], CLIMATE_SEA_KIND_LAKE_SMALL);
+    CHECK_EQ_U64(grid.kind[100u * SEA_WINDOW + 2u], CLIMATE_SEA_KIND_LAKE_LARGE);
+    CHECK_EQ_U64(grid.kind[100u * SEA_WINDOW + 100u], CLIMATE_SEA_KIND_SEA);
+    CHECK_EQ_U64(grid.kind[202u * SEA_WINDOW + 202u], CLIMATE_SEA_KIND_LAKE_SMALL);
     CHECK_EQ_U64(grid.kind[100u * SEA_WINDOW + 50u], CLIMATE_SEA_KIND_LAND);
 }
 
@@ -141,10 +146,11 @@ TEST(a_big_enclosed_water_is_sea_and_a_small_one_a_lake) {
 
 TEST(a_channel_one_cell_wide_joins_a_lake_to_the_sea_and_a_diagonal_does_not) {
     sea_grid_t grid = sea_grid(t, SEA_WINDOW);
-    sea_square(&grid, 0u, 0u, 4u, SEA_WINDOW); /* the sea along the west edge */
-    sea_square(&grid, 60u, 40u, 30u, 30u);     /* a lake of 900 cells */
-    sea_square(&grid, 4u, 55u, 56u, 1u);       /* a channel one cell wide, from the sea to it */
-    sea_square(&grid, 150u, 150u, 30u, 30u);   /* another, which touches a third only at a corner */
+    sea_square(&grid, 0u, 0u, 4u, SEA_WINDOW); /* the sea along the west edge, deep at one cell */
+    grid.water[10u * SEA_WINDOW + 1u] = CLIMATE_SEA_WATER_DEEP;
+    sea_square(&grid, 60u, 40u, 30u, 30u);   /* a lake of 900 cells */
+    sea_square(&grid, 4u, 55u, 56u, 1u);     /* a channel one cell wide, from the sea to it */
+    sea_square(&grid, 150u, 150u, 30u, 30u); /* another, which touches a third only at a corner */
     sea_square(&grid, 180u, 180u, 30u, 30u);
     (void)climate_sea_classify(grid.water, SEA_WINDOW, grid.labels, grid.queue, grid.kind);
     CHECK_EQ_U64(grid.kind[50u * SEA_WINDOW + 70u], CLIMATE_SEA_KIND_SEA);

@@ -9,9 +9,16 @@
 /* What each cell of a grid is, once its water has been joined up. */
 enum : uint8_t {
     CLIMATE_SEA_KIND_LAND = 0u,
-    CLIMATE_SEA_KIND_SEA = 1u,        /* touches the grid's edge, or is at least CLIMATE_SEA_AREA_MIN_CELLS */
+    CLIMATE_SEA_KIND_SEA = 1u,        /* reaches the sea floor somewhere, or is at least CLIMATE_SEA_AREA_MIN_CELLS */
     CLIMATE_SEA_KIND_LAKE_LARGE = 2u, /* enclosed, and at least CLIMATE_LAKE_LARGE_CELLS */
     CLIMATE_SEA_KIND_LAKE_SMALL = 3u, /* enclosed and smaller: land for every climate purpose */
+};
+
+/* What a grid cell given to climate_sea_classify is. */
+enum : uint8_t {
+    CLIMATE_SEA_WATER_NONE = 0u,    /* land */
+    CLIMATE_SEA_WATER_SHALLOW = 1u, /* water, above the sea floor's depth */
+    CLIMATE_SEA_WATER_DEEP = 2u,    /* water as deep as a sea floor: its whole body is sea */
 };
 
 enum : uint32_t {
@@ -30,9 +37,10 @@ typedef struct climate_sea_scratch_t {
 } climate_sea_scratch_t;
 static_assert(sizeof(climate_sea_scratch_t) == 16);
 
-/* Labels the 4-connected water components of a side by side grid (water[i] != 0), row 0 first and x fastest, numbering
- * them 1, 2, ... in row-major order of their first cell; land is 0. Then says which are sea: a component that touches the
- * grid's edge, or has at least CLIMATE_SEA_AREA_MIN_CELLS cells. Out: kind[i], CLIMATE_SEA_KIND_*. labels and queue hold
+/* Labels the 4-connected water components of a side by side grid (water[i] != CLIMATE_SEA_WATER_NONE), row 0 first and x
+ * fastest, numbering them 1, 2, ... in row-major order of their first cell; land is 0. Then says which are sea: a component
+ * with a CLIMATE_SEA_WATER_DEEP cell, or with at least CLIMATE_SEA_AREA_MIN_CELLS cells. Touching the grid's edge counts
+ * for nothing (phase 03 file, Issues found 17). Out: kind[i], CLIMATE_SEA_KIND_*. labels and queue hold
  * side * side entries each, kind side * side bytes. Returns the number of components. Pure, allocates nothing. */
 uint32_t climate_sea_classify(const uint8_t *water, uint32_t side, uint32_t *labels, uint32_t *queue, uint8_t *kind);
 
