@@ -1059,4 +1059,24 @@ TEST(cells_under_a_high_s_centre_are_a_fifth_of_the_rate_over_1000_days) {
     sys_rig_stop(&rig);
 }
 
+TEST(a_cell_s_speed_is_capped_at_15_blocks_a_second) {
+    /* Issues found 19: real winds stay under 15, so the cap is held here on the pure velocity rule. */
+    float32_t v[2];
+    climate_systems_thunder_velocity(6.0f32, -8.0f32, v); /* 10 blocks a second: under the cap, times 1200 */
+    CHECK_NEAR(v[0], 7200.0f32, 1.0e-3f32);
+    CHECK_NEAR(v[1], -9600.0f32, 1.0e-3f32);
+    climate_systems_thunder_velocity(-12.0f32, 16.0f32, v); /* 20: capped to 15, direction kept */
+    CHECK_NEAR(v[0], -10800.0f32, 1.0e-2f32);
+    CHECK_NEAR(v[1], 14400.0f32, 1.0e-2f32);
+    CHECK_NEAR(sqrtf(v[0] * v[0] + v[1] * v[1]), 18000.0f32, 1.0e-2f32);
+    climate_systems_thunder_velocity(40.0f32, 0.0f32, v); /* a hurricane-strength wind */
+    CHECK_NEAR(v[0], 18000.0f32, 1.0e-3f32);
+    CHECK_NEAR(v[1], 0.0f32, 0.0f32);
+    climate_systems_thunder_velocity(15.0f32, 0.0f32, v); /* exactly the cap */
+    CHECK_NEAR(v[0], 18000.0f32, 1.0e-3f32);
+    climate_systems_thunder_velocity(0.0f32, 0.0f32, v); /* still air: no division by zero */
+    CHECK_NEAR(v[0], 0.0f32, 0.0f32);
+    CHECK_NEAR(v[1], 0.0f32, 0.0f32);
+}
+
 TEST_MAIN()

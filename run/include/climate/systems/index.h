@@ -351,6 +351,9 @@ float64_t climate_systems_uniform(uint64_t hash);
 uint32_t climate_systems_poisson(float64_t u, float64_t lambda, float64_t exp_minus_lambda, uint32_t cap);
 /* A hurricane's v_max from |A|: 33 |A| / 30 under 30 hPa, 33 + 37 (|A| - 30) / 60 from there. */
 float32_t climate_systems_hurricane_vmax(float32_t abs_hpa);
+/* A cell's velocity, blocks a game day, from the wind at its start (blocks a second): the wind times 1200, its direction
+ * kept and its speed capped at CLIMATE_THUNDER_SPEED_MAX (15 blocks a second, 18000 blocks a day). Pure. */
+void climate_systems_thunder_velocity(float32_t wind_x, float32_t wind_y, float32_t out[2]);
 
 /* The build's mask: starts empty over pages from arena. */
 void climate_systems_mask_start(climate_systems_mask_t *mask, const climate_t *climate, arena_t *arena,

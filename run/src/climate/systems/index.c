@@ -599,6 +599,18 @@ uint32_t climate_systems_square_spawns(const climate_t *climate, climate_systems
     return count;
 }
 
+void climate_systems_thunder_velocity(float32_t wind_x, float32_t wind_y, float32_t out[2]) {
+    const float64_t speed_max = (float64_t)CLIMATE_THUNDER_SPEED_MAX;
+    float64_t u = (float64_t)wind_x, v = (float64_t)wind_y;
+    const float64_t speed = sqrt(u * u + v * v);
+    if (speed > speed_max) {
+        u *= speed_max / speed;
+        v *= speed_max / speed;
+    }
+    out[0] = (float32_t)(u * (float64_t)CLIMATE_REAL_SECONDS_A_DAY);
+    out[1] = (float32_t)(v * (float64_t)CLIMATE_REAL_SECONDS_A_DAY);
+}
+
 uint32_t climate_systems_thunder_square(const climate_t *climate, const climate_systems_day_t *big, int32_t square_x,
                                         int32_t square_y, int64_t day, float32_t lambda_base, float32_t rain_scale,
                                         climate_thunder_t *out, uint32_t capacity, bool *air_ready, bool *overflowed) {
@@ -613,7 +625,6 @@ uint32_t climate_systems_thunder_square(const climate_t *climate, const climate_
     /* Noon of the start day: 6 hours after the day's 06:00 start. */
     const float32_t noon = (float32_t)(climate_systems_day_of_year((float64_t)day) +
                                        (12.0f64 - (float64_t)CLIMATE_DAY_START_HOUR) / SYSTEMS_HOURS_A_DAY);
-    const float64_t speed_max = (float64_t)CLIMATE_THUNDER_SPEED_MAX;
     uint32_t count = 0u;
     for (uint32_t process = 0u; process < 2u; process++) {
         /* Afternoon cells at lambda_base; front cells at 4 lambda_base, kept only on a front: (1 + 4 f_front). */
@@ -651,20 +662,13 @@ uint32_t climate_systems_thunder_square(const climate_t *climate, const climate_
                 *overflowed = true;
                 continue;
             }
-            float64_t u = (float64_t)air.wind[0], v = (float64_t)air.wind[1];
-            const float64_t speed = sqrt(u * u + v * v);
-            if (speed > speed_max) {
-                u *= speed_max / speed;
-                v *= speed_max / speed;
-            }
             climate_thunder_t *const cell = &out[count++];
             memset(cell, 0, sizeof(*cell));
             cell->spawn_day = t;
             cell->start_x = x;
             cell->start_y = y;
             cell->id = id;
-            cell->velocity[0] = (float32_t)(u * (float64_t)CLIMATE_REAL_SECONDS_A_DAY);
-            cell->velocity[1] = (float32_t)(v * (float64_t)CLIMATE_REAL_SECONDS_A_DAY);
+            climate_systems_thunder_velocity(air.wind[0], air.wind[1], cell->velocity);
             cell->radius = systems_range(CLIMATE_THUNDER_RADIUS, draws.u[DRAW_R]);
             cell->peak_hpa = systems_range(CLIMATE_THUNDER_HPA, draws.u[DRAW_A]);
             cell->life_days = (float32_t)((float64_t)systems_range(CLIMATE_THUNDER_LIFE_HOURS, draws.u[DRAW_L]) /
