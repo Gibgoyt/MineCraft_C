@@ -413,6 +413,137 @@ TEST(a_precompute_stepped_a_frame_at_a_time_gives_the_same_bytes_and_counts_up_t
     terrain_deinit(&terrain);
 }
 
+/* ---- A real tile, checked by brute force -------------------------------------------------------------------------- */
+
+/* The window of tile (tile_x, tile_y) worked out again without the climate's code: each cell centre one
+ * terrain_height_estimate call, the sea rule redone by a fill of its own, then every cell of the tile checked against a
+ * search over every sea and land cell of that window. Fails if the window is put together wrong, the rule or the
+ * transform drifts from what the phase file says, or the half cell, the cap or kappa are off, on real ground. */
+static void cell_brute_force_tile(test_context_t *t, const terrain_t *terrain, const climate_t *climate, int32_t tile_x,
+                                  int32_t tile_y, uint64_t *out_sea, uint64_t *out_land) {
+    enum : uint32_t { SIDE = (uint32_t)CLIMATE_WINDOW_CELLS, COUNT = SIDE * SIDE, TILE = 16u };
+    float32_t *const heights = test_alloc(t, COUNT * sizeof(float32_t));
+    uint32_t *const labels = test_alloc(t, COUNT * sizeof(uint32_t));
+    uint32_t *const queue = test_alloc(t, COUNT * sizeof(uint32_t));
+    uint8_t *const sea = test_alloc(t, COUNT); /* the kind of each cell, as below */
+    const int64_t west = ((int64_t)tile_x - 8) * 1024 + 32;
+    const int64_t south = ((int64_t)tile_y - 8) * 1024 + 32;
+    for (uint32_t j = 0u; j < SIDE; j++) {
+        for (uint32_t i = 0u; i < SIDE; i++) {
+            heights[j * SIDE + i] =
+                terrain_height_estimate(terrain, (int32_t)(west + 64 * (int64_t)i), (int32_t)(south + 64 * (int64_t)j));
+        }
+    }
+    /* Water at or below 0; a body is sea if it has a cell at or below -30 or 8192 cells (Issues found 17). */
+    memset(labels, 0, COUNT * sizeof(uint32_t));
+    memset(sea, 0, COUNT);
+    uint32_t label = 0u;
+    for (uint32_t first = 0u; first < COUNT; first++) {
+        if (heights[first] > 0.0f32 || labels[first] != 0u) {
+            continue;
+        }
+        label++;
+        uint32_t head = 0u, tail = 0u;
+        queue[tail++] = first;
+        labels[first] = label;
+        bool deep = false;
+        while (head < tail) {
+            const uint32_t at = queue[head++];
+            deep = deep || heights[at] <= -30.0f32;
+            const int64_t x = (int64_t)(at % SIDE), y = (int64_t)(at / SIDE);
+            const int64_t nx[4] = {x + 1, x - 1, x, x};
+            const int64_t ny[4] = {y, y, y + 1, y - 1};
+            for (uint32_t n = 0u; n < 4u; n++) {
+                if (nx[n] < 0 || ny[n] < 0 || nx[n] >= (int64_t)SIDE || ny[n] >= (int64_t)SIDE) {
+                    continue;
+                }
+                const uint32_t to = (uint32_t)(ny[n] * (int64_t)SIDE + nx[n]);
+                if (heights[to] <= 0.0f32 && labels[to] == 0u) {
+                    labels[to] = label;
+                    queue[tail++] = to;
+                }
+            }
+        }
+        /* 1 sea, 2 a large lake (489 cells, 2 km²), 3 a small lake, which counts as land. */
+        const uint8_t kind = (deep || tail >= 8192u) ? 1u : (tail >= 489u ? 2u : 3u);
+        for (uint32_t k = 0u; k < tail; k++) {
+            sea[queue[k]] = kind;
+        }
+    }
+    uint64_t wrong = 0u, sea_cells = 0u, land_cells = 0u;
+    for (uint32_t iy = 0u; iy < TILE; iy++) {
+        for (uint32_t ix = 0u; ix < TILE; ix++) {
+            const uint32_t at = (128u + iy) * SIDE + 128u + ix;
+            /* The nearest cell of the other kind: sea for a non-sea cell; land (land or small lake) for a sea cell. */
+            uint64_t best = UINT64_MAX;
+            for (uint32_t k = 0u; k < COUNT; k++) {
+                const bool target = sea[at] == 1u ? (sea[k] == 0u || sea[k] == 3u) : sea[k] == 1u;
+                if (!target) {
+                    continue;
+                }
+                const int64_t dx = (int64_t)(k % SIDE) - (int64_t)(at % SIDE);
+                const int64_t dy = (int64_t)(k / SIDE) - (int64_t)(at / SIDE);
+                const uint64_t d2 = (uint64_t)(dx * dx + dy * dy);
+                best = d2 < best ? d2 : best;
+            }
+            float64_t blocks = best == UINT64_MAX ? 8192.0f64 : 64.0f64 * sqrt((float64_t)best) - 32.0f64;
+            blocks = blocks < 0.0f64 ? 0.0f64 : (blocks > 8192.0f64 ? 8192.0f64 : blocks);
+            climate_cell_t cell;
+            memset(&cell, 0, sizeof(cell));
+            const int64_t cx = (int64_t)tile_x * 16 + ix, cy = (int64_t)tile_y * 16 + iy;
+            REQUIRE(climate_cell_get(climate, (int32_t)(cx * 64 + 32), (int32_t)(cy * 64 + 32), &cell));
+            float32_t z_sum = 0.0f32;
+            for (int64_t sy = 0; sy < 4; sy++) {
+                for (int64_t sx = 0; sx < 4; sx++) {
+                    z_sum += terrain_height_estimate(terrain, (int32_t)(cx * 64 + 8 + 16 * sx),
+                                                     (int32_t)(cy * 64 + 8 + 16 * sy));
+                }
+            }
+            bool ok = cell.z_ground == z_sum / 16.0f32;
+            ok = ok && cell.lat_deg == (float32_t)climate_latitude_deg((float64_t)(cy * 64 + 32));
+            if (sea[at] == 1u) {
+                sea_cells++;
+                ok = ok && (cell.flags & CLIMATE_CELL_SEA) != 0u && cell.sea_distance == 0.0f32 && cell.kappa == 0.0f32;
+                ok = ok && fabs((float64_t)cell.land_distance - blocks) < 1e-3f64;
+            } else {
+                land_cells++;
+                const float64_t kappa = 1.0f64 - exp(-blocks / 1500.0f64);
+                static const uint8_t FLAGS[4] = {0u, 0u, CLIMATE_CELL_LAKE, CLIMATE_CELL_LAKE_SMALL};
+                ok = ok && cell.flags == FLAGS[sea[at]];
+                ok = ok && fabs((float64_t)cell.sea_distance - blocks) < 1e-3f64;
+                ok = ok && fabs((float64_t)cell.kappa - kappa) < 1e-5f64;
+                const float64_t length = hypot((float64_t)cell.sea_direction[0], (float64_t)cell.sea_direction[1]);
+                ok = ok && (best == UINT64_MAX ? length == 0.0f64 : fabs(length - 1.0f64) < 1e-5f64);
+            }
+            wrong += ok ? 0u : 1u;
+        }
+    }
+    CHECK_EQ_U64(wrong, 0u);
+    *out_sea += sea_cells;
+    *out_land += land_cells;
+}
+
+TEST(a_real_tile_s_cells_match_a_brute_force_over_its_window) {
+    cell_rig_t rig;
+    REQUIRE(cell_rig_start(t, &rig, MC_THREADS_WORKERS));
+    terrain_t terrain;
+    REQUIRE(terrain_init(&terrain, CELL_SEED));
+    REQUIRE(climate_open(rig.climate, &terrain));
+    static const int32_t TILES[3][2] = {{0, 0}, {-2, 1}, {3, -4}};
+    uint64_t sea = 0u, land = 0u;
+    for (uint32_t k = 0u; k < 3u; k++) {
+        climate_prepare_tile(rig.climate, rig.job, TILES[k][0], TILES[k][1]);
+        cell_brute_force_tile(t, &terrain, rig.climate, TILES[k][0], TILES[k][1], &sea, &land);
+    }
+    printf("brute force over 3 real tiles: %" PRIu64 " sea and %" PRIu64 " other cells, all as the cells say\n", sea,
+           land);
+    /* Both kinds were met, so both distances were checked. */
+    CHECK(sea > 0u);
+    CHECK(land > 0u);
+    cell_rig_stop(&rig);
+    terrain_deinit(&terrain);
+}
+
 TEST(negative_coordinates_find_the_right_cell) {
     cell_rig_t rig;
     REQUIRE(cell_rig_start(t, &rig, MC_THREADS_WORKERS));
