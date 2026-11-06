@@ -1,16 +1,17 @@
 # run/src/climate/layer
 
-**Purpose:** climate map layers to XRGB8888 pixels. Phase 03's four: sea distance, continentality, sea and lakes, and latitude lines; phase 04's three: currents, pressure and wind, each for a day of the year; phase 05's ten: temperature on the day, the yearly mean, the warmest and the coldest month, rain over the year and on the day, hurricane season, monsoon, climate class and snow balance. The Atlas (plan 004 phase 09) and the map tools (`bench/climate --pictures`) draw with this same code.
+**Purpose:** climate map layers to XRGB8888 pixels. Phase 03's four: sea distance, continentality, sea and lakes, and latitude lines; phase 04's three: currents, pressure and wind, each for a day of the year; phase 05's ten: temperature on the day, the yearly mean, the warmest and the coldest month, rain over the year and on the day, hurricane season, monsoon, climate class and snow balance; phase 06's five "now" layers: pressure now with H and L, weather systems with their tracks and fronts, rain radar, thunderstorm cells and wind now. The Atlas (plan 004 phase 09) and the map tools (`bench/climate --pictures`) draw with this same code.
 **Tier:** Arena by depth. It allocates nothing: the caller lends the pixels.
 **Owns:** nothing.
 **Lifetime:** none.
-**Threads:** any; it only reads the climate, through `climate_sample_at`, `climate_cell_get`, `climate_air_at` and `climate_normals_at`.
+**Threads:** any; it only reads the climate, through `climate_sample_at`, `climate_cell_get`, `climate_air_at` and `climate_normals_at`, and a day list of weather systems.
 **Public functions:**
 
 - `climate_layer_draw`: `width` by `height` pixels, rows `pitch` bytes apart, pixel (0, 0) at the north-west corner and `blocks_per_pixel` apart; each pixel the warped, blended sample at its centre. Grey (`0x808080`) where a tile is not built. `CLIMATE_LAYER_LATITUDE` changes only its lines' pixels, so it is drawn over another layer.
 - `climate_layer_colour`: one sample's colour in a layer of phase 03's.
 - `climate_layer_pressure_colour`, `climate_layer_wind_colour`: phase 04's ramps. `climate_layer_pressure_finish`: the pressure layer's second pass, from hPa in each pixel to colours and lines.
 - `climate_layer_temperature_colour`, `climate_layer_rain_colour`, `climate_layer_normals_colour` (phase 05): the ramps, and one place's `climate_normals_at_t` in a phase 05 layer.
+- `climate_layer_draw_now`, `climate_layer_rain_now`, `climate_layer_radar_colour` (phase 06): a now layer at a moment from a day list; the radar's rain and colour.
 
 **Colours:**
 
@@ -28,11 +29,18 @@
 | Hurricane season (phase 05) | The sea-and-lakes layer underneath. Sea with `s_hur > 0` on the day from `0x603030` (just above 0) to `0xFF2020` (1); hurricane-coast land in season on the day `0xFF9040` |
 | Monsoon (phase 05) | The sea-and-lakes layer underneath. Land with the monsoon flag `0x208080`; monsoon today `0x30E0E0` |
 | Climate class (phase 05) | Ice `0xFFFFFF`, Tundra `0xB0B8C0`, Desert `0xF0D080`, Steppe `0xD0B060`, Rainforest `0x006020`, Monsoon `0x208040`, Savanna `0xA0C040`, Mediterranean `0xE0A040`, Temperate `0x60B060`, Continental `0x6080C0`, Boreal `0x305060`; the sea (no class) as the sea-and-lakes layer |
+| Pressure now (phase 06) | `climate_layer_draw_now`: phase 04's `p_belt + Δp_heat` on the moment's day plus every weather system's bell, coloured and lined as the pressure layer; a 5 by 7 pixel **H** (`0x2040C0`) at each alive high's centre and **L** (`0xC02020`) at each low's and hurricane's, from bitmaps here (the climate cannot use `ui/font`) |
+| Systems (phase 06) | The sea-and-lakes layer underneath. Each alive big system a 1-pixel circle at R: hurricanes red `0xFF3030`, lows orange `0xFF9020`, highs blue `0x3080FF`; a hurricane's eye a filled disc at `r_m` in its red; the track behind it a white `0xFFFFFF` line from its spawn to now; a low's cold front a blue `0x2050FF` line with a 3-pixel tooth every 16 pixels on its eastern side. Over grey: the circle and track only |
+| Rain radar (phase 06) | The background's expected rain, the normal times `1 - f_sys`, plus the systems' rain, times the high's cut, mm an hour, in steps: from 0.1 `0x80C0FF`, 1 `0x40A040`, 4 `0xE0E040`, 10 `0xF08020`, 25 `0xE02020`, 50 `0xC020C0`; under 0.1 the sea-and-lakes layer shows |
+| Thunder (phase 06) | The sea-and-lakes layer underneath. Each alive cell a filled disc at R in `0xC0C0FF` with a yellow `0xFFE020` 3-segment zigzag at its centre |
+| Wind now (phase 06) | Phase 04's wind on the moment's day plus each system's circling wind, coloured and arrowed as the wind layer |
 | Snow balance (phase 05) | Land at or above its `snow_balance_z`: white. Below: grey from `0xA0A0A0` (within 50 blocks) to `0x404040` (2000 or more below). Sea and large lakes: the sea-and-lakes layer |
+
+Phase 06's five "now" layers are drawn by `climate_layer_draw_now` at a moment `t` from a day list (`run/src/climate/systems/`) built for `floor(t)` round the picture. Grey where a tile is not built, and in every now layer a big system over grey is still drawn as its circle (in the systems layer its track too), so a storm shows before it reaches explored land (master plan 2.4): a mark drawn "over grey only" or "off grey only" looks at the pixel before writing. `climate_layer_rain_now` is the radar's number and `climate_layer_radar_colour` its colour. Names are not drawn: the bench writes them beside the frames, and the Atlas draws them with `ui/font`.
 
 Phase 04's and phase 05's layers take `climate_layer_draw`'s `day`, the Atlas's day slider; phase 05's year layers ignore it. Pixel (0, 0) is the north-west corner, so a vector's `v` is drawn upward. Arrows are integer line walks (Bresenham's), clipped to the picture, with no allocation. The pressure layer keeps each pixel's hPa as a `float32_t` in the picture itself for its second pass (`climate_layer_pressure_finish`), which colours from the south-east corner back so each pixel's north and west neighbours are still numbers.
 
 A latitude line's row is each row whose y range, `[north - (row + 1) b, north - row b)`, holds a y where φ is the line's value, for every repeat of the 153,191-block pattern in view: φ is a triangle wave, so the value is met at `L Y / 90 + 4 Y k` and `2 Y - L Y / 90 + 4 Y k`.
 
 **May be called by:** `bench/climate`, and later `ui` (the Atlas).
-**Depends on:** its parent `run/src/climate/`, `types`, libm.
+**Depends on:** its parent `run/src/climate/`, from phase 06 climate/systems (the day list, `climate_system_state_at`) and climate/systems/field (pressure, wind, rain, fronts, the high's cut, `f_sys`), `types`, libm.

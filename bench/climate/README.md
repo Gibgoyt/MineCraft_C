@@ -1,6 +1,6 @@
 # bench/climate
 
-**Purpose:** what a climate tile costs (plan 004 phase 03's target, which phase 04 keeps: one cold tile on one worker under 100 ms), and the phase gates' pictures of the climate layers.
+**Purpose:** what a climate tile costs (plan 004 phase 03's target, which phase 04 keeps: one cold tile on one worker under 100 ms), the phase gates' pictures of the climate layers, and from phase 06 what the list of weather systems near a point costs (target under 2 ms) and the frames of a hurricane season.
 **Tier:** none; benchmarks are not tiered.
 **Owns:** the climate's region through its `climate_t`, and one heap region for the pictures, both released before it exits.
 **Lifetime:** Process.
@@ -11,8 +11,11 @@
 - `tools/test-or-build.sh timeout 300 build/release/bin/bench_climate --pictures /tmp/mc_c_climate 2198175988018515243`: `sea_distance.png`, `continentality.png`, `water.png` and `latitude.png` (latitude drawn over water), 1024 by 1024 pixels at 16 blocks a pixel, 16 km a side round (0, 0), with `display_png_encode` and the same `climate_layer_draw` the Atlas will use. It draws no terrain: it is not a second map tool. It also prints the shares of land, sea, large lake and small lake cells. From phase 04 also `currents.png` (with the latitude lines over it), and `pressure_dayDDD.png` and `wind_dayDDD.png` for days 15, 105, 196 and 288, the same 16 km. From phase 05 also `temperature_mean.png`, `temperature_warmest.png`, `temperature_coldest.png`, `rain_year.png`, `climate_class.png`, `snow_balance.png`, `monsoon.png` (on the first day listed), and for each day of `--days d,d,...` (default one a month: 15, 46, 76, 107, 137, 168, 198, 229, 259, 290, 320, 351) `temperature_day_dDDD.png`, `rain_day_dDDD.png`, `hurricane_season_dDDD.png` and `monsoon_dDDD.png`: stepping through a folder of them is the gate's day slider.
 - `tools/test-or-build.sh timeout 300 build/release/bin/bench_climate --synthetic /tmp/mc_c_climate_synthetic`: phase 04's two synthetic continents, 4 km squares of land at 30° S (`south30_*.png`) and 50° N (`north50_*.png`), each drawn 8 km a side at 8 blocks a pixel: currents, and pressure and wind on the four days. They show the master plan's table with no real coast's noise. From phase 05 also the South Africa sketch at 25° S (`south_africa_*.png`), phase 05's layers 16 km round its middle at 16 blocks a pixel; `--days` sets its day layers' days.
 
+- `tools/test-or-build.sh timeout 300 build/release/bin/bench_climate --systems` (phase 06): the big systems near a point on seed `0x1234567890ABCDEF`. **Warm** (mask pages cached): 100 places within 20 km of spawn and days across ten years, each built once to warm it and then best of 3; exit 1 if the median is over 2 ms (master plan 7.3). **Cold**: a fresh climate each time, 20 places, reported. **Cells near the player** at 2 km, every tile built, 20 days, reported. Prints, per call, the square-days hashed, candidates, kept, track steps, mask reads and pages fetched, and systems listed.
+- `tools/test-or-build.sh timeout 900 build/release/bin/bench_climate --season /tmp/mc_c_season 2198175988018515243 150 300 0.5` (phase 06, the gate): the 64 by 64 km view, its middle on y = 7446 (17.5° N) and within 100 km of spawn along x, with the most sea on the coarse mask between 10° and 25° N (it prints that band's sea and open-sea shares). The middle 63 km's tiles are built (the keep square's limit). Every step from the first day to the last: `systems_dD.png`, `pressure_now_dD.png`, `rain_radar_dD.png` and `thunder_dD.png`, 1024 by 1024 at 64 blocks a pixel, drawn by `climate_layer_draw_now` in 128 by 128 pixel jobs on 16 workers, each with only the cells that can reach it. Big systems come from one day list round the view; cells from 4 by 4 lists of 8 km each, merged by id (a list's cells reach at most 8 km). It prints each day's count of hurricanes, lows, highs and cells near the view, and writes `systems.txt`: every hurricane seen, its name, whether it formed in the view, spawn day and place, latitude, peak, deepest, the day it died and the day it left the view. Stored PNGs: 3 MB each, so the full season is 1204 frames and 3.6 GB.
+
 **May be called by:** people.
-**Depends on:** `climate` and its `layer/` and `air/`, `terrain`, `job`, `thread`, `heap`, `time`, `display/headless/png`.
+**Depends on:** `climate` and its `layer/`, `air/` and from phase 06 `systems/` with its `field/` and `name/`, `terrain`, `job`, `thread`, `heap`, `time`, `display/headless/png`.
 
 Only a release build's numbers mean anything: debug is at `-O0`.
 
@@ -25,6 +28,19 @@ Only a release build's numbers mean anything: debug is at `-O0`.
 ## Results
 
 Appended as they are taken, newest first.
+
+### 2026-11-06, plan 004 phase 06: the weather systems near a point in 0.36 ms
+
+Release build, through the build lock, seed `0x1234567890ABCDEF`. `--systems` exit status 0.
+
+| Measure | Result |
+|---|---|
+| Big systems near a point, warm, 100 places, best of 3 | median 0.357 ms, slowest 0.967 ms (target 2) |
+| Big systems, cold (a fresh climate), 20 places | median 33.8 ms |
+| Everything near the player with cells at 2 km, 20 days | median 23.8 ms, 9.8 cells a list |
+| Per call | 2191 square-days hashed, 135.6 candidates, 25.4 kept, 587 track steps, 599 mask reads, 1.08 systems listed |
+
+`--season /tmp/mc_c_season 2198175988018515243 150 300 0.5`: 1204 frames in 203 s, view round (-67232, 7446). Its 10° to 25° N band is 32% sea but 1% open sea, so no hurricane formed or passed; about 10.8 lows, 2.0 highs and 465 cells near the view a day (the phase 06 file, Issues found 14).
 
 ### 2026-11-06, plan 004 phase 05: temperature, rain and seasons cost about 2.3 ms a tile
 

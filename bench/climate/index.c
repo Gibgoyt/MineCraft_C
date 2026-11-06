@@ -5,6 +5,9 @@
 #include "climate/layer/index.h"
 #include "climate/rain/index.h"
 #include "climate/season/index.h"
+#include "climate/systems/field/index.h"
+#include "climate/systems/index.h"
+#include "climate/systems/name/index.h"
 #include "display/headless/png/index.h"
 #include "heap/index.h"
 #include "job/index.h"
@@ -14,6 +17,7 @@
 #include "time/index.h"
 
 #include <errno.h>
+#include <math.h>
 #include <inttypes.h>
 #include <stdatomic.h>
 #include <stdio.h>
@@ -561,6 +565,484 @@ static int32_t bench_synthetic(climate_t *climate, const thread_topology_t *topo
     return ok ? 0 : 2;
 }
 
+/* ---- Weather systems: plan 004 phase 06 ---------------------------------------------------------------------------- */
+
+enum : uint32_t {
+    BENCH_SYSTEM_PLACES = 100u,
+    BENCH_SYSTEM_COLD = 20u,      /* cold lists: a fresh climate for each */
+    BENCH_SYSTEM_CELL_DAYS = 20u, /* lists with cells near the player */
+    BENCH_SEASON_BLOCK = 128u,    /* a frame is drawn in jobs of 128 by 128 pixels */
+    BENCH_SEASON_LISTS = 4u,      /* cells come from 4 by 4 lists over the view, each at most 8 km round */
+    BENCH_SEASON_CELLS_MAX = 131072u,
+    BENCH_SEASON_HURRICANES_MAX = 4096u,
+};
+static const float64_t BENCH_SYSTEMS_TARGET_MS = 2.0f64; /* master plan 7.3: the list near a point */
+static const uint64_t BENCH_SYSTEMS_ARENA_BYTES = 16ull << 20;
+static const int32_t BENCH_SEASON_STEP = 64;              /* blocks a pixel: 1024 pixels are 64 km */
+static const float64_t BENCH_SEASON_SEARCH = 100000.0f64; /* the view's middle within 100 km of spawn */
+
+static void bench_systems_ground(const void *borrowed_context, int32_t origin_x, int32_t origin_y, int32_t step,
+                                 uint32_t count_x, uint32_t count_y, float32_t *heights) {
+    terrain_height_estimate_area(borrowed_context, origin_x, origin_y, step, count_x, count_y, heights);
+}
+
+static int32_t bench_compare_ms(const void *a, const void *b) {
+    const float64_t x = *(const float64_t *)a, y = *(const float64_t *)b;
+    return x < y ? -1 : (x > y ? 1 : 0);
+}
+
+static float64_t bench_median(float64_t *values, uint32_t count) {
+    qsort(values, count, sizeof(float64_t), bench_compare_ms);
+    return values[count / 2u];
+}
+
+/* --systems' measurements, in an open climate: warm lists, cold lists (a fresh climate each), cells near the player. */
+static int32_t bench_systems_measure(climate_t *climate, job_system_t *system, const terrain_t *terrain, arena_t *arena,
+                                     float64_t *warm, float64_t *cold) {
+    int32_t status = 0;
+    climate_systems_stats_t total = {0};
+    uint64_t systems_found = 0u;
+    for (uint32_t p = 0u; p < BENCH_SYSTEM_PLACES; p++) {
+        /* Places within 20 km of spawn, days across ten years. */
+        const float64_t x = -20000.0f64 + 400.0f64 * (float64_t)p, y = 20000.0f64 - 397.0f64 * (float64_t)p;
+        const int64_t d = (int64_t)(p * 37u % 3650u);
+        climate_systems_day_t day;
+        arena_reset(arena);
+        if (!climate_systems_day_build(climate, arena, x, y, 0.0f32, 0.0f32, d, CLIMATE_SYSTEMS_BIG, &day)) {
+            return 2;
+        }
+        float64_t best = 1.0e30f64;
+        for (uint32_t r = 0u; r < BENCH_ROUNDS; r++) {
+            climate_systems_stats_t stats = {0};
+            arena_reset(arena);
+            const int64_t started = time_now_ns();
+            (void)climate_systems_day_build_stats(climate, arena, x, y, 0.0f32, 0.0f32, d, CLIMATE_SYSTEMS_BIG, &day,
+                                                  &stats);
+            const float64_t ms = time_ns_to_ms(time_now_ns() - started);
+            best = ms < best ? ms : best;
+            if (r == 0u) {
+                total.hashed += stats.hashed;
+                total.candidates += stats.candidates;
+                total.kept += stats.kept;
+                total.track_steps += stats.track_steps;
+                total.mask_reads += stats.mask_reads;
+                total.mask_pages += stats.mask_pages;
+                systems_found += day.system_count;
+            }
+        }
+        warm[p] = best;
+    }
+    const float64_t places = (float64_t)BENCH_SYSTEM_PLACES;
+    printf(
+        "per call: %.0f square-days hashed, %.1f candidates, %.1f kept, %.0f track steps, %.0f mask reads, %.1f mask "
+        "pages fetched, %.2f systems listed\n",
+        (libc_double_t)((float64_t)total.hashed / places), (libc_double_t)((float64_t)total.candidates / places),
+        (libc_double_t)((float64_t)total.kept / places), (libc_double_t)((float64_t)total.track_steps / places),
+        (libc_double_t)((float64_t)total.mask_reads / places), (libc_double_t)((float64_t)total.mask_pages / places),
+        (libc_double_t)((float64_t)systems_found / places));
+    const float64_t warm_median = bench_median(warm, BENCH_SYSTEM_PLACES);
+    printf("big systems near a point, warm (mask pages cached), best of %u: median %.3f ms, slowest %.3f ms; target "
+           "%.1f ms: %s\n",
+           BENCH_ROUNDS, (libc_double_t)warm_median, (libc_double_t)warm[BENCH_SYSTEM_PLACES - 1u],
+           (libc_double_t)BENCH_SYSTEMS_TARGET_MS, warm_median <= BENCH_SYSTEMS_TARGET_MS ? "met" : "MISSED");
+    status = warm_median <= BENCH_SYSTEMS_TARGET_MS ? 0 : 1;
+    for (uint32_t p = 0u; p < BENCH_SYSTEM_COLD; p++) {
+        climate_close(climate, system);
+        if (!climate_open_ground(climate, BENCH_SEED, bench_systems_ground, terrain)) {
+            return 2;
+        }
+        const float64_t x = -20000.0f64 + 2000.0f64 * (float64_t)p, y = 20000.0f64 - 1985.0f64 * (float64_t)p;
+        climate_systems_day_t day;
+        arena_reset(arena);
+        const int64_t started = time_now_ns();
+        (void)climate_systems_day_build(climate, arena, x, y, 0.0f32, 0.0f32, (int64_t)(p * 183u), CLIMATE_SYSTEMS_BIG,
+                                        &day);
+        cold[p] = time_ns_to_ms(time_now_ns() - started);
+    }
+    printf("big systems near a point, cold (a fresh climate, every mask page built or read from the ground): median "
+           "%.3f ms of %u\n",
+           (libc_double_t)bench_median(cold, BENCH_SYSTEM_COLD), BENCH_SYSTEM_COLD);
+    /* Cells near the player at 2 km, every tile they need built. */
+    climate_prepare_area(climate, system, -8000, -8000, 8000, 8000, nullptr, nullptr);
+    float64_t cells_ms[BENCH_SYSTEM_CELL_DAYS];
+    uint64_t cells_found = 0u;
+    for (uint32_t k = 0u; k < BENCH_SYSTEM_CELL_DAYS; k++) {
+        climate_systems_day_t day;
+        arena_reset(arena);
+        const int64_t started = time_now_ns();
+        (void)climate_systems_day_build(climate, arena, 0.0f64, 0.0f64, 0.0f32, 2048.0f32, (int64_t)(150u + 9u * k),
+                                        CLIMATE_SYSTEMS_ALL, &day);
+        cells_ms[k] = time_ns_to_ms(time_now_ns() - started);
+        cells_found += day.thunder_count;
+    }
+    printf("everything near the player with cells at 2 km: median %.3f ms, %.1f cells a list\n",
+           (libc_double_t)bench_median(cells_ms, BENCH_SYSTEM_CELL_DAYS),
+           (libc_double_t)((float64_t)cells_found / (float64_t)BENCH_SYSTEM_CELL_DAYS));
+    return status;
+}
+
+/* --systems: the big systems near a point, warm (mask pages cached) and cold (a fresh climate), and cells near the player.
+ * Exit 1 if the warm median is over 2 ms. */
+static int32_t bench_systems(climate_t *climate, const thread_topology_t *topology) {
+    terrain_t terrain;
+    if (!terrain_init(&terrain, BENCH_SEED)) {
+        return 2;
+    }
+    job_system_t system;
+    if (!job_init_count(&system, topology, BENCH_WORKERS)) {
+        terrain_deinit(&terrain);
+        return 2;
+    }
+    heap_region_t memory = {0};
+    if (!heap_reserve(BENCH_SYSTEMS_ARENA_BYTES + 2u * BENCH_SYSTEM_PLACES * sizeof(float64_t), &memory)) {
+        job_deinit(&system);
+        terrain_deinit(&terrain);
+        return 2;
+    }
+    arena_t arena;
+    arena_init(&arena, "bench_systems", memory.owned_base, BENCH_SYSTEMS_ARENA_BYTES);
+    float64_t *const warm = (float64_t *)(void *)(memory.owned_base + BENCH_SYSTEMS_ARENA_BYTES);
+    int32_t status = 2;
+    if (climate_open_ground(climate, BENCH_SEED, bench_systems_ground, &terrain)) {
+        status = bench_systems_measure(climate, &system, &terrain, &arena, warm, warm + BENCH_SYSTEM_PLACES);
+    }
+    climate_close(climate, &system);
+    arena_deinit(&arena);
+    heap_release(&memory);
+    job_deinit(&system);
+    terrain_deinit(&terrain);
+    return status;
+}
+
+/* One 128 by 128 pixel block of a frame, on a worker, with only the cells that can reach it. */
+typedef struct bench_block_t {
+    const climate_t *borrowed_climate;         /* 0 */
+    const climate_systems_day_t *borrowed_day; /* 8: big systems and every cell of the view */
+    uint8_t *borrowed_pixels;                  /* 16: the frame */
+    float64_t t;                               /* 24 */
+    int32_t west_x;                            /* 32: the frame's */
+    int32_t north_y;                           /* 36 */
+    uint32_t column;                           /* 40: the block's first pixel */
+    uint32_t row;                              /* 44 */
+    uint32_t layer;                            /* 48 */
+    uint8_t _pad0[4];                          /* 52 */
+} bench_block_t;
+static_assert(sizeof(bench_block_t) == 56);
+
+static void bench_block_job(job_worker_t *worker, void *borrowed_argument) {
+    const bench_block_t *const block = borrowed_argument;
+    const climate_systems_day_t *const all = block->borrowed_day;
+    climate_systems_day_t view = *all;
+    climate_thunder_t *const near =
+        arena_alloc_array(&worker->arena_job, all->thunder_count > 0u ? all->thunder_count : 1u,
+                          sizeof(climate_thunder_t), alignof(climate_thunder_t));
+    const float64_t step = (float64_t)BENCH_SEASON_STEP, side = (float64_t)BENCH_SEASON_BLOCK * step;
+    const float64_t west = (float64_t)block->west_x + (float64_t)block->column * step;
+    const float64_t north = (float64_t)block->north_y - (float64_t)block->row * step;
+    /* A cell reaches the block if its start is within its reach of it: 4 hours at 15 blocks a second, and its radius. */
+    const float64_t margin = climate_systems_reach(CLIMATE_SYSTEM_THUNDER);
+    uint32_t count = 0u;
+    for (uint32_t i = 0u; i < all->thunder_count; i++) {
+        const climate_thunder_t *const cell = &all->borrowed_thunder[i];
+        if (cell->start_x >= west - margin && cell->start_x <= west + side + margin &&
+            cell->start_y <= north + margin && cell->start_y >= north - side - margin) {
+            near[count++] = *cell;
+        }
+    }
+    view.borrowed_thunder = near;
+    view.thunder_count = count;
+    climate_layer_draw_now(block->borrowed_climate, &view, (climate_layer_t)block->layer, block->t, (int32_t)west,
+                           (int32_t)north, BENCH_SEASON_STEP, BENCH_SEASON_BLOCK, BENCH_SEASON_BLOCK,
+                           block->borrowed_pixels + (uint64_t)block->row * BENCH_PICTURE_SIDE * 4u +
+                               (uint64_t)block->column * 4u,
+                           BENCH_PICTURE_SIDE * 4u);
+}
+
+/* What the season has seen of each hurricane, for systems.txt. */
+typedef struct bench_hurricane_t {
+    float64_t spawn_day; /* 0 */
+    float64_t start_x;   /* 8 */
+    float64_t start_y;   /* 16 */
+    float64_t end_day;   /* 24: its track's last sample */
+    float64_t left_day;  /* 32: the first sample outside the view after one inside it; -1 if never */
+    uint64_t id;         /* 40 */
+    float32_t peak_hpa;  /* 48 */
+    float32_t deepest;   /* 52: the strongest it was, hPa */
+    uint32_t name_seed;  /* 56 */
+    uint8_t in_view;     /* 60: it started in the view */
+    uint8_t _pad0[3];    /* 61 */
+} bench_hurricane_t;
+static_assert(sizeof(bench_hurricane_t) == 64);
+
+/* The view with the most sea between 10 and 25 degrees north, its middle within 100 km of spawn: x every 8 km, y so the band
+ * is in it. Counts the coarse mask every 1024 blocks. */
+static void bench_season_view(const climate_t *climate, int32_t *out_x, int32_t *out_y) {
+    const float64_t band_south = 10.0f64 * CLIMATE_POLE_Y / 90.0f64, band_north = 25.0f64 * CLIMATE_POLE_Y / 90.0f64;
+    const float64_t half = 0.5f64 * (float64_t)BENCH_PICTURE_SIDE * (float64_t)BENCH_SEASON_STEP;
+    const int32_t centre_y = (int32_t)(0.5f64 * (band_south + band_north));
+    int32_t best_x = 0;
+    int64_t best = -1;
+    for (float64_t cx = -BENCH_SEASON_SEARCH + half; cx <= BENCH_SEASON_SEARCH - half; cx += 8192.0f64) {
+        int64_t sea = 0;
+        for (float64_t y = band_south; y <= band_north; y += 1024.0f64) {
+            for (float64_t x = cx - half; x < cx + half; x += 1024.0f64) {
+                sea += climate_mask_point(climate, x, y) <= 0.0f32 ? 1 : 0;
+            }
+        }
+        if (sea > best || (sea == best && fabs(cx) < fabs((float64_t)best_x))) {
+            best = sea;
+            best_x = (int32_t)cx;
+        }
+    }
+    const float64_t points = (band_north - band_south) / 1024.0f64 * 64.0f64;
+    /* Open sea, where a hurricane may form: water there and 2048 blocks north, south, east and west. */
+    int64_t open = 0;
+    const float64_t d = (float64_t)CLIMATE_HURRICANE_OPEN_SEA_BLOCKS;
+    for (float64_t y = band_south; y <= band_north; y += 1024.0f64) {
+        for (float64_t x = (float64_t)best_x - half; x < (float64_t)best_x + half; x += 1024.0f64) {
+            open += (climate_mask_point(climate, x, y) <= 0.0f32 && climate_mask_point(climate, x + d, y) <= 0.0f32 &&
+                     climate_mask_point(climate, x - d, y) <= 0.0f32 &&
+                     climate_mask_point(climate, x, y + d) <= 0.0f32 && climate_mask_point(climate, x, y - d) <= 0.0f32)
+                        ? 1
+                        : 0;
+        }
+    }
+    printf("the view's band from 10 to 25 degrees north is %.0f%% sea on the coarse mask, %.0f%% open sea\n",
+           (libc_double_t)(100.0f64 * (float64_t)best / points), (libc_double_t)(100.0f64 * (float64_t)open / points));
+    *out_x = best_x;
+    *out_y = centre_y;
+}
+
+/* The lists for day d: big systems over the whole view, and cells from 4 by 4 lists of 8 km each, merged by id. */
+static bool bench_season_lists(const climate_t *climate, arena_t *arena, arena_t *parts, int32_t centre_x,
+                               int32_t centre_y, int64_t d, climate_thunder_t *cells, climate_systems_day_t *out) {
+    const float64_t half = 0.5f64 * (float64_t)BENCH_PICTURE_SIDE * (float64_t)BENCH_SEASON_STEP;
+    if (!climate_systems_day_build(climate, arena, (float64_t)centre_x, (float64_t)centre_y,
+                                   (float32_t)(half * 1.41421356237309505f64), 0.0f32, d, CLIMATE_SYSTEMS_BIG, out)) {
+        return false;
+    }
+    uint32_t count = 0u;
+    const float64_t spacing = 2.0f64 * half / (float64_t)BENCH_SEASON_LISTS;
+    for (uint32_t j = 0u; j < BENCH_SEASON_LISTS; j++) {
+        for (uint32_t i = 0u; i < BENCH_SEASON_LISTS; i++) {
+            const float64_t x = (float64_t)centre_x - half + spacing * ((float64_t)i + 0.5f64);
+            const float64_t y = (float64_t)centre_y - half + spacing * ((float64_t)j + 0.5f64);
+            arena_reset(parts);
+            climate_systems_day_t part;
+            if (!climate_systems_day_build(climate, parts, x, y, 0.0f32, CLIMATE_THUNDER_QUERY_MAX, d,
+                                           CLIMATE_SYSTEMS_ALL, &part)) {
+                return false;
+            }
+            for (uint32_t k = 0u; k < part.thunder_count; k++) {
+                bool seen = false;
+                for (uint32_t m = 0u; m < count && !seen; m++) {
+                    seen = cells[m].id == part.borrowed_thunder[k].id;
+                }
+                if (!seen && count < BENCH_SEASON_CELLS_MAX) {
+                    cells[count++] = part.borrowed_thunder[k];
+                }
+            }
+        }
+    }
+    out->borrowed_thunder = cells;
+    out->thunder_count = count;
+    out->thunder_capacity = BENCH_SEASON_CELLS_MAX;
+    return true;
+}
+
+/* Notes each hurricane of the day's list: its first sighting, and the first sample outside the view after one inside. */
+static uint32_t bench_season_note(const climate_systems_day_t *day, int32_t centre_x, int32_t centre_y,
+                                  bench_hurricane_t *seen, uint32_t count) {
+    const float64_t half = 0.5f64 * (float64_t)BENCH_PICTURE_SIDE * (float64_t)BENCH_SEASON_STEP;
+    for (uint32_t i = 0u; i < day->system_count; i++) {
+        const climate_system_t *const h = &day->borrowed_systems[i];
+        if (h->kind != CLIMATE_SYSTEM_HURRICANE) {
+            continue;
+        }
+        bool known = false;
+        for (uint32_t k = 0u; k < count && !known; k++) {
+            known = seen[k].id == h->id;
+        }
+        if (known || count == BENCH_SEASON_HURRICANES_MAX) {
+            continue;
+        }
+        bench_hurricane_t *const note = &seen[count++];
+        memset(note, 0, sizeof(*note));
+        note->id = h->id;
+        note->spawn_day = h->spawn_day;
+        note->start_x = h->start_x;
+        note->start_y = h->start_y;
+        note->peak_hpa = h->peak_hpa;
+        note->name_seed = h->name_seed;
+        note->end_day = h->spawn_day + CLIMATE_TRACK_STEP_DAYS * (float64_t)(h->sample_count - 1u);
+        note->left_day = -1.0f64;
+        bool inside_once = false;
+        for (uint32_t k = 0u; k < h->sample_count; k++) {
+            const bool inside = fabs(h->samples[k].x - (float64_t)centre_x) <= half &&
+                                fabs(h->samples[k].y - (float64_t)centre_y) <= half;
+            if (inside && k == 0u) {
+                note->in_view = 1u;
+            }
+            if (inside_once && !inside && note->left_day < 0.0f64) {
+                note->left_day = h->spawn_day + CLIMATE_TRACK_STEP_DAYS * (float64_t)k;
+            }
+            inside_once = inside_once || inside;
+            climate_system_state_t state;
+            climate_system_state_at(h, h->spawn_day + CLIMATE_TRACK_STEP_DAYS * (float64_t)k, &state);
+            note->deepest = state.pressure_hpa < note->deepest ? state.pressure_hpa : note->deepest;
+        }
+    }
+    return count;
+}
+
+/* --season <dir> <seed> <first_day> <last_day> <step_days>: the gate's frames, every step from first to last day, of the
+ * 64 by 64 km view with the most sea between 10 and 25 degrees north within 100 km of spawn, and systems.txt. */
+static int32_t bench_season(climate_t *climate, const thread_topology_t *topology, const char *directory, uint64_t seed,
+                            float64_t first, float64_t last, float64_t step) {
+    if (mkdir(directory, 0755) != 0 && errno != EEXIST) {
+        fprintf(stderr, "bench_climate: cannot make %s: %s\n", directory, strerror(errno));
+        return 2;
+    }
+    terrain_t terrain;
+    if (!terrain_init(&terrain, seed)) {
+        return 2;
+    }
+    job_system_t system;
+    const uint64_t pixel_bytes = (uint64_t)BENCH_PICTURE_SIDE * BENCH_PICTURE_SIDE * 4u;
+    const uint64_t png_bytes = display_png_bytes_needed(BENCH_PICTURE_SIDE, BENCH_PICTURE_SIDE);
+    const uint64_t cells_bytes = (uint64_t)BENCH_SEASON_CELLS_MAX * sizeof(climate_thunder_t);
+    const uint64_t seen_bytes = (uint64_t)BENCH_SEASON_HURRICANES_MAX * sizeof(bench_hurricane_t);
+    const uint64_t blocks = (BENCH_PICTURE_SIDE / BENCH_SEASON_BLOCK) * (BENCH_PICTURE_SIDE / BENCH_SEASON_BLOCK);
+    const uint64_t block_bytes = blocks * sizeof(bench_block_t);
+    heap_region_t memory = {0};
+    if (!job_init_count(&system, topology, BENCH_WORKERS)) {
+        terrain_deinit(&terrain);
+        return 2;
+    }
+    if (!heap_reserve(pixel_bytes + png_bytes + cells_bytes + seen_bytes + block_bytes + 2u * BENCH_SYSTEMS_ARENA_BYTES,
+                      &memory) ||
+        !climate_open_ground(climate, seed, bench_systems_ground, &terrain)) {
+        heap_release(&memory);
+        job_deinit(&system);
+        terrain_deinit(&terrain);
+        return 2;
+    }
+    uint8_t *at = memory.owned_base;
+    uint8_t *const pixels = at;
+    at += pixel_bytes;
+    uint8_t *const stream = at;
+    at += png_bytes;
+    climate_thunder_t *const cells = (climate_thunder_t *)(void *)at;
+    at += cells_bytes;
+    bench_hurricane_t *const seen = (bench_hurricane_t *)(void *)at;
+    at += seen_bytes;
+    bench_block_t *const jobs = (bench_block_t *)(void *)at;
+    at += block_bytes;
+    arena_t arena, parts;
+    arena_init(&arena, "bench_season", at, BENCH_SYSTEMS_ARENA_BYTES);
+    arena_init(&parts, "bench_season_parts", at + BENCH_SYSTEMS_ARENA_BYTES, BENCH_SYSTEMS_ARENA_BYTES);
+    int32_t centre_x = 0, centre_y = 0;
+    bench_season_view(climate, &centre_x, &centre_y);
+    const int32_t half = (int32_t)(BENCH_PICTURE_SIDE * (uint32_t)BENCH_SEASON_STEP / 2u);
+    const int32_t west = centre_x - half, north = centre_y + half;
+    printf("view: %d by %d blocks round (%d, %d), %.1f to %.1f degrees north\n", 2 * half, 2 * half, centre_x, centre_y,
+           (libc_double_t)climate_latitude_deg((float64_t)(centre_y - half)),
+           (libc_double_t)climate_latitude_deg((float64_t)(centre_y + half)));
+    /* The tiles: as much of the view as the keep square holds, 62 km of its 64. */
+    const int64_t prepared = time_now_ns();
+    const int32_t built = 31 * CLIMATE_TILE_BLOCKS - 2 * CLIMATE_READ_REACH_BLOCKS;
+    climate_prepare_area(climate, &system, centre_x - built, centre_y - built, centre_x + built, centre_y + built,
+                         nullptr, nullptr);
+    printf("tiles of the middle %d km built in %.1f s\n", 2 * built / 1000,
+           (libc_double_t)(time_ns_to_ms(time_now_ns() - prepared) / 1000.0f64));
+    static const climate_layer_t LAYERS[4] = {CLIMATE_LAYER_SYSTEMS, CLIMATE_LAYER_PRESSURE_NOW,
+                                              CLIMATE_LAYER_RAIN_RADAR, CLIMATE_LAYER_THUNDER};
+    static const char *const NAMES[4] = {"systems", "pressure_now", "rain_radar", "thunder"};
+    int64_t listed_day = INT64_MIN;
+    climate_systems_day_t day;
+    memset(&day, 0, sizeof(day));
+    uint32_t seen_count = 0u;
+    bool ok = true;
+    const int64_t started = time_now_ns();
+    uint32_t frames = 0u;
+    for (float64_t t = first; t <= last + 1.0e-9f64 && ok; t += step) {
+        const int64_t d = (int64_t)floor(t);
+        if (d != listed_day) {
+            arena_reset(&arena);
+            arena_reset(&parts);
+            ok = bench_season_lists(climate, &arena, &parts, centre_x, centre_y, d, cells, &day);
+            listed_day = d;
+            seen_count = bench_season_note(&day, centre_x, centre_y, seen, seen_count);
+            uint32_t kinds[CLIMATE_SYSTEM_THUNDER] = {0u, 0u, 0u};
+            for (uint32_t i = 0u; i < day.system_count; i++) {
+                kinds[day.borrowed_systems[i].kind]++;
+            }
+            printf("day %" PRId64 ": %u hurricanes, %u lows, %u highs, %u cells near the view\n", d, kinds[0], kinds[1],
+                   kinds[2], day.thunder_count);
+        }
+        for (uint32_t l = 0u; l < 4u && ok; l++) {
+            job_group_t group;
+            job_group_init(&group);
+            uint32_t n = 0u;
+            for (uint32_t row = 0u; row < BENCH_PICTURE_SIDE; row += BENCH_SEASON_BLOCK) {
+                for (uint32_t column = 0u; column < BENCH_PICTURE_SIDE; column += BENCH_SEASON_BLOCK) {
+                    jobs[n] = (bench_block_t){.borrowed_climate = climate,
+                                              .borrowed_day = &day,
+                                              .borrowed_pixels = pixels,
+                                              .t = t,
+                                              .west_x = west,
+                                              .north_y = north,
+                                              .column = column,
+                                              .row = row,
+                                              .layer = (uint32_t)LAYERS[l]};
+                    job_submit(&system, &group, bench_block_job, &jobs[n]);
+                    n++;
+                }
+            }
+            job_group_wait(&system, &group);
+            job_group_deinit(&group);
+            char name[128];
+            (void)snprintf(name, sizeof(name), "%s_d%.1f.png", NAMES[l], (libc_double_t)t);
+            ok = bench_png_write(directory, name, pixels, stream, png_bytes);
+        }
+        frames++;
+    }
+    printf("%u frames in %.1f s\n", frames, (libc_double_t)(time_ns_to_ms(time_now_ns() - started) / 1000.0f64));
+    /* systems.txt: every hurricane seen, in the order first seen. */
+    char path[1024];
+    const int32_t written = snprintf(path, sizeof(path), "%s/systems.txt", directory);
+    FILE *const file = (ok && written > 0 && (uint64_t)written < sizeof(path)) ? fopen(path, "w") : nullptr;
+    if (file == nullptr) {
+        ok = false;
+    } else {
+        uint32_t formed = 0u;
+        fprintf(file, "# seed %" PRIu64 ", days %.1f to %.1f every %.2f; view %d by %d blocks round (%d, %d)\n", seed,
+                (libc_double_t)first, (libc_double_t)last, (libc_double_t)step, 2 * half, 2 * half, centre_x, centre_y);
+        fprintf(file,
+                "# name, formed in view, spawn day, start x y, latitude, peak hPa, deepest hPa, died day, left view "
+                "day (-1 never)\n");
+        for (uint32_t k = 0u; k < seen_count; k++) {
+            char title[CLIMATE_SYSTEM_NAME_BYTES];
+            climate_system_name(seen[k].name_seed, title);
+            formed += seen[k].in_view;
+            fprintf(file, "%-8s %u %8.2f %9.0f %9.0f %6.2f %7.1f %7.1f %8.2f %8.2f\n", title, seen[k].in_view,
+                    (libc_double_t)seen[k].spawn_day, (libc_double_t)seen[k].start_x, (libc_double_t)seen[k].start_y,
+                    (libc_double_t)climate_latitude_deg(seen[k].start_y), (libc_double_t)seen[k].peak_hpa,
+                    (libc_double_t)seen[k].deepest, (libc_double_t)seen[k].end_day, (libc_double_t)seen[k].left_day);
+        }
+        fprintf(file, "# %u hurricanes seen, %u formed in the view\n", seen_count, formed);
+        printf("%u hurricanes seen, %u formed in the view; wrote %s\n", seen_count, formed, path);
+        ok = fclose(file) == 0 && ok;
+    }
+    arena_deinit(&parts);
+    arena_deinit(&arena);
+    heap_release(&memory);
+    climate_close(climate, &system);
+    job_deinit(&system);
+    terrain_deinit(&terrain);
+    return ok ? 0 : 2;
+}
+
 /* "15,46,76": up to BENCH_DAYS_MAX days from 0 to 364. */
 static bool bench_days_parse(const char *text, bench_days_t *out) {
     bench_days_t days = {0};
@@ -613,6 +1095,24 @@ int32_t main(int32_t argc, char **argv) {
         }
     } else if (plain == 3 && strcmp(argv[1], "--synthetic") == 0) {
         status = bench_synthetic(&climate, &topology, argv[2], &days);
+    } else if (argc == 2 && strcmp(argv[1], "--systems") == 0) {
+        status = bench_systems(&climate, &topology);
+    } else if (argc == 7 && strcmp(argv[1], "--season") == 0) {
+        char *end = nullptr;
+        errno = 0;
+        const uint64_t seed = strtoull(argv[3], &end, 10);
+        const bool seed_ok = errno == 0 && end != argv[3] && *end == '\0';
+        char *first_end = nullptr, *last_end = nullptr, *step_end = nullptr;
+        const float64_t first = (float64_t)strtod(argv[4], &first_end);
+        const float64_t last = (float64_t)strtod(argv[5], &last_end);
+        const float64_t step = (float64_t)strtod(argv[6], &step_end);
+        if (!seed_ok || *first_end != '\0' || *last_end != '\0' || *step_end != '\0' || !(step > 0.0f64) ||
+            last < first) {
+            fprintf(stderr, "bench_climate: --season <directory> <seed> <first_day> <last_day> <step_days>\n");
+            status = 2;
+        } else {
+            status = bench_season(&climate, &topology, argv[2], seed, first, last, step);
+        }
     } else if (argc == 1) {
         terrain_t terrain;
         if (!terrain_init(&terrain, BENCH_SEED)) {
@@ -627,7 +1127,8 @@ int32_t main(int32_t argc, char **argv) {
         terrain_deinit(&terrain);
     } else {
         fprintf(stderr, "usage: bench_climate [--pictures <directory> <seed> | --synthetic <directory>] "
-                        "[--days d,d,...]\n");
+                        "[--days d,d,...] | --systems | --season <directory> <seed> <first_day> <last_day> "
+                        "<step_days>\n");
         status = 2;
     }
     climate_deinit(&climate);

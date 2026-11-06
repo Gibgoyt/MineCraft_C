@@ -448,4 +448,191 @@ TEST(each_phase_05_layer_is_held_to_a_hash) {
     terrain_deinit(&terrain);
 }
 
+/* ---- Phase 06's now layers ------------------------------------------------------------------------------------------ */
+
+/* A system placed by hand, still for its whole life, as the systems test places them. */
+static void layer_hand(climate_system_t *system, uint8_t kind, float64_t x, float64_t y, float32_t peak,
+                       float32_t radius, float32_t core) {
+    memset(system, 0, sizeof(*system));
+    system->kind = kind;
+    system->spawn_day = 0.0f64;
+    system->start_x = x;
+    system->start_y = y;
+    system->life_days = 8.0f32;
+    system->peak_hpa = peak;
+    system->radius = radius;
+    system->core_radius = core;
+    system->front_length = 3000.0f32;
+    system->shield_mm_hour = 2.0f32;
+    system->sample_count = 33u;
+    for (uint32_t k = 0u; k < system->sample_count; k++) {
+        system->samples[k].x = x;
+        system->samples[k].y = y;
+        system->samples[k].weaken = 1.0f32;
+    }
+}
+
+TEST(each_now_layer_is_the_colour_the_readme_says) {
+    enum : uint32_t { SIDE = 256u };
+    uint32_t colour = 0u;
+    CHECK(!climate_layer_radar_colour(0.05f32, &colour));
+    static const float32_t RATES[7] = {0.1f32, 1.0f32, 4.0f32, 10.0f32, 25.0f32, 50.0f32, 100.0f32};
+    static const uint32_t WANT[7] = {0x80C0FFu, 0x40A040u, 0xE0E040u, 0xF08020u, 0xE02020u, 0xC020C0u, 0xC020C0u};
+    for (uint32_t k = 0u; k < 7u; k++) {
+        CHECK(climate_layer_radar_colour(RATES[k], &colour));
+        CHECK_EQ_U64(colour, WANT[k]);
+    }
+    layer_rig_t rig;
+    REQUIRE(layer_rig_start(t, &rig));
+    const ground_t sea = {.kind = GROUND_ALL_SEA};
+    REQUIRE(climate_open_ground(rig.climate, 5u, ground_fn, &sea));
+    /* 256 pixels of 16 blocks: 4096 blocks round (0, 19149), 45 N, every tile built. */
+    const int32_t west = -2048, north = 19149 + 2048, step = 16;
+    climate_prepare_area(rig.climate, rig.job, west, north - 4096, west + 4095, north - 1, nullptr, nullptr);
+    climate_system_t *const systems = test_alloc(t, 3u * sizeof(climate_system_t));
+    layer_hand(&systems[0], CLIMATE_SYSTEM_HURRICANE, 0.0f64, 19149.0f64, -60.0f32, 640.0f32, 100.0f32);
+    layer_hand(&systems[1], CLIMATE_SYSTEM_LOW, -1200.0f64, 20200.0f64, -20.0f32, 800.0f32, 400.0f32);
+    layer_hand(&systems[2], CLIMATE_SYSTEM_HIGH, 1200.0f64, 18100.0f64, 14.0f32, 800.0f32, 400.0f32);
+    climate_systems_day_t day;
+    memset(&day, 0, sizeof(day));
+    day.borrowed_systems = systems;
+    day.system_count = 3u;
+    uint8_t *const pixels = test_alloc(t, SIDE * SIDE * 4u);
+    const float64_t moment = 4.0f64;
+    /* Pixel of a block: column floor((x - west) / 16), row floor((north - y) / 16). */
+    const uint32_t hx = (uint32_t)((0 - west) / step), hy = (uint32_t)((north - 19149) / step);
+    const uint32_t lx = (uint32_t)((-1200 - west) / step), ly = (uint32_t)((north - 20200) / step);
+    const uint32_t gx = (uint32_t)((1200 - west) / step), gy = (uint32_t)((north - 18100) / step);
+    climate_layer_draw_now(rig.climate, &day, CLIMATE_LAYER_PRESSURE_NOW, moment, west, north, step, SIDE, SIDE, pixels,
+                           SIDE * 4u);
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, gx, gy), CLIMATE_LAYER_HIGH_MARK);     /* the H's crossbar */
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, lx - 2u, ly), CLIMATE_LAYER_LOW_MARK); /* the L's upright */
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, hx - 2u, hy), CLIMATE_LAYER_LOW_MARK); /* a hurricane is an L too */
+    climate_layer_draw_now(rig.climate, &day, CLIMATE_LAYER_SYSTEMS, moment, west, north, step, SIDE, SIDE, pixels,
+                           SIDE * 4u);
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, hx + 40u, hy), CLIMATE_LAYER_HURRICANE_RING); /* 640 / 16 = 40 */
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, lx, ly - 50u), CLIMATE_LAYER_LOW_RING);
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, gx - 50u, gy), CLIMATE_LAYER_HIGH_RING);
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, hx, hy), CLIMATE_LAYER_TRACK); /* where it is now ends its track */
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, hx + 5u, hy), CLIMATE_LAYER_HURRICANE_RING); /* the eye, 100 blocks */
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, 2u, 2u), CLIMATE_LAYER_SEA);
+    uint64_t front = 0u;
+    for (uint32_t i = 0u; i < SIDE * SIDE; i++) {
+        front += layer_pixel(pixels, SIDE * 4u, i % SIDE, i / SIDE) == CLIMATE_LAYER_FRONT ? 1u : 0u;
+    }
+    CHECK(front > 100u); /* the low's 3000-block front, 187 pixels and its teeth */
+    /* A cell at the hurricane's place, alive at the moment: a disc and the lightning mark. */
+    climate_thunder_t cell;
+    memset(&cell, 0, sizeof(cell));
+    cell.spawn_day = moment - 0.05f64;
+    cell.start_x = 0.0f64;
+    cell.start_y = 19149.0f64;
+    cell.radius = 320.0f32;
+    cell.peak_mm_hour = 40.0f32;
+    cell.life_days = 0.125f32;
+    climate_systems_day_t cells;
+    memset(&cells, 0, sizeof(cells));
+    cells.borrowed_thunder = &cell;
+    cells.thunder_count = 1u;
+    climate_layer_draw_now(rig.climate, &cells, CLIMATE_LAYER_THUNDER, moment, west, north, step, SIDE, SIDE, pixels,
+                           SIDE * 4u);
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, hx, hy), CLIMATE_LAYER_LIGHTNING);
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, hx + 10u, hy), CLIMATE_LAYER_THUNDER_DISC);
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, hx + 30u, hy), CLIMATE_LAYER_SEA);
+    /* The radar there: the cell's rain times the sea's wetness, plus the background, in its step's colour. */
+    float32_t rain = 0.0f32;
+    REQUIRE(climate_layer_rain_now(rig.climate, &cells, 0.0f64, 19149.0f64, moment, &rain));
+    climate_layer_draw_now(rig.climate, &cells, CLIMATE_LAYER_RAIN_RADAR, moment, west, north, step, SIDE, SIDE, pixels,
+                           SIDE * 4u);
+    uint32_t want = CLIMATE_LAYER_SEA;
+    (void)climate_layer_radar_colour(rain, &want);
+    printf("radar at the cell: %.2f mm an hour\n", (libc_double_t)rain);
+    CHECK(rain > 0.1f32);
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, hx, hy), want);
+    layer_rig_stop(&rig);
+}
+
+TEST(systems_over_grey_land_are_outlines) {
+    enum : uint32_t { SIDE = 256u };
+    layer_rig_t rig;
+    REQUIRE(layer_rig_start(t, &rig));
+    const ground_t sea = {.kind = GROUND_ALL_SEA};
+    REQUIRE(climate_open_ground(rig.climate, 5u, ground_fn, &sea));
+    /* Nothing built: a hurricane that moved east, its circle and track over grey, and no eye. */
+    climate_system_t *const h = test_alloc(t, sizeof(climate_system_t));
+    layer_hand(h, CLIMATE_SYSTEM_HURRICANE, 0.0f64, 6383.0f64, -60.0f32, 640.0f32, 100.0f32);
+    for (uint32_t k = 0u; k < h->sample_count; k++) {
+        h->samples[k].x = -1500.0f64 + 100.0f64 * (float64_t)k;
+    }
+    climate_systems_day_t day;
+    memset(&day, 0, sizeof(day));
+    day.borrowed_systems = h;
+    day.system_count = 1u;
+    uint8_t *const pixels = test_alloc(t, SIDE * SIDE * 4u);
+    static const climate_layer_t LAYERS[5] = {CLIMATE_LAYER_SYSTEMS, CLIMATE_LAYER_PRESSURE_NOW,
+                                              CLIMATE_LAYER_RAIN_RADAR, CLIMATE_LAYER_THUNDER, CLIMATE_LAYER_WIND_NOW};
+    for (uint32_t l = 0u; l < 5u; l++) {
+        climate_layer_draw_now(rig.climate, &day, LAYERS[l], 2.0f64, -2048, 6383 + 2048, 16, SIDE, SIDE, pixels,
+                               SIDE * 4u);
+        uint64_t grey = 0u, ring = 0u, track = 0u, other = 0u;
+        for (uint32_t i = 0u; i < SIDE * SIDE; i++) {
+            const uint32_t c = layer_pixel(pixels, SIDE * 4u, i % SIDE, i / SIDE);
+            grey += c == CLIMATE_LAYER_GREY ? 1u : 0u;
+            ring += c == CLIMATE_LAYER_HURRICANE_RING ? 1u : 0u;
+            track += c == CLIMATE_LAYER_TRACK ? 1u : 0u;
+            other +=
+                (c != CLIMATE_LAYER_GREY && c != CLIMATE_LAYER_HURRICANE_RING && c != CLIMATE_LAYER_TRACK) ? 1u : 0u;
+        }
+        printf("layer %u over grey: %" PRIu64 " grey, %" PRIu64 " circle, %" PRIu64 " track\n", (uint32_t)LAYERS[l],
+               grey, ring, track);
+        CHECK(ring > 100u && ring < 400u); /* a 1-pixel circle of radius 40, not a filled eye */
+        CHECK_EQ_U64(other, 0u);
+        CHECK(l == 0u ? track > 10u : track == 0u); /* the track only in the systems layer */
+    }
+    layer_rig_stop(&rig);
+}
+
+/* The five now layers on the real seed at two moments, 512 by 512, from real day lists. Printed and held to themselves
+ * until Ahmed has seen the frames (bench_climate --season): pinned only after he says yes. */
+TEST(a_now_layer_picture_is_held_to_a_hash) {
+    enum : uint32_t { SIDE = 512u };
+    layer_rig_t rig;
+    REQUIRE(layer_rig_start(t, &rig));
+    terrain_t terrain;
+    REQUIRE(terrain_init(&terrain, 2198175988018515243ull));
+    REQUIRE(climate_open(rig.climate, &terrain));
+    climate_prepare_area(rig.climate, rig.job, -4096, -4096, 4095, 4095, nullptr, nullptr);
+    arena_t *const arena = layer_aligned(t, sizeof(arena_t));
+    const uint64_t arena_bytes = 8ull << 20;
+    arena_init(arena, "test_layer_systems", layer_aligned(t, arena_bytes), arena_bytes);
+    uint8_t *const first = test_alloc(t, SIDE * SIDE * 4u);
+    uint8_t *const second = test_alloc(t, SIDE * SIDE * 4u);
+    static const char *const NAMES[5] = {"pressure now", "systems", "rain radar", "thunder", "wind now"};
+    static const float64_t MOMENTS[2] = {200.6f64, 233.3f64};
+    for (uint32_t m = 0u; m < 2u; m++) {
+        climate_systems_day_t day;
+        arena_reset(arena);
+        REQUIRE(climate_systems_day_build(rig.climate, arena, 0.0f64, 0.0f64, 6000.0f32, 4096.0f32,
+                                          (int64_t)floor(MOMENTS[m]), CLIMATE_SYSTEMS_ALL, &day));
+        printf("day %.1f: %u big systems, %u cells, complete %u\n", (libc_double_t)MOMENTS[m], day.system_count,
+               day.thunder_count, day.thunder_complete);
+        for (uint32_t l = 0u; l < 5u; l++) {
+            const climate_layer_t layer = (climate_layer_t)(CLIMATE_LAYER_PRESSURE_NOW + l);
+            climate_layer_draw_now(rig.climate, &day, layer, MOMENTS[m], -4096, 4096, 16, SIDE, SIDE, first, SIDE * 4u);
+            climate_layer_draw_now(rig.climate, &day, layer, MOMENTS[m], -4096, 4096, 16, SIDE, SIDE, second,
+                                   SIDE * 4u);
+            const uint64_t hash = layer_digest(first, SIDE * SIDE * 4u);
+            printf("%s at %.1f: 0x%016" PRIX64 "\n", NAMES[l], (libc_double_t)MOMENTS[m], hash);
+            CHECK_EQ_U64(hash, layer_digest(second, SIDE * SIDE * 4u));
+            uint64_t grey = 0u;
+            for (uint32_t i = 0u; i < SIDE * SIDE; i++) {
+                grey += layer_pixel(first, SIDE * 4u, i % SIDE, i / SIDE) == 0x808080u ? 1u : 0u;
+            }
+            CHECK_EQ_U64(grey, 0u);
+        }
+    }
+    layer_rig_stop(&rig);
+    terrain_deinit(&terrain);
+}
+
 TEST_MAIN()
