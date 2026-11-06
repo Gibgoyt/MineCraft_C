@@ -740,6 +740,8 @@ Appended as they land:
 - `e59520e` Describe plan 004 phase 04's currents, pressure and winds in the climate's READMEs, its tests' and the climate bench's.
 - `55c8148` List the climate's normals, harmonic and air parts of plan 004 phase 04 and their tests in the repository structure.
 - `97db1df` Record plan 004 phase 04 in its phase file: todos, results, the bench and the issues found.
+- `da455ec` List the phase file commit of plan 004 phase 04 in its phase file.
+- `4cd0c0f` Record the second verification pass of plan 004 phase 04 in its phase file.
 
 ## Issues found
 
