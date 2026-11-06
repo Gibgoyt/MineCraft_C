@@ -941,6 +941,7 @@ Appended as they land:
 - `0f4e633d` Record plan 004 phase 07 in its phase file: todos, the verification run, the bench at its budget, the calibration table and the issues found.
 - `abbb523d` Work each census block's week by day on any worker, so 16 workers share the blocks evenly and the census bench is under 250 ms with the same bytes.
 - `fb2bcc66` Record bench_climate_census after the days are split: 209.6 ms quiet, 227.1 and 233.3 ms under load.
+- `142d9b3c` Record plan 004 phase 07's day-split census in its phase file: the bench under budget, Verification passing, and the issues found.
 
 ## Issues found
 
