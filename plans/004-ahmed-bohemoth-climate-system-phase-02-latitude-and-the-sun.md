@@ -614,6 +614,8 @@ Results, 2026-11-06, debug preset, RTX 2080 Super:
 - Release build (`cmake --build --preset release`, `-O3 -flto`, the frame limit): links clean.
 - `pgrep -af` on this worktree's `build/`: nothing left running. No display, window, input device or sound was opened.
 
+Re-run, 2026-11-06, in a fresh worktree after merging `main` and the earlier branch (same code): configure and debug build clean; the 15 tests of the first, second and fourth groups pass; the six `render_feature_*` plus `render_feature_under_water` pass; the release build links clean. Whole suite not re-run (code unchanged since its run above).
+
 ## Gate
 
 Ahmed, on a release build (`tools/test-or-build.sh cmake --preset release`, then `tools/test-or-build.sh cmake --build --preset release`):
@@ -650,6 +652,7 @@ Appended as they land:
 - `3c3d1e2` List the climate system, its sun part and their three new tests in the repository layout.
 - `3b8a801` Remake the under-water test's land picture for the real sun, after looking at it beside the old one.
 - `0e1a791` Record phase 2 of plan 004 as done but for Ahmed's gate, with its ticked todos, measured results and the issues found on the way.
+- `748cc79` List the commits of phase 2 of plan 004 in its phase file.
 
 ## Issues found
 
