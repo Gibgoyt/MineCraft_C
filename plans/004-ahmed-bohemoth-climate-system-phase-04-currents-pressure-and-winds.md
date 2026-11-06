@@ -727,6 +727,7 @@ Appended as they land:
 - `48afeff` Add plan 004 phase 04's currents, heat lows and winds to every climate cell, read them with climate_air_at, draw the currents, pressure and wind layers, and test them on synthetic continents, islands, a coast and a ridge.
 - `e59520e` Describe plan 004 phase 04's currents, pressure and winds in the climate's READMEs, its tests' and the climate bench's.
 - `55c8148` List the climate's normals, harmonic and air parts of plan 004 phase 04 and their tests in the repository structure.
+- `97db1df` Record plan 004 phase 04 in its phase file: todos, results, the bench and the issues found.
 
 ## Issues found
 
