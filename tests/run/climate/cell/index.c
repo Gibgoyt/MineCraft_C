@@ -20,7 +20,8 @@ static const uint64_t CELL_SEED = 0x1234567890ABCDEFull;
  * purpose: say why here when it does. */
 /* Plan 004 phase 03, first pin 0xE2FA8EB862075544 with the window-edge sea rule: 59 sea cells, 3361 large lake. Moved by the
  * sea-floor rule (the phase file's Issues found 17): 4055 sea cells, no large lake. */
-static const uint64_t CELL_DIGEST_PIN = 0x61708389BBF3789Bull;
+/* Moved by plan 004 phase 04, which fills currents, swing, lag, wind and pressure (from 0x61708389BBF3789B). */
+static const uint64_t CELL_DIGEST_PIN = 0x4950918E191FF004ull;
 
 /* A job system and a climate, for one test. */
 typedef struct cell_rig_t {

@@ -36,7 +36,10 @@ uint32_t climate_layer_colour(climate_layer_t layer, const climate_sample_t *sam
         }
         return layer_mix(CLIMATE_LAYER_LAND_LOW, CLIMATE_LAYER_LAND_HIGH, sample->z_ground / CLIMATE_LAYER_LAND_TOP);
     case CLIMATE_LAYER_LATITUDE:
-    case CLIMATE_LAYER_COUNT_PHASE_03:
+    case CLIMATE_LAYER_CURRENTS:
+    case CLIMATE_LAYER_PRESSURE:
+    case CLIMATE_LAYER_WIND:
+    case CLIMATE_LAYER_COUNT:
         break;
     }
     return CLIMATE_LAYER_GREY;
@@ -84,23 +87,212 @@ static void layer_latitude_lines(int32_t north_y, int32_t blocks_per_pixel, uint
     }
 }
 
+/* ---- Phase 04: currents, pressure, wind ------------------------------------------------------------------------- */
+
+uint32_t climate_layer_pressure_colour(float32_t hpa) {
+    if (hpa < CLIMATE_LAYER_PRESSURE_MID_HPA) {
+        return layer_mix(CLIMATE_LAYER_PRESSURE_LOW, CLIMATE_LAYER_PRESSURE_MID,
+                         (hpa - CLIMATE_LAYER_PRESSURE_LOW_HPA) /
+                             (CLIMATE_LAYER_PRESSURE_MID_HPA - CLIMATE_LAYER_PRESSURE_LOW_HPA));
+    }
+    return layer_mix(CLIMATE_LAYER_PRESSURE_MID, CLIMATE_LAYER_PRESSURE_HIGH,
+                     (hpa - CLIMATE_LAYER_PRESSURE_MID_HPA) /
+                         (CLIMATE_LAYER_PRESSURE_HIGH_HPA - CLIMATE_LAYER_PRESSURE_MID_HPA));
+}
+
+uint32_t climate_layer_wind_colour(float32_t speed) {
+    return layer_mix(CLIMATE_LAYER_WIND_CALM, CLIMATE_LAYER_WIND_FAST, speed / CLIMATE_LAYER_WIND_TOP);
+}
+
+static float32_t layer_get_float(const uint8_t *pixels, uint32_t pitch, uint32_t x, uint32_t y) {
+    float32_t value = 0.0f32;
+    memcpy(&value, pixels + (uint64_t)y * pitch + (uint64_t)x * 4u, sizeof(value));
+    return value;
+}
+
+void climate_layer_pressure_finish(uint32_t width, uint32_t height, uint8_t *pixels, uint32_t pitch) {
+    /* From the south-east corner back, so the pixels north and west of each are still numbers when it is coloured. */
+    for (uint32_t r = height; r-- > 0u;) {
+        for (uint32_t c = width; c-- > 0u;) {
+            const float32_t p = layer_get_float(pixels, pitch, c, r);
+            uint32_t colour = CLIMATE_LAYER_GREY;
+            if (!isnan(p)) {
+                const float32_t band = floorf(p / CLIMATE_LAYER_PRESSURE_LINE_HPA);
+                const float32_t north = r > 0u ? layer_get_float(pixels, pitch, c, r - 1u) : p;
+                const float32_t west = c > 0u ? layer_get_float(pixels, pitch, c - 1u, r) : p;
+                const bool line = (!isnan(north) && floorf(north / CLIMATE_LAYER_PRESSURE_LINE_HPA) != band) ||
+                                  (!isnan(west) && floorf(west / CLIMATE_LAYER_PRESSURE_LINE_HPA) != band);
+                colour = line ? CLIMATE_LAYER_PRESSURE_LINE : climate_layer_pressure_colour(p);
+            }
+            layer_put(pixels, pitch, c, r, colour);
+        }
+    }
+}
+
+/* Bresenham's line from (x0, y0) to (x1, y1), both ends included, pixels outside the picture skipped. */
+static void layer_line(uint8_t *pixels, uint32_t pitch, uint32_t width, uint32_t height, int32_t x0, int32_t y0,
+                       int32_t x1, int32_t y1, uint32_t colour) {
+    const int32_t dx = x1 > x0 ? x1 - x0 : x0 - x1;
+    const int32_t dy = y1 > y0 ? y0 - y1 : y1 - y0; /* minus the height */
+    const int32_t sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+    int32_t error = dx + dy;
+    for (;;) {
+        if (x0 >= 0 && y0 >= 0 && (uint32_t)x0 < width && (uint32_t)y0 < height) {
+            layer_put(pixels, pitch, (uint32_t)x0, (uint32_t)y0, colour);
+        }
+        if (x0 == x1 && y0 == y1) {
+            return;
+        }
+        const int32_t twice = 2 * error;
+        if (twice >= dy) {
+            error += dy;
+            x0 += sx;
+        }
+        if (twice <= dx) {
+            error += dx;
+            y0 += sy;
+        }
+    }
+}
+
+/* An arrow from a pixel, length pixels along (u, v) with v north, so drawn upward; two 3-pixel barbs at its head. */
+static void layer_arrow(uint8_t *pixels, uint32_t pitch, uint32_t width, uint32_t height, uint32_t column, uint32_t row,
+                        float32_t u, float32_t v, float32_t length, uint32_t colour) {
+    const float32_t size = sqrtf(u * u + v * v);
+    if (size < 1.0e-6f32 || length < 1.0f32) {
+        return;
+    }
+    const float32_t dx = u / size, dy = -v / size; /* rows go south */
+    const int32_t x0 = (int32_t)column, y0 = (int32_t)row;
+    const float32_t head_x = (float32_t)x0 + length * dx, head_y = (float32_t)y0 + length * dy;
+    const int32_t x1 = (int32_t)lroundf(head_x), y1 = (int32_t)lroundf(head_y);
+    layer_line(pixels, pitch, width, height, x0, y0, x1, y1, colour);
+    /* The barbs: the direction turned 150 degrees each way. */
+    const float32_t barb_cos = -0.8660254f32, barb_sin = 0.5f32, barb = 3.0f32;
+    for (int32_t side = -1; side <= 1; side += 2) {
+        const float32_t s = barb_sin * (float32_t)side;
+        const float32_t bx = dx * barb_cos - dy * s, by = dx * s + dy * barb_cos;
+        layer_line(pixels, pitch, width, height, x1, y1, (int32_t)lroundf(head_x + barb * bx),
+                   (int32_t)lroundf(head_y + barb * by), colour);
+    }
+}
+
+/* Where a picture is: its north-west corner, blocks a pixel and size. */
+typedef struct layer_view_t {
+    float64_t west_x;  /* 0 */
+    float64_t north_y; /* 8 */
+    float64_t step;    /* 16: blocks a pixel */
+    uint32_t width;    /* 24 */
+    uint32_t height;   /* 28 */
+} layer_view_t;
+static_assert(sizeof(layer_view_t) == 32);
+
+static float64_t layer_view_x(const layer_view_t *view, uint32_t column) {
+    return view->west_x + ((float64_t)column + 0.5f64) * view->step;
+}
+static float64_t layer_view_y(const layer_view_t *view, uint32_t row) {
+    return view->north_y - ((float64_t)row + 0.5f64) * view->step;
+}
+
+/* An arrow every 32 pixels, from pixel 16, on each sea cell with a current: along its flow, 4 + 12 x strength / 255 long. */
+static void layer_current_arrows(const climate_t *climate, const layer_view_t *view, uint8_t *pixels, uint32_t pitch) {
+    const uint32_t spacing = CLIMATE_LAYER_ARROW_SPACING;
+    for (uint32_t row = spacing / 2u; row < view->height; row += spacing) {
+        for (uint32_t column = spacing / 2u; column < view->width; column += spacing) {
+            const float64_t x = floor(layer_view_x(view, column)), y = floor(layer_view_y(view, row));
+            if (x < (float64_t)INT32_MIN || x > (float64_t)INT32_MAX || y < (float64_t)INT32_MIN ||
+                y > (float64_t)INT32_MAX) {
+                continue;
+            }
+            climate_cell_t cell;
+            if (!climate_cell_get(climate, (int32_t)x, (int32_t)y, &cell) || (cell.flags & CLIMATE_CELL_SEA) == 0u) {
+                continue;
+            }
+            if (cell.current == CLIMATE_CURRENT_NONE) {
+                if (cell.land_distance <= CLIMATE_CURRENT_REACH) {
+                    /* Neutral, the third kind: no flow to draw, so a small grey cross. */
+                    layer_line(pixels, pitch, view->width, view->height, (int32_t)column - 1, (int32_t)row,
+                               (int32_t)column + 1, (int32_t)row, CLIMATE_LAYER_CURRENT_NEUTRAL);
+                    layer_line(pixels, pitch, view->width, view->height, (int32_t)column, (int32_t)row - 1,
+                               (int32_t)column, (int32_t)row + 1, CLIMATE_LAYER_CURRENT_NEUTRAL);
+                }
+                continue;
+            }
+            const float64_t centre_y = floor(y / (float64_t)CLIMATE_CELL_BLOCKS) * (float64_t)CLIMATE_CELL_BLOCKS +
+                                       0.5f64 * (float64_t)CLIMATE_CELL_BLOCKS;
+            float32_t flow[2];
+            climate_current_flow(&cell, (float32_t)centre_y, flow);
+            const float32_t length = 4.0f32 + 12.0f32 * (float32_t)cell.current_strength / 255.0f32;
+            const uint32_t colour =
+                cell.current == CLIMATE_CURRENT_WARM ? CLIMATE_LAYER_CURRENT_WARM : CLIMATE_LAYER_CURRENT_COLD;
+            layer_arrow(pixels, pitch, view->width, view->height, column, row, flow[0], flow[1], length, colour);
+        }
+    }
+}
+
+/* An arrow every 32 pixels, from pixel 16, pointing downwind, 2 x speed long, at most 30. */
+static void layer_wind_arrows(const climate_t *climate, const layer_view_t *view, float32_t day, uint8_t *pixels,
+                              uint32_t pitch) {
+    const uint32_t spacing = CLIMATE_LAYER_ARROW_SPACING;
+    for (uint32_t row = spacing / 2u; row < view->height; row += spacing) {
+        for (uint32_t column = spacing / 2u; column < view->width; column += spacing) {
+            climate_air_t air;
+            if (!climate_air_at(climate, layer_view_x(view, column), layer_view_y(view, row), day, &air)) {
+                continue;
+            }
+            const float32_t speed = sqrtf(air.wind[0] * air.wind[0] + air.wind[1] * air.wind[1]);
+            layer_arrow(pixels, pitch, view->width, view->height, column, row, air.wind[0], air.wind[1],
+                        fminf(CLIMATE_LAYER_WIND_ARROW_MAX, 2.0f32 * speed), CLIMATE_LAYER_WIND_ARROW);
+        }
+    }
+}
+
 void climate_layer_draw(const climate_t *climate, climate_layer_t layer, int32_t west_x, int32_t north_y,
                         int32_t blocks_per_pixel, uint32_t width, uint32_t height, uint32_t day, uint8_t *pixels,
                         uint32_t pitch) {
-    (void)day; /* phase 03's layers do not change through the year */
     if (layer == CLIMATE_LAYER_LATITUDE) {
         layer_latitude_lines(north_y, blocks_per_pixel, width, height, pixels, pitch);
         return;
     }
-    const float64_t step = (float64_t)blocks_per_pixel;
+    const layer_view_t view = {
+        .west_x = (float64_t)west_x,
+        .north_y = (float64_t)north_y,
+        .step = (float64_t)blocks_per_pixel,
+        .width = width,
+        .height = height,
+    };
+    const float32_t on_day = (float32_t)day; /* phase 03's layers do not change through the year */
     for (uint32_t row = 0u; row < height; row++) {
-        const float64_t y = (float64_t)north_y - ((float64_t)row + 0.5f64) * step;
+        const float64_t y = layer_view_y(&view, row);
         for (uint32_t column = 0u; column < width; column++) {
-            const float64_t x = (float64_t)west_x + ((float64_t)column + 0.5f64) * step;
+            const float64_t x = layer_view_x(&view, column);
+            if (layer == CLIMATE_LAYER_PRESSURE || layer == CLIMATE_LAYER_WIND) {
+                climate_air_t air;
+                const bool built = climate_air_at(climate, x, y, on_day, &air);
+                if (layer == CLIMATE_LAYER_PRESSURE) {
+                    /* The number itself for now; the second pass colours it and draws the lines. */
+                    const float32_t hpa = built ? air.pressure_hpa : nanf("");
+                    memcpy(pixels + (uint64_t)row * pitch + (uint64_t)column * 4u, &hpa, sizeof(hpa));
+                } else {
+                    const float32_t speed =
+                        built ? sqrtf(air.wind[0] * air.wind[0] + air.wind[1] * air.wind[1]) : 0.0f32;
+                    layer_put(pixels, pitch, column, row,
+                              built ? climate_layer_wind_colour(speed) : CLIMATE_LAYER_GREY);
+                }
+                continue;
+            }
             climate_sample_t sample;
+            const climate_layer_t base = layer == CLIMATE_LAYER_CURRENTS ? CLIMATE_LAYER_WATER : layer;
             const uint32_t colour =
-                climate_sample_at(climate, x, y, &sample) ? climate_layer_colour(layer, &sample) : CLIMATE_LAYER_GREY;
+                climate_sample_at(climate, x, y, &sample) ? climate_layer_colour(base, &sample) : CLIMATE_LAYER_GREY;
             layer_put(pixels, pitch, column, row, colour);
         }
+    }
+    if (layer == CLIMATE_LAYER_PRESSURE) {
+        climate_layer_pressure_finish(width, height, pixels, pitch);
+    } else if (layer == CLIMATE_LAYER_CURRENTS) {
+        layer_current_arrows(climate, &view, pixels, pitch);
+    } else if (layer == CLIMATE_LAYER_WIND) {
+        layer_wind_arrows(climate, &view, on_day, pixels, pitch);
     }
 }

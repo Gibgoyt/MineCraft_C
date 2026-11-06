@@ -21,7 +21,8 @@ float32_t climate_cell_distance_blocks(uint32_t distance2) {
     if (distance2 == CLIMATE_SEA_FAR) {
         return CLIMATE_SEA_DISTANCE_MAX;
     }
-    float64_t blocks = (float64_t)CLIMATE_CELL_BLOCKS * sqrt((float64_t)distance2) - 0.5f64 * (float64_t)CLIMATE_CELL_BLOCKS;
+    float64_t blocks =
+        (float64_t)CLIMATE_CELL_BLOCKS * sqrt((float64_t)distance2) - 0.5f64 * (float64_t)CLIMATE_CELL_BLOCKS;
     blocks = blocks < 0.0f64 ? 0.0f64 : blocks;
     blocks = blocks > (float64_t)CLIMATE_SEA_DISTANCE_MAX ? (float64_t)CLIMATE_SEA_DISTANCE_MAX : blocks;
     return (float32_t)blocks;

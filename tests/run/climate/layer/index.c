@@ -179,4 +179,150 @@ TEST(a_layer_picture_is_held_to_a_hash) {
     terrain_deinit(&terrain);
 }
 
+/* ---- Phase 04's layers ---------------------------------------------------------------------------------------------- */
+
+TEST(current_arrows_are_red_blue_and_grey_and_point_along_the_flow) {
+    enum : uint32_t { SIDE = 64u };
+    layer_rig_t rig;
+    REQUIRE(layer_rig_start(t, &rig));
+    const ground_t ground = ground_continent(-2048, -14766, 2048, -10766);
+    REQUIRE(climate_open_ground(rig.climate, 1u, ground_fn, &ground));
+    climate_prepare_area(rig.climate, rig.job, -2600, -13100, 2600, -10400, nullptr, nullptr);
+    uint8_t *const pixels = test_alloc(t, SIDE * SIDE * 4u);
+    /* 8 blocks a pixel, the arrow point at pixel (16, 16) on the sea cell just off the west coast: centre (-2080, -12768). */
+    climate_layer_draw(rig.climate, CLIMATE_LAYER_CURRENTS, -2080 - 132, -12768 + 132, 8, SIDE, SIDE, 196u, pixels,
+                       SIDE * 4u);
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, 16u, 16u), 0x3060E0u); /* blue, cold */
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, 16u, 6u), 0x3060E0u);  /* its head is north, 15 pixels up */
+    CHECK(layer_pixel(pixels, SIDE * 4u, 16u, 24u) != 0x3060E0u);
+    /* Land east of it is the water layer's colour, unchanged. */
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, 60u, 16u),
+                 climate_layer_colour(CLIMATE_LAYER_WATER, &(climate_sample_t){.z_ground = 30.0f32}));
+    /* Off the east coast: red, head south. */
+    climate_layer_draw(rig.climate, CLIMATE_LAYER_CURRENTS, 2080 - 132, -12768 + 132, 8, SIDE, SIDE, 196u, pixels,
+                       SIDE * 4u);
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, 16u, 16u), 0xE03030u);
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, 16u, 26u), 0xE03030u);
+    CHECK(layer_pixel(pixels, SIDE * 4u, 16u, 8u) != 0xE03030u);
+    /* Off the north coast, at 30 S, the current is neutral: a grey cross, no arrow. */
+    climate_layer_draw(rig.climate, CLIMATE_LAYER_CURRENTS, -132, -10766 + 32 + 132, 8, SIDE, SIDE, 196u, pixels,
+                       SIDE * 4u);
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, 16u, 16u), 0x909090u);
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, 15u, 16u), 0x909090u);
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, 16u, 17u), 0x909090u);
+    layer_rig_stop(&rig);
+}
+
+TEST(pressure_lines_fall_on_multiples_of_four) {
+    enum : uint32_t { WIDE = 8u, HIGH = 400u };
+    uint8_t *const pixels = test_alloc(t, WIDE * HIGH * 4u);
+    /* Rising linearly toward the north, row 0: 1022.01 at row 0, down 0.05 a row, so 1020, 1016, ... 1004 are crossed. */
+    for (uint32_t r = 0u; r < HIGH; r++) {
+        const float32_t p = 1022.01f32 - 0.05f32 * (float32_t)r;
+        for (uint32_t c = 0u; c < WIDE; c++) {
+            memcpy(pixels + ((uint64_t)r * WIDE + c) * 4u, &p, sizeof(p));
+        }
+    }
+    climate_layer_pressure_finish(WIDE, HIGH, pixels, WIDE * 4u);
+    uint32_t lines = 0u;
+    for (uint32_t r = 0u; r < HIGH; r++) {
+        const bool line = layer_pixel(pixels, WIDE * 4u, 3u, r) == 0x202020u;
+        const bool want = r == 41u || r == 121u || r == 201u || r == 281u || r == 361u;
+        CHECK(line == want);
+        lines += line ? 1u : 0u;
+        /* The whole row alike: lines run along equal pressure. */
+        CHECK_EQ_U64(layer_pixel(pixels, WIDE * 4u, 0u, r), layer_pixel(pixels, WIDE * 4u, WIDE - 1u, r));
+    }
+    CHECK_EQ_U64(lines, 5u);
+    CHECK_EQ_U64(layer_pixel(pixels, WIDE * 4u, 0u, 0u), climate_layer_pressure_colour(1022.01f32));
+    CHECK_EQ_U64(climate_layer_pressure_colour(990.0f32), 0x3050C0u);
+    CHECK_EQ_U64(climate_layer_pressure_colour(1013.0f32), 0xF0F0F0u);
+    CHECK_EQ_U64(climate_layer_pressure_colour(1030.0f32), 0xC04030u);
+    CHECK_EQ_U64(climate_layer_pressure_colour(1050.0f32), 0xC04030u);
+    CHECK_EQ_U64(climate_layer_wind_colour(0.0f32), 0x202040u);
+    CHECK_EQ_U64(climate_layer_wind_colour(15.0f32), 0xF0E040u);
+    /* Unbuilt: grey, and no line next to it. */
+    const float32_t none = nanf("");
+    memcpy(pixels, &none, sizeof(none));
+    const float32_t p = 1010.5f32;
+    memcpy(pixels + 4u, &p, sizeof(p));
+    memcpy(pixels + WIDE * 4u, &p, sizeof(p));
+    climate_layer_pressure_finish(2u, 2u, pixels, WIDE * 4u);
+    CHECK_EQ_U64(layer_pixel(pixels, WIDE * 4u, 0u, 0u), 0x808080u);
+    CHECK_EQ_U64(layer_pixel(pixels, WIDE * 4u, 1u, 0u), climate_layer_pressure_colour(1010.5f32));
+}
+
+TEST(wind_arrows_point_downwind) {
+    enum : uint32_t { SIDE = 64u };
+    layer_rig_t rig;
+    REQUIRE(layer_rig_start(t, &rig));
+    const ground_t sea = {.kind = GROUND_OPEN_SEA};
+    REQUIRE(climate_open_ground(rig.climate, 1u, ground_fn, &sea));
+    /* 15 degrees north is y = 6383. */
+    climate_prepare_area(rig.climate, rig.job, -300, 6000, 300, 6700, nullptr, nullptr);
+    uint8_t *const pixels = test_alloc(t, SIDE * SIDE * 4u);
+    climate_layer_draw(rig.climate, CLIMATE_LAYER_WIND, -132, 6383 + 132, 8, SIDE, SIDE, 105u, pixels, SIDE * 4u);
+    uint32_t west = 0u, east = 0u, north = 0u, south = 0u;
+    for (uint32_t r = 0u; r < 32u; r++) {
+        for (uint32_t c = 0u; c < 32u; c++) {
+            if (layer_pixel(pixels, SIDE * 4u, c, r) != 0xFFFFFFu) {
+                continue;
+            }
+            west += c < 16u ? 1u : 0u;
+            east += c > 16u ? 1u : 0u;
+            north += r < 16u ? 1u : 0u;
+            south += r > 16u ? 1u : 0u;
+        }
+    }
+    printf("15 N open sea arrow: %u pixels west of its tail, %u east, %u south, %u north\n", west, east, south, north);
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, 16u, 16u), 0xFFFFFFu);
+    CHECK(west >= 8u && east == 0u); /* west-south-west: mostly west, a little south */
+    CHECK(south >= 2u && north == 0u);
+    CHECK(west > south);
+    /* The background is the speed's colour: the trade at 15 degrees, about 6 blocks a second. */
+    climate_air_t air;
+    REQUIRE(climate_air_at(rig.climate, -132.0f64 + 8.0f64 * 2.5f64, 6383.0f64 + 132.0f64 - 8.0f64 * 2.5f64, 105.0f32,
+                           &air));
+    CHECK_EQ_U64(layer_pixel(pixels, SIDE * 4u, 2u, 2u),
+                 climate_layer_wind_colour(sqrtf(air.wind[0] * air.wind[0] + air.wind[1] * air.wind[1])));
+    layer_rig_stop(&rig);
+}
+
+/* Phase 04's three layers on the real seed, on the plan's four days. Printed and held to themselves until Ahmed has seen
+ * the pictures (bench_climate --pictures): the hashes are pinned only after he says yes. */
+TEST(each_new_layer_is_held_to_a_hash) {
+    enum : uint32_t { SIDE = 256u };
+    layer_rig_t rig;
+    REQUIRE(layer_rig_start(t, &rig));
+    terrain_t terrain;
+    REQUIRE(terrain_init(&terrain, 2198175988018515243ull));
+    REQUIRE(climate_open(rig.climate, &terrain));
+    climate_prepare_area(rig.climate, rig.job, -2048, -2048, 2047, 2047, nullptr, nullptr);
+    uint8_t *const first = test_alloc(t, SIDE * SIDE * 4u);
+    uint8_t *const second = test_alloc(t, SIDE * SIDE * 4u);
+    static const uint32_t DAYS[4] = {15u, 105u, 196u, 288u};
+    static const char *const NAMES[3] = {"currents", "pressure", "wind"};
+    for (uint32_t layer = CLIMATE_LAYER_CURRENTS; layer <= CLIMATE_LAYER_WIND; layer++) {
+        for (uint32_t d = 0u; d < 4u; d++) {
+            if (layer == CLIMATE_LAYER_CURRENTS && d > 0u) {
+                break; /* currents do not change through the year */
+            }
+            climate_layer_draw(rig.climate, (climate_layer_t)layer, -2048, 2048, 16, SIDE, SIDE, DAYS[d], first,
+                               SIDE * 4u);
+            climate_layer_draw(rig.climate, (climate_layer_t)layer, -2048, 2048, 16, SIDE, SIDE, DAYS[d], second,
+                               SIDE * 4u);
+            const uint64_t hash = layer_digest(first, SIDE * SIDE * 4u);
+            printf("%s, day %u: 0x%016" PRIX64 "\n", NAMES[layer - CLIMATE_LAYER_CURRENTS], DAYS[d], hash);
+            CHECK_EQ_U64(hash, layer_digest(second, SIDE * SIDE * 4u));
+            uint64_t grey = 0u;
+            for (uint32_t i = 0u; i < SIDE * SIDE; i++) {
+                grey += layer_pixel(first, SIDE * 4u, i % SIDE, i / SIDE) == 0x808080u ? 1u : 0u;
+            }
+            CHECK_EQ_U64(grey, 0u);
+        }
+    }
+    layer_rig_stop(&rig);
+    terrain_deinit(&terrain);
+}
+
 TEST_MAIN()

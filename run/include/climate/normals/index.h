@@ -10,10 +10,10 @@
 
 /* Every knot table of plan 004 as a curve (master plan rule 5: one home). Built once, read-only after, by any thread. */
 typedef struct climate_normals_t {
-    terrain_density_spline_t p_belt;     /* 0: hPa by |psi|, master plan 6.4 */
-    terrain_density_spline_t t_mean;     /* 296: deg C, the yearly mean at sea level by |phi|, 6.6 */
-    terrain_density_spline_t a_sea;      /* 592: deg C, half the yearly swing over the sea by |phi|, 6.6 */
-    terrain_density_spline_t a_land;     /* 888: deg C, the same over land, 6.6 */
+    terrain_density_spline_t p_belt; /* 0: hPa by |psi|, master plan 6.4 */
+    terrain_density_spline_t t_mean; /* 296: deg C, the yearly mean at sea level by |phi|, 6.6 */
+    terrain_density_spline_t a_sea;  /* 592: deg C, half the yearly swing over the sea by |phi|, 6.6 */
+    terrain_density_spline_t a_land; /* 888: deg C, the same over land, 6.6 */
 } climate_normals_t;
 static_assert(sizeof(climate_normals_t) == 1184);
 

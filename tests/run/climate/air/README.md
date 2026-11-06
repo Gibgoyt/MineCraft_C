@@ -1,0 +1,10 @@
+# tests/run/climate/air
+
+**Purpose:** ctest `run_climate_air`. Tests `run/src/climate/air/` and the Owner's reads of it, by the phase 04 file's test list: the mirror sign `e(y)` and "poleward" either side of a pole; the belt wind's six worked examples and `ψ`'s; trades from the east for every |ψ| below 27° and, on open sea built by the Owner, from the stored waves within 15° on every fit day and as a yearly mean within 22° (printing `u0`); westerlies and polar easterlies; the doldrums and horse latitudes; no jump bigger than 0.1 blocks a second between 0.01° steps of ψ; the 70° turn and its sign at y = 60,000; the pressure wind circling the spin islands' heat lows anticlockwise in the north, clockwise in the south and clockwise in world coordinates in the mirrored north, and the reverse round their cold highs; steering never faster on 1,000,000 random winds and on the ridge's real cells (against a build with steering turned off), with the worked example; altitude's factors; the currents on synthetic continents at 30° S, 50° N, the mirrored 50° N, 8° N and 70° N, with their flow directions and strengths; the fade over 600 blocks offshore; land taking its nearest sea's current; the sea temperature; the heat low's worked examples; the 20° N coast's pressure wind onshore in summer and offshore in winter, 0.43 at about 704 blocks inland, with the totals printed (the monsoon question); a real tile's stored pressure reproducing its 12 days; and `climate_air_at` as the blend of four cells' coefficients.
+**Tier:** test.
+**Owns:** nothing outside the test arena.
+**Lifetime:** One run.
+**Threads:** main, and the job system's workers for the tests that build through the Owner.
+**Public functions:** none; a test program.
+**May be called by:** ctest.
+**Depends on:** `tests/harness/`, `tests/run/climate/fixtures/ground.h`, `run/src/climate/` and its parts `air/`, `cell/`, `harmonic/`, `normals/`; `run/src/terrain/` for a real seed's tile and `terrain_rng`; `job`, `thread`. No graphics card.
