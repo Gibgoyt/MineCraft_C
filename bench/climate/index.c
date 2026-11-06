@@ -1,6 +1,10 @@
 /* bench_climate: what a climate tile costs, and the gate's pictures. See README.md. */
+#include "climate/air/index.h"
+#include "climate/heat/index.h"
 #include "climate/index.h"
 #include "climate/layer/index.h"
+#include "climate/rain/index.h"
+#include "climate/season/index.h"
 #include "display/headless/png/index.h"
 #include "heap/index.h"
 #include "job/index.h"
@@ -26,7 +30,13 @@ enum : uint32_t {
     BENCH_PICTURE_STEP = 16u,
     BENCH_DAYS = 4u,           /* phase 04's gate days: 15, 105, 196, 288 */
     BENCH_SYNTHETIC_STEP = 8u, /* --synthetic: 8 blocks a pixel, 8 km a side round each continent */
+    BENCH_DAYS_MAX = 32u,      /* --days: at most this many */
+    BENCH_MONTHS = 12u,        /* phase 05's default days: the middle of each month */
 };
+static const uint32_t BENCH_MONTH_DAYS[BENCH_MONTHS] = {15u,  46u,  76u,  107u, 137u, 168u,
+                                                        198u, 229u, 259u, 290u, 320u, 351u};
+/* The direct build's arena: the window, the cell build's scratch and the air's. */
+static const uint64_t BENCH_DIRECT_ARENA_BYTES = 8ull << 20;
 static_assert(MC_THREADS_WORKERS >= BENCH_WORKERS);
 static const float64_t BENCH_TARGET_MS = 100.0f64; /* one cold tile on one worker: the phase 03 file */
 static const uint64_t BENCH_SEED = 0x1234567890ABCDEFull;
@@ -156,6 +166,111 @@ static int32_t bench_timings(climate_t *climate, const thread_topology_t *topolo
     return status;
 }
 
+static void bench_terrain_ground(const void *borrowed_context, int32_t origin_x, int32_t origin_y, int32_t step,
+                                 uint32_t count_x, uint32_t count_y, float32_t *heights) {
+    terrain_height_estimate_area(borrowed_context, origin_x, origin_y, step, count_x, count_y, heights);
+}
+
+/* ---- Phase 05: what each part of a tile costs ------------------------------------------------------------------------- */
+
+typedef struct bench_parts_t {
+    float64_t ns[7]; /* 0: window, cells, air, heat, rain, season, the snow balance alone */
+} bench_parts_t;
+static_assert(sizeof(bench_parts_t) == 56);
+
+/* One tile built straight from its window on this thread, each part timed: what the tile job does, without the cache. */
+static void bench_parts_tile(const climate_normals_t *normals, arena_t *arena, const terrain_t *terrain, int32_t tile_x,
+                             int32_t tile_y, float32_t *heights, climate_cell_t *cells, bench_parts_t *out) {
+    arena_reset(arena);
+    const int32_t half = CLIMATE_WINDOW_TILES / 2;
+    int64_t at = time_now_ns();
+    terrain_height_estimate_area(terrain, (tile_x - half) * CLIMATE_TILE_BLOCKS + CLIMATE_CELL_BLOCKS / 2,
+                                 (tile_y - half) * CLIMATE_TILE_BLOCKS + CLIMATE_CELL_BLOCKS / 2, CLIMATE_CELL_BLOCKS,
+                                 (uint32_t)CLIMATE_WINDOW_CELLS, (uint32_t)CLIMATE_WINDOW_CELLS, heights);
+    int64_t next = time_now_ns();
+    out->ns[0] = (float64_t)(next - at);
+    at = next;
+    climate_window_t window;
+    climate_cell_build_tile(arena, bench_terrain_ground, terrain, tile_x, tile_y, heights, cells, &window);
+    next = time_now_ns();
+    out->ns[1] = (float64_t)(next - at);
+    at = next;
+    climate_air_build_tile(normals, arena, &window, cells, nullptr);
+    next = time_now_ns();
+    out->ns[2] = (float64_t)(next - at);
+    at = next;
+    climate_heat_build_tile(normals, cells);
+    next = time_now_ns();
+    out->ns[3] = (float64_t)(next - at);
+    at = next;
+    climate_rain_build_tile(normals, nullptr, &window, cells);
+    next = time_now_ns();
+    out->ns[4] = (float64_t)(next - at);
+    at = next;
+    climate_season_build_tile(normals, nullptr, &window, cells);
+    next = time_now_ns();
+    out->ns[5] = (float64_t)(next - at);
+    at = next;
+    float32_t sink = 0.0f32;
+    for (uint32_t i = 0u; i < (uint32_t)CLIMATE_TILE_CELL_COUNT; i++) {
+        if ((cells[i].flags & CLIMATE_CELL_SEA) == 0u) {
+            sink += climate_season_snow_balance(&cells[i], (cells[i].flags & CLIMATE_CELL_LAKE) == 0u);
+        }
+    }
+    out->ns[6] = (float64_t)(time_now_ns() - at);
+    if (sink != sink) {
+        printf("(a NaN snow balance)\n"); /* keeps the loop from being thrown away */
+    }
+}
+
+static int32_t bench_parts(const climate_t *climate, const terrain_t *terrain) {
+    heap_region_t memory = {0};
+    const uint64_t heights_bytes = (uint64_t)CLIMATE_WINDOW_CELL_COUNT * sizeof(float32_t);
+    const uint64_t cells_bytes = (uint64_t)CLIMATE_TILE_CELL_COUNT * sizeof(climate_cell_t);
+    if (!heap_reserve(BENCH_DIRECT_ARENA_BYTES + heights_bytes + cells_bytes, &memory)) {
+        return 2;
+    }
+    arena_t arena;
+    arena_init(&arena, "bench_parts", memory.owned_base, BENCH_DIRECT_ARENA_BYTES);
+    float32_t *const heights = (float32_t *)(void *)(memory.owned_base + BENCH_DIRECT_ARENA_BYTES);
+    climate_cell_t *const cells =
+        (climate_cell_t *)(void *)(memory.owned_base + BENCH_DIRECT_ARENA_BYTES + heights_bytes);
+    static const char *const NAMES[7] = {"window (phase 03's pages)",
+                                         "cells (phase 03)",
+                                         "air (phase 04)",
+                                         "heat (phase 05)",
+                                         "rain (phase 05)",
+                                         "season (phase 05)",
+                                         "  of which the snow balance"};
+    bench_parts_t sum = {0};
+    for (uint32_t p = 0u; p < BENCH_PLACES; p++) {
+        bench_parts_t best = {0};
+        for (uint32_t r = 0u; r < BENCH_ROUNDS; r++) {
+            bench_parts_t round = {0};
+            bench_parts_tile(climate_normals(climate), &arena, terrain, BENCH_TILES[p][0], BENCH_TILES[p][1], heights,
+                             cells, &round);
+            for (uint32_t k = 0u; k < 7u; k++) {
+                best.ns[k] = r == 0u || round.ns[k] < best.ns[k] ? round.ns[k] : best.ns[k];
+            }
+        }
+        for (uint32_t k = 0u; k < 7u; k++) {
+            sum.ns[k] += best.ns[k];
+        }
+    }
+    const float64_t total = sum.ns[0] + sum.ns[1] + sum.ns[2] + sum.ns[3] + sum.ns[4] + sum.ns[5];
+    printf("a tile's parts, built straight from its window on one thread, mean over %u places, best of %u each "
+           "(the rain walk reads no mask page past the window: every step is inside it)\n",
+           BENCH_PLACES, BENCH_ROUNDS);
+    for (uint32_t k = 0u; k < 7u; k++) {
+        printf("  %-28s %8.3f ms %6.1f%%\n", NAMES[k], (libc_double_t)(sum.ns[k] / (float64_t)BENCH_PLACES / 1.0e6f64),
+               (libc_double_t)(100.0f64 * sum.ns[k] / total));
+    }
+    printf("  %-28s %8.3f ms\n", "all", (libc_double_t)(total / (float64_t)BENCH_PLACES / 1.0e6f64));
+    arena_deinit(&arena);
+    heap_release(&memory);
+    return 0;
+}
+
 /* ---- Pictures ------------------------------------------------------------------------------------------------------ */
 
 static bool bench_png_write(const char *directory, const char *name, const uint8_t *pixels, uint8_t *stream,
@@ -214,8 +329,56 @@ static bool bench_air_pictures(const climate_t *climate, const char *directory, 
     return true;
 }
 
+/* The days phase 05's day layers are drawn for. */
+typedef struct bench_days_t {
+    uint32_t days[BENCH_DAYS_MAX]; /* 0 */
+    uint32_t count;                /* 128 */
+} bench_days_t;
+static_assert(sizeof(bench_days_t) == 132);
+
+/* Phase 05's layers: the year's once, the day ones for each listed day, named <layer>_dDDD.png. */
+static bool bench_normals_pictures(const climate_t *climate, const char *directory, int32_t west_x, int32_t north_y,
+                                   int32_t step, const char *prefix, const bench_days_t *days, uint8_t *pixels,
+                                   uint8_t *stream, uint64_t png_bytes) {
+    static const climate_layer_t YEAR[6] = {CLIMATE_LAYER_TEMPERATURE_MEAN,    CLIMATE_LAYER_TEMPERATURE_WARMEST,
+                                            CLIMATE_LAYER_TEMPERATURE_COLDEST, CLIMATE_LAYER_RAIN_YEAR,
+                                            CLIMATE_LAYER_CLIMATE_CLASS,       CLIMATE_LAYER_SNOW_BALANCE};
+    static const char *const YEAR_NAMES[6] = {"temperature_mean", "temperature_warmest", "temperature_coldest",
+                                              "rain_year",        "climate_class",       "snow_balance"};
+    static const climate_layer_t BY_DAY[4] = {CLIMATE_LAYER_TEMPERATURE_DAY, CLIMATE_LAYER_RAIN_DAY,
+                                              CLIMATE_LAYER_HURRICANE_SEASON, CLIMATE_LAYER_MONSOON};
+    static const char *const DAY_NAMES[4] = {"temperature_day", "rain_day", "hurricane_season", "monsoon"};
+    char name[128];
+    for (uint32_t l = 0u; l < 6u; l++) {
+        climate_layer_draw(climate, YEAR[l], west_x, north_y, step, BENCH_PICTURE_SIDE, BENCH_PICTURE_SIDE, 0u, pixels,
+                           BENCH_PICTURE_SIDE * 4u);
+        (void)snprintf(name, sizeof(name), "%s%s.png", prefix, YEAR_NAMES[l]);
+        if (!bench_png_write(directory, name, pixels, stream, png_bytes)) {
+            return false;
+        }
+    }
+    /* The monsoon flag on the first day listed: the gate's monsoon.png. */
+    climate_layer_draw(climate, CLIMATE_LAYER_MONSOON, west_x, north_y, step, BENCH_PICTURE_SIDE, BENCH_PICTURE_SIDE,
+                       days->days[0], pixels, BENCH_PICTURE_SIDE * 4u);
+    (void)snprintf(name, sizeof(name), "%smonsoon.png", prefix);
+    if (!bench_png_write(directory, name, pixels, stream, png_bytes)) {
+        return false;
+    }
+    for (uint32_t d = 0u; d < days->count; d++) {
+        for (uint32_t l = 0u; l < 4u; l++) {
+            climate_layer_draw(climate, BY_DAY[l], west_x, north_y, step, BENCH_PICTURE_SIDE, BENCH_PICTURE_SIDE,
+                               days->days[d], pixels, BENCH_PICTURE_SIDE * 4u);
+            (void)snprintf(name, sizeof(name), "%s%s_d%03u.png", prefix, DAY_NAMES[l], days->days[d]);
+            if (!bench_png_write(directory, name, pixels, stream, png_bytes)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 static int32_t bench_pictures(climate_t *climate, const thread_topology_t *topology, const char *directory,
-                              uint64_t seed) {
+                              uint64_t seed, const bench_days_t *days) {
     if (mkdir(directory, 0755) != 0 && errno != EEXIST) {
         fprintf(stderr, "bench_climate: cannot make %s: %s\n", directory, strerror(errno));
         return 2;
@@ -281,6 +444,10 @@ static int32_t bench_pictures(climate_t *climate, const thread_topology_t *topol
         ok = bench_air_pictures(climate, directory, -half, half, (int32_t)BENCH_PICTURE_STEP, "", pixels, stream,
                                 png_bytes);
     }
+    if (ok) {
+        ok = bench_normals_pictures(climate, directory, -half, half, (int32_t)BENCH_PICTURE_STEP, "", days, pixels,
+                                    stream, png_bytes);
+    }
     heap_release(&memory);
     climate_close(climate, &system);
     job_deinit(&system);
@@ -313,8 +480,38 @@ static void bench_square_ground(const void *borrowed_context, int32_t origin_x, 
     }
 }
 
-/* The continents at 30 S and 50 N, which show the master plan's table with no real coast's noise. */
-static int32_t bench_synthetic(climate_t *climate, const thread_topology_t *topology, const char *directory) {
+/* The phase 05 file's South Africa fixture, by x alone (as tests/run/climate/fixtures/ground.h has it): the west sea to
+ * x = 0, a coast rising to the 500 plateau by 1000, the plateau to 10,000, a crest of 750 at 10,400, down to 250 at
+ * 10,912, the escarpment face to 1 at 11,742, the coastal strip to 11,968, then the east sea. */
+static void bench_south_africa_ground(const void *borrowed_context, int32_t origin_x, int32_t origin_y, int32_t step,
+                                      uint32_t count_x, uint32_t count_y, float32_t *heights) {
+    (void)borrowed_context;
+    (void)origin_y;
+    static const float32_t KNOT_X[7] = {0.0f32, 1000.0f32, 10000.0f32, 10400.0f32, 10912.0f32, 11742.0f32, 11968.0f32};
+    static const float32_t KNOT_H[7] = {1.0f32, 500.0f32, 500.0f32, 750.0f32, 250.0f32, 1.0f32, 1.0f32};
+    for (uint32_t i = 0u; i < count_x; i++) {
+        const int64_t x = (int64_t)origin_x + (int64_t)step * i;
+        float32_t h = -50.0f32;
+        if (x >= 0 && x < 11968) {
+            const float32_t at = (float32_t)x;
+            for (uint32_t k = 1u; k < 7u; k++) {
+                if (at < KNOT_X[k]) {
+                    const float32_t t = (at - KNOT_X[k - 1u]) / (KNOT_X[k] - KNOT_X[k - 1u]);
+                    h = KNOT_H[k - 1u] + t * (KNOT_H[k] - KNOT_H[k - 1u]);
+                    break;
+                }
+            }
+        }
+        for (uint32_t j = 0u; j < count_y; j++) {
+            heights[(uint64_t)j * count_x + i] = h;
+        }
+    }
+}
+
+/* The continents at 30 S and 50 N, which show the master plan's table with no real coast's noise; from phase 05 also the
+ * South Africa sketch at 25 S, 16 km round its middle. */
+static int32_t bench_synthetic(climate_t *climate, const thread_topology_t *topology, const char *directory,
+                               const bench_days_t *days) {
     if (mkdir(directory, 0755) != 0 && errno != EEXIST) {
         fprintf(stderr, "bench_climate: cannot make %s: %s\n", directory, strerror(errno));
         return 2;
@@ -347,9 +544,45 @@ static int32_t bench_synthetic(climate_t *climate, const thread_topology_t *topo
                                 PREFIXES[s], memory.owned_base, memory.owned_base + pixel_bytes, png_bytes);
         climate_close(climate, &system);
     }
+    if (ok && climate_open_ground(climate, BENCH_SEED, bench_south_africa_ground, nullptr)) {
+        const int32_t sa_half = (int32_t)(BENCH_PICTURE_SIDE * BENCH_PICTURE_STEP / 2u);
+        const int32_t sa_x = 6000, sa_y = -10656;
+        climate_prepare_area(climate, &system, sa_x - sa_half, sa_y - sa_half, sa_x + sa_half - 1, sa_y + sa_half - 1,
+                             nullptr, nullptr);
+        ok = bench_normals_pictures(climate, directory, sa_x - sa_half, sa_y + sa_half, (int32_t)BENCH_PICTURE_STEP,
+                                    "south_africa_", days, memory.owned_base, memory.owned_base + pixel_bytes,
+                                    png_bytes);
+        climate_close(climate, &system);
+    } else {
+        ok = false;
+    }
     heap_release(&memory);
     job_deinit(&system);
     return ok ? 0 : 2;
+}
+
+/* "15,46,76": up to BENCH_DAYS_MAX days from 0 to 364. */
+static bool bench_days_parse(const char *text, bench_days_t *out) {
+    bench_days_t days = {0};
+    const char *at = text;
+    for (;;) {
+        char *end = nullptr;
+        errno = 0;
+        const uint64_t day = strtoull(at, &end, 10);
+        if (errno != 0 || end == at || day > 364u || days.count == BENCH_DAYS_MAX) {
+            return false;
+        }
+        days.days[days.count++] = (uint32_t)day;
+        if (*end == '\0') {
+            break;
+        }
+        if (*end != ',') {
+            return false;
+        }
+        at = end + 1;
+    }
+    *out = days;
+    return true;
 }
 
 int32_t main(int32_t argc, char **argv) {
@@ -359,7 +592,16 @@ int32_t main(int32_t argc, char **argv) {
         return 2;
     }
     int32_t status = 0;
-    if (argc == 4 && strcmp(argv[1], "--pictures") == 0) {
+    bench_days_t days = {.count = BENCH_MONTHS};
+    memcpy(days.days, BENCH_MONTH_DAYS, sizeof(BENCH_MONTH_DAYS));
+    const bool with_days = argc >= 3 && strcmp(argv[argc - 2], "--days") == 0;
+    if (with_days && !bench_days_parse(argv[argc - 1], &days)) {
+        fprintf(stderr, "bench_climate: '%s' is not a list of days from 0 to 364\n", argv[argc - 1]);
+        climate_deinit(&climate);
+        return 2;
+    }
+    const int32_t plain = with_days ? argc - 2 : argc;
+    if (plain == 4 && strcmp(argv[1], "--pictures") == 0) {
         char *end = nullptr;
         errno = 0;
         const uint64_t seed = strtoull(argv[3], &end, 10);
@@ -367,10 +609,10 @@ int32_t main(int32_t argc, char **argv) {
             fprintf(stderr, "bench_climate: '%s' is not a seed\n", argv[3]);
             status = 2;
         } else {
-            status = bench_pictures(&climate, &topology, argv[2], seed);
+            status = bench_pictures(&climate, &topology, argv[2], seed, &days);
         }
-    } else if (argc == 3 && strcmp(argv[1], "--synthetic") == 0) {
-        status = bench_synthetic(&climate, &topology, argv[2]);
+    } else if (plain == 3 && strcmp(argv[1], "--synthetic") == 0) {
+        status = bench_synthetic(&climate, &topology, argv[2], &days);
     } else if (argc == 1) {
         terrain_t terrain;
         if (!terrain_init(&terrain, BENCH_SEED)) {
@@ -380,9 +622,12 @@ int32_t main(int32_t argc, char **argv) {
         bench_ground_t ground = {.borrowed_terrain = &terrain};
         bench_ground_reset(&ground);
         status = bench_timings(&climate, &topology, &ground);
+        const int32_t parts = bench_parts(&climate, &terrain);
+        status = parts != 0 ? parts : status;
         terrain_deinit(&terrain);
     } else {
-        fprintf(stderr, "usage: bench_climate [--pictures <directory> <seed> | --synthetic <directory>]\n");
+        fprintf(stderr, "usage: bench_climate [--pictures <directory> <seed> | --synthetic <directory>] "
+                        "[--days d,d,...]\n");
         status = 2;
     }
     climate_deinit(&climate);

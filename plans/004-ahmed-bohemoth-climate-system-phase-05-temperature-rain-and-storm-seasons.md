@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 5: Temperature, rain and storm seasons
 
-**Status:** not started   (updated 2026-11-04)
+**Status:** in progress: built and verified by the agent; only Ahmed's gate is left   (updated 2026-11-06)
 
 Read `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` first, then sections 3, 6.3, 6.6 to 6.10 and 7.2 of `plans/004-ahmed-bohemoth-climate-system.md`, then the phase 03 and phase 04 files of this plan, which this phase builds on. Every number here comes from the master plan. Where this file adds a number the master plan does not give, it says "this phase" and gives the reason.
 
@@ -725,24 +725,24 @@ void climate_test_hooks_set(climate_t *climate, const climate_test_hooks_t *hook
 
 ## Todo
 
-- [ ] Phases 02 to 04's names found; differences written under Issues found
-- [ ] Rain-belt knots and spline in `run/src/climate/normals/`
-- [ ] `climate_harmonic_fit2` and `climate_harmonic_at2` in `run/src/climate/harmonic/`
-- [ ] `run/src/climate/heat/`: temperature (6.6) with all knots in one table, the daily range, the snow share, `t_mean` per tile
-- [ ] `run/src/climate/rain/`: the upwind walk (window, then mask to 8 km), moisture, orographic factor and rain belts (6.7), for 12 days, fitted to two harmonics
-- [ ] `run/src/climate/season/`: hurricane season and `hurricane_days` packing, hurricane-coast flag, monsoon flag and monsoon today (6.8)
-- [ ] Snow balance height, and climate classes (6.10)
-- [ ] The three builders called from `climate_cell_build_tile`; `run_climate_cell` pin re-set with a line saying why
-- [ ] `climate_normals_at` in the Owner
-- [ ] Test hooks: freeze the seasons, override the belt
-- [ ] Map layers: temperature (day, mean, warmest, coldest), rain (year, day), hurricane season, monsoon, climate class, snow balance
-- [ ] Tests: the worked examples of 6.6 to 6.8 on synthetic ground, within 10%; temperature falls with height; a ridge's lee is drier than its windward side; south runs six months from north
-- [ ] Ahmed's South Africa test: a synthetic continent with his sketch's profile at 25° south gives a wet east coast, a wettest escarpment, a dry plateau and a desert west coast
-- [ ] 1 and 16 workers give the same bytes; release prints the same digest as debug
-- [ ] Bench: one tile on one worker still under 100 ms, numbers recorded here and in `bench/climate/README.md`
-- [ ] A `README.md` in every new source directory, exactly one `index.*` in each
-- [ ] `plans/REPO_STRUCTURE.md` updated
-- [ ] The whole debug suite passes; `standards_lint` and `clang_format` pass
+- [x] Phases 02 to 04's names found; differences written under Issues found (Issues found 7)
+- [x] Rain-belt knots and spline in `run/src/climate/normals/`
+- [x] `climate_harmonic_fit2` and `climate_harmonic_at2` in `run/src/climate/harmonic/`
+- [x] `run/src/climate/heat/`: temperature (6.6) with all knots in one table, the daily range, the snow share, `t_mean` per tile
+- [x] `run/src/climate/rain/`: the upwind walk (window, then mask to 8 km), moisture, orographic factor and rain belts (6.7), for 12 days, fitted to two harmonics
+- [x] `run/src/climate/season/`: hurricane season and `hurricane_days` packing, hurricane-coast flag, monsoon flag and monsoon today (6.8)
+- [x] Snow balance height, and climate classes (6.10)
+- [x] The three builders called from `climate_cell_build_tile`; `run_climate_cell` pin re-set with a line saying why (called from the Owner's tile job, where phase 04's air builder is: Issues found 8; pin `0xB667CA61EBBB4C6F`)
+- [x] `climate_normals_at` in the Owner (its struct is `climate_normals_at_t`: Issues found 7)
+- [x] Test hooks: freeze the seasons, override the belt
+- [x] Map layers: temperature (day, mean, warmest, coldest), rain (year, day), hurricane season, monsoon, climate class, snow balance
+- [x] Tests: the worked examples of 6.6 to 6.8 on synthetic ground, within 10%; temperature falls with height; a ridge's lee is drier than its windward side; south runs six months from north
+- [x] Ahmed's South Africa test: a synthetic continent with his sketch's profile at 25° south gives a wet east coast, a wettest escarpment, a dry plateau and a desert west coast
+- [x] 1 and 16 workers give the same bytes; release prints the same digest as debug
+- [x] Bench: one tile on one worker still under 100 ms, numbers recorded here and in `bench/climate/README.md`
+- [x] A `README.md` in every new source directory, exactly one `index.*` in each
+- [x] `plans/REPO_STRUCTURE.md` updated
+- [x] The whole debug suite passes; `standards_lint` and `clang_format` pass
 - [ ] Gate: Ahmed reviews the maps over a year, with the day list as the slider
 
 ## Tests
@@ -879,9 +879,25 @@ Ahmed reviews the maps over a year, with the day list as the slider (master plan
 | Monsoons will be rare with phase 04's numbers (phase 04, Issues found 1) | Built exactly; Ahmed's choice at phase 04's gate carries here |
 | `t_mean` stored at sea level, where the master plan's comment says "the yearly mean" | Kept, for the reason in Design. The ground's mean is one line away, and `climate_normals_t.t_mean_c` gives it at any $z$ |
 
+## Results
+
+Run by the agent on 2026-11-06 in its worktree, every heavy command through `tools/test-or-build.sh`.
+
+- `run_climate_harmonic`, `run_climate_heat`, `run_climate_rain`, `run_climate_season`, `run_climate_cell`, `run_climate_layer`, every other `run_climate*`, `standards_lint`, `clang_format`: all pass on debug.
+- Worked examples, as the tests print them: equator beach 25.914 to 28.014 °C; 45° N peak -10.50 °C on day 15, 8.47 on day 196, warmest day 204; 28° N basin 34.63 °C, high 40.35, 30.88 without `B`; the south equal to the north half a year on at 1200 pairs; the read bit for bit equal to the formula at 64 cell centres. South Africa with the plan's assumptions: east coast 644.5, escarpment 1110.7, plateau 70.3, west coast 4.5 mm (30.00 with `O = 1`), plateau and west coast Desert; with the real belt 0.850 of each (the cell is at 25.04°); real year: east coast 646, escarpment 1101, plateau 116, west coast 141 mm (west coast wettest in month 7, its winter: Issues found 1's Cape). Ridge at 15° N: windward 454, lee 94.5 mm, 4.8 times. 15° N sea: 31.95 °C on day 215, 28.05 on day 32 (`s = 0.775`), season `{39, 68}` without the current, `{0, 91}` with it; 15° S wraps as `{84, 23}`. Snow balance: 45° N 1483.9, 60° coast 324.9, 75° coast -203.0 with `B` (-250 without, Issues found 9), equator 9999. 45° N peak (1184 blocks in, 45.05°): warmest month 8.386, Tundra. Year's mean of `P_belt` at 25° S: 721.1 mm.
+- `run_climate_cell`: 1 and 16 workers the same bytes, digest `0xB667CA61EBBB4C6F`; the release run passes against the same pin.
+- Release build links, `-Wframe-larger-than` included (nothing was added to `app_t`: the hooks sit in `climate_state_t`'s old padding, in the climate's region).
+- `bench_climate` on release, exit 0: cold tile 29.5 to 30.8 ms on one worker (target 100), warm 7.91 ms. A tile's parts on one thread: window 24.25 ms, cells 3.63, air 0.10, heat 0.002, rain 0.51, season 1.78 (snow balance 1.07 of it). Phase 05 costs about 2.3 ms a tile.
+- `bench_climate --pictures /tmp/mc_c_climate 2198175988018515243 --days 15,46,...,351`: 68 pictures; `--synthetic /tmp/mc_c_climate_synthetic --days 15,107,198,290`: 41. Looked at by the agent only (contact sheets): hot all over (the 16 km round spawn is 18.8° S to 18.8° N), wet seas near the equator, a step at the equator in the day's temperature (Issues found 10), hurricane seas red in the northern band on day 229 and none within 5°. Ahmed has not seen them.
+- The whole debug suite (`ctest --preset debug`, 136 tests, every `run_terrain_*` among them unchanged): 100% passed, 1917.6 s.
+
 ## Commits
 
 Appended as they land:
+
+- `6f94c352` Add plan 004 phase 05's temperature, rain, hurricane seasons, monsoons, snow balance and climate classes to every climate cell, read them with climate_normals_at, draw ten new layers, and test them on synthetic ground and Ahmed's South Africa sketch.
+- `e3f4a989` List the climate's heat, rain and season parts of plan 004 phase 05 and their tests in the repository structure.
+- `688cc91e` Record plan 004 phase 05 in its phase file: todos, results, the bench and the issues found.
 
 ## Issues found
 
@@ -911,3 +927,33 @@ Found while writing this file, by checking the master plan's arithmetic. None ch
 5. **One home for the melt constant.** This phase's snow balance needs 7.5's 4 mm per degree per day, and phase 07's file lists `CLIMATE_MELT_MM_PER_DEGREE_DAY` among its own constants. This phase lands first, so the constant lives in `run/include/climate/season/index.h`, and phase 07 includes it instead of defining it again (vision rule 5).
 
 6. **How the share of rainy days $r$ is found.** 6.6 gives the daily range with $r$, "the share of rainy days", but no way to get it from normals. This phase uses section 8's chance of a wet day, $1 - e^{-\bar P_{\text{day}}/6}$, the only formula in the plan that turns normal rain into a chance. Phase 07 may replace it with the real share from its weekly state for the census report; the normals keep this one.
+
+Found while building, 2026-11-06:
+
+7. **Names that differ from this file.**
+   - **Expected:** `climate_normals_t` as the read's struct; `climate_heat_*`, `climate_rain_*` and `climate_season_build_tile` taking `const climate_t *`; `climate_rain_build_tile` taking an arena.
+   - **Actual:** phase 04 already named its knot curves `climate_normals_t` (`run/include/climate/normals/index.h`), so the read's struct is `climate_normals_at_t`, 64 bytes, with a `z` field added (the height used; NaN in means the blended ground, which the layers use). The builders take `const climate_normals_t *` (the curves) and `const climate_test_hooks_t *`, as phase 04's `climate_air_build_tile` does, since parts below the Owner never see `climate_t`. The rain build needs no scratch (12 floats a cell, a local array), so takes no arena. `climate_heat_from_place` takes the curves too. The hooks type lives in `run/include/climate/rain/index.h`, the lowest part that reads it, and the Owner holds it in `climate_state_t` at 240, where 16 bytes of padding were (no size change). Declination is `climate_sun_declination_deg`, used through phase 04's `climate_air_wind_latitude`. The window-current function was `static air_sea_current`; it is now public as `climate_air_window_current(window, at, &strength)`, and the tile's own sea cells take their current from it, so there is one home (the same arithmetic in the same order; `run_climate_air` passes unchanged).
+   - **Done:** used the built names; written here.
+
+8. **The three builders are called from the Owner's tile job, not from `climate_cell_build_tile`.**
+   - **Expected:** this file's step 7: `climate_cell_build_tile` calls them after `climate_air_build_tile`.
+   - **Actual:** `climate_cell_build_tile` never called `climate_air_build_tile`; the Owner's `climate_tile_job` (`run/src/climate/index.c`) does, after the cell build. A sibling part calling three more would make `cell/` depend on everything after it.
+   - **Done:** `climate_tile_job` calls heat, rain and season after air, in that order. `run_climate_cell`'s flag checks now mask phase 03's own flags (`CELL_KIND_FLAGS`), as phase 05 adds the monsoon and hurricane-coast flags beside them; that is the wiring in `tests/run/climate/cell/index.c` beside the pin.
+
+9. **The 75° coast's snow balance is -203, not -250, once `B` is counted.**
+   - **Expected:** "75° coast, 350 mm: exactly -250", and the design's "with `B(z)` when `z < 0` for land cells".
+   - **Actual:** the two disagree. At -250 on land `B` adds 6.25 °C: the mean is -4.75 and the summer peaks at +3.2 °C, which melts 350 mm. With `B` the bisection gives -203.0; without it (a lake, `land` false) -250 exactly, which is the worked example's number.
+   - **Evidence:** `run_climate_season` prints `75 coast -203.0`; `climate_season_snow_balance(&coast75, false) == -250`.
+   - **Done:** kept the design's `B` for land; the test checks -203 ± 2 with `B` and exactly -250 without. Nothing in the world reaches it today (land below 0 is water, Issues found 3).
+
+10. **The day's temperature steps at the equator.**
+    - **Expected:** regions blend.
+    - **Actual:** `t_swing` is `A s_h`, and `s_h` jumps from +1 to -1 at `φ = 0`; with `A` about 1 to 2 °C there, the daily mean steps by up to twice that across y = 0 on most days (the gate pictures show a line at the equator in `temperature_day_*`). It is the master plan's formula (6.6 with phase 04's `s_h = +1` at 0); the yearly mean, warmest and coldest month are smooth.
+    - **Done:** nothing changed; for Ahmed at the gate. A smooth `s_h` (like phase 04's σ for the winds) would remove it if he wants.
+
+11. **Two hand-worked numbers in the tests.**
+    - `P_belt(13.26°)`: this file says 1453.8 ± 0.5; the repo's spline gives 1452.54 (0.09% apart, 25° is exactly 426.67 as written). The test checks 1452.54.
+    - The walk past the window: this file puts the sea 9000 blocks upwind and expects it met at step ⌈9000/128⌉ = 71, which is past step 64, so it can never be met; and the window always holds the whole walk (a tile cell is 8192 blocks and half a cell from its edge), so "no water within the window" cannot hold with water met. The test puts the sea 7000 blocks upwind: met at step 55, past step 16, with no current; and 16,000 upwind: none met, `d_up = 8192`, `M = 0.15`.
+    - The warmest month of the class rules is the month centred on the warmest day, `T̄ + 0.98862 |A|`, as this file's worked example (8.45) computes, not the warmest of the 12 calendar months (which gives 8.39 for the same peak); rain months are the 12 calendar months.
+    - **Done:** as written in each test, with a comment saying why.
+

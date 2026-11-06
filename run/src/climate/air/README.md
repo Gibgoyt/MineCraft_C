@@ -13,5 +13,7 @@
 
 **The mirror.** Latitude is a triangle wave in y, so the strip from a pole to the next equator is a mirror image of the strip below it. Every north-south part of a table, the pressure wind's sense of turning and "toward the pole" are multiplied by `e(y)`, so a mirrored strip is exactly a mirror image. West and east coasts do not change: x is never mirrored (the phase file's Issues found 4).
 
+Phase 05 made one function public, `climate_air_window_current`: a window sea cell's current and strength, as its own tile stores them, for the water a rain walk meets and a coast's nearest sea in the hurricane season. The tile's own sea cells take theirs from it too, so there is one home.
+
 **May be called by:** its parent `run/src/climate/` (the tile job and the reads), `run/src/climate/layer/` for the current kinds and their constants.
 **Depends on:** its siblings `climate/cell` (the window, the distance and κ formulas), `climate/harmonic` (the fit), `climate/normals` (the knot tables), `climate/sea` (the kinds and `CLIMATE_SEA_FAR`), `climate/sun` (the declination); its parent for `climate_latitude_deg` and the pole's y; `arena`, `types`, libm.

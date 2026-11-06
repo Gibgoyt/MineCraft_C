@@ -95,6 +95,7 @@ bool climate_open_ground(climate_t *climate, uint64_t seed, climate_ground_fn_t 
     state->ground = ground;
     state->borrowed_ground_context = borrowed_context;
     state->warp_off = 0u;
+    memset(&state->hooks, 0, sizeof(state->hooks));
     atomic_store_explicit(&state->keep_tile_x, 0, memory_order_relaxed);
     atomic_store_explicit(&state->keep_tile_y, 0, memory_order_relaxed);
     atomic_store_explicit(&state->jobs_in_flight, 0u, memory_order_relaxed);
@@ -158,6 +159,10 @@ static void climate_tile_job(job_worker_t *worker, void *borrowed_argument) {
                             &cells_window);
     /* Phase 04: currents, swing, lag, wind and pressure, from the same window, before anyone can read the tile. */
     climate_air_build_tile(state->borrowed_normals, arena, &cells_window, cells, nullptr);
+    /* Phase 05: temperature, then rain, then the seasons and classes that read both. */
+    climate_heat_build_tile(state->borrowed_normals, cells);
+    climate_rain_build_tile(state->borrowed_normals, &state->hooks, &cells_window, cells);
+    climate_season_build_tile(state->borrowed_normals, &state->hooks, &cells_window, cells);
     climate_cache_publish(slot);
     atomic_fetch_sub_explicit(&state->jobs_in_flight, 1u, memory_order_release);
     atomic_fetch_add_explicit(&state->jobs_done, 1u, memory_order_release);
@@ -587,4 +592,82 @@ void climate_current_flow(const climate_cell_t *cell, float32_t y_centre, float3
 
 const climate_normals_t *climate_normals(const climate_t *climate) {
     return climate->borrowed_state->borrowed_normals;
+}
+
+/* ---- Normals: phase 05 --------------------------------------------------------------------------------------------- */
+
+void climate_test_hooks_set(climate_t *climate, const climate_test_hooks_t *hooks) {
+    climate->borrowed_state->hooks = *hooks;
+}
+
+enum : uint32_t {
+    CLIMATE_WETTEST_SAMPLES = 73u, /* days 0, 5, ..., 360: the wettest day of the year, to within 5 days */
+    CLIMATE_WETTEST_STEP_DAYS = 5u,
+};
+
+bool climate_normals_at(const climate_t *climate, float64_t x, float64_t y, float32_t z, float32_t day,
+                        climate_normals_at_t *out) {
+    const climate_state_t *const state = climate->borrowed_state;
+    if (state == nullptr || state->open == 0u) {
+        return false;
+    }
+    float64_t read_x = x, read_y = y;
+    climate_warp_at(climate, x, y, &read_x, &read_y);
+    climate_cell_t cells[4];
+    float32_t t_x = 0.0f32, t_y = 0.0f32;
+    if (!climate_four_cells(state, read_x, read_y, cells, &t_x, &t_y)) {
+        return false;
+    }
+    /* The stored numbers blended, then the formulas evaluated once: exact for the rain waves, which are linear, and a
+     * fraction of a degree from evaluating then blending for the temperature wave, whose lag is inside the cosine. */
+#define CLIMATE_BLEND(field) climate_lerp4(cells[0].field, cells[1].field, cells[2].field, cells[3].field, t_x, t_y)
+    climate_cell_t blend = cells[0];
+    blend.t_mean = CLIMATE_BLEND(t_mean);
+    blend.t_swing = CLIMATE_BLEND(t_swing);
+    blend.t_lag_days = CLIMATE_BLEND(t_lag_days);
+    blend.kappa = CLIMATE_BLEND(kappa);
+    blend.z_ground = CLIMATE_BLEND(z_ground);
+    blend.snow_balance_z = CLIMATE_BLEND(snow_balance_z);
+    for (uint32_t i = 0u; i < 5u; i++) {
+        blend.rain_mm_week[i] = CLIMATE_BLEND(rain_mm_week[i]);
+    }
+#undef CLIMATE_BLEND
+    const uint32_t nearest_index = (t_x >= 0.5f32 ? 1u : 0u) + (t_y >= 0.5f32 ? 2u : 0u);
+    const climate_cell_t *const nearest = &cells[nearest_index];
+    blend.lat_deg = (float32_t)climate_latitude_deg(y);
+    const bool sea = (nearest->flags & CLIMATE_CELL_SEA) != 0u;
+    const bool land = (nearest->flags & (CLIMATE_CELL_SEA | CLIMATE_CELL_LAKE)) == 0u;
+    const float32_t at_z = isnan(z) ? blend.z_ground : z;
+
+    memset(out, 0, sizeof(*out));
+    out->z = at_z;
+    out->t_mean_c = climate_heat_base(blend.t_mean, at_z, land);
+    out->t_day_c = climate_heat_formula(blend.t_mean, at_z, land, blend.t_swing, blend.t_lag_days, day);
+    const float32_t *const rain = blend.rain_mm_week;
+    out->rain_mm_day = fmaxf(0.0f32, climate_harmonic_at2(rain, day)) / CLIMATE_DAYS_A_WEEK;
+    out->rain_mm_year = fmaxf(0.0f32, rain[0]) * CLIMATE_DAYS_A_YEAR / CLIMATE_DAYS_A_WEEK;
+    float32_t wettest = 0.0f32;
+    for (uint32_t k = 0u; k < CLIMATE_WETTEST_SAMPLES; k++) {
+        wettest = fmaxf(wettest, climate_harmonic_at2(rain, (float32_t)(k * CLIMATE_WETTEST_STEP_DAYS)));
+    }
+    out->rain_max_mm_day = wettest / CLIMATE_DAYS_A_WEEK;
+    out->t_range_c = climate_heat_daily_range(blend.kappa, out->rain_mm_day);
+    out->t_high_c = out->t_day_c + 0.5f32 * out->t_range_c;
+    out->t_low_c = out->t_day_c - 0.5f32 * out->t_range_c;
+    climate_season_months_t months;
+    climate_season_months(&blend, at_z, land, &months);
+    out->t_max_month_c = months.t_max_month_c;
+    out->t_min_month_c = months.t_min_month_c;
+    out->snow_share = climate_heat_snow_share(out->t_day_c);
+    out->snow_balance_z = blend.snow_balance_z;
+    out->sea_temperature_c = nanf("");
+    if (sea) {
+        out->sea_temperature_c = climate_sea_temperature(climate, nearest, day);
+        out->hurricane_s = climate_season_hurricane_s(nearest->lat_deg, out->sea_temperature_c);
+    }
+    out->climate_class = nearest->climate_class;
+    out->flags = nearest->flags;
+    out->hurricane_season = climate_season_hurricane_today(nearest->hurricane_days, day) ? 1u : 0u;
+    out->monsoon_today = climate_season_monsoon_today(nearest, day) ? 1u : 0u;
+    return true;
 }

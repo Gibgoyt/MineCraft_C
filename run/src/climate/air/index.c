@@ -258,20 +258,26 @@ static uint8_t air_sea_current(const climate_window_t *window, uint32_t sea_at, 
     return climate_air_current_kind((float32_t)lat, n[0], out_weight);
 }
 
+uint8_t climate_air_window_current(const climate_window_t *window, uint32_t sea_at, uint8_t *out_strength) {
+    *out_strength = 0u;
+    const float32_t land = climate_cell_distance_blocks(window->land_distance2[sea_at]);
+    if (land > CLIMATE_CURRENT_REACH) {
+        return CLIMATE_CURRENT_NONE;
+    }
+    float32_t weight = 0.0f32, n[2];
+    const uint8_t current = air_sea_current(window, sea_at, &weight, n);
+    if (current != CLIMATE_CURRENT_NONE) {
+        *out_strength = climate_air_sea_strength(land, weight);
+    }
+    return current;
+}
+
 /* Steps 1 to 3 for one tile cell. */
 static void air_cell_current(const climate_window_t *window, uint32_t at, climate_cell_t *cell) {
     float32_t weight = 0.0f32, n[2];
     const uint8_t kind = window->kind[at];
     if (kind == CLIMATE_SEA_KIND_SEA) {
-        const float32_t land = climate_cell_distance_blocks(window->land_distance2[at]);
-        if (land > CLIMATE_CURRENT_REACH) {
-            return; /* NONE, 0: the cells were zeroed */
-        }
-        const uint8_t current = air_sea_current(window, at, &weight, n);
-        if (current != CLIMATE_CURRENT_NONE) {
-            cell->current = current;
-            cell->current_strength = climate_air_sea_strength(land, weight);
-        }
+        cell->current = climate_air_window_current(window, at, &cell->current_strength);
         return;
     }
     if (kind == CLIMATE_SEA_KIND_LAKE_LARGE || window->sea_distance2[at] == CLIMATE_SEA_FAR) {

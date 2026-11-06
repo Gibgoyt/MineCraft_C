@@ -83,4 +83,60 @@ TEST(the_heat_low_wave_is_the_worked_example) {
     CHECK_NEAR(day_197, -6.936f32, 0.002f32);
 }
 
+/* ---- Phase 05: the two-wave fit ------------------------------------------------------------------------------------- */
+
+TEST(two_pure_waves_come_back_exactly) {
+    float32_t values[CLIMATE_FIT_DAYS];
+    for (uint32_t k = 0u; k < CLIMATE_FIT_DAYS; k++) {
+        const float64_t th = harmonic_theta(k);
+        values[k] = (float32_t)(5.0f64 + 2.0f64 * cos(th) - 1.0f64 * sin(th) + 3.0f64 * cos(2.0f64 * th) +
+                                4.0f64 * sin(2.0f64 * th));
+    }
+    float32_t fit[5];
+    climate_harmonic_fit2(values, fit);
+    static const float32_t WANT[5] = {5.0f32, 2.0f32, -1.0f32, 3.0f32, 4.0f32};
+    for (uint32_t i = 0u; i < 5u; i++) {
+        CHECK_NEAR(fit[i], WANT[i], 1.0e-5f32);
+    }
+    for (uint32_t k = 0u; k < CLIMATE_FIT_DAYS; k++) {
+        CHECK_NEAR(climate_harmonic_at2(fit, climate_harmonic_day(k)), values[k], 1.0e-5f32);
+    }
+}
+
+TEST(the_worked_example_rain_fits_within_two_mm) {
+    const float32_t values[CLIMATE_FIT_DAYS] = {40.0f32, 55.0f32, 62.0f32, 50.0f32, 35.0f32, 30.0f32,
+                                                38.0f32, 52.0f32, 60.0f32, 48.0f32, 34.0f32, 31.0f32};
+    float32_t fit[5];
+    climate_harmonic_fit2(values, fit);
+    printf("rain fit: P0 %.3f P1c %.3f P1s %.3f P2c %.3f P2s %.3f\n", (libc_double_t)fit[0], (libc_double_t)fit[1],
+           (libc_double_t)fit[2], (libc_double_t)fit[3], (libc_double_t)fit[4]);
+    static const float32_t WANT[5] = {44.583f32, 0.994f32, 0.933f32, -5.250f32, 14.289f32};
+    for (uint32_t i = 0u; i < 5u; i++) {
+        CHECK_NEAR(fit[i], WANT[i], 1.0e-3f32);
+    }
+    float32_t worst = 0.0f32;
+    for (uint32_t k = 0u; k < CLIMATE_FIT_DAYS; k++) {
+        worst = fmaxf(worst, fabsf(climate_harmonic_at2(fit, climate_harmonic_day(k)) - values[k]));
+    }
+    printf("worst miss %.3f mm\n", (libc_double_t)worst);
+    CHECK(worst <= 1.8f32);
+}
+
+TEST(the_two_wave_fit_agrees_with_the_one_wave_fit_on_wave_one) {
+    uint64_t state = 0x9E3779B97F4A7C15ull;
+    for (uint32_t round = 0u; round < 100u; round++) {
+        float32_t values[CLIMATE_FIT_DAYS];
+        for (uint32_t k = 0u; k < CLIMATE_FIT_DAYS; k++) {
+            state = state * 6364136223846793005ull + 1442695040888963407ull;
+            values[k] = (float32_t)(state >> 40) / 16777216.0f32 * 100.0f32 - 20.0f32;
+        }
+        float32_t one[3], two[5];
+        climate_harmonic_fit1(values, one);
+        climate_harmonic_fit2(values, two);
+        for (uint32_t i = 0u; i < 3u; i++) {
+            CHECK_NEAR(two[i], one[i], 1.0e-6f32);
+        }
+    }
+}
+
 TEST_MAIN()

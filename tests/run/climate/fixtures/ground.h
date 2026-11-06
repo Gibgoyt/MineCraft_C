@@ -22,6 +22,13 @@ typedef enum ground_kind_t : uint32_t {
     GROUND_COAST_Y = 9,   /* land (20) for y >= coast, sea (-60) south of it, all x */
     GROUND_OPEN_SEA = 10, /* -100 everywhere */
     GROUND_RIDGE = 11,    /* land: 20 west of x = 10,000, rising 0.8 a block to 420 at x = 10,500, 420 east of it */
+    /* Plan 004 phase 05's grounds. */
+    GROUND_SOUTH_AFRICA =
+        12, /* Ahmed's sketch by x alone: west sea, a 500 plateau, a 750 crest, the escarpment, east sea */
+    GROUND_PEAK_RIDGE =
+        13,            /* land 20, with a ridge 400 high along x = 10,000, falling straight to 20 1000 blocks out */
+    GROUND_LEVEL = 14, /* land at radius blocks everywhere */
+    GROUND_HIGH_COAST_Y = 15, /* land at radius blocks for y >= coast, sea (-60) south of it, all x */
 } ground_kind_t;
 
 enum : uint32_t { GROUND_RECTS_MAX = 4u };
@@ -39,12 +46,38 @@ typedef struct ground_t {
     ground_rect_t rects[GROUND_RECTS_MAX]; /* 0 */
     uint32_t kind;                         /* 64: ground_kind_t */
     uint32_t rect_count;                   /* 68 */
-    int32_t coast;                         /* 72: GROUND_COAST_X and GROUND_LAKES; INT32_MIN for no sea */
-    int32_t radius;                        /* 76: GROUND_ISLAND */
+    int32_t coast;                         /* 72: the coasts of the COAST kinds and LAKES; INT32_MIN for no sea */
+    int32_t radius;                        /* 76: GROUND_ISLAND; the height of GROUND_LEVEL and GROUND_HIGH_COAST_Y */
     int32_t centre_x;                      /* 80: GROUND_ISLAND */
     int32_t centre_y;                      /* 84 */
 } ground_t;
 static_assert(sizeof(ground_t) == 88);
+
+/* The phase 05 file's South Africa fixture, by x alone, piecewise straight: the west sea (-50) to x = 0, the coast rising
+ * from 1 to 500 by 1000, the plateau at 500 to 10,000, the crest up to 750 at 10,400, down to 250 at 10,912, the
+ * escarpment face down to 1 at 11,742 (250 over 830 blocks), the coastal strip at 1 to 11,968, then the east sea (-50). */
+[[maybe_unused]] static float32_t ground_south_africa(int64_t x) {
+    typedef struct ground_knot_t {
+        float32_t x; /* 0 */
+        float32_t h; /* 4 */
+    } ground_knot_t;
+    static_assert(sizeof(ground_knot_t) == 8);
+    static const ground_knot_t KNOTS[7] = {
+        {0.0f32, 1.0f32},       {1000.0f32, 500.0f32}, {10000.0f32, 500.0f32}, {10400.0f32, 750.0f32},
+        {10912.0f32, 250.0f32}, {11742.0f32, 1.0f32},  {11968.0f32, 1.0f32},
+    };
+    if (x < 0 || x >= 11968) {
+        return -50.0f32;
+    }
+    const float32_t at = (float32_t)x;
+    for (uint32_t k = 1u; k < 7u; k++) {
+        if (at < KNOTS[k].x) {
+            const float32_t t = (at - KNOTS[k - 1u].x) / (KNOTS[k].x - KNOTS[k - 1u].x);
+            return KNOTS[k - 1u].h + t * (KNOTS[k].h - KNOTS[k - 1u].h);
+        }
+    }
+    return 1.0f32;
+}
 
 [[maybe_unused]] static float32_t ground_height(const ground_t *ground, int64_t x, int64_t y) {
     switch ((ground_kind_t)ground->kind) {
@@ -85,6 +118,16 @@ static_assert(sizeof(ground_t) == 88);
         return -100.0f32;
     case GROUND_RIDGE:
         return x < 10000 ? 20.0f32 : (x < 10500 ? 20.0f32 + 0.8f32 * (float32_t)(x - 10000) : 420.0f32);
+    case GROUND_SOUTH_AFRICA:
+        return ground_south_africa(x);
+    case GROUND_PEAK_RIDGE: {
+        const int64_t off = x > 10000 ? x - 10000 : 10000 - x;
+        return off >= 1000 ? 20.0f32 : 20.0f32 + 400.0f32 * (float32_t)(1000 - off) / 1000.0f32;
+    }
+    case GROUND_LEVEL:
+        return (float32_t)ground->radius;
+    case GROUND_HIGH_COAST_Y:
+        return y >= (int64_t)ground->coast ? (float32_t)ground->radius : -60.0f32;
     }
     return 0.0f32;
 }

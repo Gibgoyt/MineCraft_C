@@ -18,7 +18,14 @@ static const float64_t NORMALS_SWING_LAT_DEG[] = {0.0f64, 30.0f64, 60.0f64, 90.0
 static const float64_t NORMALS_A_SEA_C[] = {1.0f64, 3.0f64, 6.0f64, 10.0f64};
 static const float64_t NORMALS_A_LAND_C[] = {2.0f64, 9.0f64, 18.0f64, 22.0f64};
 
+/* 6.7 (phase 05): yearly rain at sea level in mm, by the wind latitude |psi|. Nine knots, inside the spline's twelve. */
+static const float64_t NORMALS_RAIN_BELT_LAT_DEG[] = {0.0f64,  10.0f64, 20.0f64, 30.0f64, 40.0f64,
+                                                      50.0f64, 60.0f64, 75.0f64, 90.0f64};
+static const float64_t NORMALS_RAIN_BELT_MM[] = {2400.0f64, 1800.0f64, 700.0f64, 300.0f64, 800.0f64,
+                                                 1000.0f64, 800.0f64,  350.0f64, 150.0f64};
+
 enum : uint32_t {
+    NORMALS_RAIN_BELT_KNOTS = sizeof(NORMALS_RAIN_BELT_LAT_DEG) / sizeof(NORMALS_RAIN_BELT_LAT_DEG[0]),
     NORMALS_LAT_KNOTS = sizeof(NORMALS_LAT_DEG) / sizeof(NORMALS_LAT_DEG[0]),
     NORMALS_SWING_KNOTS = sizeof(NORMALS_SWING_LAT_DEG) / sizeof(NORMALS_SWING_LAT_DEG[0]),
 };
@@ -26,6 +33,8 @@ static_assert(sizeof(NORMALS_P_BELT_HPA) == sizeof(NORMALS_LAT_DEG));
 static_assert(sizeof(NORMALS_T_MEAN_C) == sizeof(NORMALS_LAT_DEG));
 static_assert(sizeof(NORMALS_A_SEA_C) == sizeof(NORMALS_SWING_LAT_DEG));
 static_assert(sizeof(NORMALS_A_LAND_C) == sizeof(NORMALS_SWING_LAT_DEG));
+static_assert(sizeof(NORMALS_RAIN_BELT_MM) == sizeof(NORMALS_RAIN_BELT_LAT_DEG));
+static_assert((uint32_t)NORMALS_RAIN_BELT_KNOTS <= (uint32_t)TERRAIN_DENSITY_SPLINE_KNOTS_MAX);
 
 void climate_normals_fill(climate_normals_t *normals) {
     memset(normals, 0, sizeof(*normals)); /* knots past each count too, so two builds compare as bytes */
@@ -33,6 +42,8 @@ void climate_normals_fill(climate_normals_t *normals) {
     terrain_density_spline_build(&normals->t_mean, NORMALS_LAT_DEG, NORMALS_T_MEAN_C, NORMALS_LAT_KNOTS);
     terrain_density_spline_build(&normals->a_sea, NORMALS_SWING_LAT_DEG, NORMALS_A_SEA_C, NORMALS_SWING_KNOTS);
     terrain_density_spline_build(&normals->a_land, NORMALS_SWING_LAT_DEG, NORMALS_A_LAND_C, NORMALS_SWING_KNOTS);
+    terrain_density_spline_build(&normals->rain_belt, NORMALS_RAIN_BELT_LAT_DEG, NORMALS_RAIN_BELT_MM,
+                                 NORMALS_RAIN_BELT_KNOTS);
 }
 
 const climate_normals_t *climate_normals_build(arena_t *arena) {
@@ -55,4 +66,8 @@ float64_t climate_normals_a_sea(const climate_normals_t *normals, float64_t phi_
 
 float64_t climate_normals_a_land(const climate_normals_t *normals, float64_t phi_deg) {
     return terrain_density_spline_at(&normals->a_land, fabs(phi_deg));
+}
+
+float64_t climate_normals_rain_belt(const climate_normals_t *normals, float64_t psi_deg) {
+    return terrain_density_spline_at(&normals->rain_belt, fabs(psi_deg));
 }

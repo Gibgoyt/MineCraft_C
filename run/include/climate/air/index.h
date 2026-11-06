@@ -133,6 +133,11 @@ float32_t climate_air_heat_low(float32_t kappa, float32_t t_swing, float32_t lag
 float32_t climate_air_sea_temperature(const climate_normals_t *normals, float64_t phi_deg, float32_t current_c,
                                       float32_t day);
 
+/* The current and strength of window sea cell sea_at, from its nearest land, as that cell's own tile stores them: NONE and
+ * 0 more than 600 blocks from land or with none in reach. Phase 05 reads it for the water an upwind walk meets and for a
+ * coast's nearest sea. Pure. */
+uint8_t climate_air_window_current(const climate_window_t *window, uint32_t sea_at, uint8_t *out_strength);
+
 /* Fills current, current_strength, t_swing, t_lag_days, wind[6] and pressure[3] of a tile's 256 cells, whose phase 03 fields
  * are already set, from its window. Pure: the same bytes from the same window. Its scratch, about 40 KiB, comes from arena
  * (the worker's Job arena). trace may be nullptr. */
