@@ -10,14 +10,16 @@
 
 enum : uint32_t {
     UI_FONT_ATLAS_WIDTH = 128u,
-    UI_FONT_ATLAS_HEIGHT = 48u,
+    UI_FONT_ATLAS_HEIGHT = 56u, /* plan 004 phase 09: a seventh row, for characters past ASCII */
     UI_FONT_CELL = 8u,
     UI_FONT_GLYPH_WIDTH = 5u,
     UI_FONT_GLYPH_HEIGHT = 7u,
     UI_FONT_FIRST = 32u,  /* the atlas starts at space */
-    UI_FONT_GLYPHS = 96u, /* 16 to a row, 6 rows: the last cell is DEL's, and empty */
-    UI_FONT_LINE = 9u,    /* from one line's top to the next's, at scale 1 */
-    UI_FONT_SPACING = 1u, /* empty columns after each glyph */
+    UI_FONT_GLYPHS = 96u, /* ASCII: 16 to a row, 6 rows: the last cell is DEL's, and empty */
+    UI_FONT_EXTRA = 2u,   /* the seventh row's first cells: the degree sign (U+00B0) and the middle dot (U+00B7) */
+    UI_FONT_EXTRA_ROW_CELLS = 16u, /* the seventh row; the cells past UI_FONT_EXTRA stay empty for later */
+    UI_FONT_LINE = 9u,             /* from one line's top to the next's, at scale 1 */
+    UI_FONT_SPACING = 1u,          /* empty columns after each glyph */
     UI_FONT_SPACE_WIDTH = 3u,
 };
 
@@ -29,7 +31,7 @@ typedef struct ui_font_glyph_t {
 static_assert(sizeof(ui_font_glyph_t) == 8);
 
 typedef struct ui_font_t {
-    const ui_font_glyph_t *borrowed_glyphs; /* UI_FONT_GLYPHS of them, from the arena its Owner gave */
+    const ui_font_glyph_t *borrowed_glyphs; /* UI_FONT_GLYPHS + UI_FONT_EXTRA of them, from the arena its Owner gave */
 } ui_font_t;
 static_assert(sizeof(ui_font_t) == 8);
 
@@ -60,8 +62,12 @@ void ui_font_deinit(ui_font_t *font);
 /* The glyph a byte of ASCII shows. Anything the atlas has no picture for shows '?'. */
 const ui_font_glyph_t *ui_font_glyph(const ui_font_t *font, uint8_t character);
 
-/* Text is NUL-terminated UTF-8, and '\n' starts a line at x. A tab is a space, and any other character the atlas does not
- * have, including every one past ASCII, is one '?'. */
+/* The glyph of a character past ASCII, by its index in the seventh row: 0 the degree sign, 1 the middle dot. */
+const ui_font_glyph_t *ui_font_glyph_extra(const ui_font_t *font, uint32_t index);
+
+/* Text is NUL-terminated UTF-8, and '\n' starts a line at x. A tab is a space; the degree sign (bytes 0xC2 0xB0) and the
+ * middle dot (0xC2 0xB7) are one character each, from the seventh row; any other character the atlas does not have,
+ * including every other one past ASCII, is one '?'. */
 ui_text_size_t ui_font_measure(const ui_font_t *font, const char *text, uint32_t scale);
 
 /* Draws text with its first line's top left at (x, y). Each scanline of a line is built whole and goes to the blend kernel
