@@ -653,6 +653,7 @@ Appended as they land:
 - `3b8a801` Remake the under-water test's land picture for the real sun, after looking at it beside the old one.
 - `0e1a791` Record phase 2 of plan 004 as done but for Ahmed's gate, with its ticked todos, measured results and the issues found on the way.
 - `748cc79` List the commits of phase 2 of plan 004 in its phase file.
+- `43ba75f` Record the re-run of phase 2 of plan 004 checks in a fresh worktree, all passing.
 
 ## Issues found
 
