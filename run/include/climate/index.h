@@ -139,12 +139,17 @@ static_assert(offsetof(climate_state_t, group) == 64);
 static_assert(offsetof(climate_state_t, keep_tile_x) == 256);
 static_assert(sizeof(climate_state_t) <= CLIMATE_TABLES_OFFSET);
 
+/* Plan 004 phase 07's daily weather and weekly state: run/include/climate/weather/index.h, at the week region's start. */
+typedef struct climate_weather_t climate_weather_t;
+
 /* What app_t holds: the region and the state at its start. Small on purpose, as main's frame holds app_t: one line, so it
  * sits between app_t's lined-up members with no padding of the compiler's. */
 typedef struct climate_t {
     alignas(MC_CPU_CACHE_LINE_BYTES) heap_region_t owned_region; /* 0: everything, CLIMATE_REGION_BYTES */
     climate_state_t *borrowed_state;             /* 16: at owned_region's start; nullptr before climate_init */
-    uint8_t _pad0[MC_CPU_CACHE_LINE_BYTES - 24]; /* 24 */
+    heap_region_t owned_week_region;             /* 24: phase 07: the weather's, CLIMATE_WEEK_REGION_BYTES */
+    climate_weather_t *borrowed_weather;         /* 40: at owned_week_region's start; nullptr before climate_init */
+    uint8_t _pad0[MC_CPU_CACHE_LINE_BYTES - 48]; /* 48 */
 } climate_t;
 static_assert(sizeof(climate_t) == 64);
 static_assert(alignof(climate_t) == 64);
@@ -260,6 +265,11 @@ static_assert(sizeof(climate_normals_at_t) == 64);
  * from 0 to below 365. */
 bool climate_normals_at(const climate_t *climate, float64_t x, float64_t y, float32_t z, float32_t day,
                         climate_normals_at_t *out);
+/* Plan 004 phase 07: the same for count days at one place, into out[0 .. count - 1]: the warp, the four cells and what does
+ * not change with the day (the wettest day, the months) once, so each day costs a fraction of a call. Each out[i] is the
+ * bytes climate_normals_at gives for days[i]. False, writing nothing, as there. */
+bool climate_normals_days_at(const climate_t *climate, float64_t x, float64_t y, float32_t z, const float32_t *days,
+                             uint32_t count, climate_normals_at_t *out);
 
 /* For tests only: the hooks every tile built from now on uses (climate_open puts them back to all off). */
 void climate_test_hooks_set(climate_t *climate, const climate_test_hooks_t *hooks);

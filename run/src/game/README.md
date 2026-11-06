@@ -43,7 +43,7 @@
 - `game_report`: what the frames took, and the books of what was dropped.
 
 **May be called by:** `run/src/main/`, and its part `session`.
-**Depends on:** `mob`, `player`, `entity`, `item`, `ui`, `render`, `world`, `climate`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
+**Depends on:** its part `census` (plan 004 phase 07: attached at open, stepped by the sim, told of each column), `mob`, `player`, `entity`, `item`, `ui`, `render`, `world`, `climate`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
 
 **Parts:** `tick`: one tick of the world, `game_sim_tick`. `spawn`: where a new world's body starts, `game_ground_z` and `game_spawn_find`, which `bench/world_map/` asks too. `session`: from the title screen to Quit Game, on top of the rest of this. `view`: what a config comes to, and bringing a picture up to the display's size. `report`: what it says about itself. `input`: what a person's hands come to. `settle`: everything on the card, on one thread.
 

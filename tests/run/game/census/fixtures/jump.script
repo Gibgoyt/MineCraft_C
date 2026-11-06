@@ -1,0 +1,30 @@
+# A new world through the menus under --climate-jump 100, plan 004 phase 07: its first tick owes weeks 12 to 25, so the census
+# screen comes up at once, and under --headless the session works the whole census out in the next tick. At 640 by 480, scale 2,
+# with the menus' places as week.script has them. The pointer starts in the middle, at 320, 240.
+
+1 move 0 -40                    # 320, 200: Singleplayer
++1 button left down
++1 button left up
++1 move 132 196                 # 452, 396: Create New World
++1 button left down
++1 button left up
++1 key w down
++1 key w up
++1 key e down
++1 key e up
++1 key k down
++1 key k up
++1 move -132 -194               # 320, 202: the seed field
++1 button left down
++1 button left up
++1 key 7 down
++1 key 7 up
++1 key enter down               # opens the world, between this tick and the next
++1 key enter up
+
++40 screenshot census.png       # the census screen with its report, over the stopped world
++1 move 0 242                   # 320, 444: Continue, at 212 to 232 of the screen's 240
++1 button left down
++1 button left up
++20 screenshot after.png        # playing again
++1 end

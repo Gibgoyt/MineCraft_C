@@ -386,7 +386,7 @@ static ui_screen_census_action_t us_census_frame(us_rig_t *rig, const input_fram
     if (!ui_frame_begin_over(ui, rig->picture, US_WIDTH, US_HEIGHT)) {
         return (ui_screen_census_action_t)255u;
     }
-    const ui_screen_census_action_t action = ui_screen_census_frame(&ui->census_screen, &ui->widget, escape);
+    const ui_screen_census_action_t action = ui_screen_census_frame(&ui->census_screen, &ui->widget, escape, nullptr);
     memcpy(out, ui_frame_end(ui, false), (uint64_t)US_WIDTH * US_HEIGHT * 4u);
     return action;
 }

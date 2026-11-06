@@ -14,7 +14,7 @@
 - `game_session_headless_scene`, `game_session_end`: all of it for `display_headless_run`, and closing what is left.
 
 **May be called by:** `run/src/main/`.
-**Depends on:** `game`, `save`, `ui`, `ui/menu` and `ui/screen_settings`, `settings`, `climate` (closed before the terrain goes and opened over the new one, when the game has one; the alive callback copies the game's `open_percent` into the loading screen's `loading_percent`), `terrain`, `input`, `display`, `simd/copy`, `time`, `log`, `assert`.
+**Depends on:** `game`, `game/census` (the census report for its screen, and a sim step a tick under --headless while it is up), `save`, `ui`, `ui/menu` and `ui/screen_settings`, `settings`, `climate` (closed before the terrain goes and opened over the new one, when the game has one; the alive callback copies the game's `open_percent` into the loading screen's `loading_percent`), `terrain`, `input`, `display`, `simd/copy`, `time`, `log`, `assert`.
 
 ## How it goes
 

@@ -4,6 +4,7 @@
 #include "assert/index.h"
 #include "climate/sun/index.h"
 #include "entity/animation/index.h"
+#include "game/census/index.h"
 #include "item/stack/index.h"
 #include "game/spawn/index.h"
 #include "game/view/index.h"
@@ -25,7 +26,7 @@ enum : uint64_t {
     GAME_COLUMN_VOXELS = (uint64_t)COLUMN_SECTIONS * SECTION_VOXELS,
     GAME_COLUMN_BYTES = GAME_COLUMN_VOXELS * sizeof(uint16_t),
     GAME_WORLD_ARENA_BYTES = GAME_STREAM_JOBS * (GAME_COLUMN_BYTES + GAME_COLUMN_VOXELS + sizeof(game_column_job_t)) +
-                             2ull * 4096ull + MOB_SPAWN_BYTES,
+                             2ull * 4096ull + MOB_SPAWN_BYTES + GAME_CENSUS_ARENA_BYTES,
 };
 enum : int64_t {
     GAME_SIM_IDLE_NS = 1000000, /* the sim looks for finished columns this often when it has nothing to do */
@@ -121,6 +122,11 @@ void game_census_hook_set(game_t *game, game_census_week_fn *week, void *context
     ASSERT_ALWAYS(game->open == 0u);
     game->census_week = week;
     game->borrowed_census_context = context;
+}
+
+void game_climate_jump_set(game_t *game, uint16_t days) {
+    ASSERT_ALWAYS(game->open == 0u);
+    game->climate_jump_days = days;
 }
 
 void game_profiler_set(game_t *game, profiler_t *profiler) {
@@ -613,6 +619,7 @@ bool game_open(game_t *game, const game_config_t *config) {
         game_day_apply(game, &game->camera);
         save_autosave_start(&save->autosave, game->borrowed_job, &save->world, &save->state, game->tick_count);
     }
+    game_census_attach(game); /* plan 004 phase 07: with the calendar known */
     game->open = 1u;
     return true;
 }
@@ -625,6 +632,7 @@ void game_close(game_t *game) {
     /* Nothing may be writing into the jobs' memory when it goes. */
     job_group_wait(game->borrowed_job, &game->group);
     job_group_deinit(&game->group);
+    game_census_detach(game);
     if (game->borrowed_climate != nullptr) {
         climate_close(game->borrowed_climate, game->borrowed_job); /* waits for the tiles the sim queued */
     }
@@ -810,6 +818,7 @@ static bool game_column_fill(game_t *game, const game_column_job_t *job) {
         }
     }
     world_edit_column_filled(&world->edit, job->request.slot);
+    game_census_mark(game, job->request.chunk_x, job->request.chunk_y);
     if (job->borrowed_save != nullptr) {
         for (column_mask_t left = job->levels_mask; column_mask_any(left); left = column_mask_drop_lowest(left)) {
             const uint32_t section = column_mask_lowest(left);
@@ -940,7 +949,8 @@ void game_sim_step(game_t *game) {
     }
     game_columns_commit(game);
     climate_t *const climate = game_climate(game);
-    if (climate != nullptr) {
+    /* Plan 004 phase 07's census moves on here, paused or not; while it builds climate tiles the keep square stays put. */
+    if (!game_census_sim(game) && climate != nullptr) {
         const int32_t half = (int32_t)COLUMN_SIZE / 2;
         climate_schedule(climate, game->borrowed_job, map->center_x * (int32_t)COLUMN_SIZE + half,
                          map->center_y * (int32_t)COLUMN_SIZE + half, game_climate_radius(map));

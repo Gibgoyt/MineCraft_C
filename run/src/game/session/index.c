@@ -2,6 +2,7 @@
 #include "game/session/index.h"
 
 #include "assert/index.h"
+#include "game/census/index.h"
 #include "log/index.h"
 #include "simd/copy/index.h"
 #include "time/index.h"
@@ -358,7 +359,10 @@ static bool game_session_menu_draw(game_session_t *session, const input_frame_t 
         return false;
     }
     if (session->state == GAME_SESSION_CENSUS) {
-        if (ui_screen_census_frame(&ui->census_screen, &ui->widget, escape) == UI_SCREEN_CENSUS_CONTINUE) {
+        /* Plan 004 phase 07: the census's report as the sim last published it, or none for a world with no climate. */
+        game_census_t *const census = game_census_of(session->borrowed_game);
+        const ui_census_report_t *const report = census != nullptr ? game_census_report(census) : nullptr;
+        if (ui_screen_census_frame(&ui->census_screen, &ui->widget, escape, report) == UI_SCREEN_CENSUS_CONTINUE) {
             game_pause_set(session->borrowed_game, false);
             session->state = GAME_SESSION_PLAYING;
         }
@@ -637,6 +641,15 @@ static void game_session_script_frame(const display_headless_tick_t *tick, input
 
 static bool game_session_scene_tick(void *context, const display_headless_tick_t *tick) {
     game_session_t *const session = context;
+    if (session->state == GAME_SESSION_CENSUS) {
+        /* With no sim thread the census is worked out here, whole, in one tick: so one script gives one set of pictures,
+         * whatever the workers' speed. */
+        while (!game_census_settled(session->borrowed_game)) {
+            game_sim_step(session->borrowed_game);
+            time_sleep_ns(TIME_NS_PER_MS / 4);
+        }
+        return true;
+    }
     if (session->state != GAME_SESSION_PLAYING) {
         return true;
     }
