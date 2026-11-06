@@ -116,11 +116,36 @@ typedef struct climate_sample_t {
 } climate_sample_t;
 static_assert(sizeof(climate_sample_t) == 32);
 
+/* One tile's window: the tile plus CLIMATE_MARGIN_CELLS on every side, CLIMATE_WINDOW_CELLS a side, south row first, x
+ * fastest. All in the building worker's Job arena, gone when the job ends. Built by climate_cell_build_tile, read by
+ * climate_air_build_tile (plan 004 phase 04). Window cell (i, j) has its centre at x = (tile_x - 8) 1024 + 64 i + 32,
+ * y = (tile_y - 8) 1024 + 64 j + 32; the tile's own cells are i, j = 128 to 143. */
+typedef struct climate_window_t {
+    const float32_t *heights;       /* 0: ground at each cell centre, blocks */
+    const uint8_t *kind;            /* 8: CLIMATE_SEA_KIND_* */
+    const uint32_t *sea_distance2;  /* 16: cells^2, to the nearest sea; CLIMATE_SEA_FAR with none */
+    const uint32_t *sea_nearest;    /* 24: window index of that sea cell */
+    const uint32_t *land_distance2; /* 32: cells^2, to the nearest land or small lake */
+    const uint32_t *land_nearest;   /* 40 */
+    int32_t tile_x;                 /* 48 */
+    int32_t tile_y;                 /* 52 */
+} climate_window_t;
+static_assert(sizeof(climate_window_t) == 56);
+
 /* Every cell of tile (tile_x, tile_y), into cells (256, south row first, x fastest), from its window: 272 by 272 cell-centre
  * heights, row 0 at the south, window cell (128, 128) the tile's south-west cell. ground gives the 64 by 64 samples for
- * z_ground. Pure: the same bytes whatever else exists. arena is the worker's Job arena; about 2.4 MiB is taken from it. */
+ * z_ground. Pure: the same bytes whatever else exists. arena is the worker's Job arena; about 2.4 MiB is taken from it, and
+ * out_window points into it, for the rest of the job. */
 void climate_cell_build_tile(arena_t *arena, climate_ground_fn_t ground, const void *ground_context, int32_t tile_x,
-                             int32_t tile_y, const float32_t *window_heights, climate_cell_t *cells);
+                             int32_t tile_y, const float32_t *window_heights, climate_cell_t *cells,
+                             climate_window_t *out_window);
+
+/* A squared distance in cells to blocks: min(8192, max(0, 64 sqrt(D) - 32)), the coast half a cell in from the marked
+ * centre; CLIMATE_SEA_DISTANCE_MAX for CLIMATE_SEA_FAR. What every cell's distances are. Pure. */
+float32_t climate_cell_distance_blocks(uint32_t distance2);
+
+/* Continentality from the sea distance in blocks: 1 - e^(-d / 1500), master plan 6.2. Pure. */
+float32_t climate_cell_kappa(float32_t sea_distance);
 
 /* The bilinear blend of four cells, south-west, south-east, north-west, north-east, at fractions t_x and t_y (0 to 1):
  * along x, then y. lat_deg is left at 0 for the caller, who knows the exact y. Pure. */

@@ -24,6 +24,8 @@ enum : uint32_t {
     BENCH_RENDER_DISTANCE = 32u, /* the plan's spawn precompute: render distance 32 plus 2 km */
     BENCH_PICTURE_SIDE = 1024u,  /* pixels, at 16 blocks a pixel: 16 km a side */
     BENCH_PICTURE_STEP = 16u,
+    BENCH_DAYS = 4u,           /* phase 04's gate days: 15, 105, 196, 288 */
+    BENCH_SYNTHETIC_STEP = 8u, /* --synthetic: 8 blocks a pixel, 8 km a side round each continent */
 };
 static_assert(MC_THREADS_WORKERS >= BENCH_WORKERS);
 static const float64_t BENCH_TARGET_MS = 100.0f64; /* one cold tile on one worker: the phase 03 file */
@@ -184,6 +186,34 @@ static bool bench_png_write(const char *directory, const char *name, const uint8
     return true;
 }
 
+/* Phase 04's layers: currents once, pressure and wind on each of the gate's days, with the latitude lines over currents. */
+static bool bench_air_pictures(const climate_t *climate, const char *directory, int32_t west_x, int32_t north_y,
+                               int32_t step, const char *prefix, uint8_t *pixels, uint8_t *stream, uint64_t png_bytes) {
+    static const uint32_t DAYS[BENCH_DAYS] = {15u, 105u, 196u, 288u};
+    char name[128];
+    climate_layer_draw(climate, CLIMATE_LAYER_CURRENTS, west_x, north_y, step, BENCH_PICTURE_SIDE, BENCH_PICTURE_SIDE,
+                       0u, pixels, BENCH_PICTURE_SIDE * 4u);
+    climate_layer_draw(climate, CLIMATE_LAYER_LATITUDE, west_x, north_y, step, BENCH_PICTURE_SIDE, BENCH_PICTURE_SIDE,
+                       0u, pixels, BENCH_PICTURE_SIDE * 4u);
+    (void)snprintf(name, sizeof(name), "%scurrents.png", prefix);
+    if (!bench_png_write(directory, name, pixels, stream, png_bytes)) {
+        return false;
+    }
+    for (uint32_t d = 0u; d < BENCH_DAYS; d++) {
+        static const climate_layer_t LAYERS[2] = {CLIMATE_LAYER_PRESSURE, CLIMATE_LAYER_WIND};
+        static const char *const NAMES[2] = {"pressure", "wind"};
+        for (uint32_t l = 0u; l < 2u; l++) {
+            climate_layer_draw(climate, LAYERS[l], west_x, north_y, step, BENCH_PICTURE_SIDE, BENCH_PICTURE_SIDE,
+                               DAYS[d], pixels, BENCH_PICTURE_SIDE * 4u);
+            (void)snprintf(name, sizeof(name), "%s%s_day%03u.png", prefix, NAMES[l], DAYS[d]);
+            if (!bench_png_write(directory, name, pixels, stream, png_bytes)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 static int32_t bench_pictures(climate_t *climate, const thread_topology_t *topology, const char *directory,
                               uint64_t seed) {
     if (mkdir(directory, 0755) != 0 && errno != EEXIST) {
@@ -247,10 +277,78 @@ static int32_t bench_pictures(climate_t *climate, const thread_topology_t *topol
                            BENCH_PICTURE_SIDE, BENCH_PICTURE_SIDE, 0u, pixels, BENCH_PICTURE_SIDE * 4u);
         ok = bench_png_write(directory, "latitude.png", pixels, stream, png_bytes);
     }
+    if (ok) {
+        ok = bench_air_pictures(climate, directory, -half, half, (int32_t)BENCH_PICTURE_STEP, "", pixels, stream,
+                                png_bytes);
+    }
     heap_release(&memory);
     climate_close(climate, &system);
     job_deinit(&system);
     terrain_deinit(&terrain);
+    return ok ? 0 : 2;
+}
+
+/* ---- Synthetic continents ------------------------------------------------------------------------------------------ */
+
+/* The phase 04 file's synthetic continent: land (30) in a 4 km square, sea (-60) round it, both ends of each range given as
+ * the first block in and the first block out. */
+typedef struct bench_square_t {
+    int32_t x_min; /* 0 */
+    int32_t y_min; /* 4 */
+    int32_t x_max; /* 8: the first block east of it */
+    int32_t y_max; /* 12: the first block north of it */
+} bench_square_t;
+static_assert(sizeof(bench_square_t) == 16);
+
+static void bench_square_ground(const void *borrowed_context, int32_t origin_x, int32_t origin_y, int32_t step,
+                                uint32_t count_x, uint32_t count_y, float32_t *heights) {
+    const bench_square_t *const square = borrowed_context;
+    for (uint32_t j = 0u; j < count_y; j++) {
+        const int64_t y = (int64_t)origin_y + (int64_t)step * j;
+        for (uint32_t i = 0u; i < count_x; i++) {
+            const int64_t x = (int64_t)origin_x + (int64_t)step * i;
+            const bool land = x >= square->x_min && x < square->x_max && y >= square->y_min && y < square->y_max;
+            heights[(uint64_t)j * count_x + i] = land ? 30.0f32 : -60.0f32;
+        }
+    }
+}
+
+/* The continents at 30 S and 50 N, which show the master plan's table with no real coast's noise. */
+static int32_t bench_synthetic(climate_t *climate, const thread_topology_t *topology, const char *directory) {
+    if (mkdir(directory, 0755) != 0 && errno != EEXIST) {
+        fprintf(stderr, "bench_climate: cannot make %s: %s\n", directory, strerror(errno));
+        return 2;
+    }
+    static const bench_square_t SQUARES[2] = {{-2048, -14766, 2048, -10766}, {-2048, 19277, 2048, 23277}};
+    static const char *const PREFIXES[2] = {"south30_", "north50_"};
+    job_system_t system;
+    if (!job_init_count(&system, topology, BENCH_WORKERS)) {
+        return 2;
+    }
+    const uint64_t pixel_bytes = (uint64_t)BENCH_PICTURE_SIDE * BENCH_PICTURE_SIDE * 4u;
+    const uint64_t png_bytes = display_png_bytes_needed(BENCH_PICTURE_SIDE, BENCH_PICTURE_SIDE);
+    heap_region_t memory = {0};
+    if (!heap_reserve(pixel_bytes + png_bytes, &memory)) {
+        job_deinit(&system);
+        return 2;
+    }
+    bool ok = true;
+    const int32_t half = (int32_t)(BENCH_PICTURE_SIDE * BENCH_SYNTHETIC_STEP / 2u);
+    for (uint32_t s = 0u; s < 2u && ok; s++) {
+        const bench_square_t *const square = &SQUARES[s];
+        const int32_t centre_x = (square->x_min + square->x_max) / 2, centre_y = (square->y_min + square->y_max) / 2;
+        if (!climate_open_ground(climate, BENCH_SEED, bench_square_ground, square)) {
+            ok = false;
+            break;
+        }
+        climate_prepare_area(climate, &system, centre_x - half, centre_y - half, centre_x + half - 1,
+                             centre_y + half - 1, nullptr, nullptr);
+        ok = bench_air_pictures(climate, directory, centre_x - half, centre_y + half, (int32_t)BENCH_SYNTHETIC_STEP,
+                                PREFIXES[s], memory.owned_base, memory.owned_base + pixel_bytes, png_bytes);
+        climate_close(climate, &system);
+    }
+    heap_release(&memory);
+    job_deinit(&system);
     return ok ? 0 : 2;
 }
 
@@ -271,6 +369,8 @@ int32_t main(int32_t argc, char **argv) {
         } else {
             status = bench_pictures(&climate, &topology, argv[2], seed);
         }
+    } else if (argc == 3 && strcmp(argv[1], "--synthetic") == 0) {
+        status = bench_synthetic(&climate, &topology, argv[2]);
     } else if (argc == 1) {
         terrain_t terrain;
         if (!terrain_init(&terrain, BENCH_SEED)) {
@@ -282,7 +382,7 @@ int32_t main(int32_t argc, char **argv) {
         status = bench_timings(&climate, &topology, &ground);
         terrain_deinit(&terrain);
     } else {
-        fprintf(stderr, "usage: bench_climate [--pictures <directory> <seed>]\n");
+        fprintf(stderr, "usage: bench_climate [--pictures <directory> <seed> | --synthetic <directory>]\n");
         status = 2;
     }
     climate_deinit(&climate);

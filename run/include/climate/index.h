@@ -3,9 +3,11 @@
 #define MC_RUN_CLIMATE_INDEX_H
 
 #include "arena/index.h"
+#include "climate/air/index.h"
 #include "climate/cache/index.h"
 #include "climate/cell/index.h"
 #include "climate/mask/index.h"
+#include "climate/normals/index.h"
 #include "climate/sea/index.h"
 #include "heap/index.h"
 #include "job/index.h"
@@ -38,8 +40,9 @@ enum : uint32_t {
 
 /* Where everything sits in the one region climate_init reserves. Only pages touched cost memory. */
 enum : uint64_t {
-    CLIMATE_STATE_BYTES = 4096u, /* climate_state_t at the start, then the warp bank's fields */
+    CLIMATE_STATE_BYTES = 8192u, /* climate_state_t at the start, then the warp bank's fields, then the normals */
     CLIMATE_TABLES_OFFSET = 512u,
+    CLIMATE_NORMALS_OFFSET = 4096u, /* phase 04: the normals arena, to CLIMATE_STATE_BYTES */
     CLIMATE_TILE_SLOTS_OFFSET = CLIMATE_STATE_BYTES,
     CLIMATE_MASK_SLOTS_OFFSET = CLIMATE_TILE_SLOTS_OFFSET + (uint64_t)CLIMATE_TILE_SLOTS * sizeof(climate_slot_t),
     CLIMATE_SLOTS_END = CLIMATE_MASK_SLOTS_OFFSET + (uint64_t)CLIMATE_MASK_SLOTS * sizeof(climate_slot_t),
@@ -51,7 +54,9 @@ enum : uint64_t {
     CLIMATE_REGION_BYTES = CLIMATE_MASK_OFFSET + CLIMATE_MASK_BYTES,                                 /* 146 MiB */
 };
 static_assert(CLIMATE_REGION_BYTES % HEAP_REGION_ALIGNMENT == 0);
-static_assert(CLIMATE_TABLES_OFFSET + CLIMATE_WARP_FIELDS * sizeof(terrain_noise_field_t) + 64u <= CLIMATE_STATE_BYTES);
+static_assert(CLIMATE_TABLES_OFFSET + CLIMATE_WARP_FIELDS * sizeof(terrain_noise_field_t) + 64u <=
+              CLIMATE_NORMALS_OFFSET);
+static_assert(CLIMATE_NORMALS_OFFSET + sizeof(climate_normals_t) + 64u <= CLIMATE_STATE_BYTES);
 
 /* Where climate_prepare_begin's rounds stand: main's, while a world opens, so the loading screen can be drawn between them. */
 typedef enum climate_prepare_phase_t : uint8_t {
@@ -93,7 +98,9 @@ typedef struct climate_state_t {
     uint64_t seed;                                /* 216 */
     uint8_t open;                                 /* 224 */
     uint8_t warp_off;                             /* 225: a test's: reads are not warped */
-    uint8_t _pad0[30];                            /* 226 */
+    uint8_t _pad0[6];                             /* 226 */
+    const climate_normals_t *borrowed_normals;    /* 232: phase 04's curves, in arena_normals; from climate_init */
+    uint8_t _pad2[16];                            /* 240 */
     /* A line of its own: the sim writes the keep square, workers count down. */
     _Atomic int32_t keep_tile_x;                 /* 256 */
     _Atomic int32_t keep_tile_y;                 /* 260 */
@@ -101,8 +108,11 @@ typedef struct climate_state_t {
     _Atomic uint32_t jobs_done;                  /* 268: every job the climate has finished, for progress */
     uint8_t _pad1[MC_CPU_CACHE_LINE_BYTES - 16]; /* 272 */
     climate_prepare_t prepare;                   /* 320: main's, between climate_prepare_begin and its last step */
+    arena_t arena_normals;                       /* 384: the normals' curves; Process lifetime, built in climate_init */
 } climate_state_t;
-static_assert(sizeof(climate_state_t) == 384);
+static_assert(sizeof(climate_state_t) == 448);
+static_assert(offsetof(climate_state_t, borrowed_normals) == 232);
+static_assert(offsetof(climate_state_t, arena_normals) == 384);
 static_assert(offsetof(climate_state_t, prepare) == 320);
 static_assert(alignof(climate_state_t) == 64);
 static_assert(offsetof(climate_state_t, group) == 64);
@@ -176,5 +186,24 @@ void climate_warp_at(const climate_t *climate, float64_t x, float64_t y, float64
 
 /* A test's hook: reads unwarped from here on, or warped again. */
 void climate_warp_set(climate_t *climate, bool on);
+
+/* ---- Currents, pressure and winds: plan 004 phase 04 ---------------------------------------------------------------- */
+
+/* Air at a block and a day (0 to below 365, fractions allowed): the stored waves and C x strength / 255 blended between the
+ * same four cells climate_sample_at blends, at the same warped point; the belt pressure at this exact y. False, writing
+ * nothing, if a tile it needs is not built. Any thread. */
+bool climate_air_at(const climate_t *climate, float64_t x, float64_t y, float32_t day, climate_air_t *out);
+
+/* Master plan 6.3: T_sea = T_lat(phi) + C x strength / 255 + A_sea(phi) s_h cos(2 pi (d - 215) / 365), deg C, at the cell's
+ * latitude. For a sea cell. Any thread, once climate_init has run. */
+float32_t climate_sea_temperature(const climate_t *climate, const climate_cell_t *cell, float32_t day);
+
+/* A current's flow direction for the Atlas, a unit vector along the coast: cold toward the equator, warm toward the pole.
+ * (0, 0) for NONE. A sea cell's coast is its land_direction; a land cell's is the way back from its sea, -sea_direction
+ * (Issues found 6 in the phase 04 file). y_centre is the cell's centre y. Pure. */
+void climate_current_flow(const climate_cell_t *cell, float32_t y_centre, float32_t out[2]);
+
+/* The curves climate_init built, for the layers and tests. */
+const climate_normals_t *climate_normals(const climate_t *climate);
 
 #endif

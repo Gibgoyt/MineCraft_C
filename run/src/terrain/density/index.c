@@ -200,6 +200,16 @@ static void density_spline_build(terrain_density_spline_t *spline, const density
     }
 }
 
+void terrain_density_spline_build(terrain_density_spline_t *spline, const float64_t *xs, const float64_t *ys,
+                                  uint32_t count) {
+    density_knot_t knots[TERRAIN_DENSITY_SPLINE_KNOTS_MAX];
+    ASSERT_ALWAYS(count >= 2u && count <= TERRAIN_DENSITY_SPLINE_KNOTS_MAX);
+    for (uint32_t i = 0u; i < count; i++) {
+        knots[i] = (density_knot_t){.x = xs[i], .y = ys[i]};
+    }
+    density_spline_build(spline, knots, count);
+}
+
 float64_t terrain_density_spline_at(const terrain_density_spline_t *spline, float64_t x) {
     const uint32_t last = spline->count - 1u;
     if (x <= spline->x[0]) {

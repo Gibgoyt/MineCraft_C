@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 4: Currents, pressure and winds
 
-**Status:** not started   (updated 2026-11-04)
+**Status:** in progress: built and agent-verified (full debug suite, release, bench, pictures); only Ahmed's gate is left (the pictures, the layer hashes and the monsoon question)   (updated 2026-11-06)
 
 Read `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` first, then sections 3, 6.3, 6.4, 6.5 and 6.9 of `plans/004-ahmed-bohemoth-climate-system.md`, then the phase 03 file, `plans/004-ahmed-bohemoth-climate-system-phase-03-height-estimate-and-climate-cells.md`, whose cells and window this phase fills in. Every number here comes from the master plan. Where this file adds a number the master plan does not give, it says so and gives the reason.
 
@@ -574,23 +574,23 @@ Build order. Each step builds and passes its tests before the next.
 
 ## Todo
 
-- [ ] Phase 02 and 03 names found and used
-- [ ] `terrain_density_spline_build`, public; every terrain pin unchanged
-- [ ] `run/src/climate/normals/`: $p_{\text{belt}}$, $\bar T_{\text{lat}}$, $A_{\text{sea}}$, $A_{\text{land}}$ in one home
-- [ ] `run/src/climate/harmonic/`: the 12-day least-squares fit
-- [ ] Phase 03's window as `climate_window_t`, with no number moved
-- [ ] Currents by 6.3, with strength and flow direction, in `run/src/climate/air/`
-- [ ] Pressure belts and heat lows (6.4)
-- [ ] Wind belts, doldrums and horse latitudes, wind from pressure, altitude, steering by slopes (6.5)
-- [ ] Wind and pressure stored as averages plus a yearly wave, fitted from 12 days
-- [ ] `climate_air_at`, `climate_sea_temperature`, `climate_current_flow`
-- [ ] Map layers: currents, pressure, wind, each with the day slider
-- [ ] Tests: on a synthetic continent at 30° south, the west coast is cold and the east coast warm, and at 50° the reverse; trades blow from the east between 0° and 30°; a heat low makes an onshore summer wind on a synthetic coast at 20° (see Issues found); steering never makes wind faster
-- [ ] 1 and 16 workers give the same bytes; the digest re-pinned with its reason
-- [ ] Bench: one tile on one worker still under 100 ms
-- [ ] A `README.md` in every new source directory, exactly one `index.*` in each
-- [ ] `plans/REPO_STRUCTURE.md` updated
-- [ ] The whole debug suite passes; `standards_lint` and `clang_format` pass
+- [x] Phase 02 and 03 names found and used
+- [x] `terrain_density_spline_build`, public; every terrain pin unchanged
+- [x] `run/src/climate/normals/`: $p_{\text{belt}}$, $\bar T_{\text{lat}}$, $A_{\text{sea}}$, $A_{\text{land}}$ in one home
+- [x] `run/src/climate/harmonic/`: the 12-day least-squares fit
+- [x] Phase 03's window as `climate_window_t`, with no number moved
+- [x] Currents by 6.3, with strength and flow direction, in `run/src/climate/air/`
+- [x] Pressure belts and heat lows (6.4)
+- [x] Wind belts, doldrums and horse latitudes, wind from pressure, altitude, steering by slopes (6.5)
+- [x] Wind and pressure stored as averages plus a yearly wave, fitted from 12 days
+- [x] `climate_air_at`, `climate_sea_temperature`, `climate_current_flow`
+- [x] Map layers: currents, pressure, wind, each with the day slider
+- [x] Tests: on a synthetic continent at 30° south, the west coast is cold and the east coast warm, and at 50° the reverse; trades blow from the east between 0° and 30°; a heat low makes an onshore summer wind on a synthetic coast at 20° (see Issues found); steering never makes wind faster
+- [x] 1 and 16 workers give the same bytes; the digest re-pinned with its reason
+- [x] Bench: one tile on one worker still under 100 ms
+- [x] A `README.md` in every new source directory, exactly one `index.*` in each
+- [x] `plans/REPO_STRUCTURE.md` updated
+- [x] The whole debug suite passes; `standards_lint` and `clang_format` pass
 - [ ] Gate pictures drawn and shown to Ahmed, and the monsoon question answered
 
 ## Tests
@@ -689,9 +689,59 @@ and the two synthetic continents (`--synthetic`), which show the textbook patter
 | Pressure wind on coasts depends on the steepest part of $\kappa$, near the coast, so it's strongest within about a km of the sea | As the formulas give. The pictures show it |
 | `t_swing` and `t_lag_days` are 6.6's (phase 05's) terms, worked out here first | Phase 05 reads them and must not compute them a second way |
 
+## Results, 2026-11-06
+
+Everything below was run in this worktree through `tools/test-or-build.sh`.
+
+| Check | Result |
+|---|---|
+| `run_terrain_density` after the wrapper | Passed: its pin holds |
+| `run_climate_cell` after the window refactor, before the air call | Passed with the old pin `0x61708389BBF3789B`: no number moved |
+| `run_climate_cell` with the air | Digest `0x4950918E191FF004`, re-pinned with the reason; 1 worker and 16 the same bytes; the release build prints the same digest |
+| `run_climate_.*`, debug and release | 9 of 9 pass in each |
+| `standards_lint`, `clang_format` | Pass |
+| Full debug suite | 133 of 133 pass (1764 s) |
+| Release build (`-O3 -flto`, main's frame limit) | Builds and links clean; `app_t` did not change (`climate_t` stays 64 bytes) |
+| `bench_climate` (release) | Cold tile, 1 worker: 26.7 to 27.6 ms over 9 places (target 100; phase 03 recorded 28.8 to 30.7); warm tile 5.34 ms; spawn precompute 24.3 ms on 16 workers. Exit 0. The air costs too little to see next to the ground function (90.6% of a tile) |
+| `bench_climate --pictures /tmp/mc_c_climate 2198175988018515243` | Phase 03's four and `currents.png`, `pressure_day{015,105,196,288}.png`, `wind_day{015,105,196,288}.png`. Exit 0 |
+| `bench_climate --synthetic /tmp/mc_c_climate_synthetic` | `south30_*` and `north50_*`: currents, and pressure and wind on the four days. Exit 0. Looked at by the agent: blue arrows north along the 30° S west coast, red south along its east coast, grey crosses on its neutral north and south coasts; a heat low over the 50° N continent on day 196 |
+| `pgrep -a minecraft_c`, `pgrep -af $PWD/build` | Nothing |
+
+Numbers the tests print, for Ahmed:
+
+- Open sea, stored yearly mean `u0`: -4.37 at 1°, -4.29 at 10°, -3.64 at 20°, -0.99 at 25° (the plan expected about -4.4, -4.3, -3.6, -1.0).
+- Largest change of the belt wind between 0.01° steps of ψ: 0.0314 blocks a second (limit 0.1).
+- Spin islands: every land cell 1 to 3.5 km from the centre turns the right way: 8634 of 8634 at 45° N and at 45° S, 8626 of 8626 on the mirrored island, in summer and in winter.
+- Steering: at most 3.8e-6 blocks a second added over 1,000,000 random winds (rounding); on the ridge 1920 of 6144 cell days slowed, none faster.
+- 20° N coast: the pressure wind's onshore part 672 and 736 blocks inland on day 197: 0.464 and 0.469 (the plan's 0.43 ± 0.05); day 15: -0.464 and -0.469. The stored total onshore part at 672 blocks: **summer -2.54, winter -0.04** (the plan estimated -1.80 and +0.46). See Issues found 10.
+- Real tile (0, 0) of seed `0x1234567890ABCDEF`: the heat-low wave reproduces its 12 days to 6e-8 hPa; the wind wave's largest miss on a fit day is **4.98 blocks a second** (one wave smoothing a belt change, as the Risks table says).
+- Layer hashes on seed 2198175988018515243, 256 by 256 at 16 blocks a pixel round (0, 0), the same in debug and release, printed and not pinned until Ahmed has looked: currents `0xAC3FAB076FA5F7B6`; pressure on days 15, 105, 196, 288: `0x7DA7F01C0FDEF985`, `0xC57981BF50840875`, `0x0578CFB18C1C37EE`, `0xE723D99B428F8176`; wind: `0x5E90DAB5164B3792`, `0x69E2EB2713DCD9ED`, `0x09EE2604946E84B7`, `0x424676382ABD6462`.
+
+**Second pass, 2026-11-06** (a fresh agent, branch `worktree-wf_6f8a0c68-47a-21`, merged main and the first pass with no change to the code; re-ran the Verification section through `tools/test-or-build.sh`):
+
+| Check | Result |
+|---|---|
+| Debug build; `run_terrain_density`, `run_climate_*`, `standards_lint`, `clang_format` | 12 of 12 pass |
+| Full debug suite | 133 of 133 pass (1896 s) |
+| Release build (`-O3 -flto`, frame limit) | Builds and links clean |
+| `run_climate_*`, release | 9 of 9 pass; cell digest `0x4950918E191FF004`, the same as debug |
+| `bench_climate` (release) | Exit 0; slowest cold tile 28.63 ms (target 100), warm 5.53 ms, spawn precompute 23.5 ms |
+| `--pictures` seed 2198175988018515243, `--synthetic` | Exit 0; all PNGs written. The agent looked at `north50_currents.png`: red arrows north on the west coast, blue south on the east |
+| Gate's two other seeds | `--pictures /tmp/mc_c_climate_seed2 1` and `--pictures /tmp/mc_c_climate_seed3 1311768467294899695`, both exit 0, ready for Ahmed |
+
+**Wiring outside the owned paths:** none beyond the plan's list. `run/{src,include}/terrain/density/` gained only `terrain_density_spline_build` and its README lines; `tests/run/climate/cell/README.md`, `tests/run/climate/layer/README.md` and `bench/climate/README.md` describe the new pin, tests and pictures.
+
 ## Commits
 
 Appended as they land:
+
+- `70d3420` Add the climate's knot tables and the 12-day yearly-wave fit for plan 004 phase 04, make the terrain's spline builder public for them, and hand the tile window out of the cell build as one struct with no number moved.
+- `48afeff` Add plan 004 phase 04's currents, heat lows and winds to every climate cell, read them with climate_air_at, draw the currents, pressure and wind layers, and test them on synthetic continents, islands, a coast and a ridge.
+- `e59520e` Describe plan 004 phase 04's currents, pressure and winds in the climate's READMEs, its tests' and the climate bench's.
+- `55c8148` List the climate's normals, harmonic and air parts of plan 004 phase 04 and their tests in the repository structure.
+- `97db1df` Record plan 004 phase 04 in its phase file: todos, results, the bench and the issues found.
+- `da455ec` List the phase file commit of plan 004 phase 04 in its phase file.
+- `4cd0c0f` Record the second verification pass of plan 004 phase 04 in its phase file.
 
 ## Issues found
 
@@ -709,3 +759,28 @@ Found while writing this file, from the master plan's own numbers. None of these
 3. **Straight-line numbers in the worked examples, splines in the code.** Master plan 6.6 says knots are joined "using the same spline code `terrain/density` already has", but its worked examples interpolate in straight lines: $A_{\text{sea}}(15°) = 2$ (spline: 1.95), $A_{\text{sea}}(45°) = 4.5$ (4.37), $A_{\text{land}}(45°) = 13.5$ (13.79), $\bar T_{\text{lat}}(28°) = 20.8$ (20.99). So 6.8's sea temperatures 32, 28 and 24 come out 31.95, 28.05 and 24.05. **Default:** the spline, as 6.6 says; this phase's tests use the spline's values; phase 05's "within 10%" tests are not affected.
 
 4. **The master plan's tables are written for one hemisphere strip, and its latitude repeats as a mirror.** $\varphi(y)$ (5.1) rises to the pole at $y = 38\,298$ and falls after it, so the strip from the pole to the next equator is a mirror image in $y$. Read literally, "$v$ north" with $-0.4\,\operatorname{sgn}\psi$ would make the trades in a mirrored strip blow toward the pole, and "70° clockwise in the north" would make its lows spin the other way from a mirror image, with a jump at the pole. **Default:** apply every table in the strip's own sense, through $e(y) = \operatorname{sgn}\cos(\pi y/2Y)$: north-south parts and the turn's sense flip in mirrored strips, and "toward the pole" and "toward the equator" mean what they say. West and east coasts don't change, since $x$ is never mirrored. Tested with the mirrored continent and island.
+
+Found while building, 2026-11-06:
+
+5. **The normals have their own arena, not `arena_tables`.**
+   - **Expected:** the curves built once in `climate_init` into the climate's `arena_tables`.
+   - **Actual:** `climate_open_ground` resets `arena_tables` for every world (`run/src/climate/index.c`), so curves built at init would be wiped by the first open.
+   - **What was done:** `CLIMATE_STATE_BYTES` grew from 4096 to 8192; a new `arena_normals` (4 KiB at `CLIMATE_NORMALS_OFFSET`, Process lifetime) holds them, built once in `climate_init`. `climate_state_t` grew from 384 to 448 bytes and keeps `borrowed_normals` in old padding. `climate_t` in `app_t` is unchanged. There is room for 13 curves; phase 05 adds its tables there.
+6. **A land cell's flow direction uses `-sea_direction`.**
+   - **Expected** (Design, "Flow direction"): a land cell's `n` is its nearest sea cell's.
+   - **Actual:** that vector is not stored in a land cell, and `climate_current_flow` takes only the cell.
+   - **What was done:** a land cell's coast is taken as the way back from its sea, `-sea_direction`. On a straight coast the two are the same (tested: land behind the 30° S west coast flows north); at a corner they can differ by the corner's angle. The kind and strength are exact, from the nearest sea cell in the window. If a later plan needs the exact vector on land, 8 of the cell's 12 spare bytes would hold it.
+7. **600 blocks offshore can be past a band line.**
+   - **Expected:** on the 50° N and 70° N continents, every sea cell within 600 blocks with `n_x > 0.5` has the band's kind.
+   - **Actual:** those continents reach 45.3° and 65.3°, so sea cells 600 blocks south of them sit at 43.9° and 63.9°, in the next band, and take its kind, as the master plan's table (by the sea cell's own latitude) says.
+   - **What was done:** the continent tests count only sea cells whose own latitude is in the band (`air_coasts` in `tests/run/climate/air/index.c`). Every counted cell passes, with at least 30 per coast side.
+8. **`climate_air_build_tile` takes the normals, and the Owner calls it.**
+   - **Expected:** `climate_air_build_tile(const climate_t *, ...)`, called at the end of `climate_cell_build_tile`.
+   - **Actual:** the cell part knows nothing of the normals.
+   - **What was done:** it takes `const climate_normals_t *` and an optional `climate_air_trace_t *` (the tests' hook, with `steer_off`). The Owner's tile job calls it right after `climate_cell_build_tile`, on the window that function hands out. The tile job is the only caller of both, so the effect is the same, and tests can build a tile straight from a window.
+9. **The spin test uses fit days.** The trace holds only the 12 fit days, so the spin islands use day 212.9 (k = 7) for the northern summer and day 0 for the southern: the fit days nearest the plan's 197 and 15, inside each heat low's peak (170 + ℓ, ℓ from 25 to 45). The 20° N coast test asks days 197 and 15 exactly, working the pressure wind out from the stored pressure waves of each cell's neighbours, which are pure waves.
+10. **The monsoon totals are further offshore than the plan's estimate.**
+    - **Expected** (Background, "A monsoon"): a total onshore part about 704 blocks inland of -1.80 in summer and +0.46 in winter.
+    - **Actual:** -2.54 and -0.04 from the stored waves, while the pressure wind itself (0.464) matches the plan's 0.43. The difference is the one-wave fit: at 20° N the true belt wind steps between the trades and the horse latitudes through the year, and one wave smooths the winter's onshore spell away (the wind's largest miss on a real tile is 4.98 blocks a second); and altitude multiplies by 1.025 on land 20 blocks up.
+    - **What was done:** printed, not checked, as the plan says. It strengthens Issue 1: with the master plan's numbers and one wave, the 20° N coast gets no onshore season at all. Ahmed's options in Issue 1 stand; a second wave for wind (Risks table) would bring the winter onshore spell back.
+11. **Neutral currents carry strength 0, and the layer marks them with a grey cross.** NONE has no flow, so the plan's grey arrow could not point anywhere. A sea cell within 600 blocks of land whose current is neutral gets a 3-pixel grey cross instead. A neutral cell's `current_strength` is 0, so its `current_c` is 0 either way.

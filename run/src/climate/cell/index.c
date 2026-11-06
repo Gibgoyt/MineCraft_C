@@ -17,17 +17,26 @@ typedef struct cell_reach_t {
 } cell_reach_t;
 static_assert(sizeof(cell_reach_t) == 12);
 
-/* From cells to blocks: the coast is taken as half a cell in from the marked cell's centre, and the distance capped. */
-static cell_reach_t cell_reach_of(uint32_t at, uint32_t distance2, uint32_t nearest) {
+float32_t climate_cell_distance_blocks(uint32_t distance2) {
     if (distance2 == CLIMATE_SEA_FAR) {
-        return (cell_reach_t){.distance = CLIMATE_SEA_DISTANCE_MAX, .direction = {0.0f32, 0.0f32}};
+        return CLIMATE_SEA_DISTANCE_MAX;
     }
-    const float64_t cells = sqrt((float64_t)distance2);
-    float64_t blocks = (float64_t)CLIMATE_CELL_BLOCKS * cells - 0.5f64 * (float64_t)CLIMATE_CELL_BLOCKS;
+    float64_t blocks =
+        (float64_t)CLIMATE_CELL_BLOCKS * sqrt((float64_t)distance2) - 0.5f64 * (float64_t)CLIMATE_CELL_BLOCKS;
     blocks = blocks < 0.0f64 ? 0.0f64 : blocks;
     blocks = blocks > (float64_t)CLIMATE_SEA_DISTANCE_MAX ? (float64_t)CLIMATE_SEA_DISTANCE_MAX : blocks;
-    cell_reach_t reach = {.distance = (float32_t)blocks, .direction = {0.0f32, 0.0f32}};
-    if (distance2 != 0u) {
+    return (float32_t)blocks;
+}
+
+float32_t climate_cell_kappa(float32_t sea_distance) {
+    return 1.0f32 - expf(-sea_distance / CLIMATE_KAPPA_SCALE);
+}
+
+/* From cells to blocks: the coast is taken as half a cell in from the marked cell's centre, and the distance capped. */
+static cell_reach_t cell_reach_of(uint32_t at, uint32_t distance2, uint32_t nearest) {
+    cell_reach_t reach = {.distance = climate_cell_distance_blocks(distance2), .direction = {0.0f32, 0.0f32}};
+    if (distance2 != 0u && distance2 != CLIMATE_SEA_FAR) {
+        const float64_t cells = sqrt((float64_t)distance2);
         const uint32_t side = (uint32_t)CLIMATE_WINDOW_CELLS;
         const float64_t dx = (float64_t)(int64_t)(nearest % side) - (float64_t)(int64_t)(at % side);
         const float64_t dy = (float64_t)(int64_t)(nearest / side) - (float64_t)(int64_t)(at / side);
@@ -38,7 +47,8 @@ static cell_reach_t cell_reach_of(uint32_t at, uint32_t distance2, uint32_t near
 }
 
 void climate_cell_build_tile(arena_t *arena, climate_ground_fn_t ground, const void *ground_context, int32_t tile_x,
-                             int32_t tile_y, const float32_t *window_heights, climate_cell_t *cells) {
+                             int32_t tile_y, const float32_t *window_heights, climate_cell_t *cells,
+                             climate_window_t *out_window) {
     const uint32_t side = (uint32_t)CLIMATE_WINDOW_CELLS;
     const uint32_t count = (uint32_t)CLIMATE_WINDOW_CELL_COUNT;
     uint8_t *const water = arena_alloc(arena, count, 64u);
@@ -76,6 +86,16 @@ void climate_cell_build_tile(arena_t *arena, climate_ground_fn_t ground, const v
         marked[i] = (kind[i] == CLIMATE_SEA_KIND_LAND || kind[i] == CLIMATE_SEA_KIND_LAKE_SMALL) ? 1u : 0u;
     }
     climate_sea_distance(marked, side, land_distance2, land_nearest, &scratch);
+    *out_window = (climate_window_t){
+        .heights = window_heights,
+        .kind = kind,
+        .sea_distance2 = sea_distance2,
+        .sea_nearest = sea_nearest,
+        .land_distance2 = land_distance2,
+        .land_nearest = land_nearest,
+        .tile_x = tile_x,
+        .tile_y = tile_y,
+    };
     /* 6. The ground samples, 16 blocks apart from 8 blocks in: all lattice columns. */
     const int64_t west = (int64_t)tile_x * CLIMATE_TILE_BLOCKS;
     const int64_t south = (int64_t)tile_y * CLIMATE_TILE_BLOCKS;
@@ -111,7 +131,7 @@ void climate_cell_build_tile(arena_t *arena, climate_ground_fn_t ground, const v
                 cell->sea_distance = to_sea.distance;
                 cell->sea_direction[0] = to_sea.direction[0];
                 cell->sea_direction[1] = to_sea.direction[1];
-                cell->kappa = 1.0f32 - expf(-to_sea.distance / CLIMATE_KAPPA_SCALE);
+                cell->kappa = climate_cell_kappa(to_sea.distance);
                 if (kind[at] == CLIMATE_SEA_KIND_LAKE_LARGE) {
                     /* A large lake is neither: it has both distances, and is water for moisture in phase 05. */
                     cell->flags = CLIMATE_CELL_LAKE;

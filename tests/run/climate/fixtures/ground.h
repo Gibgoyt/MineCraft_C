@@ -16,7 +16,12 @@ typedef enum ground_kind_t : uint32_t {
     GROUND_COAST_X = 4,  /* sea (-50) west of x = coast, land (20) east of it */
     GROUND_CORNER = 5,   /* sea where x < 64 and y < 0: cell x <= 0 and cell y <= -1, land elsewhere */
     GROUND_LAKES = 6,    /* land, with a sea west of x = coast and up to GROUND_RECTS_MAX rectangles of water */
-    GROUND_ISLAND = 7,   /* sea, with a round island of radius blocks at the origin */
+    GROUND_ISLAND = 7,   /* sea, with a round island of radius blocks at (centre_x, centre_y) */
+    /* Plan 004 phase 04's grounds. */
+    GROUND_SQUARE = 8,    /* sea (-60), with land (30) inside rects[0], both ends included: a synthetic continent */
+    GROUND_COAST_Y = 9,   /* land (20) for y >= coast, sea (-60) south of it, all x */
+    GROUND_OPEN_SEA = 10, /* -100 everywhere */
+    GROUND_RIDGE = 11,    /* land: 20 west of x = 10,000, rising 0.8 a block to 420 at x = 10,500, 420 east of it */
 } ground_kind_t;
 
 enum : uint32_t { GROUND_RECTS_MAX = 4u };
@@ -36,8 +41,10 @@ typedef struct ground_t {
     uint32_t rect_count;                   /* 68 */
     int32_t coast;                         /* 72: GROUND_COAST_X and GROUND_LAKES; INT32_MIN for no sea */
     int32_t radius;                        /* 76: GROUND_ISLAND */
+    int32_t centre_x;                      /* 80: GROUND_ISLAND */
+    int32_t centre_y;                      /* 84 */
 } ground_t;
-static_assert(sizeof(ground_t) == 80);
+static_assert(sizeof(ground_t) == 88);
 
 [[maybe_unused]] static float32_t ground_height(const ground_t *ground, int64_t x, int64_t y) {
     switch ((ground_kind_t)ground->kind) {
@@ -64,8 +71,20 @@ static_assert(sizeof(ground_t) == 80);
             }
         }
         return 20.0f32;
-    case GROUND_ISLAND:
-        return x * x + y * y <= (int64_t)ground->radius * ground->radius ? 20.0f32 : -50.0f32;
+    case GROUND_ISLAND: {
+        const int64_t dx = x - ground->centre_x, dy = y - ground->centre_y;
+        return dx * dx + dy * dy <= (int64_t)ground->radius * ground->radius ? 20.0f32 : -50.0f32;
+    }
+    case GROUND_SQUARE: {
+        const ground_rect_t *const land = &ground->rects[0];
+        return (x >= land->x_min && x <= land->x_max && y >= land->y_min && y <= land->y_max) ? 30.0f32 : -60.0f32;
+    }
+    case GROUND_COAST_Y:
+        return y >= (int64_t)ground->coast ? 20.0f32 : -60.0f32;
+    case GROUND_OPEN_SEA:
+        return -100.0f32;
+    case GROUND_RIDGE:
+        return x < 10000 ? 20.0f32 : (x < 10500 ? 20.0f32 + 0.8f32 * (float32_t)(x - 10000) : 420.0f32);
     }
     return 0.0f32;
 }
@@ -84,6 +103,15 @@ static_assert(sizeof(ground_t) == 80);
 
 /* A rectangle of water w by h cells, its south-west cell at cell (cell_x, cell_y): every centre in it is water and none
  * outside it. */
+/* A synthetic continent: land for x_min <= x < x_max and y_min <= y < y_max, half-open as the phase 04 file gives them. */
+[[maybe_unused]] static ground_t ground_continent(int32_t x_min, int32_t y_min, int32_t x_max, int32_t y_max) {
+    return (ground_t){
+        .kind = GROUND_SQUARE,
+        .rect_count = 1u,
+        .rects = {{.x_min = x_min, .y_min = y_min, .x_max = x_max - 1, .y_max = y_max - 1}},
+    };
+}
+
 [[maybe_unused]] static ground_rect_t ground_cells(int32_t cell_x, int32_t cell_y, int32_t w, int32_t h) {
     return (ground_rect_t){
         .x_min = cell_x * CLIMATE_CELL_BLOCKS,

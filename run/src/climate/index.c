@@ -44,6 +44,9 @@ bool climate_init(climate_t *climate) {
     arena_init(&state->arena_tables, "climate_tables", base + CLIMATE_TABLES_OFFSET,
                CLIMATE_STATE_BYTES - CLIMATE_TABLES_OFFSET);
     job_group_init(&state->group);
+    arena_init(&state->arena_normals, "climate_normals", base + CLIMATE_NORMALS_OFFSET,
+               CLIMATE_STATE_BYTES - CLIMATE_NORMALS_OFFSET);
+    state->borrowed_normals = climate_normals_build(&state->arena_normals);
     state->borrowed_tile_slots = (climate_slot_t *)(void *)(base + CLIMATE_TILE_SLOTS_OFFSET);
     state->borrowed_mask_slots = (climate_slot_t *)(void *)(base + CLIMATE_MASK_SLOTS_OFFSET);
     state->borrowed_cells = (climate_cell_t *)(void *)(base + CLIMATE_CELLS_OFFSET);
@@ -57,6 +60,8 @@ void climate_deinit(climate_t *climate) {
     if (state != nullptr) {
         ASSERT_ALWAYS(state->open == 0u);
         job_group_deinit(&state->group);
+        state->borrowed_normals = nullptr;
+        arena_deinit(&state->arena_normals);
         arena_deinit(&state->arena_tables);
     }
     heap_release(&climate->owned_region);
@@ -147,8 +152,12 @@ static void climate_tile_job(job_worker_t *worker, void *borrowed_argument) {
     const climate_mask_t mask = climate_mask_of(state);
     climate_mask_window(&mask, tile_x, tile_y, atomic_load_explicit(&state->keep_tile_x, memory_order_relaxed),
                         atomic_load_explicit(&state->keep_tile_y, memory_order_relaxed), window, nullptr);
-    climate_cell_build_tile(arena, state->ground, state->borrowed_ground_context, tile_x, tile_y, window,
-                            climate_tile_cells(state, slot));
+    climate_window_t cells_window;
+    climate_cell_t *const cells = climate_tile_cells(state, slot);
+    climate_cell_build_tile(arena, state->ground, state->borrowed_ground_context, tile_x, tile_y, window, cells,
+                            &cells_window);
+    /* Phase 04: currents, swing, lag, wind and pressure, from the same window, before anyone can read the tile. */
+    climate_air_build_tile(state->borrowed_normals, arena, &cells_window, cells, nullptr);
     climate_cache_publish(slot);
     atomic_fetch_sub_explicit(&state->jobs_in_flight, 1u, memory_order_release);
     atomic_fetch_add_explicit(&state->jobs_done, 1u, memory_order_release);
@@ -473,6 +482,25 @@ void climate_warp_set(climate_t *climate, bool on) {
     climate->borrowed_state->warp_off = (uint8_t)(on ? 0u : 1u);
 }
 
+/* The four cells round a read at (read_x, read_y), already warped, south-west, south-east, north-west, north-east, and
+ * how far across them it is. False if a tile is not built. */
+static bool climate_four_cells(const climate_state_t *state, float64_t read_x, float64_t read_y,
+                               climate_cell_t cells[4], float32_t *out_t_x, float32_t *out_t_y) {
+    /* Cell centres are at 64 k + 32: the four round the read point, and how far across them it is. */
+    const float64_t u = (read_x - 0.5f64 * (float64_t)CLIMATE_CELL_BLOCKS) / (float64_t)CLIMATE_CELL_BLOCKS;
+    const float64_t v = (read_y - 0.5f64 * (float64_t)CLIMATE_CELL_BLOCKS) / (float64_t)CLIMATE_CELL_BLOCKS;
+    const float64_t u_floor = floor(u), v_floor = floor(v);
+    const int64_t cell_x = (int64_t)u_floor, cell_y = (int64_t)v_floor;
+    for (uint32_t k = 0u; k < 4u; k++) {
+        if (!climate_cell_read(state, cell_x + (int64_t)(k & 1u), cell_y + (int64_t)(k >> 1u), &cells[k])) {
+            return false;
+        }
+    }
+    *out_t_x = (float32_t)(u - u_floor);
+    *out_t_y = (float32_t)(v - v_floor);
+    return true;
+}
+
 bool climate_sample_at(const climate_t *climate, float64_t x, float64_t y, climate_sample_t *out) {
     const climate_state_t *const state = climate->borrowed_state;
     if (state == nullptr || state->open == 0u) {
@@ -480,20 +508,83 @@ bool climate_sample_at(const climate_t *climate, float64_t x, float64_t y, clima
     }
     float64_t read_x = x, read_y = y;
     climate_warp_at(climate, x, y, &read_x, &read_y);
-    /* Cell centres are at 64 k + 32: the four round the read point, and how far across them it is. */
-    const float64_t u = (read_x - 0.5f64 * (float64_t)CLIMATE_CELL_BLOCKS) / (float64_t)CLIMATE_CELL_BLOCKS;
-    const float64_t v = (read_y - 0.5f64 * (float64_t)CLIMATE_CELL_BLOCKS) / (float64_t)CLIMATE_CELL_BLOCKS;
-    const float64_t u_floor = floor(u), v_floor = floor(v);
-    const int64_t cell_x = (int64_t)u_floor, cell_y = (int64_t)v_floor;
     climate_cell_t cells[4];
-    for (uint32_t k = 0u; k < 4u; k++) {
-        if (!climate_cell_read(state, cell_x + (int64_t)(k & 1u), cell_y + (int64_t)(k >> 1u), &cells[k])) {
-            return false;
-        }
+    float32_t t_x = 0.0f32, t_y = 0.0f32;
+    if (!climate_four_cells(state, read_x, read_y, cells, &t_x, &t_y)) {
+        return false;
     }
     const climate_cell_t *const corners[4] = {&cells[0], &cells[1], &cells[2], &cells[3]};
-    climate_cell_blend(corners, (float32_t)(u - u_floor), (float32_t)(v - v_floor), out);
+    climate_cell_blend(corners, t_x, t_y, out);
     /* Never blended: at a pole two cells either side both say about 89.6, and a blend of them never reaches 90. */
     out->lat_deg = (float32_t)climate_latitude_deg(y);
     return true;
+}
+
+/* ---- Air: phase 04 ------------------------------------------------------------------------------------------------- */
+
+/* Along x, then y, as climate_cell_blend does. */
+static float32_t climate_lerp4(float32_t south_west, float32_t south_east, float32_t north_west, float32_t north_east,
+                               float32_t t_x, float32_t t_y) {
+    const float32_t south = south_west + t_x * (south_east - south_west);
+    const float32_t north = north_west + t_x * (north_east - north_west);
+    return south + t_y * (north - south);
+}
+
+static float32_t climate_cell_current_c(const climate_cell_t *cell) {
+    return climate_air_current_c(cell->current) * (float32_t)cell->current_strength / 255.0f32;
+}
+
+bool climate_air_at(const climate_t *climate, float64_t x, float64_t y, float32_t day, climate_air_t *out) {
+    const climate_state_t *const state = climate->borrowed_state;
+    if (state == nullptr || state->open == 0u) {
+        return false;
+    }
+    float64_t read_x = x, read_y = y;
+    climate_warp_at(climate, x, y, &read_x, &read_y);
+    climate_cell_t cells[4];
+    float32_t t_x = 0.0f32, t_y = 0.0f32;
+    if (!climate_four_cells(state, read_x, read_y, cells, &t_x, &t_y)) {
+        return false;
+    }
+    /* Evaluating a wave and blending are both linear, so the coefficients are blended, then the wave evaluated once. */
+    float32_t wind[6], pressure[3];
+    for (uint32_t i = 0u; i < 6u; i++) {
+        wind[i] = climate_lerp4(cells[0].wind[i], cells[1].wind[i], cells[2].wind[i], cells[3].wind[i], t_x, t_y);
+    }
+    for (uint32_t i = 0u; i < 3u; i++) {
+        pressure[i] = climate_lerp4(cells[0].pressure[i], cells[1].pressure[i], cells[2].pressure[i],
+                                    cells[3].pressure[i], t_x, t_y);
+    }
+    memset(out, 0, sizeof(*out));
+    out->wind[0] = climate_harmonic_at1(&wind[0], day);
+    out->wind[1] = climate_harmonic_at1(&wind[3], day);
+    out->pressure_heat_hpa = climate_harmonic_at1(pressure, day);
+    const float32_t psi = climate_air_wind_latitude(climate_latitude_deg(y), day);
+    out->pressure_belt_hpa = (float32_t)climate_normals_p_belt(state->borrowed_normals, (float64_t)psi);
+    out->pressure_hpa = out->pressure_belt_hpa + out->pressure_heat_hpa;
+    out->current_c = climate_lerp4(climate_cell_current_c(&cells[0]), climate_cell_current_c(&cells[1]),
+                                   climate_cell_current_c(&cells[2]), climate_cell_current_c(&cells[3]), t_x, t_y);
+    /* A kind is a category: the nearest cell's, never a blend. */
+    const uint32_t nearest = (t_x >= 0.5f32 ? 1u : 0u) + (t_y >= 0.5f32 ? 2u : 0u);
+    out->current = cells[nearest].current;
+    out->current_strength = cells[nearest].current_strength;
+    return true;
+}
+
+float32_t climate_sea_temperature(const climate_t *climate, const climate_cell_t *cell, float32_t day) {
+    return climate_air_sea_temperature(climate->borrowed_state->borrowed_normals, (float64_t)cell->lat_deg,
+                                       climate_cell_current_c(cell), day);
+}
+
+void climate_current_flow(const climate_cell_t *cell, float32_t y_centre, float32_t out[2]) {
+    if ((cell->flags & CLIMATE_CELL_SEA) != 0u) {
+        climate_air_flow(cell->current, cell->land_direction, (float64_t)y_centre, out);
+        return;
+    }
+    const float32_t back[2] = {-cell->sea_direction[0], -cell->sea_direction[1]};
+    climate_air_flow(cell->current, back, (float64_t)y_centre, out);
+}
+
+const climate_normals_t *climate_normals(const climate_t *climate) {
+    return climate->borrowed_state->borrowed_normals;
 }
