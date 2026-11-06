@@ -897,6 +897,7 @@ Appended as they land:
 
 - `6f94c352` Add plan 004 phase 05's temperature, rain, hurricane seasons, monsoons, snow balance and climate classes to every climate cell, read them with climate_normals_at, draw ten new layers, and test them on synthetic ground and Ahmed's South Africa sketch.
 - `e3f4a989` List the climate's heat, rain and season parts of plan 004 phase 05 and their tests in the repository structure.
+- `688cc91e` Record plan 004 phase 05 in its phase file: todos, results, the bench and the issues found.
 
 ## Issues found
 
