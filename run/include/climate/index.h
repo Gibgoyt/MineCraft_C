@@ -226,7 +226,7 @@ typedef struct climate_normals_at_t {
     float32_t rain_mm_year;      /* 32: P0 x 365 / 7 */
     float32_t rain_max_mm_day;   /* 36: the wettest day of this place's year, from 73 days 5 apart: phase 06 reads it */
     float32_t snow_share;        /* 40: f_s(t_day) */
-    float32_t snow_balance_z;    /* 44: blocks, blended */
+    float32_t snow_balance_z;    /* 44: blocks, blended over the corners that are not sea */
     float32_t sea_temperature_c; /* 48: for the nearest cell if it is sea, else NaN */
     float32_t hurricane_s;       /* 52: s_hur today, for the nearest cell if sea; 0 otherwise */
     uint8_t climate_class;       /* 56: the nearest cell's */

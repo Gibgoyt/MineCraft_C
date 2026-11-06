@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 5: Temperature, rain and storm seasons
 
-**Status:** in progress: built and verified by the agent; only Ahmed's gate is left   (updated 2026-11-06)
+**Status:** in progress: built, and passed by the gate check on 2026-11-06; only Ahmed's gate (the maps over a year) is left   (updated 2026-11-06)
 
 Read `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` first, then sections 3, 6.3, 6.6 to 6.10 and 7.2 of `plans/004-ahmed-bohemoth-climate-system.md`, then the phase 03 and phase 04 files of this plan, which this phase builds on. Every number here comes from the master plan. Where this file adds a number the master plan does not give, it says "this phase" and gives the reason.
 
@@ -891,6 +891,8 @@ Run by the agent on 2026-11-06 in its worktree, every heavy command through `too
 - `bench_climate --pictures /tmp/mc_c_climate 2198175988018515243 --days 15,46,...,351`: 68 pictures; `--synthetic /tmp/mc_c_climate_synthetic --days 15,107,198,290`: 41. Looked at by the agent only (contact sheets): hot all over (the 16 km round spawn is 18.8° S to 18.8° N), wet seas near the equator, a step at the equator in the day's temperature (Issues found 10), hurricane seas red in the northern band on day 229 and none within 5°. Ahmed has not seen them.
 - The whole debug suite (`ctest --preset debug`, 136 tests, every `run_terrain_*` among them unchanged): 100% passed, 1917.6 s.
 
+- **Gate check, 2026-11-06** (a separate agent, after merging main at `5dbe849e`, in a clean build of its worktree): every Verification command run again. `run_climate_(harmonic|heat|rain|season|cell|layer)`, every `run_terrain_*` (10, unchanged), `standards_lint`, `clang_format` pass; the whole debug suite, 136 tests, 100% passed in 1908 s; release links (`-Wframe-larger-than` included); release `run_climate_cell` prints the pinned `0xB667CA61EBBB4C6F`, 1 and 16 workers the same bytes; `bench_climate` on release exit 0, slowest cold tile 31.82 ms (target 100), phase 05's parts 0.002 + 0.518 + 1.718 ms. The worked examples were worked again outside the code, in Python with SciPy's PCHIP spline (Fritsch and Carlson): 45° N peak -10.4996 / 8.4689 °C, $P_{\text{belt}}(25°) = 426.667$, $P_{\text{belt}}(13.26°) = 1452.54$, the year's mean at 25° S 721.10, South Africa escarpment 1110.66, plateau 70.28, east coast 644.53 mm: all match the tests' printouts to the digits printed. Pictures drawn and looked at: `rain_year`, `climate_class`, `hurricane_season_d229`, `temperature_day_d015`, `temperature_mean`, `currents` for the real seed, and the synthetic South Africa `rain_year` and `climate_class` (wet east coast, wettest escarpment, desert plateau and west coast). One defect fixed (Issues found 12), two notes added (13, 14).
+
 ## Commits
 
 Appended as they land:
@@ -898,6 +900,8 @@ Appended as they land:
 - `6f94c352` Add plan 004 phase 05's temperature, rain, hurricane seasons, monsoons, snow balance and climate classes to every climate cell, read them with climate_normals_at, draw ten new layers, and test them on synthetic ground and Ahmed's South Africa sketch.
 - `e3f4a989` List the climate's heat, rain and season parts of plan 004 phase 05 and their tests in the repository structure.
 - `688cc91e` Record plan 004 phase 05 in its phase file: todos, results, the bench and the issues found.
+- `30094dea` Gate check: blend the snow balance height in climate_normals_at over the corners that are not sea (Issues found 12).
+- `5a401ec5` Record the gate check of plan 004 phase 05 in its phase file.
 
 ## Issues found
 
@@ -957,3 +961,21 @@ Found while building, 2026-11-06:
     - The warmest month of the class rules is the month centred on the warmest day, `T̄ + 0.98862 |A|`, as this file's worked example (8.45) computes, not the warmest of the 12 calendar months (which gives 8.39 for the same peak); rain months are the 12 calendar months.
     - **Done:** as written in each test, with a comment saying why.
 
+
+Found by the gate check, 2026-11-06:
+
+12. **The read blended a sea cell's 9999 into a coast's snow balance height.**
+    - **Expected:** `climate_normals_at`'s `snow_balance_z` is the land's height, blended between land cells (`CLIMATE_SNOW_BALANCE_NONE` on a sea cell means "no height", not a height).
+    - **Actual:** the read blended all four corners, so a land point half a cell from the shore got halfway between its land cell's height and 9999. At 70.7° N on a straight coast the land cell holds -208.5, and the shore read gave about 4895: no snow line on any coast, so the snow balance layer would draw high-latitude coasts dark grey instead of white.
+    - **Evidence:** new test `the_snow_balance_read_leaves_the_sea_out` in `run_climate_heat`: land -208.53, sea 9999; after the fix the shore read is -208.53, between two land cells -195.62 (their blend), at sea 9999.
+    - **Done:** `climate_snow_balance_blend` in `run/src/climate/index.c` blends over the corners that are not sea, by their bilinear weights renormalised, and gives `CLIMATE_SNOW_BALANCE_NONE` when all four are sea. Only the read changed: no cell byte, so the `run_climate_cell` pin is unchanged. Header comment and `run/src/climate/README.md` say so.
+
+13. **`bench/world_map/` exists, and the Gate's "On 2026-11-04 it does not exist" is out of date.**
+    - **Expected** (Gate): if `bench/world_map/` exists, the layers are drawn there.
+    - **Actual:** it exists (added 2026-11-04 in `87597787`) and draws no climate layer; phase 05 draws its layers with `bench_climate --pictures`, as phases 03 and 04 chose (phase 03 Issues found 8, phase 04 Issues found 12).
+    - **Done:** nothing changed; the Gate's commands use `bench_climate`, and phase 09 (the Atlas) is where the layers get a viewer.
+
+14. **The yearly mean temperature has straight-edged steps near some coasts (for Ahmed, no change).**
+    - **Seen:** `temperature_mean.png` and `temperature_day_*.png` for seed 2198175988018515243 show facets with straight edges a few hundred blocks inland near the south edge (about 17° S), where `currents.png` has a cold current on one sea and none or a warm one on the next.
+    - **Why:** `t_mean` holds phase 04's $C \times \text{strength}/255$ with $C$ from the nearest sea's current kind, so where the nearest sea changes, $C$ jumps (+4 to -5 at full strength) along the straight line between the two seas; the 64-block blend softens it over 4 pixels of a 16-block-a-pixel map. It is master plan 6.6 with phase 04's current, not a phase 05 formula.
+    - **Done:** nothing changed; for Ahmed at the gate, with "regions need to blend into each other" in mind.

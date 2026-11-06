@@ -605,6 +605,26 @@ enum : uint32_t {
     CLIMATE_WETTEST_STEP_DAYS = 5u,
 };
 
+/* The snow balance height blended over the cells that are not sea. A sea cell holds CLIMATE_SNOW_BALANCE_NONE as "no
+ * height", not as a height, so blending it in would lift a coast's snow line by up to 4900 blocks half a cell from the
+ * shore (the phase 05 file, Issues found 12). Each corner's bilinear weight, renormalised over the land and lake corners;
+ * NONE when all four are sea. */
+static float32_t climate_snow_balance_blend(const climate_cell_t cells[4], float32_t t_x, float32_t t_y) {
+    const float32_t weight[4] = {(1.0f32 - t_x) * (1.0f32 - t_y), t_x * (1.0f32 - t_y), (1.0f32 - t_x) * t_y,
+                                 t_x * t_y};
+    float32_t sum = 0.0f32, total = 0.0f32;
+    for (uint32_t k = 0u; k < 4u; k++) {
+        if ((cells[k].flags & CLIMATE_CELL_SEA) == 0u) {
+            sum += weight[k] * cells[k].snow_balance_z;
+            total += weight[k];
+        }
+    }
+    if (total <= 0.0f32) {
+        return CLIMATE_SNOW_BALANCE_NONE;
+    }
+    return sum / total;
+}
+
 bool climate_normals_at(const climate_t *climate, float64_t x, float64_t y, float32_t z, float32_t day,
                         climate_normals_at_t *out) {
     const climate_state_t *const state = climate->borrowed_state;
@@ -627,7 +647,7 @@ bool climate_normals_at(const climate_t *climate, float64_t x, float64_t y, floa
     blend.t_lag_days = CLIMATE_BLEND(t_lag_days);
     blend.kappa = CLIMATE_BLEND(kappa);
     blend.z_ground = CLIMATE_BLEND(z_ground);
-    blend.snow_balance_z = CLIMATE_BLEND(snow_balance_z);
+    blend.snow_balance_z = climate_snow_balance_blend(cells, t_x, t_y);
     for (uint32_t i = 0u; i < 5u; i++) {
         blend.rain_mm_week[i] = CLIMATE_BLEND(rain_mm_week[i]);
     }

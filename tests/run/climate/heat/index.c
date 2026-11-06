@@ -4,6 +4,7 @@
 
 #include "climate/heat/index.h"
 #include "climate/index.h"
+#include "climate/season/index.h"
 #include "job/index.h"
 #include "run/climate/fixtures/ground.h"
 #include "thread/index.h"
@@ -233,6 +234,39 @@ TEST(the_read_equals_the_formula_at_cell_centres) {
            (libc_double_t)want, (libc_double_t)read.rain_mm_day, (libc_double_t)want_rain);
     CHECK_NEAR(read.t_day_c, want, 1.0e-5f32);
     CHECK_NEAR(read.rain_mm_day, want_rain, 1.0e-5f32);
+    heat_rig_stop(&rig);
+}
+
+/* A sea cell's snow balance is 9999, "no height": a land point half a cell from the shore must take its land cells' height,
+ * not halfway to 9999 (Issues found 12). At 70.5 N, where the coast's snow line is low. */
+TEST(the_snow_balance_read_leaves_the_sea_out) {
+    heat_rig_t rig;
+    REQUIRE(heat_rig_start(t, &rig));
+    const ground_t coast = {.kind = GROUND_COAST_X, .coast = 0};
+    REQUIRE(climate_open_ground(rig.climate, 11u, ground_fn, &coast));
+    climate_warp_set(rig.climate, false);
+    climate_prepare_area(rig.climate, rig.job, -1500, 29000, 1500, 31000, nullptr, nullptr);
+    const int32_t centre_y = 470 * 64 + 32;
+    climate_cell_t sea, land, land_east;
+    REQUIRE(climate_cell_get(rig.climate, -32, centre_y, &sea));
+    REQUIRE(climate_cell_get(rig.climate, 32, centre_y, &land));
+    REQUIRE(climate_cell_get(rig.climate, 96, centre_y, &land_east));
+    REQUIRE((sea.flags & CLIMATE_CELL_SEA) != 0u && (land.flags & CLIMATE_CELL_SEA) == 0u);
+    CHECK(sea.snow_balance_z == CLIMATE_SNOW_BALANCE_NONE);
+    CHECK(land.snow_balance_z < 2000.0f32);
+    climate_normals_at_t shore, half, on_sea;
+    /* On the line between the sea and land centres, 0.5 across: only the land corner counts. */
+    REQUIRE(climate_normals_at(rig.climate, 0.0f64, (float64_t)centre_y, nanf(""), 100.0f32, &shore));
+    /* Between two land cells: their ordinary blend. */
+    REQUIRE(climate_normals_at(rig.climate, 64.0f64, (float64_t)centre_y, nanf(""), 100.0f32, &half));
+    /* Between two sea cells: none. */
+    REQUIRE(climate_normals_at(rig.climate, -64.0f64, (float64_t)centre_y, nanf(""), 100.0f32, &on_sea));
+    printf("70.5 N coast: land %.2f, sea %.0f; read at the shore %.2f, between land %.2f, at sea %.0f\n",
+           (libc_double_t)land.snow_balance_z, (libc_double_t)sea.snow_balance_z, (libc_double_t)shore.snow_balance_z,
+           (libc_double_t)half.snow_balance_z, (libc_double_t)on_sea.snow_balance_z);
+    CHECK_NEAR(shore.snow_balance_z, land.snow_balance_z, 1.0e-3f32);
+    CHECK_NEAR(half.snow_balance_z, 0.5f32 * (land.snow_balance_z + land_east.snow_balance_z), 1.0e-2f32);
+    CHECK(on_sea.snow_balance_z == CLIMATE_SNOW_BALANCE_NONE);
     heat_rig_stop(&rig);
 }
 
