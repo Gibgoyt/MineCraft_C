@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 1: Calendar and the weekly pause
 
-**Status:** done, waiting on Ahmed's gate   (updated 2026-11-06)
+**Status:** in progress: every todo and agent-run check passes (gate check 2026-11-06); only Ahmed's Gate, played on a release build, is left   (updated 2026-11-06)
 
 Read `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` first, then section 4 of the master plan, `plans/004-ahmed-bohemoth-climate-system.md`. This file is the breakdown of the master plan's phase 01. Where the code made part of the master plan impossible as written, this file says so in **Issues found**, and the design below follows the default given there.
 
@@ -738,6 +738,9 @@ Appended as they land:
 - `b659ed1` The calendar save tests moved to their own ctest, `run_save_state_calendar` (Issues found 13).
 - `260388c` REPO_STRUCTURE for `tests/run/save/state/calendar/`.
 - `780b251` Todos ticked and issues 7 to 16 logged in this file.
+- `8e8056a` Gate check: main, merged in by fast-forward, is the base checked.
+- `c032c1a` Gate check: the comment on `game_sim_tick` moved back above it (Issues found 17).
+- `f589f26` Gate check: Status, Issues found 17 and these commits recorded here.
 
 Verification, 2026-11-06: debug, the eight terrain tests pass and `run_terrain_fields` prints `0xB97D2A98FDF4D13A`; the phase's list of 15 (with `run_save_state_calendar`) passes; the whole suite passes, 122 of 122 in 1784 s. The release build links with no warning, so `main()`'s frame is still under 16 KiB. On release the four terrain tests pass and `run_terrain_fields` prints `0xB97D2A98FDF4D13A` again. `pgrep -a minecraft_c` printed nothing after each run. The Gate is Ahmed's and has not been played.
 
@@ -843,3 +846,9 @@ Found while doing the work, 2026-11-06.
 - **Expected:** `fixtures/week.script` with "ticks across Day 85 06:00".
 - **Actual:** from a new world that is 117 600 ticks of a walking world.
 - **Done:** the script opens a new world through the menus, and the test then puts the clock 40 ticks before 06:00 on clock day 5 with `game_clock_set`, as a console could. The census came on script tick 60, the screen shaded 921 273 of 1 228 800 bytes, and after Continue the world ticked on and the screen was gone. The pictures were looked at (`MC_CENSUS_PNG_DIR`).
+
+**17. Gate check, 2026-11-06: an earlier gate check stopped part way, and a comment had moved off its function.**
+
+- **Expected:** the whole Verification run by the gate in a clean build, with Status and this list brought up to date.
+- **Actual:** the earlier gate check stopped the whole suite at 22 of 122, never ran the release build or the release digests, and changed nothing here. Reading the code, the comment "One tick of simulated time, due at tick_ns" sat above `game_census_check` in `run/src/game/tick/index.c`, not above `game_sim_tick`, the function it describes.
+- **Done:** the comment is back above `game_sim_tick`. After `git merge main`, a clean `build/`: the debug build has no warnings; the eight terrain tests pass and `run_terrain_fields` prints `digest 0xB97D2A98FDF4D13A`, the same pin as before the rename (`e6d90e1~1`); the phase's 15 tests and the 3 lint and format tests pass; the whole suite passes, 122 of 122 in 1791 s. The release build links with no warning, so `main()`'s frame is under 16 KiB. On release the four terrain tests pass, with `run_terrain_fields` again `0xB97D2A98FDF4D13A`. The worked examples, run through `run/src/calendar/index.c` itself: clock 0.35 gives D 79, year 1, day 80, week 11, 08:24, `Year 1, Day 80, Early spring`; clock 1000.35 gives D 1079, year 3, day 350, week 154, `Year 3, Day 350, Late autumn`, Late spring in the south; clock day 5 one unit before 06:00 gives Day 84 and at 06:00 Day 85, week 12; the plan (11, 111) gives weeks 12 to 111, 100 of them, 48 fast. `run_game_census` with `MC_CENSUS_PNG_DIR` saved the real game's pictures, and they were looked at: `Year 1, Day 84, Early spring` in the top right, then the census screen over the world with `Week 12`, `Year 1, Day 85, Early spring, 06:00` and Continue, then the world again with `Year 1, Day 85, Early spring` and no screen. `pgrep -af "$PWD/build"` and `pgrep -a minecraft_c` printed nothing after each run. Status is "in progress", not "done", because Ahmed's Gate has not been played.
