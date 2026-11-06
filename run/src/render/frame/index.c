@@ -339,6 +339,10 @@ void render_day_fill(float32_t day_fraction, post_settings_t *post, shade_sun_t 
     const float32_t angle = 2.0f32 * RENDER_DAY_PI * (wrapped - 0.25f32);
     const float32_t height = sinf(angle);
     const float32_t sun_direction[3] = {cosf(angle), -height * sinf(RENDER_DAY_TILT), height * cosf(RENDER_DAY_TILT)};
+    render_sky_fill(sun_direction, height, post, sun);
+}
+
+void render_sky_fill(const float32_t sun_direction[3], float32_t height, post_settings_t *post, shade_sun_t *sun) {
     /* Night and day never overlap, and whatever they leave is twilight. */
     const float32_t day = frame_smooth(0.0f32, 0.35f32, height);
     const float32_t night = frame_smooth(0.0f32, 0.25f32, -height);
@@ -354,7 +358,7 @@ void render_day_fill(float32_t day_fraction, post_settings_t *post, shade_sun_t 
     static const float32_t glow_day[3] = {0.25f32, 0.22f32, 0.16f32}, glow_twilight[3] = {0.60f32, 0.30f32, 0.15f32};
     static const float32_t none[3] = {0.0f32, 0.0f32, 0.0f32};
     frame_day_mix(glow_day, glow_twilight, none, parts, 1.0f32, post->sun_glow);
-    memcpy(post->sun_direction, sun_direction, sizeof(sun_direction));
+    memcpy(post->sun_direction, sun_direction, sizeof(post->sun_direction));
     static const float32_t disc_sun[3] = {20.0f32, 18.0f32, 14.0f32}, disc_moon[3] = {0.9f32, 0.9f32, 1.0f32};
     memcpy(post->sun_disc, disc_sun, sizeof(disc_sun));
     memcpy(post->moon_disc, disc_moon, sizeof(disc_moon));
@@ -418,7 +422,11 @@ static void frame_settings_apply(render_frame_t *frame) {
     frame->post.fog_start = fog ? frame->fog_end * POST_FOG_START_SHARE : TRAVERSE_COARSE_SKY * 0.5f32;
     frame->post.fog_end = fog ? frame->fog_end : TRAVERSE_COARSE_SKY;
     if ((frame->scene.features & SHADE_FEATURE_SKY) != 0u) {
-        render_day_fill(frame->day_fraction, &frame->post, &frame->scene.sun);
+        if (frame->sun_from_outside != 0u) {
+            render_sky_fill(frame->sun_given, frame->sun_given[2], &frame->post, &frame->scene.sun);
+        } else {
+            render_day_fill(frame->day_fraction, &frame->post, &frame->scene.sun);
+        }
     } else {
         frame_day_plain(&frame->post, &frame->scene.sun);
     }
@@ -437,7 +445,14 @@ void render_frame_fog_set(render_frame_t *frame, float32_t fog_end) {
 }
 
 void render_frame_time_set(render_frame_t *frame, float32_t day_fraction) {
+    frame->sun_from_outside = 0u;
     frame->day_fraction = day_fraction - floorf(day_fraction);
+    frame_settings_apply(frame);
+}
+
+void render_frame_sun_set(render_frame_t *frame, const float32_t direction[3]) {
+    memcpy(frame->sun_given, direction, sizeof(frame->sun_given));
+    frame->sun_from_outside = 1u;
     frame_settings_apply(frame);
 }
 

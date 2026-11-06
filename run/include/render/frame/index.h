@@ -149,7 +149,9 @@ typedef struct render_frame_t {
     render_entities_t *borrowed_entities; /* 864: what each frame draws of them, from the Owner, or nullptr */
     render_lod_t *borrowed_lod;           /* 872: what each frame draws past full detail, from the Owner, or nullptr */
     frame_timings_t last_timings;         /* 880: what the last frame took, kernel by kernel, on the card's clock */
-    uint8_t _pad1[16];                    /* 944 */
+    float32_t sun_given[3];               /* 944: with sun_from_outside: toward the sun, unit, x east, y north */
+    uint8_t sun_from_outside;             /* 956: 1 after render_frame_sun_set, 0 after render_frame_time_set */
+    uint8_t _pad1[3];                     /* 957 */
 } render_frame_t;
 static_assert(sizeof(render_frame_t) == 960);
 static_assert(alignof(render_frame_t) == MC_CPU_CACHE_LINE_BYTES);
@@ -159,6 +161,8 @@ static_assert(offsetof(render_frame_t, temporal) == 712);
 static_assert(offsetof(render_frame_t, pinned) == 860);
 static_assert(offsetof(render_frame_t, borrowed_entities) == 864);
 static_assert(offsetof(render_frame_t, borrowed_lod) == 872);
+static_assert(offsetof(render_frame_t, sun_given) == 944);
+static_assert(offsetof(render_frame_t, sun_from_outside) == 956);
 
 /* Sizes, for the Owner to take blocks and memory. */
 uint64_t render_frame_texture_table_bytes(void);
@@ -187,12 +191,21 @@ void render_frame_fog_set(render_frame_t *frame, float32_t fog_end);
  * it is whoever calls this that keeps time, and the setting tells it not to. */
 void render_frame_time_set(render_frame_t *frame, float32_t day_fraction);
 
+/* The sun given from outside, in place of a time of day: a unit vector toward it, x east, y north, z up, as the game works it out
+ * from the world clock and the eye's latitude (plan 004 phase 02). direction[2], the sine of its elevation, decides the colours of
+ * day, twilight and night. Between frames, on the thread that draws. render_frame_time_set goes back to the fixed path. */
+void render_frame_sun_set(render_frame_t *frame, const float32_t direction[3]);
+
 /* Whether the eyes are in water, for the next frames. Between frames, on the thread that draws. Nothing shows of it with SHADE_FEATURE_UNDER_WATER off. */
 void render_frame_under_water_set(render_frame_t *frame, bool under_water);
 
 /* What the sky and the light are at a time of day: where the sun and moon are, and all their colours. Touches nothing else, so a
  * test can ask without a card. Leaves post's fog alone. */
 void render_day_fill(float32_t day_fraction, post_settings_t *post, shade_sun_t *sun);
+
+/* The same for a sun given as a direction, a unit vector toward it, and a height that decides the colours of day, twilight and
+ * night: render_day_fill is its fixed path through this. Touches nothing else. */
+void render_sky_fill(const float32_t sun_direction[3], float32_t height, post_settings_t *post, shade_sun_t *sun);
 
 /* The gpu thread. Draws one whole frame of what buffers hold now, from this camera, and makes it the newest picture. Waits for
  * the card. Allocates nothing. Anything but GPU_STATUS_OK means nothing more should be asked of the card, and gpu.last_error
