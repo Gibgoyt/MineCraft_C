@@ -644,6 +644,13 @@ Ahmed, on a release build (`tools/test-or-build.sh cmake --preset release`, then
 
 Appended as they land:
 
+- `6ad3255` Add latitude from y and the sun's place in the sky as pure climate functions, with the calendar's continuous year position and their tests.
+- `ccd40d5` Split render_sky_fill out of render_day_fill and let a frame take its sun as a direction from outside, with every existing picture unchanged.
+- `8b8b83b` Draw the real sun at the eye's latitude, run beds and mob darkness by the sun's height at the body, and add the F3 latitude line, the polar season labels and --day-of-year.
+- `3c3d1e2` List the climate system, its sun part and their three new tests in the repository layout.
+- `3b8a801` Remake the under-water test's land picture for the real sun, after looking at it beside the old one.
+- `0e1a791` Record phase 2 of plan 004 as done but for Ahmed's gate, with its ticked todos, measured results and the issues found on the way.
+
 ## Issues found
 
 Found while writing this file, 2026-11-04, before any code.
