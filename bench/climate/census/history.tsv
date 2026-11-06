@@ -1,1 +1,3 @@
 date	label	preset	seed	workers	generated_tiles	kept_tiles	first_ms	median_ms	target_ms	result
+2026-11-06T00:00:00Z	plan 004 phase 07, before the normals read a week at a time	profile	4D494E4543524146	16	100	196	4636.3	387.3	250	MISSED
+2026-11-06T00:00:00Z	plan 004 phase 07	profile	4D494E4543524146	16	100	196	1101.7	226.5	250	MET

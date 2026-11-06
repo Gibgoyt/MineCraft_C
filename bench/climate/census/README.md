@@ -18,3 +18,16 @@ Run it on the profile preset, as the phase file's Verification does:
 Exit status 0 if the median is under 250 ms (the phase 07 file's target), 1 if not (printed as `MISSED`, and recorded, not hidden), 2 if it could not start. Results are kept in `history.tsv` beside this file.
 
 ## Results
+
+### 2026-11-06, plan 004 phase 07: 226.5 ms, met
+
+Profile preset, through the build lock, 16 workers, seed `4D494E4543524146`, 196 kept tiles in 49 blocks. Exit status 0.
+
+| | |
+|---|---|
+| First census (climate tiles built, every cell from its spin-up) | 1101.7 ms: prepare 634, blocks 460 |
+| Censuses of weeks 13 to 17 | 398.2, 226.5, 220.9, 244.4, 174.5 ms; median **226.5 ms** (target 250) |
+| What the jobs spent a week, summed over the workers | day lists 0.8 to 1.1 s, normals and wind 0.47 s, noise 0.21 s, days 0.3 to 3.0 s (more in a thunder-heavy week) |
+| Flow | 7 ms; the outlook's input is filled beside the last week's blocks, so its stage is 0.3 ms |
+
+Before the changes in the phase 07 file's Issues found 15, the same run gave a median of 387.3 ms (MISSED) and a first census of 4.6 s.
