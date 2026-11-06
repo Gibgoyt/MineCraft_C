@@ -457,29 +457,32 @@ void game_open_alive_tell(const game_t *game) {
     }
 }
 
-static void game_open_climate_progress(void *context, uint32_t done, uint32_t total) {
-    game_t *const game = context;
-    const uint64_t percent = total == 0u ? 100u : (uint64_t)done * 100u / total;
-    if (percent != game->open_percent) {
-        game->open_percent = (uint8_t)percent;
-        game_open_alive_tell(game);
-    }
-}
-
 /* The climate's tiles round where the eye starts, before any column is asked for, so the first ones are not held back
- * by the gate: plan 004 phase 03, "Precompute at world creation". Every worker, and this thread waits. */
+ * by the gate: plan 004 phase 03, "Precompute at world creation". On every worker; game_open_climate_step takes it on, so
+ * a loading screen can be drawn meanwhile. */
 static void game_open_climate(game_t *game, int32_t start_x, int32_t start_y) {
     climate_t *const climate = game_climate(game);
     game->open_percent = 0u;
+    game->open_climate_frames = 0u;
     if (climate == nullptr) {
         return;
     }
     const int32_t reach = (int32_t)game_climate_radius(&game->borrowed_world->map);
-    const int64_t started = time_now_ns();
-    climate_prepare_area(climate, game->borrowed_job, start_x - reach, start_y - reach, start_x + reach,
-                         start_y + reach, game_open_climate_progress, game);
-    LOG_INFO("game: the climate within %d blocks of %d, %d is worked out, in %.1f ms", reach, start_x, start_y,
-             (libc_double_t)time_ns_to_ms(time_now_ns() - started));
+    climate_prepare_begin(climate, game->borrowed_job, start_x - reach, start_y - reach, start_x + reach,
+                          start_y + reach);
+    LOG_INFO("game: working out the climate within %d blocks of %d, %d", reach, start_x, start_y);
+}
+
+bool game_open_climate_step(game_t *game) {
+    climate_t *const climate = game_climate(game);
+    uint32_t done = 0u, total = 0u;
+    if (climate == nullptr || climate_prepare_step(climate, game->borrowed_job, &done, &total)) {
+        game->open_percent = 100u;
+        return true;
+    }
+    game->open_percent = (uint8_t)(total == 0u ? 0u : (uint64_t)done * 100u / total);
+    game->open_climate_frames++;
+    return false;
 }
 
 bool game_open(game_t *game, const game_config_t *config) {

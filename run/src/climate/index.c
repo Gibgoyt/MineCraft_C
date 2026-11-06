@@ -94,6 +94,7 @@ bool climate_open_ground(climate_t *climate, uint64_t seed, climate_ground_fn_t 
     atomic_store_explicit(&state->keep_tile_y, 0, memory_order_relaxed);
     atomic_store_explicit(&state->jobs_in_flight, 0u, memory_order_relaxed);
     atomic_store_explicit(&state->jobs_done, 0u, memory_order_relaxed);
+    memset(&state->prepare, 0, sizeof(state->prepare));
     state->open = 1u;
     return true;
 }
@@ -105,6 +106,7 @@ void climate_close(climate_t *climate, const job_system_t *system) {
     }
     /* Nothing may still be writing into the tables of a world about to be forgotten. */
     job_group_wait(system, &state->group);
+    memset(&state->prepare, 0, sizeof(state->prepare)); /* a begun precompute is over: its jobs are */
     terrain_noise_bank_deinit(&state->warp_bank);
     state->ground = nullptr;
     state->borrowed_ground_context = nullptr;
@@ -262,29 +264,101 @@ void climate_schedule(climate_t *climate, job_system_t *system, int32_t player_x
 
 /* ---- Precompute ---------------------------------------------------------------------------------------------------- */
 
-/* Until the submitted jobs counted from start have finished, telling progress as they do; then the group's wait, which
- * makes every job's writes this thread's to see. done_before is what earlier rounds did. */
-static void climate_prepare_wait(climate_state_t *state, const job_system_t *system, uint32_t start, uint32_t submitted,
-                                 uint32_t done_before, uint32_t total,
-                                 void (*progress)(void *context, uint32_t done, uint32_t total),
-                                 void *progress_context) {
-    uint32_t told = UINT32_MAX;
-    for (;;) {
-        /* Unsigned, so a counter that has wrapped still subtracts right. */
-        const uint32_t finished = atomic_load_explicit(&state->jobs_done, memory_order_acquire) - start;
-        const uint32_t counted = finished > submitted ? submitted : finished;
-        uint32_t done = done_before + counted;
-        done = done > total ? total : done;
-        if (progress != nullptr && done != told) {
-            progress(progress_context, done, total);
-            told = done;
+/* Builds the pages (round 1) or the tiles (round 2) of the begun rectangle not built yet, a job each, and starts counting
+ * them. Pages first, so no tile job builds a page another job is building. */
+static void climate_prepare_submit(climate_state_t *state, job_system_t *system, bool tiles) {
+    climate_prepare_t *const prepare = &state->prepare;
+    const int32_t reach = tiles ? 0 : CLIMATE_WINDOW_TILES / 2;
+    const uint32_t side = tiles ? CLIMATE_TILE_SIDE : CLIMATE_MASK_SIDE;
+    climate_slot_t *const slots = tiles ? state->borrowed_tile_slots : state->borrowed_mask_slots;
+    prepare->start = atomic_load_explicit(&state->jobs_done, memory_order_acquire);
+    prepare->submitted = 0u;
+    for (int32_t y = prepare->tile_y_min - reach; y <= prepare->tile_y_max + reach; y++) {
+        for (int32_t x = prepare->tile_x_min - reach; x <= prepare->tile_x_max + reach; x++) {
+            climate_slot_t *const slot = &slots[climate_cache_slot_index(x, y, side)];
+            const bool keeps = climate_cache_keeps(x, y, prepare->keep_x, prepare->keep_y, side);
+            if (climate_cache_claim(slot, climate_cache_key(x, y), keeps) != CLIMATE_CLAIM_OURS) {
+                continue; /* there, being built, or not to be kept: a tile job takes care of a page like that */
+            }
+            climate_slot_job_set(slot, state, x, y);
+            if (tiles) {
+                atomic_fetch_add_explicit(&state->jobs_in_flight, 1u, memory_order_relaxed);
+            }
+            job_submit(system, &state->group, tiles ? climate_tile_job : climate_page_job, slot);
+            prepare->submitted++;
         }
-        if (finished >= submitted) {
-            break;
-        }
+    }
+    prepare->phase = tiles ? CLIMATE_PREPARE_TILES : CLIMATE_PREPARE_PAGES;
+}
+
+void climate_prepare_begin(climate_t *climate, job_system_t *system, int32_t x_min, int32_t y_min, int32_t x_max,
+                           int32_t y_max) {
+    climate_state_t *const state = climate->borrowed_state;
+    if (state == nullptr || state->open == 0u) {
+        return;
+    }
+    uint32_t done = 0u, total = 0u;
+    while (!climate_prepare_step(climate, system, &done, &total)) {
         time_sleep_ns(CLIMATE_PREPARE_POLL_NS);
     }
+    climate_prepare_t *const prepare = &state->prepare;
+    memset(prepare, 0, sizeof(*prepare));
+    prepare->tile_x_min = climate_tile_low(x_min);
+    prepare->tile_x_max = climate_tile_high(x_max);
+    prepare->tile_y_min = climate_tile_low(y_min);
+    prepare->tile_y_max = climate_tile_high(y_max);
+    prepare->keep_x = (int32_t)(((int64_t)prepare->tile_x_min + (int64_t)prepare->tile_x_max) >> 1);
+    prepare->keep_y = (int32_t)(((int64_t)prepare->tile_y_min + (int64_t)prepare->tile_y_max) >> 1);
+    atomic_store_explicit(&state->keep_tile_x, prepare->keep_x, memory_order_relaxed);
+    atomic_store_explicit(&state->keep_tile_y, prepare->keep_y, memory_order_relaxed);
+
+    /* How much there is to do, for progress: every page and tile not built yet. */
+    const int32_t reach = CLIMATE_WINDOW_TILES / 2;
+    for (int32_t py = prepare->tile_y_min - reach; py <= prepare->tile_y_max + reach; py++) {
+        for (int32_t px = prepare->tile_x_min - reach; px <= prepare->tile_x_max + reach; px++) {
+            const climate_slot_t *const slot =
+                &state->borrowed_mask_slots[climate_cache_slot_index(px, py, CLIMATE_MASK_SIDE)];
+            prepare->total += climate_cache_ready(slot, climate_cache_key(px, py)) ? 0u : 1u;
+        }
+    }
+    for (int32_t ty = prepare->tile_y_min; ty <= prepare->tile_y_max; ty++) {
+        for (int32_t tx = prepare->tile_x_min; tx <= prepare->tile_x_max; tx++) {
+            const climate_slot_t *const slot =
+                &state->borrowed_tile_slots[climate_cache_slot_index(tx, ty, CLIMATE_TILE_SIDE)];
+            prepare->total += climate_cache_ready(slot, climate_cache_key(tx, ty)) ? 0u : 1u;
+        }
+    }
+    climate_prepare_submit(state, system, false);
+}
+
+bool climate_prepare_step(climate_t *climate, job_system_t *system, uint32_t *out_done, uint32_t *out_total) {
+    climate_state_t *const state = climate->borrowed_state;
+    if (state == nullptr || state->open == 0u || state->prepare.phase == CLIMATE_PREPARE_NONE) {
+        *out_done = 0u;
+        *out_total = 0u;
+        return true;
+    }
+    climate_prepare_t *const prepare = &state->prepare;
+    /* Unsigned, so a counter that has wrapped still subtracts right. */
+    const uint32_t finished = atomic_load_explicit(&state->jobs_done, memory_order_acquire) - prepare->start;
+    const uint32_t counted = finished > prepare->submitted ? prepare->submitted : finished;
+    const uint32_t done = prepare->done_before + counted;
+    *out_done = done > prepare->total ? prepare->total : done;
+    *out_total = prepare->total;
+    if (finished < prepare->submitted) {
+        return false;
+    }
+    /* Every job of the round has counted itself, so this wait is only for each to have returned: short, and it makes
+     * every job's writes this thread's to see. */
     job_group_wait(system, &state->group);
+    if (prepare->phase == CLIMATE_PREPARE_PAGES) {
+        prepare->done_before += prepare->submitted;
+        climate_prepare_submit(state, system, true);
+        return false;
+    }
+    prepare->phase = CLIMATE_PREPARE_NONE;
+    *out_done = prepare->total; /* pages a tile job built for itself counted too */
+    return true;
 }
 
 void climate_prepare_area(climate_t *climate, job_system_t *system, int32_t x_min, int32_t y_min, int32_t x_max,
@@ -294,69 +368,19 @@ void climate_prepare_area(climate_t *climate, job_system_t *system, int32_t x_mi
     if (state == nullptr || state->open == 0u) {
         return;
     }
-    const int32_t tx0 = climate_tile_low(x_min), tx1 = climate_tile_high(x_max);
-    const int32_t ty0 = climate_tile_low(y_min), ty1 = climate_tile_high(y_max);
-    const int32_t keep_x = (int32_t)(((int64_t)tx0 + (int64_t)tx1) >> 1);
-    const int32_t keep_y = (int32_t)(((int64_t)ty0 + (int64_t)ty1) >> 1);
-    atomic_store_explicit(&state->keep_tile_x, keep_x, memory_order_relaxed);
-    atomic_store_explicit(&state->keep_tile_y, keep_y, memory_order_relaxed);
-    const int32_t reach = CLIMATE_WINDOW_TILES / 2;
-
-    /* How much there is to do, for progress: every page and tile not built yet. */
-    uint32_t total = 0u;
-    for (int32_t py = ty0 - reach; py <= ty1 + reach; py++) {
-        for (int32_t px = tx0 - reach; px <= tx1 + reach; px++) {
-            const climate_slot_t *const slot =
-                &state->borrowed_mask_slots[climate_cache_slot_index(px, py, CLIMATE_MASK_SIDE)];
-            total += climate_cache_ready(slot, climate_cache_key(px, py)) ? 0u : 1u;
+    climate_prepare_begin(climate, system, x_min, y_min, x_max, y_max);
+    uint32_t told = UINT32_MAX;
+    for (;;) {
+        uint32_t done = 0u, total = 0u;
+        const bool finished = climate_prepare_step(climate, system, &done, &total);
+        if (progress != nullptr && (done != told || finished)) {
+            progress(progress_context, done, total);
+            told = done;
         }
-    }
-    for (int32_t ty = ty0; ty <= ty1; ty++) {
-        for (int32_t tx = tx0; tx <= tx1; tx++) {
-            const climate_slot_t *const slot =
-                &state->borrowed_tile_slots[climate_cache_slot_index(tx, ty, CLIMATE_TILE_SIDE)];
-            total += climate_cache_ready(slot, climate_cache_key(tx, ty)) ? 0u : 1u;
+        if (finished) {
+            return;
         }
-    }
-    uint32_t start = atomic_load_explicit(&state->jobs_done, memory_order_acquire);
-    uint32_t submitted = 0u;
-
-    /* Pages first, one job each, so no tile job builds a page another is building. */
-    for (int32_t py = ty0 - reach; py <= ty1 + reach; py++) {
-        for (int32_t px = tx0 - reach; px <= tx1 + reach; px++) {
-            climate_slot_t *const slot =
-                &state->borrowed_mask_slots[climate_cache_slot_index(px, py, CLIMATE_MASK_SIDE)];
-            const bool keeps = climate_cache_keeps(px, py, keep_x, keep_y, CLIMATE_MASK_SIDE);
-            if (climate_cache_claim(slot, climate_cache_key(px, py), keeps) != CLIMATE_CLAIM_OURS) {
-                continue; /* there, being built, or not to be kept: a tile job takes care of it */
-            }
-            climate_slot_job_set(slot, state, px, py);
-            job_submit(system, &state->group, climate_page_job, slot);
-            submitted++;
-        }
-    }
-    climate_prepare_wait(state, system, start, submitted, 0u, total, progress, progress_context);
-    const uint32_t pages_done = submitted;
-    start = atomic_load_explicit(&state->jobs_done, memory_order_acquire);
-    submitted = 0u;
-
-    for (int32_t ty = ty0; ty <= ty1; ty++) {
-        for (int32_t tx = tx0; tx <= tx1; tx++) {
-            climate_slot_t *const slot =
-                &state->borrowed_tile_slots[climate_cache_slot_index(tx, ty, CLIMATE_TILE_SIDE)];
-            const bool keeps = climate_cache_keeps(tx, ty, keep_x, keep_y, CLIMATE_TILE_SIDE);
-            if (climate_cache_claim(slot, climate_cache_key(tx, ty), keeps) != CLIMATE_CLAIM_OURS) {
-                continue;
-            }
-            climate_slot_job_set(slot, state, tx, ty);
-            atomic_fetch_add_explicit(&state->jobs_in_flight, 1u, memory_order_relaxed);
-            job_submit(system, &state->group, climate_tile_job, slot);
-            submitted++;
-        }
-    }
-    climate_prepare_wait(state, system, start, submitted, pages_done, total, progress, progress_context);
-    if (progress != nullptr) {
-        progress(progress_context, total, total); /* pages a tile job built for itself counted too */
+        time_sleep_ns(CLIMATE_PREPARE_POLL_NS);
     }
 }
 

@@ -53,6 +53,29 @@ enum : uint64_t {
 static_assert(CLIMATE_REGION_BYTES % HEAP_REGION_ALIGNMENT == 0);
 static_assert(CLIMATE_TABLES_OFFSET + CLIMATE_WARP_FIELDS * sizeof(terrain_noise_field_t) + 64u <= CLIMATE_STATE_BYTES);
 
+/* Where climate_prepare_begin's rounds stand: main's, while a world opens, so the loading screen can be drawn between them. */
+typedef enum climate_prepare_phase_t : uint8_t {
+    CLIMATE_PREPARE_NONE = 0,  /* nothing begun, or all built */
+    CLIMATE_PREPARE_PAGES = 1, /* the mask pages' jobs are in */
+    CLIMATE_PREPARE_TILES = 2, /* the tiles' jobs are in */
+} climate_prepare_phase_t;
+
+typedef struct climate_prepare_t {
+    int32_t tile_x_min;   /* 0: the tiles to build, both ends included */
+    int32_t tile_y_min;   /* 4 */
+    int32_t tile_x_max;   /* 8 */
+    int32_t tile_y_max;   /* 12 */
+    int32_t keep_x;       /* 16: the keep square's middle, the rectangle's */
+    int32_t keep_y;       /* 20 */
+    uint32_t start;       /* 24: jobs_done when this round's jobs went in */
+    uint32_t submitted;   /* 28: this round's jobs */
+    uint32_t done_before; /* 32: what earlier rounds did */
+    uint32_t total;       /* 36: every page and tile not built when it began */
+    uint8_t phase;        /* 40: climate_prepare_phase_t */
+    uint8_t _pad0[23];    /* 41 */
+} climate_prepare_t;
+static_assert(sizeof(climate_prepare_t) == 64);
+
 /* One world's climate cells, at the start of the climate's region. Written by the sim (scheduling), workers (tiles, pages)
  * and readers (the reader counts), so the atomics have a line of their own. */
 typedef struct climate_state_t {
@@ -77,8 +100,10 @@ typedef struct climate_state_t {
     _Atomic uint32_t jobs_in_flight;             /* 264: tile jobs queued and not finished */
     _Atomic uint32_t jobs_done;                  /* 268: every job the climate has finished, for progress */
     uint8_t _pad1[MC_CPU_CACHE_LINE_BYTES - 16]; /* 272 */
+    climate_prepare_t prepare;                   /* 320: main's, between climate_prepare_begin and its last step */
 } climate_state_t;
-static_assert(sizeof(climate_state_t) == 320);
+static_assert(sizeof(climate_state_t) == 384);
+static_assert(offsetof(climate_state_t, prepare) == 320);
 static_assert(alignof(climate_state_t) == 64);
 static_assert(offsetof(climate_state_t, group) == 64);
 static_assert(offsetof(climate_state_t, keep_tile_x) == 256);
@@ -124,6 +149,16 @@ bool climate_area_ready(const climate_t *climate, int32_t x_min, int32_t y_min, 
 void climate_prepare_area(climate_t *climate, job_system_t *system, int32_t x_min, int32_t y_min, int32_t x_max,
                           int32_t y_max, void (*progress)(void *context, uint32_t done, uint32_t total),
                           void *progress_context);
+
+/* The same, a round at a time, for a thread that must keep drawing meanwhile: begin queues the mask pages' jobs and
+ * returns. Then climate_prepare_step, from the same thread, now and then. A begin while one is going finishes that one
+ * first, waiting. */
+void climate_prepare_begin(climate_t *climate, job_system_t *system, int32_t x_min, int32_t y_min, int32_t x_max,
+                           int32_t y_max);
+/* Never waits for a job still running: writes how many of the begun jobs are done and of how many, queues the tiles'
+ * jobs once the pages' are done, and is true once every tile is built and the group waited on, so every job's writes are
+ * this thread's to see. True at once, with 0 of 0, if nothing was begun or the climate is closed. */
+bool climate_prepare_step(climate_t *climate, job_system_t *system, uint32_t *out_done, uint32_t *out_total);
 
 /* Any thread but a worker: builds the one tile (tile_x, tile_y) in one job, its window's missing pages inside that job, and
  * waits. Moves the keep square to it. For tests and the bench: what a tile costs, cold or warm. */

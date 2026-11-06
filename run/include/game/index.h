@@ -143,7 +143,7 @@ typedef struct game_t {
     uint8_t save_failed_said;  /* 877: the sim's: saving a column on its way out failed, and it has said so */
     /* 878: a census stops the world and waits for its screen; set before a world opens, and only read after */
     uint8_t census_screens;
-    uint8_t open_percent; /* 879: how much of a new world's climate is worked out, 0 to 100, while game_open runs */
+    uint8_t open_percent; /* 879: main's: how much of a new world's climate is worked out, 0 to 100, while it opens */
     entity_t *borrowed_entity; /* 880: what a player's drops go into; set before a world opens, and only read after */
     item_t *borrowed_item;     /* 888: what a player carries; set before a world opens, and only read after */
     /* A line of its own, written by main every frame. */
@@ -181,7 +181,7 @@ typedef struct game_t {
     profiler_lane_t *borrowed_lane_sim;                  /* 1232: whichever thread is doing the sim's work now */
     profiler_lane_t *borrowed_lane_sim_thread;           /* 1240: that of the sim thread, while it runs */
     _Atomic int32_t hud_block[3];     /* 1248: sim to main: the block the body's feet are in, z from sea level */
-    uint8_t _pad4[4];                 /* 1260 */
+    uint32_t open_climate_frames;     /* 1260: main's: game_open_climate_step's calls that found it not done yet */
     game_census_week_fn *census_week; /* 1264: nullptr for none; set before a world opens, and only read after */
     void *borrowed_census_context;    /* 1272: passed to census_week */
     /* A line of its own: the gpu thread writes these, once a picture. */
@@ -283,9 +283,9 @@ void game_save_set(game_t *game, save_t *save);
 void game_audio_set(game_t *game, audio_t *audio);
 
 /* From here on a world has climate cells (plan 004 phase 03): whoever opens the world opens this climate over its terrain
- * first. game_open works out the tiles round the place the eye starts before it returns, telling open_alive as it goes;
- * the sim keeps tiles coming ahead of the player; and no column is asked for until its tiles are built. game_close waits
- * for the climate's jobs and closes it. Must outlive it. Before game_open. Without it, or with it closed, none of that. */
+ * first. game_open begins working out the tiles round the place the eye starts (climate_prepare_begin), and whoever
+ * opened it steps that to its end (game_open_climate_step) before the threads start; the sim keeps tiles coming ahead of
+ * the player; and no column is asked for until its tiles are built. game_close waits for the climate's jobs and closes it. Must outlive it. Before game_open. Without it, or with it closed, none of that. */
 void game_climate_set(game_t *game, climate_t *climate);
 
 /* From here on what its threads do, and what the card does, is timed in this profiler's lanes. The profiler must outlive it. Before
@@ -329,6 +329,11 @@ bool game_gpu_alive(game_t *game);
 /* After this many pictures the card goes for real, or if stuck, the thread that draws stops answering for ever: --pretend-gpu-lost and tests. Before any
  * threads start. Stuck is only for a game with threads, as with none nothing is left to notice. */
 void game_gpu_pretend_set(game_t *game, uint32_t pictures, bool stuck);
+
+/* Main's, after game_open and before the threads start: moves the climate's precompute on without waiting, and sets
+ * open_percent. True once it is all built, or there is no climate: then the threads may start. A loading screen draws
+ * between calls; a caller with nothing to draw calls it until true, sleeping between. */
+bool game_open_climate_step(game_t *game);
 
 /* Opens a world around the place the eye starts: its map, its blocks on the card, its pictures. On failure logs why, leaves
  * nothing behind and returns false. */

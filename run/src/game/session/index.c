@@ -18,6 +18,8 @@ enum : uint8_t {
      * 120 Hz this is an eighth of a second. */
     GAME_SESSION_APPLY_FRAMES = 15,
 };
+/* How often a run with no screen looks at the new world's climate jobs while it waits for them. */
+static const int64_t GAME_SESSION_CLIMATE_POLL_NS = TIME_NS_PER_MS;
 
 void game_session_init(game_session_t *session, game_t *game, ui_t *ui, terrain_t *terrain, input_t *input,
                        const game_config_t *config, const char *saves, uint64_t blank_seed) {
@@ -193,6 +195,14 @@ static bool game_session_world_open(game_session_t *session) {
             climate_close(climate, game->borrowed_job);
         }
         return false;
+    }
+    /* Under KMS the climate round the start is worked out over the loading screen's frames (game_session_source). With no
+     * screen to draw, here and now. */
+    if (session->borrowed_display == nullptr) {
+        while (!game_open_climate_step(game)) {
+            game_open_alive_tell(game);
+            time_sleep_ns(GAME_SESSION_CLIMATE_POLL_NS);
+        }
     }
     LOG_INFO("session: world '%s' is open, from %s, with seed %" PRIu64 ", in %.3f s", world->name, world->directory,
              world->seed, (libc_double_t)time_ns_to_seconds(time_now_ns() - started_ns));
@@ -514,6 +524,16 @@ bool game_session_source(void *context, display_buffer_t *back) {
         }
         session->loading_frames--;
         return game_session_screen_frame(session, frame, false, back, &next);
+    }
+    if (session->state == GAME_SESSION_PLAYING && game->threads_running == 0u && !game_open_climate_step(game)) {
+        /* The new world's climate is still being worked out: the loading screen again, with how far it has got. */
+        session->borrowed_ui->menu.loading_percent = game->open_percent;
+        return game_session_screen_frame(session, frame, false, back, &next);
+    }
+    if (session->state == GAME_SESSION_PLAYING && game->open_climate_frames != 0u && game->threads_running == 0u) {
+        LOG_INFO("session: the climate round the start was worked out over %" PRIu32 " loading frames",
+                 game->open_climate_frames);
+        game->open_climate_frames = 0u;
     }
     if (session->state == GAME_SESSION_PLAYING) {
         if (!game_loop_threads_ensure(game)) {

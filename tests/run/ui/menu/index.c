@@ -16,6 +16,7 @@
 #undef fake_ops
 #include "run/input/fixtures/replay.h"
 
+#include "climate/index.h"
 #include "display/headless/png/index.h"
 #include "entity/index.h"
 #include "file/index.h"
@@ -1115,10 +1116,12 @@ typedef struct round_run_t {
     uint8_t step_begun;                /* 129 */
     uint8_t guardian_missing;          /* 130 */
     uint8_t pet_during_open;           /* 131: the watchdog heard from it, in the frame that opened the first world */
-    uint8_t _pad0[4];                  /* 132 */
+    uint8_t climate_percent_max;       /* 132: the most the loading screen's climate line said, after a world opened */
+    uint8_t _pad0[3];                  /* 133 */
     int64_t open_ns;                   /* 136: how long that frame took */
+    uint64_t climate_frames; /* 144: loading screens drawn after a world opened, as its climate was worked out */
 } round_run_t;
-static_assert(sizeof(round_run_t) == 144);
+static_assert(sizeof(round_run_t) == 152);
 
 static void round_send(fake_device_t *device, uint16_t type, uint16_t code, int32_t value) {
     const struct input_event events[] = {REPLAY_EVENT(type, code, value), REPLAY_SYN};
@@ -1195,6 +1198,13 @@ static bool round_source(void *context, display_buffer_t *back) {
     if (!game_session_source(run->borrowed_session, back)) {
         return false;
     }
+    /* Plan 004 phase 03: the world is open and its climate still being worked out, so that frame was the loading screen. */
+    if (was_open && game->open != 0u && game->threads_running == 0u &&
+        run->borrowed_session->state == GAME_SESSION_PLAYING) {
+        run->climate_frames++;
+        const uint8_t percent = run->borrowed_session->borrowed_ui->menu.loading_percent;
+        run->climate_percent_max = percent > run->climate_percent_max ? percent : run->climate_percent_max;
+    }
     if (!was_open && game->open != 0u && run->open_ns == 0) {
         run->open_ns = time_now_ns() - before_ns;
         run->pet_during_open = run->borrowed_display->guard.last_pet_ns > before_ns ? 1u : 0u;
@@ -1249,6 +1259,10 @@ TEST(the_whole_round_runs_through_the_display_loop_on_the_real_threads) {
     game_player_set(game, player);
     game_entity_set(game, entity);
     game_item_set(game, item);
+    /* Each world has its climate cells, as the program's --menu does: worked out over the loading screen's frames. */
+    climate_t *const climate = aligned_alloc_64(t, sizeof(climate_t));
+    REQUIRE(climate_init(climate));
+    game_climate_set(game, climate);
 
     fake_card_t *const card = fake_card_new(t);
     fake_card_use_small_mode(card);
@@ -1281,6 +1295,11 @@ TEST(the_whole_round_runs_through_the_display_loop_on_the_real_threads) {
     const display_status_t status = game_session_run(&session, display, round_source, &run);
     printf("frames %" PRIu64 ", step %" PRIu32 " of %" PRIu32 ", %" PRIu64 " flips, a world opened in %" PRId64 " ms\n",
            run.frames, run.step, REPLAY_COUNT(round_trip), (uint64_t)card->flips, run.open_ns / (int64_t)1000000);
+    printf("climate: %" PRIu64 " loading frames after the worlds opened, the line at most %" PRIu32 "%%\n",
+           run.climate_frames, (uint32_t)run.climate_percent_max);
+    /* The threads started only once the climate round the start was built, with the loading screen up meanwhile. */
+    CHECK(run.climate_frames >= 1u);
+    CHECK(!climate_is_open(climate));
     /* This seed's dry land is some way off, so that frame was long enough for the watchdog to want hearing from: half a second is
      * twice the pace at which the guard writes to it. */
     CHECK(run.open_ns > 0);
@@ -1313,6 +1332,7 @@ TEST(the_whole_round_runs_through_the_display_loop_on_the_real_threads) {
     input_deinit(input);
     display_deinit(display);
     game_deinit(game);
+    climate_deinit(climate);
     ui_deinit(ui);
     render_deinit(render);
     item_deinit(item);

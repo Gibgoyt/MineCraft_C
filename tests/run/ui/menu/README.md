@@ -20,7 +20,7 @@ What it holds to:
 - **No heap and no table memory** in 200 frames of each screen.
 - **Every size,** from 320 by 240 to 3840 by 2160.
 - **The built program,** by `fixtures/flow.script` under `--headless`: all the way round and out, with a world opened twice from one seed giving one picture, another seed another, and no leak. Then what the command line refuses.
-- **All of `game_session_run`** through `display_frames_run` on fake kernels, with the real threads and a real guardian forked, on one taking of the console: a world opened, paused, left and opened again, 300 ms of pause with no ticks, and everything gone at the end.
+- **All of `game_session_run`** through `display_frames_run` on fake kernels, with the real threads and a real guardian forked, on one taking of the console: a world opened, paused, left and opened again, 300 ms of pause with no ticks, and everything gone at the end. Each world has its climate cells, as `--menu` does, so after each opening the loading screen shows again, with "Working out the climate: N%", until the tiles round the start are built, and only then do the threads start (plan 004 phase 03).
 
 **The pictures.** Test `every_screen_is_the_picture_that_was_looked_at` compares a hash of each screen with the `HASH_*` numbers, set after looking at them. To look again, whether after a change to the look or because the test fails:
 

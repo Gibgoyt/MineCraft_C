@@ -368,6 +368,51 @@ TEST(one_and_sixteen_workers_give_the_same_bytes) {
     terrain_deinit(&terrain);
 }
 
+/* What the loading screen does: begin, then a step a frame, never waiting for a job. The same bytes as climate_prepare_area,
+ * and done only goes up, to the total: every page of the 24 by 24 round the 8 by 8 tiles, and the tiles. */
+TEST(a_precompute_stepped_a_frame_at_a_time_gives_the_same_bytes_and_counts_up_to_its_total) {
+    enum : uint64_t { EIGHT_CELLS = 64u * 256u };
+    terrain_t terrain;
+    REQUIRE(terrain_init(&terrain, CELL_SEED));
+    cell_rig_t rig;
+    REQUIRE(cell_rig_start(t, &rig, 16u));
+    REQUIRE(climate_open(rig.climate, &terrain));
+    uint32_t done = 0u, total = 0u;
+    CHECK(climate_prepare_step(rig.climate, rig.job, &done, &total)); /* nothing begun: done at once */
+    CHECK_EQ_U64(total, 0u);
+    climate_prepare_begin(rig.climate, rig.job, -4096 + 96, -4096 + 96, 4095 - 96, 4095 - 96);
+    uint32_t last = 0u, steps = 0u;
+    bool rising = true, within = true;
+    for (;;) {
+        const bool finished = climate_prepare_step(rig.climate, rig.job, &done, &total);
+        rising = rising && done >= last;
+        within = within && done <= total && total == 24u * 24u + 64u;
+        last = done;
+        if (finished) {
+            break;
+        }
+        steps++;
+        time_sleep_ns(TIME_NS_PER_MS / 4);
+    }
+    printf("stepped to the end in %" PRIu32 " unfinished steps; %" PRIu32 " of %" PRIu32 "\n", steps, done, total);
+    CHECK(rising);
+    CHECK(within);
+    CHECK(steps > 0u);
+    CHECK_EQ_U64(done, total);
+    CHECK_EQ_U64(total, 24u * 24u + 64u);
+    CHECK(climate_area_ready(rig.climate, -4096 + 96, -4096 + 96, 4095 - 96, 4095 - 96));
+    climate_cell_t *const cells = test_alloc(t, EIGHT_CELLS * sizeof(climate_cell_t));
+    for (int32_t ty = -4; ty < 4; ty++) {
+        for (int32_t tx = -4; tx < 4; tx++) {
+            cell_tile_copy(t, rig.climate, tx, ty, cells + ((uint64_t)(ty + 4) * 8u + (uint64_t)(tx + 4)) * 256u);
+        }
+    }
+    CHECK_EQ_U64(cell_digest(0xCBF29CE484222325ull, cells, EIGHT_CELLS * sizeof(climate_cell_t)), CELL_DIGEST_PIN);
+    CHECK(climate_prepare_step(rig.climate, rig.job, &done, &total)); /* over: done at once again */
+    cell_rig_stop(&rig);
+    terrain_deinit(&terrain);
+}
+
 TEST(negative_coordinates_find_the_right_cell) {
     cell_rig_t rig;
     REQUIRE(cell_rig_start(t, &rig, MC_THREADS_WORKERS));
