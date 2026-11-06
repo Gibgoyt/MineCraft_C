@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 7: Daily weather, the weekly state, the census and the outlook
 
-**Status:** in progress: built and agent-verified, Verification passes with the bench under budget (Issues found 20 and 22); Ahmed's gate is left, and step 1 waits on phases 01 to 06's own gates   (updated 2026-11-06)
+**Status:** in progress: built and agent-verified, Verification passes with the bench under budget (Issues found 20, 22 and 24); Ahmed's gate is left, and step 1 waits on phases 01 to 06's own gates   (updated 2026-11-06)
 
 **Read first:** `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` (the vision), then sections 3, 4.2, 7 and 8 of `plans/004-ahmed-bohemoth-climate-system.md` (the master plan). The master plan is the source of truth for every number and formula here. Where this file and the master plan disagree, the master plan wins, unless this file's **Issues found** says why not.
 
@@ -833,7 +833,7 @@ Build in this order. Each step names its file and why. Run the build and the ste
 - [x] Step 23: bench: the census for 100 km² of generated land, under 250 ms on 16 workers, recorded: after each block's days became jobs of their own, medians 209.6 ms quiet, 227.1 and 233.3 ms at load average 60 falling (`bench/climate/census/history.tsv`, Issues found 15 and 20)
 - [x] Step 24: `plans/REPO_STRUCTURE.md` and every README updated
 - [x] Replaying the same weeks gives the same bytes
-- [x] Gate: Verification passes (Issues found 22)
+- [x] Gate: Verification passes (Issues found 22, rerun in Issues found 24)
 - [ ] Gate: Ahmed's part done
 
 ## Tests
@@ -943,6 +943,7 @@ Appended as they land:
 - `fb2bcc66` Record bench_climate_census after the days are split: 209.6 ms quiet, 227.1 and 233.3 ms under load.
 - `602471ba` Remove the duplicated comment line above weather_day_compute in climate/weather.
 - `142d9b3c` Record plan 004 phase 07's day-split census in its phase file: the bench under budget, Verification passing, and the issues found.
+- `46e04468` Record plan 004 phase 07 gate check three: the whole debug suite, the bench at 225.2 ms and the release link all pass.
 
 ## Issues found
 
@@ -1039,5 +1040,7 @@ For Ahmed and phase 11: rain is a little under-confident in the middle and over-
 **23. Gate check, 2026-11-06 (a skeptical second pass, after merging main).** Clean debug configure and build: no warnings. The phase's five tests: all pass (`run_climate_weather` 28 s, `run_climate_outlook` 123 s, `run_save_climate` 7 s, `run_game_census` 35 s, `run_ui_census` 0.4 s). Worked examples through the real `climate/weather/week` and `flow` code in a separate program: spring melt gives snow 36.000, soil 150.000 and runoff 84.800; ice 12.000 and 0.000; the D8 grid's receivers as the table says and 90 at the outlet; flood 0.7500, 10.8750 and 0.5000. In the real program: `--menu --headless --no-sound --climate-jump 270` caught up 38 weeks (12 to 49) over 36 tiles in 8.4 s on debug. The census screen showed last week, the events and the outlook with three named systems, Continue resumed play, and the PNGs were looked at. Looked for and not found: stubs, TODOs, banned types, tests that assert nothing; 1 against 16 workers hashes every tile byte. Defect fixed: a doubled comment line above `weather_day_compute` (`602471ba`). **Not finished by this pass:** the rerun of the whole debug suite (stopped at 22 of 142, all passing so far), the profile bench and the release link. These rest on Issues found 22's runs.
 
 **21. `run_save_world` failed once while 4 tests ran at once, and passed alone.** Expected: pass. Actual: `killed_at_any_moment_it_loses_at_most_the_save_in_progress` reported "CHECK failed: confirmed > SW_KILL_ROUNDS" (24 rounds, 18 saves) during `ctest -j4`. Evidence: this is a timing test of plan 001's save (a child is killed at random moments, and the check counts the saves it made in time), and nothing in this phase touches `save/world`. Rerun alone: passed. Then it passed again in the whole suite (Issues found 22). Done: nothing. It is noted here as a load-sensitive test.
+
+**24. Gate check, 2026-11-06 (third pass, after merging main): Issues found 23's open runs done.** Expected: Verification passes in a clean build. Actual: debug configure and build clean, no warnings; the phase's five tests pass (`run_climate_outlook` and `run_climate_weather` 30 s, `run_game_census` 35 s, `run_save_climate` 7 s, `run_ui_census` 0.4 s); the whole debug suite **142 of 142 passed** (2169 s, the nine regression tests among them); profile build clean, `bench_climate_census` median of 5 **225.2 ms, MET** at load average 54 (first census 1051 ms); release build (`-O3 -flto`, the 16 KiB frame check) clean. Evidence beyond the tests: seven new hand examples, not the tests' own, through the real objects in a separate program all match (water week from snow 10, soil 50, 6 °C, 30 mm, snow share 0.2: snow 0, soil 81.6, runoff 0; from soil 145, 2 °C, 40 mm: soil 150, runoff 32.2; ice 6.0 cm; footprint d 3000, σ 600, R 2000: 0.35625; at least one of 0.5 with Λ 0.2: 0.59063; flood 200 over 50: 1.33333; background rain 6 mm: 0.63212). In the program: `--menu --headless --no-sound --climate-jump 270` caught up weeks 12 to 49 over 36 tiles in 8.7 s on debug; the census PNG (day 350, at the equator: high 35.8, low 28.3, no snow, heat waves in 3 places, an outlook with three named lows and highs) and the PNG after Continue were looked at. Every public function of the phase's headers has a caller in `run/src`; no TODO or stub; every file under 1500 lines. Afterwards `pgrep -a minecraft_c` and `pgrep -af "$PWD/build"` printed nothing. Done: no defect found; Status stays in progress for step 1 and Ahmed's gate.
 
 **22. Verification, run again 2026-11-06 after Issues found 20.** All runs went through `tools/test-or-build.sh`. Debug configure and build: clean. The phase's five tests and the nine regression tests, with `run_types`: all pass (`run_save_world` as in Issues found 21). The whole debug suite: **142 of 142 passed** (2104 s). Profile build: clean. Bench: 209.6, 227.1 and 233.3 ms, all MET. Release build (`-O3 -flto`, the 16 KiB frame check): clean. Afterwards `pgrep -af "$PWD/build"` and `pgrep -a minecraft_c` printed nothing. Not run by the agent: Ahmed's gate.
