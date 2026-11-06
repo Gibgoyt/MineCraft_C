@@ -16,7 +16,7 @@
 - `player_interact_fell_tick`: `player_interact_tick`, with somewhere for a log an axe cuts to set the rest of its tree going, and for what can be heard: `run/src/game/` keeps both, runs `player_felling_tick`, and takes the sounds to `run/src/audio/`.
 - `player_attack_tick`, `player_attack_landed`: one tick of the sim's for the hand, right before `player_interact_tick`: what a press on a body in reach does, for the caller to apply; and that it landed.
 - `player_pickup_reach`: the box an item has to overlap to be picked up, with the body where it now is.
-- `player_tick`: one tick of the sim's: the body moves, then what it aims at is worked out from where it now stands.
+- `player_tick`, `player_tick_wind`: one tick of the sim's: the body moves, in a wind from the climate for the second (plan 004 phase 08; the first is it with none), then what it aims at is worked out from where it now stands.
 - `player_survive_tick`: one tick of the sim's, right after `player_tick`, for what keeps the body going.
 - `player_vitals_read`: main asks how the body is, for a screen.
 - `player_eyes_under_water_read`: the thread that draws asks whether the eyes were under water as of the last tick.

@@ -43,7 +43,7 @@
 - `game_report`: what the frames took, and the books of what was dropped.
 
 **May be called by:** `run/src/main/`, and its part `session`.
-**Depends on:** its part `census` (plan 004 phase 07: attached at open, stepped by the sim, told of each column), `mob`, `player`, `entity`, `item`, `ui`, `render`, `world`, `climate`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
+**Depends on:** its part `census` (plan 004 phase 07: attached at open, stepped by the sim, told of each column), its parts `weather` and `cover` (plan 004 phase 08: started at open in the World arena, the weather drawn with each frame, cover stepped by the sim and run on each column that comes in), `mob`, `player`, `entity`, `item`, `ui`, `render`, `world`, `climate`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
 
 **Parts:** `tick`: one tick of the world, `game_sim_tick`. `spawn`: where a new world's body starts, `game_ground_z` and `game_spawn_find`, which `bench/world_map/` asks too. `session`: from the title screen to Quit Game, on top of the rest of this. `view`: what a config comes to, and bringing a picture up to the display's size. `report`: what it says about itself. `input`: what a person's hands come to. `settle`: everything on the card, on one thread.
 
@@ -147,3 +147,13 @@ CUDA's errors from a fault are sticky, so nothing after one can draw, and only a
 A card can also hang and say nothing, with the gpu thread inside a call that never comes back. Main would go on showing the last picture for ever, and `game_loop_stop` would join for ever. So the gpu thread counts its rounds, idle or not, and `game_gpu_alive` runs on main each frame: `GAME_GPU_STUCK_NS` with no round is `game_gpu_stuck`. That thread is never joined. The sim is, the world is saved, the console has gone back, and then nothing that thread may be using can be given back, so `game_close` does not run and the program ends by `_exit`. If main itself was away, on another VT or stopped, what it did not see proves nothing, so a gap of a second starts the count again.
 
 `--pretend-gpu-lost <pictures>` makes `device_memory_fault_now` run in the draw of that picture: a real fault on the real card, in this process's context only.
+
+## Weather in the world
+
+Plan 004 phase 08. `game_t` is at its size: it is in `app_t`, on main's stack, at the 16 KiB frame limit, and one more cache line pushes main's frame over in the release link. So what phase 08 keeps for a world is in the World arena, beside the column jobs: `game_open` takes one `game_world_parts_t` (the jobs, `game_weather_t` and `game_cover_t`) and `borrowed_jobs` points at its first member, so `game_weather_of` and `game_cover_of` find the rest with no new field. The parts' own READMEs, `weather/` and `cover/`, have what they do.
+
+- **Each tick**, `game_sim_tick` (in `tick/`) runs `game_weather_tick` first, then moves the body in its wind (`player_tick_wind`).
+- **Each frame**, `game_frame_draw` draws through `game_weather_draw`, which takes the newest weather slot, eases toward it and sends the rain top, then `render_frame_draw_weather`: on the gpu thread with threads, and in the one thread's draw without.
+- **Each sim step**, `game_cover_step` lays snow and ice on what is loaded after a census, and each column committed runs the same rule (`game_cover_stream_in`).
+- `--weather` is `game_weather_force`, by `main` after `game_open` for test worlds and by the session for each world it opens.
+
