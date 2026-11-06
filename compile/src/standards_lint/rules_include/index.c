@@ -69,7 +69,7 @@ static const include_system_t include_systems[] = {
     {"texture", 10, 0},  {"audio", 10, 0},  {"job", 11, 0},      {"thread", 11, 0},
     {"file", 11, 0},     {"time", 11, 0},   {"math", 11, 0},     {"simd", 11, 0},
     {"profiler", 11, 0}, {"arena", 12, 0},  {"heap", 12, 0},     {"log", 12, 0},
-    {"assert", 12, 0},   {"types", 12, 0},  {"calendar", 11, 0},
+    {"assert", 12, 0},   {"types", 12, 0},  {"calendar", 11, 0}, {"climate", 8, 0},
 };
 enum { INCLUDE_SYSTEM_COUNT = sizeof(include_systems) / sizeof(include_systems[0]) };
 

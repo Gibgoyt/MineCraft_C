@@ -1,6 +1,6 @@
 # tests/run/calendar
 
-**Purpose:** ctest `run_calendar`. Tests `run/src/calendar/`: a new world's date, the master plan's world 1000 days old, the calendar day starting at 06:00, years rolling over while weeks carry on, every week 7 days across ten years, a clock before the first morning, every season and part boundary north and south, the date line and its bounds, the census plan's weeks and fast flags, and the same dates from 16 threads as from one.
+**Purpose:** ctest `run_calendar`. Tests `run/src/calendar/`: a new world's date, the master plan's world 1000 days old, the calendar day starting at 06:00, years rolling over while weeks carry on, every week 7 days across ten years, a clock before the first morning, every season and part boundary north and south, the date line and its bounds, the census plan's weeks and fast flags, the continuous year position the sun reads (plan 004 phase 02), and the same dates from 16 threads as from one.
 **Tier:** test.
 **Owns:** nothing outside the test arena.
 **Lifetime:** One run.

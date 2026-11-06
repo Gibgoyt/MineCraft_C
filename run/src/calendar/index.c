@@ -53,6 +53,17 @@ calendar_date_t calendar_date_of(uint32_t day_zero, calendar_clock_t clock) {
     };
 }
 
+float64_t calendar_year_position(uint32_t day_zero, calendar_clock_t clock) {
+    ASSERT(day_zero < CALENDAR_DAYS_PER_YEAR);
+    const uint64_t year = (uint64_t)CALENDAR_DAYS_PER_YEAR * CALENDAR_CLOCK_DAY;
+    /* The clock into one year first, so nothing below can pass 2^64. A whole year is added before 06:00 is taken off, so a clock
+     * before a day-0 world's first morning wraps to the end of the year before and not through 2^64. */
+    const uint64_t into = clock % year;
+    const uint64_t position = (into + (uint64_t)day_zero * CALENDAR_CLOCK_DAY + year - CALENDAR_CLOCK_DAY_START) % year;
+    /* Under 365 * 2^32 < 2^53, so exact as a float64_t, and the division by a power of two is exact too. */
+    return (float64_t)position / (float64_t)CALENDAR_CLOCK_DAY;
+}
+
 calendar_season_label_t calendar_season_temperate(uint16_t day_of_year, bool south) {
     ASSERT(day_of_year < CALENDAR_DAYS_PER_YEAR);
     /* Winter until spring starts, and from its own first day: it wraps past the year's end. */

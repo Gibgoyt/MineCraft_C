@@ -3,6 +3,7 @@
 
 #include "calendar/index.h"
 
+#include <math.h>
 #include <pthread.h>
 #include <string.h>
 
@@ -232,6 +233,32 @@ static void *pure_worker(void *argument) {
         run->borrowed_out[i] = calendar_date_of(CALENDAR_DAY_ZERO, run->borrowed_clocks[i]);
     }
     return nullptr;
+}
+
+/* Plan 004 phase 02: d_c = (D0 + c - 0.25) mod 365, for the sun. The phase file's third row says clock 285.9999 gives 364.9999,
+ * which is 0.25 off: see its Issues found 5. The last unit before 286.25 is the one just under 365. */
+TEST(the_year_position_has_the_fraction_of_the_calendar_day_and_never_reaches_365) {
+    CHECK_NEAR(calendar_year_position(CALENDAR_DAY_ZERO, clock_of(0u, UNITS_0_35)), 79.1f64, 1e-9f64);
+    CHECK_NEAR(calendar_year_position(CALENDAR_DAY_ZERO, clock_of(5u, CALENDAR_CLOCK_DAY_START)), 84.0f64, 0.0f64);
+    /* 0.9999 of a day, to the nearest unit. */
+    const uint64_t units_0_9999 = 4294537799u;
+    CHECK_NEAR(calendar_year_position(CALENDAR_DAY_ZERO, clock_of(285u, units_0_9999)), 364.7499f64, 1e-9f64);
+    const float64_t last = calendar_year_position(CALENDAR_DAY_ZERO, clock_of(286u, CALENDAR_CLOCK_DAY_START) - 1u);
+    CHECK(last < 365.0f64);
+    CHECK_NEAR(last, 365.0f64, 1e-9f64);
+    CHECK_NEAR(calendar_year_position(CALENDAR_DAY_ZERO, clock_of(286u, CALENDAR_CLOCK_DAY_START)), 0.0f64, 0.0f64);
+    /* The fraction is exact: 06:00 plus one unit is one unit past the whole day. */
+    CHECK_NEAR(calendar_year_position(CALENDAR_DAY_ZERO, clock_of(5u, CALENDAR_CLOCK_DAY_START + 1u)),
+               84.0f64 + 1.0f64 / 4294967296.0f64, 0.0f64);
+    /* Before a day-0 world's first morning, the end of the year before; and a clock far out never reaches 365. */
+    CHECK_NEAR(calendar_year_position(0u, 0u), 364.75f64, 0.0f64);
+    CHECK(calendar_year_position(CALENDAR_DAY_ZERO, UINT64_MAX) < 365.0f64);
+    /* The whole day agrees with calendar_day_of's day of the year at every hour. */
+    for (uint64_t units = 0u; units < CALENDAR_CLOCK_DAY * 3u; units += CALENDAR_CLOCK_DAY / 24u) {
+        const calendar_clock_t clock = clock_of(400u, 0u) + units;
+        const float64_t position = calendar_year_position(CALENDAR_DAY_ZERO, clock);
+        CHECK_EQ_U64((uint64_t)floor(position), calendar_date_of(CALENDAR_DAY_ZERO, clock).day_of_year);
+    }
 }
 
 TEST(the_same_clock_gives_the_same_date_on_any_thread) {
