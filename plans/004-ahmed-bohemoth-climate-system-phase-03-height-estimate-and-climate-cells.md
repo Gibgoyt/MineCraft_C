@@ -893,6 +893,7 @@ Appended as they land:
 - `3945039` Record the second pass of plan 004 phase 03 in its phase file: the live loading line, the full suite, tsan, release and bench results.
 - `f573fe9` List the second pass commits of plan 004 phase 03 in its phase file.
 - `2eb224e` Check three real climate tiles of plan 004 phase 03 against a brute-force search over their windows built from single height estimates.
+- `fc09601` Record the skeptical gate check of plan 004 phase 03 in its phase file: every agent-run check passes and only Ahmed's gate is left.
 
 ## Issues found
 
