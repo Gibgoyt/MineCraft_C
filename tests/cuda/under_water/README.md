@@ -20,5 +20,7 @@ What it checks:
 
       MC_GOLDEN_WRITE=1 tools/test-or-build.sh timeout 600 ctest --preset debug -R '^render_feature_under_water$'
 
+  `land.png` was remade on 2026-11-06 for plan 004 phase 02, after looking at old and new side by side: the program now draws the real sun at the body's latitude, near the equator, on the first morning, low and nearly due east, where the old fixed path leaned it south. The same land, sea and HUD; slopes facing away from the east are in more shadow. `sea.png` and `sea_no_air.png` did not change.
+
 - **The cost:** at 1080p, on the card's own clock, printed as `cost, ...` lines. Nothing here is a limit: the numbers are recorded in `plans/003-ahmed-bohemoth-initial-game-fixes-phase-09-breath-underwater.md`.
 - **The flag:** taken with a world, and refused without one.

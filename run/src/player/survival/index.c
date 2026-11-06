@@ -74,16 +74,17 @@ void player_survival_start(player_survival_t *survival, float64_t x, float64_t y
     survival->food = PLAYER_SURVIVAL_FOOD_MAX;
     survival->saturation = PLAYER_SURVIVAL_SATURATION_START;
     survival->air = (int32_t)PLAYER_SURVIVAL_AIR_MAX;
-    survival->day_fraction = PLAYER_SURVIVAL_MORNING;
+    /* The sun overhead until the sim first says where it is: no bed works before then. */
+    survival->sun_height = 1.0f64;
 }
 
-bool player_survival_is_night(float64_t day_fraction) {
-    const float64_t wrapped = day_fraction - floor(day_fraction);
-    return wrapped >= PLAYER_SURVIVAL_NIGHT_FROM || wrapped < PLAYER_SURVIVAL_NIGHT_TO;
+bool player_survival_is_night(float64_t sun_height) {
+    /* By how far the sun really is below the horizon, so nights follow the latitude and the season (plan 004 phase 02). */
+    return sun_height < PLAYER_SURVIVAL_NIGHT_SUN;
 }
 
-void player_survival_day_set(player_survival_t *survival, float64_t day_fraction) {
-    survival->day_fraction = day_fraction;
+void player_survival_sun_set(player_survival_t *survival, float64_t sun_height) {
+    survival->sun_height = sun_height;
 }
 
 void player_survival_armor_set(player_survival_t *survival, float32_t points, float32_t toughness) {
@@ -337,7 +338,7 @@ static void survival_bed_use(player_survival_t *survival, player_movement_t *mov
     }
     memcpy(survival->bed_cell, cell, sizeof(survival->bed_cell));
     survival->has_bed = 1u;
-    if (!player_survival_is_night(survival->day_fraction)) {
+    if (!player_survival_is_night(survival->sun_height)) {
         survival->bed_answer = PLAYER_SURVIVAL_BED_NOT_NIGHT;
         return;
     }

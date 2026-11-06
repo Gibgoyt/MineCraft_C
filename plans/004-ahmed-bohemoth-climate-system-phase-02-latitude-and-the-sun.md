@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 2: Latitude and the sun
 
-**Status:** not started   (updated 2026-11-04)
+**Status:** in progress: all code and agent-run checks done; Ahmed's gate left   (updated 2026-11-06)
 
 Read `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` first, then section 5 of the master plan, `plans/004-ahmed-bohemoth-climate-system.md`. This phase needs phase 01 done: it reads phase 01's world clock (`game_t.clock_units`, `game_t.day_zero`) and calendar (`run/src/calendar/`).
 
@@ -509,22 +509,24 @@ Wiring outside them, kept to what this file names:
 
 ## Todo
 
-- [ ] `run/{src,include}/climate/`: $\varphi(y)$, with the period reduction, and its README
-- [ ] `climate` in the lint's system table at rank 8, and in the dependency diagram
-- [ ] `run/{src,include}/climate/sun/`: $\delta(d)$, $h_0$, day length, the sun's direction, elevation and azimuth, from a latitude or from the world clock and a y
-- [ ] `calendar_year_position` in `run/src/calendar/`, with its test
-- [ ] Tests: $\varphi(0) = 0$, $\varphi(10000) = 23.5$, $\varphi(38298) = 90$, $\varphi(-38298) = -90$, $\varphi(y + 153191) = \varphi(y)$; 24-hour days past 66.5° at midsummer; 12-hour days everywhere at the equinox
-- [ ] Tests: every worked example in this file (45° at y = 19,149; 18.51 h and 5.49 h at 60° N; azimuth 125.3° and elevation 30° at 45° N, 09:00, equinox)
-- [ ] `render_sky_fill` split out of `render_day_fill` with no change to any picture drawn through `render_day_fill`
-- [ ] `render_frame_sun_set`, and `game_day_apply` feeding it the sun at the drawing camera's latitude, in place of today's fixed path
-- [ ] Golden pictures drawn through the game: each looked at, remade, and its README saying why
-- [ ] Night for beds follows the sun at the body: `sun_height`, `PLAYER_SURVIVAL_NIGHT_SUN`
-- [ ] Mob spawning darkness follows the sun at the player: `mob_spawn_sky_darken(sun_height)`
-- [ ] On the equator at the equinox, beds and mob darkness are what they were, for every time of day
-- [ ] Latitude and the sun's elevation in the F3 overlay; `debug_640x480.png` remade after looking
-- [ ] The season label uses the latitude's hemisphere, and says `Polar night` or `Midnight sun`
-- [ ] `--day-of-year`, only with `--test-world`
-- [ ] READMEs and `plans/REPO_STRUCTURE.md` for `climate`, `climate/sun` and the new tests
+- [x] `run/{src,include}/climate/`: $\varphi(y)$, with the period reduction, and its README
+- [x] `climate` in the lint's system table at rank 8, and in the dependency diagram
+- [x] `run/{src,include}/climate/sun/`: $\delta(d)$, $h_0$, day length, the sun's direction, elevation and azimuth, from a latitude or from the world clock and a y
+- [x] `calendar_year_position` in `run/src/calendar/`, with its test
+- [x] Tests: $\varphi(0) = 0$, $\varphi(10000) = 23.5$, $\varphi(38298) = 90$, $\varphi(-38298) = -90$, $\varphi(y + 153191) = \varphi(y)$; 24-hour days past 66.5° at midsummer; 12-hour days everywhere at the equinox
+- [x] Tests: every worked example in this file (45° at y = 19,149; 18.51 h and 5.49 h at 60° N; azimuth 125.3° and elevation 30° at 45° N, 09:00, equinox)
+- [x] `render_sky_fill` split out of `render_day_fill` with no change to any picture drawn through `render_day_fill`
+- [x] `render_frame_sun_set`, and `game_day_apply` feeding it the sun at the drawing camera's latitude, in place of today's fixed path
+- [x] Golden pictures drawn through the game: each looked at, remade, and its README saying why
+- [x] Night for beds follows the sun at the body: `sun_height`, `PLAYER_SURVIVAL_NIGHT_SUN`
+- [x] Mob spawning darkness follows the sun at the player: `mob_spawn_sky_darken(sun_height)`
+- [x] On the equator at the equinox, beds and mob darkness are what they were, for every time of day (mobs to the bit at 100,001 times; beds at all of 1,000,000 times but the last tick of dawn and 0.772583 itself: Issues found 6)
+- [x] Latitude and the sun's elevation in the F3 overlay; `debug_640x480.png` remade after looking
+- [x] The season label uses the latitude's hemisphere, and says `Polar night` or `Midnight sun`
+- [x] `--day-of-year`, only with `--test-world`
+- [x] READMEs and `plans/REPO_STRUCTURE.md` for `climate`, `climate/sun` and the new tests
+- [x] Verification: every agent-run command below passes (results under Verification), and the whole suite: 124 of 125, the one failure `land.png`, which was looked at, remade, and then passed on its own
+- [ ] Ahmed's gate, on a release build and his own display (only he can look at it and judge the sky)
 
 ## Tests
 
@@ -602,6 +604,18 @@ The whole suite, once, before the gate:
     tools/test-or-build.sh timeout 3400 ctest --preset debug --output-on-failure
     pgrep -a minecraft_c    # must print nothing
 
+Results, 2026-11-06, debug preset, RTX 2080 Super:
+
+- `run_climate`, `run_climate_sun`, `run_calendar`, `run_game_sun`, `run_game_census`: pass. Measured: worst latitude gap 0.00115 degrees for 153,191 blocks and 9.1e-12 for the exact period; each block step 0.0023500 degrees, worst off by 4.5e-11; 60 N gives 18.5148 h and 5.4852 h; worst |s| - 1 is 3.3e-16; `render_day_fill`'s fixed sun is this sun at 20.0535 degrees north to 3.6e-7; a new world's 08:24 sun is 36.000 degrees up at azimuth 89.964. In the real game: midnight on day 171 gives a sun height of -0.917 at y = 8 and +0.070 (due north) at y = 30,000; the midnight sky's mean brightness is 26.8 at the equator and 153.7 at 70.5 N; at 60 N the body's sun height is -0.1132 at midsummer midnight (bed: not night) and -0.3453 at midwinter 18:00 (sleeps); at 80 N midwinter noon it is -0.2334, darken 10, and a zombie may spawn on open stone on rolls 5 to 7, where the equator's noon (0.9169) is too bright.
+- `run_player_survival`, `run_mob_spawn`, `run_ui_hud`, `run_render_frame`, `run_game`, `run_save_state`, `run_save_state_game`: pass, after `run_render_frame`'s three and `run_ui_hud`'s debug golden were looked at and remade (Issues found 10).
+- The six `render_feature_*`: pass, before and after the game change, with no picture remade.
+- `standards_lint`, `standards_lint_fixtures`, `clang_format`: pass.
+- The whole suite: 124 of 125; `render_feature_under_water`'s `land.png` was looked at, remade, and the test then passed.
+- Release build (`cmake --build --preset release`, `-O3 -flto`, the frame limit): links clean.
+- `pgrep -af` on this worktree's `build/`: nothing left running. No display, window, input device or sound was opened.
+
+Re-run, 2026-11-06, in a fresh worktree after merging `main` and the earlier branch (same code): configure and debug build clean; the 15 tests of the first, second and fourth groups pass; the six `render_feature_*` plus `render_feature_under_water` pass; the release build links clean. Whole suite not re-run (code unchanged since its run above).
+
 ## Gate
 
 Ahmed, on a release build (`tools/test-or-build.sh cmake --preset release`, then `tools/test-or-build.sh cmake --build --preset release`):
@@ -632,6 +646,15 @@ Ahmed, on a release build (`tools/test-or-build.sh cmake --preset release`, then
 
 Appended as they land:
 
+- `6ad3255` Add latitude from y and the sun's place in the sky as pure climate functions, with the calendar's continuous year position and their tests.
+- `ccd40d5` Split render_sky_fill out of render_day_fill and let a frame take its sun as a direction from outside, with every existing picture unchanged.
+- `8b8b83b` Draw the real sun at the eye's latitude, run beds and mob darkness by the sun's height at the body, and add the F3 latitude line, the polar season labels and --day-of-year.
+- `3c3d1e2` List the climate system, its sun part and their three new tests in the repository layout.
+- `3b8a801` Remake the under-water test's land picture for the real sun, after looking at it beside the old one.
+- `0e1a791` Record phase 2 of plan 004 as done but for Ahmed's gate, with its ticked todos, measured results and the issues found on the way.
+- `748cc79` List the commits of phase 2 of plan 004 in its phase file.
+- `43ba75f` Record the re-run of phase 2 of plan 004 checks in a fresh worktree, all passing.
+
 ## Issues found
 
 Found while writing this file, 2026-11-04, before any code.
@@ -659,3 +682,44 @@ Found while writing this file, 2026-11-04, before any code.
 - **Expected (phase 01 file):** north is $y \ge 0$, until phase 02.
 - **Actual:** past y = 76,596 the latitude is south while y is positive.
 - **Done in this file:** the label's hemisphere becomes the sign of $\varphi(y)$, and the polar labels are added, as phase 01's file said phase 02 would.
+
+Found while implementing, 2026-11-06.
+
+**5. The calendar test's third row is 0.25 of a day off.**
+
+- **Expected (Tests, `tests/run/calendar/`):** clock 285.9999 gives 364.9999.
+- **Actual:** $d_c = 79 + 285.9999 - 0.25 = 364.7499$. 364.9999 is clock 286.2499. The fourth row (clock 286.25 gives 0.0) is right.
+- **Done:** the test holds 364.7499 at clock 285.9999, and the last unit before 286.25 just under 365 (`the_year_position_has_the_fraction_of_the_calendar_day_and_never_reaches_365`).
+
+**6. The two old bed fractions were not symmetric about noon, so one tick of dawn changes on the equator at the equinox.**
+
+- **Expected (Background, "How dark is dark"):** both 0.772583 and 0.227458 are where $\cos H = -0.141418$.
+- **Actual:** $\cos(2\pi(0.772583 - 0.5)) = -0.1414175$, but $\cos(2\pi(0.227458 - 0.5)) = -0.1411625$. The mirror of 0.772583 is 0.227417. So with `PLAYER_SURVIVAL_NIGHT_SUN` the bed night ends 0.000041 of a day (about one tick of 24,000) earlier at dawn than it did. Also at 0.772583 itself the sun's height equals the threshold, which `<` counts as day where the old `>=` counted night.
+- **Done:** kept the plan's threshold (the evening value). `tests/run/player/survival/` checks all 1,000,000 times of day: 43 differ, all in $[0.227416, 0.227458)$ or at 0.772583 exactly. Mob darkness is the same to the bit at every one of 100,001 times of day (`run_mob_spawn`).
+
+**7. `render_frame_t`'s padding had moved since this file was written.**
+
+- **Expected (Design, "The renderer"):** `_pad1[48]` at 912, `sun_given` at 912.
+- **Actual:** `last_timings` is at 880 and `_pad1[16]` at 944 (`run/include/render/frame/index.h`).
+- **Done:** `sun_given[3]` at 944, `sun_from_outside` at 956, `_pad1[3]` at 957; still 960 bytes, offsets asserted.
+
+**8. A flying `--test-world` never draws the date line, so the gate's "the HUD's season reads Midnight sun" could not show.**
+
+- **Expected (Gate, step 3):** flying north with `--test-world --day-of-year 171`, the HUD's season reads `Midnight sun`.
+- **Actual:** test worlds open with `show_date = 0`, and `game_hud_compose` draws the date only for a walking body.
+- **Done (smallest wiring, `run/src/main/index.c`, `run/src/game/index.c`):** a test world opened with `--day-of-year` has `show_date = 1`, and a flying game with `show_date` set draws the date line in the top right. Every other flying picture is unchanged (no test world sets it otherwise, and menu worlds always walk).
+
+**9. `render_feature_sky` read `render_frame_t.day_fraction` after the game drew.**
+
+- **Expected:** step 8 says only golden pictures may need remaking.
+- **Actual:** `the_clock_runs_through_the_real_threads_and_the_setting_stops_it` (`tests/cuda/sky/index.c`) checked the frame's `day_fraction`, which the game no longer sets.
+- **Done:** it now checks `sun_from_outside` and that `sun_given` is `climate_sun_of_clock` of main's last clock at the eye's y. Wiring outside the owned paths, noted here.
+
+**10. Golden pictures that changed, each looked at before remaking.**
+
+- `tests/run/render/frame/fixtures/{start,north_low,down}.png` (7881, 19363 and 3809 pixels past tolerance): same land and sky; the sun is 36 degrees up and nearly due east on the first morning where the fixed path had it 33.5 degrees up east-south-east, so some faces shade a little differently. `tests/run/ui/hud/fixtures/debug_640x480.png` (1681 pixels): one more line, `lat 1.33 N  sun 30.0`. `tests/cuda/under_water/fixtures/land.png` (24961 pixels, found only by the whole suite, ctest `render_feature_under_water`, which the Verification list does not name): drawn by the built program, so it also takes the real sun; same land and sea, slopes facing away from the east in more shadow. The six `render_feature_*` tests the Verification list names passed after the renderer split and again after the game change, with no picture remade.
+
+**11. Names and a process slip.**
+
+- The plan's `player_survival_init` is `player_survival_start` in the code; it sets `sun_height = 1.0` there.
+- I once ran the built `run_game_sun` binary directly, not through `tools/test-or-build.sh` (about 4 s on the card). Every other build and test went through the wrapper.

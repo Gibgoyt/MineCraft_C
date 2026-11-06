@@ -68,7 +68,9 @@ typedef struct main_options_t {
     uint64_t seed;              /* --seed */
     const char *sound_file;     /* --sound-file */
     uint8_t no_sound;           /* --no-sound */
-    uint8_t _pad0[7];
+    uint8_t has_day_of_year;    /* --day-of-year */
+    uint16_t day_of_year;       /* --day-of-year: 1 to 365, as the HUD shows it */
+    uint8_t _pad0[4];
 } main_options_t;
 static_assert(sizeof(main_options_t) == 128);
 
@@ -90,6 +92,7 @@ static void main_print_usage(const char *program) {
         "       %s --test-pattern [--card <path>] [--connector <name>] [--crash-test[=<how>]] [--windowed]\n"
         "       %s --headless [--script <path>] [--screenshot-dir <dir>] [--ticks <n>] [--width <w>] [--height <h>]\n"
         "       %s --test-world [--seed <n>] [--walk] [--render-distance <chunks>] [--time-of-day <0 to 1>]\n"
+        "           [--day-of-year <1 to 365>]\n"
         "           [--no-shapes] [--no-alpha] [--no-sky] [--no-day-cycle] [--no-fog]\n"
         "           [--no-shadows] [--no-stored-light] [--no-transparency] [--no-water-reflection]\n"
         "           [--no-water-tint] [--no-under-water] [--no-ao] [--no-taa] [--god-rays] [--no-entities]\n"
@@ -137,6 +140,9 @@ static void main_print_usage(const char *program) {
     fputs(
         "  --no-under-water         with --test-world: a body's eyes under water see no blue and no short fog\n"
         "  --time-of-day <0 to 1>   with --test-world: the time to start at: 0 midnight, 0.25 sunrise, 0.5 noon\n"
+        "  --day-of-year <1 to 365> with --test-world: the day to start on, as the HUD shows it: 80 is the spring\n"
+        "                           equinox, 171 midsummer, 354 midwinter. A calendar day starts at 06:00, so before\n"
+        "                           that the HUD still shows the day before\n"
         "  --seed <n>               with --test-world: this seed's land and not the default's, 0x for hex\n"
         "  --pretend-gpu-lost       make the card fault for real after this many pictures, to see a world saved\n"
         "                           and the run end. Takes only this program's context; the kernel's log has a line\n"
@@ -281,6 +287,19 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
                 return false;
             }
             out->has_time_of_day = 1u;
+        } else if (strcmp(argv[i], "--day-of-year") == 0 && i + 1 < argc) {
+            i++;
+            uint32_t day = 0u;
+            if (!main_parse_count("--day-of-year", argv[i], &day)) {
+                return false;
+            }
+            if (day > CALENDAR_DAYS_PER_YEAR) {
+                fprintf(stderr, "%s: --day-of-year takes a day from 1 to %u, not %s\n", argv[0],
+                        (uint32_t)CALENDAR_DAYS_PER_YEAR, argv[i]);
+                return false;
+            }
+            out->day_of_year = (uint16_t)day;
+            out->has_day_of_year = 1u;
         } else if (strcmp(argv[i], "--render-distance") == 0 && i + 1 < argc) {
             i++;
             if (!main_parse_count("--render-distance", argv[i], &out->render_distance)) {
@@ -394,6 +413,10 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
     }
     if (out->has_time_of_day != 0u && out->test_world == 0) {
         fprintf(stderr, "%s: --time-of-day only means something with --test-world\n", argv[0]);
+        return false;
+    }
+    if (out->has_day_of_year != 0u && out->test_world == 0) {
+        fprintf(stderr, "%s: --day-of-year only means something with --test-world\n", argv[0]);
         return false;
     }
     if (out->has_seed != 0u && out->test_world == 0) {
@@ -870,6 +893,21 @@ static main_exit_t main_run_headless(app_t *app, const main_options_t *options) 
     return ran ? MAIN_EXIT_OK : MAIN_EXIT_HEADLESS;
 }
 
+/* --time-of-day and --day-of-year on a test world just opened. The day as the HUD shows it, d, is calendar day d - 1, which is
+ * clock day d - 1 - D0 from 06:00 on: before 06:00 the HUD still shows the day before. */
+static void main_clock_apply(game_t *game, const main_options_t *options) {
+    const float64_t fraction = options->has_time_of_day != 0u ? (float64_t)options->time_of_day : GAME_DAY_START;
+    if (options->has_day_of_year != 0u) {
+        const uint64_t clock_days =
+            ((uint64_t)options->day_of_year - 1u + CALENDAR_DAYS_PER_YEAR - game->day_zero) % CALENDAR_DAYS_PER_YEAR;
+        game_clock_set(game, clock_days, fraction);
+        LOG_INFO("main: the world starts on day %u of the year, clock day %" PRIu64 ", at %.4f of the day",
+                 (uint32_t)options->day_of_year, clock_days, (libc_double_t)fraction);
+    } else if (options->has_time_of_day != 0u) {
+        game_day_set(game, fraction);
+    }
+}
+
 /* A generated world, with no display at all: what a script does to the free-fly camera, in PNGs. */
 [[gnu::noinline]]
 static main_exit_t main_run_test_world_headless(app_t *app, const main_options_t *options) {
@@ -883,20 +921,19 @@ static main_exit_t main_run_test_world_headless(app_t *app, const main_options_t
     if (!display_offscreen_init(&app->offscreen, &config)) {
         return MAIN_EXIT_HEADLESS;
     }
-    const game_config_t game = {.render_distance = options->render_distance != 0u ? options->render_distance
-                                                                                  : MC_GAME_RENDER_DISTANCE_DEFAULT,
-                                .width = config.width,
-                                .height = config.height,
-                                .features_off = options->features_off,
-                                .god_rays = options->god_rays,
-                                .full_detail = options->full_detail,
-                                .show_date = 0u};
+    const game_config_t game = {
+        .render_distance = options->render_distance != 0u ? options->render_distance : MC_GAME_RENDER_DISTANCE_DEFAULT,
+        .width = config.width,
+        .height = config.height,
+        .features_off = options->features_off,
+        .god_rays = options->god_rays,
+        .full_detail = options->full_detail,
+        /* The date only when a day was asked for, so other test worlds' pictures stay as they were. */
+        .show_date = options->has_day_of_year};
     if (!game_open(&app->game, &game)) {
         return MAIN_EXIT_RUNTIME;
     }
-    if (options->has_time_of_day != 0u) {
-        game_day_set(&app->game, (float64_t)options->time_of_day);
-    }
+    main_clock_apply(&app->game, options);
     display_headless_scene_t scene;
     game_headless_scene(&app->game, &scene);
     display_headless_t *const headless = &app->offscreen.headless;
@@ -935,13 +972,11 @@ static main_exit_t main_run_test_world(app_t *app, const main_options_t *options
                                 .features_off = options->features_off,
                                 .god_rays = options->god_rays,
                                 .full_detail = options->full_detail,
-                                .show_date = 0u};
+                                .show_date = options->has_day_of_year};
     if (!game_open(&app->game, &game)) {
         return MAIN_EXIT_RUNTIME;
     }
-    if (options->has_time_of_day != 0u) {
-        game_day_set(&app->game, (float64_t)options->time_of_day);
-    }
+    main_clock_apply(&app->game, options);
     game_loop_source_begin(&app->game, &app->input);
     const display_status_t ran = display_frames_run(&app->display, game_loop_source, game_loop_discard, &app->game);
     const bool loop_ok = game_loop_stop(&app->game);

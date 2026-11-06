@@ -23,9 +23,10 @@ void mob_spawn_start(mob_spawn_t *spawn, arena_t *arena, uint64_t seed) {
     spawn->random = terrain_rng_start(seed);
 }
 
-uint32_t mob_spawn_sky_darken(float64_t day_fraction) {
-    /* The published curve, whose day starts at noon. Full day holds for a while on either side of noon, as full night does of midnight. */
-    const float64_t height = cos(2.0f64 * MOB_SPAWN_PI * (day_fraction - 0.5f64)) * 2.0f64 + 0.5f64;
+uint32_t mob_spawn_sky_darken(float64_t sun_height) {
+    /* The published curve, with the sun's real height in place of the clock's (plan 004 phase 02): full day holds while the sun is
+     * well up, and full night while it is 14.5 degrees or more down, so nights follow the latitude and the season. */
+    const float64_t height = sun_height * 2.0f64 + 0.5f64;
     const float64_t lit = height < 0.0f64 ? 0.0f64 : (height > 1.0f64 ? 1.0f64 : height);
     return (uint32_t)((1.0f64 - lit) * (float64_t)MOB_SPAWN_DARKEN_MAX);
 }
@@ -76,15 +77,15 @@ static bool mob_spawn_box_is_wet(const world_map_t *map, const collision_box_t *
     return false;
 }
 
-/* What the place's light says: the sky's share goes down with the time of day, and block light does not. */
-static mob_spawn_status_t mob_spawn_check_light(const mob_def_t *def, uint8_t packed, float64_t day_fraction,
+/* What the place's light says: the sky's share goes down with the sun, and block light does not. */
+static mob_spawn_status_t mob_spawn_check_light(const mob_def_t *def, uint8_t packed, float64_t sun_height,
                                                 uint32_t light_roll) {
     const uint32_t sky = (uint32_t)section_light_sky(packed);
     const uint32_t block = (uint32_t)section_light_block(packed);
     if (block > def->max_block_light) {
         return MOB_SPAWN_TOO_BRIGHT;
     }
-    const uint32_t darken = mob_spawn_sky_darken(day_fraction);
+    const uint32_t darken = mob_spawn_sky_darken(sun_height);
     const uint32_t from_sky = sky > darken ? sky - darken : 0u;
     const uint32_t light = from_sky > block ? from_sky : block;
     return light <= light_roll ? MOB_SPAWN_OK : MOB_SPAWN_TOO_BRIGHT;
@@ -115,7 +116,7 @@ mob_spawn_status_t mob_spawn_check(physics_t *physics, const world_map_t *map, m
         !mob_spawn_block_is_floor(def, below)) {
         return MOB_SPAWN_BAD_SURFACE;
     }
-    const mob_spawn_status_t light = mob_spawn_check_light(def, packed, view->day_fraction, light_roll);
+    const mob_spawn_status_t light = mob_spawn_check_light(def, packed, view->sun_height, light_roll);
     if (light != MOB_SPAWN_OK) {
         return light;
     }

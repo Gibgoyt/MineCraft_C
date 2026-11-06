@@ -15,8 +15,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MS_NOON 0.5f64
-#define MS_MIDNIGHT 0.0f64
+#define MS_NOON 1.0f64
+#define MS_MIDNIGHT (-1.0f64)
 #define MS_EXACT 1.0e-6f32
 
 /* Where the player stands in these tests, on a floor whose top is at z = 0. Every chunk near it is loaded. */
@@ -110,8 +110,8 @@ static void ms_light_all(test_context_t *t, ms_rig_t *rig) {
     CHECK_EQ_U64(world_light_rebuild(&rig->world.world->light), WORLD_LIGHT_STATUS_OK);
 }
 
-static mob_spawn_view_t ms_view(float64_t day) {
-    return (mob_spawn_view_t){.position = {MS_PLAYER_X, MS_PLAYER_Y, 0.0f64}, .day_fraction = day};
+static mob_spawn_view_t ms_view(float64_t sun_height) {
+    return (mob_spawn_view_t){.position = {MS_PLAYER_X, MS_PLAYER_Y, 0.0f64}, .sun_height = sun_height};
 }
 
 /* A dark place on stone, with a clear box over it, at the given spot. */
@@ -221,27 +221,49 @@ TEST(a_rig_is_what_its_mobs_file_says) {
 
 /* ---- The sky ------------------------------------------------------------------------------------------------------- */
 
+/* The sun's height on the equator at the equinox at a time of day: cos(2 pi (f - 0.5)), what the curve read before plan 004 phase 02. */
+static float64_t ms_equator_sun(float64_t day) {
+    return cos(2.0f64 * 3.14159265358979f64 * (day - 0.5f64));
+}
+
+/* The curve as it was before plan 004 phase 02, by the time of day, to hold the new one to on the equator at the equinox. */
+static uint32_t ms_old_darken(float64_t day) {
+    const float64_t height = cos(2.0f64 * 3.14159265358979f64 * (day - 0.5f64)) * 2.0f64 + 0.5f64;
+    const float64_t lit = height < 0.0f64 ? 0.0f64 : (height > 1.0f64 ? 1.0f64 : height);
+    return (uint32_t)((1.0f64 - lit) * (float64_t)MOB_SPAWN_DARKEN_MAX);
+}
+
 TEST(the_sky_darkens_from_noon_to_midnight) {
     CHECK_EQ_U64(mob_spawn_sky_darken(MS_NOON), 0u);
     CHECK_EQ_U64(mob_spawn_sky_darken(MS_MIDNIGHT), MOB_SPAWN_DARKEN_MAX);
-    /* Wrapped either way. */
-    CHECK_EQ_U64(mob_spawn_sky_darken(1.0f64), MOB_SPAWN_DARKEN_MAX);
-    CHECK_EQ_U64(mob_spawn_sky_darken(-0.5f64), 0u);
-    CHECK_EQ_U64(mob_spawn_sky_darken(3.5f64), 0u);
-    /* The curve at dawn, by hand: cos(2 pi (0.25 - 0.5)) = 0, so 2 * 0 + 0.5 lit, half of 11, down to 5. */
-    CHECK_EQ_U64(mob_spawn_sky_darken(0.25f64), 5u);
-    CHECK_EQ_U64(mob_spawn_sky_darken(0.75f64), 5u);
+    /* The curve at the horizon, by hand: 2 * 0 + 0.5 lit, half of 11, down to 5. */
+    CHECK_EQ_U64(mob_spawn_sky_darken(0.0f64), 5u);
+    /* 08:24 on the equator, the sun 36 degrees up: full day. */
+    CHECK_EQ_U64(mob_spawn_sky_darken(0.5878f64), 0u);
+    /* Phase 02's worked examples: 6.5 degrees down is darken 7, 13.5 degrees down is 10, 14.5 or more is all 11. */
+    CHECK_EQ_U64(mob_spawn_sky_darken(-0.1132f64), 7u);
+    CHECK_EQ_U64(mob_spawn_sky_darken(-0.2334f64), 10u);
+    CHECK_EQ_U64(mob_spawn_sky_darken(-0.25f64), MOB_SPAWN_DARKEN_MAX);
     /* Day and night each hold for a while: both ends are clamped. */
-    CHECK_EQ_U64(mob_spawn_sky_darken(0.35f64), 0u);
-    CHECK_EQ_U64(mob_spawn_sky_darken(0.15f64), MOB_SPAWN_DARKEN_MAX);
-    /* It gets no lighter from noon to midnight. */
+    CHECK_EQ_U64(mob_spawn_sky_darken(0.25f64), 0u);
+    CHECK_EQ_U64(mob_spawn_sky_darken(-0.5f64), MOB_SPAWN_DARKEN_MAX);
+    /* It gets no lighter as the sun goes down. */
     uint32_t last = 0u;
-    for (uint32_t i = 0u; i <= 500u; i++) {
-        const uint32_t darken = mob_spawn_sky_darken(0.5f64 + (float64_t)i / 1000.0f64);
+    for (uint32_t i = 0u; i <= 2000u; i++) {
+        const uint32_t darken = mob_spawn_sky_darken(1.0f64 - (float64_t)i / 1000.0f64);
         CHECK(darken >= last);
         last = darken;
     }
     CHECK_EQ_U64(last, MOB_SPAWN_DARKEN_MAX);
+}
+
+TEST(on_the_equator_at_the_equinox_the_sky_darkens_as_it_did_at_every_time_of_day) {
+    uint64_t differ = 0u;
+    for (uint32_t i = 0u; i <= 100000u; i++) {
+        const float64_t day = (float64_t)i / 100000.0f64;
+        differ += mob_spawn_sky_darken(ms_equator_sun(day)) != ms_old_darken(day) ? 1u : 0u;
+    }
+    CHECK_EQ_U64(differ, 0u);
 }
 
 /* ---- Each rule at its edge --------------------------------------------------------------------------------------- */
@@ -278,7 +300,7 @@ TEST(a_column_not_loaded_will_not_do) {
     ms_rig_t rig;
     REQUIRE(ms_begin(t, &rig, 1u));
     /* The fixture's edge: a chunk at distance 3 is there, and (4, 0) is not. */
-    const mob_spawn_view_t view = {.position = {64.5f64, 8.5f64, 0.0f64}, .day_fraction = MS_NOON};
+    const mob_spawn_view_t view = {.position = {64.5f64, 8.5f64, 0.0f64}, .sun_height = MS_NOON};
     CHECK_EQ_U64(ms_check_at(&rig, MOB_ID_ZOMBIE, 100, 8, 0, &view, 7u), MOB_SPAWN_NOT_LOADED);
     /* The last cell before it, whose body is all on this side. */
     ms_dark_place(t, &rig, 63, 8);

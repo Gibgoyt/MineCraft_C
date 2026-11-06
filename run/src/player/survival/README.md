@@ -12,8 +12,8 @@
 - `player_survival_tick`: after the body's tick: what it touches hurts, food wears down, it heals or starves, and it sleeps on.
 - `player_survival_hurt`: a hit, from here or from outside, such as Stage 15's mobs and explosions.
 - `player_survival_eat`, `player_survival_exhaust`: the two rules of food by themselves.
-- `player_survival_hold_food`, `player_survival_day_set`, `player_survival_armor_set`: what it is told, as it knows nothing of items or the sky.
-- `player_survival_after_armor`, `player_survival_fall_damage`, `player_survival_is_night`: the sums, for any numbers.
+- `player_survival_hold_food`, `player_survival_sun_set`, `player_survival_armor_set`: what it is told, as it knows nothing of items or the sky. The sun is told as the sine of its elevation at the body (`sun_height`), which the sim works out each tick from the world clock and the feet's y (plan 004 phase 02).
+- `player_survival_after_armor`, `player_survival_fall_damage`, `player_survival_is_night`: the sums, for any numbers. A bed works while the sun is more than 8.13 degrees below the horizon (`PLAYER_SURVIVAL_NIGHT_SUN`, sin of -8.13), which on the equator at the equinox is the old 0.772583 to 0.227458 of a day exactly, so nights are long in winter and near the poles, and north of 58.4 degrees midsummer has none.
 - `player_survival_holds_body`, `player_survival_can_sprint`: what `run/src/player/` does to the keys.
 - `player_survival_died_take`, `player_survival_morning_take`, `player_survival_armor_hit_take`: what `run/src/game/` acts on: what was carried spills, the day moves on, and what is worn wears.
 

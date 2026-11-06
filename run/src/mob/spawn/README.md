@@ -35,7 +35,7 @@ Each tick tries `MOB_SPAWN_TRIES_PER_TICK` places, until the cap is reached. The
 | **Room** | Nothing solid in its box |
 | **Fluid** | No water or lava in its box |
 
-The sky's share uses the published curve: nothing off at noon, 11 off at midnight. So an open field fills at night, a cave at any hour, and a torch keeps a patch clear for good.
+The sky's share uses the published curve, `11 (1 - clamp(2 s + 0.5, 0, 1))`, where `s` is the sine of the sun's elevation at the player (`mob_spawn_view_t.sun_height`, plan 004 phase 02): nothing off with the sun well up, 11 off with it 14.5 degrees or more below the horizon, and open ground dark enough for a zombie once it is 6.5 degrees down. On the equator at the equinox `s` is `cos(2 pi (f - 0.5))` of the time of day `f`, so there it is the old curve exactly: nothing off at noon, 11 at midnight. Elsewhere nights are long in winter and near the poles, and in polar winter an open field fills at noon. A mob spawns at most 128 blocks from the player, 0.3 degrees of latitude, so the player's sun stands for all of them. A cave fills at any hour, and a torch keeps a patch clear for good.
 
 ## The cap
 

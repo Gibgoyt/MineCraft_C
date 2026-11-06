@@ -551,7 +551,7 @@ static bool save_state_check_player(const uint8_t *data, uint64_t bytes) {
         body->mode > PLAYER_MOVEMENT_MODE_CLIMB) {
         return false;
     }
-    if (!save_state_place_fine(health->spawn, COLLISION_AXES) || !isfinite(health->day_fraction) ||
+    if (!save_state_place_fine(health->spawn, COLLISION_AXES) || !isfinite(health->sun_height) ||
         !(health->health >= 0.0f32 && health->health <= (float32_t)PLAYER_SURVIVAL_HEALTH_MAX) ||
         !save_state_tally_fine(health->saturation) || !save_state_tally_fine(health->exhaustion) ||
         !save_state_tally_fine(health->last_hurt) || !save_state_tally_fine(health->armor_points) ||

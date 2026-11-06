@@ -298,7 +298,7 @@ static void fs_state_ticks(fs_context_t *fs) {
         }
         const mob_spawn_view_t view = {.position = {fs->player->movement.position[0], fs->player->movement.position[1],
                                                     fs->player->movement.position[2]},
-                                       .day_fraction = fs->player->survival.day_fraction};
+                                       .sun_height = fs->player->survival.sun_height};
         mob_spawn_tick(fs->spawn, &entity->store, entity->borrowed_physics, fs->w.map, &view);
         const mob_skeleton_view_t skeleton_view = {
             .position = {movement->position[0], movement->position[1], movement->position[2]},

@@ -15,7 +15,7 @@ What it holds to:
 - Random states against a separate model, a pixel at a time on `simd_reference_blend_over`, with every byte of the guard band round the canvas unchanged, at sizes from a pixel to 1080p.
 - A half shows the side nearest the full ones. Slots, counts and wear each change only their own part.
 - Bubbles: 30 ticks each by hand; full, half and empty over the drumsticks, changing nothing else; not there on land; and through the real game, up and gone as air refills.
-- The overlay's numbers change only their own line, and it stays on its panel.
+- The overlay's numbers change only their own line, and it stays on its panel, with the latitude and sun line of plan 004 phase 02 (its longest, `lat 90.00 S  sun -90.0`, fits). On the real game flying, that line is the eye's latitude and the sun of the clock there.
 - No heap and no table memory in 200 frames.
 - The date line, plan 004 phase 01: a small panel at the top right just as wide as its text, nothing left of it touched, beside the coordinates and not over them, below a notice's band, nothing outside a tiny canvas, and the golden `fixtures/date_640x480.png`. Its real-game test is in `tests/run/game/census/`, as that test opens a world for the census already.
 - Coordinates: a small panel just as wide as its text, each number changing it, below a notice's band, and on the overlay's panel with room for the longest. On the real game, whole blocks from the sim and rounded down past 0, drawn only when the config says, and not twice with F3 up.
@@ -28,4 +28,4 @@ What it holds to:
 
     MC_GOLDEN_WRITE=1 tools/test-or-build.sh ctest --preset debug -R '^run_ui_hud$'
 
-Any change to a texture or the font changes them, and they are made again and looked at.
+Any change to a texture or the font changes them, and they are made again and looked at. `debug_640x480.png` was remade on 2026-11-06 for plan 004 phase 02, after looking at it: the overlay's panel is one line taller, and that line reads `lat 1.33 N  sun 30.0`.

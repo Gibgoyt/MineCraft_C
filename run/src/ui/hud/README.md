@@ -51,7 +51,7 @@ The panel is as wide as its text, in the overlay's text size. `game` draws it on
 
 ## The debug overlay
 
-F3 turns it on and off, on top of the HUD and over any kind of run, flying or walking. It lists what `ui_hud_stage_t` does: the five passes of the card and its total, from the card's own clock; the sim's last tick; and on `main`, what the HUD and copying the picture out took. Its last line is the coordinates, whatever the setting says, and its panel is wide enough for eight digits each way. With no body, they are the flying eye's. Frames per second count **new pictures**, as `game_report` does, not how often `main` went round. The window is half a second, in `run/src/game/`.
+F3 turns it on and off, on top of the HUD and over any kind of run, flying or walking. It lists what `ui_hud_stage_t` does: the five passes of the card and its total, from the card's own clock; the sim's last tick; and on `main`, what the HUD and copying the picture out took. Then come the coordinates, whatever the setting says, and its panel is wide enough for eight digits each way. Its last line is the eye's latitude and the sun's elevation there (plan 004 phase 02): `lat 45.00 N  sun 30.0`, `S` south of the equator and `N` at exactly 0, two decimals for the latitude and one for the sun. The longest, `lat 90.00 N  sun -66.5`, fits the panel. With no body, they are the flying eye's. Frames per second count **new pictures**, as `game_report` does, not how often `main` went round. The window is half a second, in `run/src/game/`.
 
 Its text is half the HUD's scale, rounding up.
 

@@ -9,6 +9,7 @@
 
 - `calendar_day_of`, `calendar_week_of`: `D = D0 + floor((clock - 06:00) / day)`, and `floor(D / 7)`. A clock before the first 06:00 of a world with `D0 = 0` is day 0, not a wrapped number.
 - `calendar_date_of`: all of it at once, with the clock's hour and minute, rounded down.
+- `calendar_year_position`: `d_c = (D0 + c - 0.25) mod 365`, the day of the year with the fraction of the calendar day passed, worked out in integers and divided once, so it is exact and never reaches 365. Plan 004 phase 02's sun reads it, so the sun moves smoothly through the year and never jumps at 06:00.
 - `calendar_season_temperate`, `calendar_season_name`: the season and its early, mid or late part by plan 004's table 4.1, north or south of the equator.
 - `calendar_date_line`: `Year 3, Day 350, Late autumn`, never past the bytes it is given.
 - `calendar_census_plan`: the weeks from the last census + 1 to now, and how many of the oldest run fast (all but the newest `CALENDAR_FULL_WEEKS_MAX`).
@@ -27,4 +28,4 @@
 
 Weeks run straight from `D = 0` because `365 = 52 * 7 + 1`: counted within each year, the last week would be one day long.
 
-The south's season is the north's opposite on the same day (spring and autumn swap, summer and winter swap), so there is no rounding of half a year. Until plan 004 phase 02 brings latitude, the caller chooses the hemisphere.
+The south's season is the north's opposite on the same day (spring and autumn swap, summer and winter swap), so there is no rounding of half a year. The caller chooses the hemisphere: since plan 004 phase 02 the game passes the sign of `climate_latitude_deg(y)`.

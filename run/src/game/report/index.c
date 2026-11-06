@@ -1,6 +1,8 @@
 /* See README.md. */
 #include "game/index.h"
 
+#include "climate/index.h"
+#include "climate/sun/index.h"
 #include "log/index.h"
 #include "render/entities/index.h"
 #include "tables/blocks/index.h"
@@ -9,6 +11,7 @@
 #include <inttypes.h>
 #include <math.h>
 #include <stdatomic.h>
+#include <stdio.h>
 #include <string.h>
 
 void game_hud_state_read(const game_t *game, ui_hud_state_t *out) {
@@ -47,15 +50,35 @@ calendar_date_t game_calendar_date(const game_t *game) {
     return calendar_date_of(game->day_zero, atomic_load_explicit(&game->clock_units, memory_order_relaxed));
 }
 
-bool game_calendar_south(const game_t *game) {
+/* The latitude of the block the HUD shows: the body's feet, or flying the eye. */
+static float64_t game_calendar_latitude(const game_t *game) {
     int32_t block[3];
     game_hud_block_read(game, block);
-    return block[1] < 0;
+    return climate_latitude_deg((float64_t)block[1]);
+}
+
+bool game_calendar_south(const game_t *game) {
+    /* By the latitude, not by y: past y = 76,596 the north is behind you (plan 004 phase 02). */
+    return game_calendar_latitude(game) < 0.0f64;
 }
 
 void game_calendar_line(const game_t *game, char *out, uint64_t bytes) {
-    const calendar_date_t date = game_calendar_date(game);
-    (void)calendar_date_line(&date, calendar_season_temperate(date.day_of_year, game_calendar_south(game)), out, bytes);
+    const calendar_clock_t clock = atomic_load_explicit(&game->clock_units, memory_order_relaxed);
+    const calendar_date_t date = calendar_date_of(game->day_zero, clock);
+    const float64_t latitude = game_calendar_latitude(game);
+    /* Master plan 4.1's third row: no sunrise or no sunset today, by the same continuous day the sun is drawn by. */
+    const float64_t day_hours =
+        climate_sun_day_hours(latitude, climate_sun_declination_deg(calendar_year_position(game->day_zero, clock)));
+    if ((day_hours <= 0.0f64 || day_hours >= 24.0f64) && bytes != 0u) {
+        const int32_t written =
+            snprintf(out, bytes, "Year %u, Day %u, %s", (uint32_t)date.year, (uint32_t)date.day_of_year + 1u,
+                     day_hours <= 0.0f64 ? "Polar night" : "Midnight sun");
+        if (written < 0) {
+            out[0] = '\0';
+        }
+        return;
+    }
+    (void)calendar_date_line(&date, calendar_season_temperate(date.day_of_year, latitude < 0.0f64), out, bytes);
 }
 
 static float32_t game_hud_ms(uint32_t microseconds) {
@@ -74,6 +97,12 @@ void game_hud_debug_read(const game_t *game, ui_hud_debug_t *out) {
     out->stage_ms[UI_HUD_STAGE_HUD] = game_hud_ms(game->hud_compose_us);
     out->stage_ms[UI_HUD_STAGE_PRESENT] = game_hud_ms(game->hud_present_us);
     game_hud_block_read(game, out->block);
+    /* Main's own eye and the clock main last said: plan 004 phase 02's F3 line. */
+    climate_sun_t sun;
+    climate_sun_of_clock(game->day_zero, atomic_load_explicit(&game->clock_units, memory_order_relaxed),
+                         game->camera.position[1], &sun);
+    out->latitude_deg = (float32_t)climate_latitude_deg(game->camera.position[1]);
+    out->sun_elevation_deg = (float32_t)sun.elevation_deg;
 }
 
 void game_report(game_t *game) {

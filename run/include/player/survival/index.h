@@ -38,9 +38,9 @@ enum : uint32_t {
 #define PLAYER_SURVIVAL_EXHAUSTION_STEP 4.0f32
 #define PLAYER_SURVIVAL_EXHAUSTION_MAX 40.0f32
 #define PLAYER_SURVIVAL_FALL_SAFE 3.0f32
-/* A day's fractions, as render_frame_time_set has them: a bed works from 12542 to 23459 ticks after a day's start at sunrise. */
-#define PLAYER_SURVIVAL_NIGHT_FROM 0.772583f64
-#define PLAYER_SURVIVAL_NIGHT_TO 0.227458f64
+/* A bed works while the sun is lower than this: sin of -8.13 degrees. It is cos(2 pi (0.772583 - 0.5)), so on the equator at the
+ * equinox a bed works from 12542 to 23459 ticks after sunrise, as it did with a fixed sun (plan 004 phase 02). */
+#define PLAYER_SURVIVAL_NIGHT_SUN (-0.14141751442824427f64)
 /* Where a night slept through comes out. */
 #define PLAYER_SURVIVAL_MORNING 0.25f64
 /* How far from a bed's middle a body can use it, in blocks. */
@@ -82,7 +82,7 @@ typedef enum player_survival_bed_answer_t : uint8_t {
 /* All that a body's health is. Plain numbers, so that the same world and buttons give the same bytes. The sim's. */
 typedef struct player_survival_t {
     float64_t spawn[COLLISION_AXES];  /* 0: the feet at the world's own place to come back to */
-    float64_t day_fraction;           /* 24: the time of day, as the sim last heard it */
+    float64_t sun_height;             /* 24: sin of the sun's elevation at the body, as the sim last worked it out */
     uint64_t died_count;              /* 32 */
     uint64_t respawned_count;         /* 40 */
     uint64_t eaten_count;             /* 48: whoever holds the food takes one off when this goes up */
@@ -141,11 +141,11 @@ static_assert(sizeof(player_survival_buttons_t) == 40);
 /* Full health, full food, and the place it comes back to if it has no bed: where its feet are now. */
 void player_survival_start(player_survival_t *survival, float64_t x, float64_t y, float64_t z);
 
-/* Whether a bed works at this time of day. */
-bool player_survival_is_night(float64_t day_fraction);
+/* Whether a bed works with the sun this high: sun_height is the sine of its elevation, 1 overhead and -1 straight down. */
+bool player_survival_is_night(float64_t sun_height);
 
-/* What the sim is told of the time of day, each tick before the buttons. */
-void player_survival_day_set(player_survival_t *survival, float64_t day_fraction);
+/* What the sim is told of the sun at the body, each tick before the buttons: the sine of its elevation there. */
+void player_survival_sun_set(player_survival_t *survival, float64_t sun_height);
 
 /* What is worn: its points, in half shirts, and its toughness. run/src/game/ says so each tick, from run/src/item/equipment/. */
 void player_survival_armor_set(player_survival_t *survival, float32_t points, float32_t toughness);

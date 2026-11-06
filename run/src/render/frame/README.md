@@ -12,7 +12,8 @@
 - `render_frame_texture_table_bytes`, `render_frame_face_table_bytes`, `render_frame_shape_table_bytes`, `render_frame_arena_bytes`: sizes for the parent.
 - `render_frame_init`, `render_frame_deinit`: the tables and textures sent to the card, and the pictures pinned.
 - `render_frame_features_set`: which effects the next frames draw with. `SHADE_FEATURES_ALL` unless told otherwise, and `game` asks for `SHADE_FEATURES_PLAY`, as the ones with a history do not suit a test that wants one exact picture.
-- `render_frame_time_set`, `render_day_fill`: the time of day, and what sky and light it means.
+- `render_frame_time_set`, `render_day_fill`: the time of day, and what sky and light it means, by the fixed path below. For tests and benches that set a time straight on a frame.
+- `render_frame_sun_set`, `render_sky_fill`: the sun given from outside as a unit vector, and what sky and light it means. The game uses this from plan 004 phase 02, handing it the sun of the world clock at the drawing camera's latitude. `render` knows no latitude: it is given three floats, stored in `render_frame_t.sun_given` with `sun_from_outside` set, which `render_frame_time_set` clears.
 - `render_frame_fog_set`: how far off the fog is whole, for a render distance that has changed.
 - `render_frame_under_water_set`: whether the eyes are in water, for what `post` draws: see `cuda/src/post/README.md`.
 - `render_frame_draw`: a whole frame, from world_buffers as they stand and a camera, on the card and home.
@@ -31,6 +32,8 @@ Three pictures, so that the gpu thread never waits for the display and the displ
 ## The day
 
 `render_day_fill` is arithmetic, once a frame, from a fraction of a day: 0 midnight, 0.25 sunrise in the east, 0.5 noon, 0.75 sunset in the west. The sun's path leans 20 degrees to the south, so that noon has shadows and a side facing south is not the same as one facing north. Colours are mixed from day, twilight and night by how high it is, which come to 1 between them and do not overlap. What lights the world is the sun, or from sunset the moon opposite it, going to nothing at the horizon as one takes over from the other. Colours are this file's and nothing else's, in linear light.
+
+`render_day_fill` works out its fixed sun and hands it to `render_sky_fill`, which does everything else, so every picture drawn through `render_day_fill` is what it was before the split, to the bit. With a sun given from outside, the height that mixes day, twilight and night is `direction[2]`, the sine of the real elevation. The fixed path is plan 004's real sun at 0.35 rad (20.05 degrees) north on an equinox, which `tests/run/climate/sun/` checks.
 
 `shade_scene_t.sun` and `post_settings_t` are always what the settings and the time make them, worked out again when either changes: so a kernel has few cases of its own, and with `SHADE_FEATURE_SKY` off it is sent the plain sky and each face's one brightness. This file keeps no clock: `game` does.
 

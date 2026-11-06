@@ -79,6 +79,11 @@ uint64_t calendar_day_of(uint32_t day_zero, calendar_clock_t clock);
 /* floor(calendar_day_of / 7). */
 uint64_t calendar_week_of(uint32_t day_zero, calendar_clock_t clock);
 
+/* d_c: the day of the year with the fraction of the calendar day passed, from 0 to just under 365. 79.1 is 08:24 on a new
+ * world's first morning. ((day_zero 2^32 + clock - 2^30) mod (365 2^32)) / 2^32, in integers before the one division, so the
+ * fraction is exact and the answer never reaches 365. day_zero must be below CALENDAR_DAYS_PER_YEAR. Pure. */
+float64_t calendar_year_position(uint32_t day_zero, calendar_clock_t clock);
+
 /* All of it at once. The hour and minute are of the clock, not of the calendar day: 05:59 is still the day before. Both
  * are rounded down. */
 calendar_date_t calendar_date_of(uint32_t day_zero, calendar_clock_t clock);

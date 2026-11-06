@@ -3,6 +3,7 @@
 
 #include "png/index.h"
 
+#include "climate/sun/index.h"
 #include "display/headless/png/index.h"
 #include "file/index.h"
 #include "game/index.h"
@@ -1137,10 +1138,19 @@ TEST(the_clock_runs_through_the_real_threads_and_the_setting_stops_it) {
         }
         CHECK(game_loop_stop(game));
         const float64_t wanted = pass == 0u ? 0.3f64 : 0.9f64;
-        printf("  %s: main says %.4f, the frame was drawn at %.4f\n", pass == 0u ? "on" : "off",
-               (libc_double_t)game->day_fraction, (libc_double_t)rig.render->frame.day_fraction);
+        /* Since plan 004 phase 02 the game hands the frame the sun of the clock at the eye's latitude, not a time of day: the frame
+         * holds the sun of main's last clock. */
+        climate_sun_t sun;
+        climate_sun_of_clock(game->day_zero, atomic_load_explicit(&game->clock_units, memory_order_relaxed),
+                             game->camera.position[1], &sun);
+        printf("  %s: main says %.4f, a sun %.4f up; the frame was drawn with one %.4f up\n", pass == 0u ? "on" : "off",
+               (libc_double_t)game->day_fraction, (libc_double_t)sun.direction[2],
+               (libc_double_t)rig.render->frame.sun_given[2]);
         CHECK_NEAR(game->day_fraction, wanted, 1e-4f64);
-        CHECK_NEAR((float64_t)rig.render->frame.day_fraction, wanted, 1e-4f64);
+        CHECK(rig.render->frame.sun_from_outside != 0u);
+        for (uint32_t axis = 0u; axis < 3u; axis++) {
+            CHECK_NEAR((float64_t)rig.render->frame.sun_given[axis], sun.direction[axis], 1e-4f64);
+        }
         game_close(game);
     }
     sk_rig_end(t, &rig);
