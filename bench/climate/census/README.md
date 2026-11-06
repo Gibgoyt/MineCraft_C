@@ -31,3 +31,7 @@ Profile preset, through the build lock, 16 workers, seed `4D494E4543524146`, 196
 | Flow | 7 ms; the outlook's input is filled beside the last week's blocks, so its stage is 0.3 ms |
 
 Before the changes in the phase 07 file's Issues found 15, the same run gave a median of 387.3 ms (MISSED) and a first census of 4.6 s.
+
+### 2026-11-06, the gate's reruns: 251 to 262 ms, at the target, not under it
+
+The full profile build, run four more times while the machine's load average was 51 (other agents' work): medians 261.6, 251.2, 253.6 and 256.1 ms (all MISSED), first censuses 1.10 to 1.15 s. So the census is at the 250 ms budget, not safely under it: the 226.5 above was a quieter moment. The blocks' jobs are 49 on 16 workers, so the last round runs one job alone; splitting the work by day as well as by block is the next step if a quiet machine also misses (Risks R1).
