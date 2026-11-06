@@ -116,6 +116,11 @@ static_assert(sizeof(terrain_density_box_t) == 24);
 /* Empties the handle. The memory goes back with the arena. */
 void terrain_density_deinit(terrain_density_t *density);
 
+/* Builds a spline through count knots (2 to TERRAIN_DENSITY_SPLINE_KNOTS_MAX), xs rising, with the same slopes terrain_density's
+ * own splines have. For anything that wants that curve on its own knots, such as the climate's tables (plan 004 phase 04). */
+void terrain_density_spline_build(terrain_density_spline_t *spline, const float64_t *xs, const float64_t *ys,
+                                  uint32_t count);
+
 /* A spline at x. Outside its knots it stays at the end's value. */
 float64_t terrain_density_spline_at(const terrain_density_spline_t *spline, float64_t x);
 

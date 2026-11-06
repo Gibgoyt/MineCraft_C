@@ -44,6 +44,9 @@ bool climate_init(climate_t *climate) {
     arena_init(&state->arena_tables, "climate_tables", base + CLIMATE_TABLES_OFFSET,
                CLIMATE_STATE_BYTES - CLIMATE_TABLES_OFFSET);
     job_group_init(&state->group);
+    arena_init(&state->arena_normals, "climate_normals", base + CLIMATE_NORMALS_OFFSET,
+               CLIMATE_STATE_BYTES - CLIMATE_NORMALS_OFFSET);
+    state->borrowed_normals = climate_normals_build(&state->arena_normals);
     state->borrowed_tile_slots = (climate_slot_t *)(void *)(base + CLIMATE_TILE_SLOTS_OFFSET);
     state->borrowed_mask_slots = (climate_slot_t *)(void *)(base + CLIMATE_MASK_SLOTS_OFFSET);
     state->borrowed_cells = (climate_cell_t *)(void *)(base + CLIMATE_CELLS_OFFSET);
@@ -57,6 +60,8 @@ void climate_deinit(climate_t *climate) {
     if (state != nullptr) {
         ASSERT_ALWAYS(state->open == 0u);
         job_group_deinit(&state->group);
+        state->borrowed_normals = nullptr;
+        arena_deinit(&state->arena_normals);
         arena_deinit(&state->arena_tables);
     }
     heap_release(&climate->owned_region);
@@ -147,8 +152,9 @@ static void climate_tile_job(job_worker_t *worker, void *borrowed_argument) {
     const climate_mask_t mask = climate_mask_of(state);
     climate_mask_window(&mask, tile_x, tile_y, atomic_load_explicit(&state->keep_tile_x, memory_order_relaxed),
                         atomic_load_explicit(&state->keep_tile_y, memory_order_relaxed), window, nullptr);
+    climate_window_t cells_window;
     climate_cell_build_tile(arena, state->ground, state->borrowed_ground_context, tile_x, tile_y, window,
-                            climate_tile_cells(state, slot));
+                            climate_tile_cells(state, slot), &cells_window);
     climate_cache_publish(slot);
     atomic_fetch_sub_explicit(&state->jobs_in_flight, 1u, memory_order_release);
     atomic_fetch_add_explicit(&state->jobs_done, 1u, memory_order_release);

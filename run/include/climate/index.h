@@ -6,6 +6,7 @@
 #include "climate/cache/index.h"
 #include "climate/cell/index.h"
 #include "climate/mask/index.h"
+#include "climate/normals/index.h"
 #include "climate/sea/index.h"
 #include "heap/index.h"
 #include "job/index.h"
@@ -38,8 +39,9 @@ enum : uint32_t {
 
 /* Where everything sits in the one region climate_init reserves. Only pages touched cost memory. */
 enum : uint64_t {
-    CLIMATE_STATE_BYTES = 4096u, /* climate_state_t at the start, then the warp bank's fields */
+    CLIMATE_STATE_BYTES = 8192u, /* climate_state_t at the start, then the warp bank's fields, then the normals */
     CLIMATE_TABLES_OFFSET = 512u,
+    CLIMATE_NORMALS_OFFSET = 4096u, /* phase 04: the normals arena, to CLIMATE_STATE_BYTES */
     CLIMATE_TILE_SLOTS_OFFSET = CLIMATE_STATE_BYTES,
     CLIMATE_MASK_SLOTS_OFFSET = CLIMATE_TILE_SLOTS_OFFSET + (uint64_t)CLIMATE_TILE_SLOTS * sizeof(climate_slot_t),
     CLIMATE_SLOTS_END = CLIMATE_MASK_SLOTS_OFFSET + (uint64_t)CLIMATE_MASK_SLOTS * sizeof(climate_slot_t),
@@ -51,7 +53,8 @@ enum : uint64_t {
     CLIMATE_REGION_BYTES = CLIMATE_MASK_OFFSET + CLIMATE_MASK_BYTES,                                 /* 146 MiB */
 };
 static_assert(CLIMATE_REGION_BYTES % HEAP_REGION_ALIGNMENT == 0);
-static_assert(CLIMATE_TABLES_OFFSET + CLIMATE_WARP_FIELDS * sizeof(terrain_noise_field_t) + 64u <= CLIMATE_STATE_BYTES);
+static_assert(CLIMATE_TABLES_OFFSET + CLIMATE_WARP_FIELDS * sizeof(terrain_noise_field_t) + 64u <= CLIMATE_NORMALS_OFFSET);
+static_assert(CLIMATE_NORMALS_OFFSET + sizeof(climate_normals_t) + 64u <= CLIMATE_STATE_BYTES);
 
 /* Where climate_prepare_begin's rounds stand: main's, while a world opens, so the loading screen can be drawn between them. */
 typedef enum climate_prepare_phase_t : uint8_t {
@@ -93,7 +96,9 @@ typedef struct climate_state_t {
     uint64_t seed;                                /* 216 */
     uint8_t open;                                 /* 224 */
     uint8_t warp_off;                             /* 225: a test's: reads are not warped */
-    uint8_t _pad0[30];                            /* 226 */
+    uint8_t _pad0[6];                             /* 226 */
+    const climate_normals_t *borrowed_normals;    /* 232: phase 04's curves, in arena_normals; from climate_init */
+    uint8_t _pad2[16];                            /* 240 */
     /* A line of its own: the sim writes the keep square, workers count down. */
     _Atomic int32_t keep_tile_x;                 /* 256 */
     _Atomic int32_t keep_tile_y;                 /* 260 */
@@ -101,8 +106,11 @@ typedef struct climate_state_t {
     _Atomic uint32_t jobs_done;                  /* 268: every job the climate has finished, for progress */
     uint8_t _pad1[MC_CPU_CACHE_LINE_BYTES - 16]; /* 272 */
     climate_prepare_t prepare;                   /* 320: main's, between climate_prepare_begin and its last step */
+    arena_t arena_normals;                       /* 384: the normals' curves; Process lifetime, built in climate_init */
 } climate_state_t;
-static_assert(sizeof(climate_state_t) == 384);
+static_assert(sizeof(climate_state_t) == 448);
+static_assert(offsetof(climate_state_t, borrowed_normals) == 232);
+static_assert(offsetof(climate_state_t, arena_normals) == 384);
 static_assert(offsetof(climate_state_t, prepare) == 320);
 static_assert(alignof(climate_state_t) == 64);
 static_assert(offsetof(climate_state_t, group) == 64);
