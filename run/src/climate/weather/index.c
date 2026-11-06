@@ -434,7 +434,6 @@ static float32_t weather_speed(const float32_t w[2]) {
     return sqrtf(w[0] * w[0] + w[1] * w[1]);
 }
 
-/* The phase 07 file's "Daily weather": one place, one day, from its normals, noises and the day's views. */
 /* The phase 07 file's "Daily weather": one place, one day, from its normals, noises and the day's views. Where no system of
  * an instant's view can touch the place, the fields are not asked: each would give exactly nothing (a rain of 0, a cut of
  * 1, no wind), so the bits are the same, at a fraction of the cost. */
