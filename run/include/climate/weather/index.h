@@ -196,9 +196,13 @@ typedef struct climate_week_block_t {
     uint32_t overflowed;                      /* 24: day lists or views that ran out of room: a bug */
     uint32_t failed;                          /* 28: a read that found its climate tile not built: a bug */
     uint64_t ns_lists;                        /* 32: building the day lists */
-    uint64_t ns_cells;                        /* 40: everything else */
+    uint64_t ns_cells;                        /* 40: everything else, which is the four below and the update */
+    uint64_t ns_spinup;                       /* 48: side data and spin-up of tiles that lack them */
+    uint64_t ns_reads;                        /* 56: the normals and the belt wind of each cell and day */
+    uint64_t ns_noise;                        /* 64: the three noises, in bulk */
+    uint64_t ns_days;                         /* 72: each day of each cell from its inputs and views */
 } climate_week_block_t;
-static_assert(sizeof(climate_week_block_t) == 48);
+static_assert(sizeof(climate_week_block_t) == 80);
 
 /* ---- The weather's own region: the Owner's calls --------------------------------------------------------------------- */
 

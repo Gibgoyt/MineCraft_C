@@ -63,7 +63,7 @@ static bool save_climate_name_week(const char *name, uint64_t *out_week, bool *o
 }
 
 /* Removes every week file and leftover .tmp but those of the weeks kept (keep_count of them). */
-static void save_climate_prune(const char *directory, const uint64_t *keep, uint32_t keep_count) {
+[[gnu::noinline]] static void save_climate_prune(const char *directory, const uint64_t *keep, uint32_t keep_count) {
     DIR *const handle = opendir(directory);
     if (handle == nullptr) {
         return;
@@ -92,7 +92,8 @@ static void save_climate_prune(const char *directory, const uint64_t *keep, uint
 }
 
 /* The newest weeks on disk, at most count of them, newest first; with newest_most, none past it. */
-static uint32_t save_climate_weeks(const char *directory, uint64_t newest_most, uint64_t *out, uint32_t count) {
+[[gnu::noinline]] static uint32_t save_climate_weeks(const char *directory, uint64_t newest_most, uint64_t *out,
+                                                     uint32_t count) {
     DIR *const handle = opendir(directory);
     if (handle == nullptr) {
         return 0u;
@@ -123,16 +124,60 @@ static uint32_t save_climate_weeks(const char *directory, uint64_t newest_most, 
     return found;
 }
 
+/* Each of the steps below holds a path or two of FILE_PATH_BYTES: kept out of one another's frames, so none passes the
+ * frame limit once the link inlines what it can. */
+[[gnu::noinline]] static file_status_t save_climate_directory_make(const char *world_directory) {
+    char directory[FILE_PATH_BYTES];
+    if (!save_climate_directory(world_directory, directory)) {
+        return FILE_ERROR_PATH_TOO_LONG;
+    }
+    return file_make_dirs(directory);
+}
+
+[[gnu::noinline]] static void save_climate_directory_tidy(const char *world_directory) {
+    char directory[FILE_PATH_BYTES];
+    if (!save_climate_directory(world_directory, directory)) {
+        return;
+    }
+    (void)file_sync_dir(directory);
+    uint64_t keep[SAVE_CLIMATE_KEEP];
+    const uint32_t kept = save_climate_weeks(directory, UINT64_MAX, keep, SAVE_CLIMATE_KEEP);
+    save_climate_prune(directory, keep, kept);
+}
+
+[[gnu::noinline]] static file_status_t save_climate_stream(const char *tmp, const char *path,
+                                                           const save_climate_header_t *header,
+                                                           const climate_week_store_t *store, const uint32_t *sorted) {
+    file_t file;
+    file_status_t status = file_open(&file, tmp, FILE_MODE_WRITE);
+    if (status == FILE_OK) {
+        status = file_write_all(&file, header, sizeof(*header));
+    }
+    for (uint32_t i = 0u; i < store->tile_count && status == FILE_OK; i++) {
+        status = file_write_all(&file, &store->borrowed_tiles[sorted[i]], sizeof(climate_week_tile_t));
+    }
+    if (status == FILE_OK) {
+        status = file_sync(&file);
+    }
+    const file_status_t closed = file_close(&file);
+    status = status == FILE_OK ? closed : status;
+    if (status == FILE_OK) {
+        status = file_rename(tmp, path);
+    }
+    if (status != FILE_OK) {
+        (void)file_remove(tmp);
+    }
+    return status;
+}
+
 file_status_t save_climate_write(const char *world_directory, uint64_t seed, const climate_week_store_t *store,
                                  uint32_t *sorted, uint32_t *scratch) {
-    char directory[FILE_PATH_BYTES], path[FILE_PATH_BYTES], tmp[FILE_PATH_BYTES];
-    if (!save_climate_directory(world_directory, directory) || !save_climate_path(world_directory, store->week, path)) {
+    char path[FILE_PATH_BYTES], tmp[FILE_PATH_BYTES];
+    if (!save_climate_path(world_directory, store->week, path) ||
+        snprintf(tmp, sizeof(tmp), "%.4000s%s", path, SAVE_CLIMATE_TMP) >= (int32_t)sizeof(tmp)) {
         return FILE_ERROR_PATH_TOO_LONG;
     }
-    if (snprintf(tmp, sizeof(tmp), "%.4000s%s", path, SAVE_CLIMATE_TMP) >= (int32_t)sizeof(tmp)) {
-        return FILE_ERROR_PATH_TOO_LONG;
-    }
-    file_status_t status = file_make_dirs(directory);
+    file_status_t status = save_climate_directory_make(world_directory);
     if (status != FILE_OK) {
         return status;
     }
@@ -152,31 +197,11 @@ file_status_t save_climate_write(const char *world_directory, uint64_t seed, con
     }
     header.tiles_hash = hash;
     header.checksum = save_climate_hash(SAVE_CLIMATE_HASH_START, &header, offsetof(save_climate_header_t, checksum));
-
-    file_t file;
-    status = file_open(&file, tmp, FILE_MODE_WRITE);
-    if (status == FILE_OK) {
-        status = file_write_all(&file, &header, sizeof(header));
-    }
-    for (uint32_t i = 0u; i < store->tile_count && status == FILE_OK; i++) {
-        status = file_write_all(&file, &store->borrowed_tiles[sorted[i]], sizeof(climate_week_tile_t));
-    }
-    if (status == FILE_OK) {
-        status = file_sync(&file);
-    }
-    const file_status_t closed = file_close(&file);
-    status = status == FILE_OK ? closed : status;
-    if (status == FILE_OK) {
-        status = file_rename(tmp, path);
-    }
+    status = save_climate_stream(tmp, path, &header, store, sorted);
     if (status != FILE_OK) {
-        (void)file_remove(tmp);
         return status;
     }
-    (void)file_sync_dir(directory);
-    uint64_t keep[SAVE_CLIMATE_KEEP];
-    const uint32_t kept = save_climate_weeks(directory, UINT64_MAX, keep, SAVE_CLIMATE_KEEP);
-    save_climate_prune(directory, keep, kept);
+    save_climate_directory_tidy(world_directory);
     return FILE_OK;
 }
 
@@ -211,7 +236,8 @@ static bool save_climate_cell_ok(const climate_week_t *cell) {
 }
 
 /* Reads and checks one file into the store, which is empty. False, having said why, if anything fails. */
-static bool save_climate_read(const char *path, uint64_t seed, uint64_t week, climate_week_store_t *store) {
+[[gnu::noinline]] static bool save_climate_read(const char *path, uint64_t seed, uint64_t week,
+                                                climate_week_store_t *store) {
     file_t file;
     if (file_open(&file, path, FILE_MODE_READ) != FILE_OK) {
         LOG_WARN("save: the weekly state %s cannot be opened", path);

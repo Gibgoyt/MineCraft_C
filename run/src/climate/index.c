@@ -649,8 +649,13 @@ static float32_t climate_snow_balance_blend(const climate_cell_t cells[4], float
 
 bool climate_normals_at(const climate_t *climate, float64_t x, float64_t y, float32_t z, float32_t day,
                         climate_normals_at_t *out) {
+    return climate_normals_days_at(climate, x, y, z, &day, 1u, out);
+}
+
+bool climate_normals_days_at(const climate_t *climate, float64_t x, float64_t y, float32_t z, const float32_t *days,
+                             uint32_t count, climate_normals_at_t *out) {
     const climate_state_t *const state = climate->borrowed_state;
-    if (state == nullptr || state->open == 0u) {
+    if (state == nullptr || state->open == 0u || count == 0u) {
         return false;
     }
     float64_t read_x = x, read_y = y;
@@ -681,36 +686,43 @@ bool climate_normals_at(const climate_t *climate, float64_t x, float64_t y, floa
     const bool land = (nearest->flags & (CLIMATE_CELL_SEA | CLIMATE_CELL_LAKE)) == 0u;
     const float32_t at_z = isnan(z) ? blend.z_ground : z;
 
-    memset(out, 0, sizeof(*out));
-    out->z = at_z;
-    out->t_mean_c = climate_heat_base(blend.t_mean, at_z, land);
-    out->t_day_c = climate_heat_formula(blend.t_mean, at_z, land, blend.t_swing, blend.t_lag_days, day);
+    /* What does not change with the day, once: the wettest day, the months, the place's labels. */
+    climate_normals_at_t base;
+    memset(&base, 0, sizeof(base));
+    base.z = at_z;
+    base.t_mean_c = climate_heat_base(blend.t_mean, at_z, land);
     const float32_t *const rain = blend.rain_mm_week;
-    out->rain_mm_day = fmaxf(0.0f32, climate_harmonic_at2(rain, day)) / CLIMATE_DAYS_A_WEEK;
-    out->rain_mm_year = fmaxf(0.0f32, rain[0]) * CLIMATE_DAYS_A_YEAR / CLIMATE_DAYS_A_WEEK;
+    base.rain_mm_year = fmaxf(0.0f32, rain[0]) * CLIMATE_DAYS_A_YEAR / CLIMATE_DAYS_A_WEEK;
     float32_t wettest = 0.0f32;
     for (uint32_t k = 0u; k < CLIMATE_WETTEST_SAMPLES; k++) {
         wettest = fmaxf(wettest, climate_harmonic_at2(rain, (float32_t)(k * CLIMATE_WETTEST_STEP_DAYS)));
     }
-    out->rain_max_mm_day = wettest / CLIMATE_DAYS_A_WEEK;
-    out->t_range_c = climate_heat_daily_range(blend.kappa, out->rain_mm_day);
-    out->t_high_c = out->t_day_c + 0.5f32 * out->t_range_c;
-    out->t_low_c = out->t_day_c - 0.5f32 * out->t_range_c;
+    base.rain_max_mm_day = wettest / CLIMATE_DAYS_A_WEEK;
     climate_season_months_t months;
     climate_season_months(&blend, at_z, land, &months);
-    out->t_max_month_c = months.t_max_month_c;
-    out->t_min_month_c = months.t_min_month_c;
-    out->snow_share = climate_heat_snow_share(out->t_day_c);
-    out->snow_balance_z = blend.snow_balance_z;
-    out->sea_temperature_c = nanf("");
-    if (sea) {
-        out->sea_temperature_c = climate_sea_temperature(climate, nearest, day);
-        out->hurricane_s = climate_season_hurricane_s(nearest->lat_deg, out->sea_temperature_c);
+    base.t_max_month_c = months.t_max_month_c;
+    base.t_min_month_c = months.t_min_month_c;
+    base.snow_balance_z = blend.snow_balance_z;
+    base.sea_temperature_c = nanf("");
+    base.climate_class = nearest->climate_class;
+    base.flags = nearest->flags;
+    for (uint32_t i = 0u; i < count; i++) {
+        const float32_t day = days[i];
+        climate_normals_at_t *const one = &out[i];
+        *one = base;
+        one->t_day_c = climate_heat_formula(blend.t_mean, at_z, land, blend.t_swing, blend.t_lag_days, day);
+        one->rain_mm_day = fmaxf(0.0f32, climate_harmonic_at2(rain, day)) / CLIMATE_DAYS_A_WEEK;
+        one->t_range_c = climate_heat_daily_range(blend.kappa, one->rain_mm_day);
+        one->t_high_c = one->t_day_c + 0.5f32 * one->t_range_c;
+        one->t_low_c = one->t_day_c - 0.5f32 * one->t_range_c;
+        one->snow_share = climate_heat_snow_share(one->t_day_c);
+        if (sea) {
+            one->sea_temperature_c = climate_sea_temperature(climate, nearest, day);
+            one->hurricane_s = climate_season_hurricane_s(nearest->lat_deg, one->sea_temperature_c);
+        }
+        one->hurricane_season = climate_season_hurricane_today(nearest->hurricane_days, day) ? 1u : 0u;
+        one->monsoon_today = climate_season_monsoon_today(nearest, day) ? 1u : 0u;
     }
-    out->climate_class = nearest->climate_class;
-    out->flags = nearest->flags;
-    out->hurricane_season = climate_season_hurricane_today(nearest->hurricane_days, day) ? 1u : 0u;
-    out->monsoon_today = climate_season_monsoon_today(nearest, day) ? 1u : 0u;
     return true;
 }
 

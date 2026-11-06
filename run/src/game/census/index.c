@@ -212,11 +212,14 @@ static void census_outlook_job(job_worker_t *worker, void *borrowed_argument) {
     game_census_t *const census = borrowed_argument;
     ui_census_report_t *const work = census->borrowed_work;
     census_report_fill(census, work);
-    /* The census moment: 06:00 of the first day of the week shown, day 7 W. */
-    const float64_t census_t = 7.0f64 * (float64_t)census->last_week;
-    const bool known =
-        climate_outlook_input_fill(census->borrowed_climate, census->player_x, census->player_y, census_t,
-                                   census->last_week, &worker->arena_job, census->borrowed_input);
+    /* The input was filled beside the last week's blocks, unless more weeks came since: then it is filled now. */
+    bool known = census->input_known != 0u;
+    if (census->input_week != census->last_week) {
+        /* The census moment: 06:00 of the first day of the week shown, day 7 W. */
+        const float64_t census_t = 7.0f64 * (float64_t)census->last_week;
+        known = climate_outlook_input_fill(census->borrowed_climate, census->player_x, census->player_y, census_t,
+                                           census->last_week, &worker->arena_job, census->borrowed_input);
+    }
     if (known) {
         climate_outlook_run(census->borrowed_input, &work->outlook);
     } else {
@@ -224,6 +227,19 @@ static void census_outlook_job(job_worker_t *worker, void *borrowed_argument) {
     }
     work->outlook_known = known ? 1u : 0u;
     atomic_store_explicit(&census->single_done, 1u, memory_order_release);
+}
+
+/* The outlook's input for the week the census will show, on a worker beside that week's blocks: it reads only the climate,
+ * never the store, so it need not wait for them. */
+static void census_input_job(job_worker_t *worker, void *borrowed_argument) {
+    game_census_t *const census = borrowed_argument;
+    const float64_t census_t = 7.0f64 * (float64_t)census->input_week;
+    census->input_known =
+        climate_outlook_input_fill(census->borrowed_climate, census->player_x, census->player_y, census_t,
+                                   census->input_week, &worker->arena_job, census->borrowed_input)
+            ? 1u
+            : 0u;
+    atomic_store_explicit(&census->input_done, 1u, memory_order_release);
 }
 
 static void census_file_job(job_worker_t *worker, void *borrowed_argument) {
@@ -407,6 +423,8 @@ static void census_finish(game_census_t *census) {
     store->pending_lost = 0u;
     climate_week_store_pending_apply(store);
     census->runs++;
+    census->input_submitted = 0u;
+    census->input_week = 0u;
     census->stage = GAME_CENSUS_IDLE;
     census->next_week = census->last_week >= census->week ? census->week : 0u;
     LOG_INFO("census: weeks %" PRIu64 " to %" PRIu64 " worked out over %" PRIu32 " tiles in %.0f ms%s",
@@ -472,6 +490,14 @@ void game_census_step(game_census_t *census, float64_t player_x, float64_t playe
             census->submitted++;
         }
         uint32_t tiles_done = 0u;
+        if (census->job_events != 0u && census->input_submitted == 0u) {
+            census->player_x = player_x;
+            census->player_y = player_y;
+            census->input_week = census->week;
+            atomic_store_explicit(&census->input_done, 0u, memory_order_relaxed);
+            census->input_submitted =
+                job_try_submit(census->borrowed_job, &census->group, census_input_job, census) ? 1u : 0u;
+        }
         work->tiles_total = census_batch_tiles(census, &tiles_done);
         work->tiles_done = tiles_done;
         census_publish(census);
@@ -512,6 +538,12 @@ void game_census_step(game_census_t *census, float64_t player_x, float64_t playe
         return;
     }
     if (census->stage == GAME_CENSUS_OUTLOOK) {
+        if (census->input_submitted != 0u && atomic_load_explicit(&census->input_done, memory_order_acquire) == 0u) {
+            return; /* its input is still being filled */
+        }
+        if (census->input_submitted == 0u) {
+            census->input_week = 0u; /* none filled: the outlook job fills it */
+        }
         if (census->single_submitted == 0u) {
             census->player_x = player_x;
             census->player_y = player_y;

@@ -30,7 +30,7 @@ enum : uint32_t {
 enum : uint64_t {
     /* What game_census_open takes from the World arena: the census, a job per block, the orders, the outlook's input and the
      * reports, with room for alignment. */
-    GAME_CENSUS_ARENA_BYTES = 1ull << 20,
+    GAME_CENSUS_ARENA_BYTES = 2ull << 20,
 };
 
 typedef enum game_census_stage_t : uint8_t {
@@ -47,11 +47,11 @@ typedef struct game_census_t game_census_t;
 /* One block's job: its own cache line, as a worker writes done while the sim polls it. */
 typedef struct game_census_job_t {
     alignas(MC_CPU_CACHE_LINE_BYTES) climate_week_block_t block; /* 0 */
-    game_census_t *borrowed_census;                              /* 48 */
-    _Atomic uint32_t done;                                       /* 56: release when finished */
-    uint8_t _pad0[4];                                            /* 60 */
+    game_census_t *borrowed_census;                              /* 80 */
+    _Atomic uint32_t done;                                       /* 88: release when finished */
+    uint8_t _pad0[MC_CPU_CACHE_LINE_BYTES - 28];                 /* 92 */
 } game_census_job_t;
-static_assert(sizeof(game_census_job_t) == MC_CPU_CACHE_LINE_BYTES);
+static_assert(sizeof(game_census_job_t) == 2u * MC_CPU_CACHE_LINE_BYTES);
 
 /* A census's state: the sim's, but for done flags and the report buffers, whose owners are said. In the game's World arena. */
 typedef struct game_census_t {
@@ -95,7 +95,11 @@ typedef struct game_census_t {
     _Atomic uint32_t middle;                     /* 260: the report buffer between the two, and a bit if it is new */
     uint32_t back;                               /* 264: the sim's buffer */
     uint32_t front;                              /* 268: main's buffer */
-    uint8_t _pad1[MC_CPU_CACHE_LINE_BYTES - 16]; /* 272 */
+    _Atomic uint32_t input_done;                 /* 272: release when the outlook's input job has finished */
+    uint32_t input_known;                        /* 276: it could be filled */
+    uint64_t input_week;                         /* 280: the week it was filled for; 0 for none */
+    uint8_t input_submitted;                     /* 288: the sim's */
+    uint8_t _pad1[MC_CPU_CACHE_LINE_BYTES - 33]; /* 289 */
 } game_census_t;
 static_assert(sizeof(game_census_t) == 320);
 static_assert(alignof(game_census_t) == MC_CPU_CACHE_LINE_BYTES);
