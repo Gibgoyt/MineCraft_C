@@ -863,6 +863,7 @@ Appended as they land:
 - `360b711` Add the height estimate and the climate cells of plan 004 phase 03: land mask pages, sea and lakes by window, distance transforms, continentality, the tile cache and its jobs, map layers, the bench and the game wiring.
 - `af67e59` Make a water body sea when it reaches the sea floor rather than the window edge, so climate tiles agree at their borders, and record the climate bench.
 - `1de7fc0` List the climate cells of plan 004 phase 03, their tests and bench in the repository structure.
+- `e61f5c9` Record plan 004 phase 03 in its phase file: todos, results and the issues found.
 
 ## Issues found
 
