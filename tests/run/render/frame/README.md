@@ -21,6 +21,8 @@ What it checks:
 
       MC_GOLDEN_WRITE=1 tools/test-or-build.sh ctest --preset debug -R '^run_render_frame$'
 
+  Remade on 2026-11-06 for plan 004 phase 02, after looking at old and new side by side: the game now draws the real sun at the eye's latitude (within a degree of the equator at spawn) on the first morning, about 36 degrees up and nearly due east, where the old fixed path had it 33.5 degrees up east-south-east. The land and sky are the same; shading on faces that turn south or east moves a little.
+
 - **The built program:** the same script gives the same PNG files byte for byte, flying changes them, and bad flags are refused. KMS is not run here: only Ahmed can, on a text console.
 - **The real threads:** `sim`, `gpu` and a `main` loop on a plain buffer draw the same picture as a run with no threads, take nothing from the heap once running, and stop clean.
 - **What a frame refuses:** targets too small, and a material with no texture, which draws magenta.

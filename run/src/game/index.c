@@ -2,6 +2,7 @@
 #include "game/index.h"
 
 #include "assert/index.h"
+#include "climate/sun/index.h"
 #include "entity/animation/index.h"
 #include "item/stack/index.h"
 #include "game/spawn/index.h"
@@ -345,10 +346,6 @@ static uint32_t game_day_units_of(float64_t day_fraction) {
     return (uint32_t)(day_fraction * 4294967296.0f64);
 }
 
-static float32_t game_day_of_units(uint32_t units) {
-    return (float32_t)((float64_t)units / 4294967296.0f64);
-}
-
 void game_day_set(game_t *game, float64_t day_fraction) {
     game->day_fraction = day_fraction - floor(day_fraction);
     const uint32_t units = game_day_units_of(game->day_fraction);
@@ -387,10 +384,15 @@ static void game_day_advance(game_t *game, float32_t seconds) {
     }
 }
 
-/* On whichever thread draws: the next frame is of the time main last said. */
-static void game_day_apply(game_t *game) {
-    render_frame_time_set(&game->borrowed_render->frame,
-                          game_day_of_units(atomic_load_explicit(&game->day_units, memory_order_relaxed)));
+/* On whichever thread draws: the sun of the clock main last said, at the latitude of the eye this picture is drawn from (plan 004
+ * phase 02). The whole view takes the eye's own latitude. */
+static void game_day_apply(game_t *game, const render_camera_t *camera) {
+    climate_sun_t sun;
+    climate_sun_of_clock(game->day_zero, atomic_load_explicit(&game->clock_units, memory_order_relaxed),
+                         camera->position[1], &sun);
+    const float32_t direction[3] = {(float32_t)sun.direction[0], (float32_t)sun.direction[1],
+                                    (float32_t)sun.direction[2]};
+    render_frame_sun_set(&game->borrowed_render->frame, direction);
 }
 
 /* All of a column's storage, at a place: terrain_generate_box's order is section_voxel_index's. */
@@ -530,7 +532,7 @@ bool game_open(game_t *game, const game_config_t *config) {
         calendar_week_of(game->day_zero, atomic_load_explicit(&game->clock_units, memory_order_relaxed));
     game->census_runs = 0u;
     atomic_store_explicit(&game->census_latch, 0u, memory_order_relaxed);
-    game_day_apply(game);
+    game_day_apply(game, &game->camera);
     game_hud_start(game);
     if (game->borrowed_entity != nullptr) {
         entity_open(game->borrowed_entity, terrain_rng_derive(terrain->seed, terrain_rng_salt("entity")));
@@ -559,7 +561,7 @@ bool game_open(game_t *game, const game_config_t *config) {
         game->day_zero = parts.calendar.day_zero;
         game->last_census_week = parts.calendar.last_census_week;
         game_clock_set(game, parts.calendar.clock_days, (float64_t)parts.time.day_units / 4294967296.0f64);
-        game_day_apply(game);
+        game_day_apply(game, &game->camera);
         save_autosave_start(&save->autosave, game->borrowed_job, &save->world, &save->state, game->tick_count);
     }
     game->open = 1u;
@@ -1025,11 +1027,18 @@ static const uint8_t *game_hud_compose(game_t *game, const uint8_t *drawn) {
     const bool walking = game->borrowed_player != nullptr;
     const bool screen_up = game_has_screens(game) && ui_screen_up(ui);
     const uint8_t *const picture = game_picture_full(game, drawn);
-    if (ui == nullptr || (!walking && game->hud_debug == 0u && !screen_up)) {
+    /* Flying shows the date only when asked for it, as --test-world --day-of-year does: every other flying picture stays as it was. */
+    const bool date_flying = !walking && game->config.show_date != 0u;
+    if (ui == nullptr || (!walking && game->hud_debug == 0u && !screen_up && !date_flying)) {
         return picture;
     }
     if (!ui_frame_begin_over(ui, picture, game->config.width, game->config.height)) {
         return picture;
+    }
+    if (date_flying) {
+        char line[CALENDAR_LINE_BYTES];
+        game_calendar_line(game, line, sizeof(line));
+        ui_hud_date_draw(&ui->canvas, &ui->font, line, false);
     }
     if (walking) {
         ui_hud_state_t state;
@@ -1131,7 +1140,7 @@ static bool game_scene_draw_timed(game_t *game, display_buffer_t *frame) {
         return false;
     }
     /* What later stages draw each frame goes in here. */
-    game_day_apply(game);
+    game_day_apply(game, &game->camera);
     const gpu_status_t status = game_frame_draw(game, &game->camera);
     if (status != GPU_STATUS_OK) {
         gpu_error_log(&render->frame.gpu.last_error);
@@ -1181,7 +1190,7 @@ bool game_view_refresh(game_t *game) {
     if (!game_settle(game)) {
         return false;
     }
-    game_day_apply(game);
+    game_day_apply(game, &game->camera);
     const gpu_status_t status = game_frame_draw(game, &game->camera);
     if (status != GPU_STATUS_OK) {
         gpu_error_log(&render->frame.gpu.last_error);
@@ -1262,7 +1271,7 @@ static void game_gpu_thread(void *borrowed_argument) {
                 return; /* it has said why */
             }
         }
-        game_day_apply(game);
+        game_day_apply(game, camera);
         /* In the slot this picture is going into, for whoever asks what it was drawn from. The publish in the draw hands main both. */
         game->picture_cameras[render->frame.pictures.back] = *camera;
         status = game_frame_draw(game, camera);

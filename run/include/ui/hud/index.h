@@ -75,8 +75,10 @@ typedef struct ui_hud_debug_t {
     float32_t fps;                          /* 0 */
     float32_t stage_ms[UI_HUD_STAGE_COUNT]; /* 4 */
     int32_t block[3];                       /* 40: x, y and z: see ui_hud_coordinates_draw */
+    float32_t latitude_deg;                 /* 52: of the eye, positive north (plan 004 phase 02) */
+    float32_t sun_elevation_deg;            /* 56: the sun above the eye's horizon; below 0 is night */
 } ui_hud_debug_t;
-static_assert(sizeof(ui_hud_debug_t) == 52);
+static_assert(sizeof(ui_hud_debug_t) == 60);
 
 /* Where things go on a canvas of some size, in its pixels. */
 typedef struct ui_hud_layout_t {

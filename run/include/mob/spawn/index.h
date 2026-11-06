@@ -32,7 +32,7 @@ enum : uint32_t {
 /* What a store's world is like to the rules, this tick. */
 typedef struct mob_spawn_view_t {
     float64_t position[COLLISION_AXES]; /* 0: the player's feet */
-    float64_t day_fraction;             /* 24: 0 is midnight and 0.5 is noon */
+    float64_t sun_height;               /* 24: sin of the sun's elevation at the player: 1 overhead, -1 straight down */
 } mob_spawn_view_t;
 static_assert(sizeof(mob_spawn_view_t) == 32);
 
@@ -42,7 +42,7 @@ typedef enum mob_spawn_status_t : uint8_t {
     MOB_SPAWN_TOO_NEAR = 1,    /* the player would see it arrive */
     MOB_SPAWN_TOO_FAR = 2,     /* it would be taken away again at once */
     MOB_SPAWN_NOT_LOADED = 3,  /* a column there, or under its box, is not loaded */
-    MOB_SPAWN_TOO_BRIGHT = 4,  /* by block light, or by the sky at this time of day */
+    MOB_SPAWN_TOO_BRIGHT = 4,  /* by block light, or by the sky with the sun where it is */
     MOB_SPAWN_BAD_SURFACE = 5, /* what is under its feet is not whole and opaque, or is on its never_on */
     MOB_SPAWN_NO_ROOM = 6,     /* something solid is in its box */
     MOB_SPAWN_IN_FLUID = 7,    /* water or lava is in its box */
@@ -66,8 +66,10 @@ enum : uint64_t {
 /* Nothing has come or gone yet, and what comes next depends only on this seed. From the arena, which lasts as long as the world. */
 void mob_spawn_start(mob_spawn_t *spawn, arena_t *arena, uint64_t seed);
 
-/* How much less the sky gives at this time of day, from 0 at noon to MOB_SPAWN_DARKEN_MAX at midnight. Any fraction, wrapped. */
-uint32_t mob_spawn_sky_darken(float64_t day_fraction);
+/* How much less the sky gives with the sun this high, from 0 with it well up to MOB_SPAWN_DARKEN_MAX with it 14.5 degrees or more
+ * below the horizon. sun_height is the sine of its elevation: on the equator at the equinox that is cos(2 pi (f - 0.5)) of the time
+ * of day f, so there it is the published curve. */
+uint32_t mob_spawn_sky_darken(float64_t sun_height);
 
 /* What a body of this mob with its feet at position would make of being put there, on a roll of light_roll, which is drawn from 0 to
  * its max_light by the tick. Position is the middle of the soles of its feet. Looks and changes nothing. */

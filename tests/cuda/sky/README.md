@@ -20,7 +20,7 @@ What it checks:
 - **Stored light on the card:** read back from the hits, voxel by voxel, and from a section all of one block and one light, which is a form of its own.
 - **All of this with Stage 09.3's transparency off:** this reference stops a ray on what is part-covered. Rays going on past that are `tests/cuda/water/`'s to hold, and with it off these pictures did not change.
 - **The settings:** each off, against the same reference. All off is what was drawn before this stage: `tests/cuda/shapes/`' golden pictures are unchanged, and it draws with these off. A shadow only ever takes light away.
-- **The clock:** through the real threads, with what `game_loop_frame` is told has passed: it wraps past midnight, and the setting stops it.
+- **The clock:** through the real threads, with what `game_loop_frame` is told has passed: it wraps past midnight, and the setting stops it. Since plan 004 phase 02 the frame is handed the sun of that clock at the eye's latitude (`render_frame_sun_set`), which the test holds to `climate_sun_of_clock`.
 - **Golden pictures:** `fixtures/*.png`, at most 2 out of 255 apart on any channel. Ahmed's card and driver made them. To make them again, after looking at them:
 
       MC_GOLDEN_WRITE=1 tools/test-or-build.sh ctest --preset debug -R '^render_feature_sky$'

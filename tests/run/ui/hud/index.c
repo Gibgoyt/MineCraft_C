@@ -4,6 +4,8 @@
 #include "run/input/fixtures/fake_evdev.h"
 #include "run/input/fixtures/replay.h"
 
+#include "climate/index.h"
+#include "climate/sun/index.h"
 #include "display/headless/png/index.h"
 #include "file/index.h"
 #include "game/index.h"
@@ -593,19 +595,26 @@ TEST(the_overlays_numbers_change_only_their_own_line_and_it_stays_on_its_panel) 
     CHECK_EQ_I64(panel.x, 2);
     CHECK_EQ_I64(panel.y, 2);
     CHECK_EQ_I64(panel.width, 180);
-    CHECK_EQ_I64(panel.height, 103);
+    /* One line more since plan 004 phase 02: the latitude and the sun. */
+    CHECK_EQ_I64(panel.height, 112);
     const box_t all = sheets_box(&clean, &a);
     CHECK_EQ_I64(all.left, panel.x);
     CHECK_EQ_I64(all.top, panel.y);
     CHECK_EQ_I64(all.right, panel.x + panel.width - 1);
     CHECK_EQ_I64(all.bottom, panel.y + panel.height - 1);
 
-    for (uint32_t i = 0u; i <= UI_HUD_STAGE_COUNT + 1u; i++) {
+    for (uint32_t i = 0u; i <= UI_HUD_STAGE_COUNT + 3u; i++) {
         ui_hud_debug_t other = debug;
+        uint32_t line_index = i;
         if (i == 0u) {
             other.fps = 144.5f32;
         } else if (i == UI_HUD_STAGE_COUNT + 1u) {
             other.block[2] = -123;
+        } else if (i == UI_HUD_STAGE_COUNT + 2u) {
+            other.latitude_deg = -90.0f32;
+        } else if (i == UI_HUD_STAGE_COUNT + 3u) {
+            other.sun_elevation_deg = -66.5f32;
+            line_index = UI_HUD_STAGE_COUNT + 2u;
         } else {
             other.stage_ms[i - 1u] = 7.77f32;
         }
@@ -613,7 +622,7 @@ TEST(the_overlays_numbers_change_only_their_own_line_and_it_stays_on_its_panel) 
         REQUIRE(sheet_canvas(&b, &canvas));
         ui_hud_debug_draw(&canvas, &f->ui.font, &other);
         const box_t line = sheets_box(&a, &b);
-        const int32_t top = panel.y + 2 + (int32_t)i * 9;
+        const int32_t top = panel.y + 2 + (int32_t)line_index * 9;
         CHECK(line.left <= line.right);
         CHECK(line.top >= top);
         CHECK(line.bottom < top + 9);
@@ -623,6 +632,12 @@ TEST(the_overlays_numbers_change_only_their_own_line_and_it_stays_on_its_panel) 
     const ui_text_size_t furthest = ui_font_measure(&f->ui.font, "x -30000000 y -30000000 z -250", 1u);
     printf("the longest coordinates are %" PRIu32 " wide, on %" PRId32 "\n", furthest.width, panel.width - 4);
     CHECK((int32_t)furthest.width <= panel.width - 4);
+    /* And the longest latitude and sun line, as ui_hud_debug_draw writes it. */
+    const ui_text_size_t widest_sun = ui_font_measure(&f->ui.font, "lat 90.00 S  sun -66.5", 1u);
+    const ui_text_size_t lowest_sun = ui_font_measure(&f->ui.font, "lat 90.00 S  sun -90.0", 1u);
+    printf("the longest latitude lines are %" PRIu32 " and %" PRIu32 " wide\n", widest_sun.width, lowest_sun.width);
+    CHECK((int32_t)widest_sun.width <= panel.width - 4);
+    CHECK((int32_t)lowest_sun.width <= panel.width - 4);
 
     /* Times no one should see stay on the panel. */
     for (uint32_t i = 0u; i < UI_HUD_STAGE_COUNT; i++) {
@@ -819,6 +834,9 @@ static void debug_golden(ui_hud_debug_t *debug) {
     debug->block[0] = -1234;
     debug->block[1] = 567;
     debug->block[2] = -89;
+    /* y = 567 is 1.33 degrees north; the sun as at 09:00 at 45 degrees north on the equinox, the phase 02 file's example. */
+    debug->latitude_deg = 1.33f32;
+    debug->sun_elevation_deg = 30.0f32;
 }
 
 TEST(bubbles_are_full_half_empty_or_not_there_and_only_over_the_drumsticks) {
@@ -1303,6 +1321,12 @@ TEST(flying_with_no_overlay_is_the_picture_itself_byte_for_byte_and_f3_works_the
     CHECK_EQ_I64(flying.block[0], (int64_t)floor(game->camera.position[0]));
     CHECK_EQ_I64(flying.block[1], (int64_t)floor(game->camera.position[1]));
     CHECK_EQ_I64(flying.block[2], (int64_t)floor(game->camera.position[2]) - MC_WORLD_Z_SEA);
+    /* And the latitude and sun are the eye's, from the clock (plan 004 phase 02). */
+    climate_sun_t sun;
+    climate_sun_of_clock(game->day_zero, atomic_load_explicit(&game->clock_units, memory_order_relaxed),
+                         game->camera.position[1], &sun);
+    CHECK_NEAR(flying.latitude_deg, (float32_t)climate_latitude_deg(game->camera.position[1]), 0.0f32);
+    CHECK_NEAR(flying.sun_elevation_deg, (float32_t)sun.elevation_deg, 0.0f32);
     /* The HUD itself stays away: no hotbar at the bottom with no one to hold it. */
     const uint8_t *const picture = frame->borrowed_pictures[frame->pictures.front];
     CHECK_MEM_EQ(picture + (uint64_t)(GAME_HEIGHT - 30u) * GAME_WIDTH * 4u,

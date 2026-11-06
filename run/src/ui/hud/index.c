@@ -17,7 +17,7 @@ enum : uint32_t {
     UI_HUD_COUNT_RIGHT = 17u,                                    /* from the item's left to where its count ends */
     UI_HUD_COUNT_TOP = 9u,                                       /* from the item's top to its count's */
     UI_HUD_TEXT_BUFFER = 64u,                                    /* past the longest a float32_t can print */
-    UI_HUD_DEBUG_LINES = 1u + (uint32_t)UI_HUD_STAGE_COUNT + 1u, /* with the coordinates */
+    UI_HUD_DEBUG_LINES = 1u + (uint32_t)UI_HUD_STAGE_COUNT + 2u, /* with the coordinates, and the latitude and sun */
     UI_HUD_DEBUG_MARGIN = 2u,  /* font pixels, from the canvas to the panel and from the panel to its text */
     UI_HUD_DEBUG_WIDTH = 176u, /* font pixels of text: coordinates of eight digits each way, which a test measures */
     UI_HUD_COLOR_TEXT = 0xFFFFFFFFu,
@@ -279,6 +279,12 @@ void ui_hud_debug_draw(ui_canvas_t *canvas, const ui_font_t *font, const ui_hud_
     }
     y += line;
     ui_hud_coordinates_text(text, sizeof(text), debug->block);
+    ui_font_draw(font, canvas, left, y, text, style);
+    /* Plan 004 phase 02: "lat 45.00 N  sun 30.0", N at exactly 0. The longest, "lat 90.00 N  sun -66.5", fits the panel. */
+    y += line;
+    const float32_t latitude = debug->latitude_deg;
+    snprintf(text, sizeof(text), "lat %.2f %c  sun %.1f", (libc_double_t)(latitude < 0.0f32 ? -latitude : latitude),
+             latitude < 0.0f32 ? 'S' : 'N', (libc_double_t)debug->sun_elevation_deg);
     ui_font_draw(font, canvas, left, y, text, style);
     (void)ui_canvas_clip_set(canvas, clip_before);
 }

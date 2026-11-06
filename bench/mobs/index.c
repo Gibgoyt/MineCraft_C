@@ -233,7 +233,7 @@ static void bench_tick(bench_t *bench) {
     if (blow > 0.0f32) {
         (void)player_survival_hurt(bench->borrowed_survival, blow, PLAYER_SURVIVAL_CAUSE_ATTACK);
     }
-    const mob_spawn_view_t spawn_view = {.position = {at[0], at[1], at[2]}, .day_fraction = 0.0f64};
+    const mob_spawn_view_t spawn_view = {.position = {at[0], at[1], at[2]}, .sun_height = -1.0f64};
     mob_spawn_tick(&bench->spawn, &entity->store, entity->borrowed_physics, &world->map, &spawn_view);
     const mob_skeleton_view_t skeleton_view = {
         .position = {at[0], at[1], at[2]},

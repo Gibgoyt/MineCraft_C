@@ -2,6 +2,7 @@
 #include "game/index.h"
 
 #include "audio/index.h"
+#include "climate/sun/index.h"
 #include "entity/animation/index.h"
 #include "item/stack/index.h"
 #include "log/index.h"
@@ -313,7 +314,7 @@ static void game_items_tick(game_t *game) {
     /* Before the tick, so that the grid it builds knows what came and went. */
     const mob_spawn_view_t view = {
         .position = {player->movement.position[0], player->movement.position[1], player->movement.position[2]},
-        .day_fraction = player->survival.day_fraction,
+        .sun_height = player->survival.sun_height,
     };
     mob_spawn_tick(&game->mob_spawn, &entity->store, entity->borrowed_physics, &game->borrowed_world->map, &view);
     game_skeletons_tick(game);
@@ -597,9 +598,11 @@ void game_sim_tick(game_t *game, int64_t tick_ns) {
         return; /* this tick never happened: tick_count stays */
     }
     if (game->borrowed_player != nullptr) {
-        player_survival_day_set(&game->borrowed_player->survival,
-                                (float64_t)atomic_load_explicit(&game->day_units, memory_order_relaxed) /
-                                    4294967296.0f64);
+        /* The sun at the body's own feet, from the clock main last said: beds and mobs go by how dark it really is there. */
+        player_survival_sun_set(
+            &game->borrowed_player->survival,
+            climate_sun_height_of_clock(game->day_zero, atomic_load_explicit(&game->clock_units, memory_order_relaxed),
+                                        game->borrowed_player->movement.position[1]));
         PROFILER_BEGIN(lane, "tick_hands");
         /* First, so that the body and its next aim both meet the world as the hands leave it. */
         game_interact_tick(game, tick_ns);

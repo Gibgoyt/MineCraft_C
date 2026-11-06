@@ -13,7 +13,7 @@ Compute only. No real display, console or input device is opened: pictures go in
 
 What it checks, with every number worked out by hand from the table in `run/src/player/survival/README.md`:
 
-- **The sums:** armor, a fall and night for any numbers, and what counts within ten ticks of a hit.
+- **The sums:** armor, a fall and night for any numbers, and what counts within ten ticks of a hit. Night is by the sun's height (plan 004 phase 02); on the equator at the equinox it is the old two fractions at every time of day but the last tick of dawn, where the old ones were not symmetric about noon.
 - **What the world does:** a real body really falling from each height, on to water, a ladder and a bed; lava every ten ticks to death, what it lights, and water putting that out; a cactus from the side and on top, and not from a block away; air running out, gasps and coming back; a block at the eyes, and glass and leaves not smothering.
 - **The bar:** through `game_hud_state_read`, not up on land, a bubble gone each 30 ticks with no heart lost while there is one, empty on tick 300, the first gasp on tick 320, up and empty while drowning, back at 4 a tick, gone when full, and gone on death.
 - **Food:** what walking, sprinting, jumping, swimming and mining take; saturation before food; healing at both rates; starving down to 1; sprinting stopping at 6; eating in 32 ticks, and what starts it over; and every food's row.

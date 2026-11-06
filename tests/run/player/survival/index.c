@@ -21,6 +21,7 @@
 #include "world/index.h"
 
 #include <dirent.h>
+#include <inttypes.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -29,6 +30,11 @@
 #include <unistd.h>
 
 #define PS_CLOSE 1.0e-4f32
+
+/* The sun's height on the equator at the equinox at a time of day, as the sim tells it since plan 004 phase 02: cos(2 pi (f - 0.5)). */
+static float64_t ps_equator_sun(float64_t day) {
+    return cos(2.0f64 * 3.14159265358979323846f64 * (day - 0.5f64));
+}
 
 /* ---- A body on a floor, and its ticks in game_sim_tick's order ------------------------------------------------------------ */
 
@@ -182,13 +188,40 @@ TEST(armor_falls_and_night_by_hand) {
     CHECK_NEAR(player_survival_fall_damage(5.0f64, true), 1.0f32, 0.0f32);
     CHECK_NEAR(player_survival_fall_damage(7.0f64, true), 2.0f32, 0.0f32);
 
-    /* 12542 and 23459 ticks after a sunrise at 0.25, of 24000. */
+    /* By the sun's height (plan 004 phase 02): night once it is more than 8.13 degrees down. */
+    static const float64_t night_sun[] = {-0.141418f64, -0.5f64, -1.0f64};
+    static const float64_t day_sun[] = {-0.141417f64, 0.0f64, 0.5f64, 1.0f64};
+    for (uint32_t i = 0u; i < sizeof(night_sun) / sizeof(night_sun[0]); i++) {
+        CHECK(player_survival_is_night(night_sun[i]));
+    }
+    for (uint32_t i = 0u; i < sizeof(day_sun) / sizeof(day_sun[0]); i++) {
+        CHECK(!player_survival_is_night(day_sun[i]));
+    }
+    /* On the equator at the equinox, today's times of day give today's answers: 12542 and 23459 ticks after a sunrise at 0.25, of
+     * 24000. */
     static const float64_t night[] = {0.7726f64, 0.9f64, 0.0f64, 0.1f64, 0.2274f64, 1.1f64, -0.1f64};
     static const float64_t day[] = {0.2275f64, 0.25f64, 0.35f64, 0.5f64, 0.75f64, 0.7725f64, 1.5f64};
     for (uint32_t i = 0u; i < sizeof(night) / sizeof(night[0]); i++) {
-        CHECK(player_survival_is_night(night[i]));
-        CHECK(!player_survival_is_night(day[i]));
+        CHECK(player_survival_is_night(ps_equator_sun(night[i])));
+        CHECK(!player_survival_is_night(ps_equator_sun(day[i])));
     }
+    /* And at every time of day against the old two fractions. They were not quite symmetric about noon: 0.772583 is
+     * 0.5 + 0.272583, but 0.227458 is 0.5 - 0.272542. So the old dawn ended 0.000041 of a day (one tick of 24000) later than
+     * the sun's threshold does, and that one tick is the only place the two may differ (phase 02 file, Issues found 6). */
+    uint64_t differ = 0u, differ_outside = 0u;
+    for (uint32_t i = 0u; i < 1000000u; i++) {
+        const float64_t f = (float64_t)i / 1000000.0f64;
+        const bool old_night = f >= 0.772583f64 || f < 0.227458f64;
+        if (player_survival_is_night(ps_equator_sun(f)) != old_night) {
+            differ++;
+            /* And 0.772583 itself, where the old rule said >= and the sun's height there is the threshold exactly, which is < . */
+            differ_outside += (f >= 0.227416f64 && f < 0.227458f64) || f == 0.772583f64 ? 0u : 1u;
+        }
+    }
+    printf("  %" PRIu64 " of 1000000 times of day differ from the old fractions, all in the last tick of dawn\n",
+           differ);
+    CHECK(differ <= 43u);
+    CHECK_EQ_U64(differ_outside, 0u);
 }
 
 TEST(for_ten_ticks_after_a_hit_only_what_is_more_counts_and_only_the_difference) {
@@ -1044,7 +1077,7 @@ TEST(by_day_a_bed_is_only_where_a_body_comes_back_to) {
     REQUIRE(ps_begin(t, &rig));
     player_survival_t *const survival = &rig.player->survival;
     ps_bed_begin(t, &rig);
-    player_survival_day_set(survival, 0.5f64);
+    player_survival_sun_set(survival, ps_equator_sun(0.5f64));
     /* It holds dirt, which goes nowhere: the bed takes the click. */
     player_interaction_hand_give(&rig.player->interaction, BLOCK_ID_DIRT, 4u);
     ps_click_place(&rig);
@@ -1075,7 +1108,7 @@ TEST(a_night_in_bed_takes_100_ticks_and_ends_in_the_morning_beside_it) {
     player_survival_t *const survival = &rig.player->survival;
     player_movement_t *const body = &rig.player->movement;
     ps_bed_begin(t, &rig);
-    player_survival_day_set(survival, 0.9f64);
+    player_survival_sun_set(survival, ps_equator_sun(0.9f64));
     /* Held down from here to the end: a hold does not wake it. */
     ps_keys_t hold = PS_NO_KEYS;
     hold.place = 1u;
@@ -1117,7 +1150,7 @@ TEST(a_press_a_hit_and_the_bed_going_each_end_a_night_early_with_no_morning) {
     REQUIRE(ps_begin(t, &rig));
     player_survival_t *survival = &rig.player->survival;
     ps_bed_begin(t, &rig);
-    player_survival_day_set(survival, 0.1f64);
+    player_survival_sun_set(survival, ps_equator_sun(0.1f64));
     ps_click_place(&rig);
     REQUIRE(survival->state == PLAYER_SURVIVAL_SLEEPING);
     ps_keys_t walk = PS_NO_KEYS;
@@ -1139,7 +1172,7 @@ TEST(a_press_a_hit_and_the_bed_going_each_end_a_night_early_with_no_morning) {
     REQUIRE(ps_begin(t, &rig));
     survival = &rig.player->survival;
     ps_bed_begin(t, &rig);
-    player_survival_day_set(survival, 0.9f64);
+    player_survival_sun_set(survival, ps_equator_sun(0.9f64));
     ps_click_place(&rig);
     REQUIRE(survival->state == PLAYER_SURVIVAL_SLEEPING);
     CHECK(player_survival_hurt(survival, 2.0f32, PLAYER_SURVIVAL_CAUSE_ATTACK) > 0.0f32);
@@ -1154,7 +1187,7 @@ TEST(a_press_a_hit_and_the_bed_going_each_end_a_night_early_with_no_morning) {
     REQUIRE(ps_begin(t, &rig));
     survival = &rig.player->survival;
     ps_bed_begin(t, &rig);
-    player_survival_day_set(survival, 0.9f64);
+    player_survival_sun_set(survival, ps_equator_sun(0.9f64));
     ps_click_place(&rig);
     REQUIRE(survival->state == PLAYER_SURVIVAL_SLEEPING);
     REQUIRE(world_edit_block_set(&rig.world.world->edit, 2, 0, 0, BLOCK_ID_AIR) == WORLD_EDIT_STATUS_CHANGED);
@@ -1170,7 +1203,7 @@ TEST(a_sneak_places_against_a_bed_and_one_too_far_off_says_so) {
     REQUIRE(ps_begin(t, &rig));
     player_survival_t *survival = &rig.player->survival;
     ps_bed_begin(t, &rig);
-    player_survival_day_set(survival, 0.9f64);
+    player_survival_sun_set(survival, ps_equator_sun(0.9f64));
     player_interaction_hand_give(&rig.player->interaction, BLOCK_ID_DIRT, 4u);
     ps_keys_t sneak = PS_NO_KEYS;
     sneak.sneak = 1u;
@@ -1195,7 +1228,7 @@ TEST(a_sneak_places_against_a_bed_and_one_too_far_off_says_so) {
     ps_aim_at_top(&rig, 4, 0, 0);
     ps_idle(&rig, 2u);
     REQUIRE(rig.player->target.hit.block == BLOCK_ID_BED);
-    player_survival_day_set(survival, 0.9f64);
+    player_survival_sun_set(survival, ps_equator_sun(0.9f64));
     ps_click_place(&rig);
     CHECK_EQ_U64(survival->bed_answer, PLAYER_SURVIVAL_BED_TOO_FAR);
     CHECK_EQ_U64(survival->state, PLAYER_SURVIVAL_ALIVE);
@@ -1209,7 +1242,7 @@ TEST(death_comes_back_to_the_bed_unless_it_has_gone_and_on_it_if_it_is_walled_in
     player_survival_t *const survival = &rig.player->survival;
     player_movement_t *const body = &rig.player->movement;
     ps_bed_begin(t, &rig);
-    player_survival_day_set(survival, 0.5f64);
+    player_survival_sun_set(survival, ps_equator_sun(0.5f64));
     ps_click_place(&rig);
     REQUIRE(survival->has_bed == 1u);
     ps_put(&rig, 20.5f64, 20.5f64, 0.0f64);
