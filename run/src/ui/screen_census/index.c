@@ -24,8 +24,8 @@ enum : int32_t {
     CENSUS_MARGIN = 6,        /* from the screen's left edge to the text */
     CENSUS_LINE = 9,          /* UI_FONT_LINE */
     CENSUS_COLUMN = 156,      /* the second column of events and systems */
-    CENSUS_TABLE_LABEL = 66,  /* the outlook's row names */
-    CENSUS_TABLE_COLUMN = 36, /* each day's column */
+    CENSUS_TABLE_LABEL = 52,  /* the outlook's row names: "Thunder", 7 letters, and a space */
+    CENSUS_TABLE_COLUMN = 38, /* each day's column: "28/-12" and two units */
     CENSUS_BAR_HEIGHT = 6,
     CENSUS_BUTTON_Y = 212,
     /* The report's rows, from the screen's top. */
@@ -43,7 +43,8 @@ enum : uint32_t {
     CENSUS_HEAD_COLOR = 0xFFFFE080u, /* section names */
     CENSUS_DIM_COLOR = 0xFFB0B0B0u,
     CENSUS_WARN_COLOR = 0xFFFF8060u,
-    CENSUS_SHADE = 0x90000000u, /* the world, stopped, behind it */
+    CENSUS_SHADE = 0x90000000u,    /* the world, stopped, behind it */
+    CENSUS_BAR_BACK = 0xC0303030u, /* the progress bar's empty part */
     CENSUS_LABEL_BYTES = 96u,
     CENSUS_ROWS_EVENTS = 4u,
     CENSUS_ROWS_SYSTEMS = 4u,
@@ -185,9 +186,10 @@ static void ui_screen_census_outlook(ui_widget_t *widget, const ui_census_report
                               CENSUS_HEAD_COLOR);
         return;
     }
-    (void)snprintf(label, sizeof(label), "Outlook (highs and lows +-%.1f C)", (libc_double_t)outlook->days[0].spread_c);
+    (void)snprintf(label, sizeof(label), "Outlook, chances in %% (highs and lows +-%.1f C)",
+                   (libc_double_t)outlook->days[0].spread_c);
     ui_screen_census_text(widget, CENSUS_MARGIN, CENSUS_Y_OUTLOOK, label, CENSUS_HEAD_COLOR);
-    static const char *const ROWS[5] = {"Day", "Rain %", "Thunder %", "Storm %", "High/low C"};
+    static const char *const ROWS[5] = {"Day", "Rain", "Thunder", "Storm", "Hi/lo C"};
     for (uint32_t row = 0u; row < 5u; row++) {
         const int32_t y = CENSUS_Y_OUTLOOK + CENSUS_LINE * (int32_t)(row + 1u);
         ui_screen_census_text(widget, CENSUS_MARGIN, y, ROWS[row], row == 0u ? CENSUS_DIM_COLOR : CENSUS_TEXT_COLOR);
@@ -278,7 +280,10 @@ ui_screen_census_action_t ui_screen_census_frame(const ui_screen_census_t *scree
         const uint32_t tiles = report->tiles_total > 0u ? report->tiles_total : 1u;
         const int32_t maximum = (int32_t)(report->weeks_total > 0u ? report->weeks_total : 1u) * (int32_t)tiles;
         const int32_t value = (int32_t)(report->weeks_done * tiles + report->tiles_done);
-        ui_widget_progress(widget, bar, value > maximum ? maximum : value, maximum);
+        /* A bar of its own, the whole width: the widget's progress arrow is a furnace's, and too small to read here. */
+        ui_compose_fill(widget->borrowed_canvas, bar, CENSUS_BAR_BACK);
+        const int32_t filled = (int32_t)((int64_t)bar.width * (value > maximum ? maximum : value) / maximum);
+        ui_compose_fill(widget->borrowed_canvas, (ui_rect_t){bar.x, bar.y, filled, bar.height}, CENSUS_HEAD_COLOR);
     } else if (report->failed != 0u) {
         (void)snprintf(label, sizeof(label), "The weekly state could not be saved: %s",
                        ui_screen_census_status_name(report->failed_status));
