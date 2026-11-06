@@ -7,4 +7,4 @@
 **Threads:** the sim thread, or the one thread of a run with no threads.
 **Public functions** (declared with the rest of `game`, in `run/include/game/index.h`): `game_sim_tick`, `game_spill`, `game_census_take` (main's: the census latch, by exchange).
 **May be called by:** `run/src/game/`.
-**Depends on:** `game`'s header, `player`, `item`, `entity`, `mob`, `ui`, `render/entities`, `world`, `profiler`, and the generated block table.
+**Depends on:** `game`'s header, `game/weather` (plan 004 phase 08: the weather's tick before the body moves, and the wind it moves in), `player`, `item`, `entity`, `mob`, `ui`, `render/entities`, `world`, `profiler`, and the generated block table.

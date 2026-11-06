@@ -243,14 +243,64 @@ static float64_t movement_limit(float64_t value, float64_t limit) {
     return value > limit ? limit : (value < -limit ? -limit : value);
 }
 
+/* Whether a solid block stands within PLAYER_WIND_SHELTER_BLOCKS of the body toward where the wind comes from, at its feet or its
+ * head: unit is the way the wind blows. */
+static bool movement_sheltered(const player_movement_t *movement, const world_map_t *map, float64_t height,
+                               const float64_t unit[2]) {
+    const float64_t heights[2] = {movement->position[2] + MOVEMENT_TOUCH_INSET,
+                                  movement->position[2] + height - MOVEMENT_TOUCH_INSET};
+    for (uint32_t step = 1u; step <= PLAYER_WIND_SHELTER_BLOCKS; step++) {
+        const int32_t x = (int32_t)floor(movement->position[0] - unit[0] * (float64_t)step);
+        const int32_t y = (int32_t)floor(movement->position[1] - unit[1] * (float64_t)step);
+        for (uint32_t h = 0u; h < 2u; h++) {
+            uint16_t block = BLOCK_ID_AIR;
+            if (collision_cell_read(map, x, y, (int32_t)floor(heights[h]), &block) && block < BLOCK_COUNT &&
+                (block_defs[block].flags & BLOCK_FLAG_SOLID) != 0u) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/* The wind's push for one tick, along the way it blows: nothing up to PLAYER_WIND_THRESHOLD, then a drift on the ground of
+ * PLAYER_WIND_SHARE of what is over it. A push a added before each move settles where each move is a / (1 - friction), as walking
+ * does, so the push is the drift's share of a tick times (1 - friction). A fifth of that in the air, and a quarter of either behind
+ * shelter. */
+static void movement_wind_push(const player_movement_t *movement, const world_map_t *map, float64_t height,
+                               bool on_ground, float64_t wind_u, float64_t wind_v, float64_t out[2]) {
+    out[0] = 0.0f64;
+    out[1] = 0.0f64;
+    const float64_t speed = sqrt(wind_u * wind_u + wind_v * wind_v);
+    if (!(speed > PLAYER_WIND_THRESHOLD)) {
+        return;
+    }
+    const float64_t drift = PLAYER_WIND_SHARE * (speed - PLAYER_WIND_THRESHOLD); /* blocks a second, on the ground */
+    float64_t push = drift / (float64_t)MC_GAME_TICK_HZ * (1.0f64 - MOVEMENT_GROUND_FRICTION);
+    push *= on_ground ? 1.0f64 : PLAYER_WIND_AIR_SHARE;
+    const float64_t unit[2] = {wind_u / speed, wind_v / speed};
+    if (movement_sheltered(movement, map, height, unit)) {
+        push *= PLAYER_WIND_SHELTER_SHARE;
+    }
+    out[0] = unit[0] * push;
+    out[1] = unit[1] * push;
+}
+
 static void movement_tick_land(player_movement_t *movement, physics_t *physics, const world_map_t *map,
-                               const player_intent_t *intent, const movement_wish_t *wish, bool climbing) {
+                               const player_intent_t *intent, const movement_wish_t *wish, bool climbing,
+                               float64_t wind_u, float64_t wind_v) {
     const bool on_ground = movement->on_ground != 0u;
     const bool crouched = movement->crouched != 0u, sprinting = movement->sprinting != 0u;
     const float64_t pace = crouched ? MOVEMENT_CROUCH_FACTOR : (sprinting ? MOVEMENT_SPRINT_FACTOR : 1.0f64);
     const float64_t push = (on_ground ? MOVEMENT_GROUND_ACCELERATION : MOVEMENT_AIR_ACCELERATION) * pace;
     movement->velocity[0] += wish->x * push;
     movement->velocity[1] += wish->y * push;
+    if (!climbing && (wind_u != 0.0f64 || wind_v != 0.0f64)) {
+        float64_t blown[2];
+        movement_wind_push(movement, map, wish->height, on_ground, wind_u, wind_v, blown);
+        movement->velocity[0] += blown[0];
+        movement->velocity[1] += blown[1];
+    }
     if (intent->jump != 0u && on_ground) {
         movement->velocity[2] = MOVEMENT_JUMP_SPEED;
         if (sprinting) {
@@ -289,6 +339,11 @@ static void movement_wish_make(const player_intent_t *intent, float64_t height, 
 
 void player_movement_tick(player_movement_t *movement, physics_t *physics, const world_map_t *map,
                           const player_intent_t *intent) {
+    player_movement_tick_wind(movement, physics, map, intent, 0.0f32, 0.0f32);
+}
+
+void player_movement_tick_wind(player_movement_t *movement, physics_t *physics, const world_map_t *map,
+                               const player_intent_t *intent, float32_t wind_u, float32_t wind_v) {
     memcpy(movement->previous, movement->position, sizeof(movement->previous));
     movement->previous_eye = movement->eye_height;
     movement->landed_fall = 0.0f64;
@@ -326,7 +381,7 @@ void player_movement_tick(player_movement_t *movement, physics_t *physics, const
         movement_tick_fluid(movement, physics, map, intent, &wish,
                             touch.lava != 0u ? MOVEMENT_LAVA_DRAG : MOVEMENT_WATER_DRAG);
     } else {
-        movement_tick_land(movement, physics, map, intent, &wish, climbing);
+        movement_tick_land(movement, physics, map, intent, &wish, climbing, (float64_t)wind_u, (float64_t)wind_v);
     }
 
     const float64_t dropped = z_before - movement->position[2];

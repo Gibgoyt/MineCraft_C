@@ -139,6 +139,9 @@ void player_pickup_reach(const player_t *player, collision_box_t *out);
 /* One tick. The sim, or whichever one thread holds the map, with tick_ns the time this tick was due. Never waits and never
  * touches the heap. */
 void player_tick(player_t *player, const world_map_t *map, int64_t tick_ns);
+/* The same in a wind, blocks a second, x east and y north, which the sim works out from the climate (plan 004 phase 08):
+ * player_tick is this with 0, 0. */
+void player_tick_wind(player_t *player, const world_map_t *map, int64_t tick_ns, float32_t wind_u, float32_t wind_v);
 
 /* One tick of what keeps the body going, right after player_tick on the same thread, so on what the body has just done and now touches.
  * Tests of how a body moves can leave it out, and then nothing ever hurts it. Never waits and never touches the heap. */

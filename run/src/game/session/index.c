@@ -3,6 +3,8 @@
 
 #include "assert/index.h"
 #include "game/census/index.h"
+#include "game/cover/index.h"
+#include "game/weather/index.h"
 #include "log/index.h"
 #include "simd/copy/index.h"
 #include "time/index.h"
@@ -56,6 +58,10 @@ void game_session_settings_set(game_session_t *session, settings_t *settings) {
     session->borrowed_settings = settings;
     game_session_config_from_settings(session);
     ui_menu_settings_enable(&session->borrowed_ui->menu);
+}
+
+void game_session_weather_set(game_session_t *session, uint8_t weather) {
+    session->weather = weather;
 }
 
 void game_session_deinit(game_session_t *session) {
@@ -197,6 +203,7 @@ static bool game_session_world_open(game_session_t *session) {
         }
         return false;
     }
+    game_weather_force(game, (game_weather_kind_t)session->weather);
     /* Under KMS the climate round the start is worked out over the loading screen's frames (game_session_source). With no
      * screen to draw, here and now. */
     if (session->borrowed_display == nullptr) {
@@ -361,7 +368,20 @@ static bool game_session_menu_draw(game_session_t *session, const input_frame_t 
     if (session->state == GAME_SESSION_CENSUS) {
         /* Plan 004 phase 07: the census's report as the sim last published it, or none for a world with no climate. */
         game_census_t *const census = game_census_of(session->borrowed_game);
-        const ui_census_report_t *const report = census != nullptr ? game_census_report(census) : nullptr;
+        const ui_census_report_t *report = census != nullptr ? game_census_report(census) : nullptr;
+        /* Plan 004 phase 08: snow and ice go on the loaded ground after the week is worked out, and Continue waits for them,
+         * the bar showing the columns. */
+        ui_census_report_t covering;
+        uint32_t covered = 0u, columns = 0u;
+        if (report != nullptr && game_cover_busy(session->borrowed_game, &covered, &columns)) {
+            covering = *report;
+            covering.written = 0u;
+            covering.failed = 0u;
+            covering.weeks_done = covering.weeks_total > 0u ? covering.weeks_total - 1u : 0u;
+            covering.tiles_done = covered;
+            covering.tiles_total = columns;
+            report = &covering;
+        }
         if (ui_screen_census_frame(&ui->census_screen, &ui->widget, escape, report) == UI_SCREEN_CENSUS_CONTINUE) {
             game_pause_set(session->borrowed_game, false);
             session->state = GAME_SESSION_PLAYING;
@@ -644,7 +664,9 @@ static bool game_session_scene_tick(void *context, const display_headless_tick_t
     if (session->state == GAME_SESSION_CENSUS) {
         /* With no sim thread the census is worked out here, whole, in one tick: so one script gives one set of pictures,
          * whatever the workers' speed. */
-        while (!game_census_settled(session->borrowed_game)) {
+        uint32_t covered = 0u, columns = 0u;
+        while (!game_census_settled(session->borrowed_game) ||
+               game_cover_busy(session->borrowed_game, &covered, &columns)) {
             game_sim_step(session->borrowed_game);
             time_sleep_ns(TIME_NS_PER_MS / 4);
         }

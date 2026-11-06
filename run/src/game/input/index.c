@@ -4,6 +4,7 @@
 #include "game/view/index.h"
 #include "time/index.h"
 
+#include <math.h>
 #include <string.h>
 
 void game_walk_send(game_t *game, const render_fly_input_t *input, bool jump, bool sneak, int64_t now_ns) {
@@ -125,4 +126,34 @@ void game_loop_input_clear(game_t *game) {
         game_walk_send(game, &none, false, false, time_now_ns());
         game_hands_send(game, false, false);
     }
+}
+
+/* ---- The game screens ------------------------------------------------------------------------------------------------ */
+
+/* What the screens need to know of this moment, on the sim. */
+void game_screen_sim(game_t *game, ui_screen_sim_t *out) {
+    const player_t *const player = game->borrowed_player;
+    const float64_t *const position = player->movement.position;
+    *out = (ui_screen_sim_t){
+        .borrowed_item = game->borrowed_item,
+        .spill = game_spill,
+        .borrowed_context = game,
+        .cell = {(int32_t)floor(position[0]), (int32_t)floor(position[1]), (int32_t)floor(position[2])},
+        .may_open = player_survival_holds_body(&player->survival) ? 0u : 1u,
+        ._pad0 = {0}};
+}
+
+bool game_has_screens(const game_t *game) {
+    return game->borrowed_ui != nullptr && game->borrowed_item != nullptr && game->borrowed_player != nullptr;
+}
+
+bool game_screen_input(game_t *game, const input_frame_t *frame) {
+    if (!game_has_screens(game)) {
+        return false;
+    }
+    return ui_screen_input(game->borrowed_ui, frame, game->config.width, game->config.height);
+}
+
+bool game_screen_up(game_t *game) {
+    return game_has_screens(game) && ui_screen_up(game->borrowed_ui);
 }

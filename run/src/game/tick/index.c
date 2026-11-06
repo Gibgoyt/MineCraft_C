@@ -4,6 +4,7 @@
 #include "audio/index.h"
 #include "climate/sun/index.h"
 #include "entity/animation/index.h"
+#include "game/weather/index.h"
 #include "item/stack/index.h"
 #include "log/index.h"
 #include "render/entities/index.h"
@@ -597,6 +598,8 @@ void game_sim_tick(game_t *game, int64_t tick_ns) {
         PROFILER_END(lane);
         return; /* this tick never happened: tick_count stays */
     }
+    /* Plan 004 phase 08: the weather where the eye is, before the body moves in its wind. */
+    game_weather_tick(game, tick_ns);
     if (game->borrowed_player != nullptr) {
         /* The sun at the body's own feet, from the clock main last said: beds and mobs go by how dark it really is there. */
         player_survival_sun_set(
@@ -627,7 +630,9 @@ void game_sim_tick(game_t *game, int64_t tick_ns) {
         }
         PROFILER_END(lane);
         PROFILER_BEGIN(lane, "tick_player");
-        player_tick(game->borrowed_player, &game->borrowed_world->map, tick_ns);
+        float32_t wind[2];
+        game_weather_wind(game, wind);
+        player_tick_wind(game->borrowed_player, &game->borrowed_world->map, tick_ns, wind[0], wind[1]);
         game_survive_tick(game);
         PROFILER_END(lane);
     }

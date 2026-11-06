@@ -55,6 +55,17 @@ typedef struct player_movement_t {
 } player_movement_t;
 static_assert(sizeof(player_movement_t) == 112);
 
+/* Plan 004 phase 08: storms push the body, gently (master plan Q4). Over PLAYER_WIND_THRESHOLD a body standing on the ground
+ * drifts downwind at PLAYER_WIND_SHARE of the wind over it: 2 blocks a second in a 60 blocks a second hurricane, 0.8 in a 30 storm.
+ * In the air a fifth of the push, behind a solid block within 3 blocks upwind a quarter, and none in water, lava or on a ladder. */
+#define PLAYER_WIND_THRESHOLD 10.0f64     /* blocks a second: trade winds and westerlies push nothing */
+#define PLAYER_WIND_SHARE 0.04f64         /* drift on the ground, per block a second over the threshold */
+#define PLAYER_WIND_AIR_SHARE 0.2f64      /* of the ground push: the game's air against ground acceleration */
+#define PLAYER_WIND_SHELTER_SHARE 0.25f64 /* of the push */
+enum : uint32_t {
+    PLAYER_WIND_SHELTER_BLOCKS = 3u, /* blocks upwind a solid block shelters from */
+};
+
 /* A body standing still at this place, with its feet there. */
 void player_movement_start(player_movement_t *movement, float64_t x, float64_t y, float64_t z);
 
@@ -65,5 +76,10 @@ void player_movement_box(const float64_t position[3], float64_t height, collisio
  * its feet are in is not loaded it stays exactly where it is. */
 void player_movement_tick(player_movement_t *movement, physics_t *physics, const world_map_t *map,
                           const player_intent_t *intent);
+
+/* The same in a wind of (wind_u, wind_v) blocks a second, x east and y north: what player_movement_tick is with 0, 0, to the byte.
+ * The wind is an input like the intent, so the same world, intents and winds still give the same bytes. */
+void player_movement_tick_wind(player_movement_t *movement, physics_t *physics, const world_map_t *map,
+                               const player_intent_t *intent, float32_t wind_u, float32_t wind_v);
 
 #endif

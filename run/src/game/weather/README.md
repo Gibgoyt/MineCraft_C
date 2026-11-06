@@ -1,0 +1,19 @@
+# run/src/game/weather
+
+**Purpose:** plan 004 phase 08's sim side of the weather the player sees and feels. Every `GAME_WEATHER_SAMPLE_TICKS` (10) ticks it asks the climate for the weather at the eye (`climate_weather_at`, phase 07); every tick it decides lightning in the thunderstorm cells within `GAME_LIGHTNING_RANGE` (2000 blocks), keeps the rain top map round the eye, blends the wind between samples, and sends it all to the thread that draws in a slot of a triple buffer (`render_exchange_t`). That thread eases toward each slot and draws with it (`game_weather_draw`, through `render_weather_take` and `render_frame_draw_weather`).
+
+**Lightning**, by hash like everything else: time is cut into 1-second slots, and for each cell near the player a hash of (seed, cell id, slot) strikes with chance `GAME_LIGHTNING_RATE` (0.05) times the cell's strength then (`climate_systems_thunder_at`). The nearest strike of the second wins; its place is the same hash within the cell's radius, worked out at the slot's start so the bolt stays where it struck. Its bolt is 12 segments from the cloud base (the ground plus 180, at most the world's top) to the ground (the rain top where the map has it, else `terrain_height_estimate`), each joint up to 8 blocks sideways by hash, seen for the first 0.2 s (4 ticks) of its second. The day's cells near the player come from `climate_systems_day_build` once a game day, or when the player has gone 500 blocks from where the list was made, kept here (`GAME_WEATHER_CELLS_MAX`). The flash is `1 / (1 + (d / 500)^2)`.
+
+**The rain top map:** 64 by 64 block columns round the eye, each the height of its highest voxel that is not air (`POST_WEATHER_MAP_COVERED` for a column not loaded, so no rain is drawn there). Made again when the eye has gone 8 blocks from its middle, when a column it lacked may have come in (on a sample tick), or when the edit log lost count; otherwise only the columns this module's own log cursor says changed are looked at again. The plan file asked for a rebuild on every block the eye crosses: 8 blocks of slack is the same picture (the widest cylinder is 16 blocks, the map 32 each way) for a fraction of the scans.
+
+**Forced weather** (`--weather`, `game_weather_force`): fixed numbers in place of the climate's (`game_weather_forced_now`), with no climate needed, and for `thunder` a strike every 2 seconds 300 blocks east of the eye. For golden pictures, the bench and Ahmed's look at each weather.
+
+**Where it lives:** `game_t` is at its size (`app_t` is on main's stack, at the 16 KiB frame limit), so `game_weather_t` is in the game's World arena beside the column jobs, in `game_world_parts_t`, and `game_weather_of` (in `game/index.c`, which lays that out) finds it.
+
+**Tier:** Arena by depth; it allocates nothing of its own. Its state is the World arena's; a cells list is built in the Tick arena and copied out.
+**Owns:** nothing.
+**Lifetime:** World: started at `game_open`.
+**Threads:** the sim for `game_weather_tick`, `game_weather_wind` and `game_weather_force` (or with the threads stopped); the thread that draws for `game_weather_draw` and the `gpu` part of the state. The slots cross through the exchange only.
+**Public functions:** `game_weather_kind_parse`, `game_weather_kind_name`, `game_weather_forced_now`, `game_weather_start`, `game_weather_column_top`, `game_weather_cell_strikes`, `game_weather_bolt_make`, `game_weather_flash`, `game_weather_force`, `game_weather_tick`, `game_weather_wind`, `game_weather_draw`; `game_weather_of` is `game`'s.
+**May be called by:** its parent `run/src/game/`, `game/tick` (the tick and the wind on the body), `game/session` and `main` (`--weather`), the tests and the bench.
+**Depends on:** `game`'s header, `climate`, `climate/systems` and its `field`, `climate/weather`, `render` and `render/frame` (the slot and the draw), `world`, `terrain` (`terrain_height_estimate`, `terrain/rng`), the generated block table, `log`, `time`.
