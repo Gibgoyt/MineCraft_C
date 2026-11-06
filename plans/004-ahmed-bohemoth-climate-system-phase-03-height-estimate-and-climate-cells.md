@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 3: Height estimate and climate cells
 
-**Status:** in progress: built and agent-verified; only Ahmed's gate (the pictures, and the loading line on a real screen) is left   (updated 2026-11-06)
+**Status:** in progress: built, agent-verified, and through the skeptical gate check; only Ahmed's gate is left (the pictures, his word on Issue 17's sea-floor rule, and the loading line on a real screen)   (updated 2026-11-06)
 
 Read `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` first, then sections 3, 6.1, 6.2 and 6.9 of `plans/004-ahmed-bohemoth-climate-system.md`. Every number here comes from the master plan. Where this file adds a number the master plan does not give, it says so and gives the reason.
 
@@ -867,6 +867,19 @@ Verification as run, each through `tools/test-or-build.sh`:
 - `bench_climate` release: exit 0; cold tile 27.7 to 28.0 ms, warm 5.31 ms, spawn precompute 36 tiles and 484 pages in 24.0 ms.
 - `bench_climate --pictures /tmp/mc_c_climate 2198175988018515243`: 28.8% sea, 0.8% small lake; looked at `continentality.png`: no steps at tile borders.
 
+### Skeptical gate check, 2026-11-06 (a fresh worktree after merging main, clean build)
+
+- Debug build clean. `run_terrain_*` (10) and `run_climate_*` (7): all pass. Terrain pins: the diff of `tests/run/terrain` since before `360b711` only adds lines, so no pin moved.
+- Code read against master plan 6.1, 6.2, 6.9 and this file: no stub, TODO or code nothing calls in `run/src/climate/`, its tests or `bench/climate/`. The layer hashes are held to themselves until Ahmed has looked, as this file says.
+- Worked examples through the real code (`run_climate_cell`): D = 25 gives 288 blocks, direction (-0.6, -0.8), κ 0.1747; D = 1 gives 32 and 0.0211; no sea gives 8192 and 0.99575; the blend at (48, 80) gives 0.2625. All pass.
+- Added a brute-force check on real ground (Issue 21): 3 real tiles, 116 sea and 652 other cells, all agree. Passes in debug and release.
+- Full debug suite, 1795 s: 130 of 130.
+- tsan: `run_climate_cache` (64.2 s) and `run_climate_cell` (8.4 s) pass with no report.
+- Release build, LTO link with `-Wframe-larger-than=16384`: clean. `run_climate_cell` release digest `0x61708389BBF3789B`, the same as debug.
+- `bench_climate` release: exit 0; slowest cold tile 28.51 ms (target 100), warm 5.41 ms, spawn precompute 36 tiles and 484 pages in 24.0 ms.
+- `bench_climate --pictures`, seed 2198175988018515243: 70.5% land, 28.8% sea, 0.8% small lake. Looked at `continentality.png` and `latitude.png`: κ rises smoothly from the coasts with no steps at tile borders; the equator line is on the middle row (y = 0); no tropic is in view, since it is at 10,000 and the edge is at 8192.
+- In the running game: `minecraft_c --headless --menu --no-sound`, the first 26 lines of `tests/run/playthrough/fixtures/day.script` plus 200 ticks: exit 0. The log says "game: working out the climate within 2176 blocks of 8, -8" (render distance 8 × 16 + 2048), 197 columns came through the gate, and the screenshot shows the world as before. Nothing left running (`pgrep -af "$PWD/build"` printed nothing).
+
 ## Commits
 
 Appended as they land:
@@ -878,6 +891,8 @@ Appended as they land:
 - `c860326` List the phase file commit of plan 004 phase 03 in its phase file.
 - `aa86123` Work out a new world's climate over the loading screen's frames, a step a frame, so the climate percent line is shown as it fills before the threads start.
 - `3945039` Record the second pass of plan 004 phase 03 in its phase file: the live loading line, the full suite, tsan, release and bench results.
+- `f573fe9` List the second pass commits of plan 004 phase 03 in its phase file.
+- `2eb224e` Check three real climate tiles of plan 004 phase 03 against a brute-force search over their windows built from single height estimates.
 
 ## Issues found
 
@@ -903,3 +918,4 @@ All 2026-11-06, while building the phase.
 18. **`run_types` pins the number of heap regions.** It expected "14 reserved" and "leak at exit: 14 regions"; the climate's region makes 15. Updated in `tests/run/types/index.c`, with a comment saying why.
 19. **tsan was built for the two climate test targets only** at first (the second pass built the whole preset: see Results), not the whole `tsan` preset, to save time and disk. `run_climate_cache` (37.8 s, 100,000 swaps, 0 torn) and `run_climate_cell` (4.8 s) both pass under tsan with no report.
 20. **The loading line, made live (second pass).** Expected: the line "Working out the climate: N%" shows while it fills (Issue 9). Done without display work: `climate_prepare_begin` queues the precompute and returns, and `climate_prepare_step` moves it on without waiting (the pages' round, then the tiles'), with its state in a new 64-byte `climate_prepare_t` in `climate_state_t` (now 384 bytes, still under `CLIMATE_TABLES_OFFSET`); `climate_prepare_area` is begin plus steps. `game_open` only begins it; `game_open_climate_step` (new) steps it and sets `open_percent`. Under KMS, `game_session_source` steps it once a frame and draws the loading screen with the percent until it is done, and only then starts the threads; with no display (`--headless`) `game_session_world_open` steps it to the end itself, so headless runs and their pictures are as before. `game_t._pad4[4]` at 1260 became `open_climate_frames`, for the log. `--menu` never opens a window (KMS only), so on this machine it was seen only on the fake card: `run_ui_menu`'s whole round now gives each world a climate, and checks the loading screen is drawn after opening before the threads start. Wiring outside the owned paths: `run/src/game/session/` (the frame step), `tests/run/ui/menu/` (the climate in the round test), and their READMEs.
+21. **Gate check: nothing checked a real tile against an independent working-out.** Expected: a check on real ground that does not use the climate's own code. Actual: the distance transform was checked by brute force only on synthetic grids, and real tiles only against themselves (the digest, the worker counts, the build order), so a window put together wrong on real ground would not have been caught. No defect was found. Done: `a_real_tile_s_cells_match_a_brute_force_over_its_window` in `tests/run/climate/cell/` (commit `2eb224e`) rebuilds three real windows from single `terrain_height_estimate` calls, redoes the sea rule with its own fill, and checks each cell's flags, distances, κ, direction length, `z_ground` and latitude against a search over every cell of the window: all 768 cells agree.
