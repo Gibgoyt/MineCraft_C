@@ -1,13 +1,13 @@
 # tests/run/game/cover
 
-**Purpose:** ctest `run_game_cover`. Tests plan 004 phase 08's snow and ice on loaded ground, `run/src/game/cover/`, on small real worlds with no card: the rule for a column, with the week given by hand.
+**Purpose:** ctest `run_game_cover`. Tests plan 004 phase 08's snow and ice on loaded ground, `run/src/game/cover/`, on small real worlds with no card: the rule for a column, with the week given by hand, and with three years of the climate's own weeks.
 **Tier:** test.
 **Owns:** the test arena, what its worlds take, and a directory of its own under `/tmp` for the save, removed at its end.
 **Lifetime:** One run.
 **Threads:** main.
 **Public functions:** none; a test program.
 **May be called by:** ctest.
-**Depends on:** `tests/harness/`, `tests/run/physics/fixtures/test_world.h`, `run/src/game/cover/`, `run/src/world/`, `run/src/save/world/`.
+**Depends on:** `tests/harness/`, `tests/run/physics/fixtures/test_world.h`, `tests/run/climate/fixtures/ground.h`, `run/src/climate/` and `climate/weather`, `run/src/game/cover/`, `run/src/world/`, `run/src/save/world/`.
 
 What it checks, against the thresholds in `plans/004-ahmed-bohemoth-climate-system-phase-08-weather-in-the-world.md`:
 
@@ -16,3 +16,4 @@ What it checks, against the thresholds in `plans/004-ahmed-bohemoth-climate-syst
 - **Streaming in:** a column that comes back as generated is frozen and white like its neighbours; a chunk not loaded is never touched.
 - **Snow:** a layer on every top of open grass over 20 mm, all gone at 10; none on leaves, ice, packed ice, snow blocks, lava, slabs, torches or flowers; none under a roof, and a roof put over old snow sees it go at the thaw; a block placed on a layer takes its cell, and the layer is thin, walked through and replaceable; 25, 15, 25, 15 mm keeps the layer all four weeks with no edit, and an unknown week changes nothing.
 - **What it costs:** a first snow and ice over 4225 columns, as render distance 32 loads, of flat ground with a pond each: the time and the edits, failing past 10 s (Risks R3).
+- **Through the years** (`test.cmake`: 900 s), with the weeks the census works out from real climate tiles over land of known height, as phase 07's own snow tests: at 45 N, 600 high, a layer at a census between days 1 and 60 in at least two winters of three (phase 07's Issues found 6: one winter in three stays near 20 mm) and none from day 200 in any summer; at 75 N, a layer at every census of the second year.

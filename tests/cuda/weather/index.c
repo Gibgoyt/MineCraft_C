@@ -121,10 +121,9 @@ TEST(a_clear_sky_changes_nothing) {
 /* A cell of layer 0's rain that holds a drop at density, from round 0 up, and where in it. */
 static void we_find_drop(float32_t density, uint32_t *out_round, int32_t *out_up, float32_t *out_across,
                          float32_t *out_cell_up) {
-    float32_t phase = 0.0f32;
     for (int32_t up = 10; up < 100000; up++) {
         for (uint32_t round = 0u; round < post_weather_cells_round(0u); round++) {
-            if (post_weather_cell(0u, false, round, up, density, out_across, out_cell_up, &phase)) {
+            if (post_weather_cell(0u, false, round, up, density, out_across, out_cell_up)) {
                 *out_round = round;
                 *out_up = up;
                 return;

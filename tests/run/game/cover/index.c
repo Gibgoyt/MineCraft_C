@@ -1,13 +1,18 @@
 /* ctest run_game_cover. See README.md. */
 #include "harness/index.h"
 
+#include "run/climate/fixtures/ground.h"
 #include "run/physics/fixtures/test_world.h"
 
 #include "arena/index.h"
+#include "climate/index.h"
+#include "climate/weather/index.h"
 #include "game/cover/index.h"
 #include "heap/index.h"
 #include "save/world/index.h"
 #include "tables/blocks/index.h"
+#include "job/index.h"
+#include "thread/index.h"
 #include "time/index.h"
 #include "world/index.h"
 
@@ -431,6 +436,154 @@ TEST(cover_time_at_render_distance_32) {
     CHECK(seconds < 10.0f64);
     world_close(world);
     world_deinit(world);
+}
+
+/* ---- Through the years, with the climate's own weeks ------------------------------------------------------------------- */
+
+static const float64_t CV_Y45 = 19148.936170212766f64; /* 45 degrees north: latitude rises evenly, 23.5 at 10 km */
+static const float64_t CV_Y75 = 31914.893617021276f64;
+enum : uint32_t {
+    CV_WEEKS = 157u, /* three years of censuses from the census of day 364 */
+};
+
+typedef struct cv_climate_t {
+    job_system_t *job;           /* 0 */
+    climate_t *climate;          /* 8 */
+    thread_topology_t *topology; /* 16 */
+    ground_t *ground;            /* 24 */
+    arena_t *arena;              /* 32 */
+} cv_climate_t;
+static_assert(sizeof(cv_climate_t) == 40);
+
+static bool cv_climate_start(test_context_t *t, cv_climate_t *rig, ground_kind_t kind, int32_t coast, int32_t height) {
+    rig->topology = test_alloc(t, sizeof(thread_topology_t));
+    rig->job = test_world_aligned(t, sizeof(job_system_t));
+    rig->climate = test_world_aligned(t, sizeof(climate_t));
+    rig->ground = test_alloc(t, sizeof(ground_t));
+    memset(rig->ground, 0, sizeof(*rig->ground));
+    rig->ground->kind = kind;
+    rig->ground->coast = coast;
+    rig->ground->radius = height;
+    rig->arena = test_world_aligned(t, sizeof(arena_t));
+    arena_init(rig->arena, "test_cover_year", test_world_aligned(t, 32ull << 20), 32ull << 20);
+    if (!thread_topology_read(rig->topology) || !job_init_count(rig->job, rig->topology, MC_THREADS_WORKERS)) {
+        return false;
+    }
+    if (!climate_init(rig->climate)) {
+        job_deinit(rig->job);
+        return false;
+    }
+    return climate_open_ground(rig->climate, 0x1234567890ABCDEFull, ground_fn, rig->ground);
+}
+
+static void cv_climate_stop(cv_climate_t *rig) {
+    climate_close(rig->climate, rig->job);
+    climate_deinit(rig->climate);
+    job_deinit(rig->job);
+    arena_deinit(rig->arena);
+}
+
+/* A cell's week by week state, from spin-up at the census of day 364, as the census works it out: the days of each week from
+ * climate_weather_day, then the weekly update. Into the snow on the ground and the ice at each census, and its day. */
+static bool cv_climate_weeks(cv_climate_t *rig, int32_t x, int32_t y, float32_t *out_snow, float32_t *out_ice,
+                             uint16_t *out_day) {
+    climate_prepare_area(rig->climate, rig->job, x - 7000, y - 7000, x + 7000, y + 7000, nullptr, nullptr);
+    climate_week_t state;
+    const uint64_t start = 52u;
+    if (!climate_week_spinup(rig->climate, x >> 6, y >> 6, start, &state, nullptr)) {
+        return false;
+    }
+    for (uint32_t k = 0u; k < CV_WEEKS; k++) {
+        const uint64_t week = start + 1u + k;
+        climate_day_t days[CLIMATE_WEEK_DAYS];
+        for (uint32_t i = 0u; i < CLIMATE_WEEK_DAYS; i++) {
+            arena_reset(rig->arena);
+            if (!climate_weather_day(rig->climate, x, y, (int64_t)(7u * (week - 1u) + i), &state, rig->arena,
+                                     &days[i])) {
+                return false;
+            }
+        }
+        climate_week_update(&state, days, &state);
+        out_snow[k] = state.snow_mm;
+        out_ice[k] = state.ice_cm;
+        out_day[k] = (uint16_t)((7u * week) % 365u);
+    }
+    return true;
+}
+
+/* The cover rule at each census with that week's snow and ice, on open grass and a pond: whether a layer lay, and ice. */
+static void cv_through_the_weeks(test_context_t *t, const float32_t *snow, const float32_t *ice, uint8_t *out_layer,
+                                 uint8_t *out_frozen) {
+    test_world_t w;
+    if (!CHECK(cv_begin_lake(t, &w))) {
+        return;
+    }
+    for (uint32_t k = 0u; k < CV_WEEKS; k++) {
+        cv_week_t week = cv_week(snow[k], ice[k]);
+        (void)cv_cover(&w, &week);
+        out_layer[k] = cv_block(&w, 0, 0, 1) == BLOCK_ID_SNOW_LAYER ? 1u : 0u;
+        out_frozen[k] = cv_block(&w, 5, 5, 0) == BLOCK_ID_ICE ? 1u : 0u;
+    }
+    test_world_end(&w);
+}
+
+TEST(snow_builds_and_melts_at_45_degrees_in_loaded_chunks) {
+    /* Land 600 high north of a coast 1200 blocks south of 45 N, as phase 07's own test of the snow there. */
+    const int32_t y = (int32_t)CV_Y45, x = 32;
+    cv_climate_t rig;
+    REQUIRE(cv_climate_start(t, &rig, GROUND_HIGH_COAST_Y, y - 1200, 600));
+    float32_t snow[CV_WEEKS], ice[CV_WEEKS];
+    uint16_t day[CV_WEEKS];
+    REQUIRE(cv_climate_weeks(&rig, x, y, snow, ice, day));
+    cv_climate_stop(&rig);
+    uint8_t layer[CV_WEEKS], frozen[CV_WEEKS];
+    cv_through_the_weeks(t, snow, ice, layer, frozen);
+    /* Every year: a layer at some census between days 1 and 60, and none left at day 200 or after it in summer. */
+    uint32_t winters = 0u, summers_bare = 0u, summers = 0u;
+    for (uint32_t year = 0u; year < 3u; year++) {
+        bool white = false, bare = true;
+        float32_t most = 0.0f32;
+        for (uint32_t k = year * 52u; k < (year + 1u) * 52u + 1u && k < CV_WEEKS; k++) {
+            if (day[k] >= 1u && day[k] <= 60u) {
+                white = white || layer[k] != 0u;
+                most = snow[k] > most ? snow[k] : most;
+            }
+            if (day[k] >= 200u && day[k] <= 280u) {
+                bare = bare && layer[k] == 0u;
+                summers += 1u;
+            }
+        }
+        printf("  45 N, year %u: most snow between days 1 and 60 %.1f mm, a layer then %s, bare from day 200 %s\n",
+               year + 1u, (libc_double_t)most, white ? "yes" : "no", bare ? "yes" : "no");
+        winters += white ? 1u : 0u;
+        summers_bare += bare ? 1u : 0u;
+    }
+    /* Phase 07's Issues found 6: one winter in three at this place stays near 20 mm, so at least two of three must lay snow. */
+    CHECK(winters >= 2u);
+    CHECK_EQ_U64(summers_bare, 3u);
+    CHECK(summers > 0u);
+}
+
+TEST(snow_stays_at_75_degrees) {
+    const int32_t y = (int32_t)CV_Y75, x = 32;
+    cv_climate_t rig;
+    REQUIRE(cv_climate_start(t, &rig, GROUND_COAST_Y, y - 64, 0));
+    float32_t snow[CV_WEEKS], ice[CV_WEEKS];
+    uint16_t day[CV_WEEKS];
+    REQUIRE(cv_climate_weeks(&rig, x, y, snow, ice, day));
+    cv_climate_stop(&rig);
+    uint8_t layer[CV_WEEKS], frozen[CV_WEEKS];
+    cv_through_the_weeks(t, snow, ice, layer, frozen);
+    uint32_t white = 0u, censuses = 0u;
+    float32_t least = INFINITY;
+    for (uint32_t k = 52u; k < 104u; k++) {
+        white += layer[k] != 0u ? 1u : 0u;
+        censuses++;
+        least = snow[k] < least ? snow[k] : least;
+    }
+    printf("  75 N, year 2: a layer at %u of %u censuses, the least snow %.1f mm\n", white, censuses,
+           (libc_double_t)least);
+    CHECK_EQ_U64(white, censuses);
 }
 
 TEST_MAIN()

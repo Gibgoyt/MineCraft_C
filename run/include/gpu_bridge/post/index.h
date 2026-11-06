@@ -371,7 +371,6 @@ enum : uint32_t {
     POST_WEATHER_LAYERS = 4u,
     POST_BOLT_SEGMENTS = 12u,
     POST_WEATHER_MAP_SIDE = 64u, /* blocks: the rain top map round the eye */
-    POST_SNOW_NEIGHBOURS = 2u,   /* cells each way a snowflake's wobble can carry it into */
 };
 #define POST_WEATHER_RADIUS_FIRST F32(2.0) /* blocks; each next layer doubles */
 #define POST_WEATHER_CELL_WIDTH F32(0.25)  /* blocks round a cylinder */
@@ -462,8 +461,7 @@ POST_BOTH_SIDES static inline uint32_t post_weather_cells_round(uint32_t layer) 
 /* Whether the cell (round, up) of a layer holds a drop of this kind at density, and where in the cell: across and up, each 0 to 1.
  * Snow and rain have their own cells, so a sleet day mixes two falls. */
 POST_BOTH_SIDES static inline bool post_weather_cell(uint32_t layer, bool snow, uint32_t round, int32_t up,
-                                                     float32_t density, float32_t *out_across, float32_t *out_up,
-                                                     float32_t *out_phase) {
+                                                     float32_t density, float32_t *out_across, float32_t *out_up) {
     const uint32_t kind = layer + (snow ? POST_WEATHER_LAYERS : 0u);
     const uint32_t h = post_weather_hash(kind, round, (uint32_t)up);
     if (!(post_weather_unit(h) < density)) {
@@ -473,7 +471,6 @@ POST_BOTH_SIDES static inline bool post_weather_cell(uint32_t layer, bool snow, 
     const uint32_t h3 = post_weather_hash(h2, (uint32_t)up, 0xA7u);
     *out_across = F32(0.15) + F32(0.7) * post_weather_unit(h2);
     *out_up = F32(0.25) + F32(0.5) * post_weather_unit(h3);
-    *out_phase = post_weather_unit(post_weather_hash(h3, kind, 0x3Du));
     return true;
 }
 
@@ -536,38 +533,37 @@ POST_BOTH_SIDES static inline float32_t post_weather_layer(const post_weather_t 
     }
     const uint32_t round_count = post_weather_cells_round(layer);
     const float32_t arc = F32(6.2831853) * radius / (float32_t)round_count; /* a cell's width, in blocks */
-    float32_t around = (atan2f(lean[1], lean[0]) * F32(0.15915494) + F32(0.5)) * (float32_t)round_count;
-    around = around >= (float32_t)round_count ? around - (float32_t)round_count : around;
-    const int32_t round = (int32_t)floorf(around);
     /* Height in the world, so that a still eye sees the same drops fall whichever way it turns: the eye cell's z is small. */
     const float32_t fallen = (float32_t)camera->eye_cell[2] + place[2] + fall * weather->time_s;
     const float32_t cells_up = fallen / POST_WEATHER_CELL_HEIGHT;
     const int32_t up = (int32_t)floorf(cells_up);
     const float32_t inside_up = (cells_up - (float32_t)up) * POST_WEATHER_CELL_HEIGHT;
-    const float32_t streak = fmaxf(POST_RAIN_STREAK_MIN, fall / F32(60.0));
-    const int32_t reach = snow ? (int32_t)POST_SNOW_NEIGHBOURS : 0;
-    for (int32_t step = -reach; step <= reach; step += 1) {
-        int32_t cell = round + step;
-        cell = cell < 0 ? cell + (int32_t)round_count
-                        : (cell >= (int32_t)round_count ? cell - (int32_t)round_count : cell);
-        float32_t across = F32(0.0), cell_up = F32(0.0), phase = F32(0.0);
-        if (!post_weather_cell(layer, snow, (uint32_t)cell, up, density, &across, &cell_up, &phase)) {
-            continue;
-        }
-        /* Across the cylinder in blocks, from the drop to the ray's place. */
-        float32_t side = (around - (float32_t)(round + step) - across) * arc;
-        const float32_t height = inside_up - cell_up * POST_WEATHER_CELL_HEIGHT;
-        if (snow) {
-            side -= POST_SNOW_WOBBLE * sinf(F32(6.2831853) * (weather->time_s / POST_SNOW_WOBBLE_PERIOD + phase));
-            const float32_t half = POST_SNOW_FLAKE * F32(0.5);
-            if (side * side + height * height < half * half) {
-                return POST_SNOW_ALPHA;
-            }
-        } else if (fabsf(side) < POST_RAIN_WIDTH * F32(0.5) && fabsf(height) < streak * F32(0.5)) {
-            return POST_RAIN_ALPHA;
-        }
+    float32_t around = (atan2f(lean[1], lean[0]) * F32(0.15915494) + F32(0.5)) * (float32_t)round_count;
+    if (snow) {
+        /* Snow wobbles sideways: a whole row of cells at once, each row in its own phase, so a flake stays in its own cell and
+         * one cell is all a ray asks about, as for rain. */
+        const uint32_t row = post_weather_hash(layer + POST_WEATHER_LAYERS, 0x3Du, (uint32_t)up);
+        const float32_t wobble =
+            POST_SNOW_WOBBLE *
+            sinf(F32(6.2831853) * (weather->time_s / POST_SNOW_WOBBLE_PERIOD + post_weather_unit(row)));
+        around -= wobble / arc;
+        around = around < F32(0.0) ? around + (float32_t)round_count : around;
     }
-    return F32(0.0);
+    around = around >= (float32_t)round_count ? around - (float32_t)round_count : around;
+    const int32_t round = (int32_t)floorf(around);
+    float32_t across = F32(0.0), cell_up = F32(0.0);
+    if (!post_weather_cell(layer, snow, (uint32_t)round, up, density, &across, &cell_up)) {
+        return F32(0.0);
+    }
+    /* Across the cylinder and up it in blocks, from the drop to the ray's place. */
+    const float32_t side = (around - (float32_t)round - across) * arc;
+    const float32_t height = inside_up - cell_up * POST_WEATHER_CELL_HEIGHT;
+    if (snow) {
+        const float32_t half = POST_SNOW_FLAKE * F32(0.5);
+        return side * side + height * height < half * half ? POST_SNOW_ALPHA : F32(0.0);
+    }
+    const float32_t streak = fmaxf(POST_RAIN_STREAK_MIN, fall / F32(60.0));
+    return fabsf(side) < POST_RAIN_WIDTH * F32(0.5) && fabsf(height) < streak * F32(0.5) ? POST_RAIN_ALPHA : F32(0.0);
 }
 
 /* The drops along a ray: every layer of rain and of snow, the far ones first, each over what is behind it. Out are a colour already
