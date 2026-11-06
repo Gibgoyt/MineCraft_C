@@ -938,6 +938,7 @@ Appended as they land:
 - `8be93ffd` Make plan 004 phase 07's census meet its 250 ms bench by reading a week of normals in one call, skipping fields no system reaches and filling the outlook beside the last week, add bench_climate_census, and list the phase's paths in the repository structure.
 - `9b857b6d` Record bench_climate_census's first results.
 - `0deeed93` Count the weather's week region in run_types' heap lines, and record the bench's reruns at load average 51.
+- `0f4e633d` Record plan 004 phase 07 in its phase file: todos, the verification run, the bench at its budget, the calibration table and the issues found.
 
 ## Issues found
 
