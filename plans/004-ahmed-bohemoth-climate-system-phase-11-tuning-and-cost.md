@@ -666,6 +666,7 @@ Appended as they land:
 - `d5c52706` Add bench_climate_survey, plan 004 phase 11's four measurements over 8 seeds on a pole-to-pole strip, the same bytes on 1 worker or 16.
 - `8fadcbd0` Say in the repository structure where run_climate_constants and bench_climate_survey are and what they do.
 - `ad79538e` Record plan 004 phase 11's bench runs in each bench's README and history: the survey over 8 seeds, the climate tile, systems, census, Atlas, terrain, mobs and the world's frame rate.
+- `61f7becc` Record plan 004 phase 11's results before tuning, the summary for Ahmed with every miss, its issues, commits and verification in its phase file.
 
 ## Issues found
 
