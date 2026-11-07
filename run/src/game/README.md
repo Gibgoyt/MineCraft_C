@@ -20,7 +20,7 @@
 - `game_loop_start`, `game_loop_frame`, `game_loop_stop`: the real threads, and a frame on the main thread.
 - `game_loop_source_begin`, `game_loop_source`, `game_loop_discard`: what `display_frames_run` calls: the threads start on its first frame, then real keys and a real mouse to `game_loop_frame`, and Esc to stop.
 - `game_loop_threads_ensure`, `game_loop_input_frame`, `game_loop_input_clear`: the same in parts, for `session`, which wants Esc for itself.
-- `game_pause_set`: stops the world's clock, or starts it.
+- `game_pause_set`: stops the world's clock, or starts it (in `input/`).
 - `game_far_changes_take`: what has been captured, told to the far field, by whichever thread calls `render_lod_frame`.
 - `game_save_finish`: all there is, saved here and now, as a world closes: see `run/src/save/autosave/`. A `game_open` with a save takes up where the state in it left off, and `game_sim_step` calls `save_autosave_step`.
 - `game_open_alive_set`, `game_open_alive_tell`: someone to tell that a long `game_open` is still going, and telling them.

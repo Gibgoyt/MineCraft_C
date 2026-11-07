@@ -1384,17 +1384,19 @@ static bool game_threads_start(game_t *game) {
     game->gpu_beats_seen_ns = time_now_ns();
     game->gpu_watched_ns = game->gpu_beats_seen_ns;
     game_lanes_threads(game, true);
+    game->threads_running = 1u; /* before the starts, which give it to both threads: the gpu's draw reads it */
     if (!thread_start(&game->sim_thread, game->borrowed_topology, THREAD_ROLE_SIM, 0u, game_sim_thread, game)) {
+        game->threads_running = 0u;
         game_lanes_threads(game, false);
         return false; /* it has said why */
     }
     if (!thread_start(&game->gpu_thread, game->borrowed_topology, THREAD_ROLE_GPU, 0u, game_gpu_thread, game)) {
         atomic_store_explicit(&game->stop, 1u, memory_order_release);
         thread_join(&game->sim_thread);
+        game->threads_running = 0u;
         game_lanes_threads(game, false);
         return false; /* it has said why */
     }
-    game->threads_running = 1u;
     return true;
 }
 
@@ -1484,11 +1486,6 @@ bool game_loop_source(void *context, display_buffer_t *back) {
         return false;
     }
     return game_loop_input_frame(game, frame, back);
-}
-
-void game_pause_set(game_t *game, bool paused) {
-    atomic_store_explicit(&game->paused, paused ? 1u : 0u, memory_order_relaxed);
-    game->last_frame_ns = time_now_ns();
 }
 
 void game_loop_discard(void *context) {

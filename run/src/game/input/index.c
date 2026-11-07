@@ -124,6 +124,12 @@ bool game_loop_input_frame(game_t *game, const input_frame_t *frame, display_buf
     return game_loop_frame(game, &input, seconds, back);
 }
 
+/* A pause starts the frame clock again, so the time stopped is not a step of flying. */
+void game_pause_set(game_t *game, bool paused) {
+    atomic_store_explicit(&game->paused, paused ? 1u : 0u, memory_order_relaxed);
+    game->last_frame_ns = time_now_ns();
+}
+
 void game_loop_input_clear(game_t *game) {
     if (game->borrowed_player != nullptr) {
         const render_fly_input_t none = {0};
