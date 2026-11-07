@@ -79,26 +79,31 @@ static bool tile_counts(uint16_t state, uint32_t colour_count) {
 }
 
 void ui_atlas_column_top(const uint16_t *colours, uint32_t colour_count, const uint16_t *states, uint32_t *out) {
-    for (uint32_t y = 0u; y < UI_ATLAS_COLUMN_SIDE; y++) {
-        for (uint32_t x = 0u; x < UI_ATLAS_COLUMN_SIDE; x++) {
-            uint32_t pixel = ui_atlas_pixel_pack(0u, (int16_t)(COLUMN_Z_STORAGE_MIN - MC_WORLD_Z_SEA));
-            bool found = false;
-            for (uint32_t section = COLUMN_SECTIONS; section-- > 0u && !found;) {
-                const uint16_t *const voxels = states + (uint64_t)section * SECTION_VOXELS;
-                for (uint32_t z = SECTION_SIZE; z-- > 0u;) {
-                    const uint16_t state = voxels[section_voxel_index(x, y, z)];
-                    if (!tile_counts(state, colour_count)) {
-                        continue;
-                    }
-                    const int32_t height =
-                        (int32_t)(section * SECTION_SIZE + z) + COLUMN_Z_STORAGE_MIN - MC_WORLD_Z_SEA;
-                    const uint16_t colour = state < colour_count ? colours[state] : 0u;
-                    pixel = ui_atlas_pixel_pack(colour, (int16_t)height);
-                    found = true;
-                    break;
+    /* Section by section from the top, a whole z layer at a time, so the walk reads memory in order and stops once all
+     * 256 have their top: most of a column above the ground is air, and air is state 0, the quick test. */
+    bool found[UI_ATLAS_COLUMN_PIXELS];
+    uint32_t left = UI_ATLAS_COLUMN_PIXELS;
+    for (uint32_t k = 0u; k < UI_ATLAS_COLUMN_PIXELS; k++) {
+        found[k] = false;
+        out[k] = ui_atlas_pixel_pack(0u, (int16_t)(COLUMN_Z_STORAGE_MIN - MC_WORLD_Z_SEA));
+    }
+    for (uint32_t section = COLUMN_SECTIONS; section-- > 0u && left > 0u;) {
+        const uint16_t *const voxels = states + (uint64_t)section * SECTION_VOXELS;
+        for (uint32_t z = SECTION_SIZE; z-- > 0u && left > 0u;) {
+            const uint16_t *const layer = voxels + section_voxel_index(0u, 0u, z);
+            for (uint32_t k = 0u; k < UI_ATLAS_COLUMN_PIXELS; k++) {
+                const uint16_t state = layer[k]; /* section_voxel_index: x fastest, then y */
+                if (state == 0u || found[k] || !tile_counts(state, colour_count)) {
+                    continue;
                 }
+                const uint32_t x = k % UI_ATLAS_COLUMN_SIDE, y = k / UI_ATLAS_COLUMN_SIDE;
+                const int32_t height = (int32_t)(section * SECTION_SIZE + z) + COLUMN_Z_STORAGE_MIN - MC_WORLD_Z_SEA;
+                const uint16_t colour = state < colour_count ? colours[state] : 0u;
+                out[(UI_ATLAS_COLUMN_SIDE - 1u - y) * UI_ATLAS_COLUMN_SIDE + x] =
+                    ui_atlas_pixel_pack(colour, (int16_t)height);
+                found[k] = true;
+                left--;
             }
-            out[(UI_ATLAS_COLUMN_SIDE - 1u - y) * UI_ATLAS_COLUMN_SIDE + x] = pixel;
         }
     }
 }

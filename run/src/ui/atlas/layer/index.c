@@ -377,18 +377,20 @@ static void layer_band_climate(const ui_atlas_draw_input_t *input, const ui_atla
     const layer_ground_t ground = layer_ground_read(input, &g, y, height, &cursor);
     const uint32_t width = input->view.width;
     const uint32_t sample = input->sample == 0u ? 1u : input->sample;
-    /* One row more above, so the pressure layer's lines at the band's top see the row north of them, as in one picture. */
+    /* One row more above, so the pressure layer's lines at the band's top see the row north of them, as in one picture;
+     * none above the picture's first row, which in one picture has nothing north of it either. */
+    const uint32_t above = y > 0u ? 1u : 0u;
     uint32_t *const field = layer_take(&cursor, (uint64_t)width * (height + 1u) * 4u);
     uint32_t *const grid = layer_take(&cursor, 2u * ((uint64_t)width / sample + 3u) * 4u);
     const climate_layer_frame_t frame = {
         .west_x = (float64_t)g.column0 * g.step,
-        .north_y = -((float64_t)g.row0 + (float64_t)y - 1.0f64) * g.step,
+        .north_y = -((float64_t)g.row0 + (float64_t)y - (float64_t)above) * g.step,
         .step = g.step,
         .column_index = g.column0,
-        .row_index = g.row0 + (int64_t)y - 1,
+        .row_index = g.row0 + (int64_t)y - (int64_t)above,
         .borrowed_scratch = grid,
         .width = width,
-        .height = height + 1u,
+        .height = height + above,
         .sample = sample,
         .parts = CLIMATE_LAYER_PART_FIELD,
     };
@@ -403,7 +405,7 @@ static void layer_band_climate(const ui_atlas_draw_input_t *input, const ui_atla
                 continue;
             }
             const float32_t b = layer_shade_at(input, &g, &ground, i, j);
-            uint32_t colour = field[(uint64_t)(j + 1u) * width + i] & 0xFFFFFFu;
+            uint32_t colour = field[(uint64_t)(j + above) * width + i] & 0xFFFFFFu;
             if (row->climate_layer == CLIMATE_LAYER_LATITUDE || colour == CLIMATE_LAYER_GREY) {
                 /* Lines only, drawn in the overlay; or a climate tile not built yet: the ground, until it is. */
                 colour = ui_atlas_rgb_of(ui_atlas_pixel_rgb565(here));
