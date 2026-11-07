@@ -13,6 +13,7 @@
 #include "climate/heat/index.h"
 #include "climate/index.h"
 #include "climate/label/index.h"
+#include "climate/layer/index.h"
 #include "climate/normals/index.h"
 #include "climate/outlook/index.h"
 #include "climate/rain/index.h"
@@ -148,6 +149,24 @@ TEST(derived_constants_follow_their_sources) {
     PIN_F64(CLIMATE_LIFE_GROW_SHARE, 1.0f64 / CLIMATE_LIFE_THIRDS);
     PIN_F64(CLIMATE_LIFE_FADE_SHARE, 1.0f64 / CLIMATE_LIFE_THIRDS);
     PIN_U(CLIMATE_HARMONIC2_COEFFICIENTS, 1u + 2u * 2u); /* CLIMATE_HARMONICS: two waves, each a cos and a sin */
+    /* The float copies of the calendar's whole numbers, which the parts multiply by. */
+    PIN_F64(CALENDAR_HOURS_PER_DAY_F64, (float64_t)CALENDAR_HOURS_PER_DAY);
+    PIN_F32(CALENDAR_HOURS_PER_DAY_F32, (float32_t)CALENDAR_HOURS_PER_DAY);
+    PIN_F64(CALENDAR_DAYS_PER_YEAR_F64, (float64_t)CALENDAR_DAYS_PER_YEAR);
+    PIN_F32(CALENDAR_DAYS_PER_YEAR_F32, (float32_t)CALENDAR_DAYS_PER_YEAR);
+    PIN_F64(CALENDAR_DAYS_PER_WEEK_F64, (float64_t)CALENDAR_DAYS_PER_WEEK);
+    PIN_F32(CALENDAR_DAYS_PER_WEEK_F32, (float32_t)CALENDAR_DAYS_PER_WEEK);
+    PIN_F64(CALENDAR_CENSUS_HOUR_F64, (float64_t)CALENDAR_CENSUS_HOUR);
+    PIN_F32(CALENDAR_CENSUS_HOUR_F32, (float32_t)CALENDAR_CENSUS_HOUR);
+    PIN_F32(CALENDAR_NOON_INTO_DAY_F32, 0.25f32);
+    PIN_F32(CLIMATE_CURRENT_STRENGTH_MAX_F32, (float32_t)CLIMATE_CURRENT_STRENGTH_MAX);
+    PIN_F64(CLIMATE_HARMONIC_HALF_DAYS, (float64_t)CLIMATE_FIT_DAYS / 2.0f64);
+    PIN_U(CLIMATE_WEEK_SPINUP_WEEKS, CLIMATE_WEEK_SPINUP_YEARS * CALENDAR_FULL_WEEKS_MAX);
+    PIN_U(CLIMATE_SNOW_WEEKS, CALENDAR_FULL_WEEKS_MAX);                                   /* 52 weeks of a model year */
+    PIN_F64(CLIMATE_WARNING_STEP_DAYS * (float64_t)(CLIMATE_WARNING_STEPS - 1u), 1.0f64); /* now to one day ahead */
+    /* The front's turn is a unit vector, 30 degrees off the equatorward line. */
+    CHECK(fabsf(CLIMATE_FRONT_TURN_X * CLIMATE_FRONT_TURN_X + CLIMATE_FRONT_TURN_Y * CLIMATE_FRONT_TURN_Y - 1.0f32) <
+          1.0e-6f32);
 }
 
 /* ---- Section 6: normals ------------------------------------------------------------------------------------------------ */
@@ -342,6 +361,18 @@ TEST(every_constant_has_the_value_its_table_gives_systems) {
     PIN_F32_2(CLIMATE_SYSTEM_RAIN_SHARE_BLEND_DEG, 25.0f32, 50.0f32);
     PIN_F32(CLIMATE_SYSTEM_RAIN_SHARE_POLAR, 0.4f32);
     PIN_F32(CLIMATE_SYSTEM_RAIN_WET_MM_DAY, 5.0f32);
+    PIN_F32_2(CLIMATE_SYSTEM_RAIN_SHARE_POLAR_DEG, 60.0f32, 70.0f32);
+    PIN_F32(CLIMATE_SYSTEM_RAIN_SEASON_MARGIN_DEG, 5.0f32);
+    PIN_F32(CLIMATE_DRIFT_POLE_STOP_DEG, 85.0f32);
+    PIN_F32(CLIMATE_DRIFT_EQUATOR_STOP_DEG, 5.0f32);
+    PIN_F32(CLIMATE_HURRICANE_BAND_ARMS, 3.0f32);
+    PIN_F32(CLIMATE_HURRICANE_BAND_WIND, 2.5f32);
+    PIN_F32(CLIMATE_LOW_SHIELD_MEAN, 2.5f32);
+    PIN_F32(CLIMATE_LOW_SHIELD_AHEAD, 0.5f32);
+    PIN_F32(CLIMATE_LOW_SHIELD_WIDTH, 0.6f32);
+    PIN_F32(CLIMATE_FRONT_TURN_X, -0.5f32);
+    PIN_F32(CLIMATE_FRONT_TURN_Y, 0.8660254f32);
+    PIN_F32(CLIMATE_THUNDER_BIG_MARGIN, 1250.0f32);
     /* The longest life and the reach the list looks back over: 7.3's 14 days, and the hurricane's ~35 km. */
     PIN_F32(CLIMATE_HIGH_LIFE_DAYS[1], 14.0f32);
     CHECK(climate_systems_reach(CLIMATE_SYSTEM_HURRICANE) > 35000.0f64);
@@ -376,6 +407,21 @@ TEST(every_constant_has_the_value_its_table_gives_daily_weather_and_week) {
     PIN_F32(CLIMATE_CLOUD_PER_MM_HOUR, 0.25f32);
     PIN_F64(CLIMATE_FOG_MORNING_HOURS, 4.0f64);
     PIN_F32(CLIMATE_DUST_FULL_WIND, 20.0f32);
+    PIN_F64(CLIMATE_RAIN_AMOUNT_BLOCKS, 2000.0f64);
+    PIN_F64(CLIMATE_RAIN_AMOUNT_DAYS, 3.0f64);
+    PIN_F64(CLIMATE_RAIN_HOURS_BLOCKS, 1500.0f64);
+    PIN_F64(CLIMATE_RAIN_HOURS_HOURS, 6.0f64);
+    PIN_F32(CLIMATE_SPELL_CLAMP, 3.0f32);
+    PIN_F32(CLIMATE_SPELL_RAW_SD, 0.2013f32); /* measured by phase 07; run_climate_weather holds them within 3% */
+    PIN_F32(CLIMATE_RAIN_AMOUNT_RAW_SD, 0.2008f32);
+    PIN_F32(CLIMATE_RAIN_HOURS_RAW_SD, 0.2015f32);
+    PIN_F64(CLIMATE_WEATHER_SHARE_BLOCKS, 8192.0f64);
+    PIN_F32(CLIMATE_FOG_VALLEY_BLOCKS, 30.0f32);
+    PIN_F32(CLIMATE_FOG_VALLEY_SOIL_MM, 100.0f32);
+    PIN_F32(CLIMATE_CLOUDY_WEEK_RAIN_MM, 10.0f32);
+    PIN_F32(CLIMATE_CLOUDY_LOW_RADII, 1.5f32);
+    PIN_F32(CLIMATE_ICE_EVENT_CM, 5.0f32);
+    PIN_U(CLIMATE_WEEK_SPINUP_YEARS, 2u);
 }
 
 /* ---- Section 8 and phases 08 to 10 ----------------------------------------------------------------------------------- */
@@ -389,6 +435,8 @@ TEST(every_constant_has_the_value_its_table_gives_outlook_and_later_phases) {
     PIN_F32(CLIMATE_OUTLOOK_CELL_RADIUS, 275.0f32);
     PIN_F32(CLIMATE_OUTLOOK_CELL_HOURS, 2.5f32);
     PIN_F32(CLIMATE_OUTLOOK_DEEP_LOW_SHARE, 0.5f32);
+    PIN_U(CLIMATE_OUTLOOK_FOOTPRINT,
+          CLIMATE_OUTLOOK_FOOTPRINT_MASTER); /* master plan 8's footprint, not the exact one */
     PIN_F32(GAME_COVER_ICE_ON_CM, 5.0f32);
     PIN_F32(GAME_COVER_SNOW_ON_MM, 20.0f32);
     PIN_F64(PLAYER_WIND_SHARE, 0.04f64);
@@ -397,6 +445,32 @@ TEST(every_constant_has_the_value_its_table_gives_outlook_and_later_phases) {
     PIN_U(CLIMATE_WARNING_TICKS, 200u);
     PIN_U(UI_ATLAS_NOW_REDRAW_MS, 500u);
     PIN_F32(UI_ATLAS_SHADE_EXAGGERATION, 1.0f32);
+    PIN_U(CLIMATE_WARNING_STEPS, 5u);
+    PIN_F64(CLIMATE_WARNING_STEP_DAYS, 0.25f64);
+    /* The Atlas's scales (phases 05 and 09, master plan 9.3): what each colour means. */
+    PIN_F32(CLIMATE_LAYER_PRESSURE_LOW_HPA, 990.0f32);
+    PIN_F32(CLIMATE_LAYER_PRESSURE_MID_HPA, 1013.0f32);
+    PIN_F32(CLIMATE_LAYER_PRESSURE_HIGH_HPA, 1030.0f32);
+    PIN_F32(CLIMATE_LAYER_PRESSURE_LINE_HPA, 4.0f32);
+    PIN_F32(CLIMATE_LAYER_WIND_TOP, 15.0f32);
+    PIN_F32(CLIMATE_LAYER_LAND_TOP, 454.0f32);
+    PIN_F32(CLIMATE_LAYER_SNOW_NEAR_BLOCKS, 50.0f32);
+    PIN_F32(CLIMATE_LAYER_SNOW_FAR_BLOCKS, 2000.0f32);
+    static const float32_t TEMPERATURE_C[CLIMATE_LAYER_TEMPERATURE_STOPS] = {-30.0f32, -10.0f32, 0.0f32,
+                                                                             15.0f32,  30.0f32,  45.0f32};
+    static const float32_t RAIN_MM[CLIMATE_LAYER_RAIN_STOPS] = {0.0f32,    250.0f32,  500.0f32,
+                                                                1000.0f32, 2000.0f32, 3000.0f32};
+    static const float32_t RADAR_MM_HOUR[CLIMATE_LAYER_RADAR_STOPS] = {0.1f32,  1.0f32,  4.0f32,
+                                                                       10.0f32, 25.0f32, 50.0f32};
+    for (uint32_t i = 0u; i < CLIMATE_LAYER_TEMPERATURE_STOPS; i++) {
+        pin_f32(t, "CLIMATE_LAYER_TEMPERATURE_C[i]", CLIMATE_LAYER_TEMPERATURE_C[i], TEMPERATURE_C[i], __LINE__);
+    }
+    for (uint32_t i = 0u; i < CLIMATE_LAYER_RAIN_STOPS; i++) {
+        pin_f32(t, "CLIMATE_LAYER_RAIN_MM[i]", CLIMATE_LAYER_RAIN_MM[i], RAIN_MM[i], __LINE__);
+    }
+    for (uint32_t i = 0u; i < CLIMATE_LAYER_RADAR_STOPS; i++) {
+        pin_f32(t, "CLIMATE_LAYER_RADAR_MM_HOUR[i]", CLIMATE_LAYER_RADAR_MM_HOUR[i], RADAR_MM_HOUR[i], __LINE__);
+    }
 }
 
 /* ---- Knot tables ------------------------------------------------------------------------------------------------------- */
