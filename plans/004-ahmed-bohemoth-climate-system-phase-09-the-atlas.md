@@ -937,6 +937,7 @@ Appended as they land:
 - `0e9c9c2c` Set threads_running before the sim and gpu threads start, so the gpu thread's draw reads it after it is written, as tsan found in the Atlas's threaded test.
 - `7e75fd20` Hold bench_world_map_atlas to zoom 5, as at zoom 6 its store forgot a band of land before the zoomed-out tile was made.
 - `48228455` Give bench_world_map_atlas's zoom range as 0 to 5 in the repository structure.
+- `5f0ca70e` Record the second agent's work on plan 004 phase 09 in its phase file: the real-game tests, the map tool over real land, the readout's now values, two fixes and the runs.
 
 ## Issues found
 
