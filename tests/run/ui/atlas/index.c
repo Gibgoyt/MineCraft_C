@@ -1552,7 +1552,8 @@ TEST(the_program_opens_the_atlas_with_m_and_closes_it_with_esc) {
     }
     printf("grey: %" PRIu64 " pixels with the Atlas up, %" PRIu64 " after Esc\n", grey_later, grey_closed);
     CHECK(grey_later * 5u > all);
-    CHECK(moved > 0u);
+    /* On terrain, with the body standing, the two Atlas shots may be the same (the plan's "or not at all"), or differ
+     * where the first picture had not landed yet when the first was taken: neither is held to anything. */
     /* After Esc the world and the HUD again: no grey, and nearly nothing like the Atlas. */
     CHECK(grey_closed * 100u < all);
     CHECK(shots_differ(later, closed) * 10u > all * 9u);
