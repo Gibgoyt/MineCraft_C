@@ -400,6 +400,7 @@ TEST(a_tile_made_before_its_file_was_read_keeps_what_is_newer) {
     CHECK_EQ_U64(from_columns, 3u * 256u);
     CHECK_EQ_U64(from_file, 512u * 512u - 3u * 256u);
     ui_atlas_world_close(&rig->ui);
+    arena_deinit(arena);
     rig_stop(rig);
     temp_dir_remove(&dir);
 }
@@ -448,6 +449,7 @@ TEST(tiles_written_while_playing_are_there_after_a_reopen) {
     CHECK(!ui_atlas_pixel_generated(read[0]));
     CHECK(ui_atlas(&rig->ui)->store.files_refused > 0u);
     ui_atlas_world_close(&rig->ui);
+    arena_deinit(arena);
     rig_stop(rig);
     temp_dir_remove(&dir);
 }
@@ -500,6 +502,7 @@ TEST(mips_follow_their_children_after_a_save) {
     }
     CHECK_EQ_U64(wrong, 0u);
     ui_atlas_world_close(&rig->ui);
+    arena_deinit(arena);
     rig_stop(rig);
     temp_dir_remove(&dir);
 }
@@ -584,6 +587,8 @@ TEST(the_sim_never_waits_long_on_the_lock) {
     CHECK(waited < 2000000u);
 #endif
     ui_atlas_world_close(&rig->ui);
+    arena_deinit(race->read_arena);
+    arena_deinit(race->save_arena);
     rig_stop(rig);
     temp_dir_remove(&dir);
 }
@@ -610,6 +615,7 @@ TEST(with_every_slot_dirty_a_write_is_dropped_counted_and_said_once) {
     ui_atlas_column_write(atlas, 100000, 0, column);
     CHECK_EQ_U64(atlas->store.columns_lost, 40u);
     ui_atlas_world_close(&rig->ui);
+    arena_deinit(arena);
     rig_stop(rig);
     temp_dir_remove(&dir);
 }
@@ -794,6 +800,7 @@ static gold_t *world_start(test_context_t *t, uint32_t workers) {
 }
 
 static void world_stop(gold_t *w) {
+    arena_deinit(w->systems_arena); /* its memory is the test arena's, which the harness clears */
     climate_close(w->climate, w->job);
     climate_deinit(w->climate);
     job_deinit(w->job);
@@ -931,6 +938,7 @@ TEST(golden_pictures_of_every_layer_at_two_zooms) {
         printf("wrote %s: look at each picture (MC_ATLAS_PNG_DIR) before committing it\n", GOLDEN_FILE);
     }
     CHECK_EQ_U64(wrong, 0u);
+    arena_deinit(scratch);
     rig_stop(rig);
     world_stop(w);
 }
@@ -1019,6 +1027,7 @@ TEST(ungenerated_land_is_grey_and_shows_only_system_outlines) {
     printf("hurricane ring over grey: %" PRIu64 " of %" PRIu64 " places drawn\n", drawn, ring);
     CHECK(ring > 50u);
     CHECK(drawn * 10u >= ring * 9u);
+    arena_deinit(scratch);
     rig_stop(rig);
     world_stop(w);
 }
@@ -1062,6 +1071,7 @@ TEST(the_atlas_row_with_shading_off_is_the_climate_layers_own_bytes) {
         checked++;
     }
     CHECK(checked >= 12u);
+    arena_deinit(scratch);
     world_stop(w);
 }
 
@@ -1097,6 +1107,7 @@ TEST(any_split_into_bands_gives_the_same_bytes) {
     }
     job_group_deinit(group);
     job_deinit(one);
+    arena_deinit(scratch);
     rig_stop(rig);
     world_stop(w);
 }
@@ -1133,6 +1144,7 @@ TEST(a_pan_samples_the_same_world_points) {
             printf("  %s: %" PRIu64 " pixels differ after the pan\n", ui_atlas_layers[layer].key, wrong);
         }
     }
+    arena_deinit(scratch);
     rig_stop(rig);
     world_stop(w);
 }
