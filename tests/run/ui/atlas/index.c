@@ -2,7 +2,9 @@
 #include "harness/index.h"
 
 #include "climate/layer/index.h"
+#include "climate/cell/index.h"
 #include "climate/systems/index.h"
+#include "climate/weather/index.h"
 #include "display/headless/png/index.h"
 #include "file/index.h"
 #include "heap/index.h"
@@ -1387,12 +1389,22 @@ TEST(the_reading_is_what_the_climate_functions_say) {
     }
     uint64_t state = 31u;
     char text[UI_ATLAS_READOUT_BYTES];
+    const ui_atlas_world_t world = {.player = {GOLD_X, GOLD_Y},
+                                    .t = GOLD_T,
+                                    .world_ns = 0,
+                                    .census_week = 28u,
+                                    .yaw = 0.0f32,
+                                    .day_of_year = 196u,
+                                    ._pad0 = {0}};
+    const uint32_t now_layer = ui_atlas_layer_find("temperature_now");
+    REQUIRE(now_layer < UI_ATLAS_LAYER_COUNT);
+    arena_t *const weather = scratch_arena(t, 8ull << 20);
     for (uint32_t n = 0u; n < 20u; n++) {
         const int64_t x = (int64_t)GOLD_X + (int64_t)(rng_next(&state) % 3000u) - 1500;
         const int64_t y = (int64_t)GOLD_Y + (int64_t)(rng_next(&state) % 3000u) - 1500;
         ui_atlas_column_write(atlas, (int32_t)floor_div(x, 16), (int32_t)floor_div(y, 16), column);
         const uint16_t day = (uint16_t)(rng_next(&state) % 365u);
-        ui_atlas_readout(atlas, x, y, 2u, day, text, sizeof(text));
+        ui_atlas_readout(atlas, x, y, 2u, day, &world, text, sizeof(text));
         climate_normals_at_t normals;
         climate_air_t air;
         REQUIRE(climate_normals_at(w->climate, (float64_t)x + 0.5f64, (float64_t)y + 0.5f64, nanf(""), (float32_t)day,
@@ -1411,8 +1423,28 @@ TEST(the_reading_is_what_the_climate_functions_say) {
         CHECK_CONTAINS(text, want);
         snprintf(want, sizeof(want), "  %.0f hPa  current ", (libc_double_t)air.pressure_hpa);
         CHECK_CONTAINS(text, want);
+        /* On a now layer: climate_weather_at at the explored ground, at the world's t, with the last census's week. */
+        ui_atlas_readout(atlas, x, y, now_layer, 196u, &world, text, sizeof(text));
+        const climate_week_store_t *const store = climate_week_store(w->climate);
+        const climate_week_t *const last =
+            store != nullptr ? climate_week_store_cell(store, (int32_t)floor_div(x, CLIMATE_CELL_BLOCKS),
+                                                       (int32_t)floor_div(y, CLIMATE_CELL_BLOCKS))
+                             : nullptr;
+        climate_now_t now;
+        arena_reset(weather);
+        REQUIRE(climate_weather_at(w->climate, (float64_t)x + 0.5f64, (float64_t)y + 0.5f64, 72.0f64, GOLD_T, last,
+                                   weather, &now));
+        snprintf(want, sizeof(want),
+                 "%.1f \xC2\xB0"
+                 "C  %.1f mm an hour  wind %.1f from ",
+                 (libc_double_t)now.temperature_c, (libc_double_t)now.rain_mm_h,
+                 (libc_double_t)sqrtf(now.wind[0] * now.wind[0] + now.wind[1] * now.wind[1]));
+        CHECK_CONTAINS(text, want);
+        snprintf(want, sizeof(want), "  %.0f hPa  current ", (libc_double_t)now.pressure_hpa);
+        CHECK_CONTAINS(text, want);
     }
-    ui_atlas_readout(atlas, 900000, 900000, 0u, 10u, text, sizeof(text));
+    arena_deinit(weather);
+    ui_atlas_readout(atlas, 900000, 900000, 0u, 10u, &world, text, sizeof(text));
     CHECK_CONTAINS(text, "not explored");
     ui_atlas_world_close(&rig->ui);
     rig_stop(rig);

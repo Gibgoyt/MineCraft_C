@@ -18,7 +18,9 @@ tile). The view is remembered until the world closes.
 - The **sim** writes a finished column's 256 pixels (`ui_atlas_column_write`, about 2 µs under the lock) and submits the
   saving job every 30 s of world time (`ui_atlas_save_step`).
 - The **column job's worker** works out the column's top (`ui_atlas_column_top`, in `tile/`).
-- **Main** owns the view, the input and the frame; it never writes tiles.
+- **Main** owns the view, the input and the frame; it never writes tiles. The readout is worked out on main when the
+  pointer's block, the layer or the day changes: normals for the day, or on a now layer `climate_weather_at` (about
+  0.2 ms) every half second, borrowing the band arena, which only main uses.
 - The **drawing job** builds the weather systems' day list for a now layer, makes stale mips the zoom reads, then spawns
   16 band jobs; the last band to finish runs the overlay and stores `draw_done` with release. Main sees it with acquire and
   swaps the pictures. The **saving job** writes dirty tiles with `file_write_atomic`, then makes and writes every stale mip.

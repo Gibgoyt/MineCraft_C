@@ -844,8 +844,8 @@ static const char *atlas_compass_from(float32_t u, float32_t v) {
     return POINTS[sector];
 }
 
-void ui_atlas_readout(const ui_atlas_t *atlas, int64_t x, int64_t y, uint32_t layer, uint16_t day, char *out,
-                      uint64_t bytes) {
+void ui_atlas_readout(ui_atlas_t *atlas, int64_t x, int64_t y, uint32_t layer, uint16_t day,
+                      const ui_atlas_world_t *world, char *out, uint64_t bytes) {
     const float64_t lat = climate_latitude_deg((float64_t)y + 0.5f64);
     char where[96];
     (void)snprintf(where, sizeof(where), "%.1f\xC2\xB0%s  x %" PRId64 " y %" PRId64, (libc_double_t)fabs(lat),
@@ -865,7 +865,6 @@ void ui_atlas_readout(const ui_atlas_t *atlas, int64_t x, int64_t y, uint32_t la
         (void)snprintf(out, bytes, "%s  not explored", where);
         return;
     }
-    (void)layer; /* every layer reads the same normals: the day says which */
     const climate_t *const climate = atlas->borrowed_climate;
     climate_normals_at_t normals;
     climate_air_t air;
@@ -879,11 +878,36 @@ void ui_atlas_readout(const ui_atlas_t *atlas, int64_t x, int64_t y, uint32_t la
                        (int32_t)ui_atlas_pixel_z(pixel));
         return;
     }
-    const float32_t speed = sqrtf(air.wind[0] * air.wind[0] + air.wind[1] * air.wind[1]);
     const char *const current = cell.current == CLIMATE_CURRENT_WARM   ? "warm"
                                 : cell.current == CLIMATE_CURRENT_COLD ? "cold"
                                                                        : "neutral";
     const uint32_t climate_class = normals.climate_class < CLIMATE_CLASS_COUNT ? normals.climate_class : 0u;
+    if (ui_atlas_layers[layer].time == UI_ATLAS_TIME_NOW) {
+        /* Now values: the weather at the explored ground (sea level over the sea) at the world's moment, with the last
+         * census's week. arena_band is main's, and free outside an inline draw. */
+        const int64_t cell_x = (int64_t)floor((float64_t)x / (float64_t)CLIMATE_CELL_BLOCKS);
+        const int64_t cell_y = (int64_t)floor((float64_t)y / (float64_t)CLIMATE_CELL_BLOCKS);
+        const climate_week_store_t *const week = climate_week_store(climate);
+        const climate_week_t *const last =
+            week != nullptr ? climate_week_store_cell(week, (int32_t)cell_x, (int32_t)cell_y) : nullptr;
+        const int16_t z = ui_atlas_pixel_z(pixel);
+        climate_now_t now;
+        arena_reset(&atlas->arena_band);
+        if (!climate_weather_at(climate, bx, by, z > 0 ? (float64_t)z : 0.0f64, world->t, last, &atlas->arena_band,
+                                &now)) {
+            (void)snprintf(out, bytes, "%s  z %" PRId32 "\nthe weather here is not worked out yet", where, (int32_t)z);
+            return;
+        }
+        (void)snprintf(out, bytes,
+                       "%s  z %" PRId32 "\n%.1f \xC2\xB0"
+                       "C  %.1f mm an hour  wind %.1f from %s  %.0f hPa  current %s  %s",
+                       where, (int32_t)z, (libc_double_t)now.temperature_c, (libc_double_t)now.rain_mm_h,
+                       (libc_double_t)sqrtf(now.wind[0] * now.wind[0] + now.wind[1] * now.wind[1]),
+                       atlas_compass_from(now.wind[0], now.wind[1]), (libc_double_t)now.pressure_hpa, current,
+                       ATLAS_CLASS_NAMES[climate_class]);
+        return;
+    }
+    const float32_t speed = sqrtf(air.wind[0] * air.wind[0] + air.wind[1] * air.wind[1]);
     (void)snprintf(out, bytes,
                    "%s  z %" PRId32 "\n%.1f \xC2\xB0"
                    "C  %.0f mm a year  wind %.1f from %s  %.0f hPa  current %s  %s",
@@ -1005,20 +1029,25 @@ void ui_atlas_frame_draw(ui_atlas_t *atlas, ui_widget_t *widget, ui_canvas_t *ca
             view->day = (uint16_t)day;
         }
     }
-    /* Readout, worked out again only when the pointer's block, the layer or the day changes. */
+    /* Readout, worked out again only when the pointer's block, the layer or the day changes, and on a now layer as often
+     * as its picture. */
     view->width = width;
     view->height = height;
     float64_t block[2];
     atlas_block_at(view, widget->input.pointer_x, widget->input.pointer_y, block);
     const int32_t bx = (int32_t)floor(block[0]), by = (int32_t)floor(block[1]);
     const uint16_t day = row->time == UI_ATLAS_TIME_NORMALS ? view->day : world->day_of_year;
+    /* On a now layer the key is the half second, as the picture's; a layer has only one of the two. */
+    const uint16_t key = row->time == UI_ATLAS_TIME_NOW
+                             ? (uint16_t)(world->world_ns / ((int64_t)UI_ATLAS_NOW_REDRAW_MS * (int64_t)ATLAS_MS))
+                             : day;
     if (atlas->readout_valid == 0u || bx != atlas->readout_block[0] || by != atlas->readout_block[1] ||
-        atlas->readout_view_layer != view->layer || atlas->readout_view_day != day) {
-        ui_atlas_readout(atlas, bx, by, view->layer, day, atlas->readout, sizeof(atlas->readout));
+        atlas->readout_view_layer != view->layer || atlas->readout_view_day != key) {
+        ui_atlas_readout(atlas, bx, by, view->layer, day, world, atlas->readout, sizeof(atlas->readout));
         atlas->readout_block[0] = bx;
         atlas->readout_block[1] = by;
         atlas->readout_view_layer = view->layer;
-        atlas->readout_view_day = day;
+        atlas->readout_view_day = key;
         atlas->readout_valid = 1u;
     }
     const int32_t readout_bottom = (int32_t)height - (row->time == UI_ATLAS_TIME_NORMALS ? 20 : 4) * (int32_t)scale;

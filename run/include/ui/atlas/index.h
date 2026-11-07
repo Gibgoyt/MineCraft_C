@@ -211,9 +211,11 @@ void ui_atlas_frame_draw(ui_atlas_t *atlas, ui_widget_t *widget, ui_canvas_t *ca
 /* Waits for a drawing job, for tests and before anything the job reads goes. */
 void ui_atlas_draw_wait(ui_atlas_t *atlas);
 
-/* The readout of the block at (x, y), as the frame shows it, for the layer's time mode (day for normals). Into out. */
-void ui_atlas_readout(const ui_atlas_t *atlas, int64_t x, int64_t y, uint32_t layer, uint16_t day, char *out,
-                      uint64_t bytes);
+/* The readout of the block at (x, y), as the frame shows it, for the layer's time mode: normals for day, or on a now layer
+ * climate_weather_at at the explored ground at world's t, with the last census's week. Into out. Main's: a now layer's
+ * reading borrows arena_band. */
+void ui_atlas_readout(ui_atlas_t *atlas, int64_t x, int64_t y, uint32_t layer, uint16_t day,
+                      const ui_atlas_world_t *world, char *out, uint64_t bytes);
 
 /* One picture: the bands, then the finish. With system, from a thread that is not a worker: the bands as jobs in group,
  * each borrowing from its worker's job arena, waited for, then the finish here. Without, the bands one after another on

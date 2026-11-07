@@ -36,7 +36,7 @@ What it holds to:
   draws 20 in 10 s, give or take one; columns streaming at 100 a second redraw at most 20 times; the keys of the table (M,
   Esc, the wheel about the pointer, a drag at 4 blocks a pixel, 1 to 9 with cycling, [ and ] round with Shift, P); M does
   nothing with a screen up and the Atlas keeps E; the readout is `climate_normals_at`'s and `climate_air_at`'s numbers as
-  formatted, and `not explored` off the explored land; 200 frames with keys, zooms, pans and 1000 columns take nothing from
+  formatted, and on a now layer `climate_weather_at`'s at the explored ground, and `not explored` off the explored land; 200 frames with keys, zooms, pans and 1000 columns take nothing from
   the heap.
 **Golden pictures:** 320 by 240, seed 2198175988018515243 round (1290, -2410), day 196 at t = 196.4, the right third
 ungenerated, the ground from the terrain's height estimate coloured by a fixed palette, the weather systems a fixed list:
