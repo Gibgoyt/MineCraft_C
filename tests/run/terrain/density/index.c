@@ -53,7 +53,8 @@ static const uint64_t DENSITY_SEEDS[DENSITY_WIDE_SEEDS] = {
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers, and stage 4 raised the land and made its ranges. */
 /* Plan 003 phase 2 added four blocks. The land is the same, as its issue 2 shows: the numbers of the blocks after them in the alphabet moved. */
 /* Plan 003 phase 3 added seven blocks. The land is the same, as its issue 3 shows: the numbers of the blocks after them in the alphabet moved. */
-static const uint64_t DENSITY_DIGEST_PIN = 0xA774321429A8E24Bull;
+/* Plan 004 phase 8 added snow_layer. The land is the same, as its issue 19 shows: the numbers of the blocks after it in the alphabet moved. */
+static const uint64_t DENSITY_DIGEST_PIN = 0x7FDAB60241EF2D7Aull;
 
 static uint64_t density_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
