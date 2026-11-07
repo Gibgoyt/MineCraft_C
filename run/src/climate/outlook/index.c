@@ -49,6 +49,60 @@ float64_t climate_outlook_disk_chance(float64_t d, float64_t sigma, float64_t ra
     return p < 0.0f64 ? 0.0f64 : (p > 1.0f64 ? 1.0f64 : p);
 }
 
+/* The exact footprint's quadrature with everything that does not depend on the distance worked out once: the same operations
+ * in the same order as climate_outlook_disk_chance, so the same bits, but one exp a step where that takes exp, erf, cos and
+ * sin. A call that asks many distances for one sigma and radius, as the unborn sums do, prepares it once. */
+typedef struct outlook_disk_t {
+    float64_t lengthwise[CLIMATE_OUTLOOK_DISK_STEPS + 1u]; /* 0: R sin(phi) */
+    float64_t across[CLIMATE_OUTLOOK_DISK_STEPS + 1u];     /* 4104: R cos(phi) */
+    float64_t inside[CLIMATE_OUTLOOK_DISK_STEPS + 1u];     /* 8208: erf(R cos(phi) / (sigma sqrt 2)) */
+    float64_t sigma;                                       /* 12312 */
+    float64_t radius;                                      /* 12320 */
+    float64_t norm;                                        /* 12328: sigma sqrt(2 pi) */
+} outlook_disk_t;
+static_assert(sizeof(outlook_disk_t) == 12336);
+
+static void outlook_disk_prepare(float64_t sigma, float64_t radius, outlook_disk_t *out) {
+    out->sigma = sigma;
+    out->radius = radius;
+    out->norm = sigma * sqrt(2.0f64 * OUTLOOK_PI);
+    if (!(radius > 0.0f64) || !(sigma > 1.0e-9f64)) {
+        return; /* the two plain cases need no table */
+    }
+    const uint32_t steps = CLIMATE_OUTLOOK_DISK_STEPS;
+    const float64_t h = OUTLOOK_PI / (float64_t)steps;
+    for (uint32_t i = 0u; i <= steps; i++) {
+        const float64_t phi = -0.5f64 * OUTLOOK_PI + h * (float64_t)i;
+        out->across[i] = radius * cos(phi);
+        out->lengthwise[i] = radius * sin(phi);
+        out->inside[i] = erf(out->across[i] / (sigma * OUTLOOK_SQRT2));
+    }
+}
+
+static float64_t outlook_disk_chance(const outlook_disk_t *disk, float64_t d) {
+    const float64_t sigma = disk->sigma, radius = disk->radius;
+    if (!(radius > 0.0f64)) {
+        return 0.0f64;
+    }
+    if (!(sigma > 1.0e-9f64)) {
+        return fabs(d) < radius ? 1.0f64 : 0.0f64;
+    }
+    /* The centre at (d, 0): over x = R sin(phi) across the disk, the x density times the chance |y| < R cos(phi). The
+     * substitution leaves no square root at the ends, so Simpson's rule on a fixed grid is accurate and the same everywhere. */
+    const uint32_t steps = CLIMATE_OUTLOOK_DISK_STEPS;
+    const float64_t h = OUTLOOK_PI / (float64_t)steps;
+    float64_t sum = 0.0f64;
+    for (uint32_t i = 0u; i <= steps; i++) {
+        const float64_t z = (disk->lengthwise[i] - d) / sigma;
+        const float64_t density = exp(-0.5f64 * z * z) / disk->norm;
+        const float64_t f = density * disk->inside[i] * disk->across[i];
+        const float64_t weight = (i == 0u || i == steps) ? 1.0f64 : ((i % 2u) == 1u ? 4.0f64 : 2.0f64);
+        sum += weight * f;
+    }
+    const float64_t p = sum * h / 3.0f64;
+    return p < 0.0f64 ? 0.0f64 : (p > 1.0f64 ? 1.0f64 : p);
+}
+
 float64_t climate_outlook_footprint(float64_t d, float64_t sigma, float64_t radius, uint8_t footprint) {
     if (footprint == CLIMATE_OUTLOOK_FOOTPRINT_EXACT) {
         return climate_outlook_disk_chance(d, sigma, radius);
@@ -143,11 +197,18 @@ void climate_outlook_unborn(const climate_t *climate, arena_t *scratch, climate_
     const int64_t through = (int64_t)ceil(census_t + last) - census_day;
     const int64_t span = through > (int64_t)CLIMATE_OUTLOOK_DAYS ? through : (int64_t)CLIMATE_OUTLOOK_DAYS;
     climate_system_t *const typical = arena_alloc(scratch, sizeof(climate_system_t), alignof(climate_system_t));
+    /* Every typical system of the kind has the same radius, and the spread is the square's: one table for the whole sum. */
+    outlook_typical(kind, 0.0f64, 0.0f64, 0.0f64, typical);
+    outlook_disk_t *const disk = arena_alloc(scratch, sizeof(outlook_disk_t), alignof(outlook_disk_t));
+    outlook_disk_prepare(spread, (float64_t)typical->radius, disk);
     for (int32_t sy = y0; sy <= y1; sy++) {
         for (int32_t sx = x0; sx <= x1; sx++) {
             const float64_t cx = ((float64_t)sx + 0.5f64) * q, cy = ((float64_t)sy + 0.5f64) * q;
             for (int64_t d = census_day; d < census_day + span; d++) {
                 const float64_t born = (float64_t)d + 0.5f64;
+                if (born >= census_t + last) {
+                    break; /* born after every instant asked: it adds nothing, nor does any later day */
+                }
                 const float32_t rate = kind == CLIMATE_SYSTEM_HURRICANE
                                            ? climate_systems_hurricane_rate(climate, scratch, cx, cy, born)
                                            : climate_systems_low_rate(climate, cy, born);
@@ -167,8 +228,7 @@ void climate_outlook_unborn(const climate_t *climate, arena_t *scratch, climate_
                         continue;
                     }
                     const float64_t dx = state.x - x, dy = state.y - y;
-                    const float64_t cover =
-                        climate_outlook_disk_chance(sqrt(dx * dx + dy * dy), spread, (float64_t)typical->radius);
+                    const float64_t cover = outlook_disk_chance(disk, sqrt(dx * dx + dy * dy));
                     out[i] += (float64_t)rate * cover * outlook_life_share(kind, instant - born);
                 }
             }

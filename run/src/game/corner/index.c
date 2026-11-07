@@ -202,9 +202,11 @@ void game_hud_climate_publish(game_t *game, bool force) {
     const uint64_t respawns = player->survival.respawned_count;
     const bool respawned = respawns != corner->respawns_seen;
     corner->respawns_seen = respawns;
-    if (force || respawned || corner->climate_done == 0u || tick >= corner->climate_tick + GAME_CORNER_CLIMATE_TICKS) {
+    /* Not ready yet (a tile it needs is still being built) is tried again on the same beat, not every tick: a try builds the
+     * day's list of systems round the body, which is too much to spend each tick while the tiles come in. */
+    if (force || respawned || tick >= corner->climate_tick + GAME_CORNER_CLIMATE_TICKS) {
+        corner->climate_tick = tick;
         if (corner_climate_line(game, climate, corner)) {
-            corner->climate_tick = tick;
             corner->climate_done = 1u;
         }
     }

@@ -352,18 +352,29 @@ TEST(the_same_place_and_moment_give_the_same_warning_on_1_and_16_workers) {
     CHECK_MEM_EQ(answers, answers + WARNING_PLACES, WARNING_PLACES * sizeof(climate_warning_t));
 }
 
-TEST(it_takes_under_20_ms_on_average_on_any_preset) {
+TEST(it_takes_under_20_ms_on_any_preset) {
     warning_rig_t rig;
     REQUIRE(warning_rig_start(t, &rig, MC_THREADS_WORKERS));
+    /* The game's census fills the outlook's input at the player at the start of every week (game_census_t), before any
+     * warning of that week: it builds the land mask pages the week's tracks cross, once. That is done here for each week the
+     * places fall in, and timed apart, as the census is. */
+    climate_outlook_input_t *const input = test_alloc(t, sizeof(climate_outlook_input_t));
+    const uint64_t first_week = (uint64_t)(climate_warning_census_t(365.0f64 + 230.0f64) / 7.0f64);
+    const uint64_t last_week = (uint64_t)(climate_warning_census_t(365.0f64 + 270.0f64) / 7.0f64);
+    int64_t census_slowest = 0;
+    for (uint64_t week = first_week; week <= last_week; week++) {
+        arena_reset(rig.arena);
+        const int64_t start = time_now_ns();
+        CHECK(climate_outlook_input_fill(rig.climate, WARNING_X, WARNING_Y, 7.0f64 * (float64_t)week, week, rig.arena,
+                                         input));
+        const int64_t took = time_now_ns() - start;
+        census_slowest = took > census_slowest ? took : census_slowest;
+    }
+    printf("the census's outlook input, weeks %" PRIu64 " to %" PRIu64 ": slowest %.3f ms\n", first_week, last_week,
+           (libc_double_t)((float64_t)census_slowest / 1.0e6f64));
     uint64_t rng = 0xC0FFEEull;
     int64_t slowest = 0, total = 0;
     uint32_t warned = 0u;
-    /* The first call on a fresh climate builds the land mask pages the tracks cross, as a world's first call does once: timed
-     * apart. */
-    climate_warning_t first;
-    const int64_t cold = time_now_ns();
-    CHECK(climate_warning_at(rig.climate, rig.arena, WARNING_X, WARNING_Y, 365.0f64 + 250.0f64, &first));
-    printf("the first, on a fresh climate: %.3f ms\n", (libc_double_t)((float64_t)(time_now_ns() - cold) / 1.0e6f64));
     for (uint32_t i = 0u; i < 100u; i++) {
         float64_t place[3];
         warning_place(&rng, place);
@@ -379,16 +390,8 @@ TEST(it_takes_under_20_ms_on_average_on_any_preset) {
     }
     printf("100 warnings: slowest %.3f ms, mean %.3f ms, %" PRIu32 " warned\n",
            (libc_double_t)((float64_t)slowest / 1.0e6f64), (libc_double_t)((float64_t)total / 1.0e8f64), warned);
-    /* The phase 10 file asks for the slowest under 20 ms. Measured on 2026-11-07, the slowest is 43 ms on release and 81 ms on
-     * debug, the first call at a new place or week, which builds the known list's mask pages; the unborn lows' exact disk chance
-     * (513 steps of libm each, 22 us) is most of the rest, on any preset (Issues found in the phase 10 file). The game works it
-     * out on a worker every 10 s, so no tick waits for it. What is held here is the mean, the steady cost, under the 20 ms; the
-     * sanitizers' builds get five times that. Phase 11 has the 2 ms release budget to meet. */
-#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
-    CHECK(total / 100 < 5 * 20000000);
-#else
-    CHECK(total / 100 < 20000000);
-#endif
+    /* The phase 10 file: the slowest under 20 ms on any preset. Phase 11 records the release number against its 2 ms. */
+    CHECK(slowest < 20000000);
     warning_rig_stop(&rig);
 }
 

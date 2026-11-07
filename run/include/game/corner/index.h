@@ -61,7 +61,7 @@ typedef struct game_corner_t {
     /* 16: climate_warning_kind_t in bits 56-63; for a named one, GAME_CORNER_WARNING_HURRICANE in bits 32-55 and the name seed in
      * bits 0-31 */
     _Atomic uint64_t hud_warning;
-    uint64_t climate_tick;  /* 24: the sim's: the tick the climate line was last worked out on */
+    uint64_t climate_tick;  /* 24: the sim's: the tick the climate line was last tried on */
     uint64_t warning_tick;  /* 32: the sim's: the tick the warning was last worked out on */
     uint64_t respawns_seen; /* 40: the sim's: the body's respawns when last looked */
     uint8_t climate_done;   /* 48: the sim's: the climate line has been worked out at least once */
