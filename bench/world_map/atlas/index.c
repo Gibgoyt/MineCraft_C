@@ -30,9 +30,11 @@ enum : uint32_t {
     WMA_PIXELS = WMA_SIDE * WMA_SIDE,
     WMA_LAYERS = (uint32_t)(COLUMN_Z_STORAGE_END - COLUMN_Z_STORAGE_MIN),
     WMA_COLUMN_VOXELS = (uint32_t)COLUMN_SECTIONS * SECTION_VOXELS,
-    WMA_ROWS_MOST = 512u,    /* rows of columns made: 8192 blocks */
-    WMA_LEVEL0_TILES = 128u, /* of UI_ATLAS_SLOTS, so that nothing made is forgotten before it is drawn */
-    WMA_DAY = 196u,          /* the day normals layers are drawn on, as bench_climate's */
+    WMA_ROWS_MOST = 512u, /* rows of columns made: 8192 blocks */
+    /* Level-0 tiles made, of UI_ATLAS_SLOTS: with their mips (about a third more) they must all stay, as a store with no
+     * directory forgets the least recently used. At 100 (zoom 6) a band of a level-3 tile was lost before it was made. */
+    WMA_LEVEL0_TILES = 64u,
+    WMA_DAY = 196u, /* the day normals layers are drawn on, as bench_climate's */
     WMA_CENSUS_WEEK = 28u,
 };
 static_assert(MC_THREADS_WORKERS >= WMA_WORKERS);
@@ -311,10 +313,11 @@ int32_t main(int32_t argc, char **argv) {
     const float64_t step = ui_atlas_blocks_per_pixel(args.zoom);
     const int32_t half_columns = (int32_t)ceil(step * (float64_t)WMA_SIDE / 2.0f64 / (float64_t)COLUMN_SIZE) + 1;
     const uint32_t across = (uint32_t)(2 * half_columns);
-    const uint32_t tiles_across = across / 32u + 2u;
+    /* The level-0 tiles the columns from -half_columns to half_columns - 1 touch: 32 columns a tile. */
+    const uint32_t tiles_across = (uint32_t)((half_columns + 31) / 32 * 2);
     if (across > WMA_ROWS_MOST || tiles_across * tiles_across > WMA_LEVEL0_TILES) {
         fprintf(stderr,
-                "bench_world_map_atlas: zoom %d would need %u by %u columns, more than the store keeps; 6 is "
+                "bench_world_map_atlas: zoom %d would need %u by %u columns, more than the store keeps; 5 is "
                 "the most\n",
                 args.zoom, across, across);
         return 2;

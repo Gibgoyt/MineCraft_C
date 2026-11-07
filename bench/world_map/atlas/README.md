@@ -12,9 +12,10 @@ disk but the pictures), a `terrain_t`, a `climate_t`, a job system of 16 workers
 **Lifetime:** Process.
 **Threads:** main, and 16 job workers.
 **Public functions:** `main`. Run `tools/test-or-build.sh timeout 600 build/release/bin/bench_world_map_atlas <directory>
-[seed] [--layer <key|all>] [--zoom <0 to 6>] [--flat]`. The default seed is `TERRAIN_SEED_DEFAULT`, the default layer
-`all`, the default zoom 4 (4 blocks a pixel, 2048 blocks a side). A seed is decimal, or hex with `0x`. A zoom past 6 would
-need more level-0 tiles than the store keeps, and is refused. Exit status 0; 1 if `--flat` found a climate field that is
+[seed] [--layer <key|all>] [--zoom <0 to 5>] [--flat]`. The default seed is `TERRAIN_SEED_DEFAULT`, the default layer
+`all`, the default zoom 4 (4 blocks a pixel, 2048 blocks a side). A seed is decimal, or hex with `0x`. A zoom past 5 would
+need more level-0 tiles than the store keeps with their mips (a store with no directory forgets the least recently
+used), and is refused. Exit status 0; 1 if `--flat` found a climate field that is
 not `climate_layer_draw`'s bytes; 2 if it could not start or a picture could not be written.
 **May be called by:** people.
 **Depends on:** `terrain`, `climate`, `ui` and `ui/atlas`, `display/headless/png`, `job`, `thread`, `heap`, `time`,
@@ -27,5 +28,5 @@ layers at t = 196.4 with census week 28, as `bench_climate`'s. Each line it prin
 pixels are ungenerated, which is 0: everything shown was made.
 
 **`--flat`** draws with hill shading off and the climate sampled at every pixel. At a whole number of blocks a pixel
-(zoom 0, 2, 4 or 6) each phase 03 to 05 climate field is then held to `climate_layer_draw`'s bytes at the same place, and
+(zoom 0, 2 or 4) each phase 03 to 05 climate field is then held to `climate_layer_draw`'s bytes at the same place, and
 the last line says how many were the same.
