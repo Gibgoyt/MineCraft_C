@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 8: Weather in the world
 
-**Status:** in progress: built and agent-verified on 2026-11-06 (Verification passes; the bench before and after is recorded, and rain is at the 0.5 ms budget while snow and thunder are over it, Issues found 17). Left: Ahmed's gate, his call on the cost, and step 1's and step 15's boxes, which wait on phases 06 and 07 and on plan 003 phase 1 being called done by Ahmed   (updated 2026-11-06)
+**Status:** in progress: built and agent-verified on 2026-11-06 (Verification passes; the bench before and after is recorded, and rain is at the 0.5 ms budget while snow and thunder are over it, Issues found 17). Left: Ahmed's gate, his call on the cost, and step 1's and step 15's boxes, which wait on phases 06 and 07 and on plan 003 phase 1 being called done by Ahmed   (updated 2026-11-07)
 
 **Read first:** `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` (the vision), then sections 6.7, 7 and 10 (phase 08) of `plans/004-ahmed-bohemoth-climate-system.md` (the master plan), then `plans/004-ahmed-bohemoth-climate-system-phase-07-daily-weather-weekly-state-census-and-outlook.md`, whose `climate_weather_at`, `climate_now_t` and week store this phase reads. The master plan is the source of truth for every number and formula. Where this file and the master plan disagree, the master plan wins, unless this file's **Issues found** says why not.
 
@@ -670,6 +670,7 @@ Appended as they land:
 - `f6315832` Keep the weather effect in the settings file, with the screen's seventeen boxes as they were.
 - `7f2b0217` Pin the terrain digests again for snow_layer, which moved the numbers of the blocks after it and not the land.
 - `73842bdb` Record plan 004 phase 08 in its phase file: the todos, the commits, the verification, the cost and the issues found.
+- `709b40fc` List the phase file commit of plan 004 phase 08 in its phase file.
 
 ## Issues found
 
@@ -724,3 +725,4 @@ Appended as they land:
 
 **20. Every effect bit must have a setting, and the Effects page has no room for an eighteenth box.** Found by the whole suite: `run_settings` holds that the settings' effects cover `SHADE_FEATURES_EVERY`, which now has `SHADE_FEATURE_WEATHER`. The page is two columns of eight and one on Back's row, at 320 by 240. Done: `effect_weather` is an eighteenth effect in the settings file (default on, round trips, and the session's `features_off` follows it), and the page draws the first `SETTINGS_EFFECT_ON_SCREEN` (17) boxes as before, so its pictures and click points are unchanged. A box on screen is for whoever next lays out that page (phase 10 moves its HUD boxes to a page of their own); `--no-weather` turns it off for a run.
 
+**21. Re-checked on 2026-11-07 by a second agent, on the branch merged with main (a fast-forward; main had nothing newer).** All through `tools/test-or-build.sh`. Debug configure and build: clean. `render_feature_weather`, `render_feature_post`, `run_player_movement`, `run_game_cover`, `run_game_weather`, `run_render_frame`, `run_settings`, `run_settings_session`, `standards_lint`, `clang_format` and the rest matching that filter: 13 of 13 pass. Release build (`-O3 -flto`, the 16 KiB frame check): clean, main's frame `sub $0x4000`. Phases 06 and 07 and plan 003 phase 1 are still "in progress" with only Ahmed's checks left, so steps 1 and 15 stay open. Snow's and thunder's cost (Issues found 17) is left for Ahmed's call, as R1 says. `pgrep -af "$PWD/build"` printed nothing afterwards.
