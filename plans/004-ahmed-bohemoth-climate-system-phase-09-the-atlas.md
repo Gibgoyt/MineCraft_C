@@ -927,6 +927,7 @@ Appended as they land:
 - `b2ff4d1c` Keep the font test's bit sum in eight bits for the sanitize build, and widen the Atlas lock test's bound under the sanitizers, which slow every tile copy.
 - `1ef70f36` Give back every arena the Atlas tests lay over the test arena, so the sanitize build's poisoning does not outlive the test.
 - `5dd45898` Do not hold the Atlas program test's two open screenshots to differing, as the first picture may land before either is taken.
+- `f94c15ba` Record plan 004 phase 09 in its phase file: the todos done, the commits, the verification runs, the bench and the issues found.
 
 ## Issues found
 
