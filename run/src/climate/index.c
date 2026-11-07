@@ -622,11 +622,6 @@ void climate_test_hooks_set(climate_t *climate, const climate_test_hooks_t *hook
     climate->borrowed_state->hooks = *hooks;
 }
 
-enum : uint32_t {
-    CLIMATE_WETTEST_SAMPLES = 73u, /* days 0, 5, ..., 360: the wettest day of the year, to within 5 days */
-    CLIMATE_WETTEST_STEP_DAYS = 5u,
-};
-
 /* The snow balance height blended over the cells that are not sea. A sea cell holds CLIMATE_SNOW_BALANCE_NONE as "no
  * height", not as a height, so blending it in would lift a coast's snow line by up to 4900 blocks half a cell from the
  * shore (the phase 05 file, Issues found 12). Each corner's bilinear weight, renormalised over the land and lake corners;
@@ -693,11 +688,7 @@ bool climate_normals_days_at(const climate_t *climate, float64_t x, float64_t y,
     base.t_mean_c = climate_heat_base(blend.t_mean, at_z, land);
     const float32_t *const rain = blend.rain_mm_week;
     base.rain_mm_year = fmaxf(0.0f32, rain[0]) * CLIMATE_DAYS_A_YEAR / CLIMATE_DAYS_A_WEEK;
-    float32_t wettest = 0.0f32;
-    for (uint32_t k = 0u; k < CLIMATE_WETTEST_SAMPLES; k++) {
-        wettest = fmaxf(wettest, climate_harmonic_at2(rain, (float32_t)(k * CLIMATE_WETTEST_STEP_DAYS)));
-    }
-    base.rain_max_mm_day = wettest / CLIMATE_DAYS_A_WEEK;
+    base.rain_max_mm_day = climate_harmonic_max2(rain) / CLIMATE_DAYS_A_WEEK; /* the wettest day, to within 5 days */
     climate_season_months_t months;
     climate_season_months(&blend, at_z, land, &months);
     base.t_max_month_c = months.t_max_month_c;

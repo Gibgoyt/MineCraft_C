@@ -28,4 +28,11 @@ void climate_harmonic_fit2(const float32_t values[CLIMATE_FIT_DAYS], float32_t o
 /* The two-wave curve on any day, from 0 to below 365, fractions allowed. Not clamped: callers clamp rain at 0. Pure. */
 float32_t climate_harmonic_at2(const float32_t coefficients[5], float32_t day);
 
+/* Days 0, 5, ..., 360: the samples climate_harmonic_max2 takes. */
+enum : uint32_t { CLIMATE_HARMONIC_MAX_SAMPLES = 73u, CLIMATE_HARMONIC_MAX_STEP_DAYS = 5u };
+
+/* The largest of 0 and climate_harmonic_at2(coefficients, d) over d = 0, 5, ..., 360: the same bits as those 73 calls
+ * folded with fmaxf from 0, without their trigonometry. Pure. */
+float32_t climate_harmonic_max2(const float32_t coefficients[5]);
+
 #endif

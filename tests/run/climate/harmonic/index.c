@@ -6,6 +6,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 #define HARMONIC_TEST_TWO_PI 6.28318530717958647692f64
 
@@ -137,6 +138,26 @@ TEST(the_two_wave_fit_agrees_with_the_one_wave_fit_on_wave_one) {
             CHECK_NEAR(two[i], one[i], 1.0e-6f32);
         }
     }
+}
+
+/* The wettest day's table is the 73 calls' own trigonometry: the same bits, for any coefficients (plan 004 phase 09). */
+TEST(the_largest_of_every_fifth_day_is_the_same_bits_as_the_calls) {
+    uint64_t state = 0xD1B54A32D192ED03ull;
+    uint32_t differ = 0u;
+    for (uint32_t round = 0u; round < 20000u; round++) {
+        float32_t coefficients[5];
+        for (uint32_t i = 0u; i < 5u; i++) {
+            state = state * 6364136223846793005ull + 1442695040888963407ull;
+            coefficients[i] = (float32_t)(state >> 40) / 16777216.0f32 * 400.0f32 - (i == 0u ? 50.0f32 : 200.0f32);
+        }
+        float32_t want = 0.0f32;
+        for (uint32_t k = 0u; k < CLIMATE_HARMONIC_MAX_SAMPLES; k++) {
+            want = fmaxf(want, climate_harmonic_at2(coefficients, (float32_t)(k * CLIMATE_HARMONIC_MAX_STEP_DAYS)));
+        }
+        const float32_t got = climate_harmonic_max2(coefficients);
+        differ += memcmp(&got, &want, sizeof(got)) == 0 ? 0u : 1u;
+    }
+    CHECK_EQ_U64(differ, 0u);
 }
 
 TEST_MAIN()
