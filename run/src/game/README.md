@@ -35,7 +35,7 @@
 - `game_hotbar_send`: the number keys and the wheel.
 - `game_ui_set`: draw on each picture shown with this `ui_t`, and the game screens come up on it.
 - `game_profiler_set`: what the three threads and the card do is timed in lanes of this `run/src/profiler/`. With no threads, main's lane has all of it.
-- `game_screen_input`, `game_screen_up`: a poll's input for the game screens, and whether one is up, which then has Esc.
+- `game_screen_input`, `game_screen_up`: a poll's input for the game screens, and whether one is up, which then has Esc. Plan 004 phase 09: the Atlas comes first in both: `game_screen_input` gives a poll to `game_atlas_input` before any screen, and `game_screen_up` is true while the Atlas is up, so Esc closes it and neither ends a test run nor opens the pause screen. The body stands while it is up; the world goes on.
 - `game_input_from_script`: a script's tick as a poll of real input.
 - `game_debug_send`: the debug overlay's key, F3.
 - `game_hud_state_read`, `game_hud_debug_read`, `game_hud_block_read`: what the HUD and the overlay show now, and where the body is.
@@ -45,7 +45,7 @@
 **May be called by:** `run/src/main/`, and its part `session`.
 **Depends on:** its part `census` (plan 004 phase 07: attached at open, stepped by the sim, told of each column), `mob`, `player`, `entity`, `item`, `ui`, `render`, `world`, `climate`, `terrain`, `display`, `input`, `texture`, `job`, `thread`, `time`, `heap`, `arena`, `log`, `assert`.
 
-**Parts:** `tick`: one tick of the world, `game_sim_tick`. `spawn`: where a new world's body starts, `game_ground_z` and `game_spawn_find`, which `bench/world_map/` asks too. `session`: from the title screen to Quit Game, on top of the rest of this. `view`: what a config comes to, and bringing a picture up to the display's size. `report`: what it says about itself. `input`: what a person's hands come to. `settle`: everything on the card, on one thread.
+**Parts:** `atlas`: the game's side of the Atlas (plan 004 phase 09), opened as a world opens and closed as it closes, drawn in place of the HUD by `game_hud_compose` while up. The column job works out each column's top for it (`ui_atlas_column_top` into `borrowed_atlas_pixels`), `game_column_fill` writes it into the Atlas's tile on the sim (`ui_atlas_column_write`), and `game_sim_step` lets it save every 30 s of world time (`ui_atlas_save_step`). `tick`: one tick of the world, `game_sim_tick`. `spawn`: where a new world's body starts, `game_ground_z` and `game_spawn_find`, which `bench/world_map/` asks too. `session`: from the title screen to Quit Game, on top of the rest of this. `view`: what a config comes to, and bringing a picture up to the display's size. `report`: what it says about itself. `input`: what a person's hands come to. `settle`: everything on the card, on one thread.
 
 A column's blocks are `terrain_generate_box`, on a worker, over all of the column's storage. Each job lends it the states and a byte per voxel.
 

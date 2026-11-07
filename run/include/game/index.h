@@ -86,7 +86,10 @@ typedef struct game_column_job_t {
     save_world_t *borrowed_save;  /* 48: what has changed there, or nullptr */
     column_mask_t levels_mask;    /* 56: which sections the save gave levels for, in borrowed_opened past its scratch */
     column_mask_t saved_sections; /* 72: which sections the save gave at all */
-    uint8_t _pad1[40];            /* 88 */
+    uint32_t
+        *borrowed_atlas_pixels; /* 88: plan 004 phase 09: 256, the column's top as the Atlas keeps it, row 0 north */
+    const uint16_t *borrowed_atlas_colours; /* 96: RGB565 by block id from ui, or nullptr: no Atlas, no top */
+    uint8_t _pad1[24];                      /* 104 */
 } game_column_job_t;
 static_assert(sizeof(game_column_job_t) == 2u * MC_CPU_CACHE_LINE_BYTES);
 

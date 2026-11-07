@@ -118,6 +118,39 @@ static const uint32_t CLIMATE_LAYER_CLASS_RGB[CLIMATE_CLASS_COUNT] = {
 static const float32_t CLIMATE_LAYER_SNOW_NEAR_BLOCKS = 50.0f32;
 static const float32_t CLIMATE_LAYER_SNOW_FAR_BLOCKS = 2000.0f32;
 
+/* Plan 004 phase 09: where a picture is, for climate_layer_draw_scaled. Blocks a pixel may be any positive number, and the
+ * grids are anchored to world pixels, not to the picture's corner, so a picture panned by any whole number of pixels samples
+ * the same points where the two overlap. */
+enum : uint32_t {
+    CLIMATE_LAYER_PART_FIELD = 1u, /* every pixel's colour, with the pressure layer's lines */
+    CLIMATE_LAYER_PART_MARKS = 2u, /* what crosses pixels: arrows, and the latitude layer's lines */
+    CLIMATE_LAYER_PARTS_ALL = 3u,
+};
+typedef struct climate_layer_frame_t {
+    float64_t west_x;     /* 0: block x of column 0's west edge */
+    float64_t north_y;    /* 8: block y of row 0's north edge */
+    float64_t step;       /* 16: blocks a pixel, above 0 */
+    int64_t column_index; /* 24: the world pixel column 0 is: arrows sit where it is 16 more than a multiple of 32 */
+    int64_t row_index;    /* 32: and row 0; sample points sit where both are multiples of sample */
+    uint32_t *borrowed_scratch; /* 40: with sample above 1: 2 x (width / sample + 3) entries; else may be nullptr */
+    uint32_t width;             /* 48 */
+    uint32_t height;            /* 52 */
+    uint32_t sample;            /* 56: 1 works out every pixel; n every n-th world pixel each way, blended between */
+    uint32_t parts;             /* 60: CLIMATE_LAYER_PART_* */
+} climate_layer_frame_t;
+static_assert(sizeof(climate_layer_frame_t) == 64);
+
+/* A layer of climate_layer_draw's (not the now layers) at any blocks a pixel. With sample 1, column_index and row_index 0
+ * and whole numbers, its bytes are climate_layer_draw's: that function is this one. With sample n, each value is worked out
+ * at the world pixels that are multiples of n, and pixels between blend their four (the pressure layer its hPa, before its
+ * lines; the others their colours), or take the nearest where one of the four is grey. day may hold a fraction. */
+void climate_layer_draw_scaled(const climate_t *climate, climate_layer_t layer, const climate_layer_frame_t *frame,
+                               float32_t day, uint8_t *pixels, uint32_t pitch);
+
+/* Each layer's colour stops, for a legend: values rising, colours 0x00RRGGBB. False for a layer with no scale. */
+bool climate_layer_scale(climate_layer_t layer, const float32_t **out_values, const uint32_t **out_colours,
+                         uint32_t *out_count);
+
 /* width by height XRGB8888 pixels, rows pitch bytes apart, pixel (0, 0) at the north-west corner, blocks_per_pixel apart,
  * each pixel the sample at its centre (x east, y north, so rows go south). Grey where a tile is not built. day (0 to 364) is
  * the day the currents, pressure and wind layers are drawn for. Any thread. */

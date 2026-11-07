@@ -4,6 +4,7 @@
 #include "assert/index.h"
 #include "climate/sun/index.h"
 #include "entity/animation/index.h"
+#include "game/atlas/index.h"
 #include "game/census/index.h"
 #include "item/stack/index.h"
 #include "game/spawn/index.h"
@@ -25,7 +26,8 @@ enum : uint64_t {
     /* A whole column of states, section after section, each in section_voxel_index order. */
     GAME_COLUMN_VOXELS = (uint64_t)COLUMN_SECTIONS * SECTION_VOXELS,
     GAME_COLUMN_BYTES = GAME_COLUMN_VOXELS * sizeof(uint16_t),
-    GAME_WORLD_ARENA_BYTES = GAME_STREAM_JOBS * (GAME_COLUMN_BYTES + GAME_COLUMN_VOXELS + sizeof(game_column_job_t)) +
+    GAME_WORLD_ARENA_BYTES = GAME_STREAM_JOBS * (GAME_COLUMN_BYTES + GAME_COLUMN_VOXELS + sizeof(game_column_job_t) +
+                                                 UI_ATLAS_COLUMN_PIXELS * sizeof(uint32_t)) +
                              2ull * 4096ull + MOB_SPAWN_BYTES + GAME_CENSUS_ARENA_BYTES,
 };
 enum : int64_t {
@@ -513,6 +515,9 @@ bool game_open(game_t *game, const game_config_t *config) {
         job->borrowed_save = game->borrowed_save != nullptr ? &game->borrowed_save->world : nullptr;
         job->borrowed_states = arena_alloc(&game->arena_world, GAME_COLUMN_BYTES, alignof(uint64_t));
         job->borrowed_opened = arena_alloc(&game->arena_world, GAME_COLUMN_VOXELS, alignof(uint64_t));
+        job->borrowed_atlas_pixels =
+            arena_alloc(&game->arena_world, UI_ATLAS_COLUMN_PIXELS * sizeof(uint32_t), alignof(uint32_t));
+        job->borrowed_atlas_colours = game->borrowed_ui != nullptr ? ui_atlas_colours(game->borrowed_ui) : nullptr;
     }
 
     if (game->borrowed_player != nullptr) {
@@ -620,6 +625,7 @@ bool game_open(game_t *game, const game_config_t *config) {
         save_autosave_start(&save->autosave, game->borrowed_job, &save->world, &save->state, game->tick_count);
     }
     game_census_attach(game); /* plan 004 phase 07: with the calendar known */
+    game_atlas_open(game);    /* plan 004 phase 09 */
     game->open = 1u;
     return true;
 }
@@ -633,6 +639,7 @@ void game_close(game_t *game) {
     job_group_wait(game->borrowed_job, &game->group);
     job_group_deinit(&game->group);
     game_census_detach(game);
+    game_atlas_close(game); /* its drawing reads the climate */
     if (game->borrowed_climate != nullptr) {
         climate_close(game->borrowed_climate, game->borrowed_job); /* waits for the tiles the sim queued */
     }
@@ -796,6 +803,9 @@ static void game_column_job_run(job_worker_t *worker, void *borrowed_job) {
             job->borrowed_save, job->request.chunk_x, job->request.chunk_y, job->borrowed_states,
             job->borrowed_opened + SAVE_WORLD_OVERLAY_SCRATCH_BYTES, &job->levels_mask, job->borrowed_opened);
     }
+    if (job->borrowed_atlas_colours != nullptr) {
+        ui_atlas_column_top(job->borrowed_atlas_colours, BLOCK_COUNT, job->borrowed_states, job->borrowed_atlas_pixels);
+    }
     PROFILER_END(job_worker_lane(worker));
     /* Release gives the sim thread the states just written, and pairs with the acquire in game_columns_commit. */
     atomic_store_explicit(&job->done, 1u, memory_order_release);
@@ -831,6 +841,9 @@ static bool game_column_fill(game_t *game, const game_column_job_t *job) {
     }
     /* Short of memory, it says so, and world_light_update tries again. */
     (void)world_light_column_added(&world->light, job->request.slot);
+    if (job->borrowed_atlas_colours != nullptr) {
+        ui_atlas_column_write(game_atlas(game), job->request.chunk_x, job->request.chunk_y, job->borrowed_atlas_pixels);
+    }
     game->columns_made++;
     return true;
 }
@@ -967,6 +980,7 @@ void game_sim_step(game_t *game) {
         game_save_parts(game, &parts);
         save_autosave_step(&save->autosave, &world->edit, &parts, game->tick_count);
     }
+    ui_atlas_save_step(game_atlas(game), (int64_t)game->tick_count * GAME_TICK_NS);
     PROFILER_END(game->borrowed_lane_sim);
 }
 
@@ -992,6 +1006,9 @@ static void game_walk_view(game_t *game, int64_t now_ns) {
 }
 
 bool game_screen_input(game_t *game, const input_frame_t *frame) {
+    if (game_atlas_input(game, frame)) {
+        return true; /* the Atlas has the input: the body stands, and the world goes on */
+    }
     if (!game_has_screens(game)) {
         return false;
     }
@@ -1104,6 +1121,9 @@ static const uint8_t *game_hud_compose(game_t *game, const uint8_t *drawn) {
     const bool walking = game->borrowed_player != nullptr;
     const bool screen_up = game_has_screens(game) && ui_screen_up(ui);
     const uint8_t *const picture = game_picture_full(game, drawn);
+    if (ui != nullptr && game_atlas_up(game)) {
+        return game_atlas_compose(game, picture);
+    }
     /* Flying shows the date only when asked for it, as --test-world --day-of-year does: every other flying picture stays as it was. */
     const bool date_flying = !walking && game->config.show_date != 0u;
     if (ui == nullptr || (!walking && game->hud_debug == 0u && !screen_up && !date_flying)) {
@@ -1469,7 +1489,7 @@ bool game_loop_threads_ensure(game_t *game) {
 }
 
 bool game_screen_up(game_t *game) {
-    return game_has_screens(game) && ui_screen_up(game->borrowed_ui);
+    return game_atlas_up(game) || (game_has_screens(game) && ui_screen_up(game->borrowed_ui));
 }
 
 bool game_loop_source(void *context, display_buffer_t *back) {
