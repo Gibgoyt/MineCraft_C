@@ -598,6 +598,9 @@ Appended as they land:
 - `92423097` Work out the unborn sums' disk chance tables once a call, the same bits, hold the storm warning's slowest call under 20 ms after the week's census as the game runs it, and retry a climate line that is not ready on its 20-tick beat.
 - `0b41af63` Record plan 004 phase 10's second pass in its phase file: the warning under 20 ms, the keep radius tried and taken back, the retry beat, and the runs.
 - `070d2bb0` Say in the repository structure that run_climate_warning holds the slowest of 100 warnings under 20 ms.
+- `6c29671a` Test a real storm low through the storm warning against a hand computation, compare 1 and 16 workers on answers that are not all zero, retry an unanswered warning once a second, and move the corner's drawing out of game/index.c to keep it under 1500 lines.
+- `d02e52ba` Say in the repository structure that run_climate_warning checks a real storm low by hand and compares workers along its path.
+- `dee0e99d` Record plan 004 phase 10's gate check in its phase file: the runs, the real storm low checked by hand, the seed with no hurricanes, the retry and the split.
 
 ## Issues found
 
