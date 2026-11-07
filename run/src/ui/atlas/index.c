@@ -1014,12 +1014,21 @@ void ui_atlas_frame_draw(ui_atlas_t *atlas, ui_widget_t *widget, ui_canvas_t *ca
     /* Legend. */
     ui_atlas_scale_t legend_scale;
     const bool has_scale = ui_atlas_layer_scale(view->layer, &legend_scale);
-    const int32_t legend_width = 120 * (int32_t)scale;
-    const ui_rect_t legend = {(int32_t)width - legend_width - 4 * (int32_t)scale, 0, legend_width,
-                              (int32_t)height - 4 * (int32_t)scale};
+    const float32_t arrow_speed = row->arrows != 0u ? 10.0f32 : 0.0f32;
+    const int32_t legend_width =
+        ui_atlas_legend_width(font, scale, row->label, row->unit, row->entries, row->entry_count, arrow_speed);
+    ui_rect_t legend = {(int32_t)width - legend_width - 4 * (int32_t)scale, 0, legend_width,
+                        (int32_t)height - 4 * (int32_t)scale};
+    if (row->time == UI_ATLAS_TIME_NORMALS) {
+        /* Above the day slider where the two would meet, so the slider never covers the legend's last line. */
+        const ui_rect_t slider = atlas_slider_rect(width, height);
+        if (slider.x + slider.width > legend.x) {
+            legend.height = slider.y - 2 * (int32_t)scale;
+        }
+    }
     const int32_t legend_height =
         ui_atlas_draw_legend(canvas, font, legend, scale, row->label, row->unit, has_scale ? &legend_scale : nullptr,
-                             row->entries, row->entry_count, row->arrows != 0u ? 10.0f32 : 0.0f32);
+                             row->entries, row->entry_count, arrow_speed);
     /* Day slider. */
     if (row->time == UI_ATLAS_TIME_NORMALS) {
         char label[32];

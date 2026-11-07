@@ -13,6 +13,7 @@
 enum : uint32_t {
     UI_ATLAS_COLOUR_UNGENERATED = 0xFF808080u, /* climate/layer's grey for a tile not built, so the two never differ */
     UI_ATLAS_COLOUR_DARK = 0xFF101010u,        /* the edge a pan uncovers before the new picture lands */
+    UI_ATLAS_LEGEND_WIDTH = 120u,              /* a legend's least width, pixels a text scale */
 };
 #define UI_ATLAS_SHADE_EXAGGERATION 1.0f32 /* ratio: vertical stretch for hill shading, for Ahmed to tune by eye */
 #define UI_ATLAS_SHADE_MIN 0.4f32
@@ -104,6 +105,11 @@ void ui_atlas_draw_arrow(const ui_atlas_picture_t *picture, int32_t x, int32_t y
 void ui_atlas_draw_cone(const ui_atlas_picture_t *picture, const float32_t *centres_x, const float32_t *centres_y,
                         const float32_t *radii, uint32_t count, uint32_t edge, uint32_t fill, uint32_t fill_alpha,
                         uint8_t *scratch);
+
+/* The width a legend's panel needs so every line of it stays inside: its widest line and padding, and never under
+ * UI_ATLAS_LEGEND_WIDTH pixels a text scale. */
+int32_t ui_atlas_legend_width(const ui_font_t *font, uint32_t text_scale, const char *title, const char *unit,
+                              const ui_atlas_key_entry_t *entries, uint32_t entry_count, float32_t arrow_speed);
 
 /* A legend in rect on a canvas: a dark panel, the title, then either a bar of the scale with five values under it and the
  * unit, or the entries as swatches with labels, or (arrow_speed above 0) an arrow of that many blocks a second for length.

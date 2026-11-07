@@ -36,6 +36,9 @@ static const float32_t CLIMATE_SPELL_CLAMP = 3.0f32;         /* phase 07, Issues
 static const float32_t CLIMATE_SPELL_RAW_SD = 0.2013f32;
 static const float32_t CLIMATE_RAIN_AMOUNT_RAW_SD = 0.2008f32;
 static const float32_t CLIMATE_RAIN_HOURS_RAW_SD = 0.2015f32;
+/* climate_weather_at_shared: the widest box of places, each way, one day list serves. Its half diagonal, 5793 blocks, is
+ * under CLIMATE_THUNDER_QUERY_MAX, so the list's cells are never cut short. */
+static const float64_t CLIMATE_WEATHER_SHARE_BLOCKS = 8192.0f64;
 
 enum : uint32_t {
     CLIMATE_HOURS_A_DAY = 24u,
@@ -103,6 +106,15 @@ static_assert(offsetof(climate_now_t, thunder_cell) == 44);
 static_assert(offsetof(climate_now_t, day_kind) == 48);
 static_assert(offsetof(climate_now_t, in_hurricane) == 49);
 static_assert(offsetof(climate_now_t, _pad0) == 50);
+
+/* One place climate_weather_at_shared is asked about: climate_weather_at's place, height and last week. */
+typedef struct climate_weather_ask_t {
+    float64_t x;                         /* 0 */
+    float64_t y;                         /* 8 */
+    float64_t z;                         /* 16 */
+    const climate_week_t *borrowed_week; /* 24: last week's state there, or nullptr */
+} climate_weather_ask_t;
+static_assert(sizeof(climate_weather_ask_t) == 32);
 
 /* One tile of weekly state: 256 cells, and which of them hold generated land. Saved as it is. */
 typedef struct climate_week_tile_t {
@@ -284,6 +296,17 @@ float32_t climate_weather_hours(const climate_t *climate, float64_t x, float64_t
  * adds up: the rates of the day's 24 half-past instants sum to climate_weather_day's rain_mm. False as above. Pure. */
 [[nodiscard]] bool climate_weather_at(const climate_t *climate, float64_t x, float64_t y, float64_t z, float64_t t,
                                       const climate_week_t *last_week, arena_t *scratch, climate_now_t *out);
+
+/* climate_weather_at at count places at one moment t, with one day list for them all, as a census day shares one: each
+ * answer is the same bits climate_weather_at gives there, and ok[i] says whether it gave one (out[i] is unwritten if not).
+ * A field skips a system past its reach before adding anything, and the list is sorted on keys the scan does not decide,
+ * so the systems a place sees are the ones its own list holds, in the same order. False, writing nothing, if one list
+ * cannot stand for every place: the places spread past CLIMATE_WEATHER_SHARE_BLOCKS, a cell's tile in the list's reach is
+ * not built, the list is full, or scratch is too small (it needs about 2 MiB:
+ * 1.6 for a 6.6 km square in run_climate_weather). Then ask each place alone. Pure. */
+[[nodiscard]] bool climate_weather_at_shared(const climate_t *climate, const climate_weather_ask_t *asks,
+                                             uint32_t count, float64_t t, arena_t *scratch, climate_now_t *out,
+                                             bool *ok);
 
 /* ---- The weekly state ------------------------------------------------------------------------------------------------ */
 

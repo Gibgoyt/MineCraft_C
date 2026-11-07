@@ -622,30 +622,26 @@ bool climate_weather_day(const climate_t *climate, int32_t x, int32_t y, int64_t
     return weather_place_day(climate, &place, day, last_week, scratch, out, &extra, &in, views, &list);
 }
 
-bool climate_weather_at(const climate_t *climate, float64_t x, float64_t y, float64_t z, float64_t t,
-                        const climate_week_t *last_week, arena_t *scratch, climate_now_t *out) {
-    weather_place_t place;
-    if (!weather_place_fill(climate, x, y, &place)) {
-        return false;
-    }
+/* climate_weather_at once the place is filled and the day's views and the moment's are built from a list holding every
+ * system the place's own list holds, in the same order. False, writing nothing, if a tile it reads is not built. */
+static bool weather_at_views(const climate_t *climate, const weather_place_t *place, float64_t z, float64_t t,
+                             const climate_week_t *last_week, const weather_view_t views[CLIMATE_WEEK_INSTANTS],
+                             const weather_view_t *now_view, climate_now_t *out) {
+    const float64_t x = place->x, y = place->y;
     const int64_t day = (int64_t)floor(t);
     weather_day_in_t in;
     weather_day_out_t extra;
     climate_day_t today;
-    weather_view_t views[CLIMATE_WEEK_INSTANTS], now_view;
-    climate_systems_day_t list;
     climate_normals_at_t high;
     climate_air_t air;
     const float32_t d = weather_day_of_year(day);
     const float32_t part = (float32_t)(t - (float64_t)day);
-    uint32_t overflowed = 0u;
-    const weather_box_t box = {x, y, x, y};
-    if (!weather_place_day(climate, &place, day, last_week, scratch, &today, &extra, &in, views, &list) ||
-        !weather_view_build(&list, &box, t, scratch, &now_view, &overflowed) ||
-        !climate_normals_at(climate, x, y, (float32_t)z, d, &high) || !climate_air_at(climate, x, y, d + part, &air)) {
+    if (!weather_day_in_fill(climate, place, day, &in) || !climate_normals_at(climate, x, y, (float32_t)z, d, &high) ||
+        !climate_air_at(climate, x, y, d + part, &air)) {
         return false;
     }
-    const climate_systems_day_t now = now_view.day;
+    weather_day_compute(place, &in, views, last_week, &today, &extra);
+    const climate_systems_day_t now = now_view->day;
     memset(out, 0, sizeof(*out));
     const float64_t hours = (t - (float64_t)day) * 24.0f64;
     uint32_t hour = (uint32_t)hours;
@@ -704,6 +700,60 @@ bool climate_weather_at(const climate_t *climate, float64_t x, float64_t y, floa
     const float32_t gust = weather_speed(out->wind) / 20.0f32;
     out->dust = today.kind == CLIMATE_DAY_DUST_STORM ? (gust > 1.0f32 ? 1.0f32 : gust) : 0.0f32;
     out->day_kind = today.kind;
+    return true;
+}
+
+bool climate_weather_at(const climate_t *climate, float64_t x, float64_t y, float64_t z, float64_t t,
+                        const climate_week_t *last_week, arena_t *scratch, climate_now_t *out) {
+    weather_place_t place;
+    if (!weather_place_fill(climate, x, y, &place)) {
+        return false;
+    }
+    const int64_t day = (int64_t)floor(t);
+    const weather_box_t box = {x, y, x, y};
+    weather_view_t views[CLIMATE_WEEK_INSTANTS], now_view;
+    climate_systems_day_t list;
+    uint32_t overflowed = 0u;
+    if (!weather_list_build(climate, scratch, &box, day, &list) || list.thunder_complete == 0u ||
+        !weather_views_build(&list, &box, day, scratch, views, &overflowed) ||
+        !weather_view_build(&list, &box, t, scratch, &now_view, &overflowed)) {
+        return false;
+    }
+    return weather_at_views(climate, &place, z, t, last_week, views, &now_view, out);
+}
+
+bool climate_weather_at_shared(const climate_t *climate, const climate_weather_ask_t *asks, uint32_t count, float64_t t,
+                               arena_t *scratch, climate_now_t *out, bool *ok) {
+    if (count == 0u) {
+        return true;
+    }
+    weather_box_t box = {asks[0].x, asks[0].y, asks[0].x, asks[0].y};
+    for (uint32_t i = 1u; i < count; i++) {
+        box.x_min = asks[i].x < box.x_min ? asks[i].x : box.x_min;
+        box.y_min = asks[i].y < box.y_min ? asks[i].y : box.y_min;
+        box.x_max = asks[i].x > box.x_max ? asks[i].x : box.x_max;
+        box.y_max = asks[i].y > box.y_max ? asks[i].y : box.y_max;
+    }
+    if (!(box.x_max - box.x_min <= CLIMATE_WEATHER_SHARE_BLOCKS &&
+          box.y_max - box.y_min <= CLIMATE_WEATHER_SHARE_BLOCKS)) {
+        return false;
+    }
+    /* The box's list holds every place's: its radius reaches each place from the middle, and its cells' radius too. A list
+     * that overflowed, or one whose cells are incomplete anywhere in its wider reach, might lack one a place's would have. */
+    const int64_t day = (int64_t)floor(t);
+    weather_view_t views[CLIMATE_WEEK_INSTANTS], now_view;
+    climate_systems_day_t list;
+    uint32_t overflowed = 0u;
+    if (!weather_list_build(climate, scratch, &box, day, &list) || list.thunder_complete == 0u ||
+        list.overflowed != 0u || !weather_views_build(&list, &box, day, scratch, views, &overflowed) ||
+        !weather_view_build(&list, &box, t, scratch, &now_view, &overflowed)) {
+        return false;
+    }
+    for (uint32_t i = 0u; i < count; i++) {
+        weather_place_t place;
+        ok[i] = weather_place_fill(climate, asks[i].x, asks[i].y, &place) &&
+                weather_at_views(climate, &place, asks[i].z, t, asks[i].borrowed_week, views, &now_view, &out[i]);
+    }
     return true;
 }
 

@@ -2,12 +2,14 @@
 #include "ui/atlas/tile/index.h"
 
 #include "machine/index.h"
+#include "simd/bitmask/index.h"
 #include "tables/blocks/index.h"
 #include "texture/blob/index.h"
 #include "world/column/index.h"
 #include "world/section/index.h"
 
 #include <inttypes.h>
+#include <stdbit.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -78,10 +80,19 @@ static bool tile_counts(uint16_t state, uint32_t colour_count) {
     }
 }
 
+enum : uint32_t {
+    TILE_SECTION_WORDS = SECTION_VOXELS / 64u, /* a section's voxels as bits, one a voxel */
+    TILE_LAYER_WORDS = UI_ATLAS_COLUMN_PIXELS / 64u,
+};
+static_assert(SECTION_VOXELS % 64u == 0u && UI_ATLAS_COLUMN_PIXELS % 64u == 0u);
+
 void ui_atlas_column_top(const uint16_t *colours, uint32_t colour_count, const uint16_t *states, uint32_t *out) {
-    /* Section by section from the top, a whole z layer at a time, so the walk reads memory in order and stops once all
-     * 256 have their top: most of a column above the ground is air, and air is state 0, the quick test. */
+    /* Section by section from the top, a whole z layer at a time, and it stops once all 256 have their top. Most of a
+     * column above the ground is air, state 0: each section is first made a bit a voxel, set where it is not air
+     * (simd/bitmask's kernel, which reads it at the memory's pace), so an all-air section is passed over after one look at
+     * its 64 words, and in the rest only the voxels that hold something are looked at. */
     bool found[UI_ATLAS_COLUMN_PIXELS];
+    uint64_t solid[TILE_SECTION_WORDS];
     uint32_t left = UI_ATLAS_COLUMN_PIXELS;
     for (uint32_t k = 0u; k < UI_ATLAS_COLUMN_PIXELS; k++) {
         found[k] = false;
@@ -89,20 +100,31 @@ void ui_atlas_column_top(const uint16_t *colours, uint32_t colour_count, const u
     }
     for (uint32_t section = COLUMN_SECTIONS; section-- > 0u && left > 0u;) {
         const uint16_t *const voxels = states + (uint64_t)section * SECTION_VOXELS;
+        bitmask_from_nonzero_u16_batch(voxels, SECTION_VOXELS, solid);
+        uint64_t any = 0u;
+        for (uint32_t w = 0u; w < TILE_SECTION_WORDS; w++) {
+            any |= solid[w];
+        }
+        if (any == 0u) {
+            continue;
+        }
         for (uint32_t z = SECTION_SIZE; z-- > 0u && left > 0u;) {
             const uint16_t *const layer = voxels + section_voxel_index(0u, 0u, z);
-            for (uint32_t k = 0u; k < UI_ATLAS_COLUMN_PIXELS; k++) {
-                const uint16_t state = layer[k]; /* section_voxel_index: x fastest, then y */
-                if (state == 0u || found[k] || !tile_counts(state, colour_count)) {
-                    continue;
+            const int32_t height = (int32_t)(section * SECTION_SIZE + z) + COLUMN_Z_STORAGE_MIN - MC_WORLD_Z_SEA;
+            for (uint32_t w = 0u; w < TILE_LAYER_WORDS; w++) {
+                for (uint64_t bits = solid[z * TILE_LAYER_WORDS + w]; bits != 0u; bits &= bits - 1u) {
+                    const uint32_t k = w * 64u + (uint32_t)stdc_trailing_zeros(bits); /* x fastest, then y */
+                    const uint16_t state = layer[k];
+                    if (found[k] || !tile_counts(state, colour_count)) {
+                        continue;
+                    }
+                    const uint32_t x = k % UI_ATLAS_COLUMN_SIDE, y = k / UI_ATLAS_COLUMN_SIDE;
+                    const uint16_t colour = state < colour_count ? colours[state] : 0u;
+                    out[(UI_ATLAS_COLUMN_SIDE - 1u - y) * UI_ATLAS_COLUMN_SIDE + x] =
+                        ui_atlas_pixel_pack(colour, (int16_t)height);
+                    found[k] = true;
+                    left--;
                 }
-                const uint32_t x = k % UI_ATLAS_COLUMN_SIDE, y = k / UI_ATLAS_COLUMN_SIDE;
-                const int32_t height = (int32_t)(section * SECTION_SIZE + z) + COLUMN_Z_STORAGE_MIN - MC_WORLD_Z_SEA;
-                const uint16_t colour = state < colour_count ? colours[state] : 0u;
-                out[(UI_ATLAS_COLUMN_SIDE - 1u - y) * UI_ATLAS_COLUMN_SIDE + x] =
-                    ui_atlas_pixel_pack(colour, (int16_t)height);
-                found[k] = true;
-                left--;
             }
         }
     }

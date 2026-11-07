@@ -18,12 +18,15 @@ the status, as `bench/world/README.md` explains.
 
 What it does:
 
-1. Works out the climate tiles round the view (seed 2198175988018515243).
+1. Works out the climate tiles round the view and 8192 blocks beyond (seed 2198175988018515243): temperature now's
+   weather reads every tile within 6 km of each place, as the census keeps them built round explored land, and with
+   them missing it would time its failures.
 2. Writes 20 by 20 level-0 tiles of made-up columns (a smooth land from a few sines, 10 240 blocks a side, 105 km²) into
    the store, saving every 100 tiles so nothing is dropped, and closes it, so every tile and mip is on disk.
 3. **Open:** five times, opens the world's store with nothing in memory (the files in the page cache), presses `M` at
    11.3 blocks a pixel (21.7 by 12.2 km on screen, level 3), and times main's frames until the first picture is finished.
 4. **Layers:** each of the 26 layers at 1920 by 1080, 5.66 blocks a pixel, three times, on 16 workers in 16 bands, with
-   the weather systems' day list built for the now layers inside the time.
+   the weather systems' day list built for the now layers inside the time. For each value layer it prints the share of
+   pixels that got a value, so a layer timed with nothing to show is seen.
 5. **Main's frame:** 200 frames of `ui_atlas_frame` and `ui_atlas_frame_draw` with a picture shown on temperature by day.
 6. **Columns:** 20 000 column writes, five rounds; 2000 column tops of a column of stone to 64, five rounds.

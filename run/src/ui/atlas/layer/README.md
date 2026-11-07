@@ -24,10 +24,15 @@ overlap.
   pressure layer's lines at a band's top see the row north of them, on the world-anchored sample grid; times `b`. Where a
   climate tile is not built yet, the ground shows.
 - The Atlas's own values (temperature now, rain radar, last week's rain, wind now, pressure now, snow, soil water, flood):
-  worked out on the world-anchored grid (every 4 pixels; temperature now, which reads `climate_weather_at`, every 32) and
+  worked out on the world-anchored grid (every 4 pixels; temperature now, which reads the weather, every 32) and
   blended between; coloured by the earlier phase's ramp where one drew it (radar, wind, pressure), else by this phase's
   scales; land-only values show the plain ground over sea and where they are 0. The rain radar over grey land is its 1 mm
   an hour edge only.
+- Temperature now asks its grid points a square at a time, up to 64 points and 2048 blocks across, through one day list
+  (`climate_weather_at_shared`): the same bits as `climate_weather_at` at each point, so any split into bands gives the
+  same bytes. A square whose list cannot stand for all of it (a climate tile in the list's wider reach not built, as at
+  the edge of explored land) is asked again as its four quarters, down to single points, with a stack of 32 squares and
+  no recursion. 28 ms a picture at 1920 by 1080 in `bench_atlas`, against 333 ms asking each point alone.
 - Over ungenerated land every band writes `UI_ATLAS_COLOUR_UNGENERATED` and sets the grey mask.
 
 **Overlays:** the climate's own marks (current and wind arrows, latitude lines) through `climate_layer_draw_scaled`'s marks

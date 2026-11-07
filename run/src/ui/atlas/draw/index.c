@@ -320,6 +320,28 @@ static void draw_value(float32_t value, char *out, uint32_t bytes) {
     }
 }
 
+int32_t ui_atlas_legend_width(const ui_font_t *font, uint32_t text_scale, const char *title, const char *unit,
+                              const ui_atlas_key_entry_t *entries, uint32_t entry_count, float32_t arrow_speed) {
+    const int32_t s = (int32_t)text_scale;
+    const int32_t pad = 3 * s;
+    char text[96];
+    (void)snprintf(text, sizeof(text), "%s%s%s%s", title, unit[0] != '\0' ? " (" : "", unit,
+                   unit[0] != '\0' ? ")" : "");
+    int32_t inside = (int32_t)ui_font_measure(font, text, text_scale).width;
+    for (uint32_t k = 0u; k < entry_count; k++) {
+        const int32_t w = 9 * s + (int32_t)ui_font_measure(font, entries[k].label, text_scale).width;
+        inside = w > inside ? w : inside;
+    }
+    if (arrow_speed > 0.0f32) {
+        (void)snprintf(text, sizeof(text), "%.0f blocks a second", (libc_double_t)arrow_speed);
+        const int32_t length = (int32_t)fminf(30.0f32, 2.0f32 * arrow_speed);
+        const int32_t w = length + 4 * s + (int32_t)ui_font_measure(font, text, text_scale).width;
+        inside = w > inside ? w : inside;
+    }
+    const int32_t least = (int32_t)UI_ATLAS_LEGEND_WIDTH * s;
+    return inside + 2 * pad > least ? inside + 2 * pad : least;
+}
+
 int32_t ui_atlas_draw_legend(ui_canvas_t *canvas, const ui_font_t *font, ui_rect_t rect, uint32_t text_scale,
                              const char *title, const char *unit, const ui_atlas_scale_t *scale,
                              const ui_atlas_key_entry_t *entries, uint32_t entry_count, float32_t arrow_speed) {
