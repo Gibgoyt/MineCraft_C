@@ -18,6 +18,9 @@ and decode.
 - `ui_atlas_column_top`: for each of a column's 256 (x, y), walking down from the top section, the first voxel whose
   block's shape is not none (air), cross, crop or a torch (wall torches too), its colour from the table by block id and
   its height `16 × section + z + COLUMN_Z_STORAGE_MIN - MC_WORLD_Z_SEA`. Water and lava count, so the sea is the sea.
+  Each section is first made a bit a voxel, set where it is not air, by `simd/bitmask`'s kernel: an all-air section is
+  passed over after one look at its 64 words, and in the rest only voxels holding something are looked at (12 µs a
+  column in `bench_atlas`, against 98 µs testing every voxel).
 - `ui_atlas_tile_column_put`: the 16 rows of 16 pixels into their place.
 - `ui_atlas_tile_halve`, `ui_atlas_pixel_mean`: each parent pixel the rounded mean `(sum + floor(n / 2)) / n`, floored, of
   its generated children, channel by channel and height; not generated only when all four are not.
@@ -29,4 +32,5 @@ and decode.
 
 **May be called by:** `run/src/ui/atlas/` (the store), `run/src/ui/` (the colour table's packing), `run/src/game/` (the
 column's top on the worker), tests and benches.
-**Depends on:** `tables/blocks` (shapes), `texture/blob` (the hash), `world/column`, `world/section`, `machine`, libc.
+**Depends on:** `tables/blocks` (shapes), `texture/blob` (the hash), `world/column`, `world/section`, `machine`,
+`simd/bitmask` (a section's not-air bits), libc.
