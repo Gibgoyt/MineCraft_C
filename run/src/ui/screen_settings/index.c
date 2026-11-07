@@ -18,13 +18,18 @@ enum : int32_t {
     SETTINGS_GAP = 4,
     SETTINGS_EFFECT_WIDTH = 120,
     SETTINGS_EFFECT_ROWS = 8,
-    /* Row 6, left to right, with SETTINGS_GAP between: each as wide as its box and its words want, and Effects... has what is left. */
+    /* Row 6, left to right, with SETTINGS_GAP between: each as wide as its box and its words want, and Effects... has what is left.
+     * HUD... has the place the Coordinates box had before plan 004 phase 10 moved it to the HUD page. */
     SETTINGS_VSYNC_WIDTH = 46,
-    SETTINGS_COORDINATES_WIDTH = 82,
-    /* Row 7: the Date box, plan 004 phase 01, and the sound volume's slider in what is left. */
-    SETTINGS_DATE_WIDTH = 40,
+    SETTINGS_HUD_WIDTH = 82,
+    /* Row 7: the sound volume's slider. */
     SETTINGS_VOLUME_ROW = 7,
     SETTINGS_DONE_ROW = 8,
+    /* The HUD page's rows: plan 004 phase 10. */
+    SETTINGS_HUD_COORDINATES_ROW = 0,
+    SETTINGS_HUD_DATE_ROW = 1,
+    SETTINGS_HUD_CLIMATE_ROW = 2,
+    SETTINGS_HUD_WARNINGS_ROW = 3,
 };
 
 enum : uint32_t {
@@ -40,6 +45,9 @@ enum : uint32_t {
     SETTINGS_ID_COORDINATES = 109u,
     SETTINGS_ID_VOLUME = 110u,
     SETTINGS_ID_DATE = 111u,
+    SETTINGS_ID_HUD = 112u,
+    SETTINGS_ID_SHOW_CLIMATE = 113u,
+    SETTINGS_ID_STORM_WARNINGS = 114u,
     SETTINGS_ID_EFFECT_0 = 120u,
     SETTINGS_TEXT_COLOR = 0xFFFFFFFFu,
     SETTINGS_ERROR_COLOR = 0xFFFF6060u,
@@ -116,40 +124,26 @@ static bool ui_screen_settings_main_page(ui_screen_settings_t *screen, bool *out
     changed |= ui_screen_settings_slider(widget, SETTINGS_ID_WORKERS, 5, label, &values->worker_count,
                                          SETTINGS_WORKERS_MIN, SETTINGS_WORKERS_MAX);
 
-    const ui_rect_t volume_row = ui_screen_settings_row(widget, SETTINGS_VOLUME_ROW, SETTINGS_ROW_WIDTH);
-    const int32_t date_width = SETTINGS_DATE_WIDTH * scale;
-    bool date = values->show_date != 0u;
-    if (ui_widget_checkbox(widget, SETTINGS_ID_DATE,
-                           (ui_rect_t){volume_row.x, volume_row.y, date_width, volume_row.height}, "Date", &date)) {
-        values->show_date = date ? 1u : 0u;
-        changed = true;
-    }
-    const int32_t volume_x = volume_row.x + date_width + SETTINGS_GAP * scale;
     int32_t volume = (int32_t)values->sound_volume_percent;
     (void)snprintf(label, sizeof(label), "Sound volume: %" PRId32 "%%", volume);
-    changed |= ui_widget_slider(
-        widget, SETTINGS_ID_VOLUME,
-        (ui_rect_t){volume_x, volume_row.y, volume_row.x + volume_row.width - volume_x, volume_row.height}, label,
-        &volume, (int32_t)SETTINGS_SOUND_VOLUME_MIN, (int32_t)SETTINGS_SOUND_VOLUME_MAX);
+    changed |= ui_widget_slider(widget, SETTINGS_ID_VOLUME,
+                                ui_screen_settings_row(widget, SETTINGS_VOLUME_ROW, SETTINGS_ROW_WIDTH), label, &volume,
+                                (int32_t)SETTINGS_SOUND_VOLUME_MIN, (int32_t)SETTINGS_SOUND_VOLUME_MAX);
     values->sound_volume_percent = (uint8_t)volume;
 
     const ui_rect_t row = ui_screen_settings_row(widget, 6, SETTINGS_ROW_WIDTH);
     const int32_t vsync_width = SETTINGS_VSYNC_WIDTH * scale;
-    const int32_t coordinates_width = SETTINGS_COORDINATES_WIDTH * scale;
-    const int32_t coordinates_x = row.x + vsync_width + SETTINGS_GAP * scale;
-    const int32_t effects_x = coordinates_x + coordinates_width + SETTINGS_GAP * scale;
+    const int32_t hud_width = SETTINGS_HUD_WIDTH * scale;
+    const int32_t hud_x = row.x + vsync_width + SETTINGS_GAP * scale;
+    const int32_t effects_x = hud_x + hud_width + SETTINGS_GAP * scale;
     bool vsync = values->vsync != 0u;
     if (ui_widget_checkbox(widget, SETTINGS_ID_VSYNC, (ui_rect_t){row.x, row.y, vsync_width, row.height}, "VSync",
                            &vsync)) {
         values->vsync = vsync ? 1u : 0u;
         changed = true;
     }
-    bool coordinates = values->show_coordinates != 0u;
-    if (ui_widget_checkbox(widget, SETTINGS_ID_COORDINATES,
-                           (ui_rect_t){coordinates_x, row.y, coordinates_width, row.height}, "Coordinates",
-                           &coordinates)) {
-        values->show_coordinates = coordinates ? 1u : 0u;
-        changed = true;
+    if (ui_widget_button(widget, SETTINGS_ID_HUD, (ui_rect_t){hud_x, row.y, hud_width, row.height}, "HUD...", true)) {
+        screen->page = UI_SCREEN_SETTINGS_PAGE_HUD;
     }
     if (ui_widget_button(widget, SETTINGS_ID_EFFECTS,
                          (ui_rect_t){effects_x, row.y, row.x + row.width - effects_x, row.height}, "Effects...",
@@ -193,23 +187,66 @@ static bool ui_screen_settings_effects_page(ui_screen_settings_t *screen) {
     return changed;
 }
 
+/* One of the HUD page's boxes, over a byte that is 0 or 1. True if it changed. */
+static bool ui_screen_settings_flag(ui_widget_t *widget, uint32_t id, int32_t row, const char *label, uint8_t *flag) {
+    bool on = *flag != 0u;
+    if (!ui_widget_checkbox(widget, id, ui_screen_settings_row(widget, row, SETTINGS_ROW_WIDTH), label, &on)) {
+        return false;
+    }
+    *flag = on ? 1u : 0u;
+    return true;
+}
+
+/* The same over one bit of climate_hud. */
+static bool ui_screen_settings_bit(ui_widget_t *widget, uint32_t id, int32_t row, const char *label, uint8_t *bits,
+                                   uint8_t bit) {
+    uint8_t flag = (*bits & bit) != 0u ? 1u : 0u;
+    if (!ui_screen_settings_flag(widget, id, row, label, &flag)) {
+        return false;
+    }
+    *bits = flag != 0u ? (uint8_t)(*bits | bit) : (uint8_t)(*bits & ~bit);
+    return true;
+}
+
+/* Plan 004 phase 10: what the corners of the HUD show, a box a row, and Back where Done is. */
+static bool ui_screen_settings_hud_page(ui_screen_settings_t *screen) {
+    ui_widget_t *const widget = screen->borrowed_widget;
+    settings_values_t *const values = screen->borrowed_values;
+    bool changed = false;
+    changed |= ui_screen_settings_flag(widget, SETTINGS_ID_COORDINATES, SETTINGS_HUD_COORDINATES_ROW, "Coordinates",
+                                       &values->show_coordinates);
+    changed |= ui_screen_settings_flag(widget, SETTINGS_ID_DATE, SETTINGS_HUD_DATE_ROW, "Date", &values->show_date);
+    changed |= ui_screen_settings_bit(widget, SETTINGS_ID_SHOW_CLIMATE, SETTINGS_HUD_CLIMATE_ROW,
+                                      "Temperature and wind", &values->climate_hud, SETTINGS_CLIMATE_HUD_LINE);
+    changed |= ui_screen_settings_bit(widget, SETTINGS_ID_STORM_WARNINGS, SETTINGS_HUD_WARNINGS_ROW, "Storm warnings",
+                                      &values->climate_hud, SETTINGS_CLIMATE_HUD_WARNINGS);
+    if (ui_widget_button(widget, SETTINGS_ID_DONE,
+                         ui_screen_settings_row(widget, SETTINGS_DONE_ROW, SETTINGS_ROW_WIDTH), "Back", true)) {
+        screen->page = UI_SCREEN_SETTINGS_PAGE_MAIN;
+    }
+    return changed;
+}
+
 ui_screen_settings_action_t ui_screen_settings_frame(ui_screen_settings_t *screen, bool escape) {
     ui_widget_t *const widget = screen->borrowed_widget;
     const int32_t scale = (int32_t)widget->scale;
     const ui_rect_t whole = {0, 0, (int32_t)widget->canvas_width, (int32_t)widget->canvas_height};
     ui_compose_fill(widget->borrowed_canvas, whole, screen->over_world != 0u ? SETTINGS_SHADE : SETTINGS_BACKGROUND);
     const bool effects_page = screen->page == UI_SCREEN_SETTINGS_PAGE_EFFECTS;
+    const bool hud_page = screen->page == UI_SCREEN_SETTINGS_PAGE_HUD;
     const ui_rect_t title = {0, ui_screen_settings_top(widget) + SETTINGS_TITLE_Y * scale, whole.width,
                              SETTINGS_TITLE_HEIGHT * scale};
     /* What went wrong with keeping them takes the title's place: every row below has its use. */
-    const bool has_message = !effects_page && screen->message[0] != '\0';
-    ui_widget_label_centered(widget, title, has_message ? screen->message : (effects_page ? "Effects" : "Settings"),
-                             has_message ? SETTINGS_ERROR_COLOR : SETTINGS_TEXT_COLOR, true);
+    const bool has_message = !effects_page && !hud_page && screen->message[0] != '\0';
+    ui_widget_label_centered(
+        widget, title, has_message ? screen->message : (effects_page ? "Effects" : (hud_page ? "HUD" : "Settings")),
+        has_message ? SETTINGS_ERROR_COLOR : SETTINGS_TEXT_COLOR, true);
     bool done = false;
     const bool changed =
-        effects_page ? ui_screen_settings_effects_page(screen) : ui_screen_settings_main_page(screen, &done);
+        effects_page ? ui_screen_settings_effects_page(screen)
+                     : (hud_page ? ui_screen_settings_hud_page(screen) : ui_screen_settings_main_page(screen, &done));
     if (escape) {
-        if (effects_page) {
+        if (effects_page || hud_page) {
             screen->page = UI_SCREEN_SETTINGS_PAGE_MAIN;
         } else {
             done = true;

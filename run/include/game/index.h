@@ -53,8 +53,12 @@ typedef struct game_config_t {
     uint32_t table_chunks;
     uint32_t fov_degrees;         /* 24: the vertical field of view; 0 means RENDER_CAMERA_HALF_FOV_TANGENT_DEFAULT */
     uint32_t sensitivity_percent; /* 28: of RENDER_CAMERA_RADIANS_PER_COUNT; 0 means 100 */
-    uint32_t
-        render_scale_percent; /* 32: pictures are drawn this much of width and height, and brought up; 0 means 100 */
+    /* 32: pictures are drawn this much of width and height, and brought up; 0 means 100. At most 100, so two bytes, which
+     * leaves one for climate_hud with no growth (app_t is at main's frame limit). */
+    uint16_t render_scale_percent;
+    uint8_t
+        climate_hud; /* 34: SETTINGS_CLIMATE_HUD_* (plan 004 phase 10): the climate line and storm warnings under the date */
+    uint8_t _pad0[1]; /* 35 */
     uint8_t uncapped; /* 36: the gpu thread draws as fast as it can, and does not wait for a picture to be taken */
     uint8_t show_coordinates; /* 37: x, y and z in the top left corner of what a body sees */
     uint8_t god_rays;         /* 38: on top of what features_off leaves, being optional */
@@ -395,6 +399,9 @@ bool game_census_take(game_t *game, uint64_t *out_week);
 calendar_date_t game_calendar_date(const game_t *game);
 bool game_calendar_south(const game_t *game);
 void game_calendar_line(const game_t *game, char *out, uint64_t bytes);
+/* The season part of that line alone: "Early spring", "Polar night". Never nullptr. The HUD's corner shows it until the sim has
+ * worked out the climate's own label (plan 004 phase 10). */
+const char *game_calendar_season_name(const game_t *game);
 
 /* Moves the eye. The thread that owns input. */
 void game_fly(game_t *game, const render_fly_input_t *input, float32_t seconds);

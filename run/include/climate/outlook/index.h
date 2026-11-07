@@ -4,6 +4,7 @@
 
 #include "arena/index.h"
 #include "climate/index.h"
+#include "climate/systems/index.h"
 #include "types/index.h"
 
 #include <stddef.h>
@@ -178,5 +179,34 @@ float32_t climate_outlook_background_rain(float32_t rain_mm_day);
 float64_t climate_outlook_at_least_one(const float64_t *chances, uint32_t count, float64_t lambda);
 /* A system's forecast error t days ahead, in units of sigma, drawn by hash from the seed, the system, the week and t. */
 void climate_outlook_error(uint64_t seed, uint64_t id, uint64_t week, uint32_t day, float64_t out[2]);
+
+/* ---- Plan 004 phase 10: what the outlook already works out, at moments of the caller's choosing ----------------------- */
+
+/* The forecast errors' dice for this climate's world: climate_outlook_input_t.seed. */
+uint64_t climate_outlook_seed(const climate_t *climate);
+
+/* The chance the forecast gives that one known system covers (x, y) at the instant t days after the census at census_t, for any
+ * t >= 0 with a fraction: its centre where its own steering takes it then (climate_system_state_at), moved by the forecast
+ * error drawn for whole days as climate_outlook_run draws it and going evenly from one whole day's to the next, sigma(t), and the
+ * footprint form. At t = 1 to 7 it is the chance climate_outlook_run gives for that day, before the outlook keeps it as a
+ * float32_t. 0 if the system is not alive then. Pure. */
+float64_t climate_outlook_system_chance(const climate_system_t *system, uint64_t seed, uint64_t week,
+                                        float64_t census_t, float64_t t, float64_t x, float64_t y, bool error_off,
+                                        uint8_t footprint);
+
+/* The systems a forecaster knows at census_t near (x, y): every big system alive at that moment within CLIMATE_OUTLOOK_REACH,
+ * nearest first, then by id, as climate_outlook_input_fill keeps them. list is the census day's, built in scratch; order its
+ * indices, also in scratch, *out_count of them (no cap). False if a tile is missing or scratch too small. Reads only up to
+ * census_t. */
+[[nodiscard]] bool climate_outlook_known_list(const climate_t *climate, float64_t x, float64_t y, float64_t census_t,
+                                              arena_t *scratch, climate_systems_day_t *list, uint32_t **out_order,
+                                              uint32_t *out_count);
+
+/* Lambda of a kind (CLIMATE_SYSTEM_HURRICANE or CLIMATE_SYSTEM_LOW) at the instants census_t + after[i]: systems not yet born
+ * at census_t that are expected to cover (x, y) then, as climate_outlook_input_fill's unborn_* (which asks at after = 1 to 7).
+ * Births on every day from the census day up to the last instant are counted. Into out[0 .. count - 1]. */
+void climate_outlook_unborn(const climate_t *climate, arena_t *scratch, climate_systems_mask_t *mask, uint8_t kind,
+                            float64_t x, float64_t y, float64_t census_t, const float64_t *after, uint32_t count,
+                            float64_t *out);
 
 #endif

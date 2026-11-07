@@ -54,8 +54,17 @@ typedef struct settings_values_t {
     uint8_t
         sound_volume_percent; /* 30: what the game's sounds are turned down to, on top of the desktop's own volume */
     uint8_t show_date;        /* 31: the date line in the top right corner, while playing */
+    uint8_t climate_hud;      /* 32: SETTINGS_CLIMATE_HUD_* that are on: plan 004 phase 10's lines under the date */
+    uint8_t _pad0[3];         /* 33 */
 } settings_values_t;
-static_assert(sizeof(settings_values_t) == 32);
+static_assert(sizeof(settings_values_t) == 36);
+
+/* Plan 004 phase 10: the lines under the date line, each with its box on the HUD page and its line in the file. */
+enum : uint8_t {
+    SETTINGS_CLIMATE_HUD_LINE = 1u << 0,     /* the temperature and wind line: show_climate */
+    SETTINGS_CLIMATE_HUD_WARNINGS = 1u << 1, /* storm warnings: storm_warnings */
+    SETTINGS_CLIMATE_HUD_ALL = SETTINGS_CLIMATE_HUD_LINE | SETTINGS_CLIMATE_HUD_WARNINGS,
+};
 
 /* One graphics effect: what its line in the file is called, and what the screen calls it. */
 typedef struct settings_effect_t {

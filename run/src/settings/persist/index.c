@@ -78,7 +78,8 @@ void settings_persist_defaults(settings_values_t *out) {
                                .vsync = 1u,
                                .show_coordinates = 1u,
                                .sound_volume_percent = SETTINGS_SOUND_VOLUME_DEFAULT,
-                               .show_date = 1u};
+                               .show_date = 1u,
+                               .climate_hud = SETTINGS_CLIMATE_HUD_ALL};
 }
 
 static uint32_t *settings_number_at(settings_values_t *values, const settings_number_t *number) {
@@ -95,6 +96,7 @@ void settings_persist_clamp(settings_values_t *values) {
     values->vsync = values->vsync != 0u ? 1u : 0u;
     values->show_coordinates = values->show_coordinates != 0u ? 1u : 0u;
     values->show_date = values->show_date != 0u ? 1u : 0u;
+    values->climate_hud &= SETTINGS_CLIMATE_HUD_ALL;
     values->sound_volume_percent = values->sound_volume_percent > SETTINGS_SOUND_VOLUME_MAX
                                        ? (uint8_t)SETTINGS_SOUND_VOLUME_MAX
                                        : values->sound_volume_percent;
@@ -191,6 +193,20 @@ static settings_line_result_t settings_line_apply(const uint8_t *key, uint64_t k
             return SETTINGS_LINE_BAD;
         }
         *flag = on ? 1u : 0u;
+        return SETTINGS_LINE_SET;
+    }
+    /* Plan 004 phase 10: two lines, each a bit of one byte. */
+    uint8_t bit = 0u;
+    if (settings_key_is(key, key_length, "show_climate")) {
+        bit = SETTINGS_CLIMATE_HUD_LINE;
+    } else if (settings_key_is(key, key_length, "storm_warnings")) {
+        bit = SETTINGS_CLIMATE_HUD_WARNINGS;
+    }
+    if (bit != 0u) {
+        if (!settings_bool_parse(value, value_length, &on)) {
+            return SETTINGS_LINE_BAD;
+        }
+        values->climate_hud = on ? (uint8_t)(values->climate_hud | bit) : (uint8_t)(values->climate_hud & ~bit);
         return SETTINGS_LINE_SET;
     }
     for (uint32_t i = 0u; i < SETTINGS_EFFECT_COUNT; i++) {
@@ -359,6 +375,12 @@ bool settings_persist_write(const settings_values_t *values, uint8_t *out, uint6
         return false;
     }
     if (!settings_append(out, capacity, &at, "show_date", values->show_date != 0u ? "true" : "false")) {
+        return false;
+    }
+    if (!settings_append(out, capacity, &at, "show_climate",
+                         (values->climate_hud & SETTINGS_CLIMATE_HUD_LINE) != 0u ? "true" : "false") ||
+        !settings_append(out, capacity, &at, "storm_warnings",
+                         (values->climate_hud & SETTINGS_CLIMATE_HUD_WARNINGS) != 0u ? "true" : "false")) {
         return false;
     }
     for (uint32_t i = 0u; i < SETTINGS_EFFECT_COUNT; i++) {

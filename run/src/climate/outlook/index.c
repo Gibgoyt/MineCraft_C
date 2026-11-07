@@ -123,22 +123,30 @@ static void outlook_typical(uint8_t kind, float64_t x, float64_t y, float64_t t0
     }
 }
 
-/* Lambda for a kind on each day: over every square in reach and every day from the census day to the day before the instant,
- * the square's rate times the chance a system born there covers here at the instant. */
-static void outlook_unborn(const climate_t *climate, arena_t *scratch, climate_systems_mask_t *mask, uint8_t kind,
-                           float64_t x, float64_t y, float64_t census_t, float32_t out[CLIMATE_OUTLOOK_DAYS]) {
+/* Lambda for a kind at each instant: over every square in reach and every day from the census day to the day before the
+ * instant, the square's rate times the chance a system born there covers here at the instant. */
+void climate_outlook_unborn(const climate_t *climate, arena_t *scratch, climate_systems_mask_t *mask, uint8_t kind,
+                            float64_t x, float64_t y, float64_t census_t, const float64_t *after, uint32_t count,
+                            float64_t *out) {
     const float64_t q = climate_systems_square(kind);
     const float64_t reach = climate_systems_reach(kind);
     const float64_t spread = q / OUTLOOK_SQRT12;
     const int64_t census_day = (int64_t)floor(census_t);
     const int32_t x0 = (int32_t)floor((x - reach) / q), x1 = (int32_t)floor((x + reach) / q);
     const int32_t y0 = (int32_t)floor((y - reach) / q), y1 = (int32_t)floor((y + reach) / q);
-    float64_t lambda[CLIMATE_OUTLOOK_DAYS] = {0};
+    /* Births up to the last instant: the week's 7 days for the outlook's own instants, a day more for one past them. */
+    float64_t last = 0.0f64;
+    for (uint32_t i = 0u; i < count; i++) {
+        out[i] = 0.0f64;
+        last = after[i] > last ? after[i] : last;
+    }
+    const int64_t through = (int64_t)ceil(census_t + last) - census_day;
+    const int64_t span = through > (int64_t)CLIMATE_OUTLOOK_DAYS ? through : (int64_t)CLIMATE_OUTLOOK_DAYS;
     climate_system_t *const typical = arena_alloc(scratch, sizeof(climate_system_t), alignof(climate_system_t));
     for (int32_t sy = y0; sy <= y1; sy++) {
         for (int32_t sx = x0; sx <= x1; sx++) {
             const float64_t cx = ((float64_t)sx + 0.5f64) * q, cy = ((float64_t)sy + 0.5f64) * q;
-            for (int64_t d = census_day; d < census_day + (int64_t)CLIMATE_OUTLOOK_DAYS; d++) {
+            for (int64_t d = census_day; d < census_day + span; d++) {
                 const float64_t born = (float64_t)d + 0.5f64;
                 const float32_t rate = kind == CLIMATE_SYSTEM_HURRICANE
                                            ? climate_systems_hurricane_rate(climate, scratch, cx, cy, born)
@@ -148,8 +156,8 @@ static void outlook_unborn(const climate_t *climate, arena_t *scratch, climate_s
                 }
                 outlook_typical(kind, cx, cy, born, typical);
                 climate_systems_track(climate, mask, typical);
-                for (uint32_t t = 1u; t <= CLIMATE_OUTLOOK_DAYS; t++) {
-                    const float64_t instant = census_t + (float64_t)t;
+                for (uint32_t i = 0u; i < count; i++) {
+                    const float64_t instant = census_t + after[i];
                     if (born >= instant) {
                         continue; /* born after the instant: it cannot be here then */
                     }
@@ -161,11 +169,21 @@ static void outlook_unborn(const climate_t *climate, arena_t *scratch, climate_s
                     const float64_t dx = state.x - x, dy = state.y - y;
                     const float64_t cover =
                         climate_outlook_disk_chance(sqrt(dx * dx + dy * dy), spread, (float64_t)typical->radius);
-                    lambda[t - 1u] += (float64_t)rate * cover * outlook_life_share(kind, instant - born);
+                    out[i] += (float64_t)rate * cover * outlook_life_share(kind, instant - born);
                 }
             }
         }
     }
+}
+
+/* Lambda at the outlook's own instants, 1 to 7 days after the census, as the input keeps it. */
+static void outlook_unborn_week(const climate_t *climate, arena_t *scratch, climate_systems_mask_t *mask, uint8_t kind,
+                                float64_t x, float64_t y, float64_t census_t, float32_t out[CLIMATE_OUTLOOK_DAYS]) {
+    float64_t after[CLIMATE_OUTLOOK_DAYS], lambda[CLIMATE_OUTLOOK_DAYS];
+    for (uint32_t t = 0u; t < CLIMATE_OUTLOOK_DAYS; t++) {
+        after[t] = (float64_t)(t + 1u);
+    }
+    climate_outlook_unborn(climate, scratch, mask, kind, x, y, census_t, after, CLIMATE_OUTLOOK_DAYS, lambda);
     for (uint32_t t = 0u; t < CLIMATE_OUTLOOK_DAYS; t++) {
         out[t] = (float32_t)lambda[t];
     }
@@ -179,32 +197,23 @@ static float64_t outlook_known_distance(const climate_system_t *system, float64_
     return sqrt(dx * dx + dy * dy);
 }
 
-bool climate_outlook_input_fill(const climate_t *climate, float64_t x, float64_t y, float64_t census_t, uint64_t week,
-                                arena_t *scratch, climate_outlook_input_t *out) {
-    memset(out, 0, sizeof(*out));
-    out->x = x;
-    out->y = y;
-    out->census_t = census_t;
-    out->week = week;
-    out->seed = terrain_rng_derive(climate_seed(climate), terrain_rng_salt("climate_outlook/error"));
-    out->footprint = CLIMATE_OUTLOOK_FOOTPRINT;
-    climate_cell_t cell;
-    if (!climate_cell_get(climate, (int32_t)floor(x), (int32_t)floor(y), &cell)) {
-        return false;
-    }
-    out->sigma_t = CLIMATE_SIGMA_T_COAST + CLIMATE_SIGMA_T_INLAND_EXTRA * cell.kappa;
-    const int64_t census_day = (int64_t)floor(census_t);
+uint64_t climate_outlook_seed(const climate_t *climate) {
+    return terrain_rng_derive(climate_seed(climate), terrain_rng_salt("climate_outlook/error"));
+}
 
+bool climate_outlook_known_list(const climate_t *climate, float64_t x, float64_t y, float64_t census_t,
+                                arena_t *scratch, climate_systems_day_t *list, uint32_t **out_order,
+                                uint32_t *out_count) {
+    const int64_t census_day = (int64_t)floor(census_t);
     /* The systems alive at the census moment: born by then and not yet dead. None born after is ever looked at. */
-    climate_systems_day_t list;
     if (!climate_systems_day_build(climate, scratch, x, y, (float32_t)CLIMATE_OUTLOOK_REACH, 0.0f32, census_day,
-                                   CLIMATE_SYSTEMS_BIG, &list)) {
+                                   CLIMATE_SYSTEMS_BIG, list)) {
         return false;
     }
-    uint32_t *const order = arena_alloc_array(scratch, list.system_count + 1u, sizeof(uint32_t), 4u);
+    uint32_t *const order = arena_alloc_array(scratch, list->system_count + 1u, sizeof(uint32_t), 4u);
     uint32_t alive = 0u;
-    for (uint32_t i = 0u; i < list.system_count; i++) {
-        const climate_system_t *const system = &list.borrowed_systems[i];
+    for (uint32_t i = 0u; i < list->system_count; i++) {
+        const climate_system_t *const system = &list->borrowed_systems[i];
         climate_system_state_t state;
         climate_system_state_at(system, census_t, &state);
         if (system->spawn_day <= census_t && state.alive != 0u) {
@@ -214,11 +223,11 @@ bool climate_outlook_input_fill(const climate_t *climate, float64_t x, float64_t
     /* Insertion sort by distance now, then id: at most a few dozen. */
     for (uint32_t i = 1u; i < alive; i++) {
         const uint32_t moving = order[i];
-        const climate_system_t *const m = &list.borrowed_systems[moving];
+        const climate_system_t *const m = &list->borrowed_systems[moving];
         const float64_t dm = outlook_known_distance(m, census_t, x, y);
         uint32_t j = i;
         while (j > 0u) {
-            const climate_system_t *const o = &list.borrowed_systems[order[j - 1u]];
+            const climate_system_t *const o = &list->borrowed_systems[order[j - 1u]];
             const float64_t d_o = outlook_known_distance(o, census_t, x, y);
             if (d_o < dm || (d_o == dm && o->id < m->id)) {
                 break;
@@ -227,6 +236,33 @@ bool climate_outlook_input_fill(const climate_t *climate, float64_t x, float64_t
             j--;
         }
         order[j] = moving;
+    }
+    *out_order = order;
+    *out_count = alive;
+    return true;
+}
+
+bool climate_outlook_input_fill(const climate_t *climate, float64_t x, float64_t y, float64_t census_t, uint64_t week,
+                                arena_t *scratch, climate_outlook_input_t *out) {
+    memset(out, 0, sizeof(*out));
+    out->x = x;
+    out->y = y;
+    out->census_t = census_t;
+    out->week = week;
+    out->seed = climate_outlook_seed(climate);
+    out->footprint = CLIMATE_OUTLOOK_FOOTPRINT;
+    climate_cell_t cell;
+    if (!climate_cell_get(climate, (int32_t)floor(x), (int32_t)floor(y), &cell)) {
+        return false;
+    }
+    out->sigma_t = CLIMATE_SIGMA_T_COAST + CLIMATE_SIGMA_T_INLAND_EXTRA * cell.kappa;
+    const int64_t census_day = (int64_t)floor(census_t);
+
+    climate_systems_day_t list;
+    uint32_t *order = nullptr;
+    uint32_t alive = 0u;
+    if (!climate_outlook_known_list(climate, x, y, census_t, scratch, &list, &order, &alive)) {
+        return false;
     }
     const uint32_t kept = alive < CLIMATE_OUTLOOK_KNOWN_MAX ? alive : CLIMATE_OUTLOOK_KNOWN_MAX;
     float64_t push = 0.0f64;
@@ -282,12 +318,48 @@ bool climate_outlook_input_fill(const climate_t *climate, float64_t x, float64_t
     /* Not born yet: the spawn rates over every square in reach, thinned by the chance of reaching here. */
     climate_systems_mask_t mask;
     climate_systems_mask_start(&mask, climate, scratch, nullptr);
-    outlook_unborn(climate, scratch, &mask, CLIMATE_SYSTEM_HURRICANE, x, y, census_t, out->unborn_hurricane);
-    outlook_unborn(climate, scratch, &mask, CLIMATE_SYSTEM_LOW, x, y, census_t, out->unborn_low);
+    outlook_unborn_week(climate, scratch, &mask, CLIMATE_SYSTEM_HURRICANE, x, y, census_t, out->unborn_hurricane);
+    outlook_unborn_week(climate, scratch, &mask, CLIMATE_SYSTEM_LOW, x, y, census_t, out->unborn_low);
     return true;
 }
 
 /* ---- The chances, from the input alone ----------------------------------------------------------------------------- */
+
+/* A known system's chance of covering (x, y), its centre at (cx, cy) when t days have passed since the census: the forecast
+ * moves the centre by its error, drawn for each whole day and going evenly between them, and spreads it by sigma(t). At a
+ * whole t the error is that day's draw itself. */
+static float64_t outlook_forecast_chance(float64_t cx, float64_t cy, float64_t radius, uint64_t id, uint64_t seed,
+                                         uint64_t week, float64_t t, float64_t x, float64_t y, bool error_off,
+                                         uint8_t footprint) {
+    const float64_t sigma = climate_outlook_sigma(t);
+    float64_t error[2] = {0.0f64, 0.0f64};
+    if (!error_off) {
+        const float64_t whole = floor(t);
+        const float64_t part = t - whole;
+        climate_outlook_error(seed, id, week, (uint32_t)whole, error);
+        if (part > 0.0f64) {
+            float64_t next[2];
+            climate_outlook_error(seed, id, week, (uint32_t)whole + 1u, next);
+            error[0] += part * (next[0] - error[0]);
+            error[1] += part * (next[1] - error[1]);
+        }
+    }
+    const float64_t fx = cx + error[0] * sigma, fy = cy + error[1] * sigma;
+    const float64_t dx = fx - x, dy = fy - y;
+    return climate_outlook_footprint(sqrt(dx * dx + dy * dy), sigma, radius, footprint);
+}
+
+float64_t climate_outlook_system_chance(const climate_system_t *system, uint64_t seed, uint64_t week,
+                                        float64_t census_t, float64_t t, float64_t x, float64_t y, bool error_off,
+                                        uint8_t footprint) {
+    climate_system_state_t state;
+    climate_system_state_at(system, census_t + t, &state);
+    if (state.alive == 0u) {
+        return 0.0f64;
+    }
+    return outlook_forecast_chance(state.x, state.y, (float64_t)system->radius, system->id, seed, week, t, x, y,
+                                   error_off, footprint);
+}
 
 static uint32_t outlook_fold_id(uint64_t id) {
     return (uint32_t)(id ^ (id >> 32));
@@ -304,15 +376,9 @@ void climate_outlook_run(const climate_outlook_input_t *input, climate_outlook_t
             if (known->alive[t] == 0u) {
                 continue; /* died by then */
             }
-            const float64_t sigma = climate_outlook_sigma((float64_t)(t + 1u));
-            float64_t error[2] = {0.0f64, 0.0f64};
-            if (input->error_off == 0u) {
-                climate_outlook_error(input->seed, known->id, input->week, t + 1u, error);
-            }
-            const float64_t fx = known->x[t] + error[0] * sigma, fy = known->y[t] + error[1] * sigma;
-            const float64_t dx = fx - input->x, dy = fy - input->y;
-            chance[k][t] = (float32_t)climate_outlook_footprint(sqrt(dx * dx + dy * dy), sigma,
-                                                                (float64_t)known->radius, input->footprint);
+            chance[k][t] = (float32_t)outlook_forecast_chance(
+                known->x[t], known->y[t], (float64_t)known->radius, known->id, input->seed, input->week,
+                (float64_t)(t + 1u), input->x, input->y, input->error_off != 0u, input->footprint);
         }
     }
     for (uint32_t t = 0u; t < CLIMATE_OUTLOOK_DAYS; t++) {
