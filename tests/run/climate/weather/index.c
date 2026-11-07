@@ -323,6 +323,78 @@ TEST(a_day_is_a_pure_function) {
     weather_rig_stop(&used);
 }
 
+/* The Atlas's temperature now asks many places at once through one list: each answer must be the bits one place alone
+ * gives, and the same places split another way must say the same. */
+TEST(places_asked_together_are_the_same_bits_as_one_at_a_time) {
+    const ground_t ground = weather_ground(GROUND_COAST_X, 0, 0);
+    weather_rig_t rig;
+    REQUIRE(weather_rig_start(t, &rig, &ground));
+    const float64_t x0 = 2000.0f64, y0 = 6000.0f64;
+    weather_prepare(&rig, x0, y0, 16000.0f64);
+    enum : uint32_t { SIDE = 12u, PLACES = SIDE * SIDE, MOMENTS = 10u };
+    const float64_t moments[MOMENTS] = {100.1f64,  230.55f64, 240.9f64, 250.25f64,  400.0f64,
+                                        611.71f64, 615.3f64,  960.5f64, 2000.99f64, 5000.4f64};
+    climate_weather_ask_t *const asks = test_alloc(t, PLACES * sizeof(climate_weather_ask_t));
+    climate_week_t week = {.rain_mm = 40.0f32, .soil_mm = 90.0f32};
+    for (uint32_t i = 0u; i < PLACES; i++) {
+        /* A 6600-block square, places 600 apart, with a few off the grid and some up a hill. */
+        asks[i] = (climate_weather_ask_t){
+            .x = x0 - 3300.0f64 + 600.0f64 * (float64_t)(i % SIDE) + (float64_t)(i % 7u) * 13.25f64,
+            .y = y0 - 3300.0f64 + 600.0f64 * (float64_t)(i / SIDE) - (float64_t)(i % 5u) * 7.5f64,
+            .z = (float64_t)(i % 3u) * 40.0f64,
+            .borrowed_week = i % 2u == 0u ? &week : nullptr,
+        };
+    }
+    climate_now_t *const together = test_alloc(t, PLACES * sizeof(climate_now_t));
+    climate_now_t *const half = test_alloc(t, PLACES * sizeof(climate_now_t));
+    bool *const ok = test_alloc(t, PLACES * sizeof(bool));
+    bool *const ok_half = test_alloc(t, PLACES * sizeof(bool));
+    climate_now_t alone;
+    uint32_t answered = 0u, raining = 0u, stormy = 0u, thunder = 0u, differ = 0u;
+    uint64_t shared_used = 0u;
+    for (uint32_t m = 0u; m < MOMENTS; m++) {
+        arena_reset(rig.arena);
+        REQUIRE(climate_weather_at_shared(rig.climate, asks, PLACES, moments[m], rig.arena, together, ok));
+        shared_used = rig.arena->used > shared_used ? rig.arena->used : shared_used;
+        /* The same places as two halves give the same, each half its own list. */
+        arena_reset(rig.arena);
+        REQUIRE(climate_weather_at_shared(rig.climate, asks, PLACES / 2u, moments[m], rig.arena, half, ok_half));
+        arena_reset(rig.arena);
+        REQUIRE(climate_weather_at_shared(rig.climate, asks + PLACES / 2u, PLACES / 2u, moments[m], rig.arena,
+                                          half + PLACES / 2u, ok_half + PLACES / 2u));
+        for (uint32_t i = 0u; i < PLACES; i++) {
+            arena_reset(rig.arena);
+            const bool one = climate_weather_at(rig.climate, asks[i].x, asks[i].y, asks[i].z, moments[m],
+                                                asks[i].borrowed_week, rig.arena, &alone);
+            CHECK(one == ok[i]);
+            CHECK(ok_half[i] == ok[i]);
+            if (!one || !ok[i]) {
+                continue;
+            }
+            answered++;
+            raining += alone.rain_mm_h > 0.0f32 ? 1u : 0u;
+            stormy += alone.cloud >= 0.75f32 ? 1u : 0u;
+            thunder += alone.thunder_cell != 0u ? 1u : 0u;
+            differ += memcmp(&alone, &together[i], sizeof(alone)) != 0 ? 1u : 0u;
+            differ += memcmp(&alone, &half[i], sizeof(alone)) != 0 ? 1u : 0u;
+        }
+    }
+    printf("%u answers of %u: %u raining, %u under a storm, %u near a cell; %u differ; one list's scratch %.2f MiB\n",
+           answered, PLACES * MOMENTS, raining, stormy, thunder, differ,
+           (libc_double_t)((float64_t)shared_used / 1048576.0f64));
+    CHECK(answered == PLACES * MOMENTS);
+    CHECK(raining > 0u);
+    CHECK(differ == 0u);
+    /* Places spread past the share are refused, writing nothing, so the caller asks each alone. */
+    climate_weather_ask_t far[2] = {asks[0], asks[0]};
+    far[1].x += CLIMATE_WEATHER_SHARE_BLOCKS + 1.0f64;
+    ok[0] = ok[1] = true;
+    arena_reset(rig.arena);
+    CHECK(!climate_weather_at_shared(rig.climate, far, 2u, moments[0], rig.arena, together, ok));
+    CHECK(ok[0] && ok[1]);
+    weather_rig_stop(&rig);
+}
+
 TEST(spells_last) {
     weather_rig_t rig;
     REQUIRE(weather_rig_start(t, &rig, &(ground_t){.kind = GROUND_ALL_LAND}));

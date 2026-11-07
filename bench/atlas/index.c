@@ -37,6 +37,7 @@ static const float64_t BENCH_DRAW_TARGET_MS = 60.0f64;
 static const float64_t BENCH_FRAME_TARGET_MS = 2.0f64;
 static const float64_t BENCH_WRITE_TARGET_US = 5.0f64;
 static const float64_t BENCH_TOP_TARGET_US = 20.0f64;
+static const int32_t BENCH_CLIMATE_MARGIN = 8192; /* blocks of built climate tiles round the layers' view */
 static const int32_t BENCH_OPEN_ZOOM = 7; /* 11.3 blocks a pixel: 21.7 by 12.2 km, the 100 km^2 and room round it */
 
 /* What the bench holds, each at its own place in one heap region. */
@@ -191,6 +192,15 @@ static void bench_layers(bench_t *bench, const char *directory, uint8_t *memory)
         char what[64];
         snprintf(what, sizeof(what), "layer %s", ui_atlas_layers[layer].key);
         bench_report(what, ms, BENCH_DRAWS, BENCH_DRAW_TARGET_MS, "ms");
+        if (ui_atlas_layers[layer].value != UI_ATLAS_VALUE_NONE) {
+            /* A value layer timed while it had nothing to show would be timing its failures. */
+            uint64_t valued = 0u;
+            for (uint64_t i = 0u; i < pixels; i++) {
+                valued += isnan(target.borrowed_field[i]) ? 0u : 1u;
+            }
+            printf("  %s: %.1f%% of its pixels have a value\n", ui_atlas_layers[layer].key,
+                   (libc_double_t)(100.0f64 * (float64_t)valued / (float64_t)pixels));
+        }
     }
     job_group_deinit(&group);
     /* The main thread's frame with the Atlas up and a picture shown: the copy, title, legend, slider, readout, mark. */
@@ -265,7 +275,10 @@ static int32_t bench_run(bench_t *bench, uint8_t *memory, char *directory) {
     }
     printf("bench_atlas: %u workers, %u by %u, files in %s\n", BENCH_WORKERS, BENCH_WIDTH, BENCH_HEIGHT, directory);
     const int64_t started = time_now_ns();
-    climate_prepare_area(bench->climate, bench->job, -5632, -3584, 5631, 3583, nullptr, nullptr);
+    /* The view, 10.9 by 6.1 km, and BENCH_CLIMATE_MARGIN round it: temperature now's weather reads every climate tile
+     * within 6 km of each place it is asked about, as the census keeps them built round explored land. */
+    climate_prepare_area(bench->climate, bench->job, -5632 - BENCH_CLIMATE_MARGIN, -3584 - BENCH_CLIMATE_MARGIN,
+                         5631 + BENCH_CLIMATE_MARGIN, 3583 + BENCH_CLIMATE_MARGIN, nullptr, nullptr);
     printf("climate tiles round the view worked out in %.1f s\n",
            (libc_double_t)time_ns_to_seconds(time_now_ns() - started));
     if (!bench_build(bench, directory)) {

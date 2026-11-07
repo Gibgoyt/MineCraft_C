@@ -29,9 +29,15 @@ static void *layer_take(layer_cursor_t *cursor, uint64_t bytes) {
 }
 
 enum : uint64_t {
-    LAYER_WEATHER_BYTES = 4ull << 20,     /* climate_weather_at's scratch: about 2 MiB, it says */
+    LAYER_WEATHER_BYTES = 4ull << 20, /* climate_weather_at_shared's scratch: about 2 MiB, it says */
+    LAYER_SHARE_SIDE = 64u,           /* temperature now: points each way asked through one day list, at most */
+    LAYER_SHARE_STACK = 32u,          /* squares waiting: 3 more each halving, 6 halvings from 64 to 1 */
+    LAYER_SHARE_POINTS = LAYER_SHARE_SIDE * LAYER_SHARE_SIDE,
     LAYER_GROUND_READ_BYTES = 3ull << 20, /* what the ground's read borrows: a tile file's bytes and pixels */
 };
+/* Temperature now: blocks from a square's first point to its last, at most. Smaller than CLIMATE_WEATHER_SHARE_BLOCKS, so
+ * its list reaches less far past the points, and fewer squares at the edge of the built climate tiles need splitting. */
+static const float64_t LAYER_SHARE_BLOCKS = 2048.0f64;
 
 /* ---- Scales of layers no earlier phase drew (the phase 09 file's table) ------------------------------------------- */
 
@@ -432,25 +438,13 @@ static const climate_week_t *layer_week_cell(const ui_atlas_draw_input_t *input,
     return climate_week_store_cell(input->borrowed_week, (int32_t)cell_x, (int32_t)cell_y);
 }
 
-/* One value at a block, NaN where there is none. weather is a small arena of its own, reset for each costly read. */
-static float32_t layer_value_at(const ui_atlas_draw_input_t *input, ui_atlas_value_t value, float64_t x, float64_t y,
-                                arena_t *weather) {
+/* One value at a block, NaN where there is none. Temperature now is layer_grid_temperature_now's. */
+static float32_t layer_value_at(const ui_atlas_draw_input_t *input, ui_atlas_value_t value, float64_t x, float64_t y) {
     const climate_t *const climate = input->borrowed_climate;
     const climate_systems_day_t *const systems = layer_systems_of(input);
     const float64_t t = input->t;
     const float32_t day = (float32_t)climate_systems_day_of_year(t) + (float32_t)(t - floor(t));
     switch (value) {
-    case UI_ATLAS_VALUE_TEMPERATURE_NOW: {
-        climate_sample_t sample;
-        climate_now_t now;
-        if (!climate_sample_at(climate, x, y, &sample)) {
-            return nanf("");
-        }
-        arena_reset(weather);
-        const float64_t z = sample.z_ground > 0.0f32 ? (float64_t)sample.z_ground : 0.0f64;
-        return climate_weather_at(climate, x, y, z, t, layer_week_cell(input, x, y), weather, &now) ? now.temperature_c
-                                                                                                    : nanf("");
-    }
     case UI_ATLAS_VALUE_RAIN_RADAR: {
         float32_t rain = 0.0f32;
         return climate_layer_rain_now(climate, systems, x, y, t, &rain) ? rain : nanf("");
@@ -487,6 +481,90 @@ static float32_t layer_value_at(const ui_atlas_draw_input_t *input, ui_atlas_val
     default:
         return nanf("");
     }
+}
+
+/* A square of value grid points temperature now asks through one day list: side points each way from (a0, b0). */
+typedef struct layer_square_t {
+    uint32_t a0;   /* 0 */
+    uint32_t b0;   /* 4 */
+    uint32_t side; /* 8 */
+} layer_square_t;
+static_assert(sizeof(layer_square_t) == 12);
+
+/* Temperature now on the value grid: climate_weather_at's bits at each point (at the ground, sea level over the sea),
+ * asked a square of points at a time through one day list (climate_weather_at_shared). A square its list cannot stand for
+ * (a climate tile in the list's wider reach not built, as at the edge of explored land) is asked again as its four
+ * quarters, down to single points, which are climate_weather_at itself. Every answer is the same bits, so the bytes are
+ * the same however the grid is split. */
+static void layer_grid_temperature_now(const ui_atlas_draw_input_t *input, const ui_atlas_geometry_t *g, int64_t n,
+                                       int64_t g0, int64_t k0, uint32_t gw, uint32_t gh, float32_t *grid,
+                                       layer_cursor_t *cursor) {
+    const climate_t *const climate = input->borrowed_climate;
+    arena_t weather;
+    arena_init(&weather, "atlas_weather", layer_take(cursor, LAYER_WEATHER_BYTES), LAYER_WEATHER_BYTES);
+    climate_weather_ask_t *const asks = layer_take(cursor, LAYER_SHARE_POINTS * sizeof(climate_weather_ask_t));
+    climate_now_t *const nows = layer_take(cursor, LAYER_SHARE_POINTS * sizeof(climate_now_t));
+    bool *const ok = layer_take(cursor, LAYER_SHARE_POINTS * sizeof(bool));
+    uint32_t *const where = layer_take(cursor, LAYER_SHARE_POINTS * sizeof(uint32_t));
+    /* Squares a power of two points across, at most LAYER_SHARE_BLOCKS from first point to last. */
+    const float64_t spacing = (float64_t)n * g->step;
+    uint32_t per = LAYER_SHARE_SIDE;
+    while (per > 1u && (float64_t)(per - 1u) * spacing > LAYER_SHARE_BLOCKS) {
+        per /= 2u;
+    }
+    layer_square_t stack[LAYER_SHARE_STACK];
+    for (uint32_t top_b = 0u; top_b < gh; top_b += per) {
+        for (uint32_t top_a = 0u; top_a < gw; top_a += per) {
+            uint32_t depth = 0u;
+            stack[depth++] = (layer_square_t){top_a, top_b, per};
+            while (depth > 0u) {
+                const layer_square_t square = stack[--depth];
+                uint32_t count = 0u;
+                for (uint32_t b = square.b0; b < gh && b < square.b0 + square.side; b++) {
+                    const float64_t yy = -((float64_t)((k0 + (int64_t)b) * n) + 0.5f64) * g->step;
+                    for (uint32_t a = square.a0; a < gw && a < square.a0 + square.side; a++) {
+                        const float64_t xx = ((float64_t)((g0 + (int64_t)a) * n) + 0.5f64) * g->step;
+                        const uint32_t index = b * gw + a;
+                        climate_sample_t sample;
+                        grid[index] = nanf("");
+                        if (!climate_sample_at(climate, xx, yy, &sample)) {
+                            continue;
+                        }
+                        asks[count] = (climate_weather_ask_t){
+                            .x = xx,
+                            .y = yy,
+                            .z = sample.z_ground > 0.0f32 ? (float64_t)sample.z_ground : 0.0f64,
+                            .borrowed_week = layer_week_cell(input, xx, yy),
+                        };
+                        where[count++] = index;
+                    }
+                }
+                arena_reset(&weather);
+                if (count == 1u) {
+                    const climate_weather_ask_t *const ask = &asks[0];
+                    grid[where[0]] = climate_weather_at(climate, ask->x, ask->y, ask->z, input->t, ask->borrowed_week,
+                                                        &weather, &nows[0])
+                                         ? nows[0].temperature_c
+                                         : nanf("");
+                    continue;
+                }
+                if (climate_weather_at_shared(climate, asks, count, input->t, &weather, nows, ok)) {
+                    for (uint32_t i = 0u; i < count; i++) {
+                        grid[where[i]] = ok[i] ? nows[i].temperature_c : nanf("");
+                    }
+                    continue;
+                }
+                /* Its quarters; count is above 1, so the side is too. */
+                const uint32_t half = square.side / 2u;
+                ASSERT_ALWAYS(depth + 4u <= LAYER_SHARE_STACK);
+                stack[depth++] = (layer_square_t){square.a0, square.b0, half};
+                stack[depth++] = (layer_square_t){square.a0 + half, square.b0, half};
+                stack[depth++] = (layer_square_t){square.a0, square.b0 + half, half};
+                stack[depth++] = (layer_square_t){square.a0 + half, square.b0 + half, half};
+            }
+        }
+    }
+    arena_deinit(&weather);
 }
 
 /* The four grid values round a pixel blended; with a NaN among them, the nearest whole. */
@@ -535,18 +613,17 @@ static void layer_band_value(const ui_atlas_draw_input_t *input, const ui_atlas_
     const int64_t k1 = layer_floor_div(g.row0 + (int64_t)y + (int64_t)height, n) + 1;
     const uint32_t gw = (uint32_t)(g1 - g0 + 1), gh = (uint32_t)(k1 - k0 + 1);
     float32_t *const grid = layer_take(&cursor, (uint64_t)gw * gh * 4u);
-    arena_t weather = {0};
     if (row->value == UI_ATLAS_VALUE_TEMPERATURE_NOW) {
-        arena_init(&weather, "atlas_weather", layer_take(&cursor, LAYER_WEATHER_BYTES), LAYER_WEATHER_BYTES);
-    }
-    for (uint32_t b = 0u; b < gh; b++) {
-        const float64_t yy = -((float64_t)((k0 + (int64_t)b) * n) + 0.5f64) * g.step;
-        for (uint32_t a = 0u; a < gw; a++) {
-            const float64_t xx = ((float64_t)((g0 + (int64_t)a) * n) + 0.5f64) * g.step;
-            grid[(uint64_t)b * gw + a] = layer_value_at(input, (ui_atlas_value_t)row->value, xx, yy, &weather);
+        layer_grid_temperature_now(input, &g, n, g0, k0, gw, gh, grid, &cursor);
+    } else {
+        for (uint32_t b = 0u; b < gh; b++) {
+            const float64_t yy = -((float64_t)((k0 + (int64_t)b) * n) + 0.5f64) * g.step;
+            for (uint32_t a = 0u; a < gw; a++) {
+                const float64_t xx = ((float64_t)((g0 + (int64_t)a) * n) + 0.5f64) * g.step;
+                grid[(uint64_t)b * gw + a] = layer_value_at(input, (ui_atlas_value_t)row->value, xx, yy);
+            }
         }
     }
-    arena_deinit(&weather);
     /* Each pixel's value, for rows y - 1 to y + height: the radar's contour over grey looks at its neighbours. */
     float32_t *const values = layer_take(&cursor, (uint64_t)width * (height + 2u) * 4u);
     for (uint32_t j = 0u; j < height + 2u; j++) {
@@ -959,8 +1036,10 @@ uint64_t ui_atlas_band_scratch_bytes(uint32_t width, uint32_t height) {
                             + LAYER_GROUND_READ_BYTES + (w + 2u) * (h + 2u) * 4u /* its read's loan, the ground */
                             + w * (h + 1u) * 4u + 2u * (w + 3u) * 4u             /* a climate field and its grid rows */
                             + (w + 3u) * (h + 4u) * 4u + w * (h + 2u) * 4u       /* an own value's grid and values */
-                            + LAYER_WEATHER_BYTES;
-    return pieces + 16u * 64u; /* each piece rounded to 64 bytes */
+                            + LAYER_WEATHER_BYTES                                /* temperature now's */
+                            + LAYER_SHARE_POINTS * (sizeof(climate_weather_ask_t) + sizeof(climate_now_t) +
+                                                    sizeof(bool) + sizeof(uint32_t)); /* and its asks */
+    return pieces + 20u * 64u; /* each piece rounded to 64 bytes */
 }
 
 /* A layer that reads the climate, in a world with none (a test world): only its ground is drawn. */
