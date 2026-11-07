@@ -76,6 +76,25 @@ static void cover_set(world_t *world, int32_t x, int32_t y, int32_t z, uint16_t 
     }
 }
 
+/* Whether ice at the top of a block column was water: water under it, or water or ice beside it at its height. A shore or a
+ * pond a block deep freezes onto its bed, so water under it alone would keep that ice for ever. Ice beside counts as well as
+ * water, so a pass thaws all of a sheet of ice whichever end it starts from, and a second pass finds nothing; a lone ice block a
+ * player laid on dry ground is left. */
+static bool cover_ice_was_water(const world_map_t *map, const column_t *column, int32_t x, int32_t y, int32_t z) {
+    if (cover_block(column, column_local_of(x), column_local_of(y), z - 1) == BLOCK_ID_WATER) {
+        return true;
+    }
+    static const int32_t beside[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    for (uint32_t i = 0u; i < 4u; i++) {
+        uint16_t block = BLOCK_ID_AIR;
+        if (world_map_block_get(map, x + beside[i][0], y + beside[i][1], z, &block) == WORLD_MAP_STATUS_OK &&
+            (block == BLOCK_ID_WATER || block == BLOCK_ID_ICE)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /* Every snow layer in a block column back to air: only the census lays them, so any found is its own. */
 static void cover_snow_off(world_t *world, const column_t *column, int32_t x, int32_t y, int32_t top_z,
                            game_cover_counts_t *counts) {
@@ -133,7 +152,7 @@ void game_cover_column(world_t *world, game_cover_week_fn *week, void *context, 
                 cover_set(world, x, y, z_top, BLOCK_ID_ICE, &counts->ice_on);
                 block = BLOCK_ID_ICE;
             } else if (block == BLOCK_ID_ICE && here.ice_cm <= GAME_COVER_ICE_OFF_CM &&
-                       cover_block(column, local_x, local_y, z_top - 1) == BLOCK_ID_WATER) {
+                       cover_ice_was_water(map, column, x, y, z_top)) {
                 cover_set(world, x, y, z_top, BLOCK_ID_WATER, &counts->ice_off);
                 block = BLOCK_ID_WATER;
             }

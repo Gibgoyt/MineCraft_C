@@ -229,6 +229,37 @@ TEST(flowing_water_does_not_freeze) {
     test_world_end(&w);
 }
 
+TEST(shallow_ice_melts_too) {
+    test_world_t w;
+    REQUIRE(cv_begin_lake(t, &w));
+    /* A shore a block deep round the lake, two blocks wide, and a pond a block deep on its own: water at z = 0 on dirt. */
+    cv_fill(t, &w, 0, 0, 0, 11, 11, 0, BLOCK_ID_WATER);
+    cv_fill(t, &w, 0, 0, -1, 11, 1, -1, BLOCK_ID_DIRT);
+    cv_fill(t, &w, 0, 10, -1, 11, 11, -1, BLOCK_ID_DIRT);
+    cv_fill(t, &w, 0, 2, -1, 1, 9, -1, BLOCK_ID_DIRT);
+    cv_fill(t, &w, 10, 2, -1, 11, 9, -1, BLOCK_ID_DIRT);
+    cv_fill(t, &w, 20, 2, 0, 22, 4, 0, BLOCK_ID_WATER);
+    cv_week_t cold = cv_week(0.0f32, 6.0f32);
+    game_cover_counts_t counts = cv_cover(&w, &cold);
+    CHECK_EQ_U64(counts.ice_on, 144u + 9u);
+    /* A warm week thaws all of it in one pass, the shallows as well as the deep, and a second pass changes nothing. */
+    cv_week_t warm = cv_week(0.0f32, 1.0f32);
+    counts = cv_cover(&w, &warm);
+    CHECK_EQ_U64(counts.ice_off, 144u + 9u);
+    uint32_t ice = 0u;
+    for (int32_t y = 0; y <= 11; y++) {
+        for (int32_t x = 0; x <= 22; x++) {
+            ice += cv_block(&w, x, y, 0) == BLOCK_ID_ICE ? 1u : 0u;
+        }
+    }
+    CHECK_EQ_U64(ice, 0u);
+    CHECK_EQ_U64(world_tick_fluid_level(&w.world->tick, 0, 0, 0), WORLD_TICK_LEVEL_SOURCE);
+    const uint64_t before = cv_log_now(&w);
+    (void)cv_cover(&w, &warm);
+    CHECK_EQ_U64(cv_log_now(&w) - before, 0u);
+    test_world_end(&w);
+}
+
 TEST(the_sea_freezes_only_in_polar_cold) {
     test_world_t w;
     REQUIRE(test_world_begin(t, &w));

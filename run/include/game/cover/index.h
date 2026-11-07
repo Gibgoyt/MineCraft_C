@@ -61,8 +61,9 @@ static_assert(sizeof(game_cover_t) == 72);
 
 /* The rule for one loaded chunk column, for each of its 256 block columns: snow off at or under GAME_COVER_SNOW_OFF_MM (every
  * layer in the column goes), ice on still water sources over GAME_COVER_ICE_ON_CM (GAME_COVER_SEA_ICE_ON_CM at sea), ice off at or
- * under GAME_COVER_ICE_OFF_CM where water is under it, snow on over GAME_COVER_SNOW_ON_MM on the top of a whole solid cube that is
- * not leaves, snow, ice or lava. Every change is world_edit_block_set. Adds what it did to counts. Nothing if it is not loaded.
+ * under GAME_COVER_ICE_OFF_CM where water is under it or water or ice is beside it, snow on over GAME_COVER_SNOW_ON_MM on the top
+ * of a whole solid cube that is not leaves, snow, ice or lava. Every change is world_edit_block_set. Adds what it did to counts.
+ * Nothing if it is not loaded.
  * The thread holding the map. */
 void game_cover_column(world_t *world, game_cover_week_fn *week, void *context, int32_t chunk_x, int32_t chunk_y,
                        game_cover_counts_t *counts);
