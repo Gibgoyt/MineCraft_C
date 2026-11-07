@@ -123,9 +123,10 @@ static gpu_status_t frame_passes(frame_gpu_t *frame, const frame_args_t *args, u
         status = frame_mark(frame, FRAME_KERNEL_POST);
     }
     if (status == GPU_STATUS_OK) {
-        status = post_frame_temporal(&frame->last_error, args->borrowed_post, scene->borrowed_temporal,
-                                     (scene->features & SHADE_FEATURE_TAA) != 0u, shafts, camera,
-                                     targets->borrowed_pixels, targets->borrowed_xrgb);
+        status =
+            post_frame_temporal(&frame->last_error, args->borrowed_post, scene->borrowed_temporal,
+                                (scene->features & SHADE_FEATURE_TAA) != 0u, shafts, camera, targets->borrowed_pixels,
+                                targets->borrowed_xrgb, args->borrowed_weather, args->borrowed_weather_map);
     }
     if (status == GPU_STATUS_OK) {
         status = frame_mark(frame, FRAME_KERNEL_OVERLAY);

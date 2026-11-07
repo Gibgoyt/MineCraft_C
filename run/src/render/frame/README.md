@@ -17,6 +17,7 @@
 - `render_frame_fog_set`: how far off the fog is whole, for a render distance that has changed.
 - `render_frame_under_water_set`: whether the eyes are in water, for what `post` draws: see `cuda/src/post/README.md`.
 - `render_frame_draw`: a whole frame, from world_buffers as they stand and a camera, on the card and home.
+- `render_frame_draw_weather`, `render_weather_take`, `render_weather_apply`, `render_weather_visibility`, `render_weather_flicker`: the same frame with the weather where the eye is (plan 004 phase 08), what the thread that draws makes of each slot the sim sends (`render_weather_slot_t`) as `render_weather_t`, and the arithmetic of what weather does to the sky, the light and the fog. See "Weather" below.
 - `render_frame_take`, `render_frame_present`, `render_frame_present_full`: the newest picture, and copying it to a display buffer; the last for pixels of the target's own size, whatever size the frame draws at.
 - `render_frame_report`, `render_frame_percentiles`: what the frames took.
 
@@ -46,3 +47,20 @@ The position is `float64_t`, and goes to the kernels as a whole cell and a fract
 ## From frame to frame
 
 `post_temporal_t` holds what goes from one frame to the next: the last frame's camera with no jitter, this one's jitter, a count of frames, and which block of each two the last frame wrote. `render_frame_draw` is what keeps it, and the blocks swap only after a frame that succeeded and only for an effect that was on. An effect turned on starts from nothing, as what its blocks hold is from before it was turned off. See `cuda/src/post/README.md` and `cuda/src/shade/README.md`.
+
+## Weather
+
+Plan 004 phase 08. The sim sends a `render_weather_slot_t` a tick through a triple buffer it owns (`game/weather`): the rain rate, snow share, wind, cloud, fog and dust at the eye, a strike's bolt and flash, and the rain top map round the eye with a revision. **`render_weather_take`**, on the thread that draws, eases the numbers toward each new slot by `1 - exp(-dt / 5 s)` over the ticks between, so weather never pops (at once for the first slot and a forced one), keeps the bolt's age and the fall's clock (`time_s`, the slot's tick wrapped at an hour, plus up to 0.05 s with threads, so drops keep falling between ticks; with none, one slot is one picture), and sends the 8 KiB map to its device block only when the revision moves.
+
+**`render_frame_draw_weather`** draws a frame from copies of the frame's sky, light and fog with **`render_weather_apply`** over them, so the next frame starts from the clear day again and nothing of the weather stays in `render_frame_t`:
+
+- The sky mixes toward its own brightness, `0.3 R + 0.59 G + 0.11 B` times (0.92, 0.95, 1.0), by 0.8 of the cloud. The sun's glow goes by all of it, its and the moon's discs by 0.9, direct light by 0.75 (shadows fade under overcast), ambient by 0.3.
+- A flash adds 3 f to the sky and 1.5 f to the ambient light, with `f = 1 / (1 + (d / 500)^2)` and the bolt's flicker.
+- Visibility `max(32, F (1 - 0.85 max(fog, dust)) / (1 + rain / 10))` against the setting's fog end F: when it is nearer, the fog ends there and starts at 0.3 of it, so weather fog is thick close up. 124 blocks in a 30 mm an hour storm at render distance 32, 117 in a 0.9 fog.
+- The fog's colour goes toward grey (0.55, 0.57, 0.60) by the larger of cloud and fog, times the daylight, or toward dust (0.62, 0.47, 0.30) by the dust.
+- The kernels get a `post_weather_t`: the eased density, the wind, the clock, the drops' colour (the ambient light), the bolt from the eye's cell. See `cuda/src/post/README.md`.
+
+With `SHADE_FEATURE_WEATHER` off (`--no-weather`), or no slot with weather, the frame is exactly `render_frame_draw`'s. With everything at 0, `render_weather_apply` leaves the sky and light to the bit, which `render_feature_weather` checks. `render_t` holds the map's device block in what was its padding, as `app_t` is at main's frame limit.
+
+The snow layer (`config/blocks/snow_layer`) is `thin`, and `frame_shape_of` gives it `TRAVERSE_SHAPE_LAYER`, an eighth of a block on the floor, as it gives a lily pad `TRAVERSE_SHAPE_FLAT`.
+

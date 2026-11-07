@@ -13,6 +13,7 @@ Compute only. No real display, console or input device is opened: the keys come 
 
 What it checks:
 
+- **The wind** (plan 004 phase 08, in `fixtures/wind.h`, apart from `index.c` to keep it under 1500 lines): a 60 blocks/s hurricane drifts a standing body west at 2.00 blocks/s, a 30 storm at 0.80, along a slant too; walking into it is 2.3; a jump in it goes under 2 blocks; 10 and under move it not at all, to the byte; a wall 2 blocks upwind makes it 0.50, and none downwind; water and a ladder are the same bytes as with no wind; and no wind is `player_movement_tick` to the byte over 2000 random ticks.
 - **Each mode, measured:** walking, sprinting, sneaking, jumping, falling, swimming, lava and climbing against the numbers in `run/src/player/movement/README.md`, on worlds built by hand.
 - **Steps, edges and low ceilings:** a slab and stairs walked up, a block not; sneaking at an edge; staying crouched with no room to stand.
 - **Waiting:** a body stays put until its column is there, and cannot walk into one that is not.

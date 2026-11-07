@@ -5,6 +5,8 @@
 #include "climate/sun/index.h"
 #include "entity/animation/index.h"
 #include "game/census/index.h"
+#include "game/cover/index.h"
+#include "game/weather/index.h"
 #include "item/stack/index.h"
 #include "game/spawn/index.h"
 #include "game/view/index.h"
@@ -18,6 +20,19 @@
 #include <stdio.h>
 #include <string.h>
 
+/* What a world keeps in the World arena with no room for its pointer in game_t, which is at its size (app_t is on main's stack):
+ * the column jobs first, so borrowed_jobs is the whole of it, and plan 004 phase 08's weather and cover beside them. */
+typedef struct game_world_parts_t {
+    game_column_job_t jobs[GAME_STREAM_JOBS]; /* 0: borrowed_jobs points here */
+    game_weather_t weather;                   /* 8192 */
+    game_cover_t cover;                       /* 58816 */
+    uint8_t _pad0[56];                        /* 58888 */
+} game_world_parts_t;
+static_assert(sizeof(game_world_parts_t) == 58944);
+static_assert(offsetof(game_world_parts_t, jobs) == 0);
+static_assert(offsetof(game_world_parts_t, weather) == 8192);
+static_assert(offsetof(game_world_parts_t, cover) == 58816);
+
 enum : uint64_t {
     /* Budgets of the two arenas with a lifetime shorter than a world's. */
     GAME_TICK_ARENA_BYTES = 64ull << 20,
@@ -25,7 +40,7 @@ enum : uint64_t {
     /* A whole column of states, section after section, each in section_voxel_index order. */
     GAME_COLUMN_VOXELS = (uint64_t)COLUMN_SECTIONS * SECTION_VOXELS,
     GAME_COLUMN_BYTES = GAME_COLUMN_VOXELS * sizeof(uint16_t),
-    GAME_WORLD_ARENA_BYTES = GAME_STREAM_JOBS * (GAME_COLUMN_BYTES + GAME_COLUMN_VOXELS + sizeof(game_column_job_t)) +
+    GAME_WORLD_ARENA_BYTES = GAME_STREAM_JOBS * (GAME_COLUMN_BYTES + GAME_COLUMN_VOXELS) + sizeof(game_world_parts_t) +
                              2ull * 4096ull + MOB_SPAWN_BYTES + GAME_CENSUS_ARENA_BYTES,
 };
 enum : int64_t {
@@ -87,6 +102,14 @@ void game_climate_set(game_t *game, climate_t *climate) {
 }
 
 /* The climate, if this world has one open. */
+game_weather_t *game_weather_of(const game_t *game) {
+    return game->borrowed_jobs != nullptr ? &((game_world_parts_t *)(void *)game->borrowed_jobs)->weather : nullptr;
+}
+
+game_cover_t *game_cover_of(const game_t *game) {
+    return game->borrowed_jobs != nullptr ? &((game_world_parts_t *)(void *)game->borrowed_jobs)->cover : nullptr;
+}
+
 static climate_t *game_climate(const game_t *game) {
     climate_t *const climate = game->borrowed_climate;
     return climate != nullptr && climate_is_open(climate) ? climate : nullptr;
@@ -503,8 +526,11 @@ bool game_open(game_t *game, const game_config_t *config) {
     }
     game_arenas_start(game);
     job_group_init(&game->group);
-    game->borrowed_jobs =
-        arena_alloc_array(&game->arena_world, GAME_STREAM_JOBS, sizeof(game_column_job_t), alignof(game_column_job_t));
+    game_world_parts_t *const world_parts =
+        arena_alloc(&game->arena_world, sizeof(game_world_parts_t), alignof(game_world_parts_t));
+    game->borrowed_jobs = world_parts->jobs;
+    game_weather_start(&world_parts->weather, GAME_WEATHER_SAMPLED);
+    memset(&world_parts->cover, 0, sizeof(world_parts->cover));
     const terrain_t *const terrain = game->borrowed_terrain;
     for (uint32_t i = 0u; i < GAME_STREAM_JOBS; i++) {
         game_column_job_t *const job = &game->borrowed_jobs[i];
@@ -831,6 +857,8 @@ static bool game_column_fill(game_t *game, const game_column_job_t *job) {
     }
     /* Short of memory, it says so, and world_light_update tries again. */
     (void)world_light_column_added(&world->light, job->request.slot);
+    game_cover_stream_in(game, job->request.chunk_x,
+                         job->request.chunk_y); /* in step with the week: plan 004 phase 08 */
     game->columns_made++;
     return true;
 }
@@ -906,23 +934,6 @@ static void game_columns_request(game_t *game) {
     }
 }
 
-/* What the screens need to know of this moment, on the sim. */
-void game_screen_sim(game_t *game, ui_screen_sim_t *out) {
-    const player_t *const player = game->borrowed_player;
-    const float64_t *const position = player->movement.position;
-    *out = (ui_screen_sim_t){
-        .borrowed_item = game->borrowed_item,
-        .spill = game_spill,
-        .borrowed_context = game,
-        .cell = {(int32_t)floor(position[0]), (int32_t)floor(position[1]), (int32_t)floor(position[2])},
-        .may_open = player_survival_holds_body(&player->survival) ? 0u : 1u,
-        ._pad0 = {0}};
-}
-
-bool game_has_screens(const game_t *game) {
-    return game->borrowed_ui != nullptr && game->borrowed_item != nullptr && game->borrowed_player != nullptr;
-}
-
 void game_sim_step(game_t *game) {
     PROFILER_BEGIN(game->borrowed_lane_sim, "sim_step");
     /* In every step and not only in a tick, so that a click shows in a few milliseconds and not in up to fifty. */
@@ -955,6 +966,7 @@ void game_sim_step(game_t *game) {
         climate_schedule(climate, game->borrowed_job, map->center_x * (int32_t)COLUMN_SIZE + half,
                          map->center_y * (int32_t)COLUMN_SIZE + half, game_climate_radius(map));
     }
+    game_cover_step(game); /* after a census, snow and ice on what is loaded: plan 004 phase 08 */
     game_columns_request(game);
     (void)world_light_update(&world->light);
     (void)render_upload_resend_drain(&game->borrowed_render->upload, &world->edit);
@@ -989,13 +1001,6 @@ void game_fly(game_t *game, const render_fly_input_t *input, float32_t seconds) 
 static void game_walk_view(game_t *game, int64_t now_ns) {
     player_eye_at(game->borrowed_player, now_ns, game->camera.position);
     game_center_on_eye(game);
-}
-
-bool game_screen_input(game_t *game, const input_frame_t *frame) {
-    if (!game_has_screens(game)) {
-        return false;
-    }
-    return ui_screen_input(game->borrowed_ui, frame, game->config.width, game->config.height);
 }
 
 /* ---- What is drawn on a picture ------------------------------------------------------------------------------------- */
@@ -1047,7 +1052,8 @@ static gpu_status_t game_frame_draw(game_t *game, const render_camera_t *camera)
     render_frame_under_water_set(&render->frame, game->borrowed_player != nullptr &&
                                                      player_eyes_under_water_read(game->borrowed_player));
     PROFILER_BEGIN(game->borrowed_lane_gpu, "frame_draw");
-    const gpu_status_t status = render_frame_draw(&render->frame, &render->buffers, camera);
+    /* With the weather where the eye is (plan 004 phase 08): between ticks with threads, as each tick's slot without. */
+    const gpu_status_t status = game_weather_draw(game, camera, game->threads_running != 0u ? time_now_ns() : 0);
     PROFILER_END(game->borrowed_lane_gpu);
     if (status != GPU_STATUS_OK) {
         return status;
@@ -1466,10 +1472,6 @@ bool game_loop_threads_ensure(game_t *game) {
         return false; /* it has said why */
     }
     return true;
-}
-
-bool game_screen_up(game_t *game) {
-    return game_has_screens(game) && ui_screen_up(game->borrowed_ui);
 }
 
 bool game_loop_source(void *context, display_buffer_t *back) {

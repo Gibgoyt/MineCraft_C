@@ -90,7 +90,9 @@ typedef struct render_t {
     device_block_t owned_lod_pools[LOD_LEVELS_MAX];  /* 2528 */
     device_block_t owned_lod_hits;                   /* 2672: from DEVICE_POOL_FRAMES */
     render_lod_t *borrowed_lod; /* 2696: from arena_lod, from render_open_lod to render_close_lod */
-    uint8_t _pad1[48];          /* 2704 */
+    device_block_t
+        owned_weather_map; /* 2704: the rain top, post_weather_map_bytes, from DEVICE_POOL_FRAMES with the frame */
+    uint8_t _pad1[24];     /* 2728 */
 } render_t;
 static_assert(sizeof(render_t) == 2752);
 static_assert(alignof(render_t) == 64);
@@ -104,6 +106,7 @@ static_assert(offsetof(render_t, owned_entity_lists) == 2248);
 static_assert(offsetof(render_t, borrowed_entities) == 2296);
 static_assert(offsetof(render_t, arena_lod) == 2304);
 static_assert(offsetof(render_t, borrowed_lod) == 2696);
+static_assert(offsetof(render_t, owned_weather_map) == 2704);
 
 /* What a real game runs with: gpu.budget in config/machine.yaml. */
 render_limits_t render_limits_default(void);

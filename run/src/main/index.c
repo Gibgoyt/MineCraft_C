@@ -9,6 +9,7 @@
 #include "item/index.h"
 #include "game/index.h"
 #include "game/session/index.h"
+#include "game/weather/index.h"
 #include "gpu_bridge/index.h"
 #include "heap/index.h"
 #include "input/index.h"
@@ -71,7 +72,8 @@ typedef struct main_options_t {
     uint8_t has_day_of_year;    /* --day-of-year */
     uint16_t day_of_year;       /* --day-of-year: 1 to 365, as the HUD shows it */
     uint16_t climate_jump;      /* --climate-jump: days, 0 for none */
-    uint8_t _pad0[2];
+    uint8_t weather;            /* --weather: a game_weather_kind_t, GAME_WEATHER_SAMPLED for the climate's */
+    uint8_t _pad0[1];
 } main_options_t;
 static_assert(sizeof(main_options_t) == 128);
 
@@ -139,8 +141,14 @@ static void main_print_usage(const char *program) {
         "crafting\n"
         "                           table, furnace or chest opens that, and E or Esc closes it\n",
         program, program, program, program, program);
+    fputs("  --no-under-water         with --test-world: a body's eyes under water see no blue and no short fog\n",
+          stderr);
+    fputs("  --no-weather             with --test-world or --menu: no rain, snow, lightning or weather fog is drawn\n"
+          "  --weather <kind>         with --test-world or --menu: this weather where the eye is, in place of the\n"
+          "                           climate's: clear, rain, snow, sleet, storm, thunder (a strike every 2 s, 300\n"
+          "                           blocks east), fog, dust or hurricane (plan 004 phase 08)\n",
+          stderr);
     fputs(
-        "  --no-under-water         with --test-world: a body's eyes under water see no blue and no short fog\n"
         "  --time-of-day <0 to 1>   with --test-world: the time to start at: 0 midnight, 0.25 sunrise, 0.5 noon\n"
         "  --day-of-year <1 to 365> with --test-world: the day to start on, as the HUD shows it: 80 is the spring\n"
         "                           equinox, 171 midsummer, 354 midwinter. A calendar day starts at 06:00, so before\n"
@@ -259,6 +267,19 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
             out->features_off |= (uint32_t)SHADE_FEATURE_WATER_TINT;
         } else if (strcmp(argv[i], "--no-under-water") == 0) {
             out->features_off |= (uint32_t)SHADE_FEATURE_UNDER_WATER;
+        } else if (strcmp(argv[i], "--no-weather") == 0) {
+            out->features_off |= (uint32_t)SHADE_FEATURE_WEATHER;
+        } else if (strcmp(argv[i], "--weather") == 0 && i + 1 < argc) {
+            i++;
+            game_weather_kind_t kind = GAME_WEATHER_SAMPLED;
+            if (!game_weather_kind_parse(argv[i], &kind)) {
+                fprintf(
+                    stderr,
+                    "%s: --weather takes clear, rain, snow, sleet, storm, thunder, fog, dust or hurricane, not %s\n",
+                    argv[0], argv[i]);
+                return false;
+            }
+            out->weather = (uint8_t)kind;
         } else if (strcmp(argv[i], "--no-entities") == 0) {
             out->features_off |= (uint32_t)SHADE_FEATURE_ENTITIES;
         } else if (strcmp(argv[i], "--no-outline") == 0) {
@@ -433,6 +454,10 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
     }
     if (out->has_day_of_year != 0u && out->test_world == 0) {
         fprintf(stderr, "%s: --day-of-year only means something with --test-world\n", argv[0]);
+        return false;
+    }
+    if (out->weather != 0u && out->test_world == 0 && out->menu == 0u) {
+        fprintf(stderr, "%s: --weather only means something with --test-world or --menu\n", argv[0]);
         return false;
     }
     if (out->climate_jump != 0u && out->menu == 0u) {
@@ -977,6 +1002,7 @@ static main_exit_t main_run_test_world_headless(app_t *app, const main_options_t
         return MAIN_EXIT_RUNTIME;
     }
     main_clock_apply(&app->game, options);
+    game_weather_force(&app->game, (game_weather_kind_t)options->weather);
     display_headless_scene_t scene;
     game_headless_scene(&app->game, &scene);
     display_headless_t *const headless = &app->offscreen.headless;
@@ -1020,6 +1046,7 @@ static main_exit_t main_run_test_world(app_t *app, const main_options_t *options
         return MAIN_EXIT_RUNTIME;
     }
     main_clock_apply(&app->game, options);
+    game_weather_force(&app->game, (game_weather_kind_t)options->weather);
     game_loop_source_begin(&app->game, &app->input);
     const display_status_t ran = display_frames_run(&app->display, game_loop_source, game_loop_discard, &app->game);
     const bool loop_ok = game_loop_stop(&app->game);
@@ -1071,6 +1098,7 @@ static main_exit_t main_run_menu(app_t *app, const main_options_t *options) {
     game_session_init(&session, &app->game, &app->ui, &app->terrain, &app->input, &game,
                       options->saves != nullptr ? options->saves : MAIN_SAVES_DEFAULT, blank_seed);
     game_session_settings_set(&session, &app->settings);
+    game_session_weather_set(&session, options->weather);
     const display_status_t ran = game_session_run(&session, &app->display, game_session_source, &session);
     input_report(&app->input);
     main_exit_if_gpu_stuck(app);
@@ -1104,6 +1132,7 @@ static main_exit_t main_run_menu_headless(app_t *app, const main_options_t *opti
     game_session_init(&session, &app->game, &app->ui, &app->terrain, nullptr, &game,
                       options->saves != nullptr ? options->saves : MAIN_SAVES_DEFAULT, TERRAIN_SEED_DEFAULT);
     game_session_settings_set(&session, &app->settings);
+    game_session_weather_set(&session, options->weather);
     display_headless_scene_t scene;
     game_session_headless_scene(&session, &scene);
     display_headless_t *const headless = &app->offscreen.headless;

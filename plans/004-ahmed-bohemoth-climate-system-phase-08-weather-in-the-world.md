@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 8: Weather in the world
 
-**Status:** not started   (updated 2026-11-04)
+**Status:** in progress: built and agent-verified on 2026-11-06 (Verification passes; the bench before and after is recorded, and rain is at the 0.5 ms budget while snow and thunder are over it, Issues found 17). Left: Ahmed's gate, his call on the cost, and step 1's and step 15's boxes, which wait on phases 06 and 07 and on plan 003 phase 1 being called done by Ahmed   (updated 2026-11-07)
 
 **Read first:** `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` (the vision), then sections 6.7, 7 and 10 (phase 08) of `plans/004-ahmed-bohemoth-climate-system.md` (the master plan), then `plans/004-ahmed-bohemoth-climate-system-phase-07-daily-weather-weekly-state-census-and-outlook.md`, whose `climate_weather_at`, `climate_now_t` and week store this phase reads. The master plan is the source of truth for every number and formula. Where this file and the master plan disagree, the master plan wins, unless this file's **Issues found** says why not.
 
@@ -543,27 +543,27 @@ Build in this order. Run the build and the step's tests through the wrapper afte
 
 ## Todo
 
-- [ ] Step 1: phase 07 and 06 are `done`, the functions named here; plan 003 phase 1's status written here
-- [ ] Step 2: bench "before" rows recorded at render distance 32
-- [ ] Step 3: `post_weather_t` and its inline maths, both sides
-- [ ] Step 4: host tests of the maths pass
-- [ ] Step 5: rain and snow falling, in the CUDA renderer, by the rain rate where the player is; lightning in the post kernels, after the history
-- [ ] Step 6: fog and sky colour by weather, in `frame_weather_apply`; the rain top block
-- [ ] Step 7: every existing golden picture unchanged
-- [ ] Step 8: the sim samples the weather, makes lightning in thunderstorm cells, keeps the rain top map, and sends it to the gpu thread
-- [ ] Step 9: `--weather` and `--no-weather`
-- [ ] Step 10: golden pictures of each weather, looked at
-- [ ] Step 11: wind pushes the player in storms and hurricanes, by a share of its speed
-- [ ] Step 12: wind tests pass, and zero wind is the same bytes as before
-- [ ] Step 13: at each census, in loaded chunks only: ice on still water over 5 cm, removed when it melts
-- [ ] Step 14: ice cover tests pass
-- [ ] Step 15: plan 003 phase 1 is `done` (or this phase is `blocked` here)
-- [ ] Step 16: the thin snow layer block, drawn as a layer
-- [ ] Step 17: at each census, in loaded chunks only: snow on the ground over 20 mm, removed when it melts
-- [ ] Step 18: snow cover tests pass
-- [ ] Step 19: bench: the frame-rate cost at render distance 32, before and after, recorded
-- [ ] Step 20: `plans/REPO_STRUCTURE.md` and every README updated
-- [ ] Gate: Verification passes
+- [ ] Step 1: phase 07 and 06 are `done`, the functions named here; plan 003 phase 1's status written here. Found on 2026-11-06: `climate_weather_at`, `climate_now_t` (with `thunder_cell`), `climate_weather_time_of_clock`, `climate_week_store` and `climate_week_store_cell` (phase 07); `climate_systems_day_build` with `1u << CLIMATE_SYSTEM_THUNDER` and `climate_systems_thunder_at` for a cell's centre and strength (phase 06). Phases 06 and 07 are "in progress" with only Ahmed's gates left; plan 003 phase 1 is "in progress", every agent check passed, only Ahmed's own check left. The box stays open until those are called done.
+- [x] Step 2: bench "before" rows recorded at render distance 32 (`004 phase 08, before`, commit `ed199219`)
+- [x] Step 3: `post_weather_t` and its inline maths, both sides
+- [x] Step 4: host tests of the maths pass
+- [x] Step 5: rain and snow falling, in the CUDA renderer, by the rain rate where the player is; lightning in the post kernels, after the history
+- [x] Step 6: fog and sky colour by weather, in `render_weather_apply` (Issues found 5); the rain top block
+- [x] Step 7: every existing golden picture unchanged (`render_feature_sky`, `_water`, `_post`, `_shapes`, `_lod`, `_entities`, `run_render_frame`, `compile_game_tables`: 8 of 8, with the snow layer in the block table)
+- [x] Step 8: the sim samples the weather, makes lightning in thunderstorm cells, keeps the rain top map, and sends it to the gpu thread
+- [x] Step 9: `--weather` and `--no-weather`
+- [x] Step 10: golden pictures of each weather, looked at (made with the real renderer in-process, Issues found 13)
+- [x] Step 11: wind pushes the player in storms and hurricanes, by a share of its speed
+- [x] Step 12: wind tests pass, and zero wind is the same bytes as before
+- [x] Step 13: at each census, in loaded chunks only: ice on still water over 5 cm, removed when it melts
+- [x] Step 14: ice cover tests pass
+- [ ] Step 15: plan 003 phase 1 is `done` (or this phase is `blocked` here): it is "in progress" with only Ahmed's check left, and its name tables are in main, so a new block keeps every world. Steps 16 to 18 went ahead on that (Issues found 14); its tests pass with `snow_layer` in.
+- [x] Step 16: the thin snow layer block, drawn as a layer
+- [x] Step 17: at each census, in loaded chunks only: snow on the ground over 20 mm, removed when it melts
+- [x] Step 18: snow cover tests pass
+- [x] Step 19: bench: the frame-rate cost at render distance 32, before and after, recorded (Issues found 17)
+- [x] Step 20: `plans/REPO_STRUCTURE.md` and every README updated
+- [x] Gate: Verification passes (Issues found 18)
 - [ ] Gate: Ahmed plays through a winter and a hurricane season
 
 ## Tests
@@ -659,6 +659,20 @@ What Ahmed does by hand, on a release build (`tools/test-or-build.sh cmake --pre
 
 Appended as they land:
 
+- `ed199219` Record bench_world before plan 004 phase 08 puts weather in the renderer, at render distance 32.
+- `912f0b14` Draw rain, snow, lightning and weather fog in the post kernels after the history, with the sky, light and fog eased toward the weather, and add the thin snow layer block.
+- `496c4934` Sample the weather at the eye, strike lightning in thunderstorm cells, keep the rain top map, push the body in storms, lay snow and ice on loaded ground at each census, and take --weather and --no-weather.
+- `22170c49` Test the weather in the renderer, the sim, the wind on the body and the snow and ice cover, with golden pictures of each weather.
+- `ed0f211e` Draw snow with one cell a layer, its rows wobbling together, and test cover through three years of the climate's weeks at 45 and 75 degrees.
+- `e7a6c4c3` Give bench_world --weather and the rain, snow, thunder and fog orbit rows at render distance 32, and stop it cutting --features-off to 16 bits.
+- `fa80e467` Document plan 004 phase 08: the weather in the post kernels and the frame, the wind on the body, the sim's weather and cover, and the new paths.
+- `7293a212` Record bench_world after plan 004 phase 08, and what rain, snow, thunder and fog cost at render distance 32 against the same card's clear row.
+- `f6315832` Keep the weather effect in the settings file, with the screen's seventeen boxes as they were.
+- `7f2b0217` Pin the terrain digests again for snow_layer, which moved the numbers of the blocks after it and not the land.
+- `73842bdb` Record plan 004 phase 08 in its phase file: the todos, the commits, the verification, the cost and the issues found.
+- `709b40fc` List the phase file commit of plan 004 phase 08 in its phase file.
+- `20db50e3` Record the second agent's re-check of plan 004 phase 08 on the merged branch in its phase file.
+
 ## Issues found
 
 **1. The master plan says both phase 08 and phase 09 put snow and ice on loaded ground.** Found while writing this file, 2026-11-04.
@@ -677,3 +691,39 @@ Appended as they land:
 **3. Thunderstorm cell rates, noted in phase 07's Issues found 4,** decide how often lightning is seen. If phase 06 settles on many fewer cells than 7.2.1's worked example, lightning will be rarer than this file's examples suggest. Nothing to do here; `GAME_LIGHTNING_RATE` is per cell and is tuned by playing.
 
 **Arithmetic checked:** the movement steady state ($v^* = af/(1-f)$, 1.2026 on the ground with friction 0.546 from `run/src/player/movement/index.c:14`), the hurricane push (2.0 blocks/s, $a = 0.0832$), the fog numbers (124, 117, 496), the flash curve (1, 0.5, 0.1), the rain tilt (0.67, 34°).
+
+**4. `SHADE_FEATURE_WEATHER` is bit 18, not 17.** Found at step 3. Expected: bit 17 free, as the Design says. Actual: `SHADE_FEATURE_UNDER_WATER = 1u << 17` (`run/include/gpu_bridge/shade/index.h`). Done: bit 18, in `SHADE_FEATURES_ALL`.
+
+**5. `app_t` is at main's frame limit, so `game_t`, `render_t`, `render_frame_t` and `player_t` could not grow.** Found at step 6. Expected: the Design's new fields in `game_t` (the exchange and slots), `render_frame_t` (the eased weather) and `player_t` (`wind`). Actual: `app_t` is 16128 bytes on main's stack, and `objdump` of the profile and release links shows main's frame at `sub $0x4000,%rsp`, exactly the 16 KiB limit; one more cache line in any member breaks the release link. Done, with no struct in `app_t` grown: the exchange, slots, the drawing thread's eased `render_weather_t` and the sim's state are `game_weather_t` in the World arena, laid out with the column jobs and `game_cover_t` in `game_world_parts_t`, found from `borrowed_jobs` (`game_weather_of`, `game_cover_of`); the rain top device block is in `render_t`'s old padding; the frame takes the weather as an argument (`render_frame_draw_weather`) and applies it to copies of the sky and light, so `render_frame_t` is unchanged; the wind is an input to `player_tick_wind` and `player_movement_tick_wind`, as the body's rule wants, in place of `player_t.wind` and `player_wind_set`; `--weather` is a padding byte of `main_options_t`, and the session's copy grows `game_session_t`, which is not on main's frame. The slot is `render_weather_slot_t` in `render/frame` with the numbers the frame needs, not a `climate_now_t`, as `render` may not include `climate`. Release build after all of it: main's frame still `sub $0x4000`, links clean.
+
+**6. The wind push in the Background makes the drift 1 / 0.546 times too fast.** Found writing step 12's test. Expected: `a = (D / 20) (1 - f) / f` to drift `D` blocks a second. Actual: the push goes in before the move, so a steady body moves `v + a = a / (1 - f)` a tick (walking's 4.317 is `0.098 / 0.454` blocks a tick by the same sum); that `a` drifts `D / f`, 3.66 blocks a second in the hurricane. Done: `a = (D / 20) (1 - f)`; the test measures 2.00 (hurricane), 0.80 (storm), 0.50 sheltered, 4.317 - 2.0 walking into it.
+
+**7. The kernels' maths needs the camera.** The Design's `post_weather_drops(weather, map, direction, t, out)` cannot place a ray without the eye's fraction in its cell and the cell's height. Done: each takes the `traverse_camera_t` too.
+
+**8. The rain top map is made again when the eye has gone 8 blocks from its middle, not at every block column it crosses.** The widest cylinder is 16 blocks and the map 32 each way, so the picture is the same, for an eighth of the scans. It is also made again when a column it lacked may have come in (on a sample tick) and when its edit-log cursor lost count; edits in it patch single columns.
+
+**9. Lightning looks only at the current second's slot.** A bolt lasts 0.2 s, so the previous slot's strike has always gone. A strike is worked out at its slot's start, so its place stays put for its 4 ticks.
+
+**10. `run/src/game/index.c` passed 1500 lines.** The wiring took it to 1528. Done: `game_screen_sim`, `game_has_screens`, `game_screen_input` and `game_screen_up` moved to `game/input` (now 1500 and 159).
+
+**11. The census screen's bar says "tiles" while cover runs.** Continue waits for cover (the session passes the screen a copy of the report, not written, with the columns as its tiles), but the label is `ui/screen_census`'s, phase 07's, and says "tiles", not "Snow and ice". Left: a word in another phase's screen. Cover is fast (0.55 to 0.74 s for 4225 columns on the debug build), so the bar is seldom seen.
+
+**12. A tile never through a census has zeros for a week.** Expected: the store's cells to be a week whenever the tile is kept. Actual: a fresh tile's cells are zero until its first census starts them at spin-up, and zero ice is under the off line, so cover on stream-in would melt an icy biome's lake ice before any census. Done: cells of fresh tiles count as unknown, and nothing changes there; cover also waits while a census writes the store.
+
+**13. Golden pictures are made in-process, not by the built program.** The plan asks for `--headless` runs on a test world out of a doorway; test worlds have no house. Done: `render_feature_weather` builds a stone house in a hand world on the real card (the `render_feature_sky` rig), takes each kind's slot through `render_weather_take` and draws with `render_frame_draw_weather`: the real kernels and frame code. The built program is tested apart (`--weather rain` is not the clear picture, and the same twice; the refusals). A picture with `--test-world --weather rain` at 960 by 540 was also looked at: grey sky, rain slanting in the wind, the fog nearer.
+
+**14. Plan 003 phase 1 is not called done.** Step 15 says stop at "not done". Its status is "in progress" with every agent-runnable check passed and only Ahmed's check after its phase 2 left, and its name tables are on main. Done: steps 16 to 18 went ahead; the block table test and the save tests pass with `snow_layer` added (the whole suite, Issues found 18). If Ahmed wants to wait, `config/blocks/snow_layer/` and the two snow rules can come out.
+
+**15. The snow layer needed two small wirings outside the owned paths.** `run/src/physics/raycast/` aims at it as the flat box (as at a lily pad), not the upright plate every other `thin` block gets; `config/blocks/snow_layer` needs `sound: snow`, which the table requires.
+
+**16. Snow first cost too much.** The first snow kernel looked at 5 cells a layer, as a flake's wobble (0.3) is wider than a cell (0.25): about 1.5 ms. Done: a whole row of cells wobbles together, each row in its own phase, so a flake stays in its cell and one cell a layer is asked, as for rain; the snow golden picture was made again and looked at.
+
+**17. The frame-rate cost, before and after, at render distance 32 and 1080p.** Recorded in `bench/world/history.tsv` (`004 phase 08, before` and `after`) and `bench/world/README.md`. The card slows to about a third after some 30 s of load (every pass alike, at 79 to 82 degrees C), so within one run later rows read slower: the `after` run's four weather rows, last, read 21.8 to 24.5 fps, and a `--weather clear --only orbit` run after it read `plains/orbit` at 25.2. With no weather, which is every other row, the pictures and post pass are unchanged (`jagged_peaks/orbit` post 1.62 ms before, 1.61 after; `deep_ocean/orbit` 2.41, 2.43; `cave/orbit` 3.04, 2.99). Like with like, each weather row run right after a clear `plains/orbit` in turn, post against shade: rain (8 mm an hour) +0.49 ms, snow +0.75, thunder (30 mm and a bolt) +0.71, fog 0.0. **Rain is at the 0.5 ms budget; snow and a thunderstorm are over it.** Not changed: R1's way down is 3 layers or half-resolution drops, and Ahmed decides with the numbers.
+
+**18. Verification, run 2026-11-06.** All through `tools/test-or-build.sh`. Debug configure and build: clean. The phase's four tests: all pass (`render_feature_weather` 3 s, `run_player_movement` 9 s, `run_game_cover` 4 s with the 45 and 75 degree years, `run_game_weather` 1.4 s). The second list (`render_feature_sky`, `_water`, `_post`, `_shapes`, `_lod`, `_entities`, `run_render_frame`, `compile_game_tables` before the sim's part; the rest within the whole suite): pass. Profile build: clean; bench as in Issues found 17. Release build (`-O3 -flto`, the 16 KiB frame check): clean, main's frame `0x4000`. The whole debug suite: 145 tests: 139 passed on the first run (2350 s) and 6 failed, `run_settings` (Issues found 20) and five terrain pins (Issues found 19); after those fixes the six, with `run_ui_screens`, `standards_lint` and `clang_format`, pass. The 16 tests the Verification lists outside the phase's own are among the 139. Afterwards `pgrep -a minecraft_c` and `pgrep -af "$PWD/build"` printed nothing. Not run: Ahmed's gate.
+
+**19. `snow_layer` moved the terrain tests' pinned digests.** Found by the whole suite. Expected, as `config/blocks/README.md` says: a new block moves the numbers of the blocks after it in the alphabet, and pinned digests of states with them. Actual: `run_terrain_biome`, `_density`, `_feature` (the generator's row and the forest), `_hydrology` (states and flood) and `_ore` failed only on their pins; 1 and 16 workers still gave the same bytes in each. The land is the same: no file under `run/src/terrain/` or `run/include/terrain/` changed in this phase, and `run_terrain_hydrology`'s columns pin, which holds heights and no block numbers, still passed. Done: the pins set again, each with a line saying why, and `TERRAIN_GENERATOR_VERSION` left, as plan 003 phases 2 and 3 did; all six pass.
+
+**20. Every effect bit must have a setting, and the Effects page has no room for an eighteenth box.** Found by the whole suite: `run_settings` holds that the settings' effects cover `SHADE_FEATURES_EVERY`, which now has `SHADE_FEATURE_WEATHER`. The page is two columns of eight and one on Back's row, at 320 by 240. Done: `effect_weather` is an eighteenth effect in the settings file (default on, round trips, and the session's `features_off` follows it), and the page draws the first `SETTINGS_EFFECT_ON_SCREEN` (17) boxes as before, so its pictures and click points are unchanged. A box on screen is for whoever next lays out that page (phase 10 moves its HUD boxes to a page of their own); `--no-weather` turns it off for a run.
+
+**21. Re-checked on 2026-11-07 by a second agent, on the branch merged with main (a fast-forward; main had nothing newer).** All through `tools/test-or-build.sh`. Debug configure and build: clean. `render_feature_weather`, `render_feature_post`, `run_player_movement`, `run_game_cover`, `run_game_weather`, `run_render_frame`, `run_settings`, `run_settings_session`, `standards_lint`, `clang_format` and the rest matching that filter: 13 of 13 pass. Release build (`-O3 -flto`, the 16 KiB frame check): clean, main's frame `sub $0x4000`. Phases 06 and 07 and plan 003 phase 1 are still "in progress" with only Ahmed's checks left, so steps 1 and 15 stay open. Snow's and thunder's cost (Issues found 17) is left for Ahmed's call, as R1 says. `pgrep -af "$PWD/build"` printed nothing afterwards.

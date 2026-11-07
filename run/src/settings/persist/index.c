@@ -59,6 +59,7 @@ static const settings_effect_t SETTINGS_EFFECTS[SETTINGS_EFFECT_COUNT] = {
     {"effect_outline", "Block outline", SHADE_FEATURE_OUTLINE, {0}},
     {"effect_far_field", "Far field", SHADE_FEATURE_LOD, {0}},
     {"effect_under_water", "Under water", SHADE_FEATURE_UNDER_WATER, {0}},
+    {"effect_weather", "Weather", SHADE_FEATURE_WEATHER, {0}}, /* in the file only: see SETTINGS_EFFECT_ON_SCREEN */
 };
 
 const settings_effect_t *settings_persist_effect(uint32_t index) {

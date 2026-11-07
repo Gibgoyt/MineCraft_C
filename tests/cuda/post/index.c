@@ -1176,14 +1176,14 @@ TEST(with_god_rays_off_nothing_changes_and_none_of_this_stage_changes_a_picture_
                  GPU_STATUS_INVALID_ARGUMENT);
     CHECK_CONTAINS(error.borrowed_what, "god rays");
     CHECK_EQ_U64(post_frame_temporal(&error, &frame->post, nullptr, true, false, &view, &rig.render->owned_shaded,
-                                     &rig.render->owned_xrgb),
+                                     &rig.render->owned_xrgb, nullptr, nullptr),
                  GPU_STATUS_INVALID_ARGUMENT);
     post_temporal_t small = frame->temporal;
     device_block_t tiny = rig.render->owned_ao[0];
     tiny.bytes = 4u;
     small.borrowed_history_last = &tiny;
     CHECK_EQ_U64(post_frame_temporal(&error, &frame->post, &small, true, false, &view, &rig.render->owned_shaded,
-                                     &rig.render->owned_xrgb),
+                                     &rig.render->owned_xrgb, nullptr, nullptr),
                  GPU_STATUS_INVALID_ARGUMENT);
     CHECK_CONTAINS(error.borrowed_what, "TAA");
     sk_hand_world_close(&rig);

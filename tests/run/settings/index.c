@@ -162,7 +162,8 @@ TEST(the_file_for_the_defaults_is_exactly_this) {
                                    "effect_entities: true\n"
                                    "effect_outline: true\n"
                                    "effect_far_field: true\n"
-                                   "effect_under_water: true\n";
+                                   "effect_under_water: true\n"
+                                   "effect_weather: true\n";
     static_assert(MC_THREADS_WORKERS == 16);
     const settings_values_t values = values_defaults();
     uint8_t text[SETTINGS_TEXT_BYTES];
@@ -670,7 +671,7 @@ TEST(vsync_coordinates_and_each_effect_flip_alone_and_done_and_esc_go_where_they
 
     CHECK_EQ_U64(rig_click(rig, AT_EFFECTS_X, AT_ROW_6_Y), UI_SCREEN_SETTINGS_NONE);
     CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_EFFECTS);
-    for (uint32_t i = 0u; i < SETTINGS_EFFECT_COUNT; i++) {
+    for (uint32_t i = 0u; i < SETTINGS_EFFECT_ON_SCREEN; i++) {
         /* Two columns of eight, and the one past them on the left of Back's row. */
         const int32_t x = i < 8u || i >= 16u ? AT_EFFECT_LEFT_X : AT_EFFECT_RIGHT_X;
         const int32_t y = AT_ROW_0_Y + (int32_t)(i >= 16u ? 8u : i % 8u) * AT_ROW_STEP;

@@ -31,7 +31,10 @@ enum : uint32_t {
     SETTINGS_SOUND_VOLUME_MIN = 0u,
     SETTINGS_SOUND_VOLUME_DEFAULT = 70u,
     SETTINGS_SOUND_VOLUME_MAX = 100u,
-    SETTINGS_EFFECT_COUNT = 17u,
+    SETTINGS_EFFECT_COUNT = 18u,
+    /* The first this many have a box on the Effects page, which has room for no more: two columns of eight and one on Back's row.
+     * The rest are kept in the file all the same (plan 004 phase 08's weather; its box waits for the screen to have room). */
+    SETTINGS_EFFECT_ON_SCREEN = 17u,
     SETTINGS_LINE_BYTES = 120u, /* a line past this is not one this program wrote, and is not read */
     /* What settings_persist_write can ever need, with room for a person's comments in what is read. */
     SETTINGS_TEXT_BYTES = 8192u,

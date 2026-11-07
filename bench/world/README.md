@@ -41,7 +41,7 @@ Every world is the game's default seed, `TERRAIN_SEED_DEFAULT`, and 1920 by 1080
 
 ## Rows
 
-`bench_world --list` prints them. Those at render distance 32 are held to the 120 fps, and `night/walk-mobs` to the tick as well. `plains/orbit-godrays` has the one effect the game leaves off by default, and is the only row with all of them: `--god-rays` asks for that on the rest.
+`bench_world --list` prints them. Those at render distance 32 are held to the 120 fps, and `night/walk-mobs` to the tick as well. `plains/orbit-godrays` has the one effect the game leaves off by default, and is the only row with all of them: `--god-rays` asks for that on the rest. `plains/orbit-rain`, `-snow`, `-thunder` and `-fog` are `plains/orbit` in a fixed weather (plan 004 phase 08's `--weather`), as there is no climate here: what rain, snow, lightning and weather fog cost.
 
 A row is not sound, and the exit status says so, if the last picture has fewer than 8 colours on a grid of 64 by 36 (an eye in a wall is very fast), if anything called the heap while it was timed, or, on the walk, if the minds did no searches, the store fell under 100 or the player died.
 
@@ -51,6 +51,7 @@ A row is not sound, and the exit status says so, if the last picture has fewer t
 - `--features-off <hex>`: take these `SHADE_FEATURE_*` bits away, which is how to see what each effect costs.
 - `--god-rays`: every row with god rays too, as only that is all effects. Not with `--record`, as a line would carry another row's name.
 - `--live`: every row but the walk on the game's own threads against the clock, an orbit included. Not with `--record`, for the same reason.
+- `--weather <kind>`: every row in this weather, as the game's `--weather` takes it: `clear`, `rain`, `snow`, `sleet`, `storm`, `thunder`, `fog`, `dust` or `hurricane`. Not with `--record`, for the same reason.
 - `--record <file>`: add a line per row to a history. **`bench/world/history.tsv` is the repository's.** New columns go on the end of its first line, and old lines stay.
 - `--label <text>`: says what was measured, in the history, such as the commit.
 - `--shots <dir>`: the last picture of each row as a PNG, to see what a row is looking at.
@@ -153,3 +154,20 @@ The table above has god rays on only in `plains/orbit-godrays`, and a settled ro
 | `night/walk-mobs` | 163.6 to 164.9 | 143.9 | |
 
 God rays cost 0.3 to 0.5 ms on `plains`, and 0.7 to 1.8 ms on a settled row elsewhere. **So with all effects on, 2 of these 11 views miss 120 fps, by 8% and 11%.** Blank cells were not run. These runs are not in `history.tsv`.
+
+## Plan 004 phase 08: what weather costs
+
+`004 phase 08, before` and `004 phase 08, after` in `history.tsv`, on 2026-11-06, are the whole table before the renderer knew weather and after. **The card now slows to about a third after some 30 s of steady load** (79 to 82 degrees C, and every pass slows alike), so a later row of a run reads slower than an earlier one whatever it does, and the last rows of the `after` run, the four weather rows among them, were measured slowed. Rows with no weather, which is every row but those four, are the same pictures with the same post pass: `jagged_peaks/orbit` post 1.62 ms before and 1.61 after, `deep_ocean/orbit` 2.41 and 2.43, `cave/orbit` 3.04 and 2.99; with no weather the kernels never look at any of it.
+
+To compare like with like, each weather row was run in its own process right after `=plains/orbit` in its own, in turn (`tools/test-or-build.sh sh` over `--only =plains/orbit` and `--only =plains/orbit-<kind>`), and the post pass taken against the shade pass of the same run, which nothing of weather touches:
+
+| Row | Post, ms | Shade, ms | Post over shade | Post added at the clear row's shade |
+|---|---|---|---|---|
+| `plains/orbit` (no weather) | 2.36 | 8.80 | 0.268 | |
+| `plains/orbit-rain` (8 mm an hour) | 3.05 | 9.41 | 0.324 | 0.49 |
+| `plains/orbit-snow` (3 mm an hour, snow) | 6.83 | 19.21 | 0.356 | 0.75 |
+| `plains/orbit-thunder` (30 mm an hour and a bolt every 2 s) | 7.67 | 21.58 | 0.355 | 0.71 |
+| `plains/orbit-fog` (fog 0.9) | 6.58 | 24.02 | 0.274 | 0.0 (beside a clear row at 0.281) |
+
+So at 1080p and render distance 32: clear weather and fog cost nothing measurable, rain about 0.5 ms a frame (the plan's budget), snow and a thunderstorm about 0.7 ms (over it). The plan's way down, if Ahmed wants it, is fewer layers (3) or drops at half resolution. Ahmed decides with these numbers.
+

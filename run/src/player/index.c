@@ -237,6 +237,10 @@ void player_pickup_reach(const player_t *player, collision_box_t *out) {
 }
 
 void player_tick(player_t *player, const world_map_t *map, int64_t tick_ns) {
+    player_tick_wind(player, map, tick_ns, 0.0f32, 0.0f32);
+}
+
+void player_tick_wind(player_t *player, const world_map_t *map, int64_t tick_ns, float32_t wind_u, float32_t wind_v) {
     player_intent_t intent = player_intent_unpack(atomic_load_explicit(&player->intent_word, memory_order_relaxed));
     const uint32_t latched = atomic_exchange_explicit(&player->jump_latch, 0u, memory_order_relaxed);
     intent.jump = intent.jump != 0u || latched != 0u ? 1u : 0u;
@@ -258,7 +262,7 @@ void player_tick(player_t *player, const world_map_t *map, int64_t tick_ns) {
     } else if (!player_survival_can_sprint(&player->survival)) {
         intent.sprint = 0u;
     }
-    player_movement_tick(&player->movement, player->borrowed_physics, map, &intent);
+    player_movement_tick_wind(&player->movement, player->borrowed_physics, map, &intent, wind_u, wind_v);
     if (player->survival.state != PLAYER_SURVIVAL_ALIVE) {
         /* Lying down, however the body would stand. */
         const float64_t lowered = player->movement.previous_eye - PLAYER_SURVIVAL_EYE_LOWERS;

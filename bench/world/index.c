@@ -3,6 +3,7 @@
 #include "display/headless/png/index.h"
 #include "file/index.h"
 #include "game/index.h"
+#include "game/weather/index.h"
 #include "gpu_bridge/index.h"
 #include "heap/index.h"
 #include "log/index.h"
@@ -75,7 +76,7 @@ enum : uint32_t {
     BENCH_LAYERS = (uint32_t)(COLUMN_Z_STORAGE_END - COLUMN_Z_STORAGE_MIN),
     BENCH_COLUMN_VOXELS = 16u * 16u * BENCH_LAYERS,
     BENCH_PATH_BYTES = 512u,
-    BENCH_ROWS = 14u,
+    BENCH_ROWS = 18u,
     BENCH_WORLDS = 6u,
     /* The card is shared with a desktop: this and the budget's textures and frames stay well under 4 GiB. */
     BENCH_VOXELS_MIB = 3072u,
@@ -136,24 +137,86 @@ typedef struct bench_row_t {
     uint8_t path;             /* 13: a bench_path_t */
     uint8_t mode;             /* 14: a bench_mode_t */
     uint8_t god_rays;         /* 15: and the one optional effect on top */
+    uint8_t weather;  /* 16: a game_weather_kind_t: plan 004 phase 08's --weather, or the climate's (none here) */
+    uint8_t _pad0[7]; /* 17 */
 } bench_row_t;
-static_assert(sizeof(bench_row_t) == 16);
+static_assert(sizeof(bench_row_t) == 24);
 
 static const bench_row_t BENCH_ROW_LIST[BENCH_ROWS] = {
-    {"plains/orbit", BENCH_DISTANCE_TARGET, BENCH_WORLD_PLAINS, BENCH_PATH_ORBIT, BENCH_MODE_SETTLED, 0u},
-    {"plains/flight", BENCH_DISTANCE_TARGET, BENCH_WORLD_PLAINS, BENCH_PATH_FLIGHT, BENCH_MODE_SETTLED, 0u},
-    {"plains/flight-live", BENCH_DISTANCE_TARGET, BENCH_WORLD_PLAINS, BENCH_PATH_FLIGHT, BENCH_MODE_LIVE, 0u},
-    {"plains/orbit-godrays", BENCH_DISTANCE_TARGET, BENCH_WORLD_PLAINS, BENCH_PATH_ORBIT, BENCH_MODE_SETTLED, 1u},
-    {"jungle/orbit", BENCH_DISTANCE_TARGET, BENCH_WORLD_JUNGLE, BENCH_PATH_ORBIT, BENCH_MODE_SETTLED, 0u},
-    {"jungle/flight-live", BENCH_DISTANCE_TARGET, BENCH_WORLD_JUNGLE, BENCH_PATH_FLIGHT, BENCH_MODE_LIVE, 0u},
-    {"jagged_peaks/orbit", BENCH_DISTANCE_TARGET, BENCH_WORLD_PEAKS, BENCH_PATH_ORBIT, BENCH_MODE_SETTLED, 0u},
-    {"jagged_peaks/flight-live", BENCH_DISTANCE_TARGET, BENCH_WORLD_PEAKS, BENCH_PATH_FLIGHT, BENCH_MODE_LIVE, 0u},
-    {"deep_ocean/orbit", BENCH_DISTANCE_TARGET, BENCH_WORLD_OCEAN, BENCH_PATH_ORBIT, BENCH_MODE_SETTLED, 0u},
-    {"deep_ocean/flight-live", BENCH_DISTANCE_TARGET, BENCH_WORLD_OCEAN, BENCH_PATH_FLIGHT, BENCH_MODE_LIVE, 0u},
-    {"cave/orbit", BENCH_DISTANCE_TARGET, BENCH_WORLD_CAVE, BENCH_PATH_ORBIT, BENCH_MODE_SETTLED, 0u},
-    {"night/walk-mobs", BENCH_DISTANCE_TARGET, BENCH_WORLD_NIGHT, BENCH_PATH_WALK, BENCH_MODE_SETTLED, 0u},
-    {"plains/flight-live-r128", BENCH_DISTANCE_FAR, BENCH_WORLD_PLAINS, BENCH_PATH_FLIGHT, BENCH_MODE_LIVE, 0u},
-    {"plains/orbit-r512", BENCH_DISTANCE_MOST, BENCH_WORLD_PLAINS, BENCH_PATH_ORBIT, BENCH_MODE_SETTLED, 0u},
+    {"plains/orbit", BENCH_DISTANCE_TARGET, BENCH_WORLD_PLAINS, BENCH_PATH_ORBIT, BENCH_MODE_SETTLED, 0u, 0u, {0}},
+    {"plains/flight", BENCH_DISTANCE_TARGET, BENCH_WORLD_PLAINS, BENCH_PATH_FLIGHT, BENCH_MODE_SETTLED, 0u, 0u, {0}},
+    {"plains/flight-live", BENCH_DISTANCE_TARGET, BENCH_WORLD_PLAINS, BENCH_PATH_FLIGHT, BENCH_MODE_LIVE, 0u, 0u, {0}},
+    {"plains/orbit-godrays",
+     BENCH_DISTANCE_TARGET,
+     BENCH_WORLD_PLAINS,
+     BENCH_PATH_ORBIT,
+     BENCH_MODE_SETTLED,
+     1u,
+     0u,
+     {0}},
+    {"jungle/orbit", BENCH_DISTANCE_TARGET, BENCH_WORLD_JUNGLE, BENCH_PATH_ORBIT, BENCH_MODE_SETTLED, 0u, 0u, {0}},
+    {"jungle/flight-live", BENCH_DISTANCE_TARGET, BENCH_WORLD_JUNGLE, BENCH_PATH_FLIGHT, BENCH_MODE_LIVE, 0u, 0u, {0}},
+    {"jagged_peaks/orbit", BENCH_DISTANCE_TARGET, BENCH_WORLD_PEAKS, BENCH_PATH_ORBIT, BENCH_MODE_SETTLED, 0u, 0u, {0}},
+    {"jagged_peaks/flight-live",
+     BENCH_DISTANCE_TARGET,
+     BENCH_WORLD_PEAKS,
+     BENCH_PATH_FLIGHT,
+     BENCH_MODE_LIVE,
+     0u,
+     0u,
+     {0}},
+    {"deep_ocean/orbit", BENCH_DISTANCE_TARGET, BENCH_WORLD_OCEAN, BENCH_PATH_ORBIT, BENCH_MODE_SETTLED, 0u, 0u, {0}},
+    {"deep_ocean/flight-live",
+     BENCH_DISTANCE_TARGET,
+     BENCH_WORLD_OCEAN,
+     BENCH_PATH_FLIGHT,
+     BENCH_MODE_LIVE,
+     0u,
+     0u,
+     {0}},
+    {"cave/orbit", BENCH_DISTANCE_TARGET, BENCH_WORLD_CAVE, BENCH_PATH_ORBIT, BENCH_MODE_SETTLED, 0u, 0u, {0}},
+    {"night/walk-mobs", BENCH_DISTANCE_TARGET, BENCH_WORLD_NIGHT, BENCH_PATH_WALK, BENCH_MODE_SETTLED, 0u, 0u, {0}},
+    {"plains/flight-live-r128",
+     BENCH_DISTANCE_FAR,
+     BENCH_WORLD_PLAINS,
+     BENCH_PATH_FLIGHT,
+     BENCH_MODE_LIVE,
+     0u,
+     0u,
+     {0}},
+    {"plains/orbit-r512", BENCH_DISTANCE_MOST, BENCH_WORLD_PLAINS, BENCH_PATH_ORBIT, BENCH_MODE_SETTLED, 0u, 0u, {0}},
+    {"plains/orbit-rain",
+     BENCH_DISTANCE_TARGET,
+     BENCH_WORLD_PLAINS,
+     BENCH_PATH_ORBIT,
+     BENCH_MODE_SETTLED,
+     0u,
+     GAME_WEATHER_RAIN,
+     {0}},
+    {"plains/orbit-snow",
+     BENCH_DISTANCE_TARGET,
+     BENCH_WORLD_PLAINS,
+     BENCH_PATH_ORBIT,
+     BENCH_MODE_SETTLED,
+     0u,
+     GAME_WEATHER_SNOW,
+     {0}},
+    {"plains/orbit-thunder",
+     BENCH_DISTANCE_TARGET,
+     BENCH_WORLD_PLAINS,
+     BENCH_PATH_ORBIT,
+     BENCH_MODE_SETTLED,
+     0u,
+     GAME_WEATHER_THUNDER,
+     {0}},
+    {"plains/orbit-fog",
+     BENCH_DISTANCE_TARGET,
+     BENCH_WORLD_PLAINS,
+     BENCH_PATH_ORBIT,
+     BENCH_MODE_SETTLED,
+     0u,
+     GAME_WEATHER_FOG,
+     {0}},
 };
 
 /* Where a world is, once it has been looked for. */
@@ -212,7 +275,8 @@ typedef struct bench_options_t {
     uint32_t features_off; /* 40: SHADE_FEATURE_* to take away, to see what each costs */
     uint8_t god_rays;      /* 44: every row with the one optional effect too, as the target says all of them */
     uint8_t live;          /* 45: every row but the walk on the game's own threads, against the clock */
-    uint8_t _pad0[2];      /* 46 */
+    uint8_t weather;       /* 46: --weather: every row with this game_weather_kind_t, 0 for each row's own */
+    uint8_t _pad0[1];      /* 47 */
 } bench_options_t;
 static_assert(sizeof(bench_options_t) == 48);
 
@@ -957,13 +1021,15 @@ static bool bench_row(bench_t *bench, const bench_row_t *row, const bench_option
     const game_config_t config = {.render_distance = row->render_distance,
                                   .width = BENCH_WIDTH,
                                   .height = BENCH_HEIGHT,
-                                  .features_off = (uint16_t)((uint32_t)SHADE_FEATURE_DAY_CYCLE | options->features_off),
+                                  .features_off = (uint32_t)SHADE_FEATURE_DAY_CYCLE | options->features_off,
                                   .god_rays = row->god_rays,
                                   .uncapped = row->mode == BENCH_MODE_LIVE ? 1u : 0u};
     const int64_t opening_ns = time_now_ns();
     if (!game_open(game, &config)) {
         return false;
     }
+    /* Plan 004 phase 08: a fixed weather where the eye is, from the first tick. */
+    game_weather_force(game, (game_weather_kind_t)row->weather);
     game_day_set(game, standard->day_fraction);
     if (row->path == BENCH_PATH_ORBIT) {
         bench_orbit_at(&game->camera, &place, height, 0.0f64);
@@ -1087,22 +1153,25 @@ static bool bench_record(const bench_result_t *results, const bench_options_t *o
 /* ---- Running it ---------------------------------------------------------------------------------------------------- */
 
 static void bench_usage(const char *program) {
-    fprintf(stderr,
-            "usage: %s [--only <text>] [--features-off <hex>] [--god-rays] [--live] [--record <file>] "
-            "[--label <text>] [--shots <dir>] [--trace <file>] [--list]\n"
-            "  --only <text>    only the rows whose name holds this, or =<name> for just that row\n"
-            "  --features-off <hex>  take these SHADE_FEATURE_* bits away, to see what each costs\n"
-            "  --god-rays       every row with god rays too. Not with --record\n"
-            "  --live           every row but the walk on the game's own threads, against the clock. Not with "
-            "--record\n"
-            "  --record <file>  add a line per row to this history: bench/world/history.tsv is the repository's\n"
-            "  --label <text>   says what was measured, in the history: no tabs\n"
-            "  --shots <dir>    write the last picture of each row here, as a PNG\n"
-            "  --trace <file>   with --only that picks one row: its Chrome trace here, and the profiler's table on "
-            "stdout.\n"
-            "                   Not in a release build\n"
-            "  --list           print the rows, and do nothing\n",
-            program);
+    fprintf(
+        stderr,
+        "usage: %s [--only <text>] [--features-off <hex>] [--god-rays] [--live] [--weather <kind>] [--record <file>] "
+        "[--label <text>] [--shots <dir>] [--trace <file>] [--list]\n"
+        "  --only <text>    only the rows whose name holds this, or =<name> for just that row\n"
+        "  --features-off <hex>  take these SHADE_FEATURE_* bits away, to see what each costs\n"
+        "  --god-rays       every row with god rays too. Not with --record\n"
+        "  --weather <kind> every row in this weather (plan 004 phase 08): clear, rain, snow, thunder, fog... Not with "
+        "--record\n"
+        "  --live           every row but the walk on the game's own threads, against the clock. Not with "
+        "--record\n"
+        "  --record <file>  add a line per row to this history: bench/world/history.tsv is the repository's\n"
+        "  --label <text>   says what was measured, in the history: no tabs\n"
+        "  --shots <dir>    write the last picture of each row here, as a PNG\n"
+        "  --trace <file>   with --only that picks one row: its Chrome trace here, and the profiler's table on "
+        "stdout.\n"
+        "                   Not in a release build\n"
+        "  --list           print the rows, and do nothing\n",
+        program);
 }
 
 static bool bench_row_chosen(uint32_t row, const char *only) {
@@ -1124,6 +1193,7 @@ static uint32_t bench_rows_chosen(const char *only) {
 static bench_row_t bench_row_asked(uint32_t index, const bench_options_t *options) {
     bench_row_t row = BENCH_ROW_LIST[index];
     row.god_rays = options->god_rays != 0u ? 1u : row.god_rays;
+    row.weather = options->weather != 0u ? options->weather : row.weather;
     row.mode = options->live != 0u && row.path != BENCH_PATH_WALK ? (uint8_t)BENCH_MODE_LIVE : row.mode;
     return row;
 }
@@ -1214,6 +1284,13 @@ static bool bench_parse(int32_t argc, char **argv, bench_options_t *out, bool *o
             out->features_off = (uint32_t)strtoul(argv[i], nullptr, 16);
         } else if (strcmp(argv[i], "--god-rays") == 0) {
             out->god_rays = 1u;
+        } else if (strcmp(argv[i], "--weather") == 0 && has_value) {
+            game_weather_kind_t kind = GAME_WEATHER_SAMPLED;
+            if (!game_weather_kind_parse(argv[++i], &kind)) {
+                fprintf(stderr, "--weather takes clear, rain, snow, sleet, storm, thunder, fog, dust or hurricane\n");
+                return false;
+            }
+            out->weather = (uint8_t)kind;
         } else if (strcmp(argv[i], "--live") == 0) {
             out->live = 1u;
         } else if (strcmp(argv[i], "--only") == 0 && has_value) {
@@ -1235,8 +1312,9 @@ static bool bench_parse(int32_t argc, char **argv, bench_options_t *out, bool *o
         return false;
     }
     /* A line of the history says what it measured by the row's name. */
-    if (out->record != nullptr && (out->god_rays != 0u || out->live != 0u)) {
-        fprintf(stderr, "--record takes neither --god-rays nor --live: a line would say another row's name\n");
+    if (out->record != nullptr && (out->god_rays != 0u || out->live != 0u || out->weather != 0u)) {
+        fprintf(stderr,
+                "--record takes none of --god-rays, --live and --weather: a line would say another row's name\n");
         return false;
     }
     /* A world claims the profiler's lanes as it opens, and they are few. */

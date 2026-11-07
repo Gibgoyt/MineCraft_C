@@ -1,6 +1,6 @@
 # cuda/src/post
 
-**Purpose:** from shade's pixels to what goes on the screen: the sky where nothing was hit, with the sun and moon, distance fog, god rays, what eyes under water see, the temporal pass, and the tone map to XRGB8888.
+**Purpose:** from shade's pixels to what goes on the screen: the sky where nothing was hit, with the sun and moon, distance fog, god rays, what eyes under water see, the temporal pass, the weather's rain, snow and lightning (plan 004 phase 08), and the tone map to XRGB8888.
 **Tier:** a CUDA area. It holds no memory. Device blocks come from its caller, and are checked against what is asked of them.
 **Owns:** nothing.
 **Lifetime:** each call starts a kernel and returns.
@@ -8,9 +8,9 @@
 **Public functions** (`run/include/gpu_bridge/post/index.h`, for C and CUDA):
 
 - `post_frame`: the kernel, with nothing from any other frame.
-- `post_frame_temporal`: the same with god rays on top, and with the temporal pass after it, as asked.
-- `post_xrgb_bytes`, `post_history_bytes`, `post_shafts_bytes`, `post_shafts_across`: what its targets need.
-- `post_sky`, `post_sky_discs`, `post_fog`, `post_fog_way`, `post_fog_along`, `post_water_fog`, `post_under_water`, `post_tone_map`, `post_xrgb`, `post_jitter`, `post_camera_jitter`, `post_reproject`, `post_taa_squeeze`, `post_taa_unsqueeze`, `post_catmull_rom`: its arithmetic, inline on host and device, so that a test on the host runs the same lines.
+- `post_frame_temporal`: the same with god rays on top, and with the temporal pass after it, as asked; and with a `post_weather_t` and its rain top map, or nullptr for none.
+- `post_xrgb_bytes`, `post_history_bytes`, `post_shafts_bytes`, `post_shafts_across`, `post_weather_map_bytes`: what its targets need.
+- `post_sky`, `post_sky_discs`, `post_fog`, `post_fog_way`, `post_fog_along`, `post_water_fog`, `post_under_water`, `post_tone_map`, `post_xrgb`, `post_jitter`, `post_camera_jitter`, `post_reproject`, `post_taa_squeeze`, `post_taa_unsqueeze`, `post_catmull_rom`, and for the weather `post_weather_hash`, `post_weather_unit`, `post_weather_cells_round`, `post_weather_cell`, `post_weather_tilt`, `post_weather_open_sky`, `post_weather_layer`, `post_weather_drops`, `post_weather_bolt`, `post_weather_fog_colour`, `post_weather_apply`: its arithmetic, inline on host and device, so that a test on the host runs the same lines.
 
 **May be called by:** `render`, `cuda/src/frame/`.
 **Depends on:** `gpu_bridge/device_memory`, `gpu_bridge/status`, `gpu_bridge/traverse`, `gpu_bridge/shade` for the form of its input, and `cuda/include/traverse/` for a pixel's direction.
@@ -57,3 +57,20 @@ There is no sharpen after it. Blocks at a low angle are softer than one frame's,
 ## God rays
 
 `SHADE_FEATURE_GOD_RAYS`, off unless asked for: `--god-rays`. `shade_shafts_frame` in `cuda/src/shade/` asks along each ray how much sun the air there gets, at half the picture's size each way, as a sun ray needs the textures and the loop that are there. This kernel adds what it found, under `post_temporal_t.shaft_colour`, on top of the fog: it only ever adds light. **Each pixel reads the four texels around it, by nearness, of those at about its own distance,** so that the sky beside a near pillar does not light the pillar's edge: a texel's distance is in `post_shaft_t.t`.
+
+## Weather
+
+Plan 004 phase 08. `render_frame_draw_weather` passes a `post_weather_t`, plain numbers by value, and the rain top map, a 64 by 64 block of `int16_t` the sim keeps round the eye; with none, nothing below runs and the picture is exactly as before.
+
+**Fog toward the weather's colour, before the history.** Where fog is, its colour is `post_weather_fog_colour`: the sky's, mixed toward grey (under cloud and in fog) or brown (in dust) by `fog_mix`. It is steady from frame to frame, so it goes in where fog always did. The sky's own grey, the sun's dimming, the flash and how near the fog comes are `render/frame`'s, in `post_settings_t` and `shade_sun_t`.
+
+**Rain, snow and the bolt after the history, before the tone map.** A drop moves several pixels a frame: mixed into the temporal pass's history it would smear into haze and leave ghosts. So `post_weather_apply` goes over the picture in `post_taa_kernel` after `history_next` is written, along the pixel's ray with no jitter, and in `post_kernel`'s last branch when the temporal pass is off.
+
+**The drops are procedural: nothing is stored per drop.** Round the eye stand `POST_WEATHER_LAYERS` (4) upright cylinders of radius 2, 4, 8 and 16 blocks, cut into cells about 0.25 blocks wide and 1.5 tall that slide down at the fall speed (9 blocks a second for rain, 1.5 for snow) as `time_s` goes on. A hash of the layer, the cell round and the cell up says whether a drop is in it, with chance `density` (the rain rate over 40 mm an hour, from 0.03 to 0.85), and where. A pixel's ray meets each cylinder once going out; it is covered if its place there is within the drop: a streak 0.03 wide and `max(0.6, fall / 60)` long for rain, at `POST_RAIN_ALPHA`, a round flake 0.08 across that wobbles 0.3 either way over 3 seconds for snow, at `POST_SNOW_ALPHA`. A sleet day has both, by `snow_share`. The drop's colour is the sky's ambient light times 0.6 for rain and 1 for snow, so rain is faint and grey at night. **In wind the cylinders lean:** a place `p` from the eye is at `p + p.z * wind / fall` across, so drops fall along the slope a drop in that wind would, at most 2.5 sideways for each block down. Heights are the world's, so a still eye sees the same drops whichever way it turns.
+
+**A drop shows only before what the ray hit and under open sky:** its distance along the ray under the pixel's `t`, and its height at or above the top of the highest block of its column in the rain top map, plus one. A column not loaded, or off the map, is a roof. So from inside a house the rain shows through the window and never over the eye.
+
+**The bolt** is 12 segments, given by the sim from the cloud base to the ground. A pixel is covered by `bolt_alpha` (its flicker: full, half, full over 0.2 s) times one less its ray's nearest distance to them over `bolt_width` (0.4 blocks, and 0.002 more for each block away, so a far bolt does not vanish), before what the ray hit, and goes toward a white with a little blue, bright enough to stay white through the tone map.
+
+**Cost** at render distance 32 and 1080p: see `bench/world/README.md` and plan 004 phase 08's Issues found.
+

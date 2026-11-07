@@ -168,7 +168,7 @@ static bool ui_screen_settings_effects_page(ui_screen_settings_t *screen) {
     settings_values_t *const values = screen->borrowed_values;
     const int32_t scale = (int32_t)widget->scale;
     bool changed = false;
-    for (uint32_t i = 0u; i < SETTINGS_EFFECT_COUNT; i++) {
+    for (uint32_t i = 0u; i < SETTINGS_EFFECT_ON_SCREEN; i++) {
         const settings_effect_t *const effect = settings_persist_effect(i);
         /* Two columns of eight, and what is past them on the row of Back, whose place is its right. */
         const bool past = (int32_t)i >= 2 * SETTINGS_EFFECT_ROWS;

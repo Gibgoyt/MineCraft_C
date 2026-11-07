@@ -57,8 +57,10 @@ typedef struct game_session_t {
     display_frame_source_t source; /* 120: under KMS, while it runs: what each frame calls */
     void *
         borrowed_source_context; /* 128: and with what. What comes back from another VT is the session's, whatever a test has wrapped around the source */
+    uint8_t weather;  /* 136: --weather, a game_weather_kind_t: each world opened has it in place of its climate's */
+    uint8_t _pad0[7]; /* 137 */
 } game_session_t;
-static_assert(sizeof(game_session_t) == 136);
+static_assert(sizeof(game_session_t) == 144);
 
 /* Starts on the main screen. All of these must outlive it, game must have its player set, and saves is where worlds live.
  * blank_seed is what a world made with no seed gets. input is nullptr under --headless. */
@@ -68,6 +70,10 @@ void game_session_init(game_session_t *session, game_t *game, ui_t *ui, terrain_
 /* Settings from here on: its Settings buttons work, and each world opens with what settings holds, at the size in config. Before anything has
  * run. settings must outlive it. */
 void game_session_settings_set(game_session_t *session, settings_t *settings);
+
+/* --weather: every world this opens has this weather where the eye is, a game_weather_kind_t, in place of its climate's (plan 004
+ * phase 08). 0 for the climate's, which is what game_session_init leaves. */
+void game_session_weather_set(game_session_t *session, uint8_t weather);
 
 /* Forgets all that. Whatever it opened has been closed by game_session_run or game_session_end. */
 void game_session_deinit(game_session_t *session);

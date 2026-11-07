@@ -10,11 +10,12 @@
 - `player_movement_start`: a body at rest at a place.
 - `player_movement_box`: its box at a place, for a height.
 - `player_movement_tick`: one tick from an intent.
+- `player_movement_tick_wind`: the same in a wind (plan 004 phase 08); `player_movement_tick` is this with no wind, to the byte.
 
 **May be called by:** `run/src/player/` and its parts, `run/src/mob/creeper/` for where the body stands, `bench/mobs/`, and tests.
 **Depends on:** `physics`, `world/map`, `world/column`, the generated `tables/blocks`, libm.
 
-Nothing here reads a clock or a random number. The same world and the same intents give the same bytes, and the tests hold it to that.
+Nothing here reads a clock or a random number. The same world and the same intents give the same bytes, and the tests hold it to that. The wind is an input like the intent, worked out by the sim from the pure climate, so the same world, intents and winds still do.
 
 ## What the numbers add up to
 
@@ -32,6 +33,10 @@ Per-tick numbers at 20 Hz, chosen to give these speeds, which are Minecraft's pu
 | Lava | Each tick's drag | 0.5, against water's 0.8 |
 | Climb | Up, down | 2.35 blocks/s, 3 blocks/s |
 | Step | Height walked up without a jump | 0.6 blocks: a slab, not a block |
+| Wind (plan 004 phase 08) | Drift standing on the ground | 0.04 blocks/s per block/s of wind over 10: 2.0 in a 60 blocks/s hurricane, 0.8 in a 30 storm, none at 10 or under |
+| Wind | Walking into a hurricane, with it | 2.3, 6.3 blocks/s |
+| Wind | Behind a solid block within 3 upwind, at feet or head | A quarter: 0.5 blocks/s in the hurricane |
+| Wind | In the air; in water, lava or climbing | A fifth of the push; none |
 
 The body is 0.6 wide and 1.8 tall, 1.5 crouched, with its eyes at 1.62 and 1.27. It stays crouched where there is no room to stand up.
 
@@ -41,5 +46,7 @@ The body is 0.6 wide and 1.8 tall, 1.5 crouched, with its eyes at 1.62 and 1.27.
 2. **Lava, then water:** any cell its box overlaps, and kelp or seagrass with water over it, which take a water cell's place in the world. Slow to start and stop, with slow sinking. Space rises, sneak sinks. Swimming into a bank whose top is less than a step above hops out.
 3. **Climb:** a ladder or a vine in the cell of its feet, which is where a body stands to use one. Sideways speed and falling are limited. Space or pressing against a wall goes up, and sneak holds still. The climbing is not a flag in `config/blocks/`, since these two blocks are all that have it: lily pads are the same `thin` shape and nobody climbs one.
 4. **Ground or air:** whether the last move came down on something.
+
+**The wind** pushes only on land, before the move: a push `a` along the way it blows, added each tick before the move as walking is, settles where each move is `a / (1 - 0.546)`, so `a = D / 20 * (1 - 0.546)` blocks a tick for a drift of `D` blocks a second on the ground (plan 004 phase 08's Issues found has why that is not its file's `D / 20 * (1 - f) / f`). A jump in a gale goes under 2 blocks downwind.
 
 `fall_distance` adds up while falling, and goes to `landed_fall` for the one tick it lands. Fluids and climbing reset it. Stage 13.4's fall damage reads it. `eyes_under_water` is for its drowning.
