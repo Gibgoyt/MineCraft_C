@@ -17,9 +17,13 @@ bool settings_init(settings_t *settings) {
         return false; /* it has said why */
     }
     arena_init(&settings->arena, "settings", settings->owned_region.owned_base, SETTINGS_ARENA_BYTES);
-    settings->borrowed_path = arena_alloc_zeroed(&settings->arena, FILE_PATH_BYTES, 1u);
-    settings->borrowed_text = arena_alloc(&settings->arena, SETTINGS_TEXT_BYTES, 1u);
+    settings->borrowed_path = arena_alloc_zeroed(&settings->arena, (uint64_t)FILE_PATH_BYTES + SETTINGS_TEXT_BYTES, 1u);
     return true;
+}
+
+/* The file's worth of text, after the path in the same block. */
+static uint8_t *settings_text(const settings_t *settings) {
+    return (uint8_t *)settings->borrowed_path + FILE_PATH_BYTES;
 }
 
 void settings_deinit(settings_t *settings) {
@@ -39,7 +43,7 @@ void settings_load(settings_t *settings, const char *path) {
     }
     memcpy(settings->borrowed_path, path, path_bytes);
     uint64_t bytes = 0u;
-    const file_status_t status = file_read_whole(path, settings->borrowed_text, SETTINGS_TEXT_BYTES, &bytes);
+    const file_status_t status = file_read_whole(path, settings_text(settings), SETTINGS_TEXT_BYTES, &bytes);
     if (status == FILE_ERROR_NOT_FOUND) {
         return;
     }
@@ -48,7 +52,7 @@ void settings_load(settings_t *settings, const char *path) {
         return;
     }
     settings_persist_report_t report;
-    settings_persist_parse(settings->borrowed_text, bytes, &settings->values, &report);
+    settings_persist_parse(settings_text(settings), bytes, &settings->values, &report);
     LOG_INFO("settings: %s set %" PRIu32 " things, with %" PRIu32 " problems: render distance %" PRIu32
              ", full detail %" PRIu32 ", %" PRIu32 " workers",
              path, report.applied, report.problems, settings->values.render_distance, settings->values.full_detail,
@@ -60,10 +64,10 @@ file_status_t settings_save(settings_t *settings) {
         return FILE_ERROR_NOT_FOUND;
     }
     uint64_t bytes = 0u;
-    if (!settings_persist_write(&settings->values, settings->borrowed_text, SETTINGS_TEXT_BYTES, &bytes)) {
+    if (!settings_persist_write(&settings->values, settings_text(settings), SETTINGS_TEXT_BYTES, &bytes)) {
         return FILE_ERROR_TOO_LARGE;
     }
-    const file_status_t status = file_write_atomic(settings->borrowed_path, settings->borrowed_text, bytes);
+    const file_status_t status = file_write_atomic(settings->borrowed_path, settings_text(settings), bytes);
     if (status == FILE_OK) {
         LOG_INFO("settings: kept in %s: render distance %" PRIu32, settings->borrowed_path,
                  settings->values.render_distance);

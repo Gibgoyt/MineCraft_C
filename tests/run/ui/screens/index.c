@@ -271,9 +271,9 @@ static ui_screen_settings_action_t us_settings_click(us_rig_t *rig, int32_t x, i
 }
 
 TEST(the_volume_slider_changes_that_setting_and_nothing_else) {
-    /* At 320 by 240 the scale is 1: row 7 starts at 60 across and 24 + 7 * 24 down, and is 20 tall. The Date box takes its first
-     * 40 and a gap of 4, so the slider is from 104 to 260. */
-    enum : int32_t { SLIDER_X = 104, SLIDER_WIDTH = 156, SLIDER_Y = 192 + 10 };
+    /* At 320 by 240 the scale is 1: row 7 starts at 60 across and 24 + 7 * 24 down, and is 20 tall. Since plan 004 phase 10 moved
+     * the Date box to the HUD page, the slider has the whole row, from 60 to 260. */
+    enum : int32_t { SLIDER_X = 60, SLIDER_WIDTH = 200, SLIDER_Y = 192 + 10 };
     us_rig_t *const rig = test_alloc(t, sizeof(us_rig_t));
     REQUIRE(us_rig_start(t, rig));
     settings_values_t values;
@@ -296,14 +296,31 @@ TEST(the_volume_slider_changes_that_setting_and_nothing_else) {
     us_rig_stop(rig);
 }
 
-TEST(the_coordinates_box_changes_that_setting_and_nothing_else_and_shows_it) {
-    /* At 320 by 240 the scale is 1: row 6 starts at 60 across and 24 + 6 * 24 down, is 20 tall, and the box starts 50 along it. */
-    enum : int32_t { BOX_X = 114 + 4, BOX_Y = 168 + 10 };
+/* At 320 by 240 the scale is 1 and the screen's top is 0: row r is 24 + 24 r down and 20 tall, from 60 to 260 across. Row 6
+ * holds VSync (46), HUD... (82, from 110) and Effects..., with gaps of 4. */
+enum : int32_t {
+    US_HUD_BUTTON_X = 110 + 41,
+    US_ROW_6_Y = 168 + 10,
+    US_BOX_X = 64, /* the left of a 200-wide box, on its tick */
+    US_HUD_ROW_0_Y = 24 + 10,
+    US_HUD_ROW_STEP = 24,
+    US_BACK_Y = 216 + 10,
+};
+
+/* From the main page to the HUD page, by its button. */
+static void us_settings_hud_open(test_context_t *t, us_rig_t *rig, uint8_t *scratch) {
+    CHECK_EQ_U64(us_settings_click(rig, US_HUD_BUTTON_X, US_ROW_6_Y, scratch), UI_SCREEN_SETTINGS_NONE);
+    CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_HUD);
+}
+
+/* One of the HUD page's boxes changes its own setting, shows it, and nothing else; at says which byte, bit which of it. */
+static void us_settings_hud_box(test_context_t *t, uint32_t row, uint64_t at, uint8_t bit) {
     us_rig_t *const rig = test_alloc(t, sizeof(us_rig_t));
     REQUIRE(us_rig_start(t, rig));
     settings_values_t values;
     settings_persist_defaults(&values);
-    CHECK_EQ_U64(values.show_coordinates, 1u);
+    uint8_t *const byte = (uint8_t *)&values + at;
+    CHECK((*byte & bit) != 0u); /* on, as a new install has it */
     settings_values_t expected = values;
     ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &values, 0u, MC_THREADS_WORKERS, false);
     const uint64_t bytes = (uint64_t)US_WIDTH * US_HEIGHT * 4u;
@@ -312,68 +329,73 @@ TEST(the_coordinates_box_changes_that_setting_and_nothing_else_and_shows_it) {
     uint8_t *const on_again = test_alloc(t, bytes);
     const input_frame_t nothing = {0};
     (void)us_settings_frame(rig, &nothing, on); /* so that the widgets know the canvas */
-
+    us_settings_hud_open(t, rig, on);
+    CHECK_MEM_EQ(&values, &expected, sizeof(expected));
+    const int32_t y = US_HUD_ROW_0_Y + (int32_t)row * US_HUD_ROW_STEP;
     /* Hovering shows, so what is compared is the box over the box, with the pointer there each time. */
     input_frame_t over;
     memset(&over, 0, sizeof(over));
-    over.mouse_dx = (int64_t)BOX_X - rig->ui->widget.input.pointer_x;
-    over.mouse_dy = (int64_t)BOX_Y - rig->ui->widget.input.pointer_y;
+    over.mouse_dx = (int64_t)US_BOX_X - rig->ui->widget.input.pointer_x;
+    over.mouse_dy = (int64_t)y - rig->ui->widget.input.pointer_y;
     CHECK_EQ_U64(us_settings_frame(rig, &over, on), UI_SCREEN_SETTINGS_NONE);
-    CHECK_EQ_U64(us_settings_click(rig, BOX_X, BOX_Y, off), UI_SCREEN_SETTINGS_CHANGED);
-    expected.show_coordinates = 0u;
+    CHECK_EQ_U64(us_settings_click(rig, US_BOX_X, y, off), UI_SCREEN_SETTINGS_CHANGED);
+    uint8_t *const expected_byte = (uint8_t *)&expected + at;
+    *expected_byte = (uint8_t)(*expected_byte ^ bit);
     CHECK_MEM_EQ(&values, &expected, sizeof(expected));
     CHECK(memcmp(on, off, bytes) != 0);
-    CHECK_EQ_U64(us_settings_click(rig, BOX_X, BOX_Y, on_again), UI_SCREEN_SETTINGS_CHANGED);
-    expected.show_coordinates = 1u;
+    CHECK_EQ_U64(us_settings_click(rig, US_BOX_X, y, on_again), UI_SCREEN_SETTINGS_CHANGED);
+    *expected_byte = (uint8_t)(*expected_byte ^ bit);
     CHECK_MEM_EQ(&values, &expected, sizeof(expected));
     CHECK_MEM_EQ(on, on_again, bytes);
-
-    /* It is the box's own business: VSync, on its left, and Effects..., on its right, have not moved under the pointer. */
-    CHECK_EQ_U64(us_settings_click(rig, 60 + 4, BOX_Y, off), UI_SCREEN_SETTINGS_CHANGED);
-    CHECK_EQ_U64(values.vsync, 0u);
-    CHECK_EQ_U64(values.show_coordinates, 1u);
-    (void)us_settings_click(rig, 260 - 4, BOX_Y, off);
+    /* Back is where Done is, and goes to the main page, where VSync and Effects... have not moved under the pointer. */
+    CHECK_EQ_U64(us_settings_click(rig, 160, US_BACK_Y, off), UI_SCREEN_SETTINGS_NONE);
+    CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_MAIN);
+    CHECK_EQ_U64(us_settings_click(rig, 60 + 4, US_ROW_6_Y, off), UI_SCREEN_SETTINGS_CHANGED);
+    expected.vsync = 0u;
+    CHECK_MEM_EQ(&values, &expected, sizeof(expected));
+    (void)us_settings_click(rig, 260 - 4, US_ROW_6_Y, off);
     CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_EFFECTS);
     us_rig_stop(rig);
 }
 
+TEST(the_coordinates_box_changes_that_setting_and_nothing_else_and_shows_it) {
+    us_settings_hud_box(t, 0u, offsetof(settings_values_t, show_coordinates), 1u);
+}
+
 TEST(the_date_box_changes_that_setting_and_nothing_else) {
-    /* At 320 by 240 the scale is 1: row 7 starts 60 across and 24 + 7 * 24 = 192 down, and the Date box is its first 40. */
-    enum : int32_t { BOX_X = 64, BOX_Y = 192 + 10, ROW_6_Y = 168 + 10 };
+    us_settings_hud_box(t, 1u, offsetof(settings_values_t, show_date), 1u);
+}
+
+TEST(the_climate_boxes_change_their_own_bit_and_nothing_else) {
+    us_settings_hud_box(t, 2u, offsetof(settings_values_t, climate_hud), SETTINGS_CLIMATE_HUD_LINE);
+    us_settings_hud_box(t, 3u, offsetof(settings_values_t, climate_hud), SETTINGS_CLIMATE_HUD_WARNINGS);
+}
+
+static void us_golden_compare(test_context_t *t, const char *path, const uint8_t *picture);
+
+/* The main page and the HUD page as a person sees them, against pictures looked at once (MC_GOLDEN_WRITE=1 makes them). */
+TEST(the_settings_pages_look_as_they_did) {
     us_rig_t *const rig = test_alloc(t, sizeof(us_rig_t));
     REQUIRE(us_rig_start(t, rig));
     settings_values_t values;
     settings_persist_defaults(&values);
-    CHECK_EQ_U64(values.show_date, 1u);
-    settings_values_t expected = values;
+    values.climate_hud = SETTINGS_CLIMATE_HUD_LINE; /* one box of each kind */
     ui_screen_settings_open(&rig->ui->settings_screen, &rig->ui->widget, &values, 0u, MC_THREADS_WORKERS, false);
     const uint64_t bytes = (uint64_t)US_WIDTH * US_HEIGHT * 4u;
-    uint8_t *const on = test_alloc(t, bytes);
-    uint8_t *const off = test_alloc(t, bytes);
-    uint8_t *const on_again = test_alloc(t, bytes);
+    uint8_t *const picture = test_alloc(t, bytes);
     const input_frame_t nothing = {0};
-    (void)us_settings_frame(rig, &nothing, on);
-    input_frame_t over;
-    memset(&over, 0, sizeof(over));
-    over.mouse_dx = (int64_t)BOX_X - rig->ui->widget.input.pointer_x;
-    over.mouse_dy = (int64_t)BOX_Y - rig->ui->widget.input.pointer_y;
-    CHECK_EQ_U64(us_settings_frame(rig, &over, on), UI_SCREEN_SETTINGS_NONE);
-    CHECK_EQ_U64(us_settings_click(rig, BOX_X, BOX_Y, off), UI_SCREEN_SETTINGS_CHANGED);
-    expected.show_date = 0u;
-    CHECK_MEM_EQ(&values, &expected, sizeof(expected));
-    CHECK(memcmp(on, off, bytes) != 0);
-    CHECK_EQ_U64(us_settings_click(rig, BOX_X, BOX_Y, on_again), UI_SCREEN_SETTINGS_CHANGED);
-    expected.show_date = 1u;
-    CHECK_MEM_EQ(&values, &expected, sizeof(expected));
-    CHECK_MEM_EQ(on, on_again, bytes);
-    /* Row 6 above it is where it was: VSync and Coordinates each still flip only themselves. */
-    CHECK_EQ_U64(us_settings_click(rig, 60 + 4, ROW_6_Y, off), UI_SCREEN_SETTINGS_CHANGED);
-    expected.vsync = 0u;
-    CHECK_MEM_EQ(&values, &expected, sizeof(expected));
-    CHECK_EQ_U64(us_settings_click(rig, 114 + 4, ROW_6_Y, off), UI_SCREEN_SETTINGS_CHANGED);
-    expected.show_coordinates = 0u;
-    CHECK_MEM_EQ(&values, &expected, sizeof(expected));
-    CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_MAIN);
+    (void)us_settings_frame(rig, &nothing, picture); /* so that the widgets know the canvas and the pointer */
+    input_frame_t away;
+    memset(&away, 0, sizeof(away));
+    away.mouse_dx = 2 - rig->ui->widget.input.pointer_x; /* the top left, over nothing, so nothing is lit */
+    away.mouse_dy = 2 - rig->ui->widget.input.pointer_y;
+    (void)us_settings_frame(rig, &away, picture);
+    (void)us_settings_frame(rig, &nothing, picture);
+    us_golden_compare(t, "tests/run/ui/screens/fixtures/settings_main.png", picture);
+    rig->ui->settings_screen.page = UI_SCREEN_SETTINGS_PAGE_HUD;
+    (void)us_settings_frame(rig, &nothing, picture);
+    (void)us_settings_frame(rig, &nothing, picture);
+    us_golden_compare(t, "tests/run/ui/screens/fixtures/settings_hud.png", picture);
     us_rig_stop(rig);
 }
 

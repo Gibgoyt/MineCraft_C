@@ -7,7 +7,9 @@
 #include "ui/widget/index.h"
 
 #include <inttypes.h>
+#include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 enum : uint32_t {
     UI_HUD_TEXTURE_SLOTS = 8u,     /* what the hotbar texture draws */
@@ -226,7 +228,8 @@ static void ui_hud_coordinates_text(char *text, uint64_t bytes, const int32_t bl
     snprintf(text, bytes, "x %" PRId32 " y %" PRId32 " z %" PRId32, block[0], block[1], block[2]);
 }
 
-void ui_hud_coordinates_draw(ui_canvas_t *canvas, const ui_font_t *font, const int32_t block[3], bool below_notice) {
+ui_rect_t ui_hud_coordinates_panel(const ui_canvas_t *canvas, const ui_font_t *font, const int32_t block[3],
+                                   bool below_notice) {
     const uint32_t scale = ui_hud_debug_scale(canvas->width, canvas->height);
     const int32_t margin = (int32_t)UI_HUD_DEBUG_MARGIN * (int32_t)scale;
     char text[UI_HUD_TEXT_BUFFER];
@@ -235,22 +238,153 @@ void ui_hud_coordinates_draw(ui_canvas_t *canvas, const ui_font_t *font, const i
     const int32_t height = (int32_t)measured.height + 2 * margin;
     /* A band starts a margin down and is as tall as this panel. */
     const int32_t top = below_notice ? margin + height : margin;
-    ui_compose_fill(canvas, (ui_rect_t){margin, top, (int32_t)measured.width + 2 * margin, height}, UI_HUD_COLOR_PANEL);
+    return (ui_rect_t){margin, top, (int32_t)measured.width + 2 * margin, height};
+}
+
+void ui_hud_coordinates_draw(ui_canvas_t *canvas, const ui_font_t *font, const int32_t block[3], bool below_notice) {
+    const uint32_t scale = ui_hud_debug_scale(canvas->width, canvas->height);
+    const int32_t margin = (int32_t)UI_HUD_DEBUG_MARGIN * (int32_t)scale;
+    char text[UI_HUD_TEXT_BUFFER];
+    ui_hud_coordinates_text(text, sizeof(text), block);
+    const ui_rect_t panel = ui_hud_coordinates_panel(canvas, font, block, below_notice);
+    ui_compose_fill(canvas, panel, UI_HUD_COLOR_PANEL);
     const ui_text_style_t style = {.color = UI_HUD_COLOR_TEXT, .shadow = UI_HUD_COLOR_SHADOW, .scale = scale};
-    ui_font_draw(font, canvas, margin + margin, top + margin, text, style);
+    ui_font_draw(font, canvas, panel.x + margin, panel.y + margin, text, style);
 }
 
 void ui_hud_date_draw(ui_canvas_t *canvas, const ui_font_t *font, const char *text, bool below_notice) {
+    ui_hud_corner_t corner;
+    ui_hud_corner_clear(&corner);
+    (void)snprintf(corner.lines[UI_HUD_CORNER_DATE], sizeof(corner.lines[UI_HUD_CORNER_DATE]), "%s", text);
+    (void)ui_hud_corner_draw(canvas, font, &corner, (ui_rect_t){0, 0, 0, 0}, below_notice);
+}
+
+/* ---- The top right corner ------------------------------------------------------------------------------------------ */
+
+void ui_hud_corner_clear(ui_hud_corner_t *corner) {
+    memset(corner, 0, sizeof(*corner));
+    corner->arrow_line = (uint8_t)UI_HUD_CORNER_NONE;
+    corner->warning_line = (uint8_t)UI_HUD_CORNER_NONE;
+}
+
+/* What the arrow adds to its line's panel: a space, then a square a line high. */
+static int32_t ui_hud_corner_arrow_extra(uint32_t scale) {
+    return (int32_t)((UI_FONT_SPACE_WIDTH + UI_FONT_SPACING + UI_FONT_LINE) * scale);
+}
+
+void ui_hud_corner_arrow_ends(ui_rect_t square, const float32_t arrow[2], uint32_t scale, int32_t out_tail[2],
+                              int32_t out_tip[2]) {
+    /* Half its length: the square's half less a font pixel, so the shadow too stays inside. */
+    const float32_t half = (float32_t)square.width * 0.5f32 - (float32_t)scale;
+    const float32_t cx = (float32_t)square.x + (float32_t)square.width * 0.5f32;
+    const float32_t cy = (float32_t)square.y + (float32_t)square.height * 0.5f32;
+    out_tail[0] = (int32_t)floorf(cx - arrow[0] * half);
+    out_tail[1] = (int32_t)floorf(cy - arrow[1] * half);
+    out_tip[0] = (int32_t)floorf(cx + arrow[0] * half);
+    out_tip[1] = (int32_t)floorf(cy + arrow[1] * half);
+}
+
+/* Bresenham's line, both ends included, each point a square of size pixels with the point at its top left. */
+static void ui_hud_corner_line(ui_canvas_t *canvas, int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t size,
+                               uint32_t color) {
+    const int32_t dx = x1 > x0 ? x1 - x0 : x0 - x1;
+    const int32_t dy = y1 > y0 ? y0 - y1 : y1 - y0;
+    const int32_t step_x = x0 < x1 ? 1 : -1;
+    const int32_t step_y = y0 < y1 ? 1 : -1;
+    int32_t error = dx + dy;
+    int32_t x = x0, y = y0;
+    bool more = true;
+    while (more) {
+        ui_compose_fill(canvas, (ui_rect_t){x, y, size, size}, color);
+        more = x != x1 || y != y1;
+        const int32_t twice = 2 * error;
+        if (more && twice >= dy) {
+            error += dy;
+            x += step_x;
+        }
+        if (more && twice <= dx) {
+            error += dx;
+            y += step_y;
+        }
+    }
+}
+
+/* The shaft and the two strokes of the head, each a font pixel thick, moved by off pixels right and down. */
+static void ui_hud_corner_arrow_strokes(ui_canvas_t *canvas, const int32_t tail[2], const int32_t tip[2],
+                                        const float32_t arrow[2], uint32_t scale, int32_t off, uint32_t color) {
+    const int32_t size = (int32_t)scale;
+    /* A point's square grows right and down from it: drawing from half a square up and left keeps the line on its ends. */
+    const int32_t back = size / 2 - off;
+    ui_hud_corner_line(canvas, tail[0] - back, tail[1] - back, tip[0] - back, tip[1] - back, size, color);
+    const float32_t gx = (float32_t)(tip[0] - tail[0]), gy = (float32_t)(tip[1] - tail[1]);
+    const float32_t head = sqrtf(gx * gx + gy * gy) * 0.4f32;
+    /* The head's strokes go back from the tip at 35 degrees either side of the shaft. */
+    const float32_t c = 0.81915204f32, s = 0.57357644f32;
+    for (int32_t side = -1; side <= 1; side += 2) {
+        const float32_t bx = -arrow[0] * c + (float32_t)side * arrow[1] * s;
+        const float32_t by = -arrow[1] * c - (float32_t)side * arrow[0] * s;
+        const int32_t ex = (int32_t)floorf((float32_t)tip[0] + bx * head + 0.5f32);
+        const int32_t ey = (int32_t)floorf((float32_t)tip[1] + by * head + 0.5f32);
+        ui_hud_corner_line(canvas, tip[0] - back, tip[1] - back, ex - back, ey - back, size, color);
+    }
+}
+
+ui_rect_t ui_hud_corner_draw(ui_canvas_t *canvas, const ui_font_t *font, const ui_hud_corner_t *corner, ui_rect_t avoid,
+                             bool below_notice) {
     const uint32_t scale = ui_hud_debug_scale(canvas->width, canvas->height);
     const int32_t margin = (int32_t)UI_HUD_DEBUG_MARGIN * (int32_t)scale;
-    const ui_text_size_t measured = ui_font_measure(font, text, scale);
-    const int32_t width = (int32_t)measured.width + 2 * margin;
-    const int32_t height = (int32_t)measured.height + 2 * margin;
-    const int32_t top = below_notice ? margin + height : margin;
-    const int32_t left = (int32_t)canvas->width - margin - width;
-    ui_compose_fill(canvas, (ui_rect_t){left, top, width, height}, UI_HUD_COLOR_PANEL);
+    int32_t widths[UI_HUD_CORNER_LINES] = {0};
+    int32_t heights[UI_HUD_CORNER_LINES] = {0};
+    int32_t text_widths[UI_HUD_CORNER_LINES] = {0};
+    int32_t widest = 0, total = 0;
+    /* Slot 0 is the settlement's, which plan 004 never draws. */
+    for (uint32_t i = UI_HUD_CORNER_DATE; i < UI_HUD_CORNER_LINES; i++) {
+        if (corner->lines[i][0] == '\0') {
+            continue;
+        }
+        const ui_text_size_t measured = ui_font_measure(font, corner->lines[i], scale);
+        text_widths[i] = (int32_t)measured.width;
+        widths[i] =
+            (int32_t)measured.width + 2 * margin + (corner->arrow_line == i ? ui_hud_corner_arrow_extra(scale) : 0);
+        heights[i] = (int32_t)measured.height + 2 * margin;
+        widest = widths[i] > widest ? widths[i] : widest;
+        total += heights[i];
+    }
+    if (total == 0) {
+        return (ui_rect_t){0, 0, 0, 0};
+    }
+    /* Below a notice's band, as the coordinates go: it starts a margin down and is as tall as a line's panel. */
+    const int32_t band = (int32_t)ui_font_measure(font, "x", scale).height + 2 * margin;
+    const int32_t right = (int32_t)canvas->width - margin;
+    ui_rect_t whole = {right - widest, below_notice ? margin + band : margin, widest, total};
+    if (avoid.width > 0 && avoid.height > 0) {
+        const ui_rect_t meet = ui_rect_intersect(whole, avoid);
+        if (meet.width > 0 && meet.height > 0) {
+            whole.y = avoid.y + avoid.height + margin;
+        }
+    }
     const ui_text_style_t style = {.color = UI_HUD_COLOR_TEXT, .shadow = UI_HUD_COLOR_SHADOW, .scale = scale};
-    ui_font_draw(font, canvas, left + margin, top + margin, text, style);
+    int32_t y = whole.y;
+    for (uint32_t i = UI_HUD_CORNER_DATE; i < UI_HUD_CORNER_LINES; i++) {
+        if (heights[i] == 0) {
+            continue;
+        }
+        const ui_rect_t panel = {right - widths[i], y, widths[i], heights[i]};
+        ui_compose_fill(canvas, panel, corner->warning_line == i ? UI_HUD_COLOR_NOTICE_BAND : UI_HUD_COLOR_PANEL);
+        ui_font_draw(font, canvas, panel.x + margin, panel.y + margin, corner->lines[i], style);
+        if (corner->arrow_line == i) {
+            const int32_t side = (int32_t)(UI_FONT_LINE * scale);
+            const ui_rect_t square = {panel.x + margin + text_widths[i] +
+                                          (int32_t)((UI_FONT_SPACE_WIDTH + UI_FONT_SPACING) * scale),
+                                      panel.y + (panel.height - side) / 2, side, side};
+            int32_t tail[2], tip[2];
+            ui_hud_corner_arrow_ends(square, corner->arrow, scale, tail, tip);
+            ui_hud_corner_arrow_strokes(canvas, tail, tip, corner->arrow, scale, (int32_t)scale, UI_HUD_COLOR_SHADOW);
+            ui_hud_corner_arrow_strokes(canvas, tail, tip, corner->arrow, scale, 0, UI_HUD_COLOR_TEXT);
+        }
+        y += heights[i];
+    }
+    return whole;
 }
 
 void ui_hud_debug_draw(ui_canvas_t *canvas, const ui_font_t *font, const ui_hud_debug_t *debug) {

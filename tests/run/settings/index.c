@@ -38,7 +38,7 @@ enum : int32_t {
     AT_SLIDER_LEFT_X = 120,
     AT_SLIDER_RIGHT_X = 519,
     AT_VSYNC_X = 130,
-    AT_COORDINATES_X = 300, /* 120 + 2 * (46 + 4) is where it starts, and 2 * 82 how wide */
+    AT_HUD_X = 300, /* HUD..., where Coordinates was: 120 + 2 * (46 + 4) is where it starts, and 2 * 82 how wide */
     AT_EFFECTS_X = 420,
     AT_ROW_6_Y = 356,
     AT_DONE_Y = 452,
@@ -119,6 +119,7 @@ TEST(the_defaults_are_the_plans_and_every_effect_has_its_own_bit) {
     CHECK_EQ_U64(values.effects, SHADE_FEATURES_PLAY);
     CHECK_EQ_U64(values.vsync, 1u);
     CHECK_EQ_U64(values.show_coordinates, 1u);
+    CHECK_EQ_U64(values.climate_hud, SETTINGS_CLIMATE_HUD_ALL);
     CHECK_EQ_U64(SETTINGS_RENDER_DISTANCE_MIN, 2u);
     CHECK_EQ_U64(SETTINGS_RENDER_DISTANCE_MAX, 512u);
     uint32_t seen = 0u;
@@ -146,6 +147,8 @@ TEST(the_file_for_the_defaults_is_exactly_this) {
                                    "vsync: true\n"
                                    "show_coordinates: true\n"
                                    "show_date: true\n"
+                                   "show_climate: true\n"
+                                   "storm_warnings: true\n"
                                    "effect_shapes: true\n"
                                    "effect_alpha: true\n"
                                    "effect_sky: true\n"
@@ -196,7 +199,8 @@ TEST(any_values_written_read_back_the_same) {
                                     .vsync = (uint8_t)(random[7] & 1u),
                                     .show_coordinates = (uint8_t)((random[7] >> 1u) & 1u),
                                     .sound_volume_percent = (uint8_t)(random[7] >> 8u),
-                                    .show_date = (uint8_t)((random[7] >> 2u) & 1u)};
+                                    .show_date = (uint8_t)((random[7] >> 2u) & 1u),
+                                    .climate_hud = (uint8_t)((random[7] >> 3u) & 3u)};
         settings_persist_clamp(&values);
         CHECK(values.render_distance >= 2u && values.render_distance <= 512u);
         uint8_t text[SETTINGS_TEXT_BYTES];
@@ -207,11 +211,12 @@ TEST(any_values_written_read_back_the_same) {
                                   .effects = ~values.effects & SHADE_FEATURES_EVERY,
                                   .vsync = (uint8_t)(values.vsync != 0u ? 0u : 1u),
                                   .show_coordinates = (uint8_t)(values.show_coordinates != 0u ? 0u : 1u),
-                                  .show_date = (uint8_t)(values.show_date != 0u ? 0u : 1u)};
+                                  .show_date = (uint8_t)(values.show_date != 0u ? 0u : 1u),
+                                  .climate_hud = (uint8_t)(~values.climate_hud & SETTINGS_CLIMATE_HUD_ALL)};
         settings_persist_report_t report;
         settings_persist_parse(text, bytes, &back, &report);
         CHECK_EQ_U64(report.problems, 0u);
-        CHECK_EQ_U64(report.applied, 7u + 3u + SETTINGS_EFFECT_COUNT);
+        CHECK_EQ_U64(report.applied, 7u + 3u + 2u + SETTINGS_EFFECT_COUNT);
         CHECK_MEM_EQ(&back, &values, sizeof(values));
     }
 }
@@ -315,6 +320,52 @@ TEST(show_date_is_kept_and_a_file_without_it_shows_the_date) {
     old.show_date = 9u;
     settings_persist_clamp(&old);
     CHECK_EQ_U64(old.show_date, 1u);
+}
+
+/* Plan 004 phase 10: the climate line and storm warnings, two lines of one byte. */
+TEST(a_file_from_before_the_climate_hud_still_loads_and_shows_it) {
+    static const char old_file[] = "version: 1\n"
+                                   "render_distance: 12\n"
+                                   "full_detail: 8\n"
+                                   "fov_degrees: 80\n"
+                                   "sensitivity_percent: 100\n"
+                                   "render_scale_percent: 100\n"
+                                   "worker_count: 5\n"
+                                   "vsync: false\n"
+                                   "effect_fog: false\n"
+                                   "show_coordinates: false\n";
+    settings_values_t values = values_defaults();
+    values.climate_hud = 0u; /* whatever was there, a file without the lines leaves them... */
+    settings_values_t fresh = values_defaults();
+    const settings_persist_report_t report = parse_text(old_file, &fresh);
+    CHECK_EQ_U64(report.problems, 0u);
+    CHECK_EQ_U64(report.applied, 9u);
+    /* ...and a new install's values, read over by such a file, have both on. */
+    CHECK_EQ_U64(fresh.climate_hud, SETTINGS_CLIMATE_HUD_ALL);
+    CHECK_EQ_U64(parse_text(old_file, &values).problems, 0u);
+    CHECK_EQ_U64(values.climate_hud, 0u);
+    /* Each line flips only its own bit. */
+    CHECK_EQ_U64(parse_text("version: 1\nshow_climate: false\n", &fresh).problems, 0u);
+    CHECK_EQ_U64(fresh.climate_hud, SETTINGS_CLIMATE_HUD_WARNINGS);
+    CHECK_EQ_U64(parse_text("version: 1\nstorm_warnings: false\n", &fresh).problems, 0u);
+    CHECK_EQ_U64(fresh.climate_hud, 0u);
+    CHECK_EQ_U64(parse_text("version: 1\nstorm_warnings: true\n", &fresh).problems, 0u);
+    CHECK_EQ_U64(fresh.climate_hud, SETTINGS_CLIMATE_HUD_WARNINGS);
+    CHECK_EQ_U64(parse_text("version: 1\nshow_climate: true\n", &fresh).problems, 0u);
+    CHECK_EQ_U64(fresh.climate_hud, SETTINGS_CLIMATE_HUD_ALL);
+    CHECK_EQ_U64(parse_text("version: 1\nshow_climate: 1\n", &fresh).problems, 1u);
+    CHECK_EQ_U64(parse_text("version: 1\nstorm_warnings: sometimes\n", &fresh).problems, 1u);
+    CHECK_EQ_U64(fresh.climate_hud, SETTINGS_CLIMATE_HUD_ALL);
+}
+
+TEST(unknown_climate_bits_are_cleared) {
+    settings_values_t values = values_defaults();
+    values.climate_hud = 0xFFu;
+    settings_persist_clamp(&values);
+    CHECK_EQ_U64(values.climate_hud, 3u);
+    values.climate_hud = 0xFCu;
+    settings_persist_clamp(&values);
+    CHECK_EQ_U64(values.climate_hud, 0u);
 }
 
 TEST(a_line_that_is_wrong_is_ignored_and_the_rest_are_read) {
@@ -450,6 +501,7 @@ TEST(settings_are_kept_and_found_again_and_a_failed_save_leaves_what_was_there) 
     settings->values.worker_count = 3u;
     settings->values.vsync = 0u;
     settings->values.show_coordinates = 0u;
+    settings->values.climate_hud = 0u; /* plan 004 phase 10: both off, and still off in a new program */
     settings->values.effects = SHADE_FEATURE_SKY | SHADE_FEATURE_GOD_RAYS;
     const settings_values_t chosen = settings->values;
     REQUIRE(settings_save(settings) == FILE_OK);
@@ -499,12 +551,13 @@ typedef struct screen_rig_t {
     texture_t *texture;       /* 0 */
     ui_t *ui;                 /* 8 */
     settings_values_t values; /* 16 */
-    uint32_t width;           /* 48 */
-    uint32_t height;          /* 52 */
-    int32_t pointer_x;        /* 56 */
-    int32_t pointer_y;        /* 60 */
+    uint32_t width;           /* 52 */
+    uint32_t height;          /* 56 */
+    int32_t pointer_x;        /* 60 */
+    int32_t pointer_y;        /* 64 */
+    uint8_t _pad0[4];         /* 68 */
 } screen_rig_t;
-static_assert(sizeof(screen_rig_t) == 64);
+static_assert(sizeof(screen_rig_t) == 72);
 
 static ui_screen_settings_action_t rig_frame(screen_rig_t *rig, const input_frame_t *frame, bool escape) {
     ui_t *const ui = rig->ui;
@@ -662,11 +715,38 @@ TEST(vsync_coordinates_and_each_effect_flip_alone_and_done_and_esc_go_where_they
     (void)rig_click(rig, AT_VSYNC_X, AT_ROW_6_Y);
     expected.vsync = 1u;
     CHECK_MEM_EQ(&rig->values, &expected, sizeof(expected));
-    CHECK_EQ_U64(rig_click(rig, AT_COORDINATES_X, AT_ROW_6_Y), UI_SCREEN_SETTINGS_CHANGED);
-    expected.show_coordinates = 0u;
+    /* Plan 004 phase 10: HUD... opens the HUD page, where Coordinates, Date, Temperature and wind and Storm warnings each flip
+     * only themselves. */
+    CHECK_EQ_U64(rig_click(rig, AT_HUD_X, AT_ROW_6_Y), UI_SCREEN_SETTINGS_NONE);
+    CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_HUD);
     CHECK_MEM_EQ(&rig->values, &expected, sizeof(expected));
-    (void)rig_click(rig, AT_COORDINATES_X, AT_ROW_6_Y);
-    expected.show_coordinates = 1u;
+    for (uint32_t row = 0u; row < 4u; row++) {
+        const int32_t y = AT_ROW_0_Y + (int32_t)row * AT_ROW_STEP;
+        for (uint32_t twice = 0u; twice < 2u; twice++) {
+            CHECK_EQ_U64(rig_click(rig, AT_MIDDLE_X, y), UI_SCREEN_SETTINGS_CHANGED);
+            if (row == 0u) {
+                expected.show_coordinates ^= 1u;
+            } else if (row == 1u) {
+                expected.show_date ^= 1u;
+            } else if (row == 2u) {
+                expected.climate_hud ^= SETTINGS_CLIMATE_HUD_LINE;
+            } else {
+                expected.climate_hud ^= SETTINGS_CLIMATE_HUD_WARNINGS;
+            }
+            CHECK_MEM_EQ(&rig->values, &expected, sizeof(expected));
+        }
+    }
+    CHECK_EQ_U64(rig->values.climate_hud, SETTINGS_CLIMATE_HUD_ALL);
+    /* Nothing between the rows does anything, nor row 4 to 7. */
+    CHECK_EQ_U64(rig_click(rig, AT_MIDDLE_X, AT_ROW_0_Y + 4 * AT_ROW_STEP), UI_SCREEN_SETTINGS_NONE);
+    CHECK_MEM_EQ(&rig->values, &expected, sizeof(expected));
+    /* Esc goes back to the main page and is not done; Back does the same. */
+    CHECK_EQ_U64(rig_escape(rig), UI_SCREEN_SETTINGS_NONE);
+    CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_MAIN);
+    (void)rig_click(rig, AT_HUD_X, AT_ROW_6_Y);
+    CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_HUD);
+    CHECK_EQ_U64(rig_click(rig, AT_MIDDLE_X, AT_DONE_Y), UI_SCREEN_SETTINGS_NONE);
+    CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_MAIN);
     CHECK_MEM_EQ(&rig->values, &expected, sizeof(expected));
 
     CHECK_EQ_U64(rig_click(rig, AT_EFFECTS_X, AT_ROW_6_Y), UI_SCREEN_SETTINGS_NONE);
@@ -704,7 +784,7 @@ TEST(no_heap_in_200_frames_of_either_page_and_it_fits_every_size) {
     heap_counters_t before;
     heap_counters_read(&before);
     for (uint32_t i = 0u; i < 200u; i++) {
-        rig->ui->settings_screen.page = (uint8_t)(i & 1u);
+        rig->ui->settings_screen.page = (uint8_t)(i % 3u);
         CHECK_EQ_U64(rig_frame(rig, &nothing, false), UI_SCREEN_SETTINGS_NONE);
     }
     heap_counters_t after;
@@ -724,6 +804,8 @@ TEST(no_heap_in_200_frames_of_either_page_and_it_fits_every_size) {
         CHECK(top + (24 + 8 * 24 + 20) * scale <= (int32_t)sizes[s][1]);
         CHECK(((int32_t)sizes[s][0] - 2 * (120 + 2) * scale) / 2 >= 0);
         rig->ui->settings_screen.page = 1u;
+        (void)rig_frame(rig, &nothing, false);
+        rig->ui->settings_screen.page = 2u;
         (void)rig_frame(rig, &nothing, false);
         rig->ui->settings_screen.page = 0u;
         (void)rig_frame(rig, &nothing, false);

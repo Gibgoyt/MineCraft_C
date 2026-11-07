@@ -6,6 +6,7 @@
 #include "entity/animation/index.h"
 #include "game/atlas/index.h"
 #include "game/census/index.h"
+#include "game/corner/index.h"
 #include "game/cover/index.h"
 #include "game/weather/index.h"
 #include "item/stack/index.h"
@@ -22,17 +23,20 @@
 #include <string.h>
 
 /* What a world keeps in the World arena with no room for its pointer in game_t, which is at its size (app_t is on main's stack):
- * the column jobs first, so borrowed_jobs is the whole of it, and plan 004 phase 08's weather and cover beside them. */
+ * the column jobs first, so borrowed_jobs is the whole of it, and plan 004 phase 08's weather and cover beside them, and phase
+ * 10's HUD corner words on a line of their own. */
 typedef struct game_world_parts_t {
     game_column_job_t jobs[GAME_STREAM_JOBS]; /* 0: borrowed_jobs points here */
     game_weather_t weather;                   /* 8192 */
     game_cover_t cover;                       /* 58816 */
     uint8_t _pad0[56];                        /* 58888 */
+    game_corner_t corner;                     /* 58944: the sim writes it, main reads its words */
 } game_world_parts_t;
-static_assert(sizeof(game_world_parts_t) == 58944);
+static_assert(sizeof(game_world_parts_t) == 59136);
 static_assert(offsetof(game_world_parts_t, jobs) == 0);
 static_assert(offsetof(game_world_parts_t, weather) == 8192);
 static_assert(offsetof(game_world_parts_t, cover) == 58816);
+static_assert(offsetof(game_world_parts_t, corner) == 58944);
 
 enum : uint64_t {
     /* Budgets of the two arenas with a lifetime shorter than a world's. */
@@ -110,6 +114,10 @@ game_weather_t *game_weather_of(const game_t *game) {
 
 game_cover_t *game_cover_of(const game_t *game) {
     return game->borrowed_jobs != nullptr ? &((game_world_parts_t *)(void *)game->borrowed_jobs)->cover : nullptr;
+}
+
+game_corner_t *game_corner_of(const game_t *game) {
+    return game->borrowed_jobs != nullptr ? &((game_world_parts_t *)(void *)game->borrowed_jobs)->corner : nullptr;
 }
 
 static climate_t *game_climate(const game_t *game) {
@@ -508,6 +516,10 @@ bool game_open_climate_step(game_t *game) {
     climate_t *const climate = game_climate(game);
     uint32_t done = 0u, total = 0u;
     if (climate == nullptr || climate_prepare_step(climate, game->borrowed_job, &done, &total)) {
+        if (game->open_percent != 100u) {
+            /* The first picture has the HUD's climate words (plan 004 phase 10): its tiles are built now, and no thread runs. */
+            game_hud_climate_publish(game, true);
+        }
         game->open_percent = 100u;
         return true;
     }
@@ -533,6 +545,7 @@ bool game_open(game_t *game, const game_config_t *config) {
     game->borrowed_jobs = world_parts->jobs;
     game_weather_start(&world_parts->weather, GAME_WEATHER_SAMPLED);
     memset(&world_parts->cover, 0, sizeof(world_parts->cover));
+    game_corner_start(&world_parts->corner);
     const terrain_t *const terrain = game->borrowed_terrain;
     for (uint32_t i = 0u; i < GAME_STREAM_JOBS; i++) {
         game_column_job_t *const job = &game->borrowed_jobs[i];
@@ -664,6 +677,7 @@ void game_close(game_t *game) {
     /* Nothing may be writing into the jobs' memory when it goes. */
     job_group_wait(game->borrowed_job, &game->group);
     job_group_deinit(&game->group);
+    game_corner_stop(game_corner_of(game), game->borrowed_job); /* the storm warning's job reads the climate */
     game_census_detach(game);
     game_atlas_close(game); /* its drawing reads the climate */
     if (game->borrowed_climate != nullptr) {
@@ -1138,12 +1152,19 @@ static const uint8_t *game_hud_compose(game_t *game, const uint8_t *drawn) {
             game_hud_block_read(game, block);
             ui_hud_coordinates_draw(&ui->canvas, &ui->font, block, notice);
         }
-        /* In the other corner, so the overlay on the left leaves it be. */
-        if (game->config.show_date != 0u) {
-            char line[CALENDAR_LINE_BYTES];
-            game_calendar_line(game, line, sizeof(line));
-            ui_hud_date_draw(&ui->canvas, &ui->font, line, notice);
+        /* In the other corner, so the overlay on the left leaves it be: the date, the climate line and a storm warning (plan 004
+         * phase 10), clear of whichever top-left panel there is. F3's is drawn after, but its place is known now. */
+        ui_hud_corner_t corner;
+        game_hud_corner_read(game, &corner);
+        ui_rect_t avoid = {0, 0, 0, 0};
+        if (game->hud_debug != 0u) {
+            avoid = ui_hud_debug_panel(ui->canvas.width, ui->canvas.height);
+        } else if (game->config.show_coordinates != 0u) {
+            int32_t block[3];
+            game_hud_block_read(game, block);
+            avoid = ui_hud_coordinates_panel(&ui->canvas, &ui->font, block, notice);
         }
+        (void)ui_hud_corner_draw(&ui->canvas, &ui->font, &corner, avoid, notice);
     }
     if (game->hud_debug != 0u) {
         ui_hud_debug_t debug;

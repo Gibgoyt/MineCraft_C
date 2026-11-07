@@ -62,23 +62,40 @@ bool game_calendar_south(const game_t *game) {
     return game_calendar_latitude(game) < 0.0f64;
 }
 
+/* Master plan 4.1's third row: no sunrise or no sunset today, by the same continuous day the sun is drawn by. nullptr on other
+ * days. */
+static const char *game_calendar_polar(const game_t *game, calendar_clock_t clock, float64_t latitude) {
+    const float64_t day_hours =
+        climate_sun_day_hours(latitude, climate_sun_declination_deg(calendar_year_position(game->day_zero, clock)));
+    if (day_hours <= 0.0f64) {
+        return "Polar night";
+    }
+    return day_hours >= 24.0f64 ? "Midnight sun" : nullptr;
+}
+
 void game_calendar_line(const game_t *game, char *out, uint64_t bytes) {
     const calendar_clock_t clock = atomic_load_explicit(&game->clock_units, memory_order_relaxed);
     const calendar_date_t date = calendar_date_of(game->day_zero, clock);
     const float64_t latitude = game_calendar_latitude(game);
-    /* Master plan 4.1's third row: no sunrise or no sunset today, by the same continuous day the sun is drawn by. */
-    const float64_t day_hours =
-        climate_sun_day_hours(latitude, climate_sun_declination_deg(calendar_year_position(game->day_zero, clock)));
-    if ((day_hours <= 0.0f64 || day_hours >= 24.0f64) && bytes != 0u) {
+    const char *const polar = game_calendar_polar(game, clock, latitude);
+    if (polar != nullptr && bytes != 0u) {
         const int32_t written =
-            snprintf(out, bytes, "Year %u, Day %u, %s", (uint32_t)date.year, (uint32_t)date.day_of_year + 1u,
-                     day_hours <= 0.0f64 ? "Polar night" : "Midnight sun");
+            snprintf(out, bytes, "Year %u, Day %u, %s", (uint32_t)date.year, (uint32_t)date.day_of_year + 1u, polar);
         if (written < 0) {
             out[0] = '\0';
         }
         return;
     }
     (void)calendar_date_line(&date, calendar_season_temperate(date.day_of_year, latitude < 0.0f64), out, bytes);
+}
+
+const char *game_calendar_season_name(const game_t *game) {
+    const calendar_clock_t clock = atomic_load_explicit(&game->clock_units, memory_order_relaxed);
+    const calendar_date_t date = calendar_date_of(game->day_zero, clock);
+    const float64_t latitude = game_calendar_latitude(game);
+    const char *const polar = game_calendar_polar(game, clock, latitude);
+    return polar != nullptr ? polar
+                            : calendar_season_name(calendar_season_temperate(date.day_of_year, latitude < 0.0f64));
 }
 
 static float32_t game_hud_ms(uint32_t microseconds) {

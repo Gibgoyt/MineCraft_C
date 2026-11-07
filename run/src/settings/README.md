@@ -2,7 +2,7 @@
 
 **Purpose:** every setting a person can change, and keeping them between runs: render distance from 2 to 512 chunks, how far of that is drawn block by block, field of view, mouse sensitivity, vsync or uncapped, whether coordinates show, each of the eighteen graphics effects (the weather, plan 004 phase 08, in the file only, as the screen has room for seventeen), render scale and worker count.
 **Tier:** Owner.
-**Owns:** `owned_region`, with `arena` over it, which holds the path and one file's worth of text. Both live as long as the `settings_t`.
+**Owns:** `owned_region`, with `arena` over it, which holds the path and one file's worth of text, as one block after it found from `borrowed_path` (plan 004 phase 10 needed the second pointer's 8 bytes for `settings_values_t.climate_hud`, and `app_t` has no room to grow). Both live as long as the `settings_t`.
 **Lifetime:** Process.
 **Threads:** `main`.
 **Public functions** (`run/include/settings/index.h`):

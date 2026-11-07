@@ -48,10 +48,11 @@ static void game_session_config_from_settings(game_session_t *session) {
     config->god_rays = (values->effects & SHADE_FEATURE_GOD_RAYS) != 0u ? 1u : 0u;
     config->fov_degrees = values->fov_degrees;
     config->sensitivity_percent = values->sensitivity_percent;
-    config->render_scale_percent = values->render_scale_percent;
+    config->render_scale_percent = (uint16_t)values->render_scale_percent; /* at most SETTINGS_RENDER_SCALE_MAX */
     config->uncapped = (uint8_t)(values->vsync != 0u ? 0u : 1u);
     config->show_coordinates = values->show_coordinates;
     config->show_date = values->show_date;
+    config->climate_hud = values->climate_hud;
 }
 
 void game_session_settings_set(game_session_t *session, settings_t *settings) {

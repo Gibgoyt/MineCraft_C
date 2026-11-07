@@ -4,6 +4,7 @@
 #include "audio/index.h"
 #include "climate/sun/index.h"
 #include "entity/animation/index.h"
+#include "game/corner/index.h"
 #include "game/weather/index.h"
 #include "item/stack/index.h"
 #include "log/index.h"
@@ -522,6 +523,8 @@ void game_hud_position_publish(game_t *game) {
 /* What the HUD shows of the inventory goes to main as it stands after this tick. */
 static void game_hud_publish(game_t *game) {
     game_hud_position_publish(game);
+    /* Plan 004 phase 10: the corner's climate line and storm warning, each as often as it says. */
+    game_hud_climate_publish(game, false);
     if (game->borrowed_item == nullptr || game->borrowed_item->inventory.borrowed_slots == nullptr) {
         return;
     }

@@ -14,6 +14,7 @@ enum : uint32_t {
 typedef enum ui_screen_settings_page_t : uint8_t {
     UI_SCREEN_SETTINGS_PAGE_MAIN = 0,
     UI_SCREEN_SETTINGS_PAGE_EFFECTS = 1,
+    UI_SCREEN_SETTINGS_PAGE_HUD = 2, /* plan 004 phase 10: what the HUD's corners show */
 } ui_screen_settings_page_t;
 
 /* What a frame of the screen wants of whoever runs it. */

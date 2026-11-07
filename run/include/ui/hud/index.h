@@ -136,4 +136,47 @@ void ui_hud_date_draw(ui_canvas_t *canvas, const ui_font_t *font, const char *te
 /* Where that panel lies on a canvas of this size, which nothing else in the overlay goes outside. */
 ui_rect_t ui_hud_debug_panel(uint32_t canvas_width, uint32_t canvas_height);
 
+/* ---- The top right corner: plan 004 phase 10 ------------------------------------------------------------------------ */
+
+enum : uint32_t {
+    UI_HUD_CORNER_LINES = 4u,  /* 0 settlement (always empty in plan 004), 1 date, 2 climate, 3 warning */
+    UI_HUD_CORNER_BYTES = 96u, /* one line, with its NUL: the longest date line is under 70 */
+    UI_HUD_CORNER_NONE = 255u, /* for arrow_line and warning_line: no such line */
+    UI_HUD_CORNER_SETTLEMENT = 0u,
+    UI_HUD_CORNER_DATE = 1u,
+    UI_HUD_CORNER_CLIMATE = 2u,
+    UI_HUD_CORNER_WARNING = 3u,
+};
+
+/* What the top right corner shows, as text main has already made. Plain values, so this module knows no climate and no thread. */
+typedef struct ui_hud_corner_t {
+    char lines[UI_HUD_CORNER_LINES][UI_HUD_CORNER_BYTES]; /* 0: drawn top to bottom; an empty one takes no room */
+    float32_t arrow[2];                                   /* 384: unit vector on the screen, x right, y down */
+    uint8_t arrow_line;                                   /* 392: the line the arrow ends, or UI_HUD_CORNER_NONE */
+    uint8_t warning_line; /* 393: the line drawn on the red panel, or UI_HUD_CORNER_NONE */
+    uint8_t _pad0[6];     /* 394 */
+} ui_hud_corner_t;
+static_assert(sizeof(ui_hud_corner_t) == 400);
+
+/* Nothing to show: every line empty, no arrow and no warning. */
+void ui_hud_corner_clear(ui_hud_corner_t *corner);
+
+/* The panel ui_hud_coordinates_draw draws, without drawing it, so that others can keep clear of it. */
+ui_rect_t ui_hud_coordinates_panel(const ui_canvas_t *canvas, const ui_font_t *font, const int32_t block[3],
+                                   bool below_notice);
+
+/* The corner's panels, right-aligned against the top right, one a line, each as wide as its text, touching, in line order.
+ * Slot 0 is reserved for a settlement's name, which a later plan fills: in plan 004 it is never drawn, whatever it holds.
+ * below_notice as for the coordinates. avoid is the top-left panel that was drawn, or an empty rect: if the corner would
+ * overlap it, the whole corner goes a margin below it. The warning line is on the notice band's red, and the arrow line ends
+ * in a square the height of a line, after a space, with the arrow in it. Returns the rect of all of it, empty if nothing was
+ * drawn. No allocation. */
+ui_rect_t ui_hud_corner_draw(ui_canvas_t *canvas, const ui_font_t *font, const ui_hud_corner_t *corner, ui_rect_t avoid,
+                             bool below_notice);
+
+/* Where the arrow's tail and tip go in its square, in screen pixels, for an arrow of unit length on the screen: what
+ * ui_hud_corner_draw draws between. */
+void ui_hud_corner_arrow_ends(ui_rect_t square, const float32_t arrow[2], uint32_t scale, int32_t out_tail[2],
+                              int32_t out_tip[2]);
+
 #endif
