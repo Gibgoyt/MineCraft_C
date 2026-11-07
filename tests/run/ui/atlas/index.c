@@ -7,8 +7,6 @@
 #include "file/index.h"
 #include "heap/index.h"
 #include "job/index.h"
-#include "main/index.h"
-#include "png/index.h"
 #include "tables/blocks/index.h"
 #include "terrain/index.h"
 #include "texture/index.h"
@@ -37,7 +35,6 @@ static const float64_t GOLD_T = 196.4f64; /* the systems' time: day 196 of year 
 enum : uint32_t {
     GOLD_WIDTH = 320u,
     GOLD_HEIGHT = 240u,
-    PROGRAM_TIMEOUT_MS = 180000u,
 };
 
 static uint64_t rng_next(uint64_t *state) {
@@ -1457,111 +1454,6 @@ TEST(no_heap_after_the_world_opens) {
     ui_atlas_world_close(&rig->ui);
     rig_stop(rig);
     world_stop(w);
-}
-
-/* ---- The built program ------------------------------------------------------------------------------------------------- */
-
-static uint8_t *screenshot_read(test_context_t *t, const temp_dir_t *dir, const char *name) {
-    char path[256];
-    snprintf(path, sizeof(path), "%s/%s", dir->path, name);
-    const uint64_t capacity = display_png_bytes_needed(GOLD_WIDTH, GOLD_HEIGHT);
-    uint8_t *const file = test_alloc(t, capacity);
-    uint64_t length = 0u;
-    if (!CHECK_EQ_U64(file_read_whole(path, file, capacity, &length), FILE_OK)) {
-        return nullptr;
-    }
-    png_info_t info;
-    png_error_t error;
-    if (!CHECK(png_probe(file, length, &info, &error) == PNG_OK) || !CHECK(info.width == GOLD_WIDTH)) {
-        return nullptr;
-    }
-    uint8_t *const rgba = test_alloc(t, info.pixel_bytes);
-    uint8_t *const work = test_alloc(t, info.work_bytes);
-    if (!CHECK(png_decode(file, length, rgba, info.pixel_bytes, work, info.work_bytes, &info, &error) == PNG_OK)) {
-        return nullptr;
-    }
-    return rgba;
-}
-
-static uint64_t shots_differ(const uint8_t *a, const uint8_t *b) {
-    uint64_t differ = 0u;
-    for (uint64_t k = 0u; k < (uint64_t)GOLD_WIDTH * GOLD_HEIGHT; k++) {
-        differ += memcmp(a + 4u * k, b + 4u * k, 3u) == 0 ? 0u : 1u;
-    }
-    return differ;
-}
-
-TEST(the_program_opens_the_atlas_with_m_and_closes_it_with_esc) {
-    REQUIRE(t->arg_count >= 1);
-    temp_dir_t dir;
-    REQUIRE(temp_dir_make(&dir));
-    static const char script[] = "20 screenshot world.png\n"
-                                 "21 key m down\n"
-                                 "22 key m up\n"
-                                 "30 screenshot open.png\n"
-                                 "70 screenshot later.png\n"
-                                 "71 key escape down\n"
-                                 "72 key escape up\n"
-                                 "80 screenshot closed.png\n"
-                                 "90 end\n";
-    char path[128];
-    snprintf(path, sizeof(path), "%s/run.script", dir.path);
-    REQUIRE(file_write_atomic(path, script, sizeof(script) - 1u) == FILE_OK);
-    char *const argv[] = {t->borrowed_args[0],
-                          (char *)"--headless",
-                          (char *)"--no-sound",
-                          (char *)"--test-world",
-                          (char *)"--walk",
-                          (char *)"--render-distance",
-                          (char *)"4",
-                          (char *)"--script",
-                          path,
-                          (char *)"--screenshot-dir",
-                          dir.path,
-                          (char *)"--width",
-                          (char *)"320",
-                          (char *)"--height",
-                          (char *)"240",
-                          nullptr};
-    test_process_t run;
-    test_process_run(t, argv, PROGRAM_TIMEOUT_MS, &run);
-    REQUIRE(run.started != 0u);
-    CHECK(run.timed_out == 0u);
-    CHECK_EQ_I64(run.exit_code, MAIN_EXIT_OK);
-    CHECK_CONTAINS(run.output, " 0 bytes live");
-    uint8_t *const world = screenshot_read(t, &dir, "world.png");
-    uint8_t *const open = screenshot_read(t, &dir, "open.png");
-    uint8_t *const later = screenshot_read(t, &dir, "later.png");
-    uint8_t *const closed = screenshot_read(t, &dir, "closed.png");
-    REQUIRE(world != nullptr && open != nullptr && later != nullptr && closed != nullptr);
-    const uint64_t all = (uint64_t)GOLD_WIDTH * GOLD_HEIGHT;
-    const uint64_t open_differ = shots_differ(world, open), later_differ = shots_differ(world, later);
-    const uint64_t moved = shots_differ(open, later), back = shots_differ(world, closed);
-    printf("open differs from the world in %" PRIu64 " pixels, later in %" PRIu64 ", open from later in %" PRIu64
-           ", closed from the world in %" PRIu64 " of %" PRIu64 "\n",
-           open_differ, later_differ, moved, back, all);
-    CHECK(open_differ * 10u > all * 9u);
-    CHECK(later_differ * 10u > all * 9u);
-    /* By 40 ticks on the first picture has landed: the explored land round the player, and grey round it. The world goes on
-     * behind (the walk, the clock), so the shots are not held to each other pixel for pixel. */
-    uint64_t grey_later = 0u, grey_closed = 0u;
-    for (uint64_t k = 0u; k < all; k++) {
-        grey_later += later[4u * k] == 0x80u && later[4u * k + 1u] == 0x80u && later[4u * k + 2u] == 0x80u ? 1u : 0u;
-        grey_closed +=
-            closed[4u * k] == 0x80u && closed[4u * k + 1u] == 0x80u && closed[4u * k + 2u] == 0x80u ? 1u : 0u;
-    }
-    printf("grey: %" PRIu64 " pixels with the Atlas up, %" PRIu64 " after Esc\n", grey_later, grey_closed);
-    CHECK(grey_later * 5u > all);
-    /* On terrain, with the body standing, the two Atlas shots may be the same (the plan's "or not at all"), or differ
-     * where the first picture had not landed yet when the first was taken: neither is held to anything. */
-    /* After Esc the world and the HUD again: no grey, and nearly nothing like the Atlas. */
-    CHECK(grey_closed * 100u < all);
-    CHECK(shots_differ(later, closed) * 10u > all * 9u);
-    if (getenv("MC_ATLAS_PNG_DIR") == nullptr) {
-        temp_dir_remove(&dir);
-    } else {
-        printf("the program's screenshots are in %s\n", dir.path);
-    }
 }
 
 TEST_MAIN()

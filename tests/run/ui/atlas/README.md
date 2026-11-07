@@ -6,12 +6,11 @@
 **Owns:** the test arena, a `ui_t`'s and a `texture_t`'s regions (the Atlas's region is ui's), a climate's and a job
 system's, temporary directories under `/tmp/mc_ui_atlas_*`, all given back by the end of each test.
 **Lifetime:** One run.
-**Threads:** main; the lock test starts a writer, a reader and a saver; the band test runs bands on 1 worker and 16; the
-built program runs its own.
+**Threads:** main; the lock test starts a writer, a reader and a saver; the band test runs bands on 1 worker and 16.
 **Public functions:** none; a test program.
 **May be called by:** ctest.
-**Depends on:** `tests/harness/`, `run/src/ui/`, `run/src/climate/`, `run/src/terrain/`, `run/src/display/headless/png/`,
-`compile/src/png/` to read the program's screenshots, and the built program.
+**Depends on:** `tests/harness/`, `run/src/ui/`, `run/src/climate/`, `run/src/terrain/`, `run/src/display/headless/png/`.
+The tests in real games and the built program's are in `game/` (ctest `run_ui_atlas_game`), which needs the card.
 
 What it holds to:
 
@@ -21,7 +20,8 @@ What it holds to:
   children against a model of their own; files read back byte for byte, raw and runs, runs only when smaller, and every
   flipped header byte, a payload byte, another seed, level or place, a short file and runs short or long are refused.
 - **The store:** a tile made before its file was read keeps its new columns and takes the rest from the file; 50 columns
-  written, the world closed and opened again read back the same before anything streams, and another seed's world refuses
+  written straight into the store, the world closed and opened again read back the same before anything streams (and in
+  a real game in `game/`), and another seed's world refuses
   the files; mips at levels 1 to 7 after a save are the halving by hand of level 0; for 5 s a writer, a reader of three
   levels and a saver race, and the longest wait of a column write stays under 2 ms (printed); with every slot dirty a write
   is dropped, counted and said once, and a save makes room.
@@ -38,10 +38,6 @@ What it holds to:
   nothing with a screen up and the Atlas keeps E; the readout is `climate_normals_at`'s and `climate_air_at`'s numbers as
   formatted, and `not explored` off the explored land; 200 frames with keys, zooms, pans and 1000 columns take nothing from
   the heap.
-- **The built program:** `--headless --no-sound --test-world --walk` with a script that presses `m`, waits 40 ticks and
-  presses `escape`: the two Atlas screenshots differ from the world in over 90% of pixels and little from each other, and
-  the last is the world again. It ends with no leak.
-
 **Golden pictures:** 320 by 240, seed 2198175988018515243 round (1290, -2410), day 196 at t = 196.4, the right third
 ungenerated, the ground from the terrain's height estimate coloured by a fixed palette, the weather systems a fixed list:
 a small hurricane over the ungenerated third coming west, a low with its front, a high and three thunderstorm cells

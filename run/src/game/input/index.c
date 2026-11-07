@@ -102,10 +102,13 @@ bool game_loop_input_frame(game_t *game, const input_frame_t *frame, display_buf
     render_fly_input_t input;
     game_fly_from_input(frame, &input);
     if (screen_up) {
-        /* The body stands, and the mouse is the pointer. Sent all the same, or the sim would take it that nobody is at the controls. */
+        /* The body stands, and the mouse is the pointer. Sent all the same, or the sim would take it that nobody is at the controls.
+         * Flying, only the Atlas comes up, and the eye stays where it is. */
         memset(&input, 0, sizeof(input));
-        game_walk_send(game, &input, false, false, now_ns);
-        game_hands_send(game, false, false);
+        if (game->borrowed_player != nullptr) {
+            game_walk_send(game, &input, false, false, now_ns);
+            game_hands_send(game, false, false);
+        }
     } else if (game->borrowed_player != nullptr) {
         game_walk_send(game, &input, input_keys_has(&frame->down, KEY_SPACE),
                        input_keys_has(&frame->down, KEY_LEFTSHIFT), now_ns);

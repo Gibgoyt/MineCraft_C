@@ -1168,7 +1168,12 @@ static bool game_scene_tick_timed(game_t *game, const display_headless_tick_t *t
     game_day_advance(game, 1.0f32 / (float32_t)MC_GAME_TICK_HZ);
     game_fps_note(game, 0u, 1.0f32 / (float32_t)MC_GAME_TICK_HZ);
     game_debug_send(game, display_script_state_is_down(tick->state, KEY_F3));
+    input_frame_t frame;
+    game_input_from_script(tick, &frame);
     if (game->borrowed_player == nullptr) {
+        if (game_screen_input(game, &frame)) {
+            memset(&input, 0, sizeof(input)); /* flying, only the Atlas comes up: the eye stays where it is */
+        }
         game_fly(game, &input, 1.0f32 / (float32_t)MC_GAME_TICK_HZ);
         game_sim_tick(game, tick_ns);
         return true;
@@ -1177,8 +1182,6 @@ static bool game_scene_tick_timed(game_t *game, const display_headless_tick_t *t
     if (!game_settle(game)) {
         return false;
     }
-    input_frame_t frame;
-    game_input_from_script(tick, &frame);
     if (game_screen_input(game, &frame)) {
         /* The same as a real frame with a screen up: the body stands, and looks where it looked. */
         memset(&input, 0, sizeof(input));
