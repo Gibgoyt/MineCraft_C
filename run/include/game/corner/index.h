@@ -120,4 +120,10 @@ void game_hud_climate_publish(game_t *game, bool force);
  * and it was ever worked out; line 3 the warning if its bit is on and there is one. Never waits. */
 void game_hud_corner_read(const game_t *game, ui_hud_corner_t *out);
 
+/* Main's, while walking, after a notice and before F3, on the game's ui canvas: the coordinates top left (if show_coordinates is on
+ * and F3 is not up, as the overlay has them too), then the top right corner from game_hud_corner_read, clear of whichever top-left
+ * panel there is (F3's is drawn after, but its place is known now). below_notice as for ui_hud_coordinates_draw. In game/index.c
+ * before plan 004 phase 10's gate check, which moved it here to keep that file under 1500 lines. */
+void game_hud_corners_draw(game_t *game, bool below_notice);
+
 #endif

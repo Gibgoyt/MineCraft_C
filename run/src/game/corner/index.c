@@ -223,7 +223,10 @@ void game_hud_climate_publish(game_t *game, bool force) {
     }
     const calendar_clock_t clock = atomic_load_explicit(&game->clock_units, memory_order_relaxed);
     const uint32_t week_seen = (uint32_t)(calendar_week_of(game->day_zero, clock) + 1u);
-    const bool due = force || respawned || corner->warning_done == 0u || week_seen != corner->warning_week_seen ||
+    /* A warning never yet worked out is tried again on the climate line's beat, not each tick: each try is milliseconds of a
+     * worker's time. */
+    const bool due = force || respawned || week_seen != corner->warning_week_seen ||
+                     (corner->warning_done == 0u && tick >= corner->warning_tick + GAME_CORNER_CLIMATE_TICKS) ||
                      tick >= corner->warning_tick + CLIMATE_WARNING_TICKS;
     /* One at a time: a warning still being worked out is the one that goes out next. */
     if (due && state == GAME_CORNER_JOB_IDLE) {
@@ -287,4 +290,21 @@ void game_hud_corner_read(const game_t *game, ui_hud_corner_t *out) {
             out->warning_line = (uint8_t)UI_HUD_CORNER_WARNING;
         }
     }
+}
+
+void game_hud_corners_draw(game_t *game, bool below_notice) {
+    ui_t *const ui = game->borrowed_ui;
+    int32_t block[3];
+    game_hud_block_read(game, block);
+    ui_rect_t avoid = {0, 0, 0, 0};
+    if (game->hud_debug != 0u) {
+        avoid = ui_hud_debug_panel(ui->canvas.width, ui->canvas.height);
+    } else if (game->config.show_coordinates != 0u) {
+        /* The overlay has them too, on a panel in the same corner. */
+        ui_hud_coordinates_draw(&ui->canvas, &ui->font, block, below_notice);
+        avoid = ui_hud_coordinates_panel(&ui->canvas, &ui->font, block, below_notice);
+    }
+    ui_hud_corner_t corner;
+    game_hud_corner_read(game, &corner);
+    (void)ui_hud_corner_draw(&ui->canvas, &ui->font, &corner, avoid, below_notice);
 }

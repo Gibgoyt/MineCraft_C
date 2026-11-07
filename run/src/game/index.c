@@ -1146,25 +1146,8 @@ static const uint8_t *game_hud_compose(game_t *game, const uint8_t *drawn) {
         } else {
             notice = game_hud_trouble_draw(game);
         }
-        /* The overlay has them too, on a panel in the same corner. */
-        if (game->config.show_coordinates != 0u && game->hud_debug == 0u) {
-            int32_t block[3];
-            game_hud_block_read(game, block);
-            ui_hud_coordinates_draw(&ui->canvas, &ui->font, block, notice);
-        }
-        /* In the other corner, so the overlay on the left leaves it be: the date, the climate line and a storm warning (plan 004
-         * phase 10), clear of whichever top-left panel there is. F3's is drawn after, but its place is known now. */
-        ui_hud_corner_t corner;
-        game_hud_corner_read(game, &corner);
-        ui_rect_t avoid = {0, 0, 0, 0};
-        if (game->hud_debug != 0u) {
-            avoid = ui_hud_debug_panel(ui->canvas.width, ui->canvas.height);
-        } else if (game->config.show_coordinates != 0u) {
-            int32_t block[3];
-            game_hud_block_read(game, block);
-            avoid = ui_hud_coordinates_panel(&ui->canvas, &ui->font, block, notice);
-        }
-        (void)ui_hud_corner_draw(&ui->canvas, &ui->font, &corner, avoid, notice);
+        game_hud_corners_draw(game,
+                              notice); /* the coordinates, and the date, climate line and warning (plan 004 phase 10) */
     }
     if (game->hud_debug != 0u) {
         ui_hud_debug_t debug;

@@ -327,31 +327,6 @@ static void warning_place(uint64_t *rng, float64_t out[3]) {
     out[2] = 365.0f64 + 230.0f64 + 40.0f64 * warning_unit(rng);
 }
 
-TEST(the_same_place_and_moment_give_the_same_warning_on_1_and_16_workers) {
-    climate_warning_t *const answers = test_alloc(t, 2u * WARNING_PLACES * sizeof(climate_warning_t));
-    static const uint32_t workers[2] = {1u, MC_THREADS_WORKERS};
-    for (uint32_t w = 0u; w < 2u; w++) {
-        warning_rig_t rig;
-        REQUIRE(warning_rig_start(t, &rig, workers[w]));
-        uint64_t rng = 0x5EEDull;
-        for (uint32_t i = 0u; i < WARNING_PLACES; i++) {
-            float64_t place[3];
-            warning_place(&rng, place);
-            arena_reset(rig.arena);
-            CHECK(climate_warning_at(rig.climate, rig.arena, place[0], place[1], place[2],
-                                     &answers[w * WARNING_PLACES + i]));
-        }
-        warning_rig_stop(&rig);
-    }
-    uint32_t warned = 0u;
-    for (uint32_t i = 0u; i < WARNING_PLACES; i++) {
-        warned += answers[i].kind != CLIMATE_WARNING_NONE ? 1u : 0u;
-    }
-    printf("%" PRIu32 " of %" PRIu32 " places and moments warned; first chance %.4f\n", warned, WARNING_PLACES,
-           (libc_double_t)answers[0].chance);
-    CHECK_MEM_EQ(answers, answers + WARNING_PLACES, WARNING_PLACES * sizeof(climate_warning_t));
-}
-
 TEST(it_takes_under_20_ms_on_any_preset) {
     warning_rig_t rig;
     REQUIRE(warning_rig_start(t, &rig, MC_THREADS_WORKERS));
@@ -393,6 +368,219 @@ TEST(it_takes_under_20_ms_on_any_preset) {
     /* The phase 10 file: the slowest under 20 ms on any preset. Phase 11 records the release number against its 2 ms. */
     CHECK(slowest < 20000000);
     warning_rig_stop(&rig);
+}
+
+/* Master plan 8's footprint by the test's own hand, at t days after the census: the centre where the system's steering takes it,
+ * moved by the forecast's error for that moment (each whole day's draw, going evenly to the next), sigma(t) = 200 + 400 t. */
+static float64_t warning_hand_chance(const climate_system_t *system, uint64_t seed, uint64_t week, float64_t census_t,
+                                     float64_t t, float64_t x, float64_t y, float64_t out_centre[2]) {
+    climate_system_state_t state;
+    climate_system_state_at(system, census_t + t, &state);
+    const float64_t sigma = 200.0f64 + 400.0f64 * t;
+    float64_t error[2], next[2];
+    climate_outlook_error(seed, system->id, week, (uint32_t)floor(t), error);
+    climate_outlook_error(seed, system->id, week, (uint32_t)floor(t) + 1u, next);
+    const float64_t part = t - floor(t);
+    out_centre[0] = state.x + (error[0] + part * (next[0] - error[0])) * sigma;
+    out_centre[1] = state.y + (error[1] + part * (next[1] - error[1])) * sigma;
+    if (state.alive == 0u) {
+        return 0.0f64;
+    }
+    const float64_t dx = out_centre[0] - x, dy = out_centre[1] - y;
+    const float64_t r = (float64_t)system->radius;
+    return exp(-(dx * dx + dy * dy) / (2.0f64 * (sigma * sigma + r * r)));
+}
+
+/* What climate_warning_at should say at (x, y) at census_t + t0, by the test's own hand: every known system's chance at the five
+ * moments from master plan 8's footprint (warning_hand_chance), the best of each, a low counted over the moments it is 20 hPa
+ * deep, the unborn from the outlook's rate sums a day apart (the outlook's own, phase 07), and the rule's steps 1 to 4. */
+static climate_warning_t warning_by_hand(warning_rig_t *rig, float64_t x, float64_t y, float64_t census_t,
+                                         float64_t t0) {
+    const uint64_t seed = climate_outlook_seed(rig->climate);
+    const uint64_t week = (uint64_t)(census_t / 7.0f64);
+    arena_reset(rig->arena);
+    climate_systems_day_t list;
+    uint32_t *order = nullptr;
+    uint32_t alive = 0u;
+    climate_warning_t out;
+    memset(&out, 0, sizeof(out));
+    if (!climate_outlook_known_list(rig->climate, x, y, census_t, rig->arena, &list, &order, &alive)) {
+        out.chance = -1.0f64;
+        return out;
+    }
+    float64_t none_hurricane = 1.0f64, none_storm = 1.0f64, best = -1.0f64;
+    for (uint32_t i = 0u; i < alive; i++) {
+        const climate_system_t *const system = &list.borrowed_systems[order[i]];
+        float64_t q = 0.0f64, q_deep = 0.0f64;
+        for (uint32_t k = 0u; k < 5u; k++) {
+            const float64_t tk = t0 + 0.25f64 * (float64_t)k;
+            float64_t centre[2];
+            const float64_t p = warning_hand_chance(system, seed, week, census_t, tk, x, y, centre);
+            climate_system_state_t state;
+            climate_system_state_at(system, census_t + tk, &state);
+            q = p > q ? p : q;
+            if (state.alive != 0u && state.pressure_hpa <= -20.0f32) {
+                q_deep = p > q_deep ? p : q_deep;
+            }
+        }
+        if (system->kind == CLIMATE_SYSTEM_HURRICANE) {
+            none_hurricane *= 1.0f64 - q;
+            if (q > best) {
+                best = q;
+                out.system_id = system->id;
+            }
+        } else if (system->kind == CLIMATE_SYSTEM_LOW) {
+            none_storm *= 1.0f64 - q_deep;
+        }
+    }
+    climate_systems_mask_t mask;
+    climate_systems_mask_start(&mask, rig->climate, rig->arena, nullptr);
+    const float64_t after[2] = {t0, t0 + 1.0f64};
+    float64_t hurricane_lambda[2], low_lambda[2];
+    climate_outlook_unborn(rig->climate, rig->arena, &mask, CLIMATE_SYSTEM_HURRICANE, x, y, census_t, after, 2u,
+                           hurricane_lambda);
+    climate_outlook_unborn(rig->climate, rig->arena, &mask, CLIMATE_SYSTEM_LOW, x, y, census_t, after, 2u, low_lambda);
+    const float64_t unborn_hurricane = fmax(0.0f64, hurricane_lambda[1] - hurricane_lambda[0]);
+    const float64_t unborn_storm = fmax(0.0f64, 0.5f64 * (low_lambda[1] - low_lambda[0]));
+    const float64_t p_hurricane = 1.0f64 - none_hurricane * exp(-unborn_hurricane);
+    const float64_t p_storm = 1.0f64 - none_storm * exp(-unborn_storm);
+    if (best > 0.5f64) {
+        out.kind = CLIMATE_WARNING_NAMED;
+        out.chance = best;
+    } else if (p_hurricane > 0.5f64) {
+        out.kind = CLIMATE_WARNING_HURRICANE_LIKELY;
+        out.chance = p_hurricane;
+        out.system_id = 0u;
+    } else if (p_storm > 0.5f64) {
+        out.kind = CLIMATE_WARNING_STORM;
+        out.chance = p_storm;
+        out.system_id = 0u;
+    } else {
+        out.system_id = 0u;
+        out.chance = fmax(fmax(best, 0.0f64), fmax(p_hurricane, p_storm));
+    }
+    return out;
+}
+
+/* This seed has no hurricane in reach of the test's place (Issues found 28), but lows: the first census of the season with a
+ * known low 20 hPa deep a day on, its forecast centre then, and the unit way the forecast moves it over the last quarter day. */
+static bool warning_find_low(warning_rig_t *rig, climate_system_t *storm, float64_t *out_census_t, float64_t out_c4[2],
+                             float64_t out_way[2]) {
+    const uint64_t seed = climate_outlook_seed(rig->climate);
+    for (uint64_t week = 85u; week <= 95u; week++) {
+        const float64_t census_t = 7.0f64 * (float64_t)week;
+        arena_reset(rig->arena);
+        climate_systems_day_t list;
+        uint32_t *order = nullptr;
+        uint32_t alive = 0u;
+        if (!climate_outlook_known_list(rig->climate, WARNING_X, WARNING_Y, census_t, rig->arena, &list, &order,
+                                        &alive)) {
+            return false;
+        }
+        for (uint32_t i = 0u; i < alive; i++) {
+            const climate_system_t *const system = &list.borrowed_systems[order[i]];
+            climate_system_state_t s3, s4;
+            climate_system_state_at(system, census_t + 0.75f64, &s3);
+            climate_system_state_at(system, census_t + 1.0f64, &s4);
+            if (system->kind != CLIMATE_SYSTEM_LOW || s3.alive == 0u || s4.alive == 0u || s4.pressure_hpa > -20.0f32) {
+                continue;
+            }
+            memcpy(storm, system, sizeof(*storm));
+            float64_t c3[2];
+            (void)warning_hand_chance(storm, seed, week, census_t, 0.75f64, 0.0f64, 0.0f64, c3);
+            (void)warning_hand_chance(storm, seed, week, census_t, 1.0f64, 0.0f64, 0.0f64, out_c4);
+            const float64_t ax = out_c4[0] - c3[0], ay = out_c4[1] - c3[1];
+            const float64_t along = sqrt(ax * ax + ay * ay);
+            if (!(along > 1.0f64)) {
+                continue;
+            }
+            out_way[0] = ax / along;
+            out_way[1] = ay / along;
+            *out_census_t = census_t;
+            return true;
+        }
+    }
+    return false;
+}
+
+TEST(a_real_storm_low_warns_through_the_whole_call_as_worked_by_hand) {
+    warning_rig_t rig;
+    REQUIRE(warning_rig_start(t, &rig, MC_THREADS_WORKERS));
+    const uint64_t seed = climate_outlook_seed(rig.climate);
+    climate_system_t *const storm = test_alloc(t, sizeof(climate_system_t));
+    float64_t census_t = 0.0f64, c4[2], way[2];
+    REQUIRE(warning_find_low(&rig, storm, &census_t, c4, way));
+    const uint64_t week = (uint64_t)(census_t / 7.0f64);
+    /* The player beyond the low's forecast centre a day on, along the way the forecast moves it over the last quarter day, where
+     * that one step gives 0.9 (a warning) and 0.2 (none from it alone): c = sqrt(2 (sigma^2 + R^2) ln(1 / p)), sigma = 600. */
+    const float64_t r = (float64_t)storm->radius;
+    static const float64_t wanted[2] = {0.9f64, 0.2f64};
+    uint32_t warned = 0u;
+    for (uint32_t c = 0u; c < 2u; c++) {
+        const float64_t reach = sqrt(2.0f64 * (600.0f64 * 600.0f64 + r * r) * log(1.0f64 / wanted[c]));
+        const float64_t px = c4[0] + way[0] * reach, py = c4[1] + way[1] * reach;
+        climate_prepare_area(rig.climate, rig.job, (int32_t)px - 64, (int32_t)py - 64, (int32_t)px + 64,
+                             (int32_t)py + 64, nullptr, nullptr);
+        float64_t centre[2];
+        const float64_t p4 = warning_hand_chance(storm, seed, week, census_t, 1.0f64, px, py, centre);
+        const climate_warning_t hand = warning_by_hand(&rig, px, py, census_t, 0.0f64);
+        arena_reset(rig.arena);
+        climate_warning_t out;
+        REQUIRE(climate_warning_at(rig.climate, rig.arena, px, py, census_t, &out));
+        printf("low %" PRIu64 " (R %.0f) week %" PRIu64
+               ", %.0f blocks past its forecast centre a day on: its step 4 %.4f; by "
+               "hand kind %u chance %.9f; the call kind %u chance %.9f\n",
+               storm->id, (libc_double_t)r, week, (libc_double_t)reach, (libc_double_t)p4, (uint32_t)hand.kind,
+               (libc_double_t)hand.chance, (uint32_t)out.kind, (libc_double_t)out.chance);
+        CHECK_NEAR(p4, wanted[c], 1.0e-9f64);
+        CHECK_EQ_U64(out.kind, hand.kind);
+        CHECK_EQ_U64(out.system_id, hand.system_id);
+        CHECK_NEAR(out.chance, hand.chance, 1.0e-9f64);
+        warned += out.kind == CLIMATE_WARNING_STORM ? 1u : 0u;
+    }
+    /* At 0.9 from this low alone the storm warning must come, whatever else is about. */
+    CHECK(warned >= 1u);
+    warning_rig_stop(&rig);
+}
+
+TEST(the_same_place_and_moment_give_the_same_warning_on_1_and_16_workers) {
+    /* Twelve places and moments at random, and twelve round a real storm low's forecast path, where chances are not all 0. */
+    climate_warning_t *const answers = test_alloc(t, 4u * WARNING_PLACES * sizeof(climate_warning_t));
+    climate_system_t *const storm = test_alloc(t, sizeof(climate_system_t));
+    static const uint32_t workers[2] = {1u, MC_THREADS_WORKERS};
+    for (uint32_t w = 0u; w < 2u; w++) {
+        warning_rig_t rig;
+        REQUIRE(warning_rig_start(t, &rig, workers[w]));
+        climate_warning_t *const mine = answers + w * 2u * WARNING_PLACES;
+        uint64_t rng = 0x5EEDull;
+        for (uint32_t i = 0u; i < WARNING_PLACES; i++) {
+            float64_t place[3];
+            warning_place(&rng, place);
+            arena_reset(rig.arena);
+            CHECK(climate_warning_at(rig.climate, rig.arena, place[0], place[1], place[2], &mine[i]));
+        }
+        float64_t census_t = 0.0f64, c4[2], way[2];
+        REQUIRE(warning_find_low(&rig, storm, &census_t, c4, way));
+        for (uint32_t i = 0u; i < WARNING_PLACES; i++) {
+            const float64_t reach = 1000.0f64 * (float64_t)i;
+            const float64_t px = c4[0] + way[0] * reach, py = c4[1] + way[1] * reach;
+            climate_prepare_area(rig.climate, rig.job, (int32_t)px - 64, (int32_t)py - 64, (int32_t)px + 64,
+                                 (int32_t)py + 64, nullptr, nullptr);
+            arena_reset(rig.arena);
+            CHECK(climate_warning_at(rig.climate, rig.arena, px, py, census_t + 0.05f64 * (float64_t)i,
+                                     &mine[WARNING_PLACES + i]));
+        }
+        warning_rig_stop(&rig);
+    }
+    uint32_t warned = 0u, some = 0u;
+    for (uint32_t i = 0u; i < 2u * WARNING_PLACES; i++) {
+        warned += answers[i].kind != CLIMATE_WARNING_NONE ? 1u : 0u;
+        some += answers[i].chance > 0.01f64 ? 1u : 0u;
+    }
+    printf("%" PRIu32 " of %" PRIu32 " places and moments warned, %" PRIu32 " with a chance over 1%%\n", warned,
+           2u * WARNING_PLACES, some);
+    CHECK(warned >= 1u && some >= 4u); /* so the comparison is of real answers, not of zeros */
+    CHECK_MEM_EQ(answers, answers + 2u * WARNING_PLACES, 2u * WARNING_PLACES * sizeof(climate_warning_t));
 }
 
 TEST(with_no_tile_there_it_says_so) {
