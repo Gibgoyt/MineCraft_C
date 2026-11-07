@@ -15,6 +15,7 @@
 #include "terrain/index.h"
 #include "thread/index.h"
 #include "time/index.h"
+#include "ui/index.h"
 
 #include <errno.h>
 #include <math.h>
@@ -457,6 +458,157 @@ static int32_t bench_pictures(climate_t *climate, const thread_topology_t *topol
     job_deinit(&system);
     terrain_deinit(&terrain);
     return ok ? 0 : 2;
+}
+
+/* ---- Plan 004 phase 09: every Atlas layer through the Atlas's own drawing --------------------------------------------- */
+
+/* What --layer, --zoom and --flat ask for. */
+typedef struct bench_atlas_t {
+    const char *layer; /* 0: a registry key, or "all"; nullptr: not asked */
+    int32_t zoom;      /* 8: blocks a pixel 2^(zoom / 2) */
+    uint8_t flat;      /* 12: hill shading off and every pixel sampled */
+    uint8_t _pad0[3];  /* 13 */
+} bench_atlas_t;
+static_assert(sizeof(bench_atlas_t) == 16);
+
+/* Each layer asked for, 1024 by 1024 round (0, 0), through ui_atlas_draw_picture over the terrain's estimate (everything
+ * generated), to atlas_<key>.png. With --flat at a whole number of blocks a pixel, each phase 03 to 05 layer is checked
+ * against climate_layer_draw's bytes at the same place. */
+static int32_t bench_atlas_pictures(climate_t *climate, const thread_topology_t *topology, const char *directory,
+                                    uint64_t seed, const bench_atlas_t *atlas) {
+    const uint32_t only = strcmp(atlas->layer, "all") == 0 ? UI_ATLAS_LAYER_COUNT : ui_atlas_layer_find(atlas->layer);
+    if (strcmp(atlas->layer, "all") != 0 && only == UI_ATLAS_LAYER_COUNT) {
+        fprintf(stderr, "bench_climate: no Atlas layer is called '%s'\n", atlas->layer);
+        return 2;
+    }
+    if (mkdir(directory, 0755) != 0 && errno != EEXIST) {
+        fprintf(stderr, "bench_climate: cannot make %s: %s\n", directory, strerror(errno));
+        return 2;
+    }
+    const uint32_t side = BENCH_PICTURE_SIDE;
+    const uint64_t pixels = (uint64_t)side * side;
+    const uint64_t png_bytes = display_png_bytes_needed(side, side);
+    const uint64_t band_bytes = ui_atlas_band_scratch_bytes(side, (side + UI_ATLAS_BANDS - 1u) / UI_ATLAS_BANDS);
+    /* The pictures, their grey, field and overlay, a climate picture to check against, a PNG, a ui and its texture, the
+     * terrain, the bands' scratch and the systems' arena, each where the next 64-byte line starts. */
+    const uint64_t sizes[11] = {pixels * 4u,       pixels,
+                                pixels * 4u,       UI_ATLAS_OVERLAY_SCRATCH_BYTES,
+                                pixels * 4u,       png_bytes,
+                                sizeof(ui_t),      sizeof(texture_t),
+                                sizeof(terrain_t), band_bytes + (1ull << 20),
+                                16ull << 20};
+    uint64_t total = 0u;
+    for (uint32_t k = 0u; k < 11u; k++) {
+        total += (sizes[k] + 63u) & ~63ull;
+    }
+    heap_region_t memory = {0};
+    if (!heap_reserve(total, &memory)) {
+        return 2;
+    }
+    uint8_t *parts[11];
+    uint8_t *at = memory.owned_base;
+    for (uint32_t k = 0u; k < 11u; k++) {
+        parts[k] = at;
+        at += (sizes[k] + 63u) & ~63ull;
+    }
+    ui_t *const ui = (ui_t *)(void *)parts[6];
+    texture_t *const texture = (texture_t *)(void *)parts[7];
+    terrain_t *const terrain = (terrain_t *)(void *)parts[8];
+    job_system_t system;
+    int32_t status = 2;
+    if (!job_init_count(&system, topology, BENCH_WORKERS)) {
+        heap_release(&memory);
+        return 2;
+    }
+    if (texture_init(texture) && ui_init(ui, texture) && terrain_init(terrain, seed) &&
+        climate_open(climate, terrain)) {
+        arena_t scratch, systems;
+        arena_init(&scratch, "bench_atlas_bands", parts[9], sizes[9]);
+        arena_init(&systems, "bench_atlas_systems", parts[10], sizes[10]);
+        const ui_atlas_target_t target = {(uint32_t *)(void *)parts[0], parts[1], (float32_t *)(void *)parts[2],
+                                          parts[3]};
+        const float64_t step = ui_atlas_blocks_per_pixel(atlas->zoom);
+        const int32_t half = (int32_t)ceil(step * (float64_t)side / 2.0f64);
+        const int64_t started = time_now_ns();
+        climate_prepare_area(climate, &system, -half - 64, -half - 64, half + 63, half + 63, nullptr, nullptr);
+        printf("seed %" PRIu64
+               ": %d by %d blocks round 0 worked out in %.1f ms; Atlas zoom %d, %.3f blocks a pixel%s\n",
+               seed, 2 * half, 2 * half, (libc_double_t)time_ns_to_ms(time_now_ns() - started), atlas->zoom,
+               (libc_double_t)step, atlas->flat != 0u ? ", flat" : "");
+        ui_atlas_estimate_t estimate = {.borrowed_terrain = terrain, .generated_east_x = INT64_MAX};
+        job_group_t group;
+        job_group_init(&group);
+        status = 0;
+        uint32_t same = 0u, checked = 0u;
+        for (uint32_t layer = 0u; layer < UI_ATLAS_LAYER_COUNT && status == 0; layer++) {
+            if (only != UI_ATLAS_LAYER_COUNT && layer != only) {
+                continue;
+            }
+            const ui_atlas_layer_t *const row = &ui_atlas_layers[layer];
+            ui_atlas_draw_input_t input = {
+                .view = {.center = {0.0f64, 0.0f64},
+                         .zoom = atlas->zoom,
+                         .width = side,
+                         .height = side,
+                         .day = row->time == UI_ATLAS_TIME_NORMALS ? 196u : 0u,
+                         .layer = (uint8_t)layer},
+                .ground = {.borrowed_context = &estimate, .read = ui_atlas_estimate_read},
+                .borrowed_climate = climate,
+                .borrowed_week = climate_week_store(climate),
+                .borrowed_font = &ui->font,
+                .t = 196.4f64,
+                .census_week = 28u,
+                .sample = atlas->flat != 0u ? 1u : UI_ATLAS_SAMPLE_PIXELS,
+                .flat = atlas->flat,
+            };
+            arena_reset(&systems);
+            climate_systems_day_t day;
+            if (row->time == UI_ATLAS_TIME_NOW &&
+                ui_atlas_systems_build(climate, &systems, &input.view, input.t, &day)) {
+                input.borrowed_systems = &day;
+            }
+            const int64_t drawn_at = time_now_ns();
+            ui_atlas_draw_picture(&input, &target, &system, &group, UI_ATLAS_BANDS, &scratch);
+            const float64_t ms = time_ns_to_ms(time_now_ns() - drawn_at);
+            char name[64];
+            snprintf(name, sizeof(name), "atlas_%s.png", row->key);
+            printf("%-20s %.1f ms\n", row->key, (libc_double_t)ms);
+            if (!bench_png_write(directory, name, parts[0], parts[5], png_bytes)) {
+                status = 2;
+            }
+            /* The same code: a phase 03 to 05 field, flat at a whole number of blocks a pixel, is climate_layer_draw's. */
+            const ui_atlas_geometry_t g = ui_atlas_geometry(&input.view);
+            const bool whole = step >= 1.0f64 && step == floor(step);
+            if (atlas->flat != 0u && whole && row->climate_layer != UI_ATLAS_NO_CLIMATE_LAYER &&
+                row->climate_layer != CLIMATE_LAYER_LATITUDE) {
+                climate_layer_draw(climate, (climate_layer_t)row->climate_layer, (int32_t)((float64_t)g.column0 * step),
+                                   (int32_t)(-(float64_t)g.row0 * step), (int32_t)step, side, side, input.view.day,
+                                   parts[4], side * 4u);
+                uint64_t differ = 0u;
+                for (uint64_t k = 0u; k < pixels; k++) {
+                    uint32_t c = 0u;
+                    memcpy(&c, parts[4] + 4u * k, 4u);
+                    differ += c == CLIMATE_LAYER_GREY || (target.borrowed_pixels[k] & 0xFFFFFFu) == c ? 0u : 1u;
+                }
+                printf("  %s: %s climate_layer_draw's bytes (%" PRIu64 " pixels differ)\n", row->key,
+                       differ == 0u ? "the same as" : "NOT the same as", differ);
+                same += differ == 0u ? 1u : 0u;
+                checked++;
+            }
+        }
+        if (checked > 0u) {
+            printf("%u of %u climate fields the same bytes as climate_layer_draw\n", same, checked);
+            status = same == checked ? status : 1;
+        }
+        job_group_deinit(&group);
+        climate_close(climate, &system);
+    }
+    terrain_deinit(terrain);
+    ui_deinit(ui);
+    texture_deinit(texture);
+    job_deinit(&system);
+    heap_release(&memory);
+    return status;
 }
 
 /* ---- Synthetic continents ------------------------------------------------------------------------------------------ */
@@ -1076,6 +1228,31 @@ int32_t main(int32_t argc, char **argv) {
     int32_t status = 0;
     bench_days_t days = {.count = BENCH_MONTHS};
     memcpy(days.days, BENCH_MONTH_DAYS, sizeof(BENCH_MONTH_DAYS));
+    /* Plan 004 phase 09: --layer <key|all>, --zoom <n> and --flat, after --pictures's arguments. */
+    bench_atlas_t atlas = {.layer = nullptr, .zoom = 8, .flat = 0u, ._pad0 = {0}};
+    while (argc >= 2 && strcmp(argv[argc - 1], "--flat") == 0) {
+        atlas.flat = 1u;
+        argc--;
+    }
+    while (argc >= 3 && (strcmp(argv[argc - 2], "--layer") == 0 || strcmp(argv[argc - 2], "--zoom") == 0)) {
+        if (strcmp(argv[argc - 2], "--layer") == 0) {
+            atlas.layer = argv[argc - 1];
+        } else {
+            char *end = nullptr;
+            const int64_t zoom = strtoll(argv[argc - 1], &end, 10);
+            if (end == argv[argc - 1] || *end != '\0' || zoom < UI_ATLAS_ZOOM_MIN || zoom > UI_ATLAS_ZOOM_MAX) {
+                fprintf(stderr, "bench_climate: --zoom takes %d to %d\n", UI_ATLAS_ZOOM_MIN, UI_ATLAS_ZOOM_MAX);
+                climate_deinit(&climate);
+                return 2;
+            }
+            atlas.zoom = (int32_t)zoom;
+        }
+        argc -= 2;
+        while (argc >= 2 && strcmp(argv[argc - 1], "--flat") == 0) {
+            atlas.flat = 1u;
+            argc--;
+        }
+    }
     const bool with_days = argc >= 3 && strcmp(argv[argc - 2], "--days") == 0;
     if (with_days && !bench_days_parse(argv[argc - 1], &days)) {
         fprintf(stderr, "bench_climate: '%s' is not a list of days from 0 to 364\n", argv[argc - 1]);
@@ -1091,7 +1268,8 @@ int32_t main(int32_t argc, char **argv) {
             fprintf(stderr, "bench_climate: '%s' is not a seed\n", argv[3]);
             status = 2;
         } else {
-            status = bench_pictures(&climate, &topology, argv[2], seed, &days);
+            status = atlas.layer != nullptr ? bench_atlas_pictures(&climate, &topology, argv[2], seed, &atlas)
+                                            : bench_pictures(&climate, &topology, argv[2], seed, &days);
         }
     } else if (plain == 3 && strcmp(argv[1], "--synthetic") == 0) {
         status = bench_synthetic(&climate, &topology, argv[2], &days);
@@ -1126,9 +1304,10 @@ int32_t main(int32_t argc, char **argv) {
         status = parts != 0 ? parts : status;
         terrain_deinit(&terrain);
     } else {
-        fprintf(stderr, "usage: bench_climate [--pictures <directory> <seed> | --synthetic <directory>] "
-                        "[--days d,d,...] | --systems | --season <directory> <seed> <first_day> <last_day> "
-                        "<step_days>\n");
+        fprintf(stderr,
+                "usage: bench_climate [--pictures <directory> <seed> [--layer <key|all> [--zoom <n>] [--flat]] | "
+                "--synthetic <directory>] [--days d,d,...] | --systems | --season <directory> <seed> <first_day> "
+                "<last_day> <step_days>\n");
         status = 2;
     }
     climate_deinit(&climate);

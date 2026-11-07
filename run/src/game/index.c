@@ -4,6 +4,7 @@
 #include "assert/index.h"
 #include "climate/sun/index.h"
 #include "entity/animation/index.h"
+#include "game/atlas/index.h"
 #include "game/census/index.h"
 #include "game/cover/index.h"
 #include "game/weather/index.h"
@@ -40,8 +41,9 @@ enum : uint64_t {
     /* A whole column of states, section after section, each in section_voxel_index order. */
     GAME_COLUMN_VOXELS = (uint64_t)COLUMN_SECTIONS * SECTION_VOXELS,
     GAME_COLUMN_BYTES = GAME_COLUMN_VOXELS * sizeof(uint16_t),
-    GAME_WORLD_ARENA_BYTES = GAME_STREAM_JOBS * (GAME_COLUMN_BYTES + GAME_COLUMN_VOXELS) + sizeof(game_world_parts_t) +
-                             2ull * 4096ull + MOB_SPAWN_BYTES + GAME_CENSUS_ARENA_BYTES,
+    GAME_WORLD_ARENA_BYTES =
+        GAME_STREAM_JOBS * (GAME_COLUMN_BYTES + GAME_COLUMN_VOXELS + UI_ATLAS_COLUMN_PIXELS * sizeof(uint32_t)) +
+        sizeof(game_world_parts_t) + 2ull * 4096ull + MOB_SPAWN_BYTES + GAME_CENSUS_ARENA_BYTES,
 };
 enum : int64_t {
     GAME_SIM_IDLE_NS = 1000000, /* the sim looks for finished columns this often when it has nothing to do */
@@ -539,6 +541,9 @@ bool game_open(game_t *game, const game_config_t *config) {
         job->borrowed_save = game->borrowed_save != nullptr ? &game->borrowed_save->world : nullptr;
         job->borrowed_states = arena_alloc(&game->arena_world, GAME_COLUMN_BYTES, alignof(uint64_t));
         job->borrowed_opened = arena_alloc(&game->arena_world, GAME_COLUMN_VOXELS, alignof(uint64_t));
+        job->borrowed_atlas_pixels =
+            arena_alloc(&game->arena_world, UI_ATLAS_COLUMN_PIXELS * sizeof(uint32_t), alignof(uint32_t));
+        job->borrowed_atlas_colours = game->borrowed_ui != nullptr ? ui_atlas_colours(game->borrowed_ui) : nullptr;
     }
 
     if (game->borrowed_player != nullptr) {
@@ -646,6 +651,7 @@ bool game_open(game_t *game, const game_config_t *config) {
         save_autosave_start(&save->autosave, game->borrowed_job, &save->world, &save->state, game->tick_count);
     }
     game_census_attach(game); /* plan 004 phase 07: with the calendar known */
+    game_atlas_open(game);    /* plan 004 phase 09 */
     game->open = 1u;
     return true;
 }
@@ -659,6 +665,7 @@ void game_close(game_t *game) {
     job_group_wait(game->borrowed_job, &game->group);
     job_group_deinit(&game->group);
     game_census_detach(game);
+    game_atlas_close(game); /* its drawing reads the climate */
     if (game->borrowed_climate != nullptr) {
         climate_close(game->borrowed_climate, game->borrowed_job); /* waits for the tiles the sim queued */
     }
@@ -822,6 +829,9 @@ static void game_column_job_run(job_worker_t *worker, void *borrowed_job) {
             job->borrowed_save, job->request.chunk_x, job->request.chunk_y, job->borrowed_states,
             job->borrowed_opened + SAVE_WORLD_OVERLAY_SCRATCH_BYTES, &job->levels_mask, job->borrowed_opened);
     }
+    if (job->borrowed_atlas_colours != nullptr) {
+        ui_atlas_column_top(job->borrowed_atlas_colours, BLOCK_COUNT, job->borrowed_states, job->borrowed_atlas_pixels);
+    }
     PROFILER_END(job_worker_lane(worker));
     /* Release gives the sim thread the states just written, and pairs with the acquire in game_columns_commit. */
     atomic_store_explicit(&job->done, 1u, memory_order_release);
@@ -859,6 +869,9 @@ static bool game_column_fill(game_t *game, const game_column_job_t *job) {
     (void)world_light_column_added(&world->light, job->request.slot);
     game_cover_stream_in(game, job->request.chunk_x,
                          job->request.chunk_y); /* in step with the week: plan 004 phase 08 */
+    if (job->borrowed_atlas_colours != nullptr) {
+        ui_atlas_column_write(game_atlas(game), job->request.chunk_x, job->request.chunk_y, job->borrowed_atlas_pixels);
+    }
     game->columns_made++;
     return true;
 }
@@ -979,28 +992,8 @@ void game_sim_step(game_t *game) {
         game_save_parts(game, &parts);
         save_autosave_step(&save->autosave, &world->edit, &parts, game->tick_count);
     }
+    ui_atlas_save_step(game_atlas(game), (int64_t)game->tick_count * GAME_TICK_NS);
     PROFILER_END(game->borrowed_lane_sim);
-}
-
-static void game_center_on_eye(game_t *game) {
-    const int32_t cell_x = (int32_t)floor(game->camera.position[0]);
-    const int32_t cell_y = (int32_t)floor(game->camera.position[1]);
-    atomic_store_explicit(&game->center_x, column_chunk_of(cell_x), memory_order_relaxed);
-    atomic_store_explicit(&game->center_y, column_chunk_of(cell_y), memory_order_relaxed);
-}
-
-void game_fly(game_t *game, const render_fly_input_t *input, float32_t seconds) {
-    render_fly_input_t scaled = *input;
-    scaled.mouse_dx = game_view_look_scaled(input->mouse_dx, game->config.sensitivity_percent, &game->look_rest[0]);
-    scaled.mouse_dy = game_view_look_scaled(input->mouse_dy, game->config.sensitivity_percent, &game->look_rest[1]);
-    render_camera_fly(&game->camera, &scaled, seconds);
-    game_center_on_eye(game);
-}
-
-/* The eye goes where the ticks have got to, by now_ns. */
-static void game_walk_view(game_t *game, int64_t now_ns) {
-    player_eye_at(game->borrowed_player, now_ns, game->camera.position);
-    game_center_on_eye(game);
 }
 
 /* ---- What is drawn on a picture ------------------------------------------------------------------------------------- */
@@ -1110,6 +1103,9 @@ static const uint8_t *game_hud_compose(game_t *game, const uint8_t *drawn) {
     const bool walking = game->borrowed_player != nullptr;
     const bool screen_up = game_has_screens(game) && ui_screen_up(ui);
     const uint8_t *const picture = game_picture_full(game, drawn);
+    if (ui != nullptr && game_atlas_up(game)) {
+        return game_atlas_compose(game, picture);
+    }
     /* Flying shows the date only when asked for it, as --test-world --day-of-year does: every other flying picture stays as it was. */
     const bool date_flying = !walking && game->config.show_date != 0u;
     if (ui == nullptr || (!walking && game->hud_debug == 0u && !screen_up && !date_flying)) {
@@ -1172,7 +1168,12 @@ static bool game_scene_tick_timed(game_t *game, const display_headless_tick_t *t
     game_day_advance(game, 1.0f32 / (float32_t)MC_GAME_TICK_HZ);
     game_fps_note(game, 0u, 1.0f32 / (float32_t)MC_GAME_TICK_HZ);
     game_debug_send(game, display_script_state_is_down(tick->state, KEY_F3));
+    input_frame_t frame;
+    game_input_from_script(tick, &frame);
     if (game->borrowed_player == nullptr) {
+        if (game_screen_input(game, &frame)) {
+            memset(&input, 0, sizeof(input)); /* flying, only the Atlas comes up: the eye stays where it is */
+        }
         game_fly(game, &input, 1.0f32 / (float32_t)MC_GAME_TICK_HZ);
         game_sim_tick(game, tick_ns);
         return true;
@@ -1181,8 +1182,6 @@ static bool game_scene_tick_timed(game_t *game, const display_headless_tick_t *t
     if (!game_settle(game)) {
         return false;
     }
-    input_frame_t frame;
-    game_input_from_script(tick, &frame);
     if (game_screen_input(game, &frame)) {
         /* The same as a real frame with a screen up: the body stands, and looks where it looked. */
         memset(&input, 0, sizeof(input));
@@ -1385,17 +1384,19 @@ static bool game_threads_start(game_t *game) {
     game->gpu_beats_seen_ns = time_now_ns();
     game->gpu_watched_ns = game->gpu_beats_seen_ns;
     game_lanes_threads(game, true);
+    game->threads_running = 1u; /* before the starts, which give it to both threads: the gpu's draw reads it */
     if (!thread_start(&game->sim_thread, game->borrowed_topology, THREAD_ROLE_SIM, 0u, game_sim_thread, game)) {
+        game->threads_running = 0u;
         game_lanes_threads(game, false);
         return false; /* it has said why */
     }
     if (!thread_start(&game->gpu_thread, game->borrowed_topology, THREAD_ROLE_GPU, 0u, game_gpu_thread, game)) {
         atomic_store_explicit(&game->stop, 1u, memory_order_release);
         thread_join(&game->sim_thread);
+        game->threads_running = 0u;
         game_lanes_threads(game, false);
         return false; /* it has said why */
     }
-    game->threads_running = 1u;
     return true;
 }
 
@@ -1485,11 +1486,6 @@ bool game_loop_source(void *context, display_buffer_t *back) {
         return false;
     }
     return game_loop_input_frame(game, frame, back);
-}
-
-void game_pause_set(game_t *game, bool paused) {
-    atomic_store_explicit(&game->paused, paused ? 1u : 0u, memory_order_relaxed);
-    game->last_frame_ns = time_now_ns();
 }
 
 void game_loop_discard(void *context) {

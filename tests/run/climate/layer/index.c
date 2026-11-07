@@ -635,4 +635,81 @@ TEST(a_now_layer_picture_is_held_to_a_hash) {
     terrain_deinit(&terrain);
 }
 
+/* ---- Plan 004 phase 09: the scaled draw the Atlas uses ------------------------------------------------------------ */
+
+TEST(climate_layers_are_the_same_code_as_the_atlas) {
+    enum : uint32_t { SIDE = 192u };
+    layer_rig_t rig;
+    REQUIRE(layer_rig_start(t, &rig));
+    terrain_t terrain;
+    REQUIRE(terrain_init(&terrain, 2198175988018515243ull));
+    REQUIRE(climate_open(rig.climate, &terrain));
+    climate_prepare_area(rig.climate, rig.job, -4096, -4096, 4095, 4095, nullptr, nullptr);
+    uint8_t *const drawn = test_alloc(t, SIDE * SIDE * 4u);
+    uint8_t *const scaled = test_alloc(t, SIDE * SIDE * 4u);
+    /* At 16 blocks a pixel from (-1536, 1536): world pixel column -96, a multiple of 32 less 0, so the arrows' grid falls
+     * where climate_layer_draw puts it, 16 pixels in. */
+    for (uint32_t layer = 0u; layer < CLIMATE_LAYER_COUNT; layer++) {
+        memset(drawn, 0, SIDE * SIDE * 4u);
+        memset(scaled, 0, SIDE * SIDE * 4u);
+        climate_layer_draw(rig.climate, (climate_layer_t)layer, -1536, 1536, 16, SIDE, SIDE, 105u, drawn, SIDE * 4u);
+        const climate_layer_frame_t frame = {
+            .west_x = -1536.0f64,
+            .north_y = 1536.0f64,
+            .step = 16.0f64,
+            .column_index = -96,
+            .row_index = -96,
+            .borrowed_scratch = nullptr,
+            .width = SIDE,
+            .height = SIDE,
+            .sample = 1u,
+            .parts = CLIMATE_LAYER_PARTS_ALL,
+        };
+        climate_layer_draw_scaled(rig.climate, (climate_layer_t)layer, &frame, 105.0f32, scaled, SIDE * 4u);
+        if (!CHECK(memcmp(drawn, scaled, SIDE * SIDE * 4u) == 0)) {
+            printf("  layer %u differs\n", layer);
+        }
+    }
+    /* Sampled every 4 world pixels, a picture panned by 13 and 7 pixels is the same where the two overlap. */
+    enum : uint32_t { PAN_X = 13u, PAN_Y = 7u };
+    uint32_t *const grid = test_alloc(t, 2u * (SIDE / 4u + 3u) * 4u);
+    for (uint32_t layer = 0u; layer < CLIMATE_LAYER_COUNT; layer++) {
+        if (layer == CLIMATE_LAYER_LATITUDE) {
+            continue;
+        }
+        climate_layer_frame_t frame = {
+            .west_x = -1536.0f64,
+            .north_y = 1536.0f64,
+            .step = 16.0f64,
+            .column_index = -96,
+            .row_index = -96,
+            .borrowed_scratch = grid,
+            .width = SIDE,
+            .height = SIDE,
+            .sample = 4u,
+            .parts = CLIMATE_LAYER_PART_FIELD,
+        };
+        climate_layer_draw_scaled(rig.climate, (climate_layer_t)layer, &frame, 105.0f32, drawn, SIDE * 4u);
+        frame.west_x += 16.0f64 * PAN_X;
+        frame.north_y -= 16.0f64 * PAN_Y;
+        frame.column_index += PAN_X;
+        frame.row_index += PAN_Y;
+        climate_layer_draw_scaled(rig.climate, (climate_layer_t)layer, &frame, 105.0f32, scaled, SIDE * 4u);
+        uint64_t wrong = 0u;
+        /* The pressure layer's lines look north and west, so its first row and column of the second differ. */
+        for (uint32_t y = PAN_Y + 1u; y < SIDE; y++) {
+            for (uint32_t x = PAN_X + 1u; x < SIDE; x++) {
+                wrong += layer_pixel(drawn, SIDE * 4u, x, y) == layer_pixel(scaled, SIDE * 4u, x - PAN_X, y - PAN_Y)
+                             ? 0u
+                             : 1u;
+            }
+        }
+        if (!CHECK_EQ_U64(wrong, 0u)) {
+            printf("  layer %u: %" PRIu64 " pixels differ after the pan\n", layer, wrong);
+        }
+    }
+    layer_rig_stop(&rig);
+    terrain_deinit(&terrain);
+}
+
 TEST_MAIN()

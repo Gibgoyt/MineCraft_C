@@ -1,8 +1,8 @@
 # run/src/ui
 
-**Purpose:** what the player sees on top of the world. The Owner of `compose`, `font`, `widget`, `hud`, the game screens, `menu`, `screen_settings` and `screen_census`.
+**Purpose:** what the player sees on top of the world. The Owner of `compose`, `font`, `widget`, `hud`, the game screens, `menu`, `screen_settings`, `screen_census` and `atlas`.
 **Tier:** Owner.
-**Owns:** `owned_region`, 2 MiB, with `arena_tables` (1.5 MiB, of which about 0.95 is in use with the HUD's and the game screens' item pictures) and `arena_frame` (0.5 MiB) over it, and `owned_composite`, one frame's pixels, reserved the first time a picture of that size needs it and grown only if a larger one comes. A mode changes far less often than a frame comes, so the heap's counters stay flat in play: ctest `run_ui_font` checks it.
+**Owns:** `owned_region`, 2 MiB of arenas and, past them (plan 004 phase 09), the Atlas: its `ui_atlas_t` at a fixed place, its colour table and its region (`UI_ATLAS_REGION_BYTES`, about 500 MiB of address space, of which only what is touched costs memory), reserved with the rest at `ui_init` so `ui_t`, and `app_t` on main's stack, do not grow. The arenas are `arena_tables` (1.5 MiB, of which about 0.95 is in use with the HUD's and the game screens' item pictures) and `arena_frame` (0.5 MiB) over it, and `owned_composite`, one frame's pixels, reserved the first time a picture of that size needs it and grown only if a larger one comes. A mode changes far less often than a frame comes, so the heap's counters stay flat in play: ctest `run_ui_font` checks it.
 **Lifetime:** Process for `ui_t`, its region and `arena_tables`. Frame for `arena_frame`, reset by each `ui_frame_begin`.
 **Threads:** `main`, as the plan's thread table says, and nothing here is safe from another thread, but for the `ui_screen_sim_*` functions, which are the `sim`'s: see "The game screens" below.
 **Public functions** (`run/include/ui/index.h`):
@@ -19,7 +19,7 @@ Between begin and end, `ui->canvas`, `ui->font`, `ui->widget`, `ui->hud` and `ui
 **May be called by:** `run/src/main/` for the pair, and `run/src/game/` for the frame.
 **Depends on:** `heap`, `arena`, `assert`, `texture`, and its parts below.
 
-**Parts:** `compose`: rects, images, and every pixel through the blend kernel. `font`: the bitmap font. `widget`: panels, labels, buttons, checkboxes, sliders, text fields, slots, bars, tooltips and the pointer. `hud`: the crosshair, hotbar, hearts, drumsticks and debug overlay. `screen_inventory`: the inventory, and what all the game screens share. `screen_crafting`, `screen_furnace`, `screen_chest`: the others. `menu`: the main menu, the list of worlds, making a world, and pause. `screen_settings`: the Settings screen. `screen_census`: the weekly census screen, plan 004 phase 01.
+**Parts:** `compose`: rects, images, and every pixel through the blend kernel. `font`: the bitmap font. `widget`: panels, labels, buttons, checkboxes, sliders, text fields, slots, bars, tooltips and the pointer. `hud`: the crosshair, hotbar, hearts, drumsticks and debug overlay. `screen_inventory`: the inventory, and what all the game screens share. `screen_crafting`, `screen_furnace`, `screen_chest`: the others. `menu`: the main menu, the list of worlds, making a world, and pause. `screen_settings`: the Settings screen. `screen_census`: the weekly census screen, plan 004 phase 01. `atlas`: the Atlas on `M`, plan 004 phase 09, with `atlas/tile`, `atlas/draw` and `atlas/layer`; `ui_atlas`, `ui_atlas_colours`, `ui_atlas_world_open` and `ui_atlas_world_close` here give it its memory, its colour table (each block's top face's mean colour, built at `ui_init`) and a world's lifetime.
 
 ## The path of a frame
 

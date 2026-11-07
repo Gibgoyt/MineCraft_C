@@ -1,6 +1,7 @@
 /* See README.md. */
 #include "game/index.h"
 
+#include "game/atlas/index.h"
 #include "game/view/index.h"
 #include "time/index.h"
 
@@ -101,10 +102,13 @@ bool game_loop_input_frame(game_t *game, const input_frame_t *frame, display_buf
     render_fly_input_t input;
     game_fly_from_input(frame, &input);
     if (screen_up) {
-        /* The body stands, and the mouse is the pointer. Sent all the same, or the sim would take it that nobody is at the controls. */
+        /* The body stands, and the mouse is the pointer. Sent all the same, or the sim would take it that nobody is at the controls.
+         * Flying, only the Atlas comes up, and the eye stays where it is. */
         memset(&input, 0, sizeof(input));
-        game_walk_send(game, &input, false, false, now_ns);
-        game_hands_send(game, false, false);
+        if (game->borrowed_player != nullptr) {
+            game_walk_send(game, &input, false, false, now_ns);
+            game_hands_send(game, false, false);
+        }
     } else if (game->borrowed_player != nullptr) {
         game_walk_send(game, &input, input_keys_has(&frame->down, KEY_SPACE),
                        input_keys_has(&frame->down, KEY_LEFTSHIFT), now_ns);
@@ -118,6 +122,12 @@ bool game_loop_input_frame(game_t *game, const input_frame_t *frame, display_buf
         game_hotbar_send(game, hotbar, frame->wheel);
     }
     return game_loop_frame(game, &input, seconds, back);
+}
+
+/* A pause starts the frame clock again, so the time stopped is not a step of flying. */
+void game_pause_set(game_t *game, bool paused) {
+    atomic_store_explicit(&game->paused, paused ? 1u : 0u, memory_order_relaxed);
+    game->last_frame_ns = time_now_ns();
 }
 
 void game_loop_input_clear(game_t *game) {
@@ -143,11 +153,35 @@ void game_screen_sim(game_t *game, ui_screen_sim_t *out) {
         ._pad0 = {0}};
 }
 
+static void game_center_on_eye(game_t *game) {
+    const int32_t cell_x = (int32_t)floor(game->camera.position[0]);
+    const int32_t cell_y = (int32_t)floor(game->camera.position[1]);
+    atomic_store_explicit(&game->center_x, column_chunk_of(cell_x), memory_order_relaxed);
+    atomic_store_explicit(&game->center_y, column_chunk_of(cell_y), memory_order_relaxed);
+}
+
+void game_fly(game_t *game, const render_fly_input_t *input, float32_t seconds) {
+    render_fly_input_t scaled = *input;
+    scaled.mouse_dx = game_view_look_scaled(input->mouse_dx, game->config.sensitivity_percent, &game->look_rest[0]);
+    scaled.mouse_dy = game_view_look_scaled(input->mouse_dy, game->config.sensitivity_percent, &game->look_rest[1]);
+    render_camera_fly(&game->camera, &scaled, seconds);
+    game_center_on_eye(game);
+}
+
+/* The eye goes where the ticks have got to, by now_ns. */
+void game_walk_view(game_t *game, int64_t now_ns) {
+    player_eye_at(game->borrowed_player, now_ns, game->camera.position);
+    game_center_on_eye(game);
+}
+
 bool game_has_screens(const game_t *game) {
     return game->borrowed_ui != nullptr && game->borrowed_item != nullptr && game->borrowed_player != nullptr;
 }
 
 bool game_screen_input(game_t *game, const input_frame_t *frame) {
+    if (game_atlas_input(game, frame)) {
+        return true; /* the Atlas has the input: the body stands, and the world goes on */
+    }
     if (!game_has_screens(game)) {
         return false;
     }
@@ -155,5 +189,5 @@ bool game_screen_input(game_t *game, const input_frame_t *frame) {
 }
 
 bool game_screen_up(game_t *game) {
-    return game_has_screens(game) && ui_screen_up(game->borrowed_ui);
+    return game_atlas_up(game) || (game_has_screens(game) && ui_screen_up(game->borrowed_ui));
 }

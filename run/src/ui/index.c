@@ -9,16 +9,40 @@
 
 enum : uint64_t {
     UI_REGION_BYTES = 2ull << 20,
+    /* Plan 004 phase 09: past the two arenas, the Atlas, its colour table and its region, in the same reservation. */
+    UI_ATLAS_OFFSET = UI_REGION_BYTES,
+    UI_ATLAS_COLOURS_OFFSET = UI_ATLAS_OFFSET + 4096u,
+    UI_ATLAS_REGION_OFFSET = UI_ATLAS_OFFSET + (2ull << 20),
+    UI_RESERVE_BYTES = UI_ATLAS_REGION_OFFSET + UI_ATLAS_REGION_BYTES,
     UI_ARENA_TABLES_BYTES =
         3ull
         << 19, /* 1.5 MiB: the widgets' textures take 0.4, the row 64 KiB, the HUD's and every item's 0.3, the screens' items 0.3, and later parts the rest */
     UI_ARENA_FRAME_BYTES = UI_REGION_BYTES - UI_ARENA_TABLES_BYTES,
 };
 static_assert((uint64_t)UI_WIDGET_TOOLTIP_MAX <= (uint64_t)UI_ARENA_FRAME_BYTES);
+static_assert(sizeof(ui_atlas_t) <= 4096u);
+static_assert(UI_ATLAS_COLOURS_OFFSET + (uint64_t)BLOCK_COUNT * sizeof(uint16_t) <= UI_ATLAS_REGION_OFFSET);
+
+/* Each block's top face's mean colour, packed: what the Atlas paints a column's top with. */
+static bool ui_atlas_colours_build(uint16_t *colours, const texture_t *texture) {
+    for (uint32_t block = 0u; block < BLOCK_COUNT; block++) {
+        colours[block] = 0u;
+        const uint16_t face = block_defs[block].faces[BLOCK_FACE_TOP];
+        uint32_t id = 0u;
+        texture_info_t info;
+        if (face >= BLOCK_TEXTURE_COUNT || !texture_find(texture, block_texture_names[face], &id) ||
+            !texture_info_get(texture, id, &info)) {
+            continue; /* air has no texture, and no colour */
+        }
+        const uint8_t *const rgba = info.borrowed_entry->mean_rgba;
+        colours[block] = ui_atlas_rgb565_of((uint32_t)rgba[0] << 16 | (uint32_t)rgba[1] << 8 | rgba[2]);
+    }
+    return true;
+}
 
 bool ui_init(ui_t *ui, const texture_t *texture) {
     memset(ui, 0, sizeof(*ui));
-    if (!heap_reserve(UI_REGION_BYTES, &ui->owned_region)) {
+    if (!heap_reserve(UI_RESERVE_BYTES, &ui->owned_region)) {
         return false; /* it has said why */
     }
     arena_init(&ui->arena_tables, "ui_tables", ui->owned_region.owned_base, UI_ARENA_TABLES_BYTES);
@@ -37,10 +61,15 @@ bool ui_init(ui_t *ui, const texture_t *texture) {
         return false; /* it has said why */
     }
     ui_screens_begin(ui->borrowed_screens);
+    memset(ui_atlas(ui), 0, sizeof(ui_atlas_t));
+    (void)ui_atlas_colours_build((uint16_t *)(void *)(ui->owned_region.owned_base + UI_ATLAS_COLOURS_OFFSET), texture);
     return true;
 }
 
 void ui_deinit(ui_t *ui) {
+    if (ui->owned_region.owned_base != nullptr) {
+        ui_atlas_world_close(ui);
+    }
     ui_menu_deinit(&ui->menu);
     ui_hud_deinit(&ui->hud);
     ui_widget_deinit(&ui->widget);
@@ -99,6 +128,28 @@ bool ui_frame_begin_blank(ui_t *ui, uint32_t width, uint32_t height) {
 const uint8_t *ui_frame_end(ui_t *ui, bool show_pointer) {
     ui_widget_frame_end(&ui->widget, show_pointer);
     return ui->canvas.borrowed_pixels;
+}
+
+/* ---- The Atlas ------------------------------------------------------------------------------------------------------ */
+
+ui_atlas_t *ui_atlas(const ui_t *ui) {
+    return (ui_atlas_t *)(void *)(ui->owned_region.owned_base + UI_ATLAS_OFFSET);
+}
+
+const uint16_t *ui_atlas_colours(const ui_t *ui) {
+    return (const uint16_t *)(const void *)(ui->owned_region.owned_base + UI_ATLAS_COLOURS_OFFSET);
+}
+
+bool ui_atlas_world_open(ui_t *ui, const char *directory, uint64_t seed, job_system_t *system,
+                         const climate_t *climate) {
+    ui_atlas_t *const atlas = ui_atlas(ui);
+    ui_atlas_store_stop(atlas);
+    return ui_atlas_store_start(atlas, ui->owned_region.owned_base + UI_ATLAS_REGION_OFFSET, UI_ATLAS_REGION_BYTES,
+                                directory, seed, ui_atlas_colours(ui), system, climate, &ui->font);
+}
+
+void ui_atlas_world_close(ui_t *ui) {
+    ui_atlas_store_stop(ui_atlas(ui));
 }
 
 /* ---- The game screens ------------------------------------------------------------------------------------------------ */

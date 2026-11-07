@@ -5,6 +5,7 @@
 #include "arena/index.h"
 #include "heap/index.h"
 #include "texture/index.h"
+#include "ui/atlas/index.h"
 #include "ui/compose/index.h"
 #include "ui/font/index.h"
 #include "ui/hud/index.h"
@@ -61,6 +62,22 @@ bool ui_frame_begin_blank(ui_t *ui, uint32_t width, uint32_t height);
 
 /* Ends the frame, as ui_widget_frame_end does, and returns what was drawn on, for render_frame_present. */
 const uint8_t *ui_frame_end(ui_t *ui, bool show_pointer);
+
+/* ---- The Atlas: plan 004 phase 09 ---- */
+
+/* The Atlas, at its fixed place in ui's region past both arenas, with its region after it: ui_init reserves them with the
+ * rest, so ui_t (and app_t, on main's stack) does not grow. Zeroed and closed until a world opens it. */
+ui_atlas_t *ui_atlas(const ui_t *ui);
+/* RGB565 by block id, BLOCK_COUNT of them, from each block's top face's mean colour: built at ui_init, read-only after, so
+ * the column jobs' workers may read it. */
+const uint16_t *ui_atlas_colours(const ui_t *ui);
+/* A world opens: the Atlas's store over its region, keeping its tiles in directory (<world>/atlas; nullptr keeps nothing
+ * on disk), for this seed, drawing on system's workers with climate. False, having said why, if it cannot start; the game
+ * goes on without it. */
+bool ui_atlas_world_open(ui_t *ui, const char *directory, uint64_t seed, job_system_t *system,
+                         const climate_t *climate);
+/* The world closes: every dirty tile written, the store stopped. Safe if it never opened. */
+void ui_atlas_world_close(ui_t *ui);
 
 /* ---- The game screens: see README.md for who calls what, on which thread ---- */
 
