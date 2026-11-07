@@ -673,6 +673,7 @@ Appended as they land:
 - `709b40fc` List the phase file commit of plan 004 phase 08 in its phase file.
 - `20db50e3` Record the second agent's re-check of plan 004 phase 08 on the merged branch in its phase file.
 - `0e46127d` Thaw census ice on shallow water too, where water or ice lies beside it, and test a shore and a pond a block deep.
+- `d8f21ea5` Record the gate check of plan 004 phase 08 and the shallow ice it fixed in its phase file.
 
 ## Issues found
 
