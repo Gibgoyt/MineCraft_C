@@ -943,6 +943,7 @@ Appended as they land:
 - `b3c7ded1` Describe the Atlas's no-climate program test in its test directory's README.
 - `85686290` Work out the wettest day of climate_normals_at from a table of the same cosines and sines, bit for bit, so the Atlas's phase 05 layers draw in 36 ms and not 66.
 - `f8676108` Name climate_harmonic_max2 in climate/harmonic's README.
+- `56861f9d` Record the gate check of plan 004 phase 09 in its phase file: the no-climate crash and the layout faults fixed, the phase 05 layers under 60 ms, the two targets still missed, and the runs.
 
 ## Issues found
 
