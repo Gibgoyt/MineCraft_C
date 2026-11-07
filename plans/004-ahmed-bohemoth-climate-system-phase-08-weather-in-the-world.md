@@ -669,6 +669,7 @@ Appended as they land:
 - `7293a212` Record bench_world after plan 004 phase 08, and what rain, snow, thunder and fog cost at render distance 32 against the same card's clear row.
 - `f6315832` Keep the weather effect in the settings file, with the screen's seventeen boxes as they were.
 - `7f2b0217` Pin the terrain digests again for snow_layer, which moved the numbers of the blocks after it and not the land.
+- `73842bdb` Record plan 004 phase 08 in its phase file: the todos, the commits, the verification, the cost and the issues found.
 
 ## Issues found
 
