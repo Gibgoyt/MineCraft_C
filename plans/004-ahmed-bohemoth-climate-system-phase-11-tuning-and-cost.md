@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 11: Tuning and cost
 
-**Status:** not started   (updated 2026-11-04)
+**Status:** in progress   (updated 2026-11-07)
 
 Read `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` first, then sections 4 to 8 and 10 to 12 of the master plan, `plans/004-ahmed-bohemoth-climate-system.md`. The master plan is the source of every number here. Where this file and the master plan disagree, the master plan wins, and the disagreement goes in **Issues found**.
 
@@ -129,234 +129,234 @@ The **Tuned** column starts empty. When Ahmed changes a value, write the new val
 
 | Name | Value | Unit | Section | What it tunes | Home | Tuned |
 |---|---|---|---|---|---|---|
-| `CALENDAR_TICKS_PER_DAY` | 24000 | ticks | 0, 4 | Length of a day. Existing: `GAME_DAY_SECONDS` 1200 s at 20 Hz, `run/include/game/index.h:34`. Use that, do not repeat it | | |
-| `CALENDAR_DAYS_PER_YEAR` | 365 | days | 4 | Length of a year | | |
-| `CALENDAR_DAYS_PER_WEEK` | 7 | days | 4 | How often the census runs | | |
-| `CALENDAR_FIRST_DAY` ($D_0$) | 79 | days | 4 | A new world's first day: the spring equinox (Q2) | | |
-| `CALENDAR_DAY_OFFSET_TICKS` ($t_0$) | set in phase 01 | ticks | 4 | Lines up day boundaries with 06:00 on the clock. Not given as a number in the master plan: record phase 01's value | | |
-| `CALENDAR_CENSUS_HOUR` | 6 | hours on the clock | 2.2, 4.2 | When the census fires: 06:00 everywhere | | |
-| `CLIMATE_WEEK_CATCHUP_FULL` (phase 07) | 52 | weeks | 4.2 | Skipped weeks worked out in full; past this, fast mode keeps only snow and soil water | | |
-| `CALENDAR_SPRING_DAY` | 79 | day of year | 4.1, 5.2 | Northern spring start, and the equinox | | |
-| `CALENDAR_SUMMER_DAY` | 170 | day of year | 4.1, 5.2 | Northern summer start; the sun furthest north | | |
-| `CALENDAR_AUTUMN_DAY` | 262 | day of year | 4.1, 5.2 | Northern autumn start; the sun crosses the equator | | |
-| `CALENDAR_WINTER_DAY` | 353 | day of year | 4.1, 5.2 | Northern winter start; the sun furthest south | | |
-| `CALENDAR_SEASON_PARTS` | 3 | ratio | 4.1 | Early, mid and late: each season in equal thirds (phase 10) | | |
+| `CALENDAR_TICKS_PER_DAY` | 24000 | ticks | 0, 4 | Length of a day. Existing: `GAME_DAY_SECONDS` 1200 s at 20 Hz, `run/include/game/index.h:34`. Use that, do not repeat it | Not a constant of its own: `GAME_DAY_SECONDS` 1200 (`run/include/game/index.h`) times `MC_GAME_TICK_HZ` 20 (`config/machine.yaml`). The climate keeps a copy it may see, `CLIMATE_REAL_SECONDS_A_DAY` 1200, run/include/climate/systems/index.h, pinned equal | |
+| `CALENDAR_DAYS_PER_YEAR` | 365 | days | 4 | Length of a year | `CALENDAR_DAYS_PER_YEAR`, run/include/calendar/index.h. Every other part's year (`CLIMATE_YEAR_DAYS`, `CLIMATE_SYSTEMS_YEAR_DAYS`, `CLIMATE_HEAT_YEAR_DAYS`, `CLIMATE_DAYS_A_YEAR`, `CLIMATE_SEASON_DAYS`) is now made from it | |
+| `CALENDAR_DAYS_PER_WEEK` | 7 | days | 4 | How often the census runs | `CALENDAR_DAYS_PER_WEEK`, run/include/calendar/index.h; `CLIMATE_WEEK_DAYS` and `CLIMATE_DAYS_A_WEEK` made from it | |
+| `CALENDAR_FIRST_DAY` ($D_0$) | 79 | days | 4 | A new world's first day: the spring equinox (Q2) | `CALENDAR_DAY_ZERO`, run/include/calendar/index.h | |
+| `CALENDAR_DAY_OFFSET_TICKS` ($t_0$) | set in phase 01 | ticks | 4 | Lines up day boundaries with 06:00 on the clock. Not given as a number in the master plan: record phase 01's value | `CALENDAR_CLOCK_DAY_START`, run/include/calendar/index.h: 2^30 in clock units, a quarter of `CALENDAR_CLOCK_DAY` (2^32 a day), so 06:00 = 6000 ticks. Made from `CALENDAR_CENSUS_HOUR` since phase 11 | |
+| `CALENDAR_CENSUS_HOUR` | 6 | hours on the clock | 2.2, 4.2 | When the census fires: 06:00 everywhere | `CALENDAR_CENSUS_HOUR`, run/include/calendar/index.h (new, phase 11); `CLIMATE_DAY_START_HOUR` (run/include/climate/systems/index.h) made from it | |
+| `CLIMATE_WEEK_CATCHUP_FULL` (phase 07) | 52 | weeks | 4.2 | Skipped weeks worked out in full; past this, fast mode keeps only snow and soil water | `CALENDAR_FULL_WEEKS_MAX`, run/include/calendar/index.h | |
+| `CALENDAR_SPRING_DAY` | 79 | day of year | 4.1, 5.2 | Northern spring start, and the equinox | `CALENDAR_SPRING_FROM`, run/include/calendar/index.h | |
+| `CALENDAR_SUMMER_DAY` | 170 | day of year | 4.1, 5.2 | Northern summer start; the sun furthest north | `CALENDAR_SUMMER_FROM`, run/include/calendar/index.h | |
+| `CALENDAR_AUTUMN_DAY` | 262 | day of year | 4.1, 5.2 | Northern autumn start; the sun crosses the equator | `CALENDAR_AUTUMN_FROM`, run/include/calendar/index.h | |
+| `CALENDAR_WINTER_DAY` | 353 | day of year | 4.1, 5.2 | Northern winter start; the sun furthest south | `CALENDAR_WINTER_FROM`, run/include/calendar/index.h | |
+| `CALENDAR_SEASON_PARTS` | 3 | ratio | 4.1 | Early, mid and late: each season in equal thirds (phase 10) | `CALENDAR_SEASON_PARTS`, run/include/calendar/index.h (was a literal 3 in `run/src/calendar/index.c` and `run/src/climate/label/index.c`) | |
 
 #### Latitude and the sun (section 5)
 
 | Name | Value | Unit | Section | What it tunes | Home | Tuned |
 |---|---|---|---|---|---|---|
-| `CLIMATE_TROPIC_DEG` | 23.5 | degrees | 5.1, 5.2 | Latitude of the tropics, and the sun's yearly swing | | |
-| `CLIMATE_TROPIC_Y` | 10000 | blocks | 5.1 | Distance from the equator to the tropic: sets the whole latitude scale | | |
-| `CLIMATE_POLE_Y` ($Y$) | 38298 | blocks | 5.1 | Equator to pole, $10\,000 \times 90 / 23.5$. Worked out from the two above, not typed | | |
-| `CLIMATE_LATITUDE_PERIOD_Y` | 153191 | blocks | 5.1 | $4Y$: the pattern repeats. Worked out, not typed | | |
-| `CLIMATE_POLAR_CIRCLE_DEG` | 66.5 | degrees | 4.1, 5.2 | $90 - 23.5$: polar night and midnight sun beyond it. Worked out | | |
-| `CLIMATE_DECLINATION_DEG` | 23.5 | degrees | 5.2 | Amplitude of $\delta(d)$. The same as the tropic: one constant, used for both | | |
-| `CLIMATE_EQUINOX_DAY` | 79 | day of year | 5.2 | Phase of $\delta(d)$. The same as `CALENDAR_SPRING_DAY` | | |
-| `CLIMATE_HOURS_PER_DAY` | 24 | hours | 5.2 | Day length scale, and the hour angle | | |
+| `CLIMATE_TROPIC_DEG` | 23.5 | degrees | 5.1, 5.2 | Latitude of the tropics, and the sun's yearly swing | `CLIMATE_TILT_DEG`, run/include/climate/index.h | |
+| `CLIMATE_TROPIC_Y` | 10000 | blocks | 5.1 | Distance from the equator to the tropic: sets the whole latitude scale | `CLIMATE_TROPIC_Y`, run/include/climate/index.h | |
+| `CLIMATE_POLE_Y` ($Y$) | 38298 | blocks | 5.1 | Equator to pole, $10\,000 \times 90 / 23.5$. Worked out from the two above, not typed | `CLIMATE_POLE_Y`, run/include/climate/index.h: `CLIMATE_TROPIC_Y * 90 / CLIMATE_TILT_DEG`, 38 297.87 | |
+| `CLIMATE_LATITUDE_PERIOD_Y` | 153191 | blocks | 5.1 | $4Y$: the pattern repeats. Worked out, not typed | `CLIMATE_LATITUDE_PERIOD`, run/include/climate/index.h: `4 CLIMATE_POLE_Y` | |
+| `CLIMATE_POLAR_CIRCLE_DEG` | 66.5 | degrees | 4.1, 5.2 | $90 - 23.5$: polar night and midnight sun beyond it. Worked out | `CLIMATE_POLAR_CIRCLE_DEG`, run/include/climate/index.h (new, phase 11: was `90 - CLIMATE_TILT_DEG` in `label/` and 66.5 typed in `layer/`) | |
+| `CLIMATE_DECLINATION_DEG` | 23.5 | degrees | 5.2 | Amplitude of $\delta(d)$. The same as the tropic: one constant, used for both | `CLIMATE_TILT_DEG`, run/include/climate/index.h: the same constant as the tropic | |
+| `CLIMATE_EQUINOX_DAY` | 79 | day of year | 5.2 | Phase of $\delta(d)$. The same as `CALENDAR_SPRING_DAY` | `CLIMATE_SUN_EQUINOX_DAY`, run/include/climate/sun/index.h: made from `CALENDAR_SPRING_FROM` since phase 11 (was 79 typed again) | |
+| `CLIMATE_HOURS_PER_DAY` | 24 | hours | 5.2 | Day length scale, and the hour angle | `CALENDAR_HOURS_PER_DAY`, run/include/calendar/index.h (new, phase 11: was 24 typed in `sun/`, `label/`, `weather/`, `systems/` and `layer/`); `CLIMATE_HOURS_A_DAY` (run/include/climate/weather/index.h) made from it | |
 
 #### Height, land and sea (6.1, 6.2)
 
 | Name | Value | Unit | Section | What it tunes | Home | Tuned |
 |---|---|---|---|---|---|---|
-| `CLIMATE_CELL_BLOCKS` (phase 03) | 64 | blocks | 1, 6.2, 6.9 | Cell size: one climate sample, and the land mask's spacing | | |
-| `CLIMATE_TILE_CELLS` (phase 03) | 16 | cells | 1 | Tile side: 1024 blocks | | |
-| `CLIMATE_LAKE_LARGE_CELLS` (phase 03) | 2 km², 489 cells | km², as cells | 6.2 | A lake this big counts as water for moisture | | |
-| `CLIMATE_MARGIN_CELLS` (phase 03) | 8192 blocks, 128 cells | blocks, as cells | 6.2 | Margin round a tile for the distance transform (8 km) | | |
-| `CLIMATE_SEA_DISTANCE_MAX` (phase 03) | 8192 | blocks | 6.2, 6.9 | Sea distance cap | | |
-| `CLIMATE_KAPPA_SCALE` (phase 03) | 1500 | blocks | 6.2 | Continentality $\kappa = 1 - e^{-d_s/1500}$: how fast the sea's influence fades inland | | |
+| `CLIMATE_CELL_BLOCKS` (phase 03) | 64 | blocks | 1, 6.2, 6.9 | Cell size: one climate sample, and the land mask's spacing | `CLIMATE_CELL_BLOCKS`, run/include/climate/cell/index.h | |
+| `CLIMATE_TILE_CELLS` (phase 03) | 16 | cells | 1 | Tile side: 1024 blocks | `CLIMATE_TILE_CELLS`, run/include/climate/cell/index.h | |
+| `CLIMATE_LAKE_LARGE_CELLS` (phase 03) | 2 km², 489 cells | km², as cells | 6.2 | A lake this big counts as water for moisture | `CLIMATE_LAKE_LARGE_CELLS`, run/include/climate/sea/index.h | |
+| `CLIMATE_MARGIN_CELLS` (phase 03) | 8192 blocks, 128 cells | blocks, as cells | 6.2 | Margin round a tile for the distance transform (8 km) | `CLIMATE_MARGIN_CELLS`, run/include/climate/cell/index.h | |
+| `CLIMATE_SEA_DISTANCE_MAX` (phase 03) | 8192 | blocks | 6.2, 6.9 | Sea distance cap | `CLIMATE_SEA_DISTANCE_MAX`, run/include/climate/cell/index.h (a `#define` since phase 11, so `layer/`'s scale table uses it instead of 8192 typed again) | |
+| `CLIMATE_KAPPA_SCALE` (phase 03) | 1500 | blocks | 6.2 | Continentality $\kappa = 1 - e^{-d_s/1500}$: how fast the sea's influence fades inland | `CLIMATE_KAPPA_SCALE`, run/include/climate/cell/index.h | |
 
 #### Ocean currents (6.3)
 
 | Name | Value | Unit | Section | What it tunes | Home | Tuned |
 |---|---|---|---|---|---|---|
-| `CLIMATE_CURRENT_REACH` (phase 04) | 600 | blocks | 6.3 | Sea cells this close to land have a current; its strength fades over this offshore | | |
-| `CLIMATE_CURRENT_SIDE` (phase 04) | 0.5 | ratio | 6.3 | $\lvert n_x \rvert$ above this makes a west or east coast | | |
-| `CLIMATE_CURRENT_BANDS_DEG` (phase 04) | 15, 45, 65 | degrees | 6.3 | Band edges of the current table | | |
-| `CLIMATE_CURRENT_WARM_C` (phase 04) | +4 | °C | 6.3 | $C$ for a warm current | | |
-| `CLIMATE_CURRENT_COLD_C` (phase 04) | -5 | °C | 6.3 | $C$ for a cold current | | |
-| `CLIMATE_CURRENT_LAND_SCALE` (phase 04) | 600 | blocks | 6.3 | $\Delta T_{\text{current}} = C\,e^{-d_s/600}$ on land | | |
-| `CLIMATE_SEA_PEAK_DAY` (phase 04) | 215 | day of year | 6.3 | Warmest sea in the north, 45 days after the land | | |
+| `CLIMATE_CURRENT_REACH` (phase 04) | 600 | blocks | 6.3 | Sea cells this close to land have a current; its strength fades over this offshore | `CLIMATE_CURRENT_REACH`, run/include/climate/air/index.h | |
+| `CLIMATE_CURRENT_SIDE` (phase 04) | 0.5 | ratio | 6.3 | $\lvert n_x \rvert$ above this makes a west or east coast | `CLIMATE_CURRENT_SIDE`, run/include/climate/air/index.h | |
+| `CLIMATE_CURRENT_BANDS_DEG` (phase 04) | 15, 45, 65 | degrees | 6.3 | Band edges of the current table | `CLIMATE_CURRENT_BANDS_DEG[3]`, run/include/climate/air/index.h | |
+| `CLIMATE_CURRENT_WARM_C` (phase 04) | +4 | °C | 6.3 | $C$ for a warm current | `CLIMATE_CURRENT_WARM_C`, run/include/climate/air/index.h | |
+| `CLIMATE_CURRENT_COLD_C` (phase 04) | -5 | °C | 6.3 | $C$ for a cold current | `CLIMATE_CURRENT_COLD_C`, run/include/climate/air/index.h | |
+| `CLIMATE_CURRENT_LAND_SCALE` (phase 04) | 600 | blocks | 6.3 | $\Delta T_{\text{current}} = C\,e^{-d_s/600}$ on land | `CLIMATE_CURRENT_LAND_SCALE`, run/include/climate/air/index.h | |
+| `CLIMATE_SEA_PEAK_DAY` (phase 04) | 215 | day of year | 6.3 | Warmest sea in the north, 45 days after the land | `CLIMATE_SEA_PEAK_DAY`, run/include/climate/air/index.h | |
 
 #### Pressure (6.4)
 
 | Name | Value | Unit | Section | What it tunes | Home | Tuned |
 |---|---|---|---|---|---|---|
-| `climate_pressure_knots` | 0°: 1008, 15°: 1012, 30°: 1020, 45°: 1013, 60°: 1000, 75°: 1010, 90°: 1020 | hPa by $\lvert\psi\rvert$ | 6.4 | Background pressure belts | | |
-| `CLIMATE_HEAT_LOW_HPA_PER_C` (phase 04) | -0.6 | hPa per °C | 6.4 | Heat lows and cold highs: the monsoon's strength | | |
+| `climate_pressure_knots` | 0°: 1008, 15°: 1012, 30°: 1020, 45°: 1013, 60°: 1000, 75°: 1010, 90°: 1020 | hPa by $\lvert\psi\rvert$ | 6.4 | Background pressure belts | `CLIMATE_PRESSURE_KNOTS` at `CLIMATE_KNOTS_LAT_DEG`, run/include/climate/normals/index.h (moved from `run/src/climate/normals/index.c` and named in capitals, phase 11) | |
+| `CLIMATE_HEAT_LOW_HPA_PER_C` (phase 04) | -0.6 | hPa per °C | 6.4 | Heat lows and cold highs: the monsoon's strength | `CLIMATE_HEAT_LOW_HPA_PER_C`, run/include/climate/air/index.h | |
 
 #### Wind (6.5)
 
 | Name | Value | Unit | Section | What it tunes | Home | Tuned |
 |---|---|---|---|---|---|---|
-| `CLIMATE_WIND_SHIFT` (phase 04) | 0.5 | ratio | 6.5 | Belts follow the sun half as far | | |
-| `CLIMATE_WIND_LAG_DAYS` (phase 04) | 30 | days | 6.5 | ... and a month late | | |
-| `CLIMATE_TRADE_DIR` (phase 04) | $(-1, -0.4)$ | unit-less $(u, v)$ | 6.5 | Trade winds' direction, $v$ times $\operatorname{sgn}\psi$ | | |
-| `CLIMATE_TRADE_SPEED` (phase 04) | 6 | blocks a second | 6.5 | Trade winds' speed | | |
-| `CLIMATE_WESTERLY_DIR` (phase 04) | $(+1, +0.3)$ | | 6.5 | Westerlies' direction | | |
-| `CLIMATE_WESTERLY_SPEED` (phase 04) | 8 | blocks a second | 6.5 | Westerlies' speed | | |
-| `CLIMATE_POLAR_DIR` (phase 04) | $(-1, -0.2)$ | | 6.5 | Polar easterlies' direction | | |
-| `CLIMATE_POLAR_SPEED` (phase 04) | 5 | blocks a second | 6.5 | Polar easterlies' speed | | |
-| `CLIMATE_BELT_EDGES_DEG` (phase 04) | 30, 60 | degrees | 6.5 | Where one belt gives way to the next | | |
-| `CLIMATE_BELT_BLEND_DEG` (phase 04) | 6 | degrees | 6.5 | Width of the smoothstep blend between belts | | |
-| `CLIMATE_DOLDRUMS_DEG` (phase 04) | 5 | degrees | 6.5 | Doldrums half-width | | |
-| `CLIMATE_DOLDRUMS_SPEED` (phase 04) | 0.4 | ratio | 6.5 | Speed in the doldrums | | |
-| `CLIMATE_HORSE_SPEED` (phase 04) | 0.5 | ratio | 6.5 | Speed near 30°. The plan gives no width: phase 04 chose `CLIMATE_HORSE_DEG` 2° of full calm and `CLIMATE_CALM_RAMP_DEG` 3°, which are pinned too | | |
-| `CLIMATE_PRESSURE_WIND_K` ($k_p$, phase 04) | 900 | blocks² per hPa per second | 6.5 | Wind from pressure differences | | |
-| `CLIMATE_PRESSURE_TURN_DEG` (phase 04) | 70 | degrees | 6.5 | Turn from straight downhill in pressure, clockwise north | | |
-| `CLIMATE_ALTITUDE_SCALE` (phase 04) | 800 | blocks | 6.5 | Speed $\times (1 + z/800)$ | | |
-| `CLIMATE_ALTITUDE_MAX` (phase 04) | 2.5 | ratio | 6.5 | ... at most | | |
-| `CLIMATE_STEER` (phase 04) | 0.7 | ratio | 6.5 | How much steep ground turns the wind along it | | |
+| `CLIMATE_WIND_SHIFT` (phase 04) | 0.5 | ratio | 6.5 | Belts follow the sun half as far | `CLIMATE_WIND_SHIFT`, run/include/climate/air/index.h | |
+| `CLIMATE_WIND_LAG_DAYS` (phase 04) | 30 | days | 6.5 | ... and a month late | `CLIMATE_WIND_LAG_DAYS`, run/include/climate/air/index.h | |
+| `CLIMATE_TRADE_DIR` (phase 04) | $(-1, -0.4)$ | unit-less $(u, v)$ | 6.5 | Trade winds' direction, $v$ times $\operatorname{sgn}\psi$ | `CLIMATE_TRADE_DIR[2]`, run/include/climate/air/index.h (normalised where used) | |
+| `CLIMATE_TRADE_SPEED` (phase 04) | 6 | blocks a second | 6.5 | Trade winds' speed | `CLIMATE_TRADE_SPEED`, run/include/climate/air/index.h | |
+| `CLIMATE_WESTERLY_DIR` (phase 04) | $(+1, +0.3)$ | | 6.5 | Westerlies' direction | `CLIMATE_WESTERLY_DIR[2]`, run/include/climate/air/index.h | |
+| `CLIMATE_WESTERLY_SPEED` (phase 04) | 8 | blocks a second | 6.5 | Westerlies' speed | `CLIMATE_WESTERLY_SPEED`, run/include/climate/air/index.h | |
+| `CLIMATE_POLAR_DIR` (phase 04) | $(-1, -0.2)$ | | 6.5 | Polar easterlies' direction | `CLIMATE_POLAR_DIR[2]`, run/include/climate/air/index.h | |
+| `CLIMATE_POLAR_SPEED` (phase 04) | 5 | blocks a second | 6.5 | Polar easterlies' speed | `CLIMATE_POLAR_SPEED`, run/include/climate/air/index.h | |
+| `CLIMATE_BELT_EDGES_DEG` (phase 04) | 30, 60 | degrees | 6.5 | Where one belt gives way to the next | `CLIMATE_BELT_EDGES_DEG[2]`, run/include/climate/air/index.h | |
+| `CLIMATE_BELT_BLEND_DEG` (phase 04) | 6 | degrees | 6.5 | Width of the smoothstep blend between belts | `CLIMATE_BELT_BLEND_DEG`, run/include/climate/air/index.h | |
+| `CLIMATE_DOLDRUMS_DEG` (phase 04) | 5 | degrees | 6.5 | Doldrums half-width | `CLIMATE_DOLDRUMS_DEG`, run/include/climate/air/index.h | |
+| `CLIMATE_DOLDRUMS_SPEED` (phase 04) | 0.4 | ratio | 6.5 | Speed in the doldrums | `CLIMATE_DOLDRUMS_SPEED`, run/include/climate/air/index.h | |
+| `CLIMATE_HORSE_SPEED` (phase 04) | 0.5 | ratio | 6.5 | Speed near 30°. The plan gives no width: phase 04 chose `CLIMATE_HORSE_DEG` 2° of full calm and `CLIMATE_CALM_RAMP_DEG` 3°, which are pinned too | `CLIMATE_HORSE_SPEED`, `CLIMATE_HORSE_DEG` 2, `CLIMATE_CALM_RAMP_DEG` 3, run/include/climate/air/index.h | |
+| `CLIMATE_PRESSURE_WIND_K` ($k_p$, phase 04) | 900 | blocks² per hPa per second | 6.5 | Wind from pressure differences | `CLIMATE_PRESSURE_WIND_K`, run/include/climate/air/index.h | |
+| `CLIMATE_PRESSURE_TURN_DEG` (phase 04) | 70 | degrees | 6.5 | Turn from straight downhill in pressure, clockwise north | `CLIMATE_PRESSURE_TURN_DEG`, run/include/climate/air/index.h | |
+| `CLIMATE_ALTITUDE_SCALE` (phase 04) | 800 | blocks | 6.5 | Speed $\times (1 + z/800)$ | `CLIMATE_ALTITUDE_SCALE`, run/include/climate/air/index.h | |
+| `CLIMATE_ALTITUDE_MAX` (phase 04) | 2.5 | ratio | 6.5 | ... at most | `CLIMATE_ALTITUDE_MAX`, run/include/climate/air/index.h | |
+| `CLIMATE_STEER` (phase 04) | 0.7 | ratio | 6.5 | How much steep ground turns the wind along it | `CLIMATE_STEER`, run/include/climate/air/index.h | |
 
 #### Temperature (6.6)
 
 | Name | Value | Unit | Section | What it tunes | Home | Tuned |
 |---|---|---|---|---|---|---|
-| `climate_temperature_knots` ($\bar T_{\text{lat}}$) | 0°: 27, 15°: 26, 30°: 20, 45°: 11, 60°: 0, 75°: -14, 90°: -24 | °C by latitude | 6.6 | Yearly mean at sea level | | |
-| `CLIMATE_LAPSE_C_PER_BLOCK` ($\Gamma$) | 0.012 | °C per block | 6.6 | Cooling with height, as decided | | |
-| `CLIMATE_BASIN_C_PER_BLOCK` | 0.025 | °C per block | 2.1, 6.6 | Below-sea-level heat $B$, on land not under sea | | |
-| `climate_swing_sea_knots` ($A_{\text{sea}}$) | 0°: 1, 30°: 3, 60°: 6, 90°: 10 | °C | 6.6 | Half the yearly swing over sea | | |
-| `climate_swing_land_knots` ($A_{\text{land}}$) | 0°: 2, 30°: 9, 60°: 18, 90°: 22 | °C | 6.6 | Half the yearly swing deep inland | | |
-| `CLIMATE_SUMMER_PEAK_DAY` | 170 | day of year | 6.6 | Phase of the temperature year before the lag | | |
-| `CLIMATE_LAG_BASE_DAYS` | 25 | days | 6.6 | $\ell = 25 + 20(1 - \kappa)$ | | |
-| `CLIMATE_LAG_SEA_DAYS` | 20 | days | 6.6 | ... the sea's extra lag | | |
-| `CLIMATE_DAILY_RANGE_BASE_C` | 4 | °C | 6.6 | Daily range $(4 + 8\kappa)(1 - 0.6r)$ | | |
-| `CLIMATE_DAILY_RANGE_INLAND_C` | 8 | °C | 6.6 | ... inland part | | |
-| `CLIMATE_DAILY_RANGE_RAIN_CUT` | 0.6 | ratio | 6.6 | ... cut by the share of rainy days | | |
+| `climate_temperature_knots` ($\bar T_{\text{lat}}$) | 0°: 27, 15°: 26, 30°: 20, 45°: 11, 60°: 0, 75°: -14, 90°: -24 | °C by latitude | 6.6 | Yearly mean at sea level | `CLIMATE_TEMPERATURE_KNOTS` at `CLIMATE_KNOTS_LAT_DEG`, run/include/climate/normals/index.h (moved from the source, phase 11) | |
+| `CLIMATE_LAPSE_C_PER_BLOCK` ($\Gamma$) | 0.012 | °C per block | 6.6 | Cooling with height, as decided | `CLIMATE_LAPSE_C_PER_BLOCK`, run/include/climate/heat/index.h | |
+| `CLIMATE_BASIN_C_PER_BLOCK` | 0.025 | °C per block | 2.1, 6.6 | Below-sea-level heat $B$, on land not under sea | `CLIMATE_BASIN_C_PER_BLOCK`, run/include/climate/heat/index.h | |
+| `climate_swing_sea_knots` ($A_{\text{sea}}$) | 0°: 1, 30°: 3, 60°: 6, 90°: 10 | °C | 6.6 | Half the yearly swing over sea | `CLIMATE_SWING_SEA_KNOTS` at `CLIMATE_SWING_KNOTS_LAT_DEG`, run/include/climate/normals/index.h (moved, phase 11) | |
+| `climate_swing_land_knots` ($A_{\text{land}}$) | 0°: 2, 30°: 9, 60°: 18, 90°: 22 | °C | 6.6 | Half the yearly swing deep inland | `CLIMATE_SWING_LAND_KNOTS` at `CLIMATE_SWING_KNOTS_LAT_DEG`, run/include/climate/normals/index.h (moved, phase 11) | |
+| `CLIMATE_SUMMER_PEAK_DAY` | 170 | day of year | 6.6 | Phase of the temperature year before the lag | `CLIMATE_SOLSTICE_DAY` (run/include/climate/heat/index.h) and `CLIMATE_SUMMER_DAY` (run/include/climate/air/index.h): both typed 170 before phase 11, now both made from `CALENDAR_SUMMER_FROM` | |
+| `CLIMATE_LAG_BASE_DAYS` | 25 | days | 6.6 | $\ell = 25 + 20(1 - \kappa)$ | `CLIMATE_LAG_BASE_DAYS`, run/include/climate/air/index.h | |
+| `CLIMATE_LAG_SEA_DAYS` | 20 | days | 6.6 | ... the sea's extra lag | `CLIMATE_LAG_SEA_DAYS`, run/include/climate/air/index.h | |
+| `CLIMATE_DAILY_RANGE_BASE_C` | 4 | °C | 6.6 | Daily range $(4 + 8\kappa)(1 - 0.6r)$ | `CLIMATE_RANGE_COAST_C`, run/include/climate/heat/index.h | |
+| `CLIMATE_DAILY_RANGE_INLAND_C` | 8 | °C | 6.6 | ... inland part | `CLIMATE_RANGE_INLAND_EXTRA_C`, run/include/climate/heat/index.h | |
+| `CLIMATE_DAILY_RANGE_RAIN_CUT` | 0.6 | ratio | 6.6 | ... cut by the share of rainy days | `CLIMATE_RANGE_RAIN_CUT`, run/include/climate/heat/index.h; the share of rainy days uses `CLIMATE_WET_DAY_SCALE_MM` 6, the same 6 as the outlook's (`CLIMATE_OUTLOOK_RAIN_MM` is now that constant) | |
 
 #### Rain (6.7)
 
 | Name | Value | Unit | Section | What it tunes | Home | Tuned |
 |---|---|---|---|---|---|---|
-| `climate_rain_knots` ($P_{\text{belt}}$) | 0°: 2400, 10°: 1800, 20°: 700, 30°: 300, 40°: 800, 50°: 1000, 60°: 800, 75°: 350, 90°: 150 | mm a year by $\lvert\psi\rvert$ | 6.7 | Rain belts | | |
-| `CLIMATE_UPWIND_STEPS` | 16 | steps | 6.7 | Upwind walk steps | | |
-| `CLIMATE_UPWIND_STEP_BLOCKS` | 128 | blocks | 6.7 | Upwind step length (16 × 128 = 2 km) | | |
-| `CLIMATE_UPWIND_MAX_BLOCKS` | 8192 | blocks | 6.7 | The walk goes on over the coarse land mask to 8 km | | |
-| `CLIMATE_MOISTURE_FLOOR` | 0.15 | ratio | 6.7 | $M$ never below this | | |
-| `CLIMATE_MOISTURE_SCALE_BLOCKS` | 3000 | blocks | 6.7 | $e^{-d_{\text{up}}/3000}$: how fast air dries over land | | |
-| `CLIMATE_MOISTURE_WARM` | 1.25 | ratio | 6.7 | Air that left over a warm current | | |
-| `CLIMATE_MOISTURE_COLD` | 0.4 | ratio | 6.7 | Within 800 blocks of a cold current | | |
-| `CLIMATE_MOISTURE_COLD_BLOCKS` | 800 | blocks | 6.7 | ... that distance | | |
-| `CLIMATE_OROGRAPHIC_SLOPE` | 8 | ratio | 6.7 | $1 + 8 s_w$: windward rain | | |
-| `CLIMATE_OROGRAPHIC_SLOPE_BLOCKS` | 256 | blocks | 6.7 | $s_w$ measured over this | | |
-| `CLIMATE_RAIN_SHADOW_BLOCKS` | 400 | blocks | 6.7 | $\max(0, h_{\text{up}} - z)/400$: lee drying | | |
-| `CLIMATE_OROGRAPHIC_MIN`, `_MAX` | 0.15, 2.5 | ratio | 6.7 | Clamp of $O$ | | |
-| `CLIMATE_SNOW_ALL_RAIN_C` (phase 07) | 1 | °C | 6.7 | All rain above this | | |
-| `CLIMATE_SNOW_ALL_SNOW_C` (phase 07) | -2 | °C | 6.7 | All snow below this; share $(1 - T)/3$ between | | |
+| `climate_rain_knots` ($P_{\text{belt}}$) | 0°: 2400, 10°: 1800, 20°: 700, 30°: 300, 40°: 800, 50°: 1000, 60°: 800, 75°: 350, 90°: 150 | mm a year by $\lvert\psi\rvert$ | 6.7 | Rain belts | `CLIMATE_RAIN_KNOTS` at `CLIMATE_RAIN_KNOTS_LAT_DEG`, run/include/climate/normals/index.h (moved, phase 11) | |
+| `CLIMATE_UPWIND_STEPS` | 16 | steps | 6.7 | Upwind walk steps | `CLIMATE_WALK_STEPS_WINDOW`, run/include/climate/rain/index.h | |
+| `CLIMATE_UPWIND_STEP_BLOCKS` | 128 | blocks | 6.7 | Upwind step length (16 × 128 = 2 km) | `CLIMATE_WALK_STEP_BLOCKS`, run/include/climate/rain/index.h | |
+| `CLIMATE_UPWIND_MAX_BLOCKS` | 8192 | blocks | 6.7 | The walk goes on over the coarse land mask to 8 km | `CLIMATE_WALK_NONE_BLOCKS` 8192 and `CLIMATE_WALK_STEPS_MAX` 64 (8192 / 128), run/include/climate/rain/index.h | |
+| `CLIMATE_MOISTURE_FLOOR` | 0.15 | ratio | 6.7 | $M$ never below this | `CLIMATE_MOISTURE_MIN`, run/include/climate/rain/index.h | |
+| `CLIMATE_MOISTURE_SCALE_BLOCKS` | 3000 | blocks | 6.7 | $e^{-d_{\text{up}}/3000}$: how fast air dries over land | `CLIMATE_MOISTURE_SCALE_BLOCKS`, run/include/climate/rain/index.h | |
+| `CLIMATE_MOISTURE_WARM` | 1.25 | ratio | 6.7 | Air that left over a warm current | `CLIMATE_MOISTURE_WARM`, run/include/climate/rain/index.h | |
+| `CLIMATE_MOISTURE_COLD` | 0.4 | ratio | 6.7 | Within 800 blocks of a cold current | `CLIMATE_MOISTURE_COLD`, run/include/climate/rain/index.h | |
+| `CLIMATE_MOISTURE_COLD_BLOCKS` | 800 | blocks | 6.7 | ... that distance | `CLIMATE_MOISTURE_COLD_BLOCKS`, run/include/climate/rain/index.h | |
+| `CLIMATE_OROGRAPHIC_SLOPE` | 8 | ratio | 6.7 | $1 + 8 s_w$: windward rain | `CLIMATE_OROGRAPHIC_GAIN`, run/include/climate/rain/index.h | |
+| `CLIMATE_OROGRAPHIC_SLOPE_BLOCKS` | 256 | blocks | 6.7 | $s_w$ measured over this | `CLIMATE_OROGRAPHIC_RISE_BLOCKS`, run/include/climate/rain/index.h | |
+| `CLIMATE_RAIN_SHADOW_BLOCKS` | 400 | blocks | 6.7 | $\max(0, h_{\text{up}} - z)/400$: lee drying | `CLIMATE_SHADOW_BLOCKS`, run/include/climate/rain/index.h | |
+| `CLIMATE_OROGRAPHIC_MIN`, `_MAX` | 0.15, 2.5 | ratio | 6.7 | Clamp of $O$ | `CLIMATE_OROGRAPHIC_MIN`, `CLIMATE_OROGRAPHIC_MAX`, run/include/climate/rain/index.h | |
+| `CLIMATE_SNOW_ALL_RAIN_C` (phase 07) | 1 | °C | 6.7 | All rain above this | `CLIMATE_SNOW_ALL_RAIN_C`, run/include/climate/heat/index.h | |
+| `CLIMATE_SNOW_ALL_SNOW_C` (phase 07) | -2 | °C | 6.7 | All snow below this; share $(1 - T)/3$ between | `CLIMATE_SNOW_ALL_SNOW_C`, run/include/climate/heat/index.h | |
 
 #### Storm seasons, cells and classes (6.8 to 6.10)
 
 | Name | Value | Unit | Section | What it tunes | Home | Tuned |
 |---|---|---|---|---|---|---|
-| `CLIMATE_HURRICANE_COAST_BLOCKS` | 3000 | blocks | 6.8 | Coasts this close to sea share its hurricane season | | |
-| `CLIMATE_HURRICANE_SEA_C` | 26.5 | °C | 6.8 | Sea temperature hurricanes need | | |
-| `CLIMATE_HURRICANE_RAMP_C` | 2 | °C | 6.8 | $s_{\text{hur}}$ rises from 0 to 1 over this | | |
-| `CLIMATE_HURRICANE_LAT_MIN_DEG`, `_MAX_DEG` | 5, 25 | degrees | 6.8 | Where hurricanes can form | | |
-| `CLIMATE_HURRICANE_SEASON_MIN` | 0.25 | ratio | 4.1, 6.8 | "Hurricane season" while $s_{\text{hur}}$ is above this | | |
-| `CLIMATE_MONSOON_RAIN_RATIO` | 3 | ratio | 6.8 | Wet half's rain over dry half's, for a monsoon | | |
-| `CLIMATE_FIT_DAYS` (phase 04) | 12 | days | 6.9 | Days rain and wind are worked out on, to fit the harmonics | | |
-| `CLIMATE_HARMONICS` | 2 | waves | 6.9 | Waves per year in the fit | | |
-| `CLIMATE_WARP_BLOCKS` (phase 03) | 32 | blocks | 6.9 | Warp before the bilinear blend: how much borders wobble | | |
-| `CLIMATE_HURRICANE_DAY_SCALE` | 4 | days a step | 6.9 | `hurricane_days` stores day / 4 in a byte | | |
-| `CLIMATE_DRY_THRESHOLD_PER_C` | 20 | mm per °C | 6.10 | $P_{\text{th}} = 20\,\bar T + 140$ | | |
-| `CLIMATE_DRY_THRESHOLD_BASE` | 140 | mm | 6.10 | ... base | | |
-| `CLIMATE_CLASS_TUNDRA_C` | 10 | °C | 6.10 | Tundra below this warmest month; Ice below 0 | | |
-| `CLIMATE_CLASS_TROPICAL_C` | 18 | °C | 6.10 | Coldest month for Rainforest, Monsoon, Savanna | | |
-| `CLIMATE_CLASS_RAINFOREST_MM` | 60 | mm | 6.10 | Driest month for Rainforest | | |
-| `CLIMATE_CLASS_TEMPERATE_C` | -3 | °C | 6.10 | Coldest month: above is Mediterranean or Temperate | | |
-| `CLIMATE_CLASS_CONTINENTAL_C` | 22 | °C | 6.10 | Warmest month: Continental at or above, Boreal below | | |
+| `CLIMATE_HURRICANE_COAST_BLOCKS` | 3000 | blocks | 6.8 | Coasts this close to sea share its hurricane season | `CLIMATE_HURRICANE_COAST_BLOCKS`, run/include/climate/season/index.h | |
+| `CLIMATE_HURRICANE_SEA_C` | 26.5 | °C | 6.8 | Sea temperature hurricanes need | `CLIMATE_HURRICANE_SEA_C`, run/include/climate/season/index.h | |
+| `CLIMATE_HURRICANE_RAMP_C` | 2 | °C | 6.8 | $s_{\text{hur}}$ rises from 0 to 1 over this | `CLIMATE_HURRICANE_RAMP_C`, run/include/climate/season/index.h | |
+| `CLIMATE_HURRICANE_LAT_MIN_DEG`, `_MAX_DEG` | 5, 25 | degrees | 6.8 | Where hurricanes can form | `CLIMATE_HURRICANE_LAT_MIN_DEG`, `CLIMATE_HURRICANE_LAT_MAX_DEG`, run/include/climate/season/index.h | |
+| `CLIMATE_HURRICANE_SEASON_MIN` | 0.25 | ratio | 4.1, 6.8 | "Hurricane season" while $s_{\text{hur}}$ is above this | `CLIMATE_HURRICANE_SEASON_S`, run/include/climate/season/index.h | |
+| `CLIMATE_MONSOON_RAIN_RATIO` | 3 | ratio | 6.8 | Wet half's rain over dry half's, for a monsoon | `CLIMATE_MONSOON_RAIN_RATIO`, run/include/climate/season/index.h | |
+| `CLIMATE_FIT_DAYS` (phase 04) | 12 | days | 6.9 | Days rain and wind are worked out on, to fit the harmonics | `CLIMATE_FIT_DAYS`, run/include/climate/harmonic/index.h | |
+| `CLIMATE_HARMONICS` | 2 | waves | 6.9 | Waves per year in the fit | `CLIMATE_HARMONIC2_COEFFICIENTS` 5 (a mean and 2 waves) and `CLIMATE_HARMONIC1_COEFFICIENTS` 3 (wind and pressure: one wave), run/include/climate/harmonic/index.h (new names, phase 11: were 3, 5 and 6 typed) | |
+| `CLIMATE_WARP_BLOCKS` (phase 03) | 32 | blocks | 6.9 | Warp before the bilinear blend: how much borders wobble | `CLIMATE_WARP_BLOCKS`, run/include/climate/cell/index.h; with `CLIMATE_WARP_FREQUENCY`, `CLIMATE_WARP_LIMIT` 0.35 and `CLIMATE_WARP_CUBIC` 1.5 (the last two moved from `run/src/climate/index.c`) | |
+| `CLIMATE_HURRICANE_DAY_SCALE` | 4 | days a step | 6.9 | `hurricane_days` stores day / 4 in a byte | `CLIMATE_HURRICANE_DAY_SCALE`, run/include/climate/season/index.h (new, phase 11: was 4 typed three times in `season/`) | |
+| `CLIMATE_DRY_THRESHOLD_PER_C` | 20 | mm per °C | 6.10 | $P_{\text{th}} = 20\,\bar T + 140$ | `CLIMATE_DRY_THRESHOLD_PER_C`, run/include/climate/season/index.h | |
+| `CLIMATE_DRY_THRESHOLD_BASE` | 140 | mm | 6.10 | ... base | `CLIMATE_DRY_THRESHOLD_BASE_MM`, run/include/climate/season/index.h | |
+| `CLIMATE_CLASS_TUNDRA_C` | 10 | °C | 6.10 | Tundra below this warmest month; Ice below 0 | `CLIMATE_TUNDRA_MAX_C`, run/include/climate/season/index.h | |
+| `CLIMATE_CLASS_TROPICAL_C` | 18 | °C | 6.10 | Coldest month for Rainforest, Monsoon, Savanna | `CLIMATE_TROPICAL_MIN_C`, run/include/climate/season/index.h | |
+| `CLIMATE_CLASS_RAINFOREST_MM` | 60 | mm | 6.10 | Driest month for Rainforest | `CLIMATE_WET_MONTH_MM`, run/include/climate/season/index.h; with phase 05's `CLIMATE_DRY_SUMMER_MM` 40 and `CLIMATE_DRY_SUMMER_SHARE` 1/3 | |
+| `CLIMATE_CLASS_TEMPERATE_C` | -3 | °C | 6.10 | Coldest month: above is Mediterranean or Temperate | `CLIMATE_TEMPERATE_MIN_C`, run/include/climate/season/index.h | |
+| `CLIMATE_CLASS_CONTINENTAL_C` | 22 | °C | 6.10 | Warmest month: Continental at or above, Boreal below | `CLIMATE_CONTINENTAL_MAX_C`, run/include/climate/season/index.h | |
 
 #### Weather systems (7.2, 7.3)
 
 | Name | Value | Unit | Section | What it tunes | Home | Tuned |
 |---|---|---|---|---|---|---|
-| `CLIMATE_HURRICANE_SQUARE_BLOCKS` | 16384 | blocks | 7.2 | Spawn square (16 km) | | |
-| `CLIMATE_HURRICANE_RATE` | 0.02 | per square per day, times $s_{\text{hur}}$ | 7.2 | **How many hurricanes.** Q5: tune by playing | | |
-| `CLIMATE_HURRICANE_RADIUS_BLOCKS` | 1500 to 4000 | blocks | 7.2 | Size | | |
-| `CLIMATE_HURRICANE_EYE_BLOCKS` | 80 to 150 | blocks | 7.2 | Eye radius | | |
-| `CLIMATE_HURRICANE_HPA` | -30 to -90 | hPa | 7.2 | Pressure dip, so strength | | |
-| `CLIMATE_HURRICANE_LIFE_DAYS` | 4 to 10 | days | 7.2 | Life | | |
-| `CLIMATE_HURRICANE_LAND_DECAY` | 0.5 | ratio per day | 7.2 | Weakening over land | | |
-| `CLIMATE_HURRICANE_DECAY_SEA_C` | 26 | °C | 7.2 | Weakens over sea below this | | |
-| `CLIMATE_LIFE_GROW`, `_FADE` | 1/3, 1/3 | share of life | 7.2 | Life curve | | |
-| `CLIMATE_LOW_SQUARE_BLOCKS` | 16384 | blocks | 7.2 | Spawn square | | |
-| `CLIMATE_LOW_LAT_MIN_DEG`, `_MAX_DEG` | 35, 65 | degrees of $\lvert\psi\rvert$ | 7.2 | Where lows form | | |
-| `CLIMATE_LOW_RATE_WINTER`, `_SUMMER` | 0.08, 0.04 | per square per day | 7.2 | How many lows | | |
-| `CLIMATE_LOW_RADIUS_BLOCKS` | 3000 to 7000 | blocks | 7.2 | Size | | |
-| `CLIMATE_LOW_HPA` | -10 to -30 | hPa | 7.2 | Depth | | |
-| `CLIMATE_LOW_LIFE_DAYS` | 3 to 6 | days | 7.2 | Life | | |
-| `CLIMATE_LOW_SPEED_BLOCKS_PER_DAY` | 6000 | blocks a day | 7.2 | Eastward speed | | |
-| `CLIMATE_FRONT_LENGTH_BLOCKS` | 4000 to 8000 | blocks | 7.2 | Cold front length | | |
-| `CLIMATE_FRONT_CELL_FACTOR` | 5 | ratio | 7.2 | Cells on a front, against the usual rate (the formula's $1 + 4 f_{\text{front}}$) | | |
-| `CLIMATE_HIGH_SQUARE_BLOCKS` | 24576 | blocks | 7.2 | Spawn square (24 km) | | |
-| `CLIMATE_HIGH_LAT_MIN_DEG`, `_MAX_DEG` | 20, 45 | degrees of $\lvert\psi\rvert$ | 7.2 | Where highs form (and continental interiors in winter) | | |
-| `CLIMATE_HIGH_RATE` | 0.03 | per square per day | 7.2 | How many highs | | |
-| `CLIMATE_HIGH_RADIUS_BLOCKS` | 6000 to 12000 | blocks | 7.2 | Size | | |
-| `CLIMATE_HIGH_HPA` | +8 to +20 | hPa | 7.2 | Strength | | |
-| `CLIMATE_HIGH_LIFE_DAYS` | 6 to 14 | days | 7.2 | Life | | |
-| `CLIMATE_HIGH_SPEED_BLOCKS_PER_DAY` | 2000 | blocks a day | 7.2 | Eastward speed | | |
-| `CLIMATE_HIGH_RAIN_FACTOR` | 0.2 | ratio | 7.2, 7.3, 7.2.1 | Rain under a high, and cells under one ($0.2^{f_{\text{high}}}$) | | |
-| `CLIMATE_CELL_SQUARE_BLOCKS` | 1024 | blocks | 7.2 | Thunderstorm cell spawn square (1 km) | | |
-| `CLIMATE_CELL_RADIUS_BLOCKS` | 150 to 400 | blocks | 7.2 | Cell size | | |
-| `CLIMATE_CELL_HPA` | -1 to -3 | hPa | 7.2 | Cell pressure dip | | |
-| `CLIMATE_CELL_LIFE_HOURS` | 1 to 4 | clock hours | 7.2 | Cell life | | |
-| `CLIMATE_CELL_RATE` | 3 | per km² per day | 7.2.1 | **How many thunderstorms** | | |
-| `CLIMATE_CELL_TEMP_C` | 18 | °C | 7.2.1 | Cells need a day warmer than this | | |
-| `CLIMATE_CELL_TEMP_RAMP_C` | 10 | °C | 7.2.1 | ... and reach full rate 10 above it | | |
-| `CLIMATE_CELL_MONSOON_FACTOR` | 2 | ratio | 7.2.1 | $1 + 2 f_{\text{monsoon}}$ | | |
-| `CLIMATE_CELL_FRONT_FACTOR` | 4 | ratio | 7.2.1 | $1 + 4 f_{\text{front}}$ | | |
-| `CLIMATE_CELL_START_HOURS` | 13 to 19 | clock hours | 7.2.1 | Cells start in the afternoon | | |
-| `CLIMATE_TRACK_STEP_DAYS` | 0.25 | days | 7.3 | Track step | | |
-| `CLIMATE_HURRICANE_SPEED_BLOCKS_PER_DAY` | 3500 | blocks a day | 7.3 | With the trades | | |
-| `CLIMATE_HURRICANE_TURN_DEG` | 20 to 28 | degrees of $\lvert\psi\rvert$ | 7.3 | Where it turns poleward | | |
-| `CLIMATE_HURRICANE_TURN_DAYS` | 2 | days | 7.3 | How long the turn takes | | |
-| `CLIMATE_HURRICANE_LATE_SPEED_BLOCKS_PER_DAY` | 6000 | blocks a day | 7.3 | With the westerlies, after turning | | |
-| `CLIMATE_SYSTEM_REACH_BLOCKS` | 35000 | blocks | 7.3 | Longest track: how far back to look for systems | | |
-| `CLIMATE_SYSTEM_LIFE_MAX_DAYS` | 14 | days | 7.3 | Longest life: how long back to look | | |
-| `CLIMATE_WIND_PROFILE_EXPONENT` | 0.6 | ratio | 7.3 | $v \propto (r_m / r)^{0.6}$ outside $r_m$ | | |
-| `CLIMATE_HURRICANE_VMAX` | 33 at -30 hPa, 70 at -90 hPa | blocks a second | 7.3 | Hurricane wind from its dip | | |
-| `CLIMATE_SYSTEM_RM_SHARE` | 0.5 | share of $R_i$ | 7.3 | Lows' and highs' strongest wind radius | | |
-| `CLIMATE_SYSTEM_VMAX_PER_HPA` | 0.4 | blocks a second per hPa | 7.3 | Lows' and highs' strongest wind | | |
-| `CLIMATE_HURRICANE_RAIN_MM_H` | 40 | mm an hour | 7.3 | Eyewall rain | | |
-| `CLIMATE_LOW_RAIN_MM_H` | 1 to 4 | mm an hour | 7.3 | Rain shield | | |
-| `CLIMATE_CELL_RAIN_MM_H` | 20 to 60 | mm an hour | 7.3 | Cell rain, for under an hour at a point | | |
+| `CLIMATE_HURRICANE_SQUARE_BLOCKS` | 16384 | blocks | 7.2 | Spawn square (16 km) | `CLIMATE_SQUARE_HURRICANE`, run/include/climate/systems/index.h | |
+| `CLIMATE_HURRICANE_RATE` | 0.02 | per square per day, times $s_{\text{hur}}$ | 7.2 | **How many hurricanes.** Q5: tune by playing | `CLIMATE_HURRICANE_RATE`, run/include/climate/systems/index.h | 0.034: by phase 06's agent, not Ahmed (Issues found 1) |
+| `CLIMATE_HURRICANE_RADIUS_BLOCKS` | 1500 to 4000 | blocks | 7.2 | Size | `CLIMATE_HURRICANE_RADIUS[2]`, run/include/climate/systems/index.h | |
+| `CLIMATE_HURRICANE_EYE_BLOCKS` | 80 to 150 | blocks | 7.2 | Eye radius | `CLIMATE_HURRICANE_EYE[2]`, run/include/climate/systems/index.h | |
+| `CLIMATE_HURRICANE_HPA` | -30 to -90 | hPa | 7.2 | Pressure dip, so strength | `CLIMATE_HURRICANE_HPA[2]`, run/include/climate/systems/index.h | |
+| `CLIMATE_HURRICANE_LIFE_DAYS` | 4 to 10 | days | 7.2 | Life | `CLIMATE_HURRICANE_LIFE_DAYS[2]`, run/include/climate/systems/index.h | |
+| `CLIMATE_HURRICANE_LAND_DECAY` | 0.5 | ratio per day | 7.2 | Weakening over land | `CLIMATE_HURRICANE_HALF_LIFE_DAYS` 1, run/include/climate/systems/index.h: a half-life of one day, which is 0.5 a day | |
+| `CLIMATE_HURRICANE_DECAY_SEA_C` | 26 | °C | 7.2 | Weakens over sea below this | `CLIMATE_HURRICANE_COOL_SEA_C`, run/include/climate/systems/index.h | |
+| `CLIMATE_LIFE_GROW`, `_FADE` | 1/3, 1/3 | share of life | 7.2 | Life curve | `CLIMATE_LIFE_GROW_SHARE`, `CLIMATE_LIFE_FADE_SHARE`, `CLIMATE_LIFE_THIRDS` 3, run/include/climate/systems/index.h (new, phase 11: were `SYSTEMS_THIRD` and 3 typed in `systems/`) | |
+| `CLIMATE_LOW_SQUARE_BLOCKS` | 16384 | blocks | 7.2 | Spawn square | `CLIMATE_SQUARE_LOW`, run/include/climate/systems/index.h | |
+| `CLIMATE_LOW_LAT_MIN_DEG`, `_MAX_DEG` | 35, 65 | degrees of $\lvert\psi\rvert$ | 7.2 | Where lows form | `CLIMATE_LOW_PSI_MIN_DEG`, `CLIMATE_LOW_PSI_MAX_DEG`, run/include/climate/systems/index.h | |
+| `CLIMATE_LOW_RATE_WINTER`, `_SUMMER` | 0.08, 0.04 | per square per day | 7.2 | How many lows | `CLIMATE_LOW_RATE_WINTER`, `CLIMATE_LOW_RATE_SUMMER`, run/include/climate/systems/index.h | 0.18, 0.09: by phase 06's agent (Issues found 1) |
+| `CLIMATE_LOW_RADIUS_BLOCKS` | 3000 to 7000 | blocks | 7.2 | Size | `CLIMATE_LOW_RADIUS[2]`, run/include/climate/systems/index.h | |
+| `CLIMATE_LOW_HPA` | -10 to -30 | hPa | 7.2 | Depth | `CLIMATE_LOW_HPA[2]`, run/include/climate/systems/index.h | |
+| `CLIMATE_LOW_LIFE_DAYS` | 3 to 6 | days | 7.2 | Life | `CLIMATE_LOW_LIFE_DAYS[2]`, run/include/climate/systems/index.h | |
+| `CLIMATE_LOW_SPEED_BLOCKS_PER_DAY` | 6000 | blocks a day | 7.2 | Eastward speed | `CLIMATE_LOW_SPEED[2]` 5000 to 7000 ("about 6 km a day"), run/include/climate/systems/index.h; drift `CLIMATE_LOW_POLEWARD` | |
+| `CLIMATE_FRONT_LENGTH_BLOCKS` | 4000 to 8000 | blocks | 7.2 | Cold front length | `CLIMATE_LOW_FRONT_BLOCKS[2]`, run/include/climate/systems/index.h | |
+| `CLIMATE_FRONT_CELL_FACTOR` | 5 | ratio | 7.2 | Cells on a front, against the usual rate (the formula's $1 + 4 f_{\text{front}}$) | `CLIMATE_THUNDER_FRONT` 4, run/include/climate/systems/index.h: the 4 of 1 + 4 f_front | |
+| `CLIMATE_HIGH_SQUARE_BLOCKS` | 24576 | blocks | 7.2 | Spawn square (24 km) | `CLIMATE_SQUARE_HIGH`, run/include/climate/systems/index.h | |
+| `CLIMATE_HIGH_LAT_MIN_DEG`, `_MAX_DEG` | 20, 45 | degrees of $\lvert\psi\rvert$ | 7.2 | Where highs form (and continental interiors in winter) | `CLIMATE_HIGH_PSI_MIN_DEG`, `CLIMATE_HIGH_PSI_MAX_DEG`, run/include/climate/systems/index.h; interiors: `CLIMATE_HIGH_INTERIOR_PSI_MAX_DEG`, `CLIMATE_HIGH_INTERIOR_BLOCKS` | |
+| `CLIMATE_HIGH_RATE` | 0.03 | per square per day | 7.2 | How many highs | `CLIMATE_HIGH_RATE`, run/include/climate/systems/index.h | |
+| `CLIMATE_HIGH_RADIUS_BLOCKS` | 6000 to 12000 | blocks | 7.2 | Size | `CLIMATE_HIGH_RADIUS[2]`, run/include/climate/systems/index.h | |
+| `CLIMATE_HIGH_HPA` | +8 to +20 | hPa | 7.2 | Strength | `CLIMATE_HIGH_HPA[2]`, run/include/climate/systems/index.h | |
+| `CLIMATE_HIGH_LIFE_DAYS` | 6 to 14 | days | 7.2 | Life | `CLIMATE_HIGH_LIFE_DAYS[2]`, run/include/climate/systems/index.h | |
+| `CLIMATE_HIGH_SPEED_BLOCKS_PER_DAY` | 2000 | blocks a day | 7.2 | Eastward speed | `CLIMATE_HIGH_SPEED[2]` 1500 to 2500, run/include/climate/systems/index.h; drift `CLIMATE_HIGH_EQUATORWARD` | |
+| `CLIMATE_HIGH_RAIN_FACTOR` | 0.2 | ratio | 7.2, 7.3, 7.2.1 | Rain under a high, and cells under one ($0.2^{f_{\text{high}}}$) | `CLIMATE_HIGH_RAIN_SHARE`, run/include/climate/systems/index.h; `CLIMATE_THUNDER_HIGH` is now that constant (both were 0.2 typed) | |
+| `CLIMATE_CELL_SQUARE_BLOCKS` | 1024 | blocks | 7.2 | Thunderstorm cell spawn square (1 km) | `CLIMATE_SQUARE_THUNDER`, run/include/climate/systems/index.h | |
+| `CLIMATE_CELL_RADIUS_BLOCKS` | 150 to 400 | blocks | 7.2 | Cell size | `CLIMATE_THUNDER_RADIUS[2]`, run/include/climate/systems/index.h | |
+| `CLIMATE_CELL_HPA` | -1 to -3 | hPa | 7.2 | Cell pressure dip | `CLIMATE_THUNDER_HPA[2]`, run/include/climate/systems/index.h | |
+| `CLIMATE_CELL_LIFE_HOURS` | 1 to 4 | clock hours | 7.2 | Cell life | `CLIMATE_THUNDER_LIFE_HOURS[2]`, run/include/climate/systems/index.h | |
+| `CLIMATE_CELL_RATE` | 3 | per km² per day | 7.2.1 | **How many thunderstorms** | `CLIMATE_THUNDER_RATE` 3, times `CLIMATE_THUNDER_RATE_GAIN`, run/include/climate/systems/index.h | gain 0.22: by phase 06's agent (Issues found 1) |
+| `CLIMATE_CELL_TEMP_C` | 18 | °C | 7.2.1 | Cells need a day warmer than this | `CLIMATE_THUNDER_HOT_C`, run/include/climate/systems/index.h | |
+| `CLIMATE_CELL_TEMP_RAMP_C` | 10 | °C | 7.2.1 | ... and reach full rate 10 above it | `CLIMATE_THUNDER_HOT_RANGE_C`, run/include/climate/systems/index.h | |
+| `CLIMATE_CELL_MONSOON_FACTOR` | 2 | ratio | 7.2.1 | $1 + 2 f_{\text{monsoon}}$ | `CLIMATE_THUNDER_MONSOON`, run/include/climate/systems/index.h | |
+| `CLIMATE_CELL_FRONT_FACTOR` | 4 | ratio | 7.2.1 | $1 + 4 f_{\text{front}}$ | `CLIMATE_THUNDER_FRONT`, run/include/climate/systems/index.h | |
+| `CLIMATE_CELL_START_HOURS` | 13 to 19 | clock hours | 7.2.1 | Cells start in the afternoon | `CLIMATE_THUNDER_START_HOURS[2]`, run/include/climate/systems/index.h | |
+| `CLIMATE_TRACK_STEP_DAYS` | 0.25 | days | 7.3 | Track step | `CLIMATE_TRACK_STEP_DAYS`, run/include/climate/systems/index.h | |
+| `CLIMATE_HURRICANE_SPEED_BLOCKS_PER_DAY` | 3500 | blocks a day | 7.3 | With the trades | `CLIMATE_HURRICANE_SPEED_WEST`, run/include/climate/systems/index.h; times `CLIMATE_SPEED_SCALE[2]` | |
+| `CLIMATE_HURRICANE_TURN_DEG` | 20 to 28 | degrees of $\lvert\psi\rvert$ | 7.3 | Where it turns poleward | `CLIMATE_HURRICANE_TURN_PSI_DEG[2]`, run/include/climate/systems/index.h | |
+| `CLIMATE_HURRICANE_TURN_DAYS` | 2 | days | 7.3 | How long the turn takes | `CLIMATE_HURRICANE_TURN_DAYS`, run/include/climate/systems/index.h | |
+| `CLIMATE_HURRICANE_LATE_SPEED_BLOCKS_PER_DAY` | 6000 | blocks a day | 7.3 | With the westerlies, after turning | `CLIMATE_HURRICANE_SPEED_EAST`, run/include/climate/systems/index.h | |
+| `CLIMATE_SYSTEM_REACH_BLOCKS` | 35000 | blocks | 7.3 | Longest track: how far back to look for systems | Not a constant: `climate_systems_reach(kind)` works it out from the life, speed and radius constants (a hurricane: 77 140 blocks with its drift and 3 R, more than the plan's 35 000; phase 06 Issues found 2) | |
+| `CLIMATE_SYSTEM_LIFE_MAX_DAYS` | 14 | days | 7.3 | Longest life: how long back to look | Not a constant: `CLIMATE_HIGH_LIFE_DAYS[1]` 14, the longest life, read by `systems_life_max`; `CLIMATE_TRACK_SAMPLES_MAX` 57 follows from it | |
+| `CLIMATE_WIND_PROFILE_EXPONENT` | 0.6 | ratio | 7.3 | $v \propto (r_m / r)^{0.6}$ outside $r_m$ | `CLIMATE_WIND_PROFILE_POWER`, run/include/climate/systems/index.h | |
+| `CLIMATE_HURRICANE_VMAX` | 33 at -30 hPa, 70 at -90 hPa | blocks a second | 7.3 | Hurricane wind from its dip | `CLIMATE_HURRICANE_VMAX_AT_30`, `CLIMATE_HURRICANE_VMAX_AT_90`, run/include/climate/systems/index.h; tropical storm under `CLIMATE_HURRICANE_STORM_VMAX` 33 | |
+| `CLIMATE_SYSTEM_RM_SHARE` | 0.5 | share of $R_i$ | 7.3 | Lows' and highs' strongest wind radius | `CLIMATE_SYSTEM_CORE_SHARE`, run/include/climate/systems/index.h | |
+| `CLIMATE_SYSTEM_VMAX_PER_HPA` | 0.4 | blocks a second per hPa | 7.3 | Lows' and highs' strongest wind | `CLIMATE_SYSTEM_VMAX_PER_HPA`, run/include/climate/systems/index.h | |
+| `CLIMATE_HURRICANE_RAIN_MM_H` | 40 | mm an hour | 7.3 | Eyewall rain | `CLIMATE_HURRICANE_EYEWALL_MM_HOUR` at `CLIMATE_HURRICANE_EYEWALL_HPA` 90, run/include/climate/systems/index.h | |
+| `CLIMATE_LOW_RAIN_MM_H` | 1 to 4 | mm an hour | 7.3 | Rain shield | `CLIMATE_LOW_SHIELD_MM_HOUR[2]`, run/include/climate/systems/index.h; the front's `CLIMATE_FRONT_MM_HOUR` 3 and `CLIMATE_FRONT_HALF_WIDTH` 400 | |
+| `CLIMATE_CELL_RAIN_MM_H` | 20 to 60 | mm an hour | 7.3 | Cell rain, for under an hour at a point | `CLIMATE_THUNDER_MM_HOUR[2]`, run/include/climate/systems/index.h | |
 
 #### Daily weather and the weekly state (7.4, 7.5)
 
 | Name | Value | Unit | Section | What it tunes | Home | Tuned |
 |---|---|---|---|---|---|---|
-| `CLIMATE_SPELL_BLOCKS` (phase 07) | 2500 | blocks | 7.4 | Size of day-to-day temperature patches | | |
-| `CLIMATE_SPELL_DAYS` (phase 07) | 10 | days | 7.4 | Length of spells | | |
-| `CLIMATE_SIGMA_T_COAST` (phase 07) | 2 | °C | 7.4 | $\sigma_T = 2 + 3\kappa$ | | |
-| `CLIMATE_SIGMA_T_INLAND_EXTRA` (phase 07) | 3 | °C | 7.4 | ... inland part | | |
-| `CLIMATE_HIGH_ANOMALY_SIGMAS` (phase 07) | 0.5 | share of $\sigma_T$ | 7.4 | Highs: heat waves in summer, cold snaps in winter | | |
-| `CLIMATE_CLOUD_RANGE_CUT` (phase 07) | 0.6 | ratio | 7.4 | Clouds of lows and hurricanes cut the daily range | | |
-| `CLIMATE_SYSTEM_RAIN_SHARE_MID` (phase 07) | 0.5 | ratio | 7.4 | $f_{\text{sys}}$ in the mid-latitudes | | |
-| `CLIMATE_SYSTEM_RAIN_SHARE_TROPICS` (phase 07) | 0.3 | ratio | 7.4 | $f_{\text{sys}}$ in the tropics | | |
-| `CLIMATE_RAIN_CHECK_TOLERANCE` | 0.15 | ratio | 7.4 | Long-run rain within 15% of normal (a test bound) | | |
-| `CLIMATE_DAY_RAIN_MM` (phase 07) | 1 | mm | 7.4 | A day of rain or snow | | |
-| `CLIMATE_STORM_DEPTH_HPA` (phase 07) | 20 | hPa | 7.4 | A low this deep is a Storm | | |
-| `CLIMATE_STORM_WIND` (phase 07) | 15 | blocks a second | 7.4 | Wind this strong is a Storm | | |
-| `CLIMATE_HEAT_WAVE_SIGMAS` (phase 07) | 1.5 | share of $\sigma_T$ | 7.4 | Heat wave | | |
-| `CLIMATE_DUST_WIND` (phase 07) | 12 | blocks a second | 7.4 | Dust storm wind | | |
-| `CLIMATE_DUST_WEEK_RAIN_MM` (phase 07) | 2 | mm in the week | 7.4 | Dust storm dryness | | |
-| `CLIMATE_MELT_MM_PER_DEGREE_DAY` (phase 07) | 4 | mm per °C per day | 7.5 | Snowmelt | | |
-| `CLIMATE_EVAPORATION_MM_PER_DEGREE_DAY` (phase 07) | 0.2 | mm per °C per day | 7.5 | Evaporation | | |
-| `CLIMATE_SOIL_MM_MAX` (phase 07) | 150 | mm | 7.5 | Soil water held before runoff | | |
-| `CLIMATE_ICE_GROW_CM_PER_DEGREE_DAY` (phase 07) | 1.5 | cm per °C per day | 7.5 | Ice growth on still water | | |
-| `CLIMATE_ICE_MELT_CM_PER_DEGREE_DAY` (phase 07) | 2 | cm per °C per day | 7.5 | Ice melt | | |
-| `CLIMATE_FLOOD_BANKS_FULL` | 1 | ratio | 7.5 | Flood index at which water is over the banks | | |
+| `CLIMATE_SPELL_BLOCKS` (phase 07) | 2500 | blocks | 7.4 | Size of day-to-day temperature patches | `CLIMATE_SPELL_BLOCKS`, run/include/climate/weather/index.h | |
+| `CLIMATE_SPELL_DAYS` (phase 07) | 10 | days | 7.4 | Length of spells | `CLIMATE_SPELL_DAYS`, run/include/climate/weather/index.h | |
+| `CLIMATE_SIGMA_T_COAST` (phase 07) | 2 | °C | 7.4 | $\sigma_T = 2 + 3\kappa$ | `CLIMATE_SIGMA_T_COAST`, run/include/climate/weather/index.h | |
+| `CLIMATE_SIGMA_T_INLAND_EXTRA` (phase 07) | 3 | °C | 7.4 | ... inland part | `CLIMATE_SIGMA_T_INLAND_EXTRA`, run/include/climate/weather/index.h | |
+| `CLIMATE_HIGH_ANOMALY_SIGMAS` (phase 07) | 0.5 | share of $\sigma_T$ | 7.4 | Highs: heat waves in summer, cold snaps in winter | `CLIMATE_HIGH_ANOMALY_SIGMAS`, run/include/climate/weather/index.h | |
+| `CLIMATE_CLOUD_RANGE_CUT` (phase 07) | 0.6 | ratio | 7.4 | Clouds of lows and hurricanes cut the daily range | `CLIMATE_CLOUD_RANGE_CUT`, run/include/climate/weather/index.h | |
+| `CLIMATE_SYSTEM_RAIN_SHARE_MID` (phase 07) | 0.5 | ratio | 7.4 | $f_{\text{sys}}$ in the mid-latitudes | `CLIMATE_SYSTEM_RAIN_SHARE_MID`, run/include/climate/systems/index.h (phase 06 owns it; the blend: `CLIMATE_SYSTEM_RAIN_SHARE_BLEND_DEG`, `_POLAR`, `_POLAR_DEG`) | |
+| `CLIMATE_SYSTEM_RAIN_SHARE_TROPICS` (phase 07) | 0.3 | ratio | 7.4 | $f_{\text{sys}}$ in the tropics | `CLIMATE_SYSTEM_RAIN_SHARE_TROPICS`, run/include/climate/systems/index.h | |
+| `CLIMATE_RAIN_CHECK_TOLERANCE` | 0.15 | ratio | 7.4 | Long-run rain within 15% of normal (a test bound) | `RAIN_TOLERANCE`, `tests/run/climate/systems/rain/index.c`: a test's bound, in the test; `SURVEY_RAIN_TOLERANCE` in `bench/climate/survey/`. Not pinned: it is no game number | |
+| `CLIMATE_DAY_RAIN_MM` (phase 07) | 1 | mm | 7.4 | A day of rain or snow | `CLIMATE_DAY_RAIN_MM`, run/include/climate/weather/week/index.h | |
+| `CLIMATE_STORM_DEPTH_HPA` (phase 07) | 20 | hPa | 7.4 | A low this deep is a Storm | `CLIMATE_STORM_DEPTH_HPA`, run/include/climate/weather/week/index.h | |
+| `CLIMATE_STORM_WIND` (phase 07) | 15 | blocks a second | 7.4 | Wind this strong is a Storm | `CLIMATE_STORM_WIND`, run/include/climate/weather/week/index.h | |
+| `CLIMATE_HEAT_WAVE_SIGMAS` (phase 07) | 1.5 | share of $\sigma_T$ | 7.4 | Heat wave | `CLIMATE_HEAT_WAVE_SIGMAS`, run/include/climate/weather/week/index.h | |
+| `CLIMATE_DUST_WIND` (phase 07) | 12 | blocks a second | 7.4 | Dust storm wind | `CLIMATE_DUST_WIND`, run/include/climate/weather/week/index.h | |
+| `CLIMATE_DUST_WEEK_RAIN_MM` (phase 07) | 2 | mm in the week | 7.4 | Dust storm dryness | `CLIMATE_DUST_WEEK_RAIN_MM`, run/include/climate/weather/week/index.h | |
+| `CLIMATE_MELT_MM_PER_DEGREE_DAY` (phase 07) | 4 | mm per °C per day | 7.5 | Snowmelt | `CLIMATE_MELT_MM_PER_DEGREE_DAY`, run/include/climate/season/index.h (phase 05 needed it first, for the snow balance) | |
+| `CLIMATE_EVAPORATION_MM_PER_DEGREE_DAY` (phase 07) | 0.2 | mm per °C per day | 7.5 | Evaporation | `CLIMATE_EVAPORATION_MM_PER_DEGREE_DAY`, run/include/climate/weather/week/index.h | |
+| `CLIMATE_SOIL_MM_MAX` (phase 07) | 150 | mm | 7.5 | Soil water held before runoff | `CLIMATE_SOIL_MM_MAX`, run/include/climate/weather/week/index.h | |
+| `CLIMATE_ICE_GROW_CM_PER_DEGREE_DAY` (phase 07) | 1.5 | cm per °C per day | 7.5 | Ice growth on still water | `CLIMATE_ICE_GROW_CM_PER_DEGREE_DAY`, run/include/climate/weather/week/index.h | |
+| `CLIMATE_ICE_MELT_CM_PER_DEGREE_DAY` (phase 07) | 2 | cm per °C per day | 7.5 | Ice melt | `CLIMATE_ICE_MELT_CM_PER_DEGREE_DAY`, run/include/climate/weather/week/index.h | |
+| `CLIMATE_FLOOD_BANKS_FULL` | 1 | ratio | 7.5 | Flood index at which water is over the banks | Not a constant: the flood index is runoff over channel size, so 1 is banks full by definition. The channel size is phase 07's `CLIMATE_FLOOD_BANKFULL` 3 (a channel holds 3 times its usual week) and `CLIMATE_FLOOD_CHANNEL_MIN` 20, run/include/climate/weather/flow/index.h | |
 
 #### The outlook (section 8)
 
 | Name | Value | Unit | Section | What it tunes | Home | Tuned |
 |---|---|---|---|---|---|---|
-| `CLIMATE_OUTLOOK_DAYS` (phase 07) | 7 | days | 8 | How far ahead | | |
-| `CLIMATE_OUTLOOK_SIGMA_START` (phase 07) | 200 | blocks | 8 | Track error now, $\sigma(0)$ | | |
-| `CLIMATE_OUTLOOK_SIGMA_PER_DAY` (phase 07) | 400 | blocks a day | 8 | Track error growth | | |
-| `CLIMATE_OUTLOOK_RAIN_MM` (phase 07) | 6 | mm | 8 | Background rain chance $1 - e^{-\bar P(d)/6}$ | | |
-| `CLIMATE_OUTLOOK_SPREAD_SIGMAS` (phase 07) | 1.5 | share of $\sigma_T$ | 8 | Spread on the expected high and low | | |
-| `CLIMATE_OUTLOOK_CALIBRATION_LOW`, `_HIGH` | 0.6, 0.8 | ratio | 10 (phase 07) | Events given 70% must happen this often (a test bound) | | |
+| `CLIMATE_OUTLOOK_DAYS` (phase 07) | 7 | days | 8 | How far ahead | `CLIMATE_OUTLOOK_DAYS`, run/include/climate/outlook/index.h | |
+| `CLIMATE_OUTLOOK_SIGMA_START` (phase 07) | 200 | blocks | 8 | Track error now, $\sigma(0)$ | `CLIMATE_OUTLOOK_SIGMA_START`, run/include/climate/outlook/index.h | |
+| `CLIMATE_OUTLOOK_SIGMA_PER_DAY` (phase 07) | 400 | blocks a day | 8 | Track error growth | `CLIMATE_OUTLOOK_SIGMA_PER_DAY`, run/include/climate/outlook/index.h | |
+| `CLIMATE_OUTLOOK_RAIN_MM` (phase 07) | 6 | mm | 8 | Background rain chance $1 - e^{-\bar P(d)/6}$ | `CLIMATE_OUTLOOK_RAIN_MM`, run/include/climate/outlook/index.h: since phase 11 a name for `CLIMATE_WET_DAY_SCALE_MM` (run/include/climate/heat/index.h), the one 6 | |
+| `CLIMATE_OUTLOOK_SPREAD_SIGMAS` (phase 07) | 1.5 | share of $\sigma_T$ | 8 | Spread on the expected high and low | `CLIMATE_OUTLOOK_SPREAD_SIGMAS`, run/include/climate/outlook/index.h | |
+| `CLIMATE_OUTLOOK_CALIBRATION_LOW`, `_HIGH` | 0.6, 0.8 | ratio | 10 (phase 07) | Events given 70% must happen this often (a test bound) | Literals 0.60 and 0.80 in `tests/run/climate/outlook/index.c`, and `SURVEY_BIN_LOW`, `SURVEY_BIN_HIGH` in `bench/climate/survey/`: a test's bound, not a game number. Not pinned | |
 
 #### From phases 08 to 10, not in sections 4 to 8
 
@@ -364,13 +364,13 @@ For completeness, so every climate number is in this file:
 
 | Name | Value | Unit | Where | What it tunes | Home | Tuned |
 |---|---|---|---|---|---|---|
-| `GAME_COVER_ICE_ON_CM` (phase 08) | 5 | cm | Master plan phase 08 | Ice blocks placed at the census | | |
-| `GAME_COVER_SNOW_ON_MM` (phase 08) | 20 | mm of water | Master plan phase 08 | Snow layer placed at the census | | |
-| `PLAYER_WIND_SHARE`, `PLAYER_WIND_THRESHOLD` (phase 08) | 0.04, 10 | drift per block a second; blocks a second | Phase 08 | How hard storms push (Q4: gently) | | |
-| `CLIMATE_WARNING_THRESHOLD` | 0.5 | ratio | 9.1, phase 10 | Storm warning, strictly over | | |
-| `CLIMATE_WARNING_TICKS` | 200 | ticks | Phase 10 | How often the warning is worked out | | |
-| `UI_ATLAS_NOW_REDRAW_MS` | 500 | ms | 9.3, phase 09 | "Now" layers drawn again twice a second | | |
-| `UI_ATLAS_SHADE_EXAGGERATION` | 1 | ratio | Phase 09 | Hill shading strength | | |
+| `GAME_COVER_ICE_ON_CM` (phase 08) | 5 | cm | Master plan phase 08 | Ice blocks placed at the census | `GAME_COVER_ICE_ON_CM`, `run/include/game/cover/index.h`; the census's event uses `CLIMATE_ICE_EVENT_CM` 5, run/include/climate/weather/week/index.h | |
+| `GAME_COVER_SNOW_ON_MM` (phase 08) | 20 | mm of water | Master plan phase 08 | Snow layer placed at the census | `GAME_COVER_SNOW_ON_MM`, `run/include/game/cover/index.h` | |
+| `PLAYER_WIND_SHARE`, `PLAYER_WIND_THRESHOLD` (phase 08) | 0.04, 10 | drift per block a second; blocks a second | Phase 08 | How hard storms push (Q4: gently) | `PLAYER_WIND_SHARE`, `PLAYER_WIND_THRESHOLD`, `run/include/player/movement/index.h` | |
+| `CLIMATE_WARNING_THRESHOLD` | 0.5 | ratio | 9.1, phase 10 | Storm warning, strictly over | `CLIMATE_WARNING_THRESHOLD`, `run/include/climate/warning/index.h` | |
+| `CLIMATE_WARNING_TICKS` | 200 | ticks | Phase 10 | How often the warning is worked out | `CLIMATE_WARNING_TICKS`, `run/include/climate/warning/index.h` | |
+| `UI_ATLAS_NOW_REDRAW_MS` | 500 | ms | 9.3, phase 09 | "Now" layers drawn again twice a second | `UI_ATLAS_NOW_REDRAW_MS`, `run/include/ui/atlas/index.h` | |
+| `UI_ATLAS_SHADE_EXAGGERATION` | 1 | ratio | Phase 09 | Hill shading strength | `UI_ATLAS_SHADE_EXAGGERATION`, `run/include/ui/atlas/draw/index.h` | |
 
 ### `run_climate_constants`: a test that pins them
 
