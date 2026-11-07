@@ -596,6 +596,8 @@ Appended as they land:
 - `7fd9bf75` List plan 004 phase 10's new parts and tests in the repository structure.
 - `e429d661` List plan 004 phase 10's commits in its phase file.
 - `92423097` Work out the unborn sums' disk chance tables once a call, the same bits, hold the storm warning's slowest call under 20 ms after the week's census as the game runs it, and retry a climate line that is not ready on its 20-tick beat.
+- `0b41af63` Record plan 004 phase 10's second pass in its phase file: the warning under 20 ms, the keep radius tried and taken back, the retry beat, and the runs.
+- `070d2bb0` Say in the repository structure that run_climate_warning holds the slowest of 100 warnings under 20 ms.
 
 ## Issues found
 
