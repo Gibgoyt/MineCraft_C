@@ -15,6 +15,10 @@ A **column** here is what it is in the plan and in `run/src/world/column/`: a ch
 
 ## Results
 
+### 2026-11-07, plan 004 phase 11: with the climate in the game, every place still beats it
+
+Release build, through the build lock, twice in a row, exit status 0 both. Target 1000 columns a second on 16 workers: **met by all 9 both times**. The slowest, `snowy_taiga`: 1097 then 1122 (forest 1395 and 1322, jungle 1263 and 1256, jagged_peaks 1167 and 1173; deep_ocean the fastest at 2441 and 2571). The terrain does not read the climate, so this is the same work as before plan 004, and the numbers are those of stage 7 within the machine's noise.
+
 ### 2026-11-05, plan 003 phase 8 stage 7, final: every place beats it
 
 The same land and seed, after features stopped making a whole chunk's own ground a second time. Three runs in a row, nothing else of ours on the lock, with `uptime` reading a load average of 2.7 just after them. Target 1000 on 16 workers: **met by all 9, exit status 0 on all three**. The margin of the slowest is 6.5% to 11%.

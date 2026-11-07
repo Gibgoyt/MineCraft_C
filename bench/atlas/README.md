@@ -30,3 +30,17 @@ What it does:
    pixels that got a value, so a layer timed with nothing to show is seen.
 5. **Main's frame:** 200 frames of `ui_atlas_frame` and `ui_atlas_frame_draw` with a picture shown on temperature by day.
 6. **Columns:** 20 000 column writes, five rounds; 2000 column tops of a column of stone to 64, five rounds.
+
+## Results
+
+### 2026-11-07, plan 004 phase 11: every target met
+
+Release build, through the build lock, twice in a row, exit status 0 both.
+
+| | First run | Second run | Target |
+|---|---|---|---|
+| Opening over 100 km², M to the first picture, median (slowest) | 16.6 ms (18.1) | 16.8 ms (26.1) | 100 ms, met |
+| A full picture, worst layer, median (slowest) | 36.5 ms (39.5), `monsoon` | 44.1 ms (56.6), `temperature_day` | 60 ms, met |
+| Main's frame with the Atlas up, median (slowest) | 0.575 ms (1.028) | 0.713 ms (0.913) | 2 ms, met |
+| Column write (sim), median | 0.079 us | 0.086 us | 5 us, met |
+| Column top (worker), median | 13.0 us | 14.0 us | 20 us, met |

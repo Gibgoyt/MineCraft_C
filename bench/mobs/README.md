@@ -25,6 +25,20 @@ The gate is on the 99th percentile of 2000 ticks, after 200 to settle: the worst
 
 ## Results
 
+### 2026-11-07, plan 004 phase 11: the tick with the climate in the game
+
+Release build, through the build lock, twice in a row, exit status 0 both, heap calls 0 on every row. Target a tick at 100 mobs at most 5 ms on the 99th percentile: **met**.
+
+| Row | p99, first run | p99, second run | Worst |
+|---|---|---|---|
+| scattered, the target, 100 mobs | 1.078 ms | 1.095 ms | 2.007, 1.945 |
+| packed in a pit, 100 | 2.055 | 2.065 | 2.194, 2.190 |
+| all around the player, 100 | 1.933 | 1.953 | 2.212, 2.150 |
+| scattered, 400 | 2.018 | 2.044 | (no target) |
+| a full store, 1024 | 2.313 | 2.288 | (no target) |
+
+The climate's own tick work (the storm warning) runs on a worker, not in this tick: plan 004 phase 10.
+
 ### 2026-11-03, phase gate: every mind, in the game's order
 
 `build/release/bin/bench_mobs`, exit status 0, from a clean build, on the shared machine under the build lock, in milliseconds a tick. This is the phase gate's number.
