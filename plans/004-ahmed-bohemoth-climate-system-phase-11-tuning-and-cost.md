@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 11: Tuning and cost
 
-**Status:** in progress   (updated 2026-11-07)
+**Status:** in progress: built, measured and recorded before tuning (Results); every agent-runnable check run. Left for Ahmed: the gate, and any value he decides to change, after which the measurements are run again   (updated 2026-11-08)
 
 Read `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` first, then sections 4 to 8 and 10 to 12 of the master plan, `plans/004-ahmed-bohemoth-climate-system.md`. The master plan is the source of every number here. Where this file and the master plan disagree, the master plan wins, and the disagreement goes in **Issues found**.
 
@@ -420,56 +420,126 @@ Every bench runs on the release preset, except `bench_world`, which runs on prof
 
 ### Results
 
-Filled in by this phase. A blank cell is not done.
+Filled in by this phase, **before tuning** (2026-11-07 and 08). Nothing was tuned: Ahmed has not played the gate, so steps 9 and 10 did not happen and there is no "after tuning".
 
-**Benches,** each from a cool CPU and straight after the others:
+**The misses, plainly:**
 
-| What | Target | Cool | Hot | Met? |
+- **No hurricane formed in any warm coast square, on any of the 8 seeds, in 10 years.** The plan expects 2.4 a square and about 7 a coast a season. The cause is phase 06's open-sea rule (2048 blocks of water all round), which the terrain's seas almost never meet (Issues found 8; phase 06, Issues found 14 and 21).
+- **The outlook over-forecasts thunderstorms.** Of thunderstorm chances of 60 to 80% (mean 68.7%), only 31.4% came true, in 24 880 forecasts. Every kind together is within the plan's bound (74.4%), as rain dominates the count.
+- **Rain against normals:** 93.7% of 16 000 cells are within 15% of their normal over 10 years; the worst is 59% off. Phase 06's test (8 boxes) held every cell within 15%; spread over every class, 6.3% are not.
+- **No Continental land at all** on any seed (no place with a coldest month at or below -3 °C and a warmest at or above 22 °C).
+- **The storm warning takes 4.4 ms on average, 6.5 ms at its slowest, against 2 ms** (it runs on a worker, never in the tick: Issues found 9).
+- **Frame rate at render distance 32: 0 of 16 rows at 120 fps; the slowest 12.1 fps.** The card was in its slowed state (phase 08's notes); the climate itself costs the CPU, not the card.
+- **No run was from a cool CPU** (Issues found 11): "first" and "second" below are two runs in a row.
+
+**Benches,** release unless it says profile, through the build lock, two runs in a row:
+
+| What | Target | First | Second | Met? |
 |---|---|---|---|---|
-| Climate tile, 1 worker | 100 ms | | | |
-| Systems near a point | 2 ms | | | |
-| Census, 100 km², 16 workers | 250 ms | | | |
-| Frame rate, RD 32, before weather (`bench_world`, slowest row) | 120 fps | | | |
-| Frame rate, RD 32, after weather | 120 fps | | | |
-| Atlas first picture, 100 km² | 100 ms | | | |
-| Atlas full picture, worst layer | 60 ms | | | |
-| Atlas main frame | 2 ms | | | |
-| Storm warning | 2 ms | | | |
-| Terrain, 16 workers, slowest place | 1000 columns/s | | | |
-| Sim tick p99, 100 mobs | 5 ms | | | |
-| Climate memory | 32 KiB/km² | | | |
+| Climate tile, 1 worker (`bench_climate`), slowest cold | 100 ms | 30.09 ms | 29.77 ms | met |
+| Systems near a point (`bench_climate --systems`), warm median (slowest) | 2 ms | 0.340 ms (0.907) | 0.341 ms (0.910) | met |
+| Census, 100 km², 16 workers (`bench_climate_census`, profile), median of 5 | 250 ms | 218.6 ms | 214.8 ms | met |
+| Frame rate, RD 32, before weather (`bench_world`, profile, slowest row) | 120 fps | 12.1 fps (`deep_ocean/orbit`) | one run (716 s) | missed, card slowed |
+| Frame rate, RD 32, after weather (`plains/orbit` clear 21.3; rain, snow, thunder, fog) | 120 fps | 20.5, 20.2, 20.4, 21.3 fps | one run | missed, card slowed |
+| Atlas first picture, 100 km² (`bench_atlas`), median (slowest) | 100 ms | 16.6 ms (18.1) | 16.8 ms (26.1) | met |
+| Atlas full picture, worst layer, median (slowest) | 60 ms | 36.5 ms (39.5), `monsoon` | 44.1 ms (56.6), `temperature_day` | met |
+| Atlas main frame, median (slowest) | 2 ms | 0.575 ms (1.028) | 0.713 ms (0.913) | met |
+| Storm warning (`run_climate_warning` on release), slowest of 100 (mean) | 2 ms | 6.50 ms (4.40) | 6.04 ms (4.24) | **missed** |
+| Terrain, 16 workers, slowest place (`bench_terrain`) | 1000 columns/s | 1097 (`snowy_taiga`) | 1122 | met |
+| Sim tick p99, 100 mobs (`bench_mobs`, scattered) | 5 ms | 1.078 ms | 1.095 ms | met |
+| Sim tick p99, `night/walk-mobs` (`bench_world`, profile) | 5 ms | 2.064 ms | one run | met |
+| Climate memory (`bench_climate_survey`) | 32 KiB/km² | 30.52 KiB/km² of cells, 0.95 of land mask | the same (computed) | met |
 
-**Seeds used:** (list)
+**The survey,** `tools/test-or-build.sh timeout 7200 build/release/bin/bench_climate_survey --record bench/climate/survey/history.tsv`, exit status 0, 6435 s (774 to 816 s a seed), 0 tiles unbuilt and 0 days or censuses that failed. Its tables as it printed them:
 
-**Climate class shares,** % of land:
+**Seeds used:** `2198175988018515243`, `12636146071196537873`, `5569068473609503046`, `1`, `42`, `20261104`, `9999999999999`, `18446744073709551557`
+
+Land cells a seed: 231381, 225129, 228868, 226655, 228366, 223073, 229418, 226884. Cells whose tile was not built: 0. Days or censuses that could not be worked out: 0.
+
+**Climate class shares,** % of land, over the seeds:
 
 | Class | Mean | Smallest | Largest | Biome disagrees, % |
 |---|---|---|---|---|
-| Ice | | | | |
-| Tundra | | | | |
-| Desert | | | | |
-| Steppe | | | | |
-| Rainforest | | | | |
-| Monsoon | | | | |
-| Savanna | | | | |
-| Mediterranean | | | | |
-| Temperate | | | | |
-| Continental | | | | |
-| Boreal | | | | |
+| Ice | 27.66 | 26.40 | 28.44 | 17.6 |
+| Tundra | 12.60 | 12.10 | 13.35 | 16.4 |
+| Desert | 13.10 | 11.90 | 15.70 | 81.0 |
+| Steppe | 10.54 | 10.13 | 10.92 | 80.9 |
+| Rainforest | 5.37 | 4.98 | 6.20 | 16.3 |
+| Monsoon | 2.62 | 2.41 | 2.85 | 16.9 |
+| Savanna | 9.10 | 8.11 | 9.68 | 16.8 |
+| Mediterranean | 6.06 | 5.45 | 6.48 | 21.5 |
+| Temperate | 11.11 | 10.20 | 11.90 | 17.9 |
+| Continental | 0.00 | 0.00 | 0.00 | 0.0 |
+| Boreal | 1.83 | 1.48 | 2.17 | 19.9 |
 
-**Hurricanes:**
+Biome disagrees: a desert or badlands biome in a class that is not Desert or Steppe, or another biome in Desert or Steppe; pooled over the seeds.
+
+**Hurricanes,** 16 warm coast squares and 8 coasts over the seeds (16 squares reach the hurricane band):
 
 | Measure | Plan | Mean | Smallest | Largest |
 |---|---|---|---|---|
-| Per warm coast square, a season | 2.4 | | | |
-| Per warm coast, a season | about 7 (three squares) | | | |
-| Making landfall, a season per coast | — | | | |
+| Per warm coast square, a season | 2.4 | 0.00 | 0.00 | 0.00 |
+| Per warm coast, a season | about 7 (three squares) | 0.00 | 0.00 | 0.00 |
+| Making landfall, a season per coast | - | 0.00 | 0.00 | 0.00 |
 
-**Thunderstorm days a year:** one row per class, as the class table.
+**Thunderstorm days a year,** at up to 200 land cells per class per seed, picked by hash:
 
-**Outlook calibration:** one row per tenth, 0 to 100%, with count, mean chance, happened, two standard errors, for all events together; then the 60 to 80% row for each event kind.
+| Class | Cells | Mean | Smallest | Largest |
+|---|---|---|---|---|
+| Ice | 1600 | 0.00 | 0.00 | 0.00 |
+| Tundra | 1600 | 0.01 | 0.00 | 11.60 |
+| Desert | 1600 | 21.24 | 0.00 | 104.40 |
+| Steppe | 1600 | 20.58 | 0.00 | 83.50 |
+| Rainforest | 1600 | 52.25 | 5.80 | 122.90 |
+| Monsoon | 1600 | 40.24 | 1.50 | 110.10 |
+| Savanna | 1600 | 44.35 | 1.30 | 106.70 |
+| Mediterranean | 1600 | 3.68 | 0.00 | 57.50 |
+| Temperate | 1600 | 9.14 | 0.00 | 88.80 |
+| Continental | 0 (fewer on some seeds) | 0.00 | 0.00 | 0.00 |
+| Boreal | 1600 | 0.01 | 0.00 | 2.00 |
 
-**Long-run rain against normals** (the phase 06 test, re-run on 8 seeds over 10 years): the largest error of any cell, and the share of cells within 15%.
+**Outlook calibration,** 200 places per seed, every census of 10 years, the 7 days ahead, every kind together:
+
+| Chance | Count | Mean chance | Happened | Two standard errors | |
+|---|---|---|---|---|---|
+| 0 to 10% | 60432498 | 0.4% | 0.2% | 0.0% |  |
+| 10 to 20% | 2103655 | 14.7% | 12.1% | 0.0% |  |
+| 20 to 30% | 1484094 | 24.4% | 25.4% | 0.1% |  |
+| 30 to 40% | 763843 | 34.7% | 40.7% | 0.1% |  |
+| 40 to 50% | 561925 | 44.9% | 50.1% | 0.1% |  |
+| 50 to 60% | 454684 | 54.8% | 58.4% | 0.1% |  |
+| 60 to 70% | 385351 | 64.9% | 70.4% | 0.1% |  |
+| 70 to 80% | 312804 | 74.7% | 79.4% | 0.1% |  |
+| 80 to 90% | 257702 | 85.1% | 86.3% | 0.1% |  |
+| 90 to 100% | 206515 | 94.1% | 90.0% | 0.1% |  |
+
+The 60 to 80% bin, by kind (the plan's bound: it happens 60 to 80% of the time):
+
+| Kind | Count | Mean chance | Happened | Two standard errors | |
+|---|---|---|---|---|---|
+| rain | 527130 | 69.2% | 76.8% | 0.1% |  |
+| thunderstorms | 24880 | 68.7% | 31.4% | 0.6% |  |
+| storms | 14867 | 69.5% | 70.6% | 0.7% |  |
+| hurricanes | 4 | 69.1% | 75.0% | 43.3% | not judged (under 100) |
+| named systems | 131274 | 69.5% | 73.5% | 0.2% |  |
+| all together | 698155 | 69.3% | 74.4% | 0.1% |  |
+
+All kinds, 60 to 80%: 74.4% happened, within the bound.
+
+**Long-run rain against normals,** at the thunderstorm cells, 10 years: the largest error 59.3%, and 14986 of 16000 cells (93.7%) within 15%.
+
+**Climate memory:** 128 bytes a cell, 256 cells a tile of 1.0486 km^2: 30.52 KiB a km^2 of cells (target 32), and 0.95 KiB a km^2 of land mask.
+
+**1 worker against 16** (by hand, as the file asks): `bench_climate_survey --seeds 2 --years 1 --width 4096 --places 20 --per-class 20` with `--workers 1` (152 s) and `--workers 16` (21 s): **the same bytes**, sha256 `f65a8c25a390ede67a97c414e7e614e91856a792ed43dc60195cdd7c5b2f4cec` both. The narrower strip and fewer places are because 1 worker with the defaults takes about 45 minutes (Issues found 13). The margin checks of Issues found 13 printed the same bytes too.
+
+**Summary for Ahmed** (step 8). The climate's numbers now have one home each and a test that pins them; nothing was tuned. Against the plan:
+
+- **Classes:** about 28% of land is Ice and 13% Tundra, because the strip runs pole to pole and latitude rises evenly with y; Desert 13%, Steppe 11%, Temperate 11%, Savanna 9%, Mediterranean 6%, Rainforest 5%, Monsoon 3%, Boreal 2%, Continental 0%. The 8 seeds agree within 1 to 4 points. Continental never happens: no land has both a coldest month at or below -3 °C and a warmest at or above 22 °C. Not looked into further; the inland swing knots or the -3 and 22 thresholds are where it would be decided. Most Desert and Steppe land has no desert biome (81%), as master plan 2.6 expects.
+- **Hurricanes:** none. Each seed's strip has 2 warm coast squares (one each side of the equator), and none spawned a hurricane in 10 years, because none of their sea has 2048 blocks of water all round. **This is far from the plan's 2.4 a square, so a proposal:** lower `CLIMATE_HURRICANE_OPEN_SEA_BLOCKS` (for example to 512) or test only the spawn point; then measure again with this bench. It would move phase 06's pinned digests. Ahmed's call (Q5).
+- **Thunderstorms:** many in Rainforest (52 days a year), Savanna (44), Monsoon (40), and in Desert and Steppe (21) where they are hot; almost none in Ice, Tundra and Boreal, as the plan expects. Hot deserts with 21 thunderstorm days are more than real deserts get; if that feels wrong in play, the thunder rate's wetness term is the knob, not the normals.
+- **Outlook:** well calibrated for rain, storms and named systems (60 to 80% came true 76.8%, 70.6% and 73.5%), but **thunderstorm chances are about twice too high** (68.7% forecast, 31.4% happened). A proposal, only if Ahmed wants: lower the outlook's cell footprint (`CLIMATE_OUTLOOK_CELL_RADIUS` 275 or `CLIMATE_OUTLOOK_CELL_HOURS` 2.5), which changes only the forecast, not the weather.
+- **Rain:** 93.7% of cells within 15% of their normal; the worst 59%. No proposal: master plan 7.4 tunes spawn rates, and phase 06's rates already were.
+- **Cost:** every climate bench meets its target except the storm warning (4.4 ms against 2, off the sim thread). Terrain and the sim tick keep their budgets. The frame rate misses because the card was slowed during the run; phase 08's weather costs 1 to 3 ms a frame on top.
 
 ## Owned paths
 
@@ -511,17 +581,17 @@ Edit only these, and this file:
 
 ## Todo
 
-- [ ] Read the vision file, master plan 4 to 8 and 10 to 12, and every earlier plan 004 phase file
-- [ ] Fill the Home column of the constant table from the code, and commit it before changing code
-- [ ] Every constant in sections 4 to 8 lives in one place each, named, with its unit
-- [ ] `tests/run/climate/constants/`: every constant pinned, derived constants checked, literal sweep, passing
-- [ ] `bench/climate/survey/`: the strip, 8 seeds, four measurements, same output on 1 and 16 workers
-- [ ] Re-measure, over 8 seeds: climate class shares, hurricanes a season per warm coast, thunderstorm days a year by class, and outlook calibration. Record them
-- [ ] Re-run every bench: climate tile, systems, census, Atlas, frame rate, plus terrain and the sim tick, cool and hot. Record them
-- [ ] Summary for Ahmed, with every miss, and proposals only where a number is far off
-- [ ] Each value Ahmed tuned: constant, table, test and Issues found entry, with before and after
-- [ ] Measurements and benches after tuning, recorded
-- [ ] READMEs and `plans/REPO_STRUCTURE.md` updated
+- [ ] Read the vision file, master plan 4 to 8 and 10 to 12, and every earlier plan 004 phase file. Done in part: the master plan in full, this file, and the parts of phases 01 to 10 that name constants, benches and tests (phase 06 and 10 Issues found on hurricanes and the warning); not every earlier phase file end to end, so not ticked
+- [x] Fill the Home column of the constant table from the code, and commit it before changing code (`c025dc6b`, before the code commit `37299396`; the working tree was edited first: Issues found 2)
+- [x] Every constant in sections 4 to 8 lives in one place each, named, with its unit (Issues found 6 and 7; the sweep finds 0 unnamed numbers, 256 before)
+- [x] `tests/run/climate/constants/`: every constant pinned, derived constants checked, literal sweep, passing (13 tests, 369 checks)
+- [x] `bench/climate/survey/`: the strip, 8 seeds, four measurements, same output on 1 and 16 workers (on a narrower strip: Results)
+- [x] Re-measure, over 8 seeds: climate class shares, hurricanes a season per warm coast, thunderstorm days a year by class, and outlook calibration. Record them
+- [x] Re-run every bench: climate tile, systems, census, Atlas, frame rate, plus terrain and the sim tick, cool and hot. Record them (twice in a row; no run was truly cool, Issues found 11; `bench_world` once, 716 s)
+- [x] Summary for Ahmed, with every miss, and proposals only where a number is far off
+- [ ] Each value Ahmed tuned: constant, table, test and Issues found entry, with before and after. Ahmed has tuned nothing yet
+- [ ] Measurements and benches after tuning, recorded. Nothing tuned, so nothing to run yet
+- [x] READMEs and `plans/REPO_STRUCTURE.md` updated
 - [ ] Gate: Ahmed plays, reviews the tables, and says the numbers are right
 
 ## Tests
@@ -591,6 +661,40 @@ Ahmed reads **Results** and the summary in step 8. Then he plays, with a release
 
 Appended as they land:
 
+- `c025dc6b` Fill the Home column of plan 004 phase 11's constant table from the code, with the values phase 06 tuned in the Tuned column.
+- `37299396` Give every number in the calendar and climate code a name in one home, with the knot tables and the shared year, week and hour made from the calendar's, and pin them all with the new run_climate_constants test and its literal sweep.
+- `d5c52706` Add bench_climate_survey, plan 004 phase 11's four measurements over 8 seeds on a pole-to-pole strip, the same bytes on 1 worker or 16.
+- `8fadcbd0` Say in the repository structure where run_climate_constants and bench_climate_survey are and what they do.
+- `ad79538e` Record plan 004 phase 11's bench runs in each bench's README and history: the survey over 8 seeds, the climate tile, systems, census, Atlas, terrain, mobs and the world's frame rate.
+
 ## Issues found
 
-None.
+1. **Phase 06 changed five values without Ahmed.** Expected (this file, "What this phase must not do"): no value changes unless Ahmed decides. Actual: phase 06's agent tuned `CLIMATE_HURRICANE_RATE` 0.02 to 0.034, `CLIMATE_LOW_RATE_WINTER` and `_SUMMER` 0.08 and 0.04 to 0.18 and 0.09, `CLIMATE_THUNDER_RATE_GAIN` 1 to 0.22, `CLIMATE_LOW_POLEWARD` 0.15 to 0.08 and the f_sys blend 20° to 35° to 25° to 50° (phase 06 file, Issues found 12 and 14, commit `1e4f94d7`), to meet master plan 7.4's 15% rain test. Done: the values the code holds are the ones pinned, and the table's **Tuned** column says "by phase 06's agent" for each. Nothing changed here. **For Ahmed:** keep them (the rain test holds with them) or say which to put back; a change to any rate means re-running `run_climate_systems_rain`.
+
+2. **The code was edited before the Home column was committed.** Expected (step 2): the audit committed before any code changes. Actual: the audit was done from the code as merged (`b3236a90`), and the literal work began in the working tree before the table was written into this file. Done: the table went in first in history (`c025dc6b`), and the code after it (`37299396`). The Home column describes the code after phase 11 (it names the new homes); where a constant moved, the column says from where.
+
+3. **Names differ from the table's proposals.** Expected (Design): keep the code's names. Done: kept, and written in **Home** (for example `CLIMATE_TILT_DEG` for `CLIMATE_TROPIC_DEG`, `CLIMATE_WALK_STEPS_WINDOW` for `CLIMATE_UPWIND_STEPS`). One exception: the table's knot tables were lower case (`climate_pressure_knots`); a constant is upper case by the coding standard, section 6, so they are `CLIMATE_PRESSURE_KNOTS`, `CLIMATE_TEMPERATURE_KNOTS`, `CLIMATE_SWING_SEA_KNOTS`, `CLIMATE_SWING_LAND_KNOTS` and `CLIMATE_RAIN_KNOTS`, moved from `run/src/climate/normals/index.c` into its header so the test can read every knot. The curves are built from the same numbers: every climate digest held (12 below).
+
+4. **Five rows are not constants in the code.** `CALENDAR_TICKS_PER_DAY` is `GAME_DAY_SECONDS × MC_GAME_TICK_HZ` (the climate keeps `CLIMATE_REAL_SECONDS_A_DAY`, pinned equal, as it cannot include `game/`); `CLIMATE_SYSTEM_REACH_BLOCKS` and `CLIMATE_SYSTEM_LIFE_MAX_DAYS` are worked out by `climate_systems_reach` and `systems_life_max` from the life, speed and radius constants; `CLIMATE_FLOOD_BANKS_FULL` is 1 by the flood index's definition; `CLIMATE_RAIN_CHECK_TOLERANCE` and `CLIMATE_OUTLOOK_CALIBRATION_LOW`, `_HIGH` are test bounds in their tests. Each says so in **Home**; the test pins what each comes from.
+
+5. **The literal sweep's allowlist is longer than the file's.** Expected (Design): 0, 1, 2, -1, 0.5, the smoothstep's 3 and 2, 180 and 360, π. Actual: that list fails on the coding standard's own numbers and on every named definition. Done: three more entries, each with its reason in the test: the numbers of named definitions outside function bodies (a file's `static const` tables and scalars, enum members, `#define`s: each is the named constant the rule asks for), array subscripts (`w[3]`; an array's *size* is still checked), and `static_assert` lines and `_padN` members (the coding standard requires their numbers). The sweep tries itself on a planted sample (4 found of 4). On the code before this phase it finds **256** numbers with no name; after, 0.
+
+6. **Eight `static const` floats became `#define`s.** Expected (Design): do not convert one form to the other just for this phase. Actual: `climate_layer_scale`'s static tables typed 8192, 990, 1013, 1030, 15, 454, 50 and 2000 again, because a C static initializer cannot read a `static const`. Done: `CLIMATE_SEA_DISTANCE_MAX`, `CLIMATE_LAYER_PRESSURE_LOW_HPA`, `_MID_HPA`, `_HIGH_HPA`, `CLIMATE_LAYER_WIND_TOP`, `CLIMATE_LAYER_LAND_TOP`, `CLIMATE_LAYER_SNOW_NEAR_BLOCKS` and `_FAR_BLOCKS` are macros, so the tables are built from them. Same values.
+
+7. **Duplicates removed.** The year was typed 365 in five parts (`CLIMATE_YEAR_DAYS`, `CLIMATE_SYSTEMS_YEAR_DAYS`, `CLIMATE_HEAT_YEAR_DAYS`, `CLIMATE_DAYS_A_YEAR`, `CLIMATE_SEASON_DAYS`), the week twice, 24 hours in five files, 170 twice (`CLIMATE_SOLSTICE_DAY`, `CLIMATE_SUMMER_DAY`), 79 in `sun/`, 6 mm in the heat and the outlook, 0.2 for a high's cut and for cells under a high, 23.5 and 66.5 in the latitude lines, 3 × 400 for a front's reach. Each is now made from one home (the calendar's for days and hours; `CLIMATE_POLAR_CIRCLE_DEG`, new, for 66.5), and `run_climate_constants` checks they agree. New names for code mechanics (alignment, corners, a byte's 255, a key's 32 bits, the hash constants, the Atlas's pixel bytes, cloud amounts of phase 08) are in the headers of the parts that use them.
+
+8. **Hurricanes: none in any warm coast square of the survey.** See Results and the summary: the plan's 2.4 a square a season is not reached because hurricanes only spawn on open sea (`CLIMATE_HURRICANE_OPEN_SEA_BLOCKS`, 2048 blocks of water all round), which the terrain's patchy seas almost never give. Phase 06's Issues found 14 and 21 found it near spawn; the survey confirms it over 8 seeds. Not changed: Ahmed's (Q5).
+
+9. **The storm warning misses its 2 ms on release.** Expected (master plan, phase 10): 2 ms. Actual: slowest 6.5 and 6.0 ms, mean 4.4 and 4.2 ms, of 100 warnings (`run_climate_warning` on release, twice). It runs on a worker, never in the sim tick (phase 10, Issues found 13), so no tick waits for it, and the sim tick at 100 mobs meets its 5 ms. Left for Ahmed: whether the 2 ms matters for a job off the sim thread; phase 10's file names the cost (the known list and the unborn lows' `exp`s).
+
+10. **Memory: 30.5 KiB a km², not 32.** The plan's 32 KiB counts a 1024-block tile as a km²; it is 1.0486 km². Met either way.
+
+11. **No run was from a truly cool CPU.** Expected (Background): the first run after 5 minutes with nothing heavy. Actual: every heavy command shares one machine-wide lock with other agents' worktrees, and this phase's own builds came straight before; the release benches started at load average 2.3, falling from 9.7. Done: each bench was run twice in a row and both are recorded; the columns say "first" and "second".
+
+12. **No digest or golden moved.** Expected (step 3): every pinned digest holds, as no value changed. Actual: `run_calendar`, every `run_climate_*`, `run_game_census`, `run_game_weather`, `run_save_climate`, `run_ui_atlas`, `run_ui_atlas_game`, `run_ui_census`, `run_ui_hud`, `run_ui_hud_corner` and `render_feature_weather` pass on debug with the code after the change (the knot tables' move included), and the whole suite in Verification.
+
+13. **The survey's own choices.** A thunderstorm cell's reach in a day is 4200 blocks, so phase C builds 5120 blocks round each band; `--margin 9216` printed the same bytes on 2 seeds over 1 year (40 places, 40 cells a class), and phase A's 1-tile margin printed the same bytes as 9216 on Ahmed's seed with the defaults over 1 year. The 1-worker and 16-worker check ran on a 4096-block strip with 20 places and 20 cells a class: with the defaults, 1 worker would take about 45 minutes, past the file's 600 s. A seed takes about 13 minutes with the defaults, over the file's 10 minutes; nothing was halved, as the whole run fits 7200 s (Results).
+
+14. **Biomes disagree with the classes, as expected.** Most Desert and Steppe land does not have a desert biome, and some desert biome sits in wet classes (Results). Master plan 2.6: the vegetation plan's. Nothing done.
+
+15. **Verification, run 2026-11-07 and 08, every command through `tools/test-or-build.sh`.** Debug configure and build: clean. `run_climate_constants`, `standards_lint`, `clang_format`: 3 of 3. The whole debug suite (`ctest --preset debug`, 3400 s): **151 of 151 pass** in 2268 s, on the code of `ad79538e`. Release configure and build (`-O3 -flto`, main's 16 KiB frame check): clean, before the survey and again at the end; nothing here touches `app_t`. Profile configure and build: clean. The survey, its 1-worker and 16-worker runs, `bench_climate`, `--systems`, `bench_atlas`, `bench_terrain`, `bench_mobs`, `run_climate_warning` on release, `bench_climate_census` and `bench_world --record` on profile: as in Results (the warning and the frame rate miss). `pgrep -af "$PWD/build"` and `pgrep -a minecraft_c` print nothing afterwards. Not run by the agent: Ahmed's gate (`./build/release/bin/minecraft_c --windowed`).
