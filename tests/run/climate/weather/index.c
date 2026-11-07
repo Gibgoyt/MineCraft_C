@@ -58,6 +58,8 @@ static void weather_rig_stop(weather_rig_t *rig) {
     climate_close(rig->climate, rig->job);
     climate_deinit(rig->climate);
     job_deinit(rig->job);
+    /* Its memory is the test arena's: given back, so the sanitize build's poisoning ends with the test. */
+    arena_deinit(rig->arena);
 }
 
 /* Every tile a day list round (x, y) reads: 6 km each way. */
