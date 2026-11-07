@@ -36,7 +36,8 @@ typedef enum climate_outlook_footprint_t : uint8_t {
     CLIMATE_OUTLOOK_FOOTPRINT_EXACT = 1,  /* the chance a Gaussian-scattered centre lands within R: Issues found 1 */
 } climate_outlook_footprint_t;
 
-/* The form in force: CLIMATE_OUTLOOK_FOOTPRINT_EXACT since the calibration test (phase 07 file, Issues found 1). */
+/* The form in force: CLIMATE_OUTLOOK_FOOTPRINT_MASTER, as the calibration test passed with it, so the exact form was not
+ * switched to (phase 07 file, Issues found 1 and 14). run_climate_constants pins this choice. */
 static const uint8_t CLIMATE_OUTLOOK_FOOTPRINT = CLIMATE_OUTLOOK_FOOTPRINT_MASTER;
 
 typedef struct climate_outlook_system_t {
