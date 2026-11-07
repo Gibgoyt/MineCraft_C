@@ -948,6 +948,7 @@ Appended as they land:
 - `ac31617c` Work out a column's top for the Atlas from each section's not-air bits, passing over air sections at a glance, so it takes 12 us and not 98.
 - `0bd139e8` Widen the Atlas legend to its longest line and lift it above the day slider where they would meet, so neither runs over the other at 640 by 480.
 - `54023d5c` Give back the weather tests' arena at each rig's stop, so the sanitize build's poisoning does not outlive the test.
+- `76c8b56c` Record the second gate check of plan 004 phase 09 in its phase file: temperature now shared lists, the column top, the legend layout, the weather test arena, and the runs.
 
 ## Issues found
 
