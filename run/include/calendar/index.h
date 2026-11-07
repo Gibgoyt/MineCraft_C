@@ -20,14 +20,37 @@ enum : uint32_t {
     CALENDAR_AUTUMN_FROM = 262u,
     CALENDAR_WINTER_FROM = 353u,
     CALENDAR_LINE_BYTES = 64u, /* the date line, with its NUL */
+    /* Plan 004 phase 11: the calendar's other numbers, one home each. */
+    CALENDAR_SEASONS = 4u,            /* spring, summer, autumn, winter: 4.1 */
+    CALENDAR_SEASON_PARTS = 3u,       /* early, mid and late, each a third of its season: 4.1 */
+    CALENDAR_SOUTH_SEASON_SHIFT = 2u, /* the south's season is two seasons on from the north's: 4.1 */
+    CALENDAR_HOURS_PER_DAY = 24u,     /* hours on the clock */
+    CALENDAR_MINUTES_PER_HOUR = 60u,
+    CALENDAR_MINUTES_PER_DAY = CALENDAR_HOURS_PER_DAY * CALENDAR_MINUTES_PER_HOUR, /* 1440 */
+    CALENDAR_NOON_HOUR = 12u,                                                      /* hours on the clock */
+    CALENDAR_CENSUS_HOUR = 6u, /* hours on the clock: the census and each calendar day start at 06:00, 2.2 and 4.2 */
+    CALENDAR_CLOCK_FRACTION_BITS = 32u, /* the clock's time of day: the low 32 bits */
 };
 
 enum : uint64_t {
     /* The clock: whole days in the top 32 bits, the time of day in 1/2^32 of a day below, as game_t.day_units has it. */
-    CALENDAR_CLOCK_DAY = 1ull << 32,
+    CALENDAR_CLOCK_DAY = 1ull << CALENDAR_CLOCK_FRACTION_BITS,
     /* 06:00, where each calendar day starts: the master plan's t0. */
-    CALENDAR_CLOCK_DAY_START = 1ull << 30,
+    CALENDAR_CLOCK_DAY_START = CALENDAR_CLOCK_DAY * CALENDAR_CENSUS_HOUR / CALENDAR_HOURS_PER_DAY,
 };
+static_assert(CALENDAR_CLOCK_DAY_START == 1ull << 30); /* a quarter day, exactly */
+/* The same numbers as floats, for the climate's formulas. */
+#define CALENDAR_HOURS_PER_DAY_F64 ((float64_t)CALENDAR_HOURS_PER_DAY)
+#define CALENDAR_HOURS_PER_DAY_F32 ((float32_t)CALENDAR_HOURS_PER_DAY)
+#define CALENDAR_DAYS_PER_YEAR_F64 ((float64_t)CALENDAR_DAYS_PER_YEAR)
+#define CALENDAR_DAYS_PER_YEAR_F32 ((float32_t)CALENDAR_DAYS_PER_YEAR)
+#define CALENDAR_DAYS_PER_WEEK_F64 ((float64_t)CALENDAR_DAYS_PER_WEEK)
+#define CALENDAR_DAYS_PER_WEEK_F32 ((float32_t)CALENDAR_DAYS_PER_WEEK)
+#define CALENDAR_CENSUS_HOUR_F64 ((float64_t)CALENDAR_CENSUS_HOUR)
+#define CALENDAR_CENSUS_HOUR_F32 ((float32_t)CALENDAR_CENSUS_HOUR)
+/* Noon as days into a calendar day, which starts at 06:00: 6 / 24 = 0.25, exactly. */
+#define CALENDAR_NOON_INTO_DAY_F64 ((float64_t)(CALENDAR_NOON_HOUR - CALENDAR_CENSUS_HOUR) / CALENDAR_HOURS_PER_DAY_F64)
+#define CALENDAR_NOON_INTO_DAY_F32 ((float32_t)(CALENDAR_NOON_HOUR - CALENDAR_CENSUS_HOUR) / CALENDAR_HOURS_PER_DAY_F32)
 
 /* The world clock: CALENDAR_CLOCK_DAY per day since the midnight before the world's first morning. */
 typedef uint64_t calendar_clock_t;

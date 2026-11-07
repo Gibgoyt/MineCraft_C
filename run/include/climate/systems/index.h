@@ -32,7 +32,11 @@ static const char *const CLIMATE_SYSTEMS_SALT_NAMES[CLIMATE_SYSTEM_KINDS] = {
 /* Time. */
 static const float64_t CLIMATE_TRACK_STEP_DAYS = 0.25f64;      /* 7.3: steps of a quarter of a day */
 static const float32_t CLIMATE_REAL_SECONDS_A_DAY = 1200.0f32; /* 24000 ticks at 20 Hz: run/include/game/index.h */
-static const float64_t CLIMATE_SYSTEMS_YEAR_DAYS = 365.0f64;
+static const float64_t CLIMATE_SYSTEMS_YEAR_DAYS = CALENDAR_DAYS_PER_YEAR_F64;
+/* 7.2: a system's life in thirds: it grows over the first, CLIMATE_LIFE_GROW_SHARE, and fades over the last. */
+static const float64_t CLIMATE_LIFE_THIRDS = 3.0f64;
+static const float64_t CLIMATE_LIFE_GROW_SHARE = 1.0f64 / 3.0f64;
+static const float64_t CLIMATE_LIFE_FADE_SHARE = 1.0f64 / 3.0f64;
 enum : uint32_t {
     CLIMATE_TRACK_SAMPLES_MAX = 57u,  /* 14 days x 4 + 1: the longest life, a high's */
     CLIMATE_SPAWNS_MAX = 8u,          /* this phase: the inverse CDF's cap per square-day, big systems */
@@ -65,7 +69,7 @@ static const float32_t CLIMATE_THUNDER_HOT_C = 18.0f32; /* 7.2.1: (T - 18) / 10 
 static const float32_t CLIMATE_THUNDER_HOT_RANGE_C = 10.0f32;
 static const float32_t CLIMATE_THUNDER_MONSOON = 2.0f32; /* 7.2.1: 1 + 2 f_monsoon */
 static const float32_t CLIMATE_THUNDER_FRONT = 4.0f32;   /* 7.2.1: 1 + 4 f_front */
-static const float32_t CLIMATE_THUNDER_HIGH = 0.2f32;    /* 7.2.1: 0.2^{f_high} */
+#define CLIMATE_THUNDER_HIGH CLIMATE_HIGH_RAIN_SHARE     /* 7.2.1: 0.2^{f_high}: the same 0.2 as rain under a high */
 /* This phase (Issues found 12): a cell's rain scale divides by heat no lower than this, so the rare cells of a day barely
  * over 18 C are at most 5 times as heavy, not without bound. */
 static const float32_t CLIMATE_THUNDER_HOT_FLOOR = 0.2f32;
@@ -100,7 +104,7 @@ static const float32_t CLIMATE_THUNDER_HPA[2] = {-1.0f32, -3.0f32};
 static const float32_t CLIMATE_THUNDER_LIFE_HOURS[2] = {1.0f32, 4.0f32};
 static const float32_t CLIMATE_THUNDER_MM_HOUR[2] = {20.0f32, 60.0f32};
 static const float32_t CLIMATE_THUNDER_START_HOURS[2] = {13.0f32, 19.0f32}; /* clock hours, off fronts */
-static const float32_t CLIMATE_DAY_START_HOUR = 6.0f32;                     /* phase 01: a day starts at 06:00 */
+static const float32_t CLIMATE_DAY_START_HOUR = CALENDAR_CENSUS_HOUR_F32;   /* phase 01: a day starts at 06:00 */
 
 /* Motion, blocks a game day: 7.3. */
 static const float32_t CLIMATE_HURRICANE_SPEED_WEST = 3500.0f32;

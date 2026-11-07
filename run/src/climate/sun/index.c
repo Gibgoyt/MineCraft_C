@@ -36,14 +36,14 @@ float64_t climate_sun_sunset_hour_angle(float64_t latitude_deg, float64_t declin
 }
 
 float64_t climate_sun_day_hours(float64_t latitude_deg, float64_t declination_deg) {
-    return 24.0f64 * climate_sun_sunset_hour_angle(latitude_deg, declination_deg) / CLIMATE_PI;
+    return CALENDAR_HOURS_PER_DAY_F64 * climate_sun_sunset_hour_angle(latitude_deg, declination_deg) / CLIMATE_PI;
 }
 
 void climate_sun_at(float64_t latitude_deg, float64_t day_of_year, float64_t clock_hour, climate_sun_t *out) {
     const float64_t declination_deg = climate_sun_declination_deg(day_of_year);
     const float64_t phi = climate_sun_radians(latitude_deg);
     const float64_t delta = climate_sun_radians(declination_deg);
-    const float64_t hour = 2.0f64 * CLIMATE_PI * (clock_hour - 12.0f64) / 24.0f64;
+    const float64_t hour = 2.0f64 * CLIMATE_PI * (clock_hour - CLIMATE_SUN_NOON_HOUR) / CALENDAR_HOURS_PER_DAY_F64;
     const float64_t sin_phi = sin(phi), cos_phi = cos(phi);
     const float64_t sin_delta = sin(delta), cos_delta = cos(delta);
     const float64_t sin_hour = sin(hour), cos_hour = cos(hour);
@@ -67,7 +67,8 @@ void climate_sun_at(float64_t latitude_deg, float64_t day_of_year, float64_t clo
 
 void climate_sun_of_clock(uint32_t day_zero, calendar_clock_t clock, float64_t y, climate_sun_t *out) {
     /* The hour of the clock itself, not of the calendar day, which starts at 06:00. */
-    const float64_t hour = 24.0f64 * (float64_t)(clock & (CALENDAR_CLOCK_DAY - 1u)) / (float64_t)CALENDAR_CLOCK_DAY;
+    const float64_t hour =
+        CALENDAR_HOURS_PER_DAY_F64 * (float64_t)(clock & (CALENDAR_CLOCK_DAY - 1u)) / (float64_t)CALENDAR_CLOCK_DAY;
     climate_sun_at(climate_latitude_deg(y), calendar_year_position(day_zero, clock), hour, out);
 }
 

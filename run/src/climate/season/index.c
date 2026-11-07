@@ -2,6 +2,7 @@
  * the phase 05 file's "Seasons and classes, in climate/season". Labels worked out once from a cell's normals. */
 #include "climate/season/index.h"
 
+#include "calendar/index.h"
 #include "climate/air/index.h"
 #include "climate/harmonic/index.h"
 #include "climate/heat/index.h"
@@ -63,8 +64,8 @@ void climate_season_hurricane_days(const climate_normals_t *normals, float32_t l
             best_length = length;
         }
     }
-    out[0] = (uint8_t)(best_start / 4u);
-    out[1] = (uint8_t)(((best_start + best_length - 1u) % CLIMATE_SEASON_DAYS) / 4u);
+    out[0] = (uint8_t)(best_start / CLIMATE_HURRICANE_DAY_SCALE);
+    out[1] = (uint8_t)(((best_start + best_length - 1u) % CLIMATE_SEASON_DAYS) / CLIMATE_HURRICANE_DAY_SCALE);
 }
 
 bool climate_season_hurricane_today(const uint8_t hurricane_days[2], float32_t day) {
@@ -72,8 +73,10 @@ bool climate_season_hurricane_today(const uint8_t hurricane_days[2], float32_t d
         return false;
     }
     float32_t whole = floorf(day);
-    whole = whole < 0.0f32 ? 0.0f32 : (whole > 364.0f32 ? 364.0f32 : whole);
-    const uint32_t quarter = (uint32_t)whole / 4u;
+    whole = whole < 0.0f32
+                ? 0.0f32
+                : (whole > (float32_t)(CLIMATE_SEASON_DAYS - 1u) ? (float32_t)(CLIMATE_SEASON_DAYS - 1u) : whole);
+    const uint32_t quarter = (uint32_t)whole / CLIMATE_HURRICANE_DAY_SCALE;
     const uint32_t first = hurricane_days[0], last = hurricane_days[1];
     return first <= last ? (quarter >= first && quarter <= last) : (quarter >= first || quarter <= last);
 }
@@ -95,7 +98,8 @@ bool climate_season_monsoon_flag(const climate_cell_t *cell, const climate_test_
     }
     bool reverses = false;
     for (uint32_t k = 0u; k < CLIMATE_FIT_DAYS; k++) {
-        reverses = reverses || (onshore[k] < 0.0f32 && onshore[(k + 6u) % CLIMATE_FIT_DAYS] > 0.0f32);
+        reverses = reverses ||
+                   (onshore[k] < 0.0f32 && onshore[(k + CLIMATE_SEASON_HALF_FIT_DAYS) % CLIMATE_FIT_DAYS] > 0.0f32);
     }
     if (!reverses) {
         return false;
@@ -108,7 +112,7 @@ bool climate_season_monsoon_flag(const climate_cell_t *cell, const climate_test_
     float32_t wet = -1.0f32;
     for (uint32_t start = 0u; start < CLIMATE_FIT_DAYS; start++) {
         float32_t sum = 0.0f32;
-        for (uint32_t k = 0u; k < 6u; k++) {
+        for (uint32_t k = 0u; k < CLIMATE_SEASON_HALF_FIT_DAYS; k++) {
             sum += rain[(start + k) % CLIMATE_FIT_DAYS];
         }
         wet = sum > wet ? sum : wet;
@@ -167,7 +171,8 @@ void climate_season_months(const climate_cell_t *cell, float32_t z, bool land, c
     out->rain_mm_year = fmaxf(0.0f32, p[0]) * CLIMATE_DAYS_A_YEAR / CLIMATE_DAYS_A_WEEK;
     const float32_t weeks_a_month = CLIMATE_DAYS_A_YEAR / (float32_t)CLIMATE_MONTHS / CLIMATE_DAYS_A_WEEK;
     const float32_t hemisphere = cell->lat_deg < 0.0f32 ? -1.0f32 : 1.0f32;
-    float32_t driest = 1.0e30f32, driest_summer = 1.0e30f32, wettest_winter = 0.0f32;
+    float32_t driest = CLIMATE_SEASON_DRIEST_START_MM, driest_summer = CLIMATE_SEASON_DRIEST_START_MM,
+              wettest_winter = 0.0f32;
     for (uint32_t m = 0u; m < CLIMATE_MONTHS; m++) {
         const float32_t centre = SEASON_YEAR_DAYS * ((float32_t)m + 0.5f32) / (float32_t)CLIMATE_MONTHS;
         const float32_t theta = SEASON_TWO_PI * centre / SEASON_YEAR_DAYS;
@@ -200,7 +205,8 @@ static_assert(sizeof(season_weeks_t) == 416);
 
 static void season_weeks_fill(const climate_cell_t *cell, season_weeks_t *weeks) {
     for (uint32_t w = 0u; w < CLIMATE_SNOW_WEEKS; w++) {
-        const float32_t day = 7.0f32 * (float32_t)w + 3.5f32;
+        const float32_t day =
+            (float32_t)CALENDAR_DAYS_PER_WEEK * (float32_t)w + 0.5f32 * (float32_t)CALENDAR_DAYS_PER_WEEK;
         weeks->wave[w] = climate_heat_wave(cell->t_swing, cell->t_lag_days, day);
         weeks->rain[w] = fmaxf(0.0f32, climate_harmonic_at2(cell->rain_mm_week, day));
     }
@@ -257,7 +263,8 @@ static bool season_sea_of(const climate_window_t *window, uint32_t at, const cli
                           float32_t *out_current_c) {
     if ((cell->flags & CLIMATE_CELL_SEA) != 0u) {
         *out_lat = cell->lat_deg;
-        *out_current_c = climate_air_current_c(cell->current) * (float32_t)cell->current_strength / 255.0f32;
+        *out_current_c =
+            climate_air_current_c(cell->current) * (float32_t)cell->current_strength / CLIMATE_CURRENT_STRENGTH_MAX_F32;
         return true;
     }
     if (cell->sea_distance > CLIMATE_HURRICANE_COAST_BLOCKS || window->sea_distance2[at] == CLIMATE_SEA_FAR) {
@@ -270,7 +277,7 @@ static bool season_sea_of(const climate_window_t *window, uint32_t at, const cli
     const int64_t centre_y = (int64_t)(window->tile_y - CLIMATE_WINDOW_TILES / 2) * CLIMATE_TILE_BLOCKS +
                              row * CLIMATE_CELL_BLOCKS + CLIMATE_CELL_BLOCKS / 2;
     *out_lat = (float32_t)climate_latitude_deg((float64_t)centre_y); /* as that sea cell's own tile has it */
-    *out_current_c = climate_air_current_c(current) * (float32_t)strength / 255.0f32;
+    *out_current_c = climate_air_current_c(current) * (float32_t)strength / CLIMATE_CURRENT_STRENGTH_MAX_F32;
     return true;
 }
 

@@ -3,6 +3,7 @@
 #define MC_RUN_CLIMATE_CELL_INDEX_H
 
 #include "arena/index.h"
+#include "climate/harmonic/index.h"
 #include "types/index.h"
 
 #include <stddef.h>
@@ -24,7 +25,21 @@ enum : int32_t {
     CLIMATE_TILE_CELL_COUNT = CLIMATE_TILE_CELLS * CLIMATE_TILE_CELLS,            /* 256 */
     CLIMATE_WINDOW_CELL_COUNT = CLIMATE_WINDOW_CELLS * CLIMATE_WINDOW_CELLS,      /* 73,984 */
     CLIMATE_TILE_SAMPLES_SIDE = CLIMATE_TILE_CELLS * CLIMATE_GROUND_SAMPLES_SIDE, /* 64 */
+    CLIMATE_HALF_CELL_BLOCKS = CLIMATE_CELL_BLOCKS / 2, /* a cell's centre from its corner: 32 */
 };
+/* Plan 004 phase 11: the shapes every climate file shares, one home each (vision rule 5). */
+enum : uint32_t {
+    CLIMATE_CORNERS = 4u, /* the four cells a bilinear read blends: south-west, south-east, north-west, north-east */
+    CLIMATE_RAIN_COEFFICIENTS = CLIMATE_HARMONIC2_COEFFICIENTS,  /* rain_mm_week: P0, then two waves, 6.9 */
+    CLIMATE_WAVE1_COEFFICIENTS = CLIMATE_HARMONIC1_COEFFICIENTS, /* pressure, and u or v alone: a mean and one wave */
+    CLIMATE_WIND_COEFFICIENTS = 2u * CLIMATE_HARMONIC1_COEFFICIENTS, /* wind: u, then v, 6.9 */
+    CLIMATE_ALIGN_BYTES = 64u,                                       /* bytes: arena blocks start on a cache line */
+    CLIMATE_CURRENT_STRENGTH_MAX = 255u,                             /* current_strength at full strength: a byte */
+    CLIMATE_KEY_HALF_BITS = 32u, /* a 64-bit key or id folds as its two 32-bit halves */
+};
+#define CLIMATE_CURRENT_STRENGTH_MAX_F32 ((float32_t)CLIMATE_CURRENT_STRENGTH_MAX)
+/* A vector shorter than this, in its own units, has no direction to keep. */
+static const float32_t CLIMATE_DIRECTION_EPSILON = 1.0e-6f32;
 static_assert(CLIMATE_CELL_BLOCKS == 1 << CLIMATE_CELL_SHIFT);
 static_assert(CLIMATE_TILE_BLOCKS == 1 << CLIMATE_TILE_SHIFT);
 static_assert(CLIMATE_TILE_BLOCKS == CLIMATE_CELL_BLOCKS * CLIMATE_TILE_CELLS);
@@ -33,12 +48,17 @@ static_assert(CLIMATE_WINDOW_CELLS == CLIMATE_WINDOW_TILES * CLIMATE_TILE_CELLS)
 static_assert(CLIMATE_GROUND_SAMPLES_SIDE * CLIMATE_GROUND_SAMPLE_STEP == CLIMATE_CELL_BLOCKS);
 static_assert(CLIMATE_READ_REACH_BLOCKS == CLIMATE_CELL_BLOCKS + CLIMATE_WARP_BLOCKS);
 
-static const float32_t CLIMATE_SEA_DISTANCE_MAX = 8192.0f32; /* blocks: master plan 6.2 */
-static const float32_t CLIMATE_KAPPA_SCALE = 1500.0f32;      /* blocks: master plan 6.2 */
+/* Blocks: master plan 6.2. A macro since phase 11, so the layer scales can be built from it at compile time. */
+#define CLIMATE_SEA_DISTANCE_MAX 8192.0f32
+static const float32_t CLIMATE_KAPPA_SCALE = 1500.0f32; /* blocks: master plan 6.2 */
 /* Phase 03, Issues found 17: water this deep somewhere makes its whole body sea. The terrain's sea bed falls below -30 from
  * continentalness about -0.57 (DENSITY_KNOTS_CONTINENTAL); inland only the deepest hill hollows reach it. */
 static const float32_t CLIMATE_SEA_FLOOR_BLOCKS = -30.0f32;
 static const float32_t CLIMATE_WARP_FREQUENCY = 1.0f32 / 256.0f32; /* phase 03: cycles per block, first octave */
+/* Phase 03: a raw warp value this far from 0 is -1 or 1, the same spread as the density's detail field. */
+static const float64_t CLIMATE_WARP_LIMIT = 0.35f64;
+/* Phase 03: the smooth clamp u (1.5 - 0.5 u^2), which is 1 with zero slope at u = 1. */
+static const float64_t CLIMATE_WARP_CUBIC = 1.5f64;
 
 /* One 64 by 64 block cell's climate normals: worked out once from the seed, never saved, never changed by play. Master plan
  * 6.9's struct, with land_distance and land_direction in its spare bytes (phase 03 file). */

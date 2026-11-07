@@ -32,7 +32,7 @@ static const float32_t CLIMATE_ICE_EVENT_CM =
     5.0f32; /* phase 07: ice this thick is "ice on lakes"; phase 08's ice blocks */
 
 enum : uint32_t {
-    CLIMATE_WEEK_DAYS = 7u,
+    CLIMATE_WEEK_DAYS = CALENDAR_DAYS_PER_WEEK,
 };
 
 typedef enum climate_day_kind_t : uint8_t {

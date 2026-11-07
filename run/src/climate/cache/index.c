@@ -6,7 +6,7 @@
 #include <string.h>
 
 uint64_t climate_cache_key(int32_t tile_x, int32_t tile_y) {
-    return (uint64_t)(uint32_t)tile_x | (uint64_t)(uint32_t)tile_y << 32;
+    return (uint64_t)(uint32_t)tile_x | (uint64_t)(uint32_t)tile_y << CLIMATE_CACHE_KEY_Y_SHIFT;
 }
 
 uint32_t climate_cache_slot_index(int32_t tile_x, int32_t tile_y, uint32_t side) {

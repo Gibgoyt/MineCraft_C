@@ -23,8 +23,8 @@ enum : uint32_t {
 };
 static const float64_t CLIMATE_OUTLOOK_SIGMA_START = 200.0f64;   /* 8: sigma(t) = 200 + 400 t blocks */
 static const float64_t CLIMATE_OUTLOOK_SIGMA_PER_DAY = 400.0f64; /* 8 */
-static const float32_t CLIMATE_OUTLOOK_RAIN_MM = 6.0f32;         /* 8: 1 - e^(-P / 6) */
-static const float32_t CLIMATE_OUTLOOK_SPREAD_SIGMAS = 1.5f32;   /* 8: +-1.5 sigma_T */
+#define CLIMATE_OUTLOOK_RAIN_MM CLIMATE_WET_DAY_SCALE_MM /* 8: 1 - e^(-P / 6): the heat's rainy-day share uses it too */
+static const float32_t CLIMATE_OUTLOOK_SPREAD_SIGMAS = 1.5f32; /* 8: +-1.5 sigma_T */
 static const float64_t CLIMATE_OUTLOOK_REACH = 50000.0f64; /* phase 07: blocks; any system 7 days out comes from here */
 static const float32_t CLIMATE_OUTLOOK_CELL_RADIUS = 275.0f32;  /* phase 07: a cell's mean radius, blocks */
 static const float32_t CLIMATE_OUTLOOK_CELL_HOURS = 2.5f32;     /* phase 07: its mean life */

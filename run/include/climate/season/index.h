@@ -26,8 +26,10 @@ enum : uint32_t {
     CLIMATE_SNOW_BALANCE_YEARS = 2u,     /* this phase: spin-up year, then the year tested */
     CLIMATE_SNOW_WEEKS = 52u,            /* weeks of a model year, week w at day 7 w + 3.5 */
     CLIMATE_MONTHS = 12u,
-    CLIMATE_SEASON_DAYS = 365u,
-    CLIMATE_SEASON_QUARTERS_LAST = 91u, /* day 364 as a quarter day */
+    CLIMATE_SEASON_DAYS = CALENDAR_DAYS_PER_YEAR,
+    CLIMATE_SEASON_QUARTERS_LAST = 91u,                   /* day 364 as a quarter day */
+    CLIMATE_HURRICANE_DAY_SCALE = 4u,                     /* 6.9: hurricane_days holds day / 4, so a day fits a byte */
+    CLIMATE_SEASON_HALF_FIT_DAYS = CLIMATE_FIT_DAYS / 2u, /* phase 11: half a year of fit days: the monsoon's halves */
 };
 static const float32_t CLIMATE_DRY_THRESHOLD_PER_C = 20.0f32;      /* 6.10: P_th = 20 T + 140 */
 static const float32_t CLIMATE_DRY_THRESHOLD_BASE_MM = 140.0f32;   /* 6.10 */
@@ -40,6 +42,8 @@ static const float32_t CLIMATE_DRY_SUMMER_MM = 40.0f32;            /* this phase
 static const float32_t CLIMATE_DRY_SUMMER_SHARE = 1.0f32 / 3.0f32; /* this phase, Koppen's Cs */
 static const float32_t CLIMATE_MONTH_WAVE1 = 0.98862f32;           /* sin(pi/12) / (pi/12): a month's mean of wave 1 */
 static const float32_t CLIMATE_MONTH_WAVE2 = 0.95493f32;           /* sin(pi/6) / (pi/6): of wave 2 */
+/* Phase 11: the driest month's search starts above any month's rain, mm. */
+static const float32_t CLIMATE_SEASON_DRIEST_START_MM = 1.0e30f32;
 
 enum : uint8_t {
     CLIMATE_CLASS_NONE = 0, /* sea */

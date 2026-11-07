@@ -28,6 +28,10 @@ enum : uint32_t {
     CLIMATE_LAKE_LARGE_CELLS = 489u,
     /* A squared distance with no marked cell anywhere in the grid. */
     CLIMATE_SEA_FAR = UINT32_MAX,
+    /* Phase 11: climate_sea_scratch_t.words holds this many words per cell of a side, plus one. */
+    CLIMATE_SEA_SCRATCH_WORDS_PER_SIDE = 5u,
+    /* Phase 11: water flows to its 4 neighbours, north, south, east and west, never through a corner. */
+    CLIMATE_SEA_NEIGHBOURS = 4u,
 };
 
 /* Working memory for climate_sea_distance on a grid side cells across. The caller lends it, from an arena. */

@@ -15,4 +15,4 @@
 Constants (`CLIMATE_CELL_BLOCKS`, `CLIMATE_TILE_CELLS`, `CLIMATE_MARGIN_CELLS`, `CLIMATE_WINDOW_CELLS`, `CLIMATE_WARP_BLOCKS`, `CLIMATE_READ_REACH_BLOCKS`, `CLIMATE_GROUND_SAMPLES_SIDE`, `CLIMATE_SEA_DISTANCE_MAX`, `CLIMATE_KAPPA_SCALE`) and the ground function's type, `climate_ground_fn_t`, are in this part's header, where every other part finds them.
 
 **May be called by:** its parent `run/src/climate/`, and `run/src/climate/mask/` for the constants.
-**Depends on:** `run/src/climate/sea/` (sibling: the fill and the transform), its parent for `climate_latitude_deg`, `arena`, `types`, libm.
+**Depends on:** `run/src/climate/sea/` (sibling: the fill and the transform), `run/src/climate/harmonic/` (sibling: how many coefficients a stored wave has, plan 004 phase 11), its parent for `climate_latitude_deg`, `arena`, `types`, libm.
