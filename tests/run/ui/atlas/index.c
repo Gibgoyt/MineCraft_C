@@ -576,7 +576,13 @@ TEST(the_sim_never_waits_long_on_the_lock) {
     printf("%" PRIu64 " writes, %" PRIu64 " reads, %" PRIu64 " saves; the longest wait %.3f ms\n", race->writes,
            race->reads, race->saves, (libc_double_t)((float64_t)waited / 1.0e6f64));
     CHECK(race->writes > 1000u && race->reads > 0u && race->saves > 0u);
+    /* 2 ms is a budget at the build's own speed. Under the sanitizers every copy of a tile under the lock is checked
+     * byte by byte, ten times slower, so the bound there is ten times wider: what they are for is the races, not the time. */
+#if defined(__SANITIZE_THREAD__) || defined(__SANITIZE_ADDRESS__)
+    CHECK(waited < 20000000u);
+#else
     CHECK(waited < 2000000u);
+#endif
     ui_atlas_world_close(&rig->ui);
     rig_stop(rig);
     temp_dir_remove(&dir);

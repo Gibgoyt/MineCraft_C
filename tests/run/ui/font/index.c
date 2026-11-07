@@ -344,7 +344,7 @@ TEST(the_degree_sign_and_the_middle_dot_are_one_character_each_and_ascii_is_unch
         for (uint32_t y = 0u; y < UI_FONT_GLYPH_HEIGHT; y++) {
             uint8_t bits = 0u;
             for (uint32_t x = 0u; x < UI_FONT_GLYPH_WIDTH; x++) {
-                bits |= glyph_pixel(mip.borrowed_pixels, c, x, y) ? (uint8_t)(1u << x) : 0u;
+                bits = (uint8_t)(bits | (glyph_pixel(mip.borrowed_pixels, c, x, y) ? 1u << x : 0u));
             }
             CHECK_EQ_U64(ui_font_glyph(font, (uint8_t)c)->rows[y], bits);
         }
