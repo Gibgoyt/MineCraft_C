@@ -662,6 +662,7 @@ static bool rig_begin(test_context_t *t, rig_t *rig) {
 }
 
 static void rig_end(test_context_t *t, rig_t *rig) {
+    arena_deinit(rig->arena); /* the sanitize build poisons what it holds, and the test arena outlives this */
     game_deinit(rig->game);
     climate_close(rig->climate, rig->job);
     climate_deinit(rig->climate);

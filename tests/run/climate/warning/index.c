@@ -299,6 +299,7 @@ static bool warning_rig_start(test_context_t *t, warning_rig_t *rig, uint32_t wo
 }
 
 static void warning_rig_stop(warning_rig_t *rig) {
+    arena_deinit(rig->arena); /* the sanitize build poisons what it holds, and the test arena outlives this */
     climate_close(rig->climate, rig->job);
     climate_deinit(rig->climate);
     terrain_deinit(rig->terrain);

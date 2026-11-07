@@ -34,6 +34,9 @@ void game_corner_stop(game_corner_t *corner, const job_system_t *job) {
 
 uint32_t game_corner_wind_pack(float32_t u, float32_t v) {
     const float32_t speed = sqrtf(u * u + v * v);
+    if (!(speed > 0.0f32)) {
+        return 0u; /* still, or no number: calm, toward east */
+    }
     const float32_t tenths = floorf(speed * 10.0f32 + 0.5f32);
     const uint32_t packed_speed = tenths >= 65535.0f32 ? 65535u : (uint32_t)tenths;
     float32_t toward = atan2f(v, u);
@@ -169,6 +172,9 @@ static bool corner_climate_line(game_t *game, climate_t *climate, game_corner_t 
     };
     const climate_season_label_t label = climate_season_of(&input);
     const float64_t tenths = floor(t_hud * 10.0f64 + 0.5f64);
+    if (!(fabs(tenths) < 1.0e6f64)) {
+        return false; /* no number a climate could give: the last words stay */
+    }
     atomic_store_explicit(&corner->hud_temperature_dc, (int32_t)tenths, memory_order_relaxed);
     atomic_store_explicit(&corner->hud_wind, game_corner_wind_pack(now.wind[0], now.wind[1]), memory_order_relaxed);
     atomic_store_explicit(&corner->hud_season,
