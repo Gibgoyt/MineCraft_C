@@ -671,6 +671,7 @@ Appended as they land:
 - `7f2b0217` Pin the terrain digests again for snow_layer, which moved the numbers of the blocks after it and not the land.
 - `73842bdb` Record plan 004 phase 08 in its phase file: the todos, the commits, the verification, the cost and the issues found.
 - `709b40fc` List the phase file commit of plan 004 phase 08 in its phase file.
+- `20db50e3` Record the second agent's re-check of plan 004 phase 08 on the merged branch in its phase file.
 
 ## Issues found
 
