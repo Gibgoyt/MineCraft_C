@@ -24,7 +24,8 @@ decides: above the level, the two above corners are joined.
 
 **Public functions:** `ui_atlas_scale_colour`, `ui_atlas_shade`, `ui_atlas_shade_apply`, `ui_atlas_march`,
 `ui_atlas_draw_allowed`, `ui_atlas_draw_point`, `ui_atlas_draw_point_blend`, `ui_atlas_draw_line`,
-`ui_atlas_draw_circle`, `ui_atlas_draw_disc`, `ui_atlas_draw_arrow`, `ui_atlas_draw_cone`, `ui_atlas_draw_legend`.
+`ui_atlas_draw_circle`, `ui_atlas_draw_disc`, `ui_atlas_draw_arrow`, `ui_atlas_draw_cone`, `ui_atlas_legend_width` (the panel's width so its widest line stays inside, at least
+`UI_ATLAS_LEGEND_WIDTH` pixels a text scale), `ui_atlas_draw_legend`.
 
 **May be called by:** `run/src/ui/atlas/` and its `layer/`, tests.
 **Depends on:** `ui/compose`, `ui/font` (legends), libm, libc (`snprintf` for a legend's numbers).
