@@ -101,7 +101,7 @@ static_assert(sizeof(ui_atlas_ground_t) == 16);
 typedef struct ui_atlas_draw_input_t {
     ui_atlas_view_t view;                          /* 0 */
     ui_atlas_ground_t ground;                      /* 56 */
-    const climate_t *borrowed_climate;             /* 72 */
+    const climate_t *borrowed_climate;             /* 72: nullptr in a world with no climate: ground only */
     const climate_week_store_t *borrowed_week;     /* 80: the weekly state, or nullptr */
     const ui_font_t *borrowed_font;                /* 88 */
     const climate_systems_day_t *borrowed_systems; /* 96: the weather systems round the view at t, or nullptr */
