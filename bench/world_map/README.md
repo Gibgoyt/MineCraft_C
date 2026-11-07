@@ -17,7 +17,7 @@
 | `<seed>_slice_spawn.png` | Side-on, 2048 blocks wide through where a body starts, at a voxel a pixel, from the bottom of the world to a little over the highest ground it crosses |
 | `<seed>_slice_mountain.png` | The same, through the nearest high ground. Left out if the map has none |
 
-**This is not the game's renderer.** Colours are this program's, typed by hand.
+**This is not the game's renderer.** Colours are this program's, typed by hand. For the world as the game's Atlas shows it, every layer, see `atlas/` (`bench_world_map_atlas`, plan 004 phase 09).
 
 **On the map:** land by height, shaded by slope, with a dark line where a height band ends, at 150, 300, 500, 750 and 1000. Green up to 60, yellow at 150, orange at 300, brown at 500, grey at 750, near white at 1000 and over. Sea goes from blue to dark navy with depth, down to 100. Sea ice is pale cyan with a darker hatch. Cyan is a river or a lake. A faint grid every 2048 blocks, and two darker lines through the middle. The magenta cross is where a body starts, and the red one the nearest pixel of high ground (see the table).
 
