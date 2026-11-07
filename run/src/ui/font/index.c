@@ -10,12 +10,16 @@ enum : uint32_t {
     UI_FONT_REPLACEMENT = '?',
     UI_FONT_ATLAS_COLUMNS = UI_FONT_ATLAS_WIDTH / UI_FONT_CELL,
 };
-static_assert(UI_FONT_ATLAS_COLUMNS * (UI_FONT_ATLAS_HEIGHT / UI_FONT_CELL) == UI_FONT_GLYPHS);
+static_assert(UI_FONT_ATLAS_COLUMNS * (UI_FONT_ATLAS_HEIGHT / UI_FONT_CELL) ==
+              UI_FONT_GLYPHS + UI_FONT_EXTRA_ROW_CELLS);
+static_assert(UI_FONT_EXTRA <= UI_FONT_EXTRA_ROW_CELLS);
 
 /* What ui_font_next found, past any character. */
 enum : uint32_t {
     UI_FONT_END = UINT32_MAX,
     UI_FONT_NEWLINE = UINT32_MAX - 1u,
+    UI_FONT_EXTRA_FIRST =
+        0x100u, /* the seventh row's characters, past every byte: 0x100 the degree sign, 0x101 the dot */
 };
 
 bool ui_font_init(ui_font_t *font, arena_t *arena, const texture_t *texture) {
@@ -35,8 +39,10 @@ bool ui_font_load(ui_font_t *font, arena_t *arena, const uint8_t *pixels, uint32
         LOG_ERROR("ui: ui/font is %ux%u, not %ux%u", width, height, UI_FONT_ATLAS_WIDTH, UI_FONT_ATLAS_HEIGHT);
         return false;
     }
-    ui_font_glyph_t *const glyphs = arena_alloc_array(arena, UI_FONT_GLYPHS, sizeof(*glyphs), alignof(ui_font_glyph_t));
-    for (uint32_t glyph = 0u; glyph < UI_FONT_GLYPHS; glyph++) {
+    ui_font_glyph_t *const glyphs =
+        arena_alloc_array(arena, UI_FONT_GLYPHS + UI_FONT_EXTRA, sizeof(*glyphs), alignof(ui_font_glyph_t));
+    /* The seventh row's cells follow the 96 of ASCII, so cell numbers run on. */
+    for (uint32_t glyph = 0u; glyph < UI_FONT_GLYPHS + UI_FONT_EXTRA; glyph++) {
         const uint32_t cell_x = glyph % UI_FONT_ATLAS_COLUMNS * UI_FONT_CELL;
         const uint32_t cell_y = glyph / UI_FONT_ATLAS_COLUMNS * UI_FONT_CELL;
         ui_font_glyph_t *const out = &glyphs[glyph];
@@ -74,8 +80,20 @@ const ui_font_glyph_t *ui_font_glyph(const ui_font_t *font, uint8_t character) {
     return &font->borrowed_glyphs[shown - UI_FONT_FIRST];
 }
 
-/* One step along text: the character to show, or that the text or the line has ended. A sequence past ASCII is one '?': its
- * first byte shows it and the bytes that continue it are passed over, so that a name in any language is the right length. */
+const ui_font_glyph_t *ui_font_glyph_extra(const ui_font_t *font, uint32_t index) {
+    return index < UI_FONT_EXTRA ? &font->borrowed_glyphs[UI_FONT_GLYPHS + index]
+                                 : ui_font_glyph(font, UI_FONT_REPLACEMENT);
+}
+
+/* The glyph of what ui_font_next found: a byte of ASCII, or one of the seventh row's. */
+static const ui_font_glyph_t *ui_font_glyph_of(const ui_font_t *font, uint32_t character) {
+    return character >= UI_FONT_EXTRA_FIRST ? ui_font_glyph_extra(font, character - UI_FONT_EXTRA_FIRST)
+                                            : ui_font_glyph(font, (uint8_t)character);
+}
+
+/* One step along text: the character to show, or that the text or the line has ended. The degree sign and the middle dot,
+ * 0xC2 then 0xB0 or 0xB7, are the seventh row's. Any other sequence past ASCII is one '?': its first byte shows it and the
+ * bytes that continue it are passed over, so that a name in any language is the right length. */
 static uint32_t ui_font_next(const char **cursor) {
     const uint8_t byte = (uint8_t)**cursor;
     if (byte == 0u) {
@@ -90,6 +108,11 @@ static uint32_t ui_font_next(const char **cursor) {
     }
     if (byte < 0x80u) {
         return byte;
+    }
+    if (byte == 0xC2u && ((uint8_t)**cursor == 0xB0u || (uint8_t)**cursor == 0xB7u)) {
+        const uint8_t second = (uint8_t)**cursor;
+        (*cursor)++;
+        return UI_FONT_EXTRA_FIRST + (second == 0xB0u ? 0u : 1u);
     }
     while (((uint8_t)**cursor & 0xC0u) == 0x80u) {
         (*cursor)++;
@@ -107,7 +130,7 @@ static uint64_t ui_font_line_width(const ui_font_t *font, const char **cursor, b
             *out_more = next == UI_FONT_NEWLINE;
             return width == 0u ? 0u : width - UI_FONT_SPACING;
         }
-        width += ui_font_glyph(font, (uint8_t)next)->advance;
+        width += ui_font_glyph_of(font, next)->advance;
     }
 }
 
@@ -159,7 +182,7 @@ static void ui_font_draw_line(const ui_font_t *font, ui_canvas_t *canvas, int64_
             if (next == UI_FONT_END || next == UI_FONT_NEWLINE) {
                 break;
             }
-            const ui_font_glyph_t *const glyph = ui_font_glyph(font, (uint8_t)next);
+            const ui_font_glyph_t *const glyph = ui_font_glyph_of(font, next);
             const uint32_t bits = glyph->rows[glyph_row];
             for (uint32_t column = 0u; bits != 0u && column < UI_FONT_GLYPH_WIDTH; column++) {
                 if ((bits >> column & 1u) == 0u) {

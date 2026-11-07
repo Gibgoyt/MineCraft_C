@@ -406,6 +406,7 @@ static void game_session_census_open(game_session_t *session, uint64_t week) {
     ui_t *const ui = session->borrowed_ui;
     game_loop_input_clear(game);
     game_pause_set(game, true);
+    ui_atlas_hide(ui_atlas(ui)); /* plan 004 phase 09: the census screen closes the Atlas, its view remembered */
     /* census_runs is the sim's, written before the latch's release, which game_census_take acquired. */
     const uint32_t weeks = game->census_runs - session->census_runs_seen;
     session->census_runs_seen = game->census_runs;

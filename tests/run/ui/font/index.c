@@ -296,6 +296,63 @@ TEST(text_is_measured_by_hand) {
     texture_deinit(&texture);
 }
 
+/* Plan 004 phase 09: the seventh row. */
+TEST(the_degree_sign_and_the_middle_dot_are_one_character_each_and_ascii_is_unchanged) {
+    texture_t texture;
+    REQUIRE(texture_init(&texture));
+    ui_t ui;
+    REQUIRE(ui_init(&ui, &texture));
+    const ui_font_t *const font = &ui.font;
+    /* By hand from index.yaml's seventh row: a 3 by 3 ring at the top, and one dot at mid height. */
+    static const uint8_t degree[UI_FONT_GLYPH_HEIGHT] = {0x02u, 0x05u, 0x02u, 0x00u, 0x00u, 0x00u, 0x00u};
+    static const uint8_t dot[UI_FONT_GLYPH_HEIGHT] = {0x00u, 0x00u, 0x00u, 0x01u, 0x00u, 0x00u, 0x00u};
+    CHECK_MEM_EQ(ui_font_glyph_extra(font, 0u)->rows, degree, UI_FONT_GLYPH_HEIGHT);
+    CHECK_MEM_EQ(ui_font_glyph_extra(font, 1u)->rows, dot, UI_FONT_GLYPH_HEIGHT);
+    CHECK_EQ_U64(ui_font_glyph_extra(font, 0u)->advance, 4u);
+    CHECK_EQ_U64(ui_font_glyph_extra(font, 1u)->advance, 2u);
+    CHECK(ui_font_glyph_extra(font, 2u) == ui_font_glyph(font, '?'));
+    CHECK_EQ_U64(ui_font_measure(font, "\xC2\xB0", 1u).width, 3u);
+    CHECK_EQ_U64(ui_font_measure(font, "\xC2\xB7", 1u).width, 1u);
+    /* "12°C" is 1, 2, the ring and C, each with its spacing, the last's left out. */
+    CHECK_EQ_U64(ui_font_measure(font,
+                                 "12\xC2\xB0"
+                                 "C",
+                                 1u)
+                     .width,
+                 (uint64_t)ui_font_glyph(font, '1')->advance + ui_font_glyph(font, '2')->advance + 4u +
+                     ui_font_glyph(font, 'C')->advance - 1u);
+    /* Any other two-byte character is still one '?'. */
+    CHECK_EQ_U64(ui_font_measure(font, "\xC2\xB1", 1u).width, ui_font_measure(font, "?", 1u).width);
+    /* Drawn: the ring lands on its pixels. */
+    test_sheet_t sheet = sheet_make(t, 12u, 16u, 0xFF000000u);
+    ui_canvas_t canvas;
+    REQUIRE(sheet_canvas(&sheet, &canvas));
+    ui_font_draw(font, &canvas, 2, 1, "\xC2\xB0", (ui_text_style_t){0xFFFFFFFFu, 0u, 2u});
+    static const char *const expected[3] = {".w.", "w.w", ".w."};
+    for (int32_t y = 0; y < 16; y++) {
+        for (int32_t x = 0; x < 12; x++) {
+            const bool ink = x >= 2 && x < 8 && y >= 1 && y < 7 && expected[(y - 1) / 2][(x - 2) / 2] == 'w';
+            CHECK_EQ_U64(sheet_at(&sheet, x, y), ink ? 0xFFFFFFFFu : 0xFF000000u);
+        }
+    }
+    /* Every ASCII glyph is its cell of the atlas's first six rows, as before the seventh came. */
+    uint32_t id = 0u;
+    texture_mip_t mip;
+    REQUIRE(texture_find(&texture, "ui/font", &id) && texture_mip_get(&texture, id, 0u, 0u, &mip));
+    CHECK_EQ_U64(mip.height, 56u);
+    for (uint32_t c = 32u; c < 127u; c++) {
+        for (uint32_t y = 0u; y < UI_FONT_GLYPH_HEIGHT; y++) {
+            uint8_t bits = 0u;
+            for (uint32_t x = 0u; x < UI_FONT_GLYPH_WIDTH; x++) {
+                bits = (uint8_t)(bits | (glyph_pixel(mip.borrowed_pixels, c, x, y) ? 1u << x : 0u));
+            }
+            CHECK_EQ_U64(ui_font_glyph(font, (uint8_t)c)->rows[y], bits);
+        }
+    }
+    ui_deinit(&ui);
+    texture_deinit(&texture);
+}
+
 TEST(a_letter_lands_on_its_pixels) {
     test_sheet_t sheet = sheet_make(t, 16u, 18u, 0xFF000000u);
     texture_t texture;
