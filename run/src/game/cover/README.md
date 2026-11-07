@@ -7,7 +7,7 @@
 1. The week's `snow_mm` and `ice_cm` there: bilinear between the centres of the four cells round the point moved by phase 03's warp (`game_cover_week_of_climate`), so the edge wobbles and does not follow the 64-block grid. A cell of a tile never through a census (fresh) is no week at all; with none near, nothing changes.
 2. **Snow off** at or under 10 mm: every `snow_layer` in the column goes back to air. Only this lays them (the block has no item), so any found is its own. Sections whose palette has no `snow_layer` are not looked at.
 3. The top: the highest voxel that is not air. A `snow_layer` there stays (it is between the lines, or over them).
-4. **Ice on** over 5 cm (30 cm on a sea cell, Risks R5): the top is a `water` source. **Ice off** at or under 2 cm: the top is `ice` with `water` under it. Ice a player covered is not the top and is left (R6).
+4. **Ice on** over 5 cm (30 cm on a sea cell, Risks R5): the top is a `water` source. **Ice off** at or under 2 cm: the top is `ice` with `water` under it, or `water` or `ice` beside it at its height, so a shore or pond a block deep, frozen onto its bed, thaws too, and a whole sheet in one pass. A lone ice block on dry ground is left. Ice a player covered is not the top and is left (R6).
 5. **Snow on** over 20 mm: the top is a whole solid cube, not leaves, `snow_block`, `ice`, `packed_ice`, `blue_ice` or `lava`, and the voxel over it is in the world. A roof keeps new snow off what is under it.
 
 Between the on and off lines nothing changes, so the edge of the snow does not flicker week to week (R4).
