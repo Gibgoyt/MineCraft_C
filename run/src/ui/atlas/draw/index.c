@@ -351,13 +351,28 @@ int32_t ui_atlas_draw_legend(ui_canvas_t *canvas, const ui_font_t *font, ui_rect
             ui_compose_fill(canvas, column, 0xFF000000u | ui_atlas_scale_colour(scale, value));
         }
         y += 6 * s + s;
-        for (uint32_t k = 0u; k < 5u; k++) {
-            const float32_t value = low + (high - low) * (float32_t)k / 4.0f32;
+        /* Five numbers where they fit apart, else three, else the two ends: never one written over another. */
+        uint32_t gaps = 4u;
+        while (gaps > 1u) {
+            int32_t widest = 0;
+            for (uint32_t k = 0u; k <= gaps; k++) {
+                char number[24];
+                draw_value(low + (high - low) * (float32_t)k / (float32_t)gaps, number, sizeof(number));
+                const int32_t w = (int32_t)ui_font_measure(font, number, text_scale).width;
+                widest = w > widest ? w : widest;
+            }
+            if (3 * widest / 2 + 2 * s <= (bar_width - 1) / (int32_t)gaps) { /* the end ones are pushed in by half */
+                break;
+            }
+            gaps = gaps == 4u ? 2u : 1u;
+        }
+        for (uint32_t k = 0u; k <= gaps; k++) {
+            const float32_t value = low + (high - low) * (float32_t)k / (float32_t)gaps;
             char number[24];
             draw_value(value, number, sizeof(number));
             const ui_text_size_t size = ui_font_measure(font, number, text_scale);
-            int32_t x =
-                panel.x + pad + (int32_t)((float32_t)(bar_width - 1) * (float32_t)k / 4.0f32) - (int32_t)size.width / 2;
+            int32_t x = panel.x + pad + (int32_t)((float32_t)(bar_width - 1) * (float32_t)k / (float32_t)gaps) -
+                        (int32_t)size.width / 2;
             x = x < panel.x + pad ? panel.x + pad : x;
             x = x + (int32_t)size.width > panel.x + panel.width - pad
                     ? panel.x + panel.width - pad - (int32_t)size.width

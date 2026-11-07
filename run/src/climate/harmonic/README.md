@@ -11,6 +11,7 @@
 - `climate_harmonic_fit1`: 12 values to `{a0, a1, b1}`, summed in `float64_t` in k order, so the same values give the same bytes on any worker.
 - `climate_harmonic_at1`: a stored wave on a day from 0 to below 365, fractions allowed.
 - `climate_harmonic_fit2`, `climate_harmonic_at2` (phase 05): the same with two waves, `{P0, P1c, P1s, P2c, P2s}`; `at2` is not clamped, so rain readers clamp at 0.
+- `climate_harmonic_max2` (plan 004 phase 09): the largest of 0 and `at2` on days 0, 5, ..., 360, the same bits as those 73 calls, from a written-out table of their cosines and sines; `climate_normals_at`'s wettest day.
 
 A pure yearly wave comes back exactly (up to rounding). A step-shaped cycle, such as a wind that switches belts through the year, is smoothed: the cost the master plan chose (the phase 04 file, "The wind is not a pure wave").
 

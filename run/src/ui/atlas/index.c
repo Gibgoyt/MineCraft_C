@@ -637,7 +637,7 @@ static void atlas_draw_start(ui_atlas_t *atlas, const ui_atlas_view_t *view, con
     atlas->input = (ui_atlas_draw_input_t){
         .view = *view,
         .ground = {.borrowed_context = atlas, .read = ui_atlas_store_read},
-        .borrowed_climate = climate,
+        .borrowed_climate = climate_open ? climate : nullptr, /* a world with no climate draws the ground only */
         .borrowed_week = climate_open ? climate_week_store(climate) : nullptr,
         .borrowed_font = atlas->borrowed_font,
         .borrowed_systems = nullptr,
@@ -1017,8 +1017,9 @@ void ui_atlas_frame_draw(ui_atlas_t *atlas, ui_widget_t *widget, ui_canvas_t *ca
     const int32_t legend_width = 120 * (int32_t)scale;
     const ui_rect_t legend = {(int32_t)width - legend_width - 4 * (int32_t)scale, 0, legend_width,
                               (int32_t)height - 4 * (int32_t)scale};
-    (void)ui_atlas_draw_legend(canvas, font, legend, scale, row->label, row->unit, has_scale ? &legend_scale : nullptr,
-                               row->entries, row->entry_count, row->arrows != 0u ? 10.0f32 : 0.0f32);
+    const int32_t legend_height =
+        ui_atlas_draw_legend(canvas, font, legend, scale, row->label, row->unit, has_scale ? &legend_scale : nullptr,
+                             row->entries, row->entry_count, row->arrows != 0u ? 10.0f32 : 0.0f32);
     /* Day slider. */
     if (row->time == UI_ATLAS_TIME_NORMALS) {
         char label[32];
@@ -1050,7 +1051,14 @@ void ui_atlas_frame_draw(ui_atlas_t *atlas, ui_widget_t *widget, ui_canvas_t *ca
         atlas->readout_view_day = key;
         atlas->readout_valid = 1u;
     }
-    const int32_t readout_bottom = (int32_t)height - (row->time == UI_ATLAS_TIME_NORMALS ? 20 : 4) * (int32_t)scale;
+    int32_t readout_bottom = (int32_t)height - (row->time == UI_ATLAS_TIME_NORMALS ? 20 : 4) * (int32_t)scale;
+    /* On a narrow screen the readout reaching under the legend goes above it instead. */
+    const int32_t readout_right =
+        4 * (int32_t)scale + (int32_t)ui_font_measure(font, atlas->readout, scale).width + 6 * (int32_t)scale;
+    const int32_t legend_top = legend.y + legend.height - legend_height;
+    if (readout_right > legend.x && readout_bottom > legend_top - 2 * (int32_t)scale) {
+        readout_bottom = legend_top - 2 * (int32_t)scale;
+    }
     atlas_panel_text(canvas, font, 4 * (int32_t)scale, readout_bottom, atlas->readout, scale, true);
     /* The player: a white triangle with a dark edge, pointing where they look, where the shown picture has them. */
     if (same_size) {

@@ -963,19 +963,27 @@ uint64_t ui_atlas_band_scratch_bytes(uint32_t width, uint32_t height) {
     return pieces + 16u * 64u; /* each piece rounded to 64 bytes */
 }
 
+/* A layer that reads the climate, in a world with none (a test world): only its ground is drawn. */
+static bool layer_without_climate(const ui_atlas_draw_input_t *input) {
+    const ui_atlas_layer_t *const row = &ui_atlas_layers[input->view.layer];
+    return input->borrowed_climate == nullptr && (row->band != layer_band_terrain || row->overlay != nullptr);
+}
+
 void ui_atlas_draw_band(const ui_atlas_draw_input_t *input, const ui_atlas_target_t *target, uint32_t band,
                         uint32_t bands, ui_atlas_scratch_t scratch) {
     const uint32_t height = input->view.height;
     const uint32_t y0 = (uint32_t)((uint64_t)height * band / bands);
     const uint32_t y1 = (uint32_t)((uint64_t)height * (band + 1u) / bands);
     if (y1 > y0) {
-        ui_atlas_layers[input->view.layer].band(input, target, y0, y1 - y0, scratch);
+        ui_atlas_band_draw_t *const draw =
+            layer_without_climate(input) ? layer_band_terrain : ui_atlas_layers[input->view.layer].band;
+        draw(input, target, y0, y1 - y0, scratch);
     }
 }
 
 void ui_atlas_draw_finish(const ui_atlas_draw_input_t *input, const ui_atlas_target_t *target) {
     const ui_atlas_layer_t *const row = &ui_atlas_layers[input->view.layer];
-    if (row->overlay != nullptr) {
+    if (row->overlay != nullptr && !layer_without_climate(input)) {
         row->overlay(input, target);
     }
     const uint64_t count = (uint64_t)input->view.width * input->view.height;

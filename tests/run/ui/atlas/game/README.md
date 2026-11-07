@@ -31,3 +31,6 @@ What it holds to:
   presses `escape`: the two Atlas screenshots differ from the world in over 90% of pixels, the explored land is there
   with grey round it, the last is the world again, the body ran all 90 ticks, and it ends with no leak.
   `MC_ATLAS_PNG_DIR=1` keeps the screenshots and prints where they are.
+- **No climate:** the built program in a `--test-world`, which has no climate, presses `m` and then every key `1` to `9`
+  four times, reaching every layer: it ends cleanly with no leak (a climate layer there draws the ground only), where
+  the Atlas's workers once crashed on a null climate.

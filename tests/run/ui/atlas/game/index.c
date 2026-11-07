@@ -680,4 +680,52 @@ TEST(the_program_opens_the_atlas_with_m_and_closes_it_with_esc) {
     }
 }
 
+/* A test world has no climate: every layer key must still draw (the ground, for a climate layer), not crash the workers. */
+TEST(every_layer_draws_in_a_test_world_with_no_climate) {
+    REQUIRE(t->arg_count >= 1);
+    ag_dir_t dir;
+    REQUIRE(ag_dir_make(&dir));
+    char script[2048];
+    uint64_t length = (uint64_t)snprintf(script, sizeof(script), "20 key m down\n21 key m up\n");
+    uint32_t tick = 30u;
+    for (uint32_t group = 1u; group <= 9u; group++) {
+        for (uint32_t press = 0u; press < 4u; press++) { /* a repeat cycles: 4 presses reach every layer of a group */
+            length += (uint64_t)snprintf(script + length, sizeof(script) - length, "%u key %u down\n%u key %u up\n",
+                                         tick, group, tick + 1u, group);
+            tick += 4u;
+        }
+    }
+    length += (uint64_t)snprintf(script + length, sizeof(script) - length, "%u screenshot last.png\n%u end\n", tick,
+                                 tick + 4u);
+    REQUIRE(length < sizeof(script));
+    char path[128];
+    snprintf(path, sizeof(path), "%s/run.script", dir.path);
+    REQUIRE(file_write_atomic(path, script, length) == FILE_OK);
+    char *const argv[] = {t->borrowed_args[0],
+                          (char *)"--headless",
+                          (char *)"--no-sound",
+                          (char *)"--test-world",
+                          (char *)"--walk",
+                          (char *)"--render-distance",
+                          (char *)"4",
+                          (char *)"--script",
+                          path,
+                          (char *)"--screenshot-dir",
+                          dir.path,
+                          (char *)"--width",
+                          (char *)"320",
+                          (char *)"--height",
+                          (char *)"240",
+                          nullptr};
+    test_process_t run;
+    test_process_run(t, argv, AG_PROGRAM_TIMEOUT_MS, &run);
+    REQUIRE(run.started != 0u);
+    CHECK(run.timed_out == 0u);
+    CHECK_EQ_I64(run.exit_code, MAIN_EXIT_OK);
+    CHECK_CONTAINS(run.output, " 0 bytes live");
+    uint8_t *const last = ag_screenshot_read(t, &dir, "last.png");
+    CHECK(last != nullptr);
+    ag_dir_remove(t, &dir);
+}
+
 TEST_MAIN()
