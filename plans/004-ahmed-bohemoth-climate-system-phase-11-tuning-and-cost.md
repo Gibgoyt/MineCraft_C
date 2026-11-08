@@ -731,6 +731,8 @@ Appended as they land:
 - `7e9eb18e` List the last commit of plan 004 phase 11 in its phase file.
 - `6a3916a7` Pin the climate's remaining tuning numbers in run_climate_constants (second pass).
 - `ffc94238` Say in the outlook's header that the master plan's footprint is the one in force (second pass).
+- `6c3d5656` Record plan 004 phase 11's benches run again from a cool machine in each bench's README and the world's history (second pass).
+- `858a5543` Record plan 004 phase 11's second pass in its phase file.
 
 ## Issues found
 
