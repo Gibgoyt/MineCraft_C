@@ -14,6 +14,16 @@
 #include <time.h>
 #include <unistd.h>
 
+/* A test may carve an arena_t out of test_alloc memory and return without arena_deinit; under the sanitize preset that
+ * arena leaves its unused bytes poisoned (run/src/arena/), and the harness, which owns the memory, unpoisons it before
+ * zeroing it for the next test. */
+#ifdef __SANITIZE_ADDRESS__
+#include <sanitizer/asan_interface.h>
+#define HARNESS_UNPOISON(memory, bytes) __asan_unpoison_memory_region((memory), (bytes))
+#else
+#define HARNESS_UNPOISON(memory, bytes) ((void)(memory), (void)(bytes))
+#endif
+
 typedef struct test_case_t {
     const char *name;
     test_function_t function;
@@ -240,6 +250,7 @@ int32_t test_main(int32_t argc, char **argv, const char *filter) {
         context.check_count = 0;
         test_case->function(&context);
         /* Zero what was used, so the next test's test_alloc starts clean. */
+        HARNESS_UNPOISON(arena, context.arena_used);
         memset(arena, 0, context.arena_used);
         context.arena_used = 0;
         ran++;

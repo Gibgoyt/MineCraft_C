@@ -162,7 +162,11 @@ TEST(the_outlook_needs_only_its_input) {
     /* The climate goes, every byte of its arena is scribbled over, and only the copy is left to read. */
     outlook_rig_stop(&rig);
     memset(input, 0xA5, sizeof(*input));
-    memset(rig.arena->borrowed_base, 0xA5, rig.arena->capacity);
+    /* The arena ends first, so under the sanitize preset its memory is no longer poisoned when it is scribbled on. */
+    uint8_t *const base = rig.arena->borrowed_base;
+    const uint64_t capacity = rig.arena->capacity;
+    arena_deinit(rig.arena);
+    memset(base, 0xA5, capacity);
     climate_outlook_run(copy, &without);
     printf("week %" PRIu64 ": %u systems known, %u named; day 1 rain %.3f, storm %.3f; high %.1f C\n", week,
            copy->known_count, with.system_count, (libc_double_t)with.days[0].rain, (libc_double_t)with.days[0].storm,
