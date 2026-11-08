@@ -21,8 +21,10 @@ bool climate_systems_under_high(const climate_systems_day_t *day, float64_t x, f
 /* 7.4's f_sys at a latitude: 0.3 + 0.2 S((|phi| - 20) / 15). */
 float32_t climate_systems_rain_share(float32_t lat_deg);
 /* f_sys on a day: climate_systems_rain_share where some system can bring rain that day, cells (t_day_c over 18) or lows
- * (|psi| within 5 degrees of their 35 to 65), else 0, when the background brings the whole normal (Issues found 12). */
-float32_t climate_systems_rain_share_today(float32_t lat_deg, float32_t day, float32_t t_day_c);
+ * (|psi| within 5 degrees of their 35 to 65), else 0, when the background brings the whole normal (Issues found 12); plus
+ * CLIMATE_SYSTEM_RAIN_SHARE_HURRICANE times the day's hurricane_s (climate_systems_hurricane_s at the place), the share
+ * hurricanes bring in their season (Issues found 22). */
+float32_t climate_systems_rain_share_today(float32_t lat_deg, float32_t day, float32_t t_day_c, float32_t hurricane_s);
 /* A place's wetness: its normal rain on the day over CLIMATE_SYSTEM_RAIN_WET_MM_DAY. The rain systems bring there is
  * climate_systems_rain_at times this (Issues found 11 of the phase 06 file). Never negative. */
 float32_t climate_systems_wetness(float32_t rain_mm_day);

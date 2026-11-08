@@ -826,8 +826,9 @@ bool climate_layer_rain_now(const climate_t *climate, const climate_systems_day_
     if (!climate_normals_at(climate, x, y, nanf(""), (float32_t)climate_systems_day_of_year(t), &normals)) {
         return false;
     }
-    const float32_t share = climate_systems_rain_share_today(
-        (float32_t)climate_latitude_deg(y), (float32_t)climate_systems_day_of_year(t), normals.t_day_c);
+    const float32_t share =
+        climate_systems_rain_share_today((float32_t)climate_latitude_deg(y), (float32_t)climate_systems_day_of_year(t),
+                                         normals.t_day_c, climate_systems_hurricane_s(climate, y, floor(t) + 0.5f64));
     const float32_t background = normals.rain_mm_day / CALENDAR_HOURS_PER_DAY_F32 * (1.0f32 - share);
     const float32_t systems = climate_systems_rain_at(day, x, y, t) * climate_systems_wetness(normals.rain_mm_day);
     *out = (background + systems) * climate_systems_rain_factor(day, x, y, t);

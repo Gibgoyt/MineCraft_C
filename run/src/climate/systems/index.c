@@ -207,11 +207,13 @@ float32_t climate_systems_hurricane_s(const climate_t *climate, float64_t y, flo
                                       climate_systems_sea_temperature(climate, y, t));
 }
 
-/* Open sea: the mask at or below 0 at the point and 2048 blocks north, south, east and west of it. */
+/* Sea: the mask at or below 0 at the point, and CLIMATE_HURRICANE_OPEN_SEA_BLOCKS north, south, east and west of it when
+ * that is over 0 (it is 0: the point alone). */
 static bool systems_open_sea(const climate_t *climate, climate_systems_mask_t *mask, arena_t *arena, float64_t x,
                              float64_t y) {
     const float64_t d = (float64_t)CLIMATE_HURRICANE_OPEN_SEA_BLOCKS;
-    for (uint32_t k = 0u; k < SYSTEMS_OPEN_SEA_POINTS; k++) {
+    const uint32_t points = d > 0.0f64 ? SYSTEMS_OPEN_SEA_POINTS : 1u;
+    for (uint32_t k = 0u; k < points; k++) {
         if (systems_height(climate, mask, arena, x + d * SYSTEMS_OPEN_SEA_STEPS[k][0],
                            y + d * SYSTEMS_OPEN_SEA_STEPS[k][1]) > 0.0f32) {
             return false;

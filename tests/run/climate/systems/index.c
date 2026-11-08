@@ -22,8 +22,9 @@
 #include <string.h>
 
 /* Any change to a rate, a draw's order, a steering rule or a constant of the phase moves this on purpose: the FNV-1a digest
- * of every list of one_and_sixteen_workers_give_the_same_lists, on seed 0x1234567890ABCDEF. */
-static const uint64_t SYS_DIGEST_PIN = 0x69B94D8AD6C147C9ull;
+ * of every list of one_and_sixteen_workers_give_the_same_lists, on seed 0x1234567890ABCDEF. Moved by the final check
+ * (phase 06 Issues found 22): hurricanes need sea at the point only, at 0.3 a square-day; it was 0x69B94D8AD6C147C9. */
+static const uint64_t SYS_DIGEST_PIN = 0x80775D7E2D42F80Bull;
 static const uint64_t SYS_SEED = 0x1234567890ABCDEFull;
 static const uint64_t SYS_ARENA_BYTES = 8ull << 20;
 /* 15 degrees north, 45 north, 45 south and 45 north in a strip mirrored past the pole (e = -1). */
@@ -511,9 +512,15 @@ TEST(lows_carry_a_front_toward_the_equator) {
     CHECK_NEAR(climate_systems_rain_share(65.0f32), 0.45f32, 1.0e-6f32);
     CHECK_NEAR(climate_systems_rain_share(80.0f32), 0.4f32, 1.0e-6f32);
     /* The day's share: the whole of it when cells can form or lows come by, none when neither can. */
-    CHECK_NEAR(climate_systems_rain_share_today(0.0f32, 100.0f32, 26.0f32), 0.3f32, 1.0e-6f32);
-    CHECK_NEAR(climate_systems_rain_share_today(45.0f32, 10.0f32, 2.0f32), climate_systems_rain_share(45.0f32), 0.0f32);
-    CHECK_NEAR(climate_systems_rain_share_today(10.0f32, 100.0f32, 15.0f32), 0.0f32, 0.0f32);
+    CHECK_NEAR(climate_systems_rain_share_today(0.0f32, 100.0f32, 26.0f32, 0.0f32), 0.3f32, 1.0e-6f32);
+    CHECK_NEAR(climate_systems_rain_share_today(45.0f32, 10.0f32, 2.0f32, 0.0f32), climate_systems_rain_share(45.0f32),
+               0.0f32);
+    CHECK_NEAR(climate_systems_rain_share_today(10.0f32, 100.0f32, 15.0f32, 0.0f32), 0.0f32, 0.0f32);
+    /* Hurricane season adds its share, times s_hur (the final check, Issues found 22). */
+    CHECK_NEAR(climate_systems_rain_share_today(15.0f32, 200.0f32, 26.0f32, 1.0f32),
+               0.3f32 + CLIMATE_SYSTEM_RAIN_SHARE_HURRICANE, 1.0e-6f32);
+    CHECK_NEAR(climate_systems_rain_share_today(10.0f32, 100.0f32, 15.0f32, 0.5f32),
+               0.5f32 * CLIMATE_SYSTEM_RAIN_SHARE_HURRICANE, 1.0e-6f32);
     /* Wetness and a cell's rain scale: a hot, wet, non-monsoon day's cells at the base; a monsoon's three times lighter. */
     CHECK_NEAR(climate_systems_wetness(10.0f32), 2.0f32, 1.0e-6f32);
     CHECK_NEAR(climate_systems_wetness(-1.0f32), 0.0f32, 0.0f32);

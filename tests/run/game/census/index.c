@@ -965,14 +965,16 @@ static bool gw_landfall(gw_rig_t *rig, arena_t *arena, int64_t *out_day, float64
 }
 
 TEST(a_hurricane_landfall_floods_downstream) {
-    /* Issues found 8: hurricanes almost never form on real seeds (phase 06, Issues found 21), so a sloped coast at 15 N with
-     * the hurricane season forced on all year, by phase 06's test hook. */
+    /* Issues found 8: a sloped coast at 15 N with the hurricane season forced on by phase 06's test hook, for 3 days a year
+     * (days 200 to 202 of the year), so the week before a landfall has no hurricane in it. It was forced on all year at
+     * 0.034 a square-day; at the final check's 0.3 hurricanes came ashore every week, and the week before the landfall was
+     * already in flood (phase 06, Issues found 22). */
     gw_rig_t rig;
     REQUIRE(gw_start(t, &rig, MC_THREADS_WORKERS));
     const climate_systems_hooks_t hooks = {.hurricane_s = 1.0f32,
                                            .hurricane_current_c = 0.0f32,
-                                           .hurricane_first = 0u,
-                                           .hurricane_last = 364u,
+                                           .hurricane_first = 200u,
+                                           .hurricane_last = 202u,
                                            .big_off = 0u};
     climate_systems_hooks_set(rig.climate, &hooks);
     arena_t *const arena = gw_aligned(t, sizeof(arena_t));
@@ -983,10 +985,12 @@ TEST(a_hurricane_landfall_floods_downstream) {
     const uint64_t week = (uint64_t)(day / 7) + 1u; /* the census whose 7 days hold the landfall */
     printf("a hurricane comes ashore on day %" PRId64 " at %.0f, %.0f: census week %" PRIu64 "\n", day,
            (libc_double_t)x, (libc_double_t)y, week);
-    gw_open(&rig, nullptr, week - 2u);
+    /* "Before" is the census two weeks before the landfall's, all out of the forced season: the week just before may hold
+     * the storm's outer rain as it comes in. */
+    gw_open(&rig, nullptr, week - 3u);
     const int32_t tile_x = (int32_t)floor(x / 1024.0f64), tile_y = (int32_t)floor(y / 1024.0f64);
     gw_mark_tiles(&rig, tile_x - 1, tile_y - 1, tile_x + 1, tile_y + 1);
-    gw_weeks(&rig, week - 1u, week - 1u, 0u);
+    gw_weeks(&rig, week - 2u, week - 2u, 0u);
     const climate_week_store_t *const store = climate_week_store(rig.climate);
     float32_t *const before = test_alloc(t, store->tile_count * CLIMATE_TILE_CELL_COUNT * sizeof(float32_t));
     for (uint32_t i = 0u; i < store->tile_count; i++) {
@@ -994,7 +998,7 @@ TEST(a_hurricane_landfall_floods_downstream) {
             before[i * CLIMATE_TILE_CELL_COUNT + c] = store->borrowed_tiles[i].cells[c].flood;
         }
     }
-    gw_weeks(&rig, week, week, 0u);
+    gw_weeks(&rig, week - 1u, week, 0u);
     /* The cell with the most flow within 3 km downstream of the landfall: east of it, toward the sea, on land. */
     uint32_t best = CLIMATE_FLOW_NONE;
     for (uint32_t k = 0u; k < store->tile_count * CLIMATE_TILE_CELL_COUNT; k++) {
@@ -1015,14 +1019,16 @@ TEST(a_hurricane_landfall_floods_downstream) {
     const climate_flow_cell_t *const flow = &store->borrowed_flow[best];
     printf(
         "downstream cell %d, %d: flow %.0f cell-mm (long-run %.1f), rain %.0f mm, runoff %.0f mm, flood %.2f, the week "
-        "before %.2f; day kinds %u %u %u %u %u %u %u\n",
+        "two weeks before %.2f; day kinds %u %u %u %u %u %u %u\n",
         flow->cell_x, flow->cell_y, (libc_double_t)flow->q_week, (libc_double_t)flow->q_mean,
         (libc_double_t)cell->rain_mm, (libc_double_t)cell->runoff_mm, (libc_double_t)cell->flood,
         (libc_double_t)before[best], cell->day_kind[0], cell->day_kind[1], cell->day_kind[2], cell->day_kind[3],
         cell->day_kind[4], cell->day_kind[5], cell->day_kind[6]);
     CHECK(flow->q_week > (float64_t)cell->runoff_mm); /* water came from upstream */
     CHECK(cell->flood > 1.0f32);
-    CHECK(before[best] < 1.0f32);
+    /* The landfall made it: at least ten times the flood of two weeks before, out of season. That week's own flood can be
+     * over 1 at a small channel on this wet coast, so it is not held under 1 (phase 06, Issues found 22). */
+    CHECK(cell->flood > 10.0f32 * before[best]);
     gw_stop(&rig);
 }
 

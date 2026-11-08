@@ -233,8 +233,10 @@ typedef struct weather_day_in_t {
     float32_t hours[CLIMATE_HOURS_A_DAY]; /* 80: N_3 for each hour from 06:00 */
     float32_t belt_noon[2];               /* 176: phase 04's wind at 12:00 */
     float32_t belt_morning[2];            /* 184: and at 06:00 */
+    float32_t hurricane_s;                /* 192: s_hur at the place that day, for f_sys (phase 06 Issues found 22) */
+    uint8_t _pad0[4];                     /* 196 */
 } weather_day_in_t;
-static_assert(sizeof(weather_day_in_t) == 192);
+static_assert(sizeof(weather_day_in_t) == 200);
 
 /* Everything but the noises, which the census samples in bulk. */
 /* normals may be the day's, read already (a census reads a week's at once), or nullptr to read them here. */
@@ -251,6 +253,7 @@ static bool weather_day_in_climate(const climate_t *climate, const weather_place
         return false;
     }
     out->day = day;
+    out->hurricane_s = climate_systems_hurricane_s(climate, place->y, (float64_t)day + 0.5f64);
     out->belt_noon[0] = noon.wind[0];
     out->belt_noon[1] = noon.wind[1];
     /* Phase 04's wind is a yearly wave: at 06:00 it is the noon's to well under a percent, so it is read once a day. */
@@ -488,7 +491,8 @@ static void weather_day_compute(const weather_place_t *place, const weather_day_
     const float32_t range = n->t_range_c * (cloudy_noon ? 1.0f32 - CLIMATE_CLOUD_RANGE_CUT : 1.0f32);
 
     /* Rain: the background in the hours its own noise says, and each system's, all cut under a high. */
-    const float32_t f_sys = climate_systems_rain_share_today(place->lat_deg, weather_day_of_year(day), n->t_day_c);
+    const float32_t f_sys =
+        climate_systems_rain_share_today(place->lat_deg, weather_day_of_year(day), n->t_day_c, in->hurricane_s);
     const float32_t g = fmaxf(0.0f32, 1.0f32 + CLIMATE_RAIN_NOISE_GAIN * in->amount);
     const float64_t background = (float64_t)n->rain_mm_day * (float64_t)(1.0f32 - f_sys) * (float64_t)g;
     uint32_t wet_hours = 0u;

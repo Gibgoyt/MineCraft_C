@@ -286,7 +286,8 @@ TEST(every_constant_has_the_value_its_table_gives_seasons_and_classes) {
 
 TEST(every_constant_has_the_value_its_table_gives_systems) {
     PIN_F64(CLIMATE_SQUARE_HURRICANE, 16384.0f64);
-    PIN_F32(CLIMATE_HURRICANE_RATE, 0.034f32); /* tuned by phase 06 from 7.2's 0.02: the table's Tuned column */
+    PIN_F32(CLIMATE_HURRICANE_RATE,
+            0.3f32); /* 7.2's 0.02, 0.034 by phase 06, 0.3 by the final check: the Tuned column */
     PIN_F32_2(CLIMATE_HURRICANE_RADIUS, 1500.0f32, 4000.0f32);
     PIN_F32_2(CLIMATE_HURRICANE_EYE, 80.0f32, 150.0f32);
     PIN_F32_2(CLIMATE_HURRICANE_HPA, -30.0f32, -90.0f32);
@@ -323,7 +324,7 @@ TEST(every_constant_has_the_value_its_table_gives_systems) {
     PIN_F32_2(CLIMATE_THUNDER_HPA, -1.0f32, -3.0f32);
     PIN_F32_2(CLIMATE_THUNDER_LIFE_HOURS, 1.0f32, 4.0f32);
     PIN_F32(CLIMATE_THUNDER_RATE, 3.0f32);
-    PIN_F32(CLIMATE_THUNDER_RATE_GAIN, 0.22f32); /* tuned by phase 06 from 1 */
+    PIN_F32(CLIMATE_THUNDER_RATE_GAIN, 0.205f32); /* tuned by phase 06 from 1 to 0.22; 0.205 by the final check */
     PIN_F32(CLIMATE_THUNDER_HOT_C, 18.0f32);
     PIN_F32(CLIMATE_THUNDER_HOT_RANGE_C, 10.0f32);
     PIN_F32(CLIMATE_THUNDER_MONSOON, 2.0f32);
@@ -341,7 +342,7 @@ TEST(every_constant_has_the_value_its_table_gives_systems) {
     PIN_F32(CLIMATE_HURRICANE_POLEWARD_WEST, 0.15f32);
     PIN_F32(CLIMATE_HURRICANE_POLEWARD_EAST, 0.3f32);
     PIN_F32_2(CLIMATE_SPEED_SCALE, 0.85f32, 1.15f32);
-    PIN_F32(CLIMATE_HURRICANE_OPEN_SEA_BLOCKS, 2048.0f32);
+    PIN_F32(CLIMATE_HURRICANE_OPEN_SEA_BLOCKS, 0.0f32); /* 2048 in phase 06; the point alone since the final check */
     PIN_F32(CLIMATE_WIND_PROFILE_POWER, 0.6f32);
     PIN_F32(CLIMATE_HURRICANE_VMAX_AT_30, 33.0f32);
     PIN_F32(CLIMATE_HURRICANE_VMAX_AT_90, 70.0f32);
@@ -362,6 +363,7 @@ TEST(every_constant_has_the_value_its_table_gives_systems) {
     PIN_F32(CLIMATE_SYSTEM_RAIN_SHARE_POLAR, 0.4f32);
     PIN_F32(CLIMATE_SYSTEM_RAIN_WET_MM_DAY, 5.0f32);
     PIN_F32_2(CLIMATE_SYSTEM_RAIN_SHARE_POLAR_DEG, 60.0f32, 70.0f32);
+    PIN_F32(CLIMATE_SYSTEM_RAIN_SHARE_HURRICANE, 0.25f32); /* the final check */
     PIN_F32(CLIMATE_SYSTEM_RAIN_SEASON_MARGIN_DEG, 5.0f32);
     PIN_F32(CLIMATE_DRIFT_POLE_STOP_DEG, 85.0f32);
     PIN_F32(CLIMATE_DRIFT_EQUATOR_STOP_DEG, 5.0f32);

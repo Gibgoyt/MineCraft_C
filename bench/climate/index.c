@@ -947,7 +947,8 @@ static void bench_season_view(const climate_t *climate, int32_t *out_x, int32_t 
         }
     }
     const float64_t points = (band_north - band_south) / 1024.0f64 * 64.0f64;
-    /* Open sea, where a hurricane may form: water there and 2048 blocks north, south, east and west. */
+    /* Open sea, where a hurricane may form: water there and CLIMATE_HURRICANE_OPEN_SEA_BLOCKS north, south, east and west (0
+     * since the final check: the point alone). */
     int64_t open = 0;
     const float64_t d = (float64_t)CLIMATE_HURRICANE_OPEN_SEA_BLOCKS;
     for (float64_t y = band_south; y <= band_north; y += 1024.0f64) {
