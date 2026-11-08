@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — phase 11: Tuning and cost
 
-**Status:** in progress: built, measured and recorded before tuning (Results); every agent-runnable check run. Left for Ahmed: the gate, and any value he decides to change, after which the measurements are run again   (updated 2026-11-08)
+**Status:** in progress: built, measured and recorded before tuning (Results), every bench run again from a cool machine, and every climate number in the table and pinned (second pass); every agent-runnable check run. Left for Ahmed: the gate, and any value he decides to change, after which the measurements are run again   (updated 2026-11-08)
 
 Read `plans/004-ahmed-bohemoth-climate-system-phase-00-vision-and-plan-files.md` first, then sections 4 to 8 and 10 to 12 of the master plan, `plans/004-ahmed-bohemoth-climate-system.md`. The master plan is the source of every number here. Where this file and the master plan disagree, the master plan wins, and the disagreement goes in **Issues found**.
 
@@ -141,6 +141,8 @@ The **Tuned** column starts empty. When Ahmed changes a value, write the new val
 | `CALENDAR_AUTUMN_DAY` | 262 | day of year | 4.1, 5.2 | Northern autumn start; the sun crosses the equator | `CALENDAR_AUTUMN_FROM`, run/include/calendar/index.h | |
 | `CALENDAR_WINTER_DAY` | 353 | day of year | 4.1, 5.2 | Northern winter start; the sun furthest south | `CALENDAR_WINTER_FROM`, run/include/calendar/index.h | |
 | `CALENDAR_SEASON_PARTS` | 3 | ratio | 4.1 | Early, mid and late: each season in equal thirds (phase 10) | `CALENDAR_SEASON_PARTS`, run/include/calendar/index.h (was a literal 3 in `run/src/calendar/index.c` and `run/src/climate/label/index.c`) | |
+| `CALENDAR_NOON_HOUR` (phase 01) | 12 | hours on the clock | 4 | Noon, for the sun and the day's high | `CALENDAR_NOON_HOUR`, run/include/calendar/index.h; `CALENDAR_NOON_INTO_DAY_F64` and `_F32` (0.25 of a day after 06:00) made from it | |
+| `CALENDAR_SEASONS` (phase 01) | 4 | seasons | 4.1 | Seasons in a year | `CALENDAR_SEASONS`, run/include/calendar/index.h; with `CALENDAR_SOUTH_SEASON_SHIFT` 2 (the south two seasons on) | |
 
 #### Latitude and the sun (section 5)
 
@@ -154,6 +156,8 @@ The **Tuned** column starts empty. When Ahmed changes a value, write the new val
 | `CLIMATE_DECLINATION_DEG` | 23.5 | degrees | 5.2 | Amplitude of $\delta(d)$. The same as the tropic: one constant, used for both | `CLIMATE_TILT_DEG`, run/include/climate/index.h: the same constant as the tropic | |
 | `CLIMATE_EQUINOX_DAY` | 79 | day of year | 5.2 | Phase of $\delta(d)$. The same as `CALENDAR_SPRING_DAY` | `CLIMATE_SUN_EQUINOX_DAY`, run/include/climate/sun/index.h: made from `CALENDAR_SPRING_FROM` since phase 11 (was 79 typed again) | |
 | `CLIMATE_HOURS_PER_DAY` | 24 | hours | 5.2 | Day length scale, and the hour angle | `CALENDAR_HOURS_PER_DAY`, run/include/calendar/index.h (new, phase 11: was 24 typed in `sun/`, `label/`, `weather/`, `systems/` and `layer/`); `CLIMATE_HOURS_A_DAY` (run/include/climate/weather/index.h) made from it | |
+| `CLIMATE_POLE_DEG` (phase 02) | 90 | degrees | 5.1 | Latitude of a pole; the polar circle is this minus the tilt | `CLIMATE_POLE_DEG`, run/include/climate/index.h | |
+| `CLIMATE_SUN_NOON_HOUR` (phase 02) | 12 | hours | 5.2 | The sun's hour angle is 0 here | `CLIMATE_SUN_NOON_HOUR`, run/include/climate/sun/index.h | |
 
 #### Height, land and sea (6.1, 6.2)
 
@@ -165,6 +169,9 @@ The **Tuned** column starts empty. When Ahmed changes a value, write the new val
 | `CLIMATE_MARGIN_CELLS` (phase 03) | 8192 blocks, 128 cells | blocks, as cells | 6.2 | Margin round a tile for the distance transform (8 km) | `CLIMATE_MARGIN_CELLS`, run/include/climate/cell/index.h | |
 | `CLIMATE_SEA_DISTANCE_MAX` (phase 03) | 8192 | blocks | 6.2, 6.9 | Sea distance cap | `CLIMATE_SEA_DISTANCE_MAX`, run/include/climate/cell/index.h (a `#define` since phase 11, so `layer/`'s scale table uses it instead of 8192 typed again) | |
 | `CLIMATE_KAPPA_SCALE` (phase 03) | 1500 | blocks | 6.2 | Continentality $\kappa = 1 - e^{-d_s/1500}$: how fast the sea's influence fades inland | `CLIMATE_KAPPA_SCALE`, run/include/climate/cell/index.h | |
+| `CLIMATE_SEA_AREA_MIN_CELLS` (phase 03) | 8192 | cells (33.6 km²) | 6.2 | Water this big is sea even wholly inside the window | `CLIMATE_SEA_AREA_MIN_CELLS`, run/include/climate/sea/index.h | |
+| `CLIMATE_SEA_FLOOR_BLOCKS` (phase 03) | -30 | blocks | 6.2 | Water this deep somewhere makes its whole body sea | `CLIMATE_SEA_FLOOR_BLOCKS`, run/include/climate/cell/index.h | |
+| `CLIMATE_GROUND_SAMPLES_SIDE` (phase 03) | 4 | samples a side | 6.1 | z_ground is the mean of 4 by 4 samples, 16 blocks apart | `CLIMATE_GROUND_SAMPLES_SIDE`, with `CLIMATE_GROUND_SAMPLE_STEP` 16, run/include/climate/cell/index.h | |
 
 #### Ocean currents (6.3)
 
@@ -177,6 +184,8 @@ The **Tuned** column starts empty. When Ahmed changes a value, write the new val
 | `CLIMATE_CURRENT_COLD_C` (phase 04) | -5 | °C | 6.3 | $C$ for a cold current | `CLIMATE_CURRENT_COLD_C`, run/include/climate/air/index.h | |
 | `CLIMATE_CURRENT_LAND_SCALE` (phase 04) | 600 | blocks | 6.3 | $\Delta T_{\text{current}} = C\,e^{-d_s/600}$ on land | `CLIMATE_CURRENT_LAND_SCALE`, run/include/climate/air/index.h | |
 | `CLIMATE_SEA_PEAK_DAY` (phase 04) | 215 | day of year | 6.3 | Warmest sea in the north, 45 days after the land | `CLIMATE_SEA_PEAK_DAY`, run/include/climate/air/index.h | |
+| `CLIMATE_CURRENT_WEAK` (phase 04) | 0.5 | ratio | 6.3 | "Warm, weak": half strength | `CLIMATE_CURRENT_WEAK`, run/include/climate/air/index.h | |
+| `CLIMATE_CURRENT_FULL_WITHIN` (phase 04) | 32 | blocks | 6.3 | A sea cell this near land has its current at full strength | `CLIMATE_CURRENT_FULL_WITHIN`, run/include/climate/air/index.h; `CLIMATE_CURRENT_STRENGTH_MAX` 255 (run/include/climate/cell/index.h) stores full strength in a byte | |
 
 #### Pressure (6.4)
 
@@ -207,6 +216,7 @@ The **Tuned** column starts empty. When Ahmed changes a value, write the new val
 | `CLIMATE_ALTITUDE_SCALE` (phase 04) | 800 | blocks | 6.5 | Speed $\times (1 + z/800)$ | `CLIMATE_ALTITUDE_SCALE`, run/include/climate/air/index.h | |
 | `CLIMATE_ALTITUDE_MAX` (phase 04) | 2.5 | ratio | 6.5 | ... at most | `CLIMATE_ALTITUDE_MAX`, run/include/climate/air/index.h | |
 | `CLIMATE_STEER` (phase 04) | 0.7 | ratio | 6.5 | How much steep ground turns the wind along it | `CLIMATE_STEER`, run/include/climate/air/index.h | |
+| `CLIMATE_HEMISPHERE_BLEND_DEG` (phase 04) | 3 | degrees | 6.5 | The blend across the equator, $\sigma(\psi)$ over ±3° | `CLIMATE_HEMISPHERE_BLEND_DEG`, run/include/climate/air/index.h | |
 
 #### Temperature (6.6)
 
@@ -243,6 +253,7 @@ The **Tuned** column starts empty. When Ahmed changes a value, write the new val
 | `CLIMATE_OROGRAPHIC_MIN`, `_MAX` | 0.15, 2.5 | ratio | 6.7 | Clamp of $O$ | `CLIMATE_OROGRAPHIC_MIN`, `CLIMATE_OROGRAPHIC_MAX`, run/include/climate/rain/index.h | |
 | `CLIMATE_SNOW_ALL_RAIN_C` (phase 07) | 1 | °C | 6.7 | All rain above this | `CLIMATE_SNOW_ALL_RAIN_C`, run/include/climate/heat/index.h | |
 | `CLIMATE_SNOW_ALL_SNOW_C` (phase 07) | -2 | °C | 6.7 | All snow below this; share $(1 - T)/3$ between | `CLIMATE_SNOW_ALL_SNOW_C`, run/include/climate/heat/index.h | |
+| `CLIMATE_WALK_CALM` (phase 05) | 0.001 | blocks a second | 6.7 | Below this a wind has no direction for the upwind walk | `CLIMATE_WALK_CALM`, run/include/climate/rain/index.h | |
 
 #### Storm seasons, cells and classes (6.8 to 6.10)
 
@@ -265,6 +276,8 @@ The **Tuned** column starts empty. When Ahmed changes a value, write the new val
 | `CLIMATE_CLASS_RAINFOREST_MM` | 60 | mm | 6.10 | Driest month for Rainforest | `CLIMATE_WET_MONTH_MM`, run/include/climate/season/index.h; with phase 05's `CLIMATE_DRY_SUMMER_MM` 40 and `CLIMATE_DRY_SUMMER_SHARE` 1/3 | |
 | `CLIMATE_CLASS_TEMPERATE_C` | -3 | °C | 6.10 | Coldest month: above is Mediterranean or Temperate | `CLIMATE_TEMPERATE_MIN_C`, run/include/climate/season/index.h | |
 | `CLIMATE_CLASS_CONTINENTAL_C` | 22 | °C | 6.10 | Warmest month: Continental at or above, Boreal below | `CLIMATE_CONTINENTAL_MAX_C`, run/include/climate/season/index.h | |
+| `CLIMATE_MONTH_WAVE1`, `_WAVE2` (phase 05) | 0.98862, 0.95493 | ratio | 6.10 | A month's mean of each harmonic wave, $\sin(x)/x$ at π/12 and π/6 | `CLIMATE_MONTH_WAVE1`, `CLIMATE_MONTH_WAVE2`, run/include/climate/season/index.h | |
+| `CLIMATE_SNOW_BALANCE_LOW`, `_HIGH`, `_NONE` (phase 05) | -250, 2000, 9999 | blocks | 6.8 | The snow balance's search range, and its answer where snow never lasts the summer | `CLIMATE_SNOW_BALANCE_LOW`, `_HIGH`, `_NONE`, with `CLIMATE_SNOW_BALANCE_HALVINGS` 12 and `_YEARS` 2, run/include/climate/season/index.h | |
 
 #### Weather systems (7.2, 7.3)
 
@@ -320,6 +333,21 @@ The **Tuned** column starts empty. When Ahmed changes a value, write the new val
 | `CLIMATE_HURRICANE_RAIN_MM_H` | 40 | mm an hour | 7.3 | Eyewall rain | `CLIMATE_HURRICANE_EYEWALL_MM_HOUR` at `CLIMATE_HURRICANE_EYEWALL_HPA` 90, run/include/climate/systems/index.h | |
 | `CLIMATE_LOW_RAIN_MM_H` | 1 to 4 | mm an hour | 7.3 | Rain shield | `CLIMATE_LOW_SHIELD_MM_HOUR[2]`, run/include/climate/systems/index.h; the front's `CLIMATE_FRONT_MM_HOUR` 3 and `CLIMATE_FRONT_HALF_WIDTH` 400 | |
 | `CLIMATE_CELL_RAIN_MM_H` | 20 to 60 | mm an hour | 7.3 | Cell rain, for under an hour at a point | `CLIMATE_THUNDER_MM_HOUR[2]`, run/include/climate/systems/index.h | |
+| `CLIMATE_HURRICANE_OPEN_SEA_BLOCKS` (phase 06) | 2048 | blocks | 7.2 | **Where a hurricane may spawn: water this far all round.** Why the survey found none (Issues found 8) | `CLIMATE_HURRICANE_OPEN_SEA_BLOCKS`, run/include/climate/systems/index.h | |
+| `CLIMATE_HURRICANE_POLEWARD_WEST`, `_EAST` (phase 06) | 0.15, 0.3 | share of speed | 7.3 | A hurricane's poleward drift before and after it turns | run/include/climate/systems/index.h; with `CLIMATE_SPEED_SCALE` 0.85 to 1.15, its own speed | |
+| `CLIMATE_LOW_POLEWARD`, `CLIMATE_HIGH_EQUATORWARD` (phase 06) | 0.08, 0.1 | share of speed | 7.2 | Lows' and highs' drift | run/include/climate/systems/index.h | 0.08 from 0.15: by phase 06's agent (Issues found 1) |
+| `CLIMATE_DRIFT_POLE_STOP_DEG`, `CLIMATE_DRIFT_EQUATOR_STOP_DEG` (phase 06) | 85, 5 | degrees | 7.3 | No poleward drift past 85°, no equatorward drift inside 5° | run/include/climate/systems/index.h (pinned since phase 11's second pass) | |
+| `CLIMATE_LOW_PEAK_DAY` (phase 06) | 200 | day of year | 7.2 | The low rate is lowest here in the north | `CLIMATE_LOW_PEAK_DAY`, run/include/climate/systems/index.h | |
+| `CLIMATE_SYSTEM_REACH_RADII`, `CLIMATE_SYSTEM_WIND_TAPER_RADII` (phase 06) | 3, 2 | radii | 7.3 | Nothing past 3 R; the wind tapers to 0 from 2 R | run/include/climate/systems/index.h | |
+| `CLIMATE_SYSTEM_DEAD_HPA` (phase 06) | 5 | hPa | 7.2 | A big system weaker than this ends | `CLIMATE_SYSTEM_DEAD_HPA`, run/include/climate/systems/index.h | |
+| `CLIMATE_HURRICANE_BAND_ARMS`, `_BAND_WIND` (phase 06) | 3, 2.5 | arms; ratio | 7.3 | A hurricane's spiral rain bands: how many, how tightly wound | run/include/climate/systems/index.h (pinned since phase 11's second pass) | |
+| `CLIMATE_LOW_SHIELD_MEAN`, `_AHEAD`, `_WIDTH` (phase 06) | 2.5, 0.5, 0.6 | ratio; share of R | 7.3 | A low's rain shield: the front's showers against it, how far ahead it sits, how wide | run/include/climate/systems/index.h (pinned since phase 11's second pass) | |
+| `CLIMATE_FRONT_TURN_X`, `_Y` (phase 06) | -0.5, 0.8660254 | unit vector | 7.2 | A cold front points equatorward, turned 30° west | run/include/climate/systems/index.h (pinned since phase 11's second pass), and checked to be a unit vector | |
+| `CLIMATE_SYSTEM_RAIN_SHARE_POLAR`, `_POLAR_DEG` (phase 06) | 0.4; 60 to 70 | ratio; degrees | 7.4 | f_sys toward the poles, blended between those latitudes | run/include/climate/systems/index.h (`_POLAR_DEG` pinned since phase 11's second pass) | part of the f_sys blend phase 06's agent tuned (Issues found 1) |
+| `CLIMATE_SYSTEM_RAIN_SEASON_MARGIN_DEG` (phase 06) | 5 | degrees | 7.4 | Lows bring rain this far outside their band | run/include/climate/systems/index.h (pinned since phase 11's second pass) | |
+| `CLIMATE_SYSTEM_RAIN_WET_MM_DAY` (phase 06) | 5 | mm a day | 7.3 | Storm rain scales with the normal over this | run/include/climate/systems/index.h | |
+| `CLIMATE_THUNDER_HOT_FLOOR`, `_RAIN_SCALE_BASE`, `_SPEED_MAX` (phase 06) | 0.2, 1/3, 15 | ratio; ratio; blocks a second | 7.2.1 | A cell's rain scale: its floor and base; and the cells' fastest drift | run/include/climate/systems/index.h | the base 1/3 was set by phase 06's agent (phase 06, Issues found 12) |
+| `CLIMATE_THUNDER_BIG_MARGIN` (phase 06) | 1250 | blocks | 7.2.1 | How much further out big systems are found than cells, so a cell sees the high or front it started under | run/include/climate/systems/index.h (pinned since phase 11's second pass) | |
 
 #### Daily weather and the weekly state (7.4, 7.5)
 
@@ -346,6 +374,14 @@ The **Tuned** column starts empty. When Ahmed changes a value, write the new val
 | `CLIMATE_ICE_GROW_CM_PER_DEGREE_DAY` (phase 07) | 1.5 | cm per °C per day | 7.5 | Ice growth on still water | `CLIMATE_ICE_GROW_CM_PER_DEGREE_DAY`, run/include/climate/weather/week/index.h | |
 | `CLIMATE_ICE_MELT_CM_PER_DEGREE_DAY` (phase 07) | 2 | cm per °C per day | 7.5 | Ice melt | `CLIMATE_ICE_MELT_CM_PER_DEGREE_DAY`, run/include/climate/weather/week/index.h | |
 | `CLIMATE_FLOOD_BANKS_FULL` | 1 | ratio | 7.5 | Flood index at which water is over the banks | Not a constant: the flood index is runoff over channel size, so 1 is banks full by definition. The channel size is phase 07's `CLIMATE_FLOOD_BANKFULL` 3 (a channel holds 3 times its usual week) and `CLIMATE_FLOOD_CHANNEL_MIN` 20, run/include/climate/weather/flow/index.h | |
+| `CLIMATE_RAIN_NOISE_GAIN` (phase 07) | 0.9 | ratio | 7.4 | Day-to-day rain amount, $g = \max(0, 1 + 0.9 N_2)$ | `CLIMATE_RAIN_NOISE_GAIN`, run/include/climate/weather/index.h | |
+| `CLIMATE_RAIN_AMOUNT_BLOCKS`, `_DAYS`; `CLIMATE_RAIN_HOURS_BLOCKS`, `_HOURS` (phase 07) | 2000, 3; 1500, 6 | blocks; days; blocks; hours | 7.4 | Size and length of the rain amount and rain hour noises $N_2$, $N_3$ | run/include/climate/weather/index.h (pinned since phase 11's second pass) | |
+| `CLIMATE_SPELL_CLAMP` and the raw spreads (phase 07) | 3; 0.2013, 0.2008, 0.2015 | spreads; ratio | 7.4 | Each noise clamped to ±3; the measured raw spread of $N_1$, $N_2$, $N_3$ | `CLIMATE_SPELL_CLAMP`, `CLIMATE_SPELL_RAW_SD`, `CLIMATE_RAIN_AMOUNT_RAW_SD`, `CLIMATE_RAIN_HOURS_RAW_SD`, run/include/climate/weather/index.h (pinned since phase 11's second pass) | |
+| `CLIMATE_FOG_CALM_WIND`, `_COAST_BLOCKS`, `_VALLEY_BLOCKS`, `_VALLEY_SOIL_MM` (phase 07) | 3, 2000, 30, 100 | blocks a second; blocks; blocks; mm | 7.4 | A Fog day: calm at 06:00, and near a cold-current sea or in a wet valley this deep | run/include/climate/weather/week/index.h (the last two pinned since phase 11's second pass) | |
+| `CLIMATE_CLOUDY_WEEK_RAIN_MM`, `CLIMATE_CLOUDY_LOW_RADII` (phase 07) | 10, 1.5 | mm in the week; radii | 7.4 | A Cloudy day: a wet week's normal, or near a low | run/include/climate/weather/week/index.h (pinned since phase 11's second pass) | |
+| `CLIMATE_WEEK_SPINUP_YEARS` (phase 07) | 2 | years | 7.5 | Years of weekly updates from normals alone that make a cell's first state | `CLIMATE_WEEK_SPINUP_YEARS`, `CLIMATE_WEEK_SPINUP_WEEKS` 104, run/include/climate/weather/index.h (pinned since phase 11's second pass) | |
+| `CLIMATE_WEATHER_SHARE_BLOCKS` (phase 07) | 8192 | blocks | 7.4 | The widest box of places one day list serves | run/include/climate/weather/index.h (pinned since phase 11's second pass) | |
+| Phase 08's sky: `CLIMATE_CLOUD_UNDER_HIGH`, `_CLEAR`, `_CLOUDY`, `_STORM`, `_PER_MM_HOUR`; `CLIMATE_FOG_MORNING_HOURS`; `CLIMATE_DUST_FULL_WIND` | 0.05, 0.2, 0.6, 0.75, 0.25; 4; 20 | cloud share; hours; blocks a second | 7.4, phase 08 | How cloudy each hour looks, how long morning fog lasts, when dust is full | run/include/climate/weather/index.h | |
 
 #### The outlook (section 8)
 
@@ -357,6 +393,10 @@ The **Tuned** column starts empty. When Ahmed changes a value, write the new val
 | `CLIMATE_OUTLOOK_RAIN_MM` (phase 07) | 6 | mm | 8 | Background rain chance $1 - e^{-\bar P(d)/6}$ | `CLIMATE_OUTLOOK_RAIN_MM`, run/include/climate/outlook/index.h: since phase 11 a name for `CLIMATE_WET_DAY_SCALE_MM` (run/include/climate/heat/index.h), the one 6 | |
 | `CLIMATE_OUTLOOK_SPREAD_SIGMAS` (phase 07) | 1.5 | share of $\sigma_T$ | 8 | Spread on the expected high and low | `CLIMATE_OUTLOOK_SPREAD_SIGMAS`, run/include/climate/outlook/index.h | |
 | `CLIMATE_OUTLOOK_CALIBRATION_LOW`, `_HIGH` | 0.6, 0.8 | ratio | 10 (phase 07) | Events given 70% must happen this often (a test bound) | Literals 0.60 and 0.80 in `tests/run/climate/outlook/index.c`, and `SURVEY_BIN_LOW`, `SURVEY_BIN_HIGH` in `bench/climate/survey/`: a test's bound, not a game number. Not pinned | |
+| `CLIMATE_OUTLOOK_REACH` (phase 07) | 50000 | blocks | 8 | Any system that can reach here in 7 days starts within this | `CLIMATE_OUTLOOK_REACH`, run/include/climate/outlook/index.h | |
+| `CLIMATE_OUTLOOK_CELL_RADIUS`, `_CELL_HOURS` (phase 07) | 275, 2.5 | blocks; hours | 8 | A thunderstorm cell's mean size and life in the forecast: the knob for the over-forecast thunderstorms (Results) | run/include/climate/outlook/index.h | |
+| `CLIMATE_OUTLOOK_DEEP_LOW_SHARE` (phase 07) | 0.5 | ratio | 8 | Share of lows deeper than -20 hPa, for the storm chance | run/include/climate/outlook/index.h | |
+| `CLIMATE_OUTLOOK_FOOTPRINT` (phase 07) | master | choice | 8 | The forecast footprint: master plan 8's $e^{-d^2/2(\sigma^2+R^2)}$, not the exact disk | run/include/climate/outlook/index.h (pinned since phase 11's second pass) | |
 
 #### From phases 08 to 10, not in sections 4 to 8
 
@@ -371,6 +411,8 @@ For completeness, so every climate number is in this file:
 | `CLIMATE_WARNING_TICKS` | 200 | ticks | Phase 10 | How often the warning is worked out | `CLIMATE_WARNING_TICKS`, `run/include/climate/warning/index.h` | |
 | `UI_ATLAS_NOW_REDRAW_MS` | 500 | ms | 9.3, phase 09 | "Now" layers drawn again twice a second | `UI_ATLAS_NOW_REDRAW_MS`, `run/include/ui/atlas/index.h` | |
 | `UI_ATLAS_SHADE_EXAGGERATION` | 1 | ratio | Phase 09 | Hill shading strength | `UI_ATLAS_SHADE_EXAGGERATION`, `run/include/ui/atlas/draw/index.h` | |
+| `CLIMATE_WARNING_STEPS`, `_STEP_DAYS` | 5, 0.25 | steps; days | Phase 10 | The warning looks now and every quarter day to a day ahead | run/include/climate/warning/index.h (pinned since phase 11's second pass) | |
+| The Atlas's scales: `CLIMATE_LAYER_PRESSURE_LOW_HPA`, `_MID_HPA`, `_HIGH_HPA`, `_LINE_HPA`; `_WIND_TOP`; `_LAND_TOP`; `_SNOW_NEAR_BLOCKS`, `_FAR_BLOCKS`; the `_TEMPERATURE_C`, `_RAIN_MM` and `_RADAR_MM_HOUR` stops | 990, 1013, 1030, 4; 15; 454; 50, 2000; -30 to 45 °C; 0 to 3000 mm; 0.1 to 50 mm an hour | hPa; blocks a second; blocks; °C; mm | 9.3, phases 05 and 09 | What each Atlas colour means | run/include/climate/layer/index.h (pinned since phase 11's second pass) | |
 
 ### `run_climate_constants`: a test that pins them
 
@@ -429,8 +471,8 @@ Filled in by this phase, **before tuning** (2026-11-07 and 08). Nothing was tune
 - **Rain against normals:** 93.7% of 16 000 cells are within 15% of their normal over 10 years; the worst is 59% off. Phase 06's test (8 boxes) held every cell within 15%; spread over every class, 6.3% are not.
 - **No Continental land at all** on any seed (no place with a coldest month at or below -3 °C and a warmest at or above 22 °C).
 - **The storm warning takes 4.4 ms on average, 6.5 ms at its slowest, against 2 ms** (it runs on a worker, never in the tick: Issues found 9).
-- **Frame rate at render distance 32: 0 of 16 rows at 120 fps; the slowest 12.1 fps.** The card was in its slowed state (phase 08's notes); the climate itself costs the CPU, not the card.
-- **No run was from a cool CPU** (Issues found 11): "first" and "second" below are two runs in a row.
+- **Frame rate at render distance 32: 0 of 16 rows at 120 fps in the first run (slowest 12.1 fps), 3 of 16 in the second pass's run from a cool machine** (`plains/orbit` 85.1, `deep_ocean/orbit` 41.8, the slowest clear row). The card slows to about a third under steady load (phase 08's notes), and did again before the second run's last rows; the climate itself costs the CPU, not the card.
+- **The first pass had no run from a cool CPU** (Issues found 11): "first" and "second" below are two runs in a row. The second pass ran every bench again from a cool machine (the table after this one, Issues found 18).
 
 **Benches,** release unless it says profile, through the build lock, two runs in a row:
 
@@ -449,6 +491,25 @@ Filled in by this phase, **before tuning** (2026-11-07 and 08). Nothing was tune
 | Sim tick p99, 100 mobs (`bench_mobs`, scattered) | 5 ms | 1.078 ms | 1.095 ms | met |
 | Sim tick p99, `night/walk-mobs` (`bench_world`, profile) | 5 ms | 2.064 ms | one run | met |
 | Climate memory (`bench_climate_survey`) | 32 KiB/km² | 30.52 KiB/km² of cells, 0.95 of land mask | the same (computed) | met |
+
+**Benches from a cool machine** (second pass, 2026-11-08, Issues found 18): release unless it says profile, through the build lock, after 5 minutes with nothing heavy (load average 1.2 at the first, 0.9 at the census), on the code of `ffc94238`, one run each, exit status 0 each:
+
+| What | Target | Cool | Met? |
+|---|---|---|---|
+| Climate tile, 1 worker, slowest cold | 100 ms | 30.28 ms (warm 7.56) | met |
+| Systems near a point, warm median (slowest) | 2 ms | 0.337 ms (0.908) | met |
+| Census, 100 km², 16 workers (profile), median of 5 | 250 ms | 183.8 ms (first census 1018.2) | met |
+| Frame rate, RD 32 (`bench_world`, profile), clear rows | 120 fps | 3 of 16 met; `plains/orbit` 85.1, `plains/flight` 102.8, `jungle/orbit` 53.5, `deep_ocean/orbit` 41.8, `cave/orbit` 89.8 | missed |
+| Frame rate, RD 32, weather rows (rain, snow, thunder, fog) | 120 fps | 25.4, 24.4, 23.9, 24.8 fps, on a card slowed again (every pass 3.4 to 3.7 times the clear row's, weather or not) | missed; weather's own cost not readable here |
+| Atlas first picture, median (slowest) | 100 ms | 16.1 ms (17.0) | met |
+| Atlas worst layer by median (slowest single picture) | 60 ms | 35.6 ms `temperature_coldest` (59.2 ms, `temperature_now`) | met |
+| Atlas main frame, median (slowest) | 2 ms | 0.680 ms (1.022) | met |
+| Storm warning (`run_climate_warning`, release), slowest of 100 (mean) | 2 ms | 6.32 ms (4.40) | **missed** |
+| Terrain, 16 workers, slowest place | 1000 columns/s | 1134 (`snowy_taiga`) | met |
+| Sim tick p99, 100 mobs scattered (`bench_mobs`) | 5 ms | 1.080 ms | met |
+| Sim tick p99, `night/walk-mobs` (profile) | 5 ms | 1.974 ms | met |
+
+From cool, only the census and the frame rate moved: the census 15% faster, the frame rate's early rows four times faster as the card had not slowed yet. The storm warning misses the same from cool.
 
 **The survey,** `tools/test-or-build.sh timeout 7200 build/release/bin/bench_climate_survey --record bench/climate/survey/history.tsv`, exit status 0, 6435 s (774 to 816 s a seed), 0 tiles unbuilt and 0 days or censuses that failed. Its tables as it printed them:
 
@@ -539,7 +600,7 @@ All kinds, 60 to 80%: 74.4% happened, within the bound.
 - **Thunderstorms:** many in Rainforest (52 days a year), Savanna (44), Monsoon (40), and in Desert and Steppe (21) where they are hot; almost none in Ice, Tundra and Boreal, as the plan expects. Hot deserts with 21 thunderstorm days are more than real deserts get; if that feels wrong in play, the thunder rate's wetness term is the knob, not the normals.
 - **Outlook:** well calibrated for rain, storms and named systems (60 to 80% came true 76.8%, 70.6% and 73.5%), but **thunderstorm chances are about twice too high** (68.7% forecast, 31.4% happened). A proposal, only if Ahmed wants: lower the outlook's cell footprint (`CLIMATE_OUTLOOK_CELL_RADIUS` 275 or `CLIMATE_OUTLOOK_CELL_HOURS` 2.5), which changes only the forecast, not the weather.
 - **Rain:** 93.7% of cells within 15% of their normal; the worst 59%. No proposal: master plan 7.4 tunes spawn rates, and phase 06's rates already were.
-- **Cost:** every climate bench meets its target except the storm warning (4.4 ms against 2, off the sim thread). Terrain and the sim tick keep their budgets. The frame rate misses because the card was slowed during the run; phase 08's weather costs 1 to 3 ms a frame on top.
+- **Cost:** every climate bench meets its target except the storm warning (4.4 ms against 2, off the sim thread). Terrain and the sim tick keep their budgets. The frame rate misses because the card was slowed during the run; phase 08's weather costs 0 to 0.75 ms a frame on top (fog nothing, rain 0.5, snow and thunder 0.75; phase 08, Issues found 17). From a cool machine 3 of 16 rows met 120 fps.
 
 ## Owned paths
 
@@ -581,13 +642,13 @@ Edit only these, and this file:
 
 ## Todo
 
-- [ ] Read the vision file, master plan 4 to 8 and 10 to 12, and every earlier plan 004 phase file. Done in part: the master plan in full, this file, and the parts of phases 01 to 10 that name constants, benches and tests (phase 06 and 10 Issues found on hurricanes and the warning); not every earlier phase file end to end, so not ticked
+- [ ] Read the vision file, master plan 4 to 8 and 10 to 12, and every earlier plan 004 phase file. Done in part: the master plan in full, this file, and the parts of phases 01 to 10 that name constants, benches and tests. The second pass also read the title of every issue in every earlier phase file, read in full each one that mentions phase 11 or a bench miss, and checked every constant name in phases 01 to 10 against the code and this test by script (Issues found 16). Still not every earlier phase file end to end, so not ticked
 - [x] Fill the Home column of the constant table from the code, and commit it before changing code (`c025dc6b`, before the code commit `37299396`; the working tree was edited first: Issues found 2)
-- [x] Every constant in sections 4 to 8 lives in one place each, named, with its unit (Issues found 6 and 7; the sweep finds 0 unnamed numbers, 256 before)
-- [x] `tests/run/climate/constants/`: every constant pinned, derived constants checked, literal sweep, passing (13 tests, 369 checks)
+- [x] Every constant in sections 4 to 8 lives in one place each, named, with its unit (Issues found 6 and 7; the sweep finds 0 unnamed numbers, 256 before), and the phases' own in the table (Issues found 16)
+- [x] `tests/run/climate/constants/`: every constant pinned, derived constants checked, literal sweep, passing (13 tests, 441 checks since the second pass)
 - [x] `bench/climate/survey/`: the strip, 8 seeds, four measurements, same output on 1 and 16 workers (on a narrower strip: Results)
 - [x] Re-measure, over 8 seeds: climate class shares, hurricanes a season per warm coast, thunderstorm days a year by class, and outlook calibration. Record them
-- [x] Re-run every bench: climate tile, systems, census, Atlas, frame rate, plus terrain and the sim tick, cool and hot. Record them (twice in a row; no run was truly cool, Issues found 11; `bench_world` once, 716 s)
+- [x] Re-run every bench: climate tile, systems, census, Atlas, frame rate, plus terrain and the sim tick, cool and hot. Record them (first pass twice in a row, not cool, Issues found 11; second pass once each from a cool machine, Issues found 18)
 - [x] Summary for Ahmed, with every miss, and proposals only where a number is far off
 - [ ] Each value Ahmed tuned: constant, table, test and Issues found entry, with before and after. Ahmed has tuned nothing yet
 - [ ] Measurements and benches after tuning, recorded. Nothing tuned, so nothing to run yet
@@ -667,6 +728,9 @@ Appended as they land:
 - `8fadcbd0` Say in the repository structure where run_climate_constants and bench_climate_survey are and what they do.
 - `ad79538e` Record plan 004 phase 11's bench runs in each bench's README and history: the survey over 8 seeds, the climate tile, systems, census, Atlas, terrain, mobs and the world's frame rate.
 - `61f7becc` Record plan 004 phase 11's results before tuning, the summary for Ahmed with every miss, its issues, commits and verification in its phase file.
+- `7e9eb18e` List the last commit of plan 004 phase 11 in its phase file.
+- `6a3916a7` Pin the climate's remaining tuning numbers in run_climate_constants (second pass).
+- `ffc94238` Say in the outlook's header that the master plan's footprint is the one in force (second pass).
 
 ## Issues found
 
@@ -699,3 +763,11 @@ Appended as they land:
 14. **Biomes disagree with the classes, as expected.** Most Desert and Steppe land does not have a desert biome, and some desert biome sits in wet classes (Results). Master plan 2.6: the vegetation plan's. Nothing done.
 
 15. **Verification, run 2026-11-07 and 08, every command through `tools/test-or-build.sh`.** Debug configure and build: clean. `run_climate_constants`, `standards_lint`, `clang_format`: 3 of 3. The whole debug suite (`ctest --preset debug`, 3400 s): **151 of 151 pass** in 2268 s, on the code of `ad79538e`. Release configure and build (`-O3 -flto`, main's 16 KiB frame check): clean, before the survey and again at the end; nothing here touches `app_t`. Profile configure and build: clean. The survey, its 1-worker and 16-worker runs, `bench_climate`, `--systems`, `bench_atlas`, `bench_terrain`, `bench_mobs`, `run_climate_warning` on release, `bench_climate_census` and `bench_world --record` on profile: as in Results (the warning and the frame rate miss). `pgrep -af "$PWD/build"` and `pgrep -a minecraft_c` print nothing afterwards. Not run by the agent: Ahmed's gate (`./build/release/bin/minecraft_c --windowed`).
+
+16. **The table and the test missed some of the phases' own numbers (second pass).** Expected (Design): every phase-own constant a row in its section, "so this table has every climate number", and pinned. Actual: a script listed every `CLIMATE_` and `CALENDAR_` name in phases 01 to 10 and every value constant in the climate headers against the test: 41 named numbers had no pin, and 49 names the test pins had no row; the unpinned ones change what the game does (among them `CLIMATE_HURRICANE_OPEN_SEA_BLOCKS`, the knob behind Issues found 8; the drift stops, spiral bands, rain shield and front turn of phase 06; the rain noises' sizes, the fog and cloudy-day rules and the spin-up of phase 07; the outlook's footprint choice; the warning's steps; the Atlas's colour scales). Done: a row each in its section, marked "(pinned since phase 11's second pass)" where the pin is new, and the pins in `run_climate_constants` (`6a3916a7`; 441 checks, was 369), with the calendar's float copies, `CLIMATE_HARMONIC_HALF_DAYS`, the spin-up weeks and the warning's one day checked against their sources. Left unpinned on purpose, as mechanics, not climate numbers: kinds and flags, buffer and table sizes, colours, pixel sizes, `CLIMATE_DIRECTION_EPSILON`, `CLIMATE_SUN_POLE_COS`, `CLIMATE_UNIFORM_SCALE` (2^-53), `CLIMATE_SEASON_DRIEST_START_MM` (a sentinel) and `CLIMATE_THUNDER_QUERY_MAX` (a list bound). No value changed.
+
+17. **Phase 10's note for this phase: a stale comment.** Phase 10, Issues found 31: `run/include/climate/outlook/index.h` said the exact footprint is in force while the code uses the master plan's. Done (`ffc94238`): the comment now says the master plan's form is in force, as phase 07's calibration passed with it (phase 07, Issues found 14); `run_climate_constants` pins the choice. Comment only.
+
+18. **Every bench again from a cool machine (second pass, 2026-11-08).** Expected (Background): each bench cool and hot. Actual: the machine was idle (load average 0.2 before this pass's builds); after the release and profile builds, 5 minutes with nothing heavy (load average 1.4), then every bench once through the lock. Results: the table "Benches from a cool machine". Every met target is still met; the census is 15% faster cool (183.8 against 218.6 ms); the storm warning still misses (6.3 ms slowest, 4.4 mean, against 2). `bench_world`: 3 of 16 rows met 120 fps against 0 in the first run, because its early rows ran before the card slowed; `nvidia-smi` mid-run read 1575 of 2100 MHz with the power-cap and thermal slowdown reasons, and the weather rows, last, have every pass 3.4 to 3.7 times the clear row's, so they cannot show weather's cost (phase 08's like-with-like runs stand: rain +0.49 ms, snow +0.75, thunder +0.71, fog 0). The summary said weather costs "1 to 3 ms a frame"; phase 08's numbers are 0 to 0.75 ms, and the summary now says so. Recorded in each bench's README and as `ffc94238: plan 004 phase 11, second pass, cool machine` in `bench/world/history.tsv`. The survey was not run again: no climate number changed, and every climate test passes on the same digests.
+
+19. **Verification of the second pass, 2026-11-08, every command through `tools/test-or-build.sh`.** Main was already in; the first pass's branch `worktree-wf_6f8a0c68-47a-58` merged as a fast-forward. Debug configure and build: clean, no warnings. `run_climate_constants`, `run_climate_outlook`, `standards_lint`, `clang_format`: 4 of 4 after the last change. The whole debug suite: **151 of 151 pass** in 2329 s. Release configure and build (`-O3 -flto`, main's 16 KiB frame check): clean, on `ffc94238`; nothing here touches `app_t`. Profile configure and build: clean. Every bench once from a cool machine (Issues found 18). Not run again: the 8-seed survey and its 1-worker and 16-worker check, as no climate number or code path changed (test pins and a comment only). `pgrep -af "$PWD/build"` and `pgrep -a minecraft_c` print nothing afterwards. Not run by the agent: Ahmed's gate.
