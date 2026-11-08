@@ -19,6 +19,14 @@ Exit status 0 if the median is under 250 ms (the phase 07 file's target), 1 if n
 
 ## Results
 
+### 2026-11-08, plan 004 phase 11, second pass: 183.8 ms from a cool machine
+
+From a cool machine (plan 004 phase 11, second pass): through the build lock, after 5 minutes with nothing heavy, load average 0.9 at the start, profile build, on the code of `ffc94238`, exit status 0. Median of 5: **183.8 ms** against 250, met; the first census 1018.2 ms. Against 218.6 and 214.8 ms hot: this one bench does feel the CPU's heat.
+
+### 2026-11-08, plan 004 phase 11: 218.6 and 214.8 ms, met
+
+Profile build, through the build lock, twice in a row right after the profile build and `bench_climate_survey`'s 107 minutes (no run was cool; plan 004 phase 11, Issues found 11). Medians of 5: **218.6 ms** and **214.8 ms** against 250, met; first censuses 1089.6 and 1093.3 ms. Phase 11 changed no number, so this is phase 07's census as it was.
+
 ### 2026-11-06, plan 004 phase 07: 226.5 ms, met
 
 Profile preset, through the build lock, 16 workers, seed `4D494E4543524146`, 196 kept tiles in 49 blocks. Exit status 0.

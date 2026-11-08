@@ -9,7 +9,7 @@
 
 #include <math.h>
 
-#define AIR_TWO_PI 6.28318530717958647692f64
+#define AIR_TWO_PI CLIMATE_TWO_PI
 #define AIR_DEGREES (CLIMATE_PI / 180.0f64)
 
 /* ---- Pieces --------------------------------------------------------------------------------------------------------- */
@@ -60,7 +60,7 @@ static void air_belt_unit(const float32_t direction[2], float32_t north_sign, fl
 }
 
 void climate_air_belt_wind(float32_t psi_deg, float32_t mirror, float32_t out[2]) {
-    const float32_t a = fminf(fabsf(psi_deg), 90.0f32);
+    const float32_t a = fminf(fabsf(psi_deg), (float32_t)CLIMATE_POLE_DEG);
     const float32_t half_blend = 0.5f32 * CLIMATE_BELT_BLEND_DEG;
     const float32_t b1 =
         climate_air_smoothstep((a - (CLIMATE_BELT_EDGES_DEG[0] - half_blend)) / CLIMATE_BELT_BLEND_DEG);
@@ -110,7 +110,7 @@ void climate_air_pressure_wind(const float32_t gradient[2], float32_t turn_deg, 
 
 void climate_air_steer(const float32_t wind[2], const float32_t slope[2], float32_t out[2]) {
     const float32_t length = sqrtf(slope[0] * slope[0] + slope[1] * slope[1]);
-    if (length < 1.0e-6f32) {
+    if (length < CLIMATE_DIRECTION_EPSILON) {
         out[0] = wind[0];
         out[1] = wind[1];
         return;
@@ -148,8 +148,10 @@ uint8_t climate_air_current_kind(float32_t lat_deg, float32_t n_x, float32_t *ou
 }
 
 static uint8_t air_byte(float32_t share) {
-    const float32_t value = roundf(255.0f32 * share);
-    return (uint8_t)(value < 0.0f32 ? 0.0f32 : (value > 255.0f32 ? 255.0f32 : value));
+    const float32_t value = roundf(CLIMATE_CURRENT_STRENGTH_MAX_F32 * share);
+    return (uint8_t)(value < 0.0f32
+                         ? 0.0f32
+                         : (value > CLIMATE_CURRENT_STRENGTH_MAX_F32 ? CLIMATE_CURRENT_STRENGTH_MAX_F32 : value));
 }
 
 uint8_t climate_air_sea_strength(float32_t land_distance, float32_t weight) {
@@ -296,13 +298,14 @@ void climate_air_build_tile(const climate_normals_t *normals, arena_t *arena, co
     const uint32_t side = (uint32_t)CLIMATE_WINDOW_CELLS;
     const uint32_t tile = (uint32_t)CLIMATE_TILE_CELLS;
     const bool steer = trace == nullptr || trace->steer_off == 0u;
-    float32_t *const ring_kappa = arena_alloc_array(arena, AIR_RING_COUNT, sizeof(float32_t), 64u);
-    float32_t *const ring_swing = arena_alloc_array(arena, AIR_RING_COUNT, sizeof(float32_t), 64u);
-    float32_t *const ring_lag = arena_alloc_array(arena, AIR_RING_COUNT, sizeof(float32_t), 64u);
-    float32_t *const heat = arena_alloc_array(arena, AIR_RING_COUNT, sizeof(float32_t), 64u);
+    float32_t *const ring_kappa = arena_alloc_array(arena, AIR_RING_COUNT, sizeof(float32_t), CLIMATE_ALIGN_BYTES);
+    float32_t *const ring_swing = arena_alloc_array(arena, AIR_RING_COUNT, sizeof(float32_t), CLIMATE_ALIGN_BYTES);
+    float32_t *const ring_lag = arena_alloc_array(arena, AIR_RING_COUNT, sizeof(float32_t), CLIMATE_ALIGN_BYTES);
+    float32_t *const heat = arena_alloc_array(arena, AIR_RING_COUNT, sizeof(float32_t), CLIMATE_ALIGN_BYTES);
     /* Per tile cell and day: u, v, dp. */
     float32_t *const days =
-        arena_alloc_array(arena, (uint64_t)CLIMATE_TILE_CELL_COUNT * CLIMATE_FIT_DAYS * 3u, sizeof(float32_t), 64u);
+        arena_alloc_array(arena, (uint64_t)CLIMATE_TILE_CELL_COUNT * CLIMATE_FIT_DAYS * CLIMATE_AIR_DAY_VALUES,
+                          sizeof(float32_t), CLIMATE_ALIGN_BYTES);
     float64_t row_lat[AIR_RING];
     float32_t row_mirror[AIR_RING];
 
@@ -376,7 +379,7 @@ void climate_air_build_tile(const climate_normals_t *normals, arena_t *arena, co
                     (cell->flags & CLIMATE_CELL_SEA) != 0u ? 1.0f32 : climate_air_altitude_factor(cell->z_ground);
                 wind[0] *= lift;
                 wind[1] *= lift;
-                float32_t *const keep = &days[(cell_index * CLIMATE_FIT_DAYS + k) * 3u];
+                float32_t *const keep = &days[(cell_index * CLIMATE_FIT_DAYS + k) * CLIMATE_AIR_DAY_VALUES];
                 keep[0] = wind[0];
                 keep[1] = wind[1];
                 keep[2] = heat[r * AIR_RING + c];
@@ -397,7 +400,7 @@ void climate_air_build_tile(const climate_normals_t *normals, arena_t *arena, co
     for (uint32_t cell_index = 0u; cell_index < (uint32_t)CLIMATE_TILE_CELL_COUNT; cell_index++) {
         float32_t u[CLIMATE_FIT_DAYS], v[CLIMATE_FIT_DAYS], p[CLIMATE_FIT_DAYS];
         for (uint32_t k = 0u; k < CLIMATE_FIT_DAYS; k++) {
-            const float32_t *const keep = &days[(cell_index * CLIMATE_FIT_DAYS + k) * 3u];
+            const float32_t *const keep = &days[(cell_index * CLIMATE_FIT_DAYS + k) * CLIMATE_AIR_DAY_VALUES];
             u[k] = keep[0];
             v[k] = keep[1];
             p[k] = keep[2];

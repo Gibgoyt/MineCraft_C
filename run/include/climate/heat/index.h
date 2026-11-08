@@ -9,17 +9,17 @@
 #include <stdint.h>
 
 /* Master plan 6.6, 6.7 and 8: the temperature formula's constants. One home each. */
-static const float32_t CLIMATE_LAPSE_C_PER_BLOCK = 0.012f32;  /* Gamma, 6.6: Ahmed's "12 deg C per 1000 blocks" */
-static const float32_t CLIMATE_BASIN_C_PER_BLOCK = 0.025f32;  /* B, 6.6 and 2.1: below sea level, on land */
-static const float32_t CLIMATE_SOLSTICE_DAY = 170.0f32;       /* 6.6: the cosine's zero lag */
-static const float32_t CLIMATE_RANGE_COAST_C = 4.0f32;        /* 6.6: daily range on a coast */
-static const float32_t CLIMATE_RANGE_INLAND_EXTRA_C = 8.0f32; /* 6.6: + 8 kappa */
-static const float32_t CLIMATE_RANGE_RAIN_CUT = 0.6f32;       /* 6.6: x (1 - 0.6 r) */
-static const float32_t CLIMATE_WET_DAY_SCALE_MM = 6.0f32;     /* 8: r = 1 - e^(-P_day / 6) */
-static const float32_t CLIMATE_SNOW_ALL_RAIN_C = 1.0f32;      /* 6.7: all rain above */
-static const float32_t CLIMATE_SNOW_ALL_SNOW_C = -2.0f32;     /* 6.7: all snow below */
+static const float32_t CLIMATE_LAPSE_C_PER_BLOCK = 0.012f32; /* Gamma, 6.6: Ahmed's "12 deg C per 1000 blocks" */
+static const float32_t CLIMATE_BASIN_C_PER_BLOCK = 0.025f32; /* B, 6.6 and 2.1: below sea level, on land */
+static const float32_t CLIMATE_SOLSTICE_DAY = (float32_t)CALENDAR_SUMMER_FROM; /* 6.6: the cosine's zero lag, 170 */
+static const float32_t CLIMATE_RANGE_COAST_C = 4.0f32;                         /* 6.6: daily range on a coast */
+static const float32_t CLIMATE_RANGE_INLAND_EXTRA_C = 8.0f32;                  /* 6.6: + 8 kappa */
+static const float32_t CLIMATE_RANGE_RAIN_CUT = 0.6f32;                        /* 6.6: x (1 - 0.6 r) */
+static const float32_t CLIMATE_WET_DAY_SCALE_MM = 6.0f32;                      /* 8: r = 1 - e^(-P_day / 6) */
+static const float32_t CLIMATE_SNOW_ALL_RAIN_C = 1.0f32;                       /* 6.7: all rain above */
+static const float32_t CLIMATE_SNOW_ALL_SNOW_C = -2.0f32;                      /* 6.7: all snow below */
 static const float32_t CLIMATE_HEAT_TWO_PI = 6.28318530717958647692f32;
-static const float32_t CLIMATE_HEAT_YEAR_DAYS = 365.0f32;
+static const float32_t CLIMATE_HEAT_YEAR_DAYS = CALENDAR_DAYS_PER_YEAR_F32;
 
 /* t_mean - Gamma z + B, with B = 0.025 max(0, -z) only when land: the part of 6.6 that does not change through the year. */
 float32_t climate_heat_base(float32_t t_mean_sea_level, float32_t z, bool land);

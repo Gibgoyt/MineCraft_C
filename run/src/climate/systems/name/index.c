@@ -10,11 +10,13 @@ static const char *const NAME_SYLLABLES[CLIMATE_SYSTEM_SYLLABLES] = {
     "ko", "sa", "el", "mar", "ti",  "no", "ba", "lu", "fe",  "ar", "zo", "wen",
 };
 
-void climate_system_name(uint32_t name_seed, char out[9]) {
-    const uint32_t syllables = (name_seed & 1u) != 0u ? 3u : 2u;
+void climate_system_name(uint32_t name_seed, char out[CLIMATE_SYSTEM_NAME_BYTES]) {
+    const uint32_t syllables = (name_seed & 1u) != 0u ? CLIMATE_SYSTEM_NAME_SYLLABLES_MAX : 2u;
     uint32_t length = 0u;
     for (uint32_t k = 0u; k < syllables; k++) {
-        const char *const syllable = NAME_SYLLABLES[((name_seed >> (1u + 5u * k)) & 31u) % CLIMATE_SYSTEM_SYLLABLES];
+        const char *const syllable = NAME_SYLLABLES[((name_seed >> (1u + CLIMATE_SYSTEM_NAME_SYLLABLE_BITS * k)) &
+                                                     ((1u << CLIMATE_SYSTEM_NAME_SYLLABLE_BITS) - 1u)) %
+                                                    CLIMATE_SYSTEM_SYLLABLES];
         const uint32_t bytes = (uint32_t)strlen(syllable);
         if (length + bytes > CLIMATE_SYSTEM_NAME_LETTERS) {
             break; /* only the third can overflow: two syllables are at most 6 letters */
@@ -28,7 +30,7 @@ void climate_system_name(uint32_t name_seed, char out[9]) {
     }
 }
 
-void climate_system_title(const climate_system_t *system, float64_t t, char out[24]) {
+void climate_system_title(const climate_system_t *system, float64_t t, char out[CLIMATE_SYSTEM_TITLE_BYTES]) {
     char name[CLIMATE_SYSTEM_NAME_BYTES];
     climate_system_name(system->name_seed, name);
     const char *prefix = "Low ";

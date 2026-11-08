@@ -40,6 +40,7 @@ enum : uint32_t {
     CLIMATE_TILE_SLOTS = CLIMATE_TILE_SIDE * CLIMATE_TILE_SIDE, /* 4096 */
     CLIMATE_MASK_SIDE = 128u,                                   /* the mask table: 128 km square */
     CLIMATE_MASK_SLOTS = CLIMATE_MASK_SIDE * CLIMATE_MASK_SIDE, /* 16384 */
+    CLIMATE_CACHE_KEY_Y_SHIFT = 32u, /* phase 11: a key is the tile x in its low 32 bits, the tile y in its high 32 */
 };
 static_assert((CLIMATE_TILE_SIDE & (CLIMATE_TILE_SIDE - 1u)) == 0 &&
               (CLIMATE_MASK_SIDE & (CLIMATE_MASK_SIDE - 1u)) == 0);

@@ -16,8 +16,8 @@
 #include <math.h>
 #include <string.h>
 
-static const float64_t WEATHER_TWO_PI = 6.28318530717958647692f64;
-static const float64_t WEATHER_HOUR_DAYS = 1.0f64 / 24.0f64;
+static const float64_t WEATHER_TWO_PI = CLIMATE_TWO_PI;
+static const float64_t WEATHER_HOUR_DAYS = 1.0f64 / CALENDAR_HOURS_PER_DAY_F64;
 /* The clock hour of the day's warmest moment: the daily cycle's peak. */
 static const float64_t WEATHER_WARMEST_HOUR = 15.0f64;
 /* The daily cycle at each of a day's half-past hours, from 06:30: (float32_t)cos(2 pi (6.5 + h - 15) / 24), the same bits
@@ -31,9 +31,14 @@ static const float32_t WEATHER_CYCLE[CLIMATE_HOURS_A_DAY] = {
 /* Past a system's own reach, so a view never drops what could still touch a point by a rounding. */
 static const float64_t WEATHER_VIEW_MARGIN = 64.0f64;
 /* A front's showers reach this far either side of its line: 3 half-widths, as climate/systems/field cuts it. */
-static const float64_t WEATHER_FRONT_REACH = 3.0f64 * 400.0f64;
+#define WEATHER_FRONT_REACH (3.0f64 * (float64_t)CLIMATE_FRONT_HALF_WIDTH)
 /* A block's day lists are worked out in a child arena of this, reset each day. */
 static const uint64_t WEATHER_DAY_ARENA_BYTES = 20ull << 20;
+/* The week table's slot of a tile: a 32-bit mix of its x and y (the murmur3 finaliser's constants). */
+static const uint32_t WEATHER_HASH_X = 0x9E3779B1u;
+static const uint32_t WEATHER_HASH_Y = 0x85EBCA77u;
+static const uint32_t WEATHER_HASH_MIX = 0x2C1B3C6Du;
+enum : uint32_t { WEATHER_HASH_SHIFT_1 = 15u, WEATHER_HASH_SHIFT_2 = 12u };
 
 static const terrain_noise_shape_t WEATHER_SPELL_SHAPE = {
     .frequency_x = 1.0f64 / CLIMATE_SPELL_BLOCKS,
@@ -109,7 +114,7 @@ bool climate_weather_open(climate_weather_t *weather, uint8_t *region, uint64_t 
     arena_init(&weather->arena_week, "climate_week", region + sizeof(climate_weather_t),
                bytes - sizeof(climate_weather_t));
     arena_t *const arena = &weather->arena_week;
-    terrain_noise_bank_init(&weather->bank, arena, seed, 3u);
+    terrain_noise_bank_init(&weather->bank, arena, seed, CLIMATE_WEATHER_NOISE_FIELDS);
     if (!terrain_noise_bank_add(&weather->bank, "climate_weather/spell", &WEATHER_SPELL_SHAPE, &weather->spell) ||
         !terrain_noise_bank_add(&weather->bank, "climate_weather/rain_amount", &WEATHER_AMOUNT_SHAPE,
                                 &weather->amount) ||
@@ -119,21 +124,26 @@ bool climate_weather_open(climate_weather_t *weather, uint8_t *region, uint64_t 
     }
     climate_week_store_t *const store = &weather->store;
     const uint64_t cells = (uint64_t)CLIMATE_WEEK_TILES_MAX * CLIMATE_TILE_CELL_COUNT;
-    store->borrowed_tiles = arena_alloc_array(arena, CLIMATE_WEEK_TILES_MAX, sizeof(climate_week_tile_t), 64u);
-    store->borrowed_sides = arena_alloc_array(arena, CLIMATE_WEEK_TILES_MAX, sizeof(climate_week_side_t), 64u);
-    store->borrowed_table = arena_alloc_array(arena, CLIMATE_WEEK_TABLE_SLOTS, sizeof(uint32_t), 64u);
-    store->borrowed_flow = arena_alloc_array(arena, cells, sizeof(climate_flow_cell_t), 64u);
-    store->borrowed_flow_index = arena_alloc_array(arena, 2u * cells, sizeof(uint32_t), 64u);
-    store->borrowed_pending = arena_alloc_array(arena, 2u * (uint64_t)CLIMATE_WEEK_PENDING_MAX, sizeof(int32_t), 64u);
-    store->borrowed_work = arena_alloc_zeroed(arena, CLIMATE_WEEK_WORK_SLOTS * sizeof(climate_week_work_t), 64u);
+    store->borrowed_tiles =
+        arena_alloc_array(arena, CLIMATE_WEEK_TILES_MAX, sizeof(climate_week_tile_t), CLIMATE_ALIGN_BYTES);
+    store->borrowed_sides =
+        arena_alloc_array(arena, CLIMATE_WEEK_TILES_MAX, sizeof(climate_week_side_t), CLIMATE_ALIGN_BYTES);
+    store->borrowed_table = arena_alloc_array(arena, CLIMATE_WEEK_TABLE_SLOTS, sizeof(uint32_t), CLIMATE_ALIGN_BYTES);
+    store->borrowed_flow = arena_alloc_array(arena, cells, sizeof(climate_flow_cell_t), CLIMATE_ALIGN_BYTES);
+    store->borrowed_flow_index = arena_alloc_array(arena, 2u * cells, sizeof(uint32_t), CLIMATE_ALIGN_BYTES);
+    store->borrowed_pending =
+        arena_alloc_array(arena, 2u * (uint64_t)CLIMATE_WEEK_PENDING_MAX, sizeof(int32_t), CLIMATE_ALIGN_BYTES);
+    store->borrowed_work =
+        arena_alloc_zeroed(arena, CLIMATE_WEEK_WORK_SLOTS * sizeof(climate_week_work_t), CLIMATE_ALIGN_BYTES);
     for (uint32_t s = 0u; s < CLIMATE_WEEK_WORK_SLOTS; s++) {
         climate_week_work_t *const work = &store->borrowed_work[s];
-        work->borrowed_places = arena_alloc_array(arena, WEATHER_WORK_CELLS, sizeof(weather_place_t), 64u);
+        work->borrowed_places =
+            arena_alloc_array(arena, WEATHER_WORK_CELLS, sizeof(weather_place_t), CLIMATE_ALIGN_BYTES);
         work->borrowed_normals = arena_alloc_array(arena, (uint64_t)WEATHER_WORK_CELLS * CLIMATE_WEEK_DAYS,
-                                                   sizeof(climate_normals_at_t), 64u);
-        work->borrowed_days =
-            arena_alloc_array(arena, (uint64_t)WEATHER_WORK_CELLS * CLIMATE_WEEK_DAYS, sizeof(climate_day_t), 64u);
-        work->borrowed_placed = arena_alloc_array(arena, WEATHER_WORK_CELLS, sizeof(bool), 64u);
+                                                   sizeof(climate_normals_at_t), CLIMATE_ALIGN_BYTES);
+        work->borrowed_days = arena_alloc_array(arena, (uint64_t)WEATHER_WORK_CELLS * CLIMATE_WEEK_DAYS,
+                                                sizeof(climate_day_t), CLIMATE_ALIGN_BYTES);
+        work->borrowed_placed = arena_alloc_array(arena, WEATHER_WORK_CELLS, sizeof(bool), CLIMATE_ALIGN_BYTES);
     }
     climate_week_store_empty(store);
     return true;
@@ -180,7 +190,7 @@ float32_t climate_weather_amount(const climate_t *climate, float64_t x, float64_
 }
 
 float32_t climate_weather_hours(const climate_t *climate, float64_t x, float64_t y, int64_t day, uint32_t hour) {
-    const float64_t z = 24.0f64 * (float64_t)day + (float64_t)hour;
+    const float64_t z = CALENDAR_HOURS_PER_DAY_F64 * (float64_t)day + (float64_t)hour;
     return weather_noise_one(climate->borrowed_weather->hours, CLIMATE_RAIN_HOURS_RAW_SD, x, y, z);
 }
 
@@ -237,7 +247,7 @@ static bool weather_day_in_climate(const climate_t *climate, const weather_place
     } else if (!climate_normals_at(climate, place->x, place->y, nanf(""), d, &out->normals)) {
         return false;
     }
-    if (!climate_air_at(climate, place->x, place->y, d + 0.25f32, &noon)) {
+    if (!climate_air_at(climate, place->x, place->y, d + CALENDAR_NOON_INTO_DAY_F32, &noon)) {
         return false;
     }
     out->day = day;
@@ -265,7 +275,7 @@ static bool weather_day_in_fill(const climate_t *climate, const weather_place_t 
 /* The instants of a day, as t: the 24 half-past hours from 06:30, then 12:00, then 06:00. */
 static float64_t weather_instant(int64_t day, uint32_t instant) {
     if (instant == CLIMATE_WEEK_INSTANT_NOON) {
-        return (float64_t)day + 0.25f64;
+        return (float64_t)day + CALENDAR_NOON_INTO_DAY_F64;
     }
     if (instant == CLIMATE_WEEK_INSTANT_MORNING) {
         return (float64_t)day;
@@ -561,7 +571,7 @@ static void weather_day_compute(const weather_place_t *place, const weather_day_
     extra->range = range;
 
     /* The 7 days ending today: six of last week's, as a share of its total, and today. With no state, the normal. */
-    const float32_t before = last_week != nullptr ? last_week->rain_mm : 7.0f32 * n->rain_mm_day;
+    const float32_t before = last_week != nullptr ? last_week->rain_mm : (float32_t)CLIMATE_WEEK_DAYS * n->rain_mm_day;
     const climate_day_facts_t facts = {
         .t_mean = t_mean,
         .anomaly = anomaly,
@@ -569,8 +579,8 @@ static void weather_day_compute(const weather_place_t *place, const weather_day_
         .rain_mm = out->rain_mm,
         .wind_max = wind_max,
         .wind_morning = weather_speed(wind_morning),
-        .week_rain_mm = before * (6.0f32 / 7.0f32) + out->rain_mm,
-        .normal_week_mm = 7.0f32 * n->rain_mm_day,
+        .week_rain_mm = before * ((float32_t)(CLIMATE_WEEK_DAYS - 1u) / (float32_t)CLIMATE_WEEK_DAYS) + out->rain_mm,
+        .normal_week_mm = (float32_t)CLIMATE_WEEK_DAYS * n->rain_mm_day,
         .sea_distance = place->sea_distance,
         .valley_depth = place->valley_depth,
         .soil_mm = last_week != nullptr ? last_week->soil_mm : 0.0f32,
@@ -643,13 +653,14 @@ static bool weather_at_views(const climate_t *climate, const weather_place_t *pl
     weather_day_compute(place, &in, views, last_week, &today, &extra);
     const climate_systems_day_t now = now_view->day;
     memset(out, 0, sizeof(*out));
-    const float64_t hours = (t - (float64_t)day) * 24.0f64;
+    const float64_t hours = (t - (float64_t)day) * CALENDAR_HOURS_PER_DAY_F64;
     uint32_t hour = (uint32_t)hours;
     hour = hour >= CLIMATE_HOURS_A_DAY ? CLIMATE_HOURS_A_DAY - 1u : hour;
-    const float64_t clock = 6.0f64 + hours;
+    const float64_t clock = CALENDAR_CENSUS_HOUR_F64 + hours;
     const float32_t t_mean_here = high.t_day_c + today.anomaly;
     out->temperature_c =
-        t_mean_here + 0.5f32 * extra.range * (float32_t)cos(WEATHER_TWO_PI * (clock - WEATHER_WARMEST_HOUR) / 24.0f64);
+        t_mean_here + 0.5f32 * extra.range *
+                          (float32_t)cos(WEATHER_TWO_PI * (clock - WEATHER_WARMEST_HOUR) / CALENDAR_HOURS_PER_DAY_F64);
     out->rain_mm_h = (float32_t)extra.hour_mm[hour];
     out->snow_share = climate_heat_snow_share(out->temperature_c);
     float32_t wind[2];
@@ -670,11 +681,11 @@ static bool weather_at_views(const climate_t *climate, const weather_place_t *pl
         out->in_hurricane = system->kind == CLIMATE_SYSTEM_HURRICANE ? 1u : out->in_hurricane;
     }
     /* Cloud by what falls now, then by what is overhead: phase 08 draws it, phase 07 only says how much. */
-    float32_t cloud = under_high ? 0.05f32 : 0.2f32;
-    cloud = today.kind == CLIMATE_DAY_CLOUDY ? 0.6f32 : cloud;
-    cloud = under_storm ? 0.75f32 : cloud;
+    float32_t cloud = under_high ? CLIMATE_CLOUD_UNDER_HIGH : CLIMATE_CLOUD_CLEAR;
+    cloud = today.kind == CLIMATE_DAY_CLOUDY ? CLIMATE_CLOUD_CLOUDY : cloud;
+    cloud = under_storm ? CLIMATE_CLOUD_STORM : cloud;
     if (out->rain_mm_h > 0.0f32) {
-        const float32_t raining = 0.5f32 + 0.25f32 * out->rain_mm_h;
+        const float32_t raining = 0.5f32 + CLIMATE_CLOUD_PER_MM_HOUR * out->rain_mm_h;
         cloud = raining > 1.0f32 ? 1.0f32 : (raining > cloud ? raining : cloud);
     }
     out->cloud = cloud;
@@ -692,12 +703,13 @@ static bool weather_at_views(const climate_t *climate, const weather_place_t *pl
             nearest = r;
             out->thunder = (float32_t)(strength * (1.0f64 - r / reach));
             out->thunder_distance = r < 1.0f64 ? 1.0f32 : (float32_t)r;
-            out->thunder_cell = (uint32_t)(cell->id ^ (cell->id >> 32)) | 1u;
+            out->thunder_cell = (uint32_t)(cell->id ^ (cell->id >> CLIMATE_KEY_HALF_BITS)) | 1u;
         }
     }
-    const float32_t morning = (float32_t)(hours < 4.0f64 ? 1.0f64 - hours / 4.0f64 : 0.0f64);
+    const float32_t morning =
+        (float32_t)(hours < CLIMATE_FOG_MORNING_HOURS ? 1.0f64 - hours / CLIMATE_FOG_MORNING_HOURS : 0.0f64);
     out->fog = today.kind == CLIMATE_DAY_FOG ? morning : 0.0f32;
-    const float32_t gust = weather_speed(out->wind) / 20.0f32;
+    const float32_t gust = weather_speed(out->wind) / CLIMATE_DUST_FULL_WIND;
     out->dust = today.kind == CLIMATE_DAY_DUST_STORM ? (gust > 1.0f32 ? 1.0f32 : gust) : 0.0f32;
     out->day_kind = today.kind;
     return true;
@@ -762,7 +774,8 @@ bool climate_weather_at_shared(const climate_t *climate, const climate_weather_a
 /* One week from normals at its middle day: snow, soil and runoff. sigma_t 0 leaves the noises out. */
 static bool weather_week_normal(const climate_t *climate, float64_t x, float64_t y, int64_t week, float32_t sigma_t,
                                 bool noise, climate_week_t *state) {
-    const int64_t middle = 7 * week - 4; /* days 7 (week - 1) to 7 week - 1: the fourth */
+    const int64_t middle = (int64_t)CLIMATE_WEEK_DAYS * week -
+                           (int64_t)CLIMATE_WEEK_MIDDLE_FROM_END; /* days 7 (week - 1) to 7 week - 1: the fourth */
     climate_normals_at_t n;
     if (!climate_normals_at(climate, x, y, nanf(""), weather_day_of_year(middle), &n)) {
         return false;
@@ -784,7 +797,9 @@ static bool weather_week_normal(const climate_t *climate, float64_t x, float64_t
     float32_t days[CLIMATE_WEEK_SPINUP_WEEKS];
     const int64_t weeks = (int64_t)CLIMATE_WEEK_SPINUP_WEEKS;
     for (int64_t k = 0; k < weeks; k++) {
-        days[k] = weather_day_of_year(7 * (first_week + k) - 4); /* days 7 (w - 1) to 7 w - 1: the fourth */
+        days[k] =
+            weather_day_of_year((int64_t)CLIMATE_WEEK_DAYS * (first_week + k) -
+                                (int64_t)CLIMATE_WEEK_MIDDLE_FROM_END); /* days 7 (w - 1) to 7 w - 1: the fourth */
     }
     if (!climate_normals_days_at(climate, x, y, nanf(""), days, CLIMATE_WEEK_SPINUP_WEEKS, normals)) {
         return false;
@@ -810,8 +825,8 @@ static bool weather_week_normal(const climate_t *climate, float64_t x, float64_t
 
 bool climate_week_spinup(const climate_t *climate, int32_t cell_x, int32_t cell_y, uint64_t week,
                          climate_week_t *out_state, float32_t *out_mean_runoff) {
-    const float64_t x = (float64_t)cell_x * (float64_t)CLIMATE_CELL_BLOCKS + 32.0f64;
-    const float64_t y = (float64_t)cell_y * (float64_t)CLIMATE_CELL_BLOCKS + 32.0f64;
+    const float64_t x = (float64_t)cell_x * (float64_t)CLIMATE_CELL_BLOCKS + (float64_t)CLIMATE_HALF_CELL_BLOCKS;
+    const float64_t y = (float64_t)cell_y * (float64_t)CLIMATE_CELL_BLOCKS + (float64_t)CLIMATE_HALF_CELL_BLOCKS;
     const int64_t weeks = (int64_t)CLIMATE_WEEK_SPINUP_WEEKS;
     if (out_state != nullptr && !weather_spinup_run(climate, x, y, (int64_t)week - weeks + 1, out_state, nullptr)) {
         return false;
@@ -821,8 +836,8 @@ bool climate_week_spinup(const climate_t *climate, int32_t cell_x, int32_t cell_
 }
 
 bool climate_week_fast(const climate_t *climate, int32_t cell_x, int32_t cell_y, uint64_t week, climate_week_t *state) {
-    const float64_t x = (float64_t)cell_x * (float64_t)CLIMATE_CELL_BLOCKS + 32.0f64;
-    const float64_t y = (float64_t)cell_y * (float64_t)CLIMATE_CELL_BLOCKS + 32.0f64;
+    const float64_t x = (float64_t)cell_x * (float64_t)CLIMATE_CELL_BLOCKS + (float64_t)CLIMATE_HALF_CELL_BLOCKS;
+    const float64_t y = (float64_t)cell_y * (float64_t)CLIMATE_CELL_BLOCKS + (float64_t)CLIMATE_HALF_CELL_BLOCKS;
     climate_cell_t cell;
     if (!climate_cell_get(climate, (int32_t)x, (int32_t)y, &cell)) {
         return false;
@@ -834,10 +849,10 @@ bool climate_week_fast(const climate_t *climate, int32_t cell_x, int32_t cell_y,
 /* ---- The store ----------------------------------------------------------------------------------------------------- */
 
 static uint32_t weather_tile_hash(int32_t tile_x, int32_t tile_y) {
-    uint32_t h = (uint32_t)tile_x * 0x9E3779B1u ^ (uint32_t)tile_y * 0x85EBCA77u;
-    h ^= h >> 15;
-    h *= 0x2C1B3C6Du;
-    h ^= h >> 12;
+    uint32_t h = (uint32_t)tile_x * WEATHER_HASH_X ^ (uint32_t)tile_y * WEATHER_HASH_Y;
+    h ^= h >> WEATHER_HASH_SHIFT_1;
+    h *= WEATHER_HASH_MIX;
+    h ^= h >> WEATHER_HASH_SHIFT_2;
     return h & (CLIMATE_WEEK_TABLE_SLOTS - 1u);
 }
 
@@ -935,7 +950,7 @@ static void weather_mark_now(climate_week_store_t *store, int32_t cell_x, int32_
     }
     const uint32_t local = (uint32_t)((cell_y - tile_y * CLIMATE_TILE_CELLS) * CLIMATE_TILE_CELLS +
                                       (cell_x - tile_x * CLIMATE_TILE_CELLS));
-    tile->generated[local / 64u] |= 1ull << (local % 64u);
+    tile->generated[local / CLIMATE_WEEK_GENERATED_WORD_BITS] |= 1ull << (local % CLIMATE_WEEK_GENERATED_WORD_BITS);
     if (was_generated) {
         return; /* its margin is there already */
     }
@@ -1048,7 +1063,7 @@ static int32_t weather_cell_y(const climate_week_tile_t *tile, uint32_t c) {
 }
 
 static float64_t weather_centre(int32_t cell) {
-    return (float64_t)cell * (float64_t)CLIMATE_CELL_BLOCKS + 32.0f64;
+    return (float64_t)cell * (float64_t)CLIMATE_CELL_BLOCKS + (float64_t)CLIMATE_HALF_CELL_BLOCKS;
 }
 
 /* A tile's side data where missing, and its cells at spin-up if fresh. False if a climate tile is not built. */
@@ -1058,7 +1073,8 @@ static bool weather_tile_ready(const climate_t *climate, climate_week_tile_t *ti
         const int32_t cx = weather_cell_x(tile, c), cy = weather_cell_y(tile, c);
         if (side->ground_ready == 0u) {
             climate_cell_t cell;
-            if (!climate_cell_get(climate, cx * CLIMATE_CELL_BLOCKS + 32, cy * CLIMATE_CELL_BLOCKS + 32, &cell)) {
+            if (!climate_cell_get(climate, cx * CLIMATE_CELL_BLOCKS + CLIMATE_HALF_CELL_BLOCKS,
+                                  cy * CLIMATE_CELL_BLOCKS + CLIMATE_HALF_CELL_BLOCKS, &cell)) {
                 return false;
             }
             side->z_ground[c] = cell.z_ground;
@@ -1177,7 +1193,7 @@ bool climate_week_block_begin(const climate_t *climate, climate_week_store_t *st
     /* Each cell's normals for the 7 days in one read: the same bytes as a read a day. */
     float32_t week_days[CLIMATE_WEEK_DAYS];
     for (uint32_t d = 0u; d < CLIMATE_WEEK_DAYS; d++) {
-        week_days[d] = weather_day_of_year(7 * ((int64_t)week - 1) + (int64_t)d);
+        week_days[d] = weather_day_of_year((int64_t)CLIMATE_WEEK_DAYS * ((int64_t)week - 1) + (int64_t)d);
     }
     const int64_t reads_started = time_now_ns();
     for (uint32_t k = 0u; k < block->count; k++) {
@@ -1208,16 +1224,20 @@ void climate_week_block_day(const climate_t *climate, const climate_week_store_t
     climate_week_side_t *sides[CLIMATE_WEEK_BLOCK_TILES];
     const weather_box_t box = weather_block_tiles(store, block, tiles, sides);
     const uint32_t cells = block->count * CLIMATE_TILE_CELL_COUNT;
-    const int64_t day = 7 * ((int64_t)week - 1) + (int64_t)i_day;
+    const int64_t day = (int64_t)CLIMATE_WEEK_DAYS * ((int64_t)week - 1) + (int64_t)i_day;
     const weather_place_t *const places = work->borrowed_places;
-    float64_t *const xs = arena_alloc_array(arena, (uint64_t)cells * CLIMATE_HOURS_A_DAY, sizeof(float64_t), 8u);
-    float64_t *const ys = arena_alloc_array(arena, (uint64_t)cells * CLIMATE_HOURS_A_DAY, sizeof(float64_t), 8u);
-    float64_t *const zs = arena_alloc_array(arena, (uint64_t)cells * CLIMATE_HOURS_A_DAY, sizeof(float64_t), 8u);
-    float32_t *const raw = arena_alloc_array(arena, (uint64_t)cells * CLIMATE_HOURS_A_DAY, sizeof(float32_t), 4u);
-    float32_t *const spell = arena_alloc_array(arena, cells, sizeof(float32_t), 4u);
-    float32_t *const amount = arena_alloc_array(arena, cells, sizeof(float32_t), 4u);
+    float64_t *const xs =
+        arena_alloc_array(arena, (uint64_t)cells * CLIMATE_HOURS_A_DAY, sizeof(float64_t), alignof(float64_t));
+    float64_t *const ys =
+        arena_alloc_array(arena, (uint64_t)cells * CLIMATE_HOURS_A_DAY, sizeof(float64_t), alignof(float64_t));
+    float64_t *const zs =
+        arena_alloc_array(arena, (uint64_t)cells * CLIMATE_HOURS_A_DAY, sizeof(float64_t), alignof(float64_t));
+    float32_t *const raw =
+        arena_alloc_array(arena, (uint64_t)cells * CLIMATE_HOURS_A_DAY, sizeof(float32_t), alignof(float32_t));
+    float32_t *const spell = arena_alloc_array(arena, cells, sizeof(float32_t), alignof(float32_t));
+    float32_t *const amount = arena_alloc_array(arena, cells, sizeof(float32_t), alignof(float32_t));
     arena_t *const day_arena = arena_alloc(arena, sizeof(arena_t), alignof(arena_t));
-    arena_init(day_arena, "climate_week_day", arena_alloc(arena, WEATHER_DAY_ARENA_BYTES, 64u),
+    arena_init(day_arena, "climate_week_day", arena_alloc(arena, WEATHER_DAY_ARENA_BYTES, CLIMATE_ALIGN_BYTES),
                WEATHER_DAY_ARENA_BYTES);
     const int64_t list_started = time_now_ns();
     climate_systems_day_t list;
@@ -1249,7 +1269,7 @@ void climate_week_block_day(const climate_t *climate, const climate_week_store_t
         for (uint32_t h = 0u; h < CLIMATE_HOURS_A_DAY; h++) {
             xs[i * CLIMATE_HOURS_A_DAY + h] = places[i].x;
             ys[i * CLIMATE_HOURS_A_DAY + h] = places[i].y;
-            zs[i * CLIMATE_HOURS_A_DAY + h] = 24.0f64 * (float64_t)day + (float64_t)h;
+            zs[i * CLIMATE_HOURS_A_DAY + h] = CALENDAR_HOURS_PER_DAY_F64 * (float64_t)day + (float64_t)h;
         }
     }
     terrain_noise_sample_points(weather->hours, xs, ys, zs, (uint64_t)cells * CLIMATE_HOURS_A_DAY, raw);
@@ -1309,7 +1329,7 @@ void climate_week_block_end(climate_week_store_t *store, uint64_t week, bool rec
             weather_hurricane_take(sides[k], &stats->notes[k]);
         }
     }
-    const uint16_t census_day = (uint16_t)weather_day_of_year(7 * (int64_t)week);
+    const uint16_t census_day = (uint16_t)weather_day_of_year((int64_t)CLIMATE_WEEK_DAYS * (int64_t)week);
     for (uint32_t k = 0u; k < block->count; k++) {
         for (uint32_t c = 0u; c < CLIMATE_TILE_CELL_COUNT; c++) {
             const uint32_t i = k * CLIMATE_TILE_CELL_COUNT + c;

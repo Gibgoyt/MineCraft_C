@@ -18,7 +18,7 @@ float64_t climate_latitude_deg(float64_t y) {
     const float64_t near = y - period * floor((y + 0.5f64 * period) / period);
     /* asin undoes sin while the angle is within a quarter turn, and folds it back past one: a triangle wave. */
     const float64_t degrees = asin(sin(CLIMATE_PI * near / (2.0f64 * CLIMATE_POLE_Y))) * (180.0f64 / CLIMATE_PI);
-    return degrees > 90.0f64 ? 90.0f64 : (degrees < -90.0f64 ? -90.0f64 : degrees);
+    return degrees > CLIMATE_POLE_DEG ? CLIMATE_POLE_DEG : (degrees < -CLIMATE_POLE_DEG ? -CLIMATE_POLE_DEG : degrees);
 }
 
 /* ---- The region ---------------------------------------------------------------------------------------------------- */
@@ -31,8 +31,6 @@ static const terrain_noise_shape_t CLIMATE_WARP_SHAPE = {
     .persistence = 0.5f32,
     .octaves = 2u,
 };
-/* The same spread as the density's detail field: a raw value this far from 0 is -1 or 1. */
-static const float64_t CLIMATE_WARP_LIMIT = 0.35f64;
 /* How often prepare_area looks at its jobs, to tell its progress. */
 static const int64_t CLIMATE_PREPARE_POLL_NS = TIME_NS_PER_MS;
 
@@ -487,7 +485,7 @@ static float64_t climate_warp_spread(float32_t raw) {
     float64_t unit = (float64_t)raw / CLIMATE_WARP_LIMIT;
     unit = unit > 1.0f64 ? 1.0f64 : unit;
     unit = unit < -1.0f64 ? -1.0f64 : unit;
-    return unit * (1.5f64 - 0.5f64 * unit * unit);
+    return unit * (CLIMATE_WARP_CUBIC - 0.5f64 * unit * unit);
 }
 
 void climate_warp_at(const climate_t *climate, float64_t x, float64_t y, float64_t *out_x, float64_t *out_y) {
@@ -512,13 +510,13 @@ void climate_warp_set(climate_t *climate, bool on) {
 /* The four cells round a read at (read_x, read_y), already warped, south-west, south-east, north-west, north-east, and
  * how far across them it is. False if a tile is not built. */
 static bool climate_four_cells(const climate_state_t *state, float64_t read_x, float64_t read_y,
-                               climate_cell_t cells[4], float32_t *out_t_x, float32_t *out_t_y) {
+                               climate_cell_t cells[CLIMATE_CORNERS], float32_t *out_t_x, float32_t *out_t_y) {
     /* Cell centres are at 64 k + 32: the four round the read point, and how far across them it is. */
     const float64_t u = (read_x - 0.5f64 * (float64_t)CLIMATE_CELL_BLOCKS) / (float64_t)CLIMATE_CELL_BLOCKS;
     const float64_t v = (read_y - 0.5f64 * (float64_t)CLIMATE_CELL_BLOCKS) / (float64_t)CLIMATE_CELL_BLOCKS;
     const float64_t u_floor = floor(u), v_floor = floor(v);
     const int64_t cell_x = (int64_t)u_floor, cell_y = (int64_t)v_floor;
-    for (uint32_t k = 0u; k < 4u; k++) {
+    for (uint32_t k = 0u; k < CLIMATE_CORNERS; k++) {
         if (!climate_cell_read(state, cell_x + (int64_t)(k & 1u), cell_y + (int64_t)(k >> 1u), &cells[k])) {
             return false;
         }
@@ -535,12 +533,12 @@ bool climate_sample_at(const climate_t *climate, float64_t x, float64_t y, clima
     }
     float64_t read_x = x, read_y = y;
     climate_warp_at(climate, x, y, &read_x, &read_y);
-    climate_cell_t cells[4];
+    climate_cell_t cells[CLIMATE_CORNERS];
     float32_t t_x = 0.0f32, t_y = 0.0f32;
     if (!climate_four_cells(state, read_x, read_y, cells, &t_x, &t_y)) {
         return false;
     }
-    const climate_cell_t *const corners[4] = {&cells[0], &cells[1], &cells[2], &cells[3]};
+    const climate_cell_t *const corners[CLIMATE_CORNERS] = {&cells[0], &cells[1], &cells[2], &cells[3]};
     climate_cell_blend(corners, t_x, t_y, out);
     /* Never blended: at a pole two cells either side both say about 89.6, and a blend of them never reaches 90. */
     out->lat_deg = (float32_t)climate_latitude_deg(y);
@@ -558,7 +556,7 @@ static float32_t climate_lerp4(float32_t south_west, float32_t south_east, float
 }
 
 static float32_t climate_cell_current_c(const climate_cell_t *cell) {
-    return climate_air_current_c(cell->current) * (float32_t)cell->current_strength / 255.0f32;
+    return climate_air_current_c(cell->current) * (float32_t)cell->current_strength / CLIMATE_CURRENT_STRENGTH_MAX_F32;
 }
 
 bool climate_air_at(const climate_t *climate, float64_t x, float64_t y, float32_t day, climate_air_t *out) {
@@ -568,23 +566,23 @@ bool climate_air_at(const climate_t *climate, float64_t x, float64_t y, float32_
     }
     float64_t read_x = x, read_y = y;
     climate_warp_at(climate, x, y, &read_x, &read_y);
-    climate_cell_t cells[4];
+    climate_cell_t cells[CLIMATE_CORNERS];
     float32_t t_x = 0.0f32, t_y = 0.0f32;
     if (!climate_four_cells(state, read_x, read_y, cells, &t_x, &t_y)) {
         return false;
     }
     /* Evaluating a wave and blending are both linear, so the coefficients are blended, then the wave evaluated once. */
-    float32_t wind[6], pressure[3];
-    for (uint32_t i = 0u; i < 6u; i++) {
+    float32_t wind[CLIMATE_WIND_COEFFICIENTS], pressure[CLIMATE_WAVE1_COEFFICIENTS];
+    for (uint32_t i = 0u; i < CLIMATE_WIND_COEFFICIENTS; i++) {
         wind[i] = climate_lerp4(cells[0].wind[i], cells[1].wind[i], cells[2].wind[i], cells[3].wind[i], t_x, t_y);
     }
-    for (uint32_t i = 0u; i < 3u; i++) {
+    for (uint32_t i = 0u; i < CLIMATE_WAVE1_COEFFICIENTS; i++) {
         pressure[i] = climate_lerp4(cells[0].pressure[i], cells[1].pressure[i], cells[2].pressure[i],
                                     cells[3].pressure[i], t_x, t_y);
     }
     memset(out, 0, sizeof(*out));
     out->wind[0] = climate_harmonic_at1(&wind[0], day);
-    out->wind[1] = climate_harmonic_at1(&wind[3], day);
+    out->wind[1] = climate_harmonic_at1(&wind[CLIMATE_WAVE1_COEFFICIENTS], day);
     out->pressure_heat_hpa = climate_harmonic_at1(pressure, day);
     const float32_t psi = climate_air_wind_latitude(climate_latitude_deg(y), day);
     out->pressure_belt_hpa = (float32_t)climate_normals_p_belt(state->borrowed_normals, (float64_t)psi);
@@ -626,11 +624,11 @@ void climate_test_hooks_set(climate_t *climate, const climate_test_hooks_t *hook
  * height", not as a height, so blending it in would lift a coast's snow line by up to 4900 blocks half a cell from the
  * shore (the phase 05 file, Issues found 12). Each corner's bilinear weight, renormalised over the land and lake corners;
  * NONE when all four are sea. */
-static float32_t climate_snow_balance_blend(const climate_cell_t cells[4], float32_t t_x, float32_t t_y) {
-    const float32_t weight[4] = {(1.0f32 - t_x) * (1.0f32 - t_y), t_x * (1.0f32 - t_y), (1.0f32 - t_x) * t_y,
-                                 t_x * t_y};
+static float32_t climate_snow_balance_blend(const climate_cell_t cells[CLIMATE_CORNERS], float32_t t_x, float32_t t_y) {
+    const float32_t weight[CLIMATE_CORNERS] = {(1.0f32 - t_x) * (1.0f32 - t_y), t_x * (1.0f32 - t_y),
+                                               (1.0f32 - t_x) * t_y, t_x * t_y};
     float32_t sum = 0.0f32, total = 0.0f32;
-    for (uint32_t k = 0u; k < 4u; k++) {
+    for (uint32_t k = 0u; k < CLIMATE_CORNERS; k++) {
         if ((cells[k].flags & CLIMATE_CELL_SEA) == 0u) {
             sum += weight[k] * cells[k].snow_balance_z;
             total += weight[k];
@@ -655,7 +653,7 @@ bool climate_normals_days_at(const climate_t *climate, float64_t x, float64_t y,
     }
     float64_t read_x = x, read_y = y;
     climate_warp_at(climate, x, y, &read_x, &read_y);
-    climate_cell_t cells[4];
+    climate_cell_t cells[CLIMATE_CORNERS];
     float32_t t_x = 0.0f32, t_y = 0.0f32;
     if (!climate_four_cells(state, read_x, read_y, cells, &t_x, &t_y)) {
         return false;
@@ -670,7 +668,7 @@ bool climate_normals_days_at(const climate_t *climate, float64_t x, float64_t y,
     blend.kappa = CLIMATE_BLEND(kappa);
     blend.z_ground = CLIMATE_BLEND(z_ground);
     blend.snow_balance_z = climate_snow_balance_blend(cells, t_x, t_y);
-    for (uint32_t i = 0u; i < 5u; i++) {
+    for (uint32_t i = 0u; i < CLIMATE_RAIN_COEFFICIENTS; i++) {
         blend.rain_mm_week[i] = CLIMATE_BLEND(rain_mm_week[i]);
     }
 #undef CLIMATE_BLEND

@@ -26,8 +26,8 @@ static const float32_t CLIMATE_OROGRAPHIC_RISE_BLOCKS = 256.0f32; /* 6.7: s_w ov
 static const float32_t CLIMATE_SHADOW_BLOCKS = 400.0f32;          /* 6.7: (h_up - z) / 400 */
 static const float32_t CLIMATE_OROGRAPHIC_MIN = 0.15f32;          /* 6.7 */
 static const float32_t CLIMATE_OROGRAPHIC_MAX = 2.5f32;           /* 6.7 */
-static const float32_t CLIMATE_DAYS_A_WEEK = 7.0f32;
-static const float32_t CLIMATE_DAYS_A_YEAR = 365.0f32;
+static const float32_t CLIMATE_DAYS_A_WEEK = CALENDAR_DAYS_PER_WEEK_F32;
+static const float32_t CLIMATE_DAYS_A_YEAR = CALENDAR_DAYS_PER_YEAR_F32;
 
 /* For tests only: the assumptions the master plan's South Africa numbers make, stated by the test instead of hidden. Held
  * by the climate's state, set through climate_test_hooks_set, all zeros (off) in every real run and after every open. */

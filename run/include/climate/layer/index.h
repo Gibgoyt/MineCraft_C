@@ -94,13 +94,14 @@ static const float32_t CLIMATE_LAYER_RADAR_MM_HOUR[CLIMATE_LAYER_RADAR_STOPS] = 
                                                                                  10.0f32, 25.0f32, 50.0f32};
 static const uint32_t CLIMATE_LAYER_RADAR_RGB[CLIMATE_LAYER_RADAR_STOPS] = {0x80C0FFu, 0x40A040u, 0xE0E040u,
                                                                             0xF08020u, 0xE02020u, 0xC020C0u};
-static const float32_t CLIMATE_LAYER_PRESSURE_LOW_HPA = 990.0f32;
-static const float32_t CLIMATE_LAYER_PRESSURE_MID_HPA = 1013.0f32;
-static const float32_t CLIMATE_LAYER_PRESSURE_HIGH_HPA = 1030.0f32;
+/* Macros since phase 11, so climate_layer_scale's static tables are built from them: one home each. */
+#define CLIMATE_LAYER_PRESSURE_LOW_HPA 990.0f32
+#define CLIMATE_LAYER_PRESSURE_MID_HPA 1013.0f32
+#define CLIMATE_LAYER_PRESSURE_HIGH_HPA 1030.0f32
 static const float32_t CLIMATE_LAYER_PRESSURE_LINE_HPA = 4.0f32; /* master plan 9.3: lines every 4 hPa */
-static const float32_t CLIMATE_LAYER_WIND_TOP = 15.0f32;         /* blocks a second, drawn brightest */
+#define CLIMATE_LAYER_WIND_TOP 15.0f32                           /* blocks a second, drawn brightest */
 static const float32_t CLIMATE_LAYER_WIND_ARROW_MAX = 30.0f32;   /* pixels: an arrow is 2 x speed, at most this */
-static const float32_t CLIMATE_LAYER_LAND_TOP = 454.0f32;        /* blocks: z_ground drawn lightest from here up */
+#define CLIMATE_LAYER_LAND_TOP 454.0f32                          /* blocks: z_ground drawn lightest from here up */
 /* Phase 05's colour stops, linear in each channel between stops and held past the ends. */
 static const float32_t CLIMATE_LAYER_TEMPERATURE_C[CLIMATE_LAYER_TEMPERATURE_STOPS] = {-30.0f32, -10.0f32, 0.0f32,
                                                                                        15.0f32,  30.0f32,  45.0f32};
@@ -115,8 +116,29 @@ static const uint32_t CLIMATE_LAYER_RAIN_RGB[CLIMATE_LAYER_RAIN_STOPS] = {0xC8A0
 static const uint32_t CLIMATE_LAYER_CLASS_RGB[CLIMATE_CLASS_COUNT] = {
     CLIMATE_LAYER_SEA, 0xFFFFFFu, 0xB0B8C0u, 0xF0D080u, 0xD0B060u, 0x006020u,
     0x208040u,         0xA0C040u, 0xE0A040u, 0x60B060u, 0x6080C0u, 0x305060u};
-static const float32_t CLIMATE_LAYER_SNOW_NEAR_BLOCKS = 50.0f32;
-static const float32_t CLIMATE_LAYER_SNOW_FAR_BLOCKS = 2000.0f32;
+#define CLIMATE_LAYER_SNOW_NEAR_BLOCKS 50.0f32
+#define CLIMATE_LAYER_SNOW_FAR_BLOCKS 2000.0f32
+/* Phase 11: the drawing's own numbers, one home each. */
+enum : uint32_t {
+    CLIMATE_LAYER_PIXEL_BYTES = 4u,        /* 0x00RRGGBB, little-endian: B, G, R, 0 */
+    CLIMATE_LAYER_CHANNEL_BITS = 8u,       /* each of R, G and B */
+    CLIMATE_LAYER_RGB_BITS = 24u,          /* the three channels */
+    CLIMATE_LAYER_CHANNEL_MAX = 0xFFu,     /* a channel at full */
+    CLIMATE_LAYER_BLACK = 0x000000u,       /* the sea distance layer's 0 */
+    CLIMATE_LAYER_WHITE = 0xFFFFFFu,       /* and its 8192 */
+    CLIMATE_LAYER_LATITUDE_LINES = 5u,     /* the equator, both tropics, both polar circles */
+    CLIMATE_LAYER_PRESSURE_STOPS = 3u,     /* 990, 1013, 1030 hPa */
+    CLIMATE_LAYER_SNOW_STOPS = 3u,         /* at, 50 below and 2000 below the snow balance */
+    CLIMATE_LAYER_OCTANTS = 8u,            /* a midpoint circle draws 8 points per step */
+    CLIMATE_LAYER_LIGHTNING_POINTS = 4u,   /* the lightning mark's zigzag: 4 points, 3 segments */
+    CLIMATE_LAYER_BARB_PIXELS = 3u,        /* an arrow's two barbs */
+    CLIMATE_LAYER_FRONT_TOOTH_PIXELS = 3u, /* a cold front's teeth */
+};
+static const float32_t CLIMATE_LAYER_BARB_COS = -0.8660254f32;     /* the barbs turned 150 degrees from the arrow */
+static const float32_t CLIMATE_LAYER_CURRENT_ARROW_MIN = 4.0f32;   /* pixels: a current's arrow at no strength */
+static const float32_t CLIMATE_LAYER_CURRENT_ARROW_SPAN = 12.0f32; /* pixels more at full strength */
+static const float64_t CLIMATE_LAYER_PIXEL_CLAMP =
+    1.0e6f64; /* pixels: positions far outside a picture are clamped here */
 
 /* Plan 004 phase 09: where a picture is, for climate_layer_draw_scaled. Blocks a pixel may be any positive number, and the
  * grids are anchored to world pixels, not to the picture's corner, so a picture panned by any whole number of pixels samples

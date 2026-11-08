@@ -7,13 +7,13 @@
 #include <stdio.h>
 
 /* Each season's first day of the year and its length, north of the equator, in calendar_season_t order. */
-static const uint16_t CALENDAR_SEASON_FROM[4] = {
+static const uint16_t CALENDAR_SEASON_FROM[CALENDAR_SEASONS] = {
     CALENDAR_SPRING_FROM,
     CALENDAR_SUMMER_FROM,
     CALENDAR_AUTUMN_FROM,
     CALENDAR_WINTER_FROM,
 };
-static const uint16_t CALENDAR_SEASON_LENGTH[4] = {
+static const uint16_t CALENDAR_SEASON_LENGTH[CALENDAR_SEASONS] = {
     CALENDAR_SUMMER_FROM - CALENDAR_SPRING_FROM,                          /* 91 */
     CALENDAR_AUTUMN_FROM - CALENDAR_SUMMER_FROM,                          /* 92 */
     CALENDAR_WINTER_FROM - CALENDAR_AUTUMN_FROM,                          /* 91 */
@@ -21,7 +21,7 @@ static const uint16_t CALENDAR_SEASON_LENGTH[4] = {
 };
 
 /* Read-only strings in the program's data: owned by nothing. Index season * 3 + part. */
-static const char *const CALENDAR_SEASON_NAMES[12] = {
+static const char *const CALENDAR_SEASON_NAMES[CALENDAR_SEASONS * CALENDAR_SEASON_PARTS] = {
     "Early spring", "Mid spring", "Late spring", "Early summer", "Mid summer", "Late summer",
     "Early autumn", "Mid autumn", "Late autumn", "Early winter", "Mid winter", "Late winter",
 };
@@ -32,7 +32,7 @@ uint64_t calendar_day_of(uint32_t day_zero, calendar_clock_t clock) {
     if (clock < CALENDAR_CLOCK_DAY_START) {
         return day_zero == 0u ? 0u : (uint64_t)day_zero - 1u;
     }
-    return (uint64_t)day_zero + ((clock - CALENDAR_CLOCK_DAY_START) >> 32);
+    return (uint64_t)day_zero + ((clock - CALENDAR_CLOCK_DAY_START) >> CALENDAR_CLOCK_FRACTION_BITS);
 }
 
 uint64_t calendar_week_of(uint32_t day_zero, calendar_clock_t clock) {
@@ -42,14 +42,15 @@ uint64_t calendar_week_of(uint32_t day_zero, calendar_clock_t clock) {
 calendar_date_t calendar_date_of(uint32_t day_zero, calendar_clock_t clock) {
     const uint64_t day = calendar_day_of(day_zero, clock);
     /* Minutes since midnight, rounded down: the time of day times 1440, out of 2^32. Fits: 2^32 * 1440 < 2^43. */
-    const uint64_t minutes = ((clock & (CALENDAR_CLOCK_DAY - 1u)) * 1440u) >> 32;
+    const uint64_t minutes =
+        ((clock & (CALENDAR_CLOCK_DAY - 1u)) * CALENDAR_MINUTES_PER_DAY) >> CALENDAR_CLOCK_FRACTION_BITS;
     return (calendar_date_t){
         .day = day,
         .week = day / CALENDAR_DAYS_PER_WEEK,
         .year = (uint32_t)(day / CALENDAR_DAYS_PER_YEAR + 1u),
         .day_of_year = (uint16_t)(day % CALENDAR_DAYS_PER_YEAR),
-        .hour = (uint8_t)(minutes / 60u),
-        .minute = (uint8_t)(minutes % 60u),
+        .hour = (uint8_t)(minutes / CALENDAR_MINUTES_PER_HOUR),
+        .minute = (uint8_t)(minutes % CALENDAR_MINUTES_PER_HOUR),
     };
 }
 
@@ -75,16 +76,16 @@ calendar_season_label_t calendar_season_temperate(uint16_t day_of_year, bool sou
     }
     const uint32_t into =
         ((uint32_t)day_of_year + CALENDAR_DAYS_PER_YEAR - CALENDAR_SEASON_FROM[season]) % CALENDAR_DAYS_PER_YEAR;
-    const uint32_t part = 3u * into / CALENDAR_SEASON_LENGTH[season];
+    const uint32_t part = CALENDAR_SEASON_PARTS * into / CALENDAR_SEASON_LENGTH[season];
     ASSERT(part <= CALENDAR_PART_LATE);
     /* The south has the opposite season on the same days: spring and autumn swap, summer and winter swap. */
-    const uint32_t named = south ? (season + 2u) % 4u : season;
+    const uint32_t named = south ? (season + CALENDAR_SOUTH_SEASON_SHIFT) % CALENDAR_SEASONS : season;
     return (calendar_season_label_t){.season = (uint8_t)named, .part = (uint8_t)part};
 }
 
 const char *calendar_season_name(calendar_season_label_t label) {
     ASSERT(label.season <= CALENDAR_SEASON_WINTER && label.part <= CALENDAR_PART_LATE);
-    return CALENDAR_SEASON_NAMES[label.season * 3u + label.part];
+    return CALENDAR_SEASON_NAMES[label.season * CALENDAR_SEASON_PARTS + label.part];
 }
 
 uint32_t calendar_date_line(const calendar_date_t *date, calendar_season_label_t label, char *out, uint64_t bytes) {

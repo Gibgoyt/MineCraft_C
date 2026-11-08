@@ -6,7 +6,9 @@
 #include "types/index.h"
 
 /* The spring equinox, as a day of the year: delta is 0 here and rising. */
-#define CLIMATE_SUN_EQUINOX_DAY 79.0f64
+#define CLIMATE_SUN_EQUINOX_DAY ((float64_t)CALENDAR_SPRING_FROM) /* 79: the same day as the calendar's spring, 5.2 */
+/* Clock hour of noon: the hour angle H = 2 pi (t - 12) / 24 is 0 here. 5.2 */
+#define CLIMATE_SUN_NOON_HOUR 12.0f64
 /* Below this cos(phi) a place is a pole, and day length is 0, 12 or 24 hours by the signs alone. */
 #define CLIMATE_SUN_POLE_COS 1.0e-12f64
 

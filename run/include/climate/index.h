@@ -30,6 +30,14 @@
 /* Equator, north pole, equator, south pole, equator: 153191.49 blocks. */
 #define CLIMATE_LATITUDE_PERIOD (4.0f64 * CLIMATE_POLE_Y)
 #define CLIMATE_PI 3.14159265358979323846f64
+#define CLIMATE_TWO_PI (2.0f64 * CLIMATE_PI)
+/* Latitude of a pole, degrees: 5.1. */
+#define CLIMATE_POLE_DEG 90.0f64
+/* The polar circles, degrees: 90 - 23.5 = 66.5, past which there is polar night and midnight sun. 4.1, 5.2 */
+#define CLIMATE_POLAR_CIRCLE_DEG (CLIMATE_POLE_DEG - CLIMATE_TILT_DEG)
+/* A hash to a uniform in [0, 1): its top 53 bits, the shift that keeps them, and 2^-53. Phases 06 and 07. */
+enum : uint32_t { CLIMATE_UNIFORM_SHIFT = 11u };
+#define CLIMATE_UNIFORM_SCALE 0x1p-53f64
 
 /* phi(y) of master plan 5.1, in degrees: positive north, from -90 to 90, a triangle wave in y. Any finite y. Pure. */
 float64_t climate_latitude_deg(float64_t y);

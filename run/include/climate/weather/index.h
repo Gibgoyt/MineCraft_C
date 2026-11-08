@@ -39,9 +39,20 @@ static const float32_t CLIMATE_RAIN_HOURS_RAW_SD = 0.2015f32;
 /* climate_weather_at_shared: the widest box of places, each way, one day list serves. Its half diagonal, 5793 blocks, is
  * under CLIMATE_THUNDER_QUERY_MAX, so the list's cells are never cut short. */
 static const float64_t CLIMATE_WEATHER_SHARE_BLOCKS = 8192.0f64;
+/* Phase 08's sky, from phase 07's climate_weather_at: how much cloud, 0 to 1. Phase 11 named them. */
+static const float32_t CLIMATE_CLOUD_UNDER_HIGH = 0.05f32;  /* under a high's footprint */
+static const float32_t CLIMATE_CLOUD_CLEAR = 0.2f32;        /* any other dry hour */
+static const float32_t CLIMATE_CLOUD_CLOUDY = 0.6f32;       /* a Cloudy day */
+static const float32_t CLIMATE_CLOUD_STORM = 0.75f32;       /* under a low or a hurricane */
+static const float32_t CLIMATE_CLOUD_PER_MM_HOUR = 0.25f32; /* rain falling: 0.5 + 0.25 a mm an hour, at most 1 */
+static const float64_t CLIMATE_FOG_MORNING_HOURS = 4.0f64;  /* a Fog day's fog thins to nothing 4 hours after 06:00 */
+static const float32_t CLIMATE_DUST_FULL_WIND = 20.0f32; /* blocks a second: a Dust storm's dust is full at this wind */
 
 enum : uint32_t {
-    CLIMATE_HOURS_A_DAY = 24u,
+    CLIMATE_HOURS_A_DAY = CALENDAR_HOURS_PER_DAY,
+    CLIMATE_WEATHER_NOISE_FIELDS = 3u,      /* phase 07: N_1 spells, N_2 rain amounts, N_3 rain hours */
+    CLIMATE_WEEK_MIDDLE_FROM_END = 4u,      /* phase 07: a week's days 7 (w - 1) to 7 w - 1; its fourth is 7 w - 4 */
+    CLIMATE_WEEK_GENERATED_WORD_BITS = 64u, /* bits in each word of climate_week_tile_t.generated */
     CLIMATE_WEEK_SPINUP_YEARS = 2u,
     CLIMATE_WEEK_SPINUP_WEEKS = 104u,  /* 2 years of 52 weeks */
     CLIMATE_FLOOD_MARGIN_TILES = 2u,   /* phase 07: tiles kept round generated land, for drainage */
@@ -118,13 +129,13 @@ static_assert(sizeof(climate_weather_ask_t) == 32);
 
 /* One tile of weekly state: 256 cells, and which of them hold generated land. Saved as it is. */
 typedef struct climate_week_tile_t {
-    int32_t tile_x;                                    /* 0: in tiles of 1024 blocks */
-    int32_t tile_y;                                    /* 4 */
-    uint32_t week;                                     /* 8: the census week this state is the end of */
-    uint32_t flags;                                    /* 12: CLIMATE_WEEK_TILE_* */
-    uint64_t generated[CLIMATE_TILE_CELL_COUNT / 64u]; /* 16: one bit per cell, y * 16 + x */
-    uint8_t _pad0[16];                                 /* 48 */
-    climate_week_t cells[CLIMATE_TILE_CELL_COUNT];     /* 64: y * 16 + x */
+    int32_t tile_x; /* 0: in tiles of 1024 blocks */
+    int32_t tile_y; /* 4 */
+    uint32_t week;  /* 8: the census week this state is the end of */
+    uint32_t flags; /* 12: CLIMATE_WEEK_TILE_* */
+    uint64_t generated[CLIMATE_TILE_CELL_COUNT / CLIMATE_WEEK_GENERATED_WORD_BITS]; /* 16: a bit per cell, y * 16 + x */
+    uint8_t _pad0[16];                                                              /* 48 */
+    climate_week_t cells[CLIMATE_TILE_CELL_COUNT];                                  /* 64: y * 16 + x */
 } climate_week_tile_t;
 static_assert(sizeof(climate_week_tile_t) == 16448);
 static_assert(alignof(climate_week_tile_t) == 8);

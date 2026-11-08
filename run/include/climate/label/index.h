@@ -39,6 +39,7 @@ enum : uint8_t {
 enum : uint32_t {
     /* The longest label with its NUL: "Early autumn · Hurricane season · Monsoon" is 44 bytes. */
     CLIMATE_SEASON_TEXT_BYTES = 48u,
+    CLIMATE_LABEL_UTF8_LEAD_MASK = 0xC0u, /* phase 11: a byte with both top bits set starts a multi-byte UTF-8 letter */
 };
 
 /* Everything the label is decided from, at one place on one day. */

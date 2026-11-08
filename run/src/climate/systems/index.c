@@ -4,6 +4,7 @@
 #include "climate/systems/index.h"
 
 #include "assert/index.h"
+#include "calendar/index.h"
 #include "climate/air/index.h"
 #include "climate/season/index.h"
 #include "climate/systems/field/index.h"
@@ -12,9 +13,16 @@
 #include <math.h>
 #include <string.h>
 
-static const float64_t SYSTEMS_TWO_PI = 6.28318530717958647692f64;
-static const float64_t SYSTEMS_THIRD = 1.0f64 / 3.0f64;
-static const float64_t SYSTEMS_HOURS_A_DAY = 24.0f64;
+static const float64_t SYSTEMS_TWO_PI = CLIMATE_TWO_PI;
+static const float64_t SYSTEMS_HOURS_A_DAY = CALENDAR_HOURS_PER_DAY_F64;
+/* The open-sea test's five points: here, then CLIMATE_HURRICANE_OPEN_SEA_BLOCKS north, south, east and west. */
+enum : uint32_t { SYSTEMS_OPEN_SEA_POINTS = 5u, SYSTEMS_INTERIOR_POINTS = 9u };
+static const float64_t SYSTEMS_OPEN_SEA_STEPS[SYSTEMS_OPEN_SEA_POINTS][2] = {
+    {0.0f64, 0.0f64}, {0.0f64, 1.0f64}, {0.0f64, -1.0f64}, {1.0f64, 0.0f64}, {-1.0f64, 0.0f64}};
+/* cos 45 degrees: a diagonal's step along each axis. */
+static const float64_t SYSTEMS_DIAGONAL = 0.70710678118654752440f64;
+/* The land mask's pages a track keeps, direct-mapped by the low 3 bits of the tile's x and y. */
+enum : uint32_t { SYSTEMS_MASK_LOW_BITS = 3u, SYSTEMS_MASK_LOW_MASK = (1u << SYSTEMS_MASK_LOW_BITS) - 1u };
 
 /* ---- Pieces ---------------------------------------------------------------------------------------------------------- */
 
@@ -32,17 +40,17 @@ float64_t climate_systems_life(float64_t tau) {
     if (tau < 0.0f64 || tau > 1.0f64) {
         return 0.0f64;
     }
-    if (tau < SYSTEMS_THIRD) {
-        return climate_systems_smoothstep(3.0f64 * tau);
+    if (tau < CLIMATE_LIFE_GROW_SHARE) {
+        return climate_systems_smoothstep(CLIMATE_LIFE_THIRDS * tau);
     }
-    if (tau <= 2.0f64 * SYSTEMS_THIRD) {
+    if (tau <= 1.0f64 - CLIMATE_LIFE_FADE_SHARE) {
         return 1.0f64;
     }
-    return climate_systems_smoothstep(3.0f64 * (1.0f64 - tau));
+    return climate_systems_smoothstep(CLIMATE_LIFE_THIRDS * (1.0f64 - tau));
 }
 
 float64_t climate_systems_uniform(uint64_t hash) {
-    return (float64_t)(hash >> 11) * 0x1p-53f64;
+    return (float64_t)(hash >> CLIMATE_UNIFORM_SHIFT) * CLIMATE_UNIFORM_SCALE;
 }
 
 uint32_t climate_systems_poisson(float64_t u, float64_t lambda, float64_t exp_minus_lambda, uint32_t cap) {
@@ -146,7 +154,9 @@ float32_t climate_systems_mask_height(climate_systems_mask_t *mask, float64_t x,
     const int64_t in_tile = (int64_t)CLIMATE_TILE_CELLS - 1;
     const uint64_t index = (uint64_t)((cell_y & in_tile) * CLIMATE_TILE_CELLS + (cell_x & in_tile));
     /* Direct-mapped by the tile's low bits: a track's neighbouring tiles fall in different entries. */
-    const uint32_t entry = (((uint32_t)tile_x & 7u) | (((uint32_t)tile_y & 7u) << 3u)) % CLIMATE_SYSTEMS_MASK_PAGES;
+    const uint32_t entry = (((uint32_t)tile_x & SYSTEMS_MASK_LOW_MASK) |
+                            (((uint32_t)tile_y & SYSTEMS_MASK_LOW_MASK) << SYSTEMS_MASK_LOW_BITS)) %
+                           CLIMATE_SYSTEMS_MASK_PAGES;
     float32_t *const page = mask->borrowed_pages + (uint64_t)entry * CLIMATE_TILE_CELL_COUNT;
     if (mask->borrowed_stats != nullptr) {
         mask->borrowed_stats->mask_reads++;
@@ -201,10 +211,9 @@ float32_t climate_systems_hurricane_s(const climate_t *climate, float64_t y, flo
 static bool systems_open_sea(const climate_t *climate, climate_systems_mask_t *mask, arena_t *arena, float64_t x,
                              float64_t y) {
     const float64_t d = (float64_t)CLIMATE_HURRICANE_OPEN_SEA_BLOCKS;
-    static const float64_t STEPS[5][2] = {
-        {0.0f64, 0.0f64}, {0.0f64, 1.0f64}, {0.0f64, -1.0f64}, {1.0f64, 0.0f64}, {-1.0f64, 0.0f64}};
-    for (uint32_t k = 0u; k < 5u; k++) {
-        if (systems_height(climate, mask, arena, x + d * STEPS[k][0], y + d * STEPS[k][1]) > 0.0f32) {
+    for (uint32_t k = 0u; k < SYSTEMS_OPEN_SEA_POINTS; k++) {
+        if (systems_height(climate, mask, arena, x + d * SYSTEMS_OPEN_SEA_STEPS[k][0],
+                           y + d * SYSTEMS_OPEN_SEA_STEPS[k][1]) > 0.0f32) {
             return false;
         }
     }
@@ -259,11 +268,11 @@ static float32_t systems_high_rate(const climate_t *climate, climate_systems_mas
     }
     /* A continental interior: land at the point and 3000 blocks away along the 4 axes and 4 diagonals. */
     const float64_t r = (float64_t)CLIMATE_HIGH_INTERIOR_BLOCKS;
-    const float64_t diagonal = r * 0.70710678118654752440f64;
-    const float64_t points[9][2] = {{0.0f64, 0.0f64},      {r, 0.0f64},           {-r, 0.0f64},
-                                    {0.0f64, r},           {0.0f64, -r},          {diagonal, diagonal},
-                                    {-diagonal, diagonal}, {diagonal, -diagonal}, {-diagonal, -diagonal}};
-    for (uint32_t k = 0u; k < 9u; k++) {
+    const float64_t diagonal = r * SYSTEMS_DIAGONAL;
+    const float64_t points[SYSTEMS_INTERIOR_POINTS][2] = {
+        {0.0f64, 0.0f64},     {r, 0.0f64},           {-r, 0.0f64},          {0.0f64, r},           {0.0f64, -r},
+        {diagonal, diagonal}, {-diagonal, diagonal}, {diagonal, -diagonal}, {-diagonal, -diagonal}};
+    for (uint32_t k = 0u; k < SYSTEMS_INTERIOR_POINTS; k++) {
         if (!(systems_height(climate, mask, arena, x + points[k][0], y + points[k][1]) > 0.0f32)) {
             return 0.0f32;
         }
@@ -445,7 +454,7 @@ void climate_systems_track(const climate_t *climate, climate_systems_mask_t *mas
             const float64_t tau = step * (float64_t)k / life;
             const float64_t strength =
                 fabs((float64_t)system->peak_hpa) * climate_systems_life(tau) * (float64_t)weaken;
-            if (tau > SYSTEMS_THIRD && strength < (float64_t)CLIMATE_SYSTEM_DEAD_HPA) {
+            if (tau > CLIMATE_LIFE_GROW_SHARE && strength < (float64_t)CLIMATE_SYSTEM_DEAD_HPA) {
                 k++;
                 break; /* it has weakened to death: this sample is its last */
             }
@@ -623,8 +632,9 @@ uint32_t climate_systems_thunder_square(const climate_t *climate, const climate_
     const float64_t start_hour = (float64_t)CLIMATE_THUNDER_START_HOURS[0] - (float64_t)CLIMATE_DAY_START_HOUR;
     const float64_t start_span = (float64_t)CLIMATE_THUNDER_START_HOURS[1] - (float64_t)CLIMATE_THUNDER_START_HOURS[0];
     /* Noon of the start day: 6 hours after the day's 06:00 start. */
-    const float32_t noon = (float32_t)(climate_systems_day_of_year((float64_t)day) +
-                                       (12.0f64 - (float64_t)CLIMATE_DAY_START_HOUR) / SYSTEMS_HOURS_A_DAY);
+    const float32_t noon =
+        (float32_t)(climate_systems_day_of_year((float64_t)day) +
+                    ((float64_t)CALENDAR_NOON_HOUR - (float64_t)CLIMATE_DAY_START_HOUR) / SYSTEMS_HOURS_A_DAY);
     uint32_t count = 0u;
     for (uint32_t process = 0u; process < 2u; process++) {
         /* Afternoon cells at lambda_base; front cells at 4 lambda_base, kept only on a front: (1 + 4 f_front). */

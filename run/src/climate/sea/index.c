@@ -29,13 +29,13 @@ uint32_t climate_sea_classify(const uint8_t *water, uint32_t side, uint32_t *lab
             const uint32_t y = at / side;
             deep = deep || water[at] >= CLIMATE_SEA_WATER_DEEP;
             /* North, south, east and west only: water does not leak through a corner where two land cells meet. */
-            const uint32_t next[4] = {
+            const uint32_t next[CLIMATE_SEA_NEIGHBOURS] = {
                 y + 1u < side ? at + side : at,
                 y > 0u ? at - side : at,
                 x + 1u < side ? at + 1u : at,
                 x > 0u ? at - 1u : at,
             };
-            for (uint32_t n = 0u; n < 4u; n++) {
+            for (uint32_t n = 0u; n < CLIMATE_SEA_NEIGHBOURS; n++) {
                 const uint32_t to = next[n];
                 if (water[to] != 0u && labels[to] == 0u) {
                     labels[to] = count;

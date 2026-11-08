@@ -29,7 +29,7 @@ float32_t climate_harmonic_day(uint32_t k) {
     return (float32_t)(CLIMATE_YEAR_DAYS * (float64_t)k / (float64_t)CLIMATE_FIT_DAYS);
 }
 
-void climate_harmonic_fit1(const float32_t values[CLIMATE_FIT_DAYS], float32_t out[3]) {
+void climate_harmonic_fit1(const float32_t values[CLIMATE_FIT_DAYS], float32_t out[CLIMATE_HARMONIC1_COEFFICIENTS]) {
     /* For 12 even angles the normal equations' matrix is diagonal, 12, 6, 6: each sum over its own diagonal entry. */
     float64_t sum = 0.0f64, sum_cos = 0.0f64, sum_sin = 0.0f64;
     for (uint32_t k = 0u; k < CLIMATE_FIT_DAYS; k++) {
@@ -38,18 +38,18 @@ void climate_harmonic_fit1(const float32_t values[CLIMATE_FIT_DAYS], float32_t o
         sum_cos += f * HARMONIC_COS[k];
         sum_sin += f * HARMONIC_SIN[k];
     }
-    out[0] = (float32_t)(sum / 12.0f64);
-    out[1] = (float32_t)(sum_cos / 6.0f64);
-    out[2] = (float32_t)(sum_sin / 6.0f64);
+    out[0] = (float32_t)(sum / (float64_t)CLIMATE_FIT_DAYS);
+    out[1] = (float32_t)(sum_cos / CLIMATE_HARMONIC_HALF_DAYS);
+    out[2] = (float32_t)(sum_sin / CLIMATE_HARMONIC_HALF_DAYS);
 }
 
-float32_t climate_harmonic_at1(const float32_t coefficients[3], float32_t day) {
+float32_t climate_harmonic_at1(const float32_t coefficients[CLIMATE_HARMONIC1_COEFFICIENTS], float32_t day) {
     const float64_t theta = HARMONIC_TWO_PI * (float64_t)day / CLIMATE_YEAR_DAYS;
     return (float32_t)((float64_t)coefficients[0] + (float64_t)coefficients[1] * cos(theta) +
                        (float64_t)coefficients[2] * sin(theta));
 }
 
-void climate_harmonic_fit2(const float32_t values[CLIMATE_FIT_DAYS], float32_t out[5]) {
+void climate_harmonic_fit2(const float32_t values[CLIMATE_FIT_DAYS], float32_t out[CLIMATE_HARMONIC2_COEFFICIENTS]) {
     /* Waves 1 and 2 on 12 even angles are orthogonal too: the matrix is diagonal, 12, 6, 6, 6, 6. */
     float64_t sum = 0.0f64, sum_cos = 0.0f64, sum_sin = 0.0f64, sum_cos2 = 0.0f64, sum_sin2 = 0.0f64;
     for (uint32_t k = 0u; k < CLIMATE_FIT_DAYS; k++) {
@@ -60,14 +60,14 @@ void climate_harmonic_fit2(const float32_t values[CLIMATE_FIT_DAYS], float32_t o
         sum_cos2 += f * HARMONIC_COS2[k];
         sum_sin2 += f * HARMONIC_SIN2[k];
     }
-    out[0] = (float32_t)(sum / 12.0f64);
-    out[1] = (float32_t)(sum_cos / 6.0f64);
-    out[2] = (float32_t)(sum_sin / 6.0f64);
-    out[3] = (float32_t)(sum_cos2 / 6.0f64);
-    out[4] = (float32_t)(sum_sin2 / 6.0f64);
+    out[0] = (float32_t)(sum / (float64_t)CLIMATE_FIT_DAYS);
+    out[1] = (float32_t)(sum_cos / CLIMATE_HARMONIC_HALF_DAYS);
+    out[2] = (float32_t)(sum_sin / CLIMATE_HARMONIC_HALF_DAYS);
+    out[3] = (float32_t)(sum_cos2 / CLIMATE_HARMONIC_HALF_DAYS);
+    out[4] = (float32_t)(sum_sin2 / CLIMATE_HARMONIC_HALF_DAYS);
 }
 
-float32_t climate_harmonic_at2(const float32_t coefficients[5], float32_t day) {
+float32_t climate_harmonic_at2(const float32_t coefficients[CLIMATE_HARMONIC2_COEFFICIENTS], float32_t day) {
     const float64_t theta = HARMONIC_TWO_PI * (float64_t)day / CLIMATE_YEAR_DAYS;
     return (float32_t)((float64_t)coefficients[0] + (float64_t)coefficients[1] * cos(theta) +
                        (float64_t)coefficients[2] * sin(theta) + (float64_t)coefficients[3] * cos(2.0f64 * theta) +
@@ -77,7 +77,7 @@ float32_t climate_harmonic_at2(const float32_t coefficients[5], float32_t day) {
 /* cos theta, sin theta, cos 2 theta and sin 2 theta for theta = 2 pi d / 365 on the days d = 0, 5, ..., 360, as
  * climate_harmonic_at2 works them out (glibc's cos and sin of the same float64_t theta), written out bit for bit so the
  * wettest day costs no trigonometry: plan 004 phase 09, Issues found 24. */
-static const float64_t HARMONIC_EVERY_5[CLIMATE_HARMONIC_MAX_SAMPLES][4] = {
+static const float64_t HARMONIC_EVERY_5[CLIMATE_HARMONIC_MAX_SAMPLES][CLIMATE_HARMONIC_TRIG] = {
     {0x1p+0f64, 0x0p+0f64, 0x1p+0f64, 0x0p+0f64},                                                          /* day 0 */
     {0x1.fe1acb5cd137ap-1f64, 0x1.601c9ff2f3efap-4f64, 0x1.f86ec513c2006p-1f64, 0x1.5ecef0a24ec39p-3f64},  /* day 5 */
     {0x1.f86ec513c2006p-1f64, 0x1.5ecef0a24ec39p-3f64, 0x1.e1f457ebc093ap-1f64, 0x1.599f9a5da1988p-2f64},  /* day 10 */
@@ -202,7 +202,7 @@ static const float64_t HARMONIC_EVERY_5[CLIMATE_HARMONIC_MAX_SAMPLES][4] = {
      -0x1.5ecef0a24ec49p-3f64}, /* day 360 */
 };
 
-float32_t climate_harmonic_max2(const float32_t coefficients[5]) {
+float32_t climate_harmonic_max2(const float32_t coefficients[CLIMATE_HARMONIC2_COEFFICIENTS]) {
     float32_t most = 0.0f32;
     for (uint32_t k = 0u; k < CLIMATE_HARMONIC_MAX_SAMPLES; k++) {
         const float64_t *const w = HARMONIC_EVERY_5[k];

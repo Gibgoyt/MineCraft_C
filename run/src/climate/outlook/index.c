@@ -3,6 +3,7 @@
  * climate_outlook_run turns that block into chances without a climate to read. Allocates only from the arena it is given. */
 #include "climate/outlook/index.h"
 
+#include "calendar/index.h"
 #include "climate/systems/field/index.h"
 #include "climate/systems/index.h"
 #include "climate/systems/name/index.h"
@@ -19,6 +20,14 @@ static const float64_t OUTLOOK_SQRT12 = 3.46410161513775458705f64;
 /* Wind in blocks a second to blocks a game hour: 1200 real seconds a day, over 24 hours. */
 static const float32_t OUTLOOK_SECONDS_AN_HOUR = 50.0f32;
 static const float64_t OUTLOOK_KM2_A_SQUARE = 1.048576f64; /* a 1024-block square */
+static const float64_t OUTLOOK_BLOCKS2_A_KM2 = 1.0e6f64;   /* square blocks in a square km */
+/* Below this spread, blocks, a forecast centre is where it is steered: no scatter to integrate. */
+static const float64_t OUTLOOK_SIGMA_TINY = 1.0e-9f64;
+/* Simpson's rule: weights 1, 4, 2, 4, ..., 4, 1, and the sum times h / 3. */
+static const float64_t OUTLOOK_SIMPSON_ODD = 4.0f64;
+static const float64_t OUTLOOK_SIMPSON_DIVISOR = 3.0f64;
+/* A week's error dice from the system's: the golden ratio's 64 bits, so neighbouring weeks are far apart. */
+static const uint64_t OUTLOOK_WEEK_MIX = 0x9E3779B97F4A7C15ull;
 
 float64_t climate_outlook_sigma(float64_t days) {
     return CLIMATE_OUTLOOK_SIGMA_START + CLIMATE_OUTLOOK_SIGMA_PER_DAY * days;
@@ -28,7 +37,7 @@ float64_t climate_outlook_disk_chance(float64_t d, float64_t sigma, float64_t ra
     if (!(radius > 0.0f64)) {
         return 0.0f64;
     }
-    if (!(sigma > 1.0e-9f64)) {
+    if (!(sigma > OUTLOOK_SIGMA_TINY)) {
         return fabs(d) < radius ? 1.0f64 : 0.0f64;
     }
     /* The centre at (d, 0): over x = R sin(phi) across the disk, the x density times the chance |y| < R cos(phi). The
@@ -42,10 +51,10 @@ float64_t climate_outlook_disk_chance(float64_t d, float64_t sigma, float64_t ra
         const float64_t z = (radius * sin(phi) - d) / sigma;
         const float64_t density = exp(-0.5f64 * z * z) / (sigma * sqrt(2.0f64 * OUTLOOK_PI));
         const float64_t f = density * erf(across / (sigma * OUTLOOK_SQRT2)) * across;
-        const float64_t weight = (i == 0u || i == steps) ? 1.0f64 : ((i % 2u) == 1u ? 4.0f64 : 2.0f64);
+        const float64_t weight = (i == 0u || i == steps) ? 1.0f64 : ((i % 2u) == 1u ? OUTLOOK_SIMPSON_ODD : 2.0f64);
         sum += weight * f;
     }
-    const float64_t p = sum * h / 3.0f64;
+    const float64_t p = sum * h / OUTLOOK_SIMPSON_DIVISOR;
     return p < 0.0f64 ? 0.0f64 : (p > 1.0f64 ? 1.0f64 : p);
 }
 
@@ -66,7 +75,7 @@ static void outlook_disk_prepare(float64_t sigma, float64_t radius, outlook_disk
     out->sigma = sigma;
     out->radius = radius;
     out->norm = sigma * sqrt(2.0f64 * OUTLOOK_PI);
-    if (!(radius > 0.0f64) || !(sigma > 1.0e-9f64)) {
+    if (!(radius > 0.0f64) || !(sigma > OUTLOOK_SIGMA_TINY)) {
         return; /* the two plain cases need no table */
     }
     const uint32_t steps = CLIMATE_OUTLOOK_DISK_STEPS;
@@ -84,7 +93,7 @@ static float64_t outlook_disk_chance(const outlook_disk_t *disk, float64_t d) {
     if (!(radius > 0.0f64)) {
         return 0.0f64;
     }
-    if (!(sigma > 1.0e-9f64)) {
+    if (!(sigma > OUTLOOK_SIGMA_TINY)) {
         return fabs(d) < radius ? 1.0f64 : 0.0f64;
     }
     /* The centre at (d, 0): over x = R sin(phi) across the disk, the x density times the chance |y| < R cos(phi). The
@@ -96,10 +105,10 @@ static float64_t outlook_disk_chance(const outlook_disk_t *disk, float64_t d) {
         const float64_t z = (disk->lengthwise[i] - d) / sigma;
         const float64_t density = exp(-0.5f64 * z * z) / disk->norm;
         const float64_t f = density * disk->inside[i] * disk->across[i];
-        const float64_t weight = (i == 0u || i == steps) ? 1.0f64 : ((i % 2u) == 1u ? 4.0f64 : 2.0f64);
+        const float64_t weight = (i == 0u || i == steps) ? 1.0f64 : ((i % 2u) == 1u ? OUTLOOK_SIMPSON_ODD : 2.0f64);
         sum += weight * f;
     }
-    const float64_t p = sum * h / 3.0f64;
+    const float64_t p = sum * h / OUTLOOK_SIMPSON_DIVISOR;
     return p < 0.0f64 ? 0.0f64 : (p > 1.0f64 ? 1.0f64 : p);
 }
 
@@ -126,12 +135,12 @@ float64_t climate_outlook_at_least_one(const float64_t *chances, uint32_t count,
 }
 
 void climate_outlook_error(uint64_t seed, uint64_t id, uint64_t week, uint32_t day, float64_t out[2]) {
-    const uint64_t base = terrain_rng_derive(seed, id ^ (week * 0x9E3779B97F4A7C15ull));
+    const uint64_t base = terrain_rng_derive(seed, id ^ (week * OUTLOOK_WEEK_MIX));
     const uint64_t a = terrain_rng_hash3(base, (int32_t)day, 0, 1);
     const uint64_t b = terrain_rng_hash3(base, (int32_t)day, 0, 2);
     /* Box-Muller from two uniforms; u1 in (0, 1] so the logarithm is finite. */
-    const float64_t u1 = ((float64_t)(a >> 11) + 1.0f64) * 0x1.0p-53f64;
-    const float64_t u2 = (float64_t)(b >> 11) * 0x1.0p-53f64;
+    const float64_t u1 = ((float64_t)(a >> CLIMATE_UNIFORM_SHIFT) + 1.0f64) * CLIMATE_UNIFORM_SCALE;
+    const float64_t u2 = (float64_t)(b >> CLIMATE_UNIFORM_SHIFT) * CLIMATE_UNIFORM_SCALE;
     const float64_t r = sqrt(-2.0f64 * log(u1));
     out[0] = r * cos(2.0f64 * OUTLOOK_PI * u2);
     out[1] = r * sin(2.0f64 * OUTLOOK_PI * u2);
@@ -270,7 +279,7 @@ bool climate_outlook_known_list(const climate_t *climate, float64_t x, float64_t
                                    CLIMATE_SYSTEMS_BIG, list)) {
         return false;
     }
-    uint32_t *const order = arena_alloc_array(scratch, list->system_count + 1u, sizeof(uint32_t), 4u);
+    uint32_t *const order = arena_alloc_array(scratch, list->system_count + 1u, sizeof(uint32_t), alignof(uint32_t));
     uint32_t alive = 0u;
     for (uint32_t i = 0u; i < list->system_count; i++) {
         const climate_system_t *const system = &list->borrowed_systems[i];
@@ -351,17 +360,19 @@ bool climate_outlook_input_fill(const climate_t *climate, float64_t x, float64_t
 
     /* The normals of each day ahead, the heat today's spell leaves, and the cells it makes. */
     climate_normals_at_t today;
-    if (!climate_normals_at(climate, x, y, nanf(""), (float32_t)(census_day % 365), &today)) {
+    if (!climate_normals_at(climate, x, y, nanf(""), (float32_t)(census_day % CALENDAR_DAYS_PER_YEAR), &today)) {
         return false;
     }
     const float32_t spell = out->sigma_t * climate_weather_spell(climate, x, y, census_day);
     out->anomaly = spell + (float32_t)(today.t_day_c > today.t_mean_c ? push : -push);
     for (uint32_t t = 0u; t < CLIMATE_OUTLOOK_DAYS; t++) {
         const int64_t day = census_day + (int64_t)t;
-        const float32_t d = (float32_t)(((day % 365) + 365) % 365);
+        const float32_t d =
+            (float32_t)(((day % CALENDAR_DAYS_PER_YEAR) + CALENDAR_DAYS_PER_YEAR) % CALENDAR_DAYS_PER_YEAR);
         climate_normals_at_t n;
         climate_air_t air;
-        if (!climate_normals_at(climate, x, y, nanf(""), d, &n) || !climate_air_at(climate, x, y, d + 0.25f32, &air)) {
+        if (!climate_normals_at(climate, x, y, nanf(""), d, &n) ||
+            !climate_air_at(climate, x, y, d + CALENDAR_NOON_INTO_DAY_F32, &air)) {
             return false;
         }
         out->high_c[t] = n.t_high_c;
@@ -422,7 +433,7 @@ float64_t climate_outlook_system_chance(const climate_system_t *system, uint64_t
 }
 
 static uint32_t outlook_fold_id(uint64_t id) {
-    return (uint32_t)(id ^ (id >> 32));
+    return (uint32_t)(id ^ (id >> CLIMATE_KEY_HALF_BITS));
 }
 
 void climate_outlook_run(const climate_outlook_input_t *input, climate_outlook_t *out) {
@@ -469,7 +480,7 @@ void climate_outlook_run(const climate_outlook_input_t *input, climate_outlook_t
         const float64_t r = (float64_t)CLIMATE_OUTLOOK_CELL_RADIUS;
         const float64_t sweep =
             2.0f64 * r * (float64_t)input->wind_blocks_hour[t] * (float64_t)CLIMATE_OUTLOOK_CELL_HOURS;
-        const float64_t area = (sweep + OUTLOOK_PI * r * r) / 1.0e6f64;
+        const float64_t area = (sweep + OUTLOOK_PI * r * r) / OUTLOOK_BLOCKS2_A_KM2;
         day->thunder = (float32_t)(1.0f64 - exp(-(float64_t)input->thunder_rate[t] * area));
         rainy[n_rain++] = (float64_t)climate_outlook_background_rain(input->rain_mm[t]);
         rainy[n_rain++] = (float64_t)day->thunder;

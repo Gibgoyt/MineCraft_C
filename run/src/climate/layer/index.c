@@ -2,6 +2,7 @@
  * this same code. */
 #include "climate/layer/index.h"
 
+#include "calendar/index.h"
 #include "climate/systems/field/index.h"
 
 #include <math.h>
@@ -11,11 +12,11 @@
 static uint32_t layer_mix(uint32_t from, uint32_t to, float32_t t) {
     t = t < 0.0f32 ? 0.0f32 : (t > 1.0f32 ? 1.0f32 : t);
     uint32_t out = 0u;
-    for (uint32_t shift = 0u; shift < 24u; shift += 8u) {
-        const float32_t a = (float32_t)((from >> shift) & 0xFFu);
-        const float32_t b = (float32_t)((to >> shift) & 0xFFu);
+    for (uint32_t shift = 0u; shift < CLIMATE_LAYER_RGB_BITS; shift += CLIMATE_LAYER_CHANNEL_BITS) {
+        const float32_t a = (float32_t)((from >> shift) & CLIMATE_LAYER_CHANNEL_MAX);
+        const float32_t b = (float32_t)((to >> shift) & CLIMATE_LAYER_CHANNEL_MAX);
         const uint32_t c = (uint32_t)lroundf(a + t * (b - a));
-        out |= (c > 255u ? 255u : c) << shift;
+        out |= (c > CLIMATE_LAYER_CHANNEL_MAX ? CLIMATE_LAYER_CHANNEL_MAX : c) << shift;
     }
     return out;
 }
@@ -23,7 +24,7 @@ static uint32_t layer_mix(uint32_t from, uint32_t to, float32_t t) {
 uint32_t climate_layer_colour(climate_layer_t layer, const climate_sample_t *sample) {
     switch (layer) {
     case CLIMATE_LAYER_SEA_DISTANCE:
-        return layer_mix(0x000000u, 0xFFFFFFu, sample->sea_distance / CLIMATE_SEA_DISTANCE_MAX);
+        return layer_mix(CLIMATE_LAYER_BLACK, CLIMATE_LAYER_WHITE, sample->sea_distance / CLIMATE_SEA_DISTANCE_MAX);
     case CLIMATE_LAYER_CONTINENTALITY:
         return layer_mix(CLIMATE_LAYER_KAPPA_LOW, CLIMATE_LAYER_KAPPA_HIGH, sample->kappa);
     case CLIMATE_LAYER_WATER:
@@ -128,7 +129,7 @@ uint32_t climate_layer_normals_colour(climate_layer_t layer, const climate_norma
 }
 
 static void layer_put(uint8_t *pixels, uint32_t pitch, uint32_t x, uint32_t y, uint32_t colour) {
-    memcpy(pixels + (uint64_t)y * pitch + (uint64_t)x * 4u, &colour, sizeof(colour));
+    memcpy(pixels + (uint64_t)y * pitch + (uint64_t)x * CLIMATE_LAYER_PIXEL_BYTES, &colour, sizeof(colour));
 }
 
 /* The latitude lines: a row is coloured where its y range, [north - (row + 1) b, north - row b), holds a y whose phi is
@@ -136,16 +137,17 @@ static void layer_put(uint8_t *pixels, uint32_t pitch, uint32_t x, uint32_t y, u
  * y = 2 Y - L Y / 90 + 4 Y k: every repeat in view. */
 static void layer_latitude_lines(float64_t north_y, float64_t blocks_per_pixel, uint32_t width, uint32_t height,
                                  uint8_t *pixels, uint32_t pitch) {
-    static const float64_t LINES[5] = {0.0f64, 23.5f64, -23.5f64, 66.5f64, -66.5f64};
-    static const uint32_t COLOURS[5] = {CLIMATE_LAYER_EQUATOR, CLIMATE_LAYER_TROPIC, CLIMATE_LAYER_TROPIC,
-                                        CLIMATE_LAYER_POLAR, CLIMATE_LAYER_POLAR};
+    static const float64_t LINES[CLIMATE_LAYER_LATITUDE_LINES] = {0.0f64, CLIMATE_TILT_DEG, -CLIMATE_TILT_DEG,
+                                                                  CLIMATE_POLAR_CIRCLE_DEG, -CLIMATE_POLAR_CIRCLE_DEG};
+    static const uint32_t COLOURS[CLIMATE_LAYER_LATITUDE_LINES] = {
+        CLIMATE_LAYER_EQUATOR, CLIMATE_LAYER_TROPIC, CLIMATE_LAYER_TROPIC, CLIMATE_LAYER_POLAR, CLIMATE_LAYER_POLAR};
     const float64_t pole = CLIMATE_POLE_Y;
     const float64_t period = CLIMATE_LATITUDE_PERIOD;
     const float64_t step = blocks_per_pixel;
     const float64_t top = north_y;
     const float64_t bottom = top - step * (float64_t)height;
-    for (uint32_t line = 0u; line < 5u; line++) {
-        const float64_t base = LINES[line] * pole / 90.0f64;
+    for (uint32_t line = 0u; line < CLIMATE_LAYER_LATITUDE_LINES; line++) {
+        const float64_t base = LINES[line] * pole / CLIMATE_POLE_DEG;
         const float64_t family[2] = {base, 2.0f64 * pole - base};
         for (uint32_t f = 0u; f < 2u; f++) {
             const float64_t k_first = ceil((bottom - family[f]) / period);
@@ -188,7 +190,7 @@ uint32_t climate_layer_wind_colour(float32_t speed) {
 
 static float32_t layer_get_float(const uint8_t *pixels, uint32_t pitch, uint32_t x, uint32_t y) {
     float32_t value = 0.0f32;
-    memcpy(&value, pixels + (uint64_t)y * pitch + (uint64_t)x * 4u, sizeof(value));
+    memcpy(&value, pixels + (uint64_t)y * pitch + (uint64_t)x * CLIMATE_LAYER_PIXEL_BYTES, sizeof(value));
     return value;
 }
 
@@ -241,7 +243,7 @@ static void layer_line(uint8_t *pixels, uint32_t pitch, uint32_t width, uint32_t
 static void layer_arrow(uint8_t *pixels, uint32_t pitch, uint32_t width, uint32_t height, uint32_t column, uint32_t row,
                         float32_t u, float32_t v, float32_t length, uint32_t colour) {
     const float32_t size = sqrtf(u * u + v * v);
-    if (size < 1.0e-6f32 || length < 1.0f32) {
+    if (size < CLIMATE_DIRECTION_EPSILON || length < 1.0f32) {
         return;
     }
     const float32_t dx = u / size, dy = -v / size; /* rows go south */
@@ -250,7 +252,7 @@ static void layer_arrow(uint8_t *pixels, uint32_t pitch, uint32_t width, uint32_
     const int32_t x1 = (int32_t)lroundf(head_x), y1 = (int32_t)lroundf(head_y);
     layer_line(pixels, pitch, width, height, x0, y0, x1, y1, colour);
     /* The barbs: the direction turned 150 degrees each way. */
-    const float32_t barb_cos = -0.8660254f32, barb_sin = 0.5f32, barb = 3.0f32;
+    const float32_t barb_cos = CLIMATE_LAYER_BARB_COS, barb_sin = 0.5f32, barb = (float32_t)CLIMATE_LAYER_BARB_PIXELS;
     for (int32_t side = -1; side <= 1; side += 2) {
         const float32_t s = barb_sin * (float32_t)side;
         const float32_t bx = dx * barb_cos - dy * s, by = dx * s + dy * barb_cos;
@@ -314,7 +316,9 @@ static void layer_current_arrows(const climate_t *climate, const layer_view_t *v
                                        0.5f64 * (float64_t)CLIMATE_CELL_BLOCKS;
             float32_t flow[2];
             climate_current_flow(&cell, (float32_t)centre_y, flow);
-            const float32_t length = 4.0f32 + 12.0f32 * (float32_t)cell.current_strength / 255.0f32;
+            const float32_t length = CLIMATE_LAYER_CURRENT_ARROW_MIN + CLIMATE_LAYER_CURRENT_ARROW_SPAN *
+                                                                           (float32_t)cell.current_strength /
+                                                                           CLIMATE_CURRENT_STRENGTH_MAX_F32;
             const uint32_t colour =
                 cell.current == CLIMATE_CURRENT_WARM ? CLIMATE_LAYER_CURRENT_WARM : CLIMATE_LAYER_CURRENT_COLD;
             layer_arrow(pixels, pitch, view->width, view->height, column, row, flow[0], flow[1], length, colour);
@@ -380,9 +384,9 @@ static int64_t layer_floor_div(int64_t a, int64_t b) {
 
 /* The four samples round a pixel blended: hPa for the pressure layer, colours for the rest, unless one of them is grey (or
  * NaN), when the nearest is taken whole. corners: north-west, north-east, south-west, south-east. */
-static uint32_t layer_blend(bool pressure, const uint32_t corners[4], float32_t fx, float32_t fy) {
+static uint32_t layer_blend(bool pressure, const uint32_t corners[CLIMATE_CORNERS], float32_t fx, float32_t fy) {
     bool whole = true;
-    for (uint32_t k = 0u; k < 4u; k++) {
+    for (uint32_t k = 0u; k < CLIMATE_CORNERS; k++) {
         whole = whole && (pressure ? !isnan(layer_bits_float(corners[k])) : corners[k] != CLIMATE_LAYER_GREY);
     }
     if (!whole) {
@@ -442,9 +446,9 @@ static void layer_field_sampled(const climate_t *climate, climate_layer_t layer,
             const int64_t g = layer_floor_div(w_col, n);
             const uint32_t i = (uint32_t)(g - g0);
             const float32_t fx = (float32_t)(w_col - g * n) / (float32_t)n;
-            const uint32_t corners[4] = {rows[0][i], rows[0][i + 1u], rows[1][i], rows[1][i + 1u]};
+            const uint32_t corners[CLIMATE_CORNERS] = {rows[0][i], rows[0][i + 1u], rows[1][i], rows[1][i + 1u]};
             const uint32_t value = layer_blend(pressure, corners, fx, fy);
-            memcpy(pixels + (uint64_t)r * pitch + (uint64_t)c * 4u, &value, sizeof(value));
+            memcpy(pixels + (uint64_t)r * pitch + (uint64_t)c * CLIMATE_LAYER_PIXEL_BYTES, &value, sizeof(value));
         }
     }
 }
@@ -471,7 +475,8 @@ void climate_layer_draw_scaled(const climate_t *climate, climate_layer_t layer, 
                 const float64_t y = layer_view_y(&view, row);
                 for (uint32_t column = 0u; column < width; column++) {
                     const uint32_t value = layer_field_value(climate, layer, layer_view_x(&view, column), y, day);
-                    memcpy(pixels + (uint64_t)row * pitch + (uint64_t)column * 4u, &value, sizeof(value));
+                    memcpy(pixels + (uint64_t)row * pitch + (uint64_t)column * CLIMATE_LAYER_PIXEL_BYTES, &value,
+                           sizeof(value));
                 }
             }
         } else {
@@ -511,20 +516,23 @@ void climate_layer_draw(const climate_t *climate, climate_layer_t layer, int32_t
 
 bool climate_layer_scale(climate_layer_t layer, const float32_t **out_values, const uint32_t **out_colours,
                          uint32_t *out_count) {
-    static const float32_t PRESSURE_HPA[3] = {990.0f32, 1013.0f32, 1030.0f32};
-    static const uint32_t PRESSURE_RGB[3] = {CLIMATE_LAYER_PRESSURE_LOW, CLIMATE_LAYER_PRESSURE_MID,
-                                             CLIMATE_LAYER_PRESSURE_HIGH};
-    static const float32_t WIND_SPEED[2] = {0.0f32, 15.0f32};
+    static const float32_t PRESSURE_HPA[CLIMATE_LAYER_PRESSURE_STOPS] = {
+        CLIMATE_LAYER_PRESSURE_LOW_HPA, CLIMATE_LAYER_PRESSURE_MID_HPA, CLIMATE_LAYER_PRESSURE_HIGH_HPA};
+    static const uint32_t PRESSURE_RGB[CLIMATE_LAYER_PRESSURE_STOPS] = {
+        CLIMATE_LAYER_PRESSURE_LOW, CLIMATE_LAYER_PRESSURE_MID, CLIMATE_LAYER_PRESSURE_HIGH};
+    static const float32_t WIND_SPEED[2] = {0.0f32, CLIMATE_LAYER_WIND_TOP};
     static const uint32_t WIND_RGB[2] = {CLIMATE_LAYER_WIND_CALM, CLIMATE_LAYER_WIND_FAST};
     static const float32_t SHARE[2] = {0.0f32, 1.0f32};
     static const uint32_t HURRICANE_RGB[2] = {CLIMATE_LAYER_HURRICANE_LOW, CLIMATE_LAYER_HURRICANE_HIGH};
     static const uint32_t KAPPA_RGB[2] = {CLIMATE_LAYER_KAPPA_LOW, CLIMATE_LAYER_KAPPA_HIGH};
-    static const float32_t SEA_DISTANCE[2] = {0.0f32, 8192.0f32}; /* CLIMATE_SEA_DISTANCE_MAX */
-    static const uint32_t SEA_DISTANCE_RGB[2] = {0x000000u, 0xFFFFFFu};
-    static const float32_t LAND_Z[2] = {0.0f32, 454.0f32};
+    static const float32_t SEA_DISTANCE[2] = {0.0f32, CLIMATE_SEA_DISTANCE_MAX};
+    static const uint32_t SEA_DISTANCE_RGB[2] = {CLIMATE_LAYER_BLACK, CLIMATE_LAYER_WHITE};
+    static const float32_t LAND_Z[2] = {0.0f32, CLIMATE_LAYER_LAND_TOP};
     static const uint32_t LAND_RGB[2] = {CLIMATE_LAYER_LAND_LOW, CLIMATE_LAYER_LAND_HIGH};
-    static const float32_t SNOW_BELOW[3] = {0.0f32, 50.0f32, 2000.0f32}; /* blocks below the snow balance */
-    static const uint32_t SNOW_RGB[3] = {CLIMATE_LAYER_SNOW_ABOVE, CLIMATE_LAYER_SNOW_NEAR, CLIMATE_LAYER_SNOW_FAR};
+    static const float32_t SNOW_BELOW[CLIMATE_LAYER_SNOW_STOPS] = {0.0f32, CLIMATE_LAYER_SNOW_NEAR_BLOCKS,
+                                                                   CLIMATE_LAYER_SNOW_FAR_BLOCKS}; /* below it */
+    static const uint32_t SNOW_RGB[CLIMATE_LAYER_SNOW_STOPS] = {CLIMATE_LAYER_SNOW_ABOVE, CLIMATE_LAYER_SNOW_NEAR,
+                                                                CLIMATE_LAYER_SNOW_FAR};
     const float32_t *values = nullptr;
     const uint32_t *colours = nullptr;
     uint32_t count = 0u;
@@ -549,7 +557,7 @@ bool climate_layer_scale(climate_layer_t layer, const float32_t **out_values, co
     case CLIMATE_LAYER_PRESSURE_NOW:
         values = PRESSURE_HPA;
         colours = PRESSURE_RGB;
-        count = 3u;
+        count = CLIMATE_LAYER_PRESSURE_STOPS;
         break;
     case CLIMATE_LAYER_WIND:
     case CLIMATE_LAYER_WIND_NOW:
@@ -579,7 +587,7 @@ bool climate_layer_scale(climate_layer_t layer, const float32_t **out_values, co
     case CLIMATE_LAYER_SNOW_BALANCE:
         values = SNOW_BELOW;
         colours = SNOW_RGB;
-        count = 3u;
+        count = CLIMATE_LAYER_SNOW_STOPS;
         break;
     case CLIMATE_LAYER_RAIN_RADAR:
         values = CLIMATE_LAYER_RADAR_MM_HOUR;
@@ -610,7 +618,7 @@ static void layer_put_mode(uint8_t *pixels, uint32_t pitch, uint32_t width, uint
         return;
     }
     uint32_t now = 0u;
-    uint8_t *const at = pixels + (uint64_t)(uint32_t)y * pitch + (uint64_t)(uint32_t)x * 4u;
+    uint8_t *const at = pixels + (uint64_t)(uint32_t)y * pitch + (uint64_t)(uint32_t)x * CLIMATE_LAYER_PIXEL_BYTES;
     memcpy(&now, at, sizeof(now));
     const bool grey = now == CLIMATE_LAYER_GREY;
     if ((mode == LAYER_ON_GREY && !grey) || (mode == LAYER_OFF_GREY && grey)) {
@@ -645,7 +653,8 @@ static void layer_line_mode(uint8_t *pixels, uint32_t pitch, uint32_t width, uin
 /* A block position to its pixel, clamped far outside the picture so the integer math stays in range. */
 static int32_t layer_pixel(float64_t offset, float64_t step) {
     float64_t p = floor(offset / step);
-    p = p < -1.0e6f64 ? -1.0e6f64 : (p > 1.0e6f64 ? 1.0e6f64 : p);
+    p = p < -CLIMATE_LAYER_PIXEL_CLAMP ? -CLIMATE_LAYER_PIXEL_CLAMP
+                                       : (p > CLIMATE_LAYER_PIXEL_CLAMP ? CLIMATE_LAYER_PIXEL_CLAMP : p);
     return (int32_t)p;
 }
 static int32_t layer_column_of(const layer_view_t *view, float64_t x) {
@@ -665,8 +674,9 @@ static void layer_circle(uint8_t *pixels, uint32_t pitch, const layer_view_t *vi
     }
     int32_t x = radius, y = 0, error = 1 - radius;
     while (x >= y) {
-        const int32_t points[8][2] = {{x, y}, {y, x}, {-y, x}, {-x, y}, {-x, -y}, {-y, -x}, {y, -x}, {x, -y}};
-        for (uint32_t k = 0u; k < 8u; k++) {
+        const int32_t points[CLIMATE_LAYER_OCTANTS][2] = {{x, y},   {y, x},   {-y, x}, {-x, y},
+                                                          {-x, -y}, {-y, -x}, {y, -x}, {x, -y}};
+        for (uint32_t k = 0u; k < CLIMATE_LAYER_OCTANTS; k++) {
             layer_put_mode(pixels, pitch, view->width, view->height, cx + points[k][0], cy + points[k][1], colour,
                            mode);
         }
@@ -707,9 +717,9 @@ static void layer_mark(uint8_t *pixels, uint32_t pitch, const layer_view_t *view
     const uint32_t colour = high ? CLIMATE_LAYER_HIGH_MARK : CLIMATE_LAYER_LOW_MARK;
     for (int32_t r = 0; r < (int32_t)CLIMATE_LAYER_MARK_HEIGHT; r++) {
         for (int32_t c = 0; c < (int32_t)CLIMATE_LAYER_MARK_WIDTH; c++) {
-            if (((rows[r] >> (4 - c)) & 1u) != 0u) {
-                layer_put_mode(pixels, pitch, view->width, view->height, cx - 2 + c, cy - 3 + r, colour,
-                               LAYER_OFF_GREY);
+            if (((rows[r] >> ((int32_t)CLIMATE_LAYER_MARK_WIDTH - 1 - c)) & 1u) != 0u) {
+                layer_put_mode(pixels, pitch, view->width, view->height, cx - (int32_t)CLIMATE_LAYER_MARK_WIDTH / 2 + c,
+                               cy - (int32_t)CLIMATE_LAYER_MARK_HEIGHT / 2 + r, colour, LAYER_OFF_GREY);
             }
         }
     }
@@ -763,7 +773,8 @@ static void layer_front(uint8_t *pixels, uint32_t pitch, const layer_view_t *vie
          s += (float32_t)CLIMATE_LAYER_FRONT_TOOTH_SPACING) {
         const float32_t bx = (float32_t)x0 + dx * s / length, by = (float32_t)y0 + dy * s / length;
         layer_line_mode(pixels, pitch, view->width, view->height, (int32_t)lroundf(bx), (int32_t)lroundf(by),
-                        (int32_t)lroundf(bx + 3.0f32 * nx), (int32_t)lroundf(by + 3.0f32 * ny), CLIMATE_LAYER_FRONT,
+                        (int32_t)lroundf(bx + (float32_t)CLIMATE_LAYER_FRONT_TOOTH_PIXELS * nx),
+                        (int32_t)lroundf(by + (float32_t)CLIMATE_LAYER_FRONT_TOOTH_PIXELS * ny), CLIMATE_LAYER_FRONT,
                         LAYER_OFF_GREY);
     }
 }
@@ -817,7 +828,7 @@ bool climate_layer_rain_now(const climate_t *climate, const climate_systems_day_
     }
     const float32_t share = climate_systems_rain_share_today(
         (float32_t)climate_latitude_deg(y), (float32_t)climate_systems_day_of_year(t), normals.t_day_c);
-    const float32_t background = normals.rain_mm_day / 24.0f32 * (1.0f32 - share);
+    const float32_t background = normals.rain_mm_day / CALENDAR_HOURS_PER_DAY_F32 * (1.0f32 - share);
     const float32_t systems = climate_systems_rain_at(day, x, y, t) * climate_systems_wetness(normals.rain_mm_day);
     *out = (background + systems) * climate_systems_rain_factor(day, x, y, t);
     return true;
@@ -878,10 +889,12 @@ static void layer_now_pixel(const climate_t *climate, const climate_systems_day_
     memcpy(at, &colour, sizeof(colour));
 }
 
+/* The lightning mark: a zigzag through these pixel offsets from a cell's centre. */
+static const int32_t LAYER_ZIGZAG[CLIMATE_LAYER_LIGHTNING_POINTS][2] = {{-1, -3}, {1, -1}, {-1, 1}, {1, 3}};
+
 /* The thunder layer's cells: a disc at R and the lightning mark, a 3-segment zigzag, at the centre. */
 static void layer_thunder(const climate_systems_day_t *day, const layer_view_t *view, float64_t t, uint8_t *pixels,
                           uint32_t pitch) {
-    static const int32_t ZIGZAG[4][2] = {{-1, -3}, {1, -1}, {-1, 1}, {1, 3}};
     for (uint32_t i = 0u; i < day->thunder_count; i++) {
         const climate_thunder_t *const cell = &day->borrowed_thunder[i];
         float64_t centre[2], share = 0.0f64;
@@ -891,9 +904,10 @@ static void layer_thunder(const climate_systems_day_t *day, const layer_view_t *
         const int32_t cx = layer_column_of(view, centre[0]), cy = layer_row_of(view, centre[1]);
         layer_disc(pixels, pitch, view, cx, cy, (int32_t)lround((float64_t)cell->radius / view->step),
                    CLIMATE_LAYER_THUNDER_DISC, LAYER_OFF_GREY);
-        for (uint32_t k = 0u; k < 3u; k++) {
-            layer_line_mode(pixels, pitch, view->width, view->height, cx + ZIGZAG[k][0], cy + ZIGZAG[k][1],
-                            cx + ZIGZAG[k + 1u][0], cy + ZIGZAG[k + 1u][1], CLIMATE_LAYER_LIGHTNING, LAYER_OFF_GREY);
+        for (uint32_t k = 0u; k + 1u < CLIMATE_LAYER_LIGHTNING_POINTS; k++) {
+            layer_line_mode(pixels, pitch, view->width, view->height, cx + LAYER_ZIGZAG[k][0], cy + LAYER_ZIGZAG[k][1],
+                            cx + LAYER_ZIGZAG[k + 1u][0], cy + LAYER_ZIGZAG[k + 1u][1], CLIMATE_LAYER_LIGHTNING,
+                            LAYER_OFF_GREY);
         }
     }
 }
@@ -912,7 +926,7 @@ void climate_layer_draw_now(const climate_t *climate, const climate_systems_day_
         const float64_t y = layer_view_y(&view, row);
         for (uint32_t column = 0u; column < width; column++) {
             layer_now_pixel(climate, day, layer, t, layer_view_x(&view, column), y,
-                            pixels + (uint64_t)row * pitch + (uint64_t)column * 4u);
+                            pixels + (uint64_t)row * pitch + (uint64_t)column * CLIMATE_LAYER_PIXEL_BYTES);
         }
     }
     if (layer == CLIMATE_LAYER_PRESSURE_NOW) {

@@ -39,7 +39,8 @@ float32_t climate_heat_snow_share(float32_t t_c) {
 }
 
 float32_t climate_heat_t_mean(const climate_normals_t *normals, const climate_cell_t *cell) {
-    const float32_t current_c = climate_air_current_c(cell->current) * (float32_t)cell->current_strength / 255.0f32;
+    const float32_t current_c =
+        climate_air_current_c(cell->current) * (float32_t)cell->current_strength / CLIMATE_CURRENT_STRENGTH_MAX_F32;
     return (float32_t)(climate_normals_t_mean(normals, (float64_t)cell->lat_deg) + (float64_t)current_c);
 }
 

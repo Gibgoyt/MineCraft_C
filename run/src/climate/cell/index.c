@@ -51,21 +51,23 @@ void climate_cell_build_tile(arena_t *arena, climate_ground_fn_t ground, const v
                              climate_window_t *out_window) {
     const uint32_t side = (uint32_t)CLIMATE_WINDOW_CELLS;
     const uint32_t count = (uint32_t)CLIMATE_WINDOW_CELL_COUNT;
-    uint8_t *const water = arena_alloc(arena, count, 64u);
-    uint8_t *const kind = arena_alloc(arena, count, 64u);
-    uint8_t *const marked = arena_alloc(arena, count, 64u);
-    uint32_t *const labels = arena_alloc_array(arena, count, sizeof(uint32_t), 64u);
-    uint32_t *const queue = arena_alloc_array(arena, count, sizeof(uint32_t), 64u);
-    uint32_t *const sea_distance2 = arena_alloc_array(arena, count, sizeof(uint32_t), 64u);
-    uint32_t *const sea_nearest = arena_alloc_array(arena, count, sizeof(uint32_t), 64u);
-    uint32_t *const land_distance2 = arena_alloc_array(arena, count, sizeof(uint32_t), 64u);
-    uint32_t *const land_nearest = arena_alloc_array(arena, count, sizeof(uint32_t), 64u);
+    uint8_t *const water = arena_alloc(arena, count, CLIMATE_ALIGN_BYTES);
+    uint8_t *const kind = arena_alloc(arena, count, CLIMATE_ALIGN_BYTES);
+    uint8_t *const marked = arena_alloc(arena, count, CLIMATE_ALIGN_BYTES);
+    uint32_t *const labels = arena_alloc_array(arena, count, sizeof(uint32_t), CLIMATE_ALIGN_BYTES);
+    uint32_t *const queue = arena_alloc_array(arena, count, sizeof(uint32_t), CLIMATE_ALIGN_BYTES);
+    uint32_t *const sea_distance2 = arena_alloc_array(arena, count, sizeof(uint32_t), CLIMATE_ALIGN_BYTES);
+    uint32_t *const sea_nearest = arena_alloc_array(arena, count, sizeof(uint32_t), CLIMATE_ALIGN_BYTES);
+    uint32_t *const land_distance2 = arena_alloc_array(arena, count, sizeof(uint32_t), CLIMATE_ALIGN_BYTES);
+    uint32_t *const land_nearest = arena_alloc_array(arena, count, sizeof(uint32_t), CLIMATE_ALIGN_BYTES);
     const climate_sea_scratch_t scratch = {
-        .words = arena_alloc_array(arena, 5u * side + 1u, sizeof(uint32_t), 64u),
-        .crossings = arena_alloc_array(arena, side + 1u, sizeof(float64_t), 64u),
+        .words = arena_alloc_array(arena, CLIMATE_SEA_SCRATCH_WORDS_PER_SIDE * side + 1u, sizeof(uint32_t),
+                                   CLIMATE_ALIGN_BYTES),
+        .crossings = arena_alloc_array(arena, side + 1u, sizeof(float64_t), CLIMATE_ALIGN_BYTES),
     };
     const uint32_t samples_side = (uint32_t)CLIMATE_TILE_SAMPLES_SIDE;
-    float32_t *const samples = arena_alloc_array(arena, samples_side * samples_side, sizeof(float32_t), 64u);
+    float32_t *const samples =
+        arena_alloc_array(arena, samples_side * samples_side, sizeof(float32_t), CLIMATE_ALIGN_BYTES);
 
     /* 2. Water is ground at or below sea level, MC_WORLD_Z_SEA = 0, at the cell's centre; deep water is a sea floor's. */
     for (uint32_t i = 0u; i < count; i++) {
@@ -148,7 +150,8 @@ void climate_cell_build_tile(arena_t *arena, climate_ground_fn_t ground, const v
     }
 }
 
-void climate_cell_blend(const climate_cell_t *const corners[4], float32_t t_x, float32_t t_y, climate_sample_t *out) {
+void climate_cell_blend(const climate_cell_t *const corners[CLIMATE_CORNERS], float32_t t_x, float32_t t_y,
+                        climate_sample_t *out) {
     memset(out, 0, sizeof(*out));
 #define CELL_BLEND(field)                                                                                              \
     ((corners[0]->field + t_x * (corners[1]->field - corners[0]->field)) +                                             \
@@ -162,7 +165,7 @@ void climate_cell_blend(const climate_cell_t *const corners[4], float32_t t_x, f
     const float32_t dy = CELL_BLEND(sea_direction[1]);
 #undef CELL_BLEND
     const float32_t length = sqrtf(dx * dx + dy * dy);
-    if (length > 1.0e-6f32) {
+    if (length > CLIMATE_DIRECTION_EPSILON) {
         out->sea_direction[0] = dx / length;
         out->sea_direction[1] = dy / length;
     }

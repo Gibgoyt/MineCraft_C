@@ -29,6 +29,24 @@ Only a release build's numbers mean anything: debug is at `-O0`.
 
 Appended as they are taken, newest first.
 
+### 2026-11-08, plan 004 phase 11, second pass: the same from a cool machine
+
+From a cool machine (plan 004 phase 11, second pass): through the build lock, after 5 minutes with nothing heavy, load average 1.2 at the start, on the code of `ffc94238`, exit status 0. Slowest cold tile **30.28 ms** (target 100, met), slowest warm tile 7.56 ms; big systems near a point, warm, median **0.337 ms**, slowest 0.908 (target 2, met); cold, median 32.8 ms; everything near the player 20.8 ms. A tile's parts: window 23.9 ms (80%), 29.8 ms in all. The cool numbers are the hot ones: the tile does not depend on the CPU's heat.
+
+### 2026-11-07, plan 004 phase 11: a tile in 30 ms, the systems near a point in 0.34 ms
+
+Release build, through the build lock, twice in a row (the "cool" run came straight after other heavy runs of this phase, load average 2.3 falling from 9.7, so neither was truly cool; plan 004 phase 11, Issues found). Both exit status 0.
+
+| | First run | Second run | Target |
+|---|---|---|---|
+| Slowest cold tile, 1 worker | 30.09 ms | 29.77 ms | 100 ms, met |
+| Slowest warm tile | 7.60 ms | 7.61 ms | |
+| Big systems near a point, warm, median (slowest) | 0.340 ms (0.907) | 0.341 ms (0.910) | 2 ms, met |
+| The same, cold, median of 20 | 31.8 ms | 32.1 ms | |
+| Everything near the player with cells at 2 km, median | 22.0 ms | 22.1 ms | |
+
+A tile's parts on one thread, mean over 9 places: window 23.7 ms (80%), cells 3.6, air 0.10, heat 0.002, rain 0.50, season 1.67 (snow balance 0.95); 29.6 ms in all. The same as phase 06's: phase 11 changed no number.
+
 ### 2026-11-06, plan 004 phase 06: the weather systems near a point in 0.36 ms
 
 Release build, through the build lock, seed `0x1234567890ABCDEF`. `--systems` exit status 0.

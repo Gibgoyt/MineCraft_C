@@ -26,7 +26,7 @@ static const float32_t CLIMATE_SEA_PEAK_DAY = 215.0f32; /* the day the sea is wa
 static const float32_t CLIMATE_HEAT_LOW_HPA_PER_C = -0.6f32; /* hPa per deg C of seasonal swing, times kappa */
 
 /* Swing and lag, master plan 6.6 (phase 05's terms, worked out here first because heat lows need them) */
-static const float32_t CLIMATE_SUMMER_DAY = 170.0f32; /* the swing's peak before the lag */
+static const float32_t CLIMATE_SUMMER_DAY = (float32_t)CALENDAR_SUMMER_FROM; /* the swing's peak before the lag, 170 */
 static const float32_t CLIMATE_LAG_BASE_DAYS = 25.0f32;
 static const float32_t CLIMATE_LAG_SEA_DAYS = 20.0f32; /* times 1 - kappa */
 
@@ -52,6 +52,8 @@ static const float32_t CLIMATE_PRESSURE_WIND_K = 900.0f32; /* blocks^2 per hPa p
 static const float32_t CLIMATE_ALTITUDE_SCALE = 800.0f32;  /* blocks */
 static const float32_t CLIMATE_ALTITUDE_MAX = 2.5f32;
 static const float32_t CLIMATE_STEER = 0.7f32;
+/* Phase 04: values worked out per tile cell on each of the fit days: u, v and dp_heat. */
+enum : uint32_t { CLIMATE_AIR_DAY_VALUES = 3u };
 
 /* The three kinds of current, master plan 6.3. */
 enum : uint8_t {
