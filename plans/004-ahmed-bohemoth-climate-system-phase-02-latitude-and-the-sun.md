@@ -746,3 +746,9 @@ Found by the skeptical gate check, 2026-11-06.
 - **Expected (coding standard):** split at 1,500 lines; hard limit 2,000.
 - **Actual:** 1,788 lines; about 1,740 before this phase, which added about 45. Under the hard limit, so the lint passes.
 - **Done:** left as it is; splitting that suite is not this phase's work. Noted for whoever next grows it.
+
+**14. The black picture of Issues found 12 is the world stopping loading, not only headless ticks outrunning it (the final check, 2026-11-08, worktree `wf_6f8a0c68-47a-63`; out of plan 004's scope, recorded here as it is this phase's Gate).**
+
+- **Expected:** after a fast flight stops, the land loads round the eye and the sky is drawn.
+- **Actual:** release, `--test-world --headless --no-sound --day-of-year 171 --time-of-day 0.0 --render-distance 8`, flying with Ctrl at wheel 13 to `x 44768 y 31150` (`lat 73.20 N  sun 6.9`, the HUD `Midnight sun`), then waiting: the game's own count at exit was **53448 columns generated after 2612 ticks and the same 53448 after 16032 ticks**, so nothing loaded in the 13,000 ticks after stopping, and every picture stayed black (sky included, `coarse 0.01 ms`). At noon (`--time-of-day 0.5`) the same flight showed land at `x 30581 y 21444` while moving and black again after stopping at `x 35010 y 24474`, with no census owed. A slower flight (wheel 9) was black past 80 degrees north too. Nothing in the log says why; no warning is printed.
+- **Done:** nothing changed in code; the world's streaming (plan 001 and 003) is not plan 004's. The sun itself checks out where it can be read: the F3 line and the HUD at 73.2 degrees north at midnight, and `run_game_sun`'s real draw of the 70.5 degree midnight sky (Verification). **For Ahmed:** if the picture goes black in his own flight north, it is this, and the gate's view of the midnight sun needs the streaming looked at first; flying more slowly may get round it.
