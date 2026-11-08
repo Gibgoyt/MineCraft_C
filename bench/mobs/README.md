@@ -25,6 +25,10 @@ The gate is on the 99th percentile of 2000 ticks, after 200 to settle: the worst
 
 ## Results
 
+### 2026-11-08, plan 004 phase 11, second pass: from a cool machine
+
+From a cool machine (plan 004 phase 11, second pass): through the build lock, after 5 minutes with nothing heavy, load average 1.2 at the start, on the code of `ffc94238`, exit status 0. Scattered, 100 mobs, the target: p99 **1.080 ms** (worst 1.917; target 5, met). Packed in a pit 2.054, all around the player 1.941, 400 scattered 2.060, a full store 2.281. Heap calls 0 on every row.
+
 ### 2026-11-07, plan 004 phase 11: the tick with the climate in the game
 
 Release build, through the build lock, twice in a row, exit status 0 both, heap calls 0 on every row. Target a tick at 100 mobs at most 5 ms on the 99th percentile: **met**.

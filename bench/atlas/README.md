@@ -33,6 +33,10 @@ What it does:
 
 ## Results
 
+### 2026-11-08, plan 004 phase 11, second pass: from a cool machine
+
+From a cool machine (plan 004 phase 11, second pass): through the build lock, after 5 minutes with nothing heavy, load average 1.2 at the start, on the code of `ffc94238`, exit status 0. Opening over 100 km², median **16.1 ms** (slowest 17.0; target 100, met). Worst layer by median `temperature_coldest` **35.6 ms** (`monsoon` 35.5; the slowest single picture `temperature_now` 59.2 ms; target 60, met). Main's frame median 0.680 ms (slowest 1.022; target 2, met). Column write 0.081 us, column top 12.8 us (targets 5 and 20, met).
+
 ### 2026-11-07, plan 004 phase 11: every target met
 
 Release build, through the build lock, twice in a row, exit status 0 both.

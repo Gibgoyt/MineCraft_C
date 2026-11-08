@@ -15,6 +15,10 @@ A **column** here is what it is in the plan and in `run/src/world/column/`: a ch
 
 ## Results
 
+### 2026-11-08, plan 004 phase 11, second pass: from a cool machine
+
+From a cool machine (plan 004 phase 11, second pass): through the build lock, after 5 minutes with nothing heavy, load average 1.2 at the start, on the code of `ffc94238`, exit status 0. Every place beats 1000 on 16 workers; the slowest `snowy_taiga` **1134** (jagged_peaks 1178, jungle 1243, deep_ocean the fastest at 2492).
+
 ### 2026-11-07, plan 004 phase 11: with the climate in the game, every place still beats it
 
 Release build, through the build lock, twice in a row, exit status 0 both. Target 1000 columns a second on 16 workers: **met by all 9 both times**. The slowest, `snowy_taiga`: 1097 then 1122 (forest 1395 and 1322, jungle 1263 and 1256, jagged_peaks 1167 and 1173; deep_ocean the fastest at 2441 and 2571). The terrain does not read the climate, so this is the same work as before plan 004, and the numbers are those of stage 7 within the machine's noise.
