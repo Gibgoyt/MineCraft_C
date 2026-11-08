@@ -900,7 +900,7 @@ void ui_atlas_readout(ui_atlas_t *atlas, int64_t x, int64_t y, uint32_t layer, u
         }
         (void)snprintf(out, bytes,
                        "%s  z %" PRId32 "\n%.1f \xC2\xB0"
-                       "C  %.1f mm an hour  wind %.1f from %s  %.0f hPa  current %s  %s",
+                       "C  %.1f mm an hour  wind %.1f from %s  %.0f hPa\ncurrent %s  %s",
                        where, (int32_t)z, (libc_double_t)now.temperature_c, (libc_double_t)now.rain_mm_h,
                        (libc_double_t)sqrtf(now.wind[0] * now.wind[0] + now.wind[1] * now.wind[1]),
                        atlas_compass_from(now.wind[0], now.wind[1]), (libc_double_t)now.pressure_hpa, current,
@@ -910,7 +910,7 @@ void ui_atlas_readout(ui_atlas_t *atlas, int64_t x, int64_t y, uint32_t layer, u
     const float32_t speed = sqrtf(air.wind[0] * air.wind[0] + air.wind[1] * air.wind[1]);
     (void)snprintf(out, bytes,
                    "%s  z %" PRId32 "\n%.1f \xC2\xB0"
-                   "C  %.0f mm a year  wind %.1f from %s  %.0f hPa  current %s  %s",
+                   "C  %.0f mm a year  wind %.1f from %s  %.0f hPa\ncurrent %s  %s",
                    where, (int32_t)ui_atlas_pixel_z(pixel), (libc_double_t)normals.t_day_c,
                    (libc_double_t)normals.rain_mm_year, (libc_double_t)speed,
                    atlas_compass_from(air.wind[0], air.wind[1]), (libc_double_t)air.pressure_hpa, current,

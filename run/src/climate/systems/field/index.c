@@ -24,7 +24,7 @@ float32_t climate_systems_rain_share(float32_t lat_deg) {
     return (float32_t)(share + ((float64_t)CLIMATE_SYSTEM_RAIN_SHARE_POLAR - mid) * p);
 }
 
-float32_t climate_systems_rain_share_today(float32_t lat_deg, float32_t day, float32_t t_day_c) {
+static float32_t field_rain_share_base(float32_t lat_deg, float32_t day, float32_t t_day_c) {
     if (t_day_c > CLIMATE_THUNDER_HOT_C) {
         return climate_systems_rain_share(lat_deg); /* cells can form */
     }
@@ -34,6 +34,11 @@ float32_t climate_systems_rain_share_today(float32_t lat_deg, float32_t day, flo
         return climate_systems_rain_share(lat_deg); /* lows can come by */
     }
     return 0.0f32;
+}
+
+float32_t climate_systems_rain_share_today(float32_t lat_deg, float32_t day, float32_t t_day_c, float32_t hurricane_s) {
+    const float32_t s = hurricane_s > 0.0f32 ? hurricane_s : 0.0f32;
+    return field_rain_share_base(lat_deg, day, t_day_c) + CLIMATE_SYSTEM_RAIN_SHARE_HURRICANE * s;
 }
 
 float32_t climate_systems_wetness(float32_t rain_mm_day) {

@@ -1,6 +1,6 @@
 # 004-ahmed-bohemoth-climate-system — master plan
 
-**Status:** approved on 2026-11-06   (updated 2026-11-06)
+**Status:** approved on 2026-11-06; every phase 01 to 11 built and agent-verified, and the final check (round 1, 2026-11-08) found it working end to end in headless play after three fixes; left for Ahmed: each phase's gate, played on a real display, and the values he tunes by playing   (updated 2026-11-08)
 
 On approval, `plans/README.md` applies: this file is copied verbatim, a setup agent creates one phase file per phase in section 10, and no code is written until Ahmed says go. **Nothing is pushed** (Ahmed, 2026-11-04: "No please don't push!").
 
@@ -855,3 +855,22 @@ Each has a default, and none blocks approval.
 - Economy, settlements, nations, trade, reputation
 - Volcanoes
 - Multiplayer 
+
+## Final check
+
+Round 1, 2026-11-08, worktree `wf_6f8a0c68-47a-63`, main merged at `747df885`, every build clean from nothing. This section is the check's own; the plan above is as approved.
+
+**Found and fixed**, each recorded in its phase file:
+
+- No hurricanes on any real seed: phase 06's rule wanted water 2048 blocks round, which 7.2 does not have. Now sea at the point, `CLIMATE_HURRICANE_RATE` 0.3 so a warm coast square gets 2.23 a season over 8 seeds (7.2's 2.4, Q5's "about 7"), with their rain in `f_sys` and the cells' gain 0.205 so the 10-year rain test still holds (worst 0.142). `97110031`; phase 06 Issues found 22, phase 07 25, phase 11 21.
+- A new world had no HUD climate line, no season word but the date's, and no weather until the first census on day 85: tiles were kept only 2 km past the view. Now a thunderstorm cell's reach (5224). `16083917`; phase 10 Issues found 32.
+- The Atlas readout lost its current and class at 640 by 480. `b83e0d2f`; phase 09 Issues found 34.
+- The sanitize preset failed seven climate tests on poisoned arena memory in the test harness. `2a666b27`; phase 11 Issues found 22.
+
+**Scripted headless play, release, `--no-sound`, screenshots read:** the HUD shows `Year 1 · Day 84 · Wet season` and `28.2 °C  wind 4.5 m/s from E` with its arrow from 300 ticks after a world opens; the world paused at 06:00 on day 85, the first week boundary (master plan 4.2: a new world is week 11, its census is at the start of week 12), by playing 21,600 ticks, and the census screen showed last week's report, events in render distance and the 7-day outlook with chances, and Continue resumed; `--climate-jump 150` gave the census of 21 weeks at once; rain falls in the world from the climate on day 230, and the forced weathers show rain, snow and thunderstorms with a bolt and a flash; on day 230 named tropical storms (for example "Tropical storm Vedusa") with tracks and cones are drawn on the Atlas as outlines over grey; the Atlas opens on M with ungenerated land grey and draws all 26 layers, including wind, ocean currents, pressure belts, pressure now, systems, rain radar and thunderstorm cells, with the day slider on `]`; temperature and rain fields blend smoothly across regions. The sun past the polar circle in summer: F3 reads `lat 73.20 N  sun 6.9` at midnight on day 171 and the HUD `Midnight sun`, but the picture is black after the fast flight, as the world stops loading (phase 02 Issues found 14, out of this plan's scope); the lit sky there is held by `run_game_sun`'s real draw. **Window mode** on a private Xvfb `:87`, killed afterwards: menu, a new world, the census screen, play with the HUD, the Atlas on M, the systems layer with "Hurricane Vemita", Escape.
+
+**Suites, through `tools/test-or-build.sh`:** Debug: 151 of 151 on the final code (2248 s, serially; a first run with -j4 failed three timing tests under load, which passed serially). Release: 151 of 151, and the release link (`-O3 -flto`, main's 16 KiB frame) clean. Sanitize: 155 of 155 with `2a666b27` (148 before it). `standards_lint` and `clang_format` pass. Benches on release: systems near a point 0.508 ms (target 2), census of 100 km² 224.3 ms (target 250).
+
+**1 worker against 16:** `bench_climate_survey --seeds 1 --years 2 --places 20 --per-class 10 --width 4096` printed the same bytes on 1 worker and on 16 (sha256 `60c0d1d9...`); `run_climate_systems` lists, `run_climate` and `run_game_census`'s replays are the same on 1 and 16 (or 4) workers.
+
+**Left, not blocking:** each phase's gate is Ahmed's, on a real display; the storm warning's 2 ms (4.4 ms on a worker, phase 11 Issues found 9) and the frame rate at render distance 32 (phase 08 Issues found 17) are his calls; the world going black after a fast flight (phase 02 Issues found 14) is world streaming, not this plan. No geology, vegetation or biome change was made (section 14).

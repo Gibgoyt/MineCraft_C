@@ -58,13 +58,15 @@ static const float64_t CLIMATE_SQUARE_THUNDER = 1024.0f64;    /* 1 km */
 
 /* Rates, spawns per square per day: 7.2 and 7.2.1. The ones the 10-year test tunes (7.4) are marked; the phase 06 file
  * records each change with its before and after. */
-static const float32_t CLIMATE_HURRICANE_RATE = 0.034f32; /* x s_hur; tuned: 0.02 in 7.2, Q5 and Issues found 1 */
+/* x s_hur, over sea at the point. 0.02 in 7.2; 0.034 by phase 06 (Issues found 1) behind its open-sea rule; 0.3 by the final
+ * check with that rule gone, so a warm coast square gets 7.2's 2.4 a season on the survey's 8 seeds (Q5: about 7 a coast). */
+static const float32_t CLIMATE_HURRICANE_RATE = 0.3f32;
 static const float32_t CLIMATE_LOW_RATE_WINTER = 0.18f32; /* tuned: 0.08 in 7.2 */
 static const float32_t CLIMATE_LOW_RATE_SUMMER = 0.09f32; /* tuned: 0.04 in 7.2 */
 static const float32_t CLIMATE_HIGH_RATE = 0.03f32;       /* tuned */
 static const float32_t CLIMATE_THUNDER_RATE = 3.0f32;     /* the leading 3 of 7.2.1 */
-static const float32_t CLIMATE_THUNDER_RATE_GAIN =
-    0.22f32;                                            /* this phase: the one knob 7.4 tunes for cells; tuned from 1 */
+/* This phase: the one knob 7.4 tunes for cells; tuned from 1 to 0.22, then 0.205 by the final check (Issues found 22). */
+static const float32_t CLIMATE_THUNDER_RATE_GAIN = 0.205f32;
 static const float32_t CLIMATE_THUNDER_HOT_C = 18.0f32; /* 7.2.1: (T - 18) / 10 */
 static const float32_t CLIMATE_THUNDER_HOT_RANGE_C = 10.0f32;
 static const float32_t CLIMATE_THUNDER_MONSOON = 2.0f32; /* 7.2.1: 1 + 2 f_monsoon */
@@ -83,9 +85,11 @@ static const float32_t CLIMATE_LOW_PSI_MIN_DEG = 35.0f32;
 static const float32_t CLIMATE_LOW_PSI_MAX_DEG = 65.0f32;
 static const float32_t CLIMATE_HIGH_PSI_MIN_DEG = 20.0f32;
 static const float32_t CLIMATE_HIGH_PSI_MAX_DEG = 45.0f32;
-static const float32_t CLIMATE_HIGH_INTERIOR_PSI_MAX_DEG = 70.0f32;   /* this phase: winter interior highs up to here */
-static const float32_t CLIMATE_HIGH_INTERIOR_BLOCKS = 3000.0f32;      /* this phase: land this far all round */
-static const float32_t CLIMATE_HURRICANE_OPEN_SEA_BLOCKS = 2048.0f32; /* this phase: water this far all round */
+static const float32_t CLIMATE_HIGH_INTERIOR_PSI_MAX_DEG = 70.0f32; /* this phase: winter interior highs up to here */
+static const float32_t CLIMATE_HIGH_INTERIOR_BLOCKS = 3000.0f32;    /* this phase: land this far all round */
+/* Water this far all round as well as at the point: 0, the point alone, master plan 7.2's "Sea". Phase 06 had 2048, which
+ * the terrain's seas almost never meet, so no hurricane formed on any real seed (the final check, phase 06 Issues found 22). */
+static const float32_t CLIMATE_HURRICANE_OPEN_SEA_BLOCKS = 0.0f32;
 
 /* Sizes, strengths and lives: 7.2. Each a uniform range, {lo, hi}: v = lo + u (hi - lo). */
 static const float32_t CLIMATE_HURRICANE_RADIUS[2] = {1500.0f32, 4000.0f32};
@@ -159,6 +163,9 @@ static const float32_t CLIMATE_SYSTEM_RAIN_SHARE_POLAR = 0.4f32; /* this phase, 
 static const float32_t CLIMATE_SYSTEM_RAIN_SHARE_POLAR_DEG[2] = {60.0f32, 70.0f32}; /* this phase: smoothstep between */
 /* This phase: lows bring rain this far outside their band, being up to 7 km across and drifting poleward. */
 static const float32_t CLIMATE_SYSTEM_RAIN_SEASON_MARGIN_DEG = 5.0f32;
+/* The final check (Issues found 22): what more of the normal systems bring on a day of hurricane season, times s_hur there,
+ * as hurricanes at 0.3 a square-day add their rain to the cells' (the 10-year test's measure). */
+static const float32_t CLIMATE_SYSTEM_RAIN_SHARE_HURRICANE = 0.25f32;
 /* This phase (Issues found 11): the rain a system brings to a place is its raw rain times the place's wetness, the day's
  * normal over this, so storms rain hard where it is usually wet and little where it is usually dry, and the long-run total
  * follows the normal down to a cell's scale. 5 mm a day is about 1800 mm a year: a wet place sees the raw 20 to 60. */

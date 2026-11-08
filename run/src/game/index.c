@@ -125,10 +125,10 @@ static climate_t *game_climate(const game_t *game) {
     return climate != nullptr && climate_is_open(climate) ? climate : nullptr;
 }
 
-/* How far round the player the climate's tiles are kept ready, in blocks: master plan, "render distance plus 2 km". The
- * render distance as the map has it, columns this near being the ones it asks for; the sim's to read. */
+/* Tiles kept round the player: render distance plus 2 km (6.9), or a thunder cell's reach and square (phase 10, 14). */
 static uint32_t game_climate_radius(const world_map_t *map) {
-    return map->view_radius * (uint32_t)COLUMN_SIZE + GAME_CLIMATE_AHEAD_BLOCKS;
+    const float64_t reach = climate_systems_reach(CLIMATE_SYSTEM_THUNDER) + CLIMATE_SQUARE_THUNDER; /* 5224 */
+    return map->view_radius * (uint32_t)COLUMN_SIZE + (uint32_t)ceil(fmax(reach, (float64_t)GAME_CLIMATE_AHEAD_BLOCKS));
 }
 
 void game_save_set(game_t *game, save_t *save) {

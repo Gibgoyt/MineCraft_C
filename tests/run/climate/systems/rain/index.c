@@ -117,7 +117,8 @@ static void rain_year(job_worker_t *worker, void *borrowed_argument) {
             }
             const float64_t normal = (float64_t)normals.rain_mm_day;
             const float64_t share = (float64_t)climate_systems_rain_share_today(
-                (float32_t)climate_latitude_deg(y), (float32_t)day_in_year, normals.t_day_c);
+                (float32_t)climate_latitude_deg(y), (float32_t)day_in_year, normals.t_day_c,
+                climate_systems_hurricane_s(site->climate, y, (float64_t)d + 0.5f64));
             const float64_t background = normal / 24.0f64 * (1.0f64 - share);
             const float64_t wet = (float64_t)climate_systems_wetness(normals.rain_mm_day);
             const float64_t hours = 24.0f64 / (float64_t)RAIN_SAMPLES_A_DAY;

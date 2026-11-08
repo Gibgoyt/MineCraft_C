@@ -1421,7 +1421,7 @@ TEST(the_reading_is_what_the_climate_functions_say) {
                  (libc_double_t)normals.t_day_c, (libc_double_t)normals.rain_mm_year,
                  (libc_double_t)sqrtf(air.wind[0] * air.wind[0] + air.wind[1] * air.wind[1]));
         CHECK_CONTAINS(text, want);
-        snprintf(want, sizeof(want), "  %.0f hPa  current ", (libc_double_t)air.pressure_hpa);
+        snprintf(want, sizeof(want), "  %.0f hPa\ncurrent ", (libc_double_t)air.pressure_hpa);
         CHECK_CONTAINS(text, want);
         /* On a now layer: climate_weather_at at the explored ground, at the world's t, with the last census's week. */
         ui_atlas_readout(atlas, x, y, now_layer, 196u, &world, text, sizeof(text));
@@ -1440,7 +1440,7 @@ TEST(the_reading_is_what_the_climate_functions_say) {
                  (libc_double_t)now.temperature_c, (libc_double_t)now.rain_mm_h,
                  (libc_double_t)sqrtf(now.wind[0] * now.wind[0] + now.wind[1] * now.wind[1]));
         CHECK_CONTAINS(text, want);
-        snprintf(want, sizeof(want), "  %.0f hPa  current ", (libc_double_t)now.pressure_hpa);
+        snprintf(want, sizeof(want), "  %.0f hPa\ncurrent ", (libc_double_t)now.pressure_hpa);
         CHECK_CONTAINS(text, want);
     }
     arena_deinit(weather);
