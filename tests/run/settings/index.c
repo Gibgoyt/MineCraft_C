@@ -1144,8 +1144,12 @@ static void run_program(test_context_t *t, char *const *argv, test_process_t *ou
 /* What the file starts as: no day going by and no history, so that what is compared is the same world at the same time. And no shadows: a column
  * kept for a while past the render distance, as one that has just gone out of range is, still shades what is drawn, as it does for a body walking
  * away, and a new program has never loaded it. With those off, what is drawn depends on nothing past the distance. */
-static const char PROGRAM_START[] = "version: 1\nrender_distance: 8\nfull_detail: 8\neffect_day_cycle: false\n"
-                                    "effect_ao: false\neffect_taa: false\neffect_shadows: false\nworker_count: 5\n";
+/* The weather is off: since the final check of plan 004 a new world's weather falls from its first tick, and rain at two
+ * moments would make the same place two pictures. */
+static const char PROGRAM_START[] =
+    "version: 1\nrender_distance: 8\nfull_detail: 8\neffect_day_cycle: false\n"
+    "effect_ao: false\neffect_taa: false\neffect_shadows: false\neffect_weather: false\n"
+    "worker_count: 5\n";
 
 static void settings_write(test_context_t *t, const char *path, const char *text) {
     REQUIRE(file_write_atomic(path, text, strlen(text)) == FILE_OK);
@@ -1261,7 +1265,7 @@ TEST(render_distance_changes_live_in_the_built_program_and_is_kept_and_the_pictu
     /* And what is 2 live is what 2 is from the start, in a new program. */
     settings_write(t, file,
                    "version: 1\nrender_distance: 2\nfull_detail: 8\neffect_day_cycle: false\n"
-                   "effect_ao: false\neffect_taa: false\neffect_shadows: false\n");
+                   "effect_ao: false\neffect_taa: false\neffect_shadows: false\neffect_weather: false\n");
     char *const argv_2[] = {t->borrowed_args[0],
                             (char *)"--headless",
                             (char *)"--menu",

@@ -827,22 +827,13 @@ TEST(the_program_goes_all_the_way_round_with_a_script) {
     REQUIRE(root != nullptr);
     char *const saves = path_join(t, root, "saves");
     char *const shots = path_join(t, root, "shots");
-    char *const argv[] = {t->borrowed_args[0],
-                          (char *)"--headless",
-                          (char *)"--menu",
-                          (char *)"--saves",
-                          saves,
-                          (char *)"--script",
-                          (char *)"tests/run/ui/menu/fixtures/flow.script",
-                          (char *)"--screenshot-dir",
-                          shots,
-                          (char *)"--width",
-                          (char *)"640",
-                          (char *)"--height",
-                          (char *)"480",
-                          (char *)"--render-distance",
-                          (char *)"4",
-                          nullptr};
+    char *const argv[] = {
+        t->borrowed_args[0], (char *)"--headless", (char *)"--menu", (char *)"--saves", saves, (char *)"--script",
+        (char *)"tests/run/ui/menu/fixtures/flow.script", (char *)"--screenshot-dir", shots, (char *)"--width",
+        (char *)"640", (char *)"--height", (char *)"480", (char *)"--render-distance", (char *)"4",
+        /* Since plan 004's final check a new world's weather falls from its first tick, and rain at two
+                           * moments would make the same place two pictures. */
+        (char *)"--no-weather", nullptr};
     test_process_t process;
     test_process_run(t, argv, 240000u, &process);
     REQUIRE(process.started != 0u);
