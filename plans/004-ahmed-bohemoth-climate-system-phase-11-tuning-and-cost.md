@@ -733,6 +733,8 @@ Appended as they land:
 - `ffc94238` Say in the outlook's header that the master plan's footprint is the one in force (second pass).
 - `6c3d5656` Record plan 004 phase 11's benches run again from a cool machine in each bench's README and the world's history (second pass).
 - `858a5543` Record plan 004 phase 11's second pass in its phase file.
+- `cf4e060c` Record the gate check of plan 004 phase 11: the 8-seed survey and the world bench run again on 73cd23cb.
+- `445ee226` Record plan 004 phase 11's gate check in its phase file, with the Verification's 1-worker and 16-worker lines given the narrow strip that can finish.
 
 ## Issues found
 
