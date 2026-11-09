@@ -21,7 +21,7 @@ Settings says plainly how far you'll see, in blocks as well as chunks, and the d
 
 - [ ] Show blocks on both sliders in `run/src/ui/screen_settings/index.c`: "Render distance: 32 chunks (512 blocks)"
 - [ ] Explain the two settings in one line each on the Settings screen: full detail, and how far to draw at all
-- [ ] Raise the default render distance, keeping full detail at 32, to the highest that still holds the frame target on `bench_world`. Measure, and record the numbers here
+- [ ] **Only after phase 14 is fixed,** raise the default render distance, keeping full detail at 32, to the highest that still holds the frame target on `bench_world`. Measure, and record the numbers here
 - [ ] Check the far field looks right from a mountain at the new default, with screenshots checked by eye. Taller terrain from plan 003 phase 8 may need it tuned
 - [ ] Add a test that the label shows blocks, and that a `settings.yaml` without the new default still loads as before
 
@@ -41,3 +41,6 @@ Appended as they land:
 ## Issues found
 
 **Ahmed can see further today,** with no code change, by raising the render distance in Settings.
+
+**Raising render distance is what broke the game, 2026-11-09.** Ahmed raised it to 64, as this file suggested. That turned on the far field, whose builds then took every worker, so near chunks and mined blocks waited for minutes. See phase 14, "Identified". Until phase 14 is fixed, **render distance 32 with full detail 32 is the setting that plays properly**, and this phase's raised default waits for it.
+
