@@ -39,6 +39,8 @@ Appended as they land:
 
 ## Issues found
 
+**Ahmed again, 2026-11-09, after playing today's `main`:** "also tree feller must be on regardless if I mine a tree with an axe!!", written three times. His log shows why: `the player mined 1 blocks ... the last mined was acacia_log` and `an axe felled 0 logs past what it cut`, with nothing in hand. Expected: the tree comes down. Actual: one log broke, because today's code fells only with an axe. That's exactly this phase's first todo, which isn't built yet. **This is now Ahmed's decision, not a default.**
+
 **Axe wear, from `../prompt.md` (2026-11-09).** Expected, by plan 003 phase 7's default: one use per log that falls. Actual complaint: chopping 4 logs at the base wore the axe for the whole tree. Done here: the todo now charges only the logs Ahmed breaks himself. This replaces the old wear todo, which still charged per log when holding an axe.
 
 **Open for Ahmed: keep sneak-to-chop-one?** "Always on" reads as no exceptions, so the default is to remove it. Keeping it costs nothing, and gives a way to take one log when building.
