@@ -62,6 +62,30 @@ A world is playable as soon as it opens, and fills in quickly. Changing render d
 
 Pictures and the script are kept in `/tmp/claude-1000/-home-ahmed-Projects-Games-MineCraft-C/52c310b0-7c8d-4c06-a48e-20883c52be21/scratchpad/render/`, as `rd64_sheet.png`, `rd32_sheet.png` and `repro.sh`. That's `/tmp`, so a reboot clears them.
 
+## Measured live, 2026-11-09: how long a settings change takes
+
+**Ahmed, after the first identification:** "it takes so so so so long on new world generation to freiking render in everything! i mine a tree and after it has all settled 5 minutes later then the tree shows as disappeared", and "when changing full detail and render distance there are so so many rendering issues and it takes 5 entire minutes". He asked for render distance changes to be tested, to plan the fix.
+
+**How:** on Ahmed's seed `11107447384583428913`, which spawned at his exact point, `-7.5, -7.5, 40`. A private Xvfb in real time, 1280×720, `--no-sound`, weather off so rain doesn't count as change, the release build of `main` at `adf33b79`. The player stood still, looking a little down, with the settings changed through the real pause menu and sliders. Each screenshot was compared with the last of its phase: the share of pixels still differing, at 6% tolerance.
+
+| Step | What happened | Share still differing from the settled picture |
+|---|---|---|
+| **New world, render distance 32, full detail 32** | Complete at 1 s. | 0% from 1 s to 30 s |
+| Mining at 32 | The hole was drawn as it was dug. | — |
+| **Render distance 32 → 64, live** | **No change for at least 16 s.** New far terrain appeared somewhere between 16 and 150 s, and the picture **settled between 180 and 240 s.** That's the "5 minutes" Ahmed feels. | 2.0% from 0.5 s to 16 s, 0.8% at 150 s, 0.1% at 180 s, 0% at 240 s |
+| **Full detail 32 → 16, live, at 64** | **No change for 45 s,** then all at once at 60 s, **and the whole scene went darker** and stayed darker. That's one of Ahmed's "so many rendering issues". | 6.4% to 6.5% from 0.5 s to 45 s, 0.3% at 60 s, 0% at 90 s |
+| Mining at 64 | **Inconclusive.** The new blocks were dug at the bottom of a dark hole the earlier mining had made, so their change can't be seen. Ahmed's report of about 5 minutes stands until a test aims at a lit block | — |
+| Far field over the 8.5 min | 3 levels, **2172 columns in 1997.2 s of workers' time**: every worker, the whole time | — |
+| Frames | Fine on average: mean 3.5 ms, p99 4.1 ms. One spike to 32.5 ms, with `readback` at 29.6 ms | — |
+
+**Why changes look frozen, then jump,** from `run/src/render/lod/README.md`: a far-field column being made again keeps "the old one shown until the new one has come". After a settings change, the old picture stays until the slow rebuild catches up, then flips. The rebuild is slow because of the starvation above.
+
+**Why a mined tree can take minutes to vanish,** from the same README: the far field "draws no edits" of its own, only what's already saved. While the near chunks wait for workers, the far field stands in for them, as at 3 s in the first run, and still shows the tree. It only goes when the near chunk is finally built and drawn. Not reproduced exactly yet: stage 1 aims a test at a lit tree.
+
+**The darkening after a full-detail change** is a separate defect with no cause found yet. Stage 1 starts by comparing stored light and the far field's shading before and after.
+
+The pictures, timeline and script are kept in `/tmp/claude-1000/-home-ahmed-Projects-Games-MineCraft-C/52c310b0-7c8d-4c06-a48e-20883c52be21/scratchpad/render/measure/`, as `shots/`, `timeline.txt` and `../measure.sh`. That's `/tmp`, so a reboot clears them.
+
 ## Targets
 
 **Proposed, for Ahmed to change.** Times are from opening a world, or from pressing Done in Settings.
@@ -92,6 +116,10 @@ Pictures and the script are kept in `/tmp/claude-1000/-home-ahmed-Projects-Games
 - [ ] **Never show nothing.** At 1 s, render distance 64 drew only sky. Near columns come first, and a missing one shows the far field, until it's built
 - [ ] Repeat the stage 1 table with each fix, and show the 64 run matching the 32 run near the player
 
+- [ ] **Show the change as it comes, not all at once.** Near rings switch to the new setting first, and a far column drawn at the old setting may stay only until its own replacement is ready, not until all of them are
+- [ ] **The far field draws unsaved edits too,** by reading the live edits as well as the save, so a mined tree is gone everywhere at once. Or it never stands in for a near column that has edits
+- [ ] **Find and fix the darkening** after a full-detail change, with before and after pictures
+
 **Also likely, to be confirmed or ruled out by the numbers:**
 
 - [ ] Build the nearest chunks first, and keep a far one from holding up a near one
@@ -103,6 +131,7 @@ Pictures and the script are kept in `/tmp/claude-1000/-home-ahmed-Projects-Games
 **Stage 3: hold it.**
 
 - [ ] Make the live render-distance test a ctest that fails if a change takes over 1 s to start showing
+- [ ] Turn `measure.sh`'s steps into that test: new world, render distance 32 → 64, full detail 32 → 16, and mining a lit log, each with its own deadline: under 1 s to start showing, and the targets above to settle
 - [ ] Add the fill-in times to `bench_world`, and its history
 
 ## Verification
