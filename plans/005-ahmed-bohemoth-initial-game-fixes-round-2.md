@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2
 
-**Status:** collecting notes, nothing implemented   (updated 2026-11-09)
+**Status:** collecting notes, nothing implemented. **Until phase 14 is built, play at render distance 32 with full detail 32,** which draws correctly   (updated 2026-11-09)
 
 ## Context
 
@@ -30,16 +30,16 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 14 | A blue preview for every block, including the next block of a 1×1 bridge | Added to `...-phase-10-placement-preview.md` | — | Part of phase 10 |
 | 15 | Place a block ahead while looking forward, like Bedrock, without turning to the edge | `...-phase-13-forward-placement.md` | Placing needs the aim to hit a block face, and looking ahead off a bridge it hits nothing | Not started |
 | 16 | The tree feller wears the axe for every log that falls, not just the ones chopped | Added to `...-phase-01-tree-feller-always-on.md` | Plan 003's default "each log wears the axe" | Part of phase 1 |
-| 17 | Loading takes about 5 minutes, and changing render distance or full detail lags. A change must show in under 1 second, tested by agents in a live game | `...-phase-14-loading-and-render-distance-speed.md` | Not measured yet. **Not sound:** the build Ahmed tested predates sound | Not started |
-| 18 | Lots of rendering issues, to be looked into later | — | Waiting for Ahmed's notes | Not started |
+| 17 | Loading takes about 5 minutes, and changing render distance or full detail lags. A change must show in under 1 second, tested by agents in a live game | `...-phase-14-loading-and-render-distance-speed.md` | The far field starving the workers (note 18). **Not sound:** the build Ahmed tested predates sound, and a render distance 32 run with sound draws correctly | Not started |
+| 18 | Rendering issues on a new world: flat untextured slabs around you, a mined log still drawn (`~/Pictures/10.png`, `11.png`) | `...-phase-14-loading-and-render-distance-speed.md` | **Identified:** at render distance 64, far-field builds take all 16 workers for minutes, and the job queue has no priorities, so near chunks and mined-block redraws wait. Reproduced; render distance 32 draws correctly | Not started |
 
 ## Order to build
 
 | Order | Phase | Why here |
 |---|---|---|
-| 1 | 3 Turn off hostile mobs | Smallest, and may remove the lag as a side effect |
+| 1b | 3 Turn off hostile mobs | Smallest, and may remove the lag as a side effect |
 | 2 | 7 Lag | Measure first, then pause on focus loss |
-| 2b | 14 Loading and render distance speed | Shares phase 7's measurements, and makes every later phase quicker to play |
+| 1 | 14 Loading and render distance speed | **First now:** the cause is known, and the game is hard to play until it is fixed |
 | 3 | 1 Tree feller | Small, and plays every session |
 | 4 | 5 Armour bar | Small |
 | 5 | 8 Render distance | Small, and needs a measurement |
@@ -87,6 +87,7 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 2026-11-06 | Blocks face the player when placed, and can be turned before placing, starting with stairs and the woodworking bench |
 | 2026-11-06 | Every block gets the blue preview, including bridging, and a block can be placed ahead while looking forward |
 | 2026-11-09 | Felling wears the axe only for logs chopped by hand |
+| 2026-11-09 | **The tree feller works whether or not you hold an axe** ("must be on regardless if I mine a tree with an axe!!") |
 | 2026-11-09 | Agents must test render distance changes in a live game, and see them in under a second |
 
 ## How to test the game now
@@ -108,7 +109,7 @@ This is the build at `main`. It has everything from plan 003, and none of this p
 |---|---|---|
 | Start | Make a new world | On land, with x y z top left |
 | World | Look around, and climb | Long mountain ranges, seas that end, peaks up to about 1150 |
-| How far you see | Settings → render distance 128, full detail 32 | Land drawn coarser out past 512 blocks (phase 8 explains this) |
+| How far you see | Keep render distance 32, full detail 32 | **Don't raise render distance yet:** at 64 or more the far field starves the near world (phase 14) |
 | Caves | Find an opening and walk in, with torches | Passages underground. Dark without torches |
 | Under water | Swim down and stay | The view goes blue, 10 bubbles empty, then hearts drop |
 | Tree feller | Chop a log **with an axe**, then with bare hands | The axe brings the tree down. Hands take one log (phase 1 changes this) |
