@@ -29,6 +29,39 @@ A world is playable as soon as it opens, and fills in quickly. Changing render d
 
 **Opening a world, measured in plan 003 phase 11** (`bench_world`, before plan 004): 6.4 s on plains and up to 20.4 s in a cave at render distance 32, about 118 s at 128, and 127 s at 512. Ahmed's "5 minutes" is worse than any of these, so the bench may not be measuring what he sees.
 
+## Identified, 2026-11-09: the far field starves everything else
+
+**Ahmed's report:** at render distance 64, full detail 32, a new world is drawn as flat untextured slabs around him (`~/Pictures/10.png`), and a log he broke stayed drawn (`~/Pictures/11.png`). His log: `far field: 2 levels, 408 columns built in 354.9 s of workers' time` in a 35 s session, which is about 10 workers busy the whole time.
+
+**Reproduced** on a private Xvfb in real time, with his `settings.yaml`, `--no-sound`, the release build of `main` at `5e675623`. Screenshots were taken at 1, 3, 6, 10, 20, 40 and 60 s, then the ground underfoot was mined and looked at from inside the hole.
+
+| | Render distance 64, full detail 32 (Ahmed's) | Render distance 32, full detail 32 |
+|---|---|---|
+| At 1 s | **Sky only, nothing drawn** | Everything near drawn, textured |
+| At 3 s | **The ground around the player as untextured grey and coloured slabs**: the far field standing in for missing full detail, as in his 10.png | Same as at 1 s |
+| At 6 to 60 s | Near blocks fill in, but **black and untextured patches stay in view at 60 s** | Complete |
+| After mining 4 blocks down | **The whole screen black**, looking down and around | The hole's walls drawn and lit, the dropped dirt visible, the sky seen out of the top |
+| Far field | **1325 columns in 1341.6 s of workers' time, in 87 s: all 16 workers busy all the time**, about 1 s of worker time per far-field column | None |
+| Columns made in that time | 2521 | 3209 |
+| Sections sent | 38,462 | 112,604 |
+| Worst frame | 25.0 ms, with `readback` up to 21.8 ms | 6.9 ms |
+
+**Why,** from reading the code:
+
+1. **One shared queue, no priorities.** `run/include/job/index.h` has `job_submit` and `job_spawn`, and nothing else: no priority or class. Near chunks, re-encoding a section after a block edit, light, climate tiles and far-field builds all wait in the same first-come queues (`run/src/job/README.md`: own queue, then the injector, then stealing).
+2. **Far-field columns are very expensive.** About 1 s of worker time each, from both logs. With render distance 64 there are thousands of them, so they fill every worker for minutes.
+3. So **the work that matters most waits:** the chunks the player stands in, and the re-encode that makes a mined block disappear. That explains the slabs at 3 s, the black patches, and the log that stayed in his 11.png. It matches his "takes about 5 minutes to render everything in nicely".
+
+**Not yet proven:**
+
+- **The black screen in the hole.** Most likely the new faces' light, or their re-encode, waiting in the same queue. But the two runs had different seeds and different ground, a forest at 64 and a mountain at 32. Stage 1 repeats both on one seed.
+- **Ahmed's exact 11.png.** A log staying drawn after it was mined wasn't reproduced in this run, which mined dirt and then couldn't see. Stage 1 checks a log on one seed at both distances.
+- **Why a far-field column costs about 1 s.** It needs the profiler. It may sample the full 3D terrain where a height estimate would do, or wait on climate tiles.
+
+**Sound and the climate system:** the 32 run had both and drew correctly, so neither is the main cause. Stage 1 still records the numbers with each off.
+
+Pictures and the script are kept in `/tmp/claude-1000/-home-ahmed-Projects-Games-MineCraft-C/52c310b0-7c8d-4c06-a48e-20883c52be21/scratchpad/render/`, as `rd64_sheet.png`, `rd32_sheet.png` and `repro.sh`. That's `/tmp`, so a reboot clears them.
+
 ## Targets
 
 **Proposed, for Ahmed to change.** Times are from opening a world, or from pressing Done in Settings.
@@ -45,12 +78,21 @@ A world is playable as soon as it opens, and fills in quickly. Changing render d
 **Stage 1: measure what Ahmed sees.** Nothing gets fixed before this.
 
 - [ ] Add a fill-in report: log when each ring of chunks around the player is fully drawn after a world opens or the distance changes. One line per ring, and a summary line, in the end-of-session report too
+- [ ] **Repeat the 64 against 32 runs above on one seed,** in real time on a private Xvfb, and mine a log as well as dirt. Record whether a mined block disappears, and how long it takes, at each distance
 - [ ] Add a scripted headless test that **changes render distance during a live game**, as Ahmed asked agents to do: 32 to 64 and back to 16, then full detail 32 to 16. Take screenshots every 100 ms for 3 s, read them, and record when each change first shows
 - [ ] Time a world opening to everything drawn at render distance 32, from a cold start, on today's `main`. Run it once with sound and once with `--no-sound`, to settle the sound question with numbers. Also once with plan 004's weather off, if a setting allows
 - [ ] Use the built-in profiler (`--profile`, profile preset) during opening and during a distance change. Record which stage takes the time: terrain, light, climate tiles, encoding, upload, far-field build or the card
 - [ ] Record why `shade` and `readback` spike past 100 ms during play
 
-**Stage 2: fix what stage 1 finds.** The likely candidates, to be confirmed or ruled out by the numbers:
+**Stage 2: fix the starvation.** Each fix gets a before and after number in this file.
+
+- [ ] **Priorities in the job system:** a block edit's re-encode and light first, then the columns nearest the player, then climate tiles, then the far field. Add a priority to `job_submit` in `run/{src,include}/job/`, with workers always taking higher first
+- [ ] **A cap on far-field workers,** so it can never hold more than a few at once, and never while near chunks wait. Drop queued far-field work that's gone stale when the player moves or the distance changes
+- [ ] **Make a far-field column cheap.** Profile one, then build it from the 2D height estimate (`terrain_height_estimate`, plan 004 phase 3) and the top block, not the full 3D terrain, if that's what it does. Target: under 50 ms of worker time a column
+- [ ] **Never show nothing.** At 1 s, render distance 64 drew only sky. Near columns come first, and a missing one shows the far field, until it's built
+- [ ] Repeat the stage 1 table with each fix, and show the 64 run matching the 32 run near the player
+
+**Also likely, to be confirmed or ruled out by the numbers:**
 
 - [ ] Build the nearest chunks first, and keep a far one from holding up a near one
 - [ ] Let a distance change reuse what's already built, and only build the difference
