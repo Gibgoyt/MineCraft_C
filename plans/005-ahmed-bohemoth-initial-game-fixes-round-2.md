@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2
 
-**Status:** collecting notes, nothing implemented   (updated 2026-11-05)
+**Status:** collecting notes, nothing implemented   (updated 2026-11-09)
 
 ## Context
 
@@ -29,6 +29,9 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 13 | Stairs and the woodworking bench only face north: face the player, and turn before placing | `...-phase-12-block-facing.md` | A voxel holds only an id, so no block can face a way | Not started |
 | 14 | A blue preview for every block, including the next block of a 1×1 bridge | Added to `...-phase-10-placement-preview.md` | — | Part of phase 10 |
 | 15 | Place a block ahead while looking forward, like Bedrock, without turning to the edge | `...-phase-13-forward-placement.md` | Placing needs the aim to hit a block face, and looking ahead off a bridge it hits nothing | Not started |
+| 16 | The tree feller wears the axe for every log that falls, not just the ones chopped | Added to `...-phase-01-tree-feller-always-on.md` | Plan 003's default "each log wears the axe" | Part of phase 1 |
+| 17 | Loading takes about 5 minutes, and changing render distance or full detail lags. A change must show in under 1 second, tested by agents in a live game | `...-phase-14-loading-and-render-distance-speed.md` | Not measured yet. **Not sound:** the build Ahmed tested predates sound | Not started |
+| 18 | Lots of rendering issues, to be looked into later | — | Waiting for Ahmed's notes | Not started |
 
 ## Order to build
 
@@ -36,6 +39,7 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 |---|---|---|
 | 1 | 3 Turn off hostile mobs | Smallest, and may remove the lag as a side effect |
 | 2 | 7 Lag | Measure first, then pause on focus loss |
+| 2b | 14 Loading and render distance speed | Shares phase 7's measurements, and makes every later phase quicker to play |
 | 3 | 1 Tree feller | Small, and plays every session |
 | 4 | 5 Armour bar | Small |
 | 5 | 8 Render distance | Small, and needs a measurement |
@@ -53,6 +57,7 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | Phase | Question | Default if not answered |
 |---|---|---|
 | 1 | Keep sneak to chop one log? | No: always on, no exceptions |
+| 14 | Are the targets right: a change shows in under 1 s, nearby ground in 2 s, everything at 32 in 15 s? | Yes |
 | 12 | A block state for facing, rather than more blocks per facing? | A block state, now phase 12 |
 | 13 | How far down must you look to place ahead? | Anything from level down |
 | 4 | Should the bed be two blocks long like Minecraft's? | No, it stays one |
@@ -81,6 +86,8 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 2026-11-06 | It should feel like a real game, not a Minecraft sandbox |
 | 2026-11-06 | Blocks face the player when placed, and can be turned before placing, starting with stairs and the woodworking bench |
 | 2026-11-06 | Every block gets the blue preview, including bridging, and a block can be placed ahead while looking forward |
+| 2026-11-09 | Felling wears the axe only for logs chopped by hand |
+| 2026-11-09 | Agents must test render distance changes in a live game, and see them in under a second |
 
 ## How to test the game now
 
@@ -129,7 +136,7 @@ Carried over from plan 003, still open. Each stays out of the work until Ahmed s
 | # | What |
 |---|---|
 | A | New worlds made in one run share a seed |
-| B | Frame rate in play is lower than frame times allow. Ahmed's last session: 69.6 FPS with 8.06 ms mean frames |
+| B | Frame rate in play is lower than frame times allow. Ahmed's last session: 69.6 FPS with 8.06 ms mean frames. Phase 14 measures alongside it |
 | D | A new world drops a few items by itself, likely leaf decay |
 | E | A floor torch shows no flame |
 | F | The world list can show a seed as a negative number |
