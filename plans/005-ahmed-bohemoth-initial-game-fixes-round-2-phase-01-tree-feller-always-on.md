@@ -19,7 +19,8 @@ It worked as built, to a rule Ahmed didn't want. Plan 003 phase 7 asked him "sho
 
 - [ ] Remove the axe condition in `interaction_mine`, so any tool or bare hands starts felling
 - [ ] Remove the sneak exception too, unless Ahmed says to keep it (see Issues)
-- [ ] Wear one use per log only when the tool is an axe, in `run/src/game/tick/index.c:120`. Other tools and hands take no wear from felling, and hands keep chopping at hand speed
+- [ ] **Wear only for what you chop yourself, not for what falls** (Ahmed, `../prompt.md`: "I can chop 4 wood at the base of the tree but my axe gets worn as if I have cut every block that fell down!!"). The log you break costs one use, as any block does. Logs that fall with the tree cost nothing. Today `run/src/game/tick/index.c:120` charges one use per felled log, which was plan 003's default "each log wears the axe", and Ahmed has now rejected it
+- [ ] Add a test: a whole tree felled with a fresh axe costs exactly as many uses as logs broken by hand, and a wooden axe can fell a tree of more than 59 logs
 - [ ] Update `tests/run/player/felling/`: bare hands, a pickaxe and an axe each fell a whole tree. A log wall with no leaves is still left alone
 - [ ] Update `tests/run/player/felling/fixtures/fell.script` and `run_playthrough` to fell with bare hands
 - [ ] Update the phase 7 notes in plan 003 that say "axes only", and `run/src/player/felling/README.md`
@@ -37,5 +38,7 @@ Ahmed: punch the bottom log of a tree with bare hands, and the whole tree falls.
 Appended as they land:
 
 ## Issues found
+
+**Axe wear, from `../prompt.md` (2026-11-09).** Expected, by plan 003 phase 7's default: one use per log that falls. Actual complaint: chopping 4 logs at the base wore the axe for the whole tree. Done here: the todo now charges only the logs Ahmed breaks himself. This replaces the old wear todo, which still charged per log when holding an axe.
 
 **Open for Ahmed: keep sneak-to-chop-one?** "Always on" reads as no exceptions, so the default is to remove it. Keeping it costs nothing, and gives a way to take one log when building.
