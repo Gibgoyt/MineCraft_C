@@ -56,3 +56,6 @@ Appended as they land:
 ## Issues found
 
 **Open for Ahmed: pause when the window loses focus?** Default yes, as in Minecraft, with a setting to turn it off. It also means mobs and night don't creep up on you while you're in another window.
+
+**A second suspect, from phase 14 (2026-11-09).** Far-field builds can take every worker for minutes at render distance 64, and they queue up again as the player moves. That backlog could also explain "laggy" and "going back to the title screen and returning is no longer as laggy", since reopening a world starts the far field over. Stage 1 here should record the far-field line from the end-of-session report alongside the mob count, and compare render distance 32 with 64.
+
