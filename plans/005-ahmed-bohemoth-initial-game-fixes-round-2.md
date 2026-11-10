@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2
 
-**Status:** being built by waves of agents, from 2026-11-10. Done so far: phases 1, 3, 5, 7 and 9; phase 4 stages 1 and 2; phase 8's labels; phase 14's measuring, live test and far-field fix (job priorities in progress). **Until phase 14 is built, play at render distance 32 with full detail 32,** which draws correctly   (updated 2026-11-09)
+**Status:** being built by waves of agents, from 2026-11-10. Done so far: phases 1, 3, 4, 5, 7 and 9; phase 8's labels; phase 14's measuring, live test and far-field fix (job priorities in progress). **Until phase 14 is built, play at render distance 32 with full detail 32,** which draws correctly   (updated 2026-11-09)
 
 ## Context
 
@@ -17,7 +17,7 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 1 | The tree feller must always be on, not need an axe | `...-phase-01-tree-feller-always-on.md` | Plan 003's "axes only" default | **Done** (`ad8513f4`): any tool or bare hands fells, sneaking too |
 | 2 | Doors can't be placed | `...-phase-02-doors.md` | Door blocks were never added | Not started |
 | 3 | Turn off zombies, skeletons and creepers, for Ahmed's own mobs later | `...-phase-03-turn-off-hostile-mobs.md` | Data change: `weight: 0` | **Done** (`121e880f`): weight 0, and taken out of saved worlds as they open |
-| 4 | Animals with males and females: cattle, sheep, pigs, goats, mountain goats, chickens. Females give milk or eggs, males are food. A bed from wool | `...-phase-04-animals.md` | No animals, wool, hides or meat exist; mobs spawn only in the dark; a bed works but needs wheat | **Stages 1 and 2 done:** male and female bodies, daylight herds, a passive mind; meats, egg, milk, hides and white wool (`c326eea1`). The six animals are next |
+| 4 | Animals with males and females: cattle, sheep, pigs, goats, mountain goats, chickens. Females give milk or eggs, males are food. A bed from wool | `...-phase-04-animals.md` | No animals, wool, hides or meat exist; mobs spawn only in the dark; a bed works but needs wheat | **Done:** cattle, sheep, pigs, goats, mountain goats and chickens, male and female told apart; shearing, milking and eggs from females; a bed of white wool; at most 256 animals kept |
 | 5 | No armour bar | `...-phase-05-armour-bar.md` | It was never drawn | **Done** (`80435865`): ten icons above the hearts, bubbles a row higher |
 | 6 | Woodworking bench can't make planks or sticks, overlaps the table; a stoneworking bench; the table only makes benches | `...-phase-06-crafting-stations.md` | Planks and sticks were kept on the table to reach the bench | **Blocked: Ahmed's Hypixel research** |
 | 7 | Very laggy after a long time in another window | `...-phase-07-lag-after-alt-tab.md` | **Measured:** not mobs (0.15 ms a tick). At render distance 64 every 30 s autosave rebuilds far field (360–680 ms stalls), handed to phase 14 | **Done** (pause when away, F3 numbers, slow-frame log). The far-field fix is phase 14's |
@@ -118,7 +118,7 @@ This is the build at `main`. It has everything from plan 003, and none of this p
 | Copper armour | Smelt copper, make the four pieces on the table, wear them | They're worn, and the armour bar fills above the hearts |
 | Woodworking bench | Table: 3 planks over 2 sticks. Place it, make stairs on it | Wood stairs and tools come off the bench. **Planks and sticks don't** (phase 6) |
 | Doors | Craft a door and try to place it | **Nothing happens** (phase 2) |
-| Bed | 3 wheat over 3 planks on the table, place it, sleep at night | Sleeps through the night. **The recipe uses wheat**, as there's no wool yet (phase 4) |
+| Bed | 3 wheat over 3 planks on the table, place it, sleep at night | 3 white wool over 3 planks; sleeps through the night. Shear a sheep for the wool |
 | Height | Build up | A block goes at z = 1250, and not at 1251 |
 | Sound | Mine stone, wood, dirt, sand and leaves; change volume in Settings | Crunches by material. **No agent has heard these** |
 | Lag | Play, then go to another window for 10+ minutes, and come back | The game pauses when you leave and resumes when you click back. F3 shows mobs, drops, uploads and far jobs |
