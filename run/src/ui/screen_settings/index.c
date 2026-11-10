@@ -94,6 +94,28 @@ static bool ui_screen_settings_slider(ui_widget_t *widget, uint32_t id, int32_t 
     return changed;
 }
 
+void ui_screen_settings_distance_label(char *out, uint32_t capacity, const char *name, uint32_t chunks,
+                                       bool new_world) {
+    if (new_world) {
+        (void)snprintf(out, capacity, "%s: %" PRIu32 " (new world)", name, chunks);
+        return;
+    }
+    /* "32 chunks (512 blocks)" is wider than the track at most values; the tooltip says what the first number counts. */
+    (void)snprintf(out, capacity, "%s: %" PRIu32 " (%" PRIu32 " blocks)", name, chunks,
+                   chunks * (uint32_t)MC_WORLD_CHUNK_SIZE);
+}
+
+/* Plan 005 phase 8: one line on what each distance means, by the pointer while it is over that slider. */
+static void ui_screen_settings_explain(ui_widget_t *widget) {
+    const int32_t x = widget->input.pointer_x;
+    const int32_t y = widget->input.pointer_y;
+    if (ui_rect_contains(ui_screen_settings_row(widget, 0, SETTINGS_ROW_WIDTH), x, y)) {
+        ui_widget_tooltip(widget, UI_SCREEN_SETTINGS_EXPLAIN_RENDER_DISTANCE);
+    } else if (ui_rect_contains(ui_screen_settings_row(widget, 1, SETTINGS_ROW_WIDTH), x, y)) {
+        ui_widget_tooltip(widget, UI_SCREEN_SETTINGS_EXPLAIN_FULL_DETAIL);
+    }
+}
+
 static bool ui_screen_settings_main_page(ui_screen_settings_t *screen, bool *out_done) {
     ui_widget_t *const widget = screen->borrowed_widget;
     settings_values_t *const values = screen->borrowed_values;
@@ -101,14 +123,14 @@ static bool ui_screen_settings_main_page(ui_screen_settings_t *screen, bool *out
     char label[SETTINGS_LABEL_BYTES];
     bool changed = false;
 
-    (void)snprintf(label, sizeof(label), "Render distance: %" PRIu32 " chunks", values->render_distance);
+    ui_screen_settings_distance_label(label, sizeof(label), "Render distance", values->render_distance, false);
     changed |= ui_screen_settings_slider(widget, SETTINGS_ID_RENDER_DISTANCE, 0, label, &values->render_distance,
                                          SETTINGS_RENDER_DISTANCE_MIN, SETTINGS_RENDER_DISTANCE_MAX);
     const bool past_live = screen->full_detail_live_max != 0u && values->full_detail > screen->full_detail_live_max;
-    (void)snprintf(label, sizeof(label), "Full detail: %" PRIu32 "%s", values->full_detail,
-                   past_live ? " (new world)" : " chunks");
+    ui_screen_settings_distance_label(label, sizeof(label), "Full detail", values->full_detail, past_live);
     changed |= ui_screen_settings_slider(widget, SETTINGS_ID_FULL_DETAIL, 1, label, &values->full_detail,
                                          SETTINGS_FULL_DETAIL_MIN, SETTINGS_FULL_DETAIL_MAX);
+    ui_screen_settings_explain(widget);
     (void)snprintf(label, sizeof(label), "Field of view: %" PRIu32, values->fov_degrees);
     changed |= ui_screen_settings_slider(widget, SETTINGS_ID_FOV, 2, label, &values->fov_degrees, SETTINGS_FOV_MIN,
                                          SETTINGS_FOV_MAX);

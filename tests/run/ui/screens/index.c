@@ -396,6 +396,15 @@ TEST(the_settings_pages_look_as_they_did) {
     (void)us_settings_frame(rig, &nothing, picture);
     (void)us_settings_frame(rig, &nothing, picture);
     us_golden_compare(t, "tests/run/ui/screens/fixtures/settings_hud.png", picture);
+    /* Plan 005 phase 8: over render distance, the line on what it means. */
+    rig->ui->settings_screen.page = UI_SCREEN_SETTINGS_PAGE_MAIN;
+    input_frame_t over;
+    memset(&over, 0, sizeof(over));
+    over.mouse_dx = 160 - rig->ui->widget.input.pointer_x;
+    over.mouse_dy = 24 + 10 - rig->ui->widget.input.pointer_y;
+    (void)us_settings_frame(rig, &over, picture);
+    (void)us_settings_frame(rig, &nothing, picture);
+    us_golden_compare(t, "tests/run/ui/screens/fixtures/settings_explain.png", picture);
     us_rig_stop(rig);
 }
 

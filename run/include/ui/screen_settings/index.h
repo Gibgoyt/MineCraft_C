@@ -48,4 +48,12 @@ void ui_screen_settings_message_set(ui_screen_settings_t *screen, const char *me
  * done from the main page. Never logs. Changes the values as it goes, and nothing else. */
 ui_screen_settings_action_t ui_screen_settings_frame(ui_screen_settings_t *screen, bool escape);
 
+/* Plan 005 phase 8: what the two distance sliders mean, a line each, shown by the pointer while it is over one. */
+#define UI_SCREEN_SETTINGS_EXPLAIN_RENDER_DISTANCE "How far you see, in chunks of 16 blocks."
+#define UI_SCREEN_SETTINGS_EXPLAIN_FULL_DETAIL "Chunks drawn block by block; coarser past."
+
+/* A distance slider's label: "name: 32 (512 blocks)", in chunks and then blocks, or "name: 40 (new world)" for full detail
+ * past what the open world holds. */
+void ui_screen_settings_distance_label(char *out, uint32_t capacity, const char *name, uint32_t chunks, bool new_world);
+
 #endif

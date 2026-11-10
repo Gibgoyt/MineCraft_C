@@ -258,6 +258,30 @@ TEST(the_sound_volume_is_kept_held_to_its_range_and_a_file_from_before_it_has_th
     CHECK_EQ_U64(values.sound_volume_percent, SETTINGS_SOUND_VOLUME_MAX);
 }
 
+/* Plan 005 phase 8: a file that says no distance gets the defaults, and Ahmed's file, 32 and 32, loads as it says, whatever
+ * the default becomes: a raised default must never change a distance a person has kept. */
+TEST(a_file_without_the_distances_gets_the_defaults_and_one_with_them_keeps_them) {
+    settings_values_t values = values_defaults();
+    settings_persist_report_t report = parse_text("version: 1\nfov_degrees: 80\n", &values);
+    CHECK_EQ_U64(report.problems, 0u);
+    CHECK_EQ_U64(report.applied, 1u);
+    CHECK_EQ_U64(values.render_distance, MC_GAME_RENDER_DISTANCE_DEFAULT);
+    CHECK_EQ_U64(values.full_detail, RENDER_LOD_FULL_DETAIL_DEFAULT);
+    CHECK_EQ_U64(values.fov_degrees, 80u);
+    settings_values_t kept = values_defaults();
+    kept.render_distance = 7u; /* anything but 32, so that the file is what sets it */
+    kept.full_detail = 5u;
+    report = parse_text("version: 1\nrender_distance: 32\nfull_detail: 32\n", &kept);
+    CHECK_EQ_U64(report.problems, 0u);
+    CHECK_EQ_U64(report.applied, 2u);
+    CHECK_EQ_U64(kept.render_distance, 32u);
+    CHECK_EQ_U64(kept.full_detail, 32u);
+    settings_values_t expected = values_defaults();
+    expected.render_distance = 32u;
+    expected.full_detail = 32u;
+    CHECK_MEM_EQ(&kept, &expected, sizeof(expected));
+}
+
 TEST(a_file_from_before_show_coordinates_still_loads_and_shows_them) {
     static const char old_file[] = "version: 1\n"
                                    "render_distance: 12\n"
@@ -837,6 +861,64 @@ TEST(what_takes_more_than_this_screen_says_so) {
     ui_screen_settings_message_set(&rig->ui->settings_screen, "Could not keep them: disk full");
     (void)rig_frame(rig, &nothing, false);
     CHECK(memcmp(rig->ui->canvas.borrowed_pixels, plain, pixels) != 0);
+    rig_end(rig);
+}
+
+/* Plan 005 phase 8: the distance sliders say blocks as well as chunks, every value fits on its 200-wide track, each one's line of
+ * what it means fits the smallest screen, and that line shows only while the pointer is over its slider. */
+TEST(the_distance_labels_say_blocks_and_fit_and_say_what_they_mean) {
+    char label[48];
+    ui_screen_settings_distance_label(label, sizeof(label), "Render distance", 32u, false);
+    CHECK_STR_EQ(label, "Render distance: 32 (512 blocks)");
+    ui_screen_settings_distance_label(label, sizeof(label), "Render distance", 512u, false);
+    CHECK_STR_EQ(label, "Render distance: 512 (8192 blocks)");
+    ui_screen_settings_distance_label(label, sizeof(label), "Full detail", 2u, false);
+    CHECK_STR_EQ(label, "Full detail: 2 (32 blocks)");
+    ui_screen_settings_distance_label(label, sizeof(label), "Full detail", 40u, true);
+    CHECK_STR_EQ(label, "Full detail: 40 (new world)");
+
+    screen_rig_t *const rig = aligned_alloc_64(t, sizeof(screen_rig_t));
+    REQUIRE(rig_begin(t, rig, SHEET_WIDTH, SHEET_HEIGHT));
+    const ui_font_t *const font = rig->ui->widget.borrowed_font;
+    /* At scale 1 the track is 200 wide, and each label, at every value, leaves at least 2 either side. */
+    uint32_t widest = 0u;
+    for (uint32_t chunks = SETTINGS_RENDER_DISTANCE_MIN; chunks <= SETTINGS_RENDER_DISTANCE_MAX; chunks++) {
+        ui_screen_settings_distance_label(label, sizeof(label), "Render distance", chunks, false);
+        const uint32_t width = ui_font_measure(font, label, 1u).width;
+        widest = width > widest ? width : widest;
+    }
+    for (uint32_t chunks = SETTINGS_FULL_DETAIL_MIN; chunks <= SETTINGS_FULL_DETAIL_MAX; chunks++) {
+        for (uint32_t past = 0u; past < 2u; past++) {
+            ui_screen_settings_distance_label(label, sizeof(label), "Full detail", chunks, past != 0u);
+            const uint32_t width = ui_font_measure(font, label, 1u).width;
+            widest = width > widest ? width : widest;
+        }
+    }
+    const uint32_t line_render = ui_font_measure(font, UI_SCREEN_SETTINGS_EXPLAIN_RENDER_DISTANCE, 1u).width;
+    const uint32_t line_detail = ui_font_measure(font, UI_SCREEN_SETTINGS_EXPLAIN_FULL_DETAIL, 1u).width;
+    printf("widest label %" PRIu32 " of 200, lines %" PRIu32 " and %" PRIu32 " of 312\n", widest, line_render,
+           line_detail);
+    CHECK(widest <= 196u);
+    /* A tooltip has 4 either side of its text, on a canvas 320 wide at scale 1. */
+    CHECK(line_render + 8u <= 320u);
+    CHECK(line_detail + 8u <= 320u);
+
+    /* The line goes 16 below the pointer, and as far left as it must to fit, over the gap of 8 under that slider's row, where
+     * nothing else draws: so the gap's left part, clear of the pointer, changes over each distance slider, and not over field
+     * of view, which has no line. Row r is 48 + 48 r down, 40 tall. */
+    const uint64_t pixels = (uint64_t)SHEET_WIDTH * SHEET_HEIGHT * 4u;
+    uint8_t *const away = test_alloc(t, pixels);
+    (void)rig_move(rig, 4, 4);
+    memcpy(away, rig->ui->canvas.borrowed_pixels, pixels);
+    for (uint32_t row = 0u; row < 3u; row++) {
+        CHECK_EQ_U64(rig_move(rig, AT_MIDDLE_X, AT_ROW_0_Y + (int32_t)row * AT_ROW_STEP), UI_SCREEN_SETTINGS_NONE);
+        bool same = true;
+        for (uint32_t y = 48u + 48u * row + 40u; y < 48u + 48u * row + 48u; y++) {
+            const uint64_t at = ((uint64_t)y * SHEET_WIDTH + 140u) * 4u;
+            same = same && memcmp(rig->ui->canvas.borrowed_pixels + at, away + at, (300u - 140u) * 4u) == 0;
+        }
+        CHECK_EQ_U64(same ? 1u : 0u, row == 2u ? 1u : 0u);
+    }
     rig_end(rig);
 }
 
