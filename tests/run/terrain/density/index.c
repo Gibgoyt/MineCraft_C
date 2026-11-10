@@ -54,7 +54,8 @@ static const uint64_t DENSITY_SEEDS[DENSITY_WIDE_SEEDS] = {
 /* Plan 003 phase 2 added four blocks. The land is the same, as its issue 2 shows: the numbers of the blocks after them in the alphabet moved. */
 /* Plan 003 phase 3 added seven blocks. The land is the same, as its issue 3 shows: the numbers of the blocks after them in the alphabet moved. */
 /* Plan 004 phase 8 added snow_layer. The land is the same, as its issue 19 shows: the numbers of the blocks after it in the alphabet moved. */
-/* Plan 005 phase 12 made the four torches on walls one wall_torch. The land is the same, as the digest over the numbers before it showed: the numbers of the blocks after them in the alphabet moved. */
+/* Plan 005 phase 12 made the four torches on walls one wall_torch. The land is the same, as the digest over the numbers before it
+ * showed: the numbers of the blocks after them in the alphabet moved. */
 static const uint64_t DENSITY_DIGEST_PIN = 0xA0ADF8098E10E291ull;
 
 static uint64_t density_digest(uint64_t hash, const void *memory, uint64_t bytes) {

@@ -40,7 +40,9 @@ static const uint64_t ORE_WORLD = 0x1234567890ABCDEFull;
 /* Plan 003 phase 2 added four blocks. The land is the same, as its issue 2 shows: the numbers of the blocks after them in the alphabet moved. */
 /* Plan 003 phase 3 added seven blocks. The land is the same, as its issue 3 shows: the numbers of the blocks after them in the alphabet moved. */
 /* Plan 004 phase 8 added snow_layer. The land is the same, as its issue 19 shows: the numbers of the blocks after it in the alphabet moved. */
-static const uint64_t ORE_DIGEST_PIN = 0xF48FD4AD68F5DFA6ull;
+/* Plan 005 phase 12 made the four torches on walls one wall_torch. The land is the same, as the digest over the numbers before it
+ * showed: the numbers of the blocks after them in the alphabet moved. */
+static const uint64_t ORE_DIGEST_PIN = 0x42C989080FAB0EA9ull;
 
 static uint64_t ore_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

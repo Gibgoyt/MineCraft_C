@@ -48,7 +48,9 @@ static const int32_t HYDRO_MAP_MIN = -3;
 /* Plan 003 phase 2 added four blocks. The land is the same, as its issue 2 shows: the numbers of the blocks after them in the alphabet moved. */
 /* Plan 003 phase 3 added seven blocks. The land is the same, as its issue 3 shows: the numbers of the blocks after them in the alphabet moved. */
 /* Plan 004 phase 8 added snow_layer. The land is the same, as its issue 19 shows: the numbers of the blocks after it in the alphabet moved. */
-static const uint64_t HYDRO_DIGEST_PIN = 0x98FFE66BE73EC420ull;
+/* Plan 005 phase 12 made the four torches on walls one wall_torch. The land is the same, as the digest over the numbers before it
+ * showed: the numbers of the blocks after them in the alphabet moved. */
+static const uint64_t HYDRO_DIGEST_PIN = 0xDDE694659EE1A8CBull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 static const uint64_t HYDRO_COLUMNS_PIN = 0xECA6C70A31BC9567ull;
@@ -58,7 +60,9 @@ static const uint64_t HYDRO_COLUMNS_PIN = 0xECA6C70A31BC9567ull;
 /* Plan 003 phase 2 added four blocks. The land is the same, as its issue 2 shows: the numbers of the blocks after them in the alphabet moved. */
 /* Plan 003 phase 3 added seven blocks. The land is the same, as its issue 3 shows: the numbers of the blocks after them in the alphabet moved. */
 /* Plan 004 phase 8 added snow_layer. The land is the same, as its issue 19 shows: the numbers of the blocks after it in the alphabet moved. */
-static const uint64_t HYDRO_FLOOD_PIN = 0x0579E0C4C7F4EFCAull;
+/* Plan 005 phase 12 made the four torches on walls one wall_torch. The land is the same, as the digest over the numbers before it
+ * showed: the numbers of the blocks after them in the alphabet moved. */
+static const uint64_t HYDRO_FLOOD_PIN = 0x5B83274074AD61E1ull;
 
 static uint64_t hydro_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

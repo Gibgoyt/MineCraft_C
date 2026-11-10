@@ -49,8 +49,9 @@ static const uint64_t FEA_WORLD = 0x1234567890ABCDEFull;
 static const uint64_t FEA_DIGEST_OF_GENERATOR[] = {
     0u, /* no generator: a save of a format from before they had one */
     /* 1: plan 003 phase 8, the land its 7 stages ended on. The version stays: plan 003 phases 2 and 3 moved block numbers and not the land (their issues 2 and 3),
-     * and so did plan 004 phase 8's snow_layer (its issue 19). */
-    0xEEC1F6DAF60AD0E7ull,
+     * and so did plan 004 phase 8's snow_layer (its issue 19), and plan 005 phase 12's wall_torch (the digest over the numbers
+     * before it gave this row's old value, 0xEEC1F6DAF60AD0E7). */
+    0xE91D8A079B8A9907ull,
 };
 static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0]) == TERRAIN_GENERATOR_VERSION + 1u);
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
@@ -59,7 +60,9 @@ static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0
 /* Plan 003 phase 2 added four blocks. The land is the same, as its issue 2 shows: the numbers of the blocks after them in the alphabet moved. */
 /* Plan 003 phase 3 added seven blocks. The land is the same, as its issue 3 shows: the numbers of the blocks after them in the alphabet moved. */
 /* Plan 004 phase 8 added snow_layer. The land is the same, as its issue 19 shows: the numbers of the blocks after it in the alphabet moved. */
-static const uint64_t FEA_FOREST_PIN = 0x73D8B07F1C6CDBEBull;
+/* Plan 005 phase 12 made the four torches on walls one wall_torch. The land is the same, as the digest over the numbers before it
+ * showed: the numbers of the blocks after them in the alphabet moved. */
+static const uint64_t FEA_FOREST_PIN = 0xC02077A1494E53C4ull;
 
 static uint64_t fea_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
