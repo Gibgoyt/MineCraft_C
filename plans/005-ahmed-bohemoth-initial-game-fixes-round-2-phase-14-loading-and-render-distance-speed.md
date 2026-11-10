@@ -149,8 +149,23 @@ So: **opening is terrain**, 82% of the workers' time, and it meets the targets a
 
 **Stage 2: fix the starvation.** Each fix gets a before and after number in this file.
 
-- [ ] **Priorities in the job system:** a block edit's re-encode and light first, then the columns nearest the player, then climate tiles, then the far field. Add a priority to `job_submit` in `run/{src,include}/job/`, with workers always taking higher first
+- [x] **Priorities in the job system:** a block edit's re-encode and light first, then the columns nearest the player, then climate tiles, then the far field. Add a priority to `job_submit` in `run/{src,include}/job/`, with workers always taking higher first
 - [ ] **A cap on far-field workers,** so it can never hold more than a few at once, and never while near chunks wait. Drop queued far-field work that's gone stale when the player moves or the distance changes
+
+  Agent 14a, `5542ec35`, measured live with `run_render_distance_live` (`MC_DISTANCE_LIVE_DEADLINES=0 MC_DISTANCE_LIVE_WAIT_S=300`, release, 16 workers, Ahmed's seed), against the baseline above:
+
+  | Step | Baseline | Priorities and cap (`5542ec35`) |
+  |---|---|---|
+  | Open at 32, all rings | 6.03 s | 6.82 s (rings to 4 at 0.17 s) |
+  | Log mined at 32, idle | 0.02 s | 0.02 s |
+  | 32 → 64, all drawn | 90.3 s, 5% seen by 1 s | 94.3 s, 5% seen by 1 s |
+  | 16 → 64, near rings 17 to 32 | **76.1 s** | **11.85 s** |
+  | 16 → 64, all drawn | 98.6 s | 96.4 s, 3% seen by 1 s |
+  | Full detail 32 → 16 at 64, all drawn | 160.4 s | 160.3 s |
+  | Full detail 16 → 32 at 64, near rings | 76.4 s | 11.95 s |
+  | **The log mined during that change** | **5.8 s** | **0.05 s**, 1.05 s into the change: **met** |
+
+  The mined log meets its 1 s. The near rings come back 6 times sooner but not yet as soon as the free workers allow (about 7 s, from the 5.2 s rings 17 to 32 take when a world opens on all 16), so the cap stays unticked. The far field's own time, and so "seen by 1 s" and "all drawn", are unchanged: that is the next todo's, a cheaper far column.
 - [x] **Make a far-field column cheap.** Profile one, then build it from the 2D height estimate (`terrain_height_estimate`, plan 004 phase 3) and the top block, not the full 3D terrain, if that's what it does. Target: under 50 ms of worker time a column. *Done another way, as the profile showed it was not the 3D terrain: about 0.4 s to 14 ms and 24 ms at voxels of 2 and 4, and 8 ms at voxels of 8, which no longer grow trees: see Issues found.*
 - [x] **Never show nothing.** At 1 s, render distance 64 drew only sky. Near columns come first, and a missing one shows the far field, until it's built
 - [ ] Repeat the stage 1 table with each fix, and show the 64 run matching the 32 run near the player
@@ -194,6 +209,7 @@ Appended as they land:
 - The commit that records stage 1's baseline here, with the live test's deadlines held only in an optimized build. (agent 14c)
 - `103aea7e` Make far-field columns cheap and keep them across settings changes (plan 005 phase 14, far field). (agent 14b)
 - `433d44f2` Show the horizon first after a render distance change, and stop the far field rebuilding after every autosave (plan 005 phase 14, far field). (agent 14b)
+- `5542ec35` Give jobs priorities, cap the far field while near work runs, and drop far-field work queued before a move. (agent 14a)
 
 ## Issues found
 
@@ -266,3 +282,5 @@ Part of that is the starvation going: near chunks no longer wait behind far colu
 **The live test's deadlines hold only in an optimized build by default.** In the debug build (`-O0`) the opening alone took over 20 s and every change's first far column over 2 s, so there it reports and does not fail; `MC_DISTANCE_LIVE_DEADLINES=1` holds it anyway. The phase's Verification runs it on the release preset, where it fails today as above.
 
 **`/home` filled up during this work (2026-11-10, about 18:30)**, from every agent's build trees together (2 to 3.4 GiB each). A `clang-format -i` truncated a source file then; it was put back from the commit. Agent 14c removed its own `build/debug` and `build/profile` to make room.
+
+**Priorities and the far-field cap, live (agent 14a, 2026-11-10).** On `5542ec35` a log mined during the busiest change goes in 0.05 s, against 5.8 s, which meets its target. After 16 → 64 the near rings 17 to 32 come back in 11.85 s, against 76.1 s, but about 5 s slower than 12 free workers should manage. Likely causes, not yet measured: far-field jobs already running cannot be stopped and take up to 2.3 s each; spawned jobs and stealing take no account of priority. The far field still takes 94 to 160 s to finish, so the live test still misses rd_64, rd_64_again and fd_16, and fd_32_busy's "all drawn".
