@@ -53,6 +53,7 @@ Ahmed: play, switch to another window for 10 minutes or more, come back, and che
 
 Appended as they land:
 
+- `787e46f9` Record phase 7's headless day and night: 70 mobs cost about 0.15 ms a tick and nothing grows, while render distance 64 hitches 360 to 680 ms every 30 s after each autosave, which is phase 14's far field.
 - `556a496c` Add plan 005 phase 7's watch: mobs, drops, uploads and far jobs on the F3 overlay, each part of a sim tick timed, a rate-limited log line naming the slowest part of a slow frame or tick, and a line every 1200 ticks.
 - `96906f1d` Pause the game when its window loses the focus, with pause_on_focus_loss in settings.yaml, resume when the focus comes back, read the X focus mode from byte 8, and test that a long time away leaves mobs and time unchanged.
 
