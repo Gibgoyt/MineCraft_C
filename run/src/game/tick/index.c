@@ -115,26 +115,13 @@ static void game_fell_sound(game_t *game, uint32_t felled) {
     }
 }
 
-/* What is left of a tree the hands cut comes down, a few logs a tick. Each is a use of the axe in hand, so it goes no further than that axe does,
- * and with no axe in hand any more the rest stay. A run with no inventory has an axe's uses without end. */
+/* What is left of a tree the hands cut comes down, a few logs a tick, whatever is in hand. Only the log the hands cut wears what they hold,
+ * as any block does: what falls with it costs nothing (Ahmed, plan 005 phase 1). */
 static void game_fell_tick(game_t *game) {
     player_t *const player = game->borrowed_player;
-    item_t *const item = game->borrowed_item;
     world_t *const world = game->borrowed_world;
-    if (item == nullptr) {
-        const bool axe = player->interaction.held_tool == BLOCK_TOOL_AXE;
-        game_fell_sound(game, player_felling_tick(game->borrowed_felling, &player->interaction, &world->edit,
-                                                  &world->tick, axe ? UINT32_MAX : 0u));
-        return;
-    }
-    const item_stack_t *const held = inventory_selected(&item->inventory);
-    const uint32_t uses = item_defs[held->item].tool == BLOCK_TOOL_AXE ? equipment_uses_left(held) : 0u;
-    const uint32_t felled =
-        player_felling_tick(game->borrowed_felling, &player->interaction, &world->edit, &world->tick, uses);
-    game_fell_sound(game, felled);
-    for (uint32_t i = 0u; i < felled; i++) {
-        (void)equipment_tool_block_broken(&item->equipment, &item->inventory, game->borrowed_felling->last_block);
-    }
+    game_fell_sound(game,
+                    player_felling_tick(game->borrowed_felling, &player->interaction, &world->edit, &world->tick));
 }
 
 /* The right button on a block with a screen brings it up, as it goes down. A held button that comes to rest on one does not, or a screen

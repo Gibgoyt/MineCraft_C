@@ -54,16 +54,16 @@ void player_felling_start(player_felling_t *felling);
 
 /* A log has just been cut at this cell, and is gone. Walks to every touching log of the same wood at or above it, including diagonally, and
  * queues them if any of them touches leaves. So a log wall stays, and a column not loaded stops the walk. A tree already coming down goes on,
- * with these behind it. Whether the block is a log and the tool an axe is the caller's. Returns how many were queued, the cut among them. */
+ * with these behind it. Whether the block is a log is the caller's. Returns how many were queued, the cut among them. */
 uint32_t player_felling_cut(player_felling_t *felling, const world_map_t *map, uint16_t block, int32_t x, int32_t y,
                             int32_t z);
 
-/* One tick, on the thread holding the map: up to PLAYER_FELLING_PER_TICK logs break and drop, nearest the cut first, and never more than
- * uses_left, which is what the axe in hand has in it. If that runs out, or it is 0, the rest stay. When the queue ends, the leaves round what
- * went are put down for world_tick to look at. Holds back, with nothing lost, until the hands' ring has room. Returns how many went, each of
- * which is a use for the caller to wear. Never waits and never touches the heap. */
+/* One tick, on the thread holding the map: up to PLAYER_FELLING_PER_TICK logs break and drop, nearest the cut first, whatever is in hand.
+ * When the queue ends, the leaves round what went are put down for world_tick to look at. Holds back, with nothing lost, until the hands'
+ * ring has room. Returns how many went, for the sound; they wear nothing, as only the log the hands cut is a use. Never waits and never
+ * touches the heap. */
 uint32_t player_felling_tick(player_felling_t *felling, player_interaction_t *hands, world_edit_t *edit,
-                             world_tick_t *tick, uint32_t uses_left);
+                             world_tick_t *tick);
 
 /* Logs waiting. */
 static inline uint32_t player_felling_pending(const player_felling_t *felling) {

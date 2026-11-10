@@ -1543,8 +1543,11 @@ static bool ie_chop(ie_script_game_t *rig) {
     return cut;
 }
 
-TEST(in_a_real_game_an_axe_fells_a_tree_wears_a_use_a_log_and_stops_when_it_breaks) {
-    enum : int32_t { TALL = 14, CUT = 2 }; /* the eye is on the second log up, so one stays under it */
+/* Ahmed: "my axe gets worn as if I have cut every block that fell down!!". Only the log the hands cut is a use: what falls with it is not, so
+ * a fresh wooden axe, with 59 uses, brings down a tree of more than 59 logs and is worn by one. */
+TEST(in_a_real_game_an_axe_fells_a_tree_taller_than_its_uses_and_wears_only_the_cut) {
+    enum : int32_t { TALL = 70, CUT = 2 }; /* the eye is on the second log up, so one stays under it */
+    static_assert(TALL - CUT > 59);
     ie_script_game_t *const rig = test_alloc(t, sizeof(ie_script_game_t));
     REQUIRE(ie_script_begin(t, rig));
     item_t *const item = rig->item;
@@ -1559,12 +1562,14 @@ TEST(in_a_real_game_an_axe_fells_a_tree_wears_a_use_a_log_and_stops_when_it_brea
     REQUIRE(rig->player->target.hit.block == BLOCK_ID_OAK_LOG);
     CHECK_EQ_I64(rig->player->target.hit.cell[2], rig->pad_cell[2] + CUT);
 
+    const uint64_t felled = rig->game->borrowed_felling->felled_count;
     REQUIRE(ie_chop(rig));
-    REQUIRE(ie_script_ticks(rig, 4u));
-    /* All of it but the one under the eye, a use for every log, and the axe still in hand. */
+    REQUIRE(ie_script_ticks(rig, 40u));
+    /* All of it but the one under the eye, one use for the cut, and the axe still in hand. */
     CHECK_EQ_U64(ie_logs_in(rig, row, TALL), 1u);
-    CHECK_EQ_U64(rig->game->borrowed_felling->felled_count, (uint64_t)(TALL - CUT));
-    CHECK_EQ_U64(inventory_slot_read(inventory, 0u)->wear, (uint64_t)(TALL - CUT + 1));
+    CHECK_EQ_U64(rig->game->borrowed_felling->felled_count - felled, (uint64_t)(TALL - CUT));
+    CHECK_EQ_U64(inventory_slot_read(inventory, 0u)->item, ITEM_ID_WOOD_AXE);
+    CHECK_EQ_U64(inventory_slot_read(inventory, 0u)->wear, 1u);
     CHECK_EQ_U64(rig->player->interaction.drops_lost_count, 0u);
     /* What fell is all there, on the ground or taken in by the body as it lands. The leaves go too, in their time. */
     REQUIRE(ie_script_ticks(rig, 120u));
@@ -1580,30 +1585,39 @@ TEST(in_a_real_game_an_axe_fells_a_tree_wears_a_use_a_log_and_stops_when_it_brea
     uint16_t leaf = BLOCK_ID_OAK_LEAVES;
     (void)world_map_block_get(&rig->world->map, rig->pad_cell[0] + 2, row, rig->pad_cell[2] + TALL, &leaf);
     CHECK_EQ_U64(leaf, BLOCK_ID_AIR);
-
-    const uint64_t felled = rig->game->borrowed_felling->felled_count;
-    /* Three uses left: the cut and two more, and it is gone with the rest of the tree still up. */
-    const uint32_t broken_before = (uint32_t)item->equipment.tools_broken_count;
-    CHECK_EQ_U64(inventory_selected_take(inventory, 1u), 1u);
-    ie_put(inventory, 0u, ITEM_ID_WOOD_AXE, 56u);
-    ie_tree(t, rig, row + 2, TALL);
-    REQUIRE(world_edit_block_set(&rig->world->edit, rig->pad_cell[0] + 1, row, rig->pad_cell[2] + 1, BLOCK_ID_AIR) ==
-            WORLD_EDIT_STATUS_CHANGED);
-    /* Across to the second tree, over the second log of it. */
-    rig->game->camera.yaw = 1.1071487f32;
-    REQUIRE(ie_script_ticks(rig, 3u));
-    REQUIRE(rig->player->target.hit.block == BLOCK_ID_OAK_LOG);
-    REQUIRE(ie_chop(rig));
-    REQUIRE(ie_script_ticks(rig, 10u));
-    CHECK_EQ_U64(rig->game->borrowed_felling->felled_count, felled + 2u);
-    CHECK_EQ_U64(ie_logs_in(rig, row + 2, TALL), (uint32_t)TALL - 3u);
-    CHECK(item_stack_is_empty(inventory_slot_read(inventory, 0u)));
-    CHECK_EQ_U64(item->equipment.tools_broken_count, broken_before + 1u);
     CHECK(ie_books_balance(inventory));
     ie_script_end(t, rig);
 }
 
-TEST(in_a_real_game_a_sneaking_body_and_bare_hands_cut_one_log) {
+/* An axe on its last use breaks on the cut, and the tree comes down all the same. */
+TEST(in_a_real_game_an_axe_that_breaks_on_the_cut_still_fells_the_tree) {
+    enum : int32_t { TALL = 14, CUT = 2 };
+    ie_script_game_t *const rig = test_alloc(t, sizeof(ie_script_game_t));
+    REQUIRE(ie_script_begin(t, rig));
+    item_t *const item = rig->item;
+    inventory_t *const inventory = &item->inventory;
+    rig->game->camera.yaw = 0.0f32;
+    rig->game->camera.pitch = 0.0f32;
+    const int32_t row = rig->pad_cell[1];
+    ie_tree(t, rig, row, TALL);
+    ie_put(inventory, 0u, ITEM_ID_WOOD_AXE, 58u);
+    const uint32_t broken_before = (uint32_t)item->equipment.tools_broken_count;
+    const uint64_t felled = rig->game->borrowed_felling->felled_count;
+    REQUIRE(ie_script_ticks(rig, 3u));
+    REQUIRE(rig->player->target.hit.block == BLOCK_ID_OAK_LOG);
+    REQUIRE(ie_chop(rig));
+    REQUIRE(ie_script_ticks(rig, 10u));
+    /* Gone, and the logs it brought down may already be where it was. */
+    CHECK_EQ_U64(inventory_count(inventory, ITEM_ID_WOOD_AXE), 0u);
+    CHECK_EQ_U64(item->equipment.tools_broken_count, broken_before + 1u);
+    CHECK_EQ_U64(rig->game->borrowed_felling->felled_count - felled, (uint64_t)(TALL - CUT));
+    CHECK_EQ_U64(ie_logs_in(rig, row, TALL), 1u);
+    CHECK(ie_books_balance(inventory));
+    ie_script_end(t, rig);
+}
+
+/* Ahmed: "tree feller must be on regardless if I mine a tree with an axe!!". Sneaking with an axe, and nothing in hand, each fell the tree. */
+TEST(in_a_real_game_a_sneaking_body_and_bare_hands_fell_the_whole_tree) {
     enum : int32_t { TALL = 8 };
     ie_script_game_t *const rig = test_alloc(t, sizeof(ie_script_game_t));
     REQUIRE(ie_script_begin(t, rig));
@@ -1621,15 +1635,19 @@ TEST(in_a_real_game_a_sneaking_body_and_bare_hands_cut_one_log) {
     REQUIRE(rig->player->target.hit.block == BLOCK_ID_OAK_LOG);
     REQUIRE(ie_chop(rig));
     REQUIRE(ie_script_ticks(rig, 20u));
-    CHECK_EQ_U64(ie_logs_in(rig, row, TALL), (uint32_t)TALL - 1u);
-    CHECK_EQ_U64(rig->game->borrowed_felling->felled_count, felled);
+    /* The one under the eye stays, as without sneaking. */
+    CHECK_EQ_U64(ie_logs_in(rig, row, TALL), 1u);
+    const uint64_t first = rig->game->borrowed_felling->felled_count - felled;
+    CHECK_EQ_U64(first, (uint64_t)TALL - 2u);
     CHECK_EQ_U64(inventory_slot_read(inventory, 0u)->wear, 1u);
     ie_script_key(rig, KEY_LEFTSHIFT, false);
     /* Nothing in hand, on a tree of its own, across from the first as in the test above. */
     CHECK_EQ_U64(inventory_selected_take(inventory, 1u), 1u);
     ie_tree(t, rig, row + 2, TALL);
-    REQUIRE(world_edit_block_set(&rig->world->edit, rig->pad_cell[0] + 1, row, rig->pad_cell[2] + 1, BLOCK_ID_AIR) ==
-            WORLD_EDIT_STATUS_CHANGED);
+    for (int32_t z = rig->pad_cell[2] + 1; z < rig->pad_cell[2] + 1 + TALL; z++) {
+        REQUIRE(world_edit_block_set(&rig->world->edit, rig->pad_cell[0] + 1, row, z, BLOCK_ID_AIR) !=
+                WORLD_EDIT_STATUS_NO_MEMORY);
+    }
     rig->game->camera.yaw = 1.1071487f32;
     REQUIRE(ie_script_ticks(rig, 6u));
     REQUIRE(rig->player->movement.crouched == 0u);
@@ -1637,8 +1655,8 @@ TEST(in_a_real_game_a_sneaking_body_and_bare_hands_cut_one_log) {
     REQUIRE(rig->player->target.hit.cell[1] == row + 2);
     REQUIRE(ie_chop(rig));
     REQUIRE(ie_script_ticks(rig, 20u));
-    CHECK_EQ_U64(ie_logs_in(rig, row + 2, TALL), (uint32_t)TALL - 1u);
-    CHECK_EQ_U64(rig->game->borrowed_felling->felled_count, felled);
+    CHECK_EQ_U64(ie_logs_in(rig, row + 2, TALL), 1u);
+    CHECK_EQ_U64(rig->game->borrowed_felling->felled_count - felled - first, (uint64_t)TALL - 2u);
     ie_script_end(t, rig);
 }
 

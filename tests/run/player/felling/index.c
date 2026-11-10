@@ -40,7 +40,6 @@ enum : uint32_t {
     /* What a cut, a tree's worth of logs at 8 a tick, and a box of leaves at 30 ticks come to, with plenty over. */
     PF_TICKS_MAX = 400u,
     PF_WALL_SIZE = 5u,
-    PF_UNLIMITED = UINT32_MAX,
     PF_SEEDS_CUT = 2u,
 };
 
@@ -51,11 +50,10 @@ typedef struct pf_rig_t {
     player_interaction_t hands; /* 232 */
     player_felling_t felling;   /* 1384 */
     uint64_t logs_dropped;      /* 6568 */
-    uint64_t felled;            /* 6576: what player_felling_tick said went, so many uses of the axe */
-    uint32_t uses;              /* 6584: given to player_felling_tick */
-    uint8_t drain;              /* 6588: whether anyone is taking the drops */
-    uint8_t torches_dropped;    /* 6589 */
-    uint8_t _pad0[2];           /* 6590 */
+    uint64_t felled;            /* 6576: what player_felling_tick said went */
+    uint8_t drain;              /* 6584: whether anyone is taking the drops */
+    uint8_t torches_dropped;    /* 6585 */
+    uint8_t _pad0[6];           /* 6586 */
 } pf_rig_t;
 static_assert(sizeof(pf_rig_t) == 6592);
 
@@ -70,7 +68,6 @@ static bool pf_begin(test_context_t *t, pf_rig_t *rig) {
     player_interaction_start(&rig->hands, 1234u);
     player_interaction_hold_tool(&rig->hands, BLOCK_TOOL_AXE, BLOCK_TIER_WOOD);
     player_felling_start(&rig->felling);
-    rig->uses = PF_UNLIMITED;
     rig->drain = 1u;
     return true;
 }
@@ -125,8 +122,7 @@ static void pf_tick(pf_rig_t *rig, bool attack) {
                                               .place = 0u,
                                               ._pad0 = {0}};
     player_interaction_tick(&rig->hands, &rig->world.world->edit, &input);
-    rig->felled +=
-        player_felling_tick(&rig->felling, &rig->hands, &rig->world.world->edit, pf_world_tick(rig), rig->uses);
+    rig->felled += player_felling_tick(&rig->felling, &rig->hands, &rig->world.world->edit, pf_world_tick(rig));
     if (rig->drain != 0u) {
         pf_drain(rig);
     }
@@ -386,9 +382,10 @@ TEST(a_cut_part_way_up_leaves_the_stump_and_takes_the_rest) {
     pf_end(rig);
 }
 
-TEST(a_log_wall_with_no_leaves_is_left_alone) {
+static void pf_wall_stays(test_context_t *t, uint8_t tool, uint8_t tier) {
     pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
     REQUIRE(pf_begin(t, rig));
+    player_interaction_hold_tool(&rig->hands, tool, tier);
     const int32_t size = (int32_t)PF_WALL_SIZE;
     test_world_fill(t, &rig->world, PF_X, PF_Y, PF_Z, PF_X + size - 1, PF_Y, PF_Z + size - 1, BLOCK_ID_OAK_LOG);
     REQUIRE(pf_chop(rig, PF_X + 2, PF_Y, PF_Z));
@@ -404,6 +401,14 @@ TEST(a_log_wall_with_no_leaves_is_left_alone) {
     CHECK_EQ_U64(standing, PF_WALL_SIZE * PF_WALL_SIZE - 1u);
     CHECK_EQ_U64(rig->felled, 0u);
     pf_end(rig);
+}
+
+TEST(a_log_wall_with_no_leaves_is_left_alone) {
+    pf_wall_stays(t, BLOCK_TOOL_AXE, BLOCK_TIER_WOOD);
+}
+
+TEST(a_log_wall_with_no_leaves_is_left_alone_by_bare_hands_too) {
+    pf_wall_stays(t, BLOCK_TOOL_NONE, BLOCK_TIER_NONE);
 }
 
 TEST(other_wood_touching_it_stays) {
@@ -439,43 +444,40 @@ TEST(branches_that_touch_only_at_a_corner_go_with_the_tree) {
     pf_end(rig);
 }
 
-static void pf_one_log_only(test_context_t *t, pf_rig_t *rig) {
+/* Ahmed: "tree feller is not a mod in my minecraft it is a built in setting please make it always on!!". Whatever is in hand, and sneaking
+ * or not, a log cut brings the whole tree down. */
+static void pf_whole_tree(test_context_t *t, uint8_t tool, uint8_t tier, bool crouched) {
+    pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
+    REQUIRE(pf_begin(t, rig));
+    player_interaction_hold_tool(&rig->hands, tool, tier);
+    rig->movement.crouched = crouched ? 1u : 0u;
     pf_trunk(t, rig, PF_X, PF_Y, PF_Z, PF_Z + 6, BLOCK_ID_OAK_LOG);
     pf_crown(t, rig, PF_X, PF_Y, PF_Z + 6, BLOCK_ID_OAK_LEAVES);
-    CHECK(pf_chop(rig, PF_X, PF_Y, PF_Z));
-    CHECK_EQ_U64(player_felling_pending(&rig->felling), 0u);
-    CHECK(pf_settle(rig));
-    CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y, PF_Z), BLOCK_ID_AIR);
-    for (int32_t z = PF_Z + 1; z <= PF_Z + 6; z++) {
-        CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y, z), BLOCK_ID_OAK_LOG);
+    REQUIRE(pf_chop(rig, PF_X, PF_Y, PF_Z));
+    REQUIRE(pf_settle(rig));
+    for (int32_t z = PF_Z; z <= PF_Z + 6; z++) {
+        CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y, z), BLOCK_ID_AIR);
     }
-    CHECK_EQ_U64(pf_block(rig, PF_X + 1, PF_Y, PF_Z + 6), BLOCK_ID_OAK_LEAVES);
-    CHECK_EQ_U64(rig->logs_dropped, 1u);
-    CHECK_EQ_U64(rig->felled, 0u);
-}
-
-TEST(sneaking_chops_one_log) {
-    pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
-    REQUIRE(pf_begin(t, rig));
-    rig->movement.crouched = 1u;
-    pf_one_log_only(t, rig);
+    CHECK_EQ_U64(pf_block(rig, PF_X + 1, PF_Y, PF_Z + 6), BLOCK_ID_AIR);
+    CHECK_EQ_U64(rig->logs_dropped, 7u);
+    CHECK_EQ_U64(rig->felled, 6u);
     pf_end(rig);
 }
 
-TEST(bare_hands_chop_one_log) {
-    pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
-    REQUIRE(pf_begin(t, rig));
-    player_interaction_hold_tool(&rig->hands, BLOCK_TOOL_NONE, BLOCK_TIER_NONE);
-    pf_one_log_only(t, rig);
-    pf_end(rig);
+TEST(an_axe_fells_the_whole_tree) {
+    pf_whole_tree(t, BLOCK_TOOL_AXE, BLOCK_TIER_WOOD, false);
 }
 
-TEST(any_other_tool_chops_one_log) {
-    pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
-    REQUIRE(pf_begin(t, rig));
-    player_interaction_hold_tool(&rig->hands, BLOCK_TOOL_PICKAXE, BLOCK_TIER_DIAMOND);
-    pf_one_log_only(t, rig);
-    pf_end(rig);
+TEST(bare_hands_fell_the_whole_tree) {
+    pf_whole_tree(t, BLOCK_TOOL_NONE, BLOCK_TIER_NONE, false);
+}
+
+TEST(a_pickaxe_fells_the_whole_tree) {
+    pf_whole_tree(t, BLOCK_TOOL_PICKAXE, BLOCK_TIER_DIAMOND, false);
+}
+
+TEST(sneaking_fells_the_whole_tree_too) {
+    pf_whole_tree(t, BLOCK_TOOL_AXE, BLOCK_TIER_WOOD, true);
 }
 
 TEST(what_is_no_log_starts_nothing) {
@@ -492,39 +494,21 @@ TEST(what_is_no_log_starts_nothing) {
 
 /* ---- The axe ------------------------------------------------------------------------------------------------------------ */
 
-TEST(an_axe_that_runs_out_stops_it_there_and_the_rest_stay_up) {
+/* What is in hand once the tree is going makes no difference: the axe's wear is the cut's alone, run/src/game/'s to charge. */
+TEST(putting_the_axe_away_while_it_comes_down_leaves_nothing_up) {
     pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
     REQUIRE(pf_begin(t, rig));
     pf_trunk(t, rig, PF_X, PF_Y, PF_Z, PF_Z + 20, BLOCK_ID_OAK_LOG);
     pf_crown(t, rig, PF_X, PF_Y, PF_Z + 20, BLOCK_ID_OAK_LEAVES);
-    /* Three uses left past the cut, a batch of which is less than a tick's worth. */
-    rig->uses = 3u;
     REQUIRE(pf_chop(rig, PF_X, PF_Y, PF_Z));
-    CHECK_EQ_U64(rig->felled, 3u);
-    CHECK_EQ_U64(player_felling_pending(&rig->felling), 0u);
-    rig->uses = PF_UNLIMITED;
+    CHECK(player_felling_pending(&rig->felling) > 0u);
+    player_interaction_hold_tool(&rig->hands, BLOCK_TOOL_NONE, BLOCK_TIER_NONE);
     REQUIRE(pf_settle(rig));
-    CHECK_EQ_U64(rig->felled, 3u);
-    CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y, PF_Z + 3), BLOCK_ID_AIR);
-    for (int32_t z = PF_Z + 4; z <= PF_Z + 20; z++) {
-        CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y, z), BLOCK_ID_OAK_LOG);
+    CHECK_EQ_U64(rig->felled, 20u);
+    for (int32_t z = PF_Z; z <= PF_Z + 20; z++) {
+        CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y, z), BLOCK_ID_AIR);
     }
-    /* What still stands holds its leaves. */
-    CHECK_EQ_U64(pf_block(rig, PF_X + 1, PF_Y, PF_Z + 20), BLOCK_ID_OAK_LEAVES);
-    CHECK_EQ_U64(rig->logs_dropped, 4u);
-    pf_end(rig);
-}
-
-TEST(with_the_axe_gone_on_the_cut_itself_nothing_more_goes) {
-    pf_rig_t *const rig = test_alloc(t, sizeof(pf_rig_t));
-    REQUIRE(pf_begin(t, rig));
-    pf_trunk(t, rig, PF_X, PF_Y, PF_Z, PF_Z + 6, BLOCK_ID_OAK_LOG);
-    pf_crown(t, rig, PF_X, PF_Y, PF_Z + 6, BLOCK_ID_OAK_LEAVES);
-    rig->uses = 0u;
-    REQUIRE(pf_chop(rig, PF_X, PF_Y, PF_Z));
-    REQUIRE(pf_settle(rig));
-    CHECK_EQ_U64(rig->felled, 0u);
-    CHECK_EQ_U64(pf_block(rig, PF_X, PF_Y, PF_Z + 1), BLOCK_ID_OAK_LOG);
+    CHECK_EQ_U64(rig->logs_dropped, 21u);
     pf_end(rig);
 }
 

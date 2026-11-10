@@ -148,7 +148,8 @@ void game_report(game_t *game) {
                  hands->mined_count, hands->placed_count, block_defs[hands->last_mined].name,
                  (uint32_t)hands->hand_count, hands->hand_count != 0u ? block_defs[hands->hand_block].name : "nothing");
         if (game->borrowed_felling != nullptr) {
-            LOG_INFO("game: an axe felled %" PRIu64 " logs past what it cut", game->borrowed_felling->felled_count);
+            LOG_INFO("game: the tree feller felled %" PRIu64 " logs past what was cut",
+                     game->borrowed_felling->felled_count);
         }
     }
     if (game->borrowed_entity != nullptr && game->mob_spawn.borrowed_idle != nullptr) {

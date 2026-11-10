@@ -13,7 +13,7 @@
 - `player_look_send`: main says where the player looks, for what it aims at.
 - `player_hands_send`: main says what the two mouse buttons are doing.
 - `player_interact_tick`: one tick of the sim's for the hands, on what the last tick aimed at, before `player_tick`.
-- `player_interact_fell_tick`: `player_interact_tick`, with somewhere for a log an axe cuts to set the rest of its tree going, and for what can be heard: `run/src/game/` keeps both, runs `player_felling_tick`, and takes the sounds to `run/src/audio/`.
+- `player_interact_fell_tick`: `player_interact_tick`, with somewhere for a log the hands cut to set the rest of its tree going, and for what can be heard: `run/src/game/` keeps both, runs `player_felling_tick`, and takes the sounds to `run/src/audio/`.
 - `player_attack_tick`, `player_attack_landed`: one tick of the sim's for the hand, right before `player_interact_tick`: what a press on a body in reach does, for the caller to apply; and that it landed.
 - `player_pickup_reach`: the box an item has to overlap to be picked up, with the body where it now is.
 - `player_tick`, `player_tick_wind`: one tick of the sim's: the body moves, in a wind from the climate for the second (plan 004 phase 08; the first is it with none), then what it aims at is worked out from where it now stands.
@@ -27,7 +27,7 @@
 **May be called by:** `run/src/main/` for the pair, `run/src/game/` for the rest, and `run/src/save/state/` to read and write it.
 **Depends on:** `entity/store` for what its part aims at, `physics`, `world/map`, `render/frame` for the exchange, `machine`, and its part below.
 
-**Parts:** `movement`: walk, sprint, sneak, jump, swim, climb and fall. `camera`: mouse look, what is aimed at, and its outline. `interaction`: mining, drops and placing. `survival`: health, hunger, food, damage, death, respawn and the bed. `combat`: the attack: what the left button aims at among the world's bodies, and how strong a swing is. `felling`: an axe bringing down the rest of a tree.
+**Parts:** `movement`: walk, sprint, sneak, jump, swim, climb and fall. `camera`: mouse look, what is aimed at, and its outline. `interaction`: mining, drops and placing. `survival`: health, hunger, food, damage, death, respawn and the bed. `combat`: the attack: what the left button aims at among the world's bodies, and how strong a swing is. `felling`: a log cut bringing down the rest of its tree.
 
 ## The fixed tick and the threads
 

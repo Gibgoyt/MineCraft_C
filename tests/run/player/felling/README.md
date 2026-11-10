@@ -9,12 +9,12 @@
 **May be called by:** ctest.
 **Depends on:** `tests/harness/`, `tests/run/physics/fixtures/`, `run/src/player/`, `run/src/world/`, `run/src/terrain/feature/` for `terrain_feature_paint_tree`.
 
-Needs no card, no display and no input device. What the axe in a real inventory does is in `tests/run/item/equipment/`, with a real game on the card.
+Needs no card, no display and no input device. Bare hands, a pickaxe and an axe each fell a whole tree, sneaking or not, and a log wall with no leaves stays whatever is in hand. What an axe in a real inventory wears, only the cut and nothing for what falls, is in `tests/run/item/equipment/`, with a real game on the card.
 
 ## The proof by eye
 
-`fixtures/fell.script` is a person's first few minutes on seed 36, as in `tests/run/playthrough/`: mud, four logs by hand from one mangrove, planks, a table and sticks in the inventory, a bench at the table, a wooden axe on the bench, the bench mined out of the way, then one cut at the foot of another mangrove with the left button. It looks at the tree from the same place before and after, and it saves and opens the world again. `run_playthrough` in `tests/run/playthrough/` runs it and reads the report, since a change to where wooden tools are made left it clicking on nothing once. The pictures are for a person:
+`fixtures/fell.script` is a person's first minute on seed 36, as in `tests/run/playthrough/`: the mud underfoot, out of the hole to the mangrove, then one cut at its root with the left button and nothing in hand but the mud. It looks up at the tree from the same place before and after, and it saves and opens the world again. `run_playthrough` in `tests/run/playthrough/` runs it and reads the report: the cut and 9 more logs on the day it was written, with the hand holding only mud. The pictures are for a person:
 
     tools/test-or-build.sh timeout 400 build/debug/bin/minecraft_c --headless --menu --saves /tmp/fell/saves --settings /tmp/fell/settings.yaml --script tests/run/player/felling/fixtures/fell.script --screenshot-dir /tmp/fell/shots --width 640 --height 480 --render-distance 8
 
-Then read `before.png`, `during.png` and `later.png`, and the line `an axe felled N logs past what it cut` in what it prints.
+Then read `before.png`, `during.png` and `later.png`, and the line `the tree feller felled N logs past what was cut` in what it prints.

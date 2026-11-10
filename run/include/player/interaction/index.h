@@ -93,11 +93,11 @@ typedef struct player_felling_t player_felling_t;
 typedef struct player_interaction_input_t {
     const player_target_t *borrowed_target;     /* 0: what the player sees outlined */
     const player_movement_t *borrowed_movement; /* 8: the body, which nothing may be placed into */
-    player_felling_t *borrowed_felling; /* 16: what a log cut with an axe sets going, or nullptr for one block */
-    uint8_t attack;                     /* 24: the left button */
-    uint8_t place;                      /* 25: the right button */
-    uint8_t _pad0[6];                   /* 26 */
-    player_sounds_t *borrowed_sounds;   /* 32: what it does that can be heard goes here, or nullptr for silent hands */
+    player_felling_t *borrowed_felling;         /* 16: what a log cut sets going, or nullptr for one block */
+    uint8_t attack;                             /* 24: the left button */
+    uint8_t place;                              /* 25: the right button */
+    uint8_t _pad0[6];                           /* 26 */
+    player_sounds_t *borrowed_sounds; /* 32: what it does that can be heard goes here, or nullptr for silent hands */
 } player_interaction_input_t;
 static_assert(sizeof(player_interaction_input_t) == 40);
 

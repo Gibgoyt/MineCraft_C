@@ -371,9 +371,8 @@ static void interaction_mine(player_interaction_t *interaction, world_edit_t *ed
         player_interaction_drops_spawn(interaction, block, x, y, z);
     }
     player_interaction_stack_break(interaction, edit, x, y, z);
-    /* An axe brings the rest of a tree down, and to sneak is to take just the one. */
-    if (input->borrowed_felling != nullptr && tool == BLOCK_TOOL_AXE && input->borrowed_movement->crouched == 0u &&
-        (block_defs[block].flags & BLOCK_FLAG_LOG) != 0u) {
+    /* A log cut brings the rest of its tree down, with any tool or none, sneaking or not: it is part of the game. */
+    if (input->borrowed_felling != nullptr && (block_defs[block].flags & BLOCK_FLAG_LOG) != 0u) {
         (void)player_felling_cut(input->borrowed_felling, edit->borrowed_map, block, x, y, z);
     }
     /* What breaks at a touch can be swept through. */

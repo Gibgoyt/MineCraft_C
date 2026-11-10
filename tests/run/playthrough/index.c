@@ -94,11 +94,12 @@ TEST(a_first_day_mines_dirt_picks_it_up_crafts_changes_the_distance_and_comes_ba
 
     /* A mangrove's trunk, on seed 36: the one line a person would look for. */
     CHECK_CONTAINS(output, "the last mined was mangrove_log");
-    /* Mud, a log left over and the pickaxe, as the bench took what the planks and sticks were, once on the way out and once again from the save. */
-    CHECK_EQ_U64(pt_count(output, "the inventory holds 3 items in 3 stacks"), 2u);
+    /* Mud, the logs left over and the pickaxe, as the bench took what the planks and sticks were, once on the way out and once again from the save.
+     * The first log cut brings its whole mangrove down by hand (plan 005 phase 1), the cut and 9 more, so more logs are left than the four taken. */
+    CHECK_EQ_U64(pt_count(output, "the inventory holds 8 items in 3 stacks"), 2u);
     CHECK_EQ_U64(pt_count(output, "hotbar slot 4 is in hand, with 1 of wood_pickaxe"), 2u);
-    /* A table and a bench, the bench two blocks for one placing. */
-    CHECK_EQ_U64(pt_count(output, "the player mined 5 blocks and placed 2"), 2u);
+    /* The mud and the 10 logs of the tree; a table and a bench, the bench two blocks for one placing. */
+    CHECK_EQ_U64(pt_count(output, "the player mined 11 blocks and placed 2"), 2u);
     CHECK_CONTAINS(output, "render distance 2");
     CHECK_CONTAINS(output, "render distance 8");
 
@@ -137,12 +138,13 @@ TEST(mangrove_planks_make_stairs_on_a_bench_that_is_placed_broken_and_all_of_it_
 
     /* Four made and in slot 4, two put down and one back: three in hand, once on the way out and once again from the save. */
     CHECK_EQ_U64(pt_count(output, "hotbar slot 4 is in hand, with 3 of mangrove_stairs"), 2u);
-    /* Five for the planks, a sixth for the stairs and a seventh for the bench; the table, the bench and two stairs placed. */
-    CHECK_EQ_U64(pt_count(output, "the player mined 7 blocks and placed 4"), 2u);
+    /* The mud and the whole mangrove the first cut brings down by hand, 10 logs, then a twelfth for the stairs and a thirteenth for the bench;
+     * the table, the bench and two stairs placed. */
+    CHECK_EQ_U64(pt_count(output, "the player mined 13 blocks and placed 4"), 2u);
     /* Mining one half is one block in the books, and the half is the one aimed at. */
     CHECK_EQ_U64(pt_count(output, "the last mined was woodworking_bench_east"), 2u);
-    /* Mud, a plank, three stairs, two sticks, and the one bench that came down and was picked up. */
-    CHECK_EQ_U64(pt_count(output, "the inventory holds 8 items in 5 stacks"), 2u);
+    /* Mud, a plank, three stairs, two sticks, the one bench that came down and was picked up, and the logs the tree gave past the four used. */
+    CHECK_EQ_U64(pt_count(output, "the inventory holds 13 items in 6 stacks"), 2u);
 
     static const char *const shots[] = {"table_no_stairs.png",    "bench_made.png",     "bench_placed.png",
                                         "bench_open.png",         "stairs_ready.png",   "stairs_in_slot.png",
@@ -169,13 +171,14 @@ TEST(a_bench_gives_its_grid_back_stands_through_a_save_and_goes_by_its_west_half
     pt_run(t, "tests/run/playthrough/fixtures/bench.script", root, PT_DAY_MS, 3u, &process);
     const char *const output = process.output;
 
-    /* Saved with it standing. Mud, seven planks and two sticks: the two on the grid and the five on the pointer came back. */
-    CHECK_EQ_U64(pt_count(output, "the player mined 5 blocks and placed 2"), 1u);
-    CHECK_EQ_U64(pt_count(output, "the inventory holds 10 items in 3 stacks"), 1u);
+    /* Saved with it standing. Mud, seven planks, two sticks and the logs left of the mangrove the first cut felled by hand: the two on the grid and
+     * the five on the pointer came back. Mined: the mud and that tree's 10 logs. */
+    CHECK_EQ_U64(pt_count(output, "the player mined 11 blocks and placed 2"), 1u);
+    CHECK_EQ_U64(pt_count(output, "the inventory holds 15 items in 4 stacks"), 1u);
     /* From that save its west half is still there to be mined, once in the books, and the one bench it gives is picked up. So it is after the second. */
-    CHECK_EQ_U64(pt_count(output, "the player mined 6 blocks and placed 2"), 2u);
+    CHECK_EQ_U64(pt_count(output, "the player mined 12 blocks and placed 2"), 2u);
     CHECK_EQ_U64(pt_count(output, "the last mined was woodworking_bench_west"), 2u);
-    CHECK_EQ_U64(pt_count(output, "the inventory holds 11 items in 4 stacks"), 2u);
+    CHECK_EQ_U64(pt_count(output, "the inventory holds 16 items in 5 stacks"), 2u);
 
     static const char *const shots[] = {"bench_placed.png", "grid_two.png", "grid_back.png",   "reloaded.png",
                                         "reopened.png",     "west_aim.png", "west_broken.png", "gone_reloaded.png"};
@@ -191,9 +194,9 @@ TEST(a_bench_gives_its_grid_back_stands_through_a_save_and_goes_by_its_west_half
     }
 }
 
-/* Ahmed's words: "tree feller". The axe comes from a bench as a person's would, so where wooden tools are made, or the way to the tree, cannot change and leave
- * this script clicking on nothing with no one told: it went stale that way once, when wooden tools moved to the bench. */
-TEST(an_axe_from_a_bench_brings_down_a_real_tree_with_one_cut_and_it_stays_down_through_a_save) {
+/* Ahmed's words: "tree feller is not a mod in my minecraft it is a built in setting please make it always on!!". So the cut is with bare hands,
+ * the hand holding only the mud from the hole, and the tree comes down all the same. */
+TEST(bare_hands_bring_down_a_real_tree_with_one_cut_and_it_stays_down_through_a_save) {
     REQUIRE(t->arg_count >= 1);
     char *const root = pt_temp(t);
     REQUIRE(root != nullptr);
@@ -201,16 +204,16 @@ TEST(an_axe_from_a_bench_brings_down_a_real_tree_with_one_cut_and_it_stays_down_
     pt_run(t, "tests/run/player/felling/fixtures/fell.script", root, PT_DAY_MS, 2u, &process);
     const char *const output = process.output;
 
-    CHECK_EQ_U64(pt_count(output, "hotbar slot 4 is in hand, with 1 of wood_axe"), 2u);
-    CHECK_EQ_U64(pt_count(output, "the last mined was mangrove_log"), 2u);
-    /* Seed 36's mangroves whose roots touch come down together: 47 logs on the day this was written. Fewer than the log count of one tree would not be felling. */
-    const char *const felled = strstr(output, "an axe felled ");
+    CHECK_EQ_U64(pt_count(output, "hotbar slot 1 is in hand, with 1 of mud"), 2u);
+    CHECK_EQ_U64(pt_count(output, "the last mined was mangrove_log, and the hand holds 1 of mud"), 2u);
+    /* The mangrove ahead is 10 logs from the root it is cut at up, on the day this was written: the cut and 9 more. Hands that took one log
+     * would leave this at 0. */
+    const char *const felled = strstr(output, "the tree feller felled ");
     REQUIRE(felled != nullptr);
-    CHECK(strtoull(felled + strlen("an axe felled "), nullptr, 10) >= 30u);
+    CHECK(strtoull(felled + strlen("the tree feller felled "), nullptr, 10) >= 8u);
 
-    static const char *const shots[] = {"bench_placed.png", "bench_open.png", "axe.png",
-                                        "bench_gone.png",   "before.png",     "cut.png",
-                                        "during.png",       "later.png",      "reloaded.png"};
+    static const char *const shots[] = {"at_tree.png", "before.png", "aimed.png", "cut.png",
+                                        "during.png",  "after.png",  "later.png", "reloaded.png"};
     for (uint64_t i = 0u; i < sizeof(shots) / sizeof(shots[0]); i++) {
         uint64_t size = 0u;
         CHECK_EQ_U64(file_path_size(pt_join(t, pt_join(t, root, "shots"), shots[i]), &size), FILE_OK);

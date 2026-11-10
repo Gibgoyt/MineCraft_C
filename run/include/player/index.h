@@ -120,8 +120,8 @@ void player_hands_send(player_t *player, bool attack, bool place);
  * touches the heap. What it broke waits in the interaction's ring, for whoever puts items in the world. */
 void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns);
 
-/* The same, with somewhere for a log an axe cuts to set the rest of its tree going, and somewhere for what can be heard: player_interact_tick is this with nullptrs, and an
- * axe cuts one log, silently.
+/* The same, with somewhere for a log the hands cut to set the rest of its tree going, and somewhere for what can be heard: player_interact_tick is this with nullptrs, and an
+ * log cut is one log, silently.
  * The caller then runs player_felling_tick. */
 void player_interact_fell_tick(player_t *player, world_edit_t *edit, player_felling_t *felling, player_sounds_t *sounds,
                                int64_t tick_ns);

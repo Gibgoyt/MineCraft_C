@@ -116,7 +116,7 @@ uint32_t player_felling_cut(player_felling_t *felling, const world_map_t *map, u
         felling_walk_undo(felling, first);
         return 0u;
     }
-    /* In the box now, in case the axe has broken on this very cut and the queue ends with nothing gone. */
+    /* In the box now, in case the rest go by other hands first and the queue ends with nothing gone. */
     felling_box_add(felling, &felling->cells[first]);
     return felling->tail - first;
 }
@@ -128,12 +128,12 @@ static bool felling_has_room(const player_interaction_t *hands, uint16_t block) 
 }
 
 uint32_t player_felling_tick(player_felling_t *felling, player_interaction_t *hands, world_edit_t *edit,
-                             world_tick_t *tick, uint32_t uses_left) {
+                             world_tick_t *tick) {
     if (felling->tail == 0u) {
         return 0u;
     }
     uint32_t felled = 0u;
-    while (felling->head < felling->tail && felled < PLAYER_FELLING_PER_TICK && felled < uses_left) {
+    while (felling->head < felling->tail && felled < PLAYER_FELLING_PER_TICK) {
         const player_felling_cell_t cell = felling->cells[felling->head];
         uint16_t there = BLOCK_ID_AIR;
         if (world_map_block_get(edit->borrowed_map, cell.x, cell.y, cell.z, &there) != WORLD_MAP_STATUS_OK ||
@@ -165,8 +165,7 @@ uint32_t player_felling_tick(player_felling_t *felling, player_interaction_t *ha
         }
         player_interaction_stack_break(hands, edit, cell.x, cell.y, cell.z);
     }
-    /* What is left of the axe has gone, so what is left of the tree stays. */
-    if (felling->head == felling->tail || felled >= uses_left) {
+    if (felling->head == felling->tail) {
         world_tick_leaves_check(tick, felling->box_low, felling->box_high);
         felling_reset(felling);
     }

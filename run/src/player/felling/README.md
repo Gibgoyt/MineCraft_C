@@ -1,6 +1,6 @@
 # run/src/player/felling
 
-**Purpose:** the tree feller: an axe that cuts a log brings down the rest of the tree, so that no wood is left floating.
+**Purpose:** the tree feller: a log cut brings down the rest of the tree, with any tool or bare hands, so that no wood is left floating. It is part of the game, always on, with no setting and no exception (Ahmed, plan 005 phase 1).
 **Tier:** Arena. Takes nothing, as a tier may allocate less than it is allowed: all it needs is in `player_felling_t`.
 **Owns:** nothing.
 **Lifetime:** World. The struct is over 5 KiB and `app_t` is on main's stack, so `run/src/game/` takes it from its world arena, keeps only the pointer, and starts it with `player_felling_start`. `player_t` holds nothing of it: `app_t` has no byte to spare, its frame being exactly at the limit in the release build. It is not saved: a queue lasts about a second, and to quit in that second leaves the rest of that tree standing. The saved `player_interaction_t` does not hold it, so this changes no save.
@@ -12,7 +12,7 @@
 - `player_felling_tick`: one tick of logs going.
 - `player_felling_pending`: logs waiting.
 
-**May be called by:** `run/src/game/` for the start and the tick, which says how many uses the axe has left and reads `felled_count` and `last_block`, and `run/src/player/interaction/` for the cut.
+**May be called by:** `run/src/game/` for the start and the tick, which reads `felled_count` and `last_block` for the sound and the report, and `run/src/player/interaction/` for the cut.
 **Depends on:** `player/interaction` for the hands' ring, their counts and what stood on a log, `world/edit`, `world/map`, `world/tick` for the leaves, `world/wall_torch`, as each of a log's sides may have a torch to drop, and the generated `tables/blocks`.
 
 ## What counts as the tree
@@ -24,7 +24,7 @@ From the log just cut, the walk goes to every touching log, including at a corne
 | The same wood only | Oak breaks oak |
 | At or above the cut only | A cut part way up leaves the stump on the ground, and nothing floats |
 | One of them must touch leaves, by a face | A log wall has none, and stays. It is what protects builds, and it is not perfect: a log wall with a tree growing against it can still be taken |
-| An axe, and not sneaking | `run/src/player/interaction/` looks at both. Sneaking chops one log |
+| Any tool or none, sneaking or not | `run/src/player/interaction/` starts it for every log it cuts. Ahmed asked for it always on, so there is no way to take one log of a tree |
 | At most `PLAYER_FELLING_LOGS_MAX` waiting | ctest `run_player_felling` measures the biggest tree the generator draws, and holds this at more than twice it. Past it, the rest stay |
 | A column not loaded stops the walk | So a very wide tree at the edge of the world can leave some behind |
 
@@ -36,7 +36,7 @@ The hands' ring holds 32 drops, and a full ring loses the oldest. A giant jungle
 
 ## What it costs
 
-`mined_count` counts each log, so that it tires the body as chopping does, and `felled_count` those past the cut. Each log is one use, `uses_left` being what the axe has in it: when it runs out the queue is dropped, and the rest stay up. A wooden axe has 59. Changing to anything but an axe in that second does the same, since no use could be charged. `run/src/game/` does the wearing: it is the one that knows the inventory.
+`mined_count` counts each log, so that it tires the body as chopping does, and `felled_count` those past the cut. Only the log the hands cut wears what is in hand, one use as any block, which `run/src/game/` charges when the hands report it. What falls with it costs nothing (Ahmed: "my axe gets worn as if I have cut every block that fell down!!"), so a wooden axe, with 59 uses, brings down a tree of any size, and an axe that breaks on the cut still brings its tree down. What is in hand while it comes down makes no difference to what goes, only to what drops, by the same rule as a hand.
 
 ## The leaves
 
