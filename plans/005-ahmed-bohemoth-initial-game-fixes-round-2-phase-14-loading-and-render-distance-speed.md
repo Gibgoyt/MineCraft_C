@@ -154,18 +154,20 @@ So: **opening is terrain**, 82% of the workers' time, and it meets the targets a
 
   Agent 14a, `5542ec35`, measured live with `run_render_distance_live` (`MC_DISTANCE_LIVE_DEADLINES=0 MC_DISTANCE_LIVE_WAIT_S=300`, release, 16 workers, Ahmed's seed), against the baseline above:
 
-  | Step | Baseline | Priorities and cap (`5542ec35`) |
-  |---|---|---|
-  | Open at 32, all rings | 6.03 s | 6.82 s (rings to 4 at 0.17 s) |
-  | Log mined at 32, idle | 0.02 s | 0.02 s |
-  | 32 → 64, all drawn | 90.3 s, 5% seen by 1 s | 94.3 s, 5% seen by 1 s |
-  | 16 → 64, near rings 17 to 32 | **76.1 s** | **11.85 s** |
-  | 16 → 64, all drawn | 98.6 s | 96.4 s, 3% seen by 1 s |
-  | Full detail 32 → 16 at 64, all drawn | 160.4 s | 160.3 s |
-  | Full detail 16 → 32 at 64, near rings | 76.4 s | 11.95 s |
-  | **The log mined during that change** | **5.8 s** | **0.05 s**, 1.05 s into the change: **met** |
+  | Step | Baseline | Priorities and cap (`5542ec35`) | And the cap's hold (`057f4b6b`) |
+  |---|---|---|---|
+  | Open at 32, all rings | 6.03 s | 6.82 s (rings to 4 at 0.17 s) | 6.25 s (0.16 s) |
+  | Log mined at 32, idle | 0.02 s | 0.02 s | 0.02 s |
+  | 32 → 64, all drawn | 90.3 s, 5% seen by 1 s | 94.3 s, 5% seen by 1 s | 93.9 s, 5% |
+  | 16 → 64, near rings 17 to 32 | **76.1 s** | **11.85 s** | **7.03 s** |
+  | 16 → 64, all drawn | 98.6 s | 96.4 s, 3% seen by 1 s | 97.9 s, 3% |
+  | Full detail 32 → 16 at 64, all drawn | 160.4 s | 160.3 s | 160.1 s |
+  | Full detail 16 → 32 at 64, near rings | 76.4 s | 11.95 s | 8.84 s |
+  | **The log mined during that change** | **5.8 s** | **0.05 s**, 1.05 s into the change: **met** | 0.08 s: met |
 
-  The mined log meets its 1 s. The near rings come back 6 times sooner but not yet as soon as the free workers allow (about 7 s, from the 5.2 s rings 17 to 32 take when a world opens on all 16), so the cap stays unticked. The far field's own time, and so "seen by 1 s" and "all drawn", are unchanged: that is the next todo's, a cheaper far column.
+  The mined log meets its 1 s. The far field's own time, and so "seen by 1 s" and "all drawn", are unchanged: that is the next todo's, a cheaper far column.
+
+  **Where the near rings' time went, measured (agent 14a).** With timers on the sim thread and the column jobs (taken out again), rings 19 to 32 at opening: a column job 5.4 ms on a worker, and 1.7 ms on the sim thread to take it in (`section_blocks_import` 0.75 ms, `world_light_column_added` 1.09 ms). The sim spends 89% of its time doing that and all 64 column slots are full: **the sim thread's commit, not the workers, sets the pace of filling in,** about 500 columns a second. After 16 → 64 on `5542ec35` both were 2.2 times slower (10.7 ms a job, 4.1 ms a commit), the same with the far field's cap at one worker as at four (11.6 s and 11.9 s). The cap held only while a near job was queued or running, and between the sim's steps none is: every gap let the far field start a second-long job on every worker, on the same cores as the sim thread and the near columns by hyperthreading (10 cores, 20 threads, 16 workers). `057f4b6b` holds the cap for 100 ms after near work was last queued or finished. Commits went back to opening speed, 0.78 and 1.13 ms, and the near rings to 4.65 s in a run with the default 20 s wait, 7.03 s in the run with 300 s above. Rings 19 to 32 take 6.6 s there against 4.1 s at opening; the rest is the far field's quarter of the workers, which a cheaper far column shrinks too.
 - [x] **Make a far-field column cheap.** Profile one, then build it from the 2D height estimate (`terrain_height_estimate`, plan 004 phase 3) and the top block, not the full 3D terrain, if that's what it does. Target: under 50 ms of worker time a column. *Done another way, as the profile showed it was not the 3D terrain: about 0.4 s to 14 ms and 24 ms at voxels of 2 and 4, and 8 ms at voxels of 8, which no longer grow trees: see Issues found.*
 - [x] **Never show nothing.** At 1 s, render distance 64 drew only sky. Near columns come first, and a missing one shows the far field, until it's built
 - [ ] Repeat the stage 1 table with each fix, and show the 64 run matching the 32 run near the player
@@ -210,6 +212,7 @@ Appended as they land:
 - `103aea7e` Make far-field columns cheap and keep them across settings changes (plan 005 phase 14, far field). (agent 14b)
 - `433d44f2` Show the horizon first after a render distance change, and stop the far field rebuilding after every autosave (plan 005 phase 14, far field). (agent 14b)
 - `5542ec35` Give jobs priorities, cap the far field while near work runs, and drop far-field work queued before a move. (agent 14a)
+- `057f4b6b` Hold the far field's cap for 100 ms after near work, so the gaps while the sim takes columns in do not lift it. (agent 14a)
 
 ## Issues found
 
