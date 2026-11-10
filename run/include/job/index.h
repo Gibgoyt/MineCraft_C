@@ -51,9 +51,10 @@ typedef enum job_priority_t : uint32_t {
     JOB_PRIORITY_COUNT = 6u,
 } job_priority_t;
 enum : uint32_t {
-    /* The far field may hold one worker in this many, rounded up, and at least one. Its jobs have taken up to a second each,
-     * and a job cannot be stopped once it has begun, so the cap is what keeps the rest free for what the player needs now. */
-    JOB_FAR_WORKERS_DIVISOR = 4u,
+    /* The far field may hold one worker in this many, rounded up, and at least one: one of the 16 here. Its jobs have taken
+     * up to a second each, and a job cannot be stopped once it has begun, so the cap is what keeps the rest free for what the
+     * player needs now. A quarter left the near rings 2 s slower after a change, its workers sharing cores with theirs. */
+    JOB_FAR_WORKERS_DIVISOR = 16u,
 };
 enum : int64_t {
     /* A cap holds this long after a job of a higher priority was last queued or finished, as well as while one is. Work

@@ -934,7 +934,7 @@ TEST(the_far_field_keeps_to_its_cap_and_near_work_never_waits_for_it) {
     for (uint32_t i = 0; i < NEAR_JOBS; i++) {
         job_submit_at(&system, &group, JOB_PRIORITY_NEAR, job_near_quick, &order);
     }
-    /* 200 jobs of 2 ms on at most a quarter of the workers take at least 25 ms: the near jobs take microseconds. */
+    /* 200 jobs of 2 ms on at most a quarter of the workers take at least 25 ms, and the cap is less: the near jobs take microseconds. */
     const int64_t deadline = time_now_ns() + WAIT_NS;
     while (atomic_load(&order.near_done) < NEAR_JOBS && time_now_ns() < deadline) {
         (void)sched_yield();
