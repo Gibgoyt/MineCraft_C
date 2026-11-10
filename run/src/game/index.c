@@ -1026,7 +1026,12 @@ static void game_columns_request(game_t *game) {
         }
         job->request = request;
         atomic_store_explicit(&job->done, 0u, memory_order_relaxed);
-        if (!job_try_submit(game->borrowed_job, &game->group, game_column_job_run, job)) {
+        /* The map offers the nearest first, but one near the player after a move still goes ahead of those queued before. */
+        const int32_t dx = request.chunk_x - map->center_x, dy = request.chunk_y - map->center_y;
+        const bool near = dx >= -(int32_t)GAME_NEAR_CHUNKS && dx <= (int32_t)GAME_NEAR_CHUNKS &&
+                          dy >= -(int32_t)GAME_NEAR_CHUNKS && dy <= (int32_t)GAME_NEAR_CHUNKS;
+        if (!job_try_submit_at(game->borrowed_job, &game->group, near ? JOB_PRIORITY_NEAR : JOB_PRIORITY_COLUMN,
+                               game_column_job_run, job)) {
             (void)world_map_stream_cancel(map, &request); /* the shared queue is full: it is offered again next step */
             return;
         }

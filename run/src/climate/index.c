@@ -287,7 +287,7 @@ void climate_schedule(climate_t *climate, job_system_t *system, int32_t player_x
         }
         climate_slot_job_set(slot, state, best_x, best_y);
         atomic_fetch_add_explicit(&state->jobs_in_flight, 1u, memory_order_relaxed);
-        if (!job_try_submit(system, &state->group, climate_tile_job, slot)) {
+        if (!job_try_submit_at(system, &state->group, JOB_PRIORITY_CLIMATE, climate_tile_job, slot)) {
             /* The shared queue is full: undone, and tried again next step. */
             atomic_fetch_sub_explicit(&state->jobs_in_flight, 1u, memory_order_relaxed);
             climate_cache_unclaim(slot);
@@ -318,7 +318,8 @@ static void climate_prepare_submit(climate_state_t *state, job_system_t *system,
             if (tiles) {
                 atomic_fetch_add_explicit(&state->jobs_in_flight, 1u, memory_order_relaxed);
             }
-            job_submit(system, &state->group, tiles ? climate_tile_job : climate_page_job, slot);
+            job_submit_at(system, &state->group, JOB_PRIORITY_CLIMATE, tiles ? climate_tile_job : climate_page_job,
+                          slot);
             prepare->submitted++;
         }
     }
@@ -430,7 +431,7 @@ void climate_prepare_tile(climate_t *climate, job_system_t *system, int32_t tile
     if (climate_cache_claim(slot, climate_cache_key(tile_x, tile_y), true) == CLIMATE_CLAIM_OURS) {
         climate_slot_job_set(slot, state, tile_x, tile_y);
         atomic_fetch_add_explicit(&state->jobs_in_flight, 1u, memory_order_relaxed);
-        job_submit(system, &state->group, climate_tile_job, slot);
+        job_submit_at(system, &state->group, JOB_PRIORITY_CLIMATE, climate_tile_job, slot);
     }
     job_group_wait(system, &state->group);
 }

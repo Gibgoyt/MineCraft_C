@@ -106,11 +106,50 @@ static void job_wake_one(job_system_t *system) {
     }
 }
 
-/* Looks without taking. Any job this finds is one a worker should stay up for. */
+static bool job_injector_empty(const job_injector_t *injector) {
+    return atomic_load_explicit(&injector->tail, memory_order_relaxed) ==
+           atomic_load_explicit(&injector->head, memory_order_relaxed);
+}
+
+/* The most workers a priority may hold right now. A cap holds only while a job of a higher priority is queued or running:
+ * then the rest of the workers stay free for what the player needs next. With nothing above it, a capped priority may have
+ * every worker, so that the far field alone on the machine is not made to crawl. */
+static uint32_t job_cap_now(const job_system_t *system, uint32_t priority) {
+    const job_injector_t *const injector = &system->borrowed_injectors[priority];
+    if (injector->cap >= system->worker_count) {
+        return injector->cap;
+    }
+    for (uint32_t p = 0; p < priority; p++) {
+        const job_injector_t *const above = &system->borrowed_injectors[p];
+        if (atomic_load_explicit(&above->running, memory_order_relaxed) != 0u || !job_injector_empty(above)) {
+            return injector->cap;
+        }
+    }
+    return system->worker_count;
+}
+
+/* A capped queue with jobs and room under its cap now, as a job finishing anywhere may be what made the room. Only then is a
+ * worker woken, so that a worker the cap keeps out is not woken by every job that finishes, only to sleep again. */
+static bool job_capped_room(const job_system_t *system) {
+    for (uint32_t p = 0; p < JOB_PRIORITY_COUNT; p++) {
+        const job_injector_t *const injector = &system->borrowed_injectors[p];
+        if (injector->cap < system->worker_count && !job_injector_empty(injector) &&
+            atomic_load_explicit(&injector->running, memory_order_relaxed) < job_cap_now(system, p)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Looks without taking. Any job this finds is one a worker should stay up for. A capped queue with all its workers busy has
+ * nothing for this one: whichever job finishes first and lets one more in wakes a worker for it, in job_run. */
 static bool job_any_queued(const job_system_t *system) {
-    if (atomic_load_explicit(&system->injector_tail, memory_order_relaxed) !=
-        atomic_load_explicit(&system->injector_head, memory_order_relaxed)) {
-        return true;
+    for (uint32_t p = 0; p < JOB_PRIORITY_COUNT; p++) {
+        const job_injector_t *const injector = &system->borrowed_injectors[p];
+        if (!job_injector_empty(injector) &&
+            atomic_load_explicit(&injector->running, memory_order_relaxed) < job_cap_now(system, p)) {
+            return true;
+        }
     }
     for (uint32_t i = 0; i < system->worker_count; i++) {
         const job_worker_t *const worker = &system->borrowed_workers[i];
@@ -154,16 +193,32 @@ static bool job_queue_push(job_worker_t *worker, job_t job) {
     atomic_store_explicit(&slot->function, job.function, memory_order_relaxed);
     atomic_store_explicit(&slot->borrowed_argument, job.borrowed_argument, memory_order_relaxed);
     atomic_store_explicit(&slot->borrowed_group, job.borrowed_group, memory_order_relaxed);
+    atomic_store_explicit(&slot->tag, (uint64_t)job.priority | (uint64_t)job.epoch << 32, memory_order_relaxed);
     atomic_store_explicit(&worker->bottom, bottom + 1, memory_order_release);
     return true;
 }
 
 static job_t job_slot_read(job_slot_t *slot) {
+    const uint64_t tag = atomic_load_explicit(&slot->tag, memory_order_relaxed);
     return (job_t){
         .function = atomic_load_explicit(&slot->function, memory_order_relaxed),
         .borrowed_argument = atomic_load_explicit(&slot->borrowed_argument, memory_order_relaxed),
         .borrowed_group = atomic_load_explicit(&slot->borrowed_group, memory_order_relaxed),
+        .priority = (uint32_t)tag,
+        .epoch = (uint32_t)(tag >> 32),
     };
+}
+
+/* Owner only. The priority of the job job_queue_pop would take, or JOB_PRIORITY_COUNT with none. Only the owner writes the
+ * slots, so what this reads is that job's, unless a thief takes it first, and then the pop finds another or none. */
+static uint32_t job_queue_peek_priority(job_worker_t *worker) {
+    const int64_t bottom = atomic_load_explicit(&worker->bottom, memory_order_relaxed);
+    const int64_t top = atomic_load_explicit(&worker->top, memory_order_relaxed);
+    if (top >= bottom) {
+        return JOB_PRIORITY_COUNT;
+    }
+    const job_slot_t *const slot = &worker->borrowed_slots[(uint64_t)(bottom - 1) & (JOB_QUEUE_CAPACITY - 1u)];
+    return (uint32_t)atomic_load_explicit(&slot->tag, memory_order_relaxed);
 }
 
 /* Owner only. The newest job, whose memory is the most likely to still be in this core's cache.
@@ -206,17 +261,18 @@ static bool job_queue_steal(job_worker_t *victim, job_t *out) {
                                                    memory_order_relaxed);
 }
 
-/* ---- The shared queue -------------------------------------------------------------------------------------------- */
+/* ---- The shared queues ------------------------------------------------------------------------------------------- */
 
 /* A cell whose sequence equals the tail is free for that push. One whose sequence is the head plus one holds a job for that
  * pop, which then sets it a whole lap ahead, ready for the push that lands there next. */
 static bool job_injector_push(job_system_t *system, job_t job) {
-    uint64_t tail = atomic_load_explicit(&system->injector_tail, memory_order_relaxed);
+    job_injector_t *const injector = &system->borrowed_injectors[job.priority];
+    uint64_t tail = atomic_load_explicit(&injector->tail, memory_order_relaxed);
     while (true) {
-        job_cell_t *const cell = &system->borrowed_cells[tail & (JOB_INJECTOR_CAPACITY - 1u)];
+        job_cell_t *const cell = &injector->borrowed_cells[tail & (JOB_INJECTOR_CAPACITY - 1u)];
         const uint64_t sequence = atomic_load_explicit(&cell->sequence, memory_order_acquire);
         if (sequence == tail) {
-            if (atomic_compare_exchange_weak_explicit(&system->injector_tail, &tail, tail + 1u, memory_order_relaxed,
+            if (atomic_compare_exchange_weak_explicit(&injector->tail, &tail, tail + 1u, memory_order_relaxed,
                                                       memory_order_relaxed)) {
                 cell->job = job;
                 atomic_store_explicit(&cell->sequence, tail + 1u, memory_order_release);
@@ -225,18 +281,18 @@ static bool job_injector_push(job_system_t *system, job_t job) {
         } else if (sequence < tail) {
             return false;
         } else {
-            tail = atomic_load_explicit(&system->injector_tail, memory_order_relaxed);
+            tail = atomic_load_explicit(&injector->tail, memory_order_relaxed);
         }
     }
 }
 
-static bool job_injector_pop(job_system_t *system, job_t *out) {
-    uint64_t head = atomic_load_explicit(&system->injector_head, memory_order_relaxed);
+static bool job_injector_pop(job_injector_t *injector, job_t *out) {
+    uint64_t head = atomic_load_explicit(&injector->head, memory_order_relaxed);
     while (true) {
-        job_cell_t *const cell = &system->borrowed_cells[head & (JOB_INJECTOR_CAPACITY - 1u)];
+        job_cell_t *const cell = &injector->borrowed_cells[head & (JOB_INJECTOR_CAPACITY - 1u)];
         const uint64_t sequence = atomic_load_explicit(&cell->sequence, memory_order_acquire);
         if (sequence == head + 1u) {
-            if (atomic_compare_exchange_weak_explicit(&system->injector_head, &head, head + 1u, memory_order_relaxed,
+            if (atomic_compare_exchange_weak_explicit(&injector->head, &head, head + 1u, memory_order_relaxed,
                                                       memory_order_relaxed)) {
                 *out = cell->job;
                 atomic_store_explicit(&cell->sequence, head + JOB_INJECTOR_CAPACITY, memory_order_release);
@@ -245,14 +301,50 @@ static bool job_injector_pop(job_system_t *system, job_t *out) {
         } else if (sequence < head + 1u) {
             return false;
         } else {
-            head = atomic_load_explicit(&system->injector_head, memory_order_relaxed);
+            head = atomic_load_explicit(&injector->head, memory_order_relaxed);
         }
     }
 }
 
-bool job_try_submit(job_system_t *system, job_group_t *group, job_function_t function, void *borrowed_argument) {
+/* A place under the cap is claimed before the pop, so that two workers cannot both pass a cap with room for one. A pop that
+ * then finds nothing gives the place back. Every job taken here is counted in running until job_run has finished it. */
+static bool job_injector_take(job_system_t *system, uint32_t priority, job_t *out) {
+    job_injector_t *const injector = &system->borrowed_injectors[priority];
+    if (job_injector_empty(injector)) {
+        return false;
+    }
+    const uint32_t cap = job_cap_now(system, priority);
+    uint32_t running = atomic_load_explicit(&injector->running, memory_order_relaxed);
+    do {
+        if (running >= cap) {
+            return false;
+        }
+    } while (!atomic_compare_exchange_weak_explicit(&injector->running, &running, running + 1u, memory_order_relaxed,
+                                                    memory_order_relaxed));
+    if (!job_injector_pop(injector, out)) {
+        atomic_fetch_sub_explicit(&injector->running, 1u, memory_order_relaxed);
+        return false;
+    }
+    /* A cap lifting makes room for many at once, and job_run wakes only one worker for it: each that takes a job wakes the
+     * next while there is room, as a submit wakes one for each job. */
+    if (injector->cap < system->worker_count && !job_injector_empty(injector) &&
+        atomic_load_explicit(&injector->running, memory_order_relaxed) < job_cap_now(system, priority)) {
+        job_wake_one(system);
+    }
+    return true;
+}
+
+bool job_try_submit_at(job_system_t *system, job_group_t *group, job_priority_t priority, job_function_t function,
+                       void *borrowed_argument) {
+    ASSERT_ALWAYS(priority < JOB_PRIORITY_COUNT);
     job_group_add(group);
-    const job_t job = {.function = function, .borrowed_argument = borrowed_argument, .borrowed_group = group};
+    const job_t job = {
+        .function = function,
+        .borrowed_argument = borrowed_argument,
+        .borrowed_group = group,
+        .priority = priority,
+        .epoch = atomic_load_explicit(&system->borrowed_injectors[priority].epoch, memory_order_relaxed),
+    };
     if (!job_injector_push(system, job)) {
         job_group_finish(group);
         return false;
@@ -261,32 +353,77 @@ bool job_try_submit(job_system_t *system, job_group_t *group, job_function_t fun
     return true;
 }
 
-void job_submit(job_system_t *system, job_group_t *group, job_function_t function, void *borrowed_argument) {
-    while (!job_try_submit(system, group, function, borrowed_argument)) {
+void job_submit_at(job_system_t *system, job_group_t *group, job_priority_t priority, job_function_t function,
+                   void *borrowed_argument) {
+    while (!job_try_submit_at(system, group, priority, function, borrowed_argument)) {
         (void)sched_yield(); /* always succeeds on Linux, and there is nothing else to do either way */
     }
+}
+
+bool job_try_submit(job_system_t *system, job_group_t *group, job_function_t function, void *borrowed_argument) {
+    return job_try_submit_at(system, group, JOB_PRIORITY_NORMAL, function, borrowed_argument);
+}
+
+void job_submit(job_system_t *system, job_group_t *group, job_function_t function, void *borrowed_argument) {
+    job_submit_at(system, group, JOB_PRIORITY_NORMAL, function, borrowed_argument);
+}
+
+void job_priority_drop(job_system_t *system, job_priority_t priority) {
+    ASSERT_ALWAYS(priority < JOB_PRIORITY_COUNT);
+    atomic_fetch_add_explicit(&system->borrowed_injectors[priority].epoch, 1u, memory_order_relaxed);
+}
+
+bool job_dropped(const job_worker_t *worker) {
+    const job_injector_t *const injector = &worker->borrowed_system->borrowed_injectors[worker->running_priority];
+    return atomic_load_explicit(&injector->epoch, memory_order_relaxed) != worker->running_epoch;
 }
 
 /* ---- Running ----------------------------------------------------------------------------------------------------- */
 
 /* The arena is reset before the group finishes: once a waiter wakes, everything this job did is over, and no later job
- * finds what this one left. The count goes first for the same reason, so job_stats_read is exact after a wait. */
-static void job_run(job_worker_t *worker, job_t job) {
+ * finds what this one left. The count goes first for the same reason, so job_stats_read is exact after a wait.
+ *
+ * from_injector says the job holds a place in its queue's running count. Giving it back may let a worker past a cap, its
+ * own queue's or, if it was the last job above a capped queue, that one's, so one is woken if a capped queue has jobs and
+ * room. The fence after giving it back pairs with the one in job_worker_sleep, so a worker that saw no room and went to
+ * sleep is either seen by job_wake_one or sees the place given back. It also pairs with the same fence in a job finishing
+ * at the same moment, so that of two last jobs above a capped queue, at least one sees the other gone. */
+static void job_run(job_worker_t *worker, job_t job, bool from_injector) {
+    const uint32_t outer_priority = worker->running_priority, outer_epoch = worker->running_epoch;
+    worker->running_priority = job.priority;
+    worker->running_epoch = job.epoch;
     worker->inline_depth++;
     PROFILER_BEGIN(job_worker_lane(worker), "job");
     job.function(worker, job.borrowed_argument);
     PROFILER_END(job_worker_lane(worker));
     worker->inline_depth--;
+    worker->running_priority = outer_priority;
+    worker->running_epoch = outer_epoch;
     if (worker->inline_depth == 0) {
         arena_reset(&worker->arena_job);
     }
     job_count(&worker->jobs_run);
+    if (from_injector) {
+        job_system_t *const system = worker->borrowed_system;
+        job_injector_t *const injector = &system->borrowed_injectors[job.priority];
+        atomic_fetch_sub_explicit(&injector->running, 1u, memory_order_relaxed);
+        thread_fence_seq_cst();
+        if (job_capped_room(system)) {
+            job_wake_one(system);
+        }
+    }
     job_group_finish(job.borrowed_group);
 }
 
 void job_spawn(job_worker_t *worker, job_group_t *group, job_function_t function, void *borrowed_argument) {
     job_group_add(group);
-    const job_t job = {.function = function, .borrowed_argument = borrowed_argument, .borrowed_group = group};
+    const job_t job = {
+        .function = function,
+        .borrowed_argument = borrowed_argument,
+        .borrowed_group = group,
+        .priority = worker->running_priority,
+        .epoch = worker->running_epoch,
+    };
     if (job_queue_push(worker, job) || job_injector_push(worker->borrowed_system, job)) {
         job_wake_one(worker->borrowed_system);
         return;
@@ -297,7 +434,7 @@ void job_spawn(job_worker_t *worker, job_group_t *group, job_function_t function
         assert_fail(__FILE__, __LINE__, __func__, "job spawn depth");
     }
     job_count(&worker->jobs_inlined);
-    job_run(worker, job);
+    job_run(worker, job, false);
 }
 
 /* xorshift64: it only has to spread the workers' first choices apart, so that they do not all fall on one victim. */
@@ -310,18 +447,33 @@ static uint32_t job_next_victim(job_worker_t *worker) {
     return (uint32_t)(random % worker->borrowed_system->worker_count);
 }
 
-/* Its own queue first, so that a worker finishes what it started. The shared queue next, or workers with each other's
- * spawned jobs to steal would hold up what other threads have been waiting on. A lost race during a steal reads as no work:
- * the winner made progress, and the idle loop comes back. */
-static bool job_find(job_worker_t *worker, job_t *out) {
+/* The shared queues of a higher priority than its own queue's newest job first, then its own queue, so that a worker
+ * finishes what it started unless something more urgent waits. The other shared queues next, or workers with each other's
+ * spawned jobs to steal would hold up what other threads have been waiting on. Stealing takes no account of priority: it
+ * only happens once every shared queue is empty or capped. A lost race during a steal reads as no work: the winner made
+ * progress, and the idle loop comes back. */
+static bool job_find(job_worker_t *worker, job_t *out, bool *out_from_injector) {
     job_system_t *const system = worker->borrowed_system;
+    const uint32_t own = job_queue_peek_priority(worker);
+    *out_from_injector = true;
+    for (uint32_t p = 0; p < own; p++) {
+        if (job_injector_take(system, p, out)) {
+            job_count(&worker->jobs_from_injector);
+            return true;
+        }
+    }
+    *out_from_injector = false;
     if (job_queue_pop(worker, out)) {
         return true;
     }
-    if (job_injector_pop(system, out)) {
-        job_count(&worker->jobs_from_injector);
-        return true;
+    *out_from_injector = true;
+    for (uint32_t p = own; p < JOB_PRIORITY_COUNT; p++) {
+        if (job_injector_take(system, p, out)) {
+            job_count(&worker->jobs_from_injector);
+            return true;
+        }
     }
+    *out_from_injector = false;
     uint32_t victim = job_next_victim(worker);
     for (uint32_t i = 0; i < system->worker_count; i++) {
         if (victim != worker->index && job_queue_steal(&system->borrowed_workers[victim], out)) {
@@ -343,8 +495,9 @@ static void job_worker_main(void *borrowed_argument) {
     while (true) {
         const bool stopping = atomic_load_explicit(&system->stopping, memory_order_acquire) != 0;
         job_t job;
-        if (job_find(worker, &job)) {
-            job_run(worker, job);
+        bool from_injector = false;
+        if (job_find(worker, &job, &from_injector)) {
+            job_run(worker, job, from_injector);
             idle_rounds = 0;
         } else if (stopping) {
             return;
@@ -371,12 +524,19 @@ bool job_init_count(job_system_t *system, const thread_topology_t *topology, uin
         return false; /* heap_reserve said why */
     }
     uint8_t *const base = system->owned_region.owned_base;
-    system->borrowed_workers = (job_worker_t *)base;
-    system->borrowed_cells = (job_cell_t *)(base + JOB_WORKERS_BYTES);
-    job_slot_t *const slots = (job_slot_t *)(base + JOB_WORKERS_BYTES + JOB_CELLS_BYTES);
+    system->borrowed_injectors = (job_injector_t *)base;
+    system->borrowed_workers = (job_worker_t *)(base + JOB_INJECTORS_BYTES);
+    job_cell_t *const cells = (job_cell_t *)(base + JOB_INJECTORS_BYTES + JOB_WORKERS_BYTES);
+    job_slot_t *const slots = (job_slot_t *)(base + JOB_INJECTORS_BYTES + JOB_WORKERS_BYTES + JOB_CELLS_BYTES);
 
-    for (uint64_t i = 0; i < JOB_INJECTOR_CAPACITY; i++) {
-        atomic_init(&system->borrowed_cells[i].sequence, i);
+    const uint32_t far_cap = (system->worker_count + JOB_FAR_WORKERS_DIVISOR - 1u) / JOB_FAR_WORKERS_DIVISOR;
+    for (uint32_t p = 0; p < JOB_PRIORITY_COUNT; p++) {
+        job_injector_t *const injector = &system->borrowed_injectors[p];
+        injector->borrowed_cells = &cells[(uint64_t)p * JOB_INJECTOR_CAPACITY];
+        injector->cap = p == JOB_PRIORITY_FAR ? far_cap : system->worker_count;
+        for (uint64_t i = 0; i < JOB_INJECTOR_CAPACITY; i++) {
+            atomic_init(&injector->borrowed_cells[i].sequence, i);
+        }
     }
     for (uint32_t i = 0; i < system->worker_count; i++) {
         job_worker_t *const worker = &system->borrowed_workers[i];
@@ -384,6 +544,7 @@ bool job_init_count(job_system_t *system, const thread_topology_t *topology, uin
         worker->random = ((uint64_t)i + 1u) * 0x9E3779B97F4A7C15ull;
         worker->borrowed_system = system;
         worker->borrowed_slots = &slots[(uint64_t)i * JOB_QUEUE_CAPACITY];
+        worker->running_priority = JOB_PRIORITY_NORMAL;
         arena_init(&worker->arena_job, "job", base + JOB_ARENAS_OFFSET + (uint64_t)i * JOB_ARENA_BYTES,
                    JOB_ARENA_BYTES);
     }
@@ -415,8 +576,11 @@ void job_deinit(job_system_t *system) {
         thread_join(&system->borrowed_workers[i].thread);
     }
     /* Every worker left only when it could find nothing, so anything still here was lost, and its group would never end. */
-    ASSERT_ALWAYS(atomic_load_explicit(&system->injector_tail, memory_order_acquire) ==
-                  atomic_load_explicit(&system->injector_head, memory_order_acquire));
+    for (uint32_t p = 0; p < JOB_PRIORITY_COUNT; p++) {
+        const job_injector_t *const injector = &system->borrowed_injectors[p];
+        ASSERT_ALWAYS(atomic_load_explicit(&injector->tail, memory_order_acquire) ==
+                      atomic_load_explicit(&injector->head, memory_order_acquire));
+    }
     for (uint32_t i = 0; i < system->worker_count; i++) {
         job_worker_t *const worker = &system->borrowed_workers[i];
         ASSERT_ALWAYS(atomic_load_explicit(&worker->bottom, memory_order_acquire) ==
@@ -446,4 +610,22 @@ void job_stats_read(const job_system_t *system, uint32_t worker_index, job_stats
 
 uint32_t job_sleeper_count(const job_system_t *system) {
     return atomic_load_explicit(&system->sleeper_count, memory_order_relaxed);
+}
+
+uint64_t job_priority_queued(const job_system_t *system, job_priority_t priority) {
+    ASSERT_ALWAYS(priority < JOB_PRIORITY_COUNT);
+    const job_injector_t *const injector = &system->borrowed_injectors[priority];
+    const uint64_t head = atomic_load_explicit(&injector->head, memory_order_relaxed);
+    const uint64_t tail = atomic_load_explicit(&injector->tail, memory_order_relaxed);
+    return tail > head ? tail - head : 0u; /* read apart, so a pop between the two can put head past the tail read */
+}
+
+uint32_t job_priority_running(const job_system_t *system, job_priority_t priority) {
+    ASSERT_ALWAYS(priority < JOB_PRIORITY_COUNT);
+    return atomic_load_explicit(&system->borrowed_injectors[priority].running, memory_order_relaxed);
+}
+
+uint32_t job_priority_cap(const job_system_t *system, job_priority_t priority) {
+    ASSERT_ALWAYS(priority < JOB_PRIORITY_COUNT);
+    return system->borrowed_injectors[priority].cap;
 }

@@ -107,7 +107,8 @@ static void upload_jobs_submit(render_upload_t *upload) {
         render_encode_job_t *const job = &upload->borrowed_jobs[section];
         render_encode_job_begin(job, view, section,
                                 upload->borrowed_staging + (uint64_t)section * WORLD_BUFFERS_SECTION_BYTES_MAX);
-        if (!job_try_submit(upload->borrowed_job, &upload->group, render_encode_job_run, job)) {
+        /* First of all: the next view, with whatever block edits it carries, waits for every section of this one. */
+        if (!job_try_submit_at(upload->borrowed_job, &upload->group, JOB_PRIORITY_EDIT, render_encode_job_run, job)) {
             return;
         }
         upload->submitted++;

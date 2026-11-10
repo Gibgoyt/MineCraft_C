@@ -714,6 +714,322 @@ TEST(idle_workers_use_no_cpu) {
     job_deinit(&system);
 }
 
+/* ---- Priorities -------------------------------------------------------------------------------------------------- */
+
+enum : uint32_t {
+    /* Jobs of each priority in the order test, and of the far field in the dropping test. */
+    ORDER_EACH = 3u,
+    ORDER_JOBS = JOB_PRIORITY_COUNT * ORDER_EACH + 16u,
+};
+
+/* What a priority test's jobs write, on one worker or many. */
+typedef struct order_t {
+    gate_t gate;                  /* 0: holds the one worker while the rest are queued */
+    gate_t hold;                  /* 24: holds a near job running, so that the far field's cap stands */
+    _Atomic uint32_t next;        /* 48: the next place in log */
+    _Atomic uint32_t far_now;     /* 52: far field jobs running */
+    _Atomic uint32_t far_most;    /* 56: the most of them at once */
+    _Atomic uint32_t far_done;    /* 60 */
+    _Atomic uint32_t near_saw;    /* 64: the most far_done any near job saw as it finished */
+    _Atomic uint32_t near_done;   /* 68 */
+    _Atomic uint32_t far_blocked; /* 72 */
+    uint8_t _pad0[4];
+    uint32_t log[ORDER_JOBS]; /* 80: each job's key, in the order they ran */
+} order_t;
+static_assert(sizeof(order_t) == 80 + 4 * ORDER_JOBS);
+
+/* One job's own: its key, and whether it found itself dropped. */
+typedef struct order_job_t {
+    order_t *borrowed_order;
+    job_group_t *borrowed_group;
+    uint32_t key; /* its priority times 256, plus its place among those */
+    _Atomic uint32_t dropped;
+} order_job_t;
+static_assert(sizeof(order_job_t) == 24);
+
+static bool order_start_one(job_system_t *system) {
+    thread_topology_t topology;
+    return thread_topology_read(&topology) && job_init_count(system, &topology, 1u);
+}
+
+/* Takes the only worker and waits until it is held, so that what is queued next all waits together. */
+static bool order_block_worker(job_system_t *system, job_group_t *group, order_t *order) {
+    job_submit(system, group, job_gate_blocker, &order->gate);
+    const int64_t deadline = time_now_ns() + WAIT_NS;
+    while (atomic_load(&order->gate.blocked) == 0u) {
+        if (time_now_ns() > deadline) {
+            return false;
+        }
+        (void)sched_yield();
+    }
+    return true;
+}
+
+static void job_order_log(job_worker_t *worker, void *borrowed_argument) {
+    order_job_t *const job = borrowed_argument;
+    atomic_store(&job->dropped, job_dropped(worker) ? 1u : 0u);
+    const uint32_t at = atomic_fetch_add(&job->borrowed_order->next, 1u);
+    if (at < ORDER_JOBS) {
+        job->borrowed_order->log[at] = job->key;
+    }
+}
+
+/* Logs, then spawns the next job along. */
+static void job_order_spawner(job_worker_t *worker, void *borrowed_argument) {
+    order_job_t *const job = borrowed_argument;
+    job_order_log(worker, job);
+    job_spawn(worker, job->borrowed_group, job_order_log, job + 1);
+}
+
+/* Queues the third of three at near priority from inside the job, then spawns the second. */
+static void job_order_near_then_spawn(job_worker_t *worker, void *borrowed_argument) {
+    order_job_t *const three = borrowed_argument;
+    job_order_log(worker, three);
+    if (!job_try_submit_at(worker->borrowed_system, three->borrowed_group, JOB_PRIORITY_NEAR, job_order_log,
+                           three + 2)) {
+        job_order_log(worker, three + 2); /* cannot happen with an empty queue: the order check then fails */
+    }
+    job_spawn(worker, three->borrowed_group, job_order_log, three + 1);
+}
+
+/* Queued lowest first, with one worker, they must still run highest first, and in the order queued within each. */
+TEST(a_higher_priority_always_goes_first) {
+    job_system_t system;
+    REQUIRE(order_start_one(&system));
+    job_group_t group;
+    job_group_init(&group);
+    order_t order;
+    memset(&order, 0, sizeof(order));
+    REQUIRE(order_block_worker(&system, &group, &order));
+
+    order_job_t jobs[JOB_PRIORITY_COUNT * ORDER_EACH];
+    for (uint32_t p = JOB_PRIORITY_COUNT; p-- > 0u;) {
+        for (uint32_t i = 0; i < ORDER_EACH; i++) {
+            order_job_t *const job = &jobs[p * ORDER_EACH + i];
+            *job = (order_job_t){.borrowed_order = &order, .borrowed_group = &group, .key = p * 256u + i};
+            job_submit_at(&system, &group, (job_priority_t)p, job_order_log, job);
+        }
+    }
+    for (uint32_t p = 0; p < JOB_PRIORITY_COUNT; p++) {
+        CHECK_EQ_U64(job_priority_queued(&system, (job_priority_t)p), ORDER_EACH);
+    }
+    atomic_store(&order.gate.open, 1u);
+    job_group_wait(&system, &group);
+    CHECK_EQ_U64(atomic_load(&order.next), (uint64_t)JOB_PRIORITY_COUNT * ORDER_EACH);
+    for (uint32_t n = 0; n + 1u < JOB_PRIORITY_COUNT * ORDER_EACH; n++) {
+        CHECK(order.log[n] < order.log[n + 1u]);
+    }
+    CHECK_EQ_U64(order.log[0], (uint64_t)JOB_PRIORITY_EDIT * 256u);
+
+    /* A far field job that queues a near one and then spawns: the child is its worker's newest job, but the near one goes
+     * first. */
+    memset(&order, 0, sizeof(order));
+    order_job_t three[3] = {
+        {.borrowed_order = &order, .borrowed_group = &group, .key = JOB_PRIORITY_FAR * 256u},
+        {.borrowed_order = &order, .borrowed_group = &group, .key = JOB_PRIORITY_FAR * 256u + 1u},
+        {.borrowed_order = &order, .borrowed_group = &group, .key = JOB_PRIORITY_NEAR * 256u},
+    };
+    job_submit_at(&system, &group, JOB_PRIORITY_FAR, job_order_near_then_spawn, three);
+    job_group_wait(&system, &group);
+    CHECK_EQ_U64(atomic_load(&order.next), 3u);
+    CHECK_EQ_U64(order.log[0], three[0].key);
+    CHECK_EQ_U64(order.log[1], three[2].key);
+    CHECK_EQ_U64(order.log[2], three[1].key);
+    job_group_deinit(&group);
+    job_deinit(&system);
+}
+
+/* Queued before a drop of their priority, jobs read as dropped, and so does what they spawn. Others, and those queued after,
+ * do not. Every one of them still runs. */
+TEST(dropping_a_priority_marks_only_what_was_queued_before) {
+    job_system_t system;
+    REQUIRE(order_start_one(&system));
+    job_group_t group;
+    job_group_init(&group);
+    order_t order;
+    memset(&order, 0, sizeof(order));
+    REQUIRE(order_block_worker(&system, &group, &order));
+
+    enum : uint32_t { BEFORE = 0u, NEAR = ORDER_EACH, SPAWNER = 2u * ORDER_EACH, AFTER = 2u * ORDER_EACH + 2u };
+    order_job_t jobs[3u * ORDER_EACH + 2u];
+    for (uint32_t i = 0; i < sizeof(jobs) / sizeof(jobs[0]); i++) {
+        jobs[i] = (order_job_t){.borrowed_order = &order, .borrowed_group = &group, .key = i};
+    }
+    for (uint32_t i = 0; i < ORDER_EACH; i++) {
+        job_submit_at(&system, &group, JOB_PRIORITY_FAR, job_order_log, &jobs[BEFORE + i]);
+        job_submit_at(&system, &group, JOB_PRIORITY_NEAR, job_order_log, &jobs[NEAR + i]);
+    }
+    job_submit_at(&system, &group, JOB_PRIORITY_FAR, job_order_spawner, &jobs[SPAWNER]);
+    job_priority_drop(&system, JOB_PRIORITY_FAR);
+    for (uint32_t i = 0; i < ORDER_EACH; i++) {
+        job_submit_at(&system, &group, JOB_PRIORITY_FAR, job_order_log, &jobs[AFTER + i]);
+    }
+    atomic_store(&order.gate.open, 1u);
+    job_group_wait(&system, &group);
+    job_group_deinit(&group);
+    CHECK_EQ_U64(atomic_load(&order.next), sizeof(jobs) / sizeof(jobs[0]));
+    for (uint32_t i = 0; i < ORDER_EACH; i++) {
+        CHECK_EQ_U64(atomic_load(&jobs[BEFORE + i].dropped), 1u);
+        CHECK_EQ_U64(atomic_load(&jobs[NEAR + i].dropped), 0u);
+        CHECK_EQ_U64(atomic_load(&jobs[AFTER + i].dropped), 0u);
+    }
+    CHECK_EQ_U64(atomic_load(&jobs[SPAWNER].dropped), 1u);
+    CHECK_EQ_U64(atomic_load(&jobs[SPAWNER + 1u].dropped), 1u);
+    job_deinit(&system);
+}
+
+/* Each far field job holds its worker for a while, so that many are running at once if the cap lets them. */
+static void job_far_slow(job_worker_t *worker, void *borrowed_argument) {
+    (void)worker;
+    order_t *const order = borrowed_argument;
+    const uint32_t now = atomic_fetch_add(&order->far_now, 1u) + 1u;
+    uint32_t most = atomic_load(&order->far_most);
+    while (now > most && !atomic_compare_exchange_weak(&order->far_most, &most, now)) {
+    }
+    time_sleep_ns(2 * TIME_NS_PER_MS);
+    atomic_fetch_sub(&order->far_now, 1u);
+    atomic_fetch_add(&order->far_done, 1u);
+}
+
+static void job_near_quick(job_worker_t *worker, void *borrowed_argument) {
+    (void)worker;
+    order_t *const order = borrowed_argument;
+    const uint32_t saw = atomic_load(&order->far_done);
+    uint32_t most = atomic_load(&order->near_saw);
+    while (saw > most && !atomic_compare_exchange_weak(&order->near_saw, &most, saw)) {
+    }
+    atomic_fetch_add(&order->near_done, 1u);
+}
+
+/* Starts a near job that runs until order->hold opens, and waits until it does run: with it, the far field's cap stands. */
+static bool order_hold_near(job_system_t *system, job_group_t *group, order_t *order) {
+    job_submit_at(system, group, JOB_PRIORITY_NEAR, job_gate_blocker, &order->hold);
+    const int64_t deadline = time_now_ns() + WAIT_NS;
+    while (atomic_load(&order->hold.blocked) == 0u) {
+        if (time_now_ns() > deadline) {
+            return false;
+        }
+        (void)sched_yield();
+    }
+    return true;
+}
+
+/* While near work runs, a backlog of far field work fills only its cap of workers, and near work queued behind it is done
+ * while most of it still waits. */
+TEST(the_far_field_keeps_to_its_cap_and_near_work_never_waits_for_it) {
+    enum : uint32_t { FAR_JOBS = 200u, NEAR_JOBS = 64u };
+    job_system_t system;
+    REQUIRE(system_start(&system));
+    const uint32_t cap = job_priority_cap(&system, JOB_PRIORITY_FAR);
+    CHECK_EQ_U64(cap, (MC_THREADS_WORKERS + JOB_FAR_WORKERS_DIVISOR - 1u) / JOB_FAR_WORKERS_DIVISOR);
+    CHECK_EQ_U64(job_priority_cap(&system, JOB_PRIORITY_NEAR), MC_THREADS_WORKERS);
+    job_group_t group;
+    job_group_init(&group);
+    order_t order;
+    memset(&order, 0, sizeof(order));
+    REQUIRE(order_hold_near(&system, &group, &order));
+    for (uint32_t i = 0; i < FAR_JOBS; i++) {
+        job_submit_at(&system, &group, JOB_PRIORITY_FAR, job_far_slow, &order);
+    }
+    for (uint32_t i = 0; i < NEAR_JOBS; i++) {
+        job_submit_at(&system, &group, JOB_PRIORITY_NEAR, job_near_quick, &order);
+    }
+    /* 200 jobs of 2 ms on at most a quarter of the workers take at least 25 ms: the near jobs take microseconds. */
+    const int64_t deadline = time_now_ns() + WAIT_NS;
+    while (atomic_load(&order.near_done) < NEAR_JOBS && time_now_ns() < deadline) {
+        (void)sched_yield();
+    }
+    CHECK_EQ_U64(atomic_load(&order.near_done), NEAR_JOBS);
+    CHECK(atomic_load(&order.near_saw) < FAR_JOBS / 2u);
+    while (atomic_load(&order.far_done) < FAR_JOBS && time_now_ns() < deadline) {
+        (void)sched_yield();
+    }
+    CHECK_EQ_U64(atomic_load(&order.far_done), FAR_JOBS);
+    CHECK(atomic_load(&order.far_most) >= 1u);
+    CHECK(atomic_load(&order.far_most) <= cap);
+    atomic_store(&order.hold.open, 1u);
+    job_group_wait(&system, &group);
+    job_group_deinit(&group);
+    CHECK_EQ_U64(job_priority_running(&system, JOB_PRIORITY_FAR), 0u);
+    CHECK_EQ_U64(job_priority_queued(&system, JOB_PRIORITY_FAR), 0u);
+    job_deinit(&system);
+}
+
+/* With nothing above it queued or running, the far field is not held to its cap: alone on the machine, it gets the workers. */
+TEST(the_far_field_alone_has_more_than_its_cap) {
+    enum : uint32_t { FAR_JOBS = 400u };
+    job_system_t system;
+    REQUIRE(system_start(&system));
+    const uint32_t cap = job_priority_cap(&system, JOB_PRIORITY_FAR);
+    job_group_t group;
+    job_group_init(&group);
+    order_t order;
+    memset(&order, 0, sizeof(order));
+    for (uint32_t i = 0; i < FAR_JOBS; i++) {
+        job_submit_at(&system, &group, JOB_PRIORITY_FAR, job_far_slow, &order);
+    }
+    job_group_wait(&system, &group);
+    job_group_deinit(&group);
+    CHECK_EQ_U64(atomic_load(&order.far_done), FAR_JOBS);
+    if (MC_THREADS_WORKERS > cap) {
+        CHECK(atomic_load(&order.far_most) > cap);
+    }
+    job_deinit(&system);
+}
+
+static void job_far_blocker(job_worker_t *worker, void *borrowed_argument) {
+    order_t *const order = borrowed_argument;
+    atomic_fetch_add(&order->far_blocked, 1u);
+    job_gate_blocker(worker, &order->gate);
+}
+
+/* Workers the cap keeps from a queue of far field work go to sleep instead of spinning on it, and when the near work above
+ * it ends and the cap lifts, they wake and take the rest. */
+TEST(workers_kept_off_a_capped_queue_sleep_and_come_back_for_it) {
+    enum : uint32_t { EXTRA = 10u };
+    job_system_t system;
+    REQUIRE(system_start(&system));
+    const uint32_t cap = job_priority_cap(&system, JOB_PRIORITY_FAR);
+    REQUIRE(cap + 1u + EXTRA <= MC_THREADS_WORKERS); /* so that the lifted cap has a worker for every blocker */
+    job_group_t group;
+    job_group_init(&group);
+    order_t order;
+    memset(&order, 0, sizeof(order));
+    REQUIRE(order_hold_near(&system, &group, &order));
+    for (uint32_t i = 0; i < cap + EXTRA; i++) {
+        job_submit_at(&system, &group, JOB_PRIORITY_FAR, job_far_blocker, &order);
+    }
+    int64_t deadline = time_now_ns() + WAIT_NS;
+    bool settled = false;
+    while (!settled && time_now_ns() < deadline) {
+        settled = atomic_load(&order.far_blocked) == cap && job_sleeper_count(&system) == MC_THREADS_WORKERS - cap - 1u;
+        time_sleep_ns(TIME_NS_PER_MS);
+    }
+    CHECK(settled);
+    CHECK_EQ_U64(atomic_load(&order.far_blocked), cap);
+    CHECK_EQ_U64(job_priority_running(&system, JOB_PRIORITY_FAR), cap);
+    CHECK_EQ_U64(job_priority_queued(&system, JOB_PRIORITY_FAR), EXTRA);
+    const int64_t before = process_cpu_ns();
+    time_sleep_ns(100 * TIME_NS_PER_MS);
+    const int64_t after = process_cpu_ns();
+    /* The blockers yield in a loop on their workers: the sleeping rest must add nothing to that. */
+    CHECK(after - before < (int64_t)(cap + 2u) * 100 * TIME_NS_PER_MS);
+
+    /* The near job ends, so the cap lifts, and sleeping workers take every blocker still queued. */
+    atomic_store(&order.hold.open, 1u);
+    deadline = time_now_ns() + WAIT_NS;
+    while (atomic_load(&order.far_blocked) < cap + EXTRA && time_now_ns() < deadline) {
+        time_sleep_ns(TIME_NS_PER_MS);
+    }
+    CHECK_EQ_U64(atomic_load(&order.far_blocked), cap + EXTRA);
+    atomic_store(&order.gate.open, 1u);
+    job_group_wait(&system, &group);
+    job_group_deinit(&group);
+    CHECK_EQ_U64(atomic_load(&order.gate.ran), cap + EXTRA);
+    CHECK_EQ_U64(atomic_load(&order.gate.timed_out), 0u);
+    job_deinit(&system);
+}
+
 /* ---- Lifetime ---------------------------------------------------------------------------------------------------- */
 
 typedef struct drain_t {

@@ -32,6 +32,8 @@
 enum : uint32_t {
     /* Columns being generated at once. One worker's worth each, with some waiting so that no worker goes idle. */
     GAME_STREAM_JOBS = 64u,
+    /* Columns this far from the player's, each way, are made at JOB_PRIORITY_NEAR, ahead of the rest: the ground underfoot. */
+    GAME_NEAR_CHUNKS = 4u,
 };
 
 /* How long a day is, as a familiar game has it: 24000 ticks at 20 Hz. */

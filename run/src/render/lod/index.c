@@ -200,8 +200,14 @@ void render_lod_sample_terrain(const void *borrowed_context, int32_t x, int32_t 
 }
 
 static void render_lod_job_run(job_worker_t *worker, void *borrowed_job) {
-    PROFILER_BEGIN(job_worker_lane(worker), "far_column");
     render_lod_job_t *const job = borrowed_job;
+    if (job_dropped(worker)) {
+        /* The eye moved or the far field closed after it was asked for: render_lod_jobs_collect asks again if still wanted. */
+        job->dropped = 1u;
+        atomic_store_explicit(&job->done, 1u, memory_order_release);
+        return;
+    }
+    PROFILER_BEGIN(job_worker_lane(worker), "far_column");
     const int64_t started_ns = time_now_ns();
     const render_lod_t *const lod = job->borrowed_lod;
     const uint32_t shift = lod->levels[job->level].shift;
@@ -401,6 +407,7 @@ void render_lod_area_changed(render_lod_t *lod, int32_t min_chunk_x, int32_t min
 }
 
 void render_lod_all_changed(render_lod_t *lod) {
+    job_priority_drop(lod->borrowed_job, JOB_PRIORITY_FAR);
     lod->covered_pass = 0u;
     for (uint32_t i = 0u; i < RENDER_LOD_JOBS; i++) {
         lod->borrowed_jobs[i].stale = lod->borrowed_jobs[i].in_use;
@@ -480,6 +487,8 @@ void render_lod_deinit(render_lod_t *lod) {
     if (lod->borrowed_job == nullptr) {
         return;
     }
+    /* What has not begun returns at once, so that closing waits only for what the capped workers hold. */
+    job_priority_drop(lod->borrowed_job, JOB_PRIORITY_FAR);
     job_group_wait(lod->borrowed_job, &lod->group);
     job_group_deinit(&lod->group);
     for (uint32_t i = 0u; i < lod->level_count; i++) {
@@ -490,12 +499,12 @@ void render_lod_deinit(render_lod_t *lod) {
 
 /* Follows the eye. What has left the window goes back to the pool at once, as its slot belongs to what comes in on the other side. A level
  * keeps what it has and only ever asks for what is new, so an eye moving one column costs one row. */
-static void render_lod_level_follow(render_lod_t *lod, uint32_t index, const float64_t position[3]) {
+static bool render_lod_level_follow(render_lod_t *lod, uint32_t index, const float64_t position[3]) {
     render_lod_level_t *const level = &lod->levels[index];
     const int32_t center_x = render_lod_column_of(position[0], level->shift);
     const int32_t center_y = render_lod_column_of(position[1], level->shift);
     if (level->centered != 0u && center_x == level->center_x && center_y == level->center_y) {
-        return;
+        return false;
     }
     level->centered = 1u;
     level->center_x = center_x;
@@ -530,6 +539,7 @@ static void render_lod_level_follow(render_lod_t *lod, uint32_t index, const flo
     level->request_cursor = 0u;
     level->shown_stale = 1u;
     lod->covered_pass = 0u;
+    return true;
 }
 
 /* Whether full detail is drawn over every chunk a level's column stands on, so that nothing of it would be seen yet. */
@@ -641,11 +651,32 @@ static gpu_status_t render_lod_column_send(render_lod_t *lod, render_lod_job_t *
     return GPU_STATUS_OK;
 }
 
+/* A job dropped before it began: its column is wanted again, if it is still in the window, and asked for in its turn. */
+static void render_lod_column_unbuilt(render_lod_t *lod, const render_lod_job_t *job) {
+    render_lod_level_t *const level = &lod->levels[job->level];
+    uint32_t slot = 0u;
+    if (world_buffers_slot_of(&level->buffers.window, job->chunk_x, job->chunk_y, &slot)) {
+        if (level->borrowed_state[slot] == RENDER_LOD_COLUMN_BUILDING) {
+            level->borrowed_state[slot] = RENDER_LOD_COLUMN_WANTED;
+        } else if (level->borrowed_state[slot] == RENDER_LOD_COLUMN_REBUILDING) {
+            level->borrowed_state[slot] = RENDER_LOD_COLUMN_STALE;
+        }
+        level->request_cursor = 0u;
+    }
+    lod->stats.columns_dropped++;
+}
+
 static gpu_status_t render_lod_jobs_collect(render_lod_t *lod) {
     uint64_t used = 0u;
     for (uint32_t i = 0u; i < RENDER_LOD_JOBS; i++) {
         render_lod_job_t *const job = &lod->borrowed_jobs[i];
         if (job->in_use == 0u || atomic_load_explicit(&job->done, memory_order_acquire) == 0u) {
+            continue;
+        }
+        if (job->dropped != 0u) {
+            render_lod_column_unbuilt(lod, job);
+            job->in_use = 0u;
+            lod->jobs_in_use--;
             continue;
         }
         if (used >= RENDER_LOD_FRAME_BYTES) {
@@ -743,8 +774,9 @@ static void render_lod_jobs_request(render_lod_t *lod) {
         job->level = (uint8_t)best;
         job->top_voxel = -1;
         job->stale = 0u;
+        job->dropped = 0u;
         atomic_store_explicit(&job->done, 0u, memory_order_relaxed);
-        if (!job_try_submit(lod->borrowed_job, &lod->group, render_lod_job_run, job)) {
+        if (!job_try_submit_at(lod->borrowed_job, &lod->group, JOB_PRIORITY_FAR, render_lod_job_run, job)) {
             return; /* the shared queue is full: it is offered again next frame */
         }
         job->in_use = 1u;
@@ -757,8 +789,14 @@ static void render_lod_jobs_request(render_lod_t *lod) {
 }
 
 gpu_status_t render_lod_frame(render_lod_t *lod, const float64_t position[3]) {
+    bool moved = false;
     for (uint32_t i = 0u; i < lod->level_count; i++) {
-        render_lod_level_follow(lod, i, position);
+        moved = render_lod_level_follow(lod, i, position) || moved;
+    }
+    /* What is queued was asked for nearest the old place. Dropped, it is asked for again below, nearest the new one, and
+     * whatever has left the window is never made. What workers have begun goes on. */
+    if (moved) {
+        job_priority_drop(lod->borrowed_job, JOB_PRIORITY_FAR);
     }
     gpu_status_t status = render_lod_jobs_collect(lod);
     if (status != GPU_STATUS_OK) {

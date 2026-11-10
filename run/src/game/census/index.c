@@ -439,7 +439,7 @@ static uint32_t census_batch_tiles(const game_census_t *census, uint32_t *out_do
 static bool census_single(game_census_t *census, job_function_t function) {
     if (census->single_submitted == 0u) {
         atomic_store_explicit(&census->single_done, 0u, memory_order_relaxed);
-        if (!job_try_submit(census->borrowed_job, &census->group, function, census)) {
+        if (!job_try_submit_at(census->borrowed_job, &census->group, JOB_PRIORITY_CLIMATE, function, census)) {
             return false; /* the queue is full: next step */
         }
         census->single_submitted = 1u;
@@ -544,8 +544,8 @@ void game_census_step(game_census_t *census, float64_t player_x, float64_t playe
         const uint32_t slots = end - first < CLIMATE_WEEK_WORK_SLOTS ? end - first : CLIMATE_WEEK_WORK_SLOTS;
         while (census->slots_submitted < slots) {
             /* The queue's trip hands the job everything set above. */
-            if (!job_try_submit(census->borrowed_job, &census->group, census_slot_job,
-                                &census->borrowed_slots[census->slots_submitted])) {
+            if (!job_try_submit_at(census->borrowed_job, &census->group, JOB_PRIORITY_CLIMATE, census_slot_job,
+                                   &census->borrowed_slots[census->slots_submitted])) {
                 break; /* the queue is full: next step */
             }
             census->slots_submitted++;
@@ -557,7 +557,9 @@ void game_census_step(game_census_t *census, float64_t player_x, float64_t playe
             census->input_week = census->week;
             atomic_store_explicit(&census->input_done, 0u, memory_order_relaxed);
             census->input_submitted =
-                job_try_submit(census->borrowed_job, &census->group, census_input_job, census) ? 1u : 0u;
+                job_try_submit_at(census->borrowed_job, &census->group, JOB_PRIORITY_CLIMATE, census_input_job, census)
+                    ? 1u
+                    : 0u;
         }
         work->tiles_total = census_batch_tiles(census, &tiles_done);
         work->tiles_done = tiles_done;

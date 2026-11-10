@@ -66,7 +66,7 @@ static_assert(sizeof(render_lod_plan_t) == 16);
 /* What has happened since the far field opened. */
 typedef struct render_lod_stats_t {
     uint64_t columns_built;   /* 0: on workers, and sent */
-    uint64_t columns_dropped; /* 8: finished after they had left the window */
+    uint64_t columns_dropped; /* 8: finished after they had left the window, or dropped before they began */
     uint64_t columns_no_room; /* 16: their level's pool had no slab for them */
     uint64_t bytes_sent;      /* 24 */
     uint64_t build_ns;        /* 32: workers' time, all of them added up */
@@ -86,7 +86,8 @@ typedef struct render_lod_job_t {
     uint8_t level;                                             /* 40 */
     uint8_t in_use;                                            /* 41: the gpu thread's */
     uint8_t stale;     /* 42: the gpu thread's: what this reads changed once it had begun */
-    uint8_t _pad0[21]; /* 43 */
+    uint8_t dropped;   /* 43: the worker's, before done: dropped before it began, so nothing was made */
+    uint8_t _pad0[20]; /* 44 */
 } render_lod_job_t;
 static_assert(sizeof(render_lod_job_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(alignof(render_lod_job_t) == MC_CPU_CACHE_LINE_BYTES);
