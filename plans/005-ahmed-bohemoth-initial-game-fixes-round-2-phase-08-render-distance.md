@@ -38,6 +38,8 @@ Ahmed: in Settings, set render distance to 128 or more, keep full detail at 32, 
 
 Appended as they land:
 
+- 66a5eb90 Show render distance and full detail in blocks, and explain each in a tooltip.
+
 ## Issues found
 
 **The label drops the word "chunks", 2026-11-10.** "Render distance: 32 chunks (512 blocks)" does not fit the 200-pixel slider: measured with the game's font at scale 1 it is 204 pixels at value 2 and wider from there. The shipped label is "Render distance: 32 (512 blocks)" and "Full detail: 32 (512 blocks)"; the widest at any value, "Render distance: 512 (8192 blocks)", is 189 of 200. Full detail past what the open world holds still reads "Full detail: 40 (new world)". What the first number counts is said by the tooltip.
