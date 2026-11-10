@@ -1,0 +1,4 @@
+name: chicken
+texture: items/chicken
+food: 2
+saturation: 1.2

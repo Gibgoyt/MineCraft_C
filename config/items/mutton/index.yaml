@@ -1,0 +1,4 @@
+name: mutton
+texture: items/mutton
+food: 2
+saturation: 1.2

@@ -1,0 +1,4 @@
+name: smelt_cooked_goat_meat
+kind: smelt
+input: goat_meat
+gives: cooked_goat_meat

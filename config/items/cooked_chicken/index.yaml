@@ -1,0 +1,4 @@
+name: cooked_chicken
+texture: items/cooked_chicken
+food: 6
+saturation: 7.2

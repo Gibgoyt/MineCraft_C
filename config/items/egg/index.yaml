@@ -1,0 +1,5 @@
+name: egg
+texture: items/egg
+stack: 16
+food: 2
+saturation: 1.2

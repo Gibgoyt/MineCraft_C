@@ -1,0 +1,4 @@
+name: smelt_cooked_mutton
+kind: smelt
+input: mutton
+gives: cooked_mutton

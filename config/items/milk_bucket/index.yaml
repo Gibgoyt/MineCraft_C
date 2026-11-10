@@ -1,0 +1,5 @@
+name: milk_bucket
+texture: items/milk_bucket
+stack: 1
+food: 4
+saturation: 2.4

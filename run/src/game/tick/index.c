@@ -220,9 +220,12 @@ static void game_interact_tick(game_t *game, int64_t tick_ns) {
     game_fell_tick(game);
     if (player->survival.eaten_count != eaten) {
         (void)inventory_selected_take(&item->inventory, 1u);
-        /* What a stew came in stays in hand. A stew stacks to one, so the slot it left is empty. */
-        if (held_item == ITEM_ID_MUSHROOM_STEW) {
-            *inventory_slot(&item->inventory, item->inventory.selected) = item_stack_make(ITEM_ID_BOWL, 1u);
+        /* What a stew or milk came in stays in hand. Each stacks to one, so the slot it left is empty. */
+        const uint16_t left = held_item == ITEM_ID_MUSHROOM_STEW ? (uint16_t)ITEM_ID_BOWL
+                              : held_item == ITEM_ID_MILK_BUCKET ? (uint16_t)ITEM_ID_BUCKET
+                                                                 : (uint16_t)ITEM_ID_NONE;
+        if (left != ITEM_ID_NONE) {
+            *inventory_slot(&item->inventory, item->inventory.selected) = item_stack_make(left, 1u);
             item->inventory.added_count++;
         }
     }

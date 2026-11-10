@@ -1,0 +1,6 @@
+name: white_wool
+hardness: 0.8
+tool: none
+drops: [{ item: white_wool, count: 1 }]
+texture: { all: blocks/wool_white }
+sound: snow

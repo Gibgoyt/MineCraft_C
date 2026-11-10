@@ -1,0 +1,4 @@
+name: smelt_cooked_pork
+kind: smelt
+input: pork
+gives: cooked_pork

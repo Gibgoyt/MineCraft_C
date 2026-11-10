@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: goat_hide
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A goat's hide, grey and shaggy, before tanning."
+  seed: 1428950655
+  ops:
+    - op: art
+      palette: { l: "#b9b2a4", m: "#948c7e", d: "#5f594f", s: "#d6d0c4" }
+      rows:
+        - "................"
+        - "..ll........ll.."
+        - "..lmm......mmd.."
+        - "...mmmmmmmmmm..."
+        - "...lmmsmmmmmd..."
+        - "....mmmmmsmm...."
+        - "....lmmmmmmd...."
+        - "....mmmsmmmm...."
+        - "....lmmmmmmd...."
+        - "...mmmmmmmmmm..."
+        - "...lmmmsmmmmd..."
+        - "..lmm......mmd.."
+        - "..dd........dd.."
+        - "................"
+        - "................"
+        - "................"

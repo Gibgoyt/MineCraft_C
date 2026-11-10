@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: cooked_goat_meat
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A leg of goat off the fire."
+  seed: 1530023467
+  ops:
+    - op: art
+      palette: { l: "#8a5636", m: "#663820", d: "#3e2210", f: "#a8754c", b: "#e8e2cf" }
+      rows:
+        - "................"
+        - ".........llmm..."
+        - ".......llmmmmd.."
+        - "......lmmmfmmd.."
+        - ".....lmmmffmmmd."
+        - ".....mmmmfmmmmd."
+        - "......mmmmmmmd.."
+        - "......dmmmmmdd.."
+        - ".....bddmmmdd..."
+        - "....bbb.dddd...."
+        - "...bbb.........."
+        - "..bbb..........."
+        - ".bbb............"
+        - "bb.............."
+        - "................"
+        - "................"

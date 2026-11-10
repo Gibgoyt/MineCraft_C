@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: pig_hide
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A pig's hide, pink and bristly, before tanning."
+  seed: 2100507648
+  ops:
+    - op: art
+      palette: { l: "#f0b3a6", m: "#d98f82", d: "#9e5f55", s: "#c27a6e" }
+      rows:
+        - "................"
+        - "..ll........ll.."
+        - "..lmm......mmd.."
+        - "...mmmmmmmmmm..."
+        - "...lmmsmmmmmd..."
+        - "....mmmmmsmm...."
+        - "....lmmmmmmd...."
+        - "....mmmsmmmm...."
+        - "....lmmmmmmd...."
+        - "...mmmmmmmmmm..."
+        - "...lmmmsmmmmd..."
+        - "..lmm......mmd.."
+        - "..dd........dd.."
+        - "................"
+        - "................"
+        - "................"

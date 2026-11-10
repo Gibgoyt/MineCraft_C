@@ -1,0 +1,4 @@
+name: smelt_cooked_beef
+kind: smelt
+input: beef
+gives: cooked_beef

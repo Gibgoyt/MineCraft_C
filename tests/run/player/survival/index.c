@@ -883,6 +883,22 @@ TEST(every_food_in_config_items_gives_what_its_row_says_up_to_the_limits) {
     CHECK_NEAR(item_defs[ITEM_ID_APPLE].saturation, 2.4f32, PS_CLOSE);
     CHECK_EQ_U64(item_defs[ITEM_ID_PUMPKIN_PIE].food, 8u);
     CHECK_NEAR(item_defs[ITEM_ID_PUMPKIN_PIE].saturation, 4.8f32, PS_CLOSE);
+    /* The animals' food, raw and cooked: the published numbers, and goat as mutton, which it is most like. */
+    static const uint16_t meats[] = {
+        ITEM_ID_BEEF,      ITEM_ID_COOKED_BEEF,      ITEM_ID_PORK,    ITEM_ID_COOKED_PORK,
+        ITEM_ID_MUTTON,    ITEM_ID_COOKED_MUTTON,    ITEM_ID_CHICKEN, ITEM_ID_COOKED_CHICKEN,
+        ITEM_ID_GOAT_MEAT, ITEM_ID_COOKED_GOAT_MEAT, ITEM_ID_EGG,     ITEM_ID_MILK_BUCKET,
+    };
+    static const uint8_t meat_food[] = {3u, 8u, 3u, 8u, 2u, 6u, 2u, 6u, 2u, 6u, 2u, 4u};
+    static const float32_t meat_saturation[] = {1.8f32, 12.8f32, 1.8f32, 12.8f32, 1.2f32, 9.6f32,
+                                                1.2f32, 7.2f32,  1.2f32, 9.6f32,  1.2f32, 2.4f32};
+    static_assert(sizeof(meats) / sizeof(meats[0]) == sizeof(meat_food));
+    static_assert(sizeof(meat_food) == sizeof(meat_saturation) / sizeof(meat_saturation[0]));
+    for (uint32_t i = 0u; i < sizeof(meat_food); i++) {
+        CHECK_EQ_U64(item_defs[meats[i]].food, meat_food[i]);
+        CHECK_NEAR(item_defs[meats[i]].saturation, meat_saturation[i], PS_CLOSE);
+    }
+    CHECK_EQ_U64(item_defs[ITEM_ID_COW_HIDE].food, 0u);
     /* Saturation stops at food. */
     player_survival_t low;
     player_survival_start(&low, 0.0f64, 0.0f64, 0.0f64);
@@ -1573,6 +1589,40 @@ TEST(in_a_real_game_a_script_eats_keeps_a_bowl_places_a_bed_sleeps_dies_spills_a
     /* All of it is either back in hand or still lying there. Only these: leaves near the floor it made go on decaying and dropping. */
     CHECK_EQ_U64(inventory_count(inventory, ITEM_ID_APPLE) + ps_on_ground(rig.entity, ITEM_ID_APPLE), 2u);
     CHECK_EQ_U64(inventory_count(inventory, ITEM_ID_BOWL) + ps_on_ground(rig.entity, ITEM_ID_BOWL), 1u);
+    game_close(game);
+    ps_game_end(t, &rig);
+}
+
+TEST(in_a_real_game_milk_is_drunk_and_leaves_its_bucket_in_the_hand) {
+    ps_game_rig_t rig;
+    REQUIRE(ps_game_begin(t, &rig));
+    game_t *const game = rig.game;
+    REQUIRE(game_open(game, &ps_small_game));
+    REQUIRE(game_settle(game));
+    ps_script_t *const script = test_alloc(t, sizeof(ps_script_t));
+    memset(script, 0, sizeof(*script));
+    game_headless_scene(game, &script->scene);
+    player_survival_t *const survival = &rig.player->survival;
+    inventory_t *const inventory = &rig.item->inventory;
+    REQUIRE(ps_script_ticks(script, 10u));
+    /* Milk in the first slot, looking at the sky so that the button only drinks. */
+    *inventory_slot(inventory, 0u) = item_stack_make(ITEM_ID_MILK_BUCKET, 1u);
+    inventory->added_count++;
+    game->camera.pitch = 1.5f32;
+    survival->food = 8u;
+    survival->saturation = 0.0f32;
+    ps_script_key(script, KEY_1, true);
+    REQUIRE(ps_script_ticks(script, 1u));
+    ps_script_key(script, KEY_1, false);
+    ps_script_key(script, BTN_RIGHT, true);
+    REQUIRE(ps_script_ticks(script, 33u));
+    ps_script_key(script, BTN_RIGHT, false);
+    REQUIRE(ps_script_ticks(script, 1u));
+    CHECK_EQ_U64(survival->eaten_count, 1u);
+    CHECK_EQ_U64(survival->food, 8u + (uint32_t)item_defs[ITEM_ID_MILK_BUCKET].food);
+    CHECK_EQ_U64(inventory_slot_read(inventory, 0u)->item, ITEM_ID_BUCKET);
+    CHECK_EQ_U64(inventory_slot_read(inventory, 0u)->count, 1u);
+    CHECK_EQ_U64(inventory->added_count, inventory->removed_count + inventory_items_held(inventory));
     game_close(game);
     ps_game_end(t, &rig);
 }

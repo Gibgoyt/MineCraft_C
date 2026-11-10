@@ -1,0 +1,4 @@
+name: smelt_cooked_chicken
+kind: smelt
+input: chicken
+gives: cooked_chicken

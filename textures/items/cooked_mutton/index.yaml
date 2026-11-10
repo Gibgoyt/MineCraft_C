@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: cooked_mutton
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A leg of mutton off the fire."
+  seed: 1643827885
+  ops:
+    - op: art
+      palette: { l: "#9e6440", m: "#784427", d: "#4a2814", f: "#c08a5c", b: "#e8e2cf" }
+      rows:
+        - "................"
+        - ".........llmm..."
+        - ".......llmmmmd.."
+        - "......lmmmfmmd.."
+        - ".....lmmmffmmmd."
+        - ".....mmmmfmmmmd."
+        - "......mmmmmmmd.."
+        - "......dmmmmmdd.."
+        - ".....bddmmmdd..."
+        - "....bbb.dddd...."
+        - "...bbb.........."
+        - "..bbb..........."
+        - ".bbb............"
+        - "bb.............."
+        - "................"
+        - "................"

@@ -57,7 +57,7 @@ Only where the game has no such item. Each is written here so that it can be cha
 
 | Recipe | Published | Here | Why |
 |---|---|---|---|
-| `pumpkin_pie` | pumpkin, sugar, egg | pumpkin, sugar | No egg |
+| `pumpkin_pie` | pumpkin, sugar, egg | pumpkin, sugar | `egg` is an item now, but until hens lay it nobody can get one |
 | `cookie` | 2 wheat, cocoa beans | 2 wheat, `dye_brown`, shapeless | No cocoa beans |
 | `dye_grey_from_azure_bluet` | light grey dye | `dye_grey` | No light grey dye |
 | `dye_cyan_from_blue_orchid` | light blue dye | `dye_cyan` | No light blue dye |

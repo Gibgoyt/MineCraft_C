@@ -337,6 +337,7 @@ needs:
     - arrow
     - baked_potato
     - bed
+    - beef
     - berries
     - boat
     - bone
@@ -349,14 +350,21 @@ needs:
     - bucket
     - carrot
     - charcoal
+    - chicken
     - clay_ball
     - coal
+    - cooked_beef
+    - cooked_chicken
+    - cooked_goat_meat
+    - cooked_mutton
+    - cooked_pork
     - cookie
     - copper_boots
     - copper_chestplate
     - copper_helmet
     - copper_ingot
     - copper_leggings
+    - cow_hide
     - diamond
     - diamond_axe
     - diamond_boots
@@ -384,6 +392,7 @@ needs:
     - dye_violet
     - dye_white
     - dye_yellow
+    - egg
     - emerald
     - feather
     - flint
@@ -391,6 +400,8 @@ needs:
     - glass_bottle
     - glass_door
     - glow_berries
+    - goat_hide
+    - goat_meat
     - gold_axe
     - gold_boots
     - gold_chestplate
@@ -425,10 +436,14 @@ needs:
     - leather_leggings
     - melon_seeds
     - melon_slice
+    - milk_bucket
     - mushroom_stew
+    - mutton
     - oak_sign
     - obsidian_shard
     - paper
+    - pig_hide
+    - pork
     - potato
     - pumpkin_pie
     - pumpkin_seeds

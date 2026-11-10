@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: egg
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A hen's egg, brown."
+  seed: 1211619650
+  ops:
+    - op: art
+      palette: { l: "#e9c9a2", m: "#d2a777", d: "#9c7448", w: "#f8ead6" }
+      rows:
+        - "................"
+        - "................"
+        - "................"
+        - ".......lll......"
+        - "......lwwmd....."
+        - ".....lwwmmmd...."
+        - ".....lwmmmmd...."
+        - "....lmmmmmmmd..."
+        - "....lmmmmmmmd..."
+        - "....mmmmmmmmd..."
+        - "....mmmmmmmmd..."
+        - ".....mmmmmmd...."
+        - "......dmmdd....."
+        - ".......ddd......"
+        - "................"
+        - "................"

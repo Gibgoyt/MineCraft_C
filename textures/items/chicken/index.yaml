@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: chicken
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A raw chicken leg, pale."
+  seed: 136756892
+  ops:
+    - op: art
+      palette: { l: "#f6d6c6", m: "#e8b7a2", d: "#b78470", f: "#f9e6dc", b: "#e8e2cf" }
+      rows:
+        - "................"
+        - "................"
+        - "........lllm...."
+        - ".......lmmmmm..."
+        - "......lmmmmmmd.."
+        - "......mmmmfmmd.."
+        - "......mmmmmmmd.."
+        - ".......mmmmmd..."
+        - "......bdmmmdd..."
+        - ".....bb.ddd....."
+        - "....bb.........."
+        - "..bbbb.........."
+        - "..bbb..........."
+        - "...b............"
+        - "................"
+        - "................"

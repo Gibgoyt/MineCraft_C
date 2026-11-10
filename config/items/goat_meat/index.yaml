@@ -1,0 +1,4 @@
+name: goat_meat
+texture: items/goat_meat
+food: 2
+saturation: 1.2

@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: pork
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A raw pork chop, pink, with its bone."
+  seed: 1318670393
+  ops:
+    - op: art
+      palette: { l: "#f2a7a0", m: "#de8279", d: "#a8564f", f: "#fbe2da", b: "#e8e2cf" }
+      rows:
+        - "................"
+        - "................"
+        - "................"
+        - "......lllmm....."
+        - "....llmmmmmmd..."
+        - "...lmmmmmmmmmd.."
+        - "..lmmmmffmmmmd.."
+        - "..lmmmffmmmmmd.."
+        - "bb.mmmmmmmmmmd.."
+        - "bbbbmmmmmmmmd..."
+        - ".bb.ddmmmmmd...."
+        - "......ddddd....."
+        - "................"
+        - "................"
+        - "................"
+        - "................"
