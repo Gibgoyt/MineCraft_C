@@ -33,6 +33,8 @@ Ahmed: stay out through a whole night, and see no hostile mob.
 
 Appended as they land:
 
+- `121e880f` Turn off zombies, skeletons and creepers, and take them out of saved worlds as they open (plan 005 phase 3).
+
 ## Issues found
 
 1. **How it is done.** `weight: 0` in the three files (each was 100, noted beside it). `mob_spawn_tick` now adds the weights up first and, at 0, tries no place and draws nothing from its random stream: it only despawns. The hostile spawn path is untouched and general: phase 4 adds animals by giving them weights (and day rules).
