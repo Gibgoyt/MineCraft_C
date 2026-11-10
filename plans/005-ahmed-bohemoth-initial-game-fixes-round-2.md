@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2
 
-**Status:** being built by waves of agents, from 2026-11-10. Done so far: phases 1, 3, 5 and 9; phase 8's labels; phase 14's measuring and live test (the starvation fixes are in progress). **Until phase 14 is built, play at render distance 32 with full detail 32,** which draws correctly   (updated 2026-11-09)
+**Status:** being built by waves of agents, from 2026-11-10. Done so far: phases 1, 3, 5, 7 and 9; phase 4 stages 1 and 2; phase 8's labels; phase 14's measuring and live test (the starvation fixes are in progress). **Until phase 14 is built, play at render distance 32 with full detail 32,** which draws correctly   (updated 2026-11-09)
 
 ## Context
 
@@ -20,7 +20,7 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 4 | Animals with males and females: cattle, sheep, pigs, goats, mountain goats, chickens. Females give milk or eggs, males are food. A bed from wool | `...-phase-04-animals.md` | No animals, wool, hides or meat exist; mobs spawn only in the dark; a bed works but needs wheat | **Stages 1 and 2 done:** male and female bodies, daylight herds, a passive mind; meats, egg, milk, hides and white wool (`c326eea1`). The six animals are next |
 | 5 | No armour bar | `...-phase-05-armour-bar.md` | It was never drawn | **Done** (`80435865`): ten icons above the hearts, bubbles a row higher |
 | 6 | Woodworking bench can't make planks or sticks, overlaps the table; a stoneworking bench; the table only makes benches | `...-phase-06-crafting-stations.md` | Planks and sticks were kept on the table to reach the bench | **Blocked: Ahmed's Hypixel research** |
-| 7 | Very laggy after a long time in another window | `...-phase-07-lag-after-alt-tab.md` | Likely the world filling to its 70-mob cap while it never paused. Not proven | Not started |
+| 7 | Very laggy after a long time in another window | `...-phase-07-lag-after-alt-tab.md` | **Measured:** not mobs (0.15 ms a tick). At render distance 64 every 30 s autosave rebuilds far field (360–680 ms stalls), handed to phase 14 | **Done** (pause when away, F3 numbers, slow-frame log). The far-field fix is phase 14's |
 | 8 | Can't see very far; what's a chunk? | `...-phase-08-render-distance.md` | Working as set: 32 chunks is 512 blocks, and nothing is drawn past full detail at 32 | **Labels done** (`e0cf3d33`): sliders show blocks, with a tooltip each. Raising the default waits for phase 14 |
 | 9 | Use Minecraft's default textures, not Pixel Perfection: download it, keep Pixel Perfection | `...-phase-09-default-textures.md` | The repo is public, and the texture folders hold the pixels too, so the default pack goes in a git-ignored copy | **Done** (`af93d651`): `tools/fetch_minecraft_default.sh`, then `tools/import_minecraft_default.sh`, builds from `textures_local/`. Nothing from Mojang is committed |
 | 10 | A translucent blue preview of a block before placing it, like Hypixel | `...-phase-10-placement-preview.md` | Only an outline of the aimed-at block exists | Not started |
@@ -121,7 +121,7 @@ This is the build at `main`. It has everything from plan 003, and none of this p
 | Bed | 3 wheat over 3 planks on the table, place it, sleep at night | Sleeps through the night. **The recipe uses wheat**, as there's no wool yet (phase 4) |
 | Height | Build up | A block goes at z = 1250, and not at 1251 |
 | Sound | Mine stone, wood, dirt, sand and leaves; change volume in Settings | Crunches by material. **No agent has heard these** |
-| Lag | Play, then go to another window for 10+ minutes, and come back | Likely laggy (phase 7). Press F3 and note the numbers |
+| Lag | Play, then go to another window for 10+ minutes, and come back | The game pauses when you leave and resumes when you click back. F3 shows mobs, drops, uploads and far jobs |
 
 **To see the world from above:**
 
