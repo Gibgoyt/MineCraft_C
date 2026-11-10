@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2
 
-**Status:** being built by waves of agents, from 2026-11-10. Done so far: phases 3, 5 and 9; phase 8's labels; phase 14's measuring and live test (the starvation fixes are in progress). **Until phase 14 is built, play at render distance 32 with full detail 32,** which draws correctly   (updated 2026-11-09)
+**Status:** being built by waves of agents, from 2026-11-10. Done so far: phases 1, 3, 5 and 9; phase 8's labels; phase 14's measuring and live test (the starvation fixes are in progress). **Until phase 14 is built, play at render distance 32 with full detail 32,** which draws correctly   (updated 2026-11-09)
 
 ## Context
 
@@ -14,7 +14,7 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 
 | # | Note | Phase file | Cause found | Status |
 |---|---|---|---|---|
-| 1 | The tree feller must always be on, not need an axe | `...-phase-01-tree-feller-always-on.md` | Plan 003's "axes only" default | Not started |
+| 1 | The tree feller must always be on, not need an axe | `...-phase-01-tree-feller-always-on.md` | Plan 003's "axes only" default | **Done** (`ad8513f4`): any tool or bare hands fells, sneaking too |
 | 2 | Doors can't be placed | `...-phase-02-doors.md` | Door blocks were never added | Not started |
 | 3 | Turn off zombies, skeletons and creepers, for Ahmed's own mobs later | `...-phase-03-turn-off-hostile-mobs.md` | Data change: `weight: 0` | **Done** (`121e880f`): weight 0, and taken out of saved worlds as they open |
 | 4 | Animals with males and females: cattle, sheep, pigs, goats, mountain goats, chickens. Females give milk or eggs, males are food. A bed from wool | `...-phase-04-animals.md` | No animals, wool, hides or meat exist; mobs spawn only in the dark; a bed works but needs wheat | Not started |
@@ -29,7 +29,7 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 13 | Stairs and the woodworking bench only face north: face the player, and turn before placing | `...-phase-12-block-facing.md` | A voxel holds only an id, so no block can face a way | Not started |
 | 14 | A blue preview for every block, including the next block of a 1×1 bridge | Added to `...-phase-10-placement-preview.md` | — | Part of phase 10 |
 | 15 | Place a block ahead while looking forward, like Bedrock, without turning to the edge | `...-phase-13-forward-placement.md` | Placing needs the aim to hit a block face, and looking ahead off a bridge it hits nothing | Not started |
-| 16 | The tree feller wears the axe for every log that falls, not just the ones chopped | Added to `...-phase-01-tree-feller-always-on.md` | Plan 003's default "each log wears the axe" | Part of phase 1 |
+| 16 | The tree feller wears the axe for every log that falls, not just the ones chopped | Added to `...-phase-01-tree-feller-always-on.md` | Plan 003's default "each log wears the axe" | **Done** (`ad8513f4`): only the cut log wears the tool |
 | 17 | Loading takes about 5 minutes, and changing render distance or full detail lags. A change must show in under 1 second, tested by agents in a live game | `...-phase-14-loading-and-render-distance-speed.md` | The far field starving the workers (note 18). **Not sound:** the build Ahmed tested predates sound, and a render distance 32 run with sound draws correctly | Not started |
 | 18 | Rendering issues on a new world: flat untextured slabs around you, a mined log still drawn (`~/Pictures/10.png`, `11.png`) | `...-phase-14-loading-and-render-distance-speed.md` | **Identified:** at render distance 64, far-field builds take all 16 workers for minutes, and the job queue has no priorities, so near chunks and mined-block redraws wait. Reproduced; render distance 32 draws correctly | Not started |
 | 19 | A mined tree vanishes about 5 minutes later; changing render distance or full detail takes about 5 minutes, with rendering issues | `...-phase-14-loading-and-render-distance-speed.md` | **Measured live:** render distance 32 → 64 shows nothing new for over 16 s and settles in 3 to 4 minutes. Full detail 32 → 16 shows nothing for 45 s, then everything turns darker. The far field keeps the old picture until rebuilt, and draws no unsaved edits | Not started |
@@ -113,7 +113,7 @@ This is the build at `main`. It has everything from plan 003, and none of this p
 | How far you see | Keep render distance 32, full detail 32 | **Don't raise render distance yet:** at 64 or more the far field starves the near world (phase 14) |
 | Caves | Find an opening and walk in, with torches | Passages underground. Dark without torches |
 | Under water | Swim down and stay | The view goes blue, 10 bubbles empty, then hearts drop |
-| Tree feller | Chop a log **with an axe**, then with bare hands | The axe brings the tree down. Hands take one log (phase 1 changes this) |
+| Tree feller | Chop a log with bare hands, then with an axe | The whole tree comes down either way, and the axe wears by one |
 | Wall torches | Place a torch on each side of a block, then mine the block | Torches lean out from walls, and drop when it goes |
 | Copper armour | Smelt copper, make the four pieces on the table, wear them | They're worn, and the armour bar fills above the hearts |
 | Woodworking bench | Table: 3 planks over 2 sticks. Place it, make stairs on it | Wood stairs and tools come off the bench. **Planks and sticks don't** (phase 6) |
