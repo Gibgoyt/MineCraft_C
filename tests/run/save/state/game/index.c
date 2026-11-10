@@ -761,6 +761,57 @@ TEST(the_far_field_draws_an_edit_within_a_second_of_ticks) {
     ss_temp_remove(t, root);
 }
 
+/* Plan 005 phase 14: a capture that changes no block, as an autosave with no edits, builds no far column, and nor does one whose blocks
+ * came back to what was last captured. Before, every autosave at render distance 64 rebuilt far columns, every 30 s. */
+TEST(an_autosave_with_no_edits_builds_no_far_column) {
+    char *const root = ss_temp_directory(t);
+    REQUIRE(root != nullptr);
+    ss_game_rig_t *const rig = test_alloc(t, sizeof(ss_game_rig_t));
+    REQUIRE(ss_game_begin(t, rig, false));
+    game_t *const game = rig->game;
+    save_t *const save = rig->save;
+    world_t *const world = rig->world;
+    REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
+    const game_config_t config = {
+        .render_distance = 8u, .full_detail = 4u, .width = 64u, .height = 36u, .show_date = 0u};
+    REQUIRE(game_open(game, &config));
+    REQUIRE(game_settle(game));
+    render_lod_t *const lod = rig->render->borrowed_lod;
+    REQUIRE(lod != nullptr && lod->overlay != nullptr);
+    const int32_t x = atomic_load(&game->center_x) * 16, y = atomic_load(&game->center_y) * 16;
+    const int32_t z = COLUMN_Z_GAMEPLAY_MAX;
+    /* Whatever the world had dirty from opening, captured and built. */
+    REQUIRE(world_edit_block_set(&world->edit, x, y, z, BLOCK_ID_STONE) == WORLD_EDIT_STATUS_CHANGED);
+    REQUIRE(save_world_capture_dirty(&save->world, &world->edit) == SAVE_WORLD_OK);
+    game_far_changes_take(game);
+    REQUIRE(game_settle(game));
+    const uint64_t built = lod->stats.columns_built;
+    const uint32_t unchanged = save->world.borrowed_far->unchanged;
+
+    /* Away and back: dirty, but the same blocks as last captured. */
+    REQUIRE(world_edit_block_set(&world->edit, x, y, z, BLOCK_ID_AIR) == WORLD_EDIT_STATUS_CHANGED);
+    REQUIRE(world_edit_block_set(&world->edit, x, y, z, BLOCK_ID_STONE) == WORLD_EDIT_STATUS_CHANGED);
+    REQUIRE(save_world_capture_dirty(&save->world, &world->edit) == SAVE_WORLD_OK);
+    game_far_changes_take(game);
+    REQUIRE(game_settle(game));
+    CHECK_EQ_U64(lod->stats.columns_built, built);
+    CHECK_EQ_U64(save->world.borrowed_far->unchanged, unchanged + 1u);
+
+    /* An autosave with nothing edited, from the sim step game_settle runs: no ticks, so nothing flows or falls meanwhile. */
+    const uint64_t saves = save->autosave.saves_done;
+    save_autosave_request(&save->autosave);
+    REQUIRE(game_settle(game));
+    save_autosave_stop(&save->autosave);
+    CHECK(save->autosave.saves_done > saves);
+    REQUIRE(game_settle(game));
+    CHECK_EQ_U64(lod->stats.columns_built, built);
+    REQUIRE(game_save_finish(game) == SAVE_WORLD_OK);
+    game_close(game);
+    save_close(save);
+    ss_game_end(t, rig);
+    ss_temp_remove(t, root);
+}
+
 /* ---- The built program ---------------------------------------------------------------------------------------------------- */
 
 /* Opens the first world on the list, looks down, digs, and goes on until it is killed or a very long way past any save. At 640 by 480, scale 2: see

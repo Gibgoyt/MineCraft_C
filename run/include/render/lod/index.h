@@ -28,9 +28,10 @@ enum : uint32_t {
     /* Column heights in blocks, and in sections at the finest level: 1536 blocks in voxels of 2. */
     RENDER_LOD_HEIGHT_BLOCKS = 1536u,
     RENDER_LOD_SECTIONS_MAX = (RENDER_LOD_HEIGHT_BLOCKS >> LOD_SHIFT_MIN) / 16u,
-    /* The coarsest voxel a world's ground grows anything for, as a shift: 8 blocks. What grows is nearly all of what a sample of real
-     * terrain costs, and past this a tree is under half of its voxel, so it would not be drawn: the stage file's cost section. */
-    RENDER_LOD_FEATURES_SHIFT_MAX = 3u,
+    /* The coarsest voxel a world's ground grows anything for, as a shift: 4 blocks. What grows is nearly all of what a sample of real
+     * terrain costs: at voxels of 8 a column cost 59 ms with it and 8 ms without, and that level is what reaches the horizon, so it must come
+     * in well under a second after a change of render distance (plan 005 phase 14). Past 900 blocks a tree is a few pixels. */
+    RENDER_LOD_FEATURES_SHIFT_MAX = 2u,
 };
 enum : uint64_t {
     /* What a level's pool gives each of its columns: real ground measured up to 38 KiB in voxels of 2 among mountains, and less the coarser
@@ -127,9 +128,12 @@ typedef struct render_lod_t {
     void *borrowed_overlay_context;                     /* 1896 */
     uint64_t overlay_scratch_bytes;                     /* 1904 */
     uint8_t no_room_said;                               /* 1912 */
-    uint8_t _pad0[7];                                   /* 1913 */
+    uint8_t covered_pass;                               /* 1913: what full detail covers is asked for too */
+    uint8_t _pad0[6];                                   /* 1914 */
+    const world_buffers_t *borrowed_fine;               /* 1920: what full detail has on the card, or nullptr */
+    uint8_t _pad1[56];                                  /* 1928 */
 } render_lod_t;
-static_assert(sizeof(render_lod_t) == 1920);
+static_assert(sizeof(render_lod_t) == 1984);
 static_assert(alignof(render_lod_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(render_lod_t, levels) == 64);
 static_assert(offsetof(render_lod_t, stats) == 1792);
@@ -166,8 +170,16 @@ gpu_status_t render_lod_init(render_lod_t *lod, arena_t *arena, device_memory_t 
 void render_lod_overlay_set(render_lod_t *lod, render_lod_overlay_t overlay, void *borrowed_context,
                             uint64_t scratch_bytes);
 
+/* What full detail has on the card, the near world's buffers, read on this same thread: a far column full detail is drawn over all of is
+ * asked for after every other, as nothing of it shows. nullptr, as at init, for none. */
+void render_lod_fine_set(render_lod_t *lod, const world_buffers_t *fine);
+
 /* What is under a column of the world, in chunks, has changed: each level makes the column it falls in again, showing the old one until the new is ready. */
 void render_lod_column_changed(render_lod_t *lod, int32_t chunk_x, int32_t chunk_y);
+
+/* Every column over this square of chunks, both ends included: for when it is known only that what changed is somewhere in it. */
+void render_lod_area_changed(render_lod_t *lod, int32_t min_chunk_x, int32_t min_chunk_y, int32_t max_chunk_x,
+                             int32_t max_chunk_y);
 
 /* All of them, for when it is no longer known which. */
 void render_lod_all_changed(render_lod_t *lod);

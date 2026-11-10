@@ -25,6 +25,8 @@ typedef enum render_lod_column_state_t : uint8_t {
     RENDER_LOD_COLUMN_NO_ROOM = 3,
     RENDER_LOD_COLUMN_STALE = 4,      /* built and shown, and wanted again: what is under it has changed */
     RENDER_LOD_COLUMN_REBUILDING = 5, /* built and shown, and being made again */
+    RENDER_LOD_COLUMN_COVERED =
+        6, /* wanted, but full detail is drawn over all of it: asked for after everything else */
 } render_lod_column_state_t;
 
 enum : uint64_t {
@@ -347,6 +349,10 @@ gpu_status_t render_lod_init(render_lod_t *lod, arena_t *arena, device_memory_t 
     return GPU_STATUS_OK;
 }
 
+void render_lod_fine_set(render_lod_t *lod, const world_buffers_t *fine) {
+    lod->borrowed_fine = fine;
+}
+
 void render_lod_overlay_set(render_lod_t *lod, render_lod_overlay_t overlay, void *borrowed_context,
                             uint64_t scratch_bytes) {
     ASSERT_ALWAYS(lod->jobs_in_use == 0u);
@@ -385,7 +391,20 @@ void render_lod_column_changed(render_lod_t *lod, int32_t chunk_x, int32_t chunk
     }
 }
 
+void render_lod_area_changed(render_lod_t *lod, int32_t min_chunk_x, int32_t min_chunk_y, int32_t max_chunk_x,
+                             int32_t max_chunk_y) {
+    for (uint32_t i = 0u; i < lod->level_count; i++) {
+        const uint32_t shift = lod->levels[i].shift;
+        for (int32_t y = min_chunk_y >> shift; y <= max_chunk_y >> shift; y++) {
+            for (int32_t x = min_chunk_x >> shift; x <= max_chunk_x >> shift; x++) {
+                render_lod_level_column_changed(lod, i, x, y);
+            }
+        }
+    }
+}
+
 void render_lod_all_changed(render_lod_t *lod) {
+    lod->covered_pass = 0u;
     for (uint32_t i = 0u; i < RENDER_LOD_JOBS; i++) {
         lod->borrowed_jobs[i].stale = lod->borrowed_jobs[i].in_use;
     }
@@ -488,7 +507,7 @@ static void render_lod_level_follow(render_lod_t *lod, uint32_t index, const flo
     world_buffers_set_window(&level->buffers, window);
     for (uint32_t slot = 0u; slot < level->column_count; slot++) {
         const uint8_t state = level->borrowed_state[slot];
-        if (state == RENDER_LOD_COLUMN_WANTED) {
+        if (state == RENDER_LOD_COLUMN_WANTED || state == RENDER_LOD_COLUMN_COVERED) {
             continue;
         }
         const world_buffers_column_t *const column = &level->buffers.borrowed_shadow[slot];
@@ -506,17 +525,43 @@ static void render_lod_level_follow(render_lod_t *lod, uint32_t index, const flo
         uint32_t slot = 0u;
         if (job->in_use != 0u && job->level == index &&
             world_buffers_slot_of(&window, job->chunk_x, job->chunk_y, &slot) &&
-            level->borrowed_state[slot] == RENDER_LOD_COLUMN_WANTED) {
+            (level->borrowed_state[slot] == RENDER_LOD_COLUMN_WANTED ||
+             level->borrowed_state[slot] == RENDER_LOD_COLUMN_COVERED)) {
             level->borrowed_state[slot] = RENDER_LOD_COLUMN_BUILDING;
         }
     }
     level->request_cursor = 0u;
     level->shown_stale = 1u;
+    lod->covered_pass = 0u;
+}
+
+/* Whether full detail is drawn over every chunk a level's column stands on, so that nothing of it would be seen yet. */
+static bool render_lod_covered(const render_lod_t *lod, const render_lod_level_t *level, int32_t column_x,
+                               int32_t column_y) {
+    const world_buffers_t *const fine = lod->borrowed_fine;
+    if (fine == nullptr || fine->borrowed_shadow == nullptr) {
+        return false;
+    }
+    const int32_t chunks = 1 << level->shift;
+    for (int32_t dy = 0; dy < chunks; dy++) {
+        for (int32_t dx = 0; dx < chunks; dx++) {
+            const int32_t chunk_x = column_x * chunks + dx, chunk_y = column_y * chunks + dy;
+            uint32_t slot = 0u;
+            if (!world_buffers_slot_of(&fine->window, chunk_x, chunk_y, &slot)) {
+                return false;
+            }
+            const world_buffers_column_t *const column = &fine->borrowed_shadow[slot];
+            if (column->ready == 0u || column->chunk_x != chunk_x || column->chunk_y != chunk_y) {
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 /* The widest square around the eye's column with every column built. It stops short of the table by the margin, so that the next column
  * the eye steps towards is there already, and what is shown need not shrink for it. */
-static void render_lod_level_show(render_lod_level_t *level) {
+static void render_lod_level_show(const render_lod_t *lod, render_lod_level_t *level) {
     if (level->shown_stale == 0u) {
         return;
     }
@@ -530,8 +575,11 @@ static void render_lod_level_show(render_lod_level_t *level) {
             const int32_t step = dy == -ring || dy == ring || ring == 0 ? 1 : 2 * ring;
             for (int32_t dx = -ring; dx <= ring && whole; dx += step) {
                 uint32_t slot = 0u;
+                /* A column put off as covered counts while full detail is still drawn over it: a ray there meets full detail first. */
                 whole = world_buffers_slot_of(window, level->center_x + dx, level->center_y + dy, &slot) &&
-                        render_lod_state_built(level->borrowed_state[slot]);
+                        (render_lod_state_built(level->borrowed_state[slot]) ||
+                         (level->borrowed_state[slot] == RENDER_LOD_COLUMN_COVERED &&
+                          render_lod_covered(lod, level, level->center_x + dx, level->center_y + dy)));
             }
         }
         if (!whole) {
@@ -618,50 +666,68 @@ static gpu_status_t render_lod_jobs_collect(render_lod_t *lod) {
     return GPU_STATUS_OK;
 }
 
-/* Moves a level's cursor past what needs nothing, and returns the slot of the next column it wants, or false if it wants none. */
-static bool render_lod_level_next(render_lod_level_t *level, uint32_t *out_slot) {
+/* Moves a level's cursor past what needs nothing, and returns the slot of the next column it wants, or false if it wants none. On the first
+ * pass a column full detail covers is put off, as nothing of it is seen: on the second it is asked for like any other. */
+static bool render_lod_level_next(render_lod_t *lod, render_lod_level_t *level, uint32_t *out_slot) {
     while (level->request_cursor < level->column_count) {
         const int16_t *const offset = &level->borrowed_offsets[level->request_cursor * 2u];
+        const int32_t column_x = level->center_x + offset[0], column_y = level->center_y + offset[1];
         uint32_t slot = 0u;
-        ASSERT_ALWAYS(world_buffers_slot_of(&level->buffers.window, level->center_x + offset[0],
-                                            level->center_y + offset[1], &slot));
+        ASSERT_ALWAYS(world_buffers_slot_of(&level->buffers.window, column_x, column_y, &slot));
         const uint8_t state = level->borrowed_state[slot];
-        if (state == RENDER_LOD_COLUMN_WANTED || state == RENDER_LOD_COLUMN_STALE) {
+        if (state == RENDER_LOD_COLUMN_STALE || (lod->covered_pass != 0u && state == RENDER_LOD_COLUMN_COVERED)) {
             *out_slot = slot;
             return true;
+        }
+        if (state == RENDER_LOD_COLUMN_WANTED || state == RENDER_LOD_COLUMN_COVERED) {
+            if (lod->covered_pass != 0u || !render_lod_covered(lod, level, column_x, column_y)) {
+                *out_slot = slot;
+                return true;
+            }
+            level->borrowed_state[slot] = RENDER_LOD_COLUMN_COVERED;
         }
         level->request_cursor++;
     }
     return false;
 }
 
-/* How far the middle of a level's column at this offset is from the eye's column, squared, in blocks. */
-static uint64_t render_lod_offset_blocks2(const render_lod_level_t *level, const int16_t *offset) {
-    const uint64_t across = (uint64_t)((int64_t)offset[0] * offset[0] + (int64_t)offset[1] * offset[1]);
-    return across << (2u * (4u + level->shift));
+/* Whether any level has a column put off for being covered. */
+static bool render_lod_any_covered(const render_lod_t *lod) {
+    for (uint32_t i = 0u; i < lod->level_count; i++) {
+        const render_lod_level_t *const level = &lod->levels[i];
+        for (uint32_t slot = 0u; slot < level->column_count; slot++) {
+            if (level->borrowed_state[slot] == RENDER_LOD_COLUMN_COVERED) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
-/* The nearest column first, in blocks, whichever level it is in: what stands round the eye comes first, at every level, and so does a
- * level's share of what full detail has not drawn yet, which is what shows in its place. At the same distance the coarser level goes
- * first, as it is what reaches the horizon. */
+/* The coarsest level first, the nearest column first in it: the coarsest is what reaches the horizon, for the least work per block, and it
+ * stands round the eye too, so a new world or a new render distance shows the whole of it in well under a second, coarse, and finer levels
+ * sharpen what is already there. A column full detail is already drawn over waits until all the rest are asked for. */
 static void render_lod_jobs_request(render_lod_t *lod) {
     uint32_t free_job = 0u;
     for (;;) {
         uint32_t best = UINT32_MAX, best_slot = 0u;
-        uint64_t best_blocks2 = UINT64_MAX;
         for (uint32_t index = lod->level_count; index-- > 0u;) {
             render_lod_level_t *const level = &lod->levels[index];
             uint32_t slot = 0u;
-            if (!render_lod_level_next(level, &slot)) {
+            if (!render_lod_level_next(lod, level, &slot)) {
                 continue;
             }
-            const uint64_t blocks2 =
-                render_lod_offset_blocks2(level, &level->borrowed_offsets[level->request_cursor * 2u]);
-            if (blocks2 < best_blocks2) {
-                best = index;
-                best_slot = slot;
-                best_blocks2 = blocks2;
+            best = index;
+            best_slot = slot;
+            break; /* levels go from the coarsest */
+        }
+        if (best == UINT32_MAX && lod->covered_pass == 0u && render_lod_any_covered(lod)) {
+            /* All that shows is asked for: now what full detail covers, which a change of it may uncover. */
+            lod->covered_pass = 1u;
+            for (uint32_t i = 0u; i < lod->level_count; i++) {
+                lod->levels[i].request_cursor = 0u;
             }
+            continue;
         }
         if (best == UINT32_MAX) {
             return;
@@ -703,7 +769,7 @@ gpu_status_t render_lod_frame(render_lod_t *lod, const float64_t position[3]) {
     }
     render_lod_jobs_request(lod);
     for (uint32_t i = 0u; i < lod->level_count; i++) {
-        render_lod_level_show(&lod->levels[i]);
+        render_lod_level_show(lod, &lod->levels[i]);
         status = world_buffers_flush(&lod->levels[i].buffers);
         if (status != GPU_STATUS_OK) {
             gpu_error_log(&lod->levels[i].buffers.last_error);

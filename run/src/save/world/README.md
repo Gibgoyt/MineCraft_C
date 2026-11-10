@@ -79,3 +79,7 @@ Only blocks are here, and it does not decide when. `run/src/save/autosave/` call
 ## Limits
 
 65536 regions in one world, each half a kilometre on a side, with nothing charged to a region with no change. Past that a save fails and says so. A region file is 216 MiB at the very worst with a list of up to 256 names, of 49152 sections of more than 16 different states each, and 384 MiB once a list passes 256; it is rewritten when any of it changes, and it is read whole only then.
+
+## What the far field is told
+
+`save_world_far_next` hands on each column a capture has written sections of, but only if one of those sections' blocks differ from the last capture of it: `save_world_far_t.seen` keeps a hash of each section's states as last captured, in 65536 slots, and a capture that matches is counted in `unchanged` and not told. So an autosave of what was already captured, fluid levels moving, or blocks put back as they were builds no far column (plan 005 phase 14: before, at render distance 64, the far field rebuilt after every autosave). A slot taken by another section only means the next capture of this one is told again. The ring holds 16384 columns; past that `save_world_far_lost_take` says so, and the game marks only the far columns over the loaded map, as nothing else is ever captured.

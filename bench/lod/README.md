@@ -24,8 +24,9 @@ Release build, through the build lock, on the code of this phase's commit. Milli
 | voxels of 2 | 378.7 | 439.7 | 13.8 | 16.1 | 16 |
 | voxels of 4 | 384.5 | 462.3 | 24.0 | 31.2 | 36 |
 | voxels of 8 | 374.5 | 428.9 | 58.6 | 71.2 | 100 |
+| voxels of 8, growing nothing (now) | 8.6 | 9.2 | 8.6 | 9.2 | 0 |
 | voxels of 16 | 7.7 | 8.2 | 7.7 | 8.2 | 0 |
 | voxels of 32 | 7.7 | 8.3 | 7.7 | 8.0 | 0 |
 | voxels of 64 | 7.9 | 8.1 | 7.8 | 8.3 | 0 |
 
-The same tops at every level. Exit status 1: voxels of 8 miss the 50 ms target, as its 100 chunks are each loaded and walked once, at about 0.6 ms each. Above voxels of 8 nothing grows, and all 1536 layers cost under 8 ms, so working out only the layers the 2D height estimate allows was tried and saved nothing.
+The same tops at every level. With trees, voxels of 8 missed the 50 ms target, as its 100 chunks are each loaded and walked once, at about 0.6 ms each, so that level grows nothing now (`RENDER_LOD_FEATURES_SHIFT_MAX` 2), and the bench exits 0: its "before" for that level is then the plain stages too. Above voxels of 8 nothing grows, and all 1536 layers cost under 8 ms, so working out only the layers the 2D height estimate allows was tried and saved nothing.

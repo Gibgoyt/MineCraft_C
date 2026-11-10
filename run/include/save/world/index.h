@@ -37,8 +37,12 @@ enum : uint32_t {
     /* What one set of captured sections may hold before it must be written. */
     SAVE_WORLD_PENDING_SECTIONS = 1u << 15,
     SAVE_WORLD_PENDING_HASH_SLOTS = SAVE_WORLD_PENDING_SECTIONS * 2u,
-    /* Columns captured that the far field has not heard of yet. Past this it is told that it has lost count, and looks again at everything. */
-    SAVE_WORLD_FAR_RING = 1u << 12,
+    /* Columns captured that the far field has not heard of yet. Past this it is told that it has lost count, and looks again at all it could
+     * have been told of: the loaded map. */
+    SAVE_WORLD_FAR_RING = 1u << 14,
+    /* Sections whose blocks were last captured, by a hash of them, so a capture that changes no block tells the far field nothing: plan 005
+     * phase 14. A slot another section takes only means the next capture of this one is told of again. A power of 2. */
+    SAVE_WORLD_FAR_SEEN = 1u << 16,
 };
 enum : uint32_t {
     SAVE_WORLD_RECORD_HEAD_BYTES = 4u,
@@ -233,21 +237,40 @@ typedef enum save_world_step_t : uint8_t {
 
 typedef void (*save_world_step_hook_t)(void *context, save_world_step_t step);
 
+/* One section's blocks as last captured, for the far field. */
+typedef struct save_world_far_seen_t {
+    uint64_t hash;    /* 0: of the section's states as captured */
+    int32_t chunk_x;  /* 8 */
+    int32_t chunk_y;  /* 12 */
+    uint32_t key;     /* 16: the section + 1, or 0 for an empty slot */
+    uint8_t _pad0[4]; /* 20 */
+} save_world_far_seen_t;
+static_assert(sizeof(save_world_far_seen_t) == 24);
+static_assert(alignof(save_world_far_seen_t) == 8);
+static_assert(offsetof(save_world_far_seen_t, hash) == 0);
+static_assert(offsetof(save_world_far_seen_t, chunk_x) == 8);
+static_assert(offsetof(save_world_far_seen_t, chunk_y) == 12);
+static_assert(offsetof(save_world_far_seen_t, key) == 16);
+static_assert(offsetof(save_world_far_seen_t, _pad0) == 20);
+
 /* Which columns have been captured, from the sim to whoever calls render_lod_frame. In the arena and not in save_world_t, whose size is a part of main's frame. */
 typedef struct save_world_far_t {
-    _Atomic uint32_t head;                  /* 0: the sim's: release when a pair has been written */
-    _Atomic uint32_t tail;                  /* 4: the far field's: release when a pair has been read */
-    _Atomic uint32_t lost;                  /* 8: pairs that had no room */
-    uint8_t _pad0[4];                       /* 12 */
-    int32_t ring[2u * SAVE_WORLD_FAR_RING]; /* 16: chunk_x, chunk_y */
+    _Atomic uint32_t head; /* 0: the sim's: release when a pair has been written */
+    _Atomic uint32_t tail; /* 4: the far field's: release when a pair has been read */
+    _Atomic uint32_t lost; /* 8: pairs that had no room */
+    uint32_t unchanged;    /* 12: the capturer's: captures of a column that changed no block, so not told */
+    int32_t ring[2u * SAVE_WORLD_FAR_RING];          /* 16: chunk_x, chunk_y */
+    save_world_far_seen_t seen[SAVE_WORLD_FAR_SEEN]; /* the capturer's only */
 } save_world_far_t;
-static_assert(sizeof(save_world_far_t) == 16u + 2u * SAVE_WORLD_FAR_RING * sizeof(int32_t));
-static_assert(alignof(save_world_far_t) == 4);
+static_assert(sizeof(save_world_far_t) ==
+              16u + 2u * SAVE_WORLD_FAR_RING * sizeof(int32_t) + SAVE_WORLD_FAR_SEEN * sizeof(save_world_far_seen_t));
+static_assert(alignof(save_world_far_t) == 8);
 static_assert(offsetof(save_world_far_t, head) == 0);
 static_assert(offsetof(save_world_far_t, tail) == 4);
 static_assert(offsetof(save_world_far_t, lost) == 8);
-static_assert(offsetof(save_world_far_t, _pad0) == 12);
+static_assert(offsetof(save_world_far_t, unchanged) == 12);
 static_assert(offsetof(save_world_far_t, ring) == 16);
+static_assert(offsetof(save_world_far_t, seen) == 16u + 2u * SAVE_WORLD_FAR_RING * sizeof(int32_t));
 
 /* One world's delta files, and what is on its way to them. See the README for who may call what, when. */
 typedef struct save_world_t {

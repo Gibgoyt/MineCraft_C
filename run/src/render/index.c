@@ -300,6 +300,7 @@ gpu_status_t render_open_lod(render_t *render, const render_lod_plan_t *plan, re
         render_lod_blocks_give_back(render);
         return status;
     }
+    render_lod_fine_set(lod, &render->buffers);
     render->borrowed_lod = lod;
     render->frame.borrowed_lod = lod;
     return GPU_STATUS_OK;
@@ -395,6 +396,7 @@ gpu_status_t render_replan_lod(render_t *render, const render_lod_plan_t *plan, 
         render_lod_blocks_give_back(render);
         return status;
     }
+    render_lod_fine_set(lod, &render->buffers);
     render->borrowed_lod = lod;
     render->frame.borrowed_lod = lod;
     return GPU_STATUS_OK;

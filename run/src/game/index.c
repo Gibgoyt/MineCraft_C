@@ -386,7 +386,11 @@ void game_far_changes_take(game_t *game) {
         render_lod_column_changed(lod, chunk_x, chunk_y);
     }
     if (save_world_far_lost_take(&save->world)) {
-        render_lod_all_changed(lod);
+        /* Only a column in the map is ever captured, so what was lost is in the map's square: not the whole far field. */
+        const world_map_t *const map = &game->borrowed_world->map;
+        const int32_t radius = (int32_t)map->table_radius;
+        render_lod_area_changed(lod, map->center_x - radius, map->center_y - radius, map->center_x + radius,
+                                map->center_y + radius);
     }
 }
 

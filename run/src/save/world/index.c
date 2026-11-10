@@ -244,14 +244,35 @@ static void save_world_pending_clear(save_world_pending_t *pending) {
 }
 
 /* One section of a live column into the set being captured to. False if there is no room, and then nothing changed. */
+/* Whether a section's states differ from those last captured of it, as far as the far field's table of them knows, which it then holds. */
+static bool save_world_far_seen_changed(save_world_t *save, int32_t chunk_x, int32_t chunk_y, uint32_t section,
+                                        const uint16_t *states) {
+    uint64_t hash = 0xCBF29CE484222325ull;
+    for (uint32_t i = 0u; i < SECTION_VOXELS; i++) {
+        hash = (hash ^ states[i]) * 0x100000001B3ull;
+    }
+    uint64_t place = ((uint64_t)(uint32_t)chunk_x * 0x9E3779B97F4A7C15ull) ^
+                     ((uint64_t)(uint32_t)chunk_y * 0xC2B2AE3D27D4EB4Full) ^
+                     ((uint64_t)section * 0x165667B19E3779F9ull);
+    place ^= place >> 29;
+    save_world_far_seen_t *const seen = &save->borrowed_far->seen[place & (SAVE_WORLD_FAR_SEEN - 1u)];
+    const bool same =
+        seen->key == section + 1u && seen->chunk_x == chunk_x && seen->chunk_y == chunk_y && seen->hash == hash;
+    *seen = (save_world_far_seen_t){
+        .hash = hash, .chunk_x = chunk_x, .chunk_y = chunk_y, .key = section + 1u, ._pad0 = {0}};
+    return !same;
+}
+
 static bool save_world_capture_section(save_world_t *save, const column_t *column, uint32_t column_slot,
-                                       uint32_t section) {
+                                       uint32_t section, bool *changed) {
     save_world_pending_t *const pending = &save->pending[save->active];
     if (pending->count >= SAVE_WORLD_PENDING_SECTIONS ||
         pending->used + SAVE_WORLD_ENTRY_BYTES_MAX > SAVE_WORLD_PENDING_BYTES) {
         return false;
     }
     section_blocks_export(&column->sections[section], save->borrowed_states);
+    *changed =
+        save_world_far_seen_changed(save, column->chunk_x, column->chunk_y, section, save->borrowed_states) || *changed;
     save_world_states_to_file(save, save->borrowed_states);
     /* Past used, no reader looks: so this needs no lock, and only the moment it comes to be seen does. */
     uint8_t *const record = pending->borrowed_bytes + pending->used;
@@ -332,15 +353,20 @@ bool save_world_far_lost_take(save_world_t *save) {
 static column_mask_t save_world_capture_mask(save_world_t *save, const column_t *column, uint32_t slot,
                                              column_mask_t mask) {
     const column_mask_t asked = mask;
+    bool changed = false;
     while (column_mask_any(mask)) {
         const uint32_t section = column_mask_lowest(mask);
-        if (!save_world_capture_section(save, column, slot, section)) {
+        if (!save_world_capture_section(save, column, slot, section, &changed)) {
             break;
         }
         mask = column_mask_drop_lowest(mask);
     }
-    if (!column_mask_equal(mask, asked)) {
+    /* A capture whose blocks are those last captured, as fluid levels moving or an autosave of what was already captured, makes the far
+     * field build nothing. */
+    if (changed) {
         save_world_far_note(save, column->chunk_x, column->chunk_y);
+    } else if (!column_mask_equal(mask, asked)) {
+        save->borrowed_far->unchanged++;
     }
     return mask;
 }

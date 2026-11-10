@@ -570,10 +570,10 @@ static uint64_t ld_blocks2(const render_lod_level_t *level, int32_t chunk_x, int
     return (uint64_t)(dx * dx + dy * dy) << (2u * (4u + level->shift));
 }
 
-/* Plan 005 phase 14. A far field that has just opened asks first for what is nearest the eye in blocks, whichever level it is in, as that
- * is what shows where full detail has not come yet. A plan that changes keeps each level that stays the same: what it shows is there on the
- * very next frame, on the card as it was, and nothing of it is built again. */
-TEST(the_nearest_columns_come_first_and_a_level_that_stays_is_kept) {
+/* Plan 005 phase 14. A far field that has just opened asks first for the coarsest level, nearest the eye first, as it reaches the horizon and
+ * stands round the eye too; a column full detail is drawn over waits. A plan that changes keeps each level that stays the same: what it
+ * shows is there on the very next frame, on the card as it was, and nothing of it is built again. */
+TEST(the_coarsest_level_comes_first_nearest_first_and_a_level_that_stays_is_kept) {
     sk_rig_t rig;
     const ld_source_t source = {LD_GROUND_HILLS, {0}};
     const float64_t eye[3] = {8.5f64, 8.5f64, 300.5f64};
@@ -587,7 +587,7 @@ TEST(the_nearest_columns_come_first_and_a_level_that_stays_is_kept) {
     REQUIRE(render_open_lod(rig.render, &both, ld_sample, &source) == GPU_STATUS_OK);
     render_lod_t *lod = rig.render->borrowed_lod;
     REQUIRE(render_lod_frame(lod, eye) == GPU_STATUS_OK);
-    /* Every column asked for is at least as near as every one still waiting to be. */
+    /* Every column asked for is of the coarsest level, and at least as near as every one of it still waiting to be. */
     uint64_t asked_most = 0u, waiting_least = UINT64_MAX;
     uint32_t asked_levels = 0u;
     for (uint32_t i = 0u; i < RENDER_LOD_JOBS; i++) {
@@ -598,8 +598,8 @@ TEST(the_nearest_columns_come_first_and_a_level_that_stays_is_kept) {
             asked_levels |= 1u << job->level;
         }
     }
-    for (uint32_t l = 0u; l < lod->level_count; l++) {
-        const render_lod_level_t *const level = &lod->levels[l];
+    {
+        const render_lod_level_t *const level = &lod->levels[lod->level_count - 1u];
         for (uint32_t slot = 0u; slot < level->column_count; slot++) {
             if (level->borrowed_state[slot] == 0u) { /* wanted, and not asked for */
                 const world_buffers_window_t *const window = &level->buffers.window;
@@ -613,7 +613,7 @@ TEST(the_nearest_columns_come_first_and_a_level_that_stays_is_kept) {
     }
     CHECK(lod->jobs_in_use > 2u);
     CHECK(asked_most <= waiting_least);
-    CHECK_EQ_U64(asked_levels, 3u);
+    CHECK_EQ_U64(asked_levels, 1u << (lod->level_count - 1u));
     REQUIRE(ld_settle(t, &rig, eye));
 
     /* To the coarse level alone: it is kept, shown at once and whole, and nothing is built. */

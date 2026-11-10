@@ -15,7 +15,7 @@ What it checks:
 
 - **By hand:** which levels a distance has, and that every distance is reached. What a sampled column makes as coarse voxels. What a far surface looks like.
 - **The grids:** every level's columns as a real kernel reads them, at places all over, against the samples, on ground a test works out and on real terrain.
-- **Nearest first, and a change of levels:** the first columns asked for are the nearest in blocks, at both levels; a plan that drops a level keeps the other, shown at once, on the card as it was, with nothing built; and back again, the new fine level fills while the kept one shows.
+- **The coarsest first, and a change of levels:** the first columns asked for are the coarsest level's, nearest first; a plan that drops a level keeps the other, shown at once, on the card as it was, with nothing built; and back again, the new fine level fills while the kept one shows.
 - **Following the eye:** a level moved one column shows no less on the very frame it moved, builds exactly one new row, holds no more after going there and back, and after a long jump shows nothing old. A pool with no room says so, and shows only what is whole.
 - **Rays:** random rays on the card through every level, against a march in `float64_t` voxel by voxel, from the same samples.
 - **The sun:** a wall's shadow on the ground where it must fall, and no ray for a surface that faces away.
