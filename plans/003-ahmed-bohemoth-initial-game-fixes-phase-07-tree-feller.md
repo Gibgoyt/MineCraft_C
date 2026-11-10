@@ -23,7 +23,7 @@ Starting from the log just broken, walk to touching logs, including diagonals, b
 - **Same wood only:** oak breaks oak.
 - **At or above the cut only.** Cutting mid-trunk leaves the stump below standing on the ground, and nothing floats.
 - **It must look like a tree:** the logs found must touch leaves. A log wall or log cabin has none, so it's left alone. This is what protects builds, and it isn't perfect: a log wall with a tree growing against it could still be taken.
-- **Sneaking chops one log**, for when you want just one.
+- **Sneaking chops one log**, for when you want just one. (Removed in plan 005 phase 1.)
 - **A limit on how many.** Set above the biggest tree the generator makes, measured by a test, not guessed. Past the limit, the rest stay.
 - **A column that hasn't loaded stops the walk**, so a very wide tree at the edge of the world could leave some behind.
 
@@ -97,9 +97,11 @@ Appended as they land:
 
 **Open for Ahmed, built on the defaults of the plan's table:** bare hands do not fell, each log wears the axe, and sneaking chops one log.
 
-1. **Should bare hands fell too?** The plan says axes only, like Hypixel, so wood punched by hand can still float until you have an axe. Letting hands fell ends floating wood completely, but the first tree you punch gives you all its logs, which makes the early game much easier.
-2. **Should each log wear the axe?** The plan says yes, so a wooden axe stops after 59 logs. Charging one use per tree is more generous.
-3. **Is sneak-to-chop-one what you want?** It's my addition.
+**Answered by Ahmed, and changed in plan 005 phase 1 (`plans/005-ahmed-bohemoth-initial-game-fixes-round-2-phase-01-tree-feller-always-on.md`):** the feller is part of the game and always on. Any tool or bare hands fells, sneaking fells too (no exception), and only the log the hands cut wears the tool: logs that fall with the tree cost nothing. The "axes only" and "each log wears the axe" defaults below no longer hold.
+
+1. **Should bare hands fell too?** (Answered: yes, plan 005 phase 1.) The plan says axes only, like Hypixel, so wood punched by hand can still float until you have an axe. Letting hands fell ends floating wood completely, but the first tree you punch gives you all its logs, which makes the early game much easier.
+2. **Should each log wear the axe?** (Answered: no, only the cut log, plan 005 phase 1.) The plan says yes, so a wooden axe stops after 59 logs. Charging one use per tree is more generous.
+3. **Is sneak-to-chop-one what you want?** It's my addition. (Removed in plan 005 phase 1: always on means no exceptions.)
 
 ### From the build, 2026-11-05
 
