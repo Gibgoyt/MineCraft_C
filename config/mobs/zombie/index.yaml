@@ -12,7 +12,8 @@ drops:
   - { item: carrot, count: 1, chance: 0.0083 }
   - { item: potato, count: 1, chance: 0.0083 }
 spawn:
-  weight: 100
+  # Off: Ahmed wants his own mobs, plan 005 phase 3. It was 100, as the published game has it.
+  weight: 0
   pack_min: 4
   pack_max: 4
   max_light: 7

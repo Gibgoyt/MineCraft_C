@@ -4,6 +4,14 @@ One directory per mob, and to see what a mob is, open its one file. To add one: 
 
 The numbers are the published ones, as near as this game's terms allow.
 
+## Turned off: zombie, skeleton, creeper
+
+Since plan 005 phase 3 all three have `spawn: weight: 0`, so none comes by itself, by night or in a cave. Ahmed's words: "completely disable skeletons, creepers, and zombies, I have ideas for my own mobs". Each was 100.
+
+Everything else is kept: their files here, the models and textures, their minds in `run/src/mob/`, and the tests that put one down on purpose (combat, arrows, blasts, the picture). A mob of Ahmed's can reuse the parts, and putting a weight back brings one back.
+
+A world saved while they came still holds some. As it opens, `game_open` takes away every mob whose weight is 0 (`mob_spawn_retire` in `run/src/mob/spawn/`), with a line in the log for each kind, such as `game: took 4 of mob zombie out of the saved world, as it is turned off`. So **a weight of 0 also means a mob is not kept from a save**: a mob of Ahmed's that only comes some other way needs that changed first.
+
 ## Fields
 
 | Field | Needed | Values |

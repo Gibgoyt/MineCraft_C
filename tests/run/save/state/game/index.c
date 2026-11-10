@@ -505,6 +505,61 @@ TEST(the_game_keeps_what_flows_the_tick_count_and_what_a_chest_gone_this_tick_he
     ss_temp_remove(t, root);
 }
 
+/* How many bodies in the store are mobs. */
+static uint32_t ss_mobs_in(const entity_store_t *store) {
+    uint32_t mobs = 0u;
+    for (uint32_t i = 0u; i < store->count; i++) {
+        mobs += store->borrowed_kind[i] != MOB_ID_NONE && store->borrowed_kind[i] < MOB_COUNT ? 1u : 0u;
+    }
+    return mobs;
+}
+
+/* Plan 005 phase 3: a world saved with zombies, skeletons and creepers in it, as one from before they were turned off, opens without
+ * them. They are put down by hand, as nothing brings them now. */
+TEST(a_world_saved_with_turned_off_mobs_opens_without_them) {
+    char *const root = ss_temp_directory(t);
+    REQUIRE(root != nullptr);
+    ss_game_rig_t *const rig = test_alloc(t, sizeof(ss_game_rig_t));
+    REQUIRE(ss_game_begin(t, rig, true));
+    game_t *const game = rig->game;
+    save_t *const save = rig->save;
+    REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
+    const game_config_t config = {.render_distance = 3u, .width = 64u, .height = 36u, .show_date = 0u};
+    REQUIRE(game_open(game, &config));
+    REQUIRE(game_settle(game));
+    entity_store_t *const store = &rig->entity->store;
+    REQUIRE(ss_mobs_in(store) == 0u);
+    static const mob_id_t MOBS[] = {MOB_ID_ZOMBIE, MOB_ID_ZOMBIE, MOB_ID_SKELETON, MOB_ID_CREEPER};
+    for (uint32_t i = 0u; i < sizeof(MOBS) / sizeof(MOBS[0]); i++) {
+        const float64_t place[COLLISION_AXES] = {rig->player->movement.position[0] + 3.0f64 + (float64_t)i,
+                                                 rig->player->movement.position[1],
+                                                 rig->player->movement.position[2] + 2.0f64};
+        REQUIRE(mob_spawn_body(&game->mob_spawn, store, MOBS[i], place, 0.0f32) != ENTITY_HANDLE_NONE);
+    }
+    REQUIRE(ss_mobs_in(store) == 4u);
+    const uint64_t despawned = game->mob_spawn.despawned_count;
+    REQUIRE(game_save_finish(game) == SAVE_WORLD_OK);
+    game_close(game);
+    save_close(save);
+
+    /* The state on disk holds the four, as a save keeps what the store holds; game_open takes them away. */
+    REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
+    REQUIRE(game_open(game, &config));
+    CHECK_EQ_U64(ss_mobs_in(store), 0u);
+    CHECK_EQ_U64(game->mob_spawn.despawned_count, despawned);
+    /* And a save from then on holds none. */
+    REQUIRE(game_save_finish(game) == SAVE_WORLD_OK);
+    game_close(game);
+    save_close(save);
+    REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
+    REQUIRE(game_open(game, &config));
+    CHECK_EQ_U64(ss_mobs_in(store), 0u);
+    game_close(game);
+    save_close(save);
+    ss_game_end(t, rig);
+    ss_temp_remove(t, root);
+}
+
 TEST(what_was_waiting_for_its_first_tick_goes_on_after_a_reload) {
     char *const root = ss_temp_directory(t);
     REQUIRE(root != nullptr);

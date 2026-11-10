@@ -202,21 +202,28 @@ static uint32_t mob_spawn_despawn(mob_spawn_t *spawn, entity_store_t *store, con
     return alive;
 }
 
-/* Which mob comes, by weight, or MOB_ID_NONE if none ever does. */
-static mob_id_t mob_spawn_pick(mob_spawn_t *spawn) {
+static uint32_t mob_spawn_weight(const mob_spawn_view_t *view, uint32_t mob) {
+    return view->weights != nullptr ? (uint32_t)view->weights[mob] : (uint32_t)mob_defs[mob].weight;
+}
+
+/* What the weights add up to: 0 if no mob ever comes. */
+static uint32_t mob_spawn_weight_total(const mob_spawn_view_t *view) {
     uint32_t total = 0u;
     for (uint32_t i = 1u; i < MOB_COUNT; i++) {
-        total += mob_defs[i].weight;
+        total += mob_spawn_weight(view, i);
     }
-    if (total == 0u) {
-        return MOB_ID_NONE;
-    }
+    return total;
+}
+
+/* Which mob comes, by weight, from weights adding up to total, which is above 0. */
+static mob_id_t mob_spawn_pick(mob_spawn_t *spawn, const mob_spawn_view_t *view, uint32_t total) {
     uint32_t roll = terrain_rng_next_below(&spawn->random, total);
     for (uint32_t i = 1u; i < MOB_COUNT; i++) {
-        if (roll < mob_defs[i].weight) {
+        const uint32_t weight = mob_spawn_weight(view, i);
+        if (roll < weight) {
             return (mob_id_t)i;
         }
-        roll -= mob_defs[i].weight;
+        roll -= weight;
     }
     return MOB_ID_NONE; /* the rolls add up, so this is never reached */
 }
@@ -290,6 +297,10 @@ static uint32_t mob_spawn_tall(const column_t *column) {
 void mob_spawn_tick(mob_spawn_t *spawn, entity_store_t *store, physics_t *physics, const world_map_t *map,
                     const mob_spawn_view_t *view) {
     uint32_t alive = mob_spawn_despawn(spawn, store, view);
+    const uint32_t total = mob_spawn_weight_total(view);
+    if (total == 0u) {
+        return; /* no mob comes by itself (plan 005 phase 3 turned them all off), so no place is worth a look */
+    }
     const uint32_t cap = mob_spawn_cap(map->ready_count);
     const int32_t player_x = (int32_t)floor(view->position[0]), player_y = (int32_t)floor(view->position[1]);
     const uint32_t across = 2u * MOB_SPAWN_REACH + 1u;
@@ -308,10 +319,21 @@ void mob_spawn_tick(mob_spawn_t *spawn, entity_store_t *store, physics_t *physic
             (block_defs[here].flags & BLOCK_FLAG_SOLID) != 0u || !mob_spawn_find_floor(map, x, y, z, &floor_z)) {
             continue;
         }
-        const mob_id_t mob = mob_spawn_pick(spawn);
-        if (mob == MOB_ID_NONE) {
-            return;
-        }
+        const mob_id_t mob = mob_spawn_pick(spawn, view, total);
         alive += mob_spawn_pack(spawn, store, physics, map, view, mob, x, y, floor_z, cap - alive);
     }
+}
+
+uint32_t mob_spawn_retire(entity_store_t *store, uint32_t out_removed[MOB_COUNT]) {
+    uint32_t removed = 0u;
+    for (uint32_t i = store->count; i-- > 0u;) {
+        const uint16_t kind = store->borrowed_kind[i];
+        if (!mob_spawn_kind_is_mob(kind) || mob_defs[kind].weight != 0u) {
+            continue;
+        }
+        ASSERT_ALWAYS(entity_store_remove(store, store->borrowed_handle[i]));
+        out_removed[kind]++;
+        removed++;
+    }
+    return removed;
 }

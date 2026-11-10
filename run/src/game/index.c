@@ -499,6 +499,24 @@ void game_open_alive_tell(const game_t *game) {
 /* The climate's tiles round where the eye starts, before any column is asked for, so the first ones are not held back
  * by the gate: plan 004 phase 03, "Precompute at world creation". On every worker; game_open_climate_step takes it on, so
  * a loading screen can be drawn meanwhile. */
+/* A save made while zombies, skeletons and creepers still came keeps them: they go as the world opens, each kind with a line in the log
+ * (plan 005 phase 3). Any mob whose spawn.weight is 0 goes the same way. */
+static void game_open_retire_mobs(game_t *game) {
+    if (game->borrowed_entity == nullptr) {
+        return;
+    }
+    uint32_t removed[MOB_COUNT] = {0};
+    if (mob_spawn_retire(&game->borrowed_entity->store, removed) == 0u) {
+        return;
+    }
+    for (uint32_t i = 1u; i < MOB_COUNT; i++) {
+        if (removed[i] != 0u) {
+            LOG_INFO("game: took %" PRIu32 " of mob %s out of the saved world, as it is turned off", removed[i],
+                     mob_defs[i].name);
+        }
+    }
+}
+
 static void game_open_climate(game_t *game, int32_t start_x, int32_t start_y) {
     climate_t *const climate = game_climate(game);
     game->open_percent = 0u;
@@ -654,6 +672,7 @@ bool game_open(game_t *game, const game_config_t *config) {
         save_state_parts_t parts;
         game_save_parts(game, &parts);
         save_state_apply(&save->state, &parts);
+        game_open_retire_mobs(game);
         game->tick_count = parts.time.world_ticks;
         world_tick_now_set(&game->borrowed_world->tick, game->tick_count);
         save_world_levels_from(&save->world, &game->borrowed_world->tick);

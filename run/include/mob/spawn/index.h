@@ -33,8 +33,12 @@ enum : uint32_t {
 typedef struct mob_spawn_view_t {
     float64_t position[COLLISION_AXES]; /* 0: the player's feet */
     float64_t sun_height;               /* 24: sin of the sun's elevation at the player: 1 overhead, -1 straight down */
+    /* 32: MOB_COUNT of them, by mob_id_t: how often each is picked, in place of its spawn.weight in config/mobs/. nullptr, as the game
+     * has it, for those. For a test or a bench that wants the rules at work on mobs the files turn off. */
+    const uint16_t *weights;
 } mob_spawn_view_t;
-static_assert(sizeof(mob_spawn_view_t) == 32);
+static_assert(sizeof(mob_spawn_view_t) == 40);
+static_assert(offsetof(mob_spawn_view_t, weights) == 32);
 
 /* Why a place will not do. */
 typedef enum mob_spawn_status_t : uint8_t {
@@ -90,5 +94,10 @@ uint32_t mob_spawn_cap(uint64_t columns_loaded);
  * Never waits and never touches the heap. */
 void mob_spawn_tick(mob_spawn_t *spawn, entity_store_t *store, physics_t *physics, const world_map_t *map,
                     const mob_spawn_view_t *view);
+
+/* Takes away every mob whose spawn.weight in config/mobs/ is 0, as a world opens from a save: a mob that never comes by itself is not
+ * kept from a save made when it did (plan 005 phase 3). Adds how many of each kind went to out_removed, by mob_id_t, and returns how
+ * many in all. Nothing that is not a mob is touched, and nothing is counted as despawned. */
+uint32_t mob_spawn_retire(entity_store_t *store, uint32_t out_removed[MOB_COUNT]);
 
 #endif

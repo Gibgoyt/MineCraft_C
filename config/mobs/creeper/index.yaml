@@ -9,7 +9,8 @@ height: 1.7
 drops:
   - { item: gunpowder, count: 0, max: 2 }
 spawn:
-  weight: 100
+  # Off: Ahmed wants his own mobs, plan 005 phase 3. It was 100, as the published game has it.
+  weight: 0
   pack_min: 4
   pack_max: 4
   max_light: 7

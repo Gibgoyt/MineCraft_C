@@ -48,19 +48,6 @@ static uint64_t pt_count(const char *text, const char *needle) {
     return count;
 }
 
-/* The whole number that comes just before needle, in its first place, as the report's lines say them. UINT64_MAX with no such place. */
-static uint64_t pt_number_before(const char *text, const char *needle) {
-    const char *const at = strstr(text, needle);
-    if (at == nullptr || at == text || at[-1] != ' ') {
-        return UINT64_MAX;
-    }
-    const char *start = at - 1;
-    while (start > text && start[-1] >= '0' && start[-1] <= '9') {
-        start--;
-    }
-    return start == at - 1 ? UINT64_MAX : strtoull(start, nullptr, 10);
-}
-
 /* titles is how many times the script comes back to the title screen, the last on the way to Quit Game. */
 static void pt_run(test_context_t *t, const char *script, const char *root, uint32_t timeout_ms, uint64_t titles,
                    test_process_t *process) {
@@ -236,7 +223,9 @@ TEST(an_axe_from_a_bench_brings_down_a_real_tree_with_one_cut_and_it_stays_down_
     }
 }
 
-TEST(a_night_in_the_open_meets_zombies_skeletons_and_creepers_and_is_saved_with_them) {
+/* Plan 005 phase 3: zombies, skeletons and creepers are turned off, so a whole night in the open brings none, on the way out and again
+ * from the save. The swings that once fought them and pressed to come back meet the night air. */
+TEST(a_night_in_the_open_meets_no_zombie_skeleton_or_creeper_and_is_saved) {
     REQUIRE(t->arg_count >= 1);
     char *const root = pt_temp(t);
     REQUIRE(root != nullptr);
@@ -244,18 +233,17 @@ TEST(a_night_in_the_open_meets_zombies_skeletons_and_creepers_and_is_saved_with_
     pt_run(t, "tests/run/playthrough/fixtures/night.script", root, PT_NIGHT_MS, 2u, &process);
     const char *const output = process.output;
 
-    CHECK(pt_number_before(output, "mobs came") >= 10u);
-    /* A zombie hurts and dies; a body dies and comes back, through the swing that is also a press. */
-    const uint64_t blows = pt_number_before(output, "blows,");
-    CHECK(blows != UINT64_MAX && blows >= 1u);
-    CHECK(pt_number_before(output, "died and left") != UINT64_MAX);
-    const char *const back = strstr(output, "came back ");
-    REQUIRE(back != nullptr);
-    CHECK(strtoull(back + strlen("came back "), nullptr, 10) >= 1u);
-    /* A creeper bursts and leaves a hole. */
-    CHECK(pt_number_before(output, "blasts broke") != UINT64_MAX && pt_number_before(output, "blasts broke") >= 1u);
-    /* A skeleton shoots. */
-    CHECK(pt_number_before(output, "arrows,") != UINT64_MAX && pt_number_before(output, "arrows,") >= 1u);
+    /* A report on the way to the title and one at Quit Game: each says nothing came, struck, shot or burst. */
+    const uint64_t reports = pt_count(output, "mobs came");
+    CHECK(reports >= 2u);
+    CHECK_EQ_U64(pt_count(output, " 0 mobs came, 0 went, and 0 are in the world"), reports);
+    CHECK_EQ_U64(pt_count(output, "zombies struck 0 blows, 0 died"), reports);
+    CHECK_EQ_U64(pt_count(output, "skeletons loosed 0 arrows, 0 died"), reports);
+    CHECK_EQ_U64(pt_count(output, " 0 creepers burst, and 0 died"), reports);
+    CHECK_EQ_U64(pt_count(output, " 0 blasts broke 0 blocks"), reports);
+    /* Nothing to die of, and nothing taken from the save, as it never held one. */
+    CHECK_EQ_U64(pt_count(output, " died 0, came back 0,"), reports);
+    CHECK(strstr(output, "out of the saved world") == nullptr);
     if (getenv("MC_PLAYTHROUGH_KEEP") != nullptr) {
         printf("  kept in %s\n", root);
     } else {

@@ -23,7 +23,8 @@
 +1 key enter down
 +1 key enter up
 +3 move 0 -60
-# Stands in the open until the sun has gone, then turns and swings. Death is a press away, and each swing is one.
+# Stands in the open until the sun has gone, then turns and swings. Death is a press away, and each swing is one. Since plan 005 phase 3
+# nothing comes to fight or to die of, and the swings meet the air.
 +1 move 0 0
 +9800 screenshot dusk.png
 +9 button left down

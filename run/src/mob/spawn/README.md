@@ -12,17 +12,18 @@
 - `mob_spawn_check`: what the rules make of one place.
 - `mob_spawn_body`: a body of a mob, by no rule: what anything that makes a mob goes through.
 - `mob_spawn_sky_darken`, `mob_spawn_cap`: two of the rules' numbers.
+- `mob_spawn_retire`: takes away every mob whose `spawn.weight` is 0, as a world opens from a save (plan 005 phase 3).
 
 **May be called by:** `run/src/game/`, `run/src/save/state/`, and `bench/mobs/`.
 **Depends on:** `entity/store`, `physics`, `world/map`, `world/column`, `world/section`, `terrain/rng`, `arena`, `assert`, and the generated `tables/mobs/` and `tables/blocks/`.
 
 ## The spawn rules
 
-Each tick tries `MOB_SPAWN_TRIES_PER_TICK` places, until the cap is reached. The published game looks at a place per chunk per tick and most fail, so this is the same search at a rate a tick can afford.
+Each tick tries `MOB_SPAWN_TRIES_PER_TICK` places, until the cap is reached. If the weights add up to 0, as they do since plan 005 phase 3 turned off zombies, skeletons and creepers, it tries none: it only despawns, and draws nothing from its random stream. The published game looks at a place per chunk per tick and most fail, so this is the same search at a rate a tick can afford.
 
 1. A random place within `MOB_SPAWN_REACH` of the player along x and y, in a loaded column, at a random height among the lowest 751 layers of gameplay's range, or up to the top of what the column holds if it reaches higher, so that empty sky in a taller world costs no tries. Inside something solid is a miss.
 2. Down from there to the first floor, at most `MOB_SPAWN_SCAN_CELLS`. That the published game looks only at the height it rolled, and misses, is what this saves.
-3. A mob by `weight`, and `pack_min` to `pack_max` of it, each a step of up to `MOB_SPAWN_PACK_STEP` from the last at that same height. Each goes through `mob_spawn_check` by itself, so a pack can come partly or not at all.
+3. A mob by `weight`, or by `mob_spawn_view_t.weights` when that is not `nullptr` (the game passes `nullptr`; the tests and nothing else pass the old weights, to keep the rules tested while the files turn every mob off), and `pack_min` to `pack_max` of it, each a step of up to `MOB_SPAWN_PACK_STEP` from the last at that same height. Each goes through `mob_spawn_check` by itself, so a pack can come partly or not at all.
 
 `mob_spawn_check` asks of one body's place, in this order, and the answer says which failed:
 
@@ -41,6 +42,8 @@ The sky's share uses the published curve, `11 (1 - clamp(2 s + 0.5, 0, 1))`, whe
 
 `mob_spawn_cap`: `MOB_SPAWN_CAP` at `MOB_SPAWN_CAP_COLUMNS` loaded columns or more, in proportion below that, as in the published game. Only kinds that are a `mob_id_t` count. So a short render distance has fewer about, and the store's 1024 is never what stops them.
 
+70 is the published game's cap for monsters. Its animals have a cap of their own, 10, as they do not despawn and so pile up; it is one cap here for every kind. With no mob coming (plan 005 phase 3) the cap stops nothing. Phase 4 brings animals that come by day in herds, and should give them a cap of their own near the published 10, or a weight that keeps them few, rather than let them fill 70: see that phase.
+
 ## The despawn rules
 
 Each tick, for each mob, by `despawn` in its file:
@@ -48,6 +51,10 @@ Each tick, for each mob, by `despawn` in its file:
 - Past `far` of the player: gone, whatever else. A save keeps the mobs the store holds at that moment, through `run/src/save/state/`, and not one that has gone.
 - Within `near`: its idle count starts over, and it stays.
 - Between: its idle count goes up, and once past `idle_ticks` it has a chance of one in `one_in`, per tick, of going. A body waiting for its column neither counts nor rolls, since it is not there.
+
+## Turned off
+
+`mob_spawn_retire` takes away every body whose kind is a mob with `spawn.weight` 0, from the end of the store as despawning does, and counts it by kind; nothing that is not a mob is touched, and nothing is counted as despawned. `game_open` calls it after `save_state_apply`, and logs a line for each kind it took, so that a world saved while zombies, skeletons and creepers came does not keep them.
 
 ## What this does not do
 

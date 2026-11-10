@@ -110,8 +110,13 @@ static void ms_light_all(test_context_t *t, ms_rig_t *rig) {
     CHECK_EQ_U64(world_light_rebuild(&rig->world.world->light), WORLD_LIGHT_STATUS_OK);
 }
 
+/* The weights the three had before plan 005 phase 3 turned them off: 100 each. The rules are tested on these, as the files now bring
+ * nothing for them to work on. */
+static const uint16_t MS_WEIGHTS[MOB_COUNT] = {0u, 100u, 100u, 100u};
+
 static mob_spawn_view_t ms_view(float64_t sun_height) {
-    return (mob_spawn_view_t){.position = {MS_PLAYER_X, MS_PLAYER_Y, 0.0f64}, .sun_height = sun_height};
+    return (mob_spawn_view_t){
+        .position = {MS_PLAYER_X, MS_PLAYER_Y, 0.0f64}, .sun_height = sun_height, .weights = MS_WEIGHTS};
 }
 
 /* A dark place on stone, with a clear box over it, at the given spot. */
@@ -151,7 +156,10 @@ TEST(the_tables_say_what_the_files_say) {
     CHECK(zombie->speed == 0.115f32);
     CHECK(zombie->half_width == 0.3f32);
     CHECK(zombie->height == 1.95f32);
-    CHECK_EQ_U64(zombie->weight, 100u);
+    /* Turned off, plan 005 phase 3: all three, with the rest of each file kept. */
+    CHECK_EQ_U64(zombie->weight, 0u);
+    CHECK_EQ_U64(mob_defs[MOB_ID_SKELETON].weight, 0u);
+    CHECK_EQ_U64(mob_defs[MOB_ID_CREEPER].weight, 0u);
     CHECK_EQ_U64(zombie->pack_min, 4u);
     CHECK_EQ_U64(zombie->pack_max, 4u);
     CHECK_EQ_U64(zombie->max_light, 7u);
@@ -649,6 +657,67 @@ TEST(the_same_calls_give_the_same_bytes_and_another_seed_others) {
     CHECK_MEM_EQ(a, b, bytes);
     CHECK(count_c > 0u);
     CHECK(memcmp(a, c, bytes) != 0);
+}
+
+/* ---- Turned off (plan 005 phase 3) --------------------------------------------------------------------------------- */
+
+/* The weights in config/mobs/, as the game passes them: a whole night, then a whole day, in an open field and a roofed cave that the
+ * same ticks with the old weights fill to the cap, brings no zombie, skeleton or creeper, and no try is worth a roll. */
+TEST(a_long_night_in_the_open_brings_no_zombie_skeleton_or_creeper) {
+    ms_rig_t rig;
+    REQUIRE(ms_begin(t, &rig, 11u));
+    ms_fill_loaded(t, &rig, -1, -1, BLOCK_ID_STONE);
+    ms_light_all(t, &rig);
+    mob_spawn_view_t midnight = ms_view(MS_MIDNIGHT), noon = ms_view(MS_NOON);
+    midnight.weights = nullptr;
+    noon.weights = nullptr;
+    const terrain_rng_t before = rig.spawn->random;
+    /* Six times what fills the field with the old weights (an_open_field_stays_empty_by_day_and_fills_at_night). */
+    ms_ticks(&rig, &midnight, 6u * MS_NIGHT_TICKS);
+    ms_ticks(&rig, &noon, MS_NIGHT_TICKS);
+    CHECK_EQ_U64(rig.store->count, 0u);
+    CHECK_EQ_U64(rig.spawn->spawned_count, 0u);
+    CHECK_EQ_U64(rig.spawn->refused_count, 0u);
+    CHECK_EQ_U64(rig.spawn->random.state, before.state);
+    /* The same field with the old weights fills, so it is the weights and not the field. */
+    const mob_spawn_view_t old = ms_view(MS_MIDNIGHT);
+    ms_ticks(&rig, &old, MS_NIGHT_TICKS);
+    CHECK_EQ_U64(rig.store->count, mob_spawn_cap(rig.world.map->ready_count));
+    ms_end(&rig);
+}
+
+/* What a save made while they came keeps goes as the world opens: every mob whose weight is 0, and nothing else. */
+TEST(retiring_takes_every_turned_off_mob_and_leaves_the_rest) {
+    ms_rig_t rig;
+    REQUIRE(ms_begin(t, &rig, 32u));
+    static const mob_id_t MOBS[] = {MOB_ID_ZOMBIE, MOB_ID_SKELETON, MOB_ID_CREEPER, MOB_ID_ZOMBIE, MOB_ID_ZOMBIE};
+    const entity_store_spawn_t other = {
+        .position = {8.5f64, 8.5f64, 40.0f64}, .half_width = 0.3f32, .height = 1.0f32, .health = 1.0f32, .kind = 0u};
+    const entity_handle_t first = entity_store_spawn(rig.store, &other);
+    REQUIRE(first != ENTITY_HANDLE_NONE);
+    for (uint32_t i = 0u; i < sizeof(MOBS) / sizeof(MOBS[0]); i++) {
+        const float64_t place[COLLISION_AXES] = {10.5f64 + (float64_t)i, 8.5f64, 0.0f64};
+        REQUIRE(mob_spawn_body(rig.spawn, rig.store, MOBS[i], place, 0.0f32) != ENTITY_HANDLE_NONE);
+    }
+    const entity_handle_t last = entity_store_spawn(rig.store, &other);
+    REQUIRE(last != ENTITY_HANDLE_NONE);
+    const uint64_t despawned = rig.spawn->despawned_count;
+    uint32_t removed[MOB_COUNT] = {0};
+    CHECK_EQ_U64(mob_spawn_retire(rig.store, removed), 5u);
+    CHECK_EQ_U64(removed[MOB_ID_NONE], 0u);
+    CHECK_EQ_U64(removed[MOB_ID_ZOMBIE], 3u);
+    CHECK_EQ_U64(removed[MOB_ID_SKELETON], 1u);
+    CHECK_EQ_U64(removed[MOB_ID_CREEPER], 1u);
+    CHECK_EQ_U64(rig.store->count, 2u);
+    CHECK_EQ_U64(ms_mobs_in(rig.store), 0u);
+    uint32_t index = 0u;
+    CHECK(entity_store_index_of(rig.store, first, &index));
+    CHECK(entity_store_index_of(rig.store, last, &index));
+    CHECK_EQ_U64(rig.spawn->despawned_count, despawned);
+    /* Again: nothing left to take. */
+    CHECK_EQ_U64(mob_spawn_retire(rig.store, removed), 0u);
+    CHECK_EQ_U64(removed[MOB_ID_ZOMBIE], 3u);
+    ms_end(&rig);
 }
 
 /* ---- Despawning ---------------------------------------------------------------------------------------------------- */
