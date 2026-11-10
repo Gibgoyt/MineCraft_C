@@ -535,6 +535,7 @@ textures:
   - { to: ui/hotbar_selected, keep: "Minecraft has no picture of this size and layout" }
   - { to: ui/icon_armor, from: gui/sprites/hud/armor_full.png }
   - { to: ui/icon_armor_empty, from: gui/sprites/hud/armor_empty.png }
+  - { to: ui/icon_armor_half, from: gui/sprites/hud/armor_half.png }
   - { to: ui/icon_breath, from: gui/sprites/hud/air.png }
   - { to: ui/icon_breath_empty, from: gui/sprites/hud/air_empty.png }
   - { to: ui/icon_health, keep: "Minecraft has no picture of this size and layout" }
