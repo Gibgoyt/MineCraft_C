@@ -98,7 +98,8 @@ Ahmed: find each animal, tell males from females, milk a cow, collect eggs, shea
 
 Appended as they land:
 
-- `bec44249` Stage 2: raw and cooked meats with food values and smelting recipes, egg, milk bucket (drinking leaves the bucket), cow, pig and goat hides, and white wool as block and item, each with a vector texture.
+- `7ce73170` Give animals what they need: a male or female body saved with the world, up to 16 boxes, male and female parts in mob files, daylight herds under their own cap, and a mind that wanders, keeps to its herd and runs when hit (plan 005 phase 4 stage 1).
+- `c326eea1` Stage 2: raw and cooked meats with food values and smelting recipes, egg, milk bucket (drinking leaves the bucket), cow, pig and goat hides, and white wool as block and item, each with a vector texture.
 
 ## Issues found
 
