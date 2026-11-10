@@ -72,8 +72,8 @@ From real animals. These are proposals for Ahmed to change.
 
 **Stage 2: items**
 
-- [ ] Add items: `beef`, `pork`, `mutton`, `chicken`, `goat_meat` and cooked versions; `egg`, `milk_bucket`; `cow_hide`, `pig_hide`, `goat_hide`; `white_wool` as block and item
-- [ ] Add smelting recipes for cooking each meat, and food values for each
+- [x] Add items: `beef`, `pork`, `mutton`, `chicken`, `goat_meat` and cooked versions; `egg`, `milk_bucket`; `cow_hide`, `pig_hide`, `goat_hide`; `white_wool` as block and item
+- [x] Add smelting recipes for cooking each meat, and food values for each
 
 **Stage 3: the six animals**
 
@@ -98,7 +98,11 @@ Ahmed: find each animal, tell males from females, milk a cow, collect eggs, shea
 
 Appended as they land:
 
+- `bec44249` Stage 2: raw and cooked meats with food values and smelting recipes, egg, milk bucket (drinking leaves the bucket), cow, pig and goat hides, and white wool as block and item, each with a vector texture.
+
 ## Issues found
+
+**White wool is `tool: none`, so shears do not break it faster.** A block whose tool is shears gets its own item from shears, and wool's table already always drops `white_wool`, so with `tool: shears` it came out twice (caught by `shears_bring_out_what_they_broke_and_nothing_else_does`). The other way round is `tool: shears` with the always-drop row removed, but then wool broken by anything else gives nothing. Kept `none`.
 
 **Needs phase 3 first,** which turns off the hostile mobs and is where spawn rules change.
 
