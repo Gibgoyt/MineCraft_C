@@ -3,6 +3,7 @@
 
 #include "climate/index.h"
 #include "climate/sun/index.h"
+#include "game/fill/index.h"
 #include "log/index.h"
 #include "render/entities/index.h"
 #include "tables/blocks/index.h"
@@ -125,6 +126,9 @@ void game_hud_debug_read(const game_t *game, ui_hud_debug_t *out) {
 }
 
 void game_report(game_t *game) {
+    if (game_fill_of(game) != nullptr) {
+        game_fill_report(game_fill_of(game)); /* plan 005 phase 14: how long the world took to fill in, each time */
+    }
     if (game->borrowed_player != nullptr) {
         const player_movement_t *const movement = &game->borrowed_player->movement;
         LOG_INFO("game: the player is at %.3f, %.3f, %.3f after %" PRIu64 " ticks",

@@ -8,6 +8,7 @@
 #include "game/census/index.h"
 #include "game/corner/index.h"
 #include "game/cover/index.h"
+#include "game/fill/index.h"
 #include "game/weather/index.h"
 #include "item/stack/index.h"
 #include "game/spawn/index.h"
@@ -31,8 +32,10 @@ typedef struct game_world_parts_t {
     game_cover_t cover;                       /* 58816 */
     uint8_t _pad0[56];                        /* 58888 */
     game_corner_t corner;                     /* 58944: the sim writes it, main reads its words */
+    game_fill_t fill;                         /* 59136: whichever thread uploads writes it (plan 005 phase 14) */
 } game_world_parts_t;
-static_assert(sizeof(game_world_parts_t) == 59136);
+static_assert(sizeof(game_world_parts_t) == 60928);
+static_assert(offsetof(game_world_parts_t, fill) == 59136);
 static_assert(offsetof(game_world_parts_t, jobs) == 0);
 static_assert(offsetof(game_world_parts_t, weather) == 8192);
 static_assert(offsetof(game_world_parts_t, cover) == 58816);
@@ -118,6 +121,10 @@ game_cover_t *game_cover_of(const game_t *game) {
 
 game_corner_t *game_corner_of(const game_t *game) {
     return game->borrowed_jobs != nullptr ? &((game_world_parts_t *)(void *)game->borrowed_jobs)->corner : nullptr;
+}
+
+game_fill_t *game_fill_of(const game_t *game) {
+    return game->borrowed_jobs != nullptr ? &((game_world_parts_t *)(void *)game->borrowed_jobs)->fill : nullptr;
 }
 
 static climate_t *game_climate(const game_t *game) {
@@ -564,6 +571,7 @@ bool game_open(game_t *game, const game_config_t *config) {
     game_weather_start(&world_parts->weather, GAME_WEATHER_SAMPLED);
     memset(&world_parts->cover, 0, sizeof(world_parts->cover));
     game_corner_start(&world_parts->corner);
+    game_fill_reset(&world_parts->fill);
     const terrain_t *const terrain = game->borrowed_terrain;
     for (uint32_t i = 0u; i < GAME_STREAM_JOBS; i++) {
         game_column_job_t *const job = &game->borrowed_jobs[i];
@@ -641,6 +649,8 @@ bool game_open(game_t *game, const game_config_t *config) {
         return false;
     }
     game_open_alive_tell(game);
+    game_fill_start(&world_parts->fill, GAME_FILL_OPEN, config->render_distance, game->view.full_detail,
+                    game->borrowed_render);
     game_open_climate(game, start_x, start_y);
     /* A new world's calendar: Year 1, Day 80, week 11, with no census owed. A saved one replaces it below. */
     game->day_zero = CALENDAR_DAY_ZERO;
@@ -839,6 +849,8 @@ bool game_reconfigure(game_t *game, const game_config_t *config) {
     LOG_INFO("game: now drawing %" PRIu32 " chunks, %" PRIu32 " of them block by block, %" PRIu32
              " far levels, at %" PRIu32 " by %" PRIu32 ", with effects %#" PRIx32,
              config->render_distance, now.full_detail, now.lod.level_count, now.width, now.height, now.features);
+    game_fill_start(game_fill_of(game), GAME_FILL_CHANGE, config->render_distance, now.full_detail,
+                    game->borrowed_render);
     if (running && !game_threads_start(game)) {
         atomic_store_explicit(&game->failed, 1u, memory_order_release);
         return false; /* it has said why */
@@ -1376,6 +1388,7 @@ static void game_gpu_thread(void *borrowed_argument) {
                 return; /* it has said why */
             }
         }
+        game_fill_step(game_fill_of(game), render);
         game_day_apply(game, camera);
         /* In the slot this picture is going into, for whoever asks what it was drawn from. The publish in the draw hands main both. */
         game->picture_cameras[render->frame.pictures.back] = *camera;

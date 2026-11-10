@@ -1,6 +1,7 @@
 /* See README.md. */
 #include "game/index.h"
 
+#include "game/fill/index.h"
 #include "log/index.h"
 #include "time/index.h"
 
@@ -41,6 +42,7 @@ bool game_settle(game_t *game) {
                 return false; /* it has said why */
             }
         }
+        game_fill_step(game_fill_of(game), render);
         if (render->buffers.pool_full_count != 0u && game->pool_full_said == 0u) {
             LOG_WARN("game: the section pool is full, so part of the world will not be drawn");
             game->pool_full_said = 1u;

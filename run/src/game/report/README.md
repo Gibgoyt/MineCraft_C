@@ -13,4 +13,4 @@
 - `game_calendar_date`, `game_calendar_south`, `game_calendar_line`: main's world clock as a date, which half of the world the eye is in (y below 0 is south, until plan 004 phase 02), and the HUD's date line.
 
 **May be called by:** `run/src/game/` and its callers.
-**Depends on:** `game`'s header, `log`, `render/entities`, `tables/blocks`, `time`.
+**Depends on:** `game`'s header, `game/fill` (its end-of-session lines), `log`, `render/entities`, `tables/blocks`, `time`.
