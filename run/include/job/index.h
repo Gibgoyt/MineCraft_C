@@ -55,6 +55,13 @@ enum : uint32_t {
      * and a job cannot be stopped once it has begun, so the cap is what keeps the rest free for what the player needs now. */
     JOB_FAR_WORKERS_DIVISOR = 4u,
 };
+enum : int64_t {
+    /* A cap holds this long after a job of a higher priority was last queued or finished, as well as while one is. Work
+     * above it comes in bursts with gaps of a few milliseconds between, such as the game's columns waiting on the sim
+     * thread to take them in. Without it, each gap lets the far field start a second-long job on every worker, and those
+     * share cores with the sim thread and the near columns and slow both by half. */
+    JOB_CAP_HOLD_NS = 100000000,
+};
 
 typedef struct job_system_t job_system_t;
 typedef struct job_worker_t job_worker_t;
@@ -111,13 +118,14 @@ typedef struct job_injector_t {
     _Atomic uint64_t head;
     uint8_t _pad1[MC_CPU_CACHE_LINE_BYTES - 8];
 
-    /* Line 2: running is written by workers as they take and finish its jobs, epoch by job_priority_drop. */
+    /* Line 2: running and busy_ns are written by workers as they take and finish its jobs, epoch by job_priority_drop. */
     _Atomic uint32_t running; /* jobs taken from here and not yet finished */
     _Atomic uint32_t epoch;   /* a job queued under an older one has been dropped */
     uint32_t cap;             /* the most of running at once: set by job_init */
     uint8_t _pad2[4];
     job_cell_t *borrowed_cells; /* JOB_INJECTOR_CAPACITY, in the system's owned_region */
-    uint8_t _pad3[MC_CPU_CACHE_LINE_BYTES - 24];
+    _Atomic int64_t busy_ns;    /* time_now_ns when a job was last queued here or one taken from here finished */
+    uint8_t _pad3[MC_CPU_CACHE_LINE_BYTES - 32];
 } job_injector_t;
 static_assert(sizeof(job_injector_t) == 3 * MC_CPU_CACHE_LINE_BYTES);
 static_assert(alignof(job_injector_t) == MC_CPU_CACHE_LINE_BYTES);

@@ -24,8 +24,8 @@ the worker it was handed.
 - `job_profiler_set`, `job_worker_lane`: each job a scope on its worker's lane in `run/src/profiler/`, and that lane for a job's own scopes.
 
 **May be called by:** `game`, `terrain`, `world/light`, `render/encode`, `save`, `mob`: anything above this layer.
-**Depends on:** `thread` for pinned threads, `heap`, `arena`, `log`, `assert`, futex through `syscall`, and generated
-`machine/index.h`.
+**Depends on:** `thread` for pinned threads, `heap`, `arena`, `time` for the hold, `log`, `assert`, futex through
+`syscall`, and generated `machine/index.h`.
 
 ## How work moves
 
@@ -61,6 +61,13 @@ highest first:
   is, take 481 s against its 590 s timeout. A job already running is never stopped, so near work that arrives while the far
   field has every worker waits for one far-field job to end. Workers the cap keeps out go to sleep, and any job from a
   shared queue that finishes wakes one while a capped queue has jobs.
+- **The hold.** The cap also holds for `JOB_CAP_HOLD_NS`, 100 ms, after a job above it was last queued or finished. The
+  game's columns come in bursts: the sim thread takes each finished one in, at 1 to 2 ms a column, and so is what sets the
+  pace, and in the gaps nothing near is queued or running. Without the hold each gap lifted the cap, the far field started
+  a second-long job on every worker, and those workers, on the same cores as the sim thread and the near columns by
+  hyperthreading, made both about 2.2 times slower: after render distance 16 to 64 the near rings took 11.6 s with the
+  cap at one worker as with it at a quarter, and 4.65 s with the hold. A worker kept out by the hold alone sleeps with an
+  alarm for when it ends, as then no job finishing comes to wake it.
 - **Dropping.** `job_priority_drop` moves a priority's epoch. A job queued under an older one reads `job_dropped` as true,
   and so does what it spawns. It still runs, so that its group finishes and its owner hears of it: it looks first and
   returns. `render/lod` drops its queued columns when the eye moves to another column or the far field changes or closes,

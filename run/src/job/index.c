@@ -5,6 +5,7 @@
 
 #include "assert/index.h"
 #include "log/index.h"
+#include "time/index.h"
 
 #include <errno.h>
 #include <linux/futex.h>
@@ -12,6 +13,7 @@
 #include <sched.h>
 #include <string.h>
 #include <sys/syscall.h>
+#include <time.h>
 #include <unistd.h>
 
 enum : uint32_t {
@@ -24,11 +26,18 @@ enum : uint32_t {
 
 /* ---- Futex ------------------------------------------------------------------------------------------------------- */
 
-/* Sleeps while *word == expected. Returning for no reason is allowed, so every caller loops. */
-static void job_futex_wait(_Atomic uint32_t *word, uint32_t expected) {
-    const int64_t result = syscall(SYS_futex, (uint32_t *)word, FUTEX_WAIT_PRIVATE, expected, nullptr, nullptr, 0);
-    /* EAGAIN: it had already changed. EINTR: a signal. Anything else is a bad address or a bad call: our bug. */
-    ASSERT_ALWAYS(result == 0 || errno == EAGAIN || errno == EINTR);
+/* Sleeps while *word == expected, and for at most timeout_ns when that is above zero. Returning for no reason is allowed, so
+ * every caller loops. */
+static void job_futex_wait(_Atomic uint32_t *word, uint32_t expected, int64_t timeout_ns) {
+    const struct timespec timeout = {
+        .tv_sec = timeout_ns / TIME_NS_PER_SECOND,
+        .tv_nsec = timeout_ns % TIME_NS_PER_SECOND,
+    };
+    const int64_t result = syscall(SYS_futex, (uint32_t *)word, FUTEX_WAIT_PRIVATE, expected,
+                                   timeout_ns > 0 ? &timeout : nullptr, nullptr, 0);
+    /* EAGAIN: it had already changed. EINTR: a signal. ETIMEDOUT: the time was up. Anything else is a bad address or a bad
+     * call: our bug. */
+    ASSERT_ALWAYS(result == 0 || errno == EAGAIN || errno == EINTR || errno == ETIMEDOUT);
 }
 
 /* Takes only the address and never reads through it, so this is safe on a group whose owner has already seen it reach zero
@@ -86,7 +95,7 @@ void job_group_wait(const job_system_t *system, job_group_t *group) {
             state |= JOB_GROUP_WAITER;
             flagged = true;
         }
-        job_futex_wait(&group->state, state);
+        job_futex_wait(&group->state, state, 0);
     }
     if (flagged) {
         atomic_fetch_and_explicit(&group->state, ~(uint32_t)JOB_GROUP_WAITER, memory_order_relaxed);
@@ -111,21 +120,63 @@ static bool job_injector_empty(const job_injector_t *injector) {
            atomic_load_explicit(&injector->head, memory_order_relaxed);
 }
 
-/* The most workers a priority may hold right now. A cap holds only while a job of a higher priority is queued or running:
- * then the rest of the workers stay free for what the player needs next. With nothing above it, a capped priority may have
- * every worker, so that the far field alone on the machine is not made to crawl. */
+/* The most workers a priority may hold right now. A cap holds while a job of a higher priority is queued or running, and
+ * for JOB_CAP_HOLD_NS after: then the rest of the workers stay free for what the player needs next. With nothing above it
+ * for that long, a capped priority may have every worker, so that the far field alone on the machine is not made to crawl.
+ * The clock is read only once nothing above is queued or running. */
 static uint32_t job_cap_now(const job_system_t *system, uint32_t priority) {
     const job_injector_t *const injector = &system->borrowed_injectors[priority];
     if (injector->cap >= system->worker_count) {
         return injector->cap;
     }
+    int64_t busy_ns = INT64_MIN;
     for (uint32_t p = 0; p < priority; p++) {
         const job_injector_t *const above = &system->borrowed_injectors[p];
         if (atomic_load_explicit(&above->running, memory_order_relaxed) != 0u || !job_injector_empty(above)) {
             return injector->cap;
         }
+        const int64_t above_ns = atomic_load_explicit(&above->busy_ns, memory_order_relaxed);
+        busy_ns = above_ns > busy_ns ? above_ns : busy_ns;
+    }
+    if (busy_ns != INT64_MIN && time_now_ns() - busy_ns < JOB_CAP_HOLD_NS) {
+        return injector->cap;
     }
     return system->worker_count;
+}
+
+/* How long until a hold alone keeps a worker from a capped queue that has jobs: then no job finishing will come to wake one
+ * when the hold runs out, so a worker going to sleep sets an alarm for it. Zero when no hold is all that stands in the way. */
+static int64_t job_hold_left_ns(const job_system_t *system) {
+    int64_t left_ns = 0;
+    for (uint32_t priority = 0; priority < JOB_PRIORITY_COUNT; priority++) {
+        const job_injector_t *const injector = &system->borrowed_injectors[priority];
+        if (injector->cap >= system->worker_count || job_injector_empty(injector) ||
+            atomic_load_explicit(&injector->running, memory_order_relaxed) < injector->cap) {
+            continue; /* uncapped, empty, or with room even under its cap */
+        }
+        int64_t busy_ns = INT64_MIN;
+        bool above_active = false;
+        for (uint32_t p = 0; p < priority && !above_active; p++) {
+            const job_injector_t *const above = &system->borrowed_injectors[p];
+            above_active =
+                atomic_load_explicit(&above->running, memory_order_relaxed) != 0u || !job_injector_empty(above);
+            const int64_t above_ns = atomic_load_explicit(&above->busy_ns, memory_order_relaxed);
+            busy_ns = above_ns > busy_ns ? above_ns : busy_ns;
+        }
+        if (above_active || busy_ns == INT64_MIN) {
+            continue; /* a job above finishing wakes a worker for it, in job_run */
+        }
+        const int64_t until_ns = JOB_CAP_HOLD_NS - (time_now_ns() - busy_ns);
+        if (until_ns > 0 && (left_ns == 0 || until_ns < left_ns)) {
+            left_ns = until_ns;
+        }
+    }
+    return left_ns;
+}
+
+/* For job_cap_now's hold. Only the queues below a capped one need it, and a store of the time is cheap beside a job. */
+static void job_busy_note(job_system_t *system, uint32_t priority) {
+    atomic_store_explicit(&system->borrowed_injectors[priority].busy_ns, time_now_ns(), memory_order_relaxed);
 }
 
 /* A capped queue with jobs and room under its cap now, as a job finishing anywhere may be what made the room. Only then is a
@@ -175,7 +226,7 @@ static void job_worker_sleep(job_worker_t *worker) {
     thread_fence_seq_cst();
     if (!job_any_queued(system) && atomic_load_explicit(&system->stopping, memory_order_acquire) == 0) {
         job_count(&worker->sleeps);
-        job_futex_wait(&system->wake_epoch, epoch);
+        job_futex_wait(&system->wake_epoch, epoch, job_hold_left_ns(system));
     }
     atomic_fetch_sub_explicit(&system->sleeper_count, 1u, memory_order_relaxed);
 }
@@ -349,6 +400,7 @@ bool job_try_submit_at(job_system_t *system, job_group_t *group, job_priority_t 
         job_group_finish(group);
         return false;
     }
+    job_busy_note(system, priority);
     job_wake_one(system);
     return true;
 }
@@ -406,6 +458,7 @@ static void job_run(job_worker_t *worker, job_t job, bool from_injector) {
     if (from_injector) {
         job_system_t *const system = worker->borrowed_system;
         job_injector_t *const injector = &system->borrowed_injectors[job.priority];
+        job_busy_note(system, job.priority);
         atomic_fetch_sub_explicit(&injector->running, 1u, memory_order_relaxed);
         thread_fence_seq_cst();
         if (job_capped_room(system)) {
@@ -534,6 +587,7 @@ bool job_init_count(job_system_t *system, const thread_topology_t *topology, uin
         job_injector_t *const injector = &system->borrowed_injectors[p];
         injector->borrowed_cells = &cells[(uint64_t)p * JOB_INJECTOR_CAPACITY];
         injector->cap = p == JOB_PRIORITY_FAR ? far_cap : system->worker_count;
+        atomic_init(&injector->busy_ns, INT64_MIN);
         for (uint64_t i = 0; i < JOB_INJECTOR_CAPACITY; i++) {
             atomic_init(&injector->borrowed_cells[i].sequence, i);
         }

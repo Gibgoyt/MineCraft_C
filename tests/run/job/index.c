@@ -983,8 +983,9 @@ static void job_far_blocker(job_worker_t *worker, void *borrowed_argument) {
     job_gate_blocker(worker, &order->gate);
 }
 
-/* Workers the cap keeps from a queue of far field work go to sleep instead of spinning on it, and when the near work above
- * it ends and the cap lifts, they wake and take the rest. */
+/* Workers the cap keeps from a queue of far field work go to sleep instead of spinning on it. When the near work above it
+ * ends, the cap holds for JOB_CAP_HOLD_NS more and then lifts with no job finishing to say so, and they wake and take the
+ * rest. */
 TEST(workers_kept_off_a_capped_queue_sleep_and_come_back_for_it) {
     enum : uint32_t { EXTRA = 10u };
     job_system_t system;
@@ -1015,13 +1016,24 @@ TEST(workers_kept_off_a_capped_queue_sleep_and_come_back_for_it) {
     /* The blockers yield in a loop on their workers: the sleeping rest must add nothing to that. */
     CHECK(after - before < (int64_t)(cap + 2u) * 100 * TIME_NS_PER_MS);
 
-    /* The near job ends, so the cap lifts, and sleeping workers take every blocker still queued. */
+    /* The near job ends, so the cap lifts once its hold is over, and sleeping workers take every blocker still queued. The
+     * near job finishes after the gate opens and the cap lifts after that and its hold, so no load on the machine can make
+     * the lift look early. */
+    const int64_t opened_ns = time_now_ns();
     atomic_store(&order.hold.open, 1u);
-    deadline = time_now_ns() + WAIT_NS;
+    deadline = opened_ns + WAIT_NS;
+    int64_t lifted_ns = -1;
     while (atomic_load(&order.far_blocked) < cap + EXTRA && time_now_ns() < deadline) {
+        if (lifted_ns < 0 && atomic_load(&order.far_blocked) > cap) {
+            lifted_ns = time_now_ns();
+        }
         time_sleep_ns(TIME_NS_PER_MS);
     }
+    if (lifted_ns < 0) {
+        lifted_ns = time_now_ns();
+    }
     CHECK_EQ_U64(atomic_load(&order.far_blocked), cap + EXTRA);
+    CHECK(lifted_ns - opened_ns >= JOB_CAP_HOLD_NS);
     atomic_store(&order.gate.open, 1u);
     job_group_wait(&system, &group);
     job_group_deinit(&group);
