@@ -14,7 +14,7 @@ Compute only. No real display, console or input device is opened: pictures go to
 What it holds to, on one session through the real menus with the real threads:
 
 - Leaving the window on the menus does nothing.
-- In a world at midnight, with mobs come, leaving the window brings up the pause screen. For 5 s, which is 100 ticks of play, nothing moves: the tick count, the clock, the mobs' number and every one's place, how many have come, and the body.
+- In a world at midnight, with four zombies put round the body by hand in a pause (plan 005 phase 3 set hostile mobs' spawn weight to 0, so none come by themselves) and a second of play for them to move, leaving the window brings up the pause screen. For 5 s, which is 100 ticks of play, nothing moves: the tick count, the clock, the mobs' number and every one's place, how many have come, and the body.
 - Coming back ends that pause by itself, and the ticks and the clock go on.
 - A pause made with Esc stays when the focus comes back, and Esc ends it.
 - With `pause_on_focus_loss` off, leaving the window leaves the world going.

@@ -13,6 +13,7 @@
 #include "item/index.h"
 #include "job/index.h"
 #include "mob/index.h"
+#include "mob/spawn/index.h"
 #include "physics/index.h"
 #include "player/index.h"
 #include "render/index.h"
@@ -251,8 +252,23 @@ TEST(a_long_time_without_focus_leaves_mobs_and_time_as_they_were_and_coming_back
     focus_key(t, rig, KEY_ENTER);
     FOCUS_WAIT_FOR(game->open != 0u && game->pictures_shown > 0u && game->tick_count > 0u);
     REQUIRE(rig->session.state == GAME_SESSION_PLAYING);
+    /* Plan 005 phase 3 gave hostile mobs a spawn weight of 0, so none come by themselves: four zombies are put round the body by hand,
+     * in a pause, when the sim is not touching the store, and then the world goes on for a second so they move. */
+    focus_leave(t, rig);
+    REQUIRE(rig->session.state == GAME_SESSION_PAUSED);
+    time_sleep_ns(200000000); /* the tick that was running finishes */
     game_clock_set(game, 0u, 0.0f64);
-    FOCUS_WAIT_FOR(entity->store.count > 0u);
+    static const float64_t around[4][2] = {{4.0f64, 0.0f64}, {-4.0f64, 0.0f64}, {0.0f64, 4.0f64}, {0.0f64, -4.0f64}};
+    for (uint32_t i = 0u; i < 4u; i++) {
+        const float64_t at[3] = {player->movement.position[0] + around[i][0],
+                                 player->movement.position[1] + around[i][1], player->movement.position[2] + 1.0f64};
+        CHECK(mob_spawn_body(&game->mob_spawn, &entity->store, MOB_ID_ZOMBIE, at, 0.0f32) != ENTITY_HANDLE_NONE);
+    }
+    focus_return(t, rig);
+    REQUIRE(rig->session.state == GAME_SESSION_PLAYING);
+    const uint64_t ticks_placed = game->tick_count;
+    FOCUS_WAIT_FOR(game->tick_count > ticks_placed + 20u);
+    REQUIRE(entity->store.count > 0u);
     printf("  %" PRIu32 " mobs after %" PRIu64 " ticks of night\n", entity->store.count, game->tick_count);
     const uint64_t pauses = rig->session.pauses;
 
