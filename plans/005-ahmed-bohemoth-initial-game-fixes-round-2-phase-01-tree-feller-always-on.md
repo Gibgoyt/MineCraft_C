@@ -37,6 +37,9 @@ Ahmed: punch the bottom log of a tree with bare hands, and the whole tree falls.
 
 Appended as they land:
 
+- `1af03177` Make the tree feller always on: any tool or bare hands fells, sneaking too, and only the cut log wears the tool.
+- `0514dee7` Note in plan 003 phase 7 that Ahmed answered its open questions: the feller is always on, with no axe or sneak rule, and falling logs cost nothing.
+
 ## Issues found
 
 **Ahmed again, 2026-11-09, after playing today's `main`:** "also tree feller must be on regardless if I mine a tree with an axe!!", written three times. His log shows why: `the player mined 1 blocks ... the last mined was acacia_log` and `an axe felled 0 logs past what it cut`, with nothing in hand. Expected: the tree comes down. Actual: one log broke, because today's code fells only with an axe. That's exactly this phase's first todo, which isn't built yet. **This is now Ahmed's decision, not a default.**
