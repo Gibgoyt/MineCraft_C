@@ -31,7 +31,7 @@ Each step waits for its fill to be done, and then half a second, with at least 2
 
 | Variable | Does |
 |---|---|
-| `MC_DISTANCE_LIVE_DEADLINES=0` | Only reports: the deadlines print `MISSED` but do not fail. For measuring code that is known to miss |
+| `MC_DISTANCE_LIVE_DEADLINES=0` | Only reports: the deadlines print `MISSED` but do not fail. For measuring code that is known to miss. `=1` holds a debug build to them too, which by default only reports, as its terrain alone misses them (`open_32` took over 20 s at `-O0`) |
 | `MC_DISTANCE_LIVE_WAIT_S=<s>` | Each step waits this long for its fill, not 20 s: 300 measures how long today's code takes to settle |
 | `MC_DISTANCE_LIVE_SHOTS=<dir>` | The pictures at the marks, and each step's last, as PNGs, to look at |
 

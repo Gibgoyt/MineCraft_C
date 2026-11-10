@@ -231,6 +231,7 @@ void game_fill_report(const game_fill_t *fill) {
     if (fill->logged == 0u && fill->started_ns != 0) {
         game_fill_summary_t summary;
         game_fill_summary(fill, &summary);
+        summary.far_columns = fill->far_built_last - fill->far_built_start;
         fill_report_line("unfinished", &summary);
     }
 }
