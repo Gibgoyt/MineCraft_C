@@ -1,0 +1,97 @@
+# Our own recipe, for plan 005 phase 4: compile/src/texture_vector/recipe/README.md lists the operations. Each box of
+# the mob is unwrapped as textures/README.md says, with its forward size as depth.
+name: sheep
+group: mobs
+size: { width: 128, height: 64, frames: 1 }
+source:
+  kind: procedural
+  about: "A sheep: white wool over a pale shorn skin, a grey-brown face, and a ram a fifth bigger with big curled ridged horns. A 128 by 64 skin."
+  seed: 7302
+  ops:
+    - { op: fill, color: "#d5c4ae", x: 99, y: 0, w: 3, h: 3 }
+    - { op: fill, color: "#a59886", x: 102, y: 0, w: 3, h: 3 }
+    - { op: fill, color: "#bdae9a", x: 96, y: 3, w: 3, h: 10 }
+    - { op: fill, color: "#c9b9a4", x: 99, y: 3, w: 3, h: 10 }
+    - { op: fill, color: "#bdae9a", x: 102, y: 3, w: 3, h: 10 }
+    - { op: fill, color: "#c9b9a4", x: 105, y: 3, w: 3, h: 10 }
+    - { op: fill, color: "#eed5c0", x: 66, y: 0, w: 8, h: 14 }
+    - { op: fill, color: "#b8a594", x: 74, y: 0, w: 8, h: 14 }
+    - { op: fill, color: "#d4bdaa", x: 52, y: 14, w: 14, h: 10 }
+    - { op: fill, color: "#e1c9b5", x: 66, y: 14, w: 8, h: 10 }
+    - { op: fill, color: "#d4bdaa", x: 74, y: 14, w: 14, h: 10 }
+    - { op: fill, color: "#e1c9b5", x: 88, y: 14, w: 8, h: 10 }
+    - { op: fill, color: "#f6f3eb", x: 16, y: 0, w: 10, h: 16 }
+    - { op: fill, color: "#d2d0c9", x: 26, y: 0, w: 10, h: 16 }
+    - { op: fill, color: "#e1ded6", x: 0, y: 16, w: 16, h: 12 }
+    - { op: fill, color: "#efece4", x: 16, y: 16, w: 10, h: 12 }
+    - { op: fill, color: "#e1ded6", x: 26, y: 16, w: 16, h: 12 }
+    - { op: fill, color: "#efece4", x: 42, y: 16, w: 10, h: 12 }
+    - { op: fill, color: "#927b68", x: 6, y: 28, w: 6, h: 6 }
+    - { op: fill, color: "#715f50", x: 12, y: 28, w: 6, h: 6 }
+    - { op: fill, color: "#826d5c", x: 0, y: 34, w: 6, h: 6 }
+    - { op: fill, color: "#8a7462", x: 6, y: 34, w: 6, h: 6 }
+    - { op: fill, color: "#826d5c", x: 12, y: 34, w: 6, h: 6 }
+    - { op: fill, color: "#8a7462", x: 18, y: 34, w: 6, h: 6 }
+    - { op: fill, color: "#d4bf92", x: 39, y: 28, w: 2, h: 3 }
+    - { op: fill, color: "#a49471", x: 41, y: 28, w: 2, h: 3 }
+    - { op: fill, color: "#bca982", x: 36, y: 31, w: 3, h: 3 }
+    - { op: fill, color: "#c8b48a", x: 39, y: 31, w: 2, h: 3 }
+    - { op: fill, color: "#bca982", x: 41, y: 31, w: 3, h: 3 }
+    - { op: fill, color: "#c8b48a", x: 44, y: 31, w: 2, h: 3 }
+    - { op: fill, color: "#d4bf92", x: 28, y: 28, w: 2, h: 4 }
+    - { op: fill, color: "#a49471", x: 30, y: 28, w: 2, h: 4 }
+    - { op: fill, color: "#bca982", x: 24, y: 32, w: 4, h: 3 }
+    - { op: fill, color: "#c8b48a", x: 28, y: 32, w: 2, h: 3 }
+    - { op: fill, color: "#bca982", x: 30, y: 32, w: 4, h: 3 }
+    - { op: fill, color: "#c8b48a", x: 34, y: 32, w: 2, h: 3 }
+    - { op: fill, color: "#d4bf92", x: 48, y: 28, w: 2, h: 2 }
+    - { op: fill, color: "#a49471", x: 50, y: 28, w: 2, h: 2 }
+    - { op: fill, color: "#bca982", x: 46, y: 30, w: 2, h: 3 }
+    - { op: fill, color: "#c8b48a", x: 48, y: 30, w: 2, h: 3 }
+    - { op: fill, color: "#bca982", x: 50, y: 30, w: 2, h: 3 }
+    - { op: fill, color: "#c8b48a", x: 52, y: 30, w: 2, h: 3 }
+    - { op: noise, amount: 10, cell: 1, x: 96, y: 0, w: 12, h: 13 }
+    - { op: noise, amount: 8, cell: 1, x: 52, y: 0, w: 44, h: 24 }
+    - { op: noise, amount: 6, cell: 1, x: 0, y: 0, w: 52, h: 28 }
+    - { op: noise, amount: 10, cell: 1, x: 0, y: 28, w: 24, h: 12 }
+    - { op: noise, amount: 4, cell: 1, x: 36, y: 28, w: 10, h: 6 }
+    - { op: noise, amount: 4, cell: 1, x: 24, y: 28, w: 12, h: 7 }
+    - { op: noise, amount: 4, cell: 1, x: 46, y: 28, w: 8, h: 5 }
+    - { op: fill, color: "#3a3028", x: 96, y: 11, w: 12, h: 2 }
+    - { op: blobs, color: "#d9d4c8", count: 70, radius_min: 0, radius_max: 1, jitter: 10, visible: true, seed: 11, x: 0, y: 0, w: 52, h: 28 }
+    - { op: speckle, color: "#fbfaf5", permille: 120, visible: true, seed: 12, x: 0, y: 0, w: 52, h: 28 }
+    - op: art
+      x: 6
+      y: 34
+      palette: { e: "#8a7462", k: "#1b1410", p: "#a08878", n: "#3a2a22" }
+      rows:
+        - "eeeeee"
+        - "ekeeke"
+        - "eeeeee"
+        - "eppppe"
+        - "epnnpe"
+        - "eppppe"
+    - { op: fill, color: "#8f7a58", x: 36, y: 31, w: 3, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 36, y: 33, w: 3, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 39, y: 31, w: 2, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 39, y: 33, w: 2, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 41, y: 31, w: 3, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 41, y: 33, w: 3, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 44, y: 31, w: 2, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 44, y: 33, w: 2, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 24, y: 32, w: 4, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 24, y: 34, w: 4, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 28, y: 32, w: 2, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 28, y: 34, w: 2, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 30, y: 32, w: 4, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 30, y: 34, w: 4, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 34, y: 32, w: 2, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 34, y: 34, w: 2, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 46, y: 30, w: 2, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 46, y: 32, w: 2, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 48, y: 30, w: 2, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 48, y: 32, w: 2, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 50, y: 30, w: 2, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 50, y: 32, w: 2, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 52, y: 30, w: 2, h: 1 }
+    - { op: fill, color: "#8f7a58", x: 52, y: 32, w: 2, h: 1 }

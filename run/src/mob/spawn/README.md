@@ -53,7 +53,7 @@ A mob whose file says `mind: passive` comes by these, after the hostile tries, a
 - **Where:** `MOB_SPAWN_ANIMAL_TRIES` columns within `MOB_SPAWN_REACH` along x and y, or `MOB_SPAWN_FIRST_DAY_REACH` on the first day, down from the top of the column's highest section that holds anything to its first floor: the ground under the sky, or a tree's leaves, which then fail the surface rule.
 - **What:** a passive mob by weight, and `pack_min` to `pack_max` of it, each a step from the last, as a pack. **A herd of a mob with sexes is male first, female second and then either, half and half**, so every herd of two or more has both. Everywhere else `mob_spawn_body` rolls a sex half and half; a body's box is its sex's `scale` times the mob's.
 - **The light roll** is the mob's `max_light`, not a roll from 0, so daylight is not less likely than dusk; `min_light` is what keeps it to the day. On the first day it may come as near as `MOB_SPAWN_FIRST_DAY_NEAR`, where its `min_distance` is more.
-- **Never taken away:** a passive mob has no `despawn`, its `despawn_far` is 0, and the despawn rules pass it by. `mob_spawn_retire` still takes one whose weight is 0, as the stand-in pig's is until stage 3.
+- **Never taken away:** a passive mob has no `despawn`, its `despawn_far` is 0, and the despawn rules pass it by. `mob_spawn_retire` still takes one whose weight is 0.
 
 The rules `mob_spawn_check` adds for any mob that sets them, in the order below, after the surface:
 
@@ -66,6 +66,10 @@ The rules `mob_spawn_check` adds for any mob that sets them, in the order below,
 | **Room** | Checked for its larger sex's box | `MOB_SPAWN_NO_ROOM` |
 
 So each animal of plan 005 says where it lives in its own file: cattle, sheep, pigs and chickens `biomes: [plains, sunflower_plains, meadow, forest, flower_forest, birch_forest, savanna]` and `on: [grass_block]`, a forest's edge being its grass under open sky; goats `biomes: [windswept_hills, windswept_gravelly_hills, windswept_forest, windswept_savanna, grove, meadow]`; mountain goats `biomes: [stony_peaks, jagged_peaks, frozen_peaks, snowy_slopes]` with a `min_height` and `on` stone and snow.
+
+## The store's limit for animals
+
+Animals never despawn, so a long journey would leave herd after herd waiting in the store for columns that never load again, and its 1024 would fill. So the store keeps at most `MOB_SPAWN_ANIMAL_STORE_MAX`, 256, animals, loaded or not. At that many, a herd that would come (its tick's roll passed and the cap here has room) first forgets the animal left furthest behind, along x or y, if that one is waiting for its column and more than `MOB_SPAWN_ANIMAL_FORGET`, 512 blocks, away: past the furthest the world is ever drawn. It is taken away and counts in `despawned_count`, and the herd may then be one, the room it made. With none that far, no herd comes. Below 256, a herd may come only as far as the room left. So the store never holds more than 256 animals, and wherever the player goes, herds still come.
 
 ## The despawn rules
 
@@ -81,4 +85,4 @@ Each tick, for each hostile mob, by `despawn` in its file:
 
 ## What this does not do
 
-A blow does not start the idle count over, which the published game does: Stage 15.7 can write `borrowed_idle` by the slot. Nothing breeds animals (Ahmed: not in plan 005). Animals left far behind stay in the store, waiting for their columns, and a long journey can fill its 1024: see plan 005 phase 4's Issues.
+A blow does not start the idle count over, which the published game does: Stage 15.7 can write `borrowed_idle` by the slot. Nothing breeds animals (Ahmed: not in plan 005). Animals left behind stay in the store, waiting for their columns, up to the limit below.

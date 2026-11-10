@@ -1,0 +1,135 @@
+# Our own recipe, for plan 005 phase 4: compile/src/texture_vector/recipe/README.md lists the operations. Each box of
+# the mob is unwrapped as textures/README.md says, with its forward size as depth.
+name: pig
+group: mobs
+size: { width: 128, height: 64, frames: 1 }
+source:
+  kind: procedural
+  about: "A pig: a pink sow, and a boar a quarter bigger, dark and bristly, with a ridge down its back and ivory tusks. A 128 by 64 skin."
+  seed: 7303
+  ops:
+    - { op: fill, color: "#c3907f", x: 122, y: 24, w: 1, h: 2 }
+    - { op: fill, color: "#977062", x: 123, y: 24, w: 1, h: 2 }
+    - { op: fill, color: "#ad8071", x: 120, y: 26, w: 2, h: 2 }
+    - { op: fill, color: "#b88878", x: 122, y: 26, w: 1, h: 2 }
+    - { op: fill, color: "#ad8071", x: 123, y: 26, w: 2, h: 2 }
+    - { op: fill, color: "#b88878", x: 125, y: 26, w: 1, h: 2 }
+    - { op: fill, color: "#644a3c", x: 92, y: 24, w: 4, h: 4 }
+    - { op: fill, color: "#4d392f", x: 96, y: 24, w: 4, h: 4 }
+    - { op: fill, color: "#584236", x: 88, y: 28, w: 4, h: 6 }
+    - { op: fill, color: "#5e4639", x: 92, y: 28, w: 4, h: 6 }
+    - { op: fill, color: "#584236", x: 96, y: 28, w: 4, h: 6 }
+    - { op: fill, color: "#5e4639", x: 100, y: 28, w: 4, h: 6 }
+    - { op: fill, color: "#644a3c", x: 16, y: 0, w: 10, h: 16 }
+    - { op: fill, color: "#4d392f", x: 26, y: 0, w: 10, h: 16 }
+    - { op: fill, color: "#584236", x: 0, y: 16, w: 16, h: 8 }
+    - { op: fill, color: "#5e4639", x: 16, y: 16, w: 10, h: 8 }
+    - { op: fill, color: "#584236", x: 26, y: 16, w: 16, h: 8 }
+    - { op: fill, color: "#5e4639", x: 42, y: 16, w: 10, h: 8 }
+    - { op: fill, color: "#644a3c", x: 8, y: 24, w: 8, h: 8 }
+    - { op: fill, color: "#4d392f", x: 16, y: 24, w: 8, h: 8 }
+    - { op: fill, color: "#584236", x: 0, y: 32, w: 8, h: 8 }
+    - { op: fill, color: "#5e4639", x: 8, y: 32, w: 8, h: 8 }
+    - { op: fill, color: "#584236", x: 16, y: 32, w: 8, h: 8 }
+    - { op: fill, color: "#5e4639", x: 24, y: 32, w: 8, h: 8 }
+    - { op: fill, color: "#927064", x: 1, y: 40, w: 4, h: 1 }
+    - { op: fill, color: "#71574d", x: 5, y: 40, w: 4, h: 1 }
+    - { op: fill, color: "#826458", x: 0, y: 41, w: 1, h: 3 }
+    - { op: fill, color: "#8a6a5e", x: 1, y: 41, w: 4, h: 3 }
+    - { op: fill, color: "#826458", x: 5, y: 41, w: 1, h: 3 }
+    - { op: fill, color: "#8a6a5e", x: 6, y: 41, w: 4, h: 3 }
+    - { op: fill, color: "#fef6dc", x: 11, y: 40, w: 1, h: 1 }
+    - { op: fill, color: "#c5beab", x: 12, y: 40, w: 1, h: 1 }
+    - { op: fill, color: "#e2dac4", x: 10, y: 41, w: 1, h: 3 }
+    - { op: fill, color: "#f0e8d0", x: 11, y: 41, w: 1, h: 3 }
+    - { op: fill, color: "#e2dac4", x: 12, y: 41, w: 1, h: 3 }
+    - { op: fill, color: "#f0e8d0", x: 13, y: 41, w: 1, h: 3 }
+    - { op: fill, color: "#2d1f17", x: 74, y: 24, w: 2, h: 10 }
+    - { op: fill, color: "#221812", x: 76, y: 24, w: 2, h: 10 }
+    - { op: fill, color: "#271b15", x: 64, y: 34, w: 10, h: 2 }
+    - { op: fill, color: "#2a1d16", x: 74, y: 34, w: 2, h: 2 }
+    - { op: fill, color: "#271b15", x: 76, y: 34, w: 10, h: 2 }
+    - { op: fill, color: "#2a1d16", x: 86, y: 34, w: 2, h: 2 }
+    - { op: fill, color: "#f7b0aa", x: 108, y: 24, w: 4, h: 4 }
+    - { op: fill, color: "#bf8883", x: 112, y: 24, w: 4, h: 4 }
+    - { op: fill, color: "#db9c96", x: 104, y: 28, w: 4, h: 6 }
+    - { op: fill, color: "#e9a6a0", x: 108, y: 28, w: 4, h: 6 }
+    - { op: fill, color: "#db9c96", x: 112, y: 28, w: 4, h: 6 }
+    - { op: fill, color: "#e9a6a0", x: 116, y: 28, w: 4, h: 6 }
+    - { op: fill, color: "#f7b0aa", x: 68, y: 0, w: 10, h: 16 }
+    - { op: fill, color: "#bf8883", x: 78, y: 0, w: 10, h: 16 }
+    - { op: fill, color: "#db9c96", x: 52, y: 16, w: 16, h: 8 }
+    - { op: fill, color: "#e9a6a0", x: 68, y: 16, w: 10, h: 8 }
+    - { op: fill, color: "#db9c96", x: 78, y: 16, w: 16, h: 8 }
+    - { op: fill, color: "#e9a6a0", x: 94, y: 16, w: 10, h: 8 }
+    - { op: fill, color: "#f7b0aa", x: 40, y: 24, w: 8, h: 8 }
+    - { op: fill, color: "#bf8883", x: 48, y: 24, w: 8, h: 8 }
+    - { op: fill, color: "#db9c96", x: 32, y: 32, w: 8, h: 8 }
+    - { op: fill, color: "#e9a6a0", x: 40, y: 32, w: 8, h: 8 }
+    - { op: fill, color: "#db9c96", x: 48, y: 32, w: 8, h: 8 }
+    - { op: fill, color: "#e9a6a0", x: 56, y: 32, w: 8, h: 8 }
+    - { op: fill, color: "#ffc3bb", x: 15, y: 40, w: 4, h: 1 }
+    - { op: fill, color: "#c69790", x: 19, y: 40, w: 4, h: 1 }
+    - { op: fill, color: "#e3ada5", x: 14, y: 41, w: 1, h: 3 }
+    - { op: fill, color: "#f2b8b0", x: 15, y: 41, w: 4, h: 3 }
+    - { op: fill, color: "#e3ada5", x: 19, y: 41, w: 1, h: 3 }
+    - { op: fill, color: "#f2b8b0", x: 20, y: 41, w: 4, h: 3 }
+    - { op: noise, amount: 6, cell: 1, x: 120, y: 24, w: 6, h: 4 }
+    - { op: noise, amount: 10, cell: 1, x: 88, y: 24, w: 16, h: 10 }
+    - { op: noise, amount: 10, cell: 1, x: 0, y: 0, w: 52, h: 24 }
+    - { op: noise, amount: 10, cell: 1, x: 0, y: 24, w: 32, h: 16 }
+    - { op: noise, amount: 3, cell: 1, x: 10, y: 40, w: 4, h: 4 }
+    - { op: noise, amount: 10, cell: 1, x: 64, y: 24, w: 24, h: 12 }
+    - { op: noise, amount: 10, cell: 1, x: 104, y: 24, w: 16, h: 10 }
+    - { op: noise, amount: 8, cell: 1, x: 52, y: 0, w: 52, h: 24 }
+    - { op: noise, amount: 10, cell: 1, x: 32, y: 24, w: 32, h: 16 }
+    - { op: fill, color: "#1d1612", x: 88, y: 33, w: 16, h: 1 }
+    - { op: speckle, color: "#2a1d16", permille: 160, visible: true, seed: 21, x: 0, y: 0, w: 52, h: 24 }
+    - { op: speckle, color: "#7a6252", permille: 90, visible: true, seed: 22, x: 0, y: 0, w: 52, h: 24 }
+    - { op: speckle, color: "#2a1d16", permille: 160, visible: true, seed: 21, x: 0, y: 24, w: 32, h: 16 }
+    - { op: speckle, color: "#7a6252", permille: 90, visible: true, seed: 22, x: 0, y: 24, w: 32, h: 16 }
+    - op: art
+      x: 8
+      y: 32
+      palette: { k: "#1b1410", r: "#c03a2a" }
+      rows:
+        - "........"
+        - "........"
+        - ".rk..kr."
+        - "........"
+        - "........"
+        - "........"
+        - "........"
+        - "........"
+    - op: art
+      x: 1
+      y: 41
+      palette: { n: "#2a1a16" }
+      rows:
+        - "...."
+        - ".nn."
+        - "...."
+    - { op: speckle, color: "#2a1d16", permille: 160, visible: true, seed: 21, x: 64, y: 24, w: 24, h: 12 }
+    - { op: speckle, color: "#7a6252", permille: 90, visible: true, seed: 22, x: 64, y: 24, w: 24, h: 12 }
+    - { op: fill, color: "#8a5a50", x: 104, y: 33, w: 16, h: 1 }
+    - op: art
+      x: 40
+      y: 32
+      palette: { p: "#e9a6a0", k: "#1b1410", w: "#f4f0ea" }
+      rows:
+        - "pppppppp"
+        - "pppppppp"
+        - "pwkppkwp"
+        - "pppppppp"
+        - "pppppppp"
+        - "pppppppp"
+        - "pppppppp"
+        - "pppppppp"
+    - op: art
+      x: 15
+      y: 41
+      palette: { n: "#8a4a48" }
+      rows:
+        - "...."
+        - ".nn."
+        - "...."

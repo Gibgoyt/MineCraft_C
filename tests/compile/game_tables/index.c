@@ -1159,6 +1159,7 @@ static const gtt_bad_case_t GTT_BAD_MOBS[] = {
     {"name: pebble\nparts: [{ uv: [1, 2000] }]\n", ":2:", "uv is 2000"},
     {"name: pebble\nparts: [{ moves: tail }]\n", ":2:", "unknown moves 'tail'"},
     {"name: pebble\nparts: [{ walk_swing: 8 }]\n", ":2:", "walk_swing '8' must be of a size up to 7"},
+    {"name: pebble\nparts: [{ fleece: woolly }]\n", ":2:", "true or false"},
     {"- just\n- a list\n", ":1:", "a mob's file must be a mapping"},
     /* Plan 005 phase 4: what an animal needs. */
     {"name: pebble\nmind: angry\n", ":2:", "unknown mind 'angry'"},

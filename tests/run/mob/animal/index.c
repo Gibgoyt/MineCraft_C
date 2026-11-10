@@ -11,7 +11,9 @@
 #include "tables/biomes/index.h"
 #include "tables/blocks/index.h"
 #include "tables/items/index.h"
+#include "tables/recipes/index.h"
 
+#include <inttypes.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -115,8 +117,9 @@ static void ma_floor(test_context_t *t, ma_rig_t *rig, uint16_t block) {
     CHECK_EQ_U64(world_light_rebuild(&rig->world.world->light), WORLD_LIGHT_STATUS_OK);
 }
 
-/* The pig stands in for the animals of stage 3, and its file has weight 0, so these tests give it one. */
+/* Pigs alone, so that a herd is always of them. */
 static const uint16_t MA_PIGS[MOB_COUNT] = {[MOB_ID_PIG] = 100u};
+static const uint16_t MA_NOTHING[MOB_COUNT] = {0};
 static const uint16_t MA_PIGS_AND_ZOMBIES[MOB_COUNT] = {[MOB_ID_PIG] = 100u, [MOB_ID_ZOMBIE] = 100u};
 
 static mob_spawn_view_t ma_view(float64_t sun_height, bool first_day) {
@@ -159,10 +162,10 @@ static entity_handle_t ma_pig(ma_rig_t *rig, float64_t x, float64_t y, uint8_t s
 
 /* ---- The tables ---------------------------------------------------------------------------------------------------- */
 
-TEST(the_pig_stand_in_is_a_passive_animal_with_a_male_and_a_female) {
+TEST(the_pig_is_a_passive_animal_with_a_male_and_a_female) {
     const mob_def_t *const pig = &mob_defs[MOB_ID_PIG];
     CHECK_EQ_U64(pig->mind, MOB_MIND_PASSIVE);
-    CHECK_EQ_U64(pig->weight, 0u); /* a stand-in comes by itself only once stage 3 makes it a pig */
+    CHECK(pig->weight > 0u);
     CHECK_EQ_U64(pig->despawn_far, 0u);
     CHECK_EQ_U64(pig->min_light, 9u);
     CHECK_EQ_U64(pig->max_light, 15u);
@@ -179,15 +182,19 @@ TEST(the_pig_stand_in_is_a_passive_animal_with_a_male_and_a_female) {
     CHECK_STR_EQ(sow->name, "sow");
     CHECK_EQ_U64(boar->sex, MOB_SEX_MALE);
     CHECK_EQ_U64(sow->sex, MOB_SEX_FEMALE);
-    CHECK(boar->scale == 1.2f32);
+    CHECK(boar->scale == 1.25f32);
     CHECK(sow->scale == 1.0f32);
-    /* The boar's tusks come right after the pig's own six boxes, and turn with its head. */
-    CHECK_EQ_U64(boar->part_count, 2u);
+    /* The pig's own box is its tail. Each sex has its own legs, body, head and snout, so a boar can be dark and a sow pink, and the
+     * boar has two tusks and a ridge besides, right after the tail. */
+    CHECK_EQ_U64(pig->part_count, 1u);
+    CHECK_EQ_U64(boar->part_count, 10u);
     CHECK_EQ_U64(boar->first_part, pig->first_part + pig->part_count);
-    CHECK_EQ_U64(mob_parts[boar->first_part].flags, MOB_PART_MOVES_HEAD);
-    CHECK_EQ_U64(sow->part_count, 0u);
+    CHECK_EQ_U64(mob_parts[boar->first_part + 5u].flags, MOB_PART_MOVES_HEAD);
+    CHECK_EQ_U64(sow->part_count, 7u);
+    CHECK(mob_parts[boar->first_part + 4u].texture_u != mob_parts[sow->first_part + 4u].texture_u ||
+          mob_parts[boar->first_part + 4u].texture_v != mob_parts[sow->first_part + 4u].texture_v);
     CHECK_EQ_U64(boar->drop_count, 1u);
-    CHECK_EQ_U64(mob_drops[boar->first_drop].item, ITEM_ID_LEATHER);
+    CHECK_EQ_U64(mob_drops[boar->first_drop].item, ITEM_ID_PORK);
     CHECK_EQ_U64(boar->first_drop, pig->first_drop + pig->drop_count);
     CHECK_EQ_U64(boar->yield_count, 0u);
     CHECK_EQ_U64(sow->yield_count, 0u);
@@ -221,7 +228,7 @@ TEST(an_animal_is_male_or_female_half_and_half_and_a_male_is_bigger) {
         const uint32_t index = ma_index(t, &rig, handle);
         const uint8_t sex = rig.store->borrowed_sex[index];
         REQUIRE(sex == ENTITY_STORE_SEX_MALE || sex == ENTITY_STORE_SEX_FEMALE);
-        const float32_t scale = sex == ENTITY_STORE_SEX_MALE ? 1.2f32 : 1.0f32;
+        const float32_t scale = sex == ENTITY_STORE_SEX_MALE ? 1.25f32 : 1.0f32;
         CHECK_NEAR(rig.store->borrowed_half_width[index], 0.45f32 * scale, MA_EXACT);
         CHECK_NEAR(rig.store->borrowed_height[index], 0.9f32 * scale, MA_EXACT);
         males += sex == ENTITY_STORE_SEX_MALE ? 1u : 0u;
@@ -260,22 +267,22 @@ TEST(a_males_boxes_are_its_kinds_and_its_own_and_all_bigger) {
     const entity_handle_t sow = ma_pig(&rig, 5.5f64, 1.5f64, ENTITY_STORE_SEX_FEMALE);
     entity_animation_pose_t poses[ENTITY_ANIMATION_PARTS_MAX];
     const entity_animation_part_t *parts[ENTITY_ANIMATION_PARTS_MAX];
-    CHECK_EQ_U64(entity_animation_body_pose(rig.store, ma_index(t, &rig, boar), poses, parts), 8u);
+    CHECK_EQ_U64(entity_animation_body_pose(rig.store, ma_index(t, &rig, boar), poses, parts), 11u);
     const mob_def_t *const pig = &mob_defs[MOB_ID_PIG];
     CHECK(parts[0] == &mob_parts[pig->first_part]);
-    CHECK(parts[6] == &mob_parts[mob_sexes[pig->first_sex].first_part]);
-    /* The head, 8 pixels across, is 1.2 times half a block across, and its middle 1.2 times as high. */
-    CHECK_NEAR(poses[0].half[0], 0.25f32 * 1.2f32, MA_EXACT);
-    CHECK_NEAR((float32_t)poses[0].center[2], 12.0f32 / 16.0f32 * 1.2f32, MA_EXACT);
-    CHECK_EQ_U64(entity_animation_body_pose(rig.store, ma_index(t, &rig, sow), poses, parts), 6u);
-    CHECK_NEAR(poses[0].half[0], 0.25f32, MA_EXACT);
+    CHECK(parts[1] == &mob_parts[mob_sexes[pig->first_sex].first_part]);
+    /* The tail, 2 pixels long, is 1.25 times an eighth of a block along, and its middle 1.25 times as high. */
+    CHECK_NEAR(poses[0].half[0], 0.0625f32 * 1.25f32, MA_EXACT);
+    CHECK_NEAR((float32_t)poses[0].center[2], 12.0f32 / 16.0f32 * 1.25f32, MA_EXACT);
+    CHECK_EQ_U64(entity_animation_body_pose(rig.store, ma_index(t, &rig, sow), poses, parts), 8u);
+    CHECK_NEAR(poses[0].half[0], 0.0625f32, MA_EXACT);
     CHECK_NEAR((float32_t)poses[0].center[2], 12.0f32 / 16.0f32, MA_EXACT);
     /* A zombie is as it was. */
     const float64_t place[COLLISION_AXES] = {9.5f64, 1.5f64, 0.0f64};
     const entity_handle_t zombie = mob_spawn_body(rig.spawn, rig.store, MOB_ID_ZOMBIE, place, 0.0f32);
     CHECK_EQ_U64(entity_animation_body_pose(rig.store, ma_index(t, &rig, zombie), poses, parts), 6u);
     CHECK(entity_animation_scale_of(MOB_ID_ZOMBIE, ENTITY_STORE_SEX_NONE) == 1.0f32);
-    CHECK(entity_animation_scale_of(MOB_ID_PIG, ENTITY_STORE_SEX_MALE) == 1.2f32);
+    CHECK(entity_animation_scale_of(MOB_ID_PIG, ENTITY_STORE_SEX_MALE) == 1.25f32);
     CHECK_EQ_U64(entity_animation_sex_rig_of(MOB_ID_PIG, ENTITY_STORE_SEX_NONE).part_count, 0u);
     ma_end(&rig);
 }
@@ -419,9 +426,9 @@ TEST(with_no_animal_weighed_nothing_is_drawn) {
     ma_rig_t rig;
     REQUIRE(ma_begin(t, &rig, 10u));
     ma_floor(t, &rig, BLOCK_ID_GRASS_BLOCK);
-    /* The files' own weights: the pig's is 0, as are the three hostile mobs'. */
+    /* Every weight 0, as the three hostile mobs' are in their files. */
     mob_spawn_view_t noon = ma_view(MA_NOON, true);
-    noon.weights = nullptr;
+    noon.weights = MA_NOTHING;
     const terrain_rng_t before = rig.spawn->random;
     ma_ticks(&rig, &noon, MA_FILL_TICKS);
     CHECK_EQ_U64(rig.store->count, 0u);
@@ -493,16 +500,16 @@ TEST(a_dead_animal_leaves_its_kinds_drops_and_its_sexs) {
         CHECK(!entity_store_index_of(rig.store, pig, &index));
         const uint64_t items = rig.mob->passive.borrowed_tally->dropped_count - before;
         if (sex == ENTITY_STORE_SEX_MALE) {
-            /* A pig's 0 to 1, and a boar's 1 more. */
-            CHECK(items >= 1u && items <= 2u);
+            /* A pig's 1 to 3 pork and 0 to 2 hides, and a boar's 1 pork more. */
+            CHECK(items >= 2u && items <= 6u);
             boar_items += items;
         } else {
-            CHECK(items <= 1u);
+            CHECK(items >= 1u && items <= 5u);
             sow_items += items;
         }
     }
     CHECK_EQ_U64(rig.mob->passive.borrowed_tally->died_count, MA_DEATHS);
-    /* On average 1.5 against 0.5. */
+    /* On average 4 against 3. */
     CHECK(boar_items > sow_items + MA_DEATHS / 4u);
     ma_end(&rig);
 }
@@ -553,6 +560,367 @@ TEST(a_tick_of_animals_takes_no_heap) {
     heap_counters_read(&after);
     CHECK_EQ_U64(after.reserve_calls, before.reserve_calls);
     ma_end(&rig);
+}
+
+/* ---- The six animals (stage 3 and 4) -------------------------------------------------------------------------------- */
+
+static const mob_id_t MA_ANIMALS[] = {MOB_ID_CATTLE, MOB_ID_SHEEP,         MOB_ID_PIG,
+                                      MOB_ID_GOAT,   MOB_ID_MOUNTAIN_GOAT, MOB_ID_CHICKEN};
+enum : uint32_t { MA_ANIMAL_COUNT = sizeof(MA_ANIMALS) / sizeof(MA_ANIMALS[0]) };
+
+static const mob_sex_t *ma_sex(mob_id_t mob, uint8_t sex) {
+    return mob_passive_sex_of((uint16_t)mob, sex);
+}
+
+static entity_handle_t ma_animal(ma_rig_t *rig, mob_id_t mob, float64_t x, float64_t y, uint8_t sex) {
+    const float64_t place[COLLISION_AXES] = {x, y, 0.0f64};
+    return mob_spawn_body_as(rig->spawn, rig->store, mob, place, 0.0f32, sex);
+}
+
+/* Every item now lying in the drop store, as item_id_t, one bit each: the ids here are all under 1024. */
+static void ma_items_lying(const ma_rig_t *rig, uint64_t out[16]) {
+    memset(out, 0, 16u * sizeof(uint64_t));
+    for (uint32_t i = 0u; i < rig->drops->count; i++) {
+        const uint16_t item = block_drop_items[rig->drops->borrowed_items[i].item].item;
+        out[item / 64u] |= 1ull << (item % 64u);
+    }
+}
+
+static bool ma_has(const uint64_t set[16], uint16_t item) {
+    return (set[item / 64u] & (1ull << (item % 64u))) != 0u;
+}
+
+TEST(six_animals_each_have_a_bigger_male_with_more_to_him) {
+    static const char *const NAMES[MA_ANIMAL_COUNT][2] = {{"bull", "cow"},    {"ram", "ewe"},     {"boar", "sow"},
+                                                          {"billy", "nanny"}, {"billy", "nanny"}, {"rooster", "hen"}};
+    for (uint32_t a = 0u; a < MA_ANIMAL_COUNT; a++) {
+        const mob_def_t *const def = &mob_defs[MA_ANIMALS[a]];
+        const mob_sex_t *const male = ma_sex(MA_ANIMALS[a], ENTITY_STORE_SEX_MALE);
+        const mob_sex_t *const female = ma_sex(MA_ANIMALS[a], ENTITY_STORE_SEX_FEMALE);
+        REQUIRE(male != nullptr && female != nullptr);
+        CHECK_EQ_U64(def->mind, MOB_MIND_PASSIVE);
+        CHECK(def->weight > 0u);
+        CHECK_STR_EQ(male->name, NAMES[a][0]);
+        CHECK_STR_EQ(female->name, NAMES[a][1]);
+        /* Bigger by 15 to 30%, and a rooster by half again; horns, tusks, a beard or a comb besides. */
+        CHECK(female->scale == 1.0f32);
+        CHECK(male->scale >= 1.15f32 && male->scale <= (MA_ANIMALS[a] == MOB_ID_CHICKEN ? 1.5f32 : 1.3f32));
+        CHECK(male->part_count > female->part_count);
+        CHECK(def->part_count + male->part_count <= MOB_PARTS_MAX);
+        /* Every texture is its own, painted by a recipe. */
+        CHECK_EQ_U64(def->texture_width, 128u);
+        CHECK_EQ_U64(def->texture_height, 64u);
+    }
+}
+
+TEST(half_of_every_animal_is_male_over_many_spawns) {
+    ma_rig_t rig;
+    REQUIRE(ma_begin(t, &rig, 21u));
+    const float64_t place[COLLISION_AXES] = {1.5f64, 2.5f64, 0.0f64};
+    for (uint32_t a = 0u; a < MA_ANIMAL_COUNT; a++) {
+        uint32_t males = 0u;
+        for (uint32_t i = 0u; i < MA_SEX_BODIES / 2u; i++) {
+            const entity_handle_t handle = mob_spawn_body(rig.spawn, rig.store, MA_ANIMALS[a], place, 0.0f32);
+            REQUIRE(handle != ENTITY_HANDLE_NONE);
+            males += rig.store->borrowed_sex[ma_index(t, &rig, handle)] == ENTITY_STORE_SEX_MALE ? 1u : 0u;
+            REQUIRE(entity_store_remove(rig.store, handle));
+        }
+        printf("  %s: %u of %u male\n", mob_defs[MA_ANIMALS[a]].name, males, MA_SEX_BODIES / 2u);
+        /* Half of 2000, within five standard deviations of about 22 each way. */
+        CHECK(males > 890u && males < 1110u);
+    }
+    ma_end(&rig);
+}
+
+TEST(only_females_give_milk_or_eggs_and_it_comes_again) {
+    static const mob_id_t MILKED[] = {MOB_ID_CATTLE, MOB_ID_GOAT, MOB_ID_MOUNTAIN_GOAT};
+    ma_rig_t rig;
+    REQUIRE(ma_begin(t, &rig, 22u));
+    ma_floor(t, &rig, BLOCK_ID_GRASS_BLOCK);
+    const mob_zombie_view_t player = ma_player(-30.5f64, -30.5f64);
+    for (uint32_t m = 0u; m < 3u; m++) {
+        const entity_handle_t male = ma_animal(&rig, MILKED[m], 10.5f64, 8.5f64, ENTITY_STORE_SEX_MALE);
+        const entity_handle_t female = ma_animal(&rig, MILKED[m], 14.5f64, 8.5f64, ENTITY_STORE_SEX_FEMALE);
+        uint16_t item = ITEM_ID_NONE;
+        uint32_t count = 0u;
+        /* A male gives nothing alive: no bucket, no shears, nothing by itself. */
+        CHECK(!mob_passive_yields_to(rig.store, ma_index(t, &rig, male), ITEM_ID_BUCKET));
+        CHECK(!mob_passive_take(&rig.mob->passive, rig.store, ma_index(t, &rig, male), ITEM_ID_BUCKET, &item, &count));
+        CHECK_EQ_U64(ma_sex(MILKED[m], ENTITY_STORE_SEX_MALE)->yield_count, 0u);
+        /* She gives a bucket of milk to a bucket, and none to shears or a bare hand. */
+        CHECK(mob_passive_yields_to(rig.store, ma_index(t, &rig, female), ITEM_ID_BUCKET));
+        CHECK(!mob_passive_yields_to(rig.store, ma_index(t, &rig, female), ITEM_ID_SHEARS));
+        CHECK(!mob_passive_yields_to(rig.store, ma_index(t, &rig, female), ITEM_ID_NONE));
+        REQUIRE(
+            mob_passive_take(&rig.mob->passive, rig.store, ma_index(t, &rig, female), ITEM_ID_BUCKET, &item, &count));
+        CHECK_EQ_U64(item, ITEM_ID_MILK_BUCKET);
+        CHECK_EQ_U64(count, 1u);
+        /* Then not again until she refills, `every` ticks later. */
+        mob_passive_body_t *const body = mob_passive_body_of(&rig.mob->passive, rig.store, ma_index(t, &rig, female));
+        CHECK_EQ_U64(body->yield_wait[0], 6000u);
+        CHECK(
+            !mob_passive_take(&rig.mob->passive, rig.store, ma_index(t, &rig, female), ITEM_ID_BUCKET, &item, &count));
+        body->yield_wait[0] = 3u;
+        for (uint32_t i = 0u; i < 3u; i++) {
+            (void)ma_step(&rig, &player);
+        }
+        CHECK(mob_passive_take(&rig.mob->passive, rig.store, ma_index(t, &rig, female), ITEM_ID_BUCKET, &item, &count));
+        REQUIRE(entity_store_remove(rig.store, male));
+        REQUIRE(entity_store_remove(rig.store, female));
+    }
+    /* A hen lays an egg by herself, not the moment she comes but a whole turn later, and then again; a rooster never does. */
+    const entity_handle_t hen = ma_animal(&rig, MOB_ID_CHICKEN, 10.5f64, 8.5f64, ENTITY_STORE_SEX_FEMALE);
+    const entity_handle_t rooster = ma_animal(&rig, MOB_ID_CHICKEN, 12.5f64, 8.5f64, ENTITY_STORE_SEX_MALE);
+    CHECK_EQ_U64(ma_sex(MOB_ID_CHICKEN, ENTITY_STORE_SEX_MALE)->yield_count, 0u);
+    (void)ma_step(&rig, &player);
+    mob_passive_body_t *const laying = mob_passive_body_of(&rig.mob->passive, rig.store, ma_index(t, &rig, hen));
+    CHECK_EQ_U64(laying->yield_wait[0], 6000u - 1u);
+    CHECK_EQ_U64(rig.drops->count, 0u);
+    laying->yield_wait[0] = 2u;
+    for (uint32_t i = 0u; i < 3u; i++) {
+        (void)ma_step(&rig, &player);
+    }
+    uint64_t lying[16];
+    ma_items_lying(&rig, lying);
+    CHECK(ma_has(lying, ITEM_ID_EGG));
+    CHECK_EQ_U64(rig.drops->count, 1u);
+    CHECK(mob_passive_body_of(&rig.mob->passive, rig.store, ma_index(t, &rig, hen))->yield_wait[0] >= 6000u - 2u);
+    /* A bucket or shears get nothing from her: the egg is hers to give. */
+    uint16_t item = ITEM_ID_NONE;
+    uint32_t count = 0u;
+    CHECK(!mob_passive_take(&rig.mob->passive, rig.store, ma_index(t, &rig, hen), ITEM_ID_BUCKET, &item, &count));
+    CHECK(!mob_passive_yields_to(rig.store, ma_index(t, &rig, rooster), ITEM_ID_BUCKET));
+    ma_end(&rig);
+}
+
+TEST(a_sheep_of_either_sex_gives_wool_to_shears_and_it_grows_back) {
+    ma_rig_t rig;
+    REQUIRE(ma_begin(t, &rig, 23u));
+    ma_floor(t, &rig, BLOCK_ID_GRASS_BLOCK);
+    const mob_zombie_view_t player = ma_player(-30.5f64, -30.5f64);
+    uint32_t wool = 0u, least = 64u, most = 0u;
+    for (uint32_t i = 0u; i < 200u; i++) {
+        const uint8_t sex = (i & 1u) == 0u ? ENTITY_STORE_SEX_MALE : ENTITY_STORE_SEX_FEMALE;
+        const entity_handle_t sheep = ma_animal(&rig, MOB_ID_SHEEP, 10.5f64, 8.5f64, sex);
+        const uint32_t index = ma_index(t, &rig, sheep);
+        /* A new sheep can be shorn at once, and wears its wool till then. */
+        CHECK(mob_passive_fleece_shown(&rig.mob->passive, rig.store, index));
+        CHECK(mob_passive_yields_to(rig.store, index, ITEM_ID_SHEARS));
+        CHECK(!mob_passive_yields_to(rig.store, index, ITEM_ID_BUCKET));
+        uint16_t item = ITEM_ID_NONE;
+        uint32_t count = 0u;
+        REQUIRE(mob_passive_take(&rig.mob->passive, rig.store, index, ITEM_ID_SHEARS, &item, &count));
+        CHECK_EQ_U64(item, ITEM_ID_WHITE_WOOL);
+        CHECK(count >= 1u && count <= 3u);
+        wool += count;
+        least = count < least ? count : least;
+        most = count > most ? count : most;
+        CHECK(!mob_passive_fleece_shown(&rig.mob->passive, rig.store, index));
+        CHECK(!mob_passive_take(&rig.mob->passive, rig.store, index, ITEM_ID_SHEARS, &item, &count));
+        REQUIRE(entity_store_remove(rig.store, sheep));
+    }
+    CHECK_EQ_U64(least, 1u);
+    CHECK_EQ_U64(most, 3u);
+    CHECK(wool > 300u && wool < 500u); /* 2 on average */
+    /* It grows back: 6000 ticks, the last few of them run here. */
+    const entity_handle_t ewe = ma_animal(&rig, MOB_ID_SHEEP, 10.5f64, 8.5f64, ENTITY_STORE_SEX_FEMALE);
+    uint16_t item = ITEM_ID_NONE;
+    uint32_t count = 0u;
+    REQUIRE(mob_passive_take(&rig.mob->passive, rig.store, ma_index(t, &rig, ewe), ITEM_ID_SHEARS, &item, &count));
+    mob_passive_body_t *const body = mob_passive_body_of(&rig.mob->passive, rig.store, ma_index(t, &rig, ewe));
+    CHECK_EQ_U64(body->yield_wait[0], 6000u);
+    body->yield_wait[0] = 4u;
+    for (uint32_t i = 0u; i < 3u; i++) {
+        (void)ma_step(&rig, &player);
+    }
+    CHECK(!mob_passive_fleece_shown(&rig.mob->passive, rig.store, ma_index(t, &rig, ewe)));
+    (void)ma_step(&rig, &player);
+    CHECK(mob_passive_fleece_shown(&rig.mob->passive, rig.store, ma_index(t, &rig, ewe)));
+    /* The wool is the one box that comes and goes. */
+    const mob_def_t *const def = &mob_defs[MOB_ID_SHEEP];
+    uint32_t fleeces = 0u;
+    for (uint32_t p = 0u; p < def->part_count; p++) {
+        fleeces += (mob_parts[def->first_part + p].flags & MOB_PART_FLEECE) != 0u ? 1u : 0u;
+    }
+    CHECK_EQ_U64(fleeces, 1u);
+    ma_end(&rig);
+}
+
+TEST(goats_give_no_wool_only_meat_and_hides) {
+    static const mob_id_t GOATS[] = {MOB_ID_GOAT, MOB_ID_MOUNTAIN_GOAT};
+    for (uint32_t g = 0u; g < 2u; g++) {
+        const mob_def_t *const def = &mob_defs[GOATS[g]];
+        for (uint32_t d = 0u; d < def->drop_count; d++) {
+            CHECK(mob_drops[def->first_drop + d].item != ITEM_ID_WHITE_WOOL);
+        }
+        for (uint32_t s = 0u; s < 2u; s++) {
+            const mob_sex_t *const sex = &mob_sexes[def->first_sex + s];
+            for (uint32_t y = 0u; y < sex->yield_count; y++) {
+                CHECK(mob_yields[sex->first_yield + y].item != ITEM_ID_WHITE_WOOL);
+                CHECK(mob_yields[sex->first_yield + y].tool != ITEM_ID_SHEARS);
+            }
+            for (uint32_t d = 0u; d < sex->drop_count; d++) {
+                CHECK(mob_drops[sex->first_drop + d].item != ITEM_ID_WHITE_WOOL);
+            }
+        }
+    }
+}
+
+/* A pad of a block a little east of the player at this height, under open sky, with light worked out. */
+static void ma_pad(test_context_t *t, ma_rig_t *rig, uint16_t block, int32_t z) {
+    test_world_fill(t, &rig->world, 30, 0, z - 1, 40, 16, z - 1, block);
+    const world_map_t *const map = rig->world.map;
+    for (uint32_t i = 0u; i < map->active_count; i++) {
+        CHECK_EQ_U64(world_light_column_added(&rig->world.world->light, map->borrowed_active[i]),
+                     WORLD_LIGHT_STATUS_OK);
+    }
+    CHECK_EQ_U64(world_light_rebuild(&rig->world.world->light), WORLD_LIGHT_STATUS_OK);
+}
+
+static mob_spawn_status_t ma_check_at(ma_rig_t *rig, mob_id_t mob, float64_t z, const mob_spawn_view_t *view) {
+    const float64_t position[COLLISION_AXES] = {35.5f64, 8.5f64, z};
+    return mob_spawn_check(rig->world.physics, rig->world.map, mob, position, view, mob_defs[mob].max_light);
+}
+
+TEST(mountain_goats_come_only_high_up_in_the_mountains) {
+    static const biome_id_t PEAKS[] = {BIOME_ID_STONY_PEAKS, BIOME_ID_JAGGED_PEAKS, BIOME_ID_FROZEN_PEAKS,
+                                       BIOME_ID_SNOWY_SLOPES};
+    uint32_t allowed = 0u;
+    for (uint32_t biome = 0u; biome < BIOME_COUNT; biome++) {
+        allowed += mob_spawn_biome_allows(MOB_ID_MOUNTAIN_GOAT, (biome_id_t)biome) ? 1u : 0u;
+    }
+    CHECK_EQ_U64(allowed, 4u);
+    for (uint32_t i = 0u; i < 4u; i++) {
+        CHECK(mob_spawn_biome_allows(MOB_ID_MOUNTAIN_GOAT, PEAKS[i]));
+        CHECK(!mob_spawn_biome_allows(MOB_ID_CATTLE, PEAKS[i]));
+    }
+    CHECK(!mob_spawn_biome_allows(MOB_ID_MOUNTAIN_GOAT, BIOME_ID_PLAINS));
+    CHECK(!mob_spawn_biome_allows(MOB_ID_MOUNTAIN_GOAT, BIOME_ID_WINDSWEPT_HILLS));
+    CHECK(mob_spawn_biome_allows(MOB_ID_GOAT, BIOME_ID_WINDSWEPT_HILLS));
+    CHECK(!mob_spawn_biome_allows(MOB_ID_GOAT, BIOME_ID_PLAINS));
+    CHECK_EQ_I64(mob_defs[MOB_ID_MOUNTAIN_GOAT].min_height, 300);
+    /* On stone at the sea it is too low, where a goat of the hills comes; high up on stone it comes, and cattle never do. */
+    ma_rig_t rig;
+    REQUIRE(ma_begin(t, &rig, 24u));
+    ma_pad(t, &rig, BLOCK_ID_STONE, 0);
+    ma_pad(t, &rig, BLOCK_ID_STONE, 320);
+    mob_spawn_view_t noon = ma_view(MA_NOON, false);
+    CHECK_EQ_U64(ma_check_at(&rig, MOB_ID_MOUNTAIN_GOAT, 0.0f64, &noon), MOB_SPAWN_BAD_HEIGHT);
+    CHECK_EQ_U64(ma_check_at(&rig, MOB_ID_GOAT, 0.0f64, &noon), MOB_SPAWN_OK);
+    CHECK_EQ_U64(ma_check_at(&rig, MOB_ID_MOUNTAIN_GOAT, 320.0f64, &noon), MOB_SPAWN_OK);
+    CHECK_EQ_U64(ma_check_at(&rig, MOB_ID_CATTLE, 320.0f64, &noon), MOB_SPAWN_BAD_SURFACE);
+    ma_end(&rig);
+}
+
+TEST(each_animal_leaves_its_own_meat_and_hide_or_wool_and_no_other) {
+    static const uint16_t MEAT[MA_ANIMAL_COUNT] = {ITEM_ID_BEEF,      ITEM_ID_MUTTON,    ITEM_ID_PORK,
+                                                   ITEM_ID_GOAT_MEAT, ITEM_ID_GOAT_MEAT, ITEM_ID_CHICKEN};
+    static const uint16_t OTHER[MA_ANIMAL_COUNT] = {ITEM_ID_COW_HIDE,  ITEM_ID_WHITE_WOOL, ITEM_ID_PIG_HIDE,
+                                                    ITEM_ID_GOAT_HIDE, ITEM_ID_GOAT_HIDE,  ITEM_ID_FEATHER};
+    const mob_zombie_view_t player = ma_player(-30.5f64, -30.5f64);
+    for (uint32_t a = 0u; a < MA_ANIMAL_COUNT; a++) {
+        ma_rig_t rig;
+        REQUIRE(ma_begin(t, &rig, 30u + a));
+        ma_floor(t, &rig, BLOCK_ID_GRASS_BLOCK);
+        for (uint32_t i = 0u; i < 100u; i++) {
+            const uint8_t sex = (i & 1u) == 0u ? ENTITY_STORE_SEX_MALE : ENTITY_STORE_SEX_FEMALE;
+            const entity_handle_t body = ma_animal(&rig, MA_ANIMALS[a], 20.5f64, 8.5f64, sex);
+            rig.store->borrowed_health[ma_index(t, &rig, body)] = 0.0f32;
+            (void)ma_step(&rig, &player);
+        }
+        uint64_t lying[16];
+        ma_items_lying(&rig, lying);
+        CHECK(ma_has(lying, MEAT[a]));
+        CHECK(ma_has(lying, OTHER[a]));
+        uint32_t kinds = 0u;
+        for (uint32_t w = 0u; w < 16u; w++) {
+            kinds += (uint32_t)__builtin_popcountll(lying[w]);
+        }
+        printf("  %s: %u kinds of item left by 100 deaths\n", mob_defs[MA_ANIMALS[a]].name, kinds);
+        CHECK_EQ_U64(kinds, 2u);
+        ma_end(&rig);
+    }
+}
+
+/* ---- The store's limit -------------------------------------------------------------------------------------------- */
+
+/* Fills the store with animals waiting for columns far off along x, as a long journey leaves them. */
+static void ma_left_behind(test_context_t *t, ma_rig_t *rig, uint32_t count, float64_t away) {
+    for (uint32_t i = 0u; i < count; i++) {
+        const entity_handle_t handle =
+            ma_animal(rig, MOB_ID_SHEEP, MA_PLAYER_X + away + (float64_t)i, MA_PLAYER_Y, ENTITY_STORE_SEX_FEMALE);
+        REQUIRE(handle != ENTITY_HANDLE_NONE);
+        rig->store->borrowed_flags[ma_index(t, rig, handle)] |= ENTITY_STORE_FLAG_WAITING;
+    }
+}
+
+static uint32_t ma_count_loaded(const entity_store_t *store) {
+    uint32_t count = 0u;
+    for (uint32_t i = 0u; i < store->count; i++) {
+        count += (store->borrowed_flags[i] & ENTITY_STORE_FLAG_WAITING) == 0u ? 1u : 0u;
+    }
+    return count;
+}
+
+TEST(the_store_keeps_at_most_256_animals_and_forgets_the_furthest_left_behind) {
+    ma_rig_t rig;
+    REQUIRE(ma_begin(t, &rig, 40u));
+    ma_floor(t, &rig, BLOCK_ID_GRASS_BLOCK);
+    const mob_spawn_view_t noon = ma_view(MA_NOON, true);
+    /* 256 left 2000 blocks behind: room is made, one a tick from the furthest, and herds come here up to the cap. */
+    ma_left_behind(t, &rig, MOB_SPAWN_ANIMAL_STORE_MAX, 2000.0f64);
+    const float64_t furthest = MA_PLAYER_X + 2000.0f64 + (float64_t)(MOB_SPAWN_ANIMAL_STORE_MAX - 1u);
+    ma_ticks(&rig, &noon, 1u);
+    CHECK_EQ_U64(rig.spawn->despawned_count, 1u);
+    for (uint32_t i = 0u; i < rig.store->count; i++) {
+        CHECK(rig.store->borrowed_position[0][i] < furthest);
+    }
+    for (uint32_t tick = 0u; tick < MA_FILL_TICKS; tick++) {
+        ma_ticks(&rig, &noon, 1u);
+        CHECK(rig.store->count <= MOB_SPAWN_ANIMAL_STORE_MAX);
+    }
+    const uint32_t cap = mob_spawn_animal_cap(rig.world.map->ready_count);
+    CHECK_EQ_U64(ma_count_loaded(rig.store), cap);
+    CHECK_EQ_U64(rig.store->count, MOB_SPAWN_ANIMAL_STORE_MAX);
+    printf("  %" PRIu64 " forgotten to make room for %u here\n", rig.spawn->despawned_count, cap);
+    CHECK(rig.spawn->despawned_count >= cap);
+    ma_end(&rig);
+
+    /* 256 left 200 to 455 blocks behind, within MOB_SPAWN_ANIMAL_FORGET: they are kept, and no herd comes. */
+    REQUIRE(ma_begin(t, &rig, 41u));
+    ma_floor(t, &rig, BLOCK_ID_GRASS_BLOCK);
+    ma_left_behind(t, &rig, MOB_SPAWN_ANIMAL_STORE_MAX, 200.0f64);
+    ma_ticks(&rig, &noon, MA_FILL_TICKS / 4u);
+    CHECK_EQ_U64(rig.store->count, MOB_SPAWN_ANIMAL_STORE_MAX);
+    CHECK_EQ_U64(ma_count_loaded(rig.store), 0u);
+    CHECK_EQ_U64(rig.spawn->despawned_count, 0u);
+    ma_end(&rig);
+
+    /* 250 left far behind, 6 short of the limit: only 6 may come, though the cap here is more. */
+    REQUIRE(ma_begin(t, &rig, 42u));
+    ma_floor(t, &rig, BLOCK_ID_GRASS_BLOCK);
+    ma_left_behind(t, &rig, MOB_SPAWN_ANIMAL_STORE_MAX - 6u, 200.0f64);
+    ma_ticks(&rig, &noon, MA_FILL_TICKS / 4u);
+    CHECK_EQ_U64(ma_count_loaded(rig.store), 6u);
+    CHECK_EQ_U64(rig.store->count, MOB_SPAWN_ANIMAL_STORE_MAX);
+    ma_end(&rig);
+}
+
+TEST(the_bed_is_made_from_white_wool) {
+    uint32_t row = RECIPE_COUNT;
+    for (uint32_t i = 0u; i < RECIPE_COUNT; i++) {
+        row = strcmp(recipe_defs[i].name, "bed") == 0 ? i : row;
+    }
+    REQUIRE(row < RECIPE_COUNT);
+    const recipe_def_t *const bed = &recipe_defs[row];
+    CHECK_EQ_U64(bed->width, 3u);
+    CHECK_EQ_U64(bed->height, 2u);
+    for (uint32_t c = 0u; c < 3u; c++) {
+        const recipe_choice_t *const choice = &recipe_choices[bed->cells[c] - 1u];
+        CHECK_EQ_U64(choice->count, 1u);
+        CHECK_EQ_U64(recipe_choice_items[choice->first], ITEM_ID_WHITE_WOOL);
+    }
+    CHECK_EQ_U64(bed->gives, ITEM_ID_BED);
 }
 
 TEST_MAIN()

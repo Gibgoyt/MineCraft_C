@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2 — phase 4: Animals, with males and females
 
-**Status:** stage 1 built and tested (sex, 16 boxes, male/female YAML, daylight herds under their own cap, the passive mind); stages 2 to 4 not started   (updated 2026-11-10)
+**Status:** stages 1 to 4 built and tested: six animals, male and female, with shearing, milking, eggs, a wool bed, the store's limit for animals and a headless proof with pictures   (updated 2026-11-10)
 
 ## Goal
 
@@ -77,14 +77,14 @@ From real animals. These are proposals for Ahmed to change.
 
 **Stage 3: the six animals**
 
-- [ ] Add `config/mobs/{cattle,sheep,pig,goat,mountain_goat,chicken}/` with models and textures (`textures/mobs/<animal>/`) for both sexes, telling them apart as in the table
-- [ ] Add shearing, milking and egg laying: females only, apart from shearing, with regrowth and refill timers saved with the world
-- [ ] Change the bed recipe to wool
+- [x] Add `config/mobs/{cattle,sheep,pig,goat,mountain_goat,chicken}/` with models and textures (`textures/mobs/<animal>/`) for both sexes, telling them apart as in the table
+- [x] Add shearing, milking and egg laying: females only, apart from shearing, with regrowth and refill timers saved with the world
+- [x] Change the bed recipe to wool
 
 **Stage 4: proving it**
 
-- [ ] Add tests: half males and half females over many spawns; only females milk or lay; goats give no wool; mountain goats only in mountains; drops per animal; saving and reopening keeps sex, wool and timers
-- [ ] Add a scripted headless proof: a herd of each from the side, males and females together, checked by eye; a sheep shorn; a cow milked; a bed made from wool and slept in
+- [x] Add tests: half males and half females over many spawns; only females milk or lay; goats give no wool; mountain goats only in mountains; drops per animal; saving and reopening keeps sex, wool and timers
+- [x] Add a scripted headless proof: a herd of each from the side, males and females together, checked by eye; a sheep shorn; a cow milked; a bed made from wool and slept in
 
 ## Verification
 
@@ -120,6 +120,19 @@ Appended as they land:
 - **Tests:** new ctest `run_mob_animal` (tables, 4000 bodies about half male, sizes and boxes, the rules, herds filling their cap of 8 in a 9-chunk world in under 50 ticks on the first day and about 1 tick in 400 after, the two caps apart, fleeing, drops, a stray walking back to its herd, no heap); `compile_game_tables` gains 30 bad animal files and a good one; `run_save_state` round-trips a boar and a sow and opens a version 4 file; `run_save_state_names` checks sexes stay with their bodies through a translation. The verification set (18 tests) passes on the debug build.
 - **For the orchestrator:** `plans/REPO_STRUCTURE.md` does not yet list `run/src/mob/passive/` or `tests/run/mob/animal/`; rule 4 keeps me out of it.
 - **Open:** animals left behind wait in the store forever (they never despawn), so a long journey could fill the store's 1024. Not a problem at 10 per view, but worth a limit once animals have weight.
+
+**Stages 3 and 4, as built (2026-11-10):**
+
+- **The six animals** are `config/mobs/{cattle,sheep,pig,goat,mountain_goat,chicken}/`, each with a 128 by 64 skin of our own in `textures/mobs/<animal>/` (procedural recipes, no Mojang art; each has a `keep:` line in `textures/import_minecraft_default.yaml` and is listed in `textures/vector.yaml`). `config/mobs/README.md` has the table. Males: bull 1.25 with horns; ram 1.2 with big curled ridged horns (6 boxes); boar 1.25, dark brown and bristly with a back ridge and tusks; billy goat 1.25 with a beard and long swept horns; mountain goats white and shaggy (a fringe box), the billy with longer black horns; rooster **1.5**, rust red with a tall comb and a dark green tail. The rooster is past the plan's 15 to 30%, on Ahmed's "a heck of a lot bigger". A pig's and a chicken's own `parts` are only a tail or legs, and each sex carries its own body, so a boar can be dark and a sow pink on one skin. Weights: sheep 12, pig 10, chicken 10, cattle 8, goat 6, mountain goat 6. Mountain goats: the four peak/slope biomes, `min_height: 300`, on stone, snow, calcite or gravel. Goats: the windswept biomes, grove and meadow.
+- **Living yields** (`run/src/mob/passive/`): `mob_passive_yields_to`, `mob_passive_take` (rolls `count`..`max`, sets the wait to `every`), and laying in the tick (a yield with no tool lays at the feet when its wait is out). A newly met hen waits a whole `every` (6000 ticks) before her first egg; shears and bucket yields start ready. Ewe and ram: 1 to 3 white wool to shears; cow, nanny goat and mountain goat nanny: a milk bucket to a bucket; hen: an egg every 6000 ticks; every other male gives nothing alive. Waits are in `yield_wait`, already saved whole in `SAVE_STATE_SECTION_PASSIVE`, so no save format change.
+- **The game** (`run/src/game/tick/`, `game_animal_use_tick`): a *press* of the right button on an animal (`player_body_aimed`, the swing's aim) with what it yields to in hand. Shears drop the wool at the sheep and wear by 1; a bucket comes back a milk bucket in the slot (with a stack of buckets, the milk goes to the inventory or the ground). From the press until release the hands are held off (`player_t.animal_use`, a former padding byte), so the milk is not drunk at once. A tool that does not wear (durability 0) is what the yield comes in; one that wears brings it out.
+- **The shorn look:** a part field `fleece: true` (`MOB_PART_FLEECE` in the tables) is drawn only while the sex's first yield is ready, so a shorn sheep shows its pale skin box until the wool grows back (`mob_passive_fleece_shown`).
+- **Bed:** `WWW`/`PPP` with `W` = `white_wool`; wheat no longer makes one. The bed row is gone from `config/recipes/README.md`'s table of stand-ins.
+- **The store's limit (the stage 1 risk):** `MOB_SPAWN_ANIMAL_STORE_MAX` = 256 animals in the store, loaded or not. At 256, a herd that would come forgets the animal left furthest behind (waiting for its column and more than `MOB_SPAWN_ANIMAL_FORGET` = 512 blocks away along x or y, past the furthest render distance), counting it in `despawned_count`; with none that far no herd comes. Below 256, a herd may only fill the room left. The random draws are unchanged until the limit is reached. Chosen over unloading animals into column saves, which would touch the save format and column storage.
+- **Mob ids moved** (sorted by name): cattle 1, chicken 2, creeper 3, goat 4, mountain_goat 5, pig 6, sheep 7, skeleton 8, zombie 9; `MOB_COUNT` 10. Saves translate by name.
+- **Tests:** `run_mob_animal` updated for the real pig and grown by 9 tests (the six told apart; half male over 2000 of each; only females milk or lay, and it comes again; wool from either sheep, 1 to 3, growing back and hiding the fleece box; goats no wool; mountain goats only high in the mountains; each animal's drops are its meat and hide/wool/feathers only; the store limit in three cases; the bed recipe). `run_save_state` round-trips a shorn ram and a hen part way to an egg (sex, wool state and waits). `run_mob_spawn`'s table test has the new ids, and its night test now counts only hostile mobs, as goats may come on its stone floor by day. `compile_game_tables` refuses a non-boolean `fleece`.
+- **The headless proof** is a new ctest, `run_mob_animal_proof` (`tests/run/mob/animal/proof/`): a whole real game on the card, grass laid around the body at noon on day 10, pictures written to `/tmp/mc_animal_proof/` (or `MC_ANIMAL_PROOF_DIR`): a herd of each of the six side on (male, female, male, female), a ewe shorn with shears (2 wool, shears worn 1, second press nothing, the ram behind still woolly), a bucket on a bull (nothing) then a cow (milk, not drunk while held), a bed crafted from 3 wool and 3 planks at a table (wheat refused), put down and slept in at 20:24. **Checked by eye:** every herd shows its males bigger with their horns, tusks, beards or combs; the boars dark, sows pink; the rooster red with a tall comb and green tail beside white hens; the shorn ewe shows her pale skin; the bed stands on the grass and the sleeping picture is dark from the bed.
+- **For the orchestrator:** `plans/REPO_STRUCTURE.md` should list `tests/run/mob/animal/proof/` and the six `config/mobs/<animal>/` and `textures/mobs/<animal>/` directories. `config/recipes/README.md` still says pumpkin pie leaves out the egg "until hens lay it": hens lay now, so that recipe could take its egg back (not done here).
 
 **Open for Ahmed:**
 

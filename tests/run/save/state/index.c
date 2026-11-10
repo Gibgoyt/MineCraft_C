@@ -277,6 +277,11 @@ static void ss_fill(ss_rig_t *rig) {
     (void)mob_spawn_body_as(rig->spawn, &entity->store, MOB_ID_PIG, feet4, 0.25f32, ENTITY_STORE_SEX_MALE);
     const float64_t feet5[3] = {18.5f64, 10.5f64, 1.0f64};
     (void)mob_spawn_body_as(rig->spawn, &entity->store, MOB_ID_PIG, feet5, 0.75f32, ENTITY_STORE_SEX_FEMALE);
+    /* A ram just shorn, and a hen part way to her next egg: the wool grows back and the egg comes on time after a reopen. */
+    const float64_t feet6[3] = {20.5f64, 10.5f64, 1.0f64};
+    (void)mob_spawn_body_as(rig->spawn, &entity->store, MOB_ID_SHEEP, feet6, 1.0f32, ENTITY_STORE_SEX_MALE);
+    const float64_t feet7[3] = {22.5f64, 10.5f64, 1.0f64};
+    (void)mob_spawn_body_as(rig->spawn, &entity->store, MOB_ID_CHICKEN, feet7, 1.5f32, ENTITY_STORE_SEX_FEMALE);
     entity_store_wish_set(&entity->store, 0u, 0.05f64, 0.0f64);
     entity->store.borrowed_health[1] = 4.5f32;
     const float64_t origin[3] = {2.5f64, 2.5f64, 5.0f64};
@@ -292,7 +297,14 @@ static void ss_fill(ss_rig_t *rig) {
     mob->creeper.borrowed_bodies[entity_handle_slot(third)].fuse = 2u;
     mob->combat.borrowed_bodies[entity_handle_slot(first)].last_hurt = 1.5f32;
     mob->combat.landed_count = 8u;
-    mob_passive_body_t *const sow = mob_passive_body_of(&mob->passive, &entity->store, entity->store.count - 1u);
+    /* The ram and the hen are the last two bodies, as nothing has gone since they came. */
+    const uint32_t ram_at = entity->store.count - 2u, hen_at = entity->store.count - 1u;
+    uint16_t wool = ITEM_ID_NONE;
+    uint32_t wool_count = 0u;
+    (void)mob_passive_take(&mob->passive, &entity->store, ram_at, ITEM_ID_SHEARS, &wool, &wool_count);
+    mob_passive_body_of(&mob->passive, &entity->store, ram_at)->yield_wait[0] = 4321u;
+    mob_passive_body_of(&mob->passive, &entity->store, hen_at)->yield_wait[0] = 1234u;
+    mob_passive_body_t *const sow = mob_passive_body_of(&mob->passive, &entity->store, entity->store.count - 3u);
     sow->yield_wait[1] = 777u;
     sow->flee = 5u;
     sow->from[0] = 3.25f64;
@@ -452,15 +464,27 @@ TEST(every_part_reloads_byte_for_byte_and_goes_on_the_same) {
     uint32_t boars = 0u, sows = 0u, neither = 0u;
     for (uint32_t i = 0u; i < store->count; i++) {
         const uint8_t sex = store->borrowed_sex[i];
-        CHECK_EQ_U64(sex != ENTITY_STORE_SEX_NONE, store->borrowed_kind[i] == MOB_ID_PIG);
-        boars += sex == ENTITY_STORE_SEX_MALE ? 1u : 0u;
-        sows += sex == ENTITY_STORE_SEX_FEMALE ? 1u : 0u;
+        const uint16_t kind = store->borrowed_kind[i];
+        CHECK_EQ_U64(sex != ENTITY_STORE_SEX_NONE,
+                     kind == MOB_ID_PIG || kind == MOB_ID_SHEEP || kind == MOB_ID_CHICKEN);
+        boars += sex == ENTITY_STORE_SEX_MALE && kind == MOB_ID_PIG ? 1u : 0u;
+        sows += sex == ENTITY_STORE_SEX_FEMALE && kind == MOB_ID_PIG ? 1u : 0u;
         neither += sex == ENTITY_STORE_SEX_NONE ? 1u : 0u;
+        if (kind == MOB_ID_SHEEP) {
+            /* Still a ram, still shorn, with as long to wait for his wool. */
+            CHECK_EQ_U64(sex, ENTITY_STORE_SEX_MALE);
+            CHECK_EQ_U64(mob_passive_body_of(&second->mob->passive, store, i)->yield_wait[0], 4321u);
+            CHECK(!mob_passive_fleece_shown(&second->mob->passive, store, i));
+        }
+        if (kind == MOB_ID_CHICKEN) {
+            CHECK_EQ_U64(sex, ENTITY_STORE_SEX_FEMALE);
+            CHECK_EQ_U64(mob_passive_body_of(&second->mob->passive, store, i)->yield_wait[0], 1234u);
+        }
     }
     CHECK_EQ_U64(boars, 1u);
     CHECK_EQ_U64(sows, 1u);
     CHECK_EQ_U64(neither, 3u);
-    const mob_passive_body_t *const sow = mob_passive_body_of(&second->mob->passive, store, store->count - 1u);
+    const mob_passive_body_t *const sow = mob_passive_body_of(&second->mob->passive, store, store->count - 3u);
     CHECK_EQ_U64(sow->yield_wait[1], 777u);
     CHECK_EQ_U64(sow->flee, 5u);
     CHECK(sow->from[0] == 3.25f64);
@@ -751,7 +775,7 @@ TEST(a_version_4_file_opens_with_every_body_neither_and_version_5_needs_its_part
     memset(second->entity->store.borrowed_sex, ENTITY_STORE_SEX_FEMALE, ENTITY_STORE_CAPACITY);
     REQUIRE(save_state_apply(&second->save->state, &second->parts));
     const entity_store_t *const store = &second->entity->store;
-    CHECK_EQ_U64(store->count, 5u);
+    CHECK_EQ_U64(store->count, 7u);
     for (uint32_t i = 0u; i < store->count; i++) {
         CHECK_EQ_U64(store->borrowed_sex[i], ENTITY_STORE_SEX_NONE);
     }
@@ -765,7 +789,7 @@ TEST(a_version_4_file_opens_with_every_body_neither_and_version_5_needs_its_part
     CHECK_EQ_U64(header.version, SAVE_STATE_VERSION);
     uint64_t section_bytes = 0u;
     CHECK(save_state_section_find(again, again_bytes, SAVE_STATE_SECTION_SEXES, &section_bytes) != nullptr);
-    CHECK_EQ_U64(section_bytes, sizeof(save_state_sexes_t) + 5u);
+    CHECK_EQ_U64(section_bytes, sizeof(save_state_sexes_t) + 7u);
     CHECK(save_state_section_find(again, again_bytes, SAVE_STATE_SECTION_PASSIVE, &section_bytes) != nullptr);
     ss_rig_end(second);
     ss_temp_remove(t, root);

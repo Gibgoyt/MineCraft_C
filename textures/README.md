@@ -31,7 +31,7 @@ To check this tree, with no pack:
 
 ## Recipes
 
-The textures the pack lacks are ours: every mob but the player, gold tools, armour, deep rock, more trees and plants, the animals' meat, hides, egg and milk, the buttons and the font. `compile/src/texture_vector/recipe/README.md` lists the operations. A recipe reads only its own `index.yaml`, so these 215 textures survive the pack being removed. To change one, edit its yaml, then:
+The textures the pack lacks are ours: every mob but the player, gold tools, armour, deep rock, more trees and plants, the animals' meat, hides, egg and milk, the buttons and the font. `compile/src/texture_vector/recipe/README.md` lists the operations. A recipe reads only its own `index.yaml`, so these 221 textures survive the pack being removed. To change one, edit its yaml, then:
 
     tools/test-or-build.sh cmake --build --preset debug --target mc_tool_texture_vector
     build/debug/bin/tools/texture_vector recipes --textures textures
@@ -40,7 +40,7 @@ That writes its `index.mctex` and `README.md`, which are committed. To check tha
 
     build/debug/bin/tools/texture_vector check --textures textures --materials textures/vector.yaml
 
-A stage that wants a new texture adds it under `needs` in `vector.yaml`, and gives it a source. Mobs share the player's 64 by 32 layout: a box of width w, height h and depth d at (x, y) has its top at (x+d, y), its bottom at (x+d+w, y), and in the next row right, front, left and back at (x, y+d), (x+d, y+d), (x+d+w, y+d) and (x+d+w+d, y+d). The head is 8 by 8 by 8 at (0, 0), the body 8 by 12 by 4 at (16, 16), an arm 4 by 12 by 4 at (40, 16) and a leg 4 by 12 by 4 at (0, 16). The skeleton's limbs are 2 by 12 by 2 at the same places, and the creeper's four feet 4 by 6 by 4 at (0, 16).
+A stage that wants a new texture adds it under `needs` in `vector.yaml`, and gives it a source. Mobs share the player's 64 by 32 layout: a box of width w, height h and depth d at (x, y) has its top at (x+d, y), its bottom at (x+d+w, y), and in the next row right, front, left and back at (x, y+d), (x+d, y+d), (x+d+w, y+d) and (x+d+w+d, y+d). The head is 8 by 8 by 8 at (0, 0), the body 8 by 12 by 4 at (16, 16), an arm 4 by 12 by 4 at (40, 16) and a leg 4 by 12 by 4 at (0, 16). The animals of plan 005 phase 4 (`cattle`, `sheep`, `pig`, `goat`, `mountain_goat`, `chicken`) have a 128 by 64 skin each, male and female on the one, laid out for their own boxes in `config/mobs/`: a part of size [forward, left, up] is unwrapped with forward as its depth, left as its width and up as its height. The skeleton's limbs are 2 by 12 by 2 at the same places, and the creeper's four feet 4 by 6 by 4 at (0, 16).
 
 ## Vector data
 

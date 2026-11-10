@@ -224,6 +224,22 @@ bool player_attack_tick(player_t *player, const entity_store_t *store, const wor
     return player_combat_tick(&player->combat, &input, out);
 }
 
+entity_handle_t player_body_aimed(const player_t *player, const entity_store_t *store, const world_map_t *map) {
+    const uint64_t look = atomic_load_explicit(&player->look_word, memory_order_relaxed);
+    const uint32_t yaw_bits = (uint32_t)look, pitch_bits = (uint32_t)(look >> 32u);
+    float32_t yaw = 0.0f32, pitch = 0.0f32;
+    memcpy(&yaw, &yaw_bits, sizeof(yaw));
+    memcpy(&pitch, &pitch_bits, sizeof(pitch));
+    const player_movement_t *const movement = &player->movement;
+    const float64_t eye[COLLISION_AXES] = {movement->position[0], movement->position[1],
+                                           movement->position[2] + movement->eye_height};
+    float64_t direction[COLLISION_AXES];
+    player_camera_direction(yaw, pitch, direction);
+    player_combat_aim_t aim;
+    player_combat_aim(map, store, eye, direction, &aim);
+    return aim.handle;
+}
+
 void player_attack_landed(player_t *player, const player_combat_swing_t *swing) {
     player_survival_exhaust(&player->survival, PLAYER_COMBAT_TIRES);
     player_combat_landed(&player->movement, swing);

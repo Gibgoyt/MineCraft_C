@@ -474,8 +474,14 @@ needs:
     - woodworking_bench
   mobs:
     - arrow
+    - cattle
+    - chicken
     - creeper
+    - goat
+    - mountain_goat
+    - pig
     - player
+    - sheep
     - skeleton
     - zombie
   ui:

@@ -70,7 +70,8 @@ static const char *const GM_SPAWN_FIELDS[] = {"weight",       "pack_min",  "pack
 enum { GM_SPAWN_FIELD_COUNT = sizeof(GM_SPAWN_FIELDS) / sizeof(GM_SPAWN_FIELDS[0]) };
 static const char *const GM_DESPAWN_FIELDS[] = {"near", "far", "idle_ticks", "one_in"};
 enum { GM_DESPAWN_FIELD_COUNT = sizeof(GM_DESPAWN_FIELDS) / sizeof(GM_DESPAWN_FIELDS[0]) };
-static const char *const GM_PART_FIELDS[] = {"size", "pivot", "offset", "uv", "moves", "rest_pitch", "walk_swing"};
+static const char *const GM_PART_FIELDS[] = {"size",  "pivot",      "offset",     "uv",
+                                             "moves", "rest_pitch", "walk_swing", "fleece"};
 enum { GM_PART_FIELD_COUNT = sizeof(GM_PART_FIELDS) / sizeof(GM_PART_FIELDS[0]) };
 static const char *const GM_SEX_FIELDS[] = {"name", "scale", "parts", "drops", "yields"};
 enum { GM_SEX_FIELD_COUNT = sizeof(GM_SEX_FIELDS) / sizeof(GM_SEX_FIELDS[0]) };
@@ -94,7 +95,8 @@ typedef struct gm_part_t {
     uint32_t u;                /* 176 */
     uint32_t v;                /* 180 */
     uint8_t moves;             /* 184: into GM_MOVES */
-    uint8_t _pad0[7];          /* 185 */
+    uint8_t fleece;            /* 185: drawn only while its sex's first yield is ready: a sheep's wool */
+    uint8_t _pad0[6];          /* 186 */
 } gm_part_t;
 static_assert(sizeof(gm_part_t) == 192);
 
@@ -604,6 +606,15 @@ static void gm_read_part(gm_context_t *context, const yaml_document_t *document,
         gm_read_number(context, uv, yaml_seq_at(document, uv, 0u), "uv", 0, GM_TEXTURE_LIMIT, false, &part->u);
         gm_read_number(context, uv, yaml_seq_at(document, uv, 1u), "uv", 0, GM_TEXTURE_LIMIT, false, &part->v);
     }
+    const yaml_node_t *const fleece = yaml_map_get(document, row, "fleece");
+    if (fleece != nullptr) {
+        bool value = false;
+        yaml_error_t error = {0};
+        if (!yaml_get_bool(fleece, &value, &error)) {
+            gm_report_yaml(context, &error);
+        }
+        part->fleece = value ? 1u : 0u;
+    }
     const yaml_node_t *const moves = yaml_map_get(document, row, "moves");
     if (moves != nullptr) {
         const char *const text = gm_read_text(context, moves);
@@ -939,7 +950,7 @@ static void gm_emit_types(tp_builder_t *out) {
         "other way */\n"
         "    uint16_t texture_u;   /* 44: the corner of its box-mapped unwrap in the rig's texture */\n"
         "    uint16_t texture_v;   /* 46 */\n"
-        "    uint8_t flags;        /* 48: MOB_PART_MOVES_ */\n"
+        "    uint8_t flags;        /* 48: MOB_PART_MOVES_, MOB_PART_FLEECE */\n"
         "    uint8_t _pad0[3];     /* 49 */\n"
         "} mob_part_t;\n"
         "static_assert(sizeof(mob_part_t) == 52);\n\n");
@@ -1068,6 +1079,10 @@ static void gm_emit_header(tp_arena_t *arena, tp_builder_t *out, const gm_mob_t 
     for (uint32_t i = 1u; i < GM_MOVES_COUNT; i++) {
         tp_builder_add(out, "#define MOB_PART_MOVES_%s %uu\n", gm_upper(arena, GM_MOVES[i]), 1u << (i - 1u));
     }
+    tp_builder_add(out,
+                   "/* Drawn only while its sex's first yield is ready, as a sheep's wool is until shorn. */\n"
+                   "#define MOB_PART_FLEECE %uu\n",
+                   1u << (GM_MOVES_COUNT - 1u));
     tp_builder_add(out, "\n/* Where each mob's own body is, as constants, so that a rig can be a constant. */\n");
     gm_totals_t first = GM_TOTALS_START;
     for (uint32_t i = 0u; i < count; i++) {
@@ -1117,10 +1132,11 @@ static void gm_add_parts(tp_arena_t *arena, tp_builder_t *out, const gm_part_t *
         gm_add_decimal(out, part->walk_swing);
         tp_builder_add(out, ", .texture_u = %u, .texture_v = %u, .flags = ", part->u, part->v);
         if (part->moves == 0u) {
-            tp_builder_add(out, "0u},\n");
+            tp_builder_add(out, "0u");
         } else {
-            tp_builder_add(out, "MOB_PART_MOVES_%s},\n", gm_upper(arena, GM_MOVES[part->moves]));
+            tp_builder_add(out, "MOB_PART_MOVES_%s", gm_upper(arena, GM_MOVES[part->moves]));
         }
+        tp_builder_add(out, part->fleece != 0u ? " | MOB_PART_FLEECE},\n" : "},\n");
     }
 }
 

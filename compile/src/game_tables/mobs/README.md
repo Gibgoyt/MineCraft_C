@@ -32,6 +32,7 @@ Every problem gets `path:line:column: message`, and reading goes on, so one buil
 
 | Name | What |
 |---|---|
+| `MOB_PART_FLEECE` | In `mob_part_t.flags`, for a part whose file says `fleece: true`: drawn only while its sex's first yield is ready, a sheep's wool |
 | `mob_id_t`, `MOB_ID_ZOMBIE` | Mob ids. **0 is `MOB_ID_NONE`**, and the rest sort by name, so adding a mob moves those after it, and a save stores names |
 | `mob_defs[MOB_COUNT]` | `mob_def_t` by id: everything the file says, with where its rows are in the arrays below |
 | `mob_drops[MOB_DROP_COUNT]` | `mob_drop_t`: an item, a chance, and a count from `count_min` to `count_max`. A mob's are `first_drop` and `drop_count` of them |

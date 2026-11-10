@@ -1,0 +1,51 @@
+# Cattle (plan 005 phase 4): a cow gives milk to a bucket; a bull, a quarter bigger with horns, gives nothing alive.
+# Both give beef and a cow hide.
+name: cattle
+texture: mobs/cattle
+texture_width: 128
+texture_height: 64
+mind: passive
+health: 10
+speed: 0.1
+half_width: 0.45
+height: 1.4
+drops:
+  - { item: beef, count: 1, max: 3 }
+  - { item: cow_hide, count: 0, max: 2 }
+spawn:
+  weight: 8
+  pack_min: 2
+  pack_max: 4
+  max_light: 15
+  max_block_light: 15
+  # The published game's animals come where the light is above 8.
+  min_light: 9
+  min_distance: 24
+  on: [grass_block]
+  biomes: [plains, sunflower_plains, meadow, forest, flower_forest, birch_forest, savanna]
+parts:
+  - { size: [4, 4, 12], pivot: [6, 3.5, 12], offset: [0, 0, -6], uv: [60, 0], walk_swing: 1 }
+  - { size: [4, 4, 12], pivot: [6, -3.5, 12], offset: [0, 0, -6], uv: [60, 0], walk_swing: -1 }
+  - { size: [4, 4, 12], pivot: [-6, 3.5, 12], offset: [0, 0, -6], uv: [60, 0], walk_swing: -1 }
+  - { size: [4, 4, 12], pivot: [-6, -3.5, 12], offset: [0, 0, -6], uv: [60, 0], walk_swing: 1 }
+  - { size: [18, 12, 10], pivot: [0, 0, 17], offset: [0, 0, 0], uv: [0, 0] }
+  - { size: [6, 8, 8], pivot: [9, 0, 19], offset: [3, 0, 1], uv: [76, 0], moves: head }
+male:
+  name: bull
+  scale: 1.25
+  # Horns out to the sides and up, which turn with the head.
+  parts:
+    - { size: [2, 3, 2], pivot: [9, 0, 19], offset: [3, 5.5, 4], uv: [8, 28], moves: head }
+    - { size: [2, 3, 2], pivot: [9, 0, 19], offset: [3, -5.5, 4], uv: [8, 28], moves: head }
+    - { size: [2, 2, 3], pivot: [9, 0, 19], offset: [3, 7.5, 5.5], uv: [0, 28], moves: head }
+    - { size: [2, 2, 3], pivot: [9, 0, 19], offset: [3, -7.5, 5.5], uv: [0, 28], moves: head }
+  drops:
+    - { item: beef, count: 1 }
+female:
+  name: cow
+  scale: 1
+  # An udder under her belly, at the back.
+  parts:
+    - { size: [5, 4, 2], pivot: [0, 0, 12], offset: [-4, 0, -1], uv: [104, 0] }
+  yields:
+    - { item: milk_bucket, count: 1, using: bucket, every: 6000 }

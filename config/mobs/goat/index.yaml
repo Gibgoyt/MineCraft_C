@@ -1,0 +1,55 @@
+# A goat (plan 005 phase 4): a nanny gives milk to a bucket, a billy, a quarter bigger with a beard and long horns, nothing
+# alive. Neither gives wool, only goat meat and a goat hide. In hills and windswept land.
+name: goat
+texture: mobs/goat
+texture_width: 128
+texture_height: 64
+mind: passive
+health: 10
+speed: 0.1
+half_width: 0.4
+height: 1.3
+drops:
+  - { item: goat_meat, count: 1, max: 2 }
+  - { item: goat_hide, count: 0, max: 2 }
+spawn:
+  weight: 6
+  pack_min: 2
+  pack_max: 3
+  max_light: 15
+  max_block_light: 15
+  # The published game's animals come where the light is above 8.
+  min_light: 9
+  min_distance: 24
+  on: [grass_block, coarse_dirt, gravel, stone, snow_block]
+  biomes: [windswept_hills, windswept_gravelly_hills, windswept_forest, windswept_savanna, grove, meadow]
+parts:
+  - { size: [3, 3, 10], pivot: [5, 2.5, 10], offset: [0, 0, -5], uv: [44, 0], walk_swing: 1 }
+  - { size: [3, 3, 10], pivot: [5, -2.5, 10], offset: [0, 0, -5], uv: [44, 0], walk_swing: -1 }
+  - { size: [3, 3, 10], pivot: [-5, 2.5, 10], offset: [0, 0, -5], uv: [44, 0], walk_swing: -1 }
+  - { size: [3, 3, 10], pivot: [-5, -2.5, 10], offset: [0, 0, -5], uv: [44, 0], walk_swing: 1 }
+  - { size: [14, 8, 9], pivot: [0, 0, 14.5], offset: [0, 0, 0], uv: [0, 0] }
+  - { size: [5, 6, 6], pivot: [7, 0, 18], offset: [3, 0, 1], uv: [56, 0], moves: head }
+  - { size: [2, 2, 2], pivot: [-7, 0, 18], offset: [-1, 0, 0], uv: [116, 0] }
+male:
+  name: billy
+  scale: 1.25
+  # A beard, and long horns up and swept back.
+  parts:
+    - { size: [2, 2, 4], pivot: [7, 0, 18], offset: [4.5, 0, -4], uv: [84, 0], moves: head }
+    - { size: [2, 1, 5], pivot: [7, 0, 18], offset: [1.5, 1.5, 6.5], uv: [78, 0], moves: head }
+    - { size: [2, 1, 5], pivot: [7, 0, 18], offset: [1.5, -1.5, 6.5], uv: [78, 0], moves: head }
+    - { size: [4, 1, 2], pivot: [7, 0, 18], offset: [-0.5, 1.5, 8], uv: [92, 0], moves: head }
+    - { size: [4, 1, 2], pivot: [7, 0, 18], offset: [-0.5, -1.5, 8], uv: [92, 0], moves: head }
+  drops:
+    - { item: goat_meat, count: 1 }
+female:
+  name: nanny
+  scale: 1
+  # Short horns, and an udder.
+  parts:
+    - { size: [1, 1, 3], pivot: [7, 0, 18], offset: [2, 1.5, 5], uv: [124, 0], moves: head }
+    - { size: [1, 1, 3], pivot: [7, 0, 18], offset: [2, -1.5, 5], uv: [124, 0], moves: head }
+    - { size: [4, 3, 2], pivot: [0, 0, 10], offset: [-3, 0, -1], uv: [102, 0] }
+  yields:
+    - { item: milk_bucket, count: 1, using: bucket, every: 6000 }

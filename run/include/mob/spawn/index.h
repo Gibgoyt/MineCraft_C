@@ -32,6 +32,12 @@ enum : uint32_t {
     MOB_SPAWN_ANIMAL_ONE_IN = 400u,
     /* Places looked at for a herd, on a tick that looks. */
     MOB_SPAWN_ANIMAL_TRIES = 4u,
+    /* The most animals the store keeps, loaded or left behind, as they never despawn: a quarter of ENTITY_STORE_CAPACITY, so a long
+     * journey cannot fill it. At this many, a herd that would come forgets the animal left furthest behind, if that is past
+     * MOB_SPAWN_ANIMAL_FORGET, to make room for one; with none that far no herd comes. */
+    MOB_SPAWN_ANIMAL_STORE_MAX = 256u,
+    /* Blocks from the player along x or y: past the furthest the world is ever drawn, 32 chunks. */
+    MOB_SPAWN_ANIMAL_FORGET = 512u,
     /* On a world's first day, herds come within this of the player along x and y, and as near as MOB_SPAWN_FIRST_DAY_NEAR, so
      * that a few are found early, for a bed. */
     MOB_SPAWN_FIRST_DAY_REACH = 48u,

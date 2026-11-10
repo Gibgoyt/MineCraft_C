@@ -4,9 +4,22 @@ One directory per mob, and to see what a mob is, open its one file. To add one: 
 
 The numbers are the published ones, as near as this game's terms allow.
 
-## The stand-in pig
+## The animals
 
-`pig/` is the smallest animal that works what animals need (plan 005 phase 4 stage 1): passive, male and female (a boar with tusks, 1.2 times a sow), by day on grass in the fields. It borrows the creeper's skin and drops leather, and has weight 0, so it never comes by itself and is not kept from a save. Stage 3 gives the pig its own model, skin and meat, and a weight, with the other five animals.
+Plan 005 phase 4: six animals, each male or female, told apart at a glance. Every male is bigger, and has what the female has not.
+
+| Mob | Male | Female | The male looks | Alive, gives | Killed, gives | Where |
+|---|---|---|---|---|---|---|
+| `cattle` | bull, 1.25 | cow | Ivory horns out to the sides | Cow: milk to a bucket, every 6000 ticks | 1 to 3 beef (bull 1 more), 0 to 2 cow hides | The fields |
+| `sheep` | ram, 1.2 | ewe | Big curled ridged horns | Both: 1 to 3 white wool to shears, grown back in 6000 ticks | 1 to 2 mutton, 1 white wool | The fields |
+| `pig` | boar, 1.25 | sow | Dark brown and bristly, a ridge down the back, tusks | Nothing | 1 to 3 pork (boar 1 more), 0 to 2 pig hides | The fields |
+| `goat` | billy, 1.25 | nanny | A pale beard, long ridged horns swept back | Nanny: milk to a bucket | 1 to 2 goat meat (billy 1 more), 0 to 2 goat hides, **no wool** | Windswept land, groves, meadows |
+| `mountain_goat` | billy, 1.25 | nanny | White and shaggy both; a long beard, longer black horns | Nanny: milk to a bucket | As a goat | **Peaks and snowy slopes, 300 blocks or more above the sea** |
+| `chicken` | rooster, 1.5 | hen | Rust red, a tall red comb, a long dark green tail | Hen: an egg by herself every 6000 ticks | 1 chicken, 0 to 2 feathers (rooster 1 more) | The fields |
+
+The fields are `plains, sunflower_plains, meadow, forest, flower_forest, birch_forest, savanna`, on grass. Weights: sheep 12, pig and chicken 10, cattle 8, goat and mountain goat 6, as the published game's are near. The rooster is half as big again, more than the 15 to 30% of the others, as Ahmed said roosters are "a heck of a lot bigger".
+
+A pig's and a chicken's own `parts` are only a tail or legs: each sex has its own body and head, so a boar can be dark and a sow pink, a rooster red and a hen white, on the one skin. A sheep's wool is a box of its own over its skin with `fleece: true`, drawn only while it can be shorn. Their skins are ours, painted by the recipes in `textures/mobs/<name>/`.
 
 ## Turned off: zombie, skeleton, creeper
 
@@ -134,3 +147,4 @@ One box of its body, read by `run/src/entity/animation/`, whose header says what
 | `moves` | | `none`, `head` (turns by the head's yaw and pitch) or `arm` (swings to attack and rises to aim). Default `none` |
 | `rest_pitch` | | -7 to 7: radians. Default 0 |
 | `walk_swing` | | -7 to 7: radians at a full stride. Default 0 |
+| `fleece` | | `true` or `false`. Default `false`. Drawn only while its sex's first yield is ready: a sheep's wool, which shears take and which grows back |

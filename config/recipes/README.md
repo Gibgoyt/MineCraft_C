@@ -65,7 +65,6 @@ Only where the game has no such item. Each is written here so that it can be cha
 | `dye_pink_from_oxeye_daisy` | light grey dye | `dye_pink` | No light grey dye, and grey has one flower |
 | `light_gray_terracotta` | light grey dye | `dye_grey` | No light grey dye |
 | `glass_door` | not published | 6 glass | The pack's own item |
-| `bed` | 3 wool, 3 planks | 3 wheat, 3 planks | No wool. A straw mattress, so that a played game can have a bed. Ahmed may want another |
 
 ## What has no recipe, on purpose
 

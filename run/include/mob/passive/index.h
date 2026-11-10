@@ -60,8 +60,10 @@ typedef struct mob_passive_tally_t {
     uint64_t fled_count;    /* 8: hurts that sent one running */
     uint64_t died_count;    /* 16: bodies that died and left what they carried */
     uint64_t dropped_count; /* 24: items they left */
+    uint64_t
+        given_count; /* 32: items they gave alive: wool shorn, milk taken, eggs laid. Not saved: a count for tests */
 } mob_passive_tally_t;
-static_assert(sizeof(mob_passive_tally_t) == 32);
+static_assert(sizeof(mob_passive_tally_t) == 40);
 
 /* Every animal's mind. Plain numbers, so that the same world and the same calls give the same bytes. The sim's. */
 typedef struct mob_passive_t {
@@ -79,9 +81,24 @@ enum : uint64_t {
 /* No animal is up to anything yet, and what comes next depends only on this seed. From the arena, which lasts as long as the world. */
 void mob_passive_start(mob_passive_t *passive, arena_t *arena, uint64_t seed);
 
-/* What the body at this index is up to, starting it over if its slot was another's. Only for a body whose kind is a passive mob. For
- * stage 3's shearing, milking and laying, which read and set yield_wait. */
+/* What the body at this index is up to, starting it over if its slot was another's. Only for a body whose kind is a passive mob. A
+ * body started over has every yield taken with a tool ready, so a new sheep can be shorn at once, and every one given by itself a whole
+ * `every` away, so a hen does not lay the moment she comes. */
 mob_passive_body_t *mob_passive_body_of(mob_passive_t *passive, const entity_store_t *store, uint32_t index);
+
+/* Whether a yield of this body's sex is taken with tool, ready or not: shears on a sheep, a bucket on a cow or a nanny. False for a male,
+ * which gives nothing alive, and for ITEM_ID_NONE. */
+bool mob_passive_yields_to(const entity_store_t *store, uint32_t index, uint16_t tool);
+
+/* The first yield of this body's sex taken with tool that is ready: rolls its count from count to max, starts its wait over at
+ * `every`, and returns true with what it gave. False, and nothing changed, if none is ready or none is taken with it. The caller puts
+ * the item where it goes: wool on the ground, milk in the hand. */
+bool mob_passive_take(mob_passive_t *passive, const entity_store_t *store, uint32_t index, uint16_t tool,
+                      uint16_t *out_item, uint32_t *out_count);
+
+/* Whether a part with MOB_PART_FLEECE is drawn on this body: while its sex's first yield is ready, so a shorn sheep shows its skin until
+ * the wool grows back. Only looks: a body the mind has not met yet has it. */
+bool mob_passive_fleece_shown(const mob_passive_t *passive, const entity_store_t *store, uint32_t index);
 
 /* A male's or a female's row of this mob in mob_sexes, or nullptr for ENTITY_STORE_SEX_NONE or a mob without them. */
 const mob_sex_t *mob_passive_sex_of(uint16_t kind, uint8_t sex);
@@ -90,7 +107,8 @@ const mob_sex_t *mob_passive_sex_of(uint16_t kind, uint8_t sex);
  * touched. One whose health has reached 0 leaves its kind's drops and its sex's in drops, and goes. One waiting for its column does
  * nothing, and no time passes for it. One whose health went down since its last tick runs from where view stands for
  * MOB_PASSIVE_FLEE_TICKS, whatever its sex. The rest stand, and now and then stroll, back towards others of their kind if they have
- * strayed. None ever strikes anything. Every yield's wait runs down. Never waits and never touches the heap. */
+ * strayed. None ever strikes anything. Every yield's wait runs down, and one given by itself whose wait is out, a hen's egg, is left
+ * in drops at its feet and waits `every` again. Never waits and never touches the heap. */
 void mob_passive_tick(mob_passive_t *passive, mob_path_t *path, entity_store_t *store, item_drop_store_t *drops,
                       const mob_zombie_view_t *view);
 

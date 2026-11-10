@@ -1,0 +1,58 @@
+# A chicken (plan 005 phase 4): a hen lays an egg every 5 minutes; a rooster, half as big again, rust red with a tall
+# comb and a long dark tail, nothing alive. Both give chicken and feathers.
+name: chicken
+texture: mobs/chicken
+texture_width: 128
+texture_height: 64
+mind: passive
+health: 4
+speed: 0.1
+half_width: 0.2
+height: 0.7
+drops:
+  - { item: chicken, count: 1 }
+  - { item: feather, count: 0, max: 2 }
+spawn:
+  weight: 10
+  pack_min: 2
+  pack_max: 4
+  max_light: 15
+  max_block_light: 15
+  # The published game's animals come where the light is above 8.
+  min_light: 9
+  min_distance: 24
+  on: [grass_block]
+  biomes: [plains, sunflower_plains, meadow, forest, flower_forest, birch_forest, savanna]
+parts:
+  - { size: [1, 1, 5], pivot: [0, 1.5, 5], offset: [0, 0, -2.5], uv: [10, 14], walk_swing: 1.4 }
+  - { size: [1, 1, 5], pivot: [0, -1.5, 5], offset: [0, 0, -2.5], uv: [10, 14], walk_swing: -1.4 }
+male:
+  name: rooster
+  scale: 1.5
+  # Half as big again: rust red, a tall red comb, and a long dark tail that rises behind.
+  parts:
+    - { size: [8, 6, 6], pivot: [0, 0, 8], offset: [0, 0, 0], uv: [0, 0] }
+    - { size: [3, 4, 6], pivot: [3, 0, 10], offset: [1.5, 0, 3], uv: [84, 0], moves: head }
+    - { size: [2, 2, 2], pivot: [3, 0, 10], offset: [4, 0, 3.5], uv: [22, 14], moves: head }
+    - { size: [1, 2, 2], pivot: [3, 0, 10], offset: [3.5, 0, 1.5], uv: [30, 14], moves: head }
+    - { size: [3, 1, 3], pivot: [3, 0, 10], offset: [1.5, 0, 7.5], uv: [14, 14], moves: head }
+    - { size: [6, 1, 4], pivot: [0, 0, 10], offset: [0, 3.5, -2], uv: [56, 0] }
+    - { size: [6, 1, 4], pivot: [0, 0, 10], offset: [0, -3.5, -2], uv: [56, 0] }
+    - { size: [2, 4, 6], pivot: [-4, 0, 10], offset: [-1, 0, 2], uv: [112, 0] }
+    - { size: [3, 2, 4], pivot: [-4, 0, 10], offset: [-2.5, 0, 5], uv: [0, 14] }
+  drops:
+    - { item: feather, count: 1 }
+female:
+  name: hen
+  scale: 1
+  # White, with a small comb. She lays an egg by herself now and then.
+  parts:
+    - { size: [8, 6, 6], pivot: [0, 0, 8], offset: [0, 0, 0], uv: [28, 0] }
+    - { size: [3, 4, 6], pivot: [3, 0, 10], offset: [1.5, 0, 3], uv: [98, 0], moves: head }
+    - { size: [2, 2, 2], pivot: [3, 0, 10], offset: [4, 0, 3.5], uv: [22, 14], moves: head }
+    - { size: [1, 2, 2], pivot: [3, 0, 10], offset: [3.5, 0, 1.5], uv: [30, 14], moves: head }
+    - { size: [2, 1, 1], pivot: [3, 0, 10], offset: [1.5, 0, 6.5], uv: [36, 14], moves: head }
+    - { size: [6, 1, 4], pivot: [0, 0, 10], offset: [0, 3.5, -2], uv: [70, 0] }
+    - { size: [6, 1, 4], pivot: [0, 0, 10], offset: [0, -3.5, -2], uv: [70, 0] }
+  yields:
+    - { item: egg, count: 1, every: 6000 }

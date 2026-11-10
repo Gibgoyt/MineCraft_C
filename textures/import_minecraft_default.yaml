@@ -520,12 +520,18 @@ textures:
   - { to: items/woodworking_bench, keep: "Minecraft has no picture for this" }
   - { to: items/written_book, from: item/written_book.png }
   # ---- mobs -------------------------------------------------------------------------------------------------------------
+  - { to: mobs/cattle, keep: "Minecraft draws its cows on its own model, in another layout; ours is box-unwrapped for config/mobs/cattle/, male and female on one skin" }
+  - { to: mobs/chicken, keep: "Minecraft draws its chickens on its own model, in another layout; ours is box-unwrapped for config/mobs/chicken/, male and female on one skin" }
   - { to: mobs/arrow, keep: "Minecraft's arrow is a 32x32 strip for a model, not one face" }
   - { to: mobs/creeper, from: entity/creeper/creeper.png }
+  - { to: mobs/goat, keep: "Minecraft draws its goats on its own model, in another layout; ours is box-unwrapped for config/mobs/goat/, male and female on one skin" }
   - { to: mobs/minecart, keep: "Minecraft's minecart skin is a 64x32 layout for its model, and ours is 32x32" }
   - { to: mobs/minecart_side, keep: "Minecraft's minecart is one skin, with no separate side" }
   - { to: mobs/minecart_top, keep: "Minecraft's minecart is one skin, with no separate top" }
+  - { to: mobs/mountain_goat, keep: "Minecraft draws its goats on its own model, in another layout; ours is box-unwrapped for config/mobs/mountain_goat/, male and female on one skin" }
+  - { to: mobs/pig, keep: "Minecraft draws its pigs on its own model, in another layout; ours is box-unwrapped for config/mobs/pig/, male and female on one skin" }
   - { to: mobs/player, from: entity/player/wide/steve.png, crop: [0, 0, 64, 32] }
+  - { to: mobs/sheep, keep: "Minecraft draws its sheep on its own model, in another layout; ours is box-unwrapped for config/mobs/sheep/, male and female on one skin" }
   - { to: mobs/skeleton, from: entity/skeleton/skeleton.png }
   - { to: mobs/zombie, from: entity/zombie/zombie.png, crop: [0, 0, 64, 32] }
   # ---- ui ---------------------------------------------------------------------------------------------------------------

@@ -21,10 +21,16 @@ mob_passive_body_t *mob_passive_body_of(mob_passive_t *passive, const entity_sto
     const entity_handle_t handle = store->borrowed_handle[index];
     mob_passive_body_t *const body = &passive->borrowed_bodies[entity_handle_slot(handle)];
     if (body->owner != handle) {
-        /* A slot used again starts over: this one has never been hit, and has every yield ready. */
+        /* A slot used again starts over: this one has never been hit, and has every yield taken with a tool ready. What it gives by
+         * itself waits a whole turn first, so that a hen does not lay the moment she comes. */
         memset(body, 0, sizeof(*body));
         body->owner = handle;
         body->last_health = store->borrowed_health[index];
+        const mob_sex_t *const sex = mob_passive_sex_of(store->borrowed_kind[index], store->borrowed_sex[index]);
+        for (uint32_t y = 0u; sex != nullptr && y < sex->yield_count; y++) {
+            const mob_yield_t *const yield = &mob_yields[sex->first_yield + y];
+            body->yield_wait[y] = yield->tool == (uint16_t)ITEM_ID_NONE ? yield->every : 0u;
+        }
     }
     return body;
 }
@@ -35,6 +41,72 @@ const mob_sex_t *mob_passive_sex_of(uint16_t kind, uint8_t sex) {
         return nullptr;
     }
     return &mob_sexes[mob_defs[kind].first_sex + (uint32_t)sex - (uint32_t)ENTITY_STORE_SEX_MALE];
+}
+
+/* The sex's row of a body that is a passive mob, or nullptr. */
+static const mob_sex_t *mp_sex_at(const entity_store_t *store, uint32_t index) {
+    const uint16_t kind = store->borrowed_kind[index];
+    if (kind == (uint16_t)MOB_ID_NONE || (uint32_t)kind >= MOB_COUNT || mob_defs[kind].mind != MOB_MIND_PASSIVE) {
+        return nullptr;
+    }
+    return mob_passive_sex_of(kind, store->borrowed_sex[index]);
+}
+
+bool mob_passive_yields_to(const entity_store_t *store, uint32_t index, uint16_t tool) {
+    const mob_sex_t *const sex = mp_sex_at(store, index);
+    for (uint32_t y = 0u; sex != nullptr && tool != (uint16_t)ITEM_ID_NONE && y < sex->yield_count; y++) {
+        if (mob_yields[sex->first_yield + y].tool == tool) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool mob_passive_take(mob_passive_t *passive, const entity_store_t *store, uint32_t index, uint16_t tool,
+                      uint16_t *out_item, uint32_t *out_count) {
+    const mob_sex_t *const sex = mp_sex_at(store, index);
+    if (sex == nullptr || tool == (uint16_t)ITEM_ID_NONE) {
+        return false;
+    }
+    mob_passive_body_t *const body = mob_passive_body_of(passive, store, index);
+    for (uint32_t y = 0u; y < sex->yield_count; y++) {
+        const mob_yield_t *const yield = &mob_yields[sex->first_yield + y];
+        if (yield->tool != tool || body->yield_wait[y] != 0u) {
+            continue;
+        }
+        *out_item = yield->item;
+        *out_count = yield->count_min + terrain_rng_next_below(&passive->borrowed_tally->random,
+                                                               (uint32_t)yield->count_max - yield->count_min + 1u);
+        body->yield_wait[y] = yield->every;
+        passive->borrowed_tally->given_count += *out_count;
+        return true;
+    }
+    return false;
+}
+
+bool mob_passive_fleece_shown(const mob_passive_t *passive, const entity_store_t *store, uint32_t index) {
+    const mob_passive_body_t *const body = &passive->borrowed_bodies[entity_handle_slot(store->borrowed_handle[index])];
+    return body->owner != store->borrowed_handle[index] || body->yield_wait[0] == 0u;
+}
+
+/* What it gives by itself whose wait is out, a hen's egg, at its feet, and the wait starts over. */
+static void mp_lay(mob_passive_t *passive, const entity_store_t *store, item_drop_store_t *drops, uint32_t index,
+                   mob_passive_body_t *body) {
+    const mob_sex_t *const sex = mob_passive_sex_of(store->borrowed_kind[index], store->borrowed_sex[index]);
+    for (uint32_t y = 0u; sex != nullptr && y < sex->yield_count; y++) {
+        const mob_yield_t *const yield = &mob_yields[sex->first_yield + y];
+        if (yield->tool != (uint16_t)ITEM_ID_NONE || body->yield_wait[y] != 0u) {
+            continue;
+        }
+        const uint32_t many =
+            yield->count_min + terrain_rng_next_below(&passive->borrowed_tally->random,
+                                                      (uint32_t)yield->count_max - yield->count_min + 1u);
+        const float64_t at[COLLISION_AXES] = {store->borrowed_position[0][index], store->borrowed_position[1][index],
+                                              store->borrowed_position[2][index] + MOB_PASSIVE_DROP_ABOVE};
+        item_drop_spawn(drops, item_stack_drop_row(yield->item), many, at);
+        passive->borrowed_tally->given_count += many;
+        body->yield_wait[y] = yield->every;
+    }
 }
 
 /* Each row rolled on its own, as config/mobs/README.md says. */
@@ -190,6 +262,7 @@ void mob_passive_tick(mob_passive_t *passive, mob_path_t *path, entity_store_t *
         for (uint32_t y = 0u; y < MOB_YIELDS_MAX; y++) {
             body->yield_wait[y] = body->yield_wait[y] != 0u ? body->yield_wait[y] - 1u : 0u;
         }
+        mp_lay(passive, store, drops, i, body);
         /* Any hurt sends it running, a fall too, and away from whoever is about: an animal does not stop to ask. */
         if (store->borrowed_health[i] < body->last_health) {
             body->flee = (uint16_t)(MOB_PASSIVE_FLEE_TICKS + 1u);

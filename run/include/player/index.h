@@ -33,6 +33,13 @@ enum : uint32_t {
     PLAYER_HAND_PLACE = 2u,
 };
 
+/* In player_t.animal_use. */
+enum : uint8_t {
+    PLAYER_ANIMAL_USE_HELD = 1u, /* the right button was down last tick */
+    PLAYER_ANIMAL_USE_ON =
+        2u, /* it went down on an animal that yields to what is in hand: until it is let go the hands do nothing */
+};
+
 /* One tick's worth of where the eye was and is and what it aims at, from sim to main. */
 typedef struct player_view_t {
     float64_t previous[3];  /* 0 */
@@ -74,7 +81,9 @@ typedef struct player_t {
     uint8_t hands_held_off;       /* 2096: the sim's: a screen has the buttons, so the hands do nothing */
     /* Sim to main, with vitals_word: the armour points worn, 0 to 20, relaxed for the same reason. */
     _Atomic uint8_t armor_points; /* 2097 */
-    uint8_t _pad0[2];             /* 2098 */
+    /* 2098: the sim's: PLAYER_ANIMAL_USE_*, the right button and an animal, as run/src/game/ shears, milks and holds the hands off */
+    uint8_t animal_use;
+    uint8_t _pad0[1]; /* 2099 */
     /* Sim to the thread that draws: movement.eyes_under_water, relaxed, as only the picture depends on it. */
     _Atomic uint32_t eyes_under_water; /* 2100 */
     player_combat_t combat;            /* 2104: the sim's: what the hand remembers of swinging */
@@ -134,6 +143,10 @@ bool player_attack_tick(player_t *player, const entity_store_t *store, const wor
 
 /* That swing has landed: it tires the body, and a sprint's push stops the sprint. */
 void player_attack_landed(player_t *player, const player_combat_swing_t *swing);
+
+/* The body the eye looks at, as a swing would find it: within PLAYER_COMBAT_REACH, in front of any block, by the newest yaw and
+ * pitch. ENTITY_HANDLE_NONE if none. For the right button on an animal. */
+entity_handle_t player_body_aimed(const player_t *player, const entity_store_t *store, const world_map_t *map);
 
 /* What an item's box has to overlap to be picked up, with the body where it now is. The thread its ticks are on. */
 void player_pickup_reach(const player_t *player, collision_box_t *out);

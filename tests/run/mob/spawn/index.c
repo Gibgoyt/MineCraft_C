@@ -143,13 +143,19 @@ static uint32_t ms_mobs_in(const entity_store_t *store) {
 /* ---- The tables ---------------------------------------------------------------------------------------------------- */
 
 TEST(the_tables_say_what_the_files_say) {
-    CHECK_EQ_U64(MOB_COUNT, 5u);
+    CHECK_EQ_U64(MOB_COUNT, 10u);
     CHECK_STR_EQ(mob_defs[MOB_ID_NONE].name, "none");
     CHECK(mob_defs[MOB_ID_NONE].texture == nullptr);
-    CHECK_EQ_U64(MOB_ID_CREEPER, 1u);
-    CHECK_EQ_U64(MOB_ID_PIG, 2u);
-    CHECK_EQ_U64(MOB_ID_SKELETON, 3u);
-    CHECK_EQ_U64(MOB_ID_ZOMBIE, 4u);
+    /* By name: the six animals of plan 005 phase 4 among the three turned off. */
+    CHECK_EQ_U64(MOB_ID_CATTLE, 1u);
+    CHECK_EQ_U64(MOB_ID_CHICKEN, 2u);
+    CHECK_EQ_U64(MOB_ID_CREEPER, 3u);
+    CHECK_EQ_U64(MOB_ID_GOAT, 4u);
+    CHECK_EQ_U64(MOB_ID_MOUNTAIN_GOAT, 5u);
+    CHECK_EQ_U64(MOB_ID_PIG, 6u);
+    CHECK_EQ_U64(MOB_ID_SHEEP, 7u);
+    CHECK_EQ_U64(MOB_ID_SKELETON, 8u);
+    CHECK_EQ_U64(MOB_ID_ZOMBIE, 9u);
 
     const mob_def_t *const zombie = &mob_defs[MOB_ID_ZOMBIE];
     CHECK_STR_EQ(zombie->name, "zombie");
@@ -547,7 +553,7 @@ TEST(packs_are_of_one_kind_close_together_and_the_kinds_come_by_weight) {
         if (MS_WEIGHTS[mob] != 0u) {
             CHECK(seen[mob] >= 60u && seen[mob] <= 140u);
         } else {
-            CHECK_EQ_U64(seen[mob], 0u); /* the pig, an animal, which has no weight here and comes by its own rules */
+            CHECK_EQ_U64(seen[mob], 0u); /* an animal, which has no weight here and comes by its own rules */
         }
     }
     ms_end(&rig);
@@ -681,8 +687,19 @@ TEST(the_same_calls_give_the_same_bytes_and_another_seed_others) {
 
 /* ---- Turned off (plan 005 phase 3) --------------------------------------------------------------------------------- */
 
+/* How many zombies, skeletons and creepers the store holds. */
+static uint32_t ms_hostile_in(const entity_store_t *store) {
+    uint32_t count = 0u;
+    for (uint32_t i = 0u; i < store->count; i++) {
+        const uint16_t kind = store->borrowed_kind[i];
+        count += kind == MOB_ID_ZOMBIE || kind == MOB_ID_SKELETON || kind == MOB_ID_CREEPER ? 1u : 0u;
+    }
+    return count;
+}
+
 /* The weights in config/mobs/, as the game passes them: a whole night, then a whole day, in an open field and a roofed cave that the
- * same ticks with the old weights fill to the cap, brings no zombie, skeleton or creeper, and no try is worth a roll. */
+ * same ticks with the old weights fill to the cap, brings no zombie, skeleton or creeper. Goats, which stand on stone, may come by
+ * day: plan 005 phase 4's animals have weights. */
 TEST(a_long_night_in_the_open_brings_no_zombie_skeleton_or_creeper) {
     ms_rig_t rig;
     REQUIRE(ms_begin(t, &rig, 11u));
@@ -691,18 +708,16 @@ TEST(a_long_night_in_the_open_brings_no_zombie_skeleton_or_creeper) {
     mob_spawn_view_t midnight = ms_view(MS_MIDNIGHT), noon = ms_view(MS_NOON);
     midnight.weights = nullptr;
     noon.weights = nullptr;
-    const terrain_rng_t before = rig.spawn->random;
     /* Six times what fills the field with the old weights (an_open_field_stays_empty_by_day_and_fills_at_night). */
     ms_ticks(&rig, &midnight, 6u * MS_NIGHT_TICKS);
+    CHECK_EQ_U64(rig.store->count, 0u); /* no animal comes by night either */
     ms_ticks(&rig, &noon, MS_NIGHT_TICKS);
-    CHECK_EQ_U64(rig.store->count, 0u);
-    CHECK_EQ_U64(rig.spawn->spawned_count, 0u);
+    CHECK_EQ_U64(ms_hostile_in(rig.store), 0u);
     CHECK_EQ_U64(rig.spawn->refused_count, 0u);
-    CHECK_EQ_U64(rig.spawn->random.state, before.state);
     /* The same field with the old weights fills, so it is the weights and not the field. */
     const mob_spawn_view_t old = ms_view(MS_MIDNIGHT);
     ms_ticks(&rig, &old, MS_NIGHT_TICKS);
-    CHECK_EQ_U64(rig.store->count, mob_spawn_cap(rig.world.map->ready_count));
+    CHECK_EQ_U64(ms_hostile_in(rig.store), mob_spawn_cap(rig.world.map->ready_count));
     ms_end(&rig);
 }
 

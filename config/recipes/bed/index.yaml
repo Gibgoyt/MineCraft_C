@@ -1,5 +1,5 @@
 name: bed
 kind: shaped
 pattern: ["WWW", "PPP"]
-keys: { W: wheat, P: group_planks }
+keys: { W: white_wool, P: group_planks }
 gives: bed

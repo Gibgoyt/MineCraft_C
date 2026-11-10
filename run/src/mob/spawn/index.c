@@ -252,17 +252,21 @@ static bool mob_spawn_kind_is_mob(uint16_t kind) {
     return kind != (uint16_t)MOB_ID_NONE && (uint32_t)kind < MOB_COUNT;
 }
 
-/* What is about after despawning: every hostile mob, and the passive ones in loaded columns, each against its own cap. */
+/* What is about after despawning: every hostile mob, and the passive ones in loaded columns, each against its own cap; and every
+ * animal the store keeps, against MOB_SPAWN_ANIMAL_STORE_MAX, with the furthest left behind. */
 typedef struct mob_spawn_counts_t {
-    uint32_t hostile; /* 0 */
-    uint32_t passive; /* 4 */
+    float64_t furthest; /* 0: along x or y from the player, of the furthest animal waiting for its column */
+    entity_handle_t furthest_handle; /* 8: ENTITY_HANDLE_NONE if none waits */
+    uint32_t hostile;                /* 12 */
+    uint32_t passive;                /* 16 */
+    uint32_t stored;                 /* 20: animals in the store, loaded or not */
 } mob_spawn_counts_t;
-static_assert(sizeof(mob_spawn_counts_t) == 8);
+static_assert(sizeof(mob_spawn_counts_t) == 24);
 
 /* Takes away what the rules say, from the end since a removal moves the last body into the gap. A passive mob is never taken away.
  * Returns how many of each are left to count. */
 static mob_spawn_counts_t mob_spawn_despawn(mob_spawn_t *spawn, entity_store_t *store, const mob_spawn_view_t *view) {
-    mob_spawn_counts_t counts = {0};
+    mob_spawn_counts_t counts = {.furthest = 0.0f64, .furthest_handle = ENTITY_HANDLE_NONE};
     for (uint32_t i = store->count; i-- > 0u;) {
         const uint16_t kind = store->borrowed_kind[i];
         if (!mob_spawn_kind_is_mob(kind)) {
@@ -270,7 +274,17 @@ static mob_spawn_counts_t mob_spawn_despawn(mob_spawn_t *spawn, entity_store_t *
         }
         const mob_def_t *const def = &mob_defs[kind];
         if (def->mind == MOB_MIND_PASSIVE) {
-            counts.passive += (store->borrowed_flags[i] & ENTITY_STORE_FLAG_WAITING) == 0u ? 1u : 0u;
+            counts.stored++;
+            if ((store->borrowed_flags[i] & ENTITY_STORE_FLAG_WAITING) == 0u) {
+                counts.passive++;
+                continue;
+            }
+            const float64_t across = fmax(fabs(store->borrowed_position[0][i] - view->position[0]),
+                                          fabs(store->borrowed_position[1][i] - view->position[1]));
+            if (counts.furthest_handle == ENTITY_HANDLE_NONE || across > counts.furthest) {
+                counts.furthest = across;
+                counts.furthest_handle = store->borrowed_handle[i];
+            }
             continue;
         }
         const entity_handle_t handle = store->borrowed_handle[i];
@@ -451,16 +465,30 @@ static void mob_spawn_hostile(mob_spawn_t *spawn, entity_store_t *store, physics
 /* The animals' tries: now and then, or every tick on the first day, a herd on the ground under the sky of a column in reach, under
  * its own cap. */
 static void mob_spawn_passive(mob_spawn_t *spawn, entity_store_t *store, physics_t *physics, const world_map_t *map,
-                              const mob_spawn_view_t *view, uint32_t alive) {
+                              const mob_spawn_view_t *view, mob_spawn_counts_t *counts) {
     const uint32_t total = mob_spawn_weight_total(view, MOB_MIND_PASSIVE);
     if (total == 0u) {
         return; /* no animal comes by itself, and no number is drawn */
     }
-    const uint32_t cap = mob_spawn_animal_cap(map->ready_count);
-    if (alive >= cap ||
+    uint32_t alive = counts->passive;
+    const uint32_t cap_view = mob_spawn_animal_cap(map->ready_count);
+    if (alive >= cap_view ||
         (view->first_day == 0u && terrain_rng_next_below(&spawn->random, MOB_SPAWN_ANIMAL_ONE_IN) != 0u)) {
         return;
     }
+    /* The store keeps at most MOB_SPAWN_ANIMAL_STORE_MAX animals. At that many, a herd that would come here forgets the one left
+     * furthest behind, past MOB_SPAWN_ANIMAL_FORGET, which counts as gone; with none that far it does not come. */
+    if (counts->stored >= MOB_SPAWN_ANIMAL_STORE_MAX) {
+        if (counts->furthest_handle == ENTITY_HANDLE_NONE || counts->furthest <= (float64_t)MOB_SPAWN_ANIMAL_FORGET) {
+            return;
+        }
+        ASSERT_ALWAYS(entity_store_remove(store, counts->furthest_handle));
+        spawn->despawned_count++;
+        counts->stored--;
+    }
+    /* As many more as the store has room for, beside those already about. */
+    const uint32_t room = alive + (MOB_SPAWN_ANIMAL_STORE_MAX - counts->stored);
+    const uint32_t cap = cap_view < room ? cap_view : room;
     const uint32_t reach = view->first_day != 0u ? MOB_SPAWN_FIRST_DAY_REACH : MOB_SPAWN_REACH;
     const int32_t player_x = (int32_t)floor(view->position[0]), player_y = (int32_t)floor(view->position[1]);
     const uint32_t across = 2u * reach + 1u;
@@ -480,9 +508,9 @@ static void mob_spawn_passive(mob_spawn_t *spawn, entity_store_t *store, physics
 
 void mob_spawn_tick(mob_spawn_t *spawn, entity_store_t *store, physics_t *physics, const world_map_t *map,
                     const mob_spawn_view_t *view) {
-    const mob_spawn_counts_t counts = mob_spawn_despawn(spawn, store, view);
+    mob_spawn_counts_t counts = mob_spawn_despawn(spawn, store, view);
     mob_spawn_hostile(spawn, store, physics, map, view, counts.hostile);
-    mob_spawn_passive(spawn, store, physics, map, view, counts.passive);
+    mob_spawn_passive(spawn, store, physics, map, view, &counts);
 }
 
 uint32_t mob_spawn_retire(entity_store_t *store, uint32_t out_removed[MOB_COUNT]) {

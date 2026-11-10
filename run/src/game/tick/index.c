@@ -183,6 +183,71 @@ static void game_attack_tick(game_t *game, int64_t tick_ns) {
     }
 }
 
+/* What an animal gave into the hand: milk into the slot its bucket was in, or with more buckets there beside them, or on the ground at the
+ * feet if there is no room. */
+static void game_animal_gave_to_hand(game_t *game, uint16_t item_id, uint32_t count) {
+    item_t *const item = game->borrowed_item;
+    item_stack_t *const held = inventory_slot(&item->inventory, item->inventory.selected);
+    (void)inventory_selected_take(&item->inventory, 1u);
+    if (item_stack_is_empty(held)) {
+        *held = item_stack_make(item_id, count);
+        item->inventory.added_count++;
+        return;
+    }
+    const uint32_t added = inventory_add(&item->inventory, item_id, count);
+    if (added < count && game->borrowed_entity != nullptr) {
+        const player_movement_t *const movement = &game->borrowed_player->movement;
+        item_drop_spawn(&game->borrowed_entity->item_drops, item_stack_drop_row(item_id), count - added,
+                        movement->position);
+    }
+}
+
+/* A press of the right button on an animal with what it yields to in hand: shears on a sheep bring its wool out onto the ground and wear the
+ * shears by one, and a bucket on a cow or a nanny comes back full of milk. Males give nothing alive (plan 005 phase 4). From that press until the
+ * button is let go the hands do nothing more, ready or not, so that milk just taken is not drunk at once. Before the hands. */
+static void game_animal_use_tick(game_t *game, int64_t tick_ns) {
+    player_t *const player = game->borrowed_player;
+    item_t *const item = game->borrowed_item;
+    entity_t *const entity = game->borrowed_entity;
+    mob_t *const mob = game->borrowed_mob;
+    const bool held = game_use_held(player, tick_ns) && !player_survival_holds_body(&player->survival) &&
+                      player->hands_held_off == 0u;
+    const bool pressed = held && (player->animal_use & PLAYER_ANIMAL_USE_HELD) == 0u;
+    if (!held) {
+        player->animal_use = 0u;
+    } else {
+        player->animal_use |= PLAYER_ANIMAL_USE_HELD;
+    }
+    if (pressed && entity != nullptr && mob != nullptr && mob->passive.borrowed_bodies != nullptr) {
+        entity_store_t *const store = &entity->store;
+        const uint16_t tool = inventory_selected(&item->inventory)->item;
+        const entity_handle_t handle = player_body_aimed(player, store, &game->borrowed_world->map);
+        uint32_t index = 0u;
+        if (handle != ENTITY_HANDLE_NONE && entity_store_index_of(store, handle, &index) &&
+            mob_passive_yields_to(store, index, tool)) {
+            player->animal_use |= PLAYER_ANIMAL_USE_ON;
+            uint16_t given = ITEM_ID_NONE;
+            uint32_t count = 0u;
+            if (mob_passive_take(&mob->passive, store, index, tool, &given, &count)) {
+                /* A tool that does not wear, a bucket, is what the yield comes in. One that wears, shears, brings it out. */
+                if (item_defs[tool].durability == 0u) {
+                    game_animal_gave_to_hand(game, given, count);
+                } else {
+                    const float64_t at[3] = {store->borrowed_position[0][index], store->borrowed_position[1][index],
+                                             store->borrowed_position[2][index] + 0.5f64};
+                    item_drop_spawn(&entity->item_drops, item_stack_drop_row(given), count, at);
+                    (void)equipment_tool_wear(&item->equipment, &item->inventory, 1u);
+                }
+            }
+        }
+    }
+    if ((player->animal_use & PLAYER_ANIMAL_USE_ON) != 0u) {
+        player->hands_held_off = 1u;
+    } else if (!game_has_screens(game)) {
+        player->hands_held_off = 0u;
+    }
+}
+
 /* One tick of the hands: which slot is in hand first, so that a key and a click in one tick act in that order, then what the right button
  * does with armor or a hoe; what they placed comes off the slot, and what they broke wears it. */
 static void game_interact_tick(game_t *game, int64_t tick_ns) {
@@ -199,6 +264,7 @@ static void game_interact_tick(game_t *game, int64_t tick_ns) {
     if (game_has_screens(game)) {
         game_screen_hands(game, tick_ns);
     }
+    game_animal_use_tick(game, tick_ns);
     const raycast_hit_t *const hit = &player->target.hit;
     /* A press that brings a body back or wakes it is used up by that. */
     equipment_use_tick(&item->equipment, &item->inventory, &game->borrowed_world->edit,
@@ -421,6 +487,7 @@ static uint8_t game_stored_light(const world_map_t *map, const float64_t positio
 /* Every mob, as its parts stand now: one box for each, with its share of the mob's skin. A body waiting for its column is not there. */
 static void game_mobs_publish(game_t *game, render_entities_t *entities, const world_map_t *map) {
     const entity_store_t *const store = &game->borrowed_entity->store;
+    const mob_t *const mob = game->borrowed_mob;
     for (uint32_t i = 0u; i < store->count; i++) {
         const uint16_t kind = store->borrowed_kind[i];
         if (kind == (uint16_t)MOB_ID_NONE || (uint32_t)kind >= MOB_COUNT ||
@@ -434,8 +501,15 @@ static void game_mobs_publish(game_t *game, render_entities_t *entities, const w
         entity_animation_pose_t poses[ENTITY_ANIMATION_PARTS_MAX];
         const entity_animation_part_t *rows[ENTITY_ANIMATION_PARTS_MAX];
         const uint32_t parts = entity_animation_body_pose(store, i, poses, rows);
+        /* A sheep's wool is drawn while it can be shorn, and a shorn one shows its skin until it grows back. */
+        const bool fleece = mob == nullptr || mob->passive.borrowed_bodies == nullptr ||
+                            mob_defs[kind].mind != MOB_MIND_PASSIVE ||
+                            mob_passive_fleece_shown(&mob->passive, store, i);
         for (uint32_t p = 0u; p < parts; p++) {
             const entity_animation_part_t *const part = rows[p];
+            if (!fleece && (part->flags & MOB_PART_FLEECE) != 0u) {
+                continue;
+            }
             render_entities_add_mob_part(entities, kind, poses[p].center, poses[p].half, poses[p].yaw, poses[p].pitch,
                                          part->texture_u, part->texture_v, part->size, stored);
         }
