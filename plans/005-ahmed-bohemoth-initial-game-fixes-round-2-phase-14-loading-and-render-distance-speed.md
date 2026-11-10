@@ -150,24 +150,28 @@ So: **opening is terrain**, 82% of the workers' time, and it meets the targets a
 **Stage 2: fix the starvation.** Each fix gets a before and after number in this file.
 
 - [x] **Priorities in the job system:** a block edit's re-encode and light first, then the columns nearest the player, then climate tiles, then the far field. Add a priority to `job_submit` in `run/{src,include}/job/`, with workers always taking higher first
-- [ ] **A cap on far-field workers,** so it can never hold more than a few at once, and never while near chunks wait. Drop queued far-field work that's gone stale when the player moves or the distance changes
+- [x] **A cap on far-field workers,** so it can never hold more than a few at once, and never while near chunks wait. Drop queued far-field work that's gone stale when the player moves or the distance changes
 
   Agent 14a, `5542ec35`, measured live with `run_render_distance_live` (`MC_DISTANCE_LIVE_DEADLINES=0 MC_DISTANCE_LIVE_WAIT_S=300`, release, 16 workers, Ahmed's seed), against the baseline above:
 
-  | Step | Baseline | Priorities and cap (`5542ec35`) | And the cap's hold (`057f4b6b`) |
-  |---|---|---|---|
-  | Open at 32, all rings | 6.03 s | 6.82 s (rings to 4 at 0.17 s) | 6.25 s (0.16 s) |
-  | Log mined at 32, idle | 0.02 s | 0.02 s | 0.02 s |
-  | 32 → 64, all drawn | 90.3 s, 5% seen by 1 s | 94.3 s, 5% seen by 1 s | 93.9 s, 5% |
-  | 16 → 64, near rings 17 to 32 | **76.1 s** | **11.85 s** | **7.03 s** |
-  | 16 → 64, all drawn | 98.6 s | 96.4 s, 3% seen by 1 s | 97.9 s, 3% |
-  | Full detail 32 → 16 at 64, all drawn | 160.4 s | 160.3 s | 160.1 s |
-  | Full detail 16 → 32 at 64, near rings | 76.4 s | 11.95 s | 8.84 s |
-  | **The log mined during that change** | **5.8 s** | **0.05 s**, 1.05 s into the change: **met** | 0.08 s: met |
+  | Step | Baseline | Priorities and cap (`5542ec35`) | And the cap's hold (`057f4b6b`) | And a cap of one worker (`df72d693`) |
+  |---|---|---|---|---|
+  | Open at 32, all rings | 6.03 s | 6.82 s (rings to 4 at 0.17 s) | 6.25 s (0.16 s) | 6.38 s (0.17 s) |
+  | Log mined at 32, idle | 0.02 s | 0.02 s | 0.02 s | 0.02 s |
+  | 32 → 64, all drawn | 90.3 s, 5% seen by 1 s | 94.3 s, 5% seen by 1 s | 93.9 s, 5% | 94.4 s |
+  | 16 → 64, near rings 17 to 32 | **76.1 s** | **11.85 s** | **7.03 s** | **5.08 s** |
+  | 16 → 64, all drawn | 98.6 s | 96.4 s, 3% seen by 1 s | 97.9 s, 3% | 98.0 s |
+  | Full detail 32 → 16 at 64, all drawn | 160.4 s | 160.3 s | 160.1 s | 159.2 s |
+  | Full detail 16 → 32 at 64, near rings | 76.4 s | 11.95 s | 8.84 s | 5.04 s |
+  | **The log mined during that change** | **5.8 s** | **0.05 s**, 1.05 s into the change: **met** | 0.08 s: met | 0.02 s: met |
 
   The mined log meets its 1 s. The far field's own time, and so "seen by 1 s" and "all drawn", are unchanged: that is the next todo's, a cheaper far column.
 
-  **Where the near rings' time went, measured (agent 14a).** With timers on the sim thread and the column jobs (taken out again), rings 19 to 32 at opening: a column job 5.4 ms on a worker, and 1.7 ms on the sim thread to take it in (`section_blocks_import` 0.75 ms, `world_light_column_added` 1.09 ms). The sim spends 89% of its time doing that and all 64 column slots are full: **the sim thread's commit, not the workers, sets the pace of filling in,** about 500 columns a second. After 16 → 64 on `5542ec35` both were 2.2 times slower (10.7 ms a job, 4.1 ms a commit), the same with the far field's cap at one worker as at four (11.6 s and 11.9 s). The cap held only while a near job was queued or running, and between the sim's steps none is: every gap let the far field start a second-long job on every worker, on the same cores as the sim thread and the near columns by hyperthreading (10 cores, 20 threads, 16 workers). `057f4b6b` holds the cap for 100 ms after near work was last queued or finished. Commits went back to opening speed, 0.78 and 1.13 ms, and the near rings to 4.65 s in a run with the default 20 s wait, 7.03 s in the run with 300 s above. Rings 19 to 32 take 6.6 s there against 4.1 s at opening; the rest is the far field's quarter of the workers, which a cheaper far column shrinks too.
+  **Where the near rings' time went, measured (agent 14a).** With timers on the sim thread and the column jobs (taken out again), rings 19 to 32 at opening: a column job 5.4 ms on a worker, and 1.7 ms on the sim thread to take it in (`section_blocks_import` 0.75 ms, `world_light_column_added` 1.09 ms). The sim spends 89% of its time doing that and all 64 column slots are full: **the sim thread's commit, not the workers, sets the pace of filling in,** about 500 columns a second. After 16 → 64 on `5542ec35` both were 2.2 times slower (10.7 ms a job, 4.1 ms a commit), the same with the far field's cap at one worker as at four (11.6 s and 11.9 s). The cap held only while a near job was queued or running, and between the sim's steps none is: every gap let the far field start a second-long job on every worker, on the same cores as the sim thread and the near columns by hyperthreading (10 cores, 20 threads, 16 workers). `057f4b6b` holds the cap for 100 ms after near work was last queued or finished. Commits went back to opening speed, 0.78 and 1.13 ms, and the near rings to 4.65 s in a run with the default 20 s wait, 7.03 s in the run with 300 s above. Rings 19 to 32 take 6.6 s there against 4.1 s at opening; the rest was the far field's quarter of the workers. `df72d693` caps it at one worker in 16 while near work goes on: the near rings in 5.08 s, rings 19 to 32 in 4.8 s against 4.1 s at opening, and the far field no slower to finish (98 s), as it has every worker once near work has been quiet for 100 ms.
+
+  **So the job system is done with this:** the near rings now fill within about 15% of how fast the sim thread can take columns in, with or without the far field. Not done, and not the job system's: under 1 s for rings 17 to 32 (about 2000 columns) needs the sim thread's commit faster, as at about 1.9 ms a column it alone takes 3.8 s; moving `section_blocks_import` and the light of a new column onto the workers is the lever. And "seen by 1 s" and "all drawn" are the far field's own speed.
+
+  **Asked for and not done, with why (agent 14a):** spawned jobs and stealing still take no account of priority, as nothing capped spawns (only `census`, at the uncapped climate priority, and `atlas`), so it would change nothing measured. A far-field column that stops part way through when dropped was left out: `103aea7e` (agent 14b, not yet on `main`) rewrites `render_lod_job_run` and brings a column to 14 to 59 ms, so a check inside it would save at most that much and only conflict. Columns are already asked for nearest first: `world_map_stream_take` offers the nearest, and each priority's queue is first come first served. Far-field jobs get a profiler scope, `far_column`, in `103aea7e`.
 - [x] **Make a far-field column cheap.** Profile one, then build it from the 2D height estimate (`terrain_height_estimate`, plan 004 phase 3) and the top block, not the full 3D terrain, if that's what it does. Target: under 50 ms of worker time a column. *Done another way, as the profile showed it was not the 3D terrain: about 0.4 s to 14 ms and 24 ms at voxels of 2 and 4, and 8 ms at voxels of 8, which no longer grow trees: see Issues found.*
 - [x] **Never show nothing.** At 1 s, render distance 64 drew only sky. Near columns come first, and a missing one shows the far field, until it's built
 - [ ] Repeat the stage 1 table with each fix, and show the 64 run matching the 32 run near the player
@@ -213,6 +217,7 @@ Appended as they land:
 - `433d44f2` Show the horizon first after a render distance change, and stop the far field rebuilding after every autosave (plan 005 phase 14, far field). (agent 14b)
 - `5542ec35` Give jobs priorities, cap the far field while near work runs, and drop far-field work queued before a move. (agent 14a)
 - `057f4b6b` Hold the far field's cap for 100 ms after near work, so the gaps while the sim takes columns in do not lift it. (agent 14a)
+- `df72d693` Cap the far field at one worker in 16 while near work runs, not a quarter. (agent 14a)
 
 ## Issues found
 
@@ -286,4 +291,6 @@ Part of that is the starvation going: near chunks no longer wait behind far colu
 
 **`/home` filled up during this work (2026-11-10, about 18:30)**, from every agent's build trees together (2 to 3.4 GiB each). A `clang-format -i` truncated a source file then; it was put back from the commit. Agent 14c removed its own `build/debug` and `build/profile` to make room.
 
-**Priorities and the far-field cap, live (agent 14a, 2026-11-10).** On `5542ec35` a log mined during the busiest change goes in 0.05 s, against 5.8 s, which meets its target. After 16 → 64 the near rings 17 to 32 come back in 11.85 s, against 76.1 s, but about 5 s slower than 12 free workers should manage. Likely causes, not yet measured: far-field jobs already running cannot be stopped and take up to 2.3 s each; spawned jobs and stealing take no account of priority. The far field still takes 94 to 160 s to finish, so the live test still misses rd_64, rd_64_again and fd_16, and fd_32_busy's "all drawn".
+**Priorities and the far-field cap, live (agent 14a, 2026-11-10).** On `5542ec35` a log mined during the busiest change goes in 0.05 s, against 5.8 s, which meets its target. After 16 → 64 the near rings 17 to 32 came back in 11.85 s, against 76.1 s. The rest was not the workers: the sim thread's commit sets the pace of filling in, and far-field jobs started in its gaps slowed it by half. With the cap's hold (`057f4b6b`) and a cap of one worker (`df72d693`) the near rings take 5.08 s, about what the sim thread allows. The far field still takes 94 to 160 s to finish, so the live test still misses rd_64, rd_64_again and fd_16, and fd_32_busy's "all drawn".
+
+**The job system and 14b's far field will meet in `run/src/render/lod/` (agent 14a).** `103aea7e` was made on a `main` before job priorities, and calls `job_try_submit` where `5542ec35` has `job_try_submit_at(..., JOB_PRIORITY_FAR, ...)`, with the job's first `job_dropped` check. Whoever lands the second keeps both: the far field's priority and drop, and the cheaper column.
