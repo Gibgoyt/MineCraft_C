@@ -619,8 +619,11 @@ static void tick_fall(world_tick_t *tick, uint16_t state, int32_t x, int32_t y, 
 
 /* Whether a torch on a wall still has that wall. Mining and blasts take it with them: this is for all else, sand falling, leaves going. */
 static bool tick_wall_torch_held(const world_tick_t *tick, uint16_t state, int32_t x, int32_t y, int32_t z) {
+    /* Its wall is the way it faces, which the id alone does not say. */
+    uint16_t voxel = state;
+    (void)world_map_voxel_get(tick->borrowed_map, x, y, z, &voxel);
     int32_t out_x = 0, out_y = 0;
-    return !wall_torch_out(state, &out_x, &out_y) || tick_is_solid(tick_look(tick, x - out_x, y - out_y, z));
+    return !wall_torch_out(voxel, &out_x, &out_y) || tick_is_solid(tick_look(tick, x - out_x, y - out_y, z));
 }
 
 static void tick_support(world_tick_t *tick, uint16_t state, int32_t x, int32_t y, int32_t z) {
@@ -790,7 +793,7 @@ static void tick_random_column(world_tick_t *tick, const column_t *column, int32
             ((uint64_t)(uint32_t)chunk_y * 0xE7037ED1A0B428DBull) ^ ((uint64_t)index * 0x8EBC6AF09C88C6E3ull);
         for (uint32_t pick = 0u; pick < tick->random_per_section; pick++) {
             const uint32_t voxel = (uint32_t)tick_random_next(&rng) & (SECTION_VOXELS - 1u);
-            const uint16_t state = section_block_get(section, voxel);
+            const uint16_t state = block_state_id(section_block_get(section, voxel));
             if (!tick_is_random(state)) {
                 continue;
             }

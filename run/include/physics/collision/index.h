@@ -41,12 +41,20 @@ typedef struct collision_move_t {
 static_assert(sizeof(collision_move_t) == 32);
 
 /* What a cell holds, for anything that moves. Below the world is bedrock, so nothing falls out of it; above it is air. False if
- * its column is not loaded, with *out left alone. */
+ * its column is not loaded, with *out left alone. collision_cell_read gives the block id, and collision_cell_read_voxel the id
+ * with its state, run/include/types/block_state/, which is what collision_block_boxes turns a block's boxes by. */
 bool collision_cell_read(const world_map_t *map, int32_t x, int32_t y, int32_t z, uint16_t *out);
+bool collision_cell_read_voxel(const world_map_t *map, int32_t x, int32_t y, int32_t z, uint16_t *out);
 
 /* The boxes a block at this cell collides with, from config/blocks/: none unless it is solid, half a cell for a slab, two for
- * stairs, and otherwise the whole cell. Out has room for COLLISION_BOXES_PER_BLOCK. Returns how many. */
-uint32_t collision_block_boxes(uint16_t block, int32_t x, int32_t y, int32_t z, collision_box_t *out);
+ * stairs, and otherwise the whole cell. voxel is the block with its state, and the boxes turn with its facing as the card's
+ * do: an id alone is the block facing north. Out has room for COLLISION_BOXES_PER_BLOCK. Returns how many. */
+uint32_t collision_block_boxes(uint16_t voxel, int32_t x, int32_t y, int32_t z, collision_box_t *out);
+
+/* A box inside cell x, y, z, in 32nds of a block as the card's table holds them, turned from north to facing about the middle of
+ * the cell: block_facing_box_turn, so that a block collides and is aimed at as it is drawn. */
+void collision_part_box(const uint8_t low[COLLISION_AXES], const uint8_t high[COLLISION_AXES], uint32_t facing,
+                        int32_t x, int32_t y, int32_t z, collision_box_t *out);
 
 /* Every box any part of around could meet, from the arena. A column that is not loaded is a wall, so that nothing walks or falls
  * into what is not there yet. Takes COLLISION_BOXES_PER_BLOCK boxes per cell around touches, and aborts as for running out if

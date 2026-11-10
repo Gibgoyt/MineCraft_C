@@ -7,8 +7,9 @@
 **Threads:** Whichever holds the map, normally `sim`.
 **Public functions** (`run/include/physics/collision/index.h`):
 
-- `collision_cell_read`: a cell's block. Below the world is bedrock, above it air, and false if its column is not loaded.
-- `collision_block_boxes`: a block's boxes, from `config/blocks/`.
+- `collision_cell_read`, `collision_cell_read_voxel`: a cell's block id, or the block with its state (`run/include/types/block_state/`). Below the world is bedrock, above it air, and false if its column is not loaded.
+- `collision_block_boxes`: a block's boxes, from `config/blocks/`, turned by the voxel's facing. Given an id alone, it faces north.
+- `collision_part_box`: a box in 32nds of a block, as `cuda/include/traverse/`'s table holds them, turned by a facing exactly as the card turns it, in world coordinates. What collision and the raycast both build boxes with.
 - `collision_gather`: every box a box could meet, with a column that is not loaded counting as a wall.
 - `collision_sweep`: the sweep itself, on any list of boxes.
 - `collision_overlaps_any`: whether a box overlaps any of a list.
@@ -31,5 +32,5 @@ Each round finds the earliest moment any box's faces meet on every axis at once:
 |---|---|
 | Not `solid`: air, fluids, plants, torches on a floor or a wall, ladders, vines, lily pads | None |
 | `shape: slab` | The lower half |
-| `shape: stairs` | The lower half, and the upper half of the north side: a block has no facing yet |
+| `shape: stairs` | The lower half, and the upper half of the side they face: north as the table has them, turned by the voxel's facing as the card turns what it draws |
 | Anything else solid | The whole cell |

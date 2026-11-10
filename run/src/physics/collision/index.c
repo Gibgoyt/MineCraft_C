@@ -10,7 +10,7 @@
 /* Three stops, one per axis, and a last look that finds nothing in the way. */
 enum : uint32_t { COLLISION_SWEEP_ROUNDS = COLLISION_AXES + 1u };
 
-bool collision_cell_read(const world_map_t *map, int32_t x, int32_t y, int32_t z, uint16_t *out) {
+bool collision_cell_read_voxel(const world_map_t *map, int32_t x, int32_t y, int32_t z, uint16_t *out) {
     const column_t *const column = world_map_column_at(map, column_chunk_of(x), column_chunk_of(y));
     if (column == nullptr) {
         return false;
@@ -20,40 +20,62 @@ bool collision_cell_read(const world_map_t *map, int32_t x, int32_t y, int32_t z
     } else if (z > COLUMN_Z_GAMEPLAY_MAX) {
         *out = BLOCK_ID_AIR;
     } else {
-        const bool in_range = column_block_get(column, column_local_of(x), column_local_of(y), z, out);
+        const bool in_range = column_voxel_get(column, column_local_of(x), column_local_of(y), z, out);
         ASSERT(in_range);
         (void)in_range;
     }
     return true;
 }
 
-static void collision_cell_part(int32_t x, int32_t y, int32_t z, float64_t from_y, float64_t from_z, float64_t to_z,
-                                collision_box_t *out) {
-    const float64_t cell_x = (float64_t)x, cell_y = (float64_t)y, cell_z = (float64_t)z;
-    *out = (collision_box_t){
-        .min = {cell_x, cell_y + from_y, cell_z + from_z},
-        .max = {cell_x + 1.0f64, cell_y + 1.0f64, cell_z + to_z},
-    };
+bool collision_cell_read(const world_map_t *map, int32_t x, int32_t y, int32_t z, uint16_t *out) {
+    uint16_t voxel = 0u;
+    if (!collision_cell_read_voxel(map, x, y, z, &voxel)) {
+        return false;
+    }
+    *out = block_state_id(voxel);
+    return true;
 }
 
-uint32_t collision_block_boxes(uint16_t block, int32_t x, int32_t y, int32_t z, collision_box_t *out) {
+/* In 32nds, as cuda/include/traverse/'s table: whole numbers, so that a turned box is exactly where the card draws it. */
+#define COLLISION_PART_UNIT (1.0f64 / 32.0f64)
+
+void collision_part_box(const uint8_t low[COLLISION_AXES], const uint8_t high[COLLISION_AXES], uint32_t facing,
+                        int32_t x, int32_t y, int32_t z, collision_box_t *out) {
+    uint8_t turned_low[COLLISION_AXES] = {low[0], low[1], low[2]};
+    uint8_t turned_high[COLLISION_AXES] = {high[0], high[1], high[2]};
+    block_facing_box_turn(facing, 32u, turned_low, turned_high);
+    const int32_t cell[COLLISION_AXES] = {x, y, z};
+    for (uint32_t a = 0u; a < COLLISION_AXES; a++) {
+        out->min[a] = (float64_t)cell[a] + (float64_t)turned_low[a] * COLLISION_PART_UNIT;
+        out->max[a] = (float64_t)cell[a] + (float64_t)turned_high[a] * COLLISION_PART_UNIT;
+    }
+}
+
+/* The boxes of what has a body, as it faces north: the numbers of cuda/include/traverse/'s table. */
+static const uint8_t COLLISION_WHOLE[2][COLLISION_AXES] = {{0u, 0u, 0u}, {32u, 32u, 32u}};
+static const uint8_t COLLISION_LOWER_HALF[2][COLLISION_AXES] = {{0u, 0u, 0u}, {32u, 32u, 16u}};
+static const uint8_t COLLISION_STEP[2][COLLISION_AXES] = {{0u, 16u, 16u}, {32u, 32u, 32u}};
+
+uint32_t collision_block_boxes(uint16_t voxel, int32_t x, int32_t y, int32_t z, collision_box_t *out) {
+    const uint16_t block = block_state_id(voxel);
     /* A number no block has is what a broken world would hold: better to stand on it than to fall through. */
     const bool known = block < BLOCK_COUNT;
     if (known && (block_defs[block].flags & BLOCK_FLAG_SOLID) == 0u) {
         return 0u;
     }
     const uint8_t shape = known ? block_defs[block].shape : (uint8_t)BLOCK_SHAPE_CUBE;
+    const uint32_t facing = block_state_facing(voxel);
     if (shape == BLOCK_SHAPE_SLAB) {
-        collision_cell_part(x, y, z, 0.0f64, 0.0f64, 0.5f64, &out[0]);
+        collision_part_box(COLLISION_LOWER_HALF[0], COLLISION_LOWER_HALF[1], facing, x, y, z, &out[0]);
         return 1u;
     }
     if (shape == BLOCK_SHAPE_STAIRS) {
-        collision_cell_part(x, y, z, 0.0f64, 0.0f64, 0.5f64, &out[0]);
-        /* A block is one state for now and has no facing, so all stairs climb to the north. */
-        collision_cell_part(x, y, z, 0.5f64, 0.5f64, 1.0f64, &out[1]);
+        collision_part_box(COLLISION_LOWER_HALF[0], COLLISION_LOWER_HALF[1], facing, x, y, z, &out[0]);
+        /* The step climbs the way the stairs face: north as they are in the table. */
+        collision_part_box(COLLISION_STEP[0], COLLISION_STEP[1], facing, x, y, z, &out[1]);
         return 2u;
     }
-    collision_cell_part(x, y, z, 0.0f64, 0.0f64, 1.0f64, &out[0]);
+    collision_part_box(COLLISION_WHOLE[0], COLLISION_WHOLE[1], facing, x, y, z, &out[0]);
     return 1u;
 }
 
@@ -75,7 +97,7 @@ collision_box_t *collision_gather(arena_t *arena, const world_map_t *map, const 
             for (int32_t z = z_from; z <= z_to; z++) {
                 uint16_t block = BLOCK_ID_AIR;
                 /* Not loaded is a wall: the number no block has. */
-                const uint16_t seen = collision_cell_read(map, x, y, z, &block) ? block : (uint16_t)BLOCK_COUNT;
+                const uint16_t seen = collision_cell_read_voxel(map, x, y, z, &block) ? block : (uint16_t)BLOCK_COUNT;
                 count += collision_block_boxes(seen, x, y, z, &boxes[count]);
             }
         }

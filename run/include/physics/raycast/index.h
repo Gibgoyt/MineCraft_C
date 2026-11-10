@@ -33,17 +33,20 @@ typedef struct raycast_hit_t {
     collision_box_t bounds; /* 0: around all of the block's boxes */
     float64_t distance;     /* 48: blocks from the origin to where it came in, 0 if it started inside */
     int32_t cell[3];        /* 56 */
-    uint16_t block;         /* 68 */
+    uint16_t block;         /* 68: the block id */
     uint8_t result;         /* 70: raycast_result_t */
     uint8_t axis;           /* 71: of the face it came in through: COLLISION_AXIS_*, or RAYCAST_AXIS_NONE */
     int8_t normal_sign;     /* 72: which way that face looks, -1 or 1, and 0 with RAYCAST_AXIS_NONE */
-    uint8_t _pad0[7];       /* 73 */
+    uint8_t _pad0[1];       /* 73 */
+    uint16_t voxel;         /* 74: the block with its state, run/include/types/block_state/ */
+    uint8_t _pad1[4];       /* 76 */
 } raycast_hit_t;
 static_assert(sizeof(raycast_hit_t) == 80);
 
 /* What a block at this cell can be aimed at by: what it collides with if it is solid, and if not a box around what is drawn.
- * Nothing for air and fluids, which a ray goes on through. Out has room for RAYCAST_BOXES_PER_BLOCK. Returns how many. */
-uint32_t raycast_block_boxes(uint16_t block, int32_t x, int32_t y, int32_t z, collision_box_t *out);
+ * Nothing for air and fluids, which a ray goes on through. voxel is the block with its state, and the boxes turn with its
+ * facing; an id alone faces north. Out has room for RAYCAST_BOXES_PER_BLOCK. Returns how many. */
+uint32_t raycast_block_boxes(uint16_t voxel, int32_t x, int32_t y, int32_t z, collision_box_t *out);
 
 /* Walks the cells from origin along direction, which need not be unit length, in order, for up to max_distance blocks, and
  * stops at the first box of any block. A face exactly at max_distance counts. Touching a box without going into it does not,

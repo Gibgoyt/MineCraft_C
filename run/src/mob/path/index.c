@@ -59,7 +59,9 @@ static_assert(sizeof(mp_search_t) == 88);
 
 /* ---- What a cell means ------------------------------------------------------------------------------------------- */
 
-static uint8_t mp_class_of(uint16_t block) {
+static uint8_t mp_class_of(uint16_t voxel) {
+    /* A block's class goes by the block, whichever way it faces: an edit's record holds its state too. */
+    const uint16_t block = block_state_id(voxel);
     if (block == BLOCK_ID_AIR) {
         return MP_CLASS_OPEN;
     }

@@ -22,55 +22,47 @@ static const raycast_part_t RAYCAST_PART_CROSS = {{4u, 4u, 0u}, {28u, 28u, 32u}}
 static const raycast_part_t RAYCAST_PART_TORCH = {{12u, 12u, 0u}, {20u, 20u, 20u}};
 static const raycast_part_t RAYCAST_PART_PLATE = {{0u, 30u, 0u}, {32u, 32u, 32u}};
 static const raycast_part_t RAYCAST_PART_FLAT = {{0u, 0u, 0u}, {32u, 32u, 2u}};
-/* Around all the steps of a torch on a wall, and twice the stick's width across, as for a torch on the floor. */
-static const raycast_part_t RAYCAST_PART_TORCH_EAST = {{0u, 12u, 6u}, {12u, 20u, 28u}};
-static const raycast_part_t RAYCAST_PART_TORCH_WEST = {{20u, 12u, 6u}, {32u, 20u, 28u}};
-static const raycast_part_t RAYCAST_PART_TORCH_NORTH = {{12u, 0u, 6u}, {20u, 12u, 28u}};
-static const raycast_part_t RAYCAST_PART_TORCH_SOUTH = {{12u, 20u, 6u}, {20u, 32u, 28u}};
-#define RAYCAST_PART_UNIT (1.0f64 / 32.0f64)
+/* Around all the steps of a torch on a wall, and twice the stick's width across, as for a torch on the floor. As it faces north, with
+ * its wall to +y, and turned by its facing as the card turns the stick. */
+static const raycast_part_t RAYCAST_PART_TORCH_WALL = {{12u, 20u, 6u}, {20u, 32u, 28u}};
 
-static uint32_t raycast_part_box(const raycast_part_t *part, int32_t x, int32_t y, int32_t z, collision_box_t *out) {
-    const int32_t cell[COLLISION_AXES] = {x, y, z};
-    for (uint32_t a = 0u; a < COLLISION_AXES; a++) {
-        out->min[a] = (float64_t)cell[a] + (float64_t)part->low[a] * RAYCAST_PART_UNIT;
-        out->max[a] = (float64_t)cell[a] + (float64_t)part->high[a] * RAYCAST_PART_UNIT;
-    }
+/* Turned with the block, as the card turns what it draws. */
+static uint32_t raycast_part_box(const raycast_part_t *part, uint32_t facing, int32_t x, int32_t y, int32_t z,
+                                 collision_box_t *out) {
+    collision_part_box(part->low, part->high, facing, x, y, z, out);
     return 1u;
 }
 
-uint32_t raycast_block_boxes(uint16_t block, int32_t x, int32_t y, int32_t z, collision_box_t *out) {
+uint32_t raycast_block_boxes(uint16_t voxel, int32_t x, int32_t y, int32_t z, collision_box_t *out) {
+    const uint16_t block = block_state_id(voxel);
+    const uint32_t facing = block_state_facing(voxel);
     /* A number no block has stays a solid thing here too, and collision_block_boxes knows what to do with it. */
     if (block >= BLOCK_COUNT || (block_defs[block].flags & BLOCK_FLAG_SOLID) != 0u) {
-        return collision_block_boxes(block, x, y, z, out);
+        return collision_block_boxes(voxel, x, y, z, out);
     }
     switch ((block_shape_t)block_defs[block].shape) {
     case BLOCK_SHAPE_NONE:
     case BLOCK_SHAPE_FLUID:
         return 0u;
     case BLOCK_SHAPE_CROSS:
-        return raycast_part_box(&RAYCAST_PART_CROSS, x, y, z, out);
+        return raycast_part_box(&RAYCAST_PART_CROSS, facing, x, y, z, out);
     case BLOCK_SHAPE_TORCH:
-        return raycast_part_box(&RAYCAST_PART_TORCH, x, y, z, out);
-    case BLOCK_SHAPE_TORCH_EAST:
-        return raycast_part_box(&RAYCAST_PART_TORCH_EAST, x, y, z, out);
-    case BLOCK_SHAPE_TORCH_WEST:
-        return raycast_part_box(&RAYCAST_PART_TORCH_WEST, x, y, z, out);
-    case BLOCK_SHAPE_TORCH_NORTH:
-        return raycast_part_box(&RAYCAST_PART_TORCH_NORTH, x, y, z, out);
-    case BLOCK_SHAPE_TORCH_SOUTH:
-        return raycast_part_box(&RAYCAST_PART_TORCH_SOUTH, x, y, z, out);
+        return raycast_part_box(&RAYCAST_PART_TORCH, facing, x, y, z, out);
+    case BLOCK_SHAPE_TORCH_WALL:
+        return raycast_part_box(&RAYCAST_PART_TORCH_WALL, facing, x, y, z, out);
     case BLOCK_SHAPE_THIN:
-        /* The same two as render/frame's table: a lily pad lies on the floor, and the others stand against the +y side. */
+        /* The same two as render/frame's table: a lily pad lies on the floor, and the others stand against the +y side, the way
+         * they face. */
         return raycast_part_box(block == BLOCK_ID_LILY_PAD || block == BLOCK_ID_SNOW_LAYER ? &RAYCAST_PART_FLAT
                                                                                            : &RAYCAST_PART_PLATE,
-                                x, y, z, out);
+                                facing, x, y, z, out);
     case BLOCK_SHAPE_CROP:
     case BLOCK_SHAPE_CUBE:
     case BLOCK_SHAPE_SLAB:
     case BLOCK_SHAPE_STAIRS:
         break;
     }
-    return raycast_part_box(&RAYCAST_PART_WHOLE, x, y, z, out);
+    return raycast_part_box(&RAYCAST_PART_WHOLE, facing, x, y, z, out);
 }
 
 /* The slab test. How far along it the ray comes into the box, and by which face. False if it never goes in. */
@@ -105,11 +97,11 @@ static bool raycast_box_enter(const collision_box_t *box, const float64_t origin
 }
 
 /* The nearest box of the block in this cell the ray goes into within limit, if any. */
-static bool raycast_cell_test(uint16_t block, const int32_t cell[COLLISION_AXES],
+static bool raycast_cell_test(uint16_t voxel, const int32_t cell[COLLISION_AXES],
                               const float64_t origin[COLLISION_AXES], const float64_t direction[COLLISION_AXES],
                               float64_t limit, raycast_hit_t *out) {
     collision_box_t boxes[RAYCAST_BOXES_PER_BLOCK];
-    const uint32_t count = raycast_block_boxes(block, cell[0], cell[1], cell[2], boxes);
+    const uint32_t count = raycast_block_boxes(voxel, cell[0], cell[1], cell[2], boxes);
     float64_t best = HUGE_VAL;
     uint32_t best_axis = RAYCAST_AXIS_NONE;
     for (uint32_t i = 0u; i < count; i++) {
@@ -133,7 +125,8 @@ static bool raycast_cell_test(uint16_t block, const int32_t cell[COLLISION_AXES]
     const bool inside = best < 0.0f64;
     out->bounds = bounds;
     out->distance = inside ? 0.0f64 : best;
-    out->block = block;
+    out->block = block_state_id(voxel);
+    out->voxel = voxel;
     out->axis = inside ? (uint8_t)RAYCAST_AXIS_NONE : (uint8_t)best_axis;
     out->normal_sign = inside ? (int8_t)0 : (direction[best_axis] > 0.0f64 ? (int8_t)-1 : (int8_t)1);
     return true;
@@ -184,7 +177,7 @@ raycast_result_t raycast_cast(const world_map_t *map, const float64_t origin[COL
     while (t_cell <= max_distance) {
         if (cell[COLLISION_AXIS_Z] >= COLUMN_Z_GAMEPLAY_MIN && cell[COLLISION_AXIS_Z] <= COLUMN_Z_GAMEPLAY_MAX) {
             uint16_t block = BLOCK_ID_AIR;
-            if (!collision_cell_read(map, cell[0], cell[1], cell[2], &block)) {
+            if (!collision_cell_read_voxel(map, cell[0], cell[1], cell[2], &block)) {
                 out->distance = t_cell;
                 return raycast_end(out, RAYCAST_RESULT_NOT_LOADED, cell);
             }

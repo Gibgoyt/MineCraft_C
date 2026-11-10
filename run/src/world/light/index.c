@@ -50,9 +50,11 @@ static inline uint32_t light_into(uint32_t value, uint32_t opacity, bool falls) 
     return value > cost ? value - cost : 0u;
 }
 
+/* By the block alone: light goes round a block the same whichever way it faces. */
 static inline const block_def_t *light_block_def(uint16_t state) {
-    ASSERT_ALWAYS(state < BLOCK_COUNT);
-    return &block_defs[state];
+    const uint16_t id = block_state_id(state);
+    ASSERT_ALWAYS(id < BLOCK_COUNT);
+    return &block_defs[id];
 }
 
 static inline uint32_t light_channel(uint8_t packed, uint32_t channel) {

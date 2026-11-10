@@ -121,11 +121,11 @@ static bool explosion_line_enters(const float64_t from[COLLISION_AXES], const fl
 static bool explosion_cell_stops(const world_map_t *map, const int32_t cell[COLLISION_AXES],
                                  const float64_t from[COLLISION_AXES], const float64_t delta[COLLISION_AXES]) {
     uint16_t block = BLOCK_ID_AIR;
-    const world_map_status_t status = world_map_block_get(map, cell[0], cell[1], cell[2], &block);
+    const world_map_status_t status = world_map_voxel_get(map, cell[0], cell[1], cell[2], &block);
     if (status == WORLD_MAP_STATUS_NOT_LOADED) {
         return true;
     }
-    if (status != WORLD_MAP_STATUS_OK || (block_defs[block].flags & BLOCK_FLAG_SOLID) == 0u) {
+    if (status != WORLD_MAP_STATUS_OK || (block_defs[block_state_id(block)].flags & BLOCK_FLAG_SOLID) == 0u) {
         return false;
     }
     collision_box_t boxes[COLLISION_BOXES_PER_BLOCK];
@@ -380,9 +380,7 @@ static bool explosion_break_one(explosion_t *explosion, world_edit_t *edit, item
     (*broken)++;
     /* The number is taken whatever comes of it, so that a torch does not shift what the blocks after it give. */
     const bool lucky = terrain_rng_next_f64(&explosion->random) * power < 1.0f64;
-    int32_t bench_step = 0;
-    uint16_t bench_other = BLOCK_ID_AIR;
-    if (lucky || wall_torch_out(block, nullptr, nullptr) || bench_half_other(block, &bench_step, &bench_other)) {
+    if (lucky || wall_torch_out(block, nullptr, nullptr) || bench_is_half(block)) {
         explosion_drops_spawn(explosion, drops, block, cell[0], cell[1], cell[2]);
     }
     return true;
@@ -398,13 +396,12 @@ static bool explosion_needs_ground(uint16_t block) {
 static void explosion_wall_torches_break(explosion_t *explosion, world_edit_t *edit, item_drop_store_t *drops,
                                          const int32_t cell[COLLISION_AXES], float64_t power, uint32_t *broken) {
     for (uint32_t side = 0u; side < WALL_TORCH_SIDES; side++) {
-        int32_t out_x = 0, out_y = 0;
-        (void)wall_torch_out(WALL_TORCH_BLOCKS[side], &out_x, &out_y);
+        const int32_t out_x = block_facing_step_x(side), out_y = block_facing_step_y(side);
         const int32_t there[COLLISION_AXES] = {cell[0] + out_x, cell[1] + out_y, cell[2]};
-        uint16_t block = BLOCK_ID_AIR;
-        if (world_map_block_get(edit->borrowed_map, there[0], there[1], there[2], &block) == WORLD_MAP_STATUS_OK &&
-            block == WALL_TORCH_BLOCKS[side]) {
-            (void)explosion_break_one(explosion, edit, drops, block, there, power, broken);
+        uint16_t voxel = BLOCK_ID_AIR;
+        if (world_map_voxel_get(edit->borrowed_map, there[0], there[1], there[2], &voxel) == WORLD_MAP_STATUS_OK &&
+            wall_torch_hangs_from(voxel, out_x, out_y)) {
+            (void)explosion_break_one(explosion, edit, drops, block_state_id(voxel), there, power, broken);
         }
     }
 }
@@ -431,22 +428,22 @@ static void explosion_around_break(explosion_t *explosion, world_edit_t *edit, i
 static bool explosion_bench_other_break(world_edit_t *edit, uint16_t block, const int32_t cell[COLLISION_AXES],
                                         int32_t other_cell[COLLISION_AXES], uint16_t *out_other, bool *out_other_gone,
                                         uint32_t *broken) {
-    int32_t step_x = 0;
+    int32_t step_x = 0, step_y = 0;
     *out_other_gone = false;
-    if (!bench_half_other(block, &step_x, out_other)) {
+    if (!bench_is_half(block)) {
+        return true;
+    }
+    /* Listed once already and gone with the other half, this one has no bench left to speak for. Its facing says where that is. */
+    uint16_t here = BLOCK_ID_AIR;
+    if (world_map_voxel_get(edit->borrowed_map, cell[0], cell[1], cell[2], &here) != WORLD_MAP_STATUS_OK ||
+        block_state_id(here) != block || !bench_half_other(here, &step_x, &step_y, out_other)) {
         return true;
     }
     other_cell[0] = cell[0] + step_x;
-    other_cell[1] = cell[1];
+    other_cell[1] = cell[1] + step_y;
     other_cell[2] = cell[2];
-    /* Listed once already and gone with the other half, this one has no bench left to speak for. */
-    uint16_t here = BLOCK_ID_AIR;
-    if (world_map_block_get(edit->borrowed_map, cell[0], cell[1], cell[2], &here) != WORLD_MAP_STATUS_OK ||
-        here != block) {
-        return true;
-    }
     uint16_t there = BLOCK_ID_AIR;
-    if (world_map_block_get(edit->borrowed_map, other_cell[0], other_cell[1], other_cell[2], &there) !=
+    if (world_map_voxel_get(edit->borrowed_map, other_cell[0], other_cell[1], other_cell[2], &there) !=
         WORLD_MAP_STATUS_OK) {
         return false;
     }
@@ -467,13 +464,15 @@ uint32_t explosion_finish(explosion_t *explosion, world_edit_t *edit, item_drop_
     for (uint32_t i = 0u; i < explosion->count; i++) {
         const explosion_cell_t *const listed = &explosion->borrowed_cells[i];
         const int32_t cell[COLLISION_AXES] = {listed->x, listed->y, listed->z};
+        /* By the block alone: a facing is read where it matters, from the world. */
+        const uint16_t block = block_state_id(listed->block);
         int32_t other_cell[COLLISION_AXES] = {0, 0, 0};
         uint16_t other = BLOCK_ID_AIR;
         bool other_gone = false;
-        if (!explosion_bench_other_break(edit, listed->block, cell, other_cell, &other, &other_gone, &broken)) {
+        if (!explosion_bench_other_break(edit, block, cell, other_cell, &other, &other_gone, &broken)) {
             continue;
         }
-        if (!explosion_break_one(explosion, edit, drops, listed->block, cell, power, &broken)) {
+        if (!explosion_break_one(explosion, edit, drops, block, cell, power, &broken)) {
             if (other_gone) {
                 (void)world_edit_block_set(edit, other_cell[0], other_cell[1], other_cell[2], other);
                 broken--;

@@ -26,7 +26,7 @@ void mob_zombie_start(mob_zombie_t *zombie, arena_t *arena, uint64_t seed) {
 static bool mz_cell_is_clear(const world_map_t *map, const int32_t cell[COLLISION_AXES],
                              const float64_t from[COLLISION_AXES], const float64_t d[COLLISION_AXES]) {
     uint16_t block = 0u;
-    if (!collision_cell_read(map, cell[0], cell[1], cell[2], &block)) {
+    if (!collision_cell_read_voxel(map, cell[0], cell[1], cell[2], &block)) {
         return false;
     }
     collision_box_t boxes[COLLISION_BOXES_PER_BLOCK];

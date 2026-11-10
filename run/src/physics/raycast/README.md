@@ -7,7 +7,7 @@
 **Threads:** Whichever holds the map, normally `sim`.
 **Public functions** (`run/include/physics/raycast/index.h`):
 
-- `raycast_block_boxes`: what a block can be aimed at by.
+- `raycast_block_boxes`: what a block can be aimed at by, turned by the voxel's facing. A hit says the block id in `block` and the block with its state in `voxel`.
 - `raycast_cast`: the walk: the first box along a ray, within a distance.
 - `raycast_hit_in_front`: the cell in front of a hit's face, where a block placed against it goes.
 
@@ -33,4 +33,4 @@ Amanatides & Woo 1987, in `float64_t`. Each next wall's distance is worked out f
 | `shape: crop` | The whole cell |
 | `shape: torch` | Twice the stick's width, and its height |
 | `shape: torch_east` and the others on a wall | Around all its steps, from the wall out, and twice the stick's width across |
-| `shape: thin` | The plate as drawn: the +y side, or the floor for a lily pad |
+| `shape: thin` | The plate as drawn: the side it faces, +y facing north, or the floor for a lily pad |

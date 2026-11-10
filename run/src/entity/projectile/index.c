@@ -118,7 +118,7 @@ static projectile_cast_t projectile_cast_blocks(const world_map_t *map, const fl
     }
     for (uint32_t i = 0u; i < (uint32_t)cells; i++) {
         uint16_t block = BLOCK_ID_AIR;
-        if (!collision_cell_read(map, cell[0], cell[1], cell[2], &block)) {
+        if (!collision_cell_read_voxel(map, cell[0], cell[1], cell[2], &block)) {
             return PROJECTILE_CAST_NOT_LOADED;
         }
         collision_box_t boxes[COLLISION_BOXES_PER_BLOCK];
@@ -250,7 +250,7 @@ static void projectile_stick(projectile_store_t *store, projectile_t *arrow, flo
 static void projectile_tick_stuck(projectile_store_t *store, const world_map_t *map, uint32_t index) {
     projectile_t *const arrow = &store->borrowed_items[index];
     uint16_t block = BLOCK_ID_AIR;
-    if (!collision_cell_read(map, arrow->stuck_cell[0], arrow->stuck_cell[1], arrow->stuck_cell[2], &block)) {
+    if (!collision_cell_read_voxel(map, arrow->stuck_cell[0], arrow->stuck_cell[1], arrow->stuck_cell[2], &block)) {
         return;
     }
     collision_box_t boxes[COLLISION_BOXES_PER_BLOCK];
