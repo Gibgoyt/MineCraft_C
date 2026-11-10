@@ -87,8 +87,12 @@ typedef struct ui_hud_debug_t {
     int32_t block[3];                       /* 40: x, y and z: see ui_hud_coordinates_draw */
     float32_t latitude_deg;                 /* 52: of the eye, positive north (plan 004 phase 02) */
     float32_t sun_elevation_deg;            /* 56: the sun above the eye's horizon; below 0 is night */
+    uint32_t mobs;                          /* 60: in the world, as of the sim's last tick (plan 005 phase 7) */
+    uint32_t drops;                         /* 64: stacks on the ground, the same */
+    uint32_t uploads;                       /* 68: sections of the newest snapshot not yet on the card */
+    uint32_t far_jobs;                      /* 72: far-field columns being built on workers */
 } ui_hud_debug_t;
-static_assert(sizeof(ui_hud_debug_t) == 60);
+static_assert(sizeof(ui_hud_debug_t) == 76);
 
 /* Where things go on a canvas of some size, in its pixels. */
 typedef struct ui_hud_layout_t {
@@ -130,7 +134,11 @@ void ui_hud_item_draw(const ui_hud_t *hud, ui_canvas_t *canvas, const ui_font_t 
  * No allocation. */
 void ui_hud_draw(const ui_hud_t *hud, ui_canvas_t *canvas, const ui_font_t *font, const ui_hud_state_t *state);
 
-/* The frames per second, each stage's time and where the body is, on a dark panel at the top left. No allocation. */
+/* A stage's name as the overlay writes it, for the log too; "?" for one past the end. */
+const char *ui_hud_stage_name(ui_hud_stage_t stage);
+
+/* The frames per second, each stage's time, where the body is, and what a world left alone piles up, on a dark panel at the top left.
+ * No allocation. */
 void ui_hud_debug_draw(ui_canvas_t *canvas, const ui_font_t *font, const ui_hud_debug_t *debug);
 
 enum : uint32_t {

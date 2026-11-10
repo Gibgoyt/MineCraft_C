@@ -5,11 +5,13 @@
 #include "climate/sun/index.h"
 #include "entity/animation/index.h"
 #include "game/corner/index.h"
+#include "game/watch/index.h"
 #include "game/weather/index.h"
 #include "item/stack/index.h"
 #include "log/index.h"
 #include "render/entities/index.h"
 #include "tables/blocks/index.h"
+#include "time/index.h"
 
 #include <inttypes.h>
 #include <math.h>
@@ -581,6 +583,24 @@ bool game_census_take(game_t *game, uint64_t *out_week) {
     return true;
 }
 
+/* Plan 005 phase 7: the time since mark_ns goes to a part of the tick, and the next part starts now. */
+static void game_tick_lap(int64_t *mark_ns, int64_t stage_ns[GAME_WATCH_TICK_STAGES], game_watch_tick_stage_t stage) {
+    const int64_t now_ns = time_now_ns();
+    stage_ns[stage] += now_ns - *mark_ns;
+    *mark_ns = now_ns;
+}
+
+/* What the tick took, part by part, and what is in the world after it, for the overlay and the log. */
+static void game_tick_watch(game_t *game, const int64_t stage_ns[GAME_WATCH_TICK_STAGES], int64_t now_ns) {
+    game_watch_t *const watch = game_watch_of(game);
+    if (watch == nullptr) {
+        return;
+    }
+    const entity_t *const entity = game->borrowed_entity;
+    game_watch_tick_note(watch, stage_ns, game->tick_count, entity != nullptr ? entity->store.count : 0u,
+                         entity != nullptr ? entity->item_drops.count : 0u, now_ns);
+}
+
 /* One tick of simulated time, due at tick_ns: this is where Stages 11 to 15 add theirs. */
 void game_sim_tick(game_t *game, int64_t tick_ns) {
     profiler_lane_t *const lane = game->borrowed_lane_sim;
@@ -590,6 +610,8 @@ void game_sim_tick(game_t *game, int64_t tick_ns) {
         PROFILER_END(lane);
         return; /* this tick never happened: tick_count stays */
     }
+    int64_t stage_ns[GAME_WATCH_TICK_STAGES] = {0};
+    int64_t mark_ns = time_now_ns();
     /* Plan 004 phase 08: the weather where the eye is, before the body moves in its wind. */
     game_weather_tick(game, tick_ns);
     if (game->borrowed_player != nullptr) {
@@ -598,6 +620,7 @@ void game_sim_tick(game_t *game, int64_t tick_ns) {
             &game->borrowed_player->survival,
             climate_sun_height_of_clock(game->day_zero, atomic_load_explicit(&game->clock_units, memory_order_relaxed),
                                         game->borrowed_player->movement.position[1]));
+        game_tick_lap(&mark_ns, stage_ns, GAME_WATCH_TICK_WEATHER);
         PROFILER_BEGIN(lane, "tick_hands");
         /* First, so that the body and its next aim both meet the world as the hands leave it. */
         game_interact_tick(game, tick_ns);
@@ -609,6 +632,7 @@ void game_sim_tick(game_t *game, int64_t tick_ns) {
             item_world_tick(game->borrowed_item, &game->borrowed_world->edit, game_spill, game);
         }
         PROFILER_END(lane);
+        game_tick_lap(&mark_ns, stage_ns, GAME_WATCH_TICK_HANDS);
         PROFILER_BEGIN(lane, "tick_mobs");
         /* Before the bodies move, so that what it answers is of the world as the hands left it. */
         if (game->borrowed_mob != nullptr) {
@@ -621,18 +645,25 @@ void game_sim_tick(game_t *game, int64_t tick_ns) {
             game_items_tick(game);
         }
         PROFILER_END(lane);
+        game_tick_lap(&mark_ns, stage_ns, GAME_WATCH_TICK_MOBS);
         PROFILER_BEGIN(lane, "tick_player");
         float32_t wind[2];
         game_weather_wind(game, wind);
         player_tick_wind(game->borrowed_player, &game->borrowed_world->map, tick_ns, wind[0], wind[1]);
         game_survive_tick(game);
         PROFILER_END(lane);
+        game_tick_lap(&mark_ns, stage_ns, GAME_WATCH_TICK_PLAYER);
+    } else {
+        game_tick_lap(&mark_ns, stage_ns, GAME_WATCH_TICK_WEATHER);
     }
     PROFILER_BEGIN(lane, "tick_world");
     world_tick_step(&game->borrowed_world->tick);
     PROFILER_END(lane);
+    game_tick_lap(&mark_ns, stage_ns, GAME_WATCH_TICK_WORLD);
     game_entities_publish(game);
     game_hud_publish(game);
     game->tick_count++;
+    game_tick_lap(&mark_ns, stage_ns, GAME_WATCH_TICK_PUBLISH);
+    game_tick_watch(game, stage_ns, mark_ns);
     PROFILER_END(lane);
 }

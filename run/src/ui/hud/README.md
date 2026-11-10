@@ -15,6 +15,7 @@
 - `ui_hud_item_draw`: one item with its wear and count, for any slot.
 - `ui_hud_draw`: all of the HUD, from a `ui_hud_state_t`.
 - `ui_hud_debug_draw`, `ui_hud_debug_panel`: the overlay, from a `ui_hud_debug_t`, and where it lies.
+- `ui_hud_stage_name`: a stage's name as the overlay writes it, which `game/watch` also logs.
 - `ui_hud_coordinates_draw`, `ui_hud_coordinates_panel`: x, y and z on a small panel at the top left, under a notice if there is one; the panel's rect without drawing it, which the draw itself uses, so the two never disagree.
 - `ui_hud_date_draw`: plan 004 phase 01's date line, such as `Year 1, Day 80, Early spring`, on a small panel at the top right: since plan 004 phase 10 it is the corner with only its date line, so the two are the same pixels.
 - `ui_hud_corner_clear`, `ui_hud_corner_draw`, `ui_hud_corner_arrow_ends`: plan 004 phase 10's top right corner (below).
@@ -73,7 +74,7 @@ Plan 004 phase 10. A short stack of lines from a `ui_hud_corner_t`, plain text `
 
 ## The debug overlay
 
-F3 turns it on and off, on top of the HUD and over any kind of run, flying or walking. It lists what `ui_hud_stage_t` does: the five passes of the card and its total, from the card's own clock; the sim's last tick; and on `main`, what the HUD and copying the picture out took. Then come the coordinates, whatever the setting says, and its panel is wide enough for eight digits each way. Its last line is the eye's latitude and the sun's elevation there (plan 004 phase 02): `lat 45.00 N  sun 30.0`, `S` south of the equator and `N` at exactly 0, two decimals for the latitude and one for the sun. The longest, `lat 90.00 N  sun -66.5`, fits the panel. With no body, they are the flying eye's. Frames per second count **new pictures**, as `game_report` does, not how often `main` went round. The window is half a second, in `run/src/game/`.
+F3 turns it on and off, on top of the HUD and over any kind of run, flying or walking. It lists what `ui_hud_stage_t` does: the five passes of the card and its total, from the card's own clock; the sim's last tick; and on `main`, what the HUD and copying the picture out took. Then come the coordinates, whatever the setting says, and its panel is wide enough for eight digits each way. Its last line is the eye's latitude and the sun's elevation there (plan 004 phase 02): `lat 45.00 N  sun 30.0`, `S` south of the equator and `N` at exactly 0, two decimals for the latitude and one for the sun. The longest, `lat 90.00 N  sun -66.5`, fits the panel. With no body, they are the flying eye's. Two more lines follow (plan 005 phase 7, for a world that grows slow when left alone): `mobs 70  drops 12`, the mobs in the world and the stacks on the ground as of the sim's last tick, and `uploads 300  far jobs 16`, the sections of the newest snapshot not yet on the card and the far-field columns being built on workers. Frames per second count **new pictures**, as `game_report` does, not how often `main` went round. The window is half a second, in `run/src/game/`.
 
 Its text is half the HUD's scale, rounding up.
 

@@ -13,6 +13,7 @@
 #include "item/stack/index.h"
 #include "game/spawn/index.h"
 #include "game/view/index.h"
+#include "game/watch/index.h"
 #include "log/index.h"
 #include "render/entities/index.h"
 #include "tables/blocks/index.h"
@@ -33,13 +34,15 @@ typedef struct game_world_parts_t {
     uint8_t _pad0[56];                        /* 58888 */
     game_corner_t corner;                     /* 58944: the sim writes it, main reads its words */
     game_fill_t fill;                         /* 59136: whichever thread uploads writes it (plan 005 phase 14) */
+    game_watch_t watch;                       /* 60928: plan 005 phase 7's overlay numbers and slow lines */
 } game_world_parts_t;
-static_assert(sizeof(game_world_parts_t) == 60928);
+static_assert(sizeof(game_world_parts_t) == 61120);
 static_assert(offsetof(game_world_parts_t, fill) == 59136);
 static_assert(offsetof(game_world_parts_t, jobs) == 0);
 static_assert(offsetof(game_world_parts_t, weather) == 8192);
 static_assert(offsetof(game_world_parts_t, cover) == 58816);
 static_assert(offsetof(game_world_parts_t, corner) == 58944);
+static_assert(offsetof(game_world_parts_t, watch) == 60928);
 
 enum : uint64_t {
     /* Budgets of the two arenas with a lifetime shorter than a world's. */
@@ -125,6 +128,10 @@ game_corner_t *game_corner_of(const game_t *game) {
 
 game_fill_t *game_fill_of(const game_t *game) {
     return game->borrowed_jobs != nullptr ? &((game_world_parts_t *)(void *)game->borrowed_jobs)->fill : nullptr;
+}
+
+game_watch_t *game_watch_of(const game_t *game) {
+    return game->borrowed_jobs != nullptr ? &((game_world_parts_t *)(void *)game->borrowed_jobs)->watch : nullptr;
 }
 
 static climate_t *game_climate(const game_t *game) {
@@ -572,6 +579,7 @@ bool game_open(game_t *game, const game_config_t *config) {
     memset(&world_parts->cover, 0, sizeof(world_parts->cover));
     game_corner_start(&world_parts->corner);
     game_fill_reset(&world_parts->fill);
+    game_watch_start(&world_parts->watch);
     const terrain_t *const terrain = game->borrowed_terrain;
     for (uint32_t i = 0u; i < GAME_STREAM_JOBS; i++) {
         game_column_job_t *const job = &game->borrowed_jobs[i];
@@ -1062,23 +1070,6 @@ static void game_fps_note(game_t *game, uint32_t pictures, float32_t seconds) {
     }
 }
 
-/* What the card's clock said, on the host's timeline: end to end, the last ending now, as the wait for it has just come back. See
- * run/src/profiler/README.md. */
-static void game_kernels_note(game_t *game, const frame_timings_t *timings) {
-    profiler_lane_t *const lane = game->borrowed_lane_card;
-    if (lane == nullptr) {
-        return;
-    }
-    int64_t start_ns = time_now_ns() - (int64_t)((float64_t)timings->total_ms * (float64_t)TIME_NS_PER_MS);
-    for (uint32_t i = 0u; i < FRAME_KERNEL_COUNT; i++) {
-        if ((timings->kernels_ran & (1u << i)) != 0u) {
-            const int64_t duration_ns = (int64_t)((float64_t)timings->kernel_ms[i] * (float64_t)TIME_NS_PER_MS);
-            profiler_span_add(lane, frame_kernel_name((frame_kernel_t)i), start_ns, duration_ns);
-            start_ns += duration_ns;
-        }
-    }
-}
-
 /* One frame, and what each pass of it took, as the difference it made to the frame's books. */
 static gpu_status_t game_frame_draw(game_t *game, const render_camera_t *camera) {
     render_t *const render = game->borrowed_render;
@@ -1096,7 +1087,7 @@ static gpu_status_t game_frame_draw(game_t *game, const render_camera_t *camera)
     if (status != GPU_STATUS_OK) {
         return status;
     }
-    game_kernels_note(game, &render->frame.last_timings);
+    game_watch_kernels_note(game, &render->frame.last_timings);
     const render_frame_stats_t *const after = &render->frame.stats;
     for (uint32_t pass = 0u; pass < FRAME_PASS_COUNT; pass++) {
         atomic_store_explicit(&game->hud_pass_us[pass],
@@ -1283,7 +1274,10 @@ static bool game_scene_draw(void *context, const display_headless_tick_t *tick, 
     (void)tick;
     game_t *const game = context;
     PROFILER_BEGIN(game->borrowed_lane_main, "scene_draw");
+    const int64_t started_ns = time_now_ns();
     const bool ok = game_scene_draw_timed(game, frame);
+    /* With no threads a frame is this draw: the tick before it is timed as a tick. */
+    game_watch_frame_look(game, time_now_ns() - started_ns);
     PROFILER_END(game->borrowed_lane_main);
     return ok;
 }
@@ -1377,6 +1371,7 @@ static void game_gpu_thread(void *borrowed_argument) {
             atomic_store_explicit(&game->failed, 1u, memory_order_release);
             return;
         }
+        game_watch_gpu_look(game);
         if (render->borrowed_lod != nullptr) {
             PROFILER_BEGIN(game->borrowed_lane_gpu, "lod_frame");
             game_far_changes_take(game);
@@ -1478,6 +1473,8 @@ bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t se
         game->hud_compose_us = (uint32_t)((composed_ns - started_ns) / 1000);
         game->hud_present_us = (uint32_t)((time_now_ns() - composed_ns) / 1000);
     }
+    /* seconds is the time since the last frame, which a pause and another VT start again. */
+    game_watch_frame_look(game, (int64_t)((float64_t)seconds * (float64_t)TIME_NS_PER_SECOND));
     PROFILER_END(lane);
     (void)game_gpu_alive(game); /* it says so, and that is failed */
     return atomic_load_explicit(&game->failed, memory_order_acquire) == 0u;

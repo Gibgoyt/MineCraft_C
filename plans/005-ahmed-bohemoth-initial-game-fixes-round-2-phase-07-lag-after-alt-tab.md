@@ -31,8 +31,8 @@ From one session of 2115 s, in `../prompt.md`:
 
 **Stage 1: make it say why.** This comes first, so the cause is measured, not guessed.
 
-- [ ] Add to the F3 overlay: mobs in the world, the sim tick in ms, sections waiting to upload, and drops on the ground
-- [ ] When a frame takes over 33 ms, or a tick over 50 ms, log one line naming the slowest stage. At most once every few seconds, so the log stays readable
+- [x] Add to the F3 overlay: mobs in the world, the sim tick in ms, sections waiting to upload, and drops on the ground
+- [x] When a frame takes over 33 ms, or a tick over 50 ms, log one line naming the slowest stage. At most once every few seconds, so the log stays readable
 - [ ] Reproduce headless: a world left for a full in-game day and night with no input, then measure frames and ticks. Compare with hostile mobs off, and record which change fixes it
 
 **Stage 2: fix what it shows.**
@@ -53,9 +53,13 @@ Ahmed: play, switch to another window for 10 minutes or more, come back, and che
 
 Appended as they land:
 
+- `96906f1d` Pause the game when its window loses the focus, with pause_on_focus_loss in settings.yaml, resume when the focus comes back, read the X focus mode from byte 8, and test that a long time away leaves mobs and time unchanged.
+
 ## Issues found
 
 **Pause on focus loss, as built (2026-11-10).** `display_x11_t.focus_losses` counts each time the window manager takes the focus; the session reads it every frame (`game_session_window_look`) and pauses a world being played, with the pause screen up, unless `pause_on_focus_loss` (settings.yaml, default `true`; Settings, HUD page, "Pause when away") is off. When the focus comes back (a click on the window, or Alt+Tab to it) that pause ends by itself; the click never reaches the game. A pause made with Esc, or one with the Settings screen up over it, stays. The setting's box went on the HUD page because it was the page with room. Test: ctest `run_game_focus`, real threads, a world at midnight with a mob: 5 s away (3581 frames, 100 ticks' worth) left the tick count, clock, mob count and positions and the body exactly as they were.
+
+**The overlay and the slow lines, as built (2026-11-10).** New `run/src/game/watch/`. F3 has two more lines: `mobs N  drops N` (entity store and drop stacks, from the sim after each tick) and `uploads N  far jobs N` (sections of the newest snapshot not yet on the card, and far-field columns on workers, from the gpu thread). The sim tick in ms was already a line (`sim tick`). Each part of a sim tick is now timed (weather, hands, mobs, player, world, publish). A tick over 50 ms or a frame over 33 ms logs one `watch:` line naming its slowest part, at most once in 5 s, with how many more were not said. Every 1200 ticks the sim logs a `watch: ticks A to B:` line with the mean and slowest tick (and its part), the frames' mean and slowest, and mobs, drops, uploads and far jobs, so a log from a long session shows when it went slow. The watch lives in the World arena beside the column jobs, as `game_t` and `app_t` have no room. `game_kernels_note` moved into `game/watch` to keep `game/index.c` under 1500 lines. Goldens regenerated and looked at: `debug_640x480.png` and `corner_debug_640x480.png` (two more overlay lines), `settings_hud.png` (the new box).
 
 **A bug found on the way:** `x11_take_focus` read the focus event's mode from byte 1, which is the detail; the mode is byte 8. So a grab's focus event (XFCE's keyboard grab while Alt+Tab is held) could count as leaving, and a real focus change with detail Virtual or Inferior would not. Now `wire_focus_is_real` reads byte 8, tested in `run_display_x11`. Not checked against a real xfwm4: Ahmed's check below covers it.
 

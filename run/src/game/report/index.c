@@ -4,6 +4,7 @@
 #include "climate/index.h"
 #include "climate/sun/index.h"
 #include "game/fill/index.h"
+#include "game/watch/index.h"
 #include "log/index.h"
 #include "render/entities/index.h"
 #include "tables/blocks/index.h"
@@ -123,6 +124,11 @@ void game_hud_debug_read(const game_t *game, ui_hud_debug_t *out) {
                          game->camera.position[1], &sun);
     out->latitude_deg = (float32_t)climate_latitude_deg(game->camera.position[1]);
     out->sun_elevation_deg = (float32_t)sun.elevation_deg;
+    /* Plan 005 phase 7: what a world left alone piles up. */
+    const game_watch_t *const watch = game_watch_of(game);
+    if (watch != nullptr) {
+        game_watch_debug_read(watch, out);
+    }
 }
 
 void game_report(game_t *game) {

@@ -16,10 +16,11 @@ enum : uint32_t {
     UI_HUD_TEXTURE_CLOSE_X = 160u, /* the two columns that close its last slot */
     UI_HUD_TEXTURE_CLOSE_W = 2u,
     UI_HUD_WEAR_HEIGHT = 2u,
-    UI_HUD_COUNT_RIGHT = 17u,                                    /* from the item's left to where its count ends */
-    UI_HUD_COUNT_TOP = 9u,                                       /* from the item's top to its count's */
-    UI_HUD_TEXT_BUFFER = 64u,                                    /* past the longest a float32_t can print */
-    UI_HUD_DEBUG_LINES = 1u + (uint32_t)UI_HUD_STAGE_COUNT + 2u, /* with the coordinates, and the latitude and sun */
+    UI_HUD_COUNT_RIGHT = 17u, /* from the item's left to where its count ends */
+    UI_HUD_COUNT_TOP = 9u,    /* from the item's top to its count's */
+    UI_HUD_TEXT_BUFFER = 64u, /* past the longest a float32_t can print */
+    /* With the coordinates, the latitude and sun, and plan 005 phase 7's mobs and drops, and uploads and far jobs. */
+    UI_HUD_DEBUG_LINES = 1u + (uint32_t)UI_HUD_STAGE_COUNT + 4u,
     UI_HUD_DEBUG_MARGIN = 2u,  /* font pixels, from the canvas to the panel and from the panel to its text */
     UI_HUD_DEBUG_WIDTH = 176u, /* font pixels of text: coordinates of eight digits each way, which a test measures */
     UI_HUD_COLOR_TEXT = 0xFFFFFFFFu,
@@ -35,6 +36,10 @@ static const char *const ui_hud_stage_names[UI_HUD_STAGE_COUNT] = {
     [UI_HUD_STAGE_POST] = "post",         [UI_HUD_STAGE_READBACK] = "readback", [UI_HUD_STAGE_GPU_TOTAL] = "gpu total",
     [UI_HUD_STAGE_SIM_TICK] = "sim tick", [UI_HUD_STAGE_HUD] = "hud",           [UI_HUD_STAGE_PRESENT] = "present",
 };
+
+const char *ui_hud_stage_name(ui_hud_stage_t stage) {
+    return (uint32_t)stage < (uint32_t)UI_HUD_STAGE_COUNT ? ui_hud_stage_names[stage] : "?";
+}
 
 bool ui_hud_init(ui_hud_t *hud, arena_t *arena, const texture_t *texture) {
     *hud = (ui_hud_t){0};
@@ -453,6 +458,13 @@ void ui_hud_debug_draw(ui_canvas_t *canvas, const ui_font_t *font, const ui_hud_
     const float32_t latitude = debug->latitude_deg;
     snprintf(text, sizeof(text), "lat %.2f %c  sun %.1f", (libc_double_t)(latitude < 0.0f32 ? -latitude : latitude),
              latitude < 0.0f32 ? 'S' : 'N', (libc_double_t)debug->sun_elevation_deg);
+    ui_font_draw(font, canvas, left, y, text, style);
+    /* Plan 005 phase 7: what piles up in a world left alone. The sim tick's time is a stage above. */
+    y += line;
+    snprintf(text, sizeof(text), "mobs %" PRIu32 "  drops %" PRIu32, debug->mobs, debug->drops);
+    ui_font_draw(font, canvas, left, y, text, style);
+    y += line;
+    snprintf(text, sizeof(text), "uploads %" PRIu32 "  far jobs %" PRIu32, debug->uploads, debug->far_jobs);
     ui_font_draw(font, canvas, left, y, text, style);
     (void)ui_canvas_clip_set(canvas, clip_before);
 }

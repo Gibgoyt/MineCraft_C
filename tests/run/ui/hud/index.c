@@ -622,15 +622,16 @@ TEST(the_overlays_numbers_change_only_their_own_line_and_it_stays_on_its_panel) 
     CHECK_EQ_I64(panel.x, 2);
     CHECK_EQ_I64(panel.y, 2);
     CHECK_EQ_I64(panel.width, 180);
-    /* One line more since plan 004 phase 02: the latitude and the sun. */
-    CHECK_EQ_I64(panel.height, 112);
+    /* One line more since plan 004 phase 02: the latitude and the sun. Two more since plan 005 phase 7: mobs and drops, and uploads
+     * and far jobs. */
+    CHECK_EQ_I64(panel.height, 130);
     const box_t all = sheets_box(&clean, &a);
     CHECK_EQ_I64(all.left, panel.x);
     CHECK_EQ_I64(all.top, panel.y);
     CHECK_EQ_I64(all.right, panel.x + panel.width - 1);
     CHECK_EQ_I64(all.bottom, panel.y + panel.height - 1);
 
-    for (uint32_t i = 0u; i <= UI_HUD_STAGE_COUNT + 3u; i++) {
+    for (uint32_t i = 0u; i <= UI_HUD_STAGE_COUNT + 7u; i++) {
         ui_hud_debug_t other = debug;
         uint32_t line_index = i;
         if (i == 0u) {
@@ -642,6 +643,18 @@ TEST(the_overlays_numbers_change_only_their_own_line_and_it_stays_on_its_panel) 
         } else if (i == UI_HUD_STAGE_COUNT + 3u) {
             other.sun_elevation_deg = -66.5f32;
             line_index = UI_HUD_STAGE_COUNT + 2u;
+        } else if (i == UI_HUD_STAGE_COUNT + 4u) {
+            other.mobs = 70u;
+            line_index = UI_HUD_STAGE_COUNT + 3u;
+        } else if (i == UI_HUD_STAGE_COUNT + 5u) {
+            other.drops = 1234u;
+            line_index = UI_HUD_STAGE_COUNT + 3u;
+        } else if (i == UI_HUD_STAGE_COUNT + 6u) {
+            other.uploads = 4096u;
+            line_index = UI_HUD_STAGE_COUNT + 4u;
+        } else if (i == UI_HUD_STAGE_COUNT + 7u) {
+            other.far_jobs = 16u;
+            line_index = UI_HUD_STAGE_COUNT + 4u;
         } else {
             other.stage_ms[i - 1u] = 7.77f32;
         }
@@ -665,6 +678,13 @@ TEST(the_overlays_numbers_change_only_their_own_line_and_it_stays_on_its_panel) 
     printf("the longest latitude lines are %" PRIu32 " and %" PRIu32 " wide\n", widest_sun.width, lowest_sun.width);
     CHECK((int32_t)widest_sun.width <= panel.width - 4);
     CHECK((int32_t)lowest_sun.width <= panel.width - 4);
+    /* And plan 005 phase 7's two lines, at the most each can be: a full entity store and a full drop store, and a snapshot's worth of
+     * sections and every worker's far job. */
+    const ui_text_size_t widest_piles = ui_font_measure(&f->ui.font, "mobs 4096  drops 4096", 1u);
+    const ui_text_size_t widest_uploads = ui_font_measure(&f->ui.font, "uploads 65536  far jobs 128", 1u);
+    printf("the longest pile lines are %" PRIu32 " and %" PRIu32 " wide\n", widest_piles.width, widest_uploads.width);
+    CHECK((int32_t)widest_piles.width <= panel.width - 4);
+    CHECK((int32_t)widest_uploads.width <= panel.width - 4);
 
     /* Times no one should see stay on the panel. */
     for (uint32_t i = 0u; i < UI_HUD_STAGE_COUNT; i++) {
@@ -864,6 +884,10 @@ static void debug_golden(ui_hud_debug_t *debug) {
     /* y = 567 is 1.33 degrees north; the sun as at 09:00 at 45 degrees north on the equinox, the phase 02 file's example. */
     debug->latitude_deg = 1.33f32;
     debug->sun_elevation_deg = 30.0f32;
+    debug->mobs = 70u;
+    debug->drops = 12u;
+    debug->uploads = 300u;
+    debug->far_jobs = 16u;
 }
 
 TEST(bubbles_are_full_half_empty_or_not_there_and_only_over_the_drumsticks) {
