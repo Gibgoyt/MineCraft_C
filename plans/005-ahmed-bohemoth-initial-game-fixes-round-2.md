@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2
 
-**Status:** being built by waves of agents, from 2026-11-10. Done so far: phases 1, 3, 5, 7 and 9; phase 4 stages 1 and 2; phase 8's labels; phase 14's measuring and live test (the starvation fixes are in progress). **Until phase 14 is built, play at render distance 32 with full detail 32,** which draws correctly   (updated 2026-11-09)
+**Status:** being built by waves of agents, from 2026-11-10. Done so far: phases 1, 3, 5, 7 and 9; phase 4 stages 1 and 2; phase 8's labels; phase 14's measuring, live test and far-field fix (job priorities in progress). **Until phase 14 is built, play at render distance 32 with full detail 32,** which draws correctly   (updated 2026-11-09)
 
 ## Context
 
@@ -32,7 +32,7 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 16 | The tree feller wears the axe for every log that falls, not just the ones chopped | Added to `...-phase-01-tree-feller-always-on.md` | Plan 003's default "each log wears the axe" | **Done** (`ad8513f4`): only the cut log wears the tool |
 | 17 | Loading takes about 5 minutes, and changing render distance or full detail lags. A change must show in under 1 second, tested by agents in a live game | `...-phase-14-loading-and-render-distance-speed.md` | The far field starving the workers (note 18). **Not sound:** the build Ahmed tested predates sound, and a render distance 32 run with sound draws correctly | Not started |
 | 18 | Rendering issues on a new world: flat untextured slabs around you, a mined log still drawn (`~/Pictures/10.png`, `11.png`) | `...-phase-14-loading-and-render-distance-speed.md` | **Identified:** at render distance 64, far-field builds take all 16 workers for minutes, and the job queue has no priorities, so near chunks and mined-block redraws wait. Reproduced; render distance 32 draws correctly | Not started |
-| 19 | A mined tree vanishes about 5 minutes later; changing render distance or full detail takes about 5 minutes, with rendering issues | `...-phase-14-loading-and-render-distance-speed.md` | **Measured live:** render distance 32 → 64 shows nothing new for over 16 s and settles in 3 to 4 minutes. Full detail 32 → 16 shows nothing for 45 s, then everything turns darker. The far field keeps the old picture until rebuilt, and draws no unsaved edits | Not started |
+| 19 | A mined tree vanishes about 5 minutes later; changing render distance or full detail takes about 5 minutes, with rendering issues | `...-phase-14-loading-and-render-distance-speed.md` | **Measured live:** render distance 32 → 64 shows nothing new for over 16 s and settles in 3 to 4 minutes. Full detail 32 → 16 shows nothing for 45 s, then everything turns darker. The far field keeps the old picture until rebuilt, and draws no unsaved edits | **Far field fixed:** 35 ms a column, not about 1 s; render distance 32 → 64 settles in about 4 s, two thirds showing by 1 s; unsaved edits drawn; no rebuild on autosave. The darkening was nightfall, not a bug. The live test passes |
 
 ## Order to build
 
