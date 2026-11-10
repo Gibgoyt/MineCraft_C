@@ -234,6 +234,57 @@ TEST(every_block_collides_as_its_config_says) {
     CHECK_EQ_U64(collision_block_boxes(UINT16_MAX, 0, 0, 0, boxes), 1u);
 }
 
+/* Plan 005 phase 12: each facing puts the step on its own side, and a body comes down on the step there and on the lower half
+ * elsewhere. The boxes are whole 32nds, so these are exact. */
+TEST(stairs_facing_each_way_collide_with_the_step_on_the_side_they_face) {
+    /* Where the step is, on x and y, for north, east, south and west. */
+    static const float64_t step[BLOCK_FACINGS][4] = {
+        {0.0f64, 0.5f64, 1.0f64, 1.0f64},
+        {0.5f64, 0.0f64, 1.0f64, 1.0f64},
+        {0.0f64, 0.0f64, 1.0f64, 0.5f64},
+        {0.0f64, 0.0f64, 0.5f64, 1.0f64},
+    };
+    for (uint32_t facing = 0u; facing < BLOCK_FACINGS; facing++) {
+        collision_box_t boxes[COLLISION_BOXES_PER_BLOCK];
+        const uint16_t stairs = block_state_make(BLOCK_ID_OAK_STAIRS, facing, false, false);
+        REQUIRE(collision_block_boxes(stairs, 10, 20, 30, boxes) == 2u);
+        /* The lower half is the whole cell, whichever way. */
+        CHECK_NEAR(boxes[0].min[0], 10.0f64, PT_EXACT);
+        CHECK_NEAR(boxes[0].max[0], 11.0f64, PT_EXACT);
+        CHECK_NEAR(boxes[0].min[1], 20.0f64, PT_EXACT);
+        CHECK_NEAR(boxes[0].max[1], 21.0f64, PT_EXACT);
+        CHECK_NEAR(boxes[0].max[2], 30.5f64, PT_EXACT);
+        CHECK_NEAR(boxes[1].min[0], 10.0f64 + step[facing][0], PT_EXACT);
+        CHECK_NEAR(boxes[1].min[1], 20.0f64 + step[facing][1], PT_EXACT);
+        CHECK_NEAR(boxes[1].max[0], 10.0f64 + step[facing][2], PT_EXACT);
+        CHECK_NEAR(boxes[1].max[1], 20.0f64 + step[facing][3], PT_EXACT);
+        CHECK_NEAR(boxes[1].min[2], 30.5f64, PT_EXACT);
+        CHECK_NEAR(boxes[1].max[2], 31.0f64, PT_EXACT);
+        /* A small box coming down in the middle of the step's half stops on the step, and in the other half on the lower half. */
+        const float64_t step_x = 10.0f64 + (step[facing][0] + step[facing][2]) * 0.5f64;
+        const float64_t step_y = 20.0f64 + (step[facing][1] + step[facing][3]) * 0.5f64;
+        /* The middle of the other half: mirrored through the middle of the cell. */
+        const float64_t low_x = 21.0f64 - step_x;
+        const float64_t low_y = 41.0f64 - step_y;
+        const float64_t places[2][2] = {{step_x, step_y}, {low_x, low_y}};
+        const float64_t lands[2] = {31.0f64, 30.5f64};
+        for (uint32_t p = 0u; p < 2u; p++) {
+            const collision_box_t falling = PT_BOX(places[p][0] - 0.1f64, places[p][1] - 0.1f64, 32.0f64,
+                                                   places[p][0] + 0.1f64, places[p][1] + 0.1f64, 32.2f64);
+            collision_move_t move;
+            pt_sweep(boxes, 2u, &falling, 0.0f64, 0.0f64, -3.0f64, &move);
+            CHECK(move.hit_z_down != 0u);
+            CHECK_NEAR(32.0f64 + move.moved[2], lands[p], PT_EXACT);
+        }
+    }
+    /* An id alone is facing north, as every stairs was. */
+    collision_box_t north[COLLISION_BOXES_PER_BLOCK], plain[COLLISION_BOXES_PER_BLOCK];
+    REQUIRE(collision_block_boxes(BLOCK_ID_OAK_STAIRS, 0, 0, 0, plain) == 2u);
+    REQUIRE(collision_block_boxes(block_state_make(BLOCK_ID_OAK_STAIRS, BLOCK_FACING_NORTH, false, false), 0, 0, 0,
+                                  north) == 2u);
+    CHECK_MEM_EQ(north, plain, sizeof(plain));
+}
+
 /* ---- In a real world -------------------------------------------------------------------------------------------------- */
 
 static void pt_move(test_world_t *w, const collision_box_t *box, float64_t x, float64_t y, float64_t z,

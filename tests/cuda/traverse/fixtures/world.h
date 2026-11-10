@@ -153,7 +153,7 @@ static uint32_t tw_encode_section(tw_world_t *world, uint32_t x0, uint32_t y0, u
                                                     .material_offset = 16u,
                                                     .light_offset = 18u,
                                                     .brick_count = 0u};
-            const uint16_t material = (uint16_t)(first_value & TRAVERSE_VALUE_MATERIAL_MASK);
+            const uint16_t material = (uint16_t)(first_value & TRAVERSE_VALUE_VOXEL_MASK);
             memcpy(out, &header, sizeof(header));
             memcpy(out + 16, &material, 2u);
             out[18] = (uint8_t)(first_value >> TRAVERSE_VALUE_LIGHT_SHIFT);
@@ -187,7 +187,7 @@ static uint32_t tw_encode_section(tw_world_t *world, uint32_t x0, uint32_t y0, u
         for (uint32_t v = 0u; v < 64u; v += 1u) {
             const uint32_t value = tw_value(world, bx + (v & 3u), by + ((v >> 2) & 3u), bz + (v >> 4));
             if (value != 0u) {
-                const uint16_t material = (uint16_t)(value & TRAVERSE_VALUE_MATERIAL_MASK);
+                const uint16_t material = (uint16_t)(value & TRAVERSE_VALUE_VOXEL_MASK);
                 memcpy(out + material_offset + place * 2u, &material, 2u);
                 out[light_offset + place] = (uint8_t)(value >> TRAVERSE_VALUE_LIGHT_SHIFT);
                 place += 1u;

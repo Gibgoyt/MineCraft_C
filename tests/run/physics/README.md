@@ -15,4 +15,5 @@ What it checks:
 - **Never through anything:** a thin wall at any speed, on the world's floor, and into a column that is not loaded.
 - **Random sweeps against brute force:** a random world and random moves, each against an independent march in tiny steps through the same cells, with the final box clear of everything.
 - **Every block in the table:** the boxes it collides with, against what its `config/blocks/` entry says.
+- **Stairs each way** (plan 005 phase 12): the step on the side they face, to the 32nd, and a box coming down lands on the step there and on the lower half elsewhere. An id alone is facing north.
 - **Memory:** the pair gives back what it took, the largest move fits the region, and no move touches the heap.

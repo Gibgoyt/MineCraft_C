@@ -9,6 +9,7 @@
 #include "tables/blocks/index.h"
 #include "tables/items/index.h"
 #include "time/index.h"
+#include "world/wall_torch/index.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -357,7 +358,7 @@ TEST(only_a_whole_opaque_block_is_a_floor) {
     }
     static const uint16_t BAD[] = {BLOCK_ID_AIR,      BLOCK_ID_GLASS, BLOCK_ID_OAK_LEAVES,
                                    BLOCK_ID_OAK_SLAB, BLOCK_ID_WATER, BLOCK_ID_LAVA,
-                                   BLOCK_ID_BEDROCK,  BLOCK_ID_TORCH, BLOCK_ID_TORCH_WALL_EAST};
+                                   BLOCK_ID_BEDROCK,  BLOCK_ID_TORCH, WALL_TORCH_FACING(BLOCK_FACING_WEST)};
     for (uint32_t i = 0u; i < sizeof(BAD) / sizeof(BAD[0]); i++) {
         ms_put(t, &rig, MS_PLACE_X, MS_PLACE_Y, -1, BAD[i]);
         CHECK_EQ_U64(ms_check_at(&rig, MOB_ID_ZOMBIE, MS_PLACE_X, MS_PLACE_Y, 0, &view, 7u), MOB_SPAWN_BAD_SURFACE);

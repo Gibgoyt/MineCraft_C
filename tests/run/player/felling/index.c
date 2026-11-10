@@ -9,6 +9,7 @@
 #include "tables/blocks/index.h"
 #include "terrain/feature/index.h"
 #include "world/index.h"
+#include "world/wall_torch/index.h"
 
 #include <inttypes.h>
 #include <stdint.h>
@@ -78,7 +79,7 @@ static void pf_end(pf_rig_t *rig) {
 
 static uint16_t pf_block(const pf_rig_t *rig, int32_t x, int32_t y, int32_t z) {
     uint16_t block = UINT16_MAX;
-    (void)world_map_block_get(rig->world.map, x, y, z, &block);
+    (void)world_map_voxel_get(rig->world.map, x, y, z, &block);
     return block;
 }
 
@@ -136,7 +137,7 @@ static bool pf_chop(pf_rig_t *rig, int32_t x, int32_t y, int32_t z) {
     rig->target.hit.cell[0] = x;
     rig->target.hit.cell[1] = y;
     rig->target.hit.cell[2] = z;
-    rig->target.hit.block = pf_block(rig, x, y, z);
+    rig->target.hit.block = block_state_id(pf_block(rig, x, y, z));
     rig->target.hit.axis = COLLISION_AXIS_Z;
     rig->target.hit.normal_sign = 1;
     const uint64_t mined = rig->hands.mined_count;
@@ -777,10 +778,10 @@ TEST(a_torch_on_a_log_goes_with_it_and_gives_itself_up) {
     REQUIRE(pf_begin(t, rig));
     pf_trunk(t, rig, PF_X, PF_Y, PF_Z, PF_Z + 4, BLOCK_ID_OAK_LOG);
     pf_put(t, rig, PF_X + 1, PF_Y, PF_Z + 4, BLOCK_ID_OAK_LEAVES);
-    pf_put(t, rig, PF_X + 1, PF_Y, PF_Z + 3, BLOCK_ID_TORCH_WALL_EAST);
-    pf_put(t, rig, PF_X - 1, PF_Y, PF_Z + 3, BLOCK_ID_TORCH_WALL_WEST);
-    pf_put(t, rig, PF_X, PF_Y + 1, PF_Z + 3, BLOCK_ID_TORCH_WALL_NORTH);
-    pf_put(t, rig, PF_X, PF_Y - 1, PF_Z + 3, BLOCK_ID_TORCH_WALL_SOUTH);
+    pf_put(t, rig, PF_X + 1, PF_Y, PF_Z + 3, WALL_TORCH_FACING(BLOCK_FACING_WEST));
+    pf_put(t, rig, PF_X - 1, PF_Y, PF_Z + 3, WALL_TORCH_FACING(BLOCK_FACING_EAST));
+    pf_put(t, rig, PF_X, PF_Y + 1, PF_Z + 3, WALL_TORCH_FACING(BLOCK_FACING_SOUTH));
+    pf_put(t, rig, PF_X, PF_Y - 1, PF_Z + 3, WALL_TORCH_FACING(BLOCK_FACING_NORTH));
     REQUIRE(pf_chop(rig, PF_X, PF_Y, PF_Z));
     REQUIRE(pf_settle(rig));
     CHECK_EQ_U64(pf_block(rig, PF_X + 1, PF_Y, PF_Z + 3), BLOCK_ID_AIR);
@@ -800,10 +801,10 @@ TEST(a_log_with_a_torch_on_every_side_waits_for_room_in_the_ring_and_nothing_is_
     pf_trunk(t, rig, PF_X, PF_Y, PF_Z, PF_Z + PF_TORCH_LOGS - 1, BLOCK_ID_OAK_LOG);
     pf_put(t, rig, PF_X, PF_Y, PF_Z + PF_TORCH_LOGS, BLOCK_ID_OAK_LEAVES);
     for (int32_t z = PF_Z; z < PF_Z + PF_TORCH_LOGS; z++) {
-        pf_put(t, rig, PF_X + 1, PF_Y, z, BLOCK_ID_TORCH_WALL_EAST);
-        pf_put(t, rig, PF_X - 1, PF_Y, z, BLOCK_ID_TORCH_WALL_WEST);
-        pf_put(t, rig, PF_X, PF_Y + 1, z, BLOCK_ID_TORCH_WALL_NORTH);
-        pf_put(t, rig, PF_X, PF_Y - 1, z, BLOCK_ID_TORCH_WALL_SOUTH);
+        pf_put(t, rig, PF_X + 1, PF_Y, z, WALL_TORCH_FACING(BLOCK_FACING_WEST));
+        pf_put(t, rig, PF_X - 1, PF_Y, z, WALL_TORCH_FACING(BLOCK_FACING_EAST));
+        pf_put(t, rig, PF_X, PF_Y + 1, z, WALL_TORCH_FACING(BLOCK_FACING_SOUTH));
+        pf_put(t, rig, PF_X, PF_Y - 1, z, WALL_TORCH_FACING(BLOCK_FACING_NORTH));
     }
     REQUIRE(pf_chop(rig, PF_X, PF_Y, PF_Z));
     rig->drain = 0u;

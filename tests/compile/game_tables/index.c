@@ -407,6 +407,10 @@ static_assert(sizeof(gtt_bad_case_t) == 24);
 #define GTT_STONE_TEXTURE "texture: { all: blocks/stone }\nsound: stone\n"
 
 static const gtt_bad_case_t GTT_BAD_CASES[] = {
+    /* A state is a word the table knows, and air has none. */
+    {GTT_STONE_START "facing: sideways\n" GTT_STONE_DROPS GTT_STONE_TEXTURE, ":3:", "unknown facing 'sideways'"},
+    {GTT_STONE_START "half: top\n" GTT_STONE_DROPS GTT_STONE_TEXTURE, ":3:", "unknown half 'top'"},
+    {GTT_STONE_START "open: maybe\n" GTT_STONE_DROPS GTT_STONE_TEXTURE, ":3:", "true or false"},
     /* What it sounds like: every block must say, and only what is never dug may say none. */
     {GTT_STONE_START GTT_STONE_DROPS "texture: { all: blocks/stone }\n", ":1:", "missing field 'sound'"},
     {GTT_STONE_START GTT_STONE_DROPS "texture: { all: blocks/stone }\nsound: squeak\n",
@@ -540,7 +544,8 @@ TEST(a_flag_in_the_file_beats_its_shape_either_way) {
     CHECK_EQ_I64(run.exit_code, 0);
     const char *source = gtt_read(t, gtt_path(t, tree.borrowed_out, "blocks/index.c"), nullptr);
     REQUIRE(source != nullptr);
-    CHECK_CONTAINS(source, ".flags = BLOCK_FLAG_REPLACEABLE | BLOCK_FLAG_FALLS, .sound = SOUND_FAMILY_STONE}");
+    CHECK_CONTAINS(source,
+                   ".flags = BLOCK_FLAG_REPLACEABLE | BLOCK_FLAG_FALLS, .sound = SOUND_FAMILY_STONE, .states = 0u}");
 
     gtt_write(t, tree.borrowed_stone,
               GTT_STONE_START "shape: fluid\nreplaceable: false\n" GTT_STONE_DROPS GTT_STONE_TEXTURE);
@@ -549,7 +554,40 @@ TEST(a_flag_in_the_file_beats_its_shape_either_way) {
     source = gtt_read(t, gtt_path(t, tree.borrowed_out, "blocks/index.c"), nullptr);
     REQUIRE(source != nullptr);
     CHECK_CONTAINS(source,
-                   ".shape = BLOCK_SHAPE_FLUID, .light = 0, .opacity = 0, .flags = 0u, .sound = SOUND_FAMILY_STONE}");
+                   ".shape = BLOCK_SHAPE_FLUID, .light = 0, .opacity = 0, .flags = 0u, .sound = SOUND_FAMILY_STONE, "
+                   ".states = 0u}");
+}
+
+TEST(a_state_in_the_file_is_in_the_table) {
+    const gtt_tree_t tree = gtt_tree_make(t, "states");
+    gtt_write(t, tree.borrowed_stone,
+              GTT_STONE_START "facing: horizontal\nhalf: upper_lower\nopen: true\n" GTT_STONE_DROPS GTT_STONE_TEXTURE);
+    test_process_t run;
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 0);
+    const char *source = gtt_read(t, gtt_path(t, tree.borrowed_out, "blocks/index.c"), nullptr);
+    REQUIRE(source != nullptr);
+    CHECK_CONTAINS(source, ".states = BLOCK_STATES_FACING | BLOCK_STATES_HALF | BLOCK_STATES_OPEN}");
+
+    gtt_write(t, tree.borrowed_stone,
+              GTT_STONE_START "facing: none\nhalf: none\nopen: false\n" GTT_STONE_DROPS GTT_STONE_TEXTURE);
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 0);
+    source = gtt_read(t, gtt_path(t, tree.borrowed_out, "blocks/index.c"), nullptr);
+    REQUIRE(source != nullptr);
+    CHECK_CONTAINS(source, ".sound = SOUND_FAMILY_STONE, .states = 0u}");
+}
+
+TEST(the_real_blocks_that_turn_say_so) {
+    static const uint16_t turning[] = {
+        BLOCK_ID_OAK_STAIRS, BLOCK_ID_COBBLESTONE_STAIRS,     BLOCK_ID_LADDER,
+        BLOCK_ID_VINE,       BLOCK_ID_WOODWORKING_BENCH_WEST, BLOCK_ID_WOODWORKING_BENCH_EAST};
+    for (uint32_t i = 0u; i < sizeof(turning) / sizeof(turning[0]); i++) {
+        CHECK_EQ_U64(block_defs[turning[i]].states, BLOCK_STATES_FACING);
+    }
+    CHECK_EQ_U64(block_defs[BLOCK_ID_STONE].states, 0u);
+    CHECK_EQ_U64(block_defs[BLOCK_ID_AIR].states, 0u);
+    CHECK(BLOCK_COUNT <= BLOCK_STATE_ID_LIMIT);
 }
 
 TEST(each_mistake_is_refused_at_its_line) {

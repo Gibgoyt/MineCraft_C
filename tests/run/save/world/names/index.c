@@ -5,8 +5,10 @@
 #include "log/index.h"
 #include "save/index.h"
 #include "tables/blocks/index.h"
+#include "world/block_state/index.h"
 #include "world/index.h"
 
+#include <dirent.h>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <stdio.h>
@@ -638,6 +640,209 @@ TEST(a_record_is_held_to_the_length_of_its_list) {
     CHECK(!save_world_record_decode_within(record, bytes, 999u, back));
     REQUIRE(save_world_record_decode_within(record, bytes, 1000u, back));
     CHECK_MEM_EQ(back, states, SECTION_VOXELS * sizeof(uint16_t));
+}
+
+/* ---- The state beside each id (plan 005 phase 12) ------------------------------------------------------------------------ */
+
+TEST(a_saved_world_keeps_every_facing_and_a_block_keeps_only_the_state_it_declares) {
+    nw_rig_t *const rig = nw_rig_new(t);
+    REQUIRE(rig != nullptr);
+    REQUIRE(nw_session_begin(t, rig));
+    world_edit_t *const edit = &rig->world->edit;
+    /* Every block that turns, each way, one after another along the section, and then stone given a facing it does not have. */
+    uint16_t *const written = test_alloc(t, SECTION_VOXELS * sizeof(uint16_t));
+    uint32_t count = 0u;
+    for (uint32_t id = 0u; id < BLOCK_COUNT; id++) {
+        for (uint32_t facing = 0u; facing < BLOCK_FACINGS && block_state_turns(id); facing++) {
+            written[count++] = block_state_make(id, facing, false, false);
+        }
+    }
+    REQUIRE(count >= 4u * 6u);
+    const uint32_t stone_at = count;
+    written[count++] = block_state_make(BLOCK_ID_STONE, BLOCK_FACING_EAST, false, false);
+    for (uint32_t voxel = 0u; voxel < count; voxel++) {
+        int32_t x = 0, y = 0, z = 0;
+        nw_voxel_place(0u, NW_SECTION_LOW, voxel, &x, &y, &z);
+        CHECK_EQ_U64(world_edit_block_set(edit, x, y, z, written[voxel]), WORLD_EDIT_STATUS_CHANGED);
+    }
+    CHECK_EQ_U64(save_world_flush(&rig->save->world, edit), SAVE_WORLD_OK);
+    nw_session_end(rig);
+
+    REQUIRE(nw_open_only(t, rig));
+    memset(rig->states, 0, NW_COLUMN_BYTES);
+    (void)save_world_column_overlay(&rig->save->world, NW_COLUMN_X[0], 0, rig->states, rig->scratch);
+    for (uint32_t voxel = 0u; voxel < count; voxel++) {
+        const uint16_t expected = voxel == stone_at ? (uint16_t)BLOCK_ID_STONE : written[voxel];
+        CHECK_EQ_U64(rig->states[(uint64_t)NW_SECTION_LOW * SECTION_VOXELS + voxel], expected);
+    }
+    CHECK_EQ_U64(atomic_load(&rig->save->world.sections_damaged), 0u);
+    save_deinit(rig->save);
+    nw_rig_remove(t, rig);
+}
+
+/* Each delta file of a world, as an older build would have written it: its header's version, and the checksum made to agree. */
+static void nw_deltas_version_set(test_context_t *t, const nw_rig_t *rig, uint32_t version) {
+    char directory[NW_PATH_BYTES];
+    snprintf(directory, sizeof(directory), "%s/blocks", rig->root);
+    DIR *const listing = opendir(directory);
+    REQUIRE(listing != nullptr);
+    uint32_t files = 0u;
+    for (const struct dirent *entry = readdir(listing); entry != nullptr; entry = readdir(listing)) {
+        if (strncmp(entry->d_name, "r.", 2u) != 0) {
+            continue;
+        }
+        char path[2u * NW_PATH_BYTES];
+        snprintf(path, sizeof(path), "%s/%s", directory, entry->d_name);
+        uint64_t bytes = 0u;
+        uint8_t *const file = nw_slurp(t, path, &bytes);
+        save_world_delta_header_t header;
+        memcpy(&header, file, sizeof(header));
+        header.version = version;
+        header.checksum = nw_fnv(&header, offsetof(save_world_delta_header_t, checksum));
+        memcpy(file, &header, sizeof(header));
+        CHECK_EQ_U64(file_write_atomic(path, file, bytes), FILE_OK);
+        files++;
+    }
+    closedir(listing);
+    CHECK_EQ_U64(files, NW_COLUMNS);
+}
+
+TEST(a_world_from_before_states_opens_with_every_block_as_it_was) {
+    nw_rig_t *const rig = nw_rig_new(t);
+    REQUIRE(rig != nullptr);
+    nw_world_write(t, rig, BLOCK_COUNT);
+    const uint32_t older = SAVE_WORLD_VERSION_FIRST_WITH_STATE - 1u;
+    nw_manifest_forge(t, rig, offsetof(save_world_manifest_header_t, version), &older, sizeof(older));
+    nw_deltas_version_set(t, rig, older);
+    const char **const names = test_alloc(t, BLOCK_COUNT * sizeof(const char *));
+    for (uint32_t id = 0u; id < BLOCK_COUNT; id++) {
+        names[id] = block_defs[id].name;
+    }
+    /* Every block reads as it was saved, facing north as every block did, stairs and benches among them. */
+    REQUIRE(nw_open_only(t, rig));
+    CHECK_EQ_U64(rig->save->world.names_same, 1u);
+    nw_world_check(t, rig, names, BLOCK_COUNT, nullptr);
+    save_deinit(rig->save);
+
+    /* A change in one region and a save: the manifest is the new version, the old file of the other region is read as it is. */
+    int32_t x = 0, y = 0, z = 0;
+    nw_voxel_place(0u, NW_SECTION_LOW, 5u, &x, &y, &z);
+    const uint16_t turned = block_state_make(BLOCK_ID_OAK_STAIRS, BLOCK_FACING_WEST, false, false);
+    nw_edit_and_save(t, rig, x, y, z, turned);
+    uint64_t bytes = 0u;
+    const uint8_t *const manifest = nw_slurp(t, rig->manifest, &bytes);
+    save_world_manifest_header_t header;
+    memcpy(&header, manifest, sizeof(header));
+    CHECK_EQ_U64(header.version, SAVE_WORLD_VERSION);
+    REQUIRE(nw_open_only(t, rig));
+    memset(rig->states, 0, NW_COLUMN_BYTES);
+    (void)save_world_column_overlay(&rig->save->world, NW_COLUMN_X[0], 0, rig->states, rig->scratch);
+    CHECK_EQ_U64(rig->states[(uint64_t)NW_SECTION_LOW * SECTION_VOXELS + 5u], turned);
+    memset(rig->states, 0, NW_COLUMN_BYTES);
+    (void)save_world_column_overlay(&rig->save->world, NW_COLUMN_X[1], 0, rig->states, rig->scratch);
+    for (uint32_t voxel = 0u; voxel < SECTION_VOXELS; voxel++) {
+        CHECK_EQ_U64(rig->states[(uint64_t)NW_SECTION_HIGH * SECTION_VOXELS + voxel],
+                     nw_voxel_state(1u, NW_SECTION_HIGH, voxel, BLOCK_COUNT));
+    }
+    CHECK_EQ_U64(atomic_load(&rig->save->world.sections_damaged), 0u);
+    save_deinit(rig->save);
+    nw_rig_remove(t, rig);
+}
+
+/* A world from a build with the four torches on walls: this build's list with one of their names where wall_torch is. Every voxel of
+ * that place is then that torch, which is wall_torch facing its wall. */
+TEST(each_old_torch_on_a_wall_reads_as_a_wall_torch_facing_its_wall) {
+    static const char *const old_names[BLOCK_FACINGS] = {"torch_wall_south", "torch_wall_west", "torch_wall_north",
+                                                         "torch_wall_east"};
+    for (uint32_t facing = 0u; facing < BLOCK_FACINGS; facing++) {
+        nw_rig_t *const rig = nw_rig_new(t);
+        REQUIRE(rig != nullptr);
+        nw_world_write(t, rig, BLOCK_COUNT);
+        uint8_t *const list = test_alloc(t, SAVE_NAMES_TABLE_BYTES_MAX);
+        uint64_t at = sizeof(save_names_head_t);
+        for (uint32_t id = 0u; id < BLOCK_COUNT; id++) {
+            const char *const name = id == BLOCK_ID_WALL_TORCH ? old_names[facing] : block_defs[id].name;
+            memcpy(list + at, name, strlen(name) + 1u);
+            at += strlen(name) + 1u;
+        }
+        const save_names_head_t head = {.count = BLOCK_COUNT, .bytes = (uint32_t)(at - sizeof(save_names_head_t))};
+        memcpy(list, &head, sizeof(head));
+        while ((at & 7u) != 0u) {
+            list[at] = 0u;
+            at++;
+        }
+        nw_manifest_list_set(t, rig, list, at);
+        const int32_t quiet = log_set_fd(open("/dev/null", O_WRONLY | O_CLOEXEC));
+        REQUIRE(nw_open_only(t, rig));
+        /* Facing north is no state at all, so that one list is this build's numbering under another name. */
+        CHECK_EQ_U64(rig->save->world.names_same, facing == BLOCK_FACING_NORTH ? 1u : 0u);
+        uint32_t torches = 0u;
+        for (uint32_t column = 0u; column < NW_COLUMNS; column++) {
+            memset(rig->states, 0, NW_COLUMN_BYTES);
+            (void)save_world_column_overlay(&rig->save->world, NW_COLUMN_X[column], 0, rig->states, rig->scratch);
+            for (uint32_t voxel = 0u; voxel < SECTION_VOXELS; voxel++) {
+                const uint16_t saved = nw_voxel_state(column, NW_SECTION_LOW, voxel, BLOCK_COUNT);
+                const uint16_t expected =
+                    saved == BLOCK_ID_WALL_TORCH ? block_state_make(BLOCK_ID_WALL_TORCH, facing, false, false) : saved;
+                CHECK_EQ_U64(rig->states[(uint64_t)NW_SECTION_LOW * SECTION_VOXELS + voxel], expected);
+                torches += saved == BLOCK_ID_WALL_TORCH ? 1u : 0u;
+            }
+        }
+        CHECK(torches != 0u);
+        save_deinit(rig->save);
+
+        /* A wall torch placed by this build, facing east, is saved under its own name, and both read back as they are. */
+        int32_t x = 0, y = 0, z = 0;
+        nw_voxel_place(0u, NW_SECTION_LOW, 3u, &x, &y, &z);
+        const uint16_t placed = block_state_make(BLOCK_ID_WALL_TORCH, BLOCK_FACING_EAST, false, false);
+        nw_edit_and_save(t, rig, x, y, z, placed);
+        REQUIRE(nw_open_only(t, rig));
+        memset(rig->states, 0, NW_COLUMN_BYTES);
+        (void)save_world_column_overlay(&rig->save->world, NW_COLUMN_X[0], 0, rig->states, rig->scratch);
+        CHECK_EQ_U64(rig->states[(uint64_t)NW_SECTION_LOW * SECTION_VOXELS + 3u], placed);
+        for (uint32_t voxel = 4u; voxel < SECTION_VOXELS; voxel++) {
+            const uint16_t saved = nw_voxel_state(0u, NW_SECTION_LOW, voxel, BLOCK_COUNT);
+            if (saved == BLOCK_ID_WALL_TORCH) {
+                CHECK_EQ_U64(rig->states[(uint64_t)NW_SECTION_LOW * SECTION_VOXELS + voxel],
+                             block_state_make(BLOCK_ID_WALL_TORCH, facing, false, false));
+            }
+        }
+        save_deinit(rig->save);
+        const int32_t was_quiet = log_set_fd(quiet);
+        (void)close(was_quiet);
+        nw_rig_remove(t, rig);
+    }
+}
+
+TEST(a_list_too_long_for_a_state_number_is_refused) {
+    nw_rig_t *const rig = nw_rig_new(t);
+    REQUIRE(rig != nullptr);
+    nw_world_write(t, rig, BLOCK_COUNT);
+    /* This build's names, and then made-up ones up to one past what 12 bits hold. */
+    uint8_t *const list = test_alloc(t, SAVE_NAMES_TABLE_BYTES_MAX);
+    uint64_t at = sizeof(save_names_head_t);
+    for (uint32_t id = 0u; id < SAVE_WORLD_NAMES_MAX + 1u; id++) {
+        char made_up[32];
+        snprintf(made_up, sizeof(made_up), "made_up_%" PRIu32, id);
+        const char *const name = id < BLOCK_COUNT ? block_defs[id].name : made_up;
+        memcpy(list + at, name, strlen(name) + 1u);
+        at += strlen(name) + 1u;
+    }
+    const save_names_head_t head = {.count = SAVE_WORLD_NAMES_MAX + 1u,
+                                    .bytes = (uint32_t)(at - sizeof(save_names_head_t))};
+    memcpy(list, &head, sizeof(head));
+    while ((at & 7u) != 0u) {
+        list[at] = 0u;
+        at++;
+    }
+    nw_manifest_list_set(t, rig, list, at);
+    const int32_t quiet = log_set_fd(open("/dev/null", O_WRONLY | O_CLOEXEC));
+    REQUIRE(save_init(rig->save));
+    CHECK_EQ_U64(save_open(rig->save, rig->root, NW_SEED), SAVE_WORLD_ERROR_TABLES);
+    save_deinit(rig->save);
+    const int32_t was_quiet = log_set_fd(quiet);
+    (void)close(was_quiet);
+    nw_rig_remove(t, rig);
 }
 
 TEST_MAIN()

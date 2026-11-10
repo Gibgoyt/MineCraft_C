@@ -280,8 +280,8 @@
 +1 key e up
 +1 key 4 down
 +1 key 4 up
-# Away from the bench, and two put down on the ground. The pointer stays where the bench's screen left it, at 286, 375.
-+4 move 150 0
+# Away from the bench, and two put down on the ground. The pointer stays where the bench's screen left it, at 286, 375. The bench runs to the right of whoever placed it, so the turn is a long one.
++4 move 300 0
 +6 screenshot aim.png
 +1 button right down
 +1 button right up
@@ -297,7 +297,7 @@
 +70 button left up
 +20 screenshot stairs_mined.png
 # Back to the bench, and one half of it by hand: both go, and one bench comes down to be picked up.
-+1 move -175 0
++1 move -325 0
 +6 screenshot bench_before.png
 +1 button left down
 +90 button left up

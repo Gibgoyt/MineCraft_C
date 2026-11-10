@@ -6,6 +6,7 @@
 #include "terrain/index.h"
 #include "time/index.h"
 #include "world/index.h"
+#include "world/wall_torch/index.h"
 
 #include <inttypes.h>
 #include <stdio.h>
@@ -94,7 +95,7 @@ static void sim_set(test_context_t *t, sim_t *sim, int32_t x, int32_t y, int32_t
 
 static uint16_t sim_at(test_context_t *t, const sim_t *sim, int32_t x, int32_t y, int32_t z) {
     uint16_t state = BLOCK_NO_ID;
-    CHECK_EQ_U64(world_map_block_get(&sim->map, x, y, z, &state), WORLD_MAP_STATUS_OK);
+    CHECK_EQ_U64(world_map_voxel_get(&sim->map, x, y, z, &state), WORLD_MAP_STATUS_OK);
     return state;
 }
 
@@ -995,19 +996,19 @@ TEST(a_torch_whose_wall_goes_any_other_way_goes_too_and_water_washes_it_away) {
     sim_floor(t, sim, BLOCK_ID_STONE);
     /* Sand holding a torch, with room to fall. */
     sim_set(t, sim, 4, 4, 6, BLOCK_ID_SAND);
-    sim_set(t, sim, 5, 4, 6, BLOCK_ID_TORCH_WALL_EAST);
+    sim_set(t, sim, 5, 4, 6, WALL_TORCH_FACING(BLOCK_FACING_WEST));
     /* One with a wall that stays. */
     sim_set(t, sim, 8, 4, 6, BLOCK_ID_STONE);
-    sim_set(t, sim, 9, 4, 6, BLOCK_ID_TORCH_WALL_EAST);
+    sim_set(t, sim, 9, 4, 6, WALL_TORCH_FACING(BLOCK_FACING_WEST));
     (void)sim_settle(t, sim);
     CHECK_EQ_U64(sim_at(t, sim, 4, 4, 6), BLOCK_ID_AIR);
     CHECK_EQ_U64(sim_at(t, sim, 4, 4, 1), BLOCK_ID_SAND);
     CHECK_EQ_U64(sim_at(t, sim, 5, 4, 6), BLOCK_ID_AIR);
-    CHECK_EQ_U64(sim_at(t, sim, 9, 4, 6), BLOCK_ID_TORCH_WALL_EAST);
+    CHECK_EQ_U64(sim_at(t, sim, 9, 4, 6), WALL_TORCH_FACING(BLOCK_FACING_WEST));
     world_tick_broken_t broken;
     uint32_t went = 0u;
     while (world_tick_broken_next(&sim->tick, &broken)) {
-        CHECK_EQ_U64(broken.block, BLOCK_ID_TORCH_WALL_EAST);
+        CHECK_EQ_U64(broken.block, BLOCK_ID_WALL_TORCH);
         CHECK_EQ_U64((uint64_t)(int64_t)broken.x, 5u);
         went++;
     }
@@ -1018,7 +1019,7 @@ TEST(a_torch_whose_wall_goes_any_other_way_goes_too_and_water_washes_it_away) {
     CHECK_EQ_U64(sim_at(t, sim, 9, 4, 6), BLOCK_ID_WATER);
     went = 0u;
     while (world_tick_broken_next(&sim->tick, &broken)) {
-        went += broken.block == BLOCK_ID_TORCH_WALL_EAST ? 1u : 0u;
+        went += broken.block == BLOCK_ID_WALL_TORCH ? 1u : 0u;
     }
     CHECK_EQ_U64(went, 1u);
     sim_end(sim);

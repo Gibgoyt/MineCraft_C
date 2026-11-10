@@ -15,5 +15,7 @@ No card, no display, and the program itself is not run. What it checks:
 - **Refusing:** a block in the east cell, the player in either cell, and a column not loaded for the east half each place nothing and keep the item. What can be overwritten, as tall grass or water, is overwritten.
 - **Breaking:** mining either half takes both and drops exactly one bench, with what stood on or hung from either half going too. A bench beside it stays. It is the same across the edge of a column.
 - **A half alone** breaks by itself with one bench. If its other half's column is not loaded, it stays until it is.
+- **Facings** (plan 005 phase 12): each half finds the other by its facing, a bench lies across the view each of the four ways and mining either half takes both, R turns it before it is placed and the turn stays with what is held, and stairs rise away from where the player looks while stone placed the same way has no state.
+- **The plan:** `player_interaction_place_plan` says what and where, both cells and their voxels, with nothing in the hand, with room, and with the second cell taken, and changes nothing; placing then does what it said.
 
 A blast is in `tests/run/mob/creeper/`, and the whole of it played through the built program in `tests/run/playthrough/`.

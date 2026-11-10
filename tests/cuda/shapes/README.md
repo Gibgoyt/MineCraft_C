@@ -13,13 +13,14 @@ Compute only. It opens no display and no input device, and runs the built progra
 
 What it checks:
 
-- **By hand:** one ray against each shape, from each side that matters, with its `t` and face worked out on paper. A slab's top at a half, the step of the stairs, a plate one texel thick, a torch, a torch on a wall leaning each of its four ways, rays that pass a box by inside its voxel, a ray from inside a box, one told to start past a box, a section all of one shape with no masks to go by, a material with no row, and a table too short.
+- **By hand:** one ray against each shape, from each side that matters, with its `t` and face worked out on paper. A slab's top at a half, the step of the stairs, a plate one texel thick, a torch, a torch on a wall leaning each of its four ways, stairs and a ladder turned to each facing, rays that pass a box by inside its voxel, a ray from inside a box, one told to start past a box, a section all of one shape with no masks to go by, a material with no row, and a table too short.
 - **Under plain light:** everything here draws with shapes and holes alone, so the reference needs only each kind of face's one brightness. The sun, stored light and fog are `tests/cuda/sky/`'s.
 - **Against an exact reference:** a floor and a block of each shape, from all sides and from near and far. Every pixel against a trace in `float64_t` over its own list of boxes, written apart from the card's table, from surface to surface through holes in the real textures. Pixels near enough an edge for rounding to choose are left out, as `tests/run/render/frame/` does, and at least 24 pictures' worth must be left in, with every block and face seen.
 - **The settings:** the same comparison with shapes off, with alpha off, and with both off, each held to what it says.
 - **The coarse pass:** rays with and without it find the same things, to the bit, while it does start tiles later than 0.
 - **The layer limit:** a line of leaves with one hole lined up all the way. With 16 leaves the pixel stops on the last of them, with its mean colour. With 15 it reaches the stone behind.
-- **Golden pictures:** `fixtures/*.png`, at most 2 out of 255 apart on any channel. Ahmed's card and driver made them. To make them again, after looking at them:
+- **Every facing** (plan 005 phase 12): a second scene of stairs, a woodworking bench, a ladder and a torch on a wall, each turned all four ways, against the same exact trace from all sides. The trace turns boxes, faces and the place a picture is read at by arithmetic of its own, apart from `run/include/types/block_state/`, so a bench's front and top are held to where they turn.
+- **Golden pictures:** `fixtures/*.png`, at most 2 out of 255 apart on any channel. `facings.png` and `facings_back.png` are the scene of facings from the south-west and the north-east. Ahmed's card and driver made them. To make them again, after looking at them:
 
       MC_GOLDEN_WRITE=1 tools/test-or-build.sh ctest --preset debug -R '^render_feature_shapes$'
 

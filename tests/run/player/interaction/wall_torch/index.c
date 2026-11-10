@@ -46,7 +46,7 @@ static bool wt_begin(test_context_t *t, wt_rig_t *rig) {
 
 static uint16_t wt_block(wt_rig_t *rig, int32_t x, int32_t y, int32_t z) {
     uint16_t block = UINT16_MAX;
-    (void)world_map_block_get(rig->world.map, x, y, z, &block);
+    (void)world_map_voxel_get(rig->world.map, x, y, z, &block);
     return block;
 }
 
@@ -60,7 +60,8 @@ static void wt_aim(wt_rig_t *rig, int32_t x, int32_t y, int32_t z, uint8_t axis,
     rig->target.hit.cell[0] = x;
     rig->target.hit.cell[1] = y;
     rig->target.hit.cell[2] = z;
-    rig->target.hit.block = wt_block(rig, x, y, z);
+    rig->target.hit.voxel = wt_block(rig, x, y, z);
+    rig->target.hit.block = block_state_id(rig->target.hit.voxel);
     rig->target.hit.axis = axis;
     rig->target.hit.normal_sign = sign;
 }
@@ -108,10 +109,10 @@ typedef struct wt_side_t {
 static_assert(sizeof(wt_side_t) == 12);
 
 static const wt_side_t wt_sides[WALL_TORCH_SIDES] = {
-    {BLOCK_ID_TORCH_WALL_EAST, COLLISION_AXIS_X, 1, 4, 3},
-    {BLOCK_ID_TORCH_WALL_WEST, COLLISION_AXIS_X, -1, 2, 3},
-    {BLOCK_ID_TORCH_WALL_NORTH, COLLISION_AXIS_Y, 1, 3, 4},
-    {BLOCK_ID_TORCH_WALL_SOUTH, COLLISION_AXIS_Y, -1, 3, 2},
+    {WALL_TORCH_FACING(BLOCK_FACING_WEST), COLLISION_AXIS_X, 1, 4, 3},
+    {WALL_TORCH_FACING(BLOCK_FACING_EAST), COLLISION_AXIS_X, -1, 2, 3},
+    {WALL_TORCH_FACING(BLOCK_FACING_SOUTH), COLLISION_AXIS_Y, 1, 3, 4},
+    {WALL_TORCH_FACING(BLOCK_FACING_NORTH), COLLISION_AXIS_Y, -1, 3, 2},
 };
 
 TEST(each_side_gives_its_own_torch_and_the_hand_goes_on_holding_a_torch) {
@@ -192,7 +193,7 @@ TEST(tall_grass_is_overwritten_by_whichever_it_comes_to) {
     wt_put(t, &rig, 3, 3, 5, BLOCK_ID_TALL_GRASS);
     wt_aim(&rig, 3, 3, 5, COLLISION_AXIS_X, 1);
     wt_tick(&rig, false, true);
-    CHECK_EQ_U64(wt_block(&rig, 3, 3, 5), BLOCK_ID_TORCH_WALL_EAST);
+    CHECK_EQ_U64(wt_block(&rig, 3, 3, 5), WALL_TORCH_FACING(BLOCK_FACING_WEST));
     rig.hands.place_delay = 0u;
     /* No wall behind it, and a floor under it. */
     wt_put(t, &rig, 7, 3, 4, BLOCK_ID_STONE);
@@ -230,14 +231,14 @@ TEST(breaking_the_block_behind_drops_every_torch_it_held_and_no_other) {
     wt_put(t, &rig, 3, 3, 6, BLOCK_ID_TORCH);
     /* Not on this block. In the next cell along, leaning away from it, on a stone of its own. */
     wt_put(t, &rig, 6, 3, 5, BLOCK_ID_STONE);
-    wt_put(t, &rig, 5, 3, 5, BLOCK_ID_TORCH_WALL_WEST);
+    wt_put(t, &rig, 5, 3, 5, WALL_TORCH_FACING(BLOCK_FACING_EAST));
     wt_mine(&rig, 3, 3, 5);
     CHECK_EQ_U64(wt_block(&rig, 3, 3, 5), BLOCK_ID_AIR);
     for (uint32_t i = 0u; i < WALL_TORCH_SIDES; i++) {
         CHECK_EQ_U64(wt_block(&rig, wt_sides[i].x, wt_sides[i].y, 5), BLOCK_ID_AIR);
     }
     CHECK_EQ_U64(wt_block(&rig, 3, 3, 6), BLOCK_ID_AIR);
-    CHECK_EQ_U64(wt_block(&rig, 5, 3, 5), BLOCK_ID_TORCH_WALL_WEST);
+    CHECK_EQ_U64(wt_block(&rig, 5, 3, 5), WALL_TORCH_FACING(BLOCK_FACING_EAST));
     uint32_t others = 0u;
     CHECK_EQ_U64(wt_drops_count(&rig, "torch", &others), 5u);
     CHECK_EQ_U64(others, 1u); /* the dirt */
@@ -250,10 +251,10 @@ TEST(a_torch_beside_a_broken_block_that_leans_along_it_stays) {
     /* Beside the dirt, at (3, 4, 5), on the stone to its west: it is the wrong torch for the dirt to hold. */
     wt_put(t, &rig, 3, 3, 5, BLOCK_ID_DIRT);
     wt_put(t, &rig, 2, 4, 5, BLOCK_ID_STONE);
-    wt_put(t, &rig, 3, 4, 5, BLOCK_ID_TORCH_WALL_EAST);
+    wt_put(t, &rig, 3, 4, 5, WALL_TORCH_FACING(BLOCK_FACING_WEST));
     wt_mine(&rig, 3, 3, 5);
     CHECK_EQ_U64(wt_block(&rig, 3, 3, 5), BLOCK_ID_AIR);
-    CHECK_EQ_U64(wt_block(&rig, 3, 4, 5), BLOCK_ID_TORCH_WALL_EAST);
+    CHECK_EQ_U64(wt_block(&rig, 3, 4, 5), WALL_TORCH_FACING(BLOCK_FACING_WEST));
     test_world_end(&rig.world);
 }
 
@@ -276,7 +277,7 @@ TEST(mined_itself_it_gives_a_torch_and_leaves_the_wall) {
 
 TEST(what_a_wall_torch_is_lights_like_a_torch_and_nothing_stands_on_it) {
     for (uint32_t i = 0u; i < WALL_TORCH_SIDES; i++) {
-        const block_def_t *const def = &block_defs[WALL_TORCH_BLOCKS[i]];
+        const block_def_t *const def = &block_defs[block_state_id(wt_sides[i].block)];
         const block_def_t *const floor_torch = &block_defs[BLOCK_ID_TORCH];
         CHECK_EQ_U64(def->light, floor_torch->light);
         CHECK_EQ_U64(def->opacity, floor_torch->opacity);
@@ -301,6 +302,15 @@ TEST(the_names_and_the_leaning_agree) {
     CHECK(!wall_torch_out((uint16_t)BLOCK_COUNT, nullptr, nullptr));
     CHECK_EQ_U64(wall_torch_of(0, 0), BLOCK_NO_ID);
     CHECK_EQ_U64(wall_torch_of(1, 1), BLOCK_NO_ID);
+    CHECK_EQ_U64(wall_torch_of(2, 0), BLOCK_NO_ID);
+    /* A wall torch faces its wall: what hangs from a block one step east of it faces west. */
+    for (uint32_t facing = 0u; facing < BLOCK_FACINGS; facing++) {
+        const uint16_t torch = block_state_make(BLOCK_ID_WALL_TORCH, facing, false, false);
+        const int32_t step_x = -block_facing_step_x(facing), step_y = -block_facing_step_y(facing);
+        CHECK(wall_torch_hangs_from(torch, step_x, step_y));
+        CHECK(!wall_torch_hangs_from(torch, -step_x, -step_y));
+        CHECK(!wall_torch_hangs_from(BLOCK_ID_TORCH, step_x, step_y));
+    }
 }
 
 /* ---- The real aim ------------------------------------------------------------------------------------------------- */
@@ -328,7 +338,8 @@ TEST(the_real_aim_at_each_side_puts_the_torch_there_and_can_find_it_again) {
         /* Looking again, the same way, the torch is in the way: its middle is in the way, as it leans out at this height. */
         player_camera_target(rig.world.map, eye, yaws[i], 0.0f32, &rig.target);
         REQUIRE(rig.target.hit.result == RAYCAST_RESULT_HIT);
-        CHECK_EQ_U64(rig.target.hit.block, side->block);
+        CHECK_EQ_U64(rig.target.hit.voxel, side->block);
+        CHECK_EQ_U64(rig.target.hit.block, BLOCK_ID_WALL_TORCH);
         CHECK_EQ_U64((uint64_t)(int64_t)rig.target.hit.cell[0], (uint64_t)(int64_t)side->x);
         CHECK_EQ_U64((uint64_t)(int64_t)rig.target.hit.cell[1], (uint64_t)(int64_t)side->y);
         /* Over its top, the stone is still there to aim at, for the next one. */
@@ -518,7 +529,7 @@ TEST(all_four_are_drawn_where_they_hang_and_show_their_flames) {
     const float32_t yaws[WALL_TORCH_SIDES] = {2.0f32 * half_pi, 0.0f32, -half_pi, half_pi};
     for (uint32_t i = 0u; i < WALL_TORCH_SIDES; i++) {
         int32_t out_x = 0, out_y = 0;
-        REQUIRE(wall_torch_out(WALL_TORCH_BLOCKS[i], &out_x, &out_y));
+        REQUIRE(wall_torch_out(wt_sides[i].block, &out_x, &out_y));
         const float64_t eye[3] = {middle[0] + 3.0f64 * (float64_t)out_x, middle[1] + 3.0f64 * (float64_t)out_y,
                                   middle[2]};
         player_target_t target;
@@ -529,8 +540,8 @@ TEST(all_four_are_drawn_where_they_hang_and_show_their_flames) {
         g->hands->place_delay = 0u;
         player_interaction_tick(g->hands, edit, &input);
         uint16_t placed = BLOCK_ID_AIR;
-        CHECK(world_map_block_get(&g->world->map, x + out_x, y + out_y, z, &placed) == WORLD_MAP_STATUS_OK);
-        CHECK_EQ_U64(placed, WALL_TORCH_BLOCKS[i]);
+        CHECK(world_map_voxel_get(&g->world->map, x + out_x, y + out_y, z, &placed) == WORLD_MAP_STATUS_OK);
+        CHECK_EQ_U64(placed, wt_sides[i].block);
     }
     /* And one on the floor, on top of the same stone, to see them together. */
     const float64_t above[3] = {middle[0], middle[1], middle[2] + 3.0f64};

@@ -188,6 +188,29 @@ TEST(it_goes_over_a_slab_and_into_stairs_by_what_they_really_fill) {
     test_world_end(&w);
 }
 
+/* Plan 005 phase 12: a ladder lies on the side it faces, and a hit says the block and its state. */
+TEST(a_turned_ladder_is_aimed_at_where_it_is_drawn) {
+    test_world_t w;
+    REQUIRE(test_world_begin(t, &w));
+    const uint16_t east = block_state_make(BLOCK_ID_LADDER, BLOCK_FACING_EAST, false, false);
+    rt_put(t, &w, 12, 5, 3, east);
+    raycast_hit_t hit;
+    /* From the west, along x: the plate is at the far, east side of its cell. */
+    REQUIRE(rt_cast(&w, 9.5f64, 5.5f64, 3.5f64, 1.0f64, 0.0f64, 0.0f64, 8.0f64, &hit) == RAYCAST_RESULT_HIT);
+    rt_check_cell(t, &hit, 12, 5, 3);
+    CHECK_NEAR(hit.distance, 2.5f64 + 30.0f64 / 32.0f64, 1e-9f64);
+    CHECK_EQ_U64(hit.block, BLOCK_ID_LADDER);
+    CHECK_EQ_U64(hit.voxel, east);
+    /* Along y through its cell's west side, there is nothing to aim at. */
+    CHECK_EQ_U64(rt_cast(&w, 12.25f64, 2.5f64, 3.5f64, 0.0f64, 1.0f64, 0.0f64, 6.0f64, &hit), RAYCAST_RESULT_MISS);
+    /* Facing north, as an id alone, it is on the north side, as every ladder was. */
+    rt_put(t, &w, 12, 5, 3, BLOCK_ID_LADDER);
+    REQUIRE(rt_cast(&w, 12.5f64, 2.5f64, 3.5f64, 0.0f64, 1.0f64, 0.0f64, 6.0f64, &hit) == RAYCAST_RESULT_HIT);
+    CHECK_NEAR(hit.distance, 2.5f64 + 30.0f64 / 32.0f64, 1e-9f64);
+    CHECK_EQ_U64(hit.voxel, BLOCK_ID_LADDER);
+    test_world_end(&w);
+}
+
 TEST(air_and_fluids_are_looked_through_and_what_is_not_solid_is_still_aimed_at) {
     test_world_t w;
     REQUIRE(test_world_begin(t, &w));

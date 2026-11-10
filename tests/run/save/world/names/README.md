@@ -14,3 +14,10 @@
 A table is fixed when the program is built, so the test writes what an older build would have. It picks the list that build would have had, this build's less one name, and writes a world of numbers in that list's terms, all below its length and so all numbers this build's code takes without question. Then it replaces the list in the manifest, with its hash and checksums made to agree. The files on the disk are then exactly those of a world saved in that older build, and everything from there on goes through the real `save_open`.
 
 No code in `run/` is there for this, as nothing in the program takes a list from anywhere but a manifest or its own tables.
+
+## The state beside each id (plan 005 phase 12)
+
+- **Every facing is kept:** every block that turns, each of the four ways, saved and read back as it was written; and stone given a facing it does not declare reads back as plain stone.
+- **A world from before states** is had the same way as one from another build: its manifest and delta files are given version 5 with their checksums made to agree. It opens, every block reads as it was, facing north as every block did, and the first save writes version 6 while the other region's old file is read as it is.
+- **A list too long for a state number**, 4097 names, is refused with `SAVE_WORLD_ERROR_TABLES`.
+- **The old torches on walls** are `wall_torch` facing their walls: a list with each of the four old names where `wall_torch` is, and every voxel of that place read back as a wall torch with that facing.

@@ -12,6 +12,7 @@
 #include "tables/items/index.h"
 #include "tables/mobs/index.h"
 #include "time/index.h"
+#include "world/wall_torch/index.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -104,7 +105,7 @@ static void mc_put(test_context_t *t, mc_rig_t *rig, int32_t x, int32_t y, int32
 /* The block there, and air if there is none to read. */
 static uint16_t mc_block(const mc_rig_t *rig, int32_t x, int32_t y, int32_t z) {
     uint16_t block = BLOCK_ID_AIR;
-    (void)world_map_block_get(rig->world.map, x, y, z, &block);
+    (void)world_map_voxel_get(rig->world.map, x, y, z, &block);
     return block;
 }
 
@@ -525,13 +526,13 @@ TEST(what_hangs_on_a_broken_block_goes_with_it_though_the_blast_did_not_reach_it
     explosion_t *const explosion = &rig.entity->explosion;
     item_drop_store_t *const drops = &rig.entity->item_drops;
     mc_put(t, &rig, 8, 8, 0, BLOCK_ID_DIRT);
-    mc_put(t, &rig, 9, 8, 0, BLOCK_ID_TORCH_WALL_EAST);
-    mc_put(t, &rig, 7, 8, 0, BLOCK_ID_TORCH_WALL_WEST);
-    mc_put(t, &rig, 8, 9, 0, BLOCK_ID_TORCH_WALL_NORTH);
-    mc_put(t, &rig, 8, 7, 0, BLOCK_ID_TORCH_WALL_SOUTH);
+    mc_put(t, &rig, 9, 8, 0, WALL_TORCH_FACING(BLOCK_FACING_WEST));
+    mc_put(t, &rig, 7, 8, 0, WALL_TORCH_FACING(BLOCK_FACING_EAST));
+    mc_put(t, &rig, 8, 9, 0, WALL_TORCH_FACING(BLOCK_FACING_SOUTH));
+    mc_put(t, &rig, 8, 7, 0, WALL_TORCH_FACING(BLOCK_FACING_NORTH));
     /* On another block, beside this one: it leans the wrong way to hang from the dirt. */
     mc_put(t, &rig, 11, 8, 0, BLOCK_ID_STONE);
-    mc_put(t, &rig, 10, 8, 0, BLOCK_ID_TORCH_WALL_WEST);
+    mc_put(t, &rig, 10, 8, 0, WALL_TORCH_FACING(BLOCK_FACING_EAST));
     /* The list a blast would have made with only the dirt on it, so that no ray can be what took them. A power of 1: all give what they give. */
     explosion->borrowed_cells[0] = (explosion_cell_t){.x = 8, .y = 8, .z = 0, .block = BLOCK_ID_DIRT, ._pad0 = {0}};
     explosion->count = 1u;
@@ -541,7 +542,7 @@ TEST(what_hangs_on_a_broken_block_goes_with_it_though_the_blast_did_not_reach_it
     CHECK_EQ_U64(mc_block(&rig, 7, 8, 0), BLOCK_ID_AIR);
     CHECK_EQ_U64(mc_block(&rig, 8, 9, 0), BLOCK_ID_AIR);
     CHECK_EQ_U64(mc_block(&rig, 8, 7, 0), BLOCK_ID_AIR);
-    CHECK_EQ_U64(mc_block(&rig, 10, 8, 0), BLOCK_ID_TORCH_WALL_WEST);
+    CHECK_EQ_U64(mc_block(&rig, 10, 8, 0), WALL_TORCH_FACING(BLOCK_FACING_EAST));
     uint32_t torches = 0u;
     for (uint32_t i = 0u; i < drops->count; i++) {
         const item_drop_t *const stack = &drops->borrowed_items[i];
@@ -595,7 +596,7 @@ TEST(what_stood_on_or_hung_from_the_other_half_goes_in_a_blast_too) {
     mc_put(t, &rig, 8, 8, 0, BLOCK_ID_WOODWORKING_BENCH_WEST);
     mc_put(t, &rig, 9, 8, 0, BLOCK_ID_WOODWORKING_BENCH_EAST);
     mc_put(t, &rig, 9, 8, 1, BLOCK_ID_TORCH);
-    mc_put(t, &rig, 10, 8, 0, BLOCK_ID_TORCH_WALL_EAST);
+    mc_put(t, &rig, 10, 8, 0, WALL_TORCH_FACING(BLOCK_FACING_WEST));
     explosion->borrowed_cells[0] =
         (explosion_cell_t){.x = 8, .y = 8, .z = 0, .block = BLOCK_ID_WOODWORKING_BENCH_WEST, ._pad0 = {0}};
     explosion->count = 1u;
@@ -663,13 +664,13 @@ TEST(a_torch_on_a_wall_gives_a_torch_at_any_power_on_the_list_or_not) {
     uint32_t torches = 0u;
     for (uint32_t round = 0u; round < ROUNDS; round++) {
         mc_put(t, &rig, 8, 8, 0, BLOCK_ID_DIRT);
-        mc_put(t, &rig, 9, 8, 0, BLOCK_ID_TORCH_WALL_EAST);
-        mc_put(t, &rig, 7, 8, 0, BLOCK_ID_TORCH_WALL_WEST);
-        mc_put(t, &rig, 8, 9, 0, BLOCK_ID_TORCH_WALL_NORTH);
-        mc_put(t, &rig, 8, 7, 0, BLOCK_ID_TORCH_WALL_SOUTH);
+        mc_put(t, &rig, 9, 8, 0, WALL_TORCH_FACING(BLOCK_FACING_WEST));
+        mc_put(t, &rig, 7, 8, 0, WALL_TORCH_FACING(BLOCK_FACING_EAST));
+        mc_put(t, &rig, 8, 9, 0, WALL_TORCH_FACING(BLOCK_FACING_SOUTH));
+        mc_put(t, &rig, 8, 7, 0, WALL_TORCH_FACING(BLOCK_FACING_NORTH));
         /* One taken by the blast itself, ahead of the dirt. The other three go because the dirt did. */
         explosion->borrowed_cells[0] =
-            (explosion_cell_t){.x = 9, .y = 8, .z = 0, .block = BLOCK_ID_TORCH_WALL_EAST, ._pad0 = {0}};
+            (explosion_cell_t){.x = 9, .y = 8, .z = 0, .block = WALL_TORCH_FACING(BLOCK_FACING_WEST), ._pad0 = {0}};
         explosion->borrowed_cells[1] = (explosion_cell_t){.x = 8, .y = 8, .z = 0, .block = BLOCK_ID_DIRT, ._pad0 = {0}};
         explosion->count = 2u;
         CHECK_EQ_U64(explosion_finish(explosion, &rig.world.world->edit, drops, MC_POWER), 5u);

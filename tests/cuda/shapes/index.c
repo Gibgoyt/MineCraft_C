@@ -16,6 +16,7 @@
 #include "texture/index.h"
 #include "thread/index.h"
 #include "world/index.h"
+#include "world/wall_torch/index.h"
 
 #include <dirent.h>
 #include <inttypes.h>
@@ -31,7 +32,7 @@ enum : uint32_t {
     SH_GOLDEN_TOLERANCE = 2u,
     SH_PROGRAM_TIMEOUT_MS = 120000u,
     SH_BOXES_MAX = 64u,
-    SH_BLOCKS_MAX = 18u,
+    SH_BLOCKS_MAX = 24u,
     SH_BOXES_PER_BLOCK_MAX = 5u,
     SH_COST_FRAMES = 30u,
     SH_COST_WIDTH = 1920u,
@@ -46,6 +47,8 @@ enum : uint32_t { SH_FEATURES_BOTH = SHADE_FEATURE_SHAPES | SHADE_FEATURE_ALPHA 
 /* A plate is one texel thick: from 15/32 to 17/32 through the middle of a block. */
 #define SH_THIN_LOW (15.0f64 / 32.0f64)
 #define SH_THIN_HIGH (17.0f64 / 32.0f64)
+/* A block turned to a facing, as a constant: types/block_state/ lays a voxel out so. */
+#define SH_TURNED(id, facing) ((uint16_t)((uint32_t)(id) | ((uint32_t)(facing) << BLOCK_STATE_FACING_SHIFT)))
 
 /* ---- A rig: everything a real run has, on memory of its own ----------------------------------------------------------- */
 
@@ -180,10 +183,52 @@ typedef struct sh_box_t {
 } sh_box_t;
 static_assert(sizeof(sh_box_t) == 48);
 
-static uint32_t sh_boxes_of(uint32_t state, sh_box_t *out) {
+/* A quarter turn clockwise seen from above, about the middle of the block, done here apart from types/block_state/: (x, y) to (y, 1 - x). */
+static void sh_box_turn(uint32_t facing, sh_box_t *box) {
+    for (uint32_t i = 0u; i < facing; i++) {
+        const sh_box_t was = *box;
+        box->low[0] = was.low[1];
+        box->high[0] = was.high[1];
+        box->low[1] = 1.0f64 - was.high[0];
+        box->high[1] = 1.0f64 - was.low[0];
+    }
+}
+
+/* Which of a turned block's own faces the world sees on this one, and where on it a point of the block is: the other way round. */
+static uint32_t sh_face_own(uint32_t facing, uint32_t face) {
+    /* A quarter anticlockwise: north to west, west to south, south to east, east to north. */
+    for (uint32_t i = 0u; i < facing && face < 4u; i++) {
+        face = face == 3u ? 0u : (face == 0u ? 2u : (face == 2u ? 1u : 3u));
+    }
+    return face;
+}
+static void sh_point_own(uint32_t facing, float64_t local[3]) {
+    for (uint32_t i = 0u; i < facing; i++) {
+        const float64_t x = local[0];
+        local[0] = 1.0f64 - local[1];
+        local[1] = x;
+    }
+}
+
+static uint32_t sh_boxes_unturned(uint32_t state, sh_box_t *out);
+
+/* A voxel's boxes: the block's, as it faces north, turned to its facing. */
+static uint32_t sh_boxes_of(uint32_t voxel, sh_box_t *out) {
+    const uint32_t count = sh_boxes_unturned(voxel & BLOCK_STATE_ID_MASK, out);
+    for (uint32_t i = 0u; i < count; i++) {
+        sh_box_turn((voxel >> BLOCK_STATE_FACING_SHIFT) & 3u, &out[i]);
+    }
+    return count;
+}
+
+static uint32_t sh_boxes_unturned(uint32_t state, sh_box_t *out) {
     const float64_t half = 0.5f64, whole = 1.0f64, none = 0.0f64;
     const float64_t quarter_low = 7.0f64 / 32.0f64, quarter_high = 9.0f64 / 32.0f64;
     const float64_t far_low = 23.0f64 / 32.0f64, far_high = 25.0f64 / 32.0f64;
+    if (state >= BLOCK_COUNT) {
+        out[0] = (sh_box_t){{none, none, none}, {whole, whole, whole}};
+        return 1u;
+    }
     switch ((block_shape_t)block_defs[state].shape) {
     case BLOCK_SHAPE_SLAB:
         out[0] = (sh_box_t){{none, none, none}, {whole, whole, half}};
@@ -205,25 +250,17 @@ static uint32_t sh_boxes_of(uint32_t state, sh_box_t *out) {
     case BLOCK_SHAPE_TORCH:
         out[0] = (sh_box_t){{7.0f64 / 16.0f64, 7.0f64 / 16.0f64, none}, {9.0f64 / 16.0f64, 9.0f64 / 16.0f64, 0.625f64}};
         return 1u;
-    case BLOCK_SHAPE_TORCH_EAST:
-    case BLOCK_SHAPE_TORCH_WEST:
-    case BLOCK_SHAPE_TORCH_NORTH:
-    case BLOCK_SHAPE_TORCH_SOUTH: {
-        /* From the wall out, by steps of one texel out for two up: a stick two texels square, and three tall at the flame. */
-        const uint32_t shape = block_defs[state].shape;
-        const bool along_x = shape == BLOCK_SHAPE_TORCH_EAST || shape == BLOCK_SHAPE_TORCH_WEST;
-        const bool from_far = shape == BLOCK_SHAPE_TORCH_WEST || shape == BLOCK_SHAPE_TORCH_SOUTH;
+    case BLOCK_SHAPE_TORCH_WALL: {
+        /* Facing north, its wall at +y: from the wall out to -y, by steps of one texel out for two up, a stick two texels square, and
+         * three tall at the flame. */
         for (uint32_t step = 0u; step < 5u; step++) {
             const float64_t texel = 1.0f64 / 16.0f64;
             const float64_t out_low = (float64_t)step * texel;
             const float64_t out_high = out_low + 2.0f64 * texel;
-            const float64_t low = from_far ? 1.0f64 - out_high : out_low;
-            const float64_t high = from_far ? 1.0f64 - out_low : out_high;
             const float64_t z_low = (3.0f64 + 2.0f64 * (float64_t)step) * texel;
             const float64_t z_high = z_low + (step == 4u ? 3.0f64 : 2.0f64) * texel;
             const float64_t across_low = 7.0f64 * texel, across_high = 9.0f64 * texel;
-            out[step] = along_x ? (sh_box_t){{low, across_low, z_low}, {high, across_high, z_high}}
-                                : (sh_box_t){{across_low, low, z_low}, {across_high, high, z_high}};
+            out[step] = (sh_box_t){{across_low, 1.0f64 - out_high, z_low}, {across_high, 1.0f64 - out_low, z_high}};
         }
         return 5u;
     }
@@ -346,9 +383,109 @@ static const sh_ray_case_t sh_ray_cases[] = {
     {BLOCK_ID_TORCH, {0}, {-2, 0, 0}, {0.5f32, 0.3f32, 0.25f32}, {1, 0, 0}, 0.0f32, 0.0f32, TRAVERSE_FACE_MISS},
     {BLOCK_ID_TORCH, {0}, {-2, 0, 0}, {0.5f32, 0.5f32, 0.75f32}, {1, 0, 0}, 0.0f32, 0.0f32, TRAVERSE_FACE_MISS},
     {BLOCK_ID_TORCH, {0}, {0, 0, 3}, {0.5f32, 0.5f32, 0.5f32}, {0, 0, -1}, 0.0f32, 2.875f32, TRAVERSE_FACE_POS_Z},
+    /* Stairs turned: the step on the side they face. East: */
+    {SH_TURNED(BLOCK_ID_OAK_STAIRS, BLOCK_FACING_EAST),
+     {0},
+     {-2, 0, 0},
+     {0.5f32, 0.5f32, 0.75f32},
+     {1, 0, 0},
+     0.0f32,
+     2.0f32,
+     TRAVERSE_FACE_NEG_X},
+    {SH_TURNED(BLOCK_ID_OAK_STAIRS, BLOCK_FACING_EAST),
+     {0},
+     {2, 0, 0},
+     {0.5f32, 0.5f32, 0.75f32},
+     {-1, 0, 0},
+     0.0f32,
+     1.5f32,
+     TRAVERSE_FACE_POS_X},
+    {SH_TURNED(BLOCK_ID_OAK_STAIRS, BLOCK_FACING_EAST),
+     {0},
+     {0, -2, 0},
+     {0.25f32, 0.5f32, 0.75f32},
+     {0, 1, 0},
+     0.0f32,
+     0.0f32,
+     TRAVERSE_FACE_MISS},
+    {SH_TURNED(BLOCK_ID_OAK_STAIRS, BLOCK_FACING_EAST),
+     {0},
+     {0, -2, 0},
+     {0.75f32, 0.5f32, 0.75f32},
+     {0, 1, 0},
+     0.0f32,
+     1.5f32,
+     TRAVERSE_FACE_NEG_Y},
+    /* South: */
+    {SH_TURNED(BLOCK_ID_OAK_STAIRS, BLOCK_FACING_SOUTH),
+     {0},
+     {0, -2, 0},
+     {0.5f32, 0.5f32, 0.75f32},
+     {0, 1, 0},
+     0.0f32,
+     1.5f32,
+     TRAVERSE_FACE_NEG_Y},
+    {SH_TURNED(BLOCK_ID_OAK_STAIRS, BLOCK_FACING_SOUTH),
+     {0},
+     {0, 2, 0},
+     {0.5f32, 0.5f32, 0.75f32},
+     {0, -1, 0},
+     0.0f32,
+     2.0f32,
+     TRAVERSE_FACE_POS_Y},
+    /* West: */
+    {SH_TURNED(BLOCK_ID_OAK_STAIRS, BLOCK_FACING_WEST),
+     {0},
+     {-2, 0, 0},
+     {0.5f32, 0.5f32, 0.75f32},
+     {1, 0, 0},
+     0.0f32,
+     1.5f32,
+     TRAVERSE_FACE_NEG_X},
+    {SH_TURNED(BLOCK_ID_OAK_STAIRS, BLOCK_FACING_WEST),
+     {0},
+     {2, 0, 0},
+     {0.5f32, 0.5f32, 0.75f32},
+     {-1, 0, 0},
+     0.0f32,
+     2.0f32,
+     TRAVERSE_FACE_POS_X},
+    {SH_TURNED(BLOCK_ID_OAK_STAIRS, BLOCK_FACING_WEST),
+     {0},
+     {0, 0, 3},
+     {0.25f32, 0.5f32, 0.5f32},
+     {0, 0, -1},
+     0.0f32,
+     2.5f32,
+     TRAVERSE_FACE_POS_Z},
+    /* A ladder turned east is against the +x side, and west the -x side. */
+    {SH_TURNED(BLOCK_ID_LADDER, BLOCK_FACING_EAST),
+     {0},
+     {-2, 0, 0},
+     {0.5f32, 0.5f32, 0.5f32},
+     {1, 0, 0},
+     0.0f32,
+     1.5f32 + SH_32NDS(30),
+     TRAVERSE_FACE_NEG_X},
+    {SH_TURNED(BLOCK_ID_LADDER, BLOCK_FACING_WEST),
+     {0},
+     {2, 0, 0},
+     {0.5f32, 0.5f32, 0.5f32},
+     {-1, 0, 0},
+     0.0f32,
+     2.5f32 - SH_32NDS(2),
+     TRAVERSE_FACE_POS_X},
+    {SH_TURNED(BLOCK_ID_LADDER, BLOCK_FACING_EAST),
+     {0},
+     {0, -2, 0},
+     {0.5f32, 0.5f32, 0.5f32},
+     {0, 1, 0},
+     0.0f32,
+     0.0f32,
+     TRAVERSE_FACE_MISS},
     /* A torch on a wall, leaning east: seen from the side, its foot at the wall, and each step a texel further out with each two up. The
      * eye is 2 away from the low corner's cell, so that what is in the stick's way is worked out from whole 32nds. */
-    {BLOCK_ID_TORCH_WALL_EAST,
+    {WALL_TORCH_FACING(BLOCK_FACING_WEST),
      {0},
      {0, -2, 0},
      {0.0625f32, 0.5f32, 0.25f32},
@@ -356,7 +493,7 @@ static const sh_ray_case_t sh_ray_cases[] = {
      0.0f32,
      1.5f32 + SH_32NDS(14),
      TRAVERSE_FACE_NEG_Y},
-    {BLOCK_ID_TORCH_WALL_EAST,
+    {WALL_TORCH_FACING(BLOCK_FACING_WEST),
      {0},
      {0, -2, 0},
      {0.3f32, 0.5f32, 0.25f32},
@@ -364,7 +501,7 @@ static const sh_ray_case_t sh_ray_cases[] = {
      0.0f32,
      0.0f32,
      TRAVERSE_FACE_MISS},
-    {BLOCK_ID_TORCH_WALL_EAST,
+    {WALL_TORCH_FACING(BLOCK_FACING_WEST),
      {0},
      {0, -2, 0},
      {0.3125f32, 0.5f32, 0.75f32},
@@ -372,7 +509,7 @@ static const sh_ray_case_t sh_ray_cases[] = {
      0.0f32,
      1.5f32 + SH_32NDS(14),
      TRAVERSE_FACE_NEG_Y},
-    {BLOCK_ID_TORCH_WALL_EAST,
+    {WALL_TORCH_FACING(BLOCK_FACING_WEST),
      {0},
      {0, -2, 0},
      {0.0625f32, 0.5f32, 0.75f32},
@@ -381,7 +518,7 @@ static const sh_ray_case_t sh_ray_cases[] = {
      0.0f32,
      TRAVERSE_FACE_MISS},
     /* From the east, along the way it leans, the flame's end first. */
-    {BLOCK_ID_TORCH_WALL_EAST,
+    {WALL_TORCH_FACING(BLOCK_FACING_WEST),
      {0},
      {2, 0, 0},
      {0.5f32, 0.5f32, 0.75f32},
@@ -390,7 +527,7 @@ static const sh_ray_case_t sh_ray_cases[] = {
      2.5f32 - SH_32NDS(12),
      TRAVERSE_FACE_POS_X},
     /* The same torch leaning each other way, at the flame's height, from the side: it is only where its name says. */
-    {BLOCK_ID_TORCH_WALL_WEST,
+    {WALL_TORCH_FACING(BLOCK_FACING_EAST),
      {0},
      {0, -2, 0},
      {0.6875f32, 0.5f32, 0.75f32},
@@ -398,7 +535,7 @@ static const sh_ray_case_t sh_ray_cases[] = {
      0.0f32,
      1.5f32 + SH_32NDS(14),
      TRAVERSE_FACE_NEG_Y},
-    {BLOCK_ID_TORCH_WALL_WEST,
+    {WALL_TORCH_FACING(BLOCK_FACING_EAST),
      {0},
      {0, -2, 0},
      {0.3125f32, 0.5f32, 0.75f32},
@@ -406,7 +543,7 @@ static const sh_ray_case_t sh_ray_cases[] = {
      0.0f32,
      0.0f32,
      TRAVERSE_FACE_MISS},
-    {BLOCK_ID_TORCH_WALL_NORTH,
+    {WALL_TORCH_FACING(BLOCK_FACING_SOUTH),
      {0},
      {-2, 0, 0},
      {0.5f32, 0.3125f32, 0.75f32},
@@ -414,7 +551,7 @@ static const sh_ray_case_t sh_ray_cases[] = {
      0.0f32,
      1.5f32 + SH_32NDS(14),
      TRAVERSE_FACE_NEG_X},
-    {BLOCK_ID_TORCH_WALL_NORTH,
+    {WALL_TORCH_FACING(BLOCK_FACING_SOUTH),
      {0},
      {-2, 0, 0},
      {0.5f32, 0.6875f32, 0.75f32},
@@ -422,7 +559,7 @@ static const sh_ray_case_t sh_ray_cases[] = {
      0.0f32,
      0.0f32,
      TRAVERSE_FACE_MISS},
-    {BLOCK_ID_TORCH_WALL_SOUTH,
+    {WALL_TORCH_FACING(BLOCK_FACING_NORTH),
      {0},
      {-2, 0, 0},
      {0.5f32, 0.6875f32, 0.75f32},
@@ -430,7 +567,7 @@ static const sh_ray_case_t sh_ray_cases[] = {
      0.0f32,
      1.5f32 + SH_32NDS(14),
      TRAVERSE_FACE_NEG_X},
-    {BLOCK_ID_TORCH_WALL_SOUTH,
+    {WALL_TORCH_FACING(BLOCK_FACING_NORTH),
      {0},
      {-2, 0, 0},
      {0.5f32, 0.3125f32, 0.75f32},
@@ -499,12 +636,12 @@ static bool sh_cast(test_context_t *t, sh_rig_t *rig, const traverse_world_t *wo
     return good;
 }
 
-/* Each case gets a place of its own, on a diagonal: no ray of one can meet the block of another. The map loads a circle of
- * columns, so the radius below is well past the far corner of this. */
+/* Each case gets a place of its own, on a diagonal, and the diagonal again 8 higher for every 48: no ray of one can meet the block
+ * of another, as none goes 3 from its own. The map loads a circle of columns, so the radius below is well past the far corner. */
 static void sh_case_cell(uint32_t index, int32_t cell[3]) {
-    cell[0] = -72 + (int32_t)index * 3;
-    cell[1] = -72 + (int32_t)index * 3;
-    cell[2] = 8;
+    cell[0] = -72 + (int32_t)(index % 48u) * 3;
+    cell[1] = -72 + (int32_t)(index % 48u) * 3;
+    cell[2] = 8 + (int32_t)(index / 48u) * 8;
 }
 
 TEST(each_shape_is_met_where_its_boxes_say) {
@@ -535,14 +672,16 @@ TEST(each_shape_is_met_where_its_boxes_say) {
         const bool right_t = c->want_face == TRAVERSE_FACE_MISS || fabsf(hits[i].t - c->want_t) < 1e-4f32;
         if (!right_face || !right_t) {
             printf("  case %" PRIu32 ": %s: face %" PRIu32 ", wanted %" PRIu32 "; t %f, wanted %f\n", i,
-                   c->state < BLOCK_COUNT ? block_defs[c->state].name : "(no block)", face, c->want_face,
-                   (libc_double_t)hits[i].t, (libc_double_t)c->want_t);
+                   (c->state & BLOCK_STATE_ID_MASK) < BLOCK_COUNT ? block_defs[c->state & BLOCK_STATE_ID_MASK].name
+                                                                  : "(no block)",
+                   face, c->want_face, (libc_double_t)hits[i].t, (libc_double_t)c->want_t);
         }
         CHECK(right_face);
         CHECK(right_t);
         CHECK_EQ_U64((uint32_t)hits[i].info & TRAVERSE_INFO_CAPPED, 0u);
         if (c->want_face != TRAVERSE_FACE_MISS) {
-            CHECK_EQ_U64(hits[i].value & TRAVERSE_VALUE_MATERIAL_MASK, c->state);
+            CHECK_EQ_U64(hits[i].value & TRAVERSE_VALUE_VOXEL_MASK, c->state);
+            CHECK_EQ_U64(hits[i].value & TRAVERSE_VALUE_MATERIAL_MASK, c->state & BLOCK_STATE_ID_MASK);
             CHECK_EQ_I64(hits[i].offset[0], -c->eye_cell[0]);
             CHECK_EQ_I64(hits[i].offset[1], -c->eye_cell[1]);
             CHECK_EQ_I64(hits[i].offset[2], -c->eye_cell[2]);
@@ -640,13 +779,53 @@ static const sh_scene_block_t sh_scene_blocks[] = {
     {{11, 10, 0}, BLOCK_ID_STONE},
     {{8, 11, 0}, BLOCK_ID_OAK_LEAVES},
     {{3, 13, 0}, BLOCK_ID_FERN},
-    {{6, 13, 0}, BLOCK_ID_TORCH_WALL_EAST},
-    {{8, 13, 0}, BLOCK_ID_TORCH_WALL_WEST},
-    {{10, 13, 0}, BLOCK_ID_TORCH_WALL_NORTH},
-    {{12, 13, 0}, BLOCK_ID_TORCH_WALL_SOUTH},
+    {{6, 13, 0}, WALL_TORCH_FACING(BLOCK_FACING_WEST)},
+    {{8, 13, 0}, WALL_TORCH_FACING(BLOCK_FACING_EAST)},
+    {{10, 13, 0}, WALL_TORCH_FACING(BLOCK_FACING_SOUTH)},
+    {{12, 13, 0}, WALL_TORCH_FACING(BLOCK_FACING_NORTH)},
 };
 enum : uint32_t { SH_SCENE_BLOCKS = sizeof(sh_scene_blocks) / sizeof(sh_scene_blocks[0]) };
 static_assert((uint32_t)SH_SCENE_BLOCKS <= (uint32_t)SH_BLOCKS_MAX);
+
+/* Stairs, a woodworking bench, a ladder and a torch on a wall, each turned all four ways: plan 005 phase 12. A bench's second half
+ * is to the right of whoever placed it, as run/src/world/bench/ has it. */
+static const sh_scene_block_t sh_facing_blocks[] = {
+    {{2, 2, 0}, SH_TURNED(BLOCK_ID_OAK_STAIRS, BLOCK_FACING_NORTH)},
+    {{5, 2, 0}, SH_TURNED(BLOCK_ID_OAK_STAIRS, BLOCK_FACING_EAST)},
+    {{8, 2, 0}, SH_TURNED(BLOCK_ID_OAK_STAIRS, BLOCK_FACING_SOUTH)},
+    {{11, 2, 0}, SH_TURNED(BLOCK_ID_OAK_STAIRS, BLOCK_FACING_WEST)},
+    {{2, 6, 0}, SH_TURNED(BLOCK_ID_WOODWORKING_BENCH_WEST, BLOCK_FACING_NORTH)},
+    {{3, 6, 0}, SH_TURNED(BLOCK_ID_WOODWORKING_BENCH_EAST, BLOCK_FACING_NORTH)},
+    {{6, 7, 0}, SH_TURNED(BLOCK_ID_WOODWORKING_BENCH_WEST, BLOCK_FACING_EAST)},
+    {{6, 6, 0}, SH_TURNED(BLOCK_ID_WOODWORKING_BENCH_EAST, BLOCK_FACING_EAST)},
+    {{10, 6, 0}, SH_TURNED(BLOCK_ID_WOODWORKING_BENCH_WEST, BLOCK_FACING_SOUTH)},
+    {{9, 6, 0}, SH_TURNED(BLOCK_ID_WOODWORKING_BENCH_EAST, BLOCK_FACING_SOUTH)},
+    {{13, 6, 0}, SH_TURNED(BLOCK_ID_WOODWORKING_BENCH_WEST, BLOCK_FACING_WEST)},
+    {{13, 7, 0}, SH_TURNED(BLOCK_ID_WOODWORKING_BENCH_EAST, BLOCK_FACING_WEST)},
+    {{2, 10, 0}, SH_TURNED(BLOCK_ID_LADDER, BLOCK_FACING_NORTH)},
+    {{5, 10, 0}, SH_TURNED(BLOCK_ID_LADDER, BLOCK_FACING_EAST)},
+    {{8, 10, 0}, SH_TURNED(BLOCK_ID_LADDER, BLOCK_FACING_SOUTH)},
+    {{11, 10, 0}, SH_TURNED(BLOCK_ID_LADDER, BLOCK_FACING_WEST)},
+    {{3, 13, 0}, WALL_TORCH_FACING(BLOCK_FACING_NORTH)},
+    {{6, 13, 0}, WALL_TORCH_FACING(BLOCK_FACING_EAST)},
+    {{9, 13, 0}, WALL_TORCH_FACING(BLOCK_FACING_SOUTH)},
+    {{12, 13, 0}, WALL_TORCH_FACING(BLOCK_FACING_WEST)},
+};
+enum : uint32_t { SH_FACING_BLOCKS = sizeof(sh_facing_blocks) / sizeof(sh_facing_blocks[0]) };
+static_assert((uint32_t)SH_FACING_BLOCKS <= (uint32_t)SH_BLOCKS_MAX);
+
+/* Which of the two scenes a test draws: every shape, or every facing. */
+static uint8_t sh_facings = 0u;
+
+static void sh_scene_choose(bool facings) {
+    sh_facings = facings ? 1u : 0u;
+}
+static uint32_t sh_block_count(void) {
+    return sh_facings != 0u ? SH_FACING_BLOCKS : SH_SCENE_BLOCKS;
+}
+static const sh_scene_block_t *sh_block_at(uint32_t b) {
+    return sh_facings != 0u ? &sh_facing_blocks[b] : &sh_scene_blocks[b];
+}
 
 typedef struct sh_scene_t {
     sh_scene_box_t boxes[SH_BOXES_MAX]; /* 0 */
@@ -665,8 +844,8 @@ static void sh_scene_build(sh_scene_t *scene, uint32_t features) {
                                        .block = SH_BLOCKS_MAX,
                                        .state = BLOCK_ID_STONE};
     scene->box_count = 1u;
-    for (uint32_t b = 0u; b < SH_SCENE_BLOCKS; b++) {
-        const sh_scene_block_t *const block = &sh_scene_blocks[b];
+    for (uint32_t b = 0u; b < sh_block_count(); b++) {
+        const sh_scene_block_t *const block = sh_block_at(b);
         sh_box_t boxes[SH_BOXES_PER_BLOCK_MAX];
         uint32_t count = 1u;
         if ((features & SHADE_FEATURE_SHAPES) != 0u) {
@@ -783,17 +962,21 @@ static void sh_trace(test_context_t *t, const sh_rig_t *rig, const sh_scene_t *s
         out->signature = out->signature * 1000003u + best_box * 8u + best_face + 1u;
         out->hit = 1u;
         out->face = best_face;
-        out->state = box->state;
+        out->state = box->state & BLOCK_STATE_ID_MASK;
         float64_t local[3];
         for (uint32_t i = 0u; i < 3u; i++) {
             const float64_t point = eye[i] + direction[i] * best;
             local[i] = box->block == SH_BLOCKS_MAX ? point - floor(point)
-                                                   : point - (float64_t)sh_scene_blocks[box->block].cell[i];
+                                                   : point - (float64_t)sh_block_at(box->block)->cell[i];
         }
+        /* A turned block shows its own faces, turned with it. */
+        const uint32_t facing = (box->state >> BLOCK_STATE_FACING_SHIFT) & 3u;
+        const uint32_t own_face = sh_face_own(facing, best_face);
+        sh_point_own(facing, local);
         float64_t u = 0.0f64, v = 0.0f64;
-        sh_reference_uv(best_face, local, &u, &v);
+        sh_reference_uv(own_face, local, &u, &v);
         uint32_t id = 0u;
-        REQUIRE(texture_find(rig->texture, block_texture_names[block_defs[box->state].faces[best_face]], &id));
+        REQUIRE(texture_find(rig->texture, block_texture_names[block_defs[out->state].faces[own_face]], &id));
         texture_info_t info;
         REQUIRE(texture_info_get(rig->texture, id, &info));
         const texture_blob_entry_t *const entry = info.borrowed_entry;
@@ -902,8 +1085,8 @@ static bool sh_scene_put(test_context_t *t, sh_rig_t *rig) {
             }
         }
     }
-    for (uint32_t b = 0u; b < SH_SCENE_BLOCKS; b++) {
-        const sh_scene_block_t *const block = &sh_scene_blocks[b];
+    for (uint32_t b = 0u; b < sh_block_count(); b++) {
+        const sh_scene_block_t *const block = sh_block_at(b);
         if (!CHECK_EQ_U64(
                 world_edit_block_set(edit, block->cell[0], block->cell[1], block->cell[2], (uint16_t)block->state),
                 WORLD_EDIT_STATUS_CHANGED)) {
@@ -963,11 +1146,37 @@ TEST(every_shape_and_every_hole_matches_an_exact_trace_from_all_sides) {
     }
     /* A test that looks at almost none of a block passes on it too. */
     for (uint32_t b = 0u; b < SH_SCENE_BLOCKS; b++) {
-        if (!CHECK(tally->state_seen[sh_scene_blocks[b].state] > 50u)) {
-            printf("  hardly saw %s: %" PRIu64 "\n", block_defs[sh_scene_blocks[b].state].name,
-                   tally->state_seen[sh_scene_blocks[b].state]);
+        const uint32_t id = sh_scene_blocks[b].state & BLOCK_STATE_ID_MASK;
+        if (!CHECK(tally->state_seen[id] > 50u)) {
+            printf("  hardly saw %s: %" PRIu64 "\n", block_defs[id].name, tally->state_seen[id]);
         }
     }
+    sh_hand_world_close(&rig);
+    sh_rig_end(t, &rig);
+}
+
+/* Plan 005 phase 12: stairs, a bench, a ladder and a torch on a wall, each turned all four ways, against the same exact trace, which turns
+ * boxes and pictures by arithmetic of its own. A bench's halves show their front on the side whoever placed it stood. */
+TEST(every_facing_matches_an_exact_trace_from_all_sides) {
+    sh_rig_t rig;
+    REQUIRE(sh_rig_begin(t, &rig));
+    REQUIRE(sh_hand_world_open(t, &rig, 2u, SH_WIDTH, SH_HEIGHT));
+    sh_scene_choose(true);
+    REQUIRE(sh_scene_put(t, &rig));
+    sh_tally_t *const tally = test_alloc(t, sizeof(sh_tally_t));
+    memset(tally, 0, sizeof(*tally));
+    sh_compare_from_all_sides(t, &rig, SH_FEATURES_BOTH, tally);
+    sh_report("facings", tally);
+    CHECK_EQ_U64(tally->wrong, 0u);
+    CHECK(tally->compared > (uint64_t)SH_WIDTH * SH_HEIGHT * 24u);
+    static const uint16_t seen[] = {BLOCK_ID_OAK_STAIRS, BLOCK_ID_WOODWORKING_BENCH_WEST,
+                                    BLOCK_ID_WOODWORKING_BENCH_EAST, BLOCK_ID_LADDER, BLOCK_ID_WALL_TORCH};
+    for (uint32_t i = 0u; i < sizeof(seen) / sizeof(seen[0]); i++) {
+        if (!CHECK(tally->state_seen[seen[i]] > 50u)) {
+            printf("  hardly saw %s: %" PRIu64 "\n", block_defs[seen[i]].name, tally->state_seen[seen[i]]);
+        }
+    }
+    sh_scene_choose(false);
     sh_hand_world_close(&rig);
     sh_rig_end(t, &rig);
 }
@@ -1185,6 +1394,27 @@ TEST(golden_pictures_match) {
     picture = sh_draw(t, &rig, &camera);
     REQUIRE(picture != nullptr);
     sh_golden_compare(t, "tests/cuda/shapes/fixtures/near.png", picture);
+    sh_hand_world_close(&rig);
+    sh_rig_end(t, &rig);
+}
+
+/* Stairs and a bench, with a ladder and a torch on a wall, in all four facings: from the south-west, and from the north-east. */
+TEST(golden_pictures_of_every_facing_match) {
+    sh_rig_t rig;
+    REQUIRE(sh_rig_begin(t, &rig));
+    REQUIRE(sh_hand_world_open(t, &rig, 2u, SH_WIDTH, SH_HEIGHT));
+    sh_scene_choose(true);
+    REQUIRE(sh_scene_put(t, &rig));
+    render_camera_t camera;
+    sh_camera_around(&camera, 1.2f32, -0.55f32, 12.0f64);
+    const uint8_t *picture = sh_draw(t, &rig, &camera);
+    REQUIRE(picture != nullptr);
+    sh_golden_compare(t, "tests/cuda/shapes/fixtures/facings.png", picture);
+    sh_camera_around(&camera, 1.2f32 + SH_PI, -0.55f32, 12.0f64);
+    picture = sh_draw(t, &rig, &camera);
+    REQUIRE(picture != nullptr);
+    sh_golden_compare(t, "tests/cuda/shapes/fixtures/facings_back.png", picture);
+    sh_scene_choose(false);
     sh_hand_world_close(&rig);
     sh_rig_end(t, &rig);
 }

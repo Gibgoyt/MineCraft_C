@@ -141,8 +141,9 @@ TEST(mangrove_planks_make_stairs_on_a_bench_that_is_placed_broken_and_all_of_it_
     /* The mud and the whole mangrove the first cut brings down by hand, 10 logs, then a twelfth for the stairs and a thirteenth for the bench;
      * the table, the bench and two stairs placed. */
     CHECK_EQ_U64(pt_count(output, "the player mined 13 blocks and placed 4"), 2u);
-    /* Mining one half is one block in the books, and the half is the one aimed at. */
-    CHECK_EQ_U64(pt_count(output, "the last mined was woodworking_bench_east"), 2u);
+    /* Mining one half is one block in the books, and the half is the one aimed at: since plan 005 phase 12 the bench runs to the
+     * right of whoever placed it, and the turn back to it meets its west half. */
+    CHECK_EQ_U64(pt_count(output, "the last mined was woodworking_bench_west"), 2u);
     /* Mud, a plank, three stairs, two sticks, the one bench that came down and was picked up, and the logs the tree gave past the four used. */
     CHECK_EQ_U64(pt_count(output, "the inventory holds 13 items in 6 stacks"), 2u);
 
