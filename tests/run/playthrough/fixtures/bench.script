@@ -283,8 +283,8 @@
 +3 screenshot reopened.png
 +1 key e down
 +1 key e up
-# The far half, which is the west, by hand: both go.
-+1 move 5 -65
+# The half on the left as it was placed, which is the west, by hand: both go. The bench runs to the right of whoever placed it.
++1 move -50 -65
 +6 screenshot west_aim.png
 +1 button left down
 +90 button left up
