@@ -75,6 +75,8 @@ Ahmed: build, play, and confirm it looks like Minecraft everywhere.
 
 Appended as they land:
 
+- `e993e1f1` Build with Minecraft's default textures from a git-ignored textures_local/, keeping Pixel Perfection as the committed default.
+
 ## Issues found
 
 **Never committed, never pushed.** Pixel Perfection stays as the committed default. The default pack lives only in `textures_local/` and `/tmp/` on this machine.
