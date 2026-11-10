@@ -1145,9 +1145,10 @@ static const gtt_bad_case_t GTT_BAD_MOBS[] = {
      ":3:", "far must be above spawn's min_distance"},
     {"name: pebble\ndespawn: { one_in: 0 }\n", ":2:", "one_in is 0"},
     {"name: pebble\ndespawn: { idle_ticks: -1 }\n", ":2:", "idle_ticks is -1"},
-    {"name: pebble\nparts: []\n", ":2:", "parts must be a list of 1 to 6"},
-    {"name: pebble\nparts: 3\n", ":2:", "parts must be a list of 1 to 6"},
-    {"name: pebble\nparts: [a, b, c, d, e, f, g]\n", ":2:", "parts must be a list of 1 to 6"},
+    {"name: pebble\nparts: []\n", ":2:", "parts must be a list of 1 to 16"},
+    {"name: pebble\nparts: 3\n", ":2:", "parts must be a list of 1 to 16"},
+    {"name: pebble\nparts: [a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q]\n",
+     ":2:", "parts must be a list of 1 to 16"},
     {"name: pebble\nparts: [leg]\n", ":2:", "a part must be a mapping"},
     {"name: pebble\nparts: [{ wing: 1 }]\n", ":2:", "unknown field 'wing' in a part"},
     {"name: pebble\nparts: [{ pivot: [0, 0, 0] }]\n", ":2:", "missing field 'size' in a part"},
@@ -1159,6 +1160,46 @@ static const gtt_bad_case_t GTT_BAD_MOBS[] = {
     {"name: pebble\nparts: [{ moves: tail }]\n", ":2:", "unknown moves 'tail'"},
     {"name: pebble\nparts: [{ walk_swing: 8 }]\n", ":2:", "walk_swing '8' must be of a size up to 7"},
     {"- just\n- a list\n", ":1:", "a mob's file must be a mapping"},
+    /* Plan 005 phase 4: what an animal needs. */
+    {"name: pebble\nmind: angry\n", ":2:", "unknown mind 'angry'"},
+    {"name: pebble\nmind: passive\ndespawn: { near: 32 }\n", ":3:", "a passive mob never despawns"},
+    {"name: pebble\nspawn: { min_light: 16 }\n", ":2:", "min_light is 16"},
+    {"name: pebble\nspawn: { max_light: 7, min_light: 9 }\n", ":2:", "min_light is above max_light"},
+    {"name: pebble\nspawn: { on: stone }\n", ":2:", "on must be a list"},
+    {"name: pebble\nspawn: { on: [nothing] }\n", ":2:", "on block 'nothing' does not exist"},
+    {"name: pebble\nspawn: { biomes: [nowhere] }\n", ":2:", "biome 'nowhere' does not exist"},
+    {"name: pebble\nspawn: { min_height: 2000 }\n", ":2:", "min_height is 2000"},
+    {"name: pebble\nspawn: { min_height: 10, max_height: 5 }\n", ":2:", "max_height is below min_height"},
+    {"name: pebble\nmale: { name: ram, scale: 1.2 }\n", ":2:", "male has no female"},
+    {"name: pebble\nfemale: { name: ewe, scale: 1 }\n", ":2:", "female has no male"},
+    {"name: pebble\nmale: 3\nfemale: { name: ewe, scale: 1 }\n", ":2:", "male must be a mapping"},
+    {"name: pebble\nmale: { scale: 1 }\nfemale: { name: ewe, scale: 1 }\n", ":2:", "missing field 'name' in male"},
+    {"name: pebble\nmale: { name: ram, scale: 1 }\nfemale: { name: ewe }\n", ":3:", "missing field 'scale' in female"},
+    {"name: pebble\nmale: { name: Ram, scale: 1 }\nfemale: { name: ewe, scale: 1 }\n", ":2:", "is not lower case"},
+    {"name: pebble\nmale: { name: ram, scale: 3 }\nfemale: { name: ewe, scale: 1 }\n",
+     ":2:", "scale '3' must be above 0, up to 2"},
+    {"name: pebble\nmale: { name: ram, scale: 1, horns: 2 }\nfemale: { name: ewe, scale: 1 }\n",
+     ":2:", "unknown field 'horns' in male"},
+    {"name: pebble\nmale: { name: ram, scale: 1, drops: [{ item: nothing, count: 1 }] }\n",
+     ":2:", "drop item 'nothing' does not exist"},
+    {"name: pebble\nparts: [{ uv: [0, 0] }]\nmale: { name: ram, scale: 1, parts: [a, b, c, d, e, f, g, h, i, j, k, l, "
+     "m, n, o, p] }\n",
+     ":3:", "the mob's 1 parts and male's 16 are over 16"},
+    {"name: pebble\nfemale: { name: ewe, scale: 1, yields: 3 }\n", ":2:", "yields must be a list"},
+    {"name: pebble\nfemale: { name: ewe, scale: 1, yields: [milk] }\n", ":2:", "a yield must be a mapping"},
+    {"name: pebble\nfemale: { name: ewe, scale: 1, yields: [{ count: 1 }] }\n",
+     ":2:", "missing field 'item' in a yield"},
+    {"name: pebble\nfemale: { name: ewe, scale: 1, yields: [{ item: nothing }] }\n",
+     ":2:", "yield item 'nothing' does not exist"},
+    {"name: pebble\nfemale: { name: ewe, scale: 1, yields: [{ item: coal, using: nothing }] }\n",
+     ":2:", "yield using 'nothing' does not exist"},
+    {"name: pebble\nfemale: { name: ewe, scale: 1, yields: [{ item: coal, count: 0 }] }\n", ":2:", "count is 0"},
+    {"name: pebble\nfemale: { name: ewe, scale: 1, yields: [{ item: coal, count: 2, max: 1 }] }\n",
+     ":2:", "yield max is below its count"},
+    {"name: pebble\nfemale: { name: ewe, scale: 1, yields: [{ item: coal, every: 0 }] }\n", ":2:", "every is 0"},
+    {"name: pebble\nfemale: { name: ewe, scale: 1, yields: [{ item: coal, shine: 1 }] }\n",
+     ":2:", "unknown field 'shine' in a yield"},
+    {"name: pebble\nfemale: { name: ewe, scale: 1, yields: [a, b, c, d, e] }\n", ":2:", "over 4 yields"},
 };
 enum { GTT_BAD_MOB_COUNT = sizeof(GTT_BAD_MOBS) / sizeof(GTT_BAD_MOBS[0]) };
 
@@ -1222,6 +1263,64 @@ TEST(a_good_mob_makes_tables_with_row_0_for_none_and_a_tree_with_none_needs_none
     gtt_tree_run(t, &empty, &run);
     CHECK_EQ_I64(run.exit_code, 1);
     CHECK_CONTAINS(run.output, "there must be a mob");
+}
+
+/* An animal: passive, by day on stone in land_one, with a ram and a ewe, each with its own rows. */
+#define GTT_ANIMAL                                                                                                     \
+    GTT_MOB_HEAD GTT_MOB_BODY GTT_MOB_DROPS "mind: passive\n"                                                          \
+                                            "spawn: { weight: 5, pack_min: 2, pack_max: 4, max_light: 15, "            \
+                                            "max_block_light: 15, min_light: 9, min_distance: 24, on: [stone], "       \
+                                            "biomes: [land_one], min_height: 40, max_height: 900 }\n" GTT_MOB_PARTS    \
+                                            "male:\n  name: ram\n  scale: 1.25\n  parts:\n"                            \
+                                            "    - { size: [1, 1, 4], pivot: [0, 0, 3], offset: [0, 1, 0], uv: [0, "   \
+                                            "0], moves: head }\n"                                                      \
+                                            "  drops: [{ item: stone, count: 1 }]\n"                                   \
+                                            "female:\n  name: ewe\n  scale: 1\n"                                       \
+                                            "  yields:\n    - { item: coal, count: 1, max: 3, using: stone, every: "   \
+                                            "6000 }\n    - { item: coal, count: 1, every: 600 }\n"
+
+TEST(an_animal_makes_its_sexes_rows_and_its_rules) {
+    const gtt_tree_t tree = gtt_tree_make(t, "animal_mobs");
+    gtt_biomes_make(t, &tree, GTT_LAND_START GTT_LAND_SURFACE);
+    gtt_mob_tree(t, &tree);
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "mobs/pebble/index.yaml"), GTT_ANIMAL);
+    test_process_t run;
+    gtt_tree_run(t, &tree, &run);
+    REQUIRE(run.exit_code == 0);
+    uint64_t length = 0u;
+    const char *const declared = gtt_read(t, gtt_path(t, tree.borrowed_out, "mobs/index.h"), &length);
+    CHECK_CONTAINS(declared, "#define MOB_PART_COUNT 3u");
+    CHECK_CONTAINS(declared, "#define MOB_DROP_COUNT 3u");
+    CHECK_CONTAINS(declared, "#define MOB_SEX_ROW_COUNT 3u");
+    CHECK_CONTAINS(declared, "#define MOB_YIELD_COUNT 3u");
+    CHECK_CONTAINS(declared, "#define MOB_ON_COUNT 2u");
+    CHECK_CONTAINS(declared, "#define MOB_BIOME_COUNT 2u");
+    CHECK_CONTAINS(declared, "#define MOB_PARTS_MAX 16u");
+    CHECK_CONTAINS(declared, "#define MOB_YIELDS_MAX 4u");
+    CHECK_CONTAINS(declared, "#define MOB_MIND_PASSIVE 1u");
+    CHECK_CONTAINS(declared, "#define MOB_SEX_FEMALE 2u");
+    CHECK_CONTAINS(declared, "#define MOB_PEBBLE_PART_COUNT 1u");
+    const char *const defined = gtt_read(t, gtt_path(t, tree.borrowed_out, "mobs/index.c"), &length);
+    CHECK_CONTAINS(defined, ".despawn_far = 0");
+    CHECK_CONTAINS(defined, ".min_light = 9, .mind = MOB_MIND_PASSIVE, .on_count = 1, .first_on = 1, .first_biome = 1, "
+                            ".min_height = 40, .max_height = 900, .first_sex = 1, .biome_count = 1");
+    CHECK_CONTAINS(defined, "BIOME_ID_LAND_ONE,");
+    CHECK_CONTAINS(defined, "{.name = \"ram\", .scale = 125e-2f32, .first_part = 2, .first_drop = 2, .first_yield = 1, "
+                            ".part_count = 1, .drop_count = 1, .yield_count = 0, .sex = 1u}");
+    CHECK_CONTAINS(defined, "{.name = \"ewe\", .scale = 1e0f32, .first_part = 3, .first_drop = 3, .first_yield = 1, "
+                            ".part_count = 0, .drop_count = 0, .yield_count = 2, .sex = 2u}");
+    CHECK_CONTAINS(defined,
+                   "{.every = 6000, .item = ITEM_ID_COAL, .tool = ITEM_ID_STONE, .count_min = 1, .count_max = 3}");
+    CHECK_CONTAINS(defined,
+                   "{.every = 600, .item = ITEM_ID_COAL, .tool = ITEM_ID_NONE, .count_min = 1, .count_max = 1}");
+    CHECK_CONTAINS(defined, ".item = ITEM_ID_STONE, .count_min = 1, .count_max = 1}");
+    /* A hostile mob, as before, has no sexes, every height and the hostile mind. */
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "mobs/pebble/index.yaml"), GTT_MOB_GOOD);
+    gtt_tree_run(t, &tree, &run);
+    REQUIRE(run.exit_code == 0);
+    const char *const plain = gtt_read(t, gtt_path(t, tree.borrowed_out, "mobs/index.c"), &length);
+    CHECK_CONTAINS(plain, ".min_light = 0, .mind = MOB_MIND_HOSTILE, .on_count = 0");
+    CHECK_CONTAINS(plain, ".min_height = -1250, .max_height = 1250, .first_sex = 0, .biome_count = 0");
 }
 
 TEST(a_bad_command_line_says_how) {

@@ -19,11 +19,13 @@
 enum : uint32_t {
     /* Raised by any change an older reader could not read. A file of another version is refused and left alone. Version 2: a file ends in the names of
      * the tables its numbers are places in, and a build with other tables translates them. Version 3: a third crafting grid, the woodworking bench's.
-     * Version 4: a calendar section, plan 004 phase 01. */
-    SAVE_STATE_VERSION = 4u,
-    /* The oldest version still read. Version 3 has no calendar, and opens with a new one. */
+     * Version 4: a calendar section, plan 004 phase 01. Version 5: each body's sex, and what each animal is up to, plan 005 phase 4. */
+    SAVE_STATE_VERSION = 5u,
+    /* The oldest version still read. Version 3 has no calendar, and opens with a new one. Versions 3 and 4 have no sexes, and every body in
+     * one opens as ENTITY_STORE_SEX_NONE, as every body then was. */
     SAVE_STATE_VERSION_READ_MIN = 3u,
     SAVE_STATE_VERSION_FIRST_WITH_CALENDAR = 4u,
+    SAVE_STATE_VERSION_FIRST_WITH_ANIMALS = 5u,
     SAVE_STATE_VERSION_FIRST_WITH_NAMES = 2u,
     /* The slot tables a file's bodies come with. */
     SAVE_STATE_SLOT_TABLES = 3u,
@@ -46,7 +48,11 @@ typedef enum save_state_section_id_t : uint32_t {
     SAVE_STATE_SECTION_NAMES =
         11, /* the lists of run/src/save/names/, one after another: what every number here means */
     SAVE_STATE_SECTION_CALENDAR = 12, /* one save_state_calendar_t; in every file from version 4 */
-    SAVE_STATE_SECTION_COUNT = 12,
+    SAVE_STATE_SECTION_SEXES =
+        13, /* one save_state_sexes_t, then a byte for each body; with the bodies, from version 5 */
+    SAVE_STATE_SECTION_PASSIVE =
+        14, /* one save_state_passive_t, then the animals' bodies; with the minds, from version 5 */
+    SAVE_STATE_SECTION_COUNT = 14,
 } save_state_section_id_t;
 
 /* ---- The file: all little-endian, as written by the only machine this builds for ------------------------------------ */
@@ -120,6 +126,31 @@ static_assert(offsetof(save_state_calendar_t, clock_days) == 0);
 static_assert(offsetof(save_state_calendar_t, last_census_week) == 8);
 static_assert(offsetof(save_state_calendar_t, day_zero) == 16);
 static_assert(offsetof(save_state_calendar_t, _pad0) == 20);
+
+/* Each body's sex, in the order of the bodies' section: ENTITY_STORE_SEX_. Its own section, so that a file of version 4 has bodies of
+ * the same bytes. */
+typedef struct save_state_sexes_t {
+    uint32_t count;   /* 0: the bodies' count, and the bytes after this */
+    uint8_t _pad0[4]; /* 4 */
+} save_state_sexes_t;
+static_assert(sizeof(save_state_sexes_t) == 8);
+static_assert(alignof(save_state_sexes_t) == 4);
+static_assert(offsetof(save_state_sexes_t, count) == 0);
+static_assert(offsetof(save_state_sexes_t, _pad0) == 4);
+
+/* What the animals' mind goes on with, before its ENTITY_STORE_CAPACITY bodies. */
+typedef struct save_state_passive_t {
+    uint64_t random;  /* 0 */
+    uint64_t fled;    /* 8 */
+    uint64_t died;    /* 16 */
+    uint64_t dropped; /* 24 */
+} save_state_passive_t;
+static_assert(sizeof(save_state_passive_t) == 32);
+static_assert(alignof(save_state_passive_t) == 8);
+static_assert(offsetof(save_state_passive_t, random) == 0);
+static_assert(offsetof(save_state_passive_t, fled) == 8);
+static_assert(offsetof(save_state_passive_t, died) == 16);
+static_assert(offsetof(save_state_passive_t, dropped) == 24);
 
 /* The sim's plain numbers of a player. What it aims at is found again by its next tick. */
 typedef struct save_state_player_t {
@@ -369,7 +400,8 @@ enum : uint64_t {
         sizeof(save_state_spawn_t) + ENTITY_STORE_CAPACITY * sizeof(uint32_t) + sizeof(save_state_minds_t) +
         (uint64_t)ENTITY_STORE_CAPACITY * (sizeof(mob_zombie_body_t) + sizeof(mob_skeleton_body_t) +
                                            sizeof(mob_creeper_body_t) + sizeof(mob_combat_body_t)) +
-        SAVE_STATE_NAMES_BYTES_MAX,
+        sizeof(save_state_sexes_t) + ENTITY_STORE_CAPACITY + sizeof(save_state_passive_t) +
+        (uint64_t)ENTITY_STORE_CAPACITY * sizeof(mob_passive_body_t) + SAVE_STATE_NAMES_BYTES_MAX,
     SAVE_STATE_ARENA_BYTES = SAVE_STATE_IMAGE_BYTES + FILE_PATH_BYTES + SAVE_STATE_TRANSLATE_MAPS_BYTES + 3u * 64u,
 };
 

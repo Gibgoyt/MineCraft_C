@@ -445,6 +445,13 @@ TEST(what_a_build_does_not_have_goes_and_the_log_says_what_and_the_world_opens) 
     entity_handle_t bodies[3];
     ns_old_fill(first, &tables[SAVE_NAMES_KIND_BLOCKS], &tables[SAVE_NAMES_KIND_DROPS], &tables[SAVE_NAMES_KIND_ITEMS],
                 &tables[SAVE_NAMES_KIND_MOBS], bodies);
+    /* Each body a sex, so that the sexes after the bodies are seen to close up with them (plan 005 phase 4). */
+    static const uint8_t SEXES[3] = {ENTITY_STORE_SEX_MALE, ENTITY_STORE_SEX_NONE, ENTITY_STORE_SEX_FEMALE};
+    for (uint32_t b = 0u; b < 3u; b++) {
+        uint32_t at = 0u;
+        REQUIRE(entity_store_index_of(&first->entity->store, bodies[b], &at));
+        first->entity->store.borrowed_sex[at] = SEXES[b];
+    }
     const uint64_t lost_before = first->entity->item_drops.lost_count;
     const uint64_t removed_before = first->entity->store.removed_count;
     ns_old_write(t, first, tables);
@@ -514,8 +521,10 @@ TEST(what_a_build_does_not_have_goes_and_the_log_says_what_and_the_world_opens) 
     CHECK(!entity_store_index_of(store, bodies[1], &index));
     REQUIRE(entity_store_index_of(store, bodies[0], &index));
     CHECK_EQ_U64(store->borrowed_kind[index], MOB_ID_ZOMBIE);
+    CHECK_EQ_U64(store->borrowed_sex[index], ENTITY_STORE_SEX_MALE);
     REQUIRE(entity_store_index_of(store, bodies[2], &index));
     CHECK_EQ_U64(store->borrowed_kind[index], MOB_ID_CREEPER);
+    CHECK_EQ_U64(store->borrowed_sex[index], ENTITY_STORE_SEX_FEMALE);
     CHECK_EQ_I64((int64_t)store->borrowed_position[0][index], 14);
     const float64_t feet[3] = {4.5f64, 4.5f64, 1.0f64};
     for (uint32_t i = 0u; i < ENTITY_STORE_CAPACITY - 2u; i++) {

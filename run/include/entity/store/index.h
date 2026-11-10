@@ -41,6 +41,15 @@ enum : uint8_t {
     ENTITY_STORE_FLAG_JUMP = 1u << 6u,     /* entity_store_jump asked; the next moving tick uses it up */
 };
 
+/* Whether a body is male or female, and none for a kind that is neither, such as every mob without male: and female: parts in
+ * config/mobs/. The same numbers as MOB_SEX_ in tables/mobs/, which run/src/mob/spawn/ asserts. */
+enum : uint8_t {
+    ENTITY_STORE_SEX_NONE = 0u,
+    ENTITY_STORE_SEX_MALE = 1u,
+    ENTITY_STORE_SEX_FEMALE = 2u,
+    ENTITY_STORE_SEX_COUNT = 3u,
+};
+
 /* What a new body starts as. Its position is the middle of the soles of its feet, as a player's is. */
 typedef struct entity_store_spawn_t {
     float64_t position[COLLISION_AXES]; /* 0 */
@@ -49,7 +58,8 @@ typedef struct entity_store_spawn_t {
     float32_t yaw;                      /* 32: radians; it faces (cos, sin), as render_camera_t does */
     float32_t health;                   /* 36 */
     uint16_t kind;                      /* 40: whoever spawns it says what this means */
-    uint8_t _pad0[6];                   /* 42 */
+    uint8_t sex;                        /* 42: ENTITY_STORE_SEX_ */
+    uint8_t _pad0[5];                   /* 43 */
 } entity_store_spawn_t;
 static_assert(sizeof(entity_store_spawn_t) == 48);
 
@@ -82,21 +92,22 @@ typedef struct entity_store_t {
     uint16_t *borrowed_kind;                      /* 224 */
     uint8_t *borrowed_flags;                      /* 232 */
     uint8_t *borrowed_swing_ticks;                /* 240: ticks of its attack left */
-    uint64_t spawned_count;                       /* 248 */
-    uint64_t removed_count;                       /* 256 */
-    uint64_t refused_count;                       /* 264: asked for when full */
-    uint32_t count;                               /* 272 */
-    uint32_t free_head;                           /* 276 */
+    uint8_t *borrowed_sex;                        /* 248: ENTITY_STORE_SEX_, for as long as it lives */
+    uint64_t spawned_count;                       /* 256 */
+    uint64_t removed_count;                       /* 264 */
+    uint64_t refused_count;                       /* 272: asked for when full */
+    uint32_t count;                               /* 280 */
+    uint32_t free_head;                           /* 284 */
 } entity_store_t;
-static_assert(sizeof(entity_store_t) == 280);
+static_assert(sizeof(entity_store_t) == 288);
 
 /* What a store takes from its arena: each array, with an alignment's slack. */
 enum : uint64_t {
     ENTITY_STORE_ARRAY_ALIGNMENT = 64u,
     ENTITY_STORE_BYTES =
         (uint64_t)ENTITY_STORE_CAPACITY * (13ull * sizeof(float64_t) + 10ull * sizeof(float32_t) +
-                                           5ull * sizeof(uint32_t) + sizeof(uint16_t) + 2ull * sizeof(uint8_t)) +
-        31ull * 64ull,
+                                           5ull * sizeof(uint32_t) + sizeof(uint16_t) + 3ull * sizeof(uint8_t)) +
+        32ull * 64ull,
 };
 
 /* An empty store, from the arena. */

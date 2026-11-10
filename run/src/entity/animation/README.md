@@ -7,11 +7,13 @@
 **Threads:** `entity_animation_tick` and `entity_animation_swing` on `sim`. A rig may be read by anyone, and `entity_animation_pose` takes what it is given, so it can run anywhere.
 **Public functions** (`run/include/entity/animation/index.h`):
 
-- `entity_animation_rig`: a kind of body's parts.
+- `entity_animation_rig`: a kind of body's parts, for the three named rigs.
+- `entity_animation_rig_of`, `entity_animation_sex_rig_of`, `entity_animation_scale_of`: any mob's own parts, a male's or a female's besides them, and how much bigger that one is.
 - `entity_animation_tick`: one tick of every body's stride, and of its attack.
 - `entity_animation_swing`: an attack starts.
 - `entity_animation_state_read`: how one body is moving now.
-- `entity_animation_pose`: where a rig's parts are, for a state at a place.
+- `entity_animation_pose`, `entity_animation_pose_scaled`: where a rig's parts are, for a state at a place, at a size.
+- `entity_animation_body_pose`: every box of one body in the store, its kind's and its sex's, at its sex's size: what `run/src/game/` draws.
 
 **May be called by:** `run/src/entity/`, which ticks it, `run/src/mob/zombie/`, and `run/src/game/`, which draws a body.
 **Depends on:** `entity/store`, libm.
@@ -40,3 +42,5 @@
 A pose's `half` and `pitch` are the part as it really is. **`reach`** is the box that holds all of it if it is turned by yaw alone, for whoever wants a bound without the pitch; what is drawn leans by `pitch` itself, as `cuda/src/entity_rays/` can: a box with no pitch of its own. For an arm held straight out, that is exactly the arm.
 
 `run/src/game/` draws them: `game_mobs_publish` gives each part's middle, `half`, `yaw` and `pitch` to `render_entities_add_mob_part`, with its share of the body's skin, every tick.
+
+**A male and a female** (plan 005 phase 4). A mob with `male:` and `female:` parts in `config/mobs/` gives each its own boxes besides the mob's, such as horns, tusks, an udder or a comb, and a `scale`. `entity_animation_body_pose` poses the mob's own parts and then its sex's, every size and place from the feet times that scale, into one list of at most `ENTITY_ANIMATION_PARTS_MAX`, 16, which the tables keep to; a body that is neither has its own parts at 1. The texture is the mob's, so a sex's boxes are unwrapped on it too. `game_mobs_publish` draws any mob this way, so a new mob in `config/mobs/` needs no rig here.

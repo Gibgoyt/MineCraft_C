@@ -304,9 +304,13 @@ static void game_items_tick(game_t *game) {
         game_drops_spawn(game);
     }
     /* Before the tick, so that the grid it builds knows what came and went. */
+    /* The world clock counts days from the midnight before its first morning, so day 0 is the first day, when herds come near. */
+    const calendar_clock_t clock = atomic_load_explicit(&game->clock_units, memory_order_relaxed);
     const mob_spawn_view_t view = {
         .position = {player->movement.position[0], player->movement.position[1], player->movement.position[2]},
         .sun_height = player->survival.sun_height,
+        .biomes = game->borrowed_terrain != nullptr ? game->borrowed_terrain->borrowed_biome : nullptr,
+        .first_day = (uint8_t)(clock < CALENDAR_CLOCK_DAY ? 1u : 0u),
     };
     mob_spawn_tick(&game->mob_spawn, &entity->store, entity->borrowed_physics, &game->borrowed_world->map, &view);
     game_skeletons_tick(game);
@@ -421,20 +425,15 @@ static void game_mobs_publish(game_t *game, render_entities_t *entities, const w
             (store->borrowed_flags[i] & ENTITY_STORE_FLAG_WAITING) != 0u) {
             continue;
         }
-        const entity_animation_rig_t *const rig =
-            entity_animation_rig(kind == (uint16_t)MOB_ID_ZOMBIE     ? ENTITY_ANIMATION_RIG_ZOMBIE
-                                 : kind == (uint16_t)MOB_ID_SKELETON ? ENTITY_ANIMATION_RIG_SKELETON
-                                                                     : ENTITY_ANIMATION_RIG_CREEPER);
-        const float64_t feet[3] = {store->borrowed_position[0][i], store->borrowed_position[1][i],
-                                   store->borrowed_position[2][i]};
-        const float64_t middle[3] = {feet[0], feet[1], feet[2] + (float64_t)store->borrowed_height[i] * 0.5f64};
+        const float64_t middle[3] = {store->borrowed_position[0][i], store->borrowed_position[1][i],
+                                     store->borrowed_position[2][i] + (float64_t)store->borrowed_height[i] * 0.5f64};
         const uint8_t stored = game_stored_light(map, middle);
-        entity_animation_state_t state;
-        entity_animation_state_read(store, i, &state);
+        /* Its own boxes and its sex's, as config/mobs/ has them, at its sex's size. */
         entity_animation_pose_t poses[ENTITY_ANIMATION_PARTS_MAX];
-        const uint32_t parts = entity_animation_pose(rig, &state, feet, poses);
+        const entity_animation_part_t *rows[ENTITY_ANIMATION_PARTS_MAX];
+        const uint32_t parts = entity_animation_body_pose(store, i, poses, rows);
         for (uint32_t p = 0u; p < parts; p++) {
-            const entity_animation_part_t *const part = &rig->borrowed_parts[p];
+            const entity_animation_part_t *const part = rows[p];
             render_entities_add_mob_part(entities, kind, poses[p].center, poses[p].half, poses[p].yaw, poses[p].pitch,
                                          part->texture_u, part->texture_v, part->size, stored);
         }

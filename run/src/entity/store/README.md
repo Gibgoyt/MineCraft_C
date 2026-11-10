@@ -14,6 +14,7 @@
 - `entity_store_box`: a body's box.
 - `entity_store_wish_set`, `entity_store_jump`: what a mind asks of a body.
 - `entity_store_tick`: one tick of every body.
+- `ENTITY_STORE_SEX_NONE`, `_MALE`, `_FEMALE`: what `borrowed_sex` holds. Below.
 
 **May be called by:** `run/src/entity/`, `run/src/entity/grid/`, `run/src/entity/animation/`, `run/src/entity/explosion/` and `projectile/`, `run/src/mob/` and what it has for a mob, `run/src/player/combat/`, and `run/src/game/` to draw them.
 **Depends on:** `arena`, `physics`, `assert`, `world/map`, `world/column`, and the generated `tables/blocks`.
@@ -40,3 +41,5 @@ Why a copy of those lines and not `run/src/player/movement/`'s: that takes one b
 `ENTITY_STORE_FLAG_JUMP` lasts until the next tick it moves, and is used up then whether it could jump or not.
 
 Everything it reads and writes is plain numbers, so the same world and the same calls give the same bytes.
+
+**A body's sex** (plan 005 phase 4) is `borrowed_sex`, one of `ENTITY_STORE_SEX_NONE`, `_MALE` and `_FEMALE`, given by `entity_store_spawn_t.sex` and kept for the body's life, moving with it when another goes. Only a mob with `male:` and `female:` parts in `config/mobs/` is either, and `run/src/mob/spawn/` chooses which; anything else is none. The numbers are `tables/mobs/`'s `MOB_SEX_`, which `run/src/mob/spawn/` and `run/src/entity/animation/` assert. `run/src/save/state/` saves it in a section of its own, so a world saved before it opens with every body none.

@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2 — phase 4: Animals, with males and females
 
-**Status:** not started   (updated 2026-11-06)
+**Status:** stage 1 built and tested (sex, 16 boxes, male/female YAML, daylight herds under their own cap, the passive mind); stages 2 to 4 not started   (updated 2026-11-10)
 
 ## Goal
 
@@ -64,11 +64,11 @@ From real animals. These are proposals for Ahmed to change.
 
 **Stage 1: what animals need**
 
-- [ ] Add a male/female field to `run/src/entity/store/`, saved in `run/src/save/state/`
-- [ ] Raise the box limit for models, in `compile/src/game_tables/mobs/` and `run/src/entity/animation/`
-- [ ] Add `male:` and `female:` parts, scale and yields to the mob YAML, and document them in `config/mobs/README.md`
-- [ ] Add daylight spawning on grass in herds, in `run/src/mob/spawn/`, with a cap of its own beside the hostile one
-- [ ] Add passive behaviour: wander, keep near the herd, flee when hit
+- [x] Add a male/female field to `run/src/entity/store/`, saved in `run/src/save/state/`
+- [x] Raise the box limit for models, in `compile/src/game_tables/mobs/` and `run/src/entity/animation/`
+- [x] Add `male:` and `female:` parts, scale and yields to the mob YAML, and document them in `config/mobs/README.md`
+- [x] Add daylight spawning on grass in herds, in `run/src/mob/spawn/`, with a cap of its own beside the hostile one
+- [x] Add passive behaviour: wander, keep near the herd, flee when hit
 
 **Stage 2: items**
 
@@ -105,6 +105,20 @@ Appended as they land:
 **White wool is `tool: none`, so shears do not break it faster.** A block whose tool is shears gets its own item from shears, and wool's table already always drops `white_wool`, so with `tool: shears` it came out twice (caught by `shears_bring_out_what_they_broke_and_nothing_else_does`). The other way round is `tool: shears` with the always-drop row removed, but then wool broken by anything else gives nothing. Kept `none`.
 
 **Needs phase 3 first,** which turns off the hostile mobs and is where spawn rules change.
+
+**Stage 1, as built (2026-11-10):**
+
+- **Sex** is `entity_store_t.borrowed_sex` (`ENTITY_STORE_SEX_NONE/MALE/FEMALE`, the same numbers as the tables' `MOB_SEX_`), given by `entity_store_spawn_t.sex`. A mob with `male:`/`female:` is either, half and half (`mob_spawn_body`), or told (`mob_spawn_body_as`); anything else is none. A male's box is its `scale` times the mob's.
+- **Saving:** state format **version 5**, with two new sections and no other change: `SEXES` (13, one byte a body, with the bodies) and `PASSIVE` (14, the animals' mind and every `mob_passive_body_t`, with the minds). Versions 3 and 4 still open, every body as none. A translation that drops bodies drops their sexes in step (tested in `run_save_state_names`).
+- **Box limit:** 16 (`MOB_PARTS_MAX`), a mob's own parts and its sex's together. `run/src/game/` now draws any mob through `entity_animation_body_pose`, so a new mob needs no rig in code.
+- **YAML:** `mind: hostile|passive`; `male:`/`female:` with `name`, `scale`, `parts`, `drops` (after the mob's) and `yields` (`item`, `count`, `max`, `using`, `every`); `spawn` gains `min_light`, `on`, `biomes`, `min_height`, `max_height`. All in `config/mobs/README.md`. A passive mob has no `despawn`.
+- **Spawning:** passive mobs have their own cap, `MOB_SPAWN_ANIMAL_CAP` 10 per 289 loaded columns, counting only those in loaded columns, and are never taken away. Herds are tried with a chance of 1 in 400 a tick, **every tick on the world's first day** (and as near as 12 blocks), on the ground under the sky, male first, female second, then either. The light is not rolled for them: `min_light` keeps them to the day. The hostile cap now counts hostile mobs only.
+- **Mind:** `run/src/mob/passive/`, ticked inside `mob_minds_tick`: strolls by `mob/path`, back towards its herd past 8 blocks, runs 5 s at 1.5 times its speed from the player after any hurt (males too), never strikes, drops its kind's and its sex's drops. `yield_wait[4]` per animal runs down and is saved, ready for stage 3.
+- **The test animal** is a stand-in `config/mobs/pig/`: passive, boar (1.2, tusks, a leather drop) and sow, on grass in the field biomes, borrowing the creeper's skin, **weight 0** so it never comes in play and is retired from saves. Stage 3 replaces the file. Adding it moves mob ids (pig is 2); saves translate by name.
+- **Also changed:** `mob_t` keeps its size (the animals' counters live in the mob arena) so `app_t` on main's stack does not grow; `render_entities_t`'s padding now follows `MOB_COUNT` (room for 30 mobs); four mob tests' arena bounds add `MOB_PASSIVE_BYTES`; the calendar test's version 3 file also drops the new sections.
+- **Tests:** new ctest `run_mob_animal` (tables, 4000 bodies about half male, sizes and boxes, the rules, herds filling their cap of 8 in a 9-chunk world in under 50 ticks on the first day and about 1 tick in 400 after, the two caps apart, fleeing, drops, a stray walking back to its herd, no heap); `compile_game_tables` gains 30 bad animal files and a good one; `run_save_state` round-trips a boar and a sow and opens a version 4 file; `run_save_state_names` checks sexes stay with their bodies through a translation. The verification set (18 tests) passes on the debug build.
+- **For the orchestrator:** `plans/REPO_STRUCTURE.md` does not yet list `run/src/mob/passive/` or `tests/run/mob/animal/`; rule 4 keeps me out of it.
+- **Open:** animals left behind wait in the store forever (they never despawn), so a long journey could fill the store's 1024. Not a problem at 10 per view, but worth a limit once animals have weight.
 
 **Open for Ahmed:**
 

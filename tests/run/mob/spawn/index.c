@@ -112,7 +112,8 @@ static void ms_light_all(test_context_t *t, ms_rig_t *rig) {
 
 /* The weights the three had before plan 005 phase 3 turned them off: 100 each. The rules are tested on these, as the files now bring
  * nothing for them to work on. */
-static const uint16_t MS_WEIGHTS[MOB_COUNT] = {0u, 100u, 100u, 100u};
+static const uint16_t MS_WEIGHTS[MOB_COUNT] = {
+    [MOB_ID_CREEPER] = 100u, [MOB_ID_SKELETON] = 100u, [MOB_ID_ZOMBIE] = 100u};
 
 static mob_spawn_view_t ms_view(float64_t sun_height) {
     return (mob_spawn_view_t){
@@ -142,12 +143,13 @@ static uint32_t ms_mobs_in(const entity_store_t *store) {
 /* ---- The tables ---------------------------------------------------------------------------------------------------- */
 
 TEST(the_tables_say_what_the_files_say) {
-    CHECK_EQ_U64(MOB_COUNT, 4u);
+    CHECK_EQ_U64(MOB_COUNT, 5u);
     CHECK_STR_EQ(mob_defs[MOB_ID_NONE].name, "none");
     CHECK(mob_defs[MOB_ID_NONE].texture == nullptr);
     CHECK_EQ_U64(MOB_ID_CREEPER, 1u);
-    CHECK_EQ_U64(MOB_ID_SKELETON, 2u);
-    CHECK_EQ_U64(MOB_ID_ZOMBIE, 3u);
+    CHECK_EQ_U64(MOB_ID_PIG, 2u);
+    CHECK_EQ_U64(MOB_ID_SKELETON, 3u);
+    CHECK_EQ_U64(MOB_ID_ZOMBIE, 4u);
 
     const mob_def_t *const zombie = &mob_defs[MOB_ID_ZOMBIE];
     CHECK_STR_EQ(zombie->name, "zombie");
@@ -191,11 +193,25 @@ TEST(a_mobs_rows_are_its_own) {
     CHECK_EQ_U64(mob_drops[mob_defs[MOB_ID_SKELETON].first_drop].item, ITEM_ID_BONE);
     CHECK_EQ_U64(mob_drops[mob_defs[MOB_ID_SKELETON].first_drop + 1u].item, ITEM_ID_ARROW);
 
-    for (uint32_t mob = 1u; mob < MOB_COUNT; mob++) {
-        CHECK_EQ_U64(mob_defs[mob].never_on_count, 1u);
-        CHECK_EQ_U64(mob_never_on[mob_defs[mob].first_never_on], BLOCK_ID_BEDROCK);
-        CHECK_EQ_U64(mob_defs[mob].part_count, ENTITY_ANIMATION_PARTS_MAX);
+    static const mob_id_t HOSTILE[] = {MOB_ID_CREEPER, MOB_ID_SKELETON, MOB_ID_ZOMBIE};
+    for (uint32_t i = 0u; i < sizeof(HOSTILE) / sizeof(HOSTILE[0]); i++) {
+        const mob_def_t *const def = &mob_defs[HOSTILE[i]];
+        CHECK_EQ_U64(def->never_on_count, 1u);
+        CHECK_EQ_U64(mob_never_on[def->first_never_on], BLOCK_ID_BEDROCK);
+        CHECK_EQ_U64(def->part_count, 6u);
+        CHECK_EQ_U64(def->mind, MOB_MIND_HOSTILE);
+        CHECK_EQ_U64(def->first_sex, 0u);
     }
+    /* Every body fits a rig, with its sex's boxes. */
+    for (uint32_t mob = 1u; mob < MOB_COUNT; mob++) {
+        uint32_t most = mob_defs[mob].part_count;
+        for (uint32_t s = 0u; mob_defs[mob].first_sex != 0u && s < 2u; s++) {
+            const uint32_t both = mob_defs[mob].part_count + mob_sexes[mob_defs[mob].first_sex + s].part_count;
+            most = both > most ? both : most;
+        }
+        CHECK(most <= ENTITY_ANIMATION_PARTS_MAX);
+    }
+    CHECK_EQ_U64(ENTITY_ANIMATION_PARTS_MAX, 16u);
 }
 
 TEST(a_rig_is_what_its_mobs_file_says) {
@@ -528,7 +544,11 @@ TEST(packs_are_of_one_kind_close_together_and_the_kinds_come_by_weight) {
     CHECK_EQ_U64(seen[MOB_ID_NONE], 0u);
     /* Equal weights: 100 each, give or take 8 at one sigma. */
     for (uint32_t mob = 1u; mob < MOB_COUNT; mob++) {
-        CHECK(seen[mob] >= 60u && seen[mob] <= 140u);
+        if (MS_WEIGHTS[mob] != 0u) {
+            CHECK(seen[mob] >= 60u && seen[mob] <= 140u);
+        } else {
+            CHECK_EQ_U64(seen[mob], 0u); /* the pig, an animal, which has no weight here and comes by its own rules */
+        }
     }
     ms_end(&rig);
 }

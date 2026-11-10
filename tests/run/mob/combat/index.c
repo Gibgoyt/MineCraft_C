@@ -1174,7 +1174,7 @@ TEST(a_world_opened_again_has_nobody_hurt_and_what_it_takes_is_counted) {
     CHECK_EQ_U64(rig.mob->combat.landed_count, 1u);
     CHECK(rig.mob->arena_world.used <= (uint64_t)MOB_PATH_BYTES + (uint64_t)MOB_ZOMBIE_BYTES +
                                            (uint64_t)MOB_SKELETON_BYTES + (uint64_t)MOB_CREEPER_BYTES +
-                                           (uint64_t)MOB_COMBAT_BYTES);
+                                           (uint64_t)MOB_COMBAT_BYTES + (uint64_t)MOB_PASSIVE_BYTES);
     mob_close(rig.mob);
     CHECK(rig.mob->combat.borrowed_bodies == nullptr);
     CHECK_EQ_U64(rig.mob->combat.landed_count, 0u);

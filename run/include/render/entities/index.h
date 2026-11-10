@@ -84,15 +84,15 @@ typedef struct render_entities_t {
     uint32_t width;                                      /* 568 */
     uint32_t height;                                     /* 572 */
     uint32_t reading;                                    /* 576: the gpu thread's: the slot it last took */
-    uint16_t mob_textures[MOB_COUNT]; /* 580: each mob's row of the frame's own table; set once, by init */
-    uint8_t _pad0[52];                /* 588 */
+    uint16_t mob_textures[MOB_COUNT];    /* 580: each mob's row of the frame's own table; set once, by init */
+    uint8_t _pad0[60u - 2u * MOB_COUNT]; /* 580 + 2 MOB_COUNT: holds up to 30 mobs */
 } render_entities_t;
 static_assert(sizeof(render_entities_t) == 640);
 static_assert(alignof(render_entities_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(render_entities_t, slots) == 192);
 static_assert(offsetof(render_entities_t, borrowed_memory) == 456);
 static_assert(offsetof(render_entities_t, stats) == 520);
-static_assert(offsetof(render_entities_t, _pad0) == 588);
+static_assert(offsetof(render_entities_t, _pad0) == 580u + 2u * MOB_COUNT);
 
 /* Sizes, for the Owner to take memory and blocks. The lists hold the frame's own textures after everything else. */
 uint64_t render_entities_arena_bytes(uint32_t width, uint32_t height);

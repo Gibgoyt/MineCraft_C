@@ -11,7 +11,7 @@
 
 What it checks:
 
-- **The tables:** what the files say, zombie, skeleton and creeper each with weight 0 (plan 005 phase 3), each mob's rig being its own rows, its drops and its `never_on`.
+- **The tables:** what the files say, zombie, skeleton and creeper each with weight 0 (plan 005 phase 3), each mob's rig being its own rows, its drops and its `never_on`, each hostile mob with its six parts, the hostile mind and no sexes, and every mob with its sex's boxes within the 16 a body holds. The animals are `../animal/`'s.
 - **The sky:** the darkening by the sun's height (plan 004 phase 02): overhead, at the horizon, straight down and on the way, phase 02's worked examples, and on the equator at the equinox the same as the old curve by the time of day, at 100,001 times of day.
 - **Each rule at its edge, by hand:** distance at 24 and 128 in three dimensions; a column not loaded; every kind of bad floor; block light; sky light at each roll and time of day; a ceiling at the height of each mob; water and lava at the feet and at the head; a plant in the way being no matter.
 - **The tick:** on the weights the three had before plan 005 phase 3 (100 each), passed in `mob_spawn_view_t.weights`, since the files now bring nothing for the rules to work on. In a real world with real light: an open field by day stays empty; the same field at midnight fills to the cap, and every body it made passed the rules and is on the floor; a roofed cave fills by day, and never within a torch's light; the cap by columns, and a store that is full; weights and packs; the same calls give the same bytes, and another seed others.

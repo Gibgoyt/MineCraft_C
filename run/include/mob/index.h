@@ -8,6 +8,7 @@
 #include "job/index.h"
 #include "mob/combat/index.h"
 #include "mob/creeper/index.h"
+#include "mob/passive/index.h"
 #include "mob/path/index.h"
 #include "mob/skeleton/index.h"
 #include "mob/zombie/index.h"
@@ -25,7 +26,7 @@ typedef struct mob_t {
     mob_skeleton_t skeleton;    /* 128: run/src/game/ ticks it, between this tick and the bodies' */
     mob_creeper_t creeper;      /* 168 */
     mob_combat_t combat;        /* 208: run/src/game/ gives it the player's blows, and ticks it after the bodies move */
-    uint8_t _pad0[16];          /* 240 */
+    mob_passive_t passive;      /* 240: every animal, ticked with the zombies by mob_minds_tick */
     mob_path_t path;            /* 256 */
 } mob_t;
 static_assert(sizeof(mob_t) == 576);

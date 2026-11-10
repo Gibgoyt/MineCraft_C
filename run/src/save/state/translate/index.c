@@ -39,8 +39,12 @@ typedef struct state_translate_t {
     uint64_t lost_stacks;                                  /* 64: of what a player or a store held */
     uint64_t lost_drops;                                   /* 72: on the ground, and on their way there */
     uint64_t lost_bodies;                                  /* 80 */
+    uint64_t gone[STATE_TRANSLATE_SEEN_WORDS]; /* 88: by index, the bodies that went, for the sexes after them */
+    uint32_t bodies_before;                    /* 216: how many bodies there were before any went */
+    uint8_t bodies_seen;                       /* 220: the bodies' section has been through here */
+    uint8_t _pad0[3];                          /* 221 */
 } state_translate_t;
-static_assert(sizeof(state_translate_t) == 88);
+static_assert(sizeof(state_translate_t) == 224);
 
 /* A number in a list's terms, in this build's. False if the list has no such number, which only a forged file can say. */
 static bool state_translate_id(const state_translate_t *translate, save_names_kind_t kind, uint16_t id, uint16_t *out) {
@@ -311,6 +315,9 @@ static bool state_translate_bodies(state_translate_t *translate, uint8_t *data, 
         memcpy(tables + (uint64_t)slot * sizeof(kept), &kept, sizeof(kept));
         kept++;
     }
+    memcpy(translate->gone, gone, sizeof(gone));
+    translate->bodies_before = head.count;
+    translate->bodies_seen = 1u;
     const uint32_t lost = head.count - kept;
     if (lost == 0u) {
         return true;
@@ -345,6 +352,32 @@ static bool state_translate_bodies(state_translate_t *translate, uint8_t *data, 
     return true;
 }
 
+/* Each body's sex, closing up as the bodies did. They are written after the bodies, so those have been through here; a file where they
+ * have not, or of another count, is left for save_state_check to refuse. */
+static bool state_translate_sexes(const state_translate_t *translate, uint8_t *data, uint64_t *in_out_bytes) {
+    save_state_sexes_t head;
+    if (*in_out_bytes < sizeof(head)) {
+        return false;
+    }
+    memcpy(&head, data, sizeof(head));
+    if (translate->bodies_seen == 0u || head.count != translate->bodies_before ||
+        *in_out_bytes != sizeof(head) + head.count) {
+        return true;
+    }
+    uint8_t *const sexes = data + sizeof(head);
+    uint32_t kept = 0u;
+    for (uint32_t i = 0u; i < head.count; i++) {
+        if ((translate->gone[i / 64u] & (1ull << (i % 64u))) == 0u) {
+            sexes[kept] = sexes[i];
+            kept++;
+        }
+    }
+    head.count = kept;
+    memcpy(data, &head, sizeof(head));
+    *in_out_bytes = sizeof(head) + kept;
+    return true;
+}
+
 /* One section, where it now lies. Its length may come down. */
 static bool state_translate_section(state_translate_t *translate, uint32_t id, uint8_t *data, uint64_t *in_out_bytes) {
     switch ((save_state_section_id_t)id) {
@@ -360,7 +393,10 @@ static bool state_translate_section(state_translate_t *translate, uint32_t id, u
         return state_translate_drops(translate, data, in_out_bytes);
     case SAVE_STATE_SECTION_BODIES:
         return state_translate_bodies(translate, data, in_out_bytes);
+    case SAVE_STATE_SECTION_SEXES:
+        return state_translate_sexes(translate, data, in_out_bytes);
     case SAVE_STATE_SECTION_TIME:
+    case SAVE_STATE_SECTION_PASSIVE:
     case SAVE_STATE_SECTION_ARROWS:
     case SAVE_STATE_SECTION_SPAWN:
     case SAVE_STATE_SECTION_MINDS:

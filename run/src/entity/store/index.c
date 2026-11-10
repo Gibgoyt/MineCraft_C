@@ -75,6 +75,7 @@ void entity_store_start(entity_store_t *store, arena_t *arena) {
     store->borrowed_kind = entity_store_array(arena, sizeof(uint16_t));
     store->borrowed_flags = entity_store_array(arena, sizeof(uint8_t));
     store->borrowed_swing_ticks = entity_store_array(arena, sizeof(uint8_t));
+    store->borrowed_sex = entity_store_array(arena, sizeof(uint8_t));
     for (uint32_t slot = 0u; slot < ENTITY_STORE_CAPACITY; slot++) {
         store->borrowed_slot_index[slot] = ENTITY_STORE_CAPACITY;
         store->borrowed_slot_generation[slot] = 1u; /* so that no handle is ever ENTITY_HANDLE_NONE */
@@ -88,6 +89,7 @@ entity_handle_t entity_store_spawn(entity_store_t *store, const entity_store_spa
         return ENTITY_HANDLE_NONE;
     }
     ASSERT_ALWAYS(spawn->half_width > 0.0f32 && spawn->height > 0.0f32);
+    ASSERT_ALWAYS(spawn->sex < ENTITY_STORE_SEX_COUNT);
     ASSERT_ALWAYS((float64_t)spawn->half_width * 2.0f64 <= PHYSICS_BOX_SIZE_MAX &&
                   (float64_t)spawn->height <= PHYSICS_BOX_SIZE_MAX);
     const uint32_t index = store->count;
@@ -120,6 +122,7 @@ entity_handle_t entity_store_spawn(entity_store_t *store, const entity_store_spa
     store->borrowed_kind[index] = spawn->kind;
     store->borrowed_flags[index] = 0u;
     store->borrowed_swing_ticks[index] = 0u;
+    store->borrowed_sex[index] = spawn->sex;
     store->borrowed_slot_index[slot] = index;
     store->count = index + 1u;
     store->spawned_count++;
@@ -161,6 +164,7 @@ static void entity_store_move_body(entity_store_t *store, uint32_t to, uint32_t 
     store->borrowed_kind[to] = store->borrowed_kind[from];
     store->borrowed_flags[to] = store->borrowed_flags[from];
     store->borrowed_swing_ticks[to] = store->borrowed_swing_ticks[from];
+    store->borrowed_sex[to] = store->borrowed_sex[from];
     store->borrowed_slot_index[entity_handle_slot(store->borrowed_handle[to])] = to;
 }
 

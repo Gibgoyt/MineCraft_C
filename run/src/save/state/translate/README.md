@@ -21,7 +21,7 @@
 | Player's `held_item`, for eating and for swinging | item | No item, which only starts those over |
 | Ring of a player's drops, items on the ground | drop row | The drop is gone. On the ground it counts in `lost_count` |
 | Player's `mining_block`, `hand_block`, `last_mined` | block | Air. Mining stops, and a hand of it holds nothing |
-| Each body's `kind` | mob | The body is gone: its slot goes back in the free ring, as for `entity_store_remove` |
+| Each body's `kind` | mob | The body is gone: its slot goes back in the free ring, as for `entity_store_remove`, and its byte in the sexes after the bodies goes too, so the rest stay with their bodies |
 | A crafting grid's `recipe` and `output` | recipe, item | Thrown away here, and worked out again by `save_state_apply` from the cells and this build's recipes |
 
 A stack also keeps to what its item is today: a count past `max_stack` comes down to it, and wear past `durability` comes down to one use left.

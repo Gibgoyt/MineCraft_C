@@ -272,6 +272,11 @@ static void ss_fill(ss_rig_t *rig) {
     /* So that the slots are not all in order. */
     (void)entity_store_remove(&entity->store, second);
     const entity_handle_t fourth = mob_spawn_body(rig->spawn, &entity->store, MOB_ID_ZOMBIE, feet2, 3.5f32);
+    /* An animal of each sex, plan 005 phase 4: what each is up to goes with it. */
+    const float64_t feet4[3] = {16.5f64, 10.5f64, 1.0f64};
+    (void)mob_spawn_body_as(rig->spawn, &entity->store, MOB_ID_PIG, feet4, 0.25f32, ENTITY_STORE_SEX_MALE);
+    const float64_t feet5[3] = {18.5f64, 10.5f64, 1.0f64};
+    (void)mob_spawn_body_as(rig->spawn, &entity->store, MOB_ID_PIG, feet5, 0.75f32, ENTITY_STORE_SEX_FEMALE);
     entity_store_wish_set(&entity->store, 0u, 0.05f64, 0.0f64);
     entity->store.borrowed_health[1] = 4.5f32;
     const float64_t origin[3] = {2.5f64, 2.5f64, 5.0f64};
@@ -287,6 +292,11 @@ static void ss_fill(ss_rig_t *rig) {
     mob->creeper.borrowed_bodies[entity_handle_slot(third)].fuse = 2u;
     mob->combat.borrowed_bodies[entity_handle_slot(first)].last_hurt = 1.5f32;
     mob->combat.landed_count = 8u;
+    mob_passive_body_t *const sow = mob_passive_body_of(&mob->passive, &entity->store, entity->store.count - 1u);
+    sow->yield_wait[1] = 777u;
+    sow->flee = 5u;
+    sow->from[0] = 3.25f64;
+    mob->passive.borrowed_tally->fled_count = 3u;
     rig->spawn->borrowed_idle[entity_handle_slot(third)] = 99u;
 
     rig->parts.time = (save_state_time_t){
@@ -348,7 +358,7 @@ TEST(a_file_is_these_bytes_by_hand) {
     memcpy(expected + 24, &table_hash, 8u);
     const uint64_t sections_bytes = whole - 72u;
     memcpy(expected + 32, &sections_bytes, 8u);
-    const uint32_t version = 4u, header_bytes = 72u, section_count = 3u;
+    const uint32_t version = 5u, header_bytes = 72u, section_count = 3u;
     memcpy(expected + 48, &version, 4u);
     memcpy(expected + 52, &header_bytes, 4u);
     memcpy(expected + 56, &section_count, 4u);
@@ -437,6 +447,24 @@ TEST(every_part_reloads_byte_for_byte_and_goes_on_the_same) {
     REQUIRE(container_at(&second->item->chests, 7, 8, 1) != nullptr);
     CHECK_EQ_U64(container_at(&second->item->chests, 7, 8, 1)->slots[26].count, 12u);
     REQUIRE(smelting_at(&second->item->furnaces, 9, 9, 1) != nullptr);
+    /* Each body is the sex it was, and each animal up to what it was. */
+    const entity_store_t *const store = &second->entity->store;
+    uint32_t boars = 0u, sows = 0u, neither = 0u;
+    for (uint32_t i = 0u; i < store->count; i++) {
+        const uint8_t sex = store->borrowed_sex[i];
+        CHECK_EQ_U64(sex != ENTITY_STORE_SEX_NONE, store->borrowed_kind[i] == MOB_ID_PIG);
+        boars += sex == ENTITY_STORE_SEX_MALE ? 1u : 0u;
+        sows += sex == ENTITY_STORE_SEX_FEMALE ? 1u : 0u;
+        neither += sex == ENTITY_STORE_SEX_NONE ? 1u : 0u;
+    }
+    CHECK_EQ_U64(boars, 1u);
+    CHECK_EQ_U64(sows, 1u);
+    CHECK_EQ_U64(neither, 3u);
+    const mob_passive_body_t *const sow = mob_passive_body_of(&second->mob->passive, store, store->count - 1u);
+    CHECK_EQ_U64(sow->yield_wait[1], 777u);
+    CHECK_EQ_U64(sow->flee, 5u);
+    CHECK(sow->from[0] == 3.25f64);
+    CHECK_EQ_U64(second->mob->passive.borrowed_tally->fled_count, 3u);
     /* Nothing has ticked, and nothing is different. */
     save_state_capture(&second->save->state, &second->parts);
     CHECK_EQ_U64(second->save->state.kept, 0u);
@@ -568,6 +596,12 @@ TEST(what_cannot_be_believed_is_refused_and_left_as_it_was) {
              ENTITY_STORE_CAPACITY * (sizeof(mob_zombie_body_t) + sizeof(mob_skeleton_body_t)) +
              offsetof(mob_creeper_body_t, state),
          9u, SAVE_STATE_SECTION_MINDS, 1u},
+        /* Plan 005 phase 4: a sex that is none of the three, padding that is not zero, a count that is not the bodies', and an animal
+         * running for longer than it ever does. */
+        {sizeof(save_state_sexes_t), ENTITY_STORE_SEX_COUNT, SAVE_STATE_SECTION_SEXES, 1u},
+        {offsetof(save_state_sexes_t, _pad0), 1u, SAVE_STATE_SECTION_SEXES, 1u},
+        {offsetof(save_state_sexes_t, count), 1u, SAVE_STATE_SECTION_SEXES, 4u},
+        {sizeof(save_state_passive_t) + offsetof(mob_passive_body_t, flee), 999u, SAVE_STATE_SECTION_PASSIVE, 2u},
     };
     const uint32_t forgery_count = (uint32_t)(sizeof(forgeries) / sizeof(forgeries[0]));
     for (uint32_t i = 0u; i < forgery_count; i++) {
@@ -648,6 +682,95 @@ TEST(what_cannot_be_believed_is_refused_and_left_as_it_was) {
 }
 
 /* What is alive goes where a check will not follow: an arrow keeps flying and a fall keeps adding up. What the game then writes it must believe, or the world will not open again. */
+/* The same file as a version 4 game wrote it: no sexes and no animals. Returns its length. */
+static uint64_t ss_as_version_4(uint8_t *file, uint64_t bytes) {
+    save_state_header_t header;
+    memcpy(&header, file, sizeof(header));
+    uint64_t read_at = sizeof(header), write_at = sizeof(header);
+    uint32_t count = 0u;
+    while (read_at < bytes) {
+        save_state_section_t section;
+        memcpy(&section, file + read_at, sizeof(section));
+        const uint64_t whole = sizeof(section) + ((section.bytes + 7u) & ~(uint64_t)7u);
+        if (section.id != SAVE_STATE_SECTION_SEXES && section.id != SAVE_STATE_SECTION_PASSIVE) {
+            memmove(file + write_at, file + read_at, whole);
+            write_at += whole;
+            count++;
+        }
+        read_at += whole;
+    }
+    header.version = 4u;
+    header.section_count = count;
+    header.sections_bytes = write_at - sizeof(header);
+    memcpy(file, &header, sizeof(header));
+    ss_rehash(file, write_at);
+    return write_at;
+}
+
+/* A world saved before animals opens, and every body in it is neither male nor female, as every body then was; a version 5 file must
+ * have both new parts, and one before it neither. */
+TEST(a_version_4_file_opens_with_every_body_neither_and_version_5_needs_its_parts) {
+    char *const root = ss_temp_directory(t);
+    REQUIRE(root != nullptr);
+    ss_rig_t *const first = test_alloc(t, sizeof(ss_rig_t));
+    REQUIRE(ss_rig_begin(t, first, root, false));
+    ss_fill(first);
+    save_state_capture(&first->save->state, &first->parts);
+    REQUIRE(save_state_write(&first->save->state, 0u) == SAVE_WORLD_OK);
+    ss_rig_end(first);
+    const char *const path = ss_state_path(t, root, 0u);
+    uint64_t bytes = 0u;
+    uint8_t *const file = ss_slurp(t, path, &bytes);
+    uint8_t *const copy = test_alloc(t, bytes);
+    memcpy(copy, file, bytes);
+    const uint64_t old_bytes = ss_as_version_4(copy, bytes);
+    CHECK(old_bytes < bytes);
+    CHECK_EQ_U64(save_state_check(copy, old_bytes, SS_SEED, 0u), SAVE_WORLD_OK);
+    /* The same bytes said to be version 5 lack what version 5 has. */
+    save_state_header_t header;
+    memcpy(&header, copy, sizeof(header));
+    header.version = 5u;
+    memcpy(copy, &header, sizeof(header));
+    ss_rehash(copy, old_bytes);
+    CHECK_EQ_U64(save_state_check(copy, old_bytes, SS_SEED, 0u), SAVE_WORLD_ERROR_DAMAGED);
+    /* And the whole file said to be version 4 has what version 4 never had. */
+    memcpy(copy, file, bytes);
+    memcpy(&header, copy, sizeof(header));
+    header.version = 4u;
+    memcpy(copy, &header, sizeof(header));
+    ss_rehash(copy, bytes);
+    CHECK_EQ_U64(save_state_check(copy, bytes, SS_SEED, 0u), SAVE_WORLD_ERROR_DAMAGED);
+
+    memcpy(copy, file, bytes);
+    REQUIRE(ss_as_version_4(copy, bytes) == old_bytes);
+    REQUIRE(file_write_atomic(path, copy, old_bytes) == FILE_OK);
+    ss_rig_t *const second = test_alloc(t, sizeof(ss_rig_t));
+    REQUIRE(ss_rig_begin(t, second, root, false));
+    CHECK_EQ_U64(second->save->state.kept, 1u);
+    /* Whatever was in the store before goes to none. */
+    memset(second->entity->store.borrowed_sex, ENTITY_STORE_SEX_FEMALE, ENTITY_STORE_CAPACITY);
+    REQUIRE(save_state_apply(&second->save->state, &second->parts));
+    const entity_store_t *const store = &second->entity->store;
+    CHECK_EQ_U64(store->count, 5u);
+    for (uint32_t i = 0u; i < store->count; i++) {
+        CHECK_EQ_U64(store->borrowed_sex[i], ENTITY_STORE_SEX_NONE);
+    }
+    CHECK_EQ_U64(second->mob->passive.borrowed_tally->fled_count, 0u);
+    /* Its next save is version 5, with both. */
+    save_state_capture(&second->save->state, &second->parts);
+    REQUIRE(save_state_write(&second->save->state, 0u) == SAVE_WORLD_OK);
+    uint64_t again_bytes = 0u;
+    const uint8_t *const again = ss_slurp(t, path, &again_bytes);
+    memcpy(&header, again, sizeof(header));
+    CHECK_EQ_U64(header.version, SAVE_STATE_VERSION);
+    uint64_t section_bytes = 0u;
+    CHECK(save_state_section_find(again, again_bytes, SAVE_STATE_SECTION_SEXES, &section_bytes) != nullptr);
+    CHECK_EQ_U64(section_bytes, sizeof(save_state_sexes_t) + 5u);
+    CHECK(save_state_section_find(again, again_bytes, SAVE_STATE_SECTION_PASSIVE, &section_bytes) != nullptr);
+    ss_rig_end(second);
+    ss_temp_remove(t, root);
+}
+
 TEST(numbers_past_what_a_file_may_say_are_written_at_the_limit_and_the_file_is_believed) {
     char *const root = ss_temp_directory(t);
     REQUIRE(root != nullptr);

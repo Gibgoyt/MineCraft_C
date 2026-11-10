@@ -7,7 +7,7 @@ enum : uint64_t {
     MOB_REGION_BYTES = 4ull << 20,
 };
 static_assert((uint64_t)MOB_PATH_BYTES + (uint64_t)MOB_ZOMBIE_BYTES + (uint64_t)MOB_SKELETON_BYTES +
-                  (uint64_t)MOB_CREEPER_BYTES + (uint64_t)MOB_COMBAT_BYTES <=
+                  (uint64_t)MOB_CREEPER_BYTES + (uint64_t)MOB_COMBAT_BYTES + (uint64_t)MOB_PASSIVE_BYTES <=
               (uint64_t)MOB_REGION_BYTES);
 
 bool mob_init(mob_t *mob, job_system_t *job) {
@@ -33,6 +33,7 @@ void mob_open(mob_t *mob, const world_t *world, uint64_t seed) {
     mob_skeleton_start(&mob->skeleton, &mob->arena_world, terrain_rng_derive(seed, terrain_rng_salt("mob/skeleton")));
     mob_creeper_start(&mob->creeper, &mob->arena_world, terrain_rng_derive(seed, terrain_rng_salt("mob/creeper")));
     mob_combat_start(&mob->combat, &mob->arena_world);
+    mob_passive_start(&mob->passive, &mob->arena_world, terrain_rng_derive(seed, terrain_rng_salt("mob/passive")));
 }
 
 void mob_close(mob_t *mob) {
@@ -41,6 +42,7 @@ void mob_close(mob_t *mob) {
     memset(&mob->skeleton, 0, sizeof(mob->skeleton));
     memset(&mob->creeper, 0, sizeof(mob->creeper));
     memset(&mob->combat, 0, sizeof(mob->combat));
+    memset(&mob->passive, 0, sizeof(mob->passive));
     arena_reset(&mob->arena_world);
 }
 
@@ -49,5 +51,9 @@ void mob_tick(mob_t *mob) {
 }
 
 float32_t mob_minds_tick(mob_t *mob, entity_t *entity, const mob_zombie_view_t *view) {
-    return mob_zombie_tick(&mob->zombie, &mob->path, &entity->store, &entity->item_drops, mob->path.borrowed_map, view);
+    const float32_t blow =
+        mob_zombie_tick(&mob->zombie, &mob->path, &entity->store, &entity->item_drops, mob->path.borrowed_map, view);
+    /* The animals strike nothing, so what view takes is the zombies' alone. */
+    mob_passive_tick(&mob->passive, &mob->path, &entity->store, &entity->item_drops, view);
+    return blow;
 }

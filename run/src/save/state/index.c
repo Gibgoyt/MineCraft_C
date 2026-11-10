@@ -322,6 +322,12 @@ static void save_state_out_entity(save_state_out_t *out, const entity_t *entity)
     /* All but half_width and height, which never change and are looked at more closely. */
     save_state_settle_f32s(arrays + 13u * each + 2ull * store->count * sizeof(float32_t), 8u * store->count, FLT_MAX);
     save_state_out_end(out);
+
+    const save_state_sexes_t sexes_head = {.count = store->count, ._pad0 = {0}};
+    save_state_out_begin(out, SAVE_STATE_SECTION_SEXES);
+    save_state_out_bytes(out, &sexes_head, sizeof(sexes_head));
+    save_state_out_bytes(out, store->borrowed_sex, store->count);
+    save_state_out_end(out);
 }
 
 static void save_state_out_spawn(save_state_out_t *out, const mob_spawn_t *spawn) {
@@ -373,6 +379,21 @@ static void save_state_out_minds(save_state_out_t *out, const mob_t *mob) {
                                COLLISION_AXES, SAVE_STATE_PLACE_MOST);
         save_state_settle_f32s(hurts + (uint64_t)i * sizeof(mob_combat_body_t) + offsetof(mob_combat_body_t, last_hurt),
                                1u, FLT_MAX);
+    }
+    save_state_out_end(out);
+
+    const save_state_passive_t passive_head = {.random = mob->passive.borrowed_tally->random.state,
+                                               .fled = mob->passive.borrowed_tally->fled_count,
+                                               .died = mob->passive.borrowed_tally->died_count,
+                                               .dropped = mob->passive.borrowed_tally->dropped_count};
+    save_state_out_begin(out, SAVE_STATE_SECTION_PASSIVE);
+    save_state_out_bytes(out, &passive_head, sizeof(passive_head));
+    save_state_out_bytes(out, mob->passive.borrowed_bodies, ENTITY_STORE_CAPACITY * sizeof(mob_passive_body_t));
+    uint8_t *const animals = save_state_out_section(out) + sizeof(passive_head);
+    for (uint32_t i = 0u; i < ENTITY_STORE_CAPACITY; i++) {
+        uint8_t *const animal = animals + (uint64_t)i * sizeof(mob_passive_body_t);
+        save_state_settle_f64s(animal + offsetof(mob_passive_body_t, from), 2u, SAVE_STATE_PLACE_MOST);
+        save_state_settle_f32s(animal + offsetof(mob_passive_body_t, last_health), 1u, FLT_MAX);
     }
     save_state_out_end(out);
 }
@@ -783,6 +804,41 @@ static bool save_state_check_minds(const uint8_t *data, uint64_t bytes) {
     return true;
 }
 
+/* That each is a sex. That the count is the bodies' is save_state_check's, which sees both. */
+static bool save_state_check_sexes(const uint8_t *data, uint64_t bytes) {
+    save_state_sexes_t head;
+    if (bytes < sizeof(head)) {
+        return false;
+    }
+    memcpy(&head, data, sizeof(head));
+    if (head.count > ENTITY_STORE_CAPACITY || bytes != sizeof(head) + head.count || head._pad0[0] != 0u ||
+        head._pad0[1] != 0u || head._pad0[2] != 0u || head._pad0[3] != 0u) {
+        return false;
+    }
+    for (uint32_t i = 0u; i < head.count; i++) {
+        if (data[sizeof(head) + i] >= ENTITY_STORE_SEX_COUNT) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool save_state_check_passive(const uint8_t *data, uint64_t bytes) {
+    if (bytes != sizeof(save_state_passive_t) + (uint64_t)ENTITY_STORE_CAPACITY * sizeof(mob_passive_body_t)) {
+        return false;
+    }
+    const uint8_t *const animals = data + sizeof(save_state_passive_t);
+    for (uint32_t i = 0u; i < ENTITY_STORE_CAPACITY; i++) {
+        mob_passive_body_t animal;
+        memcpy(&animal, animals + (uint64_t)i * sizeof(animal), sizeof(animal));
+        if (!save_state_place_fine(animal.from, 2u) || !save_state_f32s_fine(&animal.last_health, 1u) ||
+            animal.flee > MOB_PASSIVE_FLEE_TICKS + 1u || animal.stroll > MOB_PASSIVE_STROLL_TICKS) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool save_state_check_one(uint32_t id, const uint8_t *data, uint64_t bytes) {
     switch ((save_state_section_id_t)id) {
     case SAVE_STATE_SECTION_TIME:
@@ -809,6 +865,10 @@ static bool save_state_check_one(uint32_t id, const uint8_t *data, uint64_t byte
         return save_names_are_live(data, bytes);
     case SAVE_STATE_SECTION_CALENDAR:
         return save_state_check_calendar(data, bytes);
+    case SAVE_STATE_SECTION_SEXES:
+        return save_state_check_sexes(data, bytes);
+    case SAVE_STATE_SECTION_PASSIVE:
+        return save_state_check_passive(data, bytes);
     }
     return false; /* an id from nowhere: this version has only those */
 }
@@ -840,6 +900,32 @@ static save_world_status_t save_state_check_header(const uint8_t *file, uint64_t
     }
     if (header.seed != seed) {
         return SAVE_WORLD_ERROR_SEED;
+    }
+    return SAVE_WORLD_OK;
+}
+
+/* From version 5 the sexes go with the bodies, one for each, and the animals with the minds; before it neither is there. */
+static save_world_status_t save_state_check_animals(const uint8_t *file, uint64_t bytes,
+                                                    const save_state_header_t *header, uint32_t seen) {
+    const bool animals = header->version >= SAVE_STATE_VERSION_FIRST_WITH_ANIMALS;
+    const bool bodies = (seen & (1u << SAVE_STATE_SECTION_BODIES)) != 0u;
+    const bool minds = (seen & (1u << SAVE_STATE_SECTION_MINDS)) != 0u;
+    const bool sexes = (seen & (1u << SAVE_STATE_SECTION_SEXES)) != 0u;
+    const bool passive = (seen & (1u << SAVE_STATE_SECTION_PASSIVE)) != 0u;
+    if (sexes != (animals && bodies) || passive != (animals && minds)) {
+        return SAVE_WORLD_ERROR_DAMAGED;
+    }
+    if (sexes) {
+        uint64_t bodies_bytes = 0u, sexes_bytes = 0u;
+        const uint8_t *const body = save_state_section_find(file, bytes, SAVE_STATE_SECTION_BODIES, &bodies_bytes);
+        const uint8_t *const sex = save_state_section_find(file, bytes, SAVE_STATE_SECTION_SEXES, &sexes_bytes);
+        save_state_bodies_t body_head;
+        save_state_sexes_t sex_head;
+        memcpy(&body_head, body, sizeof(body_head));
+        memcpy(&sex_head, sex, sizeof(sex_head));
+        if (body_head.count != sex_head.count) {
+            return SAVE_WORLD_ERROR_DAMAGED;
+        }
     }
     return SAVE_WORLD_OK;
 }
@@ -888,7 +974,7 @@ save_world_status_t save_state_check(const uint8_t *file, uint64_t bytes, uint64
     if (calendar != (header.version >= SAVE_STATE_VERSION_FIRST_WITH_CALENDAR)) {
         return SAVE_WORLD_ERROR_DAMAGED;
     }
-    return SAVE_WORLD_OK;
+    return save_state_check_animals(file, bytes, &header, seen);
 }
 
 /* ---- Opening ---------------------------------------------------------------------------------------------------------- */
@@ -1229,6 +1315,13 @@ bool save_state_apply(const save_state_t *state, save_state_parts_t *parts) {
         if (data != nullptr) {
             save_state_in_bodies(parts->borrowed_entity, data);
         }
+        /* A file from before version 5 has none: every body then was neither male nor female. */
+        entity_store_t *const store = &parts->borrowed_entity->store;
+        memset(store->borrowed_sex, ENTITY_STORE_SEX_NONE, store->count);
+        data = save_state_section_find(file, file_bytes, SAVE_STATE_SECTION_SEXES, &bytes);
+        if (data != nullptr) {
+            memcpy(store->borrowed_sex, data + sizeof(save_state_sexes_t), bytes - sizeof(save_state_sexes_t));
+        }
     }
     data = save_state_section_find(file, file_bytes, SAVE_STATE_SECTION_SPAWN, &bytes);
     if (data != nullptr && parts->borrowed_spawn != nullptr) {
@@ -1237,6 +1330,17 @@ bool save_state_apply(const save_state_t *state, save_state_parts_t *parts) {
     data = save_state_section_find(file, file_bytes, SAVE_STATE_SECTION_MINDS, &bytes);
     if (data != nullptr && parts->borrowed_mob != nullptr) {
         save_state_in_minds(parts->borrowed_mob, data);
+    }
+    data = save_state_section_find(file, file_bytes, SAVE_STATE_SECTION_PASSIVE, &bytes);
+    if (data != nullptr && parts->borrowed_mob != nullptr) {
+        mob_passive_t *const passive = &parts->borrowed_mob->passive;
+        save_state_passive_t head;
+        memcpy(&head, data, sizeof(head));
+        passive->borrowed_tally->random.state = head.random;
+        passive->borrowed_tally->fled_count = head.fled;
+        passive->borrowed_tally->died_count = head.died;
+        passive->borrowed_tally->dropped_count = head.dropped;
+        memcpy(passive->borrowed_bodies, data + sizeof(head), ENTITY_STORE_CAPACITY * sizeof(mob_passive_body_t));
     }
     return true;
 }

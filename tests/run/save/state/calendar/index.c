@@ -198,6 +198,30 @@ static uint64_t sc_calendar_strip(uint8_t *file, uint64_t bytes, uint32_t versio
     return stripped;
 }
 
+/* The same file without the sexes and the animals, which nothing before version 5 wrote (plan 005 phase 4). Returns its length. */
+static uint64_t sc_animals_strip(uint8_t *file, uint64_t bytes) {
+    save_state_header_t header;
+    memcpy(&header, file, sizeof(header));
+    uint64_t read_at = sizeof(header), write_at = sizeof(header);
+    uint32_t count = 0u;
+    while (read_at < bytes) {
+        save_state_section_t section;
+        memcpy(&section, file + read_at, sizeof(section));
+        const uint64_t whole = sizeof(section) + ((section.bytes + 7u) & ~(uint64_t)7u);
+        if (section.id != SAVE_STATE_SECTION_SEXES && section.id != SAVE_STATE_SECTION_PASSIVE) {
+            memmove(file + write_at, file + read_at, whole);
+            write_at += whole;
+            count++;
+        }
+        read_at += whole;
+    }
+    header.section_count = count;
+    header.sections_bytes = write_at - sizeof(header);
+    memcpy(file, &header, sizeof(header));
+    sc_rehash(file, write_at);
+    return write_at;
+}
+
 TEST(the_calendar_reloads_exactly) {
     char *const root = sc_temp_directory(t);
     REQUIRE(root != nullptr);
@@ -228,7 +252,7 @@ TEST(a_version_3_file_still_opens_with_a_new_calendar) {
     REQUIRE(head.id == SAVE_STATE_SECTION_CALENDAR && head.bytes == sizeof(save_state_calendar_t));
     uint8_t *const old = test_alloc(t, bytes);
     memcpy(old, good, bytes);
-    const uint64_t old_bytes = sc_calendar_strip(old, bytes, SAVE_STATE_VERSION_READ_MIN);
+    const uint64_t old_bytes = sc_animals_strip(old, sc_calendar_strip(old, bytes, SAVE_STATE_VERSION_READ_MIN));
     CHECK_EQ_U64(SAVE_STATE_VERSION_READ_MIN, 3u);
     CHECK_EQ_U64(save_state_check(old, old_bytes, SC_SEED, 0u), SAVE_WORLD_OK);
     REQUIRE(file_write_atomic(sc_state_path(t, root, 0u), old, old_bytes) == FILE_OK);

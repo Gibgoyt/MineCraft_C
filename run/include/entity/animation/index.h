@@ -10,7 +10,7 @@
 #include <stdint.h>
 
 enum : uint32_t {
-    /* Most in a rig: a head, a body and four limbs. */
+    /* Most in a body: a mob's own boxes and its sex's together, such as horns, an udder, tusks or a comb. */
     ENTITY_ANIMATION_PARTS_MAX = MOB_PARTS_MAX,
     /* How long an attack's swing takes, in ticks. */
     ENTITY_ANIMATION_SWING_TICKS = 6u,
@@ -75,6 +75,16 @@ static_assert(sizeof(entity_animation_pose_t) == 56);
 /* A rig. Lives as long as the program. */
 const entity_animation_rig_t *entity_animation_rig(entity_animation_rig_id_t rig);
 
+/* Any mob's own rig, from config/mobs/: the parts every body of it has. kind must be a mob_id_t but none. */
+entity_animation_rig_t entity_animation_rig_of(uint16_t kind);
+
+/* The boxes a male or a female of this mob has besides its own, from its male: or female: part: none for ENTITY_STORE_SEX_NONE or
+ * for a mob without those parts. */
+entity_animation_rig_t entity_animation_sex_rig_of(uint16_t kind, uint8_t sex);
+
+/* How much bigger a male or a female of this mob is than its parts say, box and boxes alike: 1 when it is neither. */
+float32_t entity_animation_scale_of(uint16_t kind, uint8_t sex);
+
 /* One tick of how every body in the store moves, from how far it went. After entity_store_tick. A body waiting for its column stands
  * in the stride it was in. Never touches the heap. */
 void entity_animation_tick(entity_store_t *store);
@@ -88,5 +98,16 @@ void entity_animation_state_read(const entity_store_t *store, uint32_t index, en
 /* Every part of a rig for a body at position, into out, which has room for ENTITY_ANIMATION_PARTS_MAX. Returns how many. */
 uint32_t entity_animation_pose(const entity_animation_rig_t *rig, const entity_animation_state_t *state,
                                const float64_t position[COLLISION_AXES], entity_animation_pose_t *out);
+
+/* The same, for a body scale times the size its parts say, sizes and places alike, from its feet. */
+uint32_t entity_animation_pose_scaled(const entity_animation_rig_t *rig, const entity_animation_state_t *state,
+                                      const float64_t position[COLLISION_AXES], float32_t scale,
+                                      entity_animation_pose_t *out);
+
+/* Every box of the mob at this index, as it is now: its kind's own parts, then its sex's, at its sex's scale. Into out, and the
+ * part each came from into out_parts, both with room for ENTITY_ANIMATION_PARTS_MAX. Returns how many: 0 for a body that is no
+ * mob. */
+uint32_t entity_animation_body_pose(const entity_store_t *store, uint32_t index, entity_animation_pose_t *out,
+                                    const entity_animation_part_t **out_parts);
 
 #endif

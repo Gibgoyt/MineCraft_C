@@ -24,8 +24,38 @@ static const entity_animation_rig_t ENTITY_ANIMATION_RIGS[ENTITY_ANIMATION_RIG_C
                                       MOB_CREEPER_TEXTURE_WIDTH, MOB_CREEPER_TEXTURE_HEIGHT},
 };
 
+static_assert((uint32_t)ENTITY_STORE_SEX_MALE == MOB_SEX_MALE && (uint32_t)ENTITY_STORE_SEX_FEMALE == MOB_SEX_FEMALE);
+
 const entity_animation_rig_t *entity_animation_rig(entity_animation_rig_id_t rig) {
     return &ENTITY_ANIMATION_RIGS[rig];
+}
+
+entity_animation_rig_t entity_animation_rig_of(uint16_t kind) {
+    const mob_def_t *const def = &mob_defs[kind < MOB_COUNT ? kind : 0u];
+    return (entity_animation_rig_t){&mob_parts[def->first_part], def->part_count, def->texture_width,
+                                    def->texture_height};
+}
+
+/* The row of a male or a female of this mob, or nullptr. */
+static const mob_sex_t *entity_animation_sex_row(uint16_t kind, uint8_t sex) {
+    if (kind >= MOB_COUNT || mob_defs[kind].first_sex == 0u ||
+        (sex != ENTITY_STORE_SEX_MALE && sex != ENTITY_STORE_SEX_FEMALE)) {
+        return nullptr;
+    }
+    return &mob_sexes[mob_defs[kind].first_sex + (uint32_t)sex - (uint32_t)ENTITY_STORE_SEX_MALE];
+}
+
+entity_animation_rig_t entity_animation_sex_rig_of(uint16_t kind, uint8_t sex) {
+    const mob_sex_t *const row = entity_animation_sex_row(kind, sex);
+    const entity_animation_rig_t own = entity_animation_rig_of(kind);
+    return row == nullptr ? (entity_animation_rig_t){&mob_parts[0], 0u, own.texture_width, own.texture_height}
+                          : (entity_animation_rig_t){&mob_parts[row->first_part], row->part_count, own.texture_width,
+                                                     own.texture_height};
+}
+
+float32_t entity_animation_scale_of(uint16_t kind, uint8_t sex) {
+    const mob_sex_t *const row = entity_animation_sex_row(kind, sex);
+    return row == nullptr ? 1.0f32 : row->scale;
 }
 
 void entity_animation_tick(entity_store_t *store) {
@@ -85,7 +115,39 @@ static float32_t entity_animation_part_pitch(const entity_animation_part_t *part
 
 uint32_t entity_animation_pose(const entity_animation_rig_t *rig, const entity_animation_state_t *state,
                                const float64_t position[COLLISION_AXES], entity_animation_pose_t *out) {
-    const float32_t to_blocks = 1.0f32 / ENTITY_ANIMATION_PIXELS_PER_BLOCK;
+    return entity_animation_pose_scaled(rig, state, position, 1.0f32, out);
+}
+
+uint32_t entity_animation_body_pose(const entity_store_t *store, uint32_t index, entity_animation_pose_t *out,
+                                    const entity_animation_part_t **out_parts) {
+    const uint16_t kind = store->borrowed_kind[index];
+    if (kind == (uint16_t)MOB_ID_NONE || (uint32_t)kind >= MOB_COUNT) {
+        return 0u;
+    }
+    const uint8_t sex = store->borrowed_sex[index];
+    const entity_animation_rig_t own = entity_animation_rig_of(kind);
+    const entity_animation_rig_t extra = entity_animation_sex_rig_of(kind, sex);
+    const float32_t scale = entity_animation_scale_of(kind, sex);
+    const float64_t feet[COLLISION_AXES] = {store->borrowed_position[0][index], store->borrowed_position[1][index],
+                                            store->borrowed_position[2][index]};
+    entity_animation_state_t state;
+    entity_animation_state_read(store, index, &state);
+    /* The tables refuse a sex whose boxes and its mob's are more than a body holds. */
+    const uint32_t first = entity_animation_pose_scaled(&own, &state, feet, scale, out);
+    const uint32_t more = entity_animation_pose_scaled(&extra, &state, feet, scale, out + first);
+    for (uint32_t p = 0u; p < first; p++) {
+        out_parts[p] = &own.borrowed_parts[p];
+    }
+    for (uint32_t p = 0u; p < more; p++) {
+        out_parts[first + p] = &extra.borrowed_parts[p];
+    }
+    return first + more;
+}
+
+uint32_t entity_animation_pose_scaled(const entity_animation_rig_t *rig, const entity_animation_state_t *state,
+                                      const float64_t position[COLLISION_AXES], float32_t scale,
+                                      entity_animation_pose_t *out) {
+    const float32_t to_blocks = scale / ENTITY_ANIMATION_PIXELS_PER_BLOCK;
     const float32_t growth = 1.0f32 + state->swell * ENTITY_ANIMATION_SWELL_GROWTH;
     const float32_t body_cos = cosf(state->yaw), body_sin = sinf(state->yaw);
     for (uint32_t p = 0u; p < rig->part_count; p++) {
