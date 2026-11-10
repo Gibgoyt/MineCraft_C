@@ -192,6 +192,8 @@ Appended as they land:
 - `eb650bd3` Add run_render_distance_live: render distance and full detail changed in a live game, and a lit log mined. (agent 14c)
 - `d81c6ea0` Add the fill-in times to bench_world and its history, with the first run before the starvation fixes. (agent 14c)
 - The commit that records stage 1's baseline here, with the live test's deadlines held only in an optimized build. (agent 14c)
+- `103aea7e` Make far-field columns cheap and keep them across settings changes (plan 005 phase 14, far field). (agent 14b)
+- `433d44f2` Show the horizon first after a render distance change, and stop the far field rebuilding after every autosave (plan 005 phase 14, far field). (agent 14b)
 
 ## Issues found
 
