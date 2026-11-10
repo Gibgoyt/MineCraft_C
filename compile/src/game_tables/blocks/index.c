@@ -4,6 +4,7 @@
  */
 #include "game_tables/blocks/index.h"
 
+#include "types/block_state/index.h"
 #include "types/sound_blob/index.h"
 #include "yaml/index.h"
 
@@ -15,7 +16,9 @@
 #include <string.h>
 #include <sys/stat.h>
 
+/* What a voxel has room for beside its state: run/include/types/block_state/. */
 #define GB_MAX_BLOCKS 4096u
+static_assert(GB_MAX_BLOCKS == BLOCK_STATE_ID_LIMIT);
 /* As compile/src/game_tables/items/ holds it to. */
 #define GB_MAX_ITEMS 4096u
 #define GB_MAX_NAME_BYTES 64u
@@ -45,9 +48,8 @@ typedef enum gb_face_t : uint8_t {
 static const char *const GB_FACE_NAMES[GB_FACE_COUNT] = {"west", "east", "south", "north", "bottom", "top"};
 
 enum { GB_SHAPE_NONE = 0, GB_SHAPE_CUBE = 1, GB_SHAPE_FLUID = 8 };
-static const char *const GB_SHAPE_NAMES[] = {"none",       "cube",        "slab",       "stairs", "cross",
-                                             "crop",       "torch",       "thin",       "fluid",  "torch_east",
-                                             "torch_west", "torch_north", "torch_south"};
+static const char *const GB_SHAPE_NAMES[] = {"none", "cube",  "slab", "stairs", "cross",
+                                             "crop", "torch", "thin", "fluid",  "torch_wall"};
 enum { GB_SHAPE_COUNT = sizeof(GB_SHAPE_NAMES) / sizeof(GB_SHAPE_NAMES[0]) };
 
 /* What a shape means when a file says nothing else. Air is the only shape without a texture. */
@@ -59,9 +61,20 @@ typedef struct gb_shape_t {
 static_assert(sizeof(gb_shape_t) == 3);
 
 static const gb_shape_t GB_SHAPES[GB_SHAPE_COUNT] = {
-    {0, 0, 1}, {1, 15, 0}, {1, 0, 0}, {1, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0},
-    {0, 0, 0}, {0, 0, 1},  {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0},
+    {0, 0, 1}, {1, 15, 0}, {1, 0, 0}, {1, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 1}, {0, 0, 0},
 };
+
+/* What a block's state may hold, beside its id: see run/include/types/block_state/. The names are printed into the generated
+ * header in this order, as BLOCK_STATES_. */
+#define GB_STATES_FACING 1u
+#define GB_STATES_HALF 2u
+#define GB_STATES_OPEN 4u
+static const char *const GB_STATES_NAMES[] = {"FACING", "HALF", "OPEN"};
+enum { GB_STATES_COUNT = sizeof(GB_STATES_NAMES) / sizeof(GB_STATES_NAMES[0]) };
+static const char *const GB_FACINGS[] = {"none", "horizontal"};
+enum { GB_FACING_COUNT = sizeof(GB_FACINGS) / sizeof(GB_FACINGS[0]) };
+static const char *const GB_HALVES[] = {"none", "upper_lower"};
+enum { GB_HALF_COUNT = sizeof(GB_HALVES) / sizeof(GB_HALVES[0]) };
 
 enum { GB_TOOL_NONE = 0, GB_TOOL_SHEARS = 5 };
 static const char *const GB_TOOLS[] = {"none", "pickaxe", "axe", "shovel", "hoe", "shears", "sword"};
@@ -81,9 +94,9 @@ enum { GB_TIER_COUNT = sizeof(GB_TIERS) / sizeof(GB_TIERS[0]) };
 static const char *const GB_FLAG_NAMES[] = {"SOLID", "REPLACEABLE", "FALLS", "DECAYS", "UNBREAKABLE", "LOG"};
 enum { GB_FLAG_COUNT = sizeof(GB_FLAG_NAMES) / sizeof(GB_FLAG_NAMES[0]) };
 
-static const char *const GB_BLOCK_FIELDS[] = {"name",  "hardness", "tool",    "tier",    "drops",
-                                              "shape", "light",    "opacity", "solid",   "replaceable",
-                                              "falls", "decays",   "log",     "texture", "sound"};
+static const char *const GB_BLOCK_FIELDS[] = {"name",  "hardness", "tool",  "tier",   "drops",       "shape",
+                                              "light", "opacity",  "solid", "falls",  "replaceable", "decays",
+                                              "log",   "texture",  "sound", "facing", "half",        "open"};
 enum { GB_BLOCK_FIELD_COUNT = sizeof(GB_BLOCK_FIELDS) / sizeof(GB_BLOCK_FIELDS[0]) };
 
 static const char *const GB_DROP_FIELDS[] = {"item", "count", "max", "chance"};
@@ -119,7 +132,8 @@ typedef struct gb_block_t {
     uint8_t opacity;                           /* 96 */
     uint8_t flags;                             /* 97 */
     uint8_t sound;                             /* 98: a sound_family_t */
-    uint8_t _pad0[5];                          /* 99 */
+    uint8_t states;                            /* 99: GB_STATES_ */
+    uint8_t _pad0[4];                          /* 100 */
 } gb_block_t;
 static_assert(sizeof(gb_block_t) == 104);
 
@@ -531,6 +545,18 @@ static void gb_read_fields(gb_context_t *context, const yaml_document_t *documen
     gb_read_flag(context, yaml_map_get(document, root, "falls"), GB_FLAG_FALLS, &block->flags);
     gb_read_flag(context, yaml_map_get(document, root, "decays"), GB_FLAG_DECAYS, &block->flags);
     gb_read_flag(context, yaml_map_get(document, root, "log"), GB_FLAG_LOG, &block->flags);
+
+    /* What its state holds beside its id. Facing and half are words, so that another kind of either has somewhere to go. */
+    uint8_t facing = 0u;
+    gb_read_choice(context, yaml_map_get(document, root, "facing"), "facing", GB_FACINGS, GB_FACING_COUNT, &facing);
+    uint8_t half = 0u;
+    gb_read_choice(context, yaml_map_get(document, root, "half"), "half", GB_HALVES, GB_HALF_COUNT, &half);
+    block->states = (uint8_t)((facing != 0u ? GB_STATES_FACING : 0u) | (half != 0u ? GB_STATES_HALF : 0u));
+    gb_read_flag(context, yaml_map_get(document, root, "open"), GB_STATES_OPEN, &block->states);
+    if (block->shape == GB_SHAPE_NONE && block->states != 0u) {
+        gb_report_at(context, context->borrowed_path, root->line, root->column,
+                     "shape none draws nothing, so it has no state to show");
+    }
 }
 
 /* Reads one block's file. What it finds wrong is counted in the context. */
@@ -731,7 +757,8 @@ static void gb_emit_header(tp_arena_t *arena, tp_builder_t *out, const gb_block_
         out,
         "/* Generated by compile/src/game_tables from config/blocks/. Change the yaml and build; never edit this. */\n"
         "#ifndef TABLES_BLOCKS_INDEX_H\n#define TABLES_BLOCKS_INDEX_H\n\n"
-        "#include \"types/index.h\"\n#include \"types/sound_blob/index.h\"\n\n#include <stdint.h>\n\n");
+        "#include \"types/block_state/index.h\"\n#include \"types/index.h\"\n#include \"types/sound_blob/index.h\"\n\n"
+        "#include <stdint.h>\n\n");
     tp_builder_add(out, "/* Block 0 is air, and the rest sort by name, so adding a block moves the ids after it. */\n");
     tp_builder_add(out, "typedef enum block_id_t : uint16_t {\n");
     for (uint32_t b = 0; b < block_count; b++) {
@@ -742,6 +769,8 @@ static void gb_emit_header(tp_arena_t *arena, tp_builder_t *out, const gb_block_
                    "#define BLOCK_COUNT %uu\n#define BLOCK_TEXTURE_COUNT %uu\n#define BLOCK_DROP_COUNT %uu\n"
                    "#define BLOCK_DROP_ITEM_COUNT %uu\n#define BLOCK_DROP_ITEM_NO_BLOCK_COUNT %uu\n",
                    block_count, textures->count, drop_count, items->count, no_block_count);
+    tp_builder_add(out, "/* A voxel holds an id in its low bits, with its state above. */\n"
+                        "static_assert(BLOCK_COUNT <= BLOCK_STATE_ID_LIMIT);\n");
     tp_builder_add(out, "/* In block_drop_item_t: this item is no block. */\n#define BLOCK_NO_ID 0xFFFFu\n");
     tp_builder_add(out, "/* In block_def_t.faces: air draws nothing. */\n#define BLOCK_NO_TEXTURE 0xFFFFu\n\n");
 
@@ -753,6 +782,11 @@ static void gb_emit_header(tp_arena_t *arena, tp_builder_t *out, const gb_block_
     gb_add_enum(arena, out, "block_face_t", "BLOCK_FACE_", GB_FACE_NAMES, GB_FACE_COUNT);
     for (uint32_t i = 0; i < GB_FLAG_COUNT; i++) {
         tp_builder_add(out, "#define BLOCK_FLAG_%s %uu\n", GB_FLAG_NAMES[i], 1u << i);
+    }
+    tp_builder_add(
+        out, "/* What a block's state may hold beside its id, in block_def_t.states: see types/block_state/. */\n");
+    for (uint32_t i = 0; i < GB_STATES_COUNT; i++) {
+        tp_builder_add(out, "#define BLOCK_STATES_%s %uu\n", GB_STATES_NAMES[i], 1u << i);
     }
     tp_builder_add(
         out,
@@ -770,7 +804,8 @@ static void gb_emit_header(tp_arena_t *arena, tp_builder_t *out, const gb_block_
         "    uint8_t opacity;    /* 31: block light lost passing through, 15 stops it */\n"
         "    uint8_t flags;      /* 32: BLOCK_FLAG_ */\n"
         "    uint8_t sound;      /* 33: a sound_family_t, from types/sound_blob/ */\n"
-        "    uint8_t _pad0[6];   /* 34 */\n"
+        "    uint8_t states;     /* 34: BLOCK_STATES_: what its state holds beside its id */\n"
+        "    uint8_t _pad0[5];   /* 35 */\n"
         "} block_def_t;\n"
         "static_assert(sizeof(block_def_t) == 40);\n\n"
         "/* Each row is rolled on its own: chance, then a count from count_min to count_max. */\n"
@@ -807,6 +842,20 @@ static void gb_add_flags(tp_builder_t *out, uint8_t flags) {
     for (uint32_t i = 0; i < GB_FLAG_COUNT; i++) {
         if ((flags & (1u << i)) != 0u) {
             tp_builder_add(out, "%sBLOCK_FLAG_%s", first ? "" : " | ", GB_FLAG_NAMES[i]);
+            first = false;
+        }
+    }
+}
+
+static void gb_add_states(tp_builder_t *out, uint8_t states) {
+    if (states == 0u) {
+        tp_builder_add(out, "0u");
+        return;
+    }
+    bool first = true;
+    for (uint32_t i = 0; i < GB_STATES_COUNT; i++) {
+        if ((states & (1u << i)) != 0u) {
+            tp_builder_add(out, "%sBLOCK_STATES_%s", first ? "" : " | ", GB_STATES_NAMES[i]);
             first = false;
         }
     }
@@ -868,7 +917,9 @@ static void gb_emit_source(tp_arena_t *arena, tp_builder_t *out, const gb_block_
         tp_builder_add(out, ".shape = BLOCK_SHAPE_%s, .light = %u, .opacity = %u, .flags = ",
                        gb_upper(arena, GB_SHAPE_NAMES[block->shape]), block->light, block->opacity);
         gb_add_flags(out, block->flags);
-        tp_builder_add(out, ", .sound = SOUND_FAMILY_%s},\n", gb_upper(arena, sound_family_name(block->sound)));
+        tp_builder_add(out, ", .sound = SOUND_FAMILY_%s, .states = ", gb_upper(arena, sound_family_name(block->sound)));
+        gb_add_states(out, block->states);
+        tp_builder_add(out, "},\n");
         first_drop += block->drop_count;
     }
     tp_builder_add(out, "};\n");

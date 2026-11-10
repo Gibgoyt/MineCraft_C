@@ -4,3 +4,4 @@ tool: axe
 drops: [{ item: woodworking_bench, count: 1 }]
 texture: { top: blocks/woodworking_bench_top_east, bottom: blocks/woodworking_bench_bottom, side: blocks/woodworking_bench_end, south: blocks/woodworking_bench_side_right, north: blocks/woodworking_bench_side_left }
 sound: wood
+facing: horizontal

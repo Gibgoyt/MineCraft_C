@@ -6,3 +6,4 @@ drops: [{ item: cobblestone_stairs, count: 1 }]
 shape: stairs
 texture: { all: blocks/cobblestone }
 sound: stone
+facing: horizontal

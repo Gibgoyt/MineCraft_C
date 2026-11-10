@@ -70,10 +70,7 @@ static bool tile_counts(uint16_t state, uint32_t colour_count) {
     case BLOCK_SHAPE_CROSS:
     case BLOCK_SHAPE_CROP:
     case BLOCK_SHAPE_TORCH:
-    case BLOCK_SHAPE_TORCH_EAST:
-    case BLOCK_SHAPE_TORCH_WEST:
-    case BLOCK_SHAPE_TORCH_NORTH:
-    case BLOCK_SHAPE_TORCH_SOUTH:
+    case BLOCK_SHAPE_TORCH_WALL:
         return false;
     default:
         return true;
@@ -114,7 +111,8 @@ void ui_atlas_column_top(const uint16_t *colours, uint32_t colour_count, const u
             for (uint32_t w = 0u; w < TILE_LAYER_WORDS; w++) {
                 for (uint64_t bits = solid[z * TILE_LAYER_WORDS + w]; bits != 0u; bits &= bits - 1u) {
                     const uint32_t k = w * 64u + (uint32_t)stdc_trailing_zeros(bits); /* x fastest, then y */
-                    const uint16_t state = layer[k];
+                    /* By the block alone: a saved column's voxels hold their state too. */
+                    const uint16_t state = block_state_id(layer[k]);
                     if (found[k] || !tile_counts(state, colour_count)) {
                         continue;
                     }

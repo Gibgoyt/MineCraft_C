@@ -5,3 +5,4 @@ drops: [{ item: jungle_stairs, count: 1 }]
 shape: stairs
 texture: { all: blocks/jungle_planks }
 sound: wood
+facing: horizontal

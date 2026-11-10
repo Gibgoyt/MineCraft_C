@@ -6,6 +6,7 @@
 #include "gpu_bridge/device_memory/index.h"
 #include "gpu_bridge/status/index.h"
 #include "gpu_bridge/world_buffers/index.h"
+#include "types/block_state/index.h"
 #include "types/index.h"
 
 #include <stddef.h>
@@ -21,8 +22,10 @@ enum : uint32_t {
     TRAVERSE_HEIGHT_BLOCKS = 1536u, /* a world z of TRAVERSE_Z_BASE is storage height 0 */
     /* One block of threads, one coarse value. Stage 01.3 measured 8x8 best or tied for best of those it tried. */
     TRAVERSE_TILE_PIXELS = 8u,
-    /* traverse_hit_t.value: the voxel's material in the low 16 bits, and its light in the 8 above them. */
-    TRAVERSE_VALUE_MATERIAL_MASK = 0xFFFFu,
+    /* traverse_hit_t.value: the voxel in the low 16 bits, and its light in the 8 above them. The voxel is the block id, its
+     * material, and the block's state, as types/block_state/ lays them out: a shape and its pictures turn by the facing. */
+    TRAVERSE_VALUE_VOXEL_MASK = 0xFFFFu,
+    TRAVERSE_VALUE_MATERIAL_MASK = BLOCK_STATE_ID_MASK,
     TRAVERSE_VALUE_LIGHT_SHIFT = 16u,
 };
 enum : int32_t { TRAVERSE_Z_BASE = -256 };
@@ -56,24 +59,22 @@ enum : uint32_t {
 #define TRAVERSE_COARSE_SKY F32(1e30)
 
 /* What a material draws as: a row of the table of boxes in cuda/include/traverse/index.hu. CUBE is the whole voxel, and what a
- * ray takes for anything with no row. Boxes are inside their voxel, so the tree's masks and the coarse pass never need to know. */
+ * ray takes for anything with no row. Boxes are inside their voxel, so the tree's masks and the coarse pass never need to know.
+ * Each is as it faces north, and a voxel's facing turns it about the middle of the voxel: block_facing_box_turn. */
 typedef enum traverse_shape_t : uint8_t {
     TRAVERSE_SHAPE_CUBE = 0,
     /* These first have a body: from inside one a ray says TRAVERSE_FACE_INSIDE. From CROSS on, it sees on past what it is in. */
     TRAVERSE_SHAPE_SLAB = 1,   /* the lower half */
-    TRAVERSE_SHAPE_STAIRS = 2, /* the lower half, and the upper half towards +y */
+    TRAVERSE_SHAPE_STAIRS = 2, /* the lower half, and the upper half towards +y, the way they face */
     TRAVERSE_SHAPE_CROSS = 3,  /* a plant: two thin plates through the middle, one along each of x and y */
     TRAVERSE_SHAPE_CROP = 4,   /* a crop: four thin plates, two along each */
     TRAVERSE_SHAPE_TORCH = 5,  /* a stick in the middle, standing on the floor */
-    TRAVERSE_SHAPE_PLATE = 6,  /* a thin plate against the +y side: a ladder, a vine */
+    TRAVERSE_SHAPE_PLATE = 6,  /* a thin plate against the +y side, the way it faces: a ladder, a vine */
     TRAVERSE_SHAPE_FLAT = 7,   /* a thin plate on the floor: a lily pad */
-    /* A torch on a wall, stepping out from it the way it is named: the wall is on the other side of the voxel. */
-    TRAVERSE_SHAPE_TORCH_EAST = 8,
-    TRAVERSE_SHAPE_TORCH_WEST = 9,
-    TRAVERSE_SHAPE_TORCH_NORTH = 10,
-    TRAVERSE_SHAPE_TORCH_SOUTH = 11,
-    TRAVERSE_SHAPE_LAYER = 12, /* an eighth of a block on the floor: the census's snow layer (plan 004 phase 08) */
-    TRAVERSE_SHAPE_COUNT = 13,
+    /* A torch on a wall, stepping out from it: its wall on the +y side of the voxel, the way it faces, so it leans out to -y. */
+    TRAVERSE_SHAPE_TORCH_WALL = 8,
+    TRAVERSE_SHAPE_LAYER = 9, /* an eighth of a block on the floor: the census's snow layer (plan 004 phase 08) */
+    TRAVERSE_SHAPE_COUNT = 10,
 } traverse_shape_t;
 static_assert(sizeof(traverse_shape_t) == 1);
 

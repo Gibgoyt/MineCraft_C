@@ -41,9 +41,11 @@ A ray with `resume` set is going on past a surface at `t_start`, and takes only 
 
 From inside a box a ray says `TRAVERSE_FACE_INSIDE` for a slab or stairs. For a plate or a torch it sees on past: someone flying through grass does not want the screen to go dark.
 
-A torch on a wall is four shapes, one for each way it leans, of five boxes each: the table holds boxes along the axes, so a stick leans by steps. `run/src/world/wall_torch/README.md` says why its colours go by height alone.
+**A shape turns with its voxel's facing** (plan 005 phase 12). The table holds each shape as it faces north: stairs rising towards `+y`, a ladder or a vine on the `+y` side, a torch on a wall with its wall to `+y`. The facing is in the voxel, bits 12 and 13 of `traverse_hit_t.value` (`run/include/types/block_state/`), and `traverse_voxel_hit` turns each box about the middle of the voxel with `block_facing_box_turn` before it cuts the ray against it, so only a voxel that is not a cube pays for it, and a turned box is exactly as many 32nds from each wall as the table says. `TRAVERSE_VALUE_MATERIAL_MASK` is the block id alone, so the shape table and the textures are by block, and `TRAVERSE_VALUE_VOXEL_MASK` the id with its state. `cuda/src/shade/` reads a turned block's own faces: which of them the world sees on a side, and where on its picture, with `block_facing_face_to_local` and `block_facing_point_to_local`, so a bench's front stays its front and its top turns with it.
 
-Plants are a `+` and not Minecraft's `X`: the table holds boxes along the axes, as the plan says, so the two plates are square to the world. No block has a facing yet, so stairs rise towards `+y`, and a ladder or a vine is on the `+y` side: `plans/001-ahmed-bohemoth-minecraft-from-scratch-phase-09-stage-1-non-cube-shapes.md`, issue 1.
+A torch on a wall is one shape of five boxes: the table holds boxes along the axes, so a stick leans by steps. `run/src/world/wall_torch/README.md` says why its colours go by height alone.
+
+Plants are a `+` and not Minecraft's `X`: the table holds boxes along the axes, as the plan says, so the two plates are square to the world.
 
 ## What a ray skips
 

@@ -78,9 +78,13 @@ static __device__ __forceinline__ void shade_surface_read(const shade_context_t 
                                                                   : (uint32_t)SHADE_LIGHT_OPEN_SKY;
     out->texture = nullptr;
     out->texel = nullptr;
+    /* A turned block shows its own faces turned with it: which of them the world sees here, and where on its picture. The light,
+     * the sun and AO stay the world's, on out->face and out->local. */
+    const uint32_t facing = block_state_facing(hit->value & TRAVERSE_VALUE_VOXEL_MASK);
     const uint32_t lookup_face = out->face == TRAVERSE_FACE_INSIDE ? (uint32_t)TRAVERSE_FACE_POS_Z : out->face;
+    const uint32_t own_face = block_facing_face_to_local(facing, lookup_face);
     const uint32_t texture_index = out->material < context->material_count
-                                       ? context->faces[out->material * SHADE_FACES + lookup_face]
+                                       ? context->faces[out->material * SHADE_FACES + own_face]
                                        : (uint32_t)SHADE_NO_TEXTURE;
     /* From the voxel's own corner, so that this is as exact far from the origin as near it. */
     for (uint32_t i = 0u; i < 3u; i += 1u) {
@@ -90,7 +94,9 @@ static __device__ __forceinline__ void shade_surface_read(const shade_context_t 
         return;
     }
     float32_t u = 0.0F, v = 0.0F;
-    shade_face_uv(out->face, out->local, &u, &v);
+    float32_t own_local[3] = {out->local[0], out->local[1], out->local[2]};
+    block_facing_point_to_local(facing, &own_local[0], &own_local[1]);
+    shade_face_uv(out->face == TRAVERSE_FACE_INSIDE ? out->face : own_face, own_local, &u, &v);
     out->texture = &context->textures[texture_index];
     const uint32_t level = shade_mip_level(mip_t, context->tangent, out->texture->width, out->texture->level_count);
     out->texel = shade_texel(out->texture, context->pixels, level, u, v);

@@ -5,3 +5,4 @@ drops: [{ item: cherry_stairs, count: 1 }]
 shape: stairs
 texture: { all: blocks/cherry_planks }
 sound: wood
+facing: horizontal

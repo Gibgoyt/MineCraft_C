@@ -177,8 +177,8 @@ static void frame_face_table(uint16_t *out) {
 }
 
 /* What each kind of block draws as. Water and lava are whole cubes: cuda/src/shade/README.md has what a ray does in water. `thin` is two shapes, as
- * config/blocks says one word for a lily pad on the floor and a ladder on a wall. No block has a facing yet, so stairs, ladders
- * and vines all have the one: Stage 09.1 issue 1. */
+ * config/blocks says one word for a lily pad on the floor and a ladder on a wall. Each shape is as it faces north, and a voxel's
+ * facing turns it on the card: run/include/types/block_state/. */
 static uint8_t frame_shape_of(uint32_t block) {
     switch ((block_shape_t)block_defs[block].shape) {
     case BLOCK_SHAPE_SLAB:
@@ -196,14 +196,8 @@ static uint8_t frame_shape_of(uint32_t block) {
         return block == BLOCK_ID_LILY_PAD     ? TRAVERSE_SHAPE_FLAT
                : block == BLOCK_ID_SNOW_LAYER ? TRAVERSE_SHAPE_LAYER
                                               : TRAVERSE_SHAPE_PLATE;
-    case BLOCK_SHAPE_TORCH_EAST:
-        return TRAVERSE_SHAPE_TORCH_EAST;
-    case BLOCK_SHAPE_TORCH_WEST:
-        return TRAVERSE_SHAPE_TORCH_WEST;
-    case BLOCK_SHAPE_TORCH_NORTH:
-        return TRAVERSE_SHAPE_TORCH_NORTH;
-    case BLOCK_SHAPE_TORCH_SOUTH:
-        return TRAVERSE_SHAPE_TORCH_SOUTH;
+    case BLOCK_SHAPE_TORCH_WALL:
+        return TRAVERSE_SHAPE_TORCH_WALL;
     case BLOCK_SHAPE_NONE:
     case BLOCK_SHAPE_CUBE:
     case BLOCK_SHAPE_FLUID:
