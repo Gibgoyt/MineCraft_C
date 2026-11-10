@@ -1,39 +1,30 @@
 /* See README.md. */
 #include "world/wall_torch/index.h"
 
-bool wall_torch_out(uint16_t block, int32_t *out_x, int32_t *out_y) {
-    if (block >= BLOCK_COUNT) {
+bool wall_torch_out(uint16_t voxel, int32_t *out_x, int32_t *out_y) {
+    if (block_state_id(voxel) != BLOCK_ID_WALL_TORCH) {
         return false;
     }
-    int32_t x = 0, y = 0;
-    const uint8_t shape = block_defs[block].shape;
-    if (shape == BLOCK_SHAPE_TORCH_EAST) {
-        x = 1;
-    } else if (shape == BLOCK_SHAPE_TORCH_WEST) {
-        x = -1;
-    } else if (shape == BLOCK_SHAPE_TORCH_NORTH) {
-        y = 1;
-    } else if (shape == BLOCK_SHAPE_TORCH_SOUTH) {
-        y = -1;
-    } else {
-        return false;
-    }
+    /* It faces its wall, and leans out the other way. */
+    const uint32_t facing = block_state_facing(voxel);
     if (out_x != nullptr) {
-        *out_x = x;
+        *out_x = -block_facing_step_x(facing);
     }
     if (out_y != nullptr) {
-        *out_y = y;
+        *out_y = -block_facing_step_y(facing);
     }
     return true;
 }
 
 uint16_t wall_torch_of(int32_t out_x, int32_t out_y) {
-    for (uint32_t side = 0u; side < WALL_TORCH_SIDES; side++) {
-        int32_t x = 0, y = 0;
-        (void)wall_torch_out(WALL_TORCH_BLOCKS[side], &x, &y);
-        if (x == out_x && y == out_y) {
-            return WALL_TORCH_BLOCKS[side];
-        }
+    const bool one_side = (out_x == 0) != (out_y == 0) && out_x >= -1 && out_x <= 1 && out_y >= -1 && out_y <= 1;
+    if (!one_side) {
+        return BLOCK_NO_ID;
     }
-    return BLOCK_NO_ID;
+    return block_state_make(BLOCK_ID_WALL_TORCH, block_facing_of_step(-out_x, -out_y), false, false);
+}
+
+bool wall_torch_hangs_from(uint16_t voxel, int32_t step_x, int32_t step_y) {
+    int32_t out_x = 0, out_y = 0;
+    return wall_torch_out(voxel, &out_x, &out_y) && out_x == step_x && out_y == step_y;
 }
