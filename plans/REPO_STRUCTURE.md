@@ -705,7 +705,7 @@ Split it into sub-directories. Remember that going deeper changes the tier: code
 | Thread counts, SIMD flags, GPU settings | `config/machine.yaml` |
 | What a block drops | `config/blocks/<block>/index.yaml` |
 | How mining works | `run/src/player/interaction/` |
-| How an axe brings down a tree | `run/src/player/felling/` |
+| How breaking a log brings down the whole tree | `run/src/player/felling/` |
 | Height limit and sea level | `config/machine.yaml`, `world:` |
 | Render distance setting | `run/src/ui/screen_settings/`, `run/src/settings/` |
 | The date and the census | `run/src/calendar/`, the world clock and the census in `run/src/game/README.md`, the screen in `run/src/ui/screen_census/` |
