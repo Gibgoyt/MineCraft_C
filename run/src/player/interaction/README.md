@@ -15,9 +15,11 @@
 - `player_interaction_drops_spawn`, `player_interaction_drop_next`: rolls a block's table into the ring; takes the oldest out of it.
 - `player_interaction_stack_break`: what stood on a block just broken, and what hung on its sides, goes with it, for whatever else breaks one: `run/src/player/felling/`.
 - `player_interaction_hand_give`, `player_interaction_hand_set`, `player_interaction_hand_take`: the one slot placing takes from.
+- `player_interaction_place_plan`: what the right button would put down and where, with its facing and whether it fits, without changing anything. Placing is this and then the edits; a preview (plan 005 phase 10) draws it. See "Placing" below.
+- `player_interaction_turn`: R. What is in the hand turns a quarter clockwise before it is placed, until the hand holds something else.
 
 **May be called by:** `run/src/player/`. `run/src/game/` takes the drops from `player_interaction_drop_next` and sets the hand to the hotbar slot in hand with `player_interaction_hand_set`, or in a run with no inventory gives what is picked up to `player_interaction_hand_take`, and `player_interaction_hold_tool` and `player_interaction_hold_speed` with what `run/src/item/equipment/` says of that slot.
-**Depends on:** `world/edit`, `world/map`, `world/wall_torch`, `world/bench`, `physics/collision`, `physics/raycast`, `player/camera` and `player/movement` for their types, `player/felling` for what a log cut sets going, and the generated `tables/blocks`.
+**Depends on:** `world/edit`, `world/map`, `world/wall_torch`, `world/bench`, `world/block_state`, `physics/collision`, `physics/raycast`, `player/camera` and `player/movement` for their types, `player/felling` for what a log cut sets going, and the generated `tables/blocks`.
 
 ## Mining
 
@@ -37,7 +39,7 @@ So dirt by hand is 15 ticks, stone by hand is 150 with nothing to show for it, a
 - Letting go, aiming at something else, or the block changing starts the count again.
 - After a break that took more than a tick, nothing is mined for 5 ticks. What breaks at a touch can be swept through, one a tick.
 - A log (`log: true`) cut with any tool or none, sneaking or not, sets going what `run/src/player/felling/` does with the rest of its tree, if `borrowed_felling` is given.
-- A torch goes by the face aimed at: on a side it hangs from that block, one of the four `torch_wall_*`, on a top it stands, and on an underside it does not go at all. Aimed at the side of what is not solid, it stands on the floor if there is one. What is held and counted stays `torch`, whichever it became.
+- A torch goes by the face aimed at: on a side it hangs from that block, a `wall_torch` facing it, on a top it stands, and on an underside it does not go at all. Aimed at the side of what is not solid, it stands on the floor if there is one. What is held and counted stays `torch`, whichever it became.
 - What stands on the ground (`cross crop torch`) goes with what it stood on, up to 32 of them, and gives what it would to a hand. So does a torch hanging from one of the block's four sides. No other module does this: `world/tick` only takes crops off what is no longer farmland, with no drops.
 
 ## Drops
@@ -47,6 +49,12 @@ Shears on their own block roll nothing: `run/src/game/` brings out the block its
 ## Placing
 
 The right button, when the left is not held, puts the hand's block on the face the ray came in through, or in the aimed-at block itself if that is `replaceable`, like tall grass. Held, that repeats every 4 ticks.
+
+**What and where** is `player_interaction_place_plan`, which changes nothing and is the whole of the decision: `player_interaction_tick` places exactly what it says when it says `PLAYER_PLACE_OK`. It gives the cells (two for a bench), the voxel for each with its state, the facing, what the first cell held, and a status: `NONE` when there is nothing to show (an empty hand, no face, a torch aimed at an underside), `OK`, or `BLOCKED` with the cells it would have taken. A preview draws `OK` in blue and `BLOCKED` in red.
+
+**Which way it faces,** for a block whose file says `facing: horizontal` (stairs, ladders, vines, the woodworking bench, and the stoneworking bench and smith table when they come): the way the player looks, the nearest of the four, in `player_interaction_input_t.look_facing`, which `run/src/player/` works out from the yaw main last sent. Then R's quarter turns, clockwise seen from above. So stairs rise away from you, and a bench lies across your view, its first half where you aim and its second to your right. A ladder or a vine put on the side of a block faces that side, so that it lies on the wall aimed at, and R turns it from there. A torch on a wall faces its wall, by the face aimed at, and R does nothing to it. `run/include/types/block_state/README.md` says what each facing means.
+
+**R** is `player_turn_send` on main, a press in `hands_latch` taken by the next tick, and `player_interaction_turn` there. The turns are in `player_interaction_t.turns`, saved with the rest of it, and go back to 0 when `player_interaction_hand_give` or `player_interaction_hand_set` is given a different block: changing what is held. A hand that runs out and is filled with the same block keeps them.
 
 It does nothing, and costs nothing, when:
 

@@ -6,6 +6,7 @@
 #include "player/felling/index.h"
 #include "tables/blocks/index.h"
 #include "world/bench/index.h"
+#include "world/block_state/index.h"
 #include "world/wall_torch/index.h"
 
 #include <math.h>
@@ -164,6 +165,10 @@ bool player_interaction_drop_next(player_interaction_t *interaction, player_drop
 }
 
 void player_interaction_hand_give(player_interaction_t *interaction, uint16_t block, uint32_t count) {
+    if (interaction->hand_block != block) {
+        /* R's turns are for what was held: something else starts as the player faces. */
+        interaction->turns = 0u;
+    }
     if (interaction->hand_count == 0u || interaction->hand_block != block) {
         interaction->hand_block = block;
         interaction->hand_count = 0u;
@@ -243,18 +248,17 @@ static bool interaction_needs_ground(uint16_t block) {
     return shape == BLOCK_SHAPE_CROSS || shape == BLOCK_SHAPE_CROP || shape == BLOCK_SHAPE_TORCH;
 }
 
-/* What hung on the sides of a block just broken. Only a torch that leans away from it: another beside it has its own wall. */
+/* What hung on the sides of a block just broken. Only a torch that faces it: another beside it has its own wall. */
 static void interaction_wall_torches_break(player_interaction_t *interaction, world_edit_t *edit, int32_t x, int32_t y,
                                            int32_t z) {
     for (uint32_t side = 0u; side < WALL_TORCH_SIDES; side++) {
-        const uint16_t torch = WALL_TORCH_BLOCKS[side];
-        int32_t out_x = 0, out_y = 0;
-        (void)wall_torch_out(torch, &out_x, &out_y);
-        uint16_t block = BLOCK_ID_AIR;
-        if (world_map_block_get(edit->borrowed_map, x + out_x, y + out_y, z, &block) != WORLD_MAP_STATUS_OK ||
-            block != torch) {
+        const int32_t out_x = block_facing_step_x(side), out_y = block_facing_step_y(side);
+        uint16_t voxel = BLOCK_ID_AIR;
+        if (world_map_voxel_get(edit->borrowed_map, x + out_x, y + out_y, z, &voxel) != WORLD_MAP_STATUS_OK ||
+            !wall_torch_hangs_from(voxel, out_x, out_y)) {
             continue;
         }
+        const uint16_t torch = block_state_id(voxel);
         if (world_edit_block_set(edit, x + out_x, y + out_y, z, BLOCK_ID_AIR) != WORLD_EDIT_STATUS_CHANGED) {
             interaction->no_memory_count++;
             continue;
@@ -283,26 +287,27 @@ void player_interaction_stack_break(player_interaction_t *interaction, world_edi
 }
 
 /* The other half of a bench goes first and gives nothing, as the one mined gives the one bench. False if it cannot go yet, which leaves the
- * bench whole and all but broken for the next tick. If the half mined then finds no room, the next tick breaks it alone, and it drops. */
-static bool interaction_bench_other_break(player_interaction_t *interaction, world_edit_t *edit, uint16_t block,
+ * bench whole and all but broken for the next tick. If the half mined then finds no room, the next tick breaks it alone, and it drops. The
+ * half mined's facing says where the other is. */
+static bool interaction_bench_other_break(player_interaction_t *interaction, world_edit_t *edit, uint16_t voxel,
                                           int32_t x, int32_t y, int32_t z) {
-    int32_t step_x = 0;
+    int32_t step_x = 0, step_y = 0;
     uint16_t other = BLOCK_ID_AIR;
-    if (!bench_half_other(block, &step_x, &other)) {
+    if (!bench_half_other(voxel, &step_x, &step_y, &other)) {
         return true;
     }
     uint16_t there = BLOCK_ID_AIR;
-    if (world_map_block_get(edit->borrowed_map, x + step_x, y, z, &there) != WORLD_MAP_STATUS_OK) {
+    if (world_map_voxel_get(edit->borrowed_map, x + step_x, y + step_y, z, &there) != WORLD_MAP_STATUS_OK) {
         return false;
     }
     if (there != other) {
         return true;
     }
-    if (world_edit_block_set(edit, x + step_x, y, z, BLOCK_ID_AIR) != WORLD_EDIT_STATUS_CHANGED) {
+    if (world_edit_block_set(edit, x + step_x, y + step_y, z, BLOCK_ID_AIR) != WORLD_EDIT_STATUS_CHANGED) {
         interaction->no_memory_count++;
         return false;
     }
-    player_interaction_stack_break(interaction, edit, x + step_x, y, z);
+    player_interaction_stack_break(interaction, edit, x + step_x, y + step_y, z);
     return true;
 }
 
@@ -349,7 +354,9 @@ static void interaction_mine(player_interaction_t *interaction, world_edit_t *ed
         interaction_hit(interaction, input, block, x, y, z);
         return;
     }
-    if (!interaction_bench_other_break(interaction, edit, block, x, y, z)) {
+    uint16_t voxel = block;
+    if (world_map_voxel_get(edit->borrowed_map, x, y, z, &voxel) != WORLD_MAP_STATUS_OK ||
+        !interaction_bench_other_break(interaction, edit, voxel, x, y, z)) {
         return;
     }
     const world_edit_status_t status = world_edit_block_set(edit, x, y, z, BLOCK_ID_AIR);
@@ -381,9 +388,9 @@ static void interaction_mine(player_interaction_t *interaction, world_edit_t *ed
 
 /* ---- Placing ------------------------------------------------------------------------------------------------------ */
 
-static bool interaction_fits(uint16_t block, int32_t x, int32_t y, int32_t z, const player_movement_t *movement) {
+static bool interaction_fits(uint16_t voxel, int32_t x, int32_t y, int32_t z, const player_movement_t *movement) {
     collision_box_t boxes[COLLISION_BOXES_PER_BLOCK];
-    const uint32_t count = collision_block_boxes(block, x, y, z, boxes);
+    const uint32_t count = collision_block_boxes(voxel, x, y, z, boxes);
     const float64_t height =
         movement->crouched != 0u ? PLAYER_MOVEMENT_HEIGHT_CROUCHED : PLAYER_MOVEMENT_HEIGHT_STANDING;
     collision_box_t body;
@@ -391,7 +398,7 @@ static bool interaction_fits(uint16_t block, int32_t x, int32_t y, int32_t z, co
     return !collision_overlaps_any(boxes, count, &body);
 }
 
-/* What the cell can take: a non-solid block does not wash a fluid away, and what needs ground has to have it. */
+/* What the cell can take: a non-solid block does not wash a fluid away, and what needs ground has to have it. Both are ids. */
 static bool interaction_cell_takes(const world_map_t *map, uint16_t block, uint16_t there, int32_t x, int32_t y,
                                    int32_t z) {
     if ((block_defs[there].flags & BLOCK_FLAG_REPLACEABLE) == 0u) {
@@ -409,13 +416,29 @@ static bool interaction_cell_takes(const world_map_t *map, uint16_t block, uint1
            (block_defs[below].flags & BLOCK_FLAG_SOLID) != 0u;
 }
 
-/* What a hand puts down, aiming at this face, into this cell. All but a torch go as they are. A torch goes by the face: on a side, it
- * hangs from the block behind it if that is solid, and otherwise, as on a top, it stands on the floor. On a block's underside it has
- * nothing to stand on or hang from, so BLOCK_NO_ID. */
-static uint16_t interaction_block_to_place(const world_map_t *map, const raycast_hit_t *hit, uint16_t held,
-                                           const int32_t cell[COLLISION_AXES]) {
+/* The facing a turning block goes down with: the way the player looks, the nearest of four, turned by R. A plate put against the side of
+ * a block, a ladder or a vine, faces that side instead, so that it lies on the wall aimed at, and R turns it from there. */
+static uint32_t interaction_facing(const player_interaction_t *interaction, const player_interaction_input_t *input,
+                                   const raycast_hit_t *hit, uint16_t held) {
+    uint32_t facing = input->look_facing;
+    if (block_defs[held].shape == BLOCK_SHAPE_THIN &&
+        (hit->axis == COLLISION_AXIS_X || hit->axis == COLLISION_AXIS_Y)) {
+        /* Into the face: the other way from where it looks. */
+        const int32_t into = -(int32_t)hit->normal_sign;
+        facing =
+            block_facing_of_step(hit->axis == COLLISION_AXIS_X ? into : 0, hit->axis == COLLISION_AXIS_Y ? into : 0);
+    }
+    return block_facing_turn(facing, interaction->turns);
+}
+
+/* What a hand puts down, aiming at this face, into this cell, with its state. A torch goes by the face: on a side, it hangs from the block
+ * behind it if that is solid, and otherwise, as on a top, it stands on the floor. On a block's underside it has nothing to stand on or hang
+ * from, so BLOCK_NO_ID. Anything else goes as it is, facing the way interaction_facing says if it turns. */
+static uint16_t interaction_voxel_to_place(const world_map_t *map, const player_interaction_t *interaction,
+                                           const player_interaction_input_t *input, const raycast_hit_t *hit,
+                                           uint16_t held, const int32_t cell[COLLISION_AXES]) {
     if (held != BLOCK_ID_TORCH) {
-        return held;
+        return block_state_placed(held, interaction_facing(interaction, input, hit, held));
     }
     if (hit->axis == COLLISION_AXIS_Z) {
         const bool aimed_into = cell[COLLISION_AXIS_Z] == hit->cell[COLLISION_AXIS_Z];
@@ -431,70 +454,88 @@ static uint16_t interaction_block_to_place(const world_map_t *map, const raycast
     return BLOCK_ID_TORCH;
 }
 
-/* Whether a block's other half, if it is half a bench, can go beside it. A column not loaded refuses, and so do heights not in gameplay's. */
-static bool interaction_other_half_fits(const world_map_t *map, uint16_t block, const int32_t cell[COLLISION_AXES],
-                                        const player_movement_t *movement) {
-    int32_t step_x = 0;
-    uint16_t other = BLOCK_ID_AIR;
-    if (!bench_half_other(block, &step_x, &other)) {
-        return true;
-    }
-    const int32_t x = cell[0] + step_x;
-    uint16_t there = BLOCK_ID_AIR;
-    return world_map_block_get(map, x, cell[1], cell[2], &there) == WORLD_MAP_STATUS_OK &&
-           interaction_cell_takes(map, other, there, x, cell[1], cell[2]) &&
-           interaction_fits(other, x, cell[1], cell[2], movement);
-}
-
-/* The other half of what was just put down, if there is one. If it finds no room, the first half comes back out and false says nothing
- * was placed: half a bench is never left. */
-static bool interaction_other_half_place(player_interaction_t *interaction, world_edit_t *edit, uint16_t block,
-                                         uint16_t was_there, const int32_t cell[COLLISION_AXES]) {
-    int32_t step_x = 0;
-    uint16_t other = BLOCK_ID_AIR;
-    if (!bench_half_other(block, &step_x, &other)) {
-        return true;
-    }
-    if (world_edit_block_set(edit, cell[0] + step_x, cell[1], cell[2], other) == WORLD_EDIT_STATUS_CHANGED) {
-        return true;
-    }
-    interaction->no_memory_count++;
-    (void)world_edit_block_set(edit, cell[0], cell[1], cell[2], was_there);
-    return false;
-}
-
-static void interaction_place(player_interaction_t *interaction, world_edit_t *edit,
-                              const player_interaction_input_t *input, const raycast_hit_t *hit) {
-    if (interaction->hand_count == 0u || hit->axis == RAYCAST_AXIS_NONE) {
-        return;
+player_place_status_t player_interaction_place_plan(const player_interaction_t *interaction, const world_map_t *map,
+                                                    const player_interaction_input_t *input, player_place_plan_t *out) {
+    *out = (player_place_plan_t){.status = PLAYER_PLACE_NONE};
+    const raycast_hit_t *const hit = &input->borrowed_target->hit;
+    if (interaction->hand_count == 0u || hit->result != RAYCAST_RESULT_HIT || hit->axis == RAYCAST_AXIS_NONE) {
+        return PLAYER_PLACE_NONE;
     }
     /* Into what can be overwritten if that is what it aims at, like tall grass, and otherwise on the face it came in through. */
-    int32_t cell[COLLISION_AXES] = {hit->cell[0], hit->cell[1], hit->cell[2]};
+    int32_t *const cell = out->cells[0];
+    cell[0] = hit->cell[0];
+    cell[1] = hit->cell[1];
+    cell[2] = hit->cell[2];
     if ((block_defs[hit->block].flags & BLOCK_FLAG_REPLACEABLE) == 0u) {
         raycast_hit_in_front(hit, cell);
     }
-    uint16_t there = BLOCK_ID_AIR;
-    const uint16_t block = interaction_block_to_place(edit->borrowed_map, hit, interaction->hand_block, cell);
-    if (block == BLOCK_NO_ID) {
-        return;
+    const uint16_t voxel = interaction_voxel_to_place(map, interaction, input, hit, interaction->hand_block, cell);
+    if (voxel == BLOCK_NO_ID) {
+        return PLAYER_PLACE_NONE;
     }
+    const uint16_t block = block_state_id(voxel);
+    out->voxels[0] = voxel;
+    out->count = 1u;
+    out->facing = (uint8_t)block_state_facing(voxel);
+    out->status = PLAYER_PLACE_OK;
     /* Outside gameplay's heights, and in a column that has not come, this is not OK. */
-    if (world_map_block_get(edit->borrowed_map, cell[0], cell[1], cell[2], &there) != WORLD_MAP_STATUS_OK ||
-        !interaction_cell_takes(edit->borrowed_map, block, there, cell[0], cell[1], cell[2]) ||
-        !interaction_fits(block, cell[0], cell[1], cell[2], input->borrowed_movement) ||
-        !interaction_other_half_fits(edit->borrowed_map, block, cell, input->borrowed_movement)) {
+    uint16_t there = BLOCK_ID_AIR;
+    if (world_map_voxel_get(map, cell[0], cell[1], cell[2], &there) != WORLD_MAP_STATUS_OK ||
+        !interaction_cell_takes(map, block, block_state_id(there), cell[0], cell[1], cell[2]) ||
+        !interaction_fits(voxel, cell[0], cell[1], cell[2], input->borrowed_movement)) {
+        out->status = PLAYER_PLACE_BLOCKED;
+    }
+    out->was_there = there;
+    /* Half a bench brings its other half, which must go down too: half a bench is never left. */
+    int32_t step_x = 0, step_y = 0;
+    uint16_t other = BLOCK_ID_AIR;
+    if (bench_half_other(voxel, &step_x, &step_y, &other)) {
+        int32_t *const second = out->cells[1];
+        second[0] = cell[0] + step_x;
+        second[1] = cell[1] + step_y;
+        second[2] = cell[2];
+        out->voxels[1] = other;
+        out->count = 2u;
+        uint16_t there_second = BLOCK_ID_AIR;
+        if (world_map_block_get(map, second[0], second[1], second[2], &there_second) != WORLD_MAP_STATUS_OK ||
+            !interaction_cell_takes(map, block_state_id(other), there_second, second[0], second[1], second[2]) ||
+            !interaction_fits(other, second[0], second[1], second[2], input->borrowed_movement)) {
+            out->status = PLAYER_PLACE_BLOCKED;
+        }
+    }
+    return (player_place_status_t)out->status;
+}
+
+void player_interaction_turn(player_interaction_t *interaction) {
+    interaction->turns = (uint8_t)block_facing_turn(interaction->turns, 1u);
+}
+
+static void interaction_place(player_interaction_t *interaction, world_edit_t *edit,
+                              const player_interaction_input_t *input) {
+    player_place_plan_t plan;
+    if (player_interaction_place_plan(interaction, edit->borrowed_map, input, &plan) != PLAYER_PLACE_OK) {
         return;
     }
-    const world_edit_status_t status = world_edit_block_set(edit, cell[0], cell[1], cell[2], block);
+    const int32_t *const cell = plan.cells[0];
+    const world_edit_status_t status = world_edit_block_set(edit, cell[0], cell[1], cell[2], plan.voxels[0]);
     if (status == WORLD_EDIT_STATUS_NO_MEMORY) {
         interaction->no_memory_count++;
     }
-    if (status != WORLD_EDIT_STATUS_CHANGED || !interaction_other_half_place(interaction, edit, block, there, cell)) {
+    if (status != WORLD_EDIT_STATUS_CHANGED) {
         return;
+    }
+    if (plan.count == 2u) {
+        const int32_t *const second = plan.cells[1];
+        if (world_edit_block_set(edit, second[0], second[1], second[2], plan.voxels[1]) != WORLD_EDIT_STATUS_CHANGED) {
+            /* No room for the other half, so the first comes back out and nothing was placed. */
+            interaction->no_memory_count++;
+            (void)world_edit_block_set(edit, cell[0], cell[1], cell[2], plan.was_there);
+            return;
+        }
     }
     interaction->hand_count--;
     interaction->placed_count++;
-    interaction_sound(input, block, SOUND_KIND_PLACE, cell[0], cell[1], cell[2]);
+    interaction_sound(input, block_state_id(plan.voxels[0]), SOUND_KIND_PLACE, cell[0], cell[1], cell[2]);
     interaction->place_delay = PLAYER_INTERACTION_PLACE_EVERY_TICKS - 1u;
 }
 
@@ -524,6 +565,6 @@ void player_interaction_tick(player_interaction_t *interaction, world_edit_t *ed
             interaction_mine(interaction, edit, input, hit);
         }
     } else if (input->place != 0u && may_place) {
-        interaction_place(interaction, edit, input, hit);
+        interaction_place(interaction, edit, input);
     }
 }

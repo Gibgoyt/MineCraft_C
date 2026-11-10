@@ -27,10 +27,11 @@ enum : int64_t {
 #define PLAYER_PICKUP_REACH_ACROSS 1.0f64
 #define PLAYER_PICKUP_REACH_UP 0.5f64
 
-/* The two buttons, in hands_word and hands_latch. */
+/* The two buttons, in hands_word and hands_latch, and R, only ever in hands_latch: a press, not something held. */
 enum : uint32_t {
     PLAYER_HAND_ATTACK = 1u,
     PLAYER_HAND_PLACE = 2u,
+    PLAYER_HAND_TURN = 4u,
 };
 
 /* In player_t.animal_use. */
@@ -123,6 +124,10 @@ void player_look_send(player_t *player, float32_t yaw, float32_t pitch);
 /* What the two buttons are doing now. Main, as often as it likes, right after player_send, whose time also says how fresh this is.
  * A click between two ticks still counts for one tick. Never waits. */
 void player_hands_send(player_t *player, bool attack, bool place);
+
+/* R was pressed: what is in the hand turns a quarter before it is placed, player_interaction_turn, on the next tick. Main. Two presses
+ * between two ticks are one. Never waits. */
+void player_turn_send(player_t *player);
 
 /* The hands' tick, on what player_tick last aimed at, so on the block the player sees outlined: the sim, or whichever one thread holds
  * the map, right before player_tick, so that the body and the next aim both meet the world as this leaves it. Never waits and never

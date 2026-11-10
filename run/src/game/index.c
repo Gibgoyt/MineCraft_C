@@ -1253,6 +1253,9 @@ static bool game_scene_tick_timed(game_t *game, const display_headless_tick_t *t
                        display_script_state_is_down(tick->state, KEY_LEFTSHIFT), tick_ns);
         game_hands_send(game, display_script_state_is_down(tick->state, BTN_LEFT),
                         display_script_state_is_down(tick->state, BTN_RIGHT));
+        if (input_keys_has(&frame.pressed, KEY_R)) {
+            game_turn_send(game);
+        }
         bool hotbar[INVENTORY_HOTBAR_SLOTS];
         for (uint32_t slot = 0u; slot < INVENTORY_HOTBAR_SLOTS; slot++) {
             hotbar[slot] = display_script_state_is_down(tick->state, KEY_1 + slot);

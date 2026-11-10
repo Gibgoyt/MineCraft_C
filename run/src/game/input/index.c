@@ -27,6 +27,10 @@ void game_hands_send(game_t *game, bool attack, bool place) {
     player_hands_send(game->borrowed_player, attack, place);
 }
 
+void game_turn_send(game_t *game) {
+    player_turn_send(game->borrowed_player);
+}
+
 void game_hotbar_send(game_t *game, const bool keys[INVENTORY_HOTBAR_SLOTS], int64_t wheel) {
     item_t *const item = game->borrowed_item;
     if (item == nullptr) {
@@ -115,6 +119,9 @@ bool game_loop_input_frame(game_t *game, const input_frame_t *frame, display_buf
         /* A click over between two polls is in pressed and not in down. */
         game_hands_send(game, input_keys_has(&frame->down, BTN_LEFT) || input_keys_has(&frame->pressed, BTN_LEFT),
                         input_keys_has(&frame->down, BTN_RIGHT) || input_keys_has(&frame->pressed, BTN_RIGHT));
+        if (input_keys_has(&frame->pressed, KEY_R)) {
+            game_turn_send(game);
+        }
         bool hotbar[INVENTORY_HOTBAR_SLOTS];
         for (uint32_t slot = 0u; slot < INVENTORY_HOTBAR_SLOTS; slot++) {
             hotbar[slot] = input_keys_has(&frame->pressed, KEY_1 + slot);

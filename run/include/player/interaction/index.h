@@ -81,7 +81,8 @@ typedef struct player_interaction_t {
     uint8_t place_delay;                           /* 1111: ticks until it may place again */
     uint32_t held_speed_milli;                     /* 1112: on its own blocks, if not 0, over what its tier says */
     uint8_t hit_wait;                              /* 1116: ticks of mining until the next hit is heard */
-    uint8_t _pad0[35];                             /* 1117 */
+    uint8_t turns;                                 /* 1117: quarter turns R has given what is in the hand, 0 to 3 */
+    uint8_t _pad0[34];                             /* 1118 */
 } player_interaction_t;
 static_assert(sizeof(player_interaction_t) == 1152);
 static_assert(alignof(player_interaction_t) == 8);
@@ -96,10 +97,38 @@ typedef struct player_interaction_input_t {
     player_felling_t *borrowed_felling;         /* 16: what a log cut sets going, or nullptr for one block */
     uint8_t attack;                             /* 24: the left button */
     uint8_t place;                              /* 25: the right button */
-    uint8_t _pad0[6];                           /* 26 */
+    uint8_t look_facing;                        /* 26: a block_facing_t: the nearest of the four to where the player looks */
+    uint8_t _pad0[5];                           /* 27 */
     player_sounds_t *borrowed_sounds; /* 32: what it does that can be heard goes here, or nullptr for silent hands */
 } player_interaction_input_t;
 static_assert(sizeof(player_interaction_input_t) == 40);
+
+enum : uint32_t {
+    /* The most cells one block takes when placed: a bench is two. */
+    PLAYER_PLACE_CELLS = 2u,
+};
+
+/* What a hand would do with the right button now. */
+typedef enum player_place_status_t : uint8_t {
+    PLAYER_PLACE_NONE = 0, /* nothing, nowhere: an empty hand, no face aimed at, or a torch aimed at an underside */
+    PLAYER_PLACE_OK = 1,   /* it would go down */
+    PLAYER_PLACE_BLOCKED =
+        2, /* it has a place that cannot take it: something there, the body in the way, no ground under what
+                                 needs it, no room for a bench's other half, or a column or height that is not loaded or played */
+} player_place_status_t;
+
+/* What and where a hand would place, worked out without changing anything: for placing, and for a preview to draw. With
+ * PLAYER_PLACE_NONE only status means anything. With BLOCKED the cells and voxels are what it would have been. */
+typedef struct player_place_plan_t {
+    int32_t cells[PLAYER_PLACE_CELLS][COLLISION_AXES]; /* 0: the cell aimed into, then a bench's other half */
+    uint16_t voxels[PLAYER_PLACE_CELLS];               /* 24: what goes in each, with its facing: types/block_state/ */
+    uint16_t was_there;                                /* 28: what the first cell holds now, id and state */
+    uint8_t count;                                     /* 30: cells it takes, 1 or 2, and 0 with nothing to place */
+    uint8_t status;                                    /* 31: player_place_status_t */
+    uint8_t facing;                                    /* 32: the block_facing_t it goes down with */
+    uint8_t _pad0[3];                                  /* 33 */
+} player_place_plan_t;
+static_assert(sizeof(player_place_plan_t) == 36);
 
 /* Empty hands, nothing under way, and random numbers from this seed. */
 void player_interaction_start(player_interaction_t *interaction, uint64_t seed);
@@ -129,6 +158,16 @@ void player_interaction_hold_speed(player_interaction_t *interaction, uint32_t s
 void player_interaction_tick(player_interaction_t *interaction, world_edit_t *edit,
                              const player_interaction_input_t *input);
 
+/* What the right button would put down and where, as player_interaction_tick would place it with input->place, but changing nothing:
+ * the target, what is in the hand, the facing from input->look_facing turned by R's turns, and whether the world and the body let it
+ * go there. Returns out->status. Any thread holding the map; reads only. */
+player_place_status_t player_interaction_place_plan(const player_interaction_t *interaction, const world_map_t *map,
+                                                    const player_interaction_input_t *input, player_place_plan_t *out);
+
+/* R: what is in the hand turns a quarter clockwise, seen from above, before it is placed. It stays turned until the hand holds
+ * something else. */
+void player_interaction_turn(player_interaction_t *interaction);
+
 /* Rolls a block's table, as breaking it with the right tool would, and adds what comes out to the ring. */
 void player_interaction_drops_spawn(player_interaction_t *interaction, uint16_t block, int32_t x, int32_t y, int32_t z);
 
@@ -145,7 +184,8 @@ void player_sounds_post(player_sounds_t *sounds, uint16_t block, sound_kind_t ki
 /* The oldest sound waiting, which is now the caller's. False if there is none. */
 bool player_sounds_next(player_sounds_t *sounds, player_sound_t *out);
 
-/* In the hand, up to PLAYER_INTERACTION_HAND_MAX. A different block takes the place of what is there, as there is one slot. */
+/* In the hand, up to PLAYER_INTERACTION_HAND_MAX. A different block takes the place of what is there, as there is one slot, and
+ * starts with no turns. */
 void player_interaction_hand_give(player_interaction_t *interaction, uint16_t block, uint32_t count);
 
 /* What the hand holds from now on, whatever it held. What game makes it hold is the hotbar slot in hand. */

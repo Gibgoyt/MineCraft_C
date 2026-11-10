@@ -37,7 +37,8 @@ static uint16_t cover_block(const column_t *column, uint32_t local_x, uint32_t l
         return BLOCK_ID_AIR;
     }
     const section_t *const section = &column->sections[column_section_of(z)];
-    return section_block_get(section, section_voxel_index(local_x, local_y, column_section_local_of(z)));
+    return block_state_id(
+        section_block_get(section, section_voxel_index(local_x, local_y, column_section_local_of(z))));
 }
 
 /* The highest voxel of a block column that is not air, from no higher than top_z, or below the storage if there is none. */

@@ -144,6 +144,10 @@ void player_hands_send(player_t *player, bool attack, bool place) {
     }
 }
 
+void player_turn_send(player_t *player) {
+    atomic_fetch_or_explicit(&player->hands_latch, PLAYER_HAND_TURN, memory_order_relaxed);
+}
+
 void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns) {
     player_interact_fell_tick(player, edit, nullptr, nullptr, tick_ns);
 }
@@ -184,12 +188,19 @@ void player_interact_fell_tick(player_t *player, world_edit_t *edit, player_fell
         buttons.attack = 0u;
     }
     player->combat.aiming_body = 0u;
+    if ((hands & PLAYER_HAND_TURN) != 0u) {
+        player_interaction_turn(&player->interaction);
+    }
+    /* Which way it looks, as main last said, for which way a block goes down. */
+    float64_t look[COLLISION_AXES];
+    player_camera_direction(player_yaw_sent(player), 0.0f32, look);
     const player_interaction_input_t input = {
         .borrowed_target = &player->target,
         .borrowed_movement = &player->movement,
         .borrowed_felling = felling,
         .attack = buttons.attack,
         .place = buttons.place,
+        .look_facing = (uint8_t)block_facing_of_look(look[0], look[1]),
         ._pad0 = {0},
         .borrowed_sounds = sounds,
     };

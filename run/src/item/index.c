@@ -24,7 +24,9 @@ typedef enum item_block_kind_t : uint8_t {
     ITEM_BLOCK_FURNACE = 2,
 } item_block_kind_t;
 
-static item_block_kind_t item_block_kind(uint16_t block) {
+static item_block_kind_t item_block_kind(uint16_t voxel) {
+    /* An edit's record holds the block's state too: a chest is a chest whichever way it faces. */
+    const uint16_t block = block_state_id(voxel);
     if (block == BLOCK_ID_CHEST) {
         return ITEM_BLOCK_CHEST;
     }

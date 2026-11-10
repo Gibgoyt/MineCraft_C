@@ -475,6 +475,9 @@ void game_walk_send(game_t *game, const render_fly_input_t *input, bool jump, bo
  * input, right after game_walk_send. */
 void game_hands_send(game_t *game, bool attack, bool place);
 
+/* R: what is in the hand turns a quarter before it is placed. */
+void game_turn_send(game_t *game);
+
 /* Walking: the number keys choose a hotbar slot, and the wheel moves along it, as of the sim thread's next tick. The thread that owns
  * input. Away from the user is to the left, as in Minecraft. Does nothing with no inventory. */
 void game_hotbar_send(game_t *game, const bool keys[INVENTORY_HOTBAR_SLOTS], int64_t wheel);
