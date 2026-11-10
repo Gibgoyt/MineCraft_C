@@ -11,8 +11,10 @@
 - `tp_pack_check_licence`: requires every evidence text, and that `texture_pack.conf`, if it states a licence, states that one.
 - `tp_pack_check_coverage`: walks the pack. Every file must be imported, skipped, a base under another texture, or evidence, and every file the manifest names must exist.
 - `tp_pack_load_entry`: reads, decodes, splits into frames, and composites one entry.
+- `tp_pack_decode_image`: reads and decodes one PNG, as one frame, under the same limits.
+- `tp_pack_composite_over_opaque`: the `over` sum on its own.
 
-**May be called by:** `compile/src/texture_pack/`.
+**May be called by:** `compile/src/texture_pack/`, and its part `default_pack`, which uses only the last two.
 **Depends on:** `compile/src/png/`, and the sibling parts `texture_pack/support`, `texture_pack/manifest` and `texture_pack/mctex`.
 
 ## Notes

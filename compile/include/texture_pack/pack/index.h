@@ -42,6 +42,10 @@ bool tp_pack_check_licence(tp_arena_t *arena, const char *pack, const tp_manifes
  */
 bool tp_pack_check_coverage(tp_arena_t *arena, const char *pack, const tp_manifest_t *manifest, tp_coverage_t *out);
 
+/* One PNG from the pack, decoded to RGBA8 as a single frame, under the same limits as an entry. From arena. */
+bool tp_pack_decode_image(tp_arena_t *arena, const char *pack, const char *file, tp_image_t *out);
+/* top over a fully opaque base of the same size, in place, rounded the same way on any machine. */
+void tp_pack_composite_over_opaque(uint8_t *top, const uint8_t *base, uint64_t pixel_bytes);
 /* Reads, decodes, splits and composites one entry. Everything comes from arena. */
 bool tp_pack_load_entry(tp_arena_t *arena, const char *pack, const tp_entry_t *entry, tp_image_t *out);
 

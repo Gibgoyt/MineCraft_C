@@ -27,6 +27,8 @@ endfunction()
 
 # Any stage may add a dependency to this, such as the lint that has to pass before anything compiles.
 add_custom_target(mc_prebuild)
+# cmake/generated.cmake: the build stops if git tracks anything under textures_local/.
+add_dependencies(mc_prebuild mc_check_textures_local)
 
 # ---- Game sources ----------------------------------------------------------------------------------
 
@@ -194,6 +196,26 @@ endif()
 # tests/compile/game_tables reads the real tables. Tests under compile/ do not link mc_run, so it compiles them itself.
 if(TARGET mc_test_compile_game_tables)
   target_sources(mc_test_compile_game_tables PRIVATE ${mc_generated_run_sources})
+endif()
+
+# Tests whose expected pictures or digests come from the committed art. Built from textures_local/ (cmake/generated.cmake),
+# the game draws Mojang's art instead, so they are disabled, and ctest lists them as not run. Their pictures are never
+# regenerated from it: textures_local/ and anything made from it stay on this machine. Plan 005 phase 9.
+# Measured 2026-11-10 with Minecraft 26.3's art: each fails on a golden picture, a picture's hash, or (run_mob_sight) a
+# skin's colour, and nothing else.
+set(MC_ART_TESTS
+  render_feature_entities render_feature_lod render_feature_post render_feature_shapes render_feature_sky
+  render_feature_under_water render_feature_water render_feature_weather
+  run_mob_sight run_render_frame
+  run_ui_census run_ui_font run_ui_hud run_ui_hud_corner run_ui_menu run_ui_screens)
+if(MC_TEXTURES_LOCAL)
+  foreach(mc_art_test IN LISTS MC_ART_TESTS)
+    if(TEST ${mc_art_test})
+      set_tests_properties(${mc_art_test} PROPERTIES DISABLED TRUE)
+    endif()
+  endforeach()
+  list(LENGTH MC_ART_TESTS mc_art_test_count)
+  message(STATUS "Textures: ${mc_art_test_count} tests that compare with the committed art are disabled")
 endif()
 
 # ---- Benchmarks ------------------------------------------------------------------------------------

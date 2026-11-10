@@ -3,6 +3,6 @@
 set(MC_TEST_ARGS
   "$<TARGET_FILE:mc_tool_game_tables>"
   "${CMAKE_SOURCE_DIR}/config"
-  "${CMAKE_SOURCE_DIR}/textures"
+  "${MC_TEXTURE_ROOT}"
   "${MC_GENERATED_DIR}/tables"
   "${CMAKE_BINARY_DIR}/test_work/game_tables")

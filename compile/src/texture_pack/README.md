@@ -9,9 +9,10 @@
 
 - `texture_pack import --pack <clone> --manifest textures/import.yaml --textures textures`
 - `texture_pack verify --manifest textures/import.yaml --textures textures`
+- `texture_pack import-default --pack /tmp/mc_c_assets/minecraft_default --map textures/import_minecraft_default.yaml --textures textures_local`: Minecraft's default textures into an ignored copy, for this machine only. Its part `default_pack` has the rules
 
 **May be called by:** a person re-importing, and ctest `compile_texture_pack`. **The build never runs it**, so a build needs neither the pack nor a network.
-**Depends on:** its parts `support`, `mctex`, `manifest`, `pack`, `output` and `verify`, and through them `compile/src/png/` and `compile/src/yaml/`.
+**Depends on:** its parts `support`, `mctex`, `manifest`, `pack`, `output`, `verify` and `default_pack`, and through them `compile/src/png/` and `compile/src/yaml/`.
 
 ## What an import does, in order
 
@@ -46,5 +47,6 @@ The pack is data from a stranger, so the only thing taken from it is decoded pix
 | `pack` | Everything that touches the untrusted pack |
 | `output` | Everything written into `textures/` |
 | `verify` | The check of a tree, with no pack |
+| `default_pack` | `import-default`: Minecraft's default textures into a copy that is never committed |
 
 To re-import, see `textures/README.md`.

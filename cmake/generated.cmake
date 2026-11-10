@@ -3,11 +3,34 @@
 
 # ---- Texture blob: Stage 06.4 ------------------------------------------------------------------------------------------
 
-# textures/ -> vector data per texture -> mip chains and everything else in one file -> asm/src/embed_assets/.
+# Which tree the game is built from. textures/ is committed: Pixel Perfection and our recipes. textures_local/ is the same
+# tree with Minecraft's default art, made on this machine by tools/import_minecraft_default.sh and ignored by git, since
+# the art is Mojang's and this repository is public. Plan 005 phase 9. Delete textures_local/ and configure again to go
+# back. Tests whose expected pictures or digests come from the committed art are disabled with it: MC_ART_TESTS below.
+if(IS_DIRECTORY "${CMAKE_SOURCE_DIR}/textures_local")
+  set(MC_TEXTURE_ROOT "${CMAKE_SOURCE_DIR}/textures_local")
+  set(MC_TEXTURES_LOCAL ON)
+  message(STATUS "Textures: textures_local/, Minecraft's default pack, on this machine only")
+else()
+  set(MC_TEXTURE_ROOT "${CMAKE_SOURCE_DIR}/textures")
+  set(MC_TEXTURES_LOCAL OFF)
+  message(STATUS "Textures: textures/, Pixel Perfection and our recipes")
+endif()
+# textures_local/ appearing or going later reconfigures, through this glob, or the build would go on using the other tree.
+file(GLOB mc_texture_local_probe CONFIGURE_DEPENDS LIST_DIRECTORIES true "${CMAKE_SOURCE_DIR}/textures_local")
+
+# Nothing under textures_local/ may ever be tracked: the build fails first. A tree with no git, such as an unpacked
+# release, has nothing tracked and passes.
+add_custom_target(mc_check_textures_local
+  COMMAND "${CMAKE_COMMAND}" -D "MC_SOURCE_DIR=${CMAKE_SOURCE_DIR}" -P "${CMAKE_SOURCE_DIR}/cmake/check_textures_local.cmake"
+  COMMENT "Checking that git tracks nothing under textures_local/"
+  VERBATIM)
+
+# The tree -> vector data per texture -> mip chains and everything else in one file -> asm/src/embed_assets/.
 set(mc_texture_blob_file "${MC_GENERATED_DIR}/textures/index.mctb")
 set(mc_texture_vectors "${MC_GENERATED_DIR}/textures/vectors")
-set(mc_texture_table "${CMAKE_SOURCE_DIR}/textures/vector.yaml")
-file(GLOB mc_texture_inputs CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/textures/*/*/index.mctex")
+set(mc_texture_table "${MC_TEXTURE_ROOT}/vector.yaml")
+file(GLOB mc_texture_inputs CONFIGURE_DEPENDS "${MC_TEXTURE_ROOT}/*/*/index.mctex")
 
 # Ninja reruns a command for a new or changed input, and not for one gone from its list, so a deleted texture would stay in
 # the blob. This file changes when the list does, and only then.
@@ -16,14 +39,14 @@ file(CONFIGURE OUTPUT "${MC_GENERATED_DIR}/textures/inputs.txt" CONTENT "${mc_te
 
 # The touch: the tool leaves a file with the same bytes alone, and then Ninja would see the output as old on every build.
 add_custom_command(OUTPUT "${mc_texture_blob_file}"
-  COMMAND mc_tool_texture_vector vectors --textures "${CMAKE_SOURCE_DIR}/textures" --materials "${mc_texture_table}"
+  COMMAND mc_tool_texture_vector vectors --textures "${MC_TEXTURE_ROOT}" --materials "${mc_texture_table}"
     --out "${mc_texture_vectors}"
-  COMMAND mc_tool_texture_blob --textures "${CMAKE_SOURCE_DIR}/textures" --vectors "${mc_texture_vectors}"
+  COMMAND mc_tool_texture_blob --textures "${MC_TEXTURE_ROOT}" --vectors "${mc_texture_vectors}"
     --out "${mc_texture_blob_file}"
   COMMAND "${CMAKE_COMMAND}" -E touch "${mc_texture_blob_file}"
   DEPENDS mc_tool_texture_vector mc_tool_texture_blob ${mc_texture_inputs} "${mc_texture_table}"
     "${MC_GENERATED_DIR}/textures/inputs.txt"
-  COMMENT "Generating the texture blob"
+  COMMENT "Generating the texture blob from ${MC_TEXTURE_ROOT}"
   VERBATIM)
 # Only order: NASM's -MD lists what it incbins, so a new blob rebuilds asm/src/embed_assets/ by its depfile.
 add_custom_target(mc_texture_blob DEPENDS "${mc_texture_blob_file}")
@@ -78,7 +101,7 @@ file(GLOB mc_block_inputs CONFIGURE_DEPENDS
   "${CMAKE_SOURCE_DIR}/config/recipes/*/index.yaml"
   "${CMAKE_SOURCE_DIR}/config/biomes/*/index.yaml"
   "${CMAKE_SOURCE_DIR}/config/mobs/*/index.yaml"
-  "${CMAKE_SOURCE_DIR}/textures/items/*/index.mctex")
+  "${MC_TEXTURE_ROOT}/items/*/index.mctex")
 
 # Ninja reruns a command for a new or changed input, and not for one gone from its list, so a deleted block would stay in the
 # tables. This file changes when the list does, and only then. The block directories are in it for one with no file yet.
@@ -94,7 +117,7 @@ file(CONFIGURE OUTPUT "${mc_tables_dir}/inputs.txt" CONTENT "${mc_block_input_li
 add_custom_command(OUTPUT "${mc_block_table_header}" "${mc_block_table_source}" "${mc_biome_table_header}"
     "${mc_biome_table_source}" "${mc_item_table_header}" "${mc_item_table_source}" "${mc_recipe_table_header}"
     "${mc_recipe_table_source}" "${mc_mob_table_header}" "${mc_mob_table_source}"
-  COMMAND mc_tool_game_tables --config "${CMAKE_SOURCE_DIR}/config" --textures "${CMAKE_SOURCE_DIR}/textures"
+  COMMAND mc_tool_game_tables --config "${CMAKE_SOURCE_DIR}/config" --textures "${MC_TEXTURE_ROOT}"
     --out "${mc_tables_dir}"
   COMMAND "${CMAKE_COMMAND}" -E touch "${mc_block_table_header}" "${mc_block_table_source}" "${mc_biome_table_header}"
     "${mc_biome_table_source}" "${mc_item_table_header}" "${mc_item_table_source}" "${mc_recipe_table_header}"

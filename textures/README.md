@@ -59,3 +59,27 @@ Only to change what is imported, or to move the pin. The pack is untrusted, so c
         --manifest textures/import.yaml --textures textures
 
 It writes nothing unless the commit, the licence and every file check out, and it changes only files whose bytes differ, so `git status` shows what the import really changed. It replaces each imported `index.yaml`, `README.md` and `index.mctex`, and `ATTRIBUTION.md`. Keep anything hand-written out of those files, or put it back after. `ATTRIBUTION.md` has one such part: its section "What this file cannot promise" and the sentence at its top that points there, which the tool does not write, so `git diff` shows them going and they must be restored. It removes nothing: a texture dropped from `import.yaml` has to be deleted by hand, and `verify` will say which.
+
+## Minecraft's default textures
+
+Plan 005 phase 9: a person can play with Minecraft's own textures on their own machine. **They are Mojang's, and never committed**: this repository is public. Pixel Perfection stays here, unchanged, and is what every fresh clone and every other machine builds with.
+
+```
+textures/                          committed: Pixel Perfection and our recipes
+textures/import_minecraft_default.yaml   committed: names only, ours against Minecraft's
+textures_local/                    ignored by git: the same tree, with Mojang's art where the map says
+```
+
+To make and use it:
+
+    tools/fetch_minecraft_default.sh
+    tools/test-or-build.sh cmake --build --preset debug --target mc_tool_texture_pack
+    tools/import_minecraft_default.sh
+    tools/test-or-build.sh cmake --preset release
+    tools/test-or-build.sh cmake --build --preset release
+
+The first downloads the pinned client jar from Mojang's servers, as the launcher does, checks its SHA-1, and unpacks only `assets/minecraft/textures/` to `/tmp/mc_c_assets/minecraft_default/`. Nothing from the jar is run. The third copies `textures/` to `textures_local/` and runs `texture_pack import-default`, which `compile/src/texture_pack/default_pack/README.md` describes. Configure prints `Textures: textures_local/...` or `Textures: textures/...`, and the build uses that tree. Delete `textures_local/` to go back.
+
+The map names every texture here once: a file from the pack, ten files stacked as the crack's frames, or `keep` ours with the reason, for what Minecraft has no picture of in our size or layout: beds, chests and doors drawn as models there, our bench, most screens. Grass, leaves, vines and water are grey in Minecraft and coloured by biome when drawn. With no biome tint in our renderer, the import bakes one colour per kind.
+
+Nothing under `textures_local/` may be tracked: `cmake/check_textures_local.cmake` fails the build if it is. With it in use, the tests whose expected pictures or digests come from the committed art are disabled: `MC_ART_TESTS` in `cmake/targets.cmake`. Their pictures are never regenerated from it.

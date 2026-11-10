@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2 — phase 9: Minecraft's default textures
 
-**Status:** not started   (updated 2026-11-05)
+**Status:** done, waiting for Ahmed to play with it   (updated 2026-11-10)
 
 ## Goal
 
@@ -50,15 +50,15 @@ source:
 
 ## Todo
 
-- [ ] Add `textures_local/` to `.gitignore`. Check with `git check-ignore`, and add a build check that fails if anything under it is ever tracked
-- [ ] Add a downloader that fetches one pinned version, checks its SHA-1, and unpacks only `assets/minecraft/textures/` to `/tmp/mc_c_assets/minecraft_default/`
-- [ ] Add `textures/import_minecraft_default.yaml`: our name for every texture the game uses, against the default pack's file, or "keep ours"
-- [ ] Copy `textures/` to `textures_local/`, batch-change its YAML `source:` to the default pack, and import its pixels with `compile/src/texture_pack/`
-- [ ] Bake grass, leaf and vine tints at import
-- [ ] Make `cmake/generated.cmake` use `textures_local/` when it exists, with one line in the build log saying which pack was used
-- [ ] Make a sheet of every texture, checked by eye in the game: blocks, items, mobs, UI
-- [ ] Keep `textures/ATTRIBUTION.md` true: nothing from Mojang is in the repo
-- [ ] Build and test both ways. Without `textures_local/`, every golden picture still passes. With it, the goldens that depend on art are skipped or kept separately, never committed
+- [x] Add `textures_local/` to `.gitignore`. Check with `git check-ignore`, and add a build check that fails if anything under it is ever tracked
+- [x] Add a downloader that fetches one pinned version, checks its SHA-1, and unpacks only `assets/minecraft/textures/` to `/tmp/mc_c_assets/minecraft_default/`
+- [x] Add `textures/import_minecraft_default.yaml`: our name for every texture the game uses, against the default pack's file, or "keep ours"
+- [x] Copy `textures/` to `textures_local/`, batch-change its YAML `source:` to the default pack, and import its pixels with `compile/src/texture_pack/`
+- [x] Bake grass, leaf and vine tints at import
+- [x] Make `cmake/generated.cmake` use `textures_local/` when it exists, with one line in the build log saying which pack was used
+- [x] Make a sheet of every texture, checked by eye in the game: blocks, items, mobs, UI
+- [x] Keep `textures/ATTRIBUTION.md` true: nothing from Mojang is in the repo
+- [x] Build and test both ways. Without `textures_local/`, every golden picture still passes. With it, the goldens that depend on art are skipped or kept separately, never committed
 
 ## Verification
 
@@ -80,3 +80,25 @@ Appended as they land:
 **Never committed, never pushed.** Pixel Perfection stays as the committed default. The default pack lives only in `textures_local/` and `/tmp/` on this machine.
 
 **Mojang's terms:** the client jar is downloaded from Mojang's own servers, as the launcher does, and used only on this machine. Ahmed chose this knowing it's on the edge of the terms. It's still his call if he'd rather install Minecraft properly, which needs no other change here.
+
+### Done, 2026-11-10
+
+**Pinned: Minecraft 26.3**, the latest release in Mojang's list that day. Client jar SHA-1 `e877b6a07acd633fb3bb475002175cec036e7b87`, 41,483,720 bytes, 3964 PNGs under `assets/minecraft/textures/`. `tools/fetch_minecraft_default.sh` checks the version JSON against the SHA-1 in Mojang's list, then the jar against the pinned SHA-1, unpacks only `assets/minecraft/textures/*` with `unzip` into a new empty directory, refuses anything but files and directories, and only then writes `mc_c_pin.txt` (`26.3 <sha1>`) beside it. The importer requires that file to match the map.
+
+**Not `sed -i`, the importer.** The phase allowed either. The YAML is rewritten by `texture_pack import-default` (new part `compile/src/texture_pack/default_pack/`) in a fresh copy made by `tools/import_minecraft_default.sh`, because the pixels have to be re-imported anyway, and `import` could not be reused: it pins a git commit, wants licence evidence, and requires every file in the pack to be accounted for, none of which fits a jar of 3964 files. Its own checks instead: the pin, every texture in the tree named once by the map (so a new texture is refused until someone maps it), the result the same width and height as ours, and the same frame count or 1 (an animation may become a still; only the crack's frames are drawn, and it must keep all 10). Everything is decoded and checked before the first write. Tests: two new cases in `compile_texture_pack`, on a stand-in pack the test makes, never the real one.
+
+**The map: 402 from Minecraft, 122 of ours kept**, each with its reason in `textures/import_minecraft_default.yaml`. Kept: beds, chests, doors and signs (Minecraft draws them as models with one skin), rail crossings and junctions, brake rails, our bench, desert stone, obsidian bricks and glass, corals (other colours), potions (Minecraft tints one grey bottle), the jungle grass and river flow at 32x32, the minecart and arrow, and most of the UI: font, logo, hotbar (Minecraft's is 182 wide, ours 162), panel, slots, bars, sun and moon. From Minecraft in the UI: heart, empty heart, bubbles, armour, empty hunger, buttons, slider, text field, armour slot icons. Renames such as `grass_top` to `grass_block_top`, `wool_dark_grey` to `gray_wool`, `wheat_stage_1` to `wheat_stage0`, wooden and golden tools, fences from planks. Animated strips are cropped: water and lava keep 16 frames of the still strip (the flow strips are 32 wide), fire 8 frames, kelp, sculk and seagrass their first frame. The player and zombie take the top 64x32 of Minecraft's 64x64 skins, which is the old layout ours copies; skeleton and creeper are already 64x32.
+
+**Tints baked at import** (`tints:` in the map, multiply then round): grass `91bd59` (plains) on grass tops, the grass side overlay (composited over `grass_block_side`), short grass, ferns and sugar cane; foliage `77ab2f` on oak, jungle, acacia, dark oak leaves and vines; birch `80a755`, spruce `619961`, mangrove `8db127`; water `3f76e4`; lily pad `208030`; stems `e0c71c`. Our dry grass uses Minecraft's grass with the savanna colour `bfb755`, and river water is ours, `5a8fea`.
+
+**One threshold changed in the copy only.** `vector.yaml` asks glow lichen for luma 180 before it shines; Minecraft's brightest lichen pixel is 172, and texture_vector refuses a light row no pixel passes. The import script lowers that row to 170 in `textures_local/vector.yaml` and fails loudly if the committed row ever changes.
+
+**Build.** `cmake/generated.cmake` picks the tree at configure and prints `-- Textures: textures_local/, Minecraft's default pack, on this machine only` or `-- Textures: textures/, Pixel Perfection and our recipes`; the blob step names the tree too. A glob with `CONFIGURE_DEPENDS` reconfigures when `textures_local/` appears or goes. `mc_check_textures_local` (`cmake/check_textures_local.cmake`) runs before anything compiles and fails if git tracks anything under it. Tested by force-adding a probe file: the check failed with the file named; after `git rm --cached` it passed.
+
+**Sheet.** A contact sheet of all 524 textures from `textures_local/` was made in the scratchpad (never committed) and looked at: grass, leaves, water, ores, logs, crops, tools, mobs and the HUD icons all read as Minecraft's. Seeing them in the game is Ahmed's check.
+
+**Tests, release.**
+- Without `textures_local/`: build clean, 151 tests, every golden picture passes. Two compile tests (`compile_sound_pack`, `compile_texture_vector`) failed once with `mkdir` and write errors while `/home` was at 100% (2.2 GB free, other agents' builds); rerun alone they pass. See the final report.
+- With `textures_local/`: build clean; 16 tests compare with the committed art and fail on it, all on golden pictures, picture hashes, or (run_mob_sight) the zombie's skin being green enough: `render_feature_{entities,lod,post,shapes,sky,under_water,water,weather}`, `run_mob_sight`, `run_render_frame`, `run_ui_{census,font,hud,hud_corner,menu,screens}`. They are `MC_ART_TESTS` in `cmake/targets.cmake`, disabled only when the build uses `textures_local/`: ctest then shows 135 of 135 passed and 16 not run. No golden is regenerated from Mojang's art.
+
+**For later.** Under the sea, 30 pixels go fully black with Minecraft's darker water where none do with Pixel Perfection (`render_feature_under_water`); worth a look if Ahmed sees it. Biome tint in the renderer would replace the baked colours. Animated water, lava and fire would want the renderer to step frames, which it does not do for anything but the crack.

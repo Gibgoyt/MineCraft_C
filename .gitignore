@@ -10,3 +10,8 @@
 # And what a person chose on the Settings screen there.
 /settings.yaml
 /settings.yaml.tmp
+
+# Minecraft's default textures, imported on this machine by tools/import_minecraft_default.sh. Mojang's art: never
+# commit it, since this repository is public. The build fails if anything under it is ever tracked.
+/textures_local/
+/textures_local.new/

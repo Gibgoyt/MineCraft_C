@@ -362,7 +362,7 @@ static bool tp_pack_decode(tp_arena_t *arena, const char *pack, const char *file
 }
 
 /* top over a fully opaque base. Rounds to nearest, in integers, so that it is the same on any machine. */
-static void tp_composite_over_opaque(uint8_t *top, const uint8_t *base, uint64_t pixel_bytes) {
+void tp_pack_composite_over_opaque(uint8_t *top, const uint8_t *base, uint64_t pixel_bytes) {
     for (uint64_t i = 0; i < pixel_bytes; i += 4u) {
         const uint32_t alpha = top[i + 3u];
         for (uint32_t c = 0; c < 3u; c++) {
@@ -372,6 +372,22 @@ static void tp_composite_over_opaque(uint8_t *top, const uint8_t *base, uint64_t
         }
         top[i + 3u] = 255u;
     }
+}
+
+bool tp_pack_decode_image(tp_arena_t *arena, const char *pack, const char *file, tp_image_t *out) {
+    memset(out, 0, sizeof(*out));
+    png_info_t info;
+    uint8_t *pixels = nullptr;
+    if (!tp_pack_decode(arena, pack, file, &pixels, &info)) {
+        return false;
+    }
+    *out = (tp_image_t){.borrowed_pixels = pixels,
+                        .pixel_bytes = info.pixel_bytes,
+                        .width = info.width,
+                        .height = info.height,
+                        .frames = 1u,
+                        ._pad0 = {0}};
+    return true;
 }
 
 bool tp_pack_load_entry(tp_arena_t *arena, const char *pack, const tp_entry_t *entry, tp_image_t *out) {
@@ -407,7 +423,7 @@ bool tp_pack_load_entry(tp_arena_t *arena, const char *pack, const tp_entry_t *e
                                entry->borrowed_from);
             }
         }
-        tp_composite_over_opaque(pixels, base, info.pixel_bytes);
+        tp_pack_composite_over_opaque(pixels, base, info.pixel_bytes);
     }
     *out = (tp_image_t){.borrowed_pixels = pixels,
                         .pixel_bytes = info.pixel_bytes,

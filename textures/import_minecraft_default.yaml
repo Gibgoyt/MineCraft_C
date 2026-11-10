@@ -1,0 +1,560 @@
+# What `texture_pack import-default` takes from Minecraft's default textures, for a copy of textures/ on this machine only.
+# See textures/README.md, "Minecraft's default textures". This file holds names and no art, so it is committed. The art
+# is Mojang's: it lives in /tmp/mc_c_assets/minecraft_default/ and textures_local/, which git ignores, and is never
+# committed or published, since this repository is public.
+#
+# Every texture in textures/ is named here once: `from` a file under assets/minecraft/textures/, `stack` several files
+# as frames, or `keep` ours with the reason. The result must be the size of ours: `crop` takes [x, y, width, height]
+# of the file first, and `frames` splits it into a vertical strip. An animation may become a still, since the game
+# draws frame 0 of everything but the crack. `over` composites onto an opaque file, after `tint`.
+#
+# Minecraft's grass, leaves, vines and water are grey, and coloured by biome when drawn. Our renderer has no biome tint
+# yet, so `tint` bakes one colour per kind at import: Minecraft's plains colours, its birch, spruce and mangrove
+# foliage, its default water, and its savanna grass for our dry grass. River water is ours, a lighter blue.
+pack:
+  id: minecraft_default
+  title: Minecraft's default resources
+  version: "26.3"
+  client_sha1: e877b6a07acd633fb3bb475002175cec036e7b87
+  licence: Mojang's, for local use only, never committed
+tints:
+  grass: 91bd59
+  dry_grass: bfb755
+  foliage: 77ab2f
+  birch: 80a755
+  spruce: "619961"
+  mangrove: 8db127
+  water: 3f76e4
+  river_water: 5a8fea
+  lily_pad: "208030"
+  stem: e0c71c
+
+textures:
+  # ---- blocks -----------------------------------------------------------------------------------------------------------
+  - { to: blocks/acacia_fence, from: block/acacia_planks.png }
+  - { to: blocks/acacia_fence_rail, from: block/acacia_planks.png }
+  - { to: blocks/acacia_leaves, from: block/acacia_leaves.png, tint: foliage }
+  - { to: blocks/acacia_log, from: block/acacia_log.png }
+  - { to: blocks/acacia_log_top, from: block/acacia_log_top.png }
+  - { to: blocks/acacia_planks, from: block/acacia_planks.png }
+  - { to: blocks/acacia_sapling, from: block/acacia_sapling.png }
+  - { to: blocks/allium, from: block/allium.png }
+  - { to: blocks/andesite, from: block/andesite.png }
+  - { to: blocks/azalea_leaves, from: block/azalea_leaves.png }
+  - { to: blocks/azure_bluet, from: block/azure_bluet.png }
+  - { to: blocks/bamboo, from: block/bamboo_stalk.png }
+  - { to: blocks/bed_foot, keep: "Minecraft draws beds as a model with one 64x64 skin; ours are Minetest's tiles" }
+  - { to: blocks/bed_head, keep: "Minecraft draws beds as a model with one 64x64 skin; ours are Minetest's tiles" }
+  - { to: blocks/bed_side_1, keep: "Minecraft draws beds as a model with one 64x64 skin; ours are Minetest's tiles" }
+  - { to: blocks/bed_side_2, keep: "Minecraft draws beds as a model with one 64x64 skin; ours are Minetest's tiles" }
+  - { to: blocks/bed_side_bottom, keep: "Minecraft draws beds as a model with one 64x64 skin; ours are Minetest's tiles" }
+  - { to: blocks/bed_side_bottom_left, keep: "Minecraft draws beds as a model with one 64x64 skin; ours are Minetest's tiles" }
+  - { to: blocks/bed_side_bottom_right, keep: "Minecraft draws beds as a model with one 64x64 skin; ours are Minetest's tiles" }
+  - { to: blocks/bed_side_top, keep: "Minecraft draws beds as a model with one 64x64 skin; ours are Minetest's tiles" }
+  - { to: blocks/bed_side_top_left, keep: "Minecraft draws beds as a model with one 64x64 skin; ours are Minetest's tiles" }
+  - { to: blocks/bed_side_top_right, keep: "Minecraft draws beds as a model with one 64x64 skin; ours are Minetest's tiles" }
+  - { to: blocks/bed_top_1, keep: "Minecraft draws beds as a model with one 64x64 skin; ours are Minetest's tiles" }
+  - { to: blocks/bed_top_2, keep: "Minecraft draws beds as a model with one 64x64 skin; ours are Minetest's tiles" }
+  - { to: blocks/bed_top_bottom, keep: "Minecraft draws beds as a model with one 64x64 skin; ours are Minetest's tiles" }
+  - { to: blocks/bed_top_top, keep: "Minecraft draws beds as a model with one 64x64 skin; ours are Minetest's tiles" }
+  - { to: blocks/bedrock, from: block/bedrock.png }
+  - { to: blocks/berry_bush_leaves, keep: "Minecraft has no picture for this" }
+  - { to: blocks/big_dripleaf_top, from: block/big_dripleaf_top.png }
+  - { to: blocks/birch_fence, from: block/birch_planks.png }
+  - { to: blocks/birch_fence_rail, from: block/birch_planks.png }
+  - { to: blocks/birch_leaves, from: block/birch_leaves.png, tint: birch }
+  - { to: blocks/birch_log, from: block/birch_log.png }
+  - { to: blocks/birch_log_top, from: block/birch_log_top.png }
+  - { to: blocks/birch_planks, from: block/birch_planks.png }
+  - { to: blocks/birch_sapling, from: block/birch_sapling.png }
+  - { to: blocks/blue_ice, from: block/blue_ice.png }
+  - { to: blocks/blue_orchid, from: block/blue_orchid.png }
+  - { to: blocks/bone_block_side, from: block/bone_block_side.png }
+  - { to: blocks/bone_block_top, from: block/bone_block_top.png }
+  - { to: blocks/bookshelf, from: block/bookshelf.png }
+  - { to: blocks/brake_rail, keep: "Minecraft has no picture for this" }
+  - { to: blocks/brake_rail_crossing, keep: "Minecraft has no picture for this" }
+  - { to: blocks/brake_rail_curved, keep: "Minecraft has no picture for this" }
+  - { to: blocks/brake_rail_t_junction, keep: "Minecraft has no picture for this" }
+  - { to: blocks/bricks, from: block/bricks.png }
+  - { to: blocks/brown_mushroom, from: block/brown_mushroom.png }
+  - { to: blocks/brown_mushroom_block, from: block/brown_mushroom_block.png }
+  - { to: blocks/brown_terracotta, from: block/brown_terracotta.png }
+  - { to: blocks/cactus_side, from: block/cactus_side.png }
+  - { to: blocks/cactus_top, from: block/cactus_top.png }
+  - { to: blocks/calcite, from: block/calcite.png }
+  - { to: blocks/carrots_stage_1, from: block/carrots_stage0.png }
+  - { to: blocks/carrots_stage_2, from: block/carrots_stage1.png }
+  - { to: blocks/carrots_stage_3, from: block/carrots_stage2.png }
+  - { to: blocks/carrots_stage_4, from: block/carrots_stage3.png }
+  - { to: blocks/carved_pumpkin, from: block/carved_pumpkin.png }
+  - { to: blocks/cave_vines, from: block/cave_vines.png }
+  - { to: blocks/cave_vines_lit, from: block/cave_vines_lit.png }
+  - { to: blocks/cherry_leaves, from: block/cherry_leaves.png }
+  - { to: blocks/cherry_log, from: block/cherry_log.png }
+  - { to: blocks/cherry_log_top, from: block/cherry_log_top.png }
+  - { to: blocks/cherry_planks, from: block/cherry_planks.png }
+  - { to: blocks/cherry_sapling, from: block/cherry_sapling.png }
+  - { to: blocks/chest_front, keep: "Minecraft draws chests as a model with one skin; ours are 14-pixel faces" }
+  - { to: blocks/chest_inside, keep: "Minecraft draws chests as a model with one skin; ours are 14-pixel faces" }
+  - { to: blocks/chest_lock, keep: "Minecraft draws chests as a model with one skin; ours are 14-pixel faces" }
+  - { to: blocks/chest_side, keep: "Minecraft draws chests as a model with one skin; ours are 14-pixel faces" }
+  - { to: blocks/chest_top, keep: "Minecraft draws chests as a model with one skin; ours are 14-pixel faces" }
+  - { to: blocks/clay, from: block/clay.png }
+  - { to: blocks/cloud, keep: "Minecraft has no picture for this" }
+  - { to: blocks/coal_block, from: block/coal_block.png }
+  - { to: blocks/coal_ore, from: block/coal_ore.png }
+  - { to: blocks/coarse_dirt, from: block/coarse_dirt.png }
+  - { to: blocks/cobbled_deepslate, from: block/cobbled_deepslate.png }
+  - { to: blocks/cobblestone, from: block/cobblestone.png }
+  - { to: blocks/cobweb, from: block/cobweb.png }
+  - { to: blocks/copper_block, from: block/copper_block.png }
+  - { to: blocks/copper_ore, from: block/copper_ore.png }
+  - { to: blocks/coral_brown, keep: "Minecraft's corals are other colours, and ours are named by colour" }
+  - { to: blocks/coral_cyan, keep: "Minecraft's corals are other colours, and ours are named by colour" }
+  - { to: blocks/coral_green, keep: "Minecraft's corals are other colours, and ours are named by colour" }
+  - { to: blocks/coral_orange, keep: "Minecraft's corals are other colours, and ours are named by colour" }
+  - { to: blocks/coral_pink, keep: "Minecraft's corals are other colours, and ours are named by colour" }
+  - { to: blocks/cornflower, from: block/cornflower.png }
+  - { to: blocks/crack, stack: [block/destroy_stage_0.png, block/destroy_stage_1.png, block/destroy_stage_2.png, block/destroy_stage_3.png, block/destroy_stage_4.png, block/destroy_stage_5.png, block/destroy_stage_6.png, block/destroy_stage_7.png, block/destroy_stage_8.png, block/destroy_stage_9.png] }
+  - { to: blocks/cracked_stone_bricks, from: block/cracked_stone_bricks.png }
+  - { to: blocks/crafting_table_bottom, from: block/oak_planks.png }
+  - { to: blocks/crafting_table_side, from: block/crafting_table_side.png }
+  - { to: blocks/crafting_table_top, from: block/crafting_table_top.png }
+  - { to: blocks/dandelion, from: block/dandelion.png }
+  - { to: blocks/dark_oak_leaves, from: block/dark_oak_leaves.png, tint: foliage }
+  - { to: blocks/dark_oak_log, from: block/dark_oak_log.png }
+  - { to: blocks/dark_oak_log_top, from: block/dark_oak_log_top.png }
+  - { to: blocks/dark_oak_planks, from: block/dark_oak_planks.png }
+  - { to: blocks/dark_oak_sapling, from: block/dark_oak_sapling.png }
+  - { to: blocks/dead_bush, from: block/dead_bush.png }
+  - { to: blocks/deepslate, from: block/deepslate.png }
+  - { to: blocks/deepslate_coal_ore, from: block/deepslate_coal_ore.png }
+  - { to: blocks/deepslate_copper_ore, from: block/deepslate_copper_ore.png }
+  - { to: blocks/deepslate_diamond_ore, from: block/deepslate_diamond_ore.png }
+  - { to: blocks/deepslate_emerald_ore, from: block/deepslate_emerald_ore.png }
+  - { to: blocks/deepslate_gold_ore, from: block/deepslate_gold_ore.png }
+  - { to: blocks/deepslate_iron_ore, from: block/deepslate_iron_ore.png }
+  - { to: blocks/deepslate_lapis_ore, from: block/deepslate_lapis_ore.png }
+  - { to: blocks/deepslate_top, from: block/deepslate_top.png }
+  - { to: blocks/desert_cobblestone, keep: "Minecraft has no picture for this" }
+  - { to: blocks/desert_stone, keep: "Minecraft has no picture for this" }
+  - { to: blocks/desert_stone_bricks, keep: "Minecraft has no picture for this" }
+  - { to: blocks/diamond_block, from: block/diamond_block.png }
+  - { to: blocks/diamond_ore, from: block/diamond_ore.png }
+  - { to: blocks/diorite, from: block/diorite.png }
+  - { to: blocks/dirt, from: block/dirt.png }
+  - { to: blocks/dirt_path_side, from: block/dirt_path_side.png }
+  - { to: blocks/dirt_path_top, from: block/dirt_path_top.png }
+  - { to: blocks/dripstone_block, from: block/dripstone_block.png }
+  - { to: blocks/dry_grass_side, from: block/grass_block_side_overlay.png, over: block/grass_block_side.png, tint: dry_grass }
+  - { to: blocks/dry_grass_top, from: block/grass_block_top.png, tint: dry_grass }
+  - { to: blocks/dry_tall_grass_1, from: block/short_dry_grass.png }
+  - { to: blocks/dry_tall_grass_2, from: block/short_dry_grass.png }
+  - { to: blocks/dry_tall_grass_3, from: block/short_dry_grass.png }
+  - { to: blocks/dry_tall_grass_4, from: block/tall_dry_grass.png }
+  - { to: blocks/dry_tall_grass_5, from: block/tall_dry_grass.png }
+  - { to: blocks/emerald_block, from: block/emerald_block.png }
+  - { to: blocks/emerald_ore, from: block/emerald_ore.png }
+  - { to: blocks/farmland, from: block/farmland.png }
+  - { to: blocks/farmland_wet, from: block/farmland_moist.png }
+  - { to: blocks/fern, from: block/fern.png, tint: grass }
+  - { to: blocks/fire, from: block/fire_0.png, crop: [0, 0, 16, 128], frames: 8 }
+  - { to: blocks/flowering_azalea_leaves, from: block/flowering_azalea_leaves.png }
+  - { to: blocks/furnace_bottom, from: block/furnace_top.png }
+  - { to: blocks/furnace_front, from: block/furnace_front.png }
+  - { to: blocks/furnace_front_lit, from: block/furnace_front_on.png }
+  - { to: blocks/furnace_side, from: block/furnace_side.png }
+  - { to: blocks/furnace_top, from: block/furnace_top.png }
+  - { to: blocks/geranium, keep: "Minecraft has no picture for this" }
+  - { to: blocks/glass, from: block/glass.png }
+  - { to: blocks/glass_detail, keep: "Minecraft has no picture for this" }
+  - { to: blocks/glass_door, keep: "our doors are Minetest's 38x32 layout, not Minecraft's top and bottom halves" }
+  - { to: blocks/glow_lichen, from: block/glow_lichen.png }
+  - { to: blocks/gold_block, from: block/gold_block.png }
+  - { to: blocks/gold_ore, from: block/gold_ore.png }
+  - { to: blocks/granite, from: block/granite.png }
+  - { to: blocks/grass_side, from: block/grass_block_side_overlay.png, over: block/grass_block_side.png, tint: grass }
+  - { to: blocks/grass_top, from: block/grass_block_top.png, tint: grass }
+  - { to: blocks/gravel, from: block/gravel.png }
+  - { to: blocks/hanging_roots, from: block/hanging_roots.png }
+  - { to: blocks/hay_side, from: block/hay_block_side.png }
+  - { to: blocks/hay_top, from: block/hay_block_top.png }
+  - { to: blocks/ice, from: block/ice.png }
+  - { to: blocks/iron_bars, from: block/iron_bars.png }
+  - { to: blocks/iron_bars_top, keep: "Minecraft has no picture for this" }
+  - { to: blocks/iron_block, from: block/iron_block.png }
+  - { to: blocks/iron_door, keep: "our doors are Minetest's 38x32 layout, not Minecraft's top and bottom halves" }
+  - { to: blocks/iron_ladder, keep: "Minecraft has no picture for this" }
+  - { to: blocks/iron_ore, from: block/iron_ore.png }
+  - { to: blocks/iron_trapdoor, from: block/iron_trapdoor.png }
+  - { to: blocks/iron_trapdoor_side, keep: "Minecraft has no picture for this" }
+  - { to: blocks/jack_o_lantern, from: block/jack_o_lantern.png }
+  - { to: blocks/jungle_fence, from: block/jungle_planks.png }
+  - { to: blocks/jungle_fence_rail, from: block/jungle_planks.png }
+  - { to: blocks/jungle_grass, keep: "ours is 32x32, and Minecraft has no picture of this size" }
+  - { to: blocks/jungle_leaves, from: block/jungle_leaves.png, tint: foliage }
+  - { to: blocks/jungle_log, from: block/jungle_log.png }
+  - { to: blocks/jungle_log_top, from: block/jungle_log_top.png }
+  - { to: blocks/jungle_planks, from: block/jungle_planks.png }
+  - { to: blocks/jungle_sapling, from: block/jungle_sapling.png }
+  - { to: blocks/kelp, from: block/kelp.png, crop: [0, 0, 16, 16] }
+  - { to: blocks/ladder, from: block/ladder.png }
+  - { to: blocks/lapis_block, from: block/lapis_block.png }
+  - { to: blocks/lapis_ore, from: block/lapis_ore.png }
+  - { to: blocks/large_fern_bottom, from: block/large_fern_bottom.png, tint: grass }
+  - { to: blocks/large_fern_top, from: block/large_fern_top.png, tint: grass }
+  - { to: blocks/lava_flow, from: block/lava_still.png, crop: [0, 0, 16, 256], frames: 16 }
+  - { to: blocks/lava_still, from: block/lava_still.png, crop: [0, 0, 16, 256], frames: 16 }
+  - { to: blocks/light_gray_terracotta, from: block/light_gray_terracotta.png }
+  - { to: blocks/lilac_bottom, from: block/lilac_bottom.png }
+  - { to: blocks/lilac_top, from: block/lilac_top.png }
+  - { to: blocks/lily_of_the_valley, from: block/lily_of_the_valley.png }
+  - { to: blocks/lily_pad, from: block/lily_pad.png, tint: lily_pad }
+  - { to: blocks/lily_pad_bottom, keep: "Minecraft has no picture for this" }
+  - { to: blocks/mangrove_leaves, from: block/mangrove_leaves.png, tint: mangrove }
+  - { to: blocks/mangrove_log, from: block/mangrove_log.png }
+  - { to: blocks/mangrove_log_top, from: block/mangrove_log_top.png }
+  - { to: blocks/mangrove_planks, from: block/mangrove_planks.png }
+  - { to: blocks/mangrove_propagule, from: block/mangrove_propagule.png }
+  - { to: blocks/mangrove_roots, from: block/mangrove_roots_side.png }
+  - { to: blocks/melon_side, from: block/melon_side.png }
+  - { to: blocks/melon_stem, from: block/melon_stem.png, tint: stem }
+  - { to: blocks/melon_top, from: block/melon_top.png }
+  - { to: blocks/moss_block, from: block/moss_block.png }
+  - { to: blocks/mossy_cobblestone, from: block/mossy_cobblestone.png }
+  - { to: blocks/mossy_stone_bricks, from: block/mossy_stone_bricks.png }
+  - { to: blocks/mud, from: block/mud.png }
+  - { to: blocks/mushroom_block_inside, from: block/mushroom_block_inside.png }
+  - { to: blocks/mushroom_stem, from: block/mushroom_stem.png }
+  - { to: blocks/mycelium_side, from: block/mycelium_side.png }
+  - { to: blocks/mycelium_top, from: block/mycelium_top.png }
+  - { to: blocks/oak_fence, from: block/oak_planks.png }
+  - { to: blocks/oak_fence_rail, from: block/oak_planks.png }
+  - { to: blocks/oak_leaves, from: block/oak_leaves.png, tint: foliage }
+  - { to: blocks/oak_log, from: block/oak_log.png }
+  - { to: blocks/oak_log_top, from: block/oak_log_top.png }
+  - { to: blocks/oak_planks, from: block/oak_planks.png }
+  - { to: blocks/oak_sapling, from: block/oak_sapling.png }
+  - { to: blocks/oak_wall_sign, keep: "Minecraft draws signs as a model with one skin" }
+  - { to: blocks/obsidian, from: block/obsidian.png }
+  - { to: blocks/obsidian_bricks, keep: "Minecraft has no picture for this" }
+  - { to: blocks/obsidian_glass, keep: "Minecraft has no picture for this" }
+  - { to: blocks/obsidian_glass_detail, keep: "Minecraft has no picture for this" }
+  - { to: blocks/obsidian_glass_door, keep: "our doors are Minetest's 38x32 layout, not Minecraft's top and bottom halves" }
+  - { to: blocks/orange_terracotta, from: block/orange_terracotta.png }
+  - { to: blocks/oxeye_daisy, from: block/oxeye_daisy.png }
+  - { to: blocks/packed_ice, from: block/packed_ice.png }
+  - { to: blocks/peony_bottom, from: block/peony_bottom.png }
+  - { to: blocks/peony_top, from: block/peony_top.png }
+  - { to: blocks/pink_petals, from: block/pink_petals.png }
+  - { to: blocks/podzol_side, from: block/podzol_side.png }
+  - { to: blocks/podzol_top, from: block/podzol_top.png }
+  - { to: blocks/pointed_dripstone, from: block/pointed_dripstone_up_tip.png }
+  - { to: blocks/potatoes_stage_1, from: block/potatoes_stage0.png }
+  - { to: blocks/potatoes_stage_2, from: block/potatoes_stage1.png }
+  - { to: blocks/potatoes_stage_3, from: block/potatoes_stage2.png }
+  - { to: blocks/potatoes_stage_4, from: block/potatoes_stage3.png }
+  - { to: blocks/powder_snow, from: block/powder_snow.png }
+  - { to: blocks/powered_rail, from: block/powered_rail.png }
+  - { to: blocks/powered_rail_crossing, keep: "Minecraft has no picture for this" }
+  - { to: blocks/powered_rail_curved, keep: "Minecraft has no picture for this" }
+  - { to: blocks/powered_rail_t_junction, keep: "Minecraft has no picture for this" }
+  - { to: blocks/pumpkin_side, from: block/pumpkin_side.png }
+  - { to: blocks/pumpkin_stem, from: block/pumpkin_stem.png, tint: stem }
+  - { to: blocks/pumpkin_top, from: block/pumpkin_top.png }
+  - { to: blocks/rail, from: block/rail.png }
+  - { to: blocks/rail_crossing, keep: "Minecraft has no picture for this" }
+  - { to: blocks/rail_curved, from: block/rail_corner.png }
+  - { to: blocks/rail_t_junction, keep: "Minecraft has no picture for this" }
+  - { to: blocks/red_mushroom, from: block/red_mushroom.png }
+  - { to: blocks/red_mushroom_block, from: block/red_mushroom_block.png }
+  - { to: blocks/red_sand, from: block/red_sand.png }
+  - { to: blocks/red_sandstone, from: block/red_sandstone.png }
+  - { to: blocks/red_sandstone_top, from: block/red_sandstone_top.png }
+  - { to: blocks/red_terracotta, from: block/red_terracotta.png }
+  - { to: blocks/river_water_flow, keep: "ours is 32x32, and Minecraft has no picture of this size" }
+  - { to: blocks/river_water_still, from: block/water_still.png, crop: [0, 0, 16, 256], frames: 16, tint: river_water }
+  - { to: blocks/rooted_dirt, from: block/rooted_dirt.png }
+  - { to: blocks/rose, from: block/poppy.png }
+  - { to: blocks/sand, from: block/sand.png }
+  - { to: blocks/sandstone, from: block/sandstone.png }
+  - { to: blocks/sandstone_bricks, from: block/cut_sandstone.png }
+  - { to: blocks/sculk, from: block/sculk.png, crop: [0, 0, 16, 16] }
+  - { to: blocks/sculk_vein, from: block/sculk_vein.png, crop: [0, 0, 16, 16] }
+  - { to: blocks/seagrass, from: block/seagrass.png, crop: [0, 0, 16, 16] }
+  - { to: blocks/small_dripleaf, from: block/small_dripleaf_top.png }
+  - { to: blocks/smooth_stone, from: block/smooth_stone.png }
+  - { to: blocks/snow, from: block/snow.png }
+  - { to: blocks/snow_side, from: block/grass_block_snow.png }
+  - { to: blocks/spore_blossom, from: block/spore_blossom.png }
+  - { to: blocks/spruce_fence, from: block/spruce_planks.png }
+  - { to: blocks/spruce_fence_rail, from: block/spruce_planks.png }
+  - { to: blocks/spruce_leaves, from: block/spruce_leaves.png, tint: spruce }
+  - { to: blocks/spruce_log, from: block/spruce_log.png }
+  - { to: blocks/spruce_log_top, from: block/spruce_log_top.png }
+  - { to: blocks/spruce_planks, from: block/spruce_planks.png }
+  - { to: blocks/spruce_sapling, from: block/spruce_sapling.png }
+  - { to: blocks/stone, from: block/stone.png }
+  - { to: blocks/stone_bricks, from: block/stone_bricks.png }
+  - { to: blocks/sugar_cane, from: block/sugar_cane.png, tint: grass }
+  - { to: blocks/sunflower_back, from: block/sunflower_back.png }
+  - { to: blocks/sunflower_front, from: block/sunflower_front.png }
+  - { to: blocks/sunflower_stem, from: block/sunflower_bottom.png }
+  - { to: blocks/tall_grass_1, from: block/short_grass.png, tint: grass }
+  - { to: blocks/tall_grass_2, from: block/short_grass.png, tint: grass }
+  - { to: blocks/tall_grass_3, from: block/short_grass.png, tint: grass }
+  - { to: blocks/tall_grass_4, from: block/short_grass.png, tint: grass }
+  - { to: blocks/tall_grass_5, from: block/short_grass.png, tint: grass }
+  - { to: blocks/terracotta, from: block/terracotta.png }
+  - { to: blocks/tnt_bottom, from: block/tnt_bottom.png }
+  - { to: blocks/tnt_side, from: block/tnt_side.png }
+  - { to: blocks/tnt_top, from: block/tnt_top.png }
+  - { to: blocks/tnt_top_burning, keep: "Minecraft has no picture for this" }
+  - { to: blocks/torch_ceiling, from: block/torch.png }
+  - { to: blocks/torch_floor, from: block/torch.png }
+  - { to: blocks/torch_lean_cap, keep: "Minecraft has no picture for this" }
+  - { to: blocks/torch_lean_side, keep: "Minecraft has no picture for this" }
+  - { to: blocks/torch_wall, from: block/torch.png }
+  - { to: blocks/tuff, from: block/tuff.png }
+  - { to: blocks/tulip, from: block/red_tulip.png }
+  - { to: blocks/vine, from: block/vine.png, tint: foliage }
+  - { to: blocks/viola, keep: "Minecraft has no picture for this" }
+  - { to: blocks/water_flow, from: block/water_still.png, crop: [0, 0, 16, 256], frames: 16, tint: water }
+  - { to: blocks/water_still, from: block/water_still.png, crop: [0, 0, 16, 256], frames: 16, tint: water }
+  - { to: blocks/wheat_stage_1, from: block/wheat_stage0.png }
+  - { to: blocks/wheat_stage_2, from: block/wheat_stage1.png }
+  - { to: blocks/wheat_stage_3, from: block/wheat_stage2.png }
+  - { to: blocks/wheat_stage_4, from: block/wheat_stage3.png }
+  - { to: blocks/wheat_stage_5, from: block/wheat_stage4.png }
+  - { to: blocks/wheat_stage_6, from: block/wheat_stage5.png }
+  - { to: blocks/wheat_stage_7, from: block/wheat_stage6.png }
+  - { to: blocks/wheat_stage_8, from: block/wheat_stage7.png }
+  - { to: blocks/white_dandelion, keep: "Minecraft has no picture for this" }
+  - { to: blocks/white_terracotta, from: block/white_terracotta.png }
+  - { to: blocks/wood_door, keep: "our doors are Minetest's 38x32 layout, not Minecraft's top and bottom halves" }
+  - { to: blocks/wood_trapdoor, from: block/oak_trapdoor.png }
+  - { to: blocks/wood_trapdoor_side, keep: "Minecraft has no picture for this" }
+  - { to: blocks/woodworking_bench_bottom, keep: "Minecraft has no picture for this" }
+  - { to: blocks/woodworking_bench_end, keep: "Minecraft has no picture for this" }
+  - { to: blocks/woodworking_bench_side_left, keep: "Minecraft has no picture for this" }
+  - { to: blocks/woodworking_bench_side_right, keep: "Minecraft has no picture for this" }
+  - { to: blocks/woodworking_bench_top_east, keep: "Minecraft has no picture for this" }
+  - { to: blocks/woodworking_bench_top_west, keep: "Minecraft has no picture for this" }
+  - { to: blocks/wool_black, from: block/black_wool.png }
+  - { to: blocks/wool_blue, from: block/blue_wool.png }
+  - { to: blocks/wool_brown, from: block/brown_wool.png }
+  - { to: blocks/wool_cyan, from: block/cyan_wool.png }
+  - { to: blocks/wool_dark_green, from: block/green_wool.png }
+  - { to: blocks/wool_dark_grey, from: block/gray_wool.png }
+  - { to: blocks/wool_green, from: block/lime_wool.png }
+  - { to: blocks/wool_grey, from: block/light_gray_wool.png }
+  - { to: blocks/wool_magenta, from: block/magenta_wool.png }
+  - { to: blocks/wool_orange, from: block/orange_wool.png }
+  - { to: blocks/wool_pink, from: block/pink_wool.png }
+  - { to: blocks/wool_red, from: block/red_wool.png }
+  - { to: blocks/wool_violet, from: block/purple_wool.png }
+  - { to: blocks/wool_white, from: block/white_wool.png }
+  - { to: blocks/wool_yellow, from: block/yellow_wool.png }
+  - { to: blocks/yellow_terracotta, from: block/yellow_terracotta.png }
+  # ---- items ------------------------------------------------------------------------------------------------------------
+  - { to: items/apple, from: item/apple.png }
+  - { to: items/arrow, from: item/arrow.png }
+  - { to: items/baked_potato, from: item/baked_potato.png }
+  - { to: items/bed, keep: "Minecraft's bed items are per colour, and ours is one" }
+  - { to: items/bed_fancy, keep: "Minecraft has no picture for this" }
+  - { to: items/berries, from: item/sweet_berries.png }
+  - { to: items/boat, from: item/oak_boat.png }
+  - { to: items/boat_wield, keep: "ours is 32x32 and drawn in the hand" }
+  - { to: items/bone, from: item/bone.png }
+  - { to: items/bone_meal, from: item/bone_meal.png }
+  - { to: items/book, from: item/book.png }
+  - { to: items/bow, from: item/bow.png }
+  - { to: items/bowl, from: item/bowl.png }
+  - { to: items/bread, from: item/bread.png }
+  - { to: items/brick, from: item/brick.png }
+  - { to: items/bucket, from: item/bucket.png }
+  - { to: items/carrot, from: item/carrot.png }
+  - { to: items/charcoal, from: item/charcoal.png }
+  - { to: items/clay_ball, from: item/clay_ball.png }
+  - { to: items/coal, from: item/coal.png }
+  - { to: items/cookie, from: item/cookie.png }
+  - { to: items/copper_boots, from: item/copper_boots.png }
+  - { to: items/copper_chestplate, from: item/copper_chestplate.png }
+  - { to: items/copper_helmet, from: item/copper_helmet.png }
+  - { to: items/copper_ingot, from: item/copper_ingot.png }
+  - { to: items/copper_leggings, from: item/copper_leggings.png }
+  - { to: items/diamond, from: item/diamond.png }
+  - { to: items/diamond_axe, from: item/diamond_axe.png }
+  - { to: items/diamond_boots, from: item/diamond_boots.png }
+  - { to: items/diamond_chestplate, from: item/diamond_chestplate.png }
+  - { to: items/diamond_helmet, from: item/diamond_helmet.png }
+  - { to: items/diamond_hoe, from: item/diamond_hoe.png }
+  - { to: items/diamond_leggings, from: item/diamond_leggings.png }
+  - { to: items/diamond_pickaxe, from: item/diamond_pickaxe.png }
+  - { to: items/diamond_shovel, from: item/diamond_shovel.png }
+  - { to: items/diamond_sword, from: item/diamond_sword.png }
+  - { to: items/dried_kelp, from: item/dried_kelp.png }
+  - { to: items/dye_black, from: item/black_dye.png }
+  - { to: items/dye_blue, from: item/blue_dye.png }
+  - { to: items/dye_brown, from: item/brown_dye.png }
+  - { to: items/dye_cyan, from: item/cyan_dye.png }
+  - { to: items/dye_dark_green, from: item/green_dye.png }
+  - { to: items/dye_dark_grey, from: item/gray_dye.png }
+  - { to: items/dye_green, from: item/lime_dye.png }
+  - { to: items/dye_grey, from: item/light_gray_dye.png }
+  - { to: items/dye_magenta, from: item/magenta_dye.png }
+  - { to: items/dye_orange, from: item/orange_dye.png }
+  - { to: items/dye_pink, from: item/pink_dye.png }
+  - { to: items/dye_purple, keep: "Minecraft has one purple dye, given to violet" }
+  - { to: items/dye_red, from: item/red_dye.png }
+  - { to: items/dye_violet, from: item/purple_dye.png }
+  - { to: items/dye_white, from: item/white_dye.png }
+  - { to: items/dye_yellow, from: item/yellow_dye.png }
+  - { to: items/emerald, from: item/emerald.png }
+  - { to: items/feather, from: item/feather.png }
+  - { to: items/flint, from: item/flint.png }
+  - { to: items/flint_and_steel, from: item/flint_and_steel.png }
+  - { to: items/glass_bottle, from: item/glass_bottle.png }
+  - { to: items/glass_door, keep: "Minecraft has no picture for this" }
+  - { to: items/glow_berries, from: item/glow_berries.png }
+  - { to: items/gold_axe, from: item/golden_axe.png }
+  - { to: items/gold_boots, from: item/golden_boots.png }
+  - { to: items/gold_chestplate, from: item/golden_chestplate.png }
+  - { to: items/gold_helmet, from: item/golden_helmet.png }
+  - { to: items/gold_hoe, from: item/golden_hoe.png }
+  - { to: items/gold_ingot, from: item/gold_ingot.png }
+  - { to: items/gold_leggings, from: item/golden_leggings.png }
+  - { to: items/gold_nugget, from: item/gold_nugget.png }
+  - { to: items/gold_pickaxe, from: item/golden_pickaxe.png }
+  - { to: items/gold_shovel, from: item/golden_shovel.png }
+  - { to: items/gold_sword, from: item/golden_sword.png }
+  - { to: items/gunpowder, from: item/gunpowder.png }
+  - { to: items/hand, keep: "Minecraft draws the hand from the skin" }
+  - { to: items/iron_axe, from: item/iron_axe.png }
+  - { to: items/iron_boots, from: item/iron_boots.png }
+  - { to: items/iron_chestplate, from: item/iron_chestplate.png }
+  - { to: items/iron_door, from: item/iron_door.png }
+  - { to: items/iron_helmet, from: item/iron_helmet.png }
+  - { to: items/iron_hoe, from: item/iron_hoe.png }
+  - { to: items/iron_ingot, from: item/iron_ingot.png }
+  - { to: items/iron_leggings, from: item/iron_leggings.png }
+  - { to: items/iron_nugget, from: item/iron_nugget.png }
+  - { to: items/iron_pickaxe, from: item/iron_pickaxe.png }
+  - { to: items/iron_shovel, from: item/iron_shovel.png }
+  - { to: items/iron_sword, from: item/iron_sword.png }
+  - { to: items/lapis_lazuli, from: item/lapis_lazuli.png }
+  - { to: items/lava_bucket, from: item/lava_bucket.png }
+  - { to: items/leather, from: item/leather.png }
+  - { to: items/leather_boots, from: item/leather_boots.png }
+  - { to: items/leather_chestplate, from: item/leather_chestplate.png }
+  - { to: items/leather_helmet, from: item/leather_helmet.png }
+  - { to: items/leather_leggings, from: item/leather_leggings.png }
+  - { to: items/melon_seeds, from: item/melon_seeds.png }
+  - { to: items/melon_slice, from: item/melon_slice.png }
+  - { to: items/minecart, from: item/minecart.png }
+  - { to: items/mushroom_stew, from: item/mushroom_stew.png }
+  - { to: items/oak_sign, from: item/oak_sign.png }
+  - { to: items/obsidian_glass_door, keep: "Minecraft has no picture for this" }
+  - { to: items/obsidian_shard, keep: "Minecraft has no picture for this" }
+  - { to: items/paper, from: item/paper.png }
+  - { to: items/potato, from: item/potato.png }
+  - { to: items/potion_black, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
+  - { to: items/potion_blue, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
+  - { to: items/potion_brown, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
+  - { to: items/potion_cyan, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
+  - { to: items/potion_dark_green, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
+  - { to: items/potion_dark_grey, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
+  - { to: items/potion_dark_red, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
+  - { to: items/potion_green, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
+  - { to: items/potion_grey, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
+  - { to: items/potion_light_cyan, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
+  - { to: items/potion_magenta, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
+  - { to: items/potion_orange, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
+  - { to: items/potion_pink, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
+  - { to: items/potion_red, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
+  - { to: items/potion_violet, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
+  - { to: items/potion_white, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
+  - { to: items/potion_yellow, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
+  - { to: items/pumpkin_pie, from: item/pumpkin_pie.png }
+  - { to: items/pumpkin_seeds, from: item/pumpkin_seeds.png }
+  - { to: items/raw_copper, from: item/raw_copper.png }
+  - { to: items/raw_gold, from: item/raw_gold.png }
+  - { to: items/raw_iron, from: item/raw_iron.png }
+  - { to: items/rotten_flesh, from: item/rotten_flesh.png }
+  - { to: items/shears, from: item/shears.png }
+  - { to: items/snowball, from: item/snowball.png }
+  - { to: items/stick, from: item/stick.png }
+  - { to: items/stone_axe, from: item/stone_axe.png }
+  - { to: items/stone_hoe, from: item/stone_hoe.png }
+  - { to: items/stone_pickaxe, from: item/stone_pickaxe.png }
+  - { to: items/stone_shovel, from: item/stone_shovel.png }
+  - { to: items/stone_sword, from: item/stone_sword.png }
+  - { to: items/string, from: item/string.png }
+  - { to: items/sugar, from: item/sugar.png }
+  - { to: items/torch, from: block/torch.png }
+  - { to: items/water_bucket, from: item/water_bucket.png }
+  - { to: items/wheat, from: item/wheat.png }
+  - { to: items/wheat_seeds, from: item/wheat_seeds.png }
+  - { to: items/wood_axe, from: item/wooden_axe.png }
+  - { to: items/wood_door, from: item/oak_door.png }
+  - { to: items/wood_hoe, from: item/wooden_hoe.png }
+  - { to: items/wood_pickaxe, from: item/wooden_pickaxe.png }
+  - { to: items/wood_shovel, from: item/wooden_shovel.png }
+  - { to: items/wood_sword, from: item/wooden_sword.png }
+  - { to: items/woodworking_bench, keep: "Minecraft has no picture for this" }
+  - { to: items/written_book, from: item/written_book.png }
+  # ---- mobs -------------------------------------------------------------------------------------------------------------
+  - { to: mobs/arrow, keep: "Minecraft's arrow is a 32x32 strip for a model, not one face" }
+  - { to: mobs/creeper, from: entity/creeper/creeper.png }
+  - { to: mobs/minecart, keep: "Minecraft's minecart skin is a 64x32 layout for its model, and ours is 32x32" }
+  - { to: mobs/minecart_side, keep: "Minecraft's minecart is one skin, with no separate side" }
+  - { to: mobs/minecart_top, keep: "Minecraft's minecart is one skin, with no separate top" }
+  - { to: mobs/player, from: entity/player/wide/steve.png, crop: [0, 0, 64, 32] }
+  - { to: mobs/skeleton, from: entity/skeleton/skeleton.png }
+  - { to: mobs/zombie, from: entity/zombie/zombie.png, crop: [0, 0, 64, 32] }
+  # ---- ui ---------------------------------------------------------------------------------------------------------------
+  - { to: ui/bar_background, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/bar_breath, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/bar_health, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/bubble, from: gui/sprites/hud/air.png }
+  - { to: ui/button, from: gui/sprites/widget/button.png }
+  - { to: ui/button_disabled, from: gui/sprites/widget/button_disabled.png }
+  - { to: ui/button_hover, from: gui/sprites/widget/button_highlighted.png }
+  - { to: ui/checkbox, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/checkbox_checked, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/crafting_arrow, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/crosshair, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/font, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/furnace_arrow_empty, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/furnace_arrow_full, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/furnace_fire_empty, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/furnace_fire_full, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/heart, from: gui/sprites/hud/heart/full.png }
+  - { to: ui/hotbar, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/hotbar_selected, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/icon_armor, from: gui/sprites/hud/armor_full.png }
+  - { to: ui/icon_armor_empty, from: gui/sprites/hud/armor_empty.png }
+  - { to: ui/icon_breath, from: gui/sprites/hud/air.png }
+  - { to: ui/icon_breath_empty, from: gui/sprites/hud/air_empty.png }
+  - { to: ui/icon_health, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/icon_health_empty, from: gui/sprites/hud/heart/container.png }
+  - { to: ui/icon_hunger, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/icon_hunger_empty, from: gui/sprites/hud/food_empty.png }
+  - { to: ui/logo, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/menu_background, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/moon, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/panel, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/progress_bar_empty, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/progress_bar_full, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/slider_knob, from: gui/sprites/widget/slider_handle.png }
+  - { to: ui/slider_track, from: gui/sprites/widget/slider.png }
+  - { to: ui/slot, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/slot_boots, from: gui/sprites/container/slot/boots.png }
+  - { to: ui/slot_chestplate, from: gui/sprites/container/slot/chestplate.png }
+  - { to: ui/slot_helmet, from: gui/sprites/container/slot/helmet.png }
+  - { to: ui/slot_highlight, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/slot_leggings, from: gui/sprites/container/slot/leggings.png }
+  - { to: ui/sun, keep: "Minecraft has no picture of this size and layout" }
+  - { to: ui/text_field, from: gui/sprites/widget/text_field.png }
+  - { to: ui/tooltip, keep: "Minecraft has no picture of this size and layout" }

@@ -4,6 +4,7 @@
  */
 #include "texture_pack/index.h"
 
+#include "texture_pack/default_pack/index.h"
 #include "texture_pack/manifest/index.h"
 #include "texture_pack/output/index.h"
 #include "texture_pack/pack/index.h"
@@ -18,11 +19,12 @@
 #define TP_ARENA_BYTES (1ull << 32)
 
 typedef struct tp_arguments_t {
-    const char *pack;     /* 0 */
-    const char *manifest; /* 8 */
-    const char *textures; /* 16 */
-    uint8_t importing;    /* 24 */
-    uint8_t _pad0[7];     /* 25 */
+    const char *pack;          /* 0 */
+    const char *manifest;      /* 8: import.yaml, or for import-default its map */
+    const char *textures;      /* 16 */
+    uint8_t importing;         /* 24 */
+    uint8_t importing_default; /* 25: import-default, Minecraft's default pack into an ignored copy of textures/ */
+    uint8_t _pad0[6];          /* 26 */
 } tp_arguments_t;
 static_assert(sizeof(tp_arguments_t) == 32);
 
@@ -33,6 +35,9 @@ static bool tp_arguments_parse(int32_t argc, char **argv, tp_arguments_t *out) {
     }
     if (strcmp(argv[1], "import") == 0) {
         out->importing = 1;
+    } else if (strcmp(argv[1], "import-default") == 0) {
+        out->importing = 1;
+        out->importing_default = 1;
     } else if (strcmp(argv[1], "verify") != 0) {
         return false;
     }
@@ -42,7 +47,8 @@ static bool tp_arguments_parse(int32_t argc, char **argv, tp_arguments_t *out) {
         }
         if (strcmp(argv[i], "--pack") == 0 && out->importing != 0) {
             out->pack = argv[i + 1];
-        } else if (strcmp(argv[i], "--manifest") == 0) {
+        } else if ((strcmp(argv[i], "--manifest") == 0 && out->importing_default == 0) ||
+                   (strcmp(argv[i], "--map") == 0 && out->importing_default != 0)) {
             out->manifest = argv[i + 1];
         } else if (strcmp(argv[i], "--textures") == 0) {
             out->textures = argv[i + 1];
@@ -101,7 +107,9 @@ int32_t main(int32_t argc, char **argv) {
     tp_arguments_t arguments;
     if (!tp_arguments_parse(argc, argv, &arguments)) {
         fprintf(stderr, "usage: texture_pack import --pack <clone> --manifest <import.yaml> --textures <directory>\n"
-                        "       texture_pack verify --manifest <import.yaml> --textures <directory>\n");
+                        "       texture_pack verify --manifest <import.yaml> --textures <directory>\n"
+                        "       texture_pack import-default --pack <unpacked> --map <import_minecraft_default.yaml> "
+                        "--textures <copy of textures>\n");
         return TEXTURE_PACK_EXIT_USAGE;
     }
     void *owned_region =
@@ -111,6 +119,12 @@ int32_t main(int32_t argc, char **argv) {
         return TEXTURE_PACK_EXIT_USAGE;
     }
     tp_arena_t arena = {.borrowed_base = owned_region, .capacity = TP_ARENA_BYTES, .used = 0};
+    if (arguments.importing_default != 0) {
+        /* The copy answers to its own map, not to import.yaml, so verify does not apply to it. */
+        const bool imported = tp_default_import(&arena, arguments.pack, arguments.manifest, arguments.textures);
+        munmap(owned_region, TP_ARENA_BYTES);
+        return imported ? TEXTURE_PACK_EXIT_OK : TEXTURE_PACK_EXIT_REFUSED;
+    }
 
     tp_manifest_t manifest;
     bool good = tp_manifest_load(&arena, arguments.manifest, &manifest);

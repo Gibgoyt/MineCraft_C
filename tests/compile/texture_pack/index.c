@@ -905,6 +905,143 @@ TEST(verify_catches_damage) {
     }
 }
 
+/* ---- import-default: a stand-in for Minecraft's default pack, made here, never the real one ------------------ */
+
+#define TT_DEFAULT_SHA1 "e877b6a07acd633fb3bb475002175cec036e7b87"
+static const char TT_DEFAULT_MAP[] = "pack:\n"
+                                     "  id: minecraft_default\n"
+                                     "  title: Stand-in\n"
+                                     "  version: \"1.0\"\n"
+                                     "  client_sha1: " TT_DEFAULT_SHA1 "\n"
+                                     "  licence: Local use only\n"
+                                     "tints:\n"
+                                     "  green: 80ff40\n"
+                                     "textures:\n"
+                                     "  - { to: blocks/dirt, from: block/grey.png, tint: green }\n"
+                                     "  - { to: items/stone, keep: Ours stays }\n"
+                                     "  - { to: mobs/ore, from: block/top.png, over: block/base.png }\n"
+                                     "  - { to: ui/water, from: block/strip.png, crop: [0, 0, 2, 8], frames: 4 }\n";
+static const uint8_t TT_GREY[16] = {100, 100, 100, 255, 255, 255, 255, 7, 0, 1, 2, 255, 128, 128, 128, 200};
+/* Each channel times the tint over 255, to nearest: 100 * 128 / 255 = 50.2, 2 * 64 / 255 = 0.502 goes up, alpha stays. */
+static const uint8_t TT_GREY_GREEN[16] = {50, 100, 25, 255, 128, 255, 64, 7, 0, 1, 1, 255, 64, 128, 32, 200};
+
+/* An imported tree, as textures/ is, and beside it a stand-in pack holding what the map above names. */
+static tt_case_t tt_default_begin(test_context_t *t, uint32_t label) {
+    tt_case_t c = tt_case_begin(t, label);
+    tt_good_import(t, &c);
+    c.pack = tt_format(t, "%s/default", c.root);
+    c.manifest = tt_format(t, "%s/map.yaml", c.root);
+    const char *block = tt_format(t, "%s/assets/minecraft/textures/block", c.pack);
+    tt_mkdirs(t, block);
+    uint8_t strip[2u * 10u * 4u];
+    for (uint32_t i = 0; i < sizeof(strip); i++) {
+        strip[i] = (uint8_t)(i * 5u + 1u);
+    }
+    tt_write_png(t, tt_format(t, "%s/grey.png", block), 2u, 2u, TT_GREY);
+    tt_write_png(t, tt_format(t, "%s/top.png", block), 2u, 2u, TT_ORE);
+    tt_write_png(t, tt_format(t, "%s/base.png", block), 2u, 2u, TT_STONE);
+    tt_write_png(t, tt_format(t, "%s/strip.png", block), 2u, 10u, strip);
+    tt_write_text(t, tt_format(t, "%s/mc_c_pin.txt", c.pack), "1.0 " TT_DEFAULT_SHA1 "\n");
+    tt_write_text(t, c.manifest, TT_DEFAULT_MAP);
+    return c;
+}
+
+static void tt_import_default(test_context_t *t, const tt_case_t *c, test_process_t *out) {
+    char *const argv[] = {t->borrowed_args[0],  (char *)"import-default", (char *)"--pack",
+                          (char *)c->pack,      (char *)"--map",          (char *)c->manifest,
+                          (char *)"--textures", (char *)c->textures,      nullptr};
+    tt_run(t, argv, out);
+}
+
+TEST(import_default_writes_exactly_this_and_keeps_the_rest) {
+    const tt_case_t c = tt_default_begin(t, 0);
+    uint64_t before_length = 0;
+    const uint8_t *before = tt_read(t, tt_format(t, "%s/items/stone/index.yaml", c.textures), &before_length);
+    test_process_t process;
+    tt_import_default(t, &c, &process);
+    if (!CHECK_EQ_I64(process.exit_code, 0)) {
+        fprintf(stderr, "%s\n", process.output);
+    }
+    CHECK_CONTAINS(process.output, "3 textures imported, 1 of ours kept");
+
+    tt_check_mctex(t, tt_format(t, "%s/blocks/dirt/index.mctex", c.textures), 2u, 2u, 1u, TT_GREY_GREEN);
+    tt_check_mctex(t, tt_format(t, "%s/items/stone/index.mctex", c.textures), 2u, 2u, 1u, TT_STONE);
+    tt_check_mctex(t, tt_format(t, "%s/mobs/ore/index.mctex", c.textures), 2u, 2u, 1u, TT_ORE_OVER_STONE);
+    uint8_t water[64];
+    for (uint32_t i = 0; i < 64u; i++) {
+        water[i] = (uint8_t)(i * 5u + 1u);
+    }
+    tt_check_mctex(t, tt_format(t, "%s/ui/water/index.mctex", c.textures), 2u, 2u, 4u, water);
+
+    uint64_t length = 0;
+    const char *yaml = (const char *)tt_read(t, tt_format(t, "%s/blocks/dirt/index.yaml", c.textures), &length);
+    CHECK_CONTAINS(yaml, "name: dirt\ngroup: blocks\n");
+    CHECK_CONTAINS(yaml, "  kind: pack\n  pack: minecraft_default\n  version: \"1.0\"\n");
+    CHECK_CONTAINS(yaml, "  file: \"assets/minecraft/textures/block/grey.png\"\n");
+    const char *readme = (const char *)tt_read(t, tt_format(t, "%s/blocks/dirt/README.md", c.textures), &length);
+    CHECK_CONTAINS(readme, "tinted green (80ff40)");
+    CHECK_CONTAINS(readme, "Never commit it.");
+    const uint8_t *after = tt_read(t, tt_format(t, "%s/items/stone/index.yaml", c.textures), &length);
+    CHECK_EQ_U64(length, before_length);
+    CHECK_MEM_EQ(after, before, length);
+
+    /* Again: nothing changes. */
+    tt_import_default(t, &c, &process);
+    CHECK_EQ_I64(process.exit_code, 0);
+    CHECK_CONTAINS(process.output, "0 files changed");
+}
+
+typedef struct tt_replace_case_t {
+    const char *from;   /* 0: text in TT_DEFAULT_MAP */
+    const char *to;     /* 8: what replaces it */
+    const char *needle; /* 16: in the refusal */
+} tt_replace_case_t;
+static_assert(sizeof(tt_replace_case_t) == 24);
+
+/* Each mistake is refused, and the tree keeps Pixel Perfection's dirt: nothing at all was written. */
+TEST(import_default_refuses_and_writes_nothing) {
+    static const tt_replace_case_t cases[] = {
+        {"  - { to: items/stone, keep: Ours stays }\n", "", "does not say what becomes of items/stone"},
+        {"textures:\n", "textures:\n  - { to: blocks/sand, keep: x }\n", "blocks/sand is not a texture in"},
+        {"crop: [0, 0, 2, 8], frames: 4", "frames: 5", "comes out as 5 frames, and ours has 4"},
+        {"crop: [0, 0, 2, 8], frames: 4", "crop: [0, 0, 2, 8], frames: 2", "comes out 2x4, and ours is 2x2"},
+        {"crop: [0, 0, 2, 8]", "crop: [1, 0, 2, 8]", "goes outside it"},
+        {"tint: green", "tint: blue", "'blue' is not one of the tints"},
+        {"from: block/top.png", "from: ../top.png", "is not a safe relative path"},
+        {"from: block/top.png", "from: block/gone.png", "not in the pack"},
+        {"over: block/base.png", "over: block/top.png", "is not fully opaque"},
+        {"  version: \"1.0\"\n", "  version: \"1.1\"\n", "does not name version 1.1"},
+        {"keep: Ours stays", "keep: Ours stays, from: block/top.png", "exactly one of"},
+    };
+    for (uint32_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        const tt_case_t c = tt_default_begin(t, i);
+        const char *at = strstr(TT_DEFAULT_MAP, cases[i].from);
+        if (!CHECK(at != nullptr)) {
+            continue;
+        }
+        char *map = test_alloc(t, sizeof(TT_DEFAULT_MAP) + strlen(cases[i].to) + 1u);
+        memcpy(map, TT_DEFAULT_MAP, (uint64_t)(at - TT_DEFAULT_MAP));
+        strcpy(map + (at - TT_DEFAULT_MAP), cases[i].to);
+        strcat(map, at + strlen(cases[i].from));
+        tt_write_text(t, c.manifest, map);
+        test_process_t process;
+        tt_import_default(t, &c, &process);
+        CHECK_EQ_I64(process.exit_code, 1);
+        if (!CHECK_CONTAINS(process.output, cases[i].needle)) {
+            fprintf(stderr, "  case %u: %s\n", i, process.output);
+        }
+        tt_check_mctex(t, tt_format(t, "%s/blocks/dirt/index.mctex", c.textures), 2u, 2u, 1u, TT_DIRT);
+    }
+    /* A pack the downloader never vouched for. */
+    const tt_case_t c = tt_default_begin(t, 99);
+    tt_remove_tree(t, tt_format(t, "%s/mc_c_pin.txt", c.pack));
+    test_process_t process;
+    tt_import_default(t, &c, &process);
+    CHECK_EQ_I64(process.exit_code, 1);
+    CHECK_CONTAINS(process.output, "fetch_minecraft_default.sh");
+    tt_check_mctex(t, tt_format(t, "%s/blocks/dirt/index.mctex", c.textures), 2u, 2u, 1u, TT_DIRT);
+}
+
 /* ---- The committed tree -------------------------------------------------------------------------------------- */
 
 TEST(committed_textures_verify_with_no_pack) {
