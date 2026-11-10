@@ -10,7 +10,8 @@
 - `game_session_init`, `game_session_deinit`: remember what it runs on, and go to the main screen; forget it.
 - `game_session_settings_set`: its Settings buttons work, from these settings, and each world opens with what they say.
 - `game_session_source`, `game_session_discard`: what `display_frames_run` calls.
-- `game_session_run`: all of it through KMS.
+- `game_session_run`: all of it through KMS, or in a window.
+- `game_session_focus_lost`, `game_session_focus_back`: the window lost the focus, and has it again (plan 005 phase 7). `game_session_source` calls them from the window's own count; a test may call them with no window.
 - `game_session_headless_scene`, `game_session_end`: all of it for `display_headless_run`, and closing what is left.
 
 **May be called by:** `run/src/main/`.
@@ -23,8 +24,8 @@ A world whose files refuse to open, as damaged, from another version, on another
 | State | Each frame | Goes to |
 |---|---|---|
 | Menu | Menus on a blank frame | Playing, on Play; done, on Quit Game |
-| Playing | One real frame of `game` | Paused, on Esc |
-| Paused | The pause screen over the last picture | Playing, on Resume or Esc; Census, on Resume when a census came meanwhile; Menu, on Quit to Title |
+| Playing | One real frame of `game` | Paused, on Esc or on the window losing the focus |
+| Paused | The pause screen over the last picture | Playing, on Resume or Esc, or on the focus coming back to a window that lost it; Census, on Resume when a census came meanwhile; Menu, on Quit to Title |
 | Census | The census screen, `run/src/ui/screen_census/`, over the last picture, with the world stopped: plan 004 phase 01 | Playing, on Continue or Esc |
 
 **It all runs on one taking of the console:** one `display_frames_run`, one guardian. Giving the console back between a menu and a world is not an option: `display_flip_restore` and `display/vt_guard`'s restore steps each run once for a run of the program, on purpose, and each taking holds the emergency notice up for three seconds with keys going to the shell in between. The first try at this stage did that, and `the_whole_round_...` found it leaving the console in graphics mode. See the stage file's issue 1.
@@ -61,6 +62,8 @@ Each world opened has its files opened first, `save_open` on `<saves>/<directory
 ## When things go away
 
 **The disk fills.** Saves go on failing where a person can see it: the HUD and the pause screen say so. Quit to Title saves first, with the threads stopped. If that fails the world stays open on the pause screen, which says why and offers Leave Unsaved, as a person can make room from another VT and quit again, or Resume and play on. Nobody is held there, and nothing is lost unless they say so. Leave Unsaved is no failure: it is what they chose. A run ended from outside, by a signal or the display going, gets one try with nobody to ask, and a failure says so in the log and the exit status.
+
+**The window loses the focus** (plan 005 phase 7). Ahmed left the game in another window for a long time and came back to a world that had gone on without him. `game_session_window_look` reads the window's `focus_losses` each frame, after the poll, and one more than last frame pauses a world being played, as Esc would, unless `pause_on_focus_loss` is off in the settings (the Settings screen's HUD page, "Pause when away"). Its time, its mobs and its night stop. When the focus comes back, which on XFCE is a click on the window or Alt+Tab to it, that pause ends by itself, through the same Resume the button gives, census and all. The click itself never reaches the game. A pause a person made, or one the Settings screen is now up over, or one for a missing keyboard, stays. Under KMS there is no other window, and this does nothing.
 
 **A keyboard or mouse goes.** `game_session_devices_look`, each frame. A world with a person in it pauses, as what they held has just been let go of and they may have no way to reach Esc, and the screen says which device has gone until one is back. Coming back ends the words and not the pause: that is for a person to do, with the hands they have now. On the menus it only says so.
 

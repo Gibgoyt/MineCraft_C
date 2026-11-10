@@ -57,8 +57,11 @@ typedef struct game_session_t {
     display_frame_source_t source; /* 120: under KMS, while it runs: what each frame calls */
     void *
         borrowed_source_context; /* 128: and with what. What comes back from another VT is the session's, whatever a test has wrapped around the source */
-    uint8_t weather;  /* 136: --weather, a game_weather_kind_t: each world opened has it in place of its climate's */
-    uint8_t _pad0[7]; /* 137 */
+    uint8_t weather; /* 136: --weather, a game_weather_kind_t: each world opened has it in place of its climate's */
+    uint8_t
+        focus_paused; /* 137: the window losing the focus paused the game, so its coming back goes on (plan 005 phase 7) */
+    uint8_t focus_losses_seen; /* 138: the window's focus_losses, last frame, as a byte: one more is a loss */
+    uint8_t _pad0[5];          /* 139 */
 } game_session_t;
 static_assert(sizeof(game_session_t) == 144);
 
@@ -74,6 +77,15 @@ void game_session_settings_set(game_session_t *session, settings_t *settings);
 /* --weather: every world this opens has this weather where the eye is, a game_weather_kind_t, in place of its climate's (plan 004
  * phase 08). 0 for the climate's, which is what game_session_init leaves. */
 void game_session_weather_set(game_session_t *session, uint8_t weather);
+
+/* Plan 005 phase 7: the window has lost the focus. A world being played stops, with the pause screen up, unless settings say not to
+ * (pause_on_focus_loss); with no settings it stops. game_session_source calls this from the window's own count of losses; a test may
+ * call it with no window. */
+void game_session_focus_lost(game_session_t *session);
+
+/* The window has the focus again. A pause that losing it began ends, as a click back into the window means to play on; any other pause
+ * stays, as does one that the Settings screen or a missing keyboard or mouse is now part of. */
+void game_session_focus_back(game_session_t *session);
 
 /* Forgets all that. Whatever it opened has been closed by game_session_run or game_session_end. */
 void game_session_deinit(game_session_t *session);

@@ -79,7 +79,8 @@ void settings_persist_defaults(settings_values_t *out) {
                                .show_coordinates = 1u,
                                .sound_volume_percent = SETTINGS_SOUND_VOLUME_DEFAULT,
                                .show_date = 1u,
-                               .climate_hud = SETTINGS_CLIMATE_HUD_ALL};
+                               .climate_hud = SETTINGS_CLIMATE_HUD_ALL,
+                               .pause_on_focus_loss = 1u};
 }
 
 static uint32_t *settings_number_at(settings_values_t *values, const settings_number_t *number) {
@@ -97,6 +98,7 @@ void settings_persist_clamp(settings_values_t *values) {
     values->show_coordinates = values->show_coordinates != 0u ? 1u : 0u;
     values->show_date = values->show_date != 0u ? 1u : 0u;
     values->climate_hud &= SETTINGS_CLIMATE_HUD_ALL;
+    values->pause_on_focus_loss = values->pause_on_focus_loss != 0u ? 1u : 0u;
     values->sound_volume_percent = values->sound_volume_percent > SETTINGS_SOUND_VOLUME_MAX
                                        ? (uint8_t)SETTINGS_SOUND_VOLUME_MAX
                                        : values->sound_volume_percent;
@@ -187,6 +189,8 @@ static settings_line_result_t settings_line_apply(const uint8_t *key, uint64_t k
         flag = &values->show_coordinates;
     } else if (settings_key_is(key, key_length, "show_date")) {
         flag = &values->show_date;
+    } else if (settings_key_is(key, key_length, "pause_on_focus_loss")) {
+        flag = &values->pause_on_focus_loss;
     }
     if (flag != nullptr) {
         if (!settings_bool_parse(value, value_length, &on)) {
@@ -375,6 +379,10 @@ bool settings_persist_write(const settings_values_t *values, uint8_t *out, uint6
         return false;
     }
     if (!settings_append(out, capacity, &at, "show_date", values->show_date != 0u ? "true" : "false")) {
+        return false;
+    }
+    if (!settings_append(out, capacity, &at, "pause_on_focus_loss",
+                         values->pause_on_focus_loss != 0u ? "true" : "false")) {
         return false;
     }
     if (!settings_append(out, capacity, &at, "show_climate",

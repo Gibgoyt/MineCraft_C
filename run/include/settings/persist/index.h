@@ -52,10 +52,11 @@ typedef struct settings_values_t {
     uint8_t vsync;                 /* 28: flips wait for a vblank, and no picture is drawn past it */
     uint8_t show_coordinates;      /* 29: x, y and z in the top left corner, while playing */
     uint8_t
-        sound_volume_percent; /* 30: what the game's sounds are turned down to, on top of the desktop's own volume */
-    uint8_t show_date;        /* 31: the date line in the top right corner, while playing */
-    uint8_t climate_hud;      /* 32: SETTINGS_CLIMATE_HUD_* that are on: plan 004 phase 10's lines under the date */
-    uint8_t _pad0[3];         /* 33 */
+        sound_volume_percent;    /* 30: what the game's sounds are turned down to, on top of the desktop's own volume */
+    uint8_t show_date;           /* 31: the date line in the top right corner, while playing */
+    uint8_t climate_hud;         /* 32: SETTINGS_CLIMATE_HUD_* that are on: plan 004 phase 10's lines under the date */
+    uint8_t pause_on_focus_loss; /* 33: a window losing the focus pauses the game, as in Minecraft (plan 005 phase 7) */
+    uint8_t _pad0[2];            /* 34 */
 } settings_values_t;
 static_assert(sizeof(settings_values_t) == 36);
 

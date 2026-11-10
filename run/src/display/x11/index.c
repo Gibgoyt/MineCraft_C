@@ -33,8 +33,6 @@ enum : uint64_t {
     X11_ATOM_WM_NORMAL_HINTS = 40u,
     X11_ATOM_WM_SIZE_HINTS = 41u,
     X11_POLLS_BETWEEN_GRABS = 30u,
-    X11_FOCUS_MODE_GRAB = 1u, /* focus events caused by a grab, not by the window manager */
-    X11_FOCUS_MODE_UNGRAB = 2u,
 };
 enum : int32_t {
     X11_REPLY_TIMEOUT_MS = 5000,
@@ -561,11 +559,12 @@ static void x11_take_motion(display_x11_t *x11, const display_x11_sink_t *sink, 
 }
 
 static void x11_take_focus(display_x11_t *x11, const display_x11_sink_t *sink, const uint8_t *packet, bool in) {
-    if (packet[1] == X11_FOCUS_MODE_GRAB || packet[1] == X11_FOCUS_MODE_UNGRAB) {
+    if (!wire_focus_is_real(packet)) {
         return; /* someone's grab for a moment, such as a menu: the window has not been left */
     }
     x11->focused = in ? 1u : 0u;
     if (!in) {
+        x11->focus_losses++;
         x11_pointer_release(x11);
         sink->release_all(sink->context);
     }

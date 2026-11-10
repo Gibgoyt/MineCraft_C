@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2 — phase 7: Lag after being away
 
-**Status:** not started   (updated 2026-11-05)
+**Status:** in progress: pause on focus loss built and tested   (updated 2026-11-10)
 
 ## Goal
 
@@ -37,9 +37,9 @@ From one session of 2115 s, in `../prompt.md`:
 
 **Stage 2: fix what it shows.**
 
-- [ ] **Pause when the window loses focus**, as Minecraft does, with a setting to turn it off. The game opens the pause screen, and clicking back in resumes
+- [x] **Pause when the window loses focus**, as Minecraft does, with a setting to turn it off. The game opens the pause screen, and clicking back in resumes
 - [ ] Fix whatever stage 1 found, if pausing alone doesn't explain it
-- [ ] Add a test that a long time without focus leaves the world as it was, with mobs and time unchanged
+- [x] Add a test that a long time without focus leaves the world as it was, with mobs and time unchanged
 
 ## Verification
 
@@ -54,6 +54,11 @@ Ahmed: play, switch to another window for 10 minutes or more, come back, and che
 Appended as they land:
 
 ## Issues found
+
+**Pause on focus loss, as built (2026-11-10).** `display_x11_t.focus_losses` counts each time the window manager takes the focus; the session reads it every frame (`game_session_window_look`) and pauses a world being played, with the pause screen up, unless `pause_on_focus_loss` (settings.yaml, default `true`; Settings, HUD page, "Pause when away") is off. When the focus comes back (a click on the window, or Alt+Tab to it) that pause ends by itself; the click never reaches the game. A pause made with Esc, or one with the Settings screen up over it, stays. The setting's box went on the HUD page because it was the page with room. Test: ctest `run_game_focus`, real threads, a world at midnight with a mob: 5 s away (3581 frames, 100 ticks' worth) left the tick count, clock, mob count and positions and the body exactly as they were.
+
+**A bug found on the way:** `x11_take_focus` read the focus event's mode from byte 1, which is the detail; the mode is byte 8. So a grab's focus event (XFCE's keyboard grab while Alt+Tab is held) could count as leaving, and a real focus change with detail Virtual or Inferior would not. Now `wire_focus_is_real` reads byte 8, tested in `run_display_x11`. Not checked against a real xfwm4: Ahmed's check below covers it.
+
 
 **Open for Ahmed: pause when the window loses focus?** Default yes, as in Minecraft, with a setting to turn it off. It also means mobs and night don't creep up on you while you're in another window.
 

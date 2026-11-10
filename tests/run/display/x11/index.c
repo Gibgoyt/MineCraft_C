@@ -320,4 +320,23 @@ TEST(the_pointer_gives_movement_and_its_own_warp_gives_none) {
     CHECK_EQ_I64(dx, 1);
 }
 
+/* Plan 005 phase 7: only the window manager moving the focus counts, as that is what pauses the game. */
+TEST(a_focus_event_is_real_unless_its_mode_says_grab_or_ungrab_whatever_its_detail) {
+    uint8_t packet[WIRE_PACKET_BYTES];
+    memset(packet, 0, sizeof(packet));
+    packet[0] = WIRE_PACKET_FOCUS_OUT;
+    write32(packet + 4, 77u);
+    for (uint32_t detail = 0u; detail < 8u; detail++) {
+        packet[1] = (uint8_t)detail; /* Ancestor, Virtual, Inferior, Nonlinear, ...: never a mode */
+        packet[8] = 0u;              /* Normal: Alt+Tab, or a click on another window */
+        CHECK(wire_focus_is_real(packet));
+        packet[8] = 1u; /* Grab: XFCE's keyboard grab while Alt+Tab is held */
+        CHECK(!wire_focus_is_real(packet));
+        packet[8] = 2u; /* Ungrab */
+        CHECK(!wire_focus_is_real(packet));
+        packet[8] = 3u; /* WhileGrabbed: the focus really moved, with a grab held */
+        CHECK(wire_focus_is_real(packet));
+    }
+}
+
 TEST_MAIN()

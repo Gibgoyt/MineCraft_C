@@ -371,6 +371,11 @@ TEST(the_climate_boxes_change_their_own_bit_and_nothing_else) {
     us_settings_hud_box(t, 3u, offsetof(settings_values_t, climate_hud), SETTINGS_CLIMATE_HUD_WARNINGS);
 }
 
+/* Plan 005 phase 7: on the HUD page, as that had the room. */
+TEST(the_pause_when_away_box_changes_that_setting_and_nothing_else) {
+    us_settings_hud_box(t, 4u, offsetof(settings_values_t, pause_on_focus_loss), 1u);
+}
+
 static void us_golden_compare(test_context_t *t, const char *path, const uint8_t *picture);
 
 /* The main page and the HUD page as a person sees them, against pictures looked at once (MC_GOLDEN_WRITE=1 makes them). */

@@ -25,6 +25,8 @@ While the window has focus the pointer is held in it and hidden, and is warped b
 
 Key codes are X keycodes minus 8, which is the evdev code. Alt+Tab takes the focus away, which lets the pointer go and lets go of every key; clicking the window takes it back. The click itself does not reach the game.
 
+Each time the window manager takes the focus away, `focus_losses` goes up by one. The game's session reads it each frame and opens the pause screen (plan 005 phase 7). A focus event caused by a grab, such as the keyboard grab XFCE takes while Alt+Tab is held, does not count: its mode, in byte 8 of the event, says Grab or Ungrab (`wire_focus_is_real`). Until plan 005 phase 7 this read byte 1, the detail, as the mode.
+
 ## Limits
 
 - Movement goes through the desktop's pointer acceleration, which KMS with evdev does not. Turn it down in XFCE's mouse settings if aiming feels uneven.

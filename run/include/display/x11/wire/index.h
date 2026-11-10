@@ -10,6 +10,8 @@ enum : uint32_t {
     WIRE_SETUP_REQUEST_BYTES = 12u + 20u + WIRE_COOKIE_BYTES,
     WIRE_REQUEST_MAX_BYTES = 256u, /* the longest any encoder below writes */
     WIRE_KEYCODE_OFFSET = 8u,      /* an X keycode is the evdev code plus this, on the evdev and libinput servers */
+    WIRE_FOCUS_MODE_GRAB = 1u,     /* in byte 8 of a focus event: caused by a grab, not by the window manager */
+    WIRE_FOCUS_MODE_UNGRAB = 2u,
 };
 
 /* The first byte of a packet from the server. An event sent by another client has its top bit set. */
@@ -123,6 +125,10 @@ wire_button_t wire_button(uint8_t detail);
 
 /* A held key makes X send a release and a press with one time stamp, where evdev would send a repeat. */
 [[nodiscard]] bool wire_is_auto_repeat(const uint8_t release[WIRE_PACKET_BYTES], const uint8_t next[WIRE_PACKET_BYTES]);
+
+/* Whether a FocusIn or FocusOut is the window manager moving the focus, and not someone's grab or its end: the mode, byte 8, is
+ * not Grab (1) or Ungrab (2). Byte 1 is the detail, which says nothing of that. */
+[[nodiscard]] bool wire_focus_is_real(const uint8_t packet[WIRE_PACKET_BYTES]);
 
 void wire_pointer_start(wire_pointer_t *pointer, uint32_t width, uint32_t height);
 

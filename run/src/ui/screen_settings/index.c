@@ -30,6 +30,8 @@ enum : int32_t {
     SETTINGS_HUD_DATE_ROW = 1,
     SETTINGS_HUD_CLIMATE_ROW = 2,
     SETTINGS_HUD_WARNINGS_ROW = 3,
+    /* Not the HUD, but the page with room: plan 005 phase 7's pause when the window loses the focus. */
+    SETTINGS_HUD_PAUSE_AWAY_ROW = 4,
 };
 
 enum : uint32_t {
@@ -48,6 +50,7 @@ enum : uint32_t {
     SETTINGS_ID_HUD = 112u,
     SETTINGS_ID_SHOW_CLIMATE = 113u,
     SETTINGS_ID_STORM_WARNINGS = 114u,
+    SETTINGS_ID_PAUSE_AWAY = 115u,
     SETTINGS_ID_EFFECT_0 = 120u,
     SETTINGS_TEXT_COLOR = 0xFFFFFFFFu,
     SETTINGS_ERROR_COLOR = 0xFFFF6060u,
@@ -230,7 +233,8 @@ static bool ui_screen_settings_bit(ui_widget_t *widget, uint32_t id, int32_t row
     return true;
 }
 
-/* Plan 004 phase 10: what the corners of the HUD show, a box a row, and Back where Done is. */
+/* Plan 004 phase 10: what the corners of the HUD show, a box a row, and Back where Done is. Plan 005 phase 7's pause when the window
+ * loses the focus is the last box, as this page had the room. */
 static bool ui_screen_settings_hud_page(ui_screen_settings_t *screen) {
     ui_widget_t *const widget = screen->borrowed_widget;
     settings_values_t *const values = screen->borrowed_values;
@@ -242,6 +246,8 @@ static bool ui_screen_settings_hud_page(ui_screen_settings_t *screen) {
                                       "Temperature and wind", &values->climate_hud, SETTINGS_CLIMATE_HUD_LINE);
     changed |= ui_screen_settings_bit(widget, SETTINGS_ID_STORM_WARNINGS, SETTINGS_HUD_WARNINGS_ROW, "Storm warnings",
                                       &values->climate_hud, SETTINGS_CLIMATE_HUD_WARNINGS);
+    changed |= ui_screen_settings_flag(widget, SETTINGS_ID_PAUSE_AWAY, SETTINGS_HUD_PAUSE_AWAY_ROW, "Pause when away",
+                                       &values->pause_on_focus_loss);
     if (ui_widget_button(widget, SETTINGS_ID_DONE,
                          ui_screen_settings_row(widget, SETTINGS_DONE_ROW, SETTINGS_ROW_WIDTH), "Back", true)) {
         screen->page = UI_SCREEN_SETTINGS_PAGE_MAIN;

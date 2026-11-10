@@ -34,6 +34,8 @@ typedef struct display_x11_t {
     uint64_t inbox_bytes;
     uint64_t events_lost; /* the queue was full */
     uint64_t frames;
+    uint64_t
+        focus_losses; /* the window manager took the focus away: Alt+Tab or a click on another window, never a grab */
     int64_t put_sent_ns;
     display_buffer_t buffer; /* what a frame is drawn into: owned_map is owned_shm */
     wire_pointer_t pointer;
@@ -63,7 +65,7 @@ typedef struct display_x11_t {
     uint8_t connected;
     uint8_t running;
 } display_x11_t;
-static_assert(sizeof(display_x11_t) == 240);
+static_assert(sizeof(display_x11_t) == 248);
 
 /* Connects to the server named by DISPLAY over its local Unix socket, makes the window and its shared pixels, and shows
  * it. display_name is DISPLAY's value and auth_path is the Xauthority file, which may be nullptr. On failure logs why and
@@ -77,8 +79,8 @@ void display_x11_deinit(display_x11_t *x11);
  * connection failed: see close_requested and failed_call. */
 [[nodiscard]] bool display_x11_service(display_x11_t *x11);
 
-/* Hands the window's input since the last poll to sink. Takes and lets go of the pointer as the window gets and loses focus.
- * Never waits long. */
+/* Hands the window's input since the last poll to sink. Takes and lets go of the pointer as the window gets and loses focus, and
+ * counts each loss in focus_losses, for whoever pauses the game then. Never waits long. */
 void display_x11_poll(display_x11_t *x11, const display_x11_sink_t *sink);
 
 /* Waits until the server has finished with the last frame, so the buffer may be drawn on. False as for service. */

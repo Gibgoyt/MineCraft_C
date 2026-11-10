@@ -447,6 +447,7 @@ static bool game_session_action(game_session_t *session, ui_menu_action_t action
         session->next = GAME_SESSION_NEXT_TITLE;
         return true;
     case UI_MENU_ACTION_RESUME:
+        session->focus_paused = 0u;
         /* A census may have stopped the world while the pause screen was up, even in the frame Esc came: its screen first. */
         if (game_session_census_look(session)) {
             return false;
@@ -467,6 +468,7 @@ static void game_session_pause(game_session_t *session) {
     game_pause_set(session->borrowed_game, true);
     ui_menu_open(&session->borrowed_ui->menu, UI_MENU_SCREEN_PAUSE);
     session->state = GAME_SESSION_PAUSED;
+    session->focus_paused = 0u; /* whoever paused says so after this */
     session->escape_used = 1u;
     session->pauses++;
     /* The screen a person comes to in order to leave, so the one that should say what leaving would come to. */
@@ -509,6 +511,54 @@ static void game_session_devices_look(game_session_t *session) {
     }
 }
 
+/* ---- The window's focus: plan 005 phase 7 ------------------------------------------------------------------------------ */
+
+/* Settings say, and with none it pauses, as Minecraft does. */
+static bool game_session_pauses_away(const game_session_t *session) {
+    return session->borrowed_settings == nullptr || session->borrowed_settings->values.pause_on_focus_loss != 0u;
+}
+
+void game_session_focus_lost(game_session_t *session) {
+    if (session->state != GAME_SESSION_PLAYING || session->next != GAME_SESSION_NEXT_NONE ||
+        !game_session_pauses_away(session)) {
+        return;
+    }
+    /* Whatever was held is let go of by the window already: the sim is told so, as for Esc. */
+    game_loop_input_clear(session->borrowed_game);
+    game_session_pause(session);
+    session->focus_paused = 1u;
+    LOG_INFO("session: the window lost the focus, so the game is paused until it is back");
+}
+
+void game_session_focus_back(game_session_t *session) {
+    if (session->focus_paused == 0u) {
+        return;
+    }
+    session->focus_paused = 0u;
+    if (session->state != GAME_SESSION_PAUSED || session->settings_up != 0u || session->kinds_missing != 0u) {
+        return;
+    }
+    LOG_INFO("session: the window has the focus again, so the game goes on");
+    (void)game_session_action(session, UI_MENU_ACTION_RESUME);
+}
+
+/* What the window has said of its focus since the last frame. Nothing under KMS, where the console is the whole screen. */
+static void game_session_window_look(game_session_t *session) {
+    const display_t *const display = session->borrowed_display;
+    if (display == nullptr || display->window == 0u || display->borrowed_x11 == nullptr) {
+        return;
+    }
+    const display_x11_t *const x11 = display->borrowed_x11;
+    const uint8_t losses = (uint8_t)x11->focus_losses;
+    if (losses != session->focus_losses_seen) {
+        session->focus_losses_seen = losses;
+        game_session_focus_lost(session);
+    }
+    if (x11->focused != 0u) {
+        game_session_focus_back(session);
+    }
+}
+
 /* The paused or menu frame both ways of running share. False if a frame could not be started, which has been said. */
 static bool game_session_screen_frame(game_session_t *session, const input_frame_t *frame, bool escape,
                                       display_buffer_t *back, bool *out_next) {
@@ -543,6 +593,7 @@ bool game_session_source(void *context, display_buffer_t *back) {
     const bool escape = input_keys_has(&frame->pressed, KEY_ESC);
     bool next = false;
     game_session_devices_look(session);
+    game_session_window_look(session);
     if (session->next == GAME_SESSION_NEXT_OPEN_WORLD) {
         if (session->loading_frames == 0u) {
             /* The buffer waiting for this frame says loading, and stays up until the world's first picture is in it. */

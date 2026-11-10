@@ -412,6 +412,10 @@ bool wire_is_auto_repeat(const uint8_t release[WIRE_PACKET_BYTES], const uint8_t
     return (next[0] & 0x7Fu) == WIRE_PACKET_KEY_PRESS && next[1] == release[1] && get32(next + 4) == get32(release + 4);
 }
 
+bool wire_focus_is_real(const uint8_t packet[WIRE_PACKET_BYTES]) {
+    return packet[8] != WIRE_FOCUS_MODE_GRAB && packet[8] != WIRE_FOCUS_MODE_UNGRAB;
+}
+
 void wire_pointer_start(wire_pointer_t *pointer, uint32_t width, uint32_t height) {
     memset(pointer, 0, sizeof(*pointer));
     pointer->center_x = (int32_t)(width / 2u);
