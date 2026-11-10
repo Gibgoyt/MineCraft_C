@@ -32,6 +32,8 @@ Ahmed: put on armour one piece at a time and watch the bar fill, then go under w
 
 Appended as they land:
 
+- 17a8f7a5 Show an armour bar: ten icons over the hearts while armour is worn, with the bubbles a row higher beside it.
+
 ## Issues found
 
 - **How the points get across.** `player_vitals_t` is one 8-byte word and full, so the armour points go in their own relaxed `_Atomic uint8_t player_t.armor_points`, in what was padding at offset 2097 (`player_t` did not grow). `player_vitals_publish` (now public) writes it from `survival.armor_points`, which `run/src/game/tick/` already sets each tick from `equipment_armor_points`; `game_hud_state_read` (`run/src/game/report/`) reads it with `player_armor_points_read` into `ui_hud_state_t.armor`, the byte that was `_pad0`. `run/src/save/state/` now calls `player_vitals_publish` in place of its own copy of it, so a loaded body shows its armour before its first tick.
