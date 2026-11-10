@@ -363,6 +363,7 @@ textures:
   - { to: items/baked_potato, from: item/baked_potato.png }
   - { to: items/bed, keep: "Minecraft's bed items are per colour, and ours is one" }
   - { to: items/bed_fancy, keep: "Minecraft has no picture for this" }
+  - { to: items/beef, from: item/beef.png }
   - { to: items/berries, from: item/sweet_berries.png }
   - { to: items/boat, from: item/oak_boat.png }
   - { to: items/boat_wield, keep: "ours is 32x32 and drawn in the hand" }
@@ -376,14 +377,21 @@ textures:
   - { to: items/bucket, from: item/bucket.png }
   - { to: items/carrot, from: item/carrot.png }
   - { to: items/charcoal, from: item/charcoal.png }
+  - { to: items/chicken, from: item/chicken.png }
   - { to: items/clay_ball, from: item/clay_ball.png }
   - { to: items/coal, from: item/coal.png }
+  - { to: items/cooked_beef, from: item/cooked_beef.png }
+  - { to: items/cooked_chicken, from: item/cooked_chicken.png }
+  - { to: items/cooked_goat_meat, keep: "Minecraft has no goat meat" }
+  - { to: items/cooked_mutton, from: item/cooked_mutton.png }
+  - { to: items/cooked_pork, from: item/cooked_porkchop.png }
   - { to: items/cookie, from: item/cookie.png }
   - { to: items/copper_boots, from: item/copper_boots.png }
   - { to: items/copper_chestplate, from: item/copper_chestplate.png }
   - { to: items/copper_helmet, from: item/copper_helmet.png }
   - { to: items/copper_ingot, from: item/copper_ingot.png }
   - { to: items/copper_leggings, from: item/copper_leggings.png }
+  - { to: items/cow_hide, keep: "Minecraft has no hides" }
   - { to: items/diamond, from: item/diamond.png }
   - { to: items/diamond_axe, from: item/diamond_axe.png }
   - { to: items/diamond_boots, from: item/diamond_boots.png }
@@ -411,6 +419,7 @@ textures:
   - { to: items/dye_violet, from: item/purple_dye.png }
   - { to: items/dye_white, from: item/white_dye.png }
   - { to: items/dye_yellow, from: item/yellow_dye.png }
+  - { to: items/egg, from: item/egg.png }
   - { to: items/emerald, from: item/emerald.png }
   - { to: items/feather, from: item/feather.png }
   - { to: items/flint, from: item/flint.png }
@@ -418,6 +427,8 @@ textures:
   - { to: items/glass_bottle, from: item/glass_bottle.png }
   - { to: items/glass_door, keep: "Minecraft has no picture for this" }
   - { to: items/glow_berries, from: item/glow_berries.png }
+  - { to: items/goat_hide, keep: "Minecraft has no hides" }
+  - { to: items/goat_meat, keep: "Minecraft has no goat meat" }
   - { to: items/gold_axe, from: item/golden_axe.png }
   - { to: items/gold_boots, from: item/golden_boots.png }
   - { to: items/gold_chestplate, from: item/golden_chestplate.png }
@@ -452,12 +463,16 @@ textures:
   - { to: items/leather_leggings, from: item/leather_leggings.png }
   - { to: items/melon_seeds, from: item/melon_seeds.png }
   - { to: items/melon_slice, from: item/melon_slice.png }
+  - { to: items/milk_bucket, from: item/milk_bucket.png }
   - { to: items/minecart, from: item/minecart.png }
   - { to: items/mushroom_stew, from: item/mushroom_stew.png }
+  - { to: items/mutton, from: item/mutton.png }
   - { to: items/oak_sign, from: item/oak_sign.png }
   - { to: items/obsidian_glass_door, keep: "Minecraft has no picture for this" }
   - { to: items/obsidian_shard, keep: "Minecraft has no picture for this" }
   - { to: items/paper, from: item/paper.png }
+  - { to: items/pig_hide, keep: "Minecraft has no hides" }
+  - { to: items/pork, from: item/porkchop.png }
   - { to: items/potato, from: item/potato.png }
   - { to: items/potion_black, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
   - { to: items/potion_blue, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
