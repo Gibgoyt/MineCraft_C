@@ -105,6 +105,32 @@ gpu_status_t world_buffers_init(world_buffers_t *buffers, device_memory_t *memor
                                "clearing the column table");
 }
 
+gpu_status_t world_buffers_adopt(world_buffers_t *buffers, const world_buffers_t *from) {
+    const uint32_t slots = buffers->window.slot_count;
+    if (slots != from->window.slot_count || buffers->pool_bytes != from->pool_bytes) {
+        return world_buffers_refuse(buffers, GPU_STATUS_INVALID_ARGUMENT, "taking over buffers of another size");
+    }
+    /* Laid out alike, as world_buffers_init lays them out, for the same sizes: one copy moves them all, and the links in the pages are
+     * page and granule numbers, not addresses. */
+    memcpy(buffers->borrowed_shadow, from->borrowed_shadow, world_buffers_host_bytes(slots, from->pool_bytes));
+    buffers->window = from->window;
+    buffers->slab_bytes = from->slab_bytes;
+    buffers->pool_full_count = from->pool_full_count;
+    buffers->top_limit = from->top_limit;
+    memcpy(buffers->class_pages, from->class_pages, sizeof(buffers->class_pages));
+    buffers->free_pages = from->free_pages;
+    buffers->pages_used = from->pages_used;
+    buffers->pages_live = from->pages_live;
+    buffers->section_count = from->section_count;
+    /* The card's table was cleared by world_buffers_init: the next flush sends all of it. */
+    for (uint32_t slot = 0; slot < slots; slot++) {
+        buffers->borrowed_dirty_slots[slot] = slot;
+        buffers->borrowed_dirty_flags[slot] = 1u;
+    }
+    buffers->dirty_count = slots;
+    return GPU_STATUS_OK;
+}
+
 void world_buffers_deinit(world_buffers_t *buffers) {
     memset(buffers, 0, sizeof(*buffers));
 }

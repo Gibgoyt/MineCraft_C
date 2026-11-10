@@ -81,8 +81,10 @@ static int32_t ld_ground_top(uint32_t ground, int32_t x, int32_t y) {
     return 0;
 }
 
-static void ld_sample(const void *borrowed_context, int32_t x, int32_t y, uint32_t shift, uint16_t *out) {
+static void ld_sample(const void *borrowed_context, int32_t x, int32_t y, uint32_t shift, uint16_t *out,
+                      uint8_t *scratch) {
     (void)shift;
+    (void)scratch;
     const uint32_t ground = ((const ld_source_t *)borrowed_context)->ground;
     const int32_t top = ld_ground_top(ground, x, y);
     for (int32_t z = 0; z < (int32_t)RENDER_LOD_HEIGHT_BLOCKS; z++) {
@@ -107,7 +109,7 @@ static uint16_t ld_voxel(const ld_source_t *source, uint32_t shift, int32_t x, i
     uint16_t column[RENDER_LOD_HEIGHT_BLOCKS];
     uint16_t cells[RENDER_LOD_HEIGHT_BLOCKS];
     const int32_t size = 1 << shift;
-    ld_sample(source, x * size + size / 2, y * size + size / 2, shift, column);
+    ld_sample(source, x * size + size / 2, y * size + size / 2, shift, column, nullptr);
     (void)render_lod_cells_from_column(column, shift, 1u, cells);
     return cells[z];
 }
@@ -558,6 +560,85 @@ TEST(a_level_follows_the_eye_and_asks_only_for_what_is_new) {
         CHECK_EQ_U64(lod->levels[i].shown_side,
                      2u * ((uint32_t)lod->levels[i].radius - RENDER_LOD_MARGIN_COLUMNS) + 1u);
     }
+    ld_grids_check(t, &rig, &source, &voxels);
+    ld_end(t, &rig);
+}
+
+/* How far a level's column is from the eye's, squared, in blocks, from its middle. */
+static uint64_t ld_blocks2(const render_lod_level_t *level, int32_t chunk_x, int32_t chunk_y) {
+    const int64_t dx = (int64_t)chunk_x - level->center_x, dy = (int64_t)chunk_y - level->center_y;
+    return (uint64_t)(dx * dx + dy * dy) << (2u * (4u + level->shift));
+}
+
+/* Plan 005 phase 14. A far field that has just opened asks first for what is nearest the eye in blocks, whichever level it is in, as that
+ * is what shows where full detail has not come yet. A plan that changes keeps each level that stays the same: what it shows is there on the
+ * very next frame, on the card as it was, and nothing of it is built again. */
+TEST(the_nearest_columns_come_first_and_a_level_that_stays_is_kept) {
+    sk_rig_t rig;
+    const ld_source_t source = {LD_GROUND_HILLS, {0}};
+    const float64_t eye[3] = {8.5f64, 8.5f64, 300.5f64};
+    REQUIRE(sk_rig_begin(t, &rig) && sk_hand_world_open(t, &rig, LD_HAND_RADIUS, LD_WIDTH, LD_HEIGHT, LD_FOG_FAR) &&
+            sk_hand_world_sync(t, &rig));
+    render_frame_features_set(&rig.render->frame, LD_PLAIN);
+    const render_lod_plan_t both = render_lod_plan(LD_HAND_RADIUS, 40u);
+    const render_lod_plan_t coarse = render_lod_plan(30u, 40u);
+    REQUIRE(both.level_count == 2u && coarse.level_count == 1u && coarse.shifts[0] == both.shifts[1] &&
+            coarse.radii[0] == both.radii[1]);
+    REQUIRE(render_open_lod(rig.render, &both, ld_sample, &source) == GPU_STATUS_OK);
+    render_lod_t *lod = rig.render->borrowed_lod;
+    REQUIRE(render_lod_frame(lod, eye) == GPU_STATUS_OK);
+    /* Every column asked for is at least as near as every one still waiting to be. */
+    uint64_t asked_most = 0u, waiting_least = UINT64_MAX;
+    uint32_t asked_levels = 0u;
+    for (uint32_t i = 0u; i < RENDER_LOD_JOBS; i++) {
+        const render_lod_job_t *const job = &lod->borrowed_jobs[i];
+        if (job->in_use != 0u) {
+            const uint64_t blocks2 = ld_blocks2(&lod->levels[job->level], job->chunk_x, job->chunk_y);
+            asked_most = blocks2 > asked_most ? blocks2 : asked_most;
+            asked_levels |= 1u << job->level;
+        }
+    }
+    for (uint32_t l = 0u; l < lod->level_count; l++) {
+        const render_lod_level_t *const level = &lod->levels[l];
+        for (uint32_t slot = 0u; slot < level->column_count; slot++) {
+            if (level->borrowed_state[slot] == 0u) { /* wanted, and not asked for */
+                const world_buffers_window_t *const window = &level->buffers.window;
+                const uint32_t sx = slot % window->side, sy = slot / window->side;
+                const int32_t cx = window->min_x + (int32_t)((sx + window->side - window->min_slot_x) % window->side);
+                const int32_t cy = window->min_y + (int32_t)((sy + window->side - window->min_slot_y) % window->side);
+                const uint64_t blocks2 = ld_blocks2(level, cx, cy);
+                waiting_least = blocks2 < waiting_least ? blocks2 : waiting_least;
+            }
+        }
+    }
+    CHECK(lod->jobs_in_use > 2u);
+    CHECK(asked_most <= waiting_least);
+    CHECK_EQ_U64(asked_levels, 3u);
+    REQUIRE(ld_settle(t, &rig, eye));
+
+    /* To the coarse level alone: it is kept, shown at once and whole, and nothing is built. */
+    const uint32_t shown = lod->levels[1].shown_side;
+    const uint64_t slabs = lod->levels[1].buffers.slab_bytes;
+    REQUIRE(render_replan_lod(rig.render, &coarse, ld_sample, &source) == GPU_STATUS_OK);
+    lod = rig.render->borrowed_lod;
+    REQUIRE(lod != nullptr && lod->level_count == 1u);
+    REQUIRE(render_lod_frame(lod, eye) == GPU_STATUS_OK);
+    CHECK_EQ_U64(lod->levels[0].shown_side, shown);
+    CHECK_EQ_U64(lod->levels[0].buffers.slab_bytes, slabs);
+    CHECK(render_lod_idle(lod));
+    CHECK_EQ_U64(lod->stats.columns_built, 0u);
+    uint64_t voxels = 0u;
+    ld_grids_check(t, &rig, &source, &voxels);
+    CHECK(voxels > 0u);
+
+    /* And back: the fine level starts empty, so rays go on to the coarse one, which is still whole, while the fine one fills. */
+    REQUIRE(render_replan_lod(rig.render, &both, ld_sample, &source) == GPU_STATUS_OK);
+    lod = rig.render->borrowed_lod;
+    REQUIRE(lod != nullptr && lod->level_count == 2u);
+    CHECK_EQ_U64(lod->levels[0].shown_side, 0u);
+    CHECK_EQ_U64(lod->levels[1].shown_side, shown);
+    REQUIRE(ld_settle(t, &rig, eye));
+    CHECK_EQ_U64(lod->stats.columns_built, lod->levels[0].column_count);
     ld_grids_check(t, &rig, &source, &voxels);
     ld_end(t, &rig);
 }
@@ -1109,6 +1190,7 @@ TEST(the_far_field_stands_for_real_terrain) {
     uint16_t *const wanted = test_alloc(t, VOXELS * sizeof(uint16_t));
     uint16_t *const column = test_alloc(t, RENDER_LOD_HEIGHT_BLOCKS * sizeof(uint16_t));
     uint16_t *const cells = test_alloc(t, RENDER_LOD_HEIGHT_BLOCKS * sizeof(uint16_t));
+    uint8_t *const sample_scratch = test_alloc(t, RENDER_LOD_SAMPLE_SCRATCH_BYTES);
     uint64_t state = 5u, surface = 0u;
     uint32_t filled = 0u;
     while (filled < VOXELS) {
@@ -1116,7 +1198,9 @@ TEST(the_far_field_stands_for_real_terrain) {
         const int32_t x = level->shown_min_x * 16 + (int32_t)((state >> 20) % (uint64_t)(level->shown_side * 16u));
         const int32_t y = level->shown_min_y * 16 + (int32_t)((state >> 36) % (uint64_t)(level->shown_side * 16u));
         const int32_t size = 1 << level->shift;
-        render_lod_sample_terrain(rig.terrain, x * size + size / 2, y * size + size / 2, level->shift, column);
+        memset(sample_scratch, 0, RENDER_LOD_SAMPLE_SCRATCH_BYTES);
+        render_lod_sample_terrain(rig.terrain, x * size + size / 2, y * size + size / 2, level->shift, column,
+                                  sample_scratch);
         const int32_t top = render_lod_cells_from_column(column, level->shift, 1u, cells);
         for (int32_t z = top - 8; z <= top + 8 && filled < VOXELS; z++) {
             queries[filled] = (world_buffers_probe_query_t){x, y, z - (int32_t)WORLD_BUFFERS_Z_ORIGIN};

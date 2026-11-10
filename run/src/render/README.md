@@ -13,6 +13,7 @@
 - `render_open`, `render_close`: take and give back the blocks on the card, for one world.
 - `render_open_frame`, `render_close_frame`: the same for drawing: textures, tables, a frame's targets, and the pictures.
 - `render_open_lod`, `render_close_lod`: the same for the far field: each level's table and pool, a frame's far hits, and `owned_lod_host` with `arena_lod` over it.
+- `render_replan_lod`: the far field in other levels, keeping each level that stays the same, with its blocks and what it has built, so a settings change does not show nothing while it fills in.
 
 **May be called by:** `run/src/main/`, which starts and stops it, and `game`, which opens a world.
 **Depends on:** `heap`, `arena`, `assert`, `log`, `machine`, `job`, `texture`, `display/flip`, `world/edit`, `gpu_bridge/device_memory`, `gpu_bridge/world_buffers`, `gpu_bridge/traverse`, `gpu_bridge/shade`, `gpu_bridge/post`, `gpu_bridge/frame`, and its parts below.

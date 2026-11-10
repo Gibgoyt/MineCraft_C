@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2 — phase 14: Loading and render distance speed
 
-**Status:** stage 1 measured and stage 3 test in place (agent 14c); stage 2 with agents 14a and 14b   (updated 2026-11-10)
+**Status:** stage 1 measured and stage 3 test in place (agent 14c); the far field's part of stage 2 built and tested (agent 14b); job priorities and the far-field cap with agent 14a   (updated 2026-11-10)
 
 ## Goal
 
@@ -151,18 +151,18 @@ So: **opening is terrain**, 82% of the workers' time, and it meets the targets a
 
 - [ ] **Priorities in the job system:** a block edit's re-encode and light first, then the columns nearest the player, then climate tiles, then the far field. Add a priority to `job_submit` in `run/{src,include}/job/`, with workers always taking higher first
 - [ ] **A cap on far-field workers,** so it can never hold more than a few at once, and never while near chunks wait. Drop queued far-field work that's gone stale when the player moves or the distance changes
-- [ ] **Make a far-field column cheap.** Profile one, then build it from the 2D height estimate (`terrain_height_estimate`, plan 004 phase 3) and the top block, not the full 3D terrain, if that's what it does. Target: under 50 ms of worker time a column
-- [ ] **Never show nothing.** At 1 s, render distance 64 drew only sky. Near columns come first, and a missing one shows the far field, until it's built
+- [x] **Make a far-field column cheap.** Profile one, then build it from the 2D height estimate (`terrain_height_estimate`, plan 004 phase 3) and the top block, not the full 3D terrain, if that's what it does. Target: under 50 ms of worker time a column. *Done another way, as the profile showed it was not the 3D terrain: about 0.4 s to 14 ms, 24 ms and 59 ms at voxels of 2, 4 and 8. The target is missed at voxels of 8: see Issues found.*
+- [x] **Never show nothing.** At 1 s, render distance 64 drew only sky. Near columns come first, and a missing one shows the far field, until it's built
 - [ ] Repeat the stage 1 table with each fix, and show the 64 run matching the 32 run near the player
 
-- [ ] **Show the change as it comes, not all at once.** Near rings switch to the new setting first, and a far column drawn at the old setting may stay only until its own replacement is ready, not until all of them are
-- [ ] **The far field draws unsaved edits too,** by reading the live edits as well as the save, so a mined tree is gone everywhere at once. Or it never stands in for a near column that has edits
-- [ ] **Find and fix the darkening** after a full-detail change, with before and after pictures
+- [x] **Show the change as it comes, not all at once.** Near rings switch to the new setting first, and a far column drawn at the old setting may stay only until its own replacement is ready, not until all of them are
+- [x] **The far field draws unsaved edits too,** by reading the live edits as well as the save, so a mined tree is gone everywhere at once. Or it never stands in for a near column that has edits
+- [x] **Find and fix the darkening** after a full-detail change, with before and after pictures. *Found: it is the sun setting, not the change. Nothing to fix in code: see Issues found.*
 
 **Also likely, to be confirmed or ruled out by the numbers:**
 
 - [ ] Build the nearest chunks first, and keep a far one from holding up a near one
-- [ ] Let a distance change reuse what's already built, and only build the difference
+- [x] Let a distance change reuse what's already built, and only build the difference. *For the far field: each level that stays the same is kept (`render_replan_lod`). Full detail already kept its columns.*
 - [ ] Size the per-frame upload budget so filling in neither crawls nor stutters
 - [ ] If climate tiles hold up chunk generation (plan 004's own risk table), work them out ahead of the player, nearest first
 - [ ] Each fix gets a before and after number in this file
@@ -196,6 +196,48 @@ Appended as they land:
 ## Issues found
 
 **Overlaps phase 7 and phase 8.** Phase 7 is lag after a long time in another window, and phase 8 is how far you can see. This one is load and change speed. They share stage 1's measurements, so whichever starts first records them, and the others read them.
+
+### The far field, 2026-11-10 (agent 14b)
+
+**Why a far-field column cost about 1 s.** Measured with a new bench, `bench/lod/` (one column on one thread, Ahmed's seed, six places), not the in-game profiler: the bench isolates one column and needs no card. It is **not the 3D terrain**. A column at voxels of 16 or more, where nothing grows, cost 7.7 ms for all 1536 layers of 256 lines, as the density already skips its 3D noise outside twice the softness. At voxels of 2, 4 and 8, where what grows is sampled, it cost 375 to 420 ms (worst 500 ms): `terrain_feature_fill_box`, given a box one line wide, loaded and walked the chunk of the line and its 8 neighbours again for every one of the column's 256 lines, each walk running hydrology, surface, caves and flood over the chunk. In the game, with all 16 workers fighting over memory, that came to the 0.8 to 1.0 s a column the logs show.
+
+**The fix: walk each chunk once a column.** `terrain_feature_fill_box_cached` in `run/src/terrain/feature/` does the same steps in the same order with each chunk taken from a cache of 48 the caller keeps, loaded and walked the first time it is asked for. The far field's job gives it one per column in its arena, through a new scratch argument on `render_lod_sample_t` (`RENDER_LOD_SAMPLE_SCRATCH_BYTES`). The bytes are the same, so the far field looks exactly as before and no golden picture changed: `render_feature_lod` passes with its pictures as they were.
+
+| Level | Before, mean ms | Before, worst | After, mean ms | After, worst | Chunks loaded a column |
+|---|---|---|---|---|---|
+| voxels of 2 | 378.7 | 439.7 | **13.8** | 16.1 | 16 |
+| voxels of 4 | 384.5 | 462.3 | **24.0** | 31.2 | 36 |
+| voxels of 8 | 374.5 | 428.9 | **58.6** | 71.2 | 100 |
+| voxels of 16, 32, 64 | 7.7 to 7.9 | 8.3 | 7.7 to 7.8 | 8.3 | none |
+
+In the game, on the release build, Ahmed's settings (render distance 64, full detail 32): a session that went to full detail 16 ended with `far field: 3 levels, 1462 columns built in 50.7 s of workers' time`, **35 ms a column** against 0.8 to 1.0 s before (`main`: `410 columns built in 332.0 s`, `1032 columns built in 939.2 s`). So the far field now takes a few seconds of the workers where it took all of them for minutes. The session line counts only the far field open at the end: in the session that went 32, 16, then back to 32, the far field after the last change built `180 columns in 9.2 s` on this build, as both its levels were kept, against `791 columns in 794.2 s` on `main`, which built them all again.
+
+**The target is missed at voxels of 8:** 59 ms mean, 71 ms worst. Its 100 chunks are each loaded and walked once, at about 0.6 ms each, and that walk is the terrain's own, which a far field may not change. Taking trees off that level (`RENDER_LOD_FEATURES_SHIFT_MAX` 3 to 2) would make it 8 ms, but forests 900 blocks off would turn to grass. Left for Ahmed to decide; the default keeps them.
+
+**A profiler scope.** Each far-field column is now a `far_column` scope on its worker's lane, so `--profile` shows the far field's share of the workers.
+
+**The 2D height estimate was tried and taken out.** Working out only the layers the estimate allows (the profile's height and softness at the four lattice columns round a line, a river's carve, the sea and the tallest tree) made no difference: 26.0 ms against 26.4 ms at voxels of 4, and about 1 ms slower where nothing grows, as the estimate's own columns cost what the skipped layers did. So a sample stays the whole height, exact by construction.
+
+**Never show nothing.** The far field asked for its coarsest level first, all of it, so the level that stands round the player came last, and at render distance 64 the first second showed only sky. `render_lod_jobs_request` now takes the nearest column in blocks from the eye first, whichever level it is in, and at the same distance the coarser one. Live, on Ahmed's seed, render distance 64 and full detail 32, release build, a private Xvfb, 1280 by 720:
+
+| A new world | Before (`main` at `7aea47e0`) | After |
+|---|---|---|
+| 0.5 s | sky only | **the ground round the player, textured** |
+| 1 s | sky only | the same, complete |
+| 2 s | untextured slabs: the far field standing in, as in Ahmed's 10.png | complete |
+| 4 s | the slabs, partly textured | complete |
+
+Part of that is the starvation going: near chunks no longer wait behind far columns. Job priorities (14a) still matter for the rest.
+
+**Show the change as it comes.** A change of render distance or full detail closed the far field and opened a new one, so every far column went at once and came back only when the new levels were built. Now `game_view_change` calls `render_replan_lod` (`run/src/render/`): each level whose shift and radius stay the same is kept, with its blocks on the card, its table, and every column it has built (`world_buffers_adopt` in `cuda/src/world_buffers/`, `render_lod_level_adopt` in `run/src/render/lod/`), and only new levels are built, nearest first, the kept level showing through until they are. Full detail 32 to 16 at render distance 64 keeps both levels it had (voxels of 4 and 8) and adds one at voxels of 2; 16 to 32 keeps those two again. `render_feature_lod` holds it to that on the card: a dropped level leaves the other shown on the very next frame with nothing built and every voxel as it was, and back again the kept level is still whole while the new one fills. A change also waits for every far job on a worker, as it did before: that was up to 1 s, and is now under 0.1 s.
+
+**Mined blocks in the far field.** The far field reads only what is captured for the save, and that was at the next autosave (30 s) or when a column left. With a far field open, `game_far_capture_tick` now captures what is dirty once a second of ticks, at the end of `game_sim_tick`; the autosave writes what is captured as before, and a column of the far field is cheap to make again. So a mined log is gone from the far field within about a second wherever the far field stands in for a near column. `run_save_state_game` holds it: a tower built and then taken away reaches the far field within 20 ticks each way, with no autosave. Ahmed's tree that stayed for minutes was most likely the near column's own re-encode waiting behind far-field work (job priorities, 14a), which the cheap columns also relieve. Not measured live: the script's mining aims at the ground ahead, not a lit log, so 14c's live test should aim at one.
+
+**The darkening is the sun setting, not the full-detail change.** A day is `GAME_DAY_SECONDS` = 1200 s, and a new world starts at `GAME_DAY_START` = 0.35 of a day, so the sun sets about 7 minutes in. Ahmed's measured run changed full detail 375 s in, and its pictures darkened at 420 to 500 s. A control run on the same seed and build with **no settings change at all** and the day cycle on: the mean brightness of the picture was 42.9 at 60 s, 54.6 at 360 s, then **41.2 at 420 s, 28.8 at 480 s, 9.5 at 540 s**, the same curve as Ahmed's 53, 42, 30. With the day cycle off (`effect_day_cycle: false`) and full detail changed 32 to 16 and back, the brightness of the picture is 38.88 before, 38.88 after 16 and 38.88 after 32, before and after this phase alike. Stored light is not touched by a full-detail change: the map keeps its columns (`world_map_set_view_radius` only changes what is drawn), and the far field's light is its fixed open sky. So there is nothing to fix in code. If the night coming so early reads as a defect, that is a question for Ahmed: a day of 20 minutes starting at 08:24.
+
+**How it was measured.** `/tmp/claude-1000/-home-ahmed-Projects-Games-MineCraft-C/52c310b0-7c8d-4c06-a48e-20883c52be21/scratchpad/14b/live.sh` drives the real game on Xvfb :95 with xdotool: a new world on Ahmed's seed, full detail changed through the Settings screen, which applies a change with the screen still up but does not draw the world behind it, so times are from Resume. Pictures in `before_full/`, `after_full/` and `before_dusk/` beside it, in `/tmp`, so a reboot clears them. The looking direction faces a hillside, so the far field shows little in the settled pictures: the far-field claims above rest on the ctests and the session log lines, not on these pictures.
+
+**Disk.** `/home` was full while this was built (22 MiB free), from many worktrees' builds. The release test binaries of this worktree were deleted to finish, and the release build here was of `minecraft_c`, `bench_lod` and `bench_world` only.
 
 **Ahmed's rendering issues aren't listed yet.** He said he'll look into them later. When he does, each gets its own note, and this phase's measurements should help.
 

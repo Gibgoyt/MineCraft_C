@@ -663,6 +663,7 @@ void game_sim_tick(game_t *game, int64_t tick_ns) {
     game_entities_publish(game);
     game_hud_publish(game);
     game->tick_count++;
+    game_far_capture_tick(game);
     game_tick_lap(&mark_ns, stage_ns, GAME_WATCH_TICK_PUBLISH);
     game_tick_watch(game, stage_ns, mark_ns);
     PROFILER_END(lane);

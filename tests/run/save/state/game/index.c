@@ -703,6 +703,64 @@ TEST(the_far_field_shows_what_a_save_holds_and_makes_again_what_is_captured) {
     ss_temp_remove(t, root);
 }
 
+/* Plan 005 phase 14: what is edited reaches the far field within a second of ticks, with no autosave and no column leaving, so a mined log is
+ * gone wherever the far field stands in for full detail that has not come yet. */
+TEST(the_far_field_draws_an_edit_within_a_second_of_ticks) {
+    char *const root = ss_temp_directory(t);
+    REQUIRE(root != nullptr);
+    ss_game_rig_t *const rig = test_alloc(t, sizeof(ss_game_rig_t));
+    REQUIRE(ss_game_begin(t, rig, false));
+    game_t *const game = rig->game;
+    save_t *const save = rig->save;
+    world_t *const world = rig->world;
+    REQUIRE(save_open(save, root, SS_SEED) == SAVE_WORLD_OK);
+    const game_config_t config = {
+        .render_distance = 8u, .full_detail = 4u, .width = 64u, .height = 36u, .show_date = 0u};
+    REQUIRE(game_open(game, &config));
+    REQUIRE(game_settle(game));
+    render_lod_t *const lod = rig->render->borrowed_lod;
+    REQUIRE(lod != nullptr && lod->overlay != nullptr);
+    const int32_t chunk_x = atomic_load(&game->center_x), chunk_y = atomic_load(&game->center_y);
+    const int32_t ground = ss_far_top(game, chunk_x, chunk_y);
+    const int32_t tower_top = COLUMN_Z_GAMEPLAY_MAX;
+    const int32_t tower_storage = (tower_top - COLUMN_Z_STORAGE_MIN) >> lod->levels[0].shift << lod->levels[0].shift;
+    REQUIRE(ground < tower_storage);
+    const int32_t base_x = chunk_x * 16, base_y = chunk_y * 16;
+    for (int32_t z = tower_top - (int32_t)SECTION_SIZE; z <= tower_top; z++) {
+        for (int32_t y = 0; y < 16; y++) {
+            for (int32_t x = 0; x < 16; x++) {
+                REQUIRE(world_edit_block_set(&world->edit, base_x + x, base_y + y, z, BLOCK_ID_STONE) ==
+                        WORLD_EDIT_STATUS_CHANGED);
+            }
+        }
+    }
+    const uint64_t saves = save->autosave.saves_done;
+    for (uint32_t tick = 0u; tick < MC_GAME_TICK_HZ; tick++) {
+        game_sim_tick(game, (int64_t)(game->tick_count + 1u) * (1000000000 / MC_GAME_TICK_HZ));
+    }
+    REQUIRE(game_settle(game));
+    CHECK_EQ_I64(ss_far_top(game, chunk_x, chunk_y), tower_storage);
+    CHECK_EQ_U64(save->autosave.saves_done, saves);
+    /* And gone again, the same way. */
+    for (int32_t z = tower_top - (int32_t)SECTION_SIZE; z <= tower_top; z++) {
+        for (int32_t y = 0; y < 16; y++) {
+            for (int32_t x = 0; x < 16; x++) {
+                REQUIRE(world_edit_block_set(&world->edit, base_x + x, base_y + y, z, BLOCK_ID_AIR) ==
+                        WORLD_EDIT_STATUS_CHANGED);
+            }
+        }
+    }
+    for (uint32_t tick = 0u; tick < MC_GAME_TICK_HZ; tick++) {
+        game_sim_tick(game, (int64_t)(game->tick_count + 1u) * (1000000000 / MC_GAME_TICK_HZ));
+    }
+    REQUIRE(game_settle(game));
+    CHECK_EQ_I64(ss_far_top(game, chunk_x, chunk_y), ground);
+    game_close(game);
+    save_close(save);
+    ss_game_end(t, rig);
+    ss_temp_remove(t, root);
+}
+
 /* ---- The built program ---------------------------------------------------------------------------------------------------- */
 
 /* Opens the first world on the list, looks down, digs, and goes on until it is killed or a very long way past any save. At 640 by 480, scale 2: see

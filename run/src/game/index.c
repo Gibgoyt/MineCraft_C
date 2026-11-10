@@ -67,6 +67,9 @@ enum : int64_t {
 };
 enum : uint32_t {
     GAME_CLIMATE_AHEAD_BLOCKS = 2048u, /* climate tiles are kept this far past the render distance: plan 004, 6.9 */
+    /* With a far field, what is edited is captured for the save this often, in ticks, so the far field draws it within a second: plan
+     * 005 phase 14. The far field reads only what is captured, and the autosave writes what is captured, as it always has. */
+    GAME_FAR_CAPTURE_TICKS = MC_GAME_TICK_HZ,
 };
 
 #define GAME_START_EYE_HEIGHT 24.5f64
@@ -346,6 +349,27 @@ static gpu_status_t game_lod_open(game_t *game, const render_lod_plan_t *plan) {
     const gpu_status_t status = render_open_lod(render, plan, render_lod_sample_terrain, game->borrowed_terrain);
     save_t *const save = game->borrowed_save;
     if (status == GPU_STATUS_OK && save != nullptr && save->world.open != 0u) {
+        render_lod_overlay_set(render->borrowed_lod, save_world_far_line, &save->world, SAVE_WORLD_FAR_SCRATCH_BYTES);
+    }
+    return status;
+}
+
+void game_far_capture_tick(game_t *game) {
+    save_t *const save = game->borrowed_save;
+    if (save == nullptr || save->world.open == 0u || game->view.lod.level_count == 0u ||
+        game->tick_count % GAME_FAR_CAPTURE_TICKS != 0u) {
+        return;
+    }
+    /* What does not fit stays dirty, for the autosave, which says so. */
+    (void)save_world_capture_dirty(&save->world, &game->borrowed_world->edit);
+}
+
+/* The same, keeping what the far field has of each level that stays the same. */
+static gpu_status_t game_lod_replan(game_t *game, const render_lod_plan_t *plan) {
+    render_t *const render = game->borrowed_render;
+    const gpu_status_t status = render_replan_lod(render, plan, render_lod_sample_terrain, game->borrowed_terrain);
+    save_t *const save = game->borrowed_save;
+    if (status == GPU_STATUS_OK && render->borrowed_lod != nullptr && save != nullptr && save->world.open != 0u) {
         render_lod_overlay_set(render->borrowed_lod, save_world_far_line, &save->world, SAVE_WORLD_FAR_SCRATCH_BYTES);
     }
     return status;
@@ -801,12 +825,19 @@ static bool game_view_change(game_t *game, game_view_t *now) {
             }
         }
     }
+    /* A level that stays the same keeps what it has built, so a far column at the old setting goes only when its own replacement has come. */
+    gpu_status_t far = GPU_STATUS_OK;
     if (render->borrowed_lod != nullptr && memcmp(&now->lod, &was->lod, sizeof(now->lod)) != 0) {
-        render_close_lod(render);
+        far = now->lod.level_count != 0u ? game_lod_replan(game, &now->lod) : GPU_STATUS_OK;
+        if (now->lod.level_count == 0u) {
+            render_close_lod(render);
+        }
     }
     world_map_set_view_radius(&game->borrowed_world->map, now->full_detail);
-    if (now->lod.level_count != 0u && render->borrowed_lod == nullptr &&
-        game_lod_open(game, &now->lod) != GPU_STATUS_OK) {
+    if (far == GPU_STATUS_OK && now->lod.level_count != 0u && render->borrowed_lod == nullptr) {
+        far = game_lod_open(game, &now->lod);
+    }
+    if (far != GPU_STATUS_OK) {
         /* The world still works, to where full detail goes, and the fog comes in to meet it. */
         LOG_WARN("game: no room on the card for a far field, so the world stops at %" PRIu32 " chunks",
                  now->full_detail);

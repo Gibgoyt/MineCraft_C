@@ -1238,6 +1238,88 @@ void terrain_feature_fill_box(const terrain_feature_t *feature, const terrain_de
     }
 }
 
+/* ---- Many small boxes near each other ----------------------------------------------------------------------------- */
+
+void terrain_feature_cache_start(terrain_feature_cache_t *cache) {
+    cache->count = 0u;
+    cache->next = 0u;
+    cache->loads = 0u;
+    cache->_pad0 = 0u;
+}
+
+/* A chunk as feature_chunk_load leaves it, and walked as soon as anything asks: from the cache if it has it, or loaded into the
+ * slot used longest ago. What it holds is a pure function of the chunk, so which slot gives it makes no difference to a voxel. */
+static terrain_feature_chunk_t *feature_cache_get(const terrain_feature_t *feature, terrain_feature_cache_t *cache,
+                                                  int32_t chunk_x, int32_t chunk_y) {
+    for (uint32_t i = 0u; i < cache->count; i++) {
+        terrain_feature_chunk_t *const held = &cache->chunks[i];
+        if (held->chunk_x == chunk_x && held->chunk_y == chunk_y) {
+            return held;
+        }
+    }
+    uint32_t slot = cache->count;
+    if (slot < TERRAIN_FEATURE_CACHE_CHUNKS) {
+        cache->count++;
+    } else {
+        slot = cache->next;
+        cache->next = slot + 1u == TERRAIN_FEATURE_CACHE_CHUNKS ? 0u : slot + 1u;
+    }
+    feature_chunk_load(feature, chunk_x, chunk_y, &cache->chunks[slot]);
+    cache->loads++;
+    return &cache->chunks[slot];
+}
+
+void terrain_feature_fill_box_cached(const terrain_feature_t *feature, const terrain_density_box_t *box,
+                                     uint16_t *blocks, terrain_feature_cache_t *cache) {
+    const terrain_feature_canvas_t whole = terrain_feature_canvas_of(box, blocks);
+    if (whole.z_low > whole.z_high) {
+        return;
+    }
+    const int64_t tile = (int64_t)TERRAIN_FEATURE_CHUNK;
+    for (uint32_t iy = 0u; iy < box->count_y;) {
+        const int64_t y = (int64_t)box->origin_y + (int64_t)iy;
+        const int64_t chunk_y = y >> TERRAIN_FEATURE_CHUNK_SHIFT;
+        const int64_t y_left = (int64_t)box->count_y - (int64_t)iy;
+        const uint32_t count_y = (uint32_t)((chunk_y + 1) * tile - y < y_left ? (chunk_y + 1) * tile - y : y_left);
+        for (uint32_t ix = 0u; ix < box->count_x;) {
+            const int64_t x = (int64_t)box->origin_x + (int64_t)ix;
+            const int64_t chunk_x = x >> TERRAIN_FEATURE_CHUNK_SHIFT;
+            const int64_t x_left = (int64_t)box->count_x - (int64_t)ix;
+            const uint32_t count_x = (uint32_t)((chunk_x + 1) * tile - x < x_left ? (chunk_x + 1) * tile - x : x_left);
+            terrain_feature_canvas_t canvas = whole;
+            canvas.x_low = (int32_t)x;
+            canvas.x_high = (int32_t)x + (int32_t)count_x - 1;
+            canvas.y_low = (int32_t)y;
+            canvas.y_high = (int32_t)y + (int32_t)count_y - 1;
+            /* feature_tile, with every chunk from the cache: the same steps in the same order. */
+            terrain_feature_chunk_t *const own = feature_cache_get(feature, cache, (int32_t)chunk_x, (int32_t)chunk_y);
+            const bool own_touches = terrain_feature_chunk_touches(own, &canvas);
+            if (own_touches) {
+                feature_chunk_walk(feature, own);
+                feature_lake_paint(&canvas, own);
+                feature_chunk_rows(feature, &canvas, own, true);
+            }
+            for (int32_t dy = -1; dy <= 1; dy++) {
+                for (int32_t dx = -1; dx <= 1; dx++) {
+                    if (dx == 0 && dy == 0) {
+                        continue;
+                    }
+                    terrain_feature_chunk_t *const next =
+                        feature_cache_get(feature, cache, (int32_t)chunk_x + dx, (int32_t)chunk_y + dy);
+                    if (terrain_feature_chunk_touches(next, &canvas)) {
+                        feature_chunk_rows(feature, &canvas, next, false);
+                    }
+                }
+            }
+            if (own_touches) {
+                feature_cold_paint(&canvas, own);
+            }
+            ix += count_x;
+        }
+        iy += count_y;
+    }
+}
+
 bool terrain_feature_chunk_read_box(const terrain_feature_t *feature, const terrain_density_box_t *box,
                                     const uint16_t *blocks, terrain_feature_chunk_t *out) {
     const int32_t mask = (int32_t)TERRAIN_FEATURE_CHUNK - 1;

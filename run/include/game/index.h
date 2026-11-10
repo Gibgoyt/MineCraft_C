@@ -311,6 +311,10 @@ void game_deinit(game_t *game);
  * just before it. */
 void game_far_changes_take(game_t *game);
 
+/* With a far field and a save, once a second of ticks: what is edited is captured for the save, so that the far field, which reads only what
+ * is captured, draws it within a second. The autosave writes it as it writes any capture. From the end of game_sim_tick. */
+void game_far_capture_tick(game_t *game);
+
 /* Someone to tell, from the thread calling it, that a game_open that may take seconds is still going: looking for dry land in an
  * ocean does. A frame source that opens a world needs this, for vt_guard's watchdog and for a VT switch asked for meanwhile. nullptr for
  * nobody. */

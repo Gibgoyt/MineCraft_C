@@ -266,6 +266,12 @@ gpu_status_t world_buffers_init(world_buffers_t *buffers, device_memory_t *memor
                                 uint64_t host_bytes);
 void world_buffers_deinit(world_buffers_t *buffers);
 
+/* Takes over what from holds: its table, its window and its slabs, which are in a pool block of from's that buffers has been given, just
+ * after world_buffers_init, for the same sizes. from's host memory is only read, and may go once this returns. The whole table goes to the
+ * card at the next world_buffers_flush. For a far field level that stays the same when the levels round it change. Buffers of another size are
+ * refused, with GPU_STATUS_INVALID_ARGUMENT, and nothing taken. */
+gpu_status_t world_buffers_adopt(world_buffers_t *buffers, const world_buffers_t *from);
+
 /* Scrolls the table. The caller says which columns that changed, with world_buffers_column_set and _clear. */
 void world_buffers_set_window(world_buffers_t *buffers, world_buffers_window_t window);
 

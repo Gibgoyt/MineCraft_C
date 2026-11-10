@@ -305,6 +305,101 @@ gpu_status_t render_open_lod(render_t *render, const render_lod_plan_t *plan, re
     return GPU_STATUS_OK;
 }
 
+/* What render_replan_lod takes back from an old far field, once the new one no longer needs to read it. */
+static void render_lod_old_give_back(render_lod_t *old, arena_t *old_arena, heap_region_t *old_host) {
+    render_lod_deinit(old);
+    arena_deinit(old_arena);
+    heap_release(old_host);
+}
+
+gpu_status_t render_replan_lod(render_t *render, const render_lod_plan_t *plan, render_lod_sample_t sample,
+                               const void *sample_context) {
+    render_lod_t *const old = render->borrowed_lod;
+    uint32_t from[LOD_LEVELS_MAX];
+    uint32_t kept = 0u;
+    for (uint32_t j = 0u; j < LOD_LEVELS_MAX; j++) {
+        from[j] = old != nullptr && j < plan->level_count
+                      ? render_lod_level_matching(old, plan->shifts[j], plan->radii[j])
+                      : UINT32_MAX;
+        kept += from[j] != UINT32_MAX ? 1u : 0u;
+    }
+    if (kept == 0u) {
+        render_close_lod(render);
+        return plan->level_count != 0u ? render_open_lod(render, plan, sample, sample_context) : GPU_STATUS_OK;
+    }
+    render_lod_quiesce(old);
+    device_memory_t *const memory = render->borrowed_memory;
+    /* What is kept moves to its new level's place. The rest of the old goes back first, so that the card never holds both. */
+    device_block_t tables[LOD_LEVELS_MAX];
+    device_block_t pools[LOD_LEVELS_MAX];
+    memset(tables, 0, sizeof(tables));
+    memset(pools, 0, sizeof(pools));
+    for (uint32_t j = 0u; j < plan->level_count; j++) {
+        if (from[j] != UINT32_MAX) {
+            tables[j] = render->owned_lod_tables[from[j]];
+            pools[j] = render->owned_lod_pools[from[j]];
+            memset(&render->owned_lod_tables[from[j]], 0, sizeof(device_block_t));
+            memset(&render->owned_lod_pools[from[j]], 0, sizeof(device_block_t));
+        }
+    }
+    gpu_status_t status = GPU_STATUS_OK;
+    for (uint32_t i = 0u; i < LOD_LEVELS_MAX; i++) {
+        if (device_memory_free(memory, &render->owned_lod_pools[i]) != GPU_STATUS_OK ||
+            device_memory_free(memory, &render->owned_lod_tables[i]) != GPU_STATUS_OK) {
+            gpu_error_log(&memory->last_error);
+        }
+        render->owned_lod_tables[i] = tables[i];
+        render->owned_lod_pools[i] = pools[i];
+    }
+    for (uint32_t j = 0u; j < plan->level_count && status == GPU_STATUS_OK; j++) {
+        if (from[j] != UINT32_MAX) {
+            continue;
+        }
+        status = device_memory_alloc(memory, DEVICE_POOL_VOXELS, render_lod_table_bytes(plan, j), "far column table",
+                                     &render->owned_lod_tables[j]);
+        if (status == GPU_STATUS_OK) {
+            status = device_memory_alloc(memory, DEVICE_POOL_VOXELS, render_lod_pool_bytes(plan, j), "far section pool",
+                                         &render->owned_lod_pools[j]);
+        }
+    }
+    arena_t old_arena = render->arena_lod;
+    heap_region_t old_host = render->owned_lod_host;
+    render->borrowed_lod = nullptr;
+    render->frame.borrowed_lod = nullptr;
+    if (status != GPU_STATUS_OK) {
+        gpu_error_log(&memory->last_error);
+        render_lod_old_give_back(old, &old_arena, &old_host);
+        render_lod_blocks_give_back(render);
+        return status;
+    }
+    const uint64_t arena_bytes = render_lod_arena_bytes(plan) + sizeof(render_lod_t) + MC_CPU_CACHE_LINE_BYTES;
+    if (!heap_reserve(arena_bytes, &render->owned_lod_host)) {
+        render_lod_old_give_back(old, &old_arena, &old_host);
+        render_lod_blocks_give_back(render);
+        return GPU_STATUS_OUT_OF_MEMORY; /* it has said why */
+    }
+    arena_init(&render->arena_lod, "render_lod", render->owned_lod_host.owned_base, render->owned_lod_host.bytes);
+    render_lod_t *const lod = arena_alloc(&render->arena_lod, sizeof(render_lod_t), alignof(render_lod_t));
+    status = render_lod_init(lod, &render->arena_lod, memory, render->borrowed_job, plan, render->owned_lod_tables,
+                             render->owned_lod_pools, &render->owned_lod_hits, sample, sample_context);
+    for (uint32_t j = 0u; j < plan->level_count && status == GPU_STATUS_OK; j++) {
+        if (from[j] != UINT32_MAX) {
+            status = render_lod_level_adopt(lod, j, old, from[j]);
+        }
+    }
+    render_lod_old_give_back(old, &old_arena, &old_host);
+    if (status != GPU_STATUS_OK) {
+        render_lod_deinit(lod);
+        arena_deinit(&render->arena_lod);
+        heap_release(&render->owned_lod_host);
+        render_lod_blocks_give_back(render);
+        return status;
+    }
+    render->borrowed_lod = lod;
+    render->frame.borrowed_lod = lod;
+    return GPU_STATUS_OK;
+}
+
 void render_close_lod(render_t *render) {
     if (render->borrowed_lod == nullptr) {
         return;

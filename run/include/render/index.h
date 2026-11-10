@@ -146,6 +146,13 @@ void render_close_frame(render_t *render);
 gpu_status_t render_open_lod(render_t *render, const render_lod_plan_t *plan, render_lod_sample_t sample,
                              const void *sample_context);
 
+/* The far field in other levels, as when render distance or full detail changes. A level it has already, of the same shift and radius,
+ * keeps its blocks and every column it has built, so what is shown stays until what replaces it comes; the rest are given back and taken
+ * anew. With none to keep it is render_close_lod and render_open_lod. The gpu thread must have stopped using it, and an overlay is set again
+ * after. On failure logs why, and there is no far field. */
+gpu_status_t render_replan_lod(render_t *render, const render_lod_plan_t *plan, render_lod_sample_t sample,
+                               const void *sample_context);
+
 /* Gives all of that back. Safe if none is open. The gpu thread must have stopped using it. */
 void render_close_lod(render_t *render);
 

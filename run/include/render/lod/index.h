@@ -9,6 +9,7 @@
 #include "job/index.h"
 #include "machine/index.h"
 #include "render/upload/index.h"
+#include "terrain/feature/index.h"
 #include "types/index.h"
 
 #include <stdatomic.h>
@@ -37,12 +38,17 @@ enum : uint64_t {
     RENDER_LOD_POOL_BYTES_PER_COLUMN = 64ull << 10,
     /* What one frame may send of finished columns: as much again as the world's own queue. */
     RENDER_LOD_FRAME_BYTES = RENDER_UPLOAD_BUDGET_BYTES_DEFAULT,
+    /* What a sample may keep from one line of a column to the next: render_lod_sample_terrain's chunks of what grows. */
+    RENDER_LOD_SAMPLE_SCRATCH_BYTES = (sizeof(terrain_feature_cache_t) + MC_CPU_CACHE_LINE_BYTES - 1u) /
+                                      MC_CPU_CACHE_LINE_BYTES * MC_CPU_CACHE_LINE_BYTES,
 };
 static_assert(RENDER_LOD_RADIUS_COLUMNS > RENDER_LOD_MARGIN_COLUMNS);
 
 /* One column's worth of a place in the world, as storage heights from 0 to RENDER_LOD_HEIGHT_BLOCKS - 1, which a voxel of 1 << shift blocks
- * is made from. Called on workers, so it reads only what cannot change, and writes only out. */
-typedef void (*render_lod_sample_t)(const void *borrowed_context, int32_t x, int32_t y, uint32_t shift, uint16_t *out);
+ * is made from. Called on workers, so it reads only what cannot change, and writes only out and scratch: RENDER_LOD_SAMPLE_SCRATCH_BYTES,
+ * 64 byte aligned, all zero at the start of each column and kept from one of its lines to the next. */
+typedef void (*render_lod_sample_t)(const void *borrowed_context, int32_t x, int32_t y, uint32_t shift, uint16_t *out,
+                                    uint8_t *scratch);
 
 /* What may have changed from what sample says, written over out, for the same place. Also on workers, at the same time as each other, unlike sample free to read
  * what is changing. scratch is the job's, from one call to the next, 64 byte aligned and as big as was asked for, with its first 64 bytes zero to begin with. */
@@ -145,8 +151,10 @@ uint64_t render_lod_arena_bytes(const render_lod_plan_t *plan);
 int32_t render_lod_cells_from_column(const uint16_t *column, uint32_t shift, uint64_t stride, uint16_t *out);
 
 /* A render_lod_sample_t for a world's own ground: its context is a terrain_t. All of terrain_generate_box that can be seen from far off: not
- * caves and ores, which take up to a tenth of what is left, are under the ground and cannot be told from it at this size. */
-void render_lod_sample_terrain(const void *borrowed_context, int32_t x, int32_t y, uint32_t shift, uint16_t *out);
+ * caves and ores, which take up to a tenth of what is left, are under the ground and cannot be told from it at this size. The chunks of what
+ * grows are kept in scratch, a terrain_feature_cache_t, so a column walks each once and not once for each of its lines: the same blocks. */
+void render_lod_sample_terrain(const void *borrowed_context, int32_t x, int32_t y, uint32_t shift, uint16_t *out,
+                               uint8_t *scratch);
 
 /* Takes what it needs from the arena, and starts each level empty, on the card too. All of it must outlive this. tables and pools are the
  * Owner's blocks, one of each per level; hits is lod_hits_bytes of the picture. On failure logs why, and render_lod_deinit is still safe. */
@@ -163,6 +171,18 @@ void render_lod_column_changed(render_lod_t *lod, int32_t chunk_x, int32_t chunk
 
 /* All of them, for when it is no longer known which. */
 void render_lod_all_changed(render_lod_t *lod);
+
+/* Waits for every job, and forgets what they made: each column one was making is wanted again, and what was shown stays shown. Then
+ * nothing of it is on a worker, for render_lod_level_adopt. Safe on zero bytes. */
+void render_lod_quiesce(render_lod_t *lod);
+
+/* Which of lod's levels has this shift and radius, or UINT32_MAX for none. */
+uint32_t render_lod_level_matching(const render_lod_t *lod, uint32_t shift, uint32_t radius);
+
+/* Just after render_lod_init, before any render_lod_frame: level index of lod takes over level from_index of from, which has the same shift
+ * and radius, has been quiesced, and has given lod its table and pool blocks. Every column it had built is shown as it was, and asked for
+ * again only as from would have. from's own memory is only read, and may go once this returns. Anything but GPU_STATUS_OK has logged why. */
+gpu_status_t render_lod_level_adopt(render_lod_t *lod, uint32_t index, const render_lod_t *from, uint32_t from_index);
 
 /* Waits for any job still running, since its memory is about to go. Safe on zero bytes. */
 void render_lod_deinit(render_lod_t *lod);

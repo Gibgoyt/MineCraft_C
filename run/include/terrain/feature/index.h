@@ -123,6 +123,22 @@ typedef struct terrain_feature_chunk_t {
 } terrain_feature_chunk_t;
 static_assert(sizeof(terrain_feature_chunk_t) == 2080);
 
+enum : uint32_t {
+    /* Chunks one cache holds: the ones round a row of a far field column's lines, at its coarsest level with features. */
+    TERRAIN_FEATURE_CACHE_CHUNKS = 48u,
+};
+
+/* The chunks a run of small boxes close together have needed, each loaded and walked once: for the far field, whose lines are a few blocks
+ * apart and each a box of its own. Nothing in it depends on which boxes asked, so the bytes are terrain_feature_fill_box's. */
+typedef struct terrain_feature_cache_t {
+    terrain_feature_chunk_t chunks[TERRAIN_FEATURE_CACHE_CHUNKS]; /* 0 */
+    uint32_t count;                                               /* 99840: slots in use */
+    uint32_t next;                                                /* 99844: the slot to load into next once all are */
+    uint32_t loads;                                               /* 99848: chunks loaded, for a bench */
+    uint32_t _pad0;                                               /* 99852 */
+} terrain_feature_cache_t;
+static_assert(sizeof(terrain_feature_cache_t) == 99856);
+
 /* Takes the features from arena, for this world's seed. For use while terrain_init runs. What it is given must outlive it. */
 void terrain_feature_init(terrain_feature_t **out, arena_t *arena, uint64_t seed, const terrain_biome_t *biome,
                           const terrain_hydrology_t *hydrology, const terrain_surface_t *surface,
@@ -159,6 +175,14 @@ terrain_feature_lake_t terrain_feature_chunk_lake(const terrain_feature_t *featu
  * every earlier stage in it: see the README's order. Allocates nothing, and given what those stages left, a voxel is a pure
  * function of the features and the voxel: splitting a box into parts, in any order, on any thread, gives the same bytes. */
 void terrain_feature_fill_box(const terrain_feature_t *feature, const terrain_density_box_t *box, uint16_t *blocks);
+
+/* Empty, for a new run of boxes. */
+void terrain_feature_cache_start(terrain_feature_cache_t *cache);
+
+/* terrain_feature_fill_box, the same bytes, with the chunks it needs taken from cache and kept there: for many small boxes close together,
+ * which would otherwise each walk the same chunks again. */
+void terrain_feature_fill_box_cached(const terrain_feature_t *feature, const terrain_density_box_t *box,
+                                     uint16_t *blocks, terrain_feature_cache_t *cache);
 
 /* The same, for a box that is one whole chunk, whose own columns were read by terrain_feature_chunk_read_box. Costs a look at the
  * chunks round it, and none at its own, and gives the same bytes. */
