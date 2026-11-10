@@ -2,6 +2,7 @@
  * came to. See README.md. */
 #include "display/headless/png/index.h"
 #include "file/index.h"
+#include "game/fill/index.h"
 #include "game/index.h"
 #include "game/weather/index.h"
 #include "gpu_bridge/index.h"
@@ -262,8 +263,11 @@ typedef struct bench_result_t {
     uint8_t sound;         /* 309: what it measured was what it was meant to */
     uint8_t met_fps;       /* 310 */
     uint8_t met_tick;      /* 311 */
+    /* 312: plan 005 phase 14's fill-in report of the opening, in seconds from game_open, -1 for never: the first column drawn, the rings
+     * out to 4 chunks, every ring out to full detail, the far field (0 with none), and all of it. */
+    float64_t fill_s[5];
 } bench_result_t;
-static_assert(sizeof(bench_result_t) == 312);
+static_assert(sizeof(bench_result_t) == 352);
 
 /* What the command line asked for. */
 typedef struct bench_options_t {
@@ -971,6 +975,9 @@ static void bench_row_print(const bench_row_t *row, const bench_result_t *r) {
            "", (libc_double_t)r->tick_mean_ms, (libc_double_t)r->tick_p99_ms, (libc_double_t)r->tick_worst_ms,
            r->columns_made, (libc_double_t)bench_mib(r->upload_bytes), r->budget_stops, r->heap_calls,
            (libc_double_t)r->open_seconds);
+    printf("%-26s filled in: first %.2f, rings to 4 %.2f, all rings %.2f, far field %.2f, all %.2f s\n", "",
+           (libc_double_t)r->fill_s[0], (libc_double_t)r->fill_s[1], (libc_double_t)r->fill_s[2],
+           (libc_double_t)r->fill_s[3], (libc_double_t)r->fill_s[4]);
     printf("%-26s vram voxels %.0f (%.0f in use) textures %.0f frames %.0f MiB; ", "",
            (libc_double_t)bench_mib(r->vram_bytes[DEVICE_POOL_VOXELS]), (libc_double_t)bench_mib(r->voxels_used),
            (libc_double_t)bench_mib(r->vram_bytes[DEVICE_POOL_TEXTURES]),
@@ -1045,6 +1052,14 @@ static bool bench_row(bench_t *bench, const bench_row_t *row, const bench_option
     game_fly(game, &still, 0.0f32); /* which tells the world where the eye now is */
     bool ok = game_settle(game);
     result->open_seconds = time_ns_to_ms(time_now_ns() - opening_ns) / 1000.0f64;
+    {
+        game_fill_summary_t fill;
+        game_fill_summary(game_fill_of(game), &fill);
+        const int64_t times[5] = {fill.first_ns, fill.ring_near_ns, fill.near_ns, fill.far_ns, fill.done_ns};
+        for (uint32_t i = 0u; i < 5u; i++) {
+            result->fill_s[i] = times[i] < 0 ? -1.0f64 : (float64_t)times[i] / (float64_t)TIME_NS_PER_SECOND;
+        }
+    }
     if (ok) {
         ok = row->mode == BENCH_MODE_LIVE ? bench_row_live(bench, row, &place, height, result)
                                           : bench_row_settled(bench, row, &place, height, result);
@@ -1106,7 +1121,7 @@ static bool bench_record(const bench_result_t *results, const bench_options_t *o
         for (uint32_t k = 0u; k < FRAME_KERNEL_COUNT; k++) {
             fprintf(file, "\t%s_ms", frame_kernel_name((frame_kernel_t)k));
         }
-        fprintf(file, "\n");
+        fprintf(file, "\tfill_first_s\tfill_near_s\tfill_rings_s\tfill_far_s\tfill_all_s\n");
     }
     char date[32] = "";
     const time_t now = time(nullptr);
@@ -1140,6 +1155,9 @@ static bool bench_record(const bench_result_t *results, const bench_options_t *o
                 r->voxels_used);
         for (uint32_t k = 0u; k < FRAME_KERNEL_COUNT; k++) {
             fprintf(file, "\t%.3f", (libc_double_t)r->kernel_ms[k]);
+        }
+        for (uint32_t k = 0u; k < 5u; k++) {
+            fprintf(file, "\t%.2f", (libc_double_t)r->fill_s[k]);
         }
         fprintf(file, "\n");
     }

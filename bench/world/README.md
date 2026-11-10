@@ -155,6 +155,12 @@ The table above has god rays on only in `plains/orbit-godrays`, and a settled ro
 
 God rays cost 0.3 to 0.5 ms on `plains`, and 0.7 to 1.8 ms on a settled row elsewhere. **So with all effects on, 2 of these 11 views miss 120 fps, by 8% and 11%.** Blank cells were not run. These runs are not in `history.tsv`.
 
+## Plan 005 phase 14: how long the world takes to fill in
+
+Each row now prints `filled in:` and the history has five more columns, `fill_first_s`, `fill_near_s`, `fill_rings_s`, `fill_far_s` and `fill_all_s`: the opening's fill-in report (`run/src/game/fill/`), in seconds from `game_open`. The first column drawn, the rings out to 4 chunks, every ring out to full detail, the far field done (0 with none), and all of it. A settled row settles on one thread, so this is the workers' speed with nothing else in the way.
+
+`eb650bd3: plan 005 phase 14, fill-in times, before the starvation fixes` in `history.tsv`, 2026-11-10, `build/release/bin/bench_world --record bench/world/history.tsv`, exit status 0, on the release preset with other agents' builds queued behind the lock (so the fps are not comparable with the profile rows above). At render distance 32 every row had the rings out to 4 chunks in 0.13 to 0.36 s and all 33 rings in 7.4 to 11.0 s. **With a far field the near rings wait for it:** `plains/flight-live-r128` drew all 33 near rings at 107.8 s and the far field at 145.1 s, and `plains/orbit-r512` at 96.1 s and 149.7 s, against 7.5 s for the same place at 32. That is phase 14's starvation, in the bench.
+
 ## Plan 004 phase 11, second pass: from a cool machine
 
 `ffc94238: plan 004 phase 11, second pass, cool machine` in `history.tsv`, 2026-11-08, `build/profile/bin/bench_world --record bench/world/history.tsv`, exit status 0, 602.9 s, started with the CPU idle (load average about 1) and the card idle at 65 degrees C. **3 of 16 rows at render distance 32 met 120 fps** (`jungle/flight-live` 120.7, `jagged_peaks/orbit` 160.3, `jagged_peaks/flight-live` 151.8); `plains/orbit` 85.1, `plains/flight` 102.8, `cave/orbit` 89.8, `night/walk-mobs` 77.8, `deep_ocean/orbit` 41.8. The four weather rows, last, read 23.9 to 25.4 fps, but every pass of theirs, coarse and primary included, which weather does not touch, is 3.4 to 3.7 times `plains/orbit`'s: the card had slowed again by then (`nvidia-smi` mid-run: 1575 MHz of 2100, slowdown reasons power cap and thermal). So they say nothing about weather's cost, which phase 08's like-with-like runs below still give. `night/walk-mobs` tick p99 1.974 ms, worst 2.751 (target 5, met).
