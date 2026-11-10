@@ -115,7 +115,7 @@ bool save_world_record_valid_within(const uint8_t *record, uint64_t bytes, uint3
         for (uint32_t i = 0u; i < SECTION_VOXELS; i++) {
             uint16_t state = 0u;
             memcpy(&state, body + (uint64_t)i * sizeof(state), sizeof(state));
-            if (state >= state_count) {
+            if (block_state_id(state) >= state_count) {
                 return false;
             }
         }
@@ -127,7 +127,7 @@ bool save_world_record_valid_within(const uint8_t *record, uint64_t bytes, uint3
     }
     memcpy(out_palette, body, (uint64_t)palette_count * sizeof(uint16_t));
     for (uint32_t i = 0u; i < palette_count; i++) {
-        if (out_palette[i] >= state_count) {
+        if (block_state_id(out_palette[i]) >= state_count) {
             return false;
         }
     }

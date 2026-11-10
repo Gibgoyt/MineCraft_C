@@ -5,6 +5,7 @@
 #include "arena/index.h"
 #include "assert/index.h"
 #include "machine/index.h"
+#include "types/block_state/index.h"
 
 #include <stdint.h>
 
@@ -20,6 +21,10 @@ enum : uint32_t {
 };
 /* The bit layout of section_voxel_index, and of every array here, relies on this. */
 static_assert(SECTION_SIZE == 16u);
+/* A state here is a whole voxel: the block id in the low 12 bits and the block's own state in the 4 above, as
+ * run/include/types/block_state/ lays them out. A palette tells two facings of one block apart as it does two blocks, so a
+ * section costs more only when it holds both. */
+static_assert((uint32_t)SECTION_BITS_DIRECT == (uint32_t)BLOCK_STATE_ID_BITS + 4u);
 
 /* Fully sunlit and no block light: what air under an open sky holds. */
 #define SECTION_LIGHT_OPEN_SKY ((uint8_t)0xF0u)

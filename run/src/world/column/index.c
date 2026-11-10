@@ -32,11 +32,20 @@ static uint32_t column_voxel_of(uint32_t x, uint32_t y, int32_t z) {
     return section_voxel_index(x, y, column_section_local_of(z));
 }
 
-bool column_block_get(const column_t *column, uint32_t x, uint32_t y, int32_t z, uint16_t *out) {
+bool column_voxel_get(const column_t *column, uint32_t x, uint32_t y, int32_t z, uint16_t *out) {
     if (!column_z_in_gameplay(z)) {
         return false;
     }
     *out = section_block_get(&column->sections[column_section_of(z)], column_voxel_of(x, y, z));
+    return true;
+}
+
+bool column_block_get(const column_t *column, uint32_t x, uint32_t y, int32_t z, uint16_t *out) {
+    uint16_t voxel = 0u;
+    if (!column_voxel_get(column, x, y, z, &voxel)) {
+        return false;
+    }
+    *out = block_state_id(voxel);
     return true;
 }
 

@@ -72,6 +72,12 @@ bool save_names_are_live(const uint8_t *data, uint64_t bytes);
 /* What each number of a list means in this build: out has view->count, and SAVE_NAMES_LOST for a name it does not have. Returns how many of those. */
 uint32_t save_names_map(const save_names_view_t *view, save_names_kind_t kind, uint16_t *out);
 
+/* A block an older build had under a name this one does not, and is now another block in a state: the four torches on walls
+ * became one wall_torch with a facing, in plan 005 phase 12. save_names_map finds such a name's new block, and this gives the
+ * state bits it was in, of run/include/types/block_state/, or 0 for any other name and any other kind. Only a world's blocks
+ * have states: save/state's ids take the block alone. */
+uint16_t save_names_renamed_state(save_names_kind_t kind, const char *name);
+
 /* Tells the log about each name a map could not find, and what becomes of it. */
 void save_names_lost_log(const save_names_view_t *view, const uint16_t *map, const char *where, const char *what,
                          const char *becomes);

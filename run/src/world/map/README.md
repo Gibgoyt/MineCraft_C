@@ -14,7 +14,7 @@
 - `world_map_set_center`, `world_map_set_view_radius`: move the window, and how far columns are wanted.
 - `world_map_stream_take`, `world_map_stream_commit`, `world_map_stream_cancel`: requests for the nearest missing columns, and what comes back.
 - `world_map_stream_leaving`, `world_map_unload`: columns out of range, and ending one.
-- `world_map_block_get`, `world_map_light_get`: one voxel at world coordinates, or why not.
+- `world_map_block_get`, `world_map_voxel_get`, `world_map_light_get`: one voxel at world coordinates, or why not. The block id alone, or with its state: see `column_block_get`.
 
 **May be called by:** `run/src/world/` and its parts, `game`, `entity` and its parts, `mob` and its parts, `physics` and its parts, and `player` and its parts.
 **Depends on:** `arena`, `assert`, and its siblings `world/column` and `world/section`, whose types it stores.

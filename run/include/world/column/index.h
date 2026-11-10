@@ -142,8 +142,12 @@ void column_init(column_t *column, int32_t chunk_x, int32_t chunk_y);
 void column_deinit(column_t *column, section_pool_t *pool);
 
 /* One voxel. x and y are from 0 to COLUMN_SIZE - 1: column_local_of. z is a world z, and anything outside gameplay's range
- * gets COLUMN_STATUS_Z_OUT_OF_RANGE, or false from a read with *out left alone, though storage reaches a little further. */
+ * gets COLUMN_STATUS_Z_OUT_OF_RANGE, or false from a read with *out left alone, though storage reaches a little further.
+ * column_block_get gives the block id alone, which is what nearly everything wants; column_voxel_get gives the id with its
+ * state, run/include/types/block_state/, for what goes by which way a block faces. column_block_set stores what it is given,
+ * state and all: an id alone is that block facing north. */
 bool column_block_get(const column_t *column, uint32_t x, uint32_t y, int32_t z, uint16_t *out);
+bool column_voxel_get(const column_t *column, uint32_t x, uint32_t y, int32_t z, uint16_t *out);
 bool column_light_get(const column_t *column, uint32_t x, uint32_t y, int32_t z, uint8_t *out);
 column_status_t column_block_set(column_t *column, section_pool_t *pool, uint32_t x, uint32_t y, int32_t z,
                                  uint16_t state);

@@ -11,6 +11,7 @@
 - `save_names_write`, `save_names_write_all`: them as lists.
 - `save_names_read`, `save_names_are_live`, `save_names_next`: a list looked at, trusting nothing, and compared with this build's.
 - `save_names_map`, `save_names_lost_log`: a list's numbers in this build's, and telling the log which it does not have.
+- `save_names_renamed_state`: for a block name this build has under another name, the state it now is in. `save_names_map` already finds the new block for such a name. The four `torch_wall_*` are `wall_torch` facing their walls since plan 005 phase 12.
 
 **May be called by:** `save/world`, `save/state`, `save/state/translate`, and their tests.
 **Depends on:** `log`, `assert`, and the generated block, item and mob tables.

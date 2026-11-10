@@ -275,7 +275,7 @@ void world_map_unload(world_map_t *map, uint32_t slot) {
     map->change_count++;
 }
 
-world_map_status_t world_map_block_get(const world_map_t *map, int32_t x, int32_t y, int32_t z, uint16_t *out) {
+world_map_status_t world_map_voxel_get(const world_map_t *map, int32_t x, int32_t y, int32_t z, uint16_t *out) {
     if (!column_z_in_gameplay(z)) {
         return WORLD_MAP_STATUS_Z_OUT_OF_RANGE;
     }
@@ -286,6 +286,15 @@ world_map_status_t world_map_block_get(const world_map_t *map, int32_t x, int32_
     *out = section_block_get(&column->sections[column_section_of(z)],
                              section_voxel_index(column_local_of(x), column_local_of(y), column_section_local_of(z)));
     return WORLD_MAP_STATUS_OK;
+}
+
+world_map_status_t world_map_block_get(const world_map_t *map, int32_t x, int32_t y, int32_t z, uint16_t *out) {
+    uint16_t voxel = 0u;
+    const world_map_status_t status = world_map_voxel_get(map, x, y, z, &voxel);
+    if (status == WORLD_MAP_STATUS_OK) {
+        *out = block_state_id(voxel);
+    }
+    return status;
 }
 
 world_map_status_t world_map_light_get(const world_map_t *map, int32_t x, int32_t y, int32_t z, uint8_t *out) {

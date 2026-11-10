@@ -1,6 +1,6 @@
 # run/src/world/section
 
-**Purpose:** stores one 16x16x16 cube of `uint16_t` block states and `uint8_t` light, as small as its contents allow, with no array at all for a uniform one.
+**Purpose:** stores one 16x16x16 cube of `uint16_t` block states and `uint8_t` light, as small as its contents allow, with no array at all for a uniform one. A state is a whole voxel: the block id in its low 12 bits and the block's own state (facing, half, open) in the 4 above, as `run/include/types/block_state/` lays them out.
 **Tier:** Arena (depth 2): takes memory from an `arena_t *` that `run/src/world/` gives its pool, and never frees: released blocks wait in the pool for the next of their size.
 **Owns:** nothing. A section holds its arrays from the pool, and they lie in its parent's arena.
 **Lifetime:** World.
@@ -64,3 +64,7 @@ From ctest `run_world_section`, test `memory_per_section_is_as_the_readme_says`,
 A free block serves only its own size, so a world that used many 1-bit blocks and now wants 4-bit ones takes new memory while the old wait. `section_pool_t`'s `carved_bytes` against `live_bytes` shows how much. `world_reset` clears it, and nothing has yet needed more.
 
 A state's meaning is not known here. Block 0 is air, as `run/src/world/column/` asserts against the generated tables, so that zero bytes are an empty section.
+
+## The state beside the id (plan 005 phase 12)
+
+Nothing here changed for it: a voxel was already a `uint16_t`, and the block table never had more than 4096 ids, so the top 4 bits were always 0. They now hold the block's state. A palette tells two facings of one block apart as it tells two blocks apart, so a section costs more only when it holds a block in more than one state: a staircase turning a corner is two palette entries where it was one. The table of memory above did not move, and neither did `bench_world`'s: see that phase's file.

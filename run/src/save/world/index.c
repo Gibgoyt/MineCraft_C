@@ -5,6 +5,7 @@
 #include "log/index.h"
 #include "tables/blocks/index.h"
 #include "terrain/index.h"
+#include "world/block_state/index.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -96,23 +97,29 @@ uint64_t save_world_table_hash(void) {
 
 /* ---- What its numbers mean -------------------------------------------------------------------------------------------- */
 
-/* A section's states as they go into a record: places in this world's list. */
+/* A section's states as they go into a record: places in this world's list, with each block's state above. */
 static void save_world_states_to_file(const save_world_t *save, uint16_t *states) {
     if (save->names_same != 0u) {
         return;
     }
     for (uint32_t i = 0u; i < SECTION_VOXELS; i++) {
-        states[i] = save->borrowed_live_to_file[states[i]];
+        states[i] = (uint16_t)(save->borrowed_live_to_file[block_state_id(states[i])] | block_state_bits(states[i]));
     }
 }
 
-/* And what one read means now. A record has been checked against the list, so each is in the map. */
+/* And what one read means now. A record has been checked against the list, so each place is in the map. A block renamed into
+ * a state brings that state with it, and a block keeps only the state its file declares now, so that a block that no longer
+ * turns is drawn as it is. */
 static void save_world_states_to_live(const save_world_t *save, uint16_t *states) {
     if (save->names_same != 0u) {
+        for (uint32_t i = 0u; i < SECTION_VOXELS; i++) {
+            states[i] = block_state_clean(states[i]);
+        }
         return;
     }
     for (uint32_t i = 0u; i < SECTION_VOXELS; i++) {
-        states[i] = save->borrowed_file_to_live[states[i]];
+        states[i] =
+            block_state_clean(save->borrowed_file_to_live[block_state_id(states[i])] | block_state_bits(states[i]));
     }
 }
 
@@ -122,7 +129,7 @@ static bool save_world_names_append(save_world_t *save, const char *name) {
     memcpy(&head, save->borrowed_names, sizeof(head));
     const uint64_t bytes = strlen(name) + 1u;
     const uint64_t names_end = sizeof(head) + (uint64_t)head.bytes;
-    if (head.count >= SAVE_NAMES_ENTRIES_MAX || names_end + bytes + 8u > SAVE_NAMES_TABLE_BYTES_MAX) {
+    if (head.count >= SAVE_WORLD_NAMES_MAX || names_end + bytes + 8u > SAVE_NAMES_TABLE_BYTES_MAX) {
         return false;
     }
     memcpy(save->borrowed_names + names_end, name, bytes);
@@ -152,6 +159,24 @@ static save_world_status_t save_world_names_settle(save_world_t *save) {
             save->borrowed_live_to_file[live] = (uint16_t)(file - 1u);
         }
     }
+    /* A block renamed into a state: its place maps to the new block in that state. Only file_to_live has it: what is written
+     * goes by the new block's own name, so that the old name is never given a state it did not have. */
+    const char *name = view.borrowed_names;
+    for (uint32_t file = 0u; file < view.count; file++) {
+        const uint16_t state = save_names_renamed_state(SAVE_NAMES_KIND_BLOCKS, name);
+        if (state != 0u && save->borrowed_file_to_live[file] != SAVE_NAMES_LOST) {
+            save->borrowed_live_to_file[save->borrowed_file_to_live[file]] = SAVE_NAMES_LOST;
+            save->borrowed_file_to_live[file] = (uint16_t)(save->borrowed_file_to_live[file] | state);
+        }
+        name = save_names_next(name);
+    }
+    /* That may have taken the new block's only place: find it again, as the list has it under its own name or not at all. */
+    for (uint32_t file = view.count; file > 0u; file--) {
+        const uint16_t live = save->borrowed_file_to_live[file - 1u];
+        if (live != SAVE_NAMES_LOST && block_state_bits(live) == 0u) {
+            save->borrowed_live_to_file[live] = (uint16_t)(file - 1u);
+        }
+    }
     if (lost != 0u) {
         save_names_lost_log(&view, save->borrowed_file_to_live, save->borrowed_directory, "block",
                             "it reads as air, and is air once its section is next saved");
@@ -177,6 +202,7 @@ static save_world_status_t save_world_names_settle(save_world_t *save) {
         count++;
         added++;
     }
+    /* A list renamed into states is never the same numbering: its places need the map. */
     bool same = count == BLOCK_COUNT;
     for (uint32_t file = 0u; file < count && same; file++) {
         same = save->borrowed_file_to_live[file] == file;
@@ -511,8 +537,8 @@ static save_world_status_t save_world_manifest_parse(save_world_t *save, uint64_
                   save->borrowed_directory, header.version);
         return SAVE_WORLD_ERROR_VERSION;
     }
-    if (header.version != SAVE_WORLD_VERSION) {
-        LOG_ERROR("save: %s is in version %" PRIu32 " of the format, and this game reads version %" PRIu32,
+    if (header.version > SAVE_WORLD_VERSION) {
+        LOG_ERROR("save: %s is in version %" PRIu32 " of the format, and this game reads up to version %" PRIu32,
                   save->borrowed_directory, header.version, (uint32_t)SAVE_WORLD_VERSION);
         return SAVE_WORLD_ERROR_VERSION;
     }
@@ -550,6 +576,12 @@ static save_world_status_t save_world_manifest_parse(save_world_t *save, uint64_
         LOG_ERROR(
             "save: the list of blocks of %s is not the one its manifest says, so nothing says what its numbers mean",
             save->borrowed_directory);
+        return SAVE_WORLD_ERROR_TABLES;
+    }
+    if (view.count > SAVE_WORLD_NAMES_MAX) {
+        LOG_ERROR("save: the list of blocks of %s has %" PRIu32 " names, more than the %" PRIu32
+                  " a state number has room for",
+                  save->borrowed_directory, view.count, (uint32_t)SAVE_WORLD_NAMES_MAX);
         return SAVE_WORLD_ERROR_TABLES;
     }
     save_world_region_t *const regions = save->borrowed_manifest[0];
@@ -835,11 +867,17 @@ typedef struct save_world_delta_writer_t {
 } save_world_delta_writer_t;
 static_assert(sizeof(save_world_delta_writer_t) == 72);
 
+/* Whether this game reads a file of this version. Version 5's records are version 6's with no state in them, so a file of
+ * either is read, and a record carried from one to a new file keeps its bytes. */
+static bool save_world_version_reads(uint32_t version) {
+    return version >= SAVE_WORLD_VERSION_FIRST_WITH_NAMES && version <= SAVE_WORLD_VERSION;
+}
+
 static bool save_world_delta_header_good(const save_world_t *save, const save_world_delta_header_t *header,
                                          const save_world_region_t *region) {
     return memcmp(header->magic, SAVE_WORLD_DELTA_MAGIC, sizeof(header->magic)) == 0 &&
            header->checksum == save_world_hash(header, offsetof(save_world_delta_header_t, checksum)) &&
-           header->version == SAVE_WORLD_VERSION && header->header_bytes == sizeof(*header) &&
+           save_world_version_reads(header->version) && header->header_bytes == sizeof(*header) &&
            header->seed == save->seed && header->generation == region->generation &&
            header->file_bytes == region->file_bytes && header->section_count == region->section_count &&
            header->region_x == region->region_x && header->region_y == region->region_y;
@@ -1519,7 +1557,7 @@ void save_world_far_line(void *borrowed_save, int32_t x, int32_t y, uint16_t *ou
         const uint32_t section = column_mask_lowest(left);
         for (uint32_t z = 0u; z < SECTION_SIZE; z++) {
             out[section * SECTION_SIZE + z] =
-                states[(uint64_t)section * SECTION_VOXELS + section_voxel_index(local_x, local_y, z)];
+                block_state_id(states[(uint64_t)section * SECTION_VOXELS + section_voxel_index(local_x, local_y, z)]);
         }
     }
 }

@@ -22,6 +22,50 @@ enum : uint32_t {
     SAVE_NAMES_LOG_MOST = 32u,
 };
 
+/* A block that went under another name. */
+typedef struct save_names_renamed_t {
+    const char *old_name; /* 0 */
+    const char *new_name; /* 8: a name this build's table has */
+    uint16_t state;       /* 16: the state bits it was in */
+    uint8_t _pad0[6];     /* 18 */
+} save_names_renamed_t;
+static_assert(sizeof(save_names_renamed_t) == 24);
+
+/* Each torch on a wall was named for the way it leaned out, and its wall was the other way, which is where a wall torch faces. */
+static const save_names_renamed_t SAVE_NAMES_RENAMED_BLOCKS[] = {
+    {"torch_wall_east", "wall_torch", (uint16_t)(BLOCK_FACING_WEST << BLOCK_STATE_FACING_SHIFT), {0}},
+    {"torch_wall_west", "wall_torch", (uint16_t)(BLOCK_FACING_EAST << BLOCK_STATE_FACING_SHIFT), {0}},
+    {"torch_wall_north", "wall_torch", (uint16_t)(BLOCK_FACING_SOUTH << BLOCK_STATE_FACING_SHIFT), {0}},
+    {"torch_wall_south", "wall_torch", (uint16_t)(BLOCK_FACING_NORTH << BLOCK_STATE_FACING_SHIFT), {0}},
+};
+enum : uint32_t {
+    SAVE_NAMES_RENAMED_BLOCK_COUNT = sizeof(SAVE_NAMES_RENAMED_BLOCKS) / sizeof(SAVE_NAMES_RENAMED_BLOCKS[0]),
+};
+
+/* Only for a name this build does not have: a build with the old name back means that block. */
+static const save_names_renamed_t *save_names_renamed(save_names_kind_t kind, const char *name) {
+    if (kind != SAVE_NAMES_KIND_BLOCKS) {
+        return nullptr;
+    }
+    const save_names_renamed_t *found = nullptr;
+    for (uint32_t i = 0u; i < SAVE_NAMES_RENAMED_BLOCK_COUNT && found == nullptr; i++) {
+        if (strcmp(name, SAVE_NAMES_RENAMED_BLOCKS[i].old_name) == 0) {
+            found = &SAVE_NAMES_RENAMED_BLOCKS[i];
+        }
+    }
+    for (uint32_t id = 0u; found != nullptr && id < BLOCK_COUNT; id++) {
+        if (strcmp(name, block_defs[id].name) == 0) {
+            return nullptr;
+        }
+    }
+    return found;
+}
+
+uint16_t save_names_renamed_state(save_names_kind_t kind, const char *name) {
+    const save_names_renamed_t *const renamed = save_names_renamed(kind, name);
+    return renamed != nullptr ? renamed->state : 0u;
+}
+
 uint32_t save_names_live_count(save_names_kind_t kind) {
     switch (kind) {
     case SAVE_NAMES_KIND_BLOCKS:
@@ -167,6 +211,13 @@ uint32_t save_names_map(const save_names_view_t *view, save_names_kind_t kind, u
         }
         for (uint32_t other = 0u; other < live && found == SAVE_NAMES_LOST; other++) {
             if (strcmp(name, save_names_live_name(kind, other)) == 0) {
+                found = (uint16_t)other;
+            }
+        }
+        /* A name this build does not have may be one it has under another name. */
+        const save_names_renamed_t *const renamed = found == SAVE_NAMES_LOST ? save_names_renamed(kind, name) : nullptr;
+        for (uint32_t other = 0u; renamed != nullptr && other < live && found == SAVE_NAMES_LOST; other++) {
+            if (strcmp(renamed->new_name, save_names_live_name(kind, other)) == 0) {
                 found = (uint16_t)other;
             }
         }

@@ -19,10 +19,15 @@ enum : uint32_t {
     /* Raised by any change an older reader could not read. A file of another version is refused and left alone. Version 2: a record may end in levels.
      * Version 3: a column has 96 sections, up to z = 1250, so its mask in a delta file takes two words.
      * Version 4: a manifest says which generator made the land under it. What came before could not say, and is taken as an older generator's.
-     * Version 5: a manifest ends in the names of the blocks, and a state number in a delta is a place in that list, so a new block ends no world. */
-    SAVE_WORLD_VERSION = 5u,
+     * Version 5: a manifest ends in the names of the blocks, and a state number in a delta is a place in that list, so a new block ends no world.
+     * Version 6: a state number is a place in that list in its low 12 bits, with the block's state above, run/include/types/block_state/,
+     * and the list holds at most 4096 names. A version 5 file reads as it is: its numbers were all places below that, with no state. */
+    SAVE_WORLD_VERSION = 6u,
     SAVE_WORLD_VERSION_FIRST_WITH_GENERATOR = 4u,
     SAVE_WORLD_VERSION_FIRST_WITH_NAMES = 5u,
+    SAVE_WORLD_VERSION_FIRST_WITH_STATE = 6u,
+    /* The most names a world's list of blocks may hold: a state number has 12 bits for its place. */
+    SAVE_WORLD_NAMES_MAX = BLOCK_STATE_ID_LIMIT,
     /* A delta file holds a square of columns this many on a side: half a kilometre of blocks. */
     SAVE_WORLD_REGION_SHIFT = 5u,
     SAVE_WORLD_REGION_SIDE = 1u << SAVE_WORLD_REGION_SHIFT,
@@ -386,7 +391,8 @@ uint32_t save_world_record_encode(const uint16_t *states, uint16_t *palette_slot
 /* And back. False, with out untouched, if these bytes are not exactly a record an encoder could mean. Trusts nothing. */
 bool save_world_record_decode(const uint8_t *record, uint64_t bytes, uint16_t *out);
 
-/* The same, for a file whose list has state_count names rather than this build's table. The numbers out are still the file's. */
+/* The same, for a file whose list has state_count names rather than this build's table. The numbers out are still the file's.
+ * state_count bounds a number's place, its low 12 bits. The state above is the block's, and is not looked at here. */
 bool save_world_record_decode_within(const uint8_t *record, uint64_t bytes, uint32_t state_count, uint16_t *out);
 
 /* Whether a record is one save_world_record_decode_within would take, with its bits, palette count and palette, of SAVE_WORLD_PALETTE_MAX, if so. Writes nothing else. */
@@ -453,7 +459,8 @@ column_mask_t save_world_column_overlay_levels(save_world_t *save, int32_t chunk
 
 /* For the far field, on a worker: what is saved of one line of blocks from the bottom of the world to the top, written over out, at the storage height of each.
  * scratch is SAVE_WORLD_FAR_SCRATCH_BYTES, 64 byte aligned and the first 64 zero, kept from one call to the next, as a line usually has neighbours in its
- * column. Those read are not counted as sections_loaded, which says what a game has loaded. */
+ * column. Those read are not counted as sections_loaded, which says what a game has loaded. Block ids alone, with no state: the far field draws a
+ * block whichever way it faces. */
 void save_world_far_line(void *borrowed_save, int32_t x, int32_t y, uint16_t *out, uint8_t *scratch);
 
 /* The next column whose sections have been captured since the far field last asked, oldest first, as soon as a reader can get them. One thread asks, and it is

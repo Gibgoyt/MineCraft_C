@@ -12,7 +12,7 @@
 - `column_section_of`, `column_section_local_of`: a `z` in storage to its section and its place in it.
 - `column_array_alloc`: room for many, from the arena, untouched.
 - `column_init`, `column_deinit`: air under open sky, and giving every section back.
-- `column_block_get`, `column_block_set`, `column_light_get`, `column_light_set`: one voxel, refusing any `z` outside gameplay.
+- `column_block_get`, `column_voxel_get`, `column_block_set`, `column_light_get`, `column_light_set`: one voxel, refusing any `z` outside gameplay. `column_block_get` gives the block id alone, and `column_voxel_get` the id with the block's state beside it, as `run/include/types/block_state/` lays them out: which way it faces, which half, whether open. A set stores what it is given, so an id alone is that block facing north.
 - `column_memory_bytes`: what it holds, struct included.
 
 **May be called by:** `run/src/world/` and its parts, `entity/item_drop`, `entity/store`, `mob/path`, `physics`, `physics/raycast`, `player/movement`, `player/survival`, `render/lod`, `save/world`, and `bench/`.

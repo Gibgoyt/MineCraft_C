@@ -178,8 +178,10 @@ bool world_map_stream_leaving(world_map_t *map, world_map_leaving_t *out);
  * world_map_stream_take: this is also what to do with a column that could not be filled. */
 void world_map_unload(world_map_t *map, uint32_t slot);
 
-/* One voxel, at world coordinates, or why not, with *out left alone. */
+/* One voxel, at world coordinates, or why not, with *out left alone. world_map_block_get gives the block id alone, and
+ * world_map_voxel_get the id with its state: see column_block_get. */
 world_map_status_t world_map_block_get(const world_map_t *map, int32_t x, int32_t y, int32_t z, uint16_t *out);
+world_map_status_t world_map_voxel_get(const world_map_t *map, int32_t x, int32_t y, int32_t z, uint16_t *out);
 world_map_status_t world_map_light_get(const world_map_t *map, int32_t x, int32_t y, int32_t z, uint8_t *out);
 
 #endif
