@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2
 
-**Status:** being built by waves of agents, from 2026-11-10. Done so far: phase 3; phase 8's labels. **Until phase 14 is built, play at render distance 32 with full detail 32,** which draws correctly   (updated 2026-11-09)
+**Status:** being built by waves of agents, from 2026-11-10. Done so far: phases 3 and 5; phase 8's labels. **Until phase 14 is built, play at render distance 32 with full detail 32,** which draws correctly   (updated 2026-11-09)
 
 ## Context
 
@@ -18,7 +18,7 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 2 | Doors can't be placed | `...-phase-02-doors.md` | Door blocks were never added | Not started |
 | 3 | Turn off zombies, skeletons and creepers, for Ahmed's own mobs later | `...-phase-03-turn-off-hostile-mobs.md` | Data change: `weight: 0` | **Done** (`121e880f`): weight 0, and taken out of saved worlds as they open |
 | 4 | Animals with males and females: cattle, sheep, pigs, goats, mountain goats, chickens. Females give milk or eggs, males are food. A bed from wool | `...-phase-04-animals.md` | No animals, wool, hides or meat exist; mobs spawn only in the dark; a bed works but needs wheat | Not started |
-| 5 | No armour bar | `...-phase-05-armour-bar.md` | It was never drawn | Not started |
+| 5 | No armour bar | `...-phase-05-armour-bar.md` | It was never drawn | **Done** (`80435865`): ten icons above the hearts, bubbles a row higher |
 | 6 | Woodworking bench can't make planks or sticks, overlaps the table; a stoneworking bench; the table only makes benches | `...-phase-06-crafting-stations.md` | Planks and sticks were kept on the table to reach the bench | **Blocked: Ahmed's Hypixel research** |
 | 7 | Very laggy after a long time in another window | `...-phase-07-lag-after-alt-tab.md` | Likely the world filling to its 70-mob cap while it never paused. Not proven | Not started |
 | 8 | Can't see very far; what's a chunk? | `...-phase-08-render-distance.md` | Working as set: 32 chunks is 512 blocks, and nothing is drawn past full detail at 32 | **Labels done** (`e0cf3d33`): sliders show blocks, with a tooltip each. Raising the default waits for phase 14 |
@@ -115,7 +115,7 @@ This is the build at `main`. It has everything from plan 003, and none of this p
 | Under water | Swim down and stay | The view goes blue, 10 bubbles empty, then hearts drop |
 | Tree feller | Chop a log **with an axe**, then with bare hands | The axe brings the tree down. Hands take one log (phase 1 changes this) |
 | Wall torches | Place a torch on each side of a block, then mine the block | Torches lean out from walls, and drop when it goes |
-| Copper armour | Smelt copper, make the four pieces on the table, wear them | They're worn, but **no armour bar** (phase 5) |
+| Copper armour | Smelt copper, make the four pieces on the table, wear them | They're worn, and the armour bar fills above the hearts |
 | Woodworking bench | Table: 3 planks over 2 sticks. Place it, make stairs on it | Wood stairs and tools come off the bench. **Planks and sticks don't** (phase 6) |
 | Doors | Craft a door and try to place it | **Nothing happens** (phase 2) |
 | Bed | 3 wheat over 3 planks on the table, place it, sleep at night | Sleeps through the night. **The recipe uses wheat**, as there's no wool yet (phase 4) |
