@@ -248,8 +248,20 @@ static void model_hud(sheet_t *sheet, const ui_hud_t *hud, const ui_font_t *font
     const int32_t row_y = bar_y - 10 * scale;
     model_row(sheet, &hud->health, &hud->health_empty, bar_x, bar_x + 182 * scale, row_y, scale, state->health, false);
     model_row(sheet, &hud->food, &hud->food_empty, bar_x, bar_x + 182 * scale, row_y, scale, state->food, true);
+    if (state->armor != 0u) {
+        /* From the left, over the hearts: two points a full one, one the half, each its own picture. */
+        for (int32_t i = 0; i < 10; i++) {
+            const uint32_t kind = state->armor >= (uint32_t)(i + 1) * 2u  ? UI_HUD_ARMOR_FULL
+                                  : state->armor == (uint32_t)i * 2u + 1u ? UI_HUD_ARMOR_HALF
+                                                                          : UI_HUD_ARMOR_EMPTY;
+            model_image_whole(sheet, ui_hud_armor_icon(hud, kind),
+                              (ui_rect_t){bar_x + i * 9 * scale, row_y - 10 * scale, 9 * scale, 9 * scale});
+        }
+    }
     if (state->bubbles_shown != 0u) {
-        model_row(sheet, &hud->air, &hud->air_empty, bar_x, bar_x + 182 * scale, row_y - 10 * scale, scale,
+        /* A row higher while the armour is up too. */
+        const int32_t air_y = row_y - (state->armor != 0u ? 20 : 10) * scale;
+        model_row(sheet, &hud->air, &hud->air_empty, bar_x, bar_x + 182 * scale, air_y, scale,
                   (uint32_t)state->bubbles * 2u, true);
     }
 }
@@ -282,6 +294,7 @@ static void state_random(ui_hud_state_t *state, uint64_t *rng) {
     state->food = (uint8_t)(rng_next(rng) % 21u);
     state->bubbles = (uint8_t)(rng_next(rng) % 11u);
     state->bubbles_shown = (uint8_t)(rng_next(rng) % 2u);
+    state->armor = (uint8_t)(rng_next(rng) % 2u == 0u ? 0u : rng_next(rng) % 21u);
     for (uint32_t slot = 0u; slot < INVENTORY_HOTBAR_SLOTS; slot++) {
         const uint64_t kind = rng_next(rng) % 4u;
         if (kind == 0u) {
@@ -339,6 +352,7 @@ TEST(things_go_where_the_readme_says_at_three_sizes) {
     CHECK_EQ_I64(layout.crosshair.y, 117);
     CHECK_EQ_I64(layout.row_y, 208);
     CHECK_EQ_I64(layout.air_y, 198);
+    CHECK_EQ_I64(layout.air_high_y, 188);
 
     layout = ui_hud_layout(640u, 480u);
     CHECK_EQ_U64(layout.scale, 2u);
@@ -347,6 +361,7 @@ TEST(things_go_where_the_readme_says_at_three_sizes) {
     CHECK_EQ_I64(layout.crosshair.width, 12);
     CHECK_EQ_I64(layout.row_y, 416);
     CHECK_EQ_I64(layout.air_y, 396);
+    CHECK_EQ_I64(layout.air_high_y, 376);
 
     layout = ui_hud_layout(1920u, 1080u);
     CHECK_EQ_U64(layout.scale, 4u);
@@ -357,6 +372,7 @@ TEST(things_go_where_the_readme_says_at_three_sizes) {
     CHECK_EQ_I64(layout.crosshair.y, 528);
     CHECK_EQ_I64(layout.row_y, 952);
     CHECK_EQ_I64(layout.air_y, 912);
+    CHECK_EQ_I64(layout.air_high_y, 872);
 }
 
 TEST(every_item_has_an_icon_and_the_textures_are_the_sizes_this_draws_them_at) {
@@ -376,6 +392,17 @@ TEST(every_item_has_an_icon_and_the_textures_are_the_sizes_this_draws_them_at) {
     CHECK_EQ_U64(hud->food.width, 18u);
     CHECK_EQ_U64(hud->air.width, 9u);
     CHECK_EQ_U64(hud->air_empty.width, 9u);
+    for (uint32_t kind = 0u; kind < UI_HUD_ARMOR_KINDS; kind++) {
+        CHECK_EQ_U64(ui_hud_armor_icon(hud, kind)->width, UI_HUD_ICON_SIZE);
+        CHECK_EQ_U64(ui_hud_armor_icon(hud, kind)->height, UI_HUD_ICON_SIZE);
+    }
+    /* Three different pictures: the half is neither of the others. */
+    const uint64_t icon_bytes = (uint64_t)UI_HUD_ICON_SIZE * UI_HUD_ICON_SIZE * 4u;
+    const ui_image_t *const armor_full = ui_hud_armor_icon(hud, UI_HUD_ARMOR_FULL);
+    const ui_image_t *const armor_half = ui_hud_armor_icon(hud, UI_HUD_ARMOR_HALF);
+    const ui_image_t *const armor_empty = ui_hud_armor_icon(hud, UI_HUD_ARMOR_EMPTY);
+    CHECK(memcmp(armor_half->borrowed_pixels, armor_full->borrowed_pixels, icon_bytes) != 0);
+    CHECK(memcmp(armor_half->borrowed_pixels, armor_empty->borrowed_pixels, icon_bytes) != 0);
     /* What the budget in run/src/ui/index.c says about the tables. */
     CHECK(f->ui.arena_tables.used < 1024u * 1024u);
     CHECK_EQ_U64(f->ui.arena_tables.failed_count, 0u);
@@ -949,6 +976,90 @@ TEST(golden_pictures_match) {
     fixture_stop(f);
 }
 
+/* Plan 005 phase 05: the armour row. The bubbles and the hearts are as golden_pictures_match left them. */
+TEST(armour_is_ten_icons_over_the_hearts_only_while_worn_and_puts_the_bubbles_a_row_higher) {
+    fixture_t *const f = fixture_start(t);
+    REQUIRE(f != nullptr);
+    const ui_hud_layout_t layout = ui_hud_layout(GOLD_WIDTH, GOLD_HEIGHT);
+    sheet_t bare = sheet_make(t, GOLD_WIDTH, GOLD_HEIGHT);
+    sheet_t one = sheet_make(t, GOLD_WIDTH, GOLD_HEIGHT);
+    sheet_t ten = sheet_make(t, GOLD_WIDTH, GOLD_HEIGHT);
+    sheet_t twenty = sheet_make(t, GOLD_WIDTH, GOLD_HEIGHT);
+    sheet_t model = sheet_make(t, GOLD_WIDTH, GOLD_HEIGHT);
+    const int32_t icon = 18; /* at scale 2 */
+    const int32_t left = layout.hotbar.x, right = layout.hotbar.x + layout.hotbar.width;
+    ui_hud_state_t state;
+
+    /* On land: 0 draws nothing, and 1, 10 and 20 change only the row of ten from the hotbar's left, over the hearts. */
+    state_golden_low(&state);
+    against_model(t, f, &bare, &model, &state);
+    state.armor = 1u;
+    against_model(t, f, &one, &model, &state);
+    state.armor = 10u;
+    against_model(t, f, &ten, &model, &state);
+    state.armor = 20u;
+    against_model(t, f, &twenty, &model, &state);
+    const sheet_t *const worn[3] = {&one, &ten, &twenty};
+    for (uint32_t i = 0u; i < 3u; i++) {
+        const box_t row = sheets_box(&bare, worn[i]);
+        CHECK(row.left <= row.right);
+        CHECK(row.left >= left && row.right < left + 10 * icon);
+        CHECK(row.top >= layout.air_y && row.bottom < layout.air_y + icon);
+    }
+    /* Ten points are the first five full: twenty differs only in the last five. One differs from ten from the first icon on. */
+    const box_t ten_to_twenty = sheets_box(&ten, &twenty);
+    CHECK(ten_to_twenty.left >= left + 5 * icon && ten_to_twenty.right < left + 10 * icon);
+    const box_t one_to_ten = sheets_box(&one, &ten);
+    CHECK(one_to_ten.left < left + icon && one_to_ten.right < left + 5 * icon);
+
+    /* Under water too: the bubbles are the same row, one row higher, and the armour is where it was. */
+    state.bubbles = 5u;
+    state.bubbles_shown = 1u;
+    state.armor = 0u;
+    sheet_t air_alone = sheet_make(t, GOLD_WIDTH, GOLD_HEIGHT);
+    against_model(t, f, &air_alone, &model, &state);
+    state.armor = 10u;
+    sheet_t both = sheet_make(t, GOLD_WIDTH, GOLD_HEIGHT);
+    against_model(t, f, &both, &model, &state);
+    /* The background is a gradient in y, so a row moved up is the same pixels changed, not the same colours: the model has those. */
+    uint64_t moved_wrong = 0u, changed = 0u;
+    for (int32_t y = 0; y < icon; y++) {
+        for (int32_t x = right - 10 * icon; x < right; x++) {
+            const bool high = sheet_at(&both, x, layout.air_high_y + y) != sheet_at(&ten, x, layout.air_high_y + y);
+            const bool low = sheet_at(&air_alone, x, layout.air_y + y) != sheet_at(&bare, x, layout.air_y + y);
+            moved_wrong += high == low ? 0u : 1u;
+            changed += low ? 1u : 0u;
+        }
+        for (int32_t x = left; x < left + 10 * icon; x++) {
+            CHECK_EQ_U64(sheet_at(&both, x, layout.air_y + y), sheet_at(&ten, x, layout.air_y + y));
+        }
+    }
+    CHECK_EQ_U64(moved_wrong, 0u);
+    CHECK(changed > 0u);
+    /* And nothing of the bubbles is left at their old height over the drumsticks. */
+    const box_t moved = sheets_box(&ten, &both);
+    CHECK(moved.top >= layout.air_high_y && moved.bottom < layout.air_high_y + icon);
+    /* The golden pictures. With 0 it is the bubbles' own, unchanged. */
+    golden_compare(t, "tests/run/ui/hud/fixtures/air_640x480.png", &air_alone);
+    golden_compare(t, "tests/run/ui/hud/fixtures/armor_1_640x480.png", &one);
+    golden_compare(t, "tests/run/ui/hud/fixtures/armor_10_air_640x480.png", &both);
+    state_golden_full(&state);
+    state.armor = 20u;
+    state.bubbles = 2u;
+    state.bubbles_shown = 1u;
+    sheet_t small = sheet_make(t, SMALL_WIDTH, SMALL_HEIGHT);
+    sheet_t small_model = sheet_make(t, SMALL_WIDTH, SMALL_HEIGHT);
+    against_model(t, f, &small, &small_model, &state);
+    golden_compare(t, "tests/run/ui/hud/fixtures/armor_20_air_320x240.png", &small);
+
+    /* A number past the row, which nothing sends, is a full row. */
+    state_golden_low(&state);
+    state.armor = 255u;
+    against_model(t, f, &one, &model, &state);
+    CHECK_EQ_I64(sheets_differ(&one, &twenty), -1);
+    fixture_stop(f);
+}
+
 /* Plan 004 phase 01's date line: in the top right, on a panel of its own, and below a notice band when there is one. */
 TEST(the_date_line_sits_in_the_top_right_and_moves_below_a_notice) {
     fixture_t *const f = fixture_start(t);
@@ -1203,6 +1314,34 @@ TEST(in_the_real_game_the_screen_is_the_hud_over_the_picture_and_the_picture_is_
     REQUIRE(rig_scene_frame(t, &scene, &target));
     rig_expect(&rig, frame->borrowed_pictures[frame->pictures.front], &model);
     CHECK_EQ_U64(target_differs(&target, &model), 0u);
+
+    /* Plan 005 phase 05: no armour, no row. A helmet goes on, then a chestplate, each reaching the screen by the next tick, beside
+     * the bubbles too; and it goes when they come off. */
+    CHECK_EQ_U64(state.armor, 0u);
+    rig.item->equipment.armor[0] = item_stack_make(ITEM_ID_DIAMOND_HELMET, 1u);
+    REQUIRE(scene.tick(scene.borrowed_context, &tick));
+    game_hud_state_read(game, &state);
+    CHECK_EQ_U64(state.armor, 3u); /* config/items/diamond_helmet: an odd number, so a half */
+    REQUIRE(rig_scene_frame(t, &scene, &target));
+    rig_expect(&rig, frame->borrowed_pictures[frame->pictures.front], &model);
+    CHECK_EQ_U64(target_differs(&target, &model), 0u);
+    rig.item->equipment.armor[1] = item_stack_make(ITEM_ID_DIAMOND_CHESTPLATE, 1u);
+    rig.player->survival.air = 150;
+    REQUIRE(scene.tick(scene.borrowed_context, &tick));
+    game_hud_state_read(game, &state);
+    CHECK_EQ_U64(state.armor, equipment_armor_points(&rig.item->equipment));
+    CHECK(state.armor > 3u);
+    CHECK_EQ_U64(state.bubbles_shown, 1u);
+    REQUIRE(rig_scene_frame(t, &scene, &target));
+    rig_expect(&rig, frame->borrowed_pictures[frame->pictures.front], &model);
+    CHECK_EQ_U64(target_differs(&target, &model), 0u);
+    rig.item->equipment.armor[0] = (item_stack_t){0};
+    rig.item->equipment.armor[1] = (item_stack_t){0};
+    rig.player->survival.air = 300;
+    REQUIRE(scene.tick(scene.borrowed_context, &tick));
+    game_hud_state_read(game, &state);
+    CHECK_EQ_U64(state.armor, 0u);
+    CHECK_EQ_U64(state.bubbles_shown, 0u);
 
     /* F3 comes up over it, staying on its panel; a held key is one press, and a second press takes it away. */
     display_buffer_t with_overlay = rig_target(t);

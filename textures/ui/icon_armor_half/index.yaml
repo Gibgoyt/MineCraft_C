@@ -1,0 +1,21 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: icon_armor_half
+group: ui
+size: { width: 9, height: 9, frames: 1 }
+source:
+  kind: procedural
+  about: "One point of armour: the left of icon_armor, the right of icon_armor_empty."
+  seed: 2716057193
+  ops:
+    - op: art
+      palette: { k: "#3f3f44", b: "#c9c9c6", e: "#00000080", f: "#00000040" }
+      rows:
+        - ".kkk.eee."
+        - "kbbbkfffe"
+        - "kbbbkfffe"
+        - "kbbbkfffe"
+        - ".kbbkffe."
+        - ".kbbkffe."
+        - ".kbbkffe."
+        - "..kbkfe.."
+        - "...kee..."

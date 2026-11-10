@@ -29,6 +29,8 @@ void game_hud_state_read(const game_t *game, ui_hud_state_t *out) {
         /* A tick under water always leaves it short of the most, and a tick out of it reaches the most only when full again. So this is "under water or
          * still refilling", with nothing more to send. A dead body's air stands still until it comes back, and means nothing. */
         out->bubbles_shown = vitals.air < PLAYER_SURVIVAL_AIR_MAX && vitals.state != (uint8_t)PLAYER_SURVIVAL_DEAD;
+        /* What the sim last told survival is worn. A dead body has spilled it, and the next tick says 0. */
+        out->armor = (uint8_t)player_armor_points_read(game->borrowed_player);
     }
 }
 

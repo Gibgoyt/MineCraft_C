@@ -51,15 +51,31 @@ bool ui_hud_init(ui_hud_t *hud, arena_t *arena, const texture_t *texture) {
     }
     ASSERT_ALWAYS(hud->hotbar.width == UI_HUD_TEXTURE_CLOSE_X + UI_HUD_TEXTURE_CLOSE_W &&
                   hud->hotbar.height == UI_HUD_HOTBAR_HEIGHT);
-    ui_image_t *const icons = arena_alloc_array(arena, ITEM_COUNT, sizeof(ui_image_t), alignof(ui_image_t));
+    ui_image_t *const icons =
+        arena_alloc_array(arena, ITEM_COUNT + UI_HUD_ARMOR_KINDS, sizeof(ui_image_t), alignof(ui_image_t));
     icons[ITEM_ID_NONE] = (ui_image_t){.borrowed_pixels = nullptr, .width = 0u, .height = 0u};
     for (uint32_t item = ITEM_ID_NONE + 1u; item < ITEM_COUNT; item++) {
         if (!ui_image_load(&icons[item], arena, texture, item_defs[item].texture)) {
             return false; /* it has said why */
         }
     }
+    static const char *const armor_names[UI_HUD_ARMOR_KINDS] = {
+        [UI_HUD_ARMOR_FULL] = "ui/icon_armor",
+        [UI_HUD_ARMOR_HALF] = "ui/icon_armor_half",
+        [UI_HUD_ARMOR_EMPTY] = "ui/icon_armor_empty",
+    };
+    for (uint32_t kind = 0u; kind < UI_HUD_ARMOR_KINDS; kind++) {
+        if (!ui_image_load(&icons[ITEM_COUNT + kind], arena, texture, armor_names[kind])) {
+            return false; /* it has said why */
+        }
+    }
     hud->borrowed_icons = icons;
     return true;
+}
+
+const ui_image_t *ui_hud_armor_icon(const ui_hud_t *hud, uint32_t kind) {
+    ASSERT(kind < UI_HUD_ARMOR_KINDS);
+    return &hud->borrowed_icons[ITEM_COUNT + kind];
 }
 
 void ui_hud_deinit(ui_hud_t *hud) {
@@ -100,6 +116,7 @@ ui_hud_layout_t ui_hud_layout(uint32_t canvas_width, uint32_t canvas_height) {
         .row_y = row_y,
         .scale = scale,
         .air_y = row_y - (int32_t)UI_HUD_ROW_ABOVE * size,
+        .air_high_y = row_y - 2 * (int32_t)UI_HUD_ROW_ABOVE * size,
     };
 }
 
@@ -141,6 +158,19 @@ static void ui_hud_row_draw(ui_canvas_t *canvas, const ui_hud_layout_t *layout, 
             const ui_rect_t part = {from_right ? x + icon - half : x, y, half, icon};
             ui_compose_image(canvas, full, source, part);
         }
+    }
+}
+
+/* Ten from the left over the hearts, each its own picture: the half has its own texture, as the armour's is 9 wide and has no middle. */
+static void ui_hud_armor_draw(const ui_hud_t *hud, ui_canvas_t *canvas, const ui_hud_layout_t *layout,
+                              uint32_t points) {
+    const int32_t icon = (int32_t)UI_HUD_ICON_SIZE * (int32_t)layout->scale;
+    for (uint32_t i = 0u; i < UI_HUD_ICONS; i++) {
+        const uint32_t kind = points >= (i + 1u) * 2u ? UI_HUD_ARMOR_FULL
+                              : points == i * 2u + 1u ? UI_HUD_ARMOR_HALF
+                                                      : UI_HUD_ARMOR_EMPTY;
+        ui_compose_image_whole(canvas, ui_hud_armor_icon(hud, kind),
+                               (ui_rect_t){layout->hotbar.x + (int32_t)i * icon, layout->air_y, icon, icon});
     }
 }
 
@@ -196,9 +226,13 @@ void ui_hud_draw(const ui_hud_t *hud, ui_canvas_t *canvas, const ui_font_t *font
     }
     ui_hud_row_draw(canvas, &layout, &hud->health, &hud->health_empty, layout.row_y, state->health, false);
     ui_hud_row_draw(canvas, &layout, &hud->food, &hud->food_empty, layout.row_y, state->food, true);
+    if (state->armor != 0u) {
+        ui_hud_armor_draw(hud, canvas, &layout, state->armor);
+    }
     if (state->bubbles_shown != 0u) {
         /* The row counts in halves, and a bubble is only ever whole. */
-        ui_hud_row_draw(canvas, &layout, &hud->air, &hud->air_empty, layout.air_y, (uint32_t)state->bubbles * 2u, true);
+        ui_hud_row_draw(canvas, &layout, &hud->air, &hud->air_empty,
+                        state->armor != 0u ? layout.air_high_y : layout.air_y, (uint32_t)state->bubbles * 2u, true);
     }
 }
 

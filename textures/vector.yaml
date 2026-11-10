@@ -485,6 +485,7 @@ needs:
     - hotbar_selected
     - icon_armor
     - icon_armor_empty
+    - icon_armor_half
     - icon_breath
     - icon_breath_empty
     - icon_health

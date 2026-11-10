@@ -18,7 +18,8 @@
 - `player_pickup_reach`: the box an item has to overlap to be picked up, with the body where it now is.
 - `player_tick`, `player_tick_wind`: one tick of the sim's: the body moves, in a wind from the climate for the second (plan 004 phase 08; the first is it with none), then what it aims at is worked out from where it now stands.
 - `player_survive_tick`: one tick of the sim's, right after `player_tick`, for what keeps the body going.
-- `player_vitals_read`: main asks how the body is, for a screen.
+- `player_vitals_read`, `player_armor_points_read`: main asks how the body is, and how many armour points it wears (0 to 20, whole: `run/src/game/` tells survival each tick from what is worn), for a screen.
+- `player_vitals_publish`: puts both where main reads them, from survival as it stands: after each tick, and by `run/src/save/state/` once it has read a body in.
 - `player_eyes_under_water_read`: the thread that draws asks whether the eyes were under water as of the last tick.
 - `player_eye_at`: main asks where to draw the eye right now.
 - `player_target_view`: main asks what that tick aimed at, to draw its outline.

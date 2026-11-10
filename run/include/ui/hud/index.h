@@ -29,6 +29,14 @@ enum : uint32_t {
     UI_HUD_WEAR_TOP = 13u,   /* from the item's top */
 };
 
+/* The armour row's three icons, by ui_hud_armor_icon. */
+enum : uint32_t {
+    UI_HUD_ARMOR_FULL = 0u,  /* two points */
+    UI_HUD_ARMOR_HALF = 1u,  /* one, the left half full */
+    UI_HUD_ARMOR_EMPTY = 2u, /* none */
+    UI_HUD_ARMOR_KINDS = 3u,
+};
+
 /* What is timed, in the order the overlay lists it. The first five are the frame passes of the card, in their order. */
 typedef enum ui_hud_stage_t : uint8_t {
     UI_HUD_STAGE_COARSE = 0,
@@ -45,16 +53,18 @@ typedef enum ui_hud_stage_t : uint8_t {
 
 /* The textures the HUD is drawn with, and an icon for every item. All live in the arena given to ui_hud_init. */
 typedef struct ui_hud_t {
-    ui_image_t hotbar;                /* 0 */
-    ui_image_t selected;              /* 16 */
-    ui_image_t crosshair;             /* 32 */
-    ui_image_t health;                /* 48 */
-    ui_image_t health_empty;          /* 64 */
-    ui_image_t food;                  /* 80 */
-    ui_image_t food_empty;            /* 96 */
-    ui_image_t air;                   /* 112 */
-    ui_image_t air_empty;             /* 128 */
-    const ui_image_t *borrowed_icons; /* 144: ITEM_COUNT by item_id_t; ITEM_ID_NONE's has no pixels */
+    ui_image_t hotbar;       /* 0 */
+    ui_image_t selected;     /* 16 */
+    ui_image_t crosshair;    /* 32 */
+    ui_image_t health;       /* 48 */
+    ui_image_t health_empty; /* 64 */
+    ui_image_t food;         /* 80 */
+    ui_image_t food_empty;   /* 96 */
+    ui_image_t air;          /* 112 */
+    ui_image_t air_empty;    /* 128 */
+    /* 144: ITEM_COUNT by item_id_t, ITEM_ID_NONE's with no pixels; then the armour row's UI_HUD_ARMOR_KINDS, as ui_t has no room to
+     * grow: app_t is on main's stack, near its limit. Ask ui_hud_armor_icon for those. */
+    const ui_image_t *borrowed_icons;
 } ui_hud_t;
 static_assert(sizeof(ui_hud_t) == 152);
 
@@ -66,7 +76,7 @@ typedef struct ui_hud_state_t {
     uint8_t food;                                /* 74: half drumsticks, 0 to 20 */
     uint8_t bubbles;                             /* 75: of air, 0 to UI_HUD_ICONS: see ui_hud_bubbles */
     uint8_t bubbles_shown;                       /* 76: whether that row is up at all: not on land with all its air */
-    uint8_t _pad0[1];                            /* 77 */
+    uint8_t armor; /* 77: points worn, 0 to 20: an icon a 2, half for an odd one; no row at 0 */
 } ui_hud_state_t;
 static_assert(sizeof(ui_hud_state_t) == 78);
 
@@ -86,15 +96,19 @@ typedef struct ui_hud_layout_t {
     ui_rect_t crosshair; /* 16 */
     int32_t row_y;       /* 32: the top of the hearts and the drumsticks */
     uint32_t scale;      /* 36: screen pixels per texture pixel */
-    int32_t air_y;       /* 40: the top of the bubbles, over the drumsticks */
+    int32_t air_y;       /* 40: the top of the bubbles, over the drumsticks, and of the armour, over the hearts */
+    int32_t air_high_y;  /* 44: the top of the bubbles while the armour is up as well: a row higher */
 } ui_hud_layout_t;
-static_assert(sizeof(ui_hud_layout_t) == 44);
+static_assert(sizeof(ui_hud_layout_t) == 48);
 
 /* Reads every texture the HUD is drawn with, and every item's, into memory from arena. False, having logged why, if one is missing. */
 bool ui_hud_init(ui_hud_t *hud, arena_t *arena, const texture_t *texture);
 
 /* Empties the handle. The memory stays with the arena. */
 void ui_hud_deinit(ui_hud_t *hud);
+
+/* One of the armour row's icons, UI_HUD_ARMOR_*, 9 square. */
+const ui_image_t *ui_hud_armor_icon(const ui_hud_t *hud, uint32_t kind);
 
 /* A value out of maximum, as the halves of a row: anything above a half counts as the next half, so that a body with any health left
  * shows some. Nothing for 0 or below, and for what is no number. */
@@ -112,7 +126,8 @@ ui_hud_layout_t ui_hud_layout(uint32_t canvas_width, uint32_t canvas_height);
 void ui_hud_item_draw(const ui_hud_t *hud, ui_canvas_t *canvas, const ui_font_t *font, const item_stack_t *stack,
                       int32_t x, int32_t y, uint32_t scale);
 
-/* The crosshair, the hotbar with what is on it, the hearts, the drumsticks, and the bubbles if they are up. No allocation. */
+/* The crosshair, the hotbar with what is on it, the hearts, the drumsticks, the armour if any is worn, and the bubbles if they are up.
+ * No allocation. */
 void ui_hud_draw(const ui_hud_t *hud, ui_canvas_t *canvas, const ui_font_t *font, const ui_hud_state_t *state);
 
 /* The frames per second, each stage's time and where the body is, on a dark panel at the top left. No allocation. */

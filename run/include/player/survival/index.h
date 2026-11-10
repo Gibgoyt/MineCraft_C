@@ -15,6 +15,8 @@
 enum : uint32_t {
     PLAYER_SURVIVAL_HEALTH_MAX = 20u,
     PLAYER_SURVIVAL_FOOD_MAX = 20u,
+    /* The most armour points that count, as EQUIPMENT_ARMOR_POINTS_MOST. */
+    PLAYER_SURVIVAL_ARMOR_MAX = 20u,
     /* Food at or below this stops a sprint. */
     PLAYER_SURVIVAL_FOOD_NO_SPRINT = 6u,
     /* Food at or above this heals, slowly. */

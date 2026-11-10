@@ -13,7 +13,6 @@
 #include <float.h>
 #include <inttypes.h>
 #include <math.h>
-#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1052,14 +1051,7 @@ static void save_state_in_player(player_t *player, const uint8_t *data) {
     memcpy(&player->combat, data + offsetof(save_state_player_t, combat), sizeof(player->combat));
     memcpy(&player->tick_count, data + offsetof(save_state_player_t, tick_count), sizeof(player->tick_count));
     /* What a screen shows of the body, before its first tick. */
-    const player_vitals_t vitals = {.health = player->survival.health,
-                                    .air = (uint16_t)(player->survival.air < 0 ? 0 : player->survival.air),
-                                    .food = player->survival.food,
-                                    .state = player->survival.state};
-    uint64_t word = 0u;
-    memcpy(&word, &vitals, sizeof(word));
-    atomic_store_explicit(&player->vitals_word, word, memory_order_relaxed);
-    atomic_store_explicit(&player->eyes_under_water, player->movement.eyes_under_water, memory_order_relaxed);
+    player_vitals_publish(player);
 }
 
 static void save_state_in_items(item_t *item, item_stack_t *held, const uint8_t *data) {

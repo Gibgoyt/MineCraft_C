@@ -69,8 +69,9 @@ static void player_view_fill(const player_t *player, player_view_t *view, int64_
     view->target = player->target;
 }
 
-/* In one word, so that main never sees part of one tick's with part of another's. */
-static void player_vitals_publish(player_t *player) {
+/* In one word, so that main never sees part of one tick's with part of another's. The armour has its own: it changes only when a
+ * piece goes on or off, and a frame of the old next to the new health is gone by the next. */
+void player_vitals_publish(player_t *player) {
     const player_survival_t *const survival = &player->survival;
     const player_vitals_t vitals = {
         .health = survival->health,
@@ -81,6 +82,11 @@ static void player_vitals_publish(player_t *player) {
     uint64_t word = 0u;
     memcpy(&word, &vitals, sizeof(word));
     atomic_store_explicit(&player->vitals_word, word, memory_order_relaxed);
+    const float32_t armor = survival->armor_points;
+    const uint8_t points = !(armor > 0.0f32)                               ? 0u
+                           : armor >= (float32_t)PLAYER_SURVIVAL_ARMOR_MAX ? (uint8_t)PLAYER_SURVIVAL_ARMOR_MAX
+                                                                           : (uint8_t)armor;
+    atomic_store_explicit(&player->armor_points, points, memory_order_relaxed);
     atomic_store_explicit(&player->eyes_under_water, player->movement.eyes_under_water, memory_order_relaxed);
 }
 
@@ -287,6 +293,10 @@ void player_survive_tick(player_t *player, const world_map_t *map) {
     player_survival_tick(&player->survival, &player->movement, player->borrowed_physics, map,
                          player->interaction.mined_count);
     player_vitals_publish(player);
+}
+
+uint32_t player_armor_points_read(const player_t *player) {
+    return atomic_load_explicit(&player->armor_points, memory_order_relaxed);
 }
 
 bool player_eyes_under_water_read(const player_t *player) {
