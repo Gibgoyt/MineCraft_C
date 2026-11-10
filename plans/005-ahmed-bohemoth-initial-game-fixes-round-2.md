@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2
 
-**Status:** being built by waves of agents, from 2026-11-10. Done so far: phases 3, 5 and 9; phase 8's labels. **Until phase 14 is built, play at render distance 32 with full detail 32,** which draws correctly   (updated 2026-11-09)
+**Status:** being built by waves of agents, from 2026-11-10. Done so far: phases 3, 5 and 9; phase 8's labels; phase 14's measuring and live test (the starvation fixes are in progress). **Until phase 14 is built, play at render distance 32 with full detail 32,** which draws correctly   (updated 2026-11-09)
 
 ## Context
 
