@@ -495,10 +495,95 @@ static uint16_t interaction_door_hinged(const world_map_t *map, uint16_t voxel, 
                             door_hinged_facing(facing, door_left, door_right, left_walls, right_walls), false, false);
 }
 
+/* ---- Placing ahead, for bridging (plan 005 phase 13) ------------------------------------------------------------------ */
+
+/* Below the soles, so that feet standing on a top at a whole number find the block under it and not the air above. */
+#define INTERACTION_AHEAD_BELOW_FEET 1.0e-3f64
+
+/* The solid block the feet stand on: of the cells under the body's footprint at the height just below the soles, the nearest to the
+ * middle of the feet, so that a body sneaking out past an edge still stands on the block it hangs from. False if none is solid. */
+static bool interaction_ahead_support(const world_map_t *map, const player_movement_t *movement,
+                                      int32_t out[COLLISION_AXES], uint16_t *out_block) {
+    const float64_t half = PLAYER_MOVEMENT_WIDTH * 0.5f64 - INTERACTION_AHEAD_BELOW_FEET;
+    const float64_t px = movement->position[0], py = movement->position[1];
+    const int32_t z = (int32_t)floor(movement->position[2] - INTERACTION_AHEAD_BELOW_FEET);
+    const int32_t x0 = (int32_t)floor(px - half), x1 = (int32_t)floor(px + half);
+    const int32_t y0 = (int32_t)floor(py - half), y1 = (int32_t)floor(py + half);
+    bool found = false;
+    float64_t best = 0.0f64;
+    for (int32_t y = y0; y <= y1; y++) {
+        for (int32_t x = x0; x <= x1; x++) {
+            uint16_t block = BLOCK_ID_AIR;
+            if (world_map_block_get(map, x, y, z, &block) != WORLD_MAP_STATUS_OK ||
+                (block_defs[block].flags & BLOCK_FLAG_SOLID) == 0u) {
+                continue;
+            }
+            const float64_t dx = (float64_t)x + 0.5f64 - px, dy = (float64_t)y + 0.5f64 - py;
+            const float64_t distance = dx * dx + dy * dy;
+            if (!found || distance < best) {
+                found = true;
+                best = distance;
+                out[0] = x;
+                out[1] = y;
+                out[2] = z;
+                *out_block = block;
+            }
+        }
+    }
+    return found;
+}
+
+/* Whether any of the cell is within PLAYER_CAMERA_REACH of the eye. */
+static bool interaction_ahead_in_reach(const player_movement_t *movement, const int32_t cell[COLLISION_AXES]) {
+    float64_t squared = 0.0f64;
+    for (uint32_t a = 0u; a < COLLISION_AXES; a++) {
+        const float64_t eye = movement->position[a] + (a == COLLISION_AXIS_Z ? movement->eye_height : 0.0f64);
+        const float64_t low = (float64_t)cell[a], high = low + 1.0f64;
+        const float64_t gap = eye < low ? low - eye : (eye > high ? eye - high : 0.0f64);
+        squared += gap * gap;
+    }
+    return squared <= PLAYER_CAMERA_REACH * PLAYER_CAMERA_REACH;
+}
+
+/* When the aim finds nothing in reach, looking level or down: the cell beside the block underfoot, the way the player faces (the
+ * nearest of four), at that block's height, if it is loaded, empty or replaceable, and in reach. Given as the hit the aim would have
+ * made on that block's side, so that everything after, the voxel, its facing, the fit and a bench's other half, is placing's own.
+ * False, and nothing to show, otherwise: walking on ground looking ahead shows nothing, and only an edge shows the cell beyond. */
+static bool interaction_ahead_hit(const world_map_t *map, const player_interaction_input_t *input, raycast_hit_t *out) {
+    if (input->look_ahead == 0u || input->borrowed_target->hit.result != RAYCAST_RESULT_MISS) {
+        return false;
+    }
+    int32_t support[COLLISION_AXES];
+    uint16_t block = BLOCK_ID_AIR;
+    if (!interaction_ahead_support(map, input->borrowed_movement, support, &block)) {
+        return false;
+    }
+    const int32_t step_x = block_facing_step_x(input->look_facing), step_y = block_facing_step_y(input->look_facing);
+    const int32_t cell[COLLISION_AXES] = {support[0] + step_x, support[1] + step_y, support[2]};
+    uint16_t there = BLOCK_ID_AIR;
+    if (world_map_block_get(map, cell[0], cell[1], cell[2], &there) != WORLD_MAP_STATUS_OK ||
+        (block_defs[there].flags & BLOCK_FLAG_REPLACEABLE) == 0u ||
+        !interaction_ahead_in_reach(input->borrowed_movement, cell)) {
+        return false;
+    }
+    *out = (raycast_hit_t){
+        .cell = {support[0], support[1], support[2]},
+        .block = block,
+        .result = RAYCAST_RESULT_HIT,
+        .axis = step_x != 0 ? (uint8_t)COLLISION_AXIS_X : (uint8_t)COLLISION_AXIS_Y,
+        .normal_sign = (int8_t)(step_x != 0 ? step_x : step_y),
+    };
+    return true;
+}
+
 player_place_status_t player_interaction_place_plan(const player_interaction_t *interaction, const world_map_t *map,
                                                     const player_interaction_input_t *input, player_place_plan_t *out) {
     *out = (player_place_plan_t){.status = PLAYER_PLACE_NONE};
-    const raycast_hit_t *const hit = &input->borrowed_target->hit;
+    const raycast_hit_t *hit = &input->borrowed_target->hit;
+    raycast_hit_t ahead;
+    if (interaction_ahead_hit(map, input, &ahead)) {
+        hit = &ahead;
+    }
     if (interaction->hand_count == 0u || hit->result != RAYCAST_RESULT_HIT || hit->axis == RAYCAST_AXIS_NONE) {
         return PLAYER_PLACE_NONE;
     }
@@ -639,6 +724,10 @@ void player_interaction_tick(player_interaction_t *interaction, world_edit_t *ed
         interaction_mining_stop(interaction);
     }
     if (!aimed) {
+        /* Nothing in reach along the aim: the plan may still place ahead, for bridging. */
+        if (hit->result == RAYCAST_RESULT_MISS && input->attack == 0u && input->place != 0u && may_place) {
+            interaction_place(interaction, edit, input);
+        }
         return;
     }
     if (input->attack != 0u) {

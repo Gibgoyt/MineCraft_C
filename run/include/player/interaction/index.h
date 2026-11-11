@@ -98,8 +98,9 @@ typedef struct player_interaction_input_t {
     player_felling_t *borrowed_felling;         /* 16: what a log cut sets going, or nullptr for one block */
     uint8_t attack;                             /* 24: the left button */
     uint8_t place;                              /* 25: the right button */
-    uint8_t look_facing;              /* 26: a block_facing_t: the nearest of the four to where the player looks */
-    uint8_t _pad0[5];                 /* 27 */
+    uint8_t look_facing; /* 26: a block_facing_t: the nearest of the four to where the player looks */
+    uint8_t look_ahead;  /* 27: 1 if the look is level or below, so a miss may place ahead for bridging (phase 13) */
+    uint8_t _pad0[4];    /* 28 */
     player_sounds_t *borrowed_sounds; /* 32: what it does that can be heard goes here, or nullptr for silent hands */
 } player_interaction_input_t;
 static_assert(sizeof(player_interaction_input_t) == 40);
@@ -163,7 +164,8 @@ void player_interaction_tick(player_interaction_t *interaction, world_edit_t *ed
 
 /* What the right button would put down and where, as player_interaction_tick would place it with input->place, but changing nothing:
  * the target, what is in the hand, the facing from input->look_facing turned by R's turns, and whether the world and the body let it
- * go there. Returns out->status. Any thread holding the map; reads only. */
+ * go there. With no block in reach along the aim and input->look_ahead set, the cell ahead of the block underfoot, for bridging: see
+ * README.md, "Placing ahead". Returns out->status. Any thread holding the map; reads only. */
 player_place_status_t player_interaction_place_plan(const player_interaction_t *interaction, const world_map_t *map,
                                                     const player_interaction_input_t *input, player_place_plan_t *out);
 

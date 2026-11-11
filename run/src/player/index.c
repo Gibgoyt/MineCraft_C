@@ -153,10 +153,15 @@ void player_turn_send(player_t *player) {
 static void player_hands_input(const player_t *player, player_interaction_input_t *out) {
     float64_t look[COLLISION_AXES];
     player_camera_direction(player_yaw_sent(player), 0.0f32, look);
+    const uint32_t pitch_bits = (uint32_t)(atomic_load_explicit(&player->look_word, memory_order_relaxed) >> 32u);
+    float32_t pitch = 0.0f32;
+    memcpy(&pitch, &pitch_bits, sizeof(pitch));
     *out = (player_interaction_input_t){
         .borrowed_target = &player->target,
         .borrowed_movement = &player->movement,
         .look_facing = (uint8_t)block_facing_of_look(look[0], look[1]),
+        /* Plan 005 phase 13: from level to straight down, a miss may place ahead; above level, never. */
+        .look_ahead = pitch <= 0.0f32 ? 1u : 0u,
     };
 }
 
