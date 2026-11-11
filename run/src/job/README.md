@@ -55,10 +55,14 @@ highest first:
 
 - **Order.** A worker never takes a lower priority's job while a higher priority has one it may take. Within one priority
   it is first come, first served. A running job is never stopped, so what arrives waits for a worker to finish one.
-- **The cap.** While any job of a higher priority is queued or running, at most one worker in 16, rounded up, so one
-  here, runs `JOB_PRIORITY_FAR` jobs (`JOB_FAR_WORKERS_DIVISOR`), so the rest are free for the near work. It was a quarter
-  at first: with the hold below, one brought the near rings after render distance 16 to 64 from 7.0 s to 5.1 s, as
-  far-field workers share cores with near ones by hyperthreading, and the far field took no longer to finish, 98 s. With nothing
+- **The cap.** While any job of a higher priority is queued or running, at most half the workers, rounded up, run
+  `JOB_PRIORITY_FAR` jobs (`JOB_FAR_WORKERS_DIVISOR`), so the rest are free for the near work. Far-field workers share
+  cores with near ones by hyperthreading, so the cap trades the near rings against the horizon. With far columns of 1 s,
+  one worker was best (near rings after render distance 16 to 64 in 5.1 s against 7.0 s with a quarter, and the far field
+  no slower). Once plan 005 phase 14 made them 14 to 59 ms, `run_render_distance_live` after 16 to 64, with the hold
+  below: one worker, near rings in 5.0 s and 4% of the picture's change by 1 s; a quarter, 7.0 s and 35%; a half, 6.6
+  to 8.2 s and 60%. Only a half shows half the change in a second, as asked, and the near rings stay well under the 15 s
+  target, drawn as the far field until they come. With nothing
   above it, the far field may have every worker: a fixed cap made `render_feature_lod`, where the far field is all there
   is, take 481 s against its 590 s timeout. A job already running is never stopped, so near work that arrives while the far
   field has every worker waits for one far-field job to end. Workers the cap keeps out go to sleep, and any job from a

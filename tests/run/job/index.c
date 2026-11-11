@@ -934,7 +934,7 @@ TEST(the_far_field_keeps_to_its_cap_and_near_work_never_waits_for_it) {
     for (uint32_t i = 0; i < NEAR_JOBS; i++) {
         job_submit_at(&system, &group, JOB_PRIORITY_NEAR, job_near_quick, &order);
     }
-    /* 200 jobs of 2 ms on at most a quarter of the workers take at least 25 ms, and the cap is less: the near jobs take microseconds. */
+    /* 200 jobs of 2 ms on at most half the workers take at least 25 ms: the near jobs take microseconds. */
     const int64_t deadline = time_now_ns() + WAIT_NS;
     while (atomic_load(&order.near_done) < NEAR_JOBS && time_now_ns() < deadline) {
         (void)sched_yield();
@@ -987,17 +987,18 @@ static void job_far_blocker(job_worker_t *worker, void *borrowed_argument) {
  * ends, the cap holds for JOB_CAP_HOLD_NS more and then lifts with no job finishing to say so, and they wake and take the
  * rest. */
 TEST(workers_kept_off_a_capped_queue_sleep_and_come_back_for_it) {
-    enum : uint32_t { EXTRA = 10u };
     job_system_t system;
     REQUIRE(system_start(&system));
     const uint32_t cap = job_priority_cap(&system, JOB_PRIORITY_FAR);
-    REQUIRE(cap + 1u + EXTRA <= MC_THREADS_WORKERS); /* so that the lifted cap has a worker for every blocker */
+    /* As many more blockers as leave a worker for the near job, so that the lifted cap has a worker for every blocker. */
+    REQUIRE(cap + 2u <= MC_THREADS_WORKERS);
+    const uint32_t extra = MC_THREADS_WORKERS - cap - 1u;
     job_group_t group;
     job_group_init(&group);
     order_t order;
     memset(&order, 0, sizeof(order));
     REQUIRE(order_hold_near(&system, &group, &order));
-    for (uint32_t i = 0; i < cap + EXTRA; i++) {
+    for (uint32_t i = 0; i < cap + extra; i++) {
         job_submit_at(&system, &group, JOB_PRIORITY_FAR, job_far_blocker, &order);
     }
     int64_t deadline = time_now_ns() + WAIT_NS;
@@ -1009,7 +1010,7 @@ TEST(workers_kept_off_a_capped_queue_sleep_and_come_back_for_it) {
     CHECK(settled);
     CHECK_EQ_U64(atomic_load(&order.far_blocked), cap);
     CHECK_EQ_U64(job_priority_running(&system, JOB_PRIORITY_FAR), cap);
-    CHECK_EQ_U64(job_priority_queued(&system, JOB_PRIORITY_FAR), EXTRA);
+    CHECK_EQ_U64(job_priority_queued(&system, JOB_PRIORITY_FAR), extra);
     const int64_t before = process_cpu_ns();
     time_sleep_ns(100 * TIME_NS_PER_MS);
     const int64_t after = process_cpu_ns();
@@ -1023,7 +1024,7 @@ TEST(workers_kept_off_a_capped_queue_sleep_and_come_back_for_it) {
     atomic_store(&order.hold.open, 1u);
     deadline = opened_ns + WAIT_NS;
     int64_t lifted_ns = -1;
-    while (atomic_load(&order.far_blocked) < cap + EXTRA && time_now_ns() < deadline) {
+    while (atomic_load(&order.far_blocked) < cap + extra && time_now_ns() < deadline) {
         if (lifted_ns < 0 && atomic_load(&order.far_blocked) > cap) {
             lifted_ns = time_now_ns();
         }
@@ -1032,12 +1033,12 @@ TEST(workers_kept_off_a_capped_queue_sleep_and_come_back_for_it) {
     if (lifted_ns < 0) {
         lifted_ns = time_now_ns();
     }
-    CHECK_EQ_U64(atomic_load(&order.far_blocked), cap + EXTRA);
+    CHECK_EQ_U64(atomic_load(&order.far_blocked), cap + extra);
     CHECK(lifted_ns - opened_ns >= JOB_CAP_HOLD_NS);
     atomic_store(&order.gate.open, 1u);
     job_group_wait(&system, &group);
     job_group_deinit(&group);
-    CHECK_EQ_U64(atomic_load(&order.gate.ran), cap + EXTRA);
+    CHECK_EQ_U64(atomic_load(&order.gate.ran), cap + extra);
     CHECK_EQ_U64(atomic_load(&order.gate.timed_out), 0u);
     job_deinit(&system);
 }
