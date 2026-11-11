@@ -10,7 +10,7 @@
 - `render_exchange_start`, `render_exchange_publish`, `render_exchange_take`, `render_exchange_waiting`: a triple buffer's numbers, from one thread to another, without either ever waiting.
 - `render_camera_start`, `render_camera_fly`, `render_camera_to_traverse`: where the eye is, one step of flying, and what kernels take.
 - `render_frame_texture_table_bytes`, `render_frame_face_table_bytes`, `render_frame_shape_table_bytes`, `render_frame_arena_bytes`: sizes for the parent.
-- `render_frame_init`, `render_frame_deinit`: the tables and textures sent to the card, and the pictures pinned.
+- `render_frame_init`, `render_frame_deinit`: the tables and textures sent to the card, and the pictures pinned. The face table holds, after its faces, the blocks no ray of shade goes on through, for the far field (`lod_light_t.stops_after_faces`, `lod_stops_offset`) (see `cuda/src/lod/README.md`, "Only where shade will look").
 - `render_frame_features_set`: which effects the next frames draw with. `SHADE_FEATURES_ALL` unless told otherwise, and `game` asks for `SHADE_FEATURES_PLAY`, as the ones with a history do not suit a test that wants one exact picture.
 - `render_frame_time_set`, `render_day_fill`: the time of day, and what sky and light it means, by the fixed path below. For tests and benches that set a time straight on a frame.
 - `render_frame_sun_set`, `render_sky_fill`: the sun given from outside as a unit vector, and what sky and light it means. The game uses this from plan 004 phase 02, handing it the sun of the world clock at the drawing camera's latitude. `render` knows no latitude: it is given three floats, stored in `render_frame_t.sun_given` with `sun_from_outside` set, which `render_frame_time_set` clears.

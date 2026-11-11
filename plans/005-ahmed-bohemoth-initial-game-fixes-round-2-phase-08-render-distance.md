@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2 — phase 8: How far you can see
 
-**Status:** in progress: labels, explanations, the mountain check and their tests done. **The default stays 32:** measured after phase 14, every raise costs the frame rate far more than the target allows, because of how the far field traces rays past see-through blocks (Issues found). The raise waits for that fix, the new todo below   (updated 2026-11-11)
+**Status:** in progress: labels, explanations, the mountain check and their tests done. Far rays past see-through faces are now sent only where shade will look, with the same pictures: 2 to 3 times cheaper on leaves and water. **The default still stays 32:** a far field still costs 17 to 31% of the frame rate against 32 on the bench rows, well past the 10% allowed (Issues found, "Far rays only where shade will look")   (updated 2026-11-11)
 
 ## Goal
 
@@ -22,7 +22,7 @@ Settings says plainly how far you'll see, in blocks as well as chunks, and the d
 - [x] Show blocks on both sliders in `run/src/ui/screen_settings/index.c`: "Render distance: 32 chunks (512 blocks)". Shipped as "Render distance: 32 (512 blocks)": see Issues found
 - [x] Explain the two settings in one line each on the Settings screen: full detail, and how far to draw at all. A tooltip by the pointer over each slider
 - [ ] **Only after phase 14 is fixed,** raise the default render distance, keeping full detail at 32, to the highest that still holds the frame target on `bench_world`. Measure, and record the numbers here. **Measured 2026-11-11, not raised:** no distance above 32 holds it. 48 costs as much as 128, and 2 to 4 times the frame on leaves and water. The live test's opening targets hold at 64 and 128. See "The raised default, measured". Waits for the todo below
-- [ ] **New, 2026-11-11:** make the far field's rays past see-through faces cheap in `cuda/src/lod/`. Today every pixel that shows water, leaves or grass sends a far-field ray from the eye, and that ray steps through every near column. Turning those rays off made `jungle/orbit` at 48 cost what it costs at 32. Then measure again and raise the default
+- [ ] **New, 2026-11-11:** make the far field's rays past see-through faces cheap in `cuda/src/lod/`. Today every pixel that shows water, leaves or grass sends a far-field ray from the eye, and that ray steps through every near column. Turning those rays off made `jungle/orbit` at 48 cost what it costs at 32. Then measure again and raise the default. **Done in part, 2026-11-11:** a far ray is now sent only where shade's own ray leaves full detail, with every golden and bench picture the same bytes, and a test for far hills through glass and water. Its cost fell from 20.6 to 6 to 7 ms on `jungle/orbit` and from 27.9 to 9 to 13 ms on `deep_ocean/orbit`, at 48. Not cheap enough to raise the default: what is left is the far field's own rays for what hits nothing, and the walk through water. See "Far rays only where shade will look"
 - [x] Check the far field looks right from a mountain, with screenshots checked by eye. Taller terrain from plan 003 phase 8 may need it tuned. Done at 128 and 32, as the default did not move: nothing to tune. See "From a mountain"
 - [x] Add a test that the label shows blocks, and that a `settings.yaml` without the new default still loads as before. The default is not raised yet, so the second half pins that a file without the distances gets today's defaults and Ahmed's 32 and 32 loads as written; when the default is raised, that test needs no change
 
@@ -99,3 +99,30 @@ The default did not move, so this was done at what Ahmed would set by hand: rend
 - **The tallest peaks fade into fog at the top.** Fog starts at 70% of the render distance: about 1420 blocks at 128. A tall peak's top is further along the ray than its foot, so it melts into the sky first. That is the fog doing its job of hiding the edge of what is drawn. It is not the taller terrain drawn wrong: the coarse columns hold all 1536 blocks of height (`RENDER_LOD_HEIGHT_BLOCKS`).
 - **Forests past about 900 blocks are drawn as plain ground.** Phase 14b chose this (`RENDER_LOD_FEATURES_SHIFT_MAX` 2) so the horizon comes in within a second. From 300 blocks up, the far shores are green or sand with no trees, and nearer ones have their forests. It reads as distance, not as a fault. Putting trees back at voxels of 8 costs about 51 ms more a far column: Ahmed's choice.
 - **The frame at 128 from up there:** a mean of 8.7 ms at 1280 by 720, against 5.2 ms at 32, on today's slow card.
+
+### Far rays only where shade will look, 2026-11-11
+
+**What changed** (`cuda/src/lod/`, see its README, "Only where shade will look"). A pixel whose first surface is not a miss gets a far ray only if shade's own ray would leave full detail: (1) the texel shade reads there is not opaque, or it is water (`shade_surface_read`, moved with the water walk into `cuda/include/shade/index.hu` so both use the same lines); (2) one `traverse_trace_stopping` from that surface, through every block but the opaque ones and water (a bit table worked out once from the texture table by `frame_lod_stops`, sent at the end of the face table), gets out of full detail; (3) if water stopped it, shade's own ray followed as `shade_kernel` follows it gets out (`lod_goes_out`, the cursor walk, cut at `SHADE_WATER_SEEN_BLOCKS` with tint). 1 and 2 are a small kernel of their own, `lod_past_kernel`. Shade's ray can stop sooner than these say, never later, so a far pixel is what it was.
+
+**Pictures are the same bytes.** Every `bench_world` row's picture digest at 32, 48, 64, 96 and 128 is the one before the change (`plains/orbit` 3D516DE1..., `jungle/orbit` 07CF41FA..., `deep_ocean/orbit` 0B016007..., and so on), and `render_feature_lod`'s five golden pictures are exact, 0 past the tolerance. Nothing was regenerated.
+
+**New test:** `far_hills_show_through_glass_and_water_and_nothing_opaque_behind_them_sends_a_far_ray` (`render_feature_lod`). Over the rolling hills, a pane of glass with water two deep behind it: 15857 far rays, and 15857 pixels show the hills, of 28823 in the open. Then leaves and stone behind them: no far ray at all, and the picture is the bytes of one with no far field.
+
+**The cost, measured** (each row alone, release, 1920 by 1080, logs `scratchpad/p8b/one.log`; card slowing through the run, so read against the 32 run beside it). Primary pass, which holds the far rays, in ms, and fps:
+
+| Row | 32 | 48 before | 48 now | 64 now | 96 now | 128 now |
+|---|---|---|---|---|---|---|
+| `plains/orbit` primary ms | 1.4 to 1.8 | 5.61 | 3.4 to 3.7 | 4.30 | 4.60 | 5.05 |
+| `plains/orbit` fps | 71.0, 76.8 | 56.8 | 59.2, 62.8 | 55.6 | 53.9 | 51.3 |
+| `jungle/orbit` primary ms | 1.6 to 2.0 | 20.56 | 5.7 to 7.3 | 7.62 | 7.89 | 8.28 |
+| `jungle/orbit` fps | 46.7, 52.5 | 24.3 | 35.8 to 44.0 | 35.2 | 34.8 | 34.0 |
+| `deep_ocean/orbit` primary ms | 1.5 to 2.0 | 27.85 | 9.4 to 12.8 | 13.73 | 14.37 | 15.06 |
+| `deep_ocean/orbit` fps | 35.3, 42.0 | 16.9 | 24.2, 32.2 | 23.1 | 22.7 | 22.0 |
+
+`cave/orbit` draws the same picture at every distance; its run came last on a card that had slowed by half (32 itself fell from 71.1 to 32.6 fps), so it says nothing here.
+
+**The default stays 32.** Against 32 on the same run, 48 loses 17% on plains, 23% on jungle and 31% on water, where 10% is allowed. Even the experiment's bound, far rays for misses alone (which is wrong), measured today at `jungle/orbit` 48 lost 10% (47.4 against 52.5 fps). What is left: (a) the far rays for pixels that hit nothing, sky and the far ground itself, about 1.2 to 1.6 ms; (b) step 2's trace, about 2.5 ms on `jungle/orbit`, as it goes leaf voxel by leaf voxel through a canopy; (c) on water, step 3's walk for every pixel of sea, 6 to 10 ms, the same walk `shade_water_kernel` takes after it. A next step for (c): run the far field after `shade_water_kernel`, whose `TRAVERSE_INFO_CAPPED` already says which sea pixels shade will never look past; that needs `shade_frame` split around the far field. `MC_GAME_RENDER_DISTANCE_DEFAULT`, `run_settings`'s default tests and the Settings pictures are unchanged, so nothing there was regenerated, and the live test at a new default was not run.
+
+**Tried and dropped:** following shade's ray for every pixel past leaves, in place of step 2 (10.1 ms on `jungle/orbit` 48, as it is shade's own walk through a canopy); working out the stop table per tile in shared memory (no faster than the table in the face table, which is simpler); and a second trace on through water to its bed (20 ms on `deep_ocean/orbit`, as a ray towards the horizon crosses hundreds of water voxels one at a time).
+
+**Layout:** `lod_light_t` gained `borrowed_pixels`, `water_material`, `water_tint` and `stops_after_faces` (48 bytes). `render_frame_face_table_bytes` grew by the stop table. `render_frame_t` did not grow: putting the table there grew `render_t` and `app_t`, and main's frame went past 16384 bytes.

@@ -22,6 +22,9 @@ enum : uint32_t {
     TRAVERSE_HEIGHT_BLOCKS = 1536u, /* a world z of TRAVERSE_Z_BASE is storage height 0 */
     /* One block of threads, one coarse value. Stage 01.3 measured 8x8 best or tied for best of those it tried. */
     TRAVERSE_TILE_PIXELS = 8u,
+    /* traverse_stops_t: the materials it has a bit for. One past them never stops a ray that asks. */
+    TRAVERSE_STOPS_MATERIALS = 512u,
+    TRAVERSE_STOPS_WORDS = TRAVERSE_STOPS_MATERIALS / 32u,
     /* traverse_hit_t.value: the voxel in the low 16 bits, and its light in the 8 above them. The voxel is the block id, its
      * material, and the block's state, as types/block_state/ lays them out: a shape and its pictures turn by the facing. */
     TRAVERSE_VALUE_VOXEL_MASK = 0xFFFFu,
@@ -105,6 +108,15 @@ static_assert(offsetof(traverse_world_t, window) == 16);
 static_assert(offsetof(traverse_world_t, borrowed_shapes) == 40);
 static_assert(offsetof(traverse_world_t, shape_count) == 48);
 static_assert(offsetof(traverse_world_t, top_limit) == 52);
+
+/* A bit per material, material m at bit m % 32 of words[m / 32]: set for one that stops a ray asking only where the first thing is
+ * that it cannot see through. A kernel takes it by value. */
+typedef struct traverse_stops_t {
+    uint32_t words[TRAVERSE_STOPS_WORDS]; /* 0 */
+} traverse_stops_t;
+static_assert(sizeof(traverse_stops_t) == 64);
+static_assert(alignof(traverse_stops_t) == 4);
+static_assert(offsetof(traverse_stops_t, words) == 0);
 
 /* The eye is a whole block and a fraction, so that a ray is computed relative to the eye and is as exact at x = 10000000 as at
  * the origin. width and height are the size being rendered, which may be below the display's: Stage 01.3's fallback. For

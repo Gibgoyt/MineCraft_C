@@ -1024,6 +1024,65 @@ TEST(full_detail_stands_in_front_and_a_column_missing_from_it_shows_the_far_fiel
     ld_end(t, &rig);
 }
 
+/* How many pixels differ between two pictures, and how many far rays found something. */
+static uint64_t ld_differ(const uint8_t *a, const uint8_t *b) {
+    uint64_t count = 0u;
+    for (uint64_t i = 0u; i < LD_PIXELS; i++) {
+        count += memcmp(a + i * 4u, b + i * 4u, 3u) != 0 ? 1u : 0u;
+    }
+    return count;
+}
+
+static uint64_t ld_far_count(const lod_hit_t *hits) {
+    uint64_t count = 0u;
+    for (uint64_t i = 0u; i < LD_PIXELS; i++) {
+        count += hits[i].material != LOD_NO_MATERIAL ? 1u : 0u;
+    }
+    return count;
+}
+
+/* A far ray is followed only where shade's own ray, past all it can see through, really leaves full detail: so far hills still show
+ * through glass and water, one behind the other, and a ray that comes to something opaque behind them, or behind leaves, sends none
+ * at all. That is what keeps a far field cheap where most of a picture is water, leaves or plants. */
+TEST(far_hills_show_through_glass_and_water_and_nothing_opaque_behind_them_sends_a_far_ray) {
+    sk_rig_t rig;
+    const ld_source_t source = {LD_GROUND_HILLS, {0}};
+    render_camera_t eye;
+    render_camera_start(&eye, 8.5f64, 8.5f64, 150.5f64, 0.0f32, -0.12f32);
+    REQUIRE(ld_begin(t, &rig, &source, LD_HAND_RADIUS, 40u, LD_FOG_FAR, LD_PLAIN, eye.position));
+    const uint32_t without = LD_PLAIN & ~(uint32_t)SHADE_FEATURE_LOD;
+    render_frame_features_set(&rig.render->frame, LD_PLAIN);
+    (void)ld_picture(t, &rig, &eye);
+    const uint64_t open = ld_far_count(ld_hits(t, &rig));
+    printf("  %" PRIu64 " pixels of far hills in the open\n", open);
+    REQUIRE(open > LD_PIXELS / 4u);
+
+    /* A pane of glass, and a wall of water two deep behind it, across the whole view. */
+    REQUIRE(ld_put(t, &rig, 12, -8, 138, 13, 26, 166, BLOCK_ID_GLASS));
+    REQUIRE(ld_put(t, &rig, 13, -8, 138, 15, 26, 166, BLOCK_ID_WATER));
+    REQUIRE(sk_hand_world_sync(t, &rig));
+    const uint8_t *const through = ld_picture(t, &rig, &eye);
+    const uint64_t through_far = ld_far_count(ld_hits(t, &rig));
+    render_frame_features_set(&rig.render->frame, without);
+    const uint8_t *const through_bare = ld_picture(t, &rig, &eye);
+    render_frame_features_set(&rig.render->frame, LD_PLAIN);
+    const uint64_t shown = ld_differ(through, through_bare);
+    printf("  through glass and water: %" PRIu64 " far rays, %" PRIu64 " pixels show the hills\n", through_far, shown);
+    CHECK(through_far > open / 2u);
+    CHECK(shown > open / 4u);
+
+    /* Leaves behind them, then stone: whatever shows through the holes of the leaves is stone, and no far ray is sent for any pixel. */
+    REQUIRE(ld_put(t, &rig, 17, -8, 138, 18, 26, 166, BLOCK_ID_OAK_LEAVES));
+    REQUIRE(ld_put(t, &rig, 19, -8, 138, 20, 26, 166, BLOCK_ID_STONE));
+    REQUIRE(sk_hand_world_sync(t, &rig));
+    const uint8_t *const walled = ld_picture(t, &rig, &eye);
+    CHECK_EQ_U64(ld_far_count(ld_hits(t, &rig)), 0u);
+    render_frame_features_set(&rig.render->frame, without);
+    const uint8_t *const walled_bare = ld_picture(t, &rig, &eye);
+    CHECK_MEM_EQ(walled, walled_bare, post_xrgb_bytes(LD_WIDTH, LD_HEIGHT));
+    ld_end(t, &rig);
+}
+
 /* Fog takes the far field as it takes anything: past its end a pixel is the sky's, to the byte. */
 TEST(fog_takes_the_far_field_and_water_shows_the_sky) {
     sk_rig_t rig;

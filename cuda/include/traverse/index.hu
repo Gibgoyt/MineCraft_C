@@ -287,11 +287,24 @@ static __device__ __forceinline__ void traverse_hit_missed(uint32_t steps, bool 
                            (capped ? TRAVERSE_INFO_CAPPED : 0u));
 }
 
+/* Whether a ray told to stop only on what stops says, a bit per material as traverse_stops_t holds them, goes through a voxel of this
+ * value as if it were air. With stops nullptr, never: it stops on anything. */
+static __device__ __forceinline__ bool traverse_goes_through(const uint32_t *stops, uint32_t value) {
+    if (stops == nullptr) {
+        return false;
+    }
+    const uint32_t material = value & TRAVERSE_VALUE_MATERIAL_MASK;
+    return material >= TRAVERSE_STOPS_MATERIALS || ((stops[material >> 5] >> (material & 31u)) & 1u) == 0u;
+}
+
 /* One ray through the tree: Amanatides and Woo, stepping through the largest empty node holding the current cell, and reading
  * masks again only when the cell has left the column, section or brick it has cached. Stage 01.3 issues 2, 3 and 4 are why it
- * is the way it is, and each is marked. */
-static __device__ __forceinline__ void traverse_trace(const traverse_view_t *view, const traverse_trace_ray_t *ray,
-                                                      traverse_hit_t *hit) {
+ * is the way it is, and each is marked. With stops, a voxel of a material it does not have is no more than air, and a section
+ * all of one is passed whole: for a ray that asks only where the first thing is that it cannot see through. Inlined with stops
+ * nullptr, as traverse_trace is, those tests are not there at all. */
+static __device__ __forceinline__ void traverse_trace_stopping(const traverse_view_t *view,
+                                                               const traverse_trace_ray_t *ray, const uint32_t *stops,
+                                                               traverse_hit_t *hit) {
     const float32_t dx = ray->direction[0], dy = ray->direction[1], dz = ray->direction[2];
     const float32_t fx = ray->eye_frac[0], fy = ray->eye_frac[1], fz = ray->eye_frac[2];
     const int32_t ex = ray->eye_cell[0], ey = ray->eye_cell[1], ez = ray->eye_cell[2];
@@ -371,12 +384,16 @@ static __device__ __forceinline__ void traverse_trace(const traverse_view_t *vie
                 const int32_t brick = ((x >> 2) & 3) | (((y >> 2) & 3) << 2) | (((z >> 2) & 3) << 4);
                 if (header.brick_count == 0u) {
                     const int32_t cell[3] = {x, y, z};
-                    if (traverse_voxel_hit(view, ray, inverse, cell, traverse_section_value(encoded, &header, 0u),
-                                           steps, hit)) {
+                    const uint32_t value = traverse_section_value(encoded, &header, 0u);
+                    if (traverse_goes_through(stops, value)) {
+                        /* A section all of what this ray goes through: the node is the section. */
+                        shift = 4;
+                    } else if (traverse_voxel_hit(view, ray, inverse, cell, value, steps, hit)) {
                         return;
+                    } else {
+                        /* A section all of one shape, and this ray passed this voxel's box by: on to the next voxel. */
+                        shift = 0;
                     }
-                    /* A section all of one shape, and this ray passed this voxel's box by: on to the next voxel. */
-                    shift = 0;
                 } else if ((header.brick_mask >> brick) & 1u) {
                     const uint8_t *const after_header = encoded + sizeof(world_buffers_section_t);
                     if (brick != cached_brick) {
@@ -393,7 +410,8 @@ static __device__ __forceinline__ void traverse_trace(const traverse_view_t *vie
                         const uint32_t value =
                             traverse_section_value(encoded, &header, first + (uint32_t)__popcll(before));
                         const int32_t cell[3] = {x, y, z};
-                        if (traverse_voxel_hit(view, ray, inverse, cell, value, steps, hit)) {
+                        if (!traverse_goes_through(stops, value) &&
+                            traverse_voxel_hit(view, ray, inverse, cell, value, steps, hit)) {
                             return;
                         }
                     }
@@ -434,6 +452,11 @@ static __device__ __forceinline__ void traverse_trace(const traverse_view_t *vie
         z = next_z;
     }
     traverse_hit_missed(steps, true, hit);
+}
+
+static __device__ __forceinline__ void traverse_trace(const traverse_view_t *view, const traverse_trace_ray_t *ray,
+                                                      traverse_hit_t *hit) {
+    traverse_trace_stopping(view, ray, nullptr, hit);
 }
 
 /* ---- For the host side of any area whose kernel runs that loop ------------------------------------------------------- */

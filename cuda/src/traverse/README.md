@@ -17,6 +17,7 @@
 Only for CUDA code (`cuda/include/traverse/index.hu`):
 
 - `traverse_trace`: the ray loop, inline, because a device function cannot be called across files without device linking. `cuda/src/shade/` calls it for rays going on through holes, and sun rays there will too.
+- `traverse_trace_stopping`, `traverse_goes_through`: the same loop for a ray that stops only on the materials a `traverse_stops_t` names, and goes through every other as air, a section all of one whole. `cuda/src/lod/` asks it whether anything opaque stands behind a see-through surface. Inlined with no stops, as `traverse_trace` is, the extra tests are not there at all.
 - `traverse_boxes`, `traverse_shape_rows`: the shape table, on the card as constants, for the same reason in the header and not here.
 - `traverse_view_from`: a `traverse_world_t` checked and made into what a kernel takes.
 

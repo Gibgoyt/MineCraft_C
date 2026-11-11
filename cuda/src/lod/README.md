@@ -11,7 +11,7 @@
 - `lod_rays`: the same trace over a list of rays, for a test.
 
 **May be called by:** `cuda/src/frame/`, and tests.
-**Depends on:** `cuda/include/traverse/` for the ray loop and `traverse_view_t`, and `gpu_bridge/shade` for `shade_texture_t`.
+**Depends on:** `cuda/include/traverse/` for the ray loop and `traverse_view_t`, and `cuda/include/shade/` for `shade_texture_t` and what shade's own ray meets: `shade_surface_read`, `shade_water_through`, `shade_own_kind_behind`.
 
 ## How a ray goes
 
@@ -25,7 +25,19 @@ A ray starts at the finest level that has anything to show and goes on, each fro
 
 There is no ring to fit against. A hit on a coarse voxel at a place in a column that full detail holds is passed by, and the ray goes on from where it leaves that column; a far column full detail does not hold is drawn. So a round radius of loaded columns against a square level, a column not yet streamed in, and the first second of a world all come out right with nothing to keep in step. It is a rare case for a ray that met nothing in full detail: `LOD_SKIPS_MAX` is what a level allows it.
 
-The far field is asked only about rays that can still get there: what hit nothing in primary rays, and what hit a face with something to see through, so that a window looks out on the hills. It is under the primary pass's clock, as the rest of those same rays. `cuda/src/shade/` looks at `lod_hit_t` only where a ray of its own really leaves the world, so water and glass work out what they let through, and fog comes from `t` as for anything else.
+The far field is asked only about rays that can still get there: what hit nothing in primary rays, and what shade's own ray, going on past all it can see through, takes out of full detail, so that a window or a lake looks out on the hills. It is under the primary pass's clock, as the rest of those same rays. `cuda/src/shade/` looks at `lod_hit_t` only where a ray of its own really leaves the world, so water and glass work out what they let through, and fog comes from `t` as for anything else.
+
+## Only where shade will look
+
+A far ray starts at the eye, and passes by the columns full detail holds one at a time, up to `LOD_SKIPS_MAX` fresh traversals a level. For a ray that hit nothing that is cheap, as it meets little coarse ground there. For a ray past water, leaves or a plant it is not: it comes to near ground almost every time, and the far result goes unused. Sent for every such pixel, those rays cost 4 to 6 ms a frame on plains, 19 to 22 on leaves and 26 to 29 on water, at 1080p, at any render distance past full detail (plan 005 phase 8). So for a pixel whose first surface is not a miss, the far field asks in turn:
+
+1. Does shade go on past it? The texel shade will read there, by `shade_surface_read` from `cuda/include/shade/`, the same lines: one that is opaque, and is not water, ends shade's ray. Most leaves and grass end here.
+2. Does anything opaque, or water, stand behind it in full detail? One `traverse_trace_stopping` from that surface, which goes through every block but the stops: the blocks no face of which has anything to see through, and water. The renderer works them out once from the same texture table and sends them at the end of the face table (`frame_lod_stops` in `run/src/render/frame/`, `lod_light_t.stops_after_faces`). Almost every ray past leaves, glass or a plant stops here on near ground, and gets nothing. One that gets out gets its far ray.
+3. If water stopped it, does shade's own ray get through? `lod_goes_out` follows it as `shade_kernel` does, surface by surface, a body of water walked by `shade_water_through` with `shade_water_kernel`'s cursor, to `SHADE_WATER_SEEN_BLOCKS` with tint on, up to `SHADE_ALPHA_LAYERS`. A sea seen from above is cut short there, and shade never looks past it. With no stops, every pixel shade sees past asks this.
+
+Steps 1 and 2 are `lod_past_kernel`, and 3 and the far rays are `lod_frame_kernel`. Shade's ray can stop sooner than these say, never later, so every far pixel is the same as before, and a test holds far hills to showing through glass and water.
+
+What was tried and dropped: a second trace on through water to its bed, so that a ray down into a lake would stop there. It cost more than step 3, as a ray towards the horizon crosses hundreds of voxels of water one at a time. And step 3 for every pixel past leaves, in place of step 2: it costs what shade's own walk through a canopy costs, about 7 ms on `jungle/orbit`.
 
 ## The sun
 

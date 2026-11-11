@@ -130,8 +130,9 @@ uint64_t render_frame_texture_table_bytes(void) {
     return (uint64_t)BLOCK_TEXTURE_COUNT * sizeof(shade_texture_t);
 }
 
+/* The faces, and after them the far field's stops: lod_light_t.stops_after_faces. */
 uint64_t render_frame_face_table_bytes(void) {
-    return (uint64_t)BLOCK_COUNT * SHADE_FACES * sizeof(uint16_t);
+    return lod_stops_offset((uint64_t)BLOCK_COUNT * SHADE_FACES * sizeof(uint16_t)) + sizeof(traverse_stops_t);
 }
 
 uint64_t render_frame_shape_table_bytes(void) {
@@ -208,18 +209,38 @@ static uint8_t frame_shape_of(uint32_t block) {
     return TRAVERSE_SHAPE_CUBE;
 }
 
+/* What stops the far field's first trace behind a see-through surface: the blocks no ray of shade goes on through, as no face has
+ * anything to see through, or a face has no texture and shade draws it as missing; and water, which shade walks by a rule of its own
+ * that the far field then follows. */
+static void frame_lod_stops(const shade_texture_t *textures, const uint16_t *faces, traverse_stops_t *out) {
+    static_assert(BLOCK_COUNT <= TRAVERSE_STOPS_MATERIALS);
+    memset(out, 0, sizeof(*out));
+    for (uint32_t block = 0u; block < BLOCK_COUNT; block++) {
+        bool stops = true;
+        for (uint32_t face = 0u; face < SHADE_FACES; face++) {
+            const uint16_t texture = faces[block * SHADE_FACES + face];
+            stops = stops && (texture == SHADE_NO_TEXTURE || textures[texture].mean_rgba[3] == SHADE_ALPHA_OPAQUE);
+        }
+        stops = stops || block == BLOCK_ID_WATER;
+        out->words[block / 32u] |= stops ? 1u << (block % 32u) : 0u;
+    }
+}
+
 static gpu_status_t frame_send_tables(render_frame_t *frame, device_memory_t *memory, arena_t *arena,
                                       const texture_t *texture, const render_frame_blocks_t *blocks) {
     shade_texture_t *const textures = arena_alloc(arena, render_frame_texture_table_bytes(), alignof(shade_texture_t));
-    uint16_t *const faces = arena_alloc(arena, render_frame_face_table_bytes(), alignof(uint16_t));
+    uint16_t *const faces = arena_alloc(arena, render_frame_face_table_bytes(), alignof(traverse_stops_t));
     uint8_t *const shapes = arena_alloc(arena, render_frame_shape_table_bytes(), alignof(uint8_t));
     if (!frame_texture_table(texture, textures)) {
         return GPU_STATUS_INVALID_ARGUMENT;
     }
+    memset(faces, 0, render_frame_face_table_bytes());
     frame_face_table(faces);
     for (uint32_t block = 0u; block < BLOCK_COUNT; block++) {
         shapes[block] = frame_shape_of(block);
     }
+    const uint64_t stops_at = lod_stops_offset((uint64_t)BLOCK_COUNT * SHADE_FACES * sizeof(uint16_t));
+    frame_lod_stops(textures, faces, (traverse_stops_t *)(void *)((uint8_t *)faces + stops_at));
     const uint8_t *pixels = nullptr;
     uint64_t pixel_bytes = 0u;
     texture_pixels_get(texture, &pixels, &pixel_bytes);
@@ -685,9 +706,13 @@ gpu_status_t render_frame_draw_weather(render_frame_t *frame, const world_buffer
     const lod_light_t far_light = {
         .borrowed_textures = frame->scene.borrowed_textures,
         .borrowed_faces = frame->scene.borrowed_faces,
+        .borrowed_pixels = frame->scene.borrowed_pixels,
         .sun_direction = {sun->direction[0], sun->direction[1], sun->direction[2]},
         .material_count = frame->scene.material_count,
         .shadows = (features & SHADE_FEATURE_SHADOW) != 0u && sun_shines ? 1u : 0u,
+        .water_material = frame->scene.water_material,
+        .water_tint = (features & SHADE_FEATURE_WATER_TINT) != 0u ? 1u : 0u,
+        .stops_after_faces = 1u,
     };
     frame->scene.borrowed_lod_hits = far ? far_scene.borrowed_hits : nullptr;
     scene.borrowed_lod_hits = frame->scene.borrowed_lod_hits;

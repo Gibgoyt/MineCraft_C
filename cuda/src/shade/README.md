@@ -14,6 +14,8 @@
 
 **The far field:** where a ray of its own leaves the world, with `shade_scene_t.borrowed_lod_hits` there, it stops on what `cuda/src/lod/` found on that same ray: `shade_far_colour`, the face's mean colour, or what near water comes to when deep, under the same light. So fog, water and glass in front of it work as they do on anything. See that README.
 
+Only for CUDA code (`cuda/include/shade/index.hu`): `shade_context_t`, `shade_surface_t`, `shade_texel`, `shade_surface_read`, `shade_cell_material`, `shade_cell_material_kept`, `shade_water_walk_t` and `shade_water_through`, inline, so that `cuda/src/lod/` asks the very same questions of a pixel's ray as `shade_kernel` does, to send a far ray only where shade will look.
+
 **May be called by:** `render`, `cuda/src/frame/`.
 **Depends on:** `gpu_bridge/device_memory`, `gpu_bridge/post` for the sky and fog it draws behind glass and in water, `gpu_bridge/status`, `gpu_bridge/traverse`, and `cuda/include/traverse/` for a pixel's direction and the ray loop.
 
