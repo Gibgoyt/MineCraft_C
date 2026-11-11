@@ -251,7 +251,7 @@ Appended as they land:
 - `1ce9276c` Cap the far field at one worker in 16 while near work runs, not a quarter. (agent 14a)
 - `bd3e81ce` Drop the far field's queue before a change of render distance or full detail waits on it. (agent 14a)
 - `3d62734f` Let the far field have half the workers while near work runs, now that its columns are cheap. (agent 14a)
-- The commit that adds this line: Take a column in off the sim thread: its light alone and its pool blocks on the worker, and leave the far field its share. (agent 14d)
+- `5dd95354` Take a column in off the sim thread: its light alone and its pool blocks on the worker, and leave the far field its share. (agent 14d)
 
 ## Issues found
 
