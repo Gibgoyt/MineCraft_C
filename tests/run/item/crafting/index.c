@@ -337,7 +337,7 @@ TEST(what_is_almost_a_recipe_is_nothing) {
     ic_cells_clear(cells);
     cells[0] = item_stack_make(ITEM_ID_OAK_LOG, 64u);
     CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING),
-                 ic_recipe_named(t, "oak_planks"));
+                 ic_recipe_named(t, "oak_planks_on_bench"));
 }
 
 /* Tried a different way from what is under test: each recipe laid in every place on an empty grid and compared whole, and each order of a
@@ -484,7 +484,8 @@ TEST(from_a_log_to_a_pickaxe_as_a_player_would) {
     arena_t arena;
     inventory_t inventory;
     ic_inventory(t, &inventory, &arena);
-    /* Plan 005 phase 6: the hands make the table from four logs, and planks and sticks are the woodworking bench's. */
+    /* Plan 005 phase 6: the hands make the table from four logs, and sticks are the woodworking bench's. Planks come from a log in the hands
+     * and on the bench alike (Ahmed, 2026-11-11). */
     crafting_grid_t hands, table;
     crafting_grid_start(&hands, CRAFTING_SIDE_HANDS, RECIPE_STATION_HANDS);
     crafting_grid_start(&table, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING);
@@ -498,7 +499,7 @@ TEST(from_a_log_to_a_pickaxe_as_a_player_would) {
     /* Three logs on the bench. A click takes one making, and the output stays until the logs run out. */
     item_stack_t cursor = {0};
     ic_put(&table, 0u, ITEM_ID_OAK_LOG, 3u);
-    CHECK_EQ_U64(table.recipe, ic_recipe_named(t, "oak_planks"));
+    CHECK_EQ_U64(table.recipe, ic_recipe_named(t, "oak_planks_on_bench"));
     CHECK_EQ_U64(table.output.item, ITEM_ID_OAK_PLANKS);
     CHECK_EQ_U64(table.output.count, 4u);
     CHECK_EQ_U64(crafting_grid_take(&table, &cursor), 4u);

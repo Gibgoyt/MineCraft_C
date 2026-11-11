@@ -462,16 +462,35 @@ TEST(logs_to_planks_planks_to_sticks_and_two_logs_to_sticks_on_the_woodworking_b
     }
 }
 
+/* Ahmed, 2026-11-11: a log in the hands is four planks, and four planks of any wood there are a crafting table. */
+TEST(the_hands_turn_a_log_to_planks_and_four_planks_to_a_crafting_table) {
+    item_stack_t cells[RECIPE_CELLS] = {0};
+    cells[0] = item_stack_make(ITEM_ID_BIRCH_LOG, 1u);
+    uint32_t row = crafting_match(cells, CRAFTING_SIDE_HANDS, RECIPE_STATION_HANDS);
+    REQUIRE(row != CRAFTING_NO_RECIPE);
+    CHECK_EQ_U64(recipe_defs[row].gives, ITEM_ID_BIRCH_PLANKS);
+    CHECK_EQ_U64(recipe_defs[row].count, 4u);
+    cells[0] = item_stack_make(ITEM_ID_OAK_PLANKS, 1u);
+    cells[1] = item_stack_make(ITEM_ID_SPRUCE_PLANKS, 1u);
+    cells[2] = item_stack_make(ITEM_ID_BIRCH_PLANKS, 1u);
+    cells[3] = item_stack_make(ITEM_ID_OAK_PLANKS, 1u);
+    row = crafting_match(cells, CRAFTING_SIDE_HANDS, RECIPE_STATION_HANDS);
+    REQUIRE(row != CRAFTING_NO_RECIPE);
+    CHECK_EQ_U64(recipe_defs[row].gives, ITEM_ID_CRAFTING_TABLE);
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE), CRAFTING_NO_RECIPE);
+}
+
 TEST(from_logs_to_a_bench_and_on_it_a_pickaxe_as_a_player_would) {
     crafting_grid_t hands, table, bench;
     crafting_grid_start(&hands, CRAFTING_SIDE_HANDS, RECIPE_STATION_HANDS);
     crafting_grid_start(&table, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE);
     crafting_grid_start(&bench, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING);
 
-    /* Hands: four logs to a table. A log alone is no planks there. */
+    /* Hands: one log alone is four planks (Ahmed, 2026-11-11), and four logs are a table. */
     item_stack_t cursor = item_stack_make(ITEM_ID_OAK_LOG, 4u);
     crafting_grid_click_secondary(&hands, 0u, &cursor);
-    CHECK(item_stack_is_empty(&hands.output));
+    CHECK_EQ_U64(hands.output.item, ITEM_ID_OAK_PLANKS);
+    CHECK_EQ_U64(hands.output.count, 4u);
     for (uint32_t i = 1u; i < 4u; i++) {
         crafting_grid_click_secondary(&hands, i, &cursor);
     }
