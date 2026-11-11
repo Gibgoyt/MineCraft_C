@@ -54,8 +54,16 @@ typedef struct game_census_job_t {
 static_assert(sizeof(game_census_job_t) == 2u * MC_CPU_CACHE_LINE_BYTES);
 
 /* A block's week is worked by day: one job reads the block, 7 jobs work a day each, and the last of them to finish does the
- * update, then takes the batch's next block into the same slot. A slot holds one of the store's works. */
+ * update and frees the slot. The sim hands a free slot the batch's next block on its next step, so no census job ever
+ * queues the next block from inside a job. A slot holds one of the store's works. */
 typedef struct game_census_slot_t game_census_slot_t;
+
+/* Where a slot is. The sim sets RUNNING before its job goes in; the job, or the last of its days, sets the rest. */
+typedef enum game_census_slot_state_t : uint32_t {
+    GAME_CENSUS_SLOT_FREE = 0u,      /* nothing of its is queued or running: the sim may hand it a block */
+    GAME_CENSUS_SLOT_RUNNING = 1u,   /* its slot job or its days are queued or running */
+    GAME_CENSUS_SLOT_DAYS_OWED = 2u, /* the queues were full: the sim queues its days from days_next on */
+} game_census_slot_state_t;
 
 /* One day job's argument. */
 typedef struct game_census_day_t {
@@ -71,10 +79,13 @@ typedef struct game_census_slot_t {
     uint32_t job;                                                    /* 16: the census job it works now */
     _Atomic uint32_t days_left;                                      /* 20: of that job's 7 days */
     game_census_day_t days[CLIMATE_WEEK_DAYS];                       /* 24 */
-    uint8_t _pad0[3u * MC_CPU_CACHE_LINE_BYTES - 136u];              /* 136 */
+    _Atomic uint32_t state;                                          /* 136: a game_census_slot_state_t */
+    uint32_t days_next;                                              /* 140: with DAYS_OWED, the first day not queued */
+    uint8_t _pad0[3u * MC_CPU_CACHE_LINE_BYTES - 144u];              /* 144 */
 } game_census_slot_t;
 static_assert(sizeof(game_census_slot_t) == 3u * MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(game_census_slot_t, days) == 24);
+static_assert(offsetof(game_census_slot_t, state) == 136);
 
 /* A census's state: the sim's, but for done flags and the report buffers, whose owners are said. In the game's World arena. */
 typedef struct game_census_t {
@@ -122,11 +133,10 @@ typedef struct game_census_t {
     uint32_t input_known;               /* 276: it could be filled */
     uint64_t input_week;                /* 280: the week it was filled for; 0 for none */
     uint8_t input_submitted;            /* 288: the sim's */
-    uint8_t slots_submitted;            /* 289: the sim's: slot jobs in for this batch */
-    uint8_t _pad1[2];                   /* 290 */
+    uint8_t _pad1[3];                   /* 289 */
     _Atomic uint32_t claim;             /* 292: the batch's next job a slot takes; past claim_end, none */
     uint32_t claim_end;                 /* 296: the batch's end, set before its slot jobs go in */
-    _Atomic uint32_t slots_idle;        /* 300: slots that found no block left: the batch is over at slots_submitted */
+    uint8_t _pad4[4];                   /* 300 */
     game_census_slot_t *borrowed_slots; /* 304: CLIMATE_WEEK_WORK_SLOTS */
     uint8_t _pad3[8];                   /* 312 */
 } game_census_t;

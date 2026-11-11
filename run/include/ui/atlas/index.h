@@ -113,6 +113,9 @@ typedef struct ui_atlas_world_t {
 } ui_atlas_world_t;
 static_assert(sizeof(ui_atlas_world_t) == 48);
 
+/* One band of a picture, a job's argument: in run/src/ui/atlas/index.c. */
+typedef struct ui_atlas_band_t ui_atlas_band_t;
+
 /* The main thread's, but for what each field says. */
 typedef struct ui_atlas_t {
     job_group_t draw_group;               /* 0: the drawing job and its bands */
@@ -129,7 +132,10 @@ typedef struct ui_atlas_t {
     job_system_t *borrowed_job;           /* 576 */
     const climate_t *borrowed_climate;    /* 584 */
     const ui_font_t *borrowed_font;       /* 592 */
-    uint8_t _pad1[40];                    /* 600 */
+    ui_atlas_band_t *borrowed_bands;      /* 600: the drawing job's bands, in arena_draw */
+    _Atomic uint32_t bands_owed;          /* 608: the queues were full: main queues bands from bands_next on */
+    uint32_t bands_next;                  /* 612: the first band not queued, the drawing job's until bands_owed */
+    uint8_t _pad1[24];                    /* 616 */
     arena_t arena_draw;                   /* 640: the drawing job's; reset at each picture */
     arena_t arena_save;                   /* 704: the saving job's; reset at each save */
     _Atomic uint32_t draw_done;           /* 768: worker to main, release; main reads with acquire */

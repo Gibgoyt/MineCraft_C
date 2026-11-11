@@ -36,6 +36,13 @@ static bool system_start(job_system_t *system) {
     return thread_topology_read(&topology) && job_init(system, &topology);
 }
 
+/* A spawn in a test that leaves room for all it spawns. A refusal is counted in jobs_refused, which those tests check is 0,
+ * and its job never runs, which their counts catch too. */
+static void spawn_with_room(job_worker_t *worker, job_group_t *group, job_function_t function,
+                            void *borrowed_argument) {
+    (void)job_spawn(worker, group, function, borrowed_argument);
+}
+
 /* All workers added up, with the arena's peak as the highest and cpu left at zero. */
 static void stats_total(const job_system_t *system, job_stats_t *out) {
     job_stats_t total;
@@ -46,7 +53,7 @@ static void stats_total(const job_system_t *system, job_stats_t *out) {
         total.jobs_run += one.jobs_run;
         total.jobs_stolen += one.jobs_stolen;
         total.jobs_from_injector += one.jobs_from_injector;
-        total.jobs_inlined += one.jobs_inlined;
+        total.jobs_refused += one.jobs_refused;
         total.sleeps += one.sleeps;
         total.arena_resets += one.arena_resets;
         total.arena_peak = one.arena_peak > total.arena_peak ? one.arena_peak : total.arena_peak;
@@ -175,7 +182,8 @@ enum : uint32_t {
     STRESS_PRODUCERS = 3u,
     STRESS_JOBS_PER_PRODUCER = 500000u,
     STRESS_TREE_FAN = 4u,
-    STRESS_TREE_NODES = 87381u, /* nine levels of four */
+    STRESS_TREE_NODES = 87381u,    /* nine levels of four */
+    STRESS_TREE_INTERNAL = 21845u, /* the first eight levels: the nodes with children */
     STRESS_TREE_ROUNDS = 20u,
 };
 
@@ -251,17 +259,31 @@ typedef struct tree_t {
 } tree_t;
 static_assert(sizeof(tree_t) == 16);
 
-/* Each node spawns its children, so most queues run down to one entry over and over, and each of those is a race between
- * the owner's pop and a thief. Children count in the same group, which must stay open until the last leaf. */
-static void job_tree(job_worker_t *worker, void *borrowed_argument) {
+static void job_tree_leaf(job_worker_t *worker, void *borrowed_argument) {
+    (void)worker;
+    tree_node_t *const node = borrowed_argument;
+    atomic_fetch_add(&node->visits, 1u);
+}
+
+/* One node with children: main's loop submits one of these for each, and it spawns those of its children that are leaves,
+ * so most queues run down to one entry over and over, and each of those is a race between the owner's pop and a thief.
+ * No job spawns itself. Children count in the same group, which must stay open until the last leaf. */
+static void job_tree_parent(job_worker_t *worker, void *borrowed_argument) {
     tree_node_t *const node = borrowed_argument;
     tree_t *const tree = node->borrowed_tree;
     atomic_fetch_add(&node->visits, 1u);
     for (uint32_t i = 1u; i <= STRESS_TREE_FAN; i++) {
         const uint64_t child = (uint64_t)node->index * STRESS_TREE_FAN + i;
-        if (child < STRESS_TREE_NODES) {
-            job_spawn(worker, tree->borrowed_group, job_tree, &tree->borrowed_nodes[child]);
+        if (child >= STRESS_TREE_INTERNAL && child < STRESS_TREE_NODES) {
+            spawn_with_room(worker, tree->borrowed_group, job_tree_leaf, &tree->borrowed_nodes[child]);
         }
+    }
+}
+
+/* The tree, built from a loop on the calling thread: a job for each node with children, which spawns its leaves. */
+static void tree_submit(job_system_t *system, job_group_t *group, tree_node_t *nodes) {
+    for (uint64_t i = 0; i < STRESS_TREE_INTERNAL; i++) {
+        job_submit(system, group, job_tree_parent, &nodes[i]);
     }
 }
 
@@ -303,7 +325,7 @@ TEST(stress_on_all_workers_runs_every_job_exactly_once) {
         REQUIRE(thread_start(&producers[i].thread, &topology, roles[i], 0u, stress_producer_main, &producers[i]));
     }
     for (uint32_t round = 0; round < STRESS_TREE_ROUNDS; round++) {
-        job_submit(&system, &tree_group, job_tree, &nodes[0]);
+        tree_submit(&system, &tree_group, nodes);
         job_group_wait(&system, &tree_group);
     }
     for (uint32_t i = 0; i < STRESS_PRODUCERS; i++) {
@@ -312,7 +334,7 @@ TEST(stress_on_all_workers_runs_every_job_exactly_once) {
     /* Workers take from the shared queue before they steal, so while the producers were busy nobody had to steal. Now that
      * queue is empty and stealing is the only way to get anything. */
     for (uint32_t round = 0; round < STRESS_TREE_ROUNDS; round++) {
-        job_submit(&system, &tree_group, job_tree, &nodes[0]);
+        tree_submit(&system, &tree_group, nodes);
         job_group_wait(&system, &tree_group);
     }
     job_group_deinit(&tree_group);
@@ -340,9 +362,9 @@ TEST(stress_on_all_workers_runs_every_job_exactly_once) {
     stats_total(&system, &total);
     CHECK_EQ_U64(total.jobs_run, jobs_total);
     CHECK_EQ_U64(total.arena_resets, jobs_total);
-    CHECK_EQ_U64(total.jobs_inlined, 0u);
+    CHECK_EQ_U64(total.jobs_refused, 0u);
     CHECK(total.jobs_stolen > 0u);
-    CHECK_EQ_U64(total.jobs_from_injector, item_total + 2u * STRESS_TREE_ROUNDS);
+    CHECK_EQ_U64(total.jobs_from_injector, item_total + 2u * STRESS_TREE_ROUNDS * (uint64_t)STRESS_TREE_INTERNAL);
     for (uint32_t i = 0; i < MC_THREADS_WORKERS; i++) {
         job_stats_t one;
         job_stats_read(&system, i, &one);
@@ -391,7 +413,7 @@ static void job_steal_parent(job_worker_t *worker, void *borrowed_argument) {
     steal_t *const steal = borrowed_argument;
     atomic_store(&steal->parent_index, worker->index);
     for (uint64_t i = 0; i < JOB_QUEUE_CAPACITY; i++) {
-        job_spawn(worker, steal->borrowed_group, job_steal_child, steal);
+        spawn_with_room(worker, steal->borrowed_group, job_steal_child, steal);
     }
     const int64_t deadline = time_now_ns() + WAIT_NS;
     while (atomic_load(&steal->done) < JOB_QUEUE_CAPACITY) {
@@ -575,7 +597,6 @@ TEST(the_shared_queue_holds_its_capacity_then_refuses_then_waits) {
 }
 
 enum : uint64_t {
-    OVERFLOW_BLOCK_BYTES = 4096u,
     /* Other workers each take one child and block, so this many are sure to find every queue full. */
     OVERFLOW_EXTRA = 1000u,
     OVERFLOW_CHILDREN = JOB_QUEUE_CAPACITY + JOB_INJECTOR_CAPACITY + MC_THREADS_WORKERS + OVERFLOW_EXTRA,
@@ -584,49 +605,43 @@ enum : uint64_t {
 typedef struct overflow_t {
     job_group_t *borrowed_group;
     gate_t gate;
-    _Atomic uint64_t inline_found_arena_empty;
-    _Atomic uint64_t block_changed;
+    _Atomic uint64_t refused;               /* job_spawn's false returns, as the parent counted them */
+    _Atomic uint64_t ran_while_parent_runs; /* a child on the parent's worker before the parent returned: inline */
     _Atomic uint32_t parent_index;
     _Atomic uint32_t parent_running;
 } overflow_t;
 static_assert(sizeof(overflow_t) == 56);
 
-/* On the parent's worker while the parent runs, it can only have been run inline, on the parent's stack. Elsewhere it holds
- * its worker until all the children have been spawned, so the queues stay full. */
+/* On the parent's worker while the parent runs, it could only have been run inline, on the parent's stack. Elsewhere it
+ * holds its worker until all the children have been spawned, so the queues stay full. */
 static void job_overflow_child(job_worker_t *worker, void *borrowed_argument) {
     overflow_t *const overflow = borrowed_argument;
     if (worker->index == atomic_load(&overflow->parent_index)) {
-        if (atomic_load(&overflow->parent_running) != 0u && worker->arena_job.used == 0u) {
-            atomic_fetch_add(&overflow->inline_found_arena_empty, 1u);
+        if (atomic_load(&overflow->parent_running) != 0u) {
+            atomic_fetch_add(&overflow->ran_while_parent_runs, 1u);
         }
     } else {
         gate_wait_open(&overflow->gate);
     }
-    (void)arena_alloc(&worker->arena_job, 128u, 16u);
     atomic_fetch_add(&overflow->gate.ran, 1u);
 }
 
 static void job_overflow_parent(job_worker_t *worker, void *borrowed_argument) {
     overflow_t *const overflow = borrowed_argument;
-    uint8_t *const block = arena_alloc(&worker->arena_job, OVERFLOW_BLOCK_BYTES, 64u);
-    memset(block, 0xA5, OVERFLOW_BLOCK_BYTES);
     atomic_store(&overflow->parent_index, worker->index);
     atomic_store(&overflow->parent_running, 1u);
     for (uint64_t i = 0; i < OVERFLOW_CHILDREN; i++) {
-        job_spawn(worker, overflow->borrowed_group, job_overflow_child, overflow);
-    }
-    /* The children run inline shared this arena, and must not have reset it or written over this. */
-    for (uint64_t i = 0; i < OVERFLOW_BLOCK_BYTES; i++) {
-        if (block[i] != 0xA5) {
-            atomic_fetch_add(&overflow->block_changed, 1u);
-            break;
+        if (!job_spawn(worker, overflow->borrowed_group, job_overflow_child, overflow)) {
+            atomic_fetch_add(&overflow->refused, 1u);
         }
     }
     atomic_store(&overflow->parent_running, 0u);
     atomic_store(&overflow->gate.open, 1u);
 }
 
-TEST(spawning_past_every_queue_runs_inline_in_the_same_arena) {
+/* Spawning past every queue returns false and queues nothing: no child runs on the spawner's stack, every job that did go
+ * in runs once, and the group still finishes. This replaces the old inline path and its depth abort. */
+TEST(a_full_queue_makes_spawn_return_false_and_nothing_runs_inline) {
     job_system_t system;
     REQUIRE(system_start(&system));
     job_group_t group;
@@ -640,16 +655,18 @@ TEST(spawning_past_every_queue_runs_inline_in_the_same_arena) {
     job_group_wait(&system, &group);
     job_group_deinit(&group);
 
+    const uint64_t refused = atomic_load(&overflow.refused);
     CHECK_EQ_U64(atomic_load(&overflow.gate.timed_out), 0u);
-    CHECK_EQ_U64(atomic_load(&overflow.gate.ran), OVERFLOW_CHILDREN);
-    CHECK_EQ_U64(atomic_load(&overflow.inline_found_arena_empty), 0u);
-    CHECK_EQ_U64(atomic_load(&overflow.block_changed), 0u);
+    CHECK(refused >= OVERFLOW_EXTRA);
+    CHECK_EQ_U64(atomic_load(&overflow.gate.ran), OVERFLOW_CHILDREN - refused);
+    CHECK_EQ_U64(atomic_load(&overflow.ran_while_parent_runs), 0u);
     job_stats_t total;
     stats_total(&system, &total);
-    CHECK_EQ_U64(total.jobs_run, OVERFLOW_CHILDREN + 1u);
-    CHECK(total.jobs_inlined >= OVERFLOW_EXTRA);
-    /* An inlined job does not end the arena's lifetime. Every other job does. */
-    CHECK_EQ_U64(total.arena_resets, total.jobs_run - total.jobs_inlined);
+    CHECK_EQ_U64(total.jobs_refused, refused);
+    CHECK_EQ_U64(total.jobs_run, OVERFLOW_CHILDREN - refused + 1u);
+    /* Every job starts with an empty arena and ends its lifetime: none shares another's. */
+    CHECK_EQ_U64(total.arena_resets, total.jobs_run);
+    printf("  %" PRIu64 " of %" PRIu64 " spawns refused with every queue full\n", refused, (uint64_t)OVERFLOW_CHILDREN);
     job_deinit(&system);
 }
 
@@ -778,7 +795,7 @@ static void job_order_log(job_worker_t *worker, void *borrowed_argument) {
 static void job_order_spawner(job_worker_t *worker, void *borrowed_argument) {
     order_job_t *const job = borrowed_argument;
     job_order_log(worker, job);
-    job_spawn(worker, job->borrowed_group, job_order_log, job + 1);
+    spawn_with_room(worker, job->borrowed_group, job_order_log, job + 1);
 }
 
 /* Queues the third of three at near priority from inside the job, then spawns the second. */
@@ -789,7 +806,7 @@ static void job_order_near_then_spawn(job_worker_t *worker, void *borrowed_argum
                            three + 2)) {
         job_order_log(worker, three + 2); /* cannot happen with an empty queue: the order check then fails */
     }
-    job_spawn(worker, three->borrowed_group, job_order_log, three + 1);
+    spawn_with_room(worker, three->borrowed_group, job_order_log, three + 1);
 }
 
 /* Queued lowest first, with one worker, they must still run highest first, and in the order queued within each. */
@@ -1060,7 +1077,7 @@ static void job_drain_root(job_worker_t *worker, void *borrowed_argument) {
     drain_t *const drain = borrowed_argument;
     atomic_fetch_add(&drain->ran, 1u);
     for (uint32_t i = 0; i < 3u; i++) {
-        job_spawn(worker, drain->borrowed_group, job_drain_leaf, drain);
+        spawn_with_room(worker, drain->borrowed_group, job_drain_leaf, drain);
     }
 }
 
@@ -1263,49 +1280,6 @@ static void body_two_waiters(void) {
     job_group_wait(&system, &group);
 }
 
-static void job_chain(job_worker_t *worker, void *borrowed_argument) {
-    misuse_t *const misuse = borrowed_argument;
-    job_spawn(worker, misuse->borrowed_group, job_chain, misuse);
-}
-
-/* Holds a worker that took it from a queue. Run inline it has to return, or the spawner would never get any further. */
-static void job_chain_filler(job_worker_t *worker, void *borrowed_argument) {
-    gate_t *const gate = borrowed_argument;
-    if (worker->inline_depth > 1u) {
-        return;
-    }
-    atomic_fetch_add(&gate->blocked, 1u);
-    gate_wait_open(gate);
-}
-
-/* Holds every other worker on the gate, so nothing can leave a queue, then fills them, then spawns a job that spawns itself.
- * Each of those can only run inline, deeper every time. */
-static void job_chain_parent(job_worker_t *worker, void *borrowed_argument) {
-    misuse_t *const misuse = borrowed_argument;
-    while (atomic_load(&misuse->gate.blocked) < MC_THREADS_WORKERS - 1u) {
-        job_spawn(worker, misuse->borrowed_group, job_chain_filler, &misuse->gate);
-        (void)sched_yield();
-    }
-    for (uint64_t i = 0; i < JOB_QUEUE_CAPACITY + JOB_INJECTOR_CAPACITY; i++) {
-        job_spawn(worker, misuse->borrowed_group, job_chain_filler, &misuse->gate);
-    }
-    job_spawn(worker, misuse->borrowed_group, job_chain, misuse);
-}
-
-static void body_endless_inline_spawning(void) {
-    job_system_t system;
-    if (!system_start(&system)) {
-        _exit(10);
-    }
-    job_group_t group;
-    job_group_init(&group);
-    misuse_t misuse;
-    memset(&misuse, 0, sizeof(misuse));
-    misuse.borrowed_group = &group;
-    job_submit(&system, &group, job_chain_parent, &misuse);
-    job_group_wait(&system, &group);
-}
-
 typedef struct misuse_case_t {
     child_body_t body;
     const char *expected;
@@ -1317,7 +1291,6 @@ TEST(misuse_aborts_and_says_why) {
         {body_wait_on_a_worker, "pthread_equal"},
         {body_group_deinit_with_a_job_left, "job_group_deinit"},
         {body_two_waiters, "flagged || (state & JOB_GROUP_WAITER) == 0"},
-        {body_endless_inline_spawning, "already running on this stack"},
     };
     for (uint64_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
         char *output = nullptr;

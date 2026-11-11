@@ -17,14 +17,15 @@ the worker it was handed.
   `JOB_PRIORITY_NORMAL`.
 - `job_priority_drop`, `job_dropped`: mark what is queued at a priority as no longer wanted, and ask from inside a job
   whether it is one of those.
-- `job_spawn`: queue a job from inside a job. Cannot fail.
+- `job_spawn`: queue a job from inside a job. Returns false when this worker's queue and the shared one are both full,
+  and the caller keeps the work for later.
 - `job_group_wait`: sleep until a group's jobs have all finished.
 - `job_stats_read`, `job_sleeper_count`, `job_priority_queued`, `job_priority_running`, `job_priority_cap`: counters for
   tests and the debug overlay.
 - `job_profiler_set`, `job_worker_lane`: each job a scope on its worker's lane in `run/src/profiler/`, and that lane for a job's own scopes.
 
 **May be called by:** `game`, `terrain`, `world/light`, `render/encode`, `save`, `mob`: anything above this layer.
-**Depends on:** `thread` for pinned threads, `heap`, `arena`, `time` for the hold, `log`, `assert`, futex through
+**Depends on:** `thread` for pinned threads, `heap`, `arena`, `time` for the hold, `assert`, futex through
 `syscall`, and generated `machine/index.h`.
 
 ## How work moves
@@ -92,9 +93,10 @@ wakeup is lost.
 - **A job cannot wait** for other jobs. `job_group_wait` aborts on a worker, since workers all waiting would leave nobody
   to run anything. Spawn the remaining work as a job instead, or let the thread outside that waits on the group do it.
   This also means a Job arena never has to hold two unrelated jobs' memory at once, apart from the next rule.
-- **An inlined job shares the arena.** With this worker's queue and the injector both full, `job_spawn` runs the new job on
-  the spot. It finds the arena in use rather than empty, its allocations last until the outermost job ends, and past 32 such
-  jobs on one stack the program aborts, like an arena running out: that budget is a bug to fix, not a state to carry on from.
+- **A job never runs on another job's stack.** With this worker's queue and the injector both full, `job_spawn` returns
+  false and queues nothing, like `job_try_submit`. The spawner keeps that work and queues it later, from its owner or from
+  a later job, never by calling the job itself. So every job starts on a worker's own loop with an empty arena, and no
+  function can reach itself through a job (`CODING_STANDARD.md` section 4 bans recursion).
 - **No job waits on a lock another job holds**, for the same reason as waiting.
 
 ## Sizes

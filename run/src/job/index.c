@@ -4,7 +4,6 @@
 #include "job/index.h"
 
 #include "assert/index.h"
-#include "log/index.h"
 #include "time/index.h"
 
 #include <errno.h>
@@ -441,19 +440,12 @@ bool job_dropped(const job_worker_t *worker) {
  * sleep is either seen by job_wake_one or sees the place given back. It also pairs with the same fence in a job finishing
  * at the same moment, so that of two last jobs above a capped queue, at least one sees the other gone. */
 static void job_run(job_worker_t *worker, job_t job, bool from_injector) {
-    const uint32_t outer_priority = worker->running_priority, outer_epoch = worker->running_epoch;
     worker->running_priority = job.priority;
     worker->running_epoch = job.epoch;
-    worker->inline_depth++;
     PROFILER_BEGIN(job_worker_lane(worker), "job");
     job.function(worker, job.borrowed_argument);
     PROFILER_END(job_worker_lane(worker));
-    worker->inline_depth--;
-    worker->running_priority = outer_priority;
-    worker->running_epoch = outer_epoch;
-    if (worker->inline_depth == 0) {
-        arena_reset(&worker->arena_job);
-    }
+    arena_reset(&worker->arena_job);
     job_count(&worker->jobs_run);
     if (from_injector) {
         job_system_t *const system = worker->borrowed_system;
@@ -468,7 +460,7 @@ static void job_run(job_worker_t *worker, job_t job, bool from_injector) {
     job_group_finish(job.borrowed_group);
 }
 
-void job_spawn(job_worker_t *worker, job_group_t *group, job_function_t function, void *borrowed_argument) {
+bool job_spawn(job_worker_t *worker, job_group_t *group, job_function_t function, void *borrowed_argument) {
     job_group_add(group);
     const job_t job = {
         .function = function,
@@ -479,15 +471,11 @@ void job_spawn(job_worker_t *worker, job_group_t *group, job_function_t function
     };
     if (job_queue_push(worker, job) || job_injector_push(worker->borrowed_system, job)) {
         job_wake_one(worker->borrowed_system);
-        return;
+        return true;
     }
-    if (worker->inline_depth >= JOB_INLINE_DEPTH_MAX) {
-        LOG_ERROR("job_spawn on worker %u: every queue is full and %u jobs are already running on this stack",
-                  worker->index, worker->inline_depth);
-        assert_fail(__FILE__, __LINE__, __func__, "job spawn depth");
-    }
-    job_count(&worker->jobs_inlined);
-    job_run(worker, job, false);
+    job_group_finish(group);
+    job_count(&worker->jobs_refused);
+    return false;
 }
 
 /* xorshift64: it only has to spread the workers' first choices apart, so that they do not all fall on one victim. */
@@ -654,7 +642,7 @@ void job_stats_read(const job_system_t *system, uint32_t worker_index, job_stats
         .jobs_run = atomic_load_explicit(&worker->jobs_run, memory_order_relaxed),
         .jobs_stolen = atomic_load_explicit(&worker->jobs_stolen, memory_order_relaxed),
         .jobs_from_injector = atomic_load_explicit(&worker->jobs_from_injector, memory_order_relaxed),
-        .jobs_inlined = atomic_load_explicit(&worker->jobs_inlined, memory_order_relaxed),
+        .jobs_refused = atomic_load_explicit(&worker->jobs_refused, memory_order_relaxed),
         .sleeps = atomic_load_explicit(&worker->sleeps, memory_order_relaxed),
         .arena_resets = worker->arena_job.reset_count,
         .arena_peak = worker->arena_job.peak,

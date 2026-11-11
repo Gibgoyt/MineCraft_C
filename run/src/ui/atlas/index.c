@@ -537,12 +537,12 @@ void ui_atlas_store_read(void *borrowed_context, uint32_t level, int64_t px, int
 
 /* ---- The drawing job -------------------------------------------------------------------------------------------- */
 
-typedef struct atlas_band_t {
+typedef struct ui_atlas_band_t {
     ui_atlas_t *atlas; /* 0 */
     uint32_t band;     /* 8 */
     uint8_t _pad0[4];  /* 12 */
-} atlas_band_t;
-static_assert(sizeof(atlas_band_t) == 16);
+} ui_atlas_band_t;
+static_assert(sizeof(ui_atlas_band_t) == 16);
 
 /* What a band borrows, from an arena. */
 static ui_atlas_scratch_t atlas_band_scratch(arena_t *arena, const ui_atlas_view_t *view, uint32_t bands) {
@@ -552,7 +552,7 @@ static ui_atlas_scratch_t atlas_band_scratch(arena_t *arena, const ui_atlas_view
 }
 
 static void atlas_band_job(job_worker_t *worker, void *borrowed_argument) {
-    const atlas_band_t *const band = borrowed_argument;
+    const ui_atlas_band_t *const band = borrowed_argument;
     ui_atlas_t *const atlas = band->atlas;
     ui_atlas_draw_band(&atlas->input, &atlas->target, band->band, UI_ATLAS_BANDS,
                        atlas_band_scratch(&worker->arena_job, &atlas->input.view, UI_ATLAS_BANDS));
@@ -581,12 +581,39 @@ static void atlas_draw_prepare(ui_atlas_t *atlas, arena_t *scratch) {
 static void atlas_draw_job(job_worker_t *worker, void *borrowed_argument) {
     ui_atlas_t *const atlas = borrowed_argument;
     atlas_draw_prepare(atlas, &worker->arena_job);
-    atlas_band_t *const bands = arena_alloc_array(&atlas->arena_draw, UI_ATLAS_BANDS, sizeof(atlas_band_t), 8u);
+    ui_atlas_band_t *const bands = arena_alloc_array(&atlas->arena_draw, UI_ATLAS_BANDS, sizeof(ui_atlas_band_t), 8u);
+    for (uint32_t b = 0u; b < UI_ATLAS_BANDS; b++) {
+        bands[b] = (ui_atlas_band_t){atlas, b, {0}};
+    }
+    atlas->borrowed_bands = bands;
     atomic_store_explicit(&atlas->bands_left, UI_ATLAS_BANDS, memory_order_relaxed);
     for (uint32_t b = 0u; b < UI_ATLAS_BANDS; b++) {
-        bands[b] = (atlas_band_t){atlas, b, {0}};
-        job_spawn(worker, &atlas->draw_group, atlas_band_job, &bands[b]);
+        if (!job_spawn(worker, &atlas->draw_group, atlas_band_job, &bands[b])) {
+            /* The queues are full: main queues this band and the rest from its draw loop. No band can be the last
+             * before they are in, so nothing of the picture is touched after this. */
+            atlas->bands_next = b;
+            atomic_store_explicit(&atlas->bands_owed, 1u, memory_order_release);
+            return;
+        }
     }
+}
+
+/* Main. The bands the drawing job found no room for, queued from the draw loop, never from a job: block waits for room,
+ * and otherwise a full queue leaves the rest to the next frame. */
+static void atlas_bands_owed_queue(ui_atlas_t *atlas, bool block) {
+    if (atomic_load_explicit(&atlas->bands_owed, memory_order_acquire) == 0u) {
+        return;
+    }
+    while (atlas->bands_next < UI_ATLAS_BANDS) {
+        ui_atlas_band_t *const band = &atlas->borrowed_bands[atlas->bands_next];
+        if (block) {
+            job_submit(atlas->borrowed_job, &atlas->draw_group, atlas_band_job, band);
+        } else if (!job_try_submit(atlas->borrowed_job, &atlas->draw_group, atlas_band_job, band)) {
+            return;
+        }
+        atlas->bands_next++;
+    }
+    atomic_store_explicit(&atlas->bands_owed, 0u, memory_order_relaxed);
 }
 
 typedef struct atlas_picture_band_t {
@@ -625,6 +652,8 @@ void ui_atlas_draw_picture(const ui_atlas_draw_input_t *input, const ui_atlas_ta
 
 void ui_atlas_draw_wait(ui_atlas_t *atlas) {
     if (atlas->drawing_busy != 0u && atlas->borrowed_job != nullptr) {
+        job_group_wait(atlas->borrowed_job, &atlas->draw_group);
+        atlas_bands_owed_queue(atlas, true); /* the drawing job is over: what it could not queue goes in now */
         job_group_wait(atlas->borrowed_job, &atlas->draw_group);
     }
 }
@@ -784,6 +813,9 @@ bool ui_atlas_input(ui_atlas_t *atlas, ui_widget_t *widget, const input_frame_t 
 void ui_atlas_frame(ui_atlas_t *atlas, uint32_t width, uint32_t height, const ui_atlas_world_t *world) {
     if (atlas == nullptr || atlas->open == 0u) {
         return;
+    }
+    if (atlas->drawing_busy != 0u && atlas->borrowed_job != nullptr) {
+        atlas_bands_owed_queue(atlas, false);
     }
     if (atlas->drawing_busy != 0u && atomic_load_explicit(&atlas->draw_done, memory_order_acquire) != 0u) {
         if (atlas->borrowed_job != nullptr) {

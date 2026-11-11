@@ -23,7 +23,9 @@ tile). The view is remembered until the world closes.
   0.2 ms) every half second, borrowing the band arena, which only main uses.
 - The **drawing job** builds the weather systems' day list for a now layer, makes stale mips the zoom reads, then spawns
   16 band jobs; the last band to finish runs the overlay and stores `draw_done` with release. Main sees it with acquire and
-  swaps the pictures. The **saving job** writes dirty tiles with `file_write_atomic`, then makes and writes every stale mip.
+  swaps the pictures. If `job_spawn` finds the queues full, the drawing job leaves the bands not yet queued to main
+  (`bands_owed`), whose draw loop queues them on the next frames (`ui_atlas_frame`, or at once in `ui_atlas_draw_wait`);
+  no band is ever run on the drawing job's stack. The **saving job** writes dirty tiles with `file_write_atomic`, then makes and writes every stale mip.
 - Every slot field and pixel is under the store's lock, a ticket lock (first come, first served, yielding while it waits), so 16 band jobs reading cannot starve the sim's writes: a pthread mutex let a tight reader hold a writer off for 1.5 s in the lock test. Files are read and encoded outside it; a tile file is
   copied in or out under it. The longest wait of a column write is kept in `wait_ns_most`.
 

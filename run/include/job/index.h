@@ -24,10 +24,6 @@ enum : uint64_t {
     /* One worker's scratch space per job. Virtual: only the pages a job touches cost anything. */
     JOB_ARENA_BYTES = 32ull * 1024u * 1024u,
 };
-enum : uint32_t {
-    /* How deep job_spawn may run jobs on the spawner's own stack once every queue is full. */
-    JOB_INLINE_DEPTH_MAX = 32u,
-};
 static_assert((JOB_QUEUE_CAPACITY & (JOB_QUEUE_CAPACITY - 1u)) == 0);
 static_assert((JOB_INJECTOR_CAPACITY & (JOB_INJECTOR_CAPACITY - 1u)) == 0);
 static_assert(JOB_ARENA_BYTES % HEAP_REGION_ALIGNMENT == 0);
@@ -139,11 +135,11 @@ typedef struct job_worker_t {
     _Atomic uint64_t jobs_run;
     _Atomic uint64_t jobs_stolen;
     _Atomic uint64_t jobs_from_injector;
-    _Atomic uint64_t jobs_inlined;
+    _Atomic uint64_t jobs_refused;
     _Atomic uint64_t sleeps;
-    uint64_t random;       /* where the next round of stealing starts */
-    uint32_t inline_depth; /* jobs running on this worker's stack right now */
-    uint32_t index;        /* 0 to MC_THREADS_WORKERS - 1, fixed for the system's life */
+    uint64_t random; /* where the next round of stealing starts */
+    uint8_t _pad2[4];
+    uint32_t index; /* 0 to MC_THREADS_WORKERS - 1, fixed for the system's life */
 
     /* Line 1: written by any thief. */
     alignas(MC_CPU_CACHE_LINE_BYTES) _Atomic int64_t top; /* the oldest job in this worker's queue */
@@ -210,7 +206,7 @@ typedef struct job_stats_t {
     uint64_t jobs_run;           /* finished, however it got them */
     uint64_t jobs_stolen;        /* taken from another worker's queue */
     uint64_t jobs_from_injector; /* taken from the shared queue */
-    uint64_t jobs_inlined;       /* run on job_spawn's stack, because every queue was full */
+    uint64_t jobs_refused;       /* job_spawn calls that returned false, because every queue was full */
     uint64_t sleeps;             /* times it went idle long enough to ask the kernel to put it to sleep */
     uint64_t arena_resets;       /* of its Job arena */
     uint64_t arena_peak;         /* the most of its Job arena any job used */
@@ -270,10 +266,11 @@ bool job_dropped(const job_worker_t *worker);
  * group open until the new job is done too. The new job has the spawning job's priority and is dropped with it, but no
  * cap counts it.
  *
- * Never fails. With this queue and the shared one both full, it runs the new job here and now, on this stack and in this
- * job's arena, which is not reset until the outermost job ends. Past JOB_INLINE_DEPTH_MAX of those it aborts: the spawned
- * jobs are spawning without end, and that is a bug in them. */
-void job_spawn(job_worker_t *worker, job_group_t *group, job_function_t function, void *borrowed_argument);
+ * With this queue and the shared one both full it returns false, having done nothing, as job_try_submit does. The caller
+ * keeps the work and queues it later. A job never runs on the stack of the one that spawned it, so no job can reach itself
+ * through this. */
+[[nodiscard]] bool job_spawn(job_worker_t *worker, job_group_t *group, job_function_t function,
+                             void *borrowed_argument);
 
 /* Sleeps until every job in the group has finished. Any thread that is not a worker, and one at a time for each group.
  * On a worker it aborts: if every worker did that, none would be left to run the jobs. A job that needs more done after
