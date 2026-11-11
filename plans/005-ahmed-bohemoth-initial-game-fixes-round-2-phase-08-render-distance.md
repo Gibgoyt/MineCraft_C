@@ -40,6 +40,7 @@ Ahmed: in Settings, set render distance to 128 or more, keep full detail at 32, 
 Appended as they land:
 
 - 66a5eb90 Show render distance and full detail in blocks, and explain each in a tooltip.
+- 3979d1c0 Measure a raised default render distance and keep it at 32: the far field's rays past see-through faces cost too much.
 
 ## Issues found
 
