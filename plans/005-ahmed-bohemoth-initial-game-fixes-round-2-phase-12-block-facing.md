@@ -63,15 +63,17 @@ Ahmed: place stairs and a woodworking bench facing each way, and turn them with 
 
 Appended as they land:
 
-- `9f8f7db7` Hold a block's state beside its id in the voxel, and keep it through the map, the columns and the saves.
-- `5b9fa655` Turn blocks by their facing in the table, the card and the traversal.
-- `8bd44971` Collide, cast rays and light by the block's id and facing.
-- `6779bcd6` Place a turning block facing the way the player looks, turn the held block with R, and lay the bench to the right.
-- `80482568` Make the four torches on walls one wall_torch that faces.
-- `e74fdba9` Test block state: turned shapes, saves, placement, the wall torch, and repin density and biome.
-- `1c11c37a` Repin the feature, hydrology and ore digests after wall_torch, and wrap the density and biome notes.
-- `41bd4842` Aim the bench playthrough at the bench's west half again, now that the bench runs to the placer's right.
-- `c9e70f67` Add golden pictures of stairs, benches, ladders and wall torches in all four facings, and redraw all_shapes.
+- `2aa2e8f8` Hold a block's state beside its id in the voxel, and keep it through the map, the columns and the saves.
+- `89f65cde` Turn blocks by their facing in the table, the card and the traversal.
+- `366bbd27` Collide, cast rays and light by the block's id and facing.
+- `f8c4d2e8` Place a turning block facing the way the player looks, turn the held block with R, and lay the bench to the right.
+- `ba08f06d` Make the four torches on walls one wall_torch that faces.
+- `7dfce0c3` Test block state: turned shapes, saves, placement, the wall torch, and repin density and biome.
+- `af4a044f` Repin the feature, hydrology and ore digests after wall_torch, and wrap the density and biome notes.
+- `60da92bb` Aim the bench playthrough at the bench's west half again, now that the bench runs to the placer's right.
+- `0ec7bcdf` Add golden pictures of stairs, benches, ladders and wall torches in all four facings, and redraw all_shapes.
+- `8e384f3e` Record plan 005 phase 12's build: ticked todos, commits, the digest proofs and the bench_world before and after.
+- `1112ef2c` Format player_interaction_input_t's look_facing as clang-format lays it out after the rebase onto main.
 
 ## Issues found
 
@@ -108,6 +110,8 @@ Appended as they land:
 
 **12. The shapes test's cases now stack.** Every case is drawn four ways, so there are more cases than the diagonal holds: they now go 48 to a diagonal, the next 48 lifted 8, and no ray of one meets another. `all_shapes.png` moved by 3 pixels, at most 3 of 255, all on a wall torch's flame, which is now one block turned by its facing instead of four leaned by hand: redrawn. `near.png` moved by one pixel by 1, within the tolerance, and is kept. `facings.png` and `facings_back.png` are new, looked at before adding: stairs, benches, ladders and wall torches each in four different facings.
 
-**13. Speed: `bench_world`, not settled; Ahmed should rerun it on a cool card.** Release, the default rows, `--record` to a scratch file. Before (`before-phase-12`, 2026-11-10 14:17Z, on the base of this branch) and after (`after-phase-12`, 2026-11-11, at `c9e70f67`, straight after the full debug suite and a release build). **Every one of the 11 rows they share drew the same picture hash before and after.** The frame rates fell to a third (`plains/orbit` 80.7 to 24.9 fps, `deep_ocean/orbit` 47.0 to 12.0, `jagged_peaks/orbit` 163.9 to 68.4), but the passes this phase does not touch fell as much: coarse took 1.85 to 4.35 times as long and post about 3.5 times, and just after the run `nvidia-smi` read 77 degrees C and 300 MHz of 2100 idle, the slowed card `bench/world/README.md` describes. Measured against the coarse pass of the same run, the shade pass, which now turns non-cube boxes, is within -4% to +6% of before on 9 rows (`jagged_peaks/orbit` -50% and `cave/orbit` +6% move with the slowdown within the run). By design a cube pays nothing, and the state rides in the 4 bits the card already had (issues 1 and 3), so no cost is expected; this run can neither show nor rule out a small one.
+**13. Speed: `bench_world`, not settled; Ahmed should rerun it on a cool card.** Release, the default rows, `--record` to a scratch file. Before (`before-phase-12`, 2026-11-10 14:17Z, on the base of this branch) and after (`after-phase-12`, 2026-11-11, at `0ec7bcdf`, straight after the full debug suite and a release build). **Every one of the 11 rows they share drew the same picture hash before and after.** The frame rates fell to a third (`plains/orbit` 80.7 to 24.9 fps, `deep_ocean/orbit` 47.0 to 12.0, `jagged_peaks/orbit` 163.9 to 68.4), but the passes this phase does not touch fell as much: coarse took 1.85 to 4.35 times as long and post about 3.5 times, and just after the run `nvidia-smi` read 77 degrees C and 300 MHz of 2100 idle, the slowed card `bench/world/README.md` describes. Measured against the coarse pass of the same run, the shade pass, which now turns non-cube boxes, is within -4% to +6% of before on 9 rows (`jagged_peaks/orbit` -50% and `cave/orbit` +6% move with the slowdown within the run). By design a cube pays nothing, and the state rides in the 4 bits the card already had (issues 1 and 3), so no cost is expected; this run can neither show nor rule out a small one.
 
 **14. Tests, 2026-11-11.** `tools/test-or-build.sh timeout 1800 ctest --preset debug --output-on-failure`: 125 of 151 passed before the 1800 s ran out, then `-I 126,151`: 26 of 26. All 151 pass, `run_render_distance_live` among them; the whole suite takes about 38 minutes on this machine, longer than the timeout in Verification. `tools/test-or-build.sh cmake --preset release` and `cmake --build --preset release`: exit status 0. `pgrep` of this worktree's build: nothing.
+
+**15. Rebased onto main at `e9e84b86`, 2026-11-11** (phases 1, 3, 4, 5, 7, 8, 9 and 14; the hashes above are after it). Three conflicts: `player_interaction_input_t`, where `look_facing` takes byte 26 beside phase 1's felling pointer; the interaction README, phase 1's felling by any tool and this phase's `wall_torch`; and the stairs playthrough's counts, phase 1's (13 mined, 13 items in 6 stacks, the whole mangrove coming down) with this phase's west half. Checked by hand beside the conflicts: phase 14's far field reads the save through `save_world_far_line`, which already gives ids (`block_state_id`), and its captures copy whole voxels, state and all, as the saves do; phase 1's felling and phase 4's spawning and animals read blocks with `world_map_block_get`, which gives ids; phase 9's import list has the one `blocks/torch_wall` texture the wall torch always used, and the facing pictures are in `render_feature_shapes`, already in `MC_ART_TESTS`. `white_wool` sorts after every block the land holds, so no terrain pin moved. Debug, `-I 1,80`: 80 of 80; `-I 81,200`: 75 of 76, `clang_format` on the merged struct, fixed in `1112ef2c` and then passing. Release configure and build: exit status 0; `ctest --preset release -R run_render_distance_live`: passed.
