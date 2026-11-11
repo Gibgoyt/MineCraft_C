@@ -110,6 +110,7 @@ Appended as they land. Rebased onto main at `8c013588` (phases 2, 10, 13 and 14a
 - `84a5dd13` Spawn chromium from config/ores/chromium: z -250 to -40, veins of 6, exactly 4 a chunk, laid last; count veins a chunk in bench_world_map, test its range and rate, and repin the land it changed.
 - `d07a6536` Hold the UI's tables under 1.25 MiB in its tests, now that the chromium items took them past 1 MiB, and record plan 005 phase 11 part A's tests and measurements.
 - `1ec364ae` Repin the terrain digests after rebasing onto the doors: the chromium blocks' renumbering and chromium's veins, proved again, and list config/ores/ in the repository's structure.
+- `19c7ff48` Add alloys: an alloy recipe kind with counted inputs, the smith table's alloy slots that make 10 stainless steel ingots from 9 iron and 1 chromium, saved in a new state section, and stainless steel tools and armour a tier above iron with our own textures; make the smith table from copper so copper tools come before iron.
 
 ## Issues found
 
@@ -178,3 +179,7 @@ Built on phase 6's stations, rebased on main at `2764ffd8` ("Mark phase 6 done")
 **23. Pictures.** `smithing_ready.png` changed: the three alloy slots are now ordinary slots, no longer dimmed. New `alloy_ready.png`: 9 iron and 1 chromium in the inputs, 10 stainless steel in the output, the pointer's tooltip on the chromium. Both made with `MC_GOLDEN_WRITE=1` and looked at. The UI's tables are 1098240 bytes with the ten new item pictures, under the 1.25 MiB budget (`run_ui_font`, `run_ui_hud` pass); no budget raised.
 
 **24. Also changed:** `plans/REPO_STRUCTURE.md` lists `tests/run/item/crafting/alloy/`.
+
+**25. The random clicks of `run_ui_screens` cover the smith table too:** its 49 places (the grid, its output and the three alloy slots) are in the layout test, and 20000 random clicks on its screen lose no item from the grid, the alloy inputs or anywhere else. The alloy output is left out, as a grid's output is: it makes new items.
+
+**26. Tests, 2026-11-11, on `19c7ff48` and the random clicks after it.** `tools/test-or-build.sh cmake --build --preset debug`: exit status 0. The whole debug suite, `tools/test-or-build.sh timeout 2700 ctest --preset debug -I 1,85`, then `-I 86,400` after the random-clicks change: 85 of 85 and 77 of 77 pass, `run_playthrough` (94.2 s), `run_ui_screens`, `run_save_state`, `run_save_state_game`, `_names` and `_calendar`, every `run_item_*`, `run_terrain_*`, `compile_game_tables`, `standards_lint` and `clang_format` among them. `tools/test-or-build.sh timeout 600 build/debug/bin/bench_world_map /tmp/mc_c_maps`: exit status 0, chromium still 4.00 veins and 22.0 voxels a chunk. No terrain pin moved: no block was added. `pgrep -af "$PWD/build"` and `pgrep -a minecraft_c`: nothing.

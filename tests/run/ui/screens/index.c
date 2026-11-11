@@ -122,9 +122,10 @@ static uint32_t us_places_of(ui_screen_kind_t kind, ui_screen_place_t *out) {
     case UI_SCREEN_CRAFTING:
     case UI_SCREEN_WOODWORKING:
     case UI_SCREEN_STONEWORKING:
-    case UI_SCREEN_SMITHING:
     case UI_SCREEN_LEATHERWORKING:
         return ui_screen_crafting_places(out);
+    case UI_SCREEN_SMITHING:
+        return ui_screen_smithing_places(out);
     case UI_SCREEN_FURNACE:
     case UI_SCREEN_BLAST_FURNACE:
         return ui_screen_furnace_places(out, true);
@@ -169,6 +170,8 @@ TEST(each_screen_has_the_slots_it_should_in_the_window_and_none_on_another) {
         {.count = 36u + 4u + 4u + 1u, .kind = UI_SCREEN_INVENTORY},
         {.count = 36u + 9u + 1u, .kind = UI_SCREEN_CRAFTING},
         {.count = 36u + 9u + 1u, .kind = UI_SCREEN_WOODWORKING},
+        /* Plan 005 phase 11 part B: the smith table's grid, and its two alloy inputs and their output. */
+        {.count = 36u + 9u + 1u + 3u, .kind = UI_SCREEN_SMITHING},
         {.count = 36u + 3u, .kind = UI_SCREEN_FURNACE},
         {.count = 36u + 27u, .kind = UI_SCREEN_CHEST},
     };
@@ -830,8 +833,13 @@ static uint32_t us_all_stacks(us_rig_t *rig, ui_screen_kind_t kind, const item_s
             out[count++] = &rig->item->crafting_hands.cells[i];
         } else if (kind == UI_SCREEN_CRAFTING) {
             out[count++] = &rig->item->crafting_table.cells[i];
-        } else if (kind == UI_SCREEN_WOODWORKING) {
+        } else if (kind == UI_SCREEN_WOODWORKING || kind == UI_SCREEN_SMITHING) {
             out[count++] = &rig->item->borrowed_crafting_bench->cells[i];
+        }
+    }
+    if (kind == UI_SCREEN_SMITHING) {
+        for (uint32_t i = 0u; i < CRAFTING_ALLOY_INPUTS; i++) {
+            out[count++] = &rig->item->borrowed_crafting_alloy->slots[i];
         }
     }
     if (kind == UI_SCREEN_FURNACE) {
@@ -851,8 +859,8 @@ static uint32_t us_all_stacks(us_rig_t *rig, ui_screen_kind_t kind, const item_s
 }
 
 TEST(random_clicks_on_every_screen_lose_nothing_and_keep_the_books_and_every_stack_good) {
-    static const ui_screen_kind_t kinds[] = {UI_SCREEN_INVENTORY, UI_SCREEN_CRAFTING, UI_SCREEN_FURNACE,
-                                             UI_SCREEN_CHEST, UI_SCREEN_WOODWORKING};
+    static const ui_screen_kind_t kinds[] = {UI_SCREEN_INVENTORY, UI_SCREEN_CRAFTING,    UI_SCREEN_FURNACE,
+                                             UI_SCREEN_CHEST,     UI_SCREEN_WOODWORKING, UI_SCREEN_SMITHING};
     static const uint16_t items[] = {ITEM_ID_OAK_LOG,     ITEM_ID_COAL,       ITEM_ID_SAND,  ITEM_ID_IRON_PICKAXE,
                                      ITEM_ID_IRON_HELMET, ITEM_ID_IRON_BOOTS, ITEM_ID_BREAD, ITEM_ID_OAK_PLANKS};
     for (uint32_t k = 0u; k < sizeof(kinds) / sizeof(kinds[0]); k++) {
@@ -880,8 +888,11 @@ TEST(random_clicks_on_every_screen_lose_nothing_and_keep_the_books_and_every_sta
         uint32_t *const have = test_alloc(t, (uint64_t)ITEM_COUNT * sizeof(uint32_t));
         for (uint32_t step = 0u; step < 20000u; step++) {
             const ui_screen_place_t *const place = &places[us_rng_next(&state) % count];
-            /* What a grid makes is new, so its output is the one place this cannot count. It has tests of its own. */
-            if (place->zone == UI_SCREEN_ZONE_OUTPUT) {
+            /* What a grid makes is new, so its output is the one place this cannot count, and the alloy slots' output too. They have
+             * tests of their own. */
+            if (place->zone == UI_SCREEN_ZONE_OUTPUT ||
+                (kinds[k] == UI_SCREEN_SMITHING && place->zone == UI_SCREEN_ZONE_BLOCK &&
+                 place->slot == CRAFTING_ALLOY_OUTPUT)) {
                 continue;
             }
             const bool secondary = us_rng_next(&state) % 2u == 0u;
