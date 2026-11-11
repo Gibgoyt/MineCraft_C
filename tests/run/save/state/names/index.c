@@ -252,7 +252,10 @@ static void ns_old_fill(ns_rig_t *rig, const ns_table_t *blocks, const ns_table_
     item_stack_t helmet = ns_stack(items, ITEM_ID_IRON_HELMET, 1u);
     helmet.wear = 3u;
     item->equipment.armor[0] = helmet;
-    item->crafting_hands.cells[0] = ns_stack(items, ITEM_ID_OAK_LOG, 1u);
+    /* Four logs: a crafting table in the hands (plan 005 phase 6). */
+    for (uint32_t c = 0u; c < 4u; c++) {
+        item->crafting_hands.cells[c] = ns_stack(items, ITEM_ID_OAK_LOG, 1u);
+    }
     item->crafting_table.cells[8] = ns_stack(items, ITEM_ID_RAW_IRON, 3u);
     item->borrowed_crafting_bench->cells[4] = ns_stack(items, ITEM_ID_STICK, 2u);
     *rig->held = ns_stack(items, ITEM_ID_STONE, 3u);
@@ -379,7 +382,7 @@ static void ns_moved_test(test_context_t *t, uint32_t skip_block, uint32_t skip_
     CHECK_EQ_U64(furnace->cook_ticks, 5u);
     /* What a log in a grid makes, by this build's recipes. */
     CHECK_EQ_U64(item->crafting_hands.recipe,
-                 crafting_match(item->crafting_hands.cells, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE));
+                 crafting_match(item->crafting_hands.cells, CRAFTING_SIDE_HANDS, RECIPE_STATION_HANDS));
     CHECK(item->crafting_hands.recipe != CRAFTING_NO_RECIPE);
     CHECK(!item_stack_is_empty(&item->crafting_hands.output));
 
@@ -601,7 +604,10 @@ TEST(what_a_grid_makes_comes_from_this_builds_recipes_and_no_file_can_stop_a_wor
     ns_rig_t *const first = test_alloc(t, sizeof(ns_rig_t));
     REQUIRE(ns_rig_begin(t, first, root, SAVE_WORLD_OK));
     /* A build with more recipes than this, with what it made then. The tables are the same, so this goes in through the check alone. */
-    first->item->crafting_hands.cells[0] = item_stack_make(ITEM_ID_OAK_LOG, 1u);
+    /* Four logs, which make a crafting table in the hands (plan 005 phase 6). */
+    for (uint32_t c = 0u; c < 4u; c++) {
+        first->item->crafting_hands.cells[c] = item_stack_make(ITEM_ID_OAK_LOG, 1u);
+    }
     first->item->crafting_hands.recipe = RECIPE_COUNT + 100u;
     first->item->crafting_hands.output = item_stack_make(ITEM_ID_DIAMOND_SWORD, 1u);
     first->item->crafting_table.recipe = 0u;
@@ -613,7 +619,7 @@ TEST(what_a_grid_makes_comes_from_this_builds_recipes_and_no_file_can_stop_a_wor
     REQUIRE(ns_rig_begin(t, rig, root, SAVE_WORLD_OK));
     REQUIRE(save_state_apply(&rig->save->state, &rig->parts));
     const crafting_grid_t *const hands = &rig->item->crafting_hands;
-    CHECK_EQ_U64(hands->recipe, crafting_match(hands->cells, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE));
+    CHECK_EQ_U64(hands->recipe, crafting_match(hands->cells, CRAFTING_SIDE_HANDS, RECIPE_STATION_HANDS));
     CHECK(hands->recipe < RECIPE_COUNT);
     CHECK_EQ_U64(hands->output.item, recipe_defs[hands->recipe].gives);
     CHECK_EQ_U64(rig->item->crafting_table.recipe, CRAFTING_NO_RECIPE);
