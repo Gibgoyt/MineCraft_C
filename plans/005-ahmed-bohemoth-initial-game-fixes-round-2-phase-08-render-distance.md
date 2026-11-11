@@ -41,6 +41,7 @@ Appended as they land:
 
 - 66a5eb90 Show render distance and full detail in blocks, and explain each in a tooltip.
 - 3979d1c0 Measure a raised default render distance and keep it at 32: the far field's rays past see-through faces cost too much.
+- 110cda4c Send a far ray past a see-through face only where shade's own ray leaves full detail, with the same pictures.
 
 ## Issues found
 
