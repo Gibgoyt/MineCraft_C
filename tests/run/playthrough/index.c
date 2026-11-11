@@ -94,9 +94,10 @@ TEST(a_first_day_mines_dirt_picks_it_up_crafts_changes_the_distance_and_comes_ba
 
     /* A mangrove's trunk, on seed 36: the one line a person would look for. */
     CHECK_CONTAINS(output, "the last mined was mangrove_log");
-    /* Mud, the logs left over and the pickaxe, as the bench took what the planks and sticks were, once on the way out and once again from the save.
-     * The first log cut brings its whole mangrove down by hand (plan 005 phase 1), the cut and 9 more, so more logs are left than the four taken. */
-    CHECK_EQ_U64(pt_count(output, "the inventory holds 8 items in 3 stacks"), 2u);
+    /* Mud, the pickaxe, three planks and two sticks, once on the way out and once again from the save. The first log cut brings its whole
+     * mangrove down by hand (plan 005 phase 1), and the 9 logs picked up all go: 4 for the table, 3 for the bench and 2 for planks (plan 005
+     * phase 6). */
+    CHECK_EQ_U64(pt_count(output, "the inventory holds 7 items in 4 stacks"), 2u);
     CHECK_EQ_U64(pt_count(output, "hotbar slot 4 is in hand, with 1 of wood_pickaxe"), 2u);
     /* The mud and the 10 logs of the tree; a table and a bench, the bench two blocks for one placing. */
     CHECK_EQ_U64(pt_count(output, "the player mined 11 blocks and placed 2"), 2u);
@@ -110,10 +111,10 @@ TEST(a_first_day_mines_dirt_picks_it_up_crafts_changes_the_distance_and_comes_ba
     CHECK_CONTAINS((const char *)settings, "render_distance: 8");
 
     /* What a person sees of it is the picture, so each is at least there. A person reads them with MC_PLAYTHROUGH_KEEP. */
-    static const char *const shots[] = {"spawn.png",      "picked_up.png",        "logs.png",       "crafted.png",
-                                        "table.png",      "table_no_pickaxe.png", "bench_made.png", "bench_placed.png",
-                                        "bench_open.png", "pickaxe.png",          "settings.png",   "at_2.png",
-                                        "at_8.png",       "back_on_title.png",    "reloaded.png"};
+    static const char *const shots[] = {
+        "spawn.png",      "picked_up.png",    "logs.png",          "crafted.png", "table.png",   "table_no_planks.png",
+        "bench_made.png", "bench_placed.png", "bench_open.png",    "planks.png",  "pickaxe.png", "settings.png",
+        "at_2.png",       "at_8.png",         "back_on_title.png", "reloaded.png"};
     for (uint64_t i = 0u; i < sizeof(shots) / sizeof(shots[0]); i++) {
         uint64_t size = 0u;
         CHECK_EQ_U64(file_path_size(pt_join(t, pt_join(t, root, "shots"), shots[i]), &size), FILE_OK);
@@ -127,7 +128,8 @@ TEST(a_first_day_mines_dirt_picks_it_up_crafts_changes_the_distance_and_comes_ba
 }
 
 /* Ahmed's words: "creating stairs with wood on a crafting table is not possible", and then "all wood working is done on this bench". Seed 36's
- * tree is a mangrove, whose planks had no stairs. So the pattern makes nothing on the table, a bench is made there, and makes four on it. */
+ * tree is a mangrove, whose planks had no stairs. Since plan 005 phase 6 the table makes no planks at all: it makes the bench, whose planks make
+ * four stairs on it. */
 TEST(mangrove_planks_make_stairs_on_a_bench_that_is_placed_broken_and_all_of_it_saved) {
     REQUIRE(t->arg_count >= 1);
     char *const root = pt_temp(t);
@@ -144,10 +146,11 @@ TEST(mangrove_planks_make_stairs_on_a_bench_that_is_placed_broken_and_all_of_it_
     /* Mining one half is one block in the books, and the half is the one aimed at: since plan 005 phase 12 the bench runs to the
      * right of whoever placed it, and the turn back to it meets its west half. */
     CHECK_EQ_U64(pt_count(output, "the last mined was woodworking_bench_west"), 2u);
-    /* Mud, a plank, three stairs, two sticks, the one bench that came down and was picked up, and the logs the tree gave past the four used. */
-    CHECK_EQ_U64(pt_count(output, "the inventory holds 13 items in 6 stacks"), 2u);
+    /* Mud, two planks, three stairs, and the one bench that came down and was picked up: the 9 logs picked up went to the table's 4, the
+     * bench's 3 and 2 for planks. */
+    CHECK_EQ_U64(pt_count(output, "the inventory holds 7 items in 4 stacks"), 2u);
 
-    static const char *const shots[] = {"table_no_stairs.png",    "bench_made.png",     "bench_placed.png",
+    static const char *const shots[] = {"table_no_planks.png",    "bench_made.png",     "bench_placed.png",
                                         "bench_open.png",         "stairs_ready.png",   "stairs_in_slot.png",
                                         "stairs_placed.png",      "stairs_mined.png",   "bench_broken.png",
                                         "bench_in_inventory.png", "stairs_reloaded.png"};
@@ -172,14 +175,14 @@ TEST(a_bench_gives_its_grid_back_stands_through_a_save_and_goes_by_its_west_half
     pt_run(t, "tests/run/playthrough/fixtures/bench.script", root, PT_DAY_MS, 3u, &process);
     const char *const output = process.output;
 
-    /* Saved with it standing. Mud, seven planks, two sticks and the logs left of the mangrove the first cut felled by hand: the two on the grid and
-     * the five on the pointer came back. Mined: the mud and that tree's 10 logs. */
+    /* Saved with it standing. Mud and the two logs left of the 9 picked up after the table's 4 and the bench's 3: the two on the grid came
+     * back. Mined: the mud and that tree's 10 logs. */
     CHECK_EQ_U64(pt_count(output, "the player mined 11 blocks and placed 2"), 1u);
-    CHECK_EQ_U64(pt_count(output, "the inventory holds 15 items in 4 stacks"), 1u);
+    CHECK_EQ_U64(pt_count(output, "the inventory holds 3 items in 2 stacks"), 1u);
     /* From that save its west half is still there to be mined, once in the books, and the one bench it gives is picked up. So it is after the second. */
     CHECK_EQ_U64(pt_count(output, "the player mined 12 blocks and placed 2"), 2u);
     CHECK_EQ_U64(pt_count(output, "the last mined was woodworking_bench_west"), 2u);
-    CHECK_EQ_U64(pt_count(output, "the inventory holds 16 items in 5 stacks"), 2u);
+    CHECK_EQ_U64(pt_count(output, "the inventory holds 4 items in 3 stacks"), 2u);
 
     static const char *const shots[] = {"bench_placed.png", "grid_two.png", "grid_back.png",   "reloaded.png",
                                         "reopened.png",     "west_aim.png", "west_broken.png", "gone_reloaded.png"};
@@ -205,8 +208,8 @@ TEST(a_wooden_door_is_made_placed_opened_shut_and_mined_by_its_top_half) {
     pt_run(t, "tests/run/player/interaction/door/fixtures/door.script", root, PT_DAY_MS, 2u, &process);
     const char *const output = process.output;
     CHECK_EQ_U64(pt_count(output, "the last mined was wood_door"), 2u);
-    /* Three made, one placed: two in hand. The one that came down lies on the ground, out of reach. */
-    CHECK_EQ_U64(pt_count(output, "hotbar slot 4 is in hand, with 2 of wood_door"), 2u);
+    /* Three made, one placed: two in hand, and since plan 005 phase 6 the one that came down is walked over and picked up: three. */
+    CHECK_EQ_U64(pt_count(output, "hotbar slot 4 is in hand, with 3 of wood_door"), 2u);
 
     static const char *const shots[] = {"doors_ready.png", "doors_in_slot.png",  "door_placed.png",
                                         "door_open.png",   "door_shut.png",      "door_open_again.png",
