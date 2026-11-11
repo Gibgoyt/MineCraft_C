@@ -47,6 +47,8 @@ Ahmed: build a bridge over water, walking forward and placing blocks while looki
 
 Appended as they land:
 
+- `c969948b` Place the block ahead for bridging when the aim finds nothing and the look is level or down, and show it blue first.
+
 ## Issues found
 
 **Needs phase 10's preview,** and its shared placement function. Build them together, or 10 first.
