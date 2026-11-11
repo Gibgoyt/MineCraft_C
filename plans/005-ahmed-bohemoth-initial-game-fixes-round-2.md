@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2
 
-**Status:** being built by waves of agents, from 2026-11-10. Done so far: phases 1, 3, 4, 5, 7 and 9; phase 8's labels; phase 14's measuring, live test and far-field fix (job priorities in progress). **Until phase 14 is built, play at render distance 32 with full detail 32,** which draws correctly   (updated 2026-11-09)
+**Status:** being built by waves of agents, from 2026-11-10. Done so far: phases 1, 3, 4, 5, 7, 9 and 12; phase 8's labels; phase 14's measuring, live test and far-field fix (job priorities in progress). **Until phase 14 is built, play at render distance 32 with full detail 32,** which draws correctly   (updated 2026-11-09)
 
 ## Context
 
@@ -26,7 +26,7 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 10 | A translucent blue preview of a block before placing it, like Hypixel | `...-phase-10-placement-preview.md` | Only an outline of the aimed-at block exists | Not started |
 | 11 | Stations: stoneworking bench, a 2×2×1 smith table for iron, copper and gold, a leather tanning rack and a leather workbench. **No** iron-working bench. No armour without the leather workbench. Realistic furnaces | `...-phase-06-crafting-stations.md` | New stations | Part of phase 6 |
 | 12 | More ores and alloys: chromium ore with its spawn rate in YAML, and stainless steel from 9 iron and 1 chromium | `...-phase-11-ores-and-alloys.md` | Ores are a table in code, not YAML; no alloys exist | Not started |
-| 13 | Stairs and the woodworking bench only face north: face the player, and turn before placing | `...-phase-12-block-facing.md` | A voxel holds only an id, so no block can face a way | Not started |
+| 13 | Stairs and the woodworking bench only face north: face the player, and turn before placing | `...-phase-12-block-facing.md` | A voxel holds only an id, so no block can face a way | **Done** (`2aa2e8f8`…): a block state beside the id; stairs, ladders, wall torches and the bench face the player, R turns before placing |
 | 14 | A blue preview for every block, including the next block of a 1×1 bridge | Added to `...-phase-10-placement-preview.md` | — | Part of phase 10 |
 | 15 | Place a block ahead while looking forward, like Bedrock, without turning to the edge | `...-phase-13-forward-placement.md` | Placing needs the aim to hit a block face, and looking ahead off a bridge it hits nothing | Not started |
 | 16 | The tree feller wears the axe for every log that falls, not just the ones chopped | Added to `...-phase-01-tree-feller-always-on.md` | Plan 003's default "each log wears the axe" | **Done** (`ad8513f4`): only the cut log wears the tool |
