@@ -708,7 +708,7 @@ TEST(the_furnace_replay_burns_coal_into_glass_and_looks_as_it_should) {
     us_rig_stop(&rig);
 }
 
-/* Plan 005 phase 6: an iron pickaxe at the smith table, whose screen has the alloy slots drawn beside its output, not yet used. */
+/* Plan 005 phase 6: an iron pickaxe at the smith table, whose screen has the alloy slots beside its output. */
 TEST(the_smithing_replay_makes_an_iron_pickaxe_at_the_smith_table_with_its_alloy_slots) {
     us_rig_t rig;
     REQUIRE(us_rig_start(t, &rig));
@@ -721,6 +721,45 @@ TEST(the_smithing_replay_makes_an_iron_pickaxe_at_the_smith_table_with_its_alloy
     CHECK_EQ_U64(ui_screen_sim_kind(rig.ui), UI_SCREEN_NONE);
     CHECK_EQ_U64(inventory_slot(inventory, 8u)->item, ITEM_ID_IRON_PICKAXE);
     CHECK_EQ_U64(inventory_items_held(inventory), 1u);
+    us_rig_stop(&rig);
+}
+
+/* Plan 005 phase 11 part B: 9 iron ingots and 1 chromium ingot in the smith table's alloy slots, clicked in as a player would, make 10
+ * stainless steel ingots, taken from its alloy output. */
+TEST(the_alloy_replay_makes_ten_stainless_steel_in_the_smith_tables_alloy_slots) {
+    us_rig_t rig;
+    REQUIRE(us_rig_start(t, &rig));
+    inventory_t *const inventory = &rig.item->inventory;
+    *inventory_slot(inventory, 0u) = item_stack_make(ITEM_ID_IRON_INGOT, 9u);
+    *inventory_slot(inventory, 1u) = item_stack_make(ITEM_ID_CHROMIUM_INGOT, 1u);
+    us_open(&rig, UI_SCREEN_SMITHING);
+    us_replay(t, &rig, "alloy", nullptr);
+    CHECK_EQ_U64(ui_screen_sim_kind(rig.ui), UI_SCREEN_NONE);
+    CHECK_EQ_U64(inventory_slot(inventory, 8u)->item, ITEM_ID_STAINLESS_STEEL_INGOT);
+    CHECK_EQ_U64(inventory_slot(inventory, 8u)->count, 10u);
+    CHECK_EQ_U64(inventory_items_held(inventory), 10u);
+    CHECK_EQ_U64(rig.item->borrowed_crafting_alloy->alloyed_count, 10u);
+    for (uint32_t i = 0u; i < CRAFTING_ALLOY_SLOTS; i++) {
+        CHECK(item_stack_is_empty(&rig.item->borrowed_crafting_alloy->slots[i]));
+    }
+    us_rig_stop(&rig);
+}
+
+/* Plan 005 phase 11 part B: what is left in the alloy slots goes back to the inventory when the smith table's screen closes. */
+TEST(closing_the_smith_table_gives_back_what_is_in_its_alloy_slots) {
+    us_rig_t rig;
+    REQUIRE(us_rig_start(t, &rig));
+    inventory_t *const inventory = &rig.item->inventory;
+    us_open(&rig, UI_SCREEN_SMITHING);
+    rig.item->borrowed_crafting_alloy->slots[0] = item_stack_make(ITEM_ID_IRON_INGOT, 8u);
+    rig.item->borrowed_crafting_alloy->slots[1] = item_stack_make(ITEM_ID_CHROMIUM_INGOT, 1u);
+    crafting_alloy_changed(rig.item->borrowed_crafting_alloy);
+    CHECK(item_stack_is_empty(&rig.item->borrowed_crafting_alloy->slots[CRAFTING_ALLOY_OUTPUT]));
+    ui_screen_sim_close(rig.ui, &rig.sim);
+    CHECK_EQ_U64(ui_screen_sim_kind(rig.ui), UI_SCREEN_NONE);
+    CHECK_EQ_U64(inventory_count(inventory, ITEM_ID_IRON_INGOT), 8u);
+    CHECK_EQ_U64(inventory_count(inventory, ITEM_ID_CHROMIUM_INGOT), 1u);
+    CHECK(item_stack_is_empty(&rig.item->borrowed_crafting_alloy->slots[0]));
     us_rig_stop(&rig);
 }
 

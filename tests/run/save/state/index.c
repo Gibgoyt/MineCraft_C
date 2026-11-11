@@ -247,6 +247,11 @@ static void ss_fill(ss_rig_t *rig) {
     crafting_grid_changed(&item->crafting_hands);
     crafting_grid_changed(&item->crafting_table);
     crafting_grid_changed(item->borrowed_crafting_bench);
+    /* Plan 005 phase 11 part B: the smith table's alloy slots, holding what makes stainless steel, chromium first. */
+    item->borrowed_crafting_alloy->slots[0] = item_stack_make(ITEM_ID_CHROMIUM_INGOT, 2u);
+    item->borrowed_crafting_alloy->slots[1] = item_stack_make(ITEM_ID_IRON_INGOT, 9u);
+    item->borrowed_crafting_alloy->alloyed_count = 30u;
+    crafting_alloy_changed(item->borrowed_crafting_alloy);
     *rig->held = item_stack_make(ITEM_ID_DIRT, 3u);
     item->spilled_count = 6u;
     container_chest_t *const chest = container_open(&item->chests, 7, 8, 1);
@@ -370,7 +375,7 @@ TEST(a_file_is_these_bytes_by_hand) {
     memcpy(expected + 24, &table_hash, 8u);
     const uint64_t sections_bytes = whole - 72u;
     memcpy(expected + 32, &sections_bytes, 8u);
-    const uint32_t version = 5u, header_bytes = 72u, section_count = 3u;
+    const uint32_t version = 6u, header_bytes = 72u, section_count = 3u;
     memcpy(expected + 48, &version, 4u);
     memcpy(expected + 52, &header_bytes, 4u);
     memcpy(expected + 56, &section_count, 4u);
@@ -459,6 +464,16 @@ TEST(every_part_reloads_byte_for_byte_and_goes_on_the_same) {
     REQUIRE(container_at(&second->item->chests, 7, 8, 1) != nullptr);
     CHECK_EQ_U64(container_at(&second->item->chests, 7, 8, 1)->slots[26].count, 12u);
     REQUIRE(smelting_at(&second->item->furnaces, 9, 9, 1) != nullptr);
+    /* The alloy slots come back as they were, and make what they made. */
+    const crafting_alloy_t *const alloy = second->item->borrowed_crafting_alloy;
+    CHECK_EQ_U64(alloy->slots[0].item, ITEM_ID_CHROMIUM_INGOT);
+    CHECK_EQ_U64(alloy->slots[0].count, 2u);
+    CHECK_EQ_U64(alloy->slots[1].item, ITEM_ID_IRON_INGOT);
+    CHECK_EQ_U64(alloy->slots[1].count, 9u);
+    CHECK_EQ_U64(alloy->alloyed_count, 30u);
+    CHECK_EQ_U64(alloy->station, RECIPE_STATION_SMITHING);
+    CHECK_EQ_U64(alloy->slots[CRAFTING_ALLOY_OUTPUT].item, ITEM_ID_STAINLESS_STEEL_INGOT);
+    CHECK_EQ_U64(alloy->slots[CRAFTING_ALLOY_OUTPUT].count, 10u);
     /* Each body is the sex it was, and each animal up to what it was. */
     const entity_store_t *const store = &second->entity->store;
     uint32_t boars = 0u, sows = 0u, neither = 0u;
@@ -594,6 +609,10 @@ TEST(what_cannot_be_believed_is_refused_and_left_as_it_was) {
         {offsetof(save_state_items_t, crafting_hands) + offsetof(crafting_grid_t, station), RECIPE_STATION_WOODWORKING,
          SAVE_STATE_SECTION_ITEMS, 1u},
         {offsetof(smelting_furnace_t, process), RECIPE_PROCESS_COUNT, SAVE_STATE_SECTION_FURNACES, 1u},
+        /* Plan 005 phase 11 part B: the alloy slots are the smith table's, and hold what a slot can. */
+        {offsetof(crafting_alloy_t, station), RECIPE_STATION_WOODWORKING, SAVE_STATE_SECTION_ALLOY, 1u},
+        {offsetof(crafting_alloy_t, slots) + offsetof(item_stack_t, count), 65u, SAVE_STATE_SECTION_ALLOY, 1u},
+        {offsetof(crafting_alloy_t, slots) + offsetof(item_stack_t, item), 60000u, SAVE_STATE_SECTION_ALLOY, 2u},
         {offsetof(save_state_drops_t, count), ITEM_DROP_CAPACITY + 1u, SAVE_STATE_SECTION_DROPS, 4u},
         {sizeof(save_state_drops_t) + offsetof(item_drop_t, item), 60000u, SAVE_STATE_SECTION_DROPS, 2u},
         {sizeof(save_state_drops_t) + offsetof(item_drop_t, count), 0u, SAVE_STATE_SECTION_DROPS, 2u},

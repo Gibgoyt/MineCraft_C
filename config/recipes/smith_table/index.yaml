@@ -1,7 +1,8 @@
-# A furnace and iron on stone: "furnace + other stuff should probably make an iron smith table" (Ahmed).
+# A furnace and copper on stone: "furnace + other stuff should probably make an iron smith table" (Ahmed). Copper and not iron since plan
+# 005 phase 11, so that copper and gold tools come first, before the blast furnace gives iron, as phase 6's proposed order says.
 name: smith_table
 kind: shaped
 pattern: ["III", "SFS"]
-keys: { I: iron_ingot, S: stone, F: furnace }
+keys: { I: copper_ingot, S: stone, F: furnace }
 gives: smith_table
 station: table

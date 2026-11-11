@@ -143,8 +143,9 @@ TEST(each_recipe_is_made_at_its_own_station_only_and_nothing_in_two_places) {
  * be made is, until nothing new comes. A recipe in a loop that nothing outside it feeds never comes. */
 typedef struct is_walk_t {
     uint32_t have[ITEM_COUNT];                    /* 1 for what is had */
-    uint32_t made[RECIPE_COUNT];                  /* 1 for each recipe that has been made */
+    uint32_t made[RECIPE_COUNT];                  /* the round each recipe was first made in, from 1; 0 for never */
     uint32_t smelted[RECIPE_SMELT_COUNT];         /* and each smelt */
+    uint32_t alloyed[RECIPE_ALLOY_ROWS];          /* and each alloy, plan 005 phase 11 part B */
     uint32_t station_round[RECIPE_STATION_COUNT]; /* the round the station was first there, from 1; 0 for never */
     uint32_t process_round[RECIPE_PROCESS_COUNT];
     uint32_t rounds;
@@ -152,7 +153,7 @@ typedef struct is_walk_t {
         [ITEM_COUNT]; /* what the world gives, waiting for a tool: 1 if some block drops it, none of them to bare hands */
 } is_walk_t;
 static_assert(sizeof(is_walk_t) == 4u * (2u * (uint64_t)ITEM_COUNT + RECIPE_COUNT + RECIPE_SMELT_COUNT +
-                                         RECIPE_STATION_COUNT + RECIPE_PROCESS_COUNT + 1u));
+                                         RECIPE_ALLOY_ROWS + RECIPE_STATION_COUNT + RECIPE_PROCESS_COUNT + 1u));
 
 /* Whether a block drops this item, and how it comes: by bare hands, or only by a tool of its own kind and tier. */
 static bool is_block_drops(uint32_t block, uint16_t item) {
@@ -206,6 +207,9 @@ static void is_walk(is_walk_t *walk, uint32_t without) {
     }
     for (uint32_t i = 0u; i < RECIPE_SMELT_COUNT; i++) {
         walk->have[recipe_smelts[i].gives] = 0u;
+    }
+    for (uint32_t i = 0u; i < RECIPE_ALLOY_COUNT; i++) {
+        walk->have[recipe_alloys[i].gives] = 0u;
     }
     /* A tool or a piece of armour no recipe makes, as diamond's while they are off, is not lying about in the world either. */
     for (uint32_t item = 1u; item < ITEM_COUNT; item++) {
@@ -261,7 +265,7 @@ static void is_walk(is_walk_t *walk, uint32_t without) {
                 all = recipe->cells[c] == RECIPE_CELL_EMPTY || is_cell_had(walk, recipe->cells[c]);
             }
             if (all) {
-                walk->made[row] = 1u;
+                walk->made[row] = walk->rounds;
                 next[recipe->gives] = 1u;
                 more = true;
             }
@@ -272,11 +276,25 @@ static void is_walk(is_walk_t *walk, uint32_t without) {
             }
             for (uint32_t item = 1u; item < ITEM_COUNT; item++) {
                 if (walk->have[item] != 0u && recipe_smelt_rows[item] == i + 1u) {
-                    walk->smelted[i] = 1u;
+                    walk->smelted[i] = walk->rounds;
                     next[recipe_smelts[i].gives] = 1u;
                     more = true;
                     break;
                 }
+            }
+        }
+        /* An alloy at its station, with each input had, and its heat if it needs any. */
+        for (uint32_t i = 0u; i < RECIPE_ALLOY_COUNT; i++) {
+            const recipe_alloy_t *const alloy = &recipe_alloys[i];
+            bool all = walk->alloyed[i] == 0u && walk->station_round[alloy->station] != 0u &&
+                       (alloy->heat == RECIPE_HEAT_NONE || walk->process_round[alloy->heat] != 0u);
+            for (uint32_t n = 0u; n < alloy->input_count && all; n++) {
+                all = walk->have[alloy->inputs[n]] != 0u;
+            }
+            if (all) {
+                walk->alloyed[i] = walk->rounds;
+                next[alloy->gives] = 1u;
+                more = true;
             }
         }
         memcpy(walk->have, next, sizeof(next));
@@ -300,8 +318,13 @@ TEST(every_recipe_is_reached_from_what_the_world_gives_walking_the_stations_in_o
             CHECK_STR_EQ(recipe_smelts[i].name, "reached");
         }
     }
-    /* The order Ahmed took: hands, table, woodworking, then stone and the furnace, then the blast furnace for iron, then the smith table.
-     * The tanning rack and the leather workbench come from wood once there are sticks. */
+    for (uint32_t i = 0u; i < RECIPE_ALLOY_COUNT; i++) {
+        if (walk->alloyed[i] == 0u) {
+            CHECK_STR_EQ(recipe_alloys[i].name, "reached");
+        }
+    }
+    /* The order Ahmed took: hands, table, woodworking, then stone and the furnace, then the smith table from copper, and the blast furnace
+     * for iron. The tanning rack and the leather workbench come from wood once there are sticks. */
     const uint32_t *const s = walk->station_round, *const p = walk->process_round;
     printf("  rounds: hands %u, table %u, woodworking %u, stoneworking %u, furnace %u, blast furnace %u, smithing %u, "
            "tanning %u, "
@@ -315,7 +338,19 @@ TEST(every_recipe_is_reached_from_what_the_world_gives_walking_the_stations_in_o
     CHECK(s[RECIPE_STATION_WOODWORKING] < s[RECIPE_STATION_STONEWORKING]);
     CHECK(s[RECIPE_STATION_STONEWORKING] < p[RECIPE_PROCESS_FURNACE]);
     CHECK(p[RECIPE_PROCESS_FURNACE] < p[RECIPE_PROCESS_BLAST_FURNACE]);
-    CHECK(p[RECIPE_PROCESS_BLAST_FURNACE] < s[RECIPE_STATION_SMITHING]);
+    CHECK(p[RECIPE_PROCESS_FURNACE] < s[RECIPE_STATION_SMITHING]);
+    /* Plan 005 phase 11: the smith table is made from copper, so copper and gold tools come first, as phase 6's proposal said, then iron
+     * once the blast furnace gives it, then stainless steel from iron and chromium. */
+    const uint32_t copper = walk->made[is_row_named(t, "copper_pickaxe")];
+    const uint32_t gold = walk->made[is_row_named(t, "gold_pickaxe")];
+    const uint32_t iron = walk->made[is_row_named(t, "iron_pickaxe")];
+    const uint32_t steel = walk->made[is_row_named(t, "stainless_steel_pickaxe")];
+    printf("  pickaxes: copper round %u, gold %u, iron %u, stainless steel %u\n", copper, gold, iron, steel);
+    CHECK(copper != 0u && copper < iron);
+    CHECK(gold != 0u && gold < iron);
+    CHECK(iron != 0u && iron < steel);
+    CHECK_EQ_U64(recipe_choice_items[recipe_choices[recipe_defs[is_row_named(t, "smith_table")].cells[0] - 1u].first],
+                 ITEM_ID_COPPER_INGOT);
     CHECK(s[RECIPE_STATION_WOODWORKING] < p[RECIPE_PROCESS_TANNING_RACK]);
     CHECK(s[RECIPE_STATION_WOODWORKING] < s[RECIPE_STATION_LEATHERWORKING]);
 }
@@ -334,8 +369,8 @@ TEST(no_armour_is_reached_without_the_leather_workbench) {
             }
         }
     }
-    /* Leather, copper, iron and gold, four pieces each. */
-    CHECK_EQ_U64(armour, 16u);
+    /* Leather, copper, iron, gold and stainless steel, four pieces each. */
+    CHECK_EQ_U64(armour, 20u);
     is_walk(walk, RECIPE_STATION_COUNT);
     for (uint32_t row = 0u; row < RECIPE_COUNT; row++) {
         if (item_defs[recipe_defs[row].gives].armor_slot != ITEM_ARMOR_SLOT_NONE) {

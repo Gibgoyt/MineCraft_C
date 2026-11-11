@@ -461,6 +461,14 @@ static void game_death_spill(game_t *game) {
         }
         crafting_grid_changed(grids[g]);
     }
+    crafting_alloy_t *const alloy = item->borrowed_crafting_alloy;
+    for (uint32_t i = 0u; i < CRAFTING_ALLOY_INPUTS; i++) {
+        if (!item_stack_is_empty(&alloy->slots[i])) {
+            game_spill(game, &alloy->slots[i], cell);
+            memset(&alloy->slots[i], 0, sizeof(alloy->slots[i]));
+        }
+    }
+    crafting_alloy_changed(alloy);
 }
 
 /* One tick of what keeps the body going, and what that means for everything else. */

@@ -9,7 +9,7 @@ enum : uint64_t {
     ITEM_REGION_BYTES = 2ull << 20,
 };
 static_assert((uint64_t)INVENTORY_BYTES + CONTAINER_BYTES + SMELTING_BYTES + sizeof(crafting_grid_t) +
-                  alignof(crafting_grid_t) <=
+                  alignof(crafting_grid_t) + sizeof(crafting_alloy_t) + alignof(crafting_alloy_t) <=
               (uint64_t)ITEM_REGION_BYTES);
 
 enum : uint32_t {
@@ -76,6 +76,9 @@ void item_open(item_t *item) {
     item->borrowed_crafting_bench =
         arena_alloc_zeroed(&item->arena_world, sizeof(crafting_grid_t), alignof(crafting_grid_t));
     crafting_grid_start(item->borrowed_crafting_bench, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING);
+    item->borrowed_crafting_alloy =
+        arena_alloc_zeroed(&item->arena_world, sizeof(crafting_alloy_t), alignof(crafting_alloy_t));
+    crafting_alloy_start(item->borrowed_crafting_alloy, RECIPE_STATION_SMITHING);
     equipment_start(&item->equipment);
     item->edit_cursor = 0u;
     item->spilled_count = 0u;
@@ -89,6 +92,7 @@ void item_close(item_t *item) {
     memset(&item->crafting_hands, 0, sizeof(item->crafting_hands));
     memset(&item->crafting_table, 0, sizeof(item->crafting_table));
     item->borrowed_crafting_bench = nullptr;
+    item->borrowed_crafting_alloy = nullptr;
     memset(&item->chests, 0, sizeof(item->chests));
     memset(&item->furnaces, 0, sizeof(item->furnaces));
     memset(&item->equipment, 0, sizeof(item->equipment));

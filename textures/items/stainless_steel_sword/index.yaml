@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: stainless_steel_sword
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A stainless steel sword, a tier above iron: plan 005 phase 11."
+  seed: 1105110002
+  ops:
+    - op: art
+      palette: { l: "#f6f8fa", m: "#a9b4bd", d: "#56616b", h: "#7a5230", g: "#4f3520" }
+      rows:
+        - "................"
+        - "............lll."
+        - "...........lmmd."
+        - "..........lmmmd."
+        - ".........lmmmd.."
+        - "........lmmmd..."
+        - ".......lmmmd...."
+        - "......lmmmd....."
+        - "..dd.lmmmd......"
+        - "..dmmlmmd......."
+        - "...dmmmd........"
+        - "....hmmd........"
+        - "...hhgdmd......."
+        - "..hhg..dd......."
+        - ".hhg............"
+        - "................"

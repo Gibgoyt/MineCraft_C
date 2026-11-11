@@ -31,7 +31,8 @@ An item's `tier` (`config/items/README.md`) names one of these. To add a tier: m
 | `stone` | stone | 4000 | the stoneworking bench |
 | `copper` | stone | 5000 | the smith table, from copper the furnace smelts |
 | `iron` | iron | 6000 | the smith table, from iron the blast furnace smelts |
+| `stainless_steel` | iron | 7000 | the smith table, from stainless steel its alloy slots make of iron and chromium: a tier above iron, and its tools last 500 uses to iron's 250 (plan 005 phase 11) |
 | `gold` | wood | 12000 | the smith table: fast, and breaks only what wood breaks |
 | `diamond` | diamond | 8000 | nothing yet: nothing can work diamond, so its recipes are `off` |
 
-The numbers are Minecraft's published ones; copper is Minecraft 1.21.9's, between stone and iron.
+The numbers are Minecraft's published ones; copper is Minecraft 1.21.9's, between stone and iron. Stainless steel is ours, to tune: Minecraft has none.

@@ -505,6 +505,16 @@ needs:
     - shears
     - smith_table
     - snowball
+    - stainless_steel_axe
+    - stainless_steel_boots
+    - stainless_steel_chestplate
+    - stainless_steel_helmet
+    - stainless_steel_hoe
+    - stainless_steel_ingot
+    - stainless_steel_leggings
+    - stainless_steel_pickaxe
+    - stainless_steel_shovel
+    - stainless_steel_sword
     - stick
     - stone_axe
     - stone_hoe

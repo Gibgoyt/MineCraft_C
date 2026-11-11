@@ -19,10 +19,12 @@
 enum : uint32_t {
     /* Raised by any change an older reader could not read. A file of another version is refused and left alone. Version 2: a file ends in the names of
      * the tables its numbers are places in, and a build with other tables translates them. Version 3: a third crafting grid, the woodworking bench's.
-     * Version 4: a calendar section, plan 004 phase 01. Version 5: each body's sex, and what each animal is up to, plan 005 phase 4. */
-    SAVE_STATE_VERSION = 5u,
+     * Version 4: a calendar section, plan 004 phase 01. Version 5: each body's sex, and what each animal is up to, plan 005 phase 4. Version 6: the smith table's alloy slots, plan 005
+     * phase 11 part B. */
+    SAVE_STATE_VERSION = 6u,
     /* The oldest version still read. Version 3 has no calendar, and opens with a new one. Versions 3 and 4 have no sexes, and every body in
-     * one opens as ENTITY_STORE_SEX_NONE, as every body then was. */
+     * one opens as ENTITY_STORE_SEX_NONE, as every body then was. A file with no alloy section, as every one before version 6, opens with
+     * the alloy slots empty. */
     SAVE_STATE_VERSION_READ_MIN = 3u,
     SAVE_STATE_VERSION_FIRST_WITH_CALENDAR = 4u,
     SAVE_STATE_VERSION_FIRST_WITH_ANIMALS = 5u,
@@ -52,7 +54,8 @@ typedef enum save_state_section_id_t : uint32_t {
         13, /* one save_state_sexes_t, then a byte for each body; with the bodies, from version 5 */
     SAVE_STATE_SECTION_PASSIVE =
         14, /* one save_state_passive_t, then the animals' bodies; with the minds, from version 5 */
-    SAVE_STATE_SECTION_COUNT = 14,
+    SAVE_STATE_SECTION_ALLOY = 15, /* one crafting_alloy_t, the smith table's slots; with the items, from version 6 */
+    SAVE_STATE_SECTION_COUNT = 15,
 } save_state_section_id_t;
 
 /* ---- The file: all little-endian, as written by the only machine this builds for ------------------------------------ */
@@ -392,7 +395,7 @@ enum : uint64_t {
     SAVE_STATE_IMAGE_BYTES =
         sizeof(save_state_header_t) + (uint64_t)SAVE_STATE_SECTION_COUNT * (sizeof(save_state_section_t) + 8u) +
         sizeof(save_state_time_t) + sizeof(save_state_calendar_t) + sizeof(save_state_player_t) +
-        sizeof(save_state_items_t) + (uint64_t)CONTAINER_CHESTS * sizeof(container_chest_t) +
+        sizeof(save_state_items_t) + sizeof(crafting_alloy_t) + (uint64_t)CONTAINER_CHESTS * sizeof(container_chest_t) +
         (uint64_t)SMELTING_FURNACES * sizeof(smelting_furnace_t) + sizeof(save_state_drops_t) +
         (uint64_t)ITEM_DROP_CAPACITY * sizeof(item_drop_t) + sizeof(save_state_arrows_t) +
         (uint64_t)PROJECTILE_CAPACITY * sizeof(projectile_t) + sizeof(save_state_bodies_t) +

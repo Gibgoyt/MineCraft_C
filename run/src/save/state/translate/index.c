@@ -187,6 +187,21 @@ static bool state_translate_items(state_translate_t *translate, uint8_t *data, u
     return true;
 }
 
+static bool state_translate_alloy(state_translate_t *translate, uint8_t *data, uint64_t bytes) {
+    crafting_alloy_t alloy;
+    if (bytes != sizeof(alloy)) {
+        return false;
+    }
+    memcpy(&alloy, data, sizeof(alloy));
+    alloy.slots[CRAFTING_ALLOY_OUTPUT] = (item_stack_t){0};
+    alloy.recipe = CRAFTING_NO_RECIPE;
+    if (!state_translate_stacks(translate, alloy.slots, CRAFTING_ALLOY_INPUTS)) {
+        return false;
+    }
+    memcpy(data, &alloy, sizeof(alloy));
+    return true;
+}
+
 static bool state_translate_chests(state_translate_t *translate, uint8_t *data, uint64_t bytes) {
     if (bytes % sizeof(container_chest_t) != 0u) {
         return false;
@@ -387,6 +402,8 @@ static bool state_translate_section(state_translate_t *translate, uint32_t id, u
         return state_translate_items(translate, data, *in_out_bytes);
     case SAVE_STATE_SECTION_CHESTS:
         return state_translate_chests(translate, data, *in_out_bytes);
+    case SAVE_STATE_SECTION_ALLOY:
+        return state_translate_alloy(translate, data, *in_out_bytes);
     case SAVE_STATE_SECTION_FURNACES:
         return state_translate_furnaces(translate, data, *in_out_bytes);
     case SAVE_STATE_SECTION_DROPS:

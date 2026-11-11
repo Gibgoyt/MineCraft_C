@@ -25,6 +25,7 @@ The directory is usually the name of what it gives. A second way to the same thi
 | `smelt` | What a furnace, a blast furnace or a tanning rack makes of something, over time | `input`, `gives`, `count`, `ticks`, `station`, `off` |
 | `fuel` | What burns, and for how long | `items`, `ticks`, `leaves` |
 | `group` | A name for several items, wherever a recipe takes one | `items` |
+| `alloy` | Counted inputs in the smith table's alloy slots, beside its grid: plan 005 phase 11 part B | `inputs`, `gives`, `count`, `station`, `heat`, `off` |
 
 ## Fields
 
@@ -34,12 +35,14 @@ The directory is usually the name of what it gives. A second way to the same thi
 | `keys` | shaped | Each letter of the pattern, and what it is: an item or a group | |
 | `ingredients` | shapeless | A list of 1 to 9 items or groups | |
 | `input` | smelt | An item or a group | |
+| `inputs` | alloy | A list of 1 or 2 of `{ item: <item>, count: <n> }`, each item once and not a group, each count 1 to what one slot of it holds: each input is a slot of its own | |
 | `gives` | all that make something | An item. Not a group | |
 | `count` | | 1 to what one slot of that item holds | 1 |
 | `ticks` | fuel | 1 to 65535. For a smelt, how long one takes, and for a fuel, how long one burns, at 20 a second | 200, for a smelt |
 | `items` | fuel, group | A list of items. A fuel's may name groups too; a group's may not | |
 | `leaves` | | A fuel's: the item left in the slot after it burns, as a lava bucket leaves a bucket | nothing |
-| `station` | | Where it is made. A shaped or shapeless recipe's: `hands`, `table`, `woodworking`, `stoneworking`, `smithing` or `leatherworking`. A smelt's: `furnace`, `blast_furnace` or `tanning_rack` | `table`, and for a smelt `furnace` |
+| `station` | | Where it is made. A shaped or shapeless recipe's: `hands`, `table`, `woodworking`, `stoneworking`, `smithing` or `leatherworking`. A smelt's: `furnace`, `blast_furnace` or `tanning_rack`. An alloy's: `smithing`, the only station with alloy slots | `table`, for a smelt `furnace`, and for an alloy `smithing` |
+| `heat` | | An alloy's: a block that burns, `furnace` or `blast_furnace`, which must be lit within 4 blocks of the smith table along every axis | none needed |
 | `off` | | Why it is turned off, in quotes. It is read and checked as any other, so what it names must exist, and the tables leave it out | on |
 
 ## Stations
@@ -49,10 +52,10 @@ A recipe says where it is made, and a grid makes only its own station's recipes.
 | Station | Its block, and size | Its grid | What is made there |
 |---|---|---|---|
 | `hands` | none | The 2 by 2 in the inventory | The crafting table, from 4 logs, and what needs no tool: dyes, bone meal, sugar, seeds, simple food, clay, snow, coarse dirt. A recipe here must fit 2 by 2 |
-| `table` | `crafting_table`, 1 by 1 by 1 | 3 by 3 | **Only the stations:** the woodworking bench (3 logs), the stoneworking bench (3 cobblestone on 2 logs), the smith table (3 iron ingots over stone, a furnace, stone), the tanning rack (7 sticks) and the leather workbench (3 planks on 2 sticks) |
+| `table` | `crafting_table`, 1 by 1 by 1 | 3 by 3 | **Only the stations:** the woodworking bench (3 logs), the stoneworking bench (3 cobblestone on 2 logs), the smith table (3 copper ingots over stone, a furnace, stone), the tanning rack (7 sticks) and the leather workbench (3 planks on 2 sticks) |
 | `woodworking` | `woodworking_bench_west` and `_east`, 2 by 1 by 1 | 3 by 3 | Logs to planks, planks to sticks, 2 logs to 16 sticks, everything wooden and the wooden tools, and torches, beds, bows, arrows and paper |
 | `stoneworking` | `stoneworking_bench_left` and `_right`, 2 by 1 by 1 | 3 by 3 | Everything stone and the stone tools, the furnace and the blast furnace, bricks, sandstone, terracotta, ice blocks, glass goods and TNT |
-| `smithing` | `smith_table_front_left`, `_front_right`, `_back_left` and `_back_right`, 2 by 2 by 1 | 3 by 3, and the alloy slots of plan 005 phase 11 part B | Iron, copper and gold: every metal tool, metal armour from leather armour, nuggets, buckets, shears, minecarts, iron doors |
+| `smithing` | `smith_table_front_left`, `_front_right`, `_back_left` and `_back_right`, 2 by 2 by 1 | 3 by 3, and the alloy slots: two counted inputs and an output (plan 005 phase 11 part B) | Iron, copper, gold and stainless steel: every metal tool, metal armour from leather armour, nuggets, buckets, shears, minecarts, iron doors; and alloys, stainless steel from 9 iron and 1 chromium |
 | `leatherworking` | `leather_workbench_left` and `_right`, 2 by 1 by 1 | 3 by 3 | Leather armour, four pieces, and books |
 
 A smelt is done over time in a block with three slots, input, fuel and output:
@@ -60,7 +63,7 @@ A smelt is done over time in a block with three slots, input, fuel and output:
 | Station | Its block, and size | Fuel | What is done there |
 |---|---|---|---|
 | `furnace` | `furnace`, 1 by 1 by 1 | yes | Food, glass, charcoal, bricks, stone, and the low-heat ores: copper and gold |
-| `blast_furnace` | `blast_furnace`, 1 by 1 by 1 | yes | The high-heat ores, iron and chromium, and the alloys of phase 11 part B |
+| `blast_furnace` | `blast_furnace`, 1 by 1 by 1 | yes | The high-heat ores, iron and chromium. An alloy whose file says `heat: blast_furnace` needs one lit by the smith table |
 | `tanning_rack` | `tanning_rack_left` and `_right`, 2 by 1 by 1 | **none**: by time alone | Hides into leather, 30 seconds each |
 
 **Metal armour is leather armour with metal riveted on:** at the smith table, the leather piece in the middle and Minecraft's count of ingots for that piece around it. So no armour can be made without the leather workbench.
@@ -74,8 +77,8 @@ The order you would unlock them in, which `run_item_crafting_station` walks from
 3. **Woodworking bench:** planks, sticks and the wooden tools. A wooden pickaxe mines cobblestone.
 4. **Table:** cobblestone on logs makes the stoneworking bench; sticks and planks make the tanning rack and the leather workbench.
 5. **Stoneworking bench:** stone tools and a furnace. **Furnace:** stone, bricks from clay, copper and gold.
-6. **Stoneworking bench:** bricks round a furnace on stone make the blast furnace. **Blast furnace:** iron.
-7. **Table:** iron, stone and a furnace make the smith table. **Smith table:** copper, iron and gold tools.
+6. **Table:** copper, stone and a furnace make the smith table. **Smith table:** copper and gold tools.
+7. **Stoneworking bench:** bricks round a furnace on stone make the blast furnace. **Blast furnace:** iron and chromium. **Smith table:** iron tools, then stainless steel in its alloy slots and its tools.
 8. **Tanning rack:** hides from cattle, pigs and goats into leather. **Leather workbench:** leather armour. **Smith table:** metal armour.
 
 Two recipes of different stations may have the same pattern, as no grid can match both. A new station is one word here, one word in `GR_STATIONS` (or `GR_PROCESSES` for a smelt) in `compile/src/game_tables/recipes/`, its block, and its screen's row in `run/src/ui/`.
@@ -89,7 +92,8 @@ Only where the game has no such item. Each is written here so that it can be cha
 | `pumpkin_pie` | pumpkin, sugar, egg | pumpkin, sugar | `egg` is an item now, but until hens lay it nobody can get one |
 | `bread` | 3 wheat in a row | 3 wheat, shapeless | Made in the hands, whose grid is 2 by 2 (plan 005 phase 6) |
 | `crafting_table` | 4 planks | 4 logs, in the hands | Planks are made at the woodworking bench, which the table makes (plan 005 phase 6) |
-| `woodworking_bench`, `stoneworking_bench`, `smith_table`, `tanning_rack`, `leather_workbench`, `blast_furnace` | not published, but for the smithing table and the blast furnace | see Stations | The stations of plan 005 phase 6 |
+| `woodworking_bench`, `stoneworking_bench`, `smith_table`, `tanning_rack`, `leather_workbench`, `blast_furnace` | not published, but for the smithing table and the blast furnace | see Stations | The stations of plan 005 phase 6. The smith table takes copper since plan 005 phase 11, so that copper tools come before iron |
+| `alloy_stainless_steel` and the stainless steel tools and armour | not published | 9 iron ingots and 1 chromium ingot make 10 stainless steel ingots, and they are worked as iron is | Ahmed's alloys, plan 005 phase 11 |
 | `stick_from_logs` | not published | 2 logs, 16 sticks | Ahmed's "a stick from 2 logs on the wood bench" |
 | `iron_helmet` and the other metal armour | the ingots alone | the ingots round the leather piece | No armour without the leather workbench (plan 005 phase 6) |
 | `tan_leather` | not published | a hide on a tanning rack, 30 s, no fuel | Like Hytale's tanning rack |

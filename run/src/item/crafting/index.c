@@ -181,3 +181,136 @@ uint32_t crafting_grid_give_back(crafting_grid_t *grid, inventory_t *inventory) 
     crafting_grid_changed(grid);
     return stayed;
 }
+
+/* ---- The alloy slots: plan 005 phase 11 part B ---------------------------------------------------------------------- */
+
+/* Whether this recipe's inputs are the slots', each in a slot of its own with enough, and nothing else is in the slots. */
+static bool crafting_alloy_fits(const recipe_alloy_t *recipe, const item_stack_t inputs[CRAFTING_ALLOY_INPUTS]) {
+    uint32_t used = 0u;
+    for (uint32_t i = 0u; i < CRAFTING_ALLOY_INPUTS; i++) {
+        used += inputs[i].count != 0u ? 1u : 0u;
+    }
+    if (used != recipe->input_count) {
+        return false;
+    }
+    uint32_t taken = 0u; /* a bit for each slot already given to an input */
+    for (uint32_t n = 0u; n < recipe->input_count; n++) {
+        bool found = false;
+        for (uint32_t i = 0u; i < CRAFTING_ALLOY_INPUTS && !found; i++) {
+            if ((taken & (1u << i)) == 0u && inputs[i].count >= recipe->input_counts[n] &&
+                inputs[i].item == recipe->inputs[n]) {
+                taken |= 1u << i;
+                found = true;
+            }
+        }
+        if (!found) {
+            return false;
+        }
+    }
+    return true;
+}
+
+uint32_t crafting_alloy_match(const item_stack_t inputs[CRAFTING_ALLOY_INPUTS], uint32_t station, uint32_t heat) {
+    for (uint32_t row = 0u; row < RECIPE_ALLOY_COUNT; row++) {
+        const recipe_alloy_t *const recipe = &recipe_alloys[row];
+        if (recipe->station == station && (recipe->heat == RECIPE_HEAT_NONE || (heat & (1u << recipe->heat)) != 0u) &&
+            crafting_alloy_fits(recipe, inputs)) {
+            return row;
+        }
+    }
+    return CRAFTING_NO_RECIPE;
+}
+
+void crafting_alloy_start(crafting_alloy_t *alloy, uint32_t station) {
+    memset(alloy, 0, sizeof(*alloy));
+    alloy->station = (uint8_t)station;
+    alloy->recipe = CRAFTING_NO_RECIPE;
+}
+
+void crafting_alloy_changed(crafting_alloy_t *alloy) {
+    alloy->recipe = crafting_alloy_match(alloy->slots, alloy->station, alloy->heat);
+    alloy->slots[CRAFTING_ALLOY_OUTPUT] =
+        alloy->recipe == CRAFTING_NO_RECIPE
+            ? (item_stack_t){0}
+            : item_stack_make(recipe_alloys[alloy->recipe].gives, recipe_alloys[alloy->recipe].count);
+}
+
+void crafting_alloy_heat_set(crafting_alloy_t *alloy, uint32_t heat) {
+    if (alloy->heat != (uint8_t)heat) {
+        alloy->heat = (uint8_t)heat;
+        crafting_alloy_changed(alloy);
+    }
+}
+
+void crafting_alloy_click(crafting_alloy_t *alloy, uint32_t slot, item_stack_t *cursor, bool secondary) {
+    if (slot == CRAFTING_ALLOY_OUTPUT) {
+        (void)crafting_alloy_take(alloy, cursor);
+        return;
+    }
+    if (slot >= CRAFTING_ALLOY_INPUTS) {
+        return;
+    }
+    if (secondary) {
+        item_stack_click_secondary(&alloy->slots[slot], cursor);
+    } else {
+        item_stack_click_primary(&alloy->slots[slot], cursor);
+    }
+    crafting_alloy_changed(alloy);
+}
+
+/* Each input's count goes, by the recipe, and the output is whatever is left. */
+static void crafting_alloy_consume(crafting_alloy_t *alloy) {
+    const recipe_alloy_t *const recipe = &recipe_alloys[alloy->recipe];
+    uint32_t taken = 0u;
+    for (uint32_t n = 0u; n < recipe->input_count; n++) {
+        for (uint32_t i = 0u; i < CRAFTING_ALLOY_INPUTS; i++) {
+            if ((taken & (1u << i)) == 0u && alloy->slots[i].item == recipe->inputs[n] &&
+                alloy->slots[i].count >= recipe->input_counts[n]) {
+                (void)item_stack_take(&alloy->slots[i], recipe->input_counts[n]);
+                taken |= 1u << i;
+                break;
+            }
+        }
+    }
+    crafting_alloy_changed(alloy);
+}
+
+uint32_t crafting_alloy_take(crafting_alloy_t *alloy, item_stack_t *cursor) {
+    item_stack_t output = alloy->slots[CRAFTING_ALLOY_OUTPUT];
+    const uint32_t making = output.count;
+    if (making == 0u || item_stack_room(cursor, &output) < making) {
+        return 0u;
+    }
+    (void)item_stack_move(&output, cursor, making);
+    alloy->alloyed_count += making;
+    crafting_alloy_consume(alloy);
+    return making;
+}
+
+uint32_t crafting_alloy_take_all(crafting_alloy_t *alloy, inventory_t *inventory) {
+    uint32_t taken = 0u;
+    /* Ends: every round takes at least one from each input. */
+    while (alloy->slots[CRAFTING_ALLOY_OUTPUT].count != 0u) {
+        const item_stack_t output = alloy->slots[CRAFTING_ALLOY_OUTPUT];
+        if (inventory_room(inventory, output.item, output.count) < output.count) {
+            break;
+        }
+        (void)inventory_add(inventory, output.item, output.count);
+        alloy->alloyed_count += output.count;
+        taken += output.count;
+        crafting_alloy_consume(alloy);
+    }
+    return taken;
+}
+
+uint32_t crafting_alloy_give_back(crafting_alloy_t *alloy, inventory_t *inventory) {
+    uint32_t stayed = 0u;
+    for (uint32_t i = 0u; i < CRAFTING_ALLOY_INPUTS; i++) {
+        if (alloy->slots[i].count != 0u) {
+            (void)inventory_add_stack(inventory, &alloy->slots[i]);
+            stayed += alloy->slots[i].count;
+        }
+    }
+    crafting_alloy_changed(alloy);
+    return stayed;
+}

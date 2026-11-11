@@ -1,4 +1,4 @@
-# Plan 005 phase 6: the smith table's screen, a grid of three and, right of its output, the alloy slots that phase 11 part B will use.
+# Plan 005 phase 6: the smith table's screen, a grid of three and, right of its output, the alloy slots of phase 11 part B, empty here.
 # The window's top left is at (72, 37), and the test has opened the screen, with the pointer at (160, 120).
 # Hotbar 0, at (89, 188): three iron ingots on the pointer.
 0 move -71 68

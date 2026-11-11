@@ -75,6 +75,20 @@ bool smelting_burns(const smelting_furnace_t *furnace) {
     return furnace->process >= RECIPE_PROCESS_COUNT || recipe_process_burns[furnace->process] != 0u;
 }
 
+uint32_t smelting_lit_near(const smelting_store_t *store, const int32_t cell[3], int32_t reach) {
+    uint32_t heat = 0u;
+    for (uint32_t i = 0u; i < store->count; i++) {
+        const smelting_furnace_t *const furnace = &store->borrowed_furnaces[i];
+        bool near = furnace->process < RECIPE_PROCESS_COUNT && smelting_is_lit(furnace);
+        for (uint32_t axis = 0u; axis < 3u && near; axis++) {
+            const int64_t apart = (int64_t)furnace->cell[axis] - (int64_t)cell[axis];
+            near = apart >= -(int64_t)reach && apart <= (int64_t)reach;
+        }
+        heat |= near ? 1u << furnace->process : 0u;
+    }
+    return heat;
+}
+
 bool smelting_is_lit(const smelting_furnace_t *furnace) {
     return furnace->burn_ticks != 0u;
 }

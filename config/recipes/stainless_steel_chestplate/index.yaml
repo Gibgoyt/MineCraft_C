@@ -1,0 +1,7 @@
+# Plan 005 phase 11: the iron pattern, in stainless steel.
+name: stainless_steel_chestplate
+kind: shaped
+pattern: ["MLM", "MMM", "MMM"]
+keys: { M: stainless_steel_ingot, L: leather_chestplate }
+gives: stainless_steel_chestplate
+station: smithing

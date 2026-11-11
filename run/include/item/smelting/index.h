@@ -78,6 +78,10 @@ bool smelting_is_lit(const smelting_furnace_t *furnace);
 /* What it will make of this input, or nullptr, and in which process: recipe_smelt_t.process. */
 const recipe_smelt_t *smelting_recipe_of(uint16_t item);
 
+/* A bit for each recipe_process_t with a block burning within reach of this cell, in every axis: the heat an alloy may need (plan 005
+ * phase 11 part B). A walk over the store. */
+uint32_t smelting_lit_near(const smelting_store_t *store, const int32_t cell[3], int32_t reach);
+
 /* Whether a block of this process burns fuel. */
 bool smelting_burns(const smelting_furnace_t *furnace);
 

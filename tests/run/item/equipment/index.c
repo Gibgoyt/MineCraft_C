@@ -148,8 +148,9 @@ TEST(what_wears_stacks_to_one_and_what_is_not_armor_has_no_slot) {
             CHECK(equipment_armor_slot_of((uint16_t)item) < EQUIPMENT_ARMOR_SLOTS);
         }
     }
-    /* Four pieces each of leather, gold, copper, iron and diamond. Copper was the last to come, in plan 003 phase 6. */
-    CHECK_EQ_U64(armor, 20u);
+    /* Four pieces each of leather, gold, copper, iron, diamond and stainless steel. Stainless steel was the last to come, in plan 005
+     * phase 11. */
+    CHECK_EQ_U64(armor, 24u);
     CHECK_EQ_U64(equipment_armor_slot_of(ITEM_COUNT), EQUIPMENT_NOT_ARMOR);
 }
 

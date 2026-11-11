@@ -1,0 +1,7 @@
+# Plan 005 phase 11: the iron pattern, in stainless steel.
+name: stainless_steel_helmet
+kind: shaped
+pattern: ["MMM", "MLM"]
+keys: { M: stainless_steel_ingot, L: leather_helmet }
+gives: stainless_steel_helmet
+station: smithing

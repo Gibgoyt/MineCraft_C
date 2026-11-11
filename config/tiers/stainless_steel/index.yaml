@@ -1,0 +1,7 @@
+# Plan 005 phase 11: iron with chromium, alloyed at the smith table. A tier above iron: it harvests what iron does, faster, and lasts
+# twice as long (its tools' durability is in config/items/). Diamond's blocks stay diamond's. Numbers to tune.
+name: stainless_steel
+harvests: iron
+speed: 7000
+axe_attack_speed: 1
+hoe_attack_speed: 3.5

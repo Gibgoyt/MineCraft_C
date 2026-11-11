@@ -1,0 +1,8 @@
+# Plan 005 phase 11: a tier above iron, made at the smith table.
+name: stainless_steel_hoe
+texture: items/stainless_steel_hoe
+stack: 1
+tool: hoe
+tier: stainless_steel
+durability: 500
+damage: 1

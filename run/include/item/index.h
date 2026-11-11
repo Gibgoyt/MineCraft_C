@@ -27,7 +27,10 @@ typedef struct item_t {
     /* A line of its own: main writes these when a key goes down, and the sim reads them each tick. */
     _Atomic uint32_t hotbar_key;  /* 128: main to sim: the slot asked for, plus one, and 0 for none */
     _Atomic int32_t hotbar_wheel; /* 132: main to sim: slots to the right, not yet taken */
-    uint8_t _pad1[56];            /* 136 */
+    /* The smith table's alloy slots, the sim's, from arena_world, beside the bench grid: its screen gives them back as it closes (plan 005
+     * phase 11 part B). */
+    crafting_alloy_t *borrowed_crafting_alloy; /* 136 */
+    uint8_t _pad1[48];                         /* 144 */
     /* The sim's, from here on, as is what is at the far end of the two stores. */
     crafting_grid_t crafting_hands; /* 192: the 2x2 a player always has */
     crafting_grid_t crafting_table; /* 288: the 3x3 at a crafting table */

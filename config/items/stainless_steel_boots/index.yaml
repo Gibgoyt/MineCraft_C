@@ -1,0 +1,7 @@
+# Plan 005 phase 11: a tier above iron, riveted onto its leather piece at the smith table. Iron's durability and a point of toughness
+# more; numbers to tune.
+name: stainless_steel_boots
+texture: items/stainless_steel_boots
+stack: 1
+durability: 312
+armor: { slot: feet, points: 2, toughness: 1 }

@@ -31,7 +31,7 @@ To check this tree, with no pack:
 
 ## Recipes
 
-The textures the pack lacks are ours: every mob but the player, gold tools, armour, deep rock, more trees and plants, the animals' meat, hides, egg and milk, the buttons, the font and chromium (plan 005 phase 11). `compile/src/texture_vector/recipe/README.md` lists the operations. A recipe reads only its own `index.yaml`, so these 231 textures survive the pack being removed. To change one, edit its yaml, then:
+The textures the pack lacks are ours: every mob but the player, gold tools, armour, deep rock, more trees and plants, the animals' meat, hides, egg and milk, the buttons, the font, chromium and stainless steel (plan 005 phase 11). `compile/src/texture_vector/recipe/README.md` lists the operations. A recipe reads only its own `index.yaml`, so these 284 textures survive the pack being removed. To change one, edit its yaml, then:
 
     tools/test-or-build.sh cmake --build --preset debug --target mc_tool_texture_vector
     build/debug/bin/tools/texture_vector recipes --textures textures

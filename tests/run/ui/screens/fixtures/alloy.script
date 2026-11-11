@@ -1,0 +1,29 @@
+# Plan 005 phase 11 part B: the smith table's alloy slots, right of its output: two inputs above one output, at x 150 of the window.
+# The window's top left is at (72, 37), and the test has opened the screen, with the pointer at (160, 120).
+# Hotbar 0, at (89, 188): nine iron ingots on the pointer.
+0 move -71 68
+1 button left down
+2 button left up
+# All of them in the first input, at (231, 63).
+3 move 142 -125
+4 button left down
+5 button left up
+# Hotbar 1, at (107, 188): the chromium ingot.
+6 move -124 125
+7 button left down
+8 button left up
+# In the second input, at (231, 81).
+9 move 124 -107
+10 button left down
+11 button left up
+12 screenshot alloy_ready.png
+# The output, at (231, 103): ten stainless steel ingots on the pointer.
+13 move 0 22
+14 button left down
+15 button left up
+# Hotbar 8, at (233, 188).
+16 move 2 85
+17 button left down
+18 button left up
+19 key e down
+20 key e up

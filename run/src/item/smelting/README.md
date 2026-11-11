@@ -12,6 +12,7 @@
 - `smelting_burns`: whether its process burns fuel.
 - `smelting_tick`: one tick of one furnace.
 - `smelting_is_lit`, `smelting_cook_fraction`, `smelting_burn_fraction`: what a block and a screen show.
+- `smelting_lit_near`: a bit for each process with a block burning within reach of a cell: the heat an alloy may need (plan 005 phase 11 part B).
 - `smelting_recipe_of`, `smelting_burn_ticks`: what an item is to a furnace.
 - `smelting_click`, `smelting_quick_move_in`, `smelting_quick_move_out`: what a screen does.
 

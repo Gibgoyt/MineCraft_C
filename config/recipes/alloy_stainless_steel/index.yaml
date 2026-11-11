@@ -1,0 +1,9 @@
+# Plan 005 phase 11: "stainless steel ... that is 9xiron and 1xchromium" (Ahmed). Ten in, ten out (Ahmed took 10). In the smith table's
+# alloy slots, with no heat: no lit blast furnace is needed nearby, as the iron and chromium have each been through one already. Say
+# heat: blast_furnace to need one.
+name: alloy_stainless_steel
+kind: alloy
+inputs: [{ item: iron_ingot, count: 9 }, { item: chromium_ingot, count: 1 }]
+gives: stainless_steel_ingot
+count: 10
+station: smithing

@@ -550,6 +550,16 @@ textures:
   - { to: items/shears, from: item/shears.png }
   - { to: items/smith_table, keep: "Minecraft has no picture for this" }
   - { to: items/snowball, from: item/snowball.png }
+  - { to: items/stainless_steel_axe, keep: "Minecraft has no stainless steel: our own recipe, plan 005 phase 11" }
+  - { to: items/stainless_steel_boots, keep: "Minecraft has no stainless steel: our own recipe, plan 005 phase 11" }
+  - { to: items/stainless_steel_chestplate, keep: "Minecraft has no stainless steel: our own recipe, plan 005 phase 11" }
+  - { to: items/stainless_steel_helmet, keep: "Minecraft has no stainless steel: our own recipe, plan 005 phase 11" }
+  - { to: items/stainless_steel_hoe, keep: "Minecraft has no stainless steel: our own recipe, plan 005 phase 11" }
+  - { to: items/stainless_steel_ingot, keep: "Minecraft has no stainless steel: our own recipe, plan 005 phase 11" }
+  - { to: items/stainless_steel_leggings, keep: "Minecraft has no stainless steel: our own recipe, plan 005 phase 11" }
+  - { to: items/stainless_steel_pickaxe, keep: "Minecraft has no stainless steel: our own recipe, plan 005 phase 11" }
+  - { to: items/stainless_steel_shovel, keep: "Minecraft has no stainless steel: our own recipe, plan 005 phase 11" }
+  - { to: items/stainless_steel_sword, keep: "Minecraft has no stainless steel: our own recipe, plan 005 phase 11" }
   - { to: items/stick, from: item/stick.png }
   - { to: items/stone_axe, from: item/stone_axe.png }
   - { to: items/stone_hoe, from: item/stone_hoe.png }

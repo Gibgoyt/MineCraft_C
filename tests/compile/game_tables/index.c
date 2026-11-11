@@ -810,6 +810,11 @@ static void gtt_recipes_add(test_context_t *t, const gtt_tree_t *tree) {
     gtt_mkdirs(t, gtt_path(t, tree->borrowed_config, "recipes/group_rock"));
     gtt_write(t, gtt_path(t, tree->borrowed_config, "recipes/group_rock/index.yaml"),
               "name: group_rock\nkind: group\nitems: [stone]\n");
+    gtt_mkdirs(t, gtt_path(t, tree->borrowed_config, "recipes/ok_alloy"));
+    gtt_write(
+        t, gtt_path(t, tree->borrowed_config, "recipes/ok_alloy/index.yaml"),
+        "name: ok_alloy\nkind: alloy\ninputs: [{ item: stone, count: 2 }, { item: coal, count: 1 }]\ngives: coal\n"
+        "count: 3\nstation: smithing\n");
 }
 
 #define GTT_SHAPED "name: bad\nkind: shaped\n"
@@ -889,6 +894,41 @@ static const gtt_bad_case_t GTT_BAD_RECIPES[] = {
     /* An item smelts one way and burns one way. */
     {"name: bad\nkind: smelt\ninput: group_rock\ngives: stone\n", ":1:", "'stone' smelts here and in bad"},
     {"name: bad\nkind: fuel\nitems: [coal, coal]\nticks: 1\n", ":1:", "'coal' burns here and in bad"},
+    /* Plan 005 phase 11 part B: an alloy's counted inputs, its station and its heat. */
+    {"name: bad\nkind: alloy\ngives: coal\n", ":1:", "an alloy needs inputs"},
+    {"name: bad\nkind: alloy\ninputs: []\ngives: coal\n", ":1:", "an alloy needs inputs"},
+    {"name: bad\nkind: alloy\ninputs: [{ item: coal, count: 1 }, { item: stone, count: 1 }, { item: pick, count: 1 }]\n"
+     "gives: coal\n",
+     ":1:", "an alloy needs inputs"},
+    {"name: bad\nkind: alloy\ninputs: [coal]\ngives: coal\n", ":3:", "an input is { item, count }"},
+    {"name: bad\nkind: alloy\ninputs: [{ item: coal }]\ngives: coal\n", ":3:", "an input is { item, count }"},
+    {"name: bad\nkind: alloy\ninputs: [{ item: coal, count: 1, heat: 2 }]\ngives: coal\n",
+     ":3:", "an input is { item, count }"},
+    {"name: bad\nkind: alloy\ninputs: [{ item: nothing, count: 1 }]\ngives: coal\n",
+     ":3:", "item 'nothing' does not exist"},
+    {"name: bad\nkind: alloy\ninputs: [{ item: group_rock, count: 1 }]\ngives: coal\n",
+     ":3:", "item 'group_rock' does not exist"},
+    {"name: bad\nkind: alloy\ninputs: [{ item: coal, count: 0 }]\ngives: coal\n", ":3:", "an input's count is 0"},
+    {"name: bad\nkind: alloy\ninputs: [{ item: coal, count: 65 }]\ngives: coal\n", ":3:", "an input's count is 65"},
+    {"name: bad\nkind: alloy\ninputs: [{ item: pick, count: 2 }]\ngives: coal\n",
+     ":3:", "count 2 is more than one slot of pick"},
+    {"name: bad\nkind: alloy\ninputs: [{ item: coal, count: 1 }, { item: coal, count: 2 }]\ngives: coal\n",
+     ":3:", "'coal' is an input twice"},
+    {"name: bad\nkind: alloy\ninputs: [{ item: coal, count: 1 }]\n", ":1:", "missing field 'gives'"},
+    {"name: bad\nkind: alloy\ninputs: [{ item: coal, count: 1 }]\ngives: coal\nstation: woodworking\n",
+     ":5:", "only the smithing station has alloy slots"},
+    {"name: bad\nkind: alloy\ninputs: [{ item: coal, count: 1 }]\ngives: coal\nstation: furnace\n",
+     ":5:", "unknown station 'furnace'"},
+    {"name: bad\nkind: alloy\ninputs: [{ item: coal, count: 1 }]\ngives: coal\nheat: tanning_rack\n",
+     ":5:", "heat 'tanning_rack' is not a block that burns"},
+    {"name: bad\nkind: alloy\ninputs: [{ item: coal, count: 1 }]\ngives: coal\nheat: smithing\n",
+     ":5:", "heat 'smithing' is not a block that burns"},
+    {"name: bad\nkind: alloy\ninputs: [{ item: coal, count: 1 }]\ngives: coal\nticks: 5\n",
+     ":5:", "unknown field 'ticks' in a alloy"},
+    {"name: bad\nkind: smelt\ninput: coal\ngives: coal\nheat: furnace\n", ":5:", "unknown field 'heat' in a smelt"},
+    /* Two alloys of the same inputs, whatever their counts or order, would both match slots that hold enough for both. */
+    {"name: bad\nkind: alloy\ninputs: [{ item: coal, count: 5 }, { item: stone, count: 1 }]\ngives: stone\n",
+     ":1:", "the alloy slots can match this and bad"},
 };
 enum { GTT_BAD_RECIPE_COUNT = sizeof(GTT_BAD_RECIPES) / sizeof(GTT_BAD_RECIPES[0]) };
 
@@ -972,10 +1012,37 @@ TEST(good_recipes_make_tables_and_a_tree_with_none_needs_none) {
     CHECK_CONTAINS(header, "#define RECIPE_COUNT 1u");
     CHECK_CONTAINS(header, "RECIPE_STATION_HANDS = 5,");
     CHECK_CONTAINS(header, "RECIPE_PROCESS_TANNING_RACK = 2,");
+    /* Plan 005 phase 11 part B: an alloy, its counted inputs in the order its file gives them, and the smith table's by default. */
+    CHECK_CONTAINS(with_tan, "{.name = \"ok_alloy\", .inputs = {ITEM_ID_STONE, ITEM_ID_COAL}, .input_counts = {2, 1}, "
+                             ".input_count = 2, .count = 3, .gives = ITEM_ID_COAL, .station = 3, .heat = 255},");
+    CHECK_CONTAINS(header, "#define RECIPE_ALLOY_COUNT 1u");
+    CHECK_CONTAINS(header, "#define RECIPE_HEAT_NONE 255u");
     unlink(gtt_path(t, tree.borrowed_config, "recipes/ok_tan/index.yaml"));
     rmdir(gtt_path(t, tree.borrowed_config, "recipes/ok_tan"));
     unlink(gtt_path(t, tree.borrowed_config, "recipes/ok_off/index.yaml"));
     rmdir(gtt_path(t, tree.borrowed_config, "recipes/ok_off"));
+
+    /* An alloy that needs heat says which block's, and one alone is no clash with one of two inputs. A tree with no alloys still has
+     * a table of them, of one row that is nothing. */
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "recipes/ok_heat"));
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "recipes/ok_heat/index.yaml"),
+              "name: ok_heat\nkind: alloy\ninputs: [{ item: stone, count: 4 }]\ngives: coal\nheat: blast_furnace\n");
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 0);
+    CHECK_STR_EQ(run.output, "");
+    const char *const with_heat = gtt_read(t, gtt_path(t, tree.borrowed_out, "recipes/index.c"), &length);
+    REQUIRE(with_heat != nullptr);
+    CHECK_CONTAINS(with_heat, "{.name = \"ok_heat\", .inputs = {ITEM_ID_STONE, ITEM_ID_NONE}, .input_counts = {4, 0}, "
+                              ".input_count = 1, .count = 1, .gives = ITEM_ID_COAL, .station = 3, .heat = 1},");
+    unlink(gtt_path(t, tree.borrowed_config, "recipes/ok_heat/index.yaml"));
+    rmdir(gtt_path(t, tree.borrowed_config, "recipes/ok_heat"));
+    unlink(gtt_path(t, tree.borrowed_config, "recipes/ok_alloy/index.yaml"));
+    rmdir(gtt_path(t, tree.borrowed_config, "recipes/ok_alloy"));
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 0);
+    const char *const no_alloy = gtt_read(t, gtt_path(t, tree.borrowed_out, "recipes/index.h"), &length);
+    REQUIRE(no_alloy != nullptr);
+    CHECK_CONTAINS(no_alloy, "#define RECIPE_ALLOY_COUNT 0u\n#define RECIPE_ALLOY_ROWS 1u");
 
     /* A directory of recipes that makes nothing is a mistake. */
     unlink(gtt_path(t, tree.borrowed_config, "recipes/ok_smelt/index.yaml"));

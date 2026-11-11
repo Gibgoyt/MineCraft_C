@@ -240,6 +240,14 @@ static void save_state_out_items(save_state_out_t *out, const item_t *item, cons
     head.selected = item->inventory.selected;
     save_state_out_bytes(out, &head, sizeof(head));
     save_state_out_end(out);
+    save_state_out_begin(out, SAVE_STATE_SECTION_ALLOY);
+    crafting_alloy_t alloy = *item->borrowed_crafting_alloy;
+    /* What the slots make and what burns nearby are worked out again on opening, with this build's recipes. */
+    alloy.slots[CRAFTING_ALLOY_OUTPUT] = (item_stack_t){0};
+    alloy.recipe = CRAFTING_NO_RECIPE;
+    alloy.heat = 0u;
+    save_state_out_bytes(out, &alloy, sizeof(alloy));
+    save_state_out_end(out);
     save_state_out_begin(out, SAVE_STATE_SECTION_CHESTS);
     save_state_out_bytes(out, item->chests.borrowed_chests, (uint64_t)item->chests.count * sizeof(container_chest_t));
     save_state_out_end(out);
@@ -624,6 +632,15 @@ static bool save_state_check_items(const uint8_t *data, uint64_t bytes) {
            save_state_stacks_fine(items.equipment.armor, EQUIPMENT_ARMOR_SLOTS);
 }
 
+static bool save_state_check_alloy(const uint8_t *data, uint64_t bytes) {
+    crafting_alloy_t alloy;
+    if (bytes != sizeof(alloy)) {
+        return false;
+    }
+    memcpy(&alloy, data, sizeof(alloy));
+    return alloy.station == RECIPE_STATION_SMITHING && save_state_stacks_fine(alloy.slots, CRAFTING_ALLOY_SLOTS);
+}
+
 static bool save_state_check_chests(const uint8_t *data, uint64_t bytes) {
     if (bytes % sizeof(container_chest_t) != 0u || bytes / sizeof(container_chest_t) > CONTAINER_CHESTS) {
         return false;
@@ -879,6 +896,8 @@ static bool save_state_check_one(uint32_t id, const uint8_t *data, uint64_t byte
         return save_state_check_sexes(data, bytes);
     case SAVE_STATE_SECTION_PASSIVE:
         return save_state_check_passive(data, bytes);
+    case SAVE_STATE_SECTION_ALLOY:
+        return save_state_check_alloy(data, bytes);
     }
     return false; /* an id from nowhere: this version has only those */
 }
@@ -1301,6 +1320,11 @@ bool save_state_apply(const save_state_t *state, save_state_parts_t *parts) {
         data = save_state_section_find(file, file_bytes, SAVE_STATE_SECTION_ITEMS, &bytes);
         if (data != nullptr) {
             save_state_in_items(item, parts->borrowed_held, data);
+        }
+        data = save_state_section_find(file, file_bytes, SAVE_STATE_SECTION_ALLOY, &bytes);
+        if (data != nullptr) {
+            memcpy(item->borrowed_crafting_alloy, data, sizeof(crafting_alloy_t));
+            crafting_alloy_changed(item->borrowed_crafting_alloy);
         }
         data = save_state_section_find(file, file_bytes, SAVE_STATE_SECTION_CHESTS, &bytes);
         if (data != nullptr) {

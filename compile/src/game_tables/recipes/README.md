@@ -26,6 +26,7 @@ Every problem gets `path:line:column: message`, and reading goes on, so one buil
 - An item that smelts two ways or burns two ways, whatever block each is done in.
 - A `station` that is not one of the words of its kind, `GR_STATIONS` for a grid's and `GR_PROCESSES` for a smelt's, and a recipe of the hands bigger than their 2 by 2 (plan 005 phase 6).
 - An `off` that says nothing. A recipe that is off is read and checked as any other, so what it names must exist, and is then left out of the tables and of every check of one against another.
+- An alloy (plan 005 phase 11 part B) with no `inputs`, or more than 2; an input that is not `{ item, count }`, whose item is no item or is a group, whose count is not 1 to what one slot of it holds, or that is named twice; a `station` other than `smithing`, the one with alloy slots; and a `heat` that is not a block that burns. **Two alloys of one station with the same inputs**, whatever their counts or order: slots holding enough for both would match both.
 - A directory of recipes with no crafting recipe or no smelting one, since a table of no rows does not compile.
 
 A tree with no `recipes` directory at all writes nothing and is no problem. That is for the small trees of `tests/compile/game_tables/`; without the real directory, the real build fails on the outputs it wants.
@@ -42,6 +43,7 @@ A tree with no `recipes` directory at all writes nothing and is no problem. That
 | `recipe_process_t`, `recipe_process_burns` | Where a smelt is done, in `recipe_smelt_t.process`: the furnace, the blast furnace and the tanning rack; and whether each burns fuel |
 | `recipe_smelts[RECIPE_SMELT_COUNT]`, `recipe_smelt_rows[ITEM_COUNT]` | What a furnace makes; by input item, the row plus one, or `RECIPE_NO_SMELT` |
 | `recipe_fuels[ITEM_COUNT]` | By item: how long it burns and what it leaves, or all zero |
+| `recipe_alloys[RECIPE_ALLOY_ROWS]`, `RECIPE_ALLOY_COUNT` | Every `alloy` file, sorted by name: its inputs and their counts in its file's order, what it gives, its station, and its `heat` as a `recipe_process_t` or `RECIPE_HEAT_NONE`. `RECIPE_ALLOY_ROWS` is at least 1, as a table of no rows does not compile; a tree with no alloys has one row of nothing |
 
 - **A shaped recipe's cells are `width` by `height`,** by row, in the first `width * height` of `cells`.
 - **A shapeless one's are the first `cell_count`.**

@@ -223,9 +223,10 @@ static uint32_t ui_screen_places_of(uint8_t kind, ui_screen_place_t *out) {
     case UI_SCREEN_CRAFTING:
     case UI_SCREEN_WOODWORKING:
     case UI_SCREEN_STONEWORKING:
-    case UI_SCREEN_SMITHING:
     case UI_SCREEN_LEATHERWORKING:
         return ui_screen_crafting_places(out);
+    case UI_SCREEN_SMITHING:
+        return ui_screen_smithing_places(out);
     case UI_SCREEN_FURNACE:
     case UI_SCREEN_BLAST_FURNACE:
         return ui_screen_furnace_places(out, true);
@@ -376,6 +377,13 @@ const int32_t *ui_screen_sim_cell(const ui_t *ui) {
     return ui->borrowed_screens->cell;
 }
 
+/* The smith table's alloy slots, with what burns near it now: an alloy may need a lit blast furnace by it. The sim's. */
+static crafting_alloy_t *ui_screen_alloy(item_t *item, const int32_t cell[3]) {
+    crafting_alloy_t *const alloy = item->borrowed_crafting_alloy;
+    crafting_alloy_heat_set(alloy, smelting_lit_near(&item->furnaces, cell, (int32_t)CRAFTING_ALLOY_HEAT_REACH));
+    return alloy;
+}
+
 /* The sim tells main how things now are, by looking its stores up again: a chest or a furnace moves when another goes. */
 static void ui_screen_publish(ui_screens_t *screens, item_t *item) {
     ui_screen_view_t *const view = ui_screens_view_next(screens, item);
@@ -383,6 +391,8 @@ static void ui_screen_publish(ui_screens_t *screens, item_t *item) {
     const ui_screen_kind_def_t *const def = ui_screen_kind_def(screens->kind);
     if (screens->kind == UI_SCREEN_INVENTORY) {
         ui_screen_inventory_view(item, view);
+    } else if (screens->kind == UI_SCREEN_SMITHING) {
+        ui_screen_smithing_view(ui_screen_grid(item, screens->kind), ui_screen_alloy(item, cell), view);
     } else if (def->works == UI_SCREEN_WORKS_GRID || def->works == UI_SCREEN_WORKS_BENCH) {
         ui_screen_crafting_view(ui_screen_grid(item, screens->kind), view);
     } else if (def->works == UI_SCREEN_WORKS_SMELT) {
@@ -444,6 +454,14 @@ void ui_screen_sim_close(ui_t *ui, const ui_screen_sim_t *sim) {
         }
         crafting_grid_changed(grid);
     }
+    crafting_alloy_t *const alloy = item->borrowed_crafting_alloy;
+    if (screens->kind == UI_SCREEN_SMITHING && crafting_alloy_give_back(alloy, &item->inventory) != 0u) {
+        for (uint32_t i = 0u; i < CRAFTING_ALLOY_INPUTS; i++) {
+            ui_screen_spill(sim, &alloy->slots[i]);
+            memset(&alloy->slots[i], 0, sizeof(alloy->slots[i]));
+        }
+        crafting_alloy_changed(alloy);
+    }
     (void)inventory_add_stack(&item->inventory, &screens->cursor);
     ui_screen_spill(sim, &screens->cursor);
     screens->cursor = (item_stack_t){0};
@@ -480,6 +498,9 @@ static void ui_screen_click(ui_screens_t *screens, const ui_screen_sim_t *sim, u
     const ui_screen_kind_def_t *const def = ui_screen_kind_def(screens->kind);
     if (screens->kind == UI_SCREEN_INVENTORY) {
         ui_screen_inventory_click(item, action, &screens->cursor);
+    } else if (screens->kind == UI_SCREEN_SMITHING) {
+        ui_screen_smithing_click(item, ui_screen_grid(item, screens->kind), ui_screen_alloy(item, cell), action,
+                                 &screens->cursor);
     } else if (def->works == UI_SCREEN_WORKS_GRID || def->works == UI_SCREEN_WORKS_BENCH) {
         ui_screen_crafting_click(item, ui_screen_grid(item, screens->kind), action, &screens->cursor);
     } else if (def->works == UI_SCREEN_WORKS_SMELT) {
