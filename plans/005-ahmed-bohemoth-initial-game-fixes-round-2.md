@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2
 
-**Status:** being built by waves of agents, from 2026-11-10. Done so far: phases 1, 3, 4, 5, 7, 9, 10 and 12; phase 8's labels; phase 14's measuring, live test, far-field fix and job priorities (the near rings' last seconds in progress). **Render distance 64 now settles in about 4 s,** and a mined block goes at once   (updated 2026-11-09)
+**Status:** being built by waves of agents, from 2026-11-10. Done so far: phases 1, 2, 3, 4, 5, 7, 9, 10 and 12; phase 8's labels; phase 14's measuring, live test, far-field fix and job priorities (the near rings' last seconds in progress). **Render distance 64 now settles in about 4 s,** and a mined block goes at once   (updated 2026-11-09)
 
 ## Context
 
@@ -15,7 +15,7 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | # | Note | Phase file | Cause found | Status |
 |---|---|---|---|---|
 | 1 | The tree feller must always be on, not need an axe | `...-phase-01-tree-feller-always-on.md` | Plan 003's "axes only" default | **Done** (`ad8513f4`): any tool or bare hands fells, sneaking too |
-| 2 | Doors can't be placed | `...-phase-02-doors.md` | Door blocks were never added | Not started |
+| 2 | Doors can't be placed | `...-phase-02-doors.md` | Door blocks were never added | **Done:** wood, iron and glass doors, two tall, facing you, opened by the right button (iron stays shut by hand) |
 | 3 | Turn off zombies, skeletons and creepers, for Ahmed's own mobs later | `...-phase-03-turn-off-hostile-mobs.md` | Data change: `weight: 0` | **Done** (`121e880f`): weight 0, and taken out of saved worlds as they open |
 | 4 | Animals with males and females: cattle, sheep, pigs, goats, mountain goats, chickens. Females give milk or eggs, males are food. A bed from wool | `...-phase-04-animals.md` | No animals, wool, hides or meat exist; mobs spawn only in the dark; a bed works but needs wheat | **Done:** cattle, sheep, pigs, goats, mountain goats and chickens, male and female told apart; shearing, milking and eggs from females; a bed of white wool; at most 256 animals kept |
 | 5 | No armour bar | `...-phase-05-armour-bar.md` | It was never drawn | **Done** (`80435865`): ten icons above the hearts, bubbles a row higher |
@@ -117,7 +117,7 @@ This is the build at `main`. It has everything from plan 003, and none of this p
 | Wall torches | Place a torch on each side of a block, then mine the block | Torches lean out from walls, and drop when it goes |
 | Copper armour | Smelt copper, make the four pieces on the table, wear them | They're worn, and the armour bar fills above the hearts |
 | Woodworking bench | Table: 3 planks over 2 sticks. Place it, make stairs on it | Wood stairs and tools come off the bench. **Planks and sticks don't** (phase 6) |
-| Doors | Craft a door and try to place it | **Nothing happens** (phase 2) |
+| Doors | Craft a door on the bench, place it, right-click it | Two tall, opens and shuts; breaking either half drops one door |
 | Bed | 3 wheat over 3 planks on the table, place it, sleep at night | 3 white wool over 3 planks; sleeps through the night. Shear a sheep for the wool |
 | Height | Build up | A block goes at z = 1250, and not at 1251 |
 | Sound | Mine stone, wood, dirt, sand and leaves; change volume in Settings | Crunches by material. **No agent has heard these** |
