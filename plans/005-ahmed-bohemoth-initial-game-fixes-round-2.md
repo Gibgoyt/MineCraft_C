@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2
 
-**Status:** being built by waves of agents, from 2026-11-10. Done so far: phases 1, 2, 3, 4, 5, 7, 9, 10, 12 and 13; phase 8's labels; phase 11 part A; phase 14 (a new world fills in at render distance 32 in about 3.3 s, and every live change shows within 1 s). **Render distance 64 now settles in about 4 s,** and a mined block goes at once   (updated 2026-11-09)
+**Status:** being built by waves of agents, from 2026-11-10. Done so far: phases 1, 2, 3, 4, 5, 6, 7, 9, 10, 12 and 13; phase 8's labels; phase 11 part A; phase 14 (a new world fills in at render distance 32 in about 3.3 s, and every live change shows within 1 s). **Render distance 64 now settles in about 4 s,** and a mined block goes at once   (updated 2026-11-09)
 
 ## Context
 
@@ -19,12 +19,12 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 3 | Turn off zombies, skeletons and creepers, for Ahmed's own mobs later | `...-phase-03-turn-off-hostile-mobs.md` | Data change: `weight: 0` | **Done** (`121e880f`): weight 0, and taken out of saved worlds as they open |
 | 4 | Animals with males and females: cattle, sheep, pigs, goats, mountain goats, chickens. Females give milk or eggs, males are food. A bed from wool | `...-phase-04-animals.md` | No animals, wool, hides or meat exist; mobs spawn only in the dark; a bed works but needs wheat | **Done:** cattle, sheep, pigs, goats, mountain goats and chickens, male and female told apart; shearing, milking and eggs from females; a bed of white wool; at most 256 animals kept |
 | 5 | No armour bar | `...-phase-05-armour-bar.md` | It was never drawn | **Done** (`80435865`): ten icons above the hearts, bubbles a row higher |
-| 6 | Woodworking bench can't make planks or sticks, overlaps the table; a stoneworking bench; the table only makes benches | `...-phase-06-crafting-stations.md` | Planks and sticks were kept on the table to reach the bench | **Blocked: Ahmed's Hypixel research** |
+| 6 | Woodworking bench can't make planks or sticks, overlaps the table; a stoneworking bench; the table only makes benches | `...-phase-06-crafting-stations.md` | Planks and sticks were kept on the table to reach the bench | **Done with the proposed order** (Ahmed, 2026-11-10: build it now, change it after his research). Stations are YAML `station:` lines |
 | 7 | Very laggy after a long time in another window | `...-phase-07-lag-after-alt-tab.md` | **Measured:** not mobs (0.15 ms a tick). At render distance 64 every 30 s autosave rebuilds far field (360–680 ms stalls), handed to phase 14 | **Done** (pause when away, F3 numbers, slow-frame log). The far-field fix is phase 14's |
 | 8 | Can't see very far; what's a chunk? | `...-phase-08-render-distance.md` | Working as set: 32 chunks is 512 blocks, and nothing is drawn past full detail at 32 | **Labels done** (`e0cf3d33`): sliders show blocks, with a tooltip each. Raising the default waits for phase 14 |
 | 9 | Use Minecraft's default textures, not Pixel Perfection: download it, keep Pixel Perfection | `...-phase-09-default-textures.md` | The repo is public, and the texture folders hold the pixels too, so the default pack goes in a git-ignored copy | **Done** (`af93d651`): `tools/fetch_minecraft_default.sh`, then `tools/import_minecraft_default.sh`, builds from `textures_local/`. Nothing from Mojang is committed |
 | 10 | A translucent blue preview of a block before placing it, like Hypixel | `...-phase-10-placement-preview.md` | Only an outline of the aimed-at block exists | **Done:** a see-through blue copy where the click would place it, red when it can't; "Placing preview" in Settings |
-| 11 | Stations: stoneworking bench, a 2×2×1 smith table for iron, copper and gold, a leather tanning rack and a leather workbench. **No** iron-working bench. No armour without the leather workbench. Realistic furnaces | `...-phase-06-crafting-stations.md` | New stations | Part of phase 6 |
+| 11 | Stations: stoneworking bench, a 2×2×1 smith table for iron, copper and gold, a leather tanning rack and a leather workbench. **No** iron-working bench. No armour without the leather workbench. Realistic furnaces | `...-phase-06-crafting-stations.md` | New stations | **Done** with phase 6: stoneworking bench, 2×2 smith table, tanning rack, leather workbench, blast furnace |
 | 12 | More ores and alloys: chromium ore with its spawn rate in YAML, and stainless steel from 9 iron and 1 chromium | `...-phase-11-ores-and-alloys.md` | Ores are a table in code, not YAML; no alloys exist | **Part A done:** ores in `config/ores/`, chromium ore (z -250 to -40, about 4 veins a chunk), raw chromium and ingots. Alloys wait for phase 6 |
 | 13 | Stairs and the woodworking bench only face north: face the player, and turn before placing | `...-phase-12-block-facing.md` | A voxel holds only an id, so no block can face a way | **Done** (`2aa2e8f8`…): a block state beside the id; stairs, ladders, wall torches and the bench face the player, R turns before placing |
 | 14 | A blue preview for every block, including the next block of a 1×1 bridge | Added to `...-phase-10-placement-preview.md` | — | **Done** with phases 10 and 13 |
@@ -64,7 +64,7 @@ Plan 004 is Ahmed's climate system, so these notes are here in 005, as he asked.
 | 4 | Should the bed be two blocks long like Minecraft's? | No, it stays one |
 | 4 | Breeding, now that animals are male and female? | Not in this plan |
 | 4 | Do bulls, rams and billy goats fight back? | No, all flee |
-| 6 | The order of stations, and where torches, beds and bows go | **No default: blocks phase 6** |
+| 6 | The order of stations, and where torches, beds and bows go | Built with the proposed order; torches, beds and bows on the woodworking bench. Change after the research |
 | 6 | A blast furnace for iron, chromium and alloys, with the furnace for copper, gold, food and glass? | Yes |
 | 6 | How much metal turns a leather armour piece into a metal one? | Minecraft's ingot count for that piece |
 | 7 | Pause when the window loses focus? | Yes, with a setting |
@@ -116,7 +116,7 @@ This is the build at `main`. It has everything from plan 003, and none of this p
 | Tree feller | Chop a log with bare hands, then with an axe | The whole tree comes down either way, and the axe wears by one |
 | Wall torches | Place a torch on each side of a block, then mine the block | Torches lean out from walls, and drop when it goes |
 | Copper armour | Smelt copper, make the four pieces on the table, wear them | They're worn, and the armour bar fills above the hearts |
-| Woodworking bench | Table: 3 planks over 2 sticks. Place it, make stairs on it | Wood stairs and tools come off the bench. **Planks and sticks don't** (phase 6) |
+| Woodworking bench | Table: 3 planks over 2 sticks. Place it, make stairs on it | Planks, sticks, wood stairs and wooden tools all come off the bench; the table makes only stations |
 | Doors | Craft a door on the bench, place it, right-click it | Two tall, opens and shuts; breaking either half drops one door |
 | Bed | 3 wheat over 3 planks on the table, place it, sleep at night | 3 white wool over 3 planks; sleeps through the night. Shear a sheep for the wool |
 | Height | Build up | A block goes at z = 1250, and not at 1251 |
