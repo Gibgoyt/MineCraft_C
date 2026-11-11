@@ -90,6 +90,7 @@ needs:
     - chest_lock
     - chest_side
     - chest_top
+    - chromium_ore
     - clay
     - cloud
     - coal_block
@@ -119,6 +120,7 @@ needs:
     - dark_oak_sapling
     - dead_bush
     - deepslate
+    - deepslate_chromium_ore
     - deepslate_coal_ore
     - deepslate_copper_ore
     - deepslate_diamond_ore
@@ -357,6 +359,7 @@ needs:
     - carrot
     - charcoal
     - chicken
+    - chromium_ingot
     - clay_ball
     - coal
     - cooked_beef
@@ -453,6 +456,7 @@ needs:
     - potato
     - pumpkin_pie
     - pumpkin_seeds
+    - raw_chromium
     - raw_copper
     - raw_gold
     - raw_iron

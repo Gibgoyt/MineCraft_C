@@ -44,6 +44,8 @@ static const uint64_t ORE_WORLD = 0x1234567890ABCDEFull;
  * showed: the numbers of the blocks after them in the alphabet moved. */
 /* Plan 005 phase 2 added three doors. The land is the same, as the digest over the numbers before them showed: the numbers of the
  * blocks after them in the alphabet moved. */
+/* Plan 005 phase 11 added chromium_ore and deepslate_chromium_ore. The land is the same, as the digest over the numbers before
+ * them showed: the numbers of the blocks after them in the alphabet moved. */
 static const uint64_t ORE_DIGEST_PIN = 0xE5E11DFC2D901869ull;
 
 static uint64_t ore_digest(uint64_t hash, const void *memory, uint64_t bytes) {

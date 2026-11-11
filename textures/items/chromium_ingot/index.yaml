@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: chromium_ingot
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A bright, blue-white bar of chromium. Plan 005 phase 11."
+  seed: 860012345
+  ops:
+    - op: art
+      palette: { l: "#f4f8fc", m: "#b9c7d4", d: "#6c7a88" }
+      rows:
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "......lllllll..."
+        - ".....lmmmmmmld.."
+        - "....lmlmmmmmmd.."
+        - "...lmmmmmmmmdd.."
+        - "..lllllllllddd.."
+        - "..lmmmmmmmmdd..."
+        - "..lmmmmmmmmd...."
+        - "..ddddddddd....."
+        - "................"
+        - "................"
+        - "................"

@@ -1,0 +1,7 @@
+name: chromium_ore
+hardness: 3
+tool: pickaxe
+tier: iron
+drops: [{ item: raw_chromium, count: 1 }]
+texture: { all: blocks/chromium_ore }
+sound: stone

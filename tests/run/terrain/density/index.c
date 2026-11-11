@@ -58,6 +58,8 @@ static const uint64_t DENSITY_SEEDS[DENSITY_WIDE_SEEDS] = {
  * showed: the numbers of the blocks after them in the alphabet moved. */
 /* Plan 005 phase 2 added three doors. The land is the same, as the digest over the numbers before them showed: the numbers of the
  * blocks after them in the alphabet moved. */
+/* Plan 005 phase 11 added chromium_ore and deepslate_chromium_ore. The land is the same, as the digest over the numbers before
+ * them showed: the numbers of the blocks after them in the alphabet moved. */
 static const uint64_t DENSITY_DIGEST_PIN = 0xC2F281D94B183C73ull;
 
 static uint64_t density_digest(uint64_t hash, const void *memory, uint64_t bytes) {

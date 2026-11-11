@@ -1,0 +1,16 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: chromium_ore
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Bright blue-grey chromium in rock. Plan 005 phase 11."
+  seed: 1170311047
+  ops:
+    - { op: fill, color: "#8b8b88" }
+    - { op: noise, amount: 10, cell: 4 }
+    - { op: noise, amount: 6, cell: 2 }
+    - { op: noise, amount: 8, cell: 1 }
+    - { op: blobs, color: "#4f5a66", count: 3, radius_min: 1, radius_max: 1, jitter: 0, x: 3, y: 3, w: 10, h: 10, seed: 1 }
+    - { op: blobs, color: "#a9b8c6", count: 4, radius_min: 1, radius_max: 1, jitter: 6, x: 3, y: 3, w: 10, h: 10, seed: 2 }
+    - { op: speckle, color: "#e8f1fa", permille: 70, x: 3, y: 3, w: 10, h: 10, seed: 3 }

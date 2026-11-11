@@ -100,6 +100,7 @@ textures:
   - { to: blocks/chest_lock, keep: "Minecraft draws chests as a model with one skin; ours are 14-pixel faces" }
   - { to: blocks/chest_side, keep: "Minecraft draws chests as a model with one skin; ours are 14-pixel faces" }
   - { to: blocks/chest_top, keep: "Minecraft draws chests as a model with one skin; ours are 14-pixel faces" }
+  - { to: blocks/chromium_ore, keep: "Minecraft has no chromium: our own recipe, plan 005 phase 11" }
   - { to: blocks/clay, from: block/clay.png }
   - { to: blocks/cloud, keep: "Minecraft has no picture for this" }
   - { to: blocks/coal_block, from: block/coal_block.png }
@@ -129,6 +130,7 @@ textures:
   - { to: blocks/dark_oak_sapling, from: block/dark_oak_sapling.png }
   - { to: blocks/dead_bush, from: block/dead_bush.png }
   - { to: blocks/deepslate, from: block/deepslate.png }
+  - { to: blocks/deepslate_chromium_ore, keep: "Minecraft has no chromium: our own recipe, plan 005 phase 11" }
   - { to: blocks/deepslate_coal_ore, from: block/deepslate_coal_ore.png }
   - { to: blocks/deepslate_copper_ore, from: block/deepslate_copper_ore.png }
   - { to: blocks/deepslate_diamond_ore, from: block/deepslate_diamond_ore.png }
@@ -384,6 +386,7 @@ textures:
   - { to: items/carrot, from: item/carrot.png }
   - { to: items/charcoal, from: item/charcoal.png }
   - { to: items/chicken, from: item/chicken.png }
+  - { to: items/chromium_ingot, keep: "Minecraft has no chromium: our own recipe, plan 005 phase 11" }
   - { to: items/clay_ball, from: item/clay_ball.png }
   - { to: items/coal, from: item/coal.png }
   - { to: items/cooked_beef, from: item/cooked_beef.png }
@@ -499,6 +502,7 @@ textures:
   - { to: items/potion_yellow, keep: "Minecraft colours one grey potion when it draws it, and ours are painted per colour" }
   - { to: items/pumpkin_pie, from: item/pumpkin_pie.png }
   - { to: items/pumpkin_seeds, from: item/pumpkin_seeds.png }
+  - { to: items/raw_chromium, keep: "Minecraft has no chromium: our own recipe, plan 005 phase 11" }
   - { to: items/raw_copper, from: item/raw_copper.png }
   - { to: items/raw_gold, from: item/raw_gold.png }
   - { to: items/raw_iron, from: item/raw_iron.png }

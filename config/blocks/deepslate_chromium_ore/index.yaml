@@ -1,0 +1,7 @@
+name: deepslate_chromium_ore
+hardness: 4.5
+tool: pickaxe
+tier: iron
+drops: [{ item: raw_chromium, count: 1 }]
+texture: { all: blocks/deepslate_chromium_ore }
+sound: stone
