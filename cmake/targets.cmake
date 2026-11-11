@@ -204,7 +204,7 @@ endif()
 # Measured 2026-11-10 with Minecraft 26.3's art: each fails on a golden picture, a picture's hash, or (run_mob_sight) a
 # skin's colour, and nothing else.
 set(MC_ART_TESTS
-  render_feature_entities render_feature_lod render_feature_post render_feature_shapes render_feature_sky
+  render_feature_entities render_feature_lod render_feature_post render_feature_preview render_feature_shapes render_feature_sky
   render_feature_under_water render_feature_water render_feature_weather
   run_mob_sight run_render_frame
   run_ui_census run_ui_font run_ui_hud run_ui_hud_corner run_ui_menu run_ui_screens)

@@ -132,11 +132,14 @@ static gpu_status_t frame_passes(frame_gpu_t *frame, const frame_args_t *args, u
         status = frame_mark(frame, FRAME_KERNEL_OVERLAY);
     }
     if (status == GPU_STATUS_OK && entities != nullptr) {
-        /* The same with nothing aimed at. */
+        /* The same with nothing aimed at and nothing to place. */
         const entity_rays_mark_t *const mark = &entities->mark;
-        ran |= mark->outline != 0u && mark->pixel_min[0] < mark->pixel_end[0] && mark->pixel_min[1] < mark->pixel_end[1]
-                   ? 1u << FRAME_KERNEL_OVERLAY
-                   : 0u;
+        const entity_rays_preview_t *const preview = &entities->preview;
+        const bool lines =
+            mark->outline != 0u && mark->pixel_min[0] < mark->pixel_end[0] && mark->pixel_min[1] < mark->pixel_end[1];
+        const bool ghost = preview->count != 0u && preview->pixel_min[0] < preview->pixel_end[0] &&
+                           preview->pixel_min[1] < preview->pixel_end[1];
+        ran |= lines || ghost ? 1u << FRAME_KERNEL_OVERLAY : 0u;
         const float32_t no_jitter[2] = {0.0F, 0.0F};
         const post_temporal_t *const temporal = scene->borrowed_temporal;
         status = entity_rays_overlay(&frame->last_error, entities, args->borrowed_world, camera,

@@ -53,6 +53,7 @@ static void game_session_config_from_settings(game_session_t *session) {
     config->show_coordinates = values->show_coordinates;
     config->show_date = values->show_date;
     config->climate_hud = values->climate_hud;
+    config->hide_place_preview = (uint8_t)(values->place_preview != 0u ? 0u : 1u);
 }
 
 void game_session_settings_set(game_session_t *session, settings_t *settings) {

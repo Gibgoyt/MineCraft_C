@@ -48,14 +48,25 @@ typedef struct render_entities_target_t {
 } render_entities_target_t;
 static_assert(sizeof(render_entities_target_t) == 72);
 
+/* Where the block in hand would go down, and as what, as the sim knows it (plan 005 phase 10): player_place_plan_t's cells. */
+typedef struct render_entities_preview_t {
+    int32_t cells[ENTITY_RAYS_PREVIEW_CELLS][3]; /* 0 */
+    uint16_t voxels[ENTITY_RAYS_PREVIEW_CELLS];  /* 48: each block with its state */
+    uint8_t count;                               /* 56: 0 for nothing to show */
+    uint8_t blocked;                             /* 57: placing would fail, so it shows red */
+    uint8_t _pad0[6];                            /* 58 */
+} render_entities_preview_t;
+static_assert(sizeof(render_entities_preview_t) == 64);
+
 /* What one sim tick leaves for the frames after it. */
 typedef struct render_entities_slot_t {
     render_entities_item_t *borrowed_items; /* 0: ENTITY_RAYS_BOXES_MAX */
     render_entities_target_t target;        /* 8 */
-    uint32_t count;                         /* 80 */
-    uint8_t _pad0[4];                       /* 84 */
+    render_entities_preview_t preview;      /* 80 */
+    uint32_t count;                         /* 144 */
+    uint8_t _pad0[4];                       /* 148 */
 } render_entities_slot_t;
-static_assert(sizeof(render_entities_slot_t) == 88);
+static_assert(sizeof(render_entities_slot_t) == 152);
 
 /* What the frames took. The gpu thread's, but for the last. */
 typedef struct render_entities_stats_t {
@@ -72,27 +83,30 @@ static_assert(sizeof(render_entities_stats_t) == 48);
 typedef struct render_entities_t {
     render_exchange_t exchange;                          /* 0: sim to gpu, over slots */
     render_entities_slot_t slots[RENDER_EXCHANGE_SLOTS]; /* 192 */
-    device_memory_t *borrowed_memory;                    /* 456 */
-    const device_block_t *borrowed_lists;                /* 464 */
-    const device_block_t *borrowed_hits;                 /* 472 */
-    entity_rays_box_t *borrowed_boxes;                   /* 480: what goes to the card */
-    uint32_t *borrowed_starts;                           /* 488: the same */
-    uint16_t *borrowed_links;                            /* 496: the same */
-    uint16_t *borrowed_rects;                            /* 504: 4 for each box kept: the tiles it covers */
-    uint16_t *borrowed_item_textures;                    /* 512: BLOCK_DROP_ITEM_COUNT rows of the frame's own table */
-    render_entities_stats_t stats;                       /* 520 */
-    uint32_t width;                                      /* 568 */
-    uint32_t height;                                     /* 572 */
-    uint32_t reading;                                    /* 576: the gpu thread's: the slot it last took */
-    uint16_t mob_textures[MOB_COUNT];    /* 580: each mob's row of the frame's own table; set once, by init */
-    uint8_t _pad0[60u - 2u * MOB_COUNT]; /* 580 + 2 MOB_COUNT: holds up to 30 mobs */
+    device_memory_t *borrowed_memory;                    /* 648 */
+    const device_block_t *borrowed_lists;                /* 656 */
+    const device_block_t *borrowed_hits;                 /* 664 */
+    entity_rays_box_t *borrowed_boxes;                   /* 672: what goes to the card */
+    uint32_t *borrowed_starts;                           /* 680: the same */
+    uint16_t *borrowed_links;                            /* 688: the same */
+    uint16_t *borrowed_rects;                            /* 696: 4 for each box kept: the tiles it covers */
+    uint16_t *borrowed_item_textures;                    /* 704: BLOCK_DROP_ITEM_COUNT rows of the frame's own table */
+    render_entities_stats_t stats;                       /* 712 */
+    uint32_t width;                                      /* 760 */
+    uint32_t height;                                     /* 764 */
+    uint32_t reading;                                    /* 768: the gpu thread's: the slot it last took */
+    uint16_t mob_textures[MOB_COUNT];    /* 772: each mob's row of the frame's own table; set once, by init */
+    uint8_t _pad0[59u - 2u * MOB_COUNT]; /* 772 + 2 MOB_COUNT: holds up to 29 mobs */
+    /* 831: main to the gpu thread, relaxed, as only what a picture shows depends on it: the Settings box that hides the preview of placing */
+    _Atomic uint8_t preview_hidden;
 } render_entities_t;
-static_assert(sizeof(render_entities_t) == 640);
+static_assert(sizeof(render_entities_t) == 832);
 static_assert(alignof(render_entities_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(render_entities_t, slots) == 192);
-static_assert(offsetof(render_entities_t, borrowed_memory) == 456);
-static_assert(offsetof(render_entities_t, stats) == 520);
-static_assert(offsetof(render_entities_t, _pad0) == 580u + 2u * MOB_COUNT);
+static_assert(offsetof(render_entities_t, borrowed_memory) == 648);
+static_assert(offsetof(render_entities_t, stats) == 712);
+static_assert(offsetof(render_entities_t, _pad0) == 772u + 2u * MOB_COUNT);
+static_assert(offsetof(render_entities_t, preview_hidden) == 831);
 
 /* Sizes, for the Owner to take memory and blocks. The lists hold the frame's own textures after everything else. */
 uint64_t render_entities_arena_bytes(uint32_t width, uint32_t height);
@@ -121,7 +135,12 @@ void render_entities_add_mob_part(render_entities_t *entities, uint16_t mob, con
                                   const float32_t half[3], float32_t yaw, float32_t pitch, uint16_t skin_u,
                                   uint16_t skin_v, const float32_t size[3], uint8_t stored);
 void render_entities_target_set(render_entities_t *entities, const render_entities_target_t *target);
+/* Where the block in hand would go down, if anywhere: cut to ENTITY_RAYS_PREVIEW_CELLS cells. Nothing said is nothing shown. */
+void render_entities_preview_set(render_entities_t *entities, const render_entities_preview_t *preview);
 void render_entities_publish(render_entities_t *entities);
+
+/* Main, any time: whether the frames from now on show the preview of placing, which is the Settings box. Shown from init. */
+void render_entities_preview_show(render_entities_t *entities, bool shown);
 
 /* Which frame of the crack, as render_entities_target_t wants it, for how far along mining is, from 0 to 1. */
 uint32_t render_entities_crack_frame(float32_t progress);
@@ -133,7 +152,7 @@ bool render_entities_pixels(const traverse_camera_t *camera, const float32_t cen
 
 /* The gpu thread. Makes the newest snapshot this frame's lists, against camera with no jitter on it, sends them to the card and says
  * what the frame's kernels want. With features lacking SHADE_FEATURE_ENTITIES it has no boxes, and with no SHADE_FEATURE_OUTLINE no
- * mark. far is where a box is past seeing, or 0 for never. Allocates nothing. Anything but GPU_STATUS_OK is in memory's last_error. */
+ * mark. The preview of placing has its own setting, render_entities_preview_show, and no effect's. far is where a box is past seeing, or 0 for never. Allocates nothing. Anything but GPU_STATUS_OK is in memory's last_error. */
 gpu_status_t render_entities_frame(render_entities_t *entities, const traverse_camera_t *camera, uint32_t features,
                                    float32_t far, entity_rays_scene_t *out);
 

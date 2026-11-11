@@ -6,6 +6,7 @@
 #include "tables/blocks/index.h"
 
 #include <math.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -139,6 +140,7 @@ void render_entities_begin(render_entities_t *entities) {
     render_entities_slot_t *const slot = &entities->slots[entities->exchange.back];
     slot->count = 0u;
     memset(&slot->target, 0, sizeof(slot->target));
+    memset(&slot->preview, 0, sizeof(slot->preview));
 }
 
 void render_entities_add(render_entities_t *entities, const render_entities_item_t *item) {
@@ -188,6 +190,16 @@ void render_entities_add_mob_part(render_entities_t *entities, uint16_t mob, con
 
 void render_entities_target_set(render_entities_t *entities, const render_entities_target_t *target) {
     entities->slots[entities->exchange.back].target = *target;
+}
+
+void render_entities_preview_set(render_entities_t *entities, const render_entities_preview_t *preview) {
+    render_entities_preview_t *const kept = &entities->slots[entities->exchange.back].preview;
+    *kept = *preview;
+    kept->count = preview->count < ENTITY_RAYS_PREVIEW_CELLS ? preview->count : (uint8_t)ENTITY_RAYS_PREVIEW_CELLS;
+}
+
+void render_entities_preview_show(render_entities_t *entities, bool shown) {
+    atomic_store_explicit(&entities->preview_hidden, (uint8_t)(shown ? 0u : 1u), memory_order_relaxed);
 }
 
 void render_entities_publish(render_entities_t *entities) {
@@ -419,6 +431,45 @@ static void entities_mark_fill(const render_entities_target_t *target, const tra
     }
 }
 
+/* The preview's cells from the eye's cell, its colour, and the pixels a box around all of them can touch. A whole cell each, as no shape
+ * reaches out of its cell. */
+static void entities_preview_fill(const render_entities_preview_t *preview, const traverse_camera_t *camera,
+                                  entity_rays_preview_t *out) {
+    memset(out, 0, sizeof(*out));
+    if (preview->count == 0u) {
+        return;
+    }
+    float64_t low[3], high[3];
+    for (uint32_t i = 0u; i < 3u; i++) {
+        low[i] = (float64_t)preview->cells[0][i];
+        high[i] = low[i] + 1.0f64;
+    }
+    for (uint32_t c = 0u; c < preview->count; c++) {
+        out->voxels[c] = preview->voxels[c];
+        for (uint32_t i = 0u; i < 3u; i++) {
+            out->cells[c][i] = preview->cells[c][i] - camera->eye_cell[i];
+            low[i] = fmin(low[i], (float64_t)preview->cells[c][i]);
+            high[i] = fmax(high[i], (float64_t)preview->cells[c][i] + 1.0f64);
+        }
+    }
+    float32_t box_min[3], box_max[3], center[3], half[3];
+    entities_from_eye(camera, low, box_min);
+    entities_from_eye(camera, high, box_max);
+    for (uint32_t i = 0u; i < 3u; i++) {
+        center[i] = (box_min[i] + box_max[i]) * 0.5f32;
+        half[i] = (box_max[i] - box_min[i]) * 0.5f32;
+    }
+    uint32_t pixels[4];
+    if (render_entities_pixels(camera, center, half, 1.0f32, 0.0f32, RENDER_ENTITIES_MARGIN_PIXELS, pixels)) {
+        out->count = preview->count;
+        out->xrgb = preview->blocked != 0u ? ENTITY_RAYS_PREVIEW_BLOCKED_XRGB : ENTITY_RAYS_PREVIEW_OK_XRGB;
+        out->pixel_min[0] = (uint16_t)pixels[0];
+        out->pixel_min[1] = (uint16_t)pixels[1];
+        out->pixel_end[0] = (uint16_t)pixels[2];
+        out->pixel_end[1] = (uint16_t)pixels[3];
+    }
+}
+
 gpu_status_t render_entities_frame(render_entities_t *entities, const traverse_camera_t *camera, uint32_t features,
                                    float32_t far, entity_rays_scene_t *out) {
     uint32_t slot_number = 0u;
@@ -431,6 +482,9 @@ gpu_status_t render_entities_frame(render_entities_t *entities, const traverse_c
     out->borrowed_hits = entities->borrowed_hits;
     if ((features & SHADE_FEATURE_OUTLINE) != 0u) {
         entities_mark_fill(&slot->target, camera, &out->mark);
+    }
+    if (atomic_load_explicit(&entities->preview_hidden, memory_order_relaxed) == 0u) {
+        entities_preview_fill(&slot->preview, camera, &out->preview);
     }
     if ((features & SHADE_FEATURE_ENTITIES) == 0u || slot->count == 0u) {
         return GPU_STATUS_OK;

@@ -8,7 +8,8 @@
 **Public functions** (`run/include/gpu_bridge/entity_rays/index.h`, for C and CUDA):
 
 - `entity_rays_frame`: the kernel: per pixel, the nearest box of its tile's list. Nothing starts with no boxes.
-- `entity_rays_overlay`: the outline, over a finished picture. Nothing starts with no box to outline.
+- `entity_rays_overlay`: the preview of placing and then the outline, over a finished picture. Nothing starts with neither.
+- `entity_rays_preview_blend`, `entity_rays_preview_face_light`: a preview's colour over a pixel, by the face it is on.
 - `entity_rays_box_hit`, `entity_rays_to_box`, `entity_rays_normal`, `entity_rays_edge`, `entity_rays_line_pixels`, `entity_rays_outline_pixels`, `entity_rays_hits_bytes`, `entity_rays_starts_offset`, `entity_rays_links_offset`, `entity_rays_textures_offset`: its arithmetic and its layout, inline on host and device, so that a test on the host runs the same lines.
 
 **May be called by:** `cuda/src/frame/`, and a test.
@@ -27,5 +28,7 @@ A box is turned about z by its own yaw, for the mobs of Stage 15 and for an item
 It is hidden by what the pixel shows at a nearer distance, by more than `ENTITY_RAYS_OUTLINE_DEPTH_BLOCKS` and 8 pixels' width, so that the surface it lies on and those flush with it do not hide it. `shade_pixel_t.t` is the *first* surface drawn, and that may be water, which a player aims through and which is drawn at distance 0 around an eye under it. So a pixel that seems hidden asks one more thing: whether a ray meets anything but water before the line. Glass does hide it, as glass can be aimed at.
 
 Lines read depth from the frame's jittered rays and draw on the picture's unjittered pixels, so a line along the edge of something in front of it can move by a pixel from frame to frame.
+
+**The preview of placing** (plan 005 phase 10) is a kernel of its own in the overlay, over the rectangle its cells can touch, before the outline so that the outline's lines lie over it. Each cell is drawn in the boxes the card draws its block in: the world's shape for the block, through `traverse_shape_rows` and `traverse_boxes`, each turned by the voxel's facing with `block_facing_box_turn`, as `traverse_voxel_hit` does. So a wall torch, a slab, stairs and a bench preview in their real shapes and facings, and with shapes off, as cubes, as the world then is. The nearest box a pixel's ray meets is hidden by the outline's rules: by a surface or a box nearer by more than the depth margin, but not by water. Where it shows, `entity_rays_preview_blend` puts `ENTITY_RAYS_PREVIEW_ALPHA` of 256 of its colour over the picture, lit by its face (the top brightest, the bottom darkest), so it is about half see-through and its shape shows. Blue is `ENTITY_RAYS_PREVIEW_OK_XRGB`, and red, where placing would fail, `ENTITY_RAYS_PREVIEW_BLOCKED_XRGB`. Like the outline it writes only the picture and never the history, so TAA never ghosts it.
 
 **A box may lean,** by a pitch about its own left axis before its yaw, as a limb does: `entity_rays_to_box` and `entity_rays_normal` in the bridge header are all that knows. A body part also has a share of a skin, by `entity_rays_skin_uv`, which `cuda/src/shade/` samples instead of one texture over the whole of each face.

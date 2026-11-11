@@ -376,6 +376,11 @@ TEST(the_pause_when_away_box_changes_that_setting_and_nothing_else) {
     us_settings_hud_box(t, 4u, offsetof(settings_values_t, pause_on_focus_loss), 1u);
 }
 
+/* Plan 005 phase 10: the preview of placing, on the same page. */
+TEST(the_placing_preview_box_changes_that_setting_and_nothing_else) {
+    us_settings_hud_box(t, 5u, offsetof(settings_values_t, place_preview), 1u);
+}
+
 static void us_golden_compare(test_context_t *t, const char *path, const uint8_t *picture);
 
 /* The main page and the HUD page as a person sees them, against pictures looked at once (MC_GOLDEN_WRITE=1 makes them). */

@@ -516,8 +516,26 @@ static void game_mobs_publish(game_t *game, render_entities_t *entities, const w
     }
 }
 
-/* What the next frames draw: every item as it now lies, what is aimed at and how far along mining it is. Nobody draws anything before
- * a frame is open, and with neither a body nor items there is nothing to say. */
+/* Plan 005 phase 10: where the block in hand would go down, and as what, from the same plan the next tick's right button places by, so the
+ * two cannot disagree. Blue if it would go, red if it would not. Every cell the plan gives, whatever gives them: a bench's two halves, a
+ * door's, and any cell a later plan adds. */
+static void game_preview_publish(game_t *game, render_entities_t *entities, const player_t *player) {
+    static_assert((uint32_t)PLAYER_PLACE_CELLS <= (uint32_t)ENTITY_RAYS_PREVIEW_CELLS,
+                  "a plan's cells must all fit in the preview");
+    player_place_plan_t plan;
+    if (player_place_preview(player, &game->borrowed_world->map, &plan) == PLAYER_PLACE_NONE) {
+        return;
+    }
+    render_entities_preview_t preview = {.count = plan.count, .blocked = plan.status == PLAYER_PLACE_BLOCKED ? 1u : 0u};
+    for (uint32_t c = 0u; c < plan.count && c < PLAYER_PLACE_CELLS; c++) {
+        memcpy(preview.cells[c], plan.cells[c], sizeof(preview.cells[c]));
+        preview.voxels[c] = plan.voxels[c];
+    }
+    render_entities_preview_set(entities, &preview);
+}
+
+/* What the next frames draw: every item as it now lies, what is aimed at and how far along mining it is, and where the block in hand would
+ * go. Nobody draws anything before a frame is open, and with neither a body nor items there is nothing to say. */
 static void game_entities_publish(game_t *game) {
     render_entities_t *const entities = game->borrowed_render->borrowed_entities;
     if (entities == nullptr || (game->borrowed_entity == nullptr && game->borrowed_player == nullptr)) {
@@ -554,6 +572,7 @@ static void game_entities_publish(game_t *game) {
         target.crack_frame = render_entities_crack_frame(player_interaction_progress(&player->interaction));
         memcpy(target.crack_cell, player->interaction.cell, sizeof(target.crack_cell));
         render_entities_target_set(entities, &target);
+        game_preview_publish(game, entities, player);
     }
     render_entities_publish(entities);
 }

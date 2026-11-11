@@ -148,6 +148,7 @@ TEST(the_file_for_the_defaults_is_exactly_this) {
                                    "show_coordinates: true\n"
                                    "show_date: true\n"
                                    "pause_on_focus_loss: true\n"
+                                   "place_preview: true\n"
                                    "show_climate: true\n"
                                    "storm_warnings: true\n"
                                    "effect_shapes: true\n"
@@ -202,7 +203,8 @@ TEST(any_values_written_read_back_the_same) {
                                     .sound_volume_percent = (uint8_t)(random[7] >> 8u),
                                     .show_date = (uint8_t)((random[7] >> 2u) & 1u),
                                     .climate_hud = (uint8_t)((random[7] >> 3u) & 3u),
-                                    .pause_on_focus_loss = (uint8_t)((random[7] >> 5u) & 1u)};
+                                    .pause_on_focus_loss = (uint8_t)((random[7] >> 5u) & 1u),
+                                    .place_preview = (uint8_t)((random[7] >> 6u) & 1u)};
         settings_persist_clamp(&values);
         CHECK(values.render_distance >= 2u && values.render_distance <= 512u);
         uint8_t text[SETTINGS_TEXT_BYTES];
@@ -215,11 +217,12 @@ TEST(any_values_written_read_back_the_same) {
                                   .show_coordinates = (uint8_t)(values.show_coordinates != 0u ? 0u : 1u),
                                   .show_date = (uint8_t)(values.show_date != 0u ? 0u : 1u),
                                   .climate_hud = (uint8_t)(~values.climate_hud & SETTINGS_CLIMATE_HUD_ALL),
-                                  .pause_on_focus_loss = (uint8_t)(values.pause_on_focus_loss != 0u ? 0u : 1u)};
+                                  .pause_on_focus_loss = (uint8_t)(values.pause_on_focus_loss != 0u ? 0u : 1u),
+                                  .place_preview = (uint8_t)(values.place_preview != 0u ? 0u : 1u)};
         settings_persist_report_t report;
         settings_persist_parse(text, bytes, &back, &report);
         CHECK_EQ_U64(report.problems, 0u);
-        CHECK_EQ_U64(report.applied, 7u + 4u + 2u + SETTINGS_EFFECT_COUNT);
+        CHECK_EQ_U64(report.applied, 7u + 5u + 2u + SETTINGS_EFFECT_COUNT);
         CHECK_MEM_EQ(&back, &values, sizeof(values));
     }
 }
@@ -377,6 +380,36 @@ TEST(pause_on_focus_loss_is_on_by_default_kept_and_on_for_a_file_without_it) {
     old.pause_on_focus_loss = 5u;
     settings_persist_clamp(&old);
     CHECK_EQ_U64(old.pause_on_focus_loss, 1u);
+}
+
+/* Plan 005 phase 10: the preview of placing is on by default, kept both ways, and on for a file from before it. */
+TEST(place_preview_is_on_by_default_kept_and_on_for_a_file_without_it) {
+    settings_values_t values = values_defaults();
+    CHECK_EQ_U64(values.place_preview, 1u);
+    for (uint32_t on = 0u; on < 2u; on++) {
+        values.place_preview = (uint8_t)on;
+        uint8_t text[SETTINGS_TEXT_BYTES];
+        uint64_t bytes = 0u;
+        REQUIRE(settings_persist_write(&values, text, sizeof(text) - 1u, &bytes));
+        text[bytes] = 0u;
+        CHECK_CONTAINS((const char *)text, on != 0u ? "place_preview: true\n" : "place_preview: false\n");
+        settings_values_t back = values_defaults();
+        back.place_preview = (uint8_t)(on != 0u ? 0u : 1u);
+        settings_persist_report_t report;
+        settings_persist_parse(text, bytes, &back, &report);
+        CHECK_EQ_U64(report.problems, 0u);
+        CHECK_MEM_EQ(&back, &values, sizeof(values));
+    }
+    settings_values_t old = values_defaults();
+    CHECK_EQ_U64(parse_text("version: 1\nrender_distance: 12\n", &old).problems, 0u);
+    CHECK_EQ_U64(old.place_preview, 1u);
+    CHECK_EQ_U64(parse_text("version: 1\nplace_preview: false\n", &old).problems, 0u);
+    CHECK_EQ_U64(old.place_preview, 0u);
+    CHECK_EQ_U64(parse_text("version: 1\nplace_preview: maybe\n", &old).problems, 1u);
+    CHECK_EQ_U64(old.place_preview, 0u);
+    old.place_preview = 5u;
+    settings_persist_clamp(&old);
+    CHECK_EQ_U64(old.place_preview, 1u);
 }
 
 /* Plan 004 phase 10: the climate line and storm warnings, two lines of one byte. */
@@ -777,7 +810,7 @@ TEST(vsync_coordinates_and_each_effect_flip_alone_and_done_and_esc_go_where_they
     CHECK_EQ_U64(rig_click(rig, AT_HUD_X, AT_ROW_6_Y), UI_SCREEN_SETTINGS_NONE);
     CHECK_EQ_U64(rig->ui->settings_screen.page, UI_SCREEN_SETTINGS_PAGE_HUD);
     CHECK_MEM_EQ(&rig->values, &expected, sizeof(expected));
-    for (uint32_t row = 0u; row < 5u; row++) {
+    for (uint32_t row = 0u; row < 6u; row++) {
         const int32_t y = AT_ROW_0_Y + (int32_t)row * AT_ROW_STEP;
         for (uint32_t twice = 0u; twice < 2u; twice++) {
             CHECK_EQ_U64(rig_click(rig, AT_MIDDLE_X, y), UI_SCREEN_SETTINGS_CHANGED);
@@ -789,15 +822,17 @@ TEST(vsync_coordinates_and_each_effect_flip_alone_and_done_and_esc_go_where_they
                 expected.climate_hud ^= SETTINGS_CLIMATE_HUD_LINE;
             } else if (row == 3u) {
                 expected.climate_hud ^= SETTINGS_CLIMATE_HUD_WARNINGS;
-            } else {
+            } else if (row == 4u) {
                 expected.pause_on_focus_loss ^= 1u; /* plan 005 phase 7 */
+            } else {
+                expected.place_preview ^= 1u; /* plan 005 phase 10 */
             }
             CHECK_MEM_EQ(&rig->values, &expected, sizeof(expected));
         }
     }
     CHECK_EQ_U64(rig->values.climate_hud, SETTINGS_CLIMATE_HUD_ALL);
-    /* Nothing between the rows does anything, nor row 5 to 7. */
-    CHECK_EQ_U64(rig_click(rig, AT_MIDDLE_X, AT_ROW_0_Y + 5 * AT_ROW_STEP), UI_SCREEN_SETTINGS_NONE);
+    /* Nothing between the rows does anything, nor rows 6 and 7. */
+    CHECK_EQ_U64(rig_click(rig, AT_MIDDLE_X, AT_ROW_0_Y + 6 * AT_ROW_STEP), UI_SCREEN_SETTINGS_NONE);
     CHECK_MEM_EQ(&rig->values, &expected, sizeof(expected));
     /* Esc goes back to the main page and is not done; Back does the same. */
     CHECK_EQ_U64(rig_escape(rig), UI_SCREEN_SETTINGS_NONE);

@@ -56,7 +56,8 @@ typedef struct settings_values_t {
     uint8_t show_date;           /* 31: the date line in the top right corner, while playing */
     uint8_t climate_hud;         /* 32: SETTINGS_CLIMATE_HUD_* that are on: plan 004 phase 10's lines under the date */
     uint8_t pause_on_focus_loss; /* 33: a window losing the focus pauses the game, as in Minecraft (plan 005 phase 7) */
-    uint8_t _pad0[2];            /* 34 */
+    uint8_t place_preview; /* 34: a see-through copy of the block in hand where it would go down (plan 005 phase 10) */
+    uint8_t _pad0[1];      /* 35 */
 } settings_values_t;
 static_assert(sizeof(settings_values_t) == 36);
 

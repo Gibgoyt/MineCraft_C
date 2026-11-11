@@ -588,6 +588,14 @@ bool game_open_climate_step(game_t *game) {
     return false;
 }
 
+/* The Settings box for the preview of placing, to whatever draws it now: a frame opened again starts with it shown. */
+static void game_preview_show(game_t *game, const game_config_t *config) {
+    render_entities_t *const entities = game->borrowed_render->borrowed_entities;
+    if (entities != nullptr) {
+        render_entities_preview_show(entities, config->hide_place_preview == 0u);
+    }
+}
+
 bool game_open(game_t *game, const game_config_t *config) {
     ASSERT_ALWAYS(game->open == 0u);
     if (config->render_distance == 0u || config->render_distance > MC_GAME_RENDER_DISTANCE_MAX) {
@@ -684,6 +692,7 @@ bool game_open(game_t *game, const game_config_t *config) {
         heap_release(&game->owned_region);
         return false;
     }
+    game_preview_show(game, config);
     game_open_alive_tell(game);
     game_fill_start(&world_parts->fill, GAME_FILL_OPEN, config->render_distance, game->view.full_detail,
                     game->borrowed_render);
@@ -866,6 +875,7 @@ bool game_reconfigure(game_t *game, const game_config_t *config) {
     game_view_work_out(config, table_chunks, &now);
     if (memcmp(&now, &game->view, sizeof(now)) == 0) {
         game->config = *config;
+        game_preview_show(game, config);
         /* game_loop_frame is what publishes a camera, and it does not run in a pause, where a person is looking behind the screen for this. */
         if (fov_changed && game->threads_running != 0u) {
             game->camera_slots[game->cameras.back] = game->camera;
@@ -894,6 +904,7 @@ bool game_reconfigure(game_t *game, const game_config_t *config) {
              config->render_distance, now.full_detail, now.lod.level_count, now.width, now.height, now.features);
     game_fill_start(game_fill_of(game), GAME_FILL_CHANGE, config->render_distance, now.full_detail,
                     game->borrowed_render);
+    game_preview_show(game, config);
     if (running && !game_threads_start(game)) {
         atomic_store_explicit(&game->failed, 1u, memory_order_release);
         return false; /* it has said why */

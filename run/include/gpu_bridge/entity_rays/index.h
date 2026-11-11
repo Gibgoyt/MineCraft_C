@@ -42,12 +42,20 @@ enum : uint32_t {
     ENTITY_RAYS_OUTLINE_ROWS_PER_PIXEL = 720u,
     /* How many voxels of water a line looks through. Reach is 4.5 blocks, so this is all it can have in front of it. */
     ENTITY_RAYS_OUTLINE_WATER_LAYERS = 12u,
+    /* Cells a placing preview can show at once (plan 005 phase 10): a bench's two halves and a door's, and room for a smith table's four.
+     * A plan of more is cut to these, and run/src/game/ says at compile time if the plan can hold more. */
+    ENTITY_RAYS_PREVIEW_CELLS = 4u,
+    /* How much of a preview's colour goes over the picture, of 256: about half, so the world shows through it. */
+    ENTITY_RAYS_PREVIEW_ALPHA = 128u,
 };
 
 /* A body part's skin has this many texels to a block: the size of what config/mobs/ measures a part in. */
 #define ENTITY_RAYS_SKIN_TEXELS_PER_BLOCK F32(16.0)
 /* What the outline's lines are: black. */
 #define ENTITY_RAYS_OUTLINE_XRGB 0x00000000u
+/* What a preview of placing is: blue where the block would go down, and red where placing would fail. */
+#define ENTITY_RAYS_PREVIEW_OK_XRGB 0x003C8CFFu
+#define ENTITY_RAYS_PREVIEW_BLOCKED_XRGB 0x00FF3030u
 /* Nothing a ray meets nearer than this along itself is a line: it would fill the picture. */
 #define ENTITY_RAYS_OUTLINE_NEAR F32(0.05)
 /* A line is hidden by what is at least this much nearer: anything less is the surface it lies on, or one flush with it. */
@@ -119,6 +127,25 @@ static_assert(offsetof(entity_rays_mark_t, outline) == 40);
 static_assert(offsetof(entity_rays_mark_t, pixel_min) == 44);
 static_assert(offsetof(entity_rays_mark_t, pixel_end) == 48);
 
+/* Where a held block would go down, and as what, for one frame (plan 005 phase 10). Each cell is drawn in the shape the card draws that
+ * block in, turned by its facing: cuda/include/traverse/'s table, through the world's shapes. */
+typedef struct entity_rays_preview_t {
+    int32_t cells[ENTITY_RAYS_PREVIEW_CELLS][3]; /* 0: each from the eye's cell */
+    uint16_t voxels[ENTITY_RAYS_PREVIEW_CELLS];  /* 48: each block with its state: run/include/types/block_state/ */
+    uint32_t count;                              /* 56: cells to draw, 0 for none */
+    uint32_t xrgb;         /* 60: ENTITY_RAYS_PREVIEW_OK_XRGB or ENTITY_RAYS_PREVIEW_BLOCKED_XRGB */
+    uint16_t pixel_min[2]; /* 64: what the cells can touch, in pixels */
+    uint16_t pixel_end[2]; /* 68 */
+} entity_rays_preview_t;
+static_assert(sizeof(entity_rays_preview_t) == 72);
+static_assert(alignof(entity_rays_preview_t) == 4);
+static_assert(offsetof(entity_rays_preview_t, cells) == 0);
+static_assert(offsetof(entity_rays_preview_t, voxels) == 48);
+static_assert(offsetof(entity_rays_preview_t, count) == 56);
+static_assert(offsetof(entity_rays_preview_t, xrgb) == 60);
+static_assert(offsetof(entity_rays_preview_t, pixel_min) == 64);
+static_assert(offsetof(entity_rays_preview_t, pixel_end) == 68);
+
 /* What one frame draws of entities. The lists block holds, in this order, the boxes, each tile's first link, the links and the
  * frame's own textures: see the functions below. Borrowed, and not written while a kernel may run. */
 typedef struct entity_rays_scene_t {
@@ -128,8 +155,9 @@ typedef struct entity_rays_scene_t {
     uint32_t link_count;                  /* 20 */
     entity_rays_mark_t mark;              /* 24 */
     uint8_t _pad0[4];                     /* 76 */
+    entity_rays_preview_t preview;        /* 80 */
 } entity_rays_scene_t;
-static_assert(sizeof(entity_rays_scene_t) == 80);
+static_assert(sizeof(entity_rays_scene_t) == 152);
 static_assert(alignof(entity_rays_scene_t) == 8);
 static_assert(offsetof(entity_rays_scene_t, borrowed_lists) == 0);
 static_assert(offsetof(entity_rays_scene_t, borrowed_hits) == 8);
@@ -137,6 +165,7 @@ static_assert(offsetof(entity_rays_scene_t, box_count) == 16);
 static_assert(offsetof(entity_rays_scene_t, link_count) == 20);
 static_assert(offsetof(entity_rays_scene_t, mark) == 24);
 static_assert(offsetof(entity_rays_scene_t, _pad0) == 76);
+static_assert(offsetof(entity_rays_scene_t, preview) == 80);
 
 static inline uint64_t entity_rays_hits_bytes(uint32_t width, uint32_t height) {
     return (uint64_t)width * height * sizeof(entity_rays_hit_t);
@@ -299,9 +328,31 @@ ENTITY_RAYS_BOTH_SIDES static inline uint32_t entity_rays_outline_pixels(uint32_
  * failure error says why, and nothing was started. */
 gpu_status_t entity_rays_frame(gpu_error_t *error, const entity_rays_scene_t *scene, const traverse_camera_t *camera);
 
+/* How much of a preview's colour a face of it takes, of 256, so that its shape shows: the top all of it, the sides less, the bottom least. */
+ENTITY_RAYS_BOTH_SIDES static inline uint32_t entity_rays_preview_face_light(uint32_t face) {
+    return face == TRAVERSE_FACE_POS_Z   ? 256u
+           : face == TRAVERSE_FACE_NEG_Z ? 140u
+           : face <= TRAVERSE_FACE_POS_X ? 205u
+                                         : 174u;
+}
+
+/* One pixel of a picture under a preview's colour on a face: ENTITY_RAYS_PREVIEW_ALPHA of the colour, lit by the face, over the rest. */
+ENTITY_RAYS_BOTH_SIDES static inline uint32_t entity_rays_preview_blend(uint32_t under, uint32_t xrgb, uint32_t face) {
+    const uint32_t light = entity_rays_preview_face_light(face);
+    uint32_t out = 0u;
+    for (uint32_t shift = 0u; shift < 24u; shift += 8u) {
+        const uint32_t below = (under >> shift) & 0xFFu;
+        const uint32_t colour = (((xrgb >> shift) & 0xFFu) * light) >> 8;
+        out |= ((below * (256u - ENTITY_RAYS_PREVIEW_ALPHA) + colour * ENTITY_RAYS_PREVIEW_ALPHA) >> 8) << shift;
+    }
+    return out;
+}
+
 /* The outline, onto a finished picture: every pixel of the mark's box's edges that nothing stands in front of, by shaded's distance
  * at that pixel and, past that, through water with a ray from world. jitter is what the camera has on it, as the picture has none
- * by the time it is finished. With no box this starts nothing. As above. */
+ * by the time it is finished. With no box this starts nothing. Before the outline, so that its lines are on top, the preview: each of
+ * its cells' boxes, by the world's shapes, half see-through, where nothing stands in front of it by the same rules. With neither this
+ * starts nothing. As above. */
 gpu_status_t entity_rays_overlay(gpu_error_t *error, const entity_rays_scene_t *scene, const traverse_world_t *world,
                                  const traverse_camera_t *camera, const float32_t jitter[2], uint32_t water_material,
                                  const device_block_t *shaded, const device_block_t *xrgb);

@@ -60,7 +60,7 @@ typedef struct game_config_t {
     uint16_t render_scale_percent;
     uint8_t
         climate_hud; /* 34: SETTINGS_CLIMATE_HUD_* (plan 004 phase 10): the climate line and storm warnings under the date */
-    uint8_t _pad0[1]; /* 35 */
+    uint8_t hide_place_preview; /* 35: no see-through copy of the block in hand where it would go (plan 005 phase 10) */
     uint8_t uncapped; /* 36: the gpu thread draws as fast as it can, and does not wait for a picture to be taken */
     uint8_t show_coordinates; /* 37: x, y and z in the top left corner of what a body sees */
     uint8_t god_rays;         /* 38: on top of what features_off leaves, being optional */

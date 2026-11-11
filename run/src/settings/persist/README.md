@@ -31,6 +31,7 @@
     show_coordinates: true
     show_date: true
     pause_on_focus_loss: true
+    place_preview: true
     show_climate: true
     storm_warnings: true
     effect_shapes: true
@@ -38,7 +39,7 @@
 
 It is the flat part of YAML and nothing more, so a person can read and change it, and any YAML tool agrees.
 
-A line a file does not have leaves that setting at its default, with no warning. So a file from before `show_coordinates` was added needs no new version: it loads, and shows them. The same for `show_date`, the HUD's date line from plan 004 phase 01: a file without it shows the date. And for plan 004 phase 10's `show_climate` (the temperature and wind line) and `storm_warnings`, each `true` or `false`: two lines kept as two bits of one byte, `climate_hud` (`SETTINGS_CLIMATE_HUD_LINE`, `SETTINGS_CLIMATE_HUD_WARNINGS`), so that neither `settings_values_t` nor what holds it grew past what `app_t` has room for; a file without them has both on, and `settings_persist_clamp` clears any other bit. And for plan 005 phase 7's `pause_on_focus_loss`: a window that loses the focus opens the pause screen, and a file without it has it on, as Minecraft does. `SETTINGS_VERSION` stays 1.
+A line a file does not have leaves that setting at its default, with no warning. So a file from before `show_coordinates` was added needs no new version: it loads, and shows them. The same for `show_date`, the HUD's date line from plan 004 phase 01: a file without it shows the date. And for plan 004 phase 10's `show_climate` (the temperature and wind line) and `storm_warnings`, each `true` or `false`: two lines kept as two bits of one byte, `climate_hud` (`SETTINGS_CLIMATE_HUD_LINE`, `SETTINGS_CLIMATE_HUD_WARNINGS`), so that neither `settings_values_t` nor what holds it grew past what `app_t` has room for; a file without them has both on, and `settings_persist_clamp` clears any other bit. And for plan 005 phase 7's `pause_on_focus_loss`: a window that loses the focus opens the pause screen, and a file without it has it on, as Minecraft does. And for plan 005 phase 10's `place_preview`: a see-through copy of the block in hand where the right button would put it, blue, or red where it would not go; a file without it has it on. `SETTINGS_VERSION` stays 1.
 
 - The first line that says anything says which version this is. Any other version sets nothing, since its lines may mean something else.
 - Lines come in any order, and the last of two for one key wins. What is missing stays what it was.

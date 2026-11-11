@@ -140,6 +140,11 @@ void player_interact_tick(player_t *player, world_edit_t *edit, int64_t tick_ns)
 void player_interact_fell_tick(player_t *player, world_edit_t *edit, player_felling_t *felling, player_sounds_t *sounds,
                                int64_t tick_ns);
 
+/* What the right button would put down and where, as player_interact_tick would place it on the next tick: player_interaction_place_plan
+ * with the same input, from what player_tick aimed at last and the yaw main last sent. With a screen holding the buttons, nothing. For a
+ * preview of placing (plan 005 phase 10): the sim, after player_tick. Changes nothing, never waits and never touches the heap. */
+player_place_status_t player_place_preview(const player_t *player, const world_map_t *map, player_place_plan_t *out);
+
 /* The hand's tick, right before player_interact_tick on the same thread: a press of the left button on a body in reach returns true and
  * says what it does, for the caller to apply. While the button is on a body the hands that follow do not mine. A run that does not call this
  * has hands that only mine. Never waits and never touches the heap. */

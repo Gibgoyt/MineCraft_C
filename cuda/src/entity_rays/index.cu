@@ -99,6 +99,91 @@ __global__ void entity_rays_overlay_kernel(const traverse_view_t view, const tra
     }
 }
 
+/* The nearest of a preview's boxes along a ray from the eye: each cell's shape, from the world's shapes as traverse_voxel_hit has it, turned
+ * by its facing. False if the ray meets none of them further than ENTITY_RAYS_OUTLINE_NEAR ahead. */
+static __device__ __forceinline__ bool entity_rays_preview_hit(const traverse_view_t *view,
+                                                               const traverse_camera_t *camera,
+                                                               const entity_rays_preview_t *preview,
+                                                               const float32_t direction[3], float32_t *out_t,
+                                                               uint32_t *out_face) {
+    float32_t inverse[3];
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        inverse[i] = 1.0F / traverse_guard(direction[i]);
+    }
+    float32_t best = TRAVERSE_COARSE_SKY;
+    uint32_t best_face = 0u;
+    for (uint32_t c = 0u; c < preview->count; c += 1u) {
+        const uint32_t voxel = preview->voxels[c];
+        const uint32_t material = voxel & TRAVERSE_VALUE_MATERIAL_MASK;
+        uint32_t shape = TRAVERSE_SHAPE_CUBE;
+        if (view->borrowed_shapes != nullptr && material < view->shape_count) {
+            const uint32_t given = view->borrowed_shapes[material];
+            shape = given < TRAVERSE_SHAPE_COUNT ? given : (uint32_t)TRAVERSE_SHAPE_CUBE;
+        }
+        const uint32_t facing = block_state_facing((uint16_t)voxel);
+        const traverse_shape_row_t row = traverse_shape_rows[shape];
+        for (uint32_t b = 0u; b < row.count; b += 1u) {
+            traverse_box_t box = traverse_boxes[row.first + b];
+            block_facing_box_turn(facing, 32u, box.low, box.high);
+            float32_t t_in = -TRAVERSE_COARSE_SKY, t_out = TRAVERSE_COARSE_SKY;
+            uint32_t axis = 0u;
+            for (uint32_t i = 0u; i < 3u; i += 1u) {
+                const float32_t low =
+                    (float32_t)preview->cells[c][i] + (float32_t)box.low[i] * TRAVERSE_BOX_UNIT - camera->eye_frac[i];
+                const float32_t high =
+                    (float32_t)preview->cells[c][i] + (float32_t)box.high[i] * TRAVERSE_BOX_UNIT - camera->eye_frac[i];
+                const float32_t t_low = low * inverse[i], t_high = high * inverse[i];
+                const float32_t t_near = t_low < t_high ? t_low : t_high, t_far = t_low < t_high ? t_high : t_low;
+                if (t_near > t_in) {
+                    t_in = t_near;
+                    axis = i;
+                }
+                t_out = t_far < t_out ? t_far : t_out;
+            }
+            if (t_in < t_out && t_in > ENTITY_RAYS_OUTLINE_NEAR && t_in < best) {
+                best = t_in;
+                best_face = axis * 2u + (direction[axis] > 0.0F ? 0u : 1u);
+            }
+        }
+    }
+    *out_t = best;
+    *out_face = best_face;
+    return best < TRAVERSE_COARSE_SKY;
+}
+
+/* One pixel of the rectangle a preview's cells can touch: its colour over the picture where it is the nearest thing there, by the outline's
+ * rules of what hides what. */
+__global__ void entity_rays_preview_kernel(const traverse_view_t view, const traverse_camera_t camera,
+                                           const entity_rays_preview_t preview, float32_t jitter_x, float32_t jitter_y,
+                                           uint32_t water_material, uint32_t tile_x, uint32_t tile_y,
+                                           const entity_rays_hit_t *entity_hits, const shade_pixel_t *shaded,
+                                           uint32_t *xrgb) {
+    const uint32_t pixel_x = (tile_x + blockIdx.x) * blockDim.x + threadIdx.x;
+    const uint32_t pixel_y = (tile_y + blockIdx.y) * blockDim.y + threadIdx.y;
+    if (pixel_x >= camera.width || pixel_y >= camera.height) {
+        return;
+    }
+    float32_t direction[3];
+    traverse_camera_direction(&camera, (float32_t)pixel_x + 0.5F - jitter_x, (float32_t)pixel_y + 0.5F - jitter_y,
+                              direction);
+    float32_t t = 0.0F;
+    uint32_t face = 0u;
+    if (!entity_rays_preview_hit(&view, &camera, &preview, direction, &t, &face)) {
+        return;
+    }
+    const uint64_t index = (uint64_t)pixel_y * camera.width + pixel_x;
+    const float32_t tangent = shade_pixel_tangent(&camera);
+    const float32_t reach = t - ENTITY_RAYS_OUTLINE_DEPTH_BLOCKS - ENTITY_RAYS_OUTLINE_DEPTH_PIXELS * tangent * t;
+    const float32_t box_t = entity_hits != nullptr ? entity_hits[index].t : TRAVERSE_COARSE_SKY;
+    if (box_t < reach) {
+        return;
+    }
+    if (shaded[index].t >= reach || (water_material != SHADE_NO_MATERIAL &&
+                                     entity_rays_only_water(&view, &camera, direction, water_material, reach))) {
+        xrgb[index] = entity_rays_preview_blend(xrgb[index], preview.xrgb, face);
+    }
+}
+
 static gpu_status_t entity_rays_refuse(gpu_error_t *error, const char *what) {
     *error = gpu_error_t{what, nullptr, nullptr, 0, GPU_STATUS_INVALID_ARGUMENT};
     return GPU_STATUS_INVALID_ARGUMENT;
@@ -133,11 +218,21 @@ gpu_status_t entity_rays_overlay(gpu_error_t *error, const entity_rays_scene_t *
                                  const traverse_camera_t *camera, const float32_t jitter[2], uint32_t water_material,
                                  const device_block_t *shaded, const device_block_t *xrgb) {
     const entity_rays_mark_t *const mark = &scene->mark;
-    if (mark->outline == 0u || mark->pixel_min[0] >= mark->pixel_end[0] || mark->pixel_min[1] >= mark->pixel_end[1]) {
+    const entity_rays_preview_t *const preview = &scene->preview;
+    const bool lines =
+        mark->outline != 0u && mark->pixel_min[0] < mark->pixel_end[0] && mark->pixel_min[1] < mark->pixel_end[1];
+    const bool ghost = preview->count != 0u && preview->pixel_min[0] < preview->pixel_end[0] &&
+                       preview->pixel_min[1] < preview->pixel_end[1];
+    if (!lines && !ghost) {
         return GPU_STATUS_OK;
     }
-    if (mark->pixel_end[0] > camera->width || mark->pixel_end[1] > camera->height) {
+    if (lines && (mark->pixel_end[0] > camera->width || mark->pixel_end[1] > camera->height)) {
         return entity_rays_refuse(error, "entity_rays: the outline's rectangle is off the picture");
+    }
+    if (ghost && (preview->pixel_end[0] > camera->width || preview->pixel_end[1] > camera->height ||
+                  preview->count > ENTITY_RAYS_PREVIEW_CELLS)) {
+        return entity_rays_refuse(error,
+                                  "entity_rays: the preview's rectangle is off the picture, or it has too many cells");
     }
     if (shaded->bytes < shade_pixels_bytes(camera->width, camera->height) ||
         xrgb->bytes < (uint64_t)camera->width * camera->height * sizeof(uint32_t)) {
@@ -148,15 +243,31 @@ gpu_status_t entity_rays_overlay(gpu_error_t *error, const entity_rays_scene_t *
     if (status != GPU_STATUS_OK) {
         return status;
     }
+    const entity_rays_hit_t *const entity_hits =
+        scene->box_count != 0u ? (const entity_rays_hit_t *)(const void *)device_memory_pointer(scene->borrowed_hits)
+                               : nullptr;
+    const shade_pixel_t *const pixels = (const shade_pixel_t *)(const void *)device_memory_pointer(shaded);
+    uint32_t *const picture = (uint32_t *)(void *)device_memory_pointer(xrgb);
+    const dim3 tile(TRAVERSE_TILE_PIXELS, TRAVERSE_TILE_PIXELS);
+    /* The preview first, so that the outline's lines are drawn over it. */
+    if (ghost) {
+        const uint32_t tile_x = preview->pixel_min[0] / TRAVERSE_TILE_PIXELS;
+        const uint32_t tile_y = preview->pixel_min[1] / TRAVERSE_TILE_PIXELS;
+        const dim3 grid(traverse_tiles_across(preview->pixel_end[0]) - tile_x,
+                        traverse_tiles_across(preview->pixel_end[1]) - tile_y);
+        entity_rays_preview_kernel<<<grid, tile>>>(view, *camera, *preview, jitter[0], jitter[1], water_material,
+                                                   tile_x, tile_y, entity_hits, pixels, picture);
+        const gpu_status_t started =
+            device_memory_check(error, cudaGetLastError(), "entity_rays: starting the preview");
+        if (started != GPU_STATUS_OK || !lines) {
+            return started;
+        }
+    }
     const uint32_t tile_x = mark->pixel_min[0] / TRAVERSE_TILE_PIXELS;
     const uint32_t tile_y = mark->pixel_min[1] / TRAVERSE_TILE_PIXELS;
     const dim3 grid(traverse_tiles_across(mark->pixel_end[0]) - tile_x,
                     traverse_tiles_across(mark->pixel_end[1]) - tile_y);
-    entity_rays_overlay_kernel<<<grid, dim3(TRAVERSE_TILE_PIXELS, TRAVERSE_TILE_PIXELS)>>>(
-        view, *camera, *mark, jitter[0], jitter[1], water_material, tile_x, tile_y,
-        scene->box_count != 0u ? (const entity_rays_hit_t *)(const void *)device_memory_pointer(scene->borrowed_hits)
-                               : nullptr,
-        (const shade_pixel_t *)(const void *)device_memory_pointer(shaded),
-        (uint32_t *)(void *)device_memory_pointer(xrgb));
+    entity_rays_overlay_kernel<<<grid, tile>>>(view, *camera, *mark, jitter[0], jitter[1], water_material, tile_x,
+                                               tile_y, entity_hits, pixels, picture);
     return device_memory_check(error, cudaGetLastError(), "entity_rays: starting the outline");
 }
