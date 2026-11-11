@@ -95,7 +95,12 @@ typedef struct game_column_job_t {
     uint32_t
         *borrowed_atlas_pixels; /* 88: plan 004 phase 09: 256, the column's top as the Atlas keeps it, row 0 north */
     const uint16_t *borrowed_atlas_colours; /* 96: RGB565 by block id from ui, or nullptr: no Atlas, no top */
-    uint8_t _pad1[24];                      /* 104 */
+    /* Plan 005 phase 14: the work of taking a column in, done on the worker. Once the job is done, each section of
+     * borrowed_states holds the block section_blocks_encode made of it, and this its form, one a section. */
+    section_encoded_t *borrowed_encoded; /* 104 */
+    uint8_t *borrowed_light;             /* 112: a byte per voxel, the column's light alone: world_light_column_alone */
+    uint8_t near;                        /* 120: submitted at JOB_PRIORITY_NEAR */
+    uint8_t _pad1[7];                    /* 121 */
 } game_column_job_t;
 static_assert(sizeof(game_column_job_t) == 2u * MC_CPU_CACHE_LINE_BYTES);
 

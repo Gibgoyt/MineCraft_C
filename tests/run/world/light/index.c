@@ -4,6 +4,7 @@
 #include "tables/blocks/index.h"
 #include "time/index.h"
 #include "world/index.h"
+#include "world/light/column/index.h"
 #include "world/wall_torch/index.h"
 
 #include <inttypes.h>
@@ -58,17 +59,27 @@ static uint64_t light_test_random(uint64_t *rng) {
     return x;
 }
 
-static light_test_t *light_test_begin_sized(test_context_t *t, uint32_t table_radius, uint64_t wave_capacity,
-                                            uint64_t log_capacity, uint64_t pool_bytes) {
+static light_test_t *light_test_begin_arena(test_context_t *t, uint32_t table_radius, uint64_t wave_capacity,
+                                            uint64_t log_capacity, uint64_t pool_bytes, uint64_t arena_bytes) {
     uint8_t *const raw = test_alloc(t, sizeof(light_test_t) + 64u);
     light_test_t *const test = (light_test_t *)(((uintptr_t)raw + 63u) & ~(uintptr_t)63u);
-    arena_init(&test->arena, "light_test", test_alloc(t, LIGHT_TEST_ARENA_BYTES), LIGHT_TEST_ARENA_BYTES);
+    arena_init(&test->arena, "light_test", test_alloc(t, arena_bytes), arena_bytes);
     arena_init(&test->arena_pool, "light_test_pool", test_alloc(t, pool_bytes), pool_bytes);
     section_pool_init(&test->pool, &test->arena_pool);
     world_map_init(&test->map, &test->arena, &test->pool, table_radius, 0, 0);
     world_edit_init(&test->edit, &test->arena, &test->map, log_capacity);
     world_light_init(&test->light, &test->arena, &test->edit, wave_capacity);
     return test;
+}
+
+static light_test_t *light_test_begin_sized(test_context_t *t, uint32_t table_radius, uint64_t wave_capacity,
+                                            uint64_t log_capacity, uint64_t pool_bytes) {
+    return light_test_begin_arena(t, table_radius, wave_capacity, log_capacity, pool_bytes, LIGHT_TEST_ARENA_BYTES);
+}
+
+/* A map of 9 columns that takes little of the harness's arena, for tests that open many. */
+static light_test_t *light_test_begin_small(test_context_t *t) {
+    return light_test_begin_arena(t, 1u, 1ull << 20, LIGHT_TEST_LOG, 32ull << 20, 32ull << 20);
 }
 
 static light_test_t *light_test_begin(test_context_t *t, uint32_t table_radius) {
@@ -816,6 +827,230 @@ TEST(sections_of_one_value_two_apart_across_a_column_edge_are_still_raised) {
     }
 }
 
+/* ---- A column's light worked out alone, on a worker, then its edges on the sim: plan 005 phase 14 ------------------------- */
+
+/* What the game's column job hands the sim: a column's states flat, and its light alone. */
+typedef struct light_alone_t {
+    uint16_t *borrowed_states;
+    uint8_t *borrowed_packed;
+    uint32_t *borrowed_scratch;
+} light_alone_t;
+static_assert(sizeof(light_alone_t) == 24);
+
+static light_alone_t light_alone_make(test_context_t *t) {
+    return (light_alone_t){
+        .borrowed_states = test_alloc(t, WORLD_LIGHT_COLUMN_VOXELS * sizeof(uint16_t)),
+        .borrowed_packed = test_alloc(t, WORLD_LIGHT_COLUMN_VOXELS),
+        .borrowed_scratch = test_alloc(t, WORLD_LIGHT_COLUMN_SCRATCH_BYTES),
+    };
+}
+
+/* The column's light alone, from the blocks it holds now. */
+static void light_alone_work_out(light_alone_t *alone, const light_test_t *test, uint32_t slot) {
+    const column_t *const column = &test->map.borrowed_columns[slot];
+    for (uint32_t s = 0u; s < COLUMN_SECTIONS; s++) {
+        section_blocks_export(&column->sections[s], alone->borrowed_states + (uint64_t)s * SECTION_VOXELS);
+    }
+    world_light_column_alone(alone->borrowed_states, alone->borrowed_packed, alone->borrowed_scratch);
+}
+
+static void light_alone_add(test_context_t *t, light_alone_t *alone, light_test_t *test, uint32_t slot) {
+    light_alone_work_out(alone, test, slot);
+    CHECK_EQ_U64(world_light_column_added_from(&test->light, slot, alone->borrowed_packed), WORLD_LIGHT_STATUS_OK);
+}
+
+/* Voxels whose light differs between two maps of the same columns. */
+static uint64_t light_alone_differences(const light_test_t *one, const light_test_t *other) {
+    uint8_t a[SECTION_VOXELS];
+    uint8_t b[SECTION_VOXELS];
+    uint64_t differ = 0u;
+    for (uint32_t i = 0u; i < one->map.active_count; i++) {
+        const uint32_t slot = one->map.borrowed_active[i];
+        for (uint32_t s = 0u; s < COLUMN_SECTIONS; s++) {
+            section_lights_export(&one->map.borrowed_columns[slot].sections[s], a);
+            section_lights_export(&other->map.borrowed_columns[slot].sections[s], b);
+            for (uint32_t v = 0u; v < SECTION_VOXELS; v++) {
+                differ += a[v] != b[v] ? 1u : 0u;
+            }
+        }
+    }
+    return differ;
+}
+
+/* What could go wrong alone: open sections, a whole section that gives off light, sky at the top of storage meeting opaque blocks,
+ * shafts, roofs, water and leaves. */
+static void light_alone_dress(light_test_t *test, uint32_t slot, uint64_t *rng) {
+    column_t *const column = &test->map.borrowed_columns[slot];
+    const int32_t top = COLUMN_Z_STORAGE_END - 1;
+    for (uint32_t i = 0u; i < 40u; i++) {
+        const uint64_t r = light_test_random(rng);
+        (void)column_block_set(column, &test->pool, (uint32_t)(r & 15u), (uint32_t)((r >> 4) & 15u),
+                               top - (int32_t)((r >> 8) % 3u), (r >> 16) % 2u == 0u ? BLOCK_ID_STONE : BLOCK_ID_GLASS);
+    }
+    section_block_fill(&column->sections[30], &test->pool, BLOCK_ID_WATER);
+    section_block_fill(&column->sections[40], &test->pool, BLOCK_ID_OAK_LEAVES);
+    section_block_fill(&column->sections[8], &test->pool, BLOCK_ID_LAVA);
+    for (uint32_t i = 0u; i < 300u; i++) {
+        const uint64_t r = light_test_random(rng);
+        (void)column_block_set(column, &test->pool, (uint32_t)(r & 15u), (uint32_t)((r >> 4) & 15u),
+                               COLUMN_Z_STORAGE_MIN +
+                                   (int32_t)((r >> 8) % (uint64_t)(COLUMN_Z_STORAGE_END - COLUMN_Z_STORAGE_MIN)),
+                               light_test_random_block(rng));
+    }
+}
+
+TEST(a_column_alone_is_what_column_added_gives_with_nothing_beside) {
+    light_alone_t alone = light_alone_make(t);
+    uint8_t now[SECTION_VOXELS];
+    for (uint64_t seed = 1u; seed <= 6u; seed++) {
+        light_test_t *const test = light_test_begin_small(t);
+        uint64_t rng = 0x51u * seed;
+        light_test_commit_all(t, test);
+        light_test_scatter(test, &rng, seed % 2u == 0u, 200u * (uint32_t)seed);
+        const uint32_t middle = light_test_slot(test, 0, 0);
+        if (seed >= 4u) {
+            light_alone_dress(test, middle, &rng);
+        }
+        light_alone_work_out(&alone, test, middle);
+        CHECK_EQ_U64(world_light_column_added(&test->light, middle), WORLD_LIGHT_STATUS_OK);
+        uint64_t differ = 0u;
+        for (uint32_t s = 0u; s < COLUMN_SECTIONS; s++) {
+            section_lights_export(&test->map.borrowed_columns[middle].sections[s], now);
+            for (uint32_t v = 0u; v < SECTION_VOXELS; v++) {
+                differ += now[v] != alone.borrowed_packed[(uint64_t)s * SECTION_VOXELS + v] ? 1u : 0u;
+            }
+        }
+        CHECK_EQ_U64(differ, 0u);
+        light_test_end(test);
+    }
+}
+
+TEST(columns_added_from_their_light_alone_match_column_added_in_any_order) {
+    light_alone_t alone = light_alone_make(t);
+    for (uint64_t order = 0u; order < 4u; order++) {
+        light_test_t *const plain = light_test_begin_small(t);
+        light_test_t *const from = light_test_begin_small(t);
+        uint64_t rng_plain = 4242u + order;
+        uint64_t rng_from = rng_plain;
+        light_test_commit_all(t, plain);
+        light_test_commit_all(t, from);
+        light_test_scatter(plain, &rng_plain, order % 2u == 0u, 800u);
+        light_test_scatter(from, &rng_from, order % 2u == 0u, 800u);
+        const uint32_t count = plain->map.active_count;
+        REQUIRE(count == from->map.active_count && count <= 64u);
+        if (order >= 2u) {
+            for (uint32_t i = 0u; i < count; i++) {
+                light_alone_dress(plain, plain->map.borrowed_active[i], &rng_plain);
+                light_alone_dress(from, from->map.borrowed_active[i], &rng_from);
+            }
+        }
+        uint32_t remaining[64];
+        memcpy(remaining, plain->map.borrowed_active, count * sizeof(uint32_t));
+        uint64_t shuffle = 0x5EEDu + order * 104729u;
+        for (uint32_t i = count; i > 1u; i--) {
+            const uint32_t j = (uint32_t)(light_test_random(&shuffle) % i);
+            const uint32_t swap = remaining[i - 1u];
+            remaining[i - 1u] = remaining[j];
+            remaining[j] = swap;
+        }
+        for (uint32_t i = 0u; i < count; i++) {
+            CHECK_EQ_U64(world_light_column_added(&plain->light, remaining[i]), WORLD_LIGHT_STATUS_OK);
+            light_alone_add(t, &alone, from, remaining[i]);
+        }
+        CHECK_EQ_U64(light_alone_differences(plain, from), 0u);
+        if (order < 2u) {
+            /* The reference covers z from -1 to 63, under open sky: the dressed columns have blocks the whole height. */
+            light_reference_t reference;
+            light_reference_of_band(t, &reference, -1, -1, 3u);
+            light_reference_compute(&reference, &from->map);
+            CHECK_EQ_U64(light_reference_differences(&reference, &from->map), 0u);
+        }
+        CHECK_EQ_U64(from->light.rebuild_count, 0u);
+        /* Asking twice changes nothing. */
+        const uint64_t written = from->light.voxels_written;
+        light_alone_add(t, &alone, from, remaining[0]);
+        CHECK_EQ_U64(from->light.voxels_written, written);
+        /* And edits after carry on from it as from the other. */
+        light_test_edit_randomly(plain, &rng_plain, 300u, -16, -16, 48u);
+        light_test_edit_randomly(from, &rng_from, 300u, -16, -16, 48u);
+        CHECK_EQ_U64(world_light_update(&plain->light), WORLD_LIGHT_STATUS_OK);
+        CHECK_EQ_U64(world_light_update(&from->light), WORLD_LIGHT_STATUS_OK);
+        CHECK_EQ_U64(light_alone_differences(plain, from), 0u);
+        light_test_end(from);
+        light_test_end(plain);
+    }
+}
+
+/* Torches at a column's edge, and one values two apart across it, as the column added the old way is held to above. */
+TEST(sections_of_one_value_across_an_edge_are_still_raised_from_light_alone) {
+    light_alone_t alone = light_alone_make(t);
+    enum : uint32_t {
+        SECTION_INDEX = 20u, /* z from 64 to 79 */
+    };
+    const int32_t z = 70;
+    light_test_t *const test = light_test_begin_small(t);
+    light_test_commit_all(t, test);
+    const uint32_t middle = light_test_slot(test, 0, 0);
+    const uint32_t east = light_test_slot(test, 1, 0);
+    light_alone_add(t, &alone, test, middle);
+    section_light_fill(&test->map.borrowed_columns[middle].sections[SECTION_INDEX], &test->pool,
+                       section_light_pack(SECTION_LIGHT_MAX, 12u));
+    section_block_fill(&test->map.borrowed_columns[east].sections[SECTION_INDEX], &test->pool, BLOCK_ID_TORCH);
+    light_alone_add(t, &alone, test, east);
+    CHECK_EQ_U64(section_light_block(light_test_at(t, test, 15, 5, z)), 13u);
+    CHECK_EQ_U64(section_light_block(light_test_at(t, test, 14, 5, z)), 12u);
+    /* The middle's other edge still holds its one value, and gives the column to the west one less. */
+    light_alone_add(t, &alone, test, light_test_slot(test, -1, 0));
+    CHECK_EQ_U64(section_light_block(light_test_at(t, test, 0, 5, z)), 12u);
+    CHECK_EQ_U64(section_light_block(light_test_at(t, test, -1, 5, z)), 11u);
+    light_test_end(test);
+}
+
+TEST(a_random_walk_of_columns_added_from_their_light_alone_matches_a_full_recompute) {
+    light_alone_t alone = light_alone_make(t);
+    light_test_t *const test = light_test_begin(t, 2u);
+    world_map_set_view_radius(&test->map, 1u);
+    uint64_t rng = 0xBEEFull;
+    light_reference_t reference;
+    light_reference_of_band(t, &reference, -5, -5, 11u);
+    int32_t center_x = 0;
+    int32_t center_y = 0;
+    for (uint32_t round = 0u; round < 16u; round++) {
+        const uint64_t r = light_test_random(&rng);
+        center_x += (int32_t)(r % 3u) - 1;
+        center_y += (int32_t)((r >> 8) % 3u) - 1;
+        center_x = center_x < -2 ? -2 : (center_x > 2 ? 2 : center_x);
+        center_y = center_y < -2 ? -2 : (center_y > 2 ? 2 : center_y);
+        world_map_set_center(&test->map, center_x, center_y);
+        world_map_leaving_t leaving;
+        while (world_map_stream_leaving(&test->map, &leaving)) {
+            CHECK_EQ_U64(world_light_column_leaving(&test->light, leaving.slot), WORLD_LIGHT_STATUS_OK);
+            world_map_unload(&test->map, leaving.slot);
+        }
+        world_map_request_t request;
+        while (world_map_stream_take(&test->map, &request, 1u) == 1u) {
+            column_t *const column = world_map_stream_commit(&test->map, &request);
+            REQUIRE(column != nullptr);
+            for (uint32_t s = 0u; s < LIGHT_TEST_FLOOR_SECTIONS; s++) {
+                section_block_fill(&column->sections[s], &test->pool, BLOCK_ID_STONE);
+            }
+            for (uint32_t b = 0u; b < 400u; b++) {
+                const uint64_t q = light_test_random(&rng);
+                (void)column_block_set(column, &test->pool, (uint32_t)(q & 15u), (uint32_t)((q >> 4) & 15u),
+                                       (int32_t)((q >> 8) % 48u), light_test_random_block(&rng));
+            }
+            world_edit_column_filled(&test->edit, request.slot);
+            light_alone_add(t, &alone, test, request.slot);
+        }
+        light_test_edit_randomly(test, &rng, 60u, (center_x - 1) * 16, (center_y - 1) * 16, 48u);
+        CHECK_EQ_U64(world_light_update(&test->light), WORLD_LIGHT_STATUS_OK);
+        light_reference_compute(&reference, &test->map);
+        CHECK_EQ_U64(light_reference_differences(&reference, &test->map), 0u);
+    }
+    CHECK_EQ_U64(test->light.rebuild_count, 0u);
+    light_test_end(test);
+}
+
 TEST(a_column_leaving_takes_its_light_out_of_its_neighbours) {
     light_test_t *const test = light_test_begin(t, 1u);
     light_test_commit_all(t, test);
@@ -1107,6 +1342,28 @@ TEST(cost_on_this_machine) {
            " us on average; a rebuild of %" PRIu32 " columns: %" PRId64 " us\n",
            per_column / 1000, passes_ns / edits / 1000, test->map.active_count, rebuild_ns / 1000);
     light_test_end(test);
+
+    /* The same columns again, their light alone worked out first, as a worker would, and then taken in, as the sim does. */
+    light_test_t *const again = light_test_begin(t, 2u);
+    light_alone_t alone = light_alone_make(t);
+    uint64_t rng_again = 8675309u;
+    light_test_commit_all(t, again);
+    light_test_scatter(again, &rng_again, true, 2000u);
+    int64_t alone_ns = 0;
+    int64_t from_ns = 0;
+    for (uint32_t i = 0u; i < again->map.active_count; i++) {
+        const uint32_t slot = again->map.borrowed_active[i];
+        const int64_t alone_start = time_now_ns();
+        light_alone_work_out(&alone, again, slot);
+        const int64_t from_start = time_now_ns();
+        CHECK_EQ_U64(world_light_column_added_from(&again->light, slot, alone.borrowed_packed), WORLD_LIGHT_STATUS_OK);
+        from_ns += time_now_ns() - from_start;
+        alone_ns += from_start - alone_start;
+    }
+    printf("the same column, its light alone (with its blocks exported): %" PRId64 " us; then taken in: %" PRId64
+           " us\n",
+           alone_ns / (int64_t)again->map.active_count / 1000, from_ns / (int64_t)again->map.active_count / 1000);
+    light_test_end(again);
 }
 
 TEST_MAIN()

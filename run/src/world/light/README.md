@@ -9,12 +9,13 @@
 
 - `world_light_init`, `world_light_deinit`: the tables.
 - `world_light_column_added`, `world_light_column_leaving`: a column's light as it comes and goes.
+- `world_light_column_added_from`: a column's light as it comes, from its light alone, worked out by a worker with `world/light/column`.
 - `world_light_update`: every edit in the log since the last call.
 - `world_light_sections_replaced`: for blocks written past the log.
 - `world_light_rebuild`: everything from nothing, with no queue.
 
 **May be called by:** `run/src/world/`, and `game`, through `world`'s header.
-**Depends on:** `world/section`, `world/column`, `world/map`, `world/edit`, `arena`, `assert`, and the generated `tables/blocks/`.
+**Depends on:** `world/section`, `world/column`, `world/map`, `world/edit`, `world/light/column` (the rules, and a column's light alone), `arena`, `assert`, and the generated `tables/blocks/`.
 
 ## The rules
 
@@ -54,6 +55,10 @@ Running out of the section pool is not fatal. The status says so, the voxels tha
 ## A new column
 
 Falling sky comes first, one section at a time from the top: a section of air under full sky, or a solid one, takes one value and no array. Then a pass runs that makes nothing dark and looks only where something could change. A section whose light is one value is skipped if nothing beside it could raise it. That leaves the few sections around the surface and caves.
+
+## A new column, from its light alone
+
+The game's column job works out the column's light as if nothing stood beside it (`world_light_column_alone`, in `column/`), on its worker. `world_light_column_added_from` then gives the column those bytes, one copy a section, and seeds only the two layers either side of each edge it shares with a lit column, skipping a section pair whose one values show nothing could cross. Light only grows when a column joins, so the column's light alone and its neighbours' light without it are both at most the answer, and wrong only where something crosses an edge: one pass from those layers finishes it. The answer is the one answer, so it is the same bytes as `world_light_column_added`. On the sim thread this replaced about 1.1 ms a column with the cost of the copies and the edges (plan 005 phase 14).
 
 ## Flags
 

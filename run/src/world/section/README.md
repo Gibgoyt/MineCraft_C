@@ -4,7 +4,7 @@
 **Tier:** Arena (depth 2): takes memory from an `arena_t *` that `run/src/world/` gives its pool, and never frees: released blocks wait in the pool for the next of their size.
 **Owns:** nothing. A section holds its arrays from the pool, and they lie in its parent's arena.
 **Lifetime:** World.
-**Threads:** a section has one writer and no readers during a write, since a write may move its block. Any number of readers without a writer. A pool is one thread at a time, so a section's writer must also hold the pool. There is one pool, so the plan for terrain (Phase 10) is that workers build flat arrays in their job arenas and the pool's thread calls `section_blocks_import`.
+**Threads:** a section has one writer and no readers during a write, since a write may move its block. Any number of readers without a writer. A pool is one thread at a time, so a section's writer must also hold the pool. There is one pool, so workers build flat arrays and encode them with `section_blocks_encode`, and the pool's thread calls `section_blocks_import_encoded`.
 **Public functions** (`run/include/world/section/index.h`):
 
 - `section_pool_init`, `section_pool_deinit`, `section_pool_reset`: the pool, and forgetting it after its arena is reset.
@@ -15,6 +15,7 @@
 - `section_block_set`, `section_light_set`: one voxel. False if the pool has no room, with nothing changed.
 - `section_block_fill`, `section_light_fill`: every voxel the same, returning the array.
 - `section_blocks_import`, `section_blocks_export`, `section_lights_import`, `section_lights_export`: all voxels, flat.
+- `section_blocks_encode`, `section_blocks_import_encoded`: `section_blocks_import` in two halves. The first lays out the pool's block from the states and touches no pool, so a worker runs it; the second takes a block of the pool and copies, on the pool's thread. The section is the same, byte for byte (plan 005 phase 14).
 - `section_compact`: looks for what writes cannot see. Writes call it every 4096.
 - `section_palette`, `section_palette_capacity`: read the palette, for encoding.
 - `section_pool_bytes`: what a section holds in the pool.

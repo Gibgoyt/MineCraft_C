@@ -48,6 +48,20 @@ typedef struct section_t {
 } section_t;
 static_assert(sizeof(section_t) == 24);
 
+/* What section_blocks_encode has made of a section's states: the form, with the block that form keeps in the pool beside it. */
+typedef struct section_encoded_t {
+    uint16_t block_uniform; /* 0: only when bits is SECTION_BITS_UNIFORM, and then there is no block */
+    uint16_t palette_used;  /* 2: only with a palette */
+    uint8_t bits;           /* 4: as section_t's */
+    uint8_t _pad0[3];       /* 5 */
+} section_encoded_t;
+static_assert(sizeof(section_encoded_t) == 8);
+
+enum : uint32_t {
+    /* The largest block of the pool: a section's states with no palette. */
+    SECTION_ENCODED_BYTES_MAX = SECTION_VOXELS * 2u,
+};
+
 /* Where sections' blocks come from and return to. An arena cannot take one allocation back, and sections change size and
  * come and go for as long as a world is open, so released blocks wait here for the next of their size. One thread at a time. */
 typedef struct section_pool_t {
@@ -135,6 +149,15 @@ void section_light_fill(section_t *section, section_pool_t *pool, uint8_t packed
 /* From or to SECTION_VOXELS values in section_voxel_index order. An import stores the smallest form those values allow.
  * False if the pool has no room, and then the section is as it was. */
 bool section_blocks_import(section_t *section, section_pool_t *pool, const uint16_t *states);
+
+/* section_blocks_import in two halves, so that the costly one can run off the pool's thread. section_blocks_encode looks at the
+ * states and lays out the block the pool will hold; it touches no pool and no section, so any thread may call it. out_block is
+ * SECTION_ENCODED_BYTES_MAX bytes on 8, and may be states itself. section_blocks_import_encoded then gives the section exactly
+ * what section_blocks_import of those states would, from one block of the pool and one copy. False if the pool has no room, and
+ * then the section is as it was. */
+void section_blocks_encode(const uint16_t *states, uint8_t *out_block, section_encoded_t *out);
+bool section_blocks_import_encoded(section_t *section, section_pool_t *pool, const section_encoded_t *encoded,
+                                   const uint8_t *block);
 void section_blocks_export(const section_t *section, uint16_t *out_states);
 bool section_lights_import(section_t *section, section_pool_t *pool, const uint8_t *packed);
 void section_lights_export(const section_t *section, uint8_t *out_packed);

@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2 — phase 14: Loading and render distance speed
 
-**Status:** stage 1 measured and stage 3 test in place (agent 14c); the far field's part of stage 2 built and tested (agent 14b); job priorities and the far-field cap with agent 14a   (updated 2026-11-10)
+**Status:** stage 1 measured and stage 3 test in place (agent 14c); the far field's part of stage 2 built and tested (agent 14b); job priorities and the far-field cap with agent 14a; taking a column in moved onto the workers, and the upload budget and climate tiles measured (agent 14d)   (updated 2026-11-10)
 
 ## Goal
 
@@ -187,6 +187,22 @@ So: **opening is terrain**, 82% of the workers' time, and it meets the targets a
   | The log mined during that change | 5.8 s | 0.02 s | 0.04 s | 0.02 s | **0.02 s** | 1 s: met |
 
   Every deadline in the test is met. The one-worker column is a single run on `main` at `12c05d33`, before phases 4 and 12 landed, and the quarter a single run on `20c0ddf0`; the half was run four times on `20c0ddf0` (60%, 61%, 61% and 61% seen by 1 s after 16 → 64; near rings 6.6 to 8.2 s), and the column shows the last. What is left past the targets: near rings 17 to 32 still take 4 to 7 s, bound by the sim thread taking columns in (above), and drawn as the far field until they come.
+  **Taking a column in, off the sim thread (agent 14d, 2026-11-11).** The near rings were bound by the sim thread taking each finished column in, about 1.9 ms each (above). The column job now does the costly part on its worker, after terrain, the save and the Atlas's top: the column's light as if nothing stood beside it (`world_light_column_alone`, new in `run/src/world/light/column/`), and each section's pool block laid out in the section's own states (`section_blocks_encode`). The sim takes a pool block and copies per section (`section_blocks_import_encoded`), and gives the light over seeding only the layers either side of the column's edges with lit neighbours (`world_light_column_added_from`). Light is the least answer to its rules, and only grows when a column joins, so the column alone and its neighbours without it are both below the answer and wrong only across the edges: the same bytes as before, which `run_world_light` and `run_world_section` hold byte for byte against the old path, in any order, after edits, and on a random walk against the full recompute. In `run_world_light`'s cost test (release, a dense test column with 2000 scattered blocks and a roof): the old way 2.67 ms on the sim; now 1.04 ms on the worker (with the blocks exported) and **0.40 ms on the sim**.
+
+  With the sim out of the way the columns past the near ones took every worker, as workers take columns before far columns, and after 16 → 64 the horizon showed only 4% of its change by 1 s. So while the far field has columns queued, `game_columns_request` leaves it its whole cap (half the workers) for the first second of a fill, while it builds the new horizon, and half that after (`game_columns_leave_far_room`). The columns within `GAME_NEAR_CHUNKS` never wait. Live test, release, report-only with a 300 s wait, the same settings as above:
+
+  | Step | Before (`main` at `9f12466d`) | Off the sim, no room left (`after1`) | Room of 2, 4, 6, 8 workers all through (60 s wait) | **Whole cap for 1 s, then half (two runs)** | Target |
+  |---|---|---|---|---|---|
+  | Open at 32: rings to 4, all rings | 0.16 s, 6.05 s | 0.11 s, 3.12 s | 3.30, 3.43, 3.19, 3.34 s | **0.10 s, 3.28 s; 0.09 s, 3.34 s** | 2 s, 15 s: met |
+  | 32 → 64: seen by 1 s, all | 67%, 4.14 s | 66%, 4.17 s | 66%, 4.7 s | **66%, 4.50 s** | half, 15 s: met |
+  | 16 → 64: **near rings 17 to 32** | **6.81 s** | 2.67 s | 3.37, 3.64, 4.07, 4.53 s | **3.75 s, 3.79 s** | under 2 s (this task's): missed |
+  | 16 → 64: seen by 1 s, all | 61%, 6.81 s | **4%** (missed), 6.11 s | 35%, 61%, 61%, 61% | **61%, 6.62 s; 61%, 6.67 s** | half, 15 s: met |
+  | Full detail 32 → 16: seen by 1 s, all | 78%, 2.31 s | 56%, 2.37 s | 59% each | **56%, 2.48 s** | half, 15 s: met |
+  | Full detail 16 → 32: near rings | 4.80 s | 2.22 s | | **2.30 s, 2.33 s** | 15 s: met |
+  | The log mined during that change | 0.02 s | 0.03 s | | **0.05 s** | 1 s: met |
+  | Frames (640x360, whole run) | p99 1.575, max 3.92 ms | p99 1.570, max 5.42 | | p99 1.56, max 3.98 | p99 25, max 50: met |
+
+  A room of 4 all through gave 61% in one run and 35% in the next (`dl_final`), at the edge of the test's half: hence the whole cap for the first second. With deadlines held the test passes (twice, once at a room of 4, once with the second). **Open at 32, all rings: 6.05 → 3.3 s. Near rings 17 to 32 after 16 → 64: 6.81 → 3.8 s, not under 2 s.** What bounds them now is the workers, not the sim: rings 17 to 32 are 3136 columns (65² − 33²), which at 2.67 s with every worker is about 1175 columns a second, 13.6 ms of a worker each with 16 workers on 10 cores; terrain is most of it. Under 2 s needs terrain faster, or the far field's share given up (2.67 s, and the horizon late). In the real game through the menus, with the climate and the save (Xvfb :93, 1280x720, Ahmed's seed, `scratchpad/14d/live.sh`): opening at 32, all 33 rings **6.63 s before, 3.69 s after**; 32 → 64 far field 5.31 s and 5.29 s.
 - [x] **Make a far-field column cheap.** Profile one, then build it from the 2D height estimate (`terrain_height_estimate`, plan 004 phase 3) and the top block, not the full 3D terrain, if that's what it does. Target: under 50 ms of worker time a column. *Done another way, as the profile showed it was not the 3D terrain: about 0.4 s to 14 ms and 24 ms at voxels of 2 and 4, and 8 ms at voxels of 8, which no longer grow trees: see Issues found.*
 - [x] **Never show nothing.** At 1 s, render distance 64 drew only sky. Near columns come first, and a missing one shows the far field, until it's built
 - [ ] Repeat the stage 1 table with each fix, and show the 64 run matching the 32 run near the player
@@ -199,9 +215,9 @@ So: **opening is terrain**, 82% of the workers' time, and it meets the targets a
 
 - [ ] Build the nearest chunks first, and keep a far one from holding up a near one
 - [x] Let a distance change reuse what's already built, and only build the difference. *For the far field: each level that stays the same is kept (`render_replan_lod`). Full detail already kept its columns.*
-- [ ] Size the per-frame upload budget so filling in neither crawls nor stutters
-- [ ] If climate tiles hold up chunk generation (plan 004's own risk table), work them out ahead of the player, nearest first
-- [ ] Each fix gets a before and after number in this file
+- [x] Size the per-frame upload budget so filling in neither crawls nor stutters. *Measured, left as it is (4 MiB and 256 sections a frame): see Issues found, agent 14d.*
+- [x] If climate tiles hold up chunk generation (plan 004's own risk table), work them out ahead of the player, nearest first. *Measured: they do not, 0 waits; nothing changed: see Issues found, agent 14d.*
+- [x] Each fix gets a before and after number in this file
 
 **Stage 3: hold it.**
 
@@ -235,6 +251,7 @@ Appended as they land:
 - `1ce9276c` Cap the far field at one worker in 16 while near work runs, not a quarter. (agent 14a)
 - `bd3e81ce` Drop the far field's queue before a change of render distance or full detail waits on it. (agent 14a)
 - `3d62734f` Let the far field have half the workers while near work runs, now that its columns are cheap. (agent 14a)
+- The commit that adds this line: Take a column in off the sim thread: its light alone and its pool blocks on the worker, and leave the far field its share. (agent 14d)
 
 ## Issues found
 
@@ -311,3 +328,23 @@ Part of that is the starvation going: near chunks no longer wait behind far colu
 **Priorities and the far-field cap, live (agent 14a, 2026-11-10).** On `9711cf2f` a log mined during the busiest change goes in 0.05 s, against 5.8 s, which meets its target. After 16 → 64 the near rings 17 to 32 came back in 11.85 s, against 76.1 s. The rest was not the workers: the sim thread's commit sets the pace of filling in, and far-field jobs started in its gaps slowed it by half. With the cap's hold (`82c38ffa`) and a cap of one worker (`1ce9276c`) the near rings take 5.08 s, about what the sim thread allows. The far field still takes 94 to 160 s to finish, so the live test still misses rd_64, rd_64_again and fd_16, and fd_32_busy's "all drawn".
 
 **The job system and 14b's far field, together (agent 14a, 2026-11-11).** On the rebase onto `main` with `6cf549e1` and `b1a6dd1b`, `render/lod` keeps 14b's `render_lod_job_run` and level order with `JOB_PRIORITY_FAR` and the `job_dropped` check, which now comes before the `far_column` scope opens so that a dropped job leaves none open. `render_lod_quiesce`, which 14b's kept levels call before a replan, now drops the queue first (`bd3e81ce`): it keeps nothing a job finishes, and waited for up to 48 queued columns on the far field's capped workers. No other job call came in from `main` (phases 1, 3, 4, 5, 7, 9 and 12): mob paths, autosave, the corner warning and the atlas stay at `JOB_PRIORITY_NORMAL`, and `game_far_capture_tick` captures on the sim thread with no job. With columns of 14 to 59 ms a cap of one worker held the horizon back, so `3d62734f` gives the far field half the workers while near work runs: see the table in Todo.
+
+### Agent 14d, 2026-11-11: the sim's commit, the upload budget, climate tiles
+
+**Same bytes.** `world_light_column_added_from` and `section_blocks_import_encoded` are held to the old path byte for byte (`run_world_light`: alone against `world_light_column_added` with nothing beside, on six columns including blocks at the top of storage, whole sections of water, leaves and lava; four shuffled orders of nine columns, two of them dressed the whole height, against the old path, then 300 edits each; a random walk against the full recompute; the edge cases of one values across an edge. `run_world_section`: every form over every form). Determinism tests elsewhere (`run_game_*`, `run_terrain_*`, `run_save_*`, `run_playthrough`) pass unchanged, so no golden picture or digest moved.
+
+**Memory.** Each of the 64 column jobs holds a byte of light per voxel (393,216 bytes) and 96 section forms: 25 MiB more in the World arena. The light's scratch, 3 MiB, is the worker's Job arena, reset after each job.
+
+**Not under 2 s.** The task's near rings 17 to 32 under 2 s is missed: 3.8 s from 6.8 s. The sim thread is no longer the limit; the workers are (see the table in Todo). Open at 32 in under 5.46 s is met: 3.3 s.
+
+**A change to the job priorities' working, as needed.** The far field's cap is unchanged. What is new is in `game`: the columns past the near ones leave the far field room while it has columns queued (`game_columns_leave_far_room`), because once the sim kept up, they starved it. The numbers that chose a whole cap for 1 s and then half are in the table in Todo.
+
+**The upload budget (todo, measured, not changed).** Uploads are not what fills in at the pace it does: the rings track the workers (all 33 rings at 32 in 3.3 s on the live test, 3.7 s in the real game), and the budget of 256 sections a frame at 120 frames a second is about 30,000 sections a second, against about 11,000 a second the fill needs (`66,047 sections sent` in a session whose opening drew 3209 columns in 3.7 s, the far field included). And it does not stutter: frames over the whole live test, which is all filling in, p99 1.56 ms and worst 3.98 ms at 640x360; in the real game at 1280x720 on Xvfb, opening and 32 → 64 included, p99 3.54 ms and worst 10.24 ms (`readback` 7.55 ms that once), before and after this change alike (p99 3.57, worst 5.71 before). The targets are p99 25 ms and no frame over 50. `bench_world` rows with filling in had no budget-bound stall either. So the budget stays at 4 MiB and 256 sections.
+
+**Climate tiles (todo, measured, nothing to do).** `game_columns_request` now counts the sim steps in which a column waited for its climate tiles (`game_fill_t.climate_waits`, said at the end of the session). In the real game through the menus, with the climate open: **0 steps**, over opening at 32 and 32 → 64. As the code says why: `game_open` works out every tile within the render distance plus 5224 blocks before the world opens (`game_open_climate`, 20 loading frames here), and `climate_schedule` keeps that square round the player nearest first, so a column waits only if the player outruns 5 km of tiles.
+
+**`bench_world` after** (release, not recorded in `history.tsv`; the build lock was shared with other agents): at render distance 32 all 33 rings in 3.2 to 5.7 s on every row (7.4 to 11.0 s in 14c's first run, `eb650bd3`); `plains/flight-live-r128` near rings 5.91 s and far field 9.74 s, `plains/orbit-r512` 5.87 s and 12.68 s (107.8/145.1 s and 96.1/149.7 s in that first run, most of that from 14a's and 14b's fixes). Log in `scratchpad/14d/bench_after.log`.
+
+**`shade` and `readback` spikes: still open.** Nothing here changes the card's work. Proving the cause needs `nvidia-smi` clocks beside the frame log on Ahmed's desktop, as 14c wrote.
+
+**`run/src/game/index.c` is 1620 lines,** past the standard's split at 1500 (the limit is 2000). Whoever next adds to it should split the column jobs (`game_column_job_run`, `game_column_fill`, `game_columns_*`) into a part of their own.

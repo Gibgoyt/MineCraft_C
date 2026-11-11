@@ -3,15 +3,16 @@
 
 #include "assert/index.h"
 #include "tables/blocks/index.h"
+#include "world/light/column/index.h"
 
 #include <string.h>
 
 enum : uint32_t {
     LIGHT_NONE = UINT32_MAX,
-    LIGHT_SKY = 0u,
-    LIGHT_BLOCK = 1u,
-    LIGHT_CHANNELS = 2u,
-    LIGHT_OPAQUE = 15u,
+    LIGHT_SKY = WORLD_LIGHT_SKY,
+    LIGHT_BLOCK = WORLD_LIGHT_BLOCK,
+    LIGHT_CHANNELS = WORLD_LIGHT_CHANNELS,
+    LIGHT_OPAQUE = WORLD_LIGHT_OPAQUE,
     LIGHT_LAYER_VOXELS = SECTION_SIZE * SECTION_SIZE,
     /* A voxel's number in a column: its section above section_voxel_index, so that z runs through all of it. */
     LIGHT_SECTION_SHIFT = 12u,
@@ -39,22 +40,14 @@ typedef enum light_direction_t : uint8_t {
     LIGHT_DIRECTIONS = 6,
 } light_direction_t;
 
-/* ---- The rules ---------------------------------------------------------------------------------------------------- */
+/* ---- The rules: in world/light/column's header, which works a column's light out alone by the same ones ------------------- */
 
-/* What a voxel of this opacity gets from a neighbour holding value. falls: this is sky going straight down. */
 static inline uint32_t light_into(uint32_t value, uint32_t opacity, bool falls) {
-    if (falls && value == SECTION_LIGHT_MAX && opacity == 0u) {
-        return value;
-    }
-    const uint32_t cost = opacity == 0u ? 1u : opacity;
-    return value > cost ? value - cost : 0u;
+    return world_light_into(value, opacity, falls);
 }
 
-/* By the block alone: light goes round a block the same whichever way it faces. */
 static inline const block_def_t *light_block_def(uint16_t state) {
-    const uint16_t id = block_state_id(state);
-    ASSERT_ALWAYS(id < BLOCK_COUNT);
-    return &block_defs[id];
+    return world_light_def(state);
 }
 
 static inline uint32_t light_channel(uint8_t packed, uint32_t channel) {
@@ -67,12 +60,12 @@ static inline uint8_t light_with_channel(uint8_t packed, uint32_t channel, uint3
 }
 
 static inline bool light_is_opaque(const block_def_t *def) {
-    return def->opacity >= LIGHT_OPAQUE;
+    return world_light_is_opaque(def);
 }
 
 /* Whether an opaque block holds what it gives off, and not what its faces see: see "What a block holds" in the README. */
 static inline bool light_keeps_own(const block_def_t *def, uint32_t channel) {
-    return channel == LIGHT_BLOCK && def->light != 0u;
+    return world_light_keeps_own(def, channel);
 }
 
 /* Whether what a voxel holds in this channel goes on to its neighbours. */
@@ -860,6 +853,81 @@ world_light_status_t world_light_column_added(world_light_t *light, uint32_t slo
     light->borrowed_lit[slot] = map->borrowed_slots[slot].generation;
     for (uint32_t channel = 0u; channel < LIGHT_CHANNELS; channel++) {
         light_column_added_seed(light, slot, channel);
+        light_pass(light, channel);
+    }
+    return light_finish(light);
+}
+
+/* Whether a section could give what is across a column's edge from it more light than it holds, from what can be seen without
+ * looking at each voxel. Not gives + 1: an opaque block's faces there would see this for nothing. */
+static bool light_seam_may_give(const section_t *from, const section_t *to, uint32_t channel) {
+    if (from->borrowed_light != nullptr) {
+        return true;
+    }
+    const uint32_t gives = light_channel(from->light_uniform, channel);
+    return gives != 0u && (to->borrowed_light != nullptr || gives > light_channel(to->light_uniform, channel));
+}
+
+/* One layer of a section, the one on a column's edge, to be looked at again. */
+static void light_seam_layer_push(world_light_t *light, uint32_t slot, uint32_t section_index, uint32_t direction,
+                                  uint32_t edge) {
+    for (uint32_t z = 0u; z < SECTION_SIZE; z++) {
+        for (uint32_t along = 0u; along < SECTION_SIZE; along++) {
+            const uint32_t index =
+                direction <= LIGHT_EAST ? section_voxel_index(edge, along, z) : section_voxel_index(along, edge, z);
+            light_wave_push(light, slot, (section_index << LIGHT_SECTION_SHIFT) | index, 0u);
+        }
+    }
+}
+
+/* A column whose light alone it already holds: only the voxels on either side of its edges with a lit column can be owed more. */
+static void light_column_seam_seed(world_light_t *light, uint32_t slot, uint32_t channel) {
+    const column_t *const column = light_column(light, slot);
+    for (uint32_t direction = 0u; direction < LIGHT_DOWN; direction++) {
+        uint32_t beside = 0u;
+        if (!light_beside(light, slot, direction, &beside)) {
+            continue;
+        }
+        /* The neighbour's face that looks at this column, and this column's that looks at it. */
+        const uint32_t theirs_edge = (direction == LIGHT_WEST || direction == LIGHT_SOUTH) ? SECTION_SIZE - 1u : 0u;
+        const uint32_t ours_edge = SECTION_SIZE - 1u - theirs_edge;
+        const column_t *const near = light_column(light, beside);
+        for (uint32_t s = 0u; s < COLUMN_SECTIONS; s++) {
+            const section_t *const ours = &column->sections[s];
+            const section_t *const theirs = &near->sections[s];
+            if (light_seam_may_give(ours, theirs, channel)) {
+                light_seam_layer_push(light, beside, s, direction, theirs_edge);
+            }
+            if (light_seam_may_give(theirs, ours, channel)) {
+                light_seam_layer_push(light, slot, s, direction, ours_edge);
+            }
+        }
+    }
+}
+
+world_light_status_t world_light_column_added_from(world_light_t *light, uint32_t slot, const uint8_t *alone) {
+    const world_map_t *const map = light->borrowed_map;
+    ASSERT_ALWAYS(slot < map->slot_count && map->borrowed_slots[slot].state == WORLD_MAP_STATE_READY);
+    if (light_slot_is_lit(light, slot)) {
+        return light_status(light);
+    }
+    light_catch_up(light);
+    column_t *const column = light_column(light, slot);
+    for (uint32_t s = 0u; s < COLUMN_SECTIONS; s++) {
+        const uint8_t *const packed = alone + (uint64_t)s * SECTION_VOXELS;
+        section_t *const section = &column->sections[s];
+        if (light_section_holds(section, packed)) {
+            continue;
+        }
+        if (!section_lights_import(section, map->borrowed_pool, packed)) {
+            light_note_no_memory(light);
+            continue;
+        }
+        light_touch(light, slot, column_mask_of(s));
+    }
+    light->borrowed_lit[slot] = map->borrowed_slots[slot].generation;
+    for (uint32_t channel = 0u; channel < LIGHT_CHANNELS; channel++) {
+        light_column_seam_seed(light, slot, channel);
         light_pass(light, channel);
     }
     return light_finish(light);

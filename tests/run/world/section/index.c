@@ -455,6 +455,58 @@ TEST(an_import_stores_the_smallest_form_and_reads_back_the_same) {
     section_test_end(test);
 }
 
+/* Plan 005 phase 14: encoded on a worker, into the states' own memory, and taken in on the pool's thread, a section is the same
+ * bytes as one imported, in every form, and over a section that held each form before. */
+TEST(an_encoded_import_is_the_same_bytes_as_an_import_in_every_form) {
+    section_test_t *const test = section_test_begin(t, SECTION_TEST_ARENA_BYTES);
+    static const uint32_t distincts[] = {1u, 2u, 3u, 5u, 16u, 17u, 200u, 256u, 257u, 4096u};
+    enum : uint32_t {
+        FORMS = sizeof(distincts) / sizeof(distincts[0]),
+    };
+    uint16_t *const encoded_in = test_alloc(t, SECTION_ENCODED_BYTES_MAX);
+    section_t plain = {0};
+    for (uint32_t before = 0u; before < FORMS; before++) {
+        for (uint32_t c = 0u; c < FORMS; c++) {
+            for (uint32_t pass = 0u; pass < 2u; pass++) {
+                for (uint32_t i = 0; i < SECTION_VOXELS; i++) {
+                    const uint32_t distinct = pass == 0u ? distincts[before] : distincts[c];
+                    /* Scattered, so that the order states are first seen in is not their order. */
+                    const uint32_t which = (uint32_t)(section_test_random(test) % distinct);
+                    test->expected_blocks[i] = (uint16_t)(which * 7u + 1u + c);
+                }
+                if (pass == 0u) {
+                    CHECK(section_blocks_import(&test->section, &test->pool, test->expected_blocks));
+                    CHECK(section_blocks_import(&plain, &test->pool, test->expected_blocks));
+                    continue;
+                }
+                memcpy(encoded_in, test->expected_blocks, sizeof(test->expected_blocks));
+                section_encoded_t encoded;
+                section_blocks_encode(encoded_in, (uint8_t *)(void *)encoded_in, &encoded);
+                CHECK(section_blocks_import_encoded(&test->section, &test->pool, &encoded,
+                                                    (const uint8_t *)(const void *)encoded_in));
+                CHECK(section_blocks_import(&plain, &test->pool, test->expected_blocks));
+                section_blocks_export(&test->section, test->exported_blocks);
+                CHECK_MEM_EQ(test->exported_blocks, test->expected_blocks, sizeof(test->exported_blocks));
+                section_test_check_structure(t, &test->section);
+                CHECK_EQ_U64(2u * section_pool_bytes(&test->section), test->pool.live_bytes);
+                CHECK_EQ_U64(test->section.bits, plain.bits);
+                if (plain.bits == SECTION_BITS_UNIFORM) {
+                    CHECK_EQ_U64(test->section.block_uniform, plain.block_uniform);
+                }
+                CHECK_EQ_U64(test->section.palette_used, plain.palette_used);
+                CHECK_EQ_U64(section_pool_bytes(&test->section), section_pool_bytes(&plain));
+                if (plain.borrowed_storage != nullptr) {
+                    CHECK_MEM_EQ(test->section.borrowed_storage, plain.borrowed_storage, section_pool_bytes(&plain));
+                }
+            }
+        }
+    }
+    section_deinit(&test->section, &test->pool);
+    section_deinit(&plain, &test->pool);
+    CHECK_EQ_U64(test->pool.live_bytes, 0u);
+    section_test_end(test);
+}
+
 TEST(an_import_of_many_colliding_states_finds_each) {
     section_test_t *const test = section_test_begin(t, SECTION_TEST_ARENA_BYTES);
     /* 256 states that are the same in the bits the table hashes least: the probe has to work. */

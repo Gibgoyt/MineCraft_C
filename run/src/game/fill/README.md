@@ -10,7 +10,7 @@
 - `game_fill_reset`, `game_fill_start`: nothing going on; a fill from now, of a kind (`GAME_FILL_OPEN`, `GAME_FILL_CHANGE`). A fill cut short by the next is kept as it got, with `done` never.
 - `game_fill_step`: the work, and the log lines.
 - `game_fill_summary`: the fill going now, as far as it has got.
-- `game_fill_report`: the end-of-session lines, from `game_report`.
+- `game_fill_report`: the end-of-session lines, from `game_report`, with how many sim steps a column waited for its climate tiles (`climate_waits`, which the sim adds to in `game_columns_request`).
 - `game_fill_of`: the game's.
 
 **May be called by:** `game` (`game/index.c`, `game/settle`, `game/report`), tests, `bench/world`.

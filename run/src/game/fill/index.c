@@ -234,4 +234,6 @@ void game_fill_report(const game_fill_t *fill) {
         summary.far_columns = fill->far_built_last - fill->far_built_start;
         fill_report_line("unfinished", &summary);
     }
+    LOG_INFO("fill: a column waited for its climate tiles in %" PRIu64 " sim steps",
+             atomic_load_explicit(&fill->climate_waits, memory_order_relaxed));
 }

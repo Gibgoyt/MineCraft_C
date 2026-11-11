@@ -18,6 +18,7 @@
 #include "render/entities/index.h"
 #include "tables/blocks/index.h"
 #include "time/index.h"
+#include "world/light/column/index.h"
 
 #include <inttypes.h>
 #include <math.h>
@@ -52,7 +53,8 @@ enum : uint64_t {
     GAME_COLUMN_VOXELS = (uint64_t)COLUMN_SECTIONS * SECTION_VOXELS,
     GAME_COLUMN_BYTES = GAME_COLUMN_VOXELS * sizeof(uint16_t),
     GAME_WORLD_ARENA_BYTES =
-        GAME_STREAM_JOBS * (GAME_COLUMN_BYTES + GAME_COLUMN_VOXELS + UI_ATLAS_COLUMN_PIXELS * sizeof(uint32_t)) +
+        GAME_STREAM_JOBS * (GAME_COLUMN_BYTES + 2u * GAME_COLUMN_VOXELS + UI_ATLAS_COLUMN_PIXELS * sizeof(uint32_t) +
+                            COLUMN_SECTIONS * sizeof(section_encoded_t)) +
         sizeof(game_world_parts_t) + 2ull * 4096ull + MOB_SPAWN_BYTES + GAME_CENSUS_ARENA_BYTES,
 };
 enum : int64_t {
@@ -64,6 +66,8 @@ enum : int64_t {
     GAME_COMMIT_BUDGET_NS =
         4000000, /* the most a sim step spends on finished columns, each with its light, past the first */
     GAME_TICK_NS = 1000000000 / MC_GAME_TICK_HZ,
+    GAME_FAR_HORIZON_NS =
+        1000000000, /* how long into a fill the far field keeps all its workers from the columns past the near */
 };
 enum : uint32_t {
     GAME_CLIMATE_AHEAD_BLOCKS = 2048u, /* climate tiles are kept this far past the render distance: plan 004, 6.9 */
@@ -624,6 +628,9 @@ bool game_open(game_t *game, const game_config_t *config) {
         job->borrowed_save = game->borrowed_save != nullptr ? &game->borrowed_save->world : nullptr;
         job->borrowed_states = arena_alloc(&game->arena_world, GAME_COLUMN_BYTES, alignof(uint64_t));
         job->borrowed_opened = arena_alloc(&game->arena_world, GAME_COLUMN_VOXELS, alignof(uint64_t));
+        job->borrowed_light = arena_alloc(&game->arena_world, GAME_COLUMN_VOXELS, alignof(uint64_t));
+        job->borrowed_encoded = arena_alloc_array(&game->arena_world, COLUMN_SECTIONS, sizeof(section_encoded_t),
+                                                  alignof(section_encoded_t));
         job->borrowed_atlas_pixels =
             arena_alloc(&game->arena_world, UI_ATLAS_COLUMN_PIXELS * sizeof(uint32_t), alignof(uint32_t));
         job->borrowed_atlas_colours = game->borrowed_ui != nullptr ? ui_atlas_colours(game->borrowed_ui) : nullptr;
@@ -931,6 +938,16 @@ static void game_column_job_run(job_worker_t *worker, void *borrowed_job) {
     if (job->borrowed_atlas_colours != nullptr) {
         ui_atlas_column_top(job->borrowed_atlas_colours, BLOCK_COUNT, job->borrowed_states, job->borrowed_atlas_pixels);
     }
+    /* What the sim thread did to take a column in, but for the pool's blocks and the edges with columns beside: the sim takes
+     * every column in one after another, so it is what held filling in back. The light first, as encoding writes over the states. */
+    static_assert((uint64_t)GAME_COLUMN_VOXELS == (uint64_t)WORLD_LIGHT_COLUMN_VOXELS);
+    world_light_column_alone(job->borrowed_states, job->borrowed_light,
+                             arena_alloc(&worker->arena_job, WORLD_LIGHT_COLUMN_SCRATCH_BYTES, alignof(uint32_t)));
+    static_assert((uint64_t)SECTION_ENCODED_BYTES_MAX == (uint64_t)SECTION_VOXELS * sizeof(uint16_t));
+    for (uint32_t section = 0u; section < COLUMN_SECTIONS; section++) {
+        uint16_t *const states = job->borrowed_states + (uint64_t)section * SECTION_VOXELS;
+        section_blocks_encode(states, (uint8_t *)(void *)states, &job->borrowed_encoded[section]);
+    }
     PROFILER_END(job_worker_lane(worker));
     /* Release gives the sim thread the states just written, and pairs with the acquire in game_columns_commit. */
     atomic_store_explicit(&job->done, 1u, memory_order_release);
@@ -944,8 +961,10 @@ static bool game_column_fill(game_t *game, const game_column_job_t *job) {
         return true; /* out of date, so there is nowhere to put it */
     }
     for (uint32_t section = 0u; section < COLUMN_SECTIONS; section++) {
-        const uint16_t *const states = job->borrowed_states + (uint64_t)section * SECTION_VOXELS;
-        if (!section_blocks_import(&column->sections[section], &world->section_pool, states)) {
+        const uint8_t *const block =
+            (const uint8_t *)(const void *)(job->borrowed_states + (uint64_t)section * SECTION_VOXELS);
+        if (!section_blocks_import_encoded(&column->sections[section], &world->section_pool,
+                                           &job->borrowed_encoded[section], block)) {
             LOG_ERROR("game: the world's section memory is full, at column %" PRId32 ", %" PRId32, job->request.chunk_x,
                       job->request.chunk_y);
             world_map_unload(&world->map, job->request.slot);
@@ -965,7 +984,7 @@ static bool game_column_fill(game_t *game, const game_column_job_t *job) {
                                 job->saved_sections);
     }
     /* Short of memory, it says so, and world_light_update tries again. */
-    (void)world_light_column_added(&world->light, job->request.slot);
+    (void)world_light_column_added_from(&world->light, job->request.slot, job->borrowed_light);
     game_cover_stream_in(game, job->request.chunk_x,
                          job->request.chunk_y); /* in step with the week: plan 004 phase 08 */
     if (job->borrowed_atlas_colours != nullptr) {
@@ -1013,6 +1032,35 @@ static bool game_column_leaving_save(game_t *game, uint32_t slot) {
     return status == SAVE_WORLD_OK;
 }
 
+/* Whether the columns past the near ones should wait, to leave the far field its share of the workers. Workers always take
+ * columns before far columns, so once the sim takes columns in as fast as workers make them, the columns past the near ones held
+ * every worker and the horizon waited behind all of them: after render distance 16 to 64 it showed 4% of its change by 1 s, not
+ * 61% (plan 005 phase 14). So while the far field has columns waiting, these leave it its whole cap for the first second of a fill,
+ * when its coarsest level, the new horizon, is being built, and half its cap after. Measured on the live test after 16 to 64 (rings
+ * 17 to 32 drawn, and how much of the picture's change came by 1 s), with one room all through: leaving it none, 2.67 s and 4%; 2
+ * workers, 3.37 s and 35%; 4, 3.64 s, 61% in one run and 35% in another; 6, 4.07 s and 61%; 8 (its whole cap), 4.53 s and 61%. */
+static bool game_columns_leave_far_room(const game_t *game) {
+    const job_system_t *const system = game->borrowed_job;
+    if (job_priority_queued(system, JOB_PRIORITY_FAR) == 0u) {
+        return false;
+    }
+    const uint32_t workers = job_priority_cap(system, JOB_PRIORITY_NORMAL);
+    const game_fill_t *const fill = game_fill_of(game);
+    /* started_ns is written only while the threads are stopped. */
+    const bool horizon = fill->started_ns != 0 && time_now_ns() - fill->started_ns < GAME_FAR_HORIZON_NS;
+    const uint32_t far_cap = job_priority_cap(system, JOB_PRIORITY_FAR);
+    const uint32_t room = horizon ? far_cap : (far_cap + 1u) / 2u;
+    const uint32_t share = workers > room ? workers - room : 1u;
+    uint32_t running = 0u;
+    for (uint32_t i = 0u; i < GAME_STREAM_JOBS; i++) {
+        const game_column_job_t *const job = &game->borrowed_jobs[i];
+        running += job->in_use != 0u && job->near == 0u && atomic_load_explicit(&job->done, memory_order_relaxed) == 0u
+                       ? 1u
+                       : 0u;
+    }
+    return running >= share;
+}
+
 static void game_columns_request(game_t *game) {
     world_map_t *const map = &game->borrowed_world->map;
     game->stream_quiet = 0u;
@@ -1033,6 +1081,7 @@ static void game_columns_request(game_t *game) {
         if (climate != nullptr && !climate_area_ready(climate, west, south, west + (int32_t)COLUMN_SIZE - 1,
                                                       south + (int32_t)COLUMN_SIZE - 1)) {
             (void)world_map_stream_cancel(map, &request);
+            atomic_fetch_add_explicit(&game_fill_of(game)->climate_waits, 1u, memory_order_relaxed);
             return;
         }
         job->request = request;
@@ -1041,6 +1090,12 @@ static void game_columns_request(game_t *game) {
         const int32_t dx = request.chunk_x - map->center_x, dy = request.chunk_y - map->center_y;
         const bool near = dx >= -(int32_t)GAME_NEAR_CHUNKS && dx <= (int32_t)GAME_NEAR_CHUNKS &&
                           dy >= -(int32_t)GAME_NEAR_CHUNKS && dy <= (int32_t)GAME_NEAR_CHUNKS;
+        if (!near && game_columns_leave_far_room(game)) {
+            (void)world_map_stream_cancel(map,
+                                          &request); /* offered again next step, when a worker of its share is free */
+            return;
+        }
+        job->near = near ? 1u : 0u;
         if (!job_try_submit_at(game->borrowed_job, &game->group, near ? JOB_PRIORITY_NEAR : JOB_PRIORITY_COLUMN,
                                game_column_job_run, job)) {
             (void)world_map_stream_cancel(map, &request); /* the shared queue is full: it is offered again next step */

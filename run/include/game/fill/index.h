@@ -72,7 +72,10 @@ typedef struct game_fill_t {
     int64_t scanned_ns;                             /* 1760: from the start, when the table was last looked at */
     uint64_t
         far_built_last; /* 1768: the far field's columns_built at the last step, for a fill cut short by a new far field */
-    uint8_t _pad1[16]; /* 1776 */
+    /* 1776: sim steps in which a column waited for its climate tiles, since the world opened. The sim adds, relaxed; the report reads
+     * it after the threads have stopped. */
+    _Atomic uint64_t climate_waits;
+    uint8_t _pad1[8]; /* 1784 */
 } game_fill_t;
 static_assert(sizeof(game_fill_t) == 1792);
 static_assert(alignof(game_fill_t) == MC_CPU_CACHE_LINE_BYTES);

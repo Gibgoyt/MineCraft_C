@@ -78,6 +78,11 @@ void world_light_deinit(world_light_t *light);
  * Whatever light it held is forgotten. Calling it twice for one column does nothing. */
 world_light_status_t world_light_column_added(world_light_t *light, uint32_t slot);
 
+/* The same, for a column whose light alone world_light_column_alone has already worked out from the very blocks it now holds,
+ * on any thread: takes those bytes (WORLD_LIGHT_COLUMN_VOXELS, as run/include/world/light/column/ lays them out), and works out
+ * only what crosses its edges with the lit columns beside it. Gives the same light as world_light_column_added. */
+world_light_status_t world_light_column_added_from(world_light_t *light, uint32_t slot, const uint8_t *alone);
+
 /* For a column about to be unloaded, before world_map_unload: takes what it gave away out of the columns beside it. Does
  * nothing for a column that was never lit. */
 world_light_status_t world_light_column_leaving(world_light_t *light, uint32_t slot);

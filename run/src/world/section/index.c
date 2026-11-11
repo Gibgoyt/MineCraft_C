@@ -326,6 +326,17 @@ static uint32_t section_distinct_read(const uint16_t *states, uint32_t max_disti
     return distinct;
 }
 
+/* A palette block of bits, holding distinct states and every voxel's slot, laid out as the pool keeps it. */
+static void section_pack_into(uint8_t *block, uint32_t bits, uint32_t distinct, const uint16_t *palette,
+                              const uint16_t *counts, const uint8_t *slots) {
+    memset(block, 0, section_class_bytes[section_class_of_bits(bits)]);
+    memcpy(section_palette_in(block, bits), palette, distinct * sizeof(uint16_t));
+    memcpy(section_counts_in(block, bits), counts, distinct * sizeof(uint16_t));
+    for (uint32_t i = 0; i < SECTION_VOXELS; i++) {
+        section_slot_write(block, bits, i, slots[i]);
+    }
+}
+
 /* states may be the section's own direct array. */
 static bool section_blocks_store(section_t *section, section_pool_t *pool, const uint16_t *states,
                                  uint32_t max_palette) {
@@ -355,17 +366,11 @@ static bool section_blocks_store(section_t *section, section_pool_t *pool, const
     }
 
     const uint32_t bits = section_bits_for(distinct);
-    const uint32_t class_id = section_class_of_bits(bits);
-    uint8_t *const fresh = section_pool_take(pool, class_id);
+    uint8_t *const fresh = section_pool_take(pool, section_class_of_bits(bits));
     if (fresh == nullptr) {
         return false;
     }
-    memset(fresh, 0, section_class_bytes[class_id]);
-    memcpy(section_palette_in(fresh, bits), palette, distinct * sizeof(uint16_t));
-    memcpy(section_counts_in(fresh, bits), counts, distinct * sizeof(uint16_t));
-    for (uint32_t i = 0; i < SECTION_VOXELS; i++) {
-        section_slot_write(fresh, bits, i, slots[i]);
-    }
+    section_pack_into(fresh, bits, distinct, palette, counts, slots);
     section_blocks_release(section, pool);
     section->borrowed_storage = fresh;
     section->bits = (uint8_t)bits;
@@ -375,6 +380,53 @@ static bool section_blocks_store(section_t *section, section_pool_t *pool, const
 
 bool section_blocks_import(section_t *section, section_pool_t *pool, const uint16_t *states) {
     return section_blocks_store(section, pool, states, SECTION_PALETTE_MAX);
+}
+
+void section_blocks_encode(const uint16_t *states, uint8_t *out_block, section_encoded_t *out) {
+    uint16_t palette[SECTION_PALETTE_MAX];
+    uint16_t counts[SECTION_PALETTE_MAX];
+    uint8_t slots[SECTION_VOXELS];
+    /* Every state is read before out_block is written, so the two may be the same memory. */
+    const uint32_t distinct = section_distinct_read(states, SECTION_PALETTE_MAX, palette, counts, slots);
+    *out = (section_encoded_t){0};
+    if (distinct == 1u) {
+        out->block_uniform = palette[0];
+        return;
+    }
+    if (distinct > SECTION_PALETTE_MAX) {
+        memmove(out_block, states, SECTION_VOXELS * sizeof(uint16_t));
+        out->bits = SECTION_BITS_DIRECT;
+        return;
+    }
+    const uint32_t bits = section_bits_for(distinct);
+    section_pack_into(out_block, bits, distinct, palette, counts, slots);
+    out->bits = (uint8_t)bits;
+    out->palette_used = (uint16_t)distinct;
+}
+
+bool section_blocks_import_encoded(section_t *section, section_pool_t *pool, const section_encoded_t *encoded,
+                                   const uint8_t *block) {
+    const uint32_t bits = encoded->bits;
+    if (bits == SECTION_BITS_UNIFORM) {
+        section_blocks_uniform(section, pool, encoded->block_uniform);
+        return true;
+    }
+    const uint32_t class_id = section_class_of_bits(bits);
+    /* As section_blocks_store does: a direct array is written over where it is. */
+    if (bits == SECTION_BITS_DIRECT && section->bits == SECTION_BITS_DIRECT) {
+        memcpy(section->borrowed_storage, block, section_class_bytes[class_id]);
+        return true;
+    }
+    uint8_t *const fresh = section_pool_take(pool, class_id);
+    if (fresh == nullptr) {
+        return false;
+    }
+    memcpy(fresh, block, section_class_bytes[class_id]);
+    section_blocks_release(section, pool);
+    section->borrowed_storage = fresh;
+    section->bits = (uint8_t)bits;
+    section->palette_used = encoded->palette_used;
+    return true;
 }
 
 void section_blocks_export(const section_t *section, uint16_t *out_states) {
