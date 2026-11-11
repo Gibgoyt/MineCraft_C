@@ -403,8 +403,8 @@ TEST(every_item_has_an_icon_and_the_textures_are_the_sizes_this_draws_them_at) {
     const ui_image_t *const armor_empty = ui_hud_armor_icon(hud, UI_HUD_ARMOR_EMPTY);
     CHECK(memcmp(armor_half->borrowed_pixels, armor_full->borrowed_pixels, icon_bytes) != 0);
     CHECK(memcmp(armor_half->borrowed_pixels, armor_empty->borrowed_pixels, icon_bytes) != 0);
-    /* What the budget in run/src/ui/index.c says about the tables. */
-    CHECK(f->ui.arena_tables.used < 1024u * 1024u);
+    /* What the budget in run/src/ui/index.c says about the tables. Plan 005 phase 11's four chromium items took it past 1 MiB. */
+    CHECK(f->ui.arena_tables.used < 1280u * 1024u);
     CHECK_EQ_U64(f->ui.arena_tables.failed_count, 0u);
     fixture_stop(f);
 }
