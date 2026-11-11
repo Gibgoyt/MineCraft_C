@@ -1,0 +1,6 @@
+name: oak_planks_on_bench
+kind: shapeless
+ingredients: [oak_log]
+gives: oak_planks
+count: 4
+station: woodworking

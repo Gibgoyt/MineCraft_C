@@ -106,6 +106,19 @@ TEST(the_crafting_table_makes_only_the_other_stations_and_the_hands_make_the_tab
     CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE), CRAFTING_NO_RECIPE);
 }
 
+/* A log to planks in the hands, and the same on the woodworking bench, named with "_on_bench". */
+static bool is_planks_pair(const recipe_def_t *a, const recipe_def_t *b) {
+    const recipe_def_t *const hands = a->station == RECIPE_STATION_HANDS ? a : b;
+    const recipe_def_t *const bench = a->station == RECIPE_STATION_HANDS ? b : a;
+    if (hands->station != RECIPE_STATION_HANDS || bench->station != RECIPE_STATION_WOODWORKING) {
+        return false;
+    }
+    char expected[64];
+    const int32_t written = snprintf(expected, sizeof(expected), "%s_on_bench", hands->name);
+    return written > 0 && (uint64_t)written < sizeof(expected) && strcmp(expected, bench->name) == 0 &&
+           strstr(hands->name, "_planks") != nullptr;
+}
+
 /* Each recipe works at its own station, and laid the same way at any other makes something else or nothing; and what any grid makes is
  * made at one station, so nothing is made in two places. */
 TEST(each_recipe_is_made_at_its_own_station_only_and_nothing_in_two_places) {
@@ -123,7 +136,10 @@ TEST(each_recipe_is_made_at_its_own_station_only_and_nothing_in_two_places) {
             }
         }
         for (uint32_t row2 = 0u; row2 < RECIPE_COUNT; row2++) {
-            if (recipe_defs[row2].gives == recipe->gives && recipe_defs[row2].station != recipe->station) {
+            /* Planks are the one thing made in two places, by Ahmed's word on 2026-11-11: logs turn into planks in the hands, so a table
+             * and the benches can be reached from planks, and on the woodworking bench too. */
+            if (recipe_defs[row2].gives == recipe->gives && recipe_defs[row2].station != recipe->station &&
+                !is_planks_pair(recipe, &recipe_defs[row2])) {
                 CHECK_STR_EQ(recipe_defs[row2].name, recipe->name);
             }
         }

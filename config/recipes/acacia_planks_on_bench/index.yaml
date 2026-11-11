@@ -1,0 +1,6 @@
+name: acacia_planks_on_bench
+kind: shapeless
+ingredients: [acacia_log]
+gives: acacia_planks
+count: 4
+station: woodworking

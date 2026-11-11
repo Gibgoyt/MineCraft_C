@@ -1,0 +1,7 @@
+# A crafting table from four planks in the hands, as well as from four logs (crafting_table).
+name: crafting_table_from_planks
+kind: shaped
+pattern: ["PP", "PP"]
+keys: { P: group_planks }
+gives: crafting_table
+station: hands

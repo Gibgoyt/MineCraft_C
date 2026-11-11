@@ -1,0 +1,6 @@
+name: jungle_planks_on_bench
+kind: shapeless
+ingredients: [jungle_log]
+gives: jungle_planks
+count: 4
+station: woodworking

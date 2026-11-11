@@ -51,9 +51,9 @@ A recipe says where it is made, and a grid makes only its own station's recipes.
 
 | Station | Its block, and size | Its grid | What is made there |
 |---|---|---|---|
-| `hands` | none | The 2 by 2 in the inventory | The crafting table, from 4 logs, and what needs no tool: dyes, bone meal, sugar, seeds, simple food, clay, snow, coarse dirt. A recipe here must fit 2 by 2 |
+| `hands` | none | The 2 by 2 in the inventory | Logs to planks, the crafting table from 4 logs or 4 planks, and what needs no tool: dyes, bone meal, sugar, seeds, simple food, clay, snow, coarse dirt. A recipe here must fit 2 by 2 |
 | `table` | `crafting_table`, 1 by 1 by 1 | 3 by 3 | **Only the stations:** the woodworking bench (3 logs), the stoneworking bench (3 cobblestone on 2 logs), the smith table (3 copper ingots over stone, a furnace, stone), the tanning rack (7 sticks) and the leather workbench (3 planks on 2 sticks) |
-| `woodworking` | `woodworking_bench_west` and `_east`, 2 by 1 by 1 | 3 by 3 | Logs to planks, planks to sticks, 2 logs to 16 sticks, everything wooden and the wooden tools, and torches, beds, bows, arrows and paper |
+| `woodworking` | `woodworking_bench_west` and `_east`, 2 by 1 by 1 | 3 by 3 | Planks to sticks, 2 logs to 16 sticks, everything wooden and the wooden tools, and torches, beds, bows, arrows and paper |
 | `stoneworking` | `stoneworking_bench_left` and `_right`, 2 by 1 by 1 | 3 by 3 | Everything stone and the stone tools, the furnace and the blast furnace, bricks, sandstone, terracotta, ice blocks, glass goods and TNT |
 | `smithing` | `smith_table_front_left`, `_front_right`, `_back_left` and `_back_right`, 2 by 2 by 1 | 3 by 3, and the alloy slots: two counted inputs and an output (plan 005 phase 11 part B) | Iron, copper, gold and stainless steel: every metal tool, metal armour from leather armour, nuggets, buckets, shears, minecarts, iron doors; and alloys, stainless steel from 9 iron and 1 chromium |
 | `leatherworking` | `leather_workbench_left` and `_right`, 2 by 1 by 1 | 3 by 3 | Leather armour, four pieces, and books |
@@ -91,7 +91,7 @@ Only where the game has no such item. Each is written here so that it can be cha
 |---|---|---|---|
 | `pumpkin_pie` | pumpkin, sugar, egg | pumpkin, sugar | `egg` is an item now, but until hens lay it nobody can get one |
 | `bread` | 3 wheat in a row | 3 wheat, shapeless | Made in the hands, whose grid is 2 by 2 (plan 005 phase 6) |
-| `crafting_table` | 4 planks | 4 logs, in the hands | Planks are made at the woodworking bench, which the table makes (plan 005 phase 6) |
+| `crafting_table` | 4 planks | 4 logs or 4 planks, in the hands | Ahmed, 2026-11-11: logs turn into planks in the inventory's 2 by 2, so a table and benches can be reached from planks |
 | `woodworking_bench`, `stoneworking_bench`, `smith_table`, `tanning_rack`, `leather_workbench`, `blast_furnace` | not published, but for the smithing table and the blast furnace | see Stations | The stations of plan 005 phase 6. The smith table takes copper since plan 005 phase 11, so that copper tools come before iron |
 | `alloy_stainless_steel` and the stainless steel tools and armour | not published | 9 iron ingots and 1 chromium ingot make 10 stainless steel ingots, and they are worked as iron is | Ahmed's alloys, plan 005 phase 11 |
 | `stick_from_logs` | not published | 2 logs, 16 sticks | Ahmed's "a stick from 2 logs on the wood bench" |

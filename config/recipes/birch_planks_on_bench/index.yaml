@@ -1,0 +1,6 @@
+name: birch_planks_on_bench
+kind: shapeless
+ingredients: [birch_log]
+gives: birch_planks
+count: 4
+station: woodworking

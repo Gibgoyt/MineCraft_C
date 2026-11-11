@@ -3,4 +3,4 @@ kind: shapeless
 ingredients: [spruce_log]
 gives: spruce_planks
 count: 4
-station: woodworking
+station: hands

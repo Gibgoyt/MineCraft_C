@@ -3,4 +3,4 @@ kind: shapeless
 ingredients: [jungle_log]
 gives: jungle_planks
 count: 4
-station: woodworking
+station: hands

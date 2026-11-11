@@ -1,0 +1,6 @@
+name: mangrove_planks_on_bench
+kind: shapeless
+ingredients: [mangrove_log]
+gives: mangrove_planks
+count: 4
+station: woodworking

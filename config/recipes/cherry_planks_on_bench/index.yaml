@@ -1,0 +1,6 @@
+name: cherry_planks_on_bench
+kind: shapeless
+ingredients: [cherry_log]
+gives: cherry_planks
+count: 4
+station: woodworking
