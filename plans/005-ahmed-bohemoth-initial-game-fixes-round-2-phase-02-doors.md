@@ -51,6 +51,9 @@ Ahmed: craft a wooden door, place it facing each way, open and close it, walk th
 
 Appended as they land:
 
+- `4ddb8f22` Add wooden, iron and glass doors: two tall, facing the player, hinged by their neighbours, opened by the right button.
+- Add the doors' proof in the built program: three made on the bench, one placed, opened, shut and mined by its top half.
+
 ## Issues found
 
 ### 2026-11-10, the build of this phase
@@ -82,3 +85,5 @@ Appended as they land:
 **Open for Ahmed: option A (16 blocks per door) or option B (a real block state, then doors)?** B is my recommendation, because it also fixes stairs and ladders facing one way, and lets benches turn.
 
 **2026-11-06: B is now phase 12.** Ahmed asked for stairs and the woodworking bench to face the player and turn before placing, which needs a block state. So doors build on phase 12, and option A isn't needed unless Ahmed says otherwise.
+
+**13. Tests, 2026-11-10.** Verification: `tools/test-or-build.sh cmake --build --preset debug`, exit 0; `tools/test-or-build.sh timeout 600 ctest --preset debug -R '^(run_player_interaction.*|run_physics.*|run_mob_path|run_save_world|run_item_crafting|compile_game_tables|standards_lint|clang_format)$' --output-on-failure`: 12 of 12 passed. Also passed: `run_terrain_*`, `run_world_*`, `run_save_*`, `run_item_*`, `run_entity_*`, `run_mob_*`, `run_game_*` (49 tests, after the repins), and `render_feature_shapes`, `run_playthrough`, `run_render_frame`, `run_ui_census`. Not run: the whole suite and the release build. `pgrep` of this worktree's build: nothing.

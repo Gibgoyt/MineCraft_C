@@ -1,0 +1,344 @@
+# stairs.script's first few minutes at 640 by 480 and seed 36, up to a bench put down and opened. Then doors: three from six planks on the bench, one placed, opened, shut, opened and shut again, and mined by its top half, both halves going and one door dropping; saved and opened again. Plan 005 phase 2: see ../README.md.
+1 move 0 -40
++1 button left down
++1 button left up
++1 move 132 196
++1 button left down
++1 button left up
++1 key p down
++1 key p up
++1 key l down
++1 key l up
++1 key a down
++1 key a up
++1 key y down
++1 key y up
++1 move -132 -194
++1 button left down
++1 button left up
++1 key 3 down
++1 key 3 up
++1 key 6 down
++1 key 6 up
++1 key enter down
++1 key enter up
++3 screenshot spawn.png
++1 move 0 250
+# Mine the mud underfoot, and stand in the hole until the drop is in hand.
++1 button left down
++22 button left up
++14 screenshot picked_up.png
+# Back to looking level, out of the hole, and to the tree.
++1 move 0 -250
++1 key space down
++1 key w down
++4 key space up
++12 key w up
++6 screenshot at_tree.png
+# Four logs: the root ahead, then the trunk to its right, up it from the level of the eye, standing still.
++1 button left down
++70 button left up
++1 screenshot log1.png
++1 move 125 0
++1 button left down
++70 button left up
++1 screenshot log2.png
++1 move 0 -80
++1 button left down
++70 button left up
++1 screenshot log3.png
++1 move 0 -70
++1 button left down
++70 button left up
++1 screenshot log4.png
++1 move 0 150
++1 key w down
++15 key w up
+# Back the way it came, where the ground is clear for a table.
++1 move 628 0
++20 screenshot logs.png
+# The inventory's grid, by clicking: planks, a crafting table, more planks, sticks. It opens with the pointer at 320, 240.
++1 key e down
++1 key e up
++1 move -106 135
++1 button left down
++1 button left up
++1 move 124 -230
++1 button right down
++1 button right up
++1 move -124 230
++1 button left down
++1 button left up
++1 move 248 -212
++1 button left down
++1 button left up
++1 move -212 212
++1 button left down
++1 button left up
++1 button left down
++1 button left up
++1 move 88 -230
++1 button right down
++1 button right up
++1 move 36 0
++1 button right down
++1 button right up
++1 move 0 36
++1 button right down
++1 button right up
++1 move -36 0
++1 button right down
++1 button right up
++1 move 124 -18
++1 button left down
++1 button left up
++1 move -176 212
++1 button left down
++1 button left up
++1 move -72 0
++1 button left down
++1 button left up
++1 move 124 -230
++1 button right down
++1 button right up
++1 button right down
++1 button right up
++1 move -124 230
++1 button left down
++1 button left up
++1 move 248 -212
++1 button left down
++1 button left up
++1 button left down
++1 button left up
++1 move -212 212
++1 button left down
++1 button left up
++1 button left down
++1 button left up
++1 move 88 -230
++1 button right down
++1 button right up
++1 move 0 36
++1 button right down
++1 button right up
++1 move -88 194
++1 button left down
++1 button left up
++1 move 212 -212
++1 button left down
++1 button left up
++1 move -140 212
++1 button left down
++1 button left up
++1 screenshot crafted.png
++1 key e down
++1 key e up
+# The table in hand, placed, and opened. The stairs' pattern from six planks, P.. / PP. / PPP, makes nothing on a table.
++1 key 4 down
++1 key 4 up
++1 move 0 200
++2 button right down
++1 button right up
++3 button right down
++1 button right up
++3 screenshot table.png
++1 move -70 135
++1 button left down
++1 button left up
++1 move -28 -249
++1 button right down
++1 button right up
++1 move 0 36
++1 button right down
++1 button right up
++1 move 36 0
++1 button right down
++1 button right up
++1 move -36 36
++1 button right down
++1 button right up
++1 move 36 0
++1 button right down
++1 button right up
++1 move 36 0
++1 button right down
++1 button right up
++1 screenshot table_no_stairs.png
+# Two of them to make up the top row, and the other three back in their slot, one at a time. Then a stick each side of the row below.
++1 button left down
++1 button left up
++1 move 0 -72
++1 button left down
++1 button left up
++1 move -36 72
++1 button left down
++1 button left up
++1 move 0 -72
++1 button left down
++1 button left up
++1 move -36 72
++1 button left down
++1 button left up
++1 move 28 177
++1 button left down
++1 button left up
++1 move -28 -213
++1 button left down
++1 button left up
++1 move 28 213
++1 button left down
++1 button left up
++1 move 8 -213
++1 button left down
++1 button left up
++1 move -8 213
++1 button left down
++1 button left up
++1 move 72 0
++1 button left down
++1 button left up
++1 move -100 -213
++1 button right down
++1 button right up
++1 move 72 0
++1 button right down
++1 button right up
++1 screenshot bench_ready.png
++1 move 28 213
++1 button left down
++1 button left up
++1 move 75 -213
++1 button left down
++1 button left up
++1 move -111 213
++1 button left down
++1 button left up
++1 screenshot bench_made.png
+# The log left over, on the table's grid, for four more planks. Back in their own slot, that is seven.
++1 move -72 0
++1 button left down
++1 button left up
++1 move 8 -249
++1 button left down
++1 button left up
++1 move 175 36
++1 button left down
++1 button left up
++1 move -147 213
++1 button left down
++1 button left up
++1 screenshot seven_planks.png
++1 key e down
++1 key e up
+# The bench in hand, put down off to one side of the table, and opened.
++1 key 4 down
++1 key 4 up
++1 move 600 0
++6 screenshot bench_aim.png
++1 button right down
++1 button right up
++6 screenshot bench_placed.png
++3 button right down
++1 button right up
++3 screenshot bench_open.png
+# Seven planks in hand from the slot they are in, then a door's pattern on the bench, two wide and three tall, one each by the right button.
++1 move -70 135
++1 button left down
++1 button left up
++1 move -28 -249
++1 button right down
++1 button right up
++1 move 36 0
++1 button right down
++1 button right up
++1 move -36 36
++1 button right down
++1 button right up
++1 move 36 0
++1 button right down
++1 button right up
++1 move -36 36
++1 button right down
++1 button right up
++1 move 36 0
++1 button right down
++1 button right up
++1 screenshot doors_ready.png
+# The plank left over back in its slot, the output, then hotbar slot 4 for the three doors.
++1 move -8 177
++1 button left down
++1 button left up
++1 move 147 -213
++1 button left down
++1 button left up
++1 move -111 213
++1 button left down
++1 button left up
++1 screenshot doors_in_slot.png
++1 key e down
++1 key e up
++1 key 4 down
++1 key 4 up
+# Away from the bench, and a door put down on the ground, facing the way the player looks.
++4 move 300 0
++6 screenshot door_aim.png
++1 button right down
++1 button right up
++6 screenshot door_placed.png
+# Opened with a press, shut with the next, and opened again.
++1 move 0 -120
++4 button right down
++1 button right up
++6 screenshot door_open.png
++4 button right down
++1 button right up
++6 screenshot door_shut.png
++4 button right down
++1 button right up
++6 screenshot door_open_again.png
++4 button right down
++1 button right up
++6 screenshot door_shut_again.png
+# Its top half by hand: both halves go, and one door comes down.
++1 move 0 -60
++6 screenshot door_top_aim.png
++1 button left down
++100 button left up
++6 screenshot door_broken.png
+# Up to where it stood: the cell is empty, and the one door lies on the ground at the foot of the bank.
++1 key a down
++3 key a up
++1 key w down
++16 key w up
++30 screenshot door_on_ground.png
++1 key e down
++1 key e up
++3 screenshot door_in_inventory.png
++1 key e down
++1 key e up
+# Saved on the way out, opened again, and out by Quit Game.
++1 key escape down
++1 key escape up
++1 move 0 56
++1 button left down
++1 button left up
++3 screenshot back_on_title.png
++1 move 0 -96
++1 button left down
++1 button left up
++1 move -20 -122
++1 button left down
++1 button left up
++1 move -112 318
++1 button left down
++1 button left up
++15 screenshot door_reloaded.png
++1 key escape down
++1 key escape up
++1 move 132 -100
++1 button left down
++1 button left up
++2 button left down
++1 button left up
++1 end

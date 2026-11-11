@@ -195,6 +195,34 @@ TEST(a_bench_gives_its_grid_back_stands_through_a_save_and_goes_by_its_west_half
     }
 }
 
+/* Ahmed's words: "doors can not be placed down for some reason??? let's please fix this!" (plan 005 phase 2). Three doors from six planks on
+ * the bench, one placed, opened, shut, opened and shut again, and mined by its top half: both halves go, and one door drops. */
+TEST(a_wooden_door_is_made_placed_opened_shut_and_mined_by_its_top_half) {
+    REQUIRE(t->arg_count >= 1);
+    char *const root = pt_temp(t);
+    REQUIRE(root != nullptr);
+    test_process_t process;
+    pt_run(t, "tests/run/player/interaction/door/fixtures/door.script", root, PT_DAY_MS, 2u, &process);
+    const char *const output = process.output;
+    CHECK_EQ_U64(pt_count(output, "the last mined was wood_door"), 2u);
+    /* Three made, one placed: two in hand. The one that came down lies on the ground, out of reach. */
+    CHECK_EQ_U64(pt_count(output, "hotbar slot 4 is in hand, with 2 of wood_door"), 2u);
+
+    static const char *const shots[] = {"doors_ready.png", "doors_in_slot.png",  "door_placed.png",
+                                        "door_open.png",   "door_shut.png",      "door_open_again.png",
+                                        "door_broken.png", "door_on_ground.png", "door_reloaded.png"};
+    for (uint64_t i = 0u; i < sizeof(shots) / sizeof(shots[0]); i++) {
+        uint64_t size = 0u;
+        CHECK_EQ_U64(file_path_size(pt_join(t, pt_join(t, root, "shots"), shots[i]), &size), FILE_OK);
+        CHECK(size > 1000u);
+    }
+    if (getenv("MC_PLAYTHROUGH_KEEP") != nullptr) {
+        printf("  kept in %s\n", root);
+    } else {
+        pt_temp_remove(t, root);
+    }
+}
+
 /* Ahmed's words: "tree feller is not a mod in my minecraft it is a built in setting please make it always on!!". So the cut is with bare hands,
  * the hand holding only the mud from the hole, and the tree comes down all the same. */
 TEST(bare_hands_bring_down_a_real_tree_with_one_cut_and_it_stays_down_through_a_save) {
