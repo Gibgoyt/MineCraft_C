@@ -429,6 +429,9 @@ void render_lod_quiesce(render_lod_t *lod) {
     if (lod->borrowed_job == nullptr) {
         return;
     }
+    /* Nothing a job finishes is kept below, so what has not begun returns at once: the wait is then only for what the
+     * far field's one capped worker holds, not for every column queued behind it. */
+    job_priority_drop(lod->borrowed_job, JOB_PRIORITY_FAR);
     job_group_wait(lod->borrowed_job, &lod->group);
     for (uint32_t i = 0u; i < RENDER_LOD_JOBS; i++) {
         render_lod_job_t *const job = &lod->borrowed_jobs[i];
