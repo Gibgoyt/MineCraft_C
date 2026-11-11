@@ -1,0 +1,9 @@
+# Only where a chunk's middle column is at least 120 high: a mountain's. emerald_peak goes on above 500 under the same rule.
+# Moved from run/src/terrain/ore/index.c by plan 005 phase 11, unchanged. Changing any number changes every world.
+name: emerald
+block: emerald_ore
+deep_block: deepslate_emerald_ore
+drops: emerald
+veins:
+  - { row: emerald, order: 250, z_min: -154, z_max: 500, vein: 3, per_256_chunks: 4096, spread: uniform, min_column_height: 120 }
+  - { row: emerald_peak, order: 260, z_min: 501, z_max: 1250, vein: 3, per_256_chunks: 4608, spread: uniform, min_column_height: 120 }

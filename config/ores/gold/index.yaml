@@ -1,0 +1,9 @@
+# Most at about -155, and a little more at the very bottom.
+# Moved from run/src/terrain/ore/index.c by plan 005 phase 11, unchanged. Changing any number changes every world.
+name: gold
+block: gold_ore
+deep_block: deepslate_gold_ore
+drops: raw_gold
+veins:
+  - { row: gold, order: 190, z_min: -250, z_max: -60, vein: 9, per_256_chunks: 2048, spread: triangle }
+  - { row: gold_deep, order: 200, z_min: -250, z_max: -218, vein: 9, per_256_chunks: 128, spread: uniform }

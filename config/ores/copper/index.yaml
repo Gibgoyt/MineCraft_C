@@ -1,0 +1,12 @@
+# Most at about -45.
+# Moved from run/src/terrain/ore/index.c by plan 005 phase 11, unchanged. Changing any number changes every world.
+name: copper
+block: copper_ore
+deep_block: deepslate_copper_ore
+drops: raw_copper
+order: 140
+z_min: -185
+z_max: 96
+vein: 10
+per_256_chunks: 8192
+spread: triangle

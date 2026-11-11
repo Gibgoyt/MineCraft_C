@@ -95,12 +95,16 @@ set(mc_recipe_table_source "${mc_tables_dir}/recipes/index.c")
 # config/mobs/ -> tables/mobs/index.{h,c}, and again: Stage 15.3.
 set(mc_mob_table_header "${mc_tables_dir}/mobs/index.h")
 set(mc_mob_table_source "${mc_tables_dir}/mobs/index.c")
+# config/ores/ -> tables/ores/index.{h,c}, and again: plan 005 phase 11.
+set(mc_ore_table_header "${mc_tables_dir}/ores/index.h")
+set(mc_ore_table_source "${mc_tables_dir}/ores/index.c")
 file(GLOB mc_block_inputs CONFIGURE_DEPENDS
   "${CMAKE_SOURCE_DIR}/config/blocks/*/index.yaml"
   "${CMAKE_SOURCE_DIR}/config/items/*/index.yaml"
   "${CMAKE_SOURCE_DIR}/config/recipes/*/index.yaml"
   "${CMAKE_SOURCE_DIR}/config/biomes/*/index.yaml"
   "${CMAKE_SOURCE_DIR}/config/mobs/*/index.yaml"
+  "${CMAKE_SOURCE_DIR}/config/ores/*/index.yaml"
   "${MC_TEXTURE_ROOT}/items/*/index.mctex")
 
 # Ninja reruns a command for a new or changed input, and not for one gone from its list, so a deleted block would stay in the
@@ -109,25 +113,29 @@ file(GLOB mc_block_directories CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/config/blo
   "${CMAKE_SOURCE_DIR}/config/items/*"
   "${CMAKE_SOURCE_DIR}/config/recipes/*"
   "${CMAKE_SOURCE_DIR}/config/biomes/*"
-  "${CMAKE_SOURCE_DIR}/config/mobs/*")
+  "${CMAKE_SOURCE_DIR}/config/mobs/*"
+  "${CMAKE_SOURCE_DIR}/config/ores/*")
 string(JOIN "\n" mc_block_input_list ${mc_block_directories} ${mc_block_inputs} ${mc_texture_inputs})
 file(CONFIGURE OUTPUT "${mc_tables_dir}/inputs.txt" CONTENT "${mc_block_input_list}\n" @ONLY)
 
 # The touch: the tool leaves a file with the same bytes alone, and then Ninja would see the outputs as old on every build.
 add_custom_command(OUTPUT "${mc_block_table_header}" "${mc_block_table_source}" "${mc_biome_table_header}"
     "${mc_biome_table_source}" "${mc_item_table_header}" "${mc_item_table_source}" "${mc_recipe_table_header}"
-    "${mc_recipe_table_source}" "${mc_mob_table_header}" "${mc_mob_table_source}"
+    "${mc_recipe_table_source}" "${mc_mob_table_header}" "${mc_mob_table_source}" "${mc_ore_table_header}"
+    "${mc_ore_table_source}"
   COMMAND mc_tool_game_tables --config "${CMAKE_SOURCE_DIR}/config" --textures "${MC_TEXTURE_ROOT}"
     --out "${mc_tables_dir}"
   COMMAND "${CMAKE_COMMAND}" -E touch "${mc_block_table_header}" "${mc_block_table_source}" "${mc_biome_table_header}"
     "${mc_biome_table_source}" "${mc_item_table_header}" "${mc_item_table_source}" "${mc_recipe_table_header}"
-    "${mc_recipe_table_source}" "${mc_mob_table_header}" "${mc_mob_table_source}"
+    "${mc_recipe_table_source}" "${mc_mob_table_header}" "${mc_mob_table_source}" "${mc_ore_table_header}"
+    "${mc_ore_table_source}"
   DEPENDS mc_tool_game_tables ${mc_block_inputs} ${mc_texture_inputs} "${mc_tables_dir}/inputs.txt"
-  COMMENT "Generating the block, item, recipe, biome and mob tables"
+  COMMENT "Generating the block, item, recipe, biome, ore and mob tables"
   VERBATIM)
 add_custom_target(mc_game_tables DEPENDS "${mc_block_table_header}" "${mc_block_table_source}" "${mc_biome_table_header}"
   "${mc_biome_table_source}" "${mc_item_table_header}" "${mc_item_table_source}" "${mc_recipe_table_header}"
-  "${mc_recipe_table_source}" "${mc_mob_table_header}" "${mc_mob_table_source}")
+  "${mc_recipe_table_source}" "${mc_mob_table_header}" "${mc_mob_table_source}" "${mc_ore_table_header}"
+  "${mc_ore_table_source}")
 # Sources of generated tables that the game links.
 set(mc_generated_run_sources "${mc_block_table_source}" "${mc_biome_table_source}" "${mc_item_table_source}"
-  "${mc_recipe_table_source}" "${mc_mob_table_source}")
+  "${mc_recipe_table_source}" "${mc_mob_table_source}" "${mc_ore_table_source}")

@@ -12,11 +12,11 @@
 - `terrain_ore_fill_box`: deepslate and veins, into a box of blocks.
 
 **May be called by:** `terrain` and its parts.
-**Depends on:** `terrain/density` (its sibling, for where a column's ground is), `terrain/rng`, `arena`, `assert`, `machine`, `types`, and the generated `tables/blocks/`, for the block ids.
+**Depends on:** `terrain/density` (its sibling, for where a column's ground is), `terrain/rng`, `arena`, `assert`, `machine`, `types`, and the generated `tables/blocks/`, for the block ids, and `tables/ores/`, the table.
 
 ## The table
 
-Every number is a row's whole definition, and changing one changes every world. `tests/run/terrain/ore/` types them out again.
+The rows live in `config/ores/<ore>/index.yaml`, one file per ore or rock, and `compile/src/game_tables/ores/` generates `tables/ores/` from them (plan 005 phase 11; before that the table was in this module's `index.c`, and moving it changed no world). `config/ores/README.md` has the fields: a row's `order` is its place in the table below, `vein` is its size and `per_256_chunks` the veins tried in 256 chunks. Every number is a row's whole definition, and changing one changes every world. `tests/run/terrain/ore/` types them out again.
 
 The depths start from what was remembered of a familiar game's published ore distributions, not checked against a source, moved to our range: its sea level goes to ours, at 0, and each block away from that becomes about 1.95, as its 384 layers are our 751. So `z = 1.95 * (y - 63)`. As the same veins now have about twice the rock to go in, a row tries about twice as many in a chunk, so that a block of rock holds as much ore as there it would. Nothing was read from that game's files, and these numbers are only a starting point.
 

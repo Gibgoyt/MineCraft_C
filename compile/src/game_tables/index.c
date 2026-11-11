@@ -7,6 +7,7 @@
 #include "game_tables/blocks/index.h"
 #include "game_tables/items/index.h"
 #include "game_tables/mobs/index.h"
+#include "game_tables/ores/index.h"
 #include "game_tables/recipes/index.h"
 #include "texture_pack/support/index.h"
 
@@ -61,6 +62,7 @@ int32_t main(int32_t argc, char **argv) {
                       game_tables_items_build(&arena, arguments.config, arguments.textures, arguments.out) &&
                       game_tables_recipes_build(&arena, arguments.config, arguments.out) &&
                       game_tables_biomes_build(&arena, arguments.config, arguments.out) &&
+                      game_tables_ores_build(&arena, arguments.config, arguments.out) &&
                       game_tables_mobs_build(&arena, arguments.config, arguments.textures, arguments.out);
     munmap(owned_region, GT_ARENA_BYTES);
     return good ? GAME_TABLES_EXIT_OK : GAME_TABLES_EXIT_REFUSED;

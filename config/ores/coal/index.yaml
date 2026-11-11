@@ -1,0 +1,10 @@
+# Rich in mountains (coal_high, and coal_peak above 500). coal_low has the most at about 65.
+# Moved from run/src/terrain/ore/index.c by plan 005 phase 11, unchanged. Changing any number changes every world.
+name: coal
+block: coal_ore
+deep_block: deepslate_coal_ore
+drops: coal
+veins:
+  - { row: coal_high, order: 110, z_min: 142, z_max: 500, vein: 17, per_256_chunks: 15360, spread: uniform }
+  - { row: coal_peak, order: 120, z_min: 501, z_max: 1250, vein: 17, per_256_chunks: 32000, spread: uniform }
+  - { row: coal_low, order: 130, z_min: -123, z_max: 252, vein: 17, per_256_chunks: 10240, spread: triangle }

@@ -1,0 +1,7 @@
+# Patches in the stone, and rare in the hills.
+# Moved from run/src/terrain/ore/index.c by plan 005 phase 11, unchanged. Changing any number changes every world.
+name: andesite
+block: andesite
+veins:
+  - { row: andesite_low, order: 70, z_min: -123, z_max: -6, vein: 64, per_256_chunks: 1024, spread: uniform }
+  - { row: andesite_high, order: 80, z_min: 2, z_max: 127, vein: 64, per_256_chunks: 85, spread: uniform }

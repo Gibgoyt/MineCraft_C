@@ -1,0 +1,7 @@
+# Pockets of gravel at every height. gravel_peak goes on above 500, the height the world first stopped at, as much in a layer.
+# Moved from run/src/terrain/ore/index.c by plan 005 phase 11, unchanged. Changing any number changes every world.
+name: gravel
+block: gravel
+veins:
+  - { row: gravel, order: 20, z_min: -250, z_max: 500, vein: 33, per_256_chunks: 7168, spread: uniform }
+  - { row: gravel_peak, order: 100, z_min: 501, z_max: 1250, vein: 33, per_256_chunks: 7168, spread: uniform }

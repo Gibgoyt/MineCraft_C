@@ -3,6 +3,7 @@
 
 #include "assert/index.h"
 #include "tables/blocks/index.h"
+#include "tables/ores/index.h"
 #include "terrain/rng/index.h"
 
 #include <string.h>
@@ -15,59 +16,9 @@ enum : uint32_t {
 static_assert(MC_WORLD_CHUNK_SIZE == 1 << ORE_CHUNK_SHIFT);
 static_assert(BLOCK_ID_AIR == 0u); /* ore_top_of_anything ors a layer together */
 
-/* The table. The README says where each number comes from. Changing any of them changes every world. */
-#define ORE_ROW(name, block_id, deep_id, low, high, vein, per_256, how, min_height)                                    \
-    {                                                                                                                  \
-        .borrowed_name = name,                                                                                         \
-        .per_chunk_256 = per_256,                                                                                      \
-        .z_low = low,                                                                                                  \
-        .z_high = high,                                                                                                \
-        .min_column_height = min_height,                                                                               \
-        .block = block_id,                                                                                             \
-        .deep_block = deep_id,                                                                                         \
-        .size = vein,                                                                                                  \
-        .spread = how,                                                                                                 \
-    }
-#define ORE_ROCK(name, id, low, high, vein, per_256)                                                                   \
-    ORE_ROW(name, id, id, low, high, vein, per_256, TERRAIN_ORE_UNIFORM, TERRAIN_ORE_ANY_COLUMN)
-#define ORE_U(name, ore, deep, low, high, vein, per_256)                                                               \
-    ORE_ROW(name, ore, deep, low, high, vein, per_256, TERRAIN_ORE_UNIFORM, TERRAIN_ORE_ANY_COLUMN)
-#define ORE_T(name, ore, deep, low, high, vein, per_256)                                                               \
-    ORE_ROW(name, ore, deep, low, high, vein, per_256, TERRAIN_ORE_TRIANGLE, TERRAIN_ORE_ANY_COLUMN)
-
-static const terrain_ore_row_t ORE_TABLE[TERRAIN_ORE_ROWS] = {
-    /* Rock, which replaces only stone and deepslate. */
-    ORE_ROCK("ore/dirt", BLOCK_ID_DIRT, -123, 189, 33, 14u * 256u),
-    ORE_ROCK("ore/gravel", BLOCK_ID_GRAVEL, -250, 500, 33, 28u * 256u),
-    ORE_ROCK("ore/granite_low", BLOCK_ID_GRANITE, -123, -6, 64, 4u * 256u),
-    ORE_ROCK("ore/granite_high", BLOCK_ID_GRANITE, 2, 127, 64, 85u),
-    ORE_ROCK("ore/diorite_low", BLOCK_ID_DIORITE, -123, -6, 64, 4u * 256u),
-    ORE_ROCK("ore/diorite_high", BLOCK_ID_DIORITE, 2, 127, 64, 85u),
-    ORE_ROCK("ore/andesite_low", BLOCK_ID_ANDESITE, -123, -6, 64, 4u * 256u),
-    ORE_ROCK("ore/andesite_high", BLOCK_ID_ANDESITE, 2, 127, 64, 85u),
-    ORE_ROCK("ore/tuff", BLOCK_ID_TUFF, -250, -123, 64, 4u * 256u),
-    ORE_ROCK("ore/gravel_peak", BLOCK_ID_GRAVEL, 501, 1250, 33, 28u * 256u),
-    /* Ore, which replaces all rock but dirt and gravel. */
-    ORE_U("ore/coal_high", BLOCK_ID_COAL_ORE, BLOCK_ID_DEEPSLATE_COAL_ORE, 142, 500, 17, 60u * 256u),
-    ORE_U("ore/coal_peak", BLOCK_ID_COAL_ORE, BLOCK_ID_DEEPSLATE_COAL_ORE, 501, 1250, 17, 125u * 256u),
-    ORE_T("ore/coal_low", BLOCK_ID_COAL_ORE, BLOCK_ID_DEEPSLATE_COAL_ORE, -123, 252, 17, 40u * 256u),
-    ORE_T("ore/copper", BLOCK_ID_COPPER_ORE, BLOCK_ID_DEEPSLATE_COPPER_ORE, -185, 96, 10, 32u * 256u),
-    ORE_T("ore/iron_high", BLOCK_ID_IRON_ORE, BLOCK_ID_DEEPSLATE_IRON_ORE, 33, 500, 9, 180u * 256u),
-    ORE_U("ore/iron_peak", BLOCK_ID_IRON_ORE, BLOCK_ID_DEEPSLATE_IRON_ORE, 501, 1250, 9, 60u * 256u),
-    ORE_T("ore/iron_middle", BLOCK_ID_IRON_ORE, BLOCK_ID_DEEPSLATE_IRON_ORE, -170, -14, 9, 20u * 256u),
-    ORE_U("ore/iron_low", BLOCK_ID_IRON_ORE, BLOCK_ID_DEEPSLATE_IRON_ORE, -250, 18, 4, 20u * 256u),
-    ORE_T("ore/gold", BLOCK_ID_GOLD_ORE, BLOCK_ID_DEEPSLATE_GOLD_ORE, -250, -60, 9, 8u * 256u),
-    ORE_U("ore/gold_deep", BLOCK_ID_GOLD_ORE, BLOCK_ID_DEEPSLATE_GOLD_ORE, -250, -218, 9, 128u),
-    ORE_T("ore/lapis_middle", BLOCK_ID_LAPIS_ORE, BLOCK_ID_DEEPSLATE_LAPIS_ORE, -185, -60, 7, 4u * 256u),
-    ORE_U("ore/lapis_low", BLOCK_ID_LAPIS_ORE, BLOCK_ID_DEEPSLATE_LAPIS_ORE, -250, 2, 7, 8u * 256u),
-    ORE_T("ore/diamond_small", BLOCK_ID_DIAMOND_ORE, BLOCK_ID_DEEPSLATE_DIAMOND_ORE, -406, -92, 4, 14u * 256u),
-    ORE_T("ore/diamond_large", BLOCK_ID_DIAMOND_ORE, BLOCK_ID_DEEPSLATE_DIAMOND_ORE, -406, -92, 12, 57u),
-    /* High ground only: a mountain's. */
-    ORE_ROW("ore/emerald", BLOCK_ID_EMERALD_ORE, BLOCK_ID_DEEPSLATE_EMERALD_ORE, -154, 500, 3, 16u * 256u,
-            TERRAIN_ORE_UNIFORM, 120),
-    ORE_ROW("ore/emerald_peak", BLOCK_ID_EMERALD_ORE, BLOCK_ID_DEEPSLATE_EMERALD_ORE, 501, 1250, 3, 18u * 256u,
-            TERRAIN_ORE_UNIFORM, 120),
-};
+/* The table is config/ores/, which compile/src/game_tables/ores/ turns into tables/ores/. The README says where each number
+ * comes from. Changing any of them changes every world. */
+static_assert(TERRAIN_ORE_ROWS == ORE_ROW_COUNT);
 
 /* The ball of the README's sum: the one radius, so 3 balls that overlap by about this much make the row's size. */
 static const float64_t ORE_OVERLAP = 2.0f64;
@@ -95,7 +46,7 @@ void terrain_ore_init(terrain_ore_t **out, arena_t *arena, uint64_t seed, const 
     ore->borrowed_density = density;
     ore->strata_seed = terrain_rng_derive(seed, terrain_rng_salt("ore/strata"));
     for (uint32_t r = 0u; r < TERRAIN_ORE_ROWS; r++) {
-        const terrain_ore_row_t *const row = &ORE_TABLE[r];
+        const terrain_ore_row_t *const row = &ore_rows[r];
         const float64_t radius = ore_cube_root((float64_t)row->size / (ORE_FOUR_THIRDS_PI * ORE_OVERLAP));
         ore->rows[r].seed = terrain_rng_derive(seed, terrain_rng_salt(row->borrowed_name));
         ore->rows[r].radius = (float32_t)radius;
@@ -112,7 +63,7 @@ void terrain_ore_deinit(terrain_ore_t *ore) {
 }
 
 const terrain_ore_row_t *terrain_ore_table(void) {
-    return ORE_TABLE;
+    return ore_rows;
 }
 
 /* ---- Rock by depth ------------------------------------------------------------------------------------------------ */
@@ -322,7 +273,7 @@ void terrain_ore_fill_box(const terrain_ore_t *ore, const terrain_density_box_t 
     /* Row by row, then chunk by chunk from the south-west, as the README says: leaving out a vein that misses a voxel cannot move
      * what the others do to it, so any box of it gets the same answer. */
     for (uint32_t r = 0u; r < TERRAIN_ORE_ROWS; r++) {
-        const terrain_ore_row_t *const row = &ORE_TABLE[r];
+        const terrain_ore_row_t *const row = &ore_rows[r];
         const terrain_ore_world_row_t *const world_row = &ore->rows[r];
         const int64_t reach = (int64_t)world_row->reach;
         if ((int64_t)row->z_high + reach < z_first || (int64_t)row->z_low - reach > z_last) {

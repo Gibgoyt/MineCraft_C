@@ -1,0 +1,11 @@
+# High in mountains (iron_high, and iron_peak above 500, holding what iron_high has at about 450), most at about -92 in the middle, and a little everywhere below the sea.
+# Moved from run/src/terrain/ore/index.c by plan 005 phase 11, unchanged. Changing any number changes every world.
+name: iron
+block: iron_ore
+deep_block: deepslate_iron_ore
+drops: raw_iron
+veins:
+  - { row: iron_high, order: 150, z_min: 33, z_max: 500, vein: 9, per_256_chunks: 46080, spread: triangle }
+  - { row: iron_peak, order: 160, z_min: 501, z_max: 1250, vein: 9, per_256_chunks: 15360, spread: uniform }
+  - { row: iron_middle, order: 170, z_min: -170, z_max: -14, vein: 9, per_256_chunks: 5120, spread: triangle }
+  - { row: iron_low, order: 180, z_min: -250, z_max: 18, vein: 4, per_256_chunks: 5120, spread: uniform }

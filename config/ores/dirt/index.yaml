@@ -1,0 +1,10 @@
+# Pockets of soft ground in the stone.
+# Moved from run/src/terrain/ore/index.c by plan 005 phase 11, unchanged. Changing any number changes every world.
+name: dirt
+block: dirt
+order: 10
+z_min: -123
+z_max: 189
+vein: 33
+per_256_chunks: 3584
+spread: uniform

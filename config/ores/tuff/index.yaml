@@ -1,0 +1,10 @@
+# Only in the deep rock.
+# Moved from run/src/terrain/ore/index.c by plan 005 phase 11, unchanged. Changing any number changes every world.
+name: tuff
+block: tuff
+order: 90
+z_min: -250
+z_max: -123
+vein: 64
+per_256_chunks: 1024
+spread: uniform

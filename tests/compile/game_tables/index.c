@@ -326,9 +326,9 @@ TEST(the_tool_makes_the_same_bytes_as_the_build) {
     test_process_run(t, argv, GTT_TIMEOUT_MS, &run);
     CHECK_EQ_I64(run.exit_code, 0);
     CHECK_STR_EQ(run.output, "");
-    const char *const files[] = {"blocks/index.h", "blocks/index.c",  "items/index.h",
-                                 "items/index.c",  "recipes/index.h", "recipes/index.c"};
-    for (uint32_t i = 0; i < 6u; i++) {
+    const char *const files[] = {"blocks/index.h",  "blocks/index.c",  "items/index.h", "items/index.c",
+                                 "recipes/index.h", "recipes/index.c", "ores/index.h",  "ores/index.c"};
+    for (uint32_t i = 0; i < sizeof(files) / sizeof(files[0]); i++) {
         uint64_t left_length = 0;
         uint64_t right_length = 0;
         const char *left = gtt_read(t, gtt_path(t, out, files[i]), &left_length);
@@ -1360,6 +1360,92 @@ TEST(an_animal_makes_its_sexes_rows_and_its_rules) {
     const char *const plain = gtt_read(t, gtt_path(t, tree.borrowed_out, "mobs/index.c"), &length);
     CHECK_CONTAINS(plain, ".min_light = 0, .mind = MOB_MIND_HOSTILE, .on_count = 0");
     CHECK_CONTAINS(plain, ".min_height = -1250, .max_height = 1250, .first_sex = 0, .biome_count = 0");
+}
+
+/* Ores: the tree's stone, which drops coal, as an ore, and a second ore of two rows. Each mistake replaces the first file. */
+#define GTT_ORE_START "name: seam\nblock: stone\n"
+#define GTT_ORE_ROW "order: 20\nz_min: -100\nz_max: 50\nvein: 6\nper_256_chunks: 1024\n"
+
+static void gtt_ores_make(test_context_t *t, const gtt_tree_t *tree, const char *seam) {
+    gtt_mkdirs(t, gtt_path(t, tree->borrowed_config, "ores/seam"));
+    gtt_mkdirs(t, gtt_path(t, tree->borrowed_config, "ores/layered"));
+    gtt_write(t, gtt_path(t, tree->borrowed_config, "ores/seam/index.yaml"), seam);
+    gtt_write(
+        t, gtt_path(t, tree->borrowed_config, "ores/layered/index.yaml"),
+        "name: layered\nblock: stone\ndeep_block: stone\nveins:\n"
+        "  - { row: layered_low, order: 30, z_min: -250, z_max: 0, vein: 4, per_256_chunks: 300, spread: triangle }\n"
+        "  - { row: layered_high, order: 10, z_min: 1, z_max: 900, vein: 9, per_256_chunks: 5, "
+        "min_column_height: 120 }\n");
+}
+
+TEST(a_whole_tree_of_ores_becomes_a_table_in_order) {
+    const gtt_tree_t tree = gtt_tree_make(t, "ores_good");
+    gtt_ores_make(t, &tree, GTT_ORE_START "drops: coal\n" GTT_ORE_ROW "spread: triangle\n");
+    test_process_t run;
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 0);
+    CHECK_STR_EQ(run.output, "");
+    uint64_t length = 0;
+    const char *const source = gtt_read(t, gtt_path(t, tree.borrowed_out, "ores/index.c"), &length);
+    const char *const header = gtt_read(t, gtt_path(t, tree.borrowed_out, "ores/index.h"), &length);
+    REQUIRE(source != nullptr);
+    REQUIRE(header != nullptr);
+    CHECK_CONTAINS(header, "#define ORE_ROW_COUNT 3u");
+    const char *const high = strstr(source, "\"ore/layered_high\", .per_chunk_256 = 5u, .z_low = 1, .z_high = 900, "
+                                            ".min_column_height = 120, .block = BLOCK_ID_STONE, .deep_block = "
+                                            "BLOCK_ID_STONE, .size = 9u, .spread = ORE_SPREAD_UNIFORM}");
+    const char *const seam = strstr(source, "\"ore/seam\", .per_chunk_256 = 1024u, .z_low = -100, .z_high = 50, "
+                                            ".min_column_height = ORE_ANY_COLUMN, .block = BLOCK_ID_STONE, "
+                                            ".deep_block = BLOCK_ID_STONE, .size = 6u, .spread = ORE_SPREAD_TRIANGLE}");
+    const char *const low = strstr(source, "\"ore/layered_low\", .per_chunk_256 = 300u, .z_low = -250, .z_high = 0, ");
+    CHECK(high != nullptr && seam != nullptr && low != nullptr);
+    CHECK(high < seam && seam < low); /* by order, not by file */
+    CHECK_CONTAINS(source, "/* config/ores/seam, order 20 */");
+}
+
+static const gtt_bad_case_t GTT_BAD_ORES[] = {
+    {GTT_ORE_START "colour: blue\n" GTT_ORE_ROW, ":3:", "unknown field 'colour' in an ore"},
+    {"name: other\nblock: stone\n" GTT_ORE_ROW, ":1:", "is not its directory's"},
+    {"name: seam\n" GTT_ORE_ROW, ":1:", "missing field 'block'"},
+    {GTT_ORE_START "deep_block: deepslate_ghost\n" GTT_ORE_ROW, ":3:", "block 'deepslate_ghost' does not exist"},
+    {GTT_ORE_START "drops: nothing\n" GTT_ORE_ROW, ":3:", "item 'nothing' does not exist"},
+    {GTT_ORE_START "drops: stone\n" GTT_ORE_ROW, ":3:", "drops 'stone', and block 'stone' does not drop it"},
+    {GTT_ORE_START "z_min: -100\nz_max: 50\nvein: 6\nper_256_chunks: 1024\n", ":1:", "missing field 'order'"},
+    {GTT_ORE_START "order: 20\nz_min: 50\nz_max: 50\nvein: 6\nper_256_chunks: 1024\n",
+     ":1:", "z_min 50 must be below z_max 50"},
+    {GTT_ORE_START "order: 20\nz_min: -1300\nz_max: 50\nvein: 6\nper_256_chunks: 1024\n", ":4:", "z_min is -1300"},
+    {GTT_ORE_START "order: 20\nz_min: -100\nz_max: 50\nvein: 0\nper_256_chunks: 1024\n", ":6:", "vein is 0"},
+    {GTT_ORE_START "order: 20\nz_min: -100\nz_max: 50\nvein: 256\nper_256_chunks: 1024\n", ":6:", "vein is 256"},
+    {GTT_ORE_START GTT_ORE_ROW "spread: lumpy\n", ":8:", "unknown spread 'lumpy'"},
+    {GTT_ORE_START GTT_ORE_ROW "min_column_height: 2000\n", ":8:", "min_column_height is 2000"},
+    {GTT_ORE_START "order: 30\nz_min: -100\nz_max: 50\nvein: 6\nper_256_chunks: 1024\n",
+     ":3:", "order 30 is also row 'layered_low'"},
+    {GTT_ORE_START "veins:\n  - { row: layered_low, order: 40, z_min: 0, z_max: 9, vein: 1, per_256_chunks: 1 }\n",
+     ":4:", "row 'layered_low' is also in"},
+    {GTT_ORE_START "order: 20\nveins:\n  - { row: a, order: 40, z_min: 0, z_max: 9, vein: 1, per_256_chunks: 1 }\n",
+     ":3:", "'order' goes in each of veins"},
+    {GTT_ORE_START "veins: []\n", ":3:", "veins must be a list of at least one"},
+    {GTT_ORE_START "veins:\n  - just_a_name\n", ":4:", "a vein must be a mapping"},
+    {GTT_ORE_START "veins:\n  - { order: 40, z_min: 0, z_max: 9, vein: 1, per_256_chunks: 1 }\n",
+     ":4:", "missing field 'row'"},
+    {GTT_ORE_START "veins:\n  - { row: a, order: 40, z_min: 0, z_max: 9, vein: 1, per_256_chunks: 1, depth: 3 }\n",
+     ":4:", "unknown field 'depth' in a vein"},
+    {"- a\n- list\n", ":1:", "an ore's file must be a mapping"},
+};
+
+TEST(each_bad_ore_is_refused_at_its_line_and_nothing_is_written) {
+    const gtt_tree_t tree = gtt_tree_make(t, "ores_bad");
+    for (uint32_t i = 0u; i < sizeof(GTT_BAD_ORES) / sizeof(GTT_BAD_ORES[0]); i++) {
+        gtt_ores_make(t, &tree, GTT_BAD_ORES[i].text);
+        test_process_t run;
+        gtt_tree_run(t, &tree, &run);
+        CHECK_EQ_I64(run.exit_code, 1);
+        CHECK_CONTAINS(run.output, GTT_BAD_ORES[i].position);
+        CHECK_CONTAINS(run.output, GTT_BAD_ORES[i].message);
+        CHECK_CONTAINS(run.output, "nothing was written");
+    }
+    struct stat info;
+    CHECK(stat(gtt_path(t, tree.borrowed_out, "ores/index.c"), &info) != 0);
 }
 
 TEST(a_bad_command_line_says_how) {
