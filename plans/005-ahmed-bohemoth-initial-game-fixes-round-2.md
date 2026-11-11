@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2
 
-**Status:** being built by waves of agents, from 2026-11-10. Done so far: phases 1, 2, 3, 4, 5, 7, 9, 10, 12 and 13; phase 8's labels; phase 14's measuring, live test, far-field fix and job priorities (the near rings' last seconds in progress). **Render distance 64 now settles in about 4 s,** and a mined block goes at once   (updated 2026-11-09)
+**Status:** being built by waves of agents, from 2026-11-10. Done so far: phases 1, 2, 3, 4, 5, 7, 9, 10, 12 and 13; phase 8's labels; phase 11 part A; phase 14 (a new world fills in at render distance 32 in about 3.3 s, and every live change shows within 1 s). **Render distance 64 now settles in about 4 s,** and a mined block goes at once   (updated 2026-11-09)
 
 ## Context
 
