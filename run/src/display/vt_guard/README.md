@@ -38,7 +38,7 @@ Magic SysRq is not part of this. It is `16` on this machine (`/proc/sys/kernel/s
 
 ## Two layers
 
-**In this process:** a handler on the signals below, through the one `borrowed_` static the lint allows, on its own stack so that a stack overflow can run it. It restores everything, says so, and dies of the same signal, so the exit status and core dump stay true: `SIGSEGV SIGBUS SIGFPE SIGILL SIGABRT SIGSYS SIGTRAP SIGXCPU SIGXFSZ SIGALRM SIGVTALRM SIGPROF SIGSTKFLT`. `SIGTERM SIGINT SIGHUP SIGQUIT` are `display`'s, as a request to stop.
+**In this process:** a handler on the signals below, through the one `borrowed_` static the lint allows, on its own stack so that a stack overflow can run it. It restores everything, says so, and dies of the same signal, so the exit status and core dump stay true. Every crash signal is blocked while it runs, so it is never entered again from inside itself: a fault inside it gets the kernel's default action and ends the process at once, and the guardian finishes. The signals: `SIGSEGV SIGBUS SIGFPE SIGILL SIGABRT SIGSYS SIGTRAP SIGXCPU SIGXFSZ SIGALRM SIGVTALRM SIGPROF SIGSTKFLT`. `SIGTERM SIGINT SIGHUP SIGQUIT` are `display`'s, as a request to stop.
 
 **The guardian:** a second process, forked before anything is taken, ended by the closing of a pipe. So it cannot be left behind. It covers what a handler cannot:
 
@@ -54,7 +54,7 @@ It shares the card and console descriptors, so it can do the restore, and it rea
 
 Unless it is root, its `DROP_MASTER` is refused with `EACCES`: `drm_master_check_perm` takes it only from the thread group that opened the card. Everything else in the restore goes on regardless, `SETCRTC` is not held to that rule, and master goes with the card's last descriptor when the guardian exits. It ignores every signal it can, except that `SIGKILL` of it directly loses this layer: the program's pets then fail quietly and the handler still works.
 
-The restore is a list of steps, each claimed once by an atomic counter, so any thread may run it and a fault in one step resumes at the next. Order: the CRTC, `DROP_MASTER`, `KD_TEXT` (all three in `display_flip_restore`); keyboard mode; `VT_RELDISP(1)` in case a switch is waiting on an answer that is never coming; `VT_MODE`.
+The restore is a list of steps run once each, in one flat loop, each claimed by an atomic counter so that a second caller (another thread's crash) goes on from the next unclaimed step and never repeats one. A fault inside a step ends the process there, with every earlier step's part of the console already back; the guardian, seeing no "done", restores the rest from its own copy. Order: the CRTC, `DROP_MASTER`, `KD_TEXT` (all three in `display_flip_restore`); keyboard mode; `VT_RELDISP(1)` in case a switch is waiting on an answer that is never coming; `VT_MODE`.
 
 ## VT switching
 

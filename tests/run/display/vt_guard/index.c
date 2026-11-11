@@ -10,6 +10,7 @@
 #include <linux/input.h>
 #include <poll.h>
 #include <stdlib.h>
+#include <sys/resource.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -629,20 +630,36 @@ TEST(the_time_away_on_another_vt_is_not_counted_as_a_late_frame) {
     arena_deinit(rig->borrowed_arena);
 }
 
-/* The crash's own signal and a different one: with the same one, only SA_NODEFER lets the handler carry on. */
-static void check_fault_inside_the_restore(test_context_t *t, display_crash_test_t how) {
+/* How many of these one process asked for. */
+static uint32_t rig_count_by(const rig_t *rig, uint64_t request, uint32_t value, int32_t pid) {
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < rig->record_count; i++) {
+        const rig_record_t *const record = &rig->records[i];
+        count += record->request == request && record->value == value && record->pid == pid ? 1u : 0u;
+    }
+    return count;
+}
+
+/* A fault inside one of the handler's steps, under the crash's own signal and under a different one. The handler is never
+ * entered again: every crash signal is blocked while it runs, so the fault ends the process there with the kernel's default
+ * action, SIGSEGV either way. The steps before it have done their part; the guardian does the faulted step and the rest. */
+static void check_fault_inside_the_restore(test_context_t *t, display_crash_test_t how, uint64_t fault_request) {
     rig_t *const rig = rig_new(t);
-    rig->fault_request = KDSETMODE;
-    rig->guard.watchdog_ns = 60000000000; /* the handler waits out its own lost step, which must not count as a hang */
+    rig->fault_request = fault_request;
+    /* The process dies of SIGSEGV with no handler, which dumps core: that can take longer than the rig's watchdog, which
+     * would then answer instead of the pipe closing. No core, and a watchdog that cannot come first. */
+    rig->guard.watchdog_ns = 60000000000;
     const int32_t child = fork();
     REQUIRE(child >= 0);
     if (child == 0) {
+        const struct rlimit no_core = {.rlim_cur = 0, .rlim_max = 0};
+        (void)setrlimit(RLIMIT_CORE, &no_core);
         rig_child_begin(rig);
         if (!display_vt_guard_take_console(&rig->guard)) {
             _exit(1);
         }
-        /* After the takeover's own KDSETMODE. So this fault is in the handler's KD_TEXT. Not in the guardian: it is forked
-         * earlier, and has fault_armed clear in its own copy. */
+        /* After the takeover's own KDSETMODE and VT_SETMODE. So this fault is in the handler's restore. Not in the
+         * guardian: it is forked earlier, and has fault_armed clear in its own copy. */
         rig->fault_armed = 1u;
         display_vt_guard_crash_now(how);
         _exit(2);
@@ -650,25 +667,37 @@ static void check_fault_inside_the_restore(test_context_t *t, display_crash_test
     char *const output = test_alloc(t, 8192u);
     int32_t status = 0;
     rig_collect(t, rig, child, &status, output, 8192u);
-    CHECK(WIFSIGNALED(status));
-    /* The handler lost KD_TEXT to the fault, and got no "done" out, so the guardian did it. */
-    const int32_t text = rig_find(rig, KDSETMODE, KD_TEXT, 0);
-    REQUIRE(text >= 0);
-    CHECK(rig->records[text].pid != child);
-    /* The rest the handler carried on with regardless. */
-    bool handler_did_vt_mode = false;
-    for (uint32_t i = 0; i < rig->record_count; i++) {
-        const rig_record_t *const record = &rig->records[i];
-        handler_did_vt_mode |= record->request == VT_SETMODE && record->value == VT_AUTO && record->pid == child;
+    REQUIRE(WIFSIGNALED(status));
+    CHECK_EQ_I64(WTERMSIG(status), SIGSEGV);
+    /* The handler did the steps before the fault. */
+    CHECK_EQ_U64(rig_count_by(rig, DRM_IOCTL_MODE_SETCRTC, RIG_SAVED_FB, child), 1u);
+    const uint32_t handler_text = rig_count_by(rig, KDSETMODE, KD_TEXT, child);
+    const uint32_t handler_keyboard = rig_count_by(rig, KDSKBMODE, (uint32_t)RIG_KB_MODE, child);
+    if (fault_request == KDSETMODE) {
+        CHECK_EQ_U64(handler_text, 0u);
+        CHECK_EQ_U64(handler_keyboard, 0u);
+    } else {
+        CHECK_EQ_U64(handler_text, 1u);
+        CHECK_EQ_U64(handler_keyboard, 1u);
+        CHECK_EQ_U64(rig_count_by(rig, VT_RELDISP, 1u, child), 1u);
     }
-    CHECK(handler_did_vt_mode);
-    CHECK_CONTAINS(output, "the program crashed; the console has been given back");
+    /* And nothing after it: no step ran twice or past the fault in the program. */
+    CHECK_EQ_U64(rig_count_by(rig, VT_SETMODE, VT_AUTO, child), 0u);
+    /* The guardian, which never heard "done", did the whole give-back from its copy. */
+    const int32_t text = rig_find(rig, KDSETMODE, KD_TEXT, 0);
+    const int32_t vt_mode = rig_find(rig, VT_SETMODE, VT_AUTO, 0);
+    REQUIRE(text >= 0);
+    REQUIRE(vt_mode >= 0);
+    CHECK(rig->records[vt_mode].pid != child);
+    CHECK(output != nullptr && strstr(output, "the program crashed; the console has been given back") == nullptr);
     CHECK_CONTAINS(output, "the program ended without giving the console back");
 }
 
-TEST(a_fault_inside_the_restore_is_finished_by_the_guardian) {
-    check_fault_inside_the_restore(t, DISPLAY_CRASH_TEST_ABORT);
-    check_fault_inside_the_restore(t, DISPLAY_CRASH_TEST_SEGV);
+TEST(a_fault_inside_the_restore_ends_the_process_and_the_guardian_finishes) {
+    check_fault_inside_the_restore(t, DISPLAY_CRASH_TEST_ABORT, KDSETMODE);
+    check_fault_inside_the_restore(t, DISPLAY_CRASH_TEST_SEGV, KDSETMODE);
+    check_fault_inside_the_restore(t, DISPLAY_CRASH_TEST_ABORT, VT_SETMODE);
+    check_fault_inside_the_restore(t, DISPLAY_CRASH_TEST_SEGV, VT_SETMODE);
 }
 
 /* ---- What no handler can catch ----------------------------------------------------------------------------------- */

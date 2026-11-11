@@ -60,8 +60,8 @@ typedef struct display_vt_guard_t {
     int32_t saved_kb_mode;
     int32_t guardian_pid; /* 0 when there is none */
     int32_t pipe_fd;      /* our end of the guardian's pipe. Its closing is what tells the guardian we are gone */
-    /* The restore is a list of steps, each claimed once, so that any thread may run it, a fault inside one step does not lose
-     * the others, and a second caller does not repeat it. */
+    /* The restore is a list of steps, each claimed once, so that any thread may run it and a second caller does not repeat
+     * it. A fault inside one step ends the process there; the guardian does the rest. */
     _Atomic uint32_t restore_next;
     _Atomic uint32_t restore_done;
     uint32_t keyboard_count;

@@ -11,6 +11,8 @@
 
 **It never calls a KD or VT ioctl on a real tty and never opens `/dev/input`.** Each test forks a child, which arms the real guard over a table of ops whose `ioctl_call` records to a pipe and answers from the test's script, and whose `open_keyboards` returns a pipe the test writes `input_event` structs into. The signals, the fork of the guardian, its pipe and its polling are all real, so a child that faults really dies of it and the guardian really outlives it. The descriptors 5 and 7 given to the guard are never used for anything but the fake's bookkeeping.
 
+A fault inside the crash handler's own restore (at `KD_TEXT`, the first step, and at `VT_SETMODE`, the last, under the crash's own signal and under another) must end the process with `SIGSEGV` at once, with the steps before it done by the program and none after it, and the guardian doing the whole give-back: the handler is never entered again from inside itself.
+
 The real program only ever gets `/dev/null` for stdin (the harness does that), which `display_device_check_console` refuses before anything else.
 
 The fake refuses `DROP_MASTER` with `EACCES` from anyone but the process that took the console, as `drm_master_check_perm` in `drivers/gpu/drm/drm_auth.c` does for anyone but root, so every guardian path here runs with that refusal. A keyboard unplugged is its pipe ending, and a second pipe is what the guardian finds when it looks again.

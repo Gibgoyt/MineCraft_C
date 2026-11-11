@@ -46,10 +46,10 @@ the injector (16384) were full, limited only by `JOB_INLINE_DEPTH_MAX` 32 and an
   spawns itself
 - [x] `job_chain`'s depth-abort misuse test replaced by "a full queue makes `job_spawn` return false, and nothing runs
   inline"; every other job test kept
-- [ ] Crash handler: no `SA_NODEFER`. Every crash signal is blocked while the handler runs, the restore steps run once
+- [x] Crash handler: no `SA_NODEFER`. Every crash signal is blocked while the handler runs, the restore steps run once
   from a flat loop, and a fault inside a step ends the process with the kernel's default action, every earlier step
   having restored its part. Tests and README updated
-- [ ] Checked: `git grep -n 'SA_NODEFER\|JOB_INLINE_DEPTH_MAX' -- run tests` prints nothing, and no function passed to
+- [x] Checked: `git grep -n 'SA_NODEFER\|JOB_INLINE_DEPTH_MAX' -- run tests` prints nothing, and no function passed to
   `job_spawn`, `job_submit*` or `job_try_submit*` can reach itself or a caller through a job
 
 ### Lint (agent R2)
@@ -83,6 +83,8 @@ After R2 lands: reverting R1's census change in a scratch branch makes `mc_recur
 ## Commits
 
 Appended as they land:
+
+- `a2321480` Make job_spawn return false when every queue is full instead of running the job inline, and let the sim hand out census blocks.
 
 ## Issues found
 

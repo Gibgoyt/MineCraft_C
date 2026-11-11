@@ -147,8 +147,10 @@ static void guard_run_step(display_vt_guard_t *guard, uint32_t step) {
     }
 }
 
-/* Safe in a signal handler, from any thread, at any time, and inside itself. A later caller, and a handler re-entered by a
- * fault in a step, each pick up at the next unclaimed step. */
+/* Safe in a signal handler, from any thread, at any time. One flat pass over the steps, each claimed once: a second caller,
+ * such as another thread's crash, picks up at the next unclaimed step and never repeats one. Nothing here runs inside
+ * itself: the crash handler blocks every crash signal while it runs, so a fault inside a step ends the process there, with
+ * every earlier step's part of the console already back, and the guardian finishes the rest. */
 static void guard_restore_all(display_vt_guard_t *guard) {
     for (;;) {
         const uint32_t step = atomic_fetch_add_explicit(&guard->restore_next, 1u, memory_order_acq_rel);
@@ -158,8 +160,8 @@ static void guard_restore_all(display_vt_guard_t *guard) {
         guard_run_step(guard, step);
         atomic_fetch_add_explicit(&guard->restore_done, 1u, memory_order_acq_rel);
     }
-    /* Another thread may hold a step. Dying now would cut it off, so wait for it, but not for ever: it may be our own step
-     * that faulted, and then the guardian finishes the job. */
+    /* Another thread may hold a step. Dying now would cut it off, so wait for it, but not for ever: that thread may have
+     * died inside it, and then the guardian finishes the job. */
     const int64_t started_ns = time_now_ns();
     while (atomic_load_explicit(&guard->restore_done, memory_order_acquire) < GUARD_STEP_COUNT &&
            time_now_ns() - started_ns < GUARD_RESTORE_WAIT_NS) {
@@ -175,14 +177,19 @@ static void guard_on_crash(int32_t signal_number) {
         guard_restore_all(guard);
         guard_say("\nvt_guard: the program crashed; the console has been given back\n");
     }
-    /* Die of the same signal, so that the exit status and any core dump say what really happened. SA_NODEFER lets this
-     * arrive here and now. If it somehow does not, the faulting instruction runs again on return, with no handler. */
+    /* Die of the same signal, so that the exit status and any core dump say what really happened. It is blocked while
+     * this handler runs, so it is let through here, with no handler, and arrives at once. If it somehow does not, the
+     * faulting instruction runs again on return, with no handler. */
     struct sigaction action;
     memset(&action, 0, sizeof(action));
     action.sa_handler = SIG_DFL;
     sigemptyset(&action.sa_mask);
     sigaction(signal_number, &action, nullptr);
+    sigset_t own;
+    sigemptyset(&own);
+    sigaddset(&own, signal_number);
     raise(signal_number);
+    sigprocmask(SIG_UNBLOCK, &own, nullptr);
 }
 
 static void guard_on_release(int32_t signal_number) {
@@ -210,13 +217,18 @@ static void guard_install_handlers(display_vt_guard_t *guard) {
 
     struct sigaction action;
     memset(&action, 0, sizeof(action));
+    /* Every crash signal is blocked while the handler runs, so it is never entered again from inside itself. A fault inside
+     * it, of any of them, then gets the kernel's default action: the process ends there, and the guardian finishes. */
     sigemptyset(&action.sa_mask);
-    /* SA_NODEFER: a fault inside the handler must re-enter it, to go on with the next step, and not kill us on the spot. */
-    action.sa_flags = SA_ONSTACK | SA_NODEFER;
+    for (uint32_t i = 0; i < GUARD_FATAL_SIGNALS; i++) {
+        sigaddset(&action.sa_mask, guard_fatal_signals[i]);
+    }
+    action.sa_flags = SA_ONSTACK;
     action.sa_handler = guard_on_crash;
     for (uint32_t i = 0; i < GUARD_FATAL_SIGNALS; i++) {
         sigaction(guard_fatal_signals[i], &action, &saved->saved[i]);
     }
+    sigemptyset(&action.sa_mask);
     action.sa_flags = SA_RESTART;
     action.sa_handler = guard_on_release;
     sigaction(SIGUSR1, &action, &saved->saved[GUARD_FATAL_SIGNALS]);
