@@ -86,6 +86,8 @@ Appended as they land:
 
 - `a2321480` Make job_spawn return false when every queue is full instead of running the job inline, and let the sim hand out census blocks.
 - `7cf883a1` Block every crash signal while vt_guard's crash handler runs, so it is never entered again from inside itself.
+- `42a26d29` Count kernel launches as calls in the CUDA recursion scan, find bodies with qualifiers before their brace, and key static functions by file.
+- `f56cd409` Make the recursion check follow jobs and hold every other call through a function pointer to a reviewed list, ban SA_NODEFER, and check the fuzzers and the soak too.
 
 ## Issues found
 
@@ -190,3 +192,8 @@ body rule applies to C files too; the tree lint stays clean.
 just the dispatcher listed, reports cycle A and the others: `census_slot_take -> job_spawn -> job_run -> census_day_job`
 (and `census_slot_job`), `atlas_draw_job`, and the job tests' `job_drain_root`, `job_order_spawner`,
 `job_order_near_then_spawn`, `job_overflow_parent` and `job_steal_parent`, each as `[recursion]`.
+
+**10. Verification, 2026-11-10, rebased on R1.** Debug build: exit 0, `standards_lint: clean, 664 source files` and
+`standards_lint: no recursion`. `ctest --preset debug -R '^(compile_standards_lint.*|standards_lint.*|clang_format)$'`: 5 of 5
+passed. Release configure and build: exit 0, `no recursion`. In release the scan skips one submission, `pr_job` in
+`tests/run/profiler/` under `#if PROFILER_BUILT`, which release does not compile; debug skips none.
