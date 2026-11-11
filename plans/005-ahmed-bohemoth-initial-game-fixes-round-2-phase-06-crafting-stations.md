@@ -104,6 +104,10 @@ Ahmed: start a new world with nothing, and work up through each station to iron 
 
 Appended as they land:
 
+- `25e78b06` Give each kind of making its own station: the crafting table makes only the stations, the hands make the table from logs, and the woodworking and stoneworking benches, a 2 by 2 smith table, a leather workbench, a tanning rack and a blast furnace each make their own, with every recipe moved to its station in YAML.
+- `d5c80787` Retune the playthroughs to the stations, and record the build in this file.
+- `b77024aa` Put four logs in the hands' grid in the save-names test, as a single log no longer makes planks there.
+
 ## Issues found
 
 **Built from 2026-11-10 on Ahmed's instruction** (2026-11-10: "build it now with the proposed order; I will change it after my Hypixel research"). The order, the stations and every recipe's place are in YAML, so rearranging is changing `station:` lines.
@@ -145,6 +149,8 @@ Appended as they land:
 **12. Pictures.** Regenerated with `MC_GOLDEN_WRITE=1` and looked at: `run_ui_screens`' `inventory_carrying.png` and `inventory_tooltip.png` (four logs making a crafting table, which ends in slot 3), `crafting_ready.png` and `crafting_done.png` (the stone pickaxe now at the stoneworking bench, titled "Stoneworking"). New: `smithing_ready.png` (the smith table's grid and its three faint alloy slots under "Alloy"), `tanning_working.png` and `tanning_done.png` (no fuel slot, no flame, two hides to two leather), and `render_feature_shapes`' `stations.png` and `stations_back.png` (the smith table each of the four ways, the three two-long stations, the blast furnace cold and lit). The two tests are already in `MC_ART_TESTS`. 43 new procedural textures (the stations' faces and items, the blast furnace, copper tools), each in `textures/vector.yaml` and `textures/import_minecraft_default.yaml` (the smithing table, blast furnace and copper tools mapped to Minecraft's, the rest `keep`), with `blocks/blast_furnace_front_lit` emissive as the furnace's is. The UI tables stay under their 1.25 MiB (`run_ui_font`, `run_ui_hud` pass).
 
 **13. `tests/run/item/crafting/index.c` is 1560 lines,** past the 1500 where a file should split (the 2000 limit holds): the blast furnace and tanning rack in the world went beside the furnace's own test, which needs its world fixture. A split is left for whoever next adds to it.
+
+**14. Test results, 2026-11-10/11, at `b77024aa`.** `tools/test-or-build.sh cmake --build --preset debug`: exit 0. The full debug suite, `tools/test-or-build.sh timeout 2700 ctest --preset debug -I 1,85` then `-I 86,300`: 85 of 85 pass, and 75 of 76, the one failure `run_save_state_names`, whose hands' grid held a single log that no longer makes planks (a crash on reading `recipe_defs[CRAFTING_NO_RECIPE]`); fixed in `b77024aa` (four logs, the hands' station), and it, `clang_format` and `standards_lint` pass. Every other test passed in that run, `run_playthrough` (124.9 s) among them. Release: `tools/test-or-build.sh cmake --preset release` and `cmake --build --preset release`: exit 0. `pgrep -af "$PWD/build"` and `pgrep -a minecraft_c`: nothing.
 
 **History:** blocked on purpose until 2026-11-10, while Ahmed researched Hypixel and Hytale; he then said to build the proposal and change it later.
 
