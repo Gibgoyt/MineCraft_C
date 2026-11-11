@@ -515,7 +515,14 @@ TEST(render_distance_and_full_detail_changes_show_within_a_second_and_a_mined_lo
 
     /* Ahmed's settings.yaml: render distance 32, full detail 32, room for 32. The day stands still and each frame stands alone, so the
      * picture changes only with the world. */
-    game_config_t config = {.render_distance = 32u,
+    /* MC_DISTANCE_LIVE_OPEN measures a new world at another render distance, as a raised default would open it (plan 005 phase 8). */
+    const char *const open_text = getenv("MC_DISTANCE_LIVE_OPEN");
+    const uint64_t open_asked = open_text != nullptr && open_text[0] != '\0' ? strtoull(open_text, nullptr, 10) : 32u;
+    const uint32_t open_distance =
+        open_asked >= 2u && open_asked <= (uint64_t)MC_GAME_RENDER_DISTANCE_MAX ? (uint32_t)open_asked : 32u;
+    char open_name[16];
+    (void)snprintf(open_name, sizeof(open_name), "open_%" PRIu32, open_distance);
+    game_config_t config = {.render_distance = open_distance,
                             .full_detail = 32u,
                             .table_chunks = 32u,
                             .width = DL_WIDTH,
@@ -533,16 +540,16 @@ TEST(render_distance_and_full_detail_changes_show_within_a_second_and_a_mined_lo
     printf("  game_open took %.2f s, at %.1f, %.1f, %.1f\n", (libc_double_t)dl_seconds(open_ns),
            (libc_double_t)game->camera.position[0], (libc_double_t)game->camera.position[1],
            (libc_double_t)game->camera.position[2]);
-    REQUIRE(dl_watch(t, &rig, &watch, "open_32", sequence, 0, &step));
+    REQUIRE(dl_watch(t, &rig, &watch, open_name, sequence, 0, &step));
     {
         const bool near = step.fill.ring_near_ns >= 0 && step.fill.ring_near_ns < DL_NEAR_DEADLINE_NS;
         const bool all = step.fill.done_ns >= 0 && step.fill.done_ns < DL_SETTLE_DEADLINE_NS;
         if (!near) {
-            printf("  MISSED open_32: the ground out to 4 chunks at %.2f s, not under %.2f s\n",
+            printf("  MISSED %s: the ground out to 4 chunks at %.2f s, not under %.2f s\n", open_name,
                    (libc_double_t)dl_seconds(step.fill.ring_near_ns), (libc_double_t)dl_seconds(DL_NEAR_DEADLINE_NS));
         }
         if (!all) {
-            printf("  MISSED open_32: everything at %.2f s, not under %.2f s\n",
+            printf("  MISSED %s: everything at %.2f s, not under %.2f s\n", open_name,
                    (libc_double_t)dl_seconds(step.fill.done_ns), (libc_double_t)dl_seconds(DL_SETTLE_DEADLINE_NS));
         }
         if (watch.deadlines != 0u) {

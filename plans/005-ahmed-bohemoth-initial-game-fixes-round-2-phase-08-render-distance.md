@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2 — phase 8: How far you can see
 
-**Status:** in progress: labels, explanations and their tests done; the raised default and the mountain check wait for phase 14   (updated 2026-11-10)
+**Status:** in progress: labels, explanations, the mountain check and their tests done. **The default stays 32:** measured after phase 14, every raise costs the frame rate far more than the target allows, because of how the far field traces rays past see-through blocks (Issues found). The raise waits for that fix, the new todo below   (updated 2026-11-11)
 
 ## Goal
 
@@ -21,8 +21,9 @@ Settings says plainly how far you'll see, in blocks as well as chunks, and the d
 
 - [x] Show blocks on both sliders in `run/src/ui/screen_settings/index.c`: "Render distance: 32 chunks (512 blocks)". Shipped as "Render distance: 32 (512 blocks)": see Issues found
 - [x] Explain the two settings in one line each on the Settings screen: full detail, and how far to draw at all. A tooltip by the pointer over each slider
-- [ ] **Only after phase 14 is fixed,** raise the default render distance, keeping full detail at 32, to the highest that still holds the frame target on `bench_world`. Measure, and record the numbers here. **Waits for phase 14.**
-- [ ] Check the far field looks right from a mountain at the new default, with screenshots checked by eye. Taller terrain from plan 003 phase 8 may need it tuned. **Waits for phase 14.**
+- [ ] **Only after phase 14 is fixed,** raise the default render distance, keeping full detail at 32, to the highest that still holds the frame target on `bench_world`. Measure, and record the numbers here. **Measured 2026-11-11, not raised:** no distance above 32 holds it. 48 costs as much as 128, and 2 to 4 times the frame on leaves and water. The live test's opening targets hold at 64 and 128. See "The raised default, measured". Waits for the todo below
+- [ ] **New, 2026-11-11:** make the far field's rays past see-through faces cheap in `cuda/src/lod/`. Today every pixel that shows water, leaves or grass sends a far-field ray from the eye, and that ray steps through every near column. Turning those rays off made `jungle/orbit` at 48 cost what it costs at 32. Then measure again and raise the default
+- [x] Check the far field looks right from a mountain, with screenshots checked by eye. Taller terrain from plan 003 phase 8 may need it tuned. Done at 128 and 32, as the default did not move: nothing to tune. See "From a mountain"
 - [x] Add a test that the label shows blocks, and that a `settings.yaml` without the new default still loads as before. The default is not raised yet, so the second half pins that a file without the distances gets today's defaults and Ahmed's 32 and 32 loads as written; when the default is raised, that test needs no change
 
 ## Verification
@@ -52,3 +53,48 @@ Appended as they land:
 
 **Raising render distance is what broke the game, 2026-11-09.** Ahmed raised it to 64, as this file suggested. That turned on the far field, whose builds then took every worker, so near chunks and mined blocks waited for minutes. See phase 14, "Identified". Until phase 14 is fixed, **render distance 32 with full detail 32 is the setting that plays properly**, and this phase's raised default waits for it.
 
+
+### The raised default, measured, 2026-11-11
+
+**Verification, 2026-11-11, release:** `run_ui_screens`, `run_settings`, `render_feature_lod`, `run_render_distance_live`, `standards_lint` and `clang_format` pass. `bench_world` exited 0 in 235.5 s, with 2 of 16 rows at 32 meeting 120 fps (`plains/orbit` 73.6 fps) on today's slow card, the same as at the start of this work (67.5 and 73.7 fps). `pgrep -a minecraft_c` printed nothing.
+
+**The default stays 32, with full detail 32.** No distance above 32 holds the frame target, and phase 14 is not what stands in the way any more: the world fills in fast at any of them. What costs is drawing the far field every frame. Ahmed's `settings.yaml` keeps what it says either way.
+
+**How it was measured.** `bench_world` has a new flag, `--render-distance <chunks>`, which moves the rows held to the frame target (32 until now) to another distance and leaves full detail at 32. `run_render_distance_live` has a new variable, `MC_DISTANCE_LIVE_OPEN=<chunks>`, which opens its world at another distance. Release preset, through the wrapper, 1920 by 1080. Logs are in `scratchpad/p8/` (`bench_*.log`, `one.log`, `live_*_out.log`).
+
+**The card is slow today, and it gets slower within a run.** At 32, `plains/orbit` made 67 to 75 fps (150.7 in plan 001 stage 17.3), and only 2 of 16 rows met 120 fps. Its `shade` pass took 7.8 ms, against 3.4 ms then. Whole runs at a raised distance were worse again. Their heavy rows slowed the card for the rest of the run: `post`, which the far field does not touch, went from 2.0 to 7.8 ms. The 512 row, which the flag does not move, went from 38 to 14 fps. Those whole runs overstate the cost by 2 to 4 times. The same row run twice alone came within 4% (`plains/orbit` at 32: 75.3 and 72.4 fps; at 64: 52.8 and 55.2). So the table is each row in a process of its own, one after another, and it reads the cost against 32 rather than against 120.
+
+| Row, alone | 32 | 48 | 64 | 128 |
+|---|---|---|---|---|
+| `plains/orbit` fps (primary pass, ms) | 75.3, 72.4 (1.45, 1.52) | 56.8 (5.61) | 52.8, 55.2 (6.36, 6.05) | 49.2 (7.19) |
+| `jungle/orbit` | 51.7 (1.66) | 24.3 (20.56) | 21.8 (23.24) | 21.7 (23.67) |
+| `deep_ocean/orbit` | 37.8 (1.72) | 16.9 (27.85) | 6.4 (77.81), the card slowed as above | 15.5 (30.98) |
+| `cave/orbit` | 79 in a whole run (1.47) | | 89.7 (1.45) | |
+
+- **Any far field costs about as much as any other.** 48 is one level of voxels of 4, and 128 is three levels. On plains a raise adds 4 to 6 ms a frame, on leaves 19 to 22 ms, and on water 26 to 29 ms. On the card at its best (stage 17.3: `plains/orbit` 6.64 ms, `jungle/orbit` 8.10 ms, `deep_ocean/orbit` 8.54 ms, already over 8.33), even a third of that misses 120 fps on every one of those rows. Underground nothing changes.
+- **Why: rays past see-through faces.** A pixel's ray goes to the far field if it hit nothing, or if it hit a face with anything to see through: water, leaves, grass, glass (`lod_ray_goes_on`). Such a ray starts at the eye. Each coarse voxel it meets inside full detail is passed over one 16-block column at a time, up to `LOD_SKIPS_MAX` (32) fresh traversals a level. Almost every one of those rays then ends on near ground, so the far result goes unused. **The experiment:** with far rays for misses only, `jungle/orbit` at 48 made 51.5 fps with a primary pass of 2.82 ms, against 24.3 fps and 20.56 ms, and against 51.7 fps at 32. So nearly all the cost is these rays. That change is wrong as it stands, because a window or water would no longer show far hills. It was reverted and is not committed. The fix is the new todo: trace those rays only when the shade pass's own ray really leaves the world, or start them where they leave full detail.
+- **Older numbers agree.** Plan 001 stage 17.3 had `plains/orbit` at 150.7 fps at 32 and `plains/orbit-r512` at 109.6, on the card at its best.
+
+**A new world still fills in fast at a raised distance** (`run_render_distance_live`, report only, its world at 640 by 360, seconds from opening):
+
+| Opens at | Rings out to 4 chunks | All 33 rings | Far field | All | Deadlines (2 s, 15 s) |
+|---|---|---|---|---|---|
+| 32 | 0.09 | 3.43 | none | 3.43 | met |
+| 64 | 0.09 | 5.58 | 7.66 (1618 columns) | 7.66 | met |
+| 128 | 0.09 | 5.52 | 9.56 | 9.56 | met |
+
+The headless game at 128 on Ahmed's seed opened in 7.68 s: 2707 far columns, 29 ms each of workers' time. Each run's later steps, at 64 and back, met their deadlines as phase 14 recorded. So once the frame cost is fixed, 64 or 128 needs nothing more from phase 14.
+
+**Not changed, so nothing to regenerate.** `MC_GAME_RENDER_DISTANCE_DEFAULT` (`config/machine.yaml`'s `game.render_distance_default`) is still 32. So are `the_defaults_are_the_plans_and_every_effect_has_its_own_bit`, `the_file_for_the_defaults_is_exactly_this` and the Settings golden pictures. For the change later: those two tests, `settings_main.png` and `settings_explain.png` draw the default, and `bench_world`'s `BENCH_DISTANCE_TARGET` is the plan's 32, not the default.
+
+**`bench_world`'s `jagged_peaks` rows look at haze.** At 32 their last pictures are sky and fog only, at 48 and 64 too. The eye stands high over a peak and looks a little down at ground out past the fog. Their 150 fps measures little; whoever next touches the bench's places should lower that eye.
+
+### From a mountain, 2026-11-11
+
+The default did not move, so this was done at what Ahmed would set by hand: render distance 128 with full detail 32, and 32 to compare. The headless game ran on Ahmed's seed (`--headless --test-world --seed 11107447384583428913`, 1280 by 720). The eye rose 300 blocks from where the world opens, tipped about 9 degrees down, and took a picture each quarter turn, 2 ticks and again 40 ticks after each turn. The pictures were the same, so TAA has no part in them. Each was looked at by eye. Scripts and pictures are in `scratchpad/p8/` (`mountain.script`, `mountain_128_*/`, `mountain2_128_*/`, `mountain_32_*/`).
+
+- **At 32**, from that height, almost everything is fog: the hill under the eye, and sky. That is Ahmed's "not able to see really far away", seen.
+- **At 128 the far field looks right.** You can see lakes, coasts, badlands and islands out to the horizon. Full detail hands over to the coarse grids with no seam or gap, and the coarse shores, sea and mountains are the colours of the near ones. **Nothing was tuned.**
+- **The tallest peaks fade into fog at the top.** Fog starts at 70% of the render distance: about 1420 blocks at 128. A tall peak's top is further along the ray than its foot, so it melts into the sky first. That is the fog doing its job of hiding the edge of what is drawn. It is not the taller terrain drawn wrong: the coarse columns hold all 1536 blocks of height (`RENDER_LOD_HEIGHT_BLOCKS`).
+- **Forests past about 900 blocks are drawn as plain ground.** Phase 14b chose this (`RENDER_LOD_FEATURES_SHIFT_MAX` 2) so the horizon comes in within a second. From 300 blocks up, the far shores are green or sand with no trees, and nearer ones have their forests. It reads as distance, not as a fault. Putting trees back at voxels of 8 costs about 51 ms more a far column: Ahmed's choice.
+- **The frame at 128 from up there:** a mean of 8.7 ms at 1280 by 720, against 5.2 ms at 32, on today's slow card.

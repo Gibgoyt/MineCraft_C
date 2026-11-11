@@ -50,7 +50,7 @@
 enum : uint32_t {
     BENCH_WIDTH = 1920u,
     BENCH_HEIGHT = 1080u,
-    BENCH_DISTANCE_TARGET = 32u, /* the plan's render distance, and the game's default */
+    BENCH_DISTANCE_TARGET = 32u, /* the plan's distance for the frame target: --render-distance moves it */
     BENCH_DISTANCE_FAR = 128u,
     BENCH_DISTANCE_MOST = 512u,
     BENCH_WARM_FRAMES = 30u,  /* before a settled row counts: TAA has no history to begin with */
@@ -281,8 +281,12 @@ typedef struct bench_options_t {
     uint8_t live;          /* 45: every row but the walk on the game's own threads, against the clock */
     uint8_t weather;       /* 46: --weather: every row with this game_weather_kind_t, 0 for each row's own */
     uint8_t _pad0[1];      /* 47 */
+    /* 48: --render-distance: the rows held to the frame target at this many chunks, not BENCH_DISTANCE_TARGET; 0 for
+     * that. Full detail stays the game's default, so what is past it is the far field (plan 005 phase 8). */
+    uint32_t render_distance;
+    uint8_t _pad1[4]; /* 52 */
 } bench_options_t;
-static_assert(sizeof(bench_options_t) == 48);
+static_assert(sizeof(bench_options_t) == 56);
 
 typedef struct bench_t {
     heap_region_t owned_memory;                   /* 0 */
@@ -954,12 +958,11 @@ static const char *bench_mode_name(uint8_t mode) {
     return mode == BENCH_MODE_LIVE ? "live" : "settled";
 }
 
-static void bench_row_print(const bench_row_t *row, const bench_result_t *r) {
+static void bench_row_print(const bench_row_t *row, bool targeted, const bench_result_t *r) {
     if (r->ran == 0u) {
         printf("%-26s FAILED: its process died, or the log says why\n", row->name);
         return;
     }
-    const bool targeted = row->render_distance == BENCH_DISTANCE_TARGET;
     printf("%-26s %-7s r%-3" PRIu32 " %7.1f fps  card mean %6.2f median %6.2f p99 %6.2f worst %6.2f ms  %s\n",
            row->name, bench_mode_name(row->mode), row->render_distance, (libc_double_t)r->fps,
            (libc_double_t)r->card_mean_ms, (libc_double_t)r->card_median_ms, (libc_double_t)r->card_p99_ms,
@@ -1100,6 +1103,18 @@ static const char *bench_preset_name(void) {
 #endif
 }
 
+/* A row as the flags have it, which is what is run and printed. */
+static bench_row_t bench_row_asked(uint32_t index, const bench_options_t *options) {
+    bench_row_t row = BENCH_ROW_LIST[index];
+    row.god_rays = options->god_rays != 0u ? 1u : row.god_rays;
+    row.weather = options->weather != 0u ? options->weather : row.weather;
+    row.mode = options->live != 0u && row.path != BENCH_PATH_WALK ? (uint8_t)BENCH_MODE_LIVE : row.mode;
+    if (options->render_distance != 0u && row.render_distance == BENCH_DISTANCE_TARGET) {
+        row.render_distance = options->render_distance;
+    }
+    return row;
+}
+
 /* A line per row, tab separated, the same columns forever: a new column goes on the end. See README.md. */
 static bool bench_record(const bench_result_t *results, const bench_options_t *options) {
     FILE *const file = fopen(options->record, "a");
@@ -1130,7 +1145,8 @@ static bool bench_record(const bench_result_t *results, const bench_options_t *o
         (void)strftime(date, sizeof(date), "%Y-%m-%dT%H:%M:%SZ", &parts);
     }
     for (uint32_t i = 0u; i < BENCH_ROWS; i++) {
-        const bench_row_t *const row = &BENCH_ROW_LIST[i];
+        const bench_row_t asked = bench_row_asked(i, options);
+        const bench_row_t *const row = &asked;
         const bench_result_t *const r = &results[i];
         if (r->ran == 0u) {
             continue;
@@ -1174,7 +1190,7 @@ static void bench_usage(const char *program) {
     fprintf(
         stderr,
         "usage: %s [--only <text>] [--features-off <hex>] [--god-rays] [--live] [--weather <kind>] [--record <file>] "
-        "[--label <text>] [--shots <dir>] [--trace <file>] [--list]\n"
+        "[--render-distance <chunks>] [--label <text>] [--shots <dir>] [--trace <file>] [--list]\n"
         "  --only <text>    only the rows whose name holds this, or =<name> for just that row\n"
         "  --features-off <hex>  take these SHADE_FEATURE_* bits away, to see what each costs\n"
         "  --god-rays       every row with god rays too. Not with --record\n"
@@ -1182,6 +1198,9 @@ static void bench_usage(const char *program) {
         "--record\n"
         "  --live           every row but the walk on the game's own threads, against the clock. Not with "
         "--record\n"
+        "  --render-distance <chunks>  the rows held to the frame target at this render distance, not 32, with "
+        "full\n"
+        "                   detail still 32: what a raised default costs\n"
         "  --record <file>  add a line per row to this history: bench/world/history.tsv is the repository's\n"
         "  --label <text>   says what was measured, in the history: no tabs\n"
         "  --shots <dir>    write the last picture of each row here, as a PNG\n"
@@ -1205,15 +1224,6 @@ static uint32_t bench_rows_chosen(const char *only) {
         count += bench_row_chosen(i, only) ? 1u : 0u;
     }
     return count;
-}
-
-/* A row as the flags have it, which is what is run and printed. */
-static bench_row_t bench_row_asked(uint32_t index, const bench_options_t *options) {
-    bench_row_t row = BENCH_ROW_LIST[index];
-    row.god_rays = options->god_rays != 0u ? 1u : row.god_rays;
-    row.weather = options->weather != 0u ? options->weather : row.weather;
-    row.mode = options->live != 0u && row.path != BENCH_PATH_WALK ? (uint8_t)BENCH_MODE_LIVE : row.mode;
-    return row;
 }
 
 static uint64_t bench_page(uint64_t bytes) {
@@ -1262,7 +1272,8 @@ static bool bench_memory(bench_t *bench) {
 }
 
 /* What it comes to, plainly. */
-static void bench_summary(const bench_result_t *results, const char *only) {
+static void bench_summary(const bench_result_t *results, const bench_options_t *options) {
+    const char *const only = options->only;
     uint32_t aimed = 0u, met = 0u;
     float64_t worst_fps = -1.0f64;
     const char *worst_row = "none";
@@ -1286,8 +1297,9 @@ static void bench_summary(const bench_result_t *results, const char *only) {
     /* All effects only on a row with god rays: see README.md. */
     printf("target: %.0f fps at %ux%u, render distance %u: %" PRIu32 " of %" PRIu32
            " rows met it; slowest %s at %.1f fps\n",
-           (libc_double_t)BENCH_TARGET_FPS, BENCH_WIDTH, BENCH_HEIGHT, BENCH_DISTANCE_TARGET, met, aimed, worst_row,
-           (libc_double_t)worst_fps);
+           (libc_double_t)BENCH_TARGET_FPS, BENCH_WIDTH, BENCH_HEIGHT,
+           options->render_distance != 0u ? options->render_distance : (uint32_t)BENCH_DISTANCE_TARGET, met, aimed,
+           worst_row, (libc_double_t)worst_fps);
 }
 
 static bool bench_parse(int32_t argc, char **argv, bench_options_t *out, bool *out_list) {
@@ -1321,6 +1333,14 @@ static bool bench_parse(int32_t argc, char **argv, bench_options_t *out, bool *o
             out->shots = argv[++i];
         } else if (strcmp(argv[i], "--trace") == 0 && has_value) {
             out->trace = argv[++i];
+        } else if (strcmp(argv[i], "--render-distance") == 0 && has_value) {
+            const uint64_t chunks = strtoull(argv[++i], nullptr, 10);
+            if (chunks < 2u || chunks > (uint64_t)MC_GAME_RENDER_DISTANCE_MAX) {
+                fprintf(stderr, "--render-distance takes 2 to %" PRIu32 " chunks\n",
+                        (uint32_t)MC_GAME_RENDER_DISTANCE_MAX);
+                return false;
+            }
+            out->render_distance = (uint32_t)chunks;
         } else {
             return false;
         }
@@ -1462,10 +1482,10 @@ int32_t main(int32_t argc, char **argv) {
         said_card = true;
         status = row_status > status ? row_status : status;
         const bench_row_t asked = bench_row_asked(i, &options);
-        bench_row_print(&asked, &results[i]);
+        bench_row_print(&asked, BENCH_ROW_LIST[i].render_distance == BENCH_DISTANCE_TARGET, &results[i]);
         (void)fflush(stdout);
     }
-    bench_summary(results, options.only);
+    bench_summary(results, &options);
     printf("the whole run took %.1f s\n", (libc_double_t)(time_ns_to_ms(time_now_ns() - run_ns) / 1000.0f64));
     if (options.record != nullptr && !bench_record(results, &options)) {
         status = status > 1 ? status : 1;

@@ -52,6 +52,7 @@ A row is not sound, and the exit status says so, if the last picture has fewer t
 - `--god-rays`: every row with god rays too, as only that is all effects. Not with `--record`, as a line would carry another row's name.
 - `--live`: every row but the walk on the game's own threads against the clock, an orbit included. Not with `--record`, for the same reason.
 - `--weather <kind>`: every row in this weather, as the game's `--weather` takes it: `clear`, `rain`, `snow`, `sleet`, `storm`, `thunder`, `fog`, `dust` or `hurricane`. Not with `--record`, for the same reason.
+- `--render-distance <chunks>`: the rows held to the frame target at this render distance, not 32, with full detail still the game's 32, so the rest is the far field. What a raised default costs (plan 005 phase 8). The history's `render_distance` column says which it was.
 - `--record <file>`: add a line per row to a history. **`bench/world/history.tsv` is the repository's.** New columns go on the end of its first line, and old lines stay.
 - `--label <text>`: says what was measured, in the history, such as the commit.
 - `--shots <dir>`: the last picture of each row as a PNG, to see what a row is looking at.

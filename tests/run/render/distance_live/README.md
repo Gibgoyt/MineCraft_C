@@ -34,6 +34,7 @@ Each step waits for its fill to be done, and then half a second, with at least 2
 | `MC_DISTANCE_LIVE_DEADLINES=0` | Only reports: the deadlines print `MISSED` but do not fail. For measuring code that is known to miss. `=1` holds a debug build to them too, which by default only reports, as its terrain alone misses them (`open_32` took over 20 s at `-O0`) |
 | `MC_DISTANCE_LIVE_WAIT_S=<s>` | Each step waits this long for its fill, not 20 s: 300 measures how long today's code takes to settle |
 | `MC_DISTANCE_LIVE_SHOTS=<dir>` | The pictures at the marks, and each step's last, as PNGs, to look at |
+| `MC_DISTANCE_LIVE_OPEN=<chunks>` | The world opens at this render distance, full detail still 32, not 32: what a new world at a raised default comes to (plan 005 phase 8). The step is `open_<chunks>`. The changes after it are the same, so `rd_64` from 64 changes nothing: read only the opening with it |
 
     MC_DISTANCE_LIVE_DEADLINES=0 MC_DISTANCE_LIVE_SHOTS=/tmp/dl tools/test-or-build.sh timeout 900 ctest --preset release -R '^run_render_distance_live$' --output-on-failure
 
