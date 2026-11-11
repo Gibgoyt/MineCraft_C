@@ -1,0 +1,42 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: iron_door_upper
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The upper half of an iron door: riveted plates with two narrow barred windows of dark glass."
+  seed: 6204
+  ops:
+    - { op: fill, color: "#c4c7cc" }
+    - { op: noise, amount: 7, cell: 2, seed: 41 }
+    - { op: fill, color: "#4d6170", x: 3, y: 2, w: 4, h: 7 }
+    - { op: fill, color: "#4d6170", x: 9, y: 2, w: 4, h: 7 }
+    - { op: gradient, from: "#6f8797", to: "#3d4f5c", axis: y, x: 3, y: 2, w: 10, h: 7 }
+    - { op: fill, color: "#c4c7cc", x: 7, y: 2, w: 2, h: 7 }
+    - { op: fill, color: "#8a8e95", x: 4, y: 2, w: 1, h: 7 }
+    - { op: fill, color: "#8a8e95", x: 10, y: 2, w: 1, h: 7 }
+    - { op: outline, color: "#8a8e95", x: 2, y: 1, w: 12, h: 9 }
+    - { op: fill, color: "#a9adb3", x: 2, y: 11, w: 12, h: 3 }
+    - { op: fill, color: "#e1e3e6", x: 2, y: 11, w: 12, h: 1 }
+    - op: art
+      palette: { r: "#71757c" }
+      rows:
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - ".r............r."
+        - "................"
+    - { op: fill, color: "#7c8087", x: 0, y: 0, w: 1, h: 16 }
+    - { op: fill, color: "#7c8087", x: 15, y: 0, w: 1, h: 16 }
+    - { op: fill, color: "#7c8087", x: 0, y: 0, w: 16, h: 1 }

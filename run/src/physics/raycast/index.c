@@ -25,6 +25,8 @@ static const raycast_part_t RAYCAST_PART_FLAT = {{0u, 0u, 0u}, {32u, 32u, 2u}};
 /* Around all the steps of a torch on a wall, and twice the stick's width across, as for a torch on the floor. As it faces north, with
  * its wall to +y, and turned by its facing as the card turns the stick. */
 static const raycast_part_t RAYCAST_PART_TORCH_WALL = {{12u, 20u, 6u}, {20u, 32u, 28u}};
+/* A door's plate, shut or open: open, it is turned on its hinge, as the card draws it. */
+static const raycast_part_t RAYCAST_PART_DOOR = {{0u, 26u, 0u}, {32u, 32u, 32u}};
 
 /* Turned with the block, as the card turns what it draws. */
 static uint32_t raycast_part_box(const raycast_part_t *part, uint32_t facing, int32_t x, int32_t y, int32_t z,
@@ -50,6 +52,8 @@ uint32_t raycast_block_boxes(uint16_t voxel, int32_t x, int32_t y, int32_t z, co
         return raycast_part_box(&RAYCAST_PART_TORCH, facing, x, y, z, out);
     case BLOCK_SHAPE_TORCH_WALL:
         return raycast_part_box(&RAYCAST_PART_TORCH_WALL, facing, x, y, z, out);
+    case BLOCK_SHAPE_DOOR:
+        return raycast_part_box(&RAYCAST_PART_DOOR, block_state_drawn_facing(voxel), x, y, z, out);
     case BLOCK_SHAPE_THIN:
         /* The same two as render/frame's table: a lily pad lies on the floor, and the others stand against the +y side, the way
          * they face. */

@@ -40,7 +40,7 @@ typedef struct world_edit_record_t {
     int32_t x;       /* 0 */
     int32_t y;       /* 4 */
     int32_t z;       /* 8 */
-    uint16_t before; /* 12 */
+    uint16_t before; /* 12: the voxel, id and state, as after is */
     uint16_t after;  /* 14 */
 } world_edit_record_t;
 static_assert(sizeof(world_edit_record_t) == 16);

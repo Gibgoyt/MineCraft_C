@@ -1,0 +1,11 @@
+name: iron_door
+hardness: 5
+tool: pickaxe
+tier: wood
+drops: [{ item: iron_door, count: 1 }]
+shape: door
+texture: { top: blocks/iron_door_upper, bottom: blocks/iron_door_upper, side: blocks/iron_door_lower }
+sound: metal
+facing: horizontal
+half: upper_lower
+open: true

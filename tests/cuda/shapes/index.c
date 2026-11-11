@@ -212,11 +212,25 @@ static void sh_point_own(uint32_t facing, float64_t local[3]) {
 
 static uint32_t sh_boxes_unturned(uint32_t state, sh_box_t *out);
 
+/* The facing a voxel is drawn by, done here apart from types/block_state/: its own, and an open door a quarter anticlockwise more,
+ * turned on its hinge (plan 005 phase 2). */
+static uint32_t sh_drawn_facing(uint32_t voxel) {
+    const uint32_t facing = (voxel >> BLOCK_STATE_FACING_SHIFT) & 3u;
+    return (voxel & BLOCK_STATE_OPEN) != 0u ? (facing + 3u) % 4u : facing;
+}
+
+/* Which of its block's six pictures a face shows: the upper half of a door has its top and bottom pictures on its south and north faces,
+ * and the other way round. */
+static uint32_t sh_picture_face(uint32_t voxel, uint32_t own_face) {
+    static const uint32_t upper[SHADE_FACES] = {0u, 1u, 4u, 5u, 2u, 3u};
+    return (voxel & BLOCK_STATE_UPPER) != 0u ? upper[own_face] : own_face;
+}
+
 /* A voxel's boxes: the block's, as it faces north, turned to its facing. */
 static uint32_t sh_boxes_of(uint32_t voxel, sh_box_t *out) {
     const uint32_t count = sh_boxes_unturned(voxel & BLOCK_STATE_ID_MASK, out);
     for (uint32_t i = 0u; i < count; i++) {
-        sh_box_turn((voxel >> BLOCK_STATE_FACING_SHIFT) & 3u, &out[i]);
+        sh_box_turn(sh_drawn_facing(voxel), &out[i]);
     }
     return count;
 }
@@ -270,6 +284,10 @@ static uint32_t sh_boxes_unturned(uint32_t state, sh_box_t *out) {
         } else {
             out[0] = (sh_box_t){{none, 15.0f64 / 16.0f64, none}, {whole, whole, whole}};
         }
+        return 1u;
+    case BLOCK_SHAPE_DOOR:
+        /* Three sixteenths thick, against the +y side as it faces north. */
+        out[0] = (sh_box_t){{none, 13.0f64 / 16.0f64, none}, {whole, whole, whole}};
         return 1u;
     case BLOCK_SHAPE_NONE:
     case BLOCK_SHAPE_CUBE:
@@ -814,17 +832,60 @@ static const sh_scene_block_t sh_facing_blocks[] = {
 enum : uint32_t { SH_FACING_BLOCKS = sizeof(sh_facing_blocks) / sizeof(sh_facing_blocks[0]) };
 static_assert((uint32_t)SH_FACING_BLOCKS <= (uint32_t)SH_BLOCKS_MAX);
 
-/* Which of the two scenes a test draws: every shape, or every facing. */
-static uint8_t sh_facings = 0u;
+/* A door's half, as a constant: plan 005 phase 2. */
+#define SH_DOOR(id, facing, upper, open)                                                                               \
+    ((uint16_t)((uint32_t)SH_TURNED(id, facing) | ((upper) ? (uint32_t)BLOCK_STATE_UPPER : 0u) |                       \
+                ((open) ? (uint32_t)BLOCK_STATE_OPEN : 0u)))
 
-static void sh_scene_choose(bool facings) {
-    sh_facings = facings ? 1u : 0u;
+/* Each kind of door, shut and open, two tall, facing each way, and a pair: the second hinged on the right, so facing the other way. */
+static const sh_scene_block_t sh_door_blocks[] = {
+    {{2, 2, 0}, SH_DOOR(BLOCK_ID_WOOD_DOOR, BLOCK_FACING_NORTH, false, false)},
+    {{2, 2, 1}, SH_DOOR(BLOCK_ID_WOOD_DOOR, BLOCK_FACING_NORTH, true, false)},
+    {{5, 2, 0}, SH_DOOR(BLOCK_ID_WOOD_DOOR, BLOCK_FACING_NORTH, false, true)},
+    {{5, 2, 1}, SH_DOOR(BLOCK_ID_WOOD_DOOR, BLOCK_FACING_NORTH, true, true)},
+    {{8, 2, 0}, SH_DOOR(BLOCK_ID_IRON_DOOR, BLOCK_FACING_EAST, false, false)},
+    {{8, 2, 1}, SH_DOOR(BLOCK_ID_IRON_DOOR, BLOCK_FACING_EAST, true, false)},
+    {{11, 2, 0}, SH_DOOR(BLOCK_ID_IRON_DOOR, BLOCK_FACING_EAST, false, true)},
+    {{11, 2, 1}, SH_DOOR(BLOCK_ID_IRON_DOOR, BLOCK_FACING_EAST, true, true)},
+    {{2, 7, 0}, SH_DOOR(BLOCK_ID_GLASS_DOOR, BLOCK_FACING_SOUTH, false, false)},
+    {{2, 7, 1}, SH_DOOR(BLOCK_ID_GLASS_DOOR, BLOCK_FACING_SOUTH, true, false)},
+    {{5, 7, 0}, SH_DOOR(BLOCK_ID_GLASS_DOOR, BLOCK_FACING_SOUTH, false, true)},
+    {{5, 7, 1}, SH_DOOR(BLOCK_ID_GLASS_DOOR, BLOCK_FACING_SOUTH, true, true)},
+    {{8, 7, 0}, SH_DOOR(BLOCK_ID_WOOD_DOOR, BLOCK_FACING_WEST, false, false)},
+    {{8, 7, 1}, SH_DOOR(BLOCK_ID_WOOD_DOOR, BLOCK_FACING_WEST, true, false)},
+    {{11, 7, 0}, SH_DOOR(BLOCK_ID_WOOD_DOOR, BLOCK_FACING_WEST, false, true)},
+    {{11, 7, 1}, SH_DOOR(BLOCK_ID_WOOD_DOOR, BLOCK_FACING_WEST, true, true)},
+    {{3, 12, 0}, SH_DOOR(BLOCK_ID_WOOD_DOOR, BLOCK_FACING_NORTH, false, false)},
+    {{3, 12, 1}, SH_DOOR(BLOCK_ID_WOOD_DOOR, BLOCK_FACING_NORTH, true, false)},
+    {{4, 12, 0}, SH_DOOR(BLOCK_ID_WOOD_DOOR, BLOCK_FACING_SOUTH, false, false)},
+    {{4, 12, 1}, SH_DOOR(BLOCK_ID_WOOD_DOOR, BLOCK_FACING_SOUTH, true, false)},
+    {{8, 12, 0}, SH_DOOR(BLOCK_ID_GLASS_DOOR, BLOCK_FACING_EAST, false, true)},
+    {{8, 12, 1}, SH_DOOR(BLOCK_ID_GLASS_DOOR, BLOCK_FACING_EAST, true, true)},
+    {{11, 12, 0}, SH_DOOR(BLOCK_ID_IRON_DOOR, BLOCK_FACING_WEST, false, false)},
+    {{11, 12, 1}, SH_DOOR(BLOCK_ID_IRON_DOOR, BLOCK_FACING_WEST, true, false)},
+};
+enum : uint32_t { SH_DOOR_BLOCKS = sizeof(sh_door_blocks) / sizeof(sh_door_blocks[0]) };
+static_assert((uint32_t)SH_DOOR_BLOCKS <= (uint32_t)SH_BLOCKS_MAX);
+
+/* Which of the three scenes a test draws: every shape, every facing, or every door. */
+typedef enum sh_scene_kind_t : uint8_t {
+    SH_SCENE_SHAPES = 0,
+    SH_SCENE_FACINGS = 1,
+    SH_SCENE_DOORS = 2,
+} sh_scene_kind_t;
+static uint8_t sh_scene_kind = SH_SCENE_SHAPES;
+
+static void sh_scene_choose(sh_scene_kind_t kind) {
+    sh_scene_kind = (uint8_t)kind;
 }
 static uint32_t sh_block_count(void) {
-    return sh_facings != 0u ? SH_FACING_BLOCKS : SH_SCENE_BLOCKS;
+    return sh_scene_kind == SH_SCENE_FACINGS ? SH_FACING_BLOCKS
+                                             : (sh_scene_kind == SH_SCENE_DOORS ? SH_DOOR_BLOCKS : SH_SCENE_BLOCKS);
 }
 static const sh_scene_block_t *sh_block_at(uint32_t b) {
-    return sh_facings != 0u ? &sh_facing_blocks[b] : &sh_scene_blocks[b];
+    return sh_scene_kind == SH_SCENE_FACINGS
+               ? &sh_facing_blocks[b]
+               : (sh_scene_kind == SH_SCENE_DOORS ? &sh_door_blocks[b] : &sh_scene_blocks[b]);
 }
 
 typedef struct sh_scene_t {
@@ -970,13 +1031,15 @@ static void sh_trace(test_context_t *t, const sh_rig_t *rig, const sh_scene_t *s
                                                    : point - (float64_t)sh_block_at(box->block)->cell[i];
         }
         /* A turned block shows its own faces, turned with it. */
-        const uint32_t facing = (box->state >> BLOCK_STATE_FACING_SHIFT) & 3u;
+        const uint32_t facing = sh_drawn_facing(box->state);
         const uint32_t own_face = sh_face_own(facing, best_face);
         sh_point_own(facing, local);
         float64_t u = 0.0f64, v = 0.0f64;
         sh_reference_uv(own_face, local, &u, &v);
         uint32_t id = 0u;
-        REQUIRE(texture_find(rig->texture, block_texture_names[block_defs[out->state].faces[own_face]], &id));
+        REQUIRE(texture_find(rig->texture,
+                             block_texture_names[block_defs[out->state].faces[sh_picture_face(box->state, own_face)]],
+                             &id));
         texture_info_t info;
         REQUIRE(texture_info_get(rig->texture, id, &info));
         const texture_blob_entry_t *const entry = info.borrowed_entry;
@@ -1161,7 +1224,7 @@ TEST(every_facing_matches_an_exact_trace_from_all_sides) {
     sh_rig_t rig;
     REQUIRE(sh_rig_begin(t, &rig));
     REQUIRE(sh_hand_world_open(t, &rig, 2u, SH_WIDTH, SH_HEIGHT));
-    sh_scene_choose(true);
+    sh_scene_choose(SH_SCENE_FACINGS);
     REQUIRE(sh_scene_put(t, &rig));
     sh_tally_t *const tally = test_alloc(t, sizeof(sh_tally_t));
     memset(tally, 0, sizeof(*tally));
@@ -1176,7 +1239,7 @@ TEST(every_facing_matches_an_exact_trace_from_all_sides) {
             printf("  hardly saw %s: %" PRIu64 "\n", block_defs[seen[i]].name, tally->state_seen[seen[i]]);
         }
     }
-    sh_scene_choose(false);
+    sh_scene_choose(SH_SCENE_SHAPES);
     sh_hand_world_close(&rig);
     sh_rig_end(t, &rig);
 }
@@ -1403,7 +1466,7 @@ TEST(golden_pictures_of_every_facing_match) {
     sh_rig_t rig;
     REQUIRE(sh_rig_begin(t, &rig));
     REQUIRE(sh_hand_world_open(t, &rig, 2u, SH_WIDTH, SH_HEIGHT));
-    sh_scene_choose(true);
+    sh_scene_choose(SH_SCENE_FACINGS);
     REQUIRE(sh_scene_put(t, &rig));
     render_camera_t camera;
     sh_camera_around(&camera, 1.2f32, -0.55f32, 12.0f64);
@@ -1414,7 +1477,53 @@ TEST(golden_pictures_of_every_facing_match) {
     picture = sh_draw(t, &rig, &camera);
     REQUIRE(picture != nullptr);
     sh_golden_compare(t, "tests/cuda/shapes/fixtures/facings_back.png", picture);
-    sh_scene_choose(false);
+    sh_scene_choose(SH_SCENE_SHAPES);
+    sh_hand_world_close(&rig);
+    sh_rig_end(t, &rig);
+}
+
+/* Plan 005 phase 2: each kind of door, shut and open, facing each way, and a pair, against the same exact trace. An open door is drawn by
+ * its plate turned on its hinge, and its upper half shows its upper picture. */
+TEST(every_door_shut_and_open_matches_an_exact_trace_from_all_sides) {
+    sh_rig_t rig;
+    REQUIRE(sh_rig_begin(t, &rig));
+    REQUIRE(sh_hand_world_open(t, &rig, 2u, SH_WIDTH, SH_HEIGHT));
+    sh_scene_choose(SH_SCENE_DOORS);
+    REQUIRE(sh_scene_put(t, &rig));
+    sh_tally_t *const tally = test_alloc(t, sizeof(sh_tally_t));
+    memset(tally, 0, sizeof(*tally));
+    sh_compare_from_all_sides(t, &rig, SH_FEATURES_BOTH, tally);
+    sh_report("doors", tally);
+    CHECK_EQ_U64(tally->wrong, 0u);
+    CHECK(tally->compared > (uint64_t)SH_WIDTH * SH_HEIGHT * 24u);
+    static const uint16_t seen[] = {BLOCK_ID_WOOD_DOOR, BLOCK_ID_IRON_DOOR, BLOCK_ID_GLASS_DOOR};
+    for (uint32_t i = 0u; i < sizeof(seen) / sizeof(seen[0]); i++) {
+        if (!CHECK(tally->state_seen[seen[i]] > 50u)) {
+            printf("  hardly saw %s: %" PRIu64 "\n", block_defs[seen[i]].name, tally->state_seen[seen[i]]);
+        }
+    }
+    sh_scene_choose(SH_SCENE_SHAPES);
+    sh_hand_world_close(&rig);
+    sh_rig_end(t, &rig);
+}
+
+/* The doors, from the south-west and from the north-east. */
+TEST(golden_pictures_of_every_door_match) {
+    sh_rig_t rig;
+    REQUIRE(sh_rig_begin(t, &rig));
+    REQUIRE(sh_hand_world_open(t, &rig, 2u, SH_WIDTH, SH_HEIGHT));
+    sh_scene_choose(SH_SCENE_DOORS);
+    REQUIRE(sh_scene_put(t, &rig));
+    render_camera_t camera;
+    sh_camera_around(&camera, 1.2f32, -0.45f32, 12.0f64);
+    const uint8_t *picture = sh_draw(t, &rig, &camera);
+    REQUIRE(picture != nullptr);
+    sh_golden_compare(t, "tests/cuda/shapes/fixtures/doors.png", picture);
+    sh_camera_around(&camera, 1.2f32 + SH_PI, -0.45f32, 12.0f64);
+    picture = sh_draw(t, &rig, &camera);
+    REQUIRE(picture != nullptr);
+    sh_golden_compare(t, "tests/cuda/shapes/fixtures/doors_back.png", picture);
+    sh_scene_choose(SH_SCENE_SHAPES);
     sh_hand_world_close(&rig);
     sh_rig_end(t, &rig);
 }

@@ -159,6 +159,8 @@ needs:
     - geranium
     - glass
     - glass_door
+    - glass_door_lower
+    - glass_door_upper
     - glow_lichen
     - gold_block
     - gold_ore
@@ -174,6 +176,8 @@ needs:
     - iron_bars_top
     - iron_block
     - iron_door
+    - iron_door_lower
+    - iron_door_upper
     - iron_ladder
     - iron_ore
     - iron_trapdoor
@@ -308,6 +312,8 @@ needs:
     - white_dandelion
     - white_terracotta
     - wood_door
+    - wood_door_lower
+    - wood_door_upper
     - wood_trapdoor
     - wood_trapdoor_side
     - woodworking_bench_bottom

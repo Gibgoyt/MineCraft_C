@@ -32,5 +32,7 @@ Each round finds the earliest moment any box's faces meet on every axis at once:
 |---|---|
 | Not `solid`: air, fluids, plants, torches on a floor or a wall, ladders, vines, lily pads | None |
 | `shape: slab` | The lower half |
+| `shape: door`, shut | Its plate, three sixteenths thick, against the side it faces: +y facing north (plan 005 phase 2) |
+| `shape: door`, open | None, so it can be walked through |
 | `shape: stairs` | The lower half, and the upper half of the side they face: north as the table has them, turned by the voxel's facing as the card turns what it draws |
 | Anything else solid | The whole cell |

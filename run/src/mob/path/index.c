@@ -5,6 +5,7 @@
 #include "physics/collision/index.h"
 #include "tables/blocks/index.h"
 #include "world/column/index.h"
+#include "world/door/index.h"
 
 #include <math.h>
 #include <sched.h>
@@ -74,6 +75,10 @@ static uint8_t mp_class_of(uint16_t voxel) {
     if (block == BLOCK_ID_LADDER || block == BLOCK_ID_VINE) {
         return MP_CLASS_CLIMB;
     }
+    /* A shut door is a wall that nothing goes through or stands on, and an open one is a way through (plan 005 phase 2). */
+    if (door_is(block)) {
+        return block_state_open(voxel) ? (uint8_t)MP_CLASS_OPEN : (uint8_t)MP_CLASS_BLOCKED;
+    }
     if ((block_defs[block].flags & BLOCK_FLAG_SOLID) == 0u) {
         return MP_CLASS_OPEN;
     }
@@ -82,8 +87,8 @@ static uint8_t mp_class_of(uint16_t voxel) {
 }
 
 static uint8_t mp_class_at(const world_map_t *map, int32_t x, int32_t y, int32_t z) {
-    uint16_t block = BLOCK_ID_AIR;
-    return collision_cell_read(map, x, y, z, &block) ? mp_class_of(block) : (uint8_t)MP_CLASS_BLOCKED;
+    uint16_t voxel = BLOCK_ID_AIR;
+    return collision_cell_read_voxel(map, x, y, z, &voxel) ? mp_class_of(voxel) : (uint8_t)MP_CLASS_BLOCKED;
 }
 
 static bool mp_passes(uint8_t class) {

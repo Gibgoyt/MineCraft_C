@@ -55,11 +55,20 @@ void collision_part_box(const uint8_t low[COLLISION_AXES], const uint8_t high[CO
 static const uint8_t COLLISION_WHOLE[2][COLLISION_AXES] = {{0u, 0u, 0u}, {32u, 32u, 32u}};
 static const uint8_t COLLISION_LOWER_HALF[2][COLLISION_AXES] = {{0u, 0u, 0u}, {32u, 32u, 16u}};
 static const uint8_t COLLISION_STEP[2][COLLISION_AXES] = {{0u, 16u, 16u}, {32u, 32u, 32u}};
+static const uint8_t COLLISION_DOOR[2][COLLISION_AXES] = {{0u, 26u, 0u}, {32u, 32u, 32u}};
 
 uint32_t collision_block_boxes(uint16_t voxel, int32_t x, int32_t y, int32_t z, collision_box_t *out) {
     const uint16_t block = block_state_id(voxel);
     /* A number no block has is what a broken world would hold: better to stand on it than to fall through. */
     const bool known = block < BLOCK_COUNT;
+    /* A door has a body by its state: its plate while shut, and nothing while open, so that it can be walked through. */
+    if (known && block_defs[block].shape == BLOCK_SHAPE_DOOR) {
+        if (block_state_open(voxel)) {
+            return 0u;
+        }
+        collision_part_box(COLLISION_DOOR[0], COLLISION_DOOR[1], block_state_facing(voxel), x, y, z, &out[0]);
+        return 1u;
+    }
     if (known && (block_defs[block].flags & BLOCK_FLAG_SOLID) == 0u) {
         return 0u;
     }

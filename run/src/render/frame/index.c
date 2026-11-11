@@ -198,6 +198,8 @@ static uint8_t frame_shape_of(uint32_t block) {
                                               : TRAVERSE_SHAPE_PLATE;
     case BLOCK_SHAPE_TORCH_WALL:
         return TRAVERSE_SHAPE_TORCH_WALL;
+    case BLOCK_SHAPE_DOOR:
+        return TRAVERSE_SHAPE_DOOR;
     case BLOCK_SHAPE_NONE:
     case BLOCK_SHAPE_CUBE:
     case BLOCK_SHAPE_FLUID:

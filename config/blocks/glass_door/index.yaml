@@ -1,0 +1,9 @@
+name: glass_door
+hardness: 0.3
+drops: [{ item: glass_door, count: 1 }]
+shape: door
+texture: { top: blocks/glass_door_upper, bottom: blocks/glass_door_upper, side: blocks/glass_door_lower }
+sound: glass
+facing: horizontal
+half: upper_lower
+open: true

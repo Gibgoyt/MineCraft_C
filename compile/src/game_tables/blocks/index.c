@@ -48,8 +48,9 @@ typedef enum gb_face_t : uint8_t {
 static const char *const GB_FACE_NAMES[GB_FACE_COUNT] = {"west", "east", "south", "north", "bottom", "top"};
 
 enum { GB_SHAPE_NONE = 0, GB_SHAPE_CUBE = 1, GB_SHAPE_FLUID = 8 };
-static const char *const GB_SHAPE_NAMES[] = {"none", "cube",  "slab", "stairs", "cross",
-                                             "crop", "torch", "thin", "fluid",  "torch_wall"};
+enum { GB_SHAPE_DOOR = 10 };
+static const char *const GB_SHAPE_NAMES[] = {"none",  "cube", "slab",  "stairs",     "cross", "crop",
+                                             "torch", "thin", "fluid", "torch_wall", "door"};
 enum { GB_SHAPE_COUNT = sizeof(GB_SHAPE_NAMES) / sizeof(GB_SHAPE_NAMES[0]) };
 
 /* What a shape means when a file says nothing else. Air is the only shape without a texture. */
@@ -61,7 +62,18 @@ typedef struct gb_shape_t {
 static_assert(sizeof(gb_shape_t) == 3);
 
 static const gb_shape_t GB_SHAPES[GB_SHAPE_COUNT] = {
-    {0, 0, 1}, {1, 15, 0}, {1, 0, 0}, {1, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 1}, {0, 0, 0},
+    {0, 0, 1},
+    {1, 15, 0},
+    {1, 0, 0},
+    {1, 0, 0},
+    {0, 0, 0},
+    {0, 0, 0},
+    {0, 0, 0},
+    {0, 0, 0},
+    {0, 0, 1},
+    {0, 0, 0},
+    /* A door: not solid as a block is, because whether it has a body goes by its state, shut or open: run/src/physics/collision/. */
+    {0, 0, 0},
 };
 
 /* What a block's state may hold, beside its id: see run/include/types/block_state/. The names are printed into the generated
@@ -556,6 +568,11 @@ static void gb_read_fields(gb_context_t *context, const yaml_document_t *documen
     if (block->shape == GB_SHAPE_NONE && block->states != 0u) {
         gb_report_at(context, context->borrowed_path, root->line, root->column,
                      "shape none draws nothing, so it has no state to show");
+    }
+    const uint8_t door_states = GB_STATES_FACING | GB_STATES_HALF | GB_STATES_OPEN;
+    if (block->shape == GB_SHAPE_DOOR && block->states != door_states) {
+        gb_report_at(context, context->borrowed_path, root->line, root->column,
+                     "shape door needs facing: horizontal, half: upper_lower and open: true");
     }
 }
 

@@ -96,6 +96,22 @@ BLOCK_STATE_BOTH_SIDES static inline uint32_t block_facing_turn(uint32_t facing,
     return (facing + quarters) & 3u;
 }
 
+/* The facing a voxel is drawn, aimed at and collides by: its own, and a quarter turn anticlockwise more when it is open, as a door
+ * swings on its hinge at its left end. Only a block whose file says open: true ever has the open bit (block_state_clean). */
+BLOCK_STATE_BOTH_SIDES static inline uint32_t block_state_drawn_facing(uint32_t voxel) {
+    return block_facing_turn(block_state_facing(voxel), block_state_open(voxel) ? 3u : 0u);
+}
+
+/* Which of its block's six pictures a face of a voxel shows, from the block's own face, in the order below. A block two tall has
+ * one set of six for both halves: its upper half shows its top and bottom pictures on its south and north faces, and the other way
+ * round, so that a door's two wide faces are its upper picture above and its side picture below. Any other voxel shows its own. */
+BLOCK_STATE_BOTH_SIDES static inline uint32_t block_state_picture_face(uint32_t voxel, uint32_t own_face) {
+    if (!block_state_upper(voxel)) {
+        return own_face;
+    }
+    return own_face == 2u ? 4u : (own_face == 3u ? 5u : (own_face == 4u ? 2u : (own_face == 5u ? 3u : own_face)));
+}
+
 /* One step the way it faces. */
 BLOCK_STATE_BOTH_SIDES static inline int32_t block_facing_step_x(uint32_t facing) {
     return (facing & 3u) == BLOCK_FACING_EAST ? 1 : ((facing & 3u) == BLOCK_FACING_WEST ? -1 : 0);

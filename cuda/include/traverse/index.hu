@@ -82,6 +82,7 @@ static __constant__ const traverse_box_t traverse_boxes[] = {
     {{14, 22, 18}, {18, 26, 22}}, /* 15 */
     {{14, 20, 22}, {18, 24, 28}}, /* 16: its flame */
     {{0, 0, 0}, {32, 32, 4}},     /* 17: layer: enough to see from afar, low enough to walk over */
+    {{0, 26, 0}, {32, 32, 32}},   /* 18: a door's plate, three texels of sixteen thick */
 };
 static __constant__ const traverse_shape_row_t traverse_shape_rows[TRAVERSE_SHAPE_COUNT] = {
     {0u, 1u},  /* TRAVERSE_SHAPE_CUBE */
@@ -94,6 +95,7 @@ static __constant__ const traverse_shape_row_t traverse_shape_rows[TRAVERSE_SHAP
     {11u, 1u}, /* TRAVERSE_SHAPE_FLAT */
     {12u, 5u}, /* TRAVERSE_SHAPE_TORCH_WALL */
     {17u, 1u}, /* TRAVERSE_SHAPE_LAYER */
+    {18u, 1u}, /* TRAVERSE_SHAPE_DOOR */
 };
 
 /* A pixel's unit direction: see traverse_camera_t. Shade and post need the same ray as traversal did. */
@@ -204,8 +206,9 @@ static __device__ __forceinline__ bool traverse_voxel_hit(const traverse_view_t 
         traverse_hit_found(ray, inverse, cell, value, steps, hit);
         return true;
     }
-    /* The table's boxes face north. A cube turned is a cube, so only here does a facing cost anything. */
-    const uint32_t facing = block_state_facing(value & TRAVERSE_VALUE_VOXEL_MASK);
+    /* The table's boxes face north. A cube turned is a cube, so only here does a facing cost anything. An open door is turned on its
+     * hinge. */
+    const uint32_t facing = block_state_drawn_facing(value & TRAVERSE_VALUE_VOXEL_MASK);
     int32_t offset[3];
     for (uint32_t i = 0u; i < 3u; i += 1u) {
         offset[i] = cell[i] - ray->eye_cell[i];

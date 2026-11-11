@@ -7,6 +7,7 @@
 #include "tables/blocks/index.h"
 #include "world/bench/index.h"
 #include "world/block_state/index.h"
+#include "world/door/index.h"
 #include "world/wall_torch/index.h"
 
 #include <math.h>
@@ -286,28 +287,38 @@ void player_interaction_stack_break(player_interaction_t *interaction, world_edi
     }
 }
 
-/* The other half of a bench goes first and gives nothing, as the one mined gives the one bench. False if it cannot go yet, which leaves the
- * bench whole and all but broken for the next tick. If the half mined then finds no room, the next tick breaks it alone, and it drops. The
- * half mined's facing says where the other is. */
-static bool interaction_bench_other_break(player_interaction_t *interaction, world_edit_t *edit, uint16_t voxel,
-                                          int32_t x, int32_t y, int32_t z) {
-    int32_t step_x = 0, step_y = 0;
+/* Whether this voxel is half of a block two cells big, a bench beside its other half or a door above or below it, and if so the step to
+ * that half and what must be there. */
+static bool interaction_pair_other(uint16_t voxel, int32_t step[COLLISION_AXES], uint16_t *out_other) {
+    step[0] = 0;
+    step[1] = 0;
+    step[2] = 0;
+    return bench_half_other(voxel, &step[0], &step[1], out_other) || door_half_other(voxel, &step[2], out_other);
+}
+
+/* The other half of a bench or a door goes first and gives nothing, as the one mined gives the one bench or door. False if it cannot go
+ * yet, which leaves it whole and all but broken for the next tick. If the half mined then finds no room, the next tick breaks it alone,
+ * and it drops. The half mined's state says where the other is. */
+static bool interaction_pair_other_break(player_interaction_t *interaction, world_edit_t *edit, uint16_t voxel,
+                                         int32_t x, int32_t y, int32_t z) {
+    int32_t step[COLLISION_AXES];
     uint16_t other = BLOCK_ID_AIR;
-    if (!bench_half_other(voxel, &step_x, &step_y, &other)) {
+    if (!interaction_pair_other(voxel, step, &other)) {
         return true;
     }
+    const int32_t ox = x + step[0], oy = y + step[1], oz = z + step[2];
     uint16_t there = BLOCK_ID_AIR;
-    if (world_map_voxel_get(edit->borrowed_map, x + step_x, y + step_y, z, &there) != WORLD_MAP_STATUS_OK) {
+    if (world_map_voxel_get(edit->borrowed_map, ox, oy, oz, &there) != WORLD_MAP_STATUS_OK) {
         return false;
     }
     if (there != other) {
         return true;
     }
-    if (world_edit_block_set(edit, x + step_x, y + step_y, z, BLOCK_ID_AIR) != WORLD_EDIT_STATUS_CHANGED) {
+    if (world_edit_block_set(edit, ox, oy, oz, BLOCK_ID_AIR) != WORLD_EDIT_STATUS_CHANGED) {
         interaction->no_memory_count++;
         return false;
     }
-    player_interaction_stack_break(interaction, edit, x + step_x, y + step_y, z);
+    player_interaction_stack_break(interaction, edit, ox, oy, oz);
     return true;
 }
 
@@ -356,7 +367,7 @@ static void interaction_mine(player_interaction_t *interaction, world_edit_t *ed
     }
     uint16_t voxel = block;
     if (world_map_voxel_get(edit->borrowed_map, x, y, z, &voxel) != WORLD_MAP_STATUS_OK ||
-        !interaction_bench_other_break(interaction, edit, voxel, x, y, z)) {
+        !interaction_pair_other_break(interaction, edit, voxel, x, y, z)) {
         return;
     }
     const world_edit_status_t status = world_edit_block_set(edit, x, y, z, BLOCK_ID_AIR);
@@ -454,6 +465,36 @@ static uint16_t interaction_voxel_to_place(const world_map_t *map, const player_
     return BLOCK_ID_TORCH;
 }
 
+/* How much of a wall is at one side of a door going into cell, beside its lower and upper halves, and whether a door's lower half is beside
+ * its own. A column not loaded is no wall. */
+static void interaction_door_side(const world_map_t *map, const int32_t cell[COLLISION_AXES], uint32_t side,
+                                  bool *out_door, uint32_t *out_walls) {
+    const int32_t x = cell[0] + block_facing_step_x(side), y = cell[1] + block_facing_step_y(side);
+    *out_door = false;
+    *out_walls = 0u;
+    for (int32_t up = 0; up < 2; up++) {
+        uint16_t there = BLOCK_ID_AIR;
+        if (world_map_voxel_get(map, x, y, cell[2] + up, &there) != WORLD_MAP_STATUS_OK) {
+            continue;
+        }
+        const uint16_t id = block_state_id(there);
+        *out_walls += (block_defs[id].flags & BLOCK_FLAG_SOLID) != 0u ? 1u : 0u;
+        *out_door = *out_door || (up == 0 && door_is(id) && !block_state_upper(there));
+    }
+}
+
+/* A door's lower half as it is to go into cell: turned round if its hinge is to be on the right, by what is beside it
+ * (run/src/world/door/README.md). */
+static uint16_t interaction_door_hinged(const world_map_t *map, uint16_t voxel, const int32_t cell[COLLISION_AXES]) {
+    const uint32_t facing = block_state_facing(voxel);
+    bool door_left = false, door_right = false;
+    uint32_t left_walls = 0u, right_walls = 0u;
+    interaction_door_side(map, cell, block_facing_turn(facing, 3u), &door_left, &left_walls);
+    interaction_door_side(map, cell, block_facing_turn(facing, 1u), &door_right, &right_walls);
+    return block_state_make(block_state_id(voxel),
+                            door_hinged_facing(facing, door_left, door_right, left_walls, right_walls), false, false);
+}
+
 player_place_status_t player_interaction_place_plan(const player_interaction_t *interaction, const world_map_t *map,
                                                     const player_interaction_input_t *input, player_place_plan_t *out) {
     *out = (player_place_plan_t){.status = PLAYER_PLACE_NONE};
@@ -469,9 +510,12 @@ player_place_status_t player_interaction_place_plan(const player_interaction_t *
     if ((block_defs[hit->block].flags & BLOCK_FLAG_REPLACEABLE) == 0u) {
         raycast_hit_in_front(hit, cell);
     }
-    const uint16_t voxel = interaction_voxel_to_place(map, interaction, input, hit, interaction->hand_block, cell);
+    uint16_t voxel = interaction_voxel_to_place(map, interaction, input, hit, interaction->hand_block, cell);
     if (voxel == BLOCK_NO_ID) {
         return PLAYER_PLACE_NONE;
+    }
+    if (door_is(block_state_id(voxel))) {
+        voxel = interaction_door_hinged(map, voxel, cell);
     }
     const uint16_t block = block_state_id(voxel);
     out->voxels[0] = voxel;
@@ -486,14 +530,14 @@ player_place_status_t player_interaction_place_plan(const player_interaction_t *
         out->status = PLAYER_PLACE_BLOCKED;
     }
     out->was_there = there;
-    /* Half a bench brings its other half, which must go down too: half a bench is never left. */
-    int32_t step_x = 0, step_y = 0;
+    /* Half a bench brings its other half, and the lower half of a door its upper, which must go down too: half of either is never left. */
+    int32_t step[COLLISION_AXES];
     uint16_t other = BLOCK_ID_AIR;
-    if (bench_half_other(voxel, &step_x, &step_y, &other)) {
+    if (interaction_pair_other(voxel, step, &other)) {
         int32_t *const second = out->cells[1];
-        second[0] = cell[0] + step_x;
-        second[1] = cell[1] + step_y;
-        second[2] = cell[2];
+        second[0] = cell[0] + step[0];
+        second[1] = cell[1] + step[1];
+        second[2] = cell[2] + step[2];
         out->voxels[1] = other;
         out->count = 2u;
         uint16_t there_second = BLOCK_ID_AIR;
@@ -539,6 +583,40 @@ static void interaction_place(player_interaction_t *interaction, world_edit_t *e
     interaction->place_delay = PLAYER_INTERACTION_PLACE_EVERY_TICKS - 1u;
 }
 
+/* ---- Doors -------------------------------------------------------------------------------------------------------- */
+
+/* The right button on a door that opens by hand: both halves open, or both shut. A half whose other half is not there as it should be,
+ * from a file written by hand, turns alone; one whose other half's column is not loaded waits. */
+static void interaction_door_use(player_interaction_t *interaction, world_edit_t *edit,
+                                 const player_interaction_input_t *input, const int32_t cell[COLLISION_AXES]) {
+    uint16_t voxel = BLOCK_ID_AIR;
+    int32_t step_z = 0;
+    uint16_t other = BLOCK_ID_AIR;
+    if (world_map_voxel_get(edit->borrowed_map, cell[0], cell[1], cell[2], &voxel) != WORLD_MAP_STATUS_OK ||
+        !door_half_other(voxel, &step_z, &other)) {
+        return;
+    }
+    const bool open = !block_state_open(voxel);
+    uint16_t there = BLOCK_ID_AIR;
+    if (world_map_voxel_get(edit->borrowed_map, cell[0], cell[1], cell[2] + step_z, &there) != WORLD_MAP_STATUS_OK) {
+        return;
+    }
+    if (there == other && world_edit_block_set(edit, cell[0], cell[1], cell[2] + step_z,
+                                               block_state_with_open(other, open)) != WORLD_EDIT_STATUS_CHANGED) {
+        interaction->no_memory_count++;
+        return;
+    }
+    if (world_edit_block_set(edit, cell[0], cell[1], cell[2], block_state_with_open(voxel, open)) !=
+        WORLD_EDIT_STATUS_CHANGED) {
+        interaction->no_memory_count++;
+        if (there == other) {
+            (void)world_edit_block_set(edit, cell[0], cell[1], cell[2] + step_z, other);
+        }
+        return;
+    }
+    interaction_sound(input, block_state_id(voxel), SOUND_KIND_PLACE, cell[0], cell[1], cell[2]);
+}
+
 /* ---- One tick ------------------------------------------------------------------------------------------------------ */
 
 void player_interaction_tick(player_interaction_t *interaction, world_edit_t *edit,
@@ -546,6 +624,9 @@ void player_interaction_tick(player_interaction_t *interaction, world_edit_t *ed
     const bool may_mine = interaction->mine_delay == 0u, may_place = interaction->place_delay == 0u;
     interaction->mine_delay = may_mine ? 0u : (uint8_t)(interaction->mine_delay - 1u);
     interaction->place_delay = may_place ? 0u : (uint8_t)(interaction->place_delay - 1u);
+    /* A door opens once a press: held on after placing one, or after opening it, the button leaves it be. */
+    const bool place_pressed = input->place != 0u && interaction->place_held == 0u;
+    interaction->place_held = input->place != 0u ? 1u : 0u;
 
     const raycast_hit_t *const hit = &input->borrowed_target->hit;
     uint16_t there = BLOCK_ID_AIR;
@@ -563,6 +644,10 @@ void player_interaction_tick(player_interaction_t *interaction, world_edit_t *ed
     if (input->attack != 0u) {
         if (may_mine) {
             interaction_mine(interaction, edit, input, hit);
+        }
+    } else if (input->place != 0u && door_opens_by_hand(hit->block)) {
+        if (place_pressed) {
+            interaction_door_use(interaction, edit, input, hit->cell);
         }
     } else if (input->place != 0u && may_place) {
         interaction_place(interaction, edit, input);

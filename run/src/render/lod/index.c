@@ -127,6 +127,7 @@ static bool render_lod_counts(uint16_t block) {
     case BLOCK_SHAPE_TORCH:
     case BLOCK_SHAPE_THIN:
     case BLOCK_SHAPE_TORCH_WALL:
+    case BLOCK_SHAPE_DOOR:
         break;
     }
     return false;

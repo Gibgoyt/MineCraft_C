@@ -1,0 +1,10 @@
+name: wood_door
+hardness: 3
+tool: axe
+drops: [{ item: wood_door, count: 1 }]
+shape: door
+texture: { top: blocks/wood_door_upper, bottom: blocks/wood_door_upper, side: blocks/wood_door_lower }
+sound: wood
+facing: horizontal
+half: upper_lower
+open: true

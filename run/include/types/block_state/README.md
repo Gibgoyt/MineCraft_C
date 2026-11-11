@@ -10,6 +10,8 @@
 - `block_state_id`, `block_state_bits`, `block_state_facing`, `block_state_upper`, `block_state_open`: the parts of a voxel.
 - `block_state_make`, `block_state_with_facing`, `block_state_with_upper`, `block_state_with_open`: a voxel from its parts, or with one changed.
 - `block_facing_turn`: quarter turns clockwise, seen from above.
+- `block_state_drawn_facing`: the facing a voxel is drawn, aimed at and collides by: its own, turned a quarter anticlockwise more when it is open, as a door swings on its hinge.
+- `block_state_picture_face`: which of its block's six pictures a face shows: the upper half of a block two tall swaps its south and north pictures with its bottom and top ones.
 - `block_facing_step_x`, `block_facing_step_y`, `block_facing_of_step`: a facing as a step on the grid and back.
 - `block_facing_of_look`: the nearest of the four to a look, which is how a player's view becomes a block's facing.
 - `block_facing_face_to_world`, `block_facing_face_to_local`: a face of a turned block, in the table's order.
@@ -42,12 +44,12 @@ A block's facing is **the way the player looked when placing it**, the nearest o
 | Ladder, vine | The plate against the north side of its voxel: on the wall you look at | at a wall to the north |
 | Torch on a wall | Its wall to the north, so it leans out south | at the south face of a block |
 | Woodworking bench | Lying along x, the first half where you aim and the second to its east: across your view | north |
-| A door (phase 2) | Its hinge side and swing are the door's to say; the bits are here | |
+| A door | Shut, its plate against the north side of its voxel, hinge at the west end; open, turned a quarter anticlockwise about that hinge, against the west side. Its hinge is always at its left, so a door hinged on the right faces the other way: `run/src/world/door/` | north, or south for a hinge on the right |
 
 A shape in `cuda/include/traverse/` is drawn as it faces north, and turned about the middle of its voxel by `block_facing_box_turn`: one quarter takes `(x, y)` to `(y, 1 - x)`. `run/src/physics/` turns its boxes the same way, so a block collides and is aimed at as it is drawn. Its faces turn with it: `block_facing_face_to_local` says which of its own faces the world sees on a side, and `block_facing_point_to_local` where on that face's picture, so a bench's front stays its front.
 
 ## For later phases
 
 - **Placing:** `block_facing_of_look(dx, dy)` of the view, then `block_facing_turn` by the player's quarter turns, then `block_state_placed(id, facing)` from `world/block_state`. `player_interaction_place_plan` in `run/src/player/interaction/` does exactly this and says what and where a hand would place, without placing it, for a preview.
-- **A door:** declare `facing: horizontal`, `half: upper_lower` and `open: true`; the two voxels are `block_state_make(id, facing, false, open)` and `block_state_make(id, facing, true, open)`; opening is `block_state_with_open`, which is an edit like any other and is logged and drawn.
+- **A door** (plan 005 phase 2) declares `facing: horizontal`, `half: upper_lower` and `open: true`; the two voxels are `block_state_make(id, facing, false, open)` and `block_state_make(id, facing, true, open)`; opening is `block_state_with_open`, which is an edit like any other and is logged and drawn. The open bit turns what is drawn, aimed at and collided with by `block_state_drawn_facing`, and the upper bit picks the pictures by `block_state_picture_face`, on the card and on the host alike.
 - **Reading:** `world_map_block_get` and `column_block_get` give the id alone, which is what nearly everything wants. `world_map_voxel_get` and `column_voxel_get` give it with its state. A set stores whatever it is given: an id alone is that block facing north.

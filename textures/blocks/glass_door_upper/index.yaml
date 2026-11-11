@@ -1,0 +1,15 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: glass_door_upper
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The upper half of a glass door: clear glass in a thin pale frame, with a glint across it."
+  seed: 6206
+  ops:
+    - { op: fill, color: "#cfe6ee48" }
+    - { op: line, color: "#ffffff90", x0: 3, y0: 9, x1: 9, y1: 3 }
+    - { op: line, color: "#ffffff70", x0: 5, y0: 11, x1: 11, y1: 5 }
+    - { op: fill, color: "#dfe6e9", x: 0, y: 0, w: 1, h: 16 }
+    - { op: fill, color: "#dfe6e9", x: 15, y: 0, w: 1, h: 16 }
+    - { op: fill, color: "#dfe6e9", x: 0, y: 0, w: 16, h: 1 }

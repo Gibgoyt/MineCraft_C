@@ -786,6 +786,44 @@ TEST(an_edit_spoils_only_what_read_that_cell) {
     mp_end(&rig);
 }
 
+/* Plan 005 phase 2: a shut door across the corridor is a wall, which nothing goes through or stands on, and the same door open is a way
+ * through. Opening it is an edit that spoils the way cached without it. */
+TEST(a_shut_door_is_a_wall_and_an_open_one_a_way_through) {
+    mp_rig_t rig;
+    REQUIRE(mp_begin(t, &rig));
+    mp_floor(t, &rig);
+    mp_corridor(t, &rig, 0, 8);
+    const mob_path_ask_t ask = mp_ask(0, 0, 0, 7, 0, 0);
+    for (uint32_t facing = 0u; facing < BLOCK_FACINGS; facing++) {
+        mp_fill(t, &rig, 4, 0, 0, 4, 0, 0, block_state_make(BLOCK_ID_WOOD_DOOR, facing, false, false));
+        mp_fill(t, &rig, 4, 0, 1, 4, 0, 1, block_state_make(BLOCK_ID_WOOD_DOOR, facing, true, false));
+        CHECK_EQ_U64(mp_search(&rig, &ask)->status, MOB_PATH_STATUS_PARTIAL);
+        CHECK_EQ_I64(mp_last(rig.found)->x, 3);
+        mp_fill(t, &rig, 4, 0, 0, 4, 0, 0, block_state_make(BLOCK_ID_WOOD_DOOR, facing, false, true));
+        mp_fill(t, &rig, 4, 0, 1, 4, 0, 1, block_state_make(BLOCK_ID_WOOD_DOOR, facing, true, true));
+        CHECK_EQ_U64(mp_search(&rig, &ask)->status, MOB_PATH_STATUS_COMPLETE);
+        CHECK_EQ_U64(mp_last(rig.found)->cost, 700u);
+    }
+    /* Through the cache: shut, the way stops short; opened by an edit, it is searched again and goes through. */
+    world_edit_t *const edit = &rig.world.world->edit;
+    CHECK_EQ_U64(world_edit_block_set(edit, 4, 0, 0, block_state_make(BLOCK_ID_WOOD_DOOR, 0u, false, false)),
+                 WORLD_EDIT_STATUS_CHANGED);
+    CHECK_EQ_U64(world_edit_block_set(edit, 4, 0, 1, block_state_make(BLOCK_ID_WOOD_DOOR, 0u, true, false)),
+                 WORLD_EDIT_STATUS_CHANGED);
+    const mob_path_found_t *found = mp_ask_tick(&rig, mp_handle(1u), &ask);
+    REQUIRE(found != nullptr);
+    CHECK_EQ_U64(found->status, MOB_PATH_STATUS_PARTIAL);
+    CHECK_EQ_U64(world_edit_block_set(edit, 4, 0, 0, block_state_make(BLOCK_ID_WOOD_DOOR, 0u, false, true)),
+                 WORLD_EDIT_STATUS_CHANGED);
+    CHECK_EQ_U64(world_edit_block_set(edit, 4, 0, 1, block_state_make(BLOCK_ID_WOOD_DOOR, 0u, true, true)),
+                 WORLD_EDIT_STATUS_CHANGED);
+    found = mp_ask_tick(&rig, mp_handle(1u), &ask);
+    REQUIRE(found != nullptr);
+    CHECK_EQ_U64(found->from_cache, 0u);
+    CHECK_EQ_U64(found->status, MOB_PATH_STATUS_COMPLETE);
+    mp_end(&rig);
+}
+
 TEST(through_random_edits_what_the_cache_says_is_what_a_search_would_say) {
     mp_rig_t rig;
     REQUIRE(mp_begin(t, &rig));

@@ -97,7 +97,8 @@ static void edit_top_update(world_edit_column_t *column, const column_t *live, u
 world_edit_status_t world_edit_block_set(world_edit_t *edit, int32_t x, int32_t y, int32_t z, uint16_t state) {
     uint16_t before = 0;
     const world_map_t *const map = edit->borrowed_map;
-    const world_map_status_t status = world_map_block_get(map, x, y, z, &before);
+    /* The whole voxel, state and all: a door opened is the same id, and an id alone over a turned block is a change (plan 005 phase 2). */
+    const world_map_status_t status = world_map_voxel_get(map, x, y, z, &before);
     if (status == WORLD_MAP_STATUS_Z_OUT_OF_RANGE) {
         return WORLD_EDIT_STATUS_Z_OUT_OF_RANGE;
     }

@@ -1,0 +1,23 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: wood_door_lower
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The lower half of a wooden door: two sunk panels in a plank frame, and an iron handle at the right, away from the hinge."
+  seed: 6201
+  ops:
+    - { op: fill, color: "#a07a45" }
+    - { op: noise, amount: 12, cell_x: 1, cell_y: 8, seed: 31 }
+    - { op: fill, color: "#7d5c30", x: 3, y: 2, w: 4, h: 12 }
+    - { op: fill, color: "#7d5c30", x: 9, y: 2, w: 4, h: 12 }
+    - { op: noise, amount: 8, cell_x: 1, cell_y: 6, seed: 32, x: 3, y: 2, w: 10, h: 12 }
+    - { op: fill, color: "#5f4423", x: 3, y: 2, w: 4, h: 1 }
+    - { op: fill, color: "#5f4423", x: 9, y: 2, w: 4, h: 1 }
+    - { op: fill, color: "#5f4423", x: 3, y: 2, w: 1, h: 12 }
+    - { op: fill, color: "#5f4423", x: 9, y: 2, w: 1, h: 12 }
+    - { op: fill, color: "#4e3820", x: 0, y: 0, w: 1, h: 16 }
+    - { op: fill, color: "#4e3820", x: 15, y: 0, w: 1, h: 16 }
+    - { op: fill, color: "#4e3820", x: 0, y: 15, w: 16, h: 1 }
+    - { op: fill, color: "#2f2f33", x: 13, y: 1, w: 2, h: 3 }
+    - { op: fill, color: "#8e9095", x: 13, y: 1, w: 1, h: 2 }

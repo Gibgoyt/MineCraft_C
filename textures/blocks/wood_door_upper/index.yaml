@@ -1,0 +1,25 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: wood_door_upper
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The upper half of a wooden door: a window of four small panes in a plank frame, over a panel."
+  seed: 6202
+  ops:
+    - { op: fill, color: "#a07a45" }
+    - { op: noise, amount: 12, cell_x: 1, cell_y: 8, seed: 31 }
+    - { op: fill, color: "#9fc3d6", x: 3, y: 2, w: 10, h: 6 }
+    - { op: gradient, from: "#c4dfea", to: "#7fa6bb", axis: y, x: 3, y: 2, w: 10, h: 6 }
+    - { op: line, color: "#e8f4f8", x0: 4, y0: 6, x1: 6, y1: 3 }
+    - { op: line, color: "#e8f4f8", x0: 9, y0: 6, x1: 11, y1: 3 }
+    - { op: fill, color: "#6e512b", x: 7, y: 2, w: 2, h: 6 }
+    - { op: fill, color: "#6e512b", x: 3, y: 4, w: 10, h: 1 }
+    - { op: outline, color: "#5f4423", x: 2, y: 1, w: 12, h: 8 }
+    - { op: fill, color: "#7d5c30", x: 3, y: 10, w: 10, h: 4 }
+    - { op: noise, amount: 8, cell_x: 1, cell_y: 6, seed: 32, x: 3, y: 10, w: 10, h: 4 }
+    - { op: fill, color: "#5f4423", x: 3, y: 10, w: 10, h: 1 }
+    - { op: fill, color: "#5f4423", x: 3, y: 10, w: 1, h: 4 }
+    - { op: fill, color: "#4e3820", x: 0, y: 0, w: 1, h: 16 }
+    - { op: fill, color: "#4e3820", x: 15, y: 0, w: 1, h: 16 }
+    - { op: fill, color: "#4e3820", x: 0, y: 0, w: 16, h: 1 }

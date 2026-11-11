@@ -4,6 +4,7 @@
 #include "assert/index.h"
 #include "tables/blocks/index.h"
 #include "world/bench/index.h"
+#include "world/door/index.h"
 #include "world/wall_torch/index.h"
 
 #include <math.h>
@@ -380,7 +381,7 @@ static bool explosion_break_one(explosion_t *explosion, world_edit_t *edit, item
     (*broken)++;
     /* The number is taken whatever comes of it, so that a torch does not shift what the blocks after it give. */
     const bool lucky = terrain_rng_next_f64(&explosion->random) * power < 1.0f64;
-    if (lucky || wall_torch_out(block, nullptr, nullptr) || bench_is_half(block)) {
+    if (lucky || wall_torch_out(block, nullptr, nullptr) || bench_is_half(block) || door_is(block)) {
         explosion_drops_spawn(explosion, drops, block, cell[0], cell[1], cell[2]);
     }
     return true;
@@ -422,26 +423,28 @@ static void explosion_around_break(explosion_t *explosion, world_edit_t *edit, i
     }
 }
 
-/* What a blast does to the other half of a bench it has listed. It goes first and gives nothing, as the half listed gives the one bench.
- * False if it cannot go, by not being loaded or by the edit finding no room, and then the bench stands whole. out_other_gone says that it
- * went, and what it was is in out_other, for putting back if the half listed then finds no room. */
+/* What a blast does to the other half of a bench or a door it has listed. It goes first and gives nothing, as the half listed gives the
+ * one bench or door. False if it cannot go, by not being loaded or by the edit finding no room, and then the bench or door stands whole.
+ * out_other_gone says that it went, and what it was is in out_other, for putting back if the half listed then finds no room. */
 static bool explosion_bench_other_break(world_edit_t *edit, uint16_t block, const int32_t cell[COLLISION_AXES],
                                         int32_t other_cell[COLLISION_AXES], uint16_t *out_other, bool *out_other_gone,
                                         uint32_t *broken) {
-    int32_t step_x = 0, step_y = 0;
+    int32_t step[COLLISION_AXES] = {0, 0, 0};
     *out_other_gone = false;
-    if (!bench_is_half(block)) {
+    if (!bench_is_half(block) && !door_is(block)) {
         return true;
     }
-    /* Listed once already and gone with the other half, this one has no bench left to speak for. Its facing says where that is. */
+    /* Listed once already and gone with the other half, this one has nothing left to speak for. Its state says where that is: a bench's
+     * beside it by its facing, a door's above or below. */
     uint16_t here = BLOCK_ID_AIR;
     if (world_map_voxel_get(edit->borrowed_map, cell[0], cell[1], cell[2], &here) != WORLD_MAP_STATUS_OK ||
-        block_state_id(here) != block || !bench_half_other(here, &step_x, &step_y, out_other)) {
+        block_state_id(here) != block ||
+        !(bench_half_other(here, &step[0], &step[1], out_other) || door_half_other(here, &step[2], out_other))) {
         return true;
     }
-    other_cell[0] = cell[0] + step_x;
-    other_cell[1] = cell[1] + step_y;
-    other_cell[2] = cell[2];
+    other_cell[0] = cell[0] + step[0];
+    other_cell[1] = cell[1] + step[1];
+    other_cell[2] = cell[2] + step[2];
     uint16_t there = BLOCK_ID_AIR;
     if (world_map_voxel_get(edit->borrowed_map, other_cell[0], other_cell[1], other_cell[2], &there) !=
         WORLD_MAP_STATUS_OK) {

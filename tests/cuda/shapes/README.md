@@ -20,7 +20,8 @@ What it checks:
 - **The coarse pass:** rays with and without it find the same things, to the bit, while it does start tiles later than 0.
 - **The layer limit:** a line of leaves with one hole lined up all the way. With 16 leaves the pixel stops on the last of them, with its mean colour. With 15 it reaches the stone behind.
 - **Every facing** (plan 005 phase 12): a second scene of stairs, a woodworking bench, a ladder and a torch on a wall, each turned all four ways, against the same exact trace from all sides. The trace turns boxes, faces and the place a picture is read at by arithmetic of its own, apart from `run/include/types/block_state/`, so a bench's front and top are held to where they turn.
-- **Golden pictures:** `fixtures/*.png`, at most 2 out of 255 apart on any channel. `facings.png` and `facings_back.png` are the scene of facings from the south-west and the north-east. Ahmed's card and driver made them. To make them again, after looking at them:
+- **Every door** (plan 005 phase 2): a third scene of each kind of door, shut and open, two tall, facing each way, and a pair, against the same exact trace from all sides. The trace turns an open door on its hinge and gives the upper half its upper picture by arithmetic of its own.
+- **Golden pictures:** `fixtures/*.png`, at most 2 out of 255 apart on any channel. `facings.png` and `facings_back.png` are the scene of facings from the south-west and the north-east. `doors.png` and `doors_back.png` are the scene of doors from the same two sides. Ahmed's card and driver made them. To make them again, after looking at them:
 
       MC_GOLDEN_WRITE=1 tools/test-or-build.sh ctest --preset debug -R '^render_feature_shapes$'
 

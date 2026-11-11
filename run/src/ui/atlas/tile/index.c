@@ -60,7 +60,7 @@ uint32_t ui_atlas_in_tile(int64_t column_or_row) {
     return (uint32_t)(column_or_row - tile_floor_div(column_or_row, UI_ATLAS_TILE_SIDE) * UI_ATLAS_TILE_SIDE);
 }
 
-/* Shapes that never hide the ground: air, plants on top of it, and torches. */
+/* Shapes that never hide the ground: air, plants on top of it, torches, and doors, which are seen from above as a sliver. */
 static bool tile_counts(uint16_t state, uint32_t colour_count) {
     if (state >= BLOCK_COUNT || state >= colour_count) {
         return state != 0u; /* a block this program does not know is still something there */
@@ -71,6 +71,7 @@ static bool tile_counts(uint16_t state, uint32_t colour_count) {
     case BLOCK_SHAPE_CROP:
     case BLOCK_SHAPE_TORCH:
     case BLOCK_SHAPE_TORCH_WALL:
+    case BLOCK_SHAPE_DOOR:
         return false;
     default:
         return true;

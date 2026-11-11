@@ -33,4 +33,5 @@ Amanatides & Woo 1987, in `float64_t`. Each next wall's distance is worked out f
 | `shape: crop` | The whole cell |
 | `shape: torch` | Twice the stick's width, and its height |
 | `shape: torch_east` and the others on a wall | Around all its steps, from the wall out, and twice the stick's width across |
+| `shape: door` | Its plate as drawn: shut, the side it faces; open, turned a quarter anticlockwise on its hinge (`block_state_drawn_facing`) |
 | `shape: thin` | The plate as drawn: the side it faces, +y facing north, or the floor for a lily pad |

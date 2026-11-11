@@ -1,0 +1,38 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: iron_door_lower
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The lower half of an iron door: riveted plates with a raised band across, and a dark handle at the right, away from the hinge."
+  seed: 6203
+  ops:
+    - { op: fill, color: "#c4c7cc" }
+    - { op: noise, amount: 7, cell: 2, seed: 41 }
+    - { op: fill, color: "#a9adb3", x: 2, y: 2, w: 12, h: 5 }
+    - { op: fill, color: "#a9adb3", x: 2, y: 9, w: 12, h: 5 }
+    - { op: noise, amount: 5, cell: 3, seed: 42, x: 2, y: 2, w: 12, h: 12 }
+    - { op: fill, color: "#e1e3e6", x: 2, y: 7, w: 12, h: 1 }
+    - { op: fill, color: "#8a8e95", x: 2, y: 8, w: 12, h: 1 }
+    - op: art
+      palette: { r: "#71757c", h: "#3a3c40", l: "#d9dbde" }
+      rows:
+        - "................"
+        - ".r............r."
+        - "............hh.."
+        - "............lh.."
+        - "............hh.."
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - "................"
+        - ".r............r."
+        - "................"
+    - { op: fill, color: "#7c8087", x: 0, y: 0, w: 1, h: 16 }
+    - { op: fill, color: "#7c8087", x: 15, y: 0, w: 1, h: 16 }
+    - { op: fill, color: "#7c8087", x: 0, y: 15, w: 16, h: 1 }

@@ -197,6 +197,11 @@ TEST(every_block_collides_as_its_config_says) {
     for (uint32_t block = 0u; block < BLOCK_COUNT; block++) {
         const block_def_t *const def = &block_defs[block];
         const uint32_t count = collision_block_boxes((uint16_t)block, -3, 7, 100, boxes);
+        /* A door's body goes by its state, below. */
+        if (def->shape == BLOCK_SHAPE_DOOR) {
+            CHECK_EQ_U64(count, 1u);
+            continue;
+        }
         if ((def->flags & BLOCK_FLAG_SOLID) == 0u) {
             CHECK_EQ_U64(count, 0u);
             continue;
@@ -285,6 +290,36 @@ TEST(stairs_facing_each_way_collide_with_the_step_on_the_side_they_face) {
     CHECK_MEM_EQ(north, plain, sizeof(plain));
 }
 
+/* Plan 005 phase 2: a shut door is its plate, three sixteenths thick, on the side it faces, and an open one is nothing, whichever way it
+ * faces and whichever half. The boxes are whole 32nds, so these are exact. */
+TEST(a_shut_door_collides_with_its_plate_on_the_side_it_faces_and_an_open_one_not_at_all) {
+    /* Where the plate is, low x, low y, high x, high y, for north, east, south and west. */
+    static const float64_t plate[BLOCK_FACINGS][4] = {
+        {0.0f64, 26.0f64 / 32.0f64, 1.0f64, 1.0f64},
+        {26.0f64 / 32.0f64, 0.0f64, 1.0f64, 1.0f64},
+        {0.0f64, 0.0f64, 1.0f64, 6.0f64 / 32.0f64},
+        {0.0f64, 0.0f64, 6.0f64 / 32.0f64, 1.0f64},
+    };
+    static const uint16_t doors[] = {BLOCK_ID_WOOD_DOOR, BLOCK_ID_IRON_DOOR, BLOCK_ID_GLASS_DOOR};
+    for (uint32_t d = 0u; d < sizeof(doors) / sizeof(doors[0]); d++) {
+        CHECK_EQ_U64(block_defs[doors[d]].shape, BLOCK_SHAPE_DOOR);
+        for (uint32_t facing = 0u; facing < BLOCK_FACINGS; facing++) {
+            for (uint32_t upper = 0u; upper < 2u; upper++) {
+                collision_box_t boxes[COLLISION_BOXES_PER_BLOCK];
+                const uint16_t shut = block_state_make(doors[d], facing, upper != 0u, false);
+                REQUIRE(collision_block_boxes(shut, 10, 20, 30, boxes) == 1u);
+                CHECK_NEAR(boxes[0].min[0], 10.0f64 + plate[facing][0], PT_EXACT);
+                CHECK_NEAR(boxes[0].min[1], 20.0f64 + plate[facing][1], PT_EXACT);
+                CHECK_NEAR(boxes[0].max[0], 10.0f64 + plate[facing][2], PT_EXACT);
+                CHECK_NEAR(boxes[0].max[1], 20.0f64 + plate[facing][3], PT_EXACT);
+                CHECK_NEAR(boxes[0].min[2], 30.0f64, PT_EXACT);
+                CHECK_NEAR(boxes[0].max[2], 31.0f64, PT_EXACT);
+                CHECK_EQ_U64(collision_block_boxes(block_state_with_open(shut, true), 10, 20, 30, boxes), 0u);
+            }
+        }
+    }
+}
+
 /* ---- In a real world -------------------------------------------------------------------------------------------------- */
 
 static void pt_move(test_world_t *w, const collision_box_t *box, float64_t x, float64_t y, float64_t z,
@@ -345,6 +380,30 @@ TEST(no_speed_gets_through_the_thinnest_wall) {
     const collision_box_t large = PT_BOX(0.0f64, 0.0f64, 5.0f64, 4.0f64, 4.0f64, 9.0f64);
     pt_move(&w, &large, 4000.0f64, 0.0f64, 0.0f64, &move);
     CHECK_NEAR(move.moved[0], 26.0f64, PT_EXACT);
+    test_world_end(&w);
+}
+
+/* Plan 005 phase 2: walking north into a shut door stops on its plate, and the same door open lets the body through, in a real world. */
+TEST(a_shut_door_stops_a_body_walking_into_it_and_an_open_one_lets_it_through) {
+    test_world_t w;
+    REQUIRE(test_world_begin(t, &w));
+    for (uint32_t open = 0u; open < 2u; open++) {
+        test_world_fill(t, &w, 5, 5, 1, 5, 5, 1,
+                        block_state_make(BLOCK_ID_WOOD_DOOR, BLOCK_FACING_NORTH, false, open != 0u));
+        test_world_fill(t, &w, 5, 5, 2, 5, 5, 2,
+                        block_state_make(BLOCK_ID_WOOD_DOOR, BLOCK_FACING_NORTH, true, open != 0u));
+        /* A body as wide as a player's, 1.8 tall, from the cell south of the door, walking 3 north. */
+        const collision_box_t body = PT_BOX(5.2f64, 3.2f64, 1.0f64, 5.8f64, 3.8f64, 2.8f64);
+        collision_move_t move;
+        pt_move(&w, &body, 0.0f64, 3.0f64, 0.0f64, &move);
+        if (open == 0u) {
+            CHECK_EQ_U64(move.hit_y, 1u);
+            CHECK_NEAR(move.moved[1], 5.0f64 + 26.0f64 / 32.0f64 - 3.8f64, PT_EXACT);
+        } else {
+            CHECK_EQ_U64(move.hit_y, 0u);
+            CHECK_NEAR(move.moved[1], 3.0f64, 1.0e-6f64);
+        }
+    }
     test_world_end(&w);
 }
 

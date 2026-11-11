@@ -82,7 +82,8 @@ typedef struct player_interaction_t {
     uint32_t held_speed_milli;                     /* 1112: on its own blocks, if not 0, over what its tier says */
     uint8_t hit_wait;                              /* 1116: ticks of mining until the next hit is heard */
     uint8_t turns;                                 /* 1117: quarter turns R has given what is in the hand, 0 to 3 */
-    uint8_t _pad0[34];                             /* 1118 */
+    uint8_t place_held; /* 1118: the right button was down last tick: a door opens on a new press */
+    uint8_t _pad0[33];  /* 1119 */
 } player_interaction_t;
 static_assert(sizeof(player_interaction_t) == 1152);
 static_assert(alignof(player_interaction_t) == 8);
@@ -104,7 +105,7 @@ typedef struct player_interaction_input_t {
 static_assert(sizeof(player_interaction_input_t) == 40);
 
 enum : uint32_t {
-    /* The most cells one block takes when placed: a bench is two. */
+    /* The most cells one block takes when placed: a bench is two, side by side, and a door two, one above the other. */
     PLAYER_PLACE_CELLS = 2u,
 };
 
@@ -114,19 +115,21 @@ typedef enum player_place_status_t : uint8_t {
     PLAYER_PLACE_OK = 1,   /* it would go down */
     PLAYER_PLACE_BLOCKED =
         2, /* it has a place that cannot take it: something there, the body in the way, no ground under what
-                                 needs it, no room for a bench's other half, or a column or height that is not loaded or played */
+                                 needs it, no room for a bench's other half or a door's upper half, or a column or height that is not
+                                 loaded or played */
 } player_place_status_t;
 
 /* What and where a hand would place, worked out without changing anything: for placing, and for a preview to draw. With
  * PLAYER_PLACE_NONE only status means anything. With BLOCKED the cells and voxels are what it would have been. */
 typedef struct player_place_plan_t {
-    int32_t cells[PLAYER_PLACE_CELLS][COLLISION_AXES]; /* 0: the cell aimed into, then a bench's other half */
-    uint16_t voxels[PLAYER_PLACE_CELLS];               /* 24: what goes in each, with its facing: types/block_state/ */
-    uint16_t was_there;                                /* 28: what the first cell holds now, id and state */
-    uint8_t count;                                     /* 30: cells it takes, 1 or 2, and 0 with nothing to place */
-    uint8_t status;                                    /* 31: player_place_status_t */
-    uint8_t facing;                                    /* 32: the block_facing_t it goes down with */
-    uint8_t _pad0[3];                                  /* 33 */
+    int32_t cells[PLAYER_PLACE_CELLS]
+                 [COLLISION_AXES];       /* 0: the cell aimed into, then a bench's other half or a door's upper */
+    uint16_t voxels[PLAYER_PLACE_CELLS]; /* 24: what goes in each, with its facing: types/block_state/ */
+    uint16_t was_there;                  /* 28: what the first cell holds now, id and state */
+    uint8_t count;                       /* 30: cells it takes, 1 or 2, and 0 with nothing to place */
+    uint8_t status;                      /* 31: player_place_status_t */
+    uint8_t facing;                      /* 32: the block_facing_t it goes down with */
+    uint8_t _pad0[3];                    /* 33 */
 } player_place_plan_t;
 static_assert(sizeof(player_place_plan_t) == 36);
 
@@ -153,7 +156,7 @@ void player_interaction_hold_tool(player_interaction_t *interaction, uint8_t too
 void player_interaction_hold_speed(player_interaction_t *interaction, uint32_t speed_milli);
 
 /* One tick, on the thread holding the map: the left button mines the target, or if it is not held the right button places what is
- * in the hand against it. The target may be a tick old, and a block that has changed since is not touched. Never waits and never
+ * in the hand against it, or on a door that opens by hand, opens or shuts it, once a press. The target may be a tick old, and a block that has changed since is not touched. Never waits and never
  * touches the heap. */
 void player_interaction_tick(player_interaction_t *interaction, world_edit_t *edit,
                              const player_interaction_input_t *input);

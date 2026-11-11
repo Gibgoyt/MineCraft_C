@@ -170,6 +170,8 @@ textures:
   - { to: blocks/glass, from: block/glass.png }
   - { to: blocks/glass_detail, keep: "Minecraft has no picture for this" }
   - { to: blocks/glass_door, keep: "our doors are Minetest's 38x32 layout, not Minecraft's top and bottom halves" }
+  - { to: blocks/glass_door_lower, keep: "Minecraft has no glass door" }
+  - { to: blocks/glass_door_upper, keep: "Minecraft has no glass door" }
   - { to: blocks/glow_lichen, from: block/glow_lichen.png }
   - { to: blocks/gold_block, from: block/gold_block.png }
   - { to: blocks/gold_ore, from: block/gold_ore.png }
@@ -185,6 +187,8 @@ textures:
   - { to: blocks/iron_bars_top, keep: "Minecraft has no picture for this" }
   - { to: blocks/iron_block, from: block/iron_block.png }
   - { to: blocks/iron_door, keep: "our doors are Minetest's 38x32 layout, not Minecraft's top and bottom halves" }
+  - { to: blocks/iron_door_lower, from: block/iron_door_bottom.png }
+  - { to: blocks/iron_door_upper, from: block/iron_door_top.png }
   - { to: blocks/iron_ladder, keep: "Minecraft has no picture for this" }
   - { to: blocks/iron_ore, from: block/iron_ore.png }
   - { to: blocks/iron_trapdoor, from: block/iron_trapdoor.png }
@@ -333,6 +337,8 @@ textures:
   - { to: blocks/white_dandelion, keep: "Minecraft has no picture for this" }
   - { to: blocks/white_terracotta, from: block/white_terracotta.png }
   - { to: blocks/wood_door, keep: "our doors are Minetest's 38x32 layout, not Minecraft's top and bottom halves" }
+  - { to: blocks/wood_door_lower, from: block/oak_door_bottom.png }
+  - { to: blocks/wood_door_upper, from: block/oak_door_top.png }
   - { to: blocks/wood_trapdoor, from: block/oak_trapdoor.png }
   - { to: blocks/wood_trapdoor_side, keep: "Minecraft has no picture for this" }
   - { to: blocks/woodworking_bench_bottom, keep: "Minecraft has no picture for this" }

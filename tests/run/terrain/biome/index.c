@@ -54,7 +54,9 @@ static const int32_t BIO_CAVE_LEVEL_Z[BIO_CAVE_LEVELS] = {-210, -170, -100, -60,
 /* Plan 004 phase 8 added snow_layer. The land is the same, as its issue 19 shows: the numbers of the blocks after it in the alphabet moved. */
 /* Plan 005 phase 12 made the four torches on walls one wall_torch. The land is the same, as the digest over the numbers before it
  * showed: the numbers of the blocks after them in the alphabet moved. */
-static const uint64_t BIO_DIGEST_PIN = 0x7347D2E2EB87F8B2ull;
+/* Plan 005 phase 2 added three doors. The land is the same, as the digest over the numbers before them showed: the numbers of the
+ * blocks after them in the alphabet moved. */
+static const uint64_t BIO_DIGEST_PIN = 0xB1B81FB056636BFAull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 003 phase 8 stage 6 moved the biomes' boxes to the coast and the height the terrain now has. */

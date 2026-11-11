@@ -9,7 +9,7 @@
 
 - `player_interaction_start`, `player_interaction_hold_tool`, `player_interaction_hold_speed`: empty hands and a seed; what it mines with from now on, and what it mines at if its tier does not say.
 - `player_interaction_harvests`, `player_interaction_speed_milli`, `player_interaction_ticks`: the rules below, for any block and tool.
-- `player_interaction_tick`: one tick of both buttons.
+- `player_interaction_tick`: one tick of both buttons. The right button on a door that opens by hand opens or shuts it, once a press: see "Doors" below.
 - `player_interaction_progress`: how far along the block being mined is, for Stage 09.5's breaking overlay.
 - `player_sounds_post`, `player_sounds_next`: what can be heard, into a ring and out of it. The hands post a hit every 4 ticks of mining, a break and a place, if the input has somewhere to put them. Nothing in the world or the save depends on them, and they take no random number.
 - `player_interaction_drops_spawn`, `player_interaction_drop_next`: rolls a block's table into the ring; takes the oldest out of it.
@@ -19,7 +19,7 @@
 - `player_interaction_turn`: R. What is in the hand turns a quarter clockwise before it is placed, until the hand holds something else.
 
 **May be called by:** `run/src/player/`. `run/src/game/` takes the drops from `player_interaction_drop_next` and sets the hand to the hotbar slot in hand with `player_interaction_hand_set`, or in a run with no inventory gives what is picked up to `player_interaction_hand_take`, and `player_interaction_hold_tool` and `player_interaction_hold_speed` with what `run/src/item/equipment/` says of that slot.
-**Depends on:** `world/edit`, `world/map`, `world/wall_torch`, `world/bench`, `world/block_state`, `physics/collision`, `physics/raycast`, `player/camera` and `player/movement` for their types, `player/felling` for what a log cut sets going, and the generated `tables/blocks`.
+**Depends on:** `world/edit`, `world/map`, `world/wall_torch`, `world/bench`, `world/door`, `world/block_state`, `physics/collision`, `physics/raycast`, `player/camera` and `player/movement` for their types, `player/felling` for what a log cut sets going, and the generated `tables/blocks`.
 
 ## Mining
 
@@ -50,7 +50,7 @@ Shears on their own block roll nothing: `run/src/game/` brings out the block its
 
 The right button, when the left is not held, puts the hand's block on the face the ray came in through, or in the aimed-at block itself if that is `replaceable`, like tall grass. Held, that repeats every 4 ticks.
 
-**What and where** is `player_interaction_place_plan`, which changes nothing and is the whole of the decision: `player_interaction_tick` places exactly what it says when it says `PLAYER_PLACE_OK`. It gives the cells (two for a bench), the voxel for each with its state, the facing, what the first cell held, and a status: `NONE` when there is nothing to show (an empty hand, no face, a torch aimed at an underside), `OK`, or `BLOCKED` with the cells it would have taken. A preview draws `OK` in blue and `BLOCKED` in red: plan 005 phase 10's, through `player_place_preview` in `run/src/player/`, which builds the input from the same function as the tick, then `run/src/game/` and `run/src/render/entities/` to `cuda/src/entity_rays/`. It draws whatever cells the plan gives, up to `ENTITY_RAYS_PREVIEW_CELLS` (4), so a door's two cells or a cell ahead for bridging need nothing more there.
+**What and where** is `player_interaction_place_plan`, which changes nothing and is the whole of the decision: `player_interaction_tick` places exactly what it says when it says `PLAYER_PLACE_OK`. It gives the cells (two for a bench, side by side; two for a door, the lower half where aimed and the upper above it), the voxel for each with its state, the facing, what the first cell held, and a status: `NONE` when there is nothing to show (an empty hand, no face, a torch aimed at an underside), `OK`, or `BLOCKED` with the cells it would have taken. A preview draws `OK` in blue and `BLOCKED` in red: plan 005 phase 10's, through `player_place_preview` in `run/src/player/`, which builds the input from the same function as the tick, then `run/src/game/` and `run/src/render/entities/` to `cuda/src/entity_rays/`. It draws whatever cells the plan gives, up to `ENTITY_RAYS_PREVIEW_CELLS` (4), so a door's two cells or a cell ahead for bridging need nothing more there.
 
 **Which way it faces,** for a block whose file says `facing: horizontal` (stairs, ladders, vines, the woodworking bench, and the stoneworking bench and smith table when they come): the way the player looks, the nearest of the four, in `player_interaction_input_t.look_facing`, which `run/src/player/` works out from the yaw main last sent. Then R's quarter turns, clockwise seen from above. So stairs rise away from you, and a bench lies across your view, its first half where you aim and its second to your right. A ladder or a vine put on the side of a block faces that side, so that it lies on the wall aimed at, and R turns it from there. A torch on a wall faces its wall, by the face aimed at, and R does nothing to it. `run/include/types/block_state/README.md` says what each facing means.
 
@@ -63,6 +63,14 @@ It does nothing, and costs nothing, when:
 - the block would overlap the body at its present height. Touching it is fine, so a block can go under the feet;
 - it is not solid and the cell holds a fluid;
 - it stands on the ground, and the cell below is not solid.
+
+## Doors
+
+Plan 005 phase 2; `run/src/world/door/README.md` has the whole of it.
+
+- **Placing** goes through `player_interaction_place_plan` like anything else, with a door's two halves as its two cells (`count` 2, `cells[1]` straight above `cells[0]`, `voxels[1]` the upper half), so a preview draws the whole door, and both cells must take it or neither does. The facing is the player's turned by R, then turned round if the hinge goes on the right, by `door_hinged_facing` from what is beside the lower cell. That is the only change to the plan for doors.
+- **Opening:** the right button on either half of a door that opens by hand opens or shuts both halves, as one edit each, with a place sound. Only a new press does it: `player_interaction_t.place_held` remembers that the button was down last tick (in what was padding, so an old state file reads 0), so holding the button after placing a door, or after opening it, does nothing more. The hand never places on such a door. An iron door does not open by hand, and the button places against it as against any block.
+- **Mining** either half takes both, through the same path as a bench's two halves, and the half mined drops the one door.
 
 ## The aim is a tick old, on purpose
 

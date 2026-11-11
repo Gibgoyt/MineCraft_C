@@ -22,7 +22,7 @@
 
 ## The log
 
-A ring of `{x, y, z, before, after}`, one per block that really changed. A reader keeps its own cursor and gets records oldest first. If it falls more than the ring behind, `world_edit_log_read` says how many it lost, and it must look at the world itself. Light does not go in: a pass writes too much of it to be worth reading back. Writing what is already there logs and flags nothing.
+A ring of `{x, y, z, before, after}`, one per block that really changed. A reader keeps its own cursor and gets records oldest first. If it falls more than the ring behind, `world_edit_log_read` says how many it lost, and it must look at the world itself. Light does not go in: a pass writes too much of it to be worth reading back. Writing what is already there logs and flags nothing. `before` and `after` are whole voxels, id and state (`run/include/types/block_state/`), and "already there" means the whole voxel: opening a door, the same id, is a change, as is a block's id alone over the same block turned (plan 005 phase 2).
 
 ## Dirty flags
 

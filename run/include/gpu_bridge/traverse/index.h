@@ -74,7 +74,10 @@ typedef enum traverse_shape_t : uint8_t {
     /* A torch on a wall, stepping out from it: its wall on the +y side of the voxel, the way it faces, so it leans out to -y. */
     TRAVERSE_SHAPE_TORCH_WALL = 8,
     TRAVERSE_SHAPE_LAYER = 9, /* an eighth of a block on the floor: the census's snow layer (plan 004 phase 08) */
-    TRAVERSE_SHAPE_COUNT = 10,
+    /* A door's plate, three sixteenths thick, against the +y side as it faces north; an open door is drawn by its facing turned a
+     * quarter anticlockwise: block_state_drawn_facing (plan 005 phase 2). */
+    TRAVERSE_SHAPE_DOOR = 10,
+    TRAVERSE_SHAPE_COUNT = 11,
 } traverse_shape_t;
 static_assert(sizeof(traverse_shape_t) == 1);
 

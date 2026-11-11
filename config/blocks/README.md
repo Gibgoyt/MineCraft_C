@@ -27,7 +27,7 @@ To add a block: make `config/blocks/<name>/index.yaml`, and build. `compile/src/
 | `texture` | unless `shape: none` | A map of faces, below | |
 | `tool` | | `none pickaxe axe shovel hoe shears sword`: what breaks it fastest | `none` |
 | `tier` | | `none wood stone iron diamond`: the lowest of `tool` that gets the drops at all. Needs a `tool` other than `none` or `shears` | `none` |
-| `shape` | | `none cube slab stairs cross crop torch thin fluid torch_wall` | `cube` |
+| `shape` | | `none cube slab stairs cross crop torch thin fluid torch_wall door` | `cube` |
 | `light` | | Block light given off, 0 to 15 | 0 |
 | `opacity` | | Light lost passing through, 0 to 15 | 15 for `cube`, otherwise 0 |
 | `solid` | | `true` if a body collides with it | `true` for `cube slab stairs`, otherwise `false` |
@@ -41,6 +41,8 @@ To add a block: make `config/blocks/<name>/index.yaml`, and build. `compile/src/
 `facing`, `half` and `open` are what the voxel holds beside the block's id: `run/include/types/block_state/README.md` says how, and what each facing means for a shape. A shape is drawn, collides and is aimed at as it faces north, turned by the voxel's facing. A block with none of the three has no state, and is its id alone.
 
 `torch_wall` is a torch on the side of a block, `wall_torch`, which faces its wall: facing north, it hangs from the block to its north and leans out to the south. `run/src/world/wall_torch/` says which block that is. Placing a torch picks its facing by the face aimed at.
+
+`door` is a plate three sixteenths thick, two blocks tall, and needs `facing: horizontal`, `half: upper_lower` and `open: true`, which the table tool checks. Shut and facing north, it stands against the `+y` side with its hinge at the west end; open, it is turned a quarter about that hinge, against the `-x` side. Whether it has a body goes by its state, so its file leaves `solid` alone: shut, it blocks bodies, mobs' paths and nothing else; open, nothing. Its pictures: `side` on both halves' faces as the lower half, and `top` and `bottom` on the upper half's two wide faces, so `top` and `bottom` name the upper picture. `run/src/world/door/README.md` says how doors are placed, opened and broken, and why an iron door stays shut by hand.
 
 ### A drop row
 

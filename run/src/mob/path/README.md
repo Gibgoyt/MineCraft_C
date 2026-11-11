@@ -17,7 +17,7 @@
 - `mob_path_stats_read`: the counters.
 
 **May be called by:** `run/src/mob/`, and its sibling parts, the mobs of Stages 15.4 to 15.6.
-**Depends on:** `arena`, `assert`, `job`, `entity/store`, `physics/collision`, `world/map`, `world/edit`, `world/column`, the block tables, libm, and `sched_yield`.
+**Depends on:** `arena`, `assert`, `job`, `entity/store`, `physics/collision`, `world/map`, `world/edit`, `world/column`, `world/door`, the block tables, libm, and `sched_yield`.
 
 ## Where a body can be
 
@@ -29,7 +29,7 @@ A node is the cell of a body's feet. The body is taken as at most one cell wide,
 | Water, ladder, vine | Passes and stands, whatever is under it. Water costs more |
 | Slab | Stands on top, feet half a block up |
 | Stairs, and any other solid block | Stands on top. Stairs are a block here because a body in the middle of the cell ends on their top half |
-| Lava, cactus, a column not loaded | Nothing. The last is what `physics` calls a wall too |
+| Lava, cactus, a shut door, a column not loaded | Nothing. The last is what `physics` calls a wall too. A door goes by its state: open, it is air to a body (plan 005 phase 2) |
 
 The moves, with what each costs in hundredths of a block's walk:
 
