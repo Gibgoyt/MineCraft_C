@@ -219,7 +219,7 @@ built on `mmap` with 2 MiB alignment and `MADV_HUGEPAGE`, and it counts every by
 | `malloc`, `calloc`, `realloc`, `free`, `aligned_alloc` | `heap_reserve`, `heap_release` (Owner tier), `arena_alloc` (Arena tier) |
 | `mmap`, `munmap`, `brk`, `sbrk` | Same |
 | `alloca`, VLAs | Fixed-size locals, or the Job arena |
-| Recursion | Explicit stack from an arena |
+| Recursion, including through a function pointer, a job or a signal handler that its own signal can interrupt (`SA_NODEFER`) | Explicit stack from an arena |
 
 Exceptions: mapping a DRM dumb buffer is device memory, done in `run/src/display/device/`, and the lint allowlists that
 one file. Memory allocated inside libc or `libcudart` is outside our control. Tests may use a test arena.
@@ -285,6 +285,7 @@ but the rule stays the same, so nobody has to remember two models.
 - **Hard limit: 2000 lines in any `.c .h .cu .hu .asm .inc` file.** One more fails the build.
 - **Split at 1500 lines,** by making sub-directories. A long file is a sign of a missing directory.
 - **A source directory holds only one `index.*` pair member and a `README.md`.** Headers live in the matching `include/` path.
+  The one other file the lint allows is its own reviewed list, `compile/src/standards_lint/indirect_calls.yaml`.
 - **Every source directory's `README.md` states:** purpose, tier, what it owns, public functions, and what may call it.
 
 Full layout: `plans/REPO_STRUCTURE.md`.
@@ -445,7 +446,10 @@ CMake still adds `-lcudadevrt -lrt -lpthread -ldl` and an unused `-rpath`. None 
 | Formatting | ctest `clang_format` |
 | Floats at varargs calls: the printf rule | `-Wformat` under `-Werror`; ctest `run_types`; review for `libc_double_t` used as anything but a cast |
 | VLAs | `-Wvla` |
-| Recursion | Call-graph check from GCC's `-fcallgraph-info`, on every preset |
+| Recursion | Call-graph check from GCC's `-fcallgraph-info` at `-O0`, on every preset |
+| Recursion through a job | `standards_lint` adds an edge from `job_run` to every function the sources pass to `job_spawn`, `job_submit` or `job_try_submit` (and their `_at` forms), so the call-graph check follows jobs too. A job function must be passed by name |
+| Recursion through any other function pointer | Every function that calls through a pointer is listed in `compile/src/standards_lint/indirect_calls.yaml`, with the pointer's type and why none of its targets can reach it again. `standards_lint` fails on a caller missing from the list, and on an entry that is no longer true |
+| Signal handler re-entry | `SA_NODEFER` and `SA_NOMASK` are banned, with no exception |
 | Large stack frames | `-Wframe-larger-than=` |
 | Leaks | Heap counters must read zero at exit; sanitize preset |
 | Ownership prefixes, thread rules | Review; the lint checks prefixes where it can; the `tsan` preset, run by hand, for what threads do to each other's memory |

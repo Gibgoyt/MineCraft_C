@@ -23,6 +23,10 @@ static const char *const device_memory_only[] = {"cuda/src/device_memory/index.c
 /* Section 4: "Every such static ... is listed in the lint's allowlist." */
 static const char *const borrowed_static_files[] = {"run/src/display/vt_guard/index.c", nullptr};
 
+/* Section 5: the one file in a source directory that is neither code nor README.md, the lint's reviewed list of calls
+ * through function pointers, which it reads itself (plans/CODING_STANDARD.md section 10). */
+static const char *const data_files[] = {"compile/src/standards_lint/indirect_calls.yaml", nullptr};
+
 /* Section 1: the two exceptions to no sockets, each a Unix socket to a server on this machine: X, and the sound server. */
 static const char *const local_socket[] = {"run/src/display/x11/index.c", "run/src/audio/pulse/index.c", nullptr};
 
@@ -38,6 +42,8 @@ static const char why_pragma[] =
     "is a pragma the #pragma rules cannot see; write none (plans/CODING_STANDARD.md section 3)";
 static const char why_load[] =
     "loads code at run time, past the allowed library list (plans/CODING_STANDARD.md section 1)";
+static const char why_reentry[] =
+    "lets a signal handler run again inside itself, which is recursion (plans/CODING_STANDARD.md section 4)";
 
 #define MC_WORD(text, why_text, paths, langs, member)                                                                  \
     {.word = text,                                                                                                     \
@@ -158,6 +164,9 @@ static const lint_word_t lint_words[] = {
     MC_WORD("dlmopen", why_load, nullptr, LINT_LANGUAGE_BOTH, 1),
     MC_WORD("dlsym", why_load, nullptr, LINT_LANGUAGE_BOTH, 1),
     MC_WORD("dlvsym", why_load, nullptr, LINT_LANGUAGE_BOTH, 1),
+    /* Section 4: no recursion, and a handler that its own signal can interrupt is one. SA_NOMASK is glibc's other name. */
+    MC_WORD("SA_NODEFER", why_reentry, nullptr, LINT_LANGUAGE_BOTH, 0),
+    MC_WORD("SA_NOMASK", why_reentry, nullptr, LINT_LANGUAGE_BOTH, 0),
     /* Sections 3 and 7: the operator form of #pragma, which is a string to a token scan. */
     MC_WORD("_Pragma", why_pragma, nullptr, LINT_LANGUAGE_BOTH, 0),
     MC_WORD("__pragma", why_pragma, nullptr, LINT_LANGUAGE_BOTH, 0),
@@ -211,6 +220,9 @@ static const char *const lint_other_rules[] = {
     "init_deinit_pair",
     "recursion",
     "recursion_cuda",
+    "indirect_call_unlisted",
+    "indirect_call_stale",
+    "job_function_unresolved",
     /* Section 5: files and directories. */
     "file_name",
     "file_location",
@@ -317,6 +329,15 @@ bool lint_catalog_has_rule(const char *rule) {
 bool lint_catalog_borrowed_static_allowed(const char *path) {
     for (uint32_t i = 0; borrowed_static_files[i] != nullptr; i++) {
         if (lint_path_matches(borrowed_static_files[i], path)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool lint_catalog_data_file_allowed(const char *path) {
+    for (uint32_t i = 0; data_files[i] != nullptr; i++) {
+        if (strcmp(data_files[i], path) == 0) {
             return true;
         }
     }

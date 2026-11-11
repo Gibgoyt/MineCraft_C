@@ -1,0 +1,6 @@
+root: .
+indirect_calls:
+  - file: one.c
+    caller: cg_apply
+    pointer: "int32_t (*)(int32_t)"
+    why: "Its one target, cg_double, calls nothing."

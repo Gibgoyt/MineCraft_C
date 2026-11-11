@@ -1,0 +1,5 @@
+root: .
+job_dispatchers:
+  - file: job.c
+    caller: job_run
+    why: "Runs the job it is given."

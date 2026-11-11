@@ -6,7 +6,7 @@ in this stage, `standards_lint`, lints the repository and is registered in `cmak
 | Fixtures | What happens | What `EXPECT` holds |
 |---|---|---|
 | `fixtures/lint/<name>/` | A small repository, linted with `--root` | The exact rule ids a run must report. Empty means clean |
-| `fixtures/callgraph/<name>/` | Its `.c` files are compiled with `-fcallgraph-info=su` and checked with `--callgraph` | The same |
+| `fixtures/callgraph/<name>/` | Its `.c` files are compiled with `-fcallgraph-info=su` and checked with `--callgraph`, and with `--indirect-calls` when it has an `indirect_calls.yaml` | The same |
 | `fixtures/compiler/<name>/` | `index.c` is compiled with the real flags from `cmake/flags.cmake` | `pass`, or `fail <text from the error>` |
 
 The match on rules is exact, so a fixture cannot pass by tripping some other rule. Any rule in `standards_lint --list-rules`

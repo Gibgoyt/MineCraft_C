@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2 — phase 16: No recursion
 
-**Status:** agent R1's part built and tested (recursion removed); agent R2's lint part in progress   (updated 2026-11-10)
+**Status:** done: R1 removed the recursion and R2's lint proves it, through jobs, pointers and signals   (updated 2026-11-10)
 
 ## Goal
 
@@ -54,16 +54,16 @@ the injector (16384) were full, limited only by `JOB_INLINE_DEPTH_MAX` 32 and an
 
 ### Lint (agent R2)
 
-- [ ] 1. Job pointers become edges: a token scan in `rules_c/` finds every function passed to `job_spawn`, `job_submit*`
+- [x] 1. Job pointers become edges: a token scan in `rules_c/` finds every function passed to `job_spawn`, `job_submit*`
   and `job_try_submit*`, and `graph/index.c` adds the edge `job_run → that function`. A fixture with a self-spawning job
-- [ ] 2. Every other indirect call reviewed: a caller with an `__indirect_call` edge fails unless listed in
+- [x] 2. Every other indirect call reviewed: a caller with an `__indirect_call` edge fails unless listed in
   `compile/src/standards_lint/indirect_calls.yaml` (caller, pointer type, why its targets cannot reach back), seeded with
   the 132 callers checked by hand. Fixtures for a missing and a listed entry
-- [ ] 3. `SA_NODEFER` banned by a lint rule, with no exception. A fixture
-- [ ] 4. Coverage: the target regex at `cmake/standards_lint.cmake:21` includes `mc_fuzz_.*` and `mc_soak`
+- [x] 3. `SA_NODEFER` banned by a lint rule, with no exception. A fixture
+- [x] 4. Coverage: the target regex at `cmake/standards_lint.cmake:21` includes `mc_fuzz_.*` and `mc_soak`
 - [x] 5. CUDA scan (`rules_c/index.c:645,702`): kernel launches `k<<<...>>>(` count as calls, bodies with qualifiers
   between `)` and `{` are recognised, `static` names are keyed by file. Fixtures for each
-- [ ] 6. Docs: `CODING_STANDARD.md` section 10 (recursion through indirect calls, the allowlist, `SA_NODEFER`), and the
+- [x] 6. Docs: `CODING_STANDARD.md` section 10 (recursion through indirect calls, the allowlist, `SA_NODEFER`), and the
   lint README line that admits pointers aren't followed
 
 ## Verification
@@ -138,3 +138,55 @@ Full debug suite `-I 1,85`: 85 of 85 passed (904 s); `-I 86,400`: 76 of 76 passe
 `run_render_distance_live`. Release configure and build: exit 0, lint clean. Release `run_render_distance_live`: passed
 (32.8 s). `git grep -n 'SA_NODEFER\|JOB_INLINE_DEPTH_MAX' -- run tests`: nothing. `pgrep -af` of this worktree's build and
 `pgrep -a Xvfb`: nothing.
+
+### 2026-11-10, agent R2
+
+**1. Where the job scan lives.** Not in `rules_c/`, which runs only under `--root`: the job edges must be in the same
+graph as the `.ci` files, so a new part, `compile/src/standards_lint/indirect/`, lexes again each source a `.ci` file came
+from. A job function is the second-to-last argument of any call to a name starting `job_spawn`, `job_submit` or
+`job_try_submit`. It must be a name, or `a ? f : g`. A static function that hands its `job_function_t` parameter on
+(`census_single`, `map_run_jobs`, `survey_run_jobs`) is followed as a wrapper. Anything else is the new rule
+`job_function_unresolved`. All 77 sites in the tree resolve. The dispatcher is listed in the yaml under
+`job_dispatchers:` (`job_run`), so a second one would be reviewed the same way.
+
+**2. The list is keyed by where the function is written**, from each `.ci` node's label: `fake_add` and
+`fake_list_directory` (static, in `tests/run/input/fixtures/fake_evdev.h`, compiled into ten tests) are one entry each,
+not ten. So 134 GCC callers are 115 entries plus the dispatcher. `root: ../../..` in the yaml lets the lint check that
+each file exists.
+
+**3. Stale entries.** An entry fails when its file is gone, when the file no longer has the word, or when this preset
+compiled the function and found no call through a pointer in it. A function the preset does not compile is left alone:
+the fuzzers outside sanitize, and `dies_of_abort` (under `#ifndef NDEBUG`) in release. `TEST(name)` defines
+`test_body_name`, so the word check also accepts `name` for a `test_body_` entry.
+
+**4. Changed from the plan: sanitize and tsan now take the call graph from `-O0` copies too**, like release and profile
+(`cmake/flags.cmake`: `MC_C_CALLGRAPH` only on debug). The list names the function that makes each pointer call, and
+inlining at `-O1` would move a call into its caller and fail those presets. The copies add `-fno-sanitize=all`: nothing
+links them, and the checks add only direct calls into the runtime. Sanitize and tsan were not built here (time); the first
+build of each compiles every C source once more.
+
+**5. Changed from the plan: the list sits in a source directory**, which section 5 allows nothing but `index.*` and
+`README.md`. `catalog/` now names it as the one allowed data file (`lint_catalog_data_file_allowed`), and section 5 says
+so. Moving it to `config/` would have needed a `REPO_STRUCTURE.md` change, which phase 15 holds.
+
+**6. Review of the 115 entries.** A search over the debug `.ci` files took every function whose name appears in a
+source without a `(` after it (607 address-taken functions) and asked which indirect callers they reach. 62 of 134 are
+reached by none, so no pointer target at all can call back into them. For the other 72 the address-taken functions that
+reach each one were listed and compared with what the pointer can hold; none can be its target (the hand checks of
+comparators, tile functions, climate and frame sources, x11 and input pumps, recipe ops and the spill, take, hurt and
+probe callbacks hold). Three needed reading: `game_session_run_source` (its `session->source` is the source given to
+`game_session_run`; the function itself is static and only handed to `display_frames_run`), `game_session_scene_tick`
+and `_draw` (the inner scene is the game's own), and the failure test's `vt_alive_hook` (`saved_alive` is saved once,
+before the hook goes in). After R1, `job_run` is reached only from `job_worker_main`.
+
+**7. `SA_NOMASK`** is glibc's other name for `SA_NODEFER`, so both are banned words, each with a fixture.
+
+**8. CUDA scan.** `name<<<` is a call; a body may have identifiers, `name(...)` groups and `[[...]]` between its `)` and
+`{` (`noexcept`, `__attribute__((noinline))`); `__launch_bounds__` counts as an attribute, so it is never taken for the
+function's name; a function declared or defined `static` is keyed `path:name`, from a first pass over the file. The
+body rule applies to C files too; the tree lint stays clean.
+
+**9. Proof, on the pre-R1 code.** The main checkout's release call graph, built before R1, run through this lint with
+just the dispatcher listed, reports cycle A and the others: `census_slot_take -> job_spawn -> job_run -> census_day_job`
+(and `census_slot_job`), `atlas_draw_job`, and the job tests' `job_drain_root`, `job_order_spawner`,
+`job_order_near_then_spawn`, `job_overflow_parent` and `job_steal_parent`, each as `[recursion]`.

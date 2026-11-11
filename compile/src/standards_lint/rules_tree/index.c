@@ -408,8 +408,10 @@ static void tree_check_directory(tree_t *tree, const char *directory, const tree
         /* Section 5: "A source directory holds only one index.* pair member and a README.md." */
         for (uint32_t i = 0; i < listing->file_count; i++) {
             const char *name = listing->files[i];
-            if (strcmp(name, "README.md") != 0 && tree_kind_of(name) == TREE_KIND_OTHER) {
-                lint_breach(tree->report, tree_join_path(tree->arena_file, directory, name), 0, "stray_file",
+            const char *path = tree_join_path(tree->arena_file, directory, name);
+            if (strcmp(name, "README.md") != 0 && tree_kind_of(name) == TREE_KIND_OTHER &&
+                !lint_catalog_data_file_allowed(path)) {
+                lint_breach(tree->report, path, 0, "stray_file",
                             "a source directory holds only its index file and README.md");
             }
         }

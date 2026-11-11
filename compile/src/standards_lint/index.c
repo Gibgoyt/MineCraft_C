@@ -2,11 +2,13 @@
  *
  *   standards_lint --root <repository>            every rule on every directory
  *   standards_lint --callgraph <list file>        recursion, from GCC -fcallgraph-info output
+ *       [--indirect-calls <yaml>]                 with the reviewed calls through pointers, indirect_calls.yaml
  *   standards_lint --list-rules                   every rule id, one per line
  *
  * The first two can be combined. Exit status: 0 clean, 1 a breach, 2 the lint could not do its job. */
 #include "standards_lint/catalog/index.h"
 #include "standards_lint/graph/index.h"
+#include "standards_lint/indirect/index.h"
 #include "standards_lint/rules_tree/index.h"
 #include "standards_lint/support/index.h"
 
@@ -23,8 +25,8 @@ enum : uint64_t {
 
 /* The list holds one object path per line, and each object's .ci file sits next to it with the extension replaced,
  * which is where GCC puts it. A missing .ci is an error: silence must not read as "no recursion". */
-static void lint_check_callgraph(const char *list_path, lint_arena_t *arena_walk, lint_arena_t *arena_file,
-                                 lint_report_t *report) {
+static void lint_check_callgraph(const char *list_path, const char *allowlist_path, lint_arena_t *arena_walk,
+                                 lint_arena_t *arena_file, lint_report_t *report) {
     const char *text = nullptr;
     uint64_t length = 0;
     if (!lint_read_file(arena_walk, report, list_path, &text, &length)) {
@@ -53,12 +55,15 @@ static void lint_check_callgraph(const char *list_path, lint_arena_t *arena_walk
         }
         line = line_end + 1;
     }
+    /* Calls through pointers: job functions become edges first, so the cycle check sees them. */
+    lint_indirect_check(&graph, allowlist_path, arena_walk, arena_file, report);
     lint_graph_report_cycles(&graph, arena_file, report, "recursion");
 }
 
 int32_t main(int32_t argc, char **argv) {
     const char *root = nullptr;
     const char *callgraph = nullptr;
+    const char *indirect_calls = nullptr;
     bool list_rules = false;
     bool usage_ok = argc > 1;
     for (int32_t i = 1; i < argc && usage_ok; i++) {
@@ -68,14 +73,20 @@ int32_t main(int32_t argc, char **argv) {
         } else if (strcmp(argv[i], "--callgraph") == 0 && i + 1 < argc) {
             i++;
             callgraph = argv[i];
+        } else if (strcmp(argv[i], "--indirect-calls") == 0 && i + 1 < argc) {
+            i++;
+            indirect_calls = argv[i];
         } else if (strcmp(argv[i], "--list-rules") == 0) {
             list_rules = true;
         } else {
             usage_ok = false;
         }
     }
+    usage_ok = usage_ok && (indirect_calls == nullptr || callgraph != nullptr);
     if (!usage_ok) {
-        fprintf(stderr, "usage: standards_lint [--root <repository>] [--callgraph <list file>] [--list-rules]\n");
+        fprintf(stderr,
+                "usage: standards_lint [--root <repository>] [--callgraph <list file> [--indirect-calls <yaml>]] "
+                "[--list-rules]\n");
         return 2;
     }
     if (list_rules) {
@@ -103,7 +114,7 @@ int32_t main(int32_t argc, char **argv) {
         file_count = lint_rules_tree_check(root, &arena_walk, &arena_file, &report);
     }
     if (callgraph != nullptr) {
-        lint_check_callgraph(callgraph, &arena_walk, &arena_file, &report);
+        lint_check_callgraph(callgraph, indirect_calls, &arena_walk, &arena_file, &report);
     }
     const uint64_t breach_count = report.breach_count;
     const uint64_t error_count = report.error_count;

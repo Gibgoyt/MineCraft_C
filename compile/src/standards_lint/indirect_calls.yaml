@@ -1,0 +1,482 @@
+# Every function that calls through a function pointer, and why none of its targets can call back into it.
+# plans/CODING_STANDARD.md section 10. GCC records such a call as "__indirect_call", with no target, so the
+# recursion check cannot follow it; this list is the review that takes its place, and standards_lint holds it
+# true: a caller that is missing fails the build (indirect_call_unlisted), and so does an entry that no longer
+# calls through a pointer, or names a function or file that is gone (indirect_call_stale). See README.md.
+#
+# file:    where the function is written, from the repository root: a header for a static inline function
+# caller:  its own name, as in the source
+# pointer: the type of what it calls
+# why:     why no target can reach the caller again
+#
+# Job functions are not listed one by one: job_dispatchers names the function that runs jobs, and the lint adds
+# an edge from it to every function the sources hand to job_spawn, job_submit or job_try_submit (or their
+# _at forms), so a job that can reach its own submission is reported as recursion.
+root: ../../..
+
+job_dispatchers:
+  - file: run/src/job/index.c
+    caller: job_run
+    why: "Runs job.function; the lint adds an edge to each function the sources pass to the job system."
+
+indirect_calls:
+  - file: bench/lod/index.c
+    caller: bench_lod_column
+    pointer: "render_lod_sample_t"
+    why: "Targets sample terrain for one column (render_lod_sample_terrain); they never run the bench."
+  - file: bench/simd/index.c
+    caller: bench_measure
+    pointer: "bench_reset_t and bench_run_t"
+    why: "Targets reset buffers and run one kernel over a row; leaf work that never measures."
+  - file: bench/simd/index.c
+    caller: bench_run_row
+    pointer: "bench_fill_t"
+    why: "Targets fill a bench's input buffers and call nothing back."
+  - file: bench/world/index.c
+    caller: bench_row_settled
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's own tick and draw, which never call back into the bench that drives it."
+  - file: compile/src/texture_vector/recipe/index.c
+    caller: tv_recipe_run
+    pointer: "tv_op_function_t"
+    why: "Targets are the recipe ops, each drawing one shape on the canvas; none runs a recipe."
+  - file: run/src/climate/cell/index.c
+    caller: climate_cell_build_tile
+    pointer: "climate_ground_fn_t"
+    why: "Targets sample terrain heights (terrain/ and the tests' flat grounds) and never build climate."
+  - file: run/src/climate/index.c
+    caller: climate_mask_point
+    pointer: "climate_ground_fn_t"
+    why: "Targets sample terrain heights (terrain/ and the tests' flat grounds) and never build climate."
+  - file: run/src/climate/index.c
+    caller: climate_prepare_area
+    pointer: "progress, void (*)(void *, uint32_t done, uint32_t total)"
+    why: "Targets report progress to the loading screen or a test's counter; they never prepare climate."
+  - file: run/src/climate/mask/index.c
+    caller: climate_mask_page_build
+    pointer: "climate_ground_fn_t"
+    why: "Targets sample terrain heights (terrain/ and the tests' flat grounds) and never build climate."
+  - file: run/src/climate/systems/index.c
+    caller: systems_sort
+    pointer: "a comparator, int32_t (*)(const void *, uint32_t, uint32_t)"
+    why: "Targets are this file's comparators, which compare two entries and call nothing."
+  - file: run/src/climate/weather/flow/index.c
+    caller: climate_flow_receivers
+    pointer: "climate_flow_find_fn_t"
+    why: "Targets look a cell up in a table and call nothing back."
+  - file: run/src/display/device/index.c
+    caller: device_env_is_set
+    pointer: "display_ops_t (display/device)"
+    why: "Targets are the real system call wrappers (display_ops_real) or the tests' fake card and console. Each makes one system call or changes fake state, and calls nothing in display/."
+  - file: run/src/display/device/index.c
+    caller: device_ioctl_on
+    pointer: "display_ops_t (display/device)"
+    why: "Targets are the real system call wrappers (display_ops_real) or the tests' fake card and console. Each makes one system call or changes fake state, and calls nothing in display/."
+  - file: run/src/display/device/index.c
+    caller: display_device_check_console
+    pointer: "display_ops_t (display/device)"
+    why: "Targets are the real system call wrappers (display_ops_real) or the tests' fake card and console. Each makes one system call or changes fake state, and calls nothing in display/."
+  - file: run/src/display/device/index.c
+    caller: display_device_deinit
+    pointer: "display_ops_t (display/device)"
+    why: "Targets are the real system call wrappers (display_ops_real) or the tests' fake card and console. Each makes one system call or changes fake state, and calls nothing in display/."
+  - file: run/src/display/device/index.c
+    caller: display_device_init
+    pointer: "display_ops_t (display/device)"
+    why: "Targets are the real system call wrappers (display_ops_real) or the tests' fake card and console. Each makes one system call or changes fake state, and calls nothing in display/."
+  - file: run/src/display/device/index.c
+    caller: display_device_map
+    pointer: "display_ops_t (display/device)"
+    why: "Targets are the real system call wrappers (display_ops_real) or the tests' fake card and console. Each makes one system call or changes fake state, and calls nothing in display/."
+  - file: run/src/display/device/index.c
+    caller: display_device_read
+    pointer: "display_ops_t (display/device)"
+    why: "Targets are the real system call wrappers (display_ops_real) or the tests' fake card and console. Each makes one system call or changes fake state, and calls nothing in display/."
+  - file: run/src/display/device/index.c
+    caller: display_device_unmap
+    pointer: "display_ops_t (display/device)"
+    why: "Targets are the real system call wrappers (display_ops_real) or the tests' fake card and console. Each makes one system call or changes fake state, and calls nothing in display/."
+  - file: run/src/display/device/index.c
+    caller: display_device_wait_readable
+    pointer: "display_ops_t (display/device)"
+    why: "Targets are the real system call wrappers (display_ops_real) or the tests' fake card and console. Each makes one system call or changes fake state, and calls nothing in display/."
+  - file: run/src/display/headless/index.c
+    caller: display_headless_run
+    pointer: "display_headless_scene_t tick and draw"
+    why: "Targets are the game's and the session's scene callbacks and the tests' own; none runs the headless backend."
+  - file: run/src/display/index.c
+    caller: display_draw_frame
+    pointer: "display_frame_source_t and display_cursor_source_t"
+    why: "Targets are the frame sources (the session's, the menu's, the tests') and the input cursor. They draw into the back buffer they are given and never draw a frame themselves."
+  - file: run/src/display/index.c
+    caller: display_run_loop
+    pointer: "display_cursor_discard_t"
+    why: "Targets forget the cursor's last place and call nothing back."
+  - file: run/src/display/vt_guard/index.c
+    caller: display_vt_guard_service
+    pointer: "display_ops_t (pause_ms, ioctl_call, open_keyboards)"
+    why: "Targets are the real system call wrappers (display_ops_real) or the tests' fake card and console. Each makes one system call or changes fake state, and calls nothing in display/."
+  - file: run/src/display/vt_guard/index.c
+    caller: display_vt_guard_take_console
+    pointer: "display_ops_t (pause_ms, ioctl_call, open_keyboards)"
+    why: "Targets are the real system call wrappers (display_ops_real) or the tests' fake card and console. Each makes one system call or changes fake state, and calls nothing in display/."
+  - file: run/src/display/vt_guard/index.c
+    caller: guard_come_back
+    pointer: "display_ops_t (pause_ms, ioctl_call, open_keyboards)"
+    why: "Targets are the real system call wrappers (display_ops_real) or the tests' fake card and console. Each makes one system call or changes fake state, and calls nothing in display/."
+  - file: run/src/display/vt_guard/index.c
+    caller: guard_console_ioctl
+    pointer: "display_ops_t (pause_ms, ioctl_call, open_keyboards)"
+    why: "Targets are the real system call wrappers (display_ops_real) or the tests' fake card and console. Each makes one system call or changes fake state, and calls nothing in display/."
+  - file: run/src/display/vt_guard/index.c
+    caller: guard_guardian_rescan_keyboards
+    pointer: "display_ops_t (pause_ms, ioctl_call, open_keyboards)"
+    why: "Targets are the real system call wrappers (display_ops_real) or the tests' fake card and console. Each makes one system call or changes fake state, and calls nothing in display/."
+  - file: run/src/display/x11/index.c
+    caller: x11_take_button
+    pointer: "display_x11_sink_t key, motion, wheel and release_all"
+    why: "Targets record a key, motion or wheel event in input's state; none reads the window."
+  - file: run/src/display/x11/index.c
+    caller: x11_take_focus
+    pointer: "display_x11_sink_t key, motion, wheel and release_all"
+    why: "Targets record a key, motion or wheel event in input's state; none reads the window."
+  - file: run/src/display/x11/index.c
+    caller: x11_take_key
+    pointer: "display_x11_sink_t key, motion, wheel and release_all"
+    why: "Targets record a key, motion or wheel event in input's state; none reads the window."
+  - file: run/src/display/x11/index.c
+    caller: x11_take_motion
+    pointer: "display_x11_sink_t key, motion, wheel and release_all"
+    why: "Targets record a key, motion or wheel event in input's state; none reads the window."
+  - file: run/src/entity/item_drop/index.c
+    caller: item_drop_pickup
+    pointer: "item_drop_take_t"
+    why: "Targets put items into an inventory and never pick up drops."
+  - file: run/src/entity/projectile/index.c
+    caller: projectile_tick_flying
+    pointer: "projectile_hurt_t"
+    why: "Targets hurt the player or a mob; none ticks projectiles."
+  - file: run/src/game/cover/index.c
+    caller: game_cover_column
+    pointer: "game_cover_week_fn"
+    why: "Targets read one week of the climate record and never cover a column."
+  - file: run/src/game/index.c
+    caller: game_open_alive_tell
+    pointer: "game_t open_alive"
+    why: "Targets are game_session_open_alive, which lets the console guard work, and the failure test's hook; neither opens a game."
+  - file: run/src/game/session/index.c
+    caller: game_session_run_source
+    pointer: "display_frame_source_t"
+    why: "session->source is the source given to game_session_run (main's or a test's). game_session_run_source is static and handed only to display_frames_run, so it is never its own source."
+  - file: run/src/game/session/index.c
+    caller: game_session_scene_draw
+    pointer: "display_headless_scene_t draw"
+    why: "The scene is the game's own (game_headless_scene), which never reaches the session's scene."
+  - file: run/src/game/session/index.c
+    caller: game_session_scene_tick
+    pointer: "display_headless_scene_t tick"
+    why: "The scene is the game's own (game_headless_scene), which never reaches the session's scene."
+  - file: run/src/game/spawn/index.c
+    caller: game_spawn_walk
+    pointer: "game_spawn_probe_t"
+    why: "Targets test one column for a spawn by reading terrain; they never walk."
+  - file: run/src/game/tick/index.c
+    caller: game_census_check
+    pointer: "game_census_week_fn"
+    why: "Targets record or run one census week (the census test's recorder); they never tick the game."
+  - file: run/src/input/discovery/index.c
+    caller: discovery_ask_kinds
+    pointer: "input_ops_t (input/ops)"
+    why: "Targets are the real system call wrappers (input_ops_real) or the tests' fake evdev. Each makes one system call or changes fake state; list_directory calls back only its input_ops_on_name_t."
+  - file: run/src/input/discovery/index.c
+    caller: discovery_close
+    pointer: "input_ops_t (input/ops)"
+    why: "Targets are the real system call wrappers (input_ops_real) or the tests' fake evdev. Each makes one system call or changes fake state; list_directory calls back only its input_ops_on_name_t."
+  - file: run/src/input/discovery/index.c
+    caller: discovery_open
+    pointer: "input_ops_t (input/ops)"
+    why: "Targets are the real system call wrappers (input_ops_real) or the tests' fake evdev. Each makes one system call or changes fake state; list_directory calls back only its input_ops_on_name_t."
+  - file: run/src/input/discovery/index.c
+    caller: discovery_read_watch
+    pointer: "input_ops_t (input/ops)"
+    why: "Targets are the real system call wrappers (input_ops_real) or the tests' fake evdev. Each makes one system call or changes fake state; list_directory calls back only its input_ops_on_name_t."
+  - file: run/src/input/discovery/index.c
+    caller: discovery_rescan
+    pointer: "input_ops_t (input/ops)"
+    why: "Targets are the real system call wrappers (input_ops_real) or the tests' fake evdev. Each makes one system call or changes fake state; list_directory calls back only its input_ops_on_name_t."
+  - file: run/src/input/discovery/index.c
+    caller: discovery_watch_lost
+    pointer: "input_ops_t (input/ops)"
+    why: "Targets are the real system call wrappers (input_ops_real) or the tests' fake evdev. Each makes one system call or changes fake state; list_directory calls back only its input_ops_on_name_t."
+  - file: run/src/input/discovery/index.c
+    caller: discovery_watch_start
+    pointer: "input_ops_t (input/ops)"
+    why: "Targets are the real system call wrappers (input_ops_real) or the tests' fake evdev. Each makes one system call or changes fake state; list_directory calls back only its input_ops_on_name_t."
+  - file: run/src/input/discovery/index.c
+    caller: input_discovery_deinit
+    pointer: "input_ops_t (input/ops)"
+    why: "Targets are the real system call wrappers (input_ops_real) or the tests' fake evdev. Each makes one system call or changes fake state; list_directory calls back only its input_ops_on_name_t."
+  - file: run/src/input/events/index.c
+    caller: events_resync
+    pointer: "input_ops_t (input/ops)"
+    why: "Targets are the real system call wrappers (input_ops_real) or the tests' fake evdev. Each makes one system call or changes fake state; list_directory calls back only its input_ops_on_name_t."
+  - file: run/src/input/events/index.c
+    caller: input_events_drain
+    pointer: "input_ops_t (input/ops)"
+    why: "Targets are the real system call wrappers (input_ops_real) or the tests' fake evdev. Each makes one system call or changes fake state; list_directory calls back only its input_ops_on_name_t."
+  - file: run/src/input/index.c
+    caller: input_poll
+    pointer: "input_pump_t"
+    why: "Targets are the window pumps (main_window_pump and the tests'), which read window events into input; none polls input."
+  - file: run/src/input/ops/index.c
+    caller: real_list_directory
+    pointer: "input_ops_on_name_t"
+    why: "Targets are discovery_on_name and the tests' name collectors. discovery_on_name opens a device through the ops' open_device and never lists a directory."
+  - file: run/src/item/index.c
+    caller: item_spill_stacks
+    pointer: "item_spill_t"
+    why: "Targets drop a stack into the world as an item drop; none spills stacks."
+  - file: run/src/render/lod/index.c
+    caller: render_lod_job_run
+    pointer: "render_lod_sample_t and render_lod_overlay_t"
+    why: "Targets sample terrain or draw the climate overlay for one column; they run no LOD job."
+  - file: run/src/save/world/index.c
+    caller: save_world_step
+    pointer: "save_world_step_hook_t"
+    why: "nullptr but in tests, whose hooks hold or end the process at a step; they never write a save."
+  - file: run/src/simd/index.c
+    caller: simd_check_binary
+    pointer: "a NASM kernel and its C reference, of one kernel type"
+    why: "Targets are the NASM kernels and their C references, leaf functions that call nothing."
+  - file: run/src/simd/index.c
+    caller: simd_check_blend
+    pointer: "a NASM kernel and its C reference, of one kernel type"
+    why: "Targets are the NASM kernels and their C references, leaf functions that call nothing."
+  - file: run/src/terrain/hydrology/index.c
+    caller: hydrology_box_tiles
+    pointer: "hydrology_tile_function_t"
+    why: "Targets are this file's tile functions, each filling one tile; none walks a box."
+  - file: run/src/thread/index.c
+    caller: thread_entry
+    pointer: "thread_function_t"
+    why: "thread_entry is only ever called by pthread_create, on the new thread's own stack. No code calls it, so nothing can call back into it."
+  - file: run/src/ui/atlas/layer/index.c
+    caller: layer_ground_read
+    pointer: "ui_atlas_ground_t read"
+    why: "Targets read climate or terrain pages for the atlas and never draw a band."
+  - file: run/src/ui/atlas/layer/index.c
+    caller: ui_atlas_draw_band
+    pointer: "ui_atlas_band_draw_t"
+    why: "Targets are the layers' band functions, which draw rows of the picture; none draws a whole band set."
+  - file: run/src/ui/atlas/layer/index.c
+    caller: ui_atlas_draw_finish
+    pointer: "a layer overlay, void (*)(const ui_atlas_draw_input_t *, const ui_atlas_target_t *)"
+    why: "Targets draw a layer's lines and labels over the finished picture, and call nothing back."
+  - file: run/src/ui/index.c
+    caller: ui_screen_spill
+    pointer: "item_spill_t"
+    why: "Targets drop a stack into the world as an item drop; none closes a screen."
+  - file: tests/asm/bitmask/index.c
+    caller: check_binary
+    pointer: "a NASM kernel and its C reference, of one kernel type"
+    why: "Targets are the NASM kernels and their C references, leaf functions that call nothing."
+  - file: tests/asm/blend/index.c
+    caller: check_against_reference
+    pointer: "a NASM kernel and its C reference, of one kernel type"
+    why: "Targets are the NASM kernels and their C references, leaf functions that call nothing."
+  - file: tests/asm/blend/index.c
+    caller: check_short_runs
+    pointer: "a NASM kernel and its C reference, of one kernel type"
+    why: "Targets are the NASM kernels and their C references, leaf functions that call nothing."
+  - file: tests/asm/vec_batch/index.c
+    caller: check_vec3_many
+    pointer: "a NASM kernel and its C reference, of one kernel type"
+    why: "Targets are the NASM kernels and their C references, leaf functions that call nothing."
+  - file: tests/asm/vec_batch/index.c
+    caller: check_vec3_short
+    pointer: "a NASM kernel and its C reference, of one kernel type"
+    why: "Targets are the NASM kernels and their C references, leaf functions that call nothing."
+  - file: tests/harness/index.c
+    caller: test_main
+    pointer: "test_function_t"
+    why: "Targets are TEST bodies, which never call test_main."
+  - file: tests/run/arena/index.c
+    caller: child_run
+    pointer: "child_body_t"
+    why: "Targets are test bodies run in a forked child; they never call child_run."
+  - file: tests/run/climate/air/index.c
+    caller: air_direct_tile
+    pointer: "climate_ground_fn_t"
+    why: "Targets sample terrain heights (terrain/ and the tests' flat grounds) and never build climate."
+  - file: tests/run/climate/label/index.c
+    caller: label_cases
+    pointer: "a case builder, climate_season_input_t (*)(const label_case_t *)"
+    why: "Targets build one season input from a table row and call nothing back."
+  - file: tests/run/display/headless/index.c
+    caller: test_body_demo_clips_to_any_frame_size
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/display/headless/index.c
+    caller: test_body_demo_shows_input_and_repaints_what_the_cursor_left
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/display/mode/index.c
+    caller: test_body_the_real_map_maps_and_unmaps
+    pointer: "display_ops_t (display/device)"
+    why: "Targets are the real system call wrappers (display_ops_real) or the tests' fake card and console. Each makes one system call or changes fake state, and calls nothing in display/."
+  - file: tests/run/display/mode/index.c
+    caller: test_body_the_real_ops_answer_with_negative_errno
+    pointer: "display_ops_t (display/device)"
+    why: "Targets are the real system call wrappers (display_ops_real) or the tests' fake card and console. Each makes one system call or changes fake state, and calls nothing in display/."
+  - file: tests/run/failure/fixtures/rig.h
+    caller: fail_in_child
+    pointer: "fail_child_t"
+    why: "Targets are the failure tests' bodies, run in a forked child; they never fork another."
+  - file: tests/run/failure/fixtures/rig.h
+    caller: fail_step_do
+    pointer: "fail_call_t"
+    why: "Targets are the failure test's steps, which change the fakes; none runs a step."
+  - file: tests/run/failure/index.c
+    caller: vt_alive_hook
+    pointer: "game_t open_alive, saved"
+    why: "Holds what game->open_alive was before this hook went in, saved once per run (game_session_open_alive), never vt_alive_hook itself."
+  - file: tests/run/game/census/index.c
+    caller: gc_draw
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/game/census/index.c
+    caller: gc_ticks
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/game/census/index.c
+    caller: test_body_the_session_opens_the_census_screen_and_continue_resumes
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/game/sun/index.c
+    caller: gs_draw
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/game/sun/index.c
+    caller: gs_ticks
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/game/sun/index.c
+    caller: gs_walk
+    pointer: "a walk body, void (*)(test_context_t *, gs_rig_t *, gs_ticker_t *)"
+    why: "Targets are this test's walks, which tick the game through gs_ticks and never call gs_walk."
+  - file: tests/run/heap/index.c
+    caller: child_run
+    pointer: "child_body_t"
+    why: "Targets are test bodies run in a forked child; they never call child_run."
+  - file: tests/run/input/fixtures/fake_evdev.h
+    caller: fake_add
+    pointer: "a fake device capability function, void (*)(input_device_capabilities_t *)"
+    why: "Targets fill in a fake device's capability bits and call nothing."
+  - file: tests/run/input/fixtures/fake_evdev.h
+    caller: fake_list_directory
+    pointer: "input_ops_on_name_t"
+    why: "Targets are discovery_on_name and the tests' name collectors. discovery_on_name opens a device through the ops' open_device and never lists a directory."
+  - file: tests/run/input/index.c
+    caller: hybrid_ioctl_call
+    pointer: "input_ops_t ioctl_call"
+    why: "Calls input_ops_real()'s ioctl wrapper, a single system call, never this fake."
+  - file: tests/run/input/index.c
+    caller: test_body_the_real_calls_refuse_a_missing_directory_without_failing
+    pointer: "input_ops_t (input/ops)"
+    why: "Targets are the real system call wrappers (input_ops_real) or the tests' fake evdev. Each makes one system call or changes fake state; list_directory calls back only its input_ops_on_name_t."
+  - file: tests/run/item/crafting/stairs/index.c
+    caller: cs_game_settle
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/item/equipment/index.c
+    caller: ie_script_ticks
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/job/index.c
+    caller: child_run
+    pointer: "child_body_t"
+    why: "Targets are test bodies run in a forked child; they never call child_run."
+  - file: tests/run/math/ivec3/index.c
+    caller: dies_of_abort
+    pointer: "ivec3_bad_call_t"
+    why: "Targets are misuse calls that must abort in the forked child; they never fork."
+  - file: tests/run/mob/animal/proof/index.c
+    caller: ap_screenshot
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/mob/animal/proof/index.c
+    caller: ap_ticks
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/mob/combat/index.c
+    caller: mco_script_ticks
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/mob/sight/index.c
+    caller: sight_draw
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/mob/sight/index.c
+    caller: sight_ticks
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/mob/skeleton/index.c
+    caller: msk_game_ticks
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/physics/raycast/index.c
+    caller: test_body_flying_aims_at_nothing_and_shows_the_picture_as_it_is
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/physics/raycast/index.c
+    caller: test_body_on_one_thread_a_script_looks_down_and_the_block_underfoot_gets_its_outline
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/player/interaction/wall_torch/index.c
+    caller: wt_game_draw
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/player/survival/index.c
+    caller: ps_script_ticks
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/player/survival/index.c
+    caller: test_body_in_a_real_game_a_script_eats_keeps_a_bowl_places_a_bed_sleeps_dies_spills_and_comes_back_to_pick_it_up
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/settings/session/index.c
+    caller: game_rig_draw
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/types/index.c
+    caller: child_run
+    pointer: "child_body_t"
+    why: "Targets are test bodies run in a forked child; they never call child_run."
+  - file: tests/run/ui/atlas/game/index.c
+    caller: ag_session_run
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/ui/hud/corner/index.c
+    caller: test_body_no_heap_in_200_frames_with_the_corner_and_a_warning
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/ui/hud/index.c
+    caller: rig_scene_frame
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/ui/hud/index.c
+    caller: test_body_a_dead_player_is_told_how_to_come_back
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/ui/hud/index.c
+    caller: test_body_in_the_real_game_the_screen_is_the_hud_over_the_picture_and_the_picture_is_left_alone
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/ui/screens/index.c
+    caller: us_game_tick
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/soak/index.c
+    caller: soak_child_watch
+    pointer: "soak_until_t"
+    why: "Targets check whether a soak may stop, and call nothing back."

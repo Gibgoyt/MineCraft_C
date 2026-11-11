@@ -3,7 +3,8 @@
  *   index --tool <standards_lint> --fixtures <dir> --tmp <dir> --cc <gcc> -- <the real C flags>
  *
  * fixtures/lint/<name>/       a small repository. EXPECT lists the exact rule ids a run must report; empty means clean.
- * fixtures/callgraph/<name>/  .c files compiled with -fcallgraph-info, then checked. EXPECT as above.
+ * fixtures/callgraph/<name>/  .c files compiled with -fcallgraph-info, then checked. EXPECT as above. An
+ *                             indirect_calls.yaml there is passed as the list of reviewed calls through pointers.
  * fixtures/compiler/<name>/   index.c compiled with the real flags. EXPECT is "pass", or "fail <text from the error>". */
 #include "harness/index.h"
 
@@ -277,8 +278,17 @@ TEST(lint_fixtures_report_exactly_their_rules) {
     fixture_rules_t *covered = test_alloc(t, sizeof(fixture_rules_t));
     fixture_run_all_lint(t, &options, covered);
 
-    /* "recursion" needs real GCC output, so its fixtures are the ones callgraph_fixtures_find_recursion runs. */
-    fixture_rules_add(t, covered, "recursion", strlen("recursion"));
+    /* The call graph rules need real GCC output, so their fixtures are the ones callgraph_fixtures_find_recursion
+     * runs, which judges them. Here they only count as covered. */
+    const char *callgraph = fixture_join(t, options.fixtures, "callgraph");
+    char **callgraph_names = test_alloc(t, FIXTURE_MAX_NAMES * sizeof(char *));
+    const uint32_t callgraph_count = fixture_list(t, callgraph, callgraph_names);
+    for (uint32_t i = 0; i < callgraph_count; i++) {
+        const char *expect = fixture_read(t, fixture_join(t, fixture_join(t, callgraph, callgraph_names[i]), "EXPECT"));
+        if (expect != nullptr) {
+            fixture_rules_from_expect(t, covered, expect);
+        }
+    }
 
     char list_flag[] = "--list-rules";
     char *const argv[] = {options.tool, list_flag, nullptr};
@@ -327,7 +337,8 @@ TEST(callgraph_fixtures_find_recursion) {
         FILE *list = fopen(list_path, "w");
         REQUIRE(list != nullptr);
         for (uint32_t s = 0; s < source_count; s++) {
-            if (strcmp(sources[s], "EXPECT") == 0) {
+            const uint64_t name_length = strlen(sources[s]);
+            if (name_length < 3u || strcmp(sources[s] + name_length - 2u, ".c") != 0) {
                 continue;
             }
             const char *object = fixture_join(t, tmp, sources[s]);
@@ -347,7 +358,12 @@ TEST(callgraph_fixtures_find_recursion) {
         fclose(list);
 
         char graph_flag[] = "--callgraph";
-        char *const argv[] = {options.tool, graph_flag, (char *)list_path, nullptr};
+        char list_flag[] = "--indirect-calls";
+        char *allowlist = fixture_join(t, fixture, "indirect_calls.yaml");
+        char *argv[] = {options.tool, graph_flag, (char *)list_path, list_flag, allowlist, nullptr};
+        if (access(allowlist, R_OK) != 0) {
+            argv[3] = nullptr;
+        }
         test_process_t process;
         test_process_run(t, argv, FIXTURE_TIMEOUT_MS, &process);
         fixture_judge(t, names[i], expected, &process);

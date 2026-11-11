@@ -70,7 +70,6 @@ elseif(MC_PRESET STREQUAL "sanitize")
   # ASan adds red zones round every local, and app_t on main's stack (section 4) is already most of the limit: measured
   # 18112 bytes against 16384, Stage 15.3. The other presets are what hold the limit; the last flag given is the one that counts.
   list(APPEND MC_C_FLAGS -O1 -g3 ${mc_sanitize} -Wframe-larger-than=32768)
-  set(MC_C_CALLGRAPH ON)
   list(APPEND MC_CUDA_FLAGS -g)
   list(APPEND MC_NASM_FLAGS -g -Fdwarf)
   list(APPEND MC_LINK_FLAGS ${mc_sanitize})
@@ -78,7 +77,6 @@ elseif(MC_PRESET STREQUAL "tsan")
   # Finds what threads do to each other's memory. What is written in NASM or runs on the card is not watched: neither shares anything but through C.
   set(mc_tsan -fsanitize=thread -fno-omit-frame-pointer)
   list(APPEND MC_C_FLAGS -O1 -g3 ${mc_tsan} -Wframe-larger-than=32768)
-  set(MC_C_CALLGRAPH ON)
   list(APPEND MC_CUDA_FLAGS -g)
   list(APPEND MC_NASM_FLAGS -g -Fdwarf)
   list(APPEND MC_LINK_FLAGS ${mc_tsan})
@@ -108,16 +106,19 @@ if(MC_PRESET MATCHES "^(release|profile)$")
   list(APPEND MC_LINK_FLAGS -Wframe-larger-than=${MC_FRAME_LIMIT_BYTES} -Werror)
 endif()
 
-# GCC writes no call graph for -flto objects at compile time, so only the presets without LTO get one from the real
-# objects. The others compile the same sources again for it; see cmake/standards_lint.cmake.
+# The call graph must come from -O0 code, because the list of calls through pointers (compile/src/standards_lint/
+# indirect_calls.yaml) names the functions that make them, and inlining at -O1 moves such a call into another function.
+# GCC also writes no call graph for -flto objects at compile time. So only debug gets it from the real objects, and the
+# others compile the same sources again for it; see cmake/standards_lint.cmake.
 if(MC_C_CALLGRAPH)
   list(APPEND MC_C_FLAGS -fcallgraph-info=su)
 endif()
 
-# For those extra objects. They come after the preset's flags, so they win over -O3 -flto. Everything else stays, the
-# defines above all, so code under #ifdef NDEBUG is what gets checked.
+# For those extra objects. They come after the preset's flags, so they win over -O1 and -O3 -flto. Nothing links them,
+# so the sanitizers' checks are left out: they add only direct calls into the sanitizer runtime. Everything else stays,
+# the defines above all, so code under #ifdef NDEBUG is what gets checked.
 function(mc_callgraph_compile_options target)
-  target_compile_options(${target} PRIVATE -O0 -fno-lto -fcallgraph-info=su)
+  target_compile_options(${target} PRIVATE -O0 -fno-lto -fno-sanitize=all -fcallgraph-info=su)
 endfunction()
 
 # What tests/fuzz/ compiles the code it tests with, in the sanitize preset: a call at every basic block, to its own callback. See cmake/hardening.cmake.
