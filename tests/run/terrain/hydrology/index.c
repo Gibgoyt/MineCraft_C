@@ -54,7 +54,7 @@ static const int32_t HYDRO_MAP_MIN = -3;
  * blocks after them in the alphabet moved. */
 /* Plan 005 phase 11 added chromium_ore and deepslate_chromium_ore. The land is the same, as the digest over the numbers before
  * them showed: the numbers of the blocks after them in the alphabet moved. */
-static const uint64_t HYDRO_DIGEST_PIN = 0xFCD1BA821441882Aull;
+static const uint64_t HYDRO_DIGEST_PIN = 0x8579B6C6CD735924ull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 static const uint64_t HYDRO_COLUMNS_PIN = 0xECA6C70A31BC9567ull;
@@ -70,7 +70,7 @@ static const uint64_t HYDRO_COLUMNS_PIN = 0xECA6C70A31BC9567ull;
  * blocks after them in the alphabet moved. */
 /* Plan 005 phase 11 added chromium_ore and deepslate_chromium_ore. The land is the same, as the digest over the numbers before
  * them showed: the numbers of the blocks after them in the alphabet moved. */
-static const uint64_t HYDRO_FLOOD_PIN = 0x67D09CD97B4A3533ull;
+static const uint64_t HYDRO_FLOOD_PIN = 0x807D0BBA1F2B2B1Dull;
 
 static uint64_t hydro_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

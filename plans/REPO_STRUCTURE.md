@@ -119,6 +119,7 @@ implements it, and its `run/src/` directory holds only a README). A part declare
 | `config/items/<item>/index.yaml` | Stack size, durability, food, tool tier | `compile/src/game_tables/` |
 | `config/recipes/<recipe>/index.yaml` | Crafting and smelting | `compile/src/game_tables/` |
 | `config/biomes/<biome>/index.yaml` | Climate range, surface blocks, features | `compile/src/game_tables/` |
+| `config/ores/<ore>/index.yaml` | Where an ore or rock lies in veins: its two blocks, what it drops, and each row of veins' order, depths, size and rate (plan 005 phase 11) | `compile/src/game_tables/` |
 | `config/mobs/<mob>/index.yaml` | Health, speed, drops, spawn rules, body parts | `compile/src/game_tables/` |
 
 To see what mining dirt does, open one file:
@@ -242,7 +243,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `fields` | Continentalness, erosion, ridges, temperature, humidity, weirdness | 10.2 |
 | | `density` | Height splines and 3D terrain shape, `z ∈ [-250, 1250]`; bedrock at `-250`, water up to `0` | 10.3 |
 | | `hydrology` | Sea level 0, rivers, oceans, beaches, aquifers, the lava level under the world at `-230` | 10.4 |
-| | `cave ore` | Cheese, spaghetti and noodle caves cut from any box; deepslate by depth, and the table of rock and ore veins by depth | 10.5 |
+| | `cave ore` | Cheese, spaghetti and noodle caves cut from any box; deepslate by depth, and the table of rock and ore veins by depth, generated from `config/ores/` (plan 005 phase 11) | 10.5 |
 | | `biome surface` | All Overworld biomes, chosen from the climate by `config/biomes/`; what each lays on the ground and lines its caves with | 10.6 |
 | | `feature` | Trees, plants, lakes, ice and snow, cross-chunk placement. `terrain_generate_box` in the Owner runs every stage | 10.7 |
 
@@ -731,6 +732,7 @@ Split it into sub-directories. Remember that going deeper changes the tier: code
 | Terrain shape | `run/src/terrain/density/` |
 | Rivers, oceans, beaches, aquifers, lava | `run/src/terrain/hydrology/` |
 | Biomes | `config/biomes/`, `run/src/terrain/biome/` |
+| Where ores spawn, and how often | `config/ores/`, `run/src/terrain/ore/` |
 | What a biome lays on the ground | `config/biomes/`, `run/src/terrain/surface/` |
 | What grows on it, and lakes | `config/biomes/`, `run/src/terrain/feature/` |
 | Every stage of terrain for one box | `terrain_generate_box` in `run/src/terrain/` |

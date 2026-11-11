@@ -60,7 +60,7 @@ static const int32_t BIO_CAVE_LEVEL_Z[BIO_CAVE_LEVELS] = {-210, -170, -100, -60,
  * them showed: the numbers of the blocks after them in the alphabet moved. */
 /* Plan 005 phase 11 added chromium ore to config/ores/, laid last: the land differs only by its veins in rock, as the same
  * file at a rate of 0 gave the pin before. */
-static const uint64_t BIO_DIGEST_PIN = 0x355633F628196CF5ull;
+static const uint64_t BIO_DIGEST_PIN = 0xA6E7EB530487F99Bull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 003 phase 8 stage 6 moved the biomes' boxes to the coast and the height the terrain now has. */

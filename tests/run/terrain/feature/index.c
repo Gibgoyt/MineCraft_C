@@ -52,10 +52,10 @@ static const uint64_t FEA_DIGEST_OF_GENERATOR[] = {
      * and so did plan 004 phase 8's snow_layer (its issue 19), and plan 005 phase 12's wall_torch (the digest over the numbers
      * before it gave this row's old value, 0xEEC1F6DAF60AD0E7), and plan 005 phase 2's three doors (the digest over the numbers before
      * them gave 0xE91D8A079B8A9907), and plan 005 phase 11's chromium_ore and deepslate_chromium_ore (the same again gave
-     * 0x92403624016ACD4A). Plan 005 phase 11's chromium ore did change the land, by veins in rock alone (0x1C12ABD3D06BA98A with the file at
+     * 0x92403624016ACD4A). Plan 005 phase 11's chromium ore did change the land, by veins in rock alone (0x0A5E69C7BA33DB77 with the file at
      * a rate of 0), and changed this row and not the version, so that worlds saved on the old land still open: see that phase's
      * issue 8. */
-    0x50954B550A408385ull,
+    0x963084164D7E4DAEull,
 };
 static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0]) == TERRAIN_GENERATOR_VERSION + 1u);
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
@@ -72,7 +72,7 @@ static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0
  * them showed: the numbers of the blocks after them in the alphabet moved. */
 /* Plan 005 phase 11 added chromium ore to config/ores/, laid last: the land differs only by its veins in rock, as the same
  * file at a rate of 0 gave the pin before. */
-static const uint64_t FEA_FOREST_PIN = 0x1DF57BB280481128ull;
+static const uint64_t FEA_FOREST_PIN = 0x9C3DACA353F60E1Cull;
 
 static uint64_t fea_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

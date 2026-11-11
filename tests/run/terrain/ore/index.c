@@ -49,7 +49,7 @@ static const uint64_t ORE_WORLD = 0x1234567890ABCDEFull;
  * them showed: the numbers of the blocks after them in the alphabet moved. */
 /* Plan 005 phase 11 added chromium ore to config/ores/, laid last: the land differs only by its veins in rock, as the same
  * file at a rate of 0 gave the pin before. */
-static const uint64_t ORE_DIGEST_PIN = 0x782E6E5ADF9AE17Full;
+static const uint64_t ORE_DIGEST_PIN = 0x5D04B9F951A2FCD9ull;
 
 static uint64_t ore_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
