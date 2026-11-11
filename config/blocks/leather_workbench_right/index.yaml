@@ -1,0 +1,7 @@
+name: leather_workbench_right
+hardness: 2.5
+tool: axe
+drops: [{ item: leather_workbench, count: 1 }]
+texture: { top: blocks/leather_workbench_top_right, bottom: blocks/leather_workbench_bottom, side: blocks/leather_workbench_end, south: blocks/leather_workbench_side_right, north: blocks/leather_workbench_side_left }
+sound: wood
+facing: horizontal

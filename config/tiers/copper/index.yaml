@@ -1,0 +1,6 @@
+# Plan 005 phase 6: worked at the smith table from the copper a furnace smelts. Between stone and iron, as Minecraft has it.
+name: copper
+harvests: stone
+speed: 5000
+axe_attack_speed: 0.8
+hoe_attack_speed: 2

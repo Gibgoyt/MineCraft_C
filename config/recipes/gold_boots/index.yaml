@@ -1,5 +1,6 @@
 name: gold_boots
 kind: shaped
-pattern: ["M M", "M M"]
-keys: { M: gold_ingot }
+pattern: ["MLM", "M M"]
+keys: { M: gold_ingot, L: leather_boots }
 gives: gold_boots
+station: smithing

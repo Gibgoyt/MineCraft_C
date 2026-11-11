@@ -3,3 +3,4 @@ kind: shapeless
 ingredients: [gold_ingot]
 gives: gold_nugget
 count: 9
+station: smithing

@@ -2,3 +2,4 @@ name: dye_black_from_coal
 kind: shapeless
 ingredients: [coal]
 gives: dye_black
+station: hands

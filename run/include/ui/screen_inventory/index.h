@@ -37,6 +37,13 @@ typedef enum ui_screen_kind_t : uint8_t {
     UI_SCREEN_FURNACE = 3,
     UI_SCREEN_CHEST = 4,
     UI_SCREEN_WOODWORKING = 5,
+    /* Plan 005 phase 6's stations. The four with a grid share item_t's bench grid, and the last two smelt as a furnace does. */
+    UI_SCREEN_STONEWORKING = 6,
+    UI_SCREEN_SMITHING = 7,
+    UI_SCREEN_LEATHERWORKING = 8,
+    UI_SCREEN_BLAST_FURNACE = 9,
+    UI_SCREEN_TANNING_RACK = 10,
+    UI_SCREEN_KIND_COUNT = 11,
 } ui_screen_kind_t;
 
 /* What part of a screen a point or a click is on. */

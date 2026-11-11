@@ -3,3 +3,4 @@ kind: shaped
 pattern: ["M M", "M M"]
 keys: { M: leather }
 gives: leather_boots
+station: leatherworking

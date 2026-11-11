@@ -1,6 +1,6 @@
 # run/src/item/smelting
 
-**Purpose:** furnaces: three slots at a cell, what they burn and what they make, one tick at a time.
+**Purpose:** furnaces: three slots at a cell, what they burn and what they make, one tick at a time. A furnace has a process (plan 005 phase 6), from its block: the furnace, the blast furnace or the tanning rack, and does only that process's smelts. The rack burns nothing: a hide tans by time alone, and its fuel slot takes nothing.
 **Tier:** Arena. `smelting_start` takes its array from the arena `run/src/item/` gives it, once per world. A tick allocates nothing.
 **Owns:** nothing. `smelting_store_t` is a field of `item_t`, and `borrowed_furnaces` is in its world arena.
 **Lifetime:** World.
@@ -8,7 +8,8 @@
 **Public functions** (`run/include/item/smelting/index.h`):
 
 - `smelting_start`: an empty store.
-- `smelting_at`, `smelting_open`, `smelting_remove`: the furnace at a cell; the same making one; ending one and giving back what it held.
+- `smelting_at`, `smelting_open`, `smelting_open_process`, `smelting_remove`: the furnace at a cell; the same making one, a furnace or of a process; ending one and giving back what it held.
+- `smelting_burns`: whether its process burns fuel.
 - `smelting_tick`: one tick of one furnace.
 - `smelting_is_lit`, `smelting_cook_fraction`, `smelting_burn_fraction`: what a block and a screen show.
 - `smelting_recipe_of`, `smelting_burn_ticks`: what an item is to a furnace.

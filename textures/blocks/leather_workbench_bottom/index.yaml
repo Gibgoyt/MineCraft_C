@@ -1,0 +1,13 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: leather_workbench_bottom
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The underside of a leather workbench, of dark boards along its length."
+  seed: 96020
+  ops:
+    - { op: fill, color: "#5f4526" }
+    - { op: noise, amount: 10, cell_x: 8, cell_y: 1, seed: 31 }
+    - { op: fill, color: "#2a1d10", x: 0, y: 4, w: 16, h: 1 }
+    - { op: fill, color: "#2a1d10", x: 0, y: 11, w: 16, h: 1 }

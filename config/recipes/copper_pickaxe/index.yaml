@@ -1,0 +1,6 @@
+name: copper_pickaxe
+kind: shaped
+pattern: ["MMM", " S ", " S "]
+keys: { M: copper_ingot, S: stick }
+gives: copper_pickaxe
+station: smithing

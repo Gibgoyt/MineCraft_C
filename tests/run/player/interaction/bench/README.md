@@ -17,5 +17,6 @@ No card, no display, and the program itself is not run. What it checks:
 - **A half alone** breaks by itself with one bench. If its other half's column is not loaded, it stays until it is.
 - **Facings** (plan 005 phase 12): each half finds the other by its facing, a bench lies across the view each of the four ways and mining either half takes both, R turns it before it is placed and the turn stays with what is held, and stairs rise away from where the player looks while stone placed the same way has no state.
 - **The plan:** `player_interaction_place_plan` says what and where, both cells and their voxels, with nothing in the hand, with room, and with the second cell taken, and changes nothing; placing then does what it said.
+- **The other stations** (plan 005 phase 6): the smith table takes its four cells 2 by 2 each of the four ways, the back two ahead of the placer, mined by any part with a pickaxe it all goes and one smith table drops, and a block in any of its cells refuses it. The stoneworking bench, the tanning rack and the leather workbench go across the view as the woodworking bench does. Eight blocks are half of a station two long, and twelve are a part of one.
 
 A blast is in `tests/run/mob/creeper/`, and the whole of it played through the built program in `tests/run/playthrough/`.

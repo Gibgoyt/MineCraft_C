@@ -1,0 +1,23 @@
+# Plan 005 phase 6: the tanning rack's screen, a furnace's with no fuel slot and no flame, as a hide tans by time alone.
+# The window's top left is at (72, 37), and the test has opened the screen, with the pointer at (160, 120).
+# Hotbar 0, at (89, 188): the two hides on the pointer.
+0 move -71 68
+1 button left down
+2 button left up
+# Into the input, at (136, 62).
+3 move 47 -126
+4 button left down
+5 button left up
+# Away, off the window.
+6 move 114 -32
+# Half way through the first.
+306 screenshot tanning_working.png
+# Both done, in 1200 ticks. The output, at (196, 80), by shift into the inventory.
+1210 screenshot tanning_done.png
+1211 move -54 50
+1212 key lshift down
+1213 button left down
+1214 button left up
+1215 key lshift up
+1216 key escape down
+1217 key escape up

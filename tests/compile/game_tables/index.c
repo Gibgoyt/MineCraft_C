@@ -384,6 +384,13 @@ static gtt_tree_t gtt_tree_make(test_context_t *t, const char *name) {
     gtt_write(t, gtt_path(t, tree.borrowed_config, "items/coal/index.yaml"), "name: coal\ntexture: items/coal\n");
     gtt_write(t, gtt_path(t, tree.borrowed_config, "items/stone/index.yaml"),
               "name: stone\ntexture: blocks/stone\nblock: stone\n");
+    /* Two tiers of tool, plan 005 phase 6's files of config/tiers/. */
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "tiers/gold"));
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "tiers/wood"));
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "tiers/gold/index.yaml"),
+              "name: gold\nharvests: wood\nspeed: 12000\naxe_attack_speed: 1\nhoe_attack_speed: 1\n");
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "tiers/wood/index.yaml"),
+              "name: wood\nharvests: wood\nspeed: 2000\naxe_attack_speed: 0.8\nhoe_attack_speed: 1\n");
     return tree;
 }
 
@@ -862,7 +869,18 @@ static const gtt_bad_case_t GTT_BAD_RECIPES[] = {
     {GTT_SHAPED "pattern: [\"C\"]\nkeys: { C: coal }\n" GTT_GIVES "station: shed\n", ":6:", "unknown station 'shed'"},
     {"name: bad\nkind: shapeless\ningredients: [stone]\ngives: coal\nstation: shed\n", ":5:", "unknown station 'shed'"},
     {"name: bad\nkind: smelt\ninput: coal\ngives: coal\nstation: woodworking\n",
-     ":5:", "unknown field 'station' in a smelt"},
+     ":5:", "unknown smelting station 'woodworking'"},
+    {GTT_SHAPED "pattern: [\"C\"]\nkeys: { C: coal }\n" GTT_GIVES "station: furnace\n",
+     ":6:", "unknown station 'furnace'"},
+    /* The hands' grid is 2 by 2, and what is turned off says why. */
+    {GTT_SHAPED "pattern: [\"CCC\"]\nkeys: { C: coal }\n" GTT_GIVES "station: hands\n",
+     ":6:", "fits their grid of 2 by 2"},
+    {"name: bad\nkind: shapeless\ningredients: [coal, coal, coal, coal, coal]\ngives: coal\nstation: hands\n",
+     ":5:", "fits their grid of 2 by 2"},
+    {GTT_SHAPED "pattern: [\"C\"]\nkeys: { C: coal }\n" GTT_GIVES "off: \"\"\n", ":6:", "off says why it is off"},
+    {GTT_SHAPED "pattern: [\"C\"]\nkeys: { C: nothing }\n" GTT_GIVES "off: \"not yet\"\n",
+     ":4:", "'nothing' is no item and no group"},
+    {"name: bad\nkind: group\nitems: [coal]\noff: \"no\"\n", ":4:", "unknown field 'off' in a group"},
     {"name: bad\nkind: fuel\nitems: [coal]\nticks: 1\nstation: woodworking\n",
      ":5:", "unknown field 'station' in a fuel"},
     /* Saying the table is the same as saying nothing, so this is still the one grid. */
@@ -913,7 +931,7 @@ TEST(good_recipes_make_tables_and_a_tree_with_none_needs_none) {
     REQUIRE(source != nullptr);
     CHECK_CONTAINS(source,
                    "{.name = \"ok_craft\", .cells = {2, 1, 0, 0, 0, 0, 0, 0, 0}, .gives = ITEM_ID_COAL, .count = 4");
-    CHECK_CONTAINS(source, "{.name = \"ok_smelt\", .gives = ITEM_ID_COAL, .ticks = 200, .count = 1}");
+    CHECK_CONTAINS(source, "{.name = \"ok_smelt\", .gives = ITEM_ID_COAL, .ticks = 200, .count = 1, .process = 0}");
     CHECK_CONTAINS(source, "[ITEM_ID_STONE] = 1,");
     CHECK_CONTAINS(source, "[ITEM_ID_STONE] = {.ticks = 7, .leaves = ITEM_ID_COAL},");
 
@@ -931,6 +949,33 @@ TEST(good_recipes_make_tables_and_a_tree_with_none_needs_none) {
     CHECK_CONTAINS(with_bench, ".width = 2, .height = 1, .cell_count = 2, .station = 1}");
     unlink(gtt_path(t, tree.borrowed_config, "recipes/ok_bench/index.yaml"));
     rmdir(gtt_path(t, tree.borrowed_config, "recipes/ok_bench"));
+
+    /* Plan 005 phase 6: a smelt says its block, and what is off is checked and left out, so it may clash with nothing. */
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "recipes/ok_tan"));
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "recipes/ok_tan/index.yaml"),
+              "name: ok_tan\nkind: smelt\ninput: coal\ngives: stone\nticks: 600\nstation: tanning_rack\n");
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "recipes/ok_off"));
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "recipes/ok_off/index.yaml"),
+              "name: ok_off\nkind: shaped\npattern: [\"SC\"]\nkeys: { S: stone, C: coal }\ngives: stone\n"
+              "off: \"the same as ok_craft, and off\"\n");
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 0);
+    CHECK_STR_EQ(run.output, "");
+    const char *const with_tan = gtt_read(t, gtt_path(t, tree.borrowed_out, "recipes/index.c"), &length);
+    const char *const header = gtt_read(t, gtt_path(t, tree.borrowed_out, "recipes/index.h"), &length);
+    REQUIRE(with_tan != nullptr);
+    REQUIRE(header != nullptr);
+    CHECK_CONTAINS(with_tan, "{.name = \"ok_tan\", .gives = ITEM_ID_STONE, .ticks = 600, .count = 1, .process = 2}");
+    CHECK_CONTAINS(with_tan, ".process = 0}");
+    CHECK_CONTAINS(with_tan, "const uint8_t recipe_process_burns[RECIPE_PROCESS_COUNT] = {1, 1, 0};");
+    CHECK(strstr(with_tan, "ok_off") == nullptr);
+    CHECK_CONTAINS(header, "#define RECIPE_COUNT 1u");
+    CHECK_CONTAINS(header, "RECIPE_STATION_HANDS = 5,");
+    CHECK_CONTAINS(header, "RECIPE_PROCESS_TANNING_RACK = 2,");
+    unlink(gtt_path(t, tree.borrowed_config, "recipes/ok_tan/index.yaml"));
+    rmdir(gtt_path(t, tree.borrowed_config, "recipes/ok_tan"));
+    unlink(gtt_path(t, tree.borrowed_config, "recipes/ok_off/index.yaml"));
+    rmdir(gtt_path(t, tree.borrowed_config, "recipes/ok_off"));
 
     /* A directory of recipes that makes nothing is a mistake. */
     unlink(gtt_path(t, tree.borrowed_config, "recipes/ok_smelt/index.yaml"));
@@ -1008,6 +1053,48 @@ TEST(a_good_item_tree_makes_tables) {
     CHECK_CONTAINS(source, ".damage = 25e-1f32");
     CHECK_CONTAINS(source, ".tier = ITEM_TIER_GOLD, .harvest_tier = BLOCK_TIER_WOOD");
     CHECK_CONTAINS(source, ".block = BLOCK_ID_STONE");
+    /* Plan 005 phase 6: the tiers come from their files, none first and then by name. */
+    CHECK_CONTAINS(header, "ITEM_TIER_NONE = 0,");
+    CHECK_CONTAINS(header, "ITEM_TIER_GOLD = 1,");
+    CHECK_CONTAINS(header, "ITEM_TIER_WOOD = 2,");
+    CHECK_CONTAINS(header, "#define ITEM_TIER_COUNT 3u");
+    CHECK_CONTAINS(source,
+                   "[ITEM_TIER_GOLD] = {.name = \"gold\", .axe_attack_speed = 1e0f32, .hoe_attack_speed = 1e0f32, "
+                   ".speed_milli = 12000, .harvest_tier = BLOCK_TIER_WOOD},");
+    CHECK_CONTAINS(source, "[ITEM_TIER_WOOD] = {.name = \"wood\", .axe_attack_speed = 8e-1f32");
+}
+
+/* A tier's file, refused at its line, and the items with it. */
+TEST(each_bad_tier_is_refused_and_nothing_is_written) {
+    static const gtt_bad_case_t BAD_TIERS[] = {
+        {"name: wood\nharvests: wood\nspeed: 2000\naxe_attack_speed: 0.8\nhoe_attack_speed: 1\ncolour: brown\n",
+         ":6:", "unknown field 'colour' in a tier"},
+        {"name: wood\nharvests: copper\nspeed: 2000\naxe_attack_speed: 0.8\nhoe_attack_speed: 1\n",
+         ":2:", "unknown rung 'copper'"},
+        {"name: wood\nharvests: wood\nspeed: 10\naxe_attack_speed: 0.8\nhoe_attack_speed: 1\n", ":3:", "speed is 10"},
+        {"name: wood\nharvests: wood\naxe_attack_speed: 0.8\nhoe_attack_speed: 1\n", ":1:", "missing field 'speed'"},
+        {"name: oak\nharvests: wood\nspeed: 2000\naxe_attack_speed: 0.8\nhoe_attack_speed: 1\n",
+         ":1:", "a tier's name is its directory's"},
+    };
+    const gtt_tree_t tree = gtt_tree_make(t, "bad_tiers");
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "items/pick"));
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "items/pick/index.yaml"),
+              "name: pick\ntexture: items/coal\nstack: 1\ntool: pickaxe\ntier: copper\ndurability: 5\n");
+    test_process_t run;
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 1);
+    CHECK_CONTAINS(run.output, "unknown tier 'copper'");
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "items/pick/index.yaml"),
+              "name: pick\ntexture: items/coal\nstack: 1\ntool: pickaxe\ntier: wood\ndurability: 5\n");
+    char *const table = gtt_path(t, tree.borrowed_out, "items/index.h");
+    for (uint32_t i = 0u; i < sizeof(BAD_TIERS) / sizeof(BAD_TIERS[0]); i++) {
+        gtt_write(t, gtt_path(t, tree.borrowed_config, "tiers/wood/index.yaml"), BAD_TIERS[i].text);
+        gtt_tree_run(t, &tree, &run);
+        CHECK_EQ_I64(run.exit_code, 1);
+        CHECK_CONTAINS(run.output, BAD_TIERS[i].position);
+        CHECK_CONTAINS(run.output, BAD_TIERS[i].message);
+        CHECK(access(table, F_OK) != 0);
+    }
 }
 
 /* ---- Biomes: Stage 10.6 ------------------------------------------------------------------------------------------- */

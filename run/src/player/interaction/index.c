@@ -287,38 +287,64 @@ void player_interaction_stack_break(player_interaction_t *interaction, world_edi
     }
 }
 
-/* Whether this voxel is half of a block two cells big, a bench beside its other half or a door above or below it, and if so the step to
- * that half and what must be there. */
-static bool interaction_pair_other(uint16_t voxel, int32_t step[COLLISION_AXES], uint16_t *out_other) {
-    step[0] = 0;
-    step[1] = 0;
-    step[2] = 0;
-    return bench_half_other(voxel, &step[0], &step[1], out_other) || door_half_other(voxel, &step[2], out_other);
+/* The other cells of a block more than one cell big, a station's other parts beside it (a bench's other half, the smith table's other
+ * three) or a door's other half above or below it: the step to each from this voxel and what must be there. Returns how many, 0 for a
+ * block of one cell. */
+static uint32_t interaction_parts_other(uint16_t voxel, int32_t steps[PLAYER_PLACE_CELLS - 1u][COLLISION_AXES],
+                                        uint16_t others[PLAYER_PLACE_CELLS - 1u]) {
+    static_assert((uint32_t)BENCH_PARTS_MAX <= (uint32_t)PLAYER_PLACE_CELLS);
+    int32_t bench_steps[BENCH_PARTS_MAX][2];
+    uint16_t bench_voxels[BENCH_PARTS_MAX];
+    const uint32_t parts = bench_parts(voxel, bench_steps, bench_voxels);
+    uint32_t count = 0u;
+    for (uint32_t p = 0u; p < parts; p++) {
+        if (bench_steps[p][0] == 0 && bench_steps[p][1] == 0) {
+            continue; /* this one */
+        }
+        steps[count][0] = bench_steps[p][0];
+        steps[count][1] = bench_steps[p][1];
+        steps[count][2] = 0;
+        others[count] = bench_voxels[p];
+        count++;
+    }
+    if (count == 0u) {
+        steps[0][0] = 0;
+        steps[0][1] = 0;
+        if (door_half_other(voxel, &steps[0][2], &others[0])) {
+            count = 1u;
+        }
+    }
+    return count;
 }
 
-/* The other half of a bench or a door goes first and gives nothing, as the one mined gives the one bench or door. False if it cannot go
- * yet, which leaves it whole and all but broken for the next tick. If the half mined then finds no room, the next tick breaks it alone,
- * and it drops. The half mined's state says where the other is. */
-static bool interaction_pair_other_break(player_interaction_t *interaction, world_edit_t *edit, uint16_t voxel,
-                                         int32_t x, int32_t y, int32_t z) {
-    int32_t step[COLLISION_AXES];
-    uint16_t other = BLOCK_ID_AIR;
-    if (!interaction_pair_other(voxel, step, &other)) {
-        return true;
+/* The other parts of a station or the other half of a door go first and give nothing, as the one mined gives the one station or door.
+ * False if they cannot go yet, a column not loaded, which leaves it whole and all but broken for the next tick. If the part mined then
+ * finds no room, the next tick breaks it alone, and it drops. The part mined's state says where the others are. */
+static bool interaction_parts_other_break(player_interaction_t *interaction, world_edit_t *edit, uint16_t voxel,
+                                          int32_t x, int32_t y, int32_t z) {
+    int32_t steps[PLAYER_PLACE_CELLS - 1u][COLLISION_AXES];
+    uint16_t others[PLAYER_PLACE_CELLS - 1u];
+    const uint32_t count = interaction_parts_other(voxel, steps, others);
+    bool present[PLAYER_PLACE_CELLS - 1u] = {false};
+    for (uint32_t k = 0u; k < count; k++) {
+        uint16_t there = BLOCK_ID_AIR;
+        if (world_map_voxel_get(edit->borrowed_map, x + steps[k][0], y + steps[k][1], z + steps[k][2], &there) !=
+            WORLD_MAP_STATUS_OK) {
+            return false;
+        }
+        present[k] = there == others[k];
     }
-    const int32_t ox = x + step[0], oy = y + step[1], oz = z + step[2];
-    uint16_t there = BLOCK_ID_AIR;
-    if (world_map_voxel_get(edit->borrowed_map, ox, oy, oz, &there) != WORLD_MAP_STATUS_OK) {
-        return false;
+    for (uint32_t k = 0u; k < count; k++) {
+        if (!present[k]) {
+            continue;
+        }
+        const int32_t ox = x + steps[k][0], oy = y + steps[k][1], oz = z + steps[k][2];
+        if (world_edit_block_set(edit, ox, oy, oz, BLOCK_ID_AIR) != WORLD_EDIT_STATUS_CHANGED) {
+            interaction->no_memory_count++;
+            return false;
+        }
+        player_interaction_stack_break(interaction, edit, ox, oy, oz);
     }
-    if (there != other) {
-        return true;
-    }
-    if (world_edit_block_set(edit, ox, oy, oz, BLOCK_ID_AIR) != WORLD_EDIT_STATUS_CHANGED) {
-        interaction->no_memory_count++;
-        return false;
-    }
-    player_interaction_stack_break(interaction, edit, ox, oy, oz);
     return true;
 }
 
@@ -367,7 +393,7 @@ static void interaction_mine(player_interaction_t *interaction, world_edit_t *ed
     }
     uint16_t voxel = block;
     if (world_map_voxel_get(edit->borrowed_map, x, y, z, &voxel) != WORLD_MAP_STATUS_OK ||
-        !interaction_pair_other_break(interaction, edit, voxel, x, y, z)) {
+        !interaction_parts_other_break(interaction, edit, voxel, x, y, z)) {
         return;
     }
     const world_edit_status_t status = world_edit_block_set(edit, x, y, z, BLOCK_ID_AIR);
@@ -614,24 +640,29 @@ player_place_status_t player_interaction_place_plan(const player_interaction_t *
         !interaction_fits(voxel, cell[0], cell[1], cell[2], input->borrowed_movement)) {
         out->status = PLAYER_PLACE_BLOCKED;
     }
-    out->was_there = there;
-    /* Half a bench brings its other half, and the lower half of a door its upper, which must go down too: half of either is never left. */
-    int32_t step[COLLISION_AXES];
-    uint16_t other = BLOCK_ID_AIR;
-    if (interaction_pair_other(voxel, step, &other)) {
-        int32_t *const second = out->cells[1];
-        second[0] = cell[0] + step[0];
-        second[1] = cell[1] + step[1];
-        second[2] = cell[2] + step[2];
-        out->voxels[1] = other;
-        out->count = 2u;
-        uint16_t there_second = BLOCK_ID_AIR;
-        if (world_map_block_get(map, second[0], second[1], second[2], &there_second) != WORLD_MAP_STATUS_OK ||
-            !interaction_cell_takes(map, block_state_id(other), there_second, second[0], second[1], second[2]) ||
-            !interaction_fits(other, second[0], second[1], second[2], input->borrowed_movement)) {
+    out->was_there[0] = there;
+    /* A station's first part brings its others, a bench's other half or the smith table's other three, and the lower half of a door its
+     * upper, which must all go down too: a part of either is never left. */
+    int32_t steps[PLAYER_PLACE_CELLS - 1u][COLLISION_AXES];
+    uint16_t others[PLAYER_PLACE_CELLS - 1u];
+    const uint32_t extra = interaction_parts_other(voxel, steps, others);
+    for (uint32_t k = 0u; k < extra; k++) {
+        int32_t *const next = out->cells[k + 1u];
+        next[0] = cell[0] + steps[k][0];
+        next[1] = cell[1] + steps[k][1];
+        next[2] = cell[2] + steps[k][2];
+        out->voxels[k + 1u] = others[k];
+        uint16_t there_next = BLOCK_ID_AIR;
+        const bool loaded = world_map_voxel_get(map, next[0], next[1], next[2], &there_next) == WORLD_MAP_STATUS_OK;
+        out->was_there[k + 1u] = there_next;
+        if (!loaded ||
+            !interaction_cell_takes(map, block_state_id(others[k]), block_state_id(there_next), next[0], next[1],
+                                    next[2]) ||
+            !interaction_fits(others[k], next[0], next[1], next[2], input->borrowed_movement)) {
             out->status = PLAYER_PLACE_BLOCKED;
         }
     }
+    out->count = (uint8_t)(1u + extra);
     return (player_place_status_t)out->status;
 }
 
@@ -653,12 +684,15 @@ static void interaction_place(player_interaction_t *interaction, world_edit_t *e
     if (status != WORLD_EDIT_STATUS_CHANGED) {
         return;
     }
-    if (plan.count == 2u) {
-        const int32_t *const second = plan.cells[1];
-        if (world_edit_block_set(edit, second[0], second[1], second[2], plan.voxels[1]) != WORLD_EDIT_STATUS_CHANGED) {
-            /* No room for the other half, so the first comes back out and nothing was placed. */
+    for (uint32_t k = 1u; k < plan.count; k++) {
+        const int32_t *const next = plan.cells[k];
+        if (world_edit_block_set(edit, next[0], next[1], next[2], plan.voxels[k]) != WORLD_EDIT_STATUS_CHANGED) {
+            /* No room for another part, so what went down comes back out and nothing was placed. */
             interaction->no_memory_count++;
-            (void)world_edit_block_set(edit, cell[0], cell[1], cell[2], plan.was_there);
+            for (uint32_t back = k; back > 0u; back--) {
+                const int32_t *const undo = plan.cells[back - 1u];
+                (void)world_edit_block_set(edit, undo[0], undo[1], undo[2], plan.was_there[back - 1u]);
+            }
             return;
         }
     }

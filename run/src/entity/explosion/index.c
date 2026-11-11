@@ -423,42 +423,89 @@ static void explosion_around_break(explosion_t *explosion, world_edit_t *edit, i
     }
 }
 
-/* What a blast does to the other half of a bench or a door it has listed. It goes first and gives nothing, as the half listed gives the
- * one bench or door. False if it cannot go, by not being loaded or by the edit finding no room, and then the bench or door stands whole.
- * out_other_gone says that it went, and what it was is in out_other, for putting back if the half listed then finds no room. */
-static bool explosion_bench_other_break(world_edit_t *edit, uint16_t block, const int32_t cell[COLLISION_AXES],
-                                        int32_t other_cell[COLLISION_AXES], uint16_t *out_other, bool *out_other_gone,
-                                        uint32_t *broken) {
-    int32_t step[COLLISION_AXES] = {0, 0, 0};
-    *out_other_gone = false;
+/* The other parts of a station or the other half of a door that a blast has listed one part of: where each is, what it must be, and which
+ * went. */
+enum : uint32_t {
+    /* A station's other parts, as the smith table's three, or a door's other half. */
+    EXPLOSION_OTHERS_MAX = BENCH_PARTS_MAX - 1u,
+};
+
+typedef struct explosion_others_t {
+    int32_t cells[EXPLOSION_OTHERS_MAX][COLLISION_AXES]; /* 0 */
+    uint16_t voxels[EXPLOSION_OTHERS_MAX];               /* 36 */
+    uint8_t gone[EXPLOSION_OTHERS_MAX];                  /* 42 */
+    uint8_t count;                                       /* 45 */
+    uint8_t _pad0[2];                                    /* 46 */
+} explosion_others_t;
+static_assert(sizeof(explosion_others_t) == 48);
+
+/* What went of them comes back, as the part listed found no room to go. */
+static void explosion_others_restore(world_edit_t *edit, const explosion_others_t *others, uint32_t *broken) {
+    for (uint32_t k = 0u; k < others->count; k++) {
+        if (others->gone[k] != 0u) {
+            (void)world_edit_block_set(edit, others->cells[k][0], others->cells[k][1], others->cells[k][2],
+                                       others->voxels[k]);
+            (*broken)--;
+        }
+    }
+}
+
+/* What a blast does to the other parts of a station, or the other half of a door, it has listed. They go first and give nothing, as the
+ * part listed gives the one station or door. False if they cannot go, by not being loaded or by the edit finding no room, and then the
+ * station or door stands whole. out says which went, and what they were, for putting back if the part listed then finds no room. */
+static bool explosion_parts_other_break(world_edit_t *edit, uint16_t block, const int32_t cell[COLLISION_AXES],
+                                        explosion_others_t *out, uint32_t *broken) {
+    memset(out, 0, sizeof(*out));
     if (!bench_is_half(block) && !door_is(block)) {
         return true;
     }
-    /* Listed once already and gone with the other half, this one has nothing left to speak for. Its state says where that is: a bench's
-     * beside it by its facing, a door's above or below. */
+    /* Listed once already and gone with another part, this one has nothing left to speak for. Its state says where the others are: a
+     * station's beside it by its facing, a door's above or below. */
     uint16_t here = BLOCK_ID_AIR;
     if (world_map_voxel_get(edit->borrowed_map, cell[0], cell[1], cell[2], &here) != WORLD_MAP_STATUS_OK ||
-        block_state_id(here) != block ||
-        !(bench_half_other(here, &step[0], &step[1], out_other) || door_half_other(here, &step[2], out_other))) {
+        block_state_id(here) != block) {
         return true;
     }
-    other_cell[0] = cell[0] + step[0];
-    other_cell[1] = cell[1] + step[1];
-    other_cell[2] = cell[2] + step[2];
-    uint16_t there = BLOCK_ID_AIR;
-    if (world_map_voxel_get(edit->borrowed_map, other_cell[0], other_cell[1], other_cell[2], &there) !=
-        WORLD_MAP_STATUS_OK) {
-        return false;
+    int32_t steps[BENCH_PARTS_MAX][2];
+    uint16_t voxels[BENCH_PARTS_MAX];
+    const uint32_t parts = bench_parts(here, steps, voxels);
+    for (uint32_t p = 0u; p < parts; p++) {
+        if (steps[p][0] != 0 || steps[p][1] != 0) {
+            out->cells[out->count][0] = cell[0] + steps[p][0];
+            out->cells[out->count][1] = cell[1] + steps[p][1];
+            out->cells[out->count][2] = cell[2];
+            out->voxels[out->count] = voxels[p];
+            out->count++;
+        }
     }
-    if (there != *out_other) {
-        return true;
+    int32_t step_z = 0;
+    if (parts == 0u && door_half_other(here, &step_z, &out->voxels[0])) {
+        out->cells[0][0] = cell[0];
+        out->cells[0][1] = cell[1];
+        out->cells[0][2] = cell[2] + step_z;
+        out->count = 1u;
     }
-    if (world_edit_block_set(edit, other_cell[0], other_cell[1], other_cell[2], BLOCK_ID_AIR) !=
-        WORLD_EDIT_STATUS_CHANGED) {
-        return false;
+    bool present[EXPLOSION_OTHERS_MAX] = {false};
+    for (uint32_t k = 0u; k < out->count; k++) {
+        uint16_t there = BLOCK_ID_AIR;
+        if (world_map_voxel_get(edit->borrowed_map, out->cells[k][0], out->cells[k][1], out->cells[k][2], &there) !=
+            WORLD_MAP_STATUS_OK) {
+            return false;
+        }
+        present[k] = there == out->voxels[k];
     }
-    (*broken)++;
-    *out_other_gone = true;
+    for (uint32_t k = 0u; k < out->count; k++) {
+        if (!present[k]) {
+            continue;
+        }
+        if (world_edit_block_set(edit, out->cells[k][0], out->cells[k][1], out->cells[k][2], BLOCK_ID_AIR) !=
+            WORLD_EDIT_STATUS_CHANGED) {
+            explosion_others_restore(edit, out, broken);
+            return false;
+        }
+        (*broken)++;
+        out->gone[k] = 1u;
+    }
     return true;
 }
 
@@ -469,21 +516,18 @@ uint32_t explosion_finish(explosion_t *explosion, world_edit_t *edit, item_drop_
         const int32_t cell[COLLISION_AXES] = {listed->x, listed->y, listed->z};
         /* By the block alone: a facing is read where it matters, from the world. */
         const uint16_t block = block_state_id(listed->block);
-        int32_t other_cell[COLLISION_AXES] = {0, 0, 0};
-        uint16_t other = BLOCK_ID_AIR;
-        bool other_gone = false;
-        if (!explosion_bench_other_break(edit, block, cell, other_cell, &other, &other_gone, &broken)) {
+        explosion_others_t others;
+        if (!explosion_parts_other_break(edit, block, cell, &others, &broken)) {
             continue;
         }
         if (!explosion_break_one(explosion, edit, drops, block, cell, power, &broken)) {
-            if (other_gone) {
-                (void)world_edit_block_set(edit, other_cell[0], other_cell[1], other_cell[2], other);
-                broken--;
-            }
+            explosion_others_restore(edit, &others, &broken);
             continue;
         }
-        if (other_gone) {
-            explosion_around_break(explosion, edit, drops, other_cell, power, &broken);
+        for (uint32_t k = 0u; k < others.count; k++) {
+            if (others.gone[k] != 0u) {
+                explosion_around_break(explosion, edit, drops, others.cells[k], power, &broken);
+            }
         }
         explosion_around_break(explosion, edit, drops, cell, power, &broken);
     }

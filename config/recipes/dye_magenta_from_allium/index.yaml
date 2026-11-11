@@ -2,3 +2,4 @@ name: dye_magenta_from_allium
 kind: shapeless
 ingredients: [allium]
 gives: dye_magenta
+station: hands

@@ -67,6 +67,11 @@ textures:
   - { to: blocks/birch_log_top, from: block/birch_log_top.png }
   - { to: blocks/birch_planks, from: block/birch_planks.png }
   - { to: blocks/birch_sapling, from: block/birch_sapling.png }
+  - { to: blocks/blast_furnace_bottom, from: block/blast_furnace_top.png }
+  - { to: blocks/blast_furnace_front, from: block/blast_furnace_front.png }
+  - { to: blocks/blast_furnace_front_lit, from: block/blast_furnace_front_on.png }
+  - { to: blocks/blast_furnace_side, from: block/blast_furnace_side.png }
+  - { to: blocks/blast_furnace_top, from: block/blast_furnace_top.png }
   - { to: blocks/blue_ice, from: block/blue_ice.png }
   - { to: blocks/blue_orchid, from: block/blue_orchid.png }
   - { to: blocks/bone_block_side, from: block/bone_block_side.png }
@@ -212,6 +217,12 @@ textures:
   - { to: blocks/large_fern_top, from: block/large_fern_top.png, tint: grass }
   - { to: blocks/lava_flow, from: block/lava_still.png, crop: [0, 0, 16, 256], frames: 16 }
   - { to: blocks/lava_still, from: block/lava_still.png, crop: [0, 0, 16, 256], frames: 16 }
+  - { to: blocks/leather_workbench_bottom, keep: "Minecraft has no picture for this" }
+  - { to: blocks/leather_workbench_end, keep: "Minecraft has no picture for this" }
+  - { to: blocks/leather_workbench_side_left, keep: "Minecraft has no picture for this" }
+  - { to: blocks/leather_workbench_side_right, keep: "Minecraft has no picture for this" }
+  - { to: blocks/leather_workbench_top_left, keep: "Minecraft has no picture for this" }
+  - { to: blocks/leather_workbench_top_right, keep: "Minecraft has no picture for this" }
   - { to: blocks/light_gray_terracotta, from: block/light_gray_terracotta.png }
   - { to: blocks/lilac_bottom, from: block/lilac_bottom.png }
   - { to: blocks/lilac_top, from: block/lilac_top.png }
@@ -290,6 +301,17 @@ textures:
   - { to: blocks/sculk_vein, from: block/sculk_vein.png, crop: [0, 0, 16, 16] }
   - { to: blocks/seagrass, from: block/seagrass.png, crop: [0, 0, 16, 16] }
   - { to: blocks/small_dripleaf, from: block/small_dripleaf_top.png }
+  - { to: blocks/smith_table_back_left, from: block/smithing_table_side.png }
+  - { to: blocks/smith_table_back_right, from: block/smithing_table_side.png }
+  - { to: blocks/smith_table_bottom, from: block/smithing_table_bottom.png }
+  - { to: blocks/smith_table_end, from: block/smithing_table_side.png }
+  - { to: blocks/smith_table_front_left, from: block/smithing_table_front.png }
+  - { to: blocks/smith_table_front_right, from: block/smithing_table_front.png }
+  - { to: blocks/smith_table_inner, keep: "Minecraft has no picture for this" }
+  - { to: blocks/smith_table_top_back_left, from: block/smithing_table_top.png }
+  - { to: blocks/smith_table_top_back_right, from: block/smithing_table_top.png }
+  - { to: blocks/smith_table_top_front_left, from: block/smithing_table_top.png }
+  - { to: blocks/smith_table_top_front_right, from: block/smithing_table_top.png }
   - { to: blocks/smooth_stone, from: block/smooth_stone.png }
   - { to: blocks/snow, from: block/snow.png }
   - { to: blocks/snow_side, from: block/grass_block_snow.png }
@@ -303,6 +325,12 @@ textures:
   - { to: blocks/spruce_sapling, from: block/spruce_sapling.png }
   - { to: blocks/stone, from: block/stone.png }
   - { to: blocks/stone_bricks, from: block/stone_bricks.png }
+  - { to: blocks/stoneworking_bench_bottom, keep: "Minecraft has no picture for this" }
+  - { to: blocks/stoneworking_bench_end, keep: "Minecraft has no picture for this" }
+  - { to: blocks/stoneworking_bench_side_left, keep: "Minecraft has no picture for this" }
+  - { to: blocks/stoneworking_bench_side_right, keep: "Minecraft has no picture for this" }
+  - { to: blocks/stoneworking_bench_top_left, keep: "Minecraft has no picture for this" }
+  - { to: blocks/stoneworking_bench_top_right, keep: "Minecraft has no picture for this" }
   - { to: blocks/sugar_cane, from: block/sugar_cane.png, tint: grass }
   - { to: blocks/sunflower_back, from: block/sunflower_back.png }
   - { to: blocks/sunflower_front, from: block/sunflower_front.png }
@@ -312,6 +340,12 @@ textures:
   - { to: blocks/tall_grass_3, from: block/short_grass.png, tint: grass }
   - { to: blocks/tall_grass_4, from: block/short_grass.png, tint: grass }
   - { to: blocks/tall_grass_5, from: block/short_grass.png, tint: grass }
+  - { to: blocks/tanning_rack_bottom, keep: "Minecraft has no picture for this" }
+  - { to: blocks/tanning_rack_end, keep: "Minecraft has no picture for this" }
+  - { to: blocks/tanning_rack_side_left, keep: "Minecraft has no picture for this" }
+  - { to: blocks/tanning_rack_side_right, keep: "Minecraft has no picture for this" }
+  - { to: blocks/tanning_rack_top_left, keep: "Minecraft has no picture for this" }
+  - { to: blocks/tanning_rack_top_right, keep: "Minecraft has no picture for this" }
   - { to: blocks/terracotta, from: block/terracotta.png }
   - { to: blocks/tnt_bottom, from: block/tnt_bottom.png }
   - { to: blocks/tnt_side, from: block/tnt_side.png }
@@ -395,11 +429,16 @@ textures:
   - { to: items/cooked_mutton, from: item/cooked_mutton.png }
   - { to: items/cooked_pork, from: item/cooked_porkchop.png }
   - { to: items/cookie, from: item/cookie.png }
+  - { to: items/copper_axe, from: item/copper_axe.png }
   - { to: items/copper_boots, from: item/copper_boots.png }
   - { to: items/copper_chestplate, from: item/copper_chestplate.png }
   - { to: items/copper_helmet, from: item/copper_helmet.png }
+  - { to: items/copper_hoe, from: item/copper_hoe.png }
   - { to: items/copper_ingot, from: item/copper_ingot.png }
   - { to: items/copper_leggings, from: item/copper_leggings.png }
+  - { to: items/copper_pickaxe, from: item/copper_pickaxe.png }
+  - { to: items/copper_shovel, from: item/copper_shovel.png }
+  - { to: items/copper_sword, from: item/copper_sword.png }
   - { to: items/cow_hide, keep: "Minecraft has no hides" }
   - { to: items/diamond, from: item/diamond.png }
   - { to: items/diamond_axe, from: item/diamond_axe.png }
@@ -470,6 +509,7 @@ textures:
   - { to: items/leather_chestplate, from: item/leather_chestplate.png }
   - { to: items/leather_helmet, from: item/leather_helmet.png }
   - { to: items/leather_leggings, from: item/leather_leggings.png }
+  - { to: items/leather_workbench, keep: "Minecraft has no picture for this" }
   - { to: items/melon_seeds, from: item/melon_seeds.png }
   - { to: items/melon_slice, from: item/melon_slice.png }
   - { to: items/milk_bucket, from: item/milk_bucket.png }
@@ -508,6 +548,7 @@ textures:
   - { to: items/raw_iron, from: item/raw_iron.png }
   - { to: items/rotten_flesh, from: item/rotten_flesh.png }
   - { to: items/shears, from: item/shears.png }
+  - { to: items/smith_table, keep: "Minecraft has no picture for this" }
   - { to: items/snowball, from: item/snowball.png }
   - { to: items/stick, from: item/stick.png }
   - { to: items/stone_axe, from: item/stone_axe.png }
@@ -515,8 +556,10 @@ textures:
   - { to: items/stone_pickaxe, from: item/stone_pickaxe.png }
   - { to: items/stone_shovel, from: item/stone_shovel.png }
   - { to: items/stone_sword, from: item/stone_sword.png }
+  - { to: items/stoneworking_bench, keep: "Minecraft has no picture for this" }
   - { to: items/string, from: item/string.png }
   - { to: items/sugar, from: item/sugar.png }
+  - { to: items/tanning_rack, keep: "Minecraft has no picture for this" }
   - { to: items/torch, from: block/torch.png }
   - { to: items/water_bucket, from: item/water_bucket.png }
   - { to: items/wheat, from: item/wheat.png }

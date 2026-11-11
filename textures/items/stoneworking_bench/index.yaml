@@ -1,0 +1,19 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: stoneworking_bench
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A stoneworking bench as a thing to carry, a long top on two legs with a brace."
+  seed: 96007
+  ops:
+    - { op: fill, color: "#00000000" }
+    - { op: fill, color: "#a3a39e", x: 0, y: 4, w: 16, h: 3 }
+    - { op: fill, color: "#6a6a66", x: 0, y: 7, w: 16, h: 1 }
+    - { op: fill, color: "#8d8d88", x: 1, y: 8, w: 3, h: 7 }
+    - { op: fill, color: "#8d8d88", x: 12, y: 8, w: 3, h: 7 }
+    - { op: fill, color: "#7b7b77", x: 4, y: 11, w: 8, h: 2 }
+    - { op: fill, color: "#c3c8cd", x: 2, y: 2, w: 5, h: 1 }
+    - { op: fill, color: "#7a5230", x: 7, y: 2, w: 2, h: 1 }
+    - { op: fill, color: "#8f6a3c", x: 11, y: 1, w: 3, h: 3 }
+    - { op: noise, amount: 7, cell: 1 }

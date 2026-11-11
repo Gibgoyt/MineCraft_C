@@ -1,0 +1,23 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: blast_furnace_side
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The side of a blast furnace, of smooth stone bricks."
+  seed: 96034
+  ops:
+    - { op: fill, color: "#7d7d7a" }
+    - { op: noise, amount: 10, cell: 1 }
+    - { op: fill, color: "#4f4f4c", x: 0, y: 3, w: 16, h: 1 }
+    - { op: fill, color: "#4f4f4c", x: 0, y: 0, w: 1, h: 3 }
+    - { op: fill, color: "#4f4f4c", x: 8, y: 0, w: 1, h: 3 }
+    - { op: fill, color: "#4f4f4c", x: 0, y: 7, w: 16, h: 1 }
+    - { op: fill, color: "#4f4f4c", x: 4, y: 4, w: 1, h: 3 }
+    - { op: fill, color: "#4f4f4c", x: 12, y: 4, w: 1, h: 3 }
+    - { op: fill, color: "#4f4f4c", x: 0, y: 11, w: 16, h: 1 }
+    - { op: fill, color: "#4f4f4c", x: 0, y: 8, w: 1, h: 3 }
+    - { op: fill, color: "#4f4f4c", x: 8, y: 8, w: 1, h: 3 }
+    - { op: fill, color: "#4f4f4c", x: 0, y: 15, w: 16, h: 1 }
+    - { op: fill, color: "#4f4f4c", x: 4, y: 12, w: 1, h: 3 }
+    - { op: fill, color: "#4f4f4c", x: 12, y: 12, w: 1, h: 3 }

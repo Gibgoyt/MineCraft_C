@@ -331,10 +331,11 @@ TEST(a_herd_of_each_a_sheep_shorn_a_cow_milked_and_a_bed_of_wool_slept_in) {
     REQUIRE(ap_ticks(script, 2u));
     REQUIRE(ap_screenshot(t, script, "cow_milked.png"));
 
-    /* A bed of the wool: three wool over three planks at a crafting table, put down and slept in at night. */
+    /* A bed of the wool: three wool over three planks at a woodworking bench (plan 005 phase 6), put down and slept in at night. */
     ap_clear(&rig);
     inventory_t *const inventory = &rig.item->inventory;
-    crafting_grid_t *const table = &rig.item->crafting_table;
+    crafting_grid_t *const table = rig.item->borrowed_crafting_bench;
+    table->station = RECIPE_STATION_WOODWORKING;
     for (uint32_t c = 0u; c < 3u; c++) {
         *crafting_grid_cell(table, c) = item_stack_make(ITEM_ID_WHITE_WOOL, 1u);
         *crafting_grid_cell(table, 3u + c) = item_stack_make(ITEM_ID_OAK_PLANKS, 1u);

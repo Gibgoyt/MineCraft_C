@@ -241,8 +241,15 @@ TEST(gold_mines_faster_than_diamond_and_harvests_only_what_wood_does) {
     CHECK_EQ_U64(equipment_tool_speed_milli(ITEM_ID_GOLD_AXE), 12000u);
     CHECK_EQ_U64(equipment_tool_speed_milli(ITEM_ID_GOLD_HOE), 12000u);
     CHECK_EQ_U64(equipment_tool_speed_milli(ITEM_ID_GOLD_SWORD), 0u);
-    CHECK_EQ_U64(equipment_tool_speed_milli(ITEM_ID_DIAMOND_PICKAXE), 0u);
+    /* Every other tier's from its file too (plan 005 phase 6), the same as the rungs' published speeds, and copper between stone and iron. */
+    CHECK_EQ_U64(equipment_tool_speed_milli(ITEM_ID_DIAMOND_PICKAXE), 8000u);
+    CHECK_EQ_U64(equipment_tool_speed_milli(ITEM_ID_IRON_PICKAXE), 6000u);
+    CHECK_EQ_U64(equipment_tool_speed_milli(ITEM_ID_COPPER_PICKAXE), 5000u);
+    CHECK_EQ_U64(equipment_tool_speed_milli(ITEM_ID_STONE_PICKAXE), 4000u);
+    CHECK_EQ_U64(equipment_tool_speed_milli(ITEM_ID_WOOD_PICKAXE), 2000u);
+    CHECK_EQ_U64(equipment_tool_speed_milli(ITEM_ID_SHEARS), 0u);
     CHECK_EQ_U64(equipment_tool_speed_milli(ITEM_ID_NONE), 0u);
+    CHECK_EQ_U64(item_defs[ITEM_ID_COPPER_PICKAXE].harvest_tier, BLOCK_TIER_STONE);
 
     ie_hands_t *const rig = test_alloc(t, sizeof(ie_hands_t));
     REQUIRE(ie_hands_begin(t, rig));

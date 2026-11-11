@@ -5,31 +5,40 @@
 2 move -71 68
 3 button left down
 4 button left up
-# The grid's first cell, at (169, 72): one log, which makes planks.
+# The grid's four cells, from (169, 72): a log in each, which make a crafting table, as only the hands do (plan 005 phase 6).
 5 move 80 -116
 6 button right down
 7 button right up
-8 screenshot inventory_carrying.png
-# Back to hotbar 0 with the other nine.
-9 move -80 116
-10 button left down
-11 button left up
+8 move 18 0
+9 button right down
+10 button right up
+11 move -18 18
+12 button right down
+13 button right up
+14 move 18 0
+15 button right down
+16 button right up
+17 screenshot inventory_carrying.png
+# Back to hotbar 0 with the other six.
+18 move -98 98
+19 button left down
+20 button left up
 # The output, at (231, 82): one making, onto an empty pointer.
-12 move 142 -106
-13 button left down
-14 button left up
+21 move 142 -106
+22 button left down
+23 button left up
 # Hotbar 3, at (143, 188).
-15 move -88 106
-16 button left down
-17 button left up
+24 move -88 106
+25 button left down
+26 button left up
 # The helmet in row slot 9, at (89, 130), by shift: it goes on its slot.
-18 move -54 -58
-19 key lshift down
-20 button left down
-21 button left up
-22 key lshift up
+27 move -54 -58
+28 key lshift down
+29 button left down
+30 button left up
+31 key lshift up
 # Rests on the worn pickaxe, in hotbar 1, at (107, 188), for its tooltip.
-23 move 18 58
-24 screenshot inventory_tooltip.png
-25 key e down
-26 key e up
+32 move 18 58
+33 screenshot inventory_tooltip.png
+34 key e down
+35 key e up

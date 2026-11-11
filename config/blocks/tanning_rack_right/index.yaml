@@ -1,0 +1,7 @@
+name: tanning_rack_right
+hardness: 2.5
+tool: axe
+drops: [{ item: tanning_rack, count: 1 }]
+texture: { top: blocks/tanning_rack_top_right, bottom: blocks/tanning_rack_bottom, side: blocks/tanning_rack_end, south: blocks/tanning_rack_side_right, north: blocks/tanning_rack_side_left }
+sound: wood
+facing: horizontal

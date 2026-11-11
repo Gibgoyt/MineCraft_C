@@ -4,3 +4,4 @@ pattern: ["F", "S", "E"]
 keys: { F: flint, S: stick, E: feather }
 gives: arrow
 count: 4
+station: woodworking

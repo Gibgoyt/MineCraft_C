@@ -3,3 +3,4 @@ kind: shapeless
 ingredients: [pumpkin]
 gives: pumpkin_seeds
 count: 4
+station: hands

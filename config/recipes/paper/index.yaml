@@ -4,3 +4,4 @@ pattern: ["SSS"]
 keys: { S: sugar_cane }
 gives: paper
 count: 3
+station: woodworking

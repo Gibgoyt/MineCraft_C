@@ -21,6 +21,10 @@ smelting_furnace_t *smelting_at(smelting_store_t *store, int32_t x, int32_t y, i
 }
 
 smelting_furnace_t *smelting_open(smelting_store_t *store, int32_t x, int32_t y, int32_t z) {
+    return smelting_open_process(store, x, y, z, RECIPE_PROCESS_FURNACE);
+}
+
+smelting_furnace_t *smelting_open_process(smelting_store_t *store, int32_t x, int32_t y, int32_t z, uint8_t process) {
     smelting_furnace_t *const found = smelting_at(store, x, y, z);
     if (found != nullptr) {
         return found;
@@ -35,6 +39,7 @@ smelting_furnace_t *smelting_open(smelting_store_t *store, int32_t x, int32_t y,
     furnace->cell[0] = x;
     furnace->cell[1] = y;
     furnace->cell[2] = z;
+    furnace->process = process < RECIPE_PROCESS_COUNT ? process : (uint8_t)RECIPE_PROCESS_FURNACE;
     return furnace;
 }
 
@@ -66,6 +71,10 @@ uint32_t smelting_burn_ticks(uint16_t item) {
     return item < ITEM_COUNT ? recipe_fuels[item].ticks : 0u;
 }
 
+bool smelting_burns(const smelting_furnace_t *furnace) {
+    return furnace->process >= RECIPE_PROCESS_COUNT || recipe_process_burns[furnace->process] != 0u;
+}
+
 bool smelting_is_lit(const smelting_furnace_t *furnace) {
     return furnace->burn_ticks != 0u;
 }
@@ -77,7 +86,7 @@ static const recipe_smelt_t *smelting_ready(const smelting_furnace_t *furnace) {
         return nullptr;
     }
     const recipe_smelt_t *const recipe = smelting_recipe_of(input->item);
-    if (recipe == nullptr) {
+    if (recipe == nullptr || recipe->process != furnace->process) {
         return nullptr;
     }
     const item_stack_t made = item_stack_make(recipe->gives, recipe->count);
@@ -113,6 +122,22 @@ bool smelting_tick(smelting_store_t *store, smelting_furnace_t *furnace) {
         furnace->cooking = input->item;
     }
     const recipe_smelt_t *const recipe = smelting_ready(furnace);
+    if (!smelting_burns(furnace)) {
+        /* A hide tans with time alone, and what is no longer there to work starts again. */
+        if (recipe == nullptr) {
+            furnace->cook_ticks = 0u;
+            return false;
+        }
+        furnace->cook_ticks++;
+        if (furnace->cook_ticks >= recipe->ticks) {
+            furnace->cook_ticks = 0u;
+            item_stack_t made = item_stack_make(recipe->gives, recipe->count);
+            (void)item_stack_move(&made, &furnace->slots[SMELTING_SLOT_OUTPUT], recipe->count);
+            (void)item_stack_take(input, 1u);
+            store->smelted_count += recipe->count;
+        }
+        return false;
+    }
     if (furnace->burn_ticks == 0u && recipe != nullptr) {
         smelting_burn_next(store, furnace);
     }
@@ -158,7 +183,8 @@ void smelting_click(smelting_furnace_t *furnace, uint32_t slot, item_stack_t *cu
         }
         return;
     }
-    if (slot == SMELTING_SLOT_FUEL && cursor->count != 0u && smelting_burn_ticks(cursor->item) == 0u) {
+    if (slot == SMELTING_SLOT_FUEL && cursor->count != 0u &&
+        (smelting_burn_ticks(cursor->item) == 0u || !smelting_burns(furnace))) {
         return;
     }
     if (secondary) {
@@ -176,9 +202,10 @@ uint32_t smelting_quick_move_in(smelting_furnace_t *furnace, inventory_t *invent
     if (from->count == 0u) {
         return 0u;
     }
-    const uint32_t to = smelting_recipe_of(from->item) != nullptr ? SMELTING_SLOT_INPUT
-                        : smelting_burn_ticks(from->item) != 0u   ? SMELTING_SLOT_FUEL
-                                                                  : SMELTING_SLOTS;
+    const recipe_smelt_t *const recipe = smelting_recipe_of(from->item);
+    const uint32_t to = recipe != nullptr && recipe->process == furnace->process           ? SMELTING_SLOT_INPUT
+                        : smelting_burns(furnace) && smelting_burn_ticks(from->item) != 0u ? SMELTING_SLOT_FUEL
+                                                                                           : SMELTING_SLOTS;
     if (to == SMELTING_SLOTS) {
         return 0u;
     }

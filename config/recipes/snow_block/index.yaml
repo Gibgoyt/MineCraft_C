@@ -3,3 +3,4 @@ kind: shaped
 pattern: ["SS", "SS"]
 keys: { S: snowball }
 gives: snow_block
+station: hands

@@ -35,11 +35,16 @@ enum { GI_TOOL_NONE = 0, GI_TOOL_SHEARS = 5 };
 static const char *const GI_TOOLS[] = {"none", "pickaxe", "axe", "shovel", "hoe", "shears", "sword"};
 enum { GI_TOOL_COUNT = sizeof(GI_TOOLS) / sizeof(GI_TOOLS[0]) };
 
-/* Gold breaks what wood breaks, and so is no rung of a block's tier: what it gives a block is in GI_TIER_HARVEST. */
-enum { GI_TIER_NONE = 0 };
-static const char *const GI_TIERS[] = {"none", "wood", "stone", "iron", "diamond", "gold"};
-enum { GI_TIER_COUNT = sizeof(GI_TIERS) / sizeof(GI_TIERS[0]) };
-static const char *const GI_TIER_HARVEST[GI_TIER_COUNT] = {"NONE", "WOOD", "STONE", "IRON", "DIAMOND", "WOOD"};
+/* A tool's tier is a file of config/tiers/ (plan 005 phase 6), and what it harvests is a rung of a block's tier, the words of
+ * compile/src/game_tables/blocks/ in the order of block_tier_t. Tier 0 is none, which has no file. */
+enum { GI_TIER_NONE = 0, GI_MAX_TIERS = 64 };
+static const char *const GI_RUNGS[] = {"none", "wood", "stone", "iron", "diamond"};
+enum { GI_RUNG_COUNT = sizeof(GI_RUNGS) / sizeof(GI_RUNGS[0]) };
+#define GI_TIER_SPEED_MIN 1000
+#define GI_TIER_SPEED_MAX 65535
+#define GI_ATTACK_SPEED_LIMIT 20
+static const char *const GI_TIER_FIELDS[] = {"name", "harvests", "speed", "axe_attack_speed", "hoe_attack_speed"};
+enum { GI_TIER_FIELD_COUNT = sizeof(GI_TIER_FIELDS) / sizeof(GI_TIER_FIELDS[0]) };
 
 enum { GI_SLOT_NONE = 0 };
 static const char *const GI_SLOTS[] = {"none", "head", "chest", "legs", "feet"};
@@ -72,15 +77,27 @@ typedef struct gi_item_t {
 } gi_item_t;
 static_assert(sizeof(gi_item_t) == 80);
 
+/* One tier, as read. */
+typedef struct gi_tier_t {
+    const char *borrowed_name;       /* 0 */
+    yaml_decimal_t axe_attack_speed; /* 8: swings a second with an axe of it */
+    yaml_decimal_t hoe_attack_speed; /* 24 */
+    uint32_t speed;                  /* 40: thousandths of a bare hand, on its own tool's blocks */
+    uint8_t harvests;                /* 44: a rung of GI_RUNGS */
+    uint8_t _pad0[3];                /* 45 */
+} gi_tier_t;
+static_assert(sizeof(gi_tier_t) == 48);
+
 typedef struct gi_context_t {
     tp_arena_t *borrowed_arena;    /* 0 */
     const char *borrowed_textures; /* 8 */
     const char *borrowed_blocks;   /* 16: <config>/blocks */
     const char *borrowed_path;     /* 24: the file being read, for reporting */
-    uint32_t problems;             /* 32 */
-    uint8_t _pad0[4];              /* 36 */
+    const char **borrowed_tiers;   /* 32: none, then every file of config/tiers/ by name */
+    uint32_t problems;             /* 40 */
+    uint32_t tier_count;           /* 44 */
 } gi_context_t;
-static_assert(sizeof(gi_context_t) == 40);
+static_assert(sizeof(gi_context_t) == 48);
 
 [[gnu::format(printf, 4, 5)]]
 static void gi_report(gi_context_t *context, uint32_t line, uint32_t column, const char *format, ...) {
@@ -323,7 +340,8 @@ static void gi_check_together(gi_context_t *context, const yaml_document_t *docu
     const yaml_node_t *const armor = yaml_map_get(document, root, "armor");
     const bool tiered = item->tool != GI_TOOL_NONE && item->tool != GI_TOOL_SHEARS;
     if (item->tier != GI_TIER_NONE && !tiered) {
-        gi_report(context, tier->line, tier->column, "tier '%s' needs a tool that has tiers", GI_TIERS[item->tier]);
+        gi_report(context, tier->line, tier->column, "tier '%s' needs a tool that has tiers",
+                  context->borrowed_tiers[item->tier]);
     }
     if (tiered && item->tier == GI_TIER_NONE) {
         gi_report(context, tool->line, tool->column, "tool '%s' needs a tier", GI_TOOLS[item->tool]);
@@ -373,7 +391,8 @@ static void gi_read_fields(gi_context_t *context, const yaml_document_t *documen
     gi_read_small(context, yaml_map_get(document, root, "stack"), "stack", 1, GI_STACK_LIMIT, &item->stack);
     gi_read_block(context, document, root, item);
     gi_read_choice(context, yaml_map_get(document, root, "tool"), "tool", GI_TOOLS, GI_TOOL_COUNT, &item->tool);
-    gi_read_choice(context, yaml_map_get(document, root, "tier"), "tier", GI_TIERS, GI_TIER_COUNT, &item->tier);
+    gi_read_choice(context, yaml_map_get(document, root, "tier"), "tier", context->borrowed_tiers, context->tier_count,
+                   &item->tier);
     gi_read_number(context, yaml_map_get(document, root, "durability"), "durability", 1, GI_DURABILITY_LIMIT,
                    &item->durability);
     gi_read_decimal(context, yaml_map_get(document, root, "damage"), "damage", GI_DAMAGE_LIMIT, &item->damage);
@@ -485,7 +504,8 @@ static void gi_add_enum(tp_arena_t *arena, tp_builder_t *header, const char *typ
     tp_builder_add(header, "} %s;\n\n", type);
 }
 
-static void gi_emit_header(tp_arena_t *arena, tp_builder_t *out, const gi_item_t *items, uint32_t count) {
+static void gi_emit_header(tp_arena_t *arena, tp_builder_t *out, const gi_item_t *items, uint32_t count,
+                           const char *const *tier_names, uint32_t tier_count) {
     tp_builder_add(
         out,
         "/* Generated by compile/src/game_tables from config/items/. Change the yaml and build; never edit this. */\n"
@@ -503,8 +523,24 @@ static void gi_emit_header(tp_arena_t *arena, tp_builder_t *out, const gi_item_t
         out, "#define ITEM_COUNT %uu\n/* The most any stack of anything holds. */\n#define ITEM_STACK_LIMIT %uu\n",
         count + 1u, (uint32_t)GI_STACK_LIMIT);
     tp_builder_add(out, "/* In item_def_t.block: this item places nothing. */\n#define ITEM_NO_BLOCK 0xFFFFu\n\n");
-    tp_builder_add(out, "/* Gold is no rung of a block's tier: item_def_t.harvest_tier says what it breaks. */\n");
-    gi_add_enum(arena, out, "item_tier_t", "ITEM_TIER_", GI_TIERS, GI_TIER_COUNT);
+    tp_builder_add(out, "/* A tool's tier, a file of config/tiers/, by name after none. What it breaks is item_tiers' "
+                        "harvest_tier, so gold, "
+                        "which breaks what wood does, is no rung of a block's tier. */\n");
+    gi_add_enum(arena, out, "item_tier_t", "ITEM_TIER_", tier_names, tier_count);
+    tp_builder_add(out,
+                   "#define ITEM_TIER_COUNT %uu\n\n"
+                   "/* One row per tier, as its file says. Row 0, none, is a bare hand. */\n"
+                   "typedef struct item_tier_def_t {\n"
+                   "    const char *name;           /* 0 */\n"
+                   "    float32_t axe_attack_speed; /* 8: swings a second with an axe of it */\n"
+                   "    float32_t hoe_attack_speed; /* 12 */\n"
+                   "    uint16_t speed_milli;       /* 16: thousandths of a bare hand, on its own tool's blocks */\n"
+                   "    uint8_t harvest_tier;       /* 18: the block_tier_t it breaks */\n"
+                   "    uint8_t _pad0[5];           /* 19 */\n"
+                   "} item_tier_def_t;\n"
+                   "static_assert(sizeof(item_tier_def_t) == 24);\n\n"
+                   "extern const item_tier_def_t item_tiers[ITEM_TIER_COUNT];\n\n",
+                   tier_count);
     gi_add_enum(arena, out, "item_armor_slot_t", "ITEM_ARMOR_SLOT_", GI_SLOTS, GI_SLOT_COUNT);
     tp_builder_add(out,
                    "/* One row per item. */\n"
@@ -534,13 +570,26 @@ static void gi_add_decimal(tp_builder_t *out, yaml_decimal_t value) {
     tp_builder_add(out, "%" PRId64 "e%df32", value.mantissa, value.exponent);
 }
 
-static void gi_emit_source(tp_arena_t *arena, tp_builder_t *out, const gi_item_t *items, uint32_t count) {
+static void gi_emit_source(tp_arena_t *arena, tp_builder_t *out, const gi_item_t *items, uint32_t count,
+                           const gi_tier_t *tiers, uint32_t tier_count) {
     tp_builder_add(
         out,
         "/* Generated by compile/src/game_tables from config/items/. Change the yaml and build; never edit this. */\n"
         "#include \"tables/items/index.h\"\n\n"
         "#include \"tables/blocks/index.h\"\n\n"
-        "const item_def_t item_defs[ITEM_COUNT] = {\n");
+        "const item_tier_def_t item_tiers[ITEM_TIER_COUNT] = {\n"
+        "    [ITEM_TIER_NONE] = {.name = \"none\", .speed_milli = 1000, .harvest_tier = BLOCK_TIER_NONE},\n");
+    for (uint32_t i = 1u; i < tier_count; i++) {
+        const gi_tier_t *const tier = &tiers[i];
+        tp_builder_add(out, "    [ITEM_TIER_%s] = {.name = \"%s\", .axe_attack_speed = ",
+                       gi_upper(arena, tier->borrowed_name), tier->borrowed_name);
+        gi_add_decimal(out, tier->axe_attack_speed);
+        tp_builder_add(out, ", .hoe_attack_speed = ");
+        gi_add_decimal(out, tier->hoe_attack_speed);
+        tp_builder_add(out, ", .speed_milli = %u, .harvest_tier = BLOCK_TIER_%s},\n", tier->speed,
+                       gi_upper(arena, GI_RUNGS[tier->harvests]));
+    }
+    tp_builder_add(out, "};\n\nconst item_def_t item_defs[ITEM_COUNT] = {\n");
     tp_builder_add(out, "    [ITEM_ID_NONE] = {.name = \"%s\", .block = ITEM_NO_BLOCK},\n", GI_NONE);
     for (uint32_t i = 0; i < count; i++) {
         const gi_item_t *const item = &items[i];
@@ -556,13 +605,98 @@ static void gi_emit_source(tp_arena_t *arena, tp_builder_t *out, const gi_item_t
         }
         tp_builder_add(out, ", .durability = %u, .max_stack = %u, .tool = BLOCK_TOOL_%s, .tier = ITEM_TIER_%s",
                        item->durability, item->stack, gi_upper(arena, GI_TOOLS[item->tool]),
-                       gi_upper(arena, GI_TIERS[item->tier]));
+                       gi_upper(arena, item->tier == GI_TIER_NONE ? "none" : tiers[item->tier].borrowed_name));
         tp_builder_add(out, ", .harvest_tier = BLOCK_TIER_%s, .food = %u, .armor_slot = ITEM_ARMOR_SLOT_%s",
-                       GI_TIER_HARVEST[item->tier], item->food, gi_upper(arena, GI_SLOTS[item->armor_slot]));
+                       gi_upper(arena, GI_RUNGS[tiers[item->tier].harvests]), item->food,
+                       gi_upper(arena, GI_SLOTS[item->armor_slot]));
         tp_builder_add(out, ", .armor_points = %u, .armor_toughness = %u},\n", item->armor_points,
                        item->armor_toughness);
     }
     tp_builder_add(out, "};\n");
+}
+
+/* One tier's file into one row. What it finds wrong is counted in the context. */
+static void gi_read_tier(gi_context_t *context, const char *directory, const char *name, gi_tier_t *tier) {
+    memset(tier, 0, sizeof(*tier));
+    tier->borrowed_name = name;
+    context->borrowed_path = tp_arena_format(context->borrowed_arena, "%s/%s/index.yaml", directory, name);
+    if (!gi_name_is_valid(name) || strcmp(name, GI_NONE) == 0) {
+        gi_report(context, 1, 1, "a tier's directory is lower case, digits and underscores, and not '%s'", GI_NONE);
+        return;
+    }
+    uint8_t *text = nullptr;
+    uint64_t length = 0;
+    if (tp_read_path(context->borrowed_arena, context->borrowed_path, GI_MAX_FILE_BYTES, &text, &length) !=
+        TP_READ_OK) {
+        gi_report(context, 1, 1, "cannot be read");
+        return;
+    }
+    yaml_storage_t storage = {
+        .nodes = tp_arena_alloc(context->borrowed_arena, (length + 1u) * sizeof(yaml_node_t)),
+        .strings = tp_arena_alloc(context->borrowed_arena, length + 1u),
+        .node_capacity = (uint32_t)(length + 1u),
+        .string_capacity = (uint32_t)length,
+    };
+    yaml_document_t document;
+    yaml_error_t error = {0};
+    if (!yaml_parse(&document, text, length, storage, &error)) {
+        gi_report_yaml(context, &error);
+        return;
+    }
+    const yaml_node_t *const root = yaml_root(&document);
+    if (root->kind != YAML_KIND_MAP) {
+        gi_report(context, 1, 1, "a tier's file must be a mapping");
+        return;
+    }
+    gi_reject_unknown(context, &document, root, "a tier", GI_TIER_FIELDS, GI_TIER_FIELD_COUNT);
+    const yaml_node_t *const own = yaml_map_get(&document, root, "name");
+    const char *const said = own != nullptr ? gi_read_text(context, own) : nullptr;
+    if (said == nullptr || strcmp(said, name) != 0) {
+        gi_report(context, root->line, root->column, "a tier's name is its directory's, '%s'", name);
+    }
+    const char *const fields[] = {"harvests", "speed", "axe_attack_speed", "hoe_attack_speed"};
+    for (uint32_t i = 0u; i < sizeof(fields) / sizeof(fields[0]); i++) {
+        if (yaml_map_get(&document, root, fields[i]) == nullptr) {
+            gi_report(context, root->line, root->column, "missing field '%s'", fields[i]);
+        }
+    }
+    gi_read_choice(context, yaml_map_get(&document, root, "harvests"), "rung", GI_RUNGS, GI_RUNG_COUNT,
+                   &tier->harvests);
+    gi_read_number(context, yaml_map_get(&document, root, "speed"), "speed", GI_TIER_SPEED_MIN, GI_TIER_SPEED_MAX,
+                   &tier->speed);
+    gi_read_decimal(context, yaml_map_get(&document, root, "axe_attack_speed"), "axe_attack_speed",
+                    GI_ATTACK_SPEED_LIMIT, &tier->axe_attack_speed);
+    gi_read_decimal(context, yaml_map_get(&document, root, "hoe_attack_speed"), "hoe_attack_speed",
+                    GI_ATTACK_SPEED_LIMIT, &tier->hoe_attack_speed);
+}
+
+/* Every tier, none first and then by name. A tree with no config/tiers/ has only none, so a tool in it is refused for want of a tier. */
+static bool gi_read_tiers(gi_context_t *context, const char *config, gi_tier_t **out_tiers) {
+    tp_arena_t *const arena = context->borrowed_arena;
+    const char *const directory = tp_arena_format(arena, "%s/tiers", config);
+    const char **names = nullptr;
+    uint32_t count = 0u;
+    struct stat info;
+    if (stat(directory, &info) == 0 && !gi_list_items(arena, directory, &names, &count)) {
+        return false;
+    }
+    if (count + 1u > GI_MAX_TIERS) {
+        return tp_fail("%s: holds over %u tiers", directory, GI_MAX_TIERS - 1u);
+    }
+    gi_tier_t *const tiers = tp_arena_alloc(arena, (count + 1ull) * sizeof(gi_tier_t));
+    const char **const words = tp_arena_alloc(arena, (count + 1ull) * sizeof(const char *));
+    memset(&tiers[0], 0, sizeof(tiers[0]));
+    tiers[0].borrowed_name = GI_NONE;
+    tiers[0].speed = GI_TIER_SPEED_MIN;
+    words[0] = GI_NONE;
+    for (uint32_t i = 0u; i < count; i++) {
+        gi_read_tier(context, directory, names[i], &tiers[i + 1u]);
+        words[i + 1u] = names[i];
+    }
+    context->borrowed_tiers = words;
+    context->tier_count = count + 1u;
+    *out_tiers = tiers;
+    return true;
 }
 
 bool game_tables_items_build(tp_arena_t *arena, const char *config, const char *textures, const char *out) {
@@ -577,6 +711,10 @@ bool game_tables_items_build(tp_arena_t *arena, const char *config, const char *
         .borrowed_textures = textures,
         .borrowed_blocks = tp_arena_format(arena, "%s/blocks", config),
     };
+    gi_tier_t *tiers = nullptr;
+    if (!gi_read_tiers(&context, config, &tiers)) {
+        return false;
+    }
     gi_item_t *items = tp_arena_alloc(arena, (count + 1ull) * sizeof(gi_item_t));
     for (uint32_t i = 0; i < count; i++) {
         gi_read_item(&context, items_path, names[i], &items[i]);
@@ -586,8 +724,8 @@ bool game_tables_items_build(tp_arena_t *arena, const char *config, const char *
     }
     tp_builder_t header = tp_builder_begin(arena, GI_HEADER_BYTES);
     tp_builder_t source = tp_builder_begin(arena, GI_SOURCE_BYTES);
-    gi_emit_header(arena, &header, items, count);
-    gi_emit_source(arena, &source, items, count);
+    gi_emit_header(arena, &header, items, count, context.borrowed_tiers, context.tier_count);
+    gi_emit_source(arena, &source, items, count, tiers, context.tier_count);
 
     const char *directory = tp_arena_format(arena, "%s/items", out);
     return tp_make_directories(arena, directory) &&

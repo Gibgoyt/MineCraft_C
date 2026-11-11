@@ -1,0 +1,7 @@
+name: stick_from_logs
+kind: shaped
+pattern: ["L", "L"]
+keys: { L: group_logs }
+gives: stick
+count: 16
+station: woodworking

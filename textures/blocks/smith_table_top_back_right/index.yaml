@@ -1,0 +1,17 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: smith_table_top_back_right
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The back right quarter of a smith table's top, of worked iron."
+  seed: 96025
+  ops:
+    - { op: fill, color: "#6b7077" }
+    - { op: noise, amount: 9, cell: 1 }
+    - { op: fill, color: "#9aa0a7", x: 0, y: 0, w: 16, h: 1 }
+    - { op: fill, color: "#4a4a4d", x: 15, y: 0, w: 1, h: 16 }
+    - { op: fill, color: "#4a4a4d", x: 0, y: 0, w: 16, h: 1 }
+    - { op: fill, color: "#9aa0a7", x: 3, y: 4, w: 8, h: 3 }
+    - { op: fill, color: "#6b7077", x: 3, y: 7, w: 8, h: 1 }
+    - { op: fill, color: "#41454a", x: 5, y: 8, w: 4, h: 3 }

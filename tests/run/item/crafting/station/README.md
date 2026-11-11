@@ -11,14 +11,16 @@
 
 No card, no display and no world.
 
-What it checks:
+What it checks, since plan 005 phase 6 gave each kind of making its own station:
 
-- Each recipe in the plan's bench row, written by hand in the test, makes nothing on a table and works on a bench.
-- Each recipe of the table, a sample of each kind and all of what it takes to get a bench, makes nothing on a bench and works on a table.
-- Every recipe in the tables is made at its own station and not at the other.
-- Everything made only of planks, logs and sticks is `woodworking`, but for what it takes to get a bench. A new recipe of wood alone fails here until it says where it is made.
-- A bench is 3 planks over 2 sticks, of any woods together, wherever it fits on a table, and a stick short or out of place is nothing.
-- The way a player goes: logs, planks, a table, sticks and a bench, then a pickaxe that the same cells do not make on a table.
-- The bench item is the west half, each half's file drops one bench, and it burns as a table does.
+- The crafting table makes only the other stations: the woodworking and stoneworking benches, the smith table, the tanning rack and the leather workbench. Four logs in the hands make the table.
+- Every recipe is made at its own station and laid the same way at no other, and what any grid makes is made at one station only, so nothing is made in two places. Each smelt is done by one process.
+- **The walk:** every recipe and every smelt is reached from what the world gives (everything no recipe makes: logs, cobblestone, ores, hides and the rest), what only a block with a tier drops coming once a tool that harvests it has been made. The hands are there from the start, a station once its item is made, a smelt once its block is had and, if it burns, fuel. Nothing circular can be reached this way. It prints the round each station came in, and holds them to Ahmed's order: hands, table, woodworking, then stoneworking and the furnace, the blast furnace before the smith table, and the tanning rack and leather workbench after woodworking.
+- **No armour without the leather workbench:** the same walk with its block never had reaches no armour, and with it all sixteen pieces, leather, copper, iron and gold. No piece but diamond's is had except by its recipe.
+- Metal armour is leather armour with that metal around it at the smith table; the ingots alone make nothing anywhere.
+- Logs to planks, planks to sticks and two logs to sixteen sticks, at the woodworking bench and nowhere else.
+- The way a player goes: four logs to a table in the hands, three logs to a bench on the table, then planks, and a pickaxe that the same cells do not make on the table.
+- Each station's item places its first part, and every part drops the one item.
+- A tanning rack tans a hide to leather in 600 ticks with no fuel and takes none, a furnace will not tan, and iron smelts only in the blast furnace, copper and gold in the furnace.
 
 Placing and breaking a bench are in `tests/run/player/interaction/bench/`, a blast in `tests/run/mob/creeper/`, and its screen in `tests/run/ui/screens/`.

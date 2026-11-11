@@ -1,0 +1,5 @@
+name: iron
+harvests: iron
+speed: 6000
+axe_attack_speed: 0.9
+hoe_attack_speed: 3

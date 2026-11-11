@@ -1,5 +1,6 @@
 name: copper_leggings
 kind: shaped
-pattern: ["MMM", "M M", "M M"]
-keys: { M: copper_ingot }
+pattern: ["MMM", "MLM", "M M"]
+keys: { M: copper_ingot, L: leather_leggings }
 gives: copper_leggings
+station: smithing

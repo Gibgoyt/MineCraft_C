@@ -3,3 +3,4 @@ kind: shaped
 pattern: [" I", "I "]
 keys: { I: iron_ingot }
 gives: shears
+station: smithing

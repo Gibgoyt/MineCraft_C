@@ -1,0 +1,7 @@
+name: copper_pickaxe
+texture: items/copper_pickaxe
+stack: 1
+tool: pickaxe
+tier: copper
+durability: 190
+damage: 3

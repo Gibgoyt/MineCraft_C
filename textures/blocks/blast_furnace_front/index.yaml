@@ -1,0 +1,30 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: blast_furnace_front
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The front of a blast furnace, an iron mouth with a grate, cold."
+  seed: 96037
+  ops:
+    - { op: fill, color: "#7d7d7a" }
+    - { op: noise, amount: 10, cell: 1 }
+    - { op: fill, color: "#4f4f4c", x: 0, y: 3, w: 16, h: 1 }
+    - { op: fill, color: "#4f4f4c", x: 0, y: 0, w: 1, h: 3 }
+    - { op: fill, color: "#4f4f4c", x: 8, y: 0, w: 1, h: 3 }
+    - { op: fill, color: "#4f4f4c", x: 0, y: 7, w: 16, h: 1 }
+    - { op: fill, color: "#4f4f4c", x: 4, y: 4, w: 1, h: 3 }
+    - { op: fill, color: "#4f4f4c", x: 12, y: 4, w: 1, h: 3 }
+    - { op: fill, color: "#4f4f4c", x: 0, y: 11, w: 16, h: 1 }
+    - { op: fill, color: "#4f4f4c", x: 0, y: 8, w: 1, h: 3 }
+    - { op: fill, color: "#4f4f4c", x: 8, y: 8, w: 1, h: 3 }
+    - { op: fill, color: "#4f4f4c", x: 0, y: 15, w: 16, h: 1 }
+    - { op: fill, color: "#4f4f4c", x: 4, y: 12, w: 1, h: 3 }
+    - { op: fill, color: "#4f4f4c", x: 12, y: 12, w: 1, h: 3 }
+    - { op: fill, color: "#41454a", x: 3, y: 7, w: 10, h: 8 }
+    - { op: fill, color: "#6b7077", x: 3, y: 7, w: 10, h: 1 }
+    - { op: fill, color: "#6b7077", x: 3, y: 7, w: 1, h: 8 }
+    - { op: fill, color: "#6b7077", x: 12, y: 7, w: 1, h: 8 }
+    - { op: fill, color: "#1a1a1a", x: 4, y: 8, w: 8, h: 6 }
+    - { op: fill, color: "#6b7077", x: 6, y: 8, w: 1, h: 6 }
+    - { op: fill, color: "#6b7077", x: 9, y: 8, w: 1, h: 6 }

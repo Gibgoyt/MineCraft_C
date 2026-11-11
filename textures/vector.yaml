@@ -11,6 +11,7 @@ materials:
   - { texture: blocks/torch_lean_side, emissive: 14, min_luma: 130, warm: true }
   - { texture: blocks/torch_lean_cap, emissive: 14, min_luma: 130, warm: true }
   - { texture: blocks/furnace_front_lit, emissive: 13, min_luma: 90, warm: true, alpha: opaque }
+  - { texture: blocks/blast_furnace_front_lit, emissive: 13, min_luma: 90, warm: true, alpha: opaque }
   - { texture: blocks/tnt_top_burning, emissive: 8 }
   - { texture: blocks/jack_o_lantern, emissive: 15, min_luma: 150, warm: true }
   - { texture: blocks/cave_vines_lit, emissive: 14, min_luma: 130, warm: true }
@@ -61,6 +62,11 @@ needs:
     - birch_log_top
     - birch_planks
     - birch_sapling
+    - blast_furnace_bottom
+    - blast_furnace_front
+    - blast_furnace_front_lit
+    - blast_furnace_side
+    - blast_furnace_top
     - blue_ice
     - blue_orchid
     - bone_block_side
@@ -200,6 +206,12 @@ needs:
     - large_fern_top
     - lava_flow
     - lava_still
+    - leather_workbench_bottom
+    - leather_workbench_end
+    - leather_workbench_side_left
+    - leather_workbench_side_right
+    - leather_workbench_top_left
+    - leather_workbench_top_right
     - light_gray_terracotta
     - lilac_bottom
     - lilac_top
@@ -266,6 +278,17 @@ needs:
     - sculk_vein
     - seagrass
     - small_dripleaf
+    - smith_table_back_left
+    - smith_table_back_right
+    - smith_table_bottom
+    - smith_table_end
+    - smith_table_front_left
+    - smith_table_front_right
+    - smith_table_inner
+    - smith_table_top_back_left
+    - smith_table_top_back_right
+    - smith_table_top_front_left
+    - smith_table_top_front_right
     - smooth_stone
     - snow
     - snow_side
@@ -278,6 +301,12 @@ needs:
     - spruce_sapling
     - stone
     - stone_bricks
+    - stoneworking_bench_bottom
+    - stoneworking_bench_end
+    - stoneworking_bench_side_left
+    - stoneworking_bench_side_right
+    - stoneworking_bench_top_left
+    - stoneworking_bench_top_right
     - sugar_cane
     - sunflower_back
     - sunflower_front
@@ -287,6 +316,12 @@ needs:
     - tall_grass_3
     - tall_grass_4
     - tall_grass_5
+    - tanning_rack_bottom
+    - tanning_rack_end
+    - tanning_rack_side_left
+    - tanning_rack_side_right
+    - tanning_rack_top_left
+    - tanning_rack_top_right
     - terracotta
     - tnt_bottom
     - tnt_side
@@ -368,11 +403,16 @@ needs:
     - cooked_mutton
     - cooked_pork
     - cookie
+    - copper_axe
     - copper_boots
     - copper_chestplate
     - copper_helmet
+    - copper_hoe
     - copper_ingot
     - copper_leggings
+    - copper_pickaxe
+    - copper_shovel
+    - copper_sword
     - cow_hide
     - diamond
     - diamond_axe
@@ -443,6 +483,7 @@ needs:
     - leather_chestplate
     - leather_helmet
     - leather_leggings
+    - leather_workbench
     - melon_seeds
     - melon_slice
     - milk_bucket
@@ -462,6 +503,7 @@ needs:
     - raw_iron
     - rotten_flesh
     - shears
+    - smith_table
     - snowball
     - stick
     - stone_axe
@@ -469,8 +511,10 @@ needs:
     - stone_pickaxe
     - stone_shovel
     - stone_sword
+    - stoneworking_bench
     - string
     - sugar
+    - tanning_rack
     - torch
     - water_bucket
     - wheat

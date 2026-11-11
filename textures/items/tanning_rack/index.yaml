@@ -1,0 +1,18 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: tanning_rack
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A tanning rack as a thing to carry, a long top on two legs with a brace."
+  seed: 96014
+  ops:
+    - { op: fill, color: "#00000000" }
+    - { op: fill, color: "#8a6339", x: 0, y: 4, w: 16, h: 3 }
+    - { op: fill, color: "#5b3e20", x: 0, y: 7, w: 16, h: 1 }
+    - { op: fill, color: "#7c5a33", x: 1, y: 8, w: 3, h: 7 }
+    - { op: fill, color: "#7c5a33", x: 12, y: 8, w: 3, h: 7 }
+    - { op: fill, color: "#8a6339", x: 4, y: 11, w: 8, h: 2 }
+    - { op: fill, color: "#c79a68", x: 3, y: 1, w: 10, h: 3 }
+    - { op: fill, color: "#9b6c40", x: 3, y: 3, w: 10, h: 1 }
+    - { op: noise, amount: 7, cell: 1 }

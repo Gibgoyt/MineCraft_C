@@ -54,8 +54,8 @@ uint32_t equipment_wear_of_attack(uint16_t item);
 /* Uses left in a stack, for a bar on a slot. 0 for what does not wear. */
 uint32_t equipment_uses_left(const item_stack_t *stack);
 
-/* What this item mines its own blocks at, in thousandths, if that is not its tier's: gold, which breaks what wood breaks, at 12. 0 for the
- * rest. */
+/* What this item mines its own blocks at, in thousandths: its tier's speed, from config/tiers/ (plan 005 phase 6), so gold, which breaks
+ * what wood breaks, at 12. 0 for a sword, shears, and what is no tool. */
 uint32_t equipment_tool_speed_milli(uint16_t item);
 
 /* What a hit with this does, in half hearts. */

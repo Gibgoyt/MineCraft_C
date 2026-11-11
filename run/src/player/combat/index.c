@@ -24,18 +24,10 @@ float32_t player_combat_attack_speed(uint16_t item) {
     case BLOCK_TOOL_PICKAXE:
         return 1.2f32;
     case BLOCK_TOOL_AXE:
-        if (def->tier == ITEM_TIER_IRON) {
-            return 0.9f32;
-        }
-        return def->tier == ITEM_TIER_DIAMOND || def->tier == ITEM_TIER_GOLD ? 1.0f32 : 0.8f32;
+        /* An axe's and a hoe's go by what they are made of: config/tiers/ (plan 005 phase 6). */
+        return item_tiers[def->tier].axe_attack_speed;
     case BLOCK_TOOL_HOE:
-        if (def->tier == ITEM_TIER_STONE) {
-            return 2.0f32;
-        }
-        if (def->tier == ITEM_TIER_IRON) {
-            return 3.0f32;
-        }
-        return def->tier == ITEM_TIER_DIAMOND ? 4.0f32 : 1.0f32;
+        return item_tiers[def->tier].hoe_attack_speed;
     default:
         return PLAYER_COMBAT_HAND_SPEED;
     }

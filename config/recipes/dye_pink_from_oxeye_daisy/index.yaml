@@ -2,3 +2,4 @@ name: dye_pink_from_oxeye_daisy
 kind: shapeless
 ingredients: [oxeye_daisy]
 gives: dye_pink
+station: hands

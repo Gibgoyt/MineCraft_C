@@ -1,0 +1,28 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: copper_sword
+group: items
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "A copper sword."
+  seed: 600605
+  ops:
+    - op: art
+      palette: { l: "#f4b48c", m: "#c9764c", d: "#84482c", h: "#7a5230", g: "#4f3520" }
+      rows:
+        - "................"
+        - "............lll."
+        - "...........lmmd."
+        - "..........lmmmd."
+        - ".........lmmmd.."
+        - "........lmmmd..."
+        - ".......lmmmd...."
+        - "......lmmmd....."
+        - "..dd.lmmmd......"
+        - "..dmmlmmd......."
+        - "...dmmmd........"
+        - "....hmmd........"
+        - "...hhgdmd......."
+        - "..hhg..dd......."
+        - ".hhg............"
+        - "................"

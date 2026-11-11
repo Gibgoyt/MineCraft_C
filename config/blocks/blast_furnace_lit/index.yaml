@@ -1,0 +1,8 @@
+name: blast_furnace_lit
+hardness: 3.5
+tool: pickaxe
+tier: wood
+drops: [{ item: blast_furnace, count: 1 }]
+light: 13
+texture: { top: blocks/blast_furnace_top, bottom: blocks/blast_furnace_bottom, side: blocks/blast_furnace_side, north: blocks/blast_furnace_front_lit }
+sound: stone

@@ -14,6 +14,6 @@ The pictures go to `MC_ANIMAL_PROOF_DIR`, or `/tmp/mc_animal_proof/`, which is k
 - `herd_cattle.png`, `herd_sheep.png`, `herd_pig.png`, `herd_goat.png`, `herd_mountain_goat.png`, `herd_chicken.png`: four of each, side on, male, female, male, female from left to right as the eye sees them. The males are bigger, with horns (bull, ram, billy), tusks and a dark bristly coat (boar), a beard (billy) or a tall comb and a dark tail (rooster).
 - `sheep_shorn.png`: shears on the ewe in front, with the right button. She gives 1 to 3 white wool and shows her skin; the shears wear by 1. A second press gives nothing. The ram behind her still has his wool.
 - `cow_milked.png`: a bucket on a bull gives nothing; on a cow it comes back a milk bucket, and holding the button on does not drink it.
-- `bed_of_wool.png`, `bed_slept_in.png`: three white wool over three oak planks at a crafting table make a bed, and wheat no longer does; it is put down on the grass, and at 20:24 the right button on it puts the body to sleep.
+- `bed_of_wool.png`, `bed_slept_in.png`: three white wool over three oak planks at a woodworking bench make a bed (plan 005 phase 6), and wheat no longer does; it is put down on the grass, and at 20:24 the right button on it puts the body to sleep.
 
 It checks what it can in numbers. Whether the pictures look right is for a person: read them.

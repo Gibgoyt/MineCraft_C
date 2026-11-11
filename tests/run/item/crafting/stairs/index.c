@@ -235,8 +235,8 @@ TEST(no_wood_is_left_out) {
 TEST(cobblestone_stairs_are_still_cobblestone) {
     item_stack_t cells[RECIPE_CELLS];
     cs_fill(cells, CS_PATTERN, ITEM_ID_COBBLESTONE);
-    /* And stone is no woodworking: on a table they are, and on a bench they are not. */
-    const uint32_t recipe = crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE);
+    /* And stone is no woodworking: on a stoneworking bench they are (plan 005 phase 6), and on a woodworking bench they are not. */
+    const uint32_t recipe = crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_STONEWORKING);
     REQUIRE(recipe != CRAFTING_NO_RECIPE);
     CHECK_EQ_U64(recipe_defs[recipe].gives, ITEM_ID_COBBLESTONE_STAIRS);
     CHECK_EQ_U64(cs_makes(cells, CRAFTING_SIDE_TABLE), ITEM_ID_NONE);

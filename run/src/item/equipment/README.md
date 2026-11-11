@@ -38,7 +38,7 @@ A hit does `damage` half hearts, or a hand's 1 if that is more. `run/src/player/
 
 - **A hoe** on `dirt` or `grass_block` makes `farmland`, and on `coarse_dirt` makes `dirt`, if only air is above it. The right button, held, does this every 4 ticks.
 - **Shears** bring out the block they broke as an item, and `run/src/player/interaction/` rolls nothing of its table, so a shorn leaf gives the leaf and no sapling. Every block with `tool: shears` has such an item, as `run_item_equipment` holds.
-- **Gold** mines its own blocks at the published 12, by `equipment_tool_speed_milli`, and harvests what wood harvests. A gold sword mines as any sword.
+- **A tier's speed** is in its file, `config/tiers/<tier>/index.yaml` (plan 005 phase 6), and `equipment_tool_speed_milli` gives it: gold mines its own blocks at the published 12 and harvests what wood harvests, and copper at 5, harvesting what stone does. A sword mines as any sword, of whatever it is made.
 
 ## Armor
 

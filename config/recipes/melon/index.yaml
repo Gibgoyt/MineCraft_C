@@ -3,3 +3,4 @@ kind: shaped
 pattern: ["MMM", "MMM", "MMM"]
 keys: { M: melon_slice }
 gives: melon
+off: "Nine slices take a 3 by 3, which the hands do not have, and no station makes food (plan 005 phase 6)."

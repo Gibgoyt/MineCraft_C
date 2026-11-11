@@ -2,3 +2,4 @@ name: dye_yellow_from_dandelion
 kind: shapeless
 ingredients: [dandelion]
 gives: dye_yellow
+station: hands

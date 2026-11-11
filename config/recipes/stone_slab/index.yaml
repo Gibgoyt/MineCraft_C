@@ -4,3 +4,4 @@ pattern: ["SSS"]
 keys: { S: stone }
 gives: stone_slab
 count: 6
+station: stoneworking

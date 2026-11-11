@@ -1,5 +1,6 @@
 name: woodworking_bench
 kind: shaped
-pattern: ["PPP", "S S"]
-keys: { P: group_planks, S: stick }
+pattern: ["LLL"]
+keys: { L: group_logs }
 gives: woodworking_bench
+station: table

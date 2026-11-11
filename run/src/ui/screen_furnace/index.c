@@ -18,7 +18,7 @@ enum : int16_t {
     UI_SCREEN_FURNACE_TITLE_Y = 7,
 };
 
-uint32_t ui_screen_furnace_places(ui_screen_place_t *out) {
+uint32_t ui_screen_furnace_places(ui_screen_place_t *out, bool fuel) {
     uint32_t count = ui_screen_player_places(out);
     static const int16_t where[SMELTING_SLOTS][2] = {
         [SMELTING_SLOT_INPUT] = {UI_SCREEN_FURNACE_INPUT_X, UI_SCREEN_FURNACE_INPUT_Y},
@@ -26,6 +26,9 @@ uint32_t ui_screen_furnace_places(ui_screen_place_t *out) {
         [SMELTING_SLOT_OUTPUT] = {UI_SCREEN_FURNACE_OUTPUT_X, UI_SCREEN_FURNACE_OUTPUT_Y},
     };
     for (uint32_t slot = 0u; slot < SMELTING_SLOTS; slot++) {
+        if (slot == SMELTING_SLOT_FUEL && !fuel) {
+            continue;
+        }
         out[count++] = (ui_screen_place_t){.x = where[slot][0],
                                            .y = where[slot][1],
                                            .zone = UI_SCREEN_ZONE_BLOCK,
@@ -41,12 +44,16 @@ void ui_screen_furnace_view(const smelting_furnace_t *furnace, ui_screen_view_t 
     view->burn = smelting_burn_fraction(furnace);
 }
 
-void ui_screen_furnace_draw(ui_widget_t *widget, const ui_screens_t *screens, const ui_screen_view_t *view) {
+void ui_screen_furnace_draw(ui_widget_t *widget, const ui_screens_t *screens, const ui_screen_view_t *view,
+                            const char *title, bool fuel) {
     ui_canvas_t *const canvas = widget->borrowed_canvas;
     const ui_rect_t window = ui_screen_window(canvas->width, canvas->height);
     const int32_t scale = (int32_t)widget->scale;
-    ui_screen_draw_title(widget, window, UI_SCREEN_FURNACE_TITLE_X, UI_SCREEN_FURNACE_TITLE_Y, "Furnace");
+    ui_screen_draw_title(widget, window, UI_SCREEN_FURNACE_TITLE_X, UI_SCREEN_FURNACE_TITLE_Y, title);
     ui_screen_draw_arrow(widget, screens, window, UI_SCREEN_FURNACE_ARROW_X, UI_SCREEN_FURNACE_ARROW_Y, view->cook);
+    if (!fuel) {
+        return; /* a tanning rack: time alone, and no flame */
+    }
     const ui_rect_t fire = {window.x + UI_SCREEN_FURNACE_FIRE_X * scale, window.y + UI_SCREEN_FURNACE_FIRE_Y * scale,
                             (int32_t)UI_SCREEN_ICON * scale, (int32_t)UI_SCREEN_ICON * scale};
     ui_compose_image_whole(canvas, &screens->fire_empty, fire);

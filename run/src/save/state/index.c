@@ -601,6 +601,17 @@ static bool save_state_check_grid(const crafting_grid_t *grid, uint8_t side, uin
     return grid->side == side && grid->station == station && save_state_stacks_fine(grid->cells, RECIPE_CELLS);
 }
 
+/* The hands' grid was the table's station until plan 005 phase 6 gave the hands their own, and the bench's grid is any station's that has
+ * a 3 by 3 of its own block, as each station's screen uses it in turn. */
+static bool save_state_check_station_grids(const save_state_items_t *items) {
+    const crafting_grid_t *const bench = &items->crafting_bench;
+    const bool bench_station = bench->station != RECIPE_STATION_TABLE && bench->station != RECIPE_STATION_HANDS &&
+                               bench->station < RECIPE_STATION_COUNT;
+    return (save_state_check_grid(&items->crafting_hands, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE) ||
+            save_state_check_grid(&items->crafting_hands, CRAFTING_SIDE_HANDS, RECIPE_STATION_HANDS)) &&
+           bench_station && save_state_check_grid(bench, CRAFTING_SIDE_TABLE, bench->station);
+}
+
 static bool save_state_check_items(const uint8_t *data, uint64_t bytes) {
     save_state_items_t items;
     if (bytes != sizeof(items)) {
@@ -608,10 +619,8 @@ static bool save_state_check_items(const uint8_t *data, uint64_t bytes) {
     }
     memcpy(&items, data, sizeof(items));
     return items.selected < INVENTORY_HOTBAR_SLOTS && save_state_stacks_fine(items.slots, INVENTORY_SLOTS) &&
-           item_stack_is_valid(&items.held) &&
-           save_state_check_grid(&items.crafting_hands, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE) &&
+           item_stack_is_valid(&items.held) && save_state_check_station_grids(&items) &&
            save_state_check_grid(&items.crafting_table, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE) &&
-           save_state_check_grid(&items.crafting_bench, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING) &&
            save_state_stacks_fine(items.equipment.armor, EQUIPMENT_ARMOR_SLOTS);
 }
 
@@ -636,7 +645,8 @@ static bool save_state_check_furnaces(const uint8_t *data, uint64_t bytes) {
     for (uint64_t at = 0u; at < bytes; at += sizeof(smelting_furnace_t)) {
         smelting_furnace_t furnace;
         memcpy(&furnace, data + at, sizeof(furnace));
-        if (!save_state_stacks_fine(furnace.slots, SMELTING_SLOTS) || furnace.cooking >= ITEM_COUNT) {
+        if (!save_state_stacks_fine(furnace.slots, SMELTING_SLOTS) || furnace.cooking >= ITEM_COUNT ||
+            furnace.process >= RECIPE_PROCESS_COUNT) {
             return false;
         }
     }
@@ -1144,6 +1154,7 @@ static void save_state_in_items(item_t *item, item_stack_t *held, const uint8_t 
     save_state_items_t head;
     memcpy(&head, data, sizeof(head));
     item->crafting_hands = head.crafting_hands;
+    item->crafting_hands.station = RECIPE_STATION_HANDS; /* a file from before the hands had their own */
     item->crafting_table = head.crafting_table;
     *item->borrowed_crafting_bench = head.crafting_bench;
     item->equipment = head.equipment;

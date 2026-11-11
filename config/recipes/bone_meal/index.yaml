@@ -3,3 +3,4 @@ kind: shapeless
 ingredients: [bone]
 gives: bone_meal
 count: 3
+station: hands

@@ -1,0 +1,7 @@
+# A furnace and iron on stone: "furnace + other stuff should probably make an iron smith table" (Ahmed).
+name: smith_table
+kind: shaped
+pattern: ["III", "SFS"]
+keys: { I: iron_ingot, S: stone, F: furnace }
+gives: smith_table
+station: table

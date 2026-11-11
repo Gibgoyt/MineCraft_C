@@ -4,3 +4,4 @@ pattern: ["GG", "GG", "GG"]
 keys: { G: glass }
 gives: glass_door
 count: 3
+station: stoneworking

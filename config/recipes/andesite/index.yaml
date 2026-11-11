@@ -3,3 +3,4 @@ kind: shapeless
 ingredients: [diorite, cobblestone]
 gives: andesite
 count: 2
+station: stoneworking

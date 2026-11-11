@@ -1,0 +1,7 @@
+# A hide on the rack becomes leather in 30 seconds, with no fuel (plan 005 phase 6).
+name: tan_leather
+kind: smelt
+input: group_hides
+gives: leather
+ticks: 600
+station: tanning_rack

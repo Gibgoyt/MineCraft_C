@@ -130,9 +130,15 @@ TEST(the_basic_set_is_all_there) {
         ITEM_ID_STONE_PICKAXE,
         ITEM_ID_IRON_PICKAXE,
         ITEM_ID_GOLD_PICKAXE,
-        ITEM_ID_DIAMOND_PICKAXE,
+        ITEM_ID_COPPER_PICKAXE,
         ITEM_ID_IRON_HELMET,
-        ITEM_ID_DIAMOND_BOOTS,
+        ITEM_ID_COPPER_BOOTS,
+        ITEM_ID_WOODWORKING_BENCH,
+        ITEM_ID_STONEWORKING_BENCH,
+        ITEM_ID_SMITH_TABLE,
+        ITEM_ID_TANNING_RACK,
+        ITEM_ID_LEATHER_WORKBENCH,
+        ITEM_ID_BLAST_FURNACE,
         ITEM_ID_LEATHER_LEGGINGS,
         ITEM_ID_SHEARS,
         ITEM_ID_BUCKET,
@@ -263,19 +269,18 @@ TEST(a_grid_of_two_makes_what_fits_in_it_and_nothing_bigger) {
     }
     CHECK(fit > 0u);
     CHECK(not_fit > 0u);
-    /* The cells of a chest's recipe that a grid of two has cannot make a chest. */
+    /* Four logs in the hands are a crafting table (plan 005 phase 6). */
     item_stack_t cells[RECIPE_CELLS];
     ic_cells_clear(cells);
     for (uint32_t i = 0u; i < 4u; i++) {
-        cells[i] = ic_one(ITEM_ID_OAK_PLANKS);
+        cells[i] = ic_one(ITEM_ID_OAK_LOG);
     }
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE),
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_HANDS, RECIPE_STATION_HANDS),
                  ic_recipe_named(t, "crafting_table"));
-    /* In a table, the same four in a square in any corner are the same thing. */
+    /* On a table, the same four in a square in any corner are nothing: a table makes only the stations. */
     ic_cells_clear(cells);
-    cells[4] = cells[5] = cells[7] = cells[8] = ic_one(ITEM_ID_SPRUCE_PLANKS);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE),
-                 ic_recipe_named(t, "crafting_table"));
+    cells[4] = cells[5] = cells[7] = cells[8] = ic_one(ITEM_ID_SPRUCE_LOG);
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE), CRAFTING_NO_RECIPE);
 }
 
 TEST(what_is_almost_a_recipe_is_nothing) {
@@ -286,13 +291,13 @@ TEST(what_is_almost_a_recipe_is_nothing) {
 
     /* A stick is two planks one above the other: with a gap between them, or side by side, it is not. */
     cells[0] = cells[3] = ic_one(ITEM_ID_OAK_PLANKS);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE), ic_recipe_named(t, "stick"));
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING), ic_recipe_named(t, "stick"));
     cells[3] = (item_stack_t){0};
     cells[6] = ic_one(ITEM_ID_OAK_PLANKS);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE), CRAFTING_NO_RECIPE);
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING), CRAFTING_NO_RECIPE);
     ic_cells_clear(cells);
     cells[0] = cells[1] = ic_one(ITEM_ID_OAK_PLANKS);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE), CRAFTING_NO_RECIPE);
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING), CRAFTING_NO_RECIPE);
 
     /* A chest with its middle filled is nothing, and with one plank short it is nothing. */
     ic_cells_clear(cells);
@@ -309,13 +314,13 @@ TEST(what_is_almost_a_recipe_is_nothing) {
     ic_cells_clear(cells);
     cells[0] = ic_one(ITEM_ID_IRON_INGOT);
     cells[8] = ic_one(ITEM_ID_FLINT);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE),
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_SMITHING),
                  ic_recipe_named(t, "flint_and_steel"));
     cells[4] = ic_one(ITEM_ID_FLINT);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE), CRAFTING_NO_RECIPE);
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_SMITHING), CRAFTING_NO_RECIPE);
     cells[4] = (item_stack_t){0};
     cells[8] = ic_one(ITEM_ID_IRON_INGOT);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE), CRAFTING_NO_RECIPE);
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_SMITHING), CRAFTING_NO_RECIPE);
 
     /* A pickaxe mixes woods, but a plank is no stick. */
     ic_cells_clear(cells);
@@ -331,7 +336,8 @@ TEST(what_is_almost_a_recipe_is_nothing) {
     /* How many a cell holds, and wear, do not change it. */
     ic_cells_clear(cells);
     cells[0] = item_stack_make(ITEM_ID_OAK_LOG, 64u);
-    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE), ic_recipe_named(t, "oak_planks"));
+    CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING),
+                 ic_recipe_named(t, "oak_planks"));
 }
 
 /* Tried a different way from what is under test: each recipe laid in every place on an empty grid and compared whole, and each order of a
@@ -478,8 +484,9 @@ TEST(from_a_log_to_a_pickaxe_as_a_player_would) {
     arena_t arena;
     inventory_t inventory;
     ic_inventory(t, &inventory, &arena);
+    /* Plan 005 phase 6: the hands make the table from four logs, and planks and sticks are the woodworking bench's. */
     crafting_grid_t hands, table;
-    crafting_grid_start(&hands, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE);
+    crafting_grid_start(&hands, CRAFTING_SIDE_HANDS, RECIPE_STATION_HANDS);
     crafting_grid_start(&table, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING);
     CHECK_EQ_U64(crafting_grid_cells(&hands), 4u);
     CHECK_EQ_U64(crafting_grid_cells(&table), 9u);
@@ -488,40 +495,42 @@ TEST(from_a_log_to_a_pickaxe_as_a_player_would) {
     CHECK(item_stack_is_empty(&hands.output));
     CHECK_EQ_U64(hands.recipe, CRAFTING_NO_RECIPE);
 
-    /* Three logs. A click takes one making, and the output stays until the logs run out. */
+    /* Three logs on the bench. A click takes one making, and the output stays until the logs run out. */
     item_stack_t cursor = {0};
-    ic_put(&hands, 0u, ITEM_ID_OAK_LOG, 3u);
-    CHECK_EQ_U64(hands.recipe, ic_recipe_named(t, "oak_planks"));
-    CHECK_EQ_U64(hands.output.item, ITEM_ID_OAK_PLANKS);
-    CHECK_EQ_U64(hands.output.count, 4u);
-    CHECK_EQ_U64(crafting_grid_take(&hands, &cursor), 4u);
+    ic_put(&table, 0u, ITEM_ID_OAK_LOG, 3u);
+    CHECK_EQ_U64(table.recipe, ic_recipe_named(t, "oak_planks"));
+    CHECK_EQ_U64(table.output.item, ITEM_ID_OAK_PLANKS);
+    CHECK_EQ_U64(table.output.count, 4u);
+    CHECK_EQ_U64(crafting_grid_take(&table, &cursor), 4u);
     CHECK_EQ_U64(cursor.item, ITEM_ID_OAK_PLANKS);
     CHECK_EQ_U64(cursor.count, 4u);
-    CHECK_EQ_U64(hands.cells[0].count, 2u);
-    CHECK_EQ_U64(crafting_grid_take(&hands, &cursor), 4u);
+    CHECK_EQ_U64(table.cells[0].count, 2u);
+    CHECK_EQ_U64(crafting_grid_take(&table, &cursor), 4u);
     CHECK_EQ_U64(cursor.count, 8u);
     /* A shift-click takes the rest, and then there is nothing left to take. */
-    CHECK_EQ_U64(crafting_grid_take_all(&hands, &inventory), 4u);
-    CHECK_EQ_U64(hands.cells[0].count, 0u);
-    CHECK(item_stack_is_empty(&hands.output));
-    CHECK_EQ_U64(hands.crafted_count, 12u);
-    CHECK_EQ_U64(crafting_grid_take(&hands, &cursor), 0u);
+    CHECK_EQ_U64(crafting_grid_take_all(&table, &inventory), 4u);
+    CHECK_EQ_U64(table.cells[0].count, 0u);
+    CHECK(item_stack_is_empty(&table.output));
+    CHECK_EQ_U64(table.crafted_count, 12u);
+    CHECK_EQ_U64(crafting_grid_take(&table, &cursor), 0u);
     CHECK_EQ_U64(inventory_count(&inventory, ITEM_ID_OAK_PLANKS), 4u);
 
-    /* Eight planks, four of them make a table, and two of what is left go to sticks. */
-    (void)item_stack_take(&cursor, 4u);
+    /* Four logs in the hands make a table, and two planks on the bench go to sticks. */
+    item_stack_t logs = item_stack_make(ITEM_ID_SPRUCE_LOG, 4u);
     for (uint32_t i = 0u; i < 4u; i++) {
-        crafting_grid_click_secondary(&hands, i, &cursor);
+        crafting_grid_click_secondary(&hands, i, &logs);
     }
-    CHECK_EQ_U64(cursor.count, 0u);
+    CHECK_EQ_U64(logs.count, 0u);
     CHECK_EQ_U64(hands.output.item, ITEM_ID_CRAFTING_TABLE);
-    CHECK_EQ_U64(crafting_grid_take(&hands, &cursor), 1u);
-    CHECK_EQ_U64(cursor.item, ITEM_ID_CRAFTING_TABLE);
+    item_stack_t made_table = {0};
+    CHECK_EQ_U64(crafting_grid_take(&hands, &made_table), 1u);
+    CHECK_EQ_U64(made_table.item, ITEM_ID_CRAFTING_TABLE);
+    (void)item_stack_take(&cursor, 6u);
     cursor = (item_stack_t){0};
-    ic_put(&hands, 0u, ITEM_ID_OAK_PLANKS, 1u);
-    ic_put(&hands, 2u, ITEM_ID_OAK_PLANKS, 1u);
-    CHECK_EQ_U64(hands.output.item, ITEM_ID_STICK);
-    CHECK_EQ_U64(crafting_grid_take(&hands, &cursor), 4u);
+    ic_put(&table, 0u, ITEM_ID_OAK_PLANKS, 1u);
+    ic_put(&table, 3u, ITEM_ID_OAK_PLANKS, 1u);
+    CHECK_EQ_U64(table.output.item, ITEM_ID_STICK);
+    CHECK_EQ_U64(crafting_grid_take(&table, &cursor), 4u);
 
     /* At the bench, which this grid is: the pickaxe. A table makes none: see tests/run/item/crafting/station/. */
     ic_put(&table, 0u, ITEM_ID_OAK_PLANKS, 1u);
@@ -546,7 +555,7 @@ TEST(from_a_log_to_a_pickaxe_as_a_player_would) {
 
 TEST(the_output_comes_whole_or_not_at_all) {
     crafting_grid_t grid;
-    crafting_grid_start(&grid, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE);
+    crafting_grid_start(&grid, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING);
     ic_put(&grid, 0u, ITEM_ID_OAK_LOG, 2u);
 
     /* The pointer holds something else. */
@@ -574,7 +583,7 @@ TEST(a_shift_click_takes_what_the_cells_and_the_inventory_allow) {
     inventory_t inventory;
     ic_inventory(t, &inventory, &arena);
     crafting_grid_t grid;
-    crafting_grid_start(&grid, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE);
+    crafting_grid_start(&grid, CRAFTING_SIDE_TABLE, RECIPE_STATION_WOODWORKING);
     ic_put(&grid, 0u, ITEM_ID_OAK_LOG, 64u);
     CHECK_EQ_U64(crafting_grid_take_all(&grid, &inventory), 256u);
     CHECK_EQ_U64(inventory_count(&inventory, ITEM_ID_OAK_PLANKS), 256u);
@@ -636,7 +645,7 @@ static void ic_ticks(smelting_store_t *store, smelting_furnace_t *furnace, uint3
 
 TEST(one_coal_smelts_eight_and_it_takes_two_hundred_ticks_each) {
     smelting_store_t *const store = ic_furnaces(t);
-    smelting_furnace_t *const furnace = smelting_open(store, 1, 2, 3);
+    smelting_furnace_t *const furnace = smelting_open_process(store, 1, 2, 3, RECIPE_PROCESS_BLAST_FURNACE);
     REQUIRE(furnace != nullptr);
     furnace->slots[SMELTING_SLOT_INPUT] = item_stack_make(ITEM_ID_RAW_IRON, 20u);
     furnace->slots[SMELTING_SLOT_FUEL] = item_stack_make(ITEM_ID_COAL, 1u);
@@ -672,7 +681,7 @@ TEST(every_smelt_and_every_fuel_does_what_the_table_says) {
         const recipe_smelt_t *const recipe = smelting_recipe_of((uint16_t)item);
         if (recipe != nullptr) {
             smelts++;
-            smelting_furnace_t *const furnace = smelting_open(store, (int32_t)item, 0, 0);
+            smelting_furnace_t *const furnace = smelting_open_process(store, (int32_t)item, 0, 0, recipe->process);
             REQUIRE(furnace != nullptr);
             furnace->slots[SMELTING_SLOT_INPUT] = item_stack_make((uint16_t)item, 1u);
             /* Lava, which is not used up by any of them. */
@@ -705,7 +714,7 @@ TEST(every_smelt_and_every_fuel_does_what_the_table_says) {
 
 TEST(fuel_goes_on_only_for_what_can_cook) {
     smelting_store_t *const store = ic_furnaces(t);
-    smelting_furnace_t *const furnace = smelting_open(store, 0, 0, 0);
+    smelting_furnace_t *const furnace = smelting_open_process(store, 0, 0, 0, RECIPE_PROCESS_BLAST_FURNACE);
     REQUIRE(furnace != nullptr);
     furnace->slots[SMELTING_SLOT_FUEL] = item_stack_make(ITEM_ID_COAL, 3u);
 
@@ -745,7 +754,7 @@ TEST(fuel_goes_on_only_for_what_can_cook) {
 
 TEST(going_out_cools_it_and_changing_the_input_starts_over) {
     smelting_store_t *const store = ic_furnaces(t);
-    smelting_furnace_t *const furnace = smelting_open(store, 0, 0, 0);
+    smelting_furnace_t *const furnace = smelting_open_process(store, 0, 0, 0, RECIPE_PROCESS_BLAST_FURNACE);
     REQUIRE(furnace != nullptr);
     /* A stick burns 100 ticks. */
     furnace->slots[SMELTING_SLOT_INPUT] = item_stack_make(ITEM_ID_RAW_IRON, 2u);
@@ -765,7 +774,7 @@ TEST(going_out_cools_it_and_changing_the_input_starts_over) {
     furnace->slots[SMELTING_SLOT_FUEL] = item_stack_make(ITEM_ID_COAL, 1u);
     ic_ticks(store, furnace, 100u);
     CHECK_EQ_U64(furnace->cook_ticks, 100u);
-    furnace->slots[SMELTING_SLOT_INPUT] = item_stack_make(ITEM_ID_SAND, 1u);
+    furnace->slots[SMELTING_SLOT_INPUT] = item_stack_make(ITEM_ID_RAW_CHROMIUM, 1u);
     ic_ticks(store, furnace, 1u);
     CHECK_EQ_U64(furnace->cook_ticks, 1u);
     /* Taken out, and put back. */
@@ -1167,7 +1176,7 @@ TEST(a_furnace_lights_its_block_burns_and_goes_out_and_spills_when_it_goes) {
     item_world_tick(item, edit, ic_spill, &spills);
     CHECK_EQ_U64(ic_block(&world, x, y, z), BLOCK_ID_FURNACE);
 
-    furnace->slots[SMELTING_SLOT_INPUT] = item_stack_make(ITEM_ID_RAW_IRON, 3u);
+    furnace->slots[SMELTING_SLOT_INPUT] = item_stack_make(ITEM_ID_RAW_GOLD, 3u);
     furnace->slots[SMELTING_SLOT_FUEL] = item_stack_make(ITEM_ID_STICK, 1u);
     item_world_tick(item, edit, ic_spill, &spills);
     CHECK_EQ_U64(ic_block(&world, x, y, z), BLOCK_ID_FURNACE_LIT);
@@ -1197,14 +1206,65 @@ TEST(a_furnace_lights_its_block_burns_and_goes_out_and_spills_when_it_goes) {
     item_world_tick(item, edit, ic_spill, &spills);
     CHECK_EQ_U64(item->furnaces.count, 0u);
     CHECK_EQ_U64(spills.count, 3u);
-    CHECK_EQ_U64(spills.stacks[0].item, ITEM_ID_RAW_IRON);
+    CHECK_EQ_U64(spills.stacks[0].item, ITEM_ID_RAW_GOLD);
     CHECK_EQ_U64(spills.stacks[0].count, 2u);
     CHECK_EQ_U64(spills.stacks[1].item, ITEM_ID_COAL);
     CHECK_EQ_U64(spills.stacks[1].count, 3u);
-    CHECK_EQ_U64(spills.stacks[2].item, ITEM_ID_IRON_INGOT);
+    CHECK_EQ_U64(spills.stacks[2].item, ITEM_ID_GOLD_INGOT);
     /* Nothing is left to change the block back. */
     CHECK_EQ_U64(ic_block(&world, x, y, z), BLOCK_ID_AIR);
 
+    item_close(item);
+    item_deinit(item);
+    test_world_end(&world);
+}
+
+/* Plan 005 phase 6: a blast furnace lights as its own block, and a tanning rack keeps its slots at its first part, never lit, and spills
+ * them when that part goes. */
+TEST(a_blast_furnace_lights_as_its_own_block_and_a_tanning_rack_keeps_its_slots_at_its_first_part) {
+    test_world_t world;
+    REQUIRE(test_world_begin(t, &world));
+    world_edit_t *const edit = &world.world->edit;
+    item_t *const item = ic_item(t);
+    REQUIRE(item != nullptr);
+    item_open(item);
+    item_world_begin(item, edit);
+    ic_spills_t spills = {0};
+    REQUIRE(world_edit_block_set(edit, 5, 6, 7, BLOCK_ID_BLAST_FURNACE) == WORLD_EDIT_STATUS_CHANGED);
+    REQUIRE(world_edit_block_set(edit, 9, 6, 7, BLOCK_ID_TANNING_RACK_LEFT) == WORLD_EDIT_STATUS_CHANGED);
+    REQUIRE(world_edit_block_set(edit, 10, 6, 7, BLOCK_ID_TANNING_RACK_RIGHT) == WORLD_EDIT_STATUS_CHANGED);
+    item_world_tick(item, edit, ic_spill, &spills);
+    smelting_furnace_t *const blast = smelting_at(&item->furnaces, 5, 6, 7);
+    smelting_furnace_t *const rack = smelting_at(&item->furnaces, 9, 6, 7);
+    REQUIRE(blast != nullptr);
+    REQUIRE(rack != nullptr);
+    CHECK(smelting_at(&item->furnaces, 10, 6, 7) == nullptr);
+    CHECK_EQ_U64(blast->process, RECIPE_PROCESS_BLAST_FURNACE);
+    CHECK_EQ_U64(rack->process, RECIPE_PROCESS_TANNING_RACK);
+    blast->slots[SMELTING_SLOT_INPUT] = item_stack_make(ITEM_ID_RAW_IRON, 1u);
+    blast->slots[SMELTING_SLOT_FUEL] = item_stack_make(ITEM_ID_COAL, 1u);
+    rack->slots[SMELTING_SLOT_INPUT] = item_stack_make(ITEM_ID_GOAT_HIDE, 2u);
+    for (uint32_t i = 0u; i < 10u; i++) {
+        item_world_tick(item, edit, ic_spill, &spills);
+    }
+    CHECK_EQ_U64(ic_block(&world, 5, 6, 7), BLOCK_ID_BLAST_FURNACE_LIT);
+    CHECK_EQ_U64(block_defs[BLOCK_ID_BLAST_FURNACE_LIT].light, 13u);
+    CHECK_EQ_U64(ic_block(&world, 9, 6, 7), BLOCK_ID_TANNING_RACK_LEFT);
+    for (uint32_t i = 0u; i < 600u; i++) {
+        item_world_tick(item, edit, ic_spill, &spills);
+    }
+    smelting_furnace_t *const blast_now = smelting_at(&item->furnaces, 5, 6, 7);
+    smelting_furnace_t *const rack_now = smelting_at(&item->furnaces, 9, 6, 7);
+    REQUIRE(blast_now != nullptr && rack_now != nullptr);
+    CHECK_EQ_U64(blast_now->slots[SMELTING_SLOT_OUTPUT].item, ITEM_ID_IRON_INGOT);
+    CHECK_EQ_U64(rack_now->slots[SMELTING_SLOT_OUTPUT].item, ITEM_ID_LEATHER);
+    CHECK_EQ_U64(rack_now->slots[SMELTING_SLOT_OUTPUT].count, 1u);
+    CHECK_EQ_U64(spills.count, 0u);
+    /* The rack's first part goes: what it held comes out, a hide and the leather. */
+    REQUIRE(world_edit_block_set(edit, 9, 6, 7, BLOCK_ID_AIR) == WORLD_EDIT_STATUS_CHANGED);
+    item_world_tick(item, edit, ic_spill, &spills);
+    CHECK(smelting_at(&item->furnaces, 9, 6, 7) == nullptr);
+    CHECK_EQ_U64(spills.count, 2u);
     item_close(item);
     item_deinit(item);
     test_world_end(&world);

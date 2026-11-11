@@ -2,3 +2,4 @@ name: dye_blue_from_lapis_lazuli
 kind: shapeless
 ingredients: [lapis_lazuli]
 gives: dye_blue
+station: hands

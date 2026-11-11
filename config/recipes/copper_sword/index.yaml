@@ -1,0 +1,6 @@
+name: copper_sword
+kind: shaped
+pattern: ["M", "M", "S"]
+keys: { M: copper_ingot, S: stick }
+gives: copper_sword
+station: smithing

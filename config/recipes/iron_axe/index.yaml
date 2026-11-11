@@ -3,3 +3,4 @@ kind: shaped
 pattern: ["MM", "MS", " S"]
 keys: { M: iron_ingot, S: stick }
 gives: iron_axe
+station: smithing

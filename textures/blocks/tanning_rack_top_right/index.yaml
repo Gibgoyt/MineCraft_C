@@ -1,0 +1,22 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: tanning_rack_top_right
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The right half of a tanning rack's long top, as the person who placed it faces it, running on into the other half."
+  seed: 96009
+  ops:
+    - { op: fill, color: "#8a6339" }
+    - { op: noise, amount: 12, cell_x: 8, cell_y: 1, seed: 77 }
+    - { op: fill, color: "#6b4a28", x: 0, y: 5, w: 16, h: 1 }
+    - { op: fill, color: "#6b4a28", x: 0, y: 10, w: 16, h: 1 }
+    - { op: fill, color: "#5b3e20", x: 0, y: 0, w: 16, h: 1 }
+    - { op: fill, color: "#5b3e20", x: 0, y: 15, w: 16, h: 1 }
+    - { op: fill, color: "#5b3e20", x: 15, y: 0, w: 1, h: 16 }
+    - { op: fill, color: "#c79a68", x: 0, y: 2, w: 14, h: 11 }
+    - { op: fill, color: "#9b6c40", x: 0, y: 2, w: 14, h: 1 }
+    - { op: fill, color: "#e8d9b8", x: 14, y: 3, w: 1, h: 1 }
+    - { op: fill, color: "#e8d9b8", x: 14, y: 7, w: 1, h: 1 }
+    - { op: fill, color: "#e8d9b8", x: 14, y: 11, w: 1, h: 1 }
+    - { op: fill, color: "#9b6c40", x: 8, y: 8, w: 2, h: 3 }

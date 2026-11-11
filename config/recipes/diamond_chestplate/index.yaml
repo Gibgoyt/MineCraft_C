@@ -1,5 +1,7 @@
 name: diamond_chestplate
 kind: shaped
-pattern: ["M M", "MMM", "MMM"]
-keys: { M: diamond }
+pattern: ["MLM", "MMM", "MMM"]
+keys: { M: diamond, L: leather_chestplate }
 gives: diamond_chestplate
+station: smithing
+off: "Nothing can work diamond yet: Ahmed, 2026-11-06 (plan 005 phase 6). Diamonds stay as mined. Delete this line when a station can."

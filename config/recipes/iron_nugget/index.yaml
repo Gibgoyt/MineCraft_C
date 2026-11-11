@@ -3,3 +3,4 @@ kind: shapeless
 ingredients: [iron_ingot]
 gives: iron_nugget
 count: 9
+station: smithing

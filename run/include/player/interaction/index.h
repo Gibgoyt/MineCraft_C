@@ -106,8 +106,9 @@ typedef struct player_interaction_input_t {
 static_assert(sizeof(player_interaction_input_t) == 40);
 
 enum : uint32_t {
-    /* The most cells one block takes when placed: a bench is two, side by side, and a door two, one above the other. */
-    PLAYER_PLACE_CELLS = 2u,
+    /* The most cells one block takes when placed: a bench is two, side by side, a door two, one above the other, and the smith table
+     * four, 2 by 2 (plan 005 phase 6). */
+    PLAYER_PLACE_CELLS = 4u,
 };
 
 /* What a hand would do with the right button now. */
@@ -116,23 +117,23 @@ typedef enum player_place_status_t : uint8_t {
     PLAYER_PLACE_OK = 1,   /* it would go down */
     PLAYER_PLACE_BLOCKED =
         2, /* it has a place that cannot take it: something there, the body in the way, no ground under what
-                                 needs it, no room for a bench's other half or a door's upper half, or a column or height that is not
-                                 loaded or played */
+                                 needs it, no room for a station's other parts or a door's upper half, or a column or height that is
+                                 not loaded or played */
 } player_place_status_t;
 
 /* What and where a hand would place, worked out without changing anything: for placing, and for a preview to draw. With
  * PLAYER_PLACE_NONE only status means anything. With BLOCKED the cells and voxels are what it would have been. */
 typedef struct player_place_plan_t {
     int32_t cells[PLAYER_PLACE_CELLS]
-                 [COLLISION_AXES];       /* 0: the cell aimed into, then a bench's other half or a door's upper */
-    uint16_t voxels[PLAYER_PLACE_CELLS]; /* 24: what goes in each, with its facing: types/block_state/ */
-    uint16_t was_there;                  /* 28: what the first cell holds now, id and state */
-    uint8_t count;                       /* 30: cells it takes, 1 or 2, and 0 with nothing to place */
-    uint8_t status;                      /* 31: player_place_status_t */
-    uint8_t facing;                      /* 32: the block_facing_t it goes down with */
-    uint8_t _pad0[3];                    /* 33 */
+                 [COLLISION_AXES];          /* 0: the cell aimed into, then a station's other parts or a door's upper */
+    uint16_t voxels[PLAYER_PLACE_CELLS];    /* 48: what goes in each, with its facing: types/block_state/ */
+    uint16_t was_there[PLAYER_PLACE_CELLS]; /* 56: what each cell holds now, id and state */
+    uint8_t count;    /* 64: cells it takes, 1 to PLAYER_PLACE_CELLS, and 0 with nothing to place */
+    uint8_t status;   /* 65: player_place_status_t */
+    uint8_t facing;   /* 66: the block_facing_t it goes down with */
+    uint8_t _pad0[1]; /* 67 */
 } player_place_plan_t;
-static_assert(sizeof(player_place_plan_t) == 36);
+static_assert(sizeof(player_place_plan_t) == 68);
 
 /* Empty hands, nothing under way, and random numbers from this seed. */
 void player_interaction_start(player_interaction_t *interaction, uint64_t seed);

@@ -3,3 +3,5 @@ kind: shaped
 pattern: ["M", "M", "S"]
 keys: { M: diamond, S: stick }
 gives: diamond_sword
+station: smithing
+off: "Nothing can work diamond yet: Ahmed, 2026-11-06 (plan 005 phase 6). Diamonds stay as mined. Delete this line when a station can."

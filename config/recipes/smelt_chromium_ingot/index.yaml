@@ -2,3 +2,4 @@ name: smelt_chromium_ingot
 kind: smelt
 input: group_chromium_source
 gives: chromium_ingot
+station: blast_furnace

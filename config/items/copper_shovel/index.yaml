@@ -1,0 +1,7 @@
+name: copper_shovel
+texture: items/copper_shovel
+stack: 1
+tool: shovel
+tier: copper
+durability: 190
+damage: 3.5

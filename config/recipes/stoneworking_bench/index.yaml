@@ -1,0 +1,6 @@
+name: stoneworking_bench
+kind: shaped
+pattern: ["CCC", "L L"]
+keys: { C: group_cobble, L: group_logs }
+gives: stoneworking_bench
+station: table

@@ -1,0 +1,6 @@
+# Gold breaks only what wood breaks, and far faster.
+name: gold
+harvests: wood
+speed: 12000
+axe_attack_speed: 1
+hoe_attack_speed: 1

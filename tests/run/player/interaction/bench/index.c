@@ -133,11 +133,119 @@ TEST(each_half_knows_the_other_and_nothing_else_is_half_of_anything) {
     CHECK_EQ_I64(step, -1);
     CHECK_EQ_I64(step_y, 0);
     CHECK_EQ_U64(other, BLOCK_ID_WOODWORKING_BENCH_WEST);
-    uint32_t halves = 0u;
+    /* Plan 005 phase 6: four stations are two long, the woodworking and stoneworking benches, the tanning rack and the leather workbench,
+     * and the smith table is four parts, none of them half of anything. */
+    uint32_t halves = 0u, parts = 0u;
     for (uint32_t block = 0u; block < BLOCK_COUNT; block++) {
         halves += bench_half_other((uint16_t)block, &step, &step_y, &other) ? 1u : 0u;
+        parts += bench_is_half(block) ? 1u : 0u;
     }
-    CHECK_EQ_U64(halves, 2u);
+    CHECK_EQ_U64(halves, 8u);
+    CHECK_EQ_U64(parts, 12u);
+    CHECK(!bench_half_other(BLOCK_ID_SMITH_TABLE_FRONT_LEFT, &step, &step_y, &other));
+}
+
+/* ---- The smith table, 2 by 2 by 1: plan 005 phase 6 ----------------------------------------------------------------------- */
+
+static const uint16_t IB_SMITH_PARTS[4] = {BLOCK_ID_SMITH_TABLE_FRONT_LEFT, BLOCK_ID_SMITH_TABLE_FRONT_RIGHT,
+                                           BLOCK_ID_SMITH_TABLE_BACK_LEFT, BLOCK_ID_SMITH_TABLE_BACK_RIGHT};
+
+/* Where each part goes from the first, by the facing: right is a quarter turn clockwise from it, and the back two are ahead, the way the
+ * placer looked. */
+static void ib_smith_cell(uint32_t facing, uint32_t part, int32_t x, int32_t y, int32_t out[2]) {
+    const uint32_t right = block_facing_turn(facing, 1u);
+    const int32_t r = (part % 2u) != 0u ? 1 : 0, a = part >= 2u ? 1 : 0;
+    out[0] = x + r * block_facing_step_x(right) + a * block_facing_step_x(facing);
+    out[1] = y + r * block_facing_step_y(right) + a * block_facing_step_y(facing);
+}
+
+TEST(the_smith_table_takes_four_cells_each_way_and_mining_any_part_takes_all_and_drops_one) {
+    for (uint32_t facing = 0u; facing < BLOCK_FACINGS; facing++) {
+        for (uint32_t mined = 0u; mined < 4u; mined++) {
+            ib_rig_t rig;
+            REQUIRE(ib_begin(t, &rig));
+            ib_look_facing = (uint8_t)facing;
+            ib_put(t, &rig, 10, 10, 5, BLOCK_ID_STONE);
+            player_interaction_start(&rig.hands, 1u);
+            player_interaction_hand_give(&rig.hands, BLOCK_ID_SMITH_TABLE_FRONT_LEFT, 2u);
+            ib_aim(&rig, 10, 10, 5);
+            player_place_plan_t plan;
+            const player_interaction_input_t input = {.borrowed_target = &rig.target,
+                                                      .borrowed_movement = &rig.movement,
+                                                      .look_facing = (uint8_t)facing,
+                                                      ._pad0 = {0}};
+            CHECK_EQ_U64(player_interaction_place_plan(&rig.hands, rig.world.map, &input, &plan), PLAYER_PLACE_OK);
+            CHECK_EQ_U64(plan.count, 4u);
+            ib_tick(&rig, false, true);
+            CHECK_EQ_U64(rig.hands.placed_count, 1u);
+            CHECK_EQ_U64(rig.hands.hand_count, 1u);
+            for (uint32_t part = 0u; part < 4u; part++) {
+                int32_t cell[2];
+                ib_smith_cell(facing, part, 10, 10, cell);
+                CHECK_EQ_U64(ib_voxel(&rig, cell[0], cell[1], 6),
+                             block_state_make(IB_SMITH_PARTS[part], facing, false, false));
+                CHECK_EQ_I64(plan.cells[part][0], cell[0]);
+                CHECK_EQ_I64(plan.cells[part][1], cell[1]);
+            }
+            /* It is stone and iron: a pickaxe brings it down, by any part, whole, and one smith table drops. */
+            player_interaction_hold_tool(&rig.hands, BLOCK_TOOL_PICKAXE, BLOCK_TIER_WOOD);
+            int32_t at[2];
+            ib_smith_cell(facing, mined, 10, 10, at);
+            ib_mine(&rig, at[0], at[1], 6);
+            for (uint32_t part = 0u; part < 4u; part++) {
+                int32_t cell[2];
+                ib_smith_cell(facing, part, 10, 10, cell);
+                CHECK_EQ_U64(ib_block(&rig, cell[0], cell[1], 6), BLOCK_ID_AIR);
+            }
+            CHECK_EQ_U64(rig.hands.mined_count, 1u);
+            uint32_t others = 0u;
+            CHECK_EQ_U64(ib_drops_count(&rig, ITEM_ID_SMITH_TABLE, &others), 1u);
+            CHECK_EQ_U64(others, 0u);
+            test_world_end(&rig.world);
+        }
+    }
+    ib_look_facing = BLOCK_FACING_NORTH;
+}
+
+TEST(the_smith_table_goes_down_only_where_all_four_cells_are_free) {
+    for (uint32_t blocked = 1u; blocked < 4u; blocked++) {
+        ib_rig_t rig;
+        REQUIRE(ib_begin(t, &rig));
+        ib_put(t, &rig, 10, 10, 5, BLOCK_ID_STONE);
+        int32_t cell[2];
+        ib_smith_cell(BLOCK_FACING_NORTH, blocked, 10, 10, cell);
+        ib_put(t, &rig, cell[0], cell[1], 6, BLOCK_ID_STONE);
+        player_interaction_start(&rig.hands, 1u);
+        player_interaction_hand_give(&rig.hands, BLOCK_ID_SMITH_TABLE_FRONT_LEFT, 2u);
+        ib_aim(&rig, 10, 10, 5);
+        ib_tick(&rig, false, true);
+        CHECK_EQ_U64(ib_block(&rig, 10, 10, 6), BLOCK_ID_AIR);
+        CHECK_EQ_U64(rig.hands.placed_count, 0u);
+        CHECK_EQ_U64(rig.hands.hand_count, 2u);
+        test_world_end(&rig.world);
+    }
+}
+
+/* The other three stations two long go as the woodworking bench does: the first part where aimed, the second to the placer's right. */
+TEST(each_station_two_long_goes_down_across_the_view_as_the_bench_does) {
+    static const uint16_t firsts[3] = {BLOCK_ID_STONEWORKING_BENCH_LEFT, BLOCK_ID_TANNING_RACK_LEFT,
+                                       BLOCK_ID_LEATHER_WORKBENCH_LEFT};
+    static const uint16_t seconds[3] = {BLOCK_ID_STONEWORKING_BENCH_RIGHT, BLOCK_ID_TANNING_RACK_RIGHT,
+                                        BLOCK_ID_LEATHER_WORKBENCH_RIGHT};
+    for (uint32_t s = 0u; s < 3u; s++) {
+        ib_rig_t rig;
+        REQUIRE(ib_begin(t, &rig));
+        ib_look_facing = BLOCK_FACING_EAST;
+        ib_put(t, &rig, 10, 10, 5, BLOCK_ID_STONE);
+        player_interaction_start(&rig.hands, 1u);
+        player_interaction_hand_give(&rig.hands, firsts[s], 1u);
+        ib_aim(&rig, 10, 10, 5);
+        ib_tick(&rig, false, true);
+        CHECK_EQ_U64(ib_voxel(&rig, 10, 10, 6), block_state_make(firsts[s], BLOCK_FACING_EAST, false, false));
+        CHECK_EQ_U64(ib_voxel(&rig, 10, 9, 6), block_state_make(seconds[s], BLOCK_FACING_EAST, false, false));
+        test_world_end(&rig.world);
+    }
+    ib_look_facing = BLOCK_FACING_NORTH;
 }
 
 /* Each facing: where the second half is from the first, which is to the right of whoever looked that way. */
@@ -243,7 +351,8 @@ TEST(the_plan_says_what_and_where_and_changes_nothing) {
     CHECK_EQ_I64(plan.cells[1][2], 6);
     CHECK_EQ_U64(plan.voxels[0], block_state_make(BLOCK_ID_WOODWORKING_BENCH_WEST, BLOCK_FACING_EAST, false, false));
     CHECK_EQ_U64(plan.voxels[1], block_state_make(BLOCK_ID_WOODWORKING_BENCH_EAST, BLOCK_FACING_EAST, false, false));
-    CHECK_EQ_U64(plan.was_there, BLOCK_ID_AIR);
+    CHECK_EQ_U64(plan.was_there[0], BLOCK_ID_AIR);
+    CHECK_EQ_U64(plan.was_there[1], BLOCK_ID_AIR);
     CHECK_EQ_U64(ib_block(&rig, 10, 10, 6), BLOCK_ID_AIR);
     CHECK_EQ_U64(rig.hands.hand_count, 2u);
     /* Something in the second cell: the same cells, and blocked. */

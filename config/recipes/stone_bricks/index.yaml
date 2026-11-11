@@ -4,3 +4,4 @@ pattern: ["SS", "SS"]
 keys: { S: stone }
 gives: stone_bricks
 count: 4
+station: stoneworking

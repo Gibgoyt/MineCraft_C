@@ -1,0 +1,7 @@
+name: copper_hoe
+texture: items/copper_hoe
+stack: 1
+tool: hoe
+tier: copper
+durability: 190
+damage: 1

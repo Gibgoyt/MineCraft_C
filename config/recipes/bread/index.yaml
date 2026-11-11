@@ -1,5 +1,5 @@
 name: bread
-kind: shaped
-pattern: ["WWW"]
-keys: { W: wheat }
+kind: shapeless
+ingredients: [wheat, wheat, wheat]
 gives: bread
+station: hands

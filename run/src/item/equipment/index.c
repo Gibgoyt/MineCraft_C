@@ -16,8 +16,6 @@ enum : uint32_t {
     EQUIPMENT_ARMOR_DAMAGE_PER_USE = 4u,
     /* No wear is more than this, whatever hit: nothing lasts longer. */
     EQUIPMENT_WEAR_MOST = UINT16_MAX,
-    /* The published speed of gold, which block_tier_t has no rung for. */
-    EQUIPMENT_SPEED_GOLD_MILLI = 12000u,
 };
 
 /* Past this a hit wears as much as anything can. Below it, the hit fits a uint32_t. */
@@ -72,9 +70,13 @@ uint32_t equipment_uses_left(const item_stack_t *stack) {
 }
 
 uint32_t equipment_tool_speed_milli(uint16_t item) {
-    /* A sword's speed is a sword's, of whatever it is made. */
+    /* A sword's speed is a sword's, of whatever it is made, and shears have no tier. The rest go by their tier's file. */
     const item_def_t *const def = &item_defs[item];
-    return def->tier == ITEM_TIER_GOLD && def->tool != BLOCK_TOOL_SWORD ? EQUIPMENT_SPEED_GOLD_MILLI : 0u;
+    if (def->tier == ITEM_TIER_NONE || def->tool == BLOCK_TOOL_SWORD || def->tool == BLOCK_TOOL_NONE ||
+        def->tool == BLOCK_TOOL_SHEARS) {
+        return 0u;
+    }
+    return item_tiers[def->tier].speed_milli;
 }
 
 float32_t equipment_attack_damage(const item_stack_t *stack) {

@@ -12,6 +12,7 @@
 #include "render/entities/index.h"
 #include "tables/blocks/index.h"
 #include "time/index.h"
+#include "world/bench/index.h"
 
 #include <inttypes.h>
 #include <math.h>
@@ -141,7 +142,22 @@ static void game_screen_hands(game_t *game, int64_t tick_ns) {
     const ui_screen_kind_t kind =
         hit->result == RAYCAST_RESULT_HIT && !sneaking ? ui_screen_kind_of_block(hit->block) : UI_SCREEN_NONE;
     if (pressed && kind != UI_SCREEN_NONE && !player_survival_holds_body(&player->survival)) {
-        (void)ui_screen_sim_open(ui, game->borrowed_item, kind, hit->cell);
+        /* A station of more than one part keeps what it holds at its first part, a tanning rack's slots (plan 005 phase 6), so its screen
+         * is of that cell whichever part was aimed at, if the first part is there to be it. */
+        int32_t cell[3] = {hit->cell[0], hit->cell[1], hit->cell[2]};
+        const world_map_t *const map = &game->borrowed_world->map;
+        uint16_t voxel = BLOCK_ID_AIR, first = BLOCK_ID_AIR;
+        int32_t steps[BENCH_PARTS_MAX][2];
+        uint16_t parts[BENCH_PARTS_MAX];
+        if (world_map_voxel_get(map, cell[0], cell[1], cell[2], &voxel) == WORLD_MAP_STATUS_OK &&
+            bench_parts(voxel, steps, parts) != 0u &&
+            world_map_voxel_get(map, cell[0] + steps[0][0], cell[1] + steps[0][1], cell[2], &first) ==
+                WORLD_MAP_STATUS_OK &&
+            first == parts[0]) {
+            cell[0] += steps[0][0];
+            cell[1] += steps[0][1];
+        }
+        (void)ui_screen_sim_open(ui, game->borrowed_item, kind, cell);
     }
     player->hands_held_off = ui_screen_sim_kind(ui) != UI_SCREEN_NONE || (held && kind != UI_SCREEN_NONE) ? 1u : 0u;
 }

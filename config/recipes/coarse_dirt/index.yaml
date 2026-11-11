@@ -4,3 +4,4 @@ pattern: ["DG", "GD"]
 keys: { D: dirt, G: gravel }
 gives: coarse_dirt
 count: 4
+station: hands

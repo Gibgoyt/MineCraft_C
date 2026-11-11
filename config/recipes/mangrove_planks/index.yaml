@@ -3,3 +3,4 @@ kind: shapeless
 ingredients: [mangrove_log]
 gives: mangrove_planks
 count: 4
+station: woodworking

@@ -867,11 +867,38 @@ static const sh_scene_block_t sh_door_blocks[] = {
 enum : uint32_t { SH_DOOR_BLOCKS = sizeof(sh_door_blocks) / sizeof(sh_door_blocks[0]) };
 static_assert((uint32_t)SH_DOOR_BLOCKS <= (uint32_t)SH_BLOCKS_MAX);
 
-/* Which of the three scenes a test draws: every shape, every facing, or every door. */
+/* Plan 005 phase 6's stations: the smith table, 2 by 2, turned all four ways (its first part where aimed, the second to the placer's right,
+ * the back two beyond, as run/src/world/bench/ has it), the stoneworking bench, tanning rack and leather workbench, and the blast furnace
+ * cold and lit. */
+#define SH_SMITH(fx, fy, rx, ry, ax, ay, facing)                                                                       \
+    {{fx, fy, 0}, SH_TURNED(BLOCK_ID_SMITH_TABLE_FRONT_LEFT, facing)},                                                 \
+        {{(fx) + (rx), (fy) + (ry), 0}, SH_TURNED(BLOCK_ID_SMITH_TABLE_FRONT_RIGHT, facing)},                          \
+        {{(fx) + (ax), (fy) + (ay), 0}, SH_TURNED(BLOCK_ID_SMITH_TABLE_BACK_LEFT, facing)}, {                          \
+        {(fx) + (rx) + (ax), (fy) + (ry) + (ay), 0}, SH_TURNED(BLOCK_ID_SMITH_TABLE_BACK_RIGHT, facing)                \
+    }
+static const sh_scene_block_t sh_station_blocks[] = {
+    SH_SMITH(2, 2, 1, 0, 0, 1, BLOCK_FACING_NORTH),
+    SH_SMITH(6, 3, 0, -1, 1, 0, BLOCK_FACING_EAST),
+    SH_SMITH(11, 3, -1, 0, 0, -1, BLOCK_FACING_SOUTH),
+    SH_SMITH(14, 2, 0, 1, -1, 0, BLOCK_FACING_WEST),
+    {{2, 7, 0}, SH_TURNED(BLOCK_ID_STONEWORKING_BENCH_LEFT, BLOCK_FACING_NORTH)},
+    {{3, 7, 0}, SH_TURNED(BLOCK_ID_STONEWORKING_BENCH_RIGHT, BLOCK_FACING_NORTH)},
+    {{6, 7, 0}, SH_TURNED(BLOCK_ID_TANNING_RACK_LEFT, BLOCK_FACING_NORTH)},
+    {{7, 7, 0}, SH_TURNED(BLOCK_ID_TANNING_RACK_RIGHT, BLOCK_FACING_NORTH)},
+    {{10, 7, 0}, SH_TURNED(BLOCK_ID_LEATHER_WORKBENCH_LEFT, BLOCK_FACING_NORTH)},
+    {{11, 7, 0}, SH_TURNED(BLOCK_ID_LEATHER_WORKBENCH_RIGHT, BLOCK_FACING_NORTH)},
+    {{3, 11, 0}, BLOCK_ID_BLAST_FURNACE},
+    {{6, 11, 0}, BLOCK_ID_BLAST_FURNACE_LIT},
+};
+enum : uint32_t { SH_STATION_BLOCKS = sizeof(sh_station_blocks) / sizeof(sh_station_blocks[0]) };
+static_assert((uint32_t)SH_STATION_BLOCKS <= (uint32_t)SH_BLOCKS_MAX);
+
+/* Which of the scenes a test draws: every shape, every facing, every door, or every station. */
 typedef enum sh_scene_kind_t : uint8_t {
     SH_SCENE_SHAPES = 0,
     SH_SCENE_FACINGS = 1,
     SH_SCENE_DOORS = 2,
+    SH_SCENE_STATIONS = 3,
 } sh_scene_kind_t;
 static uint8_t sh_scene_kind = SH_SCENE_SHAPES;
 
@@ -879,13 +906,30 @@ static void sh_scene_choose(sh_scene_kind_t kind) {
     sh_scene_kind = (uint8_t)kind;
 }
 static uint32_t sh_block_count(void) {
-    return sh_scene_kind == SH_SCENE_FACINGS ? SH_FACING_BLOCKS
-                                             : (sh_scene_kind == SH_SCENE_DOORS ? SH_DOOR_BLOCKS : SH_SCENE_BLOCKS);
+    switch ((sh_scene_kind_t)sh_scene_kind) {
+    case SH_SCENE_FACINGS:
+        return SH_FACING_BLOCKS;
+    case SH_SCENE_DOORS:
+        return SH_DOOR_BLOCKS;
+    case SH_SCENE_STATIONS:
+        return SH_STATION_BLOCKS;
+    case SH_SCENE_SHAPES:
+        break;
+    }
+    return SH_SCENE_BLOCKS;
 }
 static const sh_scene_block_t *sh_block_at(uint32_t b) {
-    return sh_scene_kind == SH_SCENE_FACINGS
-               ? &sh_facing_blocks[b]
-               : (sh_scene_kind == SH_SCENE_DOORS ? &sh_door_blocks[b] : &sh_scene_blocks[b]);
+    switch ((sh_scene_kind_t)sh_scene_kind) {
+    case SH_SCENE_FACINGS:
+        return &sh_facing_blocks[b];
+    case SH_SCENE_DOORS:
+        return &sh_door_blocks[b];
+    case SH_SCENE_STATIONS:
+        return &sh_station_blocks[b];
+    case SH_SCENE_SHAPES:
+        break;
+    }
+    return &sh_scene_blocks[b];
 }
 
 typedef struct sh_scene_t {
@@ -1502,6 +1546,27 @@ TEST(every_door_shut_and_open_matches_an_exact_trace_from_all_sides) {
             printf("  hardly saw %s: %" PRIu64 "\n", block_defs[seen[i]].name, tally->state_seen[seen[i]]);
         }
     }
+    sh_scene_choose(SH_SCENE_SHAPES);
+    sh_hand_world_close(&rig);
+    sh_rig_end(t, &rig);
+}
+
+/* Plan 005 phase 6: the stations, from the south-west and from the north-east. Each is whole cubes, as a bench is. */
+TEST(golden_pictures_of_every_station_match) {
+    sh_rig_t rig;
+    REQUIRE(sh_rig_begin(t, &rig));
+    REQUIRE(sh_hand_world_open(t, &rig, 2u, SH_WIDTH, SH_HEIGHT));
+    sh_scene_choose(SH_SCENE_STATIONS);
+    REQUIRE(sh_scene_put(t, &rig));
+    render_camera_t camera;
+    sh_camera_around(&camera, 1.2f32, -0.55f32, 12.0f64);
+    const uint8_t *picture = sh_draw(t, &rig, &camera);
+    REQUIRE(picture != nullptr);
+    sh_golden_compare(t, "tests/cuda/shapes/fixtures/stations.png", picture);
+    sh_camera_around(&camera, 1.2f32 + SH_PI, -0.55f32, 12.0f64);
+    picture = sh_draw(t, &rig, &camera);
+    REQUIRE(picture != nullptr);
+    sh_golden_compare(t, "tests/cuda/shapes/fixtures/stations_back.png", picture);
     sh_scene_choose(SH_SCENE_SHAPES);
     sh_hand_world_close(&rig);
     sh_rig_end(t, &rig);

@@ -1,0 +1,6 @@
+name: tanning_rack
+kind: shaped
+pattern: ["SSS", "S S", "S S"]
+keys: { S: stick }
+gives: tanning_rack
+station: table

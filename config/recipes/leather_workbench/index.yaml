@@ -1,0 +1,6 @@
+name: leather_workbench
+kind: shaped
+pattern: ["PPP", "S S"]
+keys: { P: group_planks, S: stick }
+gives: leather_workbench
+station: table

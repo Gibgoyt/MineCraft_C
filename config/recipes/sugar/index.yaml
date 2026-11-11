@@ -2,3 +2,4 @@ name: sugar
 kind: shapeless
 ingredients: [sugar_cane]
 gives: sugar
+station: hands

@@ -1,5 +1,7 @@
 name: diamond_boots
 kind: shaped
-pattern: ["M M", "M M"]
-keys: { M: diamond }
+pattern: ["MLM", "M M"]
+keys: { M: diamond, L: leather_boots }
 gives: diamond_boots
+station: smithing
+off: "Nothing can work diamond yet: Ahmed, 2026-11-06 (plan 005 phase 6). Diamonds stay as mined. Delete this line when a station can."

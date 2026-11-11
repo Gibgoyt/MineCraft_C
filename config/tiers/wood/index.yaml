@@ -1,0 +1,5 @@
+name: wood
+harvests: wood
+speed: 2000
+axe_attack_speed: 0.8
+hoe_attack_speed: 1

@@ -121,12 +121,19 @@ static uint32_t us_places_of(ui_screen_kind_t kind, ui_screen_place_t *out) {
         return ui_screen_inventory_places(out);
     case UI_SCREEN_CRAFTING:
     case UI_SCREEN_WOODWORKING:
+    case UI_SCREEN_STONEWORKING:
+    case UI_SCREEN_SMITHING:
+    case UI_SCREEN_LEATHERWORKING:
         return ui_screen_crafting_places(out);
     case UI_SCREEN_FURNACE:
-        return ui_screen_furnace_places(out);
+    case UI_SCREEN_BLAST_FURNACE:
+        return ui_screen_furnace_places(out, true);
+    case UI_SCREEN_TANNING_RACK:
+        return ui_screen_furnace_places(out, false);
     case UI_SCREEN_CHEST:
         return ui_screen_chest_places(out);
     case UI_SCREEN_NONE:
+    case UI_SCREEN_KIND_COUNT:
         break;
     }
     return 0u;
@@ -228,7 +235,15 @@ TEST(a_block_opens_only_its_own_screen) {
     for (uint32_t block = 0u; block < BLOCK_COUNT; block++) {
         screens += ui_screen_kind_of_block((uint16_t)block) != UI_SCREEN_NONE ? 1u : 0u;
     }
-    CHECK_EQ_U64(screens, 6u);
+    /* Plan 005 phase 6 added every part of four stations, and the blast furnace, lit and not. */
+    CHECK_EQ_U64(screens, 18u);
+    CHECK_EQ_U64(ui_screen_kind_of_block(BLOCK_ID_STONEWORKING_BENCH_LEFT), UI_SCREEN_STONEWORKING);
+    CHECK_EQ_U64(ui_screen_kind_of_block(BLOCK_ID_STONEWORKING_BENCH_RIGHT), UI_SCREEN_STONEWORKING);
+    CHECK_EQ_U64(ui_screen_kind_of_block(BLOCK_ID_SMITH_TABLE_FRONT_LEFT), UI_SCREEN_SMITHING);
+    CHECK_EQ_U64(ui_screen_kind_of_block(BLOCK_ID_SMITH_TABLE_BACK_RIGHT), UI_SCREEN_SMITHING);
+    CHECK_EQ_U64(ui_screen_kind_of_block(BLOCK_ID_LEATHER_WORKBENCH_RIGHT), UI_SCREEN_LEATHERWORKING);
+    CHECK_EQ_U64(ui_screen_kind_of_block(BLOCK_ID_TANNING_RACK_LEFT), UI_SCREEN_TANNING_RACK);
+    CHECK_EQ_U64(ui_screen_kind_of_block(BLOCK_ID_BLAST_FURNACE_LIT), UI_SCREEN_BLAST_FURNACE);
     CHECK_EQ_U64(ui_screen_kind_of_block(BLOCK_ID_CRAFTING_TABLE), UI_SCREEN_CRAFTING);
     CHECK_EQ_U64(ui_screen_kind_of_block(BLOCK_ID_WOODWORKING_BENCH_WEST), UI_SCREEN_WOODWORKING);
     CHECK_EQ_U64(ui_screen_kind_of_block(BLOCK_ID_WOODWORKING_BENCH_EAST), UI_SCREEN_WOODWORKING);
@@ -588,9 +603,9 @@ TEST(the_inventory_replay_crafts_by_hand_wears_a_helmet_and_looks_as_it_should) 
     us_replay(t, &rig, "inventory", nullptr);
     CHECK_EQ_U64(ui_screen_sim_kind(rig.ui), UI_SCREEN_NONE);
     CHECK_EQ_U64(inventory_slot(inventory, 0u)->item, ITEM_ID_OAK_LOG);
-    CHECK_EQ_U64(inventory_slot(inventory, 0u)->count, 9u);
-    CHECK_EQ_U64(inventory_slot(inventory, 3u)->item, ITEM_ID_OAK_PLANKS);
-    CHECK_EQ_U64(inventory_slot(inventory, 3u)->count, 4u);
+    CHECK_EQ_U64(inventory_slot(inventory, 0u)->count, 6u);
+    CHECK_EQ_U64(inventory_slot(inventory, 3u)->item, ITEM_ID_CRAFTING_TABLE);
+    CHECK_EQ_U64(inventory_slot(inventory, 3u)->count, 1u);
     CHECK(item_stack_is_empty(inventory_slot(inventory, 9u)));
     CHECK_EQ_U64(equipment_armor_worn(&rig.item->equipment, 0u)->item, ITEM_ID_IRON_HELMET);
     for (uint32_t c = 0u; c < 4u; c++) {
@@ -600,17 +615,21 @@ TEST(the_inventory_replay_crafts_by_hand_wears_a_helmet_and_looks_as_it_should) 
     us_rig_stop(&rig);
 }
 
-TEST(the_crafting_replay_makes_a_stone_pickaxe_at_a_table_and_looks_as_it_should) {
+/* Plan 005 phase 6: stone tools are the stoneworking bench's, which shares the bench grid with every station of its own block. The same
+ * cells on the crafting table make nothing: see the next but one. */
+TEST(the_crafting_replay_makes_a_stone_pickaxe_at_a_stoneworking_bench_and_looks_as_it_should) {
     us_rig_t rig;
     REQUIRE(us_rig_start(t, &rig));
     inventory_t *const inventory = &rig.item->inventory;
     *inventory_slot(inventory, 0u) = item_stack_make(ITEM_ID_COBBLESTONE, 3u);
     *inventory_slot(inventory, 1u) = item_stack_make(ITEM_ID_STICK, 2u);
-    us_open(&rig, UI_SCREEN_CRAFTING);
+    us_open(&rig, UI_SCREEN_STONEWORKING);
+    CHECK_EQ_U64(rig.item->borrowed_crafting_bench->station, RECIPE_STATION_STONEWORKING);
     us_replay(t, &rig, "crafting", nullptr);
     CHECK_EQ_U64(ui_screen_sim_kind(rig.ui), UI_SCREEN_NONE);
     CHECK_EQ_U64(inventory_slot(inventory, 8u)->item, ITEM_ID_STONE_PICKAXE);
-    CHECK_EQ_U64(rig.item->crafting_table.crafted_count, 1u);
+    CHECK_EQ_U64(rig.item->borrowed_crafting_bench->crafted_count, 1u);
+    CHECK_EQ_U64(rig.item->crafting_table.crafted_count, 0u);
     CHECK_EQ_U64(inventory_items_held(inventory), 1u);
     us_rig_stop(&rig);
 }
@@ -622,6 +641,7 @@ TEST(the_woodworking_replay_makes_a_wooden_pickaxe_at_a_bench_with_its_own_grid_
     *inventory_slot(inventory, 0u) = item_stack_make(ITEM_ID_OAK_PLANKS, 3u);
     *inventory_slot(inventory, 1u) = item_stack_make(ITEM_ID_STICK, 2u);
     us_open(&rig, UI_SCREEN_WOODWORKING);
+    CHECK_EQ_U64(rig.item->borrowed_crafting_bench->station, RECIPE_STATION_WOODWORKING);
     us_replay(t, &rig, "woodworking", nullptr);
     CHECK_EQ_U64(ui_screen_sim_kind(rig.ui), UI_SCREEN_NONE);
     CHECK_EQ_U64(inventory_slot(inventory, 8u)->item, ITEM_ID_WOOD_PICKAXE);
@@ -685,6 +705,39 @@ TEST(the_furnace_replay_burns_coal_into_glass_and_looks_as_it_should) {
     CHECK_EQ_U64(inventory_count(inventory, ITEM_ID_SAND), 0u);
     CHECK_EQ_U64(inventory_count(inventory, ITEM_ID_COAL), 0u);
     CHECK(item_stack_is_empty(&furnace->slots[SMELTING_SLOT_OUTPUT]));
+    us_rig_stop(&rig);
+}
+
+/* Plan 005 phase 6: an iron pickaxe at the smith table, whose screen has the alloy slots drawn beside its output, not yet used. */
+TEST(the_smithing_replay_makes_an_iron_pickaxe_at_the_smith_table_with_its_alloy_slots) {
+    us_rig_t rig;
+    REQUIRE(us_rig_start(t, &rig));
+    inventory_t *const inventory = &rig.item->inventory;
+    *inventory_slot(inventory, 0u) = item_stack_make(ITEM_ID_IRON_INGOT, 3u);
+    *inventory_slot(inventory, 1u) = item_stack_make(ITEM_ID_STICK, 2u);
+    us_open(&rig, UI_SCREEN_SMITHING);
+    CHECK_EQ_U64(rig.item->borrowed_crafting_bench->station, RECIPE_STATION_SMITHING);
+    us_replay(t, &rig, "smithing", nullptr);
+    CHECK_EQ_U64(ui_screen_sim_kind(rig.ui), UI_SCREEN_NONE);
+    CHECK_EQ_U64(inventory_slot(inventory, 8u)->item, ITEM_ID_IRON_PICKAXE);
+    CHECK_EQ_U64(inventory_items_held(inventory), 1u);
+    us_rig_stop(&rig);
+}
+
+/* Plan 005 phase 6: two hides on a tanning rack, which takes no fuel and shows no flame, are two leather 1200 ticks later. */
+TEST(the_tanning_replay_tans_two_hides_with_no_fuel_and_looks_as_it_should) {
+    us_rig_t rig;
+    REQUIRE(us_rig_start(t, &rig));
+    inventory_t *const inventory = &rig.item->inventory;
+    *inventory_slot(inventory, 0u) = item_stack_make(ITEM_ID_COW_HIDE, 2u);
+    us_open(&rig, UI_SCREEN_TANNING_RACK);
+    smelting_furnace_t *const rack = smelting_at(&rig.item->furnaces, US_CELL[0], US_CELL[1], US_CELL[2]);
+    REQUIRE(rack != nullptr);
+    CHECK_EQ_U64(rack->process, RECIPE_PROCESS_TANNING_RACK);
+    us_replay(t, &rig, "tanning", rack);
+    CHECK_EQ_U64(ui_screen_sim_kind(rig.ui), UI_SCREEN_NONE);
+    CHECK_EQ_U64(inventory_count(inventory, ITEM_ID_LEATHER), 2u);
+    CHECK_EQ_U64(inventory_count(inventory, ITEM_ID_COW_HIDE), 0u);
     us_rig_stop(&rig);
 }
 
@@ -1125,6 +1178,11 @@ TEST(in_a_real_game_e_and_the_right_button_bring_up_each_screen_and_the_hands_an
         {.block = BLOCK_ID_CRAFTING_TABLE, .kind = UI_SCREEN_CRAFTING},
         {.block = BLOCK_ID_WOODWORKING_BENCH_WEST, .kind = UI_SCREEN_WOODWORKING},
         {.block = BLOCK_ID_WOODWORKING_BENCH_EAST, .kind = UI_SCREEN_WOODWORKING},
+        {.block = BLOCK_ID_STONEWORKING_BENCH_RIGHT, .kind = UI_SCREEN_STONEWORKING},
+        {.block = BLOCK_ID_SMITH_TABLE_BACK_LEFT, .kind = UI_SCREEN_SMITHING},
+        {.block = BLOCK_ID_LEATHER_WORKBENCH_LEFT, .kind = UI_SCREEN_LEATHERWORKING},
+        {.block = BLOCK_ID_BLAST_FURNACE, .kind = UI_SCREEN_BLAST_FURNACE},
+        {.block = BLOCK_ID_TANNING_RACK_LEFT, .kind = UI_SCREEN_TANNING_RACK},
     };
     const uint64_t bytes = post_xrgb_bytes(US_WIDTH, US_HEIGHT);
     uint8_t *const shown = test_alloc(t, bytes);
@@ -1151,7 +1209,7 @@ TEST(in_a_real_game_e_and_the_right_button_bring_up_each_screen_and_the_hands_an
         us_game_key(t, g, BTN_RIGHT, false);
         us_game_ticks(t, g, 1u);
     }
-    CHECK_EQ_U64(g->ui->borrowed_screens->opened_count, 6u);
+    CHECK_EQ_U64(g->ui->borrowed_screens->opened_count, 11u);
 
     /* Into a real chest by the mouse, and the chest breaks with the screen up and logs on the pointer. */
     REQUIRE(world_edit_block_set(&g->world->edit, cell[0], cell[1], cell[2], BLOCK_ID_CHEST) ==

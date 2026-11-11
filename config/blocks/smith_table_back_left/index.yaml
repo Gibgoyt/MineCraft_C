@@ -1,0 +1,8 @@
+name: smith_table_back_left
+hardness: 3.5
+tool: pickaxe
+tier: wood
+drops: [{ item: smith_table, count: 1 }]
+texture: { top: blocks/smith_table_top_back_left, bottom: blocks/smith_table_bottom, side: blocks/smith_table_end, south: blocks/smith_table_inner, north: blocks/smith_table_back_right }
+sound: stone
+facing: horizontal

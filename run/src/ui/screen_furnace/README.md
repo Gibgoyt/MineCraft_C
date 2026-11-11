@@ -1,6 +1,6 @@
 # run/src/ui/screen_furnace
 
-**Purpose:** the screen of a furnace: input, fuel, output, the two gauges, and the player's rows.
+**Purpose:** the screen of a furnace: input, fuel, output, the two gauges, and the player's rows. The blast furnace's is the same with its own title, and the tanning rack's has no fuel slot and no flame, as a hide tans by time alone (plan 005 phase 6).
 **Tier:** Arena, and it allocates nothing.
 **Owns:** nothing. The furnace is in `item_t.furnaces`, looked up by its cell for each view and each click, since a furnace moves when another one goes.
 **Lifetime:** Nothing outlives a call.

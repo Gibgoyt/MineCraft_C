@@ -4,3 +4,4 @@ pattern: ["P", "P"]
 keys: { P: group_planks }
 gives: stick
 count: 4
+station: woodworking

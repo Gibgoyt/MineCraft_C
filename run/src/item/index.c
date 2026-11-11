@@ -17,12 +17,25 @@ enum : uint32_t {
     ITEM_EDIT_BATCH = 64u,
 };
 
-/* Which store a block has slots in. A furnace lighting up does not change it. */
+/* Which store a block has slots in. A furnace lighting up does not change it. The three that smelt are in the order of recipe_process_t,
+ * from ITEM_BLOCK_FURNACE, and each keeps its slots in the smelting store. */
 typedef enum item_block_kind_t : uint8_t {
     ITEM_BLOCK_NONE = 0,
     ITEM_BLOCK_CHEST = 1,
     ITEM_BLOCK_FURNACE = 2,
+    ITEM_BLOCK_BLAST_FURNACE = 3,
+    ITEM_BLOCK_TANNING_RACK = 4,
 } item_block_kind_t;
+static_assert(ITEM_BLOCK_BLAST_FURNACE - ITEM_BLOCK_FURNACE == RECIPE_PROCESS_BLAST_FURNACE);
+static_assert(ITEM_BLOCK_TANNING_RACK - ITEM_BLOCK_FURNACE == RECIPE_PROCESS_TANNING_RACK);
+
+/* The blocks of each process, by recipe_process_t: as it stands, and lit while it burns. One that burns nothing is never lit. A tanning
+ * rack's slots are kept by its first part, the one placed where it was aimed (plan 005 phase 6). */
+static const uint16_t ITEM_PROCESS_BLOCKS[RECIPE_PROCESS_COUNT][2] = {
+    [RECIPE_PROCESS_FURNACE] = {BLOCK_ID_FURNACE, BLOCK_ID_FURNACE_LIT},
+    [RECIPE_PROCESS_BLAST_FURNACE] = {BLOCK_ID_BLAST_FURNACE, BLOCK_ID_BLAST_FURNACE_LIT},
+    [RECIPE_PROCESS_TANNING_RACK] = {BLOCK_ID_TANNING_RACK_LEFT, BLOCK_ID_TANNING_RACK_LEFT},
+};
 
 static item_block_kind_t item_block_kind(uint16_t voxel) {
     /* An edit's record holds the block's state too: a chest is a chest whichever way it faces. */
@@ -30,7 +43,12 @@ static item_block_kind_t item_block_kind(uint16_t voxel) {
     if (block == BLOCK_ID_CHEST) {
         return ITEM_BLOCK_CHEST;
     }
-    return block == BLOCK_ID_FURNACE || block == BLOCK_ID_FURNACE_LIT ? ITEM_BLOCK_FURNACE : ITEM_BLOCK_NONE;
+    for (uint32_t p = 0u; p < RECIPE_PROCESS_COUNT; p++) {
+        if (block == ITEM_PROCESS_BLOCKS[p][0] || block == ITEM_PROCESS_BLOCKS[p][1]) {
+            return (item_block_kind_t)(ITEM_BLOCK_FURNACE + p);
+        }
+    }
+    return ITEM_BLOCK_NONE;
 }
 
 bool item_init(item_t *item) {
@@ -53,7 +71,7 @@ void item_open(item_t *item) {
     inventory_start(&item->inventory, &item->arena_world);
     container_start(&item->chests, &item->arena_world);
     smelting_start(&item->furnaces, &item->arena_world);
-    crafting_grid_start(&item->crafting_hands, CRAFTING_SIDE_HANDS, RECIPE_STATION_TABLE);
+    crafting_grid_start(&item->crafting_hands, CRAFTING_SIDE_HANDS, RECIPE_STATION_HANDS);
     crafting_grid_start(&item->crafting_table, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE);
     item->borrowed_crafting_bench =
         arena_alloc_zeroed(&item->arena_world, sizeof(crafting_grid_t), alignof(crafting_grid_t));
@@ -132,7 +150,7 @@ static void item_block_came(item_t *item, item_block_kind_t kind, const int32_t 
         (void)container_open(&item->chests, cell[0], cell[1], cell[2]);
     } else {
         (void)smelting_remove(&item->furnaces, cell[0], cell[1], cell[2], stacks);
-        (void)smelting_open(&item->furnaces, cell[0], cell[1], cell[2]);
+        (void)smelting_open_process(&item->furnaces, cell[0], cell[1], cell[2], (uint8_t)(kind - ITEM_BLOCK_FURNACE));
     }
 }
 
@@ -154,9 +172,11 @@ static void item_world_recheck(item_t *item, const world_map_t *map, item_spill_
                                  item->furnaces.borrowed_furnaces[i - 1u].cell[1],
                                  item->furnaces.borrowed_furnaces[i - 1u].cell[2]};
         uint16_t block = BLOCK_ID_AIR;
+        const item_block_kind_t kind =
+            (item_block_kind_t)(ITEM_BLOCK_FURNACE + item->furnaces.borrowed_furnaces[i - 1u].process);
         if (world_map_block_get(map, cell[0], cell[1], cell[2], &block) == WORLD_MAP_STATUS_OK &&
-            item_block_kind(block) != ITEM_BLOCK_FURNACE) {
-            item_block_gone(item, ITEM_BLOCK_FURNACE, cell, spill, borrowed_context);
+            item_block_kind(block) != kind) {
+            item_block_gone(item, kind, cell, spill, borrowed_context);
         }
     }
 }
@@ -201,13 +221,14 @@ static void item_furnaces_tick(item_t *item, world_edit_t *edit) {
         if (world_map_block_get(edit->borrowed_map, x, y, z, &block) != WORLD_MAP_STATUS_OK) {
             continue; /* it waits for its column */
         }
-        if (item_block_kind(block) != ITEM_BLOCK_FURNACE) {
+        const uint32_t process = furnace->process < RECIPE_PROCESS_COUNT ? furnace->process : RECIPE_PROCESS_FURNACE;
+        if (item_block_kind(block) != (item_block_kind_t)(ITEM_BLOCK_FURNACE + process)) {
             /* Its column was unloaded and made anew. The log says nothing of that, and its stacks went with the rest. */
             item_stack_t stacks[SMELTING_SLOTS];
             (void)smelting_remove(store, x, y, z, stacks);
             continue;
         }
-        const uint16_t want = smelting_tick(store, furnace) ? BLOCK_ID_FURNACE_LIT : BLOCK_ID_FURNACE;
+        const uint16_t want = ITEM_PROCESS_BLOCKS[process][smelting_tick(store, furnace) ? 1u : 0u];
         /* If the pool has no room this tick, the next one sees the same difference and tries again. */
         if (block != want) {
             (void)world_edit_block_set(edit, x, y, z, want);

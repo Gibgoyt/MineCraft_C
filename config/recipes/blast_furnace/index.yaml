@@ -1,0 +1,7 @@
+# Brick-lined, round a furnace, on stone: hot enough for iron, chromium and alloys (plan 005 phase 6).
+name: blast_furnace
+kind: shaped
+pattern: ["BBB", "BFB", "SSS"]
+keys: { B: brick, F: furnace, S: stone }
+gives: blast_furnace
+station: stoneworking

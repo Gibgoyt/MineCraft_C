@@ -2,3 +2,4 @@ name: smelt_iron_ingot
 kind: smelt
 input: group_iron_source
 gives: iron_ingot
+station: blast_furnace

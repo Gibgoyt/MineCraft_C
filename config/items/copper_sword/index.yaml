@@ -1,0 +1,7 @@
+name: copper_sword
+texture: items/copper_sword
+stack: 1
+tool: sword
+tier: copper
+durability: 190
+damage: 5

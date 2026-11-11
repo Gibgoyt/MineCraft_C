@@ -3,3 +3,4 @@ kind: shaped
 pattern: ["SS", "SS"]
 keys: { S: sand }
 gives: sandstone
+station: stoneworking

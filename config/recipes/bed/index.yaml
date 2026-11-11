@@ -3,3 +3,4 @@ kind: shaped
 pattern: ["WWW", "PPP"]
 keys: { W: white_wool, P: group_planks }
 gives: bed
+station: woodworking

@@ -14,34 +14,86 @@ enum : uint32_t {
     CC_INGOTS_FOR_A_SET = 24u,
 };
 
-/* A pattern, written here by hand and not read from the tables, so that the tables are what is being tested. */
+/* A pattern, written here by hand and not read from the tables, so that the tables are what is being tested. Since plan 005 phase 6 a piece
+ * of metal armour is its leather piece with Minecraft's ingots for it around it, made at the smith table. */
 typedef struct cc_piece_t {
     const char *recipe;            /* 0 */
-    const char *rows[CC_ROWS_MAX]; /* 8: 'M' is an ingot; a null row is past the bottom */
+    const char *rows[CC_ROWS_MAX]; /* 8: 'M' is an ingot and 'L' the leather piece; a null row is past the bottom */
     uint32_t height;               /* 32 */
     uint32_t ingots;               /* 36 */
     uint32_t slot;                 /* 40 */
     uint16_t item;                 /* 44 */
     uint16_t iron;                 /* 46: the same shape in iron */
+    uint16_t leather;              /* 48: the leather piece it is made on */
+    uint8_t _pad0[6];              /* 50 */
 } cc_piece_t;
-static_assert(sizeof(cc_piece_t) == 48);
+static_assert(sizeof(cc_piece_t) == 56);
 
 static const cc_piece_t CC_PIECE_ROWS[CC_PIECES] = {
-    {"copper_helmet", {"MMM", "M M", nullptr}, 2u, 5u, 0u, ITEM_ID_COPPER_HELMET, ITEM_ID_IRON_HELMET},
-    {"copper_chestplate", {"M M", "MMM", "MMM"}, 3u, 8u, 1u, ITEM_ID_COPPER_CHESTPLATE, ITEM_ID_IRON_CHESTPLATE},
-    {"copper_leggings", {"MMM", "M M", "M M"}, 3u, 7u, 2u, ITEM_ID_COPPER_LEGGINGS, ITEM_ID_IRON_LEGGINGS},
-    {"copper_boots", {"M M", "M M", nullptr}, 2u, 4u, 3u, ITEM_ID_COPPER_BOOTS, ITEM_ID_IRON_BOOTS},
+    {"copper_helmet",
+     {"MMM", "MLM", nullptr},
+     2u,
+     5u,
+     0u,
+     ITEM_ID_COPPER_HELMET,
+     ITEM_ID_IRON_HELMET,
+     ITEM_ID_LEATHER_HELMET,
+     {0}},
+    {"copper_chestplate",
+     {"MLM", "MMM", "MMM"},
+     3u,
+     8u,
+     1u,
+     ITEM_ID_COPPER_CHESTPLATE,
+     ITEM_ID_IRON_CHESTPLATE,
+     ITEM_ID_LEATHER_CHESTPLATE,
+     {0}},
+    {"copper_leggings",
+     {"MMM", "MLM", "M M"},
+     3u,
+     7u,
+     2u,
+     ITEM_ID_COPPER_LEGGINGS,
+     ITEM_ID_IRON_LEGGINGS,
+     ITEM_ID_LEATHER_LEGGINGS,
+     {0}},
+    {"copper_boots",
+     {"MLM", "M M", nullptr},
+     2u,
+     4u,
+     3u,
+     ITEM_ID_COPPER_BOOTS,
+     ITEM_ID_IRON_BOOTS,
+     ITEM_ID_LEATHER_BOOTS,
+     {0}},
 };
 
-/* Every cell of the pattern, one ingot at a time off the pointer, as the right button does, from this row of the table. */
+/* Every cell of the pattern, one ingot at a time off the pointer, as the right button does, from this row of the table, and the leather
+ * piece in its own cell. */
 static void cc_lay(crafting_grid_t *table, const cc_piece_t *piece, uint32_t top, item_stack_t *cursor) {
     for (uint32_t y = 0u; y < piece->height; y++) {
         for (uint32_t x = 0u; x < CRAFTING_SIDE_TABLE; x++) {
+            const uint32_t cell = (top + y) * CRAFTING_SIDE_TABLE + x;
             if (piece->rows[y][x] == 'M') {
-                crafting_grid_click_secondary(table, (top + y) * CRAFTING_SIDE_TABLE + x, cursor);
+                crafting_grid_click_secondary(table, cell, cursor);
+            } else if (piece->rows[y][x] == 'L') {
+                *crafting_grid_cell(table, cell) = item_stack_make(piece->leather, 1u);
+                crafting_grid_changed(table);
             }
         }
     }
+}
+
+/* The leather piece's cell of a pattern laid at the top. */
+static uint32_t cc_leather_cell(const cc_piece_t *piece) {
+    for (uint32_t y = 0u; y < piece->height; y++) {
+        for (uint32_t x = 0u; x < CRAFTING_SIDE_TABLE; x++) {
+            if (piece->rows[y][x] == 'L') {
+                return y * CRAFTING_SIDE_TABLE + x;
+            }
+        }
+    }
+    return RECIPE_CELLS;
 }
 
 /* The n-th ingot of a pattern, counting from the top left, as a cell of the table. */
@@ -59,7 +111,8 @@ static uint32_t cc_ingot_cell(const cc_piece_t *piece, uint32_t n) {
 
 /* What these cells make, and no item if they make nothing: a row is only there to read if there is a row. */
 static uint32_t cc_makes(const item_stack_t *cells, uint32_t side) {
-    const uint32_t recipe = crafting_match(cells, side, RECIPE_STATION_TABLE);
+    const uint32_t recipe =
+        crafting_match(cells, side, side == CRAFTING_SIDE_HANDS ? RECIPE_STATION_HANDS : RECIPE_STATION_SMITHING);
     return recipe == CRAFTING_NO_RECIPE ? ITEM_ID_NONE : recipe_defs[recipe].gives;
 }
 
@@ -72,13 +125,13 @@ TEST(smelting_copper_gives_the_ingot_that_all_of_this_is_made_from) {
     }
 }
 
-TEST(each_pattern_of_copper_ingots_makes_its_piece_on_the_table_at_every_height_it_fits) {
+TEST(each_pattern_of_copper_ingots_makes_its_piece_on_the_smith_table_at_every_height_it_fits) {
     uint32_t made = 0u;
     for (uint32_t i = 0u; i < CC_PIECES; i++) {
         const cc_piece_t *const piece = &CC_PIECE_ROWS[i];
         for (uint32_t top = 0u; top + piece->height <= CRAFTING_SIDE_TABLE; top++) {
             crafting_grid_t table;
-            crafting_grid_start(&table, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE);
+            crafting_grid_start(&table, CRAFTING_SIDE_TABLE, RECIPE_STATION_SMITHING);
             item_stack_t cursor = item_stack_make(ITEM_ID_COPPER_INGOT, 64u);
             cc_lay(&table, piece, top, &cursor);
             CHECK_EQ_U64(cursor.count, 64u - piece->ingots);
@@ -135,20 +188,30 @@ TEST(one_ingot_short_is_not_the_piece_and_one_of_iron_is_nothing) {
             for (uint32_t m = 0u; m < piece->ingots; m++) {
                 cells[cc_ingot_cell(piece, m)] = item_stack_make(ITEM_ID_COPPER_INGOT, 1u);
             }
+            cells[cc_leather_cell(piece)] = item_stack_make(piece->leather, 1u);
             CHECK_EQ_U64(cc_makes(cells, CRAFTING_SIDE_TABLE), piece->item);
 
             cells[changed] = (item_stack_t){0};
             CHECK(cc_makes(cells, CRAFTING_SIDE_TABLE) != piece->item);
 
             cells[changed] = item_stack_make(ITEM_ID_IRON_INGOT, 1u);
-            CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE), CRAFTING_NO_RECIPE);
+            CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, RECIPE_STATION_SMITHING), CRAFTING_NO_RECIPE);
         }
     }
-    /* A helmet without the middle of its top row is the shape of boots, as in iron. */
-    item_stack_t cells[RECIPE_CELLS];
-    memset(cells, 0, sizeof(cells));
-    cells[0] = cells[2] = cells[3] = cells[5] = item_stack_make(ITEM_ID_COPPER_INGOT, 1u);
-    CHECK_EQ_U64(cc_makes(cells, CRAFTING_SIDE_TABLE), ITEM_ID_COPPER_BOOTS);
+    /* No armour without the leather workbench: the ingots alone, as Minecraft had them, make nothing at any station. */
+    for (uint32_t i = 0u; i < CC_PIECES; i++) {
+        const cc_piece_t *const piece = &CC_PIECE_ROWS[i];
+        item_stack_t cells[RECIPE_CELLS];
+        memset(cells, 0, sizeof(cells));
+        for (uint32_t m = 0u; m < piece->ingots; m++) {
+            cells[cc_ingot_cell(piece, m)] = item_stack_make(ITEM_ID_COPPER_INGOT, 1u);
+        }
+        for (uint32_t station = 0u; station < RECIPE_STATION_COUNT; station++) {
+            if (station != RECIPE_STATION_HANDS) {
+                CHECK_EQ_U64(crafting_match(cells, CRAFTING_SIDE_TABLE, station), CRAFTING_NO_RECIPE);
+            }
+        }
+    }
 }
 
 /* Copper did not stop iron being what its own ingots make. */
@@ -156,7 +219,7 @@ TEST(the_same_shapes_in_iron_still_make_iron) {
     for (uint32_t i = 0u; i < CC_PIECES; i++) {
         const cc_piece_t *const piece = &CC_PIECE_ROWS[i];
         crafting_grid_t table;
-        crafting_grid_start(&table, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE);
+        crafting_grid_start(&table, CRAFTING_SIDE_TABLE, RECIPE_STATION_SMITHING);
         item_stack_t cursor = item_stack_make(ITEM_ID_IRON_INGOT, 64u);
         cc_lay(&table, piece, 0u, &cursor);
         CHECK_EQ_U64(table.output.item, piece->iron);
@@ -165,7 +228,7 @@ TEST(the_same_shapes_in_iron_still_make_iron) {
 
 TEST(a_whole_set_from_a_stack_of_ingots_goes_on_and_counts) {
     crafting_grid_t table;
-    crafting_grid_start(&table, CRAFTING_SIDE_TABLE, RECIPE_STATION_TABLE);
+    crafting_grid_start(&table, CRAFTING_SIDE_TABLE, RECIPE_STATION_SMITHING);
     equipment_t equipment;
     equipment_start(&equipment);
     item_stack_t ingots = item_stack_make(ITEM_ID_COPPER_INGOT, (uint16_t)CC_INGOTS_FOR_A_SET);

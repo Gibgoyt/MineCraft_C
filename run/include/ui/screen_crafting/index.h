@@ -17,6 +17,10 @@ void ui_screen_crafting_view(const crafting_grid_t *grid, ui_screen_view_t *view
 void ui_screen_crafting_draw(ui_widget_t *widget, const ui_screens_t *screens, const ui_screen_view_t *view,
                              const char *title);
 
+/* The smith table's: the grid of three as any station's, and beside it the slots for alloys, drawn and not yet used: plan 005 phase 11 part
+ * B makes them work. */
+void ui_screen_smithing_draw(ui_widget_t *widget, const ui_screens_t *screens, const ui_screen_view_t *view);
+
 /* The sim applies a click: the player's slots and this grid of three. */
 void ui_screen_crafting_click(item_t *item, crafting_grid_t *grid, ui_screen_action_t action, item_stack_t *cursor);
 

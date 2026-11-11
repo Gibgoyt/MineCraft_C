@@ -21,6 +21,8 @@
 
 ## How chests and furnaces follow the world
 
+A furnace here is any block with three slots that smelts (plan 005 phase 6): the furnace, the blast furnace, lit and not, and the tanning rack, whose first part keeps its slots. Each is its own kind, so a furnace replaced by a blast furnace spills as any block that goes, and each lights its own lit block, the rack none.
+
 Neither store knows of the world, and the world knows of neither. `item_world_tick` joins them, once a tick on the sim, called by `run/src/game/`:
 
 1. **It reads the world's edit log,** with a cursor of its own, as anyone may. So whatever changes a block is seen, by any road: a hand now, an explosion later. Only a change of *kind* counts, so a furnace lighting up does nothing here.

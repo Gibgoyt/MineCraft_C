@@ -590,6 +590,10 @@ TEST(what_cannot_be_believed_is_refused_and_left_as_it_was) {
          SAVE_STATE_SECTION_ITEMS, 2u},
         {offsetof(container_chest_t, slots) + offsetof(item_stack_t, item), 60000u, SAVE_STATE_SECTION_CHESTS, 2u},
         {offsetof(smelting_furnace_t, cooking), 60000u, SAVE_STATE_SECTION_FURNACES, 2u},
+        /* Plan 005 phase 6: the hands' grid is the table's or the hands', never a bench's, and a furnace's process is one there is. */
+        {offsetof(save_state_items_t, crafting_hands) + offsetof(crafting_grid_t, station), RECIPE_STATION_WOODWORKING,
+         SAVE_STATE_SECTION_ITEMS, 1u},
+        {offsetof(smelting_furnace_t, process), RECIPE_PROCESS_COUNT, SAVE_STATE_SECTION_FURNACES, 1u},
         {offsetof(save_state_drops_t, count), ITEM_DROP_CAPACITY + 1u, SAVE_STATE_SECTION_DROPS, 4u},
         {sizeof(save_state_drops_t) + offsetof(item_drop_t, item), 60000u, SAVE_STATE_SECTION_DROPS, 2u},
         {sizeof(save_state_drops_t) + offsetof(item_drop_t, count), 0u, SAVE_STATE_SECTION_DROPS, 2u},

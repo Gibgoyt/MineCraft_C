@@ -1,0 +1,16 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: smith_table_end
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The end of a smith table, of dark stone under an iron top."
+  seed: 96030
+  ops:
+    - { op: fill, color: "#1e1e20" }
+    - { op: fill, color: "#6b7077", x: 0, y: 0, w: 16, h: 3 }
+    - { op: fill, color: "#41454a", x: 0, y: 3, w: 16, h: 1 }
+    - { op: fill, color: "#4a4a4d", x: 0, y: 4, w: 4, h: 12 }
+    - { op: fill, color: "#4a4a4d", x: 12, y: 4, w: 4, h: 12 }
+    - { op: fill, color: "#353538", x: 0, y: 9, w: 16, h: 1 }
+    - { op: noise, amount: 7, cell: 1 }

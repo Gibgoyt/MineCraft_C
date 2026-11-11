@@ -3,3 +3,4 @@ kind: shaped
 pattern: ["GSG", "SGS", "GSG"]
 keys: { G: gunpowder, S: group_sand }
 gives: tnt
+station: stoneworking

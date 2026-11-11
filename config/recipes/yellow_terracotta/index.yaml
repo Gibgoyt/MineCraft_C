@@ -4,3 +4,4 @@ pattern: ["TTT", "TDT", "TTT"]
 keys: { T: terracotta, D: dye_yellow }
 gives: yellow_terracotta
 count: 8
+station: stoneworking

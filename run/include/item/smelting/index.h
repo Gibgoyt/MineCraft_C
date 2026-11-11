@@ -22,15 +22,17 @@ typedef enum smelting_slot_t : uint8_t {
     SMELTING_SLOT_OUTPUT = 2,
 } smelting_slot_t;
 
-/* One furnace, by the cell it stands in. Plain numbers, so that the same world and clicks give the same bytes. */
+/* One furnace, by the cell it stands in: a furnace, a blast furnace or a tanning rack (plan 005 phase 6), each doing only its own
+ * process's smelts, and the rack burning nothing. Plain numbers, so that the same world and clicks give the same bytes. */
 typedef struct smelting_furnace_t {
-    int32_t cell[3];                    /* 0 */
+    int32_t cell[3];                    /* 0: a tanning rack's first part's */
     item_stack_t slots[SMELTING_SLOTS]; /* 12: by smelting_slot_t */
     uint32_t burn_ticks;                /* 36: left of what is burning */
     uint32_t burn_total;                /* 40: what that fuel burns for */
     uint32_t cook_ticks;                /* 44: on what is cooking */
     uint16_t cooking;                   /* 48: the item that is, so that swapping it starts over */
-    uint8_t _pad0[14];                  /* 50 */
+    uint8_t process;   /* 50: a recipe_process_t; 0, the furnace, in a save from before there were others */
+    uint8_t _pad0[13]; /* 51 */
 } smelting_furnace_t;
 static_assert(sizeof(smelting_furnace_t) == 64);
 static_assert(alignof(smelting_furnace_t) == 4);
@@ -57,20 +59,27 @@ void smelting_start(smelting_store_t *store, arena_t *arena);
 /* The furnace in this cell, or nullptr if nothing has opened one there. */
 smelting_furnace_t *smelting_at(smelting_store_t *store, int32_t x, int32_t y, int32_t z);
 
-/* The same, making an empty one if there is none. nullptr only with SMELTING_FURNACES in the world, counted in refused_count. */
+/* The same, making an empty furnace if there is none. nullptr only with SMELTING_FURNACES in the world, counted in refused_count. */
 smelting_furnace_t *smelting_open(smelting_store_t *store, int32_t x, int32_t y, int32_t z);
+
+/* The same for a block of this recipe_process_t: one made is of that process. One found is as it was made, and its block says which. */
+smelting_furnace_t *smelting_open_process(smelting_store_t *store, int32_t x, int32_t y, int32_t z, uint8_t process);
 
 /* Ends the furnace in this cell, if any: its stacks are written to out and it is gone. Returns how many there were. Moves the last furnace
  * into the gap, so a pointer to one does not last across this. */
 uint32_t smelting_remove(smelting_store_t *store, int32_t x, int32_t y, int32_t z, item_stack_t out[SMELTING_SLOTS]);
 
-/* One tick of one furnace, whatever is in its slots. Returns whether it is burning at the end of it. Never waits. */
+/* One tick of one furnace, whatever is in its slots. Returns whether it is burning at the end of it, which a tanning rack never is: it
+ * works by time alone. Never waits. */
 bool smelting_tick(smelting_store_t *store, smelting_furnace_t *furnace);
 
 bool smelting_is_lit(const smelting_furnace_t *furnace);
 
-/* What it will make of this input, or nullptr. */
+/* What it will make of this input, or nullptr, and in which process: recipe_smelt_t.process. */
 const recipe_smelt_t *smelting_recipe_of(uint16_t item);
+
+/* Whether a block of this process burns fuel. */
+bool smelting_burns(const smelting_furnace_t *furnace);
 
 /* How long one of this burns: 0 if it does not. */
 uint32_t smelting_burn_ticks(uint16_t item);
@@ -79,11 +88,12 @@ uint32_t smelting_burn_ticks(uint16_t item);
 float32_t smelting_cook_fraction(const smelting_furnace_t *furnace);
 float32_t smelting_burn_fraction(const smelting_furnace_t *furnace);
 
-/* A screen's clicks on a slot, with what the pointer carries. The fuel slot takes only what burns, and the input anything, as a furnace
- * that cannot smelt it just waits. The output is only taken from: all of it onto the pointer, or none. */
+/* A screen's clicks on a slot, with what the pointer carries. The fuel slot takes only what burns, and nothing at a tanning rack, and
+ * the input anything, as a furnace that cannot smelt it just waits. The output is only taken from: all of it onto the pointer, or none. */
 void smelting_click(smelting_furnace_t *furnace, uint32_t slot, item_stack_t *cursor, bool secondary);
 
-/* A shift-click on an inventory's slot: what smelts to the input, or else what burns to the fuel slot. Returns how many moved. */
+/* A shift-click on an inventory's slot: what this process smelts to the input, or else what burns to the fuel slot of one that burns.
+ * Returns how many moved. */
 uint32_t smelting_quick_move_in(smelting_furnace_t *furnace, inventory_t *inventory, uint32_t slot);
 
 /* A shift-click on a furnace's slot: as much as fits into the inventory. Returns how many moved. */

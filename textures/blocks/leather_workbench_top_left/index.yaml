@@ -1,0 +1,20 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: leather_workbench_top_left
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The left half of a leather workbench's long top, as the person who placed it faces it, running on into the other half."
+  seed: 96015
+  ops:
+    - { op: fill, color: "#b08454" }
+    - { op: noise, amount: 12, cell_x: 8, cell_y: 1, seed: 77 }
+    - { op: fill, color: "#8a6439", x: 0, y: 5, w: 16, h: 1 }
+    - { op: fill, color: "#8a6439", x: 0, y: 10, w: 16, h: 1 }
+    - { op: fill, color: "#6e4f2c", x: 0, y: 0, w: 16, h: 1 }
+    - { op: fill, color: "#6e4f2c", x: 0, y: 15, w: 16, h: 1 }
+    - { op: fill, color: "#6e4f2c", x: 0, y: 0, w: 1, h: 16 }
+    - { op: fill, color: "#8f5a2c", x: 3, y: 2, w: 10, h: 8 }
+    - { op: fill, color: "#64391a", x: 3, y: 9, w: 10, h: 1 }
+    - { op: fill, color: "#c3c8cd", x: 4, y: 12, w: 4, h: 1 }
+    - { op: fill, color: "#7a5230", x: 8, y: 12, w: 2, h: 1 }

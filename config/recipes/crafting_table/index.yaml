@@ -1,5 +1,6 @@
 name: crafting_table
 kind: shaped
-pattern: ["PP", "PP"]
-keys: { P: group_planks }
+pattern: ["LL", "LL"]
+keys: { L: group_logs }
 gives: crafting_table
+station: hands

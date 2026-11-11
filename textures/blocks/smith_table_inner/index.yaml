@@ -1,0 +1,11 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: smith_table_inner
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "Where two halves of a smith table meet, inside it, never seen."
+  seed: 96031
+  ops:
+    - { op: fill, color: "#1e1e20" }
+    - { op: noise, amount: 5, cell: 1 }

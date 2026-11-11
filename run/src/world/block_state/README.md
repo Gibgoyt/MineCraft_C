@@ -21,8 +21,8 @@ From `config/blocks/`, at the time of plan 005 phase 12:
 
 | Field | Blocks |
 |---|---|
-| `facing: horizontal` | every stairs, `ladder`, `vine`, both halves of `woodworking_bench`, `wall_torch` |
+| `facing: horizontal` | every stairs, `ladder`, `vine`, every part of `woodworking_bench`, `stoneworking_bench`, `tanning_rack`, `leather_workbench` and `smith_table`, `wall_torch` |
 | `half: upper_lower` | none yet: doors, in phase 2 |
 | `open: true` | none yet: doors, in phase 2 |
 
-The stoneworking bench and the smith table of phase 6 declare `facing: horizontal` too, and are placed facing the player with nothing more.
+The stations of plan 005 phase 6 declare `facing: horizontal` too, and are placed facing the player with nothing more.

@@ -1,0 +1,8 @@
+name: stoneworking_bench_right
+hardness: 3.5
+tool: pickaxe
+tier: wood
+drops: [{ item: stoneworking_bench, count: 1 }]
+texture: { top: blocks/stoneworking_bench_top_right, bottom: blocks/stoneworking_bench_bottom, side: blocks/stoneworking_bench_end, south: blocks/stoneworking_bench_side_right, north: blocks/stoneworking_bench_side_left }
+sound: stone
+facing: horizontal

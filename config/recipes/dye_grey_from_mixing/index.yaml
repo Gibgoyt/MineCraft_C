@@ -3,3 +3,4 @@ kind: shapeless
 ingredients: [dye_black, dye_white]
 gives: dye_grey
 count: 2
+station: hands

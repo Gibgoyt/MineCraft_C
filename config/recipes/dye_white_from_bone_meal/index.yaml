@@ -2,3 +2,4 @@ name: dye_white_from_bone_meal
 kind: shapeless
 ingredients: [bone_meal]
 gives: dye_white
+station: hands

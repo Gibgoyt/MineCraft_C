@@ -3,3 +3,4 @@ kind: shaped
 pattern: ["M", "M", "S"]
 keys: { M: group_cobble, S: stick }
 gives: stone_sword
+station: stoneworking

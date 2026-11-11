@@ -1,0 +1,6 @@
+# Nothing can work diamond yet (plan 005 phase 6), so no recipe makes its tools; the tier stays for when one can.
+name: diamond
+harvests: diamond
+speed: 8000
+axe_attack_speed: 1
+hoe_attack_speed: 4

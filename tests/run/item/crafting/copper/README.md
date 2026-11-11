@@ -14,9 +14,9 @@ No card, no window and no built program.
 What it checks:
 
 - Copper ore, deepslate copper ore and raw copper smelt to the ingot.
-- Each of the four patterns, written by hand in the test and laid with the right button at every height it fits on a table, makes its one piece, unworn, and taking it uses every ingot.
+- Each of the four patterns, written by hand in the test and laid with the right button at every height it fits on the smith table, makes its one piece, unworn, and taking it uses every ingot. Since plan 005 phase 6 each is its leather piece with Minecraft's ingots for it around it.
 - None of them is made in a grid of two: each is three wide.
-- Each pattern with any one ingot missing is not its piece, and with any one ingot swapped for iron makes nothing. The one shape that does come out of a missing ingot, boots from a helmet without the middle of its top row, is checked.
+- Each pattern with any one ingot missing is not its piece, and with any one ingot swapped for iron makes nothing. The ingots alone, without the leather piece, make nothing at any station: no armour without the leather workbench.
 - The same four shapes in iron still make iron.
 - 24 ingots make a whole set, which goes on, for 10 points.
 

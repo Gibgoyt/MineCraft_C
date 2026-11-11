@@ -1,6 +1,6 @@
 # run/src/ui/screen_crafting
 
-**Purpose:** the screen of a crafting table or a woodworking bench: the grid of three, its output, and the player's rows. The two differ only by their title and whose grid it is, and what that grid can make is its station's.
+**Purpose:** the screen of a crafting table or a station with a grid of its own (plan 005 phase 6: the woodworking and stoneworking benches, the smith table and the leather workbench): the grid of three, its output, and the player's rows. They differ only by their title and whose grid it is, and what that grid can make is its station's. The smith table's, `ui_screen_smithing_draw`, also draws the slots for alloys right of its output, faint and taking no clicks, for phase 11 part B.
 **Tier:** Arena, and it allocates nothing.
 **Owns:** nothing. The grid is `item_t.crafting_table` or `item_t.borrowed_crafting_bench`, which `ui` passes in.
 **Lifetime:** Nothing outlives a call.

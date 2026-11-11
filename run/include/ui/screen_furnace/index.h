@@ -7,14 +7,15 @@
 
 #include <stdint.h>
 
-/* Its places, into out, UI_SCREEN_PLACES_MAX of room. Returns how many. */
-uint32_t ui_screen_furnace_places(ui_screen_place_t *out);
+/* Its places, into out, UI_SCREEN_PLACES_MAX of room. Returns how many. A tanning rack, which burns nothing, has no fuel slot. */
+uint32_t ui_screen_furnace_places(ui_screen_place_t *out, bool fuel);
 
 /* What is its own, on top of ui_screens_view_next: three slots and two gauges. The furnace is only read. */
 void ui_screen_furnace_view(const smelting_furnace_t *furnace, ui_screen_view_t *view);
 
-/* What is its own, on top of ui_screen_draw_base. */
-void ui_screen_furnace_draw(ui_widget_t *widget, const ui_screens_t *screens, const ui_screen_view_t *view);
+/* What is its own, on top of ui_screen_draw_base, with the name of the block it is the screen of, and a flame if it burns. */
+void ui_screen_furnace_draw(ui_widget_t *widget, const ui_screens_t *screens, const ui_screen_view_t *view,
+                            const char *title, bool fuel);
 
 /* The sim applies a click: the player's slots and this furnace's. */
 void ui_screen_furnace_click(item_t *item, smelting_furnace_t *furnace, ui_screen_action_t action,

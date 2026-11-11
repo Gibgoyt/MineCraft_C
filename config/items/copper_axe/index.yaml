@@ -1,0 +1,7 @@
+name: copper_axe
+texture: items/copper_axe
+stack: 1
+tool: axe
+tier: copper
+durability: 190
+damage: 9

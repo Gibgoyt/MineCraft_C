@@ -1,5 +1,6 @@
 name: copper_chestplate
 kind: shaped
-pattern: ["M M", "MMM", "MMM"]
-keys: { M: copper_ingot }
+pattern: ["MLM", "MMM", "MMM"]
+keys: { M: copper_ingot, L: leather_chestplate }
 gives: copper_chestplate
+station: smithing

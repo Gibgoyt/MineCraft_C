@@ -3,3 +3,4 @@ kind: shapeless
 ingredients: [dye_red, dye_white]
 gives: dye_pink
 count: 2
+station: hands

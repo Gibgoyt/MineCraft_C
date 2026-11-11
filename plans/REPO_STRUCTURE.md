@@ -117,7 +117,8 @@ implements it, and its `run/src/` directory holds only a README). A part declare
 | `config/machine.yaml` | Platform (`posix: true`), threads, CPU, SIMD, GPU, display, memory, world constants | `compile/src/machine_config/` |
 | `config/blocks/<block>/index.yaml` | Hardness, right tool, drops, shape, light, textures. `config/blocks/README.md` lists every field | `compile/src/game_tables/` |
 | `config/items/<item>/index.yaml` | Stack size, durability, food, tool tier | `compile/src/game_tables/` |
-| `config/recipes/<recipe>/index.yaml` | Crafting and smelting | `compile/src/game_tables/` |
+| `config/tiers/<tier>/index.yaml` | A tool tier: what it harvests, how fast it mines, and its axe's and hoe's swings (plan 005 phase 6) | `compile/src/game_tables/` |
+| `config/recipes/<recipe>/index.yaml` | Crafting and smelting, each at its station: the hands, the crafting table (which makes only the other stations), the woodworking and stoneworking benches, the smith table, the leather workbench, the furnace, the blast furnace and the tanning rack (plan 005 phase 6) | `compile/src/game_tables/` |
 | `config/biomes/<biome>/index.yaml` | Climate range, surface blocks, features | `compile/src/game_tables/` |
 | `config/ores/<ore>/index.yaml` | Where an ore or rock lies in veins: its two blocks, what it drops, and each row of veins' order, depths, size and rate (plan 005 phase 11) | `compile/src/game_tables/` |
 | `config/mobs/<mob>/index.yaml` | Health, speed, drops, spawn rules, body parts | `compile/src/game_tables/` |

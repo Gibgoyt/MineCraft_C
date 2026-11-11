@@ -1,0 +1,20 @@
+# Our own recipe: compile/src/texture_vector/recipe/README.md lists the operations. Then: texture_vector recipes.
+name: stoneworking_bench_side_left
+group: blocks
+size: { width: 16, height: 16, frames: 1 }
+source:
+  kind: procedural
+  about: "The left half of a stoneworking bench's long side as a person faces it, with its apron, a leg, and what hangs under it."
+  seed: 96003
+  ops:
+    - { op: fill, color: "#262626" }
+    - { op: fill, color: "#a3a39e", x: 0, y: 0, w: 16, h: 3 }
+    - { op: fill, color: "#6a6a66", x: 0, y: 3, w: 16, h: 1 }
+    - { op: fill, color: "#8d8d88", x: 0, y: 4, w: 4, h: 12 }
+    - { op: fill, color: "#5c5c58", x: 4, y: 4, w: 1, h: 12 }
+    - { op: fill, color: "#7b7b77", x: 5, y: 12, w: 11, h: 2 }
+    - { op: fill, color: "#c3c8cd", x: 7, y: 5, w: 1, h: 4 }
+    - { op: fill, color: "#7a5230", x: 7, y: 9, w: 1, h: 2 }
+    - { op: fill, color: "#c3c8cd", x: 11, y: 5, w: 2, h: 2 }
+    - { op: fill, color: "#7a5230", x: 11, y: 7, w: 2, h: 1 }
+    - { op: noise, amount: 7, cell: 1 }
