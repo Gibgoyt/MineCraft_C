@@ -1,6 +1,6 @@
 # 005-ahmed-bohemoth-initial-game-fixes-round-2 — phase 16: No recursion
 
-**Status:** agent R1's part built and tested (recursion removed); agent R2's lint part with R2   (updated 2026-11-11)
+**Status:** agent R1's part built and tested (recursion removed); agent R2's lint part in progress   (updated 2026-11-10)
 
 ## Goal
 
@@ -61,7 +61,7 @@ the injector (16384) were full, limited only by `JOB_INLINE_DEPTH_MAX` 32 and an
   the 132 callers checked by hand. Fixtures for a missing and a listed entry
 - [ ] 3. `SA_NODEFER` banned by a lint rule, with no exception. A fixture
 - [ ] 4. Coverage: the target regex at `cmake/standards_lint.cmake:21` includes `mc_fuzz_.*` and `mc_soak`
-- [ ] 5. CUDA scan (`rules_c/index.c:645,702`): kernel launches `k<<<...>>>(` count as calls, bodies with qualifiers
+- [x] 5. CUDA scan (`rules_c/index.c:645,702`): kernel launches `k<<<...>>>(` count as calls, bodies with qualifiers
   between `)` and `{` are recognised, `static` names are keyed by file. Fixtures for each
 - [ ] 6. Docs: `CODING_STANDARD.md` section 10 (recursion through indirect calls, the allowlist, `SA_NODEFER`), and the
   lint README line that admits pointers aren't followed

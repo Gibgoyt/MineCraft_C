@@ -313,6 +313,13 @@ typedef struct rules_definition_t {
 } rules_definition_t;
 static_assert(sizeof(rules_definition_t) == 8);
 
+/* One call in a .cu file, kept until the file's static functions are all known. */
+typedef struct rules_cuda_call_t {
+    const lint_token_t *caller;
+    const lint_token_t *callee;
+} rules_cuda_call_t;
+static_assert(sizeof(rules_cuda_call_t) == 16);
+
 typedef struct rules_walk_t {
     const lint_file_t *file;
     lint_token_t *code; /* tokens outside directives */
@@ -320,21 +327,28 @@ typedef struct rules_walk_t {
     const lint_token_t **struct_names;
     const lint_token_t *current_function;
     lint_graph_t *cuda_graph;
+    rules_cuda_call_t *cuda_calls;
+    const lint_token_t **cuda_statics; /* the file's static functions, which GCC and nvcc keep apart by file */
     uint32_t code_count;
     uint32_t function_count;
     uint32_t struct_name_count;
     uint32_t brace_depth;
     uint32_t paren_depth;
     int32_t function_candidate;
+    int32_t function_close; /* the ')' that closes the candidate's parameters */
     int32_t pending_brace_index;
+    uint32_t cuda_call_count;
+    uint32_t cuda_static_count;
     rules_brace_t pending_brace_kind;
     uint8_t pending_brace_typedef;
     uint8_t member_has_enum;
     uint8_t bracket_depth;
+    uint8_t candidate_static;
+    uint8_t _pad0[3];
     rules_brace_t braces[RULES_MAX_BRACES];
     uint8_t brace_typedef[RULES_MAX_BRACES];
 } rules_walk_t;
-static_assert(sizeof(rules_walk_t) == 80 + 2u * RULES_MAX_BRACES);
+static_assert(sizeof(rules_walk_t) == 112 + 2u * RULES_MAX_BRACES);
 
 static bool rules_at_file_scope(const rules_walk_t *walk) {
     for (uint32_t i = 0; i < walk->brace_depth && i < RULES_MAX_BRACES; i++) {
@@ -373,7 +387,8 @@ static uint32_t rules_skip_group(const rules_walk_t *walk, uint32_t open_index, 
 
 static bool rules_is_attribute_like(const lint_token_t *token) {
     return lint_token_is(token, "__attribute__") || lint_token_is(token, "__attribute") ||
-           lint_token_is(token, "alignas") || lint_token_is(token, "_Alignas") || lint_token_is(token, "typeof") ||
+           lint_token_is(token, "__launch_bounds__") || lint_token_is(token, "alignas") ||
+           lint_token_is(token, "_Alignas") || lint_token_is(token, "typeof") ||
            lint_token_is(token, "typeof_unqual") || lint_token_is(token, "_Atomic") ||
            lint_token_is(token, "static_assert") || lint_token_is(token, "_Static_assert");
 }
@@ -632,6 +647,63 @@ static void rules_check_goto(const rules_walk_t *walk, uint32_t i) {
     }
 }
 
+/* Whether the '{' at i opens the body of the function candidate: only qualifiers and attributes, such as noexcept,
+ * [[...]] or __attribute__((...)), may stand between its parameters and the brace. */
+static bool rules_is_function_body(const rules_walk_t *walk, uint32_t i) {
+    if (walk->function_candidate < 0 || walk->function_close < 0) {
+        return false;
+    }
+    uint32_t j = (uint32_t)walk->function_close + 1u;
+    while (j < i) {
+        const lint_token_t *token = &walk->code[j];
+        if (token->kind == LINT_TOKEN_IDENT && j + 1u < i && lint_token_is(&walk->code[j + 1u], "(")) {
+            j = rules_skip_group(walk, j + 1u, "(", ")");
+        } else if (token->kind == LINT_TOKEN_IDENT) {
+            j++;
+        } else if (lint_token_is(token, "[") && j + 1u < i && lint_token_is(&walk->code[j + 1u], "[")) {
+            j = rules_skip_group(walk, j, "[", "]");
+        } else {
+            return false;
+        }
+    }
+    return j == i;
+}
+
+/* A function's own name in the CUDA call graph: a static one is keyed by its file, as the linker keeps it apart. */
+static void rules_cuda_edge(const rules_walk_t *walk, const rules_cuda_call_t *call) {
+    const lint_file_t *file = walk->file;
+    const lint_token_t *names[2] = {call->caller, call->callee};
+    const char *keys[2] = {nullptr, nullptr};
+    uint64_t lengths[2] = {0, 0};
+    for (uint32_t k = 0; k < 2u; k++) {
+        bool is_static = false;
+        for (uint32_t s = 0; s < walk->cuda_static_count && !is_static; s++) {
+            is_static = walk->cuda_statics[s]->length == names[k]->length &&
+                        memcmp(walk->cuda_statics[s]->text, names[k]->text, names[k]->length) == 0;
+        }
+        keys[k] = names[k]->text;
+        lengths[k] = names[k]->length;
+        if (is_static) {
+            const char *word = lint_arena_text(file->arena_file, names[k]->text, names[k]->length);
+            keys[k] = lint_arena_join(file->arena_file, lint_arena_join(file->arena_file, file->path, ":"), word);
+            lengths[k] = strlen(keys[k]);
+        }
+    }
+    lint_graph_add_edge(walk->cuda_graph, keys[0], lengths[0], keys[1], lengths[1], file->path, call->callee->line);
+}
+
+static void rules_cuda_note_call(rules_walk_t *walk, const lint_token_t *callee) {
+    walk->cuda_calls[walk->cuda_call_count] = (rules_cuda_call_t){.caller = walk->current_function, .callee = callee};
+    walk->cuda_call_count++;
+}
+
+static void rules_cuda_note_static(rules_walk_t *walk) {
+    if (walk->cuda_graph != nullptr && walk->candidate_static != 0 && walk->function_candidate >= 0) {
+        walk->cuda_statics[walk->cuda_static_count] = &walk->code[walk->function_candidate];
+        walk->cuda_static_count++;
+    }
+}
+
 static void rules_open_brace(rules_walk_t *walk, uint32_t i) {
     rules_brace_t kind = RULES_BRACE_BLOCK;
     uint8_t had_typedef = 0;
@@ -642,9 +714,9 @@ static void rules_open_brace(rules_walk_t *walk, uint32_t i) {
     } else if (i >= 2u && walk->code[i - 1u].kind == LINT_TOKEN_STRING &&
                lint_token_is(&walk->code[i - 2u], "extern")) {
         kind = RULES_BRACE_EXTERN;
-    } else if (walk->paren_depth == 0 && rules_at_file_scope(walk) && walk->function_candidate >= 0 && i >= 1u &&
-               lint_token_is(&walk->code[i - 1u], ")")) {
+    } else if (walk->paren_depth == 0 && rules_at_file_scope(walk) && rules_is_function_body(walk, i)) {
         kind = RULES_BRACE_FUNCTION;
+        rules_cuda_note_static(walk);
         walk->current_function = &walk->code[walk->function_candidate];
         walk->functions[walk->function_count].name = walk->current_function;
         walk->function_count++;
@@ -655,6 +727,7 @@ static void rules_open_brace(rules_walk_t *walk, uint32_t i) {
     }
     walk->brace_depth++;
     walk->function_candidate = -1;
+    walk->function_close = -1;
     walk->member_has_enum = 0;
 }
 
@@ -698,16 +771,30 @@ static void rules_check_token(rules_walk_t *walk, uint32_t i) {
         if (walk->paren_depth == 0 && rules_at_file_scope(walk) && walk->function_candidate < 0 &&
             previous != nullptr && previous->kind == LINT_TOKEN_IDENT && !rules_is_attribute_like(previous)) {
             walk->function_candidate = (int32_t)i - 1;
+            walk->function_close = -1;
+            /* static anywhere in the declaration before the name. */
+            walk->candidate_static = 0;
+            for (uint32_t k = i - 1u;
+                 k > 0 && !lint_token_is(&walk->code[k - 1u], ";") && !lint_token_is(&walk->code[k - 1u], "{") &&
+                 !lint_token_is(&walk->code[k - 1u], "}");
+                 k--) {
+                if (lint_token_is(&walk->code[k - 1u], "static")) {
+                    walk->candidate_static = 1;
+                }
+            }
         }
         if (walk->cuda_graph != nullptr && walk->current_function != nullptr && previous != nullptr &&
             previous->kind == LINT_TOKEN_IDENT) {
-            lint_graph_add_edge(walk->cuda_graph, walk->current_function->text, walk->current_function->length,
-                                previous->text, previous->length, file->path, previous->line);
+            rules_cuda_note_call(walk, previous);
         }
         walk->paren_depth++;
     } else if (lint_token_is(token, ")")) {
         if (walk->paren_depth > 0) {
             walk->paren_depth--;
+        }
+        if (walk->paren_depth == 0 && walk->function_candidate >= 0 && walk->function_close < 0 &&
+            rules_at_file_scope(walk)) {
+            walk->function_close = (int32_t)i;
         }
     } else if (lint_token_is(token, "{")) {
         rules_open_brace(walk, i);
@@ -715,7 +802,12 @@ static void rules_check_token(rules_walk_t *walk, uint32_t i) {
         rules_close_brace(walk, i);
     } else if (lint_token_is(token, ";")) {
         if (walk->paren_depth == 0) {
+            /* A prototype: static void f(void); makes every later f in the file the static one. */
+            if (walk->function_close >= 0) {
+                rules_cuda_note_static(walk);
+            }
             walk->function_candidate = -1;
+            walk->function_close = -1;
             walk->member_has_enum = 0;
         }
     } else if (lint_token_is(token, "struct") || lint_token_is(token, "union")) {
@@ -729,6 +821,10 @@ static void rules_check_token(rules_walk_t *walk, uint32_t i) {
         }
     } else if (lint_token_is(token, "goto")) {
         rules_check_goto(walk, i);
+    } else if (walk->cuda_graph != nullptr && walk->current_function != nullptr && token->kind == LINT_TOKEN_IDENT &&
+               i + 3u < walk->code_count && lint_token_is(&walk->code[i + 1u], "<") &&
+               lint_token_is(&walk->code[i + 2u], "<") && lint_token_is(&walk->code[i + 3u], "<")) {
+        rules_cuda_note_call(walk, token); /* a kernel launch, name<<<grid, block>>>(...) */
     } else if (lint_token_is(token, "static") && walk->paren_depth == 0 &&
                !(previous != nullptr && lint_token_is(previous, "["))) {
         rules_check_static_declaration(walk, i);
@@ -761,6 +857,7 @@ static void rules_check_structure(const lint_file_t *file, const lint_lexed_t *l
     walk->file = file;
     walk->cuda_graph = cuda_graph;
     walk->function_candidate = -1;
+    walk->function_close = -1;
     walk->pending_brace_index = -1;
     walk->code = lint_arena_alloc(arena, ((uint64_t)lexed->token_count + 1u) * sizeof(lint_token_t));
     for (uint32_t i = 0; i < lexed->token_count; i++) {
@@ -771,9 +868,16 @@ static void rules_check_structure(const lint_file_t *file, const lint_lexed_t *l
     }
     walk->functions = lint_arena_alloc(arena, ((uint64_t)walk->code_count + 1u) * sizeof(rules_definition_t));
     walk->struct_names = lint_arena_alloc(arena, ((uint64_t)walk->code_count + 1u) * sizeof(const lint_token_t *));
+    if (cuda_graph != nullptr) {
+        walk->cuda_calls = lint_arena_alloc(arena, ((uint64_t)walk->code_count + 1u) * sizeof(rules_cuda_call_t));
+        walk->cuda_statics = lint_arena_alloc(arena, ((uint64_t)walk->code_count + 1u) * sizeof(const lint_token_t *));
+    }
 
     for (uint32_t i = 0; i < walk->code_count; i++) {
         rules_check_token(walk, i);
+    }
+    for (uint32_t c = 0; c < walk->cuda_call_count; c++) {
+        rules_cuda_edge(walk, &walk->cuda_calls[c]);
     }
 
     /* Section 3, rule 4: every struct has a static_assert on its sizeof, in the same file. */
