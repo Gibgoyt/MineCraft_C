@@ -66,6 +66,11 @@ void terrain_ore_deinit(terrain_ore_t *ore);
 /* The table: TERRAIN_ORE_ROWS rows, in the order they are laid down. The same for every world. */
 const terrain_ore_row_t *terrain_ore_table(void);
 
+/* How many veins row row_index of the table starts in the chunk (chunk_x, chunk_y) and does not lose outside the world, by the
+ * same draws terrain_ore_fill_box makes: none in a chunk too low for a row with a min_column_height. For measuring a row's rate,
+ * as bench_world_map and the tests do. Allocates nothing; any thread. */
+uint32_t terrain_ore_chunk_veins(const terrain_ore_t *ore, uint32_t row_index, int32_t chunk_x, int32_t chunk_y);
+
 /* Lays the rock and the ores into blocks, which holds the box's voxels in x, then y, then z order, and which has the ground in
  * it already: stone turns to deepslate by depth, then each row in turn replaces rock. Air, water, lava, bedrock and anything
  * else not rock are left as they are, so caves cut first show their ore. Allocates nothing, and given the same blocks at a

@@ -9,6 +9,7 @@
 
 - `terrain_ore_init`, `terrain_ore_deinit`: a pair.
 - `terrain_ore_table`: the table, for anything that wants to know what lies at a depth.
+- `terrain_ore_chunk_veins`: how many veins a row starts in a chunk and keeps in the world, by the draws filling makes: for measuring a row's rate (plan 005 phase 11, `bench_world_map`).
 - `terrain_ore_fill_box`: deepslate and veins, into a box of blocks.
 
 **May be called by:** `terrain` and its parts.
@@ -50,6 +51,7 @@ The depths start from what was remembered of a familiar game's published ore dis
 | `ore/diamond_large` | diamond | -406 | -92 | triangle | 12 | 0.22 | One big one, now and then |
 | `ore/emerald` | emerald | -154 | 500 | uniform | 3 | 16 | Only where a chunk's middle column is at least 120 high: a mountain's. This module knows no biomes, and this is the part of "mountain" that needs none. Fewer tried than the remembered number gives, as our veins of 3 really come to about 3: see Stage 10.5's issue 2 |
 | `ore/emerald_peak` | emerald | 501 | 1250 | uniform | 3 | 18 | `ore/emerald` goes on, as much in a layer, under the same rule |
+| `ore/chromium` | chromium | -250 | -40 | uniform | 6 | 4 | Plan 005 phase 11, for stainless steel: deep only, below most iron, and laid last, so it takes only rock and moves no other row's vein. Every chunk gets exactly 4, as 1024 is a whole 4 times 256 and the whole range is in the world. A starting point Ahmed tunes in `config/ores/chromium/index.yaml` |
 
 **Above 500 is four rows of its own.** The world first stopped at 500, and a row's number changing moves every vein of that row, so the rows that reached that height stay as they were and the `_peak` rows go on from there. No terrain reaches them yet, and a row whose reach is wholly over everything in a box that is not air is left out for that box, which moves nothing, as a vein replaces no air.
 

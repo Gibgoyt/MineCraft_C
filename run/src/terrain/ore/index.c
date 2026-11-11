@@ -263,6 +263,28 @@ static bool ore_chunk_allowed(const terrain_ore_t *ore, const terrain_ore_row_t 
     return height >= (float32_t)row->min_column_height;
 }
 
+uint32_t terrain_ore_chunk_veins(const terrain_ore_t *ore, uint32_t row_index, int32_t chunk_x, int32_t chunk_y) {
+    ASSERT(row_index < TERRAIN_ORE_ROWS);
+    const terrain_ore_row_t *const row = &ore_rows[row_index];
+    if (!ore_chunk_allowed(ore, row, chunk_x, chunk_y)) {
+        return 0u;
+    }
+    /* ore_chunk's draws, in its order, with no box. */
+    terrain_rng_t stream = terrain_rng_start(terrain_rng_hash2(ore->rows[row_index].seed, chunk_x, chunk_y));
+    uint32_t attempts = row->per_chunk_256 >> ORE_PER_CHUNK_WHOLE_SHIFT;
+    if (terrain_rng_next_below(&stream, ORE_PER_CHUNK_PART) < (row->per_chunk_256 & (ORE_PER_CHUNK_PART - 1u))) {
+        attempts++;
+    }
+    uint32_t landed = 0u;
+    for (uint32_t attempt = 0u; attempt < attempts; attempt++) {
+        (void)terrain_rng_next_u32(&stream);
+        const int32_t z = ore_draw_z(&stream, row);
+        (void)terrain_rng_next_u64(&stream);
+        landed += (z >= MC_WORLD_Z_MIN && z <= MC_WORLD_Z_MAX) ? 1u : 0u;
+    }
+    return landed;
+}
+
 void terrain_ore_fill_box(const terrain_ore_t *ore, const terrain_density_box_t *box, uint16_t *blocks) {
     if (box->count_x == 0u || box->count_y == 0u || box->count_z == 0u) {
         return;

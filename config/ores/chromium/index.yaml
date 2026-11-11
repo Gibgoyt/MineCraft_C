@@ -1,0 +1,13 @@
+# Chromium, for stainless steel (plan 005 phase 11): deep only, from the bottom of the world to -40, below most iron.
+# A starting point to tune. 1024 veins in 256 chunks is exactly 4 a chunk, and bench_world_map prints what a chunk gets.
+# Laid last (the highest order), so it takes only rock and moves no vein of another row. Changing any number changes every world.
+name: chromium
+block: chromium_ore
+deep_block: deepslate_chromium_ore
+drops: raw_chromium
+order: 270
+z_min: -250
+z_max: -40
+vein: 6
+per_256_chunks: 1024
+spread: uniform

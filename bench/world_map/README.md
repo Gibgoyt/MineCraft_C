@@ -55,6 +55,8 @@
 
 **Caves' share of the rock:** for each band of height, what caves cut as a share of what they cut plus the rock left.
 
+**Ore (plan 005 phase 11):** two lines a seed from the same 64 tiles, every stage, caves and all. `ore veins a chunk` is, for each row of `config/ores/`, the veins it starts in a chunk and keeps in the world, from `terrain_ore_chunk_veins`, by the draws the ore stage makes; a mountain-only row such as `emerald` counts only where its chunk is high enough. `ore voxels a chunk` is each ore's blocks, both forms, found in the tiles, and the share in its deepslate form: fewer than veins times size, since caves, water and air take their share and an ore replaces no other ore.
+
 ## Results
 
 ### 2026-11-04, before any of plan 003 phase 8's tuning

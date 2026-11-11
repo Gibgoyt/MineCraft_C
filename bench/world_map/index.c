@@ -10,6 +10,7 @@
 #include "terrain/index.h"
 #include "thread/index.h"
 #include "time/index.h"
+#include "types/block_state/index.h"
 #include "world/column/index.h"
 
 #include <errno.h>
@@ -134,8 +135,10 @@ typedef struct map_run_t {
     _Atomic uint64_t floating_pieces;               /* 264: of rock that touches nothing that holds it up */
     _Atomic uint64_t floating_voxels;               /* 272 */
     _Atomic uint64_t floating_largest;              /* 280 */
+    _Atomic uint64_t *borrowed_block_voxels;        /* 288: BLOCK_COUNT: each block's voxels in the cave tiles */
+    _Atomic uint64_t *borrowed_row_veins; /* 296: TERRAIN_ORE_ROWS: veins each ore row starts in their chunks */
 } map_run_t;
-static_assert(sizeof(map_run_t) == 288);
+static_assert(sizeof(map_run_t) == 304);
 
 /* Grown on the ground, not the ground: what a map of the land's shape looks through. */
 static bool map_is_growth(uint16_t block) {
@@ -409,6 +412,8 @@ static void map_cave_job(job_worker_t *worker, void *borrowed_argument) {
     uint32_t *const rock_stack = run->borrowed_rock_stack + (uint64_t)me * MAP_ROCK_VOXELS;
     uint64_t land = 0u;
     map_cave_counts_t counts = {0};
+    uint64_t block_voxels[BLOCK_COUNT] = {0};
+    uint64_t row_veins[TERRAIN_ORE_ROWS] = {0};
     for (;;) {
         const uint32_t tile = atomic_fetch_add_explicit(&run->next, 1u, memory_order_relaxed);
         if (tile >= MAP_TILES) {
@@ -426,6 +431,11 @@ static void map_cave_job(job_worker_t *worker, void *borrowed_argument) {
                 .count_z = MAP_LAYERS,
             };
             terrain_generate_box(run->borrowed_terrain, &box, opened, blocks);
+            /* Plan 005 phase 11: how many veins each ore row starts in the chunk the box is most of. */
+            for (uint32_t r = 0u; r < TERRAIN_ORE_ROWS; r++) {
+                row_veins[r] += terrain_ore_chunk_veins(run->borrowed_terrain->borrowed_ore, r, box.origin_x >> 4,
+                                                        box.origin_y >> 4);
+            }
             for (uint32_t column = 0u; column < TERRAIN_FEATURE_CHUNK_COLUMNS; column++) {
                 /* Down from the sky, through what is not ground, counting what a cave cut. */
                 uint32_t layer = MAP_LAYERS;
@@ -462,6 +472,7 @@ static void map_cave_job(job_worker_t *worker, void *borrowed_argument) {
                     }
                     const uint64_t voxel = (uint64_t)column + (uint64_t)TERRAIN_FEATURE_CHUNK_COLUMNS * l;
                     const bool is_rock = map_is_rock(blocks[voxel]);
+                    block_voxels[block_state_id(blocks[voxel])]++;
                     if ((opened[voxel] & ~(uint32_t)TERRAIN_CAVE_WANTED_UNCUT) != 0u) {
                         counts.opened[band]++;
                     } else if (is_rock) {
@@ -478,6 +489,38 @@ static void map_cave_job(job_worker_t *worker, void *borrowed_argument) {
         atomic_fetch_add_explicit(&run->cave_opened[band], counts.opened[band], memory_order_relaxed);
         atomic_fetch_add_explicit(&run->cave_standing[band], counts.standing[band], memory_order_relaxed);
     }
+    for (uint32_t b = 0u; b < BLOCK_COUNT; b++) {
+        atomic_fetch_add_explicit(&run->borrowed_block_voxels[b], block_voxels[b], memory_order_relaxed);
+    }
+    for (uint32_t r = 0u; r < TERRAIN_ORE_ROWS; r++) {
+        atomic_fetch_add_explicit(&run->borrowed_row_veins[r], row_veins[r], memory_order_relaxed);
+    }
+}
+
+/* Plan 005 phase 11: each ore's veins and voxels a chunk, from the cave tiles, which are every stage, caves and all. A row's veins are those that land
+ * in the world; its voxels are fewer than veins times its size where caves, air, water or another ore took their share. */
+static void map_ores_print(const map_run_t *run) {
+    const terrain_ore_row_t *const table = terrain_ore_table();
+    printf("  ore veins a chunk, over %u chunks:", MAP_CAVE_CHUNKS);
+    for (uint32_t r = 0u; r < TERRAIN_ORE_ROWS; r++) {
+        const uint64_t veins = atomic_load_explicit(&run->borrowed_row_veins[r], memory_order_relaxed);
+        printf(" %s %.2f", table[r].borrowed_name + 4, (libc_double_t)((float64_t)veins / (float64_t)MAP_CAVE_CHUNKS));
+    }
+    printf("\n  ore voxels a chunk:");
+    for (uint32_t r = 0u; r < TERRAIN_ORE_ROWS; r++) {
+        if (table[r].block == table[r].deep_block || (r > 0u && table[r - 1u].block == table[r].block)) {
+            continue; /* a rock, or an ore already printed */
+        }
+        const uint64_t shallow =
+            atomic_load_explicit(&run->borrowed_block_voxels[table[r].block], memory_order_relaxed);
+        const uint64_t deep =
+            atomic_load_explicit(&run->borrowed_block_voxels[table[r].deep_block], memory_order_relaxed);
+        printf(
+            " %s %.1f (%.0f%% deep)", block_defs[table[r].block].name,
+            (libc_double_t)((float64_t)(shallow + deep) / (float64_t)MAP_CAVE_CHUNKS),
+            (libc_double_t)(shallow + deep > 0u ? (float64_t)deep * 100.0f64 / (float64_t)(shallow + deep) : 0.0f64));
+    }
+    printf("\n");
 }
 
 static void map_slice_job(job_worker_t *worker, void *borrowed_argument) {
@@ -1169,6 +1212,12 @@ static bool map_seed(job_system_t *system, map_run_t *run, const map_memory_t *m
         atomic_store_explicit(&run->cave_opened[band], 0u, memory_order_relaxed);
         atomic_store_explicit(&run->cave_standing[band], 0u, memory_order_relaxed);
     }
+    for (uint32_t b = 0u; b < BLOCK_COUNT; b++) {
+        atomic_store_explicit(&run->borrowed_block_voxels[b], 0u, memory_order_relaxed);
+    }
+    for (uint32_t r = 0u; r < TERRAIN_ORE_ROWS; r++) {
+        atomic_store_explicit(&run->borrowed_row_veins[r], 0u, memory_order_relaxed);
+    }
     run->origin_x = GAME_WORLD_MIDDLE - (int32_t)(MAP_ACROSS_BLOCKS / 2u);
     run->origin_y = GAME_WORLD_MIDDLE - (int32_t)(MAP_ACROSS_BLOCKS / 2u);
     /* A column of the map is on the grid of its step, so the same place is the same pixel however it is found. */
@@ -1277,6 +1326,7 @@ static bool map_seed(job_system_t *system, map_run_t *run, const map_memory_t *m
                (libc_double_t)(cut + standing > 0u ? map_percent(cut, cut + standing) : 0.0f64));
     }
     printf("\n");
+    map_ores_print(run);
 
     printf("  ground at %d or more, in pieces of at least 0.1 km^2: %u, %u of them 1 km^2; the largest %.1f km^2, %.1f "
            "km across; highest ground %d\n",
@@ -1325,7 +1375,8 @@ int32_t main(int32_t argc, char **argv) {
     const uint64_t rock_voxels = (uint64_t)MAP_WORKERS * MAP_ROCK_VOXELS;
     const uint64_t total = rock_voxels * (1u + 4u) + worker_voxels * 3u + fields_bytes + columns_bytes + mouths_bytes +
                            slice_voxels * 3u + (uint64_t)MAP_PIXELS * (1u + 4u + 4u) + pixels_count * 4u +
-                           stream_bytes + one_column_bytes + (uint64_t)MAP_SEEDS_MAX * sizeof(map_table_t) + 4096u;
+                           stream_bytes + one_column_bytes + (uint64_t)MAP_SEEDS_MAX * sizeof(map_table_t) +
+                           (uint64_t)(BLOCK_COUNT + TERRAIN_ORE_ROWS) * sizeof(uint64_t) + 4096u;
     heap_region_t memory_region = {0};
     if (!heap_reserve(total, &memory_region)) {
         return 2;
@@ -1341,6 +1392,10 @@ int32_t main(int32_t argc, char **argv) {
     map_table_t *const tables = (map_table_t *)cursor;
     cursor += (uint64_t)MAP_SEEDS_MAX * sizeof(map_table_t);
     map_run_t run = {0};
+    run.borrowed_block_voxels = (_Atomic uint64_t *)cursor;
+    cursor += (uint64_t)BLOCK_COUNT * sizeof(uint64_t);
+    run.borrowed_row_veins = (_Atomic uint64_t *)cursor;
+    cursor += (uint64_t)TERRAIN_ORE_ROWS * sizeof(uint64_t);
     run.borrowed_blocks = (uint16_t *)cursor;
     cursor += worker_voxels * 2u;
     run.borrowed_fields = (terrain_hydrology_column_t *)cursor;

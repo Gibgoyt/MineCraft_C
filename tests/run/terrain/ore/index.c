@@ -8,6 +8,7 @@
 #include "terrain/index.h"
 #include "thread/index.h"
 #include "time/index.h"
+#include "types/block_state/index.h"
 
 #include <inttypes.h>
 #include <math.h>
@@ -46,7 +47,9 @@ static const uint64_t ORE_WORLD = 0x1234567890ABCDEFull;
  * blocks after them in the alphabet moved. */
 /* Plan 005 phase 11 added chromium_ore and deepslate_chromium_ore. The land is the same, as the digest over the numbers before
  * them showed: the numbers of the blocks after them in the alphabet moved. */
-static const uint64_t ORE_DIGEST_PIN = 0xE5E11DFC2D901869ull;
+/* Plan 005 phase 11 added chromium ore to config/ores/, laid last: the land differs only by its veins in rock, as the same
+ * file at a rate of 0 gave the pin before. */
+static const uint64_t ORE_DIGEST_PIN = 0x782E6E5ADF9AE17Full;
 
 static uint64_t ore_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -119,6 +122,8 @@ static const ore_expected_row_t ORE_EXPECTED[TERRAIN_ORE_ROWS] = {
     {"ore/diamond_large", 57u, -406, -92, ANY, BLOCK_ID_DIAMOND_ORE, BLOCK_ID_DEEPSLATE_DIAMOND_ORE, 12u, T},
     {"ore/emerald", 4096u, -154, 500, 120, BLOCK_ID_EMERALD_ORE, BLOCK_ID_DEEPSLATE_EMERALD_ORE, 3u, U},
     {"ore/emerald_peak", 4608u, 501, 1250, 120, BLOCK_ID_EMERALD_ORE, BLOCK_ID_DEEPSLATE_EMERALD_ORE, 3u, U},
+    /* Plan 005 phase 11: config/ores/chromium, laid last. */
+    {"ore/chromium", 1024u, -250, -40, ANY, BLOCK_ID_CHROMIUM_ORE, BLOCK_ID_DEEPSLATE_CHROMIUM_ORE, 6u, U},
 };
 
 TEST(the_table_is_the_one_the_readme_gives) {
@@ -246,7 +251,7 @@ typedef struct ore_family_t {
 } ore_family_t;
 static_assert(sizeof(ore_family_t) == 16);
 
-enum : uint32_t { ORE_FAMILIES = 7u };
+enum : uint32_t { ORE_FAMILIES = 8u };
 static const ore_family_t ORE_FAMILY[ORE_FAMILIES] = {
     {"coal", BLOCK_ID_COAL_ORE, BLOCK_ID_DEEPSLATE_COAL_ORE, {0u}},
     {"copper", BLOCK_ID_COPPER_ORE, BLOCK_ID_DEEPSLATE_COPPER_ORE, {0u}},
@@ -255,6 +260,7 @@ static const ore_family_t ORE_FAMILY[ORE_FAMILIES] = {
     {"lapis", BLOCK_ID_LAPIS_ORE, BLOCK_ID_DEEPSLATE_LAPIS_ORE, {0u}},
     {"diamond", BLOCK_ID_DIAMOND_ORE, BLOCK_ID_DEEPSLATE_DIAMOND_ORE, {0u}},
     {"emerald", BLOCK_ID_EMERALD_ORE, BLOCK_ID_DEEPSLATE_EMERALD_ORE, {0u}},
+    {"chromium", BLOCK_ID_CHROMIUM_ORE, BLOCK_ID_DEEPSLATE_CHROMIUM_ORE, {0u}},
 };
 
 /* All-stone columns, as a guide to what the rows do on their own, with no land's shape in the way. Over many chunks. */
@@ -314,6 +320,7 @@ TEST(each_ore_lies_at_its_depths_in_its_own_form) {
     CHECK(lowest[3] >= MC_WORLD_Z_MIN + 1 && highest[3] <= -60 + 7);
     CHECK(lowest[4] >= MC_WORLD_Z_MIN + 1 && highest[4] <= 2 + 7);
     CHECK(lowest[5] >= MC_WORLD_Z_MIN + 1 && highest[5] <= -92 + 7);
+    CHECK(lowest[7] >= MC_WORLD_Z_MIN + 1 && highest[7] <= -40 + 3);
     /* What the table is for: which is common, and where. */
     const uint64_t coal = counts[0] + deep_counts[0];
     const uint64_t iron = counts[2] + deep_counts[2];
@@ -326,6 +333,75 @@ TEST(each_ore_lies_at_its_depths_in_its_own_form) {
     CHECK(deep_counts[5] > counts[5] * 20u); /* a diamond is nearly always in deepslate */
     CHECK(deep_counts[3] > counts[3]);       /* gold is mostly below it */
     CHECK(counts[0] > deep_counts[0]);       /* coal mostly above it */
+    terrain_deinit(&terrain);
+}
+
+/* Plan 005 phase 11: chromium, from config/ores/chromium, only from -250 to -40 and at its rate: 1024 veins in 256 chunks is 4 a
+ * chunk, and none is lost, as the whole range is in the world. Into all-stone columns from the bottom of the world to well above
+ * its range, so what limits it is the row alone. */
+TEST(chromium_lies_only_from_minus_250_to_minus_40_at_4_veins_a_chunk) {
+    enum : uint32_t { ACROSS = 128u, TALL = 351u, LAYER = ACROSS * ACROSS, VOXELS = LAYER * TALL };
+    const terrain_ore_row_t *const table = terrain_ore_table();
+    uint32_t row = TERRAIN_ORE_ROWS;
+    for (uint32_t r = 0u; r < TERRAIN_ORE_ROWS; r++) {
+        row = strcmp(table[r].borrowed_name, "ore/chromium") == 0 ? r : row;
+    }
+    REQUIRE(row == TERRAIN_ORE_ROWS - 1u); /* laid last, so it moves no vein of another row */
+    terrain_t terrain;
+    REQUIRE(terrain_init(&terrain, ORE_WORLD));
+    const terrain_density_box_t box = {.origin_x = 4096,
+                                       .origin_y = -2048,
+                                       .origin_z = MC_WORLD_Z_MIN,
+                                       .count_x = ACROSS,
+                                       .count_y = ACROSS,
+                                       .count_z = TALL};
+    uint64_t veins = 0u;
+    uint32_t fewest = UINT32_MAX;
+    uint32_t most = 0u;
+    for (int32_t cy = box.origin_y >> 4; cy < (box.origin_y + (int32_t)ACROSS) >> 4; cy++) {
+        for (int32_t cx = box.origin_x >> 4; cx < (box.origin_x + (int32_t)ACROSS) >> 4; cx++) {
+            const uint32_t here = terrain_ore_chunk_veins(terrain.borrowed_ore, row, cx, cy);
+            veins += here;
+            fewest = here < fewest ? here : fewest;
+            most = here > most ? here : most;
+        }
+    }
+    const uint64_t chunks = (uint64_t)(ACROSS / ORE_CHUNK) * (ACROSS / ORE_CHUNK);
+    uint16_t *const blocks = test_alloc(t, (uint64_t)VOXELS * sizeof(uint16_t));
+    ore_fill_with(blocks, VOXELS, BLOCK_ID_STONE);
+    ore_fill_with(blocks, LAYER, BLOCK_ID_BEDROCK);
+    terrain_ore_fill_box(terrain.borrowed_ore, &box, blocks);
+    uint64_t found = 0u;
+    uint64_t deep = 0u;
+    int32_t lowest = INT32_MAX;
+    int32_t highest = INT32_MIN;
+    for (uint64_t i = 0u; i < VOXELS; i++) {
+        const uint16_t id = block_state_id(blocks[i]);
+        if (id != BLOCK_ID_CHROMIUM_ORE && id != BLOCK_ID_DEEPSLATE_CHROMIUM_ORE) {
+            continue;
+        }
+        const int32_t z = box.origin_z + (int32_t)(i / LAYER);
+        found++;
+        deep += id == BLOCK_ID_DEEPSLATE_CHROMIUM_ORE ? 1u : 0u;
+        lowest = z < lowest ? z : lowest;
+        highest = z > highest ? z : highest;
+    }
+    const float64_t per_chunk = (float64_t)found / (float64_t)chunks;
+    printf("chromium: %" PRIu64 " veins in %" PRIu64 " chunks (%" PRIu32 " to %" PRIu32
+           " a chunk), %.1f voxels a chunk, "
+           "%.0f%% deepslate, z from %" PRId32 " to %" PRId32 "\n",
+           veins, chunks, fewest, most, (libc_double_t)per_chunk,
+           (libc_double_t)((float64_t)deep / (float64_t)(found == 0u ? 1u : found) * 100.0f64), lowest, highest);
+    CHECK_EQ_U64(fewest, 4u);
+    CHECK_EQ_U64(most, 4u);
+    /* Within a vein's reach, 3 for a size of 6, of the range, and never in the bedrock at the bottom. */
+    CHECK(lowest >= MC_WORLD_Z_MIN + 1);
+    CHECK(highest <= -40 + terrain.borrowed_ore->rows[row].reach);
+    CHECK(highest > -60);
+    /* 4 veins of about 6, less what overlaps and what earlier rows' ore holds, which chromium does not replace. */
+    CHECK(per_chunk > 0.5f64 * 4.0f64 * 6.0f64);
+    CHECK(per_chunk < 1.5f64 * 4.0f64 * 6.0f64);
+    CHECK(deep > found / 2u); /* most of its range is below the deepslate band */
     terrain_deinit(&terrain);
 }
 

@@ -16,7 +16,7 @@
 
 ## Which land a seed makes
 
-`TERRAIN_GENERATOR_VERSION`, in the header, names the land. Any change that gives any seed other blocks raises it, and a save made on another version is refused: see `run/src/save/world/`. `FEA_DIGEST_OF_GENERATOR` in `tests/run/terrain/feature/` has a row for each version, so a change to the land fails that test until the version goes up with it.
+`TERRAIN_GENERATOR_VERSION`, in the header, names the land. Any change that gives any seed other blocks raises it, and a save made on another version is refused: see `run/src/save/world/`. `FEA_DIGEST_OF_GENERATOR` in `tests/run/terrain/feature/` has a row for each version, so a change to the land fails that test until the version goes up with it. One exception so far, open for Ahmed to confirm: plan 005 phase 11's chromium ore changed the land by veins in rock alone, and changed version 1's row rather than the version, so that worlds saved before it still open (that phase's issue 8).
 
 ## Parts
 
