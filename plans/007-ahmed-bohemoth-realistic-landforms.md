@@ -241,10 +241,12 @@ So `TERRAIN_DENSITY_HEIGHT_MAX`, `HEIGHT_MIN`, `NEVER_SOLID_FROM` (1224), `TERRA
 The plateau, edge-warp, basin and ruggedness fields have cells of 2 to 24 km. Sampling them every 4 blocks would add about 11 octaves to every lattice column. That is about 33% more profile cost, with `bench_terrain`'s margin at 13%.
 
 - **They are sampled on a world-aligned lattice every 32 blocks**, at $x = 32i$, $y = 32j$. A lattice column bilinearly blends its 4 surrounding nodes, $x$ first and then $y$, in float64. That is the same rule as the density's own lattice, so **a column's bits never depend on the box or batch it came in**.
-- Within a batch, nodes are found once and shared. A 32-block density tile has at most 4 nodes; a scattered estimate call has up to 4 per point.
+- Within a batch, nodes are found once and shared. A chunk's box is 16-aligned, so its 5 by 5 lattice columns lie inside one 32-block cell: **4 nodes**. A scattered estimate call has up to 4 per point.
 - **Cost:**
-  - about 11 octaves for every node, which is $11/64 \approx 0.2$ octaves per 4-block lattice column inside a box;
+  - about 11 octaves a node (uplift 3, edge warp 4, basin 2, ruggedness 2);
+  - so 44 octaves per chunk box of 25 lattice columns, **about 2 octaves a lattice column**, against 30 to 35 today;
   - up to 44 per point for scattered single-point estimates, which the climate's tile build absorbs (cold tile 30.7 ms against 100, plan 004 phase 03).
+- **No node needs its neighbours.** That is why the plateau's asymmetry reads $b$ and not gradients (3.4): a gradient needs a ring of nodes round each box, which would cost 3 times as many.
 - **Fallback, if the lattice shows** (straight-line artefacts at 32-block scale, unlikely with cells of at least 2 km): sample directly, and pay the octaves.
 - **Why the escarpment can be crisp anyway:**
   - the lattice blends the *smooth input* $L$;
@@ -289,9 +291,10 @@ The spline never overshoots, so the face is concave: gentle at its foot and stee
 
 **Asymmetry: "it does not need to come down fast".** A blob of high $L$ has an edge all round. A real plateau has its escarpment on the seaward side and slopes away gently inland. So:
 
-- On the landform lattice, each node also gets $\nabla L$ and $\nabla b$ by central differences of neighbouring nodes. These are pure functions of the node and its 4 neighbours.
-- Where $\hat\nabla L \cdot \hat\nabla b < 0$, the land is falling *toward* the interior. That is the plateau's back edge. There $L$ is stretched before the spline: $L' = 0.53 + (L - 0.53) \cdot k$, with $k$ blending from 1 to 0.2. So that edge is about **5 times wider**: tier 2's back slope goes from the face's 1:2 ($g = 2.1$) to about 2.4:1 ($g = 0.42$), spread over about 625 blocks instead of 125.
-- The blend is a smoothstep of the cosine, built from $+$, $-$, $\times$ and $\div$ only.
+- **Which edge is which.** $L$ carries $+0.25\,b$, so a plateau's edge near the coast (low $b$) is where it rises from the coastal plain: its seaward face. An edge far inland (high $b$) is where the uplift itself fades: its back edge.
+- **The stretch.** So the stretch reads $b$ at the column, which the density batch already has: $k = 1$ where $b \le 0.2$, falling by a smoothstep to $k = 0.2$ at $b \ge 0.5$. Before the spline, $L' = 0.53 + (L - 0.53) \cdot k$ where $L < 0.53$.
+- **The result.** The back edge is about **5 times wider**: tier 2's back slope goes from the face's 1:2 ($g = 2.1$) to about 2.4:1 ($g = 0.42$), spread over about 625 blocks instead of 125.
+- **Cost and the fallback.** This needs no gradient and no neighbour node. If the pictures show steep faces facing inland (phase 01's tool measures the share of escarpment length whose foot is nearer the sea than its rim, target ≥ 75%), the fallback is the true test: $\nabla L \cdot \nabla b < 0$, with gradients by differences on a ring of nodes. It costs about 3 times the node octaves and is measured before it is chosen (phase 03).
 
 So walking inland off the rim, the ground stays high for kilometres and comes down slowly, if it comes down at all.
 
@@ -445,7 +448,7 @@ So the floor reaches at most -100. $S_B$ is concave (a flat floor with steep sid
 ### 3.12 Determinism and no libm
 
 - Every new term uses $+$, $-$, $\times$, $\div$, comparisons, `fabs`, and the existing spline and spread, in float64 and then float32 as today.
-- No `pow`, `exp`, `sqrt` or trig decides a block. Gradients on the landform lattice are differences, and "normalised" dot products use the sign and a smoothstep of $\frac{a \cdot b}{|a|\,|b|}$, computed as $\frac{(a \cdot b)\,|a \cdot b|}{|a|^2 |b|^2}$ (squared cosine with sign). This needs no `sqrt`.
+- No `pow`, `exp`, `sqrt` or trig decides a block. If the gradient fallback of 3.4 is ever used, its "normalised" dot product is the squared cosine with its sign, $\frac{(a \cdot b)\,|a \cdot b|}{|a|^2 |b|^2}$, which needs no `sqrt`.
 - **1 and 16 workers give the same bytes.** Every phase that changes land runs that check. Lattice nodes are pure functions, so no order can matter.
 
 ### 3.13 Atlas contour lines (phase 02)
@@ -531,6 +534,7 @@ On 8 seeds (plan 003's eight), 64 by 64 km each, land only unless said. "Today" 
 | Peak concavity ratio, median (3.6) | Peaks with relief ≥ 150 | About 1 | **≥ 3** |
 | Plateau pieces ≥ 25 km² (≥ 250 high, local relief ≤ 80 in 512 blocks) | Connected | 0 | **≥ 2 per map; largest ≥ 80 km², ≥ 8 km across** |
 | Escarpment length (a plateau edge dropping ≥ 300 within 1500 blocks) | Traced | 0 | ≥ 30 km per map |
+| Escarpment facing the sea (its foot nearer the sea than its rim) | Share of escarpment length | — | ≥ 75% |
 | Longest range piece at ≥ 500 | Longest extent | Phase 01 (expected under 10 km) | ≥ 20 km on at least 6 of 8 seeds |
 | Knobs (prominence 15 to 150) on a base ≥ 250 | Count | About 0 | ≥ 25% of knobs |
 | Dry basins | Count, floor | 0 | 1 to 3 per map (averaged over 8), floors -40 to -100 |
