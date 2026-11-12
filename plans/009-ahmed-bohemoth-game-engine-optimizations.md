@@ -70,7 +70,7 @@ Ranked by what it can explain. **Proven** means from the code with arithmetic; *
    - **The far field at render distance 64.** The top quarter of the picture is sky: every sky pixel sends a far ray that starts at the eye and passes by full detail's columns. Plan 005 phase 8 measured a far field at 64 adding 2.9 ms (plains) to 12 ms (water) to the primary pass on the bench, even after far rays were limited to where shade will look.
    - **Leaves on the right.** Each leaf pixel asks `lod_past_kernel` whether shade's ray gets out of full detail, a `traverse_trace_stopping` through the canopy, leaf voxel by leaf voxel (plan 005 phase 8: about 2.5 ms on `jungle/orbit`).
 3. **Shade, 14.62 ms (suspected: the moon's shadow rays, alpha layers, AO).**
-   - **Moon rays at 13° elevation, uncapped.** Every surface facing the moon sends one ray toward it (`shade_sun_seen`, `cuda/src/shade/index.cu:28-100`). It has no length limit and walks block voxels all the way to the edge of full detail. At 13° elevation over a slope it grazes the terrain for hundreds of blocks, through up to `SHADE_SUN_LAYERS` = 8 surfaces of leaves. And the moon's direct light is dim, so most of that work changes few pixel values.
+   - **Moon rays at 13° elevation, uncapped.** Every surface facing the moon sends one ray toward it (`shade_sun_seen`, `cuda/src/shade/index.cu:28-100`). It has no length limit and walks block voxels all the way to the edge of full detail. At 13° elevation over a slope it grazes the terrain for hundreds of blocks, through up to `SHADE_SUN_LAYERS` = 8 surfaces of leaves. The moon's direct light is dim in absolute terms (0.05 to 0.10, `render_sky_fill`, `run/src/render/frame/index.c:387-389`), but it is still more than the night's ambient (0.03 to 0.07), so its shadows do show and cannot simply be dropped.
    - **Leaves.** A ray landing on a leaf texel of alpha 0 starts a fresh trace from that hole, up to `SHADE_ALPHA_LAYERS` = 16 surfaces (`run/include/gpu_bridge/shade/index.h:35`). A third of this picture is leaves.
    - **AO**: one ray per pixel one frame in four, plus fresh rays for newly seen pixels (plan 008 C3 covers the turning case).
 4. **Coarse, 1.67 ms (proven small).** Tiles looking along the slope stop early, as the stretch's box holds the ground.
@@ -277,7 +277,7 @@ compile/config/README.md                    what lives here, the schema, the wor
 compile/config/render/README.md
 compile/config/render/lod/index.yaml        pixel error, near guarantee, band dither, level count, build margins
 compile/config/render/traverse/index.yaml   coarse-pass stretches, coalescing, distance-field cap
-compile/config/render/shade/index.yaml      AO turns, rays, samples, reach; alpha and sun layers; shadow cone; night cut
+compile/config/render/shade/index.yaml      AO turns, rays, samples, reach; alpha and sun layers; shadow cone; dim-light cut
 compile/config/render/temporal/index.yaml   TAA clamp and blend; upscale ladder; jitter length
 compile/config/render/budget/index.yaml     upload and far-field bytes a frame, far-field jobs
 ```
@@ -389,7 +389,7 @@ A secondary ray needs only the detail its effect can show:
 
 - **Shadow (sun and moon) rays, by the light's cone.** The sun and moon are each about 0.53° across, so a shadow cast from L blocks away has a penumbra L × tan(0.53°) = **0.0093 L blocks** wide. An occluder detail smaller than that cannot show in a real shadow. So a shadow ray may step level k once it has travelled L<sub>k</sub> = ε<sub>k</sub> / (0.0093 × `shadow_cone_scale`) blocks from its surface: **level 1 from 108 blocks, level 2 from 216, level 3 from 432.** It always starts at level 0, so a near tree's shadow at your feet is exact. This is Teardown's ambient and sun tracing ("misses increase the mip"), made conservative by the cone.
 - **Also by the receiver's distance:** a surface at distance d needs no shadow detail finer than its own band. So a shadow ray from a level-k surface starts at level k (judgment; tested against the reference).
-- **Night cut.** When the moon's or sun's direct light could change a lit pixel by under `shadow_skip_below` (YAML, default 2 / 255 after tone map, worked out per frame by `render_sky_fill`), no shadow ray is sent. 5.png's moonlit mountain is that case, to measure in phase 01 (Q5).
+- **Dim-light cut.** When the direct light could change a lit pixel by under `shadow_skip_below` (YAML, default 2 / 255 after tone map, worked out per frame by `render_sky_fill`), no shadow ray is sent. **This does not cover 5.png:** the moon's direct light (0.05 to 0.10) is above the night's ambient, and at the dark end of sRGB a change of 2 / 255 is a direct light of only 6 × 10⁻⁴. It fires only where the light fades through the horizon (within about 7° of it, `fade` in `render_sky_fill`) and under heavy overcast. The moon's shadow rays at his spot are made cheaper by the cone rule above, not cut (Q5).
 - **Alpha layers by distance.** Past `alpha_far_from_blocks`, where a leaf texel is under a pixel (771 / 16 = **48 blocks** at 1080p and 70°), a canopy pixel goes through at most `alpha_layers_far` holes and then takes the texture's mean colour, which the code already does at layer 16 ("what far leaves look like anyway", `cuda/src/shade/README.md`).
 - **AO** stays as it is (reach 3 blocks; plan 008 phase 04 owns its fresh rays).
 - **Far-field sun rays** are coarse already (`lod_sun_reaches`).
@@ -435,7 +435,7 @@ All of this is **judgment**, to be replaced by phase 01's numbers.
 | Pass | Today | After phases 04 to 06 | After phase 07 (56 % of the rays) |
 |---|---|---|---|
 | Primary (with the far field) | 10.41 | 6 to 8 (no pass-by, coarse steps, coalescing) | 3.4 to 4.5 |
-| Shade | 14.62 | 7 to 10 (shadow cone and night cut, alpha far) | 4 to 5.6 |
+| Shade | 14.62 | 7 to 10 (shadow cone, alpha far) | 4 to 5.6 |
 | Coarse | 1.67 | 1.2 | 0.7 |
 | Post + upscale | 1.40 | 1.40 | 1.6 |
 | Readback | 1.34 | (plan 008 phase 03: off the critical path) | |
@@ -517,7 +517,7 @@ These are first targets; Ahmed changes any at the phase 01 gate (Q10).
 - **The seam:** a flat plain and a 45° slope crossing d<sub>1</sub> and d<sub>2</sub>: no pixel beyond ε<sub>k+1</sub> projected, and with dither and TAA, after 32 frames, no visible ring. Ahmed judges the picture at the gate.
 - **Edits:** mine a block at 400 blocks (level 1). The level-1 voxel changes within 100 ms, and the level-2 one too.
 - **Shadows:** a 1-block pillar casting on the floor from 20 blocks gives the same shadow pixels as today. A 1-block pillar 300 blocks from its shadow, under the cone rule: the shadow may vanish or blur, and the test documents what it does.
-- **Night cut:** at the threshold, no lit pixel moves by more than 2 / 255.
+- **Dim-light cut:** at the threshold, no lit pixel moves by more than 2 / 255.
 - **2³ coalescing and the distance byte:** `tests/cuda/traverse/` already traces against a reference that knows no skipping; every hit must be the same voxel and `t` to the bit, with step counts lower.
 - **Uniform water bricks:** the water walk's result is identical with and without, on every water golden picture.
 - **Temporal upscaling:** convergence (section 4.7); a moving camera has no ghost past TAA's own clamp.
@@ -534,7 +534,7 @@ These are first targets; Ahmed changes any at the phase 01 gate (Q10).
 | Removing Full detail changes what the sim loads (map radius 32 → about 27 chunks at E = 2) | The sim radius was always full detail; it now follows r<sub>0</sub>. A floor `block_radius_min_chunks` (YAML, default 12) keeps gameplay's reach. Mobs and ticking are untouched inside it |
 | A narrow FOV wants more level 0 than the table holds | Capped at `block_radius_max_chunks`, with an F3 note (Q4) |
 | Shadow cone LOD loses thin far shadows (a far tower's shadow) | That is the physics of a 0.53° light. `shadow_cone_scale` is tunable; the test documents it |
-| The night cut makes moonlit shadows vanish | Only below 2 / 255 of change; Q5 lets Ahmed turn it off |
+| The dim-light cut makes shadows vanish at dusk | Only below 2 / 255 of change; Q5 lets Ahmed turn it off |
 | Uniform-brick mask changes the section format | Sections are re-encoded from the world on every load; nothing on disk changes. All `world_buffers` static_asserts move together |
 | Temporal upscaling softens the still picture | Convergence test; the default stays 100 % until Ahmed has seen 75 (Q9) |
 | Plan 008's instruments are not there yet | 009 phase 01 adds only its counters and the reference mode, and records what it lacked |
@@ -601,7 +601,7 @@ Each phase ends somewhere worth stopping and has its own file in plan 004's stru
 
 ### Phase 06: Secondary rays by level
 
-- [ ] Shadow rays by the light's cone and by the receiver's band; the night cut; alpha layers by distance
+- [ ] Shadow rays by the light's cone and by the receiver's band; the dim-light cut; alpha layers by distance
 
 **Gate:** Ahmed looks at shadows by day and by night at his spot and says whether they read right.
 
@@ -627,7 +627,7 @@ Each has a default, and none blocks approval.
 | Q2 | The world of 5.png: seed and the yaw and pitch you looked at | Your seed from plan 005 phase 8 (`11107447384583428913`); yaw and pitch fitted to the picture |
 | Q3 | Move `game.render_distance_default` and `_max` from `machine.yaml` to tuning YAML? | Leave them |
 | Q4 | A narrow FOV past `block_radius_max_chunks` of level 0: cap (coarser than E there) or size the table for it? | Cap at 48 chunks, F3 says so |
-| Q5 | Skip shadow rays when the light would change a pixel by under 2 / 255 (moonlight)? | Yes, at 2 / 255 |
+| Q5 | Skip shadow rays when the light would change a pixel by under 2 / 255 (only near the horizon crossing and under overcast; not ordinary moonlight)? | Yes, at 2 / 255 |
 | Q6 | A separate, smaller pixel error for silhouettes against the sky, and per material (leaves, water)? | One E for all, in phase 04; per-kind only if the error share on peaks is over 1 % |
 | Q7 | Software variable-rate shading (one shade per 2 × 2 on flat tiles) after phase 07? | Not in this plan |
 | Q8 | A world-space shadow cache like plan 008's AO cache? | Not in this plan |
