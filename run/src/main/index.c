@@ -26,6 +26,7 @@
 #include "texture/index.h"
 #include "thread/index.h"
 #include "time/index.h"
+#include "tuning/hash/index.h"
 #include "types/index.h"
 #include "world/index.h"
 
@@ -1173,6 +1174,9 @@ static void main_report(const app_t *app) {
     printf("cpu present: %s\n", names);
     cpu_check_names(app->cpu_required & ~app->cpu_present, names, sizeof(names));
     printf("cpu missing: %s\n", names);
+    /* Which compile/config/ this binary was built with: plan 009 phase 02. One line per key, path key value. */
+    printf("tuning hash 0x%016" PRIx64 ", %" PRIu32 " keys\n", (uint64_t)MC_TUNE_HASH, (uint32_t)MC_TUNE_KEY_COUNT);
+    printf("%s", MC_TUNE_TEXT);
 }
 
 /* app_t is most of what a frame may hold, so what main calls keeps its locals in frames of its own. At -O3 with -flto, inlined here, they came to 16448 bytes against 16384. */

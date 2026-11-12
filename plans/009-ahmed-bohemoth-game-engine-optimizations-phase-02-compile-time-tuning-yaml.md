@@ -192,11 +192,11 @@ ao_reach:
 - [x] `compile/src/tuning/` and `compile/include/tuning/`, README with the eight fields
 - [x] `tests/compile/tuning/` (ctest `compile_tuning`): every refusal at its line, exact decimals, unchanged files untouched, the hash, sorted order
 - [x] `cmake/generated.cmake`: glob, `inputs.txt`, stamp with BYPRODUCTS, `mc_tuning` before every compile
-- [ ] A no-change build compiles nothing; a one-value change rebuilds only dependents (recorded)
+- [x] A no-change build compiles nothing; a one-value change rebuilds only dependents (recorded)
 - [x] `compile/config/README.md` (schema, units, workflow, what counts as tuning) and `compile/config/render/README.md`
-- [ ] `render/lod`, `render/traverse`, `render/shade`, `render/temporal`, `render/budget` files, each moved in its own commit with golden tests passing
-- [ ] Field-sizing uses keep static_asserts against the tuned value
-- [ ] `--report` prints the hash and every value; `history.tsv` has a `tuning` column
+- [x] `render/lod`, `render/traverse`, `render/shade`, `render/temporal`, `render/budget` files, each moved in its own commit with golden tests passing
+- [x] Field-sizing uses keep static_asserts against the tuned value
+- [x] `--report` prints the hash and every value; `history.tsv` has a `tuning` column
 - [ ] REPO_STRUCTURE (sections 2, 4, 5) and CODING_STANDARD rule
 - [ ] Full `bench_world`: every settled hash unchanged
 - [ ] Ahmed changes `ao_turns` from 4 to 2, rebuilds, and sees it in `--report`; then back
@@ -267,6 +267,10 @@ Appended as they land:
 - `a92c08d7` Add the tuning tool, which turns compile/config/<path>/index.yaml into MC_TUNE_* headers at build time, with its test and its CMake step.
 - `c1178a41` Write the tuning hash to generated/tuning/hash/index.h, as tuning/index.h is the tool's own header's name and the lint and the compile tests would find that one.
 - `d0228ee4` Move the upload and far-field budgets to compile/config/render/budget/index.yaml, with the READMEs for compile/config, every golden picture unchanged.
+- `9590d856` Move the far field's radius, margin, tree level and skip count to compile/config/render/lod/index.yaml, with the radius held to a byte, every golden picture unchanged.
+- `24b8687d` Move shade's layers, AO turns, rays, samples and reach, god-ray steps and water depth to compile/config/render/shade/index.yaml, with asserts for the fields and the step cap, every golden picture unchanged.
+- `f21ef0f1` Move TAA's blend, clip and still-camera numbers to compile/config/render/temporal/index.yaml, every golden picture unchanged.
+- `b15c01c7` Move the coarse pass's stretches and pads to compile/config/render/traverse/index.yaml, every golden picture unchanged.
 
 ## Issues found
 
@@ -298,3 +302,59 @@ derived constant depends on; each of those keeps a `static_assert` against the t
 
 None of them sizes an array inside a struct. Every constant keeps its name in code, defined from its `MC_TUNE_*` define, so no
 use site changes (see issue 2).
+
+### 2. Changed from the plan, and why
+
+- **Code keeps its names.** Each moved constant stays defined in code under its old name, set from its `MC_TUNE_*` define
+  (`SHADE_AO_TURNS = MC_TUNE_RENDER_SHADE_AO_TURNS`), instead of every use site reading `MC_TUNE_*`. The uses are in files
+  plan 009 phase 01 and others are editing at the same time (`cuda/src/shade/`, `cuda/src/lod/`, `tests/cuda/`), so a
+  rename there would conflict for nothing; the define is still read at one place each, which `every_define_is_used` checks.
+- **Floats are `F32(3.0)`, not `3.0F`.** Run code is C with `_Float32`, where `3.0F` is a plain `float` and `F32` gives
+  `3.0f32`; the generated headers are read by both sides, which `plans/CODING_STANDARD.md` section 2 says use `F32`. The
+  literal text is the same as the code had (`F32(0.1)` was `POST_TAA_BLEND`), so the bits are too. The `.hu` holds the very
+  same defines, not `3.0F`, so a CUDA file that sees both through different headers gets one definition, not a clash.
+- **The hash is in `generated/tuning/hash/index.h`, not `generated/tuning/index.h`.** `compile/include/tuning/index.h` is
+  the tool's own header; `standards_lint` resolves `"tuning/index.h"` from `run/` to it and calls it a run-to-compile
+  include, and a compile test (compile/include first on its path) would include it instead. So `hash` is refused as a top
+  directory of `compile/config/`.
+- **The unit `bool`**, for a `bool` key and only for one: the plan's unit list had nothing a switch fits, and master
+  section 6 gives `coalesce_2` the unit "bool".
+- **An `f32` must be written as it is to come out** (digits, a point, digits; `3.0e0` and `+3.0` are refused), which is
+  the plan's "an f32 with no decimal point" made exact.
+- **Fixtures are strings in the test** (`TT_FIXTURE` and mutations of it, as `compile_machine_config` does), not files
+  under `fixtures/`, so each mistake is one line of a table.
+- **`lod_frame_bytes` is its own key**, 4194304 like `upload_bytes_per_frame`, where the code had it equal to the upload
+  budget by name. Same value, and now each can be tuned alone.
+- **Field-sizing asserts:** `RENDER_LOD_RADIUS_COLUMNS <= UINT8_MAX` (the `uint8_t` radii), `SHADE_AO_SAMPLES_MAX` and
+  `SHADE_AO_FRESH_RAYS <= UINT16_MAX` (`shade_ao_pixel_t.samples`), `1 <= SHADE_AO_TURNS <= 4` (`shade_ao_turn`'s table of
+  four places), and, in C++ only (nvcc reads the header too; C cannot compare floats in a `static_assert`),
+  `SHADE_AO_STEPS >= SHADE_AO_REACH * sqrt(3) + 3`. The YAML's ranges say the same.
+- **A removed YAML file leaves its header** in `generated/tuning/` until a clean build (written in the tool's README).
+
+### 3. For the gate: `ao_turns` 2
+
+`ao_turns` 2 is in range, but `shade_ao_turn` then only ever gives a turn to places 0 and 3 of each 2 x 2 group of 8 x 4
+warps: places 1 and 2 send no history ray. The picture still has AO there only through what fresh rays and neighbours
+give. That is the code's behaviour today with `SHADE_AO_TURNS` 2, not something this phase changed; it is why the range
+stops at 4 and the `why` says so.
+
+### 4. Rebuilds (step 3), debug preset, measured
+
+- **Two builds in a row:** the second ran only the three steps that run on every build (`mc_check_textures_local`, the
+  standards lint, the recursion check). The tuning command did not run, and nothing compiled or linked.
+- **One value changed** (`render/budget` `lod_jobs` 48 to 47): the tool ran, rewrote `tuning/render/budget/index.{h,hu}`
+  and `tuning/hash/index.h` only, and 91 C files compiled: 25 in `mc_run` (everything including `render/upload/index.h`
+  or `render/lod/index.h`, which `render/index.h` pulls in), and 66 tests and benches. **No CUDA file
+  compiled.** Putting it back compiled the same 91. `restat` works with the byproducts; that another file's header is left
+  alone is `an_unchanged_file_is_not_rewritten` in `compile_tuning`.
+- `shade` and `temporal` are read by `gpu_bridge` headers nearly all of `cuda/` includes, so a change there rebuilds most
+  CUDA objects; `traverse` rebuilds `cuda/src/traverse/` alone. The hash header is included only by `run/src/main/`,
+  `bench/world/` and `tests/run/types/`.
+
+### 5. Testing the moves
+
+`budget` and `lod` each had their own build and golden run (14 tests: `compile_tuning`, every `render_feature_*`,
+`cuda_traverse`, `cuda_lod`, `run_render_frame`, `run_render_lod`), all passing, except that `compile_tuning` failed once in the `lod` run because the next three YAML files
+were written while it ran (its summary no longer matched the build's); it passed on the next build. Each golden run takes about 10 minutes on
+the shared lock, so `shade`, `temporal` and `traverse` were built and run together, then committed one file each; had a
+picture moved, they would have been split to find which.

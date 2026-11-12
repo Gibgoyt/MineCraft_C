@@ -7,6 +7,8 @@
 #include "main/cpu_check/index.h"
 #include "main/index.h"
 #include "simd/cpuid/index.h"
+#include "tuning/hash/index.h"
+#include "tuning/render/shade/index.h"
 #include "types/index.h"
 
 #include <errno.h>
@@ -932,6 +934,14 @@ TEST(game_reports_its_compiled_defines) {
     CHECK_CONTAINS(result.output, expected);
     CHECK_CONTAINS(result.output, "MC_CPU_ARCH_FLAG=" MC_CPU_ARCH_FLAG "\n");
     CHECK_CONTAINS(result.output, "cpu missing: none\n");
+    /* Plan 009 phase 02: the tuning it was built with, the hash and every value. */
+    snprintf(expected, sizeof(expected), "tuning hash 0x%016" PRIx64 ", %" PRIu32 " keys\n", (uint64_t)MC_TUNE_HASH,
+             (uint32_t)MC_TUNE_KEY_COUNT);
+    CHECK_CONTAINS(result.output, expected);
+    CHECK_CONTAINS(result.output, MC_TUNE_TEXT);
+    snprintf(expected, sizeof(expected), "render/shade ao_turns %" PRIu32 "\n",
+             (uint32_t)MC_TUNE_RENDER_SHADE_AO_TURNS);
+    CHECK_CONTAINS(result.output, expected);
     CHECK(strstr(result.output, "core runtime") == nullptr); /* --report starts no threads */
 }
 
