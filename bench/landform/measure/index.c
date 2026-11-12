@@ -439,7 +439,7 @@ static void lf_cost_box(const lf_run_t *run, uint8_t *scratch, uint32_t item) {
                                        .count_z = LF_LAYERS};
     uint16_t *const blocks = (uint16_t *)(void *)scratch;
     uint8_t *const opened = scratch + (uint64_t)LF_CHUNK * LF_CHUNK * LF_LAYERS * 2u;
-    terrain_generate_box(run->borrowed_terrain, &box, opened, blocks);
+    terrain_generate_box_fallback(run->borrowed_terrain, &box, opened, blocks);
 }
 
 static void lf_job(job_worker_t *worker, void *borrowed_argument) {

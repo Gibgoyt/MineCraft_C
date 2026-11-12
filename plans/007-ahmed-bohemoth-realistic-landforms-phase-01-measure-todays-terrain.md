@@ -1,6 +1,6 @@
 # 007-ahmed-bohemoth-realistic-landforms — phase 1: Measure today's terrain
 
-**Status:** in progress: built and measured, the `run_terrain_*` digests being run   (updated 2026-11-12)
+**Status:** done, waiting for Ahmed's gate   (updated 2026-11-12)
 
 Read first: `plans/007-ahmed-bohemoth-realistic-landforms-phase-00-vision-and-plan-files.md`, then the master `plans/007-ahmed-bohemoth-realistic-landforms.md`: section 0 ("Why the hills look like 1:1 cones"), 3.14 and 4. Every number here comes from the master. Where this file adds a number the master does not give, it says so and why.
 
@@ -242,7 +242,7 @@ This phase may edit these, plus this file:
 - [x] The profile's share of `bench_terrain`, and the tallest place's columns a second
 - [x] Run on the 8 seeds; the "Today" table below filled in; every picture looked at and described below
 - [x] `bench/landform/README.md` with the results; `plans/REPO_STRUCTURE.md` rows
-- [ ] Every `run_terrain_*` digest unchanged (nothing in `run/` changed)
+- [x] Every `run_terrain_*` digest unchanged (nothing in `run/` changed)
 
 ## Today (filled in by this phase)
 
@@ -290,7 +290,7 @@ On Ahmed's seed `11107447384583428913` and on `2198175988018515243`, in `/tmp/mc
 - **`slope_64km.png`.** Almost no pale "flat" anywhere. Lowland is yellow (moderate, 5:1 to 2:1) mixed with orange (steep); every range is dark red (1:1 to 1:5) **from its foot up**, not only near the top. The two seeds' maps cannot be told apart in kind: **the 1:1 look is everywhere, not where Ahmed happened to look.**
 - **`plateaus_64km.png`.** No yellow plateau at all and no red escarpment, on any seed. The tan range pieces (500 and over) are small blobs and short worms, 1 to 6 km.
 - **`profiles.png`.** Through the tallest peak, along x and y: a 4 km cross-section rises from the sea at about 1:1, with bumps all the way up, to a pointed top; the y section is a single steep-sided mass about 2 km across at 1000. The plains section (no plateau to cut) shows the lowland as 20 to 40 blocks of continuous bumps, not flat. The longest range section is a chain of separate humps with deep saddles between, not a continuous ridge.
-- **`strip.png`.** Equator to pole looks the same at every latitude: the same blotchy sea, bumpy lowland and short ranges. The snowline (plan 004's formula at kappa 0.5, as no plan 006 fallback exists) first meets the ground at 59° N on Ahmed's seed and 63° N on the other; south of that even the summits are under it, north of about 73° all land is above it.
+- **`strip.png`.** Equator to pole looks the same at every latitude: the same blotchy sea, bumpy lowland and short ranges. The snowline (plan 006's fallback, plan 004's formula at kappa 0.5) first meets the ground at 59° N on Ahmed's seed and 63° N on the other; south of that even the summits are under it, and near the pole all land is above it.
 - **`windows.png`.** The real blocks at 4 blocks a pixel: every land window is orange and red with yellow between; the few pale patches are beaches and river floors. Range windows are dark red stripes. They read as the profile's map does, a little steeper (more sheer), which is what the 3D noise adds.
 
 ## Tests
@@ -358,6 +358,18 @@ He may also `/tp` to the printed places (plan 006 phase 01) and compare with the
 
 Appended as they land:
 
+- `98d80288` Add bench_landform, which measures and draws the shape of a seed's land as plan 007 section 4 defines it, with its self-test in ctest, and record today's land on plan 003's 8 seeds and Ahmed's.
+- (the commit that adds this line, after `98d80288`) Build bench_landform on main's terrain_generate_box_fallback, draw the strip's snowline from plan 006's fallback climate, and record plan 007 phase 01's verification.
+
+### Verification, 2026-11-12
+
+- `cmake --build --preset debug` and `--preset release`: exit 0, `standards_lint: clean`.
+- `ctest -R '^run_terrain_landform_measure$'`: passed (5.1 to 6.1 s). `^(standards_lint|clang_format)$`: both passed. Run again after the rebase onto `24011684`: all three passed.
+- `ctest -R '^run_terrain_.*$'`: 11 of 11 passed, before the rebase (biome, cave, cave_walk, density, feature, feature_own, fields, hydrology, landform_measure, ore, seed). Nothing under `run/` changed in this phase, so no digest could move.
+- `bench_landform` on the 8 seeds in two runs of 4, and Ahmed's: exit 0, 28 to 30 s a seed; after the rebase, Ahmed's, `2198175988018515243` and the default seed again, the same numbers.
+- `bench_world_map` on the 8 seeds, in full (not `--map-only`, for the floating rock): two runs of 4, exit 0, 0 columns differing.
+- `pgrep -af "$PWD/build"` printed nothing at the end; no Xvfb was started.
+
 ## Issues found
 
 1. **The answer to "have I not explored enough": the 1:1 look is everywhere.** All 8 seeds and Ahmed's give the same histogram within a few points: about 1% of land flat, 9% gentle, 23% moderate, 25% steep, 24% very steep (1:1 to 1:2), 15% cliff (1:2 to 1:5) and 1.5% sheer. Against master section 4's targets that is 30 times too little flat land and about 6 times too much cliff, and the lowland itself is mostly 5:1 to 1:1, from the hills term (±46 on a cell of 192) and the needles. The maps of different seeds and different latitudes cannot be told apart in kind.
@@ -372,5 +384,6 @@ Appended as they land:
 10. **Changed from the plan: the plateau rule and its self-test numbers.** Read with the 512 square centred on each column, "local relief within 512 blocks is at most 80" cuts 256 blocks off every plateau's rim. Plateau land is instead a column at 250 or over inside **some** 512 square of relief at most 80 (`bench/landform/measure/README.md`). On the self-test's 1:2 edge that takes 40 more blocks each side, so the check wants 27.04 ± 1 km², 5.20 ± 0.032 km across and 20.8 ± 0.5 km of escarpment, not 26.2, 5.12 and 20.5. It measured 27.08, 5.204 and 20.80.
 11. **Changed from the plan: the test's name.** ctest names a test by its directory, so `tests/run/terrain/landform/measure/` is `run_terrain_landform_measure`, not `run_bench_landform_self_check`. It also falls under `^run_terrain_.*$`. Later phases' Verification should use the new name.
 12. **Changed from the plan: the program is three files.** One file passed 2000 lines. `bench/landform/measure/` and `bench/landform/draw/` each hold an `index.h`, and `cmake/targets.cmake` now compiles a `bench/` directory with an `index.h` into the program above it instead of making it a program (6 lines, recorded in `plans/REPO_STRUCTURE.md`).
-13. **Smaller choices of this file's own**, all in the READMEs: rays step one grid step (16 on the map, 4 on the self-test), not always 16; peaks and knobs must be strictly above their four neighbours (else a flat top's every column ties); a ray-less peak needs 8 of its 16 rays; the strip's snowline is where the warmest day's mean is 0 °C, from `climate_heat_from_place` at kappa 0.5 and no current; "steepest 1 km window" is the window with the largest share of real land steeper than 1:1; "lowest dry land below 0" is read from the real blocks of the windows only.
-14. **Self-test results** (release): cone 100.0% of the flank at g 1.00 ± 0.02, concavity 1.013, W50/H 1.000; the p = 2.5 peak concavity 3.141, top decile over the bottom 3 7.98; the plateau 1 piece, 27.08 km², 5.204 km, 20.80 km; the plane 100.00% moderate; 20 knobs, 10 under 150 and 10 at 250 or over; 2998 bytes of table and CSV the same twice on 16 workers and once on 1.
+13. **Smaller choices of this file's own**, all in the READMEs: rays step one grid step (16 on the map, 4 on the self-test), not always 16; peaks and knobs must be strictly above their four neighbours (else a flat top's every column ties); a ray-less peak needs 8 of its 16 rays; the strip's snowline is plan 006's `terrain_climate_fallback_cell` (it landed on main while this phase was built; the first run used plan 004's formula directly, the warmest day's mean at 0 °C, and the pictures were redrawn with the fallback); "steepest 1 km window" is the window with the largest share of real land steeper than 1:1; "lowest dry land below 0" is read from the real blocks of the windows only.
+14. **Rebased onto main at `24011684`** (plan 006 phase 02 had landed): `terrain_generate_box` now takes a climate sample, so the cost rows call `terrain_generate_box_fallback`, which plan 006 says gives the same bytes as no stage reads the sample yet. The default seed and Ahmed's re-run on the rebased tree gave the same numbers, byte for byte, in every CSV row but the times; columns a second there were 856 and 841 at the tallest place, 1387 and 2050 on plains, inside the first runs' spread.
+15. **Self-test results** (release): cone 100.0% of the flank at g 1.00 ± 0.02, concavity 1.013, W50/H 1.000; the p = 2.5 peak concavity 3.141, top decile over the bottom 3 7.98; the plateau 1 piece, 27.08 km², 5.204 km, 20.80 km; the plane 100.00% moderate; 20 knobs, 10 under 150 and 10 at 250 or over; 2998 bytes of table and CSV the same twice on 16 workers and once on 1.

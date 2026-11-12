@@ -7,7 +7,7 @@
 **Threads:** main, and 16 job workers.
 **Public functions:** `main`. Run `tools/test-or-build.sh timeout 1800 build/release/bin/bench_landform [--self-test] [--size-km N] [--step N] [--strip | --no-strip] [--windows N] <directory> [seed...]`. Defaults: 64 km (65,536 blocks) a side round the world's middle, a column every 16 blocks (4096 a side), 64 windows, the strip on, the seed `TERRAIN_SEED_DEFAULT`. The step is a multiple of 4, at most 4096 columns a side, and the windows a square number up to 64. `--self-test` alone needs no directory. Exit status 0, 1 if a picture or the CSV could not be written or the self-test failed, 2 if it could not start.
 **May be called by:** people, and ctest `run_terrain_landform_measure` (`--self-test`).
-**Depends on:** `measure/` and `draw/` (compiled into this program), `terrain`, `climate/normals` and `climate/heat` (the strip's snowline), `texture` and `ui` (the font), `display/headless/png`, `job`, `thread`, `heap`, `time`, `world/column`, `game` (`GAME_WORLD_MIDDLE`).
+**Depends on:** `measure/` and `draw/` (compiled into this program), `terrain`, `terrain/climate_sample` (the strip's snowline, plan 006's fallback), `texture` and `ui` (the font), `display/headless/png`, `job`, `thread`, `heap`, `time`, `world/column`, `game` (`GAME_WORLD_MIDDLE`).
 
 ## What it writes
 
@@ -39,7 +39,7 @@
 - **Real blocks** are what Ahmed walks on, from the same stages `bench_world_map` runs (no features, no ore), the top solid block with what grows looked through. Land is where no water lies on top. They are read only in the 64 windows, 258 by 258 columns each with their border.
 - **The windows** lie one in the middle of each eighth of the map each way, 16-aligned. Their slope classes are counted both from the profile and from real blocks, over the same columns, 8 blocks across; the largest class difference is a row of the table.
 - **The measures** themselves are in `measure/README.md`.
-- **The cost** rows: on one worker, best of 3, `terrain_density_profile_points` on the 900 lattice columns of 36 chunks round the tallest peak (each chunk's 5 by 5, as a box asks; 20 calls a round, divided), against `terrain_generate_box` of those 36 whole columns. Then `terrain_generate_box` columns a second on 16 workers, best of 3, at the tallest peak and at the plains place (land from 10 to 80 with the least relief in 2048 blocks). Not a change to `bench_terrain`, and not the same places, so not its numbers.
+- **The cost** rows: on one worker, best of 3, `terrain_density_profile_points` on the 900 lattice columns of 36 chunks round the tallest peak (each chunk's 5 by 5, as a box asks; 20 calls a round, divided), against `terrain_generate_box_fallback` (every stage, with plan 006's fallback climate sample, which no stage reads yet) of those 36 whole columns. Then its columns a second on 16 workers, best of 3, at the tallest peak and at the plains place (land from 10 to 80 with the least relief in 2048 blocks). Not a change to `bench_terrain`, and not the same places, so not its numbers.
 
 ## The self-test
 

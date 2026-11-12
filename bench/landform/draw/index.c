@@ -1,7 +1,7 @@
 /* bench_landform's pictures. See README.md. */
 #include "landform/draw/index.h"
 
-#include "climate/heat/index.h"
+#include "terrain/climate_sample/index.h"
 #include "climate/index.h"
 #include "display/headless/png/index.h"
 
@@ -307,14 +307,12 @@ bool lf_draw_profiles(const terrain_t *terrain, const lf_grid_t *grid, const lf_
     return lf_png(m, r->seed, "profiles", LF_PANEL_WIDE, rows);
 }
 
-/* The snowline from plan 004's temperature formula: where the warmest day's mean is 0 deg C, at kappa 0.5, no current. */
-static float64_t lf_snowline(const climate_normals_t *normals, float64_t lat) {
-    float32_t warm = -LF_HUGE;
-    for (uint32_t day = 0u; day < 365u; day++) {
-        warm =
-            fmaxf(warm, climate_heat_from_place(normals, (float32_t)lat, 0.0f32, 0.5f32, 0.0f32, true, (float32_t)day));
-    }
-    return warm > 0.0f32 ? (float64_t)(warm / CLIMATE_LAPSE_C_PER_BLOCK) : 0.0f64;
+/* The snowline from plan 006's fallback climate (master 2.2): where the warmest month's mean reaches 0 deg C, plan 004's
+ * formula at kappa 0.5 and no current, by latitude alone. Never: above the world. */
+static float64_t lf_snowline(int64_t y) {
+    terrain_climate_cell_t cell;
+    terrain_climate_fallback_cell(y, &cell);
+    return cell.snow_line_z == TERRAIN_CLIMATE_NO_SNOW_LINE ? 1.0e9f64 : (float64_t)cell.snow_line_z;
 }
 
 bool lf_draw_strip(const lf_memory_t *m, uint64_t seed) {
@@ -332,10 +330,9 @@ bool lf_draw_strip(const lf_memory_t *m, uint64_t seed) {
     }
     lf_contours(m->strip, LF_STRIP_WIDE, LF_STRIP_HIGH, px, wide, LF_STRIP_LEFT, LF_STRIP_TOP, true);
     /* The snowline, dashed, where the ground crosses it. */
-    float64_t below = lf_snowline(m->borrowed_normals, 0.0f64);
+    float64_t below = lf_snowline(0);
     for (uint32_t j = 1u; j < LF_STRIP_HIGH; j++) {
-        const float64_t lat = 90.0f64 * (float64_t)(j * LF_STRIP_STEP) / (float64_t)CLIMATE_POLE_Y;
-        const float64_t line = lf_snowline(m->borrowed_normals, lat);
+        const float64_t line = lf_snowline((int64_t)(j * LF_STRIP_STEP));
         const uint32_t py = LF_STRIP_TOP + (LF_STRIP_HIGH - 1u - j);
         for (uint32_t i = 0u; i + 1u < LF_STRIP_WIDE; i++) {
             const float32_t z = m->strip[(uint64_t)j * LF_STRIP_WIDE + i];
@@ -360,8 +357,9 @@ bool lf_draw_strip(const lf_memory_t *m, uint64_t seed) {
     }
     lf_text(m, wide, high, 4, 4, "equator (bottom) to pole (top): x -2048 to 2040, 8 blocks a pixel", 0x000000u,
             UINT32_MAX, 1u);
-    lf_text(m, wide, high, 4, 15, "magenta: snowline, where the warmest day's mean is 0 C,", 0x000000u, UINT32_MAX, 1u);
-    lf_text(m, wide, high, 4, 26, "plan 004's formula at kappa 0.5, no current (no plan 006 fallback yet)", 0x000000u,
+    lf_text(m, wide, high, 4, 15, "magenta: snowline from plan 006's terrain_climate_fallback_cell: the", 0x000000u,
+            UINT32_MAX, 1u);
+    lf_text(m, wide, high, 4, 26, "warmest month's mean 0 C, plan 004's formula at kappa 0.5, no current", 0x000000u,
             UINT32_MAX, 1u);
     return lf_png(m, seed, "strip", wide, high);
 }
