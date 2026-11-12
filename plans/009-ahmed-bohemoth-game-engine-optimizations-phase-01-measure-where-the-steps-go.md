@@ -204,7 +204,7 @@ Ahmed reads:
 He answers:
 
 - Q2: his seed and view, if the fitted ones are wrong.
-- Q5: the night cut of shadows, now that "shadows off" has a number.
+- Q5: the dim-light cut of shadows (near the horizon crossing and under overcast), now that "shadows off" has a number.
 - Q10: the targets.
 
 His answers are recorded below.
