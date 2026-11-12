@@ -1,0 +1,57 @@
+# Numbers that tune shade's speed and look. See compile/config/README.md for the fields, and cuda/src/shade/README.md for what each does.
+alpha_layers:
+  value: 16
+  type: u32
+  unit: count
+  min: 1
+  max: 64
+  why: "Surfaces a primary ray may look at, holes in leaves and the like included, before it stops on the last one. SHADE_ALPHA_LAYERS."
+sun_layers:
+  value: 8
+  type: u32
+  unit: count
+  min: 1
+  max: 64
+  why: "Surfaces a sun ray may look at, holes included, before it calls the sun hidden. SHADE_SUN_LAYERS."
+ao_turns:
+  value: 4
+  type: u32
+  unit: count
+  min: 1
+  max: 4
+  why: "A pixel with history sends its one AO ray on one frame of this many, in turn with the three next to it. shade_ao_turn's table has four places, one per 8 x 4 warp of a 2 x 2 group, so 4 is the most; below 4 some places get no turn. SHADE_AO_TURNS."
+ao_fresh_rays:
+  value: 4
+  type: u32
+  unit: count
+  min: 1
+  max: 64
+  why: "AO rays a pixel sends when nothing from the last frame is on its surface, itself or around it. SHADE_AO_FRESH_RAYS."
+ao_samples_max:
+  value: 32
+  type: u32
+  unit: count
+  min: 1
+  max: 1024
+  why: "How many samples a pixel's AO is the mean of, at most. Past this the oldest count for less. Held in shade_ao_pixel_t.samples, a uint16_t. SHADE_AO_SAMPLES_MAX."
+ao_reach:
+  value: 3.0
+  type: f32
+  unit: blocks
+  min: 0.5
+  max: 5.0
+  why: "How far an AO ray looks. SHADE_AO_STEPS, 12, must cover reach * sqrt(3) + 3 cell planes, which 5.0 still does. SHADE_AO_REACH."
+shaft_steps:
+  value: 6
+  type: u32
+  unit: steps
+  min: 1
+  max: 64
+  why: "How many places along a god ray ask about the sun. SHADE_SHAFT_STEPS."
+water_seen_blocks:
+  value: 48.0
+  type: f32
+  unit: blocks
+  min: 1.0
+  max: 512.0
+  why: "Past this many blocks of water nothing behind it can be told from none, so a ray with tint on looks no further. SHADE_WATER_SEEN_BLOCKS."

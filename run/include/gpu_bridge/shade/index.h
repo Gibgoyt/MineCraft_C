@@ -10,6 +10,7 @@
 #include "gpu_bridge/post/index.h"
 #include "gpu_bridge/status/index.h"
 #include "gpu_bridge/traverse/index.h"
+#include "tuning/render/shade/index.h"
 #include "types/index.h"
 
 #include <math.h>
@@ -31,10 +32,10 @@ enum : uint32_t {
     SHADE_LEVELS_MAX = 13u,     /* TEXTURE_BLOB_MAX_LEVELS */
     SHADE_NO_TEXTURE = 0xFFFFu, /* in the face table: BLOCK_NO_TEXTURE, and a block with this draws SHADE_MISSING_* */
     SHADE_ALPHA_OPAQUE = 255u,
-    /* How many surfaces a pixel looks at, holes and all. Past this it stops on the last one: see cuda/src/shade/README.md. */
-    SHADE_ALPHA_LAYERS = 16u,
-    /* How many surfaces a sun ray looks at, holes and all, before it calls the sun hidden: see cuda/src/shade/README.md. */
-    SHADE_SUN_LAYERS = 8u,
+    /* How many surfaces a pixel looks at, holes and all, past which it stops on the last one; and how many a sun ray looks at before it
+     * calls the sun hidden: compile/config/render/shade/index.yaml, and cuda/src/shade/README.md. */
+    SHADE_ALPHA_LAYERS = MC_TUNE_RENDER_SHADE_ALPHA_LAYERS,
+    SHADE_SUN_LAYERS = MC_TUNE_RENDER_SHADE_SUN_LAYERS,
     /* How many surfaces a reflection looks at, holes and all, before it stops on the last. */
     SHADE_REFLECTION_LAYERS = 8u,
     /* A material no voxel has: shade_scene_t's water and glass, in a scene with none. */
@@ -86,23 +87,31 @@ enum : uint32_t {
 };
 
 enum : uint32_t {
-    /* A pixel with history sends its one AO ray on one frame of this many, in turn with the three next to it. */
-    SHADE_AO_TURNS = 4u,
-    /* A pixel with nothing from the last frame on its surface, itself or around it, sends this many, as it has nothing else. */
-    SHADE_AO_FRESH_RAYS = 4u,
-    /* How many samples a pixel's AO is the mean of, at most. Past this the oldest count for less. */
-    SHADE_AO_SAMPLES_MAX = 32u,
+    /* A pixel with history sends its one AO ray on one frame of this many, in turn with the three next to it. A pixel with nothing from
+     * the last frame on its surface, itself or around it, sends SHADE_AO_FRESH_RAYS, as it has nothing else. A pixel's AO is the mean of
+     * at most SHADE_AO_SAMPLES_MAX samples. All three: compile/config/render/shade/index.yaml. */
+    SHADE_AO_TURNS = MC_TUNE_RENDER_SHADE_AO_TURNS,
+    SHADE_AO_FRESH_RAYS = MC_TUNE_RENDER_SHADE_AO_FRESH_RAYS,
+    SHADE_AO_SAMPLES_MAX = MC_TUNE_RENDER_SHADE_AO_SAMPLES_MAX,
     /* How many surfaces an AO ray looks at, holes and all, before it stops looking. */
     SHADE_AO_LAYERS = 4u,
     /* An AO ray's cap on steps: a ray of SHADE_AO_REACH crosses no more than 3 * sqrt(3) + 3 planes between cells, and each step
      * crosses at least one, so this always gets past its reach. So a capped ray has met nothing. */
     SHADE_AO_STEPS = 12u,
-    /* How many places a god ray asks about the sun. */
-    SHADE_SHAFT_STEPS = 6u,
+    /* How many places a god ray asks about the sun: compile/config/render/shade/index.yaml. */
+    SHADE_SHAFT_STEPS = MC_TUNE_RENDER_SHADE_SHAFT_STEPS,
 };
+/* shade_ao_turn's table has four places, one per warp of a 2 x 2 group. */
+static_assert(SHADE_AO_TURNS >= 1u && SHADE_AO_TURNS <= 4u);
+/* Both are counted in shade_ao_pixel_t.samples, a uint16_t. */
+static_assert(SHADE_AO_SAMPLES_MAX <= UINT16_MAX && SHADE_AO_FRESH_RAYS <= UINT16_MAX);
 
-/* How far an AO ray looks, in blocks. */
-#define SHADE_AO_REACH F32(3.0)
+/* How far an AO ray looks, in blocks: compile/config/render/shade/index.yaml. */
+#define SHADE_AO_REACH MC_TUNE_RENDER_SHADE_AO_REACH
+#ifdef __cplusplus
+/* The step cap must get past the reach: SHADE_AO_STEPS's comment. C cannot compare floats in a static_assert, so nvcc checks it. */
+static_assert((float32_t)SHADE_AO_STEPS >= SHADE_AO_REACH * F32(1.7320508) + F32(3.0));
+#endif
 /* How far along a god ray the air is looked at, in blocks, and how much of the light it stops per block. */
 #define SHADE_SHAFT_REACH F32(64.0)
 #define SHADE_SHAFT_DENSITY F32(0.015)
@@ -136,8 +145,9 @@ enum : uint32_t {
 #define SHADE_WATER_DEEP_B F32(0.10)
 /* What a sun ray loses per block of water. One number, as what it carries is one: see cuda/src/shade/README.md. */
 #define SHADE_WATER_ABSORB_SUN F32(0.10)
-/* Past this many blocks of water nothing behind it can be told from none, so a ray with tint on looks no further. */
-#define SHADE_WATER_SEEN_BLOCKS F32(48.0)
+/* Past this many blocks of water nothing behind it can be told from none, so a ray with tint on looks no further:
+ * compile/config/render/shade/index.yaml. */
+#define SHADE_WATER_SEEN_BLOCKS MC_TUNE_RENDER_SHADE_WATER_SEEN_BLOCKS
 
 #ifdef __CUDA_ARCH__
 #define SHADE_TABLE static __constant__ const
