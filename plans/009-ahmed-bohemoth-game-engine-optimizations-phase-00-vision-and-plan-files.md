@@ -128,6 +128,19 @@ Nothing heavy runs in this phase, so nothing goes through the mutex.
 Appended as they land:
 
 - `7073b466` Add the plan 009 master for engine optimizations.
+- `b9dce3ad` Add the plan 009 phase 00 file.
+- `e6a63fd5` Add the plan 009 phase 01 file (measure where the steps go).
+- `419ad358` Add the plan 009 phase 02 file (compile-time tuning YAML).
+- `4702617d` Build the near levels on workers from the map's sections, in the master.
+- `f68312f2` The same in this file.
+- `7e038b43` Add the plan 009 phase 03 file (one pyramid of levels).
+- `d06294f2` Add the plan 009 phase 04 file (continuous LOD replaces Full detail).
+- `45536c25` Add the plan 009 phase 05 file (merged boxes for empty space and water).
+- `ad483912` Correct the master on moonlight: the dim-light cut does not fire at night.
+- `53addc73`, `5e30be91`, `f86e54fc` The dim-light cut's name in phase files 00, 01 and 02.
+- `c448586f` Add the plan 009 phase 06 file (secondary rays by level).
+- `a0e21a73` Add the plan 009 phase 07 file (temporal upscaling).
+- `13e2c5d4` Add the plan 009 phase 08 file (the final check).
 
 ## Issues found
 
