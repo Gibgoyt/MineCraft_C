@@ -7,8 +7,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* Plan 004 phase 09: what the Atlas knows of the ground, one uint32_t a pixel at every level: RGB565 colour in bits 0 to 15,
- * the top's height from sea level as int16_t in bits 16 to 31. INT16_MIN means not generated. */
+/* Plan 004 phase 09, plan 007 phase 02: what the Atlas knows of the ground, one uint32_t a pixel at every level:
+ *   bits 0 to 15   RGB565 colour of the top block;
+ *   bits 16 to 26  the top's height from sea level + 256, 0 to 1535 (-256 to 1279); 2047 means not generated;
+ *   bits 27 to 31  cover depth d, 0 to 31: how far the top stands above the ground under trees and snow, so the ground is
+ *                  z - d. */
 enum : uint32_t {
     UI_ATLAS_TILE_SIDE = 512u,                                      /* pixels each way, at every level */
     UI_ATLAS_TILE_PIXELS = UI_ATLAS_TILE_SIDE * UI_ATLAS_TILE_SIDE, /* 262144 */
@@ -16,26 +19,56 @@ enum : uint32_t {
     UI_ATLAS_LEVELS = 8u,                                           /* 0 is a block a pixel; 7 is 128 blocks */
     UI_ATLAS_COLUMN_SIDE = 16u,                                     /* a column's blocks each way */
     UI_ATLAS_COLUMN_PIXELS = 256u,                                  /* a column's 16 by 16 */
-    UI_ATLAS_PIXEL_NONE = 0x80000000u,                              /* not generated */
-    UI_ATLAS_FILE_VERSION = 1u,
-    UI_ATLAS_ENCODING_RAW = 0u,  /* UI_ATLAS_TILE_PIXELS uint32_t, row 0 first */
-    UI_ATLAS_ENCODING_RUNS = 1u, /* ui_atlas_run_t, until all UI_ATLAS_TILE_PIXELS are covered */
+    UI_ATLAS_HEIGHT_NONE_CODE = 2047u,                              /* bits 16 to 26 of a pixel not generated */
+    UI_ATLAS_COVER_MAX = 31u,                                       /* deeper cover is stored as 31 */
+    UI_ATLAS_PIXEL_NONE = UI_ATLAS_HEIGHT_NONE_CODE << 16,          /* not generated: 0x07FF0000 */
+    UI_ATLAS_FILE_VERSION = 2u,                                     /* what encode writes */
+    UI_ATLAS_FILE_VERSION_OLDEST = 1u, /* what decode still reads: 16-bit heights, no cover (plan 004 phase 09) */
+    UI_ATLAS_ENCODING_RAW = 0u,        /* UI_ATLAS_TILE_PIXELS uint32_t, row 0 first */
+    UI_ATLAS_ENCODING_RUNS = 1u,       /* ui_atlas_run_t, until all UI_ATLAS_TILE_PIXELS are covered */
     UI_ATLAS_FILE_NAME_BYTES = 64u,
 };
+enum : int32_t {
+    UI_ATLAS_HEIGHT_MIN = -256, /* COLUMN_Z_STORAGE_MIN - MC_WORLD_Z_SEA */
+    UI_ATLAS_HEIGHT_MAX = 1279, /* the top storage layer */
+};
 static_assert(UI_ATLAS_TILE_SIDE % UI_ATLAS_COLUMN_SIDE == 0u); /* a column never straddles two tiles */
-#define UI_ATLAS_HEIGHT_NONE INT16_MIN
+static_assert(UI_ATLAS_HEIGHT_MAX - UI_ATLAS_HEIGHT_MIN < (int32_t)UI_ATLAS_HEIGHT_NONE_CODE);
 
-static inline uint32_t ui_atlas_pixel_pack(uint16_t rgb565, int16_t z) {
-    return (uint32_t)rgb565 | ((uint32_t)(uint16_t)z << 16);
+/* Packs a generated pixel. z is held to -256 to 1279 and cover to 0 to 31. */
+static inline uint32_t ui_atlas_pixel_pack_cover(uint16_t rgb565, int32_t z, uint32_t cover) {
+    const int32_t held =
+        z < UI_ATLAS_HEIGHT_MIN ? UI_ATLAS_HEIGHT_MIN : (z > UI_ATLAS_HEIGHT_MAX ? UI_ATLAS_HEIGHT_MAX : z);
+    const uint32_t d = cover > UI_ATLAS_COVER_MAX ? UI_ATLAS_COVER_MAX : cover;
+    return (uint32_t)rgb565 | (uint32_t)(held - UI_ATLAS_HEIGHT_MIN) << 16 | d << 27;
 }
+/* A generated pixel with no cover. */
+static inline uint32_t ui_atlas_pixel_pack(uint16_t rgb565, int32_t z) {
+    return ui_atlas_pixel_pack_cover(rgb565, z, 0u);
+}
+static inline bool ui_atlas_pixel_generated(uint32_t pixel) {
+    return ((pixel >> 16) & 0x7FFu) != UI_ATLAS_HEIGHT_NONE_CODE;
+}
+/* The top's height from sea level, tree crowns included: what the colour and the hill shading show. Only for a generated
+ * pixel. */
 static inline int16_t ui_atlas_pixel_z(uint32_t pixel) {
-    return (int16_t)(uint16_t)(pixel >> 16);
+    return (int16_t)((int32_t)((pixel >> 16) & 0x7FFu) + UI_ATLAS_HEIGHT_MIN);
+}
+/* How far the top stands above the ground: 0 for bare ground, water and stone. */
+static inline uint32_t ui_atlas_pixel_cover(uint32_t pixel) {
+    return pixel >> 27;
+}
+/* The ground under the cover, from sea level: what contour lines follow. Only for a generated pixel. */
+static inline int16_t ui_atlas_pixel_ground_z(uint32_t pixel) {
+    return (int16_t)(ui_atlas_pixel_z(pixel) - (int32_t)ui_atlas_pixel_cover(pixel));
 }
 static inline uint16_t ui_atlas_pixel_rgb565(uint32_t pixel) {
     return (uint16_t)(pixel & 0xFFFFu);
 }
-static inline bool ui_atlas_pixel_generated(uint32_t pixel) {
-    return ui_atlas_pixel_z(pixel) != UI_ATLAS_HEIGHT_NONE;
+/* A version-1 pixel (RGB565, then the height as int16_t, INT16_MIN not generated) in today's layout, with cover 0. */
+static inline uint32_t ui_atlas_pixel_from_version_1(uint32_t old) {
+    const int16_t z = (int16_t)(uint16_t)(old >> 16);
+    return z == INT16_MIN ? UI_ATLAS_PIXEL_NONE : ui_atlas_pixel_pack((uint16_t)(old & 0xFFFFu), z);
 }
 /* 8-bit channels to RGB565, each rounded to its nearest step. */
 uint16_t ui_atlas_rgb565_of(uint32_t rgb);
@@ -49,7 +82,7 @@ typedef struct ui_atlas_file_header_t {
     uint64_t payload_checksum; /* 16: texture_blob_hash (FNV-1a 64) of what follows the header */
     int32_t tile_x;            /* 24 */
     int32_t tile_y;            /* 28 */
-    uint32_t version;          /* 32: UI_ATLAS_FILE_VERSION */
+    uint32_t version;          /* 32: UI_ATLAS_FILE_VERSION; decode reads UI_ATLAS_FILE_VERSION_OLDEST too */
     uint32_t header_bytes;     /* 36: sizeof this, 64 */
     uint32_t payload_bytes;    /* 40 */
     uint8_t level;             /* 44 */

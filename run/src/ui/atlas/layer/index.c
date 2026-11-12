@@ -106,6 +106,12 @@ float64_t ui_atlas_blocks_per_pixel(int32_t zoom) {
     return ldexp(base, half);
 }
 
+void ui_atlas_contour_interval(int32_t zoom, int32_t *minor, int32_t *index) {
+    /* At s blocks a pixel, lines of I on a slope of 1 lie I / s pixels apart, and closer than 3 they merge: I >= 3s. */
+    *minor = zoom <= 0 ? 25 : (zoom <= 4 ? 50 : (zoom <= 8 ? 100 : 250));
+    *index = zoom <= 0 ? 250 : (zoom <= 8 ? 500 : 1000);
+}
+
 uint32_t ui_atlas_level_of(int32_t zoom) {
     const int64_t level = layer_floor_div(zoom, 2);
     return level < 0 ? 0u : (level > (int64_t)UI_ATLAS_LEVELS - 1 ? UI_ATLAS_LEVELS - 1u : (uint32_t)level);
@@ -171,10 +177,10 @@ static ui_atlas_overlay_draw_t layer_overlay_marks, layer_overlay_wind_now, laye
 #define WEEK UI_ATLAS_TIME_WEEK
 
 const ui_atlas_layer_t ui_atlas_layers[UI_ATLAS_LAYER_COUNT] = {
-    ROW("terrain", "Terrain", "", layer_band_terrain, nullptr, nullptr, nullptr, FIXED, 1, 0, 0, NONE_C,
+    ROW("terrain", "Terrain, contours", "", layer_band_terrain, nullptr, nullptr, nullptr, FIXED, 1, 0, 0, NONE_C,
+        UI_ATLAS_VALUE_CONTOURS, 0, 0),
+    ROW("terrain_plain", "Terrain", "", layer_band_terrain, nullptr, nullptr, nullptr, FIXED, 1, 0, 0, NONE_C,
         UI_ATLAS_VALUE_NONE, 0, 0),
-    ROW("terrain_lines", "Terrain, a line every 100 blocks", "", layer_band_terrain, nullptr, nullptr, nullptr, FIXED,
-        1, 0, 0, NONE_C, UI_ATLAS_VALUE_CONTOURS, 0, 0),
     ROW("temperature_day", "Temperature",
         "\xC2\xB0"
         "C",
@@ -341,6 +347,28 @@ static void layer_put(const ui_atlas_target_t *target, uint32_t width, uint32_t 
 
 /* ---- Band: terrain ---------------------------------------------------------------------------------------------------- */
 
+/* The contour factor at generated (i, j): 0.3 on an index line, where the ground's band of index differs from any of its
+ * four neighbours' (so 2 pixels wide, one each side of the crossing); 0.5 on a minor line, where its band of minor differs
+ * from the east or south neighbour's; 1 elsewhere. Ungenerated neighbours draw no line. */
+static float32_t layer_contour_at(const layer_ground_t *ground, int64_t i, int64_t j, int32_t minor, int32_t index) {
+    const int64_t z = ui_atlas_pixel_ground_z(layer_ground_at(ground, i, j));
+    const uint32_t around[4] = {layer_ground_at(ground, i + 1, j), layer_ground_at(ground, i, j + 1),
+                                layer_ground_at(ground, i - 1, j), layer_ground_at(ground, i, j - 1)};
+    const int64_t band_index = layer_floor_div(z, index), band_minor = layer_floor_div(z, minor);
+    bool on_minor = false;
+    for (uint32_t k = 0u; k < 4u; k++) {
+        if (!ui_atlas_pixel_generated(around[k])) {
+            continue;
+        }
+        const int64_t other = ui_atlas_pixel_ground_z(around[k]);
+        if (layer_floor_div(other, index) != band_index) {
+            return 0.3f32;
+        }
+        on_minor = on_minor || (k < 2u && layer_floor_div(other, minor) != band_minor);
+    }
+    return on_minor ? 0.5f32 : 1.0f32;
+}
+
 static void layer_band_terrain(const ui_atlas_draw_input_t *input, const ui_atlas_target_t *target, uint32_t y,
                                uint32_t height, ui_atlas_scratch_t scratch) {
     layer_cursor_t cursor = {scratch.borrowed_bytes, scratch.borrowed_bytes + scratch.bytes};
@@ -349,6 +377,8 @@ static void layer_band_terrain(const ui_atlas_draw_input_t *input, const ui_atla
     const layer_ground_t ground = layer_ground_read(input, &g, y, height, &cursor);
     const uint32_t width = input->view.width;
     const bool contours = row->value == UI_ATLAS_VALUE_CONTOURS;
+    int32_t minor = 0, index = 0;
+    ui_atlas_contour_interval(input->view.zoom, &minor, &index);
     for (uint32_t j = 0u; j < height; j++) {
         for (uint32_t i = 0u; i < width; i++) {
             const uint32_t here = layer_ground_at(&ground, i, j);
@@ -356,16 +386,10 @@ static void layer_band_terrain(const ui_atlas_draw_input_t *input, const ui_atla
                 layer_put(target, width, i, y + j, 0u, true, nanf(""));
                 continue;
             }
+            /* Shading reads the top, trees and all, as the map always has; contours read the ground under them. */
             float32_t b = layer_shade_at(input, &g, &ground, i, j);
             if (contours) {
-                /* A line where the height crosses a multiple of 100 between this pixel and the one east or south. */
-                const int32_t band = (int32_t)layer_floor_div(ui_atlas_pixel_z(here), 100);
-                const uint32_t east = layer_ground_at(&ground, (int64_t)i + 1, j);
-                const uint32_t south = layer_ground_at(&ground, i, (int64_t)j + 1);
-                const bool line =
-                    (ui_atlas_pixel_generated(east) && layer_floor_div(ui_atlas_pixel_z(east), 100) != band) ||
-                    (ui_atlas_pixel_generated(south) && layer_floor_div(ui_atlas_pixel_z(south), 100) != band);
-                b = line ? b * 0.5f32 : b;
+                b *= layer_contour_at(&ground, i, j, minor, index);
             }
             layer_put(target, width, i, y + j, ui_atlas_shade_apply(ui_atlas_rgb_of(ui_atlas_pixel_rgb565(here)), b),
                       false, nanf(""));

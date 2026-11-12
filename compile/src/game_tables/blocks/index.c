@@ -104,13 +104,13 @@ enum { GB_TIER_COUNT = sizeof(GB_TIERS) / sizeof(GB_TIERS[0]) };
 #define GB_FLAG_UNBREAKABLE 16u
 #define GB_FLAG_LOG 32u
 #define GB_FLAG_MAP_COVER 64u
-static const char *const GB_FLAG_NAMES[] = {"SOLID", "REPLACEABLE", "FALLS", "DECAYS", "UNBREAKABLE", "LOG", "MAP_COVER"};
+static const char *const GB_FLAG_NAMES[] = {"SOLID",       "REPLACEABLE", "FALLS",    "DECAYS",
+                                            "UNBREAKABLE", "LOG",         "MAP_COVER"};
 enum { GB_FLAG_COUNT = sizeof(GB_FLAG_NAMES) / sizeof(GB_FLAG_NAMES[0]) };
 
-static const char *const GB_BLOCK_FIELDS[] = {"name",  "hardness", "tool",  "tier",   "drops",       "shape",
-                                              "light", "opacity",  "solid", "falls",  "replaceable", "decays",
-                                              "log",   "texture",  "sound", "facing", "half",        "open",
-                                              "map_cover"};
+static const char *const GB_BLOCK_FIELDS[] = {
+    "name",        "hardness", "tool", "tier",    "drops", "shape",  "light", "opacity", "solid",    "falls",
+    "replaceable", "decays",   "log",  "texture", "sound", "facing", "half",  "open",    "map_cover"};
 enum { GB_BLOCK_FIELD_COUNT = sizeof(GB_BLOCK_FIELDS) / sizeof(GB_BLOCK_FIELDS[0]) };
 
 static const char *const GB_DROP_FIELDS[] = {"item", "count", "max", "chance"};

@@ -17,9 +17,25 @@ overlap.
 
 **Bands:**
 
-- `terrain` (and `terrain_lines`, `systems`, `thunderstorm_cells`, `latitude_lines` under their overlays): each pixel the
-  ground's colour times hill shading `b` (`draw/`), from the level pixel under its centre; a contour line every 100 blocks of
-  height where the height crosses a multiple of 100 between a pixel and the one east or south.
+- `terrain` (and `terrain_plain`, `systems`, `thunderstorm_cells`, `latitude_lines` under their overlays): each pixel the
+  top's colour times hill shading `b` (`draw/`, from the top's height, trees and all), from the level pixel under its
+  centre. On `terrain` only (value `UI_ATLAS_VALUE_CONTOURS`, plan 007 phase 02), **contour lines on the ground under the
+  trees** (`ui_atlas_pixel_ground_z`, the top less its cover depth): a minor line, `b` times 0.5, where the ground's band of
+  the minor interval differs from the east or south neighbour's; an index line, `b` times 0.3 and 2 pixels wide (one each
+  side of the crossing), where its band of the index interval differs from any of its four neighbours'. Bands round toward
+  minus infinity, so -1 and 0 differ; ungenerated neighbours draw no line. `ui_atlas_contour_interval` spaces them by the
+  zoom so a slope of 1 keeps minor lines 3 pixels apart to zoom 8:
+
+  | Zoom (blocks a pixel) | Minor | Index |
+  |---|---|---|
+  | -4 to 0 (0.25 to 1) | 25 | 250 |
+  | 1 to 4 (1.41 to 4) | 50 | 500 |
+  | 5 to 8 (5.66 to 16) | 100 | 500 |
+  | 9 to 16 (22.6 to 256) | 250 | 1000 |
+
+  Above zoom 8 steep faces merge into a dark band, which at tens of km across is how an escarpment should look. There are
+  no labels. The map tool (`bench_world_map_atlas`) draws through the same `ui_atlas_draw_picture`, so it shows the same
+  lines.
 - Fields `climate/layer` draws (phase 03 to 05): `climate_layer_draw_scaled` for the band's rows plus one above, so the
   pressure layer's lines at a band's top see the row north of them, on the world-anchored sample grid; times `b`. Where a
   climate tile is not built yet, the ground shows.

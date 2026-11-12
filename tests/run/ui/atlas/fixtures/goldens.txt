@@ -1,7 +1,7 @@
-terrain_z1 0x994D128267DEFE6A
-terrain_z8 0x494E54C56AFDACA9
-terrain_lines_z1 0xE4444E8147E89AA0
-terrain_lines_z8 0xC71D6B4137BE9F0C
+terrain_z1 0x894685A169C22805
+terrain_z8 0x3814E09F5C583878
+terrain_plain_z1 0x994D128267DEFE6A
+terrain_plain_z8 0x494E54C56AFDACA9
 temperature_day_z1 0x81DE4EBE6DA40FB5
 temperature_day_z8 0x5E41555F17F5FA53
 temperature_mean_z1 0xBF4951DACC0E7754

@@ -104,7 +104,7 @@ TEST(a_pixel_packs_colour_and_height_and_none_means_not_generated) {
     }
     CHECK(!ui_atlas_pixel_generated(UI_ATLAS_PIXEL_NONE));
     CHECK(ui_atlas_pixel_generated(ui_atlas_pixel_pack(0u, 0)));
-    CHECK_EQ_U64(ui_atlas_pixel_pack(0u, 0), 0u);
+    CHECK_EQ_U64(ui_atlas_pixel_pack(0u, 0), 256u << 16); /* plan 007 phase 02: heights from -256 */
 }
 
 TEST(a_columns_top_skips_air_and_plants_and_stops_at_water) {
@@ -231,14 +231,14 @@ TEST(a_mip_is_the_halving_of_its_children_as_worked_by_hand) {
                 int64_t sums[4] = {0, 0, 0, 0}, n = 0;
                 for (uint32_t d = 0u; d < 4u; d++) {
                     const uint32_t p = child[(2u * j + d / 2u) * 512u + 2u * i + d % 2u];
-                    if (ui_atlas_pixel_z(p) == INT16_MIN) {
+                    if (!ui_atlas_pixel_generated(p)) {
                         continue;
                     }
                     const uint32_t c = p & 0xFFFFu;
                     sums[0] += c >> 11;
                     sums[1] += (c >> 5) & 63u;
                     sums[2] += c & 31u;
-                    sums[3] += (int16_t)(uint16_t)(p >> 16);
+                    sums[3] += ui_atlas_pixel_z(p);
                     n++;
                 }
                 uint32_t want = UI_ATLAS_PIXEL_NONE;
@@ -247,7 +247,7 @@ TEST(a_mip_is_the_halving_of_its_children_as_worked_by_hand) {
                     for (uint32_t q = 0u; q < 4u; q++) {
                         m[q] = floor_div(sums[q] + n / 2, n);
                     }
-                    want = (uint32_t)(m[0] << 11 | m[1] << 5 | m[2]) | (uint32_t)(uint16_t)(int16_t)m[3] << 16;
+                    want = ui_atlas_pixel_pack((uint16_t)(m[0] << 11 | m[1] << 5 | m[2]), (int32_t)m[3]);
                 }
                 wrong += parent[(row0 + j) * 512u + column0 + i] == want ? 0u : 1u;
             }
@@ -925,6 +925,9 @@ TEST(golden_pictures_of_every_layer_at_two_zooms) {
             if (png_dir != nullptr) {
                 picture_png(t, p, png_dir, name);
             }
+            /* Plan 007 phase 02 moved the lines onto terrain: terrain_plain is the old terrain, byte for byte. */
+            static const uint64_t TERRAIN_BEFORE_CONTOURS[2] = {0x994D128267DEFE6Aull, 0x494E54C56AFDACA9ull};
+            CHECK(strcmp(ui_atlas_layers[layer].key, "terrain_plain") != 0 || hash == TERRAIN_BEFORE_CONTOURS[z]);
             uint64_t want = 0u;
             if (!write && (!golden_lookup(table, name, &want) || want != hash)) {
                 printf("  %s: 0x%016" PRIX64 ", the golden is 0x%016" PRIX64 "\n", name, hash, want);

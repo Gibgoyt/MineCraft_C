@@ -50,7 +50,7 @@ typedef enum ui_atlas_time_t : uint8_t {
 /* The Atlas's own values, worked out on the sample grid by layers no earlier phase drew. */
 typedef enum ui_atlas_value_t : uint8_t {
     UI_ATLAS_VALUE_NONE = 0,
-    UI_ATLAS_VALUE_CONTOURS = 1,        /* terrain with a line every 100 blocks of height */
+    UI_ATLAS_VALUE_CONTOURS = 1,        /* terrain with contour lines on the ground, spaced by the zoom */
     UI_ATLAS_VALUE_TEMPERATURE_NOW = 2, /* climate_weather_at, deg C */
     UI_ATLAS_VALUE_RAIN_RADAR = 3,      /* climate_layer_rain_now, mm an hour */
     UI_ATLAS_VALUE_RAIN_LAST_WEEK = 4,  /* the weekly state's rain_mm */
@@ -164,6 +164,9 @@ uint32_t ui_atlas_layer_next_in_group(uint32_t current, uint32_t group);
 
 /* 2^(zoom / 2), exactly for even zooms. */
 float64_t ui_atlas_blocks_per_pixel(int32_t zoom);
+/* Plan 007 phase 02: the contour lines' minor and index intervals, in blocks of height, at a zoom: (25, 250) to zoom 0,
+ * (50, 500) to 4, (100, 500) to 8, (250, 1000) beyond, so on a slope of 1 minor lines stay 3 pixels apart to zoom 8. */
+void ui_atlas_contour_interval(int32_t zoom, int32_t *minor, int32_t *index);
 /* clamp(floor(log2 s), 0, 7). */
 uint32_t ui_atlas_level_of(int32_t zoom);
 /* The view's pixels' place: column0 = floor(cx / s) - width / 2, row0 = floor(-cy / s) - height / 2, so the centre snaps to

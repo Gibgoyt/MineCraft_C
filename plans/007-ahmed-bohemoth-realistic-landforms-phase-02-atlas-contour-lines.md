@@ -1,6 +1,6 @@
 # 007-ahmed-bohemoth-realistic-landforms — phase 2: Atlas contour lines
 
-**Status:** in progress   (updated 2026-11-12)
+**Status:** in progress: steps 2 to 7 built and tested   (updated 2026-11-12)
 
 Read first: `plans/007-ahmed-bohemoth-realistic-landforms-phase-00-vision-and-plan-files.md`, then the master `plans/007-ahmed-bohemoth-realistic-landforms.md` (sections 0 "What the picture shows", 3.13, 6, 12 Q5), then plan 004's Atlas phase `plans/004-ahmed-bohemoth-climate-system-phase-09-the-atlas.md` ("Isobars and contours", the layer table) and `run/src/ui/atlas/README.md`. Where this file adds a number the master does not give, it says so and why.
 
@@ -183,12 +183,12 @@ This phase may edit these, plus this file:
 ## Todo
 
 - [x] `map_cover` flag on leaves, logs, mushroom blocks, snow layer, cactus and bamboo, read by `compile/src/game_tables/blocks/`, with its README line and test
-- [ ] New pixel layout (colour 16, height 11, cover 5) and helpers in `run/include/ui/atlas/tile/index.h`; every reader moved
-- [ ] `ui_atlas_column_top` stores cover depth; `ui_atlas_tile_halve` averages it
-- [ ] Tile file version 2; decode reads version 1 with cover 0 (fixture from today's code)
-- [ ] `ui_atlas_contour_interval` and the zoom table; index lines 2 px at 0.3, minor 1 px at 0.5; contours read the ground (`height - cover`); shading reads the top as today
-- [ ] Row 0 `terrain` with contours (default); row 1 `terrain_plain` without; `bench/world_map/atlas/` key updated
-- [ ] Goldens re-made and looked at, with reasons; `run_ui_atlas` and `run_ui_atlas_game` pass
+- [x] New pixel layout (colour 16, height 11, cover 5) and helpers in `run/include/ui/atlas/tile/index.h`; every reader moved
+- [x] `ui_atlas_column_top` stores cover depth; `ui_atlas_tile_halve` averages it
+- [x] Tile file version 2; decode reads version 1 with cover 0 (fixture from today's code)
+- [x] `ui_atlas_contour_interval` and the zoom table; index lines 2 px at 0.3, minor 1 px at 0.5; contours read the ground (`height - cover`); shading reads the top as today
+- [x] Row 0 `terrain` with contours (default); row 1 `terrain_plain` without; `bench/world_map/atlas/` key updated
+- [x] Goldens re-made and looked at, with reasons; `run_ui_atlas` and `run_ui_atlas_game` pass
 - [ ] `bench_atlas` on release: every layer under 60 ms, column top under 20 µs, recorded
 - [ ] (Optional, only if Ahmed says yes) index labels
 - [ ] READMEs updated (`run/src/ui/atlas/`, `tile/`, `layer/`, `config/blocks/`)
@@ -249,6 +249,16 @@ Ahmed opens his own world, presses `M` and sees contour lines on the Terrain lay
 
 Appended as they land:
 
+- `7c4e7bc4` Add the map_cover block flag on leaves, logs, vines, snow layers and cactus, so the Atlas can find the ground under them.
+
 ## Issues found
 
 - **`map_cover` blocks (step 2).** The repo has no mushroom blocks (`brown_mushroom` and `red_mushroom` are cross plants, which the column top already skips) and no bamboo, so neither has the flag. `vine` has it too, which this file does not list: a vine hangs outside a canopy and is a thin block that counts, so without the flag a column whose top is a vine would read its ground at the vine. The flags are every `*_leaves` (8), every `*_log` (8), `snow_layer`, `cactus` and `vine`. The block tables' test is `compile_game_tables` (not `run_game_tables.*`, this file's guess); the new test is `trees_snow_and_cactus_are_map_cover_and_the_ground_is_not`.
+- **Every pixel reader (step 3).** `ui_atlas_pixel_z` keeps its meaning (the top) and its `int16_t` type, so the readout in `run/src/ui/atlas/index.c` and the store needed no change; `ui_atlas_pixel_generated` and `UI_ATLAS_PIXEL_NONE` (now `0x07FF0000`) carry the rest. The only direct `>> 16` readers were in `tests/run/ui/atlas/index.c` (the mip model), now on the helpers. `ui_atlas_pixel_pack` takes an `int32_t` and holds it to -256 to 1279 (the estimate reader already clamped to ±32000, which would have wrapped in 11 bits). `UI_ATLAS_HEIGHT_NONE` (`INT16_MIN`) is gone.
+- **Tests in a new program.** `tests/run/ui/atlas/index.c` was at 1491 lines, so the new tests are `tests/run/ui/atlas/contour/` (ctest `run_ui_atlas_contour`, matched by the Verification's `^run_ui_atlas.*$`). `shading_and_colour_did_not_change` is a check inside `golden_pictures_of_every_layer_at_two_zooms` (the gold world lives there): `terrain_plain_*` must equal the old `terrain_*` hashes, `0x994D128267DEFE6A` and `0x494E54C56AFDACA9`.
+- **The version-1 fixture** `tests/run/ui/atlas/fixtures/tile_v1_L0_-3_5.tile` (32 832 bytes, runs) was written by a throwaway test against the Atlas code of `7c4e7bc4` (version 1), then the writer was removed; its pixels are `v1_pixel(k)` in the contour test, heights -256 to 1279 and every 17th run not generated.
+- **Index lines.** The master (3.13) says "the crossing pixel and its south-east neighbour"; this file says one pixel each side of the crossing, from any of the 4 neighbours. Built as this file says. The master also says contours *and shading* read the ground; this file keeps shading on the top. Built as this file says (shading unchanged, the plain goldens prove it).
+- **No lines over sea.** In the game the sea's top is flat water at 0, so no line is drawn there and nothing extra was needed; a line marks the coast only where water at 0 meets land in another band (never at 25: both are band 0). The golden pictures' ground is the terrain estimate, whose sea is the sea floor, so the goldens draw bathymetry; that is the test ground, not the game. Lines are not cut below 0, so phase 05's dry basins will get them.
+- **`bench/world_map/atlas/`** names no layer key (it takes `--layer <key|all>` and loops over the table), so there was nothing to rename; it draws through `ui_atlas_draw_picture` and makes its pixels with `ui_atlas_column_top`, so it shows the same lines, on the ground.
+- **Goldens (step 7)**, looked at in PNG: `terrain_z1` shows thin lines every 25 and an index line at 250 crossing the hill; `terrain_z8` thin lines every 100 and a dark index line at 500 round the mountain. `terrain_plain_*` are the old `terrain_*`; `terrain_lines_*` removed; no other layer's hash moved. Reasons in `tests/run/ui/atlas/README.md`.
+- **Formatting.** `7c4e7bc4` left `compile/src/game_tables/blocks/index.c` and `tests/compile/game_tables/index.c` not clang-formatted (`clang_format` would have failed on that commit alone); the next commit formats them.

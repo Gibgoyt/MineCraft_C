@@ -616,7 +616,7 @@ TEST(trees_snow_and_cactus_are_map_cover_and_the_ground_is_not) {
     for (uint32_t i = 0u; i < sizeof(cover) / sizeof(cover[0]); i++) {
         CHECK((block_defs[cover[i]].flags & BLOCK_FLAG_MAP_COVER) != 0u);
     }
-    static const uint16_t ground[] = {BLOCK_ID_STONE, BLOCK_ID_GRASS_BLOCK, BLOCK_ID_DIRT,      BLOCK_ID_SAND,
+    static const uint16_t ground[] = {BLOCK_ID_STONE, BLOCK_ID_GRASS_BLOCK, BLOCK_ID_DIRT,       BLOCK_ID_SAND,
                                       BLOCK_ID_WATER, BLOCK_ID_ICE,         BLOCK_ID_SNOW_BLOCK, BLOCK_ID_OAK_PLANKS};
     for (uint32_t i = 0u; i < sizeof(ground) / sizeof(ground[0]); i++) {
         CHECK_EQ_U64(block_defs[ground[i]].flags & BLOCK_FLAG_MAP_COVER, 0u);

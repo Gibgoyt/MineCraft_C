@@ -3,7 +3,7 @@
 **Purpose:** the Atlas on `M` (plan 004 phase 09, master plan 9.3): a full-screen map of every column the world has
 generated, ungenerated land grey, with 26 layers chosen by the number keys, while the game keeps running. This part holds
 what the Atlas knows of the ground (the store: 160 tiles of 512 by 512 pixels in memory, each pixel a column top's RGB565
-colour and height, at 8 levels each half the last), the store's lock and its files under `<world>/atlas/`, the view and
+colour, height and cover depth, at 8 levels each half the last), the store's lock and its files under `<world>/atlas/`, the view and
 its keys, the drawing and saving jobs, and each frame's fixed parts: the picture, title, legend, day slider, readout and
 the player's mark.
 **Tier:** Arena (depth 2). Its memory is the region `ui_t` reserves with its own (`run/src/ui/index.c`), handed over at
@@ -32,6 +32,13 @@ tile). The view is remembered until the world closes.
 **Files:** one per tile, `L<level>_<tile_x>_<tile_y>.tile` (see `tile/`). A world with no `atlas/` directory opens fine and
 the Atlas fills as columns load, so no save version changes. A damaged or foreign file is ignored, said once, never
 deleted. A tile made before its file was read (`merge`) keeps what it has and takes the rest from the file.
+
+**Contour lines** (plan 007 phase 02): the Terrain layer (`1`, the default) draws contour lines on the ground under the
+trees, thin and every 25 to 250 blocks by the zoom with thicker index lines every 250 to 1000 (`layer/`); pressing `1`
+again gives `terrain_plain`, the same map with none. The pixel's cover depth (`tile/`) is what puts them on the ground.
+Tile files went from version 1 to 2 for it, and version 1 still opens with cover 0. **So a world explored before then
+shows its old tiles' lines on the tree crowns until those columns are explored again** (a tile is rewritten when a column
+in it is written): only then is the ground under the trees known.
 
 **Mips:** a level-0 write puts its seven ancestors in the stale list; the drawing job (up to the level it reads) and the
 saving job (all) make them again, bottom up, each from its four children in memory or on disk.

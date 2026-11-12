@@ -14,7 +14,7 @@ The tests in real games and the built program's are in `game/` (ctest `run_ui_at
 
 What it holds to:
 
-- **Tiles:** pixels round-trip at every height from -250 to 1250; a column's top skips air, a flower and a torch and stops
+- **Tiles:** pixels round-trip at every height from -250 to 1250 (with cover, from -256 to 1279, in `contour/`); a column's top skips air, a flower and a torch and stops
   at water, against a hand-built column; 10 000 random columns land where the plan's arithmetic puts them, against a
   block-by-block model, and nowhere else; halving is the Background's worked example (25, 26, 5, height 70) and random
   children against a model of their own; files read back byte for byte, raw and runs, runs only when smaller, and every
@@ -46,3 +46,14 @@ PNG: 52 PNGs would be 15 MB in git (Risk 7 of the phase file). To see them, and 
 deliberate change, after looking at every picture:
 
     MC_ATLAS_PNG_DIR=/tmp/atlas MC_GOLDEN_WRITE=1 tools/test-or-build.sh timeout 600 ctest --preset debug -R '^run_ui_atlas$'
+
+**Why goldens moved** (one line each, newest first):
+
+- Plan 007 phase 02: `terrain_z1` and `terrain_z8` now carry contour lines (minor every 25 with index lines every 250 at 1
+  block a pixel; every 100 with index lines every 500 at 8; looked at). `terrain_lines_*` are gone with the layer;
+  `terrain_plain_*` are the old `terrain_*` hashes byte for byte, which the test also checks against the constants. No
+  other layer moved. The estimate's ground has no cover and its sea floor is the terrain's, so these pictures also draw
+  lines on the sea bed; in the game the sea's top is flat water and draws none.
+
+The tile pixel's cover depth, the version-1 file, the zoom table and the lines themselves are tested in `contour/` (ctest
+`run_ui_atlas_contour`).
