@@ -9,6 +9,7 @@
 #include "log/index.h"
 #include "main/index.h"
 #include "simd/embed_assets/index.h"
+#include "tables/blocks/index.h"
 #include "thread/index.h"
 #include "time/index.h"
 #include "types/index.h"
@@ -591,7 +592,8 @@ TEST(the_program_with_its_sound_in_a_file_mines_and_what_would_have_played_is_th
     CHECK(size >= 4u);
     REQUIRE(loud > 0u);
     REQUIRE(first_loud + AU_MATCH_FRAMES * 2u <= size / sizeof(int16_t));
-    /* Heard, and heard as what was dug: the first thing the script's hands touch is grass. This run's ticks go faster than the file's 10 ms, so a few hits can start on one
+    /* Heard, and heard as what was dug: the first thing the script's hands touch is podzol, dirt's family (since plan 006
+     * phase 03 the spawn of the default world is a bamboo jungle; it was grass). This run's ticks go faster than the file's 10 ms, so a few hits can start on one
      * frame, and their sum is only so like any one of them. Which of the family it is, or whether a hit or a break of the same recording, it cannot say. */
     sound_blob_view_t view;
     REQUIRE(sound_blob_check(embed_assets_sound_blob, embed_assets_sound_blob_bytes, &view) == SOUND_BLOB_OK);
@@ -600,7 +602,7 @@ TEST(the_program_with_its_sound_in_a_file_mines_and_what_would_have_played_is_th
     REQUIRE(best != nullptr);
     printf("first sound: family %" PRIu32 ", kind %" PRIu32 ", likeness %" PRId64 " in 1000\n", (uint32_t)best->family,
            (uint32_t)best->kind, (int64_t)(likeness * 1000.0f64));
-    CHECK_EQ_U64(best->family, SOUND_FAMILY_GRASS);
+    CHECK_EQ_U64(best->family, block_defs[BLOCK_ID_PODZOL].sound);
     CHECK(likeness > 0.5f64);
 }
 

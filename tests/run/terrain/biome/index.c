@@ -66,7 +66,7 @@ static const int32_t BIO_CAVE_LEVEL_Z[BIO_CAVE_LEVELS] = {-210, -170, -100, -60,
  * the blocks after them in the alphabet moved. */
 /* Plan 006 phase 03: biomes follow the climate (the family from the climate at the column's height first, then the box within it), so
  * the biomes, and the surface and features they lay, moved; height, density, hydrology, caves and ores did not (their pins hold). */
-static const uint64_t BIO_DIGEST_PIN = 0x0D7925C6C2D8F51Dull;
+static const uint64_t BIO_DIGEST_PIN = 0xB7BC9D34E16EB6CDull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 003 phase 8 stage 6 moved the biomes' boxes to the coast and the height the terrain now has. */
@@ -840,8 +840,9 @@ TEST(a_column_is_the_climate_on_the_lattice_and_what_hydrology_says_it_is) {
                 terrain_climate_fallback(BIO_WORLD, x - 8, y - 8, &climate);
                 /* Plan 006 phase 03: the climate at the column's own height, through the sample. */
                 const int32_t z = terrain_biome_climate_z(water.ground, water.kind);
-                const terrain_climate_point_t point = terrain_climate_at(&climate, x, y, z);
-                const terrain_climate_point_t cell = terrain_climate_nearest_at(&climate, x, y, z);
+                /* Read at the column's lattice corner, as the noise fields are, at its own height. */
+                const terrain_climate_point_t point = terrain_climate_at(&climate, cx, cy, z);
+                const terrain_climate_point_t cell = terrain_climate_nearest_at(&climate, cx, cy, z);
                 const terrain_biome_inputs_t inputs = {
                     .variety = BIO_BLEND(variety),
                     .wetness = terrain_biome_wetness(BIO_BLEND(wetness), point.rain_mm_year),
@@ -1847,27 +1848,34 @@ static terrain_biome_column_t bio_column_on_climate(test_context_t *t, const bio
     return terrain_biome_column_at(rig->terrain->borrowed_biome, &sample, x, y);
 }
 
+/* A biome of the snow: one whose dry top is snow, or that only Ice and Tundra have. */
 static bool bio_is_cold_member(uint8_t biome) {
     const uint32_t cold = (1u << BIOME_FAMILY_ICE) | (1u << BIOME_FAMILY_TUNDRA);
-    return (biome_defs[biome].families & cold) != 0u;
+    return biome_defs[biome].top == BLOCK_ID_SNOW_BLOCK || (biome_defs[biome].families & ~cold) == 0u;
 }
 
-/* Ahmed's 1.png: x -68, y 149, 0.35 degrees north, 24.1 degrees, on snow_block, then snowy_slopes or grove. Now the place, and
- * every column within 64 blocks of it, is in a warm family and no snow biome. */
+/* Ahmed's 1.png: x -68, y 149, 0.35 degrees north, 24.1 degrees, on snow_block at about z 443, then snowy_slopes or grove.
+ * Which seed that world had is not known here; on Ahmed's default seed that column is sea. So the place itself, and every
+ * column of 2 km round the equator's (0, 0), high ground included, is in a warm family and no snow biome. */
 TEST(the_screenshot_place_is_not_snow) {
     bio_climate_rig_t rig;
-    REQUIRE(bio_climate_start(t, &rig, BIO_AHMED_SEED, -68, 149, 1024));
+    REQUIRE(bio_climate_start(t, &rig, BIO_AHMED_SEED, 0, 0, 1536));
     const terrain_biome_column_t place = bio_column_on_climate(t, &rig, -68, 149);
     printf("x -68, y 149: %s, family %s, ground %.1f\n", biome_defs[place.biome].name, biome_family_names[place.family],
            (libc_double_t)place.ground);
-    for (int32_t dy = -64; dy <= 64; dy += 8) {
-        for (int32_t dx = -64; dx <= 64; dx += 8) {
-            const terrain_biome_column_t column = bio_column_on_climate(t, &rig, -68 + dx, 149 + dy);
+    uint32_t land = 0u, high = 0u;
+    for (int32_t dy = -1024; dy <= 1024; dy += 16) {
+        for (int32_t dx = -1024; dx <= 1024; dx += 16) {
+            const terrain_biome_column_t column = bio_column_on_climate(t, &rig, dx, dy);
+            land += biome_defs[column.biome].where == BIOME_WHERE_LAND ? 1u : 0u;
+            high += column.ground >= 300.0f32 ? 1u : 0u;
             CHECK(column.biome != BIOME_ID_SNOWY_SLOPES && column.biome != BIOME_ID_GROVE);
             CHECK(!bio_is_cold_member(column.biome));
             CHECK(column.family != BIOME_FAMILY_ICE && column.family != BIOME_FAMILY_TUNDRA);
         }
     }
+    printf("2 km round (0, 0): %u land columns, %u at 300 or more\n", land, high);
+    CHECK(land > 0u);
     bio_climate_stop(&rig);
 }
 

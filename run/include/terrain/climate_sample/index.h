@@ -167,6 +167,10 @@ terrain_climate_point_t terrain_climate_at(const terrain_climate_sample_t *sampl
 terrain_climate_point_t terrain_climate_nearest_at(const terrain_climate_sample_t *sample, int64_t x, int64_t y,
                                                    int32_t z);
 
+/* Both of the above at once, with one warp: what a biome reads for each column. The same numbers as the two calls. Pure. */
+void terrain_climate_both_at(const terrain_climate_sample_t *sample, int64_t x, int64_t y, int32_t z,
+                             terrain_climate_point_t *blend, terrain_climate_point_t *nearest);
+
 /* Plan 006 master 2.2: one cell where there is no climate, from the latitude of its centre's y alone: plan 004 6.6's
  * temperature with kappa 0.5 and no current, 6.7's rain belt at the latitude with moisture 0.6 and orography 1 (no waves, so
  * the driest month is a twelfth), the snow line where the warmest month's mean reaches 0 with the lapse, and the class at sea

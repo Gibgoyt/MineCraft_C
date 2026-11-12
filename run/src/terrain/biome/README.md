@@ -26,7 +26,7 @@
 
 Plan 006 phase 03: **the climate decides what kind of land, and noise only adds variety inside it** (Ahmed, 2026-11-12).
 
-1. **The family.** `terrain_climate_nearest_at` reads the column's own climate cell (the one nearest the point after
+1. **The family.** `terrain_climate_nearest_at` reads, at the column's corner of the 4-block lattice, the column's own climate cell (the one nearest the point after
    `terrain_climate_at`'s warp) at the column's own height (`terrain_biome_climate_z`: the ground rounded down, or the sea's
    top for ocean and deep ocean), and `terrain_biome_family` makes it plan 004 6.10's class in the same order: Ice and
    Tundra by the warmest month at the column; then dryness from the cell (a Desert or Steppe cell gives that family, as its
@@ -97,4 +97,4 @@ Anywhere else, a voxel has its column's biome. `terrain_biome_column_t` keeps wh
 
 ## What it costs
 
-A tile's 36 lattice columns of the five fields, a hydrology tile, and for each column two reads of the climate sample (`terrain_climate_at` for the rain, `terrain_climate_nearest_at` for the family, each about 0.15 us, most of it the warp's hashes) and one pass over the table: 53 rows of up to 9 subtractions. That is small next to the noise. Asked for columns far apart, each column has a tile to itself, which is 4 corners of everything, so a sparse map costs about 4 times a dense one per column.
+A tile's 36 lattice columns of the five fields, a hydrology tile, one read of the climate sample per lattice point a column falls on (`terrain_climate_both_at`, one warp for the blended rain and the nearest cell, at z 0; a column takes its lattice corner's and its own height's lapse and basin heat, the same numbers as a read at its height), so 16 a dense tile and not 256, and for each column one pass over the table: 53 rows of up to 9 subtractions. That is small next to the noise. Asked for columns far apart, each column has a tile to itself, which is 4 corners of everything, so a sparse map costs about 4 times a dense one per column.

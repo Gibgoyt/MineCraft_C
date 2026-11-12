@@ -209,11 +209,9 @@ static void sample_axis(int64_t at, int64_t origin, int64_t *out_cell, int64_t *
     *out_fraction = fraction;
 }
 
-terrain_climate_point_t terrain_climate_at(const terrain_climate_sample_t *sample, int64_t x, int64_t y, int32_t z) {
-    int64_t read_x = x, read_y = y;
-    if (sample->warp_off == 0u) {
-        terrain_climate_warp(sample->warp_seed, x, y, &read_x, &read_y);
-    }
+/* terrain_climate_at at the place its warp already moved the read to. */
+static terrain_climate_point_t sample_blend_read(const terrain_climate_sample_t *sample, int64_t read_x, int64_t read_y,
+                                                 int32_t z) {
     int64_t i = 0, j = 0, fx = 0, fy = 0;
     sample_axis(read_x, sample->origin_x, &i, &fx);
     sample_axis(read_y, sample->origin_y, &j, &fy);
@@ -263,17 +261,25 @@ terrain_climate_point_t terrain_climate_at(const terrain_climate_sample_t *sampl
     return out;
 }
 
-terrain_climate_point_t terrain_climate_nearest_at(const terrain_climate_sample_t *sample, int64_t x, int64_t y,
-                                                   int32_t z) {
+terrain_climate_point_t terrain_climate_at(const terrain_climate_sample_t *sample, int64_t x, int64_t y, int32_t z) {
     int64_t read_x = x, read_y = y;
     if (sample->warp_off == 0u) {
-        /* The warp, held one block short of half a cell: then a cell's centre always reads its own cell, and only the
-         * borders between centres wobble. */
         terrain_climate_warp(sample->warp_seed, x, y, &read_x, &read_y);
-        const int64_t most = TERRAIN_CLIMATE_HALF_CELL - 1;
-        read_x = x + (read_x - x > most ? most : (read_x - x < -most ? -most : read_x - x));
-        read_y = y + (read_y - y > most ? most : (read_y - y < -most ? -most : read_y - y));
     }
+    return sample_blend_read(sample, read_x, read_y, z);
+}
+
+/* The warp, held one block short of half a cell: then a cell's centre always reads its own cell, and only the borders
+ * between centres wobble. */
+static int64_t sample_held(int64_t at, int64_t warped) {
+    const int64_t most = TERRAIN_CLIMATE_HALF_CELL - 1;
+    const int64_t moved = warped - at;
+    return at + (moved > most ? most : (moved < -most ? -most : moved));
+}
+
+/* terrain_climate_nearest_at at the place its held warp moved the read to. */
+static terrain_climate_point_t sample_nearest_read(const terrain_climate_sample_t *sample, int64_t read_x,
+                                                   int64_t read_y, int32_t z) {
     int64_t i = 0, j = 0, fx = 0, fy = 0;
     sample_axis(read_x, sample->origin_x, &i, &fx);
     sample_axis(read_y, sample->origin_y, &j, &fy);
@@ -299,6 +305,28 @@ terrain_climate_point_t terrain_climate_nearest_at(const terrain_climate_sample_
     out.t_warm_cc = (int32_t)(t + month);
     out.t_cold_cc = (int32_t)(t - month);
     return out;
+}
+
+terrain_climate_point_t terrain_climate_nearest_at(const terrain_climate_sample_t *sample, int64_t x, int64_t y,
+                                                   int32_t z) {
+    int64_t read_x = x, read_y = y;
+    if (sample->warp_off == 0u) {
+        terrain_climate_warp(sample->warp_seed, x, y, &read_x, &read_y);
+        read_x = sample_held(x, read_x);
+        read_y = sample_held(y, read_y);
+    }
+    return sample_nearest_read(sample, read_x, read_y, z);
+}
+
+void terrain_climate_both_at(const terrain_climate_sample_t *sample, int64_t x, int64_t y, int32_t z,
+                             terrain_climate_point_t *blend, terrain_climate_point_t *nearest) {
+    int64_t read_x = x, read_y = y;
+    if (sample->warp_off == 0u) {
+        terrain_climate_warp(sample->warp_seed, x, y, &read_x, &read_y);
+    }
+    *blend = sample_blend_read(sample, read_x, read_y, z);
+    *nearest = sample->warp_off == 0u ? sample_nearest_read(sample, sample_held(x, read_x), sample_held(y, read_y), z)
+                                      : sample_nearest_read(sample, x, y, z);
 }
 
 /* ---- The fallback ---------------------------------------------------------------------------------------------------- */

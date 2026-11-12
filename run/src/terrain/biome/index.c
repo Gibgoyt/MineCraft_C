@@ -130,6 +130,28 @@ float32_t terrain_biome_wetness(float32_t field, int32_t rain_mm_year) {
     return wetness > 1.0f32 ? 1.0f32 : (wetness < -1.0f32 ? -1.0f32 : wetness);
 }
 
+/* a / b rounded down, b above 0. */
+static int64_t biome_floor_div(int64_t a, int64_t b) {
+    const int64_t q = a / b;
+    return q * b > a ? q - 1 : q;
+}
+
+/* A point read at z 0 taken to z, as terrain_climate_at takes its blend there: minus the lapse, and on land below sea level
+ * plus the basin's heat, each rounded down; warm and cold keep their distance from the mean. The same numbers as reading at
+ * z, since at z 0 both terms are 0. */
+static terrain_climate_point_t biome_point_at(terrain_climate_point_t point, int32_t z) {
+    const int64_t month = (int64_t)point.t_warm_cc - (int64_t)point.t_mean_cc;
+    const bool land = (point.flags & (TERRAIN_CLIMATE_SEA | TERRAIN_CLIMATE_LAKE)) == 0u;
+    int64_t t = (int64_t)point.t_mean_cc - biome_floor_div((int64_t)z * TERRAIN_CLIMATE_LAPSE_CC_PER_10, 10);
+    if (land && z < 0) {
+        t += biome_floor_div(-(int64_t)z * TERRAIN_CLIMATE_BASIN_CC_PER_10, 10);
+    }
+    point.t_mean_cc = (int32_t)t;
+    point.t_warm_cc = (int32_t)(t + month);
+    point.t_cold_cc = (int32_t)(t - month);
+    return point;
+}
+
 /* How far a value is outside a range, squared. */
 static float32_t biome_gap(float32_t value, float32_t low, float32_t high) {
     if (value < low) {
@@ -241,6 +263,8 @@ typedef struct biome_span_t {
 } biome_span_t;
 static_assert(sizeof(biome_span_t) == 48);
 
+/* Out of line: its lattices are a few KiB of stack, which must not land in a caller's frame. */
+[[gnu::noinline]]
 static void biome_tile(const terrain_biome_t *biome, const terrain_climate_sample_t *climate,
                        const terrain_fields_area_t *area, const biome_span_t *span, terrain_biome_column_t *columns) {
     /* With no sample, the fallback's for this tile: a pure function of the seed and the place, like any other. */
@@ -291,6 +315,13 @@ static void biome_tile(const terrain_biome_t *biome, const terrain_climate_sampl
     };
     terrain_hydrology_columns_area(biome->borrowed_hydrology, &tile, water);
 
+    /* The climate on the same lattice, read when first asked for, at z 0: a column takes its lattice corner's (the one at or
+     * south-west of it) and its own height. Reading every 4 blocks and not every block is a sixteenth of the warps. */
+    terrain_climate_point_t lattice_cell[BIOME_LATTICE];
+    int32_t lattice_rain[BIOME_LATTICE];
+    uint8_t lattice_read[BIOME_LATTICE];
+    memset(lattice_read, 0, sizeof(lattice_read));
+
     const float32_t per_block = 1.0f32 / (float32_t)BIOME_CELL;
     const int64_t mask = (int64_t)BIOME_CELL - 1;
     for (uint32_t iy = 0u; iy < span->count_y; iy++) {
@@ -302,11 +333,18 @@ static void biome_tile(const terrain_biome_t *biome, const terrain_climate_sampl
             const uint32_t at = (uint32_t)((x >> BIOME_CELL_SHIFT) - cell_x) + side_x * ly;
             const float32_t t_x = (float32_t)(x & mask) * per_block;
             const terrain_hydrology_column_t *const own = &water[ix + span->count_x * iy];
-            /* Plan 006 phase 03: the climate first, at the column's own height, then the choice inside its family. */
-            const int32_t z = terrain_biome_climate_z(own->ground, own->kind);
-            /* The family from the column's own cell at its own height; the rain that biases wetness blended, so it is smooth. */
-            const terrain_climate_point_t point = terrain_climate_at(climate, x, y, z);
-            const terrain_climate_point_t cell = terrain_climate_nearest_at(climate, x, y, z);
+            /* Plan 006 phase 03: the climate first, at the column's own height, then the choice inside its family. The family
+             * from the column's own cell at its own height; the rain that biases wetness blended, so it is smooth. */
+            if (lattice_read[at] == 0u) {
+                terrain_climate_point_t blend;
+                terrain_climate_both_at(climate, (x >> BIOME_CELL_SHIFT) << BIOME_CELL_SHIFT,
+                                        (y >> BIOME_CELL_SHIFT) << BIOME_CELL_SHIFT, 0, &blend, &lattice_cell[at]);
+                lattice_rain[at] = blend.rain_mm_year;
+                lattice_read[at] = 1u;
+            }
+            const terrain_climate_point_t cell =
+                biome_point_at(lattice_cell[at], terrain_biome_climate_z(own->ground, own->kind));
+            const terrain_climate_point_t point = {.rain_mm_year = lattice_rain[at]};
             const terrain_biome_inputs_t inputs = {
                 .variety = biome_bilinear(variety, at, side_x, t_x, t_y),
                 .wetness = terrain_biome_wetness(biome_bilinear(wetness, at, side_x, t_x, t_y), point.rain_mm_year),

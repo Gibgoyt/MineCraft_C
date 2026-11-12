@@ -56,10 +56,10 @@ static const uint64_t FEA_DIGEST_OF_GENERATOR[] = {
      * a rate of 0), and changed this row and not the version, so that worlds saved on the old land still open: see that phase's
      * issue 8. Plan 005 phase 6's twelve station blocks moved numbers only (the digest over the numbers before them gave
      * this row's old value, 0x963084164D7E4DAE).
-     * Plan 006 phase 03 moved the biomes (biomes follow the climate) and so the land: 0x2197DF9002CC8A15, written here for
+     * Plan 006 phase 03 moved the biomes (biomes follow the climate) and so the land: 0x3FDD8CCBDFEA453B, written here for
      * now, while the version stays 1 until plan 006 phase 05 raises it to 2 and gives this value row 2, putting back
      * this row's old value, 0xCFD3A129B38458E6. Meanwhile a world saved on the old land opens on the new. */
-    0x2197DF9002CC8A15ull,
+    0x3FDD8CCBDFEA453Bull,
 };
 static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0]) == TERRAIN_GENERATOR_VERSION + 1u);
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
