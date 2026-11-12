@@ -1,6 +1,6 @@
 # 006-ahmed-bohemoth-biomes-follow-the-climate — phase 2: The climate sample and deterministic maths
 
-**Status:** in progress   (updated 2026-11-12)
+**Status:** done but for one bench number, see Issues 13   (updated 2026-11-12)
 
 Read first: `plans/006-ahmed-bohemoth-biomes-follow-the-climate-phase-00-vision-and-plan-files.md`, then the master `plans/006-ahmed-bohemoth-biomes-follow-the-climate.md` (sections 0 "What is in the way", 2.1, 2.2, 2.3, 4 and 9). Every number here comes from the master. Where this file adds a number the master does not give, it says so and why.
 
@@ -156,7 +156,7 @@ From the master (section 9, phase 02):
 - [x] `game` fills the sample in column jobs; the far field and mob spawn fill theirs
 - [x] The read reach goes from 96 to 112; the spawn search moves after the climate is prepared
 - [x] `terrain_generate_box`, the far field sampler and `terrain_biome_column_at` take the sample. **The biome rules don't change yet,** so every terrain digest holds
-- [ ] Benches: filling a sample, and `terrain_climate_at`
+- [x] Benches: filling a sample, and `terrain_climate_at`
 
 Expanded:
 
@@ -220,6 +220,11 @@ None for Ahmed (master section 9). The agent shows, in this file, that the F3 va
 ## Commits
 
 Appended as they land:
+
+- `e5f0fea9` Add run/src/math/det: libm-free exp, sin, cos, asin and atan2 within 1e-12 of libm and pinned by digest, and write plan 006 phase 02's libm inventory of the climate's cell fields.
+- `1781be7a` Work out every climate cell field terrain will read through run/src/math/det or exact tables, with the driest month public for the climate sample; no climate digest moved.
+- `b1651ad3` Add terrain's climate sample: integer cells copied from the climate's tiles or worked out by a latitude fallback, read through terrain_climate_at with its own warp and the lapse, handed to every column job, the far field, mob spawn and the F3 tuning lines, with the read reach at 112 and a new world's climate built before its spawn search; no terrain digest moved.
+- (this commit) Time the climate sample in bench_terrain, print the gate's three places, and record the bench, the gate and the release digests in the plan 006 phase 02 file.
 
 ## Issues found
 
@@ -306,3 +311,31 @@ Appended as they land:
     `run_climate_cell`'s stepped precompute, began its area with a literal 96 margin, so with the reach at 112 it asked for
     a ring more tiles than its `24 x 24 + 64` total. The literal became `CLIMATE_READ_REACH_BLOCKS` (as the `climate_area_ready`
     check beside it already was) and `run_climate_cell` passes. `pgrep -af "$PWD/build"` printed nothing after.
+13. **Benches** (release, `build/release/bin/bench_terrain` through the lock, 2026-11-12; CPU only, so no card clock applies).
+    The machine was not quiet: load averages of 15 to 48 from work outside the lock, against the 1.2 of the 1134 "before"
+    (2026-11-08, `bench/terrain/README.md`), so the two are not like with like.
+
+    | Run | Load before / after | Slowest on 16 workers (`snowy_taiga`) | Fill from tiles | Fallback fill | `terrain_climate_at` |
+    |---|---|---|---|---|---|
+    | 1 | 20 / 48 | 1012 | 2.30 µs | 0.92 µs | 0.163 µs |
+    | 2 | 15 / 24 | **926** (NOT MET) | 2.34 µs | 0.90 µs | 0.193 µs |
+    | 3 | 15 / 40 | 1006 | 2.32 µs | 0.90 µs | 0.191 µs |
+
+    Both new budgets are met: a fill from the tiles is 2.3 µs against 20, `terrain_climate_at` 0.16 to 0.19 µs against
+    0.2 (close: the 16 hashes of the two-octave warp are most of it; one octave would halve it if phase 03 needs room).
+    The bench's boxes now pay the fallback fill, 0.9 µs a column against about 1 ms of terrain, a thousandth, and no stage
+    reads the sample, so the generation work is byte for byte what it was; the drop from 1134 to 926-1012 is the load.
+    **The todo "`bench_terrain` at or above 1000" is left unticked**: one run of three missed it under load, and it should be
+    measured again on a quiet machine before it is called met.
+14. **Gate: F3's values at three places**, from the `gate` lines `bench_terrain` now prints (`terrain_climate_at` on the
+    sample a column job at (0, y) would have, real climate, default seed, sea level unless said), against plan 004's
+    worked numbers (6.6's `T_lat` knots and 12 °C per 1000 blocks):
+
+    | Place | `terrain_climate_at` | Plan 004 | Difference, and why |
+    |---|---|---|---|
+    | Equator, y 0 | yearly 28.30, warm 28.39, cold 28.21; 13.30 at z 1250; rain 2489 mm; snow line none (9999) | 27 at sea level, about 12 at 1250, "never lasts the summer" | +1.3: this cell's warm current (`C x strength / 255`); the lapse to 1250 is exactly 15.00; no snow line, as required |
+    | 45° N, y 19149 | yearly 13.72, warm 19.33, cold 8.11; -1.28 at z 1250; rain 1711 mm; snow line 1312 | 11 | +2.7: a warm current here; swing ±5.6 is between A_sea 4.5 and A_land 13.5 |
+    | Polar circle, y 28298 (66.5°) | yearly -9.30, warm -0.67, cold -17.93; rain 333 mm; snow line -47; class Ice | about -6 (between 0 at 60° and -14 at 75°) | -3.3: a cold current; warmest month below 0, so Ice and snow lasting at sea level |
+
+    For phase 03 to note: the equator's nearest cell has the climate class Mediterranean (8) with warm 28.4 and a driest
+    month of 63 mm; that is the climate's own class, unchanged by this phase.

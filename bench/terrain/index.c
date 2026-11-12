@@ -179,6 +179,24 @@ static bool bench_find(const terrain_t *terrain, biome_id_t biome, int32_t *out_
     terrain_climate_sample_t sample;
     (void)climate_terrain_sample(&climate, terrain->seed, -8, -8, &sample);
     const float64_t read = bench_read_us(&sample, &read_check);
+    /* The phase file's gate: what F3 shows (terrain_climate_at on a column job's sample) at the equator, 45 degrees north
+     * and the polar circle, beside plan 004's yearly means by latitude. */
+    static const int32_t GATE_Y[3] = {0, 19149, 28298};
+    for (uint32_t g = 0u; g < 3u; g++) {
+        const int32_t gy = GATE_Y[g];
+        climate_prepare_area(&climate, system, -256, gy - 256, 256, gy + 256, nullptr, nullptr);
+        terrain_climate_sample_t here;
+        const bool real = climate_terrain_sample(&climate, terrain->seed, -8, gy - 8, &here);
+        const terrain_climate_point_t at = terrain_climate_at(&here, 0, gy, 0);
+        const terrain_climate_point_t top = terrain_climate_at(&here, 0, gy, 1250);
+        printf(
+            "gate y %6d (%5.1f deg): yearly %6.2f, warm %6.2f, cold %6.2f at z 0; yearly %6.2f at z 1250; rain %d mm, "
+            "dry month %d mm, snowline %d, class %u (%s)\n",
+            gy, (libc_double_t)climate_latitude_deg((float64_t)gy), (libc_double_t)((float64_t)at.t_mean_cc / 100.0f64),
+            (libc_double_t)((float64_t)at.t_warm_cc / 100.0f64), (libc_double_t)((float64_t)at.t_cold_cc / 100.0f64),
+            (libc_double_t)((float64_t)top.t_mean_cc / 100.0f64), at.rain_mm_year, at.dry_month_mm, at.snow_line_z,
+            (uint32_t)at.climate_class, real ? "climate" : "fallback");
+    }
     climate_close(&climate, system);
     climate_deinit(&climate);
     printf(

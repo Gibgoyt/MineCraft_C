@@ -1,19 +1,23 @@
 # bench/terrain
 
-**Purpose:** times every stage of terrain together, `terrain_generate_box`, against the plan's target of 1000 columns a second on 16 workers, in the places where what is on the ground differs most.
+**Purpose:** times every stage of terrain together, `terrain_generate_box`, against the plan's target of 1000 columns a second on 16 workers, in the places where what is on the ground differs most; and (plan 006 phase 02) filling a climate sample from a real climate's tiles and from the fallback, `terrain_climate_at`, and the climate sample's values at the equator, 45° N and the polar circle.
 **Tier:** none; benchmarks are not tiered.
 **Owns:** one heap region for its buffers, released before it exits.
 **Lifetime:** Process.
 **Threads:** main, and up to 16 job workers.
 **Public functions:** `main`. Run `tools/test-or-build.sh timeout 300 build/release/bin/bench_terrain`, so no build shares the CPU. Exit status 0, 1 if a place missed the target or could not be found, or 2 if it could not start.
 **May be called by:** people.
-**Depends on:** `terrain`, `job`, `thread`, `heap`, `time`, `world/column`, and the generated `tables/biomes/`.
+**Depends on:** `terrain`, `climate`, `job`, `thread`, `heap`, `time`, `world/column`, and the generated `tables/biomes/`.
 
 Only a release build's numbers mean anything: debug is at `-O0`.
 
 A **column** here is what it is in the plan and in `run/src/world/column/`: a chunk's, 16 by 16 and 1536 layers, the very box the game asks for. A round is 36 of them, each in its own box. Each place keeps its best of 3 rounds, and the gate is on its 16-worker number, as the plan's target is. The `tour` directory beside this is the phase gate's biome tour, over every layer of the world, -250 to 1250.
 
 ## Results
+
+### 2026-11-12, plan 006 phase 02: the climate sample, on a loaded machine
+
+Boxes now go through `terrain_generate_box_fallback` (0.9 µs of fallback sample a column, read by no stage), and the bench also times a sample filled from a real climate's tiles (target under 20 µs: **2.3 µs**) and `terrain_climate_at` (target under 0.2 µs: **0.16 to 0.19 µs**), and prints the gate's three places. Three runs with load averages of 15 to 48 from outside the lock: slowest `snowy_taiga` 1012, 926, 1006 on 16 workers. Not comparable with the 1134 from a cool machine; to be measured again quiet. See the plan 006 phase 02 file, Issues found 13 and 14.
 
 ### 2026-11-08, plan 004 phase 11, second pass: from a cool machine
 
