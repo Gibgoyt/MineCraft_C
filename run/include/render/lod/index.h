@@ -12,6 +12,7 @@
 #include "render/upload/index.h"
 #include "terrain/feature/index.h"
 #include "tuning/render/budget/index.h"
+#include "tuning/render/lod/index.h"
 #include "types/index.h"
 
 #include <stdatomic.h>
@@ -21,19 +22,18 @@
 enum : uint32_t {
     /* What a world draws block by block unless told otherwise, in chunks. Past it the far field takes over. */
     RENDER_LOD_FULL_DETAIL_DEFAULT = 32u,
-    /* Each way from the eye's column, in a level's own columns of 16 voxels: a level is at most 33 wide. */
-    RENDER_LOD_RADIUS_COLUMNS = 16u,
-    /* How many columns past what rays are let into are kept built, so that an eye moving on finds the next row already there. */
-    RENDER_LOD_MARGIN_COLUMNS = 2u,
+    /* Each way from the eye's column, in a level's own columns of 16 voxels, and how many columns past what rays are let into are kept
+     * built: compile/config/render/lod/index.yaml. */
+    RENDER_LOD_RADIUS_COLUMNS = MC_TUNE_RENDER_LOD_RADIUS_COLUMNS,
+    RENDER_LOD_MARGIN_COLUMNS = MC_TUNE_RENDER_LOD_MARGIN_COLUMNS,
     /* Columns being built at once, across all levels: compile/config/render/budget/index.yaml. */
     RENDER_LOD_JOBS = MC_TUNE_RENDER_BUDGET_LOD_JOBS,
     /* Column heights in blocks, and in sections at the finest level: 1536 blocks in voxels of 2. */
     RENDER_LOD_HEIGHT_BLOCKS = 1536u,
     RENDER_LOD_SECTIONS_MAX = (RENDER_LOD_HEIGHT_BLOCKS >> LOD_SHIFT_MIN) / 16u,
-    /* The coarsest voxel a world's ground grows anything for, as a shift: 4 blocks. What grows is nearly all of what a sample of real
-     * terrain costs: at voxels of 8 a column cost 59 ms with it and 8 ms without, and that level is what reaches the horizon, so it must come
-     * in well under a second after a change of render distance (plan 005 phase 14). Past 900 blocks a tree is a few pixels. */
-    RENDER_LOD_FEATURES_SHIFT_MAX = 2u,
+    /* The coarsest voxel a world's ground grows anything for, as a shift: compile/config/render/lod/index.yaml says why. It must come in
+     * well under a second after a change of render distance (plan 005 phase 14). */
+    RENDER_LOD_FEATURES_SHIFT_MAX = MC_TUNE_RENDER_LOD_FEATURES_SHIFT_MAX,
 };
 enum : uint64_t {
     /* What a level's pool gives each of its columns, and what one frame may send of finished columns: compile/config/render/budget/index.yaml.
@@ -50,6 +50,8 @@ enum : uint64_t {
         RENDER_LOD_SAMPLE_FEATURE_BYTES + RENDER_LOD_SAMPLE_CLIMATE_BYTES + MC_CPU_CACHE_LINE_BYTES,
 };
 static_assert(RENDER_LOD_RADIUS_COLUMNS > RENDER_LOD_MARGIN_COLUMNS);
+/* render_lod_plan_t.radii and render_lod_level_t.radius hold it in a byte. */
+static_assert(RENDER_LOD_RADIUS_COLUMNS <= UINT8_MAX);
 
 /* One column's worth of a place in the world, as storage heights from 0 to RENDER_LOD_HEIGHT_BLOCKS - 1, which a voxel of 1 << shift blocks
  * is made from. Called on workers, so it reads only what cannot change, and writes only out and scratch: RENDER_LOD_SAMPLE_SCRATCH_BYTES,

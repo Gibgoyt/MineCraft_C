@@ -266,6 +266,7 @@ Appended as they land:
 
 - `a92c08d7` Add the tuning tool, which turns compile/config/<path>/index.yaml into MC_TUNE_* headers at build time, with its test and its CMake step.
 - `c1178a41` Write the tuning hash to generated/tuning/hash/index.h, as tuning/index.h is the tool's own header's name and the lint and the compile tests would find that one.
+- `d0228ee4` Move the upload and far-field budgets to compile/config/render/budget/index.yaml, with the READMEs for compile/config, every golden picture unchanged.
 
 ## Issues found
 

@@ -8,6 +8,7 @@
 #include "gpu_bridge/status/index.h"
 #include "gpu_bridge/traverse/index.h"
 #include "gpu_bridge/world_buffers/index.h"
+#include "tuning/render/lod/index.h"
 #include "types/index.h"
 
 #include <stddef.h>
@@ -25,8 +26,8 @@ enum : uint32_t {
     /* lod_hit_t.material when a ray found nothing. */
     LOD_NO_MATERIAL = 0xFFFFu,
     /* How many times one level lets a ray go on past something that lies in a column full detail holds. A ray that met nothing in
-     * full detail meets very little of the coarse ground there, and past this it calls the level empty. */
-    LOD_SKIPS_MAX = 32u,
+     * full detail meets very little of the coarse ground there, and past this it calls the level empty: compile/config/render/lod/. */
+    LOD_SKIPS_MAX = MC_TUNE_RENDER_LOD_SKIPS_MAX,
     /* lod_hit_t.sun: all of the sun, and none of it. */
     LOD_SUN_SEEN = 255u,
     LOD_SUN_HIDDEN = 0u,

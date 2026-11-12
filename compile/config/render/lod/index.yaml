@@ -1,0 +1,29 @@
+# The far field's levels. See compile/config/README.md for the fields; compile/config/render/budget/ has its jobs and bytes.
+radius_columns:
+  value: 16
+  type: u32
+  unit: count
+  min: 4
+  max: 64
+  why: "Each way from the eye's column, in a level's own columns of 16 voxels: a level is at most 2 * this + 1 columns wide. Held in uint8_t radii. RENDER_LOD_RADIUS_COLUMNS."
+margin_columns:
+  value: 2
+  type: u32
+  unit: count
+  min: 1
+  max: 8
+  why: "How many columns past what rays are let into are kept built, so that an eye moving on finds the next row already there. Below radius_columns. RENDER_LOD_MARGIN_COLUMNS."
+features_shift_max:
+  value: 2
+  type: u32
+  unit: levels
+  min: 0
+  max: 6
+  why: "The coarsest voxel, as a shift, that a world's ground grows trees and the like for: 2 is voxels of 4 blocks. Growing is nearly all of what a column costs (59 ms against 8 ms at voxels of 8, plan 005 phase 14), and past 900 blocks a tree is a few pixels. RENDER_LOD_FEATURES_SHIFT_MAX."
+skips_max:
+  value: 32
+  type: u32
+  unit: count
+  min: 1
+  max: 256
+  why: "How many times one level lets a ray go on past something in a column full detail holds, before it calls the level empty there. LOD_SKIPS_MAX."
