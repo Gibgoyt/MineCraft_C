@@ -1,6 +1,6 @@
 # 009-ahmed-bohemoth-game-engine-optimizations — phase 1: Measure where the steps go
 
-**Status:** in progress   (updated 2026-11-12)
+**Status:** built and measured; waiting for Ahmed's gate (Q2, Q5, Q10)   (updated 2026-11-12)
 
 Read first: `plans/009-ahmed-bohemoth-game-engine-optimizations-phase-00-vision-and-plan-files.md`, then the master `plans/009-ahmed-bohemoth-game-engine-optimizations.md`: sections 0 ("Why the frame is 29 ms"), 3.4, 4.1, 5 and 7. Then plan 008's master section 3.1 and its phase 01 file. That phase builds the instruments this one stands on. Then `bench/world/README.md` and `cuda/src/traverse/README.md` ("What a ray skips").
 
@@ -146,7 +146,7 @@ The loop's arithmetic, the node choice, every result bit. The `cuda_traverse` te
 - [x] Experiments run alone, each with the card's MHz: shadows off, far field off, alpha off, AO off, render scale 75, full detail 16 / 24 / 32 / 48
 - [x] Reference mode at 64, or at 48 if 64 does not fit, recorded
 - [x] Results table filled; the master's targets' "Today" values written here
-- [ ] Every golden picture and existing settled hash unchanged
+- [x] Every golden picture and existing settled hash unchanged
 - [ ] Ahmed has read the table and answered Q2, Q5, Q10
 
 ## Results (filled in by this phase)
@@ -269,6 +269,13 @@ His answers are recorded below.
 ## Commits
 
 Appended as they land:
+
+- `9f164199` Count where a picture's steps go, by ray kind and distance band, in second copies of the ray kernels that only a bench runs: traverse_counts_t, the counted loop, and tests that counting changes no hit and adds up.
+- `e2651661` Add bench_world_slope: Ahmed's spot of 5.png as settled rows (night at render distance 64 and 32, day at 64) with --look, --sun, --full-detail, --render-scale, --lod-reference and --steps, which writes the band table and step heatmaps from the counted kernels.
+- `2c831086` Record where the steps go at Ahmed's spot of 5.png: every row and experiment paired with a base at the same clock, the step bands by kind, the reference at render distance 64 in the game's own voxel budget, and the far field as a fifth of the picture that draws nothing there.
+- this commit: the verification, after rebasing onto `main` at `e64a93db` (plan 009 phase 02's tuning YAML, plan 008 phase 02's pacing).
+
+**Verification, as run (2026-11-12), after the rebase:** `pgrep -af 'build/release/bin/minecraft_c'` printed nothing before every card run. `tools/test-or-build.sh cmake --build --preset debug`: clean. `ctest --preset debug -R '^(cuda_traverse|render_feature_.*|run_render_frame|cuda_lod)$'`: 12 of 12 passed (every `render_feature_*` golden picture, `cuda_traverse` with the three new cases, `run_render_frame`). `standards_lint`, `clang_format`: passed. `cmake --build --preset profile`: clean, standards lint and the recursion check clean. `bench_world_slope --only night-64 --steps ...` after the rebase: the same picture (`C28033CF2426D1B5`) and the same step counts as before it. The rows and experiments: Results above, one wrapper call each (`--only night-64` with `--features-off 20`, `--full-detail 16`, `--lod-reference --shots ...` and the rest). `bench_world --record bench/world/history.tsv --label "009 phase 01: counters, no change"`: exit 0, in its history (before the rebase; the line gained main's new `tuning` column as `-`). `pgrep -af "$PWD/build"` printed nothing at the end.
 
 ## Issues found
 
