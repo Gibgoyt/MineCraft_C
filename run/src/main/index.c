@@ -74,8 +74,9 @@ typedef struct main_options_t {
     uint16_t climate_jump;      /* --climate-jump: days, 0 for none */
     uint8_t weather;            /* --weather: a game_weather_kind_t, GAME_WEATHER_SAMPLED for the climate's */
     uint8_t _pad0[1];
+    const char *frame_log; /* --frame-log, or nullptr for none (plan 008 phase 01) */
 } main_options_t;
-static_assert(sizeof(main_options_t) == 128);
+static_assert(sizeof(main_options_t) == 136);
 
 /* Where worlds live unless told otherwise: beside where the program was started, like everything else it reads. */
 static const char MAIN_SAVES_DEFAULT[] = "saves";
@@ -172,7 +173,10 @@ static void main_print_usage(const char *program) {
         "s16le\n"
         "                           stereo at 48000 Hz, at the speed it would play. It makes no sound\n"
         "  --profile <path>         time the run: a trace for about:tracing or Perfetto goes to <path> at exit, and a\n"
-        "                           table to stderr. Not in a release build: see run/src/profiler/README.md\n",
+        "                           table to stderr. Not in a release build: see run/src/profiler/README.md\n"
+        "  --frame-log <path>       a CSV line for every picture shown: when, how long since the last, what the card\n"
+        "                           and each thread spent on it. Added to <path>, in release builds too: see\n"
+        "                           run/src/game/watch/README.md\n",
         stderr);
     fputs(
         "  --windowed               on a desktop, a 1280x720 window, or --width and --height, in place of full screen\n"
@@ -253,6 +257,9 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
         } else if (strcmp(argv[i], "--profile") == 0 && i + 1 < argc) {
             i++;
             out->profile = argv[i];
+        } else if (strcmp(argv[i], "--frame-log") == 0 && i + 1 < argc) {
+            i++;
+            out->frame_log = argv[i];
         } else if (strcmp(argv[i], "--walk") == 0) {
             out->walk = 1;
         } else if (strcmp(argv[i], "--no-sky") == 0) {
@@ -756,6 +763,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
     game_init(&app->game, &app->world, &app->terrain, &app->render, &app->job, &app->texture, &app->topology);
     game_ui_set(&app->game, &app->ui);
     game_profiler_set(&app->game, &app->profiler);
+    game_frame_log_set(&app->game, options->frame_log);
     game_gpu_pretend_set(&app->game, options->pretend_gpu_lost, false);
     game_climate_jump_set(&app->game, options->climate_jump);
     if (options->walk != 0 || options->menu != 0u) {

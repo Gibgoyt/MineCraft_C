@@ -11,7 +11,7 @@
 - `display_x11_arena_bytes`: what `_init` takes from the arena.
 - `display_x11_service`: reads what has come without waiting.
 - `display_x11_poll`: hands input to a `display_x11_sink_t`, which `main` joins to `input`.
-- `display_x11_wait_ready`, `display_x11_present`: frame pacing against the server's completion event.
+- `display_x11_wait_ready`, `display_x11_present`: frame pacing against the server's completion event. Plan 008 phase 01: `put_sent_ns` is when the last put was sent, `put_done_ns` when its `ShmCompletion` was read (0 while it is out), `wait_from_ns` when `display_x11_wait_ready` was last called and `wait_ns` what it blocked. `game/session` hands them to `game/watch` each frame, for the frame log and F3: the X server's copy of the picture is its own work on the same card, and these say how long it took and how long main waited for it.
 
 **May be called by:** `display`.
 **Depends on:** `arena`, `log`, `time`, `display/flip` (`display_buffer_t`), `display/x11/wire`.

@@ -91,6 +91,7 @@ static void x11_packet_take(display_x11_t *x11, const uint8_t *packet) {
         x11->reply_ready = 1u;
     } else if (x11->shm_completion != 0u && type == x11->shm_completion) {
         x11->put_pending = 0u;
+        x11->put_done_ns = time_now_ns();
     } else if (type == WIRE_PACKET_CLIENT_MESSAGE) {
         uint32_t message_type = 0;
         uint32_t data = 0;
@@ -457,6 +458,8 @@ bool display_x11_service(display_x11_t *x11) {
 }
 
 bool display_x11_wait_ready(display_x11_t *x11) {
+    x11->wait_from_ns = time_now_ns();
+    x11->wait_ns = 0;
     while (x11->put_pending != 0u && x11->failed_call == nullptr && x11->close_requested == 0u) {
         if (!x11_read(x11, X11_PUT_POLL_MS)) {
             return false;
@@ -464,6 +467,7 @@ bool display_x11_wait_ready(display_x11_t *x11) {
         if (x11->put_pending != 0u && time_now_ns() - x11->put_sent_ns > X11_PUT_STALL_NS) {
             return x11_fail(x11, "the X server has not shown a frame for five seconds", 0);
         }
+        x11->wait_ns = time_now_ns() - x11->wait_from_ns;
     }
     return x11->failed_call == nullptr && x11->close_requested == 0u;
 }
@@ -475,6 +479,7 @@ bool display_x11_present(display_x11_t *x11) {
                            (uint16_t)x11->buffer.height, x11->depth, x11->segment);
     x11->put_pending = 1u;
     x11->put_sent_ns = time_now_ns();
+    x11->put_done_ns = 0;
     x11->frames++;
     return x11_send(x11, request, length);
 }

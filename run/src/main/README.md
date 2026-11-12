@@ -16,6 +16,8 @@
     minecraft_c <any of these but --report and --test-pattern> --profile <path>
                                                   times the run: a trace at <path> and a table on stderr, at exit. Not in a
                                                   release build. See run/src/profiler/README.md
+    minecraft_c <any of these> --frame-log <path>  a CSV line for every picture shown, added to <path>, in a
+                                                  release build too. See run/src/game/watch/README.md
     minecraft_c --report                          prints the compiled defines and CPU features, then exits, starting nothing
     minecraft_c --pretend-missing-cpu <key>       treats a feature as absent, to see the CPU check fail
     minecraft_c --pretend-leak                    skips the shutdown, to see the leak check at exit fail

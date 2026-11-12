@@ -266,4 +266,31 @@ TEST(a_bridge_of_twenty_goes_out_over_water_placing_ahead_with_the_preview_blue_
     sk_rig_end(t, &rig);
 }
 
+/* Plan 008 phase 01: the card's clock speed, from the one-warp clock64() kernel, is one the card could have: above what any card idles at under
+ * load, and not past its stated peak. Capped, it reads below the peak: on Ahmed's card at 50 W, about 600 of 2100 MHz. */
+TEST(the_clock_kernel_reads_a_plausible_clock) {
+    sk_rig_t rig;
+    REQUIRE(sk_rig_begin(t, &rig));
+    frame_marks_t marks;
+    gpu_error_t error = {0};
+    REQUIRE(frame_marks_init(&marks, &error) == GPU_STATUS_OK);
+    float32_t rated = 0.0f32;
+    REQUIRE(frame_gpu_clock_rated(&rated, &error) == GPU_STATUS_OK);
+    float32_t most = 0.0f32;
+    /* Enough of them, back to back, that an idle card has come up to speed: half a second or so. */
+    for (uint32_t i = 0u; i < 600u; i++) {
+        REQUIRE(frame_gpu_clock_mhz(&marks, &error) == GPU_STATUS_OK);
+        most = marks.card_mhz > most ? marks.card_mhz : most;
+    }
+    printf("  the clock kernel read %.0f MHz at most of 600, the last over %.3f ms for %" PRIu64
+           " cycles; the card's peak is %.0f MHz\n",
+           (libc_double_t)most, (libc_double_t)marks.clock_ms, marks.clock_cycles, (libc_double_t)rated);
+    CHECK(rated > 0.0f32);
+    CHECK(marks.clock_cycles >= (uint64_t)FRAME_CLOCK_CYCLES);
+    CHECK(most >= 300.0f32);
+    CHECK(most <= rated * 1.1f32);
+    CHECK(frame_marks_deinit(&marks, &error) == GPU_STATUS_OK);
+    sk_rig_end(t, &rig);
+}
+
 TEST_MAIN()

@@ -101,19 +101,60 @@ static_assert(offsetof(frame_args_t, borrowed_lod_light) == 64);
 static_assert(offsetof(frame_args_t, borrowed_weather) == 72);
 static_assert(offsetof(frame_args_t, borrowed_weather_map) == 80);
 
-/* The card's clock, as CUDA events. One thread at a time. Zeroed means not started, so _deinit is safe either way. */
+/* Plan 008 phase 01: what a frame says past its passes, when it is given somewhere to say it. The events between shade's kernels, the card's
+ * clock speed once in a while, and the fresh AO list's length. One thread at a time, as frame_gpu_t. Zeroed means not started, so
+ * _deinit is safe either way. */
+enum : uint32_t {
+    FRAME_CLOCK_CYCLES =
+        200000u, /* the clock kernel spins this many of the SM's cycles: 0.1 ms at 2 GHz, 0.33 ms at 600 MHz */
+};
+typedef struct frame_marks_t {
+    void *owned_shade_events[SHADE_SPAN_COUNT - 1u]; /* 0: between shade's kernels: see shade_marks_t */
+    void *owned_clock_events[2];                     /* 32: either side of the clock kernel */
+    int64_t queued_ns;     /* 48: CLOCK_MONOTONIC, as time_now_ns: the last frame was all queued, and its wait began */
+    uint64_t clock_cycles; /* 56: the clock kernel's last reading, in the SM's cycles */
+    float32_t
+        shade_ms[SHADE_SPAN_COUNT]; /* 64: the last frame's shade kernels, which add up to its FRAME_KERNEL_SHADE */
+    uint32_t fresh_count;           /* 84: the last frame's fresh AO pixels; 0 with AO off */
+    float32_t card_mhz;             /* 88: from the last clock reading; 0 before one */
+    float32_t clock_ms;             /* 92: what that reading took, on the card's timer */
+    uint8_t clock_due;              /* 96: set by the caller: the next frame reads the clock first, and clears it */
+    uint8_t clock_read;             /* 97: the last frame read the clock */
+    uint8_t open;                   /* 98 */
+    uint8_t _pad0[5];               /* 99 */
+} frame_marks_t;
+static_assert(sizeof(frame_marks_t) == 104);
+static_assert(alignof(frame_marks_t) == 8);
+static_assert(offsetof(frame_marks_t, owned_shade_events) == 0);
+static_assert(offsetof(frame_marks_t, owned_clock_events) == 32);
+static_assert(offsetof(frame_marks_t, queued_ns) == 48);
+static_assert(offsetof(frame_marks_t, clock_cycles) == 56);
+static_assert(offsetof(frame_marks_t, shade_ms) == 64);
+static_assert(offsetof(frame_marks_t, fresh_count) == 84);
+static_assert(offsetof(frame_marks_t, card_mhz) == 88);
+static_assert(offsetof(frame_marks_t, clock_ms) == 92);
+static_assert(offsetof(frame_marks_t, clock_due) == 96);
+static_assert(offsetof(frame_marks_t, clock_read) == 97);
+static_assert(offsetof(frame_marks_t, open) == 98);
+static_assert(offsetof(frame_marks_t, _pad0) == 99);
+
+gpu_status_t frame_marks_init(frame_marks_t *marks, gpu_error_t *error);
+/* Gives every event back whatever happens, and returns the first failure, which error then holds. */
+gpu_status_t frame_marks_deinit(frame_marks_t *marks, gpu_error_t *error);
+
+/* The card's clock, as CUDA events. One thread at a time. Zeroed means not started, so _deinit is safe either way. Started means its
+ * first event is there. */
 typedef struct frame_gpu_t {
     void *owned_events[FRAME_KERNEL_COUNT + 1u]; /* 0: one before each kernel, and one after the last */
     gpu_error_t last_error;                      /* 80: the last failure */
-    uint8_t open;                                /* 112 */
-    uint8_t _pad0[7];                            /* 113 */
+    /* 112: where each frame says more of itself, or nullptr for nowhere. Set after frame_gpu_init, which empties it. */
+    frame_marks_t *borrowed_marks;
 } frame_gpu_t;
 static_assert(sizeof(frame_gpu_t) == 120);
 static_assert(alignof(frame_gpu_t) == 8);
 static_assert(offsetof(frame_gpu_t, owned_events) == 0);
 static_assert(offsetof(frame_gpu_t, last_error) == 80);
-static_assert(offsetof(frame_gpu_t, open) == 112);
-static_assert(offsetof(frame_gpu_t, _pad0) == 113);
+static_assert(offsetof(frame_gpu_t, borrowed_marks) == 112);
 
 gpu_status_t frame_gpu_init(frame_gpu_t *frame);
 /* Gives every event back whatever happens, and returns the first failure, which last_error then holds. */
@@ -127,6 +168,13 @@ gpu_status_t frame_host_unpin(frame_gpu_t *frame, void *host);
 /* Runs one whole frame and waits for it: coarse pass, primary rays and boxes, shading, post with the outline, and the copy to host_xrgb. Anything but
  * GPU_STATUS_OK is in last_error. Nothing here allocates. */
 gpu_status_t frame_gpu_run(frame_gpu_t *frame, const frame_args_t *args, frame_timings_t *out_timings);
+
+/* The card's clock speed now, from a one-warp kernel that spins FRAME_CLOCK_CYCLES of clock64(), timed by events, and
+ * waits for it. Into marks' card_mhz, clock_ms and clock_cycles. Anything but GPU_STATUS_OK is in error. */
+gpu_status_t frame_gpu_clock_mhz(frame_marks_t *marks, gpu_error_t *error);
+
+/* The card's peak clock speed as CUDA states it (cudaDevAttrClockRate), in MHz: what frame_gpu_clock_mhz is held under. */
+gpu_status_t frame_gpu_clock_rated(float32_t *out_mhz, gpu_error_t *error);
 
 /* A kernel's name, for a profile. Lasts for good. */
 const char *frame_kernel_name(frame_kernel_t kernel);

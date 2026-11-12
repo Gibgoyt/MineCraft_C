@@ -612,6 +612,7 @@ TEST(the_overlays_numbers_change_only_their_own_line_and_it_stays_on_its_panel) 
     for (uint32_t i = 0u; i < UI_HUD_STAGE_COUNT; i++) {
         debug.stage_ms[i] = 1.0f32 + (float32_t)i;
     }
+    debug.recent = 1u;
     sheet_clear(&clean);
     sheet_clear(&a);
     ui_canvas_t canvas;
@@ -623,15 +624,15 @@ TEST(the_overlays_numbers_change_only_their_own_line_and_it_stays_on_its_panel) 
     CHECK_EQ_I64(panel.y, 2);
     CHECK_EQ_I64(panel.width, 180);
     /* One line more since plan 004 phase 02: the latitude and the sun. Two more since plan 005 phase 7: mobs and drops, and uploads
-     * and far jobs. */
-    CHECK_EQ_I64(panel.height, 130);
+     * and far jobs. Four more since plan 008 phase 01: the last second's pictures on the screen, the card, late ones, and the turn. */
+    CHECK_EQ_I64(panel.height, 166);
     const box_t all = sheets_box(&clean, &a);
     CHECK_EQ_I64(all.left, panel.x);
     CHECK_EQ_I64(all.top, panel.y);
     CHECK_EQ_I64(all.right, panel.x + panel.width - 1);
     CHECK_EQ_I64(all.bottom, panel.y + panel.height - 1);
 
-    for (uint32_t i = 0u; i <= UI_HUD_STAGE_COUNT + 7u; i++) {
+    for (uint32_t i = 0u; i <= UI_HUD_STAGE_COUNT + 11u; i++) {
         ui_hud_debug_t other = debug;
         uint32_t line_index = i;
         if (i == 0u) {
@@ -655,6 +656,18 @@ TEST(the_overlays_numbers_change_only_their_own_line_and_it_stays_on_its_panel) 
         } else if (i == UI_HUD_STAGE_COUNT + 7u) {
             other.far_jobs = 16u;
             line_index = UI_HUD_STAGE_COUNT + 4u;
+        } else if (i == UI_HUD_STAGE_COUNT + 8u) {
+            other.shown_p99_ms = 25.0f32;
+            line_index = UI_HUD_STAGE_COUNT + 5u;
+        } else if (i == UI_HUD_STAGE_COUNT + 9u) {
+            other.card_most_ms = 21.2f32;
+            line_index = UI_HUD_STAGE_COUNT + 6u;
+        } else if (i == UI_HUD_STAGE_COUNT + 10u) {
+            other.late = 22u;
+            line_index = UI_HUD_STAGE_COUNT + 7u;
+        } else if (i == UI_HUD_STAGE_COUNT + 11u) {
+            other.card_mhz = 615.0f32;
+            line_index = UI_HUD_STAGE_COUNT + 8u;
         } else {
             other.stage_ms[i - 1u] = 7.77f32;
         }
@@ -685,6 +698,15 @@ TEST(the_overlays_numbers_change_only_their_own_line_and_it_stays_on_its_panel) 
     printf("the longest pile lines are %" PRIu32 " and %" PRIu32 " wide\n", widest_piles.width, widest_uploads.width);
     CHECK((int32_t)widest_piles.width <= panel.width - 4);
     CHECK((int32_t)widest_uploads.width <= panel.width - 4);
+    /* And plan 008 phase 01's four, at what a bad second could be: a third of a second between pictures, every one late, a slow put, a
+     * vigorous shake and a card at its peak. */
+    const char *const widest_recent[4] = {"shown 333.3 p99 333.3 max 333.3", "card 99.9 p99 99.9 max 99.9",
+                                          "late 120  idle 99.9  X 99.9", "turn 9999 deg/s  2100 MHz"};
+    for (uint32_t i = 0u; i < 4u; i++) {
+        const ui_text_size_t measured = ui_font_measure(&f->ui.font, widest_recent[i], 1u);
+        printf("the longest of plan 008's line %" PRIu32 " is %" PRIu32 " wide\n", i, measured.width);
+        CHECK((int32_t)measured.width <= panel.width - 4);
+    }
 
     /* Times no one should see stay on the panel. */
     for (uint32_t i = 0u; i < UI_HUD_STAGE_COUNT; i++) {
@@ -888,6 +910,18 @@ static void debug_golden(ui_hud_debug_t *debug) {
     debug->drops = 12u;
     debug->uploads = 300u;
     debug->far_jobs = 16u;
+    debug->recent = 1u;
+    debug->shown_last_ms = 16.7f32;
+    debug->shown_p99_ms = 25.0f32;
+    debug->shown_most_ms = 33.4f32;
+    debug->card_mean_ms = 14.0f32;
+    debug->card_p99_ms = 17.8f32;
+    debug->card_most_ms = 21.2f32;
+    debug->idle_ms = 4.1f32;
+    debug->x_put_ms = 1.3f32;
+    debug->late = 22u;
+    debug->turn_deg_s = 640.0f32;
+    debug->card_mhz = 615.0f32;
 }
 
 TEST(bubbles_are_full_half_empty_or_not_there_and_only_over_the_drumsticks) {

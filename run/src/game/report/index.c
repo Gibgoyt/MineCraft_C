@@ -115,8 +115,6 @@ void game_hud_debug_read(const game_t *game, ui_hud_debug_t *out) {
     out->stage_ms[UI_HUD_STAGE_GPU_TOTAL] =
         game_hud_ms(atomic_load_explicit(&game->hud_total_us, memory_order_relaxed));
     out->stage_ms[UI_HUD_STAGE_SIM_TICK] = game_hud_ms(atomic_load_explicit(&game->hud_tick_us, memory_order_relaxed));
-    out->stage_ms[UI_HUD_STAGE_HUD] = game_hud_ms(game->hud_compose_us);
-    out->stage_ms[UI_HUD_STAGE_PRESENT] = game_hud_ms(game->hud_present_us);
     game_hud_block_read(game, out->block);
     /* Main's own eye and the clock main last said: plan 004 phase 02's F3 line. */
     climate_sun_t sun;
@@ -128,6 +126,30 @@ void game_hud_debug_read(const game_t *game, ui_hud_debug_t *out) {
     const game_watch_t *const watch = game_watch_of(game);
     if (watch != nullptr) {
         game_watch_debug_read(watch, out);
+        out->stage_ms[UI_HUD_STAGE_HUD] = game_hud_ms(watch->compose_us);
+        out->stage_ms[UI_HUD_STAGE_PRESENT] = game_hud_ms(watch->present_us);
+        /* Plan 008 phase 01: the last second, picture by picture. With it, the passes are its means and not one picture's. */
+        game_watch_recent_t recent;
+        if (game_watch_recent_read(watch, time_now_ns(), &recent)) {
+            out->recent = 1u;
+            out->shown_last_ms = recent.interval_last_ms;
+            out->shown_p99_ms = recent.interval_p99_ms;
+            out->shown_most_ms = recent.interval_most_ms;
+            out->card_mean_ms = recent.card_mean_ms;
+            out->card_p99_ms = recent.card_p99_ms;
+            out->card_most_ms = recent.card_most_ms;
+            out->idle_ms = recent.idle_mean_ms;
+            out->x_put_ms = recent.x_put_mean_ms;
+            out->turn_deg_s = recent.turn_deg_s;
+            out->card_mhz = recent.card_mhz;
+            out->late = recent.late;
+            if (recent.card_mean_ms > 0.0f32) {
+                for (uint32_t pass = 0u; pass < FRAME_PASS_COUNT; pass++) {
+                    out->stage_ms[pass] = recent.pass_ms[pass];
+                }
+                out->stage_ms[UI_HUD_STAGE_GPU_TOTAL] = recent.card_mean_ms;
+            }
+        }
     }
 }
 

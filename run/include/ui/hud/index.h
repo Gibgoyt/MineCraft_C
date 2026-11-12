@@ -91,8 +91,21 @@ typedef struct ui_hud_debug_t {
     uint32_t drops;                         /* 64: stacks on the ground, the same */
     uint32_t uploads;                       /* 68: sections of the newest snapshot not yet on the card */
     uint32_t far_jobs;                      /* 72: far-field columns being built on workers */
+    /* Plan 008 phase 01: the last second, picture by picture. shown is the time between new pictures on the screen. */
+    float32_t shown_last_ms; /* 76: between the last two */
+    float32_t shown_p99_ms;  /* 80 */
+    float32_t shown_most_ms; /* 84 */
+    float32_t card_mean_ms;  /* 88: the card's clock on a whole picture */
+    float32_t card_p99_ms;   /* 92 */
+    float32_t card_most_ms;  /* 96 */
+    float32_t idle_ms;       /* 100: the gpu thread waiting for main to take the last picture, a picture's mean */
+    float32_t x_put_ms;   /* 104: the X server's put, from its send to its completion, a picture's mean; 0 under KMS */
+    float32_t turn_deg_s; /* 108: the camera's turn, the mean over a quarter of a second */
+    float32_t card_mhz;   /* 112: the card's clock speed, at its last reading */
+    uint32_t late;        /* 116: pictures shown past the slot after the one they began in */
+    uint32_t recent;      /* 120: 0 if there is no last second to speak of, and the four lines say so */
 } ui_hud_debug_t;
-static_assert(sizeof(ui_hud_debug_t) == 76);
+static_assert(sizeof(ui_hud_debug_t) == 124);
 
 /* Where things go on a canvas of some size, in its pixels. */
 typedef struct ui_hud_layout_t {

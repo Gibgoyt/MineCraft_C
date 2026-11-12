@@ -6,6 +6,7 @@
 #include "display/headless/png/index.h"
 #include "file/index.h"
 #include "game/index.h"
+#include "game/watch/index.h"
 #include "gpu_bridge/index.h"
 #include "heap/index.h"
 #include "job/index.h"
@@ -1445,6 +1446,207 @@ TEST(a_world_can_be_opened_again_after_one_is_closed_and_nothing_is_left) {
     const game_config_t no_distance = {.render_distance = 0u, .width = FR_WIDTH, .height = FR_HEIGHT, .show_date = 0u};
     CHECK(!game_open(game, &no_distance));
     fr_rig_end(t, &rig);
+}
+
+/* ---- Plan 008 phase 01: what a picture's time goes on ---------------------------------------------------------------- */
+
+/* Every effect of play, AO and TAA included, which the tests above leave off. */
+static const game_config_t fr_play_game = {.render_distance = 6u,
+                                           .width = FR_WIDTH,
+                                           .height = FR_HEIGHT,
+                                           .features_off = SHADE_FEATURE_DAY_CYCLE,
+                                           .show_date = 0u};
+
+/* A frame as the game draws it, with the watch's marks, from camera. */
+static const frame_marks_t *fr_draw_marked(test_context_t *t, fr_rig_t *rig, const render_camera_t *camera) {
+    game_watch_t *const watch = game_watch_of(rig->game);
+    game_watch_marks_arm(watch, &rig->render->frame.gpu, time_now_ns());
+    if (fr_draw(t, rig, camera) == nullptr) {
+        return nullptr;
+    }
+    return watch->borrowed_marks;
+}
+
+/* Looking out over the ground the game opened on, from a little above it, so that nearly every pixel has a surface. */
+static void fr_marked_camera(const game_t *game, render_camera_t *out) {
+    *out = game->camera;
+    out->pitch = -0.45f32;
+}
+
+TEST(shade_spans_add_up_to_the_shade_pass) {
+    fr_rig_t rig;
+    REQUIRE(fr_rig_begin(t, &rig));
+    game_t *const game = rig.game;
+    REQUIRE(game_open(game, &fr_play_game));
+    REQUIRE(game_settle(game));
+    REQUIRE(game_watch_of(game)->borrowed_marks != nullptr);
+    render_camera_t camera;
+    fr_marked_camera(game, &camera);
+    float32_t most_gap = 0.0f32;
+    for (uint32_t i = 0u; i < 30u; i++) {
+        camera.yaw += 0.02f32;
+        const frame_marks_t *const marks = fr_draw_marked(t, &rig, &camera);
+        REQUIRE(marks != nullptr);
+        const frame_timings_t *const timings = &rig.render->frame.last_timings;
+        float32_t sum = 0.0f32;
+        for (uint32_t span = 0u; span < SHADE_SPAN_COUNT; span++) {
+            CHECK(marks->shade_ms[span] >= 0.0f32);
+            sum += marks->shade_ms[span];
+        }
+        const float32_t gap = fabsf(sum - timings->kernel_ms[FRAME_KERNEL_SHADE]);
+        most_gap = gap > most_gap ? gap : most_gap;
+        CHECK(gap <= 0.01f32);
+        /* Every effect is on, so each kernel ran and took some time. */
+        CHECK(marks->shade_ms[SHADE_SPAN_SURFACES] > 0.0f32);
+        CHECK(marks->shade_ms[SHADE_SPAN_AO] > 0.0f32);
+    }
+    printf("  the five spans are within %.4f ms of the shade pass on every frame\n", (libc_double_t)most_gap);
+    game_close(game);
+    fr_rig_end(t, &rig);
+}
+
+/* The first frame has no AO history, so every pixel with a surface is fresh: what the tests below count against. */
+static uint32_t fr_surfaces_first(test_context_t *t, fr_rig_t *rig, const render_camera_t *camera) {
+    const frame_marks_t *const marks = fr_draw_marked(t, rig, camera);
+    return marks != nullptr ? marks->fresh_count : 0u;
+}
+
+/* Measured, plan 008 phase 01: a still camera with TAA is not quite free of fresh pixels. The jitter moves where each pixel looks by under a
+ * pixel, and at an edge that can be a surface neither it nor its neighbours had on the last picture: 72 to 114 of 27067 here, 0.3 to 0.4 %.
+ * The phase file's first guess was none. */
+TEST(a_still_camera_has_almost_no_fresh_pixels_after_the_first_frame) {
+    fr_rig_t rig;
+    REQUIRE(fr_rig_begin(t, &rig));
+    game_t *const game = rig.game;
+    REQUIRE(game_open(game, &fr_play_game));
+    REQUIRE(game_settle(game));
+    render_camera_t camera;
+    fr_marked_camera(game, &camera);
+    const uint32_t surfaces = fr_surfaces_first(t, &rig, &camera);
+    REQUIRE(surfaces > FR_WIDTH * FR_HEIGHT / 4u);
+    uint32_t most = 0u;
+    for (uint32_t frame = 2u; frame <= 10u; frame++) {
+        const frame_marks_t *const marks = fr_draw_marked(t, &rig, &camera);
+        REQUIRE(marks != nullptr);
+        most = marks->fresh_count > most ? marks->fresh_count : most;
+    }
+    printf("  the first frame has %" PRIu32 " fresh pixels of %u; frames 2 to 10 at most %" PRIu32 "\n", surfaces,
+           FR_WIDTH * FR_HEIGHT, most);
+    CHECK((float64_t)most <= 0.01f64 * (float64_t)surfaces);
+    game_close(game);
+    fr_rig_end(t, &rig);
+}
+
+TEST(the_fresh_count_is_the_strip_on_a_turn) {
+    fr_rig_t rig;
+    REQUIRE(fr_rig_begin(t, &rig));
+    game_t *const game = rig.game;
+    REQUIRE(game_open(game, &fr_play_game));
+    REQUIRE(game_settle(game));
+    render_camera_t camera;
+    fr_marked_camera(game, &camera);
+    const uint32_t surfaces = fr_surfaces_first(t, &rig, &camera);
+    REQUIRE(surfaces > FR_WIDTH * FR_HEIGHT / 4u);
+    for (uint32_t frame = 1u; frame < 8u; frame++) {
+        REQUIRE(fr_draw_marked(t, &rig, &camera) != nullptr);
+    }
+    /* The strip a 12 degree turn brings in, by the master's section 1 C3: the share of the width, in tangents, between the edge and
+     * where the edge was. Measured here at this camera's own field of view and shape. */
+    const float64_t half_tangent = (float64_t)camera.half_fov_tangent * (float64_t)FR_WIDTH / (float64_t)FR_HEIGHT;
+    const float64_t half_width = atan(half_tangent);
+    const float64_t turn = 12.0f64 * (float64_t)FR_PI / 180.0f64;
+    const float64_t strip = (half_tangent - tan(half_width - turn)) / (2.0f64 * half_tangent);
+    camera.yaw -= (float32_t)turn;
+    const frame_marks_t *const marks = fr_draw_marked(t, &rig, &camera);
+    REQUIRE(marks != nullptr);
+    /* Sky has no surface to be fresh, so the share is of the pixels that have one. */
+    const float64_t share = (float64_t)marks->fresh_count / (float64_t)surfaces;
+    printf("  a 12 degree turn: %" PRIu32 " fresh pixels, %.1f %% of the %" PRIu32
+           " with a surface; the strip is %.1f %%\n",
+           marks->fresh_count, (libc_double_t)(share * 100.0f64), surfaces, (libc_double_t)(strip * 100.0f64));
+    /* Neighbours on the last picture lower it, never raise it. */
+    CHECK(share <= strip + 0.01f64);
+    CHECK(share >= strip * 0.5f64);
+    game_close(game);
+    fr_rig_end(t, &rig);
+}
+
+/* Lines and commas in a frame log, and that its seq and times go up. */
+static bool fr_log_check(test_context_t *t, const char *text, uint64_t length, uint64_t *out_lines) {
+    uint64_t lines = 0u, commas = 0u, header_commas = 0u;
+    float64_t last_time = -1.0f64;
+    int64_t last_seq = -1;
+    const char *line = text;
+    for (uint64_t i = 0u; i < length; i++) {
+        if (text[i] == ',') {
+            commas++;
+        }
+        if (text[i] != '\n') {
+            continue;
+        }
+        if (lines == 0u) {
+            header_commas = commas;
+            CHECK(strncmp(line, "seq,taken_s,interval_ms", 23u) == 0);
+        } else {
+            CHECK_EQ_U64(commas, header_commas);
+            char *end = nullptr;
+            const int64_t seq = strtoll(line, &end, 10);
+            const float64_t taken = strtod(end + 1, nullptr);
+            CHECK(seq > last_seq);
+            CHECK(taken >= last_time);
+            last_seq = seq;
+            last_time = taken;
+        }
+        commas = 0u;
+        lines++;
+        line = text + i + 1u;
+    }
+    *out_lines = lines;
+    return header_commas >= 30u;
+}
+
+TEST(the_frame_log_has_one_line_per_picture) {
+    fr_temp_dir_t dir;
+    REQUIRE(fr_temp_dir_make(&dir));
+    char path[FILE_PATH_BYTES];
+    snprintf(path, sizeof(path), "%s/frames.csv", dir.path);
+    fr_rig_t rig;
+    REQUIRE(fr_rig_begin(t, &rig));
+    game_t *const game = rig.game;
+    game_frame_log_set(game, path);
+    REQUIRE(game_open(game, &fr_play_game));
+    const uint64_t bytes = post_xrgb_bytes(FR_WIDTH, FR_HEIGHT);
+    display_buffer_t target = {.owned_map = fr_aligned(t, bytes),
+                               .map_bytes = bytes,
+                               .pitch = FR_WIDTH * 4u,
+                               .width = FR_WIDTH,
+                               .height = FR_HEIGHT};
+    REQUIRE(game_loop_start(game, nullptr));
+    const render_fly_input_t turn = {.mouse_dx = 20};
+    const int64_t started_ns = time_now_ns();
+    int64_t next_ns = started_ns;
+    while (time_now_ns() - started_ns < 2ll * TIME_NS_PER_SECOND) {
+        REQUIRE(game_loop_frame(game, &turn, 1.0f32 / 120.0f32, &target));
+        next_ns += TIME_NS_PER_SECOND / 120;
+        time_sleep_until_ns(next_ns);
+    }
+    REQUIRE(game_loop_stop(game));
+    const uint64_t taken = game->pictures_shown;
+    /* F3's last second, read as main would, while the rings are still there. */
+    game_watch_recent_t recent;
+    CHECK(game_watch_recent_read(game_watch_of(game), time_now_ns(), &recent) || taken == 0u);
+    game_close(game);
+    fr_rig_end(t, &rig);
+    uint64_t length = 0u;
+    const uint64_t capacity = 4ull << 20;
+    uint8_t *const text = test_alloc(t, capacity);
+    REQUIRE(file_read_whole(path, text, capacity, &length) == FILE_OK);
+    uint64_t lines = 0u;
+    CHECK(fr_log_check(t, (const char *)text, length, &lines));
+    printf("  %" PRIu64 " pictures taken in 2 s, %" PRIu64 " lines in the log\n", taken, lines);
+    CHECK(taken > 10u);
+    CHECK_EQ_U64(lines, taken + 1u);
+    fr_temp_dir_remove(&dir);
 }
 
 TEST_MAIN()

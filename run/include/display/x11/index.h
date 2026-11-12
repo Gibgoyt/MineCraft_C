@@ -37,6 +37,9 @@ typedef struct display_x11_t {
     uint64_t
         focus_losses; /* the window manager took the focus away: Alt+Tab or a click on another window, never a grab */
     int64_t put_sent_ns;
+    int64_t put_done_ns;     /* plan 008 phase 01: when that put's completion was read; 0 while it is out */
+    int64_t wait_from_ns;    /* when display_x11_wait_ready was last called */
+    int64_t wait_ns;         /* and what it blocked */
     display_buffer_t buffer; /* what a frame is drawn into: owned_map is owned_shm */
     wire_pointer_t pointer;
     int32_t fd;
@@ -65,7 +68,7 @@ typedef struct display_x11_t {
     uint8_t connected;
     uint8_t running;
 } display_x11_t;
-static_assert(sizeof(display_x11_t) == 248);
+static_assert(sizeof(display_x11_t) == 272);
 
 /* Connects to the server named by DISPLAY over its local Unix socket, makes the window and its shared pixels, and shows
  * it. display_name is DISPLAY's value and auth_path is the Xauthority file, which may be nullptr. On failure logs why and

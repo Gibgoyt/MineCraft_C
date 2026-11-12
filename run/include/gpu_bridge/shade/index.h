@@ -639,6 +639,39 @@ gpu_status_t shade_frame_entities(gpu_error_t *error, const shade_scene_t *scene
                                   const device_block_t *hits, const device_block_t *pixels,
                                   const entity_rays_scene_t *entities);
 
+/* Plan 008 phase 01: shade's own kernels each between two clock marks, and where the fresh list's length is. */
+typedef enum shade_span_t : uint32_t {
+    SHADE_SPAN_WATER = 0,    /* what is seen through water and glass */
+    SHADE_SPAN_SURFACES = 1, /* every pixel's surface, sky and fog */
+    SHADE_SPAN_SUN = 2,      /* the rays towards the sun */
+    SHADE_SPAN_AO = 3,       /* AO's history pass: one ray on one frame in four, and the fresh list made */
+    SHADE_SPAN_FRESH = 4,    /* fresh AO: SHADE_AO_FRESH_RAYS rays for every pixel on that list */
+    SHADE_SPAN_COUNT = 5,
+} shade_span_t;
+static_assert(sizeof(shade_span_t) == 4);
+
+typedef struct shade_marks_t {
+    /* 0: CUDA events, recorded at the end of each span but the last, whose end is the caller's next mark: whatever does not run is a span
+     * of nothing. Borrowed from whoever made them. */
+    void *borrowed_events[SHADE_SPAN_COUNT - 1u];
+    /* 32: written by shade_frame_marked: where on the card this frame's fresh list keeps its length, or nullptr with AO off. It stays
+     * there until the next frame that writes the same AO block. */
+    const uint32_t *fresh_count;
+} shade_marks_t;
+static_assert(sizeof(shade_marks_t) == 40);
+static_assert(alignof(shade_marks_t) == 8);
+static_assert(offsetof(shade_marks_t, borrowed_events) == 0);
+static_assert(offsetof(shade_marks_t, fresh_count) == 32);
+
+/* shade_frame_entities with marks, or without if marks is nullptr. */
+gpu_status_t shade_frame_marked(gpu_error_t *error, const shade_scene_t *scene, const post_settings_t *post,
+                                const traverse_world_t *world, const traverse_camera_t *camera,
+                                const device_block_t *hits, const device_block_t *pixels,
+                                const entity_rays_scene_t *entities, shade_marks_t *marks);
+
+/* A span's name, for a profile and the frame log. Lasts for good. */
+const char *shade_span_name(shade_span_t span);
+
 /* God rays: for every second pixel each way of what shade_frame just wrote to pixels, how much sun the air along its ray shows, into
  * scene's borrowed_temporal's borrowed_shafts. Here and not in post, as a sun ray needs the textures and the loop above. Starts a
  * kernel and returns. On failure error says why, and nothing was started. */

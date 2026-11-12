@@ -76,6 +76,16 @@ Plan 004 phase 10. A short stack of lines from a `ui_hud_corner_t`, plain text `
 
 F3 turns it on and off, on top of the HUD and over any kind of run, flying or walking. It lists what `ui_hud_stage_t` does: the five passes of the card and its total, from the card's own clock; the sim's last tick; and on `main`, what the HUD and copying the picture out took. Then come the coordinates, whatever the setting says, and its panel is wide enough for eight digits each way. Its last line is the eye's latitude and the sun's elevation there (plan 004 phase 02): `lat 45.00 N  sun 30.0`, `S` south of the equator and `N` at exactly 0, two decimals for the latitude and one for the sun. The longest, `lat 90.00 N  sun -66.5`, fits the panel. With no body, they are the flying eye's. Two more lines follow (plan 005 phase 7, for a world that grows slow when left alone): `mobs 70  drops 12`, the mobs in the world and the stacks on the ground as of the sim's last tick, and `uploads 300  far jobs 16`, the sections of the newest snapshot not yet on the card and the far-field columns being built on workers. Frames per second count **new pictures**, as `game_report` does, not how often `main` went round. The window is half a second, in `run/src/game/`.
 
+Plan 008 phase 01 adds four lines at the end, because FPS, a mean, hides the stutter Ahmed feels ("i think F3 frame rate tab is also innacurate as fuck"). All are over the last second, from `game/watch`'s rings:
+
+    shown 16.7 p99 25.0 max 33.4     the time between new pictures on the screen: the last one, its 99th percentile and the longest
+    card 14.0 p99 17.8 max 21.2      the card's clock on a whole picture: mean, 99th percentile and the longest
+    late 22  idle 4.1  X 1.3         pictures shown past the slot after the one they began in; the gpu thread's mean wait for main to take the
+                                     last picture, in ms; the X server's put, send to completion, in ms (0 under KMS)
+    turn 640 deg/s  615 MHz          the camera's turn over the last quarter second; the card's clock speed at its last reading
+
+Before a second of pictures each says `none yet`. With them, the five passes and `gpu total` above are that second's means, not one picture's.
+
 Its text is half the HUD's scale, rounding up.
 
 An item is drawn flat from its own texture, a block as one face of it.

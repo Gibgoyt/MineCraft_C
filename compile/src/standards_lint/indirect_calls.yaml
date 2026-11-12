@@ -36,6 +36,10 @@ indirect_calls:
     caller: bench_row_settled
     pointer: "display_headless_scene_t tick and draw"
     why: "The scene is the game's own tick and draw, which never call back into the bench that drives it."
+  - file: bench/world/shake/index.c
+    caller: sh_settled_draw
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's own tick and draw, which never call back into the bench that drives it."
   - file: compile/src/texture_vector/recipe/index.c
     caller: tv_recipe_run
     pointer: "tv_op_function_t"

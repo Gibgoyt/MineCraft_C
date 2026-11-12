@@ -212,10 +212,11 @@ typedef struct game_t {
     float64_t hud_fps_seconds; /* 1352: of the window being counted */
     float32_t hud_fps;         /* 1360: new pictures a second, over the last whole window */
     uint32_t hud_fps_pictures; /* 1364: new pictures in the window being counted */
-    uint32_t hud_compose_us;   /* 1368: what drawing on the last picture took */
-    uint32_t hud_present_us;   /* 1372: what copying it out took */
-    uint8_t hud_debug;         /* 1376: the debug overlay is up */
-    uint8_t hud_debug_key;     /* 1377: its key was down, last time anyone looked */
+    /* 1368: --frame-log's path, or nullptr for none (plan 008 phase 01); set before a world opens, and only read after. What drawing on
+     * the last picture and copying it out took, which were here, are in the world's game_watch_t. */
+    const char *borrowed_frame_log;
+    uint8_t hud_debug;     /* 1376: the debug overlay is up */
+    uint8_t hud_debug_key; /* 1377: its key was down, last time anyone looked */
     uint16_t
         climate_jump_days; /* 1378: --climate-jump: days the next world opened moves its clock on; main's, before game_open */
     uint32_t
@@ -306,6 +307,10 @@ void game_climate_set(game_t *game, climate_t *climate);
 /* From here on what its threads do, and what the card does, is timed in this profiler's lanes. The profiler must outlive it. Before
  * game_open. Without it, nothing is timed. */
 void game_profiler_set(game_t *game, profiler_t *profiler);
+
+/* Plan 008 phase 01: every world opened from here on adds a line for every picture main takes to the CSV file at path, or nullptr for no
+ * log. The path must outlive the game. See run/src/game/watch/README.md. */
+void game_frame_log_set(game_t *game, const char *path);
 
 /* Stops whatever is running, and closes any world. Safe on a zeroed game_t. */
 void game_deinit(game_t *game);

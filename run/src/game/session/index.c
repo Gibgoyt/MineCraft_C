@@ -3,6 +3,7 @@
 
 #include "assert/index.h"
 #include "game/census/index.h"
+#include "game/watch/index.h"
 #include "game/cover/index.h"
 #include "game/weather/index.h"
 #include "log/index.h"
@@ -550,6 +551,11 @@ static void game_session_window_look(game_session_t *session) {
         return;
     }
     const display_x11_t *const x11 = display->borrowed_x11;
+    /* Plan 008 phase 01: the last put and main's wait for it, for the frame log and F3. */
+    game_watch_t *const watch = game_watch_of(session->borrowed_game);
+    if (watch != nullptr) {
+        game_watch_display_note(watch, x11->put_sent_ns, x11->put_done_ns, x11->wait_from_ns, x11->wait_ns);
+    }
     const uint8_t losses = (uint8_t)x11->focus_losses;
     if (losses != session->focus_losses_seen) {
         session->focus_losses_seen = losses;

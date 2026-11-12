@@ -1,6 +1,6 @@
 # 008-ahmed-bohemoth-smooth-frames-when-turning — phase 1: Measure the head-shake cost
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** in progress: the tools are built and tested; the experiments are running   (updated 2026-11-12)
 
 Read first: `plans/008-ahmed-bohemoth-smooth-frames-when-turning-phase-00-vision-and-plan-files.md`, then the master `plans/008-ahmed-bohemoth-smooth-frames-when-turning.md`: sections 0, 1 (the causes C1 to C9), 3.1 and 4. Every number here comes from the master. Where this file adds a number the master does not give, it says so and why.
 
@@ -248,14 +248,14 @@ This phase may edit these, plus this file:
 
 ## Todo
 
-- [ ] Plan 006 phase 01 is on `main`, or this branch is rebased onto it
-- [ ] Shade's five kernels have their own events and card-lane spans; `frame_timings_t.shade_ms[5]`; they add up to the shade pass
-- [ ] The fresh AO count comes home with every picture
-- [ ] `frame_gpu_clock_mhz`: the one-warp `clock64` kernel, once a second
-- [ ] The gpu thread's stage stamps, main's take stamps and tick, slot accounting, in a 4096-record ring in the World arena
-- [ ] X put-to-completion latency and main's block on `display_x11_wait_ready`, per frame
-- [ ] F3: card ms mean, p99 and max over 1 s; pictures a second, late, idle; turn speed and card MHz
-- [ ] `--frame-log <path>`, release builds included; the watch's minute line gains interval p99 and late count
+- [x] Plan 006 phase 01 is on `main`, or this branch is rebased onto it
+- [x] Shade's five kernels have their own events and card-lane spans; `frame_timings_t.shade_ms[5]`; they add up to the shade pass
+- [x] The fresh AO count comes home with every picture
+- [x] `frame_gpu_clock_mhz`: the one-warp `clock64` kernel, once a second
+- [x] The gpu thread's stage stamps, main's take stamps and tick, slot accounting, in a 4096-record ring in the World arena
+- [x] X put-to-completion latency and main's block on `display_x11_wait_ready`, per frame
+- [x] F3: card ms mean, p99 and max over 1 s; pictures a second, late, idle; turn speed and card MHz
+- [x] `--frame-log <path>`, release builds included; the watch's minute line gains interval p99 and late count
 - [ ] `bench_world`: the `shake` path (yaw and pitch), `--at`, `--seed`, `--yaw`, live-capped rows, new history columns
 - [ ] `bench_world --rose` with CSV, polar PNG and the worst direction's shot
 - [ ] `bench/world/gpu_watch.sh`, killed at the end of each run, checked gone
@@ -364,4 +364,25 @@ Appended as they land:
 
 ## Issues found
 
-None.
+Ahmed's words, 2026-11-12, as this phase began: "only when shaking my head does frame rate tank; when walking around without my mouse/view frame rate sits nicely; i think F3 frame rate tab is also innacurate as fuck something laggy is happening and we need to figure out where". So the priority was the release frame log and F3 lines that show the real interval on the screen.
+
+**What changed from the plan, and why:**
+
+- **Shade's spans live in a `frame_marks_t`, not in `frame_timings_t` and `frame_gpu_t`.** Growing either grows `render_frame_t`, `render_t` and so `app_t`, which is at main's 16 KiB frame limit (16192 of 16384). So `frame_gpu_t`'s `open` byte gave its place to a `frame_marks_t *borrowed_marks` (started now means its first event is there), and the marks (shade's four events, the clock's two, `shade_ms[5]`, `fresh_count`, `card_mhz`, `queued_ns`) are in the World arena, made by `game_watch_open` and set on each frame by `game_watch_marks_arm`. With no marks a frame runs as before. `shade_frame_marked` is the marked call; `shade_frame_entities` is it with none.
+- **Shade's spans are not on the profiler's card lane.** `tests/run/profiler` holds the card lane to one span a kernel adding up to the frame; nesting five under `shade` would break that test's sum. They are in the frame log, F3's source, and the bench instead.
+- **The fresh count is copied home after the frame's wait** (4 bytes, `cudaMemcpy`), not mid-stream into pinned memory: a copy to pageable memory mid-stream makes the thread wait there for shade with the card idle while it then queues post, and pinning needs an allocation the One-Owner rule gives to `run/src/heap/`.
+- **The `clock64` kernel is timed by events only.** Reading `%globaltimer` needs inline PTX, which the lint bans (section 7). Events also hold the kernel's start, a few microseconds; `FRAME_CLOCK_CYCLES` is 200 000 (0.11 ms at 1750 MHz, 0.33 ms at 600) so that is about 1 %.
+- **Two rings, one writer each, not one record joined by main.** A picture's card numbers are known only after its publish, when main may already have taken it. So the gpu thread writes a picture ring and main a take ring; what main needs at the take (the picture's number, when it began, main's frame count then) goes through the exchange slot before the draw; the sim joins them by number, 20 times a second, for the frame log and the minute line. See `run/src/game/watch/README.md`.
+- **"Late"** is a take more than one of main's frames after the frame the picture began in: the first tick after a picture starts is the one it is aimed at. The plan's "the first tick at least 8.33 ms after its start" would call every picture that starts mid-slot late.
+- **The X stamps reach the game through `game/session`**, one call in `game_session_window_look` (outside this phase's paths, the smallest wiring there is: only the session holds the display). Runs without the session (`--test-world`) log 0 for them.
+- **`hud_compose_us` and `hud_present_us` moved from `game_t` to `game_watch_t`**, to make room in `game_t` (at its 1600 bytes) for `borrowed_frame_log`, the `--frame-log` path.
+- **F3 has four new lines, not three:** `shown last p99 max` (the real interval on the screen, Ahmed's ask), `card mean p99 max`, `late idle X`, `turn deg/s MHz`. With a second of pictures, the five pass lines and `gpu total` are that second's means, not one picture's. `tests/run/ui/hud/fixtures/debug_640x480.png` was regenerated with `MC_GOLDEN_WRITE=1` and looked at: the four lines sit under `uploads`, inside the panel.
+- **The bench is its own program, `bench_world_shake` (`bench/world/shake/`),** with its own `history.tsv`: `bench/world/index.c` is at 1494 lines, the standard's split. `gpu_watch.sh` is in `bench/world/`.
+
+**Measured while building the tests (debug build, 320x180, render distance 6, every effect, at 1733 MHz):**
+
+- Shade's five spans add up to the shade kernel's time to within 0.0000 ms on every one of 30 frames.
+- **A still camera with TAA is not free of fresh AO pixels:** 72 to 114 a frame of 27 067 with a surface (0.3 to 0.4 %), from the jitter at edges. The phase's test said 0; it now says at most 1 % and is named `a_still_camera_has_almost_no_fresh_pixels_after_the_first_frame`.
+- **A 12° turn makes 16.7 % of the surface pixels fresh, against the strip formula's 17.2 %.** The formula is right; sky has no surface to be fresh, so the share is of the pixels with one.
+- The clock kernel read 1733 MHz on an idle-then-loaded card whose stated peak is 1755 MHz.
+- The frame log over 2 s of real threads: 239 pictures taken, 240 lines (one header).

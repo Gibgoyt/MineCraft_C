@@ -20,7 +20,7 @@ enum : uint32_t {
     UI_HUD_COUNT_TOP = 9u,    /* from the item's top to its count's */
     UI_HUD_TEXT_BUFFER = 64u, /* past the longest a float32_t can print */
     /* With the coordinates, the latitude and sun, and plan 005 phase 7's mobs and drops, and uploads and far jobs. */
-    UI_HUD_DEBUG_LINES = 1u + (uint32_t)UI_HUD_STAGE_COUNT + 4u,
+    UI_HUD_DEBUG_LINES = 1u + (uint32_t)UI_HUD_STAGE_COUNT + 4u + 4u, /* plan 008 phase 01's four at the end */
     UI_HUD_DEBUG_MARGIN = 2u,  /* font pixels, from the canvas to the panel and from the panel to its text */
     UI_HUD_DEBUG_WIDTH = 176u, /* font pixels of text: coordinates of eight digits each way, which a test measures */
     UI_HUD_COLOR_TEXT = 0xFFFFFFFFu,
@@ -466,5 +466,27 @@ void ui_hud_debug_draw(ui_canvas_t *canvas, const ui_font_t *font, const ui_hud_
     y += line;
     snprintf(text, sizeof(text), "uploads %" PRIu32 "  far jobs %" PRIu32, debug->uploads, debug->far_jobs);
     ui_font_draw(font, canvas, left, y, text, style);
+    /* Plan 008 phase 01: what the screen showed over the last second, and the card. "shown 16.7 p99 25.0 max 33.4" is the time between new
+     * pictures on the screen, the last one first: what FPS above hides. */
+    char lines[4][UI_HUD_TEXT_BUFFER];
+    if (debug->recent == 0u) {
+        snprintf(lines[0], sizeof(lines[0]), "shown none yet");
+        snprintf(lines[1], sizeof(lines[1]), "card none yet");
+        snprintf(lines[2], sizeof(lines[2]), "late none yet");
+        snprintf(lines[3], sizeof(lines[3]), "turn none yet");
+    } else {
+        snprintf(lines[0], sizeof(lines[0]), "shown %.1f p99 %.1f max %.1f", (libc_double_t)debug->shown_last_ms,
+                 (libc_double_t)debug->shown_p99_ms, (libc_double_t)debug->shown_most_ms);
+        snprintf(lines[1], sizeof(lines[1]), "card %.1f p99 %.1f max %.1f", (libc_double_t)debug->card_mean_ms,
+                 (libc_double_t)debug->card_p99_ms, (libc_double_t)debug->card_most_ms);
+        snprintf(lines[2], sizeof(lines[2]), "late %" PRIu32 "  idle %.1f  X %.1f", debug->late,
+                 (libc_double_t)debug->idle_ms, (libc_double_t)debug->x_put_ms);
+        snprintf(lines[3], sizeof(lines[3]), "turn %.0f deg/s  %.0f MHz", (libc_double_t)debug->turn_deg_s,
+                 (libc_double_t)debug->card_mhz);
+    }
+    for (uint32_t i = 0u; i < 4u; i++) {
+        y += line;
+        ui_font_draw(font, canvas, left, y, lines[i], style);
+    }
     (void)ui_canvas_clip_set(canvas, clip_before);
 }

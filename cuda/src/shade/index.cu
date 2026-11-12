@@ -1071,6 +1071,45 @@ gpu_status_t shade_frame_entities(gpu_error_t *error, const shade_scene_t *scene
                                   const traverse_world_t *world, const traverse_camera_t *camera,
                                   const device_block_t *hits, const device_block_t *pixels,
                                   const entity_rays_scene_t *entities) {
+    return shade_frame_marked(error, scene, post, world, camera, hits, pixels, entities, nullptr);
+}
+
+const char *shade_span_name(shade_span_t span) {
+    static const char *const names[(uint32_t)SHADE_SPAN_COUNT] = {"water", "surfaces", "sun", "ao", "ao_fresh"};
+    return (uint32_t)span < (uint32_t)SHADE_SPAN_COUNT ? names[(uint32_t)span] : "?";
+}
+
+/* The end of every span from first on: what did not run is a span of nothing, so the marks always come in order. */
+static gpu_status_t shade_marks_from(gpu_error_t *error, const shade_marks_t *marks, uint32_t first) {
+    if (marks == nullptr) {
+        return GPU_STATUS_OK;
+    }
+    for (uint32_t i = first; i + 1u < (uint32_t)SHADE_SPAN_COUNT; i += 1u) {
+        const gpu_status_t status = device_memory_check(error, cudaEventRecord((cudaEvent_t)marks->borrowed_events[i]),
+                                                        "shade: reading the card's clock");
+        if (status != GPU_STATUS_OK) {
+            return status;
+        }
+    }
+    return GPU_STATUS_OK;
+}
+
+/* One span's end, and nothing more. */
+static gpu_status_t shade_mark(gpu_error_t *error, const shade_marks_t *marks, uint32_t span) {
+    if (marks == nullptr) {
+        return GPU_STATUS_OK;
+    }
+    return device_memory_check(error, cudaEventRecord((cudaEvent_t)marks->borrowed_events[span]),
+                               "shade: reading the card's clock");
+}
+
+gpu_status_t shade_frame_marked(gpu_error_t *error, const shade_scene_t *scene, const post_settings_t *post,
+                                const traverse_world_t *world, const traverse_camera_t *camera,
+                                const device_block_t *hits, const device_block_t *pixels,
+                                const entity_rays_scene_t *entities, shade_marks_t *marks) {
+    if (marks != nullptr) {
+        marks->fresh_count = nullptr;
+    }
     if (camera->width == 0u || camera->height == 0u) {
         return shade_refuse(error, "shade: the camera has no pixels");
     }
@@ -1136,6 +1175,10 @@ gpu_status_t shade_frame_entities(gpu_error_t *error, const shade_scene_t *scene
             return water_started;
         }
     }
+    const gpu_status_t water_marked = shade_mark(error, marks, SHADE_SPAN_WATER);
+    if (water_marked != GPU_STATUS_OK) {
+        return water_marked;
+    }
     shade_kernel<<<grid, dim3(TRAVERSE_TILE_PIXELS, TRAVERSE_TILE_PIXELS)>>>(
         view, *camera, (const shade_texture_t *)(const void *)device_memory_pointer(scene->borrowed_textures),
         (const uint16_t *)(const void *)device_memory_pointer(scene->borrowed_faces),
@@ -1152,8 +1195,15 @@ gpu_status_t shade_frame_entities(gpu_error_t *error, const shade_scene_t *scene
             : nullptr,
         (traverse_hit_t *)(void *)device_memory_pointer(hits), (shade_pixel_t *)(void *)device_memory_pointer(pixels));
     const gpu_status_t started = device_memory_check(error, cudaGetLastError(), "shade: starting the kernel");
-    if (started != GPU_STATUS_OK || !ao_blocks) {
+    if (started != GPU_STATUS_OK) {
         return started;
+    }
+    if (!ao_blocks) {
+        return shade_marks_from(error, marks, SHADE_SPAN_SURFACES);
+    }
+    const gpu_status_t surfaces_marked = shade_mark(error, marks, SHADE_SPAN_SURFACES);
+    if (surfaces_marked != GPU_STATUS_OK) {
+        return surfaces_marked;
     }
     if ((scene->features & SHADE_FEATURE_SHADOW) != 0u) {
         shade_sun_kernel<<<grid, dim3(TRAVERSE_TILE_PIXELS, TRAVERSE_TILE_PIXELS)>>>(
@@ -1169,7 +1219,11 @@ gpu_status_t shade_frame_entities(gpu_error_t *error, const shade_scene_t *scene
         }
     }
     if (!ao_on) {
-        return GPU_STATUS_OK;
+        return shade_marks_from(error, marks, SHADE_SPAN_SUN);
+    }
+    const gpu_status_t sun_marked = shade_mark(error, marks, SHADE_SPAN_SUN);
+    if (sun_marked != GPU_STATUS_OK) {
+        return sun_marked;
     }
     const uint64_t pixel_count = (uint64_t)camera->width * camera->height;
     uint32_t *const fresh = (uint32_t *)(void *)(ao_next + pixel_count);
@@ -1182,6 +1236,17 @@ gpu_status_t shade_frame_entities(gpu_error_t *error, const shade_scene_t *scene
         scene->glass_material, scene->sun, temporal, ao_last, ao_next, fresh, fresh_count,
         (const traverse_hit_t *)(const void *)device_memory_pointer(hits),
         (shade_pixel_t *)(void *)device_memory_pointer(pixels));
+    const gpu_status_t ao_started = device_memory_check(error, cudaGetLastError(), "shade: starting AO's history pass");
+    if (ao_started != GPU_STATUS_OK) {
+        return ao_started;
+    }
+    const gpu_status_t ao_marked = shade_mark(error, marks, SHADE_SPAN_AO);
+    if (ao_marked != GPU_STATUS_OK) {
+        return ao_marked;
+    }
+    if (marks != nullptr) {
+        marks->fresh_count = fresh_count;
+    }
     /* How long the list is, only the card knows yet, so this is as long as it could be, and what is past its end returns at once. Waiting to
      * hear, and launching only what is on it, came to the same: see the phase 17 stage 3 file. */
     const uint32_t per_warp = 32u;

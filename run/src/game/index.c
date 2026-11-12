@@ -37,18 +37,18 @@ typedef struct game_world_parts_t {
     uint8_t _pad0[56];                        /* 58888 */
     game_corner_t corner;                     /* 58944: the sim writes it, main reads its words */
     game_fill_t fill;                         /* 59200: whichever thread uploads writes it (plan 005 phase 14) */
-    game_watch_t watch;                       /* 61056: plan 005 phase 7's overlay numbers and slow lines */
-    game_command_t command;                   /* 61248: plan 006 phase 01's command box, main's */
-    uint8_t _pad1[56];                        /* 63112 */
+    game_watch_t watch;     /* 61056: plan 005 phase 7's overlay numbers and slow lines, and plan 008's */
+    game_command_t command; /* 62592: plan 006 phase 01's command box, main's */
+    uint8_t _pad1[56];      /* 64456 */
 } game_world_parts_t;
-static_assert(sizeof(game_world_parts_t) == 63168);
+static_assert(sizeof(game_world_parts_t) == 64512);
 static_assert(offsetof(game_world_parts_t, fill) == 59200);
 static_assert(offsetof(game_world_parts_t, jobs) == 0);
 static_assert(offsetof(game_world_parts_t, weather) == 8192);
 static_assert(offsetof(game_world_parts_t, cover) == 58816);
 static_assert(offsetof(game_world_parts_t, corner) == 58944);
 static_assert(offsetof(game_world_parts_t, watch) == 61056);
-static_assert(offsetof(game_world_parts_t, command) == 61248);
+static_assert(offsetof(game_world_parts_t, command) == 62592);
 
 enum : uint64_t {
     /* Budgets of the two arenas with a lifetime shorter than a world's. */
@@ -60,7 +60,8 @@ enum : uint64_t {
     GAME_WORLD_ARENA_BYTES =
         GAME_STREAM_JOBS * (GAME_COLUMN_BYTES + 2u * GAME_COLUMN_VOXELS + UI_ATLAS_COLUMN_PIXELS * sizeof(uint32_t) +
                             COLUMN_SECTIONS * sizeof(section_encoded_t)) +
-        sizeof(game_world_parts_t) + 2ull * 4096ull + MOB_SPAWN_BYTES + GAME_CENSUS_ARENA_BYTES,
+        sizeof(game_world_parts_t) + 2ull * 4096ull + MOB_SPAWN_BYTES + GAME_CENSUS_ARENA_BYTES +
+        GAME_WATCH_ARENA_BYTES,
 };
 enum : int64_t {
     GAME_SIM_IDLE_NS = 1000000, /* the sim looks for finished columns this often when it has nothing to do */
@@ -201,6 +202,11 @@ void game_profiler_set(game_t *game, profiler_t *profiler) {
     /* Until there are threads, main does what they do. */
     game->borrowed_lane_sim = game->borrowed_lane_main;
     game->borrowed_lane_gpu = game->borrowed_lane_main;
+}
+
+void game_frame_log_set(game_t *game, const char *path) {
+    ASSERT_ALWAYS(game->open == 0u);
+    game->borrowed_frame_log = path;
 }
 
 /* What a save is of, in this game. */
@@ -536,8 +542,6 @@ static void game_hud_start(game_t *game) {
     game->hud_fps_seconds = 0.0f64;
     game->hud_fps = 0.0f32;
     game->hud_fps_pictures = 0u;
-    game->hud_compose_us = 0u;
-    game->hud_present_us = 0u;
 }
 
 void game_open_alive_set(game_t *game, void (*alive)(void *context), void *context) {
@@ -757,6 +761,7 @@ bool game_open(game_t *game, const game_config_t *config) {
     }
     game_census_attach(game); /* plan 004 phase 07: with the calendar known */
     game_atlas_open(game);    /* plan 004 phase 09 */
+    game_watch_open(&world_parts->watch, &game->arena_world, game->borrowed_frame_log); /* plan 008 phase 01 */
     game->open = 1u;
     return true;
 }
@@ -785,6 +790,9 @@ void game_close(game_t *game) {
         entity_close(game->borrowed_entity);
         memset(&game->mob_spawn, 0, sizeof(game->mob_spawn));
     }
+    /* Plan 008 phase 01: the frame log's last lines, and the marks given back before the frame that borrows them goes. */
+    game->borrowed_render->frame.gpu.borrowed_marks = nullptr;
+    game_watch_close(game_watch_of(game));
     render_close(game->borrowed_render);
     world_close(game->borrowed_world);
     game->borrowed_felling = nullptr;
@@ -1197,6 +1205,7 @@ static gpu_status_t game_frame_draw(game_t *game, const render_camera_t *camera)
     }
     render_frame_under_water_set(&render->frame, game->borrowed_player != nullptr &&
                                                      player_eyes_under_water_read(game->borrowed_player));
+    game_watch_marks_arm(game_watch_of(game), &render->frame.gpu, time_now_ns());
     PROFILER_BEGIN(game->borrowed_lane_gpu, "frame_draw");
     /* With the weather where the eye is (plan 004 phase 08): between ticks with threads, as each tick's slot without. */
     const gpu_status_t status = game_weather_draw(game, camera, game->threads_running != 0u ? time_now_ns() : 0);
@@ -1479,6 +1488,8 @@ static void game_gpu_thread(void *borrowed_argument) {
     game_t *const game = borrowed_argument;
     render_t *const render = game->borrowed_render;
     const render_camera_t *camera = &game->camera_slots[game->cameras.front];
+    game_watch_t *const watch = game_watch_of(game);
+    int64_t waited_ns = time_now_ns(); /* plan 008 phase 01: when the last picture was done */
     while (atomic_load_explicit(&game->stop, memory_order_acquire) == 0u) {
         atomic_fetch_add_explicit(&game->gpu_beats, 1u, memory_order_relaxed);
         /* A picture no one has taken yet is plenty: drawing past the display's rate would only heat the card. Uncapped is someone asking for
@@ -1489,6 +1500,7 @@ static void game_gpu_thread(void *borrowed_argument) {
             time_sleep_ns(GAME_GPU_IDLE_NS);
             continue;
         }
+        game_watch_picture_t *const picture = game_watch_picture_begin(watch, waited_ns, time_now_ns());
         uint32_t slot = 0u;
         if (render_exchange_take(&game->cameras, &slot)) {
             camera = &game->camera_slots[slot];
@@ -1496,6 +1508,7 @@ static void game_gpu_thread(void *borrowed_argument) {
         PROFILER_BEGIN(game->borrowed_lane_gpu, "upload");
         gpu_status_t status = render_upload_frame(&render->upload);
         PROFILER_END(game->borrowed_lane_gpu);
+        game_watch_stamp(picture, GAME_WATCH_STAMP_UPLOAD);
         if (status != GPU_STATUS_OK) {
             gpu_error_log(&render->buffers.last_error);
             game_gpu_failed_note(game, status);
@@ -1514,10 +1527,13 @@ static void game_gpu_thread(void *borrowed_argument) {
                 return; /* it has said why */
             }
         }
+        game_watch_stamp(picture, GAME_WATCH_STAMP_LOD);
         game_fill_step(game_fill_of(game), render);
         game_day_apply(game, camera);
+        game_watch_stamp(picture, GAME_WATCH_STAMP_FILL);
         /* In the slot this picture is going into, for whoever asks what it was drawn from. The publish in the draw hands main both. */
         game->picture_cameras[render->frame.pictures.back] = *camera;
+        game_watch_slot_note(watch, render->frame.pictures.back, picture);
         status = game_frame_draw(game, camera);
         if (status != GPU_STATUS_OK) {
             gpu_error_log(&render->frame.gpu.last_error);
@@ -1525,6 +1541,7 @@ static void game_gpu_thread(void *borrowed_argument) {
             atomic_store_explicit(&game->failed, 1u, memory_order_release);
             return;
         }
+        waited_ns = game_watch_picture_end(watch, picture, &render->frame.last_timings, camera);
     }
 }
 
@@ -1575,6 +1592,8 @@ bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t se
     profiler_lane_t *const lane = game->borrowed_lane_main;
     PROFILER_BEGIN(lane, "loop_frame");
     arena_reset(&game->arena_frame);
+    game_watch_t *const watch = game_watch_of(game);
+    game_watch_main_frame(watch);
     if (game->borrowed_player != nullptr) {
         game_walk_view(game, time_now_ns());
     } else {
@@ -1586,6 +1605,7 @@ bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t se
     render_frame_t *const frame = &game->borrowed_render->frame;
     const uint8_t *const picture = render_frame_take(frame);
     if (picture != nullptr) {
+        game_watch_take_note(watch, frame->pictures.front, time_now_ns());
         game->borrowed_last_picture = picture;
         game->view_held = 0u;
         game->shown_camera = game->picture_cameras[frame->pictures.front];
@@ -1601,8 +1621,8 @@ bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t se
         PROFILER_BEGIN(lane, "present");
         render_frame_present_full(shown, target);
         PROFILER_END(lane);
-        game->hud_compose_us = (uint32_t)((composed_ns - started_ns) / 1000);
-        game->hud_present_us = (uint32_t)((time_now_ns() - composed_ns) / 1000);
+        watch->compose_us = (uint32_t)((composed_ns - started_ns) / 1000);
+        watch->present_us = (uint32_t)((time_now_ns() - composed_ns) / 1000);
     }
     /* seconds is the time since the last frame, which a pause and another VT start again. */
     game_watch_frame_look(game, (int64_t)((float64_t)seconds * (float64_t)TIME_NS_PER_SECOND));
