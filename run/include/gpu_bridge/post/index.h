@@ -7,6 +7,7 @@
 #include "gpu_bridge/device_memory/index.h"
 #include "gpu_bridge/status/index.h"
 #include "gpu_bridge/traverse/index.h"
+#include "tuning/render/temporal/index.h"
 #include "types/index.h"
 
 #include <math.h>
@@ -124,12 +125,11 @@ enum : uint32_t {
     POST_JITTER_FRAMES = 8u,
 };
 
-/* What a frame adds to what the temporal pass has of a pixel: a tenth, so that about 20 frames make up what is seen. */
-#define POST_TAA_BLEND F32(0.1)
-/* How many standard deviations of the pixels around it a pixel's history may be from their mean. */
-#define POST_TAA_CLIP F32(1.25)
-/* A place in the last frame this near a pixel's centre is that pixel, with no filter to blur it: a still camera. In pixels. */
-#define POST_TAA_STILL F32(0.002)
+/* What a frame adds to what the temporal pass has of a pixel, how many standard deviations of the pixels around it a pixel's history
+ * may be from their mean, and how near a pixel's centre a place in the last frame is that pixel: compile/config/render/temporal/. */
+#define POST_TAA_BLEND MC_TUNE_RENDER_TEMPORAL_TAA_BLEND
+#define POST_TAA_CLIP MC_TUNE_RENDER_TEMPORAL_TAA_CLIP_SIGMA
+#define POST_TAA_STILL MC_TUNE_RENDER_TEMPORAL_TAA_STILL
 
 static inline uint64_t post_xrgb_bytes(uint32_t width, uint32_t height) {
     return (uint64_t)width * height * POST_BYTES_PER_PIXEL;

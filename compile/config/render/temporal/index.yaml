@@ -1,0 +1,22 @@
+# TAA, cuda/src/post/'s temporal pass. See compile/config/README.md for the fields.
+taa_blend:
+  value: 0.1
+  type: f32
+  unit: ratio
+  min: 0.01
+  max: 1.0
+  why: "What a frame adds to what the temporal pass has of a pixel: a tenth, so that about 20 frames make up what is seen. 1.0 is no history. POST_TAA_BLEND."
+taa_clip_sigma:
+  value: 1.25
+  type: f32
+  unit: ratio
+  min: 0.25
+  max: 8.0
+  why: "How many standard deviations of the pixels around it a pixel's history may be from their mean before it is pulled in. Smaller ghosts less and shimmers more. POST_TAA_CLIP."
+taa_still:
+  value: 0.002
+  type: f32
+  unit: pixels
+  min: 0.0
+  max: 0.5
+  why: "A place in the last frame this near a pixel's centre is that pixel, with no filter to blur it: a still camera. POST_TAA_STILL."
