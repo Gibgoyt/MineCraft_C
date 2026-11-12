@@ -52,6 +52,9 @@ enum : uint32_t {
     SL_SUN_SEARCH_STEPS = 48u,
 };
 static_assert(MC_GPU_BUDGET_TEXTURES_MIB + MC_GPU_BUDGET_FRAMES_MIB + SL_VOXELS_MIB < 4096u);
+/* Full detail past his 32 (the sweep's 48, the reference) does not fit in that: at 48 the table is 97 columns wide and its pool about 5.9 GiB.
+ * Those rows take the game's own voxel budget, as Ahmed's game would (config/machine.yaml). */
+enum : uint32_t { SL_VOXELS_WIDE_MIB = MC_GPU_BUDGET_VOXELS_MIB, SL_FULL_DETAIL_NARROW = 32u };
 static const uint64_t SL_SEED_DEFAULT =
     14148492376765118422ull; /* saves/test_7/world.meta: the world he played at 5.png's time */
 static const int32_t SL_AT_DEFAULT[3] = {-385, 347, 2}; /* F3 of 5.png */
@@ -151,7 +154,7 @@ static_assert(sizeof(sl_t) == 88);
 
 /* ---- Starting and stopping, as bench_world does ------------------------------------------------------------------- */
 
-static bool sl_start(sl_t *sl, uint64_t seed) {
+static bool sl_start(sl_t *sl, uint64_t seed, uint32_t voxels_mib) {
     app_t *const app = sl->borrowed_app;
     if (!math_init(&app->math)) {
         return false;
@@ -170,7 +173,7 @@ static bool sl_start(sl_t *sl, uint64_t seed) {
     }
     sl->started = 4u;
     gpu_bridge_limits_t limits = gpu_bridge_limits_default();
-    limits.device.pool_bytes[DEVICE_POOL_VOXELS] = (uint64_t)SL_VOXELS_MIB << 20;
+    limits.device.pool_bytes[DEVICE_POOL_VOXELS] = (uint64_t)voxels_mib << 20;
     if (gpu_bridge_init(&app->gpu_bridge, limits) != GPU_STATUS_OK) {
         return false;
     }
@@ -957,7 +960,8 @@ static int32_t sl_process(const sl_options_t *options, uint32_t row, bool say_ca
         return 2;
     }
     int32_t status = 2;
-    if (sl_start(&sl, options->seed)) {
+    const bool wide = options->lod_reference != 0u || options->full_detail > SL_FULL_DETAIL_NARROW;
+    if (sl_start(&sl, options->seed, wide ? SL_VOXELS_WIDE_MIB : SL_VOXELS_MIB)) {
         if (say_card) {
             const device_memory_t *const memory = &sl.borrowed_app->gpu_bridge.device_memory;
             printf("build %s, seed %" PRIX64 ", at %" PRId32 " %" PRId32 " %" PRId32

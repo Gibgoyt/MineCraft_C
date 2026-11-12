@@ -38,7 +38,7 @@ Each row settles the world, draws 30 warm pictures and 240 measured ones, with t
 - `--at <x> <y> <z>`, `--seed <n>`: another spot or world.
 - `--look <yaw> <pitch>`: degrees, the game's convention (`run/src/render/frame/README.md`).
 - `--sun <degrees>`: the sun's elevation in place of the row's.
-- `--full-detail <chunks>`: full detail in place of his 32 (the table is sized for it).
+- `--full-detail <chunks>`: full detail in place of his 32 (the table is sized for it). Past 32, and with `--lod-reference`, the row takes the game's own voxel budget, 6144 MiB (`config/machine.yaml`), not the 3456 the rest keep under 4 GiB: at 48 the table is 97 columns wide and its pool about 5.9 GiB.
 - `--render-scale <percent>`: drawn at that share of 1920 x 1080 and brought up, as the setting does.
 - `--lod-reference`: full detail out to the render distance and no far field: every block everywhere, the picture phase 04 compares against.
 - `--features-off <hex>`: take these `SHADE_FEATURE_*` bits away: shadows `20`, alpha `2`, AO `400`, far field `8000`.
