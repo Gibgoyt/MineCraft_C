@@ -42,7 +42,7 @@ typedef struct game_world_parts_t {
     game_command_t command;       /* 62592: plan 006 phase 01's command box, main's */
     render_lod_world_t lod_world; /* 64456: plan 006 phase 02: what the far field's sampler reads */
     uint8_t _pad1[40];            /* 64472 */
-    game_pace_t pace;             /* 64512: plan 008 phase 02's start rule: the gpu thread's line, and main's next take */
+    game_pace_t pace; /* 64512: plan 008 phase 02's start rule: the gpu thread's line, and main's next take */
 } game_world_parts_t;
 static_assert(sizeof(game_world_parts_t) == 64768);
 static_assert(offsetof(game_world_parts_t, fill) == 59200);
