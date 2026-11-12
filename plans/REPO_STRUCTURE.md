@@ -30,6 +30,7 @@ Three rules make the tree predictable:
 | Path | What it holds | When it runs |
 |---|---|---|
 | `config/` | Human-readable YAML: hardware, blocks, items, recipes, biomes, mobs | Read by `compile/` |
+| `compile/config/` | Tuning YAML: the numbers that set how fast and how finely the game draws, read by `compile/src/tuning/` into `MC_TUNE_*` headers. See its `README.md` | Build time |
 | `compile/` | C tools: YAML conversion, texture translation, table generation, standards lint | Build time |
 | `run/` | The game and engine, in C | Run time, CPU |
 | `cuda/` | Ray-casting kernels and device code | Run time, GPU |
@@ -134,6 +135,10 @@ drops: [{ item: dirt, count: 1 }]
 texture: { all: blocks/dirt }
 ```
 
+**Where a number goes:** facts about the machine: `config/machine.yaml`; what the game is: `config/<kind>/`; how fast or how
+fine it draws: `compile/config/<path>/index.yaml`, one `MC_TUNE_<PATH>_<KEY>` define per key (plan 009 phase 02). The rule
+for the last: it changes speed or look, and no data format and no struct.
+
 `machine.yaml` generates one output per consumer, in `build/<preset>/generated/machine/`: `index.h` (C), `index.hu`
 (CUDA), `index.inc` (NASM), `index.cmake` (CMake). Everything agrees because everything comes from one file.
 `compile/src/machine_config/report/` is a small program that prints the defines as compiled, to show a yaml change
@@ -158,6 +163,7 @@ Layout: `compile/src/<tool>/index.c`, `compile/include/<tool>/index.h`, `README.
 | `texture_blob` | Mip chains, and every texture with its vector data in one blob, in `build/<preset>/generated/textures/`, run by `cmake/generated.cmake`. Part: `mip`. The format is `run/include/types/texture_blob/` | 06.4 |
 | `sound_pack` | `sounds/` → one blob in `build/<preset>/generated/sounds/`, making each sound from its recipe or recording, run by `cmake/generated.cmake`. `verify` checks the tree and `import` takes in one recording, both by hand. Parts: `mcsnd synth tree blob import`. The format is `run/include/types/sound_blob/` | 003 phase 5 |
 | `game_tables` | `config/{blocks,items,recipes,biomes,mobs}` → C tables in `build/<preset>/generated/tables/`, compiled into `mc_run` and included as `"tables/blocks/index.h"`, run by `cmake/generated.cmake`. Parts: `blocks` (07.1), `biomes` (10.6), `items` (13.1), `recipes` (13.2), `mobs` (15.3) | 07.1 |
+| `tuning` | `compile/config/<path>/index.yaml` → `build/<preset>/generated/tuning/<path>/index.{h,hu}` of `MC_TUNE_*` defines, and `tuning/hash/index.h` with `MC_TUNE_HASH` and every value as text, run by `cmake/generated.cmake`. Each key carries its type, unit, range and why, so a new number needs no edit to the tool. An unchanged header is not rewritten, so a change rebuilds only what includes its file | 009 phase 02 |
 
 ---
 
@@ -450,6 +456,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/audio/` | ctest `run_audio`: the whole of sound, thread and all, to a stand-in or a file, and the program mining with its sound in a file. `fixtures/` is the stand-in, a server over two pipes that keeps every sample in memory. `run_audio_mixer` under `mixer/` checks samples in memory, `run_audio_pulse` under `pulse/` the client, and `run_audio_pulse_wire` under `pulse/wire/` the bytes. None can be heard |
 | `tests/run/audio/sound_blob/` | ctest `run_audio_sound_blob`: the blob linked in is the one the build made, and every block that can be mined finds a sound of each kind |
 | `tests/compile/game_tables/` | ctest `compile_game_tables`: the real block tables against what `config/blocks/` says, dirt drops dirt, and each bad file refused at its line, blocks and biomes both. `cmake/targets.cmake` compiles the generated tables into it |
+| `tests/compile/tuning/` | ctest `compile_tuning`: the defines a fixture says, byte for byte; decimals as written; each mistake refused at its line and column with nothing written; unchanged headers untouched; the hash; sorted order; the real `compile/config/` accepted and every define in it used |
 | `tests/compile/{inflate,png}/fixtures/` | Committed streams and images from independent encoders, with `generate.py`, which wrote them and is not part of the build |
 | `tests/run/<system>/<part>/` | Game tests |
 | `tests/run/types/` | ctest `run_types`, covering all of Stage 03.1: `types`, `assert`, `log`, `main/cpu_check`, `asm/src/cpuid`, and the built program's `--report` and failure paths |
