@@ -264,9 +264,12 @@ He says whether it feels smoother, and whether anything stutters that did not be
 
 Appended as they land:
 
-- `9459e5e9` Add plan 008 phase 02's start rule in run/src/game/pace: a late picture starts the next at once, a picture that fits two ticks starts just in time, a dearer one back to back, with T-hat the 90th percentile of the last 16, and its tests on a fake clock.
-- `bf244e66` Start each picture by plan 008 phase 02's rule: main says its next take (the window's clock, the next flip, a bench's clock) and the gpu thread sleeps toward the rule's start in 0.5 ms slices; two MIT-SHM segments used in turn, with a spare drawn into and counted when both are with the X server; the rule's aim, start and miss in the frame log, and skipped puts in F3.
-- this commit: `--pace-off` in bench_world_shake, the `pace:` line, the measurements and the history rows.
+- `12186210` Add plan 008 phase 02's start rule in run/src/game/pace: a late picture starts the next at once, a picture that fits two ticks starts just in time, a dearer one back to back, with T-hat the 90th percentile of the last 16, and its tests on a fake clock.
+- `d874ae93` Start each picture by plan 008 phase 02's rule: main says its next take (the window's clock, the next flip, a bench's clock) and the gpu thread sleeps toward the rule's start in 0.5 ms slices; two MIT-SHM segments used in turn, with a spare drawn into and counted when both are with the X server; the rule's aim, start and miss in the frame log, and skipped puts in F3.
+- `138a690a` Measure plan 008 phase 02 before and after in one run with bench_world_shake --pace-off: the card's idle wait for main from 4 to 6 ms a picture to 0.1, 13 to 37 % more pictures at his spot at the same clock, and record the rule as built.
+- this commit: the commits rebased onto main, and the verification.
+
+**Verification, as run (2026-11-12, rebased on `a5352175`):** `pgrep` for his game printed nothing before every GPU run. `cmake --build --preset debug`: clean. `run_game_pace`, `run_display_x11`, `run_display_headless`, `run_game`, `run_game_focus`, `run_render_frame` (goldens unchanged; the frame log test: 239 of 239 pictures started by the rule), `run_ui_hud`, `run_ui_hud_corner`, `standards_lint`, `clang_format`: all passed. `cmake --build --preset profile` and `--preset release`: clean, release's 16 KiB frame limit held. The bench line ran as `bench_world_shake` with the sidecar, before (`--pace-off`) and after alternately, recorded in `bench/world/shake/history.tsv` with `--label "008 phase 02: pacing ..."`. `pgrep -af "$PWD/build"` and `pgrep -af gpu_watch` printed nothing after.
 
 ## Issues found
 
