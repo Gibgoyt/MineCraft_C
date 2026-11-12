@@ -2,7 +2,7 @@
 
 **Purpose:** the C side of a frame: the tables the kernels read, the free-fly camera, the finished pictures on their way from the gpu thread to the main thread, and putting one on the screen.
 **Tier:** Arena: it takes from the arena its parent gives, and its device blocks come from its parent too.
-**Owns:** nothing of its own but the clock events inside `frame_gpu_t`, and three pins on memory its parent holds.
+**Owns:** nothing of its own but the events and copy stream inside `frame_gpu_t`, three pins on the pictures its parent holds, and, through `frame_gpu_init`, the pins on the frames on their way and the staging, also from its parent's arena.
 **Lifetime:** `render_open_frame` to `render_close_frame`.
 **Threads:** `gpu` draws, and `main` takes and presents. With no threads, one thread does both. The camera functions touch only what they are given.
 **Public functions** (`run/include/render/frame/index.h`):
@@ -17,7 +17,8 @@
 - `render_frame_fog_set`: how far off the fog is whole, for a render distance that has changed.
 - `render_frame_under_water_set`: whether the eyes are in water, for what `post` draws: see `cuda/src/post/README.md`.
 - `render_frame_draw`: a whole frame, from world_buffers as they stand and a camera, on the card and home.
-- `render_frame_draw_weather`, `render_weather_take`, `render_weather_apply`, `render_weather_visibility`, `render_weather_flicker`: the same frame with the weather where the eye is (plan 004 phase 08), what the thread that draws makes of each slot the sim sends (`render_weather_slot_t`) as `render_weather_t`, and the arithmetic of what weather does to the sky, the light and the fog. See "Weather" below.
+- `render_frame_queue`, `render_frame_finish` (plan 008 phase 03): `render_frame_draw_weather` in two halves. The queue reads the buffers, the camera and the weather, sends the entity lists through the frame's staging, queues the kernels on the device picture of its flight slot (`borrowed_xrgb_second` for slot 1), and moves the temporal state on, as that is about the order of frames. The finish waits for the oldest frame queued, adds it to the books and publishes it. At most two are queued (`on_way`); the first's picture goes home into the exchange's back slot at once, the second's when the first's publish gives a slot back, so the exchange keeps its three slots. `render_frame_draw_weather` is a queue and a finish, after finishing anything on its way.
+- `render_frame_draw_weather`, `render_weather_take` (and `render_weather_take_staged`, which sends the map through the frame's staging), `render_weather_apply`, `render_weather_visibility`, `render_weather_flicker`: the same frame with the weather where the eye is (plan 004 phase 08), what the thread that draws makes of each slot the sim sends (`render_weather_slot_t`) as `render_weather_t`, and the arithmetic of what weather does to the sky, the light and the fog. See "Weather" below.
 - `render_frame_take`, `render_frame_present`, `render_frame_present_full`: the newest picture, and copying it to a display buffer; the last for pixels of the target's own size, whatever size the frame draws at.
 - `render_frame_report`, `render_frame_percentiles`: what the frames took.
 
@@ -26,7 +27,7 @@
 
 ## How a picture reaches the screen
 
-The plan's own words: copy to pinned host memory, then into the dumb buffer, then a page flip. Here that is `frame_gpu_run` into one of three pinned pictures, `render_exchange_publish`, then on the main thread `render_frame_take` and `render_frame_present`, whose copy is `asm/src/copy`'s streaming kernel, with its fence, into whatever `display_buffer_t` it is given. The HUD comes between those two in Stage 14.2.
+The plan's own words: copy to pinned host memory, then into the dumb buffer, then a page flip. Here that is `frame_gpu_queue` and `frame_gpu_home` into one of three pinned pictures, `frame_gpu_finish`, `render_exchange_publish`, then on the main thread `render_frame_take` and `render_frame_present`, whose copy is `asm/src/copy`'s streaming kernel, with its fence, into whatever `display_buffer_t` it is given. The HUD comes between those two in Stage 14.2.
 
 Three pictures, so that the gpu thread never waits for the display and the display never waits for the card: if a new one is not ready for this flip, the last one shows again.
 
@@ -46,7 +47,7 @@ The position is `float64_t`, and goes to the kernels as a whole cell and a fract
 
 ## From frame to frame
 
-`post_temporal_t` holds what goes from one frame to the next: the last frame's camera with no jitter, this one's jitter, a count of frames, and which block of each two the last frame wrote. `render_frame_draw` is what keeps it, and the blocks swap only after a frame that succeeded and only for an effect that was on. An effect turned on starts from nothing, as what its blocks hold is from before it was turned off. See `cuda/src/post/README.md` and `cuda/src/shade/README.md`.
+`post_temporal_t` holds what goes from one frame to the next: the last frame's camera with no jitter, this one's jitter, a count of frames, and which block of each two the last frame wrote. `render_frame_queue` is what keeps it, and the blocks swap as soon as a frame is queued (the next frame queued reads what this one writes, in the stream's order), and only for an effect that was on. A frame counts as drawn before for the histories once it is queued, finished or not. An effect turned on starts from nothing, as what its blocks hold is from before it was turned off. See `cuda/src/post/README.md` and `cuda/src/shade/README.md`.
 
 ## Weather
 

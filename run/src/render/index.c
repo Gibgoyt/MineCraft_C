@@ -167,6 +167,7 @@ static gpu_status_t render_frame_blocks_take(render_t *render, const texture_t *
         {&render->owned_hits, "hits", traverse_hits_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
         {&render->owned_shaded, "shaded pixels", shade_pixels_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
         {&render->owned_xrgb, "finished picture", post_xrgb_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
+        {&render->owned_xrgb_second, "finished picture", post_xrgb_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
         {&render->owned_ao[0], "AO history", shade_ao_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
         {&render->owned_ao[1], "AO history", shade_ao_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
         {&render->owned_history[0], "picture history", post_history_bytes(width, height), DEVICE_POOL_FRAMES, {0}},
@@ -196,8 +197,9 @@ static void render_frame_blocks_give_back(render_t *render) {
     device_block_t *const blocks[] = {
         &render->owned_weather_map, &render->owned_entity_hits, &render->owned_entity_lists, &render->owned_shafts,
         &render->owned_history[1],  &render->owned_history[0],  &render->owned_ao[1],        &render->owned_ao[0],
-        &render->owned_xrgb,        &render->owned_shaded,      &render->owned_hits,         &render->owned_coarse,
-        &render->owned_tex_pixels,  &render->owned_shapes,      &render->owned_faces,        &render->owned_textures};
+        &render->owned_xrgb_second, &render->owned_xrgb,        &render->owned_shaded,       &render->owned_hits,
+        &render->owned_coarse,      &render->owned_tex_pixels,  &render->owned_shapes,       &render->owned_faces,
+        &render->owned_textures};
     for (uint32_t i = 0u; i < sizeof(blocks) / sizeof(blocks[0]); i++) {
         if (device_memory_free(memory, blocks[i]) != GPU_STATUS_OK) {
             gpu_error_log(&memory->last_error);
@@ -213,7 +215,14 @@ gpu_status_t render_open_frame(render_t *render, const texture_t *texture, uint3
         render_frame_blocks_give_back(render);
         return status;
     }
-    if (!heap_reserve(render_frame_arena_bytes(width, height) + render_entities_arena_bytes(width, height),
+    /* Plan 008 phase 03: each frame's copies to the card go through staging, so they do not wait for the frame before: a frame's budget of
+     * sections, the whole column table, the entity lists, the rain top, and a mebibyte for the far field's tables. More in one frame is
+     * sent waiting, as before. */
+    const uint64_t staging_bytes = render->upload.budget.bytes +
+                                   world_buffers_table_bytes(render->buffers.window.slot_count) +
+                                   render_entities_lists_bytes(width, height) + post_weather_map_bytes() + (1ull << 20);
+    if (!heap_reserve(render_frame_arena_bytes(width, height, staging_bytes) +
+                          render_entities_arena_bytes(width, height),
                       &render->owned_frame_host)) {
         render_frame_blocks_give_back(render);
         return GPU_STATUS_OUT_OF_MEMORY; /* it has said why */
@@ -232,9 +241,10 @@ gpu_status_t render_open_frame(render_t *render, const texture_t *texture, uint3
         .borrowed_ao = {&render->owned_ao[0], &render->owned_ao[1]},
         .borrowed_history = {&render->owned_history[0], &render->owned_history[1]},
         .borrowed_shafts = &render->owned_shafts,
+        .borrowed_xrgb_second = &render->owned_xrgb_second,
     };
     status = render_frame_init(&render->frame, &render->arena_frame, render->borrowed_memory, texture, &blocks, width,
-                               height, fog_end);
+                               height, fog_end, staging_bytes);
     if (status != GPU_STATUS_OK) {
         arena_deinit(&render->arena_frame);
         heap_release(&render->owned_frame_host);
@@ -255,6 +265,7 @@ gpu_status_t render_open_frame(render_t *render, const texture_t *texture, uint3
         return status;
     }
     render->frame.borrowed_entities = render->borrowed_entities;
+    render->buffers.borrowed_staging = &render->frame.gpu.staging;
     render->frame_open = 1u;
     return GPU_STATUS_OK;
 }
@@ -309,6 +320,7 @@ gpu_status_t render_open_lod(render_t *render, const render_lod_plan_t *plan, re
         return status;
     }
     render_lod_fine_set(lod, &render->buffers);
+    lod->borrowed_staging = &render->frame.gpu.staging;
     render->borrowed_lod = lod;
     render->frame.borrowed_lod = lod;
     return GPU_STATUS_OK;
@@ -405,6 +417,7 @@ gpu_status_t render_replan_lod(render_t *render, const render_lod_plan_t *plan, 
         return status;
     }
     render_lod_fine_set(lod, &render->buffers);
+    lod->borrowed_staging = &render->frame.gpu.staging;
     render->borrowed_lod = lod;
     render->frame.borrowed_lod = lod;
     return GPU_STATUS_OK;
@@ -427,6 +440,7 @@ void render_close_frame(render_t *render) {
         return;
     }
     render_close_lod(render);
+    render->buffers.borrowed_staging = nullptr;
     render_entities_deinit(render->borrowed_entities);
     render_frame_deinit(&render->frame);
     arena_deinit(&render->arena_frame);
@@ -576,4 +590,10 @@ void render_pyramid_report(const render_t *render) {
              " with no room, %.1f MiB sent",
              lod->stats.columns_built, (libc_double_t)((float64_t)lod->stats.build_ns * 1.0e-9f64),
              lod->stats.columns_no_room, (libc_double_t)((float64_t)lod->stats.bytes_sent / mib));
-}
+    void render_serial_frames_set(render_t * render, bool serial) {
+        render->serial_frames = serial ? 1u : 0u;
+    }
+
+    bool render_serial_frames(const render_t *render) {
+        return render->serial_frames != 0u;
+    }

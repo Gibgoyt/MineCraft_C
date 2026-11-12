@@ -428,7 +428,7 @@ typedef struct upload_buffers_t {
     device_block_t table;
     world_buffers_t buffers;
     uint8_t *host;
-    uint8_t _pad0[32];
+    uint8_t _pad0[24];
 } upload_buffers_t;
 static_assert(sizeof(upload_buffers_t) == 704);
 
@@ -1285,6 +1285,87 @@ TEST(upload_cost_on_this_machine) {
     REQUIRE(world_buffers_flush(buffers) == GPU_STATUS_OK);
     printf("flush of 75 slots of 4761, as one copy: %" PRId64 " ns\n", time_now_ns() - started);
     CHECK_EQ_U64(buffers->flush_whole_count, 2u); /* the first above, and this */
+    upload_buffers_end(t, b);
+}
+
+/* ---- Plan 008 phase 03: copies through staging ------------------------------------------------------------------------- */
+
+enum : uint64_t {
+    UPLOAD_STAGING_AREA_BYTES = 64ull << 10,
+    UPLOAD_STAGING_PAGE = 4096u,
+    /* The card kept busy before each frame's copies: a twentieth of a second at 2 GHz, longer on a slower clock. */
+    UPLOAD_STAGING_BUSY_CYCLES = 100000000u,
+};
+
+/* Three frames, each a busy kernel then copies through staging: a section of its own and one section all three write, with the column
+ * table's flush, and the turn as a frame's queue makes it. The card is still at the first kernel when the host has queued it all, so a copy
+ * reads its staging long after it was written. If frame 2 wrote frame 0's area before frame 0's copies were done, section 0 would hold
+ * frame 2's bytes. */
+TEST(staging_is_not_reused_while_its_copy_is_queued) {
+    upload_buffers_t *const b = upload_test_aligned(t, sizeof(*b));
+    REQUIRE(upload_buffers_begin(t, b, 2u, UPLOAD_TEST_POOL_BYTES));
+    world_buffers_t *const buffers = &b->buffers;
+    device_memory_t *const memory = &b->bridge.device_memory;
+    const uintptr_t raw = (uintptr_t)test_alloc(t, 2u * UPLOAD_STAGING_AREA_BYTES + UPLOAD_STAGING_PAGE);
+    uint8_t *const areas = (uint8_t *)((raw + UPLOAD_STAGING_PAGE - 1u) & ~(uintptr_t)(UPLOAD_STAGING_PAGE - 1u));
+    device_staging_t staging;
+    gpu_error_t error = {0};
+    REQUIRE(device_staging_init(&staging, areas, UPLOAD_STAGING_AREA_BYTES, &error) == GPU_STATUS_OK);
+    buffers->borrowed_staging = &staging;
+    const uint32_t slots = 4u;
+    world_buffers_column_set(buffers, 0u, 0, 0, 1u, 0);
+    upload_model_t *const model = test_alloc(t, slots * WORLD_BUFFERS_COLUMN_SECTIONS * sizeof(upload_model_t));
+    uint8_t *const pattern = test_alloc(t, WORLD_BUFFERS_SECTION_BYTES_MAX);
+    const uint32_t bytes = 12000u;
+    const int64_t started_ns = time_now_ns();
+    for (uint32_t frame = 0u; frame < 3u; frame++) {
+        REQUIRE(device_memory_busy_queue(memory, UPLOAD_STAGING_BUSY_CYCLES) == GPU_STATUS_OK);
+        upload_pattern(pattern, bytes, frame + 1u);
+        REQUIRE(world_buffers_section_write(buffers, 0u, frame, pattern, bytes) == GPU_STATUS_OK);
+        model[frame] = (upload_model_t){bytes, frame + 1u};
+        upload_pattern(pattern, bytes, 100u + frame);
+        REQUIRE(world_buffers_section_write(buffers, 0u, 10u, pattern, bytes) == GPU_STATUS_OK);
+        model[10] = (upload_model_t){bytes, 100u + frame};
+        REQUIRE(world_buffers_flush(buffers) == GPU_STATUS_OK);
+        REQUIRE(device_staging_turn(&staging, &error) == GPU_STATUS_OK);
+    }
+    const int64_t queued_ns = time_now_ns() - started_ns;
+    printf("  three frames queued in %.2f ms; %" PRIu64 " bytes through staging, %" PRIu32 " sent waiting\n",
+           (libc_double_t)time_ns_to_ms(queued_ns), staging.sent_bytes, staging.waited_count);
+    CHECK_EQ_U64(staging.waited_count, 0u);
+    CHECK(staging.sent_bytes >= 6u * bytes);
+    /* Reads that wait for everything, then each section against what its frame wrote. */
+    upload_model_compare(t, b, model, slots);
+    CHECK_EQ_U64(device_staging_deinit(&staging, &error), GPU_STATUS_OK);
+    upload_buffers_end(t, b);
+}
+
+/* A copy larger than what is left in the area goes waiting, and still lands, in order. */
+TEST(a_copy_too_large_for_staging_waits_and_lands) {
+    upload_buffers_t *const b = upload_test_aligned(t, sizeof(*b));
+    REQUIRE(upload_buffers_begin(t, b, 2u, UPLOAD_TEST_POOL_BYTES));
+    world_buffers_t *const buffers = &b->buffers;
+    const uint64_t area = UPLOAD_STAGING_PAGE; /* smaller than a section */
+    const uintptr_t raw = (uintptr_t)test_alloc(t, 2u * area + UPLOAD_STAGING_PAGE);
+    uint8_t *const areas = (uint8_t *)((raw + UPLOAD_STAGING_PAGE - 1u) & ~(uintptr_t)(UPLOAD_STAGING_PAGE - 1u));
+    device_staging_t staging;
+    gpu_error_t error = {0};
+    REQUIRE(device_staging_init(&staging, areas, area, &error) == GPU_STATUS_OK);
+    buffers->borrowed_staging = &staging;
+    const uint32_t slots = 4u;
+    world_buffers_column_set(buffers, 0u, 0, 0, 1u, 0);
+    upload_model_t *const model = test_alloc(t, slots * WORLD_BUFFERS_COLUMN_SECTIONS * sizeof(upload_model_t));
+    uint8_t *const pattern = test_alloc(t, WORLD_BUFFERS_SECTION_BYTES_MAX);
+    upload_pattern(pattern, 1000u, 7u);
+    REQUIRE(world_buffers_section_write(buffers, 0u, 1u, pattern, 1000u) == GPU_STATUS_OK); /* staged */
+    model[1] = (upload_model_t){1000u, 7u};
+    upload_pattern(pattern, 9000u, 8u);
+    REQUIRE(world_buffers_section_write(buffers, 0u, 2u, pattern, 9000u) == GPU_STATUS_OK); /* waits */
+    model[2] = (upload_model_t){9000u, 8u};
+    REQUIRE(world_buffers_flush(buffers) == GPU_STATUS_OK);
+    CHECK(staging.waited_count >= 1u);
+    upload_model_compare(t, b, model, slots);
+    CHECK_EQ_U64(device_staging_deinit(&staging, &error), GPU_STATUS_OK);
     upload_buffers_end(t, b);
 }
 

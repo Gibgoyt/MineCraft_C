@@ -367,9 +367,8 @@ gpu_status_t world_buffers_section_write(world_buffers_t *buffers, uint32_t slot
     }
     uint8_t *const target =
         device_memory_pointer(buffers->borrowed_pool) + (uint64_t)granule * WORLD_BUFFERS_GRANULE_BYTES;
-    const gpu_status_t copied =
-        device_memory_check(&buffers->last_error, cudaMemcpy(target, bytes, byte_count, cudaMemcpyHostToDevice),
-                            "sending a section to the card");
+    const gpu_status_t copied = device_staging_copy(buffers->borrowed_staging, &buffers->last_error, target, bytes,
+                                                    byte_count, "sending a section to the card");
     if (copied != GPU_STATUS_OK) {
         if (!in_place) {
             world_buffers_slab_give(buffers, granule);
@@ -398,8 +397,8 @@ gpu_status_t world_buffers_flush(world_buffers_t *buffers) {
     const uint8_t *const shadow = (const uint8_t *)buffers->borrowed_shadow;
     if ((uint64_t)buffers->dirty_count * WORLD_BUFFERS_FLUSH_WHOLE_RATIO >= buffers->window.slot_count) {
         const uint64_t bytes = world_buffers_table_bytes(buffers->window.slot_count);
-        const gpu_status_t status = device_memory_check(
-            &buffers->last_error, cudaMemcpy(table, shadow, bytes, cudaMemcpyHostToDevice), "sending the column table");
+        const gpu_status_t status = device_staging_copy(buffers->borrowed_staging, &buffers->last_error, table, shadow,
+                                                        bytes, "sending the column table");
         if (status != GPU_STATUS_OK) {
             return status;
         }
@@ -408,10 +407,9 @@ gpu_status_t world_buffers_flush(world_buffers_t *buffers) {
     } else {
         for (uint32_t i = 0; i < buffers->dirty_count; i++) {
             const uint64_t offset = (uint64_t)buffers->borrowed_dirty_slots[i] * sizeof(world_buffers_column_t);
-            const gpu_status_t status = device_memory_check(
-                &buffers->last_error,
-                cudaMemcpy(table + offset, shadow + offset, sizeof(world_buffers_column_t), cudaMemcpyHostToDevice),
-                "sending a slot of the column table");
+            const gpu_status_t status =
+                device_staging_copy(buffers->borrowed_staging, &buffers->last_error, table + offset, shadow + offset,
+                                    sizeof(world_buffers_column_t), "sending a slot of the column table");
             if (status != GPU_STATUS_OK) {
                 return status;
             }

@@ -16,6 +16,8 @@
     minecraft_c <any of these but --report and --test-pattern> --profile <path>
                                                   times the run: a trace at <path> and a table on stderr, at exit. Not in a
                                                   release build. See run/src/profiler/README.md
+    minecraft_c <any of these> --serial-frames    each picture finished on the card before the next is begun, as
+                                                  before plan 008 phase 03: for tests and to compare
     minecraft_c <any of these> --frame-log <path>  a CSV line for every picture shown, added to <path>, in a
                                                   release build too. See run/src/game/watch/README.md
     minecraft_c --report                          prints the compiled defines and CPU features, then exits, starting nothing

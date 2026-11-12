@@ -25,6 +25,8 @@
 4. Finished sections go out in the view's order, up to the budget. A section with no blocks left costs no budget. One that is still with a worker stops the frame's sending: nothing here waits for it.
 5. `world_buffers_flush` sends the table, so a frame's kernels see every section sent so far, and only them.
 
+Plan 008 phase 03: steps 4 and 5 do not wait for the card. Once the frame is open, `world_buffers_t.borrowed_staging` is the frame's `device_staging_t`, so each section and the table's changes are copied into a pinned area and queued on the frame's stream, behind the frame before (which may still be drawing) and ahead of the next. The order of copies and kernels is the same as with waiting copies, so a slab reused at once is still safe, and a frame still sees every section sent before it and only them. A frame's budget (4 MiB by default) and the whole table fit in an area; more goes waiting, in the same order. Encoded sections can be reused as soon as the call returns, as the staging holds the copy.
+
 A view stays whole until the next is taken, and that is the only thing keeping sections' voxels alive for the workers. So a view is never let go with a job still reading it: each section's `done_bytes` is seen first.
 
 Views wait for the budget, and the world does not wait for views: while one view drains, those published replace one another, and each replaced view's sections return to dirty. A section can be sent late, and is never lost.

@@ -149,4 +149,7 @@ void game_weather_wind(const game_t *game, float32_t out[2]);
  * no weather). Anything but GPU_STATUS_OK is the card failing, with frame.gpu.last_error saying why. */
 gpu_status_t game_weather_draw(game_t *game, const render_camera_t *camera, int64_t now_ns);
 
+/* The same, but the frame is only queued, with render_frame_queue: render_frame_finish hands it to main (plan 008 phase 03). */
+gpu_status_t game_weather_queue(game_t *game, const render_camera_t *camera, int64_t now_ns);
+
 #endif

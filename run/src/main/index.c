@@ -74,8 +74,8 @@ typedef struct main_options_t {
     uint16_t day_of_year;       /* --day-of-year: 1 to 365, as the HUD shows it */
     uint16_t climate_jump;      /* --climate-jump: days, 0 for none */
     uint8_t weather;            /* --weather: a game_weather_kind_t, GAME_WEATHER_SAMPLED for the climate's */
-    uint8_t _pad0[1];
-    const char *frame_log; /* --frame-log, or nullptr for none (plan 008 phase 01) */
+    uint8_t serial_frames;      /* --serial-frames (plan 008 phase 03) */
+    const char *frame_log;      /* --frame-log, or nullptr for none (plan 008 phase 01) */
 } main_options_t;
 static_assert(sizeof(main_options_t) == 136);
 
@@ -177,7 +177,9 @@ static void main_print_usage(const char *program) {
         "                           table to stderr. Not in a release build: see run/src/profiler/README.md\n"
         "  --frame-log <path>       a CSV line for every picture shown: when, how long since the last, what the card\n"
         "                           and each thread spent on it. Added to <path>, in release builds too: see\n"
-        "                           run/src/game/watch/README.md\n",
+        "                           run/src/game/watch/README.md\n"
+        "  --serial-frames          finish each picture on the card before beginning the next, as before plan 008\n"
+        "                           phase 03, for tests and to compare: the same pictures, a little slower\n",
         stderr);
     fputs(
         "  --windowed               on a desktop, a 1280x720 window, or --width and --height, in place of full screen\n"
@@ -258,6 +260,8 @@ static bool main_parse_arguments(int32_t argc, char **argv, main_options_t *out)
         } else if (strcmp(argv[i], "--profile") == 0 && i + 1 < argc) {
             i++;
             out->profile = argv[i];
+        } else if (strcmp(argv[i], "--serial-frames") == 0) {
+            out->serial_frames = 1u;
         } else if (strcmp(argv[i], "--frame-log") == 0 && i + 1 < argc) {
             i++;
             out->frame_log = argv[i];
@@ -760,6 +764,7 @@ static main_exit_t app_init(app_t *app, const main_options_t *options) {
         math_deinit(&app->math);
         return MAIN_EXIT_RUNTIME; /* it has said why, and left nothing behind */
     }
+    render_serial_frames_set(&app->render, options->serial_frames != 0u);
     /* Takes nothing until game_open. */
     game_init(&app->game, &app->world, &app->terrain, &app->render, &app->job, &app->texture, &app->topology);
     game_ui_set(&app->game, &app->ui);

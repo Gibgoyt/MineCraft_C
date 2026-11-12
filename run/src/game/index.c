@@ -1255,10 +1255,10 @@ static void game_fps_note(game_t *game, uint32_t pictures, float32_t seconds) {
     }
 }
 
-/* One frame, and what each pass of it took, as the difference it made to the frame's books. */
-static gpu_status_t game_frame_draw(game_t *game, const render_camera_t *camera) {
+/* Plan 008 phase 03: one frame queued on the card, with the weather where the eye is: between ticks with threads, as each tick's slot
+ * without. render_frame_finish hands it over. */
+static gpu_status_t game_frame_queue(game_t *game, const render_camera_t *camera) {
     render_t *const render = game->borrowed_render;
-    const render_frame_stats_t before = render->frame.stats;
     const gpu_status_t pretended = game_gpu_pretend_step(game);
     if (pretended != GPU_STATUS_OK) {
         return pretended;
@@ -1267,8 +1267,18 @@ static gpu_status_t game_frame_draw(game_t *game, const render_camera_t *camera)
                                                      player_eyes_under_water_read(game->borrowed_player));
     game_watch_marks_arm(game_watch_of(game), &render->frame.gpu, time_now_ns());
     PROFILER_BEGIN(game->borrowed_lane_gpu, "frame_draw");
-    /* With the weather where the eye is (plan 004 phase 08): between ticks with threads, as each tick's slot without. */
-    const gpu_status_t status = game_weather_draw(game, camera, game->threads_running != 0u ? time_now_ns() : 0);
+    const gpu_status_t status = game_weather_queue(game, camera, game->threads_running != 0u ? time_now_ns() : 0);
+    PROFILER_END(game->borrowed_lane_gpu);
+    return status;
+}
+
+/* The oldest frame queued, finished and made the newest picture, and what each pass of it took, as the difference it made to the frame's
+ * books. */
+static gpu_status_t game_frame_finish(game_t *game) {
+    render_t *const render = game->borrowed_render;
+    const render_frame_stats_t before = render->frame.stats;
+    PROFILER_BEGIN(game->borrowed_lane_gpu, "frame_wait");
+    const gpu_status_t status = render_frame_finish(&render->frame);
     PROFILER_END(game->borrowed_lane_gpu);
     if (status != GPU_STATUS_OK) {
         return status;
@@ -1283,6 +1293,12 @@ static gpu_status_t game_frame_draw(game_t *game, const render_camera_t *camera)
     atomic_store_explicit(&game->hud_total_us, (uint32_t)((after->sum_total_ms - before.sum_total_ms) * 1000.0f64),
                           memory_order_relaxed);
     return GPU_STATUS_OK;
+}
+
+/* One frame, drawn and waited for. */
+static gpu_status_t game_frame_draw(game_t *game, const render_camera_t *camera) {
+    const gpu_status_t status = game_frame_queue(game, camera);
+    return status == GPU_STATUS_OK ? game_frame_finish(game) : status;
 }
 
 /* A picture as the frame drew it, at the size of what shows it: itself at a render scale of 100, and owned_view at any other. */
@@ -1544,6 +1560,34 @@ static void game_sim_thread(void *borrowed_argument) {
     }
 }
 
+/* Plan 008 phase 03: the picture on its way, between its queue and its finish. */
+typedef struct game_flying_t {
+    render_camera_t camera;        /* 0: what it was drawn from */
+    game_watch_picture_t *picture; /* 40: its line in the watch, or nullptr */
+    int64_t started_ns;            /* 48 */
+    int64_t aimed_ns;              /* 56 */
+    uint8_t on;                    /* 64: a picture is on its way */
+    uint8_t _pad0[7];              /* 65 */
+} game_flying_t;
+static_assert(sizeof(game_flying_t) == 72);
+
+/* The picture on its way, finished and handed to main. False if the card failed, having said why. */
+static bool game_gpu_land(game_t *game, game_flying_t *flying, int64_t *waited_ns) {
+    render_t *const render = game->borrowed_render;
+    flying->on = 0u;
+    const gpu_status_t status = game_frame_finish(game);
+    if (status != GPU_STATUS_OK) {
+        gpu_error_log(&render->frame.gpu.last_error);
+        game_gpu_failed_note(game, status);
+        atomic_store_explicit(&game->failed, 1u, memory_order_release);
+        return false;
+    }
+    *waited_ns =
+        game_watch_picture_end(game_watch_of(game), flying->picture, &render->frame.last_timings, &flying->camera);
+    game_pace_note(game_pace_of(game), flying->started_ns, *waited_ns, flying->aimed_ns);
+    return true;
+}
+
 static void game_gpu_thread(void *borrowed_argument) {
     game_t *const game = borrowed_argument;
     render_t *const render = game->borrowed_render;
@@ -1552,12 +1596,15 @@ static void game_gpu_thread(void *borrowed_argument) {
     game_pace_t *const pace = game_pace_of(game);
     int64_t waited_ns = time_now_ns(); /* plan 008 phase 01: when the last picture was done */
     int64_t planned_ns = 0;            /* the earliest start the rule has said for the next picture; 0 for none yet */
+    /* Plan 008 phase 03: with --serial-frames each picture is finished before the next is begun, as before. */
+    const bool serial = render_serial_frames(render);
+    game_flying_t flying = {0};
     while (atomic_load_explicit(&game->stop, memory_order_acquire) == 0u) {
         atomic_fetch_add_explicit(&game->gpu_beats, 1u, memory_order_relaxed);
         /* Plan 008 phase 02: when to start, by the rule in game/pace. A picture no one has taken yet is plenty unless starting now shows the
          * next sooner; a late one does not make the next wait a slot. Paused, the rule is today's: no take is coming to aim at. */
         const bool paused = atomic_load_explicit(&game->paused, memory_order_relaxed) != 0u;
-        const game_pace_in_t in = {
+        game_pace_in_t in = {
             .now_ns = time_now_ns(),
             .next_take_ns = paused ? 0 : atomic_load_explicit(&pace->next_take_ns, memory_order_relaxed),
             .tick_ns = GAME_WATCH_SLOT_NS,
@@ -1568,22 +1615,42 @@ static void game_gpu_thread(void *borrowed_argument) {
             .picture_waiting = render_exchange_waiting(&render->frame.pictures) ? 1u : 0u,
             .uncapped = atomic_load_explicit(&game->uncapped, memory_order_relaxed) != 0u && !paused ? 1u : 0u,
             .just_in_time = pace->just_in_time};
+        if (flying.on != 0u) {
+            /* Plan 008 phase 03: asked as if the picture on its way were ready when T-hat says, and waiting for main. Only a rule that would
+             * then start the next at once (late, back to back, uncapped) has it begun now, on the CPU while the card draws that one. */
+            const int64_t expected_ns = flying.started_ns + pace->predicted_ns;
+            in.last_ready_ns = expected_ns > in.now_ns ? expected_ns : in.now_ns;
+            in.last_aimed_ns = flying.aimed_ns;
+            in.picture_waiting = 1u;
+        }
         game_pace_out_t when;
         game_pace_decide(&in, &when);
         /* A start once said never moves later: a main whose takes come faster than the tick it says would otherwise move the beat, and the
          * just-in-time start with it, ahead of the clock for ever. */
-        if (when.hold == 0u && planned_ns != 0 && when.start_at_ns > planned_ns) {
+        if (flying.on == 0u && when.hold == 0u && planned_ns != 0 && when.start_at_ns > planned_ns) {
             when.start_at_ns = planned_ns;
         }
+        const bool start_now = when.hold == 0u && when.start_at_ns <= in.now_ns;
+        if (flying.on != 0u && !start_now) {
+            /* Not worth beginning the next yet: hand this one over as soon as the card has it, and ask again. */
+            if (!game_gpu_land(game, &flying, &waited_ns)) {
+                return;
+            }
+            planned_ns = 0;
+            continue;
+        }
         planned_ns = when.hold == 0u ? when.start_at_ns : 0;
-        if (when.hold != 0u || when.start_at_ns > in.now_ns) {
+        if (!start_now) {
             /* Toward the start in slices, looking at stop, paused and main's takes again after each. */
             const int64_t until_ns = when.start_at_ns - in.now_ns;
             const int64_t slice_ns = when.how == GAME_PACE_HOW_TODAY ? GAME_GPU_IDLE_NS : GAME_PACE_SLICE_NS;
             time_sleep_ns(until_ns > 0 && until_ns < slice_ns ? until_ns : slice_ns);
             continue;
         }
-        game_watch_picture_t *const picture = game_watch_picture_begin(watch, waited_ns, time_now_ns());
+        /* Begun while another is on its way, it did not wait for anything. */
+        const int64_t begin_ns = time_now_ns();
+        game_watch_picture_t *const picture =
+            game_watch_picture_begin(watch, flying.on != 0u ? begin_ns : waited_ns, begin_ns);
         if (picture != nullptr) {
             picture->aimed_ns = when.aimed_ns;
             picture->start_at_ns = when.start_at_ns;
@@ -1629,19 +1696,30 @@ static void game_gpu_thread(void *borrowed_argument) {
         game_fill_step(game_fill_of(game), render);
         game_day_apply(game, camera);
         game_watch_stamp(picture, GAME_WATCH_STAMP_FILL);
-        /* In the slot this picture is going into, for whoever asks what it was drawn from. The publish in the draw hands main both. */
-        game->picture_cameras[render->frame.pictures.back] = *camera;
-        game_watch_slot_note(watch, render->frame.pictures.back, picture);
-        status = game_frame_draw(game, camera);
+        status = game_frame_queue(game, camera);
         if (status != GPU_STATUS_OK) {
             gpu_error_log(&render->frame.gpu.last_error);
             game_gpu_failed_note(game, status);
             atomic_store_explicit(&game->failed, 1u, memory_order_release);
             return;
         }
-        waited_ns = game_watch_picture_end(watch, picture, &render->frame.last_timings, camera);
-        game_pace_note(pace, started_ns, waited_ns, when.aimed_ns);
+        /* The one before goes to main while this one is on the card; its publish gives this one its slot. */
+        if (flying.on != 0u && !game_gpu_land(game, &flying, &waited_ns)) {
+            return;
+        }
+        /* In the slot this picture is going into, for whoever asks what it was drawn from. The publish in its finish hands main both. */
+        game->picture_cameras[render->frame.pictures.back] = *camera;
+        game_watch_slot_note(watch, render->frame.pictures.back, picture);
+        flying = (game_flying_t){
+            .camera = *camera, .picture = picture, .started_ns = started_ns, .aimed_ns = when.aimed_ns, .on = 1u};
+        if (serial && !game_gpu_land(game, &flying, &waited_ns)) {
+            return;
+        }
         planned_ns = 0;
+    }
+    /* Nothing is left on the card for whoever closes the world. */
+    if (flying.on != 0u) {
+        (void)game_gpu_land(game, &flying, &waited_ns);
     }
 }
 

@@ -143,6 +143,60 @@ gpu_status_t device_memory_write(device_memory_t *memory, const device_block_t *
 gpu_status_t device_memory_read(device_memory_t *memory, const device_block_t *block, uint64_t offset,
                                 void *destination, uint64_t bytes);
 
+/* Plan 008 phase 03: copies to the card that do not wait. A ring of two areas of pinned host memory, one for each frame in flight:
+ * a copy goes into the area of the frame being built, then is queued on the frame's stream, and the caller goes on. When the frame is
+ * queued, device_staging_turn marks the stream behind it and the next frame's copies go into the other area; an area is written again
+ * only once the stream is past its mark, as the card reads an area when it gets to the copy, not when it is queued. The areas are
+ * borrowed (run/src/render/frame/ takes them from its arena) and pinned here; the marks are CUDA events, owned here. All zero is no
+ * staging, and then every copy waits, as device_memory_write. One thread: the one that draws. */
+typedef struct device_staging_t {
+    uint8_t *borrowed_areas[2]; /* 0: bytes each, pinned, 16-aligned; nullptr for no staging */
+    void *owned_reuse[2];       /* 16: cudaEvent_t: area i may be written again once the stream is past this */
+    uint64_t bytes;             /* 32: each area */
+    uint64_t used;              /* 40: of the area being filled */
+    uint64_t sent_bytes;        /* 48: through staging, since init */
+    uint32_t waited_count;      /* 56: copies too large for what was left, sent waiting instead (slower, as right) */
+    uint32_t area;              /* 60: the area being filled: the frame being built's */
+} device_staging_t;
+static_assert(sizeof(device_staging_t) == 64);
+static_assert(alignof(device_staging_t) == 8);
+static_assert(offsetof(device_staging_t, borrowed_areas) == 0);
+static_assert(offsetof(device_staging_t, owned_reuse) == 16);
+static_assert(offsetof(device_staging_t, bytes) == 32);
+static_assert(offsetof(device_staging_t, used) == 40);
+static_assert(offsetof(device_staging_t, sent_bytes) == 48);
+static_assert(offsetof(device_staging_t, waited_count) == 56);
+static_assert(offsetof(device_staging_t, area) == 60);
+
+/* Pins areas (two of bytes each, one after the other, on whole pages, 16-aligned) and makes the marks. On failure error says why and
+ * staging is left all zero, which is no staging. */
+gpu_status_t device_staging_init(device_staging_t *staging, uint8_t *areas, uint64_t bytes, gpu_error_t *error);
+/* Gives the marks and the pin back. No copy from the areas may still be queued. Safe on all zero. Returns the first failure. */
+gpu_status_t device_staging_deinit(device_staging_t *staging, gpu_error_t *error);
+
+/* device_memory_write that does not wait: source is copied into staging's area and queued on the frame's stream, behind every kernel and
+ * copy queued before it, so the order of copies and kernels is as with device_memory_write. With no staging (nullptr or all zero), or
+ * too little left in the area, it is device_memory_write. Either way source may be reused once this returns. */
+gpu_status_t device_memory_write_async(device_memory_t *memory, device_staging_t *staging, const device_block_t *block,
+                                       uint64_t offset, const void *source, uint64_t bytes);
+
+/* The same for an address on the card that a CUDA area already worked out and checked: world_buffers' slabs and table. last_error gets
+ * what went wrong. */
+gpu_status_t device_staging_copy(device_staging_t *staging, gpu_error_t *last_error, void *device_target,
+                                 const void *source, uint64_t bytes, const char *what);
+
+/* The frame that was being built is queued: its area is marked on the stream behind it, and the next frame's copies go into the other
+ * area. Does nothing with no staging. */
+gpu_status_t device_staging_turn(device_staging_t *staging, gpu_error_t *error);
+
+/* Starts a kernel that writes where nothing is mapped, and does not wait: the fault comes out of whatever waits next. For the test that
+ * a frame's fault is reported within two frames. As device_memory_fault_now, there is no way back but to end the process. */
+gpu_status_t device_memory_fault_queue(device_memory_t *memory);
+
+/* Starts a kernel that keeps the card busy for about this many of the SM's cycles, and does not wait. For tests that need the card
+ * still at work when the host goes on. */
+gpu_status_t device_memory_busy_queue(device_memory_t *memory, uint64_t cycles);
+
 /* Sets a range to zero on the card, and waits until it is done. */
 gpu_status_t device_memory_zero(device_memory_t *memory, const device_block_t *block, uint64_t offset, uint64_t bytes);
 

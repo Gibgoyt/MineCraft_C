@@ -63,7 +63,7 @@ What main needs of a picture at the take, its number and when it began, goes thr
 | `taken_s` | when main took it, seconds since the world opened |
 | `interval_ms` | **from the last picture main took to this one: what was on the screen** |
 | `ticks_waited`, `late` | main's frames from its start to its take; and 1 if it was ready after the take the start rule aimed it at (plan 008 phase 02), or with no aim (today's rule) if the frames are more than 1 |
-| `idle_ms` | the gpu thread from the last picture ready to starting this one: waiting for main to take the last, or (plan 008 phase 02) sleeping to start just in time. The card idles meanwhile |
+| `idle_ms` | the gpu thread from the last picture ready to starting this one: waiting for main to take the last, or (plan 008 phase 02) sleeping to start just in time. The card idles meanwhile. 0 for a picture begun with the last still on its way (plan 008 phase 03) |
 | `upload_ms`, `lod_plan_ms`, `fill_ms` | the gpu thread's parts before the draw |
 | `draw_cpu_ms` | from there to all queued: entities, weather, the kernels' launches |
 | `card_wait_ms` | from all queued to ready: the thread waiting for the card, and the copy home |

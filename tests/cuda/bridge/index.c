@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 enum : uint32_t {
     BR_WIDTH = 640u,
@@ -291,6 +292,68 @@ TEST(the_clock_kernel_reads_a_plausible_clock) {
     CHECK(most <= rated * 1.1f32);
     CHECK(frame_marks_deinit(&marks, &error) == GPU_STATUS_OK);
     sk_rig_end(t, &rig);
+}
+
+/* ---- Plan 008 phase 03: a fault with a frame on its way ------------------------------------------------------------------ */
+
+/* The child's half, in a process of its own (a card that faulted stays faulted for the process): two frames queued with a kernel that writes
+ * where nothing is between them, as the gpu thread keeps one on its way. The finish of one of the two says so, with "frame:" in its words.
+ * Run as anything but that child, it does nothing. */
+TEST(a_fault_is_reported_within_two_frames_child) {
+    if (t->arg_count < 1 || strcmp(t->borrowed_args[0], "fault-child") != 0) {
+        return;
+    }
+    sk_rig_t rig;
+    REQUIRE(sk_rig_begin(t, &rig));
+    REQUIRE(sk_hand_world_open(t, &rig, 2u, BR_WIDTH, BR_HEIGHT, BR_FOG_END));
+    REQUIRE(br_put(t, &rig, -2, -2, -1, 2, 2, -1, BLOCK_ID_STONE) && sk_hand_world_sync(t, &rig));
+    render_t *const render = rig.render;
+    render_frame_t *const frame = &render->frame;
+    render_camera_t camera;
+    render_camera_start(&camera, 0.0f64, -6.0f64, 3.0f64, 1.5708f32, -0.4f32);
+    /* A frame finished first, so the card is known good before the fault. */
+    REQUIRE(render_frame_draw(frame, &render->buffers, &camera) == GPU_STATUS_OK);
+    REQUIRE(render_frame_queue(frame, &render->buffers, &camera, nullptr, nullptr) == GPU_STATUS_OK);
+    REQUIRE(device_memory_fault_queue(&rig.bridge->device_memory) == GPU_STATUS_OK);
+    /* The second may already be refused at its queue: that is the fault reported sooner, as its own words say. */
+    const gpu_status_t second = render_frame_queue(frame, &render->buffers, &camera, nullptr, nullptr);
+    gpu_status_t said = second;
+    const char *words = second != GPU_STATUS_OK ? frame->gpu.last_error.borrowed_what : nullptr;
+    uint32_t finishes = 0u;
+    while (frame->on_way != 0u) {
+        const gpu_status_t status = render_frame_finish(frame);
+        finishes++;
+        if (status != GPU_STATUS_OK && said == GPU_STATUS_OK) {
+            said = status;
+            words = frame->gpu.last_error.borrowed_what;
+        }
+    }
+    printf("  after %" PRIu32 " finishes: %s, \"%s\" (%s)\n", finishes, gpu_status_name(said),
+           words != nullptr ? words : "",
+           frame->gpu.last_error.borrowed_cuda_name != nullptr ? frame->gpu.last_error.borrowed_cuda_name : "");
+    CHECK(said != GPU_STATUS_OK);
+    CHECK(finishes <= 2u);
+    CHECK(words != nullptr && strncmp(words, "frame:", 6u) == 0);
+    (void)fflush(stdout);
+    /* The card is gone for this process: nothing below would say anything but that. */
+    _exit(t->failure_count != 0u ? 1 : 0);
+}
+
+TEST(a_fault_is_reported_within_two_frames) {
+    char self[512];
+    const int64_t length = (int64_t)readlink("/proc/self/exe", self, sizeof(self) - 1u);
+    REQUIRE(length > 0);
+    self[length] = '\0';
+    char marker[] = "fault-child";
+    char *const argv[] = {self, marker, nullptr};
+    REQUIRE(setenv("TEST_FILTER", "a_fault_is_reported_within_two_frames_child", 1) == 0);
+    test_process_t run;
+    test_process_run(t, argv, 120000u, &run);
+    REQUIRE(unsetenv("TEST_FILTER") == 0);
+    printf("%s", run.output);
+    CHECK(run.started != 0u);
+    CHECK_EQ_I64(run.exit_code, 0);
+    CHECK_CONTAINS(run.output, "\"frame:");
 }
 
 TEST_MAIN()

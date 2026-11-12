@@ -152,7 +152,8 @@ typedef struct game_watch_t {
     float32_t card_mhz;              /* 104: the last reading */
     uint8_t _pad1[4];                /* 108 */
     uint64_t start_frame;            /* 112: main's frames when the picture being drawn began */
-    uint8_t _pad6[8];                /* 120 */
+    uint64_t
+        pictures_begun; /* 120: plan 008 phase 03: the next picture's seq, as one may begin before the last is drawn */
     /* Main's line, but that the sim takes the span's frames from it, each word by exchange. A frame's numbers landing either side of
      * the exchange, or a slowest lost to it, puts a frame in the next span, which only the log depends on. */
     _Atomic int64_t span_frame_ns;      /* 128: the frames of this span, added up */

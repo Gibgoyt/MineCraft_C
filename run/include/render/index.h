@@ -75,12 +75,16 @@ typedef struct render_t {
     device_block_t owned_pool;        /* 528: the slab pool on the card */
     device_block_t owned_table;       /* 552: the column table on the card */
     world_buffers_t buffers;          /* 576 */
-    device_memory_t *borrowed_memory; /* 808 */
-    job_system_t *borrowed_job;       /* 816 */
-    render_limits_t limits;           /* 824 */
-    uint8_t open;                     /* 848 */
-    uint8_t frame_open;               /* 849 */
-    uint8_t _pad0[46];                /* 850 */
+    device_memory_t *borrowed_memory; /* 816 */
+    job_system_t *borrowed_job;       /* 824 */
+    render_limits_t limits;           /* 832 */
+    uint8_t open;                     /* 856 */
+    uint8_t frame_open;               /* 857 */
+    uint8_t serial_frames; /* 858: --serial-frames (plan 008 phase 03): each frame finished before the next is begun */
+    uint8_t _pad0[5];      /* 859 */
+    device_block_t
+        owned_xrgb_second; /* 864: plan 008 phase 03: the other finished picture, written by every other frame */
+    uint8_t _pad2[8];      /* 888 */
 
     arena_t arena_frame;                  /* 896: over owned_frame_host */
     render_frame_t frame;                 /* 960 */
@@ -114,10 +118,15 @@ typedef struct render_t {
 } render_t;
 static_assert(sizeof(render_t) == 2752);
 static_assert(alignof(render_t) == 64);
+
+/* Plan 008 phase 03: whether the gpu thread finishes each frame before it begins the next (--serial-frames), as before that phase, or keeps
+ * one on its way while it builds the next. Set before a world's threads start; read by the gpu thread as it starts. */
+void render_serial_frames_set(render_t *render, bool serial);
+bool render_serial_frames(const render_t *render);
 static_assert(offsetof(render_t, upload) == 64);
 static_assert(offsetof(render_t, owned_host) == 512);
 static_assert(offsetof(render_t, buffers) == 576);
-static_assert(offsetof(render_t, open) == 848);
+static_assert(offsetof(render_t, open) == 856);
 static_assert(offsetof(render_t, frame) == 960);
 static_assert(offsetof(render_t, owned_frame_host) == 1920);
 static_assert(offsetof(render_t, owned_entity_lists) == 2248);
@@ -125,6 +134,7 @@ static_assert(offsetof(render_t, borrowed_entities) == 2296);
 static_assert(offsetof(render_t, arena_lod) == 2304);
 static_assert(offsetof(render_t, borrowed_lod) == 2696);
 static_assert(offsetof(render_t, owned_weather_map) == 2704);
+static_assert(offsetof(render_t, owned_xrgb_second) == 864);
 
 /* What a real game runs with: gpu.budget in config/machine.yaml. */
 render_limits_t render_limits_default(void);

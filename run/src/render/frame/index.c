@@ -139,11 +139,19 @@ uint64_t render_frame_shape_table_bytes(void) {
     return (uint64_t)BLOCK_COUNT * sizeof(uint8_t);
 }
 
-uint64_t render_frame_arena_bytes(uint32_t width, uint32_t height) {
+/* Whole pages, as what the card pins has its pages to itself. */
+static uint64_t frame_whole_pages(uint64_t bytes) {
+    return (bytes + RENDER_FRAME_PICTURE_ALIGNMENT - 1u) / RENDER_FRAME_PICTURE_ALIGNMENT *
+           RENDER_FRAME_PICTURE_ALIGNMENT;
+}
+
+uint64_t render_frame_arena_bytes(uint32_t width, uint32_t height, uint64_t staging_bytes) {
     /* Each allocation can waste its alignment. */
     return (uint64_t)RENDER_EXCHANGE_SLOTS * (post_xrgb_bytes(width, height) + 2ull * RENDER_FRAME_PICTURE_ALIGNMENT) +
            (uint64_t)RENDER_FRAME_SAMPLES * sizeof(float32_t) + render_frame_texture_table_bytes() +
-           render_frame_face_table_bytes() + render_frame_shape_table_bytes() + 5u * MC_CPU_CACHE_LINE_BYTES;
+           render_frame_face_table_bytes() + render_frame_shape_table_bytes() + 5u * MC_CPU_CACHE_LINE_BYTES +
+           frame_flight_bytes() + RENDER_FRAME_PICTURE_ALIGNMENT + 2u * frame_whole_pages(staging_bytes) +
+           RENDER_FRAME_PICTURE_ALIGNMENT;
 }
 
 /* block_defs' faces already index block_texture_names, so that list, found in the blob, is the table the kernel reads. */
@@ -276,14 +284,14 @@ static gpu_status_t frame_send_tables(render_frame_t *frame, device_memory_t *me
 }
 
 gpu_status_t render_frame_init(render_frame_t *frame, arena_t *arena, device_memory_t *memory, const texture_t *texture,
-                               const render_frame_blocks_t *blocks, uint32_t width, uint32_t height,
-                               float32_t fog_end) {
+                               const render_frame_blocks_t *blocks, uint32_t width, uint32_t height, float32_t fog_end,
+                               uint64_t staging_bytes) {
     memset(frame, 0, sizeof(*frame));
     render_exchange_start(&frame->pictures);
     frame->borrowed_memory = memory;
     frame->width = width;
     frame->height = height;
-    frame->picture_bytes = post_xrgb_bytes(width, height);
+    frame->borrowed_xrgb_second = blocks->borrowed_xrgb_second;
     frame->fog_end = fog_end;
     frame->targets = (frame_targets_t){
         .borrowed_coarse = blocks->borrowed_coarse,
@@ -298,7 +306,12 @@ gpu_status_t render_frame_init(render_frame_t *frame, arena_t *arena, device_mem
         .borrowed_history_next = blocks->borrowed_history[1],
         .borrowed_shafts = blocks->borrowed_shafts,
     };
-    gpu_status_t status = frame_gpu_init(&frame->gpu);
+    /* Plan 008 phase 03: the frames on their way, and the areas their copies to the card go through, all pinned by frame_gpu_init. */
+    void *const flight = arena_alloc(arena, frame_flight_bytes(), FRAME_FLIGHT_ALIGNMENT);
+    const uint64_t area_bytes = frame_whole_pages(staging_bytes);
+    uint8_t *const staging =
+        area_bytes != 0u ? arena_alloc(arena, 2u * area_bytes, RENDER_FRAME_PICTURE_ALIGNMENT) : nullptr;
+    gpu_status_t status = frame_gpu_init(&frame->gpu, flight, staging, area_bytes);
     if (status != GPU_STATUS_OK) {
         gpu_error_log(&frame->gpu.last_error);
         return status;
@@ -309,11 +322,11 @@ gpu_status_t render_frame_init(render_frame_t *frame, arena_t *arena, device_mem
         return status;
     }
     frame->borrowed_samples = arena_alloc(arena, RENDER_FRAME_SAMPLES * sizeof(float32_t), alignof(float32_t));
+    const uint64_t picture_bytes = post_xrgb_bytes(width, height);
     for (uint32_t i = 0u; i < RENDER_EXCHANGE_SLOTS; i++) {
-        const uint64_t whole_pages = (frame->picture_bytes + RENDER_FRAME_PICTURE_ALIGNMENT - 1u) /
-                                     RENDER_FRAME_PICTURE_ALIGNMENT * RENDER_FRAME_PICTURE_ALIGNMENT;
-        frame->borrowed_pictures[i] = arena_alloc(arena, whole_pages, RENDER_FRAME_PICTURE_ALIGNMENT);
-        status = frame_host_pin(&frame->gpu, frame->borrowed_pictures[i], frame->picture_bytes);
+        frame->borrowed_pictures[i] =
+            arena_alloc(arena, frame_whole_pages(picture_bytes), RENDER_FRAME_PICTURE_ALIGNMENT);
+        status = frame_host_pin(&frame->gpu, frame->borrowed_pictures[i], picture_bytes);
         if (status != GPU_STATUS_OK) {
             gpu_error_log(&frame->gpu.last_error);
             render_frame_deinit(frame);
@@ -325,6 +338,9 @@ gpu_status_t render_frame_init(render_frame_t *frame, arena_t *arena, device_mem
 }
 
 void render_frame_deinit(render_frame_t *frame) {
+    /* A frame still on its way writes a picture: it is waited for first (frame_gpu_deinit would too, but after the pictures' unpinning). */
+    while (frame->on_way != 0u && render_frame_finish(frame) == GPU_STATUS_OK) {
+    }
     for (uint32_t i = 0u; i < frame->pinned; i++) {
         if (frame_host_unpin(&frame->gpu, frame->borrowed_pictures[i]) != GPU_STATUS_OK) {
             gpu_error_log(&frame->gpu.last_error);
@@ -517,6 +533,12 @@ static float32_t frame_ease(float32_t from, float32_t to, float32_t share) {
 
 gpu_status_t render_weather_take(render_weather_t *weather, const render_weather_slot_t *slot, int64_t now_ns,
                                  device_memory_t *memory, const device_block_t *map_block) {
+    return render_weather_take_staged(weather, slot, now_ns, memory, nullptr, map_block);
+}
+
+gpu_status_t render_weather_take_staged(render_weather_t *weather, const render_weather_slot_t *slot, int64_t now_ns,
+                                        device_memory_t *memory, device_staging_t *staging,
+                                        const device_block_t *map_block) {
     if (slot != nullptr) {
         if (slot->sent == 0u) {
             memset(weather, 0, sizeof(*weather));
@@ -545,7 +567,8 @@ gpu_status_t render_weather_take(render_weather_t *weather, const render_weather
         weather->forced = slot->forced;
         weather->active = 1u;
         if (map_block != nullptr && (weather->map_sent == 0u || weather->map_revision != slot->map_revision)) {
-            const gpu_status_t status = device_memory_write(memory, map_block, 0u, slot->map, sizeof(slot->map));
+            const gpu_status_t status =
+                device_memory_write_async(memory, staging, map_block, 0u, slot->map, sizeof(slot->map));
             if (status != GPU_STATUS_OK) {
                 return status;
             }
@@ -647,16 +670,16 @@ gpu_status_t render_frame_draw(render_frame_t *frame, const world_buffers_t *buf
     return render_frame_draw_weather(frame, buffers, camera, nullptr, nullptr);
 }
 
-gpu_status_t render_frame_draw_weather(render_frame_t *frame, const world_buffers_t *buffers,
-                                       const render_camera_t *camera, const render_weather_t *weather,
-                                       const device_block_t *map_block) {
+gpu_status_t render_frame_queue(render_frame_t *frame, const world_buffers_t *buffers, const render_camera_t *camera,
+                                const render_weather_t *weather, const device_block_t *map_block) {
     traverse_camera_t view;
     render_camera_to_traverse(camera, frame->width, frame->height, &view);
     /* What the history is reprojected with has no jitter: otherwise a still camera would see its own picture move. */
     const traverse_camera_t steady = view;
     const uint32_t features = frame->scene.features;
     post_temporal_t *const temporal = &frame->temporal;
-    const bool drawn_before = frame->stats.frames != 0u;
+    /* Queued before, finished or not: the history is the last frame queued's, as the card draws them in order. */
+    const bool drawn_before = frame->stats.frames + frame->on_way != 0u;
     temporal->ao_valid = drawn_before && (frame->drawn_features & SHADE_FEATURE_AO) != 0u ? 1u : 0u;
     temporal->history_valid = drawn_before && (frame->drawn_features & SHADE_FEATURE_TAA) != 0u ? 1u : 0u;
     temporal->jitter[0] = 0.0f32;
@@ -689,7 +712,8 @@ gpu_status_t render_frame_draw_weather(render_frame_t *frame, const world_buffer
     if (frame->borrowed_entities != nullptr) {
         /* Past the fog a box is sky, and with no fog nothing is past anything. */
         const float32_t far = (features & SHADE_FEATURE_FOG) != 0u ? frame->fog_end : 0.0f32;
-        const gpu_status_t sent = render_entities_frame(frame->borrowed_entities, &steady, features, far, &entities);
+        const gpu_status_t sent = render_entities_frame_staged(frame->borrowed_entities, &frame->gpu.staging, &steady,
+                                                               features, far, &entities);
         if (sent != GPU_STATUS_OK) {
             frame->gpu.last_error = frame->borrowed_memory->last_error;
             return sent;
@@ -716,6 +740,13 @@ gpu_status_t render_frame_draw_weather(render_frame_t *frame, const world_buffer
     };
     frame->scene.borrowed_lod_hits = far ? far_scene.borrowed_hits : nullptr;
     scene.borrowed_lod_hits = frame->scene.borrowed_lod_hits;
+    /* Plan 008 phase 03: the device picture of this frame's flight slot, so the copy home of one frame and the post of the next never
+     * meet. */
+    const uint32_t next_slot = frame->gpu.borrowed_flight != nullptr ? frame->gpu.borrowed_flight->next : 0u;
+    frame_targets_t targets = frame->targets;
+    if (next_slot == 1u && frame->borrowed_xrgb_second != nullptr) {
+        targets.borrowed_xrgb = frame->borrowed_xrgb_second;
+    }
     const frame_args_t args = {
         .borrowed_lod = far ? &far_scene : nullptr,
         .borrowed_lod_light = far ? &far_light : nullptr,
@@ -725,16 +756,16 @@ gpu_status_t render_frame_draw_weather(render_frame_t *frame, const world_buffer
         .borrowed_weather = weathered ? &kernel_weather : nullptr,
         .borrowed_weather_map = weathered && weather->map_sent != 0u ? map_block : nullptr,
         .borrowed_camera = &view,
-        .borrowed_targets = &frame->targets,
-        .borrowed_host_xrgb = frame->borrowed_pictures[frame->pictures.back],
+        .borrowed_targets = &targets,
+        .borrowed_host_xrgb = nullptr,
         .borrowed_entities = frame->borrowed_entities != nullptr ? &entities : nullptr,
     };
-    frame_timings_t timings;
-    const gpu_status_t status = frame_gpu_run(&frame->gpu, &args, &timings);
+    uint32_t slot = 0u;
+    gpu_status_t status = frame_gpu_queue(&frame->gpu, &args, &slot);
     if (status != GPU_STATUS_OK) {
         return status;
     }
-    /* What this frame wrote is what the next one reads. */
+    /* What this frame writes is what the next one reads. */
     temporal->previous = steady;
     temporal->frame++;
     frame->drawn_features = features;
@@ -748,6 +779,29 @@ gpu_status_t render_frame_draw_weather(render_frame_t *frame, const world_buffer
         temporal->borrowed_history_next = temporal->borrowed_history_last;
         temporal->borrowed_history_last = written;
     }
+    frame->on_way++;
+    if (frame->on_way == 1u) {
+        /* The exchange's back slot is free: home at once. A second frame goes home when the first is finished. */
+        frame->oldest_slot = (uint8_t)slot;
+        status = frame_gpu_home(&frame->gpu, slot, frame->borrowed_pictures[frame->pictures.back]);
+    }
+    return status;
+}
+
+gpu_status_t render_frame_finish(render_frame_t *frame) {
+    if (frame->on_way == 0u) {
+        frame->gpu.last_error =
+            (gpu_error_t){"frame: nothing on its way to finish", nullptr, nullptr, 0, GPU_STATUS_INVALID_ARGUMENT};
+        return GPU_STATUS_INVALID_ARGUMENT;
+    }
+    frame_timings_t timings;
+    const uint32_t slot = frame->oldest_slot;
+    frame->on_way--;
+    frame->oldest_slot = (uint8_t)((slot + 1u) % FRAME_FLIGHT_SLOTS);
+    gpu_status_t status = frame_gpu_finish(&frame->gpu, slot, &timings);
+    if (status != GPU_STATUS_OK) {
+        return status;
+    }
     frame->last_timings = timings;
     render_frame_stats_t *const stats = &frame->stats;
     for (uint32_t i = 0u; i < FRAME_PASS_COUNT; i++) {
@@ -758,9 +812,27 @@ gpu_status_t render_frame_draw_weather(render_frame_t *frame, const world_buffer
     stats->max_total_ms = timings.total_ms > stats->max_total_ms ? timings.total_ms : stats->max_total_ms;
     frame->borrowed_samples[stats->frames % RENDER_FRAME_SAMPLES] = timings.total_ms;
     stats->frames++;
-    stats->readback_bytes += frame->picture_bytes;
+    stats->readback_bytes += post_xrgb_bytes(frame->width, frame->height);
     render_exchange_publish(&frame->pictures);
-    return GPU_STATUS_OK;
+    if (frame->on_way != 0u) {
+        /* The next frame's picture goes into the slot the publish gave back. */
+        status = frame_gpu_home(&frame->gpu, frame->oldest_slot, frame->borrowed_pictures[frame->pictures.back]);
+    }
+    return status;
+}
+
+gpu_status_t render_frame_draw_weather(render_frame_t *frame, const world_buffers_t *buffers,
+                                       const render_camera_t *camera, const render_weather_t *weather,
+                                       const device_block_t *map_block) {
+    /* A frame on its way is handed over first, so this one's picture is the newest when it returns. */
+    while (frame->on_way != 0u) {
+        const gpu_status_t status = render_frame_finish(frame);
+        if (status != GPU_STATUS_OK) {
+            return status;
+        }
+    }
+    const gpu_status_t status = render_frame_queue(frame, buffers, camera, weather, map_block);
+    return status == GPU_STATUS_OK ? render_frame_finish(frame) : status;
 }
 
 const uint8_t *render_frame_take(render_frame_t *frame) {

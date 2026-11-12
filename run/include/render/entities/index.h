@@ -156,4 +156,10 @@ bool render_entities_pixels(const traverse_camera_t *camera, const float32_t cen
 gpu_status_t render_entities_frame(render_entities_t *entities, const traverse_camera_t *camera, uint32_t features,
                                    float32_t far, entity_rays_scene_t *out);
 
+/* The same, with the lists sent through staging so the thread does not wait for the frame before on the card (plan 008 phase 03). nullptr
+ * staging is render_entities_frame. */
+gpu_status_t render_entities_frame_staged(render_entities_t *entities, device_staging_t *staging,
+                                          const traverse_camera_t *camera, uint32_t features, float32_t far,
+                                          entity_rays_scene_t *out);
+
 #endif

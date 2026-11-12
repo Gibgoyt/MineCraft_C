@@ -10,6 +10,8 @@
 - `device_memory_init`, `device_memory_deinit`: find the card and start CUDA; free what is left and stop.
 - `device_memory_alloc`, `device_memory_free`: take and give back a block, from one of the three pools in `gpu.budget`.
 - `device_memory_write`, `device_memory_read`, `device_memory_zero`: bounds-checked, waiting copies, for small and start-up work.
+- `device_staging_init`, `device_staging_deinit`, `device_memory_write_async`, `device_staging_copy`, `device_staging_turn` (plan 008 phase 03): copies to the card that do not wait. Two areas of pinned host memory, the caller's, one per frame on its way: a copy goes into the area of the frame being built and is queued with `cudaMemcpyAsync` on the legacy stream, behind every kernel and copy before it, as a waiting copy would be ordered. `device_staging_turn`, as a frame is queued, marks the stream behind it with an event and moves to the other area; an area is written again only once its mark has passed. A copy too large for what is left goes waiting (`waited_count`). With no staging every call is `device_memory_write`.
+- `device_memory_fault_queue`, `device_memory_busy_queue`: a kernel that faults, or spins the SM's clock, without waiting: for the tests that a frame's fault is reported within two frames and that staging is not reused while its copy is queued.
 - `device_memory_self_check`: runs a real kernel over a real block and checks its answer.
 - `device_memory_status_from_cuda`: the table from CUDA's errors to ours.
 - `device_memory_lost_set`: the card has gone. From then on every block counts as given back without asking, in `device_memory_free` and `device_memory_deinit`, which also find this out for themselves.

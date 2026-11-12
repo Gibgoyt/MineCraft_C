@@ -293,7 +293,8 @@ game_watch_picture_t *game_watch_picture_begin(game_watch_t *watch, int64_t wait
     if (watch->borrowed_pictures == nullptr) {
         return nullptr;
     }
-    const uint64_t seq = atomic_load_explicit(&watch->pictures_drawn, memory_order_relaxed);
+    /* Not pictures_drawn: with a frame on its way (plan 008 phase 03) the next begins before the last is drawn. */
+    const uint64_t seq = watch->pictures_begun++;
     game_watch_picture_t *const picture = &watch->borrowed_pictures[seq % GAME_WATCH_RING];
     memset(picture, 0, sizeof(*picture));
     picture->seq = seq;

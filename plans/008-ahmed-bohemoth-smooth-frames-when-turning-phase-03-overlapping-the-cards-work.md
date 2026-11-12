@@ -1,6 +1,6 @@
 # 008-ahmed-bohemoth-smooth-frames-when-turning — phase 3: Overlapping the card's work
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** in progress: the overlap built and tested; measuring   (updated 2026-11-12)
 
 Read first: `plans/008-ahmed-bohemoth-smooth-frames-when-turning-phase-00-vision-and-plan-files.md`, then the master `plans/008-ahmed-bohemoth-smooth-frames-when-turning.md`: section 1 (C7), 3.3, 5 and 8. Then phase 01's C7 row ($P$ by part, readback ms) and phase 02's start rule.
 
@@ -137,17 +137,17 @@ This phase may edit these, plus this file:
 
 ## Todo
 
-- [ ] Two device pictures, written in turn; the copy stream; `post_done`, `end` and `home` events per slot
-- [ ] `frame_gpu_queue`, `frame_gpu_finish`; `frame_gpu_run` as both, unchanged for every caller
-- [ ] `render_frame_queue` and `render_frame_finish`; temporal swaps at queue time, publish at finish
-- [ ] `device_memory_write_async`; a pinned staging ring of two in the World arena
-- [ ] Upload sections, the column table, far-field flushes, entities and the weather map sent by async copies from staging
-- [ ] `game_gpu_thread` keeps one frame in flight; phase 02's rule aims at `home`
-- [ ] `--serial-frames` for the game and `bench_world`
-- [ ] A fault is reported within 2 frames with its own words (test)
-- [ ] Pictures byte for byte with and without `--serial-frames`; golden pictures and settled hashes unchanged
+- [x] Two device pictures, written in turn; the copy stream; `post_done`, `end` and `home` events per slot
+- [x] `frame_gpu_queue`, `frame_gpu_finish`; `frame_gpu_run` as both, unchanged for every caller
+- [x] `render_frame_queue` and `render_frame_finish`; temporal swaps at queue time, publish at finish
+- [x] `device_memory_write_async`; a pinned staging ring of two in the World arena
+- [x] Upload sections, the column table, far-field flushes, entities and the weather map sent by async copies from staging
+- [x] `game_gpu_thread` keeps one frame in flight; phase 02's rule aims at `home`
+- [x] `--serial-frames` for the game and `bench_world`
+- [x] A fault is reported within 2 frames with its own words (test)
+- [x] Pictures byte for byte with and without `--serial-frames`; golden pictures and settled hashes unchanged
 - [ ] Phase 01's rows again; results below
-- [ ] READMEs
+- [x] READMEs
 
 ## Results (filled in by this phase)
 

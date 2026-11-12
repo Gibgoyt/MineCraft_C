@@ -488,21 +488,33 @@ void game_weather_wind(const game_t *game, float32_t out[2]) {
     out[1] = weather != nullptr ? weather->wind[1] : 0.0f32;
 }
 
-gpu_status_t game_weather_draw(game_t *game, const render_camera_t *camera, int64_t now_ns) {
+/* The weather's slot taken and its map sent, then the frame drawn, or only queued (plan 008 phase 03). */
+static gpu_status_t game_weather_frame(game_t *game, const render_camera_t *camera, int64_t now_ns, bool queue_only) {
     render_t *const render = game->borrowed_render;
     game_weather_t *const weather = game_weather_of(game);
     if (weather == nullptr) {
-        return render_frame_draw(&render->frame, &render->buffers, camera);
+        return queue_only ? render_frame_queue(&render->frame, &render->buffers, camera, nullptr, nullptr)
+                          : render_frame_draw(&render->frame, &render->buffers, camera);
     }
     uint32_t index = 0u;
     const render_weather_slot_t *const slot =
         render_exchange_take(&weather->exchange, &index) ? &weather->slots[index] : nullptr;
-    const gpu_status_t status =
-        render_weather_take(&weather->gpu, slot, now_ns, render->borrowed_memory, &render->owned_weather_map);
+    const gpu_status_t status = render_weather_take_staged(&weather->gpu, slot, now_ns, render->borrowed_memory,
+                                                           &render->frame.gpu.staging, &render->owned_weather_map);
     if (status != GPU_STATUS_OK) {
         render->frame.gpu.last_error = render->borrowed_memory->last_error;
         return status;
     }
-    return render_frame_draw_weather(&render->frame, &render->buffers, camera, &weather->gpu,
-                                     &render->owned_weather_map);
+    return queue_only
+               ? render_frame_queue(&render->frame, &render->buffers, camera, &weather->gpu, &render->owned_weather_map)
+               : render_frame_draw_weather(&render->frame, &render->buffers, camera, &weather->gpu,
+                                           &render->owned_weather_map);
+}
+
+gpu_status_t game_weather_draw(game_t *game, const render_camera_t *camera, int64_t now_ns) {
+    return game_weather_frame(game, camera, now_ns, false);
+}
+
+gpu_status_t game_weather_queue(game_t *game, const render_camera_t *camera, int64_t now_ns) {
+    return game_weather_frame(game, camera, now_ns, true);
 }

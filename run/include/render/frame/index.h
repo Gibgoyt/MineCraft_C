@@ -107,19 +107,20 @@ static_assert(sizeof(render_frame_stats_t) == 88);
 
 /* The device blocks a frame needs, which the Owner holds. */
 typedef struct render_frame_blocks_t {
-    const device_block_t *borrowed_textures;   /* 0: render_frame_texture_table_bytes */
-    const device_block_t *borrowed_faces;      /* 8: render_frame_face_table_bytes */
-    const device_block_t *borrowed_pixels;     /* 16: all of texture_pixels_get */
-    const device_block_t *borrowed_coarse;     /* 24 */
-    const device_block_t *borrowed_hits;       /* 32 */
-    const device_block_t *borrowed_shaded;     /* 40 */
-    const device_block_t *borrowed_xrgb;       /* 48 */
-    const device_block_t *borrowed_shapes;     /* 56: render_frame_shape_table_bytes */
-    const device_block_t *borrowed_ao[2];      /* 64: shade_ao_bytes each: one is the last frame's, one the next's */
-    const device_block_t *borrowed_history[2]; /* 80: post_history_bytes each, the same way */
-    const device_block_t *borrowed_shafts;     /* 96: post_shafts_bytes */
+    const device_block_t *borrowed_textures;    /* 0: render_frame_texture_table_bytes */
+    const device_block_t *borrowed_faces;       /* 8: render_frame_face_table_bytes */
+    const device_block_t *borrowed_pixels;      /* 16: all of texture_pixels_get */
+    const device_block_t *borrowed_coarse;      /* 24 */
+    const device_block_t *borrowed_hits;        /* 32 */
+    const device_block_t *borrowed_shaded;      /* 40 */
+    const device_block_t *borrowed_xrgb;        /* 48 */
+    const device_block_t *borrowed_shapes;      /* 56: render_frame_shape_table_bytes */
+    const device_block_t *borrowed_ao[2];       /* 64: shade_ao_bytes each: one is the last frame's, one the next's */
+    const device_block_t *borrowed_history[2];  /* 80: post_history_bytes each, the same way */
+    const device_block_t *borrowed_shafts;      /* 96: post_shafts_bytes */
+    const device_block_t *borrowed_xrgb_second; /* 104: the same size as borrowed_xrgb: frames write the two in turn */
 } render_frame_blocks_t;
-static_assert(sizeof(render_frame_blocks_t) == 104);
+static_assert(sizeof(render_frame_blocks_t) == 112);
 
 typedef struct render_entities_t render_entities_t;
 typedef struct render_lod_t render_lod_t;
@@ -135,23 +136,24 @@ typedef struct render_frame_t {
     device_memory_t *borrowed_memory;                  /* 648 */
     uint8_t *borrowed_pictures[RENDER_EXCHANGE_SLOTS]; /* 656: width * height * 4 each */
     float32_t *borrowed_samples;                       /* 680: RENDER_FRAME_SAMPLES of total_ms */
-    uint64_t picture_bytes;                            /* 688 */
-    uint32_t width;                                    /* 696 */
-    uint32_t height;                                   /* 700 */
-    const device_block_t *borrowed_shapes;             /* 704: a traverse_shape_t per block */
-    post_temporal_t temporal;                          /* 712: what scene.borrowed_temporal points to */
-    float32_t fog_end;                                 /* 848: in blocks, as it was asked for */
-    float32_t day_fraction;                            /* 852: what scene.sun and post were last worked out for */
-    uint32_t drawn_features;                           /* 856: what the last frame was drawn with */
-    uint8_t pinned;                                    /* 860: how many of the pictures are pinned */
-    uint8_t eyes_under_water;                          /* 861: as last told, by render_frame_under_water_set */
-    uint8_t _pad0[2];                                  /* 862 */
-    render_entities_t *borrowed_entities; /* 864: what each frame draws of them, from the Owner, or nullptr */
-    render_lod_t *borrowed_lod;           /* 872: what each frame draws past full detail, from the Owner, or nullptr */
-    frame_timings_t last_timings;         /* 880: what the last frame took, kernel by kernel, on the card's clock */
-    float32_t sun_given[3];               /* 944: with sun_from_outside: toward the sun, unit, x east, y north */
-    uint8_t sun_from_outside;             /* 956: 1 after render_frame_sun_set, 0 after render_frame_time_set */
-    uint8_t _pad1[3];                     /* 957 */
+    const device_block_t *borrowed_xrgb_second; /* 688: plan 008 phase 03: the other device picture, written in turn */
+    uint32_t width;                             /* 696 */
+    uint32_t height;                            /* 700 */
+    const device_block_t *borrowed_shapes;      /* 704: a traverse_shape_t per block */
+    post_temporal_t temporal;                   /* 712: what scene.borrowed_temporal points to */
+    float32_t fog_end;                          /* 848: in blocks, as it was asked for */
+    float32_t day_fraction;                     /* 852: what scene.sun and post were last worked out for */
+    uint32_t drawn_features;                    /* 856: what the last frame was drawn with */
+    uint8_t pinned;                             /* 860: how many of the pictures are pinned */
+    uint8_t eyes_under_water;                   /* 861: as last told, by render_frame_under_water_set */
+    uint8_t on_way;                             /* 862: frames queued and not finished: 0, 1 or 2 */
+    uint8_t oldest_slot;                        /* 863: the flight slot of the first of them, whose picture goes home */
+    render_entities_t *borrowed_entities;       /* 864: what each frame draws of them, from the Owner, or nullptr */
+    render_lod_t *borrowed_lod;   /* 872: what each frame draws past full detail, from the Owner, or nullptr */
+    frame_timings_t last_timings; /* 880: what the last frame took, kernel by kernel, on the card's clock */
+    float32_t sun_given[3];       /* 944: with sun_from_outside: toward the sun, unit, x east, y north */
+    uint8_t sun_from_outside;     /* 956: 1 after render_frame_sun_set, 0 after render_frame_time_set */
+    uint8_t _pad1[3];             /* 957 */
 } render_frame_t;
 static_assert(sizeof(render_frame_t) == 960);
 static_assert(alignof(render_frame_t) == MC_CPU_CACHE_LINE_BYTES);
@@ -159,6 +161,7 @@ static_assert(offsetof(render_frame_t, gpu) == 192);
 static_assert(offsetof(render_frame_t, borrowed_memory) == 648);
 static_assert(offsetof(render_frame_t, temporal) == 712);
 static_assert(offsetof(render_frame_t, pinned) == 860);
+static_assert(offsetof(render_frame_t, on_way) == 862);
 static_assert(offsetof(render_frame_t, borrowed_entities) == 864);
 static_assert(offsetof(render_frame_t, borrowed_lod) == 872);
 static_assert(offsetof(render_frame_t, sun_given) == 944);
@@ -247,13 +250,15 @@ static_assert(alignof(render_weather_t) == 8);
 uint64_t render_frame_texture_table_bytes(void);
 uint64_t render_frame_face_table_bytes(void);
 uint64_t render_frame_shape_table_bytes(void);
-uint64_t render_frame_arena_bytes(uint32_t width, uint32_t height);
+uint64_t render_frame_arena_bytes(uint32_t width, uint32_t height, uint64_t staging_bytes);
 
 /* Builds the tables from the block table and the texture blob and sends them and every texture's pixels to the card, takes the
- * pictures from the arena, and pins them. fog_end is in blocks. All of it must outlive this. On failure logs why, leaves
+ * pictures from the arena, and pins them. fog_end is in blocks. staging_bytes is each of the two areas the per-frame copies to the card go
+ * through (frame.gpu.staging; 0 for copies that wait), from the arena too. All of it must outlive this. On failure logs why, leaves
  * nothing pinned, and returns what went wrong. */
 gpu_status_t render_frame_init(render_frame_t *frame, arena_t *arena, device_memory_t *memory, const texture_t *texture,
-                               const render_frame_blocks_t *blocks, uint32_t width, uint32_t height, float32_t fog_end);
+                               const render_frame_blocks_t *blocks, uint32_t width, uint32_t height, float32_t fog_end,
+                               uint64_t staging_bytes);
 
 /* Unpins, and forgets the rest. Safe on zero bytes. No kernel may be running. */
 void render_frame_deinit(render_frame_t *frame);
@@ -298,11 +303,28 @@ gpu_status_t render_frame_draw_weather(render_frame_t *frame, const world_buffer
                                        const render_camera_t *camera, const render_weather_t *weather,
                                        const device_block_t *map_block);
 
+/* Plan 008 phase 03: render_frame_draw_weather in two halves, so the gpu thread can build the next frame while the card draws this one.
+ * render_frame_queue queues a frame on the card and returns at once: what it reads of buffers, the camera and the weather is read now, and
+ * the temporal state moves on now, as it is about the order of frames. render_frame_finish waits for the oldest frame queued, adds it to
+ * the books and makes it the newest picture. At most two are queued at once: a third queue fails. A picture's copy home starts when its
+ * slot of the exchange is free, which is at once for the first and at the last one's finish for the second, so the exchange keeps its three
+ * slots. Anything but GPU_STATUS_OK means nothing more should be asked of the card, and gpu.last_error says why: a kernel that faulted is
+ * reported by the finish of its frame or the next. */
+gpu_status_t render_frame_queue(render_frame_t *frame, const world_buffers_t *buffers, const render_camera_t *camera,
+                                const render_weather_t *weather, const device_block_t *map_block);
+gpu_status_t render_frame_finish(render_frame_t *frame);
+
 /* The thread that draws, before a frame: a new slot from the sim (nullptr if none came), eased toward over the ticks between, at once
  * for the first or a forced one; and the clock of the fall and the bolt for a frame at now_ns (0 for a run with no threads, which
  * draws each slot as it is). Sends the slot's rain top to map_block if it changed. Anything but GPU_STATUS_OK is the card failing. */
 gpu_status_t render_weather_take(render_weather_t *weather, const render_weather_slot_t *slot, int64_t now_ns,
                                  device_memory_t *memory, const device_block_t *map_block);
+
+/* render_weather_take with the map sent through staging, so it does not wait for the frame on the card (plan 008 phase 03). nullptr staging
+ * is render_weather_take. */
+gpu_status_t render_weather_take_staged(render_weather_t *weather, const render_weather_slot_t *slot, int64_t now_ns,
+                                        device_memory_t *memory, device_staging_t *staging,
+                                        const device_block_t *map_block);
 
 /* How far is seen through weather, in blocks, against fog_end, the setting's distance: max(32, F (1 - 0.85 max(fog, dust)) /
  * (1 + rain / 10)). Pure. */

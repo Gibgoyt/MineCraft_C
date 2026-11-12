@@ -187,8 +187,11 @@ typedef struct world_buffers_t {
     uint32_t dirty_count;                            /* 220 */
     uint32_t flush_count;                            /* 224: flushes that sent anything */
     uint32_t flush_whole_count;                      /* 228: of those, the ones that sent the whole table */
+    /* 232: plan 008 phase 03: where section and table copies go so as not to wait, the frame's; nullptr and they wait, as before. Set by
+     * the Owner once the frame is open, and emptied before it closes. */
+    device_staging_t *borrowed_staging;
 } world_buffers_t;
-static_assert(sizeof(world_buffers_t) == 232);
+static_assert(sizeof(world_buffers_t) == 240);
 static_assert(alignof(world_buffers_t) == 8);
 static_assert(offsetof(world_buffers_t, borrowed_memory) == 0);
 static_assert(offsetof(world_buffers_t, borrowed_pool) == 8);
@@ -214,6 +217,7 @@ static_assert(offsetof(world_buffers_t, section_count) == 216);
 static_assert(offsetof(world_buffers_t, dirty_count) == 220);
 static_assert(offsetof(world_buffers_t, flush_count) == 224);
 static_assert(offsetof(world_buffers_t, flush_whole_count) == 228);
+static_assert(offsetof(world_buffers_t, borrowed_staging) == 232);
 
 /* What a voxel lookup found. */
 typedef enum world_buffers_voxel_state_t : uint8_t {

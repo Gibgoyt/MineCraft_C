@@ -36,6 +36,8 @@ Settled, the intervals are the card's time on each picture, as there is no clock
 
 **Plan 008 phase 02.** A live row says main's next take before each frame (`game_loop_next_take`, the tick it sleeps to), as a window does, so the gpu thread starts pictures by the start rule (`run/src/game/pace/`); `--pace-off` says none, which keeps the rule from before, for a before and after in one run. "Late" is then a picture ready after the take the rule aimed it at, as in the frame log, and each live row prints `pace:` the card's idle time before a picture the rule started at once (after a late one, or back to back): the phase's target is under 0.5 ms.
 
+**Plan 008 phase 03.** `--serial-frames` finishes each picture before the next is begun, as before that phase, for a before and after. Each live row prints `overlap:` the row's time over every picture drawn, taken or not (back to back, the card's time between pictures), the readback's time a picture, and the share of pictures begun with the one before still on its way.
+
 ## The rose
 
 `--rose`: at the place, settled, 72 yaws (every 5°, 0 looking east, 90 north) by 3 pitches (-20°, 0°, +15°), each drawn after 8 warm frames there, the last with the card's clock read first. The plot and the worst direction go by **ms at 600 MHz** (`card_ms_at_600_mhz`, from each direction's cycles), the master's capped card: a first rose drawn in plain ms drew the clock's steps between 148 and 400 MHz, not the directions. Into `--shots` (or `.`): `rose-<place>-r<distance>.csv` with every kernel, `rose-<place>-r<distance>.png` (a polar plot, north up: blue -20°, green 0°, orange +15°, grey circles at one, two and three slots of 8.33 ms), and `rose-<place>-r<distance>-worst.png`, the dearest direction's picture.

@@ -126,59 +126,61 @@ static_assert(alignof(render_lod_job_t) == MC_CPU_CACHE_LINE_BYTES);
 /* One grid. */
 typedef struct render_lod_level_t {
     world_buffers_t buffers;   /* 0 */
-    uint8_t *borrowed_state;   /* 232: per slot of the table: render_lod_column_state_t */
-    int16_t *borrowed_offsets; /* 240: dx and dy of each column in the table, the nearest first */
-    int32_t center_x;          /* 248: the column the eye is in, in this level's columns */
-    int32_t center_y;          /* 252 */
-    int32_t shown_min_x;       /* 256 */
-    int32_t shown_min_y;       /* 260 */
-    uint32_t shown_side;       /* 264 */
-    uint32_t request_cursor;   /* 268: every offset before this is built, on its way, or has no room */
-    uint32_t column_count;     /* 272: side * side */
-    uint32_t generation;       /* 276: counts what has been put in the table */
-    int32_t top_voxel;         /* 280: the highest voxel any column here ever had, or -1 */
-    uint8_t shift;             /* 284 */
-    uint8_t radius;            /* 285 */
-    uint8_t shown_stale;       /* 286: a column has come or gone since shown_side was worked out */
-    uint8_t centered;          /* 287: center_x and center_y mean something yet */
+    uint8_t *borrowed_state;   /* 240: per slot of the table: render_lod_column_state_t */
+    int16_t *borrowed_offsets; /* 248: dx and dy of each column in the table, the nearest first */
+    int32_t center_x;          /* 256: the column the eye is in, in this level's columns */
+    int32_t center_y;          /* 260 */
+    int32_t shown_min_x;       /* 264 */
+    int32_t shown_min_y;       /* 268 */
+    uint32_t shown_side;       /* 272 */
+    uint32_t request_cursor;   /* 276: every offset before this is built, on its way, or has no room */
+    uint32_t column_count;     /* 280: side * side */
+    uint32_t generation;       /* 284: counts what has been put in the table */
+    int32_t top_voxel;         /* 288: the highest voxel any column here ever had, or -1 */
+    uint8_t shift;             /* 292 */
+    uint8_t radius;            /* 293 */
+    uint8_t shown_stale;       /* 294: a column has come or gone since shown_side was worked out */
+    uint8_t centered;          /* 295: center_x and center_y mean something yet */
 } render_lod_level_t;
-static_assert(sizeof(render_lod_level_t) == 288);
+static_assert(sizeof(render_lod_level_t) == 296);
 
 /* All of the far field. The gpu thread, or whichever one thread a run has, calls everything here. */
 typedef struct render_lod_t {
     alignas(MC_CPU_CACHE_LINE_BYTES) job_group_t group; /* 0 */
     render_lod_level_t levels[LOD_LEVELS_MAX];          /* 64 */
-    render_lod_stats_t stats;                           /* 1792 */
-    job_system_t *borrowed_job;                         /* 1840 */
-    render_lod_job_t *borrowed_jobs;                    /* 1848: RENDER_LOD_JOBS */
-    const device_block_t *borrowed_hits;                /* 1856 */
-    render_lod_sample_t sample;                         /* 1864 */
-    const void *borrowed_sample_context;                /* 1872 */
-    uint32_t level_count;                               /* 1880 */
-    uint32_t jobs_in_use;                               /* 1884 */
-    render_lod_overlay_t overlay;                       /* 1888: or nullptr */
-    void *borrowed_overlay_context;                     /* 1896 */
-    uint64_t overlay_scratch_bytes;                     /* 1904 */
-    uint8_t no_room_said;                               /* 1912 */
-    uint8_t covered_pass;                               /* 1913: what full detail covers is asked for too */
-    uint8_t _pad0[6];                                   /* 1914 */
-    const world_buffers_t *borrowed_fine;               /* 1920: what full detail has on the card, or nullptr */
-    /* 1928: plan 009 phase 03, the pyramid's alone: where its levels up to RENDER_LOD_OCTANT_LEVELS are made from the blocks, or nullptr */
+    render_lod_stats_t stats;                           /* 1840 */
+    job_system_t *borrowed_job;                         /* 1888 */
+    render_lod_job_t *borrowed_jobs;                    /* 1896: RENDER_LOD_JOBS */
+    const device_block_t *borrowed_hits;                /* 1904 */
+    render_lod_sample_t sample;                         /* 1912 */
+    const void *borrowed_sample_context;                /* 1920 */
+    uint32_t level_count;                               /* 1928 */
+    uint32_t jobs_in_use;                               /* 1932 */
+    render_lod_overlay_t overlay;                       /* 1936: or nullptr */
+    void *borrowed_overlay_context;                     /* 1944 */
+    uint64_t overlay_scratch_bytes;                     /* 1952 */
+    uint8_t no_room_said;                               /* 1960 */
+    uint8_t covered_pass;                               /* 1961: what full detail covers is asked for too */
+    uint8_t _pad0[6];                                   /* 1962 */
+    const world_buffers_t *borrowed_fine;               /* 1968: what full detail has on the card, or nullptr */
+    /* 1976: plan 009 phase 03, the pyramid's alone: where its levels up to RENDER_LOD_OCTANT_LEVELS are made from the blocks, or nullptr */
     render_octant_t *borrowed_octants;
-    uint8_t jobs_held;                /* 1936: no column goes to a worker, as the far field rays use is busy */
-    uint8_t _pad1[3];                 /* 1937 */
-    uint32_t octant_pending;          /* 1940: columns the last frame could have made from octants and left */
-    uint16_t *borrowed_octant_cells;  /* 1944: a level 1 column's voxels, assembled */
-    uint8_t *borrowed_octant_light;   /* 1952 */
-    uint8_t *borrowed_octant_staging; /* 1960: what one column encodes to, as a job's staging */
-    render_octant_section_t *borrowed_octant_sections; /* 1968 */
-    uint8_t _pad2[8];                                  /* 1976 */
+    uint8_t jobs_held;                /* 1984: no column goes to a worker, as the far field rays use is busy */
+    uint8_t _pad1[3];                 /* 1985 */
+    uint32_t octant_pending;          /* 1988: columns the last frame could have made from octants and left */
+    uint16_t *borrowed_octant_cells;  /* 1992: a level 1 column's voxels, assembled */
+    uint8_t *borrowed_octant_light;   /* 2000 */
+    uint8_t *borrowed_octant_staging; /* 2008: what one column encodes to, as a job's staging */
+    render_octant_section_t *borrowed_octant_sections; /* 2016 */
+    device_staging_t
+        *borrowed_staging; /* 2024: plan 008 phase 03: the frame's, for the levels' copies; or nullptr to wait */
+    uint8_t _pad2[16];     /* 2032 */
 } render_lod_t;
-static_assert(sizeof(render_lod_t) == 1984);
+static_assert(sizeof(render_lod_t) == 2048);
 static_assert(alignof(render_lod_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(render_lod_t, levels) == 64);
-static_assert(offsetof(render_lod_t, stats) == 1792);
-static_assert(offsetof(render_lod_t, level_count) == 1880);
+static_assert(offsetof(render_lod_t, stats) == 1840);
+static_assert(offsetof(render_lod_t, level_count) == 1928);
 
 /* The levels for this much of the world at full detail and this much in all, in chunks. No far field if full detail reaches it all. A
  * level whose reach full detail covers is left out, and the last is cut to what the distance needs. */

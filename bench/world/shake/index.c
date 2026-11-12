@@ -144,8 +144,12 @@ typedef struct sh_result_t {
     /* 444: plan 008 phase 02: the gpu thread's wait before a picture the rule started at once (after a late one, or back to back): the card
      * idle while late. The target is under 0.5 ms */
     float32_t wait_at_once_ms;
+    /* 448: plan 008 phase 03: live, the row's time over the pictures the gpu thread drew, taken or not: back to back, the card's time
+     * between pictures */
+    float32_t drawn_ms;
+    float32_t on_way_share; /* 452: live: of those, the share begun while the one before was still on its way */
 } sh_result_t;
-static_assert(sizeof(sh_result_t) == 448);
+static_assert(sizeof(sh_result_t) == 456);
 
 typedef struct sh_options_t {
     const char *only;         /* 0 */
@@ -163,7 +167,9 @@ typedef struct sh_options_t {
     uint8_t list;             /* 74 */
     uint8_t
         pace_off; /* 75: plan 008 phase 02: main says no next take, so the gpu thread keeps today's rule, for a before */
-    uint8_t _pad0[4]; /* 76 */
+    uint8_t
+        serial_frames; /* 76: plan 008 phase 03: each picture finished before the next is begun, as before that phase */
+    uint8_t _pad0[3];  /* 77 */
 } sh_options_t;
 static_assert(sizeof(sh_options_t) == 80);
 
@@ -649,6 +655,7 @@ static bool sh_row_live(sh_t *sh, const sh_row_t *row, float64_t heading_deg, ui
     }
     const game_watch_t *const watch = game_watch_of(game);
     uint64_t takes_read = atomic_load_explicit(&watch->takes_made, memory_order_relaxed);
+    const uint64_t drawn_before = atomic_load_explicit(&watch->pictures_drawn, memory_order_acquire);
     int64_t last_taken_ns = 0;
     uint32_t count = 0u;
     const render_fly_input_t still = {0};
@@ -680,6 +687,18 @@ static bool sh_row_live(sh_t *sh, const sh_row_t *row, float64_t heading_deg, ui
     }
     r->seconds = time_ns_to_ms(time_now_ns() - started_ns) / 1000.0f64;
     sh_samples_sum(sh, count, r);
+    /* Plan 008 phase 03: every picture drawn, taken or not, and how many were begun with the one before on its way (no wait stamped). */
+    const uint64_t drawn = atomic_load_explicit(&watch->pictures_drawn, memory_order_acquire);
+    uint64_t on_way = 0u, looked = 0u;
+    for (uint64_t i = drawn > drawn_before + GAME_WATCH_RING ? drawn - GAME_WATCH_RING : drawn_before + 1u; i < drawn;
+         i++) {
+        const int64_t *const at = watch->borrowed_pictures[i % GAME_WATCH_RING].stamp_ns;
+        on_way += at[GAME_WATCH_STAMP_WAITED] == at[GAME_WATCH_STAMP_START] ? 1u : 0u;
+        looked++;
+    }
+    r->drawn_ms =
+        drawn > drawn_before ? (float32_t)(r->seconds * 1000.0f64 / (float64_t)(drawn - drawn_before)) : 0.0f32;
+    r->on_way_share = looked != 0u ? (float32_t)((float64_t)on_way / (float64_t)looked) : 0.0f32;
     r->pictures_per_s = (float64_t)count / r->seconds;
     return true;
 }
@@ -853,6 +872,7 @@ static bool sh_run(sh_t *sh, const sh_row_t *row, const sh_options_t *options, s
     r->place[0] = (int32_t)floor(eye[0]);
     r->place[1] = (int32_t)floor(eye[1]);
     r->place[2] = (int32_t)floor(eye[2]);
+    render_serial_frames_set(&app->render, options->serial_frames != 0u);
     game_init(game, &app->world, &app->terrain, &app->render, &app->job, &app->texture, &app->topology);
     game_ui_set(game, &app->ui);
     const uint32_t distance = options->render_distance != 0u && row->render_distance == SH_DISTANCE
@@ -923,6 +943,11 @@ static void sh_row_print(const char *place, const sh_row_t *row, const sh_result
     if (row->mode != SH_MODE_SETTLED) {
         printf("    pace: the card idle before a picture started at once (after a late one, or back to back) %.2f ms\n",
                (libc_double_t)r->wait_at_once_ms);
+        printf("    overlap: %.2f ms of the row a picture drawn, readback %.2f ms a picture, %.0f %% begun with the "
+               "one before on "
+               "its way\n",
+               (libc_double_t)r->drawn_ms, (libc_double_t)r->pass_ms[FRAME_PASS_READBACK],
+               (libc_double_t)(r->on_way_share * 100.0f32));
     }
     printf("    intervals by slot (8.33 ms each, last is all past):");
     for (uint32_t i = 0u; i < SH_BINS; i++) {
@@ -1032,6 +1057,7 @@ static void sh_usage(const char *program) {
         "  --shots <dir>     the last picture of each row, or the rose's CSV, plot and worst direction, here\n"
         "  --rose            the cost rose in place of the rows: 72 yaws by 3 pitches, settled\n"
         "  --pace-off        live rows with no next take said: the gpu thread's rule before plan 008 phase 02\n"
+        "  --serial-frames   each picture finished on the card before the next is begun: before plan 008 phase 03\n"
         "  --list            print the rows, and do nothing\n",
         program);
 }
@@ -1047,6 +1073,8 @@ static bool sh_parse(int32_t argc, char **argv, sh_options_t *out) {
             out->rose = 1u;
         } else if (strcmp(argv[i], "--pace-off") == 0) {
             out->pace_off = 1u;
+        } else if (strcmp(argv[i], "--serial-frames") == 0) {
+            out->serial_frames = 1u;
         } else if (strcmp(argv[i], "--only") == 0 && has_value) {
             out->only = argv[++i];
         } else if (strcmp(argv[i], "--record") == 0 && has_value) {

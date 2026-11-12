@@ -472,6 +472,12 @@ static void entities_preview_fill(const render_entities_preview_t *preview, cons
 
 gpu_status_t render_entities_frame(render_entities_t *entities, const traverse_camera_t *camera, uint32_t features,
                                    float32_t far, entity_rays_scene_t *out) {
+    return render_entities_frame_staged(entities, nullptr, camera, features, far, out);
+}
+
+gpu_status_t render_entities_frame_staged(render_entities_t *entities, device_staging_t *staging,
+                                          const traverse_camera_t *camera, uint32_t features, float32_t far,
+                                          entity_rays_scene_t *out) {
     uint32_t slot_number = 0u;
     if (render_exchange_take(&entities->exchange, &slot_number)) {
         entities->reading = slot_number;
@@ -498,15 +504,16 @@ gpu_status_t render_entities_frame(render_entities_t *entities, const traverse_c
     const uint64_t tiles = entities_tiles(camera->width, camera->height);
     device_memory_t *const memory = entities->borrowed_memory;
     const device_block_t *const lists = entities->borrowed_lists;
-    gpu_status_t status =
-        device_memory_write(memory, lists, 0u, entities->borrowed_boxes, (uint64_t)boxes * sizeof(entity_rays_box_t));
+    gpu_status_t status = device_memory_write_async(memory, staging, lists, 0u, entities->borrowed_boxes,
+                                                    (uint64_t)boxes * sizeof(entity_rays_box_t));
     if (status == GPU_STATUS_OK) {
-        status = device_memory_write(memory, lists, entity_rays_starts_offset(), entities->borrowed_starts,
-                                     (tiles + 1u) * sizeof(uint32_t));
+        status = device_memory_write_async(memory, staging, lists, entity_rays_starts_offset(),
+                                           entities->borrowed_starts, (tiles + 1u) * sizeof(uint32_t));
     }
     if (status == GPU_STATUS_OK) {
-        status = device_memory_write(memory, lists, entity_rays_links_offset(camera->width, camera->height),
-                                     entities->borrowed_links, (uint64_t)links * sizeof(uint16_t));
+        status =
+            device_memory_write_async(memory, staging, lists, entity_rays_links_offset(camera->width, camera->height),
+                                      entities->borrowed_links, (uint64_t)links * sizeof(uint16_t));
     }
     if (status != GPU_STATUS_OK) {
         gpu_error_log(&memory->last_error);

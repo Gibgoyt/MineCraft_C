@@ -290,6 +290,115 @@ gpu_status_t device_memory_write(device_memory_t *memory, const device_block_t *
                                "writing to a block");
 }
 
+/* ---- Copies that do not wait (plan 008 phase 03) ----------------------------------------------------------------- */
+
+enum : uint64_t {
+    DEVICE_STAGING_ALIGNMENT = 16u,
+};
+
+gpu_status_t device_staging_copy(device_staging_t *staging, gpu_error_t *last_error, void *device_target,
+                                 const void *source, uint64_t bytes, const char *what) {
+    if (bytes == 0u) {
+        return GPU_STATUS_OK;
+    }
+    const bool staged = staging != nullptr && staging->borrowed_areas[0] != nullptr;
+    if (!staged || bytes > staging->bytes - staging->used) {
+        if (staged) {
+            staging->waited_count++;
+        }
+        /* From pageable memory on the legacy stream: it waits for everything queued before it, async copies included, so the order holds. */
+        return device_memory_check(last_error, cudaMemcpy(device_target, source, bytes, cudaMemcpyHostToDevice), what);
+    }
+    const uint32_t area = staging->area;
+    if (staging->used == 0u) {
+        /* The frame that last read this area is two frames back, and already finished in the usual run: this costs nothing then. A mark
+         * never recorded has passed. */
+        const gpu_status_t status = device_memory_check(
+            last_error, cudaEventSynchronize((cudaEvent_t)staging->owned_reuse[area]), "waiting to reuse staging");
+        if (status != GPU_STATUS_OK) {
+            return status;
+        }
+    }
+    uint8_t *const at = staging->borrowed_areas[area] + staging->used;
+    memcpy(at, source, bytes);
+    staging->used += (bytes + DEVICE_STAGING_ALIGNMENT - 1u) / DEVICE_STAGING_ALIGNMENT * DEVICE_STAGING_ALIGNMENT;
+    staging->used = staging->used > staging->bytes ? staging->bytes : staging->used;
+    staging->sent_bytes += bytes;
+    /* The legacy stream, as every kernel of a frame: behind them all, in order. */
+    return device_memory_check(last_error, cudaMemcpyAsync(device_target, at, bytes, cudaMemcpyHostToDevice, 0), what);
+}
+
+gpu_status_t device_memory_write_async(device_memory_t *memory, device_staging_t *staging, const device_block_t *block,
+                                       uint64_t offset, const void *source, uint64_t bytes) {
+    const gpu_status_t status = device_memory_check_range(memory, block, offset, bytes, "writing to a block");
+    if (status != GPU_STATUS_OK || bytes == 0u) {
+        return status;
+    }
+    return device_staging_copy(staging, &memory->last_error, device_memory_pointer(block) + offset, source, bytes,
+                               "writing to a block");
+}
+
+gpu_status_t device_staging_turn(device_staging_t *staging, gpu_error_t *error) {
+    if (staging == nullptr || staging->borrowed_areas[0] == nullptr) {
+        return GPU_STATUS_OK;
+    }
+    const gpu_status_t status =
+        device_memory_check(error, cudaEventRecord((cudaEvent_t)staging->owned_reuse[staging->area], 0),
+                            "marking where staging may be reused");
+    staging->area ^= 1u;
+    staging->used = 0u;
+    return status;
+}
+
+gpu_status_t device_staging_init(device_staging_t *staging, uint8_t *areas, uint64_t bytes, gpu_error_t *error) {
+    *staging = device_staging_t{};
+    device_staging_t made = {};
+    gpu_status_t status = GPU_STATUS_OK;
+    for (uint32_t i = 0u; i < 2u && status == GPU_STATUS_OK; i++) {
+        cudaEvent_t event = nullptr;
+        status = device_memory_check(error, cudaEventCreateWithFlags(&event, cudaEventDisableTiming),
+                                     "making a staging mark");
+        made.owned_reuse[i] = (void *)event;
+    }
+    if (status == GPU_STATUS_OK) {
+        status = device_memory_check(error, cudaHostRegister(areas, 2u * bytes, cudaHostRegisterDefault),
+                                     "pinning the staging for copies to the card");
+    }
+    if (status != GPU_STATUS_OK) {
+        for (uint32_t i = 0u; i < 2u; i++) {
+            if (made.owned_reuse[i] != nullptr) {
+                (void)cudaEventDestroy((cudaEvent_t)made.owned_reuse[i]);
+            }
+        }
+        return status;
+    }
+    made.borrowed_areas[0] = areas;
+    made.borrowed_areas[1] = areas + bytes;
+    made.bytes = bytes;
+    *staging = made;
+    return GPU_STATUS_OK;
+}
+
+gpu_status_t device_staging_deinit(device_staging_t *staging, gpu_error_t *error) {
+    gpu_status_t first = GPU_STATUS_OK;
+    if (staging->borrowed_areas[0] != nullptr) {
+        first = device_memory_check(error, cudaHostUnregister(staging->borrowed_areas[0]), "unpinning the staging");
+    }
+    for (uint32_t i = 0u; i < 2u; i++) {
+        if (staging->owned_reuse[i] != nullptr) {
+            gpu_error_t said = {};
+            const gpu_status_t status = device_memory_check(
+                &said, cudaEventDestroy((cudaEvent_t)staging->owned_reuse[i]), "giving a staging mark back");
+            if (status != GPU_STATUS_OK && first == GPU_STATUS_OK) {
+                first = status;
+                *error = said;
+            }
+        }
+    }
+    *staging = device_staging_t{};
+    return first;
+}
+
 gpu_status_t device_memory_read(device_memory_t *memory, const device_block_t *block, uint64_t offset,
                                 void *destination, uint64_t bytes) {
     const gpu_status_t status = device_memory_check_range(memory, block, offset, bytes, "reading from a block");
@@ -334,6 +443,28 @@ gpu_status_t device_memory_fault_now(device_memory_t *memory) {
             : device_memory_check(&memory->last_error, cudaDeviceSynchronize(), "faulting on purpose");
     memory->lost = status == GPU_STATUS_DEVICE_LOST ? 1u : memory->lost;
     return status;
+}
+
+gpu_status_t device_memory_fault_queue(device_memory_t *memory) {
+    device_memory_clear_error(memory);
+    uint32_t *const nowhere = (uint32_t *)(uintptr_t)0x1000u;
+    device_memory_fault_kernel<<<1, 1>>>(nowhere);
+    return device_memory_check(&memory->last_error, cudaGetLastError(), "faulting on purpose");
+}
+
+/* One thread spins on the SM's clock. */
+__global__ void device_memory_busy_kernel(uint64_t cycles) {
+    const int64_t started = (int64_t)clock64();
+    int64_t now = started;
+    while ((uint64_t)(now - started) < cycles) {
+        now = (int64_t)clock64();
+    }
+}
+
+gpu_status_t device_memory_busy_queue(device_memory_t *memory, uint64_t cycles) {
+    device_memory_clear_error(memory);
+    device_memory_busy_kernel<<<1, 1>>>(cycles);
+    return device_memory_check(&memory->last_error, cudaGetLastError(), "keeping the card busy");
 }
 
 /* ---- The self-check ---------------------------------------------------------------------------------------------- */

@@ -1129,6 +1129,10 @@ static void render_lod_jobs_request(render_lod_t *lod) {
 
 gpu_status_t render_lod_frame(render_lod_t *lod, const float64_t position[3]) {
     bool moved = false;
+    /* The levels' copies go through the frame's staging, levels made since included. */
+    for (uint32_t i = 0u; i < lod->level_count; i++) {
+        lod->levels[i].buffers.borrowed_staging = lod->borrowed_staging;
+    }
     for (uint32_t i = 0u; i < lod->level_count; i++) {
         moved = render_lod_level_follow(lod, i, position) || moved;
     }

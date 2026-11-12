@@ -1704,4 +1704,160 @@ TEST(the_frame_log_has_one_line_per_picture) {
     fr_temp_dir_remove(&dir);
 }
 
+/* ---- Plan 008 phase 03: frames on their way ------------------------------------------------------------------------------- */
+
+enum : uint32_t {
+    FR_FLIGHT_FRAMES = 60u,
+};
+
+/* Every effect of play, with a far field past 3 chunks so that its levels change on the way too. */
+static const game_config_t fr_flight_game = {.render_distance = 8u,
+                                             .width = FR_WIDTH,
+                                             .height = FR_HEIGHT,
+                                             .features_off = SHADE_FEATURE_DAY_CYCLE,
+                                             .full_detail = 3u,
+                                             .show_date = 0u};
+
+/* A world opened, and 60 frames of a flight forward and round, each after the world has settled where the camera now is: so new columns,
+ * far columns and their uploads come in on the way. With overlapped, each frame is queued while the one before is still on its way, and
+ * the settling between (uploads, far-field flushes, entity lists) is all copies behind a frame on the card, through staging. Every picture
+ * into out, in order. */
+static bool fr_flight_run(test_context_t *t, fr_rig_t *rig, bool overlapped, uint8_t *out) {
+    game_t *const game = rig->game;
+    render_t *const render = rig->render;
+    render_frame_t *const frame = &render->frame;
+    const uint64_t bytes = post_xrgb_bytes(FR_WIDTH, FR_HEIGHT);
+    if (!CHECK(game_open(game, &fr_flight_game)) || !CHECK(game_settle(game))) {
+        return false;
+    }
+    CHECK(render->borrowed_lod != nullptr);
+    uint32_t taken = 0u;
+    bool ok = true;
+    for (uint32_t i = 0u; i < FR_FLIGHT_FRAMES && ok; i++) {
+        const render_fly_input_t fly = {.mouse_dx = 6, .forward = 1, .fast = 1};
+        game_fly(game, &fly, 0.05f32);
+        ok = CHECK(game_settle(game));
+        if (ok && !overlapped) {
+            const uint8_t *const picture = fr_draw(t, rig, &game->camera);
+            ok = CHECK(picture != nullptr);
+            if (ok) {
+                memcpy(out + (uint64_t)taken * bytes, picture, bytes);
+                taken++;
+            }
+            continue;
+        }
+        ok = ok &&
+             CHECK_EQ_U64(render_frame_queue(frame, &render->buffers, &game->camera, nullptr, nullptr), GPU_STATUS_OK);
+        if (ok && frame->on_way == 2u) {
+            ok = CHECK_EQ_U64(render_frame_finish(frame), GPU_STATUS_OK);
+            const uint8_t *const picture = render_frame_take(frame);
+            ok = ok && CHECK(picture != nullptr);
+            if (ok) {
+                memcpy(out + (uint64_t)taken * bytes, picture, bytes);
+                taken++;
+            }
+        }
+    }
+    while (ok && frame->on_way != 0u) {
+        ok = CHECK_EQ_U64(render_frame_finish(frame), GPU_STATUS_OK);
+        const uint8_t *const picture = render_frame_take(frame);
+        ok = ok && CHECK(picture != nullptr);
+        if (ok) {
+            memcpy(out + (uint64_t)taken * bytes, picture, bytes);
+            taken++;
+        }
+    }
+    const device_staging_t *const staging = &frame->gpu.staging;
+    printf("  %s: %" PRIu32 " pictures; %" PRIu64 " bytes through staging, %" PRIu32 " copies too large for it\n",
+           overlapped ? "overlapped" : "serial", taken, staging->sent_bytes, staging->waited_count);
+    CHECK(staging->sent_bytes > 0u);
+    game_close(game);
+    return ok && CHECK_EQ_U64(taken, FR_FLIGHT_FRAMES);
+}
+
+TEST(overlapped_frames_draw_the_same_pictures) {
+    fr_rig_t rig;
+    REQUIRE(fr_rig_begin(t, &rig));
+    const uint64_t bytes = post_xrgb_bytes(FR_WIDTH, FR_HEIGHT);
+    uint8_t *const serial = fr_aligned(t, bytes * FR_FLIGHT_FRAMES);
+    uint8_t *const overlapped = fr_aligned(t, bytes * FR_FLIGHT_FRAMES);
+    REQUIRE(fr_flight_run(t, &rig, false, serial));
+    REQUIRE(fr_flight_run(t, &rig, true, overlapped));
+    uint32_t differ = 0u;
+    for (uint32_t i = 0u; i < FR_FLIGHT_FRAMES; i++) {
+        if (memcmp(serial + (uint64_t)i * bytes, overlapped + (uint64_t)i * bytes, bytes) != 0) {
+            printf("  picture %" PRIu32 " differs\n", i);
+            differ++;
+        }
+    }
+    CHECK_EQ_U64(differ, 0u);
+    /* And the flight is a flight: the first and last pictures are not the same. */
+    CHECK(memcmp(serial, serial + (uint64_t)(FR_FLIGHT_FRAMES - 1u) * bytes, bytes) != 0);
+    fr_rig_end(t, &rig);
+}
+
+/* A third frame queued while two are on their way is refused, and leaves the two to finish. */
+TEST(no_more_than_two_frames_are_on_their_way) {
+    fr_rig_t rig;
+    REQUIRE(fr_rig_begin(t, &rig));
+    game_t *const game = rig.game;
+    REQUIRE(game_open(game, &fr_small_game));
+    REQUIRE(game_settle(game));
+    render_t *const render = rig.render;
+    render_frame_t *const frame = &render->frame;
+    REQUIRE(render_frame_queue(frame, &render->buffers, &game->camera, nullptr, nullptr) == GPU_STATUS_OK);
+    REQUIRE(render_frame_queue(frame, &render->buffers, &game->camera, nullptr, nullptr) == GPU_STATUS_OK);
+    CHECK_EQ_U64(render_frame_queue(frame, &render->buffers, &game->camera, nullptr, nullptr),
+                 GPU_STATUS_INVALID_ARGUMENT);
+    CHECK_EQ_U64(frame->on_way, 2u);
+    CHECK_EQ_U64(render_frame_finish(frame), GPU_STATUS_OK);
+    CHECK_EQ_U64(render_frame_finish(frame), GPU_STATUS_OK);
+    CHECK_EQ_U64(render_frame_finish(frame), GPU_STATUS_INVALID_ARGUMENT);
+    CHECK_EQ_U64(frame->stats.frames, 2u);
+    game_close(game);
+    fr_rig_end(t, &rig);
+}
+
+/* The real threads uncapped, where the start rule begins each picture at once: so each is begun while the last is on its way, and those
+ * are counted by the watch as begun with no wait. */
+TEST(the_real_threads_uncapped_keep_a_frame_on_its_way) {
+    fr_rig_t rig;
+    REQUIRE(fr_rig_begin(t, &rig));
+    game_t *const game = rig.game;
+    game_config_t config = fr_play_game;
+    config.uncapped = 1u;
+    REQUIRE(game_open(game, &config));
+    const uint64_t bytes = post_xrgb_bytes(FR_WIDTH, FR_HEIGHT);
+    uint8_t *const screen = fr_aligned(t, bytes);
+    display_buffer_t target = {
+        .owned_map = screen, .map_bytes = bytes, .pitch = FR_WIDTH * 4u, .width = FR_WIDTH, .height = FR_HEIGHT};
+    REQUIRE(game_loop_start(game, nullptr));
+    const render_fly_input_t turn = {.mouse_dx = 4};
+    const int64_t started_ns = time_now_ns();
+    int64_t next_ns = started_ns;
+    while (time_now_ns() - started_ns < 2ll * TIME_NS_PER_SECOND) {
+        game_loop_next_take(game, next_ns + TIME_NS_PER_SECOND / 120);
+        REQUIRE(game_loop_frame(game, &turn, 1.0f32 / 120.0f32, &target));
+        next_ns += TIME_NS_PER_SECOND / 120;
+        time_sleep_until_ns(next_ns);
+    }
+    REQUIRE(game_loop_stop(game));
+    const game_watch_t *const watch = game_watch_of(game);
+    const uint64_t drawn = __atomic_load_n(&watch->pictures_drawn, __ATOMIC_ACQUIRE);
+    uint64_t on_way = 0u, seen = 0u;
+    for (uint64_t i = drawn > GAME_WATCH_RING ? drawn - GAME_WATCH_RING : 0u; i < drawn; i++) {
+        const game_watch_picture_t *const picture = &watch->borrowed_pictures[i % GAME_WATCH_RING];
+        const int64_t *const at = picture->stamp_ns;
+        seen++;
+        on_way += i != 0u && at[GAME_WATCH_STAMP_WAITED] == at[GAME_WATCH_STAMP_START] ? 1u : 0u;
+    }
+    printf("  %" PRIu64 " of the last %" PRIu64 " pictures were begun with the one before still on its way\n", on_way,
+           seen);
+    CHECK(drawn > 10u);
+    CHECK(on_way * 2u >= seen);
+    CHECK_EQ_U64(rig.render->frame.on_way, 0u);
+    game_close(game);
+    fr_rig_end(t, &rig);
+}
+
 TEST_MAIN()
