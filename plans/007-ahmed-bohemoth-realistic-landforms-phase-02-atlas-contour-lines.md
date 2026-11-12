@@ -249,6 +249,7 @@ Ahmed opens his own world, presses `M` and sees contour lines on the Terrain lay
 
 Appended as they land:
 
+- `88051ae7` Look each voxel up in a table in the Atlas column top, time it in bench_atlas on ground, forest and worst-case leaves columns, and record plan 007 phase 02's measurements.
 - `66ab8109` Draw contour lines on the Atlas Terrain layer by default, spaced by the zoom with index lines, on the ground under the trees from a new 5-bit cover depth in each pixel, with tile files at version 2 still reading version 1.
 - `7c4e7bc4` Add the map_cover block flag on leaves, logs, vines, snow layers and cactus, so the Atlas can find the ground under them.
 
