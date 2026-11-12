@@ -1,6 +1,6 @@
 # 007-ahmed-bohemoth-realistic-landforms — phase 1: Measure today's terrain
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** in progress: built and measured, the `run_terrain_*` digests being run   (updated 2026-11-12)
 
 Read first: `plans/007-ahmed-bohemoth-realistic-landforms-phase-00-vision-and-plan-files.md`, then the master `plans/007-ahmed-bohemoth-realistic-landforms.md`: section 0 ("Why the hills look like 1:1 cones"), 3.14 and 4. Every number here comes from the master. Where this file adds a number the master does not give, it says so and why.
 
@@ -230,18 +230,18 @@ This phase may edit these, plus this file:
 
 ## Todo
 
-- [ ] `bench/landform/` builds as `bench_landform`, with the command line above
-- [ ] Self-test on synthetic ground passes and runs in ctest as `run_bench_landform_self_check` (`tests/run/terrain/landform/measure/`)
-- [ ] Profile sweep, 64 by 64 km at step 16, on 16 workers; fine slope at step 4 in 64 tiles
-- [ ] Slope histogram (7 classes) and slope by relative-height decile
-- [ ] Peaks with concavity ratio and $W_{50}/H$
-- [ ] Plateau pieces, escarpment length, range pieces, knobs by base height
-- [ ] 64 real-block windows and the histogram difference
-- [ ] Pictures: relief with contours, slope classes, plateaus, true-scale profiles, the equator-to-pole strip, windows
-- [ ] `/tp X Y` lines for the places listed above
-- [ ] The profile's share of `bench_terrain`, and the tallest place's columns a second
-- [ ] Run on the 8 seeds; the "Today" table below filled in; every picture looked at and described below
-- [ ] `bench/landform/README.md` with the results; `plans/REPO_STRUCTURE.md` rows
+- [x] `bench/landform/` builds as `bench_landform`, with the command line above
+- [x] Self-test on synthetic ground passes and runs in ctest as `run_terrain_landform_measure` (`tests/run/terrain/landform/measure/`; the plan's name `run_bench_landform_self_check` cannot be, Issues found 11)
+- [x] Profile sweep, 64 by 64 km at step 16, on 16 workers; fine slope at step 4 in 64 tiles
+- [x] Slope histogram (7 classes) and slope by relative-height decile
+- [x] Peaks with concavity ratio and $W_{50}/H$
+- [x] Plateau pieces, escarpment length, range pieces, knobs by base height
+- [x] 64 real-block windows and the histogram difference
+- [x] Pictures: relief with contours, slope classes, plateaus, true-scale profiles, the equator-to-pole strip, windows
+- [x] `/tp X Y` lines for the places listed above
+- [x] The profile's share of `bench_terrain`, and the tallest place's columns a second
+- [x] Run on the 8 seeds; the "Today" table below filled in; every picture looked at and described below
+- [x] `bench/landform/README.md` with the results; `plans/REPO_STRUCTURE.md` rows
 - [ ] Every `run_terrain_*` digest unchanged (nothing in `run/` changed)
 
 ## Today (filled in by this phase)
@@ -250,20 +250,48 @@ On plan 003's 8 seeds (2198175988018515243, 12636146071196537873, 55690684736095
 
 | Measure (master section 4) | Min to max over 8 seeds | Ahmed's seed |
 |---|---|---|
-| Flat / gentle / moderate / steep / very steep / cliff / sheer | | |
-| Of ground steeper than 1:2, share in the top 30% of relief or on a face | | |
-| Top decile median slope over bottom 3 deciles | | |
-| Concavity ratio, median (peaks found) | | |
-| $W_{50}/H$, median | | |
-| Plateau pieces ≥ 25 km²; largest km² and across | | |
-| Escarpment length | | |
-| Longest range piece at ≥ 500, km; elongation | | |
-| Knobs by base: < 150 / 150–250 / ≥ 250 | | |
-| Sea; reaching 150, 300, 500, 750, 1000; top | | |
-| Floating rock per km² (from `bench_world_map`, same seeds) | | |
-| Profile against blocks, largest class difference | | |
-| Profile share of `bench_terrain`; µs a lattice column | | |
-| Tallest place against plains, columns a second | | |
+| Flat / gentle / moderate / steep / very steep / cliff / sheer, % of land (profile, the 64 windows at 4 blocks) | 0.8–1.3 / 7.8–11.6 / 20.7–26.7 / 24.6–26.8 / 21.9–26.7 / 11.0–15.6 / 0.8–1.9 | 1.2 / 10.0 / 23.8 / 25.0 / 23.4 / 15.2 / 1.5 |
+| The same over the whole map (profile at its step 16, 8 blocks across) | 1.0–1.2 / 8.8–10.0 / 21.7–23.0 / 24.8–25.4 / 24.4–25.8 / 15.1–16.1 / 1.4–1.6 | 1.2 / 9.9 / 22.8 / 25.1 / 24.6 / 15.1 / 1.4 |
+| The same from real blocks in the 64 windows | 1.1–1.8 / 6.5–9.5 / 17.0–22.0 / 26.4–28.3 / 22.4–26.2 / 13.5–17.7 / 2.5–4.3 | 1.5 / 8.2 / 19.4 / 26.9 / 24.0 / 16.6 / 3.5 |
+| Of ground steeper than 1:2, share in the top 30% of relief or on a face (no face exists) | 10.9–11.5% | 11.7% |
+| Top decile median slope over bottom 3 deciles | 2.45–2.62 | 2.57 |
+| Median slope by decile, 0 to 9 | 0.39–0.43, 0.56–0.60, 0.78–0.83, 0.99–1.09, 0.99–1.22, 1.13–1.37, 1.17–1.50, 1.30–1.70, **1.65–1.94, 1.61–1.70** | 0.40, 0.56, 0.77, 0.98, 1.08, 1.22, 1.27, 1.45, **1.76, 1.59** |
+| Concavity ratio, median (peaks found) | 1.39–1.44 (4678–5007 peaks) | 1.39 (4613) |
+| $W_{50}/H$, median | 0.97–1.06 | 1.04 |
+| Plateau pieces ≥ 25 km²; largest km² and across | 0 on every seed: no plateau land at all | 0 |
+| Escarpment length | 0 | 0 |
+| Longest range piece at ≥ 500, km; elongation | 3.9–6.0 km (1.6–4.7 km²); 2.7–3.3 (421–499 pieces) | 6.8 km (4.0 km²); 3.4 (422 pieces) |
+| Knobs by base: < 150 / 150–250 / ≥ 250 | 18316–21832 / 932–1082 / 3241–3656 (12.6–15.2% at ≥ 250) | 18722 / 989 / 3275 (14.2%) |
+| Sea; reaching 150, 300, 500, 750, 1000; top (profile, share of the map) | 25.7–27.4%; 19.9–21.7, 11.6–12.5, 4.58–5.23, 1.09–1.41, 0.16–0.25%; 1166–1181 | 27.6%; 21.2, 12.1, 4.95, 1.28, 0.20%; 1170 |
+| Floating rock per km² (from `bench_world_map`, same seeds) | 1072–1383 (full `bench_world_map`, two runs of 4, exit 0, 0 columns differing) | not run |
+| Profile against blocks, largest class difference | 3.7–4.7 points (under 5 on every seed) | 4.4 |
+| Profile share of `bench_terrain`; µs a lattice column | 0.08–0.10% of `terrain_generate_box` on one worker; 0.32–0.37 µs | 0.09%; 0.37 µs |
+| Tallest place against plains, columns a second (16 workers) | 843–944 against 1158–2092 | 829 against 1354 (a second run: 919 against 1490) |
+
+The seeds took 28.4 to 30.1 s each, all outputs included (profile sweep about 4.1 s, the measures 1.1 s, the windows of real blocks about 22 s), so `--step 16` stays the default. The CPU timings are wall clock on a shared machine with other agents' builds queued behind the lock; no card was used, so no card clock applies.
+
+### The `/tp` lines on Ahmed's seed
+
+    largest plateau piece          none
+    tallest peak                   /tp -24512 10528   (z 1170)
+    longest range piece            /tp -25536 9248    (z 525)
+    steepest 1 km window           /tp 20496 -20464   (76% of its land steeper than 1:1)
+    a knob on a base >= 250        /tp -27120 8048    (z 1153)
+    lowest dry land below 0        /tp -3788 3808     (z -18)
+    a plains place, for the cost   /tp -32752 15600   (z 57)
+
+Every seed's lines are in the program's output, after its table.
+
+### The pictures, looked at
+
+On Ahmed's seed `11107447384583428913` and on `2198175988018515243`, in `/tmp/mc_c_landform/`:
+
+- **`relief_64km.png`.** The whole 64 km is one texture repeated: sea in blotches a few km across, green lowland, and short orange-to-grey ranges a few km long, curving, scattered evenly with no larger order. The 50-block contours on the lowland wander in tight loops, every few pixels: the lowland is never level. Ranges show their contours packed evenly from foot to top, then a small grey summit, the "ice cream cone" in plan: a 1 to 3 km blob with even rings.
+- **`slope_64km.png`.** Almost no pale "flat" anywhere. Lowland is yellow (moderate, 5:1 to 2:1) mixed with orange (steep); every range is dark red (1:1 to 1:5) **from its foot up**, not only near the top. The two seeds' maps cannot be told apart in kind: **the 1:1 look is everywhere, not where Ahmed happened to look.**
+- **`plateaus_64km.png`.** No yellow plateau at all and no red escarpment, on any seed. The tan range pieces (500 and over) are small blobs and short worms, 1 to 6 km.
+- **`profiles.png`.** Through the tallest peak, along x and y: a 4 km cross-section rises from the sea at about 1:1, with bumps all the way up, to a pointed top; the y section is a single steep-sided mass about 2 km across at 1000. The plains section (no plateau to cut) shows the lowland as 20 to 40 blocks of continuous bumps, not flat. The longest range section is a chain of separate humps with deep saddles between, not a continuous ridge.
+- **`strip.png`.** Equator to pole looks the same at every latitude: the same blotchy sea, bumpy lowland and short ranges. The snowline (plan 004's formula at kappa 0.5, as no plan 006 fallback exists) first meets the ground at 59° N on Ahmed's seed and 63° N on the other; south of that even the summits are under it, north of about 73° all land is above it.
+- **`windows.png`.** The real blocks at 4 blocks a pixel: every land window is orange and red with yellow between; the few pale patches are beaches and river floors. Range windows are dark red stripes. They read as the profile's map does, a little steeper (more sheer), which is what the 3D noise adds.
 
 ## Tests
 
@@ -332,4 +360,17 @@ Appended as they land:
 
 ## Issues found
 
-None.
+1. **The answer to "have I not explored enough": the 1:1 look is everywhere.** All 8 seeds and Ahmed's give the same histogram within a few points: about 1% of land flat, 9% gentle, 23% moderate, 25% steep, 24% very steep (1:1 to 1:2), 15% cliff (1:2 to 1:5) and 1.5% sheer. Against master section 4's targets that is 30 times too little flat land and about 6 times too much cliff, and the lowland itself is mostly 5:1 to 1:1, from the hills term (±46 on a cell of 192) and the needles. The maps of different seeds and different latitudes cannot be told apart in kind.
+2. **Concavity is 1.39 to 1.44, and slope peaks below the top.** The decile medians rise from 0.4 at the foot to 1.65–1.94 in decile 8, then **fall** in decile 9 (1.61–1.70): the rounded summit master 0 point 3 predicted from the S-curve splines. Top over bottom 3 is 2.5 (target ≥ 5); only 11% of ground steeper than 1:2 is in the top 30% of its relief (target ≥ 70%, master expected about 30%). Concavity is a little above the predicted 1 because a ray's foot is gentle lowland: the slope's foot is set by the hills, not by the range.
+3. **No plateau land exists on any seed**, so plateau pieces, escarpment length and the plateau cross-section are all 0, as the master predicted. The profiles picture draws a plains place in that panel instead, and says so.
+4. **Range pieces at 500 or more are 3.9 to 6.8 km long** (the master expected under 10), elongation about 3: a short worm, 421 to 499 pieces per map.
+5. **Knobs on a base of 250 or more are 12.6 to 15.2% of knobs, not about 0** as the master predicted. The printed `/tp` knob of each seed stands within 20 blocks of its tallest peak (1142 to 1173 high): these are bumps of the crest and jagged terms on range flanks and summits, not koppies on high flat ground. Phase 04 should read the "≥ 25% of knobs on a base ≥ 250" target with that in mind, or add "and on ground whose relief in 512 is under 150" to the definition.
+6. **Profile against blocks: 3.7 to 4.7 points, under the 5-point line on every seed.** Real blocks have fewer gentle and moderate columns and 2 to 3 points more sheer (2.5–4.3% against 0.8–1.9%): the 3D noise and rivers' banks add the steepest ground. Phase 04's softness design should note that sheer is already doubled by the blocks.
+7. **"Lowest dry land below 0" is not "none".** Every seed has real land columns below 0 in its windows, 10 to 41 blocks down, which the master did not expect before phase 05. Not looked into here (no land change in this phase): they are probably cave mouths or carved river beds open to the sky with no water over their top block. Phase 05 should look at one (`/tp -3788 3808` on Ahmed's seed, z -18) before it adds basins, as its water rule must not meet these.
+8. **The profile is 0.08 to 0.10% of a box's cost** on one worker, 0.32 to 0.37 µs a lattice column: master section 3.3's worry that macro fields would eat `bench_terrain`'s margin through the profile is unfounded, as the profile is not where a box's time goes. The 3.3 lattice is still cheap insurance but the "+15%" budget has room by a factor of 100.
+9. **The tallest place is already under 1000 columns a second**: 829 to 944 on 16 workers at each seed's tallest peak, against 1158 to 2092 on plains, from this program. `bench_terrain`'s own places (1134 at the slowest, `snowy_taiga`) are not this tall. So phase 03's 650 plateau and any taller column start below the target before any new term; phase 03 must add a tall place to `bench_terrain` and measure it.
+10. **Changed from the plan: the plateau rule and its self-test numbers.** Read with the 512 square centred on each column, "local relief within 512 blocks is at most 80" cuts 256 blocks off every plateau's rim. Plateau land is instead a column at 250 or over inside **some** 512 square of relief at most 80 (`bench/landform/measure/README.md`). On the self-test's 1:2 edge that takes 40 more blocks each side, so the check wants 27.04 ± 1 km², 5.20 ± 0.032 km across and 20.8 ± 0.5 km of escarpment, not 26.2, 5.12 and 20.5. It measured 27.08, 5.204 and 20.80.
+11. **Changed from the plan: the test's name.** ctest names a test by its directory, so `tests/run/terrain/landform/measure/` is `run_terrain_landform_measure`, not `run_bench_landform_self_check`. It also falls under `^run_terrain_.*$`. Later phases' Verification should use the new name.
+12. **Changed from the plan: the program is three files.** One file passed 2000 lines. `bench/landform/measure/` and `bench/landform/draw/` each hold an `index.h`, and `cmake/targets.cmake` now compiles a `bench/` directory with an `index.h` into the program above it instead of making it a program (6 lines, recorded in `plans/REPO_STRUCTURE.md`).
+13. **Smaller choices of this file's own**, all in the READMEs: rays step one grid step (16 on the map, 4 on the self-test), not always 16; peaks and knobs must be strictly above their four neighbours (else a flat top's every column ties); a ray-less peak needs 8 of its 16 rays; the strip's snowline is where the warmest day's mean is 0 °C, from `climate_heat_from_place` at kappa 0.5 and no current; "steepest 1 km window" is the window with the largest share of real land steeper than 1:1; "lowest dry land below 0" is read from the real blocks of the windows only.
+14. **Self-test results** (release): cone 100.0% of the flank at g 1.00 ± 0.02, concavity 1.013, W50/H 1.000; the p = 2.5 peak concavity 3.141, top decile over the bottom 3 7.98; the plateau 1 piece, 27.08 km², 5.204 km, 20.80 km; the plane 100.00% moderate; 20 knobs, 10 under 150 and 10 at 250 or over; 2998 bytes of table and CSV the same twice on 16 workers and once on 1.
