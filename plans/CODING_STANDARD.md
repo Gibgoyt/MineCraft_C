@@ -297,6 +297,10 @@ Full layout: `plans/REPO_STRUCTURE.md`.
 - Functions and variables: `lower_snake_case`, prefixed by module: `section_get_block`.
 - Types: `lower_snake_case_t`. All structs are `typedef`ed.
 - Constants and macros: `UPPER_SNAKE_CASE`. Machine values start with `MC_`, as in `MC_THREADS_WORKERS`.
+- **Tuning numbers live in YAML.** A number that changes speed or look, and shapes no data format and no struct, is a key
+  in `compile/config/<path>/index.yaml`, read in code as its `MC_TUNE_*` define (`compile/config/README.md`). A new
+  magic number of that kind written into code is a review failure. A code constant defined from one keeps its name, and a
+  `static_assert` where a field or a derived limit must hold it. Plan 009 phase 02.
 - Functions that can fail return `bool` or an error enum, and give results through a pointer parameter.
 - Small structs (32 bytes or less) may be passed and returned by value.
 - `goto` is only for cleanup in `_init` functions.
