@@ -331,6 +331,14 @@ static void command_close(game_command_t *command) {
     command->error[0] = '\0';
 }
 
+/* Closed, the box lets go of the widget's focus, so no other field ever finds it taken. */
+static void command_shut(ui_t *ui, game_command_t *command) {
+    command_close(command);
+    if (ui->widget.focus_id == UI_COMMAND_FIELD_ID) {
+        ui->widget.focus_id = 0u;
+    }
+}
+
 static bool command_fail(game_command_t *command, const char *why) {
     (void)snprintf(command->error, sizeof(command->error), "%s", why);
     return false;
@@ -481,7 +489,7 @@ bool game_command_input(game_t *game, const input_frame_t *frame) {
     ui_widget_input_feed(&ui->widget, frame);
     if (input_keys_has(&frame->pressed, KEY_ESC)) {
         (void)ui_command_keys(&ui->widget, command->text, sizeof(command->text)); /* what came with it is dropped */
-        command_close(command);
+        command_shut(ui, command);
         return true;
     }
     if (input_keys_has(&frame->pressed, KEY_UP) || input_keys_has(&frame->pressed, KEY_DOWN)) {
@@ -495,7 +503,7 @@ bool game_command_input(game_t *game, const input_frame_t *frame) {
     } else if (event == UI_FIELD_SUBMITTED) {
         const bool empty = command->text[0] == '\0' || strcmp(command->text, "/") == 0;
         if (empty) {
-            command_close(command);
+            command_shut(ui, command);
             return true;
         }
         char ran[GAME_COMMAND_TEXT_BYTES];
@@ -507,7 +515,7 @@ bool game_command_input(game_t *game, const input_frame_t *frame) {
         const bool stays = ok && game_command_parse(ran, &parsed) &&
                            (parsed.kind == GAME_COMMAND_HELP || parsed.kind == GAME_COMMAND_SPEED_SHOW);
         if (ok && !stays) {
-            command_close(command);
+            command_shut(ui, command);
         } else if (stays) {
             (void)snprintf(command->text, sizeof(command->text), "/");
         }

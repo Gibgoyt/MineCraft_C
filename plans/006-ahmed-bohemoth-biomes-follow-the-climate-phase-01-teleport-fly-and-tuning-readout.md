@@ -1,6 +1,6 @@
 # 006-ahmed-bohemoth-biomes-follow-the-climate — phase 1: Teleport, fly and the tuning readout
 
-**Status:** built and tested; the whole debug suite and the release build are the last checks (updated 2026-11-12)
+**Status:** done: built, tested, the debug suite and the release build pass (updated 2026-11-12)
 
 Read first: `plans/006-ahmed-bohemoth-biomes-follow-the-climate-phase-00-vision-and-plan-files.md`, then the master `plans/006-ahmed-bohemoth-biomes-follow-the-climate.md` (sections 0, 2.6, 5 and 9). Every number here comes from the master. Where this file adds a number the master does not give, it says so and why.
 
@@ -193,10 +193,10 @@ Expanded:
 - [x] `player_t` latch added; the 2304-byte assert and every `offsetof` after it updated; build clean
 - [x] `survival_arrive` / `survival_stand_at` reuse `survival_place`'s wait and `survival_stand_at_spawn`'s climb
 - [x] `game_screen_up` closes the box on Esc before the pause menu
-- [ ] Every `run_terrain_*` pin unchanged
-- [ ] `standards_lint` and `clang_format` pass
-- [ ] The whole debug suite passes
-- [ ] `pgrep -af "$PWD/build"` prints nothing after the tests
+- [x] Every `run_terrain_*` pin unchanged
+- [x] `standards_lint` and `clang_format` pass
+- [x] The whole debug suite passes
+- [x] `pgrep -af "$PWD/build"` prints nothing after the tests
 
 ## Tests
 
@@ -249,6 +249,9 @@ Ahmed, in his own game: types `/tp lat 60`, `/tp ~ ~ ~400`, `/fly`, and back to 
 
 Appended as they land:
 
+- ed6c5a5a Add the command box with /tp, /fly, /speed, /time and /help, a teleport mailbox on the player, fly mode, GAME_FILL_JUMP and the F3 tuning lines, and find the black world after a big jump to be the test world's eye inside rock.
+- (this commit) Draw the F3 tuning panel only where there is a climate, let go of the widget's focus when the box closes, and record the verification.
+
 ## Issues found
 
 **1. The black world after a big jump (plan 004 phase 02, Issues found 14) is the test world's flying eye inside rock, not
@@ -271,7 +274,7 @@ streaming stopping.**
   collides. A test world's eye is as it was: it flies through rock by design.
 - **The three-jump test** (`run_game_command`, release, render distance 6, a world through the menus with its climate, seed 7):
   each `GAME_FILL_JUMP`'s nearest rings at 1.98, 0.10, 0.09, 0.11, 0.16 and 0.09 s (all rings by 2.52 s at worst), more columns
-  after every jump, the whole run 21 s. The first jump builds the climate's mask pages and tiles round a new place; the rest
+  after every jump, the whole run 21 s; in the final release run 0.09, 0.08, 0.12, 0.16, 0.12 and 0.10 s, the run 10 s. The first jump builds the climate's mask pages and tiles round a new place; the rest
   land mostly on sea, which generates fast.
 
 **2. `player_t` grew to 2368 bytes, and main's frame was made smaller to fit.** The latch did not fit in the 2304: main's line
@@ -303,13 +306,20 @@ fill starts with the sim running, which reads it); `game_corner_t` 192 to 256 (t
   week passed, as sleeping and `--climate-jump` do; going back would leave the census owing weeks it had already run.
 - The history (16) lasts as long as the world is open: its memory is the World arena's.
 - In a test world, which has no body, `/tp` moves the flying eye (on the ground means 3 blocks over `terrain_height_estimate`),
-  and `/fly` and `/speed` say the eye always flies. F3's tuning line there says `(no climate)` until phase 02's fallback.
+  and `/fly` and `/speed` say the eye always flies. F3's tuning panel is drawn only where there is a climate: `run_ui_hud` holds that F3 changes nothing outside its own panel in a
+  world with none, and the panel broke two of its checks (1885 pixels each) in the first full run. The words still say
+  `(no climate)`. Phase 02, whose fallback gives a test world numbers to show, must widen that test's region to the tuning panel
+  (`ui_command_lines_draw`'s rect under `ui_hud_debug_panel`) when it draws it there.
 - `/speed`'s factor is the player's, not the body's: `player_movement_place` keeps it, the fly speed and fly mode through a
   teleport; a respawn keeps the factor and lands on its feet, not flying. A new world starts at 1.
 
 **7. The "before" picture, as the tuning lines printed it on seed 7:** at 80008, 60008 a `frozen_river` biome in the Steppe
 class at a yearly 18.7 °C; at 40008, 30008 a `frozen_ocean` where the yearly mean is -14.3 °C (agreeing); in the test world a
 jungle at 83.85 N. Phase 03's gate reads these lines.
+
+**9. Flaky under load:** in the first full debug run (164 tests, 2543 s) `run_physics_raycast`'s
+`on_real_threads_the_outline_is_in_the_picture_on_the_camera_it_was_drawn_from` failed `edges_found * 2u > edges_asked`; alone
+it passes (2.3 s). It times real threads against each other and nothing here touches the outline; recorded, not changed.
 
 **8. How the jumps are timed.** The test runs the session as `--menu --headless` does, ticks then draws, and each draw settles,
 so a jump's fill is timed in wall time from the tick the sim takes the teleport to the nearest rings on the card. At -O0 the

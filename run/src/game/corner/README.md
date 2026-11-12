@@ -17,8 +17,9 @@
   the feet's height: the yearly mean, the warmest and coldest month and today's mean in tenths, the height they are at, the year's
   rain, the driest month and the snowline. A tile not built yet keeps the last. Main turns them into
   `biome savanna  family Savanna  class Savanna (climate)`, `yearly 24.6 °C  warm 27.1  cold 22.0 at z 88   today 25.3` and
-  `rain 640 mm/yr  dry month 4 mm   snowline none`, drawn under the F3 overlay while walking (`game_hud_compose`). With no climate
-  (a test world) only the first line, `(no climate)`; phase 02's fallback will say `(fallback)`. Until phase 03 the biome and the
+  `rain 640 mm/yr  dry month 4 mm   snowline none`, drawn under the F3 overlay while walking in a world with a climate (`game_hud_compose`). With no climate (a test world) the
+  words say `(no climate)` but nothing is drawn, as F3 there changes only its own panel (`run_ui_hud`); phase 02's fallback
+  will say `(fallback)`, and that test's region has to grow with it. Until phase 03 the biome and the
   family disagree where the biomes do not follow the climate: that is the "before" picture.
 - `game_hud_corners_draw`: main's, while walking, after a notice and before F3: the coordinates top left (if `show_coordinates` is on and F3 is not up), then the corner from `game_hud_corner_read`, clear of whichever top-left panel there is (`ui_hud_debug_panel` or `ui_hud_coordinates_panel`). It was in `game/index.c` until that file passed 1500 lines.
 - `game_corner_wind_pack`, `game_corner_wind_unpack`: speed in tenths of a block a second in bits 0-15, the direction it blows toward in 65536ths of a turn anticlockwise from east in bits 16-31.

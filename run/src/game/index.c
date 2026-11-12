@@ -1293,14 +1293,14 @@ static const uint8_t *game_hud_compose(game_t *game, const uint8_t *drawn) {
         ui_hud_debug_t debug;
         game_hud_debug_read(game, &debug);
         ui_hud_debug_draw(&ui->canvas, &ui->font, &debug);
-        if (walking) {
-            /* Plan 006 phase 01: the tuning lines, under the overlay. */
+        if (walking && game_climate(game) != nullptr) {
+            /* Plan 006 phase 01: the tuning lines, under the overlay, where there is a climate to tune (a test world has none). */
             char lines[GAME_CORNER_TUNING_LINES][GAME_CORNER_TUNING_BYTES];
             game_corner_tuning_read(game, lines);
             const char *const shown[GAME_CORNER_TUNING_LINES] = {lines[0], lines[1], lines[2]};
             const ui_rect_t panel = ui_hud_debug_panel(ui->canvas.width, ui->canvas.height);
             (void)ui_command_lines_draw(&ui->canvas, &ui->font, panel.x, panel.y + panel.height, shown,
-                                        lines[1][0] != '\0' ? GAME_CORNER_TUNING_LINES : 1u);
+                                        GAME_CORNER_TUNING_LINES);
         }
     }
     if (screen_up) {
