@@ -646,7 +646,7 @@ static void ic_ticks(smelting_store_t *store, smelting_furnace_t *furnace, uint3
 
 TEST(one_coal_smelts_eight_and_it_takes_two_hundred_ticks_each) {
     smelting_store_t *const store = ic_furnaces(t);
-    smelting_furnace_t *const furnace = smelting_open_process(store, 1, 2, 3, RECIPE_PROCESS_BLAST_FURNACE);
+    smelting_furnace_t *const furnace = smelting_open_process(store, 1, 2, 3, RECIPE_PROCESS_FURNACE);
     REQUIRE(furnace != nullptr);
     furnace->slots[SMELTING_SLOT_INPUT] = item_stack_make(ITEM_ID_RAW_IRON, 20u);
     furnace->slots[SMELTING_SLOT_FUEL] = item_stack_make(ITEM_ID_COAL, 1u);
@@ -715,7 +715,7 @@ TEST(every_smelt_and_every_fuel_does_what_the_table_says) {
 
 TEST(fuel_goes_on_only_for_what_can_cook) {
     smelting_store_t *const store = ic_furnaces(t);
-    smelting_furnace_t *const furnace = smelting_open_process(store, 0, 0, 0, RECIPE_PROCESS_BLAST_FURNACE);
+    smelting_furnace_t *const furnace = smelting_open_process(store, 0, 0, 0, RECIPE_PROCESS_FURNACE);
     REQUIRE(furnace != nullptr);
     furnace->slots[SMELTING_SLOT_FUEL] = item_stack_make(ITEM_ID_COAL, 3u);
 
@@ -755,7 +755,7 @@ TEST(fuel_goes_on_only_for_what_can_cook) {
 
 TEST(going_out_cools_it_and_changing_the_input_starts_over) {
     smelting_store_t *const store = ic_furnaces(t);
-    smelting_furnace_t *const furnace = smelting_open_process(store, 0, 0, 0, RECIPE_PROCESS_BLAST_FURNACE);
+    smelting_furnace_t *const furnace = smelting_open_process(store, 0, 0, 0, RECIPE_PROCESS_FURNACE);
     REQUIRE(furnace != nullptr);
     /* A stick burns 100 ticks. */
     furnace->slots[SMELTING_SLOT_INPUT] = item_stack_make(ITEM_ID_RAW_IRON, 2u);
@@ -775,7 +775,7 @@ TEST(going_out_cools_it_and_changing_the_input_starts_over) {
     furnace->slots[SMELTING_SLOT_FUEL] = item_stack_make(ITEM_ID_COAL, 1u);
     ic_ticks(store, furnace, 100u);
     CHECK_EQ_U64(furnace->cook_ticks, 100u);
-    furnace->slots[SMELTING_SLOT_INPUT] = item_stack_make(ITEM_ID_RAW_CHROMIUM, 1u);
+    furnace->slots[SMELTING_SLOT_INPUT] = item_stack_make(ITEM_ID_RAW_GOLD, 1u);
     ic_ticks(store, furnace, 1u);
     CHECK_EQ_U64(furnace->cook_ticks, 1u);
     /* Taken out, and put back. */
@@ -1242,7 +1242,7 @@ TEST(a_blast_furnace_lights_as_its_own_block_and_a_tanning_rack_keeps_its_slots_
     CHECK(smelting_at(&item->furnaces, 10, 6, 7) == nullptr);
     CHECK_EQ_U64(blast->process, RECIPE_PROCESS_BLAST_FURNACE);
     CHECK_EQ_U64(rack->process, RECIPE_PROCESS_TANNING_RACK);
-    blast->slots[SMELTING_SLOT_INPUT] = item_stack_make(ITEM_ID_RAW_IRON, 1u);
+    blast->slots[SMELTING_SLOT_INPUT] = item_stack_make(ITEM_ID_RAW_CHROMIUM, 1u);
     blast->slots[SMELTING_SLOT_FUEL] = item_stack_make(ITEM_ID_COAL, 1u);
     rack->slots[SMELTING_SLOT_INPUT] = item_stack_make(ITEM_ID_GOAT_HIDE, 2u);
     for (uint32_t i = 0u; i < 10u; i++) {
@@ -1257,7 +1257,7 @@ TEST(a_blast_furnace_lights_as_its_own_block_and_a_tanning_rack_keeps_its_slots_
     smelting_furnace_t *const blast_now = smelting_at(&item->furnaces, 5, 6, 7);
     smelting_furnace_t *const rack_now = smelting_at(&item->furnaces, 9, 6, 7);
     REQUIRE(blast_now != nullptr && rack_now != nullptr);
-    CHECK_EQ_U64(blast_now->slots[SMELTING_SLOT_OUTPUT].item, ITEM_ID_IRON_INGOT);
+    CHECK_EQ_U64(blast_now->slots[SMELTING_SLOT_OUTPUT].item, ITEM_ID_CHROMIUM_INGOT);
     CHECK_EQ_U64(rack_now->slots[SMELTING_SLOT_OUTPUT].item, ITEM_ID_LEATHER);
     CHECK_EQ_U64(rack_now->slots[SMELTING_SLOT_OUTPUT].count, 1u);
     CHECK_EQ_U64(spills.count, 0u);

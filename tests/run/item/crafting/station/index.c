@@ -356,14 +356,14 @@ TEST(every_recipe_is_reached_from_what_the_world_gives_walking_the_stations_in_o
     CHECK(p[RECIPE_PROCESS_FURNACE] < p[RECIPE_PROCESS_BLAST_FURNACE]);
     CHECK(p[RECIPE_PROCESS_FURNACE] < s[RECIPE_STATION_SMITHING]);
     /* Plan 005 phase 11: the smith table is made from copper, so copper and gold tools come first, as phase 6's proposal said, then iron
-     * once the blast furnace gives it, then stainless steel from iron and chromium. */
+     * with them since Ahmed's word on 2026-11-12 put iron in the furnace, then stainless steel from iron and chromium. */
     const uint32_t copper = walk->made[is_row_named(t, "copper_pickaxe")];
     const uint32_t gold = walk->made[is_row_named(t, "gold_pickaxe")];
     const uint32_t iron = walk->made[is_row_named(t, "iron_pickaxe")];
     const uint32_t steel = walk->made[is_row_named(t, "stainless_steel_pickaxe")];
     printf("  pickaxes: copper round %u, gold %u, iron %u, stainless steel %u\n", copper, gold, iron, steel);
-    CHECK(copper != 0u && copper < iron);
-    CHECK(gold != 0u && gold < iron);
+    CHECK(copper != 0u && copper <= iron);
+    CHECK(gold != 0u && gold <= iron);
     CHECK(iron != 0u && iron < steel);
     CHECK_EQ_U64(recipe_choice_items[recipe_choices[recipe_defs[is_row_named(t, "smith_table")].cells[0] - 1u].first],
                  ITEM_ID_COPPER_INGOT);
@@ -601,6 +601,7 @@ TEST(hides_tan_on_the_rack_with_no_fuel_and_iron_smelts_only_in_the_blast_furnac
     CHECK(item_stack_is_empty(&furnace->slots[SMELTING_SLOT_OUTPUT]));
     CHECK_EQ_U64(furnace->slots[SMELTING_SLOT_FUEL].count, 1u);
 
+    /* Iron is the furnace's since Ahmed's word on 2026-11-12, and the blast furnace does not take it. */
     furnace->slots[SMELTING_SLOT_INPUT] = item_stack_make(ITEM_ID_RAW_IRON, 1u);
     blast->slots[SMELTING_SLOT_INPUT] = item_stack_make(ITEM_ID_RAW_IRON, 1u);
     blast->slots[SMELTING_SLOT_FUEL] = item_stack_make(ITEM_ID_COAL, 1u);
@@ -608,9 +609,10 @@ TEST(hides_tan_on_the_rack_with_no_fuel_and_iron_smelts_only_in_the_blast_furnac
         (void)smelting_tick(&store, furnace);
         (void)smelting_tick(&store, blast);
     }
-    CHECK(item_stack_is_empty(&furnace->slots[SMELTING_SLOT_OUTPUT]));
-    CHECK_EQ_U64(blast->slots[SMELTING_SLOT_OUTPUT].item, ITEM_ID_IRON_INGOT);
-    /* Copper and gold are the furnace's. */
+    CHECK_EQ_U64(furnace->slots[SMELTING_SLOT_OUTPUT].item, ITEM_ID_IRON_INGOT);
+    CHECK(item_stack_is_empty(&blast->slots[SMELTING_SLOT_OUTPUT]));
+    /* Copper and gold are the furnace's too. */
+    furnace->slots[SMELTING_SLOT_OUTPUT] = (item_stack_t){0};
     furnace->slots[SMELTING_SLOT_INPUT] = item_stack_make(ITEM_ID_RAW_COPPER, 1u);
     for (uint32_t tick = 0u; tick < 200u; tick++) {
         (void)smelting_tick(&store, furnace);

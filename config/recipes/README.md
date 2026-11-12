@@ -62,8 +62,8 @@ A smelt is done over time in a block with three slots, input, fuel and output:
 
 | Station | Its block, and size | Fuel | What is done there |
 |---|---|---|---|
-| `furnace` | `furnace`, 1 by 1 by 1 | yes | Food, glass, charcoal, bricks, stone, and the low-heat ores: copper and gold |
-| `blast_furnace` | `blast_furnace`, 1 by 1 by 1 | yes | The high-heat ores, iron and chromium. An alloy whose file says `heat: blast_furnace` needs one lit by the smith table |
+| `furnace` | `furnace`, 1 by 1 by 1 | yes | Food, glass, charcoal, bricks, stone, and the ores copper, gold and iron (iron since Ahmed, 2026-11-12) |
+| `blast_furnace` | `blast_furnace`, 1 by 1 by 1 | yes | The high-heat ore chromium (iron smelts in the furnace, Ahmed 2026-11-12). An alloy whose file says `heat: blast_furnace` needs one lit by the smith table |
 | `tanning_rack` | `tanning_rack_left` and `_right`, 2 by 1 by 1 | **none**: by time alone | Hides into leather, 30 seconds each |
 
 **Metal armour is leather armour with metal riveted on:** at the smith table, the leather piece in the middle and Minecraft's count of ingots for that piece around it. So no armour can be made without the leather workbench.
@@ -78,7 +78,7 @@ The order you would unlock them in, which `run_item_crafting_station` walks from
 4. **Table:** cobblestone on logs makes the stoneworking bench; sticks and planks make the tanning rack and the leather workbench.
 5. **Stoneworking bench:** stone tools and a furnace. **Furnace:** stone, bricks from clay, copper and gold.
 6. **Table:** copper, stone and a furnace make the smith table. **Smith table:** copper and gold tools.
-7. **Stoneworking bench:** bricks round a furnace on stone make the blast furnace. **Blast furnace:** iron and chromium. **Smith table:** iron tools, then stainless steel in its alloy slots and its tools.
+7. **Stoneworking bench:** bricks round a furnace on stone make the blast furnace. **Blast furnace:** chromium. **Furnace:** iron too, from raw iron or iron ore. **Smith table:** iron tools, then stainless steel in its alloy slots and its tools.
 8. **Tanning rack:** hides from cattle, pigs and goats into leather. **Leather workbench:** leather armour. **Smith table:** metal armour.
 
 Two recipes of different stations may have the same pattern, as no grid can match both. A new station is one word here, one word in `GR_STATIONS` (or `GR_PROCESSES` for a smelt) in `compile/src/game_tables/recipes/`, its block, and its screen's row in `run/src/ui/`.
