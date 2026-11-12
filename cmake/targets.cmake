@@ -29,6 +29,8 @@ endfunction()
 add_custom_target(mc_prebuild)
 # cmake/generated.cmake: the build stops if git tracks anything under textures_local/.
 add_dependencies(mc_prebuild mc_check_textures_local)
+# cmake/generated.cmake: the MC_TUNE_* headers exist before anything that may include them compiles. Plan 009 phase 02.
+add_dependencies(mc_prebuild mc_tuning)
 
 # ---- Game sources ----------------------------------------------------------------------------------
 

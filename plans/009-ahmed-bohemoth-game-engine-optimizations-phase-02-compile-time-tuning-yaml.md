@@ -1,6 +1,6 @@
 # 009-ahmed-bohemoth-game-engine-optimizations — phase 2: Compile-time tuning YAML
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** in progress   (updated 2026-11-12)
 
 Read first: the phase 00 file, then the master: sections 2.7, 4.2 and 6. Then the two tools this one follows:
 
@@ -188,10 +188,10 @@ ao_reach:
 
 ## Todo
 
-- [ ] Uses of every constant to move listed in Issues found, array and field sizes marked
-- [ ] `compile/src/tuning/` and `compile/include/tuning/`, README with the eight fields
-- [ ] `tests/compile/tuning/` (ctest `compile_tuning`): every refusal at its line, exact decimals, unchanged files untouched, the hash, sorted order
-- [ ] `cmake/generated.cmake`: glob, `inputs.txt`, stamp with BYPRODUCTS, `mc_tuning` before every compile
+- [x] Uses of every constant to move listed in Issues found, array and field sizes marked
+- [x] `compile/src/tuning/` and `compile/include/tuning/`, README with the eight fields
+- [x] `tests/compile/tuning/` (ctest `compile_tuning`): every refusal at its line, exact decimals, unchanged files untouched, the hash, sorted order
+- [x] `cmake/generated.cmake`: glob, `inputs.txt`, stamp with BYPRODUCTS, `mc_tuning` before every compile
 - [ ] A no-change build compiles nothing; a one-value change rebuilds only dependents (recorded)
 - [ ] `compile/config/README.md` (schema, units, workflow, what counts as tuning) and `compile/config/render/README.md`
 - [ ] `render/lod`, `render/traverse`, `render/shade`, `render/temporal`, `render/budget` files, each moved in its own commit with golden tests passing
@@ -266,4 +266,31 @@ Appended as they land:
 
 ## Issues found
 
-None.
+### 1. Every use of each constant to move (step 1)
+
+`grep -rnw` over `run cuda bench tests compile asm`, on main at `ec4554c9`. **Field** marks a use that sizes a field or an array, or that a
+derived constant depends on; each of those keeps a `static_assert` against the tuned value.
+
+| Constant | Defined | Read by | Field or derived |
+|---|---|---|---|
+| `RENDER_LOD_RADIUS_COLUMNS` 16 | `run/include/render/lod/index.h:23` | `run/src/render/lod/index.c:70,75` | **Field**: stored in `render_lod_plan_t.radii[]` and `render_lod_level_t.radius`, both `uint8_t`; and must exceed the margin (existing assert) |
+| `RENDER_LOD_MARGIN_COLUMNS` 2 | `render/lod/index.h:25` | `run/src/render/lod/index.c:58,74,581`; `tests/cuda/lod/index.c:313,314,333,506,561,1417` | Below the radius (existing assert) |
+| `RENDER_LOD_FEATURES_SHIFT_MAX` 2 | `render/lod/index.h:34` | `run/src/render/lod/index.c:194`; `bench/lod/index.c:45`; `tests/run/render/lod/index.c:44,60` | No |
+| `RENDER_LOD_JOBS` 48 | `render/lod/index.h:27` | `run/src/render/lod/index.c:100,314-315,375,413,437,533,675,767,770`; `tests/cuda/lod/index.c:593` | Sizes an arena array (`borrowed_jobs`, worked out at run time from it), not a struct |
+| `RENDER_LOD_POOL_BYTES_PER_COLUMN` 64 KiB | `render/lod/index.h:39` | `run/src/render/lod/index.c:94` | No (a pool size worked out at run time) |
+| `RENDER_LOD_FRAME_BYTES` = upload budget | `render/lod/index.h:41` | `run/src/render/lod/index.c:686` | No |
+| `LOD_SKIPS_MAX` 32 | `run/include/gpu_bridge/lod/index.h:29` | `cuda/src/lod/index.cu:124` (and a comment at 235) | No |
+| `SHADE_ALPHA_LAYERS` 16 | `run/include/gpu_bridge/shade/index.h:35` | `cuda/src/shade/index.cu:857`; `cuda/src/lod/index.cu:250`; `tests/cuda/sky/index.c:497,514`; `tests/cuda/water/index.c:537`; `tests/cuda/shapes/index.c:1029,1101,1396` | No: loop bounds only |
+| `SHADE_SUN_LAYERS` 8 | `gpu_bridge/shade/index.h:37` | `cuda/src/shade/index.cu:46`; `tests/cuda/sky/index.c:456`; `tests/cuda/water/index.c:382` | No |
+| `SHADE_AO_TURNS` 4 | `gpu_bridge/shade/index.h:90` | `gpu_bridge/shade/index.h:318` (`shade_ao_turn`); `cuda/src/shade/index.cu:260,605`; `tests/cuda/post/index.c:41,209,216,223,470` | **Derived**: `shade_ao_turn` maps `frame % SHADE_AO_TURNS` onto the four places of a 2 x 2 group of warps by a fixed table of 4, so the value can only be 1 to 4 (YAML range 1..4) |
+| `SHADE_AO_FRESH_RAYS` 4 | `gpu_bridge/shade/index.h:92` | `cuda/src/shade/index.cu:607,613,621`; `tests/cuda/post/index.c:464,507-508,524-525,1333` | **Field**: written into `shade_ao_pixel_t.samples`, a `uint16_t` (`index.cu:621`) |
+| `SHADE_AO_SAMPLES_MAX` 32 | `gpu_bridge/shade/index.h:94` | `cuda/src/shade/index.cu:264`; `tests/cuda/post/index.c:41` | **Field**: `shade_ao_pixel_t.samples`, `uint16_t` |
+| `SHADE_AO_REACH` 3.0 | `gpu_bridge/shade/index.h:105` | `gpu_bridge/shade/index.h:356` (`shade_ao_near`); `cuda/src/shade/index.cu:142,157`; `tests/cuda/post/index.c:202-204,410` | **Derived**: `SHADE_AO_STEPS` 12 must cover reach x sqrt(3) + 3 planes |
+| `SHADE_SHAFT_STEPS` 6 | `gpu_bridge/shade/index.h:101` | `cuda/src/shade/index.cu:1029,1031`; `tests/cuda/post/index.c:271-272,1080-1082` | No |
+| `SHADE_WATER_SEEN_BLOCKS` 48.0 | `gpu_bridge/shade/index.h:140` | `cuda/src/shade/index.cu:65,699,949`; `cuda/src/lod/index.cu:272`; `tests/cuda/water/index.c:84,392,603` | No |
+| `TRAVERSE_COARSE_LONG_STRETCH` 16.0, `_SHORT_STRETCH` 4.0, `_LONG_PER_BLOCK` 0.25, `_PAD` 0.0625, `_PAD_PER_BLOCK` 4e-6, `_BACK_OFF` 0.25 | `cuda/src/traverse/index.cu:13-21` | the same file, `:125,178,189-199,204` only | No |
+| `POST_TAA_BLEND` 0.1, `POST_TAA_CLIP` 1.25, `POST_TAA_STILL` 0.002 | `run/include/gpu_bridge/post/index.h:128-132` | `cuda/src/post/index.cu:94,159,161` | No |
+| `RENDER_UPLOAD_BUDGET_BYTES_DEFAULT` 4 MiB | `run/include/render/upload/index.h:18` | `run/src/game/index.c:430`; `render/lod/index.h:41`; `tests/run/render/frame/index.c:376`; `tests/cuda/sky/fixtures/rig.h:65`; `tests/cuda/shapes/index.c:110` | No |
+
+None of them sizes an array inside a struct. Every constant keeps its name in code, defined from its `MC_TUNE_*` define, so no
+use site changes (see issue 2).

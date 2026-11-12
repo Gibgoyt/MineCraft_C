@@ -139,3 +139,36 @@ add_custom_target(mc_game_tables DEPENDS "${mc_block_table_header}" "${mc_block_
 # Sources of generated tables that the game links.
 set(mc_generated_run_sources "${mc_block_table_source}" "${mc_biome_table_source}" "${mc_item_table_source}"
   "${mc_recipe_table_source}" "${mc_mob_table_source}" "${mc_ore_table_source}")
+
+# ---- Tuning: plan 009 phase 02 -----------------------------------------------------------------------------------------
+
+# compile/config/<path>/index.yaml -> generated/tuning/<path>/index.{h,hu}, and generated/tuning/index.h with MC_TUNE_HASH.
+# See compile/src/tuning/README.md. A header per file, so a change to one rebuilds only what includes it.
+set(mc_tuning_dir "${MC_GENERATED_DIR}/tuning")
+set(mc_tuning_config "${CMAKE_SOURCE_DIR}/compile/config")
+file(GLOB mc_tuning_inputs CONFIGURE_DEPENDS
+  "${mc_tuning_config}/*/index.yaml"
+  "${mc_tuning_config}/*/*/index.yaml"
+  "${mc_tuning_config}/*/*/*/index.yaml")
+set(mc_tuning_headers "${mc_tuning_dir}/index.h")
+foreach(mc_input IN LISTS mc_tuning_inputs)
+  cmake_path(GET mc_input PARENT_PATH mc_input_dir)
+  cmake_path(RELATIVE_PATH mc_input_dir BASE_DIRECTORY "${mc_tuning_config}" OUTPUT_VARIABLE mc_input_rel)
+  list(APPEND mc_tuning_headers "${mc_tuning_dir}/${mc_input_rel}/index.h" "${mc_tuning_dir}/${mc_input_rel}/index.hu")
+endforeach()
+
+# As for the tables: a file gone changes this list, and Ninja would not otherwise run the tool again.
+string(JOIN "\n" mc_tuning_input_list ${mc_tuning_inputs})
+file(CONFIGURE OUTPUT "${mc_tuning_dir}/inputs.txt" CONTENT "${mc_tuning_input_list}\n" @ONLY)
+
+# No touch, unlike the tables: the tool leaves a header with the same bytes alone, and the headers are byproducts, so Ninja's
+# restat sees them unchanged and rebuilds nothing that includes them. The stamp is what Ninja compares with the inputs.
+set(mc_tuning_stamp "${mc_tuning_dir}/stamp")
+add_custom_command(OUTPUT "${mc_tuning_stamp}"
+  BYPRODUCTS ${mc_tuning_headers}
+  COMMAND mc_tool_tuning --config "${mc_tuning_config}" --out "${mc_tuning_dir}" --stamp "${mc_tuning_stamp}"
+  DEPENDS mc_tool_tuning ${mc_tuning_inputs} "${mc_tuning_dir}/inputs.txt"
+  COMMENT "Generating the tuning headers from compile/config"
+  VERBATIM)
+# cmake/targets.cmake puts this before every compile, through mc_prebuild.
+add_custom_target(mc_tuning DEPENDS "${mc_tuning_stamp}")

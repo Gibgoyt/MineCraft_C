@@ -1,7 +1,8 @@
 # Wires compile/src/standards_lint into the build. Included after cmake/targets.cmake, because it needs every target.
 #
-# The tool itself has to exist first, so mc_tool_standards_lint and mc_compile_lib (linked into every tool) are the two
-# targets that compile before the lint has run. A breach in them still fails the build; it just fails one step later.
+# The tool itself has to exist first, so mc_tool_standards_lint and mc_compile_lib (linked into every tool) compile before
+# the lint has run, and so does mc_tool_tuning, whose headers every compile waits for. A breach in them still fails the
+# build; it just fails one step later.
 
 # Runs on every build: it is quick, and it has no inputs Ninja could know about, since it walks the whole tree.
 add_custom_target(mc_standards_lint
@@ -14,7 +15,9 @@ add_dependencies(mc_prebuild mc_standards_lint)
 get_property(mc_all_targets DIRECTORY "${CMAKE_SOURCE_DIR}" PROPERTY BUILDSYSTEM_TARGETS)
 set(mc_callgraph_targets)
 foreach(mc_target IN LISTS mc_all_targets)
-  if(mc_target MATCHES "^mc_(tool|test|bench)_" AND NOT mc_target STREQUAL "mc_tool_standards_lint")
+  # The tuning tool too, as mc_prebuild waits for what it makes: plan 009 phase 02.
+  if(mc_target MATCHES "^mc_(tool|test|bench)_" AND NOT mc_target STREQUAL "mc_tool_standards_lint"
+     AND NOT mc_target STREQUAL "mc_tool_tuning")
     add_dependencies(${mc_target} mc_prebuild)
   endif()
   # What compiled C goes into the recursion check. The object libraries a program links are listed themselves.
