@@ -16,4 +16,4 @@
 Every step of a tile cell's walk is inside its window: the cell is 8192 blocks and half a cell from the edge, and step 64 is 8192 away. So the walk never reads the mask's table, and a cell's rain is a function of its window alone.
 
 **May be called by:** its parent `run/src/climate/` (the tile job) and `season/` (the wind and the hooks).
-**Depends on:** climate/cell, climate/normals (the belt spline), climate/air (the wind latitude, a window sea cell's current), climate/harmonic (the waves and the fit), climate/sea (the kinds), `assert`, `types`, libm.
+**Depends on:** climate/cell, climate/normals (the belt spline), climate/air (the wind latitude, a window sea cell's current), climate/harmonic (the waves and the fit), climate/sea (the kinds), `assert`, `types`, `math/det` (the moisture's e^x since plan 006 phase 02), libm for exact functions only.

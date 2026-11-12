@@ -6,6 +6,7 @@
 #include "climate/systems/index.h"
 #include "climate/weather/index.h"
 #include "log/index.h"
+#include "math/det/index.h"
 #include "terrain/rng/index.h"
 #include "time/index.h"
 
@@ -16,8 +17,10 @@ float64_t climate_latitude_deg(float64_t y) {
     /* Into one period first, [-2Y, 2Y): sin of an angle in the millions keeps fewer digits than sin of one under 2 pi. */
     const float64_t period = CLIMATE_LATITUDE_PERIOD;
     const float64_t near = y - period * floor((y + 0.5f64 * period) / period);
-    /* asin undoes sin while the angle is within a quarter turn, and folds it back past one: a triangle wave. */
-    const float64_t degrees = asin(sin(CLIMATE_PI * near / (2.0f64 * CLIMATE_POLE_Y))) * (180.0f64 / CLIMATE_PI);
+    /* asin undoes sin while the angle is within a quarter turn, and folds it back past one: a triangle wave. det_* since
+     * plan 006 phase 02: every cell field starts from the latitude, and those decide blocks. */
+    const float64_t degrees =
+        det_asin(det_sin(CLIMATE_PI * near / (2.0f64 * CLIMATE_POLE_Y))) * (180.0f64 / CLIMATE_PI);
     return degrees > CLIMATE_POLE_DEG ? CLIMATE_POLE_DEG : (degrees < -CLIMATE_POLE_DEG ? -CLIMATE_POLE_DEG : degrees);
 }
 

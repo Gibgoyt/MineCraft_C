@@ -6,6 +6,7 @@
 #include "climate/air/index.h"
 #include "climate/harmonic/index.h"
 #include "climate/sea/index.h"
+#include "math/det/index.h"
 
 #include <math.h>
 #include <string.h>
@@ -75,7 +76,8 @@ void climate_rain_walk(const climate_window_t *window, uint32_t i, uint32_t j, f
 }
 
 float32_t climate_rain_moisture(const climate_rain_walk_t *walk, const climate_cell_t *cell) {
-    const float32_t dry = fmaxf(CLIMATE_MOISTURE_MIN, expf(-walk->d_up_blocks / CLIMATE_MOISTURE_SCALE_BLOCKS));
+    const float32_t dry = fmaxf(CLIMATE_MOISTURE_MIN,
+                                (float32_t)det_exp((float64_t)(-walk->d_up_blocks / CLIMATE_MOISTURE_SCALE_BLOCKS)));
     if (cell->current == CLIMATE_CURRENT_COLD && cell->sea_distance <= CLIMATE_MOISTURE_COLD_BLOCKS) {
         return dry * CLIMATE_MOISTURE_COLD; /* cold wins over warm: the phase 05 file's order */
     }

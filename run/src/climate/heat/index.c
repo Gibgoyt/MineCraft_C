@@ -3,6 +3,7 @@
 #include "climate/heat/index.h"
 
 #include "climate/air/index.h"
+#include "math/det/index.h"
 
 #include <math.h>
 
@@ -13,7 +14,7 @@ float32_t climate_heat_base(float32_t t_mean_sea_level, float32_t z, bool land) 
 
 float32_t climate_heat_wave(float32_t t_swing_signed, float32_t lag_days, float32_t day) {
     const float32_t phase = CLIMATE_HEAT_TWO_PI * (day - CLIMATE_SOLSTICE_DAY - lag_days) / CLIMATE_HEAT_YEAR_DAYS;
-    return t_swing_signed * cosf(phase);
+    return t_swing_signed * (float32_t)det_cos((float64_t)phase); /* det_cos: the snow balance decides blocks */
 }
 
 float32_t climate_heat_formula(float32_t t_mean_sea_level, float32_t z, bool land, float32_t t_swing_signed,

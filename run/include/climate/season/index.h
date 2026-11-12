@@ -102,6 +102,13 @@ uint8_t climate_season_classify(float32_t t_mean_ground, float32_t t_max_month, 
 /* A cell's months at height z (land: B below 0), from its t_mean, t_swing, t_lag_days and rain_mm_week. Pure. */
 void climate_season_months(const climate_cell_t *cell, float32_t z, bool land, climate_season_months_t *out);
 
+/* Month m's rain in mm (0 to 11, centred on 365 (m + 0.5) / 12), at least 0, from rain_mm_week's P0 and two waves, with each
+ * wave's month mean and the month centres' cosines and sines written as exact values (plan 006 phase 02: no libm decides a
+ * block). climate_season_months' rain_mm. Pure. */
+float32_t climate_season_month_rain_mm(const float32_t rain_mm_week[CLIMATE_RAIN_COEFFICIENTS], uint32_t m);
+/* The smallest of the 12 months' rain, climate_season_months' driest_month_mm: what terrain's climate sample copies. Pure. */
+float32_t climate_season_driest_month_mm(const float32_t rain_mm_week[CLIMATE_RAIN_COEFFICIENTS]);
+
 /* Whether snow outlasts the summer at height z by the degree-day model on the cell's normals: two years of 52 weeks from no
  * snow, S += f_s(T) P - 7 x 4 x max(0, T), and the second year never back to 0. Pure. */
 bool climate_season_snow_outlasts(const climate_cell_t *cell, float32_t z, bool land);

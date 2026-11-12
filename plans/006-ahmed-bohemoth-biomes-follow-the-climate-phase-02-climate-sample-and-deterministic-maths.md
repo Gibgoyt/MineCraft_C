@@ -150,7 +150,7 @@ This phase may edit these, plus this file:
 From the master (section 9, phase 02):
 
 - [x] `run/src/math/det/` with tests against libm and a pin
-- [ ] The climate cell fields that terrain reads move to `det_*`; climate digests are re-pinned with reasons
+- [x] The climate cell fields that terrain reads move to `det_*`; climate digests are re-pinned with reasons
 - [ ] The driest month's rain per cell (a spare byte, or from harmonics)
 - [ ] `terrain/climate_sample/`: the types, `terrain_climate_at`, and `terrain_climate_fallback`
 - [ ] `game` fills the sample in column jobs; the far field and mob spawn fill theirs
@@ -247,3 +247,12 @@ Appended as they land:
    Left on libm, because nothing they make reaches a cell or a block: `climate_heat_daily_range` (`expf`, the day's range),
    the rest of `sun/` (the sky), `outlook/`, `weather/`, `systems/` (the weather itself).
 
+2. **Step 3: no climate digest moved** (2026-11-12). Every call in the inventory now goes through `det_*` or an exact table,
+   and `HARMONIC_EVERY_5` is regenerated from `det_cos`/`det_sin` (a few entries changed in the last bit; the
+   `the_largest_of_every_fifth_day_is_the_same_bits_as_the_calls` test holds it to `climate_harmonic_at2`). Yet all 20
+   `run_climate_*` tests pass with their pins unchanged, `run_climate_cell`'s `0xB667CA61EBBB4C6F` included. The reason:
+   every field a cell stores is `float32_t`, and `det_*` agrees with glibc to about one float64 ulp (measured worst
+   2.2e-16, atan2 8.9e-16), so on every pinned cell the float32 rounding lands on the same value. So there was nothing to
+   re-pin and `run_climate_constants` needed no change; the guarantee is now that the bits come from our code, not that
+   they changed. (`run_climate_warning`'s 20 ms timing failed once when run 8-wide with the other climate tests and passed
+   alone: load, not this change.)

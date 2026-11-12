@@ -6,6 +6,7 @@
 #include "climate/index.h"
 #include "climate/sea/index.h"
 #include "climate/sun/index.h"
+#include "math/det/index.h"
 
 #include <math.h>
 
@@ -18,7 +19,7 @@ float32_t climate_air_mirror_sign(float64_t y) {
     /* Into one period first, as latitude does, so a y far out keeps its digits. */
     const float64_t period = CLIMATE_LATITUDE_PERIOD;
     const float64_t near = y - period * floor((y + 0.5f64 * period) / period);
-    return cos(CLIMATE_PI * near / (2.0f64 * CLIMATE_POLE_Y)) < 0.0f64 ? -1.0f32 : 1.0f32;
+    return det_cos(CLIMATE_PI * near / (2.0f64 * CLIMATE_POLE_Y)) < 0.0f64 ? -1.0f32 : 1.0f32;
 }
 
 static float32_t air_sign(float64_t value) {
@@ -89,7 +90,7 @@ float32_t climate_air_turn_deg(float64_t phi_deg, float32_t mirror) {
 
 void climate_air_rotate(const float32_t in[2], float32_t degrees, float32_t out[2]) {
     const float64_t angle = (float64_t)degrees * AIR_DEGREES;
-    const float64_t c = cos(angle), s = sin(angle);
+    const float64_t c = det_cos(angle), s = det_sin(angle);
     const float64_t u = (float64_t)in[0], v = (float64_t)in[1];
     out[0] = (float32_t)(u * c - v * s);
     out[1] = (float32_t)(u * s + v * c);
@@ -161,7 +162,7 @@ uint8_t climate_air_sea_strength(float32_t land_distance, float32_t weight) {
 }
 
 uint8_t climate_air_land_strength(float32_t sea_distance, float32_t weight) {
-    return air_byte(expf(-sea_distance / CLIMATE_CURRENT_LAND_SCALE) * weight);
+    return air_byte((float32_t)det_exp((float64_t)(-sea_distance / CLIMATE_CURRENT_LAND_SCALE)) * weight);
 }
 
 float32_t climate_air_current_c(uint8_t kind) {
@@ -215,14 +216,14 @@ float32_t climate_air_heat_low(float32_t kappa, float32_t t_swing, float32_t lag
     }
     const float64_t phase =
         AIR_TWO_PI * ((float64_t)day - (float64_t)CLIMATE_SUMMER_DAY - (float64_t)lag_days) / CLIMATE_YEAR_DAYS;
-    return (float32_t)((float64_t)CLIMATE_HEAT_LOW_HPA_PER_C * (float64_t)kappa * (float64_t)t_swing * cos(phase));
+    return (float32_t)((float64_t)CLIMATE_HEAT_LOW_HPA_PER_C * (float64_t)kappa * (float64_t)t_swing * det_cos(phase));
 }
 
 float32_t climate_air_sea_temperature(const climate_normals_t *normals, float64_t phi_deg, float32_t current_c,
                                       float32_t day) {
     const float64_t phase = AIR_TWO_PI * ((float64_t)day - (float64_t)CLIMATE_SEA_PEAK_DAY) / CLIMATE_YEAR_DAYS;
     return (float32_t)(climate_normals_t_mean(normals, phi_deg) + (float64_t)current_c +
-                       climate_normals_a_sea(normals, phi_deg) * (float64_t)air_hemisphere(phi_deg) * cos(phase));
+                       climate_normals_a_sea(normals, phi_deg) * (float64_t)air_hemisphere(phi_deg) * det_cos(phase));
 }
 
 /* ---- One tile ------------------------------------------------------------------------------------------------------- */

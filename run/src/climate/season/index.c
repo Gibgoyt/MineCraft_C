@@ -8,6 +8,7 @@
 #include "climate/heat/index.h"
 #include "climate/index.h"
 #include "climate/sea/index.h"
+#include "math/det/index.h"
 
 #include <math.h>
 #include <string.h>
@@ -159,6 +160,44 @@ uint8_t climate_season_classify(float32_t t_mean_ground, float32_t t_max_month, 
     return t_max_month >= CLIMATE_CONTINENTAL_MAX_C ? CLIMATE_CLASS_CONTINENTAL : CLIMATE_CLASS_BOREAL;
 }
 
+/* cos and sin of month m's centre angle, 15 + 30 m degrees, and of twice it, 30 + 60 m: exact values, so no month's rain leans
+ * on how a libm rounds (plan 006 phase 02). Before, cosf and sinf of the same float32_t angles. */
+#define SEASON_COS_15 0.96592582628906828675f32
+#define SEASON_SIN_15 0.25881904510252076235f32
+#define SEASON_HALF_ROOT_2 0.70710678118654752440f32
+#define SEASON_HALF_ROOT_3 0.86602540378443864676f32
+static const float32_t SEASON_MONTH_COS[CLIMATE_MONTHS] = {
+    SEASON_COS_15,  SEASON_HALF_ROOT_2,  SEASON_SIN_15,  -SEASON_SIN_15, -SEASON_HALF_ROOT_2, -SEASON_COS_15,
+    -SEASON_COS_15, -SEASON_HALF_ROOT_2, -SEASON_SIN_15, SEASON_SIN_15,  SEASON_HALF_ROOT_2,  SEASON_COS_15,
+};
+static const float32_t SEASON_MONTH_SIN[CLIMATE_MONTHS] = {
+    SEASON_SIN_15,  SEASON_HALF_ROOT_2,  SEASON_COS_15,  SEASON_COS_15,  SEASON_HALF_ROOT_2,  SEASON_SIN_15,
+    -SEASON_SIN_15, -SEASON_HALF_ROOT_2, -SEASON_COS_15, -SEASON_COS_15, -SEASON_HALF_ROOT_2, -SEASON_SIN_15,
+};
+static const float32_t SEASON_MONTH_COS2[CLIMATE_MONTHS] = {
+    SEASON_HALF_ROOT_3, 0.0f32, -SEASON_HALF_ROOT_3, -SEASON_HALF_ROOT_3, 0.0f32, SEASON_HALF_ROOT_3,
+    SEASON_HALF_ROOT_3, 0.0f32, -SEASON_HALF_ROOT_3, -SEASON_HALF_ROOT_3, 0.0f32, SEASON_HALF_ROOT_3,
+};
+static const float32_t SEASON_MONTH_SIN2[CLIMATE_MONTHS] = {
+    0.5f32, 1.0f32, 0.5f32, -0.5f32, -1.0f32, -0.5f32, 0.5f32, 1.0f32, 0.5f32, -0.5f32, -1.0f32, -0.5f32,
+};
+
+float32_t climate_season_month_rain_mm(const float32_t rain_mm_week[CLIMATE_RAIN_COEFFICIENTS], uint32_t m) {
+    const float32_t *const p = rain_mm_week;
+    const float32_t weeks_a_month = CLIMATE_DAYS_A_YEAR / (float32_t)CLIMATE_MONTHS / CLIMATE_DAYS_A_WEEK;
+    const float32_t week = p[0] + CLIMATE_MONTH_WAVE1 * (p[1] * SEASON_MONTH_COS[m] + p[2] * SEASON_MONTH_SIN[m]) +
+                           CLIMATE_MONTH_WAVE2 * (p[3] * SEASON_MONTH_COS2[m] + p[4] * SEASON_MONTH_SIN2[m]);
+    return fmaxf(0.0f32, week) * weeks_a_month;
+}
+
+float32_t climate_season_driest_month_mm(const float32_t rain_mm_week[CLIMATE_RAIN_COEFFICIENTS]) {
+    float32_t driest = CLIMATE_SEASON_DRIEST_START_MM;
+    for (uint32_t m = 0u; m < CLIMATE_MONTHS; m++) {
+        driest = fminf(driest, climate_season_month_rain_mm(rain_mm_week, m));
+    }
+    return driest;
+}
+
 void climate_season_months(const climate_cell_t *cell, float32_t z, bool land, climate_season_months_t *out) {
     memset(out, 0, sizeof(*out));
     const float32_t mean = climate_heat_base(cell->t_mean, z, land);
@@ -169,20 +208,16 @@ void climate_season_months(const climate_cell_t *cell, float32_t z, bool land, c
     out->t_min_month_c = mean - swing;
     const float32_t *const p = cell->rain_mm_week;
     out->rain_mm_year = fmaxf(0.0f32, p[0]) * CLIMATE_DAYS_A_YEAR / CLIMATE_DAYS_A_WEEK;
-    const float32_t weeks_a_month = CLIMATE_DAYS_A_YEAR / (float32_t)CLIMATE_MONTHS / CLIMATE_DAYS_A_WEEK;
     const float32_t hemisphere = cell->lat_deg < 0.0f32 ? -1.0f32 : 1.0f32;
     float32_t driest = CLIMATE_SEASON_DRIEST_START_MM, driest_summer = CLIMATE_SEASON_DRIEST_START_MM,
               wettest_winter = 0.0f32;
     for (uint32_t m = 0u; m < CLIMATE_MONTHS; m++) {
         const float32_t centre = SEASON_YEAR_DAYS * ((float32_t)m + 0.5f32) / (float32_t)CLIMATE_MONTHS;
-        const float32_t theta = SEASON_TWO_PI * centre / SEASON_YEAR_DAYS;
-        const float32_t week = p[0] + CLIMATE_MONTH_WAVE1 * (p[1] * cosf(theta) + p[2] * sinf(theta)) +
-                               CLIMATE_MONTH_WAVE2 * (p[3] * cosf(2.0f32 * theta) + p[4] * sinf(2.0f32 * theta));
-        const float32_t month = fmaxf(0.0f32, week) * weeks_a_month;
+        const float32_t month = climate_season_month_rain_mm(p, m);
         out->rain_mm[m] = month;
         driest = fminf(driest, month);
-        const bool summer =
-            hemisphere * cosf(SEASON_TWO_PI * (centre - CLIMATE_SOLSTICE_DAY) / SEASON_YEAR_DAYS) > 0.0f32;
+        const float32_t summer_phase = SEASON_TWO_PI * (centre - CLIMATE_SOLSTICE_DAY) / SEASON_YEAR_DAYS;
+        const bool summer = hemisphere * (float32_t)det_cos((float64_t)summer_phase) > 0.0f32;
         if (summer) {
             driest_summer = fminf(driest_summer, month);
         } else {

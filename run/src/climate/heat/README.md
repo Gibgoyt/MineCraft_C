@@ -15,4 +15,4 @@
 Worked examples with the spline knots (the phase 05 file): an equator beach 25.914 to 28.014 °C all year; a 45° N peak 1000 high, 1200 blocks inland, -10.50 °C on day 15 and 8.47 on day 196, warmest on day 204; land 150 below sea level at 28° N, 34.63 °C on day 196, 40.35 in the afternoon.
 
 **May be called by:** its parent `run/src/climate/` (the tile job and `climate_normals_at`), `season/` and the layers through the Owner.
-**Depends on:** climate/cell (the cell struct), climate/normals (the knots), climate/air (the swing, the lag and the current's °C), `types`, libm.
+**Depends on:** climate/cell (the cell struct), climate/normals (the knots), climate/air (the swing, the lag and the current's °C), `types`, `math/det` (the wave's cosine since plan 006 phase 02, as the snow balance reads it), libm for the daily range's e^x, which decides no block.

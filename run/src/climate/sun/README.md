@@ -21,6 +21,6 @@
 - `climate_sun_height_of_clock`: only `direction[2]`, made by the same code, so the same bits.
 
 **May be called by:** `main`, `game`, `mob`, `player`, and later climate parts. Not `render`: the game hands it the direction as three floats through `render_frame_sun_set`.
-**Depends on:** `run/src/climate/` (latitude), `run/src/calendar/` (`calendar_year_position`), `types`, glibc's libm.
+**Depends on:** `run/src/climate/` (latitude), `run/src/calendar/` (`calendar_year_position`), `types`, `math/det` (the declination's sine since plan 006 phase 02: the wind latitude reads it), glibc's libm for the rest, which only the sky reads.
 
 On the equator at an equinox (`phi = 0`, `delta = 0`) `s_z = cos(H)`, which is the quantity the bed and mob rules read before this phase, so there they answer as they always did. `render_day_fill`'s fixed sun is this sun at `phi = 0.35` rad (20.05 degrees north) on an equinox.

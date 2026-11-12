@@ -4,6 +4,7 @@
 
 #include "climate/index.h"
 #include "climate/sea/index.h"
+#include "math/det/index.h"
 
 #include <math.h>
 #include <string.h>
@@ -29,7 +30,8 @@ float32_t climate_cell_distance_blocks(uint32_t distance2) {
 }
 
 float32_t climate_cell_kappa(float32_t sea_distance) {
-    return 1.0f32 - expf(-sea_distance / CLIMATE_KAPPA_SCALE);
+    /* det_exp since plan 006 phase 02: kappa reaches the swing, the wind and the rain, which decide blocks. */
+    return 1.0f32 - (float32_t)det_exp((float64_t)(-sea_distance / CLIMATE_KAPPA_SCALE));
 }
 
 /* From cells to blocks: the coast is taken as half a cell in from the marked cell's centre, and the distance capped. */

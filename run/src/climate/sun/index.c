@@ -3,6 +3,7 @@
 #include "climate/sun/index.h"
 
 #include "climate/index.h"
+#include "math/det/index.h"
 
 #include <math.h>
 
@@ -16,7 +17,7 @@ static float64_t climate_sun_degrees(float64_t radians) {
 
 float64_t climate_sun_declination_deg(float64_t day_of_year) {
     return CLIMATE_TILT_DEG *
-           sin(2.0f64 * CLIMATE_PI * (day_of_year - CLIMATE_SUN_EQUINOX_DAY) / (float64_t)CALENDAR_DAYS_PER_YEAR);
+           det_sin(2.0f64 * CLIMATE_PI * (day_of_year - CLIMATE_SUN_EQUINOX_DAY) / (float64_t)CALENDAR_DAYS_PER_YEAR);
 }
 
 float64_t climate_sun_sunset_hour_angle(float64_t latitude_deg, float64_t declination_deg) {

@@ -16,4 +16,4 @@
 A pure yearly wave comes back exactly (up to rounding). A step-shaped cycle, such as a wind that switches belts through the year, is smoothed: the cost the master plan chose (the phase 04 file, "The wind is not a pure wave").
 
 **May be called by:** the climate's parts that store yearly cycles (`air/`, and phase 05's), its parent `run/src/climate/` to read them, and `run/src/climate/layer/`.
-**Depends on:** `types`, libm.
+**Depends on:** `types`, `math/det` (the waves' cosines and sines since plan 006 phase 02, and the wettest day's table is `det_cos`/`det_sin`'s bits), libm for `fmaxf`.
