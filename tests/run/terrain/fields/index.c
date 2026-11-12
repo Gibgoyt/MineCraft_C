@@ -257,9 +257,10 @@ TEST(raw_noise_measures_what_the_limits_were_chosen_for) {
         xs[i] = (float64_t)(-half + (int32_t)(i % FIELDS_SPREAD_SIDE) * FIELDS_SPREAD_STEP);
         ys[i] = (float64_t)(-half + (int32_t)(i / FIELDS_SPREAD_SIDE) * FIELDS_SPREAD_STEP);
     }
-    static const float64_t limits[TERRAIN_FIELDS_NOISE_FIELDS - 2u] = {0.259f64, 0.31f64, 0.35f64, 0.35f64, 0.35f64};
+    static const float64_t limits[TERRAIN_FIELDS_NOISE_FIELDS - 2u] = {0.259f64, 0.31f64, 0.35f64, 0.35f64,
+                                                                       0.35f64,  0.35f64, 0.35f64};
     static const char *const names[TERRAIN_FIELDS_NOISE_FIELDS] = {
-        "continentalness", "erosion", "temperature", "humidity", "weirdness", "warp_x", "warp_y",
+        "continentalness", "erosion", "temperature", "humidity", "weirdness", "variety", "wetness", "warp_x", "warp_y",
     };
     /* Over -1 to 1, fine enough to read a quantile to three places. */
     enum : uint32_t { BINS = 4096u };
@@ -270,8 +271,9 @@ TEST(raw_noise_measures_what_the_limits_were_chosen_for) {
         REQUIRE(terrain_init(&terrain, FIELDS_WORLD + s * 0x51ED270B7Cull));
         const terrain_fields_t *const c = terrain.borrowed_fields;
         const terrain_noise_field_t *const fields[TERRAIN_FIELDS_NOISE_FIELDS] = {
-            c->borrowed_continentalness, c->borrowed_erosion, c->borrowed_temperature, c->borrowed_humidity,
-            c->borrowed_weirdness,       c->borrowed_warp_x,  c->borrowed_warp_y,
+            c->borrowed_continentalness, c->borrowed_erosion,   c->borrowed_temperature,
+            c->borrowed_humidity,        c->borrowed_weirdness, c->borrowed_variety,
+            c->borrowed_wetness,         c->borrowed_warp_x,    c->borrowed_warp_y,
         };
         for (uint32_t f = 0u; f < TERRAIN_FIELDS_NOISE_FIELDS; f++) {
             terrain_noise_sample_points(fields[f], xs, ys, zs, FIELDS_SPREAD_POINTS, raw);
@@ -337,6 +339,74 @@ TEST(fields_are_unrelated_and_ridges_is_folded_weirdness) {
             CHECK(fabs(correlation) < 0.1f64);
         }
     }
+}
+
+/* Plan 006 phase 03: variety and wetness, which biomes read in place of temperature and humidity. They spread as the others
+ * do, are unrelated to each other and to the two they replace, a point is the area's bits, and asking for them moves no
+ * other field's bits. */
+TEST(variety_and_wetness_spread_like_the_others_and_are_their_own) {
+    terrain_t terrain;
+    REQUIRE(terrain_init(&terrain, FIELDS_WORLD));
+    const uint64_t points = FIELDS_SPREAD_POINTS;
+    float32_t *const variety = test_alloc(t, points * sizeof(float32_t));
+    float32_t *const wetness = test_alloc(t, points * sizeof(float32_t));
+    float32_t *const temperature = test_alloc(t, points * sizeof(float32_t));
+    float32_t *const humidity = test_alloc(t, points * sizeof(float32_t));
+    float32_t *const humidity_alone = test_alloc(t, points * sizeof(float32_t));
+    const int32_t half = (int32_t)(FIELDS_SPREAD_SIDE / 2u) * FIELDS_SPREAD_STEP;
+    const terrain_fields_area_t area = fields_square(-half, -half, FIELDS_SPREAD_STEP, FIELDS_SPREAD_SIDE);
+    const terrain_fields_arrays_t arrays = {
+        .temperature = temperature, .humidity = humidity, .variety = variety, .wetness = wetness};
+    terrain_fields_sample_area(terrain.borrowed_fields, &area, &arrays);
+    const terrain_fields_arrays_t alone = {.humidity = humidity_alone};
+    terrain_fields_sample_area(terrain.borrowed_fields, &area, &alone);
+    CHECK(memcmp(humidity, humidity_alone, points * sizeof(float32_t)) == 0);
+
+    const float32_t *const fields[4] = {variety, wetness, temperature, humidity};
+    static const char *const names[4] = {"variety", "wetness", "temperature", "humidity"};
+    float64_t means[4] = {0.0f64};
+    float64_t squares[4] = {0.0f64};
+    static const float32_t cuts[] = {-0.5f32, 0.0f32, 0.5f32};
+    for (uint32_t f = 0u; f < 4u; f++) {
+        uint64_t below[3] = {0u};
+        for (uint64_t i = 0u; i < points; i++) {
+            means[f] += (float64_t)fields[f][i];
+            for (uint32_t c = 0u; c < 3u; c++) {
+                below[c] += fields[f][i] < cuts[c] ? 1u : 0u;
+            }
+            CHECK(fields[f][i] >= -1.0f32 && fields[f][i] <= 1.0f32);
+        }
+        means[f] /= (float64_t)points;
+        for (uint32_t c = 0u; c < 3u && f < 2u; c++) {
+            const float64_t share = (float64_t)below[c] / (float64_t)points;
+            printf("%s below %.2f: %.3f\n", names[f], (libc_double_t)cuts[c], (libc_double_t)share);
+            CHECK_NEAR(share, ((float64_t)cuts[c] + 1.0f64) / 2.0f64, 0.04f64);
+        }
+        for (uint64_t i = 0u; i < points; i++) {
+            const float64_t gap = (float64_t)fields[f][i] - means[f];
+            squares[f] += gap * gap;
+        }
+    }
+    for (uint32_t a = 0u; a < 2u; a++) {
+        for (uint32_t b = a + 1u; b < 4u; b++) {
+            float64_t both = 0.0f64;
+            for (uint64_t i = 0u; i < points; i++) {
+                both += ((float64_t)fields[a][i] - means[a]) * ((float64_t)fields[b][i] - means[b]);
+            }
+            const float64_t correlation = both / sqrt(squares[a] * squares[b]);
+            printf("%s and %s: %.3f\n", names[a], names[b], (libc_double_t)correlation);
+            CHECK(fabs(correlation) < 0.1f64);
+        }
+    }
+    for (uint32_t i = 0u; i < 64u; i++) {
+        const uint64_t at = (uint64_t)i * 4099u % points;
+        terrain_fields_point_t point;
+        terrain_fields_at(terrain.borrowed_fields, area.origin_x + (int32_t)(at % FIELDS_SPREAD_SIDE) * area.step_x,
+                          area.origin_y + (int32_t)(at / FIELDS_SPREAD_SIDE) * area.step_y, &point);
+        CHECK_EQ_U64(fields_bits_of(point.variety), fields_bits_of(variety[at]));
+        CHECK_EQ_U64(fields_bits_of(point.wetness), fields_bits_of(wetness[at]));
+    }
+    terrain_deinit(&terrain);
 }
 
 /* No seam at a batch's end, and no jump anywhere: a slope this steep at one column is a cliff in the world. */
@@ -744,12 +814,14 @@ TEST(init_and_deinit_are_a_pair) {
     CHECK_STR_EQ(fields->borrowed_weirdness->borrowed_name, "climate/weirdness");
     CHECK_STR_EQ(fields->borrowed_warp_x->borrowed_name, "climate/warp_x");
     CHECK_STR_EQ(fields->borrowed_warp_y->borrowed_name, "climate/warp_y");
+    CHECK_STR_EQ(fields->borrowed_variety->borrowed_name, "climate/variety");
+    CHECK_STR_EQ(fields->borrowed_wetness->borrowed_name, "climate/wetness");
 
     /* Every one of them is 2D: its frequency on z is 0, so there is no height for a column's climate to depend on. */
     const terrain_noise_field_t *const noises[] = {
         fields->borrowed_continentalness, fields->borrowed_erosion,   fields->borrowed_temperature,
         fields->borrowed_humidity,        fields->borrowed_weirdness, fields->borrowed_warp_x,
-        fields->borrowed_warp_y,
+        fields->borrowed_warp_y,          fields->borrowed_variety,   fields->borrowed_wetness,
     };
     for (uint32_t f = 0u; f < TERRAIN_FIELDS_NOISE_FIELDS; f++) {
         for (uint32_t o = 0u; o < noises[f]->octave_count; o++) {

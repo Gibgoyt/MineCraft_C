@@ -469,7 +469,7 @@ static void bio_search(test_context_t *t, const terrain_t *terrain, bio_found_t 
             .count_x = BIO_SEARCH_SIDE,
             .count_y = 1u,
         };
-        terrain_biome_columns_area(terrain->borrowed_biome, &area, columns);
+        terrain_biome_columns_area(terrain->borrowed_biome, nullptr, &area, columns);
         for (uint32_t ix = 0u; ix < BIO_SEARCH_SIDE; ix++) {
             const terrain_biome_column_t *const column = &columns[ix];
             const int32_t x = area.origin_x + (int32_t)(ix * BIO_SEARCH_STEP);
@@ -587,7 +587,7 @@ TEST(the_biomes_follow_the_terrain) {
                 .count_x = BIO_SEARCH_SIDE,
                 .count_y = 1u,
             };
-            terrain_biome_columns_area(terrain.borrowed_biome, &area, columns);
+            terrain_biome_columns_area(terrain.borrowed_biome, nullptr, &area, columns);
             for (uint32_t ix = 0u; ix < BIO_SEARCH_SIDE; ix++) {
                 biomes[ix + BIO_SEARCH_SIDE * iy] = columns[ix].biome;
                 grounds[ix + BIO_SEARCH_SIDE * iy] = columns[ix].ground;
@@ -735,7 +735,7 @@ TEST(columns_do_not_depend_on_the_area_asked_for) {
     terrain_biome_column_t *const all = test_alloc(t, SIDE * SIDE * sizeof(terrain_biome_column_t));
     const terrain_fields_area_t area = {
         .origin_x = -19, .origin_y = 1003, .step_x = 1, .step_y = 1, .count_x = SIDE, .count_y = SIDE};
-    terrain_biome_columns_area(terrain.borrowed_biome, &area, all);
+    terrain_biome_columns_area(terrain.borrowed_biome, nullptr, &area, all);
     terrain_climate_sample_t climate;
     terrain_climate_fallback(BIO_WORLD, area.origin_x, area.origin_y, &climate);
     for (uint32_t iy = 0u; iy < SIDE; iy += 5u) {
@@ -751,7 +751,7 @@ TEST(columns_do_not_depend_on_the_area_asked_for) {
     terrain_biome_column_t wide[WIDE * WIDE];
     const terrain_fields_area_t apart = {
         .origin_x = -19, .origin_y = 1003, .step_x = 4, .step_y = 3, .count_x = WIDE, .count_y = WIDE};
-    terrain_biome_columns_area(terrain.borrowed_biome, &apart, wide);
+    terrain_biome_columns_area(terrain.borrowed_biome, nullptr, &apart, wide);
     for (uint32_t iy = 0u; iy < WIDE; iy++) {
         for (uint32_t ix = 0u; ix < WIDE; ix++) {
             CHECK(memcmp(&wide[ix + WIDE * iy], &all[ix * 4u + SIDE * (iy * 3u)], sizeof(wide[0])) == 0);
@@ -968,7 +968,7 @@ static void bio_expected_chunk(test_context_t *t, const terrain_t *terrain, int3
     terrain_biome_column_t *const columns = test_alloc(t, BIO_CHUNK_COLUMNS * sizeof(terrain_biome_column_t));
     const terrain_fields_area_t area = {
         .origin_x = cx, .origin_y = cy, .step_x = 1, .step_y = 1, .count_x = BIO_CHUNK, .count_y = BIO_CHUNK};
-    terrain_biome_columns_area(terrain->borrowed_biome, &area, columns);
+    terrain_biome_columns_area(terrain->borrowed_biome, nullptr, &area, columns);
 
     float32_t depth_noise[BIO_CHUNK_COLUMNS];
     float32_t patch_noise[BIO_CHUNK_COLUMNS];
@@ -1044,7 +1044,7 @@ TEST(the_ground_is_covered_as_the_readme_says_in_every_biome) {
         const int32_t cy = found->at[b].y & ~15;
         const terrain_density_box_t box = bio_tall_box(cx, cy, BIO_CHUNK);
         terrain_hydrology_fill_box(terrain.borrowed_hydrology, &box, got);
-        terrain_surface_fill_box(terrain.borrowed_surface, &box, got);
+        terrain_surface_fill_box(terrain.borrowed_surface, nullptr, &box, got);
         const uint64_t mark = t->arena_used;
         bio_expected_chunk(t, &terrain, cx, cy, expected);
         t->arena_used = mark;
@@ -1083,10 +1083,10 @@ TEST(each_biome_shows_its_own_top_in_a_real_world) {
             const int32_t cy = (found->at[b].y & ~15) + (step / 5 - 2) * (int32_t)BIO_CHUNK;
             const terrain_density_box_t box = bio_tall_box(cx, cy, BIO_CHUNK);
             terrain_hydrology_fill_box(terrain.borrowed_hydrology, &box, blocks);
-            terrain_surface_fill_box(terrain.borrowed_surface, &box, blocks);
+            terrain_surface_fill_box(terrain.borrowed_surface, nullptr, &box, blocks);
             const terrain_fields_area_t area = {
                 .origin_x = cx, .origin_y = cy, .step_x = 1, .step_y = 1, .count_x = BIO_CHUNK, .count_y = BIO_CHUNK};
-            terrain_biome_columns_area(terrain.borrowed_biome, &area, columns);
+            terrain_biome_columns_area(terrain.borrowed_biome, nullptr, &area, columns);
             for (uint32_t i = 0u; i < BIO_CHUNK_COLUMNS; i++) {
                 if (columns[i].biome != b) {
                     continue;
@@ -1145,7 +1145,7 @@ TEST(any_split_of_the_work_gives_the_same_bytes) {
         const int32_t y0 = (found->at[b].y & ~15) - 4;
         const terrain_density_box_t box = bio_tall_box(x0, y0, ACROSS);
         terrain_hydrology_fill_box(terrain.borrowed_hydrology, &box, whole);
-        terrain_surface_fill_box(terrain.borrowed_surface, &box, whole);
+        terrain_surface_fill_box(terrain.borrowed_surface, nullptr, &box, whole);
 
         /* Cuts round the ground, one layer apart at first, and a far one under and over. */
         const int32_t ground = found->at[b].z;
@@ -1180,7 +1180,7 @@ TEST(any_split_of_the_work_gives_the_same_bytes) {
                         .count_z = zs[kz + 1u] - zs[kz],
                     };
                     terrain_hydrology_fill_box(terrain.borrowed_hydrology, &part, piece);
-                    terrain_surface_fill_box(terrain.borrowed_surface, &part, piece);
+                    terrain_surface_fill_box(terrain.borrowed_surface, nullptr, &part, piece);
                     for (uint32_t iz = 0u; iz < part.count_z; iz++) {
                         for (uint32_t iy = 0u; iy < part.count_y; iy++) {
                             memcpy(&parts[XS[kx] + ACROSS * (YS[ky] + iy) + (uint64_t)ACROSS * ACROSS * (zs[kz] + iz)],
@@ -1204,7 +1204,7 @@ TEST(any_split_of_the_work_gives_the_same_bytes) {
 /* What the stages come to, in the README's order. */
 static void bio_chain(const terrain_t *terrain, const terrain_density_box_t *box, uint8_t *opened, uint16_t *blocks) {
     terrain_hydrology_fill_box(terrain->borrowed_hydrology, box, blocks);
-    terrain_surface_fill_box(terrain->borrowed_surface, box, blocks);
+    terrain_surface_fill_box(terrain->borrowed_surface, nullptr, box, blocks);
     terrain_cave_mask_box(terrain->borrowed_cave, box, opened);
     const uint64_t voxels = terrain_density_box_voxels(box);
     /* Only what a cave truly cuts takes its fill from the flood. */
@@ -1213,7 +1213,7 @@ static void bio_chain(const terrain_t *terrain, const terrain_density_box_t *box
     }
     (void)terrain_cave_carve_box(terrain->borrowed_cave, box, blocks);
     terrain_hydrology_flood_box(terrain->borrowed_hydrology, box, opened, blocks);
-    terrain_surface_line_caves_box(terrain->borrowed_surface, box, blocks);
+    terrain_surface_line_caves_box(terrain->borrowed_surface, nullptr, box, blocks);
     terrain_ore_fill_box(terrain->borrowed_ore, box, blocks);
 }
 
@@ -1261,7 +1261,7 @@ TEST(the_caves_of_each_underground_biome_are_lined_and_nothing_else_is) {
             }
         }
         memcpy(after, before, VOXELS * sizeof(uint16_t));
-        terrain_surface_line_caves_box(terrain.borrowed_surface, &box, after);
+        terrain_surface_line_caves_box(terrain.borrowed_surface, nullptr, &box, after);
 
         const terrain_fields_area_t area = {.origin_x = box.origin_x,
                                             .origin_y = box.origin_y,
@@ -1269,7 +1269,7 @@ TEST(the_caves_of_each_underground_biome_are_lined_and_nothing_else_is) {
                                             .step_y = 1,
                                             .count_x = ACROSS,
                                             .count_y = ACROSS};
-        terrain_biome_columns_area(terrain.borrowed_biome, &area, columns);
+        terrain_biome_columns_area(terrain.borrowed_biome, nullptr, &area, columns);
         float32_t *const patch = test_alloc(t, COLUMNS * sizeof(float32_t));
         const terrain_noise_grid_t grid = {
             .origin_x = box.origin_x,
@@ -1330,7 +1330,7 @@ TEST(the_caves_of_each_underground_biome_are_lined_and_nothing_else_is) {
                                part.count_x * sizeof(uint16_t));
                     }
                 }
-                terrain_surface_line_caves_box(terrain.borrowed_surface, &part, piece);
+                terrain_surface_line_caves_box(terrain.borrowed_surface, nullptr, &part, piece);
                 for (uint32_t iz = 0u; iz < part.count_z; iz++) {
                     for (uint32_t iy = 0u; iy < ACROSS; iy++) {
                         memcpy(&split[XS[kx] + ACROSS * iy + (uint64_t)COLUMNS * (ZS[kz] + iz)],
@@ -1343,7 +1343,7 @@ TEST(the_caves_of_each_underground_biome_are_lined_and_nothing_else_is) {
         CHECK(memcmp(split, after, VOXELS * sizeof(uint16_t)) == 0);
         /* From a mask of the box already asked for, the same blocks, as generating a world takes it. */
         memcpy(split, before, VOXELS * sizeof(uint16_t));
-        terrain_surface_line_caves_with_mask(terrain.borrowed_surface, &box, mask + (uint64_t)COLUMNS, split);
+        terrain_surface_line_caves_with_mask(terrain.borrowed_surface, nullptr, &box, mask + (uint64_t)COLUMNS, split);
         CHECK(memcmp(split, after, VOXELS * sizeof(uint16_t)) == 0);
         printf("%s: %" PRIu64 " floors, %" PRIu64 " ceilings\n", def->name, floors, ceilings);
         CHECK(floors != 0u);
@@ -1367,7 +1367,7 @@ TEST(the_chain_of_stages_keeps_what_each_promised) {
         const terrain_density_box_t box = bio_tall_box(cx, cy, BIO_CHUNK);
         terrain_hydrology_fill_box(terrain.borrowed_hydrology, &box, plain);
         memcpy(covered, plain, BIO_CHUNK_VOXELS * sizeof(uint16_t));
-        terrain_surface_fill_box(terrain.borrowed_surface, &box, covered);
+        terrain_surface_fill_box(terrain.borrowed_surface, nullptr, &box, covered);
         bio_chain(&terrain, &box, opened, chain);
         for (uint32_t i = 0u; i < BIO_CHUNK_VOXELS; i++) {
             const uint16_t was = plain[i];
@@ -1522,7 +1522,7 @@ TEST(the_columns_of_a_wide_map_are_pinned) {
     terrain_biome_column_t *const columns = test_alloc(t, SIDE * SIDE * sizeof(terrain_biome_column_t));
     const terrain_fields_area_t area = {
         .origin_x = -32768, .origin_y = -32768, .step_x = 256, .step_y = 256, .count_x = SIDE, .count_y = SIDE};
-    terrain_biome_columns_area(terrain.borrowed_biome, &area, columns);
+    terrain_biome_columns_area(terrain.borrowed_biome, nullptr, &area, columns);
     const uint64_t digest = bio_digest(0xCBF29CE484222325ull, columns, SIDE * SIDE * sizeof(terrain_biome_column_t));
     printf("columns digest 0x%016" PRIX64 "\n", digest);
     CHECK_EQ_U64(digest, BIO_COLUMNS_PIN);
@@ -1544,18 +1544,18 @@ TEST(sampling_stays_inside_its_output_and_allocates_nothing) {
     terrain_hydrology_fill_box(terrain.borrowed_hydrology, &box, blocks);
     heap_counters_t before;
     heap_counters_read(&before);
-    terrain_surface_fill_box(terrain.borrowed_surface, &box, blocks);
-    terrain_surface_line_caves_box(terrain.borrowed_surface, &box, blocks);
+    terrain_surface_fill_box(terrain.borrowed_surface, nullptr, &box, blocks);
+    terrain_surface_line_caves_box(terrain.borrowed_surface, nullptr, &box, blocks);
     terrain_climate_sample_t climate;
     terrain_climate_fallback(BIO_WORLD, 1, 1, &climate);
     (void)terrain_biome_at(terrain.borrowed_biome, &climate, 1, 1, 0);
     /* Empty boxes do nothing at all. */
     const terrain_density_box_t empty = {.origin_x = 0, .count_x = 0u, .count_y = 3u, .count_z = 3u};
-    terrain_surface_fill_box(terrain.borrowed_surface, &empty, blocks + VOXELS);
-    terrain_surface_line_caves_box(terrain.borrowed_surface, &empty, blocks + VOXELS);
+    terrain_surface_fill_box(terrain.borrowed_surface, nullptr, &empty, blocks + VOXELS);
+    terrain_surface_line_caves_box(terrain.borrowed_surface, nullptr, &empty, blocks + VOXELS);
     const terrain_density_box_t flat = {.origin_x = 0, .count_x = 3u, .count_y = 3u, .count_z = 0u};
-    terrain_surface_fill_box(terrain.borrowed_surface, &flat, blocks + VOXELS);
-    terrain_surface_line_caves_box(terrain.borrowed_surface, &flat, blocks + VOXELS);
+    terrain_surface_fill_box(terrain.borrowed_surface, nullptr, &flat, blocks + VOXELS);
+    terrain_surface_line_caves_box(terrain.borrowed_surface, nullptr, &flat, blocks + VOXELS);
     heap_counters_t after;
     heap_counters_read(&after);
     CHECK_EQ_U64(after.live_bytes, before.live_bytes);
@@ -1580,7 +1580,7 @@ TEST(far_from_the_ground_nothing_changes) {
             .origin_x = 64, .origin_y = -128, .origin_z = LEVELS[i], .count_x = SIDE, .count_y = SIDE, .count_z = TALL};
         terrain_hydrology_fill_box(terrain.borrowed_hydrology, &box, before);
         memcpy(after, before, VOXELS * sizeof(uint16_t));
-        terrain_surface_fill_box(terrain.borrowed_surface, &box, after);
+        terrain_surface_fill_box(terrain.borrowed_surface, nullptr, &box, after);
         CHECK(memcmp(before, after, VOXELS * sizeof(uint16_t)) == 0);
     }
     terrain_deinit(&terrain);

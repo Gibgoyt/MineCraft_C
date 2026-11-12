@@ -112,7 +112,7 @@ static bool bench_find(const terrain_t *terrain, biome_id_t biome, int32_t *out_
                 .count_x = 256u,
                 .count_y = 1u,
             };
-            terrain_biome_columns_area(terrain->borrowed_biome, &area, columns);
+            terrain_biome_columns_area(terrain->borrowed_biome, nullptr, &area, columns);
             for (uint32_t i = 0u; i < 256u; i++) {
                 if (columns[i].biome == (uint8_t)biome) {
                     *out_x = area.origin_x + (int32_t)i * area.step_x;

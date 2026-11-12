@@ -1,6 +1,6 @@
 # run/src/terrain/fields
 
-**Purpose:** six numbers for any column of the world, from which height (10.3) and biome (10.6) are chosen: continentalness, erosion, ridges, temperature, humidity and weirdness.
+**Purpose:** numbers for any column of the world, from which height (10.3) and biome (10.6) are chosen: continentalness, erosion, ridges, temperature, humidity and weirdness, and since plan 006 phase 03 variety and wetness, which the biome reads in place of temperature and humidity.
 **Tier:** Arena: its one struct comes from an `arena_t *` its parent gives it. Sampling allocates nothing.
 **Owns:** nothing. Its struct is in the arena `terrain_init` lends, and its fields are in the bank.
 **Lifetime:** World: one set of fields is made for each seed.
@@ -27,6 +27,13 @@ All six are from -1 to 1. A climate belongs to a column: it has no height in it,
 | `humidity` | Arid to soaked | 2048 | 4 |
 | `weirdness` | Picks the odd variant of a biome: the sign and size are for the biome table | 512 | 4 |
 | `ridges` | Valley floor to ridge top: `1 - |3 * |weirdness| - 2||` | From weirdness | None of its own |
+| `variety` | Plan 006 phase 03: picks among one climate family's biomes, such as forest against birch forest | 2048 | 4 |
+| `wetness` | The same: the noise half of a biome's wetness, which `terrain/biome` biases by the column's yearly rain | 2048 | 4 |
+
+**Temperature and humidity are read by no biome since plan 006 phase 03.** A biome's family comes from the climate
+(`terrain/climate_sample`), and inside a family `variety` and `wetness` choose. The two old fields stay, with their shapes and
+bits, for anything else that reads them; `variety` and `wetness` have humidity's shape, each seeded by its own name, so
+adding them moved no other field's bits.
 
 **Why continentalness is weighted.** Halving each octave leaves the largest so far ahead that a coast is one smooth blob. With these weights the octaves of 1536 and 768 blocks count the most, then 3072 and 384, so seas have bays and islands and no one scale rules. A heavier first octave makes bigger seas, but over a 16 km map the sea's share then wanders from seed to seed: at a cell of 4096 and a weight of 1 it came to 28.6 to 42.0% on 3 seeds, and at 3072 it took a weight of 0.3, not 0.5, to hold 8 seeds inside the target of 25 to 30%. Land is joined up, whatever the scale, because the sea is well under half of the world: a line of a smooth field that holds under half of it cannot run on forever, so every sea ends. `run/src/terrain/density/README.md` says where the coast is.
 
@@ -77,6 +84,7 @@ Each limit was read off the measured raw values at each share: it is about twice
 | `temperature` | 0.35 | 0.172 |
 | `humidity` | 0.35 | 0.173 |
 | `weirdness` | 0.35 | 0.170 |
+| `variety`, `wetness` | 0.35 | humidity's shape: `raw_noise_measures_what_the_limits_were_chosen_for` holds them too |
 
 A shape, a limit or the warp changing changes every world, and `tests/run/terrain/fields/` pins them.
 

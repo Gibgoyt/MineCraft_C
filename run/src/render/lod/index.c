@@ -208,13 +208,20 @@ int32_t render_lod_cells_from_column(const uint16_t *column, uint32_t shift, uin
 }
 
 /* The column's climate sample in scratch, filled at its first sample: a far column is 16 voxels of 1 << shift blocks a
- * side, and the sample is centred on its middle. */
+ * side, and the sample is centred on its middle. Plan 006 phase 03: a coarse column is wider than a sample, so a line whose
+ * column, and the chunks round it that features read, the sample does not hold fills it again round itself; every sample
+ * that holds a column gives it the same climate, so the bytes do not depend on the order of the lines. */
 static const terrain_climate_sample_t *render_lod_sample_climate(const terrain_t *terrain, const climate_t *climate,
                                                                  int32_t x, int32_t y, uint32_t shift,
                                                                  uint8_t *scratch) {
     terrain_climate_sample_t *const sample =
         (terrain_climate_sample_t *)(void *)(scratch + RENDER_LOD_SAMPLE_FEATURE_BYTES);
     uint8_t *const filled = scratch + RENDER_LOD_SAMPLE_FEATURE_BYTES + RENDER_LOD_SAMPLE_CLIMATE_BYTES;
+    const int64_t reach = 2 * (int64_t)TERRAIN_FEATURE_CHUNK;
+    if (*filled != 0u && !terrain_climate_sample_holds(sample, (int64_t)x - reach, (int64_t)y - reach,
+                                                       (int64_t)x + reach, (int64_t)y + reach)) {
+        (void)climate_terrain_sample(climate, terrain->seed, (int64_t)x - 8, (int64_t)y - 8, sample);
+    }
     if (*filled == 0u) {
         const int64_t side = (int64_t)COLUMN_SIZE << shift;
         const int64_t column_x = (int64_t)x >= 0 ? (int64_t)x / side : -((-(int64_t)x + side - 1) / side);
@@ -238,10 +245,10 @@ static void render_lod_sample_with(const terrain_t *terrain, const climate_t *cl
         .count_z = RENDER_LOD_HEIGHT_BLOCKS,
     };
     terrain_hydrology_fill_box(terrain->borrowed_hydrology, &box, out);
-    terrain_surface_fill_box(terrain->borrowed_surface, &box, out);
+    terrain_surface_fill_box(terrain->borrowed_surface, sample, &box, out);
     if (shift <= RENDER_LOD_FEATURES_SHIFT_MAX) {
         /* The chunks round a line are the chunks round its neighbours: walked once a column, not once a line. */
-        terrain_feature_fill_box_cached(terrain->borrowed_feature, &box, out,
+        terrain_feature_fill_box_cached(terrain->borrowed_feature, sample, &box, out,
                                         (terrain_feature_cache_t *)(void *)scratch);
     } else {
         render_lod_sample_freeze(terrain, sample, x, y, out);

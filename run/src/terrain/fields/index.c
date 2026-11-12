@@ -41,6 +41,22 @@ static const terrain_noise_shape_t FIELDS_SHAPE_HUMIDITY = {
     .persistence = 0.45f32,
     .octaves = 4u,
 };
+/* Plan 006 phase 03: what picks among one climate family's biomes, in place of temperature and humidity, which no biome reads
+ * since. The shape of humidity, seeded by its own name. */
+static const terrain_noise_shape_t FIELDS_SHAPE_VARIETY = {
+    .frequency_x = 1.0f64 / 2048.0f64,
+    .frequency_y = 1.0f64 / 2048.0f64,
+    .lacunarity = 2.0f32,
+    .persistence = 0.45f32,
+    .octaves = 4u,
+};
+static const terrain_noise_shape_t FIELDS_SHAPE_WETNESS = {
+    .frequency_x = 1.0f64 / 2048.0f64,
+    .frequency_y = 1.0f64 / 2048.0f64,
+    .lacunarity = 2.0f32,
+    .persistence = 0.45f32,
+    .octaves = 4u,
+};
 static const terrain_noise_shape_t FIELDS_SHAPE_WEIRDNESS = {
     .frequency_x = 1.0f64 / 512.0f64,
     .frequency_y = 1.0f64 / 512.0f64,
@@ -68,6 +84,8 @@ static const float64_t FIELDS_LIMIT_EROSION = 0.31f64;
 static const float64_t FIELDS_LIMIT_TEMPERATURE = 0.35f64;
 static const float64_t FIELDS_LIMIT_HUMIDITY = 0.35f64;
 static const float64_t FIELDS_LIMIT_WEIRDNESS = 0.35f64;
+static const float64_t FIELDS_LIMIT_VARIETY = 0.35f64;
+static const float64_t FIELDS_LIMIT_WETNESS = 0.35f64;
 
 /* Blocks a raw warp value of 1 moves a column. Raw values stay well inside 1, so a column moves a few tens of blocks. */
 static const float64_t FIELDS_WARP_BLOCKS = 96.0f64;
@@ -104,7 +122,9 @@ bool terrain_fields_init(terrain_fields_t **out, arena_t *arena, terrain_noise_b
         !terrain_noise_bank_add(bank, "climate/humidity", &FIELDS_SHAPE_HUMIDITY, &fields->borrowed_humidity) ||
         !terrain_noise_bank_add(bank, "climate/weirdness", &FIELDS_SHAPE_WEIRDNESS, &fields->borrowed_weirdness) ||
         !terrain_noise_bank_add(bank, "climate/warp_x", &FIELDS_SHAPE_WARP, &fields->borrowed_warp_x) ||
-        !terrain_noise_bank_add(bank, "climate/warp_y", &FIELDS_SHAPE_WARP, &fields->borrowed_warp_y)) {
+        !terrain_noise_bank_add(bank, "climate/warp_y", &FIELDS_SHAPE_WARP, &fields->borrowed_warp_y) ||
+        !terrain_noise_bank_add(bank, "climate/variety", &FIELDS_SHAPE_VARIETY, &fields->borrowed_variety) ||
+        !terrain_noise_bank_add(bank, "climate/wetness", &FIELDS_SHAPE_WETNESS, &fields->borrowed_wetness)) {
         return false;
     }
     *out = fields;
@@ -172,6 +192,12 @@ static void fields_sample_batch(const terrain_fields_t *fields, const float64_t 
         fields_fill(fields->borrowed_humidity, FIELDS_LIMIT_HUMIDITY, warped_x, warped_y, zs, count,
                     out->humidity + at);
     }
+    if (out->variety != nullptr) {
+        fields_fill(fields->borrowed_variety, FIELDS_LIMIT_VARIETY, warped_x, warped_y, zs, count, out->variety + at);
+    }
+    if (out->wetness != nullptr) {
+        fields_fill(fields->borrowed_wetness, FIELDS_LIMIT_WETNESS, warped_x, warped_y, zs, count, out->wetness + at);
+    }
     if (out->weirdness != nullptr || out->ridges != nullptr) {
         float32_t *const weirdness = out->weirdness != nullptr ? out->weirdness + at : weirdness_held;
         fields_fill(fields->borrowed_weirdness, FIELDS_LIMIT_WEIRDNESS, warped_x, warped_y, zs, count, weirdness);
@@ -234,6 +260,8 @@ void terrain_fields_at(const terrain_fields_t *fields, int32_t x, int32_t y, ter
         .humidity = &out->humidity,
         .weirdness = &out->weirdness,
         .broad = &out->broad,
+        .variety = &out->variety,
+        .wetness = &out->wetness,
     };
     fields_sample_batch(fields, &column_x, &column_y, 1u, &arrays, 0u);
 }

@@ -11,7 +11,7 @@
 
 /* The noise fields one world's climate takes from the bank. */
 enum : uint32_t {
-    TERRAIN_FIELDS_NOISE_FIELDS = 7u,
+    TERRAIN_FIELDS_NOISE_FIELDS = 9u,
 };
 
 /* One world's climate. Nothing changes it after terrain_fields_init, so any number of workers may read it. */
@@ -23,8 +23,10 @@ typedef struct terrain_fields_t {
     const terrain_noise_field_t *borrowed_weirdness;       /* 32: ridges is worked out from this */
     const terrain_noise_field_t *borrowed_warp_x;          /* 40: moves where the other fields are read */
     const terrain_noise_field_t *borrowed_warp_y;          /* 48 */
+    const terrain_noise_field_t *borrowed_variety; /* 56: plan 006 phase 03, for biomes in place of temperature */
+    const terrain_noise_field_t *borrowed_wetness; /* 64: the same, in place of humidity, before the rain's bias */
 } terrain_fields_t;
-static_assert(sizeof(terrain_fields_t) == 56);
+static_assert(sizeof(terrain_fields_t) == 72);
 
 /* Columns whole blocks apart. Filled with x changing fastest: out[ix + count_x * iy] is the column origin + i * step. */
 typedef struct terrain_fields_area_t {
@@ -47,10 +49,12 @@ typedef struct terrain_fields_arrays_t {
     float32_t *humidity;        /* 32 */
     float32_t *weirdness;       /* 40 */
     float32_t *broad;           /* 48: continentalness from its largest octaves alone, so with no bays or capes in it */
+    float32_t *variety;         /* 56: plan 006 phase 03: picks among one climate family's biomes */
+    float32_t *wetness;         /* 64: the same, the noise part of a biome's wetness */
 } terrain_fields_arrays_t;
-static_assert(sizeof(terrain_fields_arrays_t) == 56);
+static_assert(sizeof(terrain_fields_arrays_t) == 72);
 
-/* All six at one column. Every value is from -1 to 1: see the README for what each means and how often it comes up. */
+/* All of them at one column. Every value is from -1 to 1: see the README for what each means and how often it comes up. */
 typedef struct terrain_fields_point_t {
     float32_t continentalness; /* 0 */
     float32_t erosion;         /* 4 */
@@ -59,8 +63,10 @@ typedef struct terrain_fields_point_t {
     float32_t humidity;        /* 16 */
     float32_t weirdness;       /* 20 */
     float32_t broad;           /* 24: continentalness from its largest octaves alone */
+    float32_t variety;         /* 28 */
+    float32_t wetness;         /* 32 */
 } terrain_fields_point_t;
-static_assert(sizeof(terrain_fields_point_t) == 28);
+static_assert(sizeof(terrain_fields_point_t) == 36);
 
 /* Takes the climate from arena and adds its fields to bank, for bank's seed. For use while terrain_init runs. If the bank
  * refuses a field, which has logged why, sets *out to nullptr and returns false. Fields added before that stay in the bank,

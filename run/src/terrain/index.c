@@ -34,7 +34,7 @@ bool terrain_init(terrain_t *terrain, uint64_t seed) {
         return false;
     }
     terrain_ore_init(&terrain->borrowed_ore, &terrain->arena_tables, seed, terrain->borrowed_density);
-    terrain_biome_init(&terrain->borrowed_biome, &terrain->arena_tables, terrain->borrowed_fields,
+    terrain_biome_init(&terrain->borrowed_biome, &terrain->arena_tables, seed, terrain->borrowed_fields,
                        terrain->borrowed_hydrology);
     if (!terrain_surface_init(&terrain->borrowed_surface, &terrain->arena_tables, &terrain->noise_bank, seed,
                               terrain->borrowed_biome, terrain->borrowed_hydrology, terrain->borrowed_cave)) {
@@ -47,23 +47,23 @@ bool terrain_init(terrain_t *terrain, uint64_t seed) {
 }
 
 /* Every stage, on a box that may reach TERRAIN_MADE_TOP and no further. */
-static void terrain_stages_run(const terrain_t *terrain, const terrain_density_box_t *box, uint8_t *opened,
-                               uint16_t *blocks) {
+static void terrain_stages_run(const terrain_t *terrain, const terrain_climate_sample_t *climate,
+                               const terrain_density_box_t *box, uint8_t *opened, uint16_t *blocks) {
     terrain_hydrology_fill_box(terrain->borrowed_hydrology, box, blocks);
-    terrain_surface_fill_box(terrain->borrowed_surface, box, blocks);
+    terrain_surface_fill_box(terrain->borrowed_surface, climate, box, blocks);
     terrain_cave_mask_box(terrain->borrowed_cave, box, opened);
     /* Only what a cave truly cuts takes its fill from the flood. Lining reads what caves wanted, which the mask keeps, so it costs no second look at them. */
     terrain_cave_cut_keeping_wanted(box, opened, blocks);
     terrain_hydrology_flood_box(terrain->borrowed_hydrology, box, opened, blocks);
     /* Features ask what these stages left on a chunk's columns. For the chunk in hand it is here, so it costs no second run of them. */
     terrain_feature_chunk_t own;
-    const bool own_read = terrain_feature_chunk_read_box(terrain->borrowed_feature, box, blocks, &own);
-    terrain_surface_line_caves_with_mask(terrain->borrowed_surface, box, opened, blocks);
+    const bool own_read = terrain_feature_chunk_read_box(terrain->borrowed_feature, climate, box, blocks, &own);
+    terrain_surface_line_caves_with_mask(terrain->borrowed_surface, climate, box, opened, blocks);
     terrain_ore_fill_box(terrain->borrowed_ore, box, blocks);
     if (own_read) {
-        terrain_feature_fill_chunk_box(terrain->borrowed_feature, box, &own, blocks);
+        terrain_feature_fill_chunk_box(terrain->borrowed_feature, climate, box, &own, blocks);
     } else {
-        terrain_feature_fill_box(terrain->borrowed_feature, box, blocks);
+        terrain_feature_fill_box(terrain->borrowed_feature, climate, box, blocks);
     }
 }
 
@@ -74,10 +74,9 @@ static_assert(BLOCK_ID_AIR == 0u);
 void terrain_generate_box(const terrain_t *terrain, const terrain_climate_sample_t *climate,
                           const terrain_density_box_t *box, uint8_t *opened, uint16_t *blocks) {
     ASSERT(climate != nullptr);
-    (void)climate; /* plan 006 phase 02: plumbed, read by no stage until phase 03 */
     const int64_t layers_made = (int64_t)TERRAIN_MADE_TOP - (int64_t)box->origin_z + 1;
     if (layers_made >= (int64_t)box->count_z) {
-        terrain_stages_run(terrain, box, opened, blocks);
+        terrain_stages_run(terrain, climate, box, opened, blocks);
         return;
     }
     const uint64_t layer = (uint64_t)box->count_x * box->count_y;
@@ -85,7 +84,7 @@ void terrain_generate_box(const terrain_t *terrain, const terrain_climate_sample
     if (made > 0u) {
         terrain_density_box_t lower = *box;
         lower.count_z = (uint32_t)made;
-        terrain_stages_run(terrain, &lower, opened, blocks);
+        terrain_stages_run(terrain, climate, &lower, opened, blocks);
     }
     const uint64_t rest = ((uint64_t)box->count_z - made) * layer;
     memset(opened + made * layer, 0, rest);

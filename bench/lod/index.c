@@ -46,9 +46,9 @@ static void bench_lod_sample_whole(const void *borrowed_context, int32_t x, int3
                                        .count_y = 1u,
                                        .count_z = RENDER_LOD_HEIGHT_BLOCKS};
     terrain_hydrology_fill_box(terrain->borrowed_hydrology, &box, out);
-    terrain_surface_fill_box(terrain->borrowed_surface, &box, out);
+    terrain_surface_fill_box(terrain->borrowed_surface, nullptr, &box, out);
     if (shift <= RENDER_LOD_FEATURES_SHIFT_MAX) {
-        terrain_feature_fill_box(terrain->borrowed_feature, &box, out);
+        terrain_feature_fill_box(terrain->borrowed_feature, nullptr, &box, out);
         return;
     }
     /* render_lod_sample_freeze, as it was. */

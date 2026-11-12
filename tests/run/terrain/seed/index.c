@@ -837,13 +837,13 @@ TEST(nothing_is_lost_above_where_terrain_stops_making) {
                                            .count_y = 16u,
                                            .count_z = LAYERS};
         terrain_hydrology_fill_box(terrain.borrowed_hydrology, &box, by_hand);
-        terrain_surface_fill_box(terrain.borrowed_surface, &box, by_hand);
+        terrain_surface_fill_box(terrain.borrowed_surface, nullptr, &box, by_hand);
         terrain_cave_mask_box(terrain.borrowed_cave, &box, opened);
         terrain_cave_cut_with_mask(&box, opened, by_hand);
         terrain_hydrology_flood_box(terrain.borrowed_hydrology, &box, opened, by_hand);
-        terrain_surface_line_caves_box(terrain.borrowed_surface, &box, by_hand);
+        terrain_surface_line_caves_box(terrain.borrowed_surface, nullptr, &box, by_hand);
         terrain_ore_fill_box(terrain.borrowed_ore, &box, by_hand);
-        terrain_feature_fill_box(terrain.borrowed_feature, &box, by_hand);
+        terrain_feature_fill_box(terrain.borrowed_feature, nullptr, &box, by_hand);
         terrain_generate_box_fallback(&terrain, &box, opened, generated);
         CHECK(memcmp(by_hand, generated, (uint64_t)VOXELS * sizeof(uint16_t)) == 0);
         uint32_t top_layer = 0u;

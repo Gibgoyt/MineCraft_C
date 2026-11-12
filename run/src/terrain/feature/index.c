@@ -434,8 +434,8 @@ static void feature_stages(const terrain_feature_t *feature, terrain_surface_til
 
 /* The biome of each column, and from the density's own corners, what z the chunk's ground can be between. */
 [[gnu::noinline]]
-static void feature_chunk_load(const terrain_feature_t *feature, int32_t chunk_x, int32_t chunk_y,
-                               terrain_feature_chunk_t *chunk) {
+static void feature_chunk_load(const terrain_feature_t *feature, const terrain_climate_sample_t *climate,
+                               int32_t chunk_x, int32_t chunk_y, terrain_feature_chunk_t *chunk) {
     terrain_biome_column_t columns[TERRAIN_FEATURE_CHUNK_COLUMNS];
     const terrain_fields_area_t area = {
         .origin_x = chunk_x * (int32_t)TERRAIN_FEATURE_CHUNK,
@@ -445,7 +445,7 @@ static void feature_chunk_load(const terrain_feature_t *feature, int32_t chunk_x
         .count_x = TERRAIN_FEATURE_CHUNK,
         .count_y = TERRAIN_FEATURE_CHUNK,
     };
-    terrain_biome_columns_area(feature->borrowed_biome, &area, columns);
+    terrain_biome_columns_area(feature->borrowed_biome, climate, &area, columns);
 
     terrain_hydrology_column_t lattice[FEATURE_LATTICE];
     const terrain_fields_area_t around = {
@@ -686,8 +686,8 @@ static bool feature_lake_holds(const terrain_feature_t *feature, terrain_surface
 /* What the columns say first, as it costs nothing: the lake's level is the lowest of its shore, so no column of the shore can
  * let it out, and a lake needs dry land that is all near that height. A chunk whose tops came from its box has read no tile, so
  * tile is nullptr, and it is read here, for the few that get this far. */
-static void feature_chunk_lake_find(const terrain_feature_t *feature, terrain_surface_tile_t *tile,
-                                    terrain_feature_chunk_t *chunk) {
+static void feature_chunk_lake_find(const terrain_feature_t *feature, const terrain_climate_sample_t *climate,
+                                    terrain_surface_tile_t *tile, terrain_feature_chunk_t *chunk) {
     terrain_feature_lake_t lake;
     if (!feature_lake_plan(feature, chunk->chunk_x, chunk->chunk_y, &lake)) {
         return;
@@ -732,7 +732,7 @@ static void feature_chunk_lake_find(const terrain_feature_t *feature, terrain_su
     lake.level = (int16_t)level;
     terrain_surface_tile_t read;
     if (tile == nullptr) {
-        terrain_surface_tile_read(feature->borrowed_surface, chunk->chunk_x * (int32_t)TERRAIN_FEATURE_CHUNK,
+        terrain_surface_tile_read(feature->borrowed_surface, climate, chunk->chunk_x * (int32_t)TERRAIN_FEATURE_CHUNK,
                                   chunk->chunk_y * (int32_t)TERRAIN_FEATURE_CHUNK, &read);
         tile = &read;
     }
@@ -743,38 +743,41 @@ static void feature_chunk_lake_find(const terrain_feature_t *feature, terrain_su
 
 /* The biomes and noise of a chunk do not change as the walk goes down, so its slices share one read of them. */
 [[gnu::noinline]]
-static void feature_chunk_walk(const terrain_feature_t *feature, terrain_feature_chunk_t *chunk) {
+static void feature_chunk_walk(const terrain_feature_t *feature, const terrain_climate_sample_t *climate,
+                               terrain_feature_chunk_t *chunk) {
     if (chunk->walked != 0u) {
         return;
     }
     if (chunk->tops_known != 0u) {
-        feature_chunk_lake_find(feature, nullptr, chunk);
+        feature_chunk_lake_find(feature, climate, nullptr, chunk);
         chunk->walked = 1u;
         return;
     }
     terrain_surface_tile_t tile;
-    terrain_surface_tile_read(feature->borrowed_surface, chunk->chunk_x * (int32_t)TERRAIN_FEATURE_CHUNK,
+    terrain_surface_tile_read(feature->borrowed_surface, climate, chunk->chunk_x * (int32_t)TERRAIN_FEATURE_CHUNK,
                               chunk->chunk_y * (int32_t)TERRAIN_FEATURE_CHUNK, &tile);
     feature_chunk_columns_walk(feature, &tile, chunk);
-    feature_chunk_lake_find(feature, &tile, chunk);
+    feature_chunk_lake_find(feature, climate, &tile, chunk);
     chunk->walked = 1u;
 }
 
-void terrain_feature_chunk_columns(const terrain_feature_t *feature, int32_t chunk_x, int32_t chunk_y,
-                                   terrain_feature_column_t *out) {
+void terrain_feature_chunk_columns(const terrain_feature_t *feature, const terrain_climate_sample_t *climate,
+                                   int32_t chunk_x, int32_t chunk_y, terrain_feature_column_t *out) {
     terrain_feature_chunk_t chunk;
-    feature_chunk_load(feature, chunk_x, chunk_y, &chunk);
+    feature_chunk_load(feature, climate, chunk_x, chunk_y, &chunk);
     terrain_surface_tile_t tile;
-    terrain_surface_tile_read(feature->borrowed_surface, chunk_x * (int32_t)TERRAIN_FEATURE_CHUNK,
+    terrain_surface_tile_read(feature->borrowed_surface, climate, chunk_x * (int32_t)TERRAIN_FEATURE_CHUNK,
                               chunk_y * (int32_t)TERRAIN_FEATURE_CHUNK, &tile);
     feature_chunk_columns_walk(feature, &tile, &chunk);
     memcpy(out, chunk.columns, sizeof(chunk.columns));
 }
 
-terrain_feature_lake_t terrain_feature_chunk_lake(const terrain_feature_t *feature, int32_t chunk_x, int32_t chunk_y) {
+terrain_feature_lake_t terrain_feature_chunk_lake(const terrain_feature_t *feature,
+                                                  const terrain_climate_sample_t *climate, int32_t chunk_x,
+                                                  int32_t chunk_y) {
     terrain_feature_chunk_t chunk;
-    feature_chunk_load(feature, chunk_x, chunk_y, &chunk);
-    feature_chunk_walk(feature, &chunk);
+    feature_chunk_load(feature, climate, chunk_x, chunk_y, &chunk);
+    feature_chunk_walk(feature, climate, &chunk);
     return chunk.lake;
 }
 
@@ -1008,8 +1011,9 @@ static int32_t feature_row_reach(uint32_t row) {
 
 /* Everything a row grows in a chunk that can touch the canvas. The draws never depend on the canvas, only what is done with
  * them, so a site is the same site whoever asks. */
-static void feature_row_chunk(const terrain_feature_t *feature, const terrain_feature_canvas_t *canvas,
-                              terrain_feature_chunk_t *chunk, uint32_t row, float32_t most) {
+static void feature_row_chunk(const terrain_feature_t *feature, const terrain_climate_sample_t *climate,
+                              const terrain_feature_canvas_t *canvas, terrain_feature_chunk_t *chunk, uint32_t row,
+                              float32_t most) {
     uint32_t tries = (uint32_t)most;
     tries += (float32_t)tries < most ? 1u : 0u;
     const feature_margin_t margin = feature_margin_of(row);
@@ -1031,7 +1035,7 @@ static void feature_row_chunk(const terrain_feature_t *feature, const terrain_fe
         if (luck * (float32_t)tries >= feature_rate(row, biome)) {
             continue;
         }
-        feature_chunk_walk(feature, chunk);
+        feature_chunk_walk(feature, climate, chunk);
         const terrain_feature_column_t *const column = &chunk->columns[ox + TERRAIN_FEATURE_CHUNK * oy];
         if (column->top == TERRAIN_FEATURE_NO_GROUND || terrain_feature_lake_depth(&chunk->lake, ox, oy) > 0u) {
             continue;
@@ -1067,8 +1071,8 @@ static bool feature_row_has_sites(uint32_t row) {
 }
 
 /* All the rows a chunk has that can reach a canvas. Only a tree can leave its chunk. */
-static void feature_chunk_rows(const terrain_feature_t *feature, const terrain_feature_canvas_t *canvas,
-                               terrain_feature_chunk_t *chunk, bool own) {
+static void feature_chunk_rows(const terrain_feature_t *feature, const terrain_climate_sample_t *climate,
+                               const terrain_feature_canvas_t *canvas, terrain_feature_chunk_t *chunk, bool own) {
     uint8_t seen[BIOME_COUNT];
     memset(seen, 0, sizeof(seen));
     float32_t most[TERRAIN_FEATURE_ROWS];
@@ -1087,7 +1091,7 @@ static void feature_chunk_rows(const terrain_feature_t *feature, const terrain_f
     const uint32_t rows = own ? TERRAIN_FEATURE_ROWS : TERRAIN_FEATURE_TREES;
     for (uint32_t row = 0u; row < rows; row++) {
         if (most[row] > 0.0f32 && feature_row_has_sites(row)) {
-            feature_row_chunk(feature, canvas, chunk, row, most[row]);
+            feature_row_chunk(feature, climate, canvas, chunk, row, most[row]);
         }
     }
 }
@@ -1179,15 +1183,15 @@ static bool terrain_feature_chunk_touches(const terrain_feature_chunk_t *chunk,
 
 /* Everything whose voxels are in one chunk's part of a box. The canvas is within that chunk, which is own, loaded. What each step
  * writes at a voxel depends only on what is at that voxel and on the chunks round this one, and they always go in this order. */
-static void feature_tile(const terrain_feature_t *feature, const terrain_feature_canvas_t *canvas,
-                         terrain_feature_chunk_t *own) {
+static void feature_tile(const terrain_feature_t *feature, const terrain_climate_sample_t *climate,
+                         const terrain_feature_canvas_t *canvas, terrain_feature_chunk_t *own) {
     const int32_t chunk_x = own->chunk_x;
     const int32_t chunk_y = own->chunk_y;
     const bool own_touches = terrain_feature_chunk_touches(own, canvas);
     if (own_touches) {
-        feature_chunk_walk(feature, own);
+        feature_chunk_walk(feature, climate, own);
         feature_lake_paint(canvas, own);
-        feature_chunk_rows(feature, canvas, own, true);
+        feature_chunk_rows(feature, climate, canvas, own, true);
     }
     terrain_feature_chunk_t next;
     for (int32_t dy = -1; dy <= 1; dy++) {
@@ -1195,9 +1199,9 @@ static void feature_tile(const terrain_feature_t *feature, const terrain_feature
             if (dx == 0 && dy == 0) {
                 continue;
             }
-            feature_chunk_load(feature, chunk_x + dx, chunk_y + dy, &next);
+            feature_chunk_load(feature, climate, chunk_x + dx, chunk_y + dy, &next);
             if (terrain_feature_chunk_touches(&next, canvas)) {
-                feature_chunk_rows(feature, canvas, &next, false);
+                feature_chunk_rows(feature, climate, canvas, &next, false);
             }
         }
     }
@@ -1206,7 +1210,8 @@ static void feature_tile(const terrain_feature_t *feature, const terrain_feature
     }
 }
 
-void terrain_feature_fill_box(const terrain_feature_t *feature, const terrain_density_box_t *box, uint16_t *blocks) {
+void terrain_feature_fill_box(const terrain_feature_t *feature, const terrain_climate_sample_t *climate,
+                              const terrain_density_box_t *box, uint16_t *blocks) {
     const terrain_feature_canvas_t whole = terrain_feature_canvas_of(box, blocks);
     if (whole.z_low > whole.z_high) {
         return;
@@ -1230,8 +1235,8 @@ void terrain_feature_fill_box(const terrain_feature_t *feature, const terrain_de
             canvas.y_low = (int32_t)y;
             canvas.y_high = (int32_t)y + (int32_t)count_y - 1;
             terrain_feature_chunk_t own;
-            feature_chunk_load(feature, (int32_t)chunk_x, (int32_t)chunk_y, &own);
-            feature_tile(feature, &canvas, &own);
+            feature_chunk_load(feature, climate, (int32_t)chunk_x, (int32_t)chunk_y, &own);
+            feature_tile(feature, climate, &canvas, &own);
             ix += count_x;
         }
         iy += count_y;
@@ -1249,8 +1254,9 @@ void terrain_feature_cache_start(terrain_feature_cache_t *cache) {
 
 /* A chunk as feature_chunk_load leaves it, and walked as soon as anything asks: from the cache if it has it, or loaded into the
  * slot used longest ago. What it holds is a pure function of the chunk, so which slot gives it makes no difference to a voxel. */
-static terrain_feature_chunk_t *feature_cache_get(const terrain_feature_t *feature, terrain_feature_cache_t *cache,
-                                                  int32_t chunk_x, int32_t chunk_y) {
+static terrain_feature_chunk_t *feature_cache_get(const terrain_feature_t *feature,
+                                                  const terrain_climate_sample_t *climate,
+                                                  terrain_feature_cache_t *cache, int32_t chunk_x, int32_t chunk_y) {
     for (uint32_t i = 0u; i < cache->count; i++) {
         terrain_feature_chunk_t *const held = &cache->chunks[i];
         if (held->chunk_x == chunk_x && held->chunk_y == chunk_y) {
@@ -1264,13 +1270,14 @@ static terrain_feature_chunk_t *feature_cache_get(const terrain_feature_t *featu
         slot = cache->next;
         cache->next = slot + 1u == TERRAIN_FEATURE_CACHE_CHUNKS ? 0u : slot + 1u;
     }
-    feature_chunk_load(feature, chunk_x, chunk_y, &cache->chunks[slot]);
+    feature_chunk_load(feature, climate, chunk_x, chunk_y, &cache->chunks[slot]);
     cache->loads++;
     return &cache->chunks[slot];
 }
 
-void terrain_feature_fill_box_cached(const terrain_feature_t *feature, const terrain_density_box_t *box,
-                                     uint16_t *blocks, terrain_feature_cache_t *cache) {
+void terrain_feature_fill_box_cached(const terrain_feature_t *feature, const terrain_climate_sample_t *climate,
+                                     const terrain_density_box_t *box, uint16_t *blocks,
+                                     terrain_feature_cache_t *cache) {
     const terrain_feature_canvas_t whole = terrain_feature_canvas_of(box, blocks);
     if (whole.z_low > whole.z_high) {
         return;
@@ -1292,12 +1299,13 @@ void terrain_feature_fill_box_cached(const terrain_feature_t *feature, const ter
             canvas.y_low = (int32_t)y;
             canvas.y_high = (int32_t)y + (int32_t)count_y - 1;
             /* feature_tile, with every chunk from the cache: the same steps in the same order. */
-            terrain_feature_chunk_t *const own = feature_cache_get(feature, cache, (int32_t)chunk_x, (int32_t)chunk_y);
+            terrain_feature_chunk_t *const own =
+                feature_cache_get(feature, climate, cache, (int32_t)chunk_x, (int32_t)chunk_y);
             const bool own_touches = terrain_feature_chunk_touches(own, &canvas);
             if (own_touches) {
-                feature_chunk_walk(feature, own);
+                feature_chunk_walk(feature, climate, own);
                 feature_lake_paint(&canvas, own);
-                feature_chunk_rows(feature, &canvas, own, true);
+                feature_chunk_rows(feature, climate, &canvas, own, true);
             }
             for (int32_t dy = -1; dy <= 1; dy++) {
                 for (int32_t dx = -1; dx <= 1; dx++) {
@@ -1305,9 +1313,9 @@ void terrain_feature_fill_box_cached(const terrain_feature_t *feature, const ter
                         continue;
                     }
                     terrain_feature_chunk_t *const next =
-                        feature_cache_get(feature, cache, (int32_t)chunk_x + dx, (int32_t)chunk_y + dy);
+                        feature_cache_get(feature, climate, cache, (int32_t)chunk_x + dx, (int32_t)chunk_y + dy);
                     if (terrain_feature_chunk_touches(next, &canvas)) {
-                        feature_chunk_rows(feature, &canvas, next, false);
+                        feature_chunk_rows(feature, climate, &canvas, next, false);
                     }
                 }
             }
@@ -1320,14 +1328,15 @@ void terrain_feature_fill_box_cached(const terrain_feature_t *feature, const ter
     }
 }
 
-bool terrain_feature_chunk_read_box(const terrain_feature_t *feature, const terrain_density_box_t *box,
-                                    const uint16_t *blocks, terrain_feature_chunk_t *out) {
+bool terrain_feature_chunk_read_box(const terrain_feature_t *feature, const terrain_climate_sample_t *climate,
+                                    const terrain_density_box_t *box, const uint16_t *blocks,
+                                    terrain_feature_chunk_t *out) {
     const int32_t mask = (int32_t)TERRAIN_FEATURE_CHUNK - 1;
     if (box->count_x != TERRAIN_FEATURE_CHUNK || box->count_y != TERRAIN_FEATURE_CHUNK || (box->origin_x & mask) != 0 ||
         (box->origin_y & mask) != 0) {
         return false;
     }
-    feature_chunk_load(feature, box->origin_x >> TERRAIN_FEATURE_CHUNK_SHIFT,
+    feature_chunk_load(feature, climate, box->origin_x >> TERRAIN_FEATURE_CHUNK_SHIFT,
                        box->origin_y >> TERRAIN_FEATURE_CHUNK_SHIFT, out);
     const int64_t box_top = (int64_t)box->origin_z + (int64_t)box->count_z - 1;
     if (out->z_low > out->z_high || out->z_low < box->origin_z || (int64_t)out->z_high > box_top) {
@@ -1341,11 +1350,12 @@ bool terrain_feature_chunk_read_box(const terrain_feature_t *feature, const terr
     return true;
 }
 
-void terrain_feature_fill_chunk_box(const terrain_feature_t *feature, const terrain_density_box_t *box,
-                                    terrain_feature_chunk_t *chunk, uint16_t *blocks) {
+void terrain_feature_fill_chunk_box(const terrain_feature_t *feature, const terrain_climate_sample_t *climate,
+                                    const terrain_density_box_t *box, terrain_feature_chunk_t *chunk,
+                                    uint16_t *blocks) {
     const terrain_feature_canvas_t canvas = terrain_feature_canvas_of(box, blocks);
     if (canvas.z_low <= canvas.z_high) {
-        feature_tile(feature, &canvas, chunk);
+        feature_tile(feature, climate, &canvas, chunk);
     }
 }
 

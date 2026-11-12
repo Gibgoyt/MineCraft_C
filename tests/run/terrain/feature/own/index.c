@@ -39,7 +39,7 @@ static terrain_density_box_t own_box(int32_t chunk_x, int32_t chunk_y) {
 static void own_stages_to_flood(const terrain_t *terrain, const terrain_density_box_t *box, uint8_t *opened,
                                 uint16_t *blocks) {
     terrain_hydrology_fill_box(terrain->borrowed_hydrology, box, blocks);
-    terrain_surface_fill_box(terrain->borrowed_surface, box, blocks);
+    terrain_surface_fill_box(terrain->borrowed_surface, nullptr, box, blocks);
     terrain_cave_mask_box(terrain->borrowed_cave, box, opened);
     terrain_cave_cut_with_mask(box, opened, blocks);
     terrain_hydrology_flood_box(terrain->borrowed_hydrology, box, opened, blocks);
@@ -48,9 +48,9 @@ static void own_stages_to_flood(const terrain_t *terrain, const terrain_density_
 /* Every stage, by hand, with features finding the chunk's ground for themselves, by walking down it in slices. */
 static void own_by_hand(const terrain_t *terrain, const terrain_density_box_t *box, uint8_t *opened, uint16_t *blocks) {
     own_stages_to_flood(terrain, box, opened, blocks);
-    terrain_surface_line_caves_box(terrain->borrowed_surface, box, blocks);
+    terrain_surface_line_caves_box(terrain->borrowed_surface, nullptr, box, blocks);
     terrain_ore_fill_box(terrain->borrowed_ore, box, blocks);
-    terrain_feature_fill_box(terrain->borrowed_feature, box, blocks);
+    terrain_feature_fill_box(terrain->borrowed_feature, nullptr, box, blocks);
 }
 
 TEST(a_chunks_tops_read_from_its_box_are_what_the_walk_down_finds) {
@@ -67,9 +67,9 @@ TEST(a_chunks_tops_read_from_its_box_are_what_the_walk_down_finds) {
                 const terrain_density_box_t box = own_box(chunk_x, chunk_y);
                 own_stages_to_flood(&terrain, &box, opened, blocks);
                 terrain_feature_chunk_t read;
-                REQUIRE(terrain_feature_chunk_read_box(terrain.borrowed_feature, &box, blocks, &read));
+                REQUIRE(terrain_feature_chunk_read_box(terrain.borrowed_feature, nullptr, &box, blocks, &read));
                 terrain_feature_column_t walked[TERRAIN_FEATURE_CHUNK_COLUMNS];
-                terrain_feature_chunk_columns(terrain.borrowed_feature, chunk_x, chunk_y, walked);
+                terrain_feature_chunk_columns(terrain.borrowed_feature, nullptr, chunk_x, chunk_y, walked);
                 CHECK(memcmp(read.columns, walked, sizeof(walked)) == 0);
                 chunks++;
                 for (uint32_t i = 0u; i < TERRAIN_FEATURE_CHUNK_COLUMNS; i++) {
@@ -127,7 +127,7 @@ TEST(every_stage_gives_the_same_bytes_as_features_walking_the_chunk_for_themselv
         for (uint32_t i = 0u; i < OWN_LAKE_SEARCH_SIDE * OWN_LAKE_SEARCH_SIDE && found < OWN_LAKES; i++) {
             const int32_t chunk_x = (int32_t)(i % OWN_LAKE_SEARCH_SIDE) - (int32_t)OWN_LAKE_SEARCH_SIDE / 2;
             const int32_t chunk_y = (int32_t)(i / OWN_LAKE_SEARCH_SIDE) - (int32_t)OWN_LAKE_SEARCH_SIDE / 2;
-            if (terrain_feature_chunk_lake(terrain.borrowed_feature, chunk_x, chunk_y).exists == 0u) {
+            if (terrain_feature_chunk_lake(terrain.borrowed_feature, nullptr, chunk_x, chunk_y).exists == 0u) {
                 continue;
             }
             const terrain_density_box_t box = own_box(chunk_x, chunk_y);
@@ -155,29 +155,29 @@ TEST(a_box_that_is_not_one_whole_chunk_with_all_its_ground_is_left_to_find_its_o
     memset(blocks, 0, (uint64_t)OWN_VOXELS * sizeof(uint16_t));
     terrain_feature_chunk_t read;
     terrain_density_box_t box = own_box(3, -4);
-    CHECK(terrain_feature_chunk_read_box(terrain.borrowed_feature, &box, blocks, &read));
+    CHECK(terrain_feature_chunk_read_box(terrain.borrowed_feature, nullptr, &box, blocks, &read));
     CHECK_EQ_U64(read.tops_known, 1u);
     /* Off the chunk's lines, and not as wide as it. */
     box = own_box(3, -4);
     box.origin_x += 1;
-    CHECK(!terrain_feature_chunk_read_box(terrain.borrowed_feature, &box, blocks, &read));
+    CHECK(!terrain_feature_chunk_read_box(terrain.borrowed_feature, nullptr, &box, blocks, &read));
     box = own_box(3, -4);
     box.origin_y -= 8;
-    CHECK(!terrain_feature_chunk_read_box(terrain.borrowed_feature, &box, blocks, &read));
+    CHECK(!terrain_feature_chunk_read_box(terrain.borrowed_feature, nullptr, &box, blocks, &read));
     box = own_box(3, -4);
     box.count_x = 8u;
-    CHECK(!terrain_feature_chunk_read_box(terrain.borrowed_feature, &box, blocks, &read));
+    CHECK(!terrain_feature_chunk_read_box(terrain.borrowed_feature, nullptr, &box, blocks, &read));
     box = own_box(3, -4);
     box.count_y = 32u;
-    CHECK(!terrain_feature_chunk_read_box(terrain.borrowed_feature, &box, blocks, &read));
+    CHECK(!terrain_feature_chunk_read_box(terrain.borrowed_feature, nullptr, &box, blocks, &read));
     /* Layers that stop short of the chunk's ground, from below and from above. */
     box = own_box(3, -4);
     box.count_z = 1u;
-    CHECK(!terrain_feature_chunk_read_box(terrain.borrowed_feature, &box, blocks, &read));
+    CHECK(!terrain_feature_chunk_read_box(terrain.borrowed_feature, nullptr, &box, blocks, &read));
     box = own_box(3, -4);
     box.origin_z = MC_WORLD_Z_MAX;
     box.count_z = 1u;
-    CHECK(!terrain_feature_chunk_read_box(terrain.borrowed_feature, &box, blocks, &read));
+    CHECK(!terrain_feature_chunk_read_box(terrain.borrowed_feature, nullptr, &box, blocks, &read));
     terrain_deinit(&terrain);
 }
 

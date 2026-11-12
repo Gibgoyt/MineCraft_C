@@ -34,9 +34,10 @@ static const uint8_t BIOME_WHERE_OF_KIND[TERRAIN_HYDROLOGY_KIND_COUNT] = {
     [TERRAIN_HYDROLOGY_KIND_STONY_SHORE] = BIOME_WHERE_STONY_SHORE,
 };
 
-void terrain_biome_init(terrain_biome_t **out, arena_t *arena, const terrain_fields_t *fields,
+void terrain_biome_init(terrain_biome_t **out, arena_t *arena, uint64_t seed, const terrain_fields_t *fields,
                         const terrain_hydrology_t *hydrology) {
     terrain_biome_t *const biome = arena_alloc(arena, sizeof(*biome), alignof(terrain_biome_t));
+    biome->seed = seed;
     biome->borrowed_fields = fields;
     biome->borrowed_hydrology = hydrology;
     *out = biome;
@@ -135,8 +136,15 @@ typedef struct biome_span_t {
 } biome_span_t;
 static_assert(sizeof(biome_span_t) == 48);
 
-static void biome_tile(const terrain_biome_t *biome, const terrain_fields_area_t *area, const biome_span_t *span,
-                       terrain_biome_column_t *columns) {
+static void biome_tile(const terrain_biome_t *biome, const terrain_climate_sample_t *climate,
+                       const terrain_fields_area_t *area, const biome_span_t *span, terrain_biome_column_t *columns) {
+    /* With no sample, the fallback's for this tile: a pure function of the seed and the place, like any other. */
+    terrain_climate_sample_t fallback;
+    if (climate == nullptr) {
+        terrain_climate_fallback(biome->seed, span->x_first, span->y_first, &fallback);
+        climate = &fallback;
+    }
+    (void)climate; /* plumbed: no rule reads it until the family choice */
     const int64_t x_last = span->x_first + span->step_x * (int64_t)(span->count_x - 1u);
     const int64_t y_last = span->y_first + span->step_y * (int64_t)(span->count_y - 1u);
     const int64_t cell_x = span->x_first >> BIOME_CELL_SHIFT;
@@ -209,8 +217,8 @@ static void biome_tile(const terrain_biome_t *biome, const terrain_fields_area_t
     }
 }
 
-void terrain_biome_columns_area(const terrain_biome_t *biome, const terrain_fields_area_t *area,
-                                terrain_biome_column_t *columns) {
+void terrain_biome_columns_area(const terrain_biome_t *biome, const terrain_climate_sample_t *climate,
+                                const terrain_fields_area_t *area, terrain_biome_column_t *columns) {
     ASSERT(area->step_x > 0 && area->step_y > 0);
     const int64_t tile = (int64_t)BIOME_TILE;
     const int64_t step_x = (int64_t)area->step_x;
@@ -241,7 +249,7 @@ void terrain_biome_columns_area(const terrain_biome_t *biome, const terrain_fiel
                 .count_x = count_x,
                 .count_y = count_y,
             };
-            biome_tile(biome, area, &span, columns);
+            biome_tile(biome, climate, area, &span, columns);
             ix_first += count_x;
         }
         iy_first += count_y;
@@ -250,12 +258,10 @@ void terrain_biome_columns_area(const terrain_biome_t *biome, const terrain_fiel
 
 terrain_biome_column_t terrain_biome_column_at(const terrain_biome_t *biome, const terrain_climate_sample_t *climate,
                                                int32_t x, int32_t y) {
-    ASSERT(climate != nullptr);
-    (void)climate; /* plan 006 phase 02: plumbed, read by no rule until phase 03 */
     const terrain_fields_area_t area = {
         .origin_x = x, .origin_y = y, .step_x = 1, .step_y = 1, .count_x = 1u, .count_y = 1u};
     terrain_biome_column_t column;
-    terrain_biome_columns_area(biome, &area, &column);
+    terrain_biome_columns_area(biome, climate, &area, &column);
     return column;
 }
 

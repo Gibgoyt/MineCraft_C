@@ -165,34 +165,41 @@ uint32_t terrain_feature_lake_depth(const terrain_feature_lake_t *lake, uint32_t
 
 /* What every stage before this one left on a chunk's columns: x fastest, by a chunk's offsets. out holds
  * TERRAIN_FEATURE_CHUNK_COLUMNS values. */
-void terrain_feature_chunk_columns(const terrain_feature_t *feature, int32_t chunk_x, int32_t chunk_y,
-                                   terrain_feature_column_t *out);
+void terrain_feature_chunk_columns(const terrain_feature_t *feature, const terrain_climate_sample_t *climate,
+                                   int32_t chunk_x, int32_t chunk_y, terrain_feature_column_t *out);
 
 /* The lake of a chunk, if it has one and it would hold its water. */
-terrain_feature_lake_t terrain_feature_chunk_lake(const terrain_feature_t *feature, int32_t chunk_x, int32_t chunk_y);
+terrain_feature_lake_t terrain_feature_chunk_lake(const terrain_feature_t *feature,
+                                                  const terrain_climate_sample_t *climate, int32_t chunk_x,
+                                                  int32_t chunk_y);
 
 /* Puts what grows on the ground, lakes, ice and snow into blocks, which holds the box's voxels in x, then y, then z order and has
  * every earlier stage in it: see the README's order. Allocates nothing, and given what those stages left, a voxel is a pure
- * function of the features and the voxel: splitting a box into parts, in any order, on any thread, gives the same bytes. */
-void terrain_feature_fill_box(const terrain_feature_t *feature, const terrain_density_box_t *box, uint16_t *blocks);
+ * function of the features and the voxel: splitting a box into parts, in any order, on any thread, gives the same bytes.
+ * Plan 006 phase 03: climate, here and in every function of this header that takes one, is the sample round the box, read
+ * through terrain_biome_columns_area, or nullptr for the fallback climate. */
+void terrain_feature_fill_box(const terrain_feature_t *feature, const terrain_climate_sample_t *climate,
+                              const terrain_density_box_t *box, uint16_t *blocks);
 
 /* Empty, for a new run of boxes. */
 void terrain_feature_cache_start(terrain_feature_cache_t *cache);
 
 /* terrain_feature_fill_box, the same bytes, with the chunks it needs taken from cache and kept there: for many small boxes close together,
  * which would otherwise each walk the same chunks again. */
-void terrain_feature_fill_box_cached(const terrain_feature_t *feature, const terrain_density_box_t *box,
-                                     uint16_t *blocks, terrain_feature_cache_t *cache);
+void terrain_feature_fill_box_cached(const terrain_feature_t *feature, const terrain_climate_sample_t *climate,
+                                     const terrain_density_box_t *box, uint16_t *blocks,
+                                     terrain_feature_cache_t *cache);
 
 /* The same, for a box that is one whole chunk, whose own columns were read by terrain_feature_chunk_read_box. Costs a look at the
  * chunks round it, and none at its own, and gives the same bytes. */
-void terrain_feature_fill_chunk_box(const terrain_feature_t *feature, const terrain_density_box_t *box,
-                                    terrain_feature_chunk_t *chunk, uint16_t *blocks);
+void terrain_feature_fill_chunk_box(const terrain_feature_t *feature, const terrain_climate_sample_t *climate,
+                                    const terrain_density_box_t *box, terrain_feature_chunk_t *chunk, uint16_t *blocks);
 
 /* If the box is one whole chunk and reaches all the layers its ground can be in, fills out from blocks and returns true. blocks
  * must be just as the stages up to the flood left them, as lining and ore can change a top. Otherwise returns false, and out is
  * not for use: terrain_feature_fill_box finds the same for itself. */
-bool terrain_feature_chunk_read_box(const terrain_feature_t *feature, const terrain_density_box_t *box,
-                                    const uint16_t *blocks, terrain_feature_chunk_t *out);
+bool terrain_feature_chunk_read_box(const terrain_feature_t *feature, const terrain_climate_sample_t *climate,
+                                    const terrain_density_box_t *box, const uint16_t *blocks,
+                                    terrain_feature_chunk_t *out);
 
 #endif

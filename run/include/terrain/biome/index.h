@@ -22,8 +22,9 @@ static_assert(BIOME_UNDERGROUND_COUNT <= 8u); /* terrain_biome_column_t's caves 
 typedef struct terrain_biome_t {
     const terrain_fields_t *borrowed_fields;       /* 0 */
     const terrain_hydrology_t *borrowed_hydrology; /* 8 */
+    uint64_t seed; /* 16: the world's, for the fallback climate where no sample is given */
 } terrain_biome_t;
-static_assert(sizeof(terrain_biome_t) == 16);
+static_assert(sizeof(terrain_biome_t) == 24);
 
 /* What decides a column's biome. */
 typedef struct terrain_biome_inputs_t {
@@ -50,7 +51,7 @@ typedef struct terrain_biome_column_t {
 static_assert(sizeof(terrain_biome_column_t) == 16);
 
 /* Takes the biomes from arena. For use while terrain_init runs. climate and hydrology must outlive it. */
-void terrain_biome_init(terrain_biome_t **out, arena_t *arena, const terrain_fields_t *fields,
+void terrain_biome_init(terrain_biome_t **out, arena_t *arena, uint64_t seed, const terrain_fields_t *fields,
                         const terrain_hydrology_t *hydrology);
 
 /* Empties the handle. The memory goes back with the arena. */
@@ -69,13 +70,16 @@ uint8_t terrain_biome_caves_of(const terrain_biome_inputs_t *inputs);
 biome_id_t terrain_biome_of_voxel(const terrain_biome_column_t *column, int32_t z);
 
 /* Each column of an area, as the climate lays one out, but the steps must be above 0. columns holds
- * terrain_fields_area_columns(area) values. Allocates nothing, and each value is a pure function of the biomes and the
- * column: splitting an area into parts, in any order, on any thread, gives the same bytes. */
-void terrain_biome_columns_area(const terrain_biome_t *biome, const terrain_fields_area_t *area,
-                                terrain_biome_column_t *columns);
+ * terrain_fields_area_columns(area) values. Allocates nothing, and each value is a pure function of the biomes, the climate
+ * and the column: splitting an area into parts, in any order, on any thread, gives the same bytes.
+ * Plan 006 phase 03: climate is the climate sample round the area (terrain_climate_at reads it; the column job's covers its
+ * column and the 16 blocks round it), or nullptr where there is no climate: then each 16-block tile fills
+ * terrain_climate_fallback's for itself, from the seed, so tests and benches need no sample. */
+void terrain_biome_columns_area(const terrain_biome_t *biome, const terrain_climate_sample_t *climate,
+                                const terrain_fields_area_t *area, terrain_biome_column_t *columns);
 
 /* The same at one column, and one voxel. Columns in bulk cost far less each through an area. */
-/* Plan 006 phase 02: climate is the sample round the column, never null; no rule reads it yet. */
+/* climate as for terrain_biome_columns_area: the sample round the column, or nullptr for the fallback. */
 terrain_biome_column_t terrain_biome_column_at(const terrain_biome_t *biome, const terrain_climate_sample_t *climate,
                                                int32_t x, int32_t y);
 biome_id_t terrain_biome_at(const terrain_biome_t *biome, const terrain_climate_sample_t *climate, int32_t x, int32_t y,

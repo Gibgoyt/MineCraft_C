@@ -459,7 +459,7 @@ static bool bench_biome_is(const terrain_t *terrain, int32_t x, int32_t y, uint8
         .count_y = 3u,
     };
     terrain_biome_column_t columns[9];
-    terrain_biome_columns_area(terrain->borrowed_biome, &area, columns);
+    terrain_biome_columns_area(terrain->borrowed_biome, nullptr, &area, columns);
     for (uint32_t i = 0u; i < 9u; i++) {
         if (columns[i].biome != biome) {
             return false;

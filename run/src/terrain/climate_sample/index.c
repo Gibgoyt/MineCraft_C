@@ -76,6 +76,16 @@ void terrain_climate_sample_origin(int64_t west_x, int64_t south_y, int64_t *out
              TERRAIN_CLIMATE_CELL_BLOCKS;
 }
 
+bool terrain_climate_sample_holds(const terrain_climate_sample_t *sample, int64_t x_low, int64_t y_low, int64_t x_high,
+                                  int64_t y_high) {
+    /* A read at u = at - origin - 32 stays on the cells for u from 0 to 64 (SIDE - 1); the warp moves it up to 32. */
+    const int64_t low = TERRAIN_CLIMATE_HALF_CELL + TERRAIN_CLIMATE_WARP_BLOCKS;
+    const int64_t high = TERRAIN_CLIMATE_HALF_CELL + TERRAIN_CLIMATE_CELL_BLOCKS * (TERRAIN_CLIMATE_SIDE - 1) -
+                         TERRAIN_CLIMATE_WARP_BLOCKS;
+    return x_low - sample->origin_x >= low && y_low - sample->origin_y >= low && x_high - sample->origin_x <= high &&
+           y_high - sample->origin_y <= high;
+}
+
 uint32_t terrain_climate_warp_seed(uint64_t seed) {
     return (uint32_t)terrain_rng_derive(seed, terrain_rng_salt("terrain/climate_sample/warp"));
 }

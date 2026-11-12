@@ -125,6 +125,12 @@ static_assert(sizeof(terrain_climate_point_t) == 28);
  * cell's corner. A point's sample is that of (x - 8, y - 8). */
 void terrain_climate_sample_origin(int64_t west_x, int64_t south_y, int64_t *out_x, int64_t *out_y);
 
+/* Plan 006 phase 03: whether terrain_climate_at's reads for every column from (x_low, y_low) to (x_high, y_high) stay on
+ * the sample's cells, the warp included, so that none takes an edge: then any sample that holds a column gives it the same
+ * numbers. A column job's sample holds its column and 16 blocks round it, with room to spare. Pure. */
+bool terrain_climate_sample_holds(const terrain_climate_sample_t *sample, int64_t x_low, int64_t y_low, int64_t x_high,
+                                  int64_t y_high);
+
 /* The 32-bit warp seed of a world's seed. Pure. */
 uint32_t terrain_climate_warp_seed(uint64_t seed);
 

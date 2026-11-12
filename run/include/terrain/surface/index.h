@@ -87,23 +87,26 @@ uint16_t terrain_surface_cave_block_from(const biome_def_t *def, uint16_t block,
  * they become what each column's biome lays on them. Allocates nothing, and a voxel is a pure function of the surface and the
  * voxel: splitting a box into parts, in any order, on any thread, gives the same bytes. Call it before anything else changes
  * blocks: see the README's order. */
-void terrain_surface_fill_box(const terrain_surface_t *surface, const terrain_density_box_t *box, uint16_t *blocks);
+/* Plan 006 phase 03: climate is the sample round the box (terrain_biome_columns_area), or nullptr for the fallback. */
+void terrain_surface_fill_box(const terrain_surface_t *surface, const terrain_climate_sample_t *climate,
+                              const terrain_density_box_t *box, uint16_t *blocks);
 
 /* The same as terrain_surface_fill_box, byte for byte, for a box exactly one chunk across at the place tile was read for: any
  * layers, any number of calls, with the tile read once. x and y are the chunk's lowest corner. */
-void terrain_surface_tile_read(const terrain_surface_t *surface, int32_t x, int32_t y, terrain_surface_tile_t *tile);
+void terrain_surface_tile_read(const terrain_surface_t *surface, const terrain_climate_sample_t *climate, int32_t x,
+                               int32_t y, terrain_surface_tile_t *tile);
 void terrain_surface_fill_tile_box(const terrain_surface_t *surface, terrain_surface_tile_t *tile,
                                    const terrain_density_box_t *box, uint16_t *blocks);
 
 /* Lines the caves of the underground biomes. Any stone voxel of blocks directly above or below what a cave wants takes the
  * biome's floor or ceiling. Nothing else changes. Call it after the caves are cut and flooded, and before terrain_ore_fill_box.
  * As pure and as free of allocation as the fill. */
-void terrain_surface_line_caves_box(const terrain_surface_t *surface, const terrain_density_box_t *box,
-                                    uint16_t *blocks);
+void terrain_surface_line_caves_box(const terrain_surface_t *surface, const terrain_climate_sample_t *climate,
+                                    const terrain_density_box_t *box, uint16_t *blocks);
 
 /* The same blocks, from a mask of this very box where mask != 0 is what terrain_cave_mask_box said, so that the caves are asked again only for the layers just past
  * its two ends. On a tall column of a range, asking again was the third of its time. */
-void terrain_surface_line_caves_with_mask(const terrain_surface_t *surface, const terrain_density_box_t *box,
-                                          const uint8_t *mask, uint16_t *blocks);
+void terrain_surface_line_caves_with_mask(const terrain_surface_t *surface, const terrain_climate_sample_t *climate,
+                                          const terrain_density_box_t *box, const uint8_t *mask, uint16_t *blocks);
 
 #endif

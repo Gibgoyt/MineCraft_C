@@ -140,7 +140,7 @@ static void bmap_row_job(job_worker_t *worker, void *borrowed_argument) {
             .count_x = BMAP_SIDE,
             .count_y = 1u,
         };
-        terrain_biome_columns_area(run->borrowed_terrain->borrowed_biome, &area, columns);
+        terrain_biome_columns_area(run->borrowed_terrain->borrowed_biome, nullptr, &area, columns);
         memcpy(run->borrowed_map + (uint64_t)row * BMAP_SIDE, columns, BMAP_SIDE * sizeof(terrain_biome_column_t));
     }
 }

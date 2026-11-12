@@ -46,9 +46,9 @@ static void lod_test_sample_whole(const terrain_t *terrain, int32_t x, int32_t y
         .count_z = RENDER_LOD_HEIGHT_BLOCKS,
     };
     terrain_hydrology_fill_box(terrain->borrowed_hydrology, &box, out);
-    terrain_surface_fill_box(terrain->borrowed_surface, &box, out);
+    terrain_surface_fill_box(terrain->borrowed_surface, nullptr, &box, out);
     if (shift <= RENDER_LOD_FEATURES_SHIFT_MAX) {
-        terrain_feature_fill_box(terrain->borrowed_feature, &box, out);
+        terrain_feature_fill_box(terrain->borrowed_feature, nullptr, &box, out);
     }
 }
 
@@ -120,10 +120,10 @@ TEST(the_feature_cache_gives_the_bytes_terrain_feature_fill_box_gives) {
             .origin_x = x, .origin_y = y, .origin_z = ground - 40, .count_x = side, .count_y = side, .count_z = LAYERS};
         const uint64_t count = terrain_density_box_voxels(&box);
         terrain_hydrology_fill_box(terrain->borrowed_hydrology, &box, plain);
-        terrain_surface_fill_box(terrain->borrowed_surface, &box, plain);
+        terrain_surface_fill_box(terrain->borrowed_surface, nullptr, &box, plain);
         memcpy(cached, plain, count * sizeof(uint16_t));
-        terrain_feature_fill_box(terrain->borrowed_feature, &box, plain);
-        terrain_feature_fill_box_cached(terrain->borrowed_feature, &box, cached, cache);
+        terrain_feature_fill_box(terrain->borrowed_feature, nullptr, &box, plain);
+        terrain_feature_fill_box_cached(terrain->borrowed_feature, nullptr, &box, cached, cache);
         wrong += memcmp(plain, cached, count * sizeof(uint16_t)) != 0 ? 1u : 0u;
         for (uint64_t v = 0u; v < count; v++) {
             const uint16_t block = plain[v];

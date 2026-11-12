@@ -291,7 +291,7 @@ static void tour_search(const terrain_t *terrain, tour_stop_t *stops) {
                 .count_x = 256u,
                 .count_y = 1u,
             };
-            terrain_biome_columns_area(terrain->borrowed_biome, &area, columns);
+            terrain_biome_columns_area(terrain->borrowed_biome, nullptr, &area, columns);
             for (uint32_t i = 0u; i < 256u; i++) {
                 const int32_t x = area.origin_x + (int32_t)i * area.step_x;
                 tour_stop_t *const stop = &stops[columns[i].biome];

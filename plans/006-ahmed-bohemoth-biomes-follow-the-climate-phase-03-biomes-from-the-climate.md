@@ -1,6 +1,6 @@
 # 006-ahmed-bohemoth-biomes-follow-the-climate — phase 3: Biomes from the climate
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** in progress: family table, fields and the climate plumbing landed   (updated 2026-11-12)
 
 Read first: `plans/006-ahmed-bohemoth-biomes-follow-the-climate-phase-00-vision-and-plan-files.md`, then the master `plans/006-ahmed-bohemoth-biomes-follow-the-climate.md` (sections 0, 1, 2.4, 2.7, 4, 5, 6 and 9). Every number here comes from the master. Where this file adds a number the master does not give, it says so and why.
 
@@ -173,9 +173,9 @@ From the master (section 9, phase 03):
 
 Expanded:
 
-- [ ] The family table for all 53 biomes agreed in this file (step 1), including the biomes master 2.4 does not name and the oceans
+- [x] The family table for all 53 biomes agreed in this file (step 1), including the biomes master 2.4 does not name and the oceans
 - [ ] The `climate:` key clash resolved (default: today's block renamed `landform:`), recorded in Issues found
-- [ ] `old_growth_taiga` in the master mapped to `old_growth_spruce_taiga` and `old_growth_pine_taiga`
+- [x] `old_growth_taiga` in the master mapped to `old_growth_spruce_taiga` and `old_growth_pine_taiga`
 - [ ] Ahmed's place (x -68, y 149) on the screenshot's seed is not a snow biome
 - [ ] Every height, density, hydrology, cave and ore digest unchanged; biome/surface/feature digests re-pinned with reasons
 - [ ] `bench_terrain` slowest place at or above 1000 columns a second, recorded
@@ -233,4 +233,56 @@ Appended as they land:
 
 ## Issues found
 
-None.
+1. **Step 1, the family table for all 53 biomes** (2026-11-12). Master 2.4's members, then the biomes it does not name, each
+   with its reason. A family chooses only among its own members, and the coverage test needs every family to have a member
+   for each of the six surface `where`s, so the water and shore biomes are spread over every family. Underground biomes
+   (`deep_dark`, `dripstone_caves`, `lush_caves`) have no family: caves do not follow the surface's climate.
+
+   | Family | Land | Ocean, deep ocean | River, beach, stony shore |
+   |---|---|---|---|
+   | Ice | frozen_peaks, ice_spikes, snowy_plains, snowy_slopes | frozen_ocean, deep_frozen_ocean | frozen_river, snowy_beach, stony_shore |
+   | Tundra | snowy_slopes, snowy_taiga, snowy_plains, grove, jagged_peaks, windswept_gravelly_hills | cold_ocean, deep_cold_ocean | river, snowy_beach, stony_shore |
+   | Boreal | taiga, old_growth_spruce_taiga, old_growth_pine_taiga, grove, windswept_forest, windswept_hills, stony_peaks | cold_ocean, deep_cold_ocean | river, beach, stony_shore |
+   | Continental | forest, birch_forest, old_growth_birch_forest, dark_forest, plains, sunflower_plains, meadow, swamp, windswept_hills, stony_peaks | ocean, deep_ocean | river, beach, stony_shore |
+   | Temperate | forest, flower_forest, plains, sunflower_plains, meadow, birch_forest, old_growth_birch_forest, swamp, dark_forest, cherry_grove, windswept_forest, mushroom_fields, stony_peaks | ocean, deep_ocean | river, beach, stony_shore |
+   | Mediterranean | savanna_plateau, plains, sunflower_plains, forest, meadow, wooded_badlands (rare: variety 0.6 up), mushroom_fields, stony_peaks | ocean or lukewarm_ocean, deep_ocean or deep_lukewarm_ocean | river, beach, stony_shore |
+   | Steppe | savanna, plains, windswept_savanna, savanna_plateau, wooded_badlands (rare), stony_peaks | ocean or lukewarm_ocean, deep_ocean or deep_lukewarm_ocean | river, beach, stony_shore |
+   | Desert | desert, badlands, eroded_badlands, stony_peaks | ocean or lukewarm_ocean, deep_ocean or deep_lukewarm_ocean | river, beach, stony_shore |
+   | Savanna | savanna, savanna_plateau, windswept_savanna, stony_peaks | warm_ocean or lukewarm_ocean, deep_lukewarm_ocean | river, beach, stony_shore |
+   | Monsoon | jungle, sparse_jungle, bamboo_jungle, mangrove_swamp | warm_ocean or lukewarm_ocean, deep_lukewarm_ocean | river, beach, stony_shore |
+   | Rainforest | jungle, bamboo_jungle, mangrove_swamp, sparse_jungle | warm_ocean or lukewarm_ocean, deep_lukewarm_ocean | river, beach, stony_shore |
+
+   The reasons for what master 2.4 leaves out or adds:
+
+   - `old_growth_taiga` is `old_growth_spruce_taiga` and `old_growth_pine_taiga` (the default), both Boreal.
+   - The master's "sparse forest" is `forest` in Mediterranean (the default); phase 04's rain factor thins it.
+   - `snowy_slopes` is in Ice as well as Tundra: Ice land at 300 to 500 blocks would otherwise fall back to snowy plains or
+     frozen peaks. `snowy_plains` is in both, as the master has it.
+   - `stony_shore` is in every family: it is the only `where: stony_shore` biome. The master's Tundra row named it.
+   - `windswept_gravelly_hills` (noise temperature -1 to -0.45 before): Tundra, the cold windswept hills.
+   - `windswept_hills` (-0.45 to -0.15 before): Boreal and Continental. `windswept_forest`: Boreal and Temperate. The two have
+     the same landform box, so `variety` splits them where both are members (forest below 0, hills above).
+   - `stony_peaks` (bare rock over 500 blocks, noise temperature over -0.15 before): every family with high ground that is not
+     snowy or tropical: Boreal to Savanna. Rainforest and Monsoon keep their jungle up the slopes (a cloud forest; the
+     fallback picks the nearest jungle by landform), and Ice and Tundra have their snowy peaks.
+   - `cherry_grove`, `flower_forest`: Temperate only. `old_growth_birch_forest`, `sunflower_plains`, `dark_forest`, `swamp`:
+     Temperate and Continental (Continental never occurs today, plan 004 phase 11, but needs members); `sunflower_plains` is
+     also Mediterranean.
+   - `meadow` (300 to 500 blocks, dry) is in Continental, Temperate and Mediterranean, as the high grass of each.
+   - `mushroom_fields`: Temperate and Mediterranean, the mild islands; its priority 4 and landform box keep it rare.
+   - `savanna_plateau` is in Steppe as well as Mediterranean and Savanna: Steppe land at 150 to 500 blocks.
+   - `wooded_badlands` is Mediterranean and Steppe, rare by `variety` 0.6 to 1 (the master's "as rare").
+   - `savanna` gets priority 1 and `variety` -0.2 to 1, so that in Steppe, where `plains` has the same box, plains wins only
+     at low variety; before, the two met on noise temperature.
+   - `mangrove_swamp` is in Monsoon as well as Rainforest, `sparse_jungle` in Rainforest as well as Monsoon: tropical wet
+     coasts and the drier edge of each.
+   - Oceans as the phase file's default: Rainforest, Monsoon, Savanna take `warm_ocean` (priority 1, `variety` below 0.5)
+     and `lukewarm_ocean` (0 up); Temperate, Continental take `ocean`; Mediterranean, Steppe, Desert take `ocean` (variety
+     below 0) and `lukewarm_ocean` (0 up), and the same split for the deep ones (`deep_ocean`, `deep_lukewarm_ocean`; there
+     is no deep warm ocean); Boreal and Tundra take the cold ones, Ice the frozen ones.
+   - Rivers: `frozen_river` in Ice, `river` in the rest. Beaches: `snowy_beach` in Ice and Tundra (phase 04 reads this), `beach`
+     in the rest.
+
+   Against plan 004 phase 11's class shares (land): Temperate, Mediterranean, Boreal and the tropical classes hold most of the
+   land, and each has a forest, a grassland and a high-ground member; Continental never occurs. Each land biome's `rain_mm` is
+   written now for phase 04's middle (`config/biomes/README.md`).

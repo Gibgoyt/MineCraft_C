@@ -94,7 +94,7 @@ static uint64_t fea_at(const terrain_density_box_t *box, int32_t x, int32_t y, i
 /* The stages before this one, as the Owner runs them. */
 static void fea_stages(const terrain_t *terrain, const terrain_density_box_t *box, uint8_t *opened, uint16_t *blocks) {
     terrain_hydrology_fill_box(terrain->borrowed_hydrology, box, blocks);
-    terrain_surface_fill_box(terrain->borrowed_surface, box, blocks);
+    terrain_surface_fill_box(terrain->borrowed_surface, nullptr, box, blocks);
     terrain_cave_mask_box(terrain->borrowed_cave, box, opened);
     const uint64_t voxels = terrain_density_box_voxels(box);
     for (uint64_t i = 0u; i < voxels; i++) {
@@ -105,7 +105,7 @@ static void fea_stages(const terrain_t *terrain, const terrain_density_box_t *bo
     }
     (void)terrain_cave_carve_box(terrain->borrowed_cave, box, blocks);
     terrain_hydrology_flood_box(terrain->borrowed_hydrology, box, opened, blocks);
-    terrain_surface_line_caves_box(terrain->borrowed_surface, box, blocks);
+    terrain_surface_line_caves_box(terrain->borrowed_surface, nullptr, box, blocks);
     terrain_ore_fill_box(terrain->borrowed_ore, box, blocks);
 }
 
@@ -136,7 +136,7 @@ static void fea_find_places_after(test_context_t *t, const terrain_t *terrain, f
             .count_x = FEA_SEARCH_SIDE,
             .count_y = 1u,
         };
-        terrain_biome_columns_area(terrain->borrowed_biome, &area, columns);
+        terrain_biome_columns_area(terrain->borrowed_biome, nullptr, &area, columns);
         for (uint32_t i = 0u; i < FEA_SEARCH_SIDE; i++) {
             fea_place_t *const place = &places[columns[i].biome];
             if (place->found != 0u) {
@@ -691,7 +691,7 @@ TEST(a_columns_ground_is_what_the_stages_leave) {
         };
         fea_stages(&terrain, &box, opened, blocks);
         terrain_feature_column_t columns[FEA_COLUMNS];
-        terrain_feature_chunk_columns(terrain.borrowed_feature, places[b].chunk_x, places[b].chunk_y, columns);
+        terrain_feature_chunk_columns(terrain.borrowed_feature, nullptr, places[b].chunk_x, places[b].chunk_y, columns);
         for (uint32_t i = 0u; i < FEA_COLUMNS; i++) {
             /* From the sky: the first that is not air, and how much of it is water. */
             int32_t z = (int32_t)FEA_LAYERS - 1;
@@ -858,7 +858,7 @@ TEST(lily_pads_grow_on_a_swamps_standing_water) {
             .count_x = FEA_SEARCH_SIDE,
             .count_y = 1u,
         };
-        terrain_biome_columns_area(terrain.borrowed_biome, &area, columns);
+        terrain_biome_columns_area(terrain.borrowed_biome, nullptr, &area, columns);
         for (uint32_t i = 0u; i < FEA_SEARCH_SIDE && chunks < 600u; i++) {
             const bool land = biome_defs[columns[i].biome].where == BIOME_WHERE_LAND;
             if (!land || columns[i].ground >= (float32_t)MC_WORLD_Z_SEA) {
@@ -1016,7 +1016,8 @@ TEST(a_forest_has_about_the_trees_its_file_asks_for) {
     terrain_feature_column_t tops[FEA_COLUMNS];
     for (uint32_t cy = 0u; cy < FEA_MAP_SIDE; cy++) {
         for (uint32_t cx = 0u; cx < FEA_MAP_SIDE; cx++) {
-            terrain_feature_chunk_columns(terrain.borrowed_feature, box.origin_x / (int32_t)FEA_CHUNK + (int32_t)cx,
+            terrain_feature_chunk_columns(terrain.borrowed_feature, nullptr,
+                                          box.origin_x / (int32_t)FEA_CHUNK + (int32_t)cx,
                                           box.origin_y / (int32_t)FEA_CHUNK + (int32_t)cy, tops);
             for (uint32_t i = 0u; i < FEA_COLUMNS; i++) {
                 columns_of_it += tops[i].biome == BIOME_ID_BIRCH_FOREST ? 1u : 0u;
@@ -1072,7 +1073,8 @@ TEST(every_lake_holds_its_water) {
         for (int32_t dx = -SPREAD; dx <= SPREAD; dx++) {
             const int32_t chunk_x = place->chunk_x + dx;
             const int32_t chunk_y = place->chunk_y + dy;
-            const terrain_feature_lake_t lake = terrain_feature_chunk_lake(terrain.borrowed_feature, chunk_x, chunk_y);
+            const terrain_feature_lake_t lake =
+                terrain_feature_chunk_lake(terrain.borrowed_feature, nullptr, chunk_x, chunk_y);
             tried++;
             if (lake.exists == 0u) {
                 continue;
@@ -1147,7 +1149,7 @@ TEST(a_lake_keeps_inside_its_chunk) {
     uint32_t found = 0u;
     for (int32_t y = -30; y < 30; y++) {
         for (int32_t x = -30; x < 30; x++) {
-            const terrain_feature_lake_t got = terrain_feature_chunk_lake(terrain.borrowed_feature, x, y);
+            const terrain_feature_lake_t got = terrain_feature_chunk_lake(terrain.borrowed_feature, nullptr, x, y);
             if (got.exists == 0u) {
                 continue;
             }
@@ -1185,8 +1187,9 @@ TEST(ice_and_snow_are_where_each_biomes_file_says) {
         const int32_t chunk_x = places[b].chunk_x;
         const int32_t chunk_y = places[b].chunk_y;
         terrain_feature_column_t tops[FEA_COLUMNS];
-        terrain_feature_chunk_columns(terrain.borrowed_feature, chunk_x, chunk_y, tops);
-        const terrain_feature_lake_t lake = terrain_feature_chunk_lake(terrain.borrowed_feature, chunk_x, chunk_y);
+        terrain_feature_chunk_columns(terrain.borrowed_feature, nullptr, chunk_x, chunk_y, tops);
+        const terrain_feature_lake_t lake =
+            terrain_feature_chunk_lake(terrain.borrowed_feature, nullptr, chunk_x, chunk_y);
         const int32_t ground = places[b].ground > MC_WORLD_Z_SEA ? places[b].ground : MC_WORLD_Z_SEA;
         const terrain_density_box_t box = {
             .origin_x = chunk_x * (int32_t)FEA_CHUNK,
@@ -1260,7 +1263,7 @@ TEST(only_what_is_open_changes_and_no_voxel_outside_the_world) {
         const terrain_density_box_t box = fea_map_box(&places[biomes[b]]);
         fea_stages(&terrain, &box, opened, before);
         memcpy(after, before, voxels * sizeof(uint16_t));
-        terrain_feature_fill_box(terrain.borrowed_feature, &box, after);
+        terrain_feature_fill_box(terrain.borrowed_feature, nullptr, &box, after);
         const uint64_t layer = (uint64_t)box.count_x * box.count_y;
         uint64_t replaced = 0u;
         uint64_t changed = 0u;
@@ -1319,7 +1322,7 @@ TEST(fractional_tries_come_out_as_fractions) {
             const int32_t chunk_x = place->chunk_x + (int32_t)cx;
             const int32_t chunk_y = place->chunk_y + (int32_t)cy;
             terrain_feature_column_t tops[FEA_COLUMNS];
-            terrain_feature_chunk_columns(terrain.borrowed_feature, chunk_x, chunk_y, tops);
+            terrain_feature_chunk_columns(terrain.borrowed_feature, nullptr, chunk_x, chunk_y, tops);
             uint32_t plains = 0u;
             for (uint32_t i = 0u; i < FEA_COLUMNS; i++) {
                 plains += tops[i].biome == BIOME_ID_PLAINS ? 1u : 0u;
@@ -1499,7 +1502,7 @@ TEST(a_tile_read_once_lays_what_the_fill_lays) {
         const int32_t x = places[biomes[b]].chunk_x * (int32_t)FEA_CHUNK;
         const int32_t y = places[biomes[b]].chunk_y * (int32_t)FEA_CHUNK;
         const int32_t ground = places[biomes[b]].ground;
-        terrain_surface_tile_read(terrain.borrowed_surface, x, y, tile);
+        terrain_surface_tile_read(terrain.borrowed_surface, nullptr, x, y, tile);
         /* From above the ground down through it, in the order a walk goes, the one tile used for them all. */
         for (uint32_t slice = 0u; slice < SLICES; slice++) {
             const terrain_density_box_t box = {
@@ -1513,7 +1516,7 @@ TEST(a_tile_read_once_lays_what_the_fill_lays) {
             terrain_hydrology_fill_box(terrain.borrowed_hydrology, &box, before);
             memcpy(whole, before, VOXELS * sizeof(uint16_t));
             memcpy(tiled, before, VOXELS * sizeof(uint16_t));
-            terrain_surface_fill_box(terrain.borrowed_surface, &box, whole);
+            terrain_surface_fill_box(terrain.borrowed_surface, nullptr, &box, whole);
             terrain_surface_fill_tile_box(terrain.borrowed_surface, tile, &box, tiled);
             CHECK(memcmp(whole, tiled, VOXELS * sizeof(uint16_t)) == 0);
             for (uint32_t i = 0u; i < VOXELS; i++) {

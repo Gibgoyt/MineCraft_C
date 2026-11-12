@@ -201,11 +201,11 @@ static bool map_column_read(const uint16_t *blocks, int32_t low, uint32_t layers
 static void map_stages_run(const terrain_t *terrain, const terrain_density_box_t *box, uint8_t *opened,
                            uint16_t *blocks) {
     terrain_hydrology_fill_box(terrain->borrowed_hydrology, box, blocks);
-    terrain_surface_fill_box(terrain->borrowed_surface, box, blocks);
+    terrain_surface_fill_box(terrain->borrowed_surface, nullptr, box, blocks);
     terrain_cave_mask_box(terrain->borrowed_cave, box, opened);
     terrain_cave_cut_with_mask(box, opened, blocks);
     terrain_hydrology_flood_box(terrain->borrowed_hydrology, box, opened, blocks);
-    terrain_surface_line_caves_box(terrain->borrowed_surface, box, blocks);
+    terrain_surface_line_caves_box(terrain->borrowed_surface, nullptr, box, blocks);
 }
 
 /* A column's blocks, in a box only as tall as it needs. A voxel is the same whatever box it came in. */
@@ -280,7 +280,7 @@ static void map_row_job(job_worker_t *worker, void *borrowed_argument) {
             .count_y = 1u,
         };
         terrain_hydrology_columns_area(run->borrowed_terrain->borrowed_hydrology, &area, fields);
-        terrain_biome_columns_area(run->borrowed_terrain->borrowed_biome, &area, biomes);
+        terrain_biome_columns_area(run->borrowed_terrain->borrowed_biome, nullptr, &area, biomes);
         for (uint32_t i = 0u; i < MAP_SIDE; i++) {
             const int32_t x = area.origin_x + (int32_t)(i * MAP_STEP);
             const uint64_t at = (uint64_t)i + (uint64_t)MAP_SIDE * row;

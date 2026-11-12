@@ -336,8 +336,8 @@ static int32_t surface_band_z(int32_t z, float32_t wander) {
 }
 
 /* What does not change with the layers. The noise waits until a voxel asks for it. */
-static void surface_tile_read(const terrain_surface_t *surface, const surface_span_t *span,
-                              terrain_surface_tile_t *tile) {
+static void surface_tile_read(const terrain_surface_t *surface, const terrain_climate_sample_t *climate,
+                              const surface_span_t *span, terrain_surface_tile_t *tile) {
     const terrain_fields_area_t area = {
         .origin_x = span->x,
         .origin_y = span->y,
@@ -346,7 +346,7 @@ static void surface_tile_read(const terrain_surface_t *surface, const surface_sp
         .count_x = span->count_x,
         .count_y = span->count_y,
     };
-    terrain_biome_columns_area(surface->borrowed_biome, &area, tile->columns);
+    terrain_biome_columns_area(surface->borrowed_biome, climate, &area, tile->columns);
     surface_bounds_t bounds = surface_lattice_read(surface, span, tile->steepness);
     /* A river's cut is a column's own number, and takes ground away. */
     const uint32_t count = span->count_x * span->count_y;
@@ -418,7 +418,8 @@ static void surface_tile_lay(const terrain_surface_t *surface, terrain_surface_t
     }
 }
 
-void terrain_surface_fill_box(const terrain_surface_t *surface, const terrain_density_box_t *box, uint16_t *blocks) {
+void terrain_surface_fill_box(const terrain_surface_t *surface, const terrain_climate_sample_t *climate,
+                              const terrain_density_box_t *box, uint16_t *blocks) {
     const int64_t tile = (int64_t)SURFACE_TILE;
     for (uint32_t iy = 0u; iy < box->count_y;) {
         const int64_t y = (int64_t)box->origin_y + (int64_t)iy;
@@ -439,7 +440,7 @@ void terrain_surface_fill_box(const terrain_surface_t *surface, const terrain_de
                 .count_y = count_y,
             };
             terrain_surface_tile_t read;
-            surface_tile_read(surface, &span, &read);
+            surface_tile_read(surface, climate, &span, &read);
             surface_tile_lay(surface, &read, box, &span, blocks);
             ix += count_x;
         }
@@ -447,10 +448,11 @@ void terrain_surface_fill_box(const terrain_surface_t *surface, const terrain_de
     }
 }
 
-void terrain_surface_tile_read(const terrain_surface_t *surface, int32_t x, int32_t y, terrain_surface_tile_t *tile) {
+void terrain_surface_tile_read(const terrain_surface_t *surface, const terrain_climate_sample_t *climate, int32_t x,
+                               int32_t y, terrain_surface_tile_t *tile) {
     ASSERT(((uint32_t)x & (SURFACE_TILE - 1u)) == 0u && ((uint32_t)y & (SURFACE_TILE - 1u)) == 0u);
     const surface_span_t span = {.x = x, .y = y, .ix = 0u, .iy = 0u, .count_x = SURFACE_TILE, .count_y = SURFACE_TILE};
-    surface_tile_read(surface, &span, tile);
+    surface_tile_read(surface, climate, &span, tile);
 }
 
 void terrain_surface_fill_tile_box(const terrain_surface_t *surface, terrain_surface_tile_t *tile,
@@ -529,8 +531,9 @@ static void surface_line_slice(const terrain_surface_t *surface, const terrain_d
     surface_line_layers(box, span, columns, patch, z_first, z_last, &from, blocks);
 }
 
-static void surface_line_tile(const terrain_surface_t *surface, const terrain_density_box_t *box,
-                              const surface_span_t *span, const uint8_t *mask, uint16_t *blocks) {
+static void surface_line_tile(const terrain_surface_t *surface, const terrain_climate_sample_t *climate,
+                              const terrain_density_box_t *box, const surface_span_t *span, const uint8_t *mask,
+                              uint16_t *blocks) {
     terrain_biome_column_t columns[SURFACE_TILE_COLUMNS];
     const terrain_fields_area_t area = {
         .origin_x = span->x,
@@ -540,7 +543,7 @@ static void surface_line_tile(const terrain_surface_t *surface, const terrain_de
         .count_x = span->count_x,
         .count_y = span->count_y,
     };
-    terrain_biome_columns_area(surface->borrowed_biome, &area, columns);
+    terrain_biome_columns_area(surface->borrowed_biome, climate, &area, columns);
 
     /* What z any of this tile's columns can hold an underground biome at. Most tiles hold none. */
     const uint32_t count = span->count_x * span->count_y;
@@ -605,8 +608,8 @@ static void surface_line_tile(const terrain_surface_t *surface, const terrain_de
     }
 }
 
-static void surface_line_box(const terrain_surface_t *surface, const terrain_density_box_t *box, const uint8_t *mask,
-                             uint16_t *blocks) {
+static void surface_line_box(const terrain_surface_t *surface, const terrain_climate_sample_t *climate,
+                             const terrain_density_box_t *box, const uint8_t *mask, uint16_t *blocks) {
     const int64_t tile = (int64_t)SURFACE_TILE;
     for (uint32_t iy = 0u; iy < box->count_y;) {
         const int64_t y = (int64_t)box->origin_y + (int64_t)iy;
@@ -626,19 +629,19 @@ static void surface_line_box(const terrain_surface_t *surface, const terrain_den
                 .count_x = count_x,
                 .count_y = count_y,
             };
-            surface_line_tile(surface, box, &span, mask, blocks);
+            surface_line_tile(surface, climate, box, &span, mask, blocks);
             ix += count_x;
         }
         iy += count_y;
     }
 }
 
-void terrain_surface_line_caves_box(const terrain_surface_t *surface, const terrain_density_box_t *box,
-                                    uint16_t *blocks) {
-    surface_line_box(surface, box, nullptr, blocks);
+void terrain_surface_line_caves_box(const terrain_surface_t *surface, const terrain_climate_sample_t *climate,
+                                    const terrain_density_box_t *box, uint16_t *blocks) {
+    surface_line_box(surface, climate, box, nullptr, blocks);
 }
 
-void terrain_surface_line_caves_with_mask(const terrain_surface_t *surface, const terrain_density_box_t *box,
-                                          const uint8_t *mask, uint16_t *blocks) {
-    surface_line_box(surface, box, mask, blocks);
+void terrain_surface_line_caves_with_mask(const terrain_surface_t *surface, const terrain_climate_sample_t *climate,
+                                          const terrain_density_box_t *box, const uint8_t *mask, uint16_t *blocks) {
+    surface_line_box(surface, climate, box, mask, blocks);
 }
