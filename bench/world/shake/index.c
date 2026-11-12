@@ -161,7 +161,9 @@ typedef struct sh_options_t {
     uint8_t has_at;           /* 72 */
     uint8_t rose;             /* 73 */
     uint8_t list;             /* 74 */
-    uint8_t _pad0[5];         /* 75 */
+    uint8_t
+        pace_off; /* 75: plan 008 phase 02: main says no next take, so the gpu thread keeps today's rule, for a before */
+    uint8_t _pad0[4]; /* 76 */
 } sh_options_t;
 static_assert(sizeof(sh_options_t) == 80);
 
@@ -638,7 +640,8 @@ static uint32_t sh_rings_take(sh_t *sh, const game_watch_t *watch, uint64_t *tak
     return count;
 }
 
-static bool sh_row_live(sh_t *sh, const sh_row_t *row, float64_t heading_deg, uint32_t seconds, sh_result_t *r) {
+static bool sh_row_live(sh_t *sh, const sh_row_t *row, float64_t heading_deg, uint32_t seconds, bool pace,
+                        sh_result_t *r) {
     game_t *const game = &sh->borrowed_app->game;
     display_buffer_t target = sh_target(sh);
     if (!game_loop_start(game, nullptr)) {
@@ -656,8 +659,8 @@ static bool sh_row_live(sh_t *sh, const sh_row_t *row, float64_t heading_deg, ui
     bool ok = true;
     while (ok && now_ns - started_ns < total_ns) {
         sh_look(row, heading_deg, (float64_t)(now_ns - started_ns) / (float64_t)TIME_NS_PER_SECOND, &game->camera);
-        game_loop_next_take(game,
-                            next_ns + frame_ns); /* plan 008 phase 02: the tick it sleeps to next, as a window's */
+        /* Plan 008 phase 02: the tick it sleeps to, as a window says; none with --pace-off. */
+        game_loop_next_take(game, pace ? next_ns + frame_ns : 0);
         ok = game_loop_frame(game, &still, (float32_t)((float64_t)(now_ns - last_ns) / (float64_t)TIME_NS_PER_SECOND),
                              &target);
         count = sh_rings_take(sh, watch, &takes_read, &last_taken_ns, count);
@@ -872,9 +875,10 @@ static bool sh_run(sh_t *sh, const sh_row_t *row, const sh_options_t *options, s
     if (ok && options->rose != 0u) {
         ok = sh_rose(sh, options, options->has_at != 0u ? "spot" : "jagged_peaks");
     } else if (ok) {
-        ok = row->mode == SH_MODE_SETTLED ? sh_row_settled(sh, row, options->yaw_deg, r)
-                                          : sh_row_live(sh, row, options->yaw_deg,
-                                                        options->seconds != 0u ? options->seconds : SH_LIVE_SECONDS, r);
+        ok = row->mode == SH_MODE_SETTLED
+                 ? sh_row_settled(sh, row, options->yaw_deg, r)
+                 : sh_row_live(sh, row, options->yaw_deg, options->seconds != 0u ? options->seconds : SH_LIVE_SECONDS,
+                               options->pace_off == 0u, r);
     }
     if (ok) {
         r->picture_hash = sh_hash(sh->borrowed_picture, (uint64_t)SH_WIDTH * SH_HEIGHT * 4u);
@@ -1027,6 +1031,7 @@ static void sh_usage(const char *program) {
         "  --record <file>   add a line per row: bench/world/shake/history.tsv is the repository's\n"
         "  --shots <dir>     the last picture of each row, or the rose's CSV, plot and worst direction, here\n"
         "  --rose            the cost rose in place of the rows: 72 yaws by 3 pitches, settled\n"
+        "  --pace-off        live rows with no next take said: the gpu thread's rule before plan 008 phase 02\n"
         "  --list            print the rows, and do nothing\n",
         program);
 }
@@ -1040,6 +1045,8 @@ static bool sh_parse(int32_t argc, char **argv, sh_options_t *out) {
             out->list = 1u;
         } else if (strcmp(argv[i], "--rose") == 0) {
             out->rose = 1u;
+        } else if (strcmp(argv[i], "--pace-off") == 0) {
+            out->pace_off = 1u;
         } else if (strcmp(argv[i], "--only") == 0 && has_value) {
             out->only = argv[++i];
         } else if (strcmp(argv[i], "--record") == 0 && has_value) {

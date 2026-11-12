@@ -1,6 +1,6 @@
 # 008-ahmed-bohemoth-smooth-frames-when-turning — phase 2: Pacing and presenting without waiting
 
-**Status:** in progress: the rule, main's next take, the gpu thread on the rule and two X segments built and tested; measuring next   (updated 2026-11-12)
+**Status:** built, tested and measured on the card; waiting for Ahmed's frame log and his gate   (updated 2026-11-12)
 
 Read first: `plans/008-ahmed-bohemoth-smooth-frames-when-turning-phase-00-vision-and-plan-files.md`, then the master `plans/008-ahmed-bohemoth-smooth-frames-when-turning.md`: section 1 (C2 and C6), 3.2 and 4. Then phase 01's results table, which says how large C2 and C6 really are on Ahmed's card.
 
@@ -176,19 +176,34 @@ This phase may edit these, plus this file:
 - [x] Q3 settled (A by default) and recorded here
 - [x] Two MIT-SHM segments; completion by `shmseg`; skip and count when both are pending; still fails after 5 s with none
 - [x] F3 and the frame log show `skipped`, `aimed`, `late`
-- [ ] Phase 01's shake rows run again (live-capped, live, settled 0 and 720) and the results below filled in
+- [x] Phase 01's shake rows run again (live-capped, live, settled 0 and 720) and the results below filled in (live-capped still and 720, uncapped, r64 and the jagged peaks, before and after in one run; the settled rows draw with no threads, so the rule cannot touch them)
 - [ ] Ahmed's frame log again, and its summary below
-- [ ] Golden pictures and every settled hash unchanged
-- [ ] READMEs updated
+- [x] Golden pictures and every settled hash unchanged
+- [x] READMEs updated
 
 ## Results (filled in by this phase)
 
-| Row or log | Interval p50 / p99 / worst, before | After | Card idle waiting, before / after | Late share | Card power still, before / after |
+All on Ahmed's card (his game closed, checked before the run), `build/profile/bin/bench_world_shake`, 1920x1080, every effect, the sidecar beside the whole run (`bench/world/gpu_watch.sh`). **Before and after are one run, alternated:** "before" is `--pace-off` (main says no next take, so the gpu thread keeps the rule from before this phase, exactly), "after" is the rule; rows at his spot (`--at -80 134 418 --seed 14148492376765118422`) twice each, then r64 and the jagged peaks once. **The card was at its thermal floor throughout:** `clock64` 148 to 200 MHz mean per row (readings 63 to 938), `nvidia-smi` 690 to 1130 MHz, 84 to 86 °C, 41 to 43 W of a 50 W limit, reasons `0x24` (SW power cap and SW thermal slowdown). So a still picture at his spot cost 31 to 47 ms here, not the 9.8 ms of phase 01's row at 547 MHz, and intervals are in whole 8.33 ms slots of that. The clock moved within and between rows, so compare pictures a second with the card's ms beside them.
+
+| Row | Before: interval p50 / p99 / worst ms, pictures/s, card mean ms @ MHz | After | Card idle waiting for main, before / after (ms a picture) | Late share, before / after | Card power, before / after |
 |---|---|---|---|---|---|
-| `spot/shake-720-live-capped` | | | | | |
-| `spot/shake-720-live-capped-r64` | | | | | |
-| `jagged_peaks/shake-720-live-capped` | | | | | |
-| Ahmed's frame log | | | | | |
+| `spot/shake-0-live-capped` (still), pass 1 | 41.67 / 66.71 / 75.00, 23.3/s, 38.5 @ 156 | **33.32 / 33.38 / 34.29, 31.9/s**, 31.1 @ 163 | 4.08 / **0.08** | 99.1 % / 1.3 % | 41.4 / 42.6 W (the pass's three rows) |
+| `spot/shake-0-live-capped` (still), pass 2 | 50.00 / 75.00 / 75.03, 19.5/s, 47.1 @ 159 | 41.66 / 66.70 / 66.70, 22.5/s, 43.8 @ 157 | 3.66 / **0.14** | 99.0 % / 8.0 % | 42.1 / 42.6 W |
+| `spot/shake-720-live-capped`, pass 1 | 58.33 / 100.03 / 141.67, 16.7/s, 54.9 @ 170 | 50.00 / 66.70 / 66.78, 18.9/s, 52.3 @ 188 | 4.60 / **0.12** | 100 % / 3.7 % | as above |
+| `spot/shake-720-live-capped`, pass 2 | 66.64 / 141.70 / 141.70, 14.2/s, 65.5 @ 159 | 50.00 / 133.33 / 141.67, 17.7/s, 55.9 @ 198 | 4.42 / **0.07** | 92.3 % / 3.9 % | as above |
+| `spot/shake-720-live-capped` at r64 (`--render-distance 64`) | 66.67 / 133.33 / 133.33, 14.3/s, 62.7 @ 172 | 58.36 / 158.67 / 199.97, 14.9/s, 66.0 @ 189 | 5.77 / **0.07** | 100 % / 10.7 % | 42.6 / 42.5 W |
+| `jagged_peaks/shake-720-live-capped` | 25.00 / 41.70 / 58.33, 38.4/s, 20.1 @ 175 | 16.67 / 25.02 / 25.24, 62.1/s, 7.0 @ 491 (the clock rose: not like for like) | 5.81 / 9.04 (just in time by design: 7 ms pictures, one each two ticks) | 97.7 % / 0.0 % | 41.7 / 42.8 W |
+| `spot/shake-720-live` (uncapped, unchanged by the rule) | 58.30 and 58.30 p50, 18.3 and 16.8/s | 74.97 and 50.03 p50, 12.2 and 18.4/s | 0 / 0 | | |
+| Ahmed's frame log | still to come: needs his run | | | | |
+
+**What it says.**
+
+- **The card no longer idles waiting for main.** Before, 3.7 to 5.8 ms a picture; after, 0.07 to 0.14 ms (the target is under 0.5). Each live row also prints `pace:`, the idle before a picture the rule started at once, and it was 0.00 ms on every row.
+- **Pictures follow the card's own time.** After, pictures a second times card ms is 0.99 on the still and 720°/s rows at his spot (31.9 x 31.1 ms, 18.9 x 52.3 ms): the card is busy all the time it is not drawing nothing. Before it was 0.82 to 0.93. The interval p50 is still a whole number of 8.33 ms slots, as main shows a picture only on its tick. So the target "p50 within 1 ms of P + G's p50" cannot hold for a single interval at these card times; the mean interval (1000 / pictures a second: 31.3 ms against a card mean of 31.1, 52.9 against 52.3) is within 1 ms.
+- **More pictures from the same card:** +37 % and +15 % still, +13 % and +25 % at 720°/s, +4 % at r64, all at about the same clock. "Late" is now a picture ready after the take the rule aimed it at: 1 to 11 %, against 92 to 100 % by phase 01's count.
+- **Power:** the after windows drew 0.5 to 1.2 W more (1 to 3 %), inside the 5 % target, with the card held at its floor by heat either way. The sidecar cannot split still from turning within a run of three rows; the still rows' own power is not separated.
+- **Uncapped is unchanged by the rule** (it draws back to back as before); its rows moved with the clock only.
+- At the jagged peaks the card's clock rose to 491 MHz in the after run, and pictures there cost 7 ms: the rule paced them just in time, one each two ticks, 62 a second at p99 25 ms, idle 9 ms a picture by design (master 3.2 rule 2: a second picture in that slot would only heat the card).
 
 ## Tests
 
@@ -249,6 +264,40 @@ He says whether it feels smoother, and whether anything stutters that did not be
 
 Appended as they land:
 
+- `9459e5e9` Add plan 008 phase 02's start rule in run/src/game/pace: a late picture starts the next at once, a picture that fits two ticks starts just in time, a dearer one back to back, with T-hat the 90th percentile of the last 16, and its tests on a fake clock.
+- `bf244e66` Start each picture by plan 008 phase 02's rule: main says its next take (the window's clock, the next flip, a bench's clock) and the gpu thread sleeps toward the rule's start in 0.5 ms slices; two MIT-SHM segments used in turn, with a spare drawn into and counted when both are with the X server; the rule's aim, start and miss in the frame log, and skipped puts in F3.
+- this commit: `--pace-off` in bench_world_shake, the `pace:` line, the measurements and the history rows.
+
 ## Issues found
 
-None.
+**Q3:** A, just in time, margin 1 ms (`GAME_PACE_MARGIN_NS`), set in `game_pace_start(&pace, true)` as a world opens. B is `game_pace_start(..., false)`; nothing sets it yet.
+
+**The rule as written in the plan did not give its own 17 ms test, so it is stated differently here.** The plan's step 2 aims a just-in-time picture at main's *next* take with `next_take - T-hat - 1 ms`, and calls a picture late against that aim. Worked through, that makes 17 ms pictures alternate 17 and 24.7 ms starts (48 a second, not 58.8), and a 15 ms picture start at a take, not 0.67 ms after it as the plan's own example says. The rule built (`run/src/game/pace/README.md`):
+
+1. uncapped, paused or no take known: today's rule;
+2. the last picture missed its aim: start now;
+3. T-hat + margin over two ticks (16.67 ms): start now, back to back (master 3.2's "a 20 ms one 50 instead of 40");
+4. a picture waits for main and is on time: hold until main takes it;
+5. otherwise just in time for the earliest take the picture can make (the first take at least T-hat + margin away), which is the plan's 0.67 ms example.
+
+So pictures that fit two ticks are paced evenly at 120 or 60 a second, and dearer ones come as fast as the card gives them. With these, all of `run_game_pace` passes as the plan states it, but for one test:
+
+**`fourteen_ms_pictures_are_one_a_slot`** says "exactly one picture started per tick over 600 ticks". No 14 ms picture fits an 8.33 ms tick, so the test checks one each two ticks: 300 pictures over 600 ticks, never two started in one tick, each ready 1 ms before its take.
+
+**A start once said never moves later** (in `game_gpu_thread`, not the pure rule). The rule trusts main's beat, takes at `next_take + k tick`. `run_render_frame`'s real-threads test runs main every 1 to 2 ms and, given "next take in 1 ms", moved the beat ahead every frame, and the just-in-time start with it: the gpu thread drew nothing for 120 s. With a true beat (a window, KMS, the bench) it never matters; with this guard a wrong one cannot starve the card.
+
+**Main's next take reaches the game through `game_loop_next_take`,** said before each `game_loop_frame`, because `game_t` is at its size and the game holds no display. `display_t` gained `next_take_ns` (in its padding: no size change), set before each frame source call by `display_window_run` (its next tick) and `display_flip_once` (`display_flip_next_ns`: the last flip event plus the measured mean interval). `game/session` passes it on (4 lines). The `--test-world` KMS path (`game_loop_source`, which has no display) says nothing and keeps today's rule; so does a pause, and uncapped.
+
+**`game_pace_t` is a 256-byte part of the World arena** (`game_world_parts_t` grew from 64 512 to 64 768 bytes), as `game_t` is full.
+
+**Two segments need a third buffer.** When both segments are with the X server, the plan has main still call the frame source "and compose the HUD into its own buffer", but the source writes into the buffer it is handed. So there is a spare, the same size, only this process maps it (shared memory not attached to the server, kept in `display/x11` with the other two), drawn into and never put. The window's shared memory is 24.9 MB at 1920x1080, not 16.6 MB.
+
+**The X tests drive the bookkeeping, not a socket.** The standards lint bans `socketpair` everywhere and sockets outside `run/src/display/x11/`, so a fake server is not possible in a test. `display_x11_put_note` and `display_x11_completion_take` are the segments' bookkeeping apart from the socket, used by `display_x11_present` and by reading a completion; the tests call them, and `display_x11_free_buffer` itself on a `display_x11_t` with fd -1 (which `poll` passes over). The wire's completion layout is its own test.
+
+**"Late" changed meaning** in F3, the minute line, the frame log's `late` and the bench: a picture ready after the take the rule aimed it at (`missed`), and only with no aim (today's rule) phase 01's "taken past the slot after the one it began in". Under just-in-time starts phase 01's count calls every on-time picture late (it begins in one slot and is taken two later). `game_watch_picture_t` grew to 144 bytes (`aimed_ns`, `start_at_ns`, `pace_how`, `missed`), `game_watch_take_t` to 72 (`puts_skipped`).
+
+**`idle_ms` now includes just-in-time sleep:** at the jagged peaks (7 ms pictures) it is 9 ms a picture by design. The card idle *while late* is what the target is about: the bench's `pace:` line, 0.00 ms on every row.
+
+**The target "interval p50 within 1 ms of P + G's p50" cannot hold** for one interval at these card times: main shows a picture only on its 8.33 ms tick, so intervals are whole slots. The mean interval is within 1 ms of the card's mean (results above).
+
+**Not measured here:** Ahmed's own frame log in a window (it needs him; the release build has the new columns `pace`, `aimed_ms`, `start_late_ms`, `missed`, `puts_skipped`), and so the X columns and skipped puts in a real window. The card was at 148 to 200 MHz for the whole run (thermal floor), so the 58-a-second case at 17 ms pictures was not reachable on this card today; `run_game_pace` shows it on a fake clock.
