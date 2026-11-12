@@ -1,7 +1,8 @@
 name: ice_spikes
 where: land
 priority: 1
-climate: { temperature: [-1, -0.45], humidity: [-1, -0.4], weirdness: [0.2, 1], height: [-1000, 300] }
+landform: { weirdness: [0.2, 1], height: [-1000, 300] }
+climate: { families: [ice], wetness: [-1, -0.4], rain_mm: [0, 600] }
 surface:
   top: snow_block
   filler: snow_block

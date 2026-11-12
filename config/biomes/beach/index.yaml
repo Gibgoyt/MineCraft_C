@@ -1,6 +1,6 @@
 name: beach
 where: beach
-climate: { temperature: [-0.45, 1] }
+climate: { families: [boreal, continental, temperate, mediterranean, steppe, desert, savanna, monsoon, rainforest] }
 surface:
   top: sand
   filler: sand

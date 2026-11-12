@@ -26,18 +26,23 @@ typedef struct terrain_biome_t {
 } terrain_biome_t;
 static_assert(sizeof(terrain_biome_t) == 24);
 
-/* What decides a column's biome. */
+/* What decides a column's biome (plan 006 phase 03): the family from the climate at the column's own height, then among the
+ * family's members the nearest box over the landform axes, variety and wetness. */
 typedef struct terrain_biome_inputs_t {
-    float32_t temperature;         /* 0 */
-    float32_t humidity;            /* 4 */
+    float32_t variety;             /* 0: the field's */
+    float32_t wetness;             /* 4: the field's, biased by the yearly rain: terrain_biome_wetness */
     float32_t continentalness;     /* 8 */
     float32_t erosion;             /* 12 */
     float32_t weirdness;           /* 16 */
-    float32_t ground;              /* 20: terrain_hydrology_column_t's */
+    float32_t ground;              /* 20: terrain_hydrology_column_t's; the box reads terrain_biome_height of it */
     terrain_hydrology_kind_t kind; /* 24 */
-    uint8_t _pad0[3];              /* 25 */
+    uint8_t family;                /* 25: a biome_family_t, terrain_biome_family's */
+    uint8_t _pad0[2];              /* 26 */
+    int32_t t_warm_cc;             /* 28: the climate at the column, for a biome's limits */
+    int32_t t_cold_cc;             /* 32 */
+    int32_t rain_mm_year;          /* 36 */
 } terrain_biome_inputs_t;
-static_assert(sizeof(terrain_biome_inputs_t) == 28);
+static_assert(sizeof(terrain_biome_inputs_t) == 40);
 
 /* What a column came to. */
 typedef struct terrain_biome_column_t {
@@ -46,7 +51,8 @@ typedef struct terrain_biome_column_t {
     float32_t carve_top; /* 8: the same */
     uint8_t biome;       /* 12: a biome_id_t: the one on the surface */
     uint8_t caves;       /* 13: bit i says biome_underground[i]'s climate holds this column, at any z */
-    uint8_t _pad0[2];    /* 14 */
+    uint8_t family;      /* 14: the biome_family_t its biome was chosen in */
+    uint8_t _pad0[1];    /* 15 */
 } terrain_biome_column_t;
 static_assert(sizeof(terrain_biome_column_t) == 16);
 
@@ -57,10 +63,32 @@ void terrain_biome_init(terrain_biome_t **out, arena_t *arena, uint64_t seed, co
 /* Empties the handle. The memory goes back with the arena. */
 void terrain_biome_deinit(terrain_biome_t *biome);
 
-/* The README's choice, as plain arithmetic: how far inputs lies outside a row's box. 0 is inside it. */
+/* Plan 006 phase 03 and plan 007 phase 00: the height a biome's landform box reads. Today the ground itself; once plan 007
+ * phase 03 lifts plateaus, the ground less the lift, so a high plateau's grass counts as low ground, while the family still
+ * reads the absolute height (terrain_biome_climate_z). The one place this is decided. */
+float32_t terrain_biome_height(float32_t ground);
+
+/* The height a column's family is worked out at: the sea's top for ocean and deep ocean, where the climate is the water's,
+ * and the ground, rounded down, for the rest. */
+int32_t terrain_biome_climate_z(float32_t ground, terrain_hydrology_kind_t kind);
+
+/* Plan 004 6.10's first match on a place's own numbers (terrain_climate_at at terrain_biome_climate_z): the class worked out at
+ * the column's height, with Mediterranean where the nearest cell has a dry summer. Pure. */
+biome_family_t terrain_biome_family(const terrain_climate_point_t *point);
+
+/* The family a climate class names, for the survey; BIOME_FAMILY_COUNT for TERRAIN_CLIMATE_CLASS_NONE (sea). */
+uint8_t terrain_biome_family_of_class(uint8_t climate_class);
+
+/* The wetness a biome reads: the field plus half of the rain's bias, (rain - 1000 mm) / 1000 mm clamped to -1 to 1, the sum
+ * clamped to -1 to 1. Plain float arithmetic. */
+float32_t terrain_biome_wetness(float32_t field, int32_t rain_mm_year);
+
+/* The README's choice, as plain arithmetic: how far inputs lies outside a row's box, its climate limits (t_warm, t_cold,
+ * rain_mm, each only if the row gives it) counted as axes of 10 degrees and 1000 mm. 0 is inside it. */
 float32_t terrain_biome_distance(const biome_def_t *def, const terrain_biome_inputs_t *inputs);
 
-/* The README's choice: from what decides a column to its surface biome. */
+/* The README's choice: from what decides a column to its surface biome. Only rows of inputs' where and family are looked at,
+ * and the nearest wins: never a biome of another family. */
 biome_id_t terrain_biome_choose(const terrain_biome_inputs_t *inputs);
 
 /* Which of biome_underground hold a column, as bits. */

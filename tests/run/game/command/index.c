@@ -538,6 +538,12 @@ static void gd_tuning_check(test_context_t *t, gd_jumps_t *jumps, game_t *game) 
     const uint32_t kinds = atomic_load(&corner->tuning_kinds);
     CHECK_EQ_U64(kinds >> 24, GAME_CORNER_TUNING_CLIMATE);
     CHECK_EQ_U64((kinds >> 16) & 0xFFu, point.climate_class);
+    /* Plan 006 phase 03: the biome and the family it was chosen in, and the biome is of that family. */
+    const terrain_biome_column_t column = terrain_biome_column_at(game->borrowed_terrain->borrowed_biome, &sample,
+                                                                  (int32_t)floor(feet[0]), (int32_t)floor(feet[1]));
+    CHECK_EQ_U64((kinds >> 8) & 0xFFu, column.family);
+    CHECK_EQ_U64(kinds & 0xFFu, terrain_biome_of_voxel(&column, (int32_t)floor(feet[2])));
+    CHECK((biome_defs[column.biome].families & (1u << column.family)) != 0u);
     const uint32_t year = atomic_load(&corner->tuning_year), cold = atomic_load(&corner->tuning_cold);
     CHECK_EQ_I64((int16_t)(uint16_t)(year & 0xFFFFu), gd_tenths((float32_t)point.t_mean_cc / 100.0f32));
     CHECK_EQ_I64((int16_t)(uint16_t)(year >> 16), gd_tenths((float32_t)point.t_warm_cc / 100.0f32));

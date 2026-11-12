@@ -1,6 +1,7 @@
 name: birch_forest
 where: land
-climate: { temperature: [-0.15, 0.2], humidity: [0.15, 0.4], height: [-1000, 300] }
+landform: { height: [-1000, 300] }
+climate: { families: [continental, temperate], wetness: [0.15, 0.4], rain_mm: [500, 1500] }
 surface:
   top: grass_block
   filler: dirt

@@ -1,7 +1,8 @@
 name: flower_forest
 where: land
 priority: 1
-climate: { temperature: [-0.15, 0.2], humidity: [-0.4, -0.15], weirdness: [-1, -0.2], height: [-1000, 300] }
+landform: { weirdness: [-1, -0.2], height: [-1000, 300] }
+climate: { families: [temperate], wetness: [-0.4, -0.15], rain_mm: [500, 1500] }
 surface:
   top: grass_block
   filler: dirt

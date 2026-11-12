@@ -1,6 +1,7 @@
 name: sparse_jungle
 where: land
-climate: { temperature: [0.2, 0.55], humidity: [0.15, 0.4], height: [-1000, 300] }
+landform: { height: [-1000, 500] }
+climate: { families: [monsoon, rainforest], wetness: [-1, 0.4], rain_mm: [1000, 2600] }
 surface:
   top: grass_block
   filler: dirt

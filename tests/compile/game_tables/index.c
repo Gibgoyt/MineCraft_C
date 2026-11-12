@@ -1193,7 +1193,9 @@ TEST(each_bad_tier_is_refused_and_nothing_is_written) {
 /* ---- Biomes: Stage 10.6 ------------------------------------------------------------------------------------------- */
 
 #define GTT_LAND_START "name: land_one\nwhere: land\n"
-#define GTT_LAND_SURFACE "surface: { top: stone, filler: stone }\n"
+#define GTT_LAND_CLIMATE "climate: { families: [all] }\n"
+#define GTT_LAND_SURFACE GTT_LAND_CLIMATE "surface: { top: stone, filler: stone }\n"
+#define GTT_LAND_BARE "surface: { top: stone, filler: stone }\n"
 
 /* One biome for each kind of place, so that a tree is whole. */
 static void gtt_biomes_make(test_context_t *t, const gtt_tree_t *tree, const char *land) {
@@ -1206,15 +1208,15 @@ static void gtt_biomes_make(test_context_t *t, const gtt_tree_t *tree, const cha
         snprintf(file, GTT_PATH_BYTES, "%s/index.yaml", name);
         char *const text = test_alloc(t, GTT_PATH_BYTES);
         snprintf(text, GTT_PATH_BYTES,
-                 "name: %s_one\nwhere: %s\nsurface:\n  top: stone\n  filler: stone\n  patches:\n"
-                 "    - { block: stone, from: 0, to: 1 }\n",
+                 "name: %s_one\nwhere: %s\nclimate: { families: [all] }\nsurface:\n  top: stone\n  filler: stone\n"
+                 "  patches:\n    - { block: stone, from: 0, to: 1 }\n",
                  WHERES[i], WHERES[i]);
         gtt_write(t, gtt_path(t, tree->borrowed_config, file), text);
     }
     gtt_mkdirs(t, gtt_path(t, tree->borrowed_config, "biomes/under_one"));
     gtt_write(
         t, gtt_path(t, tree->borrowed_config, "biomes/under_one/index.yaml"),
-        "name: under_one\nwhere: underground\nclimate: { z: [-10, 10] }\ncave: { floor: stone, ceiling: stone }\n");
+        "name: under_one\nwhere: underground\nlandform: { z: [-10, 10] }\ncave: { floor: stone, ceiling: stone }\n");
     gtt_mkdirs(t, gtt_path(t, tree->borrowed_config, "biomes/land_one"));
     gtt_write(t, gtt_path(t, tree->borrowed_config, "biomes/land_one/index.yaml"), land);
 }
@@ -1222,7 +1224,9 @@ static void gtt_biomes_make(test_context_t *t, const gtt_tree_t *tree, const cha
 TEST(a_whole_tree_of_biomes_becomes_tables) {
     const gtt_tree_t tree = gtt_tree_make(t, "biomes_good");
     gtt_biomes_make(t, &tree,
-                    GTT_LAND_START "priority: 3\nclimate: { temperature: [-0.5, 0.25], height: [10, 90] }\n"
+                    GTT_LAND_START "priority: 3\nlandform: { erosion: [-0.5, 0.25], height: [10, 90] }\n"
+                                   "climate: { families: [tundra, all], variety: [-0.5, 0.25], wetness: [0, 1], "
+                                   "t_warm: [-2.5, 10], rain_mm: [300, 1200] }\n"
                                    "surface:\n  top: stone\n  filler: stone\n  filler_depth: 5\n"
                                    "  steep: { block: stone, from: 1.5 }\n  high: { block: stone, from: 140 }\n"
                                    "  bands: { from: 40, depth: 14 }\n"
@@ -1237,7 +1241,15 @@ TEST(a_whole_tree_of_biomes_becomes_tables) {
     CHECK_CONTAINS(header, "#define BIOME_COUNT 7u");
     CHECK_CONTAINS(header, "#define BIOME_UNDERGROUND_COUNT 1u");
     /* As written, never rounded. */
-    CHECK_CONTAINS(source, ".temperature = {-5e-1f32, 25e-2f32}");
+    CHECK_CONTAINS(source, ".variety = {-5e-1f32, 25e-2f32}");
+    CHECK_CONTAINS(source, ".erosion = {-5e-1f32, 25e-2f32}");
+    CHECK_CONTAINS(source, ".wetness = {0e0f32, 1e0f32}");
+    CHECK_CONTAINS(source, ".limits = 5, .families = 0x7ffu, .t_warm_low_cc = -250, .t_warm_high_cc = 1000, "
+                           ".rain_low_mm = 300, .rain_high_mm = 1200");
+    CHECK_CONTAINS(source, ".limits = 0, .families = 0x000u");
+    CHECK_CONTAINS(source, "[BIOME_FAMILY_MEDITERRANEAN] = \"Mediterranean\"");
+    CHECK_CONTAINS(header, "BIOME_FAMILY_RAINFOREST = 10,");
+    CHECK_CONTAINS(header, "BIOME_FAMILY_COUNT = 11,");
     CHECK_CONTAINS(source, ".height = {10e0f32, 90e0f32}");
     CHECK_CONTAINS(source, ".height = {-10e0f32, 10e0f32}");
     CHECK_CONTAINS(source, ".top = BLOCK_ID_STONE");
@@ -1252,20 +1264,38 @@ TEST(a_whole_tree_of_biomes_becomes_tables) {
 
 static const gtt_bad_case_t GTT_BAD_BIOMES[] = {
     {GTT_LAND_START "colour: green\n" GTT_LAND_SURFACE, ":3:", "unknown field 'colour' in a biome"},
-    {GTT_LAND_START "climate: { wetness: [0, 1] }\n" GTT_LAND_SURFACE, ":3:", "unknown field 'wetness' in climate"},
+    {GTT_LAND_START "climate: { families: [all], sunshine: [0, 1] }\n" GTT_LAND_BARE,
+     ":3:", "unknown field 'sunshine' in climate"},
+    {GTT_LAND_START "landform: { wetness: [0, 1] }\n" GTT_LAND_SURFACE, ":3:", "unknown field 'wetness' in landform"},
+    /* Plan 006 phase 03: a biome without a family is refused, and so are the old keys, saying where they went. */
+    {GTT_LAND_START GTT_LAND_BARE, ":1:", "missing field 'climate' with its families"},
+    {GTT_LAND_START "climate: { wetness: [0, 1] }\n" GTT_LAND_BARE, ":3:", "climate has no families"},
+    {GTT_LAND_START "climate: { families: [all], temperature: [0, 1] }\n" GTT_LAND_BARE,
+     ":3:", "temperature has moved: landform/variety"},
+    {GTT_LAND_START "landform: { humidity: [0, 1] }\n" GTT_LAND_SURFACE, ":3:", "humidity has moved: landform/variety"},
+    {GTT_LAND_START "climate: { families: [all], height: [0, 90] }\n" GTT_LAND_BARE,
+     ":3:", "height has moved: landform/variety. It goes under landform:"},
+    {GTT_LAND_START "climate: { families: [jungleland] }\n" GTT_LAND_BARE, ":3:", "unknown family 'jungleland'"},
+    {GTT_LAND_START "climate: { families: [ice, ice] }\n" GTT_LAND_BARE, ":3:", "family 'ice' is named twice"},
+    {GTT_LAND_START "climate: { families: [] }\n" GTT_LAND_BARE, ":3:", "families must be a list"},
+    {GTT_LAND_START "climate: { families: [all], rain_mm: [0.5, 900] }\n" GTT_LAND_BARE,
+     ":3:", "rain_mm must be whole mm"},
+    {GTT_LAND_START "climate: { families: [all], t_cold: [-120, 0] }\n" GTT_LAND_BARE, ":3:", "t_cold is '-120'"},
     {GTT_LAND_START "surface: { top: stone, filler: stone, shiny: stone }\n",
      ":3:", "unknown field 'shiny' in surface"},
-    {GTT_LAND_START GTT_LAND_SURFACE "features: { dragons: 1 }\n", ":4:", "unknown field 'dragons' in features"},
+    {GTT_LAND_START GTT_LAND_SURFACE "features: { dragons: 1 }\n", ":5:", "unknown field 'dragons' in features"},
     {"name: other\nwhere: land\n" GTT_LAND_SURFACE, ":1:", "is not its directory's"},
     {"name: land_one\n" GTT_LAND_SURFACE, ":1:", "missing field 'where'"},
     {"name: land_one\nwhere: moon\n" GTT_LAND_SURFACE, ":2:", "unknown where 'moon'"},
     {GTT_LAND_START, ":1:", "missing field 'surface'"},
-    {GTT_LAND_START "surface: { top: stone }\n", ":3:", "surface must have top and filler"},
-    {GTT_LAND_START "surface: { top: granite_ghost, filler: stone }\n", ":3:", "block 'granite_ghost' does not exist"},
-    {GTT_LAND_START "climate: { temperature: [0.5, 0.5] }\n" GTT_LAND_SURFACE, ":3:", "with low below high"},
-    {GTT_LAND_START "climate: { temperature: [0.5] }\n" GTT_LAND_SURFACE, ":3:", "must be [low, high]"},
-    {GTT_LAND_START "climate: { temperature: [0, 1.5] }\n" GTT_LAND_SURFACE, ":3:", "temperature is '1.5'"},
-    {GTT_LAND_START "climate: { z: [0, 1] }\n" GTT_LAND_SURFACE, ":3:", "only an underground biome goes by z"},
+    {GTT_LAND_START GTT_LAND_CLIMATE "surface: { top: stone }\n", ":4:", "surface must have top and filler"},
+    {GTT_LAND_START GTT_LAND_CLIMATE "surface: { top: granite_ghost, filler: stone }\n",
+     ":4:", "block 'granite_ghost' does not exist"},
+    {GTT_LAND_START "landform: { erosion: [0.5, 0.5] }\n" GTT_LAND_SURFACE, ":3:", "with low below high"},
+    {GTT_LAND_START "landform: { erosion: [0.5] }\n" GTT_LAND_SURFACE, ":3:", "must be [low, high]"},
+    {GTT_LAND_START "landform: { erosion: [0, 1.5] }\n" GTT_LAND_SURFACE, ":3:", "erosion is '1.5'"},
+    {GTT_LAND_START "climate: { families: [all], variety: [0, 1.5] }\n" GTT_LAND_BARE, ":3:", "variety is '1.5'"},
+    {GTT_LAND_START "landform: { z: [0, 1] }\n" GTT_LAND_SURFACE, ":3:", "only an underground biome goes by z"},
     {GTT_LAND_START "cave: { floor: stone, ceiling: stone }\n" GTT_LAND_SURFACE,
      ":3:", "only an underground biome has cave"},
     {GTT_LAND_START "priority: 300\n" GTT_LAND_SURFACE, ":3:", "priority is 300"},
@@ -1281,7 +1311,7 @@ static const gtt_bad_case_t GTT_BAD_BIOMES[] = {
      ":3:", "bands depth must be above 0"},
     {GTT_LAND_START "surface:\n  top: stone\n  filler: stone\n  patches:\n    - { block: stone, from: 0.5, to: 0.5 }\n",
      ":7:", "a patch's from must be below its to"},
-    {GTT_LAND_START GTT_LAND_SURFACE "features: { cactus: 257 }\n", ":4:", "cactus is '257'"},
+    {GTT_LAND_START GTT_LAND_SURFACE "features: { cactus: 257 }\n", ":5:", "cactus is '257'"},
 };
 
 TEST(each_bad_biome_is_refused_at_its_line_and_nothing_is_written) {
@@ -1308,6 +1338,33 @@ TEST(a_kind_of_place_with_no_biome_is_refused) {
     gtt_tree_run(t, &tree, &run);
     CHECK_EQ_I64(run.exit_code, 1);
     CHECK_CONTAINS(run.output, "no biome has where: river");
+}
+
+/* Plan 006 phase 03: a family chooses only among its own, so a family with no biome for some kind of place is refused, by name. */
+TEST(every_family_has_a_biome_for_every_landform) {
+    const gtt_tree_t tree = gtt_tree_make(t, "biomes_family_hole");
+    gtt_biomes_make(t, &tree, GTT_LAND_START GTT_LAND_SURFACE);
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "biomes/ocean_one/index.yaml"),
+              "name: ocean_one\nwhere: ocean\nclimate: { families: [ice, tundra, boreal, continental, temperate, "
+              "mediterranean, steppe, desert, savanna, monsoon] }\nsurface: { top: stone, filler: stone }\n");
+    test_process_t run;
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 1);
+    CHECK_CONTAINS(run.output, "family rainforest has no biome with where: ocean");
+    CHECK_CONTAINS(run.output, "nothing was written");
+}
+
+TEST(an_underground_biome_has_no_family) {
+    const gtt_tree_t tree = gtt_tree_make(t, "biomes_cave_family");
+    gtt_biomes_make(t, &tree, GTT_LAND_START GTT_LAND_SURFACE);
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "biomes/under_one/index.yaml"),
+              "name: under_one\nwhere: underground\nlandform: { z: [-10, 10] }\nclimate: { families: [ice] }\n"
+              "cave: { floor: stone, ceiling: stone }\n");
+    test_process_t run;
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 1);
+    CHECK_CONTAINS(run.output, ":4:");
+    CHECK_CONTAINS(run.output, "an underground biome has no families");
 }
 
 /* Mobs: a tree with a whole mob, into which each mistake goes one at a time. */

@@ -1,7 +1,8 @@
 name: swamp
 where: land
 priority: 3
-climate: { temperature: [-0.45, 0.55], humidity: [-0.1, 1], erosion: [0.5, 1], continentalness: [-0.46, 0.5], height: [-1000, 24] }
+landform: { erosion: [0.5, 1], continentalness: [-0.46, 0.5], height: [-1000, 24] }
+climate: { families: [temperate, continental], wetness: [-0.1, 1], rain_mm: [800, 2600] }
 surface:
   top: grass_block
   filler: dirt

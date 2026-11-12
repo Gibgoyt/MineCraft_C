@@ -1,5 +1,6 @@
 name: stony_shore
 where: stony_shore
+climate: { families: [all] }
 surface:
   top: stone
   filler: stone

@@ -1,4 +1,5 @@
 /* bench_biome_map: which biome holds what ground in a seed's world, with no display and no card. See README.md. */
+#include "climate/index.h"
 #include "display/headless/png/index.h"
 #include "game/index.h"
 #include "heap/index.h"
@@ -96,12 +97,13 @@ typedef struct bmap_run_t {
     const terrain_t *borrowed_terrain;     /* 0 */
     terrain_biome_column_t *borrowed_rows; /* 8: a row's per worker */
     terrain_biome_column_t *borrowed_map;  /* 16: BMAP_PIXELS */
-    _Atomic uint32_t next;                 /* 24 */
-    _Atomic uint32_t next_worker;          /* 28 */
-    int32_t origin_x;                      /* 32: the map's first column */
-    int32_t origin_y;                      /* 36 */
+    const climate_t *borrowed_climate;     /* 24: --climate's, or nullptr for the fallback */
+    _Atomic uint32_t next;                 /* 32 */
+    _Atomic uint32_t next_worker;          /* 36 */
+    int32_t origin_x;                      /* 40: the map's first column */
+    int32_t origin_y;                      /* 44 */
 } bmap_run_t;
-static_assert(sizeof(bmap_run_t) == 40);
+static_assert(sizeof(bmap_run_t) == 48);
 
 /* A biome's numbers. */
 typedef struct bmap_row_t {
@@ -140,7 +142,18 @@ static void bmap_row_job(job_worker_t *worker, void *borrowed_argument) {
             .count_x = BMAP_SIDE,
             .count_y = 1u,
         };
-        terrain_biome_columns_area(run->borrowed_terrain->borrowed_biome, nullptr, &area, columns);
+        if (run->borrowed_climate == nullptr) {
+            terrain_biome_columns_area(run->borrowed_terrain->borrowed_biome, nullptr, &area, columns);
+        } else {
+            /* Plan 006 phase 03: each column on its own climate sample from the tiles, as a column job has it. */
+            for (uint32_t i = 0u; i < BMAP_SIDE; i++) {
+                const int32_t x = area.origin_x + (int32_t)(i * BMAP_STEP);
+                terrain_climate_sample_t sample;
+                (void)climate_terrain_sample(run->borrowed_climate, run->borrowed_terrain->seed, (int64_t)x - 8,
+                                             (int64_t)area.origin_y - 8, &sample);
+                columns[i] = terrain_biome_column_at(run->borrowed_terrain->borrowed_biome, &sample, x, area.origin_y);
+            }
+        }
         memcpy(run->borrowed_map + (uint64_t)row * BMAP_SIDE, columns, BMAP_SIDE * sizeof(terrain_biome_column_t));
     }
 }
@@ -360,7 +373,8 @@ static void bmap_print_bands(const terrain_biome_column_t *map) {
            (libc_double_t)((float64_t)wooded * 100.0f64 / (float64_t)whole));
 }
 
-static bool bmap_seed(job_system_t *system, bmap_run_t *run, const bmap_memory_t *memory, uint64_t seed) {
+static bool bmap_seed(job_system_t *system, bmap_run_t *run, const bmap_memory_t *memory, climate_t *climate,
+                      uint64_t seed) {
     terrain_t terrain;
     if (!terrain_init(&terrain, seed)) {
         return false;
@@ -370,6 +384,18 @@ static bool bmap_seed(job_system_t *system, bmap_run_t *run, const bmap_memory_t
     run->origin_y = GAME_WORLD_MIDDLE - (int32_t)(BMAP_ACROSS_BLOCKS / 2u);
     run->origin_x -= run->origin_x % (int32_t)BMAP_STEP;
     run->origin_y -= run->origin_y % (int32_t)BMAP_STEP;
+    run->borrowed_climate = nullptr;
+    if (climate != nullptr) {
+        if (!climate_open(climate, &terrain)) {
+            terrain_deinit(&terrain);
+            return false;
+        }
+        const int32_t margin = 1024;
+        climate_prepare_area(climate, system, run->origin_x - margin, run->origin_y - margin,
+                             run->origin_x + (int32_t)BMAP_ACROSS_BLOCKS + margin,
+                             run->origin_y + (int32_t)BMAP_ACROSS_BLOCKS + margin, nullptr, nullptr);
+        run->borrowed_climate = climate;
+    }
     atomic_store_explicit(&run->next, 0u, memory_order_relaxed);
     atomic_store_explicit(&run->next_worker, 0u, memory_order_relaxed);
     job_group_t group;
@@ -379,13 +405,17 @@ static bool bmap_seed(job_system_t *system, bmap_run_t *run, const bmap_memory_t
     }
     job_group_wait(system, &group);
     job_group_deinit(&group);
+    if (climate != nullptr) {
+        climate_close(climate, system);
+    }
     terrain_deinit(&terrain);
 
     bmap_sea_fill(run->borrowed_map, memory->sea);
     bmap_measure(run->borrowed_map, memory->sea, memory->rows);
     bmap_draw(run->borrowed_map, memory->pixels);
     char path[BMAP_PATH_BYTES];
-    snprintf(path, sizeof(path), "%s/%" PRIu64 "_biomes.png", memory->directory, seed);
+    snprintf(path, sizeof(path), "%s/%" PRIu64 "_biomes%s.png", memory->directory, seed,
+             climate != nullptr ? "_climate" : "");
     const bool ok = bmap_png_write(path, memory);
     printf("seed %" PRIu64 ": %s\n", seed, path);
     bmap_print_biomes(memory->rows);
@@ -394,8 +424,13 @@ static bool bmap_seed(job_system_t *system, bmap_run_t *run, const bmap_memory_t
 }
 
 int32_t main(int32_t argc, char **argv) {
+    const bool with_climate = argc > 1 && strcmp(argv[1], "--climate") == 0;
+    if (with_climate) {
+        argc--;
+        argv++;
+    }
     if (argc < 2) {
-        fprintf(stderr, "usage: bench_biome_map <directory for the pictures> [seed...]\n");
+        fprintf(stderr, "usage: bench_biome_map [--climate] <directory for the pictures> [seed...]\n");
         return 2;
     }
     const char *const directory = argv[1];
@@ -409,7 +444,8 @@ int32_t main(int32_t argc, char **argv) {
     const uint64_t map_bytes = (uint64_t)BMAP_PIXELS * sizeof(terrain_biome_column_t);
     const uint64_t table_bytes = (uint64_t)BIOME_COUNT * sizeof(bmap_row_t);
     const uint64_t stream_bytes = display_png_bytes_needed(BMAP_SIDE, BMAP_SIDE);
-    const uint64_t total = rows_bytes + map_bytes + table_bytes + (uint64_t)BMAP_PIXELS * 8u + stream_bytes + 4096u;
+    const uint64_t total =
+        rows_bytes + map_bytes + table_bytes + (uint64_t)BMAP_PIXELS * 8u + stream_bytes + sizeof(climate_t) + 8192u;
     heap_region_t memory_region = {0};
     if (!heap_reserve(total, &memory_region)) {
         return 2;
@@ -435,13 +471,23 @@ int32_t main(int32_t argc, char **argv) {
     memory.rows = (bmap_row_t *)cursor;
     cursor += table_bytes;
     memory.stream = cursor;
+    cursor = (uint8_t *)(((uintptr_t)cursor + stream_bytes + 63u) & ~(uintptr_t)63u);
+    climate_t *const climate = with_climate ? (climate_t *)(void *)cursor : nullptr;
+    if (climate != nullptr && !climate_init(climate)) {
+        job_deinit(&system);
+        heap_release(&memory_region);
+        return 2;
+    }
 
     int32_t status = 0;
     for (uint32_t s = 0u; s < seeds; s++) {
         const uint64_t seed = argc > 2 ? strtoull(argv[2 + s], nullptr, 0) : (uint64_t)TERRAIN_SEED_DEFAULT;
-        if (!bmap_seed(&system, &run, &memory, seed)) {
+        if (!bmap_seed(&system, &run, &memory, climate, seed)) {
             status = 1;
         }
+    }
+    if (climate != nullptr) {
+        climate_deinit(climate);
     }
     job_deinit(&system);
     heap_release(&memory_region);

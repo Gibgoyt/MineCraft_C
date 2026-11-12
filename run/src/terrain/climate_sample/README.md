@@ -28,6 +28,12 @@ latitude alone.
   wave, `CLIMATE_MONTH_WAVE1`), so they are the warmest and coldest months as the climate's class sees them. The snow line is
   blended over the corners that are not sea, as `climate_snow_balance_blend` does. Class and flags are the nearest cell's. A read
   past the cells takes the edge. With `warp_off` set, the read is at the point itself, for tests.
+- `terrain_climate_nearest_at` (plan 006 phase 03): the same read with no blend, the one cell nearest the point moved by the
+  warp held to 31 blocks (so a cell's centre always reads its own cell), its temperatures at z by the same lapse and basin
+  heat. The biome's family reads this, so a column's family is its own cell's class at its height.
+- `terrain_climate_sample_holds` (plan 006 phase 03): whether every read for a box of columns stays on the sample's cells;
+  any sample that holds a column gives it the same numbers. The far field fills a new sample for a line its sample does not
+  hold.
 - `terrain_climate_fallback_cell`, `terrain_climate_fallback`: where there is no climate (test worlds, terrain tests and benches,
   past the built tiles): plan 004 6.6's yearly mean at sea level by latitude, the swing at κ 0.5 with no current, 6.7's rain belt
   at the latitude times moisture 0.6 and orography 1, the driest month a twelfth of the year's rain (no waves), the snow line

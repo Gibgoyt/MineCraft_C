@@ -1,6 +1,6 @@
 name: lukewarm_ocean
 where: ocean
-climate: { temperature: [0.2, 0.55] }
+climate: { families: [rainforest, monsoon, savanna, mediterranean, steppe, desert], variety: [0, 1] }
 surface:
   top: sand
   filler: sand

@@ -1,7 +1,8 @@
 name: wooded_badlands
 where: land
 priority: 1
-climate: { temperature: [0.55, 1], humidity: [0.1, 1], erosion: [-1, 0.2], height: [30, 500] }
+landform: { erosion: [-1, 0.2], height: [30, 500] }
+climate: { families: [mediterranean, steppe], variety: [0.6, 1], wetness: [0.1, 1], rain_mm: [200, 800] }
 surface:
   top: red_sand
   filler: red_sand

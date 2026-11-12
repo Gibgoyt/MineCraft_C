@@ -1,7 +1,8 @@
 name: mangrove_swamp
 where: land
 priority: 3
-climate: { temperature: [0.55, 1], humidity: [-0.1, 1], erosion: [0.5, 1], continentalness: [-0.46, 0.5], height: [-1000, 24] }
+landform: { erosion: [0.5, 1], continentalness: [-0.46, 0.5], height: [-1000, 24] }
+climate: { families: [monsoon, rainforest], wetness: [-0.1, 1], rain_mm: [1500, 4500] }
 surface:
   top: mud
   filler: mud

@@ -5,9 +5,9 @@
 **Owns:** one heap region for its buffers, released before it exits, and one `terrain_t` a seed.
 **Lifetime:** Process.
 **Threads:** main, and 16 job workers.
-**Public functions:** `main`. Run `tools/test-or-build.sh timeout 280 build/release/bin/bench_biome_map <directory> [seed...]`. A seed is decimal, or hex with `0x`. The default seed is `TERRAIN_SEED_DEFAULT`. Exit status 0, 1 if a picture could not be written or a seed could not start, or 2 if the program could not start.
+**Public functions:** `main`. Run `tools/test-or-build.sh timeout 280 build/release/bin/bench_biome_map [--climate] <directory> [seed...]`. With `--climate` (plan 006 phase 03) the climate is opened and built over the map and 1 km round it, and each column reads its own climate sample from the tiles, as a column job does; the picture is `<seed>_biomes_climate.png`. Without it, the fallback climate (latitude alone). A seed is decimal, or hex with `0x`. The default seed is `TERRAIN_SEED_DEFAULT`. Exit status 0, 1 if a picture could not be written or a seed could not start, or 2 if the program could not start.
 **May be called by:** people.
-**Depends on:** `terrain`, `game` for where the world's middle is, `display/headless/png`, `job`, `thread`, `heap`, and the generated `tables/biomes/`.
+**Depends on:** `terrain`, `climate` (for `--climate`), `game` for where the world's middle is, `display/headless/png`, `job`, `thread`, `heap`, and the generated `tables/biomes/`.
 
 ## What it writes
 

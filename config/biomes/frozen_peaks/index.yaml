@@ -1,6 +1,7 @@
 name: frozen_peaks
 where: land
-climate: { temperature: [-1, -0.15], weirdness: [-1, 0], height: [500, 1250] }
+landform: { weirdness: [-1, 0], height: [500, 1250] }
+climate: { families: [ice, tundra] }
 surface:
   top: snow_block
   filler: packed_ice

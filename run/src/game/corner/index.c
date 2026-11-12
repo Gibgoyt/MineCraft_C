@@ -308,14 +308,12 @@ void game_corner_tuning_publish(game_t *game) {
     terrain_climate_sample_t sample;
     game_corner_tuning_climate(game, x, y, &sample);
     const terrain_climate_point_t point = terrain_climate_at(&sample, (int64_t)floor(x), (int64_t)floor(y), z);
-    const uint32_t biome = (uint32_t)terrain_biome_at(terrain->borrowed_biome, &sample, (int32_t)floor(x),
-                                                      (int32_t)floor(y), (int32_t)floor(feet[2]));
-    /* The family is the class the numbers at the feet's own height give, by the same first match as a cell's. */
-    const bool land = (point.flags & TERRAIN_CLIMATE_SEA) == 0u;
-    const uint32_t family =
-        land ? terrain_climate_classify(point.t_mean_cc, point.t_warm_cc, point.t_cold_cc, point.rain_mm_year,
-                                        point.dry_month_mm, (point.flags & TERRAIN_CLIMATE_MONSOON) != 0u)
-             : (uint32_t)TERRAIN_CLIMATE_CLASS_NONE;
+    /* Plan 006 phase 03: the biome and the family it was chosen in, as the column job here chooses them: the family is
+     * the class of the column's own cell at its ground's height (terrain_biome_family). */
+    const terrain_biome_column_t column =
+        terrain_biome_column_at(terrain->borrowed_biome, &sample, (int32_t)floor(x), (int32_t)floor(y));
+    const uint32_t biome = (uint32_t)terrain_biome_of_voxel(&column, (int32_t)floor(feet[2]));
+    const uint32_t family = column.family;
     /* Today's mean is the day's, which the sample does not keep: the climate's own where it is built, else the year's. */
     uint32_t today = corner_tenths_cc(point.t_mean_cc);
     climate_t *const climate = corner_climate(game);
@@ -363,8 +361,10 @@ void game_corner_tuning_read(const game_t *game, char lines[GAME_CORNER_TUNING_L
         (void)snprintf(lines[0], GAME_CORNER_TUNING_BYTES, "biome %s  (no climate)", biome_name);
         return;
     }
+    const uint32_t family = (kinds >> 8) & 0xFFu;
     (void)snprintf(lines[0], GAME_CORNER_TUNING_BYTES, "biome %s  family %s  class %s (%s)", biome_name,
-                   game_corner_class_name((kinds >> 8) & 0xFFu), game_corner_class_name((kinds >> 16) & 0xFFu),
+                   family < BIOME_FAMILY_COUNT ? biome_family_names[family] : "?",
+                   game_corner_class_name((kinds >> 16) & 0xFFu),
                    source == GAME_CORNER_TUNING_FALLBACK ? "fallback" : "climate");
     const uint32_t year = atomic_load_explicit(&corner->tuning_year, memory_order_relaxed);
     const uint32_t cold = atomic_load_explicit(&corner->tuning_cold, memory_order_relaxed);

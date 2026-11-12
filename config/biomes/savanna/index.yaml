@@ -1,6 +1,8 @@
 name: savanna
 where: land
-climate: { temperature: [0.2, 0.55], humidity: [-1, 0.1], height: [-1000, 150] }
+priority: 1
+landform: { height: [-1000, 150] }
+climate: { families: [steppe, savanna], variety: [-0.2, 1], wetness: [-1, 0.1], rain_mm: [300, 1300] }
 surface:
   top: grass_block
   filler: dirt

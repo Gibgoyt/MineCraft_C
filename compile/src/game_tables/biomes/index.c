@@ -43,11 +43,30 @@ static const char *const GZ_FEATURES[] = {
 };
 enum { GZ_FEATURE_COUNT = sizeof(GZ_FEATURES) / sizeof(GZ_FEATURES[0]) };
 
-static const char *const GZ_BIOME_FIELDS[] = {"name", "where", "priority", "climate", "surface", "cave", "features"};
+static const char *const GZ_BIOME_FIELDS[] = {"name",    "where",   "priority", "landform",
+                                              "climate", "surface", "cave",     "features"};
 enum { GZ_BIOME_FIELD_COUNT = sizeof(GZ_BIOME_FIELDS) / sizeof(GZ_BIOME_FIELDS[0]) };
-static const char *const GZ_CLIMATE_FIELDS[] = {"temperature", "humidity", "continentalness", "erosion", "weirdness",
-                                                "height",      "z"};
+/* Plan 006 phase 03: the land's shape under landform, and the climate's say under climate. */
+static const char *const GZ_LANDFORM_FIELDS[] = {"continentalness", "erosion", "weirdness", "height", "z"};
+enum { GZ_LANDFORM_FIELD_COUNT = sizeof(GZ_LANDFORM_FIELDS) / sizeof(GZ_LANDFORM_FIELDS[0]) };
+static const char *const GZ_CLIMATE_FIELDS[] = {"families", "variety", "wetness", "t_warm", "t_cold", "rain_mm"};
 enum { GZ_CLIMATE_FIELD_COUNT = sizeof(GZ_CLIMATE_FIELDS) / sizeof(GZ_CLIMATE_FIELDS[0]) };
+/* What the climate block held before plan 006 phase 03, each refused with where it went. */
+static const char *const GZ_MOVED_FIELDS[] = {"temperature", "humidity", "continentalness", "erosion", "weirdness",
+                                              "height",      "z"};
+enum { GZ_MOVED_FIELD_COUNT = sizeof(GZ_MOVED_FIELDS) / sizeof(GZ_MOVED_FIELDS[0]) };
+/* Plan 006 master 2.4's families, in this order: plan 004 6.10's classes but Sea. A uint16_t holds them as bits. */
+static const char *const GZ_FAMILIES[] = {"ice",    "tundra", "boreal",  "continental", "temperate", "mediterranean",
+                                          "steppe", "desert", "savanna", "monsoon",     "rainforest"};
+static const char *const GZ_FAMILY_TITLES[] = {"Ice",       "Tundra",        "Boreal",    "Continental",
+                                               "Temperate", "Mediterranean", "Steppe",    "Desert",
+                                               "Savanna",   "Monsoon",       "Rainforest"};
+enum { GZ_FAMILY_COUNT = sizeof(GZ_FAMILIES) / sizeof(GZ_FAMILIES[0]) };
+static_assert(GZ_FAMILY_COUNT <= 16);
+/* The limits a biome's climate block may give, as bits of biome_def_t's limits. */
+enum { GZ_LIMIT_T_WARM = 1, GZ_LIMIT_T_COLD = 2, GZ_LIMIT_RAIN = 4 };
+#define GZ_DEGREES_LIMIT 100
+#define GZ_RAIN_LIMIT 20000
 static const char *const GZ_SURFACE_FIELDS[] = {"top",         "filler",  "filler_depth", "under",
                                                 "under_depth", "wet_top", "wet_depth",    "steep",
                                                 "high",        "bands",   "patches"};
@@ -58,10 +77,9 @@ static const char *const GZ_BLOCK_FROM_FIELDS[] = {"block", "from"};
 static const char *const GZ_BANDS_FIELDS[] = {"from", "depth"};
 static const char *const GZ_PATCH_FIELDS[] = {"block", "from", "to"};
 
-/* The climate's five axes, in the order of biome_def_t. */
-enum { GZ_AXES = 5 };
-static const char *const GZ_AXIS_NAMES[GZ_AXES] = {"temperature", "humidity", "continentalness", "erosion",
-                                                   "weirdness"};
+/* The five axes of a biome's box, in the order of biome_def_t: the first two under climate, the rest under landform. */
+enum { GZ_AXES = 5, GZ_CLIMATE_AXES = 2 };
+static const char *const GZ_AXIS_NAMES[GZ_AXES] = {"variety", "wetness", "continentalness", "erosion", "weirdness"};
 
 typedef struct gz_range_t {
     yaml_decimal_t low;  /* 0 */
@@ -102,9 +120,15 @@ typedef struct gz_biome_t {
     uint8_t under_depth;                       /* 831 */
     uint8_t wet_depth;                         /* 832 */
     uint8_t bands_depth;                       /* 833 */
-    uint8_t _pad0[6];                          /* 834 */
+    uint8_t limits;                            /* 834: GZ_LIMIT_* */
+    uint8_t _pad0[1];                          /* 835 */
+    uint16_t families;                         /* 836: bit f for GZ_FAMILIES[f] */
+    uint8_t _pad1[2];                          /* 838 */
+    gz_range_t t_warm;                         /* 840: degrees C */
+    gz_range_t t_cold;                         /* 872 */
+    gz_range_t rain;                           /* 904: mm a year */
 } gz_biome_t;
-static_assert(sizeof(gz_biome_t) == 840);
+static_assert(sizeof(gz_biome_t) == 936);
 
 typedef struct gz_context_t {
     tp_arena_t *borrowed_arena;  /* 0 */
@@ -296,27 +320,64 @@ static void gz_read_range(gz_context_t *context, const yaml_document_t *document
     *out = range;
 }
 
-static void gz_read_climate(gz_context_t *context, const yaml_document_t *document, const yaml_node_t *root,
-                            gz_biome_t *biome) {
-    const yaml_decimal_t one = {.mantissa = 1};
-    const yaml_decimal_t minus_one = {.mantissa = -1};
-    const yaml_decimal_t any_high = {.mantissa = GZ_HEIGHT_LIMIT};
-    const yaml_decimal_t any_low = {.mantissa = -GZ_HEIGHT_LIMIT};
-    for (uint32_t axis = 0; axis < GZ_AXES; axis++) {
-        biome->axes[axis] = (gz_range_t){.low = minus_one, .high = one};
+/* Refuses each key of map that the climate block held before plan 006 phase 03, saying where it went. */
+static void gz_refuse_moved(gz_context_t *context, const yaml_document_t *document, const yaml_node_t *map,
+                            const char *block) {
+    for (const yaml_node_t *child = yaml_first_child(document, map); child != nullptr;
+         child = yaml_next_sibling(document, child)) {
+        for (uint32_t i = 0; i < GZ_MOVED_FIELD_COUNT; i++) {
+            if (child->key_length != strlen(GZ_MOVED_FIELDS[i]) ||
+                memcmp(child->borrowed_key, GZ_MOVED_FIELDS[i], child->key_length) != 0) {
+                continue;
+            }
+            if (i < 2u) {
+                gz_report(context, child,
+                          "%s has moved: landform/variety. A biome's warmth and rain are its climate families "
+                          "(climate: { families: [...] }), and variety and wetness choose within one (plan 006 "
+                          "phase 03)",
+                          GZ_MOVED_FIELDS[i]);
+            } else if (strcmp(block, "climate") == 0) {
+                gz_report(context, child, "%s has moved: landform/variety. It goes under landform: (plan 006 phase 03)",
+                          GZ_MOVED_FIELDS[i]);
+            }
+        }
     }
-    biome->height = (gz_range_t){.low = any_low, .high = any_high};
+}
 
-    const yaml_node_t *map = yaml_map_get(document, root, "climate");
+/* The keys of map that are neither its own nor one of the moved ones, reported as unknown. */
+static void gz_reject_unknown_but_moved(gz_context_t *context, const yaml_document_t *document, const yaml_node_t *map,
+                                        const char *what, const char *const *fields, uint32_t field_count) {
+    for (const yaml_node_t *child = yaml_first_child(document, map); child != nullptr;
+         child = yaml_next_sibling(document, child)) {
+        bool known = false;
+        for (uint32_t i = 0; i < field_count && !known; i++) {
+            known = child->key_length == strlen(fields[i]) &&
+                    memcmp(child->borrowed_key, fields[i], child->key_length) == 0;
+        }
+        for (uint32_t i = 0; i < GZ_MOVED_FIELD_COUNT && !known; i++) {
+            known = child->key_length == strlen(GZ_MOVED_FIELDS[i]) &&
+                    memcmp(child->borrowed_key, GZ_MOVED_FIELDS[i], child->key_length) == 0;
+        }
+        if (!known) {
+            gz_report(context, child, "unknown field '%.*s' in %s", (int32_t)child->key_length,
+                      (const char *)child->borrowed_key, what);
+        }
+    }
+    gz_refuse_moved(context, document, map, what);
+}
+
+static void gz_read_landform(gz_context_t *context, const yaml_document_t *document, const yaml_node_t *root,
+                             gz_biome_t *biome) {
+    const yaml_node_t *map = yaml_map_get(document, root, "landform");
     if (map == nullptr) {
         return; /* everywhere its where allows */
     }
     if (map->kind != YAML_KIND_MAP) {
-        gz_report(context, map, "climate must be a mapping of axis to [low, high]");
+        gz_report(context, map, "landform must be a mapping of axis to [low, high]");
         return;
     }
-    gz_reject_unknown(context, document, map, "climate", GZ_CLIMATE_FIELDS, GZ_CLIMATE_FIELD_COUNT);
-    for (uint32_t axis = 0; axis < GZ_AXES; axis++) {
+    gz_reject_unknown_but_moved(context, document, map, "landform", GZ_LANDFORM_FIELDS, GZ_LANDFORM_FIELD_COUNT);
+    for (uint32_t axis = GZ_CLIMATE_AXES; axis < GZ_AXES; axis++) {
         gz_read_range(context, document, yaml_map_get(document, map, GZ_AXIS_NAMES[axis]), GZ_AXIS_NAMES[axis], 1,
                       &biome->axes[axis]);
     }
@@ -331,6 +392,122 @@ static void gz_read_climate(gz_context_t *context, const yaml_document_t *docume
         gz_read_range(context, document, height != nullptr ? height : z, height != nullptr ? "height" : "z",
                       GZ_HEIGHT_LIMIT, &biome->height);
     }
+}
+
+/* families: a list of GZ_FAMILIES names, or [all]. */
+static void gz_read_families(gz_context_t *context, const yaml_document_t *document, const yaml_node_t *list,
+                             gz_biome_t *biome) {
+    if (list->kind != YAML_KIND_SEQ || list->child_count == 0u) {
+        gz_report(context, list,
+                  "families must be a list of at least one of: all, ice, tundra, boreal, continental, "
+                  "temperate, mediterranean, steppe, desert, savanna, monsoon, rainforest");
+        return;
+    }
+    for (const yaml_node_t *item = yaml_first_child(document, list); item != nullptr;
+         item = yaml_next_sibling(document, item)) {
+        const char *text = gz_read_text(context, item);
+        if (text == nullptr) {
+            continue;
+        }
+        if (strcmp(text, "all") == 0) {
+            biome->families |= (uint16_t)((1u << GZ_FAMILY_COUNT) - 1u);
+            continue;
+        }
+        bool known = false;
+        for (uint32_t f = 0; f < GZ_FAMILY_COUNT && !known; f++) {
+            if (strcmp(text, GZ_FAMILIES[f]) == 0) {
+                if ((biome->families & (1u << f)) != 0u) {
+                    gz_report(context, item, "family '%s' is named twice", text);
+                }
+                biome->families |= (uint16_t)(1u << f);
+                known = true;
+            }
+        }
+        if (!known) {
+            gz_report(context, item, "unknown family '%s'", text);
+        }
+    }
+}
+
+/* A limit: [low, high] within limit, its bit set in limits. */
+static void gz_read_limit(gz_context_t *context, const yaml_document_t *document, const yaml_node_t *map,
+                          const char *what, int64_t limit, uint8_t bit, gz_range_t *out, gz_biome_t *biome) {
+    const yaml_node_t *node = yaml_map_get(document, map, what);
+    if (node == nullptr) {
+        return;
+    }
+    const uint32_t before = context->problems;
+    gz_read_range(context, document, node, what, limit, out);
+    if (context->problems == before) {
+        biome->limits |= bit;
+    }
+}
+
+static void gz_read_climate(gz_context_t *context, const yaml_document_t *document, const yaml_node_t *root,
+                            gz_biome_t *biome) {
+    const yaml_node_t *map = yaml_map_get(document, root, "climate");
+    const bool underground = biome->where == GZ_WHERE_UNDERGROUND;
+    if (map == nullptr) {
+        if (!underground) {
+            gz_report(context, root,
+                      "missing field 'climate' with its families: every biome but an underground one "
+                      "names the climate families it belongs to (plan 006 phase 03)");
+        }
+        return;
+    }
+    if (map->kind != YAML_KIND_MAP) {
+        gz_report(context, map, "climate must be a mapping");
+        return;
+    }
+    gz_reject_unknown_but_moved(context, document, map, "climate", GZ_CLIMATE_FIELDS, GZ_CLIMATE_FIELD_COUNT);
+    for (uint32_t axis = 0; axis < GZ_CLIMATE_AXES; axis++) {
+        gz_read_range(context, document, yaml_map_get(document, map, GZ_AXIS_NAMES[axis]), GZ_AXIS_NAMES[axis], 1,
+                      &biome->axes[axis]);
+    }
+    const yaml_node_t *families = yaml_map_get(document, map, "families");
+    if (underground) {
+        if (families != nullptr) {
+            gz_report(context, families,
+                      "an underground biome has no families: caves do not follow the surface's "
+                      "climate");
+        }
+        if (yaml_map_get(document, map, "t_warm") != nullptr || yaml_map_get(document, map, "t_cold") != nullptr ||
+            yaml_map_get(document, map, "rain_mm") != nullptr) {
+            gz_report(context, map, "an underground biome has no t_warm, t_cold or rain_mm");
+        }
+        return;
+    }
+    if (families == nullptr) {
+        gz_report(context, map,
+                  "climate has no families: every biome but an underground one names the climate "
+                  "families it belongs to (plan 006 phase 03)");
+    } else {
+        gz_read_families(context, document, families, biome);
+    }
+    gz_read_limit(context, document, map, "t_warm", GZ_DEGREES_LIMIT, GZ_LIMIT_T_WARM, &biome->t_warm, biome);
+    gz_read_limit(context, document, map, "t_cold", GZ_DEGREES_LIMIT, GZ_LIMIT_T_COLD, &biome->t_cold, biome);
+    gz_read_limit(context, document, map, "rain_mm", GZ_RAIN_LIMIT, GZ_LIMIT_RAIN, &biome->rain, biome);
+    if ((biome->limits & GZ_LIMIT_RAIN) != 0u) {
+        int64_t low = 0;
+        int64_t high = 0;
+        (void)gz_decimal_scaled(biome->rain.low, &low);
+        (void)gz_decimal_scaled(biome->rain.high, &high);
+        if (low < 0 || low % GZ_SCALE != 0 || high % GZ_SCALE != 0) {
+            gz_report(context, yaml_map_get(document, map, "rain_mm"), "rain_mm must be whole mm from 0 up");
+        }
+    }
+}
+
+/* Defaults: every axis whole, any height. */
+static void gz_box_defaults(gz_biome_t *biome) {
+    const yaml_decimal_t one = {.mantissa = 1};
+    const yaml_decimal_t minus_one = {.mantissa = -1};
+    const yaml_decimal_t any_high = {.mantissa = GZ_HEIGHT_LIMIT};
+    const yaml_decimal_t any_low = {.mantissa = -GZ_HEIGHT_LIMIT};
+    for (uint32_t axis = 0; axis < GZ_AXES; axis++) {
+        biome->axes[axis] = (gz_range_t){.low = minus_one, .high = one};
+    }
+    biome->height = (gz_range_t){.low = any_low, .high = any_high};
 }
 
 static void gz_read_patches(gz_context_t *context, const yaml_document_t *document, const yaml_node_t *list,
@@ -531,6 +708,8 @@ static void gz_read_fields(gz_context_t *context, const yaml_document_t *documen
     }
 
     biome->priority = gz_read_small(context, yaml_map_get(document, root, "priority"), "priority", UINT8_MAX);
+    gz_box_defaults(biome);
+    gz_read_landform(context, document, root, biome);
     gz_read_climate(context, document, root, biome);
 
     const yaml_node_t *surface = yaml_map_get(document, root, "surface");
@@ -683,6 +862,19 @@ static void gz_emit_header(tp_arena_t *arena, tp_builder_t *out, const gz_biome_
         tp_builder_add(out, "    BIOME_WHERE_%s = %u,\n", gz_upper(arena, GZ_WHERES[i]), i);
     }
     tp_builder_add(out, "    BIOME_WHERE_COUNT = %u,\n} biome_where_t;\n\n", (uint32_t)GZ_WHERE_COUNT);
+    tp_builder_add(out, "/* Plan 006 master 2.4: the climate families, plan 004 6.10's classes worked out at a "
+                        "column's own height. A biome's\n"
+                        " * families are bits of biome_def_t's families. */\n");
+    tp_builder_add(out, "typedef enum biome_family_t : uint8_t {\n");
+    for (uint32_t i = 0; i < GZ_FAMILY_COUNT; i++) {
+        tp_builder_add(out, "    BIOME_FAMILY_%s = %u,\n", gz_upper(arena, GZ_FAMILIES[i]), i);
+    }
+    tp_builder_add(out, "    BIOME_FAMILY_COUNT = %u,\n} biome_family_t;\n\n", (uint32_t)GZ_FAMILY_COUNT);
+    tp_builder_add(out,
+                   "/* Which of a biome's climate limits it gives: bits of biome_def_t's limits. */\n"
+                   "enum : uint8_t {\n    BIOME_LIMIT_T_WARM = %u,\n    BIOME_LIMIT_T_COLD = %u,\n"
+                   "    BIOME_LIMIT_RAIN = %u,\n};\n\n",
+                   (uint32_t)GZ_LIMIT_T_WARM, (uint32_t)GZ_LIMIT_T_COLD, (uint32_t)GZ_LIMIT_RAIN);
     tp_builder_add(out, "typedef enum biome_feature_t : uint8_t {\n");
     for (uint32_t i = 0; i < GZ_FEATURE_COUNT; i++) {
         tp_builder_add(out, "    BIOME_FEATURE_%s = %u,\n", gz_upper(arena, GZ_FEATURES[i]), i);
@@ -706,8 +898,8 @@ static void gz_emit_header(tp_arena_t *arena, tp_builder_t *out, const gz_biome_
         "/* One row per biome. A block of air is none. See config/biomes/README.md for what each field does. */\n"
         "typedef struct biome_def_t {\n"
         "    const char *name;              /* 0 */\n"
-        "    biome_range_t temperature;     /* 8 */\n"
-        "    biome_range_t humidity;        /* 16 */\n"
+        "    biome_range_t variety;         /* 8: climate's, inside a family */\n"
+        "    biome_range_t wetness;         /* 16: climate's, inside a family */\n"
         "    biome_range_t continentalness; /* 24 */\n"
         "    biome_range_t erosion;         /* 32 */\n"
         "    biome_range_t weirdness;       /* 40 */\n"
@@ -731,16 +923,49 @@ static void gz_emit_header(tp_arena_t *arena, tp_builder_t *out, const gz_biome_
         "    uint8_t bands_depth;           /* 86: 0 for no bands */\n"
         "    uint8_t where;                 /* 87: a biome_where_t */\n"
         "    uint8_t priority;              /* 88 */\n"
-        "    uint8_t _pad0[7];              /* 89 */\n"
+        "    uint8_t limits;                /* 89: BIOME_LIMIT_* this biome gives */\n"
+        "    uint16_t families;             /* 90: bit f for biome_family_t f; 0 for underground */\n"
+        "    int32_t t_warm_low_cc;         /* 92: the warmest month at the column, centi-degrees C */\n"
+        "    int32_t t_warm_high_cc;        /* 96 */\n"
+        "    int32_t t_cold_low_cc;         /* 100: the coldest month */\n"
+        "    int32_t t_cold_high_cc;        /* 104 */\n"
+        "    int32_t rain_low_mm;           /* 108: the yearly rain, mm; its middle is plan 006 phase 04's */\n"
+        "    int32_t rain_high_mm;          /* 112 */\n"
+        "    uint8_t _pad0[4];              /* 116 */\n"
         "} biome_def_t;\n"
-        "static_assert(sizeof(biome_def_t) == 96);\n\n"
+        "static_assert(sizeof(biome_def_t) == 120);\n\n"
         "extern const biome_def_t biome_defs[BIOME_COUNT];\n"
+        "/* Each family's name, as F3 and the benches print it. */\n"
+        "extern const char *const biome_family_names[BIOME_FAMILY_COUNT];\n"
         "extern const biome_patch_t biome_patches[BIOME_PATCH_COUNT];\n"
         "/* How many of each feature a 16 by 16 chunk tries. */\n"
         "extern const float32_t biome_features[BIOME_COUNT][BIOME_FEATURE_COUNT];\n"
         "/* Highest priority first, then by name. The first that holds a voxel has it. */\n"
         "extern const uint8_t biome_underground[BIOME_UNDERGROUND_COUNT];\n\n"
         "#endif\n");
+}
+
+/* A decimal in its whole units times scale, which the reading made sure is whole for rain and fits for degrees. */
+static int64_t gz_units(yaml_decimal_t value, int64_t per_unit) {
+    int64_t scaled = 0;
+    (void)gz_decimal_scaled(value, &scaled);
+    return scaled / (GZ_SCALE / per_unit);
+}
+
+/* The limits a biome gives, in centi-degrees and mm. */
+static void gz_add_limits(tp_builder_t *out, const gz_biome_t *biome) {
+    if ((biome->limits & GZ_LIMIT_T_WARM) != 0u) {
+        tp_builder_add(out, ", .t_warm_low_cc = %" PRId64 ", .t_warm_high_cc = %" PRId64,
+                       gz_units(biome->t_warm.low, 100), gz_units(biome->t_warm.high, 100));
+    }
+    if ((biome->limits & GZ_LIMIT_T_COLD) != 0u) {
+        tp_builder_add(out, ", .t_cold_low_cc = %" PRId64 ", .t_cold_high_cc = %" PRId64,
+                       gz_units(biome->t_cold.low, 100), gz_units(biome->t_cold.high, 100));
+    }
+    if ((biome->limits & GZ_LIMIT_RAIN) != 0u) {
+        tp_builder_add(out, ", .rain_low_mm = %" PRId64 ", .rain_high_mm = %" PRId64, gz_units(biome->rain.low, 1),
+                       gz_units(biome->rain.high, 1));
+    }
 }
 
 static void gz_emit_source(tp_arena_t *arena, tp_builder_t *out, const gz_biome_t *biomes, uint32_t count,
@@ -760,6 +985,10 @@ static void gz_emit_source(tp_arena_t *arena, tp_builder_t *out, const gz_biome_
             tp_builder_add(out, ", .block = BLOCK_ID_%s}, /* %s */\n", gz_upper(arena, patch->borrowed_block),
                            biomes[b].borrowed_name);
         }
+    }
+    tp_builder_add(out, "};\n\nconst char *const biome_family_names[BIOME_FAMILY_COUNT] = {\n");
+    for (uint32_t f = 0; f < GZ_FAMILY_COUNT; f++) {
+        tp_builder_add(out, "    [BIOME_FAMILY_%s] = \"%s\",\n", gz_upper(arena, GZ_FAMILIES[f]), GZ_FAMILY_TITLES[f]);
     }
     tp_builder_add(out, "};\n\nconst biome_def_t biome_defs[BIOME_COUNT] = {\n");
     uint32_t first_patch = 0;
@@ -784,10 +1013,12 @@ static void gz_emit_source(tp_arena_t *arena, tp_builder_t *out, const gz_biome_
         tp_builder_add(out,
                        ", .high_from = %d, .bands_from = %d, .first_patch = %u, .patch_count = %u, .filler_depth = %u, "
                        ".under_depth = %u, .wet_depth = %u, .bands_depth = %u, .where = BIOME_WHERE_%s, "
-                       ".priority = %u},\n",
+                       ".priority = %u, .limits = %u, .families = 0x%03xu",
                        biome->high_from, biome->bands_from, first_patch, biome->patch_count, biome->filler_depth,
                        biome->under_depth, biome->wet_depth, biome->bands_depth,
-                       gz_upper(arena, GZ_WHERES[biome->where]), biome->priority);
+                       gz_upper(arena, GZ_WHERES[biome->where]), biome->priority, biome->limits, biome->families);
+        gz_add_limits(out, biome);
+        tp_builder_add(out, "},\n");
         first_patch += biome->patch_count;
     }
     tp_builder_add(out, "};\n\nconst float32_t biome_features[BIOME_COUNT][BIOME_FEATURE_COUNT] = {\n");
@@ -863,6 +1094,20 @@ bool game_tables_biomes_build(tp_arena_t *arena, const char *config, const char 
         if (filled[where] == 0u) {
             return tp_fail("%s: no biome has where: %s, so that kind of place would have none; nothing was written",
                            biomes_path, GZ_WHERES[where]);
+        }
+    }
+    /* Plan 006 phase 03: a family chooses only among its own, so each family needs a biome for every kind of surface place. */
+    for (uint32_t family = 0; family < GZ_FAMILY_COUNT; family++) {
+        for (uint32_t where = 0; where < GZ_WHERE_UNDERGROUND; where++) {
+            bool held = false;
+            for (uint32_t b = 0; b < count && !held; b++) {
+                held = biomes[b].where == where && (biomes[b].families & (1u << family)) != 0u;
+            }
+            if (!held) {
+                return tp_fail("%s: family %s has no biome with where: %s, so such a place in that climate would have "
+                               "none; nothing was written",
+                               biomes_path, GZ_FAMILIES[family], GZ_WHERES[where]);
+            }
         }
     }
     if (filled[GZ_WHERE_UNDERGROUND] > GZ_MAX_UNDERGROUND) {

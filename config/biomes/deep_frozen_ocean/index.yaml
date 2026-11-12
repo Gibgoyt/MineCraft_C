@@ -1,6 +1,6 @@
 name: deep_frozen_ocean
 where: deep_ocean
-climate: { temperature: [-1, -0.45] }
+climate: { families: [ice] }
 surface:
   top: sand
   filler: sand

@@ -2,7 +2,9 @@
 #include "terrain/biome/index.h"
 
 #include "assert/index.h"
+#include "machine/index.h"
 
+#include <math.h>
 #include <string.h>
 
 enum : uint32_t {
@@ -47,6 +49,87 @@ void terrain_biome_deinit(terrain_biome_t *biome) {
     memset(biome, 0, sizeof(*biome));
 }
 
+/* Plan 004 6.10's classes as the families they name. */
+static const uint8_t BIOME_FAMILY_OF_CLASS[TERRAIN_CLIMATE_CLASS_COUNT] = {
+    [TERRAIN_CLIMATE_CLASS_NONE] = BIOME_FAMILY_COUNT,
+    [TERRAIN_CLIMATE_CLASS_ICE] = BIOME_FAMILY_ICE,
+    [TERRAIN_CLIMATE_CLASS_TUNDRA] = BIOME_FAMILY_TUNDRA,
+    [TERRAIN_CLIMATE_CLASS_DESERT] = BIOME_FAMILY_DESERT,
+    [TERRAIN_CLIMATE_CLASS_STEPPE] = BIOME_FAMILY_STEPPE,
+    [TERRAIN_CLIMATE_CLASS_RAINFOREST] = BIOME_FAMILY_RAINFOREST,
+    [TERRAIN_CLIMATE_CLASS_MONSOON] = BIOME_FAMILY_MONSOON,
+    [TERRAIN_CLIMATE_CLASS_SAVANNA] = BIOME_FAMILY_SAVANNA,
+    [TERRAIN_CLIMATE_CLASS_MEDITERRANEAN] = BIOME_FAMILY_MEDITERRANEAN,
+    [TERRAIN_CLIMATE_CLASS_TEMPERATE] = BIOME_FAMILY_TEMPERATE,
+    [TERRAIN_CLIMATE_CLASS_CONTINENTAL] = BIOME_FAMILY_CONTINENTAL,
+    [TERRAIN_CLIMATE_CLASS_BOREAL] = BIOME_FAMILY_BOREAL,
+};
+
+/* The rain that is neither wet nor dry for a biome's wetness, and how far from it is all the way. */
+static const float32_t BIOME_WETNESS_RAIN_MIDDLE_MM = 1000.0f32;
+static const float32_t BIOME_WETNESS_RAIN_SPAN_MM = 1000.0f32;
+static const float32_t BIOME_WETNESS_RAIN_WEIGHT = 0.5f32;
+/* A biome's climate limits count as axes this long: 10 degrees, and 1000 mm of rain a year. */
+static const float32_t BIOME_LIMIT_CC = 1000.0f32;
+static const float32_t BIOME_LIMIT_MM = 1000.0f32;
+
+float32_t terrain_biome_height(float32_t ground) {
+    return ground; /* plan 007 phase 03: less the plateau's lift */
+}
+
+int32_t terrain_biome_climate_z(float32_t ground, terrain_hydrology_kind_t kind) {
+    if (kind == TERRAIN_HYDROLOGY_KIND_OCEAN || kind == TERRAIN_HYDROLOGY_KIND_DEEP_OCEAN) {
+        return (int32_t)MC_WORLD_Z_SEA;
+    }
+    return (int32_t)floorf(ground);
+}
+
+uint8_t terrain_biome_family_of_class(uint8_t climate_class) {
+    return climate_class < TERRAIN_CLIMATE_CLASS_COUNT ? BIOME_FAMILY_OF_CLASS[climate_class] : BIOME_FAMILY_COUNT;
+}
+
+biome_family_t terrain_biome_family(const terrain_climate_point_t *point) {
+    /* Warmth from the column's own height: a peak is colder than its valley. */
+    if (point->t_warm_cc < 0) {
+        return BIOME_FAMILY_ICE;
+    }
+    if (point->t_warm_cc < TERRAIN_CLIMATE_TUNDRA_MAX_CC) {
+        return BIOME_FAMILY_TUNDRA;
+    }
+    /* Dryness from the cell: its rain against plan 004's threshold at the cell's own mean ground, which its class says. A
+     * column a few blocks above or below that ground would otherwise cross P_th = 20 T + 140 on its own, and a Desert cell
+     * would grow Steppe's grass at its foot and Steppe's dunes on its hills. Water, which has no class, is worked out here. */
+    if (point->climate_class == TERRAIN_CLIMATE_CLASS_DESERT || point->climate_class == TERRAIN_CLIMATE_CLASS_STEPPE) {
+        return (biome_family_t)BIOME_FAMILY_OF_CLASS[point->climate_class];
+    }
+    if (point->climate_class == TERRAIN_CLIMATE_CLASS_NONE) {
+        const uint8_t klass =
+            terrain_climate_classify(point->t_mean_cc, point->t_warm_cc, point->t_cold_cc, point->rain_mm_year,
+                                     point->dry_month_mm, (point->flags & TERRAIN_CLIMATE_MONSOON) != 0u);
+        if (klass == TERRAIN_CLIMATE_CLASS_DESERT || klass == TERRAIN_CLIMATE_CLASS_STEPPE) {
+            return (biome_family_t)BIOME_FAMILY_OF_CLASS[klass];
+        }
+    }
+    /* The rest of 6.10's order, from the column's warmth and the cell's seasons. */
+    if (point->t_cold_cc >= TERRAIN_CLIMATE_TROPICAL_MIN_CC) {
+        if (point->dry_month_mm >= TERRAIN_CLIMATE_WET_MONTH_MM) {
+            return BIOME_FAMILY_RAINFOREST;
+        }
+        return (point->flags & TERRAIN_CLIMATE_MONSOON) != 0u ? BIOME_FAMILY_MONSOON : BIOME_FAMILY_SAVANNA;
+    }
+    if (point->t_cold_cc > TERRAIN_CLIMATE_TEMPERATE_MIN_CC) {
+        return (point->flags & TERRAIN_CLIMATE_DRY_SUMMER) != 0u ? BIOME_FAMILY_MEDITERRANEAN : BIOME_FAMILY_TEMPERATE;
+    }
+    return point->t_warm_cc >= TERRAIN_CLIMATE_CONTINENTAL_MAX_CC ? BIOME_FAMILY_CONTINENTAL : BIOME_FAMILY_BOREAL;
+}
+
+float32_t terrain_biome_wetness(float32_t field, int32_t rain_mm_year) {
+    float32_t rain = ((float32_t)rain_mm_year - BIOME_WETNESS_RAIN_MIDDLE_MM) / BIOME_WETNESS_RAIN_SPAN_MM;
+    rain = rain > 1.0f32 ? 1.0f32 : (rain < -1.0f32 ? -1.0f32 : rain);
+    const float32_t wetness = field + BIOME_WETNESS_RAIN_WEIGHT * rain;
+    return wetness > 1.0f32 ? 1.0f32 : (wetness < -1.0f32 ? -1.0f32 : wetness);
+}
+
 /* How far a value is outside a range, squared. */
 static float32_t biome_gap(float32_t value, float32_t low, float32_t high) {
     if (value < low) {
@@ -59,36 +142,58 @@ static float32_t biome_gap(float32_t value, float32_t low, float32_t high) {
 }
 
 static float32_t biome_climate_distance(const biome_def_t *def, const terrain_biome_inputs_t *inputs) {
-    return biome_gap(inputs->temperature, def->temperature.low, def->temperature.high) +
-           biome_gap(inputs->humidity, def->humidity.low, def->humidity.high) +
+    return biome_gap(inputs->variety, def->variety.low, def->variety.high) +
+           biome_gap(inputs->wetness, def->wetness.low, def->wetness.high) +
            biome_gap(inputs->continentalness, def->continentalness.low, def->continentalness.high) +
            biome_gap(inputs->erosion, def->erosion.low, def->erosion.high) +
            biome_gap(inputs->weirdness, def->weirdness.low, def->weirdness.high);
 }
 
+/* A limit's gap, squared, on an axis of span: integers in, so the same bits wherever. */
+static float32_t biome_limit_gap(int32_t value, int32_t low, int32_t high, float32_t span) {
+    return biome_gap((float32_t)value / span, (float32_t)low / span, (float32_t)high / span);
+}
+
 float32_t terrain_biome_distance(const biome_def_t *def, const terrain_biome_inputs_t *inputs) {
-    return biome_climate_distance(def, inputs) + biome_gap(inputs->ground * BIOME_HEIGHT_SCALE,
-                                                           def->height.low * BIOME_HEIGHT_SCALE,
-                                                           def->height.high * BIOME_HEIGHT_SCALE);
+    float32_t distance = biome_climate_distance(def, inputs) +
+                         biome_gap(terrain_biome_height(inputs->ground) * BIOME_HEIGHT_SCALE,
+                                   def->height.low * BIOME_HEIGHT_SCALE, def->height.high * BIOME_HEIGHT_SCALE);
+    if ((def->limits & BIOME_LIMIT_T_WARM) != 0u) {
+        distance += biome_limit_gap(inputs->t_warm_cc, def->t_warm_low_cc, def->t_warm_high_cc, BIOME_LIMIT_CC);
+    }
+    if ((def->limits & BIOME_LIMIT_T_COLD) != 0u) {
+        distance += biome_limit_gap(inputs->t_cold_cc, def->t_cold_low_cc, def->t_cold_high_cc, BIOME_LIMIT_CC);
+    }
+    if ((def->limits & BIOME_LIMIT_RAIN) != 0u) {
+        distance += biome_limit_gap(inputs->rain_mm_year, def->rain_low_mm, def->rain_high_mm, BIOME_LIMIT_MM);
+    }
+    return distance;
+}
+
+/* Whether a row is nearer than the best so far: lower distance, then higher priority, then the first by name. */
+static bool biome_nearer(uint32_t row, float32_t distance, uint32_t best, float32_t best_distance) {
+    return best == BIOME_COUNT || distance < best_distance ||
+           (distance == best_distance && biome_defs[row].priority > biome_defs[best].priority);
 }
 
 biome_id_t terrain_biome_choose(const terrain_biome_inputs_t *inputs) {
     const uint8_t where = BIOME_WHERE_OF_KIND[inputs->kind];
+    ASSERT(inputs->family < BIOME_FAMILY_COUNT);
+    const uint32_t family = 1u << inputs->family;
     uint32_t best = BIOME_COUNT;
     float32_t best_distance = 0.0f32;
     for (uint32_t i = 0u; i < BIOME_COUNT; i++) {
         const biome_def_t *const def = &biome_defs[i];
-        if (def->where != where) {
+        if (def->where != where || (def->families & family) == 0u) {
             continue;
         }
         const float32_t distance = terrain_biome_distance(def, inputs);
-        if (best == BIOME_COUNT || distance < best_distance ||
-            (distance == best_distance && def->priority > biome_defs[best].priority)) {
+        if (biome_nearer(i, distance, best, best_distance)) {
             best = i;
             best_distance = distance;
         }
     }
-    ASSERT(best != BIOME_COUNT); /* the tool refuses a where that no biome fills */
+    ASSERT(best != BIOME_COUNT); /* the tool refuses a family with no biome for a where */
     return (biome_id_t)best;
 }
 
@@ -144,7 +249,7 @@ static void biome_tile(const terrain_biome_t *biome, const terrain_climate_sampl
         terrain_climate_fallback(biome->seed, span->x_first, span->y_first, &fallback);
         climate = &fallback;
     }
-    (void)climate; /* plumbed: no rule reads it until the family choice */
+
     const int64_t x_last = span->x_first + span->step_x * (int64_t)(span->count_x - 1u);
     const int64_t y_last = span->y_first + span->step_y * (int64_t)(span->count_y - 1u);
     const int64_t cell_x = span->x_first >> BIOME_CELL_SHIFT;
@@ -153,8 +258,8 @@ static void biome_tile(const terrain_biome_t *biome, const terrain_climate_sampl
     const uint32_t side_y = (uint32_t)((y_last >> BIOME_CELL_SHIFT) - cell_y) + 2u;
     ASSERT(side_x <= BIOME_LATTICE_SIDE && side_y <= BIOME_LATTICE_SIDE);
 
-    float32_t temperature[BIOME_LATTICE];
-    float32_t humidity[BIOME_LATTICE];
+    float32_t variety[BIOME_LATTICE];
+    float32_t wetness[BIOME_LATTICE];
     float32_t continentalness[BIOME_LATTICE];
     float32_t erosion[BIOME_LATTICE];
     float32_t weirdness[BIOME_LATTICE];
@@ -169,9 +274,9 @@ static void biome_tile(const terrain_biome_t *biome, const terrain_climate_sampl
     const terrain_fields_arrays_t arrays = {
         .continentalness = continentalness,
         .erosion = erosion,
-        .temperature = temperature,
-        .humidity = humidity,
         .weirdness = weirdness,
+        .variety = variety,
+        .wetness = wetness,
     };
     terrain_fields_sample_area(biome->borrowed_fields, &lattice, &arrays);
 
@@ -197,14 +302,23 @@ static void biome_tile(const terrain_biome_t *biome, const terrain_climate_sampl
             const uint32_t at = (uint32_t)((x >> BIOME_CELL_SHIFT) - cell_x) + side_x * ly;
             const float32_t t_x = (float32_t)(x & mask) * per_block;
             const terrain_hydrology_column_t *const own = &water[ix + span->count_x * iy];
+            /* Plan 006 phase 03: the climate first, at the column's own height, then the choice inside its family. */
+            const int32_t z = terrain_biome_climate_z(own->ground, own->kind);
+            /* The family from the column's own cell at its own height; the rain that biases wetness blended, so it is smooth. */
+            const terrain_climate_point_t point = terrain_climate_at(climate, x, y, z);
+            const terrain_climate_point_t cell = terrain_climate_nearest_at(climate, x, y, z);
             const terrain_biome_inputs_t inputs = {
-                .temperature = biome_bilinear(temperature, at, side_x, t_x, t_y),
-                .humidity = biome_bilinear(humidity, at, side_x, t_x, t_y),
+                .variety = biome_bilinear(variety, at, side_x, t_x, t_y),
+                .wetness = terrain_biome_wetness(biome_bilinear(wetness, at, side_x, t_x, t_y), point.rain_mm_year),
                 .continentalness = biome_bilinear(continentalness, at, side_x, t_x, t_y),
                 .erosion = biome_bilinear(erosion, at, side_x, t_x, t_y),
                 .weirdness = biome_bilinear(weirdness, at, side_x, t_x, t_y),
                 .ground = own->ground,
                 .kind = own->kind,
+                .family = (uint8_t)terrain_biome_family(&cell),
+                .t_warm_cc = cell.t_warm_cc,
+                .t_cold_cc = cell.t_cold_cc,
+                .rain_mm_year = point.rain_mm_year,
             };
             columns[(uint64_t)(span->ix + ix) + (uint64_t)area->count_x * (span->iy + iy)] = (terrain_biome_column_t){
                 .ground = own->ground,
@@ -212,6 +326,7 @@ static void biome_tile(const terrain_biome_t *biome, const terrain_climate_sampl
                 .carve_top = own->carve_top,
                 .biome = (uint8_t)terrain_biome_choose(&inputs),
                 .caves = terrain_biome_caves_of(&inputs),
+                .family = inputs.family,
             };
         }
     }

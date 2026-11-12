@@ -1,6 +1,7 @@
 name: jungle
 where: land
-climate: { temperature: [0.2, 0.55], humidity: [0.4, 1], height: [-1000, 300] }
+landform: { height: [-1000, 500] }
+climate: { families: [monsoon, rainforest], wetness: [0.4, 1], rain_mm: [1500, 4500] }
 surface:
   top: grass_block
   filler: dirt

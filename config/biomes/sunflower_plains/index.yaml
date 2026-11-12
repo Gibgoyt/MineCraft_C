@@ -1,7 +1,8 @@
 name: sunflower_plains
 where: land
 priority: 1
-climate: { temperature: [-0.15, 0.2], humidity: [-1, -0.4], weirdness: [0.2, 1], height: [-1000, 300] }
+landform: { weirdness: [0.2, 1], height: [-1000, 300] }
+climate: { families: [continental, temperate, mediterranean], wetness: [-1, -0.4], rain_mm: [300, 1100] }
 surface:
   top: grass_block
   filler: dirt

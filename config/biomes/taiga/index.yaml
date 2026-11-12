@@ -1,6 +1,7 @@
 name: taiga
 where: land
-climate: { temperature: [-0.45, -0.15], humidity: [0.15, 0.4], height: [-1000, 300] }
+landform: { height: [-1000, 300] }
+climate: { families: [boreal], wetness: [0.15, 0.4], rain_mm: [300, 1200] }
 surface:
   top: grass_block
   filler: dirt

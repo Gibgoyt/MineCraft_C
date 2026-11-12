@@ -1,7 +1,8 @@
 name: windswept_savanna
 where: land
 priority: 2
-climate: { temperature: [0.2, 0.55], humidity: [-1, 0.1], erosion: [-0.2, 0.3], weirdness: [0.75, 1], height: [30, 500] }
+landform: { erosion: [-0.2, 0.3], weirdness: [0.75, 1], height: [30, 500] }
+climate: { families: [steppe, savanna], wetness: [-1, 0.1], rain_mm: [300, 1200] }
 surface:
   top: coarse_dirt
   filler: dirt

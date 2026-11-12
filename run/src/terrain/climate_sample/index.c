@@ -263,6 +263,44 @@ terrain_climate_point_t terrain_climate_at(const terrain_climate_sample_t *sampl
     return out;
 }
 
+terrain_climate_point_t terrain_climate_nearest_at(const terrain_climate_sample_t *sample, int64_t x, int64_t y,
+                                                   int32_t z) {
+    int64_t read_x = x, read_y = y;
+    if (sample->warp_off == 0u) {
+        /* The warp, held one block short of half a cell: then a cell's centre always reads its own cell, and only the
+         * borders between centres wobble. */
+        terrain_climate_warp(sample->warp_seed, x, y, &read_x, &read_y);
+        const int64_t most = TERRAIN_CLIMATE_HALF_CELL - 1;
+        read_x = x + (read_x - x > most ? most : (read_x - x < -most ? -most : read_x - x));
+        read_y = y + (read_y - y > most ? most : (read_y - y < -most ? -most : read_y - y));
+    }
+    int64_t i = 0, j = 0, fx = 0, fy = 0;
+    sample_axis(read_x, sample->origin_x, &i, &fx);
+    sample_axis(read_y, sample->origin_y, &j, &fy);
+    const terrain_climate_cell_t *const cell =
+        &sample->cells[j + (fy >= TERRAIN_CLIMATE_HALF_CELL ? 1 : 0)][i + (fx >= TERRAIN_CLIMATE_HALF_CELL ? 1 : 0)];
+    terrain_climate_point_t out;
+    memset(&out, 0, sizeof(out));
+    out.rain_mm_year = cell->rain_mm_year;
+    out.dry_month_mm = cell->dry_month_mm;
+    out.snow_line_z = cell->snow_line_z;
+    out.climate_class = cell->climate_class;
+    out.flags = cell->flags;
+    out.from_climate = sample->from_climate;
+    /* The same lapse and basin heat as terrain_climate_at. */
+    const bool land = (cell->flags & (TERRAIN_CLIMATE_SEA | TERRAIN_CLIMATE_LAKE)) == 0u;
+    int64_t t = (int64_t)cell->t_mean_cc - sample_floor_div((int64_t)z * TERRAIN_CLIMATE_LAPSE_CC_PER_10, 10);
+    if (land && z < 0) {
+        t += sample_floor_div(-(int64_t)z * TERRAIN_CLIMATE_BASIN_CC_PER_10, 10);
+    }
+    const int64_t month = sample_round_div(sample_abs((int64_t)cell->t_swing_cc) * TERRAIN_CLIMATE_MONTH_WAVE_NUM,
+                                           TERRAIN_CLIMATE_MONTH_WAVE_DEN);
+    out.t_mean_cc = (int32_t)t;
+    out.t_warm_cc = (int32_t)(t + month);
+    out.t_cold_cc = (int32_t)(t - month);
+    return out;
+}
+
 /* ---- The fallback ---------------------------------------------------------------------------------------------------- */
 
 /* The four curves the fallback reads: built once a sample. */

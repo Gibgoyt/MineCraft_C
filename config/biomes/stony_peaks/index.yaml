@@ -1,6 +1,7 @@
 name: stony_peaks
 where: land
-climate: { temperature: [-0.15, 1], height: [500, 1250] }
+landform: { height: [500, 1250] }
+climate: { families: [boreal, continental, temperate, mediterranean, steppe, desert, savanna, monsoon, rainforest] }
 surface:
   top: stone
   filler: stone

@@ -1,6 +1,6 @@
 name: dripstone_caves
 where: underground
-climate: { continentalness: [0.5, 1], z: [-120, 1250] }
+landform: { continentalness: [0.5, 1], z: [-120, 1250] }
 cave:
   floor: dripstone_block
   ceiling: dripstone_block

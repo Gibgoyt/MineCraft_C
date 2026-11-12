@@ -1,6 +1,6 @@
 name: cold_ocean
 where: ocean
-climate: { temperature: [-0.45, -0.15] }
+climate: { families: [boreal, tundra] }
 surface:
   top: sand
   filler: sand

@@ -1,7 +1,8 @@
 name: eroded_badlands
 where: land
 priority: 2
-climate: { temperature: [0.55, 1], humidity: [-1, 0.1], erosion: [-1, 0.2], weirdness: [0.4, 1], height: [30, 500] }
+landform: { erosion: [-1, 0.2], weirdness: [0.4, 1], height: [30, 500] }
+climate: { families: [desert], wetness: [-1, 0.1], rain_mm: [0, 400] }
 surface:
   top: red_sand
   filler: red_sand

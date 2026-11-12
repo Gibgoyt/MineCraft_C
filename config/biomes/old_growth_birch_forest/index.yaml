@@ -1,7 +1,8 @@
 name: old_growth_birch_forest
 where: land
 priority: 1
-climate: { temperature: [-0.15, 0.2], humidity: [0.15, 0.4], weirdness: [0.2, 1], height: [-1000, 300] }
+landform: { weirdness: [0.2, 1], height: [-1000, 300] }
+climate: { families: [continental, temperate], wetness: [0.15, 0.4], rain_mm: [600, 1600] }
 surface:
   top: grass_block
   filler: dirt

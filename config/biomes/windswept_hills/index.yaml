@@ -1,7 +1,8 @@
 name: windswept_hills
 where: land
 priority: 2
-climate: { temperature: [-0.45, -0.15], erosion: [-0.2, 0.3], weirdness: [0.75, 1], height: [30, 500] }
+landform: { erosion: [-0.2, 0.3], weirdness: [0.75, 1], height: [30, 500] }
+climate: { families: [boreal, continental], variety: [0, 1] }
 surface:
   top: grass_block
   filler: dirt

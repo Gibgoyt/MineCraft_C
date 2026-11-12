@@ -1,6 +1,6 @@
 name: river
 where: river
-climate: { temperature: [-0.45, 1] }
+climate: { families: [tundra, boreal, continental, temperate, mediterranean, steppe, desert, savanna, monsoon, rainforest] }
 surface:
   top: sand
   filler: sand

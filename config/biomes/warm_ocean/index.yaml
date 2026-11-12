@@ -1,6 +1,7 @@
 name: warm_ocean
 where: ocean
-climate: { temperature: [0.55, 1] }
+priority: 1
+climate: { families: [rainforest, monsoon, savanna], variety: [-1, 0.5] }
 surface:
   top: sand
   filler: sand

@@ -1,6 +1,7 @@
 name: snowy_plains
 where: land
-climate: { temperature: [-1, -0.45], humidity: [-1, 0.1], height: [-1000, 300] }
+landform: { height: [-1000, 300] }
+climate: { families: [ice, tundra], wetness: [-1, 0.1], rain_mm: [0, 800] }
 surface:
   top: snow_block
   filler: dirt

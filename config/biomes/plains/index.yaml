@@ -1,6 +1,7 @@
 name: plains
 where: land
-climate: { temperature: [-0.45, 0.2], humidity: [-1, -0.15], height: [-1000, 300] }
+landform: { height: [-1000, 300] }
+climate: { families: [continental, temperate, mediterranean, steppe], wetness: [-1, -0.15], rain_mm: [250, 1200] }
 surface:
   top: grass_block
   filler: dirt

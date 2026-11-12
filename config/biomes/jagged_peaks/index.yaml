@@ -1,6 +1,7 @@
 name: jagged_peaks
 where: land
-climate: { temperature: [-1, -0.15], weirdness: [0, 1], height: [500, 1250] }
+landform: { weirdness: [0, 1], height: [500, 1250] }
+climate: { families: [ice, tundra] }
 surface:
   top: snow_block
   filler: stone

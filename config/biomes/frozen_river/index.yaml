@@ -1,6 +1,6 @@
 name: frozen_river
 where: river
-climate: { temperature: [-1, -0.45] }
+climate: { families: [ice] }
 surface:
   top: sand
   filler: sand

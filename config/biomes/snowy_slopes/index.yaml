@@ -1,6 +1,7 @@
 name: snowy_slopes
 where: land
-climate: { temperature: [-1, -0.15], humidity: [-1, 0], height: [300, 500] }
+landform: { height: [300, 500] }
+climate: { families: [ice, tundra, boreal], wetness: [-1, -0.3], rain_mm: [0, 1000] }
 surface:
   top: snow_block
   filler: snow_block

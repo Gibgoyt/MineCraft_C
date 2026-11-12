@@ -55,8 +55,11 @@ static const uint64_t FEA_DIGEST_OF_GENERATOR[] = {
      * 0x92403624016ACD4A). Plan 005 phase 11's chromium ore did change the land, by veins in rock alone (0x0A5E69C7BA33DB77 with the file at
      * a rate of 0), and changed this row and not the version, so that worlds saved on the old land still open: see that phase's
      * issue 8. Plan 005 phase 6's twelve station blocks moved numbers only (the digest over the numbers before them gave
-     * this row's old value, 0x963084164D7E4DAE). */
-    0xCFD3A129B38458E6ull,
+     * this row's old value, 0x963084164D7E4DAE).
+     * Plan 006 phase 03 moved the biomes (biomes follow the climate) and so the land: 0x2197DF9002CC8A15, written here for
+     * now, while the version stays 1 until plan 006 phase 05 raises it to 2 and gives this value row 2, putting back
+     * this row's old value, 0xCFD3A129B38458E6. Meanwhile a world saved on the old land opens on the new. */
+    0x2197DF9002CC8A15ull,
 };
 static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0]) == TERRAIN_GENERATOR_VERSION + 1u);
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
@@ -75,7 +78,9 @@ static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0
  * file at a rate of 0 gave the pin before. */
 /* Plan 005 phase 6 added twelve station blocks. The land is the same, as the digest over the numbers before them showed: the numbers of
  * the blocks after them in the alphabet moved. */
-static const uint64_t FEA_FOREST_PIN = 0xFECA655E585C850Aull;
+/* Plan 006 phase 03: biomes follow the climate (the family from the climate at the column's height first, then the box within it), so
+ * the biomes, and the surface and features they lay, moved; height, density, hydrology, caves and ores did not (their pins hold). */
+static const uint64_t FEA_FOREST_PIN = 0x703627B51572B80Cull;
 
 static uint64_t fea_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

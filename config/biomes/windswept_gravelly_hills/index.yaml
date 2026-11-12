@@ -1,7 +1,8 @@
 name: windswept_gravelly_hills
 where: land
 priority: 2
-climate: { temperature: [-1, -0.45], erosion: [-0.2, 0.3], weirdness: [0.75, 1], height: [30, 500] }
+landform: { erosion: [-0.2, 0.3], weirdness: [0.75, 1], height: [30, 500] }
+climate: { families: [tundra] }
 surface:
   top: gravel
   filler: gravel

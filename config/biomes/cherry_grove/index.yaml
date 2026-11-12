@@ -1,6 +1,8 @@
 name: cherry_grove
 where: land
-climate: { temperature: [-0.15, 0.55], humidity: [0.1, 1], height: [300, 500] }
+priority: 1
+landform: { height: [300, 500] }
+climate: { families: [temperate], wetness: [0.1, 1], rain_mm: [700, 1900] }
 surface:
   top: grass_block
   filler: dirt

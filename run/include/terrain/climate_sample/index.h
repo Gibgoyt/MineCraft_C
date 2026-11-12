@@ -62,6 +62,8 @@ enum : uint8_t {
     TERRAIN_CLIMATE_MONSOON = 1u << 2,
     TERRAIN_CLIMATE_WARM_COAST = 1u << 3, /* a warm current of the nearest sea */
     TERRAIN_CLIMATE_COLD_COAST = 1u << 4, /* a cold one */
+    TERRAIN_CLIMATE_DRY_SUMMER =
+        1u << 5, /* plan 006 phase 03: the climate's dry summer, so a family can be Mediterranean */
 };
 
 typedef struct terrain_climate_cell_t {
@@ -156,6 +158,14 @@ void terrain_climate_warp(uint32_t warp_seed, int64_t x, int64_t y, int64_t *out
  * 64ths, rounded half up; temperatures at z; the snow line blended over the corners that are not sea; class and flags of
  * the nearest cell. A read past the sample's cells takes its edge. Pure. */
 terrain_climate_point_t terrain_climate_at(const terrain_climate_sample_t *sample, int64_t x, int64_t y, int32_t z);
+
+/* Plan 006 phase 03: the same read with no blend: the numbers of the one cell nearest the point moved by the warp held to 31
+ * blocks each way (so a cell's centre always reads its own cell, and only the borders between centres wobble), its
+ * temperatures taken to z with the same lapse and basin heat. So a column's climate family is
+ * its own cell's class worked out at its own height, and family borders wobble with the warp rather than making a third
+ * class out of the blend of two. Pure. */
+terrain_climate_point_t terrain_climate_nearest_at(const terrain_climate_sample_t *sample, int64_t x, int64_t y,
+                                                   int32_t z);
 
 /* Plan 006 master 2.2: one cell where there is no climate, from the latitude of its centre's y alone: plan 004 6.6's
  * temperature with kappa 0.5 and no current, 6.7's rain belt at the latitude with moisture 0.6 and orography 1 (no waves, so

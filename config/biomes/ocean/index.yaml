@@ -1,6 +1,6 @@
 name: ocean
 where: ocean
-climate: { temperature: [-0.15, 0.2] }
+climate: { families: [temperate, mediterranean, continental, steppe, desert], variety: [-1, 0] }
 surface:
   top: sand
   filler: sand

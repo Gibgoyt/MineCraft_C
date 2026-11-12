@@ -1,12 +1,14 @@
 /* ctest run_terrain_biome. See README.md. */
 #include "harness/index.h"
 
+#include "climate/index.h"
 #include "heap/index.h"
 #include "job/index.h"
 #include "machine/index.h"
 #include "tables/biomes/index.h"
 #include "tables/blocks/index.h"
 #include "terrain/index.h"
+#include "terrain/rng/index.h"
 #include "thread/index.h"
 #include "time/index.h"
 
@@ -62,11 +64,15 @@ static const int32_t BIO_CAVE_LEVEL_Z[BIO_CAVE_LEVELS] = {-210, -170, -100, -60,
  * file at a rate of 0 gave the pin before. */
 /* Plan 005 phase 6 added twelve station blocks. The land is the same, as the digest over the numbers before them showed: the numbers of
  * the blocks after them in the alphabet moved. */
-static const uint64_t BIO_DIGEST_PIN = 0x3FC59F20EBEF2F5Bull;
+/* Plan 006 phase 03: biomes follow the climate (the family from the climate at the column's height first, then the box within it), so
+ * the biomes, and the surface and features they lay, moved; height, density, hydrology, caves and ores did not (their pins hold). */
+static const uint64_t BIO_DIGEST_PIN = 0x0D7925C6C2D8F51Dull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 003 phase 8 stage 6 moved the biomes' boxes to the coast and the height the terrain now has. */
-static const uint64_t BIO_COLUMNS_PIN = 0x2A6B1DA319C1E091ull;
+/* Plan 006 phase 03: biomes follow the climate (the family from the climate at the column's height first, then the box within it), so
+ * the biomes, and the surface and features they lay, moved; height, density, hydrology, caves and ores did not (their pins hold). */
+static const uint64_t BIO_COLUMNS_PIN = 0x7A499FEBA8AD1D5Cull;
 
 static uint64_t bio_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -197,8 +203,15 @@ TEST(the_table_says_what_the_files_say) {
     CHECK_EQ_U64(desert->filler, BLOCK_ID_SAND);
     CHECK_EQ_U64(desert->under, BLOCK_ID_SANDSTONE);
     CHECK_EQ_U64(desert->under_depth, 4u);
-    CHECK(desert->temperature.low == 0.55f32 && desert->temperature.high == 1.0f32);
-    CHECK(desert->humidity.low == -1.0f32 && desert->humidity.high == 0.3f32);
+    CHECK(desert->variety.low == -1.0f32 && desert->variety.high == 1.0f32); /* absent means all of it */
+    CHECK(desert->wetness.low == -1.0f32 && desert->wetness.high == 0.3f32);
+    CHECK_EQ_U64(desert->families, 1u << BIOME_FAMILY_DESERT);
+    CHECK_EQ_U64(desert->limits, BIOME_LIMIT_RAIN);
+    CHECK_EQ_I64(desert->rain_low_mm, 0);
+    CHECK_EQ_I64(desert->rain_high_mm, 400);
+    CHECK_EQ_U64(biome_defs[BIOME_ID_STONY_SHORE].families, (1u << BIOME_FAMILY_COUNT) - 1u);
+    CHECK_EQ_U64(biome_defs[BIOME_ID_LUSH_CAVES].families, 0u);
+    CHECK_STR_EQ(biome_family_names[BIOME_FAMILY_MEDITERRANEAN], "Mediterranean");
     CHECK(desert->erosion.low == -1.0f32 && desert->erosion.high == 1.0f32); /* absent means all of it */
     CHECK(desert->height.low == -1000.0f32 && desert->height.high == 500.0f32);
 
@@ -243,96 +256,118 @@ TEST(the_table_says_what_the_files_say) {
 
 typedef struct bio_hand_t {
     terrain_biome_inputs_t inputs; /* 0 */
-    uint8_t expected;              /* 28: biome_id_t */
-    uint8_t _pad0[3];              /* 29 */
+    uint8_t expected;              /* 40: biome_id_t */
+    uint8_t _pad0[7];              /* 41 */
 } bio_hand_t;
-static_assert(sizeof(bio_hand_t) == 32);
+static_assert(sizeof(bio_hand_t) == 48);
 
-/* Each worked out from the files: which boxes hold the point, and which has the highest priority. */
+/* Each worked out from the files: which of the family's boxes hold the point, and which has the highest priority. Plan 006
+ * phase 03: the family first, then variety, wetness and the landform. */
 static const bio_hand_t BIO_HAND[] = {
-#define BIO_CASE(t_, h_, c_, e_, w_, g_, k_, id)                                                                       \
-    {.inputs = {.temperature = (t_),                                                                                   \
-                .humidity = (h_),                                                                                      \
+#define BIO_CASE(f_, v_, h_, c_, e_, w_, g_, k_, r_, id)                                                               \
+    {.inputs = {.variety = (v_),                                                                                       \
+                .wetness = (h_),                                                                                       \
                 .continentalness = (c_),                                                                               \
                 .erosion = (e_),                                                                                       \
                 .weirdness = (w_),                                                                                     \
                 .ground = (g_),                                                                                        \
-                .kind = (k_)},                                                                                         \
+                .kind = (k_),                                                                                          \
+                .family = BIOME_FAMILY_##f_,                                                                           \
+                .rain_mm_year = (r_)},                                                                                 \
      .expected = (id)}
-    /* Plain land by temperature and humidity, at 40 blocks, on middling erosion. */
-    BIO_CASE(0.0f32, -0.5f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_PLAINS),
-    BIO_CASE(0.0f32, 0.0f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_FOREST),
-    BIO_CASE(0.0f32, 0.2f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_BIRCH_FOREST),
-    BIO_CASE(0.0f32, 0.5f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_DARK_FOREST),
-    BIO_CASE(-0.3f32, 0.2f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_TAIGA),
-    BIO_CASE(-0.3f32, 0.5f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, TERRAIN_HYDROLOGY_KIND_LAND,
-             BIOME_ID_OLD_GROWTH_SPRUCE_TAIGA),
-    BIO_CASE(-0.7f32, 0.0f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_SNOWY_PLAINS),
-    BIO_CASE(-0.7f32, 0.5f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_SNOWY_TAIGA),
-    BIO_CASE(0.4f32, 0.0f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_SAVANNA),
-    BIO_CASE(0.4f32, 0.5f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_JUNGLE),
-    BIO_CASE(0.4f32, 0.2f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_SPARSE_JUNGLE),
-    BIO_CASE(0.8f32, -0.5f32, 0.5f32, 0.6f32, 0.0f32, 20.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_DESERT),
+#define LAND TERRAIN_HYDROLOGY_KIND_LAND
+    /* Plain land by family and wetness, at 40 blocks, on middling erosion. */
+    BIO_CASE(TEMPERATE, 0.0f32, -0.5f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, LAND, 1000, BIOME_ID_PLAINS),
+    BIO_CASE(TEMPERATE, 0.0f32, 0.0f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, LAND, 1000, BIOME_ID_FOREST),
+    BIO_CASE(TEMPERATE, 0.0f32, 0.2f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, LAND, 1000, BIOME_ID_BIRCH_FOREST),
+    BIO_CASE(TEMPERATE, 0.0f32, 0.5f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, LAND, 1000, BIOME_ID_DARK_FOREST),
+    BIO_CASE(BOREAL, 0.0f32, 0.2f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, LAND, 800, BIOME_ID_TAIGA),
+    BIO_CASE(BOREAL, 0.0f32, 0.5f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, LAND, 800, BIOME_ID_OLD_GROWTH_SPRUCE_TAIGA),
+    BIO_CASE(TUNDRA, 0.0f32, 0.0f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, LAND, 500, BIOME_ID_SNOWY_PLAINS),
+    BIO_CASE(TUNDRA, 0.0f32, 0.5f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, LAND, 500, BIOME_ID_SNOWY_TAIGA),
+    BIO_CASE(SAVANNA, 0.0f32, 0.0f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, LAND, 800, BIOME_ID_SAVANNA),
+    BIO_CASE(RAINFOREST, 0.0f32, 0.5f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, LAND, 2500, BIOME_ID_JUNGLE),
+    BIO_CASE(MONSOON, 0.0f32, 0.2f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, LAND, 2000, BIOME_ID_SPARSE_JUNGLE),
+    BIO_CASE(DESERT, 0.0f32, -0.5f32, 0.5f32, 0.6f32, 0.0f32, 20.0f32, LAND, 100, BIOME_ID_DESERT),
+    /* The same column in each family: a family never gives another family's biome. */
+    BIO_CASE(STEPPE, -0.5f32, -0.5f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, LAND, 400, BIOME_ID_PLAINS),
+    BIO_CASE(STEPPE, 0.5f32, -0.5f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, LAND, 400, BIOME_ID_SAVANNA),
+    BIO_CASE(ICE, 0.0f32, 0.5f32, 0.5f32, 0.0f32, 0.0f32, 40.0f32, LAND, 300, BIOME_ID_SNOWY_PLAINS),
+    /* Ahmed's 1.png: high ground in the Rainforest is never snow, whatever the wetness. */
+    BIO_CASE(RAINFOREST, 0.0f32, -0.5f32, 0.8f32, -0.5f32, 0.0f32, 400.0f32, LAND, 2500, BIOME_ID_SPARSE_JUNGLE),
     /* Priority: the rare row inside a common one's box. */
-    BIO_CASE(0.0f32, -0.5f32, 0.5f32, 0.0f32, 0.5f32, 40.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_SUNFLOWER_PLAINS),
-    BIO_CASE(0.0f32, -0.2f32, 0.5f32, 0.0f32, -0.5f32, 40.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_FLOWER_FOREST),
-    BIO_CASE(0.0f32, 0.2f32, 0.5f32, 0.0f32, 0.5f32, 40.0f32, TERRAIN_HYDROLOGY_KIND_LAND,
-             BIOME_ID_OLD_GROWTH_BIRCH_FOREST),
-    BIO_CASE(-0.3f32, 0.2f32, 0.5f32, 0.0f32, 0.5f32, 40.0f32, TERRAIN_HYDROLOGY_KIND_LAND,
-             BIOME_ID_OLD_GROWTH_PINE_TAIGA),
-    BIO_CASE(-0.7f32, -0.6f32, 0.5f32, 0.0f32, 0.5f32, 40.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_ICE_SPIKES),
-    BIO_CASE(0.4f32, 0.5f32, 0.5f32, 0.0f32, 0.5f32, 40.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_BAMBOO_JUNGLE),
-    /* Swamps are flat, wet and low; hot ones are mangroves. */
-    BIO_CASE(0.0f32, 0.2f32, 0.2f32, 0.7f32, 0.0f32, 10.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_SWAMP),
-    BIO_CASE(0.8f32, 0.2f32, 0.2f32, 0.7f32, 0.0f32, 10.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_MANGROVE_SWAMP),
+    BIO_CASE(TEMPERATE, 0.0f32, -0.5f32, 0.5f32, 0.0f32, 0.5f32, 40.0f32, LAND, 1000, BIOME_ID_SUNFLOWER_PLAINS),
+    BIO_CASE(TEMPERATE, 0.0f32, -0.2f32, 0.5f32, 0.0f32, -0.5f32, 40.0f32, LAND, 1000, BIOME_ID_FLOWER_FOREST),
+    BIO_CASE(TEMPERATE, 0.0f32, 0.2f32, 0.5f32, 0.0f32, 0.5f32, 40.0f32, LAND, 1000, BIOME_ID_OLD_GROWTH_BIRCH_FOREST),
+    BIO_CASE(BOREAL, 0.0f32, 0.2f32, 0.5f32, 0.0f32, 0.5f32, 40.0f32, LAND, 800, BIOME_ID_OLD_GROWTH_PINE_TAIGA),
+    BIO_CASE(ICE, 0.0f32, -0.6f32, 0.5f32, 0.0f32, 0.5f32, 40.0f32, LAND, 300, BIOME_ID_ICE_SPIKES),
+    BIO_CASE(RAINFOREST, 0.0f32, 0.5f32, 0.5f32, 0.0f32, 0.5f32, 40.0f32, LAND, 2500, BIOME_ID_BAMBOO_JUNGLE),
+    /* Swamps are flat, wet and low; tropical ones are mangroves. */
+    BIO_CASE(TEMPERATE, 0.0f32, 0.2f32, 0.2f32, 0.7f32, 0.0f32, 10.0f32, LAND, 1200, BIOME_ID_SWAMP),
+    BIO_CASE(RAINFOREST, 0.0f32, 0.2f32, 0.2f32, 0.7f32, 0.0f32, 10.0f32, LAND, 2500, BIOME_ID_MANGROVE_SWAMP),
     /* And right down to the sea. */
-    BIO_CASE(0.0f32, 0.2f32, -0.4f32, 0.7f32, 0.0f32, 10.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_SWAMP),
+    BIO_CASE(TEMPERATE, 0.0f32, 0.2f32, -0.4f32, 0.7f32, 0.0f32, 10.0f32, LAND, 1200, BIOME_ID_SWAMP),
     /* A lake is land under water, so it has land's biomes. */
-    BIO_CASE(0.0f32, 0.2f32, 0.2f32, 0.7f32, 0.0f32, -3.0f32, TERRAIN_HYDROLOGY_KIND_LAKE, BIOME_ID_SWAMP),
-    BIO_CASE(0.0f32, -0.5f32, 0.5f32, 0.0f32, 0.0f32, -3.0f32, TERRAIN_HYDROLOGY_KIND_LAKE, BIOME_ID_PLAINS),
-    /* Hot and dissected: the badlands. */
-    BIO_CASE(0.8f32, -0.5f32, 0.5f32, -0.3f32, 0.0f32, 60.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_BADLANDS),
-    BIO_CASE(0.8f32, 0.5f32, 0.5f32, -0.3f32, 0.0f32, 60.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_WOODED_BADLANDS),
-    BIO_CASE(0.8f32, -0.5f32, 0.5f32, -0.3f32, 0.6f32, 60.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_ERODED_BADLANDS),
-    /* The windswept hills, by temperature. */
-    BIO_CASE(-0.3f32, 0.0f32, 0.5f32, 0.0f32, 0.9f32, 60.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_WINDSWEPT_HILLS),
-    BIO_CASE(-0.7f32, 0.0f32, 0.5f32, 0.0f32, 0.9f32, 60.0f32, TERRAIN_HYDROLOGY_KIND_LAND,
-             BIOME_ID_WINDSWEPT_GRAVELLY_HILLS),
-    BIO_CASE(0.0f32, 0.0f32, 0.5f32, 0.0f32, 0.9f32, 60.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_WINDSWEPT_FOREST),
-    BIO_CASE(0.4f32, -0.5f32, 0.5f32, 0.0f32, 0.9f32, 60.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_WINDSWEPT_SAVANNA),
+    BIO_CASE(TEMPERATE, 0.0f32, 0.2f32, 0.2f32, 0.7f32, 0.0f32, -3.0f32, TERRAIN_HYDROLOGY_KIND_LAKE, 1200,
+             BIOME_ID_SWAMP),
+    BIO_CASE(TEMPERATE, 0.0f32, -0.5f32, 0.5f32, 0.0f32, 0.0f32, -3.0f32, TERRAIN_HYDROLOGY_KIND_LAKE, 1000,
+             BIOME_ID_PLAINS),
+    /* Dry and dissected: the badlands. */
+    BIO_CASE(DESERT, 0.0f32, -0.5f32, 0.5f32, -0.3f32, 0.0f32, 60.0f32, LAND, 100, BIOME_ID_BADLANDS),
+    BIO_CASE(MEDITERRANEAN, 0.8f32, 0.5f32, 0.5f32, -0.3f32, 0.0f32, 60.0f32, LAND, 500, BIOME_ID_WOODED_BADLANDS),
+    BIO_CASE(DESERT, 0.0f32, -0.5f32, 0.5f32, -0.3f32, 0.6f32, 60.0f32, LAND, 100, BIOME_ID_ERODED_BADLANDS),
+    /* The windswept hills, by family and variety. */
+    BIO_CASE(BOREAL, 0.5f32, 0.0f32, 0.5f32, 0.0f32, 0.9f32, 60.0f32, LAND, 800, BIOME_ID_WINDSWEPT_HILLS),
+    BIO_CASE(TUNDRA, 0.0f32, 0.0f32, 0.5f32, 0.0f32, 0.9f32, 60.0f32, LAND, 500, BIOME_ID_WINDSWEPT_GRAVELLY_HILLS),
+    BIO_CASE(TEMPERATE, -0.5f32, 0.0f32, 0.5f32, 0.0f32, 0.9f32, 60.0f32, LAND, 1000, BIOME_ID_WINDSWEPT_FOREST),
+    BIO_CASE(SAVANNA, 0.0f32, -0.5f32, 0.5f32, 0.0f32, 0.9f32, 60.0f32, LAND, 700, BIOME_ID_WINDSWEPT_SAVANNA),
     /* Height: a warm plateau, and what is on the high ground. */
-    BIO_CASE(0.4f32, -0.5f32, 0.5f32, 0.0f32, 0.0f32, 200.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_SAVANNA_PLATEAU),
-    BIO_CASE(0.0f32, -0.5f32, 0.8f32, -0.5f32, 0.0f32, 400.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_MEADOW),
-    BIO_CASE(0.0f32, 0.5f32, 0.8f32, -0.5f32, 0.0f32, 400.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_CHERRY_GROVE),
-    BIO_CASE(-0.5f32, 0.5f32, 0.8f32, -0.5f32, 0.0f32, 400.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_GROVE),
-    BIO_CASE(-0.5f32, -0.5f32, 0.8f32, -0.5f32, 0.0f32, 400.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_SNOWY_SLOPES),
-    BIO_CASE(-0.5f32, 0.0f32, 0.8f32, -0.8f32, 0.6f32, 600.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_JAGGED_PEAKS),
-    BIO_CASE(-0.5f32, 0.0f32, 0.8f32, -0.8f32, -0.6f32, 600.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_FROZEN_PEAKS),
-    BIO_CASE(0.5f32, 0.0f32, 0.8f32, -0.8f32, 0.6f32, 600.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_STONY_PEAKS),
+    BIO_CASE(SAVANNA, 0.0f32, -0.5f32, 0.5f32, 0.0f32, 0.0f32, 200.0f32, LAND, 700, BIOME_ID_SAVANNA_PLATEAU),
+    BIO_CASE(TEMPERATE, 0.0f32, -0.5f32, 0.8f32, -0.5f32, 0.0f32, 400.0f32, LAND, 1000, BIOME_ID_MEADOW),
+    BIO_CASE(TEMPERATE, 0.0f32, 0.5f32, 0.8f32, -0.5f32, 0.0f32, 400.0f32, LAND, 1000, BIOME_ID_CHERRY_GROVE),
+    BIO_CASE(BOREAL, 0.0f32, 0.5f32, 0.8f32, -0.5f32, 0.0f32, 400.0f32, LAND, 800, BIOME_ID_GROVE),
+    BIO_CASE(TUNDRA, 0.0f32, -0.5f32, 0.8f32, -0.5f32, 0.0f32, 400.0f32, LAND, 500, BIOME_ID_SNOWY_SLOPES),
+    BIO_CASE(TUNDRA, 0.0f32, 0.0f32, 0.8f32, -0.8f32, 0.6f32, 600.0f32, LAND, 500, BIOME_ID_JAGGED_PEAKS),
+    BIO_CASE(ICE, 0.0f32, 0.0f32, 0.8f32, -0.8f32, -0.6f32, 600.0f32, LAND, 300, BIOME_ID_FROZEN_PEAKS),
+    BIO_CASE(SAVANNA, 0.0f32, 0.0f32, 0.8f32, -0.8f32, 0.6f32, 600.0f32, LAND, 700, BIOME_ID_STONY_PEAKS),
     /* Low woods go on up a range's foot, and bare peaks start only high up. */
-    BIO_CASE(0.0f32, 0.0f32, 0.5f32, 0.0f32, 0.0f32, 280.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_FOREST),
-    BIO_CASE(0.5f32, 0.0f32, 0.8f32, -0.8f32, 0.0f32, 1200.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_STONY_PEAKS),
+    BIO_CASE(TEMPERATE, 0.0f32, 0.0f32, 0.5f32, 0.0f32, 0.0f32, 280.0f32, LAND, 1000, BIOME_ID_FOREST),
+    BIO_CASE(TEMPERATE, 0.0f32, 0.0f32, 0.8f32, -0.8f32, 0.0f32, 1200.0f32, LAND, 1000, BIOME_ID_STONY_PEAKS),
     /* The rarest, on the coast. */
-    BIO_CASE(0.2f32, 0.0f32, -0.35f32, 0.0f32, -0.7f32, 12.0f32, TERRAIN_HYDROLOGY_KIND_LAND, BIOME_ID_MUSHROOM_FIELDS),
-    /* What hydrology says the column is decides which rows are looked at, whatever the climate. */
-    BIO_CASE(0.0f32, -0.5f32, -0.5f32, 0.0f32, 0.0f32, -30.0f32, TERRAIN_HYDROLOGY_KIND_OCEAN, BIOME_ID_OCEAN),
-    BIO_CASE(0.8f32, 0.0f32, -0.5f32, 0.0f32, 0.0f32, -30.0f32, TERRAIN_HYDROLOGY_KIND_OCEAN, BIOME_ID_WARM_OCEAN),
-    BIO_CASE(0.4f32, 0.0f32, -0.5f32, 0.0f32, 0.0f32, -30.0f32, TERRAIN_HYDROLOGY_KIND_OCEAN, BIOME_ID_LUKEWARM_OCEAN),
-    BIO_CASE(-0.3f32, 0.0f32, -0.5f32, 0.0f32, 0.0f32, -30.0f32, TERRAIN_HYDROLOGY_KIND_OCEAN, BIOME_ID_COLD_OCEAN),
-    BIO_CASE(-0.8f32, 0.0f32, -0.5f32, 0.0f32, 0.0f32, -30.0f32, TERRAIN_HYDROLOGY_KIND_OCEAN, BIOME_ID_FROZEN_OCEAN),
-    BIO_CASE(0.0f32, 0.0f32, -0.9f32, 0.0f32, 0.0f32, -90.0f32, TERRAIN_HYDROLOGY_KIND_DEEP_OCEAN, BIOME_ID_DEEP_OCEAN),
+    BIO_CASE(TEMPERATE, 0.0f32, 0.0f32, -0.35f32, 0.0f32, -0.7f32, 12.0f32, LAND, 1000, BIOME_ID_MUSHROOM_FIELDS),
+    /* What hydrology says the column is decides which rows are looked at, and the family which of them. */
+    BIO_CASE(TEMPERATE, 0.0f32, 0.0f32, -0.5f32, 0.0f32, 0.0f32, -30.0f32, TERRAIN_HYDROLOGY_KIND_OCEAN, 1000,
+             BIOME_ID_OCEAN),
+    BIO_CASE(RAINFOREST, 0.0f32, 0.0f32, -0.5f32, 0.0f32, 0.0f32, -30.0f32, TERRAIN_HYDROLOGY_KIND_OCEAN, 2500,
+             BIOME_ID_WARM_OCEAN),
+    BIO_CASE(RAINFOREST, 0.8f32, 0.0f32, -0.5f32, 0.0f32, 0.0f32, -30.0f32, TERRAIN_HYDROLOGY_KIND_OCEAN, 2500,
+             BIOME_ID_LUKEWARM_OCEAN),
+    BIO_CASE(MEDITERRANEAN, 0.5f32, 0.0f32, -0.5f32, 0.0f32, 0.0f32, -30.0f32, TERRAIN_HYDROLOGY_KIND_OCEAN, 500,
+             BIOME_ID_LUKEWARM_OCEAN),
+    BIO_CASE(BOREAL, 0.0f32, 0.0f32, -0.5f32, 0.0f32, 0.0f32, -30.0f32, TERRAIN_HYDROLOGY_KIND_OCEAN, 800,
+             BIOME_ID_COLD_OCEAN),
+    BIO_CASE(ICE, 0.0f32, 0.0f32, -0.5f32, 0.0f32, 0.0f32, -30.0f32, TERRAIN_HYDROLOGY_KIND_OCEAN, 300,
+             BIOME_ID_FROZEN_OCEAN),
+    BIO_CASE(TEMPERATE, 0.0f32, 0.0f32, -0.9f32, 0.0f32, 0.0f32, -90.0f32, TERRAIN_HYDROLOGY_KIND_DEEP_OCEAN, 1000,
+             BIOME_ID_DEEP_OCEAN),
     /* There is no deep warm ocean: the deep lukewarm one goes on up. */
-    BIO_CASE(0.9f32, 0.0f32, -0.9f32, 0.0f32, 0.0f32, -90.0f32, TERRAIN_HYDROLOGY_KIND_DEEP_OCEAN,
+    BIO_CASE(RAINFOREST, -0.9f32, 0.0f32, -0.9f32, 0.0f32, 0.0f32, -90.0f32, TERRAIN_HYDROLOGY_KIND_DEEP_OCEAN, 2500,
              BIOME_ID_DEEP_LUKEWARM_OCEAN),
-    BIO_CASE(-0.3f32, 0.0f32, -0.9f32, 0.0f32, 0.0f32, -90.0f32, TERRAIN_HYDROLOGY_KIND_DEEP_OCEAN,
+    BIO_CASE(TUNDRA, 0.0f32, 0.0f32, -0.9f32, 0.0f32, 0.0f32, -90.0f32, TERRAIN_HYDROLOGY_KIND_DEEP_OCEAN, 500,
              BIOME_ID_DEEP_COLD_OCEAN),
-    BIO_CASE(-0.8f32, 0.0f32, -0.9f32, 0.0f32, 0.0f32, -90.0f32, TERRAIN_HYDROLOGY_KIND_DEEP_OCEAN,
+    BIO_CASE(ICE, 0.0f32, 0.0f32, -0.9f32, 0.0f32, 0.0f32, -90.0f32, TERRAIN_HYDROLOGY_KIND_DEEP_OCEAN, 300,
              BIOME_ID_DEEP_FROZEN_OCEAN),
-    BIO_CASE(0.5f32, 0.0f32, 0.5f32, 0.0f32, 0.0f32, -4.0f32, TERRAIN_HYDROLOGY_KIND_RIVER, BIOME_ID_RIVER),
-    BIO_CASE(-0.8f32, 0.0f32, 0.5f32, 0.0f32, 0.0f32, -4.0f32, TERRAIN_HYDROLOGY_KIND_RIVER, BIOME_ID_FROZEN_RIVER),
-    BIO_CASE(0.5f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 2.0f32, TERRAIN_HYDROLOGY_KIND_BEACH, BIOME_ID_BEACH),
-    BIO_CASE(-0.8f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 2.0f32, TERRAIN_HYDROLOGY_KIND_BEACH, BIOME_ID_SNOWY_BEACH),
-    BIO_CASE(-0.8f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 2.0f32, TERRAIN_HYDROLOGY_KIND_STONY_SHORE, BIOME_ID_STONY_SHORE),
+    BIO_CASE(SAVANNA, 0.0f32, 0.0f32, 0.5f32, 0.0f32, 0.0f32, -4.0f32, TERRAIN_HYDROLOGY_KIND_RIVER, 700,
+             BIOME_ID_RIVER),
+    BIO_CASE(ICE, 0.0f32, 0.0f32, 0.5f32, 0.0f32, 0.0f32, -4.0f32, TERRAIN_HYDROLOGY_KIND_RIVER, 300,
+             BIOME_ID_FROZEN_RIVER),
+    BIO_CASE(SAVANNA, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 2.0f32, TERRAIN_HYDROLOGY_KIND_BEACH, 700,
+             BIOME_ID_BEACH),
+    BIO_CASE(TUNDRA, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 2.0f32, TERRAIN_HYDROLOGY_KIND_BEACH, 500,
+             BIOME_ID_SNOWY_BEACH),
+    BIO_CASE(ICE, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 0.0f32, 2.0f32, TERRAIN_HYDROLOGY_KIND_STONY_SHORE, 300,
+             BIOME_ID_STONY_SHORE),
+#undef LAND
 #undef BIO_CASE
 };
 
@@ -351,24 +386,127 @@ TEST(the_choice_is_worked_out_by_hand) {
 /* The sum in the README, typed out again, for a point in no box at all. */
 TEST(the_distance_is_the_readmes_sum) {
     const terrain_biome_inputs_t inputs = {
-        .temperature = 0.5f32,
-        .humidity = 0.5f32,
+        .variety = 0.5f32,
+        .wetness = 0.5f32,
         .continentalness = 0.5f32,
         .erosion = 0.5f32,
         .weirdness = 0.5f32,
         .ground = 300.0f32,
         .kind = TERRAIN_HYDROLOGY_KIND_LAND,
+        .rain_mm_year = 1500,
+        .t_warm_cc = 2000,
     };
     const biome_def_t row = {
-        .temperature = {-1.0f32, 0.25f32},    /* 0.25 past the top */
-        .humidity = {0.0f32, 1.0f32},         /* inside */
+        .variety = {-1.0f32, 0.25f32},        /* 0.25 past the top */
+        .wetness = {0.0f32, 1.0f32},          /* inside */
         .continentalness = {0.75f32, 1.0f32}, /* 0.25 under the bottom */
         .erosion = {-1.0f32, 1.0f32},         /* inside */
         .weirdness = {0.5f32, 1.0f32},        /* at the end: inside */
         .height = {0.0f32, 44.0f32},          /* 256 blocks past the top, so 2 */
+        .limits = BIOME_LIMIT_RAIN | BIOME_LIMIT_T_WARM,
+        .rain_low_mm = 0,
+        .rain_high_mm = 1000, /* 500 mm past the top: half of 1000 */
+        .t_warm_low_cc = 0,
+        .t_warm_high_cc = 2500, /* inside */
     };
-    const float32_t expected = 0.25f32 * 0.25f32 + 0.25f32 * 0.25f32 + 2.0f32 * 2.0f32;
+    const float32_t expected = 0.25f32 * 0.25f32 + 0.25f32 * 0.25f32 + 2.0f32 * 2.0f32 + 0.5f32 * 0.5f32;
     CHECK_NEAR(terrain_biome_distance(&row, &inputs), expected, 1e-6f32);
+}
+
+/* Plan 006 phase 03, the master's worked example (2.4): a cell whose sea-level yearly mean is 14 degrees with a swing of 10.
+ * At z 80 the warmest month is 23.0 and the coldest 3.0: Temperate; at z 1100, 10.8 and -9.2: Boreal; at z 1250, 9.0:
+ * Tundra. The sample's warm and cold are the mean plus and minus the swing times 0.98862 (a month's mean of the wave), so the
+ * swing written in is 10 / 0.98862. */
+TEST(the_family_follows_the_worked_example) {
+    terrain_climate_sample_t sample;
+    memset(&sample, 0, sizeof(sample));
+    sample.warp_off = 1u;
+    for (int32_t j = 0; j < TERRAIN_CLIMATE_SIDE; j++) {
+        for (int32_t i = 0; i < TERRAIN_CLIMATE_SIDE; i++) {
+            terrain_climate_cell_make(14.0f64, 10.0f64 / 0.98862f64, 1200.0f64, 9999.0f64, 80.0f64,
+                                      TERRAIN_CLIMATE_CLASS_TEMPERATE, 0u, &sample.cells[j][i]);
+        }
+    }
+    const int32_t heights[3] = {80, 1100, 1250};
+    const biome_family_t expected[3] = {BIOME_FAMILY_TEMPERATE, BIOME_FAMILY_BOREAL, BIOME_FAMILY_TUNDRA};
+    for (uint32_t k = 0u; k < 3u; k++) {
+        const terrain_climate_point_t point = terrain_climate_at(&sample, 150, 150, heights[k]);
+        printf("z %d: warm %.2f, cold %.2f, family %s\n", heights[k],
+               (libc_double_t)((float64_t)point.t_warm_cc / 100.0f64),
+               (libc_double_t)((float64_t)point.t_cold_cc / 100.0f64),
+               biome_family_names[terrain_biome_family(&point)]);
+        CHECK_EQ_U64(terrain_biome_family(&point), expected[k]);
+    }
+    /* A dry summer makes the temperate column Mediterranean, and nothing else. */
+    for (int32_t j = 0; j < TERRAIN_CLIMATE_SIDE; j++) {
+        for (int32_t i = 0; i < TERRAIN_CLIMATE_SIDE; i++) {
+            sample.cells[j][i].flags = TERRAIN_CLIMATE_DRY_SUMMER;
+        }
+    }
+    const terrain_climate_point_t low = terrain_climate_at(&sample, 150, 150, 80);
+    CHECK_EQ_U64(terrain_biome_family(&low), BIOME_FAMILY_MEDITERRANEAN);
+    const terrain_climate_point_t high = terrain_climate_at(&sample, 150, 150, 1100);
+    CHECK_EQ_U64(terrain_biome_family(&high), BIOME_FAMILY_BOREAL);
+    /* Every class names its family, and the sea none. */
+    CHECK_EQ_U64(terrain_biome_family_of_class(TERRAIN_CLIMATE_CLASS_NONE), BIOME_FAMILY_COUNT);
+    CHECK_EQ_U64(terrain_biome_family_of_class(TERRAIN_CLIMATE_CLASS_MONSOON), BIOME_FAMILY_MONSOON);
+    CHECK_EQ_U64(terrain_biome_family_of_class(TERRAIN_CLIMATE_CLASS_CONTINENTAL), BIOME_FAMILY_CONTINENTAL);
+    /* The heights: water's family at the sea's top, the rest at the ground, rounded down. */
+    CHECK_EQ_I64(terrain_biome_climate_z(-80.5f32, TERRAIN_HYDROLOGY_KIND_OCEAN), MC_WORLD_Z_SEA);
+    CHECK_EQ_I64(terrain_biome_climate_z(-80.5f32, TERRAIN_HYDROLOGY_KIND_DEEP_OCEAN), MC_WORLD_Z_SEA);
+    CHECK_EQ_I64(terrain_biome_climate_z(-3.5f32, TERRAIN_HYDROLOGY_KIND_LAKE), -4);
+    CHECK_EQ_I64(terrain_biome_climate_z(412.9f32, TERRAIN_HYDROLOGY_KIND_LAND), 412);
+    CHECK(terrain_biome_height(412.9f32) == 412.9f32);
+    /* Wetness: the field plus half of the rain's bias, clamped. */
+    CHECK(terrain_biome_wetness(0.0f32, 1000) == 0.0f32);
+    CHECK(terrain_biome_wetness(0.0f32, 2000) == 0.5f32);
+    CHECK(terrain_biome_wetness(0.0f32, 9000) == 0.5f32);
+    CHECK(terrain_biome_wetness(0.0f32, 0) == -0.5f32);
+    CHECK(terrain_biome_wetness(0.8f32, 3000) == 1.0f32);
+}
+
+/* A million random inputs: whatever they are, the biome chosen is a member of the input's family, of the right where. */
+TEST(the_choice_never_leaves_the_family) {
+    static const uint8_t WHERE_OF_KIND[TERRAIN_HYDROLOGY_KIND_COUNT] = {
+        [TERRAIN_HYDROLOGY_KIND_LAND] = BIOME_WHERE_LAND,
+        [TERRAIN_HYDROLOGY_KIND_OCEAN] = BIOME_WHERE_OCEAN,
+        [TERRAIN_HYDROLOGY_KIND_DEEP_OCEAN] = BIOME_WHERE_DEEP_OCEAN,
+        [TERRAIN_HYDROLOGY_KIND_RIVER] = BIOME_WHERE_RIVER,
+        [TERRAIN_HYDROLOGY_KIND_LAKE] = BIOME_WHERE_LAND,
+        [TERRAIN_HYDROLOGY_KIND_BEACH] = BIOME_WHERE_BEACH,
+        [TERRAIN_HYDROLOGY_KIND_STONY_SHORE] = BIOME_WHERE_STONY_SHORE,
+    };
+    terrain_rng_t rng = terrain_rng_start(0xFA3117ull);
+    uint64_t chosen[BIOME_COUNT] = {0u};
+    for (uint32_t i = 0u; i < 1000000u; i++) {
+        const terrain_biome_inputs_t inputs = {
+            .variety = terrain_rng_next_f32(&rng) * 2.0f32 - 1.0f32,
+            .wetness = terrain_rng_next_f32(&rng) * 2.0f32 - 1.0f32,
+            .continentalness = terrain_rng_next_f32(&rng) * 2.0f32 - 1.0f32,
+            .erosion = terrain_rng_next_f32(&rng) * 2.0f32 - 1.0f32,
+            .weirdness = terrain_rng_next_f32(&rng) * 2.0f32 - 1.0f32,
+            .ground = terrain_rng_next_f32(&rng) * 1500.0f32 - 250.0f32,
+            .kind = (terrain_hydrology_kind_t)terrain_rng_next_below(&rng, TERRAIN_HYDROLOGY_KIND_COUNT),
+            .family = (uint8_t)terrain_rng_next_below(&rng, BIOME_FAMILY_COUNT),
+            .t_warm_cc = (int32_t)terrain_rng_next_below(&rng, 6000u) - 3000,
+            .t_cold_cc = (int32_t)terrain_rng_next_below(&rng, 6000u) - 4000,
+            .rain_mm_year = (int32_t)terrain_rng_next_below(&rng, 4000u),
+        };
+        const biome_id_t got = terrain_biome_choose(&inputs);
+        chosen[got]++;
+        if (!CHECK((biome_defs[got].families & (1u << inputs.family)) != 0u) ||
+            !CHECK_EQ_U64(biome_defs[got].where, WHERE_OF_KIND[inputs.kind])) {
+            printf("%s chosen in family %s\n", biome_defs[got].name, biome_family_names[inputs.family]);
+            break;
+        }
+    }
+    /* And every surface biome can be chosen at all. */
+    for (uint32_t i = 0u; i < BIOME_COUNT; i++) {
+        if (biome_defs[i].where != BIOME_WHERE_UNDERGROUND && chosen[i] == 0u) {
+            printf("%s was never chosen\n", biome_defs[i].name);
+        }
+        CHECK(biome_defs[i].where == BIOME_WHERE_UNDERGROUND || chosen[i] != 0u);
+    }
 }
 
 /* A row that is the nearest to nothing could never turn up. Each is at no distance from the middle of its own box, and whatever
@@ -387,22 +525,32 @@ TEST(each_row_holds_the_middle_of_its_box_or_gives_way_to_a_rarer_one) {
         if (def->where == BIOME_WHERE_UNDERGROUND) {
             continue;
         }
-        const terrain_biome_inputs_t inputs = {
-            .temperature = (def->temperature.low + def->temperature.high) * 0.5f32,
-            .humidity = (def->humidity.low + def->humidity.high) * 0.5f32,
-            .continentalness = (def->continentalness.low + def->continentalness.high) * 0.5f32,
-            .erosion = (def->erosion.low + def->erosion.high) * 0.5f32,
-            .weirdness = (def->weirdness.low + def->weirdness.high) * 0.5f32,
-            .ground = (def->height.low + def->height.high) * 0.5f32,
-            .kind = KIND_OF_WHERE[def->where],
-        };
-        CHECK(terrain_biome_distance(def, &inputs) == 0.0f32);
-        const biome_id_t won = terrain_biome_choose(&inputs);
-        CHECK(terrain_biome_distance(&biome_defs[won], &inputs) == 0.0f32);
-        if (won != i && biome_defs[won].priority <= def->priority) {
-            printf("%s gives way to %s, of no higher a priority\n", def->name, biome_defs[won].name);
+        /* In each of its families: plan 006 phase 03 chooses only among a family's members. */
+        for (uint32_t family = 0u; family < BIOME_FAMILY_COUNT; family++) {
+            if ((def->families & (1u << family)) == 0u) {
+                continue;
+            }
+            const bool rain = (def->limits & BIOME_LIMIT_RAIN) != 0u;
+            const terrain_biome_inputs_t inputs = {
+                .variety = (def->variety.low + def->variety.high) * 0.5f32,
+                .wetness = (def->wetness.low + def->wetness.high) * 0.5f32,
+                .continentalness = (def->continentalness.low + def->continentalness.high) * 0.5f32,
+                .erosion = (def->erosion.low + def->erosion.high) * 0.5f32,
+                .weirdness = (def->weirdness.low + def->weirdness.high) * 0.5f32,
+                .ground = (def->height.low + def->height.high) * 0.5f32,
+                .kind = KIND_OF_WHERE[def->where],
+                .family = (uint8_t)family,
+                .rain_mm_year = rain ? (def->rain_low_mm + def->rain_high_mm) / 2 : 1000,
+            };
+            CHECK(terrain_biome_distance(def, &inputs) == 0.0f32);
+            const biome_id_t won = terrain_biome_choose(&inputs);
+            CHECK(terrain_biome_distance(&biome_defs[won], &inputs) == 0.0f32);
+            if (won != i && biome_defs[won].priority <= def->priority) {
+                printf("%s gives way to %s in %s, of no higher a priority\n", def->name, biome_defs[won].name,
+                       biome_family_names[family]);
+            }
+            CHECK(won == i || biome_defs[won].priority > def->priority);
         }
-        CHECK(won == i || biome_defs[won].priority > def->priority);
     }
 }
 
@@ -431,11 +579,11 @@ TEST(a_voxel_is_underground_only_deep_enough_and_at_its_biomes_heights) {
     const terrain_biome_column_t bare = {.ground = 50.0f32, .biome = BIOME_ID_PLAINS};
     CHECK_EQ_U64(terrain_biome_of_voxel(&bare, -120), BIOME_ID_PLAINS);
 
-    const terrain_biome_inputs_t held = {.humidity = 0.7f32, .erosion = -0.5f32};
+    const terrain_biome_inputs_t held = {.wetness = 0.7f32, .erosion = -0.5f32};
     const uint8_t caves = terrain_biome_caves_of(&held);
     CHECK((caves & (1u << lush_bit)) != 0u);
     CHECK((caves & (1u << dark_bit)) != 0u);
-    const terrain_biome_inputs_t none = {.humidity = 0.0f32, .erosion = 0.5f32};
+    const terrain_biome_inputs_t none = {.wetness = 0.0f32, .erosion = 0.5f32};
     CHECK_EQ_U64(terrain_biome_caves_of(&none), 0u);
 }
 
@@ -450,10 +598,11 @@ typedef struct bio_place_t {
 static_assert(sizeof(bio_place_t) == 16);
 
 typedef struct bio_found_t {
-    uint64_t count[BIOME_COUNT]; /* columns, or for underground biomes, levels of a column */
-    bio_place_t at[BIOME_COUNT]; /* where it first turned up */
+    uint64_t count[BIOME_COUNT];  /* columns, or for underground biomes, levels of a column */
+    bio_place_t at[BIOME_COUNT];  /* where it first turned up, or first beside itself along a row of the search */
+    uint64_t beside[BIOME_COUNT]; /* 1 once at is a place whose neighbour in the search is the same biome */
 } bio_found_t;
-static_assert(sizeof(bio_found_t) == 24u * BIOME_COUNT);
+static_assert(sizeof(bio_found_t) == 32u * BIOME_COUNT);
 
 /* Goes over 65 kilometres of a world, finds where each biome first is, and says how often. */
 static void bio_search(test_context_t *t, const terrain_t *terrain, bio_found_t *found) {
@@ -473,6 +622,14 @@ static void bio_search(test_context_t *t, const terrain_t *terrain, bio_found_t 
         for (uint32_t ix = 0u; ix < BIO_SEARCH_SIDE; ix++) {
             const terrain_biome_column_t *const column = &columns[ix];
             const int32_t x = area.origin_x + (int32_t)(ix * BIO_SEARCH_STEP);
+            /* Plan 006 phase 03: a family's border can leave a biome a lone column of the search, so where a test looks
+             * for it is somewhere it has room, if there is one. */
+            if (ix > 0u && columns[ix - 1u].biome == column->biome && found->beside[column->biome] == 0u) {
+                found->beside[column->biome] = 1u;
+                found->at[column->biome].x = x;
+                found->at[column->biome].y = area.origin_y;
+                found->at[column->biome].z = (int32_t)column->ground;
+            }
             if (found->count[column->biome] == 0u) {
                 found->at[column->biome].x = x;
                 found->at[column->biome].y = area.origin_y;
@@ -679,21 +836,30 @@ TEST(a_column_is_the_climate_on_the_lattice_and_what_hydrology_says_it_is) {
      ty * ((corner[2].field + tx * (corner[3].field - corner[2].field)) -                                              \
            (corner[0].field + tx * (corner[1].field - corner[0].field))))
                 const terrain_hydrology_column_t water = terrain_hydrology_column_at(terrain.borrowed_hydrology, x, y);
+                terrain_climate_sample_t climate;
+                terrain_climate_fallback(BIO_WORLD, x - 8, y - 8, &climate);
+                /* Plan 006 phase 03: the climate at the column's own height, through the sample. */
+                const int32_t z = terrain_biome_climate_z(water.ground, water.kind);
+                const terrain_climate_point_t point = terrain_climate_at(&climate, x, y, z);
+                const terrain_climate_point_t cell = terrain_climate_nearest_at(&climate, x, y, z);
                 const terrain_biome_inputs_t inputs = {
-                    .temperature = BIO_BLEND(temperature),
-                    .humidity = BIO_BLEND(humidity),
+                    .variety = BIO_BLEND(variety),
+                    .wetness = terrain_biome_wetness(BIO_BLEND(wetness), point.rain_mm_year),
                     .continentalness = BIO_BLEND(continentalness),
                     .erosion = BIO_BLEND(erosion),
                     .weirdness = BIO_BLEND(weirdness),
                     .ground = water.ground,
                     .kind = water.kind,
+                    .family = (uint8_t)terrain_biome_family(&cell),
+                    .t_warm_cc = cell.t_warm_cc,
+                    .t_cold_cc = cell.t_cold_cc,
+                    .rain_mm_year = point.rain_mm_year,
                 };
 #undef BIO_BLEND
-                terrain_climate_sample_t climate;
-                terrain_climate_fallback(BIO_WORLD, x - 8, y - 8, &climate);
                 const terrain_biome_column_t column = terrain_biome_column_at(terrain.borrowed_biome, &climate, x, y);
                 CHECK_EQ_U64(column.biome, terrain_biome_choose(&inputs));
                 CHECK_EQ_U64(column.caves, terrain_biome_caves_of(&inputs));
+                CHECK_EQ_U64(column.family, inputs.family);
                 CHECK(column.ground == water.ground);
                 CHECK(column.softness == water.softness);
                 CHECK(column.carve_top == water.carve_top);
@@ -1629,6 +1795,102 @@ TEST(terrain_starts_the_biomes_and_surface_and_stops_them) {
     CHECK(terrain.borrowed_biome == nullptr);
     CHECK(terrain.borrowed_surface == nullptr);
     terrain_deinit(&terrain); /* safe again */
+}
+
+/* ---- Plan 006 phase 03: on the real climate -------------------------------------------------------------------------- */
+
+/* Ahmed's seed, the world of ~/Pictures/1.png. */
+static const uint64_t BIO_AHMED_SEED = 2198175988018515243ull;
+
+/* A climate of a seed, built over a square round (x, y). */
+typedef struct bio_climate_rig_t {
+    job_system_t *job;           /* 0 */
+    climate_t *climate;          /* 8 */
+    thread_topology_t *topology; /* 16 */
+    terrain_t *terrain;          /* 24 */
+} bio_climate_rig_t;
+static_assert(sizeof(bio_climate_rig_t) == 32);
+
+static void *bio_aligned(test_context_t *t, uint64_t bytes) {
+    const uintptr_t raw = (uintptr_t)test_alloc(t, bytes + 64u);
+    return (void *)((raw + 63u) & ~(uintptr_t)63u);
+}
+
+static bool bio_climate_start(test_context_t *t, bio_climate_rig_t *rig, uint64_t seed, int32_t x, int32_t y,
+                              int32_t half) {
+    rig->topology = test_alloc(t, sizeof(thread_topology_t));
+    rig->job = bio_aligned(t, sizeof(job_system_t));
+    rig->climate = bio_aligned(t, sizeof(climate_t));
+    rig->terrain = bio_aligned(t, sizeof(terrain_t));
+    if (!thread_topology_read(rig->topology) || !job_init(rig->job, rig->topology)) {
+        return false;
+    }
+    if (!climate_init(rig->climate) || !terrain_init(rig->terrain, seed) || !climate_open(rig->climate, rig->terrain)) {
+        return false;
+    }
+    climate_prepare_area(rig->climate, rig->job, x - half, y - half, x + half, y + half, nullptr, nullptr);
+    return true;
+}
+
+static void bio_climate_stop(bio_climate_rig_t *rig) {
+    climate_close(rig->climate, rig->job);
+    climate_deinit(rig->climate);
+    terrain_deinit(rig->terrain);
+    job_deinit(rig->job);
+}
+
+/* The column's biome as a column job there has it: its own climate sample from the tiles. */
+static terrain_biome_column_t bio_column_on_climate(test_context_t *t, const bio_climate_rig_t *rig, int32_t x,
+                                                    int32_t y) {
+    terrain_climate_sample_t sample;
+    CHECK(climate_terrain_sample(rig->climate, rig->terrain->seed, (int64_t)x - 8, (int64_t)y - 8, &sample));
+    return terrain_biome_column_at(rig->terrain->borrowed_biome, &sample, x, y);
+}
+
+static bool bio_is_cold_member(uint8_t biome) {
+    const uint32_t cold = (1u << BIOME_FAMILY_ICE) | (1u << BIOME_FAMILY_TUNDRA);
+    return (biome_defs[biome].families & cold) != 0u;
+}
+
+/* Ahmed's 1.png: x -68, y 149, 0.35 degrees north, 24.1 degrees, on snow_block, then snowy_slopes or grove. Now the place, and
+ * every column within 64 blocks of it, is in a warm family and no snow biome. */
+TEST(the_screenshot_place_is_not_snow) {
+    bio_climate_rig_t rig;
+    REQUIRE(bio_climate_start(t, &rig, BIO_AHMED_SEED, -68, 149, 1024));
+    const terrain_biome_column_t place = bio_column_on_climate(t, &rig, -68, 149);
+    printf("x -68, y 149: %s, family %s, ground %.1f\n", biome_defs[place.biome].name, biome_family_names[place.family],
+           (libc_double_t)place.ground);
+    for (int32_t dy = -64; dy <= 64; dy += 8) {
+        for (int32_t dx = -64; dx <= 64; dx += 8) {
+            const terrain_biome_column_t column = bio_column_on_climate(t, &rig, -68 + dx, 149 + dy);
+            CHECK(column.biome != BIOME_ID_SNOWY_SLOPES && column.biome != BIOME_ID_GROVE);
+            CHECK(!bio_is_cold_member(column.biome));
+            CHECK(column.family != BIOME_FAMILY_ICE && column.family != BIOME_FAMILY_TUNDRA);
+        }
+    }
+    bio_climate_stop(&rig);
+}
+
+/* At 75 degrees north, every land column above the sea is in the Ice or Tundra family. */
+TEST(pole_land_is_ice_or_tundra) {
+    const int32_t y = (int32_t)(CLIMATE_POLE_Y * 75.0f64 / 90.0f64);
+    bio_climate_rig_t rig;
+    REQUIRE(bio_climate_start(t, &rig, BIO_AHMED_SEED, 0, y, 2048));
+    uint32_t land = 0u, cold = 0u;
+    for (int32_t dy = -1024; dy < 1024; dy += 32) {
+        for (int32_t dx = -1024; dx < 1024; dx += 32) {
+            const terrain_biome_column_t column = bio_column_on_climate(t, &rig, dx, y + dy);
+            if (biome_defs[column.biome].where != BIOME_WHERE_LAND || column.ground < (float32_t)MC_WORLD_Z_SEA) {
+                continue;
+            }
+            land++;
+            cold += column.family == BIOME_FAMILY_ICE || column.family == BIOME_FAMILY_TUNDRA ? 1u : 0u;
+        }
+    }
+    printf("75 N: %u land columns, %u in Ice or Tundra\n", land, cold);
+    CHECK(land > 0u);
+    CHECK_EQ_U64(cold, land);
+    bio_climate_stop(&rig);
 }
 
 TEST_MAIN()

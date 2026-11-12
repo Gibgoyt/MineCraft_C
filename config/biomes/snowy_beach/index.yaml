@@ -1,6 +1,6 @@
 name: snowy_beach
 where: beach
-climate: { temperature: [-1, -0.45] }
+climate: { families: [ice, tundra] }
 surface:
   top: sand
   filler: sand

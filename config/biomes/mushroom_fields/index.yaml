@@ -1,7 +1,8 @@
 name: mushroom_fields
 where: land
 priority: 4
-climate: { continentalness: [-0.46, -0.24], weirdness: [-1, -0.45], temperature: [-0.15, 0.55], height: [-1000, 40] }
+landform: { continentalness: [-0.46, -0.24], weirdness: [-1, -0.45], height: [-1000, 40] }
+climate: { families: [temperate, mediterranean] }
 surface:
   top: mycelium
   filler: dirt

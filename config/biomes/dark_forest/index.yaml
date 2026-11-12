@@ -1,6 +1,7 @@
 name: dark_forest
 where: land
-climate: { temperature: [-0.15, 0.2], humidity: [0.4, 1], height: [-1000, 300] }
+landform: { height: [-1000, 300] }
+climate: { families: [continental, temperate], wetness: [0.4, 1], rain_mm: [800, 2400] }
 surface:
   top: grass_block
   filler: dirt

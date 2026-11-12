@@ -497,6 +497,10 @@ void climate_terrain_cell(const climate_cell_t *cell, terrain_climate_cell_t *ou
         flags |= cell->current == CLIMATE_CURRENT_WARM ? TERRAIN_CLIMATE_WARM_COAST : 0u;
         flags |= cell->current == CLIMATE_CURRENT_COLD ? TERRAIN_CLIMATE_COLD_COAST : 0u;
     }
+    /* Plan 006 phase 03: whether the summer is dry does not depend on the height, so the cell's own months say it. */
+    climate_season_months_t months;
+    climate_season_months(cell, cell->z_ground, (cell->flags & CLIMATE_CELL_LAKE) == 0u, &months);
+    flags |= months.dry_summer != 0u ? TERRAIN_CLIMATE_DRY_SUMMER : 0u;
     /* The yearly rain as climate_season_months and climate_normals_at have it, the same float32_t steps. */
     const float32_t rain_mm_year = fmaxf(0.0f32, cell->rain_mm_week[0]) * CLIMATE_DAYS_A_YEAR / CLIMATE_DAYS_A_WEEK;
     terrain_climate_cell_make(

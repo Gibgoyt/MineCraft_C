@@ -11,16 +11,17 @@
 - `game_hud_climate_publish`: every `GAME_CORNER_CLIMATE_TICKS` (20, a second), and at once with `force`, and on the first tick after the body comes back from death (a try that finds a tile not built yet waits for the next beat, not the next tick): `climate_weather_at` at the body's x and y at the blended ground (z NaN), `climate_normals_at` there for the ground's height and the cell's rain, `s_hur`, season and monsoon today; `T_HUD = T_now - 0.012 (z_feet - z_ground)` (master plan 6.6, `CLIMATE_LAPSE_C_PER_BLOCK`); the wind now; latitude and day length (phase 02); and `climate_season_of` (`climate/label`). Every `CLIMATE_WARNING_TICKS` (200, 10 s), on the first tick of a new census week, and on the same occasions: `climate_warning_at` at the body (`climate/warning`), on a worker; one that has never yet answered is tried again each second, not each tick. A value whose tile is not built yet keeps its last word; the season word's bit 16 stays clear until the first whole answer, and the climate line is not shown until then.
 - `game_hud_corner_read`: line 0 the flying line from `game_command_flight_line` ("Flying · 116 b/s", "Flying · 580 b/s · speed 5x", or "Speed 5x" walking; plan 006 phase 01), else empty (the settlement's, for a later plan); line 1 `Year 2 · Day 214 · Mid summer · Hurricane season` while `show_date` is on, with phase 01's season (`game_calendar_season_name`) until the sim's word is ready; line 2 the climate line while `climate_hud` has `SETTINGS_CLIMATE_HUD_LINE` and the words were ever worked out, with the arrow from the wind's direction and main's own camera yaw (so it turns as the player looks round between the sim's words), none below 0.5 blocks a second ("wind calm"); line 3 the warning while `SETTINGS_CLIMATE_HUD_WARNINGS` is on and there is one, on red.
 - `game_corner_tuning_publish`, `game_corner_tuning_read`, `game_corner_class_name`: plan 006 phase 01's three F3 tuning lines.
-  The sim, on the climate line's beat (every 20 ticks), puts in `game_corner_t`'s fourth line: the biome at the feet (today's,
-  from the noise), the family the climate there would give (`climate_season_classify` on `climate_season_months` of the nearest
-  cell at the feet's own height, so a peak can be Tundra over a Temperate valley), the cell's class, and `climate_normals_at` at
+  The sim, on the climate line's beat (every 20 ticks), puts in `game_corner_t`'s fourth line: the biome at the feet and the
+  family it was chosen in (plan 006 phase 03: `terrain_biome_column_at` on the sample a column job there has; the family is
+  the class of the column's own cell at its ground's height, so a peak can be Tundra over a Temperate valley), the cell's
+  class, and `climate_normals_at` at
   the feet's height: the yearly mean, the warmest and coldest month and today's mean in tenths, the height they are at, the year's
   rain, the driest month and the snowline. A tile not built yet keeps the last. Main turns them into
   `biome savanna  family Savanna  class Savanna (climate)`, `yearly 24.6 °C  warm 27.1  cold 22.0 at z 88   today 25.3` and
   `rain 640 mm/yr  dry month 4 mm   snowline none`, drawn under the F3 overlay while walking in a world with a climate (`game_hud_compose`). With no climate (a test world) the
   words say `(no climate)` but nothing is drawn, as F3 there changes only its own panel (`run_ui_hud`); phase 02's fallback
-  will say `(fallback)`, and that test's region has to grow with it. Until phase 03 the biome and the
-  family disagree where the biomes do not follow the climate: that is the "before" picture.
+  will say `(fallback)`, and that test's region has to grow with it. Since phase 03 the biome is always a member of its
+  family (`run_game_command` holds it).
 - `game_hud_corners_draw`: main's, while walking, after a notice and before F3: the coordinates top left (if `show_coordinates` is on and F3 is not up), then the corner from `game_hud_corner_read`, clear of whichever top-left panel there is (`ui_hud_debug_panel` or `ui_hud_coordinates_panel`). It was in `game/index.c` until that file passed 1500 lines.
 - `game_corner_wind_pack`, `game_corner_wind_unpack`: speed in tenths of a block a second in bits 0-15, the direction it blows toward in 65536ths of a turn anticlockwise from east in bits 16-31.
 - `game_corner_compass`: the point of 8 it blows from, `atan2(-u, -v)` clockwise from north, N from 337.5 to 22.5. The trade wind of master plan 6.5, toward (-0.928, -0.371), is from E.

@@ -1,7 +1,8 @@
 name: lush_caves
 where: underground
 priority: 1
-climate: { humidity: [0.5, 1], z: [-120, 1250] }
+landform: { z: [-120, 1250] }
+climate: { wetness: [0.5, 1] }
 cave:
   floor: moss_block
   ceiling: rooted_dirt
