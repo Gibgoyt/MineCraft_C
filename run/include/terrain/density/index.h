@@ -11,6 +11,9 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* terrain/landform's, which reads this header for its spline: only a pointer to it is held here. */
+struct terrain_landform_t;
+
 enum : uint32_t {
     /* The noise fields one world's density takes from the bank. */
     TERRAIN_DENSITY_NOISE_FIELDS = 6u,
@@ -22,7 +25,10 @@ enum : uint32_t {
 };
 
 /* What the splines can reach, whatever the climate. tests/run/terrain/density/ tries every corner of the climate against
- * these, and real columns of real seeds. Each is written out from the numbers in the README's table. */
+ * these, and real columns of real seeds. Each is written out from the numbers in the README's table. Since plan 007 phase
+ * 03 the top is base 100, plus the plateau and the range on it, which together reach at most 1000, plus hills 46 and jagged
+ * 14: 1160. The limit stays at 1190, the old sum, so that the world's top, the stone limit and the room for trees above it
+ * do not move, and 30 blocks are left for plan 007 phase 04's peaks. */
 enum : int32_t {
     TERRAIN_DENSITY_HEIGHT_MIN = -116,
     TERRAIN_DENSITY_HEIGHT_MAX = 1190,
@@ -59,7 +65,7 @@ typedef struct terrain_density_t {
     terrain_density_spline_t hill_land;           /* 1480: continentalness to how much hills show on land */
     terrain_density_spline_t hill_sea;            /* 1776: continentalness to how much they show on the sea bed */
     terrain_density_spline_t hill_relief;         /* 2072: erosion to how big the hills are */
-    terrain_density_spline_t belt;                /* 2368: nearness to a range's line to how much range is there */
+    terrain_density_spline_t flank;               /* 2368: nearness to a range's line to how much range is there */
     terrain_density_spline_t massif;              /* 2664: the massif field to how tall that stretch stands */
     terrain_density_spline_t crest;               /* 2960: nearness to a crest to the share of the range's height */
     terrain_density_spline_t range_land;          /* 3256: broad continentalness to how much range the land allows */
@@ -71,15 +77,18 @@ typedef struct terrain_density_t {
     const terrain_noise_field_t *borrowed_range;  /* 3880 */
     const terrain_noise_field_t *borrowed_massif; /* 3888 */
     const terrain_noise_field_t *borrowed_crest;  /* 3896 */
+    const struct terrain_landform_t *borrowed_landform; /* 3904: plateaus, on their own lattice */
 } terrain_density_t;
-static_assert(sizeof(terrain_density_t) == 3904);
+static_assert(sizeof(terrain_density_t) == 3912);
 
 /* What a column's ground is. */
 typedef struct terrain_density_profile_t {
     float32_t height;   /* 0: in blocks, where the ground would be with no 3D noise */
     float32_t softness; /* 4: in blocks: the 3D noise can move the ground this far either way */
+    float32_t lift;     /* 8: in blocks: how much of height is the plateau under it. Biomes read height less this */
+    uint8_t _pad0[4];   /* 12 */
 } terrain_density_profile_t;
-static_assert(sizeof(terrain_density_profile_t) == 8);
+static_assert(sizeof(terrain_density_profile_t) == 16);
 
 /* The noise a profile takes that is not climate, each already spread out to -1 to 1. */
 typedef struct terrain_density_inputs_t {
@@ -92,8 +101,10 @@ typedef struct terrain_density_inputs_t {
     float32_t massif;          /* 24 */
     float32_t crest;           /* 28: 0 on a crest */
     float32_t broad;           /* 32: continentalness from its largest octaves alone */
+    float32_t plateau;         /* 36: from 0 to 1, a share of TERRAIN_LANDFORM_PLATEAU_BLOCKS: terrain/landform's */
+    float32_t face;            /* 40: from 0 to 1, how steep the plateau is here: terrain/landform's */
 } terrain_density_inputs_t;
-static_assert(sizeof(terrain_density_inputs_t) == 36);
+static_assert(sizeof(terrain_density_inputs_t) == 44);
 
 /* Blocks next to each other. Filled with x changing fastest, then y, then z, as a section's voxels are stored:
  * out[ix + count_x * (iy + count_y * iz)] is the voxel origin + i. */
@@ -107,11 +118,11 @@ typedef struct terrain_density_box_t {
 } terrain_density_box_t;
 static_assert(sizeof(terrain_density_box_t) == 24);
 
-/* Takes the density from arena and adds its fields to bank, for bank's seed. For use while terrain_init runs. climate must
- * outlive it. If the bank refuses a field, which has logged why, sets *out to nullptr and returns false. Fields added before
+/* Takes the density from arena and adds its fields to bank, for bank's seed. For use while terrain_init runs. fields and
+ * landform must outlive it. If the bank refuses a field, which has logged why, sets *out to nullptr and returns false. Fields added before
  * that stay in the bank, so the caller gives up on the whole terrain_t. */
 [[nodiscard]] bool terrain_density_init(terrain_density_t **out, arena_t *arena, terrain_noise_bank_t *bank,
-                                        const terrain_fields_t *fields);
+                                        const terrain_fields_t *fields, const struct terrain_landform_t *landform);
 
 /* Empties the handle. The memory goes back with the arena. */
 void terrain_density_deinit(terrain_density_t *density);
@@ -124,6 +135,10 @@ void terrain_density_spline_build(terrain_density_spline_t *spline, const float6
 /* A spline at x. Outside its knots it stays at the end's value. */
 float64_t terrain_density_spline_at(const terrain_density_spline_t *spline, float64_t x);
 
+/* The same spline's slope at x, dy/dx of the very cubic terrain_density_spline_at works out: 0 outside its knots. Plain
+ * arithmetic, no libm. */
+float64_t terrain_density_spline_slope_at(const terrain_density_spline_t *spline, float64_t x);
+
 /* The height splines: from noise already spread out to the ground it makes, in the README's formula. */
 terrain_density_profile_t terrain_density_profile_from(const terrain_density_t *density,
                                                        const terrain_density_inputs_t *inputs);
@@ -133,11 +148,17 @@ terrain_density_profile_t terrain_density_profile_from(const terrain_density_t *
  * the column. height and softness each hold terrain_fields_area_columns(area) values. */
 void terrain_density_profile_area(const terrain_density_t *density, const terrain_fields_area_t *area,
                                   float32_t *heights, float32_t *softness);
+/* The same, and each column's lift into lift, which holds as many: for what reads relief and not height, such as biomes. */
+void terrain_density_profile_area_lift(const terrain_density_t *density, const terrain_fields_area_t *area,
+                                       float32_t *heights, float32_t *softness, float32_t *lift);
 
 /* The profile at count columns anywhere, in blocks, through the same batch the box uses: the very bits a box's lattice
  * gets at a whole-number column. Allocates nothing. Must be finite. */
 void terrain_density_profile_points(const terrain_density_t *density, const float64_t *xs, const float64_t *ys,
                                     uint64_t count, float32_t *heights, float32_t *softness);
+/* The same, and each column's lift into lift. */
+void terrain_density_profile_points_lift(const terrain_density_t *density, const float64_t *xs, const float64_t *ys,
+                                         uint64_t count, float32_t *heights, float32_t *softness, float32_t *lift);
 
 /* How many values a box fills. */
 uint64_t terrain_density_box_voxels(const terrain_density_box_t *box);

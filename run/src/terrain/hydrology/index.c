@@ -232,6 +232,7 @@ terrain_hydrology_column_t terrain_hydrology_column_from(const terrain_hydrology
         .carve_top = carve_top,
         .river = river,
         .shore = inputs->shore,
+        .lift = inputs->lift,
         .kind = hydrology_kind_of(inputs, ground, river),
     };
 }
@@ -251,9 +252,9 @@ typedef struct hydrology_lattice_t {
     float32_t width[HYDROLOGY_LATTICE];           /* 808 */
     float32_t shore[HYDROLOGY_LATTICE];           /* 1004 */
     float32_t ground[HYDROLOGY_LATTICE];          /* 1200: for how steep a cell is */
-    uint8_t _pad0[4];                             /* 1396 */
+    float32_t lift[HYDROLOGY_LATTICE];            /* 1396: carried to biomes, read by no rule here */
 } hydrology_lattice_t;
-static_assert(sizeof(hydrology_lattice_t) == 1400);
+static_assert(sizeof(hydrology_lattice_t) == 1592);
 
 /* Columns from one tile, both ends included. */
 typedef struct hydrology_span_t {
@@ -285,7 +286,8 @@ static void hydrology_lattice_fill(const terrain_hydrology_t *hydrology, const h
         .continentalness = lattice->continentalness,
         .weirdness = lattice->weirdness,
     };
-    terrain_density_profile_area(hydrology->borrowed_density, &area, lattice->heights, lattice->softness);
+    terrain_density_profile_area_lift(hydrology->borrowed_density, &area, lattice->heights, lattice->softness,
+                                      lattice->lift);
     terrain_fields_sample_area(hydrology->borrowed_fields, &area, &fields);
 
     float64_t xs[HYDROLOGY_LATTICE];
@@ -311,6 +313,7 @@ static void hydrology_lattice_fill(const terrain_hydrology_t *hydrology, const h
             .weirdness = lattice->weirdness[i],
             .width = lattice->width[i],
             .shore = lattice->shore[i],
+            .lift = lattice->lift[i],
         };
         const terrain_hydrology_column_t column = terrain_hydrology_column_from(&inputs);
         lattice->ground[i] = column.ground;
@@ -356,6 +359,7 @@ static terrain_hydrology_column_t hydrology_column_in(const hydrology_lattice_t 
         .width = hydrology_bilinear(lattice->width, at, side, t_x, t_y),
         .shore = hydrology_bilinear(lattice->shore, at, side, t_x, t_y),
         .steepness = steepest * per_block,
+        .lift = hydrology_bilinear(lattice->lift, at, side, t_x, t_y),
     };
     return terrain_hydrology_column_from(&inputs);
 }

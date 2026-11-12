@@ -66,12 +66,15 @@ static const int32_t BIO_CAVE_LEVEL_Z[BIO_CAVE_LEVELS] = {-210, -170, -100, -60,
  * the blocks after them in the alphabet moved. */
 /* Plan 006 phase 03: biomes follow the climate (the family from the climate at the column's height first, then the box within it), so
  * the biomes, and the surface and features they lay, moved; height, density, hydrology, caves and ores did not (their pins hold). */
+/* Plan 007 phase 03: plateaus, escarpments and long ranges moved the land, and the height axis reads ground less lift
+ * (terrain_biome_height). Its old value 0xB7BC9D34E16EB6CD. */
 static const uint64_t BIO_DIGEST_PIN = 0xB7BC9D34E16EB6CDull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 003 phase 8 stage 6 moved the biomes' boxes to the coast and the height the terrain now has. */
 /* Plan 006 phase 03: biomes follow the climate (the family from the climate at the column's height first, then the box within it), so
  * the biomes, and the surface and features they lay, moved; height, density, hydrology, caves and ores did not (their pins hold). */
+/* Plan 007 phase 03: the same. Its old value 0x7A499FEBA8AD1D5C. */
 static const uint64_t BIO_COLUMNS_PIN = 0x7A499FEBA8AD1D5Cull;
 
 static uint64_t bio_digest(uint64_t hash, const void *memory, uint64_t bytes) {
@@ -256,8 +259,8 @@ TEST(the_table_says_what_the_files_say) {
 
 typedef struct bio_hand_t {
     terrain_biome_inputs_t inputs; /* 0 */
-    uint8_t expected;              /* 40: biome_id_t */
-    uint8_t _pad0[7];              /* 41 */
+    uint8_t expected;              /* 44: biome_id_t */
+    uint8_t _pad0[3];              /* 45 */
 } bio_hand_t;
 static_assert(sizeof(bio_hand_t) == 48);
 
@@ -456,7 +459,9 @@ TEST(the_family_follows_the_worked_example) {
     CHECK_EQ_I64(terrain_biome_climate_z(-80.5f32, TERRAIN_HYDROLOGY_KIND_DEEP_OCEAN), MC_WORLD_Z_SEA);
     CHECK_EQ_I64(terrain_biome_climate_z(-3.5f32, TERRAIN_HYDROLOGY_KIND_LAKE), -4);
     CHECK_EQ_I64(terrain_biome_climate_z(412.9f32, TERRAIN_HYDROLOGY_KIND_LAND), 412);
-    CHECK(terrain_biome_height(412.9f32) == 412.9f32);
+    /* The biome height: the ground less the plateau's lift (plan 007 phase 03), while the family above read the real height. */
+    CHECK(terrain_biome_height(412.9f32, 0.0f32) == 412.9f32);
+    CHECK(terrain_biome_height(660.0f32, 650.0f32) == 10.0f32);
     /* Wetness: the field plus half of the rain's bias, clamped. */
     CHECK(terrain_biome_wetness(0.0f32, 1000) == 0.0f32);
     CHECK(terrain_biome_wetness(0.0f32, 2000) == 0.5f32);
@@ -731,6 +736,8 @@ TEST(the_biomes_follow_the_terrain) {
     uint8_t *const biomes = test_alloc(t, (uint64_t)BIO_SEARCH_SIDE * BIO_SEARCH_SIDE);
     float32_t *const grounds = test_alloc(t, (uint64_t)BIO_SEARCH_SIDE * BIO_SEARCH_SIDE * sizeof(float32_t));
     terrain_biome_column_t *const columns = test_alloc(t, (uint64_t)BIO_SEARCH_SIDE * sizeof(terrain_biome_column_t));
+    terrain_hydrology_column_t *const water =
+        test_alloc(t, (uint64_t)BIO_SEARCH_SIDE * sizeof(terrain_hydrology_column_t));
     const int32_t half = (int32_t)(BIO_SEARCH_SIDE / 2u * BIO_SEARCH_STEP);
     for (uint32_t s = 0u; s < BIO_SEEDS; s++) {
         terrain_t terrain;
@@ -745,9 +752,11 @@ TEST(the_biomes_follow_the_terrain) {
                 .count_y = 1u,
             };
             terrain_biome_columns_area(terrain.borrowed_biome, nullptr, &area, columns);
+            terrain_hydrology_columns_area(terrain.borrowed_hydrology, &area, water);
             for (uint32_t ix = 0u; ix < BIO_SEARCH_SIDE; ix++) {
                 biomes[ix + BIO_SEARCH_SIDE * iy] = columns[ix].biome;
-                grounds[ix + BIO_SEARCH_SIDE * iy] = columns[ix].ground;
+                /* Plan 007 phase 03: the height a biome reads is the biome height, ground less the plateau under it. */
+                grounds[ix + BIO_SEARCH_SIDE * iy] = terrain_biome_height(water[ix].ground, water[ix].lift);
             }
         }
         terrain_deinit(&terrain);
@@ -795,7 +804,9 @@ TEST(the_biomes_follow_the_terrain) {
                (libc_double_t)((float64_t)plains_by_sea * 100.0f64 / (float64_t)plains));
         /* Bare rock is the top of a range and not half of it. */
         CHECK(peaks * 100u < land * 15u);
-        CHECK(peaks * 100u > land * 3u);
+        /* Plan 007 phase 03: a range on a plateau counts its height from the plateau's top, so fewer columns are bare peaks:
+         * 2.4% on the default seed. */
+        CHECK(peaks * 100u > land * 2u);
         /* Peaks only high up, and high up only peaks: the two sides of the same height. A column in no box of its height goes to the
          * nearest, so a few peaks start a little under 500, and at 116 under it the climate's largest gap outweighs the height's. */
         CHECK(under_peaks * 50u < peaks);
@@ -850,6 +861,7 @@ TEST(a_column_is_the_climate_on_the_lattice_and_what_hydrology_says_it_is) {
                     .erosion = BIO_BLEND(erosion),
                     .weirdness = BIO_BLEND(weirdness),
                     .ground = water.ground,
+                    .lift = water.lift,
                     .kind = water.kind,
                     .family = (uint8_t)terrain_biome_family(&cell),
                     .t_warm_cc = cell.t_warm_cc,
@@ -1781,9 +1793,9 @@ TEST(terrain_starts_the_biomes_and_surface_and_stops_them) {
     CHECK(terrain.borrowed_biome->borrowed_hydrology == terrain.borrowed_hydrology);
     CHECK(terrain.borrowed_surface->borrowed_biome == terrain.borrowed_biome);
     CHECK(terrain.borrowed_surface->borrowed_cave == terrain.borrowed_cave);
-    CHECK_EQ_U64(terrain.noise_bank.count, TERRAIN_FIELDS_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS +
-                                               TERRAIN_HYDROLOGY_NOISE_FIELDS + TERRAIN_CAVE_NOISE_FIELDS +
-                                               TERRAIN_SURFACE_NOISE_FIELDS);
+    CHECK_EQ_U64(terrain.noise_bank.count, TERRAIN_FIELDS_NOISE_FIELDS + TERRAIN_LANDFORM_NOISE_FIELDS +
+                                               TERRAIN_DENSITY_NOISE_FIELDS + TERRAIN_HYDROLOGY_NOISE_FIELDS +
+                                               TERRAIN_CAVE_NOISE_FIELDS + TERRAIN_SURFACE_NOISE_FIELDS);
     /* A column's rules come from 2D fields. */
     CHECK(terrain.borrowed_surface->borrowed_depth->octaves[0].frequency_z == 0.0f64);
     CHECK(terrain.borrowed_surface->borrowed_patch->octaves[0].frequency_z == 0.0f64);

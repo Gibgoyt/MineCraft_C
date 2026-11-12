@@ -73,8 +73,8 @@ static const float32_t BIOME_WETNESS_RAIN_WEIGHT = 0.5f32;
 static const float32_t BIOME_LIMIT_CC = 1000.0f32;
 static const float32_t BIOME_LIMIT_MM = 1000.0f32;
 
-float32_t terrain_biome_height(float32_t ground) {
-    return ground; /* plan 007 phase 03: less the plateau's lift */
+float32_t terrain_biome_height(float32_t ground, float32_t lift) {
+    return ground - lift;
 }
 
 int32_t terrain_biome_climate_z(float32_t ground, terrain_hydrology_kind_t kind) {
@@ -178,7 +178,7 @@ static float32_t biome_limit_gap(int32_t value, int32_t low, int32_t high, float
 
 float32_t terrain_biome_distance(const biome_def_t *def, const terrain_biome_inputs_t *inputs) {
     float32_t distance = biome_climate_distance(def, inputs) +
-                         biome_gap(terrain_biome_height(inputs->ground) * BIOME_HEIGHT_SCALE,
+                         biome_gap(terrain_biome_height(inputs->ground, inputs->lift) * BIOME_HEIGHT_SCALE,
                                    def->height.low * BIOME_HEIGHT_SCALE, def->height.high * BIOME_HEIGHT_SCALE);
     if ((def->limits & BIOME_LIMIT_T_WARM) != 0u) {
         distance += biome_limit_gap(inputs->t_warm_cc, def->t_warm_low_cc, def->t_warm_high_cc, BIOME_LIMIT_CC);
@@ -352,6 +352,7 @@ static void biome_tile(const terrain_biome_t *biome, const terrain_climate_sampl
                 .erosion = biome_bilinear(erosion, at, side_x, t_x, t_y),
                 .weirdness = biome_bilinear(weirdness, at, side_x, t_x, t_y),
                 .ground = own->ground,
+                .lift = own->lift,
                 .kind = own->kind,
                 .family = (uint8_t)terrain_biome_family(&cell),
                 .t_warm_cc = cell.t_warm_cc,

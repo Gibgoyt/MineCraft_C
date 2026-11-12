@@ -9,14 +9,16 @@
 
 - `terrain_density_init`, `terrain_density_deinit`: a pair.
 - `terrain_density_spline_at`, `terrain_density_profile_from`: the height splines, as plain arithmetic.
+- `terrain_density_spline_slope_at`: a spline's slope at x, the derivative of the same cubic, for `terrain/landform`'s face (plan 007 phase 03).
 - `terrain_density_spline_build`: the same spline on anyone's knots, with the same slopes: a public wrapper round the static builder, for the climate's knot tables (plan 004 phase 04, `run/src/climate/normals/`). No terrain number changes.
 - `terrain_density_profile_area`: where the ground is, without its blocks, for hydrology and biomes.
 - `terrain_density_profile_points`: the same at columns anywhere, through the very batch a box's lattice uses, so a whole-number column gets a box's bits. A wrapper over that batch only, which moves no number; the height estimate in `run/src/terrain/` is built on it.
+- `terrain_density_profile_area_lift`, `terrain_density_profile_points_lift`: the same two, and each column's lift as well, for what reads relief rather than height: hydrology carries it to biomes, and the estimate blends it.
 - `terrain_density_box_voxels`, `terrain_density_sample_box`, `terrain_density_fill_box`: the bulk sampling.
 - `terrain_density_at`, `terrain_density_block_at`: one voxel.
 
 **May be called by:** `terrain` and its parts; `run/src/climate/normals/` for `terrain_density_spline_build` and `terrain_density_spline_at` only.
-**Depends on:** `terrain/fields` and `terrain/noise` (its siblings, for the climate and the fields), `arena`, `assert`, `machine`, `types`, and the generated `tables/blocks/`, for the block ids.
+**Depends on:** `terrain/fields`, `terrain/noise` and `terrain/landform` (its siblings, for the climate, the fields and the plateaus), `arena`, `assert`, `machine`, `types`, and the generated `tables/blocks/`, for the block ids.
 
 ## The limits
 
@@ -38,19 +40,26 @@ overhang below `z = 0` is water here.
 
 ## How high the ground is
 
-A column has a **profile**: its `height` in blocks, and its `softness`, how far either way the 3D noise may move the ground.
-With `c` continentalness, `b` broad continentalness, `e` erosion, `r` ridges, and `hills`, `jagged`, `range`, `massif` and `crest` five 2D fields of this stage, all from -1 to 1:
+A column has a **profile**: its `height` in blocks, its `softness`, how far either way the 3D noise may move the ground, and
+its `lift`, how much of the height is the plateau under it (plan 007 phase 03). With `c` continentalness, `b` broad
+continentalness, `e` erosion, `r` ridges, `hills`, `jagged`, `range`, `massif` and `crest` five 2D fields of this stage, all
+from -1 to 1, and `plateau` and `face`, each from 0 to 1, from `run/src/terrain/landform/`:
 
-    valley_at  = valley(r)
-    base       = continental(c)                 and, where that is above 0, times valley_at, less 14 * (1 - valley_at) * wetland(e)
-    body       = range_land(b) * belt(1 - |range|) * massif(massif)      how much of a range stands here, from 0 to 1
-    rise       = body * crest(1 - |crest|)
-    high       = inland(c) * relief(e)
-    foothill   = (1 - body) * high * peak(r)
-    hill       = hill_land(c) * valley_at * (8 + 38 * hill_relief(e)) + hill_sea(c) * 6
+    valley_at   = valley(r)
+    base        = continental(c)                 and, where that is above 0, times valley_at, less 14 * (1 - valley_at) * wetland(e)
+    lift        = 650 * plateau                  the plateau, P
+    body        = range_land(b) * flank(1 - |range|) * massif(massif)      how much of a range stands here, from 0 to 1
+    crest_share = 1 - 0.5 * body * (1 - crest(1 - |crest|))              side valleys cut deep only high up
+    m           = body * crest_share                                       the range's envelope
+    high        = inland(c) * relief(e)
+    foothill    = (1 - body) * high * peak(r)
+    hill        = hill_land(c) * valley_at * (8 + 38 * hill_relief(e)) + hill_sea(c) * 6
 
-    height     = base + 1030 * rise + 60 * foothill + hill * hills + 14 * body * jagged
-    softness   = 4 + 22 * (high + body - high * body)
+    height      = base + lift + (1000 - lift) * m + 60 * foothill + hill * hills + 14 * body * jagged
+    softness    = 4 + 22 * (h + body - h * body),   h = min(1, high + 0.5 * face)
+
+A range stands on the plateau and rises at most to 1000 above the base, whatever the plateau. Plan 007 phase 04 puts its
+slope shaping on `m`, and replaces `jagged`.
 
 Each of those names is a spline through these knots, each written `x: y`:
 
@@ -58,9 +67,9 @@ Each of those names is a spline through these knots, each written `x: y`:
 |---|---|---|
 | `continental` | -1: -110, -0.88: -90, -0.78: -64, -0.6: -36, -0.5: -10, -0.45: 3, -0.34: 10, -0.07: 26, 0.43: 54, 1: 100 | Sea bed, a wide shelf, the coast at about `c = -0.46`, and land rising slowly inland. So about 27% of the world is under the sea: `bench/world_map/` reads 24.9 to 29.1% on 8 seeds |
 | `range_land` | -1: 0, -0.38: 0, -0.1: 0.5, 0.2: 1, 1: 1 | No ranges in the open sea or right on the coast. Read from broad continentalness: see below |
-| `belt` | 0: 0, 0.52: 0, 0.68: 0.32, 0.82: 0.68, 0.94: 1, 1: 1 | How much of a range stands at each nearness to its line, 1 being on the line. About 48% of the world has any |
+| `flank` | 0: 0, 0.40: 0, 0.55: 0.06, 0.70: 0.20, 0.82: 0.42, 0.90: 0.64, 0.95: 0.82, 0.985: 0.96, 1: 1 | How much of a range stands at each nearness to its line, 1 being on the line: wide, and nearly straight, as phase 04's shaping puts the concavity on it. About 60% of the world has any, before the land and massif |
 | `massif` | -1: 0.35, -0.2: 0.58, 0.4: 0.82, 0.75: 1, 1: 1 | Along a range: passes, and here and there the great heights |
-| `crest` | 0: 0.5, 0.4: 0.66, 0.8: 0.94, 1: 1 | Across a range: side valleys down to half its height, between sharp crests |
+| `crest` | 0: 0.5, 0.4: 0.66, 0.8: 0.94, 1: 1 | Across a range: side valleys between sharp crests, down to three quarters of its height where `body` is 1, and not at all at its foot |
 | `inland` | -1: 0, -0.5: 0, -0.36: 0.12, -0.1: 0.6, 0.12: 1, 1: 1 | No foothills in the sea or on the shore |
 | `relief` | -1: 1, -0.5: 0.9, -0.2: 0.55, 0.1: 0.2, 0.4: 0.05, 0.7: 0, 1: 0 | Eroded ground is flat |
 | `peak` | -1: 0, -0.5: 0.08, 0: 0.3, 0.5: 0.65, 1: 1 | Foothills on the ridges. It tops out gently, as ridges is the steepest field there is |
@@ -73,22 +82,25 @@ Each of those names is a spline through these knots, each written `x: y`:
 **A spline never passes its knots.** Its pieces are cubics with Fritsch and Carlson's slopes, which stay between their two knots
 and have no corner, and a last clamp takes care of rounding. So the limits can be added up by hand, which is what the header does:
 
-    height   at most 100 + 1030 + 46 + 14 = 1190    at least -110 - 6 = -116
+    height   at most 100 + (lift + 1000 - lift) + 46 + 14 = 1160    at least -110 - 6 = -116
     softness from 4 to 4 + 22 = 26
 
-A foothill does not add to the 1190, as `1 - body` takes it away where a range stands. The limit is as high as it can be, as `terrain/index.h` holds `1190 + 26 + 8` plus the tallest tree to the world's top.
+A foothill does not add to the top, as `1 - body` takes it away where a range stands, and on a plateau with no range it adds
+60 to 650, under the 1000. `TERRAIN_DENSITY_HEIGHT_MAX` stays 1190, the sum before plan 007, so the world's top, the stone
+limit and the room for trees do not move, and 30 blocks are kept for phase 04's peaks. The limit is as high as it can be, as
+`terrain/index.h` holds `1190 + 26 + 8` plus the tallest tree to the world's top.
 
 ## How a range is made
 
 **A range does not need three things to line up.** Before plan 003 phase 8 stage 4, a mountain took far inland, low erosion and a high ridge at once, and ridges is folded from weirdness, whose cell is 512: so high ground came as thin mazes and needles, with nothing at 150 or more of even 1 km^2.
 
-**A range is the line where a smooth field is 0.** `range` has a cell of 4096 blocks. A line where such a field is 0 has no ends: it closes on itself or runs on, so it goes on for many kilometres. As the field is spread evenly, `1 - |range|` is too, so `belt` can be read as shares of the world. That makes the ranges common and far apart by the field's own scale, about 4 km.
+**A range is the line where a smooth field is 0.** `range` has a cell of 8192 blocks (4096 before plan 007 phase 03). A line where such a field is 0 has no ends: it closes on itself or runs on, so it goes on for many kilometres. As the field is spread evenly, `1 - |range|` is too, so `flank` can be read as shares of the world. That makes the ranges common and far apart by the field's own scale, about 8 km, curving less, so a range runs 15 to 40 km. Nearness 0.40 is `|range| = 0.6`, so a belt reaches about 2.4 km either side of its line.
 
-**Slope is what sets the sizes.** Height from a field changes by its size over its cell. 1030 blocks over a fine field is a wall, so `body` takes only broad fields, and the finer ones carry only small heights: `crest`, cell 896, half the height at most; `jagged`, cell 32, 14 blocks; foothills, through ridges, 60. Those were 320 and 34 on the needles before.
+**Slope is what sets the sizes.** Height from a field changes by its size over its cell. 1000 blocks over a fine field is a wall, so `body` takes only broad fields, and the finer ones carry only small heights: `crest`, cell 896, a quarter of the height at most, and only high up; `jagged`, cell 32, 14 blocks; foothills, through ridges, 60. Those were 320 and 34 on the needles before.
 
 **Broad continentalness.** `c` has octaves down to 48 blocks, which make a coast's bays. Taking a range down to the sea on `c` gave walls: on Ahmed's seed, 5 blocks up for each across, 500 tall, standing in the sea. So `range_land` reads `b`, made of only `c`'s first 3 octaves, down to a cell of 768, for no more noise. A range can then stand out into the sea as a headland, which takes a little of the sea's share.
 
-**Valleys.** Between ranges, by `belt`. In them, by `crest`. And the valley floors of `r`, which rivers follow: hills sink with those floors, so a river can run on through them.
+**Valleys.** Between ranges, by `flank`. In them, by `crest`. And the valley floors of `r`, which rivers follow: hills sink with those floors, so a river can run on through them.
 
 **The numbers are a first guess for Ahmed to tune**, by `bench/world_map/`. Its table has what they give.
 
@@ -120,8 +132,8 @@ has that, and the fade means that nothing outside twice the softness pays for 3D
 | `density/hills` | 192 | 3 | 2 | 0.34 | 0.169 |
 | `density/jagged` | 32 | 2 | 2 | 0.39 | 0.194 |
 | `density/detail` | 64 | 3 | 3 | 0.35 | 0.177 |
-| `density/range` | 4096, each octave 0.45 of the last | 3 | 2 | 0.36 | 0.182 |
-| `density/massif` | 2048 | 2 | 2 | 0.39 | 0.208 |
+| `density/range` | 8192, each octave 0.45 of the last | 3 | 2 | 0.36 | 0.182 |
+| `density/massif` | 4096 | 2 | 2 | 0.39 | 0.208 |
 | `density/crest` | 896 | 3 | 2 | 0.35 | 0.170 |
 
 The lattice holds at least two points per cell of each one's last octave. `raw_noise_measures_what_the_limits_were_chosen_for`
@@ -131,7 +143,7 @@ A knot, a shape, a limit or a size changing changes every world, and `tests/run/
 
 ## What it costs
 
-A lattice column costs the climate's warp, continentalness, erosion and ridges, 22 octaves, and hills, jagged and range, 8 more. Massif and crest, 5 octaves, are only sampled for columns with some range, as anywhere else they multiply 0, so skipping them gives the same bits. Each level
+A lattice column costs the climate's warp, continentalness, erosion and ridges, 22 octaves, and hills, jagged and range, 8 more, and the landform's nodes, about 1 more in a box (`run/src/terrain/landform/`). Massif and crest, 5 octaves, are only sampled for columns with some range, as anywhere else they multiply 0, so skipping them gives the same bits. Each level
 within reach of the noise costs 3 octaves for each lattice column. A box is cut into tiles of 32 blocks a side, lined up on the
 world, only so that its lattice fits on the stack.
 

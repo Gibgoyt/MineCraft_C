@@ -18,8 +18,12 @@ bool terrain_init(terrain_t *terrain, uint64_t seed) {
         terrain_deinit(terrain); /* it has said why */
         return false;
     }
+    if (!terrain_landform_init(&terrain->borrowed_landform, &terrain->arena_tables, &terrain->noise_bank)) {
+        terrain_deinit(terrain); /* it has said why */
+        return false;
+    }
     if (!terrain_density_init(&terrain->borrowed_density, &terrain->arena_tables, &terrain->noise_bank,
-                              terrain->borrowed_fields)) {
+                              terrain->borrowed_fields, terrain->borrowed_landform)) {
         terrain_deinit(terrain); /* it has said why */
         return false;
     }
@@ -120,6 +124,9 @@ void terrain_deinit(terrain_t *terrain) {
     if (terrain->borrowed_density != nullptr) {
         terrain_density_deinit(terrain->borrowed_density);
     }
+    if (terrain->borrowed_landform != nullptr) {
+        terrain_landform_deinit(terrain->borrowed_landform);
+    }
     if (terrain->borrowed_fields != nullptr) {
         terrain_fields_deinit(terrain->borrowed_fields);
     }
@@ -149,20 +156,30 @@ terrain_density_profile_t terrain_height_estimate_profile(const terrain_t *terra
     const float64_t ys[4] = {(float64_t)south, (float64_t)south, (float64_t)(south + cell), (float64_t)(south + cell)};
     float32_t h[4];
     float32_t s[4];
-    terrain_density_profile_points(terrain->borrowed_density, xs, ys, 4u, h, s);
-    /* As density_write_voxels blends, in this order, so the bits are a box's. */
+    float32_t l[4];
+    terrain_density_profile_points_lift(terrain->borrowed_density, xs, ys, 4u, h, s, l);
+    /* As density_write_voxels blends, in this order, so the bits are a box's. The lift is blended the same way, so
+     * height - lift is relief by the same rule wherever it is read. */
     const float32_t h_near = h[0] + t_x * (h[1] - h[0]);
     const float32_t h_far = h[2] + t_x * (h[3] - h[2]);
     const float32_t s_near = s[0] + t_x * (s[1] - s[0]);
     const float32_t s_far = s[2] + t_x * (s[3] - s[2]);
+    const float32_t l_near = l[0] + t_x * (l[1] - l[0]);
+    const float32_t l_far = l[2] + t_x * (l[3] - l[2]);
     return (terrain_density_profile_t){
         .height = h_near + t_y * (h_far - h_near),
         .softness = s_near + t_y * (s_far - s_near),
+        .lift = l_near + t_y * (l_far - l_near),
     };
 }
 
 float32_t terrain_height_estimate(const terrain_t *terrain, int32_t x, int32_t y) {
     return terrain_height_estimate_profile(terrain, x, y).height;
+}
+
+float32_t terrain_biome_height_estimate(const terrain_t *terrain, int32_t x, int32_t y) {
+    const terrain_density_profile_t profile = terrain_height_estimate_profile(terrain, x, y);
+    return terrain_biome_height(profile.height, profile.lift);
 }
 
 void terrain_height_estimate_area(const terrain_t *terrain, int32_t origin_x, int32_t origin_y, int32_t step,

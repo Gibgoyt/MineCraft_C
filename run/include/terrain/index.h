@@ -11,6 +11,7 @@
 #include "terrain/density/index.h"
 #include "terrain/feature/index.h"
 #include "terrain/hydrology/index.h"
+#include "terrain/landform/index.h"
 #include "terrain/noise/index.h"
 #include "terrain/ore/index.h"
 #include "terrain/rng/index.h"
@@ -33,13 +34,13 @@ enum : uint32_t {
     TERRAIN_GENERATOR_VERSION = 1u,
 };
 static_assert(TERRAIN_NOISE_FIELDS_MAX * sizeof(terrain_noise_field_t) + sizeof(terrain_fields_t) +
-                  sizeof(terrain_density_t) + sizeof(terrain_hydrology_t) + sizeof(terrain_cave_t) +
-                  sizeof(terrain_ore_t) + sizeof(terrain_biome_t) + sizeof(terrain_surface_t) +
+                  sizeof(terrain_landform_t) + sizeof(terrain_density_t) + sizeof(terrain_hydrology_t) +
+                  sizeof(terrain_cave_t) + sizeof(terrain_ore_t) + sizeof(terrain_biome_t) + sizeof(terrain_surface_t) +
                   sizeof(terrain_feature_t) <
               TERRAIN_TABLES_BYTES);
-static_assert((uint32_t)TERRAIN_FIELDS_NOISE_FIELDS + (uint32_t)TERRAIN_DENSITY_NOISE_FIELDS +
-                  (uint32_t)TERRAIN_HYDROLOGY_NOISE_FIELDS + (uint32_t)TERRAIN_CAVE_NOISE_FIELDS +
-                  (uint32_t)TERRAIN_SURFACE_NOISE_FIELDS <=
+static_assert((uint32_t)TERRAIN_FIELDS_NOISE_FIELDS + (uint32_t)TERRAIN_LANDFORM_NOISE_FIELDS +
+                  (uint32_t)TERRAIN_DENSITY_NOISE_FIELDS + (uint32_t)TERRAIN_HYDROLOGY_NOISE_FIELDS +
+                  (uint32_t)TERRAIN_CAVE_NOISE_FIELDS + (uint32_t)TERRAIN_SURFACE_NOISE_FIELDS <=
               (uint32_t)TERRAIN_NOISE_FIELDS_MAX);
 
 /* Nothing a stage makes is above this: what grows, at its tallest, on the highest ground there can be. It follows the density's own limit. */
@@ -63,7 +64,8 @@ typedef struct terrain_t {
     terrain_biome_t *borrowed_biome;         /* 152: in arena_tables */
     terrain_surface_t *borrowed_surface;     /* 160: in arena_tables */
     terrain_feature_t *borrowed_feature;     /* 168: in arena_tables */
-    uint8_t _pad0[16];                       /* 176 */
+    terrain_landform_t *borrowed_landform;   /* 176: in arena_tables */
+    uint8_t _pad0[8];                        /* 184 */
 } terrain_t;
 static_assert(sizeof(terrain_t) == 192);
 static_assert(alignof(terrain_t) == 64);
@@ -78,6 +80,7 @@ static_assert(offsetof(terrain_t, borrowed_ore) == 144);
 static_assert(offsetof(terrain_t, borrowed_biome) == 152);
 static_assert(offsetof(terrain_t, borrowed_surface) == 160);
 static_assert(offsetof(terrain_t, borrowed_feature) == 168);
+static_assert(offsetof(terrain_t, borrowed_landform) == 176);
 
 /* Reserves the region and starts the parts, for this seed. On failure logs why, leaves nothing behind and returns false. A
  * world with another seed is a terrain_deinit and another terrain_init: nothing computed from the old seed may survive. */
@@ -104,6 +107,9 @@ void terrain_generate_box_fallback(const terrain_t *terrain, const terrain_densi
  * function of the terrain and the column. The climate reads the ground through this and nothing else: plan 004, 6.1. */
 terrain_density_profile_t terrain_height_estimate_profile(const terrain_t *terrain, int32_t x, int32_t y);
 float32_t terrain_height_estimate(const terrain_t *terrain, int32_t x, int32_t y); /* .height of the above */
+/* Plan 007 phase 03: the biome height, .height less .lift of the above: how high a column stands above the plateau under it.
+ * A biome's height axis means this, not the height (plan 006 phase 03); the climate reads the height itself. */
+float32_t terrain_biome_height_estimate(const terrain_t *terrain, int32_t x, int32_t y);
 
 /* The same at count_x by count_y columns step blocks apart, x changing fastest. origin_x, origin_y and step must be whole
  * multiples of TERRAIN_DENSITY_CELL_XY (asserted): every column is then a lattice column, the blend's fractions are 0, and

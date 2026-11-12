@@ -23,6 +23,9 @@ enum : uint32_t {
     BENCH_WORKERS = 16u,
     BENCH_ROUNDS = 3u,
     BENCH_PLACES = 9u,
+    /* Plan 007 phase 03: one more place after the biomes, the first plateau top the search meets. */
+    BENCH_PLATEAU_LIFT = 550u,
+    BENCH_PLATEAU_RELIEF = 150u,
     /* The plan's number, on 16 workers. A column there is a chunk's, 16 by 16: "Chunk = 16x16 column". */
     BENCH_TARGET = 1000u,
     /* The search for a place: this many columns a side, this far apart. */
@@ -115,6 +118,35 @@ static bool bench_find(const terrain_t *terrain, biome_id_t biome, int32_t *out_
             terrain_biome_columns_area(terrain->borrowed_biome, nullptr, &area, columns);
             for (uint32_t i = 0u; i < 256u; i++) {
                 if (columns[i].biome == (uint8_t)biome) {
+                    *out_x = area.origin_x + (int32_t)i * area.step_x;
+                    *out_y = area.origin_y;
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+/* Plan 007 phase 03: the first column, searched as bench_find does, standing on a plateau of BENCH_PLATEAU_LIFT or more with no
+ * range on it (less than BENCH_PLATEAU_RELIEF above its lift): what a 650 plateau's column costs. */
+static bool bench_find_plateau(const terrain_t *terrain, int32_t *out_x, int32_t *out_y) {
+    terrain_hydrology_column_t columns[256];
+    const int32_t half = (int32_t)(BENCH_SEARCH_SIDE * BENCH_SEARCH_STEP / 2u);
+    for (uint32_t row = 0u; row < BENCH_SEARCH_SIDE; row++) {
+        for (uint32_t part = 0u; part < BENCH_SEARCH_SIDE / 256u; part++) {
+            const terrain_fields_area_t area = {
+                .origin_x = -half + (int32_t)(part * 256u * BENCH_SEARCH_STEP),
+                .origin_y = -half + (int32_t)(row * BENCH_SEARCH_STEP),
+                .step_x = (int32_t)BENCH_SEARCH_STEP,
+                .step_y = 1,
+                .count_x = 256u,
+                .count_y = 1u,
+            };
+            terrain_hydrology_columns_area(terrain->borrowed_hydrology, &area, columns);
+            for (uint32_t i = 0u; i < 256u; i++) {
+                if (columns[i].lift >= (float32_t)BENCH_PLATEAU_LIFT &&
+                    terrain_biome_height(columns[i].ground, columns[i].lift) < (float32_t)BENCH_PLATEAU_RELIEF) {
                     *out_x = area.origin_x + (int32_t)i * area.step_x;
                     *out_y = area.origin_y;
                     return true;
@@ -239,11 +271,14 @@ int32_t main(int32_t argc, char **argv) {
     printf("%-18s %12s %12s %8s\n", "place", "1 worker", "16 workers", "scaling");
     int32_t status = 0;
     float64_t slowest = -1.0f64;
-    for (uint32_t p = 0u; p < BENCH_PLACES; p++) {
+    for (uint32_t p = 0u; p <= BENCH_PLACES; p++) {
         int32_t x = 0;
         int32_t y = 0;
-        if (!bench_find(&terrain, BENCH_BIOMES[p], &x, &y)) {
-            printf("%-18s not found\n", biome_defs[BENCH_BIOMES[p]].name);
+        const char *const name = p < BENCH_PLACES ? biome_defs[BENCH_BIOMES[p]].name : "plateau_top";
+        const bool found =
+            p < BENCH_PLACES ? bench_find(&terrain, BENCH_BIOMES[p], &x, &y) : bench_find_plateau(&terrain, &x, &y);
+        if (!found) {
+            printf("%-18s not found\n", name);
             status = 1;
             continue;
         }
@@ -253,8 +288,8 @@ int32_t main(int32_t argc, char **argv) {
             (y >> TERRAIN_FEATURE_CHUNK_SHIFT) * (int32_t)BENCH_CHUNK - (int32_t)(BENCH_SIDE / 2u * BENCH_CHUNK);
         const float64_t one = bench_place(&system, &run, 1u);
         const float64_t many = bench_place(&system, &run, BENCH_WORKERS);
-        printf("%-18s %12.0f %12.0f %7.1fx\n", biome_defs[BENCH_BIOMES[p]].name, (libc_double_t)one,
-               (libc_double_t)many, (libc_double_t)(many / one));
+        printf("%-18s %12.0f %12.0f %7.1fx   (/tp %d %d)\n", name, (libc_double_t)one, (libc_double_t)many,
+               (libc_double_t)(many / one), x, y);
         if (slowest < 0.0f64 || many < slowest) {
             slowest = many;
         }

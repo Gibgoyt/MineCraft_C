@@ -10,8 +10,8 @@
 - `terrain_biome_init`, `terrain_biome_deinit`: a pair.
 - `terrain_biome_family`, `terrain_biome_family_of_class`: plan 006 phase 03's climate family of a place's numbers, and the
   family a climate class names.
-- `terrain_biome_height`, `terrain_biome_climate_z`: the height the landform box reads (the ground; less plan 007's plateau
-  lift once it has one: the one place to change), and the height the family is worked out at (the sea's top for oceans).
+- `terrain_biome_height`, `terrain_biome_climate_z`: the biome height the landform box reads (the ground less plan 007
+  phase 03's plateau lift: the one place it is worked out), and the height the family is worked out at (the sea's top for oceans).
 - `terrain_biome_wetness`: the wetness field biased by the yearly rain.
 - `terrain_biome_distance`, `terrain_biome_choose`, `terrain_biome_caves_of`: the choice, as plain arithmetic.
 - `terrain_biome_of_voxel`: the biome of a voxel in a column already worked out.
@@ -51,18 +51,25 @@ Hydrology says what the column is, and that says which rows of the table are loo
 | Beach | `beach` |
 | Stony shore | `stony_shore` |
 
-Among those of the family, **the nearest box wins**. Every row is a box: a range on each of variety, wetness, continentalness, erosion and weirdness, one on the height (`terrain_biome_height` of the ground), and optional climate limits. For a column, with a value's gap being how far it lies outside its range, and 0 inside it, ends included:
+Among those of the family, **the nearest box wins**. Every row is a box: a range on each of variety, wetness, continentalness, erosion and weirdness, one on the biome height (`terrain_biome_height` of the ground and the plateau's lift), and optional climate limits. For a column, with a value's gap being how far it lies outside its range, and 0 inside it, ends included:
 
     distance = gap(variety)^2 + gap(wetness)^2 + gap(continentalness)^2 + gap(erosion)^2 + gap(weirdness)^2
                + gap(height / 128)^2 + gap(t_warm / 10 C)^2 + gap(t_cold / 10 C)^2 + gap(rain / 1000 mm)^2
 
-the last three only for a row that gives them (`t_warm`, `t_cold`, `rain_mm`), at the column's own cell. **Variety** is a
+with height = `terrain_biome_height(ground, lift)`, and the last three only for a row that gives them (`t_warm`, `t_cold`, `rain_mm`), at the column's own cell. **Variety** is a
 noise field of its own; **wetness** is its noise field plus half of `(rain - 1000 mm) / 1000 mm` (clamped to -1 to 1, the sum
 clamped too), with the blended yearly rain, so wet places lean to the wetter members and dry ones to the drier. Neither ever
 chooses between snow and jungle: they only ever see one family's members. Every family has a member for every `where`
 (`compile/src/game_tables/biomes/` refuses a table that leaves a hole), so the choice never leaves the family: if no box
 fits, for example Desert at 900 blocks, the nearest member wins, never another family's biome. The climate limits are
 distances, not hard cuts: a hard cut let a far-off member with no limit win over the natural one just past its rain.
+
+`lift` is the plateau under the column (plan 007 phase 03, `run/src/terrain/landform/`), carried from the density's profile
+through hydrology's column. `terrain_biome_height(ground, lift)` is the **biome height**, ground less lift, how high the
+ground stands above its plateau, and the one place it is worked out: the box, `terrain_biome_height_estimate`, the benches
+and the tests all call it. So a plateau's top at 660 on a 650 lift counts as 10, plains or forest and not bare peaks, and a
+range on a plateau counts from the plateau's top. The family, and so the climate, still read the real height
+(`terrain_biome_climate_z`), so a high plateau is a cold one.
 
 Lowest distance wins, then highest `priority`, then the first by name. So:
 

@@ -1,6 +1,6 @@
 # 007-ahmed-bohemoth-realistic-landforms — phase 3: Plateaus, escarpments and long ranges
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** in progress   (updated 2026-11-13)
 
 Read first: `plans/007-ahmed-bohemoth-realistic-landforms-phase-00-vision-and-plan-files.md`, then the master `plans/007-ahmed-bohemoth-realistic-landforms.md` (sections 0, 1, 2.1, 2.3, 3.1 to 3.5, 3.10 to 3.12, 4, 6, 8, 9), then phase 01's "Today" table and gate answers, then `run/src/terrain/density/README.md` in full. Every number here comes from the master unless it says otherwise. Phase 01's gate answers (master Q1 and Q3) override the defaults below; record which applied.
 
@@ -249,12 +249,12 @@ This phase may edit these, plus this file:
 
 ## Todo
 
-- [ ] `run/src/terrain/landform/` with `landform/uplift`, `landform/edge_x`, `landform/edge_y`, their limits measured, the 32-block lattice and blend, and its README
-- [ ] The plateau spline (11 knots) and `terrain_density_spline_slope_at`; unit tests on a synthetic ramp give master 3.4's table within 1 block
+- [x] `run/src/terrain/landform/` with `landform/uplift`, `landform/edge_x`, `landform/edge_y`, their limits measured, the 32-block lattice and blend, and its README
+- [x] The plateau spline (11 knots) and `terrain_density_spline_slope_at`; unit tests on a synthetic ramp give master 3.4's table within 1 block
 - [ ] The back-edge stretch from $b$; the lattice's cost per chunk box measured (numbers in Issues found); `bench_landform`'s escarpment-facing share at least 75%, else the gradient fallback measured
-- [ ] `density_profile_batch` and `terrain_density_profile_from`: plateau, `face` into softness, `lift`; ranges at cell 8192 with `flank`, massif 4096, crest scaled by $m$, height $(1000 - P)\,m$
-- [ ] `terrain_density_profile_t` 16 bytes with `lift`; the estimate returns it; the bit-for-bit test passes for `lift` too
-- [ ] Limits test: every spline corner sums inside -116 to 1190; 8 seeds' real columns over 64 km inside
+- [x] `density_profile_batch` and `terrain_density_profile_from`: plateau, `face` into softness, `lift`; ranges at cell 8192 with `flank`, massif 4096, crest scaled by $m$, height $(1000 - P)\,m$
+- [x] `terrain_density_profile_t` 16 bytes with `lift`; the estimate returns it; the bit-for-bit test passes for `lift` too
+- [x] Limits test: every spline corner sums inside -116 to 1190; 8 seeds' real columns over 64 km inside
 - [ ] Biome height axis reads `ground - lift`; `bench_biome_map` picture of a plateau looked at
 - [ ] Version opened (or plan 006's pattern, per Q2); every moved pin re-pinned with this phase's reason; 1 against 16 workers the same bytes
 - [ ] `bench_terrain` with `plateau_top`: every place at 1000 or more

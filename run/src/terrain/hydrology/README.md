@@ -10,6 +10,7 @@
 - `terrain_hydrology_init`, `terrain_hydrology_deinit`: a pair.
 - `terrain_hydrology_column_from`: what decides a column to what it comes to, as plain arithmetic.
 - `terrain_hydrology_columns_area`, `terrain_hydrology_column_at`: what each column is, for biomes (Stage 10.6).
+  Each column also carries `lift`, the plateau under it, from the density's profile; no rule here reads it: biomes take `terrain_biome_height(ground, lift)` of it (plan 007 phase 03).
 - `terrain_hydrology_fill_box`, `terrain_hydrology_block_at`: the blocks.
 - `terrain_hydrology_flood_box`, `terrain_hydrology_fluid_at`: what a voxel holds once something has opened it, for caves (Stage 10.5).
 

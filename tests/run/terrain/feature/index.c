@@ -56,9 +56,11 @@ static const uint64_t FEA_DIGEST_OF_GENERATOR[] = {
      * a rate of 0), and changed this row and not the version, so that worlds saved on the old land still open: see that phase's
      * issue 8. Plan 005 phase 6's twelve station blocks moved numbers only (the digest over the numbers before them gave
      * this row's old value, 0x963084164D7E4DAE).
-     * Plan 006 phase 03 moved the biomes (biomes follow the climate) and so the land: 0x3FDD8CCBDFEA453B, written here for
-     * now, while the version stays 1 until plan 006 phase 05 raises it to 2 and gives this value row 2, putting back
-     * this row's old value, 0xCFD3A129B38458E6. Meanwhile a world saved on the old land opens on the new. */
+     * Plan 006 phase 03 moved the biomes (biomes follow the climate) and so the land: 0x3FDD8CCBDFEA453B, putting back this
+     * row's old value, 0xCFD3A129B38458E6. Plan 007 phase 03's plateaus, escarpments and long ranges moved the land again,
+     * and the biomes read the biome height, ground less lift: the value below, putting back 0x3FDD8CCBDFEA453B. Both are
+     * written here for now, while the version stays 1: the joint final check of plan 006 phase 05 and plan 007 phase 06
+     * raises it once and gives this value row 2. Meanwhile a world saved on the old land opens on the new. */
     0x3FDD8CCBDFEA453Bull,
 };
 static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0]) == TERRAIN_GENERATOR_VERSION + 1u);
@@ -80,6 +82,7 @@ static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0
  * the blocks after them in the alphabet moved. */
 /* Plan 006 phase 03: biomes follow the climate (the family from the climate at the column's height first, then the box within it), so
  * the biomes, and the surface and features they lay, moved; height, density, hydrology, caves and ores did not (their pins hold). */
+/* Plan 007 phase 03: plateaus, escarpments and long ranges moved the land. Its old value 0x703627B51572B80C. */
 static const uint64_t FEA_FOREST_PIN = 0x703627B51572B80Cull;
 
 static uint64_t fea_digest(uint64_t hash, const void *memory, uint64_t bytes) {

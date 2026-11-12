@@ -74,8 +74,9 @@ typedef struct terrain_hydrology_inputs_t {
     float32_t width;           /* 16 */
     float32_t shore;           /* 20 */
     float32_t steepness;       /* 24: in blocks of ground per block across */
+    float32_t lift;            /* 28: terrain_density_profile_t's: carried to the column, read by no rule here */
 } terrain_hydrology_inputs_t;
-static_assert(sizeof(terrain_hydrology_inputs_t) == 28);
+static_assert(sizeof(terrain_hydrology_inputs_t) == 32);
 
 /* What a column came to. */
 typedef struct terrain_hydrology_column_t {
@@ -85,10 +86,11 @@ typedef struct terrain_hydrology_column_t {
     float32_t carve_top;           /* 12: no ground above this. Above height + softness, it cuts nothing */
     float32_t river;               /* 16: from 0, none, to 1, the middle of the channel */
     float32_t shore;               /* 20: the input, kept for the blocks */
-    terrain_hydrology_kind_t kind; /* 24 */
-    uint8_t _pad0[3];              /* 25 */
+    float32_t lift;                /* 24: terrain_density_profile_t's, for biomes: ground - lift is the biome height */
+    terrain_hydrology_kind_t kind; /* 28 */
+    uint8_t _pad0[3];              /* 29 */
 } terrain_hydrology_column_t;
-static_assert(sizeof(terrain_hydrology_column_t) == 28);
+static_assert(sizeof(terrain_hydrology_column_t) == 32);
 
 /* Takes the hydrology from arena and adds its fields to bank, for bank's seed. For use while terrain_init runs. density and
  * climate must outlive it. If the bank refuses a field, which has logged why, sets *out to nullptr and returns false. Fields

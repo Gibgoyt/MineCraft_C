@@ -500,6 +500,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/terrain/fields/` | ctest `run_terrain_fields`: `run/src/terrain/fields/`: ranges, the spread its README promises, the same bytes from 1 worker and 16, any split of the work, and each value worked out by hand from its noise |
 | `tests/run/terrain/density/` | ctest `run_terrain_density`: `run/src/terrain/density/`: the range limits on every corner of the climate and on real columns, bedrock at `-250`, water's top at `0`, values worked out by hand, any split of the work, and the same bytes from 1 worker and 16 |
 | `tests/run/terrain/hydrology/` | ctest `run_terrain_hydrology`: `run/src/terrain/hydrology/`: each column worked out by hand, rivers that hold water and reach the sea, oceans, beaches, aquifers that cannot flow, the lava level, any split of the work, and the same bytes from 1 worker and 16 |
+| `tests/run/terrain/landform/` | ctest `run_terrain_landform` (plan 007 phase 03): `run/src/terrain/landform/`: the plateau spline against master 3.4's table on a ramp, the back edge 4 to 6 times wider, the four-node blend by hand, the same plateau, lift and height in any box and through the estimate, the fields' limits, the lattice's cost, the height limits on 8 seeds' real columns, and plateau tops choosing lowland biomes |
 | `tests/run/terrain/landform/measure/` | ctest `run_terrain_landform_measure` (plan 007 phase 01): `bench_landform --self-test`, the landform measures on synthetic ground: a 1:1 cone, a $p = 2.5$ peak, a 5 by 5 km plateau, a 5:1 plane and twenty domes give their known numbers, and 1 and 16 workers the same bytes. No card |
 | `tests/run/terrain/cave/walk/` | ctest `run_terrain_cave_walk`: `bench/cave_walk/` finds and walks a way into a cave and down to `z = -150` on the default seed, and the built game walks the first by the tool's script and ends where the tool's body did |
 | `tests/run/terrain/cave/` | ctest `run_terrain_cave`: `run/src/terrain/cave/`: all three kinds and their shares, thin against wide, a solid floor, no cave reaching the sea, each voxel worked out by hand, any split of the work, and the same bytes from 1 worker and 16 |
@@ -751,6 +752,7 @@ Split it into sub-directories. Remember that going deeper changes the tier: code
 | How pixels reach the monitor | `run/src/render/frame/`, then `run/src/display/flip/` |
 | Why the console came back after a crash | `run/src/display/vt_guard/` |
 | Terrain shape | `run/src/terrain/density/` |
+| Plateaus and escarpments (macro landforms on a 32-block lattice) | `run/src/terrain/landform/` |
 | Rivers, oceans, beaches, aquifers, lava | `run/src/terrain/hydrology/` |
 | Biomes | `config/biomes/`, `run/src/terrain/biome/` |
 | Where ores spawn, and how often | `config/ores/`, `run/src/terrain/ore/` |

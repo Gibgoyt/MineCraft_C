@@ -34,15 +34,16 @@ typedef struct terrain_biome_inputs_t {
     float32_t continentalness;     /* 8 */
     float32_t erosion;             /* 12 */
     float32_t weirdness;           /* 16 */
-    float32_t ground;              /* 20: terrain_hydrology_column_t's; the box reads terrain_biome_height of it */
-    terrain_hydrology_kind_t kind; /* 24 */
-    uint8_t family;                /* 25: a biome_family_t, terrain_biome_family's */
-    uint8_t _pad0[2];              /* 26 */
-    int32_t t_warm_cc;             /* 28: the climate at the column, for a biome's limits */
-    int32_t t_cold_cc;             /* 32 */
-    int32_t rain_mm_year;          /* 36 */
+    float32_t ground;              /* 20: terrain_hydrology_column_t's; the box reads terrain_biome_height(ground, lift) */
+    float32_t lift;                /* 24: the same: the plateau under the column (plan 007 phase 03) */
+    terrain_hydrology_kind_t kind; /* 28 */
+    uint8_t family;                /* 29: a biome_family_t, terrain_biome_family's */
+    uint8_t _pad0[2];              /* 30 */
+    int32_t t_warm_cc;             /* 32: the climate at the column, for a biome's limits */
+    int32_t t_cold_cc;             /* 36 */
+    int32_t rain_mm_year;          /* 40 */
 } terrain_biome_inputs_t;
-static_assert(sizeof(terrain_biome_inputs_t) == 40);
+static_assert(sizeof(terrain_biome_inputs_t) == 44);
 
 /* What a column came to. */
 typedef struct terrain_biome_column_t {
@@ -63,10 +64,10 @@ void terrain_biome_init(terrain_biome_t **out, arena_t *arena, uint64_t seed, co
 /* Empties the handle. The memory goes back with the arena. */
 void terrain_biome_deinit(terrain_biome_t *biome);
 
-/* Plan 006 phase 03 and plan 007 phase 00: the height a biome's landform box reads. Today the ground itself; once plan 007
- * phase 03 lifts plateaus, the ground less the lift, so a high plateau's grass counts as low ground, while the family still
- * reads the absolute height (terrain_biome_climate_z). The one place this is decided. */
-float32_t terrain_biome_height(float32_t ground);
+/* Plan 006 phase 03 and plan 007 phase 03: the **biome height**, the height a biome's landform box reads: the ground less the
+ * plateau's lift under it, so a high plateau's grass counts as low ground, while the family still reads the absolute height
+ * (terrain_biome_climate_z). The one place this is decided: hydrology's columns, the estimate and the tools all call it. */
+float32_t terrain_biome_height(float32_t ground, float32_t lift);
 
 /* The height a column's family is worked out at: the sea's top for ocean and deep ocean, where the climate is the water's,
  * and the ground, rounded down, for the rest. */

@@ -135,14 +135,21 @@ TEST(all_three_kinds_take_a_believable_share_of_the_rock) {
                                                             (int32_t)(p / PLACES_SIDE) * 1021 - 3000, ACROSS);
             terrain_density_fill_box(terrain.borrowed_density, &box, blocks);
             terrain_cave_mask_box(terrain.borrowed_cave, &box, mask);
+            /* Plan 007 phase 03: shallow is the rock within 40 blocks of its column's ground, not everything above -30, which on
+             * a 650 plateau is hundreds of blocks of rock under a roof. */
+            float32_t ground[ACROSS * ACROSS];
+            for (uint32_t i = 0u; i < ACROSS * ACROSS; i++) {
+                ground[i] = terrain_height_estimate(&terrain, box.origin_x + (int32_t)(i % ACROSS),
+                                                    box.origin_y + (int32_t)(i / ACROSS));
+            }
             for (uint32_t iz = 0u; iz < CAVE_LAYERS; iz++) {
                 const int32_t z = MC_WORLD_Z_MIN + (int32_t)iz;
-                const uint32_t band = z < -125 ? 0u : (z < -30 ? 1u : 2u);
                 for (uint32_t i = 0u; i < ACROSS * ACROSS; i++) {
                     const uint64_t at = (uint64_t)iz * ACROSS * ACROSS + i;
                     if (blocks[at] != BLOCK_ID_STONE) {
                         continue;
                     }
+                    const uint32_t band = z < -125 ? 0u : ((float32_t)z >= ground[i] - 40.0f32 && z >= -30 ? 2u : 1u);
                     rock[band]++;
                     any[band] += mask[at] != 0u ? 1u : 0u;
                     for (uint32_t k = 0u; k < 3u; k++) {

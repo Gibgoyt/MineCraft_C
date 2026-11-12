@@ -1116,8 +1116,9 @@ TEST(terrain_starts_the_ores_and_stops_them) {
     REQUIRE(terrain_init(&terrain, ORE_WORLD));
     REQUIRE(terrain.borrowed_ore != nullptr);
     const uint64_t in_bank = terrain.noise_bank.count;
-    CHECK_EQ_U64(in_bank, TERRAIN_FIELDS_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS + TERRAIN_HYDROLOGY_NOISE_FIELDS +
-                              TERRAIN_CAVE_NOISE_FIELDS + TERRAIN_SURFACE_NOISE_FIELDS);
+    CHECK_EQ_U64(in_bank, TERRAIN_FIELDS_NOISE_FIELDS + TERRAIN_LANDFORM_NOISE_FIELDS + TERRAIN_DENSITY_NOISE_FIELDS +
+                              TERRAIN_HYDROLOGY_NOISE_FIELDS + TERRAIN_CAVE_NOISE_FIELDS +
+                              TERRAIN_SURFACE_NOISE_FIELDS);
     /* Each row has its own stream: two with the same blocks and depths would otherwise lay the same veins. */
     for (uint32_t a = 0u; a < TERRAIN_ORE_ROWS; a++) {
         for (uint32_t b = a + 1u; b < TERRAIN_ORE_ROWS; b++) {
