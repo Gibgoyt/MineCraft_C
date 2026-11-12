@@ -588,6 +588,7 @@ TEST(the_real_files_are_accepted) {
     const tt_paths_t *paths = tt_paths(t);
     char root[TT_PATH_BYTES];
     const uint32_t count = tt_real_lines(t, paths, root);
+    CHECK(count > 0u);
     char key_count[64];
     snprintf(key_count, sizeof(key_count), "#define MC_TUNE_KEY_COUNT %" PRIu32 "u\n", count);
     CHECK_CONTAINS(tt_text, key_count);

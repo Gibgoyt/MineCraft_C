@@ -193,7 +193,7 @@ ao_reach:
 - [x] `tests/compile/tuning/` (ctest `compile_tuning`): every refusal at its line, exact decimals, unchanged files untouched, the hash, sorted order
 - [x] `cmake/generated.cmake`: glob, `inputs.txt`, stamp with BYPRODUCTS, `mc_tuning` before every compile
 - [ ] A no-change build compiles nothing; a one-value change rebuilds only dependents (recorded)
-- [ ] `compile/config/README.md` (schema, units, workflow, what counts as tuning) and `compile/config/render/README.md`
+- [x] `compile/config/README.md` (schema, units, workflow, what counts as tuning) and `compile/config/render/README.md`
 - [ ] `render/lod`, `render/traverse`, `render/shade`, `render/temporal`, `render/budget` files, each moved in its own commit with golden tests passing
 - [ ] Field-sizing uses keep static_asserts against the tuned value
 - [ ] `--report` prints the hash and every value; `history.tsv` has a `tuning` column
@@ -263,6 +263,9 @@ He checks that the new value and a new hash are there. He plays a minute, and pu
 ## Commits
 
 Appended as they land:
+
+- `a92c08d7` Add the tuning tool, which turns compile/config/<path>/index.yaml into MC_TUNE_* headers at build time, with its test and its CMake step.
+- `c1178a41` Write the tuning hash to generated/tuning/hash/index.h, as tuning/index.h is the tool's own header's name and the lint and the compile tests would find that one.
 
 ## Issues found
 

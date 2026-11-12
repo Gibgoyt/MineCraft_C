@@ -7,15 +7,16 @@
 #include "job/index.h"
 #include "render/encode/index.h"
 #include "thread/ring/index.h"
+#include "tuning/render/budget/index.h"
 #include "world/edit/index.h"
 
 #include <stddef.h>
 #include <stdint.h>
 
 enum : uint64_t {
-    /* What one frame may send of sections. About 0.7 ms at the 6 GB/s measured in Stage 08.2 issue 5, a tenth of a frame at
-     * 120 FPS. Measured on one card with no frame running: Stage 17.3 owes this a real one. */
-    RENDER_UPLOAD_BUDGET_BYTES_DEFAULT = 4ull << 20,
+    /* What one frame may send of sections, 4 MiB: compile/config/render/budget/index.yaml says why. Measured on one card with no
+     * frame running: Stage 17.3 owes this a real one. */
+    RENDER_UPLOAD_BUDGET_BYTES_DEFAULT = MC_TUNE_RENDER_BUDGET_UPLOAD_BYTES_PER_FRAME,
     /* Sections it may hold back a pool-full answer for at once: see render_upload_resend_drain. A power of two. */
     RENDER_UPLOAD_RESEND_CAPACITY = 4096u,
 };

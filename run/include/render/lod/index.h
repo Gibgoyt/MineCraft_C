@@ -11,6 +11,7 @@
 #include "machine/index.h"
 #include "render/upload/index.h"
 #include "terrain/feature/index.h"
+#include "tuning/render/budget/index.h"
 #include "types/index.h"
 
 #include <stdatomic.h>
@@ -24,8 +25,8 @@ enum : uint32_t {
     RENDER_LOD_RADIUS_COLUMNS = 16u,
     /* How many columns past what rays are let into are kept built, so that an eye moving on finds the next row already there. */
     RENDER_LOD_MARGIN_COLUMNS = 2u,
-    /* Columns being built at once, across all levels. */
-    RENDER_LOD_JOBS = 48u,
+    /* Columns being built at once, across all levels: compile/config/render/budget/index.yaml. */
+    RENDER_LOD_JOBS = MC_TUNE_RENDER_BUDGET_LOD_JOBS,
     /* Column heights in blocks, and in sections at the finest level: 1536 blocks in voxels of 2. */
     RENDER_LOD_HEIGHT_BLOCKS = 1536u,
     RENDER_LOD_SECTIONS_MAX = (RENDER_LOD_HEIGHT_BLOCKS >> LOD_SHIFT_MIN) / 16u,
@@ -35,11 +36,10 @@ enum : uint32_t {
     RENDER_LOD_FEATURES_SHIFT_MAX = 2u,
 };
 enum : uint64_t {
-    /* What a level's pool gives each of its columns: real ground measured up to 38 KiB in voxels of 2 among mountains, and less the coarser
-     * they get. The numbers are in the stage file's cost section. */
-    RENDER_LOD_POOL_BYTES_PER_COLUMN = 64ull << 10,
-    /* What one frame may send of finished columns: as much again as the world's own queue. */
-    RENDER_LOD_FRAME_BYTES = RENDER_UPLOAD_BUDGET_BYTES_DEFAULT,
+    /* What a level's pool gives each of its columns, and what one frame may send of finished columns: compile/config/render/budget/index.yaml.
+     * The pool's numbers are in the stage file's cost section. */
+    RENDER_LOD_POOL_BYTES_PER_COLUMN = (uint64_t)MC_TUNE_RENDER_BUDGET_LOD_POOL_KIB_PER_COLUMN << 10,
+    RENDER_LOD_FRAME_BYTES = MC_TUNE_RENDER_BUDGET_LOD_FRAME_BYTES,
     /* What a sample may keep from one line of a column to the next: render_lod_sample_terrain's chunks of what grows, then
      * (plan 006 phase 02) the column's climate sample and a line saying it is filled. */
     RENDER_LOD_SAMPLE_FEATURE_BYTES = (sizeof(terrain_feature_cache_t) + MC_CPU_CACHE_LINE_BYTES - 1u) /

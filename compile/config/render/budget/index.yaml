@@ -1,0 +1,29 @@
+# What a frame may send to the card, and how much far-field work runs at once. See compile/config/README.md for the fields.
+upload_bytes_per_frame:
+  value: 4194304
+  type: u32
+  unit: bytes
+  min: 65536
+  max: 268435456
+  why: "What one frame may send of sections: about 0.7 ms at the 6 GB/s measured in Stage 08.2 issue 5, a tenth of a frame at 120 FPS. RENDER_UPLOAD_BUDGET_BYTES_DEFAULT."
+lod_frame_bytes:
+  value: 4194304
+  type: u32
+  unit: bytes
+  min: 65536
+  max: 268435456
+  why: "What one frame may send of finished far-field columns: as much again as the world's own queue (upload_bytes_per_frame). RENDER_LOD_FRAME_BYTES."
+lod_jobs:
+  value: 48
+  type: u32
+  unit: count
+  min: 1
+  max: 256
+  why: "Far-field columns being built at once, across all levels. Each holds a job and its staging in the far field's arena. RENDER_LOD_JOBS."
+lod_pool_kib_per_column:
+  value: 64
+  type: u32
+  unit: kib
+  min: 16
+  max: 1024
+  why: "What a level's pool on the card gives each of its columns: real ground measured up to 38 KiB in voxels of 2 among mountains, less the coarser they get. RENDER_LOD_POOL_BYTES_PER_COLUMN."
