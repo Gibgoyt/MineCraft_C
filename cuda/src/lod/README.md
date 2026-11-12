@@ -9,6 +9,7 @@
 
 - `lod_frame`: one `lod_hit_t` per pixel of a camera, into what `cuda/src/shade/` reads.
 - `lod_rays`: the same trace over a list of rays, for a test.
+- `lod_frame_counted` (plan 009 phase 01): `lod_frame` with every traversal's steps in a counts block, by second copies of its two kernels: far rays (`TRAVERSE_COUNT_FAR`) and their sun rays (`TRAVERSE_COUNT_FAR_SUN`) by level, in blocks along the ray, and the ask past full detail (`TRAVERSE_COUNT_PAST`).
 
 **May be called by:** `cuda/src/frame/`, and tests.
 **Depends on:** `cuda/include/traverse/` for the ray loop and `traverse_view_t`, and `cuda/include/shade/` for `shade_texture_t` and what shade's own ray meets: `shade_surface_read`, `shade_water_through`, `shade_own_kind_behind`.

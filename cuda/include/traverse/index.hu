@@ -297,14 +297,123 @@ static __device__ __forceinline__ bool traverse_goes_through(const uint32_t *sto
     return material >= TRAVERSE_STOPS_MATERIALS || ((stops[material >> 5] >> (material & 31u)) & 1u) == 0u;
 }
 
+/* ---- Plan 009 phase 01: counting steps, for a bench. Inlined with no tally, none of this is there at all. ---------------- */
+
+/* What a counted call is counting: see traverse_counts_t. Device only, built at each call site by traverse_tally_for. */
+typedef struct traverse_tally_t {
+    traverse_counts_t *counts; /* 0: on the card */
+    uint32_t kind;             /* 8: traverse_count_kind_t */
+    uint32_t pixel;            /* 12: for the planes, or TRAVERSE_COUNT_NO_PIXEL */
+    uint32_t level;            /* 16: a far level, or TRAVERSE_COUNT_NO_LEVEL */
+    float32_t scale;           /* 20: blocks in one of the ray's t */
+} traverse_tally_t;
+static_assert(sizeof(traverse_tally_t) == 24);
+
+static __device__ __forceinline__ uint32_t traverse_count_band_of(float32_t blocks) {
+    return (uint32_t)(blocks >= 16.0F) + (uint32_t)(blocks >= 64.0F) + (uint32_t)(blocks >= 128.0F) +
+           (uint32_t)(blocks >= 256.0F) + (uint32_t)(blocks >= 512.0F) + (uint32_t)(blocks >= 1024.0F);
+}
+
+/* traverse_count_bucket, on the card. */
+static __device__ __forceinline__ uint32_t traverse_count_bucket_device(uint32_t steps) {
+    if (steps < 16u) {
+        return steps;
+    }
+    const uint32_t octave = 31u - (uint32_t)__clz(steps);
+    const uint32_t bucket = 16u + (octave - 4u) * 4u + ((steps >> (octave - 2u)) & 3u);
+    return bucket < TRAVERSE_COUNT_BUCKETS ? bucket : TRAVERSE_COUNT_BUCKETS - 1u;
+}
+
+/* Which plane per pixel a kind adds into: see TRAVERSE_COUNT_PLANES. */
+static __device__ __forceinline__ uint32_t traverse_count_plane_of(uint32_t kind) {
+    if (kind == TRAVERSE_COUNT_PRIMARY) {
+        return 0u;
+    }
+    if (kind == TRAVERSE_COUNT_FAR || kind == TRAVERSE_COUNT_FAR_SUN || kind == TRAVERSE_COUNT_PAST) {
+        return 1u;
+    }
+    return kind == TRAVERSE_COUNT_SUN ? 2u : 3u;
+}
+
+/* Adds to a uint64_t as its two halves, low first (the card and the host are little-endian): a carry out of the low half goes into the
+ * high one. Exact once every kernel adding has finished, which is when anyone reads it. CUDA's 64-bit atomicAdd takes a type the
+ * standard bans by name. */
+static __device__ __forceinline__ void traverse_count_add(uint64_t *where, uint32_t value) {
+    uint32_t *const halves = (uint32_t *)(void *)where;
+    const uint32_t before = atomicAdd(&halves[0], value);
+    if (before + value < before) {
+        atomicAdd(&halves[1], 1u);
+    }
+}
+
+/* The steps a call took in one band, added in when it leaves the band. */
+static __device__ __forceinline__ void traverse_count_band_add(const traverse_tally_t *tally, uint32_t band,
+                                                               uint32_t steps) {
+    traverse_counts_t *const counts = tally->counts;
+    traverse_count_add(&counts->steps[tally->kind][band], steps);
+    traverse_count_add(&counts->rays[tally->kind][band], 1u);
+    atomicAdd(&counts->histogram[tally->kind][band][traverse_count_bucket_device(steps)], 1u);
+}
+
+/* One step begun at blocks along the ray: into its band, the band before added in when the ray moves on. */
+static __device__ __forceinline__ void traverse_count_step(const traverse_tally_t *tally, float32_t blocks,
+                                                           uint32_t *band, uint32_t *in_band) {
+    const uint32_t now = traverse_count_band_of(blocks);
+    if (now != *band) {
+        if (*in_band != 0u) {
+            traverse_count_band_add(tally, *band, *in_band);
+        }
+        *band = now;
+        *in_band = 0u;
+    }
+    *in_band += 1u;
+}
+
+/* The end of a call: its last band, and the call itself. In any one kernel a pixel's plane is written by one thread, so with no
+ * atomics. */
+static __device__ __forceinline__ void traverse_count_end(const traverse_tally_t *tally, uint32_t band,
+                                                          uint32_t in_band, uint32_t steps) {
+    traverse_counts_t *const counts = tally->counts;
+    if (in_band != 0u) {
+        traverse_count_band_add(tally, band, in_band);
+    }
+    traverse_count_add(&counts->calls[tally->kind], 1u);
+    atomicAdd(&counts->histogram[tally->kind][TRAVERSE_COUNT_BANDS][traverse_count_bucket_device(steps)], 1u);
+    if (tally->level < TRAVERSE_COUNT_LEVELS) {
+        traverse_count_add(&counts->level_steps[tally->kind][tally->level], steps);
+        traverse_count_add(&counts->level_calls[tally->kind][tally->level], 1u);
+    }
+    if (tally->pixel < counts->pixels) {
+        uint16_t *const plane = (uint16_t *)(void *)(counts + 1) +
+                                (uint64_t)traverse_count_plane_of(tally->kind) * counts->pixels + tally->pixel;
+        const uint32_t sum = (uint32_t)*plane + steps;
+        *plane = (uint16_t)(sum < 65535u ? sum : 65535u);
+    }
+}
+
+/* A tally for a call of this kind in storage, or nullptr when there are no counts: what a call site passes to
+ * traverse_trace_counted. */
+static __device__ __forceinline__ const traverse_tally_t *traverse_tally_for(traverse_tally_t *storage,
+                                                                             traverse_counts_t *counts, uint32_t kind,
+                                                                             uint32_t pixel, uint32_t level,
+                                                                             float32_t scale) {
+    if (counts == nullptr) {
+        return nullptr;
+    }
+    *storage = traverse_tally_t{counts, kind, pixel, level, scale};
+    return storage;
+}
+
 /* One ray through the tree: Amanatides and Woo, stepping through the largest empty node holding the current cell, and reading
  * masks again only when the cell has left the column, section or brick it has cached. Stage 01.3 issues 2, 3 and 4 are why it
  * is the way it is, and each is marked. With stops, a voxel of a material it does not have is no more than air, and a section
  * all of one is passed whole: for a ray that asks only where the first thing is that it cannot see through. Inlined with stops
- * nullptr, as traverse_trace is, those tests are not there at all. */
-static __device__ __forceinline__ void traverse_trace_stopping(const traverse_view_t *view,
-                                                               const traverse_trace_ray_t *ray, const uint32_t *stops,
-                                                               traverse_hit_t *hit) {
+ * nullptr, as traverse_trace is, those tests are not there at all. With a tally (plan 009 phase 01) each step that moves the ray
+ * is counted into the band of the t it began at, so the bands add up to the steps in the hit's info, and nothing the ray does
+ * changes; inlined with tally nullptr, none of the counting is there. */
+static __device__ __forceinline__ void traverse_trace_counted(const traverse_view_t *view,
+                                                              const traverse_trace_ray_t *ray, const uint32_t *stops,
+                                                              traverse_hit_t *hit, const traverse_tally_t *tally) {
     const float32_t dx = ray->direction[0], dy = ray->direction[1], dz = ray->direction[2];
     const float32_t fx = ray->eye_frac[0], fy = ray->eye_frac[1], fz = ray->eye_frac[2];
     const int32_t ex = ray->eye_cell[0], ey = ray->eye_cell[1], ez = ray->eye_cell[2];
@@ -326,6 +435,9 @@ static __device__ __forceinline__ void traverse_trace_stopping(const traverse_vi
     const float32_t t_far = fminf(fminf(fmaxf(ax, bx), fmaxf(ay, by)), fmaxf(az, bz));
     if (!(t_near < t_far)) {
         traverse_hit_missed(0u, false, hit);
+        if (tally != nullptr) {
+            traverse_count_end(tally, 0u, 0u, 0u);
+        }
         return;
     }
     int32_t x = traverse_clamp((int32_t)floorf(fx + dx * t_near) + ex, window_x, window_x + (int32_t)width - 1);
@@ -343,10 +455,16 @@ static __device__ __forceinline__ void traverse_trace_stopping(const traverse_vi
     uint64_t brick_mask = 0u;
     uint32_t brick_rank = 0u;
     uint32_t steps = 0u;
+    /* Counting only: the t the next step begins at, and the steps so far in the band of the last. */
+    float32_t t_begun = t_near;
+    uint32_t count_band = 0u, count_in_band = 0u;
     for (; steps < view->max_steps; steps += 1u) {
         if (((uint32_t)(x - window_x) >= width) | ((uint32_t)(y - window_y) >= width) |
             ((uint32_t)z >= (uint32_t)gone_at)) {
             traverse_hit_missed(steps, false, hit);
+            if (tally != nullptr) {
+                traverse_count_end(tally, count_band, count_in_band, steps);
+            }
             return;
         }
         const uint32_t slot = traverse_slot(view, x >> 4, y >> 4);
@@ -389,6 +507,9 @@ static __device__ __forceinline__ void traverse_trace_stopping(const traverse_vi
                         /* A section all of what this ray goes through: the node is the section. */
                         shift = 4;
                     } else if (traverse_voxel_hit(view, ray, inverse, cell, value, steps, hit)) {
+                        if (tally != nullptr) {
+                            traverse_count_end(tally, count_band, count_in_band, steps);
+                        }
                         return;
                     } else {
                         /* A section all of one shape, and this ray passed this voxel's box by: on to the next voxel. */
@@ -412,6 +533,9 @@ static __device__ __forceinline__ void traverse_trace_stopping(const traverse_vi
                         const int32_t cell[3] = {x, y, z};
                         if (!traverse_goes_through(stops, value) &&
                             traverse_voxel_hit(view, ray, inverse, cell, value, steps, hit)) {
+                            if (tally != nullptr) {
+                                traverse_count_end(tally, count_band, count_in_band, steps);
+                            }
                             return;
                         }
                     }
@@ -450,13 +574,26 @@ static __device__ __forceinline__ void traverse_trace_stopping(const traverse_vi
         x = next_x;
         y = next_y;
         z = next_z;
+        if (tally != nullptr) {
+            traverse_count_step(tally, t_begun * tally->scale, &count_band, &count_in_band);
+            t_begun = t_step;
+        }
     }
     traverse_hit_missed(steps, true, hit);
+    if (tally != nullptr) {
+        traverse_count_end(tally, count_band, count_in_band, steps);
+    }
+}
+
+static __device__ __forceinline__ void traverse_trace_stopping(const traverse_view_t *view,
+                                                               const traverse_trace_ray_t *ray, const uint32_t *stops,
+                                                               traverse_hit_t *hit) {
+    traverse_trace_counted(view, ray, stops, hit, nullptr);
 }
 
 static __device__ __forceinline__ void traverse_trace(const traverse_view_t *view, const traverse_trace_ray_t *ray,
                                                       traverse_hit_t *hit) {
-    traverse_trace_stopping(view, ray, nullptr, hit);
+    traverse_trace_counted(view, ray, nullptr, hit, nullptr);
 }
 
 /* ---- For the host side of any area whose kernel runs that loop ------------------------------------------------------- */

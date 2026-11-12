@@ -181,6 +181,88 @@ static_assert(alignof(traverse_targets_t) == 8);
 static_assert(offsetof(traverse_targets_t, borrowed_coarse) == 0);
 static_assert(offsetof(traverse_targets_t, borrowed_hits) == 8);
 
+/* Plan 009 phase 01: where a picture's steps go. A bench gives the frame a block of the card holding one of these and, after it,
+ * TRAVERSE_COUNT_PLANES planes of a uint16_t per pixel; the counted kernels add every traversal's steps into it. Play never gives one,
+ * and then the kernels it runs are the same code as before (the counted ones are second copies). A step is one pass of the loop in
+ * cuda/include/traverse/index.hu, and its band is where along its own ray it began, in blocks: a primary or far ray's from the eye, a sun,
+ * AO or reflection ray's from the surface it left. A "call" is one traversal: a sun ray through three leaves is four. */
+enum : uint32_t {
+    TRAVERSE_COUNT_KINDS = 8u,
+    /* 0-16, 16-64, 64-128, 128-256, 256-512, 512-1024 and past 1024 blocks */
+    TRAVERSE_COUNT_BANDS = 7u,
+    TRAVERSE_COUNT_LEVELS = 8u,   /* the far field's levels, at least LOD_LEVELS_MAX */
+    TRAVERSE_COUNT_BUCKETS = 64u, /* of a call's steps in a band: see traverse_count_bucket */
+    /* Per pixel, after the block's traverse_counts_t: primary; the far field (far, its sun rays and the ask past full detail); sun rays;
+     * the rest of shade (AO, alpha holes, reflections). Each saturates at 65535. */
+    TRAVERSE_COUNT_PLANES = 4u,
+    TRAVERSE_COUNT_NO_LEVEL = 0xFFFFFFFFu,
+    TRAVERSE_COUNT_NO_PIXEL = 0xFFFFFFFFu,
+};
+typedef enum traverse_count_kind_t : uint32_t {
+    TRAVERSE_COUNT_PRIMARY = 0, /* traverse_primary's ray of a pixel */
+    TRAVERSE_COUNT_FAR = 1,     /* a far ray through one level of the far field, each pass by full detail a call */
+    TRAVERSE_COUNT_SUN = 2,     /* shade's sun (or moon) ray, each surface it goes on past a call */
+    TRAVERSE_COUNT_AO = 3,      /* an AO ray, steady or fresh */
+    TRAVERSE_COUNT_ALPHA = 4,   /* shade's own ray going on past an alpha-0 texel or a see-through surface */
+    TRAVERSE_COUNT_PAST = 5,    /* the far field asking whether shade's ray leaves full detail past a leaf or a pane */
+    TRAVERSE_COUNT_FAR_SUN = 6, /* the far field's sun rays */
+    TRAVERSE_COUNT_REFLECT = 7, /* water's reflection */
+} traverse_count_kind_t;
+static_assert(sizeof(traverse_count_kind_t) == 4);
+
+typedef struct traverse_counts_t {
+    uint64_t steps[TRAVERSE_COUNT_KINDS][TRAVERSE_COUNT_BANDS];        /* 0 */
+    uint64_t rays[TRAVERSE_COUNT_KINDS][TRAVERSE_COUNT_BANDS];         /* 448: calls that took a step in the band */
+    uint64_t calls[TRAVERSE_COUNT_KINDS];                              /* 896: every call, with a step or none */
+    uint64_t level_steps[TRAVERSE_COUNT_KINDS][TRAVERSE_COUNT_LEVELS]; /* 960: far kinds only, by the level walked */
+    uint64_t level_calls[TRAVERSE_COUNT_KINDS][TRAVERSE_COUNT_LEVELS]; /* 1472 */
+    /* 1984: calls by their steps in each band, and in the last row their whole steps: traverse_count_bucket */
+    uint32_t histogram[TRAVERSE_COUNT_KINDS][TRAVERSE_COUNT_BANDS + 1u][TRAVERSE_COUNT_BUCKETS];
+    uint32_t pixels; /* 18368: set by whoever gives the block: each plane's length, 0 for no planes */
+    uint32_t _pad0;  /* 18372 */
+} traverse_counts_t;
+static_assert(sizeof(traverse_counts_t) == 18376);
+static_assert(alignof(traverse_counts_t) == 8);
+static_assert(offsetof(traverse_counts_t, steps) == 0);
+static_assert(offsetof(traverse_counts_t, rays) == 448);
+static_assert(offsetof(traverse_counts_t, calls) == 896);
+static_assert(offsetof(traverse_counts_t, level_steps) == 960);
+static_assert(offsetof(traverse_counts_t, level_calls) == 1472);
+static_assert(offsetof(traverse_counts_t, histogram) == 1984);
+static_assert(offsetof(traverse_counts_t, pixels) == 18368);
+static_assert(offsetof(traverse_counts_t, _pad0) == 18372);
+
+/* The bytes of a counts block for a picture of this many pixels. */
+static inline uint64_t traverse_counts_bytes(uint32_t pixels) {
+    return sizeof(traverse_counts_t) + (uint64_t)TRAVERSE_COUNT_PLANES * pixels * sizeof(uint16_t);
+}
+
+/* A band's low edge in blocks, for band 0 to TRAVERSE_COUNT_BANDS - 1. */
+static inline uint32_t traverse_count_band_low(uint32_t band) {
+    static const uint32_t lows[TRAVERSE_COUNT_BANDS] = {0u, 16u, 64u, 128u, 256u, 512u, 1024u};
+    return lows[band < TRAVERSE_COUNT_BANDS ? band : TRAVERSE_COUNT_BANDS - 1u];
+}
+
+/* Which bucket a count of steps goes in: 0 to 15 each their own, then four to each power of two, so a bucket is within a quarter of
+ * what it holds; the last holds all from 49152 on. The same on the card, in cuda/include/traverse/index.hu. */
+static inline uint32_t traverse_count_bucket(uint32_t steps) {
+    if (steps < 16u) {
+        return steps;
+    }
+    const uint32_t octave = 31u - (uint32_t)__builtin_clz(steps);
+    const uint32_t bucket = 16u + (octave - 4u) * 4u + ((steps >> (octave - 2u)) & 3u);
+    return bucket < TRAVERSE_COUNT_BUCKETS ? bucket : TRAVERSE_COUNT_BUCKETS - 1u;
+}
+
+/* The least count of steps a bucket holds. */
+static inline uint32_t traverse_count_bucket_low(uint32_t bucket) {
+    if (bucket < 16u) {
+        return bucket;
+    }
+    const uint32_t octave = 4u + (bucket - 16u) / 4u;
+    return (4u + (bucket - 16u) % 4u) << (octave - 2u);
+}
+
 static inline uint32_t traverse_hit_face(uint16_t info) {
     return (uint32_t)info & TRAVERSE_INFO_FACE_MASK;
 }
@@ -216,6 +298,15 @@ gpu_status_t traverse_primary(gpu_error_t *error, const traverse_world_t *world,
 /* The same traversal over ray_count rays in rays, into hits, in order. Starts a kernel, as above. */
 gpu_status_t traverse_rays(gpu_error_t *error, const traverse_world_t *world, const device_block_t *rays,
                            const device_block_t *hits, uint32_t ray_count);
+
+/* Plan 009 phase 01: the same two, with every ray's steps added into counts, a block holding a traverse_counts_t (and its planes, as
+ * long as its pixels says: the giver keeps that within the block), as TRAVERSE_COUNT_PRIMARY, pixel by pixel or ray by ray. A second
+ * copy of the kernel does it; with counts nullptr these are the calls above. The hits are the same bits either way. */
+gpu_status_t traverse_primary_counted(gpu_error_t *error, const traverse_world_t *world,
+                                      const traverse_camera_t *camera, const traverse_targets_t *targets,
+                                      bool use_coarse, const device_block_t *counts);
+gpu_status_t traverse_rays_counted(gpu_error_t *error, const traverse_world_t *world, const device_block_t *rays,
+                                   const device_block_t *hits, uint32_t ray_count, const device_block_t *counts);
 
 /* Waits until everything started has finished, and reports a failure of any of it. */
 gpu_status_t traverse_wait(gpu_error_t *error);

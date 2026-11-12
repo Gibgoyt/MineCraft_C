@@ -13,11 +13,13 @@
 - `traverse_wait`: waits for what was started, and reports a failure of any of it.
 - `traverse_hit_face`, `traverse_hit_steps`: what a hit's `info` says.
 - `traverse_tiles_across`, `traverse_coarse_bytes`, `traverse_hits_bytes`: sizes, for whoever holds the blocks.
+- `traverse_primary_counted`, `traverse_rays_counted` (plan 009 phase 01): the same two, with every ray's steps added into a counts block (`traverse_counts_t`, `traverse_counts_bytes`, `traverse_count_bucket`, `traverse_count_band_low`), by a second copy of the kernel. Play never calls them, and its kernels are the same machine code as before the counts were added (checked with `cuobjdump -sass`; see the plan 009 phase 01 file).
 
 Only for CUDA code (`cuda/include/traverse/index.hu`):
 
 - `traverse_trace`: the ray loop, inline, because a device function cannot be called across files without device linking. `cuda/src/shade/` calls it for rays going on through holes, and sun rays there will too.
 - `traverse_trace_stopping`, `traverse_goes_through`: the same loop for a ray that stops only on the materials a `traverse_stops_t` names, and goes through every other as air, a section all of one whole. `cuda/src/lod/` asks it whether anything opaque stands behind a see-through surface. Inlined with no stops, as `traverse_trace` is, the extra tests are not there at all.
+- `traverse_trace_counted`, `traverse_tally_t`, `traverse_tally_for` (plan 009 phase 01): the loop itself, with a tally or none. With one, each step that moves the ray is counted into the band of the `t` it began at (in blocks: `t` times the tally's scale), a band's count added in with atomics when the ray leaves it, and the call, its level and its pixel's plane at the end, so the bands add up to the steps in the hit's `info`; nothing the ray does changes. `traverse_trace` and `traverse_trace_stopping` call it with no tally, and inlined so, none of the counting is there. A kernel that counts is a second `__global__` copy of a `__forceinline__` body, given a counts pointer where the play copy passes `nullptr`.
 - `traverse_boxes`, `traverse_shape_rows`: the shape table, on the card as constants, for the same reason in the header and not here.
 - `traverse_view_from`: a `traverse_world_t` checked and made into what a kernel takes.
 

@@ -1179,6 +1179,176 @@ TEST(the_fallback_render_sizes_match_the_reference) {
     tw_close(t, &memory);
 }
 
+/* ---- Plan 009 phase 01: counting steps changes nothing, and the counts add up ---------------------------------------------- */
+
+/* A counts block for pixels planes (0 for none), zeroed, with its pixels set. */
+static bool tw_counts_make(test_context_t *t, device_memory_t *memory, uint32_t pixels, device_block_t *out) {
+    const uint64_t bytes = traverse_counts_bytes(pixels);
+    return CHECK_EQ_U64(device_memory_alloc(memory, DEVICE_POOL_FRAMES, bytes, "tw counts", out), GPU_STATUS_OK) &&
+           CHECK_EQ_U64(device_memory_zero(memory, out, 0u, bytes), GPU_STATUS_OK) &&
+           CHECK_EQ_U64(device_memory_write(memory, out, offsetof(traverse_counts_t, pixels), &pixels, sizeof(pixels)),
+                        GPU_STATUS_OK);
+}
+
+/* Primary rays with counts, waited for, and their hits and the counts read back. */
+static bool tw_frame_counted(test_context_t *t, device_memory_t *memory, const tw_world_t *world,
+                             const traverse_camera_t *camera, tw_targets_t *targets, const device_block_t *counts,
+                             traverse_counts_t *host_counts) {
+    gpu_error_t error = {0};
+    gpu_status_t status = traverse_coarse(&error, &world->view, camera, &targets->targets);
+    if (status == GPU_STATUS_OK) {
+        status = traverse_primary_counted(&error, &world->view, camera, &targets->targets, true, counts);
+    }
+    if (status == GPU_STATUS_OK) {
+        status = traverse_wait(&error);
+    }
+    if (status != GPU_STATUS_OK) {
+        gpu_error_log(&error);
+    }
+    return CHECK_EQ_U64(status, GPU_STATUS_OK) &&
+           CHECK_EQ_U64(device_memory_read(memory, &targets->hits, 0u, targets->host_hits,
+                                           traverse_hits_bytes(camera->width, camera->height)),
+                        GPU_STATUS_OK) &&
+           CHECK_EQ_U64(device_memory_read(memory, counts, 0u, host_counts, sizeof(*host_counts)), GPU_STATUS_OK);
+}
+
+/* Every hit of the reference scenes, its voxel, face, t to the bit and value, the same with counts and without: each of the seven
+ * paths of both stress worlds. */
+TEST(counting_steps_changes_no_hit) {
+    device_memory_t memory;
+    REQUIRE(tw_open(t, &memory));
+    const uint32_t width = 640u, height = 360u;
+    const uint64_t hit_bytes = traverse_hits_bytes(width, height);
+    traverse_hit_t *const plain = test_alloc(t, hit_bytes);
+    traverse_counts_t *const host_counts = test_alloc(t, sizeof(traverse_counts_t));
+    tw_targets_t targets;
+    REQUIRE(tw_targets_make(t, &memory, width, height, &targets));
+    device_block_t counts = {0};
+    REQUIRE(tw_counts_make(t, &memory, width * height, &counts));
+    uint64_t frames_same = 0u;
+    for (uint32_t lattice = 0u; lattice < 2u; lattice += 1u) {
+        tw_paths_t paths;
+        tw_world_t *const world = tw_stress_world(t, TW_TERRAIN_COLUMNS, lattice != 0u, &paths);
+        REQUIRE(tw_world_upload(t, &memory, world));
+        for (uint32_t path = 0u; path < TW_PATH_COUNT; path += 1u) {
+            const traverse_camera_t camera = tw_path_camera(world, &paths, path, 0.5f32, width, height);
+            REQUIRE(tw_frame_run(t, &memory, world, &camera, &targets, true));
+            memcpy(plain, targets.host_hits, hit_bytes);
+            REQUIRE(tw_frame_counted(t, &memory, world, &camera, &targets, &counts, host_counts));
+            frames_same += CHECK(memcmp(plain, targets.host_hits, hit_bytes) == 0) ? 1u : 0u;
+        }
+    }
+    CHECK_EQ_U64(frames_same, 2u * TW_PATH_COUNT);
+    CHECK_EQ_U64(device_memory_free(&memory, &counts), GPU_STATUS_OK);
+    tw_targets_free(t, &memory, &targets);
+    tw_close(t, &memory);
+}
+
+/* Over a 256 x 256 camera, primary steps summed over the bands are the hits' own steps summed, every pixel's plane holds its hit's
+ * steps, every ray is one call, and the whole-ray histogram holds every call. No ray reaches the 4095 that info saturates at. */
+TEST(primary_band_sums_equal_each_hits_steps) {
+    device_memory_t memory;
+    REQUIRE(tw_open(t, &memory));
+    const uint32_t side = 256u, pixels = side * side;
+    tw_paths_t paths;
+    tw_world_t *const world = tw_stress_world(t, TW_TERRAIN_COLUMNS, false, &paths);
+    REQUIRE(tw_world_upload(t, &memory, world));
+    tw_targets_t targets;
+    REQUIRE(tw_targets_make(t, &memory, side, side, &targets));
+    device_block_t counts = {0};
+    REQUIRE(tw_counts_make(t, &memory, pixels, &counts));
+    const uint64_t bytes = traverse_counts_bytes(pixels);
+    uint8_t *const host = test_alloc(t, bytes);
+    const traverse_camera_t camera = tw_path_camera(world, &paths, TW_PATH_FLY, 0.5f32, side, side);
+    REQUIRE(tw_frame_counted(t, &memory, world, &camera, &targets, &counts, (traverse_counts_t *)(void *)host));
+    REQUIRE(CHECK_EQ_U64(device_memory_read(&memory, &counts, 0u, host, bytes), GPU_STATUS_OK));
+    const traverse_counts_t *const c = (const traverse_counts_t *)(const void *)host;
+    const uint16_t *const plane = (const uint16_t *)(const void *)(host + sizeof(traverse_counts_t));
+    uint64_t hit_steps = 0u, most = 0u, plane_wrong = 0u;
+    for (uint32_t i = 0u; i < pixels; i += 1u) {
+        const uint32_t steps = traverse_hit_steps(targets.host_hits[i].info);
+        hit_steps += steps;
+        most = steps > most ? steps : most;
+        plane_wrong += plane[i] != steps ? 1u : 0u;
+    }
+    uint64_t band_steps = 0u, whole = 0u;
+    for (uint32_t b = 0u; b < TRAVERSE_COUNT_BANDS; b += 1u) {
+        band_steps += c->steps[TRAVERSE_COUNT_PRIMARY][b];
+    }
+    for (uint32_t k = 0u; k < TRAVERSE_COUNT_BUCKETS; k += 1u) {
+        whole += c->histogram[TRAVERSE_COUNT_PRIMARY][TRAVERSE_COUNT_BANDS][k];
+    }
+    printf("  %" PRIu64 " primary steps over %u rays, the most %" PRIu64 "\n", hit_steps, pixels, most);
+    CHECK(most < (uint64_t)TRAVERSE_INFO_STEPS_MAX);
+    CHECK(hit_steps > (uint64_t)pixels);
+    CHECK_EQ_U64(band_steps, hit_steps);
+    CHECK_EQ_U64(c->calls[TRAVERSE_COUNT_PRIMARY], pixels);
+    CHECK_EQ_U64(whole, pixels);
+    CHECK_EQ_U64(plane_wrong, 0u);
+    for (uint32_t kind = 1u; kind < TRAVERSE_COUNT_KINDS; kind += 1u) {
+        CHECK_EQ_U64(c->calls[kind], 0u);
+    }
+    CHECK_EQ_U64(device_memory_free(&memory, &counts), GPU_STATUS_OK);
+    tw_targets_free(t, &memory, &targets);
+    tw_close(t, &memory);
+}
+
+/* A straight ray over an empty world to a wall 300 blocks off. It steps a column at a time, so it begins a step in every band it crosses,
+ * from 0-16 to 256-512, and in none past 512. */
+TEST(a_ray_at_300_blocks_counts_into_the_bands_it_crossed) {
+    device_memory_t memory;
+    REQUIRE(tw_open(t, &memory));
+    tw_world_t *const world = tw_world_begin(t, 24u, 0, 0);
+    for (int32_t z = 30; z < 50; z += 1) {
+        for (int32_t y = 30; y < 50; y += 1) {
+            tw_set(world, 310, y, z, 7u);
+        }
+    }
+    REQUIRE(tw_world_upload(t, &memory, world));
+    device_block_t counts = {0}, ray_block = {0}, hit_block = {0};
+    REQUIRE(tw_counts_make(t, &memory, 0u, &counts));
+    const traverse_ray_t ray = tw_ray(10, 40, 40, 1.0f32, 0.0f32, 0.0f32);
+    REQUIRE(CHECK_EQ_U64(device_memory_alloc(&memory, DEVICE_POOL_FRAMES, sizeof(ray), "tw ray", &ray_block),
+                         GPU_STATUS_OK));
+    REQUIRE(CHECK_EQ_U64(device_memory_alloc(&memory, DEVICE_POOL_FRAMES, sizeof(traverse_hit_t), "tw hit", &hit_block),
+                         GPU_STATUS_OK));
+    REQUIRE(CHECK_EQ_U64(device_memory_write(&memory, &ray_block, 0u, &ray, sizeof(ray)), GPU_STATUS_OK));
+    gpu_error_t error = {0};
+    gpu_status_t status = traverse_rays_counted(&error, &world->view, &ray_block, &hit_block, 1u, &counts);
+    status = status == GPU_STATUS_OK ? traverse_wait(&error) : status;
+    REQUIRE(CHECK_EQ_U64(status, GPU_STATUS_OK));
+    traverse_hit_t hit;
+    traverse_counts_t *const c = test_alloc(t, sizeof(traverse_counts_t));
+    CHECK_EQ_U64(device_memory_read(&memory, &hit_block, 0u, &hit, sizeof(hit)), GPU_STATUS_OK);
+    CHECK_EQ_U64(device_memory_read(&memory, &counts, 0u, c, sizeof(*c)), GPU_STATUS_OK);
+    tw_check_hit(t, &hit, TRAVERSE_FACE_NEG_X, 299.5f32, 300, 0, 0, 7u);
+    uint64_t sum = 0u;
+    for (uint32_t b = 0u; b < TRAVERSE_COUNT_BANDS; b += 1u) {
+        printf("  band from %4u: %" PRIu64 " steps\n", traverse_count_band_low(b), c->steps[TRAVERSE_COUNT_PRIMARY][b]);
+        sum += c->steps[TRAVERSE_COUNT_PRIMARY][b];
+        if (b <= 4u) {
+            CHECK(c->steps[TRAVERSE_COUNT_PRIMARY][b] > 0u);
+            CHECK_EQ_U64(c->rays[TRAVERSE_COUNT_PRIMARY][b], 1u);
+        } else {
+            CHECK_EQ_U64(c->steps[TRAVERSE_COUNT_PRIMARY][b], 0u);
+            CHECK_EQ_U64(c->rays[TRAVERSE_COUNT_PRIMARY][b], 0u);
+        }
+    }
+    CHECK_EQ_U64(sum, traverse_hit_steps(hit.info));
+    CHECK_EQ_U64(c->calls[TRAVERSE_COUNT_PRIMARY], 1u);
+    /* The host's bucket and its least count agree. */
+    for (uint32_t steps = 0u; steps < 70000u; steps += 1u) {
+        const uint32_t bucket = traverse_count_bucket(steps);
+        CHECK(traverse_count_bucket_low(bucket) <= steps);
+        if (bucket + 1u < TRAVERSE_COUNT_BUCKETS) {
+            CHECK(traverse_count_bucket_low(bucket + 1u) > steps);
+        }
+    }
+    CHECK_EQ_U64(device_memory_free(&memory, &ray_block), GPU_STATUS_OK);
+    CHECK_EQ_U64(device_memory_free(&memory, &hit_block), GPU_STATUS_OK);
+    CHECK_EQ_U64(device_memory_free(&memory, &counts), GPU_STATUS_OK);
+    tw_close(t, &memory);
+}
 /* ---- Timing, on request. A number on a shared card proves nothing in a test, so it is printed and not compared. ----------- */
 
 static int32_t tw_compare_i64(const void *a, const void *b) {

@@ -102,10 +102,12 @@ static __device__ __forceinline__ bool lod_full_detail_at(const traverse_view_t 
 }
 
 /* A ray from t_blocks on, through the levels from first_level out. With fine, what lies in a column full detail holds is not looked at.
- * The levels nest, and a ray goes from each to the next where it leaves that one's square. */
+ * The levels nest, and a ray goes from each to the next where it leaves that one's square. With counts (plan 009 phase 01), each
+ * traversal's steps go into them as kind, by level, in bands of blocks. */
 static __device__ __forceinline__ bool lod_trace(const lod_view_t *view, const traverse_view_t *fine,
                                                  const lod_origin_t *origin, const float32_t direction[3],
-                                                 uint32_t first_level, float32_t t_blocks, lod_found_t *out) {
+                                                 uint32_t first_level, float32_t t_blocks, lod_found_t *out,
+                                                 traverse_counts_t *counts, uint32_t kind, uint32_t pixel) {
     /* Past this a rising ray is above all there is, which is most of a picture's sky. */
     const float32_t t_up = direction[2] > 0.0F
                                ? ((float32_t)(view->top_storage - origin->cell[2]) - origin->frac[2]) / direction[2]
@@ -125,7 +127,9 @@ static __device__ __forceinline__ bool lod_trace(const lod_view_t *view, const t
             traverse_trace_ray_t ray;
             lod_ray_in_level(origin, direction, level->shift, t_from, &ray);
             traverse_hit_t hit;
-            traverse_trace(&level->view, &ray, &hit);
+            traverse_tally_t tally;
+            traverse_trace_counted(&level->view, &ray, nullptr, &hit,
+                                   traverse_tally_for(&tally, counts, kind, pixel, index, size));
             const uint32_t face = (uint32_t)hit.info & TRAVERSE_INFO_FACE_MASK;
             if (face == TRAVERSE_FACE_MISS) {
                 break;
@@ -155,7 +159,8 @@ static __device__ __forceinline__ bool lod_trace(const lod_view_t *view, const t
 /* Whether the sun reaches a surface: one ray, through the coarse grids alone, from the level the surface is in and out. A level holds all
  * of the ground, under full detail too, so that a far hill's shadow is cast by what is really there. */
 static __device__ __forceinline__ bool lod_sun_reaches(const lod_view_t *view, const lod_found_t *found,
-                                                       const float32_t sun[3]) {
+                                                       const float32_t sun[3], traverse_counts_t *counts,
+                                                       uint32_t pixel) {
     const uint32_t shift = view->levels[found->level].shift;
     const float32_t size = (float32_t)(1u << shift);
     const uint32_t axis = found->face >> 1;
@@ -173,7 +178,8 @@ static __device__ __forceinline__ bool lod_sun_reaches(const lod_view_t *view, c
         guarded[i] = traverse_guard(sun[i]);
     }
     lod_found_t blocked;
-    return !lod_trace(view, nullptr, &origin, guarded, found->level, 0.0F, &blocked);
+    return !lod_trace(view, nullptr, &origin, guarded, found->level, 0.0F, &blocked, counts, TRAVERSE_COUNT_FAR_SUN,
+                      pixel);
 }
 
 /* Whether a ray can go on past what it first hit: nothing hit at all, or a face whose texture has anything to see through. */
@@ -195,11 +201,11 @@ static __device__ __forceinline__ bool lod_ray_goes_on(const traverse_hit_t *hit
 static __device__ __forceinline__ void lod_hit_write(const lod_view_t *view, const traverse_view_t *fine,
                                                      const lod_origin_t *origin, const float32_t direction[3],
                                                      float32_t t_start, bool shadows, const float32_t sun[3],
-                                                     lod_hit_t *out) {
+                                                     lod_hit_t *out, traverse_counts_t *counts, uint32_t pixel) {
     lod_hit_t result = {TRAVERSE_COARSE_SKY, (uint16_t)LOD_NO_MATERIAL, (uint8_t)TRAVERSE_FACE_MISS,
                         (uint8_t)LOD_SUN_SEEN};
     lod_found_t found;
-    if (lod_trace(view, fine, origin, direction, 0u, t_start, &found)) {
+    if (lod_trace(view, fine, origin, direction, 0u, t_start, &found, counts, TRAVERSE_COUNT_FAR, pixel)) {
         result.t = found.t;
         result.material = (uint16_t)found.material;
         result.face = (uint8_t)found.face;
@@ -207,8 +213,8 @@ static __device__ __forceinline__ void lod_hit_write(const lod_view_t *view, con
             /* A face turned from the sun gets none of it whatever is in the way, so no ray is sent for it. */
             const uint32_t axis = found.face >> 1;
             const bool facing = (found.face & 1u) != 0u ? sun[axis] > 0.0F : sun[axis] < 0.0F;
-            result.sun =
-                facing && !lod_sun_reaches(view, &found, sun) ? (uint8_t)LOD_SUN_HIDDEN : (uint8_t)LOD_SUN_SEEN;
+            result.sun = facing && !lod_sun_reaches(view, &found, sun, counts, pixel) ? (uint8_t)LOD_SUN_HIDDEN
+                                                                                      : (uint8_t)LOD_SUN_SEEN;
         }
     }
     *out = result;
@@ -235,7 +241,8 @@ static __device__ __forceinline__ bool lod_surface_goes_on(const shade_context_t
  * from the eye for it costs up to LOD_SKIPS_MAX traversals a level to pass by the columns near it, for nothing. direction is the
  * pixel's as shade reads a surface with it, and guarded is the ray's. */
 static __device__ __forceinline__ bool lod_goes_out(const shade_context_t *context, const float32_t direction[3],
-                                                    const float32_t guarded[3], traverse_hit_t hit, bool water_tint) {
+                                                    const float32_t guarded[3], traverse_hit_t hit, bool water_tint,
+                                                    traverse_counts_t *counts, uint32_t pixel) {
     traverse_trace_ray_t ray;
     for (uint32_t i = 0u; i < 3u; i += 1u) {
         ray.eye_cell[i] = context->camera->eye_cell[i];
@@ -282,7 +289,10 @@ static __device__ __forceinline__ bool lod_goes_out(const shade_context_t *conte
             last_offset[i] = hit.offset[i];
         }
         ray.t_start = next_t;
-        traverse_trace(context->view, &ray, &hit);
+        traverse_tally_t tally;
+        traverse_trace_counted(
+            context->view, &ray, nullptr, &hit,
+            traverse_tally_for(&tally, counts, TRAVERSE_COUNT_PAST, pixel, TRAVERSE_COUNT_NO_LEVEL, 1.0F));
     }
     return ((uint32_t)hit.info & TRAVERSE_INFO_FACE_MASK) == TRAVERSE_FACE_MISS;
 }
@@ -302,31 +312,31 @@ enum : uint16_t {
  * voxels of it one at a time. A kernel of its own, small and with no far ray in it, so that it keeps many rays on the card at once,
  * and the far rays of a warp do not wait on these, nor these on them. With no stops, every such pixel asks lod_frame_kernel to
  * follow shade. */
-__global__ void lod_past_kernel(const traverse_view_t fine, const traverse_camera_t camera,
-                                const shade_texture_t *textures, const uint16_t *faces, const uint8_t *pixels,
-                                uint32_t material_count, uint32_t water_material, const uint32_t *stops,
-                                const traverse_hit_t *hits, lod_hit_t *out) {
+static __device__ __forceinline__ void
+lod_past_kernel_body(const traverse_view_t *fine, const traverse_camera_t *camera, const shade_texture_t *textures,
+                     const uint16_t *faces, const uint8_t *pixels, uint32_t material_count, uint32_t water_material,
+                     const uint32_t *stops, const traverse_hit_t *hits, lod_hit_t *out, traverse_counts_t *counts) {
     const uint32_t pixel_x = blockIdx.x * blockDim.x + threadIdx.x;
     const uint32_t pixel_y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (pixel_x >= camera.width || pixel_y >= camera.height) {
+    if (pixel_x >= camera->width || pixel_y >= camera->height) {
         return;
     }
-    const uint64_t index = (uint64_t)pixel_y * camera.width + pixel_x;
+    const uint64_t index = (uint64_t)pixel_y * camera->width + pixel_x;
     const traverse_hit_t hit = hits[index];
     uint16_t ask = LOD_ASK_FAR;
     if (((uint32_t)hit.info & TRAVERSE_INFO_FACE_MASK) != TRAVERSE_FACE_MISS) {
         ask = (uint16_t)LOD_NO_MATERIAL;
         float32_t direction[3];
-        traverse_camera_direction(&camera, (float32_t)pixel_x + 0.5F, (float32_t)pixel_y + 0.5F, direction);
+        traverse_camera_direction(camera, (float32_t)pixel_x + 0.5F, (float32_t)pixel_y + 0.5F, direction);
         const shade_context_t context = {
-            &fine,
-            &camera,
+            fine,
+            camera,
             textures,
             faces,
             pixels,
             nullptr,
             nullptr,
-            shade_pixel_tangent(&camera),
+            shade_pixel_tangent(camera),
             material_count,
             0u,
             (uint16_t)water_material,
@@ -337,15 +347,18 @@ __global__ void lod_past_kernel(const traverse_view_t fine, const traverse_camer
             if (stops != nullptr) {
                 traverse_trace_ray_t ray;
                 for (uint32_t i = 0u; i < 3u; i += 1u) {
-                    ray.eye_cell[i] = camera.eye_cell[i];
-                    ray.eye_frac[i] = camera.eye_frac[i];
+                    ray.eye_cell[i] = camera->eye_cell[i];
+                    ray.eye_frac[i] = camera->eye_frac[i];
                     ray.direction[i] = traverse_guard(direction[i]);
                 }
                 ray.eye_cell[2] -= TRAVERSE_Z_BASE;
                 ray.t_start = hit.t;
                 ray.resume = 1u;
                 traverse_hit_t blocked;
-                traverse_trace_stopping(&fine, &ray, stops, &blocked);
+                traverse_tally_t tally;
+                traverse_trace_counted(fine, &ray, stops, &blocked,
+                                       traverse_tally_for(&tally, counts, TRAVERSE_COUNT_PAST, (uint32_t)index,
+                                                          TRAVERSE_COUNT_NO_LEVEL, 1.0F));
                 if (((uint32_t)blocked.info & TRAVERSE_INFO_FACE_MASK) == TRAVERSE_FACE_MISS) {
                     ask = LOD_ASK_FAR;
                 } else if ((blocked.value & TRAVERSE_VALUE_MATERIAL_MASK) != water_material) {
@@ -357,56 +370,92 @@ __global__ void lod_past_kernel(const traverse_view_t fine, const traverse_camer
     out[index] = lod_hit_t{TRAVERSE_COARSE_SKY, ask, (uint8_t)TRAVERSE_FACE_MISS, (uint8_t)LOD_SUN_SEEN};
 }
 
+__global__ void lod_past_kernel(const traverse_view_t fine, const traverse_camera_t camera,
+                                const shade_texture_t *textures, const uint16_t *faces, const uint8_t *pixels,
+                                uint32_t material_count, uint32_t water_material, const uint32_t *stops,
+                                const traverse_hit_t *hits, lod_hit_t *out) {
+    lod_past_kernel_body(&fine, &camera, textures, faces, pixels, material_count, water_material, stops, hits, out,
+                         nullptr);
+}
+
+__global__ void lod_past_kernel_counted(const traverse_view_t fine, const traverse_camera_t camera,
+                                        const shade_texture_t *textures, const uint16_t *faces, const uint8_t *pixels,
+                                        uint32_t material_count, uint32_t water_material, const uint32_t *stops,
+                                        const traverse_hit_t *hits, lod_hit_t *out, traverse_counts_t *counts) {
+    lod_past_kernel_body(&fine, &camera, textures, faces, pixels, material_count, water_material, stops, hits, out,
+                         counts);
+}
+
 /* The second: the far rays lod_past_kernel asked for, each from the eye, and for one past a see-through surface only if shade's own
  * ray, followed as shade follows it, gets out. Every other pixel keeps the nothing it was given. */
-__global__ void lod_frame_kernel(const lod_view_t view, const traverse_view_t fine, const traverse_camera_t camera,
-                                 const shade_texture_t *textures, const uint16_t *faces, const uint8_t *pixels,
-                                 uint32_t material_count, uint32_t water_material, bool water_tint, bool shadows,
-                                 float32_t sun_x, float32_t sun_y, float32_t sun_z, const traverse_hit_t *hits,
-                                 lod_hit_t *out) {
+static __device__ __forceinline__ void
+lod_frame_kernel_body(const lod_view_t *view, const traverse_view_t *fine, const traverse_camera_t *camera,
+                      const shade_texture_t *textures, const uint16_t *faces, const uint8_t *pixels,
+                      uint32_t material_count, uint32_t water_material, bool water_tint, bool shadows, float32_t sun_x,
+                      float32_t sun_y, float32_t sun_z, const traverse_hit_t *hits, lod_hit_t *out,
+                      traverse_counts_t *counts) {
     const uint32_t pixel_x = blockIdx.x * blockDim.x + threadIdx.x;
     const uint32_t pixel_y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (pixel_x >= camera.width || pixel_y >= camera.height) {
+    if (pixel_x >= camera->width || pixel_y >= camera->height) {
         return;
     }
-    const uint64_t index = (uint64_t)pixel_y * camera.width + pixel_x;
+    const uint64_t index = (uint64_t)pixel_y * camera->width + pixel_x;
     const uint16_t ask = out[index].material;
     if (ask != LOD_ASK_FAR && ask != LOD_ASK_SHADE) {
         return;
     }
     float32_t direction[3], guarded[3];
-    traverse_camera_direction(&camera, (float32_t)pixel_x + 0.5F, (float32_t)pixel_y + 0.5F, direction);
+    traverse_camera_direction(camera, (float32_t)pixel_x + 0.5F, (float32_t)pixel_y + 0.5F, direction);
     for (uint32_t i = 0u; i < 3u; i += 1u) {
         guarded[i] = traverse_guard(direction[i]);
     }
     if (ask == LOD_ASK_SHADE) {
         const shade_context_t context = {
-            &fine,
-            &camera,
+            fine,
+            camera,
             textures,
             faces,
             pixels,
             nullptr,
             nullptr,
-            shade_pixel_tangent(&camera),
+            shade_pixel_tangent(camera),
             material_count,
             0u,
             (uint16_t)water_material,
             (uint16_t)SHADE_NO_MATERIAL,
         };
-        if (!lod_goes_out(&context, direction, guarded, hits[index], water_tint)) {
+        if (!lod_goes_out(&context, direction, guarded, hits[index], water_tint, counts, (uint32_t)index)) {
             out[index].material = (uint16_t)LOD_NO_MATERIAL;
             return;
         }
     }
     lod_origin_t origin;
     for (uint32_t i = 0u; i < 3u; i += 1u) {
-        origin.cell[i] = camera.eye_cell[i];
-        origin.frac[i] = camera.eye_frac[i];
+        origin.cell[i] = camera->eye_cell[i];
+        origin.frac[i] = camera->eye_frac[i];
     }
     origin.cell[2] -= TRAVERSE_Z_BASE;
     const float32_t sun[3] = {sun_x, sun_y, sun_z};
-    lod_hit_write(&view, &fine, &origin, guarded, 0.0F, shadows, sun, &out[index]);
+    lod_hit_write(view, fine, &origin, guarded, 0.0F, shadows, sun, &out[index], counts, (uint32_t)index);
+}
+
+__global__ void lod_frame_kernel(const lod_view_t view, const traverse_view_t fine, const traverse_camera_t camera,
+                                 const shade_texture_t *textures, const uint16_t *faces, const uint8_t *pixels,
+                                 uint32_t material_count, uint32_t water_material, bool water_tint, bool shadows,
+                                 float32_t sun_x, float32_t sun_y, float32_t sun_z, const traverse_hit_t *hits,
+                                 lod_hit_t *out) {
+    lod_frame_kernel_body(&view, &fine, &camera, textures, faces, pixels, material_count, water_material, water_tint,
+                          shadows, sun_x, sun_y, sun_z, hits, out, nullptr);
+}
+
+__global__ void lod_frame_kernel_counted(const lod_view_t view, const traverse_view_t fine,
+                                         const traverse_camera_t camera, const shade_texture_t *textures,
+                                         const uint16_t *faces, const uint8_t *pixels, uint32_t material_count,
+                                         uint32_t water_material, bool water_tint, bool shadows, float32_t sun_x,
+                                         float32_t sun_y, float32_t sun_z, const traverse_hit_t *hits, lod_hit_t *out,
+                                         traverse_counts_t *counts) {
+    lod_frame_kernel_body(&view, &fine, &camera, textures, faces, pixels, material_count, water_material, water_tint,
+                          shadows, sun_x, sun_y, sun_z, hits, out, counts);
 }
 
 __global__ void lod_rays_kernel(const lod_view_t view, const traverse_view_t fine, bool has_fine, bool shadows,
@@ -429,7 +478,8 @@ __global__ void lod_rays_kernel(const lod_view_t view, const traverse_view_t fin
     }
     origin.cell[2] -= TRAVERSE_Z_BASE;
     const float32_t sun[3] = {sun_x, sun_y, sun_z};
-    lod_hit_write(&view, has_fine ? &fine : nullptr, &origin, direction, given.t_start, shadows, sun, &out[index]);
+    lod_hit_write(&view, has_fine ? &fine : nullptr, &origin, direction, given.t_start, shadows, sun, &out[index],
+                  nullptr, TRAVERSE_COUNT_NO_PIXEL);
 }
 
 static gpu_status_t lod_view_from(gpu_error_t *error, const lod_scene_t *scene, lod_view_t *out) {
@@ -473,6 +523,16 @@ static gpu_status_t lod_view_from(gpu_error_t *error, const lod_scene_t *scene, 
 
 gpu_status_t lod_frame(gpu_error_t *error, const lod_scene_t *scene, const lod_light_t *light,
                        const traverse_world_t *world, const traverse_camera_t *camera, const device_block_t *hits) {
+    return lod_frame_counted(error, scene, light, world, camera, hits, nullptr);
+}
+
+gpu_status_t lod_frame_counted(gpu_error_t *error, const lod_scene_t *scene, const lod_light_t *light,
+                               const traverse_world_t *world, const traverse_camera_t *camera,
+                               const device_block_t *hits, const device_block_t *counts_block) {
+    static_assert((uint32_t)LOD_LEVELS_MAX <= (uint32_t)TRAVERSE_COUNT_LEVELS);
+    if (counts_block != nullptr && counts_block->bytes < sizeof(traverse_counts_t)) {
+        return traverse_refuse(error, "lod: the counts block is too small");
+    }
     if (camera->width == 0u || camera->height == 0u) {
         return traverse_refuse(error, "lod: the camera has no pixels");
     }
@@ -506,18 +566,33 @@ gpu_status_t lod_frame(gpu_error_t *error, const lod_scene_t *scene, const lod_l
         light->borrowed_pixels != nullptr ? device_memory_pointer(light->borrowed_pixels) : nullptr;
     const traverse_hit_t *const primary = (const traverse_hit_t *)(const void *)device_memory_pointer(hits);
     lod_hit_t *const out = (lod_hit_t *)(void *)device_memory_pointer(scene->borrowed_hits);
-    lod_past_kernel<<<grid, tile>>>(
-        fine, *camera, textures, faces, pixels, light->material_count, light->water_material,
-        light->stops_after_faces != 0u ? (const uint32_t *)(const void *)(faces_on_card + stops_at) : nullptr, primary,
-        out);
+    const uint32_t *const stops =
+        light->stops_after_faces != 0u ? (const uint32_t *)(const void *)(faces_on_card + stops_at) : nullptr;
+    /* Plan 009 phase 01: with counts, the counted copies; the same work and the same hits. */
+    traverse_counts_t *const counts =
+        counts_block != nullptr ? (traverse_counts_t *)(void *)device_memory_pointer(counts_block) : nullptr;
+    if (counts != nullptr) {
+        lod_past_kernel_counted<<<grid, tile>>>(fine, *camera, textures, faces, pixels, light->material_count,
+                                                light->water_material, stops, primary, out, counts);
+    } else {
+        lod_past_kernel<<<grid, tile>>>(fine, *camera, textures, faces, pixels, light->material_count,
+                                        light->water_material, stops, primary, out);
+    }
     status = device_memory_check(error, cudaGetLastError(), "lod: starting which pixels of a frame get a far ray");
     if (status != GPU_STATUS_OK) {
         return status;
     }
-    lod_frame_kernel<<<grid, tile>>>(view, fine, *camera, textures, faces, pixels, light->material_count,
-                                     light->water_material, light->water_tint != 0u, light->shadows != 0u,
-                                     light->sun_direction[0], light->sun_direction[1], light->sun_direction[2], primary,
-                                     out);
+    const bool water_tint = light->water_tint != 0u, shadows = light->shadows != 0u;
+    const float32_t *const sun = light->sun_direction;
+    if (counts != nullptr) {
+        lod_frame_kernel_counted<<<grid, tile>>>(view, fine, *camera, textures, faces, pixels, light->material_count,
+                                                 light->water_material, water_tint, shadows, sun[0], sun[1], sun[2],
+                                                 primary, out, counts);
+    } else {
+        lod_frame_kernel<<<grid, tile>>>(view, fine, *camera, textures, faces, pixels, light->material_count,
+                                         light->water_material, water_tint, shadows, sun[0], sun[1], sun[2], primary,
+                                         out);
+    }
     return device_memory_check(error, cudaGetLastError(), "lod: starting the rays of a frame");
 }
 

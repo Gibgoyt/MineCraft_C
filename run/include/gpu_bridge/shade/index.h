@@ -667,11 +667,15 @@ typedef struct shade_marks_t {
     /* 32: written by shade_frame_marked: where on the card this frame's fresh list keeps its length, or nullptr with AO off. It stays
      * there until the next frame that writes the same AO block. */
     const uint32_t *fresh_count;
+    /* 40: plan 009 phase 01: a counts block (see traverse_counts_t), or nullptr. With one, shade runs the counted copies of its kernels
+     * and every sun, AO, alpha and reflection ray's steps go into it, by pixel; the picture is the same bits. */
+    const device_block_t *borrowed_counts;
 } shade_marks_t;
-static_assert(sizeof(shade_marks_t) == 40);
+static_assert(sizeof(shade_marks_t) == 48);
 static_assert(alignof(shade_marks_t) == 8);
 static_assert(offsetof(shade_marks_t, borrowed_events) == 0);
 static_assert(offsetof(shade_marks_t, fresh_count) == 32);
+static_assert(offsetof(shade_marks_t, borrowed_counts) == 40);
 
 /* shade_frame_entities with marks, or without if marks is nullptr. */
 gpu_status_t shade_frame_marked(gpu_error_t *error, const shade_scene_t *scene, const post_settings_t *post,

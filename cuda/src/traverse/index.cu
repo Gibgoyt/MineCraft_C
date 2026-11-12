@@ -214,31 +214,49 @@ __global__ void traverse_coarse_kernel(const traverse_view_t view, const travers
     }
 }
 
-/* One block is one tile, which keeps the rays of a block coherent: Stage 01.3. coarse is nullptr to start every ray at 0. */
-__global__ void traverse_primary_kernel(const traverse_view_t view, const traverse_camera_t camera,
-                                        const float32_t *coarse, traverse_hit_t *hits) {
+/* One block is one tile, which keeps the rays of a block coherent: Stage 01.3. coarse is nullptr to start every ray at 0. With counts
+ * (plan 009 phase 01, traverse_primary_counted's second copy), every ray's steps go into them. */
+static __device__ __forceinline__ void traverse_primary_ray(const traverse_view_t *view,
+                                                            const traverse_camera_t *camera, const float32_t *coarse,
+                                                            traverse_hit_t *hits, traverse_counts_t *counts) {
     const uint32_t pixel_x = blockIdx.x * blockDim.x + threadIdx.x;
     const uint32_t pixel_y = blockIdx.y * blockDim.y + threadIdx.y;
-    if (pixel_x >= camera.width || pixel_y >= camera.height) {
+    if (pixel_x >= camera->width || pixel_y >= camera->height) {
         return;
     }
     float32_t direction[3];
-    traverse_camera_direction(&camera, (float32_t)pixel_x + 0.5F, (float32_t)pixel_y + 0.5F, direction);
+    traverse_camera_direction(camera, (float32_t)pixel_x + 0.5F, (float32_t)pixel_y + 0.5F, direction);
     traverse_trace_ray_t ray;
-    ray.eye_cell[0] = camera.eye_cell[0];
-    ray.eye_cell[1] = camera.eye_cell[1];
-    ray.eye_cell[2] = camera.eye_cell[2] - TRAVERSE_Z_BASE;
+    ray.eye_cell[0] = camera->eye_cell[0];
+    ray.eye_cell[1] = camera->eye_cell[1];
+    ray.eye_cell[2] = camera->eye_cell[2] - TRAVERSE_Z_BASE;
     for (uint32_t i = 0u; i < 3u; i += 1u) {
-        ray.eye_frac[i] = camera.eye_frac[i];
+        ray.eye_frac[i] = camera->eye_frac[i];
         ray.direction[i] = traverse_guard(direction[i]);
     }
     ray.t_start = coarse != nullptr ? coarse[blockIdx.y * gridDim.x + blockIdx.x] : 0.0F;
     ray.resume = 0u;
-    traverse_trace(&view, &ray, &hits[pixel_y * camera.width + pixel_x]);
+    const uint32_t pixel = pixel_y * camera->width + pixel_x;
+    traverse_tally_t tally;
+    traverse_trace_counted(
+        view, &ray, nullptr, &hits[pixel],
+        traverse_tally_for(&tally, counts, TRAVERSE_COUNT_PRIMARY, pixel, TRAVERSE_COUNT_NO_LEVEL, 1.0F));
 }
 
-__global__ void traverse_rays_kernel(const traverse_view_t view, const traverse_ray_t *rays, traverse_hit_t *hits,
-                                     uint32_t ray_count) {
+__global__ void traverse_primary_kernel(const traverse_view_t view, const traverse_camera_t camera,
+                                        const float32_t *coarse, traverse_hit_t *hits) {
+    traverse_primary_ray(&view, &camera, coarse, hits, nullptr);
+}
+
+__global__ void traverse_primary_counted_kernel(const traverse_view_t view, const traverse_camera_t camera,
+                                                const float32_t *coarse, traverse_hit_t *hits,
+                                                traverse_counts_t *counts) {
+    traverse_primary_ray(&view, &camera, coarse, hits, counts);
+}
+
+static __device__ __forceinline__ void traverse_given_ray(const traverse_view_t *view, const traverse_ray_t *rays,
+                                                          traverse_hit_t *hits, uint32_t ray_count,
+                                                          traverse_counts_t *counts) {
     const uint32_t index = blockIdx.x * blockDim.x + threadIdx.x;
     if (index >= ray_count) {
         return;
@@ -257,7 +275,20 @@ __global__ void traverse_rays_kernel(const traverse_view_t view, const traverse_
     }
     ray.t_start = given.t_start;
     ray.resume = 0u;
-    traverse_trace(&view, &ray, &hits[index]);
+    traverse_tally_t tally;
+    traverse_trace_counted(
+        view, &ray, nullptr, &hits[index],
+        traverse_tally_for(&tally, counts, TRAVERSE_COUNT_PRIMARY, index, TRAVERSE_COUNT_NO_LEVEL, 1.0F));
+}
+
+__global__ void traverse_rays_kernel(const traverse_view_t view, const traverse_ray_t *rays, traverse_hit_t *hits,
+                                     uint32_t ray_count) {
+    traverse_given_ray(&view, rays, hits, ray_count, nullptr);
+}
+
+__global__ void traverse_rays_counted_kernel(const traverse_view_t view, const traverse_ray_t *rays,
+                                             traverse_hit_t *hits, uint32_t ray_count, traverse_counts_t *counts) {
+    traverse_given_ray(&view, rays, hits, ray_count, counts);
 }
 
 static gpu_status_t traverse_camera_check(gpu_error_t *error, const traverse_camera_t *camera) {
@@ -290,6 +321,12 @@ gpu_status_t traverse_coarse(gpu_error_t *error, const traverse_world_t *world, 
 
 gpu_status_t traverse_primary(gpu_error_t *error, const traverse_world_t *world, const traverse_camera_t *camera,
                               const traverse_targets_t *targets, bool use_coarse) {
+    return traverse_primary_counted(error, world, camera, targets, use_coarse, nullptr);
+}
+
+gpu_status_t traverse_primary_counted(gpu_error_t *error, const traverse_world_t *world,
+                                      const traverse_camera_t *camera, const traverse_targets_t *targets,
+                                      bool use_coarse, const device_block_t *counts) {
     traverse_view_t view;
     gpu_status_t status = traverse_view_from(error, world, &view);
     if (status == GPU_STATUS_OK) {
@@ -304,16 +341,30 @@ gpu_status_t traverse_primary(gpu_error_t *error, const traverse_world_t *world,
     if (use_coarse && targets->borrowed_coarse->bytes < traverse_coarse_bytes(camera->width, camera->height)) {
         return traverse_refuse(error, "traverse: the coarse target is too small for the camera");
     }
+    if (counts != nullptr && counts->bytes < sizeof(traverse_counts_t)) {
+        return traverse_refuse(error, "traverse: the counts block is too small");
+    }
     const float32_t *const coarse =
         use_coarse ? (const float32_t *)device_memory_pointer(targets->borrowed_coarse) : nullptr;
     const dim3 grid(traverse_tiles_across(camera->width), traverse_tiles_across(camera->height));
-    traverse_primary_kernel<<<grid, dim3(TRAVERSE_TILE_PIXELS, TRAVERSE_TILE_PIXELS)>>>(
-        view, *camera, coarse, (traverse_hit_t *)device_memory_pointer(targets->borrowed_hits));
+    traverse_hit_t *const hits = (traverse_hit_t *)device_memory_pointer(targets->borrowed_hits);
+    if (counts != nullptr) {
+        traverse_primary_counted_kernel<<<grid, dim3(TRAVERSE_TILE_PIXELS, TRAVERSE_TILE_PIXELS)>>>(
+            view, *camera, coarse, hits, (traverse_counts_t *)device_memory_pointer(counts));
+    } else {
+        traverse_primary_kernel<<<grid, dim3(TRAVERSE_TILE_PIXELS, TRAVERSE_TILE_PIXELS)>>>(view, *camera, coarse,
+                                                                                            hits);
+    }
     return device_memory_check(error, cudaGetLastError(), "traverse: starting primary rays");
 }
 
 gpu_status_t traverse_rays(gpu_error_t *error, const traverse_world_t *world, const device_block_t *rays,
                            const device_block_t *hits, uint32_t ray_count) {
+    return traverse_rays_counted(error, world, rays, hits, ray_count, nullptr);
+}
+
+gpu_status_t traverse_rays_counted(gpu_error_t *error, const traverse_world_t *world, const device_block_t *rays,
+                                   const device_block_t *hits, uint32_t ray_count, const device_block_t *counts) {
     traverse_view_t view;
     const gpu_status_t status = traverse_view_from(error, world, &view);
     if (status != GPU_STATUS_OK) {
@@ -326,10 +377,19 @@ gpu_status_t traverse_rays(gpu_error_t *error, const traverse_world_t *world, co
         hits->bytes < (uint64_t)ray_count * sizeof(traverse_hit_t)) {
         return traverse_refuse(error, "traverse: a ray or hit block is too small for the ray count");
     }
+    if (counts != nullptr && counts->bytes < sizeof(traverse_counts_t)) {
+        return traverse_refuse(error, "traverse: the counts block is too small");
+    }
     const uint32_t per_block = 64u;
-    traverse_rays_kernel<<<(ray_count + per_block - 1u) / per_block, per_block>>>(
-        view, (const traverse_ray_t *)device_memory_pointer(rays), (traverse_hit_t *)device_memory_pointer(hits),
-        ray_count);
+    const uint32_t blocks = (ray_count + per_block - 1u) / per_block;
+    const traverse_ray_t *const given = (const traverse_ray_t *)device_memory_pointer(rays);
+    traverse_hit_t *const out = (traverse_hit_t *)device_memory_pointer(hits);
+    if (counts != nullptr) {
+        traverse_rays_counted_kernel<<<blocks, per_block>>>(view, given, out, ray_count,
+                                                            (traverse_counts_t *)device_memory_pointer(counts));
+    } else {
+        traverse_rays_kernel<<<blocks, per_block>>>(view, given, out, ray_count);
+    }
     return device_memory_check(error, cudaGetLastError(), "traverse: starting rays");
 }
 

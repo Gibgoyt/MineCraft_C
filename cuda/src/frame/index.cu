@@ -213,6 +213,13 @@ static gpu_status_t frame_passes(frame_gpu_t *frame, const frame_args_t *args, u
                    (1u << FRAME_KERNEL_POST) | (1u << FRAME_KERNEL_READBACK);
     frame_marks_t *const marks = frame->borrowed_marks;
     gpu_status_t status = GPU_STATUS_OK;
+    /* Plan 009 phase 01: a bench's counts, held to the picture's size, so the planes stay inside the block. */
+    const device_block_t *const counts = marks != nullptr ? marks->borrowed_counts : nullptr;
+    if (counts != nullptr && counts->bytes < traverse_counts_bytes(camera->width * camera->height)) {
+        frame->last_error = gpu_error_t{"frame: the counts block is too small for the picture", nullptr, nullptr, 0,
+                                        GPU_STATUS_INVALID_ARGUMENT};
+        return GPU_STATUS_INVALID_ARGUMENT;
+    }
     /* Before the first pass's mark, so the frame's own times are as they would be without it. */
     if (marks != nullptr && marks->clock_due != 0u) {
         status = frame_clock_start(marks, &frame->last_error);
@@ -227,7 +234,8 @@ static gpu_status_t frame_passes(frame_gpu_t *frame, const frame_args_t *args, u
         status = frame_mark(frame, FRAME_KERNEL_PRIMARY);
     }
     if (status == GPU_STATUS_OK) {
-        status = traverse_primary(&frame->last_error, args->borrowed_world, camera, &traverse_targets, true);
+        status =
+            traverse_primary_counted(&frame->last_error, args->borrowed_world, camera, &traverse_targets, true, counts);
     }
     if (status == GPU_STATUS_OK) {
         status = frame_mark(frame, FRAME_KERNEL_ENTITY_RAYS);
@@ -244,8 +252,8 @@ static gpu_status_t frame_passes(frame_gpu_t *frame, const frame_args_t *args, u
     /* Under primary's clock, as it is the rest of those same rays. */
     if (status == GPU_STATUS_OK && args->borrowed_lod != nullptr) {
         ran |= 1u << FRAME_KERNEL_LOD;
-        status = lod_frame(&frame->last_error, args->borrowed_lod, args->borrowed_lod_light, args->borrowed_world,
-                           camera, targets->borrowed_hits);
+        status = lod_frame_counted(&frame->last_error, args->borrowed_lod, args->borrowed_lod_light,
+                                   args->borrowed_world, camera, targets->borrowed_hits, counts);
     }
     if (status == GPU_STATUS_OK) {
         status = frame_mark(frame, FRAME_KERNEL_SHADE);
@@ -256,6 +264,7 @@ static gpu_status_t frame_passes(frame_gpu_t *frame, const frame_args_t *args, u
             for (uint32_t i = 0u; i + 1u < (uint32_t)SHADE_SPAN_COUNT; i += 1u) {
                 shade_marks.borrowed_events[i] = marks->owned_shade_events[i];
             }
+            shade_marks.borrowed_counts = counts;
         }
         status = shade_frame_marked(&frame->last_error, args->borrowed_scene, args->borrowed_post, args->borrowed_world,
                                     camera, targets->borrowed_hits, targets->borrowed_pixels, entities,

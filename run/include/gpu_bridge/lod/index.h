@@ -134,6 +134,12 @@ static inline uint64_t lod_hits_bytes(uint32_t width, uint32_t height) {
 gpu_status_t lod_frame(gpu_error_t *error, const lod_scene_t *scene, const lod_light_t *light,
                        const traverse_world_t *world, const traverse_camera_t *camera, const device_block_t *hits);
 
+/* Plan 009 phase 01: lod_frame with every traversal's steps added into counts (see traverse_counts_t): far rays and the far field's sun
+ * rays by level, and the ask past full detail. A second copy of each kernel does it; with counts nullptr this is lod_frame. */
+gpu_status_t lod_frame_counted(gpu_error_t *error, const lod_scene_t *scene, const lod_light_t *light,
+                               const traverse_world_t *world, const traverse_camera_t *camera,
+                               const device_block_t *hits, const device_block_t *counts);
+
 /* The same trace over ray_count rays of traverse_ray_t in rays, into as many lod_hit_t in out, for a test and for anything that is not a
  * frame. world may be nullptr, for no full detail at all. t_start in a ray is where it starts looking. With light nullptr no sun ray is
  * sent. Starts a kernel, as above. */

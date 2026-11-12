@@ -122,8 +122,12 @@ typedef struct frame_marks_t {
     uint8_t clock_read;             /* 97: the last frame read the clock */
     uint8_t open;                   /* 98 */
     uint8_t _pad0[5];               /* 99 */
+    /* 104: plan 009 phase 01: set by a bench, never by play: a counts block (see traverse_counts_t) for a picture of the size being drawn,
+     * traverse_counts_bytes of its pixels at least. Each frame then runs the counted copies of the ray kernels, which add every ray's steps
+     * into it, and the picture is the same bits. nullptr counts nothing. */
+    const device_block_t *borrowed_counts;
 } frame_marks_t;
-static_assert(sizeof(frame_marks_t) == 104);
+static_assert(sizeof(frame_marks_t) == 112);
 static_assert(alignof(frame_marks_t) == 8);
 static_assert(offsetof(frame_marks_t, owned_shade_events) == 0);
 static_assert(offsetof(frame_marks_t, owned_clock_events) == 32);
@@ -137,6 +141,7 @@ static_assert(offsetof(frame_marks_t, clock_due) == 96);
 static_assert(offsetof(frame_marks_t, clock_read) == 97);
 static_assert(offsetof(frame_marks_t, open) == 98);
 static_assert(offsetof(frame_marks_t, _pad0) == 99);
+static_assert(offsetof(frame_marks_t, borrowed_counts) == 104);
 
 gpu_status_t frame_marks_init(frame_marks_t *marks, gpu_error_t *error);
 /* Gives every event back whatever happens, and returns the first failure, which error then holds. */

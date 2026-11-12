@@ -1,6 +1,6 @@
 # 009-ahmed-bohemoth-game-engine-optimizations — phase 1: Measure where the steps go
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** in progress   (updated 2026-11-12)
 
 Read first: `plans/009-ahmed-bohemoth-game-engine-optimizations-phase-00-vision-and-plan-files.md`, then the master `plans/009-ahmed-bohemoth-game-engine-optimizations.md`: sections 0 ("Why the frame is 29 ms"), 3.4, 4.1, 5 and 7. Then plan 008's master section 3.1 and its phase 01 file. That phase builds the instruments this one stands on. Then `bench/world/README.md` and `cuda/src/traverse/README.md` ("What a ray skips").
 
@@ -137,9 +137,9 @@ The loop's arithmetic, the node choice, every result bit. The `cuda_traverse` te
 
 ## Todo
 
-- [ ] Plan 008 phase 01's instruments are on `main`, or the gap is in Issues found
-- [ ] `traverse_counts_t` and the counts parameter, null in play; register counts unchanged in the null build
-- [ ] `cuda_traverse`: counters on and off give identical hits; band sums equal `info`'s steps for primary rays
+- [x] Plan 008 phase 01's instruments are on `main`, or the gap is in Issues found
+- [x] `traverse_counts_t` and the counts parameter, null in play; register counts unchanged in the null build
+- [x] `cuda_traverse`: counters on and off give identical hits; band sums equal `info`'s steps for primary rays
 - [ ] `--look`, `--sun`, `--render-scale`, `--full-detail`, `--lod-reference` in `bench/world/index.c`, documented in its README
 - [ ] Rows `ahmed_slope/night-64`, `night-32`, `day-64`; the shot of `night-64` looks like 5.png
 - [ ] `--steps` writes the band table and the heatmap PNG
@@ -225,4 +225,13 @@ Appended as they land:
 
 ## Issues found
 
-None.
+**Plan 008 phase 01 is on `main`** (its four commits, up to `ec4554c9`), and this branch was cut from it. Reused: shade's five spans and the fresh count in `frame_marks_t`, the `clock64` reading before each settled picture (rows say Mcycles), `--at`/`--seed` as `bench_world_shake` has them. Nothing of 008's was built again.
+
+**How the counters are wired, and what changed from the plan:**
+
+- `traverse_counts_t` (18376 bytes, asserted) in `run/include/gpu_bridge/traverse/index.h`, with eight kinds, not five: primary, far, sun, AO, alpha, and three the master's causes need apart, `far_past` (the far field asking, past a leaf or pane, whether shade's ray leaves full detail: master cause 2, "leaves on the right"), `far_sun` (the far field's own sun rays) and `reflect` (water's reflection). Seven distance bands (0-16, 16-64, 64-128, 128-256, 256-512, 512-1024, 1024+), steps and calls by far level, a 64-bucket histogram of a call's steps per band (p50/p99 to within a quarter octave), and after the struct four `uint16_t` planes per pixel (primary; far field; sun; the rest of shade), from which the heatmaps are drawn.
+- **Not a kernel argument of the play kernels.** A runtime pointer argument cannot be folded away by the compiler, and templates are banned (standard section 8). So each kernel that traces rays became a `__forceinline__` body and two `__global__` copies: the play copy passes a literal `nullptr`, the counted copy the block. `traverse_trace_counted(view, ray, stops, hit, tally)` is the loop; `traverse_trace` and `traverse_trace_stopping` call it with no tally. The block reaches the frame through `frame_marks_t.borrowed_counts` (104 to 112 bytes; it lives in the World arena, so nothing on main's stack grows) and shade through `shade_marks_t.borrowed_counts` (40 to 48), not through `frame_args_t`. `traverse_primary_counted`, `traverse_rays_counted` and `lod_frame_counted` are the counted entry points; the old ones call them with `nullptr`.
+- **The counts go down shade's helpers as arguments, not in `shade_context_t`.** A first try put them in the context (72 to 88 bytes): the context lives on the kernel's stack, and the extra stores changed the play kernels' code. Passing `counts, pixel` as trailing arguments (constant `nullptr` in play) and the kernel's struct parameters to the body by pointer kept them.
+- **64-bit atomics:** CUDA's `atomicAdd` for 64 bits takes `unsigned long long`, which the standard bans by name; `traverse_count_add` adds to the two 32-bit halves with a carry, exact once the kernels end.
+- **Register counts, before and after** (`cuobjdump -res-usage`, profile build, sm_75): `traverse_primary_kernel` 60, `traverse_rays_kernel` 63, `traverse_coarse_kernel` 72, `shade_kernel` 142, `shade_water_kernel` 93, `shade_ao_kernel` 93, `shade_ao_fresh_kernel` 94, `shade_sun_kernel` 78, `shade_shafts_kernel` 93, `lod_frame_kernel` 90, `lod_past_kernel` 59, `lod_rays_kernel` 80: **all unchanged**. Stack: unchanged but for `shade_water_kernel` 224 to 176 and `shade_ao_fresh_kernel` 160 to 144 bytes (smaller). **SASS** (`cuobjdump -sass`, instruction text compared): the traverse, coarse, `lod_past`, `lod_rays`, entity and frame kernels are **the same instructions**; `shade_kernel`, `shade_water_kernel`, `shade_ao_kernel`, `shade_ao_fresh_kernel`, `shade_sun_kernel`, `shade_shafts_kernel` and `lod_frame_kernel` have **the same instruction count**, and differ only in how the kernel's struct parameters are copied to its stack at the start (STL against STL.64/STL.128 packing, register names, a few NOPs): no loop changed. The counted copies: `traverse_primary_counted_kernel` 60 registers, `shade_kernel_counted` 149, `shade_sun_kernel_counted` 91, `lod_frame_kernel_counted` 95.
+- **Tests** (`cuda_traverse`, in the existing file, 1477 lines, under the 1500 split): `counting_steps_changes_no_hit` (seven paths of both stress worlds at 640x360 with the coarse pass, every hit byte for byte), `primary_band_sums_equal_each_hits_steps` (256x256 flyover: 295293 steps over 65536 rays, bands, planes and calls all agree, the most 51), `a_ray_at_300_blocks_counts_into_the_bands_it_crossed` (2, 3, 4, 8, 5 steps in the bands from 0 to 256-512, none past; and the host's buckets checked against their least counts up to 70000). The random-ray part the plan's "existing reference scenes" might also mean was left out to keep the file under 1500 lines; `traverse_rays_counted` is exercised by the 300-block test.

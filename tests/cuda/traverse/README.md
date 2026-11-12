@@ -18,6 +18,7 @@ What it checks:
 - **The coarse pass:** no pixel may hit anything before its tile's distance, on random cameras from 1x1 to 320x180 and very narrow to very wide, every pixel. A pass that always said 0 would pass that, so it must also skip a real share of tiles, and on a flight over terrain it must save steps.
 - **That the checks can fail:** a reference a hundredth of a block off must be caught, a forged coarse distance must be caught, and changing a voxel on the card must change the answer.
 - **The fallback sizes:** Stage 01.3's lower internal sizes are checked against the reference as well.
+- **Counting steps (plan 009 phase 01):** with a counts block every hit of the seven paths of both stress worlds is the same bytes as without; over a 256 x 256 camera the primary bands add up to the hits' own steps, each pixel's plane holds its hit's steps, and every ray is one call; a straight ray to a wall 300 blocks off begins steps in every band from 0-16 to 256-512 and none past; and the host's buckets agree with their least counts.
 
 `fixtures/world.h` is the world and that encoder, and `fixtures/stress_world.h` is Stage 01.3's worlds and paths.
 
