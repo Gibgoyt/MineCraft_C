@@ -136,7 +136,8 @@ static void survival_die(player_survival_t *survival, player_survival_cause_t ca
 }
 
 float32_t player_survival_hurt(player_survival_t *survival, float32_t amount, player_survival_cause_t cause) {
-    if (survival->state == PLAYER_SURVIVAL_DEAD || survival->placing != 0u || amount <= 0.0f32) {
+    if (survival->state == PLAYER_SURVIVAL_DEAD || survival->placing != 0u ||
+        survival->arriving == PLAYER_SURVIVAL_ARRIVING_WAIT || amount <= 0.0f32) {
         return 0.0f32;
     }
     float32_t counted = amount;
@@ -180,7 +181,8 @@ void player_survival_eat(player_survival_t *survival, uint32_t food, float32_t s
 }
 
 bool player_survival_holds_body(const player_survival_t *survival) {
-    return survival->state != PLAYER_SURVIVAL_ALIVE || survival->placing != 0u;
+    return survival->state != PLAYER_SURVIVAL_ALIVE || survival->placing != 0u ||
+           survival->arriving == PLAYER_SURVIVAL_ARRIVING_WAIT;
 }
 
 bool player_survival_can_sprint(const player_survival_t *survival) {
@@ -209,7 +211,7 @@ static float64_t survival_bed_top(const int32_t cell[COLLISION_AXES]) {
 }
 
 static void survival_body_on_bed(const player_survival_t *survival, player_movement_t *movement) {
-    player_movement_start(movement, (float64_t)survival->bed_cell[0] + 0.5f64,
+    player_movement_place(movement, (float64_t)survival->bed_cell[0] + 0.5f64,
                           (float64_t)survival->bed_cell[1] + 0.5f64, survival_bed_top(survival->bed_cell));
 }
 
@@ -243,7 +245,7 @@ static void survival_stand_by_bed(const player_survival_t *survival, player_move
                 (float64_t)(survival->bed_cell[2] + up),
             };
             if (survival_can_stand(physics, map, feet)) {
-                player_movement_start(movement, feet[0], feet[1], feet[2]);
+                player_movement_place(movement, feet[0], feet[1], feet[2]);
                 return;
             }
         }
@@ -251,10 +253,10 @@ static void survival_stand_by_bed(const player_survival_t *survival, player_move
     survival_body_on_bed(survival, movement);
 }
 
-/* At the world's place: as far up as it takes to fit, since anything may have been built there. */
-static void survival_stand_at_spawn(const player_survival_t *survival, player_movement_t *movement, physics_t *physics,
-                                    const world_map_t *map) {
-    float64_t feet[COLLISION_AXES] = {survival->spawn[0], survival->spawn[1], survival->spawn[2]};
+/* At a place: as far up as it takes to fit, since anything may have been built there. */
+static void survival_stand_at(const float64_t from[COLLISION_AXES], player_movement_t *movement, physics_t *physics,
+                              const world_map_t *map) {
+    float64_t feet[COLLISION_AXES] = {from[0], from[1], from[2]};
     while (feet[2] < (float64_t)COLUMN_Z_STORAGE_END) {
         collision_box_t box;
         player_movement_box(feet, PLAYER_MOVEMENT_HEIGHT_STANDING, &box);
@@ -263,7 +265,63 @@ static void survival_stand_at_spawn(const player_survival_t *survival, player_mo
         }
         feet[2] = floor(feet[2]) + 1.0f64;
     }
-    player_movement_start(movement, feet[0], feet[1], feet[2]);
+    player_movement_place(movement, feet[0], feet[1], feet[2]);
+}
+
+/* At the world's place. */
+static void survival_stand_at_spawn(const player_survival_t *survival, player_movement_t *movement, physics_t *physics,
+                                    const world_map_t *map) {
+    survival_stand_at(survival->spawn, movement, physics, map);
+}
+
+/* Plan 006 phase 01: the top ground of the column at the feet, from the world's top down: the first block that is not air, with the
+ * body's room over it. Water counts, so a teleport over the sea comes down on the water. False only if the column is not loaded. */
+static bool survival_ground_top(physics_t *physics, const world_map_t *map, float64_t x, float64_t y,
+                                float64_t *out_z) {
+    const int32_t cell_x = (int32_t)floor(x), cell_y = (int32_t)floor(y);
+    for (int32_t z = COLUMN_Z_GAMEPLAY_MAX; z > COLUMN_Z_GAMEPLAY_MIN; z--) {
+        uint16_t block = BLOCK_ID_AIR;
+        if (!collision_cell_read(map, cell_x, cell_y, z - 1, &block)) {
+            return false;
+        }
+        if (block == BLOCK_ID_AIR) {
+            continue;
+        }
+        const float64_t feet[COLLISION_AXES] = {x, y, (float64_t)z};
+        collision_box_t box;
+        player_movement_box(feet, PLAYER_MOVEMENT_HEIGHT_STANDING, &box);
+        if (physics_box_is_clear(physics, map, &box)) {
+            *out_z = (float64_t)z;
+            return true;
+        }
+    }
+    *out_z = (float64_t)COLUMN_Z_GAMEPLAY_MIN;
+    return true;
+}
+
+void player_survival_arrive_begin(player_survival_t *survival, player_survival_arrive_t kind) {
+    survival->arriving = PLAYER_SURVIVAL_ARRIVING_WAIT;
+    survival->arrive_kind = kind;
+}
+
+void player_survival_arrive(player_survival_t *survival, player_movement_t *movement, physics_t *physics,
+                            const world_map_t *map) {
+    if (survival->arriving != PLAYER_SURVIVAL_ARRIVING_WAIT) {
+        return;
+    }
+    const float64_t at[COLLISION_AXES] = {movement->position[0], movement->position[1], movement->position[2]};
+    uint16_t block = BLOCK_ID_AIR;
+    if (!collision_cell_read(map, (int32_t)floor(at[0]), (int32_t)floor(at[1]), (int32_t)floor(at[2]), &block)) {
+        return; /* still on its way */
+    }
+    if (survival->arrive_kind == PLAYER_SURVIVAL_ARRIVE_GROUND) {
+        float64_t ground = at[2];
+        (void)survival_ground_top(physics, map, at[0], at[1], &ground);
+        player_movement_place(movement, at[0], at[1], ground);
+    } else {
+        survival_stand_at(at, movement, physics, map);
+    }
+    survival->arriving = PLAYER_SURVIVAL_ARRIVING_FALL;
 }
 
 /* A body that has come back waits, holding still, for the ground where it came back to: only then can it be known if the bed is still
@@ -283,7 +341,7 @@ static void survival_place(player_survival_t *survival, player_movement_t *movem
         }
         /* The bed has gone, and with it this as a place to come back to. */
         survival->has_bed = 0u;
-        player_movement_start(movement, survival->spawn[0], survival->spawn[1], survival->spawn[2]);
+        player_movement_place(movement, survival->spawn[0], survival->spawn[1], survival->spawn[2]);
     }
     if (!collision_cell_read(map, (int32_t)floor(survival->spawn[0]), (int32_t)floor(survival->spawn[1]),
                              (int32_t)floor(survival->spawn[2]), &block)) {
@@ -307,12 +365,14 @@ static void survival_respawn(player_survival_t *survival, player_movement_t *mov
     survival->invulnerable = 0u;
     survival->last_hurt = 0.0f32;
     survival->respawned_count++;
+    survival->arriving = PLAYER_SURVIVAL_ARRIVING_NONE;
+    player_movement_fly_set(movement, false); /* it comes back on its feet */
     survival->placing = 1u;
     survival->placing_at_bed = survival->has_bed;
     if (survival->has_bed != 0u) {
         survival_body_on_bed(survival, movement);
     } else {
-        player_movement_start(movement, survival->spawn[0], survival->spawn[1], survival->spawn[2]);
+        player_movement_place(movement, survival->spawn[0], survival->spawn[1], survival->spawn[2]);
     }
     survival_place(survival, movement, physics, map);
 }
@@ -600,15 +660,28 @@ void player_survival_tick(player_survival_t *survival, player_movement_t *moveme
         return;
     }
     /* With no ground loaded, what happens to a body has nothing to go on. */
-    if (survival->placing != 0u || movement->waiting_for_column != 0u) {
+    if (survival->placing != 0u || survival->arriving == PLAYER_SURVIVAL_ARRIVING_WAIT ||
+        movement->waiting_for_column != 0u) {
         return;
+    }
+    /* Plan 006 phase 01: a teleport's drop to where it lands, and flying, are no fall. */
+    const bool flying = movement->mode == PLAYER_MOVEMENT_MODE_FLY;
+    if (survival->arriving == PLAYER_SURVIVAL_ARRIVING_FALL || flying) {
+        movement->landed_fall = 0.0f64;
+        movement->fall_distance = 0.0f64;
+        if (flying || movement->on_ground != 0u || movement->mode == PLAYER_MOVEMENT_MODE_WATER ||
+            movement->mode == PLAYER_MOVEMENT_MODE_LAVA || movement->mode == PLAYER_MOVEMENT_MODE_CLIMB) {
+            survival->arriving = PLAYER_SURVIVAL_ARRIVING_NONE;
+        }
     }
     player_survival_exhaust(survival, (float32_t)mined * SURVIVAL_TIRE_MINE);
     survival_hazards(survival, movement, map);
     if (survival->state == PLAYER_SURVIVAL_DEAD) {
         return;
     }
-    survival_tire(survival, movement);
+    if (!flying) {
+        survival_tire(survival, movement); /* flying drains no food */
+    }
     survival_food_tick(survival);
     if (survival->state == PLAYER_SURVIVAL_SLEEPING) {
         survival_sleep_tick(survival, movement, physics, map);

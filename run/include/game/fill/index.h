@@ -27,6 +27,7 @@ enum : uint32_t {
 typedef enum game_fill_kind_t : uint32_t {
     GAME_FILL_OPEN = 0u,   /* a world opened */
     GAME_FILL_CHANGE = 1u, /* render distance or full detail changed in an open world */
+    GAME_FILL_JUMP = 2u,   /* plan 006 phase 01: a teleport, timed from when the sim took it, round where it went */
 } game_fill_kind_t;
 
 /* One fill, as the report and bench_world keep it. Times are from its start, in ns; -1 for never. */
@@ -54,10 +55,10 @@ typedef struct game_fill_t {
     _Atomic int64_t near_ns;                                   /* 16 */
     _Atomic int64_t far_ns;                                    /* 24 */
     _Atomic int64_t done_ns;                                   /* 32 */
-    _Atomic uint32_t sequence;              /* 40: fills started since the world opened, this one included */
-    uint32_t rings_done;                    /* 44: rings 0 to this - 1 are all drawn */
-    int64_t started_ns;                     /* 48: time_now_ns at the start */
-    uint64_t far_built_start;               /* 56: the far field's columns_built at the start */
+    _Atomic uint32_t sequence;  /* 40: fills started since the world opened, this one included */
+    uint32_t rings_done;        /* 44: rings 0 to this - 1 are all drawn */
+    _Atomic int64_t started_ns; /* 48: time_now_ns at the start; relaxed: the sim reads it for the far field's room */
+    uint64_t far_built_start;   /* 56: the far field's columns_built at the start */
     int64_t ring_ns[GAME_FILL_RINGS];       /* 64: from the start, -1 for not yet */
     uint16_t ring_columns[GAME_FILL_RINGS]; /* 576: how many columns each ring has */
     uint32_t ready_start;                   /* 704: columns on the card at the start */
@@ -76,8 +77,18 @@ typedef struct game_fill_t {
      * it after the threads have stopped. */
     _Atomic uint64_t climate_waits;
     uint8_t _pad1[8]; /* 1784 */
+    /* 1792: plan 006 phase 01. Whoever teleports asks for a jump fill: the chunk it went to, relaxed, then jump_asked, release; the
+     * thread that uploads takes it, acquire, at its next game_fill_step and starts the fill there, as only it may write the rest. */
+    _Atomic uint32_t jump_asked;
+    _Atomic int32_t jump_chunk_x; /* 1796 */
+    _Atomic int32_t jump_chunk_y; /* 1800 */
+    int32_t centre_x;   /* 1804: with has_centre, a jump fill's rings are round this chunk, not the window's middle */
+    int32_t centre_y;   /* 1808 */
+    uint8_t has_centre; /* 1812 */
+    uint8_t _pad2[43];  /* 1813 */
 } game_fill_t;
-static_assert(sizeof(game_fill_t) == 1792);
+static_assert(sizeof(game_fill_t) == 1856);
+static_assert(offsetof(game_fill_t, jump_asked) == 1792);
 static_assert(alignof(game_fill_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(game_fill_t, ring_ns) == 64);
 static_assert(offsetof(game_fill_t, ring_columns) == 576);
@@ -90,6 +101,11 @@ void game_fill_reset(game_fill_t *fill);
  * using it. full_detail is the map's view radius. */
 void game_fill_start(game_fill_t *fill, game_fill_kind_t kind, uint32_t render_distance, uint32_t full_detail,
                      const render_t *render);
+
+/* Plan 006 phase 01: a teleport to the column (chunk_x, chunk_y) has just been taken, so the world must come in round it from nothing.
+ * Any thread: the thread that uploads starts a GAME_FILL_JUMP fill at its next game_fill_step, whose rings are round that column and
+ * whose clock starts then. A second ask before that replaces the first. Never waits. */
+void game_fill_jump_ask(game_fill_t *fill, int32_t chunk_x, int32_t chunk_y);
 
 /* After each round of uploads and far-field work, on the thread that did it. Says a line for each ring as it is first drawn, and one for
  * the fill once all of it is. Costs a look at every slot of the table while a fill goes on and the upload queue is between views, and

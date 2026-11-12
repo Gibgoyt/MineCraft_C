@@ -67,6 +67,45 @@ void player_movement_start(player_movement_t *movement, float64_t x, float64_t y
     movement->mode = PLAYER_MOVEMENT_MODE_AIR;
 }
 
+void player_movement_place(player_movement_t *movement, float64_t x, float64_t y, float64_t z) {
+    const uint8_t fly_step = movement->fly_step, speed_factor = movement->speed_factor;
+    const bool flying = movement->mode == PLAYER_MOVEMENT_MODE_FLY;
+    player_movement_start(movement, x, y, z);
+    movement->fly_step = fly_step;
+    movement->speed_factor = speed_factor;
+    movement->mode = flying ? PLAYER_MOVEMENT_MODE_FLY : movement->mode;
+}
+
+float64_t player_movement_fly_speed(const player_movement_t *movement) {
+    const uint32_t step = movement->fly_step != 0u ? movement->fly_step : PLAYER_MOVEMENT_FLY_STEP_DEFAULT;
+    float64_t speed = PLAYER_MOVEMENT_FLY_SPEED_MIN;
+    for (uint32_t i = 1u; i < step; i++) {
+        speed *= PLAYER_MOVEMENT_FLY_SPEED_STEP;
+    }
+    return speed > PLAYER_MOVEMENT_FLY_SPEED_MAX ? PLAYER_MOVEMENT_FLY_SPEED_MAX : speed;
+}
+
+uint32_t player_movement_factor(const player_movement_t *movement) {
+    const uint32_t factor = movement->speed_factor;
+    return factor < PLAYER_MOVEMENT_FACTOR_MIN   ? PLAYER_MOVEMENT_FACTOR_MIN
+           : factor > PLAYER_MOVEMENT_FACTOR_MAX ? PLAYER_MOVEMENT_FACTOR_MAX
+                                                 : factor;
+}
+
+void player_movement_fly_wheel(player_movement_t *movement, int32_t steps) {
+    int64_t step = movement->fly_step != 0u ? movement->fly_step : PLAYER_MOVEMENT_FLY_STEP_DEFAULT;
+    step += steps;
+    step = step < 1 ? 1 : (step > PLAYER_MOVEMENT_FLY_STEP_MOST ? PLAYER_MOVEMENT_FLY_STEP_MOST : step);
+    movement->fly_step = (uint8_t)step;
+}
+
+void player_movement_fly_set(player_movement_t *movement, bool flying) {
+    memset(movement->velocity, 0, sizeof(movement->velocity));
+    movement->fall_distance = 0.0f64;
+    movement->landed_fall = 0.0f64;
+    movement->mode = flying ? PLAYER_MOVEMENT_MODE_FLY : PLAYER_MOVEMENT_MODE_AIR;
+}
+
 void player_movement_box(const float64_t position[3], float64_t height, collision_box_t *out) {
     const float64_t half = PLAYER_MOVEMENT_WIDTH * 0.5f64;
     *out = (collision_box_t){
@@ -217,8 +256,9 @@ static void movement_move(player_movement_t *movement, physics_t *physics, const
 
 static void movement_tick_fluid(player_movement_t *movement, physics_t *physics, const world_map_t *map,
                                 const player_intent_t *intent, const movement_wish_t *wish, float64_t drag) {
-    movement->velocity[0] += wish->x * MOVEMENT_FLUID_ACCELERATION;
-    movement->velocity[1] += wish->y * MOVEMENT_FLUID_ACCELERATION;
+    const float64_t push = MOVEMENT_FLUID_ACCELERATION * (float64_t)player_movement_factor(movement);
+    movement->velocity[0] += wish->x * push;
+    movement->velocity[1] += wish->y * push;
     movement->velocity[2] += intent->jump != 0u ? MOVEMENT_FLUID_RISE : 0.0f64;
     movement->velocity[2] -= intent->sneak != 0u ? MOVEMENT_FLUID_RISE : 0.0f64;
     const float64_t tried_x = movement->velocity[0], tried_y = movement->velocity[1];
@@ -292,7 +332,8 @@ static void movement_tick_land(player_movement_t *movement, physics_t *physics, 
     const bool on_ground = movement->on_ground != 0u;
     const bool crouched = movement->crouched != 0u, sprinting = movement->sprinting != 0u;
     const float64_t pace = crouched ? MOVEMENT_CROUCH_FACTOR : (sprinting ? MOVEMENT_SPRINT_FACTOR : 1.0f64);
-    const float64_t push = (on_ground ? MOVEMENT_GROUND_ACCELERATION : MOVEMENT_AIR_ACCELERATION) * pace;
+    const float64_t push = (on_ground ? MOVEMENT_GROUND_ACCELERATION : MOVEMENT_AIR_ACCELERATION) * pace *
+                           (float64_t)player_movement_factor(movement);
     movement->velocity[0] += wish->x * push;
     movement->velocity[1] += wish->y * push;
     if (!climbing && (wind_u != 0.0f64 || wind_v != 0.0f64)) {
@@ -326,6 +367,23 @@ static void movement_tick_land(player_movement_t *movement, physics_t *physics, 
     movement->velocity[2] = (movement->velocity[2] - MOVEMENT_GRAVITY) * MOVEMENT_AIR_DRAG_Z;
 }
 
+/* Plan 006 phase 01: flying. It goes where it is told at the fly speed times the factor, twice that with Ctrl, and stops when let go:
+ * no gravity, no inertia, and no fall. Blocks stop it, as unloaded columns do. */
+static void movement_tick_fly(player_movement_t *movement, physics_t *physics, const world_map_t *map,
+                              const player_intent_t *intent, const movement_wish_t *wish) {
+    const float64_t per_tick = player_movement_fly_speed(movement) * (float64_t)player_movement_factor(movement) *
+                               (intent->sprint != 0u ? 2.0f64 : 1.0f64) / (float64_t)MC_GAME_TICK_HZ;
+    movement->velocity[0] = wish->x / MOVEMENT_INPUT_SCALE * per_tick;
+    movement->velocity[1] = wish->y / MOVEMENT_INPUT_SCALE * per_tick;
+    movement->velocity[2] = (float64_t)((intent->jump != 0u ? 1 : 0) - (intent->sneak != 0u ? 1 : 0)) * per_tick;
+    collision_move_t moved;
+    movement_move(movement, physics, map, wish->height, false, &moved);
+    memset(movement->velocity, 0, sizeof(movement->velocity));
+    movement->fall_distance = 0.0f64;
+    movement->landed_fall = 0.0f64;
+    movement->sprinting = 0u;
+}
+
 static void movement_wish_make(const player_intent_t *intent, float64_t height, movement_wish_t *out) {
     out->forward_x = (float64_t)cosf(intent->yaw);
     out->forward_y = (float64_t)sinf(intent->yaw);
@@ -356,6 +414,16 @@ void player_movement_tick_wind(player_movement_t *movement, physics_t *physics, 
         return;
     }
     movement->waiting_for_column = 0u;
+    if (movement->mode == PLAYER_MOVEMENT_MODE_FLY) {
+        /* Flying stands tall, and Shift is down, not a crouch. */
+        movement->crouched = 0u;
+        movement_wish_t wish;
+        movement_wish_make(intent, PLAYER_MOVEMENT_HEIGHT_STANDING, &wish);
+        movement_tick_fly(movement, physics, map, intent, &wish);
+        movement->eyes_under_water = movement_touches(movement, map, PLAYER_MOVEMENT_HEIGHT_STANDING).eyes_water;
+        movement->eye_height += (PLAYER_MOVEMENT_EYE_STANDING - movement->eye_height) * MOVEMENT_EYE_EASE;
+        return;
+    }
 
     /* Still crouched for as long as there is no room to stand. */
     collision_box_t standing;

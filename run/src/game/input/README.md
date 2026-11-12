@@ -17,4 +17,4 @@
 - `game_screen_sim`, `game_has_screens`, `game_screen_input`, `game_screen_up`: what the game screens are told of the sim, whether a game has them, and a poll's input for them. Moved here from `game/index.c` when plan 004 phase 08 took that file past 1500 lines again.
 
 **May be called by:** `run/src/game/` and its callers.
-**Depends on:** `game`'s header, `game/view`, `game/atlas` (the Atlas has a poll's input before the game screens, and is one of them for Esc), `input`, `display/headless`, `player`, `item`, `ui` (the screens), `time`.
+**Depends on:** `game`'s header, `game/view`, `game/command` (plan 006 phase 01: the command box has a poll's input before the Atlas, and is the first screen for Esc), `game/atlas` (the Atlas has a poll's input before the game screens, and is one of them for Esc), `input`, `display/headless`, `player`, `item`, `ui` (the screens), `time`.

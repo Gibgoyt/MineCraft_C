@@ -7,7 +7,11 @@
 **Threads:** `game_fill_step` is the gpu thread's, after each round of uploads and far-field work, or main's in `game_settle` with no threads. `game_fill_start` runs with neither thread going: in `game_open`, and in `game_reconfigure` between the stop and the start. The five times at the top are atomics, written with release once each per fill, so a test or a bench on main can watch them while the threads run.
 **Public functions** (`run/include/game/fill/index.h`):
 
-- `game_fill_reset`, `game_fill_start`: nothing going on; a fill from now, of a kind (`GAME_FILL_OPEN`, `GAME_FILL_CHANGE`). A fill cut short by the next is kept as it got, with `done` never.
+- `game_fill_reset`, `game_fill_start`: nothing going on; a fill from now, of a kind (`GAME_FILL_OPEN`, `GAME_FILL_CHANGE`, `GAME_FILL_JUMP`). A fill cut short by the next is kept as it got, with `done` never.
+- `game_fill_jump_ask`: plan 006 phase 01: a teleport to a column has just been taken. Any thread asks (the sim for a body, main
+  for a test world's flying eye); the thread that uploads starts a `GAME_FILL_JUMP` fill at its next `game_fill_step`, with its
+  rings round that column rather than the window's middle, so what the window still holds round the old place never counts, and
+  its clock from then. `started_ns` is atomic now, as a jump's fill starts with the sim running and the sim reads it.
 - `game_fill_step`: the work, and the log lines.
 - `game_fill_summary`: the fill going now, as far as it has got.
 - `game_fill_report`: the end-of-session lines, from `game_report`, with how many sim steps a column waited for its climate tiles (`climate_waits`, which the sim adds to in `game_columns_request`).

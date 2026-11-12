@@ -375,7 +375,7 @@ TEST(a_file_is_these_bytes_by_hand) {
     memcpy(expected + 24, &table_hash, 8u);
     const uint64_t sections_bytes = whole - 72u;
     memcpy(expected + 32, &sections_bytes, 8u);
-    const uint32_t version = 6u, header_bytes = 72u, section_count = 3u;
+    const uint32_t version = 7u, header_bytes = 72u, section_count = 3u;
     memcpy(expected + 48, &version, 4u);
     memcpy(expected + 52, &header_bytes, 4u);
     memcpy(expected + 56, &section_count, 4u);

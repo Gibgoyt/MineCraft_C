@@ -6,6 +6,7 @@
 #include "entity/animation/index.h"
 #include "game/atlas/index.h"
 #include "game/census/index.h"
+#include "game/command/index.h"
 #include "game/corner/index.h"
 #include "game/cover/index.h"
 #include "game/fill/index.h"
@@ -18,6 +19,7 @@
 #include "render/entities/index.h"
 #include "tables/blocks/index.h"
 #include "time/index.h"
+#include "ui/command/index.h"
 #include "world/light/column/index.h"
 
 #include <inttypes.h>
@@ -34,16 +36,19 @@ typedef struct game_world_parts_t {
     game_cover_t cover;                       /* 58816 */
     uint8_t _pad0[56];                        /* 58888 */
     game_corner_t corner;                     /* 58944: the sim writes it, main reads its words */
-    game_fill_t fill;                         /* 59136: whichever thread uploads writes it (plan 005 phase 14) */
-    game_watch_t watch;                       /* 60928: plan 005 phase 7's overlay numbers and slow lines */
+    game_fill_t fill;                         /* 59200: whichever thread uploads writes it (plan 005 phase 14) */
+    game_watch_t watch;                       /* 61056: plan 005 phase 7's overlay numbers and slow lines */
+    game_command_t command;                   /* 61248: plan 006 phase 01's command box, main's */
+    uint8_t _pad1[56];                        /* 63112 */
 } game_world_parts_t;
-static_assert(sizeof(game_world_parts_t) == 61120);
-static_assert(offsetof(game_world_parts_t, fill) == 59136);
+static_assert(sizeof(game_world_parts_t) == 63168);
+static_assert(offsetof(game_world_parts_t, fill) == 59200);
 static_assert(offsetof(game_world_parts_t, jobs) == 0);
 static_assert(offsetof(game_world_parts_t, weather) == 8192);
 static_assert(offsetof(game_world_parts_t, cover) == 58816);
 static_assert(offsetof(game_world_parts_t, corner) == 58944);
-static_assert(offsetof(game_world_parts_t, watch) == 60928);
+static_assert(offsetof(game_world_parts_t, watch) == 61056);
+static_assert(offsetof(game_world_parts_t, command) == 61248);
 
 enum : uint64_t {
     /* Budgets of the two arenas with a lifetime shorter than a world's. */
@@ -139,6 +144,10 @@ game_fill_t *game_fill_of(const game_t *game) {
 
 game_watch_t *game_watch_of(const game_t *game) {
     return game->borrowed_jobs != nullptr ? &((game_world_parts_t *)(void *)game->borrowed_jobs)->watch : nullptr;
+}
+
+game_command_t *game_command_of(const game_t *game) {
+    return game->borrowed_jobs != nullptr ? &((game_world_parts_t *)(void *)game->borrowed_jobs)->command : nullptr;
 }
 
 static climate_t *game_climate(const game_t *game) {
@@ -620,6 +629,8 @@ bool game_open(game_t *game, const game_config_t *config) {
     game_corner_start(&world_parts->corner);
     game_fill_reset(&world_parts->fill);
     game_watch_start(&world_parts->watch);
+    game_command_start(&world_parts->command);
+    memset(world_parts->_pad1, 0, sizeof(world_parts->_pad1));
     const terrain_t *const terrain = game->borrowed_terrain;
     for (uint32_t i = 0u; i < GAME_STREAM_JOBS; i++) {
         game_column_job_t *const job = &game->borrowed_jobs[i];
@@ -1046,8 +1057,8 @@ static bool game_columns_leave_far_room(const game_t *game) {
     }
     const uint32_t workers = job_priority_cap(system, JOB_PRIORITY_NORMAL);
     const game_fill_t *const fill = game_fill_of(game);
-    /* started_ns is written only while the threads are stopped. */
-    const bool horizon = fill->started_ns != 0 && time_now_ns() - fill->started_ns < GAME_FAR_HORIZON_NS;
+    const int64_t started_ns = atomic_load_explicit(&fill->started_ns, memory_order_relaxed);
+    const bool horizon = started_ns != 0 && time_now_ns() - started_ns < GAME_FAR_HORIZON_NS;
     const uint32_t far_cap = job_priority_cap(system, JOB_PRIORITY_FAR);
     const uint32_t room = horizon ? far_cap : (far_cap + 1u) / 2u;
     const uint32_t share = workers > room ? workers - room : 1u;
@@ -1244,13 +1255,14 @@ static const uint8_t *game_hud_compose(game_t *game, const uint8_t *drawn) {
     ui_t *const ui = game->borrowed_ui;
     const bool walking = game->borrowed_player != nullptr;
     const bool screen_up = game_has_screens(game) && ui_screen_up(ui);
+    const bool command_up = game_command_up(game);
     const uint8_t *const picture = game_picture_full(game, drawn);
     if (ui != nullptr && game_atlas_up(game)) {
         return game_atlas_compose(game, picture);
     }
     /* Flying shows the date only when asked for it, as --test-world --day-of-year does: every other flying picture stays as it was. */
     const bool date_flying = !walking && game->config.show_date != 0u;
-    if (ui == nullptr || (!walking && game->hud_debug == 0u && !screen_up && !date_flying)) {
+    if (ui == nullptr || (!walking && game->hud_debug == 0u && !screen_up && !date_flying && !command_up)) {
         return picture;
     }
     if (!ui_frame_begin_over(ui, picture, game->config.width, game->config.height)) {
@@ -1281,10 +1293,20 @@ static const uint8_t *game_hud_compose(game_t *game, const uint8_t *drawn) {
         ui_hud_debug_t debug;
         game_hud_debug_read(game, &debug);
         ui_hud_debug_draw(&ui->canvas, &ui->font, &debug);
+        if (walking) {
+            /* Plan 006 phase 01: the tuning lines, under the overlay. */
+            char lines[GAME_CORNER_TUNING_LINES][GAME_CORNER_TUNING_BYTES];
+            game_corner_tuning_read(game, lines);
+            const char *const shown[GAME_CORNER_TUNING_LINES] = {lines[0], lines[1], lines[2]};
+            const ui_rect_t panel = ui_hud_debug_panel(ui->canvas.width, ui->canvas.height);
+            (void)ui_command_lines_draw(&ui->canvas, &ui->font, panel.x, panel.y + panel.height, shown,
+                                        lines[1][0] != '\0' ? GAME_CORNER_TUNING_LINES : 1u);
+        }
     }
     if (screen_up) {
         ui_screen_draw(ui);
     }
+    game_command_draw(game);
     return ui_frame_end(ui, screen_up);
 }
 

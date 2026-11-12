@@ -69,8 +69,29 @@ typedef struct game_corner_t {
     uint8_t _pad0[14];      /* 50 */
     job_group_t group;      /* 64: the warning's job, so whoever closes the world can wait for it */
     game_corner_job_t job;  /* 128 */
+    /* 192: plan 006 phase 01's F3 tuning lines, the sim's on the climate line's beat, main's to read, relaxed as the rest. Temperatures
+     * in tenths of a degree, each an int16_t in its half of a word. */
+    _Atomic uint32_t
+        tuning_kinds; /* 192: biome id bits 0-7, family bits 8-15, class bits 16-23, GAME_CORNER_TUNING_* 24-31 */
+    _Atomic uint32_t tuning_year;    /* 196: the yearly mean low, the warmest month high */
+    _Atomic uint32_t tuning_cold;    /* 200: the coldest month low, today's mean high */
+    _Atomic int32_t tuning_z;        /* 204: the height they are at, above the sea */
+    _Atomic uint32_t tuning_rain;    /* 208: mm a year low, the driest month's mm high, each held to 65535 */
+    _Atomic int32_t tuning_snowline; /* 212: blocks above the sea, or 9999 for none */
+    uint64_t tuning_tick;            /* 216: the sim's: the tick they were last worked out on */
+    uint8_t _pad1[32];               /* 224 */
 } game_corner_t;
-static_assert(sizeof(game_corner_t) == 3u * MC_CPU_CACHE_LINE_BYTES);
+static_assert(sizeof(game_corner_t) == 4u * MC_CPU_CACHE_LINE_BYTES);
+static_assert(offsetof(game_corner_t, tuning_kinds) == 3u * MC_CPU_CACHE_LINE_BYTES);
+
+enum : uint32_t {
+    GAME_CORNER_TUNING_NONE = 0u,     /* nothing worked out yet, or no climate at all */
+    GAME_CORNER_TUNING_CLIMATE = 1u,  /* from the climate's tiles */
+    GAME_CORNER_TUNING_FALLBACK = 2u, /* from phase 02's fallback climate: a test world */
+    GAME_CORNER_TUNING_LINES = 3u,
+    GAME_CORNER_TUNING_BYTES =
+        160u, /* one line, with its NUL: the longest is under 90, and the compiler counts every number at its widest */
+};
 static_assert(offsetof(game_corner_t, hud_warning) == 16);
 static_assert(offsetof(game_corner_t, group) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(game_corner_t, job) == 2u * MC_CPU_CACHE_LINE_BYTES);
@@ -119,6 +140,18 @@ void game_hud_climate_publish(game_t *game, bool force);
  * the date with the season once worked out (else phase 01's season), if show_date is on; line 2 the climate line if its bit is on
  * and it was ever worked out; line 3 the warning if its bit is on and there is one. Never waits. */
 void game_hud_corner_read(const game_t *game, ui_hud_corner_t *out);
+
+/* Plan 006 phase 01, the sim's, from game_hud_publish each tick: on the climate line's beat, the biome at the feet, the family the
+ * climate there would give (plan 006 master 2.4, the classes worked out at the feet's own height), the cell's class, and the normals at
+ * the feet's height: yearly, warmest and coldest month and today's temperature, the year's rain, the driest month and the snowline. A
+ * value whose tile is not built yet keeps the last. With no climate, only the biome, and "(no climate)". */
+void game_corner_tuning_publish(game_t *game);
+
+/* Main's: the three tuning lines from the words, for under the F3 overlay. Never waits. */
+void game_corner_tuning_read(const game_t *game, char lines[GAME_CORNER_TUNING_LINES][GAME_CORNER_TUNING_BYTES]);
+
+/* The name of a climate class or family, "Sea" for none. */
+const char *game_corner_class_name(uint32_t climate_class);
 
 /* Main's, while walking, after a notice and before F3, on the game's ui canvas: the coordinates top left (if show_coordinates is on
  * and F3 is not up, as the overlay has them too), then the top right corner from game_hud_corner_read, clear of whichever top-left

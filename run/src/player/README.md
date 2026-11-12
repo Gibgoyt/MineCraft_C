@@ -25,6 +25,12 @@
 - `player_eyes_under_water_read`: the thread that draws asks whether the eyes were under water as of the last tick.
 - `player_eye_at`: main asks where to draw the eye right now.
 - `player_target_view`: main asks what that tick aimed at, to draw its outline.
+- `player_command_send`, `player_command_take`: plan 006 phase 01's mailbox: main sends one command (a teleport, fly mode on or
+  off, a speed factor) and the sim takes it first in its tick. A teleport is each axis a place or a step from the feet, which the
+  sim adds to its own position, so `/tp ~ ~ ~300` keeps x and y to the bit; held to `PLAYER_COMMAND_PLACE_MOST` across and the
+  gameplay heights; done with `player_movement_place`, so nothing is drawn smeared between; then the body arrives
+  (`player_survival_arrive`, from `player_tick`). Refused by a body that is dead or asleep.
+- `player_fly_wheel_send`, `player_flight_read`: main's wheel while flying, and flying, what it flies at and the factor, back.
 
 **May be called by:** `run/src/main/` for the pair, `run/src/game/` for the rest, and `run/src/save/state/` to read and write it.
 **Depends on:** `entity/store` for what its part aims at, `physics`, `world/map`, `render/frame` for the exchange, `machine`, and its part below.
@@ -42,6 +48,9 @@ A body moves only in `player_tick`, at `game.tick_hz` from `config/machine.yaml`
 | `main` to `sim` | The newest yaw and pitch, in one word, so that they stay a pair | The same |
 | `main` to `sim` | The two buttons held now, and those pressed since the last tick, so that a quick click is not lost between two | The same |
 | `sim` to `main` | The body's health, in one word | The same |
+| `main` to `sim` | Plan 006 phase 01: one command at a time, a teleport's target and its word | A mailbox of one: main writes the target only while the word is 0 (acquire), then the word (release); the sim reads the target after the word (acquire), then puts 0 back (release). A second command while the first waits is refused, and the box says to try again |
+| `main` to `sim` | Wheel steps while flying | A relaxed add; the sim takes them with an exchange |
+| `sim` to `main` | Flying, what it flies at and the speed factor, in one word, for the HUD | Relaxed, as the health |
 | `sim` to `main` | Each tick's eye, then and now, when it was due, and what it aims at | A triple buffer: `render_exchange_t` |
 
 Neither thread ever waits for the other.

@@ -2,6 +2,8 @@
  * moves is in movement/. */
 #include "player/index.h"
 
+#include "world/column/index.h"
+
 #include <string.h>
 
 enum : uint32_t {
@@ -88,6 +90,13 @@ void player_vitals_publish(player_t *player) {
                                                                            : (uint8_t)armor;
     atomic_store_explicit(&player->armor_points, points, memory_order_relaxed);
     atomic_store_explicit(&player->eyes_under_water, player->movement.eyes_under_water, memory_order_relaxed);
+    const player_movement_t *const movement = &player->movement;
+    const uint32_t flight =
+        (movement->mode == PLAYER_MOVEMENT_MODE_FLY ? (uint32_t)PLAYER_FLIGHT_FLYING : 0u) |
+        (uint32_t)(player_movement_fly_speed(movement) * (float64_t)player_movement_factor(movement) + 0.5f64)
+            << PLAYER_FLIGHT_SPEED_SHIFT |
+        player_movement_factor(movement) << PLAYER_FLIGHT_FACTOR_SHIFT;
+    atomic_store_explicit(&player->flight_word, flight, memory_order_relaxed);
 }
 
 void player_spawn(player_t *player, float64_t x, float64_t y, float64_t z) {
@@ -111,6 +120,103 @@ void player_spawn(player_t *player, float64_t x, float64_t y, float64_t z) {
     atomic_store_explicit(&player->hands_latch, 0u, memory_order_relaxed);
     player_interaction_start(&player->interaction, PLAYER_DROP_SEED);
     player_combat_start(&player->combat);
+    atomic_store_explicit(&player->command_word, 0u, memory_order_relaxed);
+    atomic_store_explicit(&player->fly_wheel, 0, memory_order_relaxed);
+    player->teleports = 0u;
+}
+
+bool player_command_send(player_t *player, player_command_kind_t kind, const float64_t target[3], uint32_t relative,
+                         uint32_t argument) {
+    /* Acquire: the sim has finished reading the last target before it put 0 back. */
+    if (atomic_load_explicit(&player->command_word, memory_order_acquire) != 0u) {
+        return false;
+    }
+    for (uint32_t a = 0u; a < 3u; a++) {
+        player->command_target[a] = target != nullptr ? target[a] : 0.0f64;
+    }
+    const uint32_t word =
+        (uint32_t)kind |
+        (relative & (PLAYER_COMMAND_RELATIVE_X | PLAYER_COMMAND_RELATIVE_Y | PLAYER_COMMAND_RELATIVE_Z)) |
+        (argument & 0xFFFFu) << PLAYER_COMMAND_ARGUMENT_SHIFT;
+    /* Release: the target goes with the word. */
+    atomic_store_explicit(&player->command_word, word, memory_order_release);
+    return true;
+}
+
+void player_fly_wheel_send(player_t *player, int32_t steps) {
+    atomic_fetch_add_explicit(&player->fly_wheel, steps, memory_order_relaxed);
+}
+
+void player_flight_read(const player_t *player, bool *out_flying, uint32_t *out_speed, uint32_t *out_factor) {
+    const uint32_t flight = atomic_load_explicit(&player->flight_word, memory_order_relaxed);
+    *out_flying = (flight & PLAYER_FLIGHT_FLYING) != 0u;
+    *out_speed = (flight >> PLAYER_FLIGHT_SPEED_SHIFT) & 0xFFFFu;
+    *out_factor = flight >> PLAYER_FLIGHT_FACTOR_SHIFT;
+}
+
+static float64_t player_clamp(float64_t value, float64_t low, float64_t high) {
+    return value < low ? low : (value > high ? high : value);
+}
+
+/* Where a teleport puts the feet: each axis a place or a step from where they are now, then held inside the world. */
+static void player_teleport_target(const player_t *player, uint32_t word, float64_t out[3]) {
+    const uint32_t relative[3] = {PLAYER_COMMAND_RELATIVE_X, PLAYER_COMMAND_RELATIVE_Y, PLAYER_COMMAND_RELATIVE_Z};
+    for (uint32_t a = 0u; a < 3u; a++) {
+        const float64_t value = player->command_target[a];
+        out[a] = (word & relative[a]) != 0u ? player->movement.position[a] + value : value;
+    }
+    out[0] = player_clamp(out[0], -PLAYER_COMMAND_PLACE_MOST, PLAYER_COMMAND_PLACE_MOST);
+    out[1] = player_clamp(out[1], -PLAYER_COMMAND_PLACE_MOST, PLAYER_COMMAND_PLACE_MOST);
+    out[2] = player_clamp(out[2], (float64_t)COLUMN_Z_GAMEPLAY_MIN, (float64_t)COLUMN_Z_GAMEPLAY_MAX);
+}
+
+player_command_kind_t player_command_take(player_t *player) {
+    player_movement_t *const movement = &player->movement;
+    const int32_t wheel = atomic_exchange_explicit(&player->fly_wheel, 0, memory_order_relaxed);
+    if (wheel != 0 && movement->mode == PLAYER_MOVEMENT_MODE_FLY) {
+        player_movement_fly_wheel(movement, wheel);
+    }
+    const uint32_t word = atomic_load_explicit(&player->command_word, memory_order_acquire);
+    if (word == 0u) {
+        return PLAYER_COMMAND_NONE;
+    }
+    const player_command_kind_t kind = (player_command_kind_t)(word & 0xFFu);
+    float64_t target[3];
+    player_teleport_target(player, word, target);
+    const uint32_t argument = word >> PLAYER_COMMAND_ARGUMENT_SHIFT;
+    /* Release: main may write the next target once it sees this. */
+    atomic_store_explicit(&player->command_word, 0u, memory_order_release);
+    player_survival_t *const survival = &player->survival;
+    switch (kind) {
+    case PLAYER_COMMAND_TP_EXACT:
+    case PLAYER_COMMAND_TP_GROUND: {
+        if (survival->state != PLAYER_SURVIVAL_ALIVE || survival->placing != 0u) {
+            return PLAYER_COMMAND_NONE;
+        }
+        player_movement_place(movement, target[0], target[1], target[2]);
+        player_survival_arrive_begin(survival, kind == PLAYER_COMMAND_TP_GROUND ? PLAYER_SURVIVAL_ARRIVE_GROUND
+                                                                                : PLAYER_SURVIVAL_ARRIVE_EXACT);
+        player->teleports++;
+        player_vitals_publish(player);
+        return kind;
+    }
+    case PLAYER_COMMAND_FLY:
+        if (survival->state != PLAYER_SURVIVAL_ALIVE) {
+            return PLAYER_COMMAND_NONE;
+        }
+        player_movement_fly_set(movement, movement->mode != PLAYER_MOVEMENT_MODE_FLY);
+        player_vitals_publish(player);
+        return kind;
+    case PLAYER_COMMAND_SPEED:
+        if (argument < PLAYER_MOVEMENT_FACTOR_MIN || argument > PLAYER_MOVEMENT_FACTOR_MAX) {
+            return PLAYER_COMMAND_NONE;
+        }
+        movement->speed_factor = (uint8_t)argument;
+        player_vitals_publish(player);
+        return kind;
+    default:
+        return PLAYER_COMMAND_NONE;
+    }
 }
 
 void player_look_send(player_t *player, float32_t yaw, float32_t pitch) {
@@ -294,6 +400,8 @@ void player_tick(player_t *player, const world_map_t *map, int64_t tick_ns) {
 }
 
 void player_tick_wind(player_t *player, const world_map_t *map, int64_t tick_ns, float32_t wind_u, float32_t wind_v) {
+    /* Plan 006 phase 01: a teleported body stands once its ground is there, before it moves. */
+    player_survival_arrive(&player->survival, &player->movement, player->borrowed_physics, map);
     player_intent_t intent = player_intent_unpack(atomic_load_explicit(&player->intent_word, memory_order_relaxed));
     const uint32_t latched = atomic_exchange_explicit(&player->jump_latch, 0u, memory_order_relaxed);
     intent.jump = intent.jump != 0u || latched != 0u ? 1u : 0u;

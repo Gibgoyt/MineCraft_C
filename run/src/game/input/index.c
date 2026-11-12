@@ -2,6 +2,7 @@
 #include "game/index.h"
 
 #include "game/atlas/index.h"
+#include "game/command/index.h"
 #include "game/view/index.h"
 #include "time/index.h"
 
@@ -40,6 +41,19 @@ void game_hotbar_send(game_t *game, const bool keys[INVENTORY_HOTBAR_SLOTS], int
         if (keys[slot]) {
             item_hotbar_send(item, slot);
         }
+    }
+    /* Plan 006 phase 01: flying, the wheel is the fly speed, and the hotbar stays. */
+    bool flying = false;
+    uint32_t speed = 0u, factor = 0u;
+    if (game->borrowed_player != nullptr) {
+        player_flight_read(game->borrowed_player, &flying, &speed, &factor);
+    }
+    if (flying) {
+        const int64_t held = wheel > 64 ? 64 : (wheel < -64 ? -64 : wheel);
+        if (held != 0) {
+            player_fly_wheel_send(game->borrowed_player, (int32_t)held);
+        }
+        return;
     }
     /* Round the ends comes to the same, so that a wheel never overflows what it goes through. */
     item_hotbar_scroll_send(item, -(int32_t)(wheel % (int64_t)INVENTORY_HOTBAR_SLOTS));
@@ -186,6 +200,9 @@ bool game_has_screens(const game_t *game) {
 }
 
 bool game_screen_input(game_t *game, const input_frame_t *frame) {
+    if (game_command_input(game, frame)) {
+        return true; /* plan 006 phase 01: the command box has the keys: the body stands, and the world goes on */
+    }
     if (game_atlas_input(game, frame)) {
         return true; /* the Atlas has the input: the body stands, and the world goes on */
     }
@@ -196,5 +213,6 @@ bool game_screen_input(game_t *game, const input_frame_t *frame) {
 }
 
 bool game_screen_up(game_t *game) {
-    return game_atlas_up(game) || (game_has_screens(game) && ui_screen_up(game->borrowed_ui));
+    /* The command box first: Esc closes it before anything else sees Esc (plan 006 phase 01). */
+    return game_command_up(game) || game_atlas_up(game) || (game_has_screens(game) && ui_screen_up(game->borrowed_ui));
 }

@@ -8,6 +8,10 @@
 **Public functions** (`run/include/player/movement/index.h`):
 
 - `player_movement_start`: a body at rest at a place.
+- `player_movement_place`: the same body put at a place at rest, keeping the player's settings: the fly speed, the speed factor
+  and fly mode (plan 006 phase 01: teleports, a respawn, getting out of bed).
+- `player_movement_fly_set`, `player_movement_fly_speed`, `player_movement_fly_wheel`, `player_movement_factor`: plan 006
+  phase 01's fly mode (`PLAYER_MOVEMENT_MODE_FLY`), its speed on the wheel and `/speed`'s factor.
 - `player_movement_box`: its box at a place, for a height.
 - `player_movement_tick`: one tick from an intent.
 - `player_movement_tick_wind`: the same in a wind (plan 004 phase 08); `player_movement_tick` is this with no wind, to the byte.
@@ -37,6 +41,13 @@ Per-tick numbers at 20 Hz, chosen to give these speeds, which are Minecraft's pu
 | Wind | Walking into a hurricane, with it | 2.3, 6.3 blocks/s |
 | Wind | Behind a solid block within 3 upwind, at feet or head | A quarter: 0.5 blocks/s in the hurricane |
 | Wind | In the air; in water, lava or climbing | A fifth of the push; none |
+| Fly (plan 006 phase 01) | Speed | 10 x 1.25^(step - 1) blocks/s, steps 1 to 22 on the wheel held to 10 to 1000, 116 by default (step 0 is 12); Ctrl doubles it; it stops when let go: no gravity, no inertia, no fall, standing height |
+| `/speed N` | Walking, swimming, flying | N times the push, so N times the steady speed, N from 1 to 10 (0 in a file is 1); jumping and falling are not changed |
+
+**Fly mode.** `mode` stays `PLAYER_MOVEMENT_MODE_FLY` from tick to tick, as the touches never set it; `player_movement_fly_set`
+turns it on and off, and off starts the fall at 0 from where it is. Space goes up and Shift down; blocks and unloaded columns
+stop it as they stop walking. `fly_step` and `speed_factor` are in the two bytes that were padding, so a file from before reads
+as walking at the default speed with a factor of 1.
 
 The body is 0.6 wide and 1.8 tall, 1.5 crouched, with its eyes at 1.62 and 1.27. It stays crouched where there is no room to stand up.
 

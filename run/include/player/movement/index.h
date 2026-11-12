@@ -22,7 +22,20 @@ typedef enum player_movement_mode_t : uint8_t {
     PLAYER_MOVEMENT_MODE_WATER = 2,
     PLAYER_MOVEMENT_MODE_LAVA = 3,
     PLAYER_MOVEMENT_MODE_CLIMB = 4,
+    PLAYER_MOVEMENT_MODE_FLY = 5, /* plan 006 phase 01: no gravity, no fall; Space up, Shift down */
 } player_movement_mode_t;
+
+/* Plan 006 phase 01: fly speed on the wheel, from 10 to 1000 blocks a second, a step of 1.25 each detent, as the test world's eye
+ * goes; and /speed's factor on walking and flying alike. */
+#define PLAYER_MOVEMENT_FLY_SPEED_MIN 10.0f64
+#define PLAYER_MOVEMENT_FLY_SPEED_MAX 1000.0f64
+#define PLAYER_MOVEMENT_FLY_SPEED_STEP 1.25f64
+enum : uint8_t {
+    PLAYER_MOVEMENT_FLY_STEP_DEFAULT = 12u, /* fly_step 0 means this: 10 x 1.25^11, 116 blocks a second */
+    PLAYER_MOVEMENT_FLY_STEP_MOST = 22u,    /* 10 x 1.25^21 is past 1000, which it is held to */
+    PLAYER_MOVEMENT_FACTOR_MIN = 1u,
+    PLAYER_MOVEMENT_FACTOR_MAX = 10u,
+};
 
 /* What the player wants for one tick, wherever it came from. */
 typedef struct player_intent_t {
@@ -51,7 +64,8 @@ typedef struct player_movement_t {
     uint8_t sprinting;          /* 107 */
     uint8_t eyes_under_water;   /* 108: for Stage 13.4 */
     uint8_t waiting_for_column; /* 109: its column is not loaded, so it has not moved */
-    uint8_t _pad0[2];           /* 110 */
+    uint8_t fly_step; /* 110: 1 to PLAYER_MOVEMENT_FLY_STEP_MOST, or 0 for the default; kept by player_movement_start */
+    uint8_t speed_factor; /* 111: /speed, 1 to 10, or 0 for 1; kept by player_movement_start */
 } player_movement_t;
 static_assert(sizeof(player_movement_t) == 112);
 
@@ -68,6 +82,22 @@ enum : uint32_t {
 
 /* A body standing still at this place, with its feet there. */
 void player_movement_start(player_movement_t *movement, float64_t x, float64_t y, float64_t z);
+
+/* Plan 006 phase 01: the same body put at this place, standing still, as player_movement_start does, but keeping what is the player's
+ * and not the body's: the fly speed, the speed factor, and fly mode. For a teleport, a respawn and standing up out of bed. */
+void player_movement_place(player_movement_t *movement, float64_t x, float64_t y, float64_t z);
+
+/* The fly speed, blocks a second, before the factor: 10 x 1.25^(step - 1), held to 1000. */
+float64_t player_movement_fly_speed(const player_movement_t *movement);
+
+/* /speed's factor, 1 to 10. */
+uint32_t player_movement_factor(const player_movement_t *movement);
+
+/* The wheel while flying: steps away from the player speed it up, each 1.25 times, held to 10 and 1000 blocks a second. */
+void player_movement_fly_wheel(player_movement_t *movement, int32_t steps);
+
+/* Fly mode on or off. Off, the body falls from where it is, its fall starting at 0. */
+void player_movement_fly_set(player_movement_t *movement, bool flying);
 
 /* The box of a body at this place, this tall. */
 void player_movement_box(const float64_t position[3], float64_t height, collision_box_t *out);

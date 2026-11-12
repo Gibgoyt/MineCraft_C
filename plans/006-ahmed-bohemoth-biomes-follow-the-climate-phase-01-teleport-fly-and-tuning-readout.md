@@ -1,6 +1,6 @@
 # 006-ahmed-bohemoth-biomes-follow-the-climate — phase 1: Teleport, fly and the tuning readout
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** built and tested; the whole debug suite and the release build are the last checks (updated 2026-11-12)
 
 Read first: `plans/006-ahmed-bohemoth-biomes-follow-the-climate-phase-00-vision-and-plan-files.md`, then the master `plans/006-ahmed-bohemoth-biomes-follow-the-climate.md` (sections 0, 2.6, 5 and 9). Every number here comes from the master. Where this file adds a number the master does not give, it says so and why.
 
@@ -170,24 +170,29 @@ This phase may edit these, plus this file:
 
 From the master (section 9, phase 01):
 
-- [ ] Find and fix the black world after a big jump (plan 004 phase 02 Issues found 14), with the three-jump test
-- [ ] `GAME_FILL_JUMP` in `run/src/game/fill/`
-- [ ] The command box overlay (`run/src/ui/command/`, `run/src/game/command/`): T and `/`, history, Esc, a red error line
-- [ ] The parser: every command in 2.6, a latitude preview, and the clamping
-- [ ] The teleport latch on `player_t`, its sim handler, `arriving` in survival (saved), and standing on the ground
-- [ ] `PLAYER_MOVEMENT_MODE_FLY` and `/fly`, with speed on the wheel and the HUD line
-- [ ] `/time day` and `/time hour`
-- [ ] The F3 tuning lines. Until phase 03 they show climate values and today's biome, which is useful as the "before"
-- [ ] Tests in 5 (teleport, black world, fly), including a headless script that types `/tp` commands as keys
-- [ ] READMEs, and `plans/REPO_STRUCTURE.md` for the new directories
+- [x] Find and fix the black world after a big jump (plan 004 phase 02 Issues found 14), with the three-jump test
+- [x] `GAME_FILL_JUMP` in `run/src/game/fill/`
+- [x] The command box overlay (`run/src/ui/command/`, `run/src/game/command/`): T and `/`, history, Esc, a red error line
+- [x] The parser: every command in 2.6, a latitude preview, and the clamping
+- [x] The teleport latch on `player_t`, its sim handler, `arriving` in survival (saved), and standing on the ground
+- [x] `PLAYER_MOVEMENT_MODE_FLY` and `/fly`, with speed on the wheel and the HUD line
+- [x] `/time day` and `/time hour`
+- [x] The F3 tuning lines. Until phase 03 they show climate values and today's biome, which is useful as the "before"
+- [x] Tests in 5 (teleport, black world, fly), including a headless script that types `/tp` commands as keys
+- [x] READMEs, and `plans/REPO_STRUCTURE.md` for the new directories
+
+Ahmed's addition, 2026-11-12:
+
+- [x] `/speed N`, N from 1 to 10, multiplies walking and flying speed by N; `/speed` alone says the factor; saved with the player;
+  on the HUD's flying line ("Flying · 580 b/s · speed 5x"), combined with `/fly`'s wheel speed
 
 Expanded:
 
-- [ ] Black world reproduced headless with a once-a-second log of `climate_waits`, columns generated and slot states; evidence in Issues found
-- [ ] Cause found (the early `return` at `run/src/game/index.c:1081-1086`, a stuck `CLAIMED`/`EVICTING` slot, or something else) and fixed
-- [ ] `player_t` latch added; the 2304-byte assert and every `offsetof` after it updated; build clean
-- [ ] `survival_arrive` / `survival_stand_at` reuse `survival_place`'s wait and `survival_stand_at_spawn`'s climb
-- [ ] `game_screen_up` closes the box on Esc before the pause menu
+- [x] Black world reproduced headless with a once-a-second log of `climate_waits`, columns generated and slot states; evidence in Issues found
+- [x] Cause found (the early `return` at `run/src/game/index.c:1081-1086`, a stuck `CLAIMED`/`EVICTING` slot, or something else) and fixed
+- [x] `player_t` latch added; the 2304-byte assert and every `offsetof` after it updated; build clean
+- [x] `survival_arrive` / `survival_stand_at` reuse `survival_place`'s wait and `survival_stand_at_spawn`'s climb
+- [x] `game_screen_up` closes the box on Esc before the pause menu
 - [ ] Every `run_terrain_*` pin unchanged
 - [ ] `standards_lint` and `clang_format` pass
 - [ ] The whole debug suite passes
@@ -246,4 +251,66 @@ Appended as they land:
 
 ## Issues found
 
-None.
+**1. The black world after a big jump (plan 004 phase 02, Issues found 14) is the test world's flying eye inside rock, not
+streaming stopping.**
+
+- **Reproduced:** release, `--test-world --headless --no-sound --day-of-year 171 --time-of-day 0.0 --render-distance 8`,
+  Ctrl at wheel 13 for 600 ticks, the eye at x 44918, y 31252, z 38: black, sky and all, `coarse 0.01 ms`, and 53627 columns
+  generated, then no more (plan 004 saw 53448). A log every 20 ticks (once a second) of the map, the stream and the card:
+  `ready 237 pending 0 active 237 leaving 0 cursor 197/197 quiet 1 jobs 0`, the render window centred on the eye's chunk,
+  7761 sections on the card, the pool not full, `climate_waits` 0 (a test world has no climate). Everything the eye's place
+  wants was loaded and on the card; nothing more was asked for because the eye stood still.
+- **Bisected:** due east to x 40353 (y 440): black; due north to y 40913: drawn (a jungle at 83.85 N, the mismatch this plan
+  is for). `--no-taa`, `--no-weather`, `--no-sky`, `--no-fog` and `--no-lod`: all black. One tick of Space, to z 580: the sky.
+- **Cause:** a test world's eye keeps the height it started at (z 38 here) and passes through blocks. East of about 30 km the
+  land rises over it, and the eye ends inside stone, where every ray starts in rock. No streaming fault, and neither suspect:
+  with a climate, the three-jump test below never waits long at the column gate, and no slot is seen stuck.
+- **Done:** nothing changed in streaming or the climate cache (master section 0's suspects were examined in the code and by the
+  test, and both are left as they are). What a teleport must not do is what Issue 14 looked like: `/tp` never leaves a body in
+  rock (`PLAYER_SURVIVAL_ARRIVE_EXACT` climbs to the first room), on the ground is from the world's top down, and fly mode
+  collides. A test world's eye is as it was: it flies through rock by design.
+- **The three-jump test** (`run_game_command`, release, render distance 6, a world through the menus with its climate, seed 7):
+  each `GAME_FILL_JUMP`'s nearest rings at 1.98, 0.10, 0.09, 0.11, 0.16 and 0.09 s (all rings by 2.52 s at worst), more columns
+  after every jump, the whole run 21 s. The first jump builds the climate's mask pages and tiles round a new place; the rest
+  land mostly on sea, which generates fast.
+
+**2. `player_t` grew to 2368 bytes, and main's frame was made smaller to fit.** The latch did not fit in the 2304: main's line
+(2048 to 2111) is full, and the only spare bytes were padding inside sub-structs the save writes whole. So a line of its own
+at 2304 holds the target, the word, the fly wheel and the flight word (sim to main). `app_t` went from 16128 to 16192, and the
+release link said main's frame was 16448 bytes against 16384; the options moved to a frame of their own
+(`main_with_options`, `[[gnu::noinline]]`), as `main_with_app` did for plan 004.
+
+**3. A mailbox of one, not "the latest wins".** Main writing a second target while the sim reads the first would be a data
+race. So main writes only while the word is 0 and the sim reads the target before putting 0 back; a second command in the same
+tick is refused with "Still on the way from the last one: try again". Typing takes far longer than a tick, so it is never seen
+by hand.
+
+**4. The save's version went from 6 to 7.** Fly mode (mode 5), the fly step and the factor are in `player_movement_t`'s two
+padding bytes, and `arriving` and its kind in `player_survival_t`'s padding: an old file has zeros there and reads as it was.
+An older build would call a flying body damage, so by the format's own rule the version goes up. `tests/run/save/state`'s
+file-by-hand pins the version, and moved from 6 to 7 with it.
+
+**5. Sizes that moved:** `game_fill_t` 1792 to 1856 (the jump's ask and its centre; `started_ns` is atomic now, as a jump's
+fill starts with the sim running, which reads it); `game_corner_t` 192 to 256 (the tuning words); `game_world_parts_t` 61120 to
+63168 (the command box, `game_command_t`, 1864 bytes). `run/src/game/index.c` is 1660 lines.
+
+**6. Choices the master left open, with what was built:**
+
+- The flying line is on the top right corner's line 0, which plan 004 left for a settlement's name. The speed it shows is what
+  the body flies at, the factor in: "Flying · 466 b/s · speed 4x" is 116 x 4 rounded. Walking with a factor shows "Speed 4x".
+- Fly speed is 10 x 1.25^(step - 1), steps 1 to 22 held to 10 and 1000 blocks a second, 116 by default; Ctrl doubles it.
+- `/time day N` and `/time hour H` only go forward, to the next day N or the next H o'clock, so the weekly census runs for each
+  week passed, as sleeping and `--climate-jump` do; going back would leave the census owing weeks it had already run.
+- The history (16) lasts as long as the world is open: its memory is the World arena's.
+- In a test world, which has no body, `/tp` moves the flying eye (on the ground means 3 blocks over `terrain_height_estimate`),
+  and `/fly` and `/speed` say the eye always flies. F3's tuning line there says `(no climate)` until phase 02's fallback.
+- `/speed`'s factor is the player's, not the body's: `player_movement_place` keeps it, the fly speed and fly mode through a
+  teleport; a respawn keeps the factor and lands on its feet, not flying. A new world starts at 1.
+
+**7. The "before" picture, as the tuning lines printed it on seed 7:** at 80008, 60008 a `frozen_river` biome in the Steppe
+class at a yearly 18.7 °C; at 40008, 30008 a `frozen_ocean` where the yearly mean is -14.3 °C (agreeing); in the test world a
+jungle at 83.85 N. Phase 03's gate reads these lines.
+
+**8. How the jumps are timed.** The test runs the session as `--menu --headless` does, ticks then draws, and each draw settles,
+so a jump's fill is timed in wall time from the tick the sim takes the teleport to the nearest rings on the card. At -O0 the
+bound is 120 s, where only that each jump's world comes is checked; the 15 s is checked in release, as the Verification runs it.

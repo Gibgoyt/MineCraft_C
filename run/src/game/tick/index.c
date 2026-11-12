@@ -5,6 +5,7 @@
 #include "climate/sun/index.h"
 #include "entity/animation/index.h"
 #include "game/corner/index.h"
+#include "game/fill/index.h"
 #include "game/watch/index.h"
 #include "game/weather/index.h"
 #include "item/stack/index.h"
@@ -729,6 +730,17 @@ void game_sim_tick(game_t *game, int64_t tick_ns) {
     }
     int64_t stage_ns[GAME_WATCH_TICK_STAGES] = {0};
     int64_t mark_ns = time_now_ns();
+    /* Plan 006 phase 01: what main's command box sent, first. A teleport starts a fill of its own, timed from here. */
+    if (game->borrowed_player != nullptr) {
+        const player_command_kind_t done = player_command_take(game->borrowed_player);
+        game_fill_t *const fill = game_fill_of(game);
+        if ((done == PLAYER_COMMAND_TP_EXACT || done == PLAYER_COMMAND_TP_GROUND) && fill != nullptr) {
+            const float64_t *const feet = game->borrowed_player->movement.position;
+            game_fill_jump_ask(fill, column_chunk_of((int32_t)floor(feet[0])),
+                               column_chunk_of((int32_t)floor(feet[1])));
+            game_hud_position_publish(game);
+        }
+    }
     /* Plan 004 phase 08: the weather where the eye is, before the body moves in its wind. */
     game_weather_tick(game, tick_ns);
     if (game->borrowed_player != nullptr) {
@@ -779,6 +791,7 @@ void game_sim_tick(game_t *game, int64_t tick_ns) {
     game_tick_lap(&mark_ns, stage_ns, GAME_WATCH_TICK_WORLD);
     game_entities_publish(game);
     game_hud_publish(game);
+    game_corner_tuning_publish(game); /* plan 006 phase 01: F3's tuning lines, on the climate line's beat */
     game->tick_count++;
     game_far_capture_tick(game);
     game_tick_lap(&mark_ns, stage_ns, GAME_WATCH_TICK_PUBLISH);
