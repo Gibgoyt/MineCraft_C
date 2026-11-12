@@ -42,7 +42,7 @@ Two things are true when this phase is done:
 | Coarse | `traverse_coarse_kernel`, `cuda/src/traverse/index.cu:146-217` | Phase 05: far stretches test the pyramid's coarse levels |
 | Primary | `traverse_primary_kernel`, `cuda/src/traverse/index.cu:219-239`; the loop in `cuda/include/traverse/index.hu:305-455` | Phase 04: one loop over the pyramid, banded by distance; phase 05: 2³ coalescing, brick distances |
 | Far field | `lod_past_kernel`, `lod_frame_kernel`, `cuda/src/lod/index.cu:305-410`; `lod_trace` `:106-155` | Phase 04: the pass-by of full detail's columns goes; a level is only used past its band edge |
-| Shade | `shade_sun_seen` `cuda/src/shade/index.cu:28-100`; `shade_kernel` `:737`; `shade_water_through` | Phase 06: shadow rays by cone and band, night cut, alpha by distance; phase 05: uniform water bricks |
+| Shade | `shade_sun_seen` `cuda/src/shade/index.cu:28-100`; `shade_kernel` `:737`; `shade_water_through` | Phase 06: shadow rays by cone and band, dim-light cut, alpha by distance; phase 05: uniform water bricks |
 | Post | `post_taa_kernel`, `cuda/src/post/index.cu:123` | Phase 07: accumulation at output resolution from a smaller picture |
 | Levels | `run/src/render/lod/` (terrain-built), `run/src/render/encode/`, `cuda/src/world_buffers/` | Phase 03: level 1 and up built on workers from the map's loaded sections |
 | Settings | `run/src/ui/screen_settings/`, `run/src/settings/persist/`, `run/src/game/view/`, `run/src/main/` | Phase 04: Full detail removed; the block radius worked out |
@@ -95,7 +95,7 @@ The web research is cited in master section 13.
 | 03 One pyramid of levels | Levels 1 and up for the near region, built on workers from the map's sections | Unchanged |
 | 04 Continuous LOD replaces Full detail | Bands by pixel error; no pass-by; Full detail gone | Changed past 16 blocks only |
 | 05 Merged boxes | Coalescing, brick distances, uniform water bricks, the coarse pass on the pyramid, each kept or dropped | Unchanged (exact skipping) |
-| 06 Secondary rays by level | Shadow cone, night cut, alpha by distance | Changed in shadows and far leaves |
+| 06 Secondary rays by level | Shadow cone, dim-light cut, alpha by distance | Changed in shadows and far leaves |
 | 07 Temporal upscaling | Internal 75 % with output-resolution accumulation | Converges to 100 % when still |
 | 08 The final check | Every target measured, Ahmed's verdict | |
 
