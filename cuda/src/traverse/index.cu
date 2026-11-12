@@ -1,5 +1,6 @@
 /* See README.md. The coarse pass, and the kernels that run traverse_trace for a frame and for a list of rays. */
 #include "traverse/index.hu"
+#include "tuning/render/traverse/index.hu"
 
 #include <math.h>
 
@@ -9,16 +10,14 @@ enum : uint32_t {
     TRAVERSE_COARSE_MAX_COLUMNS = 16u,
 };
 
-/* The stretches of ray the coarse march tries to clear at once, longest first. See traverse_coarse_tile. */
-#define TRAVERSE_COARSE_LONG_STRETCH 16.0F
-#define TRAVERSE_COARSE_SHORT_STRETCH 4.0F
-#define TRAVERSE_COARSE_LONG_PER_BLOCK 0.25F
-
-/* What a position in float32_t may be off by, in blocks, after t blocks: well over the rounding of frac + d * t. */
-#define TRAVERSE_COARSE_PAD 0.0625F
-#define TRAVERSE_COARSE_PAD_PER_BLOCK 4e-6F
-/* What comes off the safe distance at the end, so the start cell is not decided by rounding either. */
-#define TRAVERSE_COARSE_BACK_OFF 0.25F
+/* The stretches of ray the coarse march tries to clear at once, longest first; what a position in float32_t may be off by, in blocks,
+ * after t blocks; and what comes off the safe distance at the end. See traverse_coarse_tile, and compile/config/render/traverse/. */
+#define TRAVERSE_COARSE_LONG_STRETCH MC_TUNE_RENDER_TRAVERSE_COARSE_LONG_STRETCH
+#define TRAVERSE_COARSE_SHORT_STRETCH MC_TUNE_RENDER_TRAVERSE_COARSE_SHORT_STRETCH
+#define TRAVERSE_COARSE_LONG_PER_BLOCK MC_TUNE_RENDER_TRAVERSE_COARSE_LONG_PER_BLOCK
+#define TRAVERSE_COARSE_PAD MC_TUNE_RENDER_TRAVERSE_COARSE_PAD
+#define TRAVERSE_COARSE_PAD_PER_BLOCK MC_TUNE_RENDER_TRAVERSE_COARSE_PAD_PER_BLOCK
+#define TRAVERSE_COARSE_BACK_OFF MC_TUNE_RENDER_TRAVERSE_COARSE_BACK_OFF
 
 /* The bits of a 4 x 4 x 4 mask inside an inclusive range: a section's bricks and a brick's voxels are numbered alike. */
 static __device__ __forceinline__ uint64_t traverse_brick_region(int32_t x0, int32_t x1, int32_t y0, int32_t y1,

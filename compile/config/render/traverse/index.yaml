@@ -1,0 +1,43 @@
+# The coarse pass, cuda/src/traverse/'s traverse_coarse_kernel. See compile/config/README.md for the fields.
+coarse_long_stretch:
+  value: 16.0
+  type: f32
+  unit: blocks
+  min: 4.0
+  max: 64.0
+  why: "The longest stretch of ray the coarse march tries to clear at once, near the eye; it grows with distance by coarse_long_per_block. TRAVERSE_COARSE_LONG_STRETCH."
+coarse_short_stretch:
+  value: 4.0
+  type: f32
+  unit: blocks
+  min: 1.0
+  max: 16.0
+  why: "The stretch it tries when the long one is not empty. TRAVERSE_COARSE_SHORT_STRETCH."
+coarse_long_per_block:
+  value: 0.25
+  type: f32
+  unit: ratio
+  min: 0.0
+  max: 1.0
+  why: "How the long stretch grows with distance: at t blocks it is t times this, or coarse_long_stretch if that is more. TRAVERSE_COARSE_LONG_PER_BLOCK."
+coarse_pad:
+  value: 0.0625
+  type: f32
+  unit: blocks
+  min: 0.0
+  max: 1.0
+  why: "What a position in float32_t may be off by, in blocks, at the eye: well over the rounding of frac + d * t. Smaller can skip a block. TRAVERSE_COARSE_PAD."
+coarse_pad_per_block:
+  value: 0.000004
+  type: f32
+  unit: ratio
+  min: 0.0
+  max: 0.001
+  why: "What that pad grows by per block of distance. Was 4e-6F in code; the same float. TRAVERSE_COARSE_PAD_PER_BLOCK."
+coarse_back_off:
+  value: 0.25
+  type: f32
+  unit: blocks
+  min: 0.0
+  max: 2.0
+  why: "What comes off the safe distance at the end, so the start cell is not decided by rounding either. TRAVERSE_COARSE_BACK_OFF."
