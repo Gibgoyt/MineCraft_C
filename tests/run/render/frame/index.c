@@ -1505,6 +1505,46 @@ TEST(shade_spans_add_up_to_the_shade_pass) {
     fr_rig_end(t, &rig);
 }
 
+/* Ten frames turning, from a world just opened, with the watch's marks or with none; the last picture into out. */
+static bool fr_marked_run(test_context_t *t, fr_rig_t *rig, bool marked, uint8_t *out) {
+    game_t *const game = rig->game;
+    if (!CHECK(game_open(game, &fr_play_game)) || !CHECK(game_settle(game))) {
+        return false;
+    }
+    render_camera_t camera;
+    fr_marked_camera(game, &camera);
+    const uint8_t *picture = nullptr;
+    for (uint32_t i = 0u; i < 10u; i++) {
+        camera.yaw += 0.03f32;
+        if (marked) {
+            game_watch_marks_arm(game_watch_of(game), &rig->render->frame.gpu, time_now_ns());
+        } else {
+            rig->render->frame.gpu.borrowed_marks = nullptr;
+        }
+        picture = fr_draw(t, rig, &camera);
+        if (picture == nullptr) {
+            game_close(game);
+            return false;
+        }
+    }
+    memcpy(out, picture, post_xrgb_bytes(FR_WIDTH, FR_HEIGHT));
+    game_close(game);
+    return true;
+}
+
+/* The marks are clock events, a clock kernel that writes only its own word, and four bytes copied home: no picture changes with them. */
+TEST(the_marks_change_no_picture) {
+    fr_rig_t rig;
+    REQUIRE(fr_rig_begin(t, &rig));
+    const uint64_t bytes = post_xrgb_bytes(FR_WIDTH, FR_HEIGHT);
+    uint8_t *const with = fr_aligned(t, bytes);
+    uint8_t *const without = fr_aligned(t, bytes);
+    REQUIRE(fr_marked_run(t, &rig, true, with));
+    REQUIRE(fr_marked_run(t, &rig, false, without));
+    CHECK_MEM_EQ(with, without, bytes);
+    fr_rig_end(t, &rig);
+}
+
 /* The first frame has no AO history, so every pixel with a surface is fresh: what the tests below count against. */
 static uint32_t fr_surfaces_first(test_context_t *t, fr_rig_t *rig, const render_camera_t *camera) {
     const frame_marks_t *const marks = fr_draw_marked(t, rig, camera);

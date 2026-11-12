@@ -13,6 +13,8 @@ It takes at most 3584 MiB of the card: `BENCH_VOXELS_MIB` and the budget's textu
 
 Run it on the `profile` preset, which is release code with frame pointers and scopes that cost 2 ns each with no lanes. `debug` numbers mean nothing.
 
+Plan 008 phase 01's head shake and cost rose are their own program, `bench_world_shake`, in `bench/world/shake/` (this file is at the standard's 1500 lines), with `gpu_watch.sh` here beside this file: the `nvidia-smi` and `sensors` sidecar every GPU bench run should have. Its rows, flags and history are in `bench/world/shake/README.md`, and its results in the plan 008 phase 01 file.
+
 ## The worlds
 
 Every world is the game's default seed, `TERRAIN_SEED_DEFAULT`, and 1920 by 1080. The day does not go on, so that the sun is where it was. A place is looked for, and the same seed finds the same one.

@@ -1,6 +1,6 @@
 # 008-ahmed-bohemoth-smooth-frames-when-turning — phase 1: Measure the head-shake cost
 
-**Status:** in progress: the tools are built and tested; the experiments are running   (updated 2026-11-12)
+**Status:** tools built and tested, experiments run and recorded; waiting for Ahmed's own frame log (C6) and his answer to Q5   (updated 2026-11-12)
 
 Read first: `plans/008-ahmed-bohemoth-smooth-frames-when-turning-phase-00-vision-and-plan-files.md`, then the master `plans/008-ahmed-bohemoth-smooth-frames-when-turning.md`: sections 0, 1 (the causes C1 to C9), 3.1 and 4. Every number here comes from the master. Where this file adds a number the master does not give, it says so and why.
 
@@ -256,43 +256,56 @@ This phase may edit these, plus this file:
 - [x] X put-to-completion latency and main's block on `display_x11_wait_ready`, per frame
 - [x] F3: card ms mean, p99 and max over 1 s; pictures a second, late, idle; turn speed and card MHz
 - [x] `--frame-log <path>`, release builds included; the watch's minute line gains interval p99 and late count
-- [ ] `bench_world`: the `shake` path (yaw and pitch), `--at`, `--seed`, `--yaw`, live-capped rows, new history columns
-- [ ] `bench_world --rose` with CSV, polar PNG and the worst direction's shot
-- [ ] `bench/world/gpu_watch.sh`, killed at the end of each run, checked gone
-- [ ] Ahmed's game confirmed closed before each run (`pgrep` prints nothing)
+- [x] `bench_world`: the `shake` path (yaw and pitch), `--at`, `--seed`, `--yaw`, live-capped rows, new history columns
+- [x] `bench_world --rose` with CSV, polar PNG and the worst direction's shot
+- [x] `bench/world/gpu_watch.sh`, killed at the end of each run, checked gone
+- [x] Ahmed's game confirmed closed before each run (`pgrep` prints nothing)
 - [ ] Experiments C1 to C9 and the ruled-out line run; the results table below filled in, each with its rows and commands
 - [ ] Ahmed's own `--frame-log` shake read and summarised below
-- [ ] The cost rose at his spot, render distance 32 and 64, looked at and described below
-- [ ] `bench/world/README.md`: the new path, flags and results
+- [x] The cost rose at his spot, render distance 32 and 64, looked at and described below
+- [x] `bench/world/README.md`: the new path, flags and results
 - [ ] Every golden picture and every settled still row's hash unchanged
 
 ## Results (filled in by this phase)
 
-Card state for each run (from the sidecar): MHz, enforced power limit, temperature, throttle reasons.
+All on Ahmed's card (RTX 2080 Super in the laptop), his game closed, `build/profile/bin/bench_world_shake` at his spot (`--at -80 134 418 --seed 14148492376765118422`, the seed from `saves/test_7/world.meta`, whose state file is from 15:18 today), 1920x1080, every effect of play, the sidecar beside every run. Logs and CSVs were in `/tmp/mc_c_shake/` (not kept in the repo); the rows are in `bench/world/shake/history.tsv`.
 
-| Cause | Rows and command | Result | Verdict: confirmed, smaller, or refuted |
+**The card's state in every run (sidecar, 306 samples of the first run, and the same in the others):** enforced power limit 50 W; drawing 40 to 42 W, **under** the limit; clock event reasons `0x24` (SW power cap and **SW thermal slowdown**) on 305 of 306 samples; GPU 76 to 81 °C; CPU package 94 to 100 °C, fans at their maximum. `nvidia-smi` says 300 MHz (its floor) whenever the game draws and 1575 MHz while a world opens. **The `clock64` kernel says the SMs did 148 MHz's worth of cycles a second for most of every run**, with readings from 35 to 813 MHz. The two disagree by 2x at the floor: see C1. Because the speed moved within rows, the settled rows were run again with the clock read before every picture, and compare in **Mcycles** (ms x MHz / 1000).
+
+| Cause | Rows and command | Result | Verdict |
 |---|---|---|---|
-| C1 | | | |
-| C2 | | | |
-| C3 | | | |
-| C4 | | | |
-| C5 | | | |
-| C6 | | | |
-| C7 | | | |
-| C8 | | | |
-| C9 | | | |
-| Coherence and L2 | | | |
+| C1 card cap | every row; sidecar beside each; `performance` profile not tried (Q5, Ahmed's command) | Effective SM clock 148 MHz (clock64) for most of every run, `nvidia-smi` 300 MHz, at 41 W of a 50 W limit, with SW thermal slowdown active and the CPU at 94 to 100 °C. Card time scales with it: post with TAA, a per-pixel pass, is 0.62 to 0.64 Mcycles at 148, 158 and 459 MHz; a still picture at the spot is 5.5 to 5.6 Mcycles: **3.2 ms at 1750 MHz, 9.3 ms at 600, 38 ms at 148** | **Confirmed, and worse than the master thought:** the card runs at 148 MHz, a twelfth of its peak, not 600; and what holds it is heat (thermal slowdown with the CPU at 100 °C), not the 50 W cap, which it is under |
+| C2 slot rule | `spot/shake-0-live-capped`, `spot/shake-720-live-capped` against `spot/shake-720-live` | Still, capped, at 547 MHz: card 9.80 ms, yet pictures every 16.67 ms (p50; p99 16.71), **87 % late**, and the gpu thread waited **5.74 ms a picture** for main to take the last: the card idled a third of the time. 720°/s capped: intervals only in whole slots (2 to 10). Uncapped: intervals follow the card (58.4 against 59.0 ms) | **Confirmed.** Uncapped was no faster here (16.8 against 23.1 pictures/s): it ran hotter, at 158 against 215 MHz (C9) |
+| C3 fresh AO | settled `shake-0/90/360/720/1440`, AO on and `--features-off 400` | Fresh pixels 503, 63.6 k, 224 k, 390 k, 506 k (0.02, 3.1, 10.8, 18.8, 24.4 % of the picture); the strip formula with 95 % of pixels having a surface says 51 k, 187 k, 338 k, 576 k: **within +24 to -12 %**. `ao_fresh` 0.22 to 1.66 Mcycles from 0 to 720°/s (7.6x; 0.47 to 4.57 ms at 459 and 363 MHz). The whole picture 5.62 to 7.34 Mcycles (+1.72); with AO off 3.03 to 3.81 (+0.78). Live at 720°/s, pictures 33 to 58 ms apart turn 24 to 42° each, so **fresh is 634 k (31 %) and `ao_fresh` is 15.5 of the card's 38.6 ms**: it feeds itself | **Confirmed: the largest cost of turning.** Fresh AO is all of turning's added card work at 720°/s settled, and 40 % of the whole picture live |
+| C4 TAA | the same rows with `--features-off 800` | Post with TAA: 0.64 Mcycles still, 0.92 to 0.98 turning (**+0.3, 0.5 ms at 600 MHz**); without TAA 0.21 whatever the speed. TAA also makes a still camera's AO dearer (jitter: 503 fresh pixels still, against 0 without TAA). All of TAA: 1.2 to 1.5 Mcycles still or turning | **Confirmed, small**, as the master said: 0.5 ms at 600 MHz |
+| C5 direction | `--rose`, r32 and r64 | In ms at 600 MHz (each direction's cycles): r32 median 11.6 / 10.2 / 8.8 ms at pitch -20 / 0 / +15, p90 22.3 / 13.3 / 10.5, worst 29.2 (looking down the slope, yaw 245); r64 median 10.9 / 10.8 / 12.0, p90 16.0 / 15.7 / 17.3, worst 33.1 (up at the big peak, yaw 255, +15°). The far field is 1.0 to 1.6 Mcycles of 6.5 to 7.2 at r64 (15 to 23 %); r64's south half 14.2 ms median, north 9.1 | **Confirmed:** at 600 MHz most still directions are over one slot and the worst tenth over two. Each direction is normalised by a reading just before it, and the clock moved from 53 to 411 MHz meanwhile, so single directions are noisy; the medians and p90s stand |
+| C6 X server | Ahmed's own frame log in a window (below) | Not measured: needs his run. The columns are there (`x_put_ms`, `x_wait_ms`, `x_idle_ms`) and F3's `X` | **Open** |
+| C7 serial work | every live row's rings | **Readback 1.27 to 1.29 ms on every row at every clock** (a PCIe copy, not the SMs): 15 % of a slot. **P, the gpu thread's own work** (upload, far plan, fill, launches, wake-up), **0.03 to 0.16 ms** a picture | **Readback confirmed; P much smaller** than the master's 0.5 to 2 ms |
+| C8 other CUDA work | `c8`: `spot/shake-720-live-capped --seconds 30`, `run_render_frame` (debug) started on the card 20 s in, one lock call | Card 55 ms before; **113 to 163 ms** while it ran, effective clock 148 down to 67 to 93 MHz (they take turns); interval p99 83 to 200 ms; 180 of 278 intervals past 11 slots | **Confirmed** |
+| C9 heat | `spot/shake-720-live-capped-r64 --seconds 60`; the first run's sidecar over 309 s | 60 s: clock64 187 MHz in the first sixth, **148 MHz for the other five**, card 55 to 57 ms, P 0.10 to 0.12 ms: flat, because already at the floor. Over the first 5-minute run the GPU went 76 to 81 °C and clock64 from 450 to 800 MHz in the first rows to 148 within minutes, where it stayed for every run after | **Confirmed in effect:** the card reaches its thermal floor within minutes of load and stays; no further trend is visible once there |
+| Coherence and L2 | settled `shake-90` against `shake-1440` (the same directions), `--features-off c00` | 2.89 against 3.03 Mcycles (+4.8 %; +7.6 % by ms x the row's mean MHz). Coarse 0.84 to 1.08 ms, primary 6.07 to 7.20, surfaces 6.19 to 7.13 | **Not settled at 3 %:** at most 5 to 8 %, inside this card's clock noise (61 to 149 MHz within each row). Small against C3 |
 
 | Row | Interval p50 / p99 / worst | Late | Card mean / p99 | Shade: water / surface / sun / AO / fresh | Fresh mean | $P$ | Wait for take | MHz |
 |---|---|---|---|---|---|---|---|---|
-| `spot/shake-0` | | | | | | | | |
-| `spot/shake-720` | | | | | | | | |
-| `spot/shake-1440` | | | | | | | | |
-| `spot/shake-720-live-capped` | | | | | | | | |
-| `spot/shake-720-live` | | | | | | | | |
-| `spot/shake-720-live-capped-r64` | | | | | | | | |
+| `spot/shake-0` | 11.82 / 14.60 / 18.09 (settled: the card) | | 12.11 / 14.60; 5.62 Mcycles | 0.33 / 1.83 / 0.86 / 3.48 / 0.47 | 503 | (1.41 host) | | 459 |
+| `spot/shake-720` | 18.59 / 22.22 / 22.83 | | 18.69 / 22.22; 7.34 Mcycles | 0.37 / 2.50 / 1.27 / 3.38 / 4.57 | 389 966 | (1.49 host) | | 363 |
+| `spot/shake-1440` | 51.96 / 69.72 / 70.47 | | 41.99 / 69.72; 7.58 Mcycles | 0.85 / 5.54 / 2.93 / 6.79 / 13.35 | 505 787 | (1.64 host) | | 182 (59 to 423) |
+| `spot/shake-0-live-capped` | 16.67 / 16.71 / 18.11 | 86.9 % | 9.80 / 13.45 | 0.27 / 1.46 / 0.79 / 2.70 / 0.36 | 3 588 | 0.03 | 5.74 | 547 |
+| `spot/shake-720-live-capped` | 33.30 / 83.33 / 83.36 | 100 % | 38.62 / 75.38 | 0.72 / 4.33 / 2.22 / 5.14 / 15.50 | 634 461 | 0.09 | 4.48 | 215 |
+| `spot/shake-720-live` | 58.36 / 75.03 / 75.04 | 100 % | 58.96 / 76.19 | 0.97 / 6.95 / 3.33 / 7.73 / 24.60 | 736 400 | 0.16 | 0 | 158 |
+| `spot/shake-720-live-capped-r64` | 58.33 / 83.33 / 83.33 | 100 % | 56.03 / 75.58 | 0.94 / 5.90 / 3.09 / 6.71 / 21.68 | 755 432 | 0.11 | 4.13 | 182 |
 
-The master's section 4 "Today" column is filled from this table.
+The settled rows' ms are from the first run (one clock reading a second); their Mcycles from the second (a reading before every picture). The master's section 4 "Today" column is filled from this table.
+
+**Ahmed's own frame log (C6), still to come.** Once this branch is on `main` and built (`tools/test-or-build.sh cmake --build --preset release`), he plays as always with one flag more:
+
+    ./build/release/bin/minecraft_c --frame-log ~/shake.csv
+
+stands still 5 s at his spot, shakes his head hard for 10 s, stands still 5 s, and quits. The agent reading it then fills C6 from `x_put_ms` and `x_wait_ms` against `card_ms`, and the still and shaking seconds from `interval_ms`, `late`, `fresh`, `turn_deg_s` and `card_mhz`. How to read the file is in `run/src/game/watch/README.md`.
+
+**What it comes to.** Ahmed feels three things at once. (1) The card is at 148 MHz, held there by heat, so a still picture at his spot is already 10 to 40 ms; walking without turning, the slot rule then shows it every second or third slot, steadily, which reads as "sits nicely". (2) Turning makes each picture dearer, almost all of it fresh AO for the new strip (7.6x the fresh rays at 720°/s), and the slower pictures turn further each, so the strip widens: live at 720°/s the card's time went from 9.8 to 38.6 ms. (3) The slot rule turns that into 2 to 10 slot waits, and the card idles 4 to 6 ms a picture waiting for main. Directions add up to 2x on top (C5), and any other CUDA program doubles it again (C8).
+
+**The cost rose** (`rose-spot-r32.png`, `rose-spot-r64.png`, in ms at 600 MHz): roughly round at pitch 0 and +15, between one and two slots; looking down (-20°) spikier, out to 29 ms. At r64 the dearest direction is up at the tall snowy peak to the south-west (yaw 255, +15°): a frame filled with the mountain and the far field behind it (`rose-spot-r64-worst.png`).
 
 ## Tests
 
@@ -300,7 +313,8 @@ The master's section 4 "Today" column is filled from this table.
 
 - **`shade_spans_add_up_to_the_shade_pass`.** Over 30 frames of the real path, the five spans' sum is within 0.01 ms of the shade pass's own time on every frame.
 - **`the_fresh_count_is_the_strip_on_a_turn`.** A settled world, two frames, the second turned 12° right. The fresh count is at most the formula's 17.2 % of pixels plus 1 %, and at least half of it: neighbours lower it, never raise it.
-- **`a_still_camera_has_no_fresh_pixels_after_the_first_frame`.** The fresh count is 0 on frames 2 to 10 at a fixed camera, TAA jitter included.
+- **`a_still_camera_has_no_fresh_pixels_after_the_first_frame`.** The fresh count is 0 on frames 2 to 10 at a fixed camera, TAA jitter included. *Measured otherwise: it is `a_still_camera_has_almost_no_fresh_pixels_after_the_first_frame`, at most 1 % of the surfaces; see Issues found.*
+- **`the_marks_change_no_picture`** (added). Ten frames turning with the marks and ten without, from the same opening: the same last picture, byte for byte.
 - **`the_frame_log_has_one_line_per_picture`.** The real threads for 2 s with `--frame-log`. Lines equal pictures taken; columns parse; stamps increase.
 - **Golden pictures:** unchanged.
 
@@ -363,6 +377,10 @@ His answers are recorded below and in the phase files they affect. If C1 explain
 Appended as they land:
 
 ## Issues found
+
+**The card's clock: `clock64` against `nvidia-smi`.** At the floor they disagree by 2x: `nvidia-smi` says 300 MHz, the `clock64` kernel 148 (and as low as 35). The plan's default was to trust the sidecar past a 5 % difference. Here the kernel is the one that agrees with the work: card ms times the kernel's MHz stays constant across rows (post with TAA 0.62 to 0.64 Mcycles at 148, 158 and 459 MHz), and with `nvidia-smi`'s it would not. `nvidia-smi`'s `clocks.gr` reports the P-state's clock; what the SMs do under SW thermal slowdown is lower. One caveat: the kernel is timed by events, so time the card gives another context (the desktop, another CUDA program) also reads as a lower clock. Either way it is the speed the game gets.
+
+**The X stamps were not seen in a window here.** `--test-world` refuses a window and the menu needs clicks, so the release build's frame log was checked in `run_render_frame` (the real threads, the same code) and the release build itself only built. Its X columns are first filled by Ahmed's own run (C6).
 
 Ahmed's words, 2026-11-12, as this phase began: "only when shaking my head does frame rate tank; when walking around without my mouse/view frame rate sits nicely; i think F3 frame rate tab is also innacurate as fuck something laggy is happening and we need to figure out where". So the priority was the release frame log and F3 lines that show the real interval on the screen.
 
