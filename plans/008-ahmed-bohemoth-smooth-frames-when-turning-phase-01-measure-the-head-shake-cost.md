@@ -260,11 +260,11 @@ This phase may edit these, plus this file:
 - [x] `bench_world --rose` with CSV, polar PNG and the worst direction's shot
 - [x] `bench/world/gpu_watch.sh`, killed at the end of each run, checked gone
 - [x] Ahmed's game confirmed closed before each run (`pgrep` prints nothing)
-- [ ] Experiments C1 to C9 and the ruled-out line run; the results table below filled in, each with its rows and commands
+- [ ] Experiments C1 to C9 and the ruled-out line run; the results table below filled in, each with its rows and commands (all but C6, which is Ahmed's own frame log, and C1's second run under the `performance` profile, which is his command: Q5)
 - [ ] Ahmed's own `--frame-log` shake read and summarised below
 - [x] The cost rose at his spot, render distance 32 and 64, looked at and described below
 - [x] `bench/world/README.md`: the new path, flags and results
-- [ ] Every golden picture and every settled still row's hash unchanged
+- [x] Every golden picture and every settled still row's hash unchanged (but F3's own two, which show its four new lines by design: `debug_640x480.png` and `corner_debug_640x480.png`, regenerated and looked at; `the_marks_change_no_picture` holds the marks to the same bytes)
 
 ## Results (filled in by this phase)
 
@@ -375,6 +375,13 @@ His answers are recorded below and in the phase files they affect. If C1 explain
 ## Commits
 
 Appended as they land:
+
+- `fa24367b` Measure where a turning picture's time goes: shade's kernels and the fresh AO count on the card's clock, the card's MHz from a clock64 kernel, the gpu thread's and main's stamps in two rings, X put latency, a release --frame-log, four F3 lines with the real interval on the screen, and bench_world_shake.
+- `0123fc0a` Read the card's clock before every settled picture in bench_world_shake, so rows compare in cycles, draw the cost rose in ms at 600 MHz, let --only name several rows, and keep the first runs' history.
+- `96b387c1` Record plan 008 phase 01's measurements: the card held at 148 MHz by heat, fresh AO as nearly all of turning's added card work, the slot rule's idle card, the cost rose, and a test that the marks change no picture.
+- this commit: F3's corner golden with the four new lines, and the verification.
+
+**Verification, as run (2026-11-12):** `pgrep -af 'build/release/bin/minecraft_c'` printed nothing before every GPU run. `tools/test-or-build.sh cmake --build --preset debug`: clean. `run_render_frame`: passed (the five new cases among them). `render_feature_.*`, `cuda_traverse`, `run_display_x11`: passed. `standards_lint`, `clang_format`: passed. `cmake --build --preset profile` and `--preset release`: clean, release's 16 KiB frame limit held. The whole debug suite (`ctest --preset debug -j 4`, 164 tests): 161 passed; `run_ui_hud_corner` failed on F3's golden (regenerated, now passes), and `run_climate_warning` and `run_ui_atlas` failed under the parallel load and pass alone. The bench lines of the Verification ran as `bench_world_shake` (its own program, see Issues found): every row at the spot with the sidecar, recorded with `--label "008 phase 01: before"`, the settled rows again with the clock on every picture, the rose at r32 and r64, and the experiments in the results table; `pgrep -af gpu_watch` and `pgrep -af "$PWD/build"` printed nothing after each.
 
 ## Issues found
 
