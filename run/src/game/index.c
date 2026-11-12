@@ -70,6 +70,10 @@ enum : uint64_t {
 enum : int64_t {
     GAME_SIM_IDLE_NS = 1000000, /* the sim looks for finished columns this often when it has nothing to do */
     GAME_GPU_IDLE_NS = 100000,  /* the gpu thread waits this long for main to take the picture it just made */
+    /* Plan 008 phase 03: the next picture is begun this long before the one on its way should be done: the copy home it overlaps (1.3 ms
+     * at 1080p), the CPU's part (0.1 ms), and some for a picture a little quicker than the last. */
+    GAME_FLIGHT_LEAD_NS = 3000000,
+    GAME_FLIGHT_SLICE_NS = 200000, /* and it looks every this long meanwhile, for the one on its way being done */
     GAME_GPU_STUCK_NS =
         10000000000, /* no round of its loop for this long: nothing it does takes a hundredth of that, and a card that hangs may say nothing */
     GAME_GPU_WATCH_GAP_NS = 1000000000, /* main itself was away this long, on another VT or stopped */
@@ -1631,6 +1635,25 @@ static void game_gpu_thread(void *borrowed_argument) {
             when.start_at_ns = planned_ns;
         }
         const bool start_now = when.hold == 0u && when.start_at_ns <= in.now_ns;
+        if (flying.on != 0u && start_now) {
+            /* Begun only GAME_FLIGHT_LEAD_NS before the one on its way should be done, by the last picture's time, so the camera is read no
+             * earlier than it must be: as late as with nothing on its way, less the copy home it overlaps. If that one is done already,
+             * it is handed over first and the next begun from the newest camera. */
+            const int64_t last_ns =
+                pace->count != 0u ? pace->samples_ns[(pace->next + GAME_PACE_SAMPLES - 1u) % GAME_PACE_SAMPLES] : 0;
+            const int64_t begin_at_ns = flying.started_ns + last_ns - GAME_FLIGHT_LEAD_NS;
+            if (render_frame_oldest_done(&render->frame)) {
+                if (!game_gpu_land(game, &flying, &waited_ns)) {
+                    return;
+                }
+                continue;
+            }
+            if (in.now_ns < begin_at_ns) {
+                const int64_t until_ns = begin_at_ns - in.now_ns;
+                time_sleep_ns(until_ns < GAME_FLIGHT_SLICE_NS ? until_ns : GAME_FLIGHT_SLICE_NS);
+                continue;
+            }
+        }
         if (flying.on != 0u && !start_now) {
             /* Not worth beginning the next yet: hand this one over as soon as the card has it, and ask again. */
             if (!game_gpu_land(game, &flying, &waited_ns)) {

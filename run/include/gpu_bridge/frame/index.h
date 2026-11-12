@@ -266,6 +266,10 @@ gpu_status_t frame_gpu_home(frame_gpu_t *frame, uint32_t slot, uint8_t *host_xrg
  * free again either way. */
 gpu_status_t frame_gpu_finish(frame_gpu_t *frame, uint32_t slot, frame_timings_t *out_timings);
 
+/* Whether a frame sent home is done, picture and all, without waiting: frame_gpu_finish of it would not wait. False for a slot not sent
+ * home. A failure reads as done, so the finish reports it. */
+bool frame_gpu_done(frame_gpu_t *frame, uint32_t slot);
+
 /* Runs one whole frame and waits for it: frame_gpu_queue, frame_gpu_home to args->borrowed_host_xrgb, and frame_gpu_finish. As before
  * plan 008 phase 03, for --serial-frames and every caller that wants its picture now. Anything but GPU_STATUS_OK is in last_error. Nothing
  * here allocates. */

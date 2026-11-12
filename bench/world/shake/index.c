@@ -148,8 +148,11 @@ typedef struct sh_result_t {
      * between pictures */
     float32_t drawn_ms;
     float32_t on_way_share; /* 452: live: of those, the share begun while the one before was still on its way */
+    float32_t
+        latency_p50_ms; /* 456: live: camera to screen, p50: from a picture's start, where its camera is read, to main's take */
+    uint8_t _pad1[4]; /* 460 */
 } sh_result_t;
-static_assert(sizeof(sh_result_t) == 456);
+static_assert(sizeof(sh_result_t) == 464);
 
 typedef struct sh_options_t {
     const char *only;         /* 0 */
@@ -189,8 +192,10 @@ typedef struct sh_sample_t {
     uint8_t joined;                       /* 77: its picture was still in the ring */
     uint8_t how;                          /* 78: plan 008 phase 02: how the start rule started it, game_pace_how_t */
     uint8_t _pad0[1];                     /* 79 */
+    float32_t latency; /* 80: plan 008 phase 03: ms from its start (its camera read) to main's take */
+    uint8_t _pad1[4];  /* 84 */
 } sh_sample_t;
-static_assert(sizeof(sh_sample_t) == 80);
+static_assert(sizeof(sh_sample_t) == 88);
 
 typedef struct sh_t {
     heap_region_t owned_memory;    /* 0 */
@@ -472,6 +477,15 @@ static void sh_samples_sum(sh_t *sh, uint32_t count, sh_result_t *r) {
         }
     }
     sh_spread(sort, intervals, &r->interval_p50_ms, &r->interval_p99_ms, &r->interval_worst_ms);
+    uint32_t latencies = 0u;
+    for (uint32_t i = 0u; i < count; i++) {
+        if (samples[i].latency > 0.0f32) {
+            sort[latencies++] = samples[i].latency;
+        }
+    }
+    float64_t latency_p50 = 0.0f64, latency_p99 = 0.0f64, latency_most = 0.0f64;
+    sh_spread(sort, latencies, &latency_p50, &latency_p99, &latency_most);
+    r->latency_p50_ms = (float32_t)latency_p50;
     r->late_share = count != 0u ? (float64_t)late / (float64_t)count : 0.0f64;
     r->wait_at_once_ms = at_once != 0u ? (float32_t)(wait_at_once / (float64_t)at_once) : 0.0f32;
     r->pictures = count;
@@ -616,6 +630,7 @@ static uint32_t sh_rings_take(sh_t *sh, const game_watch_t *watch, uint64_t *tak
         sh_sample_t *const s = &sh->borrowed_samples[count];
         memset(s, 0, sizeof(*s));
         s->taken_ns = take->taken_ns;
+        s->latency = take->start_ns != 0 ? (float32_t)time_ns_to_ms(take->taken_ns - take->start_ns) : 0.0f32;
         s->interval = *last_taken_ns != 0 ? (float32_t)time_ns_to_ms(take->taken_ns - *last_taken_ns) : 0.0f32;
         s->late = take->frame > take->start_frame + 1u ? 1u : 0u;
         const game_watch_picture_t *const p = &watch->borrowed_pictures[take->seq % GAME_WATCH_RING];
@@ -945,9 +960,9 @@ static void sh_row_print(const char *place, const sh_row_t *row, const sh_result
                (libc_double_t)r->wait_at_once_ms);
         printf("    overlap: %.2f ms of the row a picture drawn, readback %.2f ms a picture, %.0f %% begun with the "
                "one before on "
-               "its way\n",
+               "its way; camera to screen p50 %.2f ms\n",
                (libc_double_t)r->drawn_ms, (libc_double_t)r->pass_ms[FRAME_PASS_READBACK],
-               (libc_double_t)(r->on_way_share * 100.0f32));
+               (libc_double_t)(r->on_way_share * 100.0f32), (libc_double_t)r->latency_p50_ms);
     }
     printf("    intervals by slot (8.33 ms each, last is all past):");
     for (uint32_t i = 0u; i < SH_BINS; i++) {

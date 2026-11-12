@@ -313,6 +313,8 @@ gpu_status_t render_frame_draw_weather(render_frame_t *frame, const world_buffer
 gpu_status_t render_frame_queue(render_frame_t *frame, const world_buffers_t *buffers, const render_camera_t *camera,
                                 const render_weather_t *weather, const device_block_t *map_block);
 gpu_status_t render_frame_finish(render_frame_t *frame);
+/* Whether render_frame_finish would hand the oldest frame over without waiting. False with nothing on its way. */
+bool render_frame_oldest_done(render_frame_t *frame);
 
 /* The thread that draws, before a frame: a new slot from the sim (nullptr if none came), eased toward over the ticks between, at once
  * for the first or a forced one; and the clock of the fall and the bolt for a frame at now_ns (0 for a run with no threads, which

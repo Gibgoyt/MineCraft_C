@@ -821,6 +821,10 @@ gpu_status_t render_frame_finish(render_frame_t *frame) {
     return status;
 }
 
+bool render_frame_oldest_done(render_frame_t *frame) {
+    return frame->on_way != 0u && frame_gpu_done(&frame->gpu, frame->oldest_slot);
+}
+
 gpu_status_t render_frame_draw_weather(render_frame_t *frame, const world_buffers_t *buffers,
                                        const render_camera_t *camera, const render_weather_t *weather,
                                        const device_block_t *map_block) {

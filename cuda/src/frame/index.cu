@@ -545,6 +545,18 @@ gpu_status_t frame_gpu_finish(frame_gpu_t *frame, uint32_t slot_index, frame_tim
     return marks != nullptr && slot->marked != 0u ? frame_marks_read(marks, frame, slot) : GPU_STATUS_OK;
 }
 
+bool frame_gpu_done(frame_gpu_t *frame, uint32_t slot_index) {
+    frame_flight_t *const flight = frame->borrowed_flight;
+    if (flight == nullptr || slot_index >= FRAME_FLIGHT_SLOTS ||
+        flight->slots[slot_index].state != (uint8_t)FRAME_SLOT_HOME) {
+        return false;
+    }
+    const frame_slot_t *const slot = &flight->slots[slot_index];
+    const cudaError_t home = cudaEventQuery((cudaEvent_t)slot->owned_events[FRAME_KERNEL_COUNT]);
+    const cudaError_t end = home == cudaSuccess ? cudaEventQuery((cudaEvent_t)slot->owned_end) : home;
+    return end != cudaErrorNotReady;
+}
+
 gpu_status_t frame_gpu_run(frame_gpu_t *frame, const frame_args_t *args, frame_timings_t *out_timings) {
     uint32_t slot = 0u;
     gpu_status_t status = frame_gpu_queue(frame, args, &slot);
