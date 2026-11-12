@@ -15,6 +15,7 @@
 #include "terrain/index.h"
 #include "thread/index.h"
 #include "time/index.h"
+#include "tuning/hash/index.h"
 #include "world/column/index.h"
 
 #include <inttypes.h>
@@ -1136,7 +1137,7 @@ static bool bench_record(const bench_result_t *results, const bench_options_t *o
         for (uint32_t k = 0u; k < FRAME_KERNEL_COUNT; k++) {
             fprintf(file, "\t%s_ms", frame_kernel_name((frame_kernel_t)k));
         }
-        fprintf(file, "\tfill_first_s\tfill_near_s\tfill_rings_s\tfill_far_s\tfill_all_s\n");
+        fprintf(file, "\tfill_first_s\tfill_near_s\tfill_rings_s\tfill_far_s\tfill_all_s\ttuning\n");
     }
     char date[32] = "";
     const time_t now = time(nullptr);
@@ -1175,7 +1176,8 @@ static bool bench_record(const bench_result_t *results, const bench_options_t *o
         for (uint32_t k = 0u; k < 5u; k++) {
             fprintf(file, "\t%.2f", (libc_double_t)r->fill_s[k]);
         }
-        fprintf(file, "\n");
+        /* Which compile/config/ the row ran with: plan 009 phase 02. */
+        fprintf(file, "\t%016" PRIx64 "\n", (uint64_t)MC_TUNE_HASH);
     }
     const bool closed = fclose(file) == 0;
     if (!closed) {

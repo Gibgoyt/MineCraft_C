@@ -55,7 +55,7 @@ A row is not sound, and the exit status says so, if the last picture has fewer t
 - `--live`: every row but the walk on the game's own threads against the clock, an orbit included. Not with `--record`, for the same reason.
 - `--weather <kind>`: every row in this weather, as the game's `--weather` takes it: `clear`, `rain`, `snow`, `sleet`, `storm`, `thunder`, `fog`, `dust` or `hurricane`. Not with `--record`, for the same reason.
 - `--render-distance <chunks>`: the rows held to the frame target at this render distance, not 32, with full detail still the game's 32, so the rest is the far field. What a raised default costs (plan 005 phase 8). The history's `render_distance` column says which it was.
-- `--record <file>`: add a line per row to a history. **`bench/world/history.tsv` is the repository's.** New columns go on the end of its first line, and old lines stay.
+- `--record <file>`: add a line per row to a history. **`bench/world/history.tsv` is the repository's.** New columns go on the end of its first line, and old lines stay. The last, `tuning`, is the `MC_TUNE_HASH` the row was built with (`compile/config/`, plan 009 phase 02), so a number is read beside the tuning that made it; `--report` lists the values behind a hash.
 - `--label <text>`: says what was measured, in the history, such as the commit.
 - `--shots <dir>`: the last picture of each row as a PNG, to see what a row is looking at.
 - `--trace <file>`: with an `--only` that picks one row, its Chrome trace, and the profiler's table on stdout. Not in a release build.
