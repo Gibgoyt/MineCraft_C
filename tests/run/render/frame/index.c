@@ -6,6 +6,7 @@
 #include "display/headless/png/index.h"
 #include "file/index.h"
 #include "game/index.h"
+#include "game/pace/index.h"
 #include "game/watch/index.h"
 #include "gpu_bridge/index.h"
 #include "heap/index.h"
@@ -1340,7 +1341,9 @@ TEST(the_real_threads_draw_what_one_thread_draws_with_nothing_from_the_heap) {
     REQUIRE(game_loop_frame(game, &look_down, 0.0f32, &target));
     const render_fly_input_t fly = {.forward = 1, .fast = 1};
     const render_fly_input_t still = {0};
+    /* Plan 008 phase 02: main says when it will take next, so the gpu thread starts by the rule, as in a window. */
     for (uint32_t i = 0u; i < 300u; i++) {
+        game_loop_next_take(game, time_now_ns() + 1000000);
         REQUIRE(game_loop_frame(game, &fly, 1.0f32 / 120.0f32, &target));
         time_sleep_ns(1000000);
     }
@@ -1350,6 +1353,7 @@ TEST(the_real_threads_draw_what_one_thread_draws_with_nothing_from_the_heap) {
     int64_t started_ns = time_now_ns();
     uint64_t pictures = game->pictures_shown;
     for (;;) {
+        game_loop_next_take(game, time_now_ns() + 1000000);
         REQUIRE(game_loop_frame(game, &still, 1.0f32 / 120.0f32, &target));
         /* Only a new picture says anything, and only once the sim has no more columns to come: on a loaded machine, frames can be the same for
          * seconds because nothing has been drawn. The sim's word is read only to wait, as its last word comes round again. */
@@ -1666,6 +1670,7 @@ TEST(the_frame_log_has_one_line_per_picture) {
     const int64_t started_ns = time_now_ns();
     int64_t next_ns = started_ns;
     while (time_now_ns() - started_ns < 2ll * TIME_NS_PER_SECOND) {
+        game_loop_next_take(game, next_ns + TIME_NS_PER_SECOND / 120); /* plan 008 phase 02: the start rule on */
         REQUIRE(game_loop_frame(game, &turn, 1.0f32 / 120.0f32, &target));
         next_ns += TIME_NS_PER_SECOND / 120;
         time_sleep_until_ns(next_ns);
@@ -1675,6 +1680,15 @@ TEST(the_frame_log_has_one_line_per_picture) {
     /* F3's last second, read as main would, while the rings are still there. */
     game_watch_recent_t recent;
     CHECK(game_watch_recent_read(game_watch_of(game), time_now_ns(), &recent) || taken == 0u);
+    /* Plan 008 phase 02: with main's next take said, the pictures were started by the rule, not today's. */
+    const game_watch_t *const watch = game_watch_of(game);
+    const uint64_t drawn = __atomic_load_n(&watch->pictures_drawn, __ATOMIC_ACQUIRE);
+    uint64_t paced = 0u;
+    for (uint64_t i = 0u; i < drawn && i < GAME_WATCH_RING; i++) {
+        paced += watch->borrowed_pictures[i].pace_how != GAME_PACE_HOW_TODAY ? 1u : 0u;
+    }
+    printf("  %" PRIu64 " of %" PRIu64 " pictures started by the rule\n", paced, drawn);
+    CHECK(paced * 10u >= drawn * 9u);
     game_close(game);
     fr_rig_end(t, &rig);
     uint64_t length = 0u;
@@ -1686,6 +1700,7 @@ TEST(the_frame_log_has_one_line_per_picture) {
     printf("  %" PRIu64 " pictures taken in 2 s, %" PRIu64 " lines in the log\n", taken, lines);
     CHECK(taken > 10u);
     CHECK_EQ_U64(lines, taken + 1u);
+    CHECK(strstr((const char *)text, ",pace,aimed_ms,start_late_ms,missed,puts_skipped\n") != nullptr);
     fr_temp_dir_remove(&dir);
 }
 

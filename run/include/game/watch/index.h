@@ -75,10 +75,14 @@ typedef struct game_watch_picture_t {
     float32_t card_mhz;                   /* 112: the last reading of the card's clock speed; 0 before one */
     float32_t turn_deg_s; /* 116: from the last picture's forward to this one's, over the time between their starts */
     uint32_t fresh;       /* 120: pixels on the fresh AO list */
-    uint8_t clock_read;   /* 121: card_mhz was read on this very picture */
-    uint8_t _pad0[3];     /* 125 */
+    uint8_t clock_read;   /* 124: card_mhz was read on this very picture */
+    uint8_t pace_how;     /* 125: plan 008 phase 02: how the start rule started it, a game_pace_how_t */
+    uint8_t missed;       /* 126: it was ready after the take it was aimed at */
+    uint8_t _pad0[1];     /* 127 */
+    int64_t aimed_ns;     /* 128: the take the rule aimed it at; 0 for none */
+    int64_t start_at_ns;  /* 136: when the rule said to start it: the start less this is the sleep's overshoot */
 } game_watch_picture_t;
-static_assert(sizeof(game_watch_picture_t) == 128);
+static_assert(sizeof(game_watch_picture_t) == 144);
 
 /* What the gpu thread says of a picture before drawing it, in the exchange slot it goes into: the publish hands it to main with it. */
 typedef struct game_watch_slot_t {
@@ -99,8 +103,10 @@ typedef struct game_watch_take_t {
     int64_t x_put_ns;  /* 40: the X server's last ShmPutImage, from its send to its completion being read; 0 for none */
     int64_t x_wait_ns; /* 48: what main blocked this frame waiting for that completion */
     int64_t x_idle_ns; /* 56: from that put's send to main's next look: its sleep to the slot, mostly */
+    uint64_t
+        puts_skipped; /* 64: plan 008 phase 02: X puts skipped since the window opened, both segments being with the server */
 } game_watch_take_t;
-static_assert(sizeof(game_watch_take_t) == 64);
+static_assert(sizeof(game_watch_take_t) == 72);
 
 /* What F3 says of the last second, from the two rings. */
 typedef struct game_watch_recent_t {
@@ -115,11 +121,12 @@ typedef struct game_watch_recent_t {
     float32_t turn_deg_s;                /* 32: the mean over GAME_WATCH_TURN_NS */
     float32_t card_mhz;                  /* 36 */
     float32_t pass_ms[FRAME_PASS_COUNT]; /* 40: means over the second */
-    uint32_t late;                       /* 60: pictures shown past the slot after the one they began in */
+    uint32_t late;                       /* 60: plan 008 phase 02: pictures ready after the take they were aimed at */
     uint32_t pictures;                   /* 64 */
     uint32_t fresh_mean;                 /* 68 */
+    uint64_t puts_skipped;               /* 72: X puts skipped since the window opened */
 } game_watch_recent_t;
-static_assert(sizeof(game_watch_recent_t) == 72);
+static_assert(sizeof(game_watch_recent_t) == 80);
 
 /* One line per thread that writes it, as each writes its own all the time. In the game's World arena beside the column jobs
  * (game_watch_of), as game_t is at its size. */
@@ -165,7 +172,9 @@ typedef struct game_watch_t {
     int64_t x_wait_from_ns; /* 208: when main last began to wait for one */
     int64_t x_wait_ns;      /* 216: and what it blocked */
     int64_t last_taken_ns;  /* 224: 0 before a take */
-    uint8_t _pad3[24];      /* 232 */
+    uint64_t
+        x_puts_skipped; /* 232: plan 008 phase 02: the window's puts skipped, both segments being with the server */
+    uint8_t _pad3[16];  /* 240 */
     /* The gpu thread's, read by main after a take: GAME_WATCH_SLOTS are the exchange's. */
     game_watch_slot_t slots[RENDER_EXCHANGE_SLOTS]; /* 256 */
     uint8_t _pad4[56];                              /* 328 */
@@ -263,7 +272,7 @@ void game_watch_take_note(game_watch_t *watch, uint32_t slot, int64_t taken_ns);
 
 /* Main's, before the frame: what the window said of its last put and of main's wait for it. Nothing comes under KMS. */
 void game_watch_display_note(game_watch_t *watch, int64_t put_sent_ns, int64_t put_done_ns, int64_t wait_from_ns,
-                             int64_t wait_ns);
+                             int64_t wait_ns, uint64_t puts_skipped);
 
 /* The sim's, once a tick, or whoever has no threads: the takes since the last into the minute's numbers and the log's lines, which are
  * written when there are enough or it is time. final writes all there is, and is only for no threads. */

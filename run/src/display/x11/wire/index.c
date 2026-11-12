@@ -366,6 +366,11 @@ uint32_t wire_shm_put_image(uint8_t *out, uint8_t major, uint32_t drawable, uint
     return total;
 }
 
+uint32_t wire_shm_completion_segment(const uint8_t packet[WIRE_PACKET_BYTES]) {
+    /* code, pad, sequence (2), drawable (4), minor event (2), major event, pad, then the segment */
+    return get32(packet + 12);
+}
+
 void wire_size_hints_fixed(uint32_t out[18], uint32_t width, uint32_t height) {
     memset(out, 0, 18u * sizeof(out[0]));
     out[0] = WIRE_HINT_MIN_SIZE | WIRE_HINT_MAX_SIZE;

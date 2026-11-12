@@ -43,7 +43,7 @@ Ahmed, 2026-11-12: "only when shaking my head does frame rate tank; when walking
 - **Pictures** (`game_watch_picture_t`), the gpu thread's, one for every picture it draws, taken or not. Stamps on `time_now_ns`'s clock: the last picture done (from there it waits for main to take it), this one begun, after the upload, after the far field's plan, after fill and the day's light, all queued (`frame_marks_t.queued_ns`: from there it waits for the card), and ready. Then the card's passes, the far field's rays, shade's five kernels, the fresh AO count, the card's MHz at its last reading, and the turn speed: the angle between this picture's forward and the last one's, over the time between their starts. Counted in `pictures_drawn` with a release once whole.
 - **Takes** (`game_watch_take_t`), main's, one for every picture main takes: which picture, main's frame counts when it began and at the take, when it was taken, and what the window last said (`game_watch_display_note`): the last put's send to completion, main's block waiting for it, and from that send to main's next wait, its sleep to the slot. Counted in `takes_made` with a release.
 
-What main needs of a picture at the take, its number and when it began, goes through the exchange slot it was drawn into (`slots`), written before the draw, so the publish hands it over with the picture. A picture main took was **late** if it was taken past the slot after the one it began in: main's frame count at the take is more than one past its count at the start.
+What main needs of a picture at the take, its number and when it began, goes through the exchange slot it was drawn into (`slots`), written before the draw, so the publish hands it over with the picture. A picture main took was **late** if it was ready after the take the start rule aimed it at (plan 008 phase 02, `missed`); with no aim, as under today's rule, if it was taken past the slot after the one it began in: main's frame count at the take is more than one past its count at the start.
 
 **The sim reads the takes** once a tick (`game_watch_rings_read`, from `game_watch_tick_note`), joining each to its picture, into the minute's numbers and the frame log's lines. A take whose picture the gpu thread has not counted yet waits for the next tick. One read so late that main is writing where it would read next skips what is gone and counts it (`takes_lost`): 34 s behind, which the sim never is.
 
@@ -62,8 +62,8 @@ What main needs of a picture at the take, its number and when it began, goes thr
 | `seq` | the picture's number since the world opened (pictures drawn and never taken leave gaps, as with vsync off) |
 | `taken_s` | when main took it, seconds since the world opened |
 | `interval_ms` | **from the last picture main took to this one: what was on the screen** |
-| `ticks_waited`, `late` | main's frames from its start to its take, and 1 if that is more than 1 |
-| `idle_ms` | the gpu thread waiting for main to take the last picture before starting this one: the card idles meanwhile |
+| `ticks_waited`, `late` | main's frames from its start to its take; and 1 if it was ready after the take the start rule aimed it at (plan 008 phase 02), or with no aim (today's rule) if the frames are more than 1 |
+| `idle_ms` | the gpu thread from the last picture ready to starting this one: waiting for main to take the last, or (plan 008 phase 02) sleeping to start just in time. The card idles meanwhile |
 | `upload_ms`, `lod_plan_ms`, `fill_ms` | the gpu thread's parts before the draw |
 | `draw_cpu_ms` | from there to all queued: entities, weather, the kernels' launches |
 | `card_wait_ms` | from all queued to ready: the thread waiting for the card, and the copy home |
@@ -74,6 +74,11 @@ What main needs of a picture at the take, its number and when it began, goes thr
 | `fresh` | pixels on the fresh AO list: surfaces the last picture did not have, each given 4 AO rays |
 | `card_mhz`, `clock_read` | the card's clock speed at its last reading, and 1 on the picture that read it (once a second) |
 | `turn_deg_s` | the camera's turn speed |
-| `x_put_ms`, `x_wait_ms`, `x_idle_ms` | the X server's last put, send to completion; main's block waiting for it this frame; main from that send to its next wait (its sleep to the slot, mostly). 0 under KMS |
+| `x_put_ms`, `x_wait_ms`, `x_idle_ms` | the X server's last put, send to completion; main's time looking for a free segment this frame (it no longer waits: plan 008 phase 02); main from that send to its next look (its sleep to the slot, mostly). 0 under KMS |
+| `pace` | plan 008 phase 02: how the start rule started it, `game_pace_how_t`: 0 today's (no take known, paused or uncapped), 1 just in time, 2 at once after a late one, 3 back to back, 4 at once under Q3 B |
+| `aimed_ms` | from its start to the take it was aimed at; 0 with no aim |
+| `start_late_ms` | from when the rule last said to start to the start: the sleep's overshoot |
+| `missed` | 1 if it was ready after its aim |
+| `puts_skipped` | X puts skipped since the window opened, both segments being with the server |
 
 **How to read it.** Sort by `interval_ms`: every line well over 8.33 ms (16.7, 25.0) is a picture the screen held for more than one slot. On that line, `card_ms` against `p_ms` and `idle_ms` says whether the card, the gpu thread or the wait for main took the time; `fresh` and `turn_deg_s` say whether turning brought the work; `card_mhz` says how fast the card was going; `x_put_ms` and `x_wait_ms` say whether the X server held main.

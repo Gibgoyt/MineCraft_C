@@ -290,6 +290,15 @@ void display_flip_vsync_set(display_flip_t *flip, bool vsync) {
     flip->uncapped = (uint8_t)(vsync ? 0u : 1u);
 }
 
+int64_t display_flip_next_ns(const display_flip_t *flip) {
+    if (flip->uncapped != 0u || flip->last_event_ns == 0) {
+        return 0;
+    }
+    const uint64_t interval_ns =
+        flip->stats.intervals != 0u ? flip->stats.sum_ns / flip->stats.intervals : flip->period_ns;
+    return flip->last_event_ns + (int64_t)interval_ns;
+}
+
 static void flip_record_event(display_flip_t *flip, const struct drm_event_vblank *event, int64_t now_ns) {
     display_flip_stats_t *const stats = &flip->stats;
     if (flip->flip_pending == 0u) {

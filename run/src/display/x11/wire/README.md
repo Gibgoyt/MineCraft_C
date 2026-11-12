@@ -10,6 +10,7 @@
 - `wire_display_number`, `wire_xauth_find`: which server, and the cookie it wants.
 - `wire_setup_request`, `wire_setup_reply_bytes`, `wire_setup_parse`, `wire_packet_bytes`: the handshake and framing.
 - `wire_query_extension` and the other request encoders: one each, writing into the caller's buffer.
+- `wire_shm_completion_segment`: the segment a finished put names (plan 008 phase 02).
 - `wire_key_code`, `wire_button`, `wire_is_auto_repeat`: what an event means in evdev's terms, which is what the game reads.
 - `wire_pointer_start`, `wire_pointer_take`, `wire_pointer_wants_warp`: mouse movement from a pointer held in the window.
 

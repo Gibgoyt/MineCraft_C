@@ -102,10 +102,11 @@ typedef struct ui_hud_debug_t {
     float32_t x_put_ms;   /* 104: the X server's put, from its send to its completion, a picture's mean; 0 under KMS */
     float32_t turn_deg_s; /* 108: the camera's turn, the mean over a quarter of a second */
     float32_t card_mhz;   /* 112: the card's clock speed, at its last reading */
-    uint32_t late;        /* 116: pictures shown past the slot after the one they began in */
+    uint32_t late;        /* 116: pictures ready after the take they were aimed at (plan 008 phase 02) */
     uint32_t recent;      /* 120: 0 if there is no last second to speak of, and the four lines say so */
+    uint32_t skipped;     /* 124: X puts skipped, both segments being with the server; shown when not 0 */
 } ui_hud_debug_t;
-static_assert(sizeof(ui_hud_debug_t) == 124);
+static_assert(sizeof(ui_hud_debug_t) == 128);
 
 /* Where things go on a canvas of some size, in its pixels. */
 typedef struct ui_hud_layout_t {

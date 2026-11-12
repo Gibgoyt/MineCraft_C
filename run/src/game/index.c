@@ -10,6 +10,7 @@
 #include "game/corner/index.h"
 #include "game/cover/index.h"
 #include "game/fill/index.h"
+#include "game/pace/index.h"
 #include "game/weather/index.h"
 #include "item/stack/index.h"
 #include "game/spawn/index.h"
@@ -41,8 +42,9 @@ typedef struct game_world_parts_t {
     game_command_t command;       /* 62592: plan 006 phase 01's command box, main's */
     render_lod_world_t lod_world; /* 64456: plan 006 phase 02: what the far field's sampler reads */
     uint8_t _pad1[40];            /* 64472 */
+    game_pace_t pace;             /* 64512: plan 008 phase 02's start rule: the gpu thread's line, and main's next take */
 } game_world_parts_t;
-static_assert(sizeof(game_world_parts_t) == 64512);
+static_assert(sizeof(game_world_parts_t) == 64768);
 static_assert(offsetof(game_world_parts_t, fill) == 59200);
 static_assert(offsetof(game_world_parts_t, jobs) == 0);
 static_assert(offsetof(game_world_parts_t, weather) == 8192);
@@ -50,6 +52,7 @@ static_assert(offsetof(game_world_parts_t, cover) == 58816);
 static_assert(offsetof(game_world_parts_t, corner) == 58944);
 static_assert(offsetof(game_world_parts_t, watch) == 61056);
 static_assert(offsetof(game_world_parts_t, command) == 62592);
+static_assert(offsetof(game_world_parts_t, pace) == 64512);
 
 enum : uint64_t {
     /* Budgets of the two arenas with a lifetime shorter than a world's. */
@@ -146,6 +149,10 @@ game_fill_t *game_fill_of(const game_t *game) {
 
 game_watch_t *game_watch_of(const game_t *game) {
     return game->borrowed_jobs != nullptr ? &((game_world_parts_t *)(void *)game->borrowed_jobs)->watch : nullptr;
+}
+
+game_pace_t *game_pace_of(const game_t *game) {
+    return game->borrowed_jobs != nullptr ? &((game_world_parts_t *)(void *)game->borrowed_jobs)->pace : nullptr;
 }
 
 game_command_t *game_command_of(const game_t *game) {
@@ -644,6 +651,7 @@ bool game_open(game_t *game, const game_config_t *config) {
     game_watch_start(&world_parts->watch);
     game_command_start(&world_parts->command);
     memset(world_parts->_pad1, 0, sizeof(world_parts->_pad1));
+    game_pace_start(&world_parts->pace, true); /* Q3: A, just in time */
     const terrain_t *const terrain = game->borrowed_terrain;
     for (uint32_t i = 0u; i < GAME_STREAM_JOBS; i++) {
         game_column_job_t *const job = &game->borrowed_jobs[i];
@@ -1514,18 +1522,47 @@ static void game_gpu_thread(void *borrowed_argument) {
     render_t *const render = game->borrowed_render;
     const render_camera_t *camera = &game->camera_slots[game->cameras.front];
     game_watch_t *const watch = game_watch_of(game);
+    game_pace_t *const pace = game_pace_of(game);
     int64_t waited_ns = time_now_ns(); /* plan 008 phase 01: when the last picture was done */
+    int64_t planned_ns = 0;            /* the earliest start the rule has said for the next picture; 0 for none yet */
     while (atomic_load_explicit(&game->stop, memory_order_acquire) == 0u) {
         atomic_fetch_add_explicit(&game->gpu_beats, 1u, memory_order_relaxed);
-        /* A picture no one has taken yet is plenty: drawing past the display's rate would only heat the card. Uncapped is someone asking for
-         * that, for as long as anyone is looking. */
-        const bool draw_on = atomic_load_explicit(&game->uncapped, memory_order_relaxed) != 0u &&
-                             atomic_load_explicit(&game->paused, memory_order_relaxed) == 0u;
-        if (!draw_on && render_exchange_waiting(&render->frame.pictures)) {
-            time_sleep_ns(GAME_GPU_IDLE_NS);
+        /* Plan 008 phase 02: when to start, by the rule in game/pace. A picture no one has taken yet is plenty unless starting now shows the
+         * next sooner; a late one does not make the next wait a slot. Paused, the rule is today's: no take is coming to aim at. */
+        const bool paused = atomic_load_explicit(&game->paused, memory_order_relaxed) != 0u;
+        const game_pace_in_t in = {
+            .now_ns = time_now_ns(),
+            .next_take_ns = paused ? 0 : atomic_load_explicit(&pace->next_take_ns, memory_order_relaxed),
+            .tick_ns = GAME_WATCH_SLOT_NS,
+            .predicted_ns = pace->predicted_ns,
+            .last_ready_ns = pace->last_ready_ns,
+            .last_aimed_ns = pace->last_aimed_ns,
+            .margin_ns = GAME_PACE_MARGIN_NS,
+            .picture_waiting = render_exchange_waiting(&render->frame.pictures) ? 1u : 0u,
+            .uncapped = atomic_load_explicit(&game->uncapped, memory_order_relaxed) != 0u && !paused ? 1u : 0u,
+            .just_in_time = pace->just_in_time};
+        game_pace_out_t when;
+        game_pace_decide(&in, &when);
+        /* A start once said never moves later: a main whose takes come faster than the tick it says would otherwise move the beat, and the
+         * just-in-time start with it, ahead of the clock for ever. */
+        if (when.hold == 0u && planned_ns != 0 && when.start_at_ns > planned_ns) {
+            when.start_at_ns = planned_ns;
+        }
+        planned_ns = when.hold == 0u ? when.start_at_ns : 0;
+        if (when.hold != 0u || when.start_at_ns > in.now_ns) {
+            /* Toward the start in slices, looking at stop, paused and main's takes again after each. */
+            const int64_t until_ns = when.start_at_ns - in.now_ns;
+            const int64_t slice_ns = when.how == GAME_PACE_HOW_TODAY ? GAME_GPU_IDLE_NS : GAME_PACE_SLICE_NS;
+            time_sleep_ns(until_ns > 0 && until_ns < slice_ns ? until_ns : slice_ns);
             continue;
         }
         game_watch_picture_t *const picture = game_watch_picture_begin(watch, waited_ns, time_now_ns());
+        if (picture != nullptr) {
+            picture->aimed_ns = when.aimed_ns;
+            picture->start_at_ns = when.start_at_ns;
+            picture->pace_how = when.how;
+        }
+        const int64_t started_ns = picture != nullptr ? picture->stamp_ns[GAME_WATCH_STAMP_START] : time_now_ns();
         uint32_t slot = 0u;
         if (render_exchange_take(&game->cameras, &slot)) {
             camera = &game->camera_slots[slot];
@@ -1567,6 +1604,8 @@ static void game_gpu_thread(void *borrowed_argument) {
             return;
         }
         waited_ns = game_watch_picture_end(watch, picture, &render->frame.last_timings, camera);
+        game_pace_note(pace, started_ns, waited_ns, when.aimed_ns);
+        planned_ns = 0;
     }
 }
 
@@ -1627,6 +1666,13 @@ bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t se
     game_day_advance(game, seconds);
     game->camera_slots[game->cameras.back] = game->camera;
     render_exchange_publish(&game->cameras);
+    /* Plan 008 phase 02: before the take, so the gpu thread that sees it taken aims at the take after. Capped only: uncapped draws back to
+     * back. What is said is used once: a frame with nobody saying is one with no take known. */
+    game_pace_t *const pace = game_pace_of(game);
+    const int64_t next_take_ns =
+        atomic_load_explicit(&game->uncapped, memory_order_relaxed) == 0u ? pace->take_hint_ns : 0;
+    atomic_store_explicit(&pace->next_take_ns, next_take_ns, memory_order_relaxed);
+    pace->take_hint_ns = 0;
     render_frame_t *const frame = &game->borrowed_render->frame;
     const uint8_t *const picture = render_frame_take(frame);
     if (picture != nullptr) {
@@ -1654,6 +1700,13 @@ bool game_loop_frame(game_t *game, const render_fly_input_t *input, float32_t se
     PROFILER_END(lane);
     (void)game_gpu_alive(game); /* it says so, and that is failed */
     return atomic_load_explicit(&game->failed, memory_order_acquire) == 0u;
+}
+
+void game_loop_next_take(game_t *game, int64_t next_take_ns) {
+    game_pace_t *const pace = game_pace_of(game);
+    if (pace != nullptr) {
+        pace->take_hint_ns = next_take_ns;
+    }
 }
 
 bool game_loop_stop(game_t *game) {

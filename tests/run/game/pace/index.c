@@ -71,7 +71,20 @@ typedef struct pace_run_t {
 } pace_run_t;
 static_assert(sizeof(pace_run_t) == 32776);
 
-typedef int64_t pace_cost_fn(uint32_t picture, void *context);
+/* What each picture costs: constant_ns, or 5 to 30 ms at random with constant_ns 0. */
+typedef struct pace_cost_t {
+    int64_t constant_ns; /* 0 */
+    uint64_t state;      /* 8 */
+} pace_cost_t;
+static_assert(sizeof(pace_cost_t) == 16);
+
+static int64_t pace_cost(pace_cost_t *cost) {
+    if (cost->constant_ns != 0) {
+        return cost->constant_ns;
+    }
+    cost->state = cost->state * 6364136223846793005ull + 1442695040888963407ull;
+    return 5 * PACE_MS + (int64_t)((cost->state >> 33) % (uint64_t)(25 * PACE_MS));
+}
 
 static int64_t pace_next_take(int64_t now_ns) {
     return (now_ns / PACE_TICK + 1) * PACE_TICK;
@@ -82,8 +95,7 @@ static int64_t pace_shown_at(int64_t ready_ns) {
     return (ready_ns + PACE_TICK - 1) / PACE_TICK * PACE_TICK;
 }
 
-static void pace_simulate(test_context_t *t, pace_run_t *run, uint32_t pictures, pace_cost_fn *cost, void *context,
-                          bool today) {
+static void pace_simulate(test_context_t *t, pace_run_t *run, uint32_t pictures, pace_cost_t *cost, bool today) {
     game_pace_t pace;
     game_pace_start(&pace, true);
     memset(run, 0, sizeof(*run));
@@ -112,7 +124,7 @@ static void pace_simulate(test_context_t *t, pace_run_t *run, uint32_t pictures,
         }
         const uint32_t i = run->count++;
         run->start_ns[i] = now_ns;
-        run->ready_ns[i] = now_ns + cost(i, context);
+        run->ready_ns[i] = now_ns + pace_cost(cost);
         if (i != 0u && run->start_ns[i] < run->ready_ns[i - 1u]) {
             CHECK(run->start_ns[i] >= run->ready_ns[i - 1u]); /* never two in flight */
         }
@@ -151,15 +163,10 @@ static void pace_means(const pace_run_t *run, float64_t *out_ready_ms, float64_t
     *out_shown_ms = (float64_t)(last - first) / (float64_t)(shown - 1u) / (float64_t)PACE_MS;
 }
 
-static int64_t pace_constant(uint32_t picture, void *context) {
-    (void)picture;
-    return *(const int64_t *)context;
-}
-
 TEST(seventeen_ms_pictures_give_seventeen_ms_intervals) {
     static pace_run_t run;
-    int64_t cost = 17 * PACE_MS;
-    pace_simulate(t, &run, 600u, pace_constant, &cost, false);
+    pace_cost_t cost = {.constant_ns = 17 * PACE_MS};
+    pace_simulate(t, &run, 600u, &cost, false);
     float64_t ready_ms = 0.0f64, shown_ms = 0.0f64;
     int64_t least = 0, most = 0;
     pace_means(&run, &ready_ms, &shown_ms, &least, &most);
@@ -168,7 +175,7 @@ TEST(seventeen_ms_pictures_give_seventeen_ms_intervals) {
     CHECK_NEAR(least, 2 * PACE_TICK, 1); /* 16.67 or 25 */
     CHECK_NEAR(most, 3 * PACE_TICK, 1);
     /* Today's rule in the same run: a picture each three ticks. */
-    pace_simulate(t, &run, 600u, pace_constant, &cost, true);
+    pace_simulate(t, &run, 600u, &cost, true);
     pace_means(&run, &ready_ms, &shown_ms, &least, &most);
     CHECK_NEAR(shown_ms, 25.0f64, 0.01f64);
     CHECK_NEAR(ready_ms, 25.0f64, 0.01f64);
@@ -178,8 +185,8 @@ TEST(seventeen_ms_pictures_give_seventeen_ms_intervals) {
  * as no 14 ms picture can fit one 8.33 ms tick. */
 TEST(fourteen_ms_pictures_are_one_a_slot) {
     static pace_run_t run;
-    int64_t cost = 14 * PACE_MS;
-    pace_simulate(t, &run, 300u, pace_constant, &cost, false);
+    pace_cost_t cost = {.constant_ns = 14 * PACE_MS};
+    pace_simulate(t, &run, 300u, &cost, false);
     const int64_t span_ns = run.start_ns[run.count - 1u] - run.start_ns[0];
     CHECK(span_ns / PACE_TICK >= 598 && span_ns / PACE_TICK <= 600); /* 300 pictures over 600 ticks */
     for (uint32_t i = 1u; i < run.count; i++) {
@@ -192,33 +199,21 @@ TEST(fourteen_ms_pictures_are_one_a_slot) {
     }
 }
 
-typedef struct pace_random_t {
-    uint64_t state; /* 0 */
-} pace_random_t;
-static_assert(sizeof(pace_random_t) == 8);
-
-static int64_t pace_random_cost(uint32_t picture, void *context) {
-    (void)picture;
-    pace_random_t *const random = context;
-    random->state = random->state * 6364136223846793005ull + 1442695040888963407ull;
-    return 5 * PACE_MS + (int64_t)((random->state >> 33) % (uint64_t)(25 * PACE_MS));
-}
-
 TEST(never_two_in_flight) {
     static pace_run_t run;
-    pace_random_t random = {.state = 12345u};
-    pace_simulate(t, &run, 2000u, pace_random_cost, &random, false);
+    pace_cost_t random = {.constant_ns = 0, .state = 12345u};
+    pace_simulate(t, &run, 2000u, &random, false);
     for (uint32_t i = 1u; i < run.count; i++) {
         CHECK(run.start_ns[i] >= run.ready_ns[i - 1u]);
     }
     /* And the rule alone never starts before now, whatever it is asked. */
     for (uint32_t i = 0u; i < 20000u; i++) {
         game_pace_in_t in = pace_in(0, 0, 0, (i & 1u) != 0u);
-        in.now_ns = (int64_t)(pace_random_cost(0u, &random) * 7);
-        in.next_take_ns = (i % 5u) == 0u ? 0 : in.now_ns - 20 * PACE_MS + pace_random_cost(0u, &random);
-        in.predicted_ns = pace_random_cost(0u, &random) - 5 * PACE_MS;
-        in.last_ready_ns = in.now_ns - (pace_random_cost(0u, &random) - 5 * PACE_MS);
-        in.last_aimed_ns = (i % 3u) == 0u ? 0 : in.last_ready_ns + pace_random_cost(0u, &random) - 15 * PACE_MS;
+        in.now_ns = (int64_t)(pace_cost(&random) * 7);
+        in.next_take_ns = (i % 5u) == 0u ? 0 : in.now_ns - 20 * PACE_MS + pace_cost(&random);
+        in.predicted_ns = pace_cost(&random) - 5 * PACE_MS;
+        in.last_ready_ns = in.now_ns - (pace_cost(&random) - 5 * PACE_MS);
+        in.last_aimed_ns = (i % 3u) == 0u ? 0 : in.last_ready_ns + pace_cost(&random) - 15 * PACE_MS;
         in.picture_waiting = (uint8_t)((i >> 1u) & 1u);
         in.uncapped = (uint8_t)((i % 7u) == 0u ? 1u : 0u);
         game_pace_out_t out;

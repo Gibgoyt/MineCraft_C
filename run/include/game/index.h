@@ -457,6 +457,11 @@ void game_headless_scene(game_t *game, display_headless_scene_t *out);
                                    display_buffer_t *target);
 [[nodiscard]] bool game_loop_stop(game_t *game);
 
+/* Plan 008 phase 02: when whoever runs main's frames will next call game_loop_frame, said before this frame's call, which publishes it to
+ * the gpu thread's start rule (run/src/game/pace/). 0, or no call, for not known: the rule is then today's, a picture once main has taken
+ * the last. Main's. */
+void game_loop_next_take(game_t *game, int64_t next_take_ns);
+
 /* What display_frames_run calls, with a game_t * as context, after game_loop_source_begin: on its first call it starts the
  * threads, which is after display_frames_run has forked its guardian; then one poll of the real keys and mouse, Esc to end the
  * run, and game_loop_frame by the clock. game_loop_stop still ends it, and says if the threads could not start. */

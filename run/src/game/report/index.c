@@ -143,6 +143,7 @@ void game_hud_debug_read(const game_t *game, ui_hud_debug_t *out) {
             out->turn_deg_s = recent.turn_deg_s;
             out->card_mhz = recent.card_mhz;
             out->late = recent.late;
+            out->skipped = (uint32_t)recent.puts_skipped;
             if (recent.card_mean_ms > 0.0f32) {
                 for (uint32_t pass = 0u; pass < FRAME_PASS_COUNT; pass++) {
                     out->stage_ms[pass] = recent.pass_ms[pass];

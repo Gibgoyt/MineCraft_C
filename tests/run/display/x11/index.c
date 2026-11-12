@@ -1,7 +1,10 @@
-/* ctest run_display_x11. See README.md. The protocol as bytes: no server, no socket and no window. */
+/* ctest run_display_x11. See README.md. The protocol as bytes, and plan 008 phase 02's two segments with the server's answers played by
+ * the test: no X server, no socket and no window. */
 #include "harness/index.h"
 
+#include "display/x11/index.h"
 #include "display/x11/wire/index.h"
+#include "time/index.h"
 
 #include <linux/input-event-codes.h>
 #include <string.h>
@@ -247,6 +250,130 @@ TEST(a_put_asks_for_a_whole_frame_and_for_word_when_it_is_done) {
     CHECK_EQ_I64(out[29], 2); /* ZPixmap */
     CHECK_EQ_I64(out[30], 1); /* the event that says the buffer may be drawn on again */
     CHECK_EQ_I64(read32(out + 32), 0x33);
+}
+
+TEST(a_completion_names_its_segment_in_bytes_12_to_15) {
+    uint8_t packet[WIRE_PACKET_BYTES] = {0};
+    packet[0] = 65u;
+    write32(packet + 4, 0x11u); /* the drawable */
+    write32(packet + 12, 0x2Au);
+    CHECK_EQ_I64(wire_shm_completion_segment(packet), 0x2A);
+}
+
+/* ---- Two segments, plan 008 phase 02 ---------------------------------------------------------------------------- */
+
+enum : uint32_t {
+    X11T_SIDE = 4u,
+};
+
+/* A display_x11_t as display_x11_init leaves it, but with no connection (fd -1, which a look at the socket passes over): every buffer
+ * test memory, the segments 0x103 and 0x107. A put is display_x11_put_note, as display_x11_present does before its send, and the server's
+ * answer display_x11_completion_take, as reading its ShmCompletion does. Nothing to deinit. */
+static void x11t_open(test_context_t *t, display_x11_t *x11) {
+    memset(x11, 0, sizeof(*x11));
+    x11->fd = -1;
+    x11->borrowed_inbox = test_alloc(t, 1u << 18);
+    x11->borrowed_events = test_alloc(t, 4096u * WIRE_PACKET_BYTES);
+    for (uint32_t i = 0u; i < DISPLAY_X11_BUFFERS; i++) {
+        const uint64_t bytes = (uint64_t)X11T_SIDE * X11T_SIDE * 4u;
+        x11->buffers[i] = (display_buffer_t){.owned_map = test_alloc(t, bytes),
+                                             .map_bytes = bytes,
+                                             .pitch = X11T_SIDE * 4u,
+                                             .width = X11T_SIDE,
+                                             .height = X11T_SIDE};
+    }
+    x11->segment[0] = 0x103u;
+    x11->segment[1] = 0x107u;
+    x11->shm_completion = 65u;
+    x11->running = 1u;
+}
+
+/* A frame: the free buffer, and a put from it unless it is the spare. */
+static bool x11t_frame(display_x11_t *x11, uint32_t *out_which) {
+    if (!display_x11_free_buffer(x11, out_which)) {
+        return false;
+    }
+    if (*out_which != DISPLAY_X11_SPARE) {
+        display_x11_put_note(x11, *out_which, time_now_ns());
+    }
+    return true;
+}
+
+TEST(two_puts_outstanding_do_not_block) {
+    display_x11_t x11;
+    x11t_open(t, &x11);
+    uint32_t which = 99u;
+    REQUIRE(x11t_frame(&x11, &which));
+    CHECK(which < DISPLAY_X11_SEGMENTS);
+    const uint32_t first = which;
+    REQUIRE(x11t_frame(&x11, &which));
+    CHECK(which < DISPLAY_X11_SEGMENTS && which != first);
+    CHECK_EQ_U64(x11.frames, 2u);
+    /* Both with the server, with no completion: the third finds none free, at once, and is the spare. */
+    const int64_t started_ns = time_now_ns();
+    REQUIRE(x11t_frame(&x11, &which));
+    const int64_t took_ns = time_now_ns() - started_ns;
+    CHECK_EQ_U64(which, DISPLAY_X11_SPARE);
+    CHECK_EQ_U64(x11.puts_skipped, 1u);
+    CHECK(took_ns < 5000000);
+    CHECK(x11.failed_call == nullptr);
+    CHECK_EQ_U64(x11.frames, 2u);
+    /* Neither the spare nor a segment still with the server is ever put: present refuses before it sends. */
+    CHECK(!display_x11_present(&x11, DISPLAY_X11_SPARE));
+    CHECK(!display_x11_present(&x11, first));
+    CHECK_EQ_U64(x11.frames, 2u);
+}
+
+TEST(a_completion_frees_its_own_segment) {
+    display_x11_t x11;
+    x11t_open(t, &x11);
+    uint32_t which = 99u;
+    REQUIRE(x11t_frame(&x11, &which));
+    const uint32_t first = which;
+    REQUIRE(x11t_frame(&x11, &which));
+    const uint32_t second = which;
+    /* The second's completion comes first: the second is free, and the first still out. */
+    display_x11_completion_take(&x11, x11.segment[second], time_now_ns());
+    CHECK_EQ_U64(x11.put_pending[first], 1u);
+    CHECK_EQ_U64(x11.put_pending[second], 0u);
+    CHECK(x11.put_done_ns != 0); /* it was the last put */
+    REQUIRE(x11t_frame(&x11, &which));
+    CHECK_EQ_U64(which, second);
+    /* Now the first's: it is free, and the second out again; the first's done is not the last put's. */
+    display_x11_completion_take(&x11, x11.segment[first], time_now_ns());
+    CHECK_EQ_I64(x11.put_done_ns, 0);
+    REQUIRE(x11t_frame(&x11, &which));
+    CHECK_EQ_U64(which, first);
+    CHECK_EQ_U64(x11.put_pending[second], 1u);
+    /* A completion naming no segment of ours frees nothing. */
+    display_x11_completion_take(&x11, 0x999u, time_now_ns());
+    REQUIRE(x11t_frame(&x11, &which));
+    CHECK_EQ_U64(which, DISPLAY_X11_SPARE);
+    CHECK_EQ_U64(x11.puts_skipped, 1u);
+    /* Both back: the one not put last goes first. */
+    display_x11_completion_take(&x11, x11.segment[0], time_now_ns());
+    display_x11_completion_take(&x11, x11.segment[1], time_now_ns());
+    REQUIRE(x11t_frame(&x11, &which));
+    CHECK_EQ_U64(which, second);
+}
+
+TEST(no_completion_for_five_seconds_still_fails) {
+    display_x11_t x11;
+    x11t_open(t, &x11);
+    uint32_t which = 99u;
+    REQUIRE(x11t_frame(&x11, &which));
+    REQUIRE(x11t_frame(&x11, &which));
+    /* Both out; the older one was sent 4.9 s ago: still a skip. */
+    const int64_t now_ns = time_now_ns();
+    x11.segment_sent_ns[x11.last_put ^ 1u] = now_ns - 4900000000ll;
+    REQUIRE(x11t_frame(&x11, &which));
+    CHECK_EQ_U64(which, DISPLAY_X11_SPARE);
+    CHECK(x11.failed_call == nullptr);
+    /* 5.1 s: the X server is stuck, and that is a failure, as it was with one segment. */
+    x11.segment_sent_ns[x11.last_put ^ 1u] = now_ns - 5100000000ll;
+    CHECK(!display_x11_free_buffer(&x11, &which));
+    REQUIRE(x11.failed_call != nullptr);
+    CHECK_CONTAINS(x11.failed_call, "five seconds");
 }
 
 TEST(an_x_keycode_is_the_evdev_code_plus_eight) {

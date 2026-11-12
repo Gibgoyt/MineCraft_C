@@ -202,7 +202,8 @@ void game_watch_kernels_note(game_t *game, const frame_timings_t *timings) {
 static const char game_watch_log_header[] =
     "seq,taken_s,interval_ms,ticks_waited,late,idle_ms,upload_ms,lod_plan_ms,fill_ms,draw_cpu_ms,card_wait_ms,p_ms,"
     "ready_to_take_ms,card_ms,coarse_ms,primary_ms,lod_ms,shade_ms,water_ms,surfaces_ms,sun_ms,ao_ms,ao_fresh_ms,"
-    "post_ms,readback_ms,fresh,card_mhz,clock_read,turn_deg_s,x_put_ms,x_wait_ms,x_idle_ms\n";
+    "post_ms,readback_ms,fresh,card_mhz,clock_read,turn_deg_s,x_put_ms,x_wait_ms,x_idle_ms,pace,aimed_ms,start_late_ms,"
+    "missed,puts_skipped\n";
 
 static float64_t game_watch_ms_of(int64_t ns) {
     return (float64_t)ns / (float64_t)TIME_NS_PER_MS;
@@ -330,6 +331,7 @@ int64_t game_watch_picture_end(game_watch_t *watch, game_watch_picture_t *pictur
         return now_ns;
     }
     picture->stamp_ns[GAME_WATCH_STAMP_READY] = now_ns;
+    picture->missed = picture->aimed_ns != 0 && now_ns > picture->aimed_ns ? 1u : 0u;
     for (uint32_t pass = 0u; pass < FRAME_PASS_COUNT; pass++) {
         picture->pass_ms[pass] = timings->pass_ms[pass];
     }
@@ -374,7 +376,8 @@ void game_watch_main_frame(game_watch_t *watch) {
 }
 
 void game_watch_display_note(game_watch_t *watch, int64_t put_sent_ns, int64_t put_done_ns, int64_t wait_from_ns,
-                             int64_t wait_ns) {
+                             int64_t wait_ns, uint64_t puts_skipped) {
+    watch->x_puts_skipped = puts_skipped;
     watch->x_put_sent_ns = put_sent_ns;
     watch->x_put_done_ns = put_done_ns;
     watch->x_wait_from_ns = wait_from_ns;
@@ -397,13 +400,18 @@ void game_watch_take_note(game_watch_t *watch, uint32_t slot, int64_t taken_ns) 
         .x_put_ns = sent_ns != 0 && done_ns >= sent_ns ? done_ns - sent_ns : 0,
         .x_wait_ns = watch->x_wait_ns,
         .x_idle_ns = sent_ns != 0 && wait_from_ns >= sent_ns ? wait_from_ns - sent_ns : 0,
+        .puts_skipped = watch->x_puts_skipped,
     };
     watch->last_taken_ns = taken_ns;
     atomic_store_explicit(&watch->takes_made, made + 1u, memory_order_release);
 }
 
-/* A picture main took was late if it was shown past the slot after the one it began in. */
-static bool game_watch_late(const game_watch_take_t *take) {
+/* A picture main took was late if it was ready after the take the start rule aimed it at (plan 008 phase 02). With no aim, as under today's
+ * rule or with its picture gone from the ring, if it was shown past the slot after the one it began in (phase 01). */
+static bool game_watch_late(const game_watch_take_t *take, const game_watch_picture_t *picture) {
+    if (picture != nullptr && picture->aimed_ns != 0) {
+        return picture->missed != 0u;
+    }
     return take->frame > take->start_frame + 1u;
 }
 
@@ -423,9 +431,10 @@ static void game_watch_log_line(game_watch_t *watch, const game_watch_take_t *ta
         watch->borrowed_log_text + watch->log_used, GAME_WATCH_LOG_LINE_BYTES,
         "%" PRIu64 ",%.6f,%.3f,%" PRIu64
         ",%u,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,"
-        "%.3f,%.3f,%.3f,%.3f,%.3f,%" PRIu32 ",%.0f,%u,%.1f,%.3f,%.3f,%.3f\n",
+        "%.3f,%.3f,%.3f,%.3f,%.3f,%" PRIu32 ",%.0f,%u,%.1f,%.3f,%.3f,%.3f,%u,%.3f,%.3f,%u,%" PRIu64 "\n",
         take->seq, (libc_double_t)(game_watch_ms_of(take->taken_ns - watch->opened_ns) / 1000.0f64),
-        (libc_double_t)game_watch_ms_of(interval_ns), take->frame - take->start_frame, game_watch_late(take) ? 1u : 0u,
+        (libc_double_t)game_watch_ms_of(interval_ns), take->frame - take->start_frame,
+        game_watch_late(take, picture) ? 1u : 0u,
         (libc_double_t)game_watch_ms_of(at[GAME_WATCH_STAMP_START] - at[GAME_WATCH_STAMP_WAITED]),
         (libc_double_t)game_watch_ms_of(at[GAME_WATCH_STAMP_UPLOAD] - at[GAME_WATCH_STAMP_START]),
         (libc_double_t)game_watch_ms_of(at[GAME_WATCH_STAMP_LOD] - at[GAME_WATCH_STAMP_UPLOAD]),
@@ -441,7 +450,11 @@ static void game_watch_log_line(game_watch_t *watch, const game_watch_take_t *ta
         (libc_double_t)p->shade_ms[SHADE_SPAN_FRESH], (libc_double_t)p->pass_ms[FRAME_PASS_POST],
         (libc_double_t)p->pass_ms[FRAME_PASS_READBACK], p->fresh, (libc_double_t)p->card_mhz, (uint32_t)p->clock_read,
         (libc_double_t)p->turn_deg_s, (libc_double_t)game_watch_ms_of(take->x_put_ns),
-        (libc_double_t)game_watch_ms_of(take->x_wait_ns), (libc_double_t)game_watch_ms_of(take->x_idle_ns));
+        (libc_double_t)game_watch_ms_of(take->x_wait_ns), (libc_double_t)game_watch_ms_of(take->x_idle_ns),
+        (uint32_t)p->pace_how,
+        (libc_double_t)(p->aimed_ns != 0 ? game_watch_ms_of(p->aimed_ns - at[GAME_WATCH_STAMP_START]) : 0.0f64),
+        (libc_double_t)(p->start_at_ns != 0 ? game_watch_ms_of(at[GAME_WATCH_STAMP_START] - p->start_at_ns) : 0.0f64),
+        (uint32_t)p->missed, take->puts_skipped);
     if (written > 0 && (uint32_t)written < GAME_WATCH_LOG_LINE_BYTES) {
         watch->log_used += (uint64_t)written;
     }
@@ -475,7 +488,7 @@ void game_watch_rings_read(game_watch_t *watch, int64_t now_ns, bool final) {
             watch->minute_from_ns = take->taken_ns;
         }
         watch->minute_pictures++;
-        watch->minute_late += game_watch_late(take) ? 1u : 0u;
+        watch->minute_late += game_watch_late(take, picture) ? 1u : 0u;
         if (interval_ns != 0) {
             const int64_t whole_ms = interval_ns / TIME_NS_PER_MS;
             watch->minute_bins[whole_ms < (int64_t)GAME_WATCH_BINS ? (uint32_t)whole_ms : GAME_WATCH_BINS - 1u]++;
@@ -553,10 +566,12 @@ bool game_watch_recent_read(const game_watch_t *watch, int64_t now_ns, game_watc
         const game_watch_take_t *const before = &watch->borrowed_takes[(i - 2u) % GAME_WATCH_RING];
         values[count] = (float32_t)game_watch_ms_of(take->taken_ns - before->taken_ns);
         out->interval_most_ms = values[count] > out->interval_most_ms ? values[count] : out->interval_most_ms;
-        out->late += game_watch_late(take) ? 1u : 0u;
+        const game_watch_picture_t *const picture = &watch->borrowed_pictures[take->seq % GAME_WATCH_RING];
+        out->late += game_watch_late(take, picture->seq == take->seq ? picture : nullptr) ? 1u : 0u;
         put_sum_ms += game_watch_ms_of(take->x_put_ns);
         count++;
     }
+    out->puts_skipped = watch->x_puts_skipped;
     if (count != 0u) {
         out->interval_last_ms = values[0];
         out->x_put_mean_ms = (float32_t)(put_sum_ms / (float64_t)count);

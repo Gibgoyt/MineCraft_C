@@ -1,4 +1,4 @@
-# run/src/game
+#run / src / game
 
 **Purpose:** connects the sim, gpu and main threads: streams the world around the eye, uploads it, draws it and shows it, with each system's tick and frame calls.
 **Tier:** Owner.
@@ -17,7 +17,7 @@
 - `game_calendar_date`, `game_calendar_south`, `game_calendar_line`: main's clock as a date, and the HUD's date line, in `report/`. South and the polar labels go by the latitude (plan 004 phase 02).
 - `game_sim_step`, `game_fly`, `game_settle`: a step of streaming, a step of flying, and running the sim and upload here until the card holds all the eye's place wants.
 - `game_headless_scene`: what `display_headless_run` drives. One thread, no clock, and one script gives one set of pictures.
-- `game_loop_start`, `game_loop_frame`, `game_loop_stop`: the real threads, and a frame on the main thread.
+- `game_loop_start`, `game_loop_frame`, `game_loop_stop`: the real threads, and a frame on the main thread. `game_loop_next_take`: when main will next call `game_loop_frame`, said before this call, for the gpu thread's start rule (plan 008 phase 02).
 - `game_loop_source_begin`, `game_loop_source`, `game_loop_discard`: what `display_frames_run` calls: the threads start on its first frame, then real keys and a real mouse to `game_loop_frame`, and Esc to stop.
 - `game_loop_threads_ensure`, `game_loop_input_frame`, `game_loop_input_clear`: the same in parts, for `session`, which wants Esc for itself.
 - `game_pause_set`: stops the world's clock, or starts it (in `input/`).
@@ -25,13 +25,20 @@
 - `game_far_capture_tick`: with a far field and a save, once a second of ticks, what is edited captured for the save, so the far field draws it: from the end of `game_sim_tick`.
 - `game_save_finish`: all there is, saved here and now, as a world closes: see `run/src/save/autosave/`. A `game_open` with a save takes up where the state in it left off, less any mob whose `spawn.weight` is 0, taken away with a line in the log for each kind (`mob_spawn_retire`, plan 005 phase 3), and `game_sim_step` calls `save_autosave_step`.
 - `game_open_alive_set`, `game_open_alive_tell`: someone to tell that a long `game_open` is still going, and telling them.
-- `game_climate_set`: plan 004 phase 03's climate cells for each world, opened by whoever opens the world (the menu session). `game_open` then begins working out the tiles within the map's view radius plus 5224 blocks of where the eye starts (the larger of the master plan's 2 km and a thunderstorm cell's reach and square, so the weather and the HUD's climate line work from the first tick: plan 004 phase 10, Issues found 14, done by the final check), with `climate_prepare_begin` on every worker, and `game_open_climate_step` takes it on without waiting, setting `open_percent`, until it is all built: the session calls it once a loading frame under KMS or in a window, so the loading screen shows the percent as it fills, and in a loop with no screen; the threads start only after; `game_sim_step` calls `climate_schedule` for the same radius round the map's centre, before `game_columns_request`, which hands back (with `world_map_stream_cancel`) any column whose tiles `climate_area_ready` says are not built yet, as a job may not wait; `game_close` closes the climate after its jobs. Nothing in the terrain reads the climate, so this changes when a column arrives and never what is in it. Without it, as for every test world, none of this happens.
+- `game_climate_set`: plan 004 phase 03's climate cells for each world, opened by whoever opens the world (the menu session). `game_open` then begins working out the tiles within the map's view radius plus 5224 blocks of where the eye starts (the larger of the master plan's 2 km and a thunderstorm cell's reach and square, so the weather and the HUD's climate line work from the first tick: plan 004 phase 10, Issues found 14, done by the final check), with `climate_prepare_begin` on every worker, and `game_open_climate_step` takes it on without waiting, setting `open_percent`, until it is all built: the session calls it once a loading frame under KMS or in a window, so the loading screen shows the percent as it fills, and in a loop with no screen;
+the threads start only after; `game_sim_step` calls `climate_schedule` for the same radius round the map's centre, before `game_columns_request`, which hands back (with `world_map_stream_cancel`) any column whose tiles `climate_area_ready` says are not built yet, as a job may not wait; `game_close` closes the climate after its jobs. Nothing in the terrain reads the climate, so this changes when a column arrives and never what is in it. Without it, as for every test world, none of this happens.
 - `game_gpu_alive`, `game_gpu_lost`, `game_gpu_stuck`, `game_gpu_failed_note`, `game_gpu_pretend_set`: when the card goes. See below.
 - `game_fly_from_script`, `game_fly_from_input`: either kind of input to a step of flying.
-- `game_player_set`, `game_walk_send`, `game_hands_send`: walk through the world with this player and not fly; what the mouse and keys want of it; what its two buttons are doing.
+- `game_player_set`, `game_walk_send`, `game_hands_send`: walk through the world with this player and not fly;
+what the mouse and keys want of it; what its two buttons are doing.
 - `game_entity_set`: what the player breaks comes out as items in the world, which it can pick up, and mobs come and go in it by `run/src/mob/spawn/`, which `game_t` holds, and each is drawn by the tick that moved it, a box for each part in its own skin.
 - `game_audio_set`: where what the hands did this tick is heard, from the player's ear and the way it faces. Taken from the ring each tick with or without it, so that a run with sound goes the same as one without.
-- `game_mob_set`: `run/src/mob/` opens and closes with the world, and has a tick before the bodies move. What its zombies strike is the player, through `player_survival_hurt`. Skeletons think just before they move and shoot at the player; arrows fly just after, and are drawn. Creepers think, with the player in view, after the spawner and before the bodies move. A press of the left button on a body in reach is a blow on it through `run/src/mob/combat/`, before the hands and with what is in hand, which it wears; its fall and lava come after the bodies move.
+- `game_mob_set`: `run/src/mob/` opens and closes with the world, and has a tick before the bodies move. What its zombies strike is the player, through `player_survival_hurt`. Skeletons think just before they move and shoot at the player;
+arrows fly just after, and are drawn.Creepers think, with the player in view,
+    after the spawner and before the bodies move.A press of the left button on a body in reach is a blow on it
+            through `run /
+        src / mob / combat /`,
+    before the hands and with what is in hand, which it wears; its fall and lava come after the bodies move.
 - `game_item_set`: what it picks up goes into an inventory, and the hotbar slot in hand is what it places.
 - `game_hotbar_send`: the number keys and the wheel.
 - `game_ui_set`: draw on each picture shown with this `ui_t`, and the game screens come up on it.
@@ -54,11 +61,14 @@ A column's blocks are `terrain_generate_box`, on a worker, over all of the colum
 
 | Thread | Does | Tells the others through |
 |---|---|---|
-| `main` | Input, moves the eye, keeps the time of day, shows the newest picture | A triple buffer of cameras to `gpu`; a relaxed atomic, the time, to `gpu` and `sim`; two relaxed atomics, the eye's chunk, to `sim` |
+| `main` | Input, moves the eye, keeps the time of day, shows the newest picture | A triple buffer of cameras to `gpu`;
+a relaxed atomic, the time, to `gpu` and `sim`; two relaxed atomics, the eye's chunk, to `sim`; a relaxed atomic, its next take, to `gpu` (plan 008 phase 02) |
 | `sim` | Columns to and from workers, into the map, their light and every edit's, then a snapshot. A tick at 20 Hz, which moves the player if there is one and runs `world/tick` | The snapshots of `world/edit` to `gpu`; each tick's eye and the body's health and armour to `main`, through `player`; a relaxed atomic, that a night has been slept through, to `main` |
 | `gpu` | The upload queue, then the frame's kernels | A triple buffer of pictures to `main` |
 
 None of them ever waits for another, as the plan wants: a slow tick cannot stall a frame, and a slow frame cannot stall input.
+
+**When the gpu thread starts a picture** (plan 008 phase 02) is `run/src/game/pace/`'s rule. Before, it started one only once main had taken the last, polling every 100 us: a picture that missed main's tick waited a whole 8.33 ms tick more, and the card sat idle meanwhile. Now `game_loop_frame` publishes main's next take, `game_pace_t.next_take_ns`, before each take, from what whoever runs main's frames said through `game_loop_next_take`: the window's clock or the next flip (`display_t.next_take_ns`, read by `game/session`), or a bench's or test's own clock. The gpu thread asks `game_pace_decide`, sleeps toward its answer in slices of at most 0.5 ms, looking again each time, draws, and tells `game_pace_note` how long the picture took. A picture that missed its take starts the next at once; one that fits two ticks starts just in time for the earliest take it can make; a dearer one is drawn back to back. With no take said (the `--test-world` path through `game_loop_source`, a pause, uncapped), the rule is today's, and the 100 us poll is only for that.
 
 A sim step spends at most `GAME_COMMIT_BUDGET_NS` on finished columns, since each gets its light there. The rest wait for the next step, so snapshots keep going out.
 
@@ -90,7 +100,10 @@ What it shows comes from the other threads as single relaxed atomics, because no
 
 **What a world left alone piles up** (plan 005 phase 7, `run/src/game/watch/`): the F3 overlay's mobs and drops, from the sim after each tick, and the sections waiting to upload and far jobs, from the gpu thread after each upload, in `game_watch_t`, three lines of the World arena beside the column jobs (`game_watch_of`). Each part of a sim tick is timed; a tick over 50 ms or a frame over 33 ms logs one line naming its slowest part, at most once in 5 s, and every 1200 ticks the sim logs how the ticks and frames went. See its README.
 
-**The command box** (plan 006 phase 01, `run/src/game/command/`, drawn by `run/src/ui/command/`): `T` or `/` opens it over the running game; `game_screen_input` gives it a poll's input before the Atlas, and `game_screen_up` counts it first, so Esc closes it before anything else sees Esc. Its state is `game_command_t` in the World arena (`game_command_of`). A teleport, fly mode and `/speed` go to the sim through `player_t`'s mailbox; `game_sim_tick` takes it first (`player_command_take`), and a teleport asks for a `GAME_FILL_JUMP` fill round where it went. Flying, the wheel goes to the fly speed and not the hotbar (`game_hotbar_send`). The F3 tuning lines are drawn under the overlay while walking. See its README.
+**The command box** (plan 006 phase 01, `run/src/game/command/`, drawn by `run/src/ui/command/`): `T` or `/` opens it over the running game;
+`game_screen_input` gives it a
+    poll 's input before the Atlas, and `game_screen_up` counts it first, so Esc closes it before anything else sees Esc. Its state is `game_command_t` in the World arena (`game_command_of`). A teleport, fly mode and `/speed` go to the sim through `player_t`' s
+        mailbox; `game_sim_tick` takes it first (`player_command_take`), and a teleport asks for a `GAME_FILL_JUMP` fill round where it went. Flying, the wheel goes to the fly speed and not the hotbar (`game_hotbar_send`). The F3 tuning lines are drawn under the overlay while walking. See its README.
 
 **The top right corner** (plan 004 phase 10, `run/src/game/corner/`): the date line with master plan 4.1's full season label, the climate line (the temperature at the body's height, the wind's speed, the point it blows from, and an arrow relative to where the eye looks) and a storm warning on red, each drawn only while walking, after the coordinates and before F3, by `ui_hud_corner_draw` from `game_hud_corners_draw` (which draws the coordinates first), clear of whichever top-left panel is up. Their four words are `game_corner_t`'s, a line of the World arena beside the column jobs (`game_corner_of`), as `game_t` is at its size: `hud_temperature_dc` (tenths of a degree), `hud_wind` (speed and direction packed), `hud_season` (the label, and a bit for worked out), `hud_warning` (the kind, and for a named storm its name seed). The sim writes them, relaxed, from `game_hud_publish` (`game_hud_climate_publish`: the climate line every 20 ticks, the warning every 200 and after each census, on a worker, as it takes milliseconds); the world's opening writes them once before the threads start, so the first picture has them. Main reads them in `game_hud_corner_read` and turns them into text, with its own camera's yaw for the arrow. `game_config_t.climate_hud` says which of the climate line and the warning are drawn, and `show_date` the date line. `game_close` waits for the warning's job before the World arena goes.
 
@@ -167,4 +180,3 @@ Plan 004 phase 08. `game_t` is at its size: it is in `app_t`, on main's stack, a
 - **Each frame**, `game_frame_draw` draws through `game_weather_draw`, which takes the newest weather slot, eases toward it and sends the rain top, then `render_frame_draw_weather`: on the gpu thread with threads, and in the one thread's draw without.
 - **Each sim step**, `game_cover_step` lays snow and ice on what is loaded after a census, and each column committed runs the same rule (`game_cover_stream_in`).
 - `--weather` is `game_weather_force`, by `main` after `game_open` for test worlds and by the session for each world it opens.
-

@@ -72,7 +72,7 @@ static display_status_t display_window_start(display_t *display, const display_c
         display->borrowed_x11 = nullptr;
         return DISPLAY_STATUS_ERROR;
     }
-    display->flip.buffers[0] = display->borrowed_x11->buffer;
+    display->flip.buffers[0] = display->borrowed_x11->buffers[0];
     display->window = 1u;
     display->running = 1u;
     return DISPLAY_STATUS_OK;
@@ -261,6 +261,8 @@ static bool display_draw_frame(display_t *display, display_buffer_t *back, uint6
 static bool display_flip_once(display_t *display, uint64_t frame) {
     display_flip_t *const flip = &display->flip;
     const display_vt_guard_t *const guard = &display->guard;
+    /* The source is next asked once this frame's flip has come: at the next vblank, if it is in time. */
+    display->next_take_ns = display_flip_next_ns(flip);
     if (!display_draw_frame(display, display_flip_back(flip), frame)) {
         return false;
     }
@@ -409,12 +411,17 @@ static display_status_t display_window_run(display_t *display, int64_t started_n
     bool stopped = false;
     while (!stopped && atomic_load_explicit(&display_stop_signal, memory_order_relaxed) == 0 &&
            (duration_ns == 0 || time_now_ns() - started_ns < duration_ns)) {
-        if (!display_x11_service(x11) || !display_x11_wait_ready(x11)) {
+        /* Plan 008 phase 02: a free segment, or the spare when both are with the server; never a wait for the X server. */
+        uint32_t which = DISPLAY_X11_SPARE;
+        if (!display_x11_service(x11) || !display_x11_free_buffer(x11, &which)) {
             break;
         }
-        if (!display_draw_frame(display, &x11->buffer, frame)) {
+        /* The tick this loop sleeps to after the frame: the source's next call. */
+        display->next_take_ns =
+            display->flip.uncapped == 0u ? next_ns + TIME_NS_PER_SECOND / (int64_t)MC_DISPLAY_REFRESH_HZ : 0;
+        if (!display_draw_frame(display, &x11->buffers[which], frame)) {
             stopped = true;
-        } else if (!display_x11_present(x11)) {
+        } else if (which != DISPLAY_X11_SPARE && !display_x11_present(x11, which)) {
             break;
         }
         frame++;
@@ -431,8 +438,9 @@ static display_status_t display_window_run(display_t *display, int64_t started_n
     const int64_t ran_ns = time_now_ns() - loop_started_ns;
     const float64_t seconds = time_ns_to_seconds(ran_ns);
     const float64_t rate = seconds > 0.0f64 ? (float64_t)x11->frames / seconds : 0.0f64;
-    LOG_INFO("%s: %" PRIu64 " frames in %.1f s, %.1f fps", what, x11->frames, (libc_double_t)seconds,
-             (libc_double_t)rate);
+    LOG_INFO("%s: %" PRIu64 " frames in %.1f s, %.1f fps, %" PRIu64
+             " puts skipped with both segments still with the X server",
+             what, x11->frames, (libc_double_t)seconds, (libc_double_t)rate, x11->puts_skipped);
     if (stopped_by != 0) {
         LOG_INFO("%s: stopped early by signal %" PRId32, what, stopped_by);
     }
@@ -449,7 +457,9 @@ static display_status_t display_window_run(display_t *display, int64_t started_n
 
 display_status_t display_test_pattern_run(display_t *display, int64_t started_ns, int64_t duration_ns) {
     if (display->window != 0u) {
-        display_flip_pattern_fill(&display->borrowed_x11->buffer);
+        for (uint32_t i = 0u; i < DISPLAY_X11_BUFFERS; i++) {
+            display_flip_pattern_fill(&display->borrowed_x11->buffers[i]);
+        }
         return display_window_run(display, started_ns, duration_ns, "test pattern");
     }
     display_flip_t *const flip = &display->flip;

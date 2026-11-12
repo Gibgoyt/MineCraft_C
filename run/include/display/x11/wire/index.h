@@ -114,6 +114,9 @@ uint32_t wire_shm_detach(uint8_t *out, uint8_t major, uint32_t segment);
 uint32_t wire_shm_put_image(uint8_t *out, uint8_t major, uint32_t drawable, uint32_t gc, uint16_t width,
                             uint16_t height, uint8_t depth, uint32_t segment);
 
+/* Plan 008 phase 02: the segment an MIT-SHM ShmCompletion event names, bytes 12 to 15: the put from it is done, and it may be drawn on. */
+uint32_t wire_shm_completion_segment(const uint8_t packet[WIRE_PACKET_BYTES]);
+
 /* Size hints that hold a window at one size, as WM_NORMAL_HINTS holds them: 18 values of 32 bits. */
 void wire_size_hints_fixed(uint32_t out[18], uint32_t width, uint32_t height);
 

@@ -99,6 +99,10 @@ bool display_flip_submit(display_flip_t *flip);
  * that waits. Only the thread that flips. */
 void display_flip_vsync_set(display_flip_t *flip, bool vsync);
 
+/* Plan 008 phase 02: when the next flip event is expected, on time_now_ns's clock: the last event plus the measured mean interval, or the
+ * mode's period before any is measured. 0 with no event yet, or uncapped. Only the thread that flips. */
+int64_t display_flip_next_ns(const display_flip_t *flip);
+
 /* Waits up to timeout_ms for the card's events and takes them in. */
 display_flip_wait_t display_flip_wait(display_flip_t *flip, int32_t timeout_ms);
 

@@ -554,7 +554,8 @@ static void game_session_window_look(game_session_t *session) {
     /* Plan 008 phase 01: the last put and main's wait for it, for the frame log and F3. */
     game_watch_t *const watch = game_watch_of(session->borrowed_game);
     if (watch != nullptr) {
-        game_watch_display_note(watch, x11->put_sent_ns, x11->put_done_ns, x11->wait_from_ns, x11->wait_ns);
+        game_watch_display_note(watch, x11->put_sent_ns, x11->put_done_ns, x11->wait_from_ns, x11->wait_ns,
+                                x11->puts_skipped);
     }
     const uint8_t losses = (uint8_t)x11->focus_losses;
     if (losses != session->focus_losses_seen) {
@@ -627,6 +628,10 @@ bool game_session_source(void *context, display_buffer_t *back) {
         /* A census that has stopped the world makes this frame the census screen's. */
         if (!game_session_census_look(session)) {
             if (!escape || game_screen_up(game)) {
+                /* Plan 008 phase 02: when the display will ask again, for the gpu thread's start rule. */
+                if (session->borrowed_display != nullptr) {
+                    game_loop_next_take(game, session->borrowed_display->next_take_ns);
+                }
                 if (game_loop_input_frame(game, frame, back)) {
                     return true;
                 }

@@ -67,7 +67,10 @@ typedef struct display_t {
     uint8_t crash_test; /* display_crash_test_t */
     uint8_t
         window; /* this is a window on an X server: of the parts above, only arena_setup and flip's sizes mean anything */
-    uint8_t _pad0[12];
+    uint8_t _pad0[4];
+    /* Plan 008 phase 02: set before each call of frame_source, for it to read: when the source will next be called, by the window's clock
+     * or the next flip; 0 when not known, or uncapped. */
+    int64_t next_take_ns;
 } display_t;
 static_assert(sizeof(display_t) == 832);
 static_assert(alignof(display_t) == 64);

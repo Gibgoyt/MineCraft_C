@@ -28,3 +28,5 @@ T-hat is the 90th percentile of the last 16 pictures' P + G, from the gpu thread
 At 15 ms that is a picture each two ticks, ready 1 ms before its take, 0.67 ms fresher than before; at 14 ms the same; at 7 ms one each tick. Nothing here ever starts before now, so never before the last picture was ready: never two in flight.
 
 The gpu thread asks, sleeps toward `start_at_ns` in slices of at most `GAME_PACE_SLICE_NS` (0.5 ms), and asks again each time; with `hold` it only sleeps a slice, or 100 us under today's rule. Main's next take comes from whoever runs its frames: the window's clock (`display_window_run`'s next tick), the next flip under KMS (`display_flip_next_ns`), or a bench's own clock, through `game_loop_next_take`.
+
+The rule takes main's beat on trust: takes at `next_take_ns + k tick`. A main whose takes come faster than the tick it says (a test that sleeps 1 ms a frame and says "next in 1 ms") would move the beat ahead with every frame, and a just-in-time start with it, for ever. So the gpu thread never lets a start the rule has said move later until that picture is drawn; with a true beat it never needs to.

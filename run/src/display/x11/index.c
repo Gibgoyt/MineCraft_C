@@ -27,7 +27,8 @@ enum : uint64_t {
     X11_ID_PIXMAP = 4u,
     X11_ID_PIXMAP_GC = 5u,
     X11_ID_CURSOR = 6u,
-    X11_ATOM_STRING = 31u, /* predefined by the protocol */
+    X11_ID_SEGMENT_SECOND = 7u, /* plan 008 phase 02: the second shared segment */
+    X11_ATOM_STRING = 31u,      /* predefined by the protocol */
     X11_ATOM_ATOM = 4u,
     X11_ATOM_WM_NAME = 39u,
     X11_ATOM_WM_NORMAL_HINTS = 40u,
@@ -36,13 +37,31 @@ enum : uint64_t {
 };
 enum : int32_t {
     X11_REPLY_TIMEOUT_MS = 5000,
-    X11_PUT_POLL_MS = 100,
 };
 enum : int64_t {
     X11_PUT_STALL_NS = 5000000000,
 };
 
 static const char X11_TITLE[] = "MineCraft_C";
+
+void display_x11_completion_take(display_x11_t *x11, uint32_t segment, int64_t now_ns) {
+    /* Each completion names its segment, so each is freed by its own. */
+    for (uint32_t i = 0u; i < DISPLAY_X11_SEGMENTS; i++) {
+        if (x11->segment[i] == segment && x11->put_pending[i] != 0u) {
+            x11->put_pending[i] = 0u;
+            x11->put_done_ns = i == x11->last_put ? now_ns : x11->put_done_ns;
+        }
+    }
+}
+
+void display_x11_put_note(display_x11_t *x11, uint32_t index, int64_t now_ns) {
+    x11->put_pending[index] = 1u;
+    x11->last_put = (uint8_t)index;
+    x11->put_sent_ns = now_ns;
+    x11->segment_sent_ns[index] = now_ns;
+    x11->put_done_ns = 0;
+    x11->frames++;
+}
 
 static bool x11_fail(display_x11_t *x11, const char *what, int32_t error) {
     if (x11->failed_call == nullptr) {
@@ -90,8 +109,7 @@ static void x11_packet_take(display_x11_t *x11, const uint8_t *packet) {
         memcpy(x11->reply, packet, WIRE_PACKET_BYTES);
         x11->reply_ready = 1u;
     } else if (x11->shm_completion != 0u && type == x11->shm_completion) {
-        x11->put_pending = 0u;
-        x11->put_done_ns = time_now_ns();
+        display_x11_completion_take(x11, wire_shm_completion_segment(packet), time_now_ns());
     } else if (type == WIRE_PACKET_CLIENT_MESSAGE) {
         uint32_t message_type = 0;
         uint32_t data = 0;
@@ -278,41 +296,53 @@ static bool x11_extension_shm(display_x11_t *x11) {
     return true;
 }
 
-static bool x11_shm_start(display_x11_t *x11, uint32_t width, uint32_t height, uint32_t id_base) {
+/* One of buffers: shared memory, attached to the server under segment unless it is the spare, which only this process maps. */
+static bool x11_shm_one(display_x11_t *x11, uint32_t index, uint32_t width, uint32_t height, uint32_t segment) {
     const uint64_t bytes = (uint64_t)width * height * DISPLAY_FLIP_BYTES_PER_PIXEL;
-    x11->shm_id = shmget(IPC_PRIVATE, bytes, IPC_CREAT | 0600);
-    if (x11->shm_id < 0) {
+    x11->shm_id[index] = shmget(IPC_PRIVATE, bytes, IPC_CREAT | 0600);
+    if (x11->shm_id[index] < 0) {
         return x11_fail(x11, "making shared memory for the frame", errno);
     }
-    void *const map = shmat(x11->shm_id, nullptr, 0);
+    void *const map = shmat(x11->shm_id[index], nullptr, 0);
     if (map == (void *)-1) {
         const int32_t error = errno;
-        shmctl(x11->shm_id, IPC_RMID, nullptr);
-        x11->shm_id = -1;
+        shmctl(x11->shm_id[index], IPC_RMID, nullptr);
+        x11->shm_id[index] = -1;
         return x11_fail(x11, "mapping shared memory for the frame", error);
     }
-    x11->owned_shm = map;
-    memset(x11->owned_shm, 0, bytes);
-    x11->segment = id_base + X11_ID_SEGMENT;
+    x11->owned_shm[index] = map;
+    memset(x11->owned_shm[index], 0, bytes);
+    x11->buffers[index] = (display_buffer_t){.owned_map = x11->owned_shm[index],
+                                             .map_bytes = bytes,
+                                             .pitch = width * DISPLAY_FLIP_BYTES_PER_PIXEL,
+                                             .width = width,
+                                             .height = height};
+    if (index == DISPLAY_X11_SPARE) {
+        shmctl(x11->shm_id[index], IPC_RMID, nullptr); /* only ours: gone when we let go */
+        return true;
+    }
+    x11->segment[index] = segment;
     uint8_t request[WIRE_REQUEST_MAX_BYTES];
-    uint32_t length = wire_shm_attach(request, x11->shm_major, x11->segment, (uint32_t)x11->shm_id);
+    uint32_t length = wire_shm_attach(request, x11->shm_major, segment, (uint32_t)x11->shm_id[index]);
     if (!x11_send(x11, request, length)) {
         return false;
     }
     /* Once the server has it, nothing else needs its name, and marked for removal it goes when both have let go, even after a crash. */
     length = wire_get_input_focus(request);
     const bool attached = x11_round_trip(x11, request, length);
-    shmctl(x11->shm_id, IPC_RMID, nullptr);
+    shmctl(x11->shm_id[index], IPC_RMID, nullptr);
     if (!attached) {
         return false;
     }
-    x11->segment_attached = 1u;
-    x11->buffer = (display_buffer_t){.owned_map = x11->owned_shm,
-                                     .map_bytes = bytes,
-                                     .pitch = width * DISPLAY_FLIP_BYTES_PER_PIXEL,
-                                     .width = width,
-                                     .height = height};
+    x11->segment_attached[index] = 1u;
     return true;
+}
+
+/* Plan 008 phase 02: two segments used in turn, and the spare: 8.3 MB each at 1920x1080. */
+static bool x11_shm_start(display_x11_t *x11, uint32_t width, uint32_t height, uint32_t id_base) {
+    return x11_shm_one(x11, 0u, width, height, id_base + X11_ID_SEGMENT) &&
+           x11_shm_one(x11, 1u, width, height, id_base + X11_ID_SEGMENT_SECOND) &&
+           x11_shm_one(x11, DISPLAY_X11_SPARE, width, height, 0u);
 }
 
 /* A cursor that shows nothing, for while the pointer is held: the game draws its own. */
@@ -401,7 +431,9 @@ bool display_x11_init(display_x11_t *x11, arena_t *arena, const display_x11_conf
                       const char *auth_path) {
     memset(x11, 0, sizeof(*x11));
     x11->fd = -1;
-    x11->shm_id = -1;
+    for (uint32_t i = 0u; i < DISPLAY_X11_BUFFERS; i++) {
+        x11->shm_id[i] = -1;
+    }
     uint32_t display_number = 0;
     if (!wire_display_number(display_name, &display_number)) {
         LOG_ERROR("x11: DISPLAY=%s is not a server on this machine, and that is all this speaks to",
@@ -435,17 +467,21 @@ void display_x11_deinit(display_x11_t *x11) {
     if (x11->running == 0u) {
         return;
     }
-    if (x11->segment_attached != 0u && x11->failed_call == nullptr) {
-        uint8_t request[WIRE_REQUEST_MAX_BYTES];
-        const uint32_t length = wire_shm_detach(request, x11->shm_major, x11->segment);
-        (void)x11_send(x11, request, length);
+    for (uint32_t i = 0u; i < DISPLAY_X11_SEGMENTS; i++) {
+        if (x11->segment_attached[i] != 0u && x11->failed_call == nullptr) {
+            uint8_t request[WIRE_REQUEST_MAX_BYTES];
+            const uint32_t length = wire_shm_detach(request, x11->shm_major, x11->segment[i]);
+            (void)x11_send(x11, request, length);
+        }
     }
     /* Closing lets the server drop the window, the grab and all else that is ours. */
     if (x11->connected != 0u) {
         close(x11->fd);
     }
-    if (x11->owned_shm != nullptr) {
-        shmdt(x11->owned_shm);
+    for (uint32_t i = 0u; i < DISPLAY_X11_BUFFERS; i++) {
+        if (x11->owned_shm[i] != nullptr) {
+            shmdt(x11->owned_shm[i]);
+        }
     }
     memset(x11, 0, sizeof(*x11));
 }
@@ -457,30 +493,41 @@ bool display_x11_service(display_x11_t *x11) {
     return x11->close_requested == 0u;
 }
 
-bool display_x11_wait_ready(display_x11_t *x11) {
+bool display_x11_free_buffer(display_x11_t *x11, uint32_t *out_index) {
     x11->wait_from_ns = time_now_ns();
-    x11->wait_ns = 0;
-    while (x11->put_pending != 0u && x11->failed_call == nullptr && x11->close_requested == 0u) {
-        if (!x11_read(x11, X11_PUT_POLL_MS)) {
-            return false;
-        }
-        if (x11->put_pending != 0u && time_now_ns() - x11->put_sent_ns > X11_PUT_STALL_NS) {
-            return x11_fail(x11, "the X server has not shown a frame for five seconds", 0);
-        }
-        x11->wait_ns = time_now_ns() - x11->wait_from_ns;
+    *out_index = DISPLAY_X11_SPARE;
+    /* What has come, never waiting: a completion for either is enough. */
+    const bool read = x11_read(x11, 0);
+    x11->wait_ns = time_now_ns() - x11->wait_from_ns;
+    if (!read || x11->failed_call != nullptr || x11->close_requested != 0u) {
+        return false;
     }
-    return x11->failed_call == nullptr && x11->close_requested == 0u;
+    const uint32_t other = x11->last_put ^ 1u;
+    if (x11->put_pending[other] == 0u) {
+        *out_index = other;
+        return true;
+    }
+    if (x11->put_pending[x11->last_put] == 0u) {
+        *out_index = x11->last_put;
+        return true;
+    }
+    /* Both with the server. The older has had five seconds: it is stuck, and skipping would only hide it. */
+    if (x11->wait_from_ns - x11->segment_sent_ns[other] > X11_PUT_STALL_NS) {
+        return x11_fail(x11, "the X server has not shown a frame for five seconds", 0);
+    }
+    x11->puts_skipped++;
+    return true;
 }
 
-bool display_x11_present(display_x11_t *x11) {
+bool display_x11_present(display_x11_t *x11, uint32_t index) {
+    if (index >= DISPLAY_X11_SEGMENTS || x11->put_pending[index] != 0u) {
+        return x11_fail(x11, "a frame put from a buffer the X server may still be reading", 0);
+    }
     uint8_t request[WIRE_REQUEST_MAX_BYTES];
     const uint32_t length =
-        wire_shm_put_image(request, x11->shm_major, x11->window, x11->gc, (uint16_t)x11->buffer.width,
-                           (uint16_t)x11->buffer.height, x11->depth, x11->segment);
-    x11->put_pending = 1u;
-    x11->put_sent_ns = time_now_ns();
-    x11->put_done_ns = 0;
-    x11->frames++;
+        wire_shm_put_image(request, x11->shm_major, x11->window, x11->gc, (uint16_t)x11->buffers[index].width,
+                           (uint16_t)x11->buffers[index].height, x11->depth, x11->segment[index]);
+    display_x11_put_note(x11, index, time_now_ns());
     return x11_send(x11, request, length);
 }
 
@@ -501,7 +548,7 @@ static void x11_pointer_capture(display_x11_t *x11) {
         return;
     }
     x11->captured = 1u;
-    wire_pointer_start(&x11->pointer, x11->buffer.width, x11->buffer.height);
+    wire_pointer_start(&x11->pointer, x11->buffers[0].width, x11->buffers[0].height);
     length = wire_warp_pointer(request, x11->window, (int16_t)x11->pointer.center_x, (int16_t)x11->pointer.center_y);
     (void)x11_send(x11, request, length);
 }

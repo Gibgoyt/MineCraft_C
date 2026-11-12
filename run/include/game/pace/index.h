@@ -93,4 +93,9 @@ void game_pace_note(game_pace_t *pace, int64_t started_ns, int64_t ready_ns, int
 /* The first of main's takes at or after at_ns, on the beat next_take_ns + k tick_ns for k >= 0. 0 if next_take_ns is 0. */
 int64_t game_pace_take_at(int64_t next_take_ns, int64_t tick_ns, int64_t at_ns);
 
+typedef struct game_t game_t;
+
+/* The open world's, or nullptr with none open. In game/index.c, which lays out the World arena. */
+game_pace_t *game_pace_of(const game_t *game);
+
 #endif

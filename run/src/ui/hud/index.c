@@ -479,8 +479,12 @@ void ui_hud_debug_draw(ui_canvas_t *canvas, const ui_font_t *font, const ui_hud_
                  (libc_double_t)debug->shown_p99_ms, (libc_double_t)debug->shown_most_ms);
         snprintf(lines[1], sizeof(lines[1]), "card %.1f p99 %.1f max %.1f", (libc_double_t)debug->card_mean_ms,
                  (libc_double_t)debug->card_p99_ms, (libc_double_t)debug->card_most_ms);
-        snprintf(lines[2], sizeof(lines[2]), "late %" PRIu32 "  idle %.1f  X %.1f", debug->late,
-                 (libc_double_t)debug->idle_ms, (libc_double_t)debug->x_put_ms);
+        /* Plan 008 phase 02: and the X puts skipped, when there were any. */
+        const int32_t used = snprintf(lines[2], sizeof(lines[2]), "late %" PRIu32 "  idle %.1f  X %.1f", debug->late,
+                                      (libc_double_t)debug->idle_ms, (libc_double_t)debug->x_put_ms);
+        if (debug->skipped != 0u && used > 0 && (uint64_t)used < sizeof(lines[2])) {
+            snprintf(lines[2] + used, sizeof(lines[2]) - (uint64_t)used, "  skip %" PRIu32, debug->skipped);
+        }
         snprintf(lines[3], sizeof(lines[3]), "turn %.0f deg/s  %.0f MHz", (libc_double_t)debug->turn_deg_s,
                  (libc_double_t)debug->card_mhz);
     }

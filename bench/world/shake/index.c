@@ -2,6 +2,7 @@
 #include "display/headless/png/index.h"
 #include "file/index.h"
 #include "game/index.h"
+#include "game/pace/index.h"
 #include "game/watch/index.h"
 #include "gpu_bridge/index.h"
 #include "heap/index.h"
@@ -139,7 +140,10 @@ typedef struct sh_result_t {
     int32_t place[3];       /* 428 */
     uint8_t ran;            /* 440 */
     uint8_t sound;          /* 441 */
-    uint8_t _pad0[6];       /* 442 */
+    uint8_t _pad0[2];       /* 442 */
+    /* 444: plan 008 phase 02: the gpu thread's wait before a picture the rule started at once (after a late one, or back to back): the card
+     * idle while late. The target is under 0.5 ms */
+    float32_t wait_at_once_ms;
 } sh_result_t;
 static_assert(sizeof(sh_result_t) == 448);
 
@@ -175,7 +179,8 @@ typedef struct sh_sample_t {
     float32_t shade_ms[SHADE_SPAN_COUNT]; /* 56 */
     uint8_t late;                         /* 76 */
     uint8_t joined;                       /* 77: its picture was still in the ring */
-    uint8_t _pad0[2];                     /* 78 */
+    uint8_t how;                          /* 78: plan 008 phase 02: how the start rule started it, game_pace_how_t */
+    uint8_t _pad0[1];                     /* 79 */
 } sh_sample_t;
 static_assert(sizeof(sh_sample_t) == 80);
 
@@ -423,8 +428,8 @@ static void sh_card_note(sh_result_t *r, float32_t mhz) {
 static void sh_samples_sum(sh_t *sh, uint32_t count, sh_result_t *r) {
     const sh_sample_t *const samples = sh->borrowed_samples;
     float32_t *const sort = sh->borrowed_sort;
-    uint32_t intervals = 0u, late = 0u, joined = 0u, mhz_count = 0u;
-    float64_t fresh = 0.0f64, p = 0.0f64, wait = 0.0f64, mhz = 0.0f64, lod = 0.0f64;
+    uint32_t intervals = 0u, late = 0u, joined = 0u, mhz_count = 0u, at_once = 0u;
+    float64_t fresh = 0.0f64, p = 0.0f64, wait = 0.0f64, mhz = 0.0f64, lod = 0.0f64, wait_at_once = 0.0f64;
     for (uint32_t i = 0u; i < count; i++) {
         const sh_sample_t *const s = &samples[i];
         late += s->late;
@@ -441,6 +446,10 @@ static void sh_samples_sum(sh_t *sh, uint32_t count, sh_result_t *r) {
         r->fresh_max = s->fresh > r->fresh_max ? s->fresh : r->fresh_max;
         p += (float64_t)s->p_ms;
         wait += (float64_t)s->wait_ms;
+        if (s->how == GAME_PACE_HOW_AFTER_LATE || s->how == GAME_PACE_HOW_BACK_TO_BACK) {
+            wait_at_once += (float64_t)s->wait_ms;
+            at_once++;
+        }
         lod += (float64_t)s->lod_ms;
         for (uint32_t k = 0u; k < FRAME_PASS_COUNT; k++) {
             r->pass_ms[k] += (float64_t)s->pass_ms[k];
@@ -456,6 +465,7 @@ static void sh_samples_sum(sh_t *sh, uint32_t count, sh_result_t *r) {
     }
     sh_spread(sort, intervals, &r->interval_p50_ms, &r->interval_p99_ms, &r->interval_worst_ms);
     r->late_share = count != 0u ? (float64_t)late / (float64_t)count : 0.0f64;
+    r->wait_at_once_ms = at_once != 0u ? (float32_t)(wait_at_once / (float64_t)at_once) : 0.0f32;
     r->pictures = count;
     if (joined != 0u) {
         r->fresh_mean = fresh / (float64_t)joined;
@@ -603,6 +613,9 @@ static uint32_t sh_rings_take(sh_t *sh, const game_watch_t *watch, uint64_t *tak
         const game_watch_picture_t *const p = &watch->borrowed_pictures[take->seq % GAME_WATCH_RING];
         if (drawn - take->seq < GAME_WATCH_RING - 64u && p->seq == take->seq) {
             const int64_t *const at = p->stamp_ns;
+            /* Plan 008 phase 02: late is ready after the take the start rule aimed it at, as the frame log says, when it was aimed. */
+            s->late = p->aimed_ns != 0 ? p->missed : s->late;
+            s->how = p->pace_how;
             s->joined = 1u;
             s->card_ms = p->total_ms;
             s->p_ms = (float32_t)(time_ns_to_ms(at[GAME_WATCH_STAMP_READY] - at[GAME_WATCH_STAMP_START]) -
@@ -643,6 +656,8 @@ static bool sh_row_live(sh_t *sh, const sh_row_t *row, float64_t heading_deg, ui
     bool ok = true;
     while (ok && now_ns - started_ns < total_ns) {
         sh_look(row, heading_deg, (float64_t)(now_ns - started_ns) / (float64_t)TIME_NS_PER_SECOND, &game->camera);
+        game_loop_next_take(game,
+                            next_ns + frame_ns); /* plan 008 phase 02: the tick it sleeps to next, as a window's */
         ok = game_loop_frame(game, &still, (float32_t)((float64_t)(now_ns - last_ns) / (float64_t)TIME_NS_PER_SECOND),
                              &target);
         count = sh_rings_take(sh, watch, &takes_read, &last_taken_ns, count);
@@ -901,6 +916,10 @@ static void sh_row_print(const char *place, const sh_row_t *row, const sh_result
            (libc_double_t)r->shade_ms[SHADE_SPAN_SUN], (libc_double_t)r->shade_ms[SHADE_SPAN_AO],
            (libc_double_t)r->shade_ms[SHADE_SPAN_FRESH], (libc_double_t)r->fresh_mean, r->fresh_max,
            (libc_double_t)r->p_ms, (libc_double_t)r->wait_take_ms);
+    if (row->mode != SH_MODE_SETTLED) {
+        printf("    pace: the card idle before a picture started at once (after a late one, or back to back) %.2f ms\n",
+               (libc_double_t)r->wait_at_once_ms);
+    }
     printf("    intervals by slot (8.33 ms each, last is all past):");
     for (uint32_t i = 0u; i < SH_BINS; i++) {
         printf(" %" PRIu32, r->bins[i]);
