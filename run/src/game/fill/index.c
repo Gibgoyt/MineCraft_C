@@ -52,8 +52,11 @@ static uint32_t fill_count(const game_fill_t *fill, const render_t *render, uint
     if (buffers->borrowed_shadow == nullptr) {
         return 0u;
     }
-    const int64_t center_x = (int64_t)buffers->window.min_x + buffers->window.side / 2u;
-    const int64_t center_y = (int64_t)buffers->window.min_y + buffers->window.side / 2u;
+    /* A jump's rings are round where it went: until the window has moved there, what it holds round its old middle is not the fill's. */
+    const int64_t center_x =
+        fill->has_centre != 0u ? (int64_t)fill->centre_x : (int64_t)buffers->window.min_x + buffers->window.side / 2u;
+    const int64_t center_y =
+        fill->has_centre != 0u ? (int64_t)fill->centre_y : (int64_t)buffers->window.min_y + buffers->window.side / 2u;
     const int64_t limit = (int64_t)fill->full_detail * fill->full_detail;
     uint32_t total = 0u;
     for (uint32_t slot = 0u; slot < buffers->window.slot_count; slot++) {
@@ -83,7 +86,7 @@ static void fill_keep(game_fill_t *fill, const game_fill_summary_t *summary) {
 
 void game_fill_start(game_fill_t *fill, game_fill_kind_t kind, uint32_t render_distance, uint32_t full_detail,
                      const render_t *render) {
-    if (fill->logged == 0u && fill->started_ns != 0) {
+    if (fill->logged == 0u && atomic_load_explicit(&fill->started_ns, memory_order_relaxed) != 0) {
         /* Cut short by this one: kept as it got, never done. */
         game_fill_summary_t cut;
         game_fill_summary(fill, &cut);
@@ -91,6 +94,7 @@ void game_fill_start(game_fill_t *fill, game_fill_kind_t kind, uint32_t render_d
         fill_keep(fill, &cut);
     }
     fill->kind = kind;
+    fill->has_centre = 0u; /* a jump sets its own after this */
     fill->render_distance = render_distance;
     fill->full_detail = full_detail;
     fill->has_far = render->borrowed_lod != nullptr && render->borrowed_lod->level_count != 0u ? 1u : 0u;
@@ -120,8 +124,35 @@ void game_fill_start(game_fill_t *fill, game_fill_kind_t kind, uint32_t render_d
     atomic_store_explicit(&fill->far_ns, fill->has_far != 0u ? -1 : 0, memory_order_relaxed);
     atomic_store_explicit(&fill->done_ns, -1, memory_order_relaxed);
     atomic_fetch_add_explicit(&fill->sequence, 1u, memory_order_release);
-    fill->started_ns = time_now_ns();
+    atomic_store_explicit(&fill->started_ns, time_now_ns(), memory_order_relaxed);
     fill->scanned_ns = 0;
+}
+
+void game_fill_jump_ask(game_fill_t *fill, int32_t chunk_x, int32_t chunk_y) {
+    atomic_store_explicit(&fill->jump_chunk_x, chunk_x, memory_order_relaxed);
+    atomic_store_explicit(&fill->jump_chunk_y, chunk_y, memory_order_relaxed);
+    atomic_store_explicit(&fill->jump_asked, 1u, memory_order_release);
+}
+
+/* A jump asked for since the last step: a fill of its own, round where it went, from now. */
+static void fill_jump_take(game_fill_t *fill, const render_t *render) {
+    if (atomic_load_explicit(&fill->jump_asked, memory_order_relaxed) == 0u ||
+        atomic_exchange_explicit(&fill->jump_asked, 0u, memory_order_acquire) == 0u) {
+        return;
+    }
+    const int32_t chunk_x = atomic_load_explicit(&fill->jump_chunk_x, memory_order_relaxed);
+    const int32_t chunk_y = atomic_load_explicit(&fill->jump_chunk_y, memory_order_relaxed);
+    /* What the window held at the start is never round where it went, so the count at the start is taken round there too. */
+    fill->has_centre = 1u;
+    fill->centre_x = chunk_x;
+    fill->centre_y = chunk_y;
+    game_fill_start(fill, GAME_FILL_JUMP, fill->render_distance, fill->full_detail, render);
+    fill->has_centre = 1u;
+    fill->centre_x = chunk_x;
+    fill->centre_y = chunk_y;
+    uint16_t ready[GAME_FILL_RINGS];
+    fill->ready_start = fill_count(fill, render, ready);
+    LOG_INFO("fill: a jump to chunk %" PRId32 ", %" PRId32 ", timed from now", chunk_x, chunk_y);
 }
 
 void game_fill_summary(const game_fill_t *fill, game_fill_summary_t *out) {
@@ -137,7 +168,7 @@ void game_fill_summary(const game_fill_t *fill, game_fill_summary_t *out) {
 }
 
 static const char *fill_kind_text(game_fill_kind_t kind) {
-    return kind == GAME_FILL_OPEN ? "opening at" : "a change to";
+    return kind == GAME_FILL_OPEN ? "opening at" : (kind == GAME_FILL_JUMP ? "a jump at" : "a change to");
 }
 
 static void fill_finish(game_fill_t *fill, const render_t *render, int64_t now_ns) {
@@ -159,10 +190,12 @@ static void fill_finish(game_fill_t *fill, const render_t *render, int64_t now_n
 }
 
 void game_fill_step(game_fill_t *fill, const render_t *render) {
-    if (fill->logged != 0u || fill->started_ns == 0) {
+    fill_jump_take(fill, render);
+    const int64_t started_ns = atomic_load_explicit(&fill->started_ns, memory_order_relaxed);
+    if (fill->logged != 0u || started_ns == 0) {
         return;
     }
-    const int64_t now_ns = time_now_ns() - fill->started_ns;
+    const int64_t now_ns = time_now_ns() - started_ns;
     const uint64_t far_built = fill_far_built(render);
     fill->far_built_last = far_built;
     if (atomic_load_explicit(&fill->first_ns, memory_order_relaxed) < 0 && far_built > fill->far_built_start) {
@@ -228,7 +261,7 @@ void game_fill_report(const game_fill_t *fill) {
     for (uint32_t i = fill->history_count - kept; i < fill->history_count; i++) {
         fill_report_line("finished", &fill->history[i % GAME_FILL_HISTORY]);
     }
-    if (fill->logged == 0u && fill->started_ns != 0) {
+    if (fill->logged == 0u && atomic_load_explicit(&fill->started_ns, memory_order_relaxed) != 0) {
         game_fill_summary_t summary;
         game_fill_summary(fill, &summary);
         summary.far_columns = fill->far_built_last - fill->far_built_start;

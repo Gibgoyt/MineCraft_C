@@ -81,6 +81,19 @@ typedef enum player_survival_bed_answer_t : uint8_t {
     PLAYER_SURVIVAL_BED_ASLEEP = 3,
 } player_survival_bed_answer_t;
 
+/* Plan 006 phase 01: where a teleported body is in arriving. */
+typedef enum player_survival_arriving_t : uint8_t {
+    PLAYER_SURVIVAL_ARRIVING_NONE = 0,
+    PLAYER_SURVIVAL_ARRIVING_WAIT = 1, /* held still and unharmed until the column under it loads */
+    PLAYER_SURVIVAL_ARRIVING_FALL = 2, /* stood where it goes, and no fall hurts it until it lands, swims or flies */
+} player_survival_arriving_t;
+
+/* How a teleported body stands once its ground loads. */
+typedef enum player_survival_arrive_t : uint8_t {
+    PLAYER_SURVIVAL_ARRIVE_EXACT = 0,  /* the feet where they were put; out of rock to the first room above */
+    PLAYER_SURVIVAL_ARRIVE_GROUND = 1, /* on the top ground of the column, with room for the body */
+} player_survival_arrive_t;
+
 /* All that a body's health is. Plain numbers, so that the same world and buttons give the same bytes. The sim's. */
 typedef struct player_survival_t {
     float64_t spawn[COLLISION_AXES];  /* 0: the feet at the world's own place to come back to */
@@ -117,10 +130,11 @@ typedef struct player_survival_t {
     uint8_t buttons_before;    /* 148: what was held last tick, so that a press is told from a hold */
     uint8_t was_on_ground;     /* 149 */
     uint8_t bed_answer;        /* 150: a player_survival_bed_answer_t */
-    uint8_t _pad0[1];          /* 151 */
+    uint8_t arriving;          /* 151: a player_survival_arriving_t (plan 006 phase 01) */
     float32_t armor_toughness; /* 152: all that is worn, added up */
     float32_t armor_hit;       /* 156: what armor has stood against since player_survival_armor_hit_take */
-    uint8_t _pad1[32];         /* 160 */
+    uint8_t arrive_kind;       /* 160: a player_survival_arrive_t, while arriving */
+    uint8_t _pad1[31];         /* 161 */
 } player_survival_t;
 static_assert(sizeof(player_survival_t) == 192);
 static_assert(alignof(player_survival_t) == 8);
@@ -174,6 +188,15 @@ void player_survival_exhaust(player_survival_t *survival, float32_t amount);
 
 /* Food and saturation from eating, up to their limits: what finishing a bite does. */
 void player_survival_eat(player_survival_t *survival, uint32_t food, float32_t saturation);
+
+/* Plan 006 phase 01: the body has just been put where its feet now are, by a teleport: it waits there, held and unharmed, until the
+ * ground loads, then stands as kind says (player_survival_arrive), and takes no fall until it lands. */
+void player_survival_arrive_begin(player_survival_t *survival, player_survival_arrive_t kind);
+
+/* The wait: nothing until the column under the feet is loaded, then the body stands as player_survival_arrive_begin said. Each tick
+ * before the body moves, on the map's thread. Never waits and never touches the heap. */
+void player_survival_arrive(player_survival_t *survival, player_movement_t *movement, physics_t *physics,
+                            const world_map_t *map);
 
 /* Whether what wants to move this body counts for nothing now: it is dead, asleep, or waiting for the ground it has come back to. */
 bool player_survival_holds_body(const player_survival_t *survival);

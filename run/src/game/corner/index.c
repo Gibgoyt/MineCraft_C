@@ -3,12 +3,16 @@
 #include "game/corner/index.h"
 
 #include "calendar/index.h"
+#include "climate/cell/index.h"
 #include "climate/heat/index.h"
 #include "climate/index.h"
 #include "climate/sun/index.h"
 #include "climate/systems/name/index.h"
+#include "climate/season/index.h"
 #include "climate/weather/index.h"
+#include "game/command/index.h"
 #include "game/index.h"
+#include "terrain/biome/index.h"
 #include "settings/persist/index.h"
 
 #include <inttypes.h>
@@ -246,10 +250,142 @@ void game_hud_climate_publish(game_t *game, bool force) {
     }
 }
 
+/* ---- Plan 006 phase 01: the F3 tuning lines ------------------------------------------------------------------------------ */
+
+static const char *const CORNER_CLASS_NAMES[CLIMATE_CLASS_COUNT] = {
+    "Sea",     "Ice",     "Tundra",        "Desert",    "Steppe",      "Rainforest",
+    "Monsoon", "Savanna", "Mediterranean", "Temperate", "Continental", "Boreal"};
+
+const char *game_corner_class_name(uint32_t climate_class) {
+    return climate_class < CLIMATE_CLASS_COUNT ? CORNER_CLASS_NAMES[climate_class] : "?";
+}
+
+/* Tenths of a degree, as an int16_t in a word's half. */
+static uint32_t corner_tenths(float32_t celsius) {
+    const float32_t tenths = floorf(celsius * 10.0f32 + 0.5f32);
+    const float32_t held = tenths > 32767.0f32 ? 32767.0f32 : (tenths < -32768.0f32 ? -32768.0f32 : tenths);
+    return (uint32_t)(uint16_t)(int16_t)held;
+}
+
+static uint32_t corner_millimetres(float32_t mm) {
+    const float32_t whole = floorf(mm + 0.5f32);
+    return whole >= 65535.0f32 ? 65535u : (whole > 0.0f32 ? (uint32_t)whole : 0u);
+}
+
+void game_corner_tuning_publish(game_t *game) {
+    game_corner_t *const corner = game_corner_of(game);
+    player_t *const player = game->borrowed_player;
+    if (corner == nullptr || player == nullptr) {
+        return;
+    }
+    const uint64_t tick = game->tick_count;
+    if (corner->tuning_tick != 0u && tick < corner->tuning_tick + GAME_CORNER_CLIMATE_TICKS) {
+        return;
+    }
+    corner->tuning_tick = tick + (tick == 0u ? 1u : 0u);
+    const float64_t *const feet = player->movement.position;
+    const float64_t x = feet[0], y = feet[1];
+    const float32_t z = (float32_t)(feet[2] - (float64_t)MC_WORLD_Z_SEA);
+    const uint32_t biome = game->borrowed_terrain != nullptr && game->borrowed_terrain->borrowed_biome != nullptr
+                               ? (uint32_t)terrain_biome_at(game->borrowed_terrain->borrowed_biome, (int32_t)floor(x),
+                                                            (int32_t)floor(y), (int32_t)floor(feet[2]))
+                               : 0u;
+    const uint32_t kinds = atomic_load_explicit(&corner->tuning_kinds, memory_order_relaxed);
+    climate_t *const climate = corner_climate(game);
+    if (climate == nullptr) {
+        atomic_store_explicit(&corner->tuning_kinds, biome | GAME_CORNER_TUNING_NONE << 24, memory_order_relaxed);
+        return;
+    }
+    const calendar_date_t date = game_calendar_date(game);
+    climate_normals_at_t normals;
+    climate_cell_t cell;
+    if (!climate_normals_at(climate, x, y, z, (float32_t)date.day_of_year, &normals) ||
+        !climate_cell_get(climate, (int32_t)floor(x), (int32_t)floor(y), &cell)) {
+        /* Not built yet: the biome now, the rest as it was. */
+        atomic_store_explicit(&corner->tuning_kinds, (kinds & ~0xFFu) | biome, memory_order_relaxed);
+        return;
+    }
+    const bool land = (cell.flags & CLIMATE_CELL_SEA) == 0u;
+    climate_season_months_t months;
+    climate_season_months(&cell, z, land, &months);
+    /* The family is the class the numbers at the feet's own height give, by the same first match as a cell's. */
+    const uint32_t family =
+        land ? climate_season_classify(months.t_mean_c, months.t_max_month_c, months.t_min_month_c, months.rain_mm_year,
+                                       months.driest_month_mm, months.dry_summer != 0u,
+                                       (cell.flags & CLIMATE_CELL_MONSOON) != 0u)
+             : (uint32_t)CLIMATE_CLASS_NONE;
+    atomic_store_explicit(&corner->tuning_kinds,
+                          biome | family << 8 | (uint32_t)normals.climate_class << 16 |
+                              GAME_CORNER_TUNING_CLIMATE << 24,
+                          memory_order_relaxed);
+    atomic_store_explicit(&corner->tuning_year,
+                          corner_tenths(normals.t_mean_c) | corner_tenths(normals.t_max_month_c) << 16,
+                          memory_order_relaxed);
+    atomic_store_explicit(&corner->tuning_cold,
+                          corner_tenths(normals.t_min_month_c) | corner_tenths(normals.t_day_c) << 16,
+                          memory_order_relaxed);
+    atomic_store_explicit(&corner->tuning_z, (int32_t)floorf(normals.z), memory_order_relaxed);
+    atomic_store_explicit(&corner->tuning_rain,
+                          corner_millimetres(normals.rain_mm_year) | corner_millimetres(months.driest_month_mm) << 16,
+                          memory_order_relaxed);
+    atomic_store_explicit(&corner->tuning_snowline, (int32_t)floorf(normals.snow_balance_z + 0.5f32),
+                          memory_order_relaxed);
+}
+
+/* "24.6", "-0.3", never "-0.0", from tenths. */
+static void corner_degrees(uint32_t half, char *out, uint32_t bytes) {
+    const int32_t tenths = (int32_t)(int16_t)(uint16_t)half;
+    const uint32_t magnitude = tenths < 0 ? (uint32_t)(-tenths) : (uint32_t)tenths;
+    (void)snprintf(out, bytes, "%s%" PRIu32 ".%" PRIu32, tenths < 0 ? "-" : "", magnitude / 10u, magnitude % 10u);
+}
+
+void game_corner_tuning_read(const game_t *game, char lines[GAME_CORNER_TUNING_LINES][GAME_CORNER_TUNING_BYTES]) {
+    for (uint32_t i = 0u; i < GAME_CORNER_TUNING_LINES; i++) {
+        lines[i][0] = '\0';
+    }
+    const game_corner_t *const corner = game_corner_of(game);
+    if (corner == nullptr) {
+        return;
+    }
+    const uint32_t kinds = atomic_load_explicit(&corner->tuning_kinds, memory_order_relaxed);
+    const uint32_t biome = kinds & 0xFFu, source = kinds >> 24;
+    const char *const biome_name = biome < BIOME_COUNT ? biome_defs[biome].name : "?";
+    if (source == GAME_CORNER_TUNING_NONE) {
+        (void)snprintf(lines[0], GAME_CORNER_TUNING_BYTES, "biome %s  (no climate)", biome_name);
+        return;
+    }
+    (void)snprintf(lines[0], GAME_CORNER_TUNING_BYTES, "biome %s  family %s  class %s (%s)", biome_name,
+                   game_corner_class_name((kinds >> 8) & 0xFFu), game_corner_class_name((kinds >> 16) & 0xFFu),
+                   source == GAME_CORNER_TUNING_FALLBACK ? "fallback" : "climate");
+    const uint32_t year = atomic_load_explicit(&corner->tuning_year, memory_order_relaxed);
+    const uint32_t cold = atomic_load_explicit(&corner->tuning_cold, memory_order_relaxed);
+    char mean[16], warm[16], coldest[16], today[16];
+    corner_degrees(year & 0xFFFFu, mean, sizeof(mean));
+    corner_degrees(year >> 16, warm, sizeof(warm));
+    corner_degrees(cold & 0xFFFFu, coldest, sizeof(coldest));
+    corner_degrees(cold >> 16, today, sizeof(today));
+    (void)snprintf(lines[1], GAME_CORNER_TUNING_BYTES,
+                   "yearly %s \xC2\xB0"
+                   "C  warm %s  cold %s at z %" PRId32 "   today %s",
+                   mean, warm, coldest, atomic_load_explicit(&corner->tuning_z, memory_order_relaxed), today);
+    const uint32_t rain = atomic_load_explicit(&corner->tuning_rain, memory_order_relaxed);
+    const int32_t snowline = atomic_load_explicit(&corner->tuning_snowline, memory_order_relaxed);
+    char snow[24];
+    if ((float32_t)snowline >= CLIMATE_SNOW_BALANCE_NONE) {
+        (void)snprintf(snow, sizeof(snow), "none");
+    } else {
+        (void)snprintf(snow, sizeof(snow), "z %" PRId32, snowline);
+    }
+    (void)snprintf(lines[2], GAME_CORNER_TUNING_BYTES, "rain %" PRIu32 " mm/yr  dry month %" PRIu32 " mm   snowline %s",
+                   rain & 0xFFFFu, rain >> 16, snow);
+}
+
 /* ---- Main's side ---------------------------------------------------------------------------------------------------- */
 
 void game_hud_corner_read(const game_t *game, ui_hud_corner_t *out) {
     ui_hud_corner_clear(out);
+    /* Plan 006 phase 01: flying and the speed factor, on the line plan 004 left for a settlement's name, as there is none yet. */
+    game_command_flight_line(game, out->lines[UI_HUD_CORNER_SETTLEMENT], sizeof(out->lines[UI_HUD_CORNER_SETTLEMENT]));
     const game_corner_t *const corner = game_corner_of(game);
     const uint32_t season = corner != nullptr ? atomic_load_explicit(&corner->hud_season, memory_order_relaxed) : 0u;
     const bool ready = (season & GAME_CORNER_SEASON_READY) != 0u;

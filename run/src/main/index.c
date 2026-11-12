@@ -1212,13 +1212,20 @@ static int32_t main_with_app(app_t *app, const main_options_t *options, int64_t 
     return final_status;
 }
 
-int32_t main(int32_t argc, char **argv) {
-    const int64_t started_ns = time_now_ns();
+/* The options in a frame of their own, so that main's holds app_t and little else: plan 006 phase 01's command latch took player_t,
+ * and so app_t, to 16192 bytes, and main's frame with the options in it to 16448 at -O3 with -flto against 16384. */
+[[gnu::noinline]]
+static int32_t main_with_options(int32_t argc, char **argv, app_t *app, int64_t started_ns) {
     main_options_t options;
     if (!main_parse_arguments(argc, argv, &options)) {
         main_print_usage(argv[0]);
         return MAIN_EXIT_USAGE;
     }
+    return main_with_app(app, &options, started_ns);
+}
+
+int32_t main(int32_t argc, char **argv) {
+    const int64_t started_ns = time_now_ns();
     app_t app;
-    return main_with_app(&app, &options, started_ns);
+    return main_with_options(argc, argv, &app, started_ns);
 }

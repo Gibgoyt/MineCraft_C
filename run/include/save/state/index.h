@@ -20,8 +20,10 @@ enum : uint32_t {
     /* Raised by any change an older reader could not read. A file of another version is refused and left alone. Version 2: a file ends in the names of
      * the tables its numbers are places in, and a build with other tables translates them. Version 3: a third crafting grid, the woodworking bench's.
      * Version 4: a calendar section, plan 004 phase 01. Version 5: each body's sex, and what each animal is up to, plan 005 phase 4. Version 6: the smith table's alloy slots, plan 005
-     * phase 11 part B. */
-    SAVE_STATE_VERSION = 6u,
+     * phase 11 part B. Version 7: plan 006 phase 01's fly mode, fly speed and speed factor in the body's movement, and a teleport's
+     * arriving in its survival, in bytes that were padding: an older file has zeros there, which mean walking, the default speed, a
+     * factor of 1 and not arriving, so it opens as it was; an older build refuses a newer file by its version, not as damage. */
+    SAVE_STATE_VERSION = 7u,
     /* The oldest version still read. Version 3 has no calendar, and opens with a new one. Versions 3 and 4 have no sexes, and every body in
      * one opens as ENTITY_STORE_SEX_NONE, as every body then was. A file with no alloy section, as every one before version 6, opens with
      * the alloy slots empty. */

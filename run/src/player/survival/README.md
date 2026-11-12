@@ -15,6 +15,12 @@
 - `player_survival_hold_food`, `player_survival_sun_set`, `player_survival_armor_set`: what it is told, as it knows nothing of items or the sky. The sun is told as the sine of its elevation at the body (`sun_height`), which the sim works out each tick from the world clock and the feet's y (plan 004 phase 02).
 - `player_survival_after_armor`, `player_survival_fall_damage`, `player_survival_is_night`: the sums, for any numbers. A bed works while the sun is more than 8.13 degrees below the horizon (`PLAYER_SURVIVAL_NIGHT_SUN`, sin of -8.13), which on the equator at the equinox is the old 0.772583 to 0.227458 of a day exactly, so nights are long in winter and near the poles, and north of 58.4 degrees midsummer has none.
 - `player_survival_holds_body`, `player_survival_can_sprint`: what `run/src/player/` does to the keys.
+- `player_survival_arrive_begin`, `player_survival_arrive`: plan 006 phase 01's arriving. A teleported body (`arriving` 1) waits
+  where it was put, held, unharmed and with its keys counting for nothing, until the column under its feet loads, as a body that
+  has come back waits through `placing`; then it stands as it was asked: exact feet, out of rock to the first room above (the
+  climb `survival_stand_at_spawn` makes, from any point), or on the top ground of the column, from the world's top down, the
+  first block that is not air with the body's room over it, water included. After that (`arriving` 2) no fall hurts it until
+  it lands, swims, climbs or flies. `arriving` and how it stands are saved with the rest, in bytes that were padding.
 - `player_survival_died_take`, `player_survival_morning_take`, `player_survival_armor_hit_take`: what `run/src/game/` acts on: what was carried spills, the day moves on, and what is worn wears.
 
 **May be called by:** `run/src/player/`, `run/src/game/` for what it is told and what it acts on, and `run/src/mob/combat/` and `run/src/mob/creeper/`, which call `player_survival_hurt`.
@@ -33,7 +39,8 @@ Minecraft's published rules for its normal difficulty, written here from scratch
 | Starving | At 0 food: 1 health every 80 ticks, down to 1. Hunger alone does not kill |
 | No sprint | At 6 food or less, or while eating |
 | Eating | The right button held for 32 ticks with food in hand and under 20 food: food and saturation as in `config/items/`, with saturation never over food. It goes on to the next one if held. Letting go or changing what is in hand starts over. A stew leaves its bowl |
-| Falling | `distance - 3`, rounded up, on landing. Half that on a bed. Water and ladders break a fall |
+| Falling | `distance - 3`, rounded up, on landing. Half that on a bed. Water and ladders break a fall. Flying, and a teleport's drop to where it lands, are no fall (plan 006 phase 01) |
+| Flying (plan 006 phase 01) | No tiring from moving, so no hunger drain; what else hurts still hurts |
 | Lava | 4 a hit, and alight for 15 s after |
 | Alight | 1 every 20 ticks. Water puts it out |
 | Cactus | 1 a hit, touching it from any side |

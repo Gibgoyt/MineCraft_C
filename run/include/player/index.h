@@ -41,6 +41,29 @@ enum : uint8_t {
         2u, /* it went down on an animal that yields to what is in hand: until it is let go the hands do nothing */
 };
 
+/* Plan 006 phase 01: what main may ask of the sim through command_word. The kind is the word's low byte. */
+typedef enum player_command_kind_t : uint8_t {
+    PLAYER_COMMAND_NONE = 0,
+    PLAYER_COMMAND_TP_EXACT = 1,  /* feet at the target; out of rock to the first room above if it is inside it */
+    PLAYER_COMMAND_TP_GROUND = 2, /* x and y of the target, standing on the top ground there, once it loads */
+    PLAYER_COMMAND_FLY = 3,       /* fly mode on if it is off, and off if it is on */
+    PLAYER_COMMAND_SPEED = 4,     /* the speed factor, PLAYER_MOVEMENT_FACTOR_MIN to _MAX, in the argument */
+} player_command_kind_t;
+
+enum : uint32_t {
+    PLAYER_COMMAND_RELATIVE_X = 1u << 8, /* command_target[0] is a step from the feet */
+    PLAYER_COMMAND_RELATIVE_Y = 1u << 9,
+    PLAYER_COMMAND_RELATIVE_Z = 1u << 10,
+    PLAYER_COMMAND_ARGUMENT_SHIFT = 16u,
+    /* In flight_word. */
+    PLAYER_FLIGHT_FLYING = 1u << 0,
+    PLAYER_FLIGHT_SPEED_SHIFT = 8u,   /* bits 8-23: what it flies at, blocks a second, the factor in, to the nearest */
+    PLAYER_FLIGHT_FACTOR_SHIFT = 24u, /* bits 24-31: the speed factor */
+};
+
+/* How far from 0 a teleport may put the feet across, in blocks: inside what a save keeps of a place (save/state, 1e9), with room. */
+#define PLAYER_COMMAND_PLACE_MOST 999000000.0f64
+
 /* One tick's worth of where the eye was and is and what it aims at, from sim to main. */
 typedef struct player_view_t {
     float64_t previous[3];  /* 0 */
@@ -90,14 +113,29 @@ typedef struct player_t {
     player_combat_t combat;            /* 2104: the sim's: what the hand remembers of swinging */
     /* A line of its own: main writes the line above all the time. */
     player_survival_t survival; /* 2112: the sim's */
+    /* Plan 006 phase 01: main's commands to the sim, a line of their own. A mailbox of one: main writes command_target only while
+     * command_word is 0 (acquire), then the word (release); the sim reads the target after the word (acquire), then puts 0 back
+     * (release). */
+    float64_t command_target
+        [3]; /* 2304: per axis, a place or, with its PLAYER_COMMAND_RELATIVE_* bit, a step from the feet */
+    _Atomic uint32_t
+        command_word; /* 2328: a player_command_kind_t, PLAYER_COMMAND_RELATIVE_* and an argument; 0 for none */
+    _Atomic int32_t fly_wheel; /* 2332: wheel steps main has seen while flying, added up, for the sim to take */
+    /* 2336: sim to main, relaxed, as only the HUD depends on it: PLAYER_FLIGHT_* bits, the fly speed and the speed factor */
+    _Atomic uint32_t flight_word;
+    uint32_t teleports; /* 2340: the sim's: teleports taken since the body was spawned */
+    uint8_t _pad1[24];  /* 2344 */
 } player_t;
-static_assert(sizeof(player_t) == 2304);
+static_assert(sizeof(player_t) == 2368);
 static_assert(alignof(player_t) == MC_CPU_CACHE_LINE_BYTES);
 static_assert(offsetof(player_t, views) == 128);
 static_assert(offsetof(player_t, target) == 800);
 static_assert(offsetof(player_t, interaction) == 896);
 static_assert(offsetof(player_t, intent_word) == 2048);
 static_assert(offsetof(player_t, survival) == 2112);
+static_assert(offsetof(player_t, command_target) == 2304);
+static_assert(offsetof(player_t, command_word) == 2328);
+static_assert(offsetof(player_t, flight_word) == 2336);
 
 /* Remembers what it moves with, and takes nothing. Physics must outlive it. */
 void player_init(player_t *player, physics_t *physics);
@@ -160,6 +198,25 @@ entity_handle_t player_body_aimed(const player_t *player, const entity_store_t *
 
 /* What an item's box has to overlap to be picked up, with the body where it now is. The thread its ticks are on. */
 void player_pickup_reach(const player_t *player, collision_box_t *out);
+
+/* Plan 006 phase 01: main asks the sim for a teleport, fly mode or a speed factor (player_command_kind_t). target is for a teleport,
+ * a place per axis or, with its PLAYER_COMMAND_RELATIVE_* bit in relative, a step from the feet; argument is the speed factor. False,
+ * with nothing sent, while the last one is still waiting for the sim: a mailbox of one. Main. Never waits. */
+bool player_command_send(player_t *player, player_command_kind_t kind, const float64_t target[3], uint32_t relative,
+                         uint32_t argument);
+
+/* The sim, first in its tick: what main sent, done. A teleport puts the feet there (held inside PLAYER_COMMAND_PLACE_MOST across and
+ * the gameplay heights) with player_movement_start, so that nothing is drawn smeared between, and the body then waits, held and
+ * unharmed, for its ground (player_survival_arrive_begin). Refused by a body that is dead or asleep. Returns the kind done, or
+ * PLAYER_COMMAND_NONE. Also takes the wheel main has sent while flying. Never waits. */
+player_command_kind_t player_command_take(player_t *player);
+
+/* Main: wheel steps while flying, for the fly speed. Never waits. */
+void player_fly_wheel_send(player_t *player, int32_t steps);
+
+/* Main: flying, what it flies at in blocks a second (the factor in), and the speed factor, as of the last tick, from flight_word.
+ * Never waits. */
+void player_flight_read(const player_t *player, bool *out_flying, uint32_t *out_speed, uint32_t *out_factor);
 
 /* One tick. The sim, or whichever one thread holds the map, with tick_ns the time this tick was due. Never waits and never
  * touches the heap. */

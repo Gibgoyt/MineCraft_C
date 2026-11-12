@@ -576,7 +576,8 @@ static bool save_state_check_player(const uint8_t *data, uint64_t bytes) {
         !save_state_f64s_within(&body->landed_fall, 1u, SAVE_STATE_TALLY_MOST) ||
         !save_state_f64s_within(&body->eye_height, 1u, SAVE_STATE_EYE_MOST) ||
         !save_state_f64s_within(&body->previous_eye, 1u, SAVE_STATE_EYE_MOST) ||
-        body->mode > PLAYER_MOVEMENT_MODE_CLIMB) {
+        body->mode > PLAYER_MOVEMENT_MODE_FLY || body->fly_step > PLAYER_MOVEMENT_FLY_STEP_MOST ||
+        body->speed_factor > PLAYER_MOVEMENT_FACTOR_MAX) {
         return false;
     }
     if (!save_state_place_fine(health->spawn, COLLISION_AXES) || !isfinite(health->sun_height) ||
@@ -587,7 +588,8 @@ static bool save_state_check_player(const uint8_t *data, uint64_t bytes) {
         !save_state_tally_fine(health->armor_hit) || health->air > (int32_t)PLAYER_SURVIVAL_AIR_MAX ||
         health->air < -(int32_t)PLAYER_SURVIVAL_DROWN_EVERY_TICKS || health->food > PLAYER_SURVIVAL_FOOD_MAX ||
         health->state > PLAYER_SURVIVAL_DEAD || health->killed_by >= PLAYER_SURVIVAL_CAUSE_COUNT ||
-        health->bed_answer > PLAYER_SURVIVAL_BED_ASLEEP) {
+        health->bed_answer > PLAYER_SURVIVAL_BED_ASLEEP || health->arriving > PLAYER_SURVIVAL_ARRIVING_FALL ||
+        health->arrive_kind > PLAYER_SURVIVAL_ARRIVE_GROUND) {
         return false;
     }
     if (hands->drop_head >= PLAYER_INTERACTION_DROPS || hands->drop_count > PLAYER_INTERACTION_DROPS ||

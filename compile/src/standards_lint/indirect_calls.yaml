@@ -352,6 +352,14 @@ indirect_calls:
     caller: test_body_the_session_opens_the_census_screen_and_continue_resumes
     pointer: "display_headless_scene_t tick and draw"
     why: "The scene is the game's (game_headless_scene) or the session's (game_session_headless_scene). Their tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/game/command/index.c
+    caller: gd_session_run
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the session's (game_session_headless_scene). Its tick and draw run the game and draw its picture, and never call back into this test's driver."
+  - file: tests/run/game/command/index.c
+    caller: gd_ticks
+    pointer: "display_headless_scene_t tick and draw"
+    why: "The scene is the game's (game_headless_scene). Its tick and draw run the game and draw its picture, and never call back into this test's driver."
   - file: tests/run/game/sun/index.c
     caller: gs_draw
     pointer: "display_headless_scene_t tick and draw"
