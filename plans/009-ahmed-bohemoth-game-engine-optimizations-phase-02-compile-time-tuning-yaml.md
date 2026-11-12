@@ -1,6 +1,6 @@
 # 009-ahmed-bohemoth-game-engine-optimizations — phase 2: Compile-time tuning YAML
 
-**Status:** in progress   (updated 2026-11-12)
+**Status:** done but the gate (Ahmed changes `ao_turns` and rebuilds)   (updated 2026-11-12)
 
 Read first: the phase 00 file, then the master: sections 2.7, 4.2 and 6. Then the two tools this one follows:
 
@@ -197,8 +197,8 @@ ao_reach:
 - [x] `render/lod`, `render/traverse`, `render/shade`, `render/temporal`, `render/budget` files, each moved in its own commit with golden tests passing
 - [x] Field-sizing uses keep static_asserts against the tuned value
 - [x] `--report` prints the hash and every value; `history.tsv` has a `tuning` column
-- [ ] REPO_STRUCTURE (sections 2, 4, 5) and CODING_STANDARD rule
-- [ ] Full `bench_world`: every settled hash unchanged
+- [x] REPO_STRUCTURE (sections 2, 4, 5) and CODING_STANDARD rule
+- [x] Full `bench_world`: every settled hash unchanged
 - [ ] Ahmed changes `ao_turns` from 4 to 2, rebuilds, and sees it in `--report`; then back
 
 ## Tests
@@ -271,6 +271,11 @@ Appended as they land:
 - `24b8687d` Move shade's layers, AO turns, rays, samples and reach, god-ray steps and water depth to compile/config/render/shade/index.yaml, with asserts for the fields and the step cap, every golden picture unchanged.
 - `f21ef0f1` Move TAA's blend, clip and still-camera numbers to compile/config/render/temporal/index.yaml, every golden picture unchanged.
 - `b15c01c7` Move the coarse pass's stretches and pads to compile/config/render/traverse/index.yaml, every golden picture unchanged.
+- `f82e9b26` Print the tuning hash and every tuning value in --report, checked by run_types.
+- `fe507550` Add a tuning column to bench_world's history, the MC_TUNE_HASH each row was built with.
+- `65adea71` Add compile/config/, the tuning tool, its test and where a number goes to REPO_STRUCTURE.
+- `b20f30d9` Add the rule that a speed or look number which shapes no format or struct is a tuning YAML key to CODING_STANDARD.
+- `4130230f` Record bench_world after the tuning YAML moves, with the tuning hash b4811d956c7e2118 on every row.
 
 ## Issues found
 
@@ -358,3 +363,20 @@ stops at 4 and the `why` says so.
 were written while it ran (its summary no longer matched the build's); it passed on the next build. Each golden run takes about 10 minutes on
 the shared lock, so `shade`, `temporal` and `traverse` were built and run together, then committed one file each; had a
 picture moved, they would have been split to find which.
+
+### 6. Verification, 2026-11-12
+
+- `cmake --preset debug`, `cmake --build --preset debug`: clean, lint clean.
+- `compile_tuning`, `compile_yaml`, `compile_machine_config`, `standards_lint`, `clang_format`, `run_types`: pass.
+- `render_feature_*` (11), `cuda_traverse`, `cuda_lod`, `run_render_frame`, `run_render_lod`: pass after every move, so every
+  golden picture is the same bytes.
+- `cmake --build --preset profile`, `cmake --build --preset release`: clean. `./build/release/bin/minecraft_c --report`
+  prints `tuning hash 0xb4811d956c7e2118, 25 keys` and the 25 lines.
+- **`bench_world --record`** (profile; card at 300 MHz before and 1395 MHz after, 81 to 84 C, max 2100: thermally held, as
+  plan 008 phase 01 found), every row with `tuning` `b4811d956c7e2118`. 12 of the 14 settled rows have the same picture
+  hash as the last profile record (`73cd23cb`). Two differ: `night/walk-mobs` (`1B09CFD3B2DD1CF1`, was `339A499E50E8FC99`)
+  and `plains/orbit-r512` (`2C6CCA636717667B`, was `A67922D208B7A2EA`). **Both are main's, not this phase's:** main
+  (`ec4554c9`), exported to the scratchpad and built in the profile preset, draws exactly `1B09CFD3B2DD1CF1` and
+  `2C6CCA636717667B` on those rows. The history had not been recorded since the animals and far-field commits that moved
+  them (163 commits).
+- `pgrep -af "$PWD/build"`: nothing.
