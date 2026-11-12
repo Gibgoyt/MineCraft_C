@@ -7,3 +7,4 @@ replaceable: true
 texture: { all: blocks/vine }
 sound: grass
 facing: horizontal
+map_cover: true

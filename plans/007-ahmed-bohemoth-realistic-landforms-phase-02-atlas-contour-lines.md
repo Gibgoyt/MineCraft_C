@@ -1,6 +1,6 @@
 # 007-ahmed-bohemoth-realistic-landforms — phase 2: Atlas contour lines
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** in progress   (updated 2026-11-12)
 
 Read first: `plans/007-ahmed-bohemoth-realistic-landforms-phase-00-vision-and-plan-files.md`, then the master `plans/007-ahmed-bohemoth-realistic-landforms.md` (sections 0 "What the picture shows", 3.13, 6, 12 Q5), then plan 004's Atlas phase `plans/004-ahmed-bohemoth-climate-system-phase-09-the-atlas.md` ("Isobars and contours", the layer table) and `run/src/ui/atlas/README.md`. Where this file adds a number the master does not give, it says so and why.
 
@@ -182,7 +182,7 @@ This phase may edit these, plus this file:
 
 ## Todo
 
-- [ ] `map_cover` flag on leaves, logs, mushroom blocks, snow layer, cactus and bamboo, read by `compile/src/game_tables/blocks/`, with its README line and test
+- [x] `map_cover` flag on leaves, logs, mushroom blocks, snow layer, cactus and bamboo, read by `compile/src/game_tables/blocks/`, with its README line and test
 - [ ] New pixel layout (colour 16, height 11, cover 5) and helpers in `run/include/ui/atlas/tile/index.h`; every reader moved
 - [ ] `ui_atlas_column_top` stores cover depth; `ui_atlas_tile_halve` averages it
 - [ ] Tile file version 2; decode reads version 1 with cover 0 (fixture from today's code)
@@ -251,4 +251,4 @@ Appended as they land:
 
 ## Issues found
 
-None.
+- **`map_cover` blocks (step 2).** The repo has no mushroom blocks (`brown_mushroom` and `red_mushroom` are cross plants, which the column top already skips) and no bamboo, so neither has the flag. `vine` has it too, which this file does not list: a vine hangs outside a canopy and is a thin block that counts, so without the flag a column whose top is a vine would read its ground at the vine. The flags are every `*_leaves` (8), every `*_log` (8), `snow_layer`, `cactus` and `vine`. The block tables' test is `compile_game_tables` (not `run_game_tables.*`, this file's guess); the new test is `trees_snow_and_cactus_are_map_cover_and_the_ground_is_not`.

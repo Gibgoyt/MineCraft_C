@@ -9,3 +9,4 @@ opacity: 1
 decays: true
 texture: { all: blocks/oak_leaves }
 sound: leaves
+map_cover: true

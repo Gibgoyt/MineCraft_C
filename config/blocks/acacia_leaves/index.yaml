@@ -8,3 +8,4 @@ opacity: 1
 decays: true
 texture: { all: blocks/acacia_leaves }
 sound: leaves
+map_cover: true

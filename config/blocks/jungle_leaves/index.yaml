@@ -8,3 +8,4 @@ opacity: 1
 decays: true
 texture: { all: blocks/jungle_leaves }
 sound: leaves
+map_cover: true

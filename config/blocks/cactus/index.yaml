@@ -4,3 +4,4 @@ drops: [{ item: cactus, count: 1 }]
 opacity: 0
 texture: { top: blocks/cactus_top, bottom: blocks/cactus_top, side: blocks/cactus_side }
 sound: grass
+map_cover: true

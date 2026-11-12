@@ -597,6 +597,32 @@ TEST(the_real_blocks_that_turn_say_so) {
     CHECK(BLOCK_COUNT <= BLOCK_STATE_ID_LIMIT);
 }
 
+/* Plan 007 phase 02: what the Atlas sees through to the ground, as data. */
+TEST(trees_snow_and_cactus_are_map_cover_and_the_ground_is_not) {
+    uint32_t leaves = 0u, logs = 0u;
+    for (uint32_t b = 0u; b < BLOCK_COUNT; b++) {
+        const char *const name = block_defs[b].name;
+        const uint64_t length = strlen(name);
+        const bool leaf = length > 7u && strcmp(name + length - 7u, "_leaves") == 0;
+        const bool log = length > 4u && strcmp(name + length - 4u, "_log") == 0;
+        leaves += leaf ? 1u : 0u;
+        logs += log ? 1u : 0u;
+        if ((leaf || log) && !CHECK((block_defs[b].flags & BLOCK_FLAG_MAP_COVER) != 0u)) {
+            printf("  %s is not map_cover\n", name);
+        }
+    }
+    CHECK(leaves >= 8u && logs >= 8u);
+    static const uint16_t cover[] = {BLOCK_ID_SNOW_LAYER, BLOCK_ID_CACTUS, BLOCK_ID_VINE};
+    for (uint32_t i = 0u; i < sizeof(cover) / sizeof(cover[0]); i++) {
+        CHECK((block_defs[cover[i]].flags & BLOCK_FLAG_MAP_COVER) != 0u);
+    }
+    static const uint16_t ground[] = {BLOCK_ID_STONE, BLOCK_ID_GRASS_BLOCK, BLOCK_ID_DIRT,      BLOCK_ID_SAND,
+                                      BLOCK_ID_WATER, BLOCK_ID_ICE,         BLOCK_ID_SNOW_BLOCK, BLOCK_ID_OAK_PLANKS};
+    for (uint32_t i = 0u; i < sizeof(ground) / sizeof(ground[0]); i++) {
+        CHECK_EQ_U64(block_defs[ground[i]].flags & BLOCK_FLAG_MAP_COVER, 0u);
+    }
+}
+
 TEST(each_mistake_is_refused_at_its_line) {
     const gtt_tree_t tree = gtt_tree_make(t, "bad");
     char *expected = test_alloc(t, GTT_PATH_BYTES);

@@ -5,3 +5,4 @@ log: true
 drops: [{ item: cherry_log, count: 1 }]
 texture: { top: blocks/cherry_log_top, bottom: blocks/cherry_log_top, side: blocks/cherry_log }
 sound: wood
+map_cover: true

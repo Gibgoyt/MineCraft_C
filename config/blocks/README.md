@@ -37,6 +37,7 @@ To add a block: make `config/blocks/<name>/index.yaml`, and build. `compile/src/
 | `facing` | | `none horizontal`: `horizontal` turns it to the four ways, and it is placed facing the way the player looks, turned by R | `none` |
 | `half` | | `none upper_lower`: the block is two tall, and its state says which half: a door | `none` |
 | `open` | | `true` if its state says open or shut: a door, a gate | `false` |
+| `map_cover` | | `true` if the Atlas sees through it to the ground for its contour lines: leaves, logs, vines, snow layers, cactus. `run/src/ui/atlas/tile/` measures how deep it lies | `false` |
 
 `facing`, `half` and `open` are what the voxel holds beside the block's id: `run/include/types/block_state/README.md` says how, and what each facing means for a shape. A shape is drawn, collides and is aimed at as it faces north, turned by the voxel's facing. A block with none of the three has no state, and is its id alone.
 

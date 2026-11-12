@@ -103,12 +103,14 @@ enum { GB_TIER_COUNT = sizeof(GB_TIERS) / sizeof(GB_TIERS[0]) };
 #define GB_FLAG_DECAYS 8u
 #define GB_FLAG_UNBREAKABLE 16u
 #define GB_FLAG_LOG 32u
-static const char *const GB_FLAG_NAMES[] = {"SOLID", "REPLACEABLE", "FALLS", "DECAYS", "UNBREAKABLE", "LOG"};
+#define GB_FLAG_MAP_COVER 64u
+static const char *const GB_FLAG_NAMES[] = {"SOLID", "REPLACEABLE", "FALLS", "DECAYS", "UNBREAKABLE", "LOG", "MAP_COVER"};
 enum { GB_FLAG_COUNT = sizeof(GB_FLAG_NAMES) / sizeof(GB_FLAG_NAMES[0]) };
 
 static const char *const GB_BLOCK_FIELDS[] = {"name",  "hardness", "tool",  "tier",   "drops",       "shape",
                                               "light", "opacity",  "solid", "falls",  "replaceable", "decays",
-                                              "log",   "texture",  "sound", "facing", "half",        "open"};
+                                              "log",   "texture",  "sound", "facing", "half",        "open",
+                                              "map_cover"};
 enum { GB_BLOCK_FIELD_COUNT = sizeof(GB_BLOCK_FIELDS) / sizeof(GB_BLOCK_FIELDS[0]) };
 
 static const char *const GB_DROP_FIELDS[] = {"item", "count", "max", "chance"};
@@ -557,6 +559,7 @@ static void gb_read_fields(gb_context_t *context, const yaml_document_t *documen
     gb_read_flag(context, yaml_map_get(document, root, "falls"), GB_FLAG_FALLS, &block->flags);
     gb_read_flag(context, yaml_map_get(document, root, "decays"), GB_FLAG_DECAYS, &block->flags);
     gb_read_flag(context, yaml_map_get(document, root, "log"), GB_FLAG_LOG, &block->flags);
+    gb_read_flag(context, yaml_map_get(document, root, "map_cover"), GB_FLAG_MAP_COVER, &block->flags);
 
     /* What its state holds beside its id. Facing and half are words, so that another kind of either has somewhere to go. */
     uint8_t facing = 0u;

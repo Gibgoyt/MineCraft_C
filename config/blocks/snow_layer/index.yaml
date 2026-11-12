@@ -6,3 +6,4 @@ shape: thin
 replaceable: true
 texture: { all: blocks/snow }
 sound: snow
+map_cover: true
