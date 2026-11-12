@@ -74,7 +74,7 @@ static void wma_row_job(job_worker_t *worker, void *borrowed_argument) {
                                            .count_x = COLUMN_SIZE,
                                            .count_y = COLUMN_SIZE,
                                            .count_z = WMA_LAYERS};
-        terrain_generate_box(rows->borrowed_terrain, &box, opened, states);
+        terrain_generate_box_fallback(rows->borrowed_terrain, &box, opened, states);
         ui_atlas_column_top(rows->borrowed_colours, BLOCK_COUNT, states,
                             rows->borrowed_pixels + ((uint64_t)job->row * rows->across + c) * UI_ATLAS_COLUMN_PIXELS);
     }

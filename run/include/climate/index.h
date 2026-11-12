@@ -15,6 +15,7 @@
 #include "heap/index.h"
 #include "job/index.h"
 #include "machine/index.h"
+#include "terrain/climate_sample/index.h"
 #include "terrain/index.h"
 #include "types/index.h"
 
@@ -209,6 +210,17 @@ void climate_prepare_tile(climate_t *climate, job_system_t *system, int32_t tile
 
 /* The cell holding a block, copied out. False if its tile is not built: nothing is written. Any thread. */
 bool climate_cell_get(const climate_t *climate, int32_t x, int32_t y, climate_cell_t *out);
+
+/* Plan 006 phase 02: terrain's climate sample for the column whose south-west block is (west_x, south_y), copied from the
+ * built tiles once (36 cells, one read each), each cell's numbers made integers by terrain_climate_cell_make: t_mean,
+ * t_swing, yearly rain (P0 x 365 / 7), snow_balance_z, the driest month from the rain waves, the class and the flags. A cell
+ * whose tile is not built, or every cell with the climate closed, is terrain_climate_fallback_cell's. from_climate is 1 when
+ * every cell inside the column's read reach (CLIMATE_READ_REACH_BLOCKS round it) came from a tile. seed is the world's.
+ * Returns from_climate. Any thread. */
+bool climate_terrain_sample(const climate_t *climate, uint64_t seed, int64_t west_x, int64_t south_y,
+                            terrain_climate_sample_t *out);
+/* One climate cell as the sample holds it: the conversion climate_terrain_sample makes. Pure. */
+void climate_terrain_cell(const climate_cell_t *cell, terrain_climate_cell_t *out);
 
 /* Phase 03's fields at a block: warped, bilinear, latitude exact from y. False if a tile it needs is not built: nothing is
  * written. Any thread. */

@@ -37,9 +37,10 @@ typedef struct game_world_parts_t {
     uint8_t _pad0[56];                        /* 58888 */
     game_corner_t corner;                     /* 58944: the sim writes it, main reads its words */
     game_fill_t fill;                         /* 59200: whichever thread uploads writes it (plan 005 phase 14) */
-    game_watch_t watch;     /* 61056: plan 005 phase 7's overlay numbers and slow lines, and plan 008's */
-    game_command_t command; /* 62592: plan 006 phase 01's command box, main's */
-    uint8_t _pad1[56];      /* 64456 */
+    game_watch_t watch;           /* 61056: plan 005 phase 7's overlay numbers and slow lines, and plan 008's */
+    game_command_t command;       /* 62592: plan 006 phase 01's command box, main's */
+    render_lod_world_t lod_world; /* 64456: plan 006 phase 02: what the far field's sampler reads */
+    uint8_t _pad1[40];            /* 64472 */
 } game_world_parts_t;
 static_assert(sizeof(game_world_parts_t) == 64512);
 static_assert(offsetof(game_world_parts_t, fill) == 59200);
@@ -362,10 +363,18 @@ static bool game_picture_full_room(game_t *game) {
     return game->owned_view.bytes >= bytes || heap_reserve(bytes, &game->owned_view);
 }
 
+/* The far field's sampler's context, in the world's parts: the terrain and the climate. */
+static const render_lod_world_t *game_lod_world(game_t *game) {
+    render_lod_world_t *const world = &((game_world_parts_t *)(void *)game->borrowed_jobs)->lod_world;
+    world->borrowed_terrain = game->borrowed_terrain;
+    world->borrowed_climate = game->borrowed_climate;
+    return world;
+}
+
 /* The far field, which shows what a save holds over what generates. */
 static gpu_status_t game_lod_open(game_t *game, const render_lod_plan_t *plan) {
     render_t *const render = game->borrowed_render;
-    const gpu_status_t status = render_open_lod(render, plan, render_lod_sample_terrain, game->borrowed_terrain);
+    const gpu_status_t status = render_open_lod(render, plan, render_lod_sample_world, game_lod_world(game));
     save_t *const save = game->borrowed_save;
     if (status == GPU_STATUS_OK && save != nullptr && save->world.open != 0u) {
         render_lod_overlay_set(render->borrowed_lod, save_world_far_line, &save->world, SAVE_WORLD_FAR_SCRATCH_BYTES);
@@ -386,7 +395,7 @@ void game_far_capture_tick(game_t *game) {
 /* The same, keeping what the far field has of each level that stays the same. */
 static gpu_status_t game_lod_replan(game_t *game, const render_lod_plan_t *plan) {
     render_t *const render = game->borrowed_render;
-    const gpu_status_t status = render_replan_lod(render, plan, render_lod_sample_terrain, game->borrowed_terrain);
+    const gpu_status_t status = render_replan_lod(render, plan, render_lod_sample_world, game_lod_world(game));
     save_t *const save = game->borrowed_save;
     if (status == GPU_STATUS_OK && render->borrowed_lod != nullptr && save != nullptr && save->world.open != 0u) {
         render_lod_overlay_set(render->borrowed_lod, save_world_far_line, &save->world, SAVE_WORLD_FAR_SCRATCH_BYTES);
@@ -640,6 +649,7 @@ bool game_open(game_t *game, const game_config_t *config) {
         game_column_job_t *const job = &game->borrowed_jobs[i];
         memset(job, 0, sizeof(*job));
         job->borrowed_terrain = terrain;
+        job->borrowed_climate = game->borrowed_climate;
         job->borrowed_save = game->borrowed_save != nullptr ? &game->borrowed_save->world : nullptr;
         job->borrowed_states = arena_alloc(&game->arena_world, GAME_COLUMN_BYTES, alignof(uint64_t));
         job->borrowed_opened = arena_alloc(&game->arena_world, GAME_COLUMN_VOXELS, alignof(uint64_t));
@@ -676,6 +686,15 @@ bool game_open(game_t *game, const game_config_t *config) {
         LOG_INFO("game: the player goes on from %.1f, %.1f, %.1f", (libc_double_t)kept_feet[0],
                  (libc_double_t)kept_feet[1], (libc_double_t)kept_feet[2]);
     } else {
+        /* Plan 006 phase 02, "climate first": the tiles round the middle are built before the search looks at any column,
+         * so the land it finds, and the first columns, are made on the real climate. Out past this the search's coarse
+         * bands read what is built and the fallback past it. */
+        climate_t *const climate = game_climate(game);
+        if (climate != nullptr) {
+            climate_prepare_area(climate, game->borrowed_job, start_x - GAME_SPAWN_CLIMATE_BLOCKS,
+                                 start_y - GAME_SPAWN_CLIMATE_BLOCKS, start_x + GAME_SPAWN_CLIMATE_BLOCKS,
+                                 start_y + GAME_SPAWN_CLIMATE_BLOCKS, nullptr, nullptr);
+        }
         /* A flying eye starts where a body would, over ground worth seeing, and not inside a range that stands at the middle. */
         if (!game_spawn_find(game, terrain, &game->borrowed_jobs[0], start_x, start_y, &start_x, &start_y)) {
             LOG_WARN("game: no dry land within %d blocks of the world's middle, so the body starts at the middle",
@@ -945,7 +964,13 @@ static void game_column_job_run(job_worker_t *worker, void *borrowed_job) {
     game_column_job_t *const job = borrowed_job;
     const terrain_density_box_t box = game_column_box(job->request.chunk_x * (int32_t)COLUMN_SIZE,
                                                       job->request.chunk_y * (int32_t)COLUMN_SIZE, COLUMN_SIZE);
-    terrain_generate_box(job->borrowed_terrain, &box, job->borrowed_opened, job->borrowed_states);
+    /* Plan 006 phase 02: the climate round the column, copied once from its tiles, which the gate in game_columns_request
+     * said are built. In the worker's Job arena, gone with the job. */
+    terrain_climate_sample_t *const climate =
+        arena_alloc(&worker->arena_job, sizeof(terrain_climate_sample_t), alignof(terrain_climate_sample_t));
+    (void)climate_terrain_sample(job->borrowed_climate, job->borrowed_terrain->seed, box.origin_x, box.origin_y,
+                                 climate);
+    terrain_generate_box(job->borrowed_terrain, climate, &box, job->borrowed_opened, job->borrowed_states);
     if (job->borrowed_save != nullptr) {
         /* Terrain has finished with what it worked in, which is far larger than this needs. */
         static_assert((uint64_t)GAME_COLUMN_VOXELS >=

@@ -199,7 +199,7 @@ TEST(any_split_of_a_box_and_any_order_of_chunks_give_the_same_bytes) {
         const uint64_t voxels = terrain_density_box_voxels(&box);
         uint16_t *const whole = test_alloc(t, voxels * sizeof(*whole));
         uint8_t *const opened = test_alloc(t, voxels);
-        terrain_generate_box(&terrain, &box, opened, whole);
+        terrain_generate_box_fallback(&terrain, &box, opened, whole);
 
         /* Cut on places that are not chunk lines, on all three axes, with the last parts first. */
         const uint32_t cut_x[3] = {0u, 3u, 21u};
@@ -222,7 +222,7 @@ TEST(any_split_of_a_box_and_any_order_of_chunks_give_the_same_bytes) {
                     const uint64_t part_voxels = terrain_density_box_voxels(&part);
                     uint16_t *const piece = test_alloc(t, part_voxels * sizeof(*piece));
                     uint8_t *const part_opened = test_alloc(t, part_voxels);
-                    terrain_generate_box(&terrain, &part, part_opened, piece);
+                    terrain_generate_box_fallback(&terrain, &part, part_opened, piece);
                     uint64_t wrong = 0u;
                     for (uint32_t pz = 0u; pz < part.count_z; pz++) {
                         for (uint32_t py = 0u; py < part.count_y; py++) {
@@ -279,8 +279,8 @@ static void fea_job(job_worker_t *worker, void *borrowed_argument) {
             .count_y = FEA_CHUNK,
             .count_z = FEA_LAYERS,
         };
-        terrain_generate_box(run->borrowed_terrain, &box, opened,
-                             run->borrowed_blocks + (uint64_t)chunk * FEA_CHUNK_VOXELS);
+        terrain_generate_box_fallback(run->borrowed_terrain, &box, opened,
+                                      run->borrowed_blocks + (uint64_t)chunk * FEA_CHUNK_VOXELS);
     }
 }
 
@@ -394,8 +394,8 @@ static void fea_whole_job(job_worker_t *worker, void *borrowed_argument) {
             .count_y = FEA_CHUNK,
             .count_z = FEA_WHOLE_LAYERS,
         };
-        terrain_generate_box(run->borrowed_terrain, &box, opened,
-                             run->borrowed_blocks + (uint64_t)b * FEA_WHOLE_VOXELS);
+        terrain_generate_box_fallback(run->borrowed_terrain, &box, opened,
+                                      run->borrowed_blocks + (uint64_t)b * FEA_WHOLE_VOXELS);
     }
 }
 
@@ -786,7 +786,7 @@ TEST(trees_in_the_world_have_their_crowns_across_chunk_lines) {
                 .count_y = FEA_CHUNK,
                 .count_z = LAYERS,
             };
-            terrain_generate_box(&terrain, &box, opened, blocks + (uint64_t)(cx + CHUNKS * cy) * voxels);
+            terrain_generate_box_fallback(&terrain, &box, opened, blocks + (uint64_t)(cx + CHUNKS * cy) * voxels);
         }
     }
     uint32_t edges = 0u;
@@ -873,7 +873,7 @@ TEST(lily_pads_grow_on_a_swamps_standing_water) {
                 .count_y = FEA_CHUNK,
                 .count_z = LAYERS,
             };
-            terrain_generate_box(&terrain, &box, opened, blocks);
+            terrain_generate_box_fallback(&terrain, &box, opened, blocks);
             for (uint32_t c = 0u; c < FEA_COLUMNS; c++) {
                 for (uint32_t z = 1u; z < LAYERS; z++) {
                     /* Land under water is where any tree could wrongly stand. Only a mangrove may. */
@@ -921,7 +921,7 @@ TEST(everything_stands_where_it_may_in_every_biome) {
             }
             const terrain_density_box_t box = fea_map_box(&places[b]);
             fea_stages(&terrain, &box, opened, before);
-            terrain_generate_box(&terrain, &box, opened, blocks);
+            terrain_generate_box_fallback(&terrain, &box, opened, blocks);
             const uint64_t layer = (uint64_t)box.count_x * box.count_y;
             for (uint32_t iz = 1u; iz + 1u < box.count_z; iz++) {
                 for (uint32_t iy = 1u; iy + 1u < box.count_y; iy++) {
@@ -1009,7 +1009,7 @@ TEST(a_forest_has_about_the_trees_its_file_asks_for) {
     const uint64_t voxels = terrain_density_box_voxels(&box);
     uint16_t *const blocks = test_alloc(t, voxels * sizeof(uint16_t));
     uint8_t *const opened = test_alloc(t, voxels);
-    terrain_generate_box(&terrain, &box, opened, blocks);
+    terrain_generate_box_fallback(&terrain, &box, opened, blocks);
     uint32_t trunks = 0u;
     uint32_t columns_of_it = 0u;
     const uint64_t layer = (uint64_t)box.count_x * box.count_y;
@@ -1088,7 +1088,7 @@ TEST(every_lake_holds_its_water) {
                 .count_y = ACROSS,
                 .count_z = LAYERS,
             };
-            terrain_generate_box(&terrain, &box, opened, blocks);
+            terrain_generate_box_fallback(&terrain, &box, opened, blocks);
             const uint64_t layer = (uint64_t)ACROSS * ACROSS;
             uint32_t wet = 0u;
             for (uint32_t oy = 0u; oy < FEA_CHUNK; oy++) {
@@ -1196,7 +1196,7 @@ TEST(ice_and_snow_are_where_each_biomes_file_says) {
             .count_y = FEA_CHUNK,
             .count_z = LAYERS,
         };
-        terrain_generate_box(&terrain, &box, opened, blocks);
+        terrain_generate_box_fallback(&terrain, &box, opened, blocks);
         for (uint32_t i = 0u; i < FEA_COLUMNS; i++) {
             const terrain_feature_column_t *const column = &tops[i];
             if (column->top == TERRAIN_FEATURE_NO_GROUND ||
@@ -1292,7 +1292,7 @@ TEST(only_what_is_open_changes_and_no_voxel_outside_the_world) {
     };
     uint16_t *const high = test_alloc(t, (uint64_t)FEA_COLUMNS * 8u * sizeof(uint16_t));
     uint8_t *const high_opened = test_alloc(t, (uint64_t)FEA_COLUMNS * 8u);
-    terrain_generate_box(&terrain, &sky, high_opened, high);
+    terrain_generate_box_fallback(&terrain, &sky, high_opened, high);
     for (uint32_t i = 0u; i < FEA_COLUMNS * 8u; i++) {
         CHECK(high[i] == BLOCK_ID_AIR);
     }
@@ -1336,7 +1336,7 @@ TEST(fractional_tries_come_out_as_fractions) {
                 .count_y = FEA_CHUNK,
                 .count_z = HIGH,
             };
-            terrain_generate_box(&terrain, &box, opened, blocks);
+            terrain_generate_box_fallback(&terrain, &box, opened, blocks);
             for (uint32_t i = 0u; i < FEA_COLUMNS; i++) {
                 const int64_t iz = (int64_t)tops[i].top + 1 - (int64_t)box.origin_z;
                 if (iz >= 0 && iz < (int64_t)HIGH &&
@@ -1377,7 +1377,7 @@ TEST(section_by_section_is_the_whole_column) {
                     .count_y = FEA_CHUNK,
                     .count_z = FEA_LAYERS,
                 };
-                terrain_generate_box(&terrain, &box, opened, whole);
+                terrain_generate_box_fallback(&terrain, &box, opened, whole);
                 uint64_t wrong = 0u;
                 /* Sections from the top down, so none is helped by the one before. */
                 for (uint32_t s = FEA_LAYERS / 16u + 1u; s-- > 0u;) {
@@ -1395,7 +1395,7 @@ TEST(section_by_section_is_the_whole_column) {
                         .count_z = tall,
                     };
                     uint8_t part_opened[FEA_COLUMNS * 16u];
-                    terrain_generate_box(&terrain, &part, part_opened, section);
+                    terrain_generate_box_fallback(&terrain, &part, part_opened, section);
                     for (uint32_t i = 0u; i < FEA_COLUMNS * tall; i++) {
                         wrong += section[i] != whole[(uint64_t)first * FEA_COLUMNS + i] ? 1u : 0u;
                     }
@@ -1434,7 +1434,7 @@ TEST(one_layer_at_the_tip_of_a_tree_is_the_same_voxels) {
                     .count_y = FEA_CHUNK,
                     .count_z = FEA_LAYERS,
                 };
-                terrain_generate_box(&terrain, &box, opened, whole);
+                terrain_generate_box_fallback(&terrain, &box, opened, whole);
                 uint32_t highest = FEA_LAYERS;
                 for (uint32_t z = FEA_LAYERS; z-- > 0u && highest == FEA_LAYERS;) {
                     for (uint32_t i = 0u; i < FEA_COLUMNS; i++) {
@@ -1453,7 +1453,7 @@ TEST(one_layer_at_the_tip_of_a_tree_is_the_same_voxels) {
                     .count_y = FEA_CHUNK,
                     .count_z = 1u,
                 };
-                terrain_generate_box(&terrain, &tip, one_opened, one);
+                terrain_generate_box_fallback(&terrain, &tip, one_opened, one);
                 CHECK_MEM_EQ(one, &whole[(uint64_t)FEA_COLUMNS * highest], FEA_COLUMNS * sizeof(uint16_t));
                 tips++;
             }

@@ -134,7 +134,8 @@ static bool render_lod_counts(uint16_t block) {
 }
 
 /* What feature_cold_paint does to water, for a level too coarse for features: a column's own biome, and only if its top is water. */
-static void render_lod_sample_freeze(const terrain_t *terrain, int32_t x, int32_t y, uint16_t *column) {
+static void render_lod_sample_freeze(const terrain_t *terrain, const terrain_climate_sample_t *climate, int32_t x,
+                                     int32_t y, uint16_t *column) {
     uint32_t top = RENDER_LOD_HEIGHT_BLOCKS;
     while (top > 0u && column[top - 1u] == BLOCK_ID_AIR) {
         top--;
@@ -142,7 +143,7 @@ static void render_lod_sample_freeze(const terrain_t *terrain, int32_t x, int32_
     if (top == 0u || column[top - 1u] != BLOCK_ID_WATER) {
         return;
     }
-    const uint8_t biome = terrain_biome_column_at(terrain->borrowed_biome, x, y).biome;
+    const uint8_t biome = terrain_biome_column_at(terrain->borrowed_biome, climate, x, y).biome;
     if (biome_features[biome][BIOME_FEATURE_ICE] > 0.0f32) {
         column[top - 1u] = BLOCK_ID_ICE;
     }
@@ -178,9 +179,28 @@ int32_t render_lod_cells_from_column(const uint16_t *column, uint32_t shift, uin
     return top;
 }
 
-void render_lod_sample_terrain(const void *borrowed_context, int32_t x, int32_t y, uint32_t shift, uint16_t *out,
-                               uint8_t *scratch) {
-    const terrain_t *const terrain = borrowed_context;
+/* The column's climate sample in scratch, filled at its first sample: a far column is 16 voxels of 1 << shift blocks a
+ * side, and the sample is centred on its middle. */
+static const terrain_climate_sample_t *render_lod_sample_climate(const terrain_t *terrain, const climate_t *climate,
+                                                                 int32_t x, int32_t y, uint32_t shift,
+                                                                 uint8_t *scratch) {
+    terrain_climate_sample_t *const sample =
+        (terrain_climate_sample_t *)(void *)(scratch + RENDER_LOD_SAMPLE_FEATURE_BYTES);
+    uint8_t *const filled = scratch + RENDER_LOD_SAMPLE_FEATURE_BYTES + RENDER_LOD_SAMPLE_CLIMATE_BYTES;
+    if (*filled == 0u) {
+        const int64_t side = (int64_t)COLUMN_SIZE << shift;
+        const int64_t column_x = (int64_t)x >= 0 ? (int64_t)x / side : -((-(int64_t)x + side - 1) / side);
+        const int64_t column_y = (int64_t)y >= 0 ? (int64_t)y / side : -((-(int64_t)y + side - 1) / side);
+        (void)climate_terrain_sample(climate, terrain->seed, column_x * side + side / 2 - 8,
+                                     column_y * side + side / 2 - 8, sample);
+        *filled = 1u;
+    }
+    return sample;
+}
+
+static void render_lod_sample_with(const terrain_t *terrain, const climate_t *climate, int32_t x, int32_t y,
+                                   uint32_t shift, uint16_t *out, uint8_t *scratch) {
+    const terrain_climate_sample_t *const sample = render_lod_sample_climate(terrain, climate, x, y, shift, scratch);
     const terrain_density_box_t box = {
         .origin_x = x,
         .origin_y = y,
@@ -196,8 +216,19 @@ void render_lod_sample_terrain(const void *borrowed_context, int32_t x, int32_t 
         terrain_feature_fill_box_cached(terrain->borrowed_feature, &box, out,
                                         (terrain_feature_cache_t *)(void *)scratch);
     } else {
-        render_lod_sample_freeze(terrain, x, y, out);
+        render_lod_sample_freeze(terrain, sample, x, y, out);
     }
+}
+
+void render_lod_sample_terrain(const void *borrowed_context, int32_t x, int32_t y, uint32_t shift, uint16_t *out,
+                               uint8_t *scratch) {
+    render_lod_sample_with(borrowed_context, nullptr, x, y, shift, out, scratch);
+}
+
+void render_lod_sample_world(const void *borrowed_context, int32_t x, int32_t y, uint32_t shift, uint16_t *out,
+                             uint8_t *scratch) {
+    const render_lod_world_t *const world = borrowed_context;
+    render_lod_sample_with(world->borrowed_terrain, world->borrowed_climate, x, y, shift, out, scratch);
 }
 
 static void render_lod_job_run(job_worker_t *worker, void *borrowed_job) {

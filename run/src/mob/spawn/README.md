@@ -61,7 +61,7 @@ The rules `mob_spawn_check` adds for any mob that sets them, in the order below,
 |---|---|---|
 | **On** | With `spawn.on`, only those blocks under its feet: grass for an animal of the fields | `MOB_SPAWN_BAD_SURFACE` |
 | **Height** | Its feet from `spawn.min_height` to `max_height` blocks above the sea: high up for a mountain goat | `MOB_SPAWN_BAD_HEIGHT` |
-| **Biome** | With `spawn.biomes`, the biome of its column (`terrain_biome_column_at` on `mob_spawn_view_t.biomes`) is one of them. A view with no biomes, as in tests of something else, lets any | `MOB_SPAWN_BAD_BIOME` |
+| **Biome** | With `spawn.biomes`, the biome of its column (`terrain_biome_column_at` on `mob_spawn_view_t.biomes`, with the view's climate sample round the player, which no rule reads yet) is one of them. A view with no biomes, as in tests of something else, lets any | `MOB_SPAWN_BAD_BIOME` |
 | **Too dark** | The light (as for **Light**) is at least `spawn.min_light` | `MOB_SPAWN_TOO_DARK` |
 | **Room** | Checked for its larger sex's box | `MOB_SPAWN_NO_ROOM` |
 

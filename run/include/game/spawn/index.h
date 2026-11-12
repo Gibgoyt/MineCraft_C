@@ -10,6 +10,8 @@
 enum : int32_t {
     /* How far from the middle the search goes, in blocks, along either axis. */
     GAME_SPAWN_REACH = 32768,
+    /* Plan 006 phase 02: the climate is built this far round the middle before the search, the first band's reach. */
+    GAME_SPAWN_CLIMATE_BLOCKS = 1024,
     /* How far a gentle start's real ground may differ from the ground GAME_SPAWN_NEAR_BLOCKS away: no hole to fall in or wall to face. */
     GAME_SPAWN_NEAR_BLOCKS = 4,
     GAME_SPAWN_NEAR_DIFFER = 6,

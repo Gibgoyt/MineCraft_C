@@ -10,10 +10,10 @@
 - `terrain_biome_init`, `terrain_biome_deinit`: a pair.
 - `terrain_biome_distance`, `terrain_biome_choose`, `terrain_biome_caves_of`: the choice, as plain arithmetic.
 - `terrain_biome_of_voxel`: the biome of a voxel in a column already worked out.
-- `terrain_biome_columns_area`, `terrain_biome_column_at`, `terrain_biome_at`: the same from the world.
+- `terrain_biome_columns_area`, `terrain_biome_column_at`, `terrain_biome_at`: the same from the world. The last two take the column's climate sample (plan 006 phase 02), which no rule reads yet.
 
 **May be called by:** `terrain` and its parts.
-**Depends on:** `terrain/fields` and `terrain/hydrology` (its siblings), `arena`, `assert`, `types`, and the generated `tables/biomes/`.
+**Depends on:** `terrain/fields`, `terrain/hydrology` and `terrain/climate_sample` (its siblings; the last for the type it is handed), `arena`, `assert`, `types`, and the generated `tables/biomes/`.
 
 ## Choosing a column's biome
 

@@ -386,7 +386,8 @@ TEST(a_precompute_stepped_a_frame_at_a_time_gives_the_same_bytes_and_counts_up_t
     uint32_t done = 0u, total = 0u;
     CHECK(climate_prepare_step(rig.climate, rig.job, &done, &total)); /* nothing begun: done at once */
     CHECK_EQ_U64(total, 0u);
-    climate_prepare_begin(rig.climate, rig.job, -4096 + 96, -4096 + 96, 4095 - 96, 4095 - 96);
+    climate_prepare_begin(rig.climate, rig.job, -4096 + CLIMATE_READ_REACH_BLOCKS, -4096 + CLIMATE_READ_REACH_BLOCKS,
+                          4095 - CLIMATE_READ_REACH_BLOCKS, 4095 - CLIMATE_READ_REACH_BLOCKS);
     uint32_t last = 0u, steps = 0u;
     bool rising = true, within = true;
     for (;;) {
@@ -406,7 +407,8 @@ TEST(a_precompute_stepped_a_frame_at_a_time_gives_the_same_bytes_and_counts_up_t
     CHECK(steps > 0u);
     CHECK_EQ_U64(done, total);
     CHECK_EQ_U64(total, 24u * 24u + 64u);
-    CHECK(climate_area_ready(rig.climate, -4096 + 96, -4096 + 96, 4095 - 96, 4095 - 96));
+    CHECK(climate_area_ready(rig.climate, -4096 + CLIMATE_READ_REACH_BLOCKS, -4096 + CLIMATE_READ_REACH_BLOCKS,
+                             4095 - CLIMATE_READ_REACH_BLOCKS, 4095 - CLIMATE_READ_REACH_BLOCKS));
     climate_cell_t *const cells = test_alloc(t, EIGHT_CELLS * sizeof(climate_cell_t));
     for (int32_t ty = -4; ty < 4; ty++) {
         for (int32_t tx = -4; tx < 4; tx++) {

@@ -844,7 +844,7 @@ TEST(nothing_is_lost_above_where_terrain_stops_making) {
         terrain_surface_line_caves_box(terrain.borrowed_surface, &box, by_hand);
         terrain_ore_fill_box(terrain.borrowed_ore, &box, by_hand);
         terrain_feature_fill_box(terrain.borrowed_feature, &box, by_hand);
-        terrain_generate_box(&terrain, &box, opened, generated);
+        terrain_generate_box_fallback(&terrain, &box, opened, generated);
         CHECK(memcmp(by_hand, generated, (uint64_t)VOXELS * sizeof(uint16_t)) == 0);
         uint32_t top_layer = 0u;
         for (uint32_t i = 0u; i < VOXELS; i++) {
@@ -864,7 +864,7 @@ TEST(nothing_is_lost_above_where_terrain_stops_making) {
                                          .count_z = 32u};
     memset(generated, 0xAB, (uint64_t)16u * 16u * 32u * sizeof(uint16_t));
     memset(opened, 0xAB, (uint64_t)16u * 16u * 32u);
-    terrain_generate_box(&terrain, &above, opened, generated);
+    terrain_generate_box_fallback(&terrain, &above, opened, generated);
     uint64_t not_air = 0u, not_shut = 0u;
     for (uint32_t i = 0u; i < 16u * 16u * 32u; i++) {
         not_air += generated[i] != BLOCK_ID_AIR ? 1u : 0u;

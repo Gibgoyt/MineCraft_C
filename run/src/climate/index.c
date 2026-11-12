@@ -7,6 +7,7 @@
 #include "climate/weather/index.h"
 #include "log/index.h"
 #include "math/det/index.h"
+#include "terrain/feature/index.h"
 #include "terrain/rng/index.h"
 #include "time/index.h"
 
@@ -460,6 +461,9 @@ bool climate_area_ready(const climate_t *climate, int32_t x_min, int32_t y_min, 
     return true;
 }
 
+static_assert(CLIMATE_FEATURE_REACH_BLOCKS == (int32_t)TERRAIN_FEATURE_CHUNK);
+static_assert((int32_t)CLIMATE_READ_REACH_BLOCKS == (int32_t)TERRAIN_CLIMATE_WEST_BLOCKS);
+
 /* A cell by its cell coordinates, under the read protocol. */
 static bool climate_cell_read(const climate_state_t *state, int64_t cell_x, int64_t cell_y, climate_cell_t *out) {
     const int32_t tile_x = (int32_t)(cell_x >> (CLIMATE_TILE_SHIFT - CLIMATE_CELL_SHIFT));
@@ -482,6 +486,58 @@ bool climate_cell_get(const climate_t *climate, int32_t x, int32_t y, climate_ce
         return false;
     }
     return climate_cell_read(state, (int64_t)x >> CLIMATE_CELL_SHIFT, (int64_t)y >> CLIMATE_CELL_SHIFT, out);
+}
+
+void climate_terrain_cell(const climate_cell_t *cell, terrain_climate_cell_t *out) {
+    uint8_t flags = 0u;
+    flags |= (cell->flags & CLIMATE_CELL_SEA) != 0u ? TERRAIN_CLIMATE_SEA : 0u;
+    flags |= (cell->flags & CLIMATE_CELL_LAKE) != 0u ? TERRAIN_CLIMATE_LAKE : 0u;
+    flags |= (cell->flags & CLIMATE_CELL_MONSOON) != 0u ? TERRAIN_CLIMATE_MONSOON : 0u;
+    if (cell->current_strength > 0u) {
+        flags |= cell->current == CLIMATE_CURRENT_WARM ? TERRAIN_CLIMATE_WARM_COAST : 0u;
+        flags |= cell->current == CLIMATE_CURRENT_COLD ? TERRAIN_CLIMATE_COLD_COAST : 0u;
+    }
+    /* The yearly rain as climate_season_months and climate_normals_at have it, the same float32_t steps. */
+    const float32_t rain_mm_year = fmaxf(0.0f32, cell->rain_mm_week[0]) * CLIMATE_DAYS_A_YEAR / CLIMATE_DAYS_A_WEEK;
+    terrain_climate_cell_make(
+        (float64_t)cell->t_mean, (float64_t)cell->t_swing, (float64_t)rain_mm_year, (float64_t)cell->snow_balance_z,
+        (float64_t)climate_season_driest_month_mm(cell->rain_mm_week), cell->climate_class, flags, out);
+}
+
+bool climate_terrain_sample(const climate_t *climate, uint64_t seed, int64_t west_x, int64_t south_y,
+                            terrain_climate_sample_t *out) {
+    memset(out, 0, sizeof(*out));
+    terrain_climate_sample_origin(west_x, south_y, &out->origin_x, &out->origin_y);
+    out->warp_seed = terrain_climate_warp_seed(seed);
+    const climate_state_t *const state = climate != nullptr ? climate->borrowed_state : nullptr;
+    if (state == nullptr || state->open == 0u) {
+        terrain_climate_fallback(seed, west_x, south_y, out); /* the whole sample at once: one set of curves */
+        return false;
+    }
+    /* The cells a read for this column can touch: those meeting its blocks and the reach round them. */
+    const int64_t reach = CLIMATE_READ_REACH_BLOCKS;
+    const int64_t low_x = (west_x - reach - out->origin_x) >> CLIMATE_CELL_SHIFT;
+    const int64_t low_y = (south_y - reach - out->origin_y) >> CLIMATE_CELL_SHIFT;
+    const int64_t high_x = (west_x + (int64_t)TERRAIN_FEATURE_CHUNK - 1 + reach - out->origin_x) >> CLIMATE_CELL_SHIFT;
+    const int64_t high_y = (south_y + (int64_t)TERRAIN_FEATURE_CHUNK - 1 + reach - out->origin_y) >> CLIMATE_CELL_SHIFT;
+    bool all = true;
+    const int64_t cell_x0 = out->origin_x >> CLIMATE_CELL_SHIFT, cell_y0 = out->origin_y >> CLIMATE_CELL_SHIFT;
+    for (int32_t j = 0; j < TERRAIN_CLIMATE_SIDE; j++) {
+        for (int32_t i = 0; i < TERRAIN_CLIMATE_SIDE; i++) {
+            climate_cell_t cell;
+            if (climate_cell_read(state, cell_x0 + i, cell_y0 + j, &cell)) {
+                climate_terrain_cell(&cell, &out->cells[j][i]);
+                continue;
+            }
+            terrain_climate_fallback_cell(out->origin_y + (int64_t)j * CLIMATE_CELL_BLOCKS + CLIMATE_HALF_CELL_BLOCKS,
+                                          &out->cells[j][i]);
+            if (i >= low_x && i <= high_x && j >= low_y && j <= high_y) {
+                all = false;
+            }
+        }
+    }
+    out->from_climate = all ? 1u : 0u;
+    return all;
 }
 
 /* As the terrain spreads its fields: a smooth clamp to -1 to 1. */

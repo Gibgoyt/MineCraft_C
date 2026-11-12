@@ -1,4 +1,5 @@
 /* bench_terrain: chunk columns a second through every stage of terrain. See README.md. */
+#include "climate/index.h"
 #include "heap/index.h"
 #include "job/index.h"
 #include "machine/index.h"
@@ -27,7 +28,14 @@ enum : uint32_t {
     /* The search for a place: this many columns a side, this far apart. */
     BENCH_SEARCH_SIDE = 512u,
     BENCH_SEARCH_STEP = 128u,
+    /* Plan 006 phase 02: the climate sample's two timings, over this many fills and reads, round the world's middle. */
+    BENCH_FILLS = 4096u,
+    BENCH_READS = 1000000u,
 };
+enum : int32_t { BENCH_CLIMATE_BLOCKS = 2048 }; /* the climate is built this far round the middle for the fills */
+/* Plan 006 master section 4: filling a sample under 20 us, a terrain_climate_at under 0.2 us. */
+static const float64_t BENCH_FILL_US_MAX = 20.0f64;
+static const float64_t BENCH_READ_US_MAX = 0.2f64;
 static_assert(MC_THREADS_WORKERS >= BENCH_WORKERS);
 
 /* What goes on the ground differs most between these, and the slowest place is what counts. */
@@ -64,8 +72,8 @@ static void bench_job(job_worker_t *worker, void *borrowed_argument) {
             .count_y = BENCH_CHUNK,
             .count_z = BENCH_LAYERS,
         };
-        terrain_generate_box(run->borrowed_terrain, &box, run->borrowed_opened + (uint64_t)me * BENCH_VOXELS,
-                             run->borrowed_blocks + (uint64_t)me * BENCH_VOXELS);
+        terrain_generate_box_fallback(run->borrowed_terrain, &box, run->borrowed_opened + (uint64_t)me * BENCH_VOXELS,
+                                      run->borrowed_blocks + (uint64_t)me * BENCH_VOXELS);
     }
 }
 
@@ -115,6 +123,70 @@ static bool bench_find(const terrain_t *terrain, biome_id_t biome, int32_t *out_
         }
     }
     return false;
+}
+
+/* Microseconds a fill, the column for fill i of BENCH_FILLS a chunk apart in a 64 by 64 square round the middle. With climate
+ * nullptr, the fallback's fill; else the climate's, from its tiles. */
+[[gnu::noinline]] static float64_t bench_fill_us(const climate_t *climate, uint64_t seed, uint64_t *out_check) {
+    terrain_climate_sample_t sample;
+    uint64_t check = 0u;
+    const int64_t started = time_now_ns();
+    for (uint32_t i = 0u; i < BENCH_FILLS; i++) {
+        const int64_t west = ((int64_t)(i % 64u) - 32) * 16, south = ((int64_t)(i / 64u) - 32) * 16;
+        if (climate != nullptr) {
+            check += climate_terrain_sample(climate, seed, west, south, &sample) ? 1u : 0u;
+        } else {
+            terrain_climate_fallback(seed, west, south, &sample);
+        }
+        check += (uint64_t)(uint32_t)sample.cells[3][3].t_mean_cc;
+    }
+    const float64_t us = (float64_t)(time_now_ns() - started) / 1000.0f64 / (float64_t)BENCH_FILLS;
+    *out_check = check;
+    return us;
+}
+
+/* Microseconds a terrain_climate_at on one sample, warp on, at every column and a spread of heights round it. */
+[[gnu::noinline]] static float64_t bench_read_us(const terrain_climate_sample_t *sample, uint64_t *out_check) {
+    int64_t sum = 0;
+    const int64_t started = time_now_ns();
+    for (uint32_t i = 0u; i < BENCH_READS; i++) {
+        const terrain_climate_point_t at =
+            terrain_climate_at(sample, (int64_t)(i & 15u) - 16 + (int64_t)((i >> 4u) & 31u),
+                               (int64_t)((i >> 9u) & 47u) - 16, (int32_t)(i % 1500u) - 250);
+        sum += at.t_warm_cc + at.snow_line_z;
+    }
+    const float64_t us = (float64_t)(time_now_ns() - started) / 1000.0f64 / (float64_t)BENCH_READS;
+    *out_check = (uint64_t)sum;
+    return us;
+}
+
+/* The climate sample's two timings (plan 006 phase 02). Returns false if either missed its budget or the climate would not
+ * open. */
+[[gnu::noinline]] static bool bench_climate_sample(const terrain_t *terrain, job_system_t *system) {
+    climate_t climate = {0};
+    if (!climate_init(&climate)) {
+        return false;
+    }
+    if (!climate_open(&climate, terrain)) {
+        climate_deinit(&climate);
+        return false;
+    }
+    climate_prepare_area(&climate, system, -BENCH_CLIMATE_BLOCKS, -BENCH_CLIMATE_BLOCKS, BENCH_CLIMATE_BLOCKS,
+                         BENCH_CLIMATE_BLOCKS, nullptr, nullptr);
+    uint64_t from_tiles = 0u, fallback_check = 0u, read_check = 0u;
+    const float64_t fill = bench_fill_us(&climate, terrain->seed, &from_tiles);
+    const float64_t fallback = bench_fill_us(nullptr, terrain->seed, &fallback_check);
+    terrain_climate_sample_t sample;
+    (void)climate_terrain_sample(&climate, terrain->seed, -8, -8, &sample);
+    const float64_t read = bench_read_us(&sample, &read_check);
+    climate_close(&climate, system);
+    climate_deinit(&climate);
+    printf(
+        "climate sample: fill from the tiles %.2f us (target under %.0f), the fallback's %.2f us, terrain_climate_at "
+        "%.3f us (target under %.1f) [check %" PRIu64 " %" PRIu64 " %" PRIu64 "]\n",
+        (libc_double_t)fill, (libc_double_t)BENCH_FILL_US_MAX, (libc_double_t)fallback, (libc_double_t)read,
+        (libc_double_t)BENCH_READ_US_MAX, from_tiles, fallback_check, read_check);
+    return fill < BENCH_FILL_US_MAX && read < BENCH_READ_US_MAX;
 }
 
 int32_t main(int32_t argc, char **argv) {
@@ -174,6 +246,10 @@ int32_t main(int32_t argc, char **argv) {
     }
     printf("slowest on 16 workers: %.0f chunk columns/s. target: %u: %s\n", (libc_double_t)slowest, BENCH_TARGET,
            status == 0 ? "every place beat it" : "NOT MET");
+    if (!bench_climate_sample(&terrain, &system)) {
+        printf("climate sample: NOT MET\n");
+        status = 1;
+    }
     job_deinit(&system);
     heap_release(&memory);
     terrain_deinit(&terrain);

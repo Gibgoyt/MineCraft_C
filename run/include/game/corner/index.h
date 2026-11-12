@@ -142,10 +142,16 @@ void game_hud_climate_publish(game_t *game, bool force);
 void game_hud_corner_read(const game_t *game, ui_hud_corner_t *out);
 
 /* Plan 006 phase 01, the sim's, from game_hud_publish each tick: on the climate line's beat, the biome at the feet, the family the
- * climate there would give (plan 006 master 2.4, the classes worked out at the feet's own height), the cell's class, and the normals at
- * the feet's height: yearly, warmest and coldest month and today's temperature, the year's rain, the driest month and the snowline. A
- * value whose tile is not built yet keeps the last. With no climate, only the biome, and "(no climate)". */
+ * climate there would give (plan 006 master 2.4, the classes worked out at the feet's own height), the nearest cell's class, and
+ * yearly, warmest and coldest month and today's temperature at the feet's height, the year's rain, the driest month and the
+ * snowline. Since plan 006 phase 02 all but today's are terrain_climate_at on the sample game_corner_tuning_climate fills, so
+ * the screen shows exactly what terrain sees: "(climate)" when every cell it reads came from the tiles, "(fallback)" when any
+ * is terrain_climate_fallback's (a test world, or past what is built). Today's mean is climate_normals_at's where built, else
+ * the year's. "(no climate)" only with no terrain. */
 void game_corner_tuning_publish(game_t *game);
+
+/* The climate sample round (x, y) as the tuning lines read it, and as a column job there would have it. */
+void game_corner_tuning_climate(const game_t *game, float64_t x, float64_t y, terrain_climate_sample_t *out);
 
 /* Main's: the three tuning lines from the words, for under the F3 overlay. Never waits. */
 void game_corner_tuning_read(const game_t *game, char lines[GAME_CORNER_TUNING_LINES][GAME_CORNER_TUNING_BYTES]);

@@ -8,7 +8,8 @@
 **Public functions:**
 
 - `terrain_init`, `terrain_deinit`: a pair.
-- `terrain_generate_box`: every stage, in order, for one box, up to `TERRAIN_MADE_TOP`, with air above that for no work. `run/src/game/` calls it on a worker for each column.
+- `terrain_generate_box`: every stage, in order, for one box, up to `TERRAIN_MADE_TOP`, with air above that for no work. `run/src/game/` calls it on a worker for each column. Since plan 006 phase 02 it takes the column's climate sample (`climate_sample/`), never null, which no stage reads until phase 03, so no block depends on it yet.
+- `terrain_generate_box_fallback`: the same with `terrain_climate_fallback`'s sample for the box, for the tests, benches and test worlds that have no climate.
 - `terrain_height_estimate_profile`, `terrain_height_estimate`, `terrain_height_estimate_area`: plan 004's height estimate (master plan 6.1). The ground the 2D splines give, with no 3D density and no chunk: the profile at the four lattice columns round the column, blended along x and then y exactly as a box blends them. On a lattice column (all multiples of 4) it is the profile itself, bit for bit, and the area form only asks there. A pure function of the seed and the column; `run/src/climate/` reads the ground through this and nothing else. The real top stone of a column is always within `min(h - s) - 8` to `max(h + s) + 8` of its four corners' profiles (`tests/run/terrain/density/`).
 
 **May be called by:** `main`, which starts and stops it, and `game`, which borrows it and makes every column of the world with `terrain_generate_box`. `render/lod` samples the same stages for what the far field shows, on workers. `climate` reads the height estimate, from any thread.

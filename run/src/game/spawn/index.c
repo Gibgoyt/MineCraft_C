@@ -54,7 +54,10 @@ int32_t game_ground_z(const terrain_t *terrain, const game_column_job_t *job, in
         .count_y = 1u,
         .count_z = (uint32_t)(COLUMN_Z_STORAGE_END - COLUMN_Z_STORAGE_MIN),
     };
-    terrain_generate_box(terrain, &box, job->borrowed_opened, job->borrowed_states);
+    /* Plan 006 phase 02: the climate round the column from the tiles where built, as a column job has it. */
+    terrain_climate_sample_t climate;
+    (void)climate_terrain_sample(job->borrowed_climate, terrain->seed, x, y, &climate);
+    terrain_generate_box(terrain, &climate, &box, job->borrowed_opened, job->borrowed_states);
     for (int32_t storage = (int32_t)box.count_z - 1; storage > 0; storage--) {
         if (job->borrowed_states[storage] != BLOCK_ID_AIR) {
             return storage + COLUMN_Z_STORAGE_MIN;

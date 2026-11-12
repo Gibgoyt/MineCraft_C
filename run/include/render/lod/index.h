@@ -3,6 +3,7 @@
 #define MC_RUN_RENDER_LOD_INDEX_H
 
 #include "arena/index.h"
+#include "climate/index.h"
 #include "gpu_bridge/device_memory/index.h"
 #include "gpu_bridge/lod/index.h"
 #include "gpu_bridge/world_buffers/index.h"
@@ -39,9 +40,14 @@ enum : uint64_t {
     RENDER_LOD_POOL_BYTES_PER_COLUMN = 64ull << 10,
     /* What one frame may send of finished columns: as much again as the world's own queue. */
     RENDER_LOD_FRAME_BYTES = RENDER_UPLOAD_BUDGET_BYTES_DEFAULT,
-    /* What a sample may keep from one line of a column to the next: render_lod_sample_terrain's chunks of what grows. */
-    RENDER_LOD_SAMPLE_SCRATCH_BYTES = (sizeof(terrain_feature_cache_t) + MC_CPU_CACHE_LINE_BYTES - 1u) /
+    /* What a sample may keep from one line of a column to the next: render_lod_sample_terrain's chunks of what grows, then
+     * (plan 006 phase 02) the column's climate sample and a line saying it is filled. */
+    RENDER_LOD_SAMPLE_FEATURE_BYTES = (sizeof(terrain_feature_cache_t) + MC_CPU_CACHE_LINE_BYTES - 1u) /
                                       MC_CPU_CACHE_LINE_BYTES * MC_CPU_CACHE_LINE_BYTES,
+    RENDER_LOD_SAMPLE_CLIMATE_BYTES = (sizeof(terrain_climate_sample_t) + MC_CPU_CACHE_LINE_BYTES - 1u) /
+                                      MC_CPU_CACHE_LINE_BYTES * MC_CPU_CACHE_LINE_BYTES,
+    RENDER_LOD_SAMPLE_SCRATCH_BYTES =
+        RENDER_LOD_SAMPLE_FEATURE_BYTES + RENDER_LOD_SAMPLE_CLIMATE_BYTES + MC_CPU_CACHE_LINE_BYTES,
 };
 static_assert(RENDER_LOD_RADIUS_COLUMNS > RENDER_LOD_MARGIN_COLUMNS);
 
@@ -160,6 +166,19 @@ int32_t render_lod_cells_from_column(const uint16_t *column, uint32_t shift, uin
  * grows are kept in scratch, a terrain_feature_cache_t, so a column walks each once and not once for each of its lines: the same blocks. */
 void render_lod_sample_terrain(const void *borrowed_context, int32_t x, int32_t y, uint32_t shift, uint16_t *out,
                                uint8_t *scratch);
+
+/* What render_lod_sample_world reads: a world's terrain, and its climate or nullptr. */
+typedef struct render_lod_world_t {
+    const terrain_t *borrowed_terrain; /* 0 */
+    const climate_t *borrowed_climate; /* 8 */
+} render_lod_world_t;
+static_assert(sizeof(render_lod_world_t) == 16);
+
+/* Plan 006 phase 02: render_lod_sample_terrain for the game, its context a render_lod_world_t. Each far column's climate
+ * sample, filled once at the column's middle into scratch, is copied from the climate's tiles where built and is the fallback
+ * past them; render_lod_sample_terrain's is always the fallback. No stage reads it yet, so the blocks are the same. */
+void render_lod_sample_world(const void *borrowed_context, int32_t x, int32_t y, uint32_t shift, uint16_t *out,
+                             uint8_t *scratch);
 
 /* Takes what it needs from the arena, and starts each level empty, on the card too. All of it must outlive this. tables and pools are the
  * Owner's blocks, one of each per level; hits is lod_hits_bytes of the picture. On failure logs why, and render_lod_deinit is still safe. */

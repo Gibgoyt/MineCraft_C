@@ -88,7 +88,8 @@ typedef struct game_column_job_t {
     world_map_request_t request;  /* 24 */
     _Atomic uint32_t done;        /* 40: release when finished */
     uint8_t in_use;               /* 44 */
-    uint8_t _pad0[3];             /* 45 */
+    uint8_t near;                 /* 45: submitted at JOB_PRIORITY_NEAR */
+    uint8_t _pad0[2];             /* 46 */
     save_world_t *borrowed_save;  /* 48: what has changed there, or nullptr */
     column_mask_t levels_mask;    /* 56: which sections the save gave levels for, in borrowed_opened past its scratch */
     column_mask_t saved_sections; /* 72: which sections the save gave at all */
@@ -99,8 +100,8 @@ typedef struct game_column_job_t {
      * borrowed_states holds the block section_blocks_encode made of it, and this its form, one a section. */
     section_encoded_t *borrowed_encoded; /* 104 */
     uint8_t *borrowed_light;             /* 112: a byte per voxel, the column's light alone: world_light_column_alone */
-    uint8_t near;                        /* 120: submitted at JOB_PRIORITY_NEAR */
-    uint8_t _pad1[7];                    /* 121 */
+    /* Plan 006 phase 02: the climate the column's sample is copied from, or nullptr: terrain_climate_fallback's. */
+    const climate_t *borrowed_climate; /* 120 */
 } game_column_job_t;
 static_assert(sizeof(game_column_job_t) == 2u * MC_CPU_CACHE_LINE_BYTES);
 

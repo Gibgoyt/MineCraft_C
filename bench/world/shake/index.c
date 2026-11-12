@@ -283,7 +283,7 @@ static int32_t sh_ground_z(const sh_t *sh, int32_t x, int32_t y) {
                                        .count_x = 1u,
                                        .count_y = 1u,
                                        .count_z = SH_LAYERS};
-    terrain_generate_box(&sh->borrowed_app->terrain, &box, sh->borrowed_opened, sh->borrowed_states);
+    terrain_generate_box_fallback(&sh->borrowed_app->terrain, &box, sh->borrowed_opened, sh->borrowed_states);
     for (int32_t storage = (int32_t)SH_LAYERS - 1; storage > 0; storage--) {
         if (sh->borrowed_states[storage] != BLOCK_ID_AIR) {
             return storage + COLUMN_Z_STORAGE_MIN;

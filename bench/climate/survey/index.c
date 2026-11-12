@@ -200,7 +200,10 @@ static void survey_row(job_worker_t *worker, void *borrowed_argument) {
         out->warm_sea = (uint8_t)((cell.flags & CLIMATE_CELL_SEA) != 0u && cell.current == CLIMATE_CURRENT_WARM &&
                                   cell.hurricane_days[0] != CLIMATE_DAY_NONE);
         if (!water) {
-            out->biome = terrain_biome_column_at(strip->borrowed_terrain->borrowed_biome, x, y).biome;
+            terrain_climate_sample_t climate; /* plan 006 phase 02: the climate's own, from the tiles */
+            (void)climate_terrain_sample(strip->borrowed_climate, strip->borrowed_terrain->seed, x - 8, y - 8,
+                                         &climate);
+            out->biome = terrain_biome_column_at(strip->borrowed_terrain->borrowed_biome, &climate, x, y).biome;
         }
     }
 }

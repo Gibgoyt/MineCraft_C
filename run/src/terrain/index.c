@@ -71,8 +71,10 @@ static void terrain_stages_run(const terrain_t *terrain, const terrain_density_b
  * part of what the caller lent, as z is the slowest way through it, and the rest is air. */
 static_assert(BLOCK_ID_AIR == 0u);
 
-void terrain_generate_box(const terrain_t *terrain, const terrain_density_box_t *box, uint8_t *opened,
-                          uint16_t *blocks) {
+void terrain_generate_box(const terrain_t *terrain, const terrain_climate_sample_t *climate,
+                          const terrain_density_box_t *box, uint8_t *opened, uint16_t *blocks) {
+    ASSERT(climate != nullptr);
+    (void)climate; /* plan 006 phase 02: plumbed, read by no stage until phase 03 */
     const int64_t layers_made = (int64_t)TERRAIN_MADE_TOP - (int64_t)box->origin_z + 1;
     if (layers_made >= (int64_t)box->count_z) {
         terrain_stages_run(terrain, box, opened, blocks);
@@ -88,6 +90,13 @@ void terrain_generate_box(const terrain_t *terrain, const terrain_density_box_t 
     const uint64_t rest = ((uint64_t)box->count_z - made) * layer;
     memset(opened + made * layer, 0, rest);
     memset(blocks + made * layer, 0, rest * sizeof(uint16_t));
+}
+
+void terrain_generate_box_fallback(const terrain_t *terrain, const terrain_density_box_t *box, uint8_t *opened,
+                                   uint16_t *blocks) {
+    terrain_climate_sample_t climate;
+    terrain_climate_fallback(terrain->seed, box->origin_x, box->origin_y, &climate);
+    terrain_generate_box(terrain, &climate, box, opened, blocks);
 }
 
 void terrain_deinit(terrain_t *terrain) {

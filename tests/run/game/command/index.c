@@ -528,16 +528,30 @@ static void gd_tuning_check(test_context_t *t, gd_jumps_t *jumps, game_t *game) 
                                   (float32_t)date.day_of_year, &normals))) {
         return;
     }
+    /* Plan 006 phase 02: the words are terrain_climate_at on the sample a column job here has, exactly, and near the
+     * climate's own normals (the sample's warp is terrain's own, and it blends integers). */
+    terrain_climate_sample_t sample;
+    game_corner_tuning_climate(game, feet[0], feet[1], &sample);
+    const int32_t z = (int32_t)floor(feet[2] - (float64_t)MC_WORLD_Z_SEA);
+    const terrain_climate_point_t point =
+        terrain_climate_at(&sample, (int64_t)floor(feet[0]), (int64_t)floor(feet[1]), z);
     const uint32_t kinds = atomic_load(&corner->tuning_kinds);
     CHECK_EQ_U64(kinds >> 24, GAME_CORNER_TUNING_CLIMATE);
-    CHECK_EQ_U64((kinds >> 16) & 0xFFu, normals.climate_class);
+    CHECK_EQ_U64((kinds >> 16) & 0xFFu, point.climate_class);
     const uint32_t year = atomic_load(&corner->tuning_year), cold = atomic_load(&corner->tuning_cold);
-    CHECK_EQ_I64((int16_t)(uint16_t)(year & 0xFFFFu), gd_tenths(normals.t_mean_c));
-    CHECK_EQ_I64((int16_t)(uint16_t)(year >> 16), gd_tenths(normals.t_max_month_c));
-    CHECK_EQ_I64((int16_t)(uint16_t)(cold & 0xFFFFu), gd_tenths(normals.t_min_month_c));
+    CHECK_EQ_I64((int16_t)(uint16_t)(year & 0xFFFFu), gd_tenths((float32_t)point.t_mean_cc / 100.0f32));
+    CHECK_EQ_I64((int16_t)(uint16_t)(year >> 16), gd_tenths((float32_t)point.t_warm_cc / 100.0f32));
+    CHECK_EQ_I64((int16_t)(uint16_t)(cold & 0xFFFFu), gd_tenths((float32_t)point.t_cold_cc / 100.0f32));
     CHECK_EQ_I64((int16_t)(uint16_t)(cold >> 16), gd_tenths(normals.t_day_c));
-    CHECK_EQ_I64(atomic_load(&corner->tuning_z), (int64_t)floorf(normals.z));
-    CHECK_EQ_U64(atomic_load(&corner->tuning_rain) & 0xFFFFu, (uint64_t)floorf(normals.rain_mm_year + 0.5f32));
+    CHECK_EQ_I64(atomic_load(&corner->tuning_z), (int64_t)z);
+    CHECK_EQ_U64(atomic_load(&corner->tuning_rain) & 0xFFFFu, (uint64_t)point.rain_mm_year);
+    CHECK_EQ_I64(atomic_load(&corner->tuning_snowline), point.snow_line_z);
+    CHECK_NEAR((float32_t)point.t_mean_cc / 100.0f32, normals.t_mean_c, 1.5f32);
+    printf("  sample against the climate's normals: yearly %.2f against %.2f, warm %.2f against %.2f, rain %d against "
+           "%.0f mm\n",
+           (libc_double_t)((float64_t)point.t_mean_cc / 100.0f64), (libc_double_t)normals.t_mean_c,
+           (libc_double_t)((float64_t)point.t_warm_cc / 100.0f64), (libc_double_t)normals.t_max_month_c,
+           point.rain_mm_year, (libc_double_t)normals.rain_mm_year);
     char lines[GAME_CORNER_TUNING_LINES][GAME_CORNER_TUNING_BYTES];
     game_corner_tuning_read(game, lines);
     printf("  at %.0f, %.0f, %.0f:\n    %s\n    %s\n    %s\n", (libc_double_t)feet[0], (libc_double_t)feet[1],

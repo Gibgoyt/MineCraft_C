@@ -367,7 +367,7 @@ static void tour_job(job_worker_t *worker, void *borrowed_argument) {
             .count_y = TOUR_CHUNK,
             .count_z = TOUR_LAYERS,
         };
-        terrain_generate_box(run->borrowed_terrain, &box, opened, blocks);
+        terrain_generate_box_fallback(run->borrowed_terrain, &box, opened, blocks);
         for (uint32_t oy = 0u; oy < TOUR_CHUNK; oy++) {
             for (uint32_t ox = 0u; ox < TOUR_CHUNK; ox++) {
                 const uint32_t column = ox + TOUR_CHUNK * oy;

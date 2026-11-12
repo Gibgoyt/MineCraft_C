@@ -1696,7 +1696,7 @@ TEST(real_terrain_with_real_light_reloads_byte_for_byte) {
                                                .count_x = COLUMN_SIZE,
                                                .count_y = COLUMN_SIZE,
                                                .count_z = (uint32_t)(COLUMN_Z_STORAGE_END - COLUMN_Z_STORAGE_MIN)};
-            terrain_generate_box(terrain, &box, opened, states);
+            terrain_generate_box_fallback(terrain, &box, opened, states);
             (void)save_world_column_overlay(&save->world, request.chunk_x, request.chunk_y, states, opened);
             column_t *const column = world_map_stream_commit(&world->map, &request);
             REQUIRE(column != nullptr);
@@ -1934,7 +1934,7 @@ TEST(the_built_program_keeps_what_was_dug_and_a_world_refuses_another_seed) {
                                                .count_x = COLUMN_SIZE,
                                                .count_y = COLUMN_SIZE,
                                                .count_z = (uint32_t)(COLUMN_Z_STORAGE_END - COLUMN_Z_STORAGE_MIN)};
-            terrain_generate_box(terrain, &box, opened, generated);
+            terrain_generate_box_fallback(terrain, &box, opened, generated);
             for (uint32_t section = 0u; section < COLUMN_SECTIONS; section++) {
                 if (!column_mask_has(mask, section)) {
                     continue;

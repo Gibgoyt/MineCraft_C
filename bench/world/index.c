@@ -439,7 +439,7 @@ static terrain_density_box_t bench_column_box(int32_t x, int32_t y) {
 /* The highest z with anything in it at this x and y, water and what grows included. Leaves that column in borrowed_states. */
 static int32_t bench_ground_z(const bench_t *bench, int32_t x, int32_t y) {
     const terrain_density_box_t box = bench_column_box(x, y);
-    terrain_generate_box(&bench->borrowed_app->terrain, &box, bench->borrowed_opened, bench->borrowed_states);
+    terrain_generate_box_fallback(&bench->borrowed_app->terrain, &box, bench->borrowed_opened, bench->borrowed_states);
     for (int32_t storage = (int32_t)BENCH_LAYERS - 1; storage > 0; storage--) {
         if (bench->borrowed_states[storage] != BLOCK_ID_AIR) {
             return storage + COLUMN_Z_STORAGE_MIN;
@@ -501,7 +501,7 @@ static bool bench_find_biome(const bench_t *bench, uint8_t biome, bench_place_t 
 
 static bool bench_is_air_at(const bench_t *bench, int32_t x, int32_t y, int32_t z) {
     const terrain_density_box_t box = bench_column_box(x, y);
-    terrain_generate_box(&bench->borrowed_app->terrain, &box, bench->borrowed_opened, bench->borrowed_states);
+    terrain_generate_box_fallback(&bench->borrowed_app->terrain, &box, bench->borrowed_opened, bench->borrowed_states);
     return bench->borrowed_states[z - COLUMN_Z_STORAGE_MIN] == BLOCK_ID_AIR;
 }
 

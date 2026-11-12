@@ -689,7 +689,9 @@ TEST(a_column_is_the_climate_on_the_lattice_and_what_hydrology_says_it_is) {
                     .kind = water.kind,
                 };
 #undef BIO_BLEND
-                const terrain_biome_column_t column = terrain_biome_column_at(terrain.borrowed_biome, x, y);
+                terrain_climate_sample_t climate;
+                terrain_climate_fallback(BIO_WORLD, x - 8, y - 8, &climate);
+                const terrain_biome_column_t column = terrain_biome_column_at(terrain.borrowed_biome, &climate, x, y);
                 CHECK_EQ_U64(column.biome, terrain_biome_choose(&inputs));
                 CHECK_EQ_U64(column.caves, terrain_biome_caves_of(&inputs));
                 CHECK(column.ground == water.ground);
@@ -734,14 +736,16 @@ TEST(columns_do_not_depend_on_the_area_asked_for) {
     const terrain_fields_area_t area = {
         .origin_x = -19, .origin_y = 1003, .step_x = 1, .step_y = 1, .count_x = SIDE, .count_y = SIDE};
     terrain_biome_columns_area(terrain.borrowed_biome, &area, all);
+    terrain_climate_sample_t climate;
+    terrain_climate_fallback(BIO_WORLD, area.origin_x, area.origin_y, &climate);
     for (uint32_t iy = 0u; iy < SIDE; iy += 5u) {
         for (uint32_t ix = 0u; ix < SIDE; ix += 3u) {
             const terrain_biome_column_t one = terrain_biome_column_at(
-                terrain.borrowed_biome, area.origin_x + (int32_t)ix, area.origin_y + (int32_t)iy);
+                terrain.borrowed_biome, &climate, area.origin_x + (int32_t)ix, area.origin_y + (int32_t)iy);
             CHECK(memcmp(&one, &all[ix + SIDE * iy], sizeof(one)) == 0);
-            CHECK_EQ_U64(
-                terrain_biome_at(terrain.borrowed_biome, area.origin_x + (int32_t)ix, area.origin_y + (int32_t)iy, -60),
-                terrain_biome_of_voxel(&one, -60));
+            CHECK_EQ_U64(terrain_biome_at(terrain.borrowed_biome, &climate, area.origin_x + (int32_t)ix,
+                                          area.origin_y + (int32_t)iy, -60),
+                         terrain_biome_of_voxel(&one, -60));
         }
     }
     terrain_biome_column_t wide[WIDE * WIDE];
@@ -1542,7 +1546,9 @@ TEST(sampling_stays_inside_its_output_and_allocates_nothing) {
     heap_counters_read(&before);
     terrain_surface_fill_box(terrain.borrowed_surface, &box, blocks);
     terrain_surface_line_caves_box(terrain.borrowed_surface, &box, blocks);
-    (void)terrain_biome_at(terrain.borrowed_biome, 1, 1, 0);
+    terrain_climate_sample_t climate;
+    terrain_climate_fallback(BIO_WORLD, 1, 1, &climate);
+    (void)terrain_biome_at(terrain.borrowed_biome, &climate, 1, 1, 0);
     /* Empty boxes do nothing at all. */
     const terrain_density_box_t empty = {.origin_x = 0, .count_x = 0u, .count_y = 3u, .count_z = 3u};
     terrain_surface_fill_box(terrain.borrowed_surface, &empty, blocks + VOXELS);

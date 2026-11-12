@@ -4,6 +4,7 @@
 
 #include "arena/index.h"
 #include "tables/biomes/index.h"
+#include "terrain/climate_sample/index.h"
 #include "terrain/fields/index.h"
 #include "terrain/hydrology/index.h"
 #include "types/index.h"
@@ -74,7 +75,10 @@ void terrain_biome_columns_area(const terrain_biome_t *biome, const terrain_fiel
                                 terrain_biome_column_t *columns);
 
 /* The same at one column, and one voxel. Columns in bulk cost far less each through an area. */
-terrain_biome_column_t terrain_biome_column_at(const terrain_biome_t *biome, int32_t x, int32_t y);
-biome_id_t terrain_biome_at(const terrain_biome_t *biome, int32_t x, int32_t y, int32_t z);
+/* Plan 006 phase 02: climate is the sample round the column, never null; no rule reads it yet. */
+terrain_biome_column_t terrain_biome_column_at(const terrain_biome_t *biome, const terrain_climate_sample_t *climate,
+                                               int32_t x, int32_t y);
+biome_id_t terrain_biome_at(const terrain_biome_t *biome, const terrain_climate_sample_t *climate, int32_t x, int32_t y,
+                            int32_t z);
 
 #endif

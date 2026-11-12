@@ -15,11 +15,15 @@ enum : int32_t {
     CLIMATE_TILE_CELLS = 16, /* cells on a tile's side: master plan 1 */
     CLIMATE_TILE_BLOCKS = 1024,
     CLIMATE_TILE_SHIFT = 10,
-    CLIMATE_MARGIN_CELLS = 128,      /* the 8 km margin, 8192 / 64: master plan 6.2 */
-    CLIMATE_WINDOW_CELLS = 272,      /* 16 + 2 * 128 on a side */
-    CLIMATE_WINDOW_TILES = 17,       /* pages on a side of the window */
-    CLIMATE_WARP_BLOCKS = 32,        /* the warp's reach: master plan 6.9 */
-    CLIMATE_READ_REACH_BLOCKS = 96,  /* a read's reach past its point: one cell's blend plus the warp, 64 + 32 */
+    CLIMATE_MARGIN_CELLS = 128, /* the 8 km margin, 8192 / 64: master plan 6.2 */
+    CLIMATE_WINDOW_CELLS = 272, /* 16 + 2 * 128 on a side */
+    CLIMATE_WINDOW_TILES = 17,  /* pages on a side of the window */
+    CLIMATE_WARP_BLOCKS = 32,   /* the warp's reach: master plan 6.9 */
+    CLIMATE_FEATURE_REACH_BLOCKS =
+        16, /* plan 006 phase 02: terrain features read a neighbour chunk, TERRAIN_FEATURE_CHUNK */
+    /* A read's reach past its column: one cell's blend plus the warp plus the features' neighbour chunk, 64 + 32 + 16. 96
+     * before plan 006 phase 02, when nothing on a column's edge read past the column itself. */
+    CLIMATE_READ_REACH_BLOCKS = 112,
     CLIMATE_GROUND_SAMPLES_SIDE = 4, /* phase 03: z_ground is the mean of 4 by 4 samples, 16 blocks apart */
     CLIMATE_GROUND_SAMPLE_STEP = 16,
     CLIMATE_TILE_CELL_COUNT = CLIMATE_TILE_CELLS * CLIMATE_TILE_CELLS,            /* 256 */
@@ -46,7 +50,7 @@ static_assert(CLIMATE_TILE_BLOCKS == CLIMATE_CELL_BLOCKS * CLIMATE_TILE_CELLS);
 static_assert(CLIMATE_WINDOW_CELLS == CLIMATE_TILE_CELLS + 2 * CLIMATE_MARGIN_CELLS);
 static_assert(CLIMATE_WINDOW_CELLS == CLIMATE_WINDOW_TILES * CLIMATE_TILE_CELLS);
 static_assert(CLIMATE_GROUND_SAMPLES_SIDE * CLIMATE_GROUND_SAMPLE_STEP == CLIMATE_CELL_BLOCKS);
-static_assert(CLIMATE_READ_REACH_BLOCKS == CLIMATE_CELL_BLOCKS + CLIMATE_WARP_BLOCKS);
+static_assert(CLIMATE_READ_REACH_BLOCKS == CLIMATE_CELL_BLOCKS + CLIMATE_WARP_BLOCKS + CLIMATE_FEATURE_REACH_BLOCKS);
 
 /* Blocks: master plan 6.2. A macro since phase 11, so the layer scales can be built from it at compile time. */
 #define CLIMATE_SEA_DISTANCE_MAX 8192.0f32

@@ -57,13 +57,17 @@ typedef struct mob_spawn_view_t {
     const uint16_t *weights;
     /* 40: what spawn.biomes is asked of. nullptr, as a test of something else may have it, lets every mob come in any biome. */
     const terrain_biome_t *biomes;
-    uint8_t first_day; /* 48: 1 on the world's first day: see MOB_SPAWN_FIRST_DAY_REACH */
-    uint8_t _pad0[7];  /* 49 */
+    /* 48: plan 006 phase 02: the climate sample round the player this step, which biomes are asked with. Set whenever biomes
+     * is. */
+    const terrain_climate_sample_t *climate;
+    uint8_t first_day; /* 56: 1 on the world's first day: see MOB_SPAWN_FIRST_DAY_REACH */
+    uint8_t _pad0[7];  /* 57 */
 } mob_spawn_view_t;
-static_assert(sizeof(mob_spawn_view_t) == 56);
+static_assert(sizeof(mob_spawn_view_t) == 64);
 static_assert(offsetof(mob_spawn_view_t, weights) == 32);
 static_assert(offsetof(mob_spawn_view_t, biomes) == 40);
-static_assert(offsetof(mob_spawn_view_t, first_day) == 48);
+static_assert(offsetof(mob_spawn_view_t, climate) == 48);
+static_assert(offsetof(mob_spawn_view_t, first_day) == 56);
 
 /* Why a place will not do. */
 typedef enum mob_spawn_status_t : uint8_t {

@@ -1650,7 +1650,7 @@ static void sim_fill_from_terrain(test_context_t *t, sim_t *sim, const terrain_t
             .count_y = COLUMN_SIZE,
             .count_z = (uint32_t)(COLUMN_Z_STORAGE_END - COLUMN_Z_STORAGE_MIN),
         };
-        terrain_generate_box(terrain, &box, scratch->borrowed_opened, scratch->borrowed_states);
+        terrain_generate_box_fallback(terrain, &box, scratch->borrowed_opened, scratch->borrowed_states);
         for (uint32_t section = 0u; section < COLUMN_SECTIONS; section++) {
             REQUIRE(section_blocks_import(&column->sections[section], &sim->pool,
                                           scratch->borrowed_states + (uint64_t)section * SECTION_VOXELS));

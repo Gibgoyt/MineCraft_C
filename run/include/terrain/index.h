@@ -6,6 +6,7 @@
 #include "heap/index.h"
 #include "terrain/biome/index.h"
 #include "terrain/cave/index.h"
+#include "terrain/climate_sample/index.h"
 #include "terrain/fields/index.h"
 #include "terrain/density/index.h"
 #include "terrain/feature/index.h"
@@ -89,8 +90,14 @@ void terrain_deinit(terrain_t *terrain);
  * then y, then z order, and opened that many bytes the caller lends for working, which it leaves as TERRAIN_CAVE_WANTED_UNCUT where a cave wanted a voxel that held nothing to cut, and
  * some other bit set where a cave cut one: test it with ~TERRAIN_CAVE_WANTED_UNCUT, not against 0. Allocates nothing, and a voxel is a pure function
  * of the terrain and the voxel: splitting a box into parts, in any order, on any thread, gives the same bytes. */
-void terrain_generate_box(const terrain_t *terrain, const terrain_density_box_t *box, uint8_t *opened,
-                          uint16_t *blocks);
+void terrain_generate_box(const terrain_t *terrain, const terrain_climate_sample_t *climate,
+                          const terrain_density_box_t *box, uint8_t *opened, uint16_t *blocks);
+/* Plan 006 phase 02: what a column job reads of the climate comes in as climate, never null, the sample for the box's
+ * south-west column (game fills it from the climate's tiles). No stage reads it yet, so the bytes do not depend on it.
+ * terrain_generate_box_fallback is the same with terrain_climate_fallback's sample for the box, for the tests, benches
+ * and test worlds that have no climate. */
+void terrain_generate_box_fallback(const terrain_t *terrain, const terrain_density_box_t *box, uint8_t *opened,
+                                   uint16_t *blocks);
 
 /* The ground the terrain's 2D splines give at a column, with no 3D density and no chunk: the profile at the four lattice
  * columns round it (TERRAIN_DENSITY_CELL_XY apart), blended along x, then y, as terrain_density's boxes blend them. A pure

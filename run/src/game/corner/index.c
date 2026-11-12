@@ -267,9 +267,21 @@ static uint32_t corner_tenths(float32_t celsius) {
     return (uint32_t)(uint16_t)(int16_t)held;
 }
 
-static uint32_t corner_millimetres(float32_t mm) {
-    const float32_t whole = floorf(mm + 0.5f32);
-    return whole >= 65535.0f32 ? 65535u : (whole > 0.0f32 ? (uint32_t)whole : 0u);
+/* Tenths of a degree from centi-degrees, halves up, as an int16_t in a word's half. */
+static uint32_t corner_tenths_cc(int32_t centi) {
+    const int64_t up = (int64_t)centi + 5;
+    const int64_t tenths = up / 10 - (up % 10 < 0 ? 1 : 0); /* rounded down, so halves go up */
+    const int64_t held = tenths > 32767 ? 32767 : (tenths < -32768 ? -32768 : tenths);
+    return (uint32_t)(uint16_t)(int16_t)held;
+}
+
+static uint32_t corner_millimetres_int(int32_t mm) {
+    return mm >= 65535 ? 65535u : (mm > 0 ? (uint32_t)mm : 0u);
+}
+
+void game_corner_tuning_climate(const game_t *game, float64_t x, float64_t y, terrain_climate_sample_t *out) {
+    (void)climate_terrain_sample(corner_climate(game), game->borrowed_terrain->seed, (int64_t)floor(x) - 8,
+                                 (int64_t)floor(y) - 8, out);
 }
 
 void game_corner_tuning_publish(game_t *game) {
@@ -283,53 +295,50 @@ void game_corner_tuning_publish(game_t *game) {
         return;
     }
     corner->tuning_tick = tick + (tick == 0u ? 1u : 0u);
+    const terrain_t *const terrain = game->borrowed_terrain;
+    if (terrain == nullptr || terrain->borrowed_biome == nullptr) {
+        atomic_store_explicit(&corner->tuning_kinds, GAME_CORNER_TUNING_NONE << 24, memory_order_relaxed);
+        return;
+    }
     const float64_t *const feet = player->movement.position;
     const float64_t x = feet[0], y = feet[1];
-    const float32_t z = (float32_t)(feet[2] - (float64_t)MC_WORLD_Z_SEA);
-    const uint32_t biome = game->borrowed_terrain != nullptr && game->borrowed_terrain->borrowed_biome != nullptr
-                               ? (uint32_t)terrain_biome_at(game->borrowed_terrain->borrowed_biome, (int32_t)floor(x),
-                                                            (int32_t)floor(y), (int32_t)floor(feet[2]))
-                               : 0u;
-    const uint32_t kinds = atomic_load_explicit(&corner->tuning_kinds, memory_order_relaxed);
-    climate_t *const climate = corner_climate(game);
-    if (climate == nullptr) {
-        atomic_store_explicit(&corner->tuning_kinds, biome | GAME_CORNER_TUNING_NONE << 24, memory_order_relaxed);
-        return;
-    }
-    const calendar_date_t date = game_calendar_date(game);
-    climate_normals_at_t normals;
-    climate_cell_t cell;
-    if (!climate_normals_at(climate, x, y, z, (float32_t)date.day_of_year, &normals) ||
-        !climate_cell_get(climate, (int32_t)floor(x), (int32_t)floor(y), &cell)) {
-        /* Not built yet: the biome now, the rest as it was. */
-        atomic_store_explicit(&corner->tuning_kinds, (kinds & ~0xFFu) | biome, memory_order_relaxed);
-        return;
-    }
-    const bool land = (cell.flags & CLIMATE_CELL_SEA) == 0u;
-    climate_season_months_t months;
-    climate_season_months(&cell, z, land, &months);
+    const int32_t z = (int32_t)floor(feet[2] - (float64_t)MC_WORLD_Z_SEA);
+    /* Plan 006 phase 02: exactly what terrain sees, the sample a column job here would have and terrain_climate_at on it,
+     * from the climate's tiles, or the fallback where there are none (a test world, or past what is built). */
+    terrain_climate_sample_t sample;
+    game_corner_tuning_climate(game, x, y, &sample);
+    const terrain_climate_point_t point = terrain_climate_at(&sample, (int64_t)floor(x), (int64_t)floor(y), z);
+    const uint32_t biome = (uint32_t)terrain_biome_at(terrain->borrowed_biome, &sample, (int32_t)floor(x),
+                                                      (int32_t)floor(y), (int32_t)floor(feet[2]));
     /* The family is the class the numbers at the feet's own height give, by the same first match as a cell's. */
+    const bool land = (point.flags & TERRAIN_CLIMATE_SEA) == 0u;
     const uint32_t family =
-        land ? climate_season_classify(months.t_mean_c, months.t_max_month_c, months.t_min_month_c, months.rain_mm_year,
-                                       months.driest_month_mm, months.dry_summer != 0u,
-                                       (cell.flags & CLIMATE_CELL_MONSOON) != 0u)
-             : (uint32_t)CLIMATE_CLASS_NONE;
+        land ? terrain_climate_classify(point.t_mean_cc, point.t_warm_cc, point.t_cold_cc, point.rain_mm_year,
+                                        point.dry_month_mm, (point.flags & TERRAIN_CLIMATE_MONSOON) != 0u)
+             : (uint32_t)TERRAIN_CLIMATE_CLASS_NONE;
+    /* Today's mean is the day's, which the sample does not keep: the climate's own where it is built, else the year's. */
+    uint32_t today = corner_tenths_cc(point.t_mean_cc);
+    climate_t *const climate = corner_climate(game);
+    if (climate != nullptr) {
+        const calendar_date_t date = game_calendar_date(game);
+        climate_normals_at_t normals;
+        if (climate_normals_at(climate, x, y, (float32_t)z, (float32_t)date.day_of_year, &normals)) {
+            today = corner_tenths(normals.t_day_c);
+        }
+    }
+    const uint32_t source = point.from_climate != 0u ? GAME_CORNER_TUNING_CLIMATE : GAME_CORNER_TUNING_FALLBACK;
     atomic_store_explicit(&corner->tuning_kinds,
-                          biome | family << 8 | (uint32_t)normals.climate_class << 16 |
-                              GAME_CORNER_TUNING_CLIMATE << 24,
+                          biome | family << 8 | (uint32_t)point.climate_class << 16 | source << 24,
                           memory_order_relaxed);
     atomic_store_explicit(&corner->tuning_year,
-                          corner_tenths(normals.t_mean_c) | corner_tenths(normals.t_max_month_c) << 16,
+                          corner_tenths_cc(point.t_mean_cc) | corner_tenths_cc(point.t_warm_cc) << 16,
                           memory_order_relaxed);
-    atomic_store_explicit(&corner->tuning_cold,
-                          corner_tenths(normals.t_min_month_c) | corner_tenths(normals.t_day_c) << 16,
-                          memory_order_relaxed);
-    atomic_store_explicit(&corner->tuning_z, (int32_t)floorf(normals.z), memory_order_relaxed);
+    atomic_store_explicit(&corner->tuning_cold, corner_tenths_cc(point.t_cold_cc) | today << 16, memory_order_relaxed);
+    atomic_store_explicit(&corner->tuning_z, z, memory_order_relaxed);
     atomic_store_explicit(&corner->tuning_rain,
-                          corner_millimetres(normals.rain_mm_year) | corner_millimetres(months.driest_month_mm) << 16,
+                          corner_millimetres_int(point.rain_mm_year) | corner_millimetres_int(point.dry_month_mm) << 16,
                           memory_order_relaxed);
-    atomic_store_explicit(&corner->tuning_snowline, (int32_t)floorf(normals.snow_balance_z + 0.5f32),
-                          memory_order_relaxed);
+    atomic_store_explicit(&corner->tuning_snowline, point.snow_line_z, memory_order_relaxed);
 }
 
 /* "24.6", "-0.3", never "-0.0", from tenths. */

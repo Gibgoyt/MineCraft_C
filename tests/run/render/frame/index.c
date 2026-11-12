@@ -1025,7 +1025,7 @@ TEST(the_columns_the_game_streams_are_what_terrain_generates) {
                 .count_y = COLUMN_SIZE,
                 .count_z = (uint32_t)(COLUMN_Z_STORAGE_END - COLUMN_Z_STORAGE_MIN),
             };
-            terrain_generate_box(rig.terrain, &box, opened, states);
+            terrain_generate_box_fallback(rig.terrain, &box, opened, states);
             for (int32_t z = COLUMN_Z_STORAGE_MIN; z < COLUMN_Z_STORAGE_END; z++) {
                 const uint64_t layer = (uint64_t)(z - COLUMN_Z_STORAGE_MIN) * (COLUMN_SIZE * COLUMN_SIZE);
                 for (uint32_t y = 0u; y < COLUMN_SIZE; y++) {

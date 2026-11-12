@@ -248,7 +248,10 @@ void terrain_biome_columns_area(const terrain_biome_t *biome, const terrain_fiel
     }
 }
 
-terrain_biome_column_t terrain_biome_column_at(const terrain_biome_t *biome, int32_t x, int32_t y) {
+terrain_biome_column_t terrain_biome_column_at(const terrain_biome_t *biome, const terrain_climate_sample_t *climate,
+                                               int32_t x, int32_t y) {
+    ASSERT(climate != nullptr);
+    (void)climate; /* plan 006 phase 02: plumbed, read by no rule until phase 03 */
     const terrain_fields_area_t area = {
         .origin_x = x, .origin_y = y, .step_x = 1, .step_y = 1, .count_x = 1u, .count_y = 1u};
     terrain_biome_column_t column;
@@ -256,7 +259,8 @@ terrain_biome_column_t terrain_biome_column_at(const terrain_biome_t *biome, int
     return column;
 }
 
-biome_id_t terrain_biome_at(const terrain_biome_t *biome, int32_t x, int32_t y, int32_t z) {
-    const terrain_biome_column_t column = terrain_biome_column_at(biome, x, y);
+biome_id_t terrain_biome_at(const terrain_biome_t *biome, const terrain_climate_sample_t *climate, int32_t x, int32_t y,
+                            int32_t z) {
+    const terrain_biome_column_t column = terrain_biome_column_at(biome, climate, x, y);
     return terrain_biome_of_voxel(&column, z);
 }

@@ -233,7 +233,7 @@ static void walk_chunks_job(job_worker_t *worker, void *borrowed_argument) {
             .count_y = TERRAIN_FEATURE_CHUNK,
             .count_z = WALK_STORAGE_LAYERS,
         };
-        terrain_generate_box(run->borrowed_terrain, &box, opened, blocks);
+        terrain_generate_box_fallback(run->borrowed_terrain, &box, opened, blocks);
         for (uint32_t column = 0u; column < TERRAIN_FEATURE_CHUNK_COLUMNS; column++) {
             const uint64_t in_area = (uint64_t)(tile_x + column % TERRAIN_FEATURE_CHUNK) +
                                      area->row * (tile_y + column / TERRAIN_FEATURE_CHUNK);
@@ -757,7 +757,7 @@ static void walk_column_job(job_worker_t *worker, void *borrowed_job) {
         .count_y = COLUMN_SIZE,
         .count_z = WALK_STORAGE_LAYERS,
     };
-    terrain_generate_box(job->borrowed_terrain, &box, job->borrowed_opened, job->borrowed_states);
+    terrain_generate_box_fallback(job->borrowed_terrain, &box, job->borrowed_opened, job->borrowed_states);
 }
 
 /* The columns round the route, made with every stage, into a real world for the body to move through. */

@@ -10,7 +10,8 @@
 - `render_lod_plan`: which levels a world has, for how far it is drawn block by block and how far in all.
 - `render_lod_table_bytes`, `render_lod_pool_bytes`, `render_lod_arena_bytes`: sizes for the Owner.
 - `render_lod_cells_from_column`: one sampled column to its coarse voxels, on its own for a test to hold to paper.
-- `render_lod_sample_terrain`: a sample of the world's own ground.
+- `render_lod_sample_terrain`: a sample of the world's own ground, its context a `terrain_t`, with `terrain_climate_fallback`'s climate.
+- `render_lod_sample_world`: the same for the game, its context a `render_lod_world_t` (terrain and climate): each far column's climate sample is filled once, at the column's middle, into the sample scratch after the feature cache (`climate_terrain_sample`: tiles where built, the fallback past them). Plan 006 phase 02; nothing reads it yet.
 - `render_lod_fine_set`: the near world's buffers, set by `run/src/render/` as it opens the far field, so a far column full detail is already drawn over all of waits until every other is asked for.
 - `render_lod_overlay_set`: what is written over each sample, with its own scratch from the job's arena.
 - `render_lod_column_changed`, `render_lod_area_changed`, `render_lod_all_changed`: a column is made again, in each level, with the old one shown until the new one has come. One a worker has begun goes round again when it is done, as it may already have read past what changed.

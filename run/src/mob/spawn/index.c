@@ -175,7 +175,7 @@ mob_spawn_status_t mob_spawn_check(physics_t *physics, const world_map_t *map, m
         return MOB_SPAWN_BAD_HEIGHT;
     }
     if (def->biome_count != 0u && view->biomes != nullptr &&
-        !mob_spawn_biome_allows(mob, terrain_biome_column_at(view->biomes, x, y).biome)) {
+        !mob_spawn_biome_allows(mob, terrain_biome_column_at(view->biomes, view->climate, x, y).biome)) {
         return MOB_SPAWN_BAD_BIOME;
     }
     const mob_spawn_status_t light = mob_spawn_check_light(def, packed, view->sun_height, light_roll);

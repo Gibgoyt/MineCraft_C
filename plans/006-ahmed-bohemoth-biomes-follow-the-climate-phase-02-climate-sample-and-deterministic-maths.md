@@ -151,23 +151,23 @@ From the master (section 9, phase 02):
 
 - [x] `run/src/math/det/` with tests against libm and a pin
 - [x] The climate cell fields that terrain reads move to `det_*`; climate digests are re-pinned with reasons
-- [ ] The driest month's rain per cell (a spare byte, or from harmonics)
-- [ ] `terrain/climate_sample/`: the types, `terrain_climate_at`, and `terrain_climate_fallback`
-- [ ] `game` fills the sample in column jobs; the far field and mob spawn fill theirs
-- [ ] The read reach goes from 96 to 112; the spawn search moves after the climate is prepared
-- [ ] `terrain_generate_box`, the far field sampler and `terrain_biome_column_at` take the sample. **The biome rules don't change yet,** so every terrain digest holds
+- [x] The driest month's rain per cell (a spare byte, or from harmonics)
+- [x] `terrain/climate_sample/`: the types, `terrain_climate_at`, and `terrain_climate_fallback`
+- [x] `game` fills the sample in column jobs; the far field and mob spawn fill theirs
+- [x] The read reach goes from 96 to 112; the spawn search moves after the climate is prepared
+- [x] `terrain_generate_box`, the far field sampler and `terrain_biome_column_at` take the sample. **The biome rules don't change yet,** so every terrain digest holds
 - [ ] Benches: filling a sample, and `terrain_climate_at`
 
 Expanded:
 
 - [x] The libm inventory of step 1 written into this file
-- [ ] `static_assert(sizeof(terrain_climate_cell_t) == 24)` and `sizeof(terrain_climate_sample_t) == 888`, with `offsetof` asserts
-- [ ] `climate_tile_low` / `climate_tile_high` (`run/src/climate/index.c:210-215`) read the new reach; the gate test updated
-- [ ] F3 lines read `terrain_climate_at`, show `(climate)` or `(fallback)`
-- [ ] Every `run_terrain_*` pin unchanged
+- [x] `static_assert(sizeof(terrain_climate_cell_t) == 24)` and `sizeof(terrain_climate_sample_t) == 888`, with `offsetof` asserts
+- [x] `climate_tile_low` / `climate_tile_high` (`run/src/climate/index.c:210-215`) read the new reach; the gate test updated
+- [x] F3 lines read `terrain_climate_at`, show `(climate)` or `(fallback)`
+- [x] Every `run_terrain_*` pin unchanged
 - [ ] `bench_terrain` at or above 1000 columns a second at its slowest place (1134 before), both numbers recorded here
-- [ ] `standards_lint` (no new include across ranks) and `clang_format` pass
-- [ ] The whole debug suite passes; `pgrep -af "$PWD/build"` prints nothing
+- [x] `standards_lint` (no new include across ranks) and `clang_format` pass
+- [x] The whole debug suite passes; `pgrep -af "$PWD/build"` prints nothing
 
 ## Tests
 
@@ -256,3 +256,53 @@ Appended as they land:
    re-pin and `run_climate_constants` needed no change; the guarantee is now that the bits come from our code, not that
    they changed. (`run_climate_warning`'s 20 ms timing failed once when run 8-wide with the other climate tests and passed
    alone: load, not this change.)
+
+3. **Where the fill lives: in the climate, not in `game`** (a change from the Design's "game fills it from
+   `climate_cell_get`"). `climate` (row 8) may include `terrain` (row 9), so `climate_terrain_sample` and
+   `climate_terrain_cell` sit in `run/src/climate/index.c`, beside `climate_cell_read`, and the column job, the far field
+   (`render_lod_sample_world`), mob spawn (`game_items_tick`), `game_ground_z` and the F3 lines all call it. One copy of the
+   float-to-integer conversion instead of three, and one tile read per cell under the read protocol. Terrain still never
+   includes `climate`; `standards_lint` is clean with no rank change.
+4. **The driest month** comes from the rain harmonics (the default), worked out in the fill by
+   `climate_season_driest_month_mm`, the very function `climate_season_months` now uses for the class, so the sample and the
+   class agree to the bit. No cell byte was spent.
+5. **Sample layout, a small change from the master's:** byte 881 is `warp_off` (tests) and 884 is a `uint32_t warp_seed`, in
+   the master's `_pad0[7]`; still 888 bytes, every `offsetof` asserted. `terrain_climate_at` needs a seed for its own warp and
+   has nothing but the sample. Flags: sea, lake (needed for the basin heat, as the climate's "land" excludes large lakes),
+   monsoon, warm coast, cold coast.
+6. **`terrain_climate_at`'s warp is terrain's own** (as the Design says): two octaves of hashed value noise at 256 and 128
+   blocks, smoothstep, the climate's spread, at most 32 blocks, all integers. It is not the climate's noise warp, so the F3
+   numbers differ slightly from `climate_normals_at` near cell borders; `run_game_command` now holds the F3 words to
+   `terrain_climate_at` exactly and to `climate_normals_at` within 1.5 °C. `t_warm` and `t_cold` are mean ± the swing times
+   0.98862 (`CLIMATE_MONTH_WAVE1`, a month's mean of the wave), not ± the bare swing as the Design wrote, so they are the
+   warmest and coldest months the climate's class uses. Below sea level on land the basin heat (2.5 per 10 blocks) is added,
+   as the climate does.
+7. **The fallback's snow line and class are closed forms** (the Design left the "how" open): the snow line is where the
+   warmest month at sea level reaches 0 °C with the lapse (none above 1250, the world's floor below -250), and the class is
+   plan 004 6.10 at sea level with no dry summer and no monsoon. Running the climate's whole snow-balance model per fallback
+   cell would cost tens of microseconds and copy 100 lines across the seam. Equator: 2700 cc yearly, 2784 warmest, 2616
+   coldest, 1437 mm, Rainforest, no snow line. Plan 004's knot tables and latitude are copied into the fallback (terrain may
+   not include them) and `run_terrain_climate_sample` holds every copied number to the climate's: temperatures, swing and rain
+   pole to pole differ by 0 cc and 0 mm, and the integer class equals `climate_season_classify` on all 28,125 places tried.
+8. **The tests and benches call `terrain_generate_box_fallback`** (a wrapper in the terrain Owner that fills the fallback for
+   the box and calls `terrain_generate_box`) instead of a fallback line at each of 36 call sites. `terrain_generate_box` itself
+   asserts a non-null sample. The far field keeps `render_lod_sample_terrain` (context a `terrain_t`, fallback climate) for its
+   tests and bench, and the game uses the new `render_lod_sample_world` (context `render_lod_world_t`: terrain and climate),
+   which fills each far column's sample once into the sample scratch (now feature cache + sample + one line).
+   `terrain_biome_at` takes the sample too, since it calls `terrain_biome_column_at`.
+9. **The spawn search after the climate:** a new world now calls `climate_prepare_area` for 1024 blocks round the middle
+   (`GAME_SPAWN_CLIMATE_BLOCKS`, the search's first band) before `game_spawn_find`; the search's further bands read the
+   built tiles and the fallback past them. The loading-bar precompute round the found start is unchanged. As nothing reads the
+   sample yet, no spawn moves in this phase; from phase 03 new worlds may spawn elsewhere, existing worlds keep their saved
+   place.
+10. **Read reach 112:** `CLIMATE_READ_REACH_BLOCKS = 112` with a named `CLIMATE_FEATURE_REACH_BLOCKS = 16`, asserted equal to
+    `TERRAIN_FEATURE_CHUNK` and `TERRAIN_CLIMATE_WEST_BLOCKS`; `climate_tile_low`/`high` read it; `run_climate_cell`'s gate
+    check uses the constant instead of a literal 96. Honest note on `a_feature_on_the_column_edge_reads_a_ready_cell`: it
+    passes at 112 (0 blocks past the gate; the warp moved a read at most 63 blocks from the column's corner), but it would
+    also pass at 96, because a bilinear read between centres needs only the cells holding the point ± half a cell (32), so
+    48 + 32 = 80 blocks of reach suffice. 112 is kept as the master gives it: the margin is free.
+11. **Digests:** every `run_terrain_*` test passes with its pin unchanged (11 of 11). No climate digest moved (item 2).
+12. **The whole debug suite** (2026-11-12, through the lock): 165 of 166 passed on the first run; the one failure,
+    `run_climate_cell`'s stepped precompute, began its area with a literal 96 margin, so with the reach at 112 it asked for
+    a ring more tiles than its `24 x 24 + 64` total. The literal became `CLIMATE_READ_REACH_BLOCKS` (as the `climate_area_ready`
+    check beside it already was) and `run_climate_cell` passes. `pgrep -af "$PWD/build"` printed nothing after.

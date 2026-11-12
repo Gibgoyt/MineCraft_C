@@ -109,7 +109,7 @@ TEST(every_stage_gives_the_same_bytes_as_features_walking_the_chunk_for_themselv
             const int32_t chunk_y = ((int32_t)(g / 3u) - (int32_t)OWN_GRID_SIDE / 2) * (int32_t)OWN_GRID_STEP + 5;
             const terrain_density_box_t box = own_box(chunk_x, chunk_y);
             own_by_hand(&terrain, &box, by_hand_opened, by_hand);
-            terrain_generate_box(&terrain, &box, opened, generated);
+            terrain_generate_box_fallback(&terrain, &box, opened, generated);
             CHECK(memcmp(by_hand, generated, (uint64_t)OWN_VOXELS * sizeof(uint16_t)) == 0);
             /* What the map and walk tools read from opened: where a cave truly cut, and no more. */
             uint64_t differ = 0u;
@@ -132,7 +132,7 @@ TEST(every_stage_gives_the_same_bytes_as_features_walking_the_chunk_for_themselv
             }
             const terrain_density_box_t box = own_box(chunk_x, chunk_y);
             own_by_hand(&terrain, &box, opened, by_hand);
-            terrain_generate_box(&terrain, &box, opened, generated);
+            terrain_generate_box_fallback(&terrain, &box, opened, generated);
             CHECK(memcmp(by_hand, generated, (uint64_t)OWN_VOXELS * sizeof(uint16_t)) == 0);
             found++;
         }

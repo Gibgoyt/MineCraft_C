@@ -391,10 +391,18 @@ static void game_items_tick(game_t *game) {
     /* Before the tick, so that the grid it builds knows what came and went. */
     /* The world clock counts days from the midnight before its first morning, so day 0 is the first day, when herds come near. */
     const calendar_clock_t clock = atomic_load_explicit(&game->clock_units, memory_order_relaxed);
+    /* Plan 006 phase 02: a small sample at the player each step, from the climate's tiles where built. */
+    terrain_climate_sample_t climate;
+    if (game->borrowed_terrain != nullptr) {
+        (void)climate_terrain_sample(game->borrowed_climate, game->borrowed_terrain->seed,
+                                     (int64_t)floor(player->movement.position[0]) - 8,
+                                     (int64_t)floor(player->movement.position[1]) - 8, &climate);
+    }
     const mob_spawn_view_t view = {
         .position = {player->movement.position[0], player->movement.position[1], player->movement.position[2]},
         .sun_height = player->survival.sun_height,
         .biomes = game->borrowed_terrain != nullptr ? game->borrowed_terrain->borrowed_biome : nullptr,
+        .climate = game->borrowed_terrain != nullptr ? &climate : nullptr,
         .first_day = (uint8_t)(clock < CALENDAR_CLOCK_DAY ? 1u : 0u),
     };
     mob_spawn_tick(&game->mob_spawn, &entity->store, entity->borrowed_physics, &game->borrowed_world->map, &view);

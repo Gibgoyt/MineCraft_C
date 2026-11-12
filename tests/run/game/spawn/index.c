@@ -237,7 +237,7 @@ static uint16_t spawn_real_top(const terrain_t *terrain, const game_column_job_t
         .count_y = 1u,
         .count_z = SPAWN_LAYERS,
     };
-    terrain_generate_box(terrain, &box, job->borrowed_opened, job->borrowed_states);
+    terrain_generate_box_fallback(terrain, &box, job->borrowed_opened, job->borrowed_states);
     int32_t storage = (int32_t)SPAWN_LAYERS - 1;
     while (storage > 0 && job->borrowed_states[storage] == BLOCK_ID_AIR) {
         storage--;

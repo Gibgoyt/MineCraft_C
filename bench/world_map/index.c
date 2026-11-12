@@ -299,7 +299,7 @@ static void map_row_job(job_worker_t *worker, void *borrowed_argument) {
                     .count_y = 1u,
                     .count_z = MAP_LAYERS,
                 };
-                terrain_generate_box(run->borrowed_terrain, &whole, opened, blocks);
+                terrain_generate_box_fallback(run->borrowed_terrain, &whole, opened, blocks);
                 map_column_t real = {.kind = column->kind};
                 const bool found = map_column_read(blocks, COLUMN_Z_STORAGE_MIN, MAP_LAYERS, &real);
                 real.klass = (uint8_t)map_class_of(&real);
@@ -430,7 +430,7 @@ static void map_cave_job(job_worker_t *worker, void *borrowed_argument) {
                 .count_y = TERRAIN_FEATURE_CHUNK,
                 .count_z = MAP_LAYERS,
             };
-            terrain_generate_box(run->borrowed_terrain, &box, opened, blocks);
+            terrain_generate_box_fallback(run->borrowed_terrain, &box, opened, blocks);
             /* Plan 005 phase 11: how many veins each ore row starts in the chunk the box is most of. */
             for (uint32_t r = 0u; r < TERRAIN_ORE_ROWS; r++) {
                 row_veins[r] += terrain_ore_chunk_veins(run->borrowed_terrain->borrowed_ore, r, box.origin_x >> 4,
@@ -543,7 +543,7 @@ static void map_slice_job(job_worker_t *worker, void *borrowed_argument) {
             .count_y = 1u,
             .count_z = MAP_LAYERS,
         };
-        terrain_generate_box(run->borrowed_terrain, &box, opened, blocks);
+        terrain_generate_box_fallback(run->borrowed_terrain, &box, opened, blocks);
         for (uint32_t layer = 0u; layer < MAP_LAYERS; layer++) {
             const uint64_t to = (uint64_t)piece * MAP_SLICE_PIECE + (uint64_t)MAP_SLICE_WIDE * layer;
             const uint64_t from = (uint64_t)MAP_SLICE_PIECE * layer;

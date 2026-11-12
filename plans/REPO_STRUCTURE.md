@@ -248,6 +248,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `cave ore` | Cheese, spaghetti and noodle caves cut from any box; deepslate by depth, and the table of rock and ore veins by depth, generated from `config/ores/` (plan 005 phase 11) | 10.5 |
 | | `biome surface` | All Overworld biomes, chosen from the climate by `config/biomes/`; what each lays on the ground and lines its caves with | 10.6 |
 | | `feature` | Trees, plants, lakes, ice and snow, cross-chunk placement. `terrain_generate_box` in the Owner runs every stage | 10.7 |
+| | `climate_sample` | The climate a column job may read: 6 by 6 cells of plain integers, copied in by `climate_terrain_sample` or worked out by the fallback from latitude alone; `terrain_climate_at` blends, warps and applies the lapse. A seam, so terrain never includes `climate` | 006 phase 2 |
 
 ### Gameplay
 
@@ -497,6 +498,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/terrain/biome/` | ctest `run_terrain_biome`: `run/src/terrain/biome/` and `run/src/terrain/surface/`: every biome the plan lists is in the table and turns up in real worlds, the choice and the rules worked out by hand, each biome's own surface in real columns, lined caves, the whole chain of stages, any split of the work, and the same bytes from 1 worker and 16 |
 | `tests/run/terrain/feature/own/` | ctest `run_terrain_feature_own`: a chunk's tops read from its own box are what the walk down finds, and `terrain_generate_box` gives the same bytes as every stage by hand with features finding their own, on 3 seeds, lakes included |
 | `tests/run/terrain/feature/` | ctest `run_terrain_feature`: `run/src/terrain/feature/` and `terrain_generate_box`: any split of a box, any order of chunks, the same bytes from 1 worker and 16, trees whole across chunk lines, each tree within its reach, a column's ground against the stages walked from the sky, everything standing where it may, lakes that hold their water, ice and snow |
+| `tests/run/terrain/climate_sample/` | ctest `run_terrain_climate_sample`: `run/src/terrain/climate_sample/`: the sizes and every number mirrored from the climate, the blend and lapse by hand, rounding, the class against the climate's, the fallback pure everywhere and equal to the climate's formulas at κ 0.5, no snow line at the equator, edge reads inside the gate, and 1 worker against 16 |
 | `tests/run/terrain/ore/` | ctest `run_terrain_ore`: `run/src/terrain/ore/`: the table against the README, each ore at its depths, deepslate variants only in deepslate, veins worked out by hand, across chunks, any split of the work, and the same bytes from 1 worker and 16 |
 | `tests/run/texture/` | ctest `run_texture`, covering `run/src/texture/` with `blob` and `registry`, and `asm/src/embed_assets/`: every texture against its source files, and damage to the blob, field by field |
 | `tests/run/gpu_bridge/` | ctest `run_gpu_bridge`, covering `run/src/gpu_bridge/` with `status`, and `cuda/src/device_memory/`, on the real card: real blocks and a real kernel, the budgets, stale and forged handles, a pebibyte refused, and no device in a process of its own |

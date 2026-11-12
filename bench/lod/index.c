@@ -51,9 +51,13 @@ static void bench_lod_sample_whole(const void *borrowed_context, int32_t x, int3
     while (top > 0u && out[top - 1u] == BLOCK_ID_AIR) {
         top--;
     }
-    if (top > 0u && out[top - 1u] == BLOCK_ID_WATER &&
-        biome_features[terrain_biome_column_at(terrain->borrowed_biome, x, y).biome][BIOME_FEATURE_ICE] > 0.0f32) {
-        out[top - 1u] = BLOCK_ID_ICE;
+    if (top > 0u && out[top - 1u] == BLOCK_ID_WATER) {
+        terrain_climate_sample_t climate; /* plan 006 phase 02: the fallback, as nothing reads it yet */
+        terrain_climate_fallback(terrain->seed, x - 8, y - 8, &climate);
+        if (biome_features[terrain_biome_column_at(terrain->borrowed_biome, &climate, x, y).biome][BIOME_FEATURE_ICE] >
+            0.0f32) {
+            out[top - 1u] = BLOCK_ID_ICE;
+        }
     }
 }
 
