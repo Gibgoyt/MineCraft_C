@@ -188,6 +188,7 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | System | Parts | Job | Stage |
 |---|---|---|---|
 | `math` | `vec2 vec3 vec4 ivec3 mat4 quat aabb ray` | Our vector library, scalar C; `math_init` checks the floating-point environment | 04.1 |
+| | `det` | Deterministic float64 `det_exp`, `det_sin`, `det_cos`, `det_asin`, `det_atan2` with no libm, within 1e-12 of it and pinned, for anything that decides a block | 006 phase 2 |
 | `simd` | `cpuid` | C prototypes of the CPUID and XGETBV functions, used by `main/cpu_check` | 03.1 |
 | | `copy blend bitmask noise vec_batch` | C prototypes of NASM kernels | 04.2, 04.3 |
 | | `embed_assets` | C declarations of the data `asm/src/embed_assets/` links in; no kernels | 06.4 |
@@ -453,6 +454,7 @@ linked into minecraft_c, read through run/src/texture/
 | `tests/run/types/` | ctest `run_types`, covering all of Stage 03.1: `types`, `assert`, `log`, `main/cpu_check`, `asm/src/cpuid`, and the built program's `--report` and failure paths |
 | `tests/run/thread/` | ctest `run_thread`, covering `run/src/thread/` and `run/src/thread/ring/` together |
 | `tests/run/math/` | ctest `run_math_owner` for `run/src/math/` itself, named in its `test.cmake`, and `run_math_<part>` for each part |
+| `tests/run/math/det/` | ctest `run_math_det`: `run/src/math/det/` against libm on 1,000,000 points per function to 1e-12, the exact edges, and a digest of each over 65,536 fixed inputs, the same in debug and release |
 | `tests/run/display/mode/` | ctest `run_display_mode`, covering `run/src/display/` with `device`, `mode` and `flip`, on `fixtures/fake_card.h`, a fake kernel behind `display_ops_t` |
 | `tests/run/display/vt_guard/` | ctest `run_display_vt_guard`, in forked children that really die, over a fake kernel reporting down a pipe and keys fed down another. Shares `../mode/fixtures/fake_card.h` |
 | `tests/run/display/x11/` | ctest `run_display_x11`, covering `run/src/display/x11/wire/`: the protocol as bytes, with no server |

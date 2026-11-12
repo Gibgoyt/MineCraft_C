@@ -1,6 +1,6 @@
 # 006-ahmed-bohemoth-biomes-follow-the-climate — phase 2: The climate sample and deterministic maths
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** in progress   (updated 2026-11-12)
 
 Read first: `plans/006-ahmed-bohemoth-biomes-follow-the-climate-phase-00-vision-and-plan-files.md`, then the master `plans/006-ahmed-bohemoth-biomes-follow-the-climate.md` (sections 0 "What is in the way", 2.1, 2.2, 2.3, 4 and 9). Every number here comes from the master. Where this file adds a number the master does not give, it says so and why.
 
@@ -149,7 +149,7 @@ This phase may edit these, plus this file:
 
 From the master (section 9, phase 02):
 
-- [ ] `run/src/math/det/` with tests against libm and a pin
+- [x] `run/src/math/det/` with tests against libm and a pin
 - [ ] The climate cell fields that terrain reads move to `det_*`; climate digests are re-pinned with reasons
 - [ ] The driest month's rain per cell (a spare byte, or from harmonics)
 - [ ] `terrain/climate_sample/`: the types, `terrain_climate_at`, and `terrain_climate_fallback`
@@ -160,7 +160,7 @@ From the master (section 9, phase 02):
 
 Expanded:
 
-- [ ] The libm inventory of step 1 written into this file
+- [x] The libm inventory of step 1 written into this file
 - [ ] `static_assert(sizeof(terrain_climate_cell_t) == 24)` and `sizeof(terrain_climate_sample_t) == 888`, with `offsetof` asserts
 - [ ] `climate_tile_low` / `climate_tile_high` (`run/src/climate/index.c:210-215`) read the new reach; the gate test updated
 - [ ] F3 lines read `terrain_climate_at`, show `(climate)` or `(fallback)`
@@ -223,4 +223,27 @@ Appended as they land:
 
 ## Issues found
 
-None.
+1. **Step 1, the libm inventory** (2026-11-12, `grep` over `run/src/climate/` for every transcendental call, then each traced to
+   whether its result reaches a cell field the sample copies: `t_mean`, `t_swing`, `rain_mm_week`, `snow_balance_z`,
+   `climate_class`, `flags`). `sqrt`, `floor`, `roundf`, `fabs`, `fmin`/`fmax` are left: IEEE 754 makes them exact or
+   correctly rounded, so they lean on no libm's choices.
+
+   | Call | Where | Reaches | Moved to |
+   |---|---|---|---|
+   | `asin(sin(...))` | `climate_latitude_deg`, `run/src/climate/index.c:20` | `lat_deg`, so every field | `det_asin(det_sin(...))` |
+   | `expf` | `climate_cell_kappa`, `cell/index.c:32` (κ = 1 - e^(-d/1500)) | κ: swing, lag, heat lows, so wind and rain | `det_exp` |
+   | `cos` (sign only) | `climate_air_mirror_sign`, `air/index.c:21` | belt wind, so rain | `det_cos` |
+   | `cos`, `sin` | `climate_air_rotate`, `air/index.c:92` | pressure wind, so rain | `det_cos`, `det_sin` |
+   | `expf` | `climate_air_land_strength`, `air/index.c:164` | `current_strength`, so `t_mean` | `det_exp` |
+   | `cos` | `climate_air_heat_low`, `air/index.c:218` | heat-low pressure, so wind and rain | `det_cos` |
+   | `cos` | `climate_air_sea_temperature`, `air/index.c:225` | hurricane days and the coast flag (cell bytes) | `det_cos` |
+   | `sin` | `climate_sun_declination_deg`, `sun/index.c:19` | the wind latitude ψ: belts and rain | `det_sin` |
+   | `cosf` | `climate_heat_wave`, `heat/index.c:16` | the snow balance's weeks | `det_cos` |
+   | `cos`, `sin` | `climate_harmonic_at1`, `at2`, `harmonic/index.c:48-74` | the day's wind (rain walk, monsoon), the snow balance's rain | `det_cos`, `det_sin` |
+   | glibc's bits in `HARMONIC_EVERY_5` | `harmonic/index.c:80-` (wettest day) | `climate_harmonic_max2` | regenerated from `det_cos`/`det_sin` |
+   | `expf` | `climate_rain_moisture`, `rain/index.c:78` | rain | `det_exp` |
+   | `cosf`, `sinf` | `climate_season_months`, `season/index.c:179-185` | the driest month, dry summer, so the class | exact month tables (15°, 45°, 75° and 30°, 90°, 150°), and `det_cos` for the summer sign |
+
+   Left on libm, because nothing they make reaches a cell or a block: `climate_heat_daily_range` (`expf`, the day's range),
+   the rest of `sun/` (the sky), `outlook/`, `weather/`, `systems/` (the weather itself).
+
