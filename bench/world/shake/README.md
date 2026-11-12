@@ -22,7 +22,7 @@ On the profile preset, with the `nvidia-smi` sidecar beside it in the same wrapp
 
 ## The rows
 
-`--list` prints them. Each is `<place>/<name>`: `jagged_peaks` (the nearest jagged peaks to the world's middle, 12 blocks over the highest ground near it, as `bench_world` finds it) or, with `--at X Y Z`, `spot`, whose eye is 1.62 over the block X Y Z, as F3 shows the feet's block.
+`--list` prints them; `--only =a,b,c` runs just those. Each is `<place>/<name>`: `jagged_peaks` (the nearest jagged peaks to the world's middle, 12 blocks over the highest ground near it, as `bench_world` finds it) or, with `--at X Y Z`, `spot`, whose eye is 1.62 over the block X Y Z, as F3 shows the feet's block.
 
 | Row | Speed | How |
 |---|---|---|
@@ -32,11 +32,11 @@ On the profile preset, with the `nvidia-smi` sidecar beside it in the same wrapp
 | `shake-720-live` | 720°/s | the same with vsync off: the gpu thread draws back to back |
 | each with `-r64` | | at render distance 64 |
 
-Settled, the intervals are the card's time on each picture, as there is no clock to show it by, and P is the host's time on a draw past the card's. Live, they are main's takes off the game's own rings (`run/src/game/watch/`): the interval between pictures main took, late ones, the card's time, P (the gpu thread's own work on a picture), the gpu thread's wait for main to take the last, shade's five kernels, the fresh AO count and the card's MHz from the `clock64` kernel once a second. A live row also prints its trend by sixths: card ms, P ms and MHz.
+Settled, the intervals are the card's time on each picture, as there is no clock to show it by, and P is the host's time on a draw past the card's. **Settled, the card's clock speed is read before every measured picture** (outside its passes' times), and each row says its card time in millions of the SM's cycles (`Mcycles`, ms x MHz / 1000): on Ahmed's laptop the speed moves between about 60 and 1750 MHz from second to second, so ms alone compare clocks, not work. Live, they are main's takes off the game's own rings (`run/src/game/watch/`): the interval between pictures main took, late ones, the card's time, P (the gpu thread's own work on a picture), the gpu thread's wait for main to take the last, shade's five kernels, the fresh AO count and the card's MHz from the `clock64` kernel once a second. A live row also prints its trend by sixths: card ms, P ms and MHz.
 
 ## The rose
 
-`--rose`: at the place, settled, 72 yaws (every 5°, 0 looking east, 90 north) by 3 pitches (-20°, 0°, +15°), each drawn after 8 warm frames there. Into `--shots` (or `.`): `rose-<place>-r<distance>.csv` with every kernel, `rose-<place>-r<distance>.png` (a polar plot, north up: blue -20°, green 0°, orange +15°, grey circles at one, two and three slots of 8.33 ms), and `rose-<place>-r<distance>-worst.png`, the dearest direction's picture.
+`--rose`: at the place, settled, 72 yaws (every 5°, 0 looking east, 90 north) by 3 pitches (-20°, 0°, +15°), each drawn after 8 warm frames there, the last with the card's clock read first. The plot and the worst direction go by **ms at 600 MHz** (`card_ms_at_600_mhz`, from each direction's cycles), the master's capped card: a first rose drawn in plain ms drew the clock's steps between 148 and 400 MHz, not the directions. Into `--shots` (or `.`): `rose-<place>-r<distance>.csv` with every kernel, `rose-<place>-r<distance>.png` (a polar plot, north up: blue -20°, green 0°, orange +15°, grey circles at one, two and three slots of 8.33 ms), and `rose-<place>-r<distance>-worst.png`, the dearest direction's picture.
 
 ## `gpu_watch.sh`
 

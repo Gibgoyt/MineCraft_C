@@ -34,6 +34,9 @@
 #define SH_PITCH_SWEEP_DEG 20.0f64 /* the pitch row sweeps this far either side of SH_PITCH_DEG */
 #define SH_PEAKS_ABOVE 12.0f32     /* jagged_peaks: blocks over the ground, as bench_world's */
 #define SH_EYE_ABOVE_FEET 1.62f64  /* --at is the block the feet are in, as F3 shows it */
+/* The rose is drawn in ms at this clock, from each direction's cycles: the master's capped card, about 600 MHz. The card's own speed moves
+ * from one direction to the next on this card, so its ms alone would draw the clock and not the direction. */
+#define SH_ROSE_MHZ 600.0f64
 
 enum : uint32_t {
     SH_WIDTH = 1920u,
@@ -126,16 +129,19 @@ typedef struct sh_result_t {
     float64_t trend_card_ms[SH_TREND_PARTS]; /* 208 */
     float64_t trend_p_ms[SH_TREND_PARTS];    /* 256 */
     float64_t trend_mhz[SH_TREND_PARTS];     /* 304 */
-    uint64_t picture_hash;                   /* 352 */
-    uint64_t pictures;                       /* 360 */
-    uint32_t bins[SH_BINS];                  /* 368 */
-    uint32_t fresh_max;                      /* 416 */
-    int32_t place[3];                        /* 420 */
-    uint8_t ran;                             /* 432 */
-    uint8_t sound;                           /* 433 */
-    uint8_t _pad0[6];                        /* 434 */
+    /* 352: a picture's card time in the SM's cycles, millions: ms x MHz / 1000 on each picture that has its own clock reading. It is what
+     * compares rows whose card ran at different speeds, as this card's does from second to second. */
+    float64_t card_mcycles;
+    uint64_t picture_hash;  /* 360 */
+    uint64_t pictures;      /* 368 */
+    uint32_t bins[SH_BINS]; /* 376 */
+    uint32_t fresh_max;     /* 424 */
+    int32_t place[3];       /* 428 */
+    uint8_t ran;            /* 440 */
+    uint8_t sound;          /* 441 */
+    uint8_t _pad0[6];       /* 442 */
 } sh_result_t;
-static_assert(sizeof(sh_result_t) == 440);
+static_assert(sizeof(sh_result_t) == 448);
 
 typedef struct sh_options_t {
     const char *only;         /* 0 */
@@ -464,6 +470,15 @@ static void sh_samples_sum(sh_t *sh, uint32_t count, sh_result_t *r) {
         }
     }
     r->card_mhz = mhz_count != 0u ? mhz / (float64_t)mhz_count : 0.0f64;
+    float64_t cycles = 0.0f64;
+    uint32_t clocked = 0u;
+    for (uint32_t i = 0u; i < count; i++) {
+        if (samples[i].joined != 0u && samples[i].mhz > 0.0f32) {
+            cycles += (float64_t)samples[i].card_ms * (float64_t)samples[i].mhz / 1000.0f64;
+            clocked++;
+        }
+    }
+    r->card_mcycles = clocked != 0u ? cycles / (float64_t)clocked : 0.0f64;
     uint32_t cards = 0u;
     float64_t card_sum = 0.0f64;
     for (uint32_t i = 0u; i < count; i++) {
@@ -507,8 +522,12 @@ static display_buffer_t sh_target(const sh_t *sh) {
                               .height = SH_HEIGHT};
 }
 
-/* One settled picture from camera, as the game draws one with no threads: a tick, then the draw. */
-static bool sh_settled_draw(sh_t *sh, const display_headless_scene_t *scene, uint32_t frame) {
+/* One settled picture from camera, as the game draws one with no threads: a tick, then the draw. With clock, the card's speed is read
+ * before it, outside its passes' times: the speed moves from one picture to the next on this card. */
+static bool sh_settled_draw(sh_t *sh, const display_headless_scene_t *scene, uint32_t frame, bool clock) {
+    if (clock) {
+        game_watch_of(&sh->borrowed_app->game)->clock_asked_ns = 0;
+    }
     display_buffer_t target = sh_target(sh);
     display_script_state_t state;
     memset(&state, 0, sizeof(state));
@@ -548,7 +567,7 @@ static bool sh_row_settled(sh_t *sh, const sh_row_t *row, float64_t heading_deg,
     for (uint32_t frame = 0u; frame < SH_WARM_FRAMES + SH_MEASURED_FRAMES; frame++) {
         sh_look(row, heading_deg, (float64_t)frame / (float64_t)SH_SETTLED_HZ, &game->camera);
         const int64_t draw_ns = time_now_ns();
-        if (!sh_settled_draw(sh, &scene, frame)) {
+        if (!sh_settled_draw(sh, &scene, frame, frame >= SH_WARM_FRAMES)) {
             return false;
         }
         if (frame >= SH_WARM_FRAMES) {
@@ -728,7 +747,7 @@ static bool sh_rose(sh_t *sh, const sh_options_t *options, const char *place_nam
         return false;
     }
     fprintf(csv, "yaw_deg,pitch_deg,card_ms,coarse_ms,primary_ms,lod_ms,shade_ms,water_ms,surfaces_ms,sun_ms,ao_ms,"
-                 "ao_fresh_ms,post_ms,readback_ms,fresh,card_mhz\n");
+                 "ao_fresh_ms,post_ms,readback_ms,fresh,card_mhz,card_mcycles,card_ms_at_600_mhz\n");
     uint32_t frame = 0u, worst_p = 0u, worst_y = 0u;
     float32_t mhz = 0.0f32;
     for (uint32_t p = 0u; p < SH_ROSE_PITCHES; p++) {
@@ -736,7 +755,7 @@ static bool sh_rose(sh_t *sh, const sh_options_t *options, const char *place_nam
             game->camera.yaw = (float32_t)((float64_t)y * 360.0f64 / SH_ROSE_YAWS * SH_DEGREES);
             game->camera.pitch = (float32_t)(SH_ROSE_PITCH_DEG[p] * SH_DEGREES);
             for (uint32_t warm = 0u; warm <= SH_ROSE_WARM; warm++) {
-                if (!sh_settled_draw(sh, &scene, frame++)) {
+                if (!sh_settled_draw(sh, &scene, frame++, warm == SH_ROSE_WARM)) {
                     (void)fclose(csv);
                     return false;
                 }
@@ -744,12 +763,15 @@ static bool sh_rose(sh_t *sh, const sh_options_t *options, const char *place_nam
             sh_sample_t s;
             sh_settled_sample(sh, &s, 0.0f32);
             mhz = s.mhz > 0.0f32 ? s.mhz : mhz;
-            total[p][y] = s.card_ms;
-            if (s.card_ms > total[worst_p][worst_y]) {
+            const float64_t mcycles = (float64_t)s.card_ms * (float64_t)mhz / 1000.0f64;
+            total[p][y] = mhz > 0.0f32 ? (float32_t)(mcycles * 1000.0f64 / SH_ROSE_MHZ) : s.card_ms;
+            if (total[p][y] > total[worst_p][worst_y]) {
                 worst_p = p;
                 worst_y = y;
             }
-            fprintf(csv, "%.0f,%.0f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%" PRIu32 ",%.0f\n",
+            fprintf(csv,
+                    "%.0f,%.0f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%" PRIu32
+                    ",%.0f,%.3f,%.3f\n",
                     (libc_double_t)((float64_t)y * 360.0f64 / SH_ROSE_YAWS), (libc_double_t)SH_ROSE_PITCH_DEG[p],
                     (libc_double_t)s.card_ms, (libc_double_t)s.pass_ms[FRAME_PASS_COARSE],
                     (libc_double_t)s.pass_ms[FRAME_PASS_PRIMARY], (libc_double_t)s.lod_ms,
@@ -757,7 +779,7 @@ static bool sh_rose(sh_t *sh, const sh_options_t *options, const char *place_nam
                     (libc_double_t)s.shade_ms[SHADE_SPAN_SURFACES], (libc_double_t)s.shade_ms[SHADE_SPAN_SUN],
                     (libc_double_t)s.shade_ms[SHADE_SPAN_AO], (libc_double_t)s.shade_ms[SHADE_SPAN_FRESH],
                     (libc_double_t)s.pass_ms[FRAME_PASS_POST], (libc_double_t)s.pass_ms[FRAME_PASS_READBACK], s.fresh,
-                    (libc_double_t)mhz);
+                    (libc_double_t)mhz, (libc_double_t)mcycles, (libc_double_t)total[p][y]);
         }
     }
     (void)fclose(csv);
@@ -769,7 +791,8 @@ static bool sh_rose(sh_t *sh, const sh_options_t *options, const char *place_nam
             sum += (float64_t)total[p][y];
         }
     }
-    printf("rose %s r%" PRIu32 ": card ms least %.2f mean %.2f most %.2f, at yaw %.0f pitch %.0f; card %.0f MHz; %s\n",
+    printf("rose %s r%" PRIu32
+           ": card ms at 600 MHz least %.2f mean %.2f most %.2f, at yaw %.0f pitch %.0f; card %.0f MHz last; %s\n",
            place_name, options->render_distance != 0u ? options->render_distance : (uint32_t)SH_DISTANCE,
            (libc_double_t)least, (libc_double_t)(sum / (SH_ROSE_PITCHES * SH_ROSE_YAWS)),
            (libc_double_t)total[worst_p][worst_y], (libc_double_t)((float64_t)worst_y * 360.0f64 / SH_ROSE_YAWS),
@@ -782,7 +805,7 @@ static bool sh_rose(sh_t *sh, const sh_options_t *options, const char *place_nam
     game->camera.yaw = (float32_t)((float64_t)worst_y * 360.0f64 / SH_ROSE_YAWS * SH_DEGREES);
     game->camera.pitch = (float32_t)(SH_ROSE_PITCH_DEG[worst_p] * SH_DEGREES);
     for (uint32_t warm = 0u; warm <= SH_ROSE_WARM; warm++) {
-        ok = sh_settled_draw(sh, &scene, frame++) && ok;
+        ok = sh_settled_draw(sh, &scene, frame++, false) && ok;
     }
     (void)snprintf(path, sizeof(path), "%s/rose-%s-r%" PRIu32 "-worst.png", directory, place_name,
                    options->render_distance != 0u ? options->render_distance : (uint32_t)SH_DISTANCE);
@@ -861,12 +884,13 @@ static void sh_row_print(const char *place, const sh_row_t *row, const sh_result
     }
     printf("%s/%-26s %-8s interval p50 %.2f p99 %.2f worst %.2f ms; late %.1f %%; %.1f pictures/s; card mean %.2f p99 "
            "%.2f worst "
-           "%.2f ms at %.0f MHz (%.0f to %.0f)%s\n",
+           "%.2f ms at %.0f MHz (%.0f to %.0f): %.2f Mcycles%s\n",
            place, row->name, sh_mode_name(row->mode), (libc_double_t)r->interval_p50_ms,
            (libc_double_t)r->interval_p99_ms, (libc_double_t)r->interval_worst_ms,
            (libc_double_t)(r->late_share * 100.0f64), (libc_double_t)r->pictures_per_s, (libc_double_t)r->card_mean_ms,
            (libc_double_t)r->card_p99_ms, (libc_double_t)r->card_worst_ms, (libc_double_t)r->card_mhz,
-           (libc_double_t)r->card_mhz_low, (libc_double_t)r->card_mhz_high, r->sound != 0u ? "" : "; NOT SOUND");
+           (libc_double_t)r->card_mhz_low, (libc_double_t)r->card_mhz_high, (libc_double_t)r->card_mcycles,
+           r->sound != 0u ? "" : "; NOT SOUND");
     printf("    passes coarse %.2f primary %.2f (far field %.2f) shade %.2f post %.2f readback %.2f; shade water %.2f "
            "surfaces "
            "%.2f sun %.2f ao %.2f fresh %.2f ms; fresh mean %.0f max %" PRIu32 "; P %.2f ms; wait for take %.2f ms\n",
@@ -919,7 +943,7 @@ static bool sh_record(const sh_result_t *results, const sh_options_t *options) {
             "interval_p50_ms\tinterval_p99_ms\tinterval_worst_ms\tlate_share\tpictures_per_s\tcard_mean_ms\t"
             "card_p99_ms\tcard_worst_ms\tcoarse_ms\tprimary_ms\tlod_ms\tshade_ms\tpost_ms\treadback_ms\twater_ms\t"
             "surface_ms\tsun_ms\tao_ms\tao_fresh_ms\tfresh_mean\tfresh_max\tp_ms\tgpu_wait_take_ms\tcard_mhz\t"
-            "card_mhz_low\tcard_mhz_high\tpictures\tseconds\tpicture\tsound\n");
+            "card_mhz_low\tcard_mhz_high\tpictures\tseconds\tpicture\tsound\tcard_mcycles\n");
     }
     char date[32] = "";
     const time_t now = time(nullptr);
@@ -941,7 +965,8 @@ static bool sh_record(const sh_result_t *results, const sh_options_t *options) {
             file,
             "%s\t%s\t%s\t%s/%s\t%s\t%" PRIX64 "\t%" PRId32 "\t%" PRId32 "\t%" PRId32 "\t%.1f\t%" PRIu32 "\t%" PRIX32
             "\t%.3f\t%.3f\t%.3f\t%.4f\t%.2f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t%.3f\t"
-            "%.3f\t%.3f\t%.0f\t%" PRIu32 "\t%.3f\t%.3f\t%.0f\t%.0f\t%.0f\t%" PRIu64 "\t%.2f\t%016" PRIX64 "\t%u\n",
+            "%.3f\t%.3f\t%.0f\t%" PRIu32 "\t%.3f\t%.3f\t%.0f\t%.0f\t%.0f\t%" PRIu64 "\t%.2f\t%016" PRIX64
+            "\t%u\t%.3f\n",
             date, options->label != nullptr ? options->label : "-", sh_preset_name(), place, row->name,
             sh_mode_name(row->mode), options->seed, r->place[0], r->place[1], r->place[2],
             (libc_double_t)options->yaw_deg, distance, options->features_off, (libc_double_t)r->interval_p50_ms,
@@ -955,7 +980,8 @@ static bool sh_record(const sh_result_t *results, const sh_options_t *options) {
             (libc_double_t)r->shade_ms[SHADE_SPAN_AO], (libc_double_t)r->shade_ms[SHADE_SPAN_FRESH],
             (libc_double_t)r->fresh_mean, r->fresh_max, (libc_double_t)r->p_ms, (libc_double_t)r->wait_take_ms,
             (libc_double_t)r->card_mhz, (libc_double_t)r->card_mhz_low, (libc_double_t)r->card_mhz_high, r->pictures,
-            (libc_double_t)r->seconds, row->mode == SH_MODE_SETTLED ? r->picture_hash : 0u, (uint32_t)r->sound);
+            (libc_double_t)r->seconds, row->mode == SH_MODE_SETTLED ? r->picture_hash : 0u, (uint32_t)r->sound,
+            (libc_double_t)r->card_mcycles);
     }
     const bool closed = fclose(file) == 0;
     if (!closed) {
@@ -972,7 +998,7 @@ static void sh_usage(const char *program) {
         "usage: %s [--only <text>] [--at <x> <y> <z>] [--seed <n>] [--yaw <degrees>] [--render-distance <chunks>]\n"
         "          [--features-off <hex>] [--seconds <n>] [--record <file>] [--label <text>] [--shots <dir>] [--rose] "
         "[--list]\n"
-        "  --only <text>     only the rows whose name holds this, or =<name> for just that row\n"
+        "  --only <text>     only the rows whose name holds this, or =<name>,<name>... for just those\n"
         "  --at <x> <y> <z>  the block the feet are in, as F3 says, in place of the nearest jagged peaks\n"
         "  --seed <n>        the world's seed, as a save's state file has it (hex with 0x, else decimal)\n"
         "  --yaw <degrees>   the heading the shake swings about, and the rose's eye; 0 looks east, 90 north\n"
@@ -1029,9 +1055,20 @@ static bool sh_parse(int32_t argc, char **argv, sh_options_t *out) {
     return out->label == nullptr || strchr(out->label, '\t') == nullptr;
 }
 
+/* With =, the names after it, split by commas, each whole. */
 static bool sh_chosen(uint32_t row, const char *only) {
     if (only != nullptr && only[0] == '=') {
-        return strcmp(SH_ROW_LIST[row].name, only + 1) == 0;
+        const char *const name = SH_ROW_LIST[row].name;
+        const uint64_t length = strlen(name);
+        for (const char *at = only + 1; *at != '\0';) {
+            const char *const comma = strchr(at, ',');
+            const uint64_t token = comma != nullptr ? (uint64_t)(comma - at) : strlen(at);
+            if (token == length && strncmp(at, name, length) == 0) {
+                return true;
+            }
+            at += token + (comma != nullptr ? 1u : 0u);
+        }
+        return false;
     }
     return only == nullptr || strstr(SH_ROW_LIST[row].name, only) != nullptr;
 }
