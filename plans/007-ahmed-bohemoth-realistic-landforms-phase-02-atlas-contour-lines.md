@@ -1,6 +1,6 @@
 # 007-ahmed-bohemoth-realistic-landforms — phase 2: Atlas contour lines
 
-**Status:** in progress: steps 2 to 7 built and tested   (updated 2026-11-12)
+**Status:** built and tested; two todos open: the worst-case column top misses 20 µs, and labels wait for Ahmed (Q5)   (updated 2026-11-12)
 
 Read first: `plans/007-ahmed-bohemoth-realistic-landforms-phase-00-vision-and-plan-files.md`, then the master `plans/007-ahmed-bohemoth-realistic-landforms.md` (sections 0 "What the picture shows", 3.13, 6, 12 Q5), then plan 004's Atlas phase `plans/004-ahmed-bohemoth-climate-system-phase-09-the-atlas.md` ("Isobars and contours", the layer table) and `run/src/ui/atlas/README.md`. Where this file adds a number the master does not give, it says so and why.
 
@@ -191,8 +191,8 @@ This phase may edit these, plus this file:
 - [x] Goldens re-made and looked at, with reasons; `run_ui_atlas` and `run_ui_atlas_game` pass
 - [ ] `bench_atlas` on release: every layer under 60 ms, column top under 20 µs, recorded
 - [ ] (Optional, only if Ahmed says yes) index labels
-- [ ] READMEs updated (`run/src/ui/atlas/`, `tile/`, `layer/`, `config/blocks/`)
-- [ ] Every `run_terrain_*` digest unchanged
+- [x] READMEs updated (`run/src/ui/atlas/`, `tile/`, `layer/`, `config/blocks/`)
+- [x] Every `run_terrain_*` digest unchanged
 
 ## Tests
 
@@ -249,6 +249,7 @@ Ahmed opens his own world, presses `M` and sees contour lines on the Terrain lay
 
 Appended as they land:
 
+- `66ab8109` Draw contour lines on the Atlas Terrain layer by default, spaced by the zoom with index lines, on the ground under the trees from a new 5-bit cover depth in each pixel, with tile files at version 2 still reading version 1.
 - `7c4e7bc4` Add the map_cover block flag on leaves, logs, vines, snow layers and cactus, so the Atlas can find the ground under them.
 
 ## Issues found
@@ -262,3 +263,7 @@ Appended as they land:
 - **`bench/world_map/atlas/`** names no layer key (it takes `--layer <key|all>` and loops over the table), so there was nothing to rename; it draws through `ui_atlas_draw_picture` and makes its pixels with `ui_atlas_column_top`, so it shows the same lines, on the ground.
 - **Goldens (step 7)**, looked at in PNG: `terrain_z1` shows thin lines every 25 and an index line at 250 crossing the hill; `terrain_z8` thin lines every 100 and a dark index line at 500 round the mountain. `terrain_plain_*` are the old `terrain_*`; `terrain_lines_*` removed; no other layer's hash moved. Reasons in `tests/run/ui/atlas/README.md`.
 - **Formatting.** `7c4e7bc4` left `compile/src/game_tables/blocks/index.c` and `tests/compile/game_tables/index.c` not clang-formatted (`clang_format` would have failed on that commit alone); the next commit formats them.
+- **`bench_atlas` (step 8), todo left open.** Every layer is under 60 ms by the median (`terrain` with lines 23.8 ms against `terrain_plain` 11.1 ms; worst `monsoon` 41.7 ms), opening 23.4 ms, main's frame 0.725 ms, all on a busy machine (load 82 to 21); full table in `bench/atlas/README.md`. The **column top missed 20 µs** at first: 31.5 µs. The cause is partly a bench bug: its one column was filled with block 1, `acacia_leaves`, while its comment said stone, so with leaves now cover every pixel walked the whole 31 layers, the worst case there is. Two changes: `ui_atlas_column_top` now looks each voxel up in a per-call table of what the block is (counts, cover) instead of a shape switch and a flag test (31.5 to 26.5 µs on that column); and `bench/atlas/index.c` (outside this phase's owned paths, a small diff) times three named columns: the real terrain's kind 15.4 µs, a forest with an oak canopy on every pixel 17.2 µs (both met), and leaves from the floor to 64, 29.3 µs, **MISSED**. No real column is solid leaves 320 deep, so the game's columns meet the budget, but the todo asks for the column top under 20 µs and the worst case does not, so it stays unticked for Ahmed or the orchestrator to judge. Going further would mean walking cover by whole 64-pixel words of bits rather than voxel by voxel.
+- **The map tool**, `bench_world_map_atlas /tmp/mc_c_atlas 2198175988018515243 --layer terrain --zoom 4`, wrote its picture in 6.1 ms. Looked at: lines every 50 and index lines every 500 on the snowy mountain at the south-west, and smooth lines running straight through the speckled forest on the south-east, not round the trees.
+- **Labels (optional step 9)** not built: master Q5's default is no labels, and Ahmed has not said otherwise.
+- **Verification** as run: debug build; `run_ui_atlas`, `run_ui_atlas_contour` and `run_ui_atlas_game` pass (the last on the card, with Ahmed's game not running, card idle at 300 MHz and 66 °C before it); `compile_game_tables` passes; all 10 `run_terrain_*` pass; `standards_lint` and `clang_format` pass; release build; `bench_atlas` and `bench_world_map_atlas` as above. `pgrep -af "$PWD/build"` prints nothing.

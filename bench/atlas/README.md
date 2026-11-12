@@ -29,9 +29,37 @@ What it does:
    the weather systems' day list built for the now layers inside the time. For each value layer it prints the share of
    pixels that got a value, so a layer timed with nothing to show is seen.
 5. **Main's frame:** 200 frames of `ui_atlas_frame` and `ui_atlas_frame_draw` with a picture shown on temperature by day.
-6. **Columns:** 20 000 column writes, five rounds; 2000 column tops of a column of stone to 64, five rounds.
+6. **Columns:** 20 000 column writes, five rounds; 2000 column tops, five rounds, of each of three columns (plan 007
+   phase 02, when the top began measuring cover depth): the real terrain's kind (stone to 60, dirt, grass at 64, a
+   flower); the same under an oak canopy on every pixel (leaves 70 to 73, a log at the middle), the forest case; and
+   leaves from the floor to 64, where every pixel walks the whole 31 layers of cover, the worst case. Before plan 007
+   phase 02 the one column timed was the last of these by mistake: it filled with block 1, `acacia_leaves`, while its
+   comment said stone, which cost nothing extra until leaves became cover.
 
 ## Results
+
+### 2026-11-12, plan 007 phase 02: contour lines and cover depth
+
+Release build, through the build lock, exit status 0, on the code of plan 007 phase 02 after its column-top table (one
+look-up a voxel instead of a shape switch and a flag). The machine was busy (load average 82 falling to 21 over the run:
+other agents' work outside the lock), so every number here is some 10% above a quiet run's.
+
+| | Median (slowest) | Target |
+|---|---|---|
+| Opening over 100 km², M to the first picture | 23.4 ms (24.7) | 100 ms, met |
+| `terrain`, now with contour lines | 23.8 ms (41.5) | 60 ms, met |
+| `terrain_plain`, the old `terrain` | 11.1 ms (11.6) | 60 ms, met |
+| Worst layer | `monsoon` 41.7 ms; the slowest single picture `temperature_now` 74.9 ms | 60 ms by the median, met |
+| Main's frame with the Atlas up | 0.725 ms (1.199) | 2 ms, met |
+| Column write (sim) | 0.097 us | 5 us, met |
+| Column top, the real terrain's kind | 15.4 us (15.6) | 20 us, met |
+| Column top, forest (an oak canopy on every pixel) | 17.2 us (17.4) | 20 us, met |
+| Column top, 320 of leaves (every pixel walks 31 of cover) | 29.3 us (35.7) | 20 us, **MISSED** |
+
+The contours add about 12 ms to the terrain picture (the ground's band of two intervals against four neighbours, each
+pixel). The worst-case column costs 31 more looks for each of its 256 pixels; in two earlier runs that day it was
+31.5 us before the table (load average 3 when it started) and 26.5 us after. No real column is leaves to the floor: a forest's cover is a few layers of
+leaves over air, which the not-air bitmask passes over, and it meets the target.
 
 ### 2026-11-08, plan 004 phase 11, second pass: from a cool machine
 

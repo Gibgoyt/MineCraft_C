@@ -78,9 +78,15 @@ static bool tile_counts(uint16_t state, uint32_t colour_count) {
     }
 }
 
-/* Blocks the Atlas sees through to the ground for its contour lines: leaves, logs, vines, snow layers, cactus. */
-static bool tile_cover(uint16_t state) {
-    return state < BLOCK_COUNT && (block_defs[state].flags & BLOCK_FLAG_MAP_COVER) != 0u;
+/* What a block is to the column top, as bits: TILE_COUNTS if it hides the ground, TILE_COVER if the Atlas also sees through
+ * it to the ground for its contour lines (leaves, logs, vines, snow layers, cactus: BLOCK_FLAG_MAP_COVER). */
+enum : uint8_t {
+    TILE_COUNTS = 1u,
+    TILE_COVER = 2u,
+};
+static uint8_t tile_kind(uint16_t state, uint32_t colour_count) {
+    const bool cover = state < BLOCK_COUNT && (block_defs[state].flags & BLOCK_FLAG_MAP_COVER) != 0u;
+    return (uint8_t)((tile_counts(state, colour_count) ? TILE_COUNTS : 0u) | (cover ? TILE_COVER : 0u));
 }
 
 enum : uint32_t {
@@ -103,6 +109,10 @@ void ui_atlas_column_top(const uint16_t *colours, uint32_t colour_count, const u
      * over after one look at its 64 words, and in the rest only the voxels that hold something are looked at. */
     uint8_t where[UI_ATLAS_COLUMN_PIXELS];
     int16_t top[UI_ATLAS_COLUMN_PIXELS];
+    uint8_t kinds[BLOCK_COUNT]; /* by block, once a call: a table look in the loop, not a switch and a flag */
+    for (uint32_t b = 0u; b < BLOCK_COUNT; b++) {
+        kinds[b] = tile_kind((uint16_t)b, colour_count);
+    }
     uint64_t solid[TILE_SECTION_WORDS];
     uint32_t left = UI_ATLAS_COLUMN_PIXELS;
     for (uint32_t k = 0u; k < UI_ATLAS_COLUMN_PIXELS; k++) {
@@ -131,12 +141,16 @@ void ui_atlas_column_top(const uint16_t *colours, uint32_t colour_count, const u
                     }
                     /* By the block alone: a saved column's voxels hold their state too. */
                     const uint16_t state = block_state_id(layer[k]);
-                    if (!tile_counts(state, colour_count)) {
+                    const uint8_t kind = state < BLOCK_COUNT ? kinds[state] : tile_kind(state, colour_count);
+                    if ((kind & TILE_COUNTS) == 0u) {
                         continue;
+                    }
+                    const bool cover = (kind & TILE_COVER) != 0u;
+                    if (where[k] == TILE_IN_COVER && cover && (int32_t)top[k] - height < (int32_t)UI_ATLAS_COVER_MAX) {
+                        continue; /* the common case under a canopy: still cover */
                     }
                     const uint32_t x = k % UI_ATLAS_COLUMN_SIDE, y = k / UI_ATLAS_COLUMN_SIDE;
                     const uint32_t at = (UI_ATLAS_COLUMN_SIDE - 1u - y) * UI_ATLAS_COLUMN_SIDE + x;
-                    const bool cover = tile_cover(state);
                     if (where[k] == TILE_SEEKING) {
                         const uint16_t colour = state < colour_count ? colours[state] : 0u;
                         out[at] = ui_atlas_pixel_pack(colour, height);
@@ -147,9 +161,6 @@ void ui_atlas_column_top(const uint16_t *colours, uint32_t colour_count, const u
                     }
                     /* Under cover: the first block that counts and is not cover is the ground, at most 31 down. */
                     const int32_t depth = (int32_t)top[k] - height;
-                    if (cover && depth < (int32_t)UI_ATLAS_COVER_MAX) {
-                        continue;
-                    }
                     out[at] = ui_atlas_pixel_pack_cover(ui_atlas_pixel_rgb565(out[at]), top[k], (uint32_t)depth);
                     where[k] = TILE_DONE;
                     left--;

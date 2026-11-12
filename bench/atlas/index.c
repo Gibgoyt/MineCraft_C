@@ -228,6 +228,57 @@ static void bench_layers(bench_t *bench, const char *directory, uint8_t *memory)
     ui_atlas_world_close(bench->ui);
 }
 
+/* The columns the column top is timed on. */
+typedef enum bench_column_kind_t : uint8_t {
+    BENCH_COLUMN_GROUND = 0, /* the real terrain's kind: stone to 60, dirt, grass at 64, a flower, the rest air */
+    BENCH_COLUMN_FOREST = 1, /* the same under an oak on every pixel: a log to 69 at the middle, leaves 70 to 73 */
+    BENCH_COLUMN_LEAVES = 2, /* leaves from the floor to 64: every pixel walks the whole 31 of cover */
+} bench_column_kind_t;
+
+static void bench_column_put(uint16_t *states, uint32_t k, int32_t z, uint16_t block) {
+    const uint32_t from_floor = (uint32_t)(z - COLUMN_Z_STORAGE_MIN);
+    states[(uint64_t)(from_floor / 16u) * SECTION_VOXELS + section_voxel_index(k % 16u, k / 16u, from_floor % 16u)] =
+        block;
+}
+
+static void bench_column_fill(uint16_t *states, bench_column_kind_t kind) {
+    memset(states, 0, (uint64_t)COLUMN_SECTIONS * SECTION_VOXELS * sizeof(uint16_t));
+    for (uint32_t k = 0u; k < 256u; k++) {
+        for (int32_t z = COLUMN_Z_STORAGE_MIN; z <= 64; z++) {
+            const uint16_t block = kind == BENCH_COLUMN_LEAVES ? BLOCK_ID_ACACIA_LEAVES
+                                   : z < 61                    ? BLOCK_ID_STONE
+                                   : z < 64                    ? BLOCK_ID_DIRT
+                                                               : BLOCK_ID_GRASS_BLOCK;
+            bench_column_put(states, k, z, block);
+        }
+        if (kind == BENCH_COLUMN_LEAVES) {
+            continue;
+        }
+        bench_column_put(states, k, 65, BLOCK_ID_DANDELION);
+        if (kind == BENCH_COLUMN_FOREST) {
+            for (int32_t z = 66; z <= 69; z++) {
+                bench_column_put(states, k, z, k == 136u ? BLOCK_ID_OAK_LOG : 0u);
+            }
+            for (int32_t z = 70; z <= 73; z++) {
+                bench_column_put(states, k, z, BLOCK_ID_OAK_LEAVES);
+            }
+        }
+    }
+}
+
+static void bench_tops(bench_t *bench, const uint16_t *states, const char *what) {
+    uint32_t top[UI_ATLAS_COLUMN_PIXELS];
+    float64_t us[5];
+    for (uint32_t round = 0u; round < 5u; round++) {
+        const int64_t started = time_now_ns();
+        for (uint32_t n = 0u; n < BENCH_TOPS; n++) {
+            ui_atlas_column_top(ui_atlas_colours(bench->ui), BLOCK_COUNT, states, top);
+        }
+        us[round] = (float64_t)(time_now_ns() - started) / 1000.0f64 / (float64_t)BENCH_TOPS;
+    }
+    bench_report(what, us, 5u, BENCH_TOP_TARGET_US, "us");
+}
+
 /* A column write on the sim, and a column's top on a worker. */
 static void bench_columns(bench_t *bench, uint8_t *memory) {
     if (!ui_atlas_world_open(bench->ui, nullptr, BENCH_SEED, nullptr, nullptr)) {
@@ -246,24 +297,15 @@ static void bench_columns(bench_t *bench, uint8_t *memory) {
     }
     bench_report("column write (sim)", us, 5u, BENCH_WRITE_TARGET_US, "us");
     ui_atlas_world_close(bench->ui);
-    /* A column of the real terrain's kind: stone to 60, dirt, grass at 64, a flower, the rest air. */
+    /* Plan 007 phase 02: three columns. Until then this filled every voxel to 64 with block 1, which is acacia_leaves,
+     * not the stone its comment said; with cover depth that is the worst case, timed last under its own name. */
     uint16_t *const states = (uint16_t *)(void *)memory;
-    const uint64_t voxels = (uint64_t)COLUMN_SECTIONS * SECTION_VOXELS;
-    memset(states, 0, voxels * sizeof(uint16_t));
-    for (uint32_t z = 0u; z < (uint32_t)(64 - COLUMN_Z_STORAGE_MIN); z++) {
-        for (uint32_t k = 0u; k < 256u; k++) {
-            states[(uint64_t)(z / 16u) * SECTION_VOXELS + section_voxel_index(k % 16u, k / 16u, z % 16u)] = 1u;
-        }
-    }
-    uint32_t top[UI_ATLAS_COLUMN_PIXELS];
-    for (uint32_t round = 0u; round < 5u; round++) {
-        const int64_t started = time_now_ns();
-        for (uint32_t n = 0u; n < BENCH_TOPS; n++) {
-            ui_atlas_column_top(ui_atlas_colours(bench->ui), BLOCK_COUNT, states, top);
-        }
-        us[round] = (float64_t)(time_now_ns() - started) / 1000.0f64 / (float64_t)BENCH_TOPS;
-    }
-    bench_report("column top (worker)", us, 5u, BENCH_TOP_TARGET_US, "us");
+    bench_column_fill(states, BENCH_COLUMN_GROUND);
+    bench_tops(bench, states, "column top (worker)");
+    bench_column_fill(states, BENCH_COLUMN_FOREST);
+    bench_tops(bench, states, "column top, forest (worker)");
+    bench_column_fill(states, BENCH_COLUMN_LEAVES);
+    bench_tops(bench, states, "column top, 320 of leaves (worker)");
 }
 
 /* Everything, once the region is laid out. 0, or 2 if something could not start. */
