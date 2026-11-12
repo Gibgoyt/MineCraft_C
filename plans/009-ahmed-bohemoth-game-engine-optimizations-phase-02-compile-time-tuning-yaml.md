@@ -26,7 +26,7 @@ Every number that tunes the renderer's speed or look, and that shapes no data fo
 
 ## Where this fits
 
-**The vision.** Ahmed: "config settings should be read at compile time from a yaml file so that we can very very easily change things up! and fine tune what we need to!!!" Phases 03 to 07 each add numbers (pixel error, the near guarantee, the shadow cone, the night cut, the upscale jitter). They must land in YAML from their first commit, so the file format exists first.
+**The vision.** Ahmed: "config settings should be read at compile time from a yaml file so that we can very very easily change things up! and fine tune what we need to!!!" Phases 03 to 07 each add numbers (pixel error, the near guarantee, the shadow cone, the dim-light cut, the upscale jitter). They must land in YAML from their first commit, so the file format exists first.
 
 **What reads it:** every later phase; `bench_world` (the hash per row); Ahmed, tuning E and the internal scale by eye.
 
