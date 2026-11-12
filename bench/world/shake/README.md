@@ -36,7 +36,7 @@ Settled, the intervals are the card's time on each picture, as there is no clock
 
 **Plan 008 phase 02.** A live row says main's next take before each frame (`game_loop_next_take`, the tick it sleeps to), as a window does, so the gpu thread starts pictures by the start rule (`run/src/game/pace/`); `--pace-off` says none, which keeps the rule from before, for a before and after in one run. "Late" is then a picture ready after the take the rule aimed it at, as in the frame log, and each live row prints `pace:` the card's idle time before a picture the rule started at once (after a late one, or back to back): the phase's target is under 0.5 ms.
 
-**Plan 008 phase 03.** `--serial-frames` finishes each picture before the next is begun, as before that phase, for a before and after. Each live row prints `overlap:` the row's time over every picture drawn, taken or not (back to back, the card's time between pictures), the readback's time a picture, and the share of pictures begun with the one before still on its way.
+**Plan 008 phase 03.** `--serial-frames` finishes each picture before the next is begun, as before that phase, for a before and after. Each live row prints `overlap:` the row's time over every picture drawn, taken or not (back to back, the card's time between pictures), the readback's time a picture, the share of pictures begun with the one before still on its way, camera to screen p50 (a picture's start, where its camera is read, to main's take) and the gpu thread's own part (start to all queued). With a picture on its way the row's P is no longer the gpu thread's own work: a picture's start to ready then holds the end of the one before.
 
 ## The rose
 

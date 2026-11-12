@@ -557,6 +557,16 @@ bool frame_gpu_done(frame_gpu_t *frame, uint32_t slot_index) {
     return end != cudaErrorNotReady;
 }
 
+bool frame_gpu_whole(frame_gpu_t *frame, uint32_t slot_index) {
+    frame_flight_t *const flight = frame->borrowed_flight;
+    if (flight == nullptr || slot_index >= FRAME_FLIGHT_SLOTS ||
+        flight->slots[slot_index].state == (uint8_t)FRAME_SLOT_FREE) {
+        return false;
+    }
+    return cudaEventQuery((cudaEvent_t)flight->slots[slot_index].owned_events[FRAME_KERNEL_READBACK]) !=
+           cudaErrorNotReady;
+}
+
 gpu_status_t frame_gpu_run(frame_gpu_t *frame, const frame_args_t *args, frame_timings_t *out_timings) {
     uint32_t slot = 0u;
     gpu_status_t status = frame_gpu_queue(frame, args, &slot);

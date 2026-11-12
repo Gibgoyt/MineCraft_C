@@ -315,6 +315,8 @@ gpu_status_t render_frame_queue(render_frame_t *frame, const world_buffers_t *bu
 gpu_status_t render_frame_finish(render_frame_t *frame);
 /* Whether render_frame_finish would hand the oldest frame over without waiting. False with nothing on its way. */
 bool render_frame_oldest_done(render_frame_t *frame);
+/* Whether the oldest frame's picture is whole on the card, its copy home all that is left of it. False with nothing on its way. */
+bool render_frame_oldest_whole(render_frame_t *frame);
 
 /* The thread that draws, before a frame: a new slot from the sim (nullptr if none came), eased toward over the ticks between, at once
  * for the first or a forced one; and the clock of the fall and the bolt for a frame at now_ns (0 for a run with no threads, which

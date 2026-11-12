@@ -670,6 +670,16 @@ gpu_status_t render_frame_draw(render_frame_t *frame, const world_buffers_t *buf
     return render_frame_draw_weather(frame, buffers, camera, nullptr, nullptr);
 }
 
+/* The oldest frame on its way, if its copy home is not queued yet, sent home into the exchange's back slot. */
+static gpu_status_t frame_home_oldest(render_frame_t *frame) {
+    const frame_flight_t *const flight = frame->gpu.borrowed_flight;
+    if (frame->on_way == 0u || flight == nullptr ||
+        flight->slots[frame->oldest_slot].state != (uint8_t)FRAME_SLOT_QUEUED) {
+        return GPU_STATUS_OK;
+    }
+    return frame_gpu_home(&frame->gpu, frame->oldest_slot, frame->borrowed_pictures[frame->pictures.back]);
+}
+
 gpu_status_t render_frame_queue(render_frame_t *frame, const world_buffers_t *buffers, const render_camera_t *camera,
                                 const render_weather_t *weather, const device_block_t *map_block) {
     traverse_camera_t view;
@@ -781,11 +791,13 @@ gpu_status_t render_frame_queue(render_frame_t *frame, const world_buffers_t *bu
     }
     frame->on_way++;
     if (frame->on_way == 1u) {
-        /* The exchange's back slot is free: home at once. A second frame goes home when the first is finished. */
         frame->oldest_slot = (uint8_t)slot;
-        status = frame_gpu_home(&frame->gpu, slot, frame->borrowed_pictures[frame->pictures.back]);
     }
-    return status;
+    /* The oldest frame's picture goes home into the exchange's back slot, free since the last publish: at once for a frame queued alone, and
+     * for the one before only now, behind this frame's copies to the card, so those are never queued after a copy home still waiting for its
+     * picture (measured: the card then waited the whole readback before this frame's first kernel). A second frame goes home at the first's
+     * finish. */
+    return frame_home_oldest(frame);
 }
 
 gpu_status_t render_frame_finish(render_frame_t *frame) {
@@ -794,11 +806,15 @@ gpu_status_t render_frame_finish(render_frame_t *frame) {
             (gpu_error_t){"frame: nothing on its way to finish", nullptr, nullptr, 0, GPU_STATUS_INVALID_ARGUMENT};
         return GPU_STATUS_INVALID_ARGUMENT;
     }
+    gpu_status_t status = frame_home_oldest(frame);
+    if (status != GPU_STATUS_OK) {
+        return status;
+    }
     frame_timings_t timings;
     const uint32_t slot = frame->oldest_slot;
     frame->on_way--;
     frame->oldest_slot = (uint8_t)((slot + 1u) % FRAME_FLIGHT_SLOTS);
-    gpu_status_t status = frame_gpu_finish(&frame->gpu, slot, &timings);
+    status = frame_gpu_finish(&frame->gpu, slot, &timings);
     if (status != GPU_STATUS_OK) {
         return status;
     }
@@ -814,15 +830,15 @@ gpu_status_t render_frame_finish(render_frame_t *frame) {
     stats->frames++;
     stats->readback_bytes += post_xrgb_bytes(frame->width, frame->height);
     render_exchange_publish(&frame->pictures);
-    if (frame->on_way != 0u) {
-        /* The next frame's picture goes into the slot the publish gave back. */
-        status = frame_gpu_home(&frame->gpu, frame->oldest_slot, frame->borrowed_pictures[frame->pictures.back]);
-    }
-    return status;
+    return GPU_STATUS_OK;
 }
 
 bool render_frame_oldest_done(render_frame_t *frame) {
     return frame->on_way != 0u && frame_gpu_done(&frame->gpu, frame->oldest_slot);
+}
+
+bool render_frame_oldest_whole(render_frame_t *frame) {
+    return frame->on_way != 0u && frame_gpu_whole(&frame->gpu, frame->oldest_slot);
 }
 
 gpu_status_t render_frame_draw_weather(render_frame_t *frame, const world_buffers_t *buffers,

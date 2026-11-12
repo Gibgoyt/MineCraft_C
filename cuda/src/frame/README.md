@@ -28,7 +28,9 @@ Each slot of `frame_flight_t` is one frame: its kernel events, shade's and the c
 3. `owned_end` is the last thing on the frame's stream: after the few words copied home.
 4. `frame_gpu_finish` waits for the copy's event and for the end.
 
-`render/frame` writes the two device pictures in turn, by slot, so frame N's copy home and frame N+1's post never touch the same picture. The copy home of N then runs while N+1's coarse and primary passes do: the 1.4 ms readback of a 1080p picture leaves the card's critical path.
+`render/frame` writes the two device pictures in turn, by slot, so frame N's copy home and frame N+1's post never touch the same picture. The copy home of N then runs while N+1's coarse and primary passes do: the 1.3 ms readback of a 1080p picture leaves the card's critical path. `frame_gpu_whole` and `frame_gpu_done` ask, without waiting, whether a frame's picture is whole and whether it is home.
+
+**Measured: a copy to the card queued after a copy home still waiting for its picture waited for that copy home.** With N's copy home queued as soon as N-1 was published, N+1's staging copies (the entity lists, every frame) were queued behind it, and the card started N+1 only once N's whole readback was done: no gain at all. So `render/frame` queues N's copy home only after N+1's copies and kernels, and the gain is the whole readback.
 
 ## Why it is the way it is
 
