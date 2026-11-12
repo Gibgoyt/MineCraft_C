@@ -142,7 +142,7 @@ set(mc_generated_run_sources "${mc_block_table_source}" "${mc_biome_table_source
 
 # ---- Tuning: plan 009 phase 02 -----------------------------------------------------------------------------------------
 
-# compile/config/<path>/index.yaml -> generated/tuning/<path>/index.{h,hu}, and generated/tuning/index.h with MC_TUNE_HASH.
+# compile/config/<path>/index.yaml -> generated/tuning/<path>/index.{h,hu}, and generated/tuning/hash/index.h with MC_TUNE_HASH.
 # See compile/src/tuning/README.md. A header per file, so a change to one rebuilds only what includes it.
 set(mc_tuning_dir "${MC_GENERATED_DIR}/tuning")
 set(mc_tuning_config "${CMAKE_SOURCE_DIR}/compile/config")
@@ -150,7 +150,7 @@ file(GLOB mc_tuning_inputs CONFIGURE_DEPENDS
   "${mc_tuning_config}/*/index.yaml"
   "${mc_tuning_config}/*/*/index.yaml"
   "${mc_tuning_config}/*/*/*/index.yaml")
-set(mc_tuning_headers "${mc_tuning_dir}/index.h")
+set(mc_tuning_headers "${mc_tuning_dir}/hash/index.h")
 foreach(mc_input IN LISTS mc_tuning_inputs)
   cmake_path(GET mc_input PARENT_PATH mc_input_dir)
   cmake_path(RELATIVE_PATH mc_input_dir BASE_DIRECTORY "${mc_tuning_config}" OUTPUT_VARIABLE mc_input_rel)

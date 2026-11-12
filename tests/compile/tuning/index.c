@@ -3,8 +3,7 @@
  *   tool real_config generated_tuning_dir work_dir
  */
 #include "harness/index.h"
-/* The tool's own header, for its exit statuses: compile/include comes first on this test's path, so the generated
- * tuning/index.h is read as a file below, not included. */
+/* The tool's own header, for its exit statuses. The generated tuning/hash/index.h is read as a file below. */
 #include "tuning/index.h"
 #include "types/index.h"
 
@@ -268,9 +267,9 @@ static const char *tt_output(const char *root, const char *relative) {
     return (const char *)tt_buffer_a;
 }
 
-/* The MC_TUNE_HASH line of root/out/index.h, into line. */
+/* The MC_TUNE_HASH line of root/out/hash/index.h, into line. */
 static void tt_hash_line(const char *root, char *line, uint64_t capacity) {
-    const char *text = tt_output(root, "index.h");
+    const char *text = tt_output(root, "hash/index.h");
     const char *at = strstr(text, "#define MC_TUNE_HASH ");
     const char *end = at != nullptr ? strchr(at, '\n') : nullptr;
     const uint64_t length = end != nullptr ? (uint64_t)(end - at) : 0u;
@@ -299,7 +298,7 @@ TEST(a_good_file_gives_the_defines_it_says) {
     }
     CHECK_STR_EQ(tt_output(root, "render/shade/index.hu"), tt_text);
 
-    const char *summary = tt_output(root, "index.h");
+    const char *summary = tt_output(root, "hash/index.h");
     CHECK_CONTAINS(summary, "#define MC_TUNE_KEY_COUNT 4u\n");
     CHECK_CONTAINS(summary, "    \"render/shade count 16\\n\" \\\n"
                             "    \"render/shade offset -2\\n\" \\\n"
@@ -381,6 +380,7 @@ TEST(every_problem_is_printed) {
     tt_write_yaml(root, "config", root_file, sizeof(root_file) - 1u);
     static const char upper_file[] = "a:\n  value: 1\n  type: u32\n  unit: count\n  min: 0\n  max: 1\n  why: x\n";
     tt_write_yaml(config, "Render", upper_file, sizeof(upper_file) - 1u);
+    tt_write_yaml(config, "hash/x", upper_file, sizeof(upper_file) - 1u);
     test_process_t process;
     tt_run(t, paths, root, &process);
     CHECK_EQ_I64(process.exit_code, TUNING_EXIT_REFUSED);
@@ -388,7 +388,8 @@ TEST(every_problem_is_printed) {
     CHECK_CONTAINS(process.output, "render/shade/index.yaml:3:10: 65 is outside 1..64");
     CHECK_CONTAINS(process.output, "config/index.yaml:1:1: an index.yaml goes in a directory below");
     CHECK_CONTAINS(process.output, "Render/index.yaml:1:1: each directory of the path is lower snake case");
-    CHECK_CONTAINS(process.output, "tuning: 4 problems; nothing was written");
+    CHECK_CONTAINS(process.output, "hash/x/index.yaml:1:1: hash/ is where the hash of them all is written");
+    CHECK_CONTAINS(process.output, "tuning: 5 problems; nothing was written");
 }
 
 TEST(two_files_making_one_define_are_refused) {
@@ -417,7 +418,7 @@ TEST(a_refused_run_writes_nothing) {
     tt_run_fixture(t, paths, root, TT_FIXTURE, &process);
     CHECK_EQ_I64(process.exit_code, 0);
 
-    static const char *const names[] = {"out/render/shade/index.h", "out/render/shade/index.hu", "out/index.h",
+    static const char *const names[] = {"out/render/shade/index.h", "out/render/shade/index.hu", "out/hash/index.h",
                                         "stamp"};
     enum : uint32_t { NAME_COUNT = 4u };
     char path[NAME_COUNT][TT_PATH_BYTES];
@@ -451,7 +452,7 @@ TEST(an_unchanged_file_is_not_rewritten) {
     tt_case(t, paths, "unchanged", root);
     tt_join(header, root, "out/render/shade/index.h");
     tt_join(cuda_header, root, "out/render/shade/index.hu");
-    tt_join(summary, root, "out/index.h");
+    tt_join(summary, root, "out/hash/index.h");
     tt_join(stamp, root, "stamp");
     /* A second file, which stays as it is while the first changes. */
     char config[TT_PATH_BYTES];
@@ -536,14 +537,14 @@ TEST(files_come_out_in_sorted_order) {
     test_process_t process;
     tt_run(t, paths, root, &process);
     CHECK_EQ_I64(process.exit_code, 0);
-    CHECK_CONTAINS(tt_output(root, "index.h"), "    \"alpha/deep/er a 2\\n\" \\\n"
-                                               "    \"alpha/deep/er z 1\\n\" \\\n"
-                                               "    \"render/lod a 2\\n\" \\\n"
-                                               "    \"render/lod z 1\\n\" \\\n"
-                                               "    \"render/shade a 2\\n\" \\\n"
-                                               "    \"render/shade z 1\\n\" \\\n"
-                                               "    \"zeta a 2\\n\" \\\n"
-                                               "    \"zeta z 1\\n\" \\\n");
+    CHECK_CONTAINS(tt_output(root, "hash/index.h"), "    \"alpha/deep/er a 2\\n\" \\\n"
+                                                    "    \"alpha/deep/er z 1\\n\" \\\n"
+                                                    "    \"render/lod a 2\\n\" \\\n"
+                                                    "    \"render/lod z 1\\n\" \\\n"
+                                                    "    \"render/shade a 2\\n\" \\\n"
+                                                    "    \"render/shade z 1\\n\" \\\n"
+                                                    "    \"zeta a 2\\n\" \\\n"
+                                                    "    \"zeta z 1\\n\" \\\n");
     CHECK_CONTAINS(tt_output(root, "alpha/deep/er/index.hu"), "#define MC_TUNE_ALPHA_DEEP_ER_A 2u /* count, 0..9 */\n"
                                                               "#define MC_TUNE_ALPHA_DEEP_ER_Z 1u /* count, 0..9 */\n");
 }
@@ -574,7 +575,7 @@ static uint32_t tt_real_lines(test_context_t *t, const tt_paths_t *paths, char *
         printf("  tool said: %s", process.output);
     }
     CHECK_EQ_I64(process.exit_code, 0);
-    const char *summary = tt_output(root, "index.h");
+    const char *summary = tt_output(root, "hash/index.h");
     memcpy(tt_text, summary, strlen(summary) + 1u);
     uint32_t count = 0u;
     for (const char *at = strstr(tt_text, "    \""); at != nullptr; at = strstr(at + 1, "    \"")) {
@@ -593,7 +594,7 @@ TEST(the_real_files_are_accepted) {
     /* What the build generated is what the tool writes now. */
     char generated[TT_PATH_BYTES];
     uint64_t length = 0u;
-    tt_join(generated, paths->generated, "index.h");
+    tt_join(generated, paths->generated, "hash/index.h");
     CHECK(tt_read_file(generated, tt_buffer_b, &length));
     CHECK_STR_EQ((const char *)tt_buffer_b, tt_text);
 }

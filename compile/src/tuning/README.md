@@ -28,7 +28,9 @@ The two hold the same defines and differ only in their guard, so a CUDA file tha
 sees one definition. A float is written `F32(3.0)`, with `#include "types/index.h"` when the file has one: that is
 `3.0f32` to GCC and `3.0F` to nvcc, as `plans/CODING_STANDARD.md` section 2 asks of a header both sides read.
 
-And `generated/tuning/index.h`, for `--report` and `bench_world`'s history:
+And `generated/tuning/hash/index.h`, for `--report` and `bench_world`'s history. It is not `tuning/index.h`, the tool's own
+header's name, which `standards_lint` and a compile test (with `compile/include/` first on its path) would find instead;
+so no top directory of `compile/config/` may be called `hash`:
 
 - `MC_TUNE_HASH`: FNV-1a 64 over one line per key, `path key value` and a newline, files in path order and keys in name
   order. Reordering keys changes nothing; changing any value changes it.
@@ -49,7 +51,7 @@ its output, so Ninja's restat rebuilds only what includes a header that changed.
 Everything is checked before anything is written, and every problem in the run is printed, not only the first:
 
 - YAML the parser refuses, including a tab in the indentation.
-- A file whose top is not a mapping, an `index.yaml` directly in `--config`, and a directory name or key that is not lower
+- A file whose top is not a mapping, an `index.yaml` directly in `--config`, a top directory called `hash`, and a directory name or key that is not lower
   snake case (`[a-z][a-z0-9_]*`).
 - A field other than `value type unit min max why`, and a missing one. A `bool` has no `min` or `max`.
 - A type other than `u32 i32 f32 bool`, and a unit not on the list in `compile/config/README.md`. The unit `bool` goes

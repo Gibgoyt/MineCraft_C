@@ -1,7 +1,7 @@
 /*
  * The tuning tool: compile/config/<path>/index.yaml in, a header of MC_TUNE_* defines out for each. See
  * compile/src/tuning/README.md. Only the tool's own index.c includes this; the game reads the generated
- * build/<preset>/generated/tuning/<path>/index.{h,hu} and tuning/index.h.
+ * build/<preset>/generated/tuning/<path>/index.{h,hu} and tuning/hash/index.h.
  */
 #ifndef TUNING_INDEX_H
 #define TUNING_INDEX_H
@@ -14,6 +14,11 @@
 #define TUNING_EXIT_OK 0
 #define TUNING_EXIT_REFUSED 1    /* a file is wrong; every problem was printed as path:line:column: message */
 #define TUNING_EXIT_CANNOT_RUN 2 /* a bad command line, an unreadable input or an unwritable output */
+
+/* Where MC_TUNE_HASH goes below --out: tuning/hash/index.h. Not tuning/index.h, which is this header's own name, so a compile
+ * test, with compile/include first on its path, and standards_lint, which looks there for what a path names, would both find
+ * this one instead. A top directory of compile/config may not take the name. */
+#define TUNING_SUMMARY_DIRECTORY "hash"
 
 /* Limits that keep a wrong --config, such as a home directory, from reading the world. Running into one is refused. */
 #define TUNING_MAX_FILES 256u

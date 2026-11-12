@@ -20,7 +20,7 @@
   `bool` on a `u32`, a key in camel case, a tab in the indentation, an empty `why`, an unknown type, a bool with a `min`,
   and a `min` past its `max`. Each exits 1 and makes no output directory.
 - `every_problem_is_printed`: problems in two files, an `index.yaml` at the top of `--config` and a directory in capitals,
-  all reported in one run.
+  a top directory called `hash`, all reported in one run.
 - `two_files_making_one_define_are_refused`: `render/a`'s `b_c` and `render/a_b`'s `c`.
 - `a_refused_run_writes_nothing`: after a good run, a bad one leaves every output's bytes and time as they were.
 - `an_unchanged_file_is_not_rewritten`: a second run keeps every header's time, and rewrites only the stamp; a changed
@@ -33,5 +33,4 @@
   the build generated.
 - `every_define_is_used`: each define the real files make is found by `grep` in `run/`, `cuda/` or `bench/`.
 
-The generated `tuning/index.h` is read as a file, not included: `compile/include/` comes first on a compile test's include
-path, and holds the tool's own `tuning/index.h`.
+The generated `tuning/hash/index.h` is read as a file, not included, as the test checks the tool's output at run time.
