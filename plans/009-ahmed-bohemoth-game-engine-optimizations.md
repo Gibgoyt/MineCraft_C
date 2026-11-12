@@ -356,13 +356,13 @@ A header whose content did not change is not rewritten, so only what includes a 
 Today's far field is levels built only from **terrain samples**, and full detail is a separate world. Phase 03 makes them one pyramid, without yet changing what is drawn:
 
 - **Levels 1 to K in the same `world_buffers` format**, each a clipmap centred on the eye (the far field's tables already scroll this way). Level k covers at least its band's far edge plus the margin. **Level 1 is new** for the near region, since today's plan drops it under full detail.
-- **Built from the level below where that is loaded.** A level-k voxel is the 2×2×2 group of level k−1 voxels "as one shape" (Ahmed's words, made literal), by the same half rule `render_lod_cells_from_column` uses for terrain. This runs on the card: a kernel reduces a section's brick masks and materials into the coarser level's section whenever a section is uploaded. So **an edit reaches every level in the same frame**, where today a far column waits for the save capture, up to a second. Outside level 0's radius, levels are still built from terrain samples on workers, as today.
+- **Built from the level below where that is loaded.** A level-k voxel is the 2×2×2 group of level k−1 voxels "as one shape" (Ahmed's words, made literal), by the same half rule `render_lod_cells_from_column` uses for terrain. **Where:** on workers, from the map's own sections (which hold every edit), through the far field's existing job, encode and upload path (`run/src/render/lod/`), at a priority above far columns. A column whose sections change is queued again at once. So **an edit reaches every level within about 100 ms**, where today a far column waits for the save capture, up to a second. A card kernel was considered: it would need slabs allocated on the card, which the host-side pool (`world_buffers_t`) does not allow. It stays a fallback only if workers miss 100 ms. Outside level 0's radius, levels are still built from terrain samples on workers, as today.
 - **The reduction, worked through:**
   - **Occupancy.** A level-1 voxel covers 2×2×2 blocks. Its block counts if at least half of what it covers is blocks, by the half rule: "a voxel is a block if at least half of what the sample has in its height is".
   - **Material.** The most common material among the counted voxels; ties go to the higher voxel, so a grass top stays grass.
   - **Light.** The brightest stored light of its counted voxels, as faces show the brighter side (`cuda/src/shade/README.md`, "The light on a surface").
   - A uniform section reduces to a uniform section, and an empty one to nothing.
-- **Cost, worked:** a section is 4096 voxels. Its level-1 child gets 512 of them, 1/8 of the work and bytes, and level k+1 gets 1/8 of level k again. Reduction runs on sections that were uploaded this frame, within the upload budget, so it adds at most about 1/7 to what upload already moves (1/8 + 1/64 + …). Measured in phase 03.
+- **Cost, worked:** a section is 4096 voxels. Its level-1 child gets 512 of them, 1/8 of the work and bytes, and level k+1 gets 1/8 of level k again. Reduction runs on columns whose sections changed, so it adds at most about 1/7 to what upload already moves (1/8 + 1/64 + …), and its worker time is bit operations over sections the map already holds. Measured in phase 03.
 
 ### 4.4 Continuous LOD replaces Full detail (phase 04)
 
@@ -490,7 +490,7 @@ Phase 02 makes the files; later phases add keys as they need them. Defaults are 
 | The Settings screen | Golden pictures | 6 sliders | 5, no "Full detail" anywhere |
 | VRAM | `bench_world` | 1.8 GiB voxels at 32 | No more than today at 64 |
 | World fill-in at render distance 64 | `run_render_distance_live` | 7.66 s (plan 005 phase 8) | No worse |
-| An edit's reach to every level | Test | Up to 1 s (save capture) | Same frame |
+| An edit's reach to every level | Test | Up to 1 s (save capture) | ≤ 100 ms |
 | Tuning edit to new numbers | Edit YAML, one build | n/a | Only dependents rebuild; `--report` shows the new `MC_TUNE_HASH` |
 
 These are first targets; Ahmed changes any at the phase 01 gate (Q10).
@@ -515,7 +515,7 @@ These are first targets; Ahmed changes any at the phase 01 gate (Q10).
 - **The near guarantee** (`render_feature_lod`): for each of 6 places (plains, jungle, peaks, ocean, cave, his spot), render with the pyramid and with level 0 to render distance. Every pixel with a reference hit under 16 blocks must be identical. Also at E = 8, where d<sub>1</sub> = 96 would otherwise be the first band edge, and at 50 % render scale.
 - **The error bound:** the same pairs; ≤ 1 % of pixels past the bound at E = 2.
 - **The seam:** a flat plain and a 45° slope crossing d<sub>1</sub> and d<sub>2</sub>: no pixel beyond ε<sub>k+1</sub> projected, and with dither and TAA, after 32 frames, no visible ring. Ahmed judges the picture at the gate.
-- **Edits:** mine a block at 400 blocks (level 1). The level-1 voxel changes in the same frame.
+- **Edits:** mine a block at 400 blocks (level 1). The level-1 voxel changes within 100 ms, and the level-2 one too.
 - **Shadows:** a 1-block pillar casting on the floor from 20 blocks gives the same shadow pixels as today. A 1-block pillar 300 blocks from its shadow, under the cone rule: the shadow may vanish or blur, and the test documents what it does.
 - **Night cut:** at the threshold, no lit pixel moves by more than 2 / 255.
 - **2³ coalescing and the distance byte:** `tests/cuda/traverse/` already traces against a reference that knows no skipping; every hit must be the same voxel and `t` to the bit, with step counts lower.
@@ -530,7 +530,7 @@ These are first targets; Ahmed changes any at the phase 01 gate (Q10).
 | E = 2 buys little at render distance 64 (section 2.3) | Expected. The gain is from pass-by removal, secondary rays, boxes and phase 07. E is one YAML number for Ahmed to raise |
 | A visible ring at band edges | Dither plus TAA; nesting; the seam test; Ahmed's eye at the phase 04 gate. Fallback: a wider `band_dither` |
 | Coarse levels change silhouettes of peaks against the sky | Peaks are where error shows most. Phase 04 measures the error share on `jagged_peaks` and his spot. Q6 offers a smaller E for silhouettes (pixels whose ray grazes) |
-| The card-side reduction costs more than 1/7 of upload | Measured in phase 03. Fallback: reduce on workers as the far field does |
+| The reduction costs more than 1/7 of upload, or misses 100 ms | Measured in phase 03. Fallback: a card kernel writing into slabs the host set aside per column |
 | Removing Full detail changes what the sim loads (map radius 32 → about 27 chunks at E = 2) | The sim radius was always full detail; it now follows r<sub>0</sub>. A floor `block_radius_min_chunks` (YAML, default 12) keeps gameplay's reach. Mobs and ticking are untouched inside it |
 | A narrow FOV wants more level 0 than the table holds | Capped at `block_radius_max_chunks`, with an F3 note (Q4) |
 | Shadow cone LOD loses thin far shadows (a far tower's shadow) | That is the physics of a 0.53° light. `shadow_cone_scale` is tunable; the test documents it |
@@ -581,10 +581,10 @@ Each phase ends somewhere worth stopping and has its own file in plan 004's stru
 
 ### Phase 03: One pyramid of levels
 
-- [ ] Level 1 and up for the near region; card-side 2×2×2 reduction on upload; terrain-built levels outside, as today
+- [ ] Level 1 and up for the near region; 2×2×2 reduction from the map's sections on workers; terrain-built levels outside, as today
 - [ ] Pictures unchanged (nothing draws from the new levels yet)
 
-**Gate:** an edit at 400 blocks reaches every level in one frame; upload cost within 1/7.
+**Gate:** an edit at 400 blocks reaches every level within 100 ms; upload within 1/7 more.
 
 ### Phase 04: Continuous LOD replaces Full detail
 
