@@ -10,3 +10,5 @@
 **Depends on:** `tests/harness/`, `run/src/render/encode/`, `run/src/job/`, `run/src/thread/`, `run/src/time/`. No card: nothing here starts CUDA.
 
 `sizes_and_time_on_this_machine` prints a terrain-shaped section's size and encode time, for the stage file, and checks nothing about the time.
+
+`the_octant_reduction_table` holds `render_encode_octant_voxel` to every row of plan 009 phase 03's "The reduction, worked": the half rule, the grass top, ties, water, what does not count (torches, flowers, doors) and what does (slabs, stairs), and the light. `a_section_reduces_to_its_octant` holds the section's octant to its groups one by one, and a uniform section to one value.

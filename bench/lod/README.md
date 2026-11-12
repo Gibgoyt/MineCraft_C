@@ -7,7 +7,7 @@
 **Threads:** main only: a column is one worker's job.
 **Public functions:** `main`. Run `tools/test-or-build.sh timeout 300 build/release/bin/bench_lod`, so no build shares the CPU. Exit status 0, 1 if a level's slowest column missed the target, or 2 if it could not start.
 **May be called by:** people.
-**Depends on:** `render/lod`, `terrain`, `time`, `world/column`, and the generated `tables/blocks/`.
+**Depends on:** `render/lod`, `render/octant`, `render/encode`, `heap`, `arena`, `terrain`, `time`, `world/column`, `world/section`, and the generated `tables/blocks/`.
 
 Only a release build's numbers mean anything: debug is at `-O0`.
 

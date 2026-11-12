@@ -12,9 +12,10 @@
 - `render_upload_frame`: one frame's work. Never waits for a worker.
 - `render_upload_idle`: whether anything is on its way.
 - `render_upload_resend_drain`: gives sections the pool refused back to the world as dirty.
+- `render_upload_octants_set`: plan 009 phase 03: each section's job also reduces it to its octant (`render_encode_section_octant`), and each section the card takes, or empties, puts that octant in `render/octant`'s store, as each change of the table does its columns. A section refused for want of a slab or gone stale leaves the store as the card is.
 
 **May be called by:** `render`, and `render/lod`, for its budget. It includes its sibling `render/encode`, which only it calls.
-**Depends on:** `render/encode`, `gpu_bridge/world_buffers`, `world/edit`, `job`, `thread/ring`, `arena`, `assert`.
+**Depends on:** `render/encode`, `render/octant` (its sibling: each section's octant goes there as the section goes to the card), `gpu_bridge/world_buffers`, `world/edit`, `job`, `thread/ring`, `arena`, `assert`.
 
 ## How a section gets to the card
 

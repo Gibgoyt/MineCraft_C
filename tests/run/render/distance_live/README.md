@@ -1,6 +1,6 @@
 # tests/run/render/distance_live
 
-**Purpose:** ctest `run_render_distance_live`, plan 005 phase 14 stage 3. During a live game, on the game's own threads against the clock, render distance and full detail are changed as the Settings screen changes them, and a lit log is mined. Each change must start to show in under a second and be all drawn within the targets, and the log must leave the picture in under a second.
+**Purpose:** ctest `run_render_distance_live`, plan 005 phase 14 stage 3, and plan 009 phase 03's edit reaching the pyramid. During a live game, on the game's own threads against the clock, render distance and full detail are changed as the Settings screen changes them, and a lit log is mined. Each change must start to show in under a second and be all drawn within the targets, and the log must leave the picture in under a second.
 **Tier:** test.
 **Owns:** nothing outside the test arena, and the card's blocks for a world at full detail 32 (about 2 GiB) for the length of the test.
 **Lifetime:** One run.
@@ -22,6 +22,8 @@ On Ahmed's seed, `11107447384583428913`, at 640 by 360, with the day standing st
 | `rd_64_again` | 16 to 64 | the same |
 | `fd_16` | Full detail 32 to 16, at 64 | the same |
 | `log_64_busy_before`, `_change`, `_mined` | Another lit log, the same way, but first full detail 16 to 32 at 64, the busiest change, and the log mined a second into it: Ahmed's tree that took minutes to go | the log as at 32, and the change as above (reported as `fd_32_busy`) |
+
+A second test, `an_edit_reaches_level_1_and_level_2_within_100_ms` (plan 009 phase 03), opens a world at Ahmed's 1920 x 1080, render distance 64 and full detail 32 (level 2's band starts at 771 blocks, so it needs the 64), settles it with `game_settle`, pyramid and all, puts a 4 x 4 x 4 cube of stone, one level 2 voxel, in the open air 400 blocks east of the eye through `world/edit` with the threads stopped, and starts them. The octant store's watch (`render_octant_watch_arm`) says when the level 1 and level 2 columns holding the cube were sent with stone there: each within 100 ms of the edit, held in an optimized build as the deadlines above are.
 
 **Starts showing** and **all drawn** are the fill-in report's (`run/src/game/fill/`): the first column come or gone, or far column built, and every ring out to full detail drawn with the far field done. The 15 s for a change is the targets' "everything out to render distance 32", taken for every change as the plan says "the targets above to settle". The pictures are only reported: each step keeps the picture at 0, 0.5, 1, 2, 3, 5, 8, 12, 16 and 20 s, as `measure.sh` did, and says how much of each still differs from the step's last.
 

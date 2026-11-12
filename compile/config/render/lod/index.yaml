@@ -27,3 +27,38 @@ skips_max:
   min: 1
   max: 256
   why: "How many times one level lets a ray go on past something in a column full detail holds, before it calls the level empty there. LOD_SKIPS_MAX."
+pixel_error:
+  value: 2.0
+  type: f32
+  unit: pixels
+  min: 0.25
+  max: 16.0
+  why: "A coarser level is used only where it moves a surface by at most this many pixels on screen: level k from s_k / (2 E theta) blocks (master 2.2). Plan 009 phase 03 plans the pyramid by it; phase 04 draws from it."
+near_guarantee:
+  value: 16
+  type: u32
+  unit: blocks
+  min: 16
+  max: 256
+  why: "Ahmed, 2026-11-12: every surface seen within this many blocks is drawn from the blocks themselves, so no level above 0 starts nearer."
+level_count:
+  value: 6
+  type: u32
+  unit: count
+  min: 2
+  max: 6
+  why: "The most levels above the blocks the pyramid has: voxels of 2 up to 2 to the power of this. At most LOD_LEVELS_MAX."
+radius_columns_max:
+  value: 32
+  type: u32
+  unit: count
+  min: 4
+  max: 64
+  why: "The widest a pyramid level may be each way from the eye's column, in its own columns of 16 voxels: level 1 at a pixel error of 2 wants 27 at render distance 64. Held in uint8_t radii."
+octant_levels:
+  value: 2
+  type: u32
+  unit: levels
+  min: 0
+  max: 3
+  why: "How many levels above the blocks are made from the blocks where they are loaded, each from the one below, so an edit reaches them at once: 2 is levels 1 and 2. Past them, and where blocks are not loaded, levels are sampled from terrain."

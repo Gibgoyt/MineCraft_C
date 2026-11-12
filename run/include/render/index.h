@@ -12,6 +12,7 @@
 #include "render/entities/index.h"
 #include "render/frame/index.h"
 #include "render/lod/index.h"
+#include "render/octant/index.h"
 #include "render/upload/index.h"
 #include "texture/index.h"
 #include "world/edit/index.h"
@@ -50,6 +51,21 @@ typedef struct render_limits_t {
     uint8_t _pad0[4];       /* 20 */
 } render_limits_t;
 static_assert(sizeof(render_limits_t) == 24);
+
+/* Plan 009 phase 03: the pyramid's levels 1 to K, built and kept as the far field's are, from the blocks where they are loaded, and drawn by
+ * nothing yet. It lives at the start of its own region, which it holds. */
+typedef struct render_pyramid_t {
+    arena_t arena;                               /* 0: over the region past this */
+    heap_region_t owned_region;                  /* 64: this, and the arena's memory after it */
+    render_lod_plan_t plan;                      /* 80 */
+    device_block_t owned_tables[LOD_LEVELS_MAX]; /* 96: from DEVICE_POOL_VOXELS */
+    device_block_t owned_pools[LOD_LEVELS_MAX];  /* 240 */
+    device_block_t owned_hits;                   /* 384: none: its levels are not drawn */
+    render_lod_t *borrowed_lod;                  /* 408: from arena */
+    uint8_t _pad0[32];                           /* 416 */
+} render_pyramid_t;
+static_assert(sizeof(render_pyramid_t) == 448);
+static_assert(alignof(render_pyramid_t) == 64);
 
 /* What the renderer holds. There is one, under app_t. Everything past owned_host is zero bytes outside render_open. */
 typedef struct render_t {
@@ -92,7 +108,9 @@ typedef struct render_t {
     render_lod_t *borrowed_lod; /* 2696: from arena_lod, from render_open_lod to render_close_lod */
     device_block_t
         owned_weather_map; /* 2704: the rain top, post_weather_map_bytes, from DEVICE_POOL_FRAMES with the frame */
-    uint8_t _pad1[24];     /* 2728 */
+    render_octant_t *borrowed_octants; /* 2728: plan 009 phase 03, from arena_host, from render_open to render_close */
+    render_pyramid_t *owned_pyramid;   /* 2736: the pyramid's levels, not drawn yet, in its own region; or nullptr */
+    uint8_t _pad1[8];                  /* 2744 */
 } render_t;
 static_assert(sizeof(render_t) == 2752);
 static_assert(alignof(render_t) == 64);
@@ -155,5 +173,30 @@ gpu_status_t render_replan_lod(render_t *render, const render_lod_plan_t *plan, 
 
 /* Gives all of that back. Safe if none is open. The gpu thread must have stopped using it. */
 void render_close_lod(render_t *render);
+
+/* ---- The pyramid (plan 009 phase 03) ------------------------------------------------------------------------------- */
+
+/* The pyramid's levels for a world that is open: render_lod_plan_by_bands's. The same plan as it has keeps all it has built; another closes it
+ * and opens it anew, its tables and pools from DEVICE_POOL_VOXELS, its levels made from the blocks where they are loaded (render_octant_t) and
+ * from sample elsewhere. No levels closes it. Nothing draws it. The gpu thread must have stopped using it, and an overlay is set again after.
+ * On failure logs why, and there is no pyramid; the world goes on without one. */
+gpu_status_t render_pyramid_apply(render_t *render, const render_lod_plan_t *plan, render_lod_sample_t sample,
+                                  const void *sample_context);
+
+/* Gives it all back. Safe if none is open. */
+void render_pyramid_close(render_t *render);
+
+/* One frame of it, after render_lod_frame: its columns go to workers only while the far field rays read has nothing left to ask for, and
+ * what the blocks make comes regardless. GPU_STATUS_OK with no pyramid. */
+gpu_status_t render_pyramid_frame(render_t *render, const float64_t position[3]);
+
+/* Whether it has everything it wants, or there is none. */
+bool render_pyramid_idle(const render_t *render);
+
+/* Its levels, or nullptr for none. */
+render_lod_t *render_pyramid_lod(const render_t *render);
+
+/* Logs what each of its levels holds on the card and how it was made, and what the octant store holds. Nothing with no world open. */
+void render_pyramid_report(const render_t *render);
 
 #endif

@@ -17,6 +17,10 @@ void game_view_work_out(const game_config_t *config, uint32_t table_chunks, game
  * follows. */
 float32_t game_view_fog_end(uint32_t reach_chunks);
 
+/* Plan 009 phase 03: the pyramid's levels for a config and what it comes to: banded by the tuning file's pixel error and near guarantee, the
+ * field of view and the picture's own height, out to the render distance. Nothing draws them yet. */
+render_lod_plan_t game_view_pyramid(const game_config_t *config, const game_view_t *view);
+
 /* The tangent a field of view comes to. 0, or the 70 degrees of the default, is exactly RENDER_CAMERA_HALF_FOV_TANGENT_DEFAULT. */
 float32_t game_view_half_fov_tangent(uint32_t fov_degrees);
 

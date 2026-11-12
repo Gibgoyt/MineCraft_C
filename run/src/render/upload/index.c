@@ -10,7 +10,8 @@ uint64_t render_upload_arena_bytes(uint32_t section_capacity) {
     /* Each alignment can waste up to its size. */
     return (uint64_t)section_capacity * sizeof(render_encode_job_t) +
            (uint64_t)section_capacity * WORLD_BUFFERS_SECTION_BYTES_MAX +
-           RENDER_UPLOAD_RESEND_CAPACITY * sizeof(world_edit_dirty_t) + 3u * MC_CPU_CACHE_LINE_BYTES;
+           (uint64_t)section_capacity * sizeof(render_encode_octant_t) +
+           RENDER_UPLOAD_RESEND_CAPACITY * sizeof(world_edit_dirty_t) + 4u * MC_CPU_CACHE_LINE_BYTES;
 }
 
 void render_upload_init(render_upload_t *upload, arena_t *arena, world_edit_snapshot_t *snapshot, job_system_t *job,
@@ -28,6 +29,9 @@ void render_upload_init(render_upload_t *upload, arena_t *arena, world_edit_snap
     /* Encoded sections hold uint64_t. The pages stay untouched until a section of that size is really encoded. */
     upload->borrowed_staging =
         arena_alloc_array(arena, section_capacity, WORLD_BUFFERS_SECTION_BYTES_MAX, MC_CPU_CACHE_LINE_BYTES);
+    /* The same for octants: untouched until a store is set. */
+    upload->borrowed_octant_staging =
+        arena_alloc_array(arena, section_capacity, sizeof(render_encode_octant_t), MC_CPU_CACHE_LINE_BYTES);
     const uint64_t ring_bytes = ring_storage_bytes(RENDER_UPLOAD_RESEND_CAPACITY, sizeof(world_edit_dirty_t));
     void *const storage = arena_alloc(arena, ring_bytes, alignof(world_edit_dirty_t));
     ASSERT_ALWAYS(
@@ -43,6 +47,10 @@ void render_upload_deinit(render_upload_t *upload) {
     job_group_deinit(&upload->group);
     ring_deinit(&upload->resend);
     memset(upload, 0, sizeof(*upload));
+}
+
+void render_upload_octants_set(render_upload_t *upload, render_octant_t *octants) {
+    upload->borrowed_octants = octants;
 }
 
 bool render_upload_idle(const render_upload_t *upload) {
@@ -66,8 +74,15 @@ static void upload_table_apply(render_upload_t *upload, const world_edit_snapsho
         if (column->state == WORLD_MAP_STATE_READY) {
             world_buffers_column_set(buffers, slot, column->chunk_x, column->chunk_y, column->generation,
                                      column->top_z);
+            if (upload->borrowed_octants != nullptr) {
+                render_octant_column_set(upload->borrowed_octants, slot, column->chunk_x, column->chunk_y,
+                                         column->generation);
+            }
         } else {
             world_buffers_column_clear(buffers, slot);
+            if (upload->borrowed_octants != nullptr) {
+                render_octant_column_clear(upload->borrowed_octants, slot);
+            }
         }
     }
     /* After all of them, as a square's top is about its neighbours as well. A column that changed is the one with no top now. */
@@ -107,6 +122,9 @@ static void upload_jobs_submit(render_upload_t *upload) {
         render_encode_job_t *const job = &upload->borrowed_jobs[section];
         render_encode_job_begin(job, view, section,
                                 upload->borrowed_staging + (uint64_t)section * WORLD_BUFFERS_SECTION_BYTES_MAX);
+        if (upload->borrowed_octants != nullptr) {
+            render_encode_job_octant_set(job, &upload->borrowed_octant_staging[section]);
+        }
         /* First of all: the next view, with whatever block edits it carries, waits for every section of this one. */
         if (!job_try_submit_at(upload->borrowed_job, &upload->group, JOB_PRIORITY_EDIT, render_encode_job_run, job)) {
             return;
@@ -119,6 +137,14 @@ static void upload_jobs_submit(render_upload_t *upload) {
 static bool upload_section_is_stale(const world_buffers_t *buffers, const world_edit_snapshot_section_t *entry) {
     const world_buffers_column_t *const column = &buffers->borrowed_shadow[entry->slot];
     return column->ready == 0u || column->generation != entry->generation;
+}
+
+/* A section the card now has: its octant, which its job made beside it, is what the store has of it too. */
+static void upload_octant_keep(render_upload_t *upload, uint32_t section, const world_edit_snapshot_section_t *entry) {
+    if (upload->borrowed_octants != nullptr) {
+        render_octant_section_set(upload->borrowed_octants, 0u, entry->slot, entry->section_index,
+                                  &upload->borrowed_octant_staging[section]);
+    }
 }
 
 /* In the order of the view, so that what the budget holds back is what came last. */
@@ -145,6 +171,7 @@ static gpu_status_t upload_sections_send(render_upload_t *upload) {
             if (emptied != GPU_STATUS_OK) {
                 return emptied;
             }
+            upload_octant_keep(upload, section, entry);
             stats->sections_emptied++;
             upload->finished++;
             continue;
@@ -174,6 +201,7 @@ static gpu_status_t upload_sections_send(render_upload_t *upload) {
         if (written != GPU_STATUS_OK) {
             return written;
         }
+        upload_octant_keep(upload, section, entry);
         stats->sections_sent++;
         stats->bytes_sent += bytes;
         stats->frame_bytes += bytes;

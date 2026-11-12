@@ -1,6 +1,6 @@
 # 009-ahmed-bohemoth-game-engine-optimizations — phase 3: One pyramid of levels
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** in progress   (updated 2026-11-12)
 
 Read first: the phase 00 file, then the master: sections 0 ("What Full detail means"), 1, 2.1, 4.3 and 4.4. Then:
 
@@ -143,12 +143,12 @@ The level's square must reach its far edge, so these radii are larger than today
 
 ## Todo
 
-- [ ] `render_lod_bands` with its paper test (FOV 70 and 30, 1080 and 540 rows, E 1 / 2 / 4 / 8, the 16-block floor)
-- [ ] `render_encode_section_octant` with its table test (every row of "The reduction, worked")
-- [ ] `run/src/render/lod/octant/` with README; assembled equals direct, byte for byte
-- [ ] `render_lod_plan` by bands; level 1 planned and built; sources per column chosen by level 0's table
-- [ ] Tuning keys `pixel_error`, `near_guarantee`, `level_count`, `radius_columns_max`, `octant_levels`
-- [ ] An edit at 400 blocks reaches level 1 and level 2 within 100 ms (test)
+- [x] `render_lod_bands` with its paper test (FOV 70 and 30, 1080 and 540 rows, E 1 / 2 / 4 / 8, the 16-block floor)
+- [x] `render_encode_section_octant` with its table test (every row of "The reduction, worked")
+- [x] `run/src/render/lod/octant/` with README; assembled equals direct, byte for byte (at `run/src/render/octant/`: Issues found 1)
+- [x] `render_lod_plan` by bands; level 1 planned and built; sources per column chosen by level 0's table
+- [x] Tuning keys `pixel_error`, `near_guarantee`, `level_count`, `radius_columns_max`, `octant_levels`
+- [x] An edit at 400 blocks reaches level 1 and level 2 within 100 ms (test)
 - [ ] Octant store bytes and upload bytes recorded; within the master's 1/7 more
 - [ ] Every golden picture and settled hash unchanged
 - [ ] VRAM per level at render distance 64, E = 2, recorded
@@ -216,4 +216,22 @@ Appended as they land:
 
 ## Issues found
 
-None.
+### 1. Changed from the plan, and why
+
+- **The octant store is `run/src/render/octant/`, not `run/src/render/lod/octant/`.** At depth 3 a directory is the Borrow tier, which `standards_lint` forbids to allocate (`tier_borrow_alloc`), and the store takes its tables and blocks from an arena. At depth 2, beside `render/lod` and `render/upload`, it is the Arena tier; both siblings name it in their READMEs, as `include_sibling` asks. Header `run/include/render/octant/index.h`.
+- **The pyramid is a second `render_lod_t`, beside the far field, not the far field's own levels.** Pictures must not change, and today's far field (planned by full detail, terrain-sampled, passed by inside full detail) is what rays read: so its levels stay exactly as they are, and the pyramid is a separate set of levels that `render_lod_scene` never hands to a kernel. It is owned by `render` (`render_pyramid_t`, its own region, `render->owned_pyramid`), with the World lifetime of the map, not the frame's: a resize keeps it. The cost is that a shift both have (2 at render distance 64) is built twice where it is sampled from terrain; phase 04 replaces the far field with the pyramid and that goes.
+- **`render_lod_plan_by_bands`, not a new signature of `render_lod_plan`.** C has no overloading; the old `render_lod_plan(full_detail, render_distance)` stays as it is for the far field until phase 04, and the pyramid uses the new name.
+- **`radius_columns` stays 16 for the far field; `radius_columns_max` (32) is a new key for the pyramid alone.** Raising `radius_columns` would widen today's far field and change pictures.
+- **Assembly on the gpu thread, column by column, not section by section.** When an octant changes, the whole level 1 column over it is put together from the store and sent through the far field's own `render_lod_column_send` (a column's sections are written whole there). bench_lod: 0.18 ms a column on the mean, 0.31 at worst, release; `octant_columns_per_frame` (8) caps a frame. An edit's column is one of them.
+- **Where level 0 is loaded is the card's own table, at its generation.** A column of level 1 is made from octants when its four chunks are in the map's table, ready, at the generation the store holds, and complete. Missing sections are air, as on the card, and each that comes later marks the level 1 column again, so it converges as loading does. Above level 1 the source is the pyramid's level below, made from octants at the generation it was sent with; a level 1 column made again from terrain makes the level 2 column over it again.
+- **The grass-top rule, made exact:** a kept voxel's block is the most common counted block of the top layer of its 2 x 2 x 2 group, or of the bottom layer if the top has none; a tie goes to the first in index order. Light is sky and block light each at their most over the counted voxels. Every row of the table is in `the_octant_reduction_table`.
+- **Three budget keys more** (`compile/config/render/budget/index.yaml`): `octant_store_mib` (320: host memory for octant blocks), `octant_columns_per_frame` (8), `octant_pool_kib_per_column` (192: what a level 1 column made from the blocks gets of its level's pool, halved each level up). A first run with 96 MiB of store and the far field's 64 KiB a column ran out of both (65474 of 65536 blocks, and 1681 pyramid columns with no room): a level 1 column from the blocks holds the caves and ores terrain sampling skips, 132 KiB on the mean against 34. `render_lod_pyramid_pool_bytes` gives the columns over the blocks the larger share and the rest the far field's.
+- **Its workers wait for the far field.** The pyramid sends no column to a worker while the far field rays read is not idle (`render_lod_jobs_hold`), so it cannot slow what is drawn; octant columns come regardless. `game_settle` waits for the pyramid too, so a bench row is measured with nothing of it still building.
+- **The edit test runs at 1920 x 1080 and render distance 64.** At the file's 640 x 360 the bands are three times nearer (level 1 from 128 blocks, its square only 11 columns), so 400 blocks is past level 1; and level 2's band starts at 771 blocks at 1080 rows, so render distance 32 has no level 2. It puts a 4 x 4 x 4 cube of stone in the air rather than mining one block: one block cannot change a voxel of 2 by the half rule.
+- **A change of field of view alone does not replan the pyramid** until the next change of the view (render distance, full detail, scale). Replanning it there would stop the threads and take memory, which `run_settings_session` holds a field-of-view change to never do. Phase 04 works the bands out every frame.
+- **`render_encode_block_counts` reads the block's id** (`& BLOCK_STATE_ID_MASK`), where the far field's `render_lod_counts` read `block_defs[state]`: a voxel of the world holds stairs' facing above the id, and an unknown block (`run_render_frame`'s missing-texture test puts 60000) read past the table. An unknown id counts, as it is drawn as a cube. The far field's own samples never hold either, and every golden picture is the same.
+
+### 2. Measured
+
+- **The edit** (`an_edit_reaches_level_1_and_level_2_within_100_ms`, debug build, real threads): a cube of stone at 392, -8, 28, 400 blocks east of the eye, in level 1 **15.6 ms** after the edit and in level 2 **17.1 ms**. Level 1 had it at 12.4 ms in the run at render distance 32.
+- **That world** (render distance 64, full detail 32, 1920 x 1080, E = 2): pyramid level 1 27 columns each way, **354 MiB of pool, 157.4 MiB of slabs held**; level 2 18 columns each way, **108 MiB of pool, 42.8 MiB held**; 2318 level 1 and 553 level 2 columns made from octants, 0 columns with no room. Octant store: **105.8 MiB** host (70090 blocks of 1536 bytes live, 0 refused).

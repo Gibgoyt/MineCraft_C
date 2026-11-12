@@ -9,6 +9,7 @@
 #include "gpu_bridge/world_buffers/index.h"
 #include "job/index.h"
 #include "machine/index.h"
+#include "render/octant/index.h"
 #include "render/upload/index.h"
 #include "terrain/feature/index.h"
 #include "tuning/render/budget/index.h"
@@ -34,6 +35,12 @@ enum : uint32_t {
     /* The coarsest voxel a world's ground grows anything for, as a shift: compile/config/render/lod/index.yaml says why. It must come in
      * well under a second after a change of render distance (plan 005 phase 14). */
     RENDER_LOD_FEATURES_SHIFT_MAX = MC_TUNE_RENDER_LOD_FEATURES_SHIFT_MAX,
+    /* Plan 009 phase 03, the pyramid: compile/config/render/lod/index.yaml. The near guarantee in blocks, the most levels above the
+     * blocks, the widest a level may be in its own columns, and how many levels are made from the blocks where they are loaded. */
+    RENDER_LOD_NEAR_GUARANTEE = MC_TUNE_RENDER_LOD_NEAR_GUARANTEE,
+    RENDER_LOD_LEVEL_COUNT = MC_TUNE_RENDER_LOD_LEVEL_COUNT,
+    RENDER_LOD_RADIUS_COLUMNS_MAX = MC_TUNE_RENDER_LOD_RADIUS_COLUMNS_MAX,
+    RENDER_LOD_OCTANT_LEVELS = MC_TUNE_RENDER_LOD_OCTANT_LEVELS,
 };
 enum : uint64_t {
     /* What a level's pool gives each of its columns, and what one frame may send of finished columns: compile/config/render/budget/index.yaml.
@@ -52,6 +59,12 @@ enum : uint64_t {
 static_assert(RENDER_LOD_RADIUS_COLUMNS > RENDER_LOD_MARGIN_COLUMNS);
 /* render_lod_plan_t.radii and render_lod_level_t.radius hold it in a byte. */
 static_assert(RENDER_LOD_RADIUS_COLUMNS <= UINT8_MAX);
+/* Ahmed's floor, beside the YAML's min. */
+static_assert(RENDER_LOD_NEAR_GUARANTEE >= 16u);
+static_assert(RENDER_LOD_LEVEL_COUNT >= 1u && (uint32_t)RENDER_LOD_LEVEL_COUNT <= (uint32_t)LOD_LEVELS_MAX);
+static_assert(RENDER_LOD_RADIUS_COLUMNS_MAX > RENDER_LOD_MARGIN_COLUMNS && RENDER_LOD_RADIUS_COLUMNS_MAX <= UINT8_MAX);
+/* A level made from the blocks is one of the pyramid's, and the one above the last of them is made from terrain. */
+static_assert(RENDER_LOD_OCTANT_LEVELS < RENDER_LOD_LEVEL_COUNT);
 
 /* One column's worth of a place in the world, as storage heights from 0 to RENDER_LOD_HEIGHT_BLOCKS - 1, which a voxel of 1 << shift blocks
  * is made from. Called on workers, so it reads only what cannot change, and writes only out and scratch: RENDER_LOD_SAMPLE_SCRATCH_BYTES,
@@ -70,6 +83,16 @@ typedef struct render_lod_plan_t {
     uint32_t level_count;           /* 12: 0 for no far field */
 } render_lod_plan_t;
 static_assert(sizeof(render_lod_plan_t) == 16);
+
+/* Where each level of the pyramid starts along a ray, in blocks from the eye (master 2.2 and 4.4): from[k] is d_k, the distance past which
+ * level k moves a surface by at most the pixel error, never nearer than the near guarantee. from[0] is 0, the blocks, and from[level_count + 1]
+ * is where the last level's band would end. */
+typedef struct render_lod_bands_t {
+    float64_t from[LOD_LEVELS_MAX + 2u]; /* 0 */
+    uint32_t level_count;                /* 64: levels above the blocks */
+    uint8_t _pad0[4];                    /* 68 */
+} render_lod_bands_t;
+static_assert(sizeof(render_lod_bands_t) == 72);
 
 /* What has happened since the far field opened. */
 typedef struct render_lod_stats_t {
@@ -140,7 +163,16 @@ typedef struct render_lod_t {
     uint8_t covered_pass;                               /* 1913: what full detail covers is asked for too */
     uint8_t _pad0[6];                                   /* 1914 */
     const world_buffers_t *borrowed_fine;               /* 1920: what full detail has on the card, or nullptr */
-    uint8_t _pad1[56];                                  /* 1928 */
+    /* 1928: plan 009 phase 03, the pyramid's alone: where its levels up to RENDER_LOD_OCTANT_LEVELS are made from the blocks, or nullptr */
+    render_octant_t *borrowed_octants;
+    uint8_t jobs_held;                /* 1936: no column goes to a worker, as the far field rays use is busy */
+    uint8_t _pad1[3];                 /* 1937 */
+    uint32_t octant_pending;          /* 1940: columns the last frame could have made from octants and left */
+    uint16_t *borrowed_octant_cells;  /* 1944: a level 1 column's voxels, assembled */
+    uint8_t *borrowed_octant_light;   /* 1952 */
+    uint8_t *borrowed_octant_staging; /* 1960: what one column encodes to, as a job's staging */
+    render_octant_section_t *borrowed_octant_sections; /* 1968 */
+    uint8_t _pad2[8];                                  /* 1976 */
 } render_lod_t;
 static_assert(sizeof(render_lod_t) == 1984);
 static_assert(alignof(render_lod_t) == MC_CPU_CACHE_LINE_BYTES);
@@ -151,6 +183,16 @@ static_assert(offsetof(render_lod_t, level_count) == 1880);
 /* The levels for this much of the world at full detail and this much in all, in chunks. No far field if full detail reaches it all. A
  * level whose reach full detail covers is left out, and the last is cut to what the distance needs. */
 render_lod_plan_t render_lod_plan(uint32_t full_detail_chunks, uint32_t render_distance_chunks);
+
+/* The bands for this pixel error in pixels, near guarantee in blocks, camera and picture: one pixel is theta = 2 half_fov_tangent /
+ * height_pixels radians, and level k, of voxels of s = 2^k blocks, may start at s / (2 pixel_error theta). RENDER_LOD_LEVEL_COUNT levels. */
+render_lod_bands_t render_lod_bands(float64_t pixel_error, uint32_t near_guarantee, float64_t half_fov_tangent,
+                                    uint32_t height_pixels);
+
+/* The pyramid's levels for these bands: every level from 1 up whose band starts inside the render distance, each as wide as its band's far
+ * edge (or the render distance, if nearer) plus RENDER_LOD_MARGIN_COLUMNS, up to RENDER_LOD_RADIUS_COLUMNS_MAX. Level 1 is there whatever
+ * full detail is. render_lod_plan stays for the far field rays still use until phase 04. */
+render_lod_plan_t render_lod_plan_by_bands(const render_lod_bands_t *bands, uint32_t render_distance_chunks);
 
 /* Sizes, for the Owner to take memory and blocks. */
 uint64_t render_lod_table_bytes(const render_lod_plan_t *plan, uint32_t level);
@@ -234,5 +276,33 @@ void render_lod_scene(const render_lod_t *lod, lod_scene_t *out);
 
 /* Which of a level's columns a place along x or y is in. */
 int32_t render_lod_column_of(float64_t blocks, uint32_t shift);
+
+/* ---- The pyramid (plan 009 phase 03) --------------------------------------------------------------------------------- */
+
+enum : uint32_t {
+    /* Columns made from octants and sent in one frame: compile/config/render/budget/index.yaml. */
+    RENDER_LOD_OCTANT_COLUMNS_PER_FRAME = MC_TUNE_RENDER_BUDGET_OCTANT_COLUMNS_PER_FRAME,
+};
+
+enum : uint64_t {
+    /* What a pyramid level 1 column made from the blocks gets of its pool, halved each level up: compile/config/render/budget/index.yaml. */
+    RENDER_LOD_OCTANT_POOL_BYTES_PER_COLUMN = (uint64_t)MC_TUNE_RENDER_BUDGET_OCTANT_POOL_KIB_PER_COLUMN << 10,
+};
+
+/* A pyramid level's pool, for blocks loaded this many chunks each way: the columns over them are made from the blocks, caves and all, and get
+ * RENDER_LOD_OCTANT_POOL_BYTES_PER_COLUMN (halved each level up); the rest RENDER_LOD_POOL_BYTES_PER_COLUMN as a far level does. */
+uint64_t render_lod_pyramid_pool_bytes(const render_lod_plan_t *plan, uint32_t level, uint32_t block_radius_chunks);
+
+/* What render_lod_octants_set takes from the arena on top of render_lod_arena_bytes. */
+uint64_t render_lod_octant_arena_bytes(void);
+
+/* Just after render_lod_init, before any render_lod_frame, for the pyramid only: its levels of shift 1 to RENDER_LOD_OCTANT_LEVELS are made
+ * from the store where the four columns under one are there (level 1 over the blocks, render_lod_fine_set's), by the gpu thread, up to
+ * RENDER_LOD_OCTANT_COLUMNS_PER_FRAME a frame, and from terrain samples on workers elsewhere. Each level 0 column the store says changed is
+ * made again in level 1, and each level made from octants hands its own octants to the next. Forgets what the store held above level 0. */
+void render_lod_octants_set(render_lod_t *lod, arena_t *arena, render_octant_t *octants);
+
+/* While held, no column goes to a worker; columns made from octants still come. For the pyramid, while the far field rays read is busy. */
+void render_lod_jobs_hold(render_lod_t *lod, bool held);
 
 #endif

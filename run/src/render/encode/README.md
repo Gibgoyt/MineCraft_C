@@ -8,10 +8,11 @@
 **Public functions** (`run/include/render/encode/index.h`):
 
 - `render_encode_section`: one section's voxels to bytes; no blocks means no bytes.
+- `render_encode_block_counts`, `render_encode_octant_voxel`, `render_encode_section_octant`, `render_encode_job_octant_set`: plan 009 phase 03: a section reduced by two each way to its octant of the level above, by the half rule and the grass-top rule (below), and a job that makes it beside the bytes.
 - `render_encode_job_begin`, `render_encode_job_run`, `render_encode_job_done`: the same as a job over one section of a snapshot view, and how the gpu thread sees it finish.
 
 **May be called by:** `render/upload`, `render/lod`, `render`, and tests.
-**Depends on:** `gpu_bridge/world_buffers`, whose header defines the form; `world/edit`, for snapshot views; `job`; `simd/bitmask`.
+**Depends on:** `gpu_bridge/world_buffers`, whose header defines the form; `world/edit`, for snapshot views; `job`; `simd/bitmask`; `tables/blocks`, for which blocks count towards a coarser voxel.
 
 ## What is a block
 

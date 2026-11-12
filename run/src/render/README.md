@@ -14,6 +14,7 @@
 - `render_open_frame`, `render_close_frame`: the same for drawing: textures, tables, a frame's targets, and the pictures.
 - `render_open_lod`, `render_close_lod`: the same for the far field: each level's table and pool, a frame's far hits, and `owned_lod_host` with `arena_lod` over it.
 - `render_replan_lod`: the far field in other levels, keeping each level that stays the same, with its blocks and what it has built, so a settings change does not show nothing while it fills in.
+- `render_pyramid_apply`, `render_pyramid_close`, `render_pyramid_frame`, `render_pyramid_idle`, `render_pyramid_lod`, `render_pyramid_report`: plan 009 phase 03's pyramid, levels 1 to K planned by pixel error (`render_lod_plan_by_bands`), made from the blocks where they are loaded and from terrain elsewhere, and drawn by nothing yet. It lives in its own region with its arena, `render_pyramid_t`, held by `owned_pyramid`, with its tables and pools from `DEVICE_POOL_VOXELS`; its workers wait while the far field is busy. The octant store it is made from (`render/octant`) is in `arena_host` from `render_open`, as the upload fills it from the first view.
 
 **May be called by:** `run/src/main/`, which starts and stops it, and `game`, which opens a world.
 **Depends on:** `heap`, `arena`, `assert`, `log`, `machine`, `job`, `texture`, `display/flip`, `world/edit`, `gpu_bridge/device_memory`, `gpu_bridge/world_buffers`, `gpu_bridge/traverse`, `gpu_bridge/shade`, `gpu_bridge/post`, `gpu_bridge/frame`, and its parts below.

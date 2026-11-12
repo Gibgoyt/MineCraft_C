@@ -9,6 +9,7 @@
 
 - `game_view_table_chunks`: how far the map must reach for a config.
 - `game_view_work_out`: a `game_view_t` from a config and a table.
+- `game_view_pyramid`: plan 009 phase 03: the pyramid's levels for a config and its view, banded by the tuning file's pixel error and near guarantee, the field of view and the picture's height (`render_lod_bands`, `render_lod_plan_by_bands`). Nothing draws them yet.
 - `game_view_fog_end`: the fog for a reach.
 - `game_view_half_fov_tangent`: a field of view as what the camera holds.
 - `game_view_look_scaled`: mouse counts at a sensitivity, with the rest kept.

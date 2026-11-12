@@ -579,4 +579,134 @@ TEST(render_distance_and_full_detail_changes_show_within_a_second_and_a_mined_lo
     dl_rig_end(t, &rig);
 }
 
+/* ---- The pyramid follows an edit (plan 009 phase 03) ------------------------------------------------------------------ */
+
+enum : int32_t {
+    DL_EDIT_DISTANCE = 400, /* blocks east of the eye: inside full detail 32, inside the pyramid's level 1 */
+    DL_EDIT_CUBE = 4,       /* a level 2 voxel's side, so levels 1 and 2 both change */
+    DL_EDIT_ABOVE = 8,      /* blocks above the ground, in the open air */
+};
+enum : uint32_t {
+    /* Ahmed's picture: the pyramid's bands follow the rows, and at 1080 level 1 reaches 771 blocks; at 360 it would stop at 257. */
+    DL_EDIT_WIDTH = 1920u,
+    DL_EDIT_HEIGHT = 1080u,
+};
+enum : int64_t {
+    DL_EDIT_DEADLINE_NS = 100000000, /* the phase file: an edit reaches levels 1 and 2 within 100 ms */
+    DL_EDIT_WAIT_NS = 3000000000,
+};
+
+/* A 4 x 4 x 4 cube of stone put in the open air 400 blocks from the eye, through world/edit with the threads stopped, as the hands would. The
+ * store's watch says when the level 1 and level 2 columns holding it were sent with it, and what their voxel there was. */
+TEST(an_edit_reaches_level_1_and_level_2_within_100_ms) {
+    dl_rig_t rig;
+    REQUIRE(dl_rig_begin(t, &rig));
+    game_t *const game = rig.game;
+    const uint64_t bytes = (uint64_t)DL_EDIT_WIDTH * DL_EDIT_HEIGHT * 4u;
+    uint8_t *const screen = dl_aligned(t, bytes);
+    display_buffer_t target = {.owned_map = screen,
+                               .map_bytes = bytes,
+                               .pitch = DL_EDIT_WIDTH * 4u,
+                               .width = DL_EDIT_WIDTH,
+                               .height = DL_EDIT_HEIGHT};
+    game_config_t config = {.render_distance = 64u,
+                            .full_detail = 32u,
+                            .table_chunks = 32u,
+                            .width = DL_EDIT_WIDTH,
+                            .height = DL_EDIT_HEIGHT,
+                            .features_off = SHADE_FEATURE_DAY_CYCLE | SHADE_FEATURE_AO | SHADE_FEATURE_TAA,
+                            .show_date = 0u};
+    REQUIRE(game_open(game, &config));
+    /* Everything the eye's place wants, the pyramid included, on the card before anything is changed. */
+    const int64_t settle_started_ns = time_now_ns();
+    REQUIRE(game_settle(game));
+    render_t *const render = rig.render;
+    const render_lod_t *const pyramid = render_pyramid_lod(render);
+    REQUIRE(pyramid != nullptr);
+    printf("  settled in %.2f s; the pyramid has %" PRIu32 " levels, %" PRIu64 " columns built, %" PRIu64
+           " of level 1 and %" PRIu64 " of level 2 from octants\n",
+           (libc_double_t)dl_seconds(time_now_ns() - settle_started_ns), pyramid->level_count,
+           pyramid->stats.columns_built, render->borrowed_octants->stats.columns_assembled[0],
+           render->borrowed_octants->stats.columns_assembled[1]);
+    CHECK(render->borrowed_octants->stats.columns_assembled[0] > 0u);
+    CHECK(render->borrowed_octants->stats.columns_assembled[1] > 0u);
+
+    /* The cube's corner: on a level 2 voxel, in the open air over the ground there. */
+    const int32_t x = ((int32_t)floor(game->camera.position[0]) + DL_EDIT_DISTANCE) & ~(DL_EDIT_CUBE - 1);
+    const int32_t y = (int32_t)floor(game->camera.position[1]) & ~(DL_EDIT_CUBE - 1);
+    int32_t ground = COLUMN_Z_STORAGE_END - 1;
+    /* dl_block says UINT16_MAX for open air that holds no array too, so the column itself is asked for. */
+    REQUIRE(world_map_column_at(&rig.world->map, column_chunk_of(x), column_chunk_of(y)) != nullptr);
+    while (ground > COLUMN_Z_STORAGE_MIN &&
+           (dl_block(rig.world, x, y, ground) == BLOCK_ID_AIR || dl_block(rig.world, x, y, ground) == UINT16_MAX)) {
+        ground--;
+    }
+    const int32_t z = (ground + DL_EDIT_ABOVE + DL_EDIT_CUBE) & ~(DL_EDIT_CUBE - 1);
+    for (int32_t dz = 0; dz < DL_EDIT_CUBE; dz++) {
+        for (int32_t dy = 0; dy < DL_EDIT_CUBE; dy++) {
+            for (int32_t dx = 0; dx < DL_EDIT_CUBE; dx++) {
+                const uint16_t there = dl_block(rig.world, x + dx, y + dy, z + dz);
+                REQUIRE(there == BLOCK_ID_AIR || there == UINT16_MAX);
+            }
+        }
+    }
+    printf("  a cube of stone at %" PRId32 ", %" PRId32 ", %" PRId32 ", %" PRId32
+           " blocks from the eye, over ground at %" PRId32 "\n",
+           x, y, z, x - (int32_t)floor(game->camera.position[0]), ground);
+    render_octant_watch_t *const watch = &render->borrowed_octants->watch;
+    render_octant_watch_arm(render->borrowed_octants, x, y, z);
+    for (int32_t dz = 0; dz < DL_EDIT_CUBE; dz++) {
+        for (int32_t dy = 0; dy < DL_EDIT_CUBE; dy++) {
+            for (int32_t dx = 0; dx < DL_EDIT_CUBE; dx++) {
+                CHECK_EQ_U64(world_edit_block_set(&rig.world->edit, x + dx, y + dy, z + dz, BLOCK_ID_STONE),
+                             WORLD_EDIT_STATUS_CHANGED);
+            }
+        }
+    }
+    const int64_t edited_ns = time_now_ns();
+    REQUIRE(game_loop_start(game, nullptr));
+    const render_fly_input_t still = {0};
+    int64_t seen_ns[3] = {-1, -1, -1};
+    while (time_now_ns() - edited_ns < DL_EDIT_WAIT_NS && (seen_ns[1] < 0 || seen_ns[2] < 0)) {
+        REQUIRE(game_loop_frame(game, &still, (float32_t)DL_FRAME_NS / (float32_t)TIME_NS_PER_SECOND, &target));
+        for (uint32_t shift = 1u; shift <= 2u; shift++) {
+            const int64_t at = atomic_load_explicit(&watch->seen_ns[shift], memory_order_acquire);
+            if (seen_ns[shift] < 0 && at > edited_ns &&
+                atomic_load_explicit(&watch->material[shift], memory_order_relaxed) == BLOCK_ID_STONE) {
+                seen_ns[shift] = at - edited_ns;
+            }
+        }
+        time_sleep_ns(DL_FRAME_NS / 8);
+    }
+    REQUIRE(game_loop_stop(game));
+    printf("  level 1 had the stone %.1f ms after the edit, level 2 %.1f ms (-1 is not within %.0f s)\n",
+           (libc_double_t)((float64_t)seen_ns[1] * 1.0e-6f64), (libc_double_t)((float64_t)seen_ns[2] * 1.0e-6f64),
+           (libc_double_t)dl_seconds(DL_EDIT_WAIT_NS));
+    CHECK(seen_ns[1] >= 0);
+    CHECK(seen_ns[2] >= 0);
+    /* As the file's other deadlines: held in an optimized build, or as MC_DISTANCE_LIVE_DEADLINES says; reported in any. */
+#if defined(NDEBUG)
+    bool deadlines = true;
+#else
+    bool deadlines = false;
+#endif
+    const char *const asked = getenv("MC_DISTANCE_LIVE_DEADLINES");
+    if (asked != nullptr && asked[0] != '\0') {
+        deadlines = strcmp(asked, "0") != 0;
+    }
+    for (uint32_t shift = 1u; shift <= 2u; shift++) {
+        if (seen_ns[shift] > DL_EDIT_DEADLINE_NS) {
+            printf("  MISSED level %" PRIu32 ": %.1f ms, not within %.0f ms\n", shift,
+                   (libc_double_t)((float64_t)seen_ns[shift] * 1.0e-6f64),
+                   (libc_double_t)((float64_t)DL_EDIT_DEADLINE_NS * 1.0e-6f64));
+        }
+        if (deadlines) {
+            CHECK(seen_ns[shift] >= 0 && seen_ns[shift] <= DL_EDIT_DEADLINE_NS);
+        }
+    }
+    game_report(game);
+    game_close(game);
+    dl_rig_end(t, &rig);
+}
+
 TEST_MAIN()

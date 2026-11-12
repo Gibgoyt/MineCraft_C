@@ -83,6 +83,40 @@ render_lod_plan_t render_lod_plan(uint32_t full_detail_chunks, uint32_t render_d
     return plan;
 }
 
+render_lod_bands_t render_lod_bands(float64_t pixel_error, uint32_t near_guarantee, float64_t half_fov_tangent,
+                                    uint32_t height_pixels) {
+    render_lod_bands_t bands;
+    memset(&bands, 0, sizeof(bands));
+    bands.level_count = RENDER_LOD_LEVEL_COUNT;
+    /* One pixel's angle, and a level's error is half its voxel: s / 2 blocks seen from d covers s / (2 d theta) pixels. */
+    const float64_t theta = 2.0f64 * half_fov_tangent / (float64_t)(height_pixels != 0u ? height_pixels : 1u);
+    const float64_t error = pixel_error > 0.0f64 ? pixel_error : 1.0f64;
+    for (uint32_t k = 1u; k <= bands.level_count + 1u; k++) {
+        const float64_t from = (float64_t)(1u << k) / (2.0f64 * error * theta);
+        bands.from[k] = from > (float64_t)near_guarantee ? from : (float64_t)near_guarantee;
+    }
+    return bands;
+}
+
+render_lod_plan_t render_lod_plan_by_bands(const render_lod_bands_t *bands, uint32_t render_distance_chunks) {
+    render_lod_plan_t plan;
+    memset(&plan, 0, sizeof(plan));
+    const float64_t far_blocks = (float64_t)render_distance_chunks * (float64_t)COLUMN_SIZE;
+    for (uint32_t k = 1u; k <= bands->level_count && k < LOD_SHIFT_MIN + LOD_LEVELS_MAX; k++) {
+        if (bands->from[k] >= far_blocks) {
+            break; /* its band starts past what is drawn at all */
+        }
+        const float64_t edge = bands->from[k + 1u] < far_blocks ? bands->from[k + 1u] : far_blocks;
+        const float64_t column_blocks = (float64_t)((uint32_t)COLUMN_SIZE << k);
+        const uint32_t wanted = (uint32_t)ceil(edge / column_blocks) + RENDER_LOD_MARGIN_COLUMNS;
+        plan.shifts[plan.level_count] = (uint8_t)k;
+        plan.radii[plan.level_count] =
+            (uint8_t)(wanted < RENDER_LOD_RADIUS_COLUMNS_MAX ? wanted : RENDER_LOD_RADIUS_COLUMNS_MAX);
+        plan.level_count++;
+    }
+    return plan;
+}
+
 uint64_t render_lod_table_bytes(const render_lod_plan_t *plan, uint32_t level) {
     const uint64_t side = render_lod_side(plan->radii[level]);
     return world_buffers_table_bytes((uint32_t)(side * side));
@@ -92,6 +126,22 @@ uint64_t render_lod_pool_bytes(const render_lod_plan_t *plan, uint32_t level) {
     const uint64_t side = render_lod_side(plan->radii[level]);
     const uint64_t bytes =
         side * side * RENDER_LOD_POOL_BYTES_PER_COLUMN + (uint64_t)WORLD_BUFFERS_CLASS_COUNT * WORLD_BUFFERS_PAGE_BYTES;
+    return bytes / WORLD_BUFFERS_PAGE_BYTES * WORLD_BUFFERS_PAGE_BYTES;
+}
+
+uint64_t render_lod_pyramid_pool_bytes(const render_lod_plan_t *plan, uint32_t level, uint32_t block_radius_chunks) {
+    const uint32_t shift = plan->shifts[level];
+    if (shift > RENDER_LOD_OCTANT_LEVELS) {
+        return render_lod_pool_bytes(plan, level);
+    }
+    const uint64_t side = render_lod_side(plan->radii[level]);
+    /* The square of this level's columns over the blocks, as far as the level reaches. */
+    const uint64_t over = 2u * (((uint64_t)block_radius_chunks + (1u << shift) - 1u) >> shift) + 1u;
+    const uint64_t near_side = over < side ? over : side;
+    const uint64_t near = near_side * near_side;
+    const uint64_t bytes = near * (RENDER_LOD_OCTANT_POOL_BYTES_PER_COLUMN >> (shift - 1u)) +
+                           (side * side - near) * RENDER_LOD_POOL_BYTES_PER_COLUMN +
+                           (uint64_t)WORLD_BUFFERS_CLASS_COUNT * WORLD_BUFFERS_PAGE_BYTES;
     return bytes / WORLD_BUFFERS_PAGE_BYTES * WORLD_BUFFERS_PAGE_BYTES;
 }
 
@@ -110,28 +160,6 @@ uint64_t render_lod_arena_bytes(const render_lod_plan_t *plan) {
 }
 
 /* ---- One column on a worker ------------------------------------------------------------------------------------------ */
-
-static bool render_lod_counts(uint16_t block) {
-    if (block == BLOCK_ID_AIR) {
-        return false;
-    }
-    switch ((block_shape_t)block_defs[block].shape) {
-    case BLOCK_SHAPE_CUBE:
-    case BLOCK_SHAPE_FLUID:
-    case BLOCK_SHAPE_SLAB:
-    case BLOCK_SHAPE_STAIRS:
-        return true;
-    case BLOCK_SHAPE_NONE:
-    case BLOCK_SHAPE_CROSS:
-    case BLOCK_SHAPE_CROP:
-    case BLOCK_SHAPE_TORCH:
-    case BLOCK_SHAPE_THIN:
-    case BLOCK_SHAPE_TORCH_WALL:
-    case BLOCK_SHAPE_DOOR:
-        break;
-    }
-    return false;
-}
 
 /* What feature_cold_paint does to water, for a level too coarse for features: a column's own biome, and only if its top is water. */
 static void render_lod_sample_freeze(const terrain_t *terrain, const terrain_climate_sample_t *climate, int32_t x,
@@ -161,7 +189,7 @@ int32_t render_lod_cells_from_column(const uint16_t *column, uint32_t shift, uin
         for (uint32_t block = 0u; block < size; block++) {
             const uint16_t state = column[floor_block + block];
             holds_ice = holds_ice || state == BLOCK_ID_ICE;
-            if (render_lod_counts(state)) {
+            if (render_encode_block_counts(state)) {
                 count++;
                 highest = state;
             }
@@ -701,7 +729,261 @@ static void render_lod_column_unbuilt(render_lod_t *lod, const render_lod_job_t 
     lod->stats.columns_dropped++;
 }
 
-static gpu_status_t render_lod_jobs_collect(render_lod_t *lod) {
+/* ---- The pyramid's levels made from octants (plan 009 phase 03) --------------------------------------------------- */
+
+/* Which level has this shift, or UINT32_MAX. */
+static uint32_t render_lod_level_of_shift(const render_lod_t *lod, uint32_t shift) {
+    for (uint32_t i = 0u; i < lod->level_count; i++) {
+        if (lod->levels[i].shift == shift) {
+            return i;
+        }
+    }
+    return UINT32_MAX;
+}
+
+/* Where the level of this shift is made from: the blocks for shift 1, the level below for the rest, or nullptr if it is not one made from
+ * octants, or the level below is not here. */
+static const world_buffers_t *render_lod_octant_source(const render_lod_t *lod, uint32_t shift) {
+    if (lod->borrowed_octants == nullptr || shift < 1u || shift > RENDER_LOD_OCTANT_LEVELS) {
+        return nullptr;
+    }
+    if (shift == 1u) {
+        return lod->borrowed_fine;
+    }
+    const uint32_t below = render_lod_level_of_shift(lod, shift - 1u);
+    return below != UINT32_MAX ? &lod->levels[below].buffers : nullptr;
+}
+
+/* Whether a column of this level can be made from octants now, with the slots of the four under it. */
+static bool render_lod_octant_ready(const render_lod_t *lod, const render_lod_level_t *level, int32_t column_x,
+                                    int32_t column_y, uint32_t slots[4]) {
+    const world_buffers_t *const source = render_lod_octant_source(lod, level->shift);
+    return source != nullptr &&
+           render_octant_column_ready(lod->borrowed_octants, level->shift - 1u, source, column_x, column_y, slots);
+}
+
+/* A column of the level of this shift is to be made again, now, whatever its state: the cursor goes back for it. */
+static void render_lod_shift_column_changed(render_lod_t *lod, uint32_t shift, int32_t column_x, int32_t column_y) {
+    const uint32_t index = render_lod_level_of_shift(lod, shift);
+    if (index == UINT32_MAX) {
+        return;
+    }
+    render_lod_level_column_changed(lod, index, column_x, column_y);
+    lod->levels[index].request_cursor = 0u;
+}
+
+/* Whether a level's column at this slot is one the level above may be made from: made from octants, at the generation it has now. */
+static bool render_lod_octant_current(const render_lod_t *lod, const render_lod_level_t *level, uint32_t slot) {
+    if (lod->borrowed_octants == nullptr || level->shift >= RENDER_LOD_OCTANT_LEVELS ||
+        level->shift >= RENDER_OCTANT_LEVELS_MAX) {
+        return false;
+    }
+    const render_octant_column_t *const own = &lod->borrowed_octants->tables[level->shift].borrowed_columns[slot];
+    const world_buffers_column_t *const there = &level->buffers.borrowed_shadow[slot];
+    return own->valid != 0u && there->ready != 0u && own->chunk_x == there->chunk_x && own->chunk_y == there->chunk_y &&
+           own->generation == there->generation;
+}
+
+uint64_t render_lod_octant_arena_bytes(void) {
+    const uint64_t voxels = (uint64_t)RENDER_LOD_SECTIONS_MAX * SECTION_VOXELS;
+    return voxels * (sizeof(uint16_t) + sizeof(uint8_t)) + RENDER_LOD_JOB_STAGING_BYTES +
+           RENDER_LOD_SECTIONS_MAX * sizeof(render_octant_section_t) + 4u * MC_CPU_CACHE_LINE_BYTES;
+}
+
+void render_lod_octants_set(render_lod_t *lod, arena_t *arena, render_octant_t *octants) {
+    ASSERT_ALWAYS(lod->jobs_in_use == 0u);
+    const uint64_t voxels = (uint64_t)RENDER_LOD_SECTIONS_MAX * SECTION_VOXELS;
+    lod->borrowed_octants = octants;
+    lod->borrowed_octant_cells = arena_alloc_array(arena, voxels, sizeof(uint16_t), MC_CPU_CACHE_LINE_BYTES);
+    lod->borrowed_octant_light = arena_alloc(arena, voxels, MC_CPU_CACHE_LINE_BYTES);
+    lod->borrowed_octant_staging = arena_alloc(arena, RENDER_LOD_JOB_STAGING_BYTES, MC_CPU_CACHE_LINE_BYTES);
+    lod->borrowed_octant_sections = arena_alloc_array(arena, RENDER_LOD_SECTIONS_MAX, sizeof(render_octant_section_t),
+                                                      alignof(render_octant_section_t));
+    /* Every column is wanted from the start, so what changed before is said already; and levels above 0 begin again. */
+    int32_t x = 0, y = 0;
+    while (render_octant_changed_next(octants, &x, &y)) {
+    }
+    (void)render_octant_changed_lost_take(octants);
+    render_octant_levels_forget(octants);
+}
+
+void render_lod_jobs_hold(render_lod_t *lod, bool held) {
+    lod->jobs_held = held ? 1u : 0u;
+}
+
+/* The level 0 columns that changed: the level 1 column over each is made again. */
+static void render_lod_octant_changes_take(render_lod_t *lod) {
+    render_octant_t *const octants = lod->borrowed_octants;
+    int32_t chunk_x = 0, chunk_y = 0;
+    while (render_octant_changed_next(octants, &chunk_x, &chunk_y)) {
+        render_lod_shift_column_changed(lod, 1u, chunk_x >> 1, chunk_y >> 1);
+    }
+    const uint32_t index = render_lod_level_of_shift(lod, 1u);
+    if (render_octant_changed_lost_take(octants) && index != UINT32_MAX) {
+        render_lod_level_t *const level = &lod->levels[index];
+        for (uint32_t slot = 0u; slot < level->column_count; slot++) {
+            const world_buffers_column_t *const column = &level->buffers.borrowed_shadow[slot];
+            if (render_lod_state_built(level->borrowed_state[slot]) && column->ready != 0u) {
+                render_lod_level_column_changed(lod, index, column->chunk_x, column->chunk_y);
+            }
+        }
+        level->request_cursor = 0u;
+    }
+}
+
+/* What the watched place is in a column just assembled at this shift, if it is in it. */
+static void render_lod_octant_watch(render_lod_t *lod, uint32_t shift, int32_t column_x, int32_t column_y) {
+    render_octant_t *const octants = lod->borrowed_octants;
+    if (atomic_load_explicit(&octants->watch.armed, memory_order_acquire) == 0u) {
+        return;
+    }
+    const int32_t vx = octants->watch.x >> shift, vy = octants->watch.y >> shift;
+    const int32_t vz = (octants->watch.z - COLUMN_Z_STORAGE_MIN) >> shift;
+    if ((vx >> 4) != column_x || (vy >> 4) != column_y || vz < 0 ||
+        vz >= (int32_t)(RENDER_LOD_HEIGHT_BLOCKS >> shift)) {
+        return;
+    }
+    const uint32_t section = (uint32_t)vz >> 4;
+    const render_octant_section_t *const holds = &lod->borrowed_octant_sections[section];
+    const uint16_t material =
+        holds->assembled != 0u ? lod->borrowed_octant_cells[(uint64_t)section * SECTION_VOXELS +
+                                                            section_voxel_index((uint32_t)vx & 15u, (uint32_t)vy & 15u,
+                                                                                (uint32_t)vz & 15u)]
+                               : holds->block_uniform;
+    render_octant_watch_note(octants, shift, material, time_now_ns());
+}
+
+/* One column made from the four under it, encoded and sent as a worker's would be, and its own octants kept for the level above. */
+static gpu_status_t render_lod_octant_build(render_lod_t *lod, uint32_t index, int32_t column_x, int32_t column_y,
+                                            uint32_t slot, const uint32_t slots[4], uint64_t *budget_used) {
+    render_lod_level_t *const level = &lod->levels[index];
+    render_octant_t *const octants = lod->borrowed_octants;
+    const int64_t started_ns = time_now_ns();
+    const uint32_t shift = level->shift;
+    const uint32_t sections = (RENDER_LOD_HEIGHT_BLOCKS >> shift) / SECTION_SIZE;
+    render_octant_section_t *const holds = lod->borrowed_octant_sections;
+    uint16_t *const cells = lod->borrowed_octant_cells;
+    uint8_t *const light = lod->borrowed_octant_light;
+    render_lod_job_t job;
+    memset(&job, 0, sizeof(job));
+    job.borrowed_lod = lod;
+    job.borrowed_staging = lod->borrowed_octant_staging;
+    job.level = (uint8_t)index;
+    job.top_voxel = render_octant_column_assemble(octants, shift - 1u, slots, cells, light, holds);
+    job.chunk_x = column_x;
+    job.chunk_y = column_y;
+    uint64_t *const heads = (uint64_t *)(void *)job.borrowed_staging;
+    uint8_t *cursor = job.borrowed_staging + RENDER_LOD_STAGING_HEAD_BYTES;
+    uint64_t bytes = 0u;
+    for (uint32_t section = 0u; section < sections; section++) {
+        const render_encode_source_t source =
+            holds[section].assembled != 0u
+                ? (render_encode_source_t){cells + (uint64_t)section * SECTION_VOXELS,
+                                           light + (uint64_t)section * SECTION_VOXELS,
+                                           0u,
+                                           0u,
+                                           {0}}
+                : (render_encode_source_t){
+                      nullptr, nullptr, holds[section].block_uniform, holds[section].light_uniform, {0}};
+        heads[section] = render_encode_section(&source, cursor);
+        cursor += heads[section];
+        bytes += heads[section];
+    }
+    const uint8_t state = level->borrowed_state[slot];
+    level->borrowed_state[slot] =
+        state == RENDER_LOD_COLUMN_STALE ? RENDER_LOD_COLUMN_REBUILDING : RENDER_LOD_COLUMN_BUILDING;
+    const gpu_status_t status = render_lod_column_send(lod, &job, budget_used);
+    if (status != GPU_STATUS_OK || level->borrowed_state[slot] != RENDER_LOD_COLUMN_BUILT) {
+        return status;
+    }
+    octants->stats.columns_assembled[shift - 1u]++;
+    octants->stats.bytes_sent += bytes;
+    render_lod_octant_watch(lod, shift, job.chunk_x, job.chunk_y);
+    if (shift < RENDER_LOD_OCTANT_LEVELS && shift < RENDER_OCTANT_LEVELS_MAX) {
+        /* This level is what the next is made from: its own octants, at the generation it was just sent with. */
+        render_octant_level_column_set(octants, shift, slot, job.chunk_x, job.chunk_y,
+                                       level->buffers.borrowed_shadow[slot].generation);
+        render_encode_octant_t octant;
+        for (uint32_t section = 0u; section < sections; section++) {
+            const render_encode_source_t source =
+                holds[section].assembled != 0u
+                    ? (render_encode_source_t){cells + (uint64_t)section * SECTION_VOXELS,
+                                               light + (uint64_t)section * SECTION_VOXELS,
+                                               0u,
+                                               0u,
+                                               {0}}
+                    : (render_encode_source_t){
+                          nullptr, nullptr, holds[section].block_uniform, holds[section].light_uniform, {0}};
+            if (source.borrowed_blocks == nullptr && source.block_uniform == 0u) {
+                continue; /* air, as a column starts */
+            }
+            (void)render_encode_section_octant(&source, &octant);
+            render_octant_section_set(octants, shift, slot, section, &octant);
+        }
+        render_lod_shift_column_changed(lod, shift + 1u, job.chunk_x >> 1, job.chunk_y >> 1);
+    }
+    octants->stats.assemble_ns += (uint64_t)(time_now_ns() - started_ns);
+    return GPU_STATUS_OK;
+}
+
+/* Each level made from octants, finest first so that one frame takes an edit up through all of them: every column it wants, nearest first,
+ * that can be made from octants now, up to the frame's count and bytes. */
+static gpu_status_t render_lod_octants_request(render_lod_t *lod, uint64_t *budget_used) {
+    lod->octant_pending = 0u;
+    uint32_t built = 0u;
+    for (uint32_t index = 0u; index < lod->level_count; index++) {
+        render_lod_level_t *const level = &lod->levels[index];
+        if (level->centered == 0u || render_lod_octant_source(lod, level->shift) == nullptr) {
+            continue;
+        }
+        for (uint32_t place = 0u; place < level->column_count; place++) {
+            const int16_t *const offset = &level->borrowed_offsets[place * 2u];
+            const int32_t column_x = level->center_x + offset[0], column_y = level->center_y + offset[1];
+            uint32_t slot = 0u;
+            ASSERT_ALWAYS(world_buffers_slot_of(&level->buffers.window, column_x, column_y, &slot));
+            const uint8_t state = level->borrowed_state[slot];
+            if (state != RENDER_LOD_COLUMN_WANTED && state != RENDER_LOD_COLUMN_COVERED &&
+                state != RENDER_LOD_COLUMN_STALE) {
+                continue;
+            }
+            uint32_t slots[4];
+            if (!render_lod_octant_ready(lod, level, column_x, column_y, slots)) {
+                continue;
+            }
+            if (built >= RENDER_LOD_OCTANT_COLUMNS_PER_FRAME || *budget_used >= RENDER_LOD_FRAME_BYTES) {
+                lod->octant_pending++;
+                continue;
+            }
+            const gpu_status_t status =
+                render_lod_octant_build(lod, index, column_x, column_y, slot, slots, budget_used);
+            if (status != GPU_STATUS_OK) {
+                return status;
+            }
+            built++;
+        }
+    }
+    return GPU_STATUS_OK;
+}
+
+/* For the pyramid, a column a worker made from terrain: if the level above was made from its octants, that is no longer so, and if it could
+ * be made from octants now, it is made again from them. */
+static void render_lod_terrain_sent(render_lod_t *lod, const render_lod_job_t *job, bool was_current) {
+    render_lod_level_t *const level = &lod->levels[job->level];
+    uint32_t slot = 0u;
+    if (!world_buffers_slot_of(&level->buffers.window, job->chunk_x, job->chunk_y, &slot) ||
+        level->borrowed_state[slot] != RENDER_LOD_COLUMN_BUILT) {
+        return;
+    }
+    if (was_current) {
+        render_lod_shift_column_changed(lod, level->shift + 1u, job->chunk_x >> 1, job->chunk_y >> 1);
+    }
+    uint32_t slots[4];
+    if (render_lod_octant_ready(lod, level, job->chunk_x, job->chunk_y, slots)) {
+        level->borrowed_state[slot] = RENDER_LOD_COLUMN_STALE;
+    }
+}
+
+static gpu_status_t render_lod_jobs_collect(render_lod_t *lod, uint64_t *budget_used) {
     uint64_t used = 0u;
     for (uint32_t i = 0u; i < RENDER_LOD_JOBS; i++) {
         render_lod_job_t *const job = &lod->borrowed_jobs[i];
@@ -718,14 +1000,25 @@ static gpu_status_t render_lod_jobs_collect(render_lod_t *lod) {
             lod->stats.budget_stops++;
             break;
         }
+        bool was_current = false;
+        if (lod->borrowed_octants != nullptr) {
+            const render_lod_level_t *const level = &lod->levels[job->level];
+            uint32_t slot = 0u;
+            was_current = world_buffers_slot_of(&level->buffers.window, job->chunk_x, job->chunk_y, &slot) &&
+                          render_lod_octant_current(lod, level, slot);
+        }
         const gpu_status_t status = render_lod_column_send(lod, job, &used);
         if (status != GPU_STATUS_OK) {
             return status;
+        }
+        if (lod->borrowed_octants != nullptr) {
+            render_lod_terrain_sent(lod, job, was_current);
         }
         lod->stats.build_ns += (uint64_t)job->build_ns;
         job->in_use = 0u;
         lod->jobs_in_use--;
     }
+    *budget_used = used;
     return GPU_STATUS_OK;
 }
 
@@ -738,6 +1031,14 @@ static bool render_lod_level_next(render_lod_t *lod, render_lod_level_t *level, 
         uint32_t slot = 0u;
         ASSERT_ALWAYS(world_buffers_slot_of(&level->buffers.window, column_x, column_y, &slot));
         const uint8_t state = level->borrowed_state[slot];
+        uint32_t slots[4];
+        if ((state == RENDER_LOD_COLUMN_STALE || state == RENDER_LOD_COLUMN_WANTED ||
+             state == RENDER_LOD_COLUMN_COVERED) &&
+            lod->borrowed_octants != nullptr && render_lod_octant_ready(lod, level, column_x, column_y, slots)) {
+            /* The pyramid makes this one from octants, on its own pass: no worker for it. */
+            level->request_cursor++;
+            continue;
+        }
         if (state == RENDER_LOD_COLUMN_STALE || (lod->covered_pass != 0u && state == RENDER_LOD_COLUMN_COVERED)) {
             *out_slot = slot;
             return true;
@@ -771,6 +1072,9 @@ static bool render_lod_any_covered(const render_lod_t *lod) {
  * stands round the eye too, so a new world or a new render distance shows the whole of it in well under a second, coarse, and finer levels
  * sharpen what is already there. A column full detail is already drawn over waits until all the rest are asked for. */
 static void render_lod_jobs_request(render_lod_t *lod) {
+    if (lod->jobs_held != 0u) {
+        return;
+    }
     uint32_t free_job = 0u;
     for (;;) {
         uint32_t best = UINT32_MAX, best_slot = 0u;
@@ -833,9 +1137,19 @@ gpu_status_t render_lod_frame(render_lod_t *lod, const float64_t position[3]) {
     if (moved) {
         job_priority_drop(lod->borrowed_job, JOB_PRIORITY_FAR);
     }
-    gpu_status_t status = render_lod_jobs_collect(lod);
+    if (lod->borrowed_octants != nullptr) {
+        render_lod_octant_changes_take(lod);
+    }
+    uint64_t used = 0u;
+    gpu_status_t status = render_lod_jobs_collect(lod, &used);
     if (status != GPU_STATUS_OK) {
         return status;
+    }
+    if (lod->borrowed_octants != nullptr) {
+        status = render_lod_octants_request(lod, &used);
+        if (status != GPU_STATUS_OK) {
+            return status;
+        }
     }
     render_lod_jobs_request(lod);
     for (uint32_t i = 0u; i < lod->level_count; i++) {
@@ -850,7 +1164,7 @@ gpu_status_t render_lod_frame(render_lod_t *lod, const float64_t position[3]) {
 }
 
 bool render_lod_idle(const render_lod_t *lod) {
-    if (lod->jobs_in_use != 0u) {
+    if (lod->jobs_in_use != 0u || lod->octant_pending != 0u) {
         return false;
     }
     for (uint32_t i = 0u; i < lod->level_count; i++) {

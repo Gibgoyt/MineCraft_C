@@ -51,6 +51,13 @@ void game_view_work_out(const game_config_t *config, uint32_t table_chunks, game
     out->features = (SHADE_FEATURES_PLAY | optional) & ~config->features_off;
 }
 
+render_lod_plan_t game_view_pyramid(const game_config_t *config, const game_view_t *view) {
+    const render_lod_bands_t bands =
+        render_lod_bands((float64_t)MC_TUNE_RENDER_LOD_PIXEL_ERROR, RENDER_LOD_NEAR_GUARANTEE,
+                         (float64_t)game_view_half_fov_tangent(config->fov_degrees), view->height);
+    return render_lod_plan_by_bands(&bands, config->render_distance);
+}
+
 float32_t game_view_half_fov_tangent(uint32_t fov_degrees) {
     if (fov_degrees == 0u || fov_degrees == GAME_VIEW_FOV_DEFAULT) {
         return RENDER_CAMERA_HALF_FOV_TANGENT_DEFAULT;

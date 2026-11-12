@@ -6,6 +6,7 @@
 #include "gpu_bridge/world_buffers/index.h"
 #include "job/index.h"
 #include "render/encode/index.h"
+#include "render/octant/index.h"
 #include "thread/ring/index.h"
 #include "tuning/render/budget/index.h"
 #include "world/edit/index.h"
@@ -64,7 +65,10 @@ typedef struct render_upload_t {
     uint32_t section_capacity;                          /* 400 */
     uint32_t submitted;                                 /* 404: of the view's sections, those given to workers */
     uint32_t finished;                                  /* 408: of them, those dealt with */
-    uint8_t _pad0[36];                                  /* 412 */
+    uint8_t _pad0[4];                                   /* 412 */
+    render_octant_t *borrowed_octants; /* 416: plan 009 phase 03: what each sent section's octant goes to, or nullptr */
+    render_encode_octant_t *borrowed_octant_staging; /* 424: section_capacity: each job's octant */
+    uint8_t _pad1[16];                               /* 432 */
 } render_upload_t;
 static_assert(sizeof(render_upload_t) == 448);
 static_assert(alignof(render_upload_t) == MC_CPU_CACHE_LINE_BYTES);
@@ -83,6 +87,10 @@ void render_upload_init(render_upload_t *upload, arena_t *arena, world_edit_snap
 
 /* Waits for any job still running, since its memory is about to go. */
 void render_upload_deinit(render_upload_t *upload);
+
+/* Plan 009 phase 03: from the next view on, each section's job also reduces it to its octant, and each section sent puts its octant in the
+ * store, as each change of the table does its columns. The store must outlive this. Before the first render_upload_frame. */
+void render_upload_octants_set(render_upload_t *upload, render_octant_t *octants);
 
 /* One frame's worth, without ever waiting for a worker: takes the newest view once the last is dealt with, and puts its table
  * in place, starts its sections encoding, sends what is ready up to the budget, and flushes the table. Call it between

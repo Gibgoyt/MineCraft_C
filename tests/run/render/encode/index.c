@@ -3,6 +3,7 @@
 
 #include "job/index.h"
 #include "render/encode/index.h"
+#include "tables/blocks/index.h"
 #include "thread/index.h"
 #include "time/index.h"
 
@@ -397,6 +398,124 @@ TEST(sizes_and_time_on_this_machine) {
     printf("terrain-shaped section: %" PRIu64 " bytes on average, encoded in %" PRIu64 " ns on one thread\n",
            total_bytes / rounds, total_ns / rounds);
     CHECK(total_bytes / rounds <= WORLD_BUFFERS_SECTION_BYTES_MAX);
+}
+
+/* ---- The octant (plan 009 phase 03) ------------------------------------------------------------------------------------ */
+
+/* One row of the phase file's "The reduction, worked": a 2 x 2 x 2 group, index x + 2 y + 4 z, so 0..3 is the bottom layer. */
+typedef struct encode_test_octant_row_t {
+    const char *name;                            /* 0 */
+    uint16_t blocks[RENDER_ENCODE_GROUP_VOXELS]; /* 8 */
+    uint8_t light[RENDER_ENCODE_GROUP_VOXELS];   /* 24 */
+    uint16_t material;                           /* 32: what the voxel above comes to */
+    uint8_t packed;                              /* 34 */
+    uint8_t _pad0[5];                            /* 35 */
+} encode_test_octant_row_t;
+static_assert(sizeof(encode_test_octant_row_t) == 40);
+
+TEST(the_octant_reduction_table) {
+    enum : uint16_t {
+        S = BLOCK_ID_STONE,
+        D = BLOCK_ID_DIRT,
+        G = BLOCK_ID_GRASS_BLOCK,
+        W = BLOCK_ID_WATER,
+        A = BLOCK_ID_AIR,
+        T = BLOCK_ID_TORCH,
+        F = BLOCK_ID_DANDELION,
+        O = BLOCK_ID_WOOD_DOOR,
+        L = BLOCK_ID_OAK_SLAB,
+        R = BLOCK_ID_OAK_STAIRS,
+    };
+    static const encode_test_octant_row_t rows[] = {
+        {"8 stone", {S, S, S, S, S, S, S, S}, {0}, S, 0u, {0}},
+        {"4 stone, 4 air: the half rule keeps it", {S, S, S, S, A, A, A, A}, {0}, S, 0u, {0}},
+        {"3 stone, 5 air", {S, S, S, A, A, A, A, A}, {0}, A, 0u, {0}},
+        {"4 stone above air, the half rule still", {A, A, A, A, S, S, S, S}, {0}, S, 0u, {0}},
+        {"4 dirt below, 2 grass above, 2 air above: the grass top", {D, D, D, D, G, A, G, A}, {0}, G, 0u, {0}},
+        {"4 dirt below, 4 grass above", {D, D, D, D, G, G, G, G}, {0}, G, 0u, {0}},
+        {"a tie in the top layer goes to the first met", {D, D, D, D, G, S, S, G}, {0}, G, 0u, {0}},
+        {"the most common of the top layer", {S, S, S, S, D, G, G, G}, {0}, G, 0u, {0}},
+        {"4 water, 4 air: water counts", {W, W, W, W, A, A, A, A}, {0}, W, 0u, {0}},
+        {"torches do not count", {S, S, S, T, T, T, T, A}, {0}, A, 0u, {0}},
+        {"flowers do not count", {G, G, G, F, F, F, F, A}, {0}, A, 0u, {0}},
+        {"doors do not count", {S, S, S, O, O, A, A, A}, {0}, A, 0u, {0}},
+        {"slabs count", {L, L, L, L, A, A, A, A}, {0}, L, 0u, {0}},
+        {"stairs count", {S, S, R, R, A, A, A, A}, {0}, S, 0u, {0}},
+        {"stairs on top", {S, S, S, S, R, A, A, A}, {0}, R, 0u, {0}},
+        {"light: the brightest of the counted, sky and block light each",
+         {S, S, S, S, G, G, A, A},
+         {0x00u, 0x03u, 0x10u, 0x00u, 0xE1u, 0x2Au, 0xFFu, 0xFFu},
+         G,
+         0xEAu,
+         {0}},
+        {"air keeps no light",
+         {A, A, A, A, A, A, A, A},
+         {0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu},
+         A,
+         0u,
+         {0}},
+        {"a torch's light is not counted",
+         {S, S, S, S, T, A, A, A},
+         {0x00u, 0x00u, 0x00u, 0x00u, 0x0Fu, 0u, 0u, 0u},
+         S,
+         0u,
+         {0}},
+    };
+    for (uint32_t i = 0u; i < sizeof(rows) / sizeof(rows[0]); i++) {
+        uint16_t material = 0xFFFFu;
+        uint8_t packed = 0xFFu;
+        render_encode_octant_voxel(rows[i].blocks, rows[i].light, &material, &packed);
+        if (!CHECK_EQ_U64(material, rows[i].material) || !CHECK_EQ_U64(packed, rows[i].packed)) {
+            printf("  row %" PRIu32 ", %s: %s with light %#x\n", i, rows[i].name, block_defs[material].name,
+                   (uint32_t)packed);
+        }
+    }
+}
+
+/* The section's octant is each 2 x 2 x 2 group through the rule; a uniform section stays uniform, and an empty one empty. */
+TEST(a_section_reduces_to_its_octant) {
+    uint16_t *const blocks = test_alloc(t, SECTION_VOXELS * sizeof(uint16_t));
+    uint8_t *const light = test_alloc(t, SECTION_VOXELS);
+    render_encode_octant_t *const octant = test_alloc(t, sizeof(render_encode_octant_t));
+    uint64_t rng = 0x243F6A8885A308D3ull;
+    static const uint16_t palette[4] = {BLOCK_ID_AIR, BLOCK_ID_STONE, BLOCK_ID_DIRT, BLOCK_ID_TORCH};
+    for (uint32_t i = 0u; i < SECTION_VOXELS; i++) {
+        const uint64_t r = encode_test_random(&rng);
+        blocks[i] = palette[r & 3u];
+        light[i] = (uint8_t)(r >> 8);
+    }
+    const render_encode_source_t mixed = {blocks, light, 0u, 0u, {0}};
+    CHECK(!render_encode_section_octant(&mixed, octant));
+    uint32_t wrong = 0u;
+    for (uint32_t z = 0u; z < 8u; z++) {
+        for (uint32_t y = 0u; y < 8u; y++) {
+            for (uint32_t x = 0u; x < 8u; x++) {
+                uint16_t group[8];
+                uint8_t group_light[8];
+                for (uint32_t i = 0u; i < 8u; i++) {
+                    const uint32_t index =
+                        section_voxel_index(2u * x + (i & 1u), 2u * y + ((i >> 1) & 1u), 2u * z + (i >> 2));
+                    group[i] = blocks[index];
+                    group_light[i] = light[index];
+                }
+                uint16_t material = 0u;
+                uint8_t packed = 0u;
+                render_encode_octant_voxel(group, group_light, &material, &packed);
+                const uint32_t place = x + 8u * y + 64u * z;
+                wrong += octant->material[place] != material || octant->light[place] != packed ? 1u : 0u;
+            }
+        }
+    }
+    CHECK_EQ_U64(wrong, 0u);
+    const render_encode_source_t stone = {nullptr, nullptr, BLOCK_ID_STONE, 0x07u, {0}};
+    CHECK(render_encode_section_octant(&stone, octant));
+    CHECK_EQ_U64(octant->material[0], BLOCK_ID_STONE);
+    CHECK_EQ_U64(octant->material[511], BLOCK_ID_STONE);
+    CHECK_EQ_U64(octant->light[300], 0x07u);
+    const render_encode_source_t air = {nullptr, nullptr, BLOCK_ID_AIR, 0xF0u, {0}};
+    CHECK(render_encode_section_octant(&air, octant));
+    CHECK_EQ_U64(octant->material[100], 0u);
+    CHECK_EQ_U64(octant->light[100], 0u);
 }
 
 TEST_MAIN()

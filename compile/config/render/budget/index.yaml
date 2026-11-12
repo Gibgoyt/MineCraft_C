@@ -27,3 +27,24 @@ lod_pool_kib_per_column:
   min: 16
   max: 1024
   why: "What a level's pool on the card gives each of its columns: real ground measured up to 38 KiB in voxels of 2 among mountains, less the coarser they get. RENDER_LOD_POOL_BYTES_PER_COLUMN."
+octant_store_mib:
+  value: 320
+  type: u32
+  unit: mib
+  min: 8
+  max: 1024
+  why: "Host memory for the octants of non-uniform sections, 1536 bytes each, that pyramid levels 1 and 2 are made from where blocks are loaded (plan 009 phase 03): bench_lod found 14 to 41 a chunk, about 120 MiB at full detail 32 and 270 at 48, and 96 ran out at 32. Pages are touched only as used. A column whose octant finds no room is made from terrain instead. RENDER_OCTANT_STORE_MIB."
+octant_columns_per_frame:
+  value: 8
+  type: u32
+  unit: count
+  min: 1
+  max: 256
+  why: "Pyramid columns assembled from octants and sent in one frame, on the gpu thread: 0.18 ms each on the mean, 0.31 at worst, in bench_lod's release numbers. An edit's column is one of them. RENDER_LOD_OCTANT_COLUMNS_PER_FRAME."
+octant_pool_kib_per_column:
+  value: 192
+  type: u32
+  unit: kib
+  min: 64
+  max: 2048
+  why: "What a pyramid level 1 column made from the blocks gets of its level's pool, halved each level up: bench_lod measured 132 KiB a column on the mean and 239 at worst, as caves and ores are in it, against 34 sampled from terrain (plan 009 phase 03). The rest of a level gets lod_pool_kib_per_column. RENDER_LOD_OCTANT_POOL_BYTES_PER_COLUMN."

@@ -8,6 +8,8 @@
 **Public functions** (`run/include/render/lod/index.h`):
 
 - `render_lod_plan`: which levels a world has, for how far it is drawn block by block and how far in all.
+- `render_lod_bands`, `render_lod_plan_by_bands`: plan 009 phase 03's pyramid: where each level may start for a pixel error, field of view and picture height, and the levels whose bands start inside the render distance.
+- `render_lod_octants_set`, `render_lod_octant_arena_bytes`, `render_lod_jobs_hold`: the pyramid's levels made from the blocks through `render/octant`, and its workers held while the far field rays read is busy.
 - `render_lod_table_bytes`, `render_lod_pool_bytes`, `render_lod_arena_bytes`: sizes for the Owner.
 - `render_lod_cells_from_column`: one sampled column to its coarse voxels, on its own for a test to hold to paper.
 - `render_lod_sample_terrain`: a sample of the world's own ground, its context a `terrain_t`, with `terrain_climate_fallback`'s climate.
@@ -23,7 +25,17 @@
 - `render_lod_column_of`: which of a level's columns a place is in.
 
 **May be called by:** `run/src/render/`, which starts and stops it, `run/src/game/`, which calls `render_lod_frame`, `run/src/render/frame/`, which calls `render_lod_scene`, and `run/src/settings/persist/` for the default of full detail.
-**Depends on:** `arena`, `assert`, `log`, `profiler` (a `far_column` scope on the worker's lane for each column), `job`, `time`, `terrain` and its stages, `terrain/feature`'s cache, `tables/blocks`, `world/column`, `render/encode`, `render/upload` for its budget, `gpu_bridge/world_buffers`, `gpu_bridge/lod`, `gpu_bridge/shade` for its one light value.
+**Depends on:** `arena`, `assert`, `log`, `profiler` (a `far_column` scope on the worker's lane for each column), `job`, `time`, `terrain` and its stages, `terrain/feature`'s cache, `tables/blocks`, `world/column`, `render/encode`, `render/upload` for its budget, `render/octant` (its sibling: the octants the pyramid's levels are made from), `gpu_bridge/world_buffers`, `gpu_bridge/lod`, `gpu_bridge/shade` for its one light value.
+
+## The pyramid (plan 009 phase 03)
+
+`run/src/render/` opens a second set of levels beside the far field, the **pyramid**, which nothing draws yet: phase 04 draws from it. It is planned by pixel error, not by full detail. One pixel is θ = 2 tan(half the field of view) / rows, a level of voxels of s blocks moves a surface by s / 2 blocks, so it may start at d = s / (2 E θ), never inside the near guarantee (`compile/config/render/lod/index.yaml`: `pixel_error`, `near_guarantee`, `level_count`). At E = 2, 70° and 1080 rows level 1 starts at 385.6 blocks and level 2 at 771.2. `render_lod_plan_by_bands` keeps each level whose band starts inside the render distance, each `ceil(far edge / its column) + margin` columns each way, up to `radius_columns_max`: so at render distance 64 level 1 is 27 columns each way and level 2 18, and level 1 is there under any full detail.
+
+**Where the blocks are loaded, levels come from them.** A pyramid column of voxels of 2 stands on 2 x 2 chunks. When all four are on the card, with every octant `render/octant` holds of them, the gpu thread puts the column together from those octants, encodes it with `render_encode_section` and sends it as a worker's column would be sent, in the same frame, up to `octant_columns_per_frame` columns and `lod_frame_bytes` (`compile/config/render/budget/index.yaml`). Doing it there costs no worker and no copy of the blocks; `bench/lod/` has what one costs. It then reduces each of its sections to its octant of level 2 and keeps those, so level 2 follows from level 1 the same way, up to `octant_levels` levels. A column the four do not all stand under is sampled from terrain on workers as the far field's are, with the save's overlay; a column made from terrain where octants have since come is made again from them, and a level 1 column made again from terrain marks the level 2 column over it.
+
+**An edit.** The upload keeps each sent section's octant, and the store lists the chunk as changed; the pyramid takes the list at the start of its frame and marks each level 1 column over one stale. The octant pass goes finest level first, so the level 2 column over it is made in the same frame: an edit reaches levels 1 and 2 in the upload round that takes it to level 0 (`run_render_distance_live` holds it to 100 ms).
+
+**Its workers wait.** While the far field rays read is not idle, the pyramid sends no column to workers (`render_lod_jobs_hold`), so it never slows what is drawn; what the blocks make comes regardless. `render_lod_idle` counts octant columns left for want of a frame's room.
 
 ## Why it is the way it is
 

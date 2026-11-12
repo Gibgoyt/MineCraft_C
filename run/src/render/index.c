@@ -19,7 +19,8 @@ render_limits_t render_limits_default(void) {
 /* Each arena allocation can waste its alignment. */
 static uint64_t render_host_bytes(uint64_t column_count, uint64_t pool_bytes, uint32_t section_count) {
     return world_buffers_host_bytes((uint32_t)column_count, pool_bytes) + MC_CPU_CACHE_LINE_BYTES +
-           render_upload_arena_bytes(section_count);
+           render_upload_arena_bytes(section_count) + render_octant_arena_bytes((uint32_t)column_count) +
+           sizeof(render_octant_t) + MC_CPU_CACHE_LINE_BYTES;
 }
 
 bool render_init(render_t *render, device_memory_t *memory, job_system_t *job, render_limits_t limits) {
@@ -114,6 +115,10 @@ gpu_status_t render_open(render_t *render, world_edit_snapshot_t *snapshot, uint
     }
     render_upload_init(&render->upload, &render->arena_host, snapshot, render->borrowed_job, &render->buffers,
                        snapshot->section_capacity, budget);
+    /* Plan 009 phase 03: every section sent keeps its octant, for the pyramid's levels made from the blocks. */
+    render->borrowed_octants = arena_alloc(&render->arena_host, sizeof(render_octant_t), alignof(render_octant_t));
+    render_octant_init(render->borrowed_octants, &render->arena_host, map->slot_count);
+    render_upload_octants_set(&render->upload, render->borrowed_octants);
     render->open = 1u;
     return GPU_STATUS_OK;
 }
@@ -123,7 +128,10 @@ void render_close(render_t *render) {
     if (render->open == 0u) {
         return;
     }
+    render_pyramid_close(render);
     render_upload_deinit(&render->upload);
+    render_octant_deinit(render->borrowed_octants);
+    render->borrowed_octants = nullptr;
     world_buffers_deinit(&render->buffers);
     arena_reset(&render->arena_host);
     device_memory_t *const memory = render->borrowed_memory;
@@ -426,4 +434,146 @@ void render_close_frame(render_t *render) {
     render_frame_blocks_give_back(render);
     render->borrowed_entities = nullptr;
     render->frame_open = 0u;
+}
+
+/* ---- The pyramid (plan 009 phase 03) ----------------------------------------------------------------------------- */
+
+static void render_pyramid_blocks_give_back(render_t *render, render_pyramid_t *pyramid) {
+    device_memory_t *const memory = render->borrowed_memory;
+    for (uint32_t i = LOD_LEVELS_MAX; i-- > 0u;) {
+        if (device_memory_free(memory, &pyramid->owned_pools[i]) != GPU_STATUS_OK ||
+            device_memory_free(memory, &pyramid->owned_tables[i]) != GPU_STATUS_OK) {
+            gpu_error_log(&memory->last_error);
+        }
+    }
+}
+
+void render_pyramid_close(render_t *render) {
+    render_pyramid_t *const pyramid = render->owned_pyramid;
+    if (pyramid == nullptr) {
+        return;
+    }
+    if (pyramid->borrowed_lod != nullptr) {
+        render_lod_deinit(pyramid->borrowed_lod);
+    }
+    render_pyramid_blocks_give_back(render, pyramid);
+    arena_deinit(&pyramid->arena);
+    /* It lives in the region it releases. */
+    heap_region_t region = pyramid->owned_region;
+    render->owned_pyramid = nullptr;
+    heap_release(&region);
+}
+
+/* Takes its blocks, its region and its levels, saying why if it cannot. */
+static gpu_status_t render_pyramid_open(render_t *render, const render_lod_plan_t *plan, render_lod_sample_t sample,
+                                        const void *sample_context) {
+    /* Levels made from the blocks have larger pools, and so more host bookkeeping than render_lod_arena_bytes counts: that, on top. */
+    const uint32_t block_radius = (render->buffers.window.side - 1u) / 2u;
+    uint64_t pool_bytes[LOD_LEVELS_MAX];
+    uint64_t arena_bytes = render_lod_arena_bytes(plan) + render_lod_octant_arena_bytes() + sizeof(render_lod_t) +
+                           2u * MC_CPU_CACHE_LINE_BYTES;
+    for (uint32_t i = 0u; i < plan->level_count; i++) {
+        const uint32_t side = 2u * plan->radii[i] + 1u;
+        pool_bytes[i] = render_lod_pyramid_pool_bytes(plan, i, block_radius);
+        arena_bytes += world_buffers_host_bytes(side * side, pool_bytes[i]);
+    }
+    heap_region_t region;
+    if (!heap_reserve(sizeof(render_pyramid_t) + arena_bytes, &region)) {
+        return GPU_STATUS_OUT_OF_MEMORY; /* it has said why */
+    }
+    render_pyramid_t *const pyramid = (render_pyramid_t *)(void *)region.owned_base;
+    memset(pyramid, 0, sizeof(*pyramid));
+    pyramid->owned_region = region;
+    pyramid->plan = *plan;
+    arena_init(&pyramid->arena, "render_pyramid", region.owned_base + sizeof(render_pyramid_t), arena_bytes);
+    render->owned_pyramid = pyramid;
+    device_memory_t *const memory = render->borrowed_memory;
+    gpu_status_t status = GPU_STATUS_OK;
+    for (uint32_t i = 0u; i < plan->level_count && status == GPU_STATUS_OK; i++) {
+        status = device_memory_alloc(memory, DEVICE_POOL_VOXELS, render_lod_table_bytes(plan, i),
+                                     "pyramid column table", &pyramid->owned_tables[i]);
+        if (status == GPU_STATUS_OK) {
+            status = device_memory_alloc(memory, DEVICE_POOL_VOXELS, pool_bytes[i], "pyramid section pool",
+                                         &pyramid->owned_pools[i]);
+        }
+    }
+    if (status != GPU_STATUS_OK) {
+        gpu_error_log(&memory->last_error);
+        render_pyramid_close(render);
+        return status;
+    }
+    render_lod_t *const lod = arena_alloc(&pyramid->arena, sizeof(render_lod_t), alignof(render_lod_t));
+    status = render_lod_init(lod, &pyramid->arena, memory, render->borrowed_job, plan, pyramid->owned_tables,
+                             pyramid->owned_pools, &pyramid->owned_hits, sample, sample_context);
+    pyramid->borrowed_lod = lod;
+    if (status != GPU_STATUS_OK) {
+        render_pyramid_close(render);
+        return status;
+    }
+    render_lod_fine_set(lod, &render->buffers);
+    render_lod_octants_set(lod, &pyramid->arena, render->borrowed_octants);
+    return GPU_STATUS_OK;
+}
+
+gpu_status_t render_pyramid_apply(render_t *render, const render_lod_plan_t *plan, render_lod_sample_t sample,
+                                  const void *sample_context) {
+    ASSERT_ALWAYS(render->open != 0u);
+    const render_pyramid_t *const pyramid = render->owned_pyramid;
+    if (pyramid != nullptr && memcmp(&pyramid->plan, plan, sizeof(*plan)) == 0) {
+        return GPU_STATUS_OK;
+    }
+    render_pyramid_close(render);
+    return plan->level_count != 0u ? render_pyramid_open(render, plan, sample, sample_context) : GPU_STATUS_OK;
+}
+
+gpu_status_t render_pyramid_frame(render_t *render, const float64_t position[3]) {
+    render_lod_t *const lod = render_pyramid_lod(render);
+    if (lod == nullptr) {
+        return GPU_STATUS_OK;
+    }
+    /* What rays read comes first: the pyramid's workers wait for it, its octants do not. */
+    render_lod_jobs_hold(lod, render->borrowed_lod != nullptr && !render_lod_idle(render->borrowed_lod));
+    return render_lod_frame(lod, position);
+}
+
+bool render_pyramid_idle(const render_t *render) {
+    const render_lod_t *const lod = render_pyramid_lod(render);
+    return lod == nullptr || render_lod_idle(lod);
+}
+
+render_lod_t *render_pyramid_lod(const render_t *render) {
+    return render->owned_pyramid != nullptr ? render->owned_pyramid->borrowed_lod : nullptr;
+}
+
+void render_pyramid_report(const render_t *render) {
+    const render_octant_t *const octants = render->borrowed_octants;
+    if (render->open == 0u || octants == nullptr) {
+        return;
+    }
+    const float64_t mib = 1048576.0f64;
+    LOG_INFO("render: octant store: %.1f MiB held, %" PRIu32 " blocks live of %" PRIu32 ", %" PRIu64
+             " octants stored, %" PRIu64 " refused for room; %" PRIu64 " / %" PRIu64
+             " columns of levels 1 / 2 made from them in %.1f ms, %.1f MiB sent",
+             (libc_double_t)((float64_t)render_octant_bytes_used(octants) / mib), octants->blocks_live,
+             octants->block_capacity, octants->stats.octants_stored, octants->stats.octants_refused,
+             octants->stats.columns_assembled[0], octants->stats.columns_assembled[1],
+             (libc_double_t)((float64_t)octants->stats.assemble_ns * 1.0e-6f64),
+             (libc_double_t)((float64_t)octants->stats.bytes_sent / mib));
+    const render_lod_t *const lod = render_pyramid_lod(render);
+    if (lod == nullptr) {
+        return;
+    }
+    for (uint32_t i = 0u; i < lod->level_count; i++) {
+        const render_lod_level_t *const level = &lod->levels[i];
+        LOG_INFO("render: pyramid level %" PRIu32 " (voxels of %" PRIu32 " blocks): %" PRIu32
+                 " columns each way, %.1f MiB of pool, %.1f MiB of slabs held, %" PRIu32 " sections",
+                 (uint32_t)level->shift, 1u << level->shift, (uint32_t)level->radius,
+                 (libc_double_t)((float64_t)level->buffers.pool_bytes / mib),
+                 (libc_double_t)((float64_t)level->buffers.slab_bytes / mib), level->buffers.section_count);
+    }
+    /* The store's counts run over the world, through every pyramid it has had; these are this one's. */
+    LOG_INFO("render: pyramid: %" PRIu64 " columns built, from octants and by workers (%.1f s of their time), %" PRIu64
+             " with no room, %.1f MiB sent",
+             lod->stats.columns_built, (libc_double_t)((float64_t)lod->stats.build_ns * 1.0e-9f64),
+             lod->stats.columns_no_room, (libc_double_t)((float64_t)lod->stats.bytes_sent / mib));
 }

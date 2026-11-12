@@ -3,6 +3,7 @@
 #include "render/encode/index.h"
 
 #include "simd/bitmask/index.h"
+#include "tables/blocks/index.h"
 
 #include <stdbit.h>
 #include <string.h>
@@ -150,11 +151,132 @@ uint32_t render_encode_section(const render_encode_source_t *source, uint8_t *ou
     return total;
 }
 
+/* ---- The octant: a section reduced by two each way (plan 009 phase 03) ---------------------------------------------- */
+
+bool render_encode_block_counts(uint16_t block) {
+    if (block == BLOCK_ID_AIR) {
+        return false;
+    }
+    /* A voxel holds its block's state above the id: which way stairs face is not what the table is indexed by. */
+    const uint32_t id = (uint32_t)block & BLOCK_STATE_ID_MASK;
+    if (id >= BLOCK_COUNT) {
+        return true; /* no such block: drawn as a cube in the colour that shows the bug, so it counts as one */
+    }
+    switch ((block_shape_t)block_defs[id].shape) {
+    case BLOCK_SHAPE_CUBE:
+    case BLOCK_SHAPE_FLUID:
+    case BLOCK_SHAPE_SLAB:
+    case BLOCK_SHAPE_STAIRS:
+        return true;
+    case BLOCK_SHAPE_NONE:
+    case BLOCK_SHAPE_CROSS:
+    case BLOCK_SHAPE_CROP:
+    case BLOCK_SHAPE_TORCH:
+    case BLOCK_SHAPE_THIN:
+    case BLOCK_SHAPE_TORCH_WALL:
+    case BLOCK_SHAPE_DOOR:
+        break;
+    }
+    return false;
+}
+
+/* The most common of a layer's four counted blocks, the first met winning a tie. 0 if none counts. */
+static uint16_t encode_layer_block(const uint16_t *layer, const bool *counted) {
+    uint16_t best = 0u;
+    uint32_t best_count = 0u;
+    for (uint32_t i = 0u; i < 4u; i++) {
+        if (!counted[i]) {
+            continue;
+        }
+        uint32_t count = 0u;
+        for (uint32_t j = 0u; j < 4u; j++) {
+            count += counted[j] && layer[j] == layer[i] ? 1u : 0u;
+        }
+        if (count > best_count) {
+            best = layer[i];
+            best_count = count;
+        }
+    }
+    return best;
+}
+
+void render_encode_octant_voxel(const uint16_t blocks[RENDER_ENCODE_GROUP_VOXELS],
+                                const uint8_t light[RENDER_ENCODE_GROUP_VOXELS], uint16_t *out_material,
+                                uint8_t *out_light) {
+    bool counted[RENDER_ENCODE_GROUP_VOXELS];
+    uint32_t count = 0u;
+    uint32_t sky = 0u, lamp = 0u;
+    for (uint32_t i = 0u; i < RENDER_ENCODE_GROUP_VOXELS; i++) {
+        counted[i] = render_encode_block_counts(blocks[i]);
+        if (counted[i]) {
+            count++;
+            const uint32_t own_sky = (uint32_t)light[i] >> 4, own_lamp = (uint32_t)light[i] & 15u;
+            sky = own_sky > sky ? own_sky : sky;
+            lamp = own_lamp > lamp ? own_lamp : lamp;
+        }
+    }
+    if (count * 2u < RENDER_ENCODE_GROUP_VOXELS) {
+        *out_material = 0u;
+        *out_light = 0u;
+        return;
+    }
+    /* The top layer's face is what is seen from above: grass over dirt stays grass. */
+    const uint16_t top = encode_layer_block(blocks + 4, counted + 4);
+    *out_material = top != 0u ? top : encode_layer_block(blocks, counted);
+    *out_light = (uint8_t)((sky << 4) | lamp);
+}
+
+bool render_encode_section_octant(const render_encode_source_t *source, render_encode_octant_t *out) {
+    const uint16_t *const blocks = source->borrowed_blocks;
+    const uint8_t *const light = source->borrowed_light;
+    if (blocks == nullptr && light == nullptr) {
+        /* One block with one light all through: one group says it all. */
+        uint16_t group_blocks[RENDER_ENCODE_GROUP_VOXELS];
+        uint8_t group_light[RENDER_ENCODE_GROUP_VOXELS];
+        for (uint32_t i = 0u; i < RENDER_ENCODE_GROUP_VOXELS; i++) {
+            group_blocks[i] = source->block_uniform;
+            group_light[i] = source->light_uniform;
+        }
+        uint16_t material = 0u;
+        uint8_t packed = 0u;
+        render_encode_octant_voxel(group_blocks, group_light, &material, &packed);
+        for (uint32_t i = 0u; i < RENDER_ENCODE_OCTANT_VOXELS; i++) {
+            out->material[i] = material;
+        }
+        memset(out->light, packed, sizeof(out->light));
+        return true;
+    }
+    bool uniform = true;
+    for (uint32_t z = 0u; z < RENDER_ENCODE_OCTANT_SIDE; z++) {
+        for (uint32_t y = 0u; y < RENDER_ENCODE_OCTANT_SIDE; y++) {
+            for (uint32_t x = 0u; x < RENDER_ENCODE_OCTANT_SIDE; x++) {
+                uint16_t group_blocks[RENDER_ENCODE_GROUP_VOXELS];
+                uint8_t group_light[RENDER_ENCODE_GROUP_VOXELS];
+                for (uint32_t i = 0u; i < RENDER_ENCODE_GROUP_VOXELS; i++) {
+                    const uint32_t index =
+                        section_voxel_index(2u * x + (i & 1u), 2u * y + ((i >> 1) & 1u), 2u * z + (i >> 2));
+                    group_blocks[i] = blocks != nullptr ? blocks[index] : source->block_uniform;
+                    group_light[i] = light != nullptr ? light[index] : source->light_uniform;
+                }
+                const uint32_t place = x + RENDER_ENCODE_OCTANT_SIDE * (y + RENDER_ENCODE_OCTANT_SIDE * z);
+                render_encode_octant_voxel(group_blocks, group_light, &out->material[place], &out->light[place]);
+                uniform = uniform && out->material[place] == out->material[0] && out->light[place] == out->light[0];
+            }
+        }
+    }
+    return uniform;
+}
+
+void render_encode_job_octant_set(render_encode_job_t *job, render_encode_octant_t *octant) {
+    job->borrowed_octant = octant;
+}
+
 void render_encode_job_begin(render_encode_job_t *job, const world_edit_snapshot_view_t *view, uint32_t section,
                              uint8_t *out) {
     job->borrowed_view = view;
     job->borrowed_out = out;
     job->section = section;
+    job->borrowed_octant = nullptr;
     atomic_store_explicit(&job->done_bytes, 0u, memory_order_relaxed);
 }
 
@@ -172,6 +294,9 @@ void render_encode_job_run(job_worker_t *worker, void *borrowed_job) {
         ._pad0 = {0},
     };
     const uint32_t bytes = render_encode_section(&source, job->borrowed_out);
+    if (job->borrowed_octant != nullptr) {
+        (void)render_encode_section_octant(&source, job->borrowed_octant);
+    }
     /* Release gives the gpu thread the bytes just written, and pairs with the acquire in render_encode_job_done. */
     atomic_store_explicit(&job->done_bytes, bytes + 1u, memory_order_release);
 }

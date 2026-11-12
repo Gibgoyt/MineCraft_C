@@ -410,22 +410,45 @@ static gpu_status_t game_lod_replan(game_t *game, const render_lod_plan_t *plan)
     return status;
 }
 
-void game_far_changes_take(game_t *game) {
-    render_lod_t *const lod = game->borrowed_render->borrowed_lod;
+/* Plan 009 phase 03: the pyramid's levels for this config and view, not drawn yet. With no room for them the world goes on as it was. */
+static void game_pyramid_apply(game_t *game, const game_config_t *config, const game_view_t *view) {
+    render_t *const render = game->borrowed_render;
+    const render_lod_plan_t plan = game_view_pyramid(config, view);
+    if (render_pyramid_apply(render, &plan, render_lod_sample_world, game_lod_world(game)) != GPU_STATUS_OK) {
+        LOG_WARN("game: no room for the pyramid's levels; nothing draws them yet, so the picture is the same");
+        return;
+    }
+    render_lod_t *const lod = render_pyramid_lod(render);
     save_t *const save = game->borrowed_save;
-    if (lod == nullptr || save == nullptr || save->world.open == 0u) {
+    if (lod != nullptr && lod->overlay == nullptr && save != nullptr && save->world.open != 0u) {
+        render_lod_overlay_set(lod, save_world_far_line, &save->world, SAVE_WORLD_FAR_SCRATCH_BYTES);
+    }
+}
+
+void game_far_changes_take(game_t *game) {
+    render_lod_t *const lods[2] = {game->borrowed_render->borrowed_lod, render_pyramid_lod(game->borrowed_render)};
+    save_t *const save = game->borrowed_save;
+    if ((lods[0] == nullptr && lods[1] == nullptr) || save == nullptr || save->world.open == 0u) {
         return;
     }
     int32_t chunk_x = 0, chunk_y = 0;
     while (save_world_far_next(&save->world, &chunk_x, &chunk_y)) {
-        render_lod_column_changed(lod, chunk_x, chunk_y);
+        for (uint32_t i = 0u; i < 2u; i++) {
+            if (lods[i] != nullptr) {
+                render_lod_column_changed(lods[i], chunk_x, chunk_y);
+            }
+        }
     }
     if (save_world_far_lost_take(&save->world)) {
         /* Only a column in the map is ever captured, so what was lost is in the map's square: not the whole far field. */
         const world_map_t *const map = &game->borrowed_world->map;
         const int32_t radius = (int32_t)map->table_radius;
-        render_lod_area_changed(lod, map->center_x - radius, map->center_y - radius, map->center_x + radius,
-                                map->center_y + radius);
+        for (uint32_t i = 0u; i < 2u; i++) {
+            if (lods[i] != nullptr) {
+                render_lod_area_changed(lods[i], map->center_x - radius, map->center_y - radius, map->center_x + radius,
+                                        map->center_y + radius);
+            }
+        }
     }
 }
 
@@ -468,6 +491,7 @@ static bool game_open_parts(game_t *game, const game_config_t *config, int32_t c
             return false;
         }
     }
+    game_pyramid_apply(game, config, view);
     render_frame_features_set(&render->frame, view->features | SHADE_FEATURE_SUN_APART);
     if ((view->width != config->width || view->height != config->height) && !game_picture_full_room(game)) {
         render_close(render);
@@ -944,6 +968,9 @@ bool game_reconfigure(game_t *game, const game_config_t *config) {
     }
     game_open_alive_tell(game);
     const bool changed = game_view_change(game, &now);
+    if (changed) {
+        game_pyramid_apply(game, config, &now);
+    }
     game_open_alive_tell(game);
     game->config = *config;
     game->view = now;
@@ -1588,6 +1615,15 @@ static void game_gpu_thread(void *borrowed_argument) {
                 atomic_store_explicit(&game->failed, 1u, memory_order_release);
                 return; /* it has said why */
             }
+        }
+        /* Plan 009 phase 03: the pyramid, drawn by nothing yet: what the blocks make of it, and its workers once the far field is done. */
+        PROFILER_BEGIN(game->borrowed_lane_gpu, "pyramid_frame");
+        status = render_pyramid_frame(render, camera->position);
+        PROFILER_END(game->borrowed_lane_gpu);
+        if (status != GPU_STATUS_OK) {
+            game_gpu_failed_note(game, status);
+            atomic_store_explicit(&game->failed, 1u, memory_order_release);
+            return; /* it has said why */
         }
         game_watch_stamp(picture, GAME_WATCH_STAMP_LOD);
         game_fill_step(game_fill_of(game), render);
