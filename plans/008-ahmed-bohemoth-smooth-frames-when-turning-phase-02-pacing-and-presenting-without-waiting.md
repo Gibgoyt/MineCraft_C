@@ -1,6 +1,6 @@
 # 008-ahmed-bohemoth-smooth-frames-when-turning — phase 2: Pacing and presenting without waiting
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** in progress: the rule and its tests built   (updated 2026-11-12)
 
 Read first: `plans/008-ahmed-bohemoth-smooth-frames-when-turning-phase-00-vision-and-plan-files.md`, then the master `plans/008-ahmed-bohemoth-smooth-frames-when-turning.md`: section 1 (C2 and C6), 3.2 and 4. Then phase 01's results table, which says how large C2 and C6 really are on Ahmed's card.
 
@@ -169,8 +169,8 @@ This phase may edit these, plus this file:
 
 ## Todo
 
-- [ ] `run/src/game/pace/`: `game_pace_decide`, `game_pace_note`, $\hat{T}$ as the 90th percentile of 16, with README
-- [ ] `run_game_pace` tests (below) pass
+- [x] `run/src/game/pace/`: `game_pace_decide`, `game_pace_note`, $\hat{T}$ as the 90th percentile of 16, with README
+- [x] `run_game_pace` tests (below) pass
 - [ ] Main stores `next_take_ns` each loop, in a window and on KMS
 - [ ] `game_gpu_thread` starts pictures by the rule; the 100 µs poll only while paused
 - [ ] Q3 settled (A by default) and recorded here
