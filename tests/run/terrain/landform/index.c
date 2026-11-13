@@ -317,8 +317,9 @@ TEST(raw_noise_measures_what_the_limits_were_chosen_for) {
         past += fabs(second) >= 0.17f64 ? 1u : 0u;
     }
     const float64_t deviation = sqrt(squares / (float64_t)LOTS);
-    printf("%-15s raw standard deviation %.4f; limit is %.2f of them; %.2f%% past it\n", "knob size", (libc_double_t)deviation,
-           (libc_double_t)(0.17f64 / deviation), (libc_double_t)((float64_t)past * 100.0f64 / (float64_t)LOTS));
+    printf("%-15s raw standard deviation %.4f; limit is %.2f of them; %.2f%% past it\n", "knob size",
+           (libc_double_t)deviation, (libc_double_t)(0.17f64 / deviation),
+           (libc_double_t)((float64_t)past * 100.0f64 / (float64_t)LOTS));
     CHECK(0.17f64 > 1.5f64 * deviation && 0.17f64 < 2.5f64 * deviation);
     terrain_deinit(&terrain);
 }

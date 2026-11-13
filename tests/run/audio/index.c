@@ -2,6 +2,7 @@
 #include "harness/index.h"
 
 #include "run/audio/fixtures/fake_pulse.h"
+#include "run/game/fixtures/ground.h"
 #include "run/game/fixtures/report.h"
 
 #include "audio/index.h"
@@ -509,6 +510,29 @@ static const char au_mine_script[] = "1 key w down\n"
                                      "119 button right up\n"
                                      "125 end\n";
 
+/* The dig script, after a /tp to the nearest even ground of seed 11 (tests/run/game/fixtures/ground.h): what lies at the start
+ * is the land's, and since plan 007 phase 04 it is the edge of grass and sand, so the top beside the hole was sand. */
+static bool au_dig_script_write(test_context_t *t, const char *path, const char *dig) {
+    terrain_t *const terrain = test_alloc(t, sizeof(terrain_t));
+    if (!CHECK(terrain_init(terrain, 11u))) {
+        return false;
+    }
+    int32_t x = 0, y = 0;
+    const bool found = ground_even_find(terrain, &x, &y);
+    terrain_deinit(terrain);
+    if (!CHECK(found)) {
+        return false;
+    }
+    printf("  the dig is at %" PRId32 ", %" PRId32 "\n", x, y);
+    enum : uint32_t { BYTES = 4096u };
+    char *const text = test_alloc(t, BYTES);
+    uint64_t length = 0u;
+    uint32_t tick = 0u;
+    ground_tp_keys(text, BYTES, &length, x, y, &tick);
+    ground_script_after(text, BYTES, &length, dig, tick);
+    return CHECK_EQ_U64(file_write_atomic(path, text, length), FILE_OK);
+}
+
 /* Which sound the frames from here on are, in the left ear, as its gain leaves the shape alone: the one whose start is most like them, from 1 down, and how like. A
  * quiet first sample rounds to nothing, so what is heard first may be a little way into the sound. */
 static const sound_blob_entry_t *au_most_like(const int16_t *stereo, const sound_blob_view_t *view,
@@ -551,7 +575,7 @@ TEST(the_program_with_its_sound_in_a_file_mines_and_what_would_have_played_is_th
     char script[128], sound[128];
     (void)snprintf(script, sizeof(script), "%s/mine.script", dir);
     (void)snprintf(sound, sizeof(sound), "%s/sound.raw", dir);
-    REQUIRE(file_write_atomic(script, au_mine_script, sizeof(au_mine_script) - 1u) == FILE_OK);
+    REQUIRE(au_dig_script_write(t, script, au_mine_script));
     char *const argv[] = {t->borrowed_args[0],
                           (char *)"--headless",
                           (char *)"--test-world",
@@ -594,9 +618,10 @@ TEST(the_program_with_its_sound_in_a_file_mines_and_what_would_have_played_is_th
     REQUIRE(loud > 0u);
     REQUIRE(first_loud + AU_MATCH_FRAMES * 2u <= size / sizeof(int16_t));
     /* Heard, and heard as what was dug. The ground at seed 11's spawn is whatever its biome lays, and it moves with each plan
-     * that moves the land (grass, then podzol in plan 006 phase 03, then sand on plan 007 phase 03's land), so the test reads
-     * which block the report says was last mined, the top of the ground beside the hole, as the dig tests do, and wants its
-     * sound family. This run's ticks go faster than the file's 10 ms, so a few hits can start on one frame, and their sum is
+     * that moves the land (grass, then podzol in plan 006 phase 03, then sand on plan 007 phase 03's land, then the edge of
+     * grass and sand on phase 04's), so the dig is on the nearest even ground (au_dig_script_write), and the test reads which
+     * block the report says was last mined, the top of the ground beside the hole, as the dig tests do, and wants its sound
+     * family. This run's ticks go faster than the file's 10 ms, so a few hits can start on one frame, and their sum is
      * only so like any one of them. Which of the family it is, or whether a hit or a break of the same recording, it cannot
      * say. */
     report_mined_t mined;

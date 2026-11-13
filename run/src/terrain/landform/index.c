@@ -266,9 +266,9 @@ void terrain_landform_lattice_points(const terrain_landform_t *landform, const f
     }
     terrain_landform_nodes(landform, set.is, set.js, set.count, set.uplift, set.rugged);
     for (uint32_t c = 0u; c < count; c++) {
-        uplift[c] = landform_blend((float64_t)set.uplift[corners[c][0]], (float64_t)set.uplift[corners[c][1]],
-                                   (float64_t)set.uplift[corners[c][2]], (float64_t)set.uplift[corners[c][3]], t_x[c],
-                                   t_y[c]);
+        uplift[c] =
+            landform_blend((float64_t)set.uplift[corners[c][0]], (float64_t)set.uplift[corners[c][1]],
+                           (float64_t)set.uplift[corners[c][2]], (float64_t)set.uplift[corners[c][3]], t_x[c], t_y[c]);
         if (rugged != nullptr) {
             rugged[c] = landform_blend((float64_t)set.rugged[corners[c][0]], (float64_t)set.rugged[corners[c][1]],
                                        (float64_t)set.rugged[corners[c][2]], (float64_t)set.rugged[corners[c][3]],

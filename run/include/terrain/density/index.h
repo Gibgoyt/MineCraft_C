@@ -96,16 +96,16 @@ typedef struct terrain_density_inputs_t {
     float32_t erosion;         /* 4 */
     float32_t ridges;          /* 8 */
     float32_t hills;           /* 12 */
-    float32_t peak;            /* 16: the summit field; its ridged form 1 - |peak| is used. 0 where the envelope is 0.6 or less */
-    float32_t range;           /* 20: 0 on a range's line */
-    float32_t massif;          /* 24 */
-    float32_t crest;           /* 28: 0 on a crest */
-    float32_t broad;           /* 32: continentalness from its largest octaves alone */
-    float32_t plateau;         /* 36: from 0 to 1, a share of TERRAIN_LANDFORM_PLATEAU_BLOCKS: terrain/landform's */
-    float32_t face;            /* 40: from 0 to 1, how steep the plateau is here: terrain/landform's */
-    float32_t rugged;          /* 44: G, from 0 to 1, how sharp the region's mountains are: terrain/landform's */
-    float32_t knobs;           /* 48: K, from -1 to 1: a knob stands where it is over 0.55. 0 in the sea */
-    float32_t knob_size;       /* 52: from 0 to 1, how tall a knob here is. 0 in the sea */
+    float32_t peak;  /* 16: the summit field; its ridged form 1 - |peak| is used. 0 where the envelope is 0.6 or less */
+    float32_t range; /* 20: 0 on a range's line */
+    float32_t massif;    /* 24 */
+    float32_t crest;     /* 28: 0 on a crest */
+    float32_t broad;     /* 32: continentalness from its largest octaves alone */
+    float32_t plateau;   /* 36: from 0 to 1, a share of TERRAIN_LANDFORM_PLATEAU_BLOCKS: terrain/landform's */
+    float32_t face;      /* 40: from 0 to 1, how steep the plateau is here: terrain/landform's */
+    float32_t rugged;    /* 44: G, from 0 to 1, how sharp the region's mountains are: terrain/landform's */
+    float32_t knobs;     /* 48: K, from -1 to 1: a knob stands where it is over 0.55. 0 in the sea */
+    float32_t knob_size; /* 52: from 0 to 1, how tall a knob here is. 0 in the sea */
 } terrain_density_inputs_t;
 static_assert(sizeof(terrain_density_inputs_t) == 56);
 

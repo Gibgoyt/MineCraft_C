@@ -755,7 +755,9 @@ TEST(a_bench_gives_its_grid_back_stands_through_a_save_and_goes_by_its_west_half
     REQUIRE(pt_held(output, 1u, &items_now, &stacks_now));
     REQUIRE(pt_held(output, 2u, &items_again, &stacks_again));
     CHECK(items_now >= items + 1u);
-    CHECK_EQ_U64(stacks_now, stacks + 1u);
+    /* At least the bench's stack more: on plan 007 phase 04's land something of another kind the tree left lying (a sapling
+     * or a stick) is picked up on the way too, and makes a stack of its own. */
+    CHECK(stacks_now >= stacks + 1u);
     CHECK_EQ_U64(items_again, items_now);
     CHECK_EQ_U64(stacks_again, stacks_now);
 

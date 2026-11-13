@@ -1,5 +1,6 @@
 /* ctest run_player_interaction. See README.md. */
 #include "harness/index.h"
+#include "run/game/fixtures/ground.h"
 #include "run/game/fixtures/report.h"
 
 #include "run/input/fixtures/fake_evdev.h"
@@ -1683,6 +1684,29 @@ static const char pi_mine_script[] = "1 key w down\n"
                                      "121 screenshot placed.png\n"
                                      "125 end\n";
 
+/* The dig script, after a /tp to the nearest even ground of seed 11 (tests/run/game/fixtures/ground.h): what lies at the start
+ * is the land's, and since plan 007 phase 04 it is the edge of grass and sand, so the top beside the hole was sand. */
+static bool pi_dig_script_write(test_context_t *t, const char *path, const char *dig) {
+    terrain_t *const terrain = test_alloc(t, sizeof(terrain_t));
+    if (!CHECK(terrain_init(terrain, 11u))) {
+        return false;
+    }
+    int32_t x = 0, y = 0;
+    const bool found = ground_even_find(terrain, &x, &y);
+    terrain_deinit(terrain);
+    if (!CHECK(found)) {
+        return false;
+    }
+    printf("  the dig is at %" PRId32 ", %" PRId32 "\n", x, y);
+    enum : uint32_t { BYTES = 4096u };
+    char *const text = test_alloc(t, BYTES);
+    uint64_t length = 0u;
+    uint32_t tick = 0u;
+    ground_tp_keys(text, BYTES, &length, x, y, &tick);
+    ground_script_after(text, BYTES, &length, dig, tick);
+    return CHECK_EQ_U64(file_write_atomic(path, text, length), FILE_OK);
+}
+
 static void pi_program_run(test_context_t *t, const pi_temp_dir_t *dir, const char *script, test_process_t *out) {
     char *const argv[] = {t->borrowed_args[0],
                           (char *)"--headless",
@@ -1721,7 +1745,7 @@ TEST(the_program_walks_mines_to_dirt_and_places_it_back_the_same_each_time) {
     REQUIRE(pi_temp_dir_make(&second));
     char script[128];
     snprintf(script, sizeof(script), "%s/mine.script", first.path);
-    REQUIRE(file_write_atomic(script, pi_mine_script, sizeof(pi_mine_script) - 1u) == FILE_OK);
+    REQUIRE(pi_dig_script_write(t, script, pi_mine_script));
     test_process_t run;
     pi_program_run(t, &first, script, &run);
     REQUIRE(run.started != 0u);

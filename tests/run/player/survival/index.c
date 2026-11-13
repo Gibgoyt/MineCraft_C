@@ -1788,6 +1788,35 @@ static bool ps_run_dry(const terrain_t *terrain, int32_t x, int32_t y) {
     return true;
 }
 
+/* Whether nothing grows in the way along the run, from the very blocks the test world makes there (it has no climate, so
+ * the fallback's): no log and no leaves within the 20 blocks round the ground of each column, a block apart. Plan 007 phase
+ * 04's land put the first dry run into a wood, whose trunks stopped the body, so it spent 4 of its 5 saturation jumping on
+ * the spot. */
+static bool ps_run_clear(const terrain_t *terrain, int32_t x, int32_t y, uint8_t *opened, uint16_t *blocks) {
+    enum : uint32_t { TALL = 20u };
+    for (uint32_t i = 0u; i <= PS_RUN_LENGTH; i++) {
+        const float64_t along = (float64_t)i;
+        const int32_t cx = x + (int32_t)lround(cos(PS_RUN_YAW) * along);
+        const int32_t cy = y + (int32_t)lround(sin(PS_RUN_YAW) * along);
+        const terrain_hydrology_column_t column = terrain_hydrology_column_at(terrain->borrowed_hydrology, cx, cy);
+        const terrain_density_box_t box = {.origin_x = cx,
+                                           .origin_y = cy,
+                                           .origin_z = (int32_t)column.ground - 4,
+                                           .count_x = 1u,
+                                           .count_y = 1u,
+                                           .count_z = TALL};
+        terrain_generate_box_fallback(terrain, &box, opened, blocks);
+        for (uint32_t z = 0u; z < TALL; z++) {
+            /* Nothing growing, and open sky over the box's upper half, so the box did reach above the ground. */
+            if ((block_defs[blocks[z]].flags & (BLOCK_FLAG_LOG | BLOCK_FLAG_DECAYS)) != 0u ||
+                (z >= TALL / 2u && (block_defs[blocks[z]].flags & BLOCK_FLAG_SOLID) != 0u)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 /* The script: /tp to the nearest such run's start, a wait for the columns there, then 45 s of sprinting and jumping. */
 static bool ps_run_script_write(test_context_t *t, const char *path) {
     terrain_t *const terrain = test_alloc(t, sizeof(terrain_t));
@@ -1797,6 +1826,8 @@ static bool ps_run_script_write(test_context_t *t, const char *path) {
     bool found = false;
     int32_t run_x = 0, run_y = 0;
     const int32_t step = (int32_t)PS_RUN_SEARCH_STEP;
+    uint8_t opened[32];
+    uint16_t blocks[32];
     for (int32_t ring = 0; ring < (int32_t)PS_RUN_SEARCH_RINGS && !found; ring++) {
         for (int32_t dy = -ring; dy <= ring && !found; dy++) {
             for (int32_t dx = -ring; dx <= ring && !found; dx++) {
@@ -1804,7 +1835,7 @@ static bool ps_run_script_write(test_context_t *t, const char *path) {
                     continue;
                 }
                 const int32_t x = GAME_WORLD_MIDDLE + dx * step, y = GAME_WORLD_MIDDLE + dy * step;
-                if (ps_run_dry(terrain, x, y)) {
+                if (ps_run_dry(terrain, x, y) && ps_run_clear(terrain, x, y, opened, blocks)) {
                     run_x = x, run_y = y, found = true;
                 }
             }
