@@ -45,7 +45,7 @@ enum : int32_t {
     AT_BOXES_Y = 308,     /* VSync, HUD... and Effects...: row 5 since plan 009 phase 04 took a slider out */
     AT_MAIN_DONE_Y = 404, /* the main page's Done, row 7 */
     AT_DONE_Y = 452,      /* Back, on the HUD and Effects pages, row 8 */
-    AT_DYNAMIC_X = 456, /* plan 008 phase 05's button, the render scale row's last 2 * 64 */
+    AT_DYNAMIC_X = 456,   /* plan 008 phase 05's button, the render scale row's last 2 * 64 */
     AT_SCALE_ROW_Y = 212,
     AT_EFFECT_LEFT_X = 100,
     AT_EFFECT_RIGHT_X = 340,
