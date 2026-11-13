@@ -1,6 +1,6 @@
 # 006-ahmed-bohemoth-biomes-follow-the-climate — phase 4: Snow, ice, sand and trees from the climate
 
-**Status:** in progress: steps 1 to 8 done, downstream tests and benches open (updated 2026-11-13)
+**Status:** done: steps 1 to 9, the downstream tests and the benches; the debug suite passes but for four render tests that fail on main itself (Issues found 9) (updated 2026-11-13)
 
 Read first: `plans/006-ahmed-bohemoth-biomes-follow-the-climate-phase-00-vision-and-plan-files.md`, then the master `plans/006-ahmed-bohemoth-biomes-follow-the-climate.md` (sections 0 "Why it happens", 2.5, 4, 5, 6 and 9). Every number here comes from the master. Where this file adds a number the master does not give, it says so and why.
 
@@ -159,7 +159,7 @@ From the master (section 9, phase 04):
 - [x] Tree and plant rates scaled by rain
 - [x] The far field uses the same rules
 - [x] Tests in 5: equator, pole, 45° mountain, and Ahmed's x -68, y 149 place
-- [ ] Benches: `bench_terrain` at or above 1000 columns a second, and `bench_lod`
+- [x] Benches: `bench_terrain` at or above 1000 columns a second, and `bench_lod`
 
 Expanded:
 
@@ -168,8 +168,8 @@ Expanded:
 - [x] `top_below_snowline` set for every snow-laying biome; table recorded here
 - [x] The YAML `ice:` rate removed from all 11 biomes; refused by the compiler
 - [x] Height, density, hydrology, cave and ore digests unchanged; surface and feature digests re-pinned with reasons
-- [ ] `bench_lod` at or under 40 ms a column (35 today), recorded
-- [ ] `standards_lint`, `clang_format`, the whole debug suite pass; `pgrep -af "$PWD/build"` prints nothing
+- [x] `bench_lod` at or under 40 ms a column (35 today), recorded
+- [x] `standards_lint`, `clang_format`, the whole debug suite pass (but for main's own four, Issues found 9); `pgrep -af "$PWD/build"` prints nothing
 
 ## Tests
 
@@ -218,15 +218,19 @@ Ahmed opens a new world, finds a mountain near the equator with `/tp`, flies up 
 
 ## Commits
 
-Appended as they land:
+Appended as they land (as rebased onto main at db0c7d45):
 
-- `WIP plan 006 phase 04: lay permanent snow by the snowline and ice by the coldest month, scale feature rates by rain`:
-  steps 1 to 8 (the surface's snowline with `top_below_snowline` / `filler_below_snowline`, cold paint and the far
-  field's freeze by the climate, the `ice:` / `snow:` rates refused, every feature rate scaled by rain, the
-  `climate_rules` tests). Rebased onto main at 150986d6 (plan 007 phase 03) with no conflict.
-- `WIP plan 006 phase 04: re-pin the terrain digests, keep the wide jungle crown to the leaves the game keeps, ...`:
-  `BIO_DIGEST_PIN`, `BIO_COLUMNS_PIN`, `FEA_FOREST_PIN` and `FEA_DIGEST_OF_GENERATOR[1]` re-pinned with reasons;
-  issues 1 to 3 below.
+- `7d301a20` Lay permanent snow only where the climate keeps it and ice only where the coldest month freezes the water, and
+  scale every feature rate by rain (plan 006 phase 04): steps 1 to 8 (the surface's snowline with `top_below_snowline` /
+  `filler_below_snowline`, cold paint and the far field's freeze by the climate, the `ice:` / `snow:` rates refused, every
+  feature rate scaled by rain, the `climate_rules` tests). First committed as a WIP commit, reworded.
+- `ef0821e4` Re-pin the biome, column and feature digests for plan 006 phase 04, keep the wide jungle tree's crown to leaves
+  within `FEATURE_LEAF_REACH` of its trunk, ...: `BIO_DIGEST_PIN`, `BIO_COLUMNS_PIN`, `FEA_FOREST_PIN` and
+  `FEA_DIGEST_OF_GENERATOR[1]` re-pinned with reasons; issues 1 and 2 below. First a WIP commit, reworded.
+- `d9d96262` Record in plan 006 phase 04's file the snow and ice table, the commits so far, ...
+- `6d724705` Follow plan 006 phase 04's land in the tests that played the default world: bench_cave_walk stands its body
+  through the 100 ticks before the first key, ...: issues 3, 4 and 6 to 8 below.
+- this commit: the tests, the benches, the rebase and the verification recorded; the todos ticked.
 
 ## Issues found
 
@@ -241,20 +245,74 @@ Appended as they land:
    `lily_pads_grow_on_a_swamps_standing_water` also looks at the swamps' own places, since a swamp drier than its
    range's middle grows a third of its pads and the 600 low chunks held 6 swamps (7 pads found there); and sugar
    cane may stand by water that froze after it grew (ice by the coldest month now reaches biomes with cane).
-3. **`run_terrain_cave_walk` fails, from the harness's fidelity, not from the land.** The game's body and the
-   tool's, on the same blocks (a 9 by 8 by 7 dump at the mouth matched block for block) and the same script, drift
-   apart by tenths of a block from the first steps; the new route near spawn zig-zags up a stair against a wall at
-   x -107.7, where the game's body missed one jump (ticks 405 to 418) and ended 17 blocks short. With the rain
-   factor off the tool chose another cave and the test passed, so the drift was there before and the route decides
-   whether it shows. Open: the game seems to take the script's keys a tick later than the tool's body; to be
-   looked at in `bench/cave_walk/` or `run/src/game/` (outside this phase's paths).
-4. **Downstream tests the new land moved (open).** The full debug suite at -j 2 after the second commit: 166 of 175.
-   Failing besides `run_terrain_cave_walk`: `render_feature_lod_bands`, `render_feature_lod`,
-   `render_feature_under_water` (goldens and the near guarantee over the default world), `run_render_frame`
-   (goldens; the real-threads hit count), `run_playthrough`
-   (`the_trees_planks_make_stairs_on_a_bench_that_is_placed_broken_and_all_of_it_saved`: the tree it finds),
-   `run_profiler` (the aimed-at overlay), `run_ui_hud` (`a_dead_player_is_told_how_to_come_back`'s band colour),
-   and `run_climate_warning` (`it_takes_under_20_ms_on_any_preset`, a time under load). These are the same kind
-   plan 006 phase 03 fixed by having the tests read the land near spawn; not yet done here.
-5. **Benches not yet run.** `bench_terrain` and `bench_lod` need a release build, which the disk (14 GB free) and
-   the lock queue left for after the suite.
+3. **`run_terrain_cave_walk`: the tool's body took its first step in the air (fixed in `bench/cave_walk/`).** A trace of
+   both bodies tick by tick (`player_tick_wind` in the game, `walk_along` in the tool, thrown away after) showed the same
+   keys and yaw on the same ticks, but the first step 0.098 blocks in the game and 0.020 in the tool, and 0.15 / 0.037 on the
+   second. The game's body stands through the 100 ticks before the script's first key, so it is on the ground when it sets
+   off; the tool's was started by `player_movement_start` and moved on its first tick, before any tick had found the ground,
+   so it took the air's push (a fifth of the ground's) and was a tick behind from there. The tool now ticks its body with no
+   keys for `WALK_START_TICK` ticks first, as the game does. The walk near spawn (674 ticks, ending at -133.5, 409.6, 20)
+   then agrees within the test's bounds; no wind was involved (the weather's wind there was 0, and under 10 blocks a second
+   pushes nothing). So it was the one-tick offset the open question named, and on the tool's side, not the game's.
+4. **Downstream tests the new land moved, each made to read the land or to ask for what it means** (after the rebase onto
+   ed5bdbb9, the full debug suite at -j 2 had 9 failing, below; all fixed in `6d724705`):
+   - `run_playthrough`'s stairs: the tree it finds is a mangrove of 14 logs 874 blocks off (the search, unchanged, takes the
+     first fit tree of the nearest square). There the second stair went onto the first, and the first's drop lay under the
+     second, out of reach: the hand ended with 2 stairs, not 3. `stairs.script` now steps in for 5 ticks after mining it and
+     comes back by a new `@feet` line, which the test turns into the same `/tp` to the place in the trunk's block that ends
+     `@tree` (the look is kept, so the bench's half is aimed at as before). A first try that walked back with S for 5 ticks
+     ended a little off and mined mud in place of the bench, which is why it is a `/tp`.
+   - `run_profiler`'s aimed-at overlay was in every one of 181 frames: the walking body at the test world's start
+     (-87.5, 440.5, 11) stands under a jungle crown, so the look straight up met leaves. The script now mines looking down
+     first, then types `/tp top` and looks straight up: over the top of its column there is only sky.
+   - `run_ui_hud`'s dead-player band: the pixel at (1, 8) was a tree's shade (0x21180f before, 0x0f1c09 after the respawn),
+     which the old test, red under twice blue, read as the band. It now asks for the band's own colour: 3/4 of 0xA00000 over
+     a quarter of the world, red at least 0x70, green and blue at most 0x48.
+   - `run_render_frame`'s real threads: the 2.5 s flight now ends 34 blocks over open sea at 118.8, 581.7, where level 0's own
+     hits were 6786 of 57600 (11.8 %, under the eighth asked for). A picture of something is now a pixel whose ray met a block
+     in level 0, whose colour ends on a surface, or where the far field drew one: 46104 of 57600.
+   - `render_feature_lod_bands`' near guarantee: 0 hits and 21 colours differed, all at "north, over it" (2 at E 2, 19 at E 8,
+     fov 70): leaves 14.3 to 15.1 blocks off with the pixel ending on ground 25 to 42 blocks behind in the reference and on sky
+     in the bands. What shows through a near see-through surface from past 16 blocks is past `d_1`, so the colour clause now
+     leaves out a near pixel whose reference ends past 16 (its hit is still held to the bit). That the far field at E 8 drew
+     sky where level 0 had ground 25 blocks off is a question for plan 009, recorded in `tests/cuda/lod/bands/README.md`.
+   - Goldens made again with `MC_GOLDEN_WRITE=1` and looked at: `run_render_frame`'s `start.png` (a jungle crown and trunk at
+     the left, the slope's coarse dirt, the sea and haze ahead, a bush at the lower right), `north_low.png` (dense jungle
+     leaves close round the eye, terraced grass and dirt rising behind, the sea at the right edge), `down.png` (looking down
+     on a jungle canopy, round crowns and trunks, a pale beach at the left); `render_feature_lod`'s `real_near.png` (mostly
+     sky and haze, a jungle tree and leaves on the slope at the left, the sea at the lower right) and `real_far.png` (a wide
+     view of hills, stone ranges with pale tops, a lake in the foreground; no snow block is laid there now, the pale tops are
+     the cover's seasonal snow and stone, as plan 009 phase 04 noted); `render_feature_under_water`'s `land.png` (a jungle
+     trunk ahead, leaves over it, grass terraces), `sea.png` and `sea_no_air.png` (the blue sea bed with kelp and sea grass,
+     the second with the air bubbles gone). Nothing looks broken: no holes, no wrong colours, the sky and water as before.
+5. **`run_climate_warning`'s `it_takes_under_20_ms_on_any_preset` is load flake.** It failed in both full runs at -j 2 and
+   passed alone each time (6.4 s and 7.1 s). Likewise `run_ui_atlas`'s `the_sim_never_waits_long_on_the_lock` failed once at
+   -j 2 (a 2 ms bound) and passed alone. Neither reads the land.
+6. **Benches** (release build of `bench_terrain` and `bench_lod` only, through the lock, load average 1.7 before and 1.4
+   after; CPU only, no card): `bench_terrain`, 16 workers, chunk columns a second: plains 2128, forest 1461, **jungle 1005**
+   (the slowest), dark_forest 1179, mangrove_swamp 1535, desert 1904, snowy_taiga 1789, jagged_peaks 1516, deep_ocean 2385,
+   plateau_top 1238: **target 1000 met, by 0.5 %**, exit 0. Climate sample from the tiles 10.6 µs, `terrain_climate_at`
+   0.176 µs. `bench_lod`, one column on one thread: shift 1 mean 17.0 ms (worst 24.4), shift 2 mean 26.0 (worst 37.4),
+   shifts 3 to 6 10.3 to 11.3 ms: **every level at or under 40 ms**, exit 0, the same tops as before. `build/release` was
+   deleted afterwards for the disk (19 GB free).
+7. **Rebase.** Onto main at ed5bdbb9 (plan 009 phases 05 and 06) with no conflict, then, by the rewording's `git rebase -i
+   main`, onto db0c7d45 (plan 009 phase 07, plan 008 phase 06), again with no conflict. The goldens made on ed5bdbb9 still
+   match on db0c7d45.
+8. **The WIP commits were reworded** (the same content) into `7d301a20` and `ef0821e4`.
+9. **Four render tests fail on main at db0c7d45 itself, not from this phase:** `render_feature_sky` and
+   `render_feature_water` (time out after `everything_starts_on_...` fails), `render_feature_shapes` and
+   `render_feature_post`, each on `frame->scene.features == SHADE_FEATURES_EVERY` (or `_PLAY`): 1507327 against 458751, the
+   difference being `1u << 20`, plan 008 phase 06's `SHADE_FEATURE_LOD_TURN_CACHE`, which the game now asks for beside
+   `SHADE_FEATURES_EVERY`. That phase's verification ran the LOD and frame tests but not these four. Left for its owner.
+
+## Verification after the rebase (2026-11-13)
+
+- `cmake --build --preset debug`: clean.
+- The whole debug suite at -j 2 on ed5bdbb9: 173 of 176, the three being `run_climate_warning` and `run_ui_atlas` (load,
+  both passed alone) and `clang_format` (fixed, then passed with `standards_lint`).
+- The whole debug suite at -j 2 on db0c7d45: 173 of 177, the four being main's own (Issues found 9). `run_playthrough`,
+  `run_profiler`, `run_render_frame`, `run_terrain_cave_walk`, `run_ui_hud`, `render_feature_lod`,
+  `render_feature_lod_bands`, `render_feature_under_water` and `run_climate_warning` passed in it.
+- `bench_terrain` and `bench_lod` as in Issues found 6. Not run: the release terrain tests (`run_terrain_(surface|feature|
+  climate_rules)` in release), for the disk; the debug ones passed.
+- `pgrep -af "$PWD/build"` and `pgrep -a Xvfb` print nothing.
