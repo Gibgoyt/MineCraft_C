@@ -54,8 +54,16 @@ typedef struct terrain_biome_column_t {
     uint8_t caves;       /* 13: bit i says biome_underground[i]'s climate holds this column, at any z */
     uint8_t family;      /* 14: the biome_family_t its biome was chosen in */
     uint8_t _pad0[1];    /* 15 */
+    /* Plan 006 phase 04: the climate the surface and features lay snow, ice and trees by, blended at the column's 4-block
+     * lattice corner (z 0), as the biome reads it. */
+    int16_t snow_line_z;   /* 16: blocks; TERRAIN_CLIMATE_NO_SNOW_LINE when snow never outlasts the summer */
+    int16_t t_cold_cc;     /* 18: the coldest month's mean at sea level, centi-degrees C */
+    uint16_t rain_mm_year; /* 20: yearly rain, mm, held to 65535 */
+    uint8_t _pad1[2];      /* 22 */
 } terrain_biome_column_t;
-static_assert(sizeof(terrain_biome_column_t) == 16);
+static_assert(sizeof(terrain_biome_column_t) == 24);
+static_assert(offsetof(terrain_biome_column_t, snow_line_z) == 16);
+static_assert(offsetof(terrain_biome_column_t, rain_mm_year) == 20);
 
 /* Takes the biomes from arena. For use while terrain_init runs. climate and hydrology must outlive it. */
 void terrain_biome_init(terrain_biome_t **out, arena_t *arena, uint64_t seed, const terrain_fields_t *fields,

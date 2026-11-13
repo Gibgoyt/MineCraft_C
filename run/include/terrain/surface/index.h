@@ -32,8 +32,17 @@ typedef struct terrain_surface_t {
     const terrain_noise_field_t *borrowed_depth;   /* 536: how much filler a column has */
     const terrain_noise_field_t *borrowed_patch;   /* 544: what is in place of a biome's top */
     const terrain_noise_field_t *borrowed_wander;  /* 552: how the bands bend */
+    uint32_t snow_seed;                            /* 560: the snowline's wander, terrain_surface_snow_wander */
+    uint8_t _pad0[4];                              /* 564 */
 } terrain_surface_t;
-static_assert(sizeof(terrain_surface_t) == 560);
+static_assert(sizeof(terrain_surface_t) == 568);
+
+enum : int32_t {
+    /* Plan 006 master 2.5: the snowline's ragged edge moves it up to this many blocks up or down. */
+    TERRAIN_SURFACE_SNOW_WANDER_BLOCKS = 24,
+    /* Plan 006 master 2.5: water freezes over where the coldest month at its top is below this, centi-degrees C. */
+    TERRAIN_SURFACE_ICE_BELOW_CC = -200,
+};
 
 /* What decides a voxel's block. */
 typedef struct terrain_surface_inputs_t {
@@ -46,23 +55,24 @@ typedef struct terrain_surface_inputs_t {
     uint16_t block;        /* 24: what is there now */
     uint8_t wet;           /* 26: 1 if what is open above it is water */
     uint8_t _pad0[1];      /* 27 */
+    int32_t snow_from;     /* 28: terrain_surface_snow_from: below it, the biome's snow and ice give way */
 } terrain_surface_inputs_t;
-static_assert(sizeof(terrain_surface_inputs_t) == 28);
+static_assert(sizeof(terrain_surface_inputs_t) == 32);
 
 /* What a chunk-sized tile needs that does not change with the layers. Reading it costs far more than laying one slice, so what
  * asks for one chunk slice by slice reads it once. Filled by terrain_surface_tile_read; the caller lends the memory. */
 typedef struct terrain_surface_tile_t {
     terrain_biome_column_t columns[TERRAIN_SURFACE_TILE_COLUMNS]; /* 0 */
-    float32_t depth[TERRAIN_SURFACE_TILE_COLUMNS];                /* 4096: good once has_noise is 1 */
-    float32_t patch[TERRAIN_SURFACE_TILE_COLUMNS];                /* 5120: the same */
-    float32_t wander[TERRAIN_SURFACE_TILE_COLUMNS];               /* 6144: the same */
-    float32_t steepness[TERRAIN_SURFACE_TILE_COLUMNS];            /* 7168 */
-    float32_t solid_top;                                          /* 8192: at or under this, no voxel changes */
-    float32_t open_from;                                          /* 8196: from here up, nothing is ground */
-    uint8_t has_noise;                                            /* 8200 */
-    uint8_t _pad0[7];                                             /* 8201 */
+    float32_t depth[TERRAIN_SURFACE_TILE_COLUMNS];                /* 6144: good once has_noise is 1 */
+    float32_t patch[TERRAIN_SURFACE_TILE_COLUMNS];                /* 7168: the same */
+    float32_t wander[TERRAIN_SURFACE_TILE_COLUMNS];               /* 8192: the same */
+    float32_t steepness[TERRAIN_SURFACE_TILE_COLUMNS];            /* 9216 */
+    float32_t solid_top;                                          /* 10240: at or under this, no voxel changes */
+    float32_t open_from;                                          /* 10244: from here up, nothing is ground */
+    uint8_t has_noise;                                            /* 10248 */
+    uint8_t _pad0[7];                                             /* 10249 */
 } terrain_surface_tile_t;
-static_assert(sizeof(terrain_surface_tile_t) == 8208);
+static_assert(sizeof(terrain_surface_tile_t) == 10256);
 
 /* Takes the surface from arena and adds its fields to bank, for bank's seed, with the bands drawn from seed. For use while
  * terrain_init runs. What it is given must outlive it. If the bank refuses a field, which has logged why, sets *out to nullptr
@@ -74,7 +84,25 @@ static_assert(sizeof(terrain_surface_tile_t) == 8208);
 /* Empties the handle. The memory goes back with the arena. */
 void terrain_surface_deinit(terrain_surface_t *surface);
 
-/* The README's rules: what one voxel of a biome becomes, as plain arithmetic. bands holds TERRAIN_SURFACE_BANDS colours. */
+/* Plan 006 master 2.5: the snowline's ragged edge at (x, y), in blocks from -TERRAIN_SURFACE_SNOW_WANDER_BLOCKS to
+ * TERRAIN_SURFACE_SNOW_WANDER_BLOCKS: two octaves of hashed value noise, 64 and 16 blocks, all in integers. Pure. */
+int32_t terrain_surface_snow_wander(uint32_t snow_seed, int64_t x, int64_t y);
+
+/* The lowest z whose dry top lies under permanent snow at (x, y): anywhere (INT32_MIN) in the Ice family, nowhere
+ * (INT32_MAX) where the snowline is TERRAIN_CLIMATE_NO_SNOW_LINE, and otherwise the snowline moved by its wander. Pure. */
+int32_t terrain_surface_snow_from(const terrain_surface_t *surface, uint8_t family, int32_t snow_line_z, int64_t x,
+                                  int64_t y);
+
+/* Whether water whose top is at z freezes over for good: the coldest month there, from t_cold_cc at sea level by the lapse
+ * (and the basin heat below sea level), is below TERRAIN_SURFACE_ICE_BELOW_CC. Pure. */
+bool terrain_surface_freezes(int32_t t_cold_cc, int32_t z);
+
+/* Whether a block is one of the frozen ones a biome's snow and ice stand for: snow_block, ice, packed_ice, blue_ice. */
+bool terrain_surface_is_frozen(uint16_t block);
+
+/* The README's rules: what one voxel of a biome becomes, as plain arithmetic. bands holds TERRAIN_SURFACE_BANDS colours.
+ * Plan 006 phase 04: a dry voxel the rules make frozen, under inputs' snow_from, takes the biome's below_top (the top) or
+ * below_filler (deeper) instead, and a frozen high block starts no lower than snow_from. */
 uint16_t terrain_surface_block_from(const biome_def_t *def, const uint16_t *bands,
                                     const terrain_surface_inputs_t *inputs);
 

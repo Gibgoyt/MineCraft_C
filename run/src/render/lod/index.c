@@ -146,20 +146,12 @@ uint64_t render_lod_arena_bytes(const render_lod_plan_t *plan) {
 
 /* ---- One column on a worker ------------------------------------------------------------------------------------------ */
 
-/* What feature_cold_paint does to water, for a level too coarse for features: a column's own biome, and only if its top is water. */
+/* What feature_cold_paint does, for a level too coarse for features: plan 006 phase 04's rules from the same climate sample,
+ * so a far mountain shows the snowline a near one does, and far water freezes where near water does. */
 static void render_lod_sample_freeze(const terrain_t *terrain, const terrain_climate_sample_t *climate, int32_t x,
                                      int32_t y, uint16_t *column) {
-    uint32_t top = RENDER_LOD_HEIGHT_BLOCKS;
-    while (top > 0u && column[top - 1u] == BLOCK_ID_AIR) {
-        top--;
-    }
-    if (top == 0u || column[top - 1u] != BLOCK_ID_WATER) {
-        return;
-    }
-    const uint8_t biome = terrain_biome_column_at(terrain->borrowed_biome, climate, x, y).biome;
-    if (biome_features[biome][BIOME_FEATURE_ICE] > 0.0f32) {
-        column[top - 1u] = BLOCK_ID_ICE;
-    }
+    terrain_feature_cold_column(terrain->borrowed_feature, climate, x, y, COLUMN_Z_STORAGE_MIN, RENDER_LOD_HEIGHT_BLOCKS,
+                                column);
 }
 
 int32_t render_lod_cells_from_column(const uint16_t *column, uint32_t shift, uint64_t stride, uint16_t *out) {

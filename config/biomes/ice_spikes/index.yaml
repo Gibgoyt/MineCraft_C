@@ -9,4 +9,3 @@ surface:
   filler_depth: 2
   patches:
     - { block: packed_ice, from: 0.4, to: 1 }
-features: { snow: 1, ice: 1 }

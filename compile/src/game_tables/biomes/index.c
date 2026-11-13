@@ -39,9 +39,15 @@ static const char *const GZ_FEATURES[] = {
     "tree_oak",      "tree_birch",  "tree_spruce", "tree_jungle", "tree_acacia", "tree_dark_oak",
     "tree_mangrove", "tree_cherry", "grass",       "fern",        "flower",      "cactus",
     "sugar_cane",    "dead_bush",   "mushroom",    "lily_pad",    "vine",        "melon",
-    "pumpkin",       "seagrass",    "kelp",        "snow",        "ice",
+    "pumpkin",       "seagrass",    "kelp",
 };
 enum { GZ_FEATURE_COUNT = sizeof(GZ_FEATURES) / sizeof(GZ_FEATURES[0]) };
+/* Plan 006 phase 04: rates that the climate now decides, each refused with where it went. */
+static const char *const GZ_CLIMATE_FEATURES[] = {"snow", "ice"};
+enum { GZ_CLIMATE_FEATURE_COUNT = sizeof(GZ_CLIMATE_FEATURES) / sizeof(GZ_CLIMATE_FEATURES[0]) };
+/* The blocks that stand for permanent snow and ice: below the snowline a biome lays its below-snowline blocks instead. */
+static const char *const GZ_FROZEN_BLOCKS[] = {"snow_block", "ice", "packed_ice", "blue_ice"};
+enum { GZ_FROZEN_BLOCK_COUNT = sizeof(GZ_FROZEN_BLOCKS) / sizeof(GZ_FROZEN_BLOCKS[0]) };
 
 static const char *const GZ_BIOME_FIELDS[] = {"name",    "where",   "priority", "landform",
                                               "climate", "surface", "cave",     "features"};
@@ -69,7 +75,8 @@ enum { GZ_LIMIT_T_WARM = 1, GZ_LIMIT_T_COLD = 2, GZ_LIMIT_RAIN = 4 };
 #define GZ_RAIN_LIMIT 20000
 static const char *const GZ_SURFACE_FIELDS[] = {"top",         "filler",  "filler_depth", "under",
                                                 "under_depth", "wet_top", "wet_depth",    "steep",
-                                                "high",        "bands",   "patches"};
+                                                "high",        "bands",   "patches",      "top_below_snowline",
+                                                "filler_below_snowline"};
 enum { GZ_SURFACE_FIELD_COUNT = sizeof(GZ_SURFACE_FIELDS) / sizeof(GZ_SURFACE_FIELDS[0]) };
 static const char *const GZ_CAVE_FIELDS[] = {"floor", "ceiling", "patches"};
 enum { GZ_CAVE_FIELD_COUNT = sizeof(GZ_CAVE_FIELDS) / sizeof(GZ_CAVE_FIELDS[0]) };
@@ -111,24 +118,26 @@ typedef struct gz_biome_t {
     yaml_decimal_t steep_from;                 /* 272 */
     gz_patch_t patches[GZ_MAX_PATCHES];        /* 288 */
     yaml_decimal_t features[GZ_FEATURE_COUNT]; /* 448 */
-    int32_t high_from;                         /* 816 */
-    int32_t bands_from;                        /* 820 */
-    uint32_t patch_count;                      /* 824 */
-    uint8_t where;                             /* 828 */
-    uint8_t priority;                          /* 829 */
-    uint8_t filler_depth;                      /* 830 */
-    uint8_t under_depth;                       /* 831 */
-    uint8_t wet_depth;                         /* 832 */
-    uint8_t bands_depth;                       /* 833 */
-    uint8_t limits;                            /* 834: GZ_LIMIT_* */
-    uint8_t _pad0[1];                          /* 835 */
-    uint16_t families;                         /* 836: bit f for GZ_FAMILIES[f] */
-    uint8_t _pad1[2];                          /* 838 */
-    gz_range_t t_warm;                         /* 840: degrees C */
-    gz_range_t t_cold;                         /* 872 */
-    gz_range_t rain;                           /* 904: mm a year */
+    int32_t high_from;                         /* 784 */
+    int32_t bands_from;                        /* 788 */
+    uint32_t patch_count;                      /* 792 */
+    uint8_t where;                             /* 796 */
+    uint8_t priority;                          /* 797 */
+    uint8_t filler_depth;                      /* 798 */
+    uint8_t under_depth;                       /* 799 */
+    uint8_t wet_depth;                         /* 800 */
+    uint8_t bands_depth;                       /* 801 */
+    uint8_t limits;                            /* 802: GZ_LIMIT_* */
+    uint8_t _pad0[1];                          /* 803 */
+    uint16_t families;                         /* 804: bit f for GZ_FAMILIES[f] */
+    uint8_t _pad1[2];                          /* 806 */
+    gz_range_t t_warm;                         /* 808: degrees C */
+    gz_range_t t_cold;                         /* 840 */
+    gz_range_t rain;                           /* 872: mm a year */
+    const char *borrowed_below_top;            /* 904: plan 006 phase 04: the top below the snowline */
+    const char *borrowed_below_filler;         /* 912: and deeper */
 } gz_biome_t;
-static_assert(sizeof(gz_biome_t) == 936);
+static_assert(sizeof(gz_biome_t) == 920);
 
 typedef struct gz_context_t {
     tp_arena_t *borrowed_arena;  /* 0 */
@@ -601,6 +610,51 @@ static void gz_read_surface_extras(gz_context_t *context, const yaml_document_t 
     }
 }
 
+static bool gz_is_frozen(const char *block) {
+    for (uint32_t i = 0; block != nullptr && i < GZ_FROZEN_BLOCK_COUNT; i++) {
+        if (strcmp(block, GZ_FROZEN_BLOCKS[i]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Plan 006 phase 04: a biome that lays snow or ice in its top, filler, steep or patches, and has a family other than Ice,
+ * says what it lays below the snowline instead. The high block needs nothing: below the line the top is laid. */
+static void gz_read_below_snowline(gz_context_t *context, const yaml_document_t *document, const yaml_node_t *map,
+                                   gz_biome_t *biome) {
+    const yaml_node_t *top = yaml_map_get(document, map, "top_below_snowline");
+    const yaml_node_t *filler = yaml_map_get(document, map, "filler_below_snowline");
+    biome->borrowed_below_top = gz_read_block(context, top);
+    biome->borrowed_below_filler = gz_read_block(context, filler);
+    bool frozen_top = gz_is_frozen(biome->borrowed_top) || gz_is_frozen(biome->borrowed_steep);
+    for (uint32_t p = 0; p < biome->patch_count; p++) {
+        frozen_top = frozen_top || gz_is_frozen(biome->patches[p].borrowed_block);
+    }
+    const bool frozen_filler = gz_is_frozen(biome->borrowed_filler) || gz_is_frozen(biome->borrowed_steep);
+    const bool warm = (biome->families & ~(uint16_t)1u) != 0u; /* any family but Ice, GZ_FAMILIES[0] */
+    if ((frozen_top || frozen_filler) && warm && top == nullptr) {
+        gz_report(context, map,
+                  "lays snow or ice and has a family other than ice, so it needs top_below_snowline: the block its top is "
+                  "below the snowline (plan 006 phase 04)");
+    }
+    if (frozen_filler && warm && filler == nullptr) {
+        gz_report(context, map,
+                  "lays snow or ice under its top and has a family other than ice, so it needs filler_below_snowline "
+                  "(plan 006 phase 04)");
+    }
+    if ((top != nullptr || filler != nullptr) && !(frozen_top || frozen_filler)) {
+        gz_report(context, map, "has a below-snowline block but lays no snow or ice in top, filler, steep or patches");
+    }
+    if (gz_is_frozen(biome->borrowed_below_top) || gz_is_frozen(biome->borrowed_below_filler)) {
+        gz_report(context, map, "a below-snowline block must not itself be snow or ice");
+    }
+    if (biome->borrowed_below_filler == nullptr && top != nullptr) {
+        biome->borrowed_below_filler =
+            gz_is_frozen(biome->borrowed_filler) ? biome->borrowed_below_top : biome->borrowed_filler;
+    }
+}
+
 static void gz_read_surface(gz_context_t *context, const yaml_document_t *document, const yaml_node_t *map,
                             gz_biome_t *biome) {
     if (map->kind != YAML_KIND_MAP) {
@@ -637,6 +691,7 @@ static void gz_read_surface(gz_context_t *context, const yaml_document_t *docume
     }
     gz_read_surface_extras(context, document, map, biome);
     gz_read_patches(context, document, yaml_map_get(document, map, "patches"), biome);
+    gz_read_below_snowline(context, document, map, biome);
 }
 
 static void gz_read_cave(gz_context_t *context, const yaml_document_t *document, const yaml_node_t *map,
@@ -665,7 +720,31 @@ static void gz_read_features(gz_context_t *context, const yaml_document_t *docum
         gz_report(context, map, "features must be a mapping of feature to tries per chunk");
         return;
     }
-    gz_reject_unknown(context, document, map, "features", GZ_FEATURES, GZ_FEATURE_COUNT);
+    for (uint32_t i = 0; i < GZ_CLIMATE_FEATURE_COUNT; i++) {
+        const yaml_node_t *moved = yaml_map_get(document, map, GZ_CLIMATE_FEATURES[i]);
+        if (moved != nullptr) {
+            gz_report(context, moved,
+                      "%s has moved: the climate lays permanent snow by the snowline and ice by the coldest month "
+                      "(plan 006 phase 04). Remove it",
+                      GZ_CLIMATE_FEATURES[i]);
+        }
+    }
+    for (const yaml_node_t *child = yaml_first_child(document, map); child != nullptr;
+         child = yaml_next_sibling(document, child)) {
+        bool known = false;
+        for (uint32_t i = 0; i < GZ_FEATURE_COUNT && !known; i++) {
+            known = child->key_length == strlen(GZ_FEATURES[i]) &&
+                    memcmp(child->borrowed_key, GZ_FEATURES[i], child->key_length) == 0;
+        }
+        for (uint32_t i = 0; i < GZ_CLIMATE_FEATURE_COUNT && !known; i++) {
+            known = child->key_length == strlen(GZ_CLIMATE_FEATURES[i]) &&
+                    memcmp(child->borrowed_key, GZ_CLIMATE_FEATURES[i], child->key_length) == 0;
+        }
+        if (!known) {
+            gz_report(context, child, "unknown field '%.*s' in features", (int32_t)child->key_length,
+                      (const char *)child->borrowed_key);
+        }
+    }
     for (uint32_t i = 0; i < GZ_FEATURE_COUNT; i++) {
         gz_read_decimal(context, yaml_map_get(document, map, GZ_FEATURES[i]), GZ_FEATURES[i], 0, GZ_MAX_FEATURE_RATE,
                         &biome->features[i]);
@@ -931,7 +1010,8 @@ static void gz_emit_header(tp_arena_t *arena, tp_builder_t *out, const gz_biome_
         "    int32_t t_cold_high_cc;        /* 104 */\n"
         "    int32_t rain_low_mm;           /* 108: the yearly rain, mm; its middle is plan 006 phase 04's */\n"
         "    int32_t rain_high_mm;          /* 112 */\n"
-        "    uint8_t _pad0[4];              /* 116 */\n"
+        "    uint16_t below_top;            /* 116: plan 006 phase 04: in place of a frozen top below the snowline */\n"
+        "    uint16_t below_filler;         /* 118: in place of a frozen block under the top */\n"
         "} biome_def_t;\n"
         "static_assert(sizeof(biome_def_t) == 120);\n\n"
         "extern const biome_def_t biome_defs[BIOME_COUNT];\n"
@@ -1010,6 +1090,8 @@ static void gz_emit_source(tp_arena_t *arena, tp_builder_t *out, const gz_biome_
         gz_add_block(arena, out, "high", biome->borrowed_high);
         gz_add_block(arena, out, "floor", biome->borrowed_floor);
         gz_add_block(arena, out, "ceiling", biome->borrowed_ceiling);
+        gz_add_block(arena, out, "below_top", biome->borrowed_below_top);
+        gz_add_block(arena, out, "below_filler", biome->borrowed_below_filler);
         tp_builder_add(out,
                        ", .high_from = %d, .bands_from = %d, .first_patch = %u, .patch_count = %u, .filler_depth = %u, "
                        ".under_depth = %u, .wet_depth = %u, .bands_depth = %u, .where = BIOME_WHERE_%s, "

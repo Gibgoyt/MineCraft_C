@@ -209,7 +209,7 @@ static void map_stages_run(const terrain_t *terrain, const terrain_density_box_t
 }
 
 /* A column's blocks, in a box only as tall as it needs. A voxel is the same whatever box it came in. */
-static void map_column_make(const terrain_t *terrain, const terrain_hydrology_column_t *field, uint8_t biome, int32_t x,
+static void map_column_make(const terrain_t *terrain, const terrain_hydrology_column_t *field, int16_t t_cold_cc, int32_t x,
                             int32_t y, uint16_t *blocks, uint8_t *opened, map_column_t *out) {
     const float32_t lowest_ground = field->ground < field->height ? field->ground : field->height;
     const float32_t highest_ground = field->height > 0.0f32 ? field->height : 0.0f32;
@@ -241,8 +241,9 @@ static void map_column_make(const terrain_t *terrain, const terrain_hydrology_co
         low = low < COLUMN_Z_STORAGE_MIN ? COLUMN_Z_STORAGE_MIN : low;
         high = COLUMN_Z_STORAGE_END - 1;
     }
-    /* What feature_cold_paint does: ice on a cold biome's water, and snow on its land. Only the ground's height and the sea's look matter here. */
-    if (out->top == BLOCK_ID_WATER && biome_features[biome][BIOME_FEATURE_ICE] > 0.0f32) {
+    /* What feature_cold_paint does to water (plan 006 phase 04): ice where the coldest month at its top is below -2 degrees. Only the ground's height and
+     * the sea's look matter here. */
+    if (out->top == BLOCK_ID_WATER && terrain_surface_freezes((int32_t)t_cold_cc, (int32_t)out->ground)) {
         out->top = BLOCK_ID_ICE;
     }
 }
@@ -285,7 +286,7 @@ static void map_row_job(job_worker_t *worker, void *borrowed_argument) {
             const int32_t x = area.origin_x + (int32_t)(i * MAP_STEP);
             const uint64_t at = (uint64_t)i + (uint64_t)MAP_SIDE * row;
             map_column_t *const column = &run->borrowed_columns[at];
-            map_column_make(run->borrowed_terrain, &fields[i], biomes[i].biome, x, area.origin_y, blocks, opened,
+            map_column_make(run->borrowed_terrain, &fields[i], biomes[i].t_cold_cc, x, area.origin_y, blocks, opened,
                             column);
             column->kind = (uint8_t)fields[i].kind;
             column->klass = (uint8_t)map_class_of(column);

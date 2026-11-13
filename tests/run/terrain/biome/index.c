@@ -252,7 +252,10 @@ TEST(the_table_says_what_the_files_say) {
     CHECK(biome_features[BIOME_ID_DARK_FOREST][BIOME_FEATURE_TREE_DARK_OAK] == 14.0f32);
     CHECK(biome_features[BIOME_ID_MANGROVE_SWAMP][BIOME_FEATURE_TREE_MANGROVE] == 8.0f32);
     CHECK(biome_features[BIOME_ID_CHERRY_GROVE][BIOME_FEATURE_TREE_CHERRY] == 3.0f32);
-    CHECK(biome_features[BIOME_ID_FROZEN_RIVER][BIOME_FEATURE_ICE] == 1.0f32);
+    /* Plan 006 phase 04: below the snowline, a snow biome's own tops. */
+    CHECK_EQ_U64(biome_defs[BIOME_ID_SNOWY_PLAINS].below_top, BLOCK_ID_GRASS_BLOCK);
+    CHECK_EQ_U64(biome_defs[BIOME_ID_SNOWY_SLOPES].below_filler, BLOCK_ID_DIRT);
+    CHECK_EQ_U64(biome_defs[BIOME_ID_PLAINS].below_top, BLOCK_ID_AIR);
 }
 
 /* ---- The choice, by hand ------------------------------------------------------------------------------------------ */
@@ -979,6 +982,7 @@ static uint16_t bio_rule(const biome_def_t *def, const uint16_t *bands, int32_t 
         .depth = depth,
         .block = block,
         .wet = wet ? 1u : 0u,
+        .snow_from = INT32_MIN, /* as in the Ice family: snow and ice wherever the biome lays them */
     };
     return terrain_surface_block_from(def, bands, &inputs);
 }
@@ -1096,12 +1100,30 @@ static float32_t bio_spread(float32_t raw) {
 }
 
 /* The README's rule, typed out again from its table. */
+static uint16_t bio_expected_dry(const biome_def_t *def, const uint16_t *bands, int32_t z, uint32_t depth,
+                                 uint16_t block, float32_t noise, float32_t patch, float32_t steep, float32_t wander,
+                                 int32_t snow_from);
+
+/* Plan 006 phase 04: below snow_from, a frozen block of the biome's is its below_top at the top and below_filler under it. */
 static uint16_t bio_expected_block(const biome_def_t *def, const uint16_t *bands, int32_t z, uint32_t depth,
                                    uint16_t block, bool wet, float32_t noise, float32_t patch, float32_t steep,
-                                   float32_t wander) {
+                                   float32_t wander, int32_t snow_from) {
     if (wet) {
         return depth < def->wet_depth ? def->wet_top : block;
     }
+    const uint16_t laid = bio_expected_dry(def, bands, z, depth, block, noise, patch, steep, wander, snow_from);
+    const bool frozen = laid == BLOCK_ID_SNOW_BLOCK || laid == BLOCK_ID_ICE || laid == BLOCK_ID_PACKED_ICE ||
+                        laid == BLOCK_ID_BLUE_ICE;
+    if (block == BLOCK_ID_STONE && frozen && z < snow_from) {
+        const uint16_t instead = depth == 0u ? def->below_top : def->below_filler;
+        return instead != BLOCK_ID_AIR ? instead : laid;
+    }
+    return laid;
+}
+
+static uint16_t bio_expected_dry(const biome_def_t *def, const uint16_t *bands, int32_t z, uint32_t depth,
+                                 uint16_t block, float32_t noise, float32_t patch, float32_t steep, float32_t wander,
+                                 int32_t snow_from) {
     if (block != BLOCK_ID_STONE) {
         return block;
     }
@@ -1115,9 +1137,12 @@ static uint16_t bio_expected_block(const biome_def_t *def, const uint16_t *bands
     const int32_t band_z = z + (int32_t)(bent < 0.0f32 ? bent - 0.5f32 : bent + 0.5f32);
     const uint16_t band = bands[(uint32_t)band_z % 256u];
     const bool banded = def->bands_depth != 0u && z >= def->bands_from;
-    uint16_t top = def->high != BLOCK_ID_AIR && z >= def->high_from ? def->high : def->top;
+    /* A high block of snow starts no lower than the snowline. */
+    const bool high =
+        def->high != BLOCK_ID_AIR && z >= def->high_from && !(def->high == BLOCK_ID_SNOW_BLOCK && z < snow_from);
+    uint16_t top = high ? def->high : def->top;
     if (depth == 0u) {
-        if (banded && !(def->high != BLOCK_ID_AIR && z >= def->high_from)) {
+        if (banded && !high) {
             return band;
         }
         for (uint32_t i = 0u; i < def->patch_count; i++) {
@@ -1199,9 +1224,12 @@ static void bio_expected_chunk(test_context_t *t, const terrain_t *terrain, int3
                     continue;
                 }
                 if (depth < 16u) {
-                    *voxel = bio_expected_block(
-                        &biome_defs[columns[i].biome], surface->bands, MC_WORLD_Z_MIN + (int32_t)iz, depth, *voxel, wet,
-                        bio_spread(depth_noise[i]), bio_spread(patch_noise[i]), steep, bio_spread(wander_noise[i]));
+                    const int32_t snow_from = terrain_surface_snow_from(
+                        surface, columns[i].family, columns[i].snow_line_z, cx + (int32_t)ix, cy + (int32_t)iy);
+                    *voxel = bio_expected_block(&biome_defs[columns[i].biome], surface->bands,
+                                                MC_WORLD_Z_MIN + (int32_t)iz, depth, *voxel, wet,
+                                                bio_spread(depth_noise[i]), bio_spread(patch_noise[i]), steep,
+                                                bio_spread(wander_noise[i]), snow_from);
                 }
                 depth++;
             }
@@ -1278,7 +1306,7 @@ TEST(each_biome_shows_its_own_top_in_a_real_world) {
                 if (bio_is_open(top)) {
                     continue; /* a lake */
                 }
-                bool allowed = top == def->top || top == def->high || top == def->steep;
+                bool allowed = top == def->top || top == def->high || top == def->steep || top == def->below_top;
                 for (uint32_t p = 0u; p < def->patch_count; p++) {
                     allowed = allowed || top == biome_patches[def->first_patch + p].block;
                 }

@@ -12,6 +12,8 @@
 - `terrain_feature_chunk_read_box`, `terrain_feature_fill_chunk_box`: the same for a box that is one whole chunk, reading the chunk's own columns from the blocks at hand, as `terrain_generate_box` does. Those blocks have to be as the stages up to the flood left them, since lining and ore can change a top, so the first is called before those, and the second after. It gives the same bytes, and costs no second run of the stages over that chunk: `tests/run/terrain/feature/own/` holds it to that.
 - `terrain_feature_cache_start`, `terrain_feature_fill_box_cached`: the same as `terrain_feature_fill_box`, the same bytes, for many small boxes close together, with each chunk they need loaded and walked once into a cache the caller holds. The far field's lines are a few blocks apart, and walked the same chunks again for each before: plan 005 phase 14.
 - `terrain_feature_chunk_columns`, `terrain_feature_chunk_lake`: what a chunk has on it before anything grows, and its lake.
+- `terrain_feature_cold_column`: the ice and snow below, for one column with nothing grown on it: what the far field's levels too coarse for features lay (plan 006 phase 04).
+- `terrain_feature_rain_factor`, `terrain_feature_rate_scaled`: the rain's scale of a row's rate, below, as arithmetic.
 - `terrain_feature_tree_reach`, `terrain_feature_tree_is_wide`, `terrain_feature_canvas_of`, `terrain_feature_paint_tree`, `terrain_feature_lake_depth`: the shapes, as plain arithmetic, for `tests/run/terrain/feature/` to hold to account.
 
 **May be called by:** `terrain` and its parts, and `run/src/render/lod/` for its samples of the ground.
@@ -56,7 +58,9 @@ The walk costs about as much as making 2 to 5 sections of the chunk, so it is pu
 
 ## Sites
 
-Each row of the biome table has a stream per chunk, from the world's seed, the row's number and the chunk: never a stream carried over. For a chunk, a row's **tries** are the most any biome in the chunk asks for, rounded up, and each try draws an `x`, a `y`, a chance and a seed, whatever happens next, and whatever the box. A try stands if its column's biome passes `chance * tries < biome's number`. So a fraction of a try comes out as a fraction of the chunks, and the biome that a site lands in is the one whose number counts.
+Each row of the biome table has a stream per chunk, from the world's seed, the row's number and the chunk: never a stream carried over. For a chunk, a row's **tries** are the most any column in the chunk asks for, rounded up, and each try draws an `x`, a `y`, a chance and a seed, whatever happens next, and whatever the box. A try stands if its column passes `chance * tries < its number`. So a fraction of a try comes out as a fraction of the chunks, and the column that a site lands in is the one whose number counts.
+
+**A column's number** (plan 006 master 2.5) is its biome's, times the rain factor `min(1.5, P / mid)` worked out in thousandths, `min(1500, 1000 P / mid)`, where `P` is the column's yearly rain (`terrain_biome_column_t.rain_mm_year`, the climate blended at its lattice corner) and `mid` the middle of the biome's `rain_mm`. A biome with no `rain_mm` keeps its numbers (1000). So wet forest is dense and dry forest sparse, with no new biome. The ice spikes, which the table does not list, are not scaled. A chunk's tries come from each biome's wettest column in it, which no other column of that biome is over.
 
 A site then needs what its row asks for. Those in the table come in addition to not standing on a lake or a cut-away column:
 
@@ -118,10 +122,12 @@ The many that come to nothing have a cost only when they pass the first check, a
 
 ## Ice and snow
 
-Above 0, `ice` and `snow` in a biome's file are on for every column of it, not tries.
+From the climate, on every column, whatever its biome (plan 006 phase 04, master 2.5; the biome files' `ice` and `snow` rates are gone):
 
-- **Ice:** the top layer of water of a column whose biome has `ice`, including a lake's. Anything else is left as water, so warm water never freezes.
-- **Snow:** one `snow_block` on the top of a dry column whose biome has `snow`, unless that top is already snow, ice, packed ice, blue ice or lava, or something has grown there. There is no thin snow in `config/blocks/`, so it is a whole block: Stage 10.6's issue 4.
+- **Ice:** the top layer of water of a column, a lake's included, where the coldest month at that water's top is below -2 degrees C: the column's `t_cold_cc` at sea level less 0.012 degrees a block up (plus 0.025 a block below sea level, the basin heat), `terrain_surface_freezes`. Anything else is left as water. Below -10 degrees is the master's "permanent" ice, and it is the same block: only the cover tells the seasons apart.
+- **Snow:** one `snow_block` on the top of a dry column at or over its snowline, `terrain_surface_snow_from` (the column's `snow_line_z` moved by the ±24 block wander, or anywhere in the Ice family), unless that top is already snow, ice, packed ice, blue ice or lava, or something has grown there. There is no thin snow in `config/blocks/`, so it is a whole block: Stage 10.6's issue 4.
+
+So no generated ice or snow lies where the climate is warm: at the equator the snowline is "never" (9999), and the coldest month at the world's top is well above -2. Seasonal snow and ice are the cover's (`run/src/game/cover/`), and come and go.
 
 They go last, into air or water only, so nothing ends up under them. Snow lies on the ground and not on leaves.
 

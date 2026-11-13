@@ -9,6 +9,7 @@
 
 - `terrain_surface_init`, `terrain_surface_deinit`: a pair.
 - `terrain_surface_block_from`, `terrain_surface_cave_block_from`: the rules, as plain arithmetic.
+- `terrain_surface_snow_wander`, `terrain_surface_snow_from`, `terrain_surface_freezes`, `terrain_surface_is_frozen`: the snowline and the coldest month's ice (plan 006 phase 04), as plain integer arithmetic, which `terrain/feature` and the far field read too, so near and far agree.
 - `terrain_surface_fill_box`: covers the ground of a box.
 - `terrain_surface_tile_read`, `terrain_surface_fill_tile_box`: the same fill, for what asks for one chunk in slices, reading what does not change with the layers once.
 - `terrain_surface_line_caves_box`: lines the caves of a box. `terrain_surface_line_caves_with_mask`: the same blocks, from a mask of that box, which asks the caves only for the layers just past its ends. On a tall column of a range the second look at the caves took a third of its time, so `terrain_generate_box` uses this.
@@ -39,7 +40,7 @@ For each voxel of solid ground, with `depth` how many solid voxels lie between i
 | `wet` | What it was |
 | Not stone | What it was: hydrology's sand, gravel, clay and sandstone stay, as does the bedrock |
 | `steepness >= steep.from`, `depth <= filler` | `steep.block`: a slope too steep to hold soil |
-| `depth = 0`, `z >= high.from` | The patch this column is in, or `high.block` |
+| `depth = 0`, `z >= high.from`, and if `high.block` is frozen, `z >= snow_from` | The patch this column is in, or `high.block` |
 | `depth = 0`, `z >= bands.from` | The band for this layer |
 | `depth = 0` | The patch this column is in, or `top` |
 | `z >= bands.from`, `depth < bands.depth` | The band for this layer |
@@ -53,7 +54,21 @@ with
     filler = 0                                                when filler_depth is 0
              filler_depth + min(3, trunc(2 * (depth_noise + 1)))   otherwise
 
-so a column's soil is up to 3 layers thicker than the file says, as the noise goes. A **patch** is a row `from`, `to` of `patches`: the first whose range holds the column's `patch` noise, from `from` up to but not including `to`, where a `to` of 1 includes 1. The patch and depth noise belong to the column, so they make shapes on the ground, not specks.
+and then, for a dry voxel, **the snowline** (plan 006 master 2.5): if the block chosen is frozen (`snow_block`, `ice`,
+`packed_ice`, `blue_ice`) and `z < snow_from`, it is the biome's `below_top` at `depth = 0` and `below_filler` deeper
+(`top_below_snowline` and `filler_below_snowline` in the file; a biome without them keeps its block, which only an
+Ice-only biome may be). `snow_from` is the column's:
+
+    snow_from = -infinity                          in the Ice family (the warmest month at its height is below 0)
+                +infinity                          where snow_line_z is 9999, "never lasts the summer"
+                snow_line_z + w(x, y)              otherwise, w from -24 to 24 blocks
+
+`snow_line_z` is `terrain_biome_column_t`'s: the climate's `snow_balance_z` blended at the column's 4-block lattice
+corner, as the biome reads the climate. `w` is two octaves of hashed value noise, 64 and 16 blocks, from the seed, in
+integers, spread to use the band: the edge is a wobbly band 48 blocks deep, not a contour. It is worked out only for a
+column whose biome lays a frozen block that may give way.
+
+So a column's soil is up to 3 layers thicker than the file says, as the noise goes. A **patch** is a row `from`, `to` of `patches`: the first whose range holds the column's `patch` noise, from `from` up to but not including `to`, where a `to` of 1 includes 1. The patch and depth noise belong to the column, so they make shapes on the ground, not specks.
 
 **The most any rule reaches is 16 layers,** `BIOME_LAYERS_MAX`, which the tool holds every file to. So a voxel that has no open voxel within 16 above it changes for no biome, and that is what lets a box know what is in it with no more than the 16 layers over its top.
 
@@ -89,7 +104,7 @@ Noise is spread as hydrology spreads it, and the limit is the one it measured fo
 
 - **No eroded badlands hoodoos.** The ground's shape comes from the density, and this only colours it. Eroded badlands differ from badlands by their bands reaching lower and their barer top.
 - **No sculk in the deep dark:** `config/blocks/` has no such block. It has cobbled deepslate and tuff on its floors until it does.
-- **No ice on water, and no snow over what is not its own top.** Those are `run/src/terrain/feature/`'s. `snow_block` is the only snow there is, and it lies on the coldest ground from here.
+- **No ice on water, and no snow over what is not its own top.** Those are `run/src/terrain/feature/`'s, by the same snowline and coldest month. `snow_block` is the only snow there is.
 
 ## What it costs
 

@@ -6,4 +6,3 @@ surface:
   filler: sand
   under: sandstone
   under_depth: 2
-features: { snow: 1, ice: 1 }

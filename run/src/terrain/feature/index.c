@@ -472,6 +472,10 @@ static void feature_chunk_load(const terrain_feature_t *feature, const terrain_c
             .water = 0u,
             .block = BLOCK_ID_AIR,
             .biome = columns[i].biome,
+            .family = columns[i].family,
+            .snow_line_z = columns[i].snow_line_z,
+            .t_cold_cc = columns[i].t_cold_cc,
+            .rain_factor = (uint16_t)terrain_feature_rain_factor(columns[i].biome, (int32_t)columns[i].rain_mm_year),
         };
     }
     const int32_t z_low = (int32_t)low - FEATURE_LATTICE_SLACK;
@@ -941,12 +945,37 @@ static void feature_grow(const terrain_feature_canvas_t *canvas, const terrain_f
 
 /* ---- Sites -------------------------------------------------------------------------------------------------------- */
 
+uint32_t terrain_feature_rain_factor(uint8_t biome, int32_t rain_mm_year) {
+    const biome_def_t *const def = &biome_defs[biome];
+    if ((def->limits & BIOME_LIMIT_RAIN) == 0u) {
+        return TERRAIN_FEATURE_RAIN_ONE;
+    }
+    const int64_t mid = ((int64_t)def->rain_low_mm + (int64_t)def->rain_high_mm) / 2;
+    const int64_t rain = rain_mm_year > 0 ? (int64_t)rain_mm_year : 0;
+    if (mid <= 0) {
+        return TERRAIN_FEATURE_RAIN_MOST;
+    }
+    const int64_t factor = (int64_t)TERRAIN_FEATURE_RAIN_ONE * rain / mid;
+    return factor > (int64_t)TERRAIN_FEATURE_RAIN_MOST ? TERRAIN_FEATURE_RAIN_MOST : (uint32_t)factor;
+}
+
+float32_t terrain_feature_rate_scaled(float32_t rate, uint32_t rain_factor) {
+    return rate * (float32_t)rain_factor / (float32_t)TERRAIN_FEATURE_RAIN_ONE;
+}
+
 /* How many of a row a biome tries in a chunk. The biome table's number, but for what it does not list. */
 static float32_t feature_rate(uint32_t row, uint8_t biome) {
     if (row == TERRAIN_FEATURE_ROW_SPIKE) {
         return biome == BIOME_ID_ICE_SPIKES ? 1.0f32 : 0.0f32;
     }
     return biome_features[biome][row];
+}
+
+/* The same at a column: plan 006 master 2.5 scales every row of the biome table by the column's rain. The spikes, which
+ * the table does not list, are not scaled. */
+static float32_t feature_rate_at(uint32_t row, uint8_t biome, uint32_t rain_factor) {
+    const float32_t rate = feature_rate(row, biome);
+    return row == TERRAIN_FEATURE_ROW_SPIKE ? rate : terrain_feature_rate_scaled(rate, rain_factor);
 }
 
 /* What is left of a tree's vines per tree of the biome's. */
@@ -1032,7 +1061,8 @@ static void feature_row_chunk(const terrain_feature_t *feature, const terrain_cl
             continue;
         }
         const uint8_t biome = chunk->columns[ox + TERRAIN_FEATURE_CHUNK * oy].biome;
-        if (luck * (float32_t)tries >= feature_rate(row, biome)) {
+        if (luck * (float32_t)tries >=
+            feature_rate_at(row, biome, chunk->columns[ox + TERRAIN_FEATURE_CHUNK * oy].rain_factor)) {
             continue;
         }
         feature_chunk_walk(feature, climate, chunk);
@@ -1065,26 +1095,32 @@ static void feature_row_chunk(const terrain_feature_t *feature, const terrain_cl
     }
 }
 
-/* Is this row placed by sites at all? Vines go with trees, and ice and snow are every column's. */
+/* Is this row placed by sites at all? Vines go with trees. */
 static bool feature_row_has_sites(uint32_t row) {
-    return row != BIOME_FEATURE_VINE && row != BIOME_FEATURE_SNOW && row != BIOME_FEATURE_ICE;
+    return row != BIOME_FEATURE_VINE;
 }
 
 /* All the rows a chunk has that can reach a canvas. Only a tree can leave its chunk. */
 static void feature_chunk_rows(const terrain_feature_t *feature, const terrain_climate_sample_t *climate,
                                const terrain_feature_canvas_t *canvas, terrain_feature_chunk_t *chunk, bool own) {
+    /* Each biome's wettest column: no column's rate of a row is over its biome's rate at that one. */
+    uint16_t wettest[BIOME_COUNT];
     uint8_t seen[BIOME_COUNT];
     memset(seen, 0, sizeof(seen));
-    float32_t most[TERRAIN_FEATURE_ROWS];
-    memset(most, 0, sizeof(most));
     for (uint32_t i = 0u; i < TERRAIN_FEATURE_CHUNK_COLUMNS; i++) {
         const uint8_t biome = chunk->columns[i].biome;
-        if (seen[biome] != 0u) {
+        const uint16_t factor = chunk->columns[i].rain_factor;
+        wettest[biome] = (seen[biome] == 0u || factor > wettest[biome]) ? factor : wettest[biome];
+        seen[biome] = 1u;
+    }
+    float32_t most[TERRAIN_FEATURE_ROWS];
+    memset(most, 0, sizeof(most));
+    for (uint32_t biome = 0u; biome < BIOME_COUNT; biome++) {
+        if (seen[biome] == 0u) {
             continue;
         }
-        seen[biome] = 1u;
         for (uint32_t row = 0u; row < TERRAIN_FEATURE_ROWS; row++) {
-            const float32_t rate = feature_rate(row, biome);
+            const float32_t rate = feature_rate_at(row, (uint8_t)biome, wettest[biome]);
             most[row] = rate > most[row] ? rate : most[row];
         }
     }
@@ -1140,35 +1176,70 @@ static bool feature_takes_snow(uint16_t block) {
            block != BLOCK_ID_BLUE_ICE && block != BLOCK_ID_LAVA;
 }
 
-/* Every column of a biome that is cold: its open water freezes on top, and its dry ground takes a layer of snow. Goes last, so
- * neither ends up under anything that grew. */
-static void feature_cold_paint(const terrain_feature_canvas_t *canvas, const terrain_feature_chunk_t *chunk) {
+/* Plan 006 master 2.5: whether a dry top at z lies under permanent snow. The wander is worked out only near the line. */
+static bool feature_snow_holds(const terrain_feature_t *feature, uint8_t family, int32_t snow_line_z, int32_t x,
+                               int32_t y, int32_t z) {
+    if (family != BIOME_FAMILY_ICE &&
+        (snow_line_z >= TERRAIN_CLIMATE_NO_SNOW_LINE || z < snow_line_z - TERRAIN_SURFACE_SNOW_WANDER_BLOCKS)) {
+        return false;
+    }
+    return z >= terrain_surface_snow_from(feature->borrowed_surface, family, snow_line_z, x, y);
+}
+
+/* Every column the climate makes cold (plan 006 master 2.5): its open water freezes on top where the coldest month at the
+ * water's top is below -2 degrees, and its dry ground takes a snow block where the snowline says. Goes last, so neither
+ * ends up under anything that grew. */
+static void feature_cold_paint(const terrain_feature_t *feature, const terrain_feature_canvas_t *canvas,
+                               const terrain_feature_chunk_t *chunk) {
     for (uint32_t oy = 0u; oy < TERRAIN_FEATURE_CHUNK; oy++) {
         for (uint32_t ox = 0u; ox < TERRAIN_FEATURE_CHUNK; ox++) {
             const terrain_feature_column_t *const column = &chunk->columns[ox + TERRAIN_FEATURE_CHUNK * oy];
             if (column->top == TERRAIN_FEATURE_NO_GROUND) {
                 continue;
             }
-            const float32_t *const rates = biome_features[column->biome];
             const int32_t x = chunk->chunk_x * (int32_t)TERRAIN_FEATURE_CHUNK + (int32_t)ox;
             const int32_t y = chunk->chunk_y * (int32_t)TERRAIN_FEATURE_CHUNK + (int32_t)oy;
             if (terrain_feature_lake_depth(&chunk->lake, ox, oy) > 0u) {
-                if (rates[BIOME_FEATURE_ICE] > 0.0f32) {
+                if (terrain_surface_freezes(column->t_cold_cc, (int32_t)chunk->lake.level)) {
                     feature_set(canvas, x, y, (int32_t)chunk->lake.level, BLOCK_ID_ICE);
                 }
                 continue;
             }
             if (column->water > 0u) {
-                if (rates[BIOME_FEATURE_ICE] > 0.0f32) {
-                    feature_put(canvas, x, y, (int32_t)column->top + (int32_t)column->water, BLOCK_ID_ICE,
-                                FEATURE_PUT_WATER);
+                const int32_t water_top = (int32_t)column->top + (int32_t)column->water;
+                if (terrain_surface_freezes(column->t_cold_cc, water_top)) {
+                    feature_put(canvas, x, y, water_top, BLOCK_ID_ICE, FEATURE_PUT_WATER);
                 }
                 continue;
             }
-            if (rates[BIOME_FEATURE_SNOW] > 0.0f32 && feature_takes_snow(column->block)) {
+            if (feature_takes_snow(column->block) &&
+                feature_snow_holds(feature, column->family, column->snow_line_z, x, y, (int32_t)column->top)) {
                 feature_put(canvas, x, y, (int32_t)column->top + 1, BLOCK_ID_SNOW_BLOCK, FEATURE_PUT_PLANT);
             }
         }
+    }
+}
+
+void terrain_feature_cold_column(const terrain_feature_t *feature, const terrain_climate_sample_t *climate, int32_t x,
+                                 int32_t y, int32_t origin_z, uint32_t count, uint16_t *column) {
+    uint32_t top = count;
+    while (top > 0u && column[top - 1u] == BLOCK_ID_AIR) {
+        top--;
+    }
+    if (top == 0u) {
+        return;
+    }
+    const terrain_biome_column_t own = terrain_biome_column_at(feature->borrowed_biome, climate, x, y);
+    const uint16_t block = column[top - 1u];
+    const int32_t z = origin_z + (int32_t)top - 1;
+    if (block == BLOCK_ID_WATER) {
+        if (terrain_surface_freezes(own.t_cold_cc, z)) {
+            column[top - 1u] = BLOCK_ID_ICE;
+        }
+        return;
+    }
+    if (top < count && feature_takes_snow(block) && feature_snow_holds(feature, own.family, own.snow_line_z, x, y, z)) {
+        column[top] = BLOCK_ID_SNOW_BLOCK;
     }
 }
 
@@ -1206,7 +1277,7 @@ static void feature_tile(const terrain_feature_t *feature, const terrain_climate
         }
     }
     if (own_touches) {
-        feature_cold_paint(canvas, own);
+        feature_cold_paint(feature, canvas, own);
     }
 }
 
@@ -1320,7 +1391,7 @@ void terrain_feature_fill_box_cached(const terrain_feature_t *feature, const ter
                 }
             }
             if (own_touches) {
-                feature_cold_paint(&canvas, own);
+                feature_cold_paint(feature, &canvas, own);
             }
             ix += count_x;
         }

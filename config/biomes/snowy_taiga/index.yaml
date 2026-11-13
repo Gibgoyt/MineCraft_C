@@ -5,4 +5,5 @@ climate: { families: [tundra], wetness: [0.1, 1], rain_mm: [200, 900] }
 surface:
   top: snow_block
   filler: dirt
-features: { tree_spruce: 6, fern: 1, snow: 1, ice: 1 }
+  top_below_snowline: podzol
+features: { tree_spruce: 6, fern: 1 }

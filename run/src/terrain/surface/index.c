@@ -108,6 +108,8 @@ bool terrain_surface_init(terrain_surface_t **out, arena_t *arena, terrain_noise
     surface->borrowed_hydrology = hydrology;
     surface->borrowed_cave = cave;
     surface_bands_draw(seed, surface->bands);
+    surface->snow_seed = (uint32_t)terrain_rng_derive(seed, terrain_rng_salt("surface/snowline"));
+    memset(surface->_pad0, 0, sizeof(surface->_pad0));
     if (!terrain_noise_bank_add(bank, "surface/depth", &SURFACE_SHAPE_DEPTH, &surface->borrowed_depth) ||
         !terrain_noise_bank_add(bank, "surface/patch", &SURFACE_SHAPE_PATCH, &surface->borrowed_patch) ||
         !terrain_noise_bank_add(bank, "surface/wander", &SURFACE_SHAPE_WANDER, &surface->borrowed_wander)) {
@@ -146,21 +148,94 @@ static uint32_t surface_filler_layers(const biome_def_t *def, float32_t depth_no
     return (uint32_t)def->filler_depth + (more > BIOME_FILLER_WOBBLE ? BIOME_FILLER_WOBBLE : more);
 }
 
-uint16_t terrain_surface_block_from(const biome_def_t *def, const uint16_t *bands, const terrain_surface_inputs_t *in) {
-    if (in->wet != 0u) {
-        /* Under water, a biome's own bed goes over what hydrology laid, and otherwise what hydrology laid stays. */
-        return in->depth < def->wet_depth ? def->wet_top : in->block;
+/* ---- Snow and ice from the climate (plan 006 phase 04) ------------------------------------------------------------- */
+
+enum : int64_t {
+    SNOW_ONE = 65536,
+    SNOW_HALF_ONE = 32768,
+    SNOW_CELL_1 = 64,
+    SNOW_CELL_2 = 16,
+};
+
+/* a / b rounded toward minus infinity, b > 0. */
+static int64_t surface_floor_div(int64_t a, int64_t b) {
+    const int64_t q = a / b;
+    return (a % b != 0 && a < 0) ? q - 1 : q;
+}
+
+/* A lattice point's value in [-32768, 32767]. */
+static int64_t snow_lattice(uint64_t seed, int64_t ix, int64_t iy) {
+    return (int64_t)(terrain_rng_hash2(seed, (int32_t)ix, (int32_t)iy) >> 48u) - SNOW_HALF_ONE;
+}
+
+/* 3f^2 - 2f^3 of f in 65536ths. */
+static int64_t snow_smooth(int64_t f) {
+    return ((f * f) >> 16) * (3 * SNOW_ONE - 2 * f) >> 16;
+}
+
+/* One octave of value noise at (x, y) on lattice cells of cell blocks, in [-32768, 32767]. */
+static int64_t snow_octave(uint64_t seed, int64_t x, int64_t y, int64_t cell) {
+    const int64_t ix = surface_floor_div(x, cell), iy = surface_floor_div(y, cell);
+    const int64_t sx = snow_smooth((x - ix * cell) * SNOW_ONE / cell);
+    const int64_t sy = snow_smooth((y - iy * cell) * SNOW_ONE / cell);
+    const int64_t a = snow_lattice(seed, ix, iy), b = snow_lattice(seed, ix + 1, iy);
+    const int64_t c = snow_lattice(seed, ix, iy + 1), d = snow_lattice(seed, ix + 1, iy + 1);
+    const int64_t south = a + surface_floor_div((b - a) * sx, SNOW_ONE);
+    const int64_t north = c + surface_floor_div((d - c) * sx, SNOW_ONE);
+    return south + surface_floor_div((north - south) * sy, SNOW_ONE);
+}
+
+int32_t terrain_surface_snow_wander(uint32_t snow_seed, int64_t x, int64_t y) {
+    const uint64_t seed = (uint64_t)snow_seed;
+    const int64_t raw = (2 * snow_octave(seed, x, y, SNOW_CELL_1) +
+                         snow_octave(seed | (1ull << 32u), x, y, SNOW_CELL_2)) / 3;
+    /* Doubled and clamped, then 1.5 u - 0.5 u^3, as the climate spreads its warp: the band is used to its edges. */
+    int64_t unit = 4 * raw;
+    unit = unit > SNOW_ONE ? SNOW_ONE : (unit < -SNOW_ONE ? -SNOW_ONE : unit);
+    const int64_t spread = surface_floor_div(unit * (3 * SNOW_HALF_ONE - ((unit * unit) >> 17)), SNOW_ONE);
+    return (int32_t)surface_floor_div(spread * TERRAIN_SURFACE_SNOW_WANDER_BLOCKS + SNOW_HALF_ONE, SNOW_ONE);
+}
+
+int32_t terrain_surface_snow_from(const terrain_surface_t *surface, uint8_t family, int32_t snow_line_z, int64_t x,
+                                  int64_t y) {
+    if (family == BIOME_FAMILY_ICE) {
+        return INT32_MIN; /* the warmest month is below 0: what falls stays */
     }
-    if (in->block != BLOCK_ID_STONE) {
-        return in->block; /* hydrology's sand and gravel, and anything that is not ground to cover */
+    if (snow_line_z >= TERRAIN_CLIMATE_NO_SNOW_LINE) {
+        return INT32_MAX;
     }
+    return snow_line_z + terrain_surface_snow_wander(surface->snow_seed, x, y);
+}
+
+bool terrain_surface_freezes(int32_t t_cold_cc, int32_t z) {
+    int64_t t = (int64_t)t_cold_cc - surface_floor_div((int64_t)z * TERRAIN_CLIMATE_LAPSE_CC_PER_10, 10);
+    if (z < 0) {
+        t += surface_floor_div(-(int64_t)z * TERRAIN_CLIMATE_BASIN_CC_PER_10, 10);
+    }
+    return t < (int64_t)TERRAIN_SURFACE_ICE_BELOW_CC;
+}
+
+bool terrain_surface_is_frozen(uint16_t block) {
+    return block == BLOCK_ID_SNOW_BLOCK || block == BLOCK_ID_ICE || block == BLOCK_ID_PACKED_ICE ||
+           block == BLOCK_ID_BLUE_ICE;
+}
+
+/* Whether a column of this biome needs its snow_from at all: it lays a frozen block that may give way. */
+static bool surface_may_thaw(const biome_def_t *def) {
+    return def->below_top != BLOCK_ID_AIR || terrain_surface_is_frozen(def->high);
+}
+
+/* What a dry ground voxel becomes, before the snowline has its say on frozen blocks. */
+static uint16_t surface_dry_block(const biome_def_t *def, const uint16_t *bands, const terrain_surface_inputs_t *in) {
     const uint32_t filler = surface_filler_layers(def, in->depth_noise);
     if (def->steep_from > 0.0f32 && in->steepness >= def->steep_from && in->depth <= filler) {
         return def->steep;
     }
     const bool in_bands = def->bands_depth != 0u && in->z >= def->bands_from;
     if (in->depth == 0u) {
-        if (def->high != BLOCK_ID_AIR && in->z >= def->high_from) {
+        /* A high block of snow starts no lower than the snowline. */
+        if (def->high != BLOCK_ID_AIR && in->z >= def->high_from &&
+            !(terrain_surface_is_frozen(def->high) && in->z < in->snow_from)) {
             return surface_patch_of(def, in->patch, def->high);
         }
         if (in_bands) {
@@ -179,6 +254,23 @@ uint16_t terrain_surface_block_from(const biome_def_t *def, const uint16_t *band
         return def->under;
     }
     return BLOCK_ID_STONE;
+}
+
+uint16_t terrain_surface_block_from(const biome_def_t *def, const uint16_t *bands, const terrain_surface_inputs_t *in) {
+    if (in->wet != 0u) {
+        /* Under water, a biome's own bed goes over what hydrology laid, and otherwise what hydrology laid stays. */
+        return in->depth < def->wet_depth ? def->wet_top : in->block;
+    }
+    if (in->block != BLOCK_ID_STONE) {
+        return in->block; /* hydrology's sand and gravel, and anything that is not ground to cover */
+    }
+    const uint16_t block = surface_dry_block(def, bands, in);
+    /* Plan 006 master 2.5: permanent snow and ice only at or over the snowline, or anywhere in the Ice family. */
+    if (in->z < in->snow_from && terrain_surface_is_frozen(block)) {
+        const uint16_t instead = in->depth == 0u ? def->below_top : def->below_filler;
+        return instead != BLOCK_ID_AIR ? instead : block;
+    }
+    return block;
 }
 
 uint16_t terrain_surface_cave_block_from(const biome_def_t *def, uint16_t block, float32_t patch, bool cave_above,
@@ -388,6 +480,13 @@ static void surface_tile_lay(const terrain_surface_t *surface, terrain_surface_t
             const uint32_t i = ix + span->count_x * iy;
             const biome_def_t *const def = &biome_defs[tile->columns[i].biome];
             const uint64_t column_at = (uint64_t)(span->ix + ix) + (uint64_t)box->count_x * (span->iy + iy);
+            /* Its snowline, worked out only where a frozen block of its biome may give way. */
+            const int32_t snow_from =
+                surface_may_thaw(def) ? terrain_surface_snow_from(surface, tile->columns[i].family,
+                                                                  tile->columns[i].snow_line_z,
+                                                                  (int64_t)span->x + (int64_t)ix,
+                                                                  (int64_t)span->y + (int64_t)iy)
+                                      : INT32_MIN;
             uint32_t walking = depth[i];
             uint8_t walking_wet = wet[i];
             for (uint32_t iz = box->count_z; iz-- > 0u;) {
@@ -409,6 +508,7 @@ static void surface_tile_lay(const terrain_surface_t *surface, terrain_surface_t
                         .depth = walking,
                         .block = block,
                         .wet = walking_wet,
+                        .snow_from = snow_from,
                     };
                     *voxel = terrain_surface_block_from(def, surface->bands, &inputs);
                     walking++;

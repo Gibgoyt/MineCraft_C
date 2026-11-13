@@ -1312,6 +1312,12 @@ static const gtt_bad_case_t GTT_BAD_BIOMES[] = {
     {GTT_LAND_START "surface:\n  top: stone\n  filler: stone\n  patches:\n    - { block: stone, from: 0.5, to: 0.5 }\n",
      ":7:", "a patch's from must be below its to"},
     {GTT_LAND_START GTT_LAND_SURFACE "features: { cactus: 257 }\n", ":5:", "cactus is '257'"},
+    /* Plan 006 phase 04: the climate lays permanent snow and ice now, so the rates are refused, saying so. */
+    {GTT_LAND_START GTT_LAND_SURFACE "features: { ice: 1 }\n", ":5:",
+     "ice has moved: the climate lays permanent snow by the snowline and ice by the coldest month"},
+    {GTT_LAND_START GTT_LAND_SURFACE "features: { cactus: 1, snow: 1 }\n", ":5:", "snow has moved"},
+    {GTT_LAND_START GTT_LAND_CLIMATE "surface: { top: stone, filler: stone, top_below_snowline: stone }\n",
+     ":4:", "has a below-snowline block but lays no snow or ice"},
 };
 
 TEST(each_bad_biome_is_refused_at_its_line_and_nothing_is_written) {
@@ -1352,6 +1358,48 @@ TEST(every_family_has_a_biome_for_every_landform) {
     CHECK_EQ_I64(run.exit_code, 1);
     CHECK_CONTAINS(run.output, "family rainforest has no biome with where: ocean");
     CHECK_CONTAINS(run.output, "nothing was written");
+}
+
+/* Plan 006 phase 04: a biome that lays snow or ice and has a family other than Ice says what it lays below the snowline. */
+TEST(a_snow_biome_says_what_it_lays_below_the_snowline) {
+    const gtt_tree_t tree = gtt_tree_make(t, "biomes_snowline");
+    gtt_mkdirs(t, gtt_path(t, tree.borrowed_config, "blocks/snow_block"));
+    gtt_write(t, gtt_path(t, tree.borrowed_config, "blocks/snow_block/index.yaml"),
+              "name: snow_block\nhardness: 0.2\ntexture: { all: blocks/stone }\ndrops: []\nsound: stone\n");
+    static const gtt_bad_case_t BAD[] = {
+        {GTT_LAND_START GTT_LAND_CLIMATE "surface: { top: snow_block, filler: stone }\n", ":4:",
+         "so it needs top_below_snowline"},
+        {GTT_LAND_START GTT_LAND_CLIMATE
+         "surface: { top: stone, filler: snow_block, top_below_snowline: stone }\n",
+         ":4:", "so it needs filler_below_snowline"},
+        {GTT_LAND_START GTT_LAND_CLIMATE "surface: { top: snow_block, filler: stone, top_below_snowline: snow_block }\n",
+         ":4:", "must not itself be snow or ice"},
+    };
+    for (uint32_t i = 0u; i < sizeof(BAD) / sizeof(BAD[0]); i++) {
+        gtt_biomes_make(t, &tree, BAD[i].text);
+        test_process_t run;
+        gtt_tree_run(t, &tree, &run);
+        CHECK_EQ_I64(run.exit_code, 1);
+        CHECK_CONTAINS(run.output, BAD[i].position);
+        CHECK_CONTAINS(run.output, BAD[i].message);
+    }
+    /* Only in Ice it needs none; with the field, it is in the table, and the filler defaults to the filler. */
+    gtt_biomes_make(t, &tree,
+                    GTT_LAND_START "climate: { families: [ice] }\nsurface: { top: snow_block, filler: stone }\n");
+    test_process_t run;
+    gtt_tree_run(t, &tree, &run);
+    CHECK_EQ_I64(run.exit_code, 1); /* ice alone leaves the other families with no land biome */
+    CHECK_CONTAINS(run.output, "has no biome with where: land");
+    CHECK(strstr(run.output, "top_below_snowline") == nullptr);
+    gtt_biomes_make(t, &tree,
+                    GTT_LAND_START GTT_LAND_CLIMATE
+                    "surface: { top: snow_block, filler: stone, top_below_snowline: stone }\n");
+    gtt_tree_run(t, &tree, &run);
+    REQUIRE(run.exit_code == 0);
+    uint64_t length = 0u;
+    const char *const source = gtt_read(t, gtt_path(t, tree.borrowed_out, "biomes/index.c"), &length);
+    CHECK_CONTAINS(source, ".top = BLOCK_ID_SNOW_BLOCK");
+    CHECK_CONTAINS(source, ".below_top = BLOCK_ID_STONE, .below_filler = BLOCK_ID_STONE");
 }
 
 TEST(an_underground_biome_has_no_family) {

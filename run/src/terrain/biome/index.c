@@ -250,6 +250,11 @@ static float32_t biome_bilinear(const float32_t *values, uint32_t at, uint32_t s
     return south + t_y * (north - south);
 }
 
+/* v held to int16_t. */
+static int16_t biome_int16(int32_t v) {
+    return (int16_t)(v < INT16_MIN ? INT16_MIN : (v > INT16_MAX ? INT16_MAX : v));
+}
+
 /* One tile's worth, already known to fit in it. */
 typedef struct biome_span_t {
     int64_t x_first;  /* 0 */
@@ -319,6 +324,8 @@ static void biome_tile(const terrain_biome_t *biome, const terrain_climate_sampl
      * south-west of it) and its own height. Reading every 4 blocks and not every block is a sixteenth of the warps. */
     terrain_climate_point_t lattice_cell[BIOME_LATTICE];
     int32_t lattice_rain[BIOME_LATTICE];
+    int16_t lattice_snow_line[BIOME_LATTICE];
+    int16_t lattice_cold[BIOME_LATTICE];
     uint8_t lattice_read[BIOME_LATTICE];
     memset(lattice_read, 0, sizeof(lattice_read));
 
@@ -340,6 +347,8 @@ static void biome_tile(const terrain_biome_t *biome, const terrain_climate_sampl
                 terrain_climate_both_at(climate, (x >> BIOME_CELL_SHIFT) << BIOME_CELL_SHIFT,
                                         (y >> BIOME_CELL_SHIFT) << BIOME_CELL_SHIFT, 0, &blend, &lattice_cell[at]);
                 lattice_rain[at] = blend.rain_mm_year;
+                lattice_snow_line[at] = biome_int16(blend.snow_line_z);
+                lattice_cold[at] = biome_int16(blend.t_cold_cc);
                 lattice_read[at] = 1u;
             }
             const terrain_climate_point_t cell =
@@ -366,6 +375,11 @@ static void biome_tile(const terrain_biome_t *biome, const terrain_climate_sampl
                 .biome = (uint8_t)terrain_biome_choose(&inputs),
                 .caves = terrain_biome_caves_of(&inputs),
                 .family = inputs.family,
+                .snow_line_z = lattice_snow_line[at],
+                .t_cold_cc = lattice_cold[at],
+                .rain_mm_year = (uint16_t)(point.rain_mm_year < 0
+                                               ? 0
+                                               : (point.rain_mm_year > UINT16_MAX ? UINT16_MAX : point.rain_mm_year)),
             };
         }
     }

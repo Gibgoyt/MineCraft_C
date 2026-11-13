@@ -5,5 +5,6 @@ climate: { families: [ice, tundra, boreal], wetness: [-0.3, 1], rain_mm: [300, 1
 surface:
   top: snow_block
   filler: dirt
+  top_below_snowline: grass_block
   steep: { block: stone, from: 1.5 }
-features: { tree_spruce: 4, snow: 1, ice: 1 }
+features: { tree_spruce: 4 }

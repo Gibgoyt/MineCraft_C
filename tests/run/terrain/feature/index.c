@@ -854,10 +854,11 @@ TEST(lily_pads_grow_on_a_swamps_standing_water) {
     uint16_t *const blocks = test_alloc(t, (uint64_t)FEA_COLUMNS * LAYERS * sizeof(uint16_t));
     uint8_t *const opened = test_alloc(t, (uint64_t)FEA_COLUMNS * LAYERS);
     uint32_t chunks = 0u;
+    uint32_t swamps = 0u;
     uint64_t pads = 0u;
     uint64_t logs = 0u;
     const int32_t z_low = MC_WORLD_Z_SEA - 20;
-    for (uint32_t row = 0u; row < FEA_SEARCH_SIDE && chunks < 600u; row++) {
+    for (uint32_t row = 0u; row < FEA_SEARCH_SIDE && (chunks < 600u || swamps < 40u); row++) {
         const terrain_fields_area_t area = {
             .origin_x = -half,
             .origin_y = -half + (int32_t)(row * 16u * FEA_CHUNK),
@@ -867,12 +868,19 @@ TEST(lily_pads_grow_on_a_swamps_standing_water) {
             .count_y = 1u,
         };
         terrain_biome_columns_area(terrain.borrowed_biome, nullptr, &area, columns);
-        for (uint32_t i = 0u; i < FEA_SEARCH_SIDE && chunks < 600u; i++) {
+        for (uint32_t i = 0u; i < FEA_SEARCH_SIDE && (chunks < 600u || swamps < 40u); i++) {
             const bool land = biome_defs[columns[i].biome].where == BIOME_WHERE_LAND;
             if (!land || columns[i].ground >= (float32_t)MC_WORLD_Z_SEA) {
                 continue;
             }
-            chunks++;
+            /* Plan 006 phase 04 scales a swamp's pads by its rain, to a third where it is dry for one, so past the first 600
+             * chunks of low land only swamps are made, until 40 of them are. */
+            const bool swamp = columns[i].biome == BIOME_ID_SWAMP || columns[i].biome == BIOME_ID_MANGROVE_SWAMP;
+            if (chunks >= 600u && !swamp) {
+                continue;
+            }
+            chunks += chunks < 600u ? 1u : 0u;
+            swamps += swamp ? 1u : 0u;
             const terrain_density_box_t box = {
                 .origin_x = area.origin_x + (int32_t)(i * 16u * FEA_CHUNK),
                 .origin_y = area.origin_y,
@@ -898,7 +906,7 @@ TEST(lily_pads_grow_on_a_swamps_standing_water) {
             }
         }
     }
-    printf("    %" PRIu64 " pads and %" PRIu64 " logs on %u wet chunks of land\n", pads, logs, chunks);
+    printf("    %" PRIu64 " pads and %" PRIu64 " logs on %u wet chunks of land and %u of swamp\n", pads, logs, chunks, swamps);
     REQUIRE(chunks > 0u);
     CHECK(pads > 0u);
     terrain_deinit(&terrain);
@@ -953,10 +961,15 @@ TEST(everything_stands_where_it_may_in_every_biome) {
                             CHECK(under == BLOCK_ID_SUGAR_CANE || fea_is_soil(under) || under == BLOCK_ID_SAND ||
                                   under == BLOCK_ID_RED_SAND);
                             if (under != BLOCK_ID_SUGAR_CANE) {
-                                const bool wet = blocks[at - layer + 1u] == BLOCK_ID_WATER ||
-                                                 blocks[at - layer - 1u] == BLOCK_ID_WATER ||
-                                                 blocks[at - layer + box.count_x] == BLOCK_ID_WATER ||
-                                                 blocks[at - layer - box.count_x] == BLOCK_ID_WATER;
+                                /* Plan 006 phase 04: water the cane grew by can freeze over after, where the coldest
+                                 * month says, whatever the biome. */
+                                const uint16_t sides[4] = {blocks[at - layer + 1u], blocks[at - layer - 1u],
+                                                           blocks[at - layer + box.count_x],
+                                                           blocks[at - layer - box.count_x]};
+                                bool wet = false;
+                                for (uint32_t k = 0u; k < 4u; k++) {
+                                    wet = wet || sides[k] == BLOCK_ID_WATER || sides[k] == BLOCK_ID_ICE;
+                                }
                                 CHECK(wet);
                             }
                             checks++;
@@ -1020,6 +1033,8 @@ TEST(a_forest_has_about_the_trees_its_file_asks_for) {
     terrain_generate_box_fallback(&terrain, &box, opened, blocks);
     uint32_t trunks = 0u;
     uint32_t columns_of_it = 0u;
+    float64_t asked_sum = 0.0f64; /* plan 006 phase 04: each column's rate, scaled by its rain */
+    uint32_t grounds = 0u;
     const uint64_t layer = (uint64_t)box.count_x * box.count_y;
     terrain_feature_column_t tops[FEA_COLUMNS];
     for (uint32_t cy = 0u; cy < FEA_MAP_SIDE; cy++) {
@@ -1032,6 +1047,9 @@ TEST(a_forest_has_about_the_trees_its_file_asks_for) {
                 if (tops[i].biome != BIOME_ID_BIRCH_FOREST || tops[i].top == TERRAIN_FEATURE_NO_GROUND) {
                     continue;
                 }
+                asked_sum += (float64_t)terrain_feature_rate_scaled(
+                    biome_features[BIOME_ID_BIRCH_FOREST][BIOME_FEATURE_TREE_BIRCH], tops[i].rain_factor);
+                grounds++;
                 const uint64_t ix = (uint64_t)cx * FEA_CHUNK + i % FEA_CHUNK;
                 const uint64_t iy = (uint64_t)cy * FEA_CHUNK + i / FEA_CHUNK;
                 const int64_t iz = (int64_t)tops[i].top + 1 - (int64_t)box.origin_z;
@@ -1044,8 +1062,9 @@ TEST(a_forest_has_about_the_trees_its_file_asks_for) {
     }
     const float64_t chunks = (float64_t)columns_of_it / (float64_t)FEA_COLUMNS;
     const float64_t per_chunk = (float64_t)trunks / chunks;
-    const float64_t asked = (float64_t)biome_features[BIOME_ID_BIRCH_FOREST][BIOME_FEATURE_TREE_BIRCH];
-    printf("    %u trunks on %.1f chunks of it: %.2f a chunk, of %.0f asked\n", trunks, (libc_double_t)chunks,
+    REQUIRE(grounds > 0u);
+    const float64_t asked = asked_sum / (float64_t)grounds;
+    printf("    %u trunks on %.1f chunks of it: %.2f a chunk, of %.2f asked (the file's, scaled by the rain)\n", trunks, (libc_double_t)chunks,
            (libc_double_t)per_chunk, (libc_double_t)asked);
     CHECK(chunks >= 5.0f64);
     CHECK(per_chunk > asked * 0.6f64);
@@ -1221,9 +1240,14 @@ TEST(ice_and_snow_are_where_each_biomes_file_says) {
             }
             const uint16_t at = blocks[(uint64_t)i + (uint64_t)FEA_COLUMNS * (uint32_t)iz];
             const uint16_t over = blocks[(uint64_t)i + (uint64_t)FEA_COLUMNS * ((uint32_t)iz + 1u)];
-            const float32_t *const rates = biome_features[column->biome];
+            /* Plan 006 phase 04: ice by the coldest month at the water's top, snow by the snowline. */
+            const int32_t x = chunk_x * (int32_t)FEA_CHUNK + (int32_t)(i % FEA_CHUNK);
+            const int32_t y = chunk_y * (int32_t)FEA_CHUNK + (int32_t)(i / FEA_CHUNK);
+            const bool snow_holds = (int32_t)column->top >= terrain_surface_snow_from(terrain.borrowed_surface,
+                                                                                    column->family, column->snow_line_z,
+                                                                                    x, y);
             if (column->water > 0u) {
-                const bool cold = rates[BIOME_FEATURE_ICE] > 0.0f32;
+                const bool cold = terrain_surface_freezes(column->t_cold_cc, surface);
                 const bool lily = over == BLOCK_ID_LILY_PAD;
                 CHECK(at != BLOCK_ID_ICE || cold);
                 if (cold) {
@@ -1235,14 +1259,14 @@ TEST(ice_and_snow_are_where_each_biomes_file_says) {
                     open_water += at == BLOCK_ID_WATER ? 1u : 0u;
                 }
                 CHECK(!lily || !cold);
-            } else if (rates[BIOME_FEATURE_SNOW] > 0.0f32 && column->block != BLOCK_ID_SNOW_BLOCK &&
+            } else if (snow_holds && column->block != BLOCK_ID_SNOW_BLOCK &&
                        column->block != BLOCK_ID_ICE && column->block != BLOCK_ID_PACKED_ICE &&
                        column->block != BLOCK_ID_BLUE_ICE && column->block != BLOCK_ID_LAVA) {
                 snowy += over == BLOCK_ID_SNOW_BLOCK ? 1u : 0u;
                 /* Snow unless something grew there first. */
                 CHECK(over == BLOCK_ID_SNOW_BLOCK || over == BLOCK_ID_SPRUCE_LOG || over == BLOCK_ID_SPRUCE_LEAVES ||
                       over == BLOCK_ID_FERN || over == BLOCK_ID_PACKED_ICE);
-            } else if (rates[BIOME_FEATURE_SNOW] <= 0.0f32) {
+            } else if (!snow_holds) {
                 CHECK(over != BLOCK_ID_SNOW_BLOCK);
             }
         }

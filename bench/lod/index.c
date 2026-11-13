@@ -51,19 +51,9 @@ static void bench_lod_sample_whole(const void *borrowed_context, int32_t x, int3
         terrain_feature_fill_box(terrain->borrowed_feature, nullptr, &box, out);
         return;
     }
-    /* render_lod_sample_freeze, as it was. */
-    uint32_t top = RENDER_LOD_HEIGHT_BLOCKS;
-    while (top > 0u && out[top - 1u] == BLOCK_ID_AIR) {
-        top--;
-    }
-    if (top > 0u && out[top - 1u] == BLOCK_ID_WATER) {
-        terrain_climate_sample_t climate; /* plan 006 phase 02: the fallback, as nothing reads it yet */
-        terrain_climate_fallback(terrain->seed, x - 8, y - 8, &climate);
-        if (biome_features[terrain_biome_column_at(terrain->borrowed_biome, &climate, x, y).biome][BIOME_FEATURE_ICE] >
-            0.0f32) {
-            out[top - 1u] = BLOCK_ID_ICE;
-        }
-    }
+    /* render_lod_sample_freeze: plan 006 phase 04's cold rules, on the fallback climate. */
+    terrain_feature_cold_column(terrain->borrowed_feature, nullptr, x, y, COLUMN_Z_STORAGE_MIN, RENDER_LOD_HEIGHT_BLOCKS,
+                                out);
 }
 
 /* One column of one level, as render_lod_job_run samples it, through sample. Returns nanoseconds. */

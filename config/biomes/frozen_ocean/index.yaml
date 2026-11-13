@@ -4,4 +4,3 @@ climate: { families: [ice] }
 surface:
   top: sand
   filler: sand
-features: { ice: 1, snow: 1 }

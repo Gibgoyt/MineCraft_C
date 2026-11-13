@@ -1,6 +1,6 @@
 # 006-ahmed-bohemoth-biomes-follow-the-climate — phase 4: Snow, ice, sand and trees from the climate
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** in progress   (updated 2026-11-13)
 
 Read first: `plans/006-ahmed-bohemoth-biomes-follow-the-climate-phase-00-vision-and-plan-files.md`, then the master `plans/006-ahmed-bohemoth-biomes-follow-the-climate.md` (sections 0 "Why it happens", 2.5, 4, 5, 6 and 9). Every number here comes from the master. Where this file adds a number the master does not give, it says so and why.
 
@@ -111,6 +111,31 @@ This phase may edit these, plus this file:
 - `bench/terrain/`, `bench/lod/`: numbers recorded
 
 **Not touched:** `run/src/game/cover/`.
+
+## Every biome that lays snow or ice (step 1)
+
+Read from `config/biomes/*/index.yaml` on 2026-11-13. "Frozen" is `snow_block`, `ice`, `packed_ice` or `blue_ice`.
+The tool (`compile/src/game_tables/biomes/`) refuses a biome that lays a frozen top, filler, steep or patch and has a
+family other than Ice without `top_below_snowline` (and `filler_below_snowline` when the filler or steep is frozen);
+`filler_below_snowline` defaults to `filler` when that is not frozen.
+
+| Biome | Families | Frozen blocks it lays | `top_below_snowline` | `filler_below_snowline` | `ice:` / `snow:` rates |
+|---|---|---|---|---|---|
+| `snowy_plains` | ice, tundra | top `snow_block` | `grass_block` | (`dirt`, its filler) | removed |
+| `snowy_taiga` | tundra | top `snow_block` | `podzol` | (`dirt`) | removed |
+| `grove` | ice, tundra, boreal | top `snow_block` | `grass_block` | (`dirt`) | removed |
+| `snowy_slopes` | ice, tundra, boreal | top and filler `snow_block` | `stone` | `dirt` | removed |
+| `jagged_peaks` | ice, tundra | top `snow_block` | `stone` | (`stone`) | removed |
+| `frozen_peaks` | ice, tundra | top `snow_block`, filler, steep and a patch `packed_ice`, a patch `ice` | `stone` | `stone` | removed |
+| `ice_spikes` | ice | top and filler `snow_block`, a patch `packed_ice` | none: Ice only, always above the line | none | removed |
+| `windswept_hills` | boreal, continental | `high: snow_block` from 400 | none needed: below the line the top (`grass_block`) is laid | | none |
+| `stony_peaks` | nine warm families | `high: snow_block` from 800 | none needed: below the line the top (`stone`) is laid | | none |
+| `snowy_beach` | ice, tundra | none (sand) | | | removed |
+| `frozen_ocean`, `deep_frozen_ocean`, `frozen_river` | ice | none (sand beds) | | | removed |
+
+So the 11 biomes with `ice:` were the seven land ones above `windswept_hills` plus `snowy_beach` and the three frozen
+waters; all 11 lost both rates. Cold paint's snow and ice and the far field's freeze now read the climate for every
+biome alike.
 
 ## Steps
 

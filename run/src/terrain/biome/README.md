@@ -91,6 +91,11 @@ The noise fields are read on the density's lattice, every 4 blocks, and interpol
 
 Anywhere else, a voxel has its column's biome. `terrain_biome_column_t` keeps which rows hold the column as bits, so a voxel costs a comparison or three.
 
+`terrain_biome_column_t` also hands on, for plan 006 phase 04's surface and features, the climate blended at the
+column's lattice corner (z 0) that its family and wetness came from: `snow_line_z` (the snowline), `t_cold_cc` (the
+coldest month at sea level) and `rain_mm_year`. No biome rule reads them; `run/src/terrain/surface/` lays snow by the
+first, `run/src/terrain/feature/` freezes water by the second and scales its rates by the third.
+
 ## What the table is
 
 `config/biomes/README.md` has the fields, and `compile/src/game_tables/biomes/` makes the table.

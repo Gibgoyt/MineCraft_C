@@ -5,6 +5,6 @@ climate: { families: [ice, tundra] }
 surface:
   top: snow_block
   filler: stone
+  top_below_snowline: stone
   filler_depth: 0
   steep: { block: stone, from: 2 }
-features: { snow: 1, ice: 1 }

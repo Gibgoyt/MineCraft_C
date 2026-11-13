@@ -63,13 +63,17 @@ static_assert(sizeof(terrain_feature_t) == 8u * TERRAIN_FEATURE_ROWS + 40u);
 
 /* What one column has on it, before anything grows there. */
 typedef struct terrain_feature_column_t {
-    int16_t top;      /* 0: its highest block not air or water; TERRAIN_FEATURE_NO_GROUND if the ground is cut away */
-    uint16_t water;   /* 2: how many layers of water lie directly on that */
-    uint16_t block;   /* 4: what top is */
-    uint8_t biome;    /* 6: a biome_id_t: the one on the surface */
-    uint8_t _pad0[1]; /* 7 */
+    int16_t top;          /* 0: its highest block not air or water; TERRAIN_FEATURE_NO_GROUND if the ground is cut away */
+    uint16_t water;       /* 2: how many layers of water lie directly on that */
+    uint16_t block;       /* 4: what top is */
+    uint8_t biome;        /* 6: a biome_id_t: the one on the surface */
+    uint8_t family;       /* 7: plan 006 phase 04: terrain_biome_column_t's, and the three after it */
+    int16_t snow_line_z;  /* 8 */
+    int16_t t_cold_cc;    /* 10 */
+    uint16_t rain_factor; /* 12: terrain_feature_rain_factor, thousandths */
+    uint8_t _pad0[2];     /* 14 */
 } terrain_feature_column_t;
-static_assert(sizeof(terrain_feature_column_t) == 8);
+static_assert(sizeof(terrain_feature_column_t) == 16);
 
 /* One lake: two overlapping ellipses inside one chunk, so that whether it holds is that chunk's question alone. Offsets are
  * from the chunk's corner. exists 0 is no lake. */
@@ -112,16 +116,16 @@ static_assert(sizeof(terrain_feature_canvas_t) == 40);
 /* One chunk, as a tile's pass works with it. */
 typedef struct terrain_feature_chunk_t {
     terrain_feature_column_t columns[TERRAIN_FEATURE_CHUNK_COLUMNS]; /* 0: top and water are good once walked is 1 */
-    terrain_feature_lake_t lake;                                     /* 2048: good once walked is 1 */
-    int32_t chunk_x;                                                 /* 2060 */
-    int32_t chunk_y;                                                 /* 2064 */
-    int32_t z_low;      /* 2068: at or under this, no column's top is sought */
-    int32_t z_high;     /* 2072: over this, all is air or the sea */
-    uint8_t walked;     /* 2076 */
-    uint8_t tops_known; /* 2077: top and water came from a box's blocks, and only the lake is left to find */
-    uint8_t _pad0[2];   /* 2078 */
+    terrain_feature_lake_t lake;                                     /* 4096: good once walked is 1 */
+    int32_t chunk_x;                                                 /* 4108 */
+    int32_t chunk_y;                                                 /* 4112 */
+    int32_t z_low;      /* 4116: at or under this, no column's top is sought */
+    int32_t z_high;     /* 4120: over this, all is air or the sea */
+    uint8_t walked;     /* 4124 */
+    uint8_t tops_known; /* 4125: top and water came from a box's blocks, and only the lake is left to find */
+    uint8_t _pad0[2];   /* 4126 */
 } terrain_feature_chunk_t;
-static_assert(sizeof(terrain_feature_chunk_t) == 2080);
+static_assert(sizeof(terrain_feature_chunk_t) == 4128);
 
 enum : uint32_t {
     /* Chunks one cache holds: the ones round a row of a far field column's lines, at its coarsest level with features. */
@@ -132,12 +136,12 @@ enum : uint32_t {
  * apart and each a box of its own. Nothing in it depends on which boxes asked, so the bytes are terrain_feature_fill_box's. */
 typedef struct terrain_feature_cache_t {
     terrain_feature_chunk_t chunks[TERRAIN_FEATURE_CACHE_CHUNKS]; /* 0 */
-    uint32_t count;                                               /* 99840: slots in use */
-    uint32_t next;                                                /* 99844: the slot to load into next once all are */
-    uint32_t loads;                                               /* 99848: chunks loaded, for a bench */
-    uint32_t _pad0;                                               /* 99852 */
+    uint32_t count;                                               /* 198144: slots in use */
+    uint32_t next;                                                /* 198148: the slot to load into next once all are */
+    uint32_t loads;                                               /* 198152: chunks loaded, for a bench */
+    uint32_t _pad0;                                               /* 198156 */
 } terrain_feature_cache_t;
-static_assert(sizeof(terrain_feature_cache_t) == 99856);
+static_assert(sizeof(terrain_feature_cache_t) == 198160);
 
 /* Takes the features from arena, for this world's seed. For use while terrain_init runs. What it is given must outlive it. */
 void terrain_feature_init(terrain_feature_t **out, arena_t *arena, uint64_t seed, const terrain_biome_t *biome,
@@ -159,6 +163,25 @@ terrain_feature_canvas_t terrain_feature_canvas_of(const terrain_density_box_t *
 
 /* Draws a tree on a canvas. What is drawn is a pure function of the site and of what is on the canvas at each voxel. */
 void terrain_feature_paint_tree(const terrain_feature_canvas_t *canvas, const terrain_feature_tree_site_t *site);
+
+enum : uint32_t {
+    /* Plan 006 master 2.5: a feature row's rate is scaled by min(1.5, P_year / P_biome-mid), in thousandths. */
+    TERRAIN_FEATURE_RAIN_ONE = 1000u,
+    TERRAIN_FEATURE_RAIN_MOST = 1500u,
+};
+
+/* Plan 006 master 2.5: what a biome's feature rates are scaled by at a column with this yearly rain, in thousandths:
+ * min(1500, 1000 P / mid), mid the middle of the biome's rain_mm, or 1000 for a biome that gives none. Integers. */
+uint32_t terrain_feature_rain_factor(uint8_t biome, int32_t rain_mm_year);
+
+/* A rate scaled by a rain factor in thousandths, as every site is decided by. Plain float arithmetic. */
+float32_t terrain_feature_rate_scaled(float32_t rate, uint32_t rain_factor);
+
+/* Plan 006 phase 04: feature_cold_paint for one column with nothing grown on it, as a far field level too coarse for
+ * features needs it: column holds count blocks from origin_z up, and its top, if water, freezes by the coldest month, and if
+ * dry ground, takes a snow block over it where the snowline says. climate as for terrain_feature_fill_box. */
+void terrain_feature_cold_column(const terrain_feature_t *feature, const terrain_climate_sample_t *climate, int32_t x,
+                                 int32_t y, int32_t origin_z, uint32_t count, uint16_t *column);
 
 /* How deep a lake is at a column, by offsets from its chunk's corner. 0 is outside it. Plain arithmetic. */
 uint32_t terrain_feature_lake_depth(const terrain_feature_lake_t *lake, uint32_t x, uint32_t y);
