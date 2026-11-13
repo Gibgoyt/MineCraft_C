@@ -228,7 +228,8 @@ Layout: `run/src/<system>/<part>/index.c`, `run/include/<system>/<part>/index.h`
 | | `encode upload` | Encode sections on workers; budgeted upload queue | 08.2 |
 | | `frame` | The kernels' tables, the free-fly camera, readback, present; HUD from 14.2 | 08.4 |
 | | `entities` | Boxes from the sim to the gpu thread, per-tile entity lists, what is aimed at and mined | 09.5 |
-| | `lod` | Build coarse far-field grids on workers, each a level in the format of `world_buffers`, following the eye | 09.6 |
+| | `lod` | The pyramid of coarse levels past level 0, each in the format of `world_buffers`, following the eye: levels made from the blocks through `octant` where level 0 is loaded and from terrain on workers past it; the bands from the pixel error, the field of view and the rows, and level 0's radius from them (no full detail since plan 009 phase 04) | 09.6, plan 009 phases 03, 04 |
+| | `octant` | The octant store: each loaded section reduced 2 x 2 x 2 to its level 1 octant on the upload's workers, host memory the pyramid assembles its near columns from, an edit in every level within 100 ms. At depth 2 (Arena tier), not under `lod/`, as a depth-3 Borrow directory may not allocate | Plan 009 phase 03 |
 | `texture` | `blob registry` | Checks the embedded blob; finds a texture, a mip level or its vector data by name or id | 06.4 |
 | `audio` | (the Owner) | `audio_init`, `audio_deinit`: a region only for a run with sound, the `audio` thread, and the ring into it; `audio_post`, `audio_volume_set`. Silence and one log line if there is no sound server, and nothing ever connects from a run with no terminal, or on a display from `:80` up | 003 phase 5 |
 | | `mixer` | Up to 8 voices from the sound blob, panned, added up and turned down, to samples in memory; what a place in the world comes to for each ear | 003 phase 5 |
