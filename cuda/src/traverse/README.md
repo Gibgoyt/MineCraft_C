@@ -60,11 +60,12 @@ Besides the tree's own levels, three things let a ray cross empty space without 
 
 The tests in `tests/cuda/traverse/` run with all three, against a reference that knows of none. `TRAVERSE_INFO`'s steps count what was done, so they are lower with these.
 
-Plan 009 phase 05 added merged boxes, which change no hit at all, bit for bit, and not only within rounding:
+Plan 009 phase 05 tried two more, each exact to the bit against a plain copy of the loop, and dropped both on the card's time:
 
-- **An empty 2 x 2 x 2 cube** in a brick with something in it is one step, where the loop went voxel by voxel before: the brick's word, shifted to the cube's corner, and `0x330033`, is zero. A ray in a brick it does not leave steps 1 in the grazing places that cost most (a ray skimming a slope, a shadow ray leaving a surface), and this halves them where it can. The cube is left where a walk voxel by voxel would leave it, not where `floorf` says: that walk crosses planes in the order of their t, a tie going to x, then y, then z, so on each axis it does not step along, the ray has crossed the cube's middle plane if that comes before the step out in that order. `floorf` near a tie can say the voxel beside it, which for the brick and bigger nodes is what the loop has always done, and there the loop has never walked voxel by voxel.
-- `traverse_world_t.plain` runs `traverse_primary` and `traverse_rays` without them, in a copy of each kernel the game never starts: `every_skip_finds_what_the_plain_loop_finds` holds every hit's voxel, face, value and t to it, on random worlds, a checkerboard of single voxels, and Stage 01.3's terrain and lattice frames, with and without the coarse pass. Measured there: 12 to 26 % fewer steps, and 20 and 23 % on slopes of 10 and 30 degrees seen from 1 to 2 blocks up (`skips_take_fewer_steps`).
-- **The water walk** (`shade_water_through`) crosses a brick that `world_buffers_section_t.uniform_mask` says is all water, or a section all water, in one step, to the voxel of it a walk voxel by voxel would be in last, by the same order of planes: see `cuda/src/shade/README.md`.
+- **An empty 2 x 2 x 2 cube** in a brick with something in it, as one step (the brick's word shifted to the cube's corner, and `0x330033`, is zero), left where a walk voxel by voxel would leave it. 12 to 28 % fewer steps on the test worlds, and 20 and 23 % on slopes seen from 1 to 2 blocks up, but at Ahmed's spot 3 % more of the card's cycles at the same clock, 148 MHz (7.85 to 7.89 Mcycles against 7.63 to 7.78), most of it in AO: the extra live values cost every step more than the steps saved.
+- **An empty 2 x 2 x 2 cube of bricks** as one step of 8 blocks, the cheap form of a distance per brick: 5 % slower on `deep_ocean/orbit` than without it.
+
+The plan 009 phase 05 file has the numbers. What it kept is the water walk's step across a brick that is all water: see `cuda/src/shade/README.md`.
 
 A step's three-way choice of axis is no branch: all three coordinates are worked out, and one kept. Rays of a warp that go different ways there would otherwise run their sides in turn, on every step.
 

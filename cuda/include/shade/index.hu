@@ -7,12 +7,8 @@
 #include "device_memory/index.hu"
 #include "gpu_bridge/shade/index.h"
 #include "traverse/index.hu"
-#include "tuning/render/traverse/index.h"
 
 #include <math.h>
-
-/* Plan 009 phase 05: the water walk crosses a brick or a section all water in one step. See shade_water_through. */
-#define SHADE_WATER_BOXES MC_TUNE_RENDER_TRAVERSE_UNIFORM_BRICKS
 
 /* What every step of a pixel reads, so that the functions below do not take a dozen arguments each. Lives on the kernel's stack. */
 typedef struct shade_context_t {
@@ -313,7 +309,7 @@ static __device__ __forceinline__ void shade_water_through(const traverse_view_t
     }
     uint32_t box = SHADE_BOX_NONE;
     for (uint32_t step = 0u; step < view->max_steps; step += 1u) {
-        if (SHADE_WATER_BOXES && box != SHADE_BOX_NONE) {
+        if (box != SHADE_BOX_NONE) {
             float32_t entered = out->last_in;
             if (shade_water_box_cross(ray, inverse, box, hit->t, reach, cell, &entered)) {
                 out->last_in = entered;
@@ -338,9 +334,8 @@ static __device__ __forceinline__ void shade_water_through(const traverse_view_t
             return;
         }
         cell[axis] += ray->direction[axis] > 0.0F ? 1 : -1;
-        uint32_t *const box_out = SHADE_WATER_BOXES ? &box : nullptr;
-        if ((cursor != nullptr ? shade_cell_material_kept(view, cell, cursor, box_out)
-                               : shade_cell_material(view, cell, box_out)) != water) {
+        if ((cursor != nullptr ? shade_cell_material_kept(view, cell, cursor, &box)
+                               : shade_cell_material(view, cell, &box)) != water) {
             return;
         }
         out->last_in = nearest;

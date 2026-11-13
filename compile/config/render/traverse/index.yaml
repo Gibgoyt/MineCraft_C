@@ -41,13 +41,3 @@ coarse_back_off:
   min: 0.0
   max: 2.0
   why: "What comes off the safe distance at the end, so the start cell is not decided by rounding either. TRAVERSE_COARSE_BACK_OFF."
-coalesce_2:
-  value: true
-  type: bool
-  unit: bool
-  why: "Plan 009 phase 05: inside a brick with something in it, an empty 2 x 2 x 2 cube is crossed in one step and not voxel by voxel, leaving it where a voxel-by-voxel walk would, so no hit changes. TRAVERSE_COALESCE_2."
-uniform_bricks:
-  value: true
-  type: bool
-  unit: bool
-  why: "Plan 009 phase 05: the water walk crosses a brick or a section all of its water in one step, to the voxel a walk voxel by voxel would leave it from, so nothing it finds changes. The header's uniform_mask is written either way. SHADE_WATER_BOXES."
