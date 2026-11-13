@@ -83,7 +83,9 @@ TEST(golden_pictures_match) {
     REQUIRE(game_settle(real.game));
     render_camera_t real_eye = real.game->camera;
     real_eye.position[2] += 20.0f64;
-    real_eye.pitch = -0.45f32; /* the ground at the start is low now, and -0.2 was nearly all sky */
+    /* The ground at the start is low now, and -0.2 was nearly all sky; on plan 007 phase 03's land the start is on a slope
+     * falling away from the eye, and -0.45 was nearly all sky again, over a few crowns. */
+    real_eye.pitch = -0.75f32;
     render_frame_time_set(&real.render->frame, 0.38f32);
     for (uint32_t i = 0u; i < LD_GOLDEN_FRAMES; i++) {
         picture = sk_draw(t, &real, &real_eye);
