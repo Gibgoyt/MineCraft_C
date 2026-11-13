@@ -124,18 +124,23 @@ Leaves draw by holes: a ray landing on an alpha-0 texel traces on from there, up
 - [x] `cast_shadows` from `render_sky_fill` and `render_weather_apply`; `shadow_skip_below`; bound test
 - [x] Alpha layers by distance; keys `alpha_far_from_blocks`, `alpha_layers_far`
 - [x] Near guarantee still holds for hits; its colour clause updated for far shadows
-- [ ] His spot (night and day) and `jungle/orbit`: shade ms and shadow-ray steps in Results
+- [x] His spot (night and day) and `jungle/orbit`: shade ms and shadow-ray steps in Results
 - [x] Moved golden pictures regenerated after looking, each listed in Issues found
 - [x] `cuda/src/shade/README.md` "The sun ray" and `cuda/src/lod/README.md` "The sun" rewritten
 
 ## Results (filled in by this phase)
 
-| Row | Shade ms (sun / AO / total) | Sun-ray steps a pixel | Against phase 05 |
+All on Ahmed's card (RTX 2080 Super), his game closed (`pgrep` printed nothing before every run), 1920 x 1080, profile builds, each row alone in its own wrapper call, base (`main`'s code at `4c147bd9`, with only the `--steps` fix of Issues found 5) then this phase, back to back. "Against" is against that base: phase 05 is not on this branch, so `main` is the comparison. Logs and step tables were in `/tmp/mc_c_009/p06/` (not kept). The card was shared with other agents' runs, so its clock moved between rows; the slope rows read it (Mcycles, and MHz) and the pairs below were both at its floor, 148 MHz. `bench_world` rows do not read it.
+
+| Row | Shade ms (sun / AO / total) | Sun-ray steps | Against base |
 |---|---|---|---|
-| `ahmed_slope/night-64` | | | |
-| `ahmed_slope/day-64` | | | |
-| `jungle/orbit` at 64 | | | |
-| `plains/orbit` at 32 | | | |
+| `ahmed_slope/night-64` | 2.90 / 9.10 / 23.85 (7.64 Mcycles at 148 MHz) | 0.51 M a frame; 2.77 a ray, 186 K rays | base 2.63 / 9.10 / 23.88 (7.65 Mcycles): the frame the same, the sun pass +0.27 ms; steps the same to the hundred |
+| `ahmed_slope/day-64` | 5.06 / 9.10 / 26.20 (7.96 Mcycles at 148 MHz) | 8.40 M a frame; 8.87 a ray, 947 K rays | base 4.59 / 9.10 / 26.05 (7.94 Mcycles): the frame +0.3 %, the sun pass +0.47 ms (+10 %); steps the same to the step |
+| `jungle/orbit` at 64 | 47.85 total (settled, card mean 85.61 ms) | not counted (`bench_world` has no `--steps`) | base 48.38 (85.95 ms): the same within noise, both near the card's floor |
+| `plains/orbit` at 32 | 38.57 total (card mean 59.47 ms) | not counted | base 49.11 (82.55 ms), but at a different clock: not comparable |
+| `jungle/orbit` at 32 | 17.08 total (card mean 28.83 ms) | not counted | base 49.29 (79.97 ms), at a different clock: not comparable |
+
+**What it says.** At his spot shadow rays were already short (Issues found 3), so the cone saves no step; the target of half the shadow-ray steps is not met. The sun pass is 0.3 to 0.5 ms slower at the card's floor for the same steps: the levels' code is now in every kernel that sends sun rays (registers and code size, not work). Moving the levels' part of `shade_sun_seen` out of line (`__noinline__`) was tried and bought nothing (5.04 ms against 5.06, same picture `6118969F9AF64CB2`), so it was not kept. The far leaves' rule takes `alpha` steps from 0.75 M to 0.74 M a frame at night (147 K to 142 K rays). What the phase buys is shadows, not time: near ground under far terrain is now in shadow, and `real_near.png` shows it. The pictures: night `3BE1DE0E27FDF83C` to `58A1F2736376158A`, day `CF96419CE842D05B` to `6118969F9AF64CB2` (far shadows on near ground, and the far leaves); fresh AO pixels 15 657 to 14 596 a frame, as the far canopy's pixels now stop sooner.
 
 ## Tests
 
@@ -194,7 +199,10 @@ His answers are recorded below.
 
 Appended as they land:
 
-- this commit: shadow rays by level (one hand-over, `lod_level_from`, for the far field's sun rays and shade's; near ones through level 0 to L_1 and on through the levels), the dim-light cut, alpha layers by distance, the five tuning keys, `render_feature_lod_shadows`, the near guarantee's colour clause, `real_near.png` made again after looking, the READMEs, and `bench_world_slope --steps` working again.
+- `080b5d6a` shadow rays by level (one hand-over, `lod_level_from`, for the far field's sun rays and shade's; near ones through level 0 to L_1 and on through the levels), the dim-light cut, alpha layers by distance, the five tuning keys, `render_feature_lod_shadows`, the near guarantee's colour clause, `real_near.png` made again after looking, the READMEs, and `bench_world_slope --steps` working again.
+- this commit: the measurements (Results) and the verification.
+
+**Verification, as run (2026-11-13), on `4c147bd9`:** `pgrep` for Ahmed's game printed nothing before every card run. `tools/test-or-build.sh cmake --build --preset debug`: clean. `ctest --preset debug -R '^(render_feature_.*|run_render_frame|cuda_traverse|cuda_lod)$'`: 15 of 15 pass, `render_feature_lod` after `real_near.png` was made again (Issues found 8); `render_feature_lod_shadows`: 6 of 6. `standards_lint`, `clang_format`: pass. `cmake --build --preset profile`: clean (a second try, after the disk filled; Issues found 10). `cmake --build --preset release`: clean. The bench rows above, one wrapper call each. `pgrep -af "$PWD/build"` printed nothing at the end. Not rebased onto `main` at `150986d6` (plan 007 phase 03, terrain only), which landed while this ran.
 
 ## Issues found
 
