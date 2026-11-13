@@ -194,8 +194,9 @@ If the phase closes as not needed, only the measurements already made in phases 
 
 Appended as they land:
 
-- `8634f98a` Keep each far ray by direction in a cube round the eye, plan 008 phase 06: the cache, its addressing, the feature bit, the 96 MiB, `render_feature_lod_turn`, the tests in `run_render_lod`, the share in `bench_world_shake`.
-- this commit: space the far field's revision (`turn_revise_frames`, 30) so the pyramid's steady trickle of columns does not end the cache's generation every frame; `bench_world_shake` reads the tally through the frame's far field; the shake rows measured at Ahmed's spot and at jagged peaks, and the walking row.
+- `89ee7c5b` Keep each far ray by direction in a cube round the eye, plan 008 phase 06: the cache, its addressing, the feature bit, the 96 MiB, `render_feature_lod_turn`, the tests in `run_render_lod`, the share in `bench_world_shake`.
+- `fd9fed1b` space the far field's revision (`turn_revise_frames`, 30) so the pyramid's steady trickle of columns does not end the cache's generation every frame; `bench_world_shake` reads the tally through the frame's far field; the shake rows measured at Ahmed's spot and at jagged peaks, and the walking row.
+- this commit: the hashes above after rebasing onto `da4d59b9` (plan 009 phases 06 and 07): `lod_far_ray` takes plan 009 phase 06's `lod_reach_t` in place of the view and factor, the level loop having moved to `cuda/include/lod/`. After the rebase `render_feature_lod_turn`, `render_feature_lod`, `render_feature_lod_bands`, `run_render_lod`, `run_render_distance_live`, `run_render_frame`, `run_game`, `standards_lint` and `clang_format` all passed. Not run: `cmake --build --preset release` (the disk had 16 GB free; nothing here is on main's frame, `render_lod_t` lives in its arena) and `gpu_watch.sh` beside the benches.
 
 ## Issues found
 
