@@ -73,7 +73,7 @@ summit cliffs above 60% of the envelope only: 5 blocks at `m = 0.8`, 40 at the t
 foothill.
 
 **Knobs** (master 3.7, Ahmed's "pimples": koppies, inselbergs, domes) stand where `K` passes 0.55, about a fifth of the land,
-20 to 90 blocks high, on any ground: the lowland and a plateau's top alike, as nothing ties them to height. Never on a range
+20 to 90 blocks high and 250 to 500 across (the knob field's cell is 640, not master 3.7's 320: on 320 their sides came out 1:2 to 1:5 on `bench_landform`'s slope map, not the master's 6:1 to 1:1.5), on any ground: the lowland and a plateau's top alike, as nothing ties them to height. Never on a range
 (`1 - body`) or in the sea (`land`). **Hills** are gentler than before: at most 30 blocks (46 before) on a cell of 384 (192).
 The **foothills** (60 blocks on ridges where erosion was low) are gone: knobs and `S_G`'s low part do their work. Softness
 follows faces and rugged ranges, so a plain or a plateau top has one surface at about 4, and overhangs go to cliffs.

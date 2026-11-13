@@ -62,7 +62,8 @@ static const uint64_t DENSITY_SEEDS[DENSITY_WIDE_SEEDS] = {
  * them showed: the numbers of the blocks after them in the alphabet moved. */
 /* Plan 005 phase 6 added twelve station blocks. The land is the same, as the digest over the numbers before them showed: the numbers of
  * the blocks after them in the alphabet moved. */
-static const uint64_t DENSITY_DIGEST_PIN = 0x86525EAFA0922E11ull;
+/* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground. Its old value 0x86525EAFA0922E11. */
+static const uint64_t DENSITY_DIGEST_PIN = 0xE3EBEDF560C5F6E1ull;
 
 static uint64_t density_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

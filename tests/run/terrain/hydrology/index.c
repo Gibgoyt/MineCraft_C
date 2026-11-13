@@ -56,11 +56,13 @@ static const int32_t HYDRO_MAP_MIN = -3;
  * them showed: the numbers of the blocks after them in the alphabet moved. */
 /* Plan 005 phase 6 added twelve station blocks. The land is the same, as the digest over the numbers before them showed: the numbers of
  * the blocks after them in the alphabet moved. */
-static const uint64_t HYDRO_DIGEST_PIN = 0xA9A8D4C2374442E2ull;
+/* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground. Its old value 0xA9A8D4C2374442E2. */
+static const uint64_t HYDRO_DIGEST_PIN = 0x7F7DCC0FBB1885CAull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 007 phase 03: plateaus, escarpments and long ranges moved the land. */
-static const uint64_t HYDRO_COLUMNS_PIN = 0x9890511852C9EC2Aull;
+/* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground. Its old value 0x9890511852C9EC2A. */
+static const uint64_t HYDRO_COLUMNS_PIN = 0x7B19743C198ED0F8ull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 003 phase 8 stage 5 brought spaghetti closer together and dried out most aquifer cells. */
@@ -76,7 +78,8 @@ static const uint64_t HYDRO_COLUMNS_PIN = 0x9890511852C9EC2Aull;
 /* Plan 005 phase 6 added twelve station blocks. The land is the same, as the digest over the numbers before them showed: the numbers of
  * the blocks after them in the alphabet moved. */
 /* Plan 007 phase 03: plateaus, escarpments and long ranges moved the land. */
-static const uint64_t HYDRO_FLOOD_PIN = 0x090061BEF1C572D1ull;
+/* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground. Its old value 0x090061BEF1C572D1. */
+static const uint64_t HYDRO_FLOOD_PIN = 0xFE61DC57722A8EC5ull;
 
 static uint64_t hydro_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

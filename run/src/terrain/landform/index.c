@@ -88,10 +88,12 @@ static const terrain_noise_shape_t LANDFORM_SHAPE_RUGGED = {
     .persistence = 0.5f32,
     .octaves = 2u,
 };
-/* Knobs: a knob is the patch round a maximum of this, about 120 to 250 blocks across. Master 3.7. */
+/* Knobs: a knob is the patch round a maximum of this, about 250 to 500 blocks across. Master 3.7 has a cell of 320: on it a
+ * knob's sides came out 1:2 to 1:5 on the slope map, not its 6:1 to 1:1.5, as t climbs from 0 to 1 over a few tens of blocks
+ * (plan 007 phase 04, Issues found). */
 static const terrain_noise_shape_t LANDFORM_SHAPE_KNOBS = {
-    .frequency_x = 1.0f64 / 320.0f64,
-    .frequency_y = 1.0f64 / 320.0f64,
+    .frequency_x = 1.0f64 / 640.0f64,
+    .frequency_y = 1.0f64 / 640.0f64,
     .lacunarity = 2.0f32,
     .persistence = 0.5f32,
     .octaves = 2u,

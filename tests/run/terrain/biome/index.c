@@ -70,6 +70,7 @@ static const int32_t BIO_CAVE_LEVEL_Z[BIO_CAVE_LEVELS] = {-210, -170, -100, -60,
  * (terrain_biome_height). Its old value 0xB7BC9D34E16EB6CD. */
 /* Plan 006 phase 04: snow, ice, sand and trees follow the climate: a snow biome lays its own top below the snowline.
  * Its old value 0x25D0412DAF6F66DD. */
+/* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground. Its old value 0x15285D7F380A63E5. */
 static const uint64_t BIO_DIGEST_PIN = 0x15285D7F380A63E5ull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
@@ -79,6 +80,7 @@ static const uint64_t BIO_DIGEST_PIN = 0x15285D7F380A63E5ull;
 /* Plan 007 phase 03: the same. Its old value 0x7A499FEBA8AD1D5C. */
 /* Plan 006 phase 04: snow, ice, sand and trees follow the climate: a column also carries its snowline, coldest month and
  * yearly rain, so its bytes moved and not its biome. Its old value 0x23D9C77E20CFE804. */
+/* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground. Its old value 0x393C1B15967EB4B5. */
 static const uint64_t BIO_COLUMNS_PIN = 0x393C1B15967EB4B5ull;
 
 static uint64_t bio_digest(uint64_t hash, const void *memory, uint64_t bytes) {
@@ -812,8 +814,9 @@ TEST(the_biomes_follow_the_terrain) {
         /* Bare rock is the top of a range and not half of it. */
         CHECK(peaks * 100u < land * 15u);
         /* Plan 007 phase 03: a range on a plateau counts its height from the plateau's top, so fewer columns are bare peaks:
-         * 2.4% on the default seed. */
-        CHECK(peaks * 100u > land * 2u);
+         * 2.4% on the default seed. Plan 007 phase 04: a range's feet are gentle and only its top is steep and high, so fewer
+         * again: 0.5 to 0.9% on these three seeds. */
+        CHECK(peaks * 1000u > land * 3u);
         /* Peaks only high up, and high up only peaks: the two sides of the same height. A column in no box of its height goes to the
          * nearest, so a few peaks start a little under 500, and at 116 under it the climate's largest gap outweighs the height's. */
         CHECK(under_peaks * 50u < peaks);
