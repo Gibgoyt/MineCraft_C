@@ -414,6 +414,12 @@ static gpu_status_t game_lod_replan(game_t *game, const render_lod_plan_t *plan)
 }
 
 /* Plan 009 phase 03: the pyramid's levels for this config and view, not drawn yet. With no room for them the world goes on as it was. */
+/* What a frame is drawn with, past what the view says: a last surface's sun ray apart, and AO's first guess for newly seen pixels (plan 008
+ * phase 04) unless features_off has it, which no setting does: bench_world_shake's --features-off is how it is turned off. */
+static uint32_t game_frame_features(uint32_t view_features, uint32_t features_off) {
+    return view_features | (uint32_t)SHADE_FEATURE_SUN_APART | ((uint32_t)SHADE_FEATURE_AO_FIRST_GUESS & ~features_off);
+}
+
 static void game_pyramid_apply(game_t *game, const game_config_t *config, const game_view_t *view) {
     render_t *const render = game->borrowed_render;
     const render_lod_plan_t plan = game_view_pyramid(config, view);
@@ -495,7 +501,7 @@ static bool game_open_parts(game_t *game, const game_config_t *config, int32_t c
         }
     }
     game_pyramid_apply(game, config, view);
-    render_frame_features_set(&render->frame, view->features | SHADE_FEATURE_SUN_APART);
+    render_frame_features_set(&render->frame, game_frame_features(view->features, config->features_off));
     if ((view->width != config->width || view->height != config->height) && !game_picture_full_room(game)) {
         render_close(render);
         world_close(world);
@@ -938,7 +944,7 @@ static bool game_view_change(game_t *game, game_view_t *now) {
         now->fog_end = game_view_fog_end(now->full_detail);
     }
     render_frame_fog_set(&render->frame, now->fog_end);
-    render_frame_features_set(&render->frame, now->features | SHADE_FEATURE_SUN_APART);
+    render_frame_features_set(&render->frame, game_frame_features(now->features, game->config.features_off));
     return true;
 }
 

@@ -95,14 +95,16 @@ typedef struct post_temporal_t {
     const device_block_t *borrowed_history_last; /* 16: post_history_bytes */
     const device_block_t *borrowed_history_next; /* 24 */
     const device_block_t *borrowed_shafts;       /* 32: post_shafts_bytes */
-    traverse_camera_t previous;                  /* 40: the last frame's, with no jitter on it */
-    float32_t jitter[2];                         /* 108: in pixels, how far this frame looks off each pixel's centre */
-    float32_t shaft_colour[3];                   /* 116: the light a god ray scatters, under an amount of 1 */
-    uint32_t frame;                              /* 128: counts every frame drawn, so that nothing random repeats */
-    uint8_t ao_valid;                            /* 132: the last frame wrote borrowed_ao_last */
-    uint8_t history_valid;                       /* 133: the last frame wrote borrowed_history_last */
-    uint8_t sun_apart;                           /* 134: see SHADE_FEATURE_SUN_APART */
-    uint8_t _pad0[1];                            /* 135 */
+    /* 40: plan 008 phase 04: the world-space AO cache, shade_ao_cache_bytes, kept from frame to frame, or nullptr for none. Its handle is in
+     * the frame arena, and render_frame_deinit gives it back: render_frame_t has no room for it. */
+    device_block_t *borrowed_ao_cache;
+    traverse_camera_t previous; /* 48: the last frame's, with no jitter on it */
+    float32_t shaft_colour[3];  /* 116: the light a god ray scatters, under an amount of 1 */
+    uint32_t frame;             /* 128: counts every frame drawn, so that nothing random repeats */
+    uint8_t ao_valid;           /* 132: the last frame wrote borrowed_ao_last */
+    uint8_t history_valid;      /* 133: the last frame wrote borrowed_history_last */
+    uint8_t sun_apart;          /* 134: see SHADE_FEATURE_SUN_APART */
+    uint8_t flags;              /* 135: POST_TEMPORAL_* */
 } post_temporal_t;
 static_assert(sizeof(post_temporal_t) == 136);
 static_assert(alignof(post_temporal_t) == 8);
@@ -111,14 +113,30 @@ static_assert(offsetof(post_temporal_t, borrowed_ao_next) == 8);
 static_assert(offsetof(post_temporal_t, borrowed_history_last) == 16);
 static_assert(offsetof(post_temporal_t, borrowed_history_next) == 24);
 static_assert(offsetof(post_temporal_t, borrowed_shafts) == 32);
-static_assert(offsetof(post_temporal_t, previous) == 40);
-static_assert(offsetof(post_temporal_t, jitter) == 108);
+static_assert(offsetof(post_temporal_t, borrowed_ao_cache) == 40);
+static_assert(offsetof(post_temporal_t, previous) == 48);
 static_assert(offsetof(post_temporal_t, shaft_colour) == 116);
 static_assert(offsetof(post_temporal_t, frame) == 128);
 static_assert(offsetof(post_temporal_t, ao_valid) == 132);
 static_assert(offsetof(post_temporal_t, history_valid) == 133);
 static_assert(offsetof(post_temporal_t, sun_apart) == 134);
-static_assert(offsetof(post_temporal_t, _pad0) == 135);
+static_assert(offsetof(post_temporal_t, flags) == 135);
+
+/* post_temporal_t.flags. The first three are worked out for each frame as it is queued; the last two are kept from what the frame was told. */
+enum : uint8_t {
+    /* This frame looks off each pixel's centre by post_jitter of its frame: TAA is on. Plan 008 phase 04 made this a bit, where it was two
+     * floats, for the room the AO cache's block took: see post_temporal_jitter. */
+    POST_TEMPORAL_JITTER = 1u << 0,
+    /* The camera, without its jitter, is not the last frame's: it moved or turned. With this off nothing new of plan 008 phase 04 runs, so a
+     * still camera's picture is what it was to the bit. */
+    POST_TEMPORAL_MOVED = 1u << 1,
+    /* It turned more than POST_TAA_FAST_PIXELS at the picture's centre, so TAA reads its history the cheap way, POST_TAA_FAST_READ. */
+    POST_TEMPORAL_FAST = 1u << 2,
+    /* SHADE_FEATURE_AO_FIRST_GUESS. */
+    POST_TEMPORAL_FIRST_GUESS = 1u << 3,
+    /* A pixel newly seen sends one AO ray, not SHADE_AO_FRESH_RAYS: Q2's choice B, for comparison (render_frame_ao_fresh_one_set). */
+    POST_TEMPORAL_FRESH_ONE = 1u << 4,
+};
 
 enum : uint32_t {
     /* How many frames the jitter takes to come back to where it was. */
@@ -130,6 +148,15 @@ enum : uint32_t {
 #define POST_TAA_BLEND MC_TUNE_RENDER_TEMPORAL_TAA_BLEND
 #define POST_TAA_CLIP MC_TUNE_RENDER_TEMPORAL_TAA_CLIP_SIGMA
 #define POST_TAA_STILL MC_TUNE_RENDER_TEMPORAL_TAA_STILL
+/* Plan 008 phase 04: past how many pixels of turn at the centre the history is read the cheap way, and which way that is. */
+#define POST_TAA_FAST_PIXELS MC_TUNE_RENDER_TEMPORAL_TAA_FAST_PIXELS
+enum : uint32_t {
+    POST_TAA_READ_CATMULL_ROM = 0u,
+    POST_TAA_READ_BILINEAR = 1u,
+    POST_TAA_READ_FIVE_TAP = 2u,
+    POST_TAA_FAST_READ = MC_TUNE_RENDER_TEMPORAL_TAA_FAST_READ,
+};
+static_assert(POST_TAA_FAST_READ <= POST_TAA_READ_FIVE_TAP);
 
 static inline uint64_t post_xrgb_bytes(uint32_t width, uint32_t height) {
     return (uint64_t)width * height * POST_BYTES_PER_PIXEL;
@@ -162,6 +189,39 @@ POST_BOTH_SIDES static inline void post_jitter(uint32_t frame, float32_t out[2])
         }
         out[axis] = sum - F32(0.5);
     }
+}
+
+/* A frame's jitter, as render_frame_queue moved its camera by: post_jitter of its frame with TAA on, none without. The card works it out
+ * from the frame's number as the host did, to the bit: each step is a division or a sum of an exact product, which both sides round alike. */
+POST_BOTH_SIDES static inline void post_temporal_jitter(const post_temporal_t *temporal, float32_t out[2]) {
+    if ((temporal->flags & POST_TEMPORAL_JITTER) != 0u) {
+        post_jitter(temporal->frame, out);
+    } else {
+        out[0] = F32(0.0);
+        out[1] = F32(0.0);
+    }
+}
+
+/* Plan 008 phase 04: how far a camera turned from an earlier one, in this one's pixels at the picture's centre: the angle between their
+ * forward vectors over the angle one pixel takes there. Neither has jitter. Host only. */
+static inline float64_t post_turn_pixels(const traverse_camera_t *previous, const traverse_camera_t *camera) {
+    float64_t a[3], b[3], a_length = F64(0.0), b_length = F64(0.0), up_length = F64(0.0);
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        a[i] = (float64_t)previous->forward[i];
+        b[i] = (float64_t)camera->forward[i];
+        a_length += a[i] * a[i];
+        b_length += b[i] * b[i];
+        up_length += (float64_t)camera->up[i] * (float64_t)camera->up[i];
+    }
+    if (!(a_length > F64(0.0)) || !(b_length > F64(0.0)) || !(up_length > F64(0.0)) || camera->height == 0u) {
+        return F64(0.0);
+    }
+    const float64_t cross[3] = {a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]};
+    const float64_t sine = sqrt(cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2]);
+    const float64_t cosine = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    const float64_t angle = atan2(sine, cosine);
+    const float64_t pixel = atan(F64(2.0) * sqrt(up_length) / ((float64_t)camera->height * sqrt(b_length)));
+    return pixel > F64(0.0) ? angle / pixel : F64(0.0);
 }
 
 /* Moves a camera's view by a part of a pixel, x to the right and y down the picture: each pixel's ray then goes where the ray of

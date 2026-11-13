@@ -273,6 +273,7 @@ void world_buffers_column_set(world_buffers_t *buffers, uint32_t slot, int32_t c
     }
     if (!same_load) {
         world_buffers_sections_release(buffers, column);
+        memset(column->revisions, 0, sizeof(column->revisions));
     }
     column->chunk_x = chunk_x;
     column->chunk_y = chunk_y;
@@ -337,6 +338,42 @@ void world_buffers_column_clear(world_buffers_t *buffers, uint32_t slot) {
     world_buffers_mark(buffers, slot);
 }
 
+/* Plan 008 phase 04: 8 bits of what a section's bytes hash to, 0 for none, for AO's cache to key a face by: a section sent again with the same
+ * bytes, as streaming often does, keeps its revision, so the cache keeps what it had and the picture does not hang on when that happened; an
+ * edit gives a new one, all but one time in 256. Words of 8 bytes at a time, as a frame's sections may be megabytes. */
+static uint32_t world_buffers_revision_of(const void *bytes, uint64_t byte_count) {
+    if (byte_count == 0u) {
+        return 0u;
+    }
+    const uint8_t *const from = (const uint8_t *)bytes;
+    uint64_t hash = 0xCBF29CE484222325ull ^ byte_count;
+    uint64_t at = 0u;
+    for (; at + 8u <= byte_count; at += 8u) {
+        uint64_t word = 0u;
+        memcpy(&word, from + at, 8u);
+        hash = (hash ^ word) * 0x100000001B3ull;
+        hash ^= hash >> 29;
+    }
+    for (; at < byte_count; at++) {
+        hash = (hash ^ from[at]) * 0x100000001B3ull;
+    }
+    hash ^= hash >> 32;
+    hash ^= hash >> 16;
+    hash ^= hash >> 8;
+    const uint32_t revision = (uint32_t)(hash & 0xFFu);
+    return revision != 0u ? revision : 1u; /* never 0, which is no section */
+}
+
+/* A section's revision, and the table sent again if it changed. */
+static void world_buffers_revision_set(world_buffers_t *buffers, uint32_t slot, uint32_t section_index,
+                                       uint32_t revision) {
+    world_buffers_column_t *const column = &buffers->borrowed_shadow[slot];
+    if (column->revisions[section_index] != (uint8_t)revision) {
+        column->revisions[section_index] = (uint8_t)revision;
+        world_buffers_mark(buffers, slot);
+    }
+}
+
 gpu_status_t world_buffers_section_write(world_buffers_t *buffers, uint32_t slot, uint32_t section_index,
                                          const void *bytes, uint64_t byte_count) {
     if (slot >= buffers->window.slot_count || section_index >= WORLD_BUFFERS_COLUMN_SECTIONS ||
@@ -349,6 +386,7 @@ gpu_status_t world_buffers_section_write(world_buffers_t *buffers, uint32_t slot
         if (old_entry != 0u) {
             world_buffers_slab_give(buffers, old_entry - 1u);
             column->sections[section_index] = 0u;
+            column->revisions[section_index] = 0u;
             column->section_mask[section_index >> 6] &= ~(1ull << (section_index & 63u));
             buffers->section_count--;
             world_buffers_mark(buffers, slot);
@@ -375,6 +413,7 @@ gpu_status_t world_buffers_section_write(world_buffers_t *buffers, uint32_t slot
         }
         return copied;
     }
+    world_buffers_revision_set(buffers, slot, section_index, world_buffers_revision_of(bytes, byte_count));
     if (in_place) {
         return GPU_STATUS_OK; /* the table already points here */
     }

@@ -799,6 +799,56 @@ TEST(the_card_sees_a_change_only_after_a_flush_and_only_what_changed_is_sent) {
     upload_buffers_end(t, b);
 }
 
+/* Plan 008 phase 04: AO's cache keys by a section's revision, a hash of its bytes, as a section sent again often keeps its slab, and streaming
+ * often sends the same bytes again. */
+TEST(a_section_s_revision_follows_its_bytes_and_the_card_is_told) {
+    upload_buffers_t *const b = upload_test_aligned(t, sizeof(*b));
+    REQUIRE(upload_buffers_begin(t, b, 2u, 4u * WORLD_BUFFERS_PAGE_BYTES));
+    world_buffers_t *const buffers = &b->buffers;
+    uint8_t *const pattern = test_alloc(t, 6000u);
+    for (uint32_t i = 0u; i < 6000u; i++) {
+        pattern[i] = (uint8_t)(i * 7u);
+    }
+    world_buffers_column_set(buffers, 1u, 7, 8, 1u, 9);
+    CHECK_EQ_U64(buffers->borrowed_shadow[1].revisions[3], 0u); /* none yet */
+    REQUIRE(world_buffers_section_write(buffers, 1u, 3u, pattern, 1000u) == GPU_STATUS_OK);
+    const uint32_t first = buffers->borrowed_shadow[1].revisions[3];
+    CHECK(first != 0u);
+    const uint32_t slab = buffers->borrowed_shadow[1].sections[3];
+    REQUIRE(world_buffers_flush(buffers) == GPU_STATUS_OK);
+    /* The same bytes again: the same slab and the same revision, and nothing for the table to send. */
+    REQUIRE(world_buffers_section_write(buffers, 1u, 3u, pattern, 1000u) == GPU_STATUS_OK);
+    CHECK_EQ_U64(buffers->borrowed_shadow[1].sections[3], slab);
+    CHECK_EQ_U64(buffers->borrowed_shadow[1].revisions[3], first);
+    CHECK_EQ_U64(buffers->dirty_count, 0u);
+    /* One byte edited, at the same size: the same slab, so its place says nothing; the revision does, and the table goes again. Of 64
+     * such edits, at most a few may land on the same 8 bits. */
+    uint32_t same = 0u;
+    for (uint32_t edit = 0u; edit < 64u; edit++) {
+        const uint32_t before = buffers->borrowed_shadow[1].revisions[3];
+        REQUIRE(world_buffers_flush(buffers) == GPU_STATUS_OK);
+        pattern[500u + edit] ^= 0x5Au;
+        REQUIRE(world_buffers_section_write(buffers, 1u, 3u, pattern, 1000u) == GPU_STATUS_OK);
+        CHECK_EQ_U64(buffers->borrowed_shadow[1].sections[3], slab);
+        const bool changed = buffers->borrowed_shadow[1].revisions[3] != before;
+        same += changed ? 0u : 1u;
+        CHECK_EQ_U64(buffers->dirty_count, changed ? 1u : 0u);
+    }
+    CHECK(same <= 4u);
+    /* Larger, in a new slab; emptied, 0; the others untouched; a new load starts again at 0. */
+    REQUIRE(world_buffers_section_write(buffers, 1u, 3u, pattern, 6000u) == GPU_STATUS_OK);
+    CHECK(buffers->borrowed_shadow[1].sections[3] != slab);
+    CHECK(buffers->borrowed_shadow[1].revisions[3] != 0u);
+    REQUIRE(world_buffers_section_write(buffers, 1u, 4u, pattern, 1000u) == GPU_STATUS_OK);
+    REQUIRE(world_buffers_section_write(buffers, 1u, 3u, nullptr, 0u) == GPU_STATUS_OK);
+    CHECK_EQ_U64(buffers->borrowed_shadow[1].revisions[3], 0u);
+    CHECK(buffers->borrowed_shadow[1].revisions[4] != 0u);
+    CHECK_EQ_U64(buffers->borrowed_shadow[1].revisions[5], 0u);
+    world_buffers_column_set(buffers, 1u, 7, 8, 2u, 9);
+    CHECK_EQ_U64(buffers->borrowed_shadow[1].revisions[4], 0u);
+    upload_buffers_end(t, b);
+}
+
 TEST(a_new_load_of_a_slot_starts_empty_and_its_old_slabs_come_back) {
     upload_buffers_t *const b = upload_test_aligned(t, sizeof(*b));
     REQUIRE(upload_buffers_begin(t, b, 2u, WORLD_BUFFERS_PAGE_BYTES));

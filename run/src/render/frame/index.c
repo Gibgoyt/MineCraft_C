@@ -151,7 +151,26 @@ uint64_t render_frame_arena_bytes(uint32_t width, uint32_t height, uint64_t stag
            (uint64_t)RENDER_FRAME_SAMPLES * sizeof(float32_t) + render_frame_texture_table_bytes() +
            render_frame_face_table_bytes() + render_frame_shape_table_bytes() + 5u * MC_CPU_CACHE_LINE_BYTES +
            frame_flight_bytes() + RENDER_FRAME_PICTURE_ALIGNMENT + 2u * frame_whole_pages(staging_bytes) +
-           RENDER_FRAME_PICTURE_ALIGNMENT;
+           RENDER_FRAME_PICTURE_ALIGNMENT + sizeof(device_block_t) + MC_CPU_CACHE_LINE_BYTES;
+}
+
+/* Plan 008 phase 04: the world-space AO cache, a device block of the frames' pool whose handle is in the frame arena, as render_frame_t and
+ * render_t have no room for one. The frame owns it through temporal.borrowed_ao_cache, and render_frame_deinit gives it back. Without room on the
+ * card the frame goes on with none: a newly seen pixel then takes the corner estimate alone. */
+static void frame_ao_cache_take(render_frame_t *frame, arena_t *arena, device_memory_t *memory) {
+    device_block_t *const block = arena_alloc(arena, sizeof(device_block_t), MC_CPU_CACHE_LINE_BYTES);
+    memset(block, 0, sizeof(*block));
+    if (device_memory_alloc(memory, DEVICE_POOL_FRAMES, shade_ao_cache_bytes(), "AO cache", block) != GPU_STATUS_OK) {
+        gpu_error_log(&memory->last_error);
+        LOG_WARN("render: no room on the card for the AO cache, so a pixel newly seen takes its corner estimate alone");
+        return;
+    }
+    if (device_memory_zero(memory, block, 0u, shade_ao_cache_bytes()) != GPU_STATUS_OK) {
+        gpu_error_log(&memory->last_error);
+        (void)device_memory_free(memory, block);
+        return;
+    }
+    frame->temporal.borrowed_ao_cache = block;
 }
 
 /* block_defs' faces already index block_texture_names, so that list, found in the blob, is the table the kernel reads. */
@@ -322,6 +341,7 @@ gpu_status_t render_frame_init(render_frame_t *frame, arena_t *arena, device_mem
         return status;
     }
     frame->borrowed_samples = arena_alloc(arena, RENDER_FRAME_SAMPLES * sizeof(float32_t), alignof(float32_t));
+    frame_ao_cache_take(frame, arena, memory);
     const uint64_t picture_bytes = post_xrgb_bytes(width, height);
     for (uint32_t i = 0u; i < RENDER_EXCHANGE_SLOTS; i++) {
         frame->borrowed_pictures[i] =
@@ -340,6 +360,12 @@ gpu_status_t render_frame_init(render_frame_t *frame, arena_t *arena, device_mem
 void render_frame_deinit(render_frame_t *frame) {
     /* A frame still on its way writes a picture: it is waited for first (frame_gpu_deinit would too, but after the pictures' unpinning). */
     while (frame->on_way != 0u && render_frame_finish(frame) == GPU_STATUS_OK) {
+    }
+    if (frame->temporal.borrowed_ao_cache != nullptr && frame->borrowed_memory != nullptr) {
+        /* Its handle is in the frame arena, which outlives this: see frame_ao_cache_take. */
+        if (device_memory_free(frame->borrowed_memory, frame->temporal.borrowed_ao_cache) != GPU_STATUS_OK) {
+            gpu_error_log(&frame->borrowed_memory->last_error);
+        }
     }
     for (uint32_t i = 0u; i < frame->pinned; i++) {
         if (frame_host_unpin(&frame->gpu, frame->borrowed_pictures[i]) != GPU_STATUS_OK) {
@@ -472,7 +498,15 @@ static void frame_settings_apply(render_frame_t *frame) {
 void render_frame_features_set(render_frame_t *frame, uint32_t features) {
     frame->scene.features = features & SHADE_FEATURES_EVERY;
     frame->temporal.sun_apart = (features & SHADE_FEATURE_SUN_APART) != 0u ? 1u : 0u;
+    frame->temporal.flags =
+        (uint8_t)((frame->temporal.flags & ~(uint32_t)POST_TEMPORAL_FIRST_GUESS) |
+                  ((features & SHADE_FEATURE_AO_FIRST_GUESS) != 0u ? POST_TEMPORAL_FIRST_GUESS : 0u));
     frame_settings_apply(frame);
+}
+
+void render_frame_ao_fresh_one_set(render_frame_t *frame, bool one) {
+    frame->temporal.flags = (uint8_t)((frame->temporal.flags & ~(uint32_t)POST_TEMPORAL_FRESH_ONE) |
+                                      (one ? (uint32_t)POST_TEMPORAL_FRESH_ONE : 0u));
 }
 
 void render_frame_fog_set(render_frame_t *frame, float32_t fog_end) {
@@ -692,12 +726,19 @@ gpu_status_t render_frame_queue(render_frame_t *frame, const world_buffers_t *bu
     const bool drawn_before = frame->stats.frames + frame->on_way != 0u;
     temporal->ao_valid = drawn_before && (frame->drawn_features & SHADE_FEATURE_AO) != 0u ? 1u : 0u;
     temporal->history_valid = drawn_before && (frame->drawn_features & SHADE_FEATURE_TAA) != 0u ? 1u : 0u;
-    temporal->jitter[0] = 0.0f32;
-    temporal->jitter[1] = 0.0f32;
+    /* Plan 008 phase 04: whether the camera moved since the frame before, and turned fast, for AO's first guess and TAA's history read. */
+    const bool moved = drawn_before && memcmp(&steady, &temporal->previous, sizeof(steady)) != 0;
+    const bool fast = moved && post_turn_pixels(&temporal->previous, &steady) > (float64_t)POST_TAA_FAST_PIXELS;
+    uint32_t flags = temporal->flags & (uint32_t)(POST_TEMPORAL_FIRST_GUESS | POST_TEMPORAL_FRESH_ONE);
+    flags |= moved ? (uint32_t)POST_TEMPORAL_MOVED : 0u;
+    flags |= fast ? (uint32_t)POST_TEMPORAL_FAST : 0u;
     if ((features & SHADE_FEATURE_TAA) != 0u) {
-        post_jitter(temporal->frame, temporal->jitter);
-        post_camera_jitter(&view, temporal->jitter);
+        flags |= POST_TEMPORAL_JITTER;
+        float32_t jitter[2];
+        post_jitter(temporal->frame, jitter);
+        post_camera_jitter(&view, jitter);
     }
+    temporal->flags = (uint8_t)flags;
     /* This frame's sky, light and fog: the clear day's, and the weather over them on copies, so nothing of it stays. */
     shade_scene_t scene = frame->scene;
     post_settings_t post = frame->post;

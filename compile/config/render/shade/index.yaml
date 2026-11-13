@@ -55,3 +55,24 @@ water_seen_blocks:
   min: 1.0
   max: 512.0
   why: "Past this many blocks of water nothing behind it can be told from none, so a ray with tint on looks no further. SHADE_WATER_SEEN_BLOCKS."
+ao_corner_floor:
+  value: 0.25
+  type: f32
+  unit: ratio
+  min: 0.0
+  max: 1.0
+  why: "Plan 008 phase 04: what a corner between two walls comes to in the first guess a newly seen pixel gets with no rays (shade_ao_corner). 0.25 is what ray AO converges to at that corner: a quarter of the cosine-weighted sky is open there, worked out from the same integral the AO test's reference adds up. SHADE_AO_CORNER_FLOOR."
+ao_cache_age_frames:
+  value: 240
+  type: u32
+  unit: frames
+  min: 1
+  max: 100000
+  why: "Plan 008 phase 04: an entry of the AO cache older than this many frames (4 s at 60) is a miss. SHADE_AO_CACHE_AGE."
+ao_cache_samples_cap:
+  value: 8
+  type: u32
+  unit: count
+  min: 1
+  max: 32
+  why: "Plan 008 phase 04: how many samples a newly seen pixel takes its AO from the cache as, at most, so that its own rays still move it. SHADE_AO_CACHE_SAMPLES_CAP."

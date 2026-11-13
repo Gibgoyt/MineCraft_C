@@ -104,7 +104,10 @@ typedef struct world_buffers_column_t {
      * crosses the whole square in a step. 0 for not known. It may be high, and never low. See world_buffers_region_note. */
     uint8_t region_top;
     uint32_t sections[WORLD_BUFFERS_COLUMN_SECTIONS]; /* 32: 0 for none, or 1 + the section's granule in the pool */
-    uint8_t _pad1[96];                                /* 416 */
+    /* 416: plan 008 phase 04: 8 bits of what each section's bytes hash to, never 0 for one that has bytes, 0 for none. A section sent again
+     * at its size keeps its slab, so its place does not tell an edit; this does, and a section sent again with the same bytes keeps it. AO's
+     * cache keys a face by those of the sections around it, so that no AO from before an edit is shown after it. */
+    uint8_t revisions[WORLD_BUFFERS_COLUMN_SECTIONS];
 } world_buffers_column_t;
 static_assert(sizeof(world_buffers_column_t) == 512);
 static_assert(alignof(world_buffers_column_t) == 8);
@@ -116,7 +119,7 @@ static_assert(offsetof(world_buffers_column_t, top_z) == 28);
 static_assert(offsetof(world_buffers_column_t, ready) == 30);
 static_assert(offsetof(world_buffers_column_t, region_top) == 31);
 static_assert(offsetof(world_buffers_column_t, sections) == 32);
-static_assert(offsetof(world_buffers_column_t, _pad1) == 416);
+static_assert(offsetof(world_buffers_column_t, revisions) == 416);
 static_assert(WORLD_BUFFERS_COLUMN_SECTIONS > 64u && WORLD_BUFFERS_COLUMN_SECTIONS <= WORLD_BUFFERS_MASK_WORDS * 64u);
 
 /* Which chunks the table holds right now. It scrolls without moving anything, exactly as the world's map does. */

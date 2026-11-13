@@ -376,11 +376,12 @@ static gpu_status_t frame_passes(frame_gpu_t *frame, frame_slot_t *slot, const f
         const bool ghost = preview->count != 0u && preview->pixel_min[0] < preview->pixel_end[0] &&
                            preview->pixel_min[1] < preview->pixel_end[1];
         ran |= lines || ghost ? 1u << FRAME_KERNEL_OVERLAY : 0u;
-        const float32_t no_jitter[2] = {0.0F, 0.0F};
-        const post_temporal_t *const temporal = scene->borrowed_temporal;
-        status = entity_rays_overlay(&frame->last_error, entities, args->borrowed_world, camera,
-                                     temporal != nullptr ? temporal->jitter : no_jitter, scene->water_material,
-                                     targets->borrowed_pixels, targets->borrowed_xrgb);
+        float32_t jitter[2] = {0.0F, 0.0F};
+        if (scene->borrowed_temporal != nullptr) {
+            post_temporal_jitter(scene->borrowed_temporal, jitter);
+        }
+        status = entity_rays_overlay(&frame->last_error, entities, args->borrowed_world, camera, jitter,
+                                     scene->water_material, targets->borrowed_pixels, targets->borrowed_xrgb);
     }
     /* The picture is whole: the copy stream waits for this. */
     if (status == GPU_STATUS_OK) {

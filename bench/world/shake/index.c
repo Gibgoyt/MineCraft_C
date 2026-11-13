@@ -172,7 +172,8 @@ typedef struct sh_options_t {
         pace_off; /* 75: plan 008 phase 02: main says no next take, so the gpu thread keeps today's rule, for a before */
     uint8_t
         serial_frames; /* 76: plan 008 phase 03: each picture finished before the next is begun, as before that phase */
-    uint8_t _pad0[3];  /* 77 */
+    uint8_t fresh_one; /* 77: plan 008 phase 04, Q2 B: a newly seen pixel sends one AO ray, with no first guess */
+    uint8_t _pad0[2];  /* 78 */
 } sh_options_t;
 static_assert(sizeof(sh_options_t) == 80);
 
@@ -913,6 +914,7 @@ static bool sh_run(sh_t *sh, const sh_row_t *row, const sh_options_t *options, s
     if (!game_open(game, &config)) {
         return false;
     }
+    render_frame_ao_fresh_one_set(&app->render.frame, options->fresh_one != 0u);
     game_day_set(game, SH_DAY_MORNING);
     render_camera_start(&game->camera, eye[0], eye[1], eye[2], (float32_t)(options->yaw_deg * SH_DEGREES),
                         (float32_t)(SH_PITCH_DEG * SH_DEGREES));
@@ -1086,6 +1088,10 @@ static void sh_usage(const char *program) {
         "  --rose            the cost rose in place of the rows: 72 yaws by 3 pitches, settled\n"
         "  --pace-off        live rows with no next take said: the gpu thread's rule before plan 008 phase 02\n"
         "  --serial-frames   each picture finished on the card before the next is begun: before plan 008 phase 03\n"
+        "  --fresh-ao-rays <1|4>  AO rays a newly seen pixel sends: 1 with no first guess (plan 008 phase 04's Q2 B), "
+        "or 4 with\n"
+        "                    none either (as before that phase, the same as --features-off 80000); unset, the first "
+        "guess\n"
         "  --list            print the rows, and do nothing\n",
         program);
 }
@@ -1103,6 +1109,13 @@ static bool sh_parse(int32_t argc, char **argv, sh_options_t *out) {
             out->pace_off = 1u;
         } else if (strcmp(argv[i], "--serial-frames") == 0) {
             out->serial_frames = 1u;
+        } else if (strcmp(argv[i], "--fresh-ao-rays") == 0 && has_value) {
+            const uint64_t rays = strtoull(argv[++i], nullptr, 10);
+            if (rays != 1u && rays != (uint64_t)SHADE_AO_FRESH_RAYS) {
+                return false;
+            }
+            out->fresh_one = rays == 1u ? 1u : 0u;
+            out->features_off |= (uint32_t)SHADE_FEATURE_AO_FIRST_GUESS;
         } else if (strcmp(argv[i], "--only") == 0 && has_value) {
             out->only = argv[++i];
         } else if (strcmp(argv[i], "--record") == 0 && has_value) {
@@ -1118,7 +1131,7 @@ static bool sh_parse(int32_t argc, char **argv, sh_options_t *out) {
         } else if (strcmp(argv[i], "--seconds") == 0 && has_value) {
             out->seconds = (uint32_t)strtoul(argv[++i], nullptr, 10);
         } else if (strcmp(argv[i], "--features-off") == 0 && has_value) {
-            out->features_off = (uint32_t)strtoul(argv[++i], nullptr, 16);
+            out->features_off |= (uint32_t)strtoul(argv[++i], nullptr, 16);
         } else if (strcmp(argv[i], "--render-distance") == 0 && has_value) {
             const uint64_t chunks = strtoull(argv[++i], nullptr, 10);
             if (chunks < 2u || chunks > (uint64_t)MC_GAME_RENDER_DISTANCE_MAX) {

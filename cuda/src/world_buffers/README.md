@@ -31,7 +31,7 @@ The links live on the host in `borrowed_slab_next`, 2 bytes per granule. A 6 GiB
 
 ## The table
 
-512 bytes a slot. Section places are `1 + granule`, so an all-zero slot is an empty one. The host keeps a copy and sends only what changed: one copy per slot, or all of it at once when one slot in 64 or more changed. A flush has no budget, because a slab reused this frame must not be reachable through the card's old table.
+512 bytes a slot. Section places are `1 + granule`, so an all-zero slot is an empty one. Its last 96 bytes are a revision per section (plan 008 phase 04): 8 bits of what its bytes hash to, never 0 for a section with bytes, 0 for none, so the same bytes sent again keep it and an edit changes it all but one time in 256; the slot goes again only when one changes. A section sent again at its size keeps its slab, so its place says nothing. `cuda/src/shade/`'s AO cache keys a face by the revisions of the sections near it, so that no AO from before an edit is shown after it, and the same world gives the same keys whenever its sections were sent. The host keeps a copy and sends only what changed: one copy per slot, or all of it at once when one slot in 64 or more changed. A flush has no budget, because a slab reused this frame must not be reachable through the card's old table.
 
 ## The rules
 

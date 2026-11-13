@@ -83,11 +83,64 @@ __global__ void post_kernel(const post_settings_t settings, const traverse_camer
     xrgb[index] = post_xrgb(post_tone_map(seen[0]), post_tone_map(seen[1]), post_tone_map(seen[2]));
 }
 
+/* The history at a place, in pixels from the top left corner, between the four texels around it by how near each is. Off the edge it takes
+ * the edge's pixel. */
+static __device__ __forceinline__ void post_history_bilinear(const post_taa_pixel_t *history, uint32_t width,
+                                                             uint32_t height, float32_t x, float32_t y,
+                                                             float32_t out[3]) {
+    const float32_t centre_x = x - 0.5F, centre_y = y - 0.5F;
+    const float32_t floor_x = floorf(centre_x), floor_y = floorf(centre_y);
+    const float32_t fx = centre_x - floor_x, fy = centre_y - floor_y;
+    const int32_t x0 = traverse_clamp((int32_t)floor_x, 0, (int32_t)width - 1);
+    const int32_t x1 = traverse_clamp((int32_t)floor_x + 1, 0, (int32_t)width - 1);
+    const int32_t y0 = traverse_clamp((int32_t)floor_y, 0, (int32_t)height - 1);
+    const int32_t y1 = traverse_clamp((int32_t)floor_y + 1, 0, (int32_t)height - 1);
+    const post_taa_pixel_t *const top = &history[(uint64_t)y0 * width];
+    const post_taa_pixel_t *const bottom = &history[(uint64_t)y1 * width];
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        const float32_t upper = top[x0].rgb[i] + (top[x1].rgb[i] - top[x0].rgb[i]) * fx;
+        const float32_t lower = bottom[x0].rgb[i] + (bottom[x1].rgb[i] - bottom[x0].rgb[i]) * fx;
+        out[i] = upper + (lower - upper) * fy;
+    }
+}
+
+/* Catmull-Rom from five bilinear reads, its four corner texels left out (Jimenez, "Filmic SMAA", 2016): the middle two texels each way as one
+ * read, at the place between them their weights make, and the four arms. */
+static __device__ __forceinline__ void post_history_five_tap(const post_taa_pixel_t *history, uint32_t width,
+                                                             uint32_t height, float32_t x, float32_t y,
+                                                             float32_t out[3]) {
+    const float32_t first_x = floorf(x - 0.5F) + 0.5F, first_y = floorf(y - 0.5F) + 0.5F;
+    float32_t across[4], down[4];
+    post_catmull_rom(x - first_x, across);
+    post_catmull_rom(y - first_y, down);
+    const float32_t middle_x = across[1] + across[2], middle_y = down[1] + down[2];
+    const float32_t at_x = first_x + across[2] / middle_x, at_y = first_y + down[2] / middle_y;
+    const float32_t places[5][2] = {
+        {at_x, first_y - 1.0F}, {first_x - 1.0F, at_y}, {at_x, at_y}, {first_x + 2.0F, at_y}, {at_x, first_y + 2.0F}};
+    const float32_t weights[5] = {middle_x * down[0], across[0] * middle_y, middle_x * middle_y, across[3] * middle_y,
+                                  middle_x * down[3]};
+    float32_t sum = 0.0F;
+    out[0] = 0.0F;
+    out[1] = 0.0F;
+    out[2] = 0.0F;
+    for (uint32_t k = 0u; k < 5u; k += 1u) {
+        float32_t one[3];
+        post_history_bilinear(history, width, height, places[k][0], places[k][1], one);
+        out[0] += one[0] * weights[k];
+        out[1] += one[1] * weights[k];
+        out[2] += one[2] * weights[k];
+        sum += weights[k];
+    }
+    out[0] /= sum;
+    out[1] /= sum;
+    out[2] /= sum;
+}
+
 /* What the last frame's picture had at a place, in pixels from the top left corner: that pixel if the place is at its middle, as it
  * is for a camera that has not moved, and if not then Catmull-Rom, as anything softer would blur the picture a little more on every
- * frame. Off the edge it takes the edge's pixel. */
+ * frame. On a fast turn (plan 008 phase 04), POST_TAA_FAST_READ: motion hides the softness. Off the edge it takes the edge's pixel. */
 static __device__ __forceinline__ void post_history_at(const post_taa_pixel_t *history, uint32_t width, uint32_t height,
-                                                       float32_t x, float32_t y, float32_t out[3]) {
+                                                       float32_t x, float32_t y, bool fast, float32_t out[3]) {
     const float32_t centre_x = x - 0.5F, centre_y = y - 0.5F;
     const float32_t floor_x = floorf(centre_x), floor_y = floorf(centre_y);
     const float32_t fx = centre_x - floor_x, fy = centre_y - floor_y;
@@ -98,6 +151,14 @@ static __device__ __forceinline__ void post_history_at(const post_taa_pixel_t *h
         out[0] = one->rgb[0];
         out[1] = one->rgb[1];
         out[2] = one->rgb[2];
+        return;
+    }
+    if (fast && POST_TAA_FAST_READ == POST_TAA_READ_BILINEAR) {
+        post_history_bilinear(history, width, height, x, y, out);
+        return;
+    }
+    if (fast && POST_TAA_FAST_READ == POST_TAA_READ_FIVE_TAP) {
+        post_history_five_tap(history, width, height, x, y, out);
         return;
     }
     float32_t across[4], down[4];
@@ -132,10 +193,12 @@ __global__ void post_taa_kernel(const traverse_camera_t camera, const post_tempo
     const uint64_t index = (uint64_t)pixel_y * camera.width + pixel_x;
     const shade_pixel_t pixel = pixels[index];
     float32_t result[3] = {pixel.rgb[0], pixel.rgb[1], pixel.rgb[2]};
+    float32_t jitter[2];
+    post_temporal_jitter(&temporal, jitter);
     if (temporal.history_valid != 0u) {
         float32_t steady[3];
-        traverse_camera_direction(&camera, (float32_t)pixel_x + 0.5F - temporal.jitter[0],
-                                  (float32_t)pixel_y + 0.5F - temporal.jitter[1], steady);
+        traverse_camera_direction(&camera, (float32_t)pixel_x + 0.5F - jitter[0], (float32_t)pixel_y + 0.5F - jitter[1],
+                                  steady);
         float32_t x = 0.0F, y = 0.0F;
         if (post_reproject(&temporal.previous, &camera, steady, pixel.t, &x, &y)) {
             /* What this frame's pixels around this one have, in the form they are mixed in. */
@@ -152,7 +215,8 @@ __global__ void post_taa_kernel(const traverse_camera_t camera, const post_tempo
                 }
             }
             float32_t last[3];
-            post_history_at(history_last, camera.width, camera.height, x, y, last);
+            post_history_at(history_last, camera.width, camera.height, x, y,
+                            (temporal.flags & POST_TEMPORAL_FAST) != 0u, last);
             for (uint32_t i = 0u; i < 3u; i += 1u) {
                 const float32_t average = mean[i] / 9.0F;
                 const float32_t deviation = sqrtf(fmaxf(squares[i] / 9.0F - average * average, 0.0F));
@@ -168,8 +232,8 @@ __global__ void post_taa_kernel(const traverse_camera_t camera, const post_tempo
      * pixel's ray with no jitter, so the drops do not shake while the history settles under them. */
     if (weather_on) {
         float32_t steady[3];
-        traverse_camera_direction(&camera, (float32_t)pixel_x + 0.5F - temporal.jitter[0],
-                                  (float32_t)pixel_y + 0.5F - temporal.jitter[1], steady);
+        traverse_camera_direction(&camera, (float32_t)pixel_x + 0.5F - jitter[0], (float32_t)pixel_y + 0.5F - jitter[1],
+                                  steady);
         post_weather_apply(&weather, &camera, weather_map, steady, pixel.t, result);
     }
     xrgb[index] = post_xrgb(post_tone_map(result[0]), post_tone_map(result[1]), post_tone_map(result[2]));

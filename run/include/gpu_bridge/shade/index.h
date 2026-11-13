@@ -75,6 +75,12 @@ enum : uint32_t {
     /* Rain, snow, lightning, cloud and weather fog where the eye is (plan 004 phase 08), or the sky of a clear day always. Only what
      * the sim sends counts: with no weather sent, on or off is the same picture. */
     SHADE_FEATURE_WEATHER = 1u << 18,
+    /* Plan 008 phase 04 (Q2 A): while the camera moves, a pixel newly seen takes its first AO from the world-space AO cache, or a corner
+     * estimate from the blocks around its face, and sends no rays; or it sends SHADE_AO_FRESH_RAYS at once. As SHADE_FEATURE_SUN_APART: to
+     * render_frame_features_set only, and past that a bit of post_temporal_t.flags. The game asks for it unless its features_off has it, so
+     * bench_world_shake --features-off 80000 turns it off; nothing on the Settings screen does, and a still camera's picture is the same
+     * either way. */
+    SHADE_FEATURE_AO_FIRST_GUESS = 1u << 19,
     /* What a picture is drawn with on its own, from nothing: no frame of these reads what the last one left. What render_frame_init
      * starts with, and so what a test that wants one exact picture gets. */
     SHADE_FEATURES_ALL = SHADE_FEATURE_SHAPES | SHADE_FEATURE_ALPHA | SHADE_FEATURE_SKY | SHADE_FEATURE_DAY_CYCLE |
@@ -108,6 +114,44 @@ static_assert(SHADE_AO_SAMPLES_MAX <= UINT16_MAX && SHADE_AO_FRESH_RAYS <= UINT1
 
 /* How far an AO ray looks, in blocks: compile/config/render/shade/index.yaml. */
 #define SHADE_AO_REACH MC_TUNE_RENDER_SHADE_AO_REACH
+/* What a corner between two walls comes to in the corner estimate: compile/config/render/shade/index.yaml. */
+#define SHADE_AO_CORNER_FLOOR MC_TUNE_RENDER_SHADE_AO_CORNER_FLOOR
+
+/* Plan 008 phase 04: the world-space AO cache. One uint64_t an entry, 2^21 of them (16 MiB), in a block of its own. An entry, from its high bits
+ * to its low: the frame it was written, modulo 2^21; how many samples its mean is of; 16 bits of its key; its face; and that mean, 0 to 1 in
+ * 1/65535. Written by atomicMax, so the newest wins, then the one of most samples: the same entries whatever order the card writes them in. */
+enum : uint32_t {
+    SHADE_AO_CACHE_LOG2 = 21u,
+    SHADE_AO_CACHE_ENTRIES = 1u << SHADE_AO_CACHE_LOG2,
+    SHADE_AO_CACHE_AGE_BITS = 21u,
+    SHADE_AO_CACHE_AGE_MASK = (1u << SHADE_AO_CACHE_AGE_BITS) - 1u,
+    SHADE_AO_CACHE_VISIBLE_SHIFT = 0u,
+    SHADE_AO_CACHE_FACE_SHIFT = 16u,
+    SHADE_AO_CACHE_TAG_SHIFT = 19u,
+    SHADE_AO_CACHE_SAMPLES_SHIFT = 35u,
+    SHADE_AO_CACHE_AGE_SHIFT = 43u,
+    /* A face is cut 4 by 4 for it: a quarter of a block each way. */
+    SHADE_AO_CACHE_PLACES = 4u,
+    /* An entry older than this many frames is a miss, and a pixel takes at most this many samples from one: the YAML. */
+    SHADE_AO_CACHE_AGE = MC_TUNE_RENDER_SHADE_AO_CACHE_AGE_FRAMES,
+    SHADE_AO_CACHE_SAMPLES_CAP = MC_TUNE_RENDER_SHADE_AO_CACHE_SAMPLES_CAP,
+};
+static_assert(SHADE_AO_CACHE_AGE_SHIFT + SHADE_AO_CACHE_AGE_BITS == 64u);
+static_assert(SHADE_AO_CACHE_AGE < SHADE_AO_CACHE_AGE_MASK / 2u);
+static_assert(SHADE_AO_CACHE_SAMPLES_CAP <= 255u);
+
+/* The corner estimate's cells, as bits: of the eight around the open cell in front of a face, in its plane, which are solid. u and v are
+ * the face's two axes after its own, in turn: (axis + 1) % 3 and (axis + 2) % 3. */
+enum : uint32_t {
+    SHADE_AO_CELL_U_LOW = 1u << 0,
+    SHADE_AO_CELL_U_HIGH = 1u << 1,
+    SHADE_AO_CELL_V_LOW = 1u << 2,
+    SHADE_AO_CELL_V_HIGH = 1u << 3,
+    SHADE_AO_CELL_LOW_LOW = 1u << 4, /* u low, v low */
+    SHADE_AO_CELL_HIGH_LOW = 1u << 5,
+    SHADE_AO_CELL_LOW_HIGH = 1u << 6,
+    SHADE_AO_CELL_HIGH_HIGH = 1u << 7,
+};
 #ifdef __cplusplus
 /* The step cap must get past the reach: SHADE_AO_STEPS's comment. C cannot compare floats in a static_assert, so nvcc checks it. */
 static_assert((float32_t)SHADE_AO_STEPS >= SHADE_AO_REACH * F32(1.7320508) + F32(3.0));
@@ -375,6 +419,134 @@ SHADE_BOTH_SIDES static inline bool shade_ao_same_surface(const shade_ao_pixel_t
         return false;
     }
     return fabsf((float32_t)cell_moved + plane - last->plane) <= F32(0.01) + t * F32(4e-5);
+}
+
+/* Plan 008 phase 04: a face's AO with no rays, as a block game darkens its corners. Each corner of the face takes its two side cells s1 and s2
+ * and the diagonal c between them: 0 if both sides are solid, else 1 - (s1 + s2 + c) / 3; then SHADE_AO_CORNER_FLOOR up to 1. The four are
+ * blended by where on the face, u and v from 0 to 1. solid is SHADE_AO_CELL_* bits. */
+SHADE_BOTH_SIDES static inline float32_t shade_ao_corner(uint32_t solid, float32_t u, float32_t v) {
+    const float32_t across = fminf(fmaxf(u, F32(0.0)), F32(1.0)), down = fminf(fmaxf(v, F32(0.0)), F32(1.0));
+    float32_t corner[4];
+    for (uint32_t i = 0u; i < 4u; i += 1u) {
+        const uint32_t high_u = i & 1u, high_v = i >> 1;
+        const uint32_t s1 = (solid >> (high_u != 0u ? 1u : 0u)) & 1u;
+        const uint32_t s2 = (solid >> (high_v != 0u ? 3u : 2u)) & 1u;
+        const uint32_t c = (solid >> (4u + i)) & 1u;
+        const float32_t open = s1 != 0u && s2 != 0u ? F32(0.0) : F32(1.0) - (float32_t)(s1 + s2 + c) / F32(3.0);
+        corner[i] = SHADE_AO_CORNER_FLOOR + (F32(1.0) - SHADE_AO_CORNER_FLOOR) * open;
+    }
+    const float32_t low = corner[0] + (corner[1] - corner[0]) * across;
+    const float32_t high = corner[2] + (corner[3] - corner[2]) * across;
+    return low + (high - low) * down;
+}
+
+/* A fixed 64-bit mix: splitmix64's last steps, shade_ao_hash widened. */
+SHADE_BOTH_SIDES static inline uint64_t shade_ao_mix(uint64_t value) {
+    value = (value ^ (value >> 30)) * 0xBF58476D1CE4E5B9ull;
+    value = (value ^ (value >> 27)) * 0x94D049BB133111EBull;
+    return value ^ (value >> 31);
+}
+
+/* The AO cache's key for a place on a face: the world cell of the block, the face, which of the 4 x 4 squares of it, the load generation of the
+ * column in front of it and the revision of the sections around it (world_buffers_column_t.revisions, as shade_ao_revision combines them), so
+ * that an edit near it gives every key there a new one. */
+SHADE_BOTH_SIDES static inline uint64_t shade_ao_cache_key(const int32_t cell[3], uint32_t face, uint32_t place,
+                                                           uint32_t generation, uint32_t revision) {
+    const uint64_t across = (uint64_t)(uint32_t)cell[0] | ((uint64_t)(uint32_t)cell[1] << 32);
+    const uint64_t up = (uint64_t)(uint32_t)cell[2] | ((uint64_t)(face & 7u) << 32) | ((uint64_t)(place & 15u) << 35);
+    return shade_ao_mix(shade_ao_mix(shade_ao_mix(across) ^ up) ^ ((uint64_t)revision << 32 | (uint64_t)generation));
+}
+
+/* One more section's revision into a key's: in a fixed order, so that the same sections give the same number. */
+SHADE_BOTH_SIDES static inline uint32_t shade_ao_revision_add(uint32_t revision, uint32_t section) {
+    return revision * 0x9E3779B1u + section + 1u;
+}
+
+/* Which square of the 4 x 4 a place on a face is in, from where on it, 0 to 1 each way. */
+SHADE_BOTH_SIDES static inline uint32_t shade_ao_cache_place(float32_t u, float32_t v) {
+    const int32_t last = (int32_t)SHADE_AO_CACHE_PLACES - 1;
+    const int32_t x = (int32_t)(u * (float32_t)SHADE_AO_CACHE_PLACES),
+                  y = (int32_t)(v * (float32_t)SHADE_AO_CACHE_PLACES);
+    const uint32_t cx = (uint32_t)(x < 0 ? 0 : (x > last ? last : x)),
+                   cy = (uint32_t)(y < 0 ? 0 : (y > last ? last : y));
+    return cy * SHADE_AO_CACHE_PLACES + cx;
+}
+
+SHADE_BOTH_SIDES static inline uint32_t shade_ao_cache_slot(uint64_t key) {
+    return (uint32_t)(key & (uint64_t)(SHADE_AO_CACHE_ENTRIES - 1u));
+}
+
+SHADE_BOTH_SIDES static inline uint32_t shade_ao_cache_tag(uint64_t key) {
+    return (uint32_t)(key >> 48);
+}
+
+/* One entry, unpacked. */
+typedef struct shade_ao_cache_entry_t {
+    uint32_t age;     /* 0: the frame it was written, modulo 2^21 */
+    uint16_t tag;     /* 4 */
+    uint16_t visible; /* 6: 0 to 65535 */
+    uint8_t samples;  /* 8: 0 for an entry never written */
+    uint8_t face;     /* 9 */
+    uint8_t _pad0[2]; /* 10 */
+} shade_ao_cache_entry_t;
+static_assert(sizeof(shade_ao_cache_entry_t) == 12);
+static_assert(alignof(shade_ao_cache_entry_t) == 4);
+static_assert(offsetof(shade_ao_cache_entry_t, age) == 0);
+static_assert(offsetof(shade_ao_cache_entry_t, tag) == 4);
+static_assert(offsetof(shade_ao_cache_entry_t, visible) == 6);
+static_assert(offsetof(shade_ao_cache_entry_t, samples) == 8);
+static_assert(offsetof(shade_ao_cache_entry_t, face) == 9);
+static_assert(offsetof(shade_ao_cache_entry_t, _pad0) == 10);
+
+SHADE_BOTH_SIDES static inline uint64_t shade_ao_cache_pack(const shade_ao_cache_entry_t *entry) {
+    return ((uint64_t)(entry->age & SHADE_AO_CACHE_AGE_MASK) << SHADE_AO_CACHE_AGE_SHIFT) |
+           ((uint64_t)entry->samples << SHADE_AO_CACHE_SAMPLES_SHIFT) |
+           ((uint64_t)entry->tag << SHADE_AO_CACHE_TAG_SHIFT) |
+           ((uint64_t)(entry->face & 7u) << SHADE_AO_CACHE_FACE_SHIFT) |
+           ((uint64_t)entry->visible << SHADE_AO_CACHE_VISIBLE_SHIFT);
+}
+
+SHADE_BOTH_SIDES static inline void shade_ao_cache_unpack(uint64_t word, shade_ao_cache_entry_t *out) {
+    out->age = (uint32_t)(word >> SHADE_AO_CACHE_AGE_SHIFT) & SHADE_AO_CACHE_AGE_MASK;
+    out->samples = (uint8_t)(word >> SHADE_AO_CACHE_SAMPLES_SHIFT);
+    out->tag = (uint16_t)(word >> SHADE_AO_CACHE_TAG_SHIFT);
+    out->face = (uint8_t)((word >> SHADE_AO_CACHE_FACE_SHIFT) & 7u);
+    out->visible = (uint16_t)(word >> SHADE_AO_CACHE_VISIBLE_SHIFT);
+    out->_pad0[0] = 0u;
+    out->_pad0[1] = 0u;
+}
+
+/* What a pixel of this many samples, of this mean, writes for a key on this frame. */
+SHADE_BOTH_SIDES static inline uint64_t shade_ao_cache_word(uint64_t key, uint32_t face, uint32_t frame,
+                                                            float32_t visible, uint32_t samples) {
+    const float32_t clamped = fminf(fmaxf(visible, F32(0.0)), F32(1.0));
+    const shade_ao_cache_entry_t entry = {frame,
+                                          (uint16_t)shade_ao_cache_tag(key),
+                                          (uint16_t)(clamped * F32(65535.0) + F32(0.5)),
+                                          (uint8_t)(samples > 255u ? 255u : samples),
+                                          (uint8_t)face,
+                                          {0u, 0u}};
+    return shade_ao_cache_pack(&entry);
+}
+
+/* Whether an entry answers for a key and face on this frame: written, the same tag and face, and younger than SHADE_AO_CACHE_AGE. If so, its
+ * mean, and its samples up to SHADE_AO_CACHE_SAMPLES_CAP. */
+SHADE_BOTH_SIDES static inline bool shade_ao_cache_hit(uint64_t word, uint64_t key, uint32_t face, uint32_t frame,
+                                                       float32_t *out_visible, uint32_t *out_samples) {
+    shade_ao_cache_entry_t entry;
+    shade_ao_cache_unpack(word, &entry);
+    const uint32_t age = (frame - entry.age) & SHADE_AO_CACHE_AGE_MASK;
+    if (entry.samples == 0u || entry.tag != shade_ao_cache_tag(key) || entry.face != face ||
+        age >= SHADE_AO_CACHE_AGE) {
+        return false;
+    }
+    *out_visible = (float32_t)entry.visible / F32(65535.0);
+    *out_samples = entry.samples < SHADE_AO_CACHE_SAMPLES_CAP ? entry.samples : (uint32_t)SHADE_AO_CACHE_SAMPLES_CAP;
+    return true;
+}
+
+static inline uint64_t shade_ao_cache_bytes(void) {
+    return (uint64_t)SHADE_AO_CACHE_ENTRIES * sizeof(uint64_t);
 }
 
 /* How much of what the air scatters comes to the eye, by the cosine of the angle from the way it looks to the sun: Henyey-Greenstein. */

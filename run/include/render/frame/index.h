@@ -267,6 +267,10 @@ void render_frame_deinit(render_frame_t *frame);
  * this on the gpu thread. An effect with a history starts it again when it is turned on. */
 void render_frame_features_set(render_frame_t *frame, uint32_t features);
 
+/* Plan 008 phase 04, Q2's choice B for comparison: a pixel newly seen sends one AO ray, not SHADE_AO_FRESH_RAYS (bench_world_shake
+ * --fresh-ao-rays 1). Kept across render_frame_features_set. Between frames. */
+void render_frame_ao_fresh_one_set(render_frame_t *frame, bool one);
+
 /* How far off the fog is whole, in blocks, for a render distance that has changed. Between frames, as for render_frame_features_set. */
 void render_frame_fog_set(render_frame_t *frame, float32_t fog_end);
 

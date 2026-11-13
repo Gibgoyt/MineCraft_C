@@ -767,7 +767,9 @@ TEST(the_card_finds_the_box_the_host_finds_at_every_pixel) {
     for (uint32_t frame = 0u; frame < 4u; frame++) {
         REQUIRE(sk_draw(t, &rig, &eye) != nullptr);
         traverse_camera_t jittered = view;
-        post_camera_jitter(&jittered, rig.render->frame.temporal.jitter);
+        float32_t jitter[2];
+        post_jitter(rig.render->frame.temporal.frame - 1u, jitter); /* the frame just drawn: the count has gone on */
+        post_camera_jitter(&jittered, jitter);
         en_hits_compare(t, &rig, &jittered, &seen);
         CHECK(seen > 2000u);
     }

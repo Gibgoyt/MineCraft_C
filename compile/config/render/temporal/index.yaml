@@ -20,3 +20,17 @@ taa_still:
   min: 0.0
   max: 0.5
   why: "A place in the last frame this near a pixel's centre is that pixel, with no filter to blur it: a still camera. POST_TAA_STILL."
+taa_fast_pixels:
+  value: 2.0
+  type: f32
+  unit: pixels
+  min: 0.0
+  max: 1000.0
+  why: "Plan 008 phase 04: a camera that turned more than this many pixels at the picture's centre since the last frame reads its history the cheap way (POST_TAA_FAST_READ); below it Catmull-Rom's 16, and a still camera its own pixel. At 1080 rows and 70 degrees that is 7.8 degrees a second at 60 pictures. POST_TAA_FAST_PIXELS."
+taa_fast_read:
+  value: 1
+  type: u32
+  unit: count
+  min: 0
+  max: 2
+  why: "Plan 008 phase 04: how a camera past taa_fast_pixels reads its history: 0 Catmull-Rom's 16 as below it, 1 bilinear's 4, 2 the 5-tap bicubic (five bilinear reads, Jimenez 2016). Chosen by measuring on the settled shake: see the phase 04 file. POST_TAA_FAST_READ."

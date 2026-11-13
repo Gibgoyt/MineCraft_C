@@ -1,6 +1,6 @@
 # 008-ahmed-bohemoth-smooth-frames-when-turning — phase 4: Turning without fresh work
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** in progress: corner estimate, AO cache and TAA's fast read built and tested; measuring   (updated 2026-11-13)
 
 Read first: `plans/008-ahmed-bohemoth-smooth-frames-when-turning-phase-00-vision-and-plan-files.md`, then the master `plans/008-ahmed-bohemoth-smooth-frames-when-turning.md`: section 1 (C3, C4), 3.4, 4 and 8. Then `cuda/src/shade/README.md` ("AO") and `cuda/src/post/README.md` ("The temporal pass"), and phase 01's C3 and C4 rows, which give the size of this phase's prize.
 
@@ -165,12 +165,12 @@ This phase may edit these, plus this file:
 
 ## Todo
 
-- [ ] The edit key decided (slab offset, or a per-section counter) and recorded below
-- [ ] `shade_ao_corner`, host and device, with its paper tests
-- [ ] `shade_ao_cache_*` pure parts with host tests
+- [x] The edit key decided (slab offset, or a per-section counter) and recorded below: neither, a hash of each section's bytes
+- [x] `shade_ao_corner`, host and device, with its paper tests
+- [x] `shade_ao_cache_*` pure parts with host tests
 - [ ] The cache block (2 M entries, 16 MiB) in `post_temporal_t`; frames budget measured
-- [ ] AO rays write the cache; fresh pixels read it, else take the corner estimate; shapes that are not cubes keep the fresh list
-- [ ] `SHADE_FEATURE_AO_FIRST_GUESS`, on by default; `--fresh-ao-rays 1` for comparison
+- [x] AO rays write the cache; fresh pixels read it, else take the corner estimate; shapes that are not cubes keep the fresh list
+- [x] `SHADE_FEATURE_AO_FIRST_GUESS`, on by default; `--fresh-ao-rays 1` for comparison
 - [ ] TAA's fast read chosen by measurement (5-tap, bilinear, or none) and recorded below
 - [ ] Settled shake at 0 to 1440°/s: AO ms at 720 ≤ 1.3 × still, post ≤ 1.1 × still; results below
 - [ ] Live-capped shake rows; results below
@@ -250,4 +250,15 @@ Appended as they land:
 
 ## Issues found
 
-None.
+**Step 1, the edit key: neither of the plan's two.** A section sent again at its size is written in place (`world_buffers_section_write`'s `in_place`), so its slab offset does not tell an edit. The first try was the plan's second choice, a per-section count of sends in the column table's 96 spare bytes (`_pad1`), counted in the 27 sections around each, and it made the picture hang on the threads: streaming sends the same bytes again at times the workers decide, every send changed the keys, and `the_marks_change_no_picture` (two games turning from the same opening) failed one run in two. So the 96 bytes are `world_buffers_column_t.revisions`: 8 bits of a hash of each section's bytes, never 0 for a section with bytes. The same bytes sent again keep it; an edit changes it all but one time in 256 (then the AO shown is at most 4 s old and weighs 8 samples). A key holds the revisions of every section within 4 blocks of the face's open cell (`shade_ao_revision`: its own, and across any border nearer than `SHADE_AO_REACH` + 1), and its column's load generation, so a block placed across a chunk border breaks the keys on both sides (`a_block_placed_is_not_shown_with_old_ao` puts it on one).
+
+**Step 2, the floor: 0.25, and the plan's paper had the wall case wrong.** Ray AO at the vertex of a two-wall corner is a quarter of the cosine-weighted sky, exactly, and 0.277 at a sixteenth of a block in (the same integral render_feature_post's AO reference adds up, worked numerically over 9216 cosine-weighted directions: walls 3 blocks or taller, reach 3). So `ao_corner_floor` is 0.25, in `compile/config/render/shade/index.yaml`. A wall along one edge makes that edge's side cell and both its diagonals solid, so its corners are 1 - 2/3, not 1 - 1/3: with the floor, 0.5 at the wall, 0.75 between, 1 at the far edge, against ray AO's 0.53 and 0.69 (the plan said 0.8 / 0.9 / 1 with a floor of 0.4). The test is named `corner_ao_beside_one_wall_is_half_at_that_edge`.
+
+**What changed from the plan, and why:**
+
+- **The cache is written by `atomicMax`, not folded in by `atomicCAS` as a running mean.** A running mean by CAS depends on the order the card runs the threads in, and `the_same_frames_give_the_same_picture_to_the_byte` holds the renderer to one picture from one script. So an entry is a pixel's own mean after its ray this frame (up to 32 samples, a better value than one ray's), packed from the high bits as age (21), samples (8), tag (16), face (3), mean (16): the newest frame wins, then the most samples, the same word whatever the order. `shade_ao_kernel` writes; `shade_ao_fresh_kernel`, after it, reads; and when it reads it writes nothing (a fresh pixel that sends rays then, on a slab or a plant, does not write). The table is emptied once in 2^21 frames, as the ages wrap.
+- **The first guess runs only while the camera moves** (`POST_TEMPORAL_MOVED`: this frame's camera without jitter is not the last's). A still camera with TAA has a few hundred fresh pixels a frame from the jitter (phase 01), and taking the corner for those would have changed still pictures; with this they send their four rays as before, and still pictures are the same to the bit (`a_still_camera_converges_to_todays_ao` holds 200 frames to the byte with it on and off).
+- **The fresh pixels are filled in `shade_ao_fresh_kernel`, from the list, not in `shade_ao_at`,** so the cache is read after every write of the frame (above), and the list still makes the warps full.
+- **Where the cache's block lives.** `render_frame_t` (960 bytes, cache-line aligned, 3 spare) and `render_t` have no room for a `device_block_t`, and `app_t` is at main's frame limit. So its handle is in the frame arena (`frame_ao_cache_take`, from `DEVICE_POOL_FRAMES`, 16 MiB, zeroed), and `post_temporal_t.borrowed_ao_cache` points at it; `render_frame_deinit` gives it back. To make room for that pointer, `post_temporal_t.jitter[2]` became a bit, `POST_TEMPORAL_JITTER`: every reader works it out from the frame's number with `post_temporal_jitter`, which the card computes to the same bits as the host (each step is a division or a sum of an exact product). The struct's last byte became `flags`: `JITTER`, `MOVED`, `FAST`, `FIRST_GUESS`, `FRESH_ONE`. Without room on the card the frame runs with no cache, and fresh pixels take the corner estimate alone.
+- **`SHADE_FEATURE_AO_FIRST_GUESS` is not an effect of the Settings screen.** `run_settings` holds that every bit of `SHADE_FEATURES_EVERY` has a setting, and the plan wanted none new for Ahmed. So it is as `SHADE_FEATURE_SUN_APART`: past `SHADE_FEATURES_EVERY`, to `render_frame_features_set` only, which turns it into a flag; the game adds it unless its `features_off` has it (`game_frame_features`), so `bench_world_shake --features-off 80000` turns it off and a settings file of before reads the same. `--fresh-ao-rays 1` (`render_frame_ao_fresh_one_set`) is Q2's B; `--fresh-ao-rays 4` is the same as `--features-off 80000`.
+- **The tests are a suite of their own, `render_feature_ao` (`tests/cuda/ao/`),** as `tests/cuda/post/index.c` is at 1435 lines. The world buffers' revision test is in `run_render_upload`.
