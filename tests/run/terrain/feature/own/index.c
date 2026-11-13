@@ -56,6 +56,10 @@ static void own_by_hand(const terrain_t *terrain, const terrain_density_box_t *b
 TEST(a_chunks_tops_read_from_its_box_are_what_the_walk_down_finds) {
     uint16_t *const blocks = test_alloc(t, (uint64_t)OWN_VOXELS * sizeof(uint16_t));
     uint8_t *const opened = test_alloc(t, OWN_VOXELS);
+    /* On the heap, not the stack: the two are 23 KiB together, past release's 16 KiB frame limit. */
+    terrain_feature_chunk_t *const read = test_alloc(t, sizeof(terrain_feature_chunk_t));
+    terrain_feature_column_t *const walked =
+        test_alloc(t, sizeof(terrain_feature_column_t) * TERRAIN_FEATURE_CHUNK_COLUMNS);
     uint64_t chunks = 0u, wet = 0u, dry = 0u, cut_away = 0u;
     for (uint32_t w = 0u; w < OWN_SEEDS; w++) {
         terrain_t terrain;
@@ -66,11 +70,10 @@ TEST(a_chunks_tops_read_from_its_box_are_what_the_walk_down_finds) {
                 const int32_t chunk_y = ((int32_t)gy - (int32_t)OWN_GRID_SIDE / 2) * (int32_t)OWN_GRID_STEP;
                 const terrain_density_box_t box = own_box(chunk_x, chunk_y);
                 own_stages_to_flood(&terrain, &box, opened, blocks);
-                terrain_feature_chunk_t read;
-                REQUIRE(terrain_feature_chunk_read_box(terrain.borrowed_feature, nullptr, &box, blocks, &read));
-                terrain_feature_column_t walked[TERRAIN_FEATURE_CHUNK_COLUMNS];
+                REQUIRE(terrain_feature_chunk_read_box(terrain.borrowed_feature, nullptr, &box, blocks, read));
                 terrain_feature_chunk_columns(terrain.borrowed_feature, nullptr, chunk_x, chunk_y, walked);
-                CHECK(memcmp(read.columns, walked, sizeof(walked)) == 0);
+                CHECK(memcmp(read->columns, walked, sizeof(terrain_feature_column_t) * TERRAIN_FEATURE_CHUNK_COLUMNS) ==
+                      0);
                 chunks++;
                 for (uint32_t i = 0u; i < TERRAIN_FEATURE_CHUNK_COLUMNS; i++) {
                     if (walked[i].top == TERRAIN_FEATURE_NO_GROUND) {
