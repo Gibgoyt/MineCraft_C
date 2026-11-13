@@ -1,6 +1,6 @@
 # 009-ahmed-bohemoth-game-engine-optimizations — phase 3: One pyramid of levels
 
-**Status:** in progress   (updated 2026-11-12)
+**Status:** done but the gate (Ahmed reads the store size, the upload and VRAM numbers at render distance 64, and the edit latency)   (updated 2026-11-13)
 
 Read first: the phase 00 file, then the master: sections 0 ("What Full detail means"), 1, 2.1, 4.3 and 4.4. Then:
 
@@ -149,9 +149,9 @@ The level's square must reach its far edge, so these radii are larger than today
 - [x] `render_lod_plan` by bands; level 1 planned and built; sources per column chosen by level 0's table
 - [x] Tuning keys `pixel_error`, `near_guarantee`, `level_count`, `radius_columns_max`, `octant_levels`
 - [x] An edit at 400 blocks reaches level 1 and level 2 within 100 ms (test)
-- [ ] Octant store bytes and upload bytes recorded; within the master's 1/7 more
-- [ ] Every golden picture and settled hash unchanged
-- [ ] VRAM per level at render distance 64, E = 2, recorded
+- [x] Octant store bytes and upload bytes recorded; within the master's 1/7 more
+- [x] Every golden picture and settled hash unchanged
+- [x] VRAM per level at render distance 64, E = 2, recorded
 
 ## Tests
 
@@ -214,6 +214,11 @@ He says go for phase 04.
 
 Appended as they land:
 
+- `023514d4` Build plan 009's pyramid of levels beside the far field, drawn by nothing yet: bands and the plan by pixel error, `render_encode_section_octant`, the octant store in `run/src/render/octant/` fed by the upload, levels 1 and 2 made from the blocks where loaded and from terrain elsewhere, an edit in both within 100 ms, the tuning keys, and their tests; every golden picture unchanged.
+- this commit: bench_lod's octant rows in its README, `bench_world`'s history line `009 phase 03: pyramid built, not drawn`, and the measurements and verification here.
+
+**Verification, as run (2026-11-13), on `main` at `b8b6d822` (unmoved):** `pgrep` for Ahmed's game printed nothing before every card run. `cmake --build --preset debug`: clean, lint clean. `run_render_lod`, `run_render_encode`, `run_render_upload`: pass. Every `render_feature_*` (11), `run_render_frame`, `run_render_distance_live` (both tests), `run_settings_session`, `run_types`, `cuda_lod`: pass, so every golden picture is the same bytes. `standards_lint`, `clang_format`: pass. `cmake --build --preset profile`: clean. `bench_lod`: exit 0, the table above. `bench_world --record ... --label "009 phase 03: pyramid built, not drawn"`: exit 0, 14 of 14 settled hashes as before. `bench_world_slope --only night-64`: `C28033CF2426D1B5`. `run_render_distance_live`'s first test reports, in this debug build only, `open_32` at 18.8 s and `rd_64_again` past its marks, as a debug build's terrain does (its README: deadlines are held only in an optimized build); it passed. `pgrep -af "$PWD/build"` printed nothing at the end.
+
 ## Issues found
 
 ### 1. Changed from the plan, and why
@@ -231,7 +236,19 @@ Appended as they land:
 - **A change of field of view alone does not replan the pyramid** until the next change of the view (render distance, full detail, scale). Replanning it there would stop the threads and take memory, which `run_settings_session` holds a field-of-view change to never do. Phase 04 works the bands out every frame.
 - **`render_encode_block_counts` reads the block's id** (`& BLOCK_STATE_ID_MASK`), where the far field's `render_lod_counts` read `block_defs[state]`: a voxel of the world holds stairs' facing above the id, and an unknown block (`run_render_frame`'s missing-texture test puts 60000) read past the table. An unknown id counts, as it is drawn as a cube. The far field's own samples never hold either, and every golden picture is the same.
 
-### 2. Measured
+### 2. For phase 04
+
+- The pyramid's VRAM is the price: at Ahmed's settings about 464 MiB more of voxels while the far field also stands. When phase 04 drops the far field (2 levels, about 130 MiB) and full detail goes to 27 chunks, most of it comes back. The game's own budget (6144 MiB) holds it; the bench's 3584 does not at render distance 128 and 512, and neither does the reference mode at 64 (5639 MiB plus the pyramid), so phase 04's comparisons at 64 need the pyramid's pool counted or the reference without it.
+- Level 1's octant columns hold caves and ores (four times the bytes of a terrain one). Phase 04's seam test will see octant-built and terrain-built columns disagree at level 0's edge, as the risk table says.
+- The bands are worked out only when the view changes (Issues 1): phase 04 moves them to every frame.
+
+### 3. Measured
 
 - **The edit** (`an_edit_reaches_level_1_and_level_2_within_100_ms`, debug build, real threads): a cube of stone at 392, -8, 28, 400 blocks east of the eye, in level 1 **15.6 ms** after the edit and in level 2 **17.1 ms**. Level 1 had it at 12.4 ms in the run at render distance 32.
-- **That world** (render distance 64, full detail 32, 1920 x 1080, E = 2): pyramid level 1 27 columns each way, **354 MiB of pool, 157.4 MiB of slabs held**; level 2 18 columns each way, **108 MiB of pool, 42.8 MiB held**; 2318 level 1 and 553 level 2 columns made from octants, 0 columns with no room. Octant store: **105.8 MiB** host (70090 blocks of 1536 bytes live, 0 refused).
+- **For the gate, at Ahmed's spot** (`bench_world_slope --only night-64`, profile, render distance 64, full detail 32, 1920 x 1080, E = 2, 70°; card at **148 MHz**, its floor): the picture is **`C28033CF2426D1B5`, phase 01's**, and **6.43 Mcycles** a picture (43.30 ms, p99 43.70) against phase 01's 6.46 at the same 148 MHz: the pyramid costs the frame nothing once settled. Bands: level 1 from 385.6 blocks, level 2 from 771.2.
+  - **VRAM per level:** level 1, 27 columns each way (55 x 55), **354 MiB of pool, 195.8 MiB of slabs held** (39027 sections); level 2, 18 each way (37 x 37), **108 MiB of pool, 51.0 MiB held** (8727 sections). Tables 1.5 and 0.7 MiB. The bench's voxels went from 2776 MiB (phase 01) to **3240 MiB**.
+  - **Octant store: 137.8 MiB of host memory** (91966 non-uniform octants live of the 218453 room, 0 refused), against the phase file's estimate of 34 MiB: real ground has 14 to 41 non-uniform sections a chunk with caves, not 10, and full detail 32 holds more columns than E = 2's 27 chunks would.
+  - **Columns:** 2842 of level 1 and 445 of level 2 made from octants (2.37 s of the gpu thread in all, through the fill); 6738 pyramid columns built in all, 146.9 s of workers' time for the ones from terrain; none without room.
+  - **Upload bytes:** 320.7 MiB sent from octants in that run. bench_lod: a level 1 column from the blocks is **12.7 %** of the bytes of the four chunks under it (132.2 KiB against 1043.5 on the mean of six places), level 2 an eighth of that again: **about 1/7 more than level 0 moves**, the master's figure. The worker's part, a section's octant, is 7.95 µs on top of its encode; putting a level 1 column together and encoding it is 201.5 µs on the gpu thread (profile), the level 2 octants after it 177.7 µs.
+- **`bench_world` full run** (profile, `009 phase 03: pyramid built, not drawn`, card 1575 MHz and 84 °C at the start): **all 14 settled pictures the same hashes as `009 phase 01`**. Voxels at render distance 32 went from 2650 to 2901 MiB (pyramid level 1 there, 18 columns each way). At render distance 128 and 512 the bench's 3584 MiB budget refused the pyramid's pool, it logged so, and the rows ran without it, the same as before.
+- **That world** (render distance 64, full detail 32, 1920 x 1080, E = 2, the edit test's): pyramid level 1 27 columns each way, **354 MiB of pool, 157.4 MiB of slabs held**; level 2 18 columns each way, **108 MiB of pool, 42.8 MiB held**; 2318 level 1 and 553 level 2 columns made from octants, 0 columns with no room. Octant store: **105.8 MiB** host (70090 blocks of 1536 bytes live, 0 refused).
