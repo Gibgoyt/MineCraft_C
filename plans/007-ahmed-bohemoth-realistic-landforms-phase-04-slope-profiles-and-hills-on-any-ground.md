@@ -175,12 +175,12 @@ This phase may edit these, plus this file:
 
 ## Todo
 
-- [ ] `landform/rugged` $G$ on the lattice; `relief/knobs`, `landform/peak` as fine fields; limits measured
-- [ ] $S_{\text{soft}}$ and $S_{\text{sharp}}$ splines; height line $(1000 - P)\,S_G(m)$
-- [ ] `peak` (ridged, cell 48, above $m = 0.6$) replaces `jagged`
-- [ ] Knobs with dome and koppie shapes, on any base, not on ranges; hills at cell 384 and at most 30; foothills removed (or restored at 30, recorded)
-- [ ] Softness with `face` and $G\,m$
-- [ ] Limits test (-116 to 1190) and the estimate-is-the-profile test pass; every moved pin re-pinned with this phase's reason; 1 against 16 workers the same bytes
+- [x] `landform/rugged` $G$ on the lattice; `relief/knobs`, `landform/peak` as fine fields; limits measured
+- [x] $S_{\text{soft}}$ and $S_{\text{sharp}}$ splines; height line $(1000 - P)\,S_G(m)$
+- [x] `peak` (ridged, cell 48, above $m = 0.6$) replaces `jagged`
+- [x] Knobs with dome and koppie shapes, on any base, not on ranges; hills at cell 384 and at most 30; foothills removed (or restored at 30, recorded)
+- [x] Softness with `face` and $G\,m$
+- [x] Limits test (-116 to 1190) and the estimate-is-the-profile test pass; every moved pin re-pinned with this phase's reason; 1 against 16 workers the same bytes
 - [ ] `bench_landform` on 8 seeds: the slope histogram in master section 4's bands
 - [ ] Of ground steeper than 1:2, at least 70% in the top 30% of relief or on faces
 - [ ] Top-decile-over-bottom-3 slope ratio at least 5
@@ -189,7 +189,7 @@ This phase may edit these, plus this file:
 - [ ] Floating rock per km² at most phase 01's + 25%
 - [ ] `bench_terrain` at least 1000 everywhere (with `plateau_top`); `bench_lod` at most 40 ms
 - [ ] Pictures looked at and described here
-- [ ] READMEs (`density/`, `landform/`)
+- [x] READMEs (`density/`, `landform/`)
 
 ## Tests
 

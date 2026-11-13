@@ -806,7 +806,12 @@ TEST(an_autosave_with_no_edits_builds_no_far_column) {
     REQUIRE(save_world_capture_dirty(&save->world, &world->edit) == SAVE_WORLD_OK);
     game_far_changes_take(game);
     const uint64_t worker_ns = lod->stats.build_ns;
+    const uint64_t built_before_step = lod->stats.columns_built;
+    const uint64_t dropped_before_step = lod->stats.columns_dropped;
     REQUIRE(game_settle(game));
+    printf("  away and back: %" PRIu64 " columns built, %" PRIu64 " dropped, %.1f ms of workers\n",
+           lod->stats.columns_built - built_before_step, lod->stats.columns_dropped - dropped_before_step,
+           (libc_double_t)(lod->stats.build_ns - worker_ns) / 1.0e6f64);
     /* Plan 009 phase 04: the far field's levels over the blocks are made from them, so the section sent again makes its columns again, on
      * the gpu thread; no worker builds anything from the save. */
     CHECK_EQ_U64(lod->stats.build_ns, worker_ns);
