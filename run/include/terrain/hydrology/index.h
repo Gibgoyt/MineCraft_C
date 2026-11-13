@@ -49,7 +49,8 @@ typedef enum terrain_hydrology_kind_t : uint8_t {
     TERRAIN_HYDROLOGY_KIND_LAKE = 4,
     TERRAIN_HYDROLOGY_KIND_BEACH = 5,
     TERRAIN_HYDROLOGY_KIND_STONY_SHORE = 6,
-    TERRAIN_HYDROLOGY_KIND_COUNT = 7,
+    TERRAIN_HYDROLOGY_KIND_BASIN = 7, /* dry land below the sea's level: plan 007 phase 05 */
+    TERRAIN_HYDROLOGY_KIND_COUNT = 8,
 } terrain_hydrology_kind_t;
 
 /* One world's hydrology. Nothing changes it after terrain_hydrology_init, so any number of workers may read it. */
@@ -75,8 +76,11 @@ typedef struct terrain_hydrology_inputs_t {
     float32_t shore;           /* 20 */
     float32_t steepness;       /* 24: in blocks of ground per block across */
     float32_t lift;            /* 28: terrain_density_profile_t's: carried to the column, read by no rule here */
+    float32_t rivers;          /* 32: terrain_density_profile_t's: from 0 to 1, how much of a river may be cut here */
+    uint8_t dry;               /* 36: 1 in a dry basin: what is open at or below the sea's level is air */
+    uint8_t _pad0[3];          /* 37 */
 } terrain_hydrology_inputs_t;
-static_assert(sizeof(terrain_hydrology_inputs_t) == 32);
+static_assert(sizeof(terrain_hydrology_inputs_t) == 40);
 
 /* What a column came to. */
 typedef struct terrain_hydrology_column_t {
@@ -88,7 +92,8 @@ typedef struct terrain_hydrology_column_t {
     float32_t shore;               /* 20: the input, kept for the blocks */
     float32_t lift;                /* 24: terrain_density_profile_t's, for biomes: ground - lift is the biome height */
     terrain_hydrology_kind_t kind; /* 28 */
-    uint8_t _pad0[3];              /* 29 */
+    uint8_t dry;                   /* 29: the input: what is open here at or below the sea's level is air */
+    uint8_t _pad0[2];              /* 30 */
 } terrain_hydrology_column_t;
 static_assert(sizeof(terrain_hydrology_column_t) == 32);
 

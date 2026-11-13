@@ -113,8 +113,9 @@ float32_t terrain_biome_height_estimate(const terrain_t *terrain, int32_t x, int
 
 /* The same at count_x by count_y columns step blocks apart, x changing fastest. origin_x, origin_y and step must be whole
  * multiples of TERRAIN_DENSITY_CELL_XY (asserted): every column is then a lattice column, the blend's fractions are 0, and
- * each value is bit for bit the single-column answer. Allocates nothing: works through the stack in pieces of 128. */
+ * each value is bit for bit the single-column answer. Into dry, unless it is nullptr, each column's .dry: 1 in a dry basin
+ * (plan 007 phase 05). Allocates nothing: works through the stack in pieces of 128. */
 void terrain_height_estimate_area(const terrain_t *terrain, int32_t origin_x, int32_t origin_y, int32_t step,
-                                  uint32_t count_x, uint32_t count_y, float32_t *heights);
+                                  uint32_t count_x, uint32_t count_y, float32_t *heights, uint8_t *dry);
 
 #endif

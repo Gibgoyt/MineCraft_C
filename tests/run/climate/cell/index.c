@@ -72,8 +72,8 @@ static climate_cell_t cell_at(test_context_t *t, const climate_t *climate, int32
 }
 
 static void cell_terrain_ground(const void *borrowed_context, int32_t origin_x, int32_t origin_y, int32_t step,
-                                uint32_t count_x, uint32_t count_y, float32_t *heights) {
-    terrain_height_estimate_area(borrowed_context, origin_x, origin_y, step, count_x, count_y, heights);
+                                uint32_t count_x, uint32_t count_y, float32_t *heights, uint8_t *dry) {
+    terrain_height_estimate_area(borrowed_context, origin_x, origin_y, step, count_x, count_y, heights, dry);
 }
 
 /* ---- The worked examples ------------------------------------------------------------------------------------------- */
@@ -109,6 +109,47 @@ TEST(kappa_and_distances_are_the_worked_examples) {
     CHECK_NEAR(far.kappa, 0.99575f32, 1e-4f32);
     CHECK_NEAR(far.sea_direction[0], 0.0f32, 0.0f32);
     CHECK_NEAR(far.sea_direction[1], 0.0f32, 0.0f32);
+    cell_rig_stop(&rig);
+}
+
+/* Plan 007 phase 05: a hollow to -100, 3 km across, at 28 N and 4000 blocks inland. Dry, its cells are land and basin heat
+ * fires; the same hollow full of water is a lake. Plan 004's worked example 3 is land at -150 there on day 196: 34.63, and
+ * 30.88 without the basin term. At -100 the lapse gives 0.6 less and the basin term 1.25 less: 32.78, the floor 3.7 warmer
+ * than the same place at the sea's level. */
+TEST(the_climate_counts_a_dry_basin_as_land) {
+    cell_rig_t rig;
+    REQUIRE(cell_rig_start(t, &rig, MC_THREADS_WORKERS));
+    const int32_t centre_y = 11915; /* 28 N */
+    for (uint32_t dry = 0u; dry < 2u; dry++) {
+        const ground_t hollow = {.kind = GROUND_HOLLOW,
+                                 .coast = centre_y - 4000,
+                                 .radius = 1500,
+                                 .centre_x = 0,
+                                 .centre_y = centre_y,
+                                 .dry = dry};
+        REQUIRE(climate_open_ground(rig.climate, 5u, ground_fn, &hollow));
+        climate_warp_set(rig.climate, false);
+        climate_prepare_area(rig.climate, rig.job, -3000, centre_y - 3000, 3000, centre_y + 3000, nullptr, nullptr);
+        const climate_cell_t floor = cell_at(t, rig.climate, 0, centre_y / 64);
+        climate_normals_at_t low, level;
+        REQUIRE(climate_normals_at(rig.climate, 32.0f64, (float64_t)centre_y, -100.0f32, 196.0f32, &low));
+        REQUIRE(climate_normals_at(rig.climate, 32.0f64, (float64_t)centre_y, 0.0f32, 196.0f32, &level));
+        printf("a %s hollow at 28 N: flags %u, ground %.1f, sea %.0f blocks off; day 196 at -100 %.3f, at 0 %.3f\n",
+               dry != 0u ? "dry" : "wet", floor.flags & CELL_KIND_FLAGS, (libc_double_t)floor.z_ground,
+               (libc_double_t)floor.sea_distance, (libc_double_t)low.t_day_c, (libc_double_t)level.t_day_c);
+        CHECK_NEAR(floor.z_ground, -100.0f32, 0.0f32);
+        if (dry != 0u) {
+            CHECK_EQ_U64(floor.flags & CELL_KIND_FLAGS, 0u);
+            CHECK_NEAR(low.t_day_c - level.t_day_c, 3.7f32, 2.0e-3f32);
+            CHECK_NEAR(low.t_day_c, 32.78f32, 0.5f32);
+        } else {
+            CHECK((floor.flags & CELL_KIND_FLAGS) != 0u);
+            if ((floor.flags & CLIMATE_CELL_LAKE) != 0u) {
+                CHECK_NEAR(low.t_day_c - level.t_day_c, 1.2f32, 2.0e-3f32); /* a large lake: no basin term */
+            }
+        }
+        climate_close(rig.climate, rig.job);
+    }
     cell_rig_stop(&rig);
 }
 

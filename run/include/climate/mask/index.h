@@ -25,7 +25,16 @@ typedef enum climate_mask_source_t : uint32_t {
     CLIMATE_MASK_BUILT_COPY = 2, /* built privately: someone else held its claim, or it is outside the keep square */
 } climate_mask_source_t;
 
-/* One page: the ground at the 256 cell centres of tile (tile_x, tile_y), 16 by 16, south row first, x fastest:
+/* A dry basin's cell holds its ground at this at the least: the mask says where the land is, and a dry basin is land, however
+ * far below the sea's level its floor is (plan 007 phase 05). The cells' own ground, which their heat reads, is not this. */
+static const float32_t CLIMATE_MASK_DRY_Z = 1.0f32;
+
+/* The mask's ground at count_x by count_y cell centres from (x, y), CLIMATE_CELL_BLOCKS apart (at most a page's 256): ground's
+ * heights, with each dry column's held to CLIMATE_MASK_DRY_Z at the least. Pure. */
+void climate_mask_ground(climate_ground_fn_t ground, const void *ground_context, int32_t x, int32_t y, uint32_t count_x,
+                         uint32_t count_y, float32_t *heights);
+
+/* One page: the mask's ground at the 256 cell centres of tile (tile_x, tile_y), 16 by 16, south row first, x fastest:
  * x = tile_x * 1024 + 32 + 64 i, y = tile_y * 1024 + 32 + 64 j. 256 estimates. Pure. */
 void climate_mask_page_build(climate_ground_fn_t ground, const void *ground_context, int32_t tile_x, int32_t tile_y,
                              float32_t *heights);

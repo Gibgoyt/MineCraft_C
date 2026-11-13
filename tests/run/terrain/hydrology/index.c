@@ -1,9 +1,11 @@
 /* ctest run_terrain_hydrology. See README.md. */
 #include "harness/index.h"
+#include "run/terrain/fixtures/basins.h"
 
 #include "heap/index.h"
 #include "job/index.h"
 #include "machine/index.h"
+#include "tables/biomes/index.h"
 #include "tables/blocks/index.h"
 #include "terrain/index.h"
 #include "terrain/rng/index.h"
@@ -137,6 +139,7 @@ static terrain_hydrology_column_t hydro_expected_column(const terrain_hydrology_
         const float32_t u = (0.15f32 - in->continentalness) / (0.15f32 - -0.3f32);
         reach = u * u * (3.0f32 - 2.0f32 * u);
     }
+    reach *= in->rivers; /* plan 007 phase 05: none on a dry basin's rim or in it */
     float32_t high_up = 1.0f32;
     if (in->height >= 120.0f32) {
         high_up = 0.0f32;
@@ -162,7 +165,9 @@ static terrain_hydrology_column_t hydro_expected_column(const terrain_hydrology_
 
     terrain_hydrology_kind_t kind = TERRAIN_HYDROLOGY_KIND_LAND;
     const float32_t sand_top = 2.0f32 + 1.5f32 * (in->shore + 1.0f32);
-    if (in->height >= 0.0f32 && ground <= 0.0f32) {
+    if (in->dry != 0u) {
+        kind = ground < 0.0f32 ? TERRAIN_HYDROLOGY_KIND_BASIN : TERRAIN_HYDROLOGY_KIND_LAND;
+    } else if (in->height >= 0.0f32 && ground <= 0.0f32) {
         kind = TERRAIN_HYDROLOGY_KIND_RIVER;
     } else if (river < 0.5f32 && in->continentalness <= -0.24f32 && ground >= -6.0f32 && ground <= sand_top + 1.0f32) {
         kind = in->steepness >= 1.5f32 ? TERRAIN_HYDROLOGY_KIND_STONY_SHORE : TERRAIN_HYDROLOGY_KIND_BEACH;
@@ -180,7 +185,9 @@ static terrain_hydrology_column_t hydro_expected_column(const terrain_hydrology_
         .carve_top = carve_top,
         .river = river,
         .shore = in->shore,
+        .lift = in->lift,
         .kind = kind,
+        .dry = in->dry,
     };
 }
 
@@ -194,6 +201,8 @@ TEST(a_column_is_worked_out_as_the_readme_says) {
                                       0.05f32, 0.09f32, 0.15f32,  0.2f32, 1.0f32};
     static const float32_t noise[] = {-1.0f32, -0.3f32, 0.0f32, 0.5f32, 1.0f32};
     static const float32_t steep[] = {0.0f32, 1.5f32, 9.0f32};
+    static const float32_t rivers[] = {1.0f32, 0.0f32};
+    static const uint8_t dry[] = {0u, 1u};
     uint64_t seen[TERRAIN_HYDROLOGY_KIND_COUNT] = {0u};
 #define HYDRO_EACH(array, index) for (uint32_t index = 0u; index < sizeof(array) / sizeof(array[0]); index++)
     HYDRO_EACH(heights, a) {
@@ -203,23 +212,30 @@ TEST(a_column_is_worked_out_as_the_readme_says) {
                     HYDRO_EACH(noise, e) {
                         HYDRO_EACH(noise, f) {
                             HYDRO_EACH(steep, g) {
-                                const terrain_hydrology_inputs_t inputs = {
-                                    .height = heights[a],
-                                    .softness = softness[b],
-                                    .continentalness = continents[c],
-                                    .weirdness = weird[d],
-                                    .width = noise[e],
-                                    .shore = noise[f],
-                                    .steepness = steep[g],
-                                };
-                                const terrain_hydrology_column_t got = terrain_hydrology_column_from(&inputs);
-                                const terrain_hydrology_column_t want = hydro_expected_column(&inputs);
-                                CHECK(memcmp(&got, &want, sizeof(got)) == 0);
-                                seen[got.kind]++;
-                                /* It only ever cuts, and never below the deepest bed. */
-                                CHECK(got.ground <= inputs.height);
-                                CHECK(got.ground >= inputs.height || got.ground >= -7.0f32);
-                                CHECK(got.river >= 0.0f32 && got.river <= 1.0f32);
+                                HYDRO_EACH(rivers, h) {
+                                    HYDRO_EACH(dry, k) {
+                                        const terrain_hydrology_inputs_t inputs = {
+                                            .height = heights[a],
+                                            .softness = softness[b],
+                                            .continentalness = continents[c],
+                                            .weirdness = weird[d],
+                                            .width = noise[e],
+                                            .shore = noise[f],
+                                            .steepness = steep[g],
+                                            .rivers = rivers[h],
+                                            .dry = dry[k],
+                                        };
+                                        const terrain_hydrology_column_t got = terrain_hydrology_column_from(&inputs);
+                                        const terrain_hydrology_column_t want = hydro_expected_column(&inputs);
+                                        CHECK(memcmp(&got, &want, sizeof(got)) == 0);
+                                        seen[got.kind]++;
+                                        /* It only ever cuts, and never below the deepest bed; none where rivers is 0. */
+                                        CHECK(got.ground <= inputs.height);
+                                        CHECK(got.ground >= inputs.height || got.ground >= -7.0f32);
+                                        CHECK(got.river >= 0.0f32 && got.river <= 1.0f32);
+                                        CHECK(inputs.rivers > 0.0f32 || got.river == 0.0f32);
+                                    }
+                                }
                             }
                         }
                     }
@@ -235,7 +251,7 @@ TEST(a_column_is_worked_out_as_the_readme_says) {
 
     /* A few written out in numbers, so the formula itself is not all that is being trusted. */
     terrain_hydrology_inputs_t in = {
-        .height = 20.0f32, .softness = 4.0f32, .continentalness = -0.3f32, .width = -1.0f32};
+        .height = 20.0f32, .softness = 4.0f32, .continentalness = -0.3f32, .width = -1.0f32, .rivers = 1.0f32};
     terrain_hydrology_column_t column = terrain_hydrology_column_from(&in);
     CHECK(column.river == 1.0f32);
     CHECK(column.carve_top == -3.0f32);
@@ -389,7 +405,7 @@ static uint16_t hydro_expected_material(const terrain_hydrology_column_t *c, int
         return depth < 6u ? BLOCK_ID_SANDSTONE : BLOCK_ID_STONE;
     case TERRAIN_HYDROLOGY_KIND_STONY_SHORE:
         return wet && depth < 2u ? BLOCK_ID_GRAVEL : BLOCK_ID_STONE;
-    default:
+    default: /* land, and a dry basin, which is land */
         break;
     }
     if (c->river >= 0.05f32 && z <= 2 && depth < 2u) {
@@ -432,7 +448,7 @@ static void hydro_check_chunk(test_context_t *t, const terrain_t *terrain, int32
                 const uint16_t got = blocks[at];
                 uint16_t want = was;
                 if (was == BLOCK_ID_STONE && (float32_t)z > column->carve_top) {
-                    want = z <= 0 ? BLOCK_ID_WATER : BLOCK_ID_AIR;
+                    want = z <= 0 && column->dry == 0u ? BLOCK_ID_WATER : BLOCK_ID_AIR;
                     tally->cut++;
                 }
                 if (want == BLOCK_ID_STONE && depth < 6u) {
@@ -504,7 +520,8 @@ TEST(the_blocks_are_the_density_with_the_rivers_cut_and_the_shore_laid_on) {
            tally.by_block[BLOCK_ID_SANDSTONE], tally.by_block[BLOCK_ID_GRAVEL], tally.by_block[BLOCK_ID_CLAY],
            tally.floating_sand);
     for (uint32_t kind = 0u; kind < TERRAIN_HYDROLOGY_KIND_COUNT; kind++) {
-        CHECK(tested[kind] > 0u);
+        /* Dry basins are a few in 64 km: no_water_touches_a_basin_s_air goes to them. */
+        CHECK(tested[kind] > 0u || kind == TERRAIN_HYDROLOGY_KIND_BASIN);
     }
     CHECK(tally.cut > 0u);
     CHECK(tally.by_block[BLOCK_ID_SAND] > 0u);
@@ -619,11 +636,11 @@ TEST(rivers_hold_water_and_reach_the_sea_and_the_coast_has_beaches) {
     }
 
     const uint64_t all = cells * HYDRO_SEEDS;
-    static const char *const names[TERRAIN_HYDROLOGY_KIND_COUNT] = {"land", "ocean", "deep ocean", "river",
-                                                                    "lake", "beach", "stony shore"};
+    static const char *const names[TERRAIN_HYDROLOGY_KIND_COUNT] = {"land", "ocean", "deep ocean",  "river",
+                                                                    "lake", "beach", "stony shore", "dry basin"};
     for (uint32_t kind = 0u; kind < TERRAIN_HYDROLOGY_KIND_COUNT; kind++) {
         printf("%-12s %6.2f%%\n", names[kind], (libc_double_t)((float64_t)(totals[kind] * 100u) / (float64_t)all));
-        CHECK(totals[kind] > 0u);
+        CHECK(totals[kind] > 0u || kind == TERRAIN_HYDROLOGY_KIND_BASIN);
     }
     const float64_t mean_width = (float64_t)run_blocks / (float64_t)(runs > 0u ? runs : 1u);
     printf("rivers: %" PRIu64 " columns, %" PRIu64 " joined to the sea or leaving the map; %" PRIu64
@@ -787,6 +804,184 @@ TEST(aquifers_never_leave_a_fluid_able_to_flow_and_lava_lies_under_everything) {
     CHECK(tally.lava_above_the_sheet > 0u);
     CHECK(tally.stone > 0u);
     CHECK(tally.stone < all / 5u);
+}
+
+/* ---- Dry basins: plan 007 phase 05 --------------------------------------------------------------------------------- */
+
+enum : uint32_t {
+    BASIN_SEEDS = 3u,
+    BASIN_MAP_SIDE = 512u, /* 64 km at 128 */
+    BASIN_MAP_STEP = 128u,
+    BASIN_MOST = 64u,
+    BASIN_PER_SEED = 4u, /* basins a seed's boxes are put on */
+    BASIN_BOX_SIDE = 64u,
+    BASIN_BOX_TALL = 160u, /* z from -150 to 9 */
+};
+static const int32_t BASIN_MAP_ORIGIN = -32768;
+static const int32_t BASIN_BOX_BOTTOM = -150;
+/* Plan 003's first three seeds, which plan 007's targets are measured on. */
+static const uint64_t BASIN_SEED_LIST[BASIN_SEEDS] = {2198175988018515243ull, 12636146071196537873ull,
+                                                      5569068473609503046ull};
+
+/* The basins of a seed's 64 km map, in the order the map meets them: up to BASIN_MOST. */
+static uint32_t basin_find_on(test_context_t *t, const terrain_t *terrain, basins_found_t *found) {
+    const uint32_t count = BASIN_MAP_SIDE * BASIN_MAP_SIDE;
+    float32_t *const heights = test_alloc(t, count * sizeof(float32_t));
+    float32_t *const softness = test_alloc(t, count * sizeof(float32_t));
+    uint8_t *const dry = test_alloc(t, count);
+    uint32_t *const labels = test_alloc(t, count * sizeof(uint32_t));
+    uint32_t *const queue = test_alloc(t, count * sizeof(uint32_t));
+    basins_profile_map(terrain, BASIN_MAP_ORIGIN, BASIN_MAP_ORIGIN, BASIN_MAP_SIDE, (int32_t)BASIN_MAP_STEP, heights,
+                       softness, dry);
+    const uint32_t all = basins_join(BASIN_MAP_ORIGIN, BASIN_MAP_ORIGIN, BASIN_MAP_SIDE, (int32_t)BASIN_MAP_STEP,
+                                     heights, dry, labels, queue, found, BASIN_MOST);
+    return all < BASIN_MOST ? all : BASIN_MOST;
+}
+
+/* From a basin's deepest column, along (dx, dy) on the lattice, the first column that is not dry: where the rim is. */
+static void basin_rim_from(const terrain_t *terrain, const basins_found_t *basin, int32_t dx, int32_t dy, int32_t *x,
+                           int32_t *y) {
+    int32_t at_x = basin->x, at_y = basin->y;
+    for (uint32_t k = 0u; k < 4096u; k++) {
+        const float64_t px = (float64_t)at_x, py = (float64_t)at_y;
+        float32_t h = 0.0f32, s = 0.0f32;
+        uint8_t dry = 0u;
+        const terrain_density_profile_arrays_t out = {.heights = &h, .softness = &s, .dry = &dry};
+        terrain_density_profile_points_arrays(terrain->borrowed_density, &px, &py, 1u, &out);
+        if (dry == 0u) {
+            break;
+        }
+        at_x += 4 * dx;
+        at_y += 4 * dy;
+    }
+    *x = at_x;
+    *y = at_y;
+}
+
+/* Real blocks, caves, the flood and all: no water beside air or over it, and none touching lava. */
+static uint64_t basin_check_real(test_context_t *t, const terrain_density_box_t *box, const uint16_t *blocks,
+                                 uint64_t *water, uint64_t *air_below_sea) {
+    uint64_t wrong = 0u;
+    for (uint32_t iz = 0u; iz < box->count_z; iz++) {
+        const int32_t z = box->origin_z + (int32_t)iz;
+        for (uint32_t iy = 0u; iy < box->count_y; iy++) {
+            for (uint32_t ix = 0u; ix < box->count_x; ix++) {
+                const uint16_t block = blocks[hydro_voxel(box, ix, iy, iz)];
+                *air_below_sea += block == BLOCK_ID_AIR && z <= 0 ? 1u : 0u;
+                if (block != BLOCK_ID_WATER && block != BLOCK_ID_LAVA) {
+                    continue;
+                }
+                *water += block == BLOCK_ID_WATER ? 1u : 0u;
+                const uint16_t other_fluid = block == BLOCK_ID_WATER ? BLOCK_ID_LAVA : BLOCK_ID_WATER;
+                uint16_t next[6] = {BLOCK_ID_STONE, BLOCK_ID_STONE, BLOCK_ID_STONE,
+                                    BLOCK_ID_STONE, BLOCK_ID_STONE, BLOCK_ID_STONE};
+                next[0] = ix + 1u < box->count_x ? blocks[hydro_voxel(box, ix + 1u, iy, iz)] : BLOCK_ID_STONE;
+                next[1] = ix > 0u ? blocks[hydro_voxel(box, ix - 1u, iy, iz)] : BLOCK_ID_STONE;
+                next[2] = iy + 1u < box->count_y ? blocks[hydro_voxel(box, ix, iy + 1u, iz)] : BLOCK_ID_STONE;
+                next[3] = iy > 0u ? blocks[hydro_voxel(box, ix, iy - 1u, iz)] : BLOCK_ID_STONE;
+                next[4] = iz > 0u ? blocks[hydro_voxel(box, ix, iy, iz - 1u)] : BLOCK_ID_STONE;
+                for (uint32_t n = 0u; n < 5u; n++) {
+                    wrong += next[n] == BLOCK_ID_AIR || next[n] == other_fluid ? 1u : 0u;
+                }
+                if (iz + 1u < box->count_z) {
+                    const uint16_t above = blocks[hydro_voxel(box, ix, iy, iz + 1u)];
+                    wrong += above == other_fluid ? 1u : 0u;
+                }
+            }
+        }
+    }
+    (void)t;
+    return wrong;
+}
+
+TEST(no_water_touches_a_basin_s_air) {
+    const terrain_density_box_t model = {
+        .origin_z = BASIN_BOX_BOTTOM, .count_x = BASIN_BOX_SIDE, .count_y = BASIN_BOX_SIDE, .count_z = BASIN_BOX_TALL};
+    const uint64_t voxels = terrain_density_box_voxels(&model);
+    uint8_t *const opened = test_alloc(t, voxels);
+    uint16_t *const blocks = test_alloc(t, voxels * sizeof(uint16_t));
+    basins_found_t *const found = test_alloc(t, BASIN_MOST * sizeof(basins_found_t));
+    hydro_fluid_tally_t tally = {0};
+    uint64_t boxes = 0u, wrong = 0u, water = 0u, air_below_sea = 0u;
+    for (uint32_t seed = 0u; seed < BASIN_SEEDS; seed++) {
+        terrain_t terrain;
+        REQUIRE(terrain_init(&terrain, BASIN_SEED_LIST[seed]));
+        const uint32_t count = basin_find_on(t, &terrain, found);
+        for (uint32_t b = 0u; b < count && b < BASIN_PER_SEED; b++) {
+            static const int32_t ways[4][2] = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
+            for (uint32_t w = 0u; w < 4u; w++) {
+                int32_t x = 0, y = 0;
+                basin_rim_from(&terrain, &found[b], ways[w][0], ways[w][1], &x, &y);
+                terrain_density_box_t box = model;
+                box.origin_x = x - (int32_t)(BASIN_BOX_SIDE / 2u);
+                box.origin_y = y - (int32_t)(BASIN_BOX_SIDE / 2u);
+                terrain_generate_box_fallback(&terrain, &box, opened, blocks);
+                wrong += basin_check_real(t, &box, blocks, &water, &air_below_sea);
+                /* And every voxel opened, so that only the flood decides. */
+                hydro_check_flood(t, terrain.borrowed_hydrology, &box, opened, blocks, &tally);
+                boxes++;
+            }
+        }
+        terrain_deinit(&terrain);
+    }
+    printf("%" PRIu64 " boxes across basins' rims on 3 seeds: %" PRIu64 " water and %" PRIu64
+           " air at or below the sea in the real blocks, %" PRIu64 " wrong; opened whole, %" PRIu64 " air and %" PRIu64
+           " water\n",
+           boxes, water, air_below_sea, wrong, tally.air, tally.water);
+    CHECK(boxes >= 8u);
+    CHECK(air_below_sea > 0u);
+    CHECK_EQ_U64(wrong, 0u);
+}
+
+/* A dry column holds no water from its ground up to the sea's level, its kind is a basin, and its biome is land's. */
+TEST(a_basin_column_is_dry_and_land) {
+    basins_found_t *const found = test_alloc(t, BASIN_MOST * sizeof(basins_found_t));
+    uint64_t columns = 0u, deeper = 0u;
+    for (uint32_t seed = 0u; seed < BASIN_SEEDS; seed++) {
+        terrain_t terrain;
+        REQUIRE(terrain_init(&terrain, BASIN_SEED_LIST[seed]));
+        const uint32_t count = basin_find_on(t, &terrain, found);
+        for (uint32_t b = 0u; b < count; b++) {
+            const basins_found_t *const basin = &found[b];
+            const terrain_hydrology_column_t column =
+                terrain_hydrology_column_at(terrain.borrowed_hydrology, basin->x, basin->y);
+            CHECK_EQ_U64(column.dry, 1u);
+            CHECK(column.kind == TERRAIN_HYDROLOGY_KIND_BASIN || column.ground >= 0.0f32);
+            const terrain_fields_area_t area = {
+                .origin_x = basin->x, .origin_y = basin->y, .step_x = 1, .step_y = 1, .count_x = 1u, .count_y = 1u};
+            terrain_biome_column_t biome;
+            terrain_biome_columns_area(terrain.borrowed_biome, nullptr, &area, &biome);
+            CHECK_EQ_U64(biome_defs[biome.biome].where, BIOME_WHERE_LAND);
+            CHECK_EQ_U64(biome.dry, 1u);
+            /* From the near-surface band (the README's sea's rule) up to the sea's level: no water, caves and all. Under the
+             * band a cave meets the aquifers, which hold their own water as anywhere else. */
+            enum : uint32_t { TALL = 160u };
+            const terrain_density_box_t box = {.origin_x = basin->x,
+                                               .origin_y = basin->y,
+                                               .origin_z = 1 - (int32_t)TALL,
+                                               .count_x = 1u,
+                                               .count_y = 1u,
+                                               .count_z = TALL};
+            uint8_t opened[TALL];
+            uint16_t blocks[TALL];
+            terrain_generate_box_fallback(&terrain, &box, opened, blocks);
+            int32_t top = INT32_MIN;
+            const float32_t band = column.ground - column.softness - (float32_t)TERRAIN_HYDROLOGY_SURFACE_BAND;
+            for (uint32_t iz = 0u; iz < TALL; iz++) {
+                CHECK((float32_t)(box.origin_z + (int32_t)iz) < band || blocks[iz] != BLOCK_ID_WATER);
+                if (blocks[iz] != BLOCK_ID_AIR) {
+                    top = box.origin_z + (int32_t)iz;
+                }
+            }
+            columns++;
+            deeper += top < 0 ? 1u : 0u;
+        }
+        terrain_deinit(&terrain);
+    }
+    printf("%" PRIu64 " basins' deepest columns on 3 seeds, %" PRIu64 " with their top below the sea's level\n",
+           columns, deeper);
+    CHECK(columns >= 3u);
+    CHECK(deeper * 2u >= columns);
 }
 
 /* The README's aquifer, typed out again, with no shortcut: every site in 5 cells each way, and each cell's numbers at its site.
@@ -1243,7 +1438,7 @@ TEST(columns_and_the_flood_are_pinned) {
         seen[map[i].kind]++;
     }
     for (uint32_t kind = 0u; kind < TERRAIN_HYDROLOGY_KIND_COUNT; kind++) {
-        CHECK(seen[kind] > 0u);
+        CHECK(seen[kind] > 0u || kind == TERRAIN_HYDROLOGY_KIND_BASIN); /* no dry basin on this 16 km map */
     }
     const uint64_t columns_digest = hydro_digest(0xCBF29CE484222325ull, map, SIDE * SIDE * sizeof(map[0]));
     const terrain_density_box_t box = {

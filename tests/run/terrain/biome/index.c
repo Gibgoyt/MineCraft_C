@@ -81,7 +81,9 @@ static const uint64_t BIO_DIGEST_PIN = 0x5E9CB4D0FB38A5EBull;
 /* Plan 006 phase 04: snow, ice, sand and trees follow the climate: a column also carries its snowline, coldest month and
  * yearly rain, so its bytes moved and not its biome. Its old value 0x23D9C77E20CFE804. */
 /* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground. Its old value 0x393C1B15967EB4B5. */
-static const uint64_t BIO_COLUMNS_PIN = 0x44F89064B2F0DDDBull;
+/* Plan 007 phase 05: dry basins sink below the sea's level on this map, their columns land and dry (a byte that was padding).
+ * Its old value 0x44F89064B2F0DDDB. */
+static const uint64_t BIO_COLUMNS_PIN = 0x7252304069545F9Full;
 
 static uint64_t bio_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;
@@ -489,6 +491,7 @@ TEST(the_choice_never_leaves_the_family) {
         [TERRAIN_HYDROLOGY_KIND_LAKE] = BIOME_WHERE_LAND,
         [TERRAIN_HYDROLOGY_KIND_BEACH] = BIOME_WHERE_BEACH,
         [TERRAIN_HYDROLOGY_KIND_STONY_SHORE] = BIOME_WHERE_STONY_SHORE,
+        [TERRAIN_HYDROLOGY_KIND_BASIN] = BIOME_WHERE_LAND, /* plan 007 phase 05: a dry basin is land */
     };
     terrain_rng_t rng = terrain_rng_start(0xFA3117ull);
     uint64_t chosen[BIOME_COUNT] = {0u};
@@ -906,6 +909,9 @@ TEST(a_column_is_the_climate_on_the_lattice_and_what_hydrology_says_it_is) {
                     break;
                 case TERRAIN_HYDROLOGY_KIND_STONY_SHORE:
                     CHECK_EQ_U64(biome_defs[column.biome].where, BIOME_WHERE_STONY_SHORE);
+                    break;
+                case TERRAIN_HYDROLOGY_KIND_BASIN:
+                    CHECK_EQ_U64(biome_defs[column.biome].where, BIOME_WHERE_LAND);
                     break;
                 case TERRAIN_HYDROLOGY_KIND_COUNT:
                     CHECK(false);

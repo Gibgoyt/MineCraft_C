@@ -25,7 +25,7 @@ static_assert((uint32_t)BIOME_CELL == (uint32_t)TERRAIN_DENSITY_CELL_XY);
  * middle. Changing it changes every world. */
 static const float32_t BIOME_HEIGHT_SCALE = 1.0f32 / 128.0f32;
 
-/* Where each kind of column looks. A lake is land under water, and stays whatever land there would be. */
+/* Where each kind of column looks. A lake is land under water, and stays whatever land there would be; a dry basin is land. */
 static const uint8_t BIOME_WHERE_OF_KIND[TERRAIN_HYDROLOGY_KIND_COUNT] = {
     [TERRAIN_HYDROLOGY_KIND_LAND] = BIOME_WHERE_LAND,
     [TERRAIN_HYDROLOGY_KIND_OCEAN] = BIOME_WHERE_OCEAN,
@@ -34,6 +34,7 @@ static const uint8_t BIOME_WHERE_OF_KIND[TERRAIN_HYDROLOGY_KIND_COUNT] = {
     [TERRAIN_HYDROLOGY_KIND_LAKE] = BIOME_WHERE_LAND,
     [TERRAIN_HYDROLOGY_KIND_BEACH] = BIOME_WHERE_BEACH,
     [TERRAIN_HYDROLOGY_KIND_STONY_SHORE] = BIOME_WHERE_STONY_SHORE,
+    [TERRAIN_HYDROLOGY_KIND_BASIN] = BIOME_WHERE_LAND, /* dry land below the sea's level: plan 007 phase 05 */
 };
 
 void terrain_biome_init(terrain_biome_t **out, arena_t *arena, uint64_t seed, const terrain_fields_t *fields,
@@ -375,6 +376,7 @@ static void biome_tile(const terrain_biome_t *biome, const terrain_climate_sampl
                 .biome = (uint8_t)terrain_biome_choose(&inputs),
                 .caves = terrain_biome_caves_of(&inputs),
                 .family = inputs.family,
+                .dry = own->dry,
                 .snow_line_z = lattice_snow_line[at],
                 .t_cold_cc = lattice_cold[at],
                 .rain_mm_year = (uint16_t)(point.rain_mm_year < 0

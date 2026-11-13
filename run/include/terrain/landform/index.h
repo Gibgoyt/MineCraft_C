@@ -12,7 +12,7 @@
 
 enum : uint32_t {
     /* The noise fields one world's landform takes from the bank. */
-    TERRAIN_LANDFORM_NOISE_FIELDS = 6u,
+    TERRAIN_LANDFORM_NOISE_FIELDS = 7u,
     /* The landform's lattice: its nodes are at whole multiples of this, in x and y, lined up on the world. */
     TERRAIN_LANDFORM_CELL = 32u,
     /* The most columns one call of terrain_landform_uplift_points takes, and so the most a profile batch hands it. */
@@ -33,8 +33,9 @@ typedef struct terrain_landform_t {
     const terrain_noise_field_t *borrowed_rugged; /* 320: G, how sharp a region's mountains are: on the nodes */
     const terrain_noise_field_t *borrowed_knobs;  /* 328: K, where knobs stand: at each column */
     const terrain_noise_field_t *borrowed_peak;   /* 336: the ridged summit rock: at each column high on a range */
+    const terrain_noise_field_t *borrowed_basin;  /* 344: B, where dry basins sink below the sea: on the nodes */
 } terrain_landform_t;
-static_assert(sizeof(terrain_landform_t) == 344);
+static_assert(sizeof(terrain_landform_t) == 352);
 
 /* What the plateau comes to at a column. */
 typedef struct terrain_landform_shape_t {
@@ -54,19 +55,20 @@ static_assert(sizeof(terrain_landform_shape_t) == 32);
 void terrain_landform_deinit(terrain_landform_t *landform);
 
 /* The uplift U, spread to -1 to 1, at count lattice nodes (i, j), the node at (TERRAIN_LANDFORM_CELL * i,
- * TERRAIN_LANDFORM_CELL * j), read at that point moved by the edge warp; and the ruggedness G there, from 0 to 1, into
- * rugged. A pure function of the landform and the node. */
+ * TERRAIN_LANDFORM_CELL * j), read at that point moved by the edge warp; the ruggedness G there, from 0 to 1, into
+ * rugged; and the basin field B, spread to -1 to 1, into basin. A pure function of the landform and the node. */
 void terrain_landform_nodes(const terrain_landform_t *landform, const int32_t *is, const int32_t *js, uint32_t count,
-                            float32_t *uplift, float32_t *rugged);
+                            float32_t *uplift, float32_t *rugged, float32_t *basin);
 
 /* The uplift at count columns anywhere (up to TERRAIN_LANDFORM_BATCH_COLUMNS), each blended from the four nodes round it, x
  * first and then y, in float64_t, so a column's bits do not depend on which other columns came with it. A node is found
  * once per call however many columns share it. Must be finite, and within 2^35 blocks of 0. */
 void terrain_landform_uplift_points(const terrain_landform_t *landform, const float64_t *xs, const float64_t *ys,
                                     uint32_t count, float64_t *uplift);
-/* The same, and the ruggedness G blended the same way into rugged, from the same nodes. */
+/* The same, and the ruggedness G and the basin field B blended the same way into rugged and basin, from the same nodes.
+ * rugged and basin may each be nullptr. */
 void terrain_landform_lattice_points(const terrain_landform_t *landform, const float64_t *xs, const float64_t *ys,
-                                     uint32_t count, float64_t *uplift, float64_t *rugged);
+                                     uint32_t count, float64_t *uplift, float64_t *rugged, float64_t *basin);
 
 /* The knob field K, spread to -1 to 1, into knobs, and its second octave alone, spread to 0 to 1, into size, at count
  * columns anywhere (any number). For the density's knobs: see run/src/terrain/density/README.md. */

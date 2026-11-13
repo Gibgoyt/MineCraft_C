@@ -60,10 +60,10 @@ typedef struct bench_ground_t {
 static_assert(sizeof(bench_ground_t) == 24);
 
 static void bench_ground_fn(const void *borrowed_context, int32_t origin_x, int32_t origin_y, int32_t step,
-                            uint32_t count_x, uint32_t count_y, float32_t *heights) {
+                            uint32_t count_x, uint32_t count_y, float32_t *heights, uint8_t *dry) {
     bench_ground_t *const ground = (bench_ground_t *)(uintptr_t)borrowed_context;
     const int64_t started = time_now_ns();
-    terrain_height_estimate_area(ground->borrowed_terrain, origin_x, origin_y, step, count_x, count_y, heights);
+    terrain_height_estimate_area(ground->borrowed_terrain, origin_x, origin_y, step, count_x, count_y, heights, dry);
     atomic_fetch_add_explicit(&ground->ns, (uint64_t)(time_now_ns() - started), memory_order_relaxed);
     atomic_fetch_add_explicit(&ground->columns, (uint64_t)count_x * count_y, memory_order_relaxed);
 }
@@ -172,8 +172,8 @@ static int32_t bench_timings(climate_t *climate, const thread_topology_t *topolo
 }
 
 static void bench_terrain_ground(const void *borrowed_context, int32_t origin_x, int32_t origin_y, int32_t step,
-                                 uint32_t count_x, uint32_t count_y, float32_t *heights) {
-    terrain_height_estimate_area(borrowed_context, origin_x, origin_y, step, count_x, count_y, heights);
+                                 uint32_t count_x, uint32_t count_y, float32_t *heights, uint8_t *dry) {
+    terrain_height_estimate_area(borrowed_context, origin_x, origin_y, step, count_x, count_y, heights, dry);
 }
 
 /* ---- Phase 05: what each part of a tile costs ------------------------------------------------------------------------- */
@@ -191,7 +191,7 @@ static void bench_parts_tile(const climate_normals_t *normals, arena_t *arena, c
     int64_t at = time_now_ns();
     terrain_height_estimate_area(terrain, (tile_x - half) * CLIMATE_TILE_BLOCKS + CLIMATE_CELL_BLOCKS / 2,
                                  (tile_y - half) * CLIMATE_TILE_BLOCKS + CLIMATE_CELL_BLOCKS / 2, CLIMATE_CELL_BLOCKS,
-                                 (uint32_t)CLIMATE_WINDOW_CELLS, (uint32_t)CLIMATE_WINDOW_CELLS, heights);
+                                 (uint32_t)CLIMATE_WINDOW_CELLS, (uint32_t)CLIMATE_WINDOW_CELLS, heights, nullptr);
     int64_t next = time_now_ns();
     out->ns[0] = (float64_t)(next - at);
     at = next;
@@ -624,7 +624,8 @@ typedef struct bench_square_t {
 static_assert(sizeof(bench_square_t) == 16);
 
 static void bench_square_ground(const void *borrowed_context, int32_t origin_x, int32_t origin_y, int32_t step,
-                                uint32_t count_x, uint32_t count_y, float32_t *heights) {
+                                uint32_t count_x, uint32_t count_y, float32_t *heights, uint8_t *dry) {
+    (void)dry;
     const bench_square_t *const square = borrowed_context;
     for (uint32_t j = 0u; j < count_y; j++) {
         const int64_t y = (int64_t)origin_y + (int64_t)step * j;
@@ -640,7 +641,8 @@ static void bench_square_ground(const void *borrowed_context, int32_t origin_x, 
  * x = 0, a coast rising to the 500 plateau by 1000, the plateau to 10,000, a crest of 750 at 10,400, down to 250 at
  * 10,912, the escarpment face to 1 at 11,742, the coastal strip to 11,968, then the east sea. */
 static void bench_south_africa_ground(const void *borrowed_context, int32_t origin_x, int32_t origin_y, int32_t step,
-                                      uint32_t count_x, uint32_t count_y, float32_t *heights) {
+                                      uint32_t count_x, uint32_t count_y, float32_t *heights, uint8_t *dry) {
+    (void)dry;
     (void)borrowed_context;
     (void)origin_y;
     static const float32_t KNOT_X[7] = {0.0f32, 1000.0f32, 10000.0f32, 10400.0f32, 10912.0f32, 11742.0f32, 11968.0f32};
@@ -734,8 +736,8 @@ static const int32_t BENCH_SEASON_STEP = 64;              /* blocks a pixel: 102
 static const float64_t BENCH_SEASON_SEARCH = 100000.0f64; /* the view's middle within 100 km of spawn */
 
 static void bench_systems_ground(const void *borrowed_context, int32_t origin_x, int32_t origin_y, int32_t step,
-                                 uint32_t count_x, uint32_t count_y, float32_t *heights) {
-    terrain_height_estimate_area(borrowed_context, origin_x, origin_y, step, count_x, count_y, heights);
+                                 uint32_t count_x, uint32_t count_y, float32_t *heights, uint8_t *dry) {
+    terrain_height_estimate_area(borrowed_context, origin_x, origin_y, step, count_x, count_y, heights, dry);
 }
 
 static int32_t bench_compare_ms(const void *a, const void *b) {

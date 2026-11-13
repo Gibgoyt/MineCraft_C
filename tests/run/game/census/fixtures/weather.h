@@ -28,7 +28,8 @@ static const int32_t GW_Y = 6383;
 
 /* Land west of x = 0 rising 3 blocks in 100 toward the west from 20, the sea east of it: rivers run east to the coast. */
 [[maybe_unused]] static void gw_ground(const void *borrowed_context, int32_t origin_x, int32_t origin_y, int32_t step,
-                                       uint32_t count_x, uint32_t count_y, float32_t *heights) {
+                                       uint32_t count_x, uint32_t count_y, float32_t *heights, uint8_t *dry) {
+    (void)dry;
     (void)borrowed_context;
     (void)origin_y;
     for (uint32_t j = 0u; j < count_y; j++) {
@@ -104,10 +105,12 @@ static_assert(sizeof(gw_rig_t) == 48);
 }
 
 /* Generated land: every cell of the tiles from (tile_x0, tile_y0) to (tile_x1, tile_y1), both ends included. */
-[[maybe_unused]] static void gw_mark_tiles(gw_rig_t *rig, int32_t tile_x0, int32_t tile_y0, int32_t tile_x1, int32_t tile_y1) {
+[[maybe_unused]] static void gw_mark_tiles(gw_rig_t *rig, int32_t tile_x0, int32_t tile_y0, int32_t tile_x1,
+                                           int32_t tile_y1) {
     climate_week_store_t *const store = climate_week_store(rig->climate);
     for (int32_t y = tile_y0 * CLIMATE_TILE_BLOCKS; y < (tile_y1 + 1) * CLIMATE_TILE_BLOCKS; y += CLIMATE_CELL_BLOCKS) {
-        for (int32_t x = tile_x0 * CLIMATE_TILE_BLOCKS; x < (tile_x1 + 1) * CLIMATE_TILE_BLOCKS; x += CLIMATE_CELL_BLOCKS) {
+        for (int32_t x = tile_x0 * CLIMATE_TILE_BLOCKS; x < (tile_x1 + 1) * CLIMATE_TILE_BLOCKS;
+             x += CLIMATE_CELL_BLOCKS) {
             climate_week_store_mark(store, x, y);
         }
     }

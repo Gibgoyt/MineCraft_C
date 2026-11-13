@@ -1,6 +1,6 @@
 # run/src/terrain/landform
 
-**Purpose:** the land's large shapes, kilometres across, that the density stands its height on: plateaus in two tiers, their escarpments facing the sea, and their gentle back slopes inland (plan 007 phase 03); and the ruggedness that picks how sharp a region's mountains are, the knob field and the summit field (plan 007 phase 04). The large fields are read on a lattice of nodes 32 blocks apart and blended, so they cost about one octave a lattice column; the two fine ones at each column the density asks for.
+**Purpose:** the land's large shapes, kilometres across, that the density stands its height on: plateaus in two tiers, their escarpments facing the sea, and their gentle back slopes inland (plan 007 phase 03); the ruggedness that picks how sharp a region's mountains are, the knob field and the summit field (plan 007 phase 04); and the basin field, where dry basins sink below the sea's level (plan 007 phase 05). The large fields are read on a lattice of nodes 32 blocks apart and blended, so they cost about one octave a lattice column; the two fine ones at each column the density asks for.
 **Tier:** Arena: its one struct comes from an `arena_t *` its parent gives it. Sampling allocates nothing.
 **Owns:** nothing. Its struct is in the arena `terrain_init` lends, and its fields are in the bank.
 **Lifetime:** World: a landform is made for one seed.
@@ -8,8 +8,8 @@
 **Public functions:**
 
 - `terrain_landform_init`, `terrain_landform_deinit`: a pair.
-- `terrain_landform_nodes`: the uplift and the ruggedness at lattice nodes.
-- `terrain_landform_uplift_points`: the uplift at columns anywhere, blended from the nodes round each; `terrain_landform_lattice_points` the same and the ruggedness `G`, blended the same way.
+- `terrain_landform_nodes`: the uplift, the ruggedness and the basin field at lattice nodes.
+- `terrain_landform_uplift_points`: the uplift at columns anywhere, blended from the nodes round each; `terrain_landform_lattice_points` the same and the ruggedness `G` and the basin field `B`, blended the same way.
 - `terrain_landform_knobs_points`: the knob field `K` and a knob's size `sigma` at columns anywhere.
 - `terrain_landform_peak_points`: the summit field at columns anywhere.
 - `terrain_landform_shape_from`: from the blended uplift and broad continentalness to the plateau and its face, as plain arithmetic.
@@ -52,8 +52,9 @@ So a column climbing out of the coastal plain meets a pediment at about 5:1, tie
 | `landform/rugged` | 3072 | 2 | 0.5 | 0.39 | each node, where it is: `G = 0.5 + 0.5 * spread`, from 0 to 1 |
 | `relief/knobs` | 640 (master 3.7: 320; see the density README) | 2 | 0.5 | 0.39 | each land column: `K = spread`; `sigma = 0.5 + 0.5 * spread(second octave alone, 0.17)` |
 | `landform/peak` | 48 | 2 | 0.5 | 0.39 | each column high on a range (envelope over 0.6): `spread`, whose ridged `1 - |n|` the density uses |
+| `landform/basin` | 8192 | 2 | 0.5 | 0.39 | each node, where it is: `B = spread`. Dry basins sink where it, less the density's gates, is over 0.86 (plan 007 phase 05: the density README's "Dry basins") |
 
-A limit is about twice the field's measured standard deviation: `tests/run/terrain/landform/` prints them. A node costs 9 octaves. `sigma` is the knob field's second octave, what is left when `terrain_noise_sample_points_split` takes the first away, so it costs no more noise. What the density makes of `G`, `K`, `sigma` and the summit field is in `run/src/terrain/density/README.md`.
+A limit is about twice the field's measured standard deviation: `tests/run/terrain/landform/` prints them. A node costs 11 octaves. `sigma` is the knob field's second octave, what is left when `terrain_noise_sample_points_split` takes the first away, so it costs no more noise. What the density makes of `G`, `K`, `sigma` and the summit field is in `run/src/terrain/density/README.md`.
 
 ## The lattice
 

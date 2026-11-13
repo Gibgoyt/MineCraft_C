@@ -98,6 +98,11 @@ static const density_knot_t DENSITY_KNOTS_HILL_SEA[] = {
     {-0.51f64, 0.0f64},
     {1.0f64, 0.0f64},
 };
+/* A dry basin's sinking, as a share of the most, against how far into the basin a column is: concave, a flat floor and steep
+ * sides. Plan 007 phase 05. */
+static const density_knot_t DENSITY_KNOTS_BASIN[] = {
+    {0.0f64, 0.0f64}, {0.15f64, 0.35f64}, {0.35f64, 0.80f64}, {0.6f64, 0.97f64}, {1.0f64, 1.0f64},
+};
 static const density_knot_t DENSITY_KNOTS_HILL_RELIEF[] = {
     {-1.0f64, 1.0f64},
     {0.0f64, 0.5f64},
@@ -126,6 +131,36 @@ static const float64_t DENSITY_HILL_BLOCKS_EXTRA = 24.0f64;
 static const float64_t DENSITY_HILL_BLOCKS_SEA = 6.0f64;
 static const float64_t DENSITY_SOFTNESS_MIN = 4.0f64;
 static const float64_t DENSITY_SOFTNESS_EXTRA = 22.0f64;
+/* Dry basins (plan 007 phase 05; README "Dry basins"). The ring field is B less DENSITY_BASIN_COAST_DEPTH where the land is
+ * not inland (smoothstep of broad continentalness from INLAND_FROM to INLAND_TO); the basin field is that less
+ * DENSITY_BASIN_PLATEAU_DEPTH times the plateau's share of DENSITY_BASIN_PLATEAU_SHARE (65 blocks), held to 1. A column
+ * is dry where the basin field passes DENSITY_BASIN_FROM, and sinks by (base + DENSITY_BASIN_FLOOR) times the basin
+ * spline of how far past it is, so no floor is below -DENSITY_BASIN_FLOOR. Where the ring field is at least FROM - RING
+ * and the basin field at most FROM, the ground is raised to softness + DENSITY_BASIN_RIM_BLOCKS: the rim. Each edge of
+ * that is blended over DENSITY_BASIN_BLEND of its field. Rivers fade out over the ring field from FROM - RIVERS_FROM to
+ * FROM - RIVERS_TO, before the rim starts. */
+static const float64_t DENSITY_BASIN_FROM = 0.86f64;
+static const float64_t DENSITY_BASIN_RING = 0.08f64;
+static const float64_t DENSITY_BASIN_BLEND = 0.02f64;
+static const float64_t DENSITY_BASIN_RIVERS_FROM = 0.16f64;
+static const float64_t DENSITY_BASIN_RIVERS_TO = 0.10f64;
+static const float64_t DENSITY_BASIN_COAST_DEPTH = 0.4f64;
+static const float64_t DENSITY_BASIN_INLAND_FROM = -0.1f64;
+static const float64_t DENSITY_BASIN_INLAND_TO = 0.2f64;
+static const float64_t DENSITY_BASIN_PLATEAU_DEPTH = 0.4f64;
+static const float64_t DENSITY_BASIN_PLATEAU_SHARE = 0.1f64;
+/* The ring field also loses DENSITY_BASIN_UPLIFT_DEPTH times smoothstep(U; UPLIFT_FROM, UPLIFT_TO): basins sink where the land
+ * is least lifted, far from any plateau. It is what makes them few: B alone passes its threshold in a dozen or more places a
+ * 64 km map, whatever the threshold, as its cell is 8192 (Issues found). */
+static const float64_t DENSITY_BASIN_UPLIFT_DEPTH = 0.4f64;
+static const float64_t DENSITY_BASIN_UPLIFT_FROM = -0.95f64;
+static const float64_t DENSITY_BASIN_UPLIFT_TO = -0.85f64;
+static const float64_t DENSITY_BASIN_FLOOR = 100.0f64;
+/* The inland gate reads broad continentalness at nodes this many blocks apart, blended between, not at the column: broad
+ * continentalness's finest octave has a cell of 768, and read at the column it broke a basin into pieces round every sea
+ * pocket and changed the ring field faster than the rim can follow. */
+static const int64_t DENSITY_BASIN_INLAND_CELL = 2048;
+static const float64_t DENSITY_BASIN_RIM_BLOCKS = 3.0f64;
 
 /* What each field looks like. */
 static const terrain_noise_shape_t DENSITY_SHAPE_HILLS = {
@@ -300,6 +335,13 @@ float64_t terrain_density_knob_shape_at(const terrain_density_t *density, float6
     return (1.0f64 - rugged) * (1.0f64 - below * below) + rugged * terrain_density_spline_at(&density->koppie, t);
 }
 
+/* 3t^2 - 2t^3 of t = (x - from) / (to - from), held to 0 and 1: exactly 0 and 1 at and past the ends. */
+static float64_t density_smoothstep(float64_t x, float64_t from, float64_t to) {
+    float64_t t = (x - from) / (to - from);
+    t = t > 1.0f64 ? 1.0f64 : (t < 0.0f64 ? 0.0f64 : t);
+    return t * t * (3.0f64 - 2.0f64 * t);
+}
+
 terrain_density_profile_t terrain_density_profile_from(const terrain_density_t *density,
                                                        const terrain_density_inputs_t *inputs) {
     const float64_t continentalness = (float64_t)inputs->continentalness;
@@ -340,17 +382,55 @@ terrain_density_profile_t terrain_density_profile_from(const terrain_density_t *
                                            (0.5f64 + 0.5f64 * rugged)) +
         terrain_density_spline_at(&density->hill_sea, continentalness) * DENSITY_HILL_BLOCKS_SEA;
 
+    /* A dry basin: inland, off the plateaus, where B is high. Its floor is flat, as the hills fade with its sinking. */
+    const float64_t inland =
+        density_smoothstep((float64_t)inputs->inland, DENSITY_BASIN_INLAND_FROM, DENSITY_BASIN_INLAND_TO);
+    const float64_t ring =
+        (float64_t)inputs->basin - DENSITY_BASIN_COAST_DEPTH * (1.0f64 - inland) -
+        DENSITY_BASIN_UPLIFT_DEPTH *
+            density_smoothstep((float64_t)inputs->uplift, DENSITY_BASIN_UPLIFT_FROM, DENSITY_BASIN_UPLIFT_TO);
+    const float64_t plateau_share = (float64_t)inputs->plateau / DENSITY_BASIN_PLATEAU_SHARE;
+    const float64_t field = ring - DENSITY_BASIN_PLATEAU_DEPTH * (plateau_share < 1.0f64 ? plateau_share : 1.0f64);
+    float64_t sink = 0.0f64;
+    if (field > DENSITY_BASIN_FROM) {
+        sink = terrain_density_spline_at(&density->basin, (field - DENSITY_BASIN_FROM) / (1.0f64 - DENSITY_BASIN_FROM));
+    }
+    /* A sea pocket in a basin, its base below -100, is raised to the floor as the rest is lowered to it. */
+    const float64_t depression = (base + DENSITY_BASIN_FLOOR) * sink;
+
     /* A range stands on the plateau and rises at most to DENSITY_RANGE_TOP above the base, whatever the plateau. */
-    const float64_t height = base + lift +
-                             (DENSITY_RANGE_TOP - lift) * terrain_density_shape_at(density, envelope, rugged) + peak +
-                             knob + hill_blocks * (float64_t)inputs->hills;
+    float64_t height = base - depression + lift +
+                       (DENSITY_RANGE_TOP - lift) * terrain_density_shape_at(density, envelope, rugged) + peak + knob +
+                       hill_blocks * (float64_t)inputs->hills * (1.0f64 - sink);
     /* Faces and rugged high ground are rough for the 3D noise: its overhangs go to escarpments and ranges, not plains. */
     float64_t rough = DENSITY_FACE_SOFTNESS * (float64_t)inputs->face + DENSITY_RUGGED_SOFTNESS * rugged * envelope;
     rough = rough > 1.0f64 ? 1.0f64 : rough;
+    const float32_t softness =
+        (float32_t)(DENSITY_SOFTNESS_MIN + DENSITY_SOFTNESS_EXTRA * (rough + body - rough * body));
+    /* The rim: every column round a basin, and any in it that the plateau keeps from sinking, stands at least
+     * DENSITY_BASIN_RIM_BLOCKS over its softness, so its ground is whole from the sea's level up. A comparison, no libm. */
+    const float64_t into = density_smoothstep(ring, DENSITY_BASIN_FROM - DENSITY_BASIN_RING - DENSITY_BASIN_BLEND,
+                                              DENSITY_BASIN_FROM - DENSITY_BASIN_RING);
+    const float64_t out =
+        1.0f64 - density_smoothstep(field, DENSITY_BASIN_FROM, DENSITY_BASIN_FROM + DENSITY_BASIN_BLEND);
+    const float64_t rim = into < out ? into : out;
+    const float64_t rim_top = (float64_t)softness + DENSITY_BASIN_RIM_BLOCKS;
+    if (rim > 0.0f64 && height < rim_top) {
+        height = rim >= 1.0f64 ? rim_top : height + rim * (rim_top - height);
+    }
+    /* No floor below -100, blended in as the rim blends out, so there is no step. */
+    const float64_t floor_in = 1.0f64 - out;
+    if (floor_in > 0.0f64 && height < -DENSITY_BASIN_FLOOR) {
+        height = floor_in >= 1.0f64 ? -DENSITY_BASIN_FLOOR : height + floor_in * (-DENSITY_BASIN_FLOOR - height);
+    }
     return (terrain_density_profile_t){
         .height = (float32_t)height,
-        .softness = (float32_t)(DENSITY_SOFTNESS_MIN + DENSITY_SOFTNESS_EXTRA * (rough + body - rough * body)),
-        .lift = (float32_t)lift,
+        .softness = softness,
+        .lift = (float32_t)(lift - depression),
+        .rivers = (float32_t)(1.0f64 - density_smoothstep(ring, DENSITY_BASIN_FROM - DENSITY_BASIN_RIVERS_FROM,
+                                                          DENSITY_BASIN_FROM - DENSITY_BASIN_RIVERS_TO)),
+        .ring = (float32_t)ring,
+        .dry = field > DENSITY_BASIN_FROM ? 1u : 0u,
     };
 }
 
@@ -377,6 +457,7 @@ bool terrain_density_init(terrain_density_t **out, arena_t *arena, terrain_noise
     DENSITY_BUILD(massif, DENSITY_KNOTS_MASSIF);
     DENSITY_BUILD(crest, DENSITY_KNOTS_CREST);
     DENSITY_BUILD(range_land, DENSITY_KNOTS_RANGE_LAND);
+    DENSITY_BUILD(basin, DENSITY_KNOTS_BASIN);
 #undef DENSITY_BUILD
     /* One at a time, and all of them, so that the log names the field the bank refused. The order moves nothing: a field
      * comes from its name. */
@@ -410,16 +491,72 @@ static float32_t density_spread(float32_t raw, float64_t limit) {
 [[gnu::noinline]]
 static void density_plateau_batch(const terrain_density_t *density, const float64_t *xs, const float64_t *ys,
                                   uint32_t count, const float32_t *broad, float32_t *plateau, float32_t *face,
-                                  float32_t *rugged) {
+                                  float32_t *rugged, float32_t *basin, float32_t *uplift_out) {
     float64_t uplift[DENSITY_BATCH_COLUMNS];
     float64_t rugged_wide[DENSITY_BATCH_COLUMNS];
-    terrain_landform_lattice_points(density->borrowed_landform, xs, ys, count, uplift, rugged_wide);
+    float64_t basin_wide[DENSITY_BATCH_COLUMNS];
+    terrain_landform_lattice_points(density->borrowed_landform, xs, ys, count, uplift, rugged_wide, basin_wide);
     for (uint32_t i = 0u; i < count; i++) {
         const terrain_landform_shape_t shape =
             terrain_landform_shape_from(density->borrowed_landform, uplift[i], (float64_t)broad[i]);
         plateau[i] = (float32_t)shape.plateau;
         face[i] = (float32_t)shape.face;
         rugged[i] = (float32_t)rugged_wide[i];
+        uplift_out[i] = (float32_t)uplift[i];
+        basin[i] = (float32_t)basin_wide[i];
+    }
+}
+
+/* Broad continentalness at count columns, blended from the nodes DENSITY_BASIN_INLAND_CELL apart round each, x first and then
+ * y, in float64, as the landform's lattice blends: a pure function of the column. Each node is sampled once a call. */
+[[gnu::noinline]]
+static void density_inland_batch(const terrain_density_t *density, const float64_t *xs, const float64_t *ys,
+                                 uint32_t count, float32_t *inland) {
+    enum : uint32_t { NODES_MAX = 4u * DENSITY_BATCH_COLUMNS };
+    int32_t node_i[NODES_MAX];
+    int32_t node_j[NODES_MAX];
+    float32_t node_broad[NODES_MAX];
+    float64_t piece_x[DENSITY_BATCH_COLUMNS];
+    float64_t piece_y[DENSITY_BATCH_COLUMNS];
+    uint16_t corners[DENSITY_BATCH_COLUMNS][4];
+    uint32_t nodes = 0u;
+    const float64_t cell = (float64_t)DENSITY_BASIN_INLAND_CELL;
+    for (uint32_t c = 0u; c < count; c++) {
+        const int32_t i = (int32_t)floor(xs[c] / cell);
+        const int32_t j = (int32_t)floor(ys[c] / cell);
+        for (uint32_t k = 0u; k < 4u; k++) {
+            const int32_t ni = i + (int32_t)(k & 1u);
+            const int32_t nj = j + (int32_t)(k >> 1u);
+            uint32_t n = 0u;
+            while (n < nodes && (node_i[n] != ni || node_j[n] != nj)) {
+                n++;
+            }
+            if (n == nodes) {
+                node_i[n] = ni;
+                node_j[n] = nj;
+                nodes++;
+            }
+            corners[c][k] = (uint16_t)n;
+        }
+    }
+    for (uint32_t done = 0u; done < nodes; done += DENSITY_BATCH_COLUMNS) {
+        const uint32_t left = nodes - done;
+        const uint32_t piece = left < DENSITY_BATCH_COLUMNS ? left : DENSITY_BATCH_COLUMNS;
+        for (uint32_t n = 0u; n < piece; n++) {
+            piece_x[n] = (float64_t)((int64_t)node_i[done + n] * DENSITY_BASIN_INLAND_CELL);
+            piece_y[n] = (float64_t)((int64_t)node_j[done + n] * DENSITY_BASIN_INLAND_CELL);
+        }
+        const terrain_fields_arrays_t part = {.broad = node_broad + done};
+        terrain_fields_sample_points(density->borrowed_fields, piece_x, piece_y, piece, &part);
+    }
+    for (uint32_t c = 0u; c < count; c++) {
+        const float64_t t_x = xs[c] / cell - floor(xs[c] / cell);
+        const float64_t t_y = ys[c] / cell - floor(ys[c] / cell);
+        const float64_t v00 = (float64_t)node_broad[corners[c][0]], v10 = (float64_t)node_broad[corners[c][1]];
+        const float64_t v01 = (float64_t)node_broad[corners[c][2]], v11 = (float64_t)node_broad[corners[c][3]];
+        const float64_t south = v00 + t_x * (v10 - v00);
+        const float64_t north = v01 + t_x * (v11 - v01);
+        inland[c] = (float32_t)(south + t_y * (north - south));
     }
 }
 
@@ -473,9 +610,9 @@ static void density_fine_batch(const terrain_density_t *density, const float64_t
     }
 }
 
-/* Up to DENSITY_BATCH_COLUMNS columns. lift may be nullptr. */
+/* Up to DENSITY_BATCH_COLUMNS columns, into out's arrays from done on. */
 static void density_profile_batch(const terrain_density_t *density, const float64_t *xs, const float64_t *ys,
-                                  uint32_t count, float32_t *heights, float32_t *softness, float32_t *lift) {
+                                  uint32_t count, const terrain_density_profile_arrays_t *out, uint64_t done) {
     float32_t continentalness[DENSITY_BATCH_COLUMNS];
     float32_t erosion[DENSITY_BATCH_COLUMNS];
     float32_t ridges[DENSITY_BATCH_COLUMNS];
@@ -487,6 +624,9 @@ static void density_profile_batch(const terrain_density_t *density, const float6
     float32_t plateau[DENSITY_BATCH_COLUMNS];
     float32_t face[DENSITY_BATCH_COLUMNS];
     float32_t rugged[DENSITY_BATCH_COLUMNS];
+    float32_t basin[DENSITY_BATCH_COLUMNS];
+    float32_t inland[DENSITY_BATCH_COLUMNS];
+    float32_t uplift[DENSITY_BATCH_COLUMNS];
     float32_t knobs[DENSITY_BATCH_COLUMNS];
     float32_t knob_size[DENSITY_BATCH_COLUMNS];
     float32_t peak[DENSITY_BATCH_COLUMNS];
@@ -505,7 +645,8 @@ static void density_profile_batch(const terrain_density_t *density, const float6
     terrain_fields_sample_points(density->borrowed_fields, xs, ys, count, &fields);
     terrain_noise_sample_points(density->borrowed_hills, xs, ys, zs, count, hills);
     terrain_noise_sample_points(density->borrowed_range, xs, ys, zs, count, range);
-    density_plateau_batch(density, xs, ys, count, broad, plateau, face, rugged);
+    density_plateau_batch(density, xs, ys, count, broad, plateau, face, rugged, basin, uplift);
+    density_inland_batch(density, xs, ys, count, inland);
 
     /* Massif and crest only multiply a range, so outside one they are not worth their octaves, and any value gives the same ground. */
     uint32_t reached = 0u;
@@ -549,18 +690,30 @@ static void density_profile_batch(const terrain_density_t *density, const float6
             .rugged = rugged[i],
             .knobs = knobs[i],
             .knob_size = knob_size[i],
+            .basin = basin[i],
+            .inland = inland[i],
+            .uplift = uplift[i],
         };
         const terrain_density_profile_t profile = terrain_density_profile_from(density, &inputs);
-        heights[i] = profile.height;
-        softness[i] = profile.softness;
-        if (lift != nullptr) {
-            lift[i] = profile.lift;
+        out->heights[done + i] = profile.height;
+        out->softness[done + i] = profile.softness;
+        if (out->lift != nullptr) {
+            out->lift[done + i] = profile.lift;
+        }
+        if (out->rivers != nullptr) {
+            out->rivers[done + i] = profile.rivers;
+        }
+        if (out->dry != nullptr) {
+            out->dry[done + i] = profile.dry;
+        }
+        if (out->ring != nullptr) {
+            out->ring[done + i] = profile.ring;
         }
     }
 }
 
-void terrain_density_profile_area_lift(const terrain_density_t *density, const terrain_fields_area_t *area,
-                                       float32_t *heights, float32_t *softness, float32_t *lift) {
+void terrain_density_profile_area_arrays(const terrain_density_t *density, const terrain_fields_area_t *area,
+                                         const terrain_density_profile_arrays_t *out) {
     float64_t xs[DENSITY_BATCH_COLUMNS];
     float64_t ys[DENSITY_BATCH_COLUMNS];
     uint32_t held = 0u;
@@ -572,17 +725,21 @@ void terrain_density_profile_area_lift(const terrain_density_t *density, const t
             ys[held] = y;
             held++;
             if (held == DENSITY_BATCH_COLUMNS) {
-                density_profile_batch(density, xs, ys, held, heights + done, softness + done,
-                                      lift != nullptr ? lift + done : nullptr);
+                density_profile_batch(density, xs, ys, held, out, done);
                 done += held;
                 held = 0u;
             }
         }
     }
     if (held > 0u) {
-        density_profile_batch(density, xs, ys, held, heights + done, softness + done,
-                              lift != nullptr ? lift + done : nullptr);
+        density_profile_batch(density, xs, ys, held, out, done);
     }
+}
+
+void terrain_density_profile_area_lift(const terrain_density_t *density, const terrain_fields_area_t *area,
+                                       float32_t *heights, float32_t *softness, float32_t *lift) {
+    const terrain_density_profile_arrays_t out = {.heights = heights, .softness = softness, .lift = lift};
+    terrain_density_profile_area_arrays(density, area, &out);
 }
 
 void terrain_density_profile_area(const terrain_density_t *density, const terrain_fields_area_t *area,
@@ -590,14 +747,19 @@ void terrain_density_profile_area(const terrain_density_t *density, const terrai
     terrain_density_profile_area_lift(density, area, heights, softness, nullptr);
 }
 
-void terrain_density_profile_points_lift(const terrain_density_t *density, const float64_t *xs, const float64_t *ys,
-                                         uint64_t count, float32_t *heights, float32_t *softness, float32_t *lift) {
+void terrain_density_profile_points_arrays(const terrain_density_t *density, const float64_t *xs, const float64_t *ys,
+                                           uint64_t count, const terrain_density_profile_arrays_t *out) {
     for (uint64_t done = 0u; done < count; done += DENSITY_BATCH_COLUMNS) {
         const uint64_t left = count - done;
         const uint32_t batch = left < DENSITY_BATCH_COLUMNS ? (uint32_t)left : DENSITY_BATCH_COLUMNS;
-        density_profile_batch(density, xs + done, ys + done, batch, heights + done, softness + done,
-                              lift != nullptr ? lift + done : nullptr);
+        density_profile_batch(density, xs + done, ys + done, batch, out, done);
     }
+}
+
+void terrain_density_profile_points_lift(const terrain_density_t *density, const float64_t *xs, const float64_t *ys,
+                                         uint64_t count, float32_t *heights, float32_t *softness, float32_t *lift) {
+    const terrain_density_profile_arrays_t out = {.heights = heights, .softness = softness, .lift = lift};
+    terrain_density_profile_points_arrays(density, xs, ys, count, &out);
 }
 
 void terrain_density_profile_points(const terrain_density_t *density, const float64_t *xs, const float64_t *ys,
@@ -614,9 +776,11 @@ typedef struct density_lattice_t {
     float64_t xs[DENSITY_TILE_LATTICE];       /* 648 */
     float64_t ys[DENSITY_TILE_LATTICE];       /* 1296 */
     uint32_t count;                           /* 1944 */
-    uint8_t _pad0[4];                         /* 1948 */
+    uint8_t dry[DENSITY_TILE_LATTICE];        /* 1948: the profile's */
+    uint8_t any_dry;                          /* 2029: any of dry is 1 */
+    uint8_t _pad0[2];                         /* 2030 */
 } density_lattice_t;
-static_assert(sizeof(density_lattice_t) == 1952);
+static_assert(sizeof(density_lattice_t) == 2032);
 
 /* What the 3D noise is allowed to do at a height. All of it within the softness of the column's height, so that the ground
  * stays within it, and none of it from twice that, so that nothing has to be sampled there. Between, it fades, to leave no
@@ -667,7 +831,8 @@ static void density_plane(const terrain_density_t *density, const density_lattic
 
 /* ---- Blocks ------------------------------------------------------------------------------------------------------ */
 
-static uint16_t density_block_of(int32_t z, bool solid) {
+/* dry: the voxel is in a dry basin, so what is open at or below the sea's level is air. */
+static uint16_t density_block_of(int32_t z, bool solid, bool dry) {
     if (z < MC_WORLD_Z_MIN || z > MC_WORLD_Z_MAX) {
         return BLOCK_ID_AIR;
     }
@@ -677,7 +842,7 @@ static uint16_t density_block_of(int32_t z, bool solid) {
     if (solid) {
         return BLOCK_ID_STONE;
     }
-    return z <= MC_WORLD_Z_SEA ? BLOCK_ID_WATER : BLOCK_ID_AIR;
+    return z <= MC_WORLD_Z_SEA && !dry ? BLOCK_ID_WATER : BLOCK_ID_AIR;
 }
 
 /* ---- A box ------------------------------------------------------------------------------------------------------- */
@@ -713,27 +878,46 @@ static void density_lattice_fill(const terrain_density_t *density, const density
             lattice->ys[i] = (float64_t)((span->cell_y + (int64_t)iy) * (int64_t)TERRAIN_DENSITY_CELL_XY);
         }
     }
-    density_profile_batch(density, lattice->xs, lattice->ys, lattice->count, lattice->heights, lattice->softness,
-                          nullptr);
+    const terrain_density_profile_arrays_t out = {
+        .heights = lattice->heights, .softness = lattice->softness, .dry = lattice->dry};
+    density_profile_batch(density, lattice->xs, lattice->ys, lattice->count, &out, 0u);
+    lattice->any_dry = 0u;
+    for (uint32_t i = 0u; i < lattice->count; i++) {
+        lattice->any_dry |= lattice->dry[i];
+    }
+}
+
+/* Whether the voxel column (x, y) of a tile is dry: any of the four lattice columns round it is. The same rule as
+ * hydrology's, so the two agree on every voxel. */
+static bool density_voxel_dry(const density_lattice_t *lattice, const density_span_t *span, int64_t x, int64_t y) {
+    if (lattice->any_dry == 0u) {
+        return false;
+    }
+    const uint32_t at = (uint32_t)((x >> DENSITY_CELL_XY_SHIFT) - span->cell_x) +
+                        span->side_x * (uint32_t)((y >> DENSITY_CELL_XY_SHIFT) - span->cell_y);
+    return (lattice->dry[at] | lattice->dry[at + 1u] | lattice->dry[at + span->side_x] |
+            lattice->dry[at + span->side_x + 1u]) != 0u;
 }
 
 /* One z's voxels of a tile, when the whole of it is sure of its sign. */
-static void density_write_sure(const density_output_t *output, const density_span_t *span, int64_t z, bool solid) {
+static void density_write_sure(const density_output_t *output, const density_lattice_t *lattice,
+                               const density_span_t *span, int64_t z, bool solid) {
     const terrain_density_box_t *const box = output->borrowed_box;
-    const uint16_t block = density_block_of((int32_t)z, solid);
+    const uint16_t block = density_block_of((int32_t)z, solid, false);
+    const bool mixed = block == BLOCK_ID_WATER && lattice->any_dry != 0u;
     const uint64_t z_at = (uint64_t)(z - box->origin_z) * box->count_y;
     for (int64_t y = span->y_first; y <= span->y_last; y++) {
         uint16_t *const row = output->blocks + (z_at + (uint64_t)(y - box->origin_y)) * box->count_x;
         for (int64_t x = span->x_first; x <= span->x_last; x++) {
-            row[x - box->origin_x] = block;
+            row[x - box->origin_x] = mixed && density_voxel_dry(lattice, span, x, y) ? BLOCK_ID_AIR : block;
         }
     }
 }
 
 /* One z's voxels of a tile, each from the four lattice columns round it, already interpolated to this z in plane. Always x
  * first, then y, whichever box asked, so the bits cannot depend on the box. */
-static void density_write_voxels(const density_output_t *output, const density_span_t *span, int64_t z,
-                                 const float32_t *plane) {
+static void density_write_voxels(const density_output_t *output, const density_lattice_t *lattice,
+                                 const density_span_t *span, int64_t z, const float32_t *plane) {
     const terrain_density_box_t *const box = output->borrowed_box;
     const uint64_t z_at = (uint64_t)(z - box->origin_z) * box->count_y;
     const float32_t per_block = 1.0f32 / (float32_t)TERRAIN_DENSITY_CELL_XY;
@@ -752,7 +936,9 @@ static void density_write_voxels(const density_output_t *output, const density_s
             if (output->values != nullptr) {
                 output->values[row_at + (uint64_t)(x - box->origin_x)] = value;
             } else {
-                output->blocks[row_at + (uint64_t)(x - box->origin_x)] = density_block_of((int32_t)z, value > 0.0f32);
+                const bool solid = value > 0.0f32;
+                const bool dry = !solid && z <= (int64_t)MC_WORLD_Z_SEA && density_voxel_dry(lattice, span, x, y);
+                output->blocks[row_at + (uint64_t)(x - box->origin_x)] = density_block_of((int32_t)z, solid, dry);
             }
         }
     }
@@ -797,14 +983,14 @@ static void density_tile(const terrain_density_t *density, const density_output_
         }
         for (int64_t z = from; z <= to; z++) {
             if (sure_solid || sure_open) {
-                density_write_sure(output, span, z, sure_solid);
+                density_write_sure(output, &lattice, span, z, sure_solid);
                 continue;
             }
             const float32_t t_z = (float32_t)(z - level_z) * per_block;
             for (uint32_t i = 0u; i < lattice.count; i++) {
                 interpolated[i] = below[i] + t_z * (above[i] - below[i]);
             }
-            density_write_voxels(output, span, z, interpolated);
+            density_write_voxels(output, &lattice, span, z, interpolated);
         }
 
         float32_t *const swap = below;

@@ -15,6 +15,7 @@
 - `terrain_density_profile_area`: where the ground is, without its blocks, for hydrology and biomes.
 - `terrain_density_profile_points`: the same at columns anywhere, through the very batch a box's lattice uses, so a whole-number column gets a box's bits. A wrapper over that batch only, which moves no number; the height estimate in `run/src/terrain/` is built on it.
 - `terrain_density_profile_area_lift`, `terrain_density_profile_points_lift`: the same two, and each column's lift as well, for what reads relief rather than height: hydrology carries it to biomes, and the estimate blends it.
+- `terrain_density_profile_area_arrays`, `terrain_density_profile_points_arrays`: the same two with every value of the profile, through a `terrain_density_profile_arrays_t` whose arrays may each be `nullptr` but the first two: also `rivers` and `dry`, for hydrology and the climate (plan 007 phase 05).
 - `terrain_density_box_voxels`, `terrain_density_sample_box`, `terrain_density_fill_box`: the bulk sampling.
 - `terrain_density_at`, `terrain_density_block_at`: one voxel.
 
@@ -42,7 +43,8 @@ overhang below `z = 0` is water here.
 ## How high the ground is
 
 A column has a **profile**: its `height` in blocks, its `softness`, how far either way the 3D noise may move the ground, and
-its `lift`, how much of the height is the plateau under it (plan 007 phase 03). With `c` continentalness, `b` broad
+its `lift`, how much of the height is the plateau under it less a dry basin's sinking (plan 007 phases 03 and 05); and, from
+plan 007 phase 05, `rivers`, how much of a river hydrology may cut there, and `dry`, whether it is a dry basin (below). With `c` continentalness, `b` broad
 continentalness, `e` erosion, `r` ridges, `hills`, `range`, `massif` and `crest` 2D fields of this stage, all from -1 to 1;
 `plateau`, `face` and the ruggedness `G`, each from 0 to 1, and the knob field `K` (-1 to 1), its size `sigma` (0 to 1) and the
 summit field `n` (-1 to 1), from `run/src/terrain/landform/`:
@@ -60,8 +62,11 @@ summit field `n` (-1 to 1), from `run/src/terrain/landform/`:
     S_K(t)      = (1 - G) * (1 - (1 - t)^2) + G * koppie(t)              a dome, or a flat-topped koppie
     hill        = land * valley_at * (6 + 24 * hill_relief(e) * (0.5 + 0.5 * G)) + hill_sea(c) * 6
 
-    height      = base + lift + (1000 - lift) * S_G(m) + peak + knob + hill * hills
+    sink        = basin((F - 0.86) / 0.14) where F > 0.86, else 0   a dry basin: below
+    depression  = (base + 100) * sink
+    height      = base - depression + lift + (1000 - lift) * S_G(m) + peak + knob + hill * hills * (1 - sink)
     softness    = 4 + 22 * (h + body - h * body),   h = min(1, 0.5 * face + 0.3 * G * m)
+    lift        = P - depression                                           what the profile hands on as lift
 
 A range stands on the plateau and rises at most to 1000 above the base, whatever the plateau.
 
@@ -106,6 +111,49 @@ A knob does not add to the top, as `1 - body` takes it away where a range stands
 650: `100 + 650 + 90 + 30 = 870`. `TERRAIN_DENSITY_HEIGHT_MAX` stays 1190, the sum before plan 007, so the world's top, the
 stone limit and the room for trees do not move. The limit is as high as it can be, as `terrain/index.h` holds `1190 + 26 + 8`
 plus the tallest tree to the world's top.
+
+## Dry basins
+
+Plan 007 phase 05 (master 3.8): some inland lowlands sink below the sea's level and stay dry, plan 004's Dead Sea. From the
+landform's basin field `B` (cell 8192, 2 octaves, on its lattice, -1 to 1), its uplift `U`, the plateau `P`, and `b2`, broad
+continentalness read at nodes 2048 blocks apart and blended between (bilinear, x then y, in float64):
+
+    R  = B - 0.4 * (1 - smoothstep(b2; -0.1, 0.2)) - 0.4 * smoothstep(U; -0.95, -0.85)    the ring field
+    F  = R - 0.4 * min(1, P / 65)                                                          the basin field
+    dry    = F > 0.86
+    sink   = basin((F - 0.86) / 0.14), 0 where F <= 0.86      the floor: base - (base + 100) * sink, -100 at the deepest
+    rim    = min(smoothstep(R; 0.76, 0.78), 1 - smoothstep(F; 0.86, 0.88))
+    height = height + rim * (softness + 3 - height)         where rim > 0 and height < softness + 3; at rim 1, softness + 3
+    height = height + (1 - out) * (-100 - height)            where height < -100, out the rim's second term: no floor deeper
+    rivers = 1 - smoothstep(R; 0.70, 0.76)
+
+So a basin sinks where `B` is high, the land is inland, least lifted (`U` near its lowest, far from any plateau) and off the
+plateaus. The threshold 0.86 and the uplift gate were tuned on `bench_landform`'s 8 seeds (plan 007 phase 05, Issues found):
+`B` alone passes any threshold in a dozen or more places a 64 km map, as its cell is 8192, and the uplift gate is what makes
+basins as few as master section 4 asks.
+
+`basin` is concave, a flat floor and steep sides: `0: 0, 0.15: 0.35, 0.35: 0.80, 0.6: 0.97, 1: 1`. Hills fade with the sinking,
+so a basin's floor is flat; knobs stay, as buttes in a basin. The gates are subtracted from `B`, not multiplied into the
+depression as the master writes it, so that the edge of what is dry is a contour of one smooth field, `F`, and the ring round it
+a band of another, `R`, that always lies between it and anything else.
+
+**The rim.** Every column with `R` at least 0.78 and `F` at most 0.86, that is every column of the ring round a basin and any
+in a basin that a plateau keeps up, stands at least `softness + 3`. Its ground is whole from below the sea's level to 3 over
+it, as nothing is missing below `height - softness` (below). It blends in over `R` from 0.76 to 0.78, so there is no wall
+where it meets low ground, and out over `F` from 0.86 to 0.88, inside the basin, so the height has no step at either edge.
+`R` changes by far less than 0.08 across a lattice cell (`B`'s cell is 8192, `U`'s 24576, and `b2` is blended over 2048:
+read at the column, `b`'s 768-block octave broke basins into pieces and changed `R` faster than the rim could follow), so
+**every wet lattice column beside a dry one, corners included, is a rim column**.
+
+**What a voxel holds.** Below the sea's level an open voxel is water, except where any of the four lattice columns round it is
+dry: there it is air. Where a cell has a dry corner, every voxel of it at or below the sea's level is air if open; on the lattice
+line it shares with an all-wet cell, its voxels are blended from wet corners alone, which are rim columns, so they are stone at
+or below the sea's level. So no voxel of water ever touches a basin's air. `tests/run/terrain/landform/`'s
+`a_basin_s_rim_is_closed_dry_land` checks the rim on every basin of 8 seeds, and `tests/run/terrain/hydrology/` checks the
+real blocks across rims.
+
+`rivers` is 0 from `R` = 0.76, before the rim starts, so hydrology never cuts a rim. The floor stops at -100, so the height
+limits stand: the lowest ground is still the sea bed's.
 
 ## How a range is made
 

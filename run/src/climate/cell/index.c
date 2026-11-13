@@ -71,7 +71,8 @@ void climate_cell_build_tile(arena_t *arena, climate_ground_fn_t ground, const v
     float32_t *const samples =
         arena_alloc_array(arena, samples_side * samples_side, sizeof(float32_t), CLIMATE_ALIGN_BYTES);
 
-    /* 2. Water is ground at or below sea level, MC_WORLD_Z_SEA = 0, at the cell's centre; deep water is a sea floor's. */
+    /* 2. Water is ground at or below sea level, MC_WORLD_Z_SEA = 0, at the cell's centre; deep water is a sea floor's. A dry
+     * basin's cell is land: the mask holds its ground at CLIMATE_MASK_DRY_Z at the least (plan 007 phase 05). */
     for (uint32_t i = 0u; i < count; i++) {
         const float32_t h = window_heights[i];
         water[i] = h <= CLIMATE_SEA_FLOOR_BLOCKS ? CLIMATE_SEA_WATER_DEEP
@@ -105,7 +106,7 @@ void climate_cell_build_tile(arena_t *arena, climate_ground_fn_t ground, const v
     const int64_t south = (int64_t)tile_y * CLIMATE_TILE_BLOCKS;
     ground(ground_context, (int32_t)(west + CLIMATE_GROUND_SAMPLE_STEP / 2),
            (int32_t)(south + CLIMATE_GROUND_SAMPLE_STEP / 2), CLIMATE_GROUND_SAMPLE_STEP, samples_side, samples_side,
-           samples);
+           samples, nullptr);
 
     /* 7. The cells, in a fixed order, so every sum adds in the same order on any worker. */
     memset(cells, 0, (uint64_t)CLIMATE_TILE_CELL_COUNT * sizeof(climate_cell_t));

@@ -89,7 +89,7 @@ static void air_direct_tile(air_direct_t *direct, climate_ground_fn_t ground, co
     const int32_t half = CLIMATE_WINDOW_TILES / 2;
     ground(context, (tile_x - half) * CLIMATE_TILE_BLOCKS + CLIMATE_CELL_BLOCKS / 2,
            (tile_y - half) * CLIMATE_TILE_BLOCKS + CLIMATE_CELL_BLOCKS / 2, CLIMATE_CELL_BLOCKS,
-           (uint32_t)CLIMATE_WINDOW_CELLS, (uint32_t)CLIMATE_WINDOW_CELLS, direct->heights);
+           (uint32_t)CLIMATE_WINDOW_CELLS, (uint32_t)CLIMATE_WINDOW_CELLS, direct->heights, nullptr);
     climate_window_t window;
     climate_cell_build_tile(&direct->arena, ground, context, tile_x, tile_y, direct->heights, cells, &window);
     direct->trace->steer_off = steer ? 0u : 1u;
@@ -97,8 +97,8 @@ static void air_direct_tile(air_direct_t *direct, climate_ground_fn_t ground, co
 }
 
 static void air_terrain_ground(const void *borrowed_context, int32_t origin_x, int32_t origin_y, int32_t step,
-                               uint32_t count_x, uint32_t count_y, float32_t *heights) {
-    terrain_height_estimate_area(borrowed_context, origin_x, origin_y, step, count_x, count_y, heights);
+                               uint32_t count_x, uint32_t count_y, float32_t *heights, uint8_t *dry) {
+    terrain_height_estimate_area(borrowed_context, origin_x, origin_y, step, count_x, count_y, heights, dry);
 }
 
 static float32_t air_length(const float32_t v[2]) {

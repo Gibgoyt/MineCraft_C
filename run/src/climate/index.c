@@ -83,8 +83,8 @@ void climate_deinit(climate_t *climate) {
 }
 
 static void climate_terrain_ground(const void *borrowed_context, int32_t origin_x, int32_t origin_y, int32_t step,
-                                   uint32_t count_x, uint32_t count_y, float32_t *heights) {
-    terrain_height_estimate_area(borrowed_context, origin_x, origin_y, step, count_x, count_y, heights);
+                                   uint32_t count_x, uint32_t count_y, float32_t *heights, uint8_t *dry) {
+    terrain_height_estimate_area(borrowed_context, origin_x, origin_y, step, count_x, count_y, heights, dry);
 }
 
 bool climate_open(climate_t *climate, const terrain_t *terrain) {
@@ -833,8 +833,8 @@ float32_t climate_mask_point(const climate_t *climate, float64_t x, float64_t y)
     float32_t height = 0.0f32;
     const int64_t centre_x = cell_x * CLIMATE_CELL_BLOCKS + CLIMATE_CELL_BLOCKS / 2;
     const int64_t centre_y = cell_y * CLIMATE_CELL_BLOCKS + CLIMATE_CELL_BLOCKS / 2;
-    state->ground(state->borrowed_ground_context, (int32_t)centre_x, (int32_t)centre_y, CLIMATE_CELL_BLOCKS, 1u, 1u,
-                  &height);
+    climate_mask_ground(state->ground, state->borrowed_ground_context, (int32_t)centre_x, (int32_t)centre_y, 1u, 1u,
+                        &height);
     return height;
 }
 

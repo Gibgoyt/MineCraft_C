@@ -123,9 +123,11 @@ enum : uint8_t {
 };
 
 /* Heights in blocks at count_x by count_y columns, step apart, x fastest. Must be a pure function of its arguments, and
- * safe on any thread. The climate's one way of seeing the ground. */
+ * safe on any thread. The climate's one way of seeing the ground. When dry is not nullptr it holds as many bytes, all 0 when
+ * called, and a ground may set any of them to 1: that column is a dry basin, land however low (plan 007 phase 05). A ground
+ * that has no dry basins leaves them as they are. */
 typedef void (*climate_ground_fn_t)(const void *borrowed_context, int32_t origin_x, int32_t origin_y, int32_t step,
-                                    uint32_t count_x, uint32_t count_y, float32_t *heights);
+                                    uint32_t count_x, uint32_t count_y, float32_t *heights, uint8_t *dry);
 
 /* What phase 03's fields blend to at a block: warped, bilinear, latitude exact. */
 typedef struct climate_sample_t {

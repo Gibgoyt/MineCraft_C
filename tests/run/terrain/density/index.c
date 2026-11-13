@@ -186,6 +186,13 @@ TEST(splines_go_through_their_knots_and_never_past_them) {
     terrain_deinit(&terrain);
 }
 
+/* 3t^2 - 2t^3 of t = (x - from) / (to - from), held to 0 and 1. */
+static float64_t density_smooth(float64_t x, float64_t from, float64_t to) {
+    float64_t t = (x - from) / (to - from);
+    t = t > 1.0f64 ? 1.0f64 : (t < 0.0f64 ? 0.0f64 : t);
+    return t * t * (3.0f64 - 2.0f64 * t);
+}
+
 /* The README's formula, typed out again. */
 static terrain_density_profile_t density_expected_profile(const terrain_density_t *density,
                                                           const terrain_density_inputs_t *in) {
@@ -223,11 +230,84 @@ static terrain_density_profile_t density_expected_profile(const terrain_density_
             (6.0f64 + 24.0f64 * terrain_density_spline_at(&density->hill_relief, e) * (0.5f64 + 0.5f64 * g)) +
         terrain_density_spline_at(&density->hill_sea, c) * 6.0f64;
     const float64_t rough = fmin(1.0f64, 0.5f64 * (float64_t)in->face + 0.3f64 * g * m);
+    /* Plan 007 phase 05's dry basins: the README's "Dry basins". */
+    const float64_t ring = (float64_t)in->basin -
+                           0.4f64 * (1.0f64 - density_smooth((float64_t)in->inland, -0.1f64, 0.2f64)) -
+                           0.4f64 * density_smooth((float64_t)in->uplift, -0.95f64, -0.85f64);
+    const float64_t field = ring - 0.4f64 * fmin(1.0f64, (float64_t)in->plateau / 0.1f64);
+    const float64_t sink =
+        field > 0.86f64 ? terrain_density_spline_at(&density->basin, (field - 0.86f64) / (1.0f64 - 0.86f64)) : 0.0f64;
+    const float64_t depression = (base + 100.0f64) * sink;
+    float64_t height = base - depression + lift + (1000.0f64 - lift) * shape + peak + knob +
+                       hill * (float64_t)in->hills * (1.0f64 - sink);
+    const float32_t softness = (float32_t)(4.0f64 + 22.0f64 * (rough + body - rough * body));
+    const float64_t out = 1.0f64 - density_smooth(field, 0.86f64, 0.88f64);
+    const float64_t rim = fmin(density_smooth(ring, 0.76f64, 0.78f64), out);
+    const float64_t top = (float64_t)softness + 3.0f64;
+    if (rim > 0.0f64 && height < top) {
+        height = rim >= 1.0f64 ? top : height + rim * (top - height);
+    }
+    if (1.0f64 - out > 0.0f64 && height < -100.0f64) {
+        height = 1.0f64 - out >= 1.0f64 ? -100.0f64 : height + (1.0f64 - out) * (-100.0f64 - height);
+    }
     return (terrain_density_profile_t){
-        .height = (float32_t)(base + lift + (1000.0f64 - lift) * shape + peak + knob + hill * (float64_t)in->hills),
-        .softness = (float32_t)(4.0f64 + 22.0f64 * (rough + body - rough * body)),
-        .lift = (float32_t)lift,
+        .height = (float32_t)height,
+        .softness = softness,
+        .lift = (float32_t)(lift - depression),
+        .rivers = (float32_t)(1.0f64 - density_smooth(ring, 0.70f64, 0.76f64)),
+        .ring = (float32_t)ring,
+        .dry = field > 0.86f64 ? 1u : 0u,
     };
+}
+
+/* Plan 007 phase 05: a dry basin's column against the README, over B, the inland and uplift gates, the plateau and the land
+ * under it; never below -100, dry only past 0.86, and the rim at least softness + 3. */
+TEST(a_dry_basin_s_column_is_the_readme_s) {
+    terrain_t terrain;
+    REQUIRE(terrain_init(&terrain, DENSITY_WORLD));
+    const terrain_density_t *const density = terrain.borrowed_density;
+    uint64_t dry = 0u, rim = 0u, compared = 0u;
+    float32_t lowest = 1.0e9f32;
+    for (uint32_t ib = 0u; ib <= 40u; ib++) {
+        for (uint32_t ii = 0u; ii <= 6u; ii++) {
+            for (uint32_t iu = 0u; iu <= 6u; iu++) {
+                for (uint32_t ip = 0u; ip <= 4u; ip++) {
+                    for (uint32_t ic = 0u; ic <= 8u; ic++) {
+                        const terrain_density_inputs_t inputs = {
+                            .continentalness = (float32_t)ic / 8.0f32 * 2.0f32 - 1.0f32,
+                            .ridges = 1.0f32,
+                            .hills = -1.0f32,
+                            .range = -1.0f32,
+                            .massif = -1.0f32,
+                            .crest = -1.0f32,
+                            .broad = -1.0f32,
+                            .plateau = (float32_t)ip * 0.025f32,
+                            .basin = (float32_t)ib / 40.0f32 * 2.0f32 - 1.0f32,
+                            .inland = (float32_t)ii / 6.0f32 * 0.6f32 - 0.3f32,
+                            .uplift = -1.0f32 + (float32_t)iu * 0.04f32,
+                        };
+                        const terrain_density_profile_t got = terrain_density_profile_from(density, &inputs);
+                        const terrain_density_profile_t want = density_expected_profile(density, &inputs);
+                        CHECK(memcmp(&got, &want, sizeof(got)) == 0);
+                        compared++;
+                        dry += got.dry;
+                        lowest = fminf(lowest, got.height);
+                        if (got.dry == 0u && got.ring >= 0.78f32) {
+                            rim++;
+                            CHECK(got.height >= got.softness + 3.0f32 - 1.0e-3f32);
+                            CHECK(got.rivers == 0.0f32);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    printf("%" PRIu64 " columns compared: %" PRIu64 " dry, %" PRIu64 " on a rim; lowest %.2f\n", compared, dry, rim,
+           (libc_double_t)lowest);
+    CHECK(dry > 0u);
+    CHECK(rim > 0u);
+    CHECK(lowest >= -100.0f32 || lowest >= (float32_t)TERRAIN_DENSITY_HEIGHT_MIN);
+    terrain_deinit(&terrain);
 }
 
 /* Every corner of what the noise can give, and a grid through the middle: there is no climate that can reach past a limit. */
@@ -314,6 +394,7 @@ TEST(every_column_has_bedrock_at_the_bottom_stone_above_it_and_no_ground_near_th
                 .count_z = layers,
             };
             terrain_density_fill_box(terrain.borrowed_density, &box, blocks);
+            const bool dry = terrain_height_estimate_profile(&terrain, box.origin_x, box.origin_y).dry != 0u;
             columns++;
             int32_t column_top_water = INT32_MIN;
             bool holds_water = false;
@@ -336,7 +417,8 @@ TEST(every_column_has_bedrock_at_the_bottom_stone_above_it_and_no_ground_near_th
                 if (z > MC_WORLD_Z_SEA) {
                     CHECK(block != BLOCK_ID_WATER);
                 } else if (z >= MC_WORLD_Z_MIN) {
-                    CHECK(block != BLOCK_ID_AIR);
+                    /* Open below the sea's level is water, but air in a dry basin (plan 007 phase 05). */
+                    CHECK(block != (dry ? BLOCK_ID_WATER : BLOCK_ID_AIR));
                 }
                 if (block == BLOCK_ID_STONE) {
                     highest_solid = z > highest_solid ? z : highest_solid;
@@ -495,7 +577,19 @@ static float32_t density_expected_corner(const terrain_t *terrain, int32_t x, in
     const float64_t at_x = (float64_t)x, at_y = (float64_t)y;
     float64_t uplift = 0.0f64;
     float64_t rugged = 0.0f64;
-    terrain_landform_lattice_points(terrain->borrowed_landform, &at_x, &at_y, 1u, &uplift, &rugged);
+    float64_t basin = 0.0f64;
+    terrain_landform_lattice_points(terrain->borrowed_landform, &at_x, &at_y, 1u, &uplift, &rugged, &basin);
+    /* The basin's inland gate: broad continentalness at the four nodes 2048 apart round the column, blended x then y. */
+    const float64_t node_x = floor(at_x / 2048.0f64), node_y = floor(at_y / 2048.0f64);
+    float64_t node[4];
+    for (uint32_t k = 0u; k < 4u; k++) {
+        terrain_fields_point_t at_node;
+        terrain_fields_at(terrain->borrowed_fields, (int32_t)((node_x + (float64_t)(k & 1u)) * 2048.0f64),
+                          (int32_t)((node_y + (float64_t)(k >> 1u)) * 2048.0f64), &at_node);
+        node[k] = (float64_t)at_node.broad;
+    }
+    const float64_t t_x = at_x / 2048.0f64 - node_x, t_y = at_y / 2048.0f64 - node_y;
+    const float64_t south = node[0] + t_x * (node[1] - node[0]), north = node[2] + t_x * (node[3] - node[2]);
     const terrain_landform_shape_t shape =
         terrain_landform_shape_from(terrain->borrowed_landform, uplift, (float64_t)fields.broad);
     /* So are the knob and summit fields. Read everywhere: where the density skips them, they multiply 0. */
@@ -517,6 +611,9 @@ static float32_t density_expected_corner(const terrain_t *terrain, int32_t x, in
         .massif = density_expected_spread(density_scalar_field(density->borrowed_massif, x, y, 0.0f64), 0.39f64),
         .crest = density_expected_spread(density_scalar_field(density->borrowed_crest, x, y, 0.0f64), 0.35f64),
         .broad = fields.broad,
+        .basin = (float32_t)basin,
+        .inland = (float32_t)(south + t_y * (north - south)),
+        .uplift = (float32_t)uplift,
     };
     const terrain_density_profile_t profile = density_expected_profile(density, &inputs);
     const float32_t depth = (profile.height - (float32_t)z) / profile.softness;
@@ -1751,7 +1848,7 @@ TEST(the_height_estimate_is_the_profile_on_the_lattice) {
     };
     terrain_density_profile_area(terrain.borrowed_density, &area, profile_heights, profile_softness);
     terrain_height_estimate_area(&terrain, area.origin_x, area.origin_y, LATTICE_STEP, LATTICE_SIDE, LATTICE_SIDE,
-                                 area_heights);
+                                 area_heights, nullptr);
     uint64_t same = 0u;
     for (uint32_t j = 0u; j < LATTICE_SIDE; j++) {
         for (uint32_t i = 0u; i < LATTICE_SIDE; i++) {

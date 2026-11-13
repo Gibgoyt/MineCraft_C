@@ -170,6 +170,10 @@ static terrain_hydrology_kind_t hydrology_kind_of(const terrain_hydrology_inputs
                                                   float32_t river) {
     const float32_t sea = (float32_t)MC_WORLD_Z_SEA;
     const float32_t sand_top = HYDROLOGY_SAND_TOP_MIN + 1.5f32 * (inputs->shore + 1.0f32);
+    /* A dry basin holds no water: its ground below the sea's level is land all the same. */
+    if (inputs->dry != 0u) {
+        return ground < sea ? TERRAIN_HYDROLOGY_KIND_BASIN : TERRAIN_HYDROLOGY_KIND_LAND;
+    }
     if (inputs->height >= sea && ground <= sea) {
         return TERRAIN_HYDROLOGY_KIND_RIVER;
     }
@@ -202,8 +206,9 @@ static float32_t hydrology_river_fade(float32_t value, float32_t whole, float32_
 terrain_hydrology_column_t terrain_hydrology_column_from(const terrain_hydrology_inputs_t *inputs) {
     const float32_t wide = (inputs->width + 1.0f32) * 0.5f32;
     const float32_t near = inputs->weirdness < 0.0f32 ? -inputs->weirdness : inputs->weirdness;
+    /* rivers is 0 on a dry basin's rim and inside it, so a river stops there as it stops at high ground. */
     const float32_t reach =
-        hydrology_river_fade(inputs->continentalness, HYDROLOGY_RIVER_WHOLE_C, HYDROLOGY_RIVER_GONE_C);
+        hydrology_river_fade(inputs->continentalness, HYDROLOGY_RIVER_WHOLE_C, HYDROLOGY_RIVER_GONE_C) * inputs->rivers;
     const float32_t depth =
         reach * hydrology_river_fade(inputs->height, HYDROLOGY_RIVER_WHOLE_HEIGHT, HYDROLOGY_RIVER_GONE_HEIGHT);
     const float32_t bank = HYDROLOGY_RIVER_BANK * reach;
@@ -234,6 +239,7 @@ terrain_hydrology_column_t terrain_hydrology_column_from(const terrain_hydrology
         .shore = inputs->shore,
         .lift = inputs->lift,
         .kind = hydrology_kind_of(inputs, ground, river),
+        .dry = inputs->dry,
     };
 }
 
@@ -253,8 +259,11 @@ typedef struct hydrology_lattice_t {
     float32_t shore[HYDROLOGY_LATTICE];           /* 1004 */
     float32_t ground[HYDROLOGY_LATTICE];          /* 1200: for how steep a cell is */
     float32_t lift[HYDROLOGY_LATTICE];            /* 1396: carried to biomes, read by no rule here */
+    float32_t rivers[HYDROLOGY_LATTICE];          /* 1592: the profile's */
+    uint8_t dry[HYDROLOGY_LATTICE];               /* 1788: the profile's */
+    uint8_t _pad0[3];                             /* 1837 */
 } hydrology_lattice_t;
-static_assert(sizeof(hydrology_lattice_t) == 1592);
+static_assert(sizeof(hydrology_lattice_t) == 1840);
 
 /* Columns from one tile, both ends included. */
 typedef struct hydrology_span_t {
@@ -288,8 +297,14 @@ static void hydrology_lattice_fill(const terrain_hydrology_t *hydrology, const h
         .continentalness = lattice->continentalness,
         .weirdness = lattice->weirdness,
     };
-    terrain_density_profile_area_lift(hydrology->borrowed_density, &area, lattice->heights, lattice->softness,
-                                      lattice->lift);
+    const terrain_density_profile_arrays_t profile = {
+        .heights = lattice->heights,
+        .softness = lattice->softness,
+        .lift = lattice->lift,
+        .rivers = lattice->rivers,
+        .dry = lattice->dry,
+    };
+    terrain_density_profile_area_arrays(hydrology->borrowed_density, &area, &profile);
     terrain_fields_sample_area(hydrology->borrowed_fields, &area, &fields);
 
     float64_t xs[HYDROLOGY_LATTICE];
@@ -316,6 +331,8 @@ static void hydrology_lattice_fill(const terrain_hydrology_t *hydrology, const h
             .width = lattice->width[i],
             .shore = lattice->shore[i],
             .lift = lattice->lift[i],
+            .rivers = lattice->rivers[i],
+            .dry = lattice->dry[i],
         };
         const terrain_hydrology_column_t column = terrain_hydrology_column_from(&inputs);
         lattice->ground[i] = column.ground;
@@ -362,6 +379,10 @@ static terrain_hydrology_column_t hydrology_column_in(const hydrology_lattice_t 
         .shore = hydrology_bilinear(lattice->shore, at, side, t_x, t_y),
         .steepness = steepest * per_block,
         .lift = hydrology_bilinear(lattice->lift, at, side, t_x, t_y),
+        .rivers = hydrology_bilinear(lattice->rivers, at, side, t_x, t_y),
+        /* Dry if any of the four corners is, as the density's voxels are. */
+        .dry = (uint8_t)(lattice->dry[at] | lattice->dry[at + 1u] | lattice->dry[at + side] |
+                         lattice->dry[at + side + 1u]),
     };
     return terrain_hydrology_column_from(&inputs);
 }
@@ -458,6 +479,7 @@ static uint16_t hydrology_material(const terrain_hydrology_column_t *column, int
     case TERRAIN_HYDROLOGY_KIND_STONY_SHORE:
         return wet && depth < HYDROLOGY_THIN_DEPTH ? BLOCK_ID_GRAVEL : BLOCK_ID_STONE;
     case TERRAIN_HYDROLOGY_KIND_LAND:
+    case TERRAIN_HYDROLOGY_KIND_BASIN:
     case TERRAIN_HYDROLOGY_KIND_COUNT:
         break;
     }
@@ -544,7 +566,7 @@ static void hydrology_walk_down(const hydrology_layers_t *layers, const hydrolog
                 const uint32_t c = ix + width * iy;
                 uint16_t block = row[ix];
                 if (block == BLOCK_ID_STONE && z_float > columns[c].carve_top) {
-                    block = z <= (int64_t)MC_WORLD_Z_SEA ? BLOCK_ID_WATER : BLOCK_ID_AIR;
+                    block = z <= (int64_t)MC_WORLD_Z_SEA && columns[c].dry == 0u ? BLOCK_ID_WATER : BLOCK_ID_AIR;
                     row[ix] = block;
                 }
                 if (block == BLOCK_ID_AIR || block == BLOCK_ID_WATER) {
@@ -600,7 +622,10 @@ static void hydrology_fill_tile(const terrain_hydrology_t *hydrology, const terr
     if (box_top + 1 >= reach.open_from) {
         walk_top = reach.open_from - 1;
         memset(walk.depth, 0, sizeof(walk.depth));
-        memset(walk.wet, walk_top + 1 <= (int64_t)MC_WORLD_Z_SEA ? 1 : 0, sizeof(walk.wet));
+        const bool sea = walk_top + 1 <= (int64_t)MC_WORLD_Z_SEA;
+        for (uint32_t c = 0u; c < width * height; c++) {
+            walk.wet[c] = sea && columns[c].dry == 0u ? 1u : 0u;
+        }
     } else if (box_top + full <= reach.solid_to) {
         memset(walk.depth, (int32_t)HYDROLOGY_DEPTH_FULL, sizeof(walk.depth));
         memset(walk.wet, 0, sizeof(walk.wet));
@@ -812,17 +837,31 @@ static uint16_t hydrology_aquifer_block(const hydrology_around_t *around, int64_
 
 /* ---- The flood ---------------------------------------------------------------------------------------------------- */
 
+/* What the sea's rule says of an opened voxel on a column, at or below the sea's level. */
+enum : uint8_t {
+    HYDROLOGY_SEA_WATER = 0u, /* water */
+    HYDROLOGY_SEA_DRY = 1u,   /* air: a dry basin */
+    HYDROLOGY_SEA_WALL = 2u,  /* stone: a column beside one whose rule differs */
+};
+
 /* What an opened voxel holds. See the README's table. band_here is where the near-surface rule starts on this column, and
- * band_nearby the lowest it starts on the four beside it. */
+ * band_nearby the lowest it starts on the four beside it. sea_rule is what the sea's rule gives here at or below the sea's
+ * level. */
 static uint16_t hydrology_opened_block(const terrain_hydrology_t *hydrology, hydrology_around_t *around, int64_t x,
-                                       int64_t y, int64_t z, float32_t band_here, float32_t band_nearby) {
+                                       int64_t y, int64_t z, float32_t band_here, float32_t band_nearby,
+                                       uint8_t sea_rule) {
     const float32_t z_float = (float32_t)z;
     const int64_t sea = (int64_t)MC_WORLD_Z_SEA;
     if (z <= (int64_t)TERRAIN_HYDROLOGY_LAVA_TOP) {
         return BLOCK_ID_LAVA;
     }
     if (z_float >= band_here) {
-        return z <= sea ? BLOCK_ID_WATER : BLOCK_ID_AIR;
+        if (z > sea) {
+            return BLOCK_ID_AIR;
+        }
+        return sea_rule == HYDROLOGY_SEA_WATER ? BLOCK_ID_WATER
+               : sea_rule == HYDROLOGY_SEA_DRY ? BLOCK_ID_AIR
+                                               : BLOCK_ID_STONE;
     }
     const int64_t cell_x = x >> HYDROLOGY_AQUIFER_SHIFT;
     const int64_t cell_y = y >> HYDROLOGY_AQUIFER_SHIFT;
@@ -877,12 +916,14 @@ static void hydrology_flood_tile(const terrain_hydrology_t *hydrology, const ter
     hydrology_lattice_fill(hydrology, span, 1, &lattice);
 
     float32_t bands[HYDROLOGY_BANDS];
+    uint8_t drys[HYDROLOGY_BANDS];
     const uint32_t band_side = width + 2u;
     for (uint32_t iy = 0u; iy < height + 2u; iy++) {
         for (uint32_t ix = 0u; ix < band_side; ix++) {
             const terrain_hydrology_column_t column =
                 hydrology_column_in(&lattice, span->x_first + (int64_t)ix - 1, span->y_first + (int64_t)iy - 1);
             bands[ix + band_side * iy] = column.ground - column.softness - (float32_t)TERRAIN_HYDROLOGY_SURFACE_BAND;
+            drys[ix + band_side * iy] = column.dry;
         }
     }
 
@@ -905,8 +946,15 @@ static void hydrology_flood_tile(const terrain_hydrology_t *hydrology, const ter
                 nearby = bands[b + 1u] < nearby ? bands[b + 1u] : nearby;
                 nearby = bands[b - band_side] < nearby ? bands[b - band_side] : nearby;
                 nearby = bands[b + band_side] < nearby ? bands[b + band_side] : nearby;
+                /* Beside a column whose sea's rule differs, water on one side and air on the other: stone between. */
+                const uint8_t dry = drys[b];
+                const bool wall = drys[b - 1u] != dry || drys[b + 1u] != dry || drys[b - band_side] != dry ||
+                                  drys[b + band_side] != dry;
+                const uint8_t sea_rule = wall        ? HYDROLOGY_SEA_WALL
+                                         : dry != 0u ? HYDROLOGY_SEA_DRY
+                                                     : HYDROLOGY_SEA_WATER;
                 blocks[at] = hydrology_opened_block(hydrology, &around, span->x_first + (int64_t)ix,
-                                                    span->y_first + (int64_t)iy, z, bands[b], nearby);
+                                                    span->y_first + (int64_t)iy, z, bands[b], nearby, sea_rule);
             }
         }
     }

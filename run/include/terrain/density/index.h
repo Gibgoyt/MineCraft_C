@@ -71,24 +71,29 @@ typedef struct terrain_density_t {
     terrain_density_spline_t crest;               /* 2960: nearness to a crest to the share of the range's height */
     terrain_density_spline_t range_land;          /* 3256: broad continentalness to how much range the land allows */
     terrain_density_spline_t wetland;             /* 3552: erosion to how far a valley's floor sinks */
-    const terrain_fields_t *borrowed_fields;      /* 3848 */
-    const terrain_noise_field_t *borrowed_hills;  /* 3856 */
-    const terrain_noise_field_t *borrowed_detail; /* 3864: the one field that changes with height */
-    const terrain_noise_field_t *borrowed_range;  /* 3872 */
-    const terrain_noise_field_t *borrowed_massif; /* 3880 */
-    const terrain_noise_field_t *borrowed_crest;  /* 3888 */
-    const struct terrain_landform_t *borrowed_landform; /* 3896: plateaus, ruggedness, knobs and summits */
+    terrain_density_spline_t basin;               /* 3848: how far into a dry basin to its share of the full sinking */
+    const terrain_fields_t *borrowed_fields;      /* 4144 */
+    const terrain_noise_field_t *borrowed_hills;  /* 4152 */
+    const terrain_noise_field_t *borrowed_detail; /* 4160: the one field that changes with height */
+    const terrain_noise_field_t *borrowed_range;  /* 4168 */
+    const terrain_noise_field_t *borrowed_massif; /* 4176 */
+    const terrain_noise_field_t *borrowed_crest;  /* 4184 */
+    const struct terrain_landform_t *borrowed_landform; /* 4192: plateaus, ruggedness, knobs, summits and basins */
 } terrain_density_t;
-static_assert(sizeof(terrain_density_t) == 3904);
+static_assert(sizeof(terrain_density_t) == 4200);
 
 /* What a column's ground is. */
 typedef struct terrain_density_profile_t {
     float32_t height;   /* 0: in blocks, where the ground would be with no 3D noise */
     float32_t softness; /* 4: in blocks: the 3D noise can move the ground this far either way */
-    float32_t lift;     /* 8: in blocks: how much of height is the plateau under it. Biomes read height less this */
-    uint8_t _pad0[4];   /* 12 */
+    float32_t lift; /* 8: in blocks: the plateau under it less a dry basin's sinking. Biomes read height less this */
+    float32_t
+        rivers;     /* 12: from 0 to 1, how much of a river hydrology may cut here: 0 on a dry basin's rim and in it */
+    float32_t ring; /* 16: the ring field R of the README's "Dry basins": the rim is where it is 0.72 or more */
+    uint8_t dry;    /* 20: 1 in a dry basin: what is open at or below the sea's level there is air, not water */
+    uint8_t _pad0[3]; /* 21 */
 } terrain_density_profile_t;
-static_assert(sizeof(terrain_density_profile_t) == 16);
+static_assert(sizeof(terrain_density_profile_t) == 24);
 
 /* The noise a profile takes that is not climate, each already spread out to -1 to 1. */
 typedef struct terrain_density_inputs_t {
@@ -106,8 +111,24 @@ typedef struct terrain_density_inputs_t {
     float32_t rugged;    /* 44: G, from 0 to 1, how sharp the region's mountains are: terrain/landform's */
     float32_t knobs;     /* 48: K, from -1 to 1: a knob stands where it is over 0.55. 0 in the sea */
     float32_t knob_size; /* 52: from 0 to 1, how tall a knob here is. 0 in the sea */
+    float32_t basin;     /* 56: B, from -1 to 1: a dry basin sinks where it is high, inland and off the plateaus */
+    float32_t inland;    /* 60: broad continentalness blended from nodes 2048 blocks apart: what keeps basins inland */
+    float32_t uplift;    /* 64: U, from -1 to 1, terrain/landform's: basins sink only where the land is not lifted */
+    uint8_t _pad0[4];    /* 68 */
 } terrain_density_inputs_t;
-static_assert(sizeof(terrain_density_inputs_t) == 56);
+static_assert(sizeof(terrain_density_inputs_t) == 72);
+
+/* Where a profile's values go, each array holding one value a column. heights and softness are always written; the others
+ * only when they are not nullptr. */
+typedef struct terrain_density_profile_arrays_t {
+    float32_t *heights;  /* 0 */
+    float32_t *softness; /* 8 */
+    float32_t *lift;     /* 16 */
+    float32_t *rivers;   /* 24 */
+    uint8_t *dry;        /* 32 */
+    float32_t *ring;     /* 40: for tests and tools */
+} terrain_density_profile_arrays_t;
+static_assert(sizeof(terrain_density_profile_arrays_t) == 48);
 
 /* Blocks next to each other. Filled with x changing fastest, then y, then z, as a section's voxels are stored:
  * out[ix + count_x * (iy + count_y * iz)] is the voxel origin + i. */
@@ -161,6 +182,9 @@ void terrain_density_profile_area(const terrain_density_t *density, const terrai
 /* The same, and each column's lift into lift, which holds as many: for what reads relief and not height, such as biomes. */
 void terrain_density_profile_area_lift(const terrain_density_t *density, const terrain_fields_area_t *area,
                                        float32_t *heights, float32_t *softness, float32_t *lift);
+/* The same, with every value the profile has: for hydrology, which also reads where rivers may cut and what is dry. */
+void terrain_density_profile_area_arrays(const terrain_density_t *density, const terrain_fields_area_t *area,
+                                         const terrain_density_profile_arrays_t *out);
 
 /* The profile at count columns anywhere, in blocks, through the same batch the box uses: the very bits a box's lattice
  * gets at a whole-number column. Allocates nothing. Must be finite. */
@@ -169,6 +193,9 @@ void terrain_density_profile_points(const terrain_density_t *density, const floa
 /* The same, and each column's lift into lift. */
 void terrain_density_profile_points_lift(const terrain_density_t *density, const float64_t *xs, const float64_t *ys,
                                          uint64_t count, float32_t *heights, float32_t *softness, float32_t *lift);
+/* The same, with every value the profile has. */
+void terrain_density_profile_points_arrays(const terrain_density_t *density, const float64_t *xs, const float64_t *ys,
+                                           uint64_t count, const terrain_density_profile_arrays_t *out);
 
 /* How many values a box fills. */
 uint64_t terrain_density_box_voxels(const terrain_density_box_t *box);
@@ -179,7 +206,8 @@ uint64_t terrain_density_box_voxels(const terrain_density_box_t *box);
 void terrain_density_sample_box(const terrain_density_t *density, const terrain_density_box_t *box, float32_t *out);
 
 /* Fills out with each voxel's block id: bedrock at z = MC_WORLD_Z_MIN; stone where the density is above 0; water in what is
- * left, up to z = MC_WORLD_Z_SEA; air above that. Outside the world's limits it is air, so a box may cover whole sections. As
+ * left, up to z = MC_WORLD_Z_SEA, but air where any of the four lattice columns round the voxel is dry (a dry basin); air
+ * above that. Outside the world's limits it is air, so a box may cover whole sections. As
  * pure, and as free of allocation, as the numbers. */
 void terrain_density_fill_box(const terrain_density_t *density, const terrain_density_box_t *box, uint16_t *out);
 

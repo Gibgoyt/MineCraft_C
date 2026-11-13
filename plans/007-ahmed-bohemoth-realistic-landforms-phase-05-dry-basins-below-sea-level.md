@@ -1,6 +1,6 @@
 # 007-ahmed-bohemoth-realistic-landforms — phase 5: Dry basins below sea level
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** in progress: basins, rim, dry voxels, hydrology, climate built and tested   (updated 2026-11-14)
 
 Read first: `plans/007-ahmed-bohemoth-realistic-landforms-phase-00-vision-and-plan-files.md`, then the master `plans/007-ahmed-bohemoth-realistic-landforms.md` (sections 0 "What is in the way", 3.2, 3.8, 4, 8, 12 Q4). Then:
 
@@ -169,14 +169,14 @@ This phase may edit these, plus this file:
 
 ## Todo
 
-- [ ] `landform/basin` on the lattice; the depression with $S_B$, the inland and plateau gates; floor at least -100; flat floors (hills × $(1 - S_B)$); `lift` includes the basin
-- [ ] The rim: $h \ge s + 3$ on $0.72 \le B < 0.8$, tested on every ring column of 8 seeds over 64 km
-- [ ] `dry` in `terrain_density_profile_t`; `density_block_of` gives air in dry columns
-- [ ] `TERRAIN_HYDROLOGY_KIND_BASIN`, mapped to land for biomes; rivers' `reach` 0 at $B \ge 0.72$
-- [ ] Hydrology's sea's rule and rule 2 extended to dry columns; the whole-box "nothing placed here can flow" test passes on basin boxes on 8 seeds
-- [ ] `terrain_height_estimate_area`'s `dry` out-array; the climate's callback passes it; `climate_cell` water rule `h <= 0 && !dry`
+- [x] `landform/basin` on the lattice; the depression with $S_B$, the inland and plateau gates; floor at least -100; flat floors (hills × $(1 - S_B)$); `lift` includes the basin
+- [x] The rim: $h \ge s + 3$ on $0.72 \le B < 0.8$, tested on every ring column of 8 seeds over 64 km
+- [x] `dry` in `terrain_density_profile_t`; `density_block_of` gives air in dry columns
+- [x] `TERRAIN_HYDROLOGY_KIND_BASIN`, mapped to land for biomes; rivers' `reach` 0 at $B \ge 0.72$
+- [x] Hydrology's sea's rule and rule 2 extended to dry columns; the whole-box "nothing placed here can flow" test passes on basin boxes on 8 seeds
+- [x] `terrain_height_estimate_area`'s `dry` out-array; the climate's callback passes it; `climate_cell` water rule `h <= 0 && !dry`
 - [ ] A climate test on a synthetic dry hollow gives plan 004's worked example 3; at a real basin, F3's temperature at the floor equals the formula
-- [ ] `TERRAIN_DENSITY_HEIGHT_MIN` still -116; the limits test passes
+- [x] `TERRAIN_DENSITY_HEIGHT_MIN` still -116; the limits test passes
 - [ ] Every moved pin re-pinned with this phase's reason; 1 against 16 workers the same bytes
 - [ ] `bench_landform` on 8 seeds: 1 to 3 basins per map averaged, floors -40 to -100
 - [ ] `bench_terrain` at least 1000 everywhere

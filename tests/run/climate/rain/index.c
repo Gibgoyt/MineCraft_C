@@ -55,7 +55,7 @@ static void rain_direct_tile(rain_direct_t *direct, const ground_t *ground, int3
     const int32_t half = CLIMATE_WINDOW_TILES / 2;
     ground_fn(ground, (tile_x - half) * CLIMATE_TILE_BLOCKS + CLIMATE_CELL_BLOCKS / 2,
               (tile_y - half) * CLIMATE_TILE_BLOCKS + CLIMATE_CELL_BLOCKS / 2, CLIMATE_CELL_BLOCKS,
-              (uint32_t)CLIMATE_WINDOW_CELLS, (uint32_t)CLIMATE_WINDOW_CELLS, direct->heights);
+              (uint32_t)CLIMATE_WINDOW_CELLS, (uint32_t)CLIMATE_WINDOW_CELLS, direct->heights, nullptr);
     climate_cell_build_tile(&direct->arena, ground_fn, ground, tile_x, tile_y, direct->heights, direct->cells,
                             &direct->window);
     climate_air_build_tile(direct->normals, &direct->arena, &direct->window, direct->cells, nullptr);

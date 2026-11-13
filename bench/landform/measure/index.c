@@ -92,6 +92,11 @@ const char *const LF_VALUE_NAME[LF_V_COUNT] = {"profile_flat",
                                                "reach_750_percent",
                                                "reach_1000_percent",
                                                "top",
+                                               "basins",
+                                               "basin_floor_lowest",
+                                               "basin_floor_highest",
+                                               "basin_across_km_min",
+                                               "basin_across_km_max",
                                                "seconds",
                                                "profile_us_a_lattice_column",
                                                "profile_share_of_box_percent",
@@ -277,16 +282,21 @@ static void lf_sweep_row(const lf_run_t *run, float32_t *scratch, uint32_t row) 
     float32_t *const along = scratch;
     float32_t *const north = along + along_count;
     float32_t *const south = north + grid->side;
+    uint8_t *const along_dry = (uint8_t *)(south + grid->side);
     const int32_t y = grid->origin_y + (int32_t)(row * grid->step);
-    terrain_height_estimate_area(run->borrowed_terrain, grid->origin_x - 4, y, 4, along_count, 1u, along);
+    terrain_height_estimate_area(run->borrowed_terrain, grid->origin_x - 4, y, 4, along_count, 1u, along,
+                                 grid->dry != nullptr ? along_dry : nullptr);
     terrain_height_estimate_area(run->borrowed_terrain, grid->origin_x, y - 4, (int32_t)grid->step, grid->side, 1u,
-                                 north);
+                                 north, nullptr);
     terrain_height_estimate_area(run->borrowed_terrain, grid->origin_x, y + 4, (int32_t)grid->step, grid->side, 1u,
-                                 south);
+                                 south, nullptr);
     for (uint32_t i = 0u; i < grid->side; i++) {
         const uint32_t k = i * per + 1u;
         const uint64_t at = (uint64_t)row * grid->side + i;
         grid->h[at] = along[k];
+        if (grid->dry != nullptr) {
+            grid->dry[at] = along_dry[k];
+        }
         grid->g[at] = (float32_t)lf_gradient((float64_t)along[k - 1u], (float64_t)along[k + 1u], (float64_t)north[i],
                                              (float64_t)south[i], 8.0f64);
     }
@@ -411,7 +421,7 @@ static void lf_window_row(const lf_run_t *run, uint8_t *scratch, uint32_t item, 
     const uint64_t at = ((uint64_t)window * LF_WINDOW_GRID + row) * LF_WINDOW_GRID;
     if (!real) {
         terrain_height_estimate_area(run->borrowed_terrain, x, y, (int32_t)LF_WINDOW_STEP, LF_WINDOW_GRID, 1u,
-                                     run->borrowed_windows_profile + at);
+                                     run->borrowed_windows_profile + at, nullptr);
         return;
     }
     terrain_hydrology_column_t *const fields = (terrain_hydrology_column_t *)(void *)scratch;
@@ -478,7 +488,7 @@ static void lf_job(job_worker_t *worker, void *borrowed_argument) {
         case LF_STAGE_STRIP:
             terrain_height_estimate_area(run->borrowed_terrain, -(int32_t)(LF_STRIP_WIDE * LF_STRIP_STEP / 2u),
                                          (int32_t)(item * LF_STRIP_STEP), (int32_t)LF_STRIP_STEP, LF_STRIP_WIDE, 1u,
-                                         run->borrowed_strip + (uint64_t)item * LF_STRIP_WIDE);
+                                         run->borrowed_strip + (uint64_t)item * LF_STRIP_WIDE, nullptr);
             break;
         case LF_STAGE_COST:
             lf_cost_box(run, scratch, item);
@@ -741,6 +751,71 @@ lf_place_t lf_place_at(const lf_grid_t *grid, uint32_t at) {
                         .found = 1u};
 }
 
+/* Dry basins: the dry columns joined side to side, each at least LF_BASIN_KM2 with its floor below the sea's level. The
+ * deepest floor of all is the "lowest dry land below 0" place. Marks what it has joined in grid->dry as 2. */
+static void lf_basins(const lf_grid_t *grid, const lf_memory_t *m, lf_result_t *r) {
+    static const float64_t LF_BASIN_KM2 = 1.0f64;
+    float64_t *const v = r->v;
+    v[LF_V_BASINS] = 0.0f64;
+    v[LF_V_BASIN_FLOOR_LOW] = 0.0f64;
+    v[LF_V_BASIN_FLOOR_HIGH] = 0.0f64;
+    v[LF_V_BASIN_ACROSS_MIN] = 0.0f64;
+    v[LF_V_BASIN_ACROSS_MAX] = 0.0f64;
+    if (grid->dry == nullptr) {
+        return;
+    }
+    const uint32_t side = grid->side;
+    const uint64_t n = (uint64_t)side * side;
+    const float64_t km_a_column = (float64_t)grid->step / 1000.0f64;
+    uint32_t deepest_of_all = UINT32_MAX;
+    for (uint64_t start = 0u; start < n; start++) {
+        if (grid->dry[start] != 1u) {
+            continue;
+        }
+        uint32_t head = 0u, tail = 0u, deepest = (uint32_t)start, cells = 0u;
+        uint32_t west = side, east = 0u, south = side, north = 0u;
+        grid->dry[start] = 2u;
+        m->queue[tail++] = (uint32_t)start;
+        while (head < tail) {
+            const uint32_t at = m->queue[head++];
+            const uint32_t x = at % side, y = at / side;
+            cells++;
+            deepest = grid->h[at] < grid->h[deepest] ? at : deepest;
+            west = x < west ? x : west;
+            east = x > east ? x : east;
+            south = y < south ? y : south;
+            north = y > north ? y : north;
+            const uint32_t next[4] = {x > 0u ? at - 1u : UINT32_MAX, x + 1u < side ? at + 1u : UINT32_MAX,
+                                      y > 0u ? at - side : UINT32_MAX, y + 1u < side ? at + side : UINT32_MAX};
+            for (uint32_t k = 0u; k < 4u; k++) {
+                if (next[k] != UINT32_MAX && grid->dry[next[k]] == 1u) {
+                    grid->dry[next[k]] = 2u;
+                    m->queue[tail++] = next[k];
+                }
+            }
+        }
+        const float64_t km2 = (float64_t)cells * km_a_column * km_a_column;
+        const float64_t floor = (float64_t)grid->h[deepest];
+        if (km2 < LF_BASIN_KM2 || floor >= 0.0f64) {
+            continue;
+        }
+        const uint32_t wide = east - west > north - south ? east - west : north - south;
+        const float64_t across = (float64_t)(wide + 1u) * km_a_column;
+        const bool first = v[LF_V_BASINS] == 0.0f64;
+        v[LF_V_BASINS] += 1.0f64;
+        v[LF_V_BASIN_FLOOR_LOW] = first || floor < v[LF_V_BASIN_FLOOR_LOW] ? floor : v[LF_V_BASIN_FLOOR_LOW];
+        v[LF_V_BASIN_FLOOR_HIGH] = first || floor > v[LF_V_BASIN_FLOOR_HIGH] ? floor : v[LF_V_BASIN_FLOOR_HIGH];
+        v[LF_V_BASIN_ACROSS_MIN] = first || across < v[LF_V_BASIN_ACROSS_MIN] ? across : v[LF_V_BASIN_ACROSS_MIN];
+        v[LF_V_BASIN_ACROSS_MAX] = first || across > v[LF_V_BASIN_ACROSS_MAX] ? across : v[LF_V_BASIN_ACROSS_MAX];
+        if (deepest_of_all == UINT32_MAX || grid->h[deepest] < grid->h[deepest_of_all]) {
+            deepest_of_all = deepest;
+        }
+    }
+    if (deepest_of_all != UINT32_MAX) {
+        r->place[LF_PLACE_BELOW_SEA] = lf_place_at(grid, deepest_of_all);
+    }
+}
+
 /* Everything the table holds that the grid alone gives. */
 void lf_measure(job_system_t *system, lf_run_t *run, const lf_memory_t *m, lf_result_t *r) {
     const lf_grid_t *const grid = run->borrowed_grid;
@@ -756,7 +831,8 @@ void lf_measure(job_system_t *system, lf_run_t *run, const lf_memory_t *m, lf_re
         if (h[i] > h[top_at]) {
             top_at = (uint32_t)i;
         }
-        if (h[i] <= 0.0f32) {
+        /* A dry basin is land, however low. */
+        if (h[i] <= 0.0f32 && (grid->dry == nullptr || grid->dry[i] == 0u)) {
             continue;
         }
         land++;
@@ -774,6 +850,7 @@ void lf_measure(job_system_t *system, lf_run_t *run, const lf_memory_t *m, lf_re
     }
     v[LF_V_TOP] = (float64_t)h[top_at];
     r->place[LF_PLACE_PEAK] = lf_place_at(grid, top_at);
+    lf_basins(grid, m, r);
 
     /* Relative height in a square of 2048, and slope by its deciles where the relief is a mountain's. */
     lf_slide(system, run, h, m->c, m->a, LF_RELIEF_HALF, true);

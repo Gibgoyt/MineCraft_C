@@ -21,8 +21,8 @@ static climate_mask_t mask_table(test_context_t *t, const ground_t *ground) {
 }
 
 static void mask_terrain_ground(const void *borrowed_context, int32_t origin_x, int32_t origin_y, int32_t step,
-                                uint32_t count_x, uint32_t count_y, float32_t *heights) {
-    terrain_height_estimate_area(borrowed_context, origin_x, origin_y, step, count_x, count_y, heights);
+                                uint32_t count_x, uint32_t count_y, float32_t *heights, uint8_t *dry) {
+    terrain_height_estimate_area(borrowed_context, origin_x, origin_y, step, count_x, count_y, heights, dry);
 }
 
 TEST(a_page_holds_the_ground_at_each_cell_centre) {

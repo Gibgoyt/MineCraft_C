@@ -68,8 +68,8 @@ static void *rain_aligned(test_context_t *t, uint64_t bytes) {
 }
 
 static void rain_ground(const void *borrowed_context, int32_t origin_x, int32_t origin_y, int32_t step,
-                        uint32_t count_x, uint32_t count_y, float32_t *heights) {
-    terrain_height_estimate_area(borrowed_context, origin_x, origin_y, step, count_x, count_y, heights);
+                        uint32_t count_x, uint32_t count_y, float32_t *heights, uint8_t *dry) {
+    terrain_height_estimate_area(borrowed_context, origin_x, origin_y, step, count_x, count_y, heights, dry);
 }
 
 /* A view of a day list holding only some of its systems: big systems are sorted by kind, so each kind is a run. */

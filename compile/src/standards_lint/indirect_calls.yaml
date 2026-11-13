@@ -53,15 +53,11 @@ indirect_calls:
     pointer: "climate_ground_fn_t"
     why: "Targets sample terrain heights (terrain/ and the tests' flat grounds) and never build climate."
   - file: run/src/climate/index.c
-    caller: climate_mask_point
-    pointer: "climate_ground_fn_t"
-    why: "Targets sample terrain heights (terrain/ and the tests' flat grounds) and never build climate."
-  - file: run/src/climate/index.c
     caller: climate_prepare_area
     pointer: "progress, void (*)(void *, uint32_t done, uint32_t total)"
     why: "Targets report progress to the loading screen or a test's counter; they never prepare climate."
   - file: run/src/climate/mask/index.c
-    caller: climate_mask_page_build
+    caller: climate_mask_ground
     pointer: "climate_ground_fn_t"
     why: "Targets sample terrain heights (terrain/ and the tests' flat grounds) and never build climate."
   - file: run/src/climate/systems/index.c

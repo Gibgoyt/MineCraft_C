@@ -463,9 +463,12 @@ static void surface_tile_lay(const terrain_surface_t *surface, terrain_surface_t
     uint8_t depth[SURFACE_TILE_COLUMNS];
     uint8_t wet[SURFACE_TILE_COLUMNS];
     if ((float32_t)box_top + 1.0f32 >= tile->open_from) {
-        /* Nothing over the box is ground, so it is the sea, or air. */
+        /* Nothing over the box is ground, so it is the sea, or air: air in a dry basin. */
         memset(depth, 0, sizeof(depth));
-        memset(wet, box_top + 1 <= MC_WORLD_Z_SEA ? 1 : 0, sizeof(wet));
+        const bool sea = box_top + 1 <= MC_WORLD_Z_SEA;
+        for (uint32_t i = 0u; i < span->count_x * span->count_y; i++) {
+            wet[i] = sea && tile->columns[i].dry == 0u ? 1u : 0u;
+        }
     } else {
         surface_reach_above(surface, span, box_top, depth, wet);
     }

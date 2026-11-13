@@ -157,7 +157,10 @@ terrain_density_profile_t terrain_height_estimate_profile(const terrain_t *terra
     float32_t h[4];
     float32_t s[4];
     float32_t l[4];
-    terrain_density_profile_points_lift(terrain->borrowed_density, xs, ys, 4u, h, s, l);
+    float32_t r[4];
+    uint8_t d[4];
+    const terrain_density_profile_arrays_t out = {.heights = h, .softness = s, .lift = l, .rivers = r, .dry = d};
+    terrain_density_profile_points_arrays(terrain->borrowed_density, xs, ys, 4u, &out);
     /* As density_write_voxels blends, in this order, so the bits are a box's. The lift is blended the same way, so
      * height - lift is relief by the same rule wherever it is read. */
     const float32_t h_near = h[0] + t_x * (h[1] - h[0]);
@@ -166,10 +169,15 @@ terrain_density_profile_t terrain_height_estimate_profile(const terrain_t *terra
     const float32_t s_far = s[2] + t_x * (s[3] - s[2]);
     const float32_t l_near = l[0] + t_x * (l[1] - l[0]);
     const float32_t l_far = l[2] + t_x * (l[3] - l[2]);
+    const float32_t r_near = r[0] + t_x * (r[1] - r[0]);
+    const float32_t r_far = r[2] + t_x * (r[3] - r[2]);
     return (terrain_density_profile_t){
         .height = h_near + t_y * (h_far - h_near),
         .softness = s_near + t_y * (s_far - s_near),
         .lift = l_near + t_y * (l_far - l_near),
+        .rivers = r_near + t_y * (r_far - r_near),
+        /* Dry if any of the four is, as a box's voxels are. */
+        .dry = (uint8_t)(d[0] | d[1] | d[2] | d[3]),
     };
 }
 
@@ -183,7 +191,7 @@ float32_t terrain_biome_height_estimate(const terrain_t *terrain, int32_t x, int
 }
 
 void terrain_height_estimate_area(const terrain_t *terrain, int32_t origin_x, int32_t origin_y, int32_t step,
-                                  uint32_t count_x, uint32_t count_y, float32_t *heights) {
+                                  uint32_t count_x, uint32_t count_y, float32_t *heights, uint8_t *dry) {
     const int32_t lattice_mask = (int32_t)(TERRAIN_DENSITY_CELL_XY - 1u);
     ASSERT((origin_x & lattice_mask) == 0 && (origin_y & lattice_mask) == 0 && (step & lattice_mask) == 0);
     /* On the lattice t_x = t_y = 0, and a + 0 * (b - a) is a exactly: the profile itself is the blend's answer. */
@@ -199,13 +207,17 @@ void terrain_height_estimate_area(const terrain_t *terrain, int32_t origin_x, in
             ys[held] = y;
             held++;
             if (held == TERRAIN_ESTIMATE_PIECE) {
-                terrain_density_profile_points(terrain->borrowed_density, xs, ys, held, heights + done, softness);
+                const terrain_density_profile_arrays_t out = {
+                    .heights = heights + done, .softness = softness, .dry = dry != nullptr ? dry + done : nullptr};
+                terrain_density_profile_points_arrays(terrain->borrowed_density, xs, ys, held, &out);
                 done += held;
                 held = 0u;
             }
         }
     }
     if (held > 0u) {
-        terrain_density_profile_points(terrain->borrowed_density, xs, ys, held, heights + done, softness);
+        const terrain_density_profile_arrays_t out = {
+            .heights = heights + done, .softness = softness, .dry = dry != nullptr ? dry + done : nullptr};
+        terrain_density_profile_points_arrays(terrain->borrowed_density, xs, ys, held, &out);
     }
 }

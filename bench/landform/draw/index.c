@@ -58,11 +58,13 @@ static uint32_t lf_land_colour(float32_t height) {
     return LF_RAMP[LF_RAMP_STOPS - 1u].colour;
 }
 
-/* Shaded relief of a pixel of a grid of heights, lit from the low x and y, the sea by its depth. */
-static uint32_t lf_relief_colour(const float32_t *h, uint32_t wide, uint32_t x, uint32_t y, uint32_t step) {
+/* Shaded relief of a pixel of a grid of heights, lit from the low x and y, the sea by its depth. dry, if not nullptr, marks
+ * dry basins: land, however low. */
+static uint32_t lf_relief_colour(const float32_t *h, const uint8_t *dry, uint32_t wide, uint32_t x, uint32_t y,
+                                 uint32_t step) {
     const uint64_t at = (uint64_t)y * wide + x;
     const float32_t z = h[at];
-    if (z <= 0.0f32) {
+    if (z <= 0.0f32 && (dry == nullptr || dry[at] == 0u)) {
         const uint32_t depth = z < -100.0f32 ? 100u : (uint32_t)(-z);
         return lf_mix(LF_COLOUR_SEA, LF_COLOUR_DEEP, depth, 100u);
     }
@@ -73,14 +75,18 @@ static uint32_t lf_relief_colour(const float32_t *h, uint32_t wide, uint32_t x, 
 }
 
 /* Contours on land, where the height's band changes between a pixel and its east or south neighbour: thin every 50, and
- * every 500 thick, two pixels. The same rule plan 007 phase 02 puts in the Atlas, with the same numbers. */
-static void lf_contours(const float32_t *h, uint32_t wide, uint32_t high, uint32_t *pixels, uint32_t pitch,
-                        uint32_t left, uint32_t top, bool flip) {
+ * every 500 thick, two pixels. The same rule plan 007 phase 02 puts in the Atlas, with the same numbers. dry as for
+ * lf_relief_colour: a dry basin is land, so its contours ring the hollow. */
+static void lf_contours(const float32_t *h, const uint8_t *dry, uint32_t wide, uint32_t high, uint32_t *pixels,
+                        uint32_t pitch, uint32_t left, uint32_t top, bool flip) {
     for (uint32_t y = 0u; y + 1u < high; y++) {
         for (uint32_t x = 0u; x + 1u < wide; x++) {
             const uint64_t at = (uint64_t)y * wide + x;
             const float32_t z = h[at], e = h[at + 1u], s = h[at + wide];
-            if (z <= 0.0f32 || e <= 0.0f32 || s <= 0.0f32) {
+            const bool sea = (z <= 0.0f32 && (dry == nullptr || dry[at] == 0u)) ||
+                             (e <= 0.0f32 && (dry == nullptr || dry[at + 1u] == 0u)) ||
+                             (s <= 0.0f32 && (dry == nullptr || dry[at + wide] == 0u));
+            if (sea) {
                 continue;
             }
             const int32_t band = (int32_t)floorf(z / 50.0f32);
@@ -182,10 +188,11 @@ bool lf_draw_maps(const lf_grid_t *grid, const lf_memory_t *m, const lf_result_t
     /* Relief with contours, and the places of the /tp lines. */
     for (uint32_t y = 0u; y < side; y++) {
         for (uint32_t x = 0u; x < side; x++) {
-            px[(uint64_t)y * side + x] = lf_relief_colour(grid->h, side, x, y, grid->step);
+            px[(uint64_t)y * side + x] = lf_relief_colour(grid->h, grid->dry, side, x, y, grid->step);
         }
     }
-    lf_contours(grid->h, side, side, px, side, 0u, 0u, false);
+    lf_contours(grid->h, grid->dry, side, side, px, side, 0u, 0u, false);
+    lf_mark(px, side, grid, &places[LF_PLACE_BELOW_SEA], 0xFFFFFFu);
     lf_mark(px, side, grid, &places[LF_PLACE_PEAK], 0xFF2020u);
     lf_mark(px, side, grid, &places[LF_PLACE_RANGE], 0xA05020u);
     lf_mark(px, side, grid, &places[LF_PLACE_PLATEAU], 0xFFFF40u);
@@ -194,7 +201,8 @@ bool lf_draw_maps(const lf_grid_t *grid, const lf_memory_t *m, const lf_result_t
     ok = lf_png(m, r->seed, "relief_64km", side, side) && ok;
     /* Slope classes. */
     for (uint64_t i = 0u; i < (uint64_t)side * side; i++) {
-        px[i] = grid->h[i] <= 0.0f32 ? LF_COLOUR_SEA : LF_CLASS_COLOUR[lf_class((float64_t)grid->g[i])];
+        const bool sea = grid->h[i] <= 0.0f32 && (grid->dry == nullptr || grid->dry[i] == 0u);
+        px[i] = sea ? LF_COLOUR_SEA : LF_CLASS_COLOUR[lf_class((float64_t)grid->g[i])];
     }
     ok = lf_png(m, r->seed, "slope_64km", side, side) && ok;
     /* Plateaus, their escarpment edges, and the ranges, over grey relief. */
@@ -325,10 +333,10 @@ bool lf_draw_strip(const lf_memory_t *m, uint64_t seed) {
         const uint32_t py = LF_STRIP_TOP + (LF_STRIP_HIGH - 1u - j);
         for (uint32_t i = 0u; i < LF_STRIP_WIDE; i++) {
             px[(uint64_t)py * wide + LF_STRIP_LEFT + i] =
-                lf_relief_colour(m->strip, LF_STRIP_WIDE, i, j, LF_STRIP_STEP);
+                lf_relief_colour(m->strip, nullptr, LF_STRIP_WIDE, i, j, LF_STRIP_STEP);
         }
     }
-    lf_contours(m->strip, LF_STRIP_WIDE, LF_STRIP_HIGH, px, wide, LF_STRIP_LEFT, LF_STRIP_TOP, true);
+    lf_contours(m->strip, nullptr, LF_STRIP_WIDE, LF_STRIP_HIGH, px, wide, LF_STRIP_LEFT, LF_STRIP_TOP, true);
     /* The snowline, dashed, where the ground crosses it. */
     float64_t below = lf_snowline(0);
     for (uint32_t j = 1u; j < LF_STRIP_HIGH; j++) {

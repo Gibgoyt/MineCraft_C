@@ -29,6 +29,9 @@ typedef enum ground_kind_t : uint32_t {
         13,            /* land 20, with a ridge 400 high along x = 10,000, falling straight to 20 1000 blocks out */
     GROUND_LEVEL = 14, /* land at radius blocks everywhere */
     GROUND_HIGH_COAST_Y = 15, /* land at radius blocks for y >= coast, sea (-60) south of it, all x */
+    /* Plan 007 phase 05's ground. */
+    GROUND_HOLLOW =
+        16, /* GROUND_COAST_Y, with a round hollow to -100 of radius blocks at (centre_x, centre_y): dry if dry */
 } ground_kind_t;
 
 enum : uint32_t { GROUND_RECTS_MAX = 4u };
@@ -50,8 +53,16 @@ typedef struct ground_t {
     int32_t radius;                        /* 76: GROUND_ISLAND; the height of GROUND_LEVEL and GROUND_HIGH_COAST_Y */
     int32_t centre_x;                      /* 80: GROUND_ISLAND */
     int32_t centre_y;                      /* 84 */
+    uint32_t dry;                          /* 88: GROUND_HOLLOW: 1 says the hollow is a dry basin */
+    uint8_t _pad0[4];                      /* 92 */
 } ground_t;
-static_assert(sizeof(ground_t) == 88);
+static_assert(sizeof(ground_t) == 96);
+
+/* Whether (x, y) is in GROUND_HOLLOW's hollow. */
+[[maybe_unused]] static bool ground_in_hollow(const ground_t *ground, int64_t x, int64_t y) {
+    const int64_t dx = x - ground->centre_x, dy = y - ground->centre_y;
+    return ground->kind == GROUND_HOLLOW && dx * dx + dy * dy <= (int64_t)ground->radius * ground->radius;
+}
 
 /* The phase 05 file's South Africa fixture, by x alone, piecewise straight: the west sea (-50) to x = 0, the coast rising
  * from 1 to 500 by 1000, the plateau at 500 to 10,000, the crest up to 750 at 10,400, down to 250 at 10,912, the
@@ -128,18 +139,23 @@ static_assert(sizeof(ground_t) == 88);
         return (float32_t)ground->radius;
     case GROUND_HIGH_COAST_Y:
         return y >= (int64_t)ground->coast ? (float32_t)ground->radius : -60.0f32;
+    case GROUND_HOLLOW:
+        return ground_in_hollow(ground, x, y) ? -100.0f32 : (y >= (int64_t)ground->coast ? 20.0f32 : -60.0f32);
     }
     return 0.0f32;
 }
 
 /* A climate_ground_fn_t over a ground_t. */
 [[maybe_unused]] static void ground_fn(const void *borrowed_context, int32_t origin_x, int32_t origin_y, int32_t step,
-                                       uint32_t count_x, uint32_t count_y, float32_t *heights) {
+                                       uint32_t count_x, uint32_t count_y, float32_t *heights, uint8_t *dry) {
     const ground_t *const ground = borrowed_context;
     for (uint32_t j = 0u; j < count_y; j++) {
         for (uint32_t i = 0u; i < count_x; i++) {
-            heights[(uint64_t)j * count_x + i] =
-                ground_height(ground, (int64_t)origin_x + (int64_t)step * i, (int64_t)origin_y + (int64_t)step * j);
+            const int64_t x = (int64_t)origin_x + (int64_t)step * i, y = (int64_t)origin_y + (int64_t)step * j;
+            heights[(uint64_t)j * count_x + i] = ground_height(ground, x, y);
+            if (dry != nullptr && ground->dry != 0u && ground_in_hollow(ground, x, y)) {
+                dry[(uint64_t)j * count_x + i] = 1u;
+            }
         }
     }
 }

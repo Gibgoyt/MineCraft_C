@@ -2,15 +2,31 @@
  * 03 file's "The land mask, a sparse table, and its pages". */
 #include "climate/mask/index.h"
 
+#include "assert/index.h"
+
 #include <string.h>
+
+void climate_mask_ground(climate_ground_fn_t ground, const void *ground_context, int32_t x, int32_t y, uint32_t count_x,
+                         uint32_t count_y, float32_t *heights) {
+    uint8_t dry[CLIMATE_TILE_CELL_COUNT];
+    const uint32_t count = count_x * count_y;
+    ASSERT(count <= (uint32_t)CLIMATE_TILE_CELL_COUNT);
+    memset(dry, 0, count);
+    ground(ground_context, x, y, CLIMATE_CELL_BLOCKS, count_x, count_y, heights, dry);
+    for (uint32_t i = 0u; i < count; i++) {
+        if (dry[i] != 0u && heights[i] < CLIMATE_MASK_DRY_Z) {
+            heights[i] = CLIMATE_MASK_DRY_Z;
+        }
+    }
+}
 
 void climate_mask_page_build(climate_ground_fn_t ground, const void *ground_context, int32_t tile_x, int32_t tile_y,
                              float32_t *heights) {
     /* In 64 bits first: a tile far out times 1024 is near the edge of 32. */
     const int64_t west = (int64_t)tile_x * CLIMATE_TILE_BLOCKS + CLIMATE_CELL_BLOCKS / 2;
     const int64_t south = (int64_t)tile_y * CLIMATE_TILE_BLOCKS + CLIMATE_CELL_BLOCKS / 2;
-    ground(ground_context, (int32_t)west, (int32_t)south, CLIMATE_CELL_BLOCKS, (uint32_t)CLIMATE_TILE_CELLS,
-           (uint32_t)CLIMATE_TILE_CELLS, heights);
+    climate_mask_ground(ground, ground_context, (int32_t)west, (int32_t)south, (uint32_t)CLIMATE_TILE_CELLS,
+                        (uint32_t)CLIMATE_TILE_CELLS, heights);
 }
 
 climate_mask_source_t climate_mask_page_get(const climate_mask_t *mask, int32_t tile_x, int32_t tile_y, int32_t keep_x,

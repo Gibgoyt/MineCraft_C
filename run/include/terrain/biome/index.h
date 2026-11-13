@@ -53,7 +53,7 @@ typedef struct terrain_biome_column_t {
     uint8_t biome;       /* 12: a biome_id_t: the one on the surface */
     uint8_t caves;       /* 13: bit i says biome_underground[i]'s climate holds this column, at any z */
     uint8_t family;      /* 14: the biome_family_t its biome was chosen in */
-    uint8_t _pad0[1];    /* 15 */
+    uint8_t dry;         /* 15: terrain_hydrology_column_t's: a dry basin, where nothing open holds water */
     /* Plan 006 phase 04: the climate the surface and features lay snow, ice and trees by, blended at the column's 4-block
      * lattice corner (z 0), as the biome reads it. */
     int16_t snow_line_z;   /* 16: blocks; TERRAIN_CLIMATE_NO_SNOW_LINE when snow never outlasts the summer */

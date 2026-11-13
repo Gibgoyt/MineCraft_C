@@ -22,7 +22,7 @@
 The climate and the ground are read on the density's own lattice, every 4 blocks, and interpolated, always in the same order, `x` and then `y`. So a column's bits never depend on which box or tile asked. With `h` the height, `s` the softness, `c` continentalness, `w` weirdness, and `width` and `shore` two 2D fields of this stage:
 
     wide      = (width + 1) / 2
-    reach     = 1 when c <= -0.3;  0 from c = 0.15;  between, u * u * (3 - 2 * u) with u = (0.15 - c) / 0.45
+    reach     = rivers * (1 when c <= -0.3;  0 from c = 0.15;  between, u * u * (3 - 2 * u) with u = (0.15 - c) / 0.45)
     depth     = reach * (1 when h <= 45;  0 from h = 120;  between, v * v * (3 - 2 * v) with v = (120 - h) / 75)
     bank      = 0.12 * reach
     inner     = (0.03 + 0.04 * wide) * reach
@@ -36,6 +36,10 @@ The climate and the ground are read on the density's own lattice, every 4 blocks
 
 **A river runs where weirdness is 0.** That is where `ridges` is -1, the valley floors the density's `valley` spline has already sunk and where mountains cannot be, since `peak` is 0 there. A line where a smooth field is 0 has no ends. It closes on itself or runs on until it meets the sea.
 
+`rivers` is the density's (plan 007 phase 05): 1 almost everywhere, and 0 on a dry basin's rim and inside it, so a river
+stops short of a basin as it stops at high ground. Each column also carries `dry`, the density's: a voxel column is dry if any
+of the four lattice columns round it is, as the density's voxels are.
+
 **A river belongs to the coast, by `reach`.** Weirdness's cell is 512 blocks, so its lines lie everywhere, and cutting them all to sea level left a maze of water with the land in pieces: 7 to 8% of the map, and on one seed the largest piece of dry land held 35.1% of it. So a river is whole near the coast, narrows and shallows going inland, stops holding water where its cut no longer reaches the sea's level, goes on as a dry gully, and is gone by `c = 0.15`, so the far inland has none. Bank and channel narrow together and `river` falls with them, so the end leaves no step. All rivers stand at sea level, `z = 0`, and only the ground is moved to make room.
 
 **A river stops at high ground, by `depth`.** A range is no place for a canyon cut down to the sea, so a river fades over heights of 45 to 120. Only its depth fades this way, and not its width: when both did, its end was a notch a few blocks wide with sheer walls, as the slices showed. A river met by a range goes dry and shallow at the range's foot, and may start again on the far side, where it is a short piece that does not reach the sea. `rivers_hold_water_and_reach_the_sea_and_the_coast_has_beaches` finds 90.5% joined, against its 90%, which is close, and a failure there most likely means this.
@@ -44,6 +48,7 @@ The cut is a limit on height: **ground stays ground up to `carve_top`, and nothi
 
 | Kind | When, first match | For |
 |---|---|---|
+| Dry basin | `dry` and `ground < 0`; a dry column with `ground >= 0` is Land | Land below the sea's level, plan 007 phase 05: biomes treat it as land |
 | River | `h >= 0` and `ground <= 0`: the cut has brought it to the water | Stage 10.6's rivers |
 | Beach | `river < 0.5`, `c <= -0.24`, `ground` from -6 to one above `sand_top`, and not steep | Shores |
 | Stony shore | The same, but 1.5 blocks of ground to the block or steeper, on the cell's four edges | Shores |
@@ -56,7 +61,7 @@ with `sand_top = 2 + 1.5 * (shore + 1)`: from 2 to 5, so the top of the sand wan
 
 ## The blocks
 
-`terrain_hydrology_fill_box` starts from `terrain_density_fill_box`. A stone voxel above `carve_top` is cut: it becomes water up to `z = 0`, and air above. The density's own water stays as it is.
+`terrain_hydrology_fill_box` starts from `terrain_density_fill_box`. A stone voxel above `carve_top` is cut: it becomes water up to `z = 0`, and air above, and air at any height in a dry column. The density's own water stays as it is, and so does its air in a dry basin.
 
 Then what lies on the ground. `depth` is how many solid voxels lie between a stone voxel and the nearest open one above it, and `wet` says that open voxel is water. What a voxel becomes depends only on its column, its `z`, its `depth` and `wet`:
 
@@ -84,7 +89,7 @@ This is for whatever opens the ground after the fill, as caves do, and `terrain_
 | Where | What it holds |
 |---|---|
 | `z <= -230` | Lava, always: the lava level |
-| `z >= band` | The sea's rule: water up to `z = 0`, air above |
+| `z >= band` | The sea's rule: water up to `z = 0`, air above; air at any height in a dry column; and stone up to `z = 0` in a column beside one whose dryness differs |
 | Deeper | What its aquifer cell holds at that height |
 
 **Aquifer cells** are cubes of 32 blocks, lined up on the world, with one site each, from 10 to 22 blocks into the cell on each axis, from a hash of the cell. A voxel belongs to the cell whose site is nearest. A cell's own numbers come from noise at its site:
@@ -102,10 +107,10 @@ and it holds its fluid from its level down. Levels on steps of 3 mean neighbours
 **Nothing placed here can flow:** no fluid beside air, no fluid over air, and no water touching lava. These rules hold that, and the test opens whole boxes to check it:
 
 1. A voxel within 2 blocks of the plane halfway between its site and that of a cell holding something else is stone, if either holds fluid at that height. Two neighbouring voxels with different nearest sites have that plane between them, so it is under a block from each.
-2. A deeper voxel beside the sea's rule, or under it, is stone where that rule says water at that height or over it. Where the rule says air, it stays open if it is air, so a cave above the sea's level can reach the surface, and is stone if it would hold fluid.
+2. A deeper voxel beside the sea's rule, or under it, is stone where that rule says water at that height or over it. Where the rule says air, it stays open if it is air, so a cave above the sea's level can reach the surface, and is stone if it would hold fluid. Where the rule itself differs, between a dry column and a wet one beside it (plan 007 phase 05), each side's sea's-rule voxels up to `z = 0` are stone, so a cave crossing a basin's rim meets a wall, not a face of water. A deeper voxel is walled as if the rule beside it said water, wet or dry, which is the safe side.
 3. Water directly on the lava level, at `z = -229`, is stone.
 
-The near-surface rule can reach no lower than `-116 - 26 - 12 = -154`, and aquifer lava no higher than -160, so the sea cannot touch lava. Whole-number sums do the plane test, with no `sqrt`: the difference of two squared distances is the distance from the plane times twice the distance between the sites.
+A dry basin's floor is at least -100, so its band is above that too. The near-surface rule can reach no lower than `-116 - 26 - 12 = -154`, and aquifer lava no higher than -160, so the sea cannot touch lava. Whole-number sums do the plane test, with no `sqrt`: the difference of two squared distances is the distance from the plane times twice the distance between the sites.
 
 | Field | Cell, in blocks | Octaves | Dimensions | Limit |
 |---|---|---|---|---|
