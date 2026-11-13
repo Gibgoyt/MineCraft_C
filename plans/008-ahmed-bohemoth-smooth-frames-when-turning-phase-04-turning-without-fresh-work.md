@@ -1,6 +1,6 @@
 # 008-ahmed-bohemoth-smooth-frames-when-turning — phase 4: Turning without fresh work
 
-**Status:** in progress: corner estimate, AO cache and TAA's fast read built and tested; measuring   (updated 2026-11-13)
+**Status:** done, for Ahmed's gate: at 720°/s AO costs 0.97 x and post 1.05 x a still camera, the card 30 % less a picture than before, still pictures the same to the bit   (updated 2026-11-13)
 
 Read first: `plans/008-ahmed-bohemoth-smooth-frames-when-turning-phase-00-vision-and-plan-files.md`, then the master `plans/008-ahmed-bohemoth-smooth-frames-when-turning.md`: section 1 (C3, C4), 3.4, 4 and 8. Then `cuda/src/shade/README.md` ("AO") and `cuda/src/post/README.md` ("The temporal pass"), and phase 01's C3 and C4 rows, which give the size of this phase's prize.
 
@@ -168,25 +168,39 @@ This phase may edit these, plus this file:
 - [x] The edit key decided (slab offset, or a per-section counter) and recorded below: neither, a hash of each section's bytes
 - [x] `shade_ao_corner`, host and device, with its paper tests
 - [x] `shade_ao_cache_*` pure parts with host tests
-- [ ] The cache block (2 M entries, 16 MiB) in `post_temporal_t`; frames budget measured
+- [x] The cache block (2 M entries, 16 MiB) in `post_temporal_t`; frames budget measured
 - [x] AO rays write the cache; fresh pixels read it, else take the corner estimate; shapes that are not cubes keep the fresh list
 - [x] `SHADE_FEATURE_AO_FIRST_GUESS`, on by default; `--fresh-ao-rays 1` for comparison
-- [ ] TAA's fast read chosen by measurement (5-tap, bilinear, or none) and recorded below
-- [ ] Settled shake at 0 to 1440°/s: AO ms at 720 ≤ 1.3 × still, post ≤ 1.1 × still; results below
-- [ ] Live-capped shake rows; results below
-- [ ] Strip shots looked at and described below
-- [ ] Golden pictures and every settled still row's hash unchanged; moving rows' new hashes recorded after looking
-- [ ] READMEs
+- [x] TAA's fast read chosen by measurement (5-tap, bilinear, or none) and recorded below: bilinear
+- [x] Settled shake at 0 to 1440°/s: AO ms at 720 ≤ 1.3 × still, post ≤ 1.1 × still; results below
+- [x] Live-capped shake rows; results below
+- [x] Strip shots looked at and described below
+- [x] Golden pictures and every settled still row's hash unchanged; moving rows' new hashes recorded after looking
+- [x] READMEs
 
 ## Results (filled in by this phase)
 
+All at Ahmed's spot (`bench_world_shake --at -80 134 418 --seed 14148492376765118422`), 1920x1080, profile build, his game closed, the sidecar beside every run (`bench/world/shake/history.tsv`, labels "008 phase 04: ..."). **The card was at its thermal floor in every row: 148 to 149 MHz by the clock64 kernel** (the live row 180 MHz, 147 to 492), so the ms below compare directly. "Before" is this build's code with `--features-off 80000` (four fresh rays) and `taa_fast_read: 0` (Catmull-Rom on any turn), which is phase 03's code path: its still row is the same picture and the same card time as phase 03's.
+
 | Row | AO + fresh ms, before / after | Fresh rays a picture, before / after | Cache hit share on fresh pixels | Post ms, before / after | Interval p99 (live-capped), before / after |
 |---|---|---|---|---|---|
-| `spot/shake-0` | | | | | |
-| `spot/shake-360` | | | | | |
-| `spot/shake-720` | | | | | |
-| `spot/shake-1440` | | | | | |
-| `spot/shake-720-live-capped-r64` | | | | | |
+| `spot/shake-0` | 9.70 + 1.35 = 11.05 / 11.05 | 2 012 / 2 012 (jitter edges, still: four rays as before) | (still: not read) | 4.14 / 4.20 | |
+| `spot/shake-360` | 9.95 + 7.65 = 17.60 / 9.88 + 1.05 = 10.93 | 896 k / non-cube faces only | not counted by the bench; 99.8 % in `a_strip_that_comes_back_hits_the_cache` | 7.36 / 4.60 | |
+| `spot/shake-720` | 9.28 + 13.07 = 22.35 / 9.27 + 1.43 = **10.70 (0.97 x still)** | 1.56 M / non-cube faces only | as above | 7.02 / **4.40 (1.05 x still)** | |
+| `spot/shake-1440` | 8.44 + 16.88 = 25.32 / 8.43 + 1.71 = 10.14 | 2.02 M / non-cube faces only | as above | 5.83 / 4.01 | |
+| `spot/shake-720-live-capped-r64` | 7.79 + 22.21 = 30.00 / 8.20 + 1.76 = 9.96 | 2.76 M / non-cube faces only | as above | 5.95 / 4.10 | **83.33 / 50.03 ms**; p50 58.33 / 33.34; 17.5 / 28.8 pictures a second |
+
+**The card's time a picture,** before / after: still 31.69 / 31.74 ms (+0.2 % on this build; +1.6 % against phase 03's 31.23, within the 2 % target); 90°/s 38.87 / 34.12; 360°/s 43.40 / 33.97; 720°/s 48.00 / 33.77 (-30 %); 1440°/s 49.67 / 32.67 (-34 %); live-capped r64 at 720°/s 57.93 / 35.83. Turning now costs the card what standing still does, or less: the fresh pixels on cubes send no rays, and they skip the history pass's ray too.
+
+**Q2's B for comparison** (`--fresh-ao-rays 1`, 720°/s settled): fresh 4.24 ms, card 36.30 ms; A is 1.43 and 33.77.
+
+**TAA's fast read** (first guess on, 720°/s / 1440°/s / still): Catmull-Rom (`taa_fast_read: 0`) 7.02 / 5.83 / 4.14 ms; **bilinear (1) 4.40 / 4.01 / 4.20**; 5-tap (2) 7.76 / 6.42 / 4.23. The 5-tap read is the slowest, as the plan feared: without the texture unit each of its bilinear reads is 4 loads, and it adds two divisions. Bilinear is kept.
+
+**Pictures:** every still row's hash is unchanged (`spot/shake-0` `BA28CEC20AD658FA` in every build of this phase, as in phases 01 to 03), and so is every golden picture of `render_feature_*` but one: `tests/cuda/under_water/fixtures/land.png`, the end of a scripted walk, a moving camera, regenerated with `MC_GOLDEN_WRITE=1` and looked at against the old one: the same scene, AO on the terraces a shade different, nothing else. The moving rows' new hashes, after / before: 90°/s `9D4508E08AEE13CF` / `20757A93FA745900`; 360°/s `AA715701207AE5EF` / `29539261910E8783`; 720°/s `7AE6737DD9B2D39D` / `577264597C6BA3A2`; 1440°/s `D6FA733D34BF5DD4` / `E3386F4EF47CEE9C`; one ray (B) 720°/s `5143278065E43D83`.
+
+**The strip, looked at** (step 7, from the rows' last pictures, this path against four rays, at 720 and 1440°/s at the spot and the live r64 row, side by side with their difference x8; the bench keeps only a row's last picture, so frames 10 to 12 of `jagged_peaks` were not taken). The new strip at the right edge at 1440°/s, a spruce and snowy dirt blocks, has the same light and corners in both; there is no band at the edge, lighter or darker. With four rays the newly seen part is grainy (four samples a pixel); with the cache and the corner estimate it is smooth, and the corners under the snow overhangs are a little softer. The difference is grain over the whole moving picture, mean 5 to 7 of 255, not a strip. Ahmed judges at the gate.
+
+**Frames budget:** the cache is 16 MiB of `DEVICE_POOL_FRAMES`; every row opened with it (no "no room for the AO cache" in any log).
 
 ## Tests
 
@@ -248,6 +262,12 @@ His answers are recorded below.
 
 Appended as they land:
 
+- `c3d96e32` Give a newly seen pixel its first AO with no rays while the camera moves: what a world-space AO cache kept for its place on the face, keyed by cell, face, square and a hash of the nearby sections' bytes, or else a corner estimate from the eight cells around its face; and read TAA's history by bilinear past 2 pixels of turn.
+- `160d66a1` Keep a still picture's card time within 2 %: with the camera still a pixel's ray writes the AO cache on one turn in eight, and the kernels read the jitter from a table held to post_jitter to the bit.
+- this commit: the measurements, TAA's read chosen by them, the READMEs, and the verification.
+
+**Verification, as run (2026-11-13):** `pgrep -af 'build/release/bin/minecraft_c'` printed nothing before every GPU run. `tools/test-or-build.sh cmake --build --preset debug`: clean. `ctest --preset debug -R '^(render_feature_.*|cuda_traverse|run_render_frame|run_render_upload|run_settings|standards_lint|clang_format)$'`: 17 of 17 passed. `the_marks_change_no_picture` passed 4 runs of 4 after the revisions change (it had failed 1 of 2 with counts of sends). `cmake --build --preset profile` and `--preset release`: clean. The bench lines ran as `bench_world_shake` at the spot (the shake rows have been its own program since phase 01), each with `gpu_watch.sh` in the same wrapper call and recorded in `bench/world/shake/history.tsv`: this phase's path; `--features-off 80000`; `--fresh-ao-rays 1`; builds with `taa_fast_read` 2 and 0, the last as the before. `bench_world --only orbit` was not run: the orbit row is a slow turn (1.5° a frame), which the shake's 90°/s row covers. `pgrep -af "$PWD/build"` and `pgrep -af gpu_watch` printed nothing after each run. Every r64 row, before and after, logs "pyramid section pool: over this pool's budget": plan 009's pyramid, not this phase.
+
 ## Issues found
 
 **Step 1, the edit key: neither of the plan's two.** A section sent again at its size is written in place (`world_buffers_section_write`'s `in_place`), so its slab offset does not tell an edit. The first try was the plan's second choice, a per-section count of sends in the column table's 96 spare bytes (`_pad1`), counted in the 27 sections around each, and it made the picture hang on the threads: streaming sends the same bytes again at times the workers decide, every send changed the keys, and `the_marks_change_no_picture` (two games turning from the same opening) failed one run in two. So the 96 bytes are `world_buffers_column_t.revisions`: 8 bits of a hash of each section's bytes, never 0 for a section with bytes. The same bytes sent again keep it; an edit changes it all but one time in 256 (then the AO shown is at most 4 s old and weighs 8 samples). A key holds the revisions of every section within 4 blocks of the face's open cell (`shade_ao_revision`: its own, and across any border nearer than `SHADE_AO_REACH` + 1), and its column's load generation, so a block placed across a chunk border breaks the keys on both sides (`a_block_placed_is_not_shown_with_old_ao` puts it on one).
@@ -261,4 +281,5 @@ Appended as they land:
 - **The fresh pixels are filled in `shade_ao_fresh_kernel`, from the list, not in `shade_ao_at`,** so the cache is read after every write of the frame (above), and the list still makes the warps full.
 - **Where the cache's block lives.** `render_frame_t` (960 bytes, cache-line aligned, 3 spare) and `render_t` have no room for a `device_block_t`, and `app_t` is at main's frame limit. So its handle is in the frame arena (`frame_ao_cache_take`, from `DEVICE_POOL_FRAMES`, 16 MiB, zeroed), and `post_temporal_t.borrowed_ao_cache` points at it; `render_frame_deinit` gives it back. To make room for that pointer, `post_temporal_t.jitter[2]` became a bit, `POST_TEMPORAL_JITTER`: every reader works it out from the frame's number with `post_temporal_jitter`, which the card computes to the same bits as the host (each step is a division or a sum of an exact product). The struct's last byte became `flags`: `JITTER`, `MOVED`, `FAST`, `FIRST_GUESS`, `FRESH_ONE`. Without room on the card the frame runs with no cache, and fresh pixels take the corner estimate alone.
 - **`SHADE_FEATURE_AO_FIRST_GUESS` is not an effect of the Settings screen.** `run_settings` holds that every bit of `SHADE_FEATURES_EVERY` has a setting, and the plan wanted none new for Ahmed. So it is as `SHADE_FEATURE_SUN_APART`: past `SHADE_FEATURES_EVERY`, to `render_frame_features_set` only, which turns it into a flag; the game adds it unless its `features_off` has it (`game_frame_features`), so `bench_world_shake --features-off 80000` turns it off and a settings file of before reads the same. `--fresh-ao-rays 1` (`render_frame_ao_fresh_one_set`) is Q2's B; `--fresh-ao-rays 4` is the same as `--features-off 80000`.
+- **Cache writes while still: one turn in eight.** Writing on every turn made a still picture's AO history pass 16 % dearer (9.30 to 10.84 ms at 148 MHz). Writing only while moving would leave nothing for what was seen only while still, so with the camera still a pixel writes on one turn in `ao_cache_still_every` (8, every 32 frames, under the 240-frame age): the still picture's card time is then 31.74 ms against phase 03's 31.23 (+1.6 %, the target is 2 %), most of it code in the AO kernel whether it runs or not.
 - **The tests are a suite of their own, `render_feature_ao` (`tests/cuda/ao/`),** as `tests/cuda/post/index.c` is at 1435 lines. The world buffers' revision test is in `run_render_upload`.

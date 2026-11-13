@@ -33,4 +33,4 @@ taa_fast_read:
   unit: count
   min: 0
   max: 2
-  why: "Plan 008 phase 04: how a camera past taa_fast_pixels reads its history: 0 Catmull-Rom's 16 as below it, 1 bilinear's 4, 2 the 5-tap bicubic (five bilinear reads, Jimenez 2016). Chosen by measuring on the settled shake: see the phase 04 file. POST_TAA_FAST_READ."
+  why: "Plan 008 phase 04: how a camera past taa_fast_pixels reads its history: 0 Catmull-Rom's 16 as below it, 1 bilinear's 4, 2 the 5-tap bicubic (five bilinear reads, Jimenez 2016). Measured at Ahmed's spot at 148 MHz, post at 720 degrees a second: 7.02 ms by Catmull-Rom, 7.76 by 5-tap (20 loads without the texture unit, and two divisions), 4.40 by bilinear, against 4.20 still; so 1. POST_TAA_FAST_READ."
