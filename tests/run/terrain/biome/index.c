@@ -71,7 +71,7 @@ static const int32_t BIO_CAVE_LEVEL_Z[BIO_CAVE_LEVELS] = {-210, -170, -100, -60,
 /* Plan 006 phase 04: snow, ice, sand and trees follow the climate: a snow biome lays its own top below the snowline.
  * Its old value 0x25D0412DAF6F66DD. */
 /* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground. Its old value 0x15285D7F380A63E5. */
-static const uint64_t BIO_DIGEST_PIN = 0x15285D7F380A63E5ull;
+static const uint64_t BIO_DIGEST_PIN = 0x5E9CB4D0FB38A5EBull;
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
 /* Plan 003 phase 8 stage 4 raised the land and made its ranges, valleys and wetlands. */
 /* Plan 003 phase 8 stage 6 moved the biomes' boxes to the coast and the height the terrain now has. */
@@ -81,7 +81,7 @@ static const uint64_t BIO_DIGEST_PIN = 0x15285D7F380A63E5ull;
 /* Plan 006 phase 04: snow, ice, sand and trees follow the climate: a column also carries its snowline, coldest month and
  * yearly rain, so its bytes moved and not its biome. Its old value 0x23D9C77E20CFE804. */
 /* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground. Its old value 0x393C1B15967EB4B5. */
-static const uint64_t BIO_COLUMNS_PIN = 0x393C1B15967EB4B5ull;
+static const uint64_t BIO_COLUMNS_PIN = 0x44F89064B2F0DDDBull;
 
 static uint64_t bio_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

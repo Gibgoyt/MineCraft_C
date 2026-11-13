@@ -257,7 +257,9 @@ TEST(in_a_real_game_each_mob_is_on_the_picture_in_its_own_skin) {
            creeper.blue);
     /* A zombie is green above a blue shirt, a skeleton the colour of bone, and a creeper green with no shirt. The day and the picture's jitter
      * change most of what is behind them, so what counts is the colours. */
-    CHECK(zombie.green > 100u);
+    /* Plan 007 phase 04 with plan 006 phase 04's trees: a tree's crown stands behind the zombie's head, green on green, so 88 of its
+     * green pixels count as changed, against 100 before; its 705 of shirt say it is there. */
+    CHECK(zombie.green > 50u);
     CHECK(zombie.blue > 100u);
     CHECK(skeleton.grey > 100u);
     CHECK(creeper.green > 300u);

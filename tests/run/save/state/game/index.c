@@ -786,32 +786,36 @@ TEST(an_autosave_with_no_edits_builds_no_far_column) {
     game_far_changes_take(game);
     REQUIRE(game_settle(game));
     /* And whatever else opening left to capture and build: on plan 007 phase 04's land a worker was still building after one
-     * capture and settle, and its time landed in the step below. Captured and settled again until no column more is built. */
-    for (uint32_t again = 0u; again < 16u; again++) {
+     * capture and settle, and its time landed in the step below. Captured and settled again until no column more is built and
+     * the far field wants nothing more. */
+    for (uint32_t again = 0u; again < 64u; again++) {
         const uint64_t before = lod->stats.columns_built;
         const uint64_t before_ns = lod->stats.build_ns;
         REQUIRE(save_world_capture_dirty(&save->world, &world->edit) == SAVE_WORLD_OK);
         game_far_changes_take(game);
         REQUIRE(game_settle(game));
-        if (lod->stats.columns_built == before && lod->stats.build_ns == before_ns) {
+        if (lod->stats.columns_built == before && lod->stats.build_ns == before_ns && render_lod_idle(lod)) {
             break;
         }
     }
     const uint64_t built = lod->stats.columns_built;
     const uint32_t unchanged = save->world.borrowed_far->unchanged;
 
-    /* Away and back: dirty, but the same blocks as last captured. */
+    /* Away and back: dirty, but the same blocks as last captured. What the edit itself does to the far field is settled first, and
+     * only then is the capture timed: on plan 007 phase 04's land the edit at the world's top over the start has workers build two
+     * far columns (98 ms), which is the map's doing, not the save's (the plan 007 phase 04 file, Issues found 12). */
     REQUIRE(world_edit_block_set(&world->edit, x, y, z, BLOCK_ID_AIR) == WORLD_EDIT_STATUS_CHANGED);
     REQUIRE(world_edit_block_set(&world->edit, x, y, z, BLOCK_ID_STONE) == WORLD_EDIT_STATUS_CHANGED);
+    const uint64_t edit_ns = lod->stats.build_ns;
+    const uint64_t edit_built = lod->stats.columns_built;
+    REQUIRE(game_settle(game));
+    printf("  away and back, before the capture: %" PRIu64 " columns built, %.1f ms of workers\n",
+           lod->stats.columns_built - edit_built,
+           (libc_double_t)((float64_t)(lod->stats.build_ns - edit_ns) / 1.0e6f64));
     REQUIRE(save_world_capture_dirty(&save->world, &world->edit) == SAVE_WORLD_OK);
     game_far_changes_take(game);
     const uint64_t worker_ns = lod->stats.build_ns;
-    const uint64_t built_before_step = lod->stats.columns_built;
-    const uint64_t dropped_before_step = lod->stats.columns_dropped;
     REQUIRE(game_settle(game));
-    printf("  away and back: %" PRIu64 " columns built, %" PRIu64 " dropped, %.1f ms of workers\n",
-           lod->stats.columns_built - built_before_step, lod->stats.columns_dropped - dropped_before_step,
-           (libc_double_t)(lod->stats.build_ns - worker_ns) / 1.0e6f64);
     /* Plan 009 phase 04: the far field's levels over the blocks are made from them, so the section sent again makes its columns again, on
      * the gpu thread; no worker builds anything from the save. */
     CHECK_EQ_U64(lod->stats.build_ns, worker_ns);
