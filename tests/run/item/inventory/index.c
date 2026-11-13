@@ -1,5 +1,6 @@
 /* ctest run_item_inventory. See README.md. */
 #include "harness/index.h"
+#include "run/game/fixtures/report.h"
 
 #include "file/index.h"
 #include "heap/index.h"
@@ -780,7 +781,14 @@ TEST(the_program_chooses_a_slot_picks_up_and_places_what_is_in_hand) {
     CHECK_CONTAINS(run.output,
                    "the inventory holds 1 items in 1 stacks; 1 added, 0 removed, 0 refused; hotbar slot 3 is "
                    "in hand, with 0 of none");
-    CHECK_CONTAINS(run.output, "the last mined was grass_block, and the hand holds 0 of nothing");
+    /* What the spawn's top was is the land's (plan 006 phase 03), so it is read, and held to dropping something. */
+    report_mined_t mined;
+    REQUIRE(report_mined_read(run.output, &mined));
+    CHECK_EQ_U64(mined.mined, 1u);
+    CHECK(report_drop_of(mined.last)[0] != '\0');
+    CHECK_EQ_U64(mined.hand_count, 0u);
+    char top[REPORT_NAME_BYTES];
+    memcpy(top, mined.last, sizeof(top));
 
     /* So the right button places nothing: it is still carried, and the player comes down in the hole. */
     ii_program_run(t, &dir, II_SCRIPT_MINE II_SCRIPT_JUMP "95 end\n", &run);
@@ -794,9 +802,11 @@ TEST(the_program_chooses_a_slot_picks_up_and_places_what_is_in_hand) {
     /* Key 1 first, and it is in hand, and goes back where it came from. */
     ii_program_run(t, &dir, II_SCRIPT_MINE "44 key 1 down\n45 key 1 up\n" II_SCRIPT_JUMP "95 end\n", &run);
     CHECK_EQ_I64(run.exit_code, MAIN_EXIT_OK);
-    CHECK_CONTAINS(run.output,
-                   "the player mined 1 blocks and placed 1; the last mined was grass_block, and the hand holds "
-                   "0 of nothing");
+    REQUIRE(report_mined_read(run.output, &mined));
+    CHECK_EQ_U64(mined.mined, 1u);
+    CHECK_EQ_U64(mined.placed, 1u);
+    CHECK_STR_EQ(mined.last, top);
+    CHECK_EQ_U64(mined.hand_count, 0u);
     CHECK_CONTAINS(run.output,
                    "the inventory holds 0 items in 0 stacks; 1 added, 1 removed, 0 refused; hotbar slot 1 is "
                    "in hand, with 0 of none");

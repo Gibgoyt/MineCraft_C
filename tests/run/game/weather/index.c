@@ -293,11 +293,22 @@ TEST(the_rain_top_follows_edits) {
     REQUIRE(slot != nullptr);
     CHECK_EQ_I64(gw_entry(slot, bx, by), beside);
     CHECK(slot->map_revision != placed);
-    /* A tick with no change sends the same revision. */
-    const uint32_t still = slot->map_revision;
-    slot = gw_tick(t, game);
-    REQUIRE(slot != nullptr);
-    CHECK_EQ_U64(slot->map_revision, still);
+    /* A tick with no change sends the same revision. The world can change on its own in a tick (a leaf, water, what grows,
+     * which the land round the eye decides), so this holds over a run of ticks: wherever the map is the same as the tick
+     * before, the revision is too, and a run of ticks with no change at all is found. */
+    static int16_t before[POST_WEATHER_MAP_SIDE * POST_WEATHER_MAP_SIDE];
+    uint32_t unchanged = 0u;
+    for (uint32_t i = 0u; i < 40u && unchanged == 0u; i++) {
+        const uint32_t still = slot->map_revision;
+        memcpy(before, slot->map, sizeof(before));
+        slot = gw_tick(t, game);
+        REQUIRE(slot != nullptr);
+        if (memcmp(before, slot->map, sizeof(before)) == 0) {
+            CHECK_EQ_U64(slot->map_revision, still);
+            unchanged += slot->map_revision == still ? 1u : 0u;
+        }
+    }
+    CHECK_EQ_U64(unchanged, 1u);
     game_close(game);
     gw_rig_end(t, &rig);
 }
@@ -320,7 +331,9 @@ TEST(forced_thunder_strikes_every_two_seconds_and_a_hurricane_blows) {
         CHECK_EQ_U64(bolt ? 1u : 0u, tick % GAME_LIGHTNING_FORCED_TICKS < GAME_LIGHTNING_BOLT_TICKS ? 1u : 0u);
         if (bolt) {
             CHECK_NEAR(slot->bolt_age, (float32_t)(tick % GAME_LIGHTNING_FORCED_TICKS) / 20.0f32, 1e-6f32);
-            CHECK_NEAR(slot->bolt_distance, 300.0f32, 30.0f32);
+            /* 300 blocks along x, then up or down to the ground there, whose height is the land's (plan 006 phase 03 moved
+             * it): at least the 300 across, and no more than across and the whole world's height. */
+            CHECK(slot->bolt_distance >= 270.0f32 && slot->bolt_distance <= 330.0f32 + 1500.0f32);
             CHECK_NEAR(slot->flash, game_weather_flash(slot->bolt_distance), 1e-6f32);
             seen += tick % GAME_LIGHTNING_FORCED_TICKS == 0u ? 1u : 0u;
         }

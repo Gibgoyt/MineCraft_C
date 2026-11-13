@@ -1576,7 +1576,9 @@ TEST(a_still_camera_has_almost_no_fresh_pixels_after_the_first_frame) {
     }
     printf("  the first frame has %" PRIu32 " fresh pixels of %u; frames 2 to 10 at most %" PRIu32 "\n", surfaces,
            FR_WIDTH * FR_HEIGHT, most);
-    CHECK((float64_t)most <= 0.01f64 * (float64_t)surfaces);
+    /* The jitter's fresh pixels are at edges, so how many there are is the scene's: 0.3 to 0.4 % on the grass the game opened
+     * on before plan 006 phase 03, 2.6 % on the jungle there since, every leaf an edge. Still a small share either way. */
+    CHECK((float64_t)most <= 0.05f64 * (float64_t)surfaces);
     game_close(game);
     fr_rig_end(t, &rig);
 }
@@ -1591,8 +1593,11 @@ TEST(the_fresh_count_is_the_strip_on_a_turn) {
     fr_marked_camera(game, &camera);
     const uint32_t surfaces = fr_surfaces_first(t, &rig, &camera);
     REQUIRE(surfaces > FR_WIDTH * FR_HEIGHT / 4u);
+    uint32_t still = 0u;
     for (uint32_t frame = 1u; frame < 8u; frame++) {
-        REQUIRE(fr_draw_marked(t, &rig, &camera) != nullptr);
+        const frame_marks_t *const settled = fr_draw_marked(t, &rig, &camera);
+        REQUIRE(settled != nullptr);
+        still = settled->fresh_count > still ? settled->fresh_count : still;
     }
     /* The strip a 12 degree turn brings in, by the master's section 1 C3: the share of the width, in tangents, between the edge and
      * where the edge was. Measured here at this camera's own field of view and shape. */
@@ -1608,8 +1613,11 @@ TEST(the_fresh_count_is_the_strip_on_a_turn) {
     printf("  a 12 degree turn: %" PRIu32 " fresh pixels, %.1f %% of the %" PRIu32
            " with a surface; the strip is %.1f %%\n",
            marks->fresh_count, (libc_double_t)(share * 100.0f64), surfaces, (libc_double_t)(strip * 100.0f64));
-    /* Neighbours on the last picture lower it, never raise it. */
-    CHECK(share <= strip + 0.01f64);
+    /* Neighbours on the last picture lower it, never raise it; the jitter's own fresh pixels at edges, which a still camera
+     * here has too (the land's: many on a jungle's leaves), come on top. */
+    const float64_t jitter = (float64_t)still / (float64_t)surfaces;
+    printf("  a still camera here has %.1f %% fresh from the jitter\n", (libc_double_t)(jitter * 100.0f64));
+    CHECK(share <= strip + jitter + 0.02f64);
     CHECK(share >= strip * 0.5f64);
     game_close(game);
     fr_rig_end(t, &rig);

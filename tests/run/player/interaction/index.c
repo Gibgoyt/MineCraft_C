@@ -1,5 +1,6 @@
 /* ctest run_player_interaction. See README.md. */
 #include "harness/index.h"
+#include "run/game/fixtures/report.h"
 
 #include "run/input/fixtures/fake_evdev.h"
 #include "run/input/fixtures/replay.h"
@@ -1662,7 +1663,7 @@ static void pi_temp_dir_remove(const pi_temp_dir_t *dir) {
     rmdir(dir->path);
 }
 
-/* Takes a step on the grass seed 11 starts on, looks straight down, and mines through the grass under its feet and the dirt under
+/* Takes a step on the ground seed 11 starts on (grass until plan 006 phase 03; the spawn's biome says), looks straight down, and mines through the grass under its feet and the dirt under
  * that, falling as each goes. Then it turns, looks level at the wall of its hole, which at its eyes is the grass again, mines that, and
  * puts one back. A longer step leaves it on the edge of a block, and it does not fall. */
 static const char pi_mine_script[] = "1 key w down\n"
@@ -1725,10 +1726,16 @@ TEST(the_program_walks_mines_to_dirt_and_places_it_back_the_same_each_time) {
     pi_program_run(t, &first, script, &run);
     REQUIRE(run.started != 0u);
     CHECK_EQ_I64(run.exit_code, MAIN_EXIT_OK);
-    /* Grass, dirt and grass, each giving dirt, and one of them placed back. */
-    CHECK_CONTAINS(
-        run.output,
-        "the player mined 3 blocks and placed 1; the last mined was grass_block, and the hand holds 2 of dirt");
+    /* The top, what is under it, and the top again in the hole's wall, and one of them placed back. Which blocks those are is
+     * the land's (plan 006 phase 03: the spawn's biome), so the report says, and the hand holds what the last one drops. */
+    report_mined_t mined;
+    REQUIRE(report_mined_read(run.output, &mined));
+    printf("  mined %" PRIu64 ", placed %" PRIu64 ", the last %s, the hand %" PRIu64 " of %s\n", mined.mined,
+           mined.placed, mined.last, mined.hand_count, mined.hand_item);
+    CHECK_EQ_U64(mined.mined, 3u);
+    CHECK_EQ_U64(mined.placed, 1u);
+    CHECK_EQ_U64(mined.hand_count, 2u);
+    CHECK_STR_EQ(mined.hand_item, report_drop_of(mined.last));
     CHECK_CONTAINS(run.output, "0 bytes live");
     pi_program_run(t, &second, script, &run);
     REQUIRE(run.started != 0u);

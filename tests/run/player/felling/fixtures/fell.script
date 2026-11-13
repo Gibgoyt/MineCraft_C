@@ -39,6 +39,11 @@
 +8 move 0 -220
 +6 screenshot before.png
 +1 move 0 220
+# Since plan 006 phase 03 the tree ahead (an acacia on a savanna) stands a little left of where the mangrove's root was, and
+# further off: a turn to its trunk and a few steps to it.
++1 move -60 -40
++1 key w down
++10 key w up
 +6 screenshot aimed.png
 # The left button held with nothing in hand for the 60 ticks a hand takes on a log, with some to spare.
 +1 button left down

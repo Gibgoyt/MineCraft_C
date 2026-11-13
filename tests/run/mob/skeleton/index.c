@@ -1134,13 +1134,14 @@ TEST(in_a_real_game_a_skeleton_shoots_the_player_and_leaves_its_drops) {
     display_script_state_t *const state = test_alloc(t, sizeof(display_script_state_t));
     game_headless_scene(game, &scene);
     uint32_t tick = 0u;
-    /* The ground the seed starts on falls away steeply, so a floor of its own, with the sky over it. */
+    /* The ground the seed starts on falls away steeply, so a floor of its own, with the sky over it: cleared high, as the land
+     * there may be a forest (plan 006 phase 03), whose trees left standing over the floor could drop what they hold. */
     const int32_t pad_x = (int32_t)floor(rig.player->movement.position[0]);
     const int32_t pad_y = (int32_t)floor(rig.player->movement.position[1]);
     const int32_t pad_z = (int32_t)floor(rig.player->movement.position[2]);
     for (int32_t x = pad_x - 14; x <= pad_x + 14; x++) {
         for (int32_t y = pad_y - 14; y <= pad_y + 14; y++) {
-            for (int32_t z = pad_z - 1; z <= pad_z + 8; z++) {
+            for (int32_t z = pad_z - 1; z <= pad_z + 48; z++) {
                 const world_edit_status_t status =
                     world_edit_block_set(&rig.world->edit, x, y, z, z < pad_z ? BLOCK_ID_STONE : BLOCK_ID_AIR);
                 REQUIRE(status == WORLD_EDIT_STATUS_CHANGED || status == WORLD_EDIT_STATUS_UNCHANGED);
@@ -1148,6 +1149,8 @@ TEST(in_a_real_game_a_skeleton_shoots_the_player_and_leaves_its_drops) {
         }
     }
     REQUIRE(msk_game_ticks(&scene, state, &tick, 10u));
+    /* Whatever the clearing left lying (the land's), so that what follows counts only the skeleton's. */
+    const uint32_t drops_before = rig.entity->item_drops.count;
     const float64_t *const feet = rig.player->movement.position;
     const mob_def_t *const def = &mob_defs[MOB_ID_SKELETON];
     const entity_store_spawn_t body = {
@@ -1164,14 +1167,14 @@ TEST(in_a_real_game_a_skeleton_shoots_the_player_and_leaves_its_drops) {
     REQUIRE(msk_game_ticks(&scene, state, &tick, MOB_SKELETON_DRAW_TICKS + 1u));
     CHECK_EQ_U64(rig.mob->skeleton.shot_count, 1u);
     REQUIRE(rig.entity->projectiles.count == 1u);
-    CHECK_EQ_U64(rig.entity->item_drops.count, 0u);
-    /* The arrow, and the six parts of what shot it. */
+    CHECK_EQ_U64(rig.entity->item_drops.count, drops_before);
+    /* The arrow, and the six parts of what shot it, and what lies there. */
     uint32_t drawn = 0u;
     for (uint32_t i = 0u; i < RENDER_EXCHANGE_SLOTS; i++) {
         const uint32_t count = rig.render->borrowed_entities->slots[i].count;
         drawn = count > drawn ? count : drawn;
     }
-    CHECK_EQ_U64(drawn, 1u + MOB_SKELETON_PART_COUNT);
+    CHECK_EQ_U64(drawn, 1u + MOB_SKELETON_PART_COUNT + drops_before);
 
     const float32_t health = rig.player->survival.health;
     const uint64_t hurts = rig.player->survival.hurt_count;

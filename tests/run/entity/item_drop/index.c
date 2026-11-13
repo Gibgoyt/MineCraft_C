@@ -1,6 +1,7 @@
 /* ctest run_entity_drop. See README.md. */
 #include "harness/index.h"
 
+#include "run/game/fixtures/report.h"
 #include "run/physics/fixtures/test_world.h"
 
 #include "entity/index.h"
@@ -1086,37 +1087,50 @@ TEST(the_program_drops_dirt_picks_it_up_and_places_it_back_the_same_each_time) {
     snprintf(script, sizeof(script), "%s/drop.script", dir.path);
     test_process_t run;
 
-    /* Still mining: nothing has come out. */
-    di_program_run(t, &dir, script, 20u, &run);
+    /* Still mining, two ticks in, which no soil a body can dig by hand is done in: nothing has come out. */
+    di_program_run(t, &dir, script, 8u, &run);
     REQUIRE(run.started != 0u);
     CHECK_EQ_I64(run.exit_code, MAIN_EXIT_OK);
     CHECK_CONTAINS(run.output,
                    "the player mined 0 blocks and placed 0; the last mined was air, and the hand holds 0 of nothing");
     CHECK_CONTAINS(run.output, "0 items dropped, 0 picked up, 0 on the ground in 0 stacks");
 
-    /* The grass has gone: dirt lies there, and the hand is still empty. */
+    /* The top block has gone: what it drops lies there, and the hand is still empty. Which block that is, is the land's (plan
+     * 006 phase 03: the spawn's biome), so the report says, and the rest is held to it. */
     di_program_run(t, &dir, script, 27u, &run);
     CHECK_EQ_I64(run.exit_code, MAIN_EXIT_OK);
-    CHECK_CONTAINS(
-        run.output,
-        "the player mined 1 blocks and placed 0; the last mined was grass_block, and the hand holds 0 of nothing");
+    report_mined_t mined;
+    REQUIRE(report_mined_read(run.output, &mined));
+    CHECK_EQ_U64(mined.mined, 1u);
+    CHECK_EQ_U64(mined.placed, 0u);
+    CHECK_EQ_U64(mined.hand_count, 0u);
+    char top[REPORT_NAME_BYTES];
+    memcpy(top, mined.last, sizeof(top));
+    const char *const drop = report_drop_of(top);
+    printf("  the spawn's top is %s, which drops %s\n", top, drop);
+    REQUIRE(drop[0] != '\0');
     CHECK_CONTAINS(run.output, "1 items dropped, 0 picked up, 1 on the ground in 1 stacks");
 
     /* Its wait is over: it is in the hand, and no longer on the ground. */
     di_program_run(t, &dir, script, 44u, &run);
     CHECK_EQ_I64(run.exit_code, MAIN_EXIT_OK);
-    CHECK_CONTAINS(
-        run.output,
-        "the player mined 1 blocks and placed 0; the last mined was grass_block, and the hand holds 1 of dirt");
+    REQUIRE(report_mined_read(run.output, &mined));
+    CHECK_EQ_U64(mined.mined, 1u);
+    CHECK_EQ_U64(mined.placed, 0u);
+    CHECK_STR_EQ(mined.last, top);
+    CHECK_EQ_U64(mined.hand_count, 1u);
+    CHECK_STR_EQ(mined.hand_item, drop);
     CHECK_CONTAINS(run.output, "1 items dropped, 1 picked up, 0 on the ground in 0 stacks");
     di_player_is_below_start(t, run.output, 1.0f64); /* down in the hole */
 
     /* And it is back in the world: the hand is empty, and the body stands where it started. */
     di_program_run(t, &dir, script, 95u, &run);
     CHECK_EQ_I64(run.exit_code, MAIN_EXIT_OK);
-    CHECK_CONTAINS(
-        run.output,
-        "the player mined 1 blocks and placed 1; the last mined was grass_block, and the hand holds 0 of nothing");
+    REQUIRE(report_mined_read(run.output, &mined));
+    CHECK_EQ_U64(mined.mined, 1u);
+    CHECK_EQ_U64(mined.placed, 1u);
+    CHECK_STR_EQ(mined.last, top);
+    CHECK_EQ_U64(mined.hand_count, 0u);
     CHECK_CONTAINS(run.output, "1 items dropped, 1 picked up, 0 on the ground in 0 stacks");
     di_player_is_below_start(t, run.output, 0.0f64);
     CHECK_CONTAINS(run.output, "0 bytes live");

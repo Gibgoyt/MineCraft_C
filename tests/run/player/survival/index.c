@@ -1751,11 +1751,13 @@ static void ps_temp_dir_remove(const ps_temp_dir_t *dir) {
     rmdir(dir->path);
 }
 
-/* Sprints and jumps from where seed 11 starts, on land with a fall to it, for 15 s. The default seed's start spent no food on this script. */
+/* Sprints and jumps from where seed 11 starts, for 45 s. What is in its way is the land's (since plan 006 phase 03 a jungle,
+ * which can stop it at a trunk), so it runs long enough that its jumps alone, sprinting, spend more than the 5 saturation it
+ * starts with, whether or not the way ahead is clear. The default seed's start spent no food on the old 15 s script. */
 static const char ps_run_script[] = "1 key lctrl down\n"
                                     "1 key w down\n"
                                     "1 key space down\n"
-                                    "300 end\n";
+                                    "900 end\n";
 
 static void ps_program_run(test_context_t *t, const ps_temp_dir_t *dir, const char *script, test_process_t *out) {
     char *const argv[] = {t->borrowed_args[0],
@@ -1822,12 +1824,13 @@ TEST(the_program_runs_itself_tired_the_same_each_time) {
         REQUIRE(rest != nullptr);
         hurt = strtoull(rest + strlen("hurt "), nullptr, 10);
     }
-    /* 15 s of it is far past what 5 saturation covers, so saturation has gone and food with it. What it falls off on the way hurts it, and
-     * what food is left may have healed some of that; alive, it says so. */
+    /* 45 s of it is far past what 5 saturation covers, so saturation has gone and food with it. Whether it falls off anything on
+     * the way is the land's, so a hurt is not asked for; alive, it says so. */
+    printf("  %s\n", first);
     CHECK(food < 20u);
     CHECK_NEAR(saturation, 0.0f32, 0.0f32);
     CHECK(health > 0.0f32);
-    CHECK(hurt >= 1u);
+    (void)hurt;
     ps_program_run(t, &dir, script, &run);
     REQUIRE(run.started != 0u);
     ps_report_line(run.output, second, sizeof(second));

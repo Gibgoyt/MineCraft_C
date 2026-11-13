@@ -1,5 +1,6 @@
 /* ctest run_playthrough. See README.md. */
 #include "harness/index.h"
+#include "run/game/fixtures/report.h"
 
 #include "file/index.h"
 
@@ -236,13 +237,23 @@ TEST(bare_hands_bring_down_a_real_tree_with_one_cut_and_it_stays_down_through_a_
     pt_run(t, "tests/run/player/felling/fixtures/fell.script", root, PT_DAY_MS, 2u, &process);
     const char *const output = process.output;
 
-    CHECK_EQ_U64(pt_count(output, "hotbar slot 1 is in hand, with 1 of mud"), 2u);
-    CHECK_EQ_U64(pt_count(output, "the last mined was mangrove_log, and the hand holds 1 of mud"), 2u);
-    /* The mangrove ahead is 10 logs from the root it is cut at up, on the day this was written: the cut and 9 more. Hands that took one log
-     * would leave this at 0. */
+    /* What the hole was dug in and which tree stands ahead are the land's (plan 006 phase 03: mud and a mangrove before, coarse
+     * dirt and an acacia since), so the report says: the hand holds the one thing the hole gave, and the last cut was a log. */
+    report_mined_t mined;
+    REQUIRE(report_mined_read(output, &mined));
+    printf("  the last mined %s, the hand %" PRIu64 " of %s\n", mined.last, mined.hand_count, mined.hand_item);
+    CHECK_EQ_U64(mined.hand_count, 1u);
+    CHECK(strstr(mined.last, "_log") != nullptr);
+    char line[256];
+    snprintf(line, sizeof(line), "hotbar slot 1 is in hand, with 1 of %s", mined.hand_item);
+    CHECK_EQ_U64(pt_count(output, line), 2u);
+    snprintf(line, sizeof(line), "the last mined was %s, and the hand holds 1 of %s", mined.last, mined.hand_item);
+    CHECK_EQ_U64(pt_count(output, line), 2u);
+    /* One cut brings down more than its own log: hands that took one log would leave this at 0. A tree is at least the cut and
+     * two more. */
     const char *const felled = strstr(output, "the tree feller felled ");
     REQUIRE(felled != nullptr);
-    CHECK(strtoull(felled + strlen("the tree feller felled "), nullptr, 10) >= 8u);
+    CHECK(strtoull(felled + strlen("the tree feller felled "), nullptr, 10) >= 2u);
 
     static const char *const shots[] = {"at_tree.png", "before.png", "aimed.png", "cut.png",
                                         "during.png",  "after.png",  "later.png", "reloaded.png"};
@@ -271,7 +282,8 @@ TEST(a_night_in_the_open_meets_no_zombie_skeleton_or_creeper_and_is_saved) {
     /* A report on the way to the title and one at Quit Game: each says nothing came, struck, shot or burst. */
     const uint64_t reports = pt_count(output, "mobs came");
     CHECK(reports >= 2u);
-    CHECK_EQ_U64(pt_count(output, " 0 mobs came, 0 went, and 0 are in the world"), reports);
+    /* Animals may come: which herds a place has is its biome's (plan 006 phase 03 moved them), and none of them is hostile. So
+     * the count of mobs is not held; the hostile ones are, each by its own line. */
     CHECK_EQ_U64(pt_count(output, "zombies struck 0 blows, 0 died"), reports);
     CHECK_EQ_U64(pt_count(output, "skeletons loosed 0 arrows, 0 died"), reports);
     CHECK_EQ_U64(pt_count(output, " 0 creepers burst, and 0 died"), reports);

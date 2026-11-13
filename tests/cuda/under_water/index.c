@@ -372,27 +372,153 @@ static uint64_t uw_black_pixels(const uint8_t *picture) {
     return black;
 }
 
+/* Where the dive's script is written, for uw_dive. */
+static char uw_dive_script[256];
+
+/* ---- The dive's script, made for the land as it is ------------------------------------------------------------------ */
+
+enum : uint32_t {
+    UW_SCRIPT_BYTES = 8192u,
+    UW_SEA_SEARCH_STEP = 32u,   /* blocks between the columns looked at, ring by ring round the world's middle */
+    UW_SEA_SEARCH_RINGS = 256u, /* 8 km out */
+    UW_TP_TICK = 120u,          /* the box opens after land.png */
+    UW_LOADED_TICKS =
+        500u,            /* at the surface, breathing: a far jump's columns are drawn within 15 s (plan 006 phase 01) */
+    UW_SEA_TICKS = 140u, /* then down: as the walked script had it, from diving to sea.png */
+    UW_NO_AIR_TICKS = 180u, /* and from sea.png to sea_no_air.png */
+};
+static const float32_t UW_SEA_DEEP = -30.0f32; /* sea bed this far under the surface, at least */
+
+typedef struct uw_script_t {
+    char text[UW_SCRIPT_BYTES]; /* 0 */
+    uint64_t length;            /* 8192 */
+    uint32_t tick;              /* 8200 */
+    uint8_t _pad0[4];           /* 8204 */
+} uw_script_t;
+static_assert(sizeof(uw_script_t) == 8208);
+
+static void uw_line(uw_script_t *s, const char *line) {
+    const int32_t wrote = snprintf(s->text + s->length, UW_SCRIPT_BYTES - s->length, "%s\n", line);
+    if (wrote > 0) {
+        s->length += (uint64_t)wrote;
+    }
+}
+
+static void uw_key(uw_script_t *s, uint32_t after, const char *name) {
+    char line[64];
+    s->tick += after;
+    snprintf(line, sizeof(line), "%" PRIu32 " key %s down", s->tick, name);
+    uw_line(s, line);
+    snprintf(line, sizeof(line), "%" PRIu32 " key %s up", s->tick, name);
+    uw_line(s, line);
+}
+
+/* Each character as the key a US keyboard types it with, as tests/run/game/command/ types its commands. */
+static void uw_type(uw_script_t *s, const char *text) {
+    for (const char *c = text; *c != '\0'; c++) {
+        char name[16];
+        if (*c == ' ') {
+            snprintf(name, sizeof(name), "space");
+        } else if (*c == '/') {
+            snprintf(name, sizeof(name), "slash");
+        } else if (*c == '-') {
+            snprintf(name, sizeof(name), "minus");
+        } else {
+            snprintf(name, sizeof(name), "%c", *c);
+        }
+        uw_key(s, *c == '/' ? 1u : 2u, name);
+    }
+}
+
+/* The deep sea nearest the world's middle on the default seed, from the terrain itself. The walked script this replaced went from
+ * the start over a beach to sea; since plan 006 phase 03 a jungle stands in that way, and the land will move again (plan 007), so
+ * the dive finds its sea, and goes there by /tp. */
+static bool uw_sea_find(test_context_t *t, int32_t *out_x, int32_t *out_y) {
+    terrain_t *const terrain = test_alloc(t, sizeof(terrain_t));
+    if (!CHECK(terrain_init(terrain, TERRAIN_SEED_DEFAULT))) {
+        return false;
+    }
+    bool found = false;
+    const int32_t step = (int32_t)UW_SEA_SEARCH_STEP;
+    for (int32_t ring = 0; ring < (int32_t)UW_SEA_SEARCH_RINGS && !found; ring++) {
+        for (int32_t dy = -ring; dy <= ring && !found; dy++) {
+            for (int32_t dx = -ring; dx <= ring && !found; dx++) {
+                if (dx != -ring && dx != ring && dy != -ring && dy != ring) {
+                    continue;
+                }
+                const int32_t x = GAME_WORLD_MIDDLE + dx * step, y = GAME_WORLD_MIDDLE + dy * step;
+                const terrain_hydrology_column_t column =
+                    terrain_hydrology_column_at(terrain->borrowed_hydrology, x, y);
+                if ((column.kind == TERRAIN_HYDROLOGY_KIND_OCEAN || column.kind == TERRAIN_HYDROLOGY_KIND_DEEP_OCEAN) &&
+                    column.ground <= UW_SEA_DEEP) {
+                    *out_x = x;
+                    *out_y = y;
+                    found = true;
+                }
+            }
+        }
+    }
+    terrain_deinit(terrain);
+    return CHECK(found);
+}
+
+/* Stands at the start for land.png, then /tp to the sea's surface, swims there until the place is drawn, and sinks to the bed. */
+static bool uw_script_make(test_context_t *t, const char *path) {
+    int32_t x = 0, y = 0;
+    if (!uw_sea_find(t, &x, &y)) {
+        return false;
+    }
+    printf("  the dive's sea: %" PRId32 ", %" PRId32 "\n", x, y);
+    uw_script_t *const s = test_alloc(t, sizeof(uw_script_t));
+    memset(s, 0, sizeof(*s));
+    uw_line(s, "100 screenshot land.png");
+    s->tick = UW_TP_TICK;
+    char command[96];
+    snprintf(command, sizeof(command), "/tp %" PRId32 " %" PRId32 " 1", x, y);
+    uw_type(s, command);
+    uw_key(s, 2u, "enter");
+    char line[64];
+    /* Space held keeps it swimming at the surface, breathing, as the walked script jumped its way out; then down. */
+    snprintf(line, sizeof(line), "%" PRIu32 " key space down", s->tick + 2u);
+    uw_line(s, line);
+    const uint32_t dive = s->tick + UW_LOADED_TICKS;
+    snprintf(line, sizeof(line), "%" PRIu32 " key space up", dive);
+    uw_line(s, line);
+    snprintf(line, sizeof(line), "%" PRIu32 " key lshift down", dive);
+    uw_line(s, line);
+    const uint32_t sea = dive + UW_SEA_TICKS;
+    snprintf(line, sizeof(line), "%" PRIu32 " screenshot sea.png", sea);
+    uw_line(s, line);
+    snprintf(line, sizeof(line), "%" PRIu32 " screenshot sea_no_air.png", sea + UW_NO_AIR_TICKS);
+    uw_line(s, line);
+    snprintf(line, sizeof(line), "%" PRIu32 " end", sea + UW_NO_AIR_TICKS + 1u);
+    uw_line(s, line);
+    return CHECK_EQ_U64(file_write_atomic(path, s->text, s->length), FILE_OK);
+}
+
 /* flag may be nullptr, which then ends the list. */
 static void uw_dive(test_context_t *t, const char *dir, const char *flag) {
-    char *const argv[] = {t->borrowed_args[0],
-                          (char *)"--headless",
-                          (char *)"--test-world",
-                          (char *)"--walk",
-                          (char *)"--no-day-cycle",
-                          (char *)"--time-of-day",
-                          (char *)"0.5",
-                          (char *)"--render-distance",
-                          (char *)"12",
-                          (char *)"--script",
-                          (char *)"tests/cuda/under_water/fixtures/dive.script",
-                          (char *)"--screenshot-dir",
-                          (char *)dir,
-                          (char *)"--width",
-                          (char *)"320",
-                          (char *)"--height",
-                          (char *)"180",
-                          (char *)flag,
-                          nullptr};
+    char *const argv[] = {
+        t->borrowed_args[0],
+        (char *)"--headless",
+        (char *)"--test-world",
+        (char *)"--walk",
+        (char *)"--no-day-cycle",
+        (char *)"--no-outline", /* whatever the eye ends up aimed at, its black outline is not the water's */
+        (char *)"--time-of-day",
+        (char *)"0.5",
+        (char *)"--render-distance",
+        (char *)"12",
+        (char *)"--script",
+        (char *)uw_dive_script,
+        (char *)"--screenshot-dir",
+        (char *)dir,
+        (char *)"--width",
+        (char *)"320",
+        (char *)"--height",
+        (char *)"180",
+        (char *)flag,
+        nullptr};
     test_process_t run;
     test_process_run(t, argv, UW_PROGRAM_TIMEOUT_MS, &run);
     REQUIRE(run.started != 0u);
@@ -403,6 +529,8 @@ TEST(a_real_body_dives_into_a_real_sea_and_sees_water) {
     uw_temp_dir_t on, off;
     REQUIRE(uw_temp_dir_make(&on));
     REQUIRE(uw_temp_dir_make(&off));
+    snprintf(uw_dive_script, sizeof(uw_dive_script), "%s/dive.script", on.path);
+    REQUIRE(uw_script_make(t, uw_dive_script));
     uw_dive(t, on.path, nullptr);
     uw_dive(t, off.path, "--no-under-water");
     char path[256];

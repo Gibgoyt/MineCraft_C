@@ -29,8 +29,12 @@
 enum : uint32_t {
     SIGHT_WIDTH = 640u,
     SIGHT_HEIGHT = 360u,
-    SIGHT_PAD_REACH = 14u,
-    SIGHT_PAD_ROOM = 8u,
+    /* The floor this far round the body, so that what stands behind the mobs is sky and floor and not the land past it, whose
+     * grass and leaves (a jungle since plan 006 phase 03) are the very colours the test counts. */
+    SIGHT_PAD_REACH = 40u,
+    /* Air this high over the floor: the land round the spawn may be a forest (plan 006 phase 03), whose canopy would shade
+     * the mobs and dull their colours. */
+    SIGHT_PAD_ROOM = 48u,
     SIGHT_SETTLE_TICKS = 10u,
     SIGHT_STEPPED_TICKS = 2u,
     SIGHT_MOBS = 3u,
@@ -192,7 +196,8 @@ TEST(in_a_real_game_each_mob_is_on_the_picture_in_its_own_skin) {
     memset(state, 0, sizeof(*state));
     uint32_t tick = 0u;
 
-    /* A floor of its own, with the sky over it. */
+    /* A floor of its own, with the sky over it: sand, which is none of the colours counted (green, blue, bone grey), as a floor
+     * this wide is most of what stands behind the mobs. */
     const int32_t reach = (int32_t)SIGHT_PAD_REACH;
     const int32_t pad_x = (int32_t)floor(rig.player->movement.position[0]);
     const int32_t pad_y = (int32_t)floor(rig.player->movement.position[1]);
@@ -201,7 +206,7 @@ TEST(in_a_real_game_each_mob_is_on_the_picture_in_its_own_skin) {
         for (int32_t y = pad_y - reach; y <= pad_y + reach; y++) {
             for (int32_t z = pad_z - 1; z <= pad_z + (int32_t)SIGHT_PAD_ROOM; z++) {
                 const world_edit_status_t status =
-                    world_edit_block_set(&rig.world->edit, x, y, z, z < pad_z ? BLOCK_ID_STONE : BLOCK_ID_AIR);
+                    world_edit_block_set(&rig.world->edit, x, y, z, z < pad_z ? BLOCK_ID_SAND : BLOCK_ID_AIR);
                 REQUIRE(status == WORLD_EDIT_STATUS_CHANGED || status == WORLD_EDIT_STATUS_UNCHANGED);
             }
         }

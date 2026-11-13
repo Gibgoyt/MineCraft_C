@@ -245,11 +245,11 @@ static void lf_real_column(const terrain_t *terrain, const terrain_hydrology_col
                                            .count_y = 1u,
                                            .count_z = (uint32_t)(high - low + 1)};
         terrain_hydrology_fill_box(terrain->borrowed_hydrology, &box, blocks);
-        terrain_surface_fill_box(terrain->borrowed_surface, &box, blocks);
+        terrain_surface_fill_box(terrain->borrowed_surface, nullptr, &box, blocks);
         terrain_cave_mask_box(terrain->borrowed_cave, &box, opened);
         terrain_cave_cut_with_mask(&box, opened, blocks);
         terrain_hydrology_flood_box(terrain->borrowed_hydrology, &box, opened, blocks);
-        terrain_surface_line_caves_box(terrain->borrowed_surface, &box, blocks);
+        terrain_surface_line_caves_box(terrain->borrowed_surface, nullptr, &box, blocks);
         bool wet = false;
         if (lf_column_read(blocks, low, box.count_z, out_ground, &wet)) {
             *out_land = (uint8_t)(wet ? 0u : 1u);
