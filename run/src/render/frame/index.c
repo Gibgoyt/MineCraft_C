@@ -833,7 +833,8 @@ gpu_status_t render_frame_queue(render_frame_t *frame, const world_buffers_t *bu
         .borrowed_pixels = frame->scene.borrowed_pixels,
         .sun_direction = {sun->direction[0], sun->direction[1], sun->direction[2]},
         .material_count = frame->scene.material_count,
-        .shadows = (features & SHADE_FEATURE_SHADOW) != 0u && sun_shines ? 1u : 0u,
+        .shadows =
+            (features & SHADE_FEATURE_SHADOW) != 0u && sun_shines && !shade_shadows_skipped(sun->direct) ? 1u : 0u,
         .water_material = frame->scene.water_material,
         .water_tint = (features & SHADE_FEATURE_WATER_TINT) != 0u ? 1u : 0u,
         .stops_after_faces = 1u,

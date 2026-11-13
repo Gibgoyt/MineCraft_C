@@ -36,6 +36,9 @@ enum : uint32_t {
      * calls the sun hidden: compile/config/render/shade/index.yaml, and cuda/src/shade/README.md. */
     SHADE_ALPHA_LAYERS = MC_TUNE_RENDER_SHADE_ALPHA_LAYERS,
     SHADE_SUN_LAYERS = MC_TUNE_RENDER_SHADE_SUN_LAYERS,
+    /* Plan 009 phase 06: past SHADE_ALPHA_FAR_FROM blocks, where a leaf's texel is under a pixel, a pixel looks at this many surfaces at most:
+     * see shade_alpha_layers_at. */
+    SHADE_ALPHA_LAYERS_FAR = MC_TUNE_RENDER_SHADE_ALPHA_LAYERS_FAR,
     /* How many surfaces a reflection looks at, holes and all, before it stops on the last. */
     SHADE_REFLECTION_LAYERS = 8u,
     /* A material no voxel has: shade_scene_t's water and glass, in a scene with none. */
@@ -194,6 +197,16 @@ static_assert((float32_t)SHADE_AO_STEPS >= SHADE_AO_REACH * F32(1.7320508) + F32
 /* Past this many blocks of water nothing behind it can be told from none, so a ray with tint on looks no further:
  * compile/config/render/shade/index.yaml. */
 #define SHADE_WATER_SEEN_BLOCKS MC_TUNE_RENDER_SHADE_WATER_SEEN_BLOCKS
+/* Plan 009 phase 06: past this many blocks a pixel's ray goes through at most SHADE_ALPHA_LAYERS_FAR surfaces. */
+#define SHADE_ALPHA_FAR_FROM MC_TUNE_RENDER_SHADE_ALPHA_FAR_FROM_BLOCKS
+/* Plan 009 phase 06: the light's angular diameter in degrees, and how much coarser than its cone a shadow ray may go (1 is physical). */
+#define SHADE_LIGHT_ANGULAR_DIAMETER MC_TUNE_RENDER_SHADE_LIGHT_ANGULAR_DIAMETER
+#define SHADE_SHADOW_CONE_SCALE MC_TUNE_RENDER_SHADE_SHADOW_CONE_SCALE
+/* Plan 009 phase 06: the dim-light cut. No shadow ray when one could move no pixel by more than this share of a byte's range after the tone
+ * map: 2 / 255. */
+#define SHADE_SHADOW_SKIP_BELOW MC_TUNE_RENDER_SHADE_SHADOW_SKIP_BELOW
+/* The steepest the tone map ever is, in bytes' range per unit of linear light: sRGB's straight foot (post_tone_map). */
+#define SHADE_TONE_MAP_STEEPEST F32(12.92)
 
 #ifdef __CUDA_ARCH__
 #define SHADE_TABLE static __constant__ const
@@ -668,6 +681,29 @@ SHADE_BOTH_SIDES static inline void shade_box_light(const shade_sun_t *sun, uint
 
 /* How far off a surface a sun ray starts, for the distance the surface is seen from: more than that distance's rounding, so that
  * a surface does not shadow itself, and far less than anything a block is made of. */
+/* Plan 009 phase 06: how many surfaces a pixel's ray may look at, holes and all, when the one it is at is t blocks off. Past
+ * SHADE_ALPHA_FAR_FROM, where a leaf's texel is under a pixel, which hole a ray finds is noise that TAA averages, and fewer cost less. */
+SHADE_BOTH_SIDES static inline uint32_t shade_alpha_layers_at(float32_t t) {
+    return t > SHADE_ALPHA_FAR_FROM ? (uint32_t)SHADE_ALPHA_LAYERS_FAR : (uint32_t)SHADE_ALPHA_LAYERS;
+}
+
+/* Plan 009 phase 06: the light's cone. An occluder L blocks off blurs a real shadow's edge over L tan(diameter) blocks, so a level whose surface
+ * is off by up to half its voxel shows nothing a real light would not blur away once L reaches that half over the blur: L_k = 2^k times this.
+ * 54 at the defaults, so level 1 from 108 blocks, level 2 from 216, level 3 from 432. */
+SHADE_BOTH_SIDES static inline float32_t shade_shadow_cone_base(void) {
+    const float32_t radians = SHADE_LIGHT_ANGULAR_DIAMETER * F32(0.017453292519943295);
+    return F32(0.5) / (tanf(radians) * SHADE_SHADOW_CONE_SCALE);
+}
+
+/* Plan 009 phase 06, the dim-light cut: whether a light this bright could move no pixel by SHADE_SHADOW_SKIP_BELOW, and so sends no shadow
+ * ray: the light then reaches every surface facing it, as with shadows off. A shadow takes at most direct from a pixel, a white texel square to
+ * the light; through the tone map's steepest part that is SHADE_TONE_MAP_STEEPEST times as much. Asked of the sun a frame is drawn with, after
+ * render_sky_fill and the weather (render_weather_apply takes direct down under cloud), so both decide it. */
+SHADE_BOTH_SIDES static inline bool shade_shadows_skipped(const float32_t direct[3]) {
+    const float32_t most = fmaxf(direct[0], fmaxf(direct[1], direct[2]));
+    return most * SHADE_TONE_MAP_STEEPEST <= SHADE_SHADOW_SKIP_BELOW;
+}
+
 SHADE_BOTH_SIDES static inline float32_t shade_sun_bias(float32_t t) {
     return F32(2.5e-4) + t * F32(1e-6);
 }
@@ -858,11 +894,13 @@ static_assert(offsetof(shade_marks_t, borrowed_events) == 0);
 static_assert(offsetof(shade_marks_t, fresh_count) == 32);
 static_assert(offsetof(shade_marks_t, borrowed_counts) == 40);
 
-/* shade_frame_entities with marks, or without if marks is nullptr. */
+/* shade_frame_entities with marks, or without if marks is nullptr. Plan 009 phase 06: with lod, this frame's far field (what lod_frame was
+ * given), and SHADE_FEATURE_LOD on, a shadow ray goes through level 0 only as far as the light's cone lets level 1 take over, and on through
+ * the levels from there (shade_shadow_cone_base); with nullptr it goes through level 0 to its edge, as before. lod is read during the call. */
 gpu_status_t shade_frame_marked(gpu_error_t *error, const shade_scene_t *scene, const post_settings_t *post,
                                 const traverse_world_t *world, const traverse_camera_t *camera,
                                 const device_block_t *hits, const device_block_t *pixels,
-                                const entity_rays_scene_t *entities, shade_marks_t *marks);
+                                const entity_rays_scene_t *entities, const lod_scene_t *lod, shade_marks_t *marks);
 
 /* A span's name, for a profile and the frame log. Lasts for good. */
 const char *shade_span_name(shade_span_t span);

@@ -12,7 +12,7 @@
 - `lod_frame_counted` (plan 009 phase 01): `lod_frame` with every traversal's steps in a counts block, by second copies of its two kernels: far rays (`TRAVERSE_COUNT_FAR`) and their sun rays (`TRAVERSE_COUNT_FAR_SUN`) by level, in blocks along the ray, and the ask past level 0 (`TRAVERSE_COUNT_PAST`).
 
 **May be called by:** `cuda/src/frame/`, and tests.
-**Depends on:** `cuda/include/traverse/` for the ray loop and `traverse_view_t`, and `cuda/include/shade/` for `shade_texture_t` and what shade's own ray meets: `shade_surface_read`, `shade_water_through`, `shade_own_kind_behind`.
+**Depends on:** `cuda/include/traverse/` for the ray loop and `traverse_view_t`, and `cuda/include/shade/` for `shade_texture_t` and what shade's own ray meets: `shade_surface_read`, `shade_water_through`, `shade_own_kind_behind`. Its level-to-level loop (`lod_trace`, `lod_sun_reaches`, `lod_sun_onwards`, the hand-over `lod_level_from`, `lod_view_from`) is in `cuda/include/lod/index.hu`, as shade's sun ray walks it too (plan 009 phase 06).
 
 ## How a ray goes
 
@@ -30,7 +30,7 @@ A pixel's band edges all move by one factor within `band_dither` of 1 (8 %), a h
 
 - **Primary rays** (`cuda/src/traverse/`) trace level 0 with `t_end = d_1`. A ray that gets there with nothing met says `TRAVERSE_FACE_PAST`: a miss whose `t` is `t_end`. One that enters a column level 0 does not hold (not loaded yet, or no room in the pool) says the same, with `t` where it came in, so the far field shows in level 0's holes as it did.
 - **This area** starts each far ray where level 0 stopped for it: that `t`, or `d_1`, or where the ray leaves level 0's square, whichever is nearest (`lod_frame_kernel_body`). Each level is walked to where its band ends, the next shown level's `d` by the same factor, or to its own square's edge, whichever is nearer; and the next takes over from `LOD_HANDOVER_BACK` before that. A level is never entered before its band, so there is nothing to pass by: the up to 32 re-traversals a level that passing by the old ring's columns could cost are gone.
-- **Shade's own ray** past glass, leaves and water (`shade_kernel`) uses the same `t_end`, and on a miss reads this area's hit as before. Sun, AO and reflection rays trace level 0 with no end (plan 009 phase 06 changes them).
+- **Shade's own ray** past glass, leaves and water (`shade_kernel`) uses the same `t_end`, and on a miss reads this area's hit as before. Shadow rays go by the light's cone instead (see The sun); AO and reflection rays trace level 0 with no end.
 - Levels nest (plan 009 phase 03 builds level 1 and 2 from the blocks where they are loaded), so at a hand-over the coarse surface is within half the coarser voxel of the fine one; `render_feature_lod_bands` holds every pixel by a band edge to that.
 
 The near guarantee follows by construction: within 16 blocks a primary ray, and shade's ray after it, are traced in level 0 exactly as with no bands, and `render_feature_lod_bands` checks every such pixel's hit and colour to the bit against level 0 everywhere.
@@ -49,9 +49,16 @@ Steps 1 and 2 are `lod_past_kernel`, and 3 and the far rays are `lod_frame_kerne
 
 What was tried and dropped: a second trace on through water to its bed, so that a ray down into a lake would stop there. It cost more than step 3, as a ray towards the horizon crosses hundreds of voxels of water one at a time. And step 3 for every pixel past leaves, in place of step 2: it costs what shade's own walk through a canopy costs, about 7 ms on `jungle/orbit`.
 
-## The sun
+## The sun (plan 009 phase 06)
 
-One ray for each far surface that faces it, from just outside the surface, through the coarse grids alone: level by level, each to its square's edge (no bands: a sun ray is not a pixel's), since a level holds all the ground, over level 0 as well. So a hill's shadow on the far ground is the hill's. What is near is not shadowed by far hills, as sun rays in shade stop at level 0's edge, and nothing here shadows what is near.
+A shadow ray, sun or moon, needs only the detail its light can show. The sun and the full moon are about 0.53 degrees across (`light_angular_diameter`), so an occluder L blocks from a surface blurs a real shadow's edge over L tan(0.53 degrees) = 0.0093 L blocks. Level k moves a surface by at most half its voxel, so past L_k = (2^k / 2) / (0.0093 x `shadow_cone_scale`) it changes nothing a real light would not blur away: **108 blocks for level 1, 216 for level 2, 432 for level 3** (`shade_shadow_cone_base`, 54, times 2^k). Shadows stay one ray, hard-edged; the cone only says which detail they could never show.
+
+So both paths hand a shadow ray from level to level by one function, `lod_level_from` in `cuda/include/lod/index.hu`, the one a pixel's ray uses with its bands, given the cone (`lod_reach_t`: base 54, factor 1, no floor, measured from the surface) in place of the bands:
+
+- **A far surface's ray** (`lod_sun_reaches`, here) starts in the level the surface is in, from just outside its face: a surface in level k is within half a voxel of the truth itself, and its shadow cannot be finer. It goes on in that level to the next level's L, and so on, each level also to its square's edge.
+- **A near surface's ray** (`shade_sun_seen` in `cuda/src/shade/`) starts in level 0, through everything see-through as before, to L_1, or level 0's edge, or a column level 0 does not hold, whichever comes first; `lod_sun_onwards` takes it on from there through the levels to the render distance. So near ground gets a far hill's shadow, which it did not before this phase.
+
+Out in the levels anything a voxel holds stops a shadow ray: a far surface is its mean colour, and water is water. A level's column that is not built yet (one put off as covered, nearer than its own band, until the rest are asked for) lets a shadow ray through to the next level, as it does a pixel's ray: in the seconds after a far field opens, a near surface can miss a shadow cast from more than 108 blocks off, until that column is built.
 
 ## What is simple about it
 

@@ -1,6 +1,6 @@
 # 009-ahmed-bohemoth-game-engine-optimizations — phase 6: Secondary rays by level
 
-**Status:** not started   (updated 2026-11-12)
+**Status:** built and tested; measurements below; the gate (Ahmed plays his slope at night and by day) is his   (updated 2026-11-13)
 
 Read first: the phase 00 file, then the master: sections 0 ("Why the frame is 29 ms", shade), 3.1 (Lumen and VSM rows), 3.4 (Teardown), 4.5 and 7. Then:
 
@@ -117,16 +117,16 @@ Leaves draw by holes: a ray landing on an alpha-0 texel traces on from there, up
 
 ## Todo
 
-- [ ] One hand-over function for shadow rays, used by `shade_sun_seen`, `shade_sun_kernel` and `lod_sun_reaches`
-- [ ] Shadow rays move to level k at L<sub>k</sub>; tuning keys `shadow_cone_scale`, `light_angular_diameter`
-- [ ] A shadow ray from a level-k surface starts in level k
-- [ ] Near surfaces get far hills' shadows (test)
-- [ ] `cast_shadows` from `render_sky_fill` and `render_weather_apply`; `shadow_skip_below`; bound test
-- [ ] Alpha layers by distance; keys `alpha_far_from_blocks`, `alpha_layers_far`
-- [ ] Near guarantee still holds for hits; its colour clause updated for far shadows
+- [x] One hand-over function for shadow rays, used by `shade_sun_seen`, `shade_sun_kernel` and `lod_sun_reaches`
+- [x] Shadow rays move to level k at L<sub>k</sub>; tuning keys `shadow_cone_scale`, `light_angular_diameter`
+- [x] A shadow ray from a level-k surface starts in level k
+- [x] Near surfaces get far hills' shadows (test)
+- [x] `cast_shadows` from `render_sky_fill` and `render_weather_apply`; `shadow_skip_below`; bound test
+- [x] Alpha layers by distance; keys `alpha_far_from_blocks`, `alpha_layers_far`
+- [x] Near guarantee still holds for hits; its colour clause updated for far shadows
 - [ ] His spot (night and day) and `jungle/orbit`: shade ms and shadow-ray steps in Results
-- [ ] Moved golden pictures regenerated after looking, each listed in Issues found
-- [ ] `cuda/src/shade/README.md` "The sun ray" and `cuda/src/lod/README.md` "The sun" rewritten
+- [x] Moved golden pictures regenerated after looking, each listed in Issues found
+- [x] `cuda/src/shade/README.md` "The sun ray" and `cuda/src/lod/README.md` "The sun" rewritten
 
 ## Results (filled in by this phase)
 
@@ -194,6 +194,23 @@ His answers are recorded below.
 
 Appended as they land:
 
+- this commit: shadow rays by level (one hand-over, `lod_level_from`, for the far field's sun rays and shade's; near ones through level 0 to L_1 and on through the levels), the dim-light cut, alpha layers by distance, the five tuning keys, `render_feature_lod_shadows`, the near guarantee's colour clause, `real_near.png` made again after looking, the READMEs, and `bench_world_slope --steps` working again.
+
 ## Issues found
 
-None.
+1. **What was built, and where it differs from the Design.**
+   - **The one hand-over.** `lod_level_from` in `cuda/include/lod/index.hu` gives where a level of a shift takes over along a ray from a `lod_reach_t` (base, factor, floor): a pixel's ray passes its bands (base `band_base`, its dither, floor the near guarantee: `traverse_band_from` to the bit, and `render_feature_lod_bands` still holds every near pixel to the bit), a shadow ray passes the cone (base `shade_shadow_cone_base()` = 0.5 / (tan(0.53 degrees) x `shadow_cone_scale`) = 54.0, factor 1, floor 0, measured from its surface). `lod_trace`, `lod_sun_reaches`, the new `lod_sun_onwards` and `lod_view_from` moved from `cuda/src/lod/index.cu` into that header so `cuda/src/shade/` walks the same loop (a device function cannot be called across translation units without device linking, which is why `cuda/include/shade/index.hu` exists too).
+   - **`shade_sun_seen`** traces level 0 with `t_end` = L of the first shown level (108 at the defaults), everything see-through as before; on a miss it goes on through the levels from where level 0 let it go (`lod_sun_onwards`): the PAST `t` (at L_1, or a column level 0 does not hold), or level 0's square edge, whichever is nearer. With no far field (or `SHADE_FEATURE_LOD` off) it goes through level 0 to its edge as before. `shade_sun_kernel`, `shade_kernel`'s inline sun rays, the water kernel and a box's sun all use it; the god rays' samples do not (they keep level 0 alone).
+   - **The level views reach shade by a new argument, not by `shade_scene_t`.** The Design put them in the shade context via `shade_frame_entities`. A pointer in `shade_scene_t` (and a flag in `shade_sun_t`) grew both structs, and `shade_scene_t` sits inside `render_frame_t` and `render_t`, whose cache-line layouts other phases are working in. So `shade_frame_marked` takes a `const lod_scene_t *` (what `lod_frame` was given), the one call site in `cuda/src/frame/index.cu` passes `args->borrowed_lod` (one line outside the owned paths), and `shade_frame` / `shade_frame_entities` pass none. Each kernel that sends sun rays takes the `lod_view_t` as a `__grid_constant__` parameter (536 bytes; no local copy).
+   - **"A shadow ray from a level-k surface starts in level k"** was already so for every surface a level holds: shade only lights level-0 surfaces itself, and a far surface's sun comes from `lod_sun_reaches`, which starts in the surface's level. What changed is that it now hands over by the cone (level k to L_k+1, then the next) instead of each level to its square's edge. Ticked on that reading.
+   - **The dim-light cut is a function of the light, not a flag.** `shade_shadows_skipped(direct)` is max(direct) x 12.92 <= `shadow_skip_below`, asked of the sun a frame is drawn with, so after `render_sky_fill` and after `render_weather_apply` has taken direct down under cloud: both decide it, as the plan wants, with no `cast_shadows` field to keep in step (and none to grow `shade_sun_t`). The far field's sun rays are skipped by the same test (`lod_light_t.shadows`).
+   - **Alpha by distance:** `shade_alpha_layers_at(t)` in `gpu_bridge/shade` (both sides), used by `shade_kernel`, by the far field's `lod_goes_out` (so a far ray is still sent exactly where shade looks) and by the CPU references of `render_feature_sky`, `render_feature_shapes` and `render_feature_water` (the last one line in `tests/cuda/water/`, outside the owned paths, so it keeps agreeing with the card).
+2. **The dim-light cut fires within 0.15 degrees of the horizon, not 7.** "Sun 3 degrees above the horizon, where `fade` takes direct below the bound" is not so: at 3 degrees `fade` is 0.40 and the direct light 0.17, 280 times the bound. The test finds the edge by halves: the cut holds up to 0.146 degrees (direct 6.04 x 10^-4), never on midnight's moon, not at 7 degrees, and full cloud moves it up (half as high again over the clear-sky edge is cut under cloud and not without). Either side of the edge the pictures differ in no channel at all. It is exact and nearly free, and saves almost nothing, as the master already says.
+3. **At his spot the cone buys nothing: shadow rays there are already short.** Sun-ray steps at `ahmed_slope/day-64` are 8.40 M a frame before and after, to the step (947 012 rays, 8.87 steps each; none goes past 128 blocks in level 0, and 99.9 % of the steps are in the first 16 blocks), and 0.51 M at night (186 K rays, 2.77 steps each). `traverse_trace`'s column and region tops send a ray up and out of level 0 within a few steps once it is above everything, which is what a sun ray off a slope is almost at once, so there is nothing past 108 blocks for a coarser level to save. The ">= 50 % fewer shadow-ray steps" target is not met; it assumed rays that travel. A ray that leaves level 0 over everything costs nothing more now: the levels' own top (`lod_trace`'s `t_up`) ends it before any step (`sun level0` calls at night: 3 a frame). The new shadows are the gain: near ground under a far ridge is in shadow (`near_ground_gets_a_far_hills_shadow`), which it was not.
+4. **A level's columns that are not built let a shadow ray through to the next level.** The far field puts off a column of level k that level 0 holds and that is nearer than level k's own band (`render_lod_covered`) until everything else is asked for; until then a shadow ray of level k entering it goes on to level k + 1, as a pixel's ray does. After a far field opens, for as long as that takes, a near surface can miss a shadow cast from more than 108 blocks off. The benches are settled, so their columns are all built. Recorded in `cuda/src/lod/README.md`, The sun.
+5. **`bench_world_slope --steps` failed on `main`** ("counting steps failed"): since plan 008 phase 04's AO cache, `DEVICE_POOL_FRAMES` (256 MiB) has no room left for 1080p's counts block at render distance 64. It now falls back to `DEVICE_POOL_VOXELS` (`bench/world/slope/index.c`, three lines outside the owned paths). The base numbers were taken with the same fix on `main`'s code.
+6. **The far tower, as the test holds it.** A tower one block across and 40 high, shadow 330 blocks long: within 108 blocks along the ray every pixel agrees with level 0 alone; from 108 to 216 (level 1) its shadow is gone, as level 1 samples each 2 x 2 column at a corner the tower is not on; from 216 (level 2), which samples the tower's 4 x 4 column at the tower, its shadow is that voxel's, 4 times the pixels (21 600 against 5 400), and none outside it. `shadow_cone_scale` below 1 keeps thin far shadows, as the Risks say.
+7. **Far leaves.** From 100 blocks the fourth leaf of `render_feature_shapes`' line stops the ray on the leaves' mean colour (`1E401E`, the mean to the byte), where from 20 the stone behind shows (`5D5B5A`); with three leaves the stone shows from 100 as well. "The mean colour differs from 16 layers by at most what TAA's clamp allows, measured" is not measured: the layer counts are compile-time, so it needs a second build with `alpha_layers_far` 16; the bench pictures of `jungle/orbit` before and after are the comparison instead (Results).
+8. **Golden pictures that moved, after looking:** `tests/cuda/lod/fixtures/real_near.png` (real terrain with its far field, morning sun): 7 306 pixels darker and 9 brighter by more than 2, nearly all in the left half, the ground and trees there: they now take the shadow of terrain past 108 blocks that only the far field holds. Side by side the two look the same at a glance; nothing else moved. Every other golden picture (`render_feature_sky`, `_shapes`, `_water`, `_post`, the rest of `_lod`) is unchanged.
+9. **The near guarantee's colour clause** (`render_feature_lod_bands`) now compares a near pixel's colour with a third picture: the far field on, its pixel error 10^-4 so every pixel's own ray stays in level 0 to its edge, shadow rays by the cone. Hits are still held to the bit against the far field off. 0 hits and 0 colours differ.
+10. **The disk filled twice** while this phase ran (`/home` at 0 bytes free, not from this worktree: its builds are 4.5 GiB of the 271 GiB used). Once it truncated `run/include/gpu_bridge/shade/index.h` as an edit was written; it was restored from git and the edit made again. Once it failed 21 test links in the profile build; the bench programs linked on a second try. Ahmed may want to clear old worktrees' build directories.

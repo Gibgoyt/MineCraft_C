@@ -1098,7 +1098,7 @@ static void sh_trace(test_context_t *t, const sh_rig_t *rig, const sh_scene_t *s
         }
         const uint32_t x = shade_texel_of((float32_t)u, mip.width), y = shade_texel_of((float32_t)v, mip.height);
         const uint8_t *const texel = mip.borrowed_pixels + ((uint64_t)y * mip.width + x) * 4u;
-        if (texel[3] == 0u && scene->alpha != 0u && layer + 1u < SHADE_ALPHA_LAYERS) {
+        if (texel[3] == 0u && scene->alpha != 0u && layer + 1u < shade_alpha_layers_at((float32_t)best)) {
             after = best;
             out->layers++;
             continue;

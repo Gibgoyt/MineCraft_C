@@ -83,3 +83,38 @@ ao_cache_still_every:
   min: 1
   max: 32
   why: "Plan 008 phase 04: with the camera still, a pixel's AO ray writes the AO cache on one of this many of its turns (every 32 frames at 4 turns), and on every one while it moves. Writing on every turn made a still picture's AO history pass 16 % dearer at Ahmed's spot. SHADE_AO_CACHE_STILL_EVERY."
+shadow_cone_scale:
+  value: 1.0
+  type: f32
+  unit: ratio
+  min: 0.25
+  max: 8.0
+  why: "Plan 009 phase 06: how much coarser than the light's own cone a shadow ray may step levels. A shadow ray moves to level k once it has gone L_k = (2^k / 2) / (tan(light_angular_diameter) x this) blocks from its surface: 108, 216 and 432 for levels 1, 2 and 3 at 1. 1 is physical (no detail is lost that a real light would not blur away); above 1 coarser and cheaper, below 1 finer, which keeps thin far shadows. SHADE_SHADOW_CONE_SCALE, shade_shadow_cone_base."
+light_angular_diameter:
+  value: 0.53
+  type: f32
+  unit: degrees
+  min: 0.1
+  max: 5.0
+  why: "Plan 009 phase 06: how wide the sun and the full moon look. Only sizes the cone above; shadows stay one ray, hard-edged. SHADE_LIGHT_ANGULAR_DIAMETER."
+shadow_skip_below:
+  value: 0.0078
+  type: f32
+  unit: ratio
+  min: 0.0
+  max: 0.05
+  why: "Plan 009 phase 06, the dim-light cut: no shadow ray is sent while the direct light could move no pixel by more than this share of a byte's range after the tone map (2 / 255 by default): max(direct) x 12.92 at most, sRGB's steepest part. Fires only within a fraction of a degree of the horizon and under the thickest cloud near it, never on moonlight. 0 turns it off. SHADE_SHADOW_SKIP_BELOW, shade_shadows_skipped."
+alpha_far_from_blocks:
+  value: 48.0
+  type: f32
+  unit: blocks
+  min: 16.0
+  max: 512.0
+  why: "Plan 009 phase 06: past this, a leaf's texel (1 / 16 of a block) is under a pixel at 1080p and 70 degrees (771 / 16), so which hole a ray goes through is noise TAA averages, and a pixel's ray looks at no more than alpha_layers_far surfaces. SHADE_ALPHA_FAR_FROM."
+alpha_layers_far:
+  value: 4
+  type: u32
+  unit: count
+  min: 1
+  max: 16
+  why: "Plan 009 phase 06: surfaces a pixel's ray may look at, holes and all, when the one it is at is past alpha_far_from_blocks; it then stops on that texture's mean colour, as alpha_layers does nearer. SHADE_ALPHA_LAYERS_FAR."

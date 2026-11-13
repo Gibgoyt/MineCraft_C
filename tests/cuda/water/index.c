@@ -534,7 +534,7 @@ static void wa_trace(test_context_t *t, const wa_ask_t *ask, const float64_t eye
         const texture_blob_entry_t *entry = nullptr;
         const uint8_t *const texel = wa_texel(t, ask->rig, ask->scene, ask->view, &found, point, found.t, &entry, out);
         REQUIRE(texel != nullptr);
-        const bool may_go_on = layer + 1u < SHADE_ALPHA_LAYERS;
+        const bool may_go_on = layer + 1u < shade_alpha_layers_at((float32_t)found.t);
         const bool own_kind = see_through && found.state == last_state && wa_next_to(last, found.cell, found.face);
         const bool is_water = see_through && may_go_on && found.state == BLOCK_ID_WATER;
         float64_t next = found.t;

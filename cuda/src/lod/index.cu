@@ -6,195 +6,6 @@
 
 #include <math.h>
 
-/* What a kernel needs of each level. */
-typedef struct lod_view_level_t {
-    traverse_view_t view; /* 0: its window is the square rays are let into, and not the table's */
-    uint32_t shift;       /* 80 */
-    uint8_t _pad0[4];     /* 84 */
-} lod_view_level_t;
-static_assert(sizeof(lod_view_level_t) == 88);
-
-typedef struct lod_view_t {
-    lod_view_level_t levels[LOD_LEVELS_MAX]; /* 0 */
-    uint32_t level_count;                    /* 528 */
-    int32_t top_storage;                     /* 532 */
-} lod_view_t;
-static_assert(sizeof(lod_view_t) == 536);
-
-/* Where a ray comes from in blocks, a storage height on z. */
-typedef struct lod_origin_t {
-    int32_t cell[3];   /* 0 */
-    float32_t frac[3]; /* 12 */
-} lod_origin_t;
-static_assert(sizeof(lod_origin_t) == 24);
-
-/* What the loop below found. */
-typedef struct lod_found_t {
-    float32_t t;        /* 0: in blocks */
-    uint32_t material;  /* 4 */
-    uint32_t face;      /* 8 */
-    uint32_t level;     /* 12 */
-    int32_t voxel[3];   /* 16: in that level's voxels, on z a storage height */
-    float32_t local[3]; /* 28: where in the voxel, from 0 to 1 */
-} lod_found_t;
-static_assert(sizeof(lod_found_t) == 40);
-
-/* How far back of a level's edge the next level is asked from, in blocks. Its grid can have a plane on that very edge, and the voxel a ray
- * then enters is one to look at, whichever way the numbers round: well over a float32_t's rounding at the furthest t there is. */
-#define LOD_HANDOVER_BACK 0.01F
-/* How far off a surface a sun ray starts, in voxels of the level it hit. */
-#define LOD_SUN_BIAS 1e-3F
-
-/* A ray in a level's voxels, from t_blocks to t_end_blocks. A voxel is the same size each way, so a ray's direction and its unit length
- * stay as they are. */
-static __device__ __forceinline__ void lod_ray_in_level(const lod_origin_t *origin, const float32_t direction[3],
-                                                        uint32_t shift, float32_t t_blocks, float32_t t_end_blocks,
-                                                        traverse_trace_ray_t *out) {
-    const float32_t scale = 1.0F / (float32_t)(1u << shift);
-    const int32_t mask = (1 << shift) - 1;
-    for (uint32_t i = 0u; i < 3u; i += 1u) {
-        out->eye_cell[i] = origin->cell[i] >> shift;
-        out->eye_frac[i] = ((float32_t)(origin->cell[i] & mask) + origin->frac[i]) * scale;
-        out->direction[i] = direction[i];
-    }
-    out->t_start = t_blocks * scale;
-    out->t_end = t_end_blocks * scale;
-    /* A coarser voxel can hold what a finer one said was air. A ray takes only what it enters from here on, and never starts inside. */
-    out->resume = 1u;
-}
-
-/* Where a ray leaves a square of a world whose voxels are 1 << shift blocks, in blocks, whichever way z goes. */
-static __device__ __forceinline__ float32_t lod_square_exit(const traverse_view_t *view, uint32_t shift,
-                                                            const lod_origin_t *origin, const float32_t direction[3]) {
-    float32_t t = 1e30F;
-    for (uint32_t i = 0u; i < 2u; i += 1u) {
-        const int32_t low = view->window_min_block[i] * (1 << shift);
-        const int32_t across = (int32_t)view->window_blocks * (1 << shift);
-        const int32_t plane = direction[i] > 0.0F ? low + across : low;
-        t = fminf(t, ((float32_t)(plane - origin->cell[i]) - origin->frac[i]) / direction[i]);
-    }
-    return t;
-}
-
-/* The face by which a ray entered the voxel it is in: the latest of its near planes, as traverse_hit_found works it out. */
-static __device__ __forceinline__ uint32_t lod_entered_face(const traverse_trace_ray_t *ray,
-                                                            const traverse_hit_t *hit) {
-    float32_t latest = -1e30F;
-    uint32_t axis = 0u;
-    for (uint32_t i = 0u; i < 3u; i += 1u) {
-        const float32_t near_plane = (float32_t)(ray->direction[i] > 0.0F ? hit->offset[i] : hit->offset[i] + 1);
-        const float32_t t_near = (near_plane - ray->eye_frac[i]) / ray->direction[i];
-        if (t_near > latest) {
-            latest = t_near;
-            axis = i;
-        }
-    }
-    return axis * 2u + (ray->direction[axis] > 0.0F ? 0u : 1u);
-}
-
-/* Where a ray leaves a level's square, in blocks. */
-static __device__ __forceinline__ float32_t lod_level_exit(const lod_view_level_t *level, const lod_origin_t *origin,
-                                                           const float32_t direction[3]) {
-    return lod_square_exit(&level->view, level->shift, origin, direction);
-}
-
-/* A ray from t_blocks on, through the levels from first_level out (plan 009 phase 04). Each level is walked from where the last stopped to
- * where its band ends for this pixel, the next shown level's d by the bands level 0's view holds and factor, or to where the ray leaves its square, whichever is
- * nearer, and the next takes over from there with resume: so a level is never entered before its band, and nothing is passed by. With no
- * bands (nullptr, or level 0's view with none), a level goes as far as its square. With counts (plan 009 phase 01), each traversal's steps go into
- * them as kind, by level, in bands of blocks. */
-static __device__ __forceinline__ bool lod_trace(const lod_view_t *view, const traverse_view_t *bands, float32_t factor,
-                                                 const lod_origin_t *origin, const float32_t direction[3],
-                                                 uint32_t first_level, float32_t t_blocks, bool met_at_handover,
-                                                 lod_found_t *out, traverse_counts_t *counts, uint32_t kind,
-                                                 uint32_t pixel) {
-    /* Past this a rising ray is above all there is, which is most of a picture's sky. */
-    const float32_t t_up = direction[2] > 0.0F
-                               ? ((float32_t)(view->top_storage - origin->cell[2]) - origin->frac[2]) / direction[2]
-                               : 1e30F;
-    float32_t t_from = t_blocks;
-    for (uint32_t index = first_level; index < view->level_count; index += 1u) {
-        if (t_from >= t_up) {
-            return false;
-        }
-        const lod_view_level_t *const level = &view->levels[index];
-        if (level->view.window_blocks == 0u) {
-            continue;
-        }
-        const float32_t t_exit = lod_level_exit(level, origin, direction);
-        float32_t t_band = TRAVERSE_T_END_NONE;
-        for (uint32_t next = index + 1u; bands != nullptr && next < view->level_count; next += 1u) {
-            if (view->levels[next].view.window_blocks != 0u) {
-                t_band = traverse_band_from(bands, factor, view->levels[next].shift);
-                break;
-            }
-        }
-        const float32_t t_stop = fminf(t_exit, t_band);
-        const float32_t size = (float32_t)(1u << level->shift);
-        if (t_from < t_stop) {
-            traverse_trace_ray_t ray;
-            lod_ray_in_level(origin, direction, level->shift, t_from, t_band, &ray);
-            /* Plan 009 phase 04: a pixel's ray that comes into a level inside one of its voxels (a coarse voxel rounds the ground up by up to half
-             * its side) meets that voxel there, as its top when the ray is going down: so ground handed over at a band edge goes on as ground, and
-             * shows no side of a coarse step, which drew a dark ring where d_1 crosses a plain. */
-            ray.resume = met_at_handover ? 0u : 1u;
-            traverse_hit_t hit;
-            traverse_tally_t tally;
-            traverse_trace_counted(&level->view, &ray, nullptr, &hit,
-                                   traverse_tally_for(&tally, counts, kind, pixel, index, size));
-            uint32_t face = (uint32_t)hit.info & TRAVERSE_INFO_FACE_MASK;
-            if (face == TRAVERSE_FACE_INSIDE) {
-                face = direction[2] < 0.0F ? (uint32_t)TRAVERSE_FACE_POS_Z : lod_entered_face(&ray, &hit);
-            }
-            if (face == TRAVERSE_FACE_MISS) {
-                /* At its band's end, its square's edge, or a column it does not hold: the next level takes it from there. */
-                const float32_t t_left = traverse_past(&hit) ? fminf(hit.t * size, t_stop) : t_stop;
-                t_from = fmaxf(t_from, t_left - LOD_HANDOVER_BACK);
-                continue;
-            }
-            const float32_t t_hit = hit.t * size;
-            out->t = t_hit;
-            out->material = hit.value & TRAVERSE_VALUE_MATERIAL_MASK;
-            out->face = face;
-            out->level = index;
-            for (uint32_t i = 0u; i < 3u; i += 1u) {
-                out->voxel[i] = ray.eye_cell[i] + (int32_t)hit.offset[i];
-                const float32_t local = ray.eye_frac[i] + direction[i] * hit.t - (float32_t)hit.offset[i];
-                out->local[i] = local < 0.0F ? 0.0F : (local > 1.0F ? 1.0F : local);
-            }
-            return true;
-        }
-        t_from = fmaxf(t_from, t_stop - LOD_HANDOVER_BACK);
-    }
-    return false;
-}
-
-/* Whether the sun reaches a surface: one ray, through the coarse grids alone, from the level the surface is in and out. A level holds all
- * of the ground, over level 0 too, so that a far hill's shadow is cast by what is really there. */
-static __device__ __forceinline__ bool lod_sun_reaches(const lod_view_t *view, const lod_found_t *found,
-                                                       const float32_t sun[3], traverse_counts_t *counts,
-                                                       uint32_t pixel) {
-    const uint32_t shift = view->levels[found->level].shift;
-    const float32_t size = (float32_t)(1u << shift);
-    const uint32_t axis = found->face >> 1;
-    lod_origin_t origin;
-    float32_t guarded[3];
-    for (uint32_t i = 0u; i < 3u; i += 1u) {
-        float32_t local = found->local[i];
-        if (i == axis) {
-            local = (found->face & 1u) != 0u ? 1.0F + LOD_SUN_BIAS : -LOD_SUN_BIAS;
-        }
-        const float32_t blocks = local * size;
-        const float32_t whole = floorf(blocks);
-        origin.cell[i] = found->voxel[i] * (1 << shift) + (int32_t)whole;
-        origin.frac[i] = blocks - whole;
-        guarded[i] = traverse_guard(sun[i]);
-    }
-    lod_found_t blocked;
-    return !lod_trace(view, nullptr, 1.0F, &origin, guarded, found->level, 0.0F, false, &blocked, counts,
-                      TRAVERSE_COUNT_FAR_SUN, pixel);
-}
-
 /* Whether a ray can go on past what it first hit: nothing hit at all, or a face whose texture has anything to see through. */
 static __device__ __forceinline__ bool lod_ray_goes_on(const traverse_hit_t *hit, const shade_texture_t *textures,
                                                        const uint16_t *faces, uint32_t material_count) {
@@ -211,16 +22,16 @@ static __device__ __forceinline__ bool lod_ray_goes_on(const traverse_hit_t *hit
     return texture != SHADE_NO_TEXTURE && textures[texture].mean_rgba[3] != SHADE_ALPHA_OPAQUE;
 }
 
-static __device__ __forceinline__ void lod_hit_write(const lod_view_t *view, const traverse_view_t *bands,
-                                                     float32_t factor, const lod_origin_t *origin,
-                                                     const float32_t direction[3], float32_t t_start,
-                                                     bool met_at_handover, bool shadows, const float32_t sun[3],
-                                                     lod_hit_t *out, traverse_counts_t *counts, uint32_t pixel) {
+static __device__ __forceinline__ void lod_hit_write(const lod_view_t *view, const lod_reach_t *bands,
+                                                     const lod_origin_t *origin, const float32_t direction[3],
+                                                     float32_t t_start, bool met_at_handover, bool shadows,
+                                                     const float32_t sun[3], lod_hit_t *out, traverse_counts_t *counts,
+                                                     uint32_t pixel) {
     lod_hit_t result = {TRAVERSE_COARSE_SKY, (uint16_t)LOD_NO_MATERIAL, (uint8_t)TRAVERSE_FACE_MISS,
                         (uint8_t)LOD_SUN_SEEN};
     lod_found_t found;
-    if (lod_trace(view, bands, factor, origin, direction, 0u, t_start, met_at_handover, &found, counts,
-                  TRAVERSE_COUNT_FAR, pixel)) {
+    if (lod_trace(view, bands, origin, direction, 0u, t_start, met_at_handover, &found, counts, TRAVERSE_COUNT_FAR,
+                  pixel)) {
         result.t = found.t;
         result.material = (uint16_t)found.material;
         result.face = (uint8_t)found.face;
@@ -228,8 +39,9 @@ static __device__ __forceinline__ void lod_hit_write(const lod_view_t *view, con
             /* A face turned from the sun gets none of it whatever is in the way, so no ray is sent for it. */
             const uint32_t axis = found.face >> 1;
             const bool facing = (found.face & 1u) != 0u ? sun[axis] > 0.0F : sun[axis] < 0.0F;
-            result.sun = facing && !lod_sun_reaches(view, &found, sun, counts, pixel) ? (uint8_t)LOD_SUN_HIDDEN
-                                                                                      : (uint8_t)LOD_SUN_SEEN;
+            const lod_reach_t cone = shade_shadow_cone();
+            result.sun = facing && !lod_sun_reaches(view, &cone, &found, sun, counts, pixel) ? (uint8_t)LOD_SUN_HIDDEN
+                                                                                             : (uint8_t)LOD_SUN_SEEN;
         }
     }
     *out = result;
@@ -270,13 +82,16 @@ static __device__ __forceinline__ bool lod_goes_out(const shade_context_t *conte
     ray.t_end = t_end;
     uint32_t last_material = SHADE_NO_MATERIAL;
     int16_t last_offset[3] = {0, 0, 0};
-    /* Layer for layer as shade_kernel: on its last, what is met is drawn whole. Where it got out is the miss's t: TRAVERSE_COARSE_SKY, or
-     * where it stopped short (traverse_hit_past). */
-    for (uint32_t layer = 0u; layer + 1u < SHADE_ALPHA_LAYERS; layer += 1u) {
+    /* Layer for layer as shade_kernel: on its last, which is fewer past SHADE_ALPHA_FAR_FROM (shade_alpha_layers_at), what is met is drawn
+     * whole. Where it got out is the miss's t: TRAVERSE_COARSE_SKY, or where it stopped short (traverse_hit_past). */
+    for (uint32_t layer = 0u;; layer += 1u) {
         const uint32_t face = (uint32_t)hit.info & TRAVERSE_INFO_FACE_MASK;
         if (face == TRAVERSE_FACE_MISS) {
             *out_t = hit.t;
             return true;
+        }
+        if (layer + 1u >= shade_alpha_layers_at(hit.t)) {
+            return false;
         }
         const uint32_t material = hit.value & TRAVERSE_VALUE_MATERIAL_MASK;
         const bool own = shade_own_kind_behind(last_material, last_offset, material, hit.offset, face);
@@ -313,8 +128,6 @@ static __device__ __forceinline__ bool lod_goes_out(const shade_context_t *conte
             context->view, &ray, nullptr, &hit,
             traverse_tally_for(&tally, counts, TRAVERSE_COUNT_PAST, pixel, TRAVERSE_COUNT_NO_LEVEL, 1.0F));
     }
-    *out_t = hit.t;
-    return ((uint32_t)hit.info & TRAVERSE_INFO_FACE_MASK) == TRAVERSE_FACE_MISS;
 }
 
 /* What lod_past_kernel leaves in a pixel's lod_hit_t.material for lod_frame_kernel: a far ray to follow, or shade's own ray to
@@ -361,6 +174,7 @@ lod_past_kernel_body(const traverse_view_t *fine, const traverse_camera_t *camer
             0u,
             (uint16_t)water_material,
             (uint16_t)SHADE_NO_MATERIAL,
+            nullptr,
         };
         if (lod_surface_goes_on(&context, direction, &hit, false)) {
             ask = LOD_ASK_SHADE;
@@ -452,6 +266,7 @@ lod_frame_kernel_body(const lod_view_t *view, const traverse_view_t *fine, const
             0u,
             (uint16_t)water_material,
             (uint16_t)SHADE_NO_MATERIAL,
+            nullptr,
         };
         if (!lod_goes_out(&context, direction, guarded, t_end, first, water_tint, counts, (uint32_t)index, &t_out)) {
             out[index].material = (uint16_t)LOD_NO_MATERIAL;
@@ -466,8 +281,8 @@ lod_frame_kernel_body(const lod_view_t *view, const traverse_view_t *fine, const
     origin.cell[2] -= TRAVERSE_Z_BASE;
     const float32_t sun[3] = {sun_x, sun_y, sun_z};
     const float32_t t_from = fminf(fminf(t_out, t_end), lod_square_exit(fine, 0u, &origin, guarded));
-    lod_hit_write(view, fine, factor, &origin, guarded, t_from, true, shadows, sun, &out[index], counts,
-                  (uint32_t)index);
+    const lod_reach_t bands = {fine->band_base, factor, (float32_t)MC_TUNE_RENDER_LOD_NEAR_GUARANTEE, {0}};
+    lod_hit_write(view, &bands, &origin, guarded, t_from, true, shadows, sun, &out[index], counts, (uint32_t)index);
 }
 
 __global__ void lod_frame_kernel(const lod_view_t view, const traverse_view_t fine, const traverse_camera_t camera,
@@ -508,47 +323,9 @@ __global__ void lod_rays_kernel(const lod_view_t view, bool shadows, float32_t s
     }
     origin.cell[2] -= TRAVERSE_Z_BASE;
     const float32_t sun[3] = {sun_x, sun_y, sun_z};
-    lod_hit_write(&view, nullptr, 1.0F, &origin, direction, given.t_start, false, shadows, sun, &out[index], nullptr,
+    const lod_reach_t no_bands = {0.0F, 1.0F, 0.0F, {0}};
+    lod_hit_write(&view, &no_bands, &origin, direction, given.t_start, false, shadows, sun, &out[index], nullptr,
                   TRAVERSE_COUNT_NO_PIXEL);
-}
-
-static gpu_status_t lod_view_from(gpu_error_t *error, const lod_scene_t *scene, lod_view_t *out) {
-    if (scene->level_count > LOD_LEVELS_MAX) {
-        return traverse_refuse(error, "lod: more levels than there is room for");
-    }
-    *out = lod_view_t{};
-    out->level_count = scene->level_count;
-    out->top_storage = scene->top_storage;
-    for (uint32_t i = 0u; i < scene->level_count; i += 1u) {
-        const lod_level_t *const level = &scene->levels[i];
-        const traverse_world_t world = {level->borrowed_table, level->borrowed_pool, level->window, nullptr, 0u, 0u};
-        lod_view_level_t *const into = &out->levels[i];
-        const gpu_status_t status = traverse_view_from(error, &world, &into->view);
-        if (status != GPU_STATUS_OK) {
-            return status;
-        }
-        into->shift = level->shift;
-        if (level->shown_side > level->window.side) {
-            return traverse_refuse(error, "lod: a level shows more than its table holds");
-        }
-        if (level->shown_side == 0u) {
-            into->view.window_blocks = 0u;
-            continue;
-        }
-        uint32_t slot = 0u;
-        if (!world_buffers_slot_of(&level->window, level->shown_min_x, level->shown_min_y, &slot)) {
-            return traverse_refuse(error, "lod: a level shows a square outside its table");
-        }
-        /* The same table, seen through a smaller window: traverse_slot only asks where the window's corner is. */
-        into->view.window_min_column[0] = level->shown_min_x;
-        into->view.window_min_column[1] = level->shown_min_y;
-        into->view.window_min_block[0] = level->shown_min_x * (int32_t)TRAVERSE_COLUMN_BLOCKS;
-        into->view.window_min_block[1] = level->shown_min_y * (int32_t)TRAVERSE_COLUMN_BLOCKS;
-        into->view.origin_slot[0] = slot % level->window.side;
-        into->view.origin_slot[1] = slot / level->window.side;
-        into->view.window_blocks = level->shown_side * TRAVERSE_COLUMN_BLOCKS;
-    }
-    return GPU_STATUS_OK;
 }
 
 gpu_status_t lod_frame(gpu_error_t *error, const lod_scene_t *scene, const lod_light_t *light,

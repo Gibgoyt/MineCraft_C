@@ -568,7 +568,9 @@ static bool sl_count(sl_t *sl, const display_headless_scene_t *scene, const sl_o
     const uint32_t pixels = r->width * r->height;
     const uint64_t bytes = traverse_counts_bytes(pixels);
     device_block_t block = {0};
-    bool ok = device_memory_alloc(memory, DEVICE_POOL_FRAMES, bytes, "bench counts", &block) == GPU_STATUS_OK &&
+    /* Since plan 008 phase 04's AO cache the frames pool has no room left for 1080p's counts at render distance 64: the voxels pool then. */
+    bool ok = (device_memory_alloc(memory, DEVICE_POOL_FRAMES, bytes, "bench counts", &block) == GPU_STATUS_OK ||
+               device_memory_alloc(memory, DEVICE_POOL_VOXELS, bytes, "bench counts", &block) == GPU_STATUS_OK) &&
               device_memory_zero(memory, &block, 0u, bytes) == GPU_STATUS_OK &&
               device_memory_write(memory, &block, offsetof(traverse_counts_t, pixels), &pixels, sizeof(pixels)) ==
                   GPU_STATUS_OK;

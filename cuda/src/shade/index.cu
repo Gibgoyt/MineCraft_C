@@ -24,7 +24,10 @@ static __device__ __forceinline__ void shade_texel_colour(const shade_texture_t 
 /* How much of the sun reaches this point of a surface, from 0 to 1: the one sun ray. It starts from the surface's own voxel, so it
  * is as exact far from the eye as near it, and goes on through what is see-through as a primary ray does, with a part-covered
  * texel taking its share, and a body of water by how much of it there is. from_t, how far off the surface is seen, chooses the mip
- * of whatever is in the way, so that a far tree's shadow has the same holes as its leaves. */
+ * of whatever is in the way, so that a far tree's shadow has the same holes as its leaves. Plan 009 phase 06: with the far field's levels in
+ * the context, level 0 goes only as far as the light's cone lets level 1 take over (108 blocks at the defaults), or to its edge, or to a
+ * column it does not hold, and the levels take it on from there to the render distance (lod_sun_onwards, the same hand-over as the far
+ * field's own sun rays): so near ground gets a far hill's shadow, and a long ray costs a coarse level's steps. */
 static __device__ __forceinline__ float32_t shade_sun_seen(const shade_context_t *context, const traverse_hit_t *from,
                                                            const shade_surface_t *surface, traverse_counts_t *counts,
                                                            uint32_t pixel) {
@@ -41,7 +44,9 @@ static __device__ __forceinline__ float32_t shade_sun_seen(const shade_context_t
     ray.eye_frac[surface->face >> 1] += (surface->face & 1u) != 0u ? bias : -bias;
     ray.t_start = 0.0F;
     ray.resume = 1u;
-    ray.t_end = TRAVERSE_T_END_NONE;
+    const lod_view_t *const levels = context->levels;
+    const lod_reach_t cone = shade_shadow_cone();
+    ray.t_end = levels != nullptr ? lod_next_from(levels, &cone, 0u) : TRAVERSE_T_END_NONE;
     float32_t seen = 1.0F;
     uint32_t last_material = SHADE_NO_MATERIAL;
     int16_t last_offset[3] = {0, 0, 0};
@@ -53,7 +58,22 @@ static __device__ __forceinline__ float32_t shade_sun_seen(const shade_context_t
             traverse_tally_for(&tally, counts, TRAVERSE_COUNT_SUN, pixel, TRAVERSE_COUNT_NO_LEVEL, 1.0F));
         const uint32_t face = (uint32_t)hit.info & TRAVERSE_INFO_FACE_MASK;
         if (face == TRAVERSE_FACE_MISS) {
-            return seen;
+            if (levels == nullptr || seen <= 0.0F) {
+                return seen;
+            }
+            /* Out of level 0: where the cone hands it on or a column level 0 does not hold (a miss short of the end), or its edge (by its side,
+             * or over everything there, which the levels' own top then tells). */
+            lod_origin_t at;
+            for (uint32_t i = 0u; i < 3u; i += 1u) {
+                at.cell[i] = ray.eye_cell[i];
+                at.frac[i] = ray.eye_frac[i];
+            }
+            const float32_t t_out =
+                traverse_past(&hit) ? hit.t : fminf(ray.t_end, lod_square_exit(context->view, 0u, &at, ray.direction));
+            return lod_sun_onwards(levels, &cone, at.cell, at.frac, ray.direction, t_out, counts, TRAVERSE_COUNT_SUN,
+                                   pixel)
+                       ? seen
+                       : 0.0F;
         }
         if ((context->features & SHADE_FEATURE_ALPHA) == 0u) {
             return 0.0F;
@@ -111,7 +131,7 @@ static __device__ __forceinline__ void shade_surface_lit(const shade_context_t *
                                                          uint32_t pixel) {
     float32_t sun_seen = 1.0F;
     const shade_sun_t *const sun = context->sun;
-    if ((context->features & SHADE_FEATURE_SHADOW) != 0u &&
+    if ((context->features & SHADE_FEATURE_SHADOW) != 0u && !shade_shadows_skipped(sun->direct) &&
         shade_sun_towards(sun, surface->face, surface->stored) > 0.0F &&
         sun->direct[0] + sun->direct[1] + sun->direct[2] > 0.0F) {
         sun_seen = shade_sun_seen(context, hit, surface, counts, pixel);
@@ -558,8 +578,8 @@ static __device__ __forceinline__ void shade_box_colour(const shade_context_t *c
     const float32_t along =
         normal[0] * sun->direction[0] + normal[1] * sun->direction[1] + normal[2] * sun->direction[2];
     float32_t sun_seen = 1.0F;
-    if ((context->features & SHADE_FEATURE_SHADOW) != 0u && (stored >> 4) != 0u && along > 0.0F &&
-        sun->direct[0] + sun->direct[1] + sun->direct[2] > 0.0F) {
+    if ((context->features & SHADE_FEATURE_SHADOW) != 0u && !shade_shadows_skipped(sun->direct) &&
+        (stored >> 4) != 0u && along > 0.0F && sun->direct[0] + sun->direct[1] + sun->direct[2] > 0.0F) {
         /* The place as a voxel and a fraction, as a god ray's, and pushed off along whichever of the world's axes it looks most along. */
         traverse_hit_t place = {};
         place.t = t;
@@ -619,7 +639,7 @@ shade_sun_kernel_body(const traverse_view_t *view, const traverse_camera_t *came
                       const uint16_t *faces, const uint8_t *pixels, uint32_t material_count, uint32_t features,
                       uint32_t water_material, uint32_t glass_material, const shade_sun_t *sun,
                       const shade_ao_work_t *work, const traverse_hit_t *hits, shade_pixel_t *out,
-                      traverse_counts_t *counts) {
+                      traverse_counts_t *counts, const lod_view_t *levels) {
     const uint32_t pixel_x = blockIdx.x * blockDim.x + threadIdx.x;
     const uint32_t pixel_y = blockIdx.y * blockDim.y + threadIdx.y;
     if (pixel_x >= camera->width || pixel_y >= camera->height) {
@@ -648,12 +668,15 @@ shade_sun_kernel_body(const traverse_view_t *view, const traverse_camera_t *came
         features,
         (uint16_t)water_material,
         (uint16_t)glass_material,
+        levels,
     };
     float32_t direction[3];
     traverse_camera_direction(camera, (float32_t)pixel_x + 0.5F, (float32_t)pixel_y + 0.5F, direction);
     shade_surface_t surface;
     shade_last_surface(camera, &hit, direction, features, &surface);
-    const float32_t seen = shade_sun_seen(&context, &hit, &surface, counts, (uint32_t)index);
+    /* The dim-light cut (plan 009 phase 06): all of the light, and no ray. */
+    const float32_t seen =
+        shade_shadows_skipped(sun->direct) ? 1.0F : shade_sun_seen(&context, &hit, &surface, counts, (uint32_t)index);
     const shade_ao_work_t mine = work[index];
     for (uint32_t i = 0u; i < 3u; i += 1u) {
         out[index].rgb[i] += mine.share[i] * sun->direct[i] * towards * seen;
@@ -664,18 +687,20 @@ __global__ void shade_sun_kernel(const traverse_view_t view, const traverse_came
                                  const shade_texture_t *textures, const uint16_t *faces, const uint8_t *pixels,
                                  uint32_t material_count, uint32_t features, uint32_t water_material,
                                  uint32_t glass_material, const shade_sun_t sun, const shade_ao_work_t *work,
-                                 const traverse_hit_t *hits, shade_pixel_t *out) {
+                                 const traverse_hit_t *hits, shade_pixel_t *out,
+                                 const __grid_constant__ lod_view_t levels) {
     shade_sun_kernel_body(&view, &camera, textures, faces, pixels, material_count, features, water_material,
-                          glass_material, &sun, work, hits, out, nullptr);
+                          glass_material, &sun, work, hits, out, nullptr, levels.level_count != 0u ? &levels : nullptr);
 }
 
 __global__ void shade_sun_kernel_counted(const traverse_view_t view, const traverse_camera_t camera,
                                          const shade_texture_t *textures, const uint16_t *faces, const uint8_t *pixels,
                                          uint32_t material_count, uint32_t features, uint32_t water_material,
                                          uint32_t glass_material, const shade_sun_t sun, const shade_ao_work_t *work,
-                                         const traverse_hit_t *hits, shade_pixel_t *out, traverse_counts_t *counts) {
+                                         const traverse_hit_t *hits, shade_pixel_t *out, traverse_counts_t *counts,
+                                         const __grid_constant__ lod_view_t levels) {
     shade_sun_kernel_body(&view, &camera, textures, faces, pixels, material_count, features, water_material,
-                          glass_material, &sun, work, hits, out, counts);
+                          glass_material, &sun, work, hits, out, counts, levels.level_count != 0u ? &levels : nullptr);
 }
 
 /* What AO finds for a pixel's last surface, and its history for the next frame. */
@@ -709,6 +734,7 @@ shade_ao_kernel_body(const traverse_view_t *view, const traverse_camera_t *camer
             features,
             (uint16_t)water_material,
             (uint16_t)glass_material,
+            nullptr,
         };
         float32_t direction[3];
         traverse_camera_direction(camera, (float32_t)pixel_x + 0.5F, (float32_t)pixel_y + 0.5F, direction);
@@ -798,6 +824,7 @@ shade_ao_fresh_kernel_body(const traverse_view_t *view, const traverse_camera_t 
         features,
         (uint16_t)water_material,
         (uint16_t)glass_material,
+        nullptr,
     };
     float32_t direction[3];
     traverse_camera_direction(camera, (float32_t)pixel_x + 0.5F, (float32_t)pixel_y + 0.5F, direction);
@@ -877,11 +904,13 @@ __global__ void shade_ao_fresh_clear_kernel(uint32_t *fresh_count) {
     *fresh_count = 0u;
 }
 
-static __device__ __forceinline__ void shade_water_kernel_body(
-    const traverse_view_t *view, const traverse_camera_t *camera, const shade_texture_t *textures,
-    const uint16_t *faces, const uint8_t *pixels, uint32_t material_count, uint32_t features, uint32_t water_material,
-    uint32_t glass_material, const shade_sun_t *sun, const post_settings_t *post, const entity_rays_hit_t *entity_hits,
-    const entity_rays_mark_t *mark, traverse_hit_t *hits, shade_pixel_t *out, traverse_counts_t *counts) {
+static __device__ __forceinline__ void
+shade_water_kernel_body(const traverse_view_t *view, const traverse_camera_t *camera, const shade_texture_t *textures,
+                        const uint16_t *faces, const uint8_t *pixels, uint32_t material_count, uint32_t features,
+                        uint32_t water_material, uint32_t glass_material, const shade_sun_t *sun,
+                        const post_settings_t *post, const entity_rays_hit_t *entity_hits,
+                        const entity_rays_mark_t *mark, traverse_hit_t *hits, shade_pixel_t *out,
+                        traverse_counts_t *counts, const lod_view_t *levels) {
     const uint32_t pixel_x = blockIdx.x * blockDim.x + threadIdx.x;
     const uint32_t pixel_y = blockIdx.y * blockDim.y + threadIdx.y;
     if (pixel_x >= camera->width || pixel_y >= camera->height) {
@@ -906,6 +935,7 @@ static __device__ __forceinline__ void shade_water_kernel_body(
         features,
         (uint16_t)water_material,
         (uint16_t)glass_material,
+        levels,
     };
     float32_t direction[3];
     traverse_camera_direction(camera, (float32_t)pixel_x + 0.5F, (float32_t)pixel_y + 0.5F, direction);
@@ -915,7 +945,8 @@ static __device__ __forceinline__ void shade_water_kernel_body(
         return;
     }
     shade_pixel_t result = {{0.0F, 0.0F, 0.0F}, 1.0F};
-    if ((features & SHADE_FEATURE_SHADOW) != 0u && shade_sun_towards(sun, face, surface.stored) > 0.0F &&
+    if ((features & SHADE_FEATURE_SHADOW) != 0u && !shade_shadows_skipped(sun->direct) &&
+        shade_sun_towards(sun, face, surface.stored) > 0.0F &&
         sun->direct[0] + sun->direct[1] + sun->direct[2] > 0.0F) {
         result.t = shade_sun_seen(&context, &hit, &surface, counts, (uint32_t)index);
     }
@@ -990,9 +1021,11 @@ __global__ void shade_water_kernel(const traverse_view_t view, const traverse_ca
                                    uint32_t material_count, uint32_t features, uint32_t water_material,
                                    uint32_t glass_material, const shade_sun_t sun, const post_settings_t post,
                                    const entity_rays_hit_t *entity_hits, const entity_rays_mark_t mark,
-                                   traverse_hit_t *hits, shade_pixel_t *out) {
+                                   traverse_hit_t *hits, shade_pixel_t *out,
+                                   const __grid_constant__ lod_view_t levels) {
     shade_water_kernel_body(&view, &camera, textures, faces, pixels, material_count, features, water_material,
-                            glass_material, &sun, &post, entity_hits, &mark, hits, out, nullptr);
+                            glass_material, &sun, &post, entity_hits, &mark, hits, out, nullptr,
+                            levels.level_count != 0u ? &levels : nullptr);
 }
 
 __global__ void shade_water_kernel_counted(const traverse_view_t view, const traverse_camera_t camera,
@@ -1001,9 +1034,10 @@ __global__ void shade_water_kernel_counted(const traverse_view_t view, const tra
                                            uint32_t water_material, uint32_t glass_material, const shade_sun_t sun,
                                            const post_settings_t post, const entity_rays_hit_t *entity_hits,
                                            const entity_rays_mark_t mark, traverse_hit_t *hits, shade_pixel_t *out,
-                                           traverse_counts_t *counts) {
+                                           traverse_counts_t *counts, const __grid_constant__ lod_view_t levels) {
     shade_water_kernel_body(&view, &camera, textures, faces, pixels, material_count, features, water_material,
-                            glass_material, &sun, &post, entity_hits, &mark, hits, out, counts);
+                            glass_material, &sun, &post, entity_hits, &mark, hits, out, counts,
+                            levels.level_count != 0u ? &levels : nullptr);
 }
 
 static __device__ __forceinline__ void
@@ -1013,7 +1047,7 @@ shade_kernel_body(const traverse_view_t *view, const traverse_camera_t *camera, 
                   shade_ao_pixel_t *ao_next, const entity_rays_box_t *entity_boxes,
                   const entity_rays_hit_t *entity_hits, const shade_texture_t *entity_textures,
                   const entity_rays_mark_t *mark, const lod_hit_t *lod_hits, traverse_hit_t *hits, shade_pixel_t *out,
-                  traverse_counts_t *counts) {
+                  traverse_counts_t *counts, const lod_view_t *levels) {
     const uint32_t pixel_x = blockIdx.x * blockDim.x + threadIdx.x;
     const uint32_t pixel_y = blockIdx.y * blockDim.y + threadIdx.y;
     if (pixel_x >= camera->width || pixel_y >= camera->height) {
@@ -1040,6 +1074,7 @@ shade_kernel_body(const traverse_view_t *view, const traverse_camera_t *camera, 
         features,
         (uint16_t)water_material,
         (uint16_t)glass_material,
+        levels,
     };
     const bool see_through = (features & SHADE_FEATURE_TRANSPARENCY) != 0u;
     const bool tint = (features & SHADE_FEATURE_WATER_TINT) != 0u;
@@ -1129,7 +1164,8 @@ shade_kernel_body(const traverse_view_t *view, const traverse_camera_t *camera, 
             result.t = first_t;
             break;
         }
-        const bool may_go_on = layer + 1u < SHADE_ALPHA_LAYERS;
+        /* Plan 009 phase 06: fewer past SHADE_ALPHA_FAR_FROM, where a leaf's texel is under a pixel. */
+        const bool may_go_on = layer + 1u < shade_alpha_layers_at(hit.t);
         const uint32_t alpha = surface.texel[3];
         const bool own_kind =
             see_through && shade_own_kind_behind(last_material, last_offset, surface.material, hit.offset, face);
@@ -1278,10 +1314,10 @@ __global__ void shade_kernel(const traverse_view_t view, const traverse_camera_t
                              shade_ao_pixel_t *ao_next, const entity_rays_box_t *entity_boxes,
                              const entity_rays_hit_t *entity_hits, const shade_texture_t *entity_textures,
                              const entity_rays_mark_t mark, const lod_hit_t *lod_hits, traverse_hit_t *hits,
-                             shade_pixel_t *out) {
+                             shade_pixel_t *out, const __grid_constant__ lod_view_t levels) {
     shade_kernel_body(&view, &camera, textures, faces, pixels, material_count, features, water_material, glass_material,
                       &sun, &post, ao_next, entity_boxes, entity_hits, entity_textures, &mark, lod_hits, hits, out,
-                      nullptr);
+                      nullptr, levels.level_count != 0u ? &levels : nullptr);
 }
 
 __global__ void shade_kernel_counted(const traverse_view_t view, const traverse_camera_t camera,
@@ -1291,10 +1327,11 @@ __global__ void shade_kernel_counted(const traverse_view_t view, const traverse_
                                      shade_ao_pixel_t *ao_next, const entity_rays_box_t *entity_boxes,
                                      const entity_rays_hit_t *entity_hits, const shade_texture_t *entity_textures,
                                      const entity_rays_mark_t mark, const lod_hit_t *lod_hits, traverse_hit_t *hits,
-                                     shade_pixel_t *out, traverse_counts_t *counts) {
+                                     shade_pixel_t *out, traverse_counts_t *counts,
+                                     const __grid_constant__ lod_view_t levels) {
     shade_kernel_body(&view, &camera, textures, faces, pixels, material_count, features, water_material, glass_material,
                       &sun, &post, ao_next, entity_boxes, entity_hits, entity_textures, &mark, lod_hits, hits, out,
-                      counts);
+                      counts, levels.level_count != 0u ? &levels : nullptr);
 }
 
 /* One texel of the god rays: see README.md. */
@@ -1329,6 +1366,7 @@ __global__ void shade_shafts_kernel(const traverse_view_t view, const traverse_c
             features,
             (uint16_t)water_material,
             (uint16_t)glass_material,
+            nullptr,
         };
         const float32_t noise = shade_shaft_noise(shaft_x, shaft_y, moving_noise ? frame : 0u);
         const float32_t step = reach / (float32_t)SHADE_SHAFT_STEPS;
@@ -1377,7 +1415,7 @@ gpu_status_t shade_frame_entities(gpu_error_t *error, const shade_scene_t *scene
                                   const traverse_world_t *world, const traverse_camera_t *camera,
                                   const device_block_t *hits, const device_block_t *pixels,
                                   const entity_rays_scene_t *entities) {
-    return shade_frame_marked(error, scene, post, world, camera, hits, pixels, entities, nullptr);
+    return shade_frame_marked(error, scene, post, world, camera, hits, pixels, entities, nullptr, nullptr);
 }
 
 const char *shade_span_name(shade_span_t span) {
@@ -1412,7 +1450,7 @@ static gpu_status_t shade_mark(gpu_error_t *error, const shade_marks_t *marks, u
 gpu_status_t shade_frame_marked(gpu_error_t *error, const shade_scene_t *scene, const post_settings_t *post,
                                 const traverse_world_t *world, const traverse_camera_t *camera,
                                 const device_block_t *hits, const device_block_t *pixels,
-                                const entity_rays_scene_t *entities, shade_marks_t *marks) {
+                                const entity_rays_scene_t *entities, const lod_scene_t *lod, shade_marks_t *marks) {
     if (marks != nullptr) {
         marks->fresh_count = nullptr;
     }
@@ -1461,9 +1499,17 @@ gpu_status_t shade_frame_marked(gpu_error_t *error, const shade_scene_t *scene, 
     }
     const uint8_t *const lists = any_box || any_crack ? device_memory_pointer(entities->borrowed_lists) : nullptr;
     traverse_view_t view;
-    const gpu_status_t status = traverse_view_from(error, world, &view);
+    gpu_status_t status = traverse_view_from(error, world, &view);
     if (status != GPU_STATUS_OK) {
         return status;
+    }
+    /* Plan 009 phase 06: the far field's levels, for shadow rays past the light's cone; none with no far field, or with it off. */
+    lod_view_t levels = {};
+    if (lod != nullptr && (scene->features & SHADE_FEATURE_LOD) != 0u) {
+        status = lod_view_from(error, lod, &levels);
+        if (status != GPU_STATUS_OK) {
+            return status;
+        }
     }
     const dim3 grid(traverse_tiles_across(camera->width), traverse_tiles_across(camera->height));
     const dim3 tile(TRAVERSE_TILE_PIXELS, TRAVERSE_TILE_PIXELS);
@@ -1485,13 +1531,13 @@ gpu_status_t shade_frame_marked(gpu_error_t *error, const shade_scene_t *scene, 
     const entity_rays_mark_t mark = entities != nullptr ? entities->mark : entity_rays_mark_t{};
     if ((scene->features & SHADE_FEATURE_TRANSPARENCY) != 0u) {
         if (counts != nullptr) {
-            shade_water_kernel_counted<<<grid, tile>>>(view, *camera, textures, faces, texels, scene->material_count,
-                                                       scene->features, scene->water_material, scene->glass_material,
-                                                       scene->sun, *post, entity_hits, mark, hit_list, out, counts);
+            shade_water_kernel_counted<<<grid, tile>>>(
+                view, *camera, textures, faces, texels, scene->material_count, scene->features, scene->water_material,
+                scene->glass_material, scene->sun, *post, entity_hits, mark, hit_list, out, counts, levels);
         } else {
             shade_water_kernel<<<grid, tile>>>(view, *camera, textures, faces, texels, scene->material_count,
                                                scene->features, scene->water_material, scene->glass_material,
-                                               scene->sun, *post, entity_hits, mark, hit_list, out);
+                                               scene->sun, *post, entity_hits, mark, hit_list, out, levels);
         }
         const gpu_status_t water_started = device_memory_check(error, cudaGetLastError(), "shade: starting water");
         if (water_started != GPU_STATUS_OK) {
@@ -1515,11 +1561,11 @@ gpu_status_t shade_frame_marked(gpu_error_t *error, const shade_scene_t *scene, 
         shade_kernel_counted<<<grid, tile>>>(view, *camera, textures, faces, texels, scene->material_count,
                                              scene->features, scene->water_material, scene->glass_material, scene->sun,
                                              *post, ao_next, entity_boxes, entity_hits, entity_textures, mark, lod_hits,
-                                             hit_list, out, counts);
+                                             hit_list, out, counts, levels);
     } else {
         shade_kernel<<<grid, tile>>>(view, *camera, textures, faces, texels, scene->material_count, scene->features,
                                      scene->water_material, scene->glass_material, scene->sun, *post, ao_next,
-                                     entity_boxes, entity_hits, entity_textures, mark, lod_hits, hit_list, out);
+                                     entity_boxes, entity_hits, entity_textures, mark, lod_hits, hit_list, out, levels);
     }
     const gpu_status_t started = device_memory_check(error, cudaGetLastError(), "shade: starting the kernel");
     if (started != GPU_STATUS_OK) {
@@ -1537,11 +1583,11 @@ gpu_status_t shade_frame_marked(gpu_error_t *error, const shade_scene_t *scene, 
         if (counts != nullptr) {
             shade_sun_kernel_counted<<<grid, tile>>>(view, *camera, textures, faces, texels, scene->material_count,
                                                      scene->features, scene->water_material, scene->glass_material,
-                                                     scene->sun, work, hit_list, out, counts);
+                                                     scene->sun, work, hit_list, out, counts, levels);
         } else {
             shade_sun_kernel<<<grid, tile>>>(view, *camera, textures, faces, texels, scene->material_count,
                                              scene->features, scene->water_material, scene->glass_material, scene->sun,
-                                             work, hit_list, out);
+                                             work, hit_list, out, levels);
         }
         const gpu_status_t sun_started = device_memory_check(error, cudaGetLastError(), "shade: starting the sun rays");
         if (sun_started != GPU_STATUS_OK) {

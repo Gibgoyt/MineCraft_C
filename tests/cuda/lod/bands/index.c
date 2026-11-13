@@ -122,8 +122,10 @@ typedef struct lb_tally_t {
 } lb_tally_t;
 static_assert(sizeof(lb_tally_t) == 80);
 
+/* colours is what a near pixel's colour is held to: plan 009 phase 06's shadow rays step the far field's levels past the light's cone, so a near
+ * pixel may take a far hill's shadow, and its colour is held to a picture whose shadow rays do the same and whose own rays stay in level 0. */
 static void lb_compare(const render_camera_t *eye, float64_t pixel_error, const lb_picture_t *bands,
-                       const lb_picture_t *reference, lb_tally_t *out) {
+                       const lb_picture_t *reference, const lb_picture_t *colours, lb_tally_t *out) {
     uint8_t *const map = out->wrong_map;
     memset(out, 0, sizeof(*out));
     out->wrong_map = map;
@@ -147,8 +149,7 @@ static void lb_compare(const render_camera_t *eye, float64_t pixel_error, const 
                 const bool far_behind = bands->far[i].material != LOD_NO_MATERIAL;
                 out->near_hit_wrong += same_hit || far_behind ? 0u : 1u;
                 out->near_rgb_wrong +=
-                    memcmp(&reference->shaded[i], &bands->shaded[i], sizeof(shade_pixel_t)) == 0 || far_behind ? 0u
-                                                                                                               : 1u;
+                    memcmp(&colours->shaded[i], &bands->shaded[i], sizeof(shade_pixel_t)) == 0 || far_behind ? 0u : 1u;
                 continue;
             }
             if (r_t < LB_NEAR || r_t >= LB_REFERENCE_REACH) {
@@ -251,11 +252,15 @@ TEST(the_near_guarantee_and_the_error_bound) {
             for (uint32_t f = 0u; f < 2u; f++) {
                 lod->pixel_error = errors[e];
                 eye.half_fov_tangent = tanf(fovs[f] * 3.14159265f32 / 360.0f32);
-                lb_picture_t bands, reference;
+                lb_picture_t bands, reference, colours;
                 REQUIRE(lb_draw(t, &rig, &eye, features, &bands));
                 REQUIRE(lb_draw(t, &rig, &eye, features & ~(uint32_t)SHADE_FEATURE_LOD, &reference));
+                /* The colours' reference: the far field on for shadow rays, its pixel error so small that every pixel's own ray stays in level 0. */
+                lod->pixel_error = 1e-4f32;
+                REQUIRE(lb_draw(t, &rig, &eye, features, &colours));
+                lod->pixel_error = errors[e];
                 lb_tally_t tally = {0};
-                lb_compare(&eye, (float64_t)errors[e], &bands, &reference, &tally);
+                lb_compare(&eye, (float64_t)errors[e], &bands, &reference, &colours, &tally);
                 printf("  %-20s E %.0f, fov %2.0f: %5" PRIu64 " near, hit differs %" PRIu64 ", colour %" PRIu64
                        "; %5" PRIu64 " past 16, %.2f %% moved past E, %.2f %% another block\n",
                        place->name, (libc_double_t)errors[e], (libc_double_t)fovs[f], tally.near, tally.near_hit_wrong,
@@ -276,7 +281,7 @@ TEST(the_near_guarantee_and_the_error_bound) {
                         snprintf(name, sizeof(name), "place_%u_reference.png", p);
                         lb_png_keep(t, name, reference.xrgb);
                         tally.wrong_map = test_alloc(t, post_xrgb_bytes(LB_WIDTH, LB_HEIGHT));
-                        lb_compare(&eye, (float64_t)errors[e], &bands, &reference, &tally);
+                        lb_compare(&eye, (float64_t)errors[e], &bands, &reference, &colours, &tally);
                         snprintf(name, sizeof(name), "place_%u_wrong.png", p);
                         lb_png_keep(t, name, tally.wrong_map);
                         printf("  of the wrong, %" PRIu64

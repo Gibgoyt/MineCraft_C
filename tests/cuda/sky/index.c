@@ -511,7 +511,8 @@ static void sk_trace(test_context_t *t, const sk_rig_t *rig, const sk_scene_t *s
         const texture_blob_entry_t *entry = nullptr;
         const uint8_t *const texel = sk_texel(t, rig, view, box, face, point, distance, &entry, out);
         REQUIRE(texel != nullptr);
-        if (texel[3] == 0u && (features & SHADE_FEATURE_ALPHA) != 0u && layer + 1u < SHADE_ALPHA_LAYERS) {
+        if (texel[3] == 0u && (features & SHADE_FEATURE_ALPHA) != 0u &&
+            layer + 1u < shade_alpha_layers_at((float32_t)distance)) {
             after = distance;
             continue;
         }

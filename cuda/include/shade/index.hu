@@ -6,6 +6,7 @@
 
 #include "device_memory/index.hu"
 #include "gpu_bridge/shade/index.h"
+#include "lod/index.hu"
 #include "traverse/index.hu"
 
 #include <math.h>
@@ -24,8 +25,16 @@ typedef struct shade_context_t {
     uint32_t features;               /* 64 */
     uint16_t water_material;         /* 68 */
     uint16_t glass_material;         /* 70 */
+    /* 72: plan 009 phase 06, the far field's levels, which a shadow ray steps once the light's cone lets it; nullptr for none, and then a
+     * shadow ray goes through level 0 to its edge. */
+    const lod_view_t *levels;
 } shade_context_t;
-static_assert(sizeof(shade_context_t) == 72);
+static_assert(sizeof(shade_context_t) == 80);
+
+/* Plan 009 phase 06: how a shadow ray hands over from level to level, by the light's cone (shade_shadow_cone_base), from its surface. */
+static __device__ __forceinline__ lod_reach_t shade_shadow_cone(void) {
+    return lod_reach_t{shade_shadow_cone_base(), 1.0F, 0.0F, {0}};
+}
 
 /* A surface a ray has reached. */
 typedef struct shade_surface_t {

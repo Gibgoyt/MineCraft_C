@@ -343,7 +343,7 @@ static gpu_status_t frame_passes(frame_gpu_t *frame, frame_slot_t *slot, const f
         shade_marks.borrowed_counts = counts;
         status = shade_frame_marked(&frame->last_error, args->borrowed_scene, args->borrowed_post, args->borrowed_world,
                                     camera, targets->borrowed_hits, targets->borrowed_pixels, entities,
-                                    slot->marked != 0u ? &shade_marks : nullptr);
+                                    args->borrowed_lod, slot->marked != 0u ? &shade_marks : nullptr);
         slot->borrowed_fresh_count = shade_marks.fresh_count;
     }
     if (status == GPU_STATUS_OK) {
