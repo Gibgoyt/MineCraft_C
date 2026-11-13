@@ -834,6 +834,13 @@ static walk_outcome_t walk_along(const walk_area_t *area, const walk_memory_t *m
     fprintf(script, "# Made by bench_cave_walk. Its first line of keys is on tick %u.\n", WALK_START_TICK);
     fprintf(script, "0 screenshot %s_start.png\n", name);
     fprintf(script, "%u key w down\n", WALK_START_TICK);
+    /* The game's body stands through the ticks before the first key, and so is on the ground when it sets off; one just started is
+     * not, so its first step would take the air's push, a fifth of the ground's, and the walks part by a tenth of a block from there. */
+    const player_intent_t idle = {
+        .yaw = camera.yaw, .forward = 0, .right = 0, .jump = 0u, .sneak = 0u, .sprint = 0u, ._pad0 = {0}};
+    for (uint32_t tick = 0u; tick < WALK_START_TICK; tick++) {
+        player_movement_tick(&body, memory->physics, &memory->world->map, &idle);
+    }
 
     uint32_t next_point = 1u;
     uint32_t best_point = 1u;

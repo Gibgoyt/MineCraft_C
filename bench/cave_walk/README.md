@@ -39,7 +39,7 @@ A place is **in a cave** if at least 8 blocks of ground stand over it in its col
 
 `game_spawn_find` says where a body starts, as it does for the game. A square of 1024 blocks round it is made, and the fewest steps found from there to a place 24 under its ground, `cave`, then to such a place at `z = -150` or lower, `deep`. If either fails, so does the seed. When a walk finds no way, it says how many places it got to and the lowest.
 
-The columns round a route go into a real `world_t`. A real body then follows it: `player_movement_tick`, turning by whole counts of the mouse through `player_camera_look`, holding forward, and holding jump only when the next place is higher. It gives up after 200 ticks with no progress. It starts on the game's own yaw, typed here as `WALK_GAME_START_YAW`.
+The columns round a route go into a real `world_t`. A real body then follows it: `player_movement_tick`, turning by whole counts of the mouse through `player_camera_look`, holding forward, and holding jump only when the next place is higher. It gives up after 200 ticks with no progress. It starts on the game's own yaw, typed here as `WALK_GAME_START_YAW`. Before the first key it stands through the same 100 ticks the script waits, as the game's body does, so it sets off on the ground: a body just started is not, and its first step took the air's push, which parted the two walks by tenths of a block from the start (plan 006 phase 04).
 
 What it did is written as a script for `--headless`, `<seed>_cave.script` and `<seed>_deep.script`, setting off at tick 100. So the same walk can go through the game itself, with its threads, mobs and renderer, into screenshots:
 

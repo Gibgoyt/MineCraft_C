@@ -450,6 +450,25 @@ static void pt_type(char *text, uint64_t *length, const char *typed) {
     }
 }
 
+/* The /tp to one place on the trunk's block (PT_FEET_AHEAD, PT_FEET_RIGHT along and right of the axis nearest the way back to
+ * the stand), which keeps the look, and that axis in ahead. What goes where a script says "@feet" too: back to that place after a
+ * step aside, with the look it had. */
+static void pt_feet_lines(const pt_tree_t *tree, float64_t ahead[2], char *text, uint64_t *length) {
+    const int32_t back_x = tree->stand_x - tree->root_x, back_y = tree->stand_y - tree->root_y;
+    const bool along_x = abs(back_x) >= abs(back_y);
+    ahead[0] = along_x ? (back_x > 0 ? 1.0f64 : -1.0f64) : 0.0f64;
+    ahead[1] = along_x ? 0.0f64 : (back_y > 0 ? 1.0f64 : -1.0f64);
+    const float64_t right[2] = {ahead[1], -ahead[0]};
+    const float64_t on = PT_FEET_AHEAD - 0.5f64, aside = PT_FEET_RIGHT - 0.5f64;
+    const float64_t feet_x = (float64_t)tree->root_x + 0.5f64 + ahead[0] * on + right[0] * aside;
+    const float64_t feet_y = (float64_t)tree->root_y + 0.5f64 + ahead[1] * on + right[1] * aside;
+    char line[160];
+    snprintf(line, sizeof(line), "/tp %.2f %.2f %" PRId32, (libc_double_t)feet_x, (libc_double_t)feet_y,
+             tree->ground_z + 1);
+    pt_type(text, length, line);
+    pt_append(text, length, "+1 key enter down\n+0 key enter up");
+}
+
 /* What goes where the script says "@tree": the /tp to the stand, the turn to the root, one cut that brings the whole tree down
  * (plan 005 phase 1), a walk in over the logs, the look back to level, and a turn back to the stand, where the ground is clear.
  * Where it says "@fell" (the felling script), the /tp and the turn, a look up at the tree and back, and the one cut. */
@@ -491,18 +510,8 @@ static void pt_tree_lines(const pt_tree_t *tree, bool fell, char *text, uint64_t
     /* Then to one place on the trunk's block, facing along the axis nearest the way back to the stand: what follows was worked out
      * from screenshots for one place and one look, and lands the table, the bench and what goes beside them by where the eye is
      * in its block (PT_FEET_AHEAD, PT_FEET_RIGHT). */
-    const int32_t back_x = tree->stand_x - tree->root_x, back_y = tree->stand_y - tree->root_y;
-    const bool along_x = abs(back_x) >= abs(back_y);
-    const float64_t ahead[2] = {along_x ? (back_x > 0 ? 1.0f64 : -1.0f64) : 0.0f64,
-                                along_x ? 0.0f64 : (back_y > 0 ? 1.0f64 : -1.0f64)};
-    const float64_t right[2] = {ahead[1], -ahead[0]};
-    const float64_t on = PT_FEET_AHEAD - 0.5f64, aside = PT_FEET_RIGHT - 0.5f64;
-    const float64_t feet_x = (float64_t)tree->root_x + 0.5f64 + ahead[0] * on + right[0] * aside;
-    const float64_t feet_y = (float64_t)tree->root_y + 0.5f64 + ahead[1] * on + right[1] * aside;
-    snprintf(line, sizeof(line), "/tp %.2f %.2f %" PRId32, (libc_double_t)feet_x, (libc_double_t)feet_y,
-             tree->ground_z + 1);
-    pt_type(text, length, line);
-    pt_append(text, length, "+1 key enter down\n+0 key enter up");
+    float64_t ahead[2];
+    pt_feet_lines(tree, ahead, text, length);
     const float64_t facing = atan2(ahead[1], ahead[0]);
     const int64_t back =
         (int64_t)lround(remainder(yaw - facing, 2.0f64 * PT_PI) / (float64_t)RENDER_CAMERA_RADIANS_PER_COUNT);
@@ -510,7 +519,7 @@ static void pt_tree_lines(const pt_tree_t *tree, bool fell, char *text, uint64_t
     pt_append(text, length, line);
 }
 
-/* The script at fixture, with its "@tree" line made for this tree, written into root. Returns its path. */
+/* The script at fixture, with its "@tree" and "@feet" lines made for this tree, written into root. Returns its path. */
 static const char *pt_script(test_context_t *t, const char *fixture, const char *root, const pt_tree_t *tree) {
     char *const text = test_alloc(t, PT_SCRIPT_BYTES);
     char *const out = test_alloc(t, PT_SCRIPT_BYTES);
@@ -529,7 +538,17 @@ static const char *pt_script(test_context_t *t, const char *fixture, const char 
     pt_append(out, &length, text);
     length--; /* the line break pt_append added: text ends with its own */
     pt_tree_lines(tree, fell, out, &length);
-    pt_append(out, &length, at + strlen("\n@tree\n"));
+    /* After it, each "@feet" line: back to the place in the trunk's block. */
+    char *rest = at + strlen("\n@tree\n");
+    for (char *feet = strstr(rest - 1, "\n@feet\n"); feet != nullptr; feet = strstr(rest - 1, "\n@feet\n")) {
+        feet[1] = '\0';
+        pt_append(out, &length, rest);
+        length--;
+        float64_t ahead[2];
+        pt_feet_lines(tree, ahead, out, &length);
+        rest = feet + strlen("\n@feet\n");
+    }
+    pt_append(out, &length, rest);
     const char *const path = pt_join(t, root, "day.script");
     return CHECK(file_write_atomic(path, out, length) == FILE_OK) ? path : nullptr;
 }

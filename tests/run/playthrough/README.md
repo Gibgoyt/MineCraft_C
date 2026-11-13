@@ -29,7 +29,9 @@ the root. Since plan 006 phase 03 that is a jungle tree 65 blocks from the start
 Each of the four scripts has a line `@tree`. The test replaces it with: the `/tp` to the stand (with 25 s to wait if the tree
 is more than 64 blocks off, as the dive waits), the turn to the root from a new world's first look (which a `/tp` keeps), one
 cut that brings the tree down, a walk in over the logs, and a second `/tp` to one place in the trunk's block, facing along an
-axis. That last place is what the rest of the scripts were tuned to by their screenshots: the table, the bench, the stairs and
+axis. A line `@feet` later in a script is that second `/tp` again, back to the same place with the look kept: `stairs.script`
+steps in to pick up the stair it mined (on plan 006 phase 04's land its drop lay out of reach) and comes back by it. That
+last place is what the rest of the scripts were tuned to by their screenshots: the table, the bench, the stairs and
 the door land by where the eye is in its block (`PT_FEET_AHEAD`, `PT_FEET_RIGHT` in `index.c` say why). The script so made is
 run from the test's temporary directory, and kept with it under `MC_PLAYTHROUGH_KEEP`. What the report says is read against
 that tree: its log's name, `the tree feller felled K`, its wood's stairs, and the inventory as at least what the day makes and

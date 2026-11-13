@@ -1846,6 +1846,14 @@ TEST(the_program_shows_the_hud_and_f3_changes_only_the_panel) {
     temp_dir_remove(&overlay, names, 2u);
 }
 
+/* The notice band is 3/4 of 0xA00000 over a quarter of whatever the world shows there: red at least 0x78 and green
+ * and blue at most 0x40, whatever the world. The world at that pixel need not be sky (near spawn it was a tree's
+ * shade once plan 006 phase 04 moved the trees), so this asks for the band's own colour, not for "not blue". */
+static bool notice_band_at(uint32_t pixel) {
+    const uint32_t red = (pixel >> 16u) & 0xFFu, green = (pixel >> 8u) & 0xFFu, blue = pixel & 0xFFu;
+    return red >= 0x70u && green <= 0x48u && blue <= 0x48u && red >= 2u * green && red >= 2u * blue;
+}
+
 /* The view on the ground says nothing of how to get up. A red band across the top does, and only while it is so. */
 TEST(a_dead_player_is_told_how_to_come_back) {
     rig_t rig;
@@ -1867,13 +1875,13 @@ TEST(a_dead_player_is_told_how_to_come_back) {
     const uint64_t band_pixel = (uint64_t)8u * GAME_WIDTH + 1u;
     REQUIRE(scene.tick(scene.borrowed_context, &tick));
     REQUIRE(rig_scene_frame(t, &scene, &target));
-    CHECK(((shown[band_pixel] >> 16u) & 0xFFu) < 2u * (shown[band_pixel] & 0xFFu));
+    CHECK(!notice_band_at(shown[band_pixel]));
 
     player_survival_hurt(&rig.player->survival, 100.0f32, PLAYER_SURVIVAL_CAUSE_ATTACK);
     REQUIRE(scene.tick(scene.borrowed_context, &tick));
     CHECK_EQ_U64(player_vitals_read(rig.player).state, PLAYER_SURVIVAL_DEAD);
     REQUIRE(rig_scene_frame(t, &scene, &target));
-    CHECK(((shown[band_pixel] >> 16u) & 0xFFu) >= 2u * (shown[band_pixel] & 0xFFu));
+    CHECK(notice_band_at(shown[band_pixel]));
 
     /* Past the wait, a press: up again, and the band has gone. */
     for (uint32_t i = 0u; i <= PLAYER_SURVIVAL_RESPAWN_WAIT_TICKS; i++) {
@@ -1885,7 +1893,7 @@ TEST(a_dead_player_is_told_how_to_come_back) {
     REQUIRE(scene.tick(scene.borrowed_context, &tick));
     CHECK_EQ_U64(rig.player->survival.respawned_count, 1u);
     REQUIRE(rig_scene_frame(t, &scene, &target));
-    CHECK(((shown[band_pixel] >> 16u) & 0xFFu) < 2u * (shown[band_pixel] & 0xFFu));
+    CHECK(!notice_band_at(shown[band_pixel]));
 
     game_close(game);
     rig_end(t, &rig);

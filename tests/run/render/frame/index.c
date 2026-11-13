@@ -1389,15 +1389,35 @@ TEST(the_real_threads_draw_what_one_thread_draws_with_nothing_from_the_heap) {
     const uint8_t *const picture = fr_draw(t, &rig, &game->camera);
     REQUIRE(picture != nullptr);
     CHECK_MEM_EQ(picture, screen, bytes);
-    /* A picture of something, and not of an empty sky. */
+    /* A picture of something, and not of an empty sky: a pixel whose ray met a block in level 0, whose colour ends on a surface (water seen
+     * through to a bottom past level 0 among them), or where the far field drew one. The flight may end over open sea (on plan 006 phase
+     * 04's land it does, 34 blocks over it), where level 0's own hits are only the nearest eighth of the picture. */
     const uint64_t hit_bytes = traverse_hits_bytes(FR_WIDTH, FR_HEIGHT);
     traverse_hit_t *const hits = test_alloc(t, hit_bytes);
     REQUIRE(device_memory_read(&rig.bridge->device_memory, &render->owned_hits, 0u, hits, hit_bytes) == GPU_STATUS_OK);
-    uint64_t hit_count = 0u;
+    const uint64_t shaded_bytes = shade_pixels_bytes(FR_WIDTH, FR_HEIGHT);
+    shade_pixel_t *const shaded = test_alloc(t, shaded_bytes);
+    REQUIRE(device_memory_read(&rig.bridge->device_memory, &render->owned_shaded, 0u, shaded, shaded_bytes) ==
+            GPU_STATUS_OK);
+    /* The far field's hits, where it has any: at this render distance level 0 reaches it all, and there is no far field. */
+    const uint64_t far_bytes = lod_hits_bytes(FR_WIDTH, FR_HEIGHT);
+    lod_hit_t *const far = test_alloc(t, far_bytes);
     for (uint64_t i = 0u; i < (uint64_t)FR_WIDTH * FR_HEIGHT; i++) {
-        hit_count += traverse_hit_face(hits[i].info) != TRAVERSE_FACE_MISS ? 1u : 0u;
+        far[i].material = (uint16_t)LOD_NO_MATERIAL;
     }
-    CHECK(hit_count > (uint64_t)FR_WIDTH * FR_HEIGHT / 8u);
+    if (render->owned_lod_hits.bytes >= far_bytes) {
+        CHECK_EQ_U64(device_memory_read(&rig.bridge->device_memory, &render->owned_lod_hits, 0u, far, far_bytes),
+                     GPU_STATUS_OK);
+    }
+    uint64_t hit_count = 0u, something = 0u;
+    for (uint64_t i = 0u; i < (uint64_t)FR_WIDTH * FR_HEIGHT; i++) {
+        const bool hit = traverse_hit_face(hits[i].info) != TRAVERSE_FACE_MISS;
+        hit_count += hit ? 1u : 0u;
+        something += hit || shaded[i].t < TRAVERSE_COARSE_SKY || far[i].material != LOD_NO_MATERIAL ? 1u : 0u;
+    }
+    printf("  %" PRIu64 " of %u pixels met a block in level 0, %" PRIu64 " show something\n", hit_count,
+           FR_WIDTH * FR_HEIGHT, something);
+    CHECK(something > (uint64_t)FR_WIDTH * FR_HEIGHT / 2u);
     game_close(game);
     fr_rig_end(t, &rig);
 }

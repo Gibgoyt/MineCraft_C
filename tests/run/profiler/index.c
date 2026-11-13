@@ -1052,13 +1052,30 @@ TEST(walking_times_the_tick_in_its_parts) {
     CHECK(pr_count(&run->trace, main_tid, "present") > 0u);
 }
 
-/* Looks at the ground and mines it: an outline, then what was mined lying there in a box. */
-/* Up at the sky first, since nothing says a hill is not in reach of a level eye where a body starts, then down at the ground. */
-static const char pr_mining_script[] = "1 move 0 -500\n"
-                                       "20 move 0 1000\n"
-                                       "40 button left down\n"
-                                       "140 button left up\n"
-                                       "180 end\n";
+/* Looks down at the ground and mines it: an outline, then what was mined lying there in a box. Then, for frames with nothing
+ * aimed at, /tp top and a look straight up: at the start itself nothing says a hill or a tree's crown is not in reach (on plan
+ * 006 phase 04's land a jungle crown hangs over it), but over the top of its column there is only sky. */
+static const char pr_mining_script[] = "1 move 0 1000\n"
+                                       "20 button left down\n"
+                                       "120 button left up\n"
+                                       "130 key slash down\n"
+                                       "130 key slash up\n"
+                                       "131 key t down\n"
+                                       "131 key t up\n"
+                                       "132 key p down\n"
+                                       "132 key p up\n"
+                                       "133 key space down\n"
+                                       "133 key space up\n"
+                                       "134 key t down\n"
+                                       "134 key t up\n"
+                                       "135 key o down\n"
+                                       "135 key o up\n"
+                                       "136 key p down\n"
+                                       "136 key p up\n"
+                                       "137 key enter down\n"
+                                       "137 key enter up\n"
+                                       "150 move 0 -2000\n"
+                                       "200 end\n";
 
 TEST(what_is_aimed_at_and_what_lies_there_have_kernels_when_they_are_there) {
     char script[512], path[512];

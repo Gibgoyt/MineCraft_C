@@ -176,6 +176,12 @@
 +4 button left down
 +70 button left up
 +20 screenshot stairs_mined.png
+# A step in, as its drop may lie out of reach (plan 006 phase 04's tree put the second stair over the first, and the first's drop lay under it), and back by /tp to the place in the trunk's block, with the look it had.
++1 key w down
++5 key w up
++10 screenshot stairs_taken.png
+@feet
++10 screenshot stairs_back.png
 # Back to the bench, and one half of it by hand: both go, and one bench comes down to be picked up.
 +1 move -325 0
 +6 screenshot bench_before.png

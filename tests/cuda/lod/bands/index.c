@@ -147,9 +147,15 @@ static void lb_compare(const render_camera_t *eye, float64_t pixel_error, const 
                                       traverse_hit_face(r->info) == traverse_hit_face(b->info) &&
                                       memcmp(&r->t, &b->t, sizeof(r->t)) == 0;
                 const bool far_behind = bands->far[i].material != LOD_NO_MATERIAL;
+                /* A see-through first surface under 16 blocks with the pixel ending past them in the reference: what shows through is
+                 * past d_1, the far field's to draw or to miss, not the near guarantee's (plan 006 phase 04's jungle put leaves 14 to 15
+                 * blocks off at "north, over it", with ground 25 to 42 blocks behind them that the far field at E 8 did not draw). */
+                const bool ends_far = r_t >= LB_NEAR;
                 out->near_hit_wrong += same_hit || far_behind ? 0u : 1u;
                 out->near_rgb_wrong +=
-                    memcmp(&colours->shaded[i], &bands->shaded[i], sizeof(shade_pixel_t)) == 0 || far_behind ? 0u : 1u;
+                    memcmp(&colours->shaded[i], &bands->shaded[i], sizeof(shade_pixel_t)) == 0 || far_behind || ends_far
+                        ? 0u
+                        : 1u;
                 continue;
             }
             if (r_t < LB_NEAR || r_t >= LB_REFERENCE_REACH) {
