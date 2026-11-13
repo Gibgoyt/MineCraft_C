@@ -58,6 +58,10 @@
 
 ## Results
 
+### 2026-11-13, plan 007 phase 03: plateaus, escarpments and long ranges
+
+On the 8 seeds, in two runs of 4, exit 0: sea 24.7 to 27.1%; reaching 150, 300, 500, 750, 1000: 31.9 to 43.1, 23.7 to 37.2, 11.4 to 22.2, 3.3 to 7.7, 0.06 to 0.15%; top 1126 to 1150; escarpment 5.4 to 30.1 km; the longest range piece at 500 or more 14.0 to 39.8 km; plateau pieces of 25 km^2 still 0, as the tops carry today's hills (phase 04); slope classes as before within a point. The profile 0.38 to 0.43 µs a lattice column. The plan 007 phase 03 file has the rest and the pictures.
+
 ### 2026-11-12, plan 007 phase 01: today's land, before any landform change
 
 Release build, through the build lock, plan 003's 8 seeds in two runs of 4 and Ahmed's seed `11107447384583428913` alone, exit status 0 each; 28 to 30 s a seed. The full table, the pictures looked at, and what they say are in `plans/007-ahmed-bohemoth-realistic-landforms-phase-01-measure-todays-terrain.md`, "Today". In short, min to max over the 8:

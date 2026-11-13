@@ -59,6 +59,10 @@
 
 ## Results
 
+### 2026-11-13, plan 007 phase 03: plateaus, `--map-only`, seed 2198175988018515243
+
+Exit 0. Sea 27.2%, joined 98.0%, dry 96.2%; reaching 150, 300, 500, 750, 1000: 56.4, 52.4, 34.4, 12.3, 0.25% (this map's middle stands on a plateau); top 1155; 17 high pieces, 8 big, the largest 86.7 km^2 and 16.4 km across; steep 13.6%; the spawn on snow_block. Floating rock was not measured (`--map-only`).
+
 ### 2026-11-04, before any of plan 003 phase 8's tuning
 
 Release build, 8 seeds, exit status 0. About 50 s a seed: 18 s for the map, 26 s for the cave tiles.

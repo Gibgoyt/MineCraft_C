@@ -1,6 +1,6 @@
 # bench/terrain
 
-**Purpose:** times every stage of terrain together, `terrain_generate_box`, against the plan's target of 1000 columns a second on 16 workers, in the places where what is on the ground differs most; and (plan 006 phase 02) filling a climate sample from a real climate's tiles and from the fallback, `terrain_climate_at`, and the climate sample's values at the equator, 45° N and the polar circle.
+**Purpose:** times every stage of terrain together, `terrain_generate_box`, against the plan's target of 1000 columns a second on 16 workers, in the places where what is on the ground differs most, and (plan 007 phase 03) on the first plateau top the search meets, `plateau_top`: lift 550 or more and less than 150 above it; and (plan 006 phase 02) filling a climate sample from a real climate's tiles and from the fallback, `terrain_climate_at`, and the climate sample's values at the equator, 45° N and the polar circle.
 **Tier:** none; benchmarks are not tiered.
 **Owns:** one heap region for its buffers, released before it exits.
 **Lifetime:** Process.
@@ -14,6 +14,10 @@ Only a release build's numbers mean anything: debug is at `-O0`.
 A **column** here is what it is in the plan and in `run/src/world/column/`: a chunk's, 16 by 16 and 1536 layers, the very box the game asks for. A round is 36 of them, each in its own box. Each place keeps its best of 3 rounds, and the gate is on its 16-worker number, as the plan's target is. The `tour` directory beside this is the phase gate's biome tour, over every layer of the world, -250 to 1250.
 
 ## Results
+
+### 2026-11-13, plan 007 phase 03: plateaus, and a plateau_top place
+
+Each line now ends with the place's `/tp`. Three runs: load averages 86, 4 and 2.8. At 2.8, slowest `jagged_peaks` **977** (a range now standing on a plateau), `plateau_top` 1223, every other place 1177 or more: **not met, by 2.3%**. `plateau_top` read 1004, 1239 and 1223 over the three. See the plan 007 phase 03 file, Issues found 16.
 
 ### 2026-11-12, plan 006 phase 02: the climate sample, on a loaded machine
 
