@@ -126,7 +126,8 @@ static_assert(offsetof(post_temporal_t, history_valid) == 133);
 static_assert(offsetof(post_temporal_t, sun_apart) == 134);
 static_assert(offsetof(post_temporal_t, flags) == 135);
 
-/* post_temporal_t.flags. The first three are worked out for each frame as it is queued; the last two are kept from what the frame was told. */
+/* post_temporal_t.flags. JITTER, MOVED, FAST and UPSCALE are worked out for each frame as it is queued; FIRST_GUESS, FRESH_ONE and LOD_TURN are
+ * kept from what the frame was told. */
 enum : uint8_t {
     /* This frame looks off each pixel's centre by post_jitter of its frame: TAA is on. Plan 008 phase 04 made this a bit, where it was two
      * floats, for the room the AO cache's block took: see post_temporal_jitter. */
@@ -143,6 +144,8 @@ enum : uint8_t {
     /* Plan 009 phase 07: this frame is drawn smaller than its output and the temporal pass gathers it at the output's size
      * (post_frame_upscaled), so its jitter is POST_UPSCALE_JITTER_FRAMES long. Worked out for each frame as it is queued. */
     POST_TEMPORAL_UPSCALE = 1u << 5,
+    /* Plan 008 phase 06: SHADE_FEATURE_LOD_TURN_CACHE, kept from what the frame was told; no kernel of post reads it. */
+    POST_TEMPORAL_LOD_TURN = 1u << 6,
 };
 
 enum : uint32_t {

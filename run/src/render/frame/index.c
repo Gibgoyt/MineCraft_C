@@ -502,11 +502,12 @@ static void frame_settings_apply(render_frame_t *frame) {
 }
 
 void render_frame_features_set(render_frame_t *frame, uint32_t features) {
-    frame->scene.features = features & (SHADE_FEATURES_EVERY | SHADE_FEATURE_LOD_TURN_CACHE);
+    frame->scene.features = features & SHADE_FEATURES_EVERY;
     frame->temporal.sun_apart = (features & SHADE_FEATURE_SUN_APART) != 0u ? 1u : 0u;
     frame->temporal.flags =
-        (uint8_t)((frame->temporal.flags & ~(uint32_t)POST_TEMPORAL_FIRST_GUESS) |
-                  ((features & SHADE_FEATURE_AO_FIRST_GUESS) != 0u ? POST_TEMPORAL_FIRST_GUESS : 0u));
+        (uint8_t)((frame->temporal.flags & ~(uint32_t)(POST_TEMPORAL_FIRST_GUESS | POST_TEMPORAL_LOD_TURN)) |
+                  ((features & SHADE_FEATURE_AO_FIRST_GUESS) != 0u ? POST_TEMPORAL_FIRST_GUESS : 0u) |
+                  ((features & SHADE_FEATURE_LOD_TURN_CACHE) != 0u ? POST_TEMPORAL_LOD_TURN : 0u));
     frame_settings_apply(frame);
 }
 
@@ -766,7 +767,8 @@ gpu_status_t render_frame_queue(render_frame_t *frame, const world_buffers_t *bu
     /* Plan 008 phase 04: whether the camera moved since the frame before, and turned fast, for AO's first guess and TAA's history read. */
     const bool moved = drawn_before && memcmp(&steady, &temporal->previous, sizeof(steady)) != 0;
     const bool fast = moved && post_turn_pixels(&temporal->previous, &steady) > (float64_t)POST_TAA_FAST_PIXELS;
-    uint32_t flags = temporal->flags & (uint32_t)(POST_TEMPORAL_FIRST_GUESS | POST_TEMPORAL_FRESH_ONE);
+    uint32_t flags =
+        temporal->flags & (uint32_t)(POST_TEMPORAL_FIRST_GUESS | POST_TEMPORAL_FRESH_ONE | POST_TEMPORAL_LOD_TURN);
     flags |= moved ? (uint32_t)POST_TEMPORAL_MOVED : 0u;
     flags |= fast ? (uint32_t)POST_TEMPORAL_FAST : 0u;
     if ((features & SHADE_FEATURE_TAA) != 0u) {
@@ -825,7 +827,7 @@ gpu_status_t render_frame_queue(render_frame_t *frame, const world_buffers_t *bu
     lod_scene_t far_scene;
     if (far) {
         render_lod_scene(frame->borrowed_lod, &far_scene);
-        far_scene.borrowed_turn = (features & SHADE_FEATURE_LOD_TURN_CACHE) != 0u ? far_scene.borrowed_turn : nullptr;
+        far_scene.borrowed_turn = (temporal->flags & POST_TEMPORAL_LOD_TURN) != 0u ? far_scene.borrowed_turn : nullptr;
         frame->borrowed_lod->band_base = band_base;
     }
     const shade_sun_t *const sun = &scene.sun;

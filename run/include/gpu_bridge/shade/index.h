@@ -85,7 +85,8 @@ enum : uint32_t {
      * either way. */
     SHADE_FEATURE_AO_FIRST_GUESS = 1u << 19,
     /* Plan 008 phase 06: the far field keeps each direction's far ray in a cube round the eye, and a frame that turns reads it in place of
-     * tracing again; or every far ray is traced. As SHADE_FEATURE_AO_FIRST_GUESS: asked for by the game unless its features_off has it
+     * tracing again; or every far ray is traced. As SHADE_FEATURE_AO_FIRST_GUESS: to render_frame_features_set only, and past that a bit of
+     * post_temporal_t.flags (POST_TEMPORAL_LOD_TURN), never shade_scene_t.features; asked for by the game unless its features_off has it
      * (bench_world_shake --features-off 100000), on no Settings screen, and a still camera's picture is the same either way. */
     SHADE_FEATURE_LOD_TURN_CACHE = 1u << 20,
     /* What a picture is drawn with on its own, from nothing: no frame of these reads what the last one left. What render_frame_init
