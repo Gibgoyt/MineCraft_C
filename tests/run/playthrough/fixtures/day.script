@@ -189,7 +189,7 @@
 +1 screenshot settings.png
 +1 move 0 -180
 +1 wheel -6
-+17 move 0 384
++17 move 0 336
 +1 button left down
 +1 button left up
 +1 key escape down
@@ -197,12 +197,12 @@
 +3 screenshot at_2.png
 +1 key escape down
 +1 key escape up
-+1 move 0 -204
++1 move 0 -156
 +1 button left down
 +1 button left up
 +1 move 0 -180
 +1 wheel 6
-+17 move 0 384
++17 move 0 336
 +1 button left down
 +1 button left up
 +1 key escape down
@@ -211,7 +211,7 @@
 # Saved on the way out, and opened again.
 +1 key escape down
 +1 key escape up
-+1 move 0 -156
++1 move 0 -108
 +1 button left down
 +1 button left up
 +3 screenshot back_on_title.png
