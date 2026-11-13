@@ -16,7 +16,7 @@ struct terrain_landform_t;
 
 enum : uint32_t {
     /* The noise fields one world's density takes from the bank. */
-    TERRAIN_DENSITY_NOISE_FIELDS = 6u,
+    TERRAIN_DENSITY_NOISE_FIELDS = 5u,
     /* Knots one spline can have. */
     TERRAIN_DENSITY_SPLINE_KNOTS_MAX = 12u,
     /* Density is worked out on a lattice this many blocks apart and interpolated between. */
@@ -26,9 +26,10 @@ enum : uint32_t {
 
 /* What the splines can reach, whatever the climate. tests/run/terrain/density/ tries every corner of the climate against
  * these, and real columns of real seeds. Each is written out from the numbers in the README's table. Since plan 007 phase
- * 03 the top is base 100, plus the plateau and the range on it, which together reach at most 1000, plus hills 46 and jagged
- * 14: 1160. The limit stays at 1190, the old sum, so that the world's top, the stone limit and the room for trees above it
- * do not move, and 30 blocks are left for plan 007 phase 04's peaks. */
+ * 04 the top is base 100, plus the plateau and the range on it, which together reach at most 1000, plus the summit rock 40
+ * and hills 30: 1170. A knob (90) stands only off a range, where it adds to at most 100 + 650 + 90 + 30 = 870. The limit
+ * stays at 1190, the sum before plan 007, so that the world's top, the stone limit and the room for trees above it do not
+ * move. The bottom is the sea bed's -110 less a sea hill's 6. */
 enum : int32_t {
     TERRAIN_DENSITY_HEIGHT_MIN = -116,
     TERRAIN_DENSITY_HEIGHT_MAX = 1190,
@@ -58,9 +59,9 @@ static_assert(sizeof(terrain_density_spline_t) == 296);
 /* One world's density. Nothing changes it after terrain_density_init, so any number of workers may read it. */
 typedef struct terrain_density_t {
     terrain_density_spline_t continental;         /* 0: continentalness to blocks */
-    terrain_density_spline_t inland;              /* 296: continentalness to how much mountain the ground allows */
-    terrain_density_spline_t relief;              /* 592: erosion to how high the high ground goes */
-    terrain_density_spline_t peak;                /* 888: ridges to the share of a foothill's height */
+    terrain_density_spline_t soft;                /* 296: a range's envelope to its share of height on rolling ground */
+    terrain_density_spline_t sharp;               /* 592: the same on alpine ground */
+    terrain_density_spline_t koppie;              /* 888: a knob's t to its share of height, flat-topped */
     terrain_density_spline_t valley;              /* 1184: ridges to what is left of the land's height */
     terrain_density_spline_t hill_land;           /* 1480: continentalness to how much hills show on land */
     terrain_density_spline_t hill_sea;            /* 1776: continentalness to how much they show on the sea bed */
@@ -72,14 +73,13 @@ typedef struct terrain_density_t {
     terrain_density_spline_t wetland;             /* 3552: erosion to how far a valley's floor sinks */
     const terrain_fields_t *borrowed_fields;      /* 3848 */
     const terrain_noise_field_t *borrowed_hills;  /* 3856 */
-    const terrain_noise_field_t *borrowed_jagged; /* 3864 */
-    const terrain_noise_field_t *borrowed_detail; /* 3872: the one field that changes with height */
-    const terrain_noise_field_t *borrowed_range;  /* 3880 */
-    const terrain_noise_field_t *borrowed_massif; /* 3888 */
-    const terrain_noise_field_t *borrowed_crest;  /* 3896 */
-    const struct terrain_landform_t *borrowed_landform; /* 3904: plateaus, on their own lattice */
+    const terrain_noise_field_t *borrowed_detail; /* 3864: the one field that changes with height */
+    const terrain_noise_field_t *borrowed_range;  /* 3872 */
+    const terrain_noise_field_t *borrowed_massif; /* 3880 */
+    const terrain_noise_field_t *borrowed_crest;  /* 3888 */
+    const struct terrain_landform_t *borrowed_landform; /* 3896: plateaus, ruggedness, knobs and summits */
 } terrain_density_t;
-static_assert(sizeof(terrain_density_t) == 3912);
+static_assert(sizeof(terrain_density_t) == 3904);
 
 /* What a column's ground is. */
 typedef struct terrain_density_profile_t {
@@ -96,15 +96,18 @@ typedef struct terrain_density_inputs_t {
     float32_t erosion;         /* 4 */
     float32_t ridges;          /* 8 */
     float32_t hills;           /* 12 */
-    float32_t jagged;          /* 16 */
+    float32_t peak;            /* 16: the summit field; its ridged form 1 - |peak| is used. 0 where the envelope is 0.6 or less */
     float32_t range;           /* 20: 0 on a range's line */
     float32_t massif;          /* 24 */
     float32_t crest;           /* 28: 0 on a crest */
     float32_t broad;           /* 32: continentalness from its largest octaves alone */
     float32_t plateau;         /* 36: from 0 to 1, a share of TERRAIN_LANDFORM_PLATEAU_BLOCKS: terrain/landform's */
     float32_t face;            /* 40: from 0 to 1, how steep the plateau is here: terrain/landform's */
+    float32_t rugged;          /* 44: G, from 0 to 1, how sharp the region's mountains are: terrain/landform's */
+    float32_t knobs;           /* 48: K, from -1 to 1: a knob stands where it is over 0.55. 0 in the sea */
+    float32_t knob_size;       /* 52: from 0 to 1, how tall a knob here is. 0 in the sea */
 } terrain_density_inputs_t;
-static_assert(sizeof(terrain_density_inputs_t) == 44);
+static_assert(sizeof(terrain_density_inputs_t) == 56);
 
 /* Blocks next to each other. Filled with x changing fastest, then y, then z, as a section's voxels are stored:
  * out[ix + count_x * (iy + count_y * iz)] is the voxel origin + i. */
@@ -138,6 +141,13 @@ float64_t terrain_density_spline_at(const terrain_density_spline_t *spline, floa
 /* The same spline's slope at x, dy/dx of the very cubic terrain_density_spline_at works out: 0 outside its knots. Plain
  * arithmetic, no libm. */
 float64_t terrain_density_spline_slope_at(const terrain_density_spline_t *spline, float64_t x);
+
+/* A range's share of its height at envelope m (0 to 1) for ruggedness G (0 to 1): (1 - G) soft(m) + G sharp(m). */
+float64_t terrain_density_shape_at(const terrain_density_t *density, float64_t envelope, float64_t rugged);
+
+/* A knob's share of its height at t (0 at its foot, 1 at its top) for ruggedness G: a dome, 1 - (1 - t)^2, blended by G
+ * with a flat-topped koppie. */
+float64_t terrain_density_knob_shape_at(const terrain_density_t *density, float64_t t, float64_t rugged);
 
 /* The height splines: from noise already spread out to the ground it makes, in the README's formula. */
 terrain_density_profile_t terrain_density_profile_from(const terrain_density_t *density,

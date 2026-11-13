@@ -275,9 +275,12 @@ TEST(raw_noise_measures_what_the_limits_were_chosen_for) {
     float64_t *const ys = test_alloc(t, LOTS * sizeof(float64_t));
     float64_t *const zs = test_alloc(t, LOTS * sizeof(float64_t));
     const terrain_noise_field_t *const fields[TERRAIN_LANDFORM_NOISE_FIELDS] = {
-        landform->borrowed_uplift, landform->borrowed_edge_x, landform->borrowed_edge_y};
-    static const float64_t limits[TERRAIN_LANDFORM_NOISE_FIELDS] = {0.35f64, 0.39f64, 0.39f64};
-    static const char *const names[TERRAIN_LANDFORM_NOISE_FIELDS] = {"uplift", "edge_x", "edge_y"};
+        landform->borrowed_uplift, landform->borrowed_edge_x, landform->borrowed_edge_y,
+        landform->borrowed_rugged, landform->borrowed_knobs,  landform->borrowed_peak};
+    static const float64_t limits[TERRAIN_LANDFORM_NOISE_FIELDS] = {0.35f64, 0.39f64, 0.39f64,
+                                                                    0.39f64, 0.39f64, 0.39f64};
+    static const char *const names[TERRAIN_LANDFORM_NOISE_FIELDS] = {
+        "landform/uplift", "landform/edge_x", "landform/edge_y", "landform/rugged", "relief/knobs", "landform/peak"};
     /* Over 1.5 million blocks a side, so even the uplift's 24 km cell is seen thousands of times. */
     for (uint32_t i = 0u; i < LOTS; i++) {
         xs[i] = (float64_t)((int32_t)(i % 1024u) * 1531 - 780000);
@@ -285,7 +288,7 @@ TEST(raw_noise_measures_what_the_limits_were_chosen_for) {
         zs[i] = 0.0f64;
     }
     for (uint32_t f = 0u; f < TERRAIN_LANDFORM_NOISE_FIELDS; f++) {
-        CHECK_STR_EQ(fields[f]->borrowed_name + strlen("landform/"), names[f]);
+        CHECK_STR_EQ(fields[f]->borrowed_name, names[f]);
         terrain_noise_sample_points(fields[f], xs, ys, zs, LOTS, raw);
         float64_t squares = 0.0f64;
         uint64_t past = 0u;
@@ -295,7 +298,7 @@ TEST(raw_noise_measures_what_the_limits_were_chosen_for) {
         }
         const float64_t deviation = sqrt(squares / (float64_t)LOTS);
         const float64_t share = (float64_t)past / (float64_t)LOTS;
-        printf("%-7s raw standard deviation %.4f; limit is %.2f of them; %.2f%% past it\n", names[f],
+        printf("%-15s raw standard deviation %.4f; limit is %.2f of them; %.2f%% past it\n", names[f],
                (libc_double_t)deviation, (libc_double_t)(limits[f] / deviation), (libc_double_t)(share * 100.0f64));
         CHECK(limits[f] > 1.5f64 * deviation && limits[f] < 2.5f64 * deviation);
         CHECK(share < 0.08f64);
@@ -303,6 +306,20 @@ TEST(raw_noise_measures_what_the_limits_were_chosen_for) {
             CHECK(fields[f]->octaves[o].frequency_z == 0.0f64);
         }
     }
+    /* The knob field's second octave alone, which sets a knob's height: the field less its first octave. */
+    float32_t *const first = test_alloc(t, LOTS * sizeof(float32_t));
+    terrain_noise_sample_points_split(landform->borrowed_knobs, xs, ys, zs, LOTS, 1u, first, raw);
+    float64_t squares = 0.0f64;
+    uint64_t past = 0u;
+    for (uint32_t i = 0u; i < LOTS; i++) {
+        const float64_t second = (float64_t)(raw[i] - first[i]);
+        squares += second * second;
+        past += fabs(second) >= 0.17f64 ? 1u : 0u;
+    }
+    const float64_t deviation = sqrt(squares / (float64_t)LOTS);
+    printf("%-15s raw standard deviation %.4f; limit is %.2f of them; %.2f%% past it\n", "knob size", (libc_double_t)deviation,
+           (libc_double_t)(0.17f64 / deviation), (libc_double_t)((float64_t)past * 100.0f64 / (float64_t)LOTS));
+    CHECK(0.17f64 > 1.5f64 * deviation && 0.17f64 < 2.5f64 * deviation);
     terrain_deinit(&terrain);
 }
 

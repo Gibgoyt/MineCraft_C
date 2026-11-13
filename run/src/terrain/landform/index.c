@@ -60,6 +60,10 @@ static const float64_t LANDFORM_FACE_SLOPE = 2.0f64;
 /* How far the edge warp moves the point U is read at, in blocks, each way. */
 static const float64_t LANDFORM_WARP_BLOCKS = 700.0f64;
 
+/* Ruggedness: G = clamp(LANDFORM_RUGGED_MIDDLE + LANDFORM_RUGGED_HALF * spread(rugged), 0, 1). The README says why. */
+static const float64_t LANDFORM_RUGGED_MIDDLE = 0.5f64;
+static const float64_t LANDFORM_RUGGED_HALF = 0.5f64;
+
 /* What each field looks like. */
 static const terrain_noise_shape_t LANDFORM_SHAPE_UPLIFT = {
     .frequency_x = 1.0f64 / 24576.0f64,
@@ -76,10 +80,40 @@ static const terrain_noise_shape_t LANDFORM_SHAPE_EDGE = {
     .octaves = 2u,
 };
 
+/* Regions, some rolling and some alpine: master 3.6. */
+static const terrain_noise_shape_t LANDFORM_SHAPE_RUGGED = {
+    .frequency_x = 1.0f64 / 3072.0f64,
+    .frequency_y = 1.0f64 / 3072.0f64,
+    .lacunarity = 2.0f32,
+    .persistence = 0.5f32,
+    .octaves = 2u,
+};
+/* Knobs: a knob is the patch round a maximum of this, about 120 to 250 blocks across. Master 3.7. */
+static const terrain_noise_shape_t LANDFORM_SHAPE_KNOBS = {
+    .frequency_x = 1.0f64 / 320.0f64,
+    .frequency_y = 1.0f64 / 320.0f64,
+    .lacunarity = 2.0f32,
+    .persistence = 0.5f32,
+    .octaves = 2u,
+};
+/* The summit rock: ridged, so its creases are aretes. Master 3.6. */
+static const terrain_noise_shape_t LANDFORM_SHAPE_PEAK = {
+    .frequency_x = 1.0f64 / 48.0f64,
+    .frequency_y = 1.0f64 / 48.0f64,
+    .lacunarity = 2.0f32,
+    .persistence = 0.5f32,
+    .octaves = 2u,
+};
+
 /* A raw value at this far from 0 becomes -1 or 1: about twice what each measures as its standard deviation
  * (tests/run/terrain/landform/ prints them). */
 static const float64_t LANDFORM_LIMIT_UPLIFT = 0.35f64;
 static const float64_t LANDFORM_LIMIT_EDGE = 0.39f64;
+static const float64_t LANDFORM_LIMIT_RUGGED = 0.39f64;
+static const float64_t LANDFORM_LIMIT_KNOBS = 0.39f64;
+/* The knob field's second octave alone. */
+static const float64_t LANDFORM_LIMIT_KNOB_SIZE = 0.17f64;
+static const float64_t LANDFORM_LIMIT_PEAK = 0.39f64;
 
 bool terrain_landform_init(terrain_landform_t **out, arena_t *arena, terrain_noise_bank_t *bank) {
     *out = nullptr;
@@ -96,7 +130,10 @@ bool terrain_landform_init(terrain_landform_t **out, arena_t *arena, terrain_noi
     /* One at a time, and all of them, so that the log names the field the bank refused. */
     if (!terrain_noise_bank_add(bank, "landform/uplift", &LANDFORM_SHAPE_UPLIFT, &landform->borrowed_uplift) ||
         !terrain_noise_bank_add(bank, "landform/edge_x", &LANDFORM_SHAPE_EDGE, &landform->borrowed_edge_x) ||
-        !terrain_noise_bank_add(bank, "landform/edge_y", &LANDFORM_SHAPE_EDGE, &landform->borrowed_edge_y)) {
+        !terrain_noise_bank_add(bank, "landform/edge_y", &LANDFORM_SHAPE_EDGE, &landform->borrowed_edge_y) ||
+        !terrain_noise_bank_add(bank, "landform/rugged", &LANDFORM_SHAPE_RUGGED, &landform->borrowed_rugged) ||
+        !terrain_noise_bank_add(bank, "relief/knobs", &LANDFORM_SHAPE_KNOBS, &landform->borrowed_knobs) ||
+        !terrain_noise_bank_add(bank, "landform/peak", &LANDFORM_SHAPE_PEAK, &landform->borrowed_peak)) {
         return false;
     }
     *out = landform;
@@ -115,9 +152,10 @@ static float32_t landform_spread(float32_t raw, float64_t limit) {
     return (float32_t)(unit * (1.5f64 - 0.5f64 * unit * unit));
 }
 
-/* Up to LANDFORM_PIECE nodes. */
+/* Up to LANDFORM_PIECE nodes. Kept out of its caller's frame, which holds a node set. */
+[[gnu::noinline]]
 static void landform_nodes_piece(const terrain_landform_t *landform, const int32_t *is, const int32_t *js,
-                                 uint32_t count, float32_t *uplift) {
+                                 uint32_t count, float32_t *uplift, float32_t *rugged) {
     float64_t xs[LANDFORM_PIECE];
     float64_t ys[LANDFORM_PIECE];
     float32_t warp_x[LANDFORM_PIECE];
@@ -126,6 +164,14 @@ static void landform_nodes_piece(const terrain_landform_t *landform, const int32
     for (uint32_t n = 0u; n < count; n++) {
         xs[n] = (float64_t)((int64_t)is[n] * (int64_t)TERRAIN_LANDFORM_CELL);
         ys[n] = (float64_t)((int64_t)js[n] * (int64_t)TERRAIN_LANDFORM_CELL);
+    }
+    /* Ruggedness is read at the node itself: it has no edge to move. */
+    terrain_noise_sample_points(landform->borrowed_rugged, xs, ys, zs, count, rugged);
+    for (uint32_t n = 0u; n < count; n++) {
+        float64_t g = LANDFORM_RUGGED_MIDDLE +
+                      LANDFORM_RUGGED_HALF * (float64_t)landform_spread(rugged[n], LANDFORM_LIMIT_RUGGED);
+        g = g > 1.0f64 ? 1.0f64 : (g < 0.0f64 ? 0.0f64 : g);
+        rugged[n] = (float32_t)g;
     }
     terrain_noise_sample_points(landform->borrowed_edge_x, xs, ys, zs, count, warp_x);
     terrain_noise_sample_points(landform->borrowed_edge_y, xs, ys, zs, count, warp_y);
@@ -140,11 +186,11 @@ static void landform_nodes_piece(const terrain_landform_t *landform, const int32
 }
 
 void terrain_landform_nodes(const terrain_landform_t *landform, const int32_t *is, const int32_t *js, uint32_t count,
-                            float32_t *uplift) {
+                            float32_t *uplift, float32_t *rugged) {
     for (uint32_t done = 0u; done < count; done += LANDFORM_PIECE) {
         const uint32_t left = count - done;
         landform_nodes_piece(landform, is + done, js + done, left < LANDFORM_PIECE ? left : LANDFORM_PIECE,
-                             uplift + done);
+                             uplift + done, rugged + done);
     }
 }
 
@@ -153,11 +199,12 @@ typedef struct landform_node_set_t {
     int32_t is[LANDFORM_NODES_MAX];       /* 0 */
     int32_t js[LANDFORM_NODES_MAX];       /* 2048 */
     float32_t uplift[LANDFORM_NODES_MAX]; /* 4096 */
-    uint16_t slots[LANDFORM_SLOTS];       /* 6144: 0 is empty, else a node's index + 1 */
-    uint32_t count;                       /* 8192 */
-    uint8_t _pad0[4];                     /* 8196 */
+    float32_t rugged[LANDFORM_NODES_MAX]; /* 6144 */
+    uint16_t slots[LANDFORM_SLOTS];       /* 8192: 0 is empty, else a node's index + 1 */
+    uint32_t count;                       /* 10240 */
+    uint8_t _pad0[4];                     /* 10244 */
 } landform_node_set_t;
-static_assert(sizeof(landform_node_set_t) == 8200);
+static_assert(sizeof(landform_node_set_t) == 10248);
 
 /* The node (i, j)'s index in the set, adding it if it is new. */
 static uint16_t landform_node_find(landform_node_set_t *set, int32_t i, int32_t j) {
@@ -180,9 +227,17 @@ static uint16_t landform_node_find(landform_node_set_t *set, int32_t i, int32_t 
     }
 }
 
+/* The blend of one value at the four corners: x first and then y, and a fraction of 0 takes its side as it is. */
+static float64_t landform_blend(float64_t v00, float64_t v10, float64_t v01, float64_t v11, float64_t t_x,
+                                float64_t t_y) {
+    const float64_t south = t_x > 0.0f64 ? v00 + t_x * (v10 - v00) : v00;
+    const float64_t north = t_x > 0.0f64 ? v01 + t_x * (v11 - v01) : v01;
+    return t_y > 0.0f64 ? south + t_y * (north - south) : south;
+}
+
 [[gnu::noinline]]
-void terrain_landform_uplift_points(const terrain_landform_t *landform, const float64_t *xs, const float64_t *ys,
-                                    uint32_t count, float64_t *uplift) {
+void terrain_landform_lattice_points(const terrain_landform_t *landform, const float64_t *xs, const float64_t *ys,
+                                     uint32_t count, float64_t *uplift, float64_t *rugged) {
     ASSERT(count <= TERRAIN_LANDFORM_BATCH_COLUMNS);
     landform_node_set_t set;
     memset(set.slots, 0, sizeof(set.slots));
@@ -207,15 +262,53 @@ void terrain_landform_uplift_points(const terrain_landform_t *landform, const fl
         corners[c][2] = landform_node_find(&set, i, north);
         corners[c][3] = landform_node_find(&set, east, north);
     }
-    terrain_landform_nodes(landform, set.is, set.js, set.count, set.uplift);
+    terrain_landform_nodes(landform, set.is, set.js, set.count, set.uplift, set.rugged);
     for (uint32_t c = 0u; c < count; c++) {
-        const float64_t v00 = (float64_t)set.uplift[corners[c][0]];
-        const float64_t v10 = (float64_t)set.uplift[corners[c][1]];
-        const float64_t v01 = (float64_t)set.uplift[corners[c][2]];
-        const float64_t v11 = (float64_t)set.uplift[corners[c][3]];
-        const float64_t south = t_x[c] > 0.0f64 ? v00 + t_x[c] * (v10 - v00) : v00;
-        const float64_t north = t_x[c] > 0.0f64 ? v01 + t_x[c] * (v11 - v01) : v01;
-        uplift[c] = t_y[c] > 0.0f64 ? south + t_y[c] * (north - south) : south;
+        uplift[c] = landform_blend((float64_t)set.uplift[corners[c][0]], (float64_t)set.uplift[corners[c][1]],
+                                   (float64_t)set.uplift[corners[c][2]], (float64_t)set.uplift[corners[c][3]], t_x[c],
+                                   t_y[c]);
+        if (rugged != nullptr) {
+            rugged[c] = landform_blend((float64_t)set.rugged[corners[c][0]], (float64_t)set.rugged[corners[c][1]],
+                                       (float64_t)set.rugged[corners[c][2]], (float64_t)set.rugged[corners[c][3]],
+                                       t_x[c], t_y[c]);
+        }
+    }
+}
+
+void terrain_landform_uplift_points(const terrain_landform_t *landform, const float64_t *xs, const float64_t *ys,
+                                    uint32_t count, float64_t *uplift) {
+    terrain_landform_lattice_points(landform, xs, ys, count, uplift, nullptr);
+}
+
+void terrain_landform_knobs_points(const terrain_landform_t *landform, const float64_t *xs, const float64_t *ys,
+                                   uint64_t count, float32_t *knobs, float32_t *size) {
+    float32_t first[LANDFORM_PIECE];
+    const float64_t zs[LANDFORM_PIECE] = {0.0f64};
+    for (uint64_t done = 0u; done < count; done += LANDFORM_PIECE) {
+        const uint64_t left = count - done;
+        const uint32_t piece = left < LANDFORM_PIECE ? (uint32_t)left : LANDFORM_PIECE;
+        terrain_noise_sample_points_split(landform->borrowed_knobs, xs + done, ys + done, zs, piece, 1u, first,
+                                          knobs + done);
+        for (uint32_t n = 0u; n < piece; n++) {
+            /* The second octave alone is what is left when the first is taken away. */
+            const float32_t second = knobs[done + n] - first[n];
+            size[done + n] =
+                (float32_t)(0.5f64 + 0.5f64 * (float64_t)landform_spread(second, LANDFORM_LIMIT_KNOB_SIZE));
+            knobs[done + n] = landform_spread(knobs[done + n], LANDFORM_LIMIT_KNOBS);
+        }
+    }
+}
+
+void terrain_landform_peak_points(const terrain_landform_t *landform, const float64_t *xs, const float64_t *ys,
+                                  uint64_t count, float32_t *peak) {
+    const float64_t zs[LANDFORM_PIECE] = {0.0f64};
+    for (uint64_t done = 0u; done < count; done += LANDFORM_PIECE) {
+        const uint64_t left = count - done;
+        const uint32_t piece = left < LANDFORM_PIECE ? (uint32_t)left : LANDFORM_PIECE;
+        terrain_noise_sample_points(landform->borrowed_peak, xs + done, ys + done, zs, piece, peak + done);
+        for (uint32_t n = 0u; n < piece; n++) {
+            peak[done + n] = landform_spread(peak[done + n], LANDFORM_LIMIT_PEAK);
+        }
     }
 }
 
