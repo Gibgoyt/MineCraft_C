@@ -2,6 +2,7 @@
 #include "harness/index.h"
 
 #include "run/audio/fixtures/fake_pulse.h"
+#include "run/game/fixtures/report.h"
 
 #include "audio/index.h"
 #include "file/index.h"
@@ -592,9 +593,20 @@ TEST(the_program_with_its_sound_in_a_file_mines_and_what_would_have_played_is_th
     CHECK(size >= 4u);
     REQUIRE(loud > 0u);
     REQUIRE(first_loud + AU_MATCH_FRAMES * 2u <= size / sizeof(int16_t));
-    /* Heard, and heard as what was dug: the first thing the script's hands touch is podzol, dirt's family (since plan 006
-     * phase 03 the spawn of the default world is a bamboo jungle; it was grass). This run's ticks go faster than the file's 10 ms, so a few hits can start on one
-     * frame, and their sum is only so like any one of them. Which of the family it is, or whether a hit or a break of the same recording, it cannot say. */
+    /* Heard, and heard as what was dug. The ground at seed 11's spawn is whatever its biome lays, and it moves with each plan
+     * that moves the land (grass, then podzol in plan 006 phase 03, then sand on plan 007 phase 03's land), so the test reads
+     * which block the report says was last mined, the top of the ground beside the hole, as the dig tests do, and wants its
+     * sound family. This run's ticks go faster than the file's 10 ms, so a few hits can start on one frame, and their sum is
+     * only so like any one of them. Which of the family it is, or whether a hit or a break of the same recording, it cannot
+     * say. */
+    report_mined_t mined;
+    REQUIRE(report_mined_read(run.output, &mined));
+    uint32_t dug = BLOCK_COUNT;
+    for (uint32_t b = 0u; b < BLOCK_COUNT; b++) {
+        dug = strcmp(block_defs[b].name, mined.last) == 0 ? b : dug;
+    }
+    printf("the last mined was %s\n", mined.last);
+    REQUIRE(dug < BLOCK_COUNT);
     sound_blob_view_t view;
     REQUIRE(sound_blob_check(embed_assets_sound_blob, embed_assets_sound_blob_bytes, &view) == SOUND_BLOB_OK);
     float64_t likeness = 0.0f64;
@@ -602,7 +614,7 @@ TEST(the_program_with_its_sound_in_a_file_mines_and_what_would_have_played_is_th
     REQUIRE(best != nullptr);
     printf("first sound: family %" PRIu32 ", kind %" PRIu32 ", likeness %" PRId64 " in 1000\n", (uint32_t)best->family,
            (uint32_t)best->kind, (int64_t)(likeness * 1000.0f64));
-    CHECK_EQ_U64(best->family, block_defs[BLOCK_ID_PODZOL].sound);
+    CHECK_EQ_U64(best->family, block_defs[dug].sound);
     CHECK(likeness > 0.5f64);
 }
 

@@ -13,8 +13,12 @@ Needs no card, no display and no input device. Bare hands, a pickaxe and an axe 
 
 ## The proof by eye
 
-`fixtures/fell.script` is a person's first minute on seed 36, as in `tests/run/playthrough/`: the mud underfoot, out of the hole to the mangrove, then one cut at its root with the left button and nothing in hand but the mud. It looks up at the tree from the same place before and after, and it saves and opens the world again. `run_playthrough` in `tests/run/playthrough/` runs it and reads the report: the cut and 9 more logs on the day it was written, with the hand holding only mud. The pictures are for a person:
-
-    tools/test-or-build.sh timeout 400 build/debug/bin/minecraft_c --headless --menu --saves /tmp/fell/saves --settings /tmp/fell/settings.yaml --script tests/run/player/felling/fixtures/fell.script --screenshot-dir /tmp/fell/shots --width 640 --height 480 --render-distance 8
+`fixtures/fell.script` is a person's first minute on seed 36, as in `tests/run/playthrough/`: the block underfoot dug and
+held, then, at its line `@fell`, a `/tp` to the tree `run_playthrough` finds from the land near the start (the land there moves
+with each plan that changes the terrain, so no walk is written down), a look up at it and back, and one cut at its root with the
+left button and nothing in hand but what the hole gave. It looks up at the tree from the same place after, and it saves and
+opens the world again. `run_playthrough` in `tests/run/playthrough/` writes the `@fell` line for the tree, runs it and reads
+the report: the cut was a log and the feller felled at least 2 more, with the hand holding only what the hole gave. The
+pictures are for a person: run `run_playthrough` with `MC_PLAYTHROUGH_KEEP=1`, which prints where it kept them.
 
 Then read `before.png`, `during.png` and `later.png`, and the line `the tree feller felled N logs past what was cut` in what it prints.

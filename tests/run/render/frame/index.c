@@ -1577,8 +1577,9 @@ TEST(a_still_camera_has_almost_no_fresh_pixels_after_the_first_frame) {
     printf("  the first frame has %" PRIu32 " fresh pixels of %u; frames 2 to 10 at most %" PRIu32 "\n", surfaces,
            FR_WIDTH * FR_HEIGHT, most);
     /* The jitter's fresh pixels are at edges, so how many there are is the scene's: 0.3 to 0.4 % on the grass the game opened
-     * on before plan 006 phase 03, 2.6 % on the jungle there since, every leaf an edge. Still a small share either way. */
-    CHECK((float64_t)most <= 0.05f64 * (float64_t)surfaces);
+     * on before plan 006 phase 03, 2.6 % on the jungle there since, every leaf an edge, 5.1 % on plan 007 phase 03's land
+     * there. Still a small share, against all of them on the first frame. */
+    CHECK((float64_t)most <= 0.08f64 * (float64_t)surfaces);
     game_close(game);
     fr_rig_end(t, &rig);
 }
@@ -1614,10 +1615,12 @@ TEST(the_fresh_count_is_the_strip_on_a_turn) {
            " with a surface; the strip is %.1f %%\n",
            marks->fresh_count, (libc_double_t)(share * 100.0f64), surfaces, (libc_double_t)(strip * 100.0f64));
     /* Neighbours on the last picture lower it, never raise it; the jitter's own fresh pixels at edges, which a still camera
-     * here has too (the land's: many on a jungle's leaves), come on top. */
+     * here has too (the land's: many on a jungle's leaves), come on top, and the frames' jitter differs, so the still camera's
+     * worst is only a guide to the turned frame's: 3 % over it (24.4 % against a strip of 17.2 % and 5.1 % still on plan 007
+     * phase 03's land). */
     const float64_t jitter = (float64_t)still / (float64_t)surfaces;
     printf("  a still camera here has %.1f %% fresh from the jitter\n", (libc_double_t)(jitter * 100.0f64));
-    CHECK(share <= strip + jitter + 0.02f64);
+    CHECK(share <= strip + jitter + 0.03f64);
     CHECK(share >= strip * 0.5f64);
     game_close(game);
     fr_rig_end(t, &rig);

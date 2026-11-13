@@ -71,9 +71,12 @@ enum : uint32_t {
     PT_TREE_LOGS_MIN = 12u, /* 9 used, and 3 more that may land out of reach */
     PT_TILE = 48u,          /* blocks across a tile of the search, a whole number of chunks */
     PT_MARGIN = 16u,        /* blocks made round a tile, so its trees and the ground round them are whole */
-    PT_RINGS = 10u,         /* squares of tiles round the start's: out to about 500 blocks */
-    PT_BOX_BELOW = 24u,     /* the box's blocks under the spawn's ground */
-    PT_BOX_Z = 96u,         /* and its height */
+    /* Squares of tiles round the start's: out to about 1150 blocks. Plan 007 phase 03's land has no fit tree within 500 of seed
+     * 36's start (dense jungle on slopes, spread or crowded), and the first square with one is the 16th, a mangrove of 16 logs
+     * 883 blocks off; the search stops at the first square that has one. */
+    PT_RINGS = 24u,
+    PT_BOX_BELOW = 24u, /* the box's blocks under the spawn's ground */
+    PT_BOX_Z = 96u,     /* and its height */
     PT_TREE_LOGS_MOST = 256u,
     PT_TREE_LOGS_MANY =
         64u, /* at most: one stack, in hotbar slot 2, with what the leaves give in slot 3; the scripts use 4 to 6 */
@@ -448,8 +451,9 @@ static void pt_type(char *text, uint64_t *length, const char *typed) {
 }
 
 /* What goes where the script says "@tree": the /tp to the stand, the turn to the root, one cut that brings the whole tree down
- * (plan 005 phase 1), a walk in over the logs, the look back to level, and a turn back to the stand, where the ground is clear. */
-static void pt_tree_lines(const pt_tree_t *tree, char *text, uint64_t *length) {
+ * (plan 005 phase 1), a walk in over the logs, the look back to level, and a turn back to the stand, where the ground is clear.
+ * Where it says "@fell" (the felling script), the /tp and the turn, a look up at the tree and back, and the one cut. */
+static void pt_tree_lines(const pt_tree_t *tree, bool fell, char *text, uint64_t *length) {
     char line[160];
     snprintf(line, sizeof(line),
              "# To the tree the test found: %s, %u logs, its root at %" PRId32 ", %" PRId32 ", %" PRId32 ".",
@@ -471,6 +475,13 @@ static void pt_tree_lines(const pt_tree_t *tree, char *text, uint64_t *length) {
     snprintf(line, sizeof(line), "+%u move %" PRId64 " %" PRId64, tree->far > PT_NEAR ? PT_FAR_TICKS : 20u, turn, down);
     pt_append(text, length, line);
     pt_append(text, length, "+6 screenshot at_tree.png");
+    if (fell) {
+        /* Looking up from where it stands, to see the tree before, and back down to the root; then the left button held with
+         * nothing in hand for the 60 ticks a hand takes on a log, with some to spare. */
+        pt_append(text, length, "+8 move 0 -220\n+6 screenshot before.png\n+1 move 0 220\n+6 screenshot aimed.png");
+        pt_append(text, length, "+1 button left down\n+75 button left up\n+1 screenshot cut.png");
+        return;
+    }
     pt_append(text, length, "+1 button left down\n+70 button left up\n+1 screenshot log1.png");
     /* The logs fall, and the leaves go over about a second and a half (run/src/player/felling/). */
     const uint32_t walk = (uint32_t)ceil(distance / PT_WALK_PER_TICK);
@@ -508,14 +519,16 @@ static const char *pt_script(test_context_t *t, const char *fixture, const char 
         return nullptr;
     }
     text[bytes] = '\0';
-    char *const at = strstr(text, "\n@tree\n");
+    char *at = strstr(text, "\n@tree\n");
+    const bool fell = at == nullptr;
+    at = fell ? strstr(text, "\n@fell\n") : at;
     if (!CHECK(at != nullptr)) {
         return nullptr;
     }
     at[1] = '\0';
     pt_append(out, &length, text);
     length--; /* the line break pt_append added: text ends with its own */
-    pt_tree_lines(tree, out, &length);
+    pt_tree_lines(tree, fell, out, &length);
     pt_append(out, &length, at + strlen("\n@tree\n"));
     const char *const path = pt_join(t, root, "day.script");
     return CHECK(file_write_atomic(path, out, length) == FILE_OK) ? path : nullptr;
@@ -797,12 +810,16 @@ TEST(bare_hands_bring_down_a_real_tree_with_one_cut_and_it_stays_down_through_a_
     REQUIRE(t->arg_count >= 1);
     char *const root = pt_temp(t);
     REQUIRE(root != nullptr);
+    /* The tree is the one the day's scripts go to, found from the land (plan 007 phase 03 moved it again), by /tp. */
+    pt_tree_t tree;
+    const char *const script = pt_day(t, "tests/run/player/felling/fixtures/fell.script", root, &tree);
+    REQUIRE(script != nullptr);
     test_process_t process;
-    pt_run(t, "tests/run/player/felling/fixtures/fell.script", root, PT_DAY_MS, 2u, &process);
+    pt_run(t, script, root, PT_DAY_MS, 2u, &process);
     const char *const output = process.output;
 
-    /* What the hole was dug in and which tree stands ahead are the land's (plan 006 phase 03: mud and a mangrove before, coarse
-     * dirt and an acacia since), so the report says: the hand holds the one thing the hole gave, and the last cut was a log. */
+    /* What the hole was dug in and which tree it is are the land's (plan 006 phase 03: mud and a mangrove before, coarse dirt
+     * and an acacia since), so the report says: the hand holds the one thing the hole gave, and the last cut was a log. */
     report_mined_t mined;
     REQUIRE(report_mined_read(output, &mined));
     printf("  the last mined %s, the hand %" PRIu64 " of %s\n", mined.last, mined.hand_count, mined.hand_item);

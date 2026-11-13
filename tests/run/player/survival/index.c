@@ -1751,13 +1751,100 @@ static void ps_temp_dir_remove(const ps_temp_dir_t *dir) {
     rmdir(dir->path);
 }
 
-/* Sprints and jumps from where seed 11 starts, for 45 s. What is in its way is the land's (since plan 006 phase 03 a jungle,
- * which can stop it at a trunk), so it runs long enough that its jumps alone, sprinting, spend more than the 5 saturation it
- * starts with, whether or not the way ahead is clear. The default seed's start spent no food on the old 15 s script. */
-static const char ps_run_script[] = "1 key lctrl down\n"
-                                    "1 key w down\n"
-                                    "1 key space down\n"
-                                    "900 end\n";
+/* Sprints and jumps for 45 s along a dry run of land the test finds from seed 11's terrain, and goes to by /tp. What lay ahead of
+ * where seed 11 starts is the land's, and it moves with each plan that changes it: a jungle's trunks since plan 006 phase 03, and
+ * since plan 007 phase 03 water, where a body swims and does not sprint, so it spent 3 of its 5 saturation. So, as the dive finds
+ * its sea (tests/cuda/under_water/), the run is on land the terrain says is dry and gentle all the way, facing the way a new
+ * world first looks, and 45 s of sprinting and jumping there spends far more than the 5 saturation it starts with. */
+enum : uint32_t {
+    PS_RUN_SEED = 11u,
+    PS_RUN_LENGTH = 480u,      /* blocks of dry land ahead: 45 s of sprint jumps covers about 320 */
+    PS_RUN_STEP = 8u,          /* blocks between the columns looked at along it */
+    PS_RUN_RISE = 5u,          /* at most this much up or down between them */
+    PS_RUN_SEARCH_STEP = 64u,  /* blocks between the places tried, ring by ring round the world's middle */
+    PS_RUN_SEARCH_RINGS = 64u, /* 4 km out */
+    PS_RUN_TP_TICK = 20u,
+    PS_RUN_LOADED_TICKS = 500u, /* a far jump's columns are drawn within 15 s (plan 006 phase 01) */
+    PS_RUN_TICKS = 900u,
+    PS_RUN_SCRIPT_BYTES = 4096u,
+};
+#define PS_RUN_YAW                                                                                                     \
+    0.6f64 /* GAME_START_YAW: a new world's first look, which a /tp keeps; w walks along (cos, sin) of it */
+
+/* Whether the run from x, y along the start's look is dry land, above the sea, rising or falling gently, all the way. */
+static bool ps_run_dry(const terrain_t *terrain, int32_t x, int32_t y) {
+    float32_t last = 0.0f32;
+    for (uint32_t i = 0u; i * PS_RUN_STEP <= PS_RUN_LENGTH; i++) {
+        const float64_t along = (float64_t)(i * PS_RUN_STEP);
+        const int32_t cx = x + (int32_t)lround(cos(PS_RUN_YAW) * along);
+        const int32_t cy = y + (int32_t)lround(sin(PS_RUN_YAW) * along);
+        const terrain_hydrology_column_t column = terrain_hydrology_column_at(terrain->borrowed_hydrology, cx, cy);
+        if (column.kind != TERRAIN_HYDROLOGY_KIND_LAND || column.ground < (float32_t)MC_WORLD_Z_SEA + 2.0f32 ||
+            (i > 0u && fabsf(column.ground - last) > (float32_t)PS_RUN_RISE)) {
+            return false;
+        }
+        last = column.ground;
+    }
+    return true;
+}
+
+/* The script: /tp to the nearest such run's start, a wait for the columns there, then 45 s of sprinting and jumping. */
+static bool ps_run_script_write(test_context_t *t, const char *path) {
+    terrain_t *const terrain = test_alloc(t, sizeof(terrain_t));
+    if (!CHECK(terrain_init(terrain, PS_RUN_SEED))) {
+        return false;
+    }
+    bool found = false;
+    int32_t run_x = 0, run_y = 0;
+    const int32_t step = (int32_t)PS_RUN_SEARCH_STEP;
+    for (int32_t ring = 0; ring < (int32_t)PS_RUN_SEARCH_RINGS && !found; ring++) {
+        for (int32_t dy = -ring; dy <= ring && !found; dy++) {
+            for (int32_t dx = -ring; dx <= ring && !found; dx++) {
+                if (dx != -ring && dx != ring && dy != -ring && dy != ring) {
+                    continue;
+                }
+                const int32_t x = GAME_WORLD_MIDDLE + dx * step, y = GAME_WORLD_MIDDLE + dy * step;
+                if (ps_run_dry(terrain, x, y)) {
+                    run_x = x, run_y = y, found = true;
+                }
+            }
+        }
+    }
+    terrain_deinit(terrain);
+    if (!CHECK(found)) {
+        return false;
+    }
+    printf("  the run starts at %" PRId32 ", %" PRId32 "\n", run_x, run_y);
+    char *const text = test_alloc(t, PS_RUN_SCRIPT_BYTES);
+    uint64_t length = 0u;
+    uint32_t tick = PS_RUN_TP_TICK;
+    char command[64];
+    snprintf(command, sizeof(command), "/tp %" PRId32 " %" PRId32, run_x, run_y);
+    for (const char *c = command; *c != '\0'; c++) {
+        char name[16];
+        if (*c == ' ') {
+            snprintf(name, sizeof(name), "space");
+        } else if (*c == '/') {
+            snprintf(name, sizeof(name), "slash");
+        } else if (*c == '-') {
+            snprintf(name, sizeof(name), "minus");
+        } else {
+            snprintf(name, sizeof(name), "%c", *c);
+        }
+        tick += *c == '/' ? 1u : 2u;
+        length += (uint64_t)snprintf(text + length, PS_RUN_SCRIPT_BYTES - length,
+                                     "%" PRIu32 " key %s down\n%" PRIu32 " key %s up\n", tick, name, tick, name);
+    }
+    tick += 2u;
+    length += (uint64_t)snprintf(text + length, PS_RUN_SCRIPT_BYTES - length,
+                                 "%" PRIu32 " key enter down\n%" PRIu32 " key enter up\n", tick, tick);
+    tick += PS_RUN_LOADED_TICKS;
+    length += (uint64_t)snprintf(text + length, PS_RUN_SCRIPT_BYTES - length,
+                                 "%" PRIu32 " key lctrl down\n%" PRIu32 " key w down\n%" PRIu32
+                                 " key space down\n%" PRIu32 " end\n",
+                                 tick, tick, tick, tick + PS_RUN_TICKS);
+    return CHECK_EQ_U64(file_write_atomic(path, text, length), FILE_OK);
+}
 
 static void ps_program_run(test_context_t *t, const ps_temp_dir_t *dir, const char *script, test_process_t *out) {
     char *const argv[] = {t->borrowed_args[0],
@@ -1798,7 +1885,7 @@ TEST(the_program_runs_itself_tired_the_same_each_time) {
     REQUIRE(ps_temp_dir_make(&dir));
     char script[128];
     snprintf(script, sizeof(script), "%s/run.script", dir.path);
-    REQUIRE(file_write_atomic(script, ps_run_script, sizeof(ps_run_script) - 1u) == FILE_OK);
+    REQUIRE(ps_run_script_write(t, script));
     test_process_t run;
     ps_program_run(t, &dir, script, &run);
     REQUIRE(run.started != 0u);
@@ -1824,8 +1911,8 @@ TEST(the_program_runs_itself_tired_the_same_each_time) {
         REQUIRE(rest != nullptr);
         hurt = strtoull(rest + strlen("hurt "), nullptr, 10);
     }
-    /* 45 s of it is far past what 5 saturation covers, so saturation has gone and food with it. Whether it falls off anything on
-     * the way is the land's, so a hurt is not asked for; alive, it says so. */
+    /* 45 s of it on dry land is far past what 5 saturation covers, so saturation has gone and food with it. Whether it falls off
+     * anything on the way is the land's, so a hurt is not asked for; alive, it says so. */
     printf("  %s\n", first);
     CHECK(food < 20u);
     CHECK_NEAR(saturation, 0.0f32, 0.0f32);

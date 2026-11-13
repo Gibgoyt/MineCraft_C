@@ -1148,9 +1148,16 @@ TEST(in_a_real_game_a_skeleton_shoots_the_player_and_leaves_its_drops) {
             }
         }
     }
+    /* Whatever the clearing left lying (the land's), so that what follows counts only the skeleton's: the land past the pad
+     * can go on dropping for a while (a plant or block left without its support pops a tick or more after), so it waits
+     * until the count has held for 60 ticks, at most 600 (on plan 007 phase 03's land one came while the skeleton drew). */
     REQUIRE(msk_game_ticks(&scene, state, &tick, 10u));
-    /* Whatever the clearing left lying (the land's), so that what follows counts only the skeleton's. */
-    const uint32_t drops_before = rig.entity->item_drops.count;
+    uint32_t drops_before = rig.entity->item_drops.count;
+    for (uint32_t held = 0u, waited = 0u; held < 60u && waited < 600u; waited += 10u) {
+        REQUIRE(msk_game_ticks(&scene, state, &tick, 10u));
+        held = rig.entity->item_drops.count == drops_before ? held + 10u : 0u;
+        drops_before = rig.entity->item_drops.count;
+    }
     const float64_t *const feet = rig.player->movement.position;
     const mob_def_t *const def = &mob_defs[MOB_ID_SKELETON];
     const entity_store_spawn_t body = {
