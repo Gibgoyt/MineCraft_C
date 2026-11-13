@@ -925,8 +925,9 @@ TEST(golden_pictures_of_every_layer_at_two_zooms) {
             if (png_dir != nullptr) {
                 picture_png(t, p, png_dir, name);
             }
-            /* Plan 007 phase 02 moved the lines onto terrain: terrain_plain is the old terrain, byte for byte. */
-            static const uint64_t TERRAIN_BEFORE_CONTOURS[2] = {0x994D128267DEFE6Aull, 0x494E54C56AFDACA9ull};
+            /* Plan 007 phase 02 moved the lines onto terrain: terrain_plain is the old terrain, byte for byte. Plan 007 phase 03's
+             * plateaus and ranges moved the land under it (from 0x994D128267DEFE6A and 0x494E54C56AFDACA9). */
+            static const uint64_t TERRAIN_BEFORE_CONTOURS[2] = {0xDA55D6047A718C14ull, 0x41D71496FAFA1740ull};
             CHECK(strcmp(ui_atlas_layers[layer].key, "terrain_plain") != 0 || hash == TERRAIN_BEFORE_CONTOURS[z]);
             uint64_t want = 0u;
             if (!write && (!golden_lookup(table, name, &want) || want != hash)) {
