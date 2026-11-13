@@ -23,13 +23,13 @@
 +1 key enter down
 +1 key enter up
 +3 screenshot spawn.png
-+1 move 0 250
-# Mine the mud underfoot, and stand in the hole until the drop is in hand.
++1 move 0 500
+# Look straight down (plan 007 phase 03 put seed 36's start on a slope, where the block ahead lies a step lower and its drop rolls off), mine what is underfoot, and stand in the hole until the drop is in hand.
 +1 button left down
 +22 button left up
 +14 screenshot picked_up.png
 # Back to looking level, and to the tree the test finds near the start (see ../index.c): there by /tp, facing its root, one cut that brings it all down, a walk in over the logs, and back the way it came, where the ground is clear for a table.
-+1 move 0 -250
++1 move 0 -500
 @tree
 +20 screenshot logs.png
 # The inventory's grid, by clicking: a log in each of its four cells makes a crafting table, which the hands alone make (plan 005 phase 6). It opens with the pointer at 320, 240.
