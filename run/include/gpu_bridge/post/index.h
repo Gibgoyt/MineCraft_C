@@ -72,10 +72,14 @@ static_assert(offsetof(post_settings_t, under_water) == 108);
 /* What the temporal pass keeps of a pixel from frame to frame: see post_taa_squeeze for what the numbers mean. */
 typedef struct post_taa_pixel_t {
     float32_t rgb[3]; /* 0 */
+    /* 12: plan 009 phase 07: how many samples rgb holds, as the upscaling pass counts them (post_upscale_mix). The pass at the output's own
+     * size neither counts nor reads it, and writes POST_TAA_WEIGHT_WHOLE: a history of its blend's length. */
+    float32_t weight;
 } post_taa_pixel_t;
-static_assert(sizeof(post_taa_pixel_t) == 12);
+static_assert(sizeof(post_taa_pixel_t) == 16);
 static_assert(alignof(post_taa_pixel_t) == 4);
 static_assert(offsetof(post_taa_pixel_t, rgb) == 0);
+static_assert(offsetof(post_taa_pixel_t, weight) == 12);
 
 /* One texel of the god rays, at half the picture's size each way. */
 typedef struct post_shaft_t {
@@ -136,12 +140,25 @@ enum : uint8_t {
     POST_TEMPORAL_FIRST_GUESS = 1u << 3,
     /* A pixel newly seen sends one AO ray, not SHADE_AO_FRESH_RAYS: Q2's choice B, for comparison (render_frame_ao_fresh_one_set). */
     POST_TEMPORAL_FRESH_ONE = 1u << 4,
+    /* Plan 009 phase 07: this frame is drawn smaller than its output and the temporal pass gathers it at the output's size
+     * (post_frame_upscaled), so its jitter is POST_UPSCALE_JITTER_FRAMES long. Worked out for each frame as it is queued. */
+    POST_TEMPORAL_UPSCALE = 1u << 5,
 };
 
 enum : uint32_t {
-    /* How many frames the jitter takes to come back to where it was. */
+    /* How many frames the jitter takes to come back to where it was, at the output's size. */
     POST_JITTER_FRAMES = 8u,
+    /* Plan 009 phase 07: and drawn smaller. A drawn pixel is wider than an output pixel, and the jitter must visit every output pixel's area
+     * under it, so it is longer. */
+    POST_UPSCALE_JITTER_FRAMES = MC_TUNE_RENDER_TEMPORAL_UPSCALE_JITTER_POINTS,
+    /* How many points POST_JITTER_TABLE holds: the longest either may ask for. */
+    POST_JITTER_TABLE_FRAMES = 16u,
+    /* Plan 009 phase 07: how many still frames of samples the upscaling pass keeps of a pixel, so that a still picture comes to the whole
+     * one. Moving, it keeps 1 / POST_TAA_BLEND frames' worth, as the pass at the output's size does. */
+    POST_UPSCALE_STILL_FRAMES = MC_TUNE_RENDER_TEMPORAL_UPSCALE_STILL_FRAMES,
 };
+static_assert(POST_UPSCALE_JITTER_FRAMES >= POST_JITTER_FRAMES &&
+              POST_UPSCALE_JITTER_FRAMES <= POST_JITTER_TABLE_FRAMES);
 
 /* What a frame adds to what the temporal pass has of a pixel, how many standard deviations of the pixels around it a pixel's history
  * may be from their mean, and how near a pixel's centre a place in the last frame is that pixel: compile/config/render/temporal/. */
@@ -157,6 +174,12 @@ enum : uint32_t {
     POST_TAA_FAST_READ = MC_TUNE_RENDER_TEMPORAL_TAA_FAST_READ,
 };
 static_assert(POST_TAA_FAST_READ <= POST_TAA_READ_FIVE_TAP);
+/* What the pass at the output's own size writes as a pixel's weight: the samples a history of its blend's length holds. */
+#define POST_TAA_WEIGHT_WHOLE (F32(1.0) / POST_TAA_BLEND)
+/* Plan 009 phase 07: how far from an output pixel's centre, in drawn pixels, a drawn sample still counts towards it when none falls inside
+ * it (post_upscale_weight), and how little it then counts against one that does. */
+#define POST_UPSCALE_RADIUS MC_TUNE_RENDER_TEMPORAL_UPSCALE_KERNEL_RADIUS
+#define POST_UPSCALE_SOFT F32(0.0009765625) /* 1 / 1024 */
 
 static inline uint64_t post_xrgb_bytes(uint32_t width, uint32_t height) {
     return (uint64_t)width * height * POST_BYTES_PER_PIXEL;
@@ -166,10 +189,11 @@ static inline uint64_t post_xrgb_bytes(uint32_t width, uint32_t height) {
  *
  * A picture may be drawn at a percent of each side of its output, its rung (run/src/game/pace/ picks it, render/frame draws at it). Every
  * kernel up to post takes a camera of the drawn size, and every per-pixel block, sized once for the output, is indexed by that camera's
- * width: the first inner_width * inner_height entries are used. What goes from frame to frame (TAA's history, AO's) is at the size of the
- * frame that wrote it, so a reader indexes it by post_temporal_t.previous's width and height, and post_reproject maps through both cameras:
- * a change of rung is a reprojection like any other. post_upscale then brings the tone-mapped picture up to the output, and the overlays are
- * drawn over that at the output's size. At POST_SCALE_WHOLE none of this runs, and the picture is the same to the byte. */
+ * width: the first inner_width * inner_height entries are used. AO's history is at the size of the frame that wrote it, so a reader indexes
+ * it by post_temporal_t.previous's width and height, and post_reproject maps through both cameras: a change of rung is a reprojection like
+ * any other. TAA's history is always at the output's size (plan 009 phase 07): with TAA on, post_frame_upscaled gathers a picture drawn
+ * smaller at the output's size; with it off, post_upscale brings the tone-mapped picture up. The overlays are drawn over that at the
+ * output's size. At POST_SCALE_WHOLE none of this runs, and the picture is the same to the byte. */
 enum : uint32_t {
     POST_SCALE_WHOLE = 100u, /* percent: drawn at the output's size */
 };
@@ -207,12 +231,12 @@ static inline uint64_t post_shafts_bytes(uint32_t width, uint32_t height) {
     return (uint64_t)post_shafts_across(width) * post_shafts_across(height) * sizeof(post_shaft_t);
 }
 
-/* Where inside its pixel a frame looks, from -0.5 to 0.5 each way: the first eight points of the Halton sequence in 2 and 3, which
- * cover a pixel about as evenly as eight points can. */
-POST_BOTH_SIDES static inline void post_jitter(uint32_t frame, float32_t out[2]) {
+/* Where inside its pixel a frame looks, from -0.5 to 0.5 each way: the first `points` points of the Halton sequence in 2 and 3, which
+ * cover a pixel about as evenly as that many points can. The first eight of sixteen are the eight. */
+POST_BOTH_SIDES static inline void post_jitter_points(uint32_t frame, uint32_t points, float32_t out[2]) {
     const uint32_t bases[2] = {2u, 3u};
     for (uint32_t axis = 0u; axis < 2u; axis += 1u) {
-        uint32_t left = frame % POST_JITTER_FRAMES + 1u;
+        uint32_t left = frame % points + 1u;
         float32_t place = F32(1.0), sum = F32(0.0);
         while (left > 0u) {
             place /= (float32_t)bases[axis];
@@ -223,25 +247,42 @@ POST_BOTH_SIDES static inline void post_jitter(uint32_t frame, float32_t out[2])
     }
 }
 
+/* The jitter at the output's size: POST_JITTER_FRAMES points. */
+POST_BOTH_SIDES static inline void post_jitter(uint32_t frame, float32_t out[2]) {
+    post_jitter_points(frame, POST_JITTER_FRAMES, out);
+}
+
 #ifdef __CUDA_ARCH__
 #define POST_TABLE static __constant__ const
 #else
 #define POST_TABLE static const
 #endif
 
-/* post_jitter of each frame of the eight, as the host's float32 works them out, printed to the bit: a kernel reads one pair here in place of
- * the loop's divisions in every thread. render_feature_ao holds the table to post_jitter. */
-POST_TABLE float32_t POST_JITTER_TABLE[POST_JITTER_FRAMES][2] = {
+/* post_jitter_points of each frame of the sixteen, as the host's float32 works them out, printed to the bit: a kernel reads one pair here in
+ * place of the loop's divisions in every thread. The first eight are post_jitter's. render_feature_ao and render_feature_post hold the table
+ * to the loop. */
+POST_TABLE float32_t POST_JITTER_TABLE[POST_JITTER_TABLE_FRAMES][2] = {
     {F32(0x0.0p+0), -F32(0x1.555554p-3)},  {-F32(0x1.0p-2), F32(0x1.555558p-3)}, {F32(0x1.0p-2), -F32(0x1.8e38e4p-2)},
     {-F32(0x1.8p-2), -F32(0x1.c71c70p-5)}, {F32(0x1.0p-3), F32(0x1.1c71c8p-2)},  {-F32(0x1.0p-3), -F32(0x1.1c71c8p-2)},
-    {F32(0x1.8p-2), F32(0x1.c71c80p-5)},   {-F32(0x1.cp-2), F32(0x1.8e38e4p-2)},
+    {F32(0x1.8p-2), F32(0x1.c71c80p-5)},   {-F32(0x1.cp-2), F32(0x1.8e38e4p-2)}, {F32(0x1.0p-4), -F32(0x1.da12f6p-2)},
+    {-F32(0x1.8p-3), -F32(0x1.097b40p-3)}, {F32(0x1.4p-2), F32(0x1.a12f68p-3)},  {-F32(0x1.4p-2), -F32(0x1.684bdap-2)},
+    {F32(0x1.8p-3), -F32(0x1.2f6840p-6)},  {-F32(0x1.0p-4), F32(0x1.425ed0p-2)}, {F32(0x1.cp-2), -F32(0x1.ed097cp-3)},
+    {-F32(0x1.ep-2), F32(0x1.7b4260p-4)},
 };
 
-/* A frame's jitter, as render_frame_queue moved its camera by: post_jitter of its frame with TAA on, none without. */
+/* How many points a frame's jitter goes through: POST_UPSCALE_JITTER_FRAMES drawn smaller and gathered at the output's size, or
+ * POST_JITTER_FRAMES. */
+POST_BOTH_SIDES static inline uint32_t post_temporal_jitter_points(const post_temporal_t *temporal) {
+    return (temporal->flags & POST_TEMPORAL_UPSCALE) != 0u ? (uint32_t)POST_UPSCALE_JITTER_FRAMES
+                                                           : (uint32_t)POST_JITTER_FRAMES;
+}
+
+/* A frame's jitter, as render_frame_queue moved its camera by: post_jitter_points of its frame with TAA on, none without. */
 POST_BOTH_SIDES static inline void post_temporal_jitter(const post_temporal_t *temporal, float32_t out[2]) {
     if ((temporal->flags & POST_TEMPORAL_JITTER) != 0u) {
-        out[0] = POST_JITTER_TABLE[temporal->frame % POST_JITTER_FRAMES][0];
-        out[1] = POST_JITTER_TABLE[temporal->frame % POST_JITTER_FRAMES][1];
+        const uint32_t at = temporal->frame % post_temporal_jitter_points(temporal);
+        out[0] = POST_JITTER_TABLE[at][0];
+        out[1] = POST_JITTER_TABLE[at][1];
     } else {
         out[0] = F32(0.0);
         out[1] = F32(0.0);
@@ -338,6 +379,50 @@ POST_BOTH_SIDES static inline void post_catmull_rom(float32_t f, float32_t out[4
     out[1] = F32(0.5) * (F32(3.0) * f3 - F32(5.0) * f2 + F32(2.0));
     out[2] = F32(0.5) * (F32(4.0) * f2 - F32(3.0) * f3 + f);
     out[3] = F32(0.5) * (f3 - f2);
+}
+
+/* ---- Plan 009 phase 07: temporal upscaling ----------------------------------------------------------------------------------------
+ *
+ * Drawn smaller with TAA on, post_frame_upscaled gathers the drawn samples at the output's size: each output pixel takes those whose jittered
+ * centres fall inside it, counts how many it has had (post_taa_pixel_t.weight), and keeps a running mean of them up to a cap, so that a
+ * still camera comes to the average over each output pixel's own area, which is what the pass at the output's size comes to. See
+ * cuda/src/post/README.md, "The temporal pass". */
+
+/* The middle of output pixel `at` of `outer`, in pixels of a picture `inner` across, from its left edge: a drawn pixel i's middle is
+ * i + 0.5. The drawn camera's rays go through the same places of the view as the output's (render_camera_to_traverse_drawn). */
+POST_BOTH_SIDES static inline float32_t post_upscale_place(uint32_t at, uint32_t outer, uint32_t inner) {
+    return ((float32_t)at + F32(0.5)) * (float32_t)inner / (float32_t)outer;
+}
+
+/* What a drawn sample counts for towards an output pixel, by how far its jittered centre is from that pixel's centre, in drawn pixels each
+ * way, with `across` output pixels to a drawn one each way: 1 inside the output pixel, which is what the whole picture's pixel averages,
+ * and POST_UPSCALE_SOFT of a tent POST_UPSCALE_RADIUS wide besides, so that an output pixel with no sample in it this frame still has
+ * something, which the next sample inside it outweighs at once. */
+POST_BOTH_SIDES static inline float32_t post_upscale_weight(float32_t dx, float32_t dy, float32_t across_x,
+                                                            float32_t across_y) {
+    const float32_t inside = fabsf(dx * across_x) < F32(0.5) && fabsf(dy * across_y) < F32(0.5) ? F32(1.0) : F32(0.0);
+    const float32_t tent = fmaxf(F32(1.0) - fabsf(dx) / POST_UPSCALE_RADIUS, F32(0.0)) *
+                           fmaxf(F32(1.0) - fabsf(dy) / POST_UPSCALE_RADIUS, F32(0.0));
+    return inside + POST_UPSCALE_SOFT * tent;
+}
+
+/* How many samples an output pixel's history may hold: the drawn samples a frame gives it on average, the drawn pixels over the output's,
+ * times 1 / POST_TAA_BLEND frames moving (as the pass at the output's size holds), or POST_UPSCALE_STILL_FRAMES still. */
+POST_BOTH_SIDES static inline float32_t post_upscale_cap(uint32_t inner_width, uint32_t inner_height,
+                                                         uint32_t out_width, uint32_t out_height, bool moved) {
+    const float32_t share =
+        (float32_t)inner_width * (float32_t)inner_height / ((float32_t)out_width * (float32_t)out_height);
+    const float32_t moving = share * POST_TAA_WEIGHT_WHOLE, still = share * (float32_t)POST_UPSCALE_STILL_FRAMES;
+    return moved || still < moving ? moving : still;
+}
+
+/* The running mean: a history that holds `held` samples, and this frame's gather that holds `adding`, mixed by the share returned in
+ * out_share, which is adding over all of them up to the cap; the history then holds what it returns. With nothing held the new is all. */
+POST_BOTH_SIDES static inline float32_t post_upscale_mix(float32_t held, float32_t adding, float32_t cap,
+                                                         float32_t *out_share) {
+    const float32_t total = fminf(fmaxf(held, F32(0.0)) + adding, cap);
+    *out_share = total > F32(0.0) ? fminf(adding / total, F32(1.0)) : F32(1.0);
+    return total;
 }
 
 /* The sky one unit direction looks at, by how far up it looks, with the sun's glow around where it is. Below the horizon it stays
@@ -789,6 +874,15 @@ gpu_status_t post_frame_temporal(gpu_error_t *error, const post_settings_t *sett
                                  bool taa, bool shafts, const traverse_camera_t *camera, const device_block_t *pixels,
                                  const device_block_t *xrgb, const post_weather_t *weather,
                                  const device_block_t *weather_map);
+
+/* Plan 009 phase 07: post_frame_temporal with TAA on, for a camera drawn smaller than output (the same view with no jitter, at the output's
+ * size): the drawn picture's sky, fog and god rays as there, then the temporal pass at the output's size, which gathers the drawn samples
+ * into each output pixel, reprojects and holds its history at the output's size, and writes xrgb at that size; weather goes over it there.
+ * temporal's history blocks are post_history_bytes of the output. On failure error says why, and nothing was started. */
+gpu_status_t post_frame_upscaled(gpu_error_t *error, const post_settings_t *settings, const post_temporal_t *temporal,
+                                 bool shafts, const traverse_camera_t *camera, const traverse_camera_t *output,
+                                 const device_block_t *pixels, const device_block_t *xrgb,
+                                 const post_weather_t *weather, const device_block_t *weather_map);
 
 /* Plan 008 phase 05: an XRGB8888 picture of inner_width by inner_height, rows side by side in inner, brought up to out_width by out_height
  * in out, bilinear in its bytes: each output pixel's middle, placed on the inner picture, between the four pixels around it, the edge's

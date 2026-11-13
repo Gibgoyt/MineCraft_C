@@ -34,3 +34,24 @@ taa_fast_read:
   min: 0
   max: 2
   why: "Plan 008 phase 04: how a camera past taa_fast_pixels reads its history: 0 Catmull-Rom's 16 as below it, 1 bilinear's 4, 2 the 5-tap bicubic (five bilinear reads, Jimenez 2016). Measured at Ahmed's spot at 148 MHz, post at 720 degrees a second: 7.02 ms by Catmull-Rom, 7.76 by 5-tap (20 loads without the texture unit, and two divisions), 4.40 by bilinear, against 4.20 still; so 1. POST_TAA_FAST_READ."
+upscale_jitter_points:
+  value: 16
+  type: u32
+  unit: frames
+  min: 8
+  max: 16
+  why: "Plan 009 phase 07: how many Halton points the jitter goes through when a picture is drawn smaller and gathered at the output's size. A drawn pixel at 75 % is 1.33 output pixels wide, and the points must visit every output pixel's area under it; at 100 % it stays 8. POST_UPSCALE_JITTER_FRAMES."
+upscale_kernel_radius:
+  value: 1.0
+  type: f32
+  unit: pixels
+  min: 0.5
+  max: 2.0
+  why: "Plan 009 phase 07: how far from an output pixel's centre, in drawn pixels, a drawn sample is still taken when none falls inside that output pixel this frame: a tent this wide, at 1/1024 of a sample inside, so the first sample inside outweighs it. POST_UPSCALE_RADIUS."
+upscale_still_frames:
+  value: 32
+  type: u32
+  unit: frames
+  min: 10
+  max: 256
+  why: "Plan 009 phase 07: how many frames of samples the upscaling pass holds of an output pixel while the camera is still, so that the picture comes to the average over each output pixel's area: two turns of the 16 points. Moving it holds 1 / taa_blend frames, as at 100 %. POST_UPSCALE_STILL_FRAMES."

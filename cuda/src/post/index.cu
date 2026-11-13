@@ -83,11 +83,16 @@ __global__ void post_kernel(const post_settings_t settings, const traverse_camer
     xrgb[index] = post_xrgb(post_tone_map(seen[0]), post_tone_map(seen[1]), post_tone_map(seen[2]));
 }
 
+/* One channel of a history pixel: its three colours, and with a fourth its weight (plan 009 phase 07). */
+static __device__ __forceinline__ float32_t post_taa_channel(const post_taa_pixel_t *pixel, uint32_t channel) {
+    return channel < 3u ? pixel->rgb[channel] : pixel->weight;
+}
+
 /* The history at a place, in pixels from the top left corner, between the four texels around it by how near each is. Off the edge it takes
- * the edge's pixel. */
+ * the edge's pixel. channels is 3 for the colours, or 4 with the weight. */
 static __device__ __forceinline__ void post_history_bilinear(const post_taa_pixel_t *history, uint32_t width,
                                                              uint32_t height, float32_t x, float32_t y,
-                                                             float32_t out[3]) {
+                                                             uint32_t channels, float32_t out[4]) {
     const float32_t centre_x = x - 0.5F, centre_y = y - 0.5F;
     const float32_t floor_x = floorf(centre_x), floor_y = floorf(centre_y);
     const float32_t fx = centre_x - floor_x, fy = centre_y - floor_y;
@@ -97,9 +102,11 @@ static __device__ __forceinline__ void post_history_bilinear(const post_taa_pixe
     const int32_t y1 = traverse_clamp((int32_t)floor_y + 1, 0, (int32_t)height - 1);
     const post_taa_pixel_t *const top = &history[(uint64_t)y0 * width];
     const post_taa_pixel_t *const bottom = &history[(uint64_t)y1 * width];
-    for (uint32_t i = 0u; i < 3u; i += 1u) {
-        const float32_t upper = top[x0].rgb[i] + (top[x1].rgb[i] - top[x0].rgb[i]) * fx;
-        const float32_t lower = bottom[x0].rgb[i] + (bottom[x1].rgb[i] - bottom[x0].rgb[i]) * fx;
+    for (uint32_t i = 0u; i < channels; i += 1u) {
+        const float32_t upper =
+            post_taa_channel(&top[x0], i) + (post_taa_channel(&top[x1], i) - post_taa_channel(&top[x0], i)) * fx;
+        const float32_t lower = post_taa_channel(&bottom[x0], i) +
+                                (post_taa_channel(&bottom[x1], i) - post_taa_channel(&bottom[x0], i)) * fx;
         out[i] = upper + (lower - upper) * fy;
     }
 }
@@ -108,7 +115,7 @@ static __device__ __forceinline__ void post_history_bilinear(const post_taa_pixe
  * read, at the place between them their weights make, and the four arms. */
 static __device__ __forceinline__ void post_history_five_tap(const post_taa_pixel_t *history, uint32_t width,
                                                              uint32_t height, float32_t x, float32_t y,
-                                                             float32_t out[3]) {
+                                                             uint32_t channels, float32_t out[4]) {
     const float32_t first_x = floorf(x - 0.5F) + 0.5F, first_y = floorf(y - 0.5F) + 0.5F;
     float32_t across[4], down[4];
     post_catmull_rom(x - first_x, across);
@@ -120,27 +127,29 @@ static __device__ __forceinline__ void post_history_five_tap(const post_taa_pixe
     const float32_t weights[5] = {middle_x * down[0], across[0] * middle_y, middle_x * middle_y, across[3] * middle_y,
                                   middle_x * down[3]};
     float32_t sum = 0.0F;
-    out[0] = 0.0F;
-    out[1] = 0.0F;
-    out[2] = 0.0F;
+    for (uint32_t i = 0u; i < channels; i += 1u) {
+        out[i] = 0.0F;
+    }
     for (uint32_t k = 0u; k < 5u; k += 1u) {
-        float32_t one[3];
-        post_history_bilinear(history, width, height, places[k][0], places[k][1], one);
-        out[0] += one[0] * weights[k];
-        out[1] += one[1] * weights[k];
-        out[2] += one[2] * weights[k];
+        float32_t one[4];
+        post_history_bilinear(history, width, height, places[k][0], places[k][1], channels, one);
+        for (uint32_t i = 0u; i < channels; i += 1u) {
+            out[i] += one[i] * weights[k];
+        }
         sum += weights[k];
     }
-    out[0] /= sum;
-    out[1] /= sum;
-    out[2] /= sum;
+    for (uint32_t i = 0u; i < channels; i += 1u) {
+        out[i] /= sum;
+    }
 }
 
 /* What the last frame's picture had at a place, in pixels from the top left corner: that pixel if the place is at its middle, as it
  * is for a camera that has not moved, and if not then Catmull-Rom, as anything softer would blur the picture a little more on every
- * frame. On a fast turn (plan 008 phase 04), POST_TAA_FAST_READ: motion hides the softness. Off the edge it takes the edge's pixel. */
+ * frame. On a fast turn (plan 008 phase 04), POST_TAA_FAST_READ: motion hides the softness. Off the edge it takes the edge's pixel.
+ * channels is 3 for the colours, or 4 with the weight. */
 static __device__ __forceinline__ void post_history_at(const post_taa_pixel_t *history, uint32_t width, uint32_t height,
-                                                       float32_t x, float32_t y, bool fast, float32_t out[3]) {
+                                                       float32_t x, float32_t y, bool fast, uint32_t channels,
+                                                       float32_t out[4]) {
     const float32_t centre_x = x - 0.5F, centre_y = y - 0.5F;
     const float32_t floor_x = floorf(centre_x), floor_y = floorf(centre_y);
     const float32_t fx = centre_x - floor_x, fy = centre_y - floor_y;
@@ -148,34 +157,34 @@ static __device__ __forceinline__ void post_history_at(const post_taa_pixel_t *h
         const post_taa_pixel_t *const one =
             &history[(uint64_t)traverse_clamp((int32_t)floorf(y), 0, (int32_t)height - 1) * width +
                      (uint32_t)traverse_clamp((int32_t)floorf(x), 0, (int32_t)width - 1)];
-        out[0] = one->rgb[0];
-        out[1] = one->rgb[1];
-        out[2] = one->rgb[2];
+        for (uint32_t i = 0u; i < channels; i += 1u) {
+            out[i] = post_taa_channel(one, i);
+        }
         return;
     }
     if (fast && POST_TAA_FAST_READ == POST_TAA_READ_BILINEAR) {
-        post_history_bilinear(history, width, height, x, y, out);
+        post_history_bilinear(history, width, height, x, y, channels, out);
         return;
     }
     if (fast && POST_TAA_FAST_READ == POST_TAA_READ_FIVE_TAP) {
-        post_history_five_tap(history, width, height, x, y, out);
+        post_history_five_tap(history, width, height, x, y, channels, out);
         return;
     }
     float32_t across[4], down[4];
     post_catmull_rom(fx, across);
     post_catmull_rom(fy, down);
-    out[0] = 0.0F;
-    out[1] = 0.0F;
-    out[2] = 0.0F;
+    for (uint32_t i = 0u; i < channels; i += 1u) {
+        out[i] = 0.0F;
+    }
     for (int32_t j = 0; j < 4; j += 1) {
         const int32_t row = traverse_clamp((int32_t)floor_y + j - 1, 0, (int32_t)height - 1);
         for (int32_t i = 0; i < 4; i += 1) {
             const int32_t column = traverse_clamp((int32_t)floor_x + i - 1, 0, (int32_t)width - 1);
             const post_taa_pixel_t *const one = &history[(uint64_t)row * width + (uint32_t)column];
             const float32_t weight = across[i] * down[j];
-            out[0] += one->rgb[0] * weight;
-            out[1] += one->rgb[1] * weight;
-            out[2] += one->rgb[2] * weight;
+            for (uint32_t c = 0u; c < channels; c += 1u) {
+                out[c] += post_taa_channel(one, c) * weight;
+            }
         }
     }
 }
@@ -199,8 +208,13 @@ __global__ void post_taa_kernel(const traverse_camera_t camera, const post_tempo
         float32_t steady[3];
         traverse_camera_direction(&camera, (float32_t)pixel_x + 0.5F - jitter[0], (float32_t)pixel_y + 0.5F - jitter[1],
                                   steady);
+        /* With TAA on the history is always at the output's size, which this camera is (plan 009 phase 07: a picture drawn smaller is
+         * gathered there), and the last camera differs from it only in its size when the last frame was drawn smaller. */
+        traverse_camera_t last_camera = temporal.previous;
+        last_camera.width = camera.width;
+        last_camera.height = camera.height;
         float32_t x = 0.0F, y = 0.0F;
-        if (post_reproject(&temporal.previous, &camera, steady, pixel.t, &x, &y)) {
+        if (post_reproject(&last_camera, &camera, steady, pixel.t, &x, &y)) {
             /* What this frame's pixels around this one have, in the form they are mixed in. */
             float32_t mean[3] = {0.0F, 0.0F, 0.0F}, squares[3] = {0.0F, 0.0F, 0.0F};
             for (int32_t dy = -1; dy <= 1; dy += 1) {
@@ -214,11 +228,9 @@ __global__ void post_taa_kernel(const traverse_camera_t camera, const post_tempo
                     }
                 }
             }
-            /* The history is the last frame's picture, at that frame's size (plan 008 phase 05: a rung change is a reprojection like any
-             * other), and x and y are in its pixels. */
-            float32_t last[3];
-            post_history_at(history_last, temporal.previous.width, temporal.previous.height, x, y,
-                            (temporal.flags & POST_TEMPORAL_FAST) != 0u, last);
+            float32_t last[4];
+            post_history_at(history_last, camera.width, camera.height, x, y,
+                            (temporal.flags & POST_TEMPORAL_FAST) != 0u, 3u, last);
             for (uint32_t i = 0u; i < 3u; i += 1u) {
                 const float32_t average = mean[i] / 9.0F;
                 const float32_t deviation = sqrtf(fmaxf(squares[i] / 9.0F - average * average, 0.0F));
@@ -228,7 +240,7 @@ __global__ void post_taa_kernel(const traverse_camera_t camera, const post_tempo
             }
         }
     }
-    history_next[index] = post_taa_pixel_t{{result[0], result[1], result[2]}};
+    history_next[index] = post_taa_pixel_t{{result[0], result[1], result[2]}, POST_TAA_WEIGHT_WHOLE};
     post_taa_unsqueeze(result);
     /* After the history: a drop moves several pixels a frame, and mixed into it would smear into haze and leave ghosts. Along the
      * pixel's ray with no jitter, so the drops do not shake while the history settles under them. */
@@ -237,6 +249,89 @@ __global__ void post_taa_kernel(const traverse_camera_t camera, const post_tempo
         traverse_camera_direction(&camera, (float32_t)pixel_x + 0.5F - jitter[0], (float32_t)pixel_y + 0.5F - jitter[1],
                                   steady);
         post_weather_apply(&weather, &camera, weather_map, steady, pixel.t, result);
+    }
+    xrgb[index] = post_xrgb(post_tone_map(result[0]), post_tone_map(result[1]), post_tone_map(result[2]));
+}
+
+/* Plan 009 phase 07: the temporal pass at the output's size for a picture drawn smaller, one thread per output pixel: see README.md, "The
+ * temporal pass". camera is the drawn one, with its jitter; output is the same view at the output's size, with none. */
+__global__ void post_taa_upscale_kernel(const traverse_camera_t camera, const traverse_camera_t output,
+                                        const post_temporal_t temporal, const shade_pixel_t *pixels,
+                                        const post_taa_pixel_t *history_last, post_taa_pixel_t *history_next,
+                                        uint32_t *xrgb, const post_weather_t weather, bool weather_on,
+                                        const int16_t *weather_map) {
+    const uint32_t pixel_x = blockIdx.x * blockDim.x + threadIdx.x;
+    const uint32_t pixel_y = blockIdx.y * blockDim.y + threadIdx.y;
+    if (pixel_x >= output.width || pixel_y >= output.height) {
+        return;
+    }
+    float32_t jitter[2];
+    post_temporal_jitter(&temporal, jitter);
+    /* This output pixel's middle on the drawn picture, and the drawn sample whose jittered middle is nearest it: sample i looks at
+     * i + 0.5 + jitter. */
+    const float32_t place_x = post_upscale_place(pixel_x, output.width, camera.width);
+    const float32_t place_y = post_upscale_place(pixel_y, output.height, camera.height);
+    const int32_t near_x = (int32_t)floorf(place_x - jitter[0]), near_y = (int32_t)floorf(place_y - jitter[1]);
+    const float32_t across_x = (float32_t)output.width / (float32_t)camera.width;
+    const float32_t across_y = (float32_t)output.height / (float32_t)camera.height;
+    /* The 3 by 3 drawn samples around it: what this frame gives the pixel, by post_upscale_weight, and the neighbourhood its history is held
+     * to, as at the output's size. */
+    float32_t gathered[3] = {0.0F, 0.0F, 0.0F}, mean[3] = {0.0F, 0.0F, 0.0F}, squares[3] = {0.0F, 0.0F, 0.0F};
+    float32_t weight = 0.0F;
+    for (int32_t dy = -1; dy <= 1; dy += 1) {
+        const int32_t row = traverse_clamp(near_y + dy, 0, (int32_t)camera.height - 1);
+        for (int32_t dx = -1; dx <= 1; dx += 1) {
+            const int32_t column = traverse_clamp(near_x + dx, 0, (int32_t)camera.width - 1);
+            const shade_pixel_t *const sample = &pixels[(uint64_t)row * camera.width + (uint32_t)column];
+            const float32_t w = post_upscale_weight((float32_t)column + 0.5F + jitter[0] - place_x,
+                                                    (float32_t)row + 0.5F + jitter[1] - place_y, across_x, across_y);
+            weight += w;
+            for (uint32_t i = 0u; i < 3u; i += 1u) {
+                gathered[i] += sample->rgb[i] * w;
+                mean[i] += sample->rgb[i];
+                squares[i] += sample->rgb[i] * sample->rgb[i];
+            }
+        }
+    }
+    const shade_pixel_t nearest =
+        pixels[(uint64_t)traverse_clamp(near_y, 0, (int32_t)camera.height - 1) * camera.width +
+               (uint32_t)traverse_clamp(near_x, 0, (int32_t)camera.width - 1)];
+    float32_t result[3];
+    for (uint32_t i = 0u; i < 3u; i += 1u) {
+        result[i] = weight > 0.0F ? gathered[i] / weight : nearest.rgb[i];
+    }
+    float32_t held = weight;
+    float32_t steady[3];
+    traverse_camera_direction(&output, (float32_t)pixel_x + 0.5F, (float32_t)pixel_y + 0.5F, steady);
+    if (temporal.history_valid != 0u) {
+        /* The history is at the output's size, and the last camera differs from output only in where it was and where it looked. */
+        traverse_camera_t last_camera = temporal.previous;
+        last_camera.width = output.width;
+        last_camera.height = output.height;
+        float32_t x = 0.0F, y = 0.0F;
+        if (post_reproject(&last_camera, &output, steady, nearest.t, &x, &y)) {
+            float32_t last[4];
+            post_history_at(history_last, output.width, output.height, x, y,
+                            (temporal.flags & POST_TEMPORAL_FAST) != 0u, 4u, last);
+            const float32_t cap = post_upscale_cap(camera.width, camera.height, output.width, output.height,
+                                                   (temporal.flags & POST_TEMPORAL_MOVED) != 0u);
+            float32_t share = 1.0F;
+            held = post_upscale_mix(last[3], weight, cap, &share);
+            for (uint32_t i = 0u; i < 3u; i += 1u) {
+                const float32_t average = mean[i] / 9.0F;
+                const float32_t deviation = sqrtf(fmaxf(squares[i] / 9.0F - average * average, 0.0F));
+                const float32_t low = average - POST_TAA_CLIP * deviation, high = average + POST_TAA_CLIP * deviation;
+                const float32_t kept = fminf(fmaxf(last[i], low), high);
+                result[i] = kept + (result[i] - kept) * share;
+            }
+        }
+    }
+    const uint64_t index = (uint64_t)pixel_y * output.width + pixel_x;
+    history_next[index] = post_taa_pixel_t{{result[0], result[1], result[2]}, held};
+    post_taa_unsqueeze(result);
+    /* After the history, along this output pixel's ray, as at the output's size. */
+    if (weather_on) {
+        post_weather_apply(&weather, &output, weather_map, steady, nearest.t, result);
     }
     xrgb[index] = post_xrgb(post_tone_map(result[0]), post_tone_map(result[1]), post_tone_map(result[2]));
 }
@@ -256,17 +351,20 @@ gpu_status_t post_frame(gpu_error_t *error, const post_settings_t *settings, con
     return post_frame_temporal(error, settings, nullptr, false, false, camera, pixels, xrgb, nullptr, nullptr);
 }
 
-gpu_status_t post_frame_temporal(gpu_error_t *error, const post_settings_t *settings, const post_temporal_t *temporal,
-                                 bool taa, bool shafts, const traverse_camera_t *camera, const device_block_t *pixels,
-                                 const device_block_t *xrgb, const post_weather_t *weather,
-                                 const device_block_t *weather_map) {
+/* post_frame_temporal, and with output (not nullptr, and taa) post_frame_upscaled: the history and the target are then the output's size. */
+static gpu_status_t post_frame_run(gpu_error_t *error, const post_settings_t *settings, const post_temporal_t *temporal,
+                                   bool taa, bool shafts, const traverse_camera_t *camera,
+                                   const traverse_camera_t *output, const device_block_t *pixels,
+                                   const device_block_t *xrgb, const post_weather_t *weather,
+                                   const device_block_t *weather_map) {
+    const traverse_camera_t *const shown = output != nullptr ? output : camera;
     if (camera->width == 0u || camera->height == 0u) {
         return post_refuse(error, "post: the camera has no pixels");
     }
     if (pixels->bytes < (uint64_t)camera->width * camera->height * sizeof(shade_pixel_t)) {
         return post_refuse(error, "post: the pixels are too small for the camera");
     }
-    if (xrgb->bytes < post_xrgb_bytes(camera->width, camera->height)) {
+    if (xrgb->bytes < post_xrgb_bytes(shown->width, shown->height)) {
         return post_refuse(error, "post: the target is too small for the camera");
     }
     if (!(settings->fog_end > settings->fog_start)) {
@@ -282,7 +380,7 @@ gpu_status_t post_frame_temporal(gpu_error_t *error, const post_settings_t *sett
         return post_refuse(error, "post: god rays are on, and their target is missing or too small for the camera");
     }
     if (taa) {
-        const uint64_t bytes = post_history_bytes(camera->width, camera->height);
+        const uint64_t bytes = post_history_bytes(shown->width, shown->height);
         if (!post_block_fits(temporal->borrowed_history_last, bytes) ||
             !post_block_fits(temporal->borrowed_history_next, bytes)) {
             return post_refuse(error, "post: TAA is on, and its history is missing or too small for the camera");
@@ -311,12 +409,37 @@ gpu_status_t post_frame_temporal(gpu_error_t *error, const post_settings_t *sett
     if (status != GPU_STATUS_OK || !taa) {
         return status;
     }
-    post_taa_kernel<<<grid, tile>>>(
-        *camera, *temporal, shaded,
-        (const post_taa_pixel_t *)(const void *)device_memory_pointer(temporal->borrowed_history_last),
-        (post_taa_pixel_t *)(void *)device_memory_pointer(temporal->borrowed_history_next), picture, weather_given,
-        weather_on, map);
+    const post_taa_pixel_t *const history_last =
+        (const post_taa_pixel_t *)(const void *)device_memory_pointer(temporal->borrowed_history_last);
+    post_taa_pixel_t *const history_next =
+        (post_taa_pixel_t *)(void *)device_memory_pointer(temporal->borrowed_history_next);
+    if (output != nullptr) {
+        const dim3 out_grid(traverse_tiles_across(output->width), traverse_tiles_across(output->height));
+        post_taa_upscale_kernel<<<out_grid, tile>>>(*camera, *output, *temporal, shaded, history_last, history_next,
+                                                    picture, weather_given, weather_on, map);
+        return device_memory_check(error, cudaGetLastError(), "post: starting the temporal upscale");
+    }
+    post_taa_kernel<<<grid, tile>>>(*camera, *temporal, shaded, history_last, history_next, picture, weather_given,
+                                    weather_on, map);
     return device_memory_check(error, cudaGetLastError(), "post: starting the temporal pass");
+}
+
+gpu_status_t post_frame_temporal(gpu_error_t *error, const post_settings_t *settings, const post_temporal_t *temporal,
+                                 bool taa, bool shafts, const traverse_camera_t *camera, const device_block_t *pixels,
+                                 const device_block_t *xrgb, const post_weather_t *weather,
+                                 const device_block_t *weather_map) {
+    return post_frame_run(error, settings, temporal, taa, shafts, camera, nullptr, pixels, xrgb, weather, weather_map);
+}
+
+gpu_status_t post_frame_upscaled(gpu_error_t *error, const post_settings_t *settings, const post_temporal_t *temporal,
+                                 bool shafts, const traverse_camera_t *camera, const traverse_camera_t *output,
+                                 const device_block_t *pixels, const device_block_t *xrgb,
+                                 const post_weather_t *weather, const device_block_t *weather_map) {
+    if (output->width == 0u || output->height == 0u || camera->width > output->width ||
+        camera->height > output->height) {
+        return post_refuse(error, "post: an upscale to a smaller picture, or to none");
+    }
+    return post_frame_run(error, settings, temporal, true, shafts, camera, output, pixels, xrgb, weather, weather_map);
 }
 
 /* ---- Plan 008 phase 05: a picture drawn smaller, brought up to the output -------------------------------------------------------- */

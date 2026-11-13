@@ -1808,6 +1808,54 @@ TEST(overlapped_frames_draw_the_same_pictures) {
 }
 
 /* A third frame queued while two are on their way is refused, and leaves the two to finish. */
+/* Plan 009 phase 07: at every rung, with TAA (gathered at the output's size) and without (brought up bilinear), the picture handed to
+ * render_frame_present is the display's 1920 by 1080, every pixel of it written. */
+TEST(the_output_is_always_the_displays_size) {
+    enum : uint32_t { WIDTH = 1920u, HEIGHT = 1080u, UNWRITTEN = 0xABABABABu };
+    fr_rig_t rig;
+    REQUIRE(fr_rig_begin(t, &rig));
+    REQUIRE(fr_hand_world_open(t, &rig, 2u, WIDTH, HEIGHT));
+    render_frame_t *const frame = &rig.render->frame;
+    const uint64_t bytes = post_xrgb_bytes(WIDTH, HEIGHT);
+    display_buffer_t target = {.owned_map = fr_aligned(t, bytes),
+                               .map_bytes = bytes,
+                               .pitch = WIDTH * POST_BYTES_PER_PIXEL,
+                               .width = WIDTH,
+                               .height = HEIGHT};
+    render_camera_t camera;
+    render_camera_start(&camera, 0.5f64, 0.5f64, 70.5f64, 0.3f32, 0.1f32);
+    const uint32_t rungs[] = {100u, 85u, 75u, 50u, 25u};
+    const uint32_t taa_settings[2] = {(SHADE_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_LOD) | (uint32_t)SHADE_FEATURE_TAA,
+                                      SHADE_FEATURES_ALL & ~(uint32_t)SHADE_FEATURE_LOD};
+    for (uint32_t s = 0u; s < 2u; s++) {
+        render_frame_features_set(frame, taa_settings[s]);
+        for (uint32_t r = 0u; r < sizeof(rungs) / sizeof(rungs[0]); r++) {
+            render_frame_scale_set(frame, rungs[r]);
+            const uint8_t *picture = nullptr;
+            for (uint32_t i = 0u; i < 3u && (i == 0u || picture != nullptr); i++) {
+                picture = fr_draw(t, &rig, &camera);
+            }
+            REQUIRE(picture != nullptr);
+            CHECK_EQ_U64(frame->width, WIDTH);
+            CHECK_EQ_U64(frame->height, HEIGHT);
+            memset(target.owned_map, 0xAB, bytes);
+            render_frame_present(frame, picture, &target);
+            uint64_t unwritten = 0u;
+            for (uint64_t i = 0u; i < (uint64_t)WIDTH * HEIGHT; i++) {
+                uint32_t pixel = 0u;
+                memcpy(&pixel, target.owned_map + i * 4u, 4u);
+                unwritten += pixel == UNWRITTEN ? 1u : 0u;
+            }
+            printf("  rung %" PRIu32 " %%, TAA %s: %" PRIu64 " of the display's pixels not written\n", rungs[r],
+                   s == 0u ? "on" : "off", unwritten);
+            CHECK_EQ_U64(unwritten, 0u);
+            CHECK_EQ_U64((frame->temporal.flags & POST_TEMPORAL_UPSCALE) != 0u, s == 0u && rungs[r] < 100u);
+        }
+    }
+    fr_hand_world_close(&rig);
+    fr_rig_end(t, &rig);
+}
+
 TEST(no_more_than_two_frames_are_on_their_way) {
     fr_rig_t rig;
     REQUIRE(fr_rig_begin(t, &rig));

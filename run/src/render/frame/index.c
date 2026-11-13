@@ -770,9 +770,12 @@ gpu_status_t render_frame_queue(render_frame_t *frame, const world_buffers_t *bu
     flags |= moved ? (uint32_t)POST_TEMPORAL_MOVED : 0u;
     flags |= fast ? (uint32_t)POST_TEMPORAL_FAST : 0u;
     if ((features & SHADE_FEATURE_TAA) != 0u) {
-        flags |= POST_TEMPORAL_JITTER;
+        /* Plan 009 phase 07: drawn smaller, the temporal pass gathers at the output's size, and the jitter is longer to visit every output
+         * pixel under a drawn one. At the output's size it is the eight points it always was. */
+        flags |= POST_TEMPORAL_JITTER | (scaled ? (uint32_t)POST_TEMPORAL_UPSCALE : 0u);
         float32_t jitter[2];
-        post_jitter(temporal->frame, jitter);
+        post_jitter_points(temporal->frame,
+                           scaled ? (uint32_t)POST_UPSCALE_JITTER_FRAMES : (uint32_t)POST_JITTER_FRAMES, jitter);
         post_camera_jitter(&view, jitter);
     }
     temporal->flags = (uint8_t)flags;

@@ -361,17 +361,25 @@ static gpu_status_t frame_passes(frame_gpu_t *frame, frame_slot_t *slot, const f
     /* Plan 008 phase 05: drawn smaller, post's picture goes into the hits block, which nothing reads once shade is done, and is brought up
      * into the target before the overlays: under the overlay's mark, so post's own time is as at the full size. */
     const traverse_camera_t *const output = args->borrowed_output_camera;
-    const device_block_t *const drawn = output != nullptr ? targets->borrowed_hits : targets->borrowed_xrgb;
-    if (status == GPU_STATUS_OK) {
+    /* Plan 009 phase 07: with TAA on, the temporal pass gathers the drawn samples at the output's size and writes the target itself; the
+     * bilinear upscale stays for TAA off. */
+    const bool taa = (scene->features & SHADE_FEATURE_TAA) != 0u;
+    const bool gathered = output != nullptr && taa;
+    const device_block_t *const drawn =
+        output != nullptr && !gathered ? targets->borrowed_hits : targets->borrowed_xrgb;
+    if (status == GPU_STATUS_OK && gathered) {
+        status = post_frame_upscaled(&frame->last_error, args->borrowed_post, scene->borrowed_temporal, shafts, camera,
+                                     output, targets->borrowed_pixels, drawn, args->borrowed_weather,
+                                     args->borrowed_weather_map);
+    } else if (status == GPU_STATUS_OK) {
         status =
-            post_frame_temporal(&frame->last_error, args->borrowed_post, scene->borrowed_temporal,
-                                (scene->features & SHADE_FEATURE_TAA) != 0u, shafts, camera, targets->borrowed_pixels,
-                                drawn, args->borrowed_weather, args->borrowed_weather_map);
+            post_frame_temporal(&frame->last_error, args->borrowed_post, scene->borrowed_temporal, taa, shafts, camera,
+                                targets->borrowed_pixels, drawn, args->borrowed_weather, args->borrowed_weather_map);
     }
     if (status == GPU_STATUS_OK) {
         status = frame_mark(frame, slot, FRAME_KERNEL_OVERLAY);
     }
-    if (status == GPU_STATUS_OK && output != nullptr) {
+    if (status == GPU_STATUS_OK && output != nullptr && !gathered) {
         ran |= 1u << FRAME_KERNEL_OVERLAY;
         status = post_upscale(&frame->last_error, drawn, camera->width, camera->height, targets->borrowed_xrgb,
                               output->width, output->height);
