@@ -4,6 +4,7 @@
 #include "display/headless/png/index.h"
 #include "file/index.h"
 #include "game/index.h"
+#include "game/spawn/index.h"
 #include "game/watch/index.h"
 #include "gpu_bridge/index.h"
 #include "heap/index.h"
@@ -57,7 +58,9 @@ static_assert(MC_GPU_BUDGET_TEXTURES_MIB + MC_GPU_BUDGET_FRAMES_MIB + SL_VOXELS_
 enum : uint32_t { SL_VOXELS_WIDE_MIB = MC_GPU_BUDGET_VOXELS_MIB, SL_BLOCK_RADIUS_NARROW = 32u };
 static const uint64_t SL_SEED_DEFAULT =
     14148492376765118422ull; /* saves/test_7/world.meta: the world he played at 5.png's time */
-static const int32_t SL_AT_DEFAULT[3] = {-385, 347, 2}; /* F3 of 5.png */
+/* F3 of 5.png. That z was on the land of 5.png's day: plan 007 phase 03's land stands 301 high at this x and y, so z = 2 is deep in stone and
+ * the picture was black (plan 009 phase 07). Without --at the feet go on the ground at this x and y (sl_feet_z), and the z here is unused. */
+static const int32_t SL_AT_DEFAULT[3] = {-385, 347, 2};
 
 /* One row: a render distance and a sun. */
 typedef struct sl_row_t {
@@ -101,7 +104,8 @@ typedef struct sl_result_t {
     uint8_t ran;                                 /* 336 */
     uint8_t sound;                               /* 337 */
     uint8_t counted;                             /* 338 */
-    uint8_t _pad0[5];                            /* 339 */
+    uint8_t _pad0[1];                            /* 339 */
+    int32_t feet_z;                              /* 340: the block the feet were in: --at's, or on the ground */
 } sl_result_t;
 static_assert(sizeof(sl_result_t) == 344);
 
@@ -122,7 +126,9 @@ typedef struct sl_options_t {
     uint8_t has_sun;       /* 96 */
     uint8_t lod_reference; /* 97 */
     uint8_t list;          /* 98 */
-    uint8_t _pad0[5];      /* 99 */
+    uint8_t
+        at_given; /* 99: --at, whose z is then used as it is; without it the feet go on the ground at SL_AT_DEFAULT's x and y */
+    uint8_t _pad0[4]; /* 100 */
 } sl_options_t;
 static_assert(sizeof(sl_options_t) == 104);
 
@@ -636,13 +642,33 @@ static bool sl_png_write(sl_t *sl, const char *path) {
     return true;
 }
 
+/* The block the feet are in: --at's z, or else the one above the column's top block at --at's x and y, as the game puts a body on the ground
+ * (game_ground_z): the land moves under a fixed z when the terrain changes. */
+static int32_t sl_feet_z(game_t *game, const sl_options_t *options) {
+    if (options->at_given != 0u) {
+        return options->at[2];
+    }
+    return game_ground_z(game->borrowed_terrain, &game->borrowed_jobs[0], options->at[0], options->at[1]) + 1;
+}
+
+/* An eye inside a block sees only that block's inside: a picture of one colour, which is not sound. Said, so that it is not taken for a
+ * broken readback. */
+static void sl_eye_check(const sl_t *sl, const float64_t eye[3]) {
+    uint16_t block = BLOCK_ID_AIR;
+    const int32_t cell[3] = {(int32_t)floor(eye[0]), (int32_t)floor(eye[1]), (int32_t)floor(eye[2])};
+    if (world_map_block_get(&sl->borrowed_app->world.map, cell[0], cell[1], cell[2], &block) == WORLD_MAP_STATUS_OK &&
+        block != BLOCK_ID_AIR) {
+        LOG_WARN("bench_world_slope: the eye at %" PRId32 " %" PRId32 " %" PRId32 " is inside block %" PRIu32
+                 ", so the picture is that block's inside",
+                 cell[0], cell[1], cell[2], (uint32_t)block);
+    }
+}
+
 /* Opens the world at the spot with the row's settings, settles it, and runs the row. */
 static bool sl_run(sl_t *sl, const sl_row_t *row, const sl_options_t *options, sl_result_t *r) {
     app_t *const app = sl->borrowed_app;
     game_t *const game = &app->game;
     memset(r, 0, sizeof(*r));
-    const float64_t eye[3] = {(float64_t)options->at[0] + 0.5f64, (float64_t)options->at[1] + 0.5f64,
-                              (float64_t)options->at[2] + SL_EYE_ABOVE_FEET};
     game_init(game, &app->world, &app->terrain, &app->render, &app->job, &app->texture, &app->topology);
     game_ui_set(game, &app->ui);
     const uint32_t distance = row->render_distance;
@@ -670,6 +696,9 @@ static bool sl_run(sl_t *sl, const sl_row_t *row, const sl_options_t *options, s
         return false;
     }
     r->block_radius = game->view.block_radius;
+    r->feet_z = sl_feet_z(game, options);
+    const float64_t eye[3] = {(float64_t)options->at[0] + 0.5f64, (float64_t)options->at[1] + 0.5f64,
+                              (float64_t)r->feet_z + SL_EYE_ABOVE_FEET};
     r->sun_set_deg = options->has_sun != 0u ? options->sun_deg : row->sun_deg;
     game_clock_set(game, sl_clock_days(game->day_zero), sl_day_fraction_for(game->day_zero, eye[1], r->sun_set_deg));
     render_camera_start(&game->camera, eye[0], eye[1], eye[2], (float32_t)(options->yaw_deg * SL_DEGREES),
@@ -677,6 +706,7 @@ static bool sl_run(sl_t *sl, const sl_row_t *row, const sl_options_t *options, s
     const render_fly_input_t still = {0};
     game_fly(game, &still, 0.0f32);
     bool ok = game_settle(game);
+    sl_eye_check(sl, eye);
     ok = ok && sl_row(sl, options, r);
     if (ok) {
         r->vram_voxels = app->gpu_bridge.device_memory.pools[DEVICE_POOL_VOXELS].live_bytes;
@@ -693,10 +723,10 @@ static bool sl_run(sl_t *sl, const sl_row_t *row, const sl_options_t *options, s
 }
 
 static void sl_row_print(const sl_row_t *row, const sl_result_t *r) {
-    printf("ahmed_slope/%-9s %s  rd %" PRIu32 " r0 %" PRIu32
+    printf("ahmed_slope/%-9s %s  feet z %" PRId32 "  rd %" PRIu32 " r0 %" PRIu32
            " %ux%u sun %+.1f  card %.2f ms (p50 %.2f, p99 %.2f), %.2f "
            "Mcycles at %.0f MHz (%.0f-%.0f)\n",
-           row->name, r->ran != 0u ? (r->sound != 0u ? "ok" : "NOT SOUND") : "FAILED", r->render_distance,
+           row->name, r->ran != 0u ? (r->sound != 0u ? "ok" : "NOT SOUND") : "FAILED", r->feet_z, r->render_distance,
            r->block_radius, r->width, r->height, (libc_double_t)r->sun_set_deg, (libc_double_t)r->card_mean_ms,
            (libc_double_t)r->card_p50_ms, (libc_double_t)r->card_p99_ms, (libc_double_t)r->card_mcycles,
            (libc_double_t)r->card_mhz, (libc_double_t)r->card_mhz_low, (libc_double_t)r->card_mhz_high);
@@ -762,7 +792,7 @@ static bool sl_record(const sl_result_t *results, const sl_options_t *options) {
                 "%s\t%s\t%s\tahmed_slope/%s\t%" PRIX64 "\t%" PRId32 "\t%" PRId32 "\t%" PRId32
                 "\t%.1f\t%.1f\t%.1f\t%" PRIu32 "\t%" PRIu32 "\t%" PRIu32 "\t%" PRIu32 "\t%" PRIX32 "\t%u",
                 date, options->label != nullptr ? options->label : "-", sl_preset_name(), SL_ROW_LIST[i].name,
-                options->seed, options->at[0], options->at[1], options->at[2], (libc_double_t)options->yaw_deg,
+                options->seed, options->at[0], options->at[1], r->feet_z, (libc_double_t)options->yaw_deg,
                 (libc_double_t)options->pitch_deg, (libc_double_t)r->sun_set_deg, r->render_distance, r->block_radius,
                 r->width, r->height, options->features_off, (uint32_t)options->lod_reference);
         const float64_t numbers[] = {
@@ -813,7 +843,7 @@ static void sl_usage(const char *program) {
         "          [--block-radius <chunks>] [--render-scale <percent>] [--lod-reference] [--features-off <hex>]\n"
         "          [--steps <file.tsv>] [--record <file>] [--label <text>] [--shots <dir>] [--list]\n"
         "  --only <text>          the rows whose name holds this, or =<name>,<name>... (with or without ahmed_slope/)\n"
-        "  --at <x> <y> <z>       the block the feet are in, as F3 says: -385 347 2 unless this\n"
+        "  --at <x> <y> <z>       the block the feet are in, as F3 says: x -385 y 347 on the ground unless this\n"
         "  --seed <n>             the world's seed: saves/test_7's unless this\n"
         "  --look <yaw> <pitch>   degrees, 0 east and 90 north, pitch up: the fit to 5.png unless this\n"
         "  --sun <degrees>        the sun's elevation in place of the row's, on day 92, as the clock gives it here\n"
@@ -879,6 +909,7 @@ static bool sl_parse(int32_t argc, char **argv, sl_options_t *out) {
             for (uint32_t k = 0u; k < 3u; k++) {
                 out->at[k] = (int32_t)strtol(argv[++i], nullptr, 10);
             }
+            out->at_given = 1u;
         } else {
             return false;
         }
@@ -966,11 +997,12 @@ static int32_t sl_process(const sl_options_t *options, uint32_t row, bool say_ca
     if (sl_start(&sl, options->seed, wide ? SL_VOXELS_WIDE_MIB : SL_VOXELS_MIB)) {
         if (say_card) {
             const device_memory_t *const memory = &sl.borrowed_app->gpu_bridge.device_memory;
-            printf("build %s, seed %" PRIX64 ", at %" PRId32 " %" PRId32 " %" PRId32
-                   ", look %.1f %.1f, %ux%u, card %s\n",
-                   sl_preset_name(), options->seed, options->at[0], options->at[1], options->at[2],
-                   (libc_double_t)options->yaw_deg, (libc_double_t)options->pitch_deg, SL_WIDTH, SL_HEIGHT,
-                   memory->device_name);
+            char z[16];
+            (void)snprintf(z, sizeof(z), "%" PRId32, options->at[2]);
+            printf("build %s, seed %" PRIX64 ", at %" PRId32 " %" PRId32 " %s, look %.1f %.1f, %ux%u, card %s\n",
+                   sl_preset_name(), options->seed, options->at[0], options->at[1],
+                   options->at_given != 0u ? z : "(on the ground)", (libc_double_t)options->yaw_deg,
+                   (libc_double_t)options->pitch_deg, SL_WIDTH, SL_HEIGHT, memory->device_name);
             (void)fflush(stdout);
         }
         const bool ran = sl_run(&sl, &SL_ROW_LIST[row], options, result);

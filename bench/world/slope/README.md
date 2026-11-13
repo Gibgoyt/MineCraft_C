@@ -22,7 +22,9 @@ One row, one experiment, one wrapper call: plan 005 phase 8 saw a whole run slow
 
 ## The rows
 
-The spot is `--at -385 347 2` (F3's feet block of 5.png; the eye 1.62 above it), the seed `saves/test_7/world.meta`'s, `14148492376765118422` (that world's save was written while 5.png was taken, at 14:51 on 2026-11-12), the view `--look 8 34` (yaw 8, 0 east and 90 north; pitch 34 up), fitted by eye to 5.png over five shots (the peak with red flowers, the striped slope, the shadowed hollow and the tree at the right fall where they do in 5.png), the date day 92 of year 1 as on 5.png, 1920 x 1080, field of view 70, level 0 as the game works it out (27 chunks at E 2; it was full detail 32 before plan 009 phase 04), every effect of play but god rays: his settings. The sun is put where the rows say by the world clock on that day at the eye's latitude, so its azimuth is the clock's: the evening for one below the horizon, the morning for one above. The day does not go on.
+The spot is x -385, y 347 (F3 of 5.png; the feet on the ground there, see below, and the eye 1.62 above them), the seed `saves/test_7/world.meta`'s, `14148492376765118422` (that world's save was written while 5.png was taken, at 14:51 on 2026-11-12), the view `--look 8 34` (yaw 8, 0 east and 90 north; pitch 34 up), fitted by eye to 5.png over five shots (the peak with red flowers, the striped slope, the shadowed hollow and the tree at the right fall where they do in 5.png), the date day 92 of year 1 as on 5.png, 1920 x 1080, field of view 70, level 0 as the game works it out (27 chunks at E 2; it was full detail 32 before plan 009 phase 04), every effect of play but god rays: his settings. The sun is put where the rows say by the world clock on that day at the eye's latitude, so its azimuth is the clock's: the evening for one below the horizon, the morning for one above. The day does not go on.
+
+**The land moved under the spot.** 5.png's feet block was at z = 2 on the land of its day. Plan 007 phase 03's land stands 301 high at x -385, y 347, so from then the eye at z 3.62 was 300 blocks inside stone and every row's picture was one colour, `NOT SOUND`, at every scale and eye height under 301 (hash 08C740299C6F4325 at night). Since plan 009 phase 07, without `--at`, the feet go on the ground at that x and y: the block above the column's top block (`game_ground_z`, as the game puts a body on the ground), z 302 today, which the row's line and its history line say. The view from there is not 5.png's: rows from before and after are not like with like. With `--at`, its z is used as it is, and an eye inside a block is said in the log.
 
 | Row | Render distance | Sun |
 |---|---|---|
@@ -35,7 +37,7 @@ Each row settles the world, draws 30 warm pictures and 240 measured ones, with t
 ## Flags
 
 - `--only <text>`: the rows whose name holds this, or `=<name>,...` for just those, with or without `ahmed_slope/`.
-- `--at <x> <y> <z>`, `--seed <n>`: another spot or world.
+- `--at <x> <y> <z>`, `--seed <n>`: another spot or world. Without `--at`, x -385, y 347, on the ground.
 - `--look <yaw> <pitch>`: degrees, the game's convention (`run/src/render/frame/README.md`).
 - `--sun <degrees>`: the sun's elevation in place of the row's.
 - `--block-radius <chunks>`: level 0 held this far, in place of what the game works out, a reference tool (it was `--full-detail` before plan 009 phase 04; the table is sized for it). Past 32, at render distance 64, and with `--lod-reference`, the row takes the game's own voxel budget, 6144 MiB (`config/machine.yaml`), not the 3456 the rest keep under 4 GiB: at 48 the table is 97 columns wide and its pool about 5.9 GiB.
