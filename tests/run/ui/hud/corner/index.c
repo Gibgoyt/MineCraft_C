@@ -762,7 +762,7 @@ TEST(in_the_real_game_the_corner_shows_what_the_sim_worked_out) {
     const float64_t y0 = 6383.0f64, x0 = 0.0f64;
     climate_prepare_area(rig.climate, rig.job, (int32_t)x0 - 1100, (int32_t)y0 - 1100, (int32_t)x0 + 1100,
                          (int32_t)y0 + 1100, nullptr, nullptr);
-    float64_t place[2];
+    float64_t place[2] = {0.0f64, 0.0f64}; /* set, so that tsan's -Werror=maybe-uninitialized sees it */
     REQUIRE(rig_find_hurricane_season(&rig, x0, y0, 250.0f32, place));
     climate_prepare_area(rig.climate, rig.job, (int32_t)place[0] - RIG_WEATHER_REACH,
                          (int32_t)place[1] - RIG_WEATHER_REACH, (int32_t)place[0] + RIG_WEATHER_REACH,
