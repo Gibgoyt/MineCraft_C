@@ -58,10 +58,12 @@ static const uint64_t FEA_DIGEST_OF_GENERATOR[] = {
      * this row's old value, 0x963084164D7E4DAE).
      * Plan 006 phase 03 moved the biomes (biomes follow the climate) and so the land: 0x3FDD8CCBDFEA453B, putting back this
      * row's old value, 0xCFD3A129B38458E6. Plan 007 phase 03's plateaus, escarpments and long ranges moved the land again,
-     * and the biomes read the biome height, ground less lift: the value below, putting back 0x3FDD8CCBDFEA453B. Both are
-     * written here for now, while the version stays 1: the joint final check of plan 006 phase 05 and plan 007 phase 06
-     * raises it once and gives this value row 2. Meanwhile a world saved on the old land opens on the new. */
-    0xA73E3EF2016E4EE3ull,
+     * and the biomes read the biome height, ground less lift: 0xA73E3EF2016E4EE3, putting back 0x3FDD8CCBDFEA453B. Plan 007
+     * phase 04's slope shaping, summit rock, knobs, gentler hills and no foothills moved it again: the value below, putting
+     * back 0xA73E3EF2016E4EE3. All are written here for now, while the version stays 1: the joint final check of plan 006
+     * phase 05 and plan 007 phase 06 raises it once and gives this value row 2. Meanwhile a world saved on the old land opens
+     * on the new. */
+    0xFDF54F0635ADEE5Aull,
 };
 static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0]) == TERRAIN_GENERATOR_VERSION + 1u);
 /* Plan 003 phase 8 stage 3 moved the coast and the rivers. */
@@ -83,7 +85,8 @@ static_assert(sizeof(FEA_DIGEST_OF_GENERATOR) / sizeof(FEA_DIGEST_OF_GENERATOR[0
 /* Plan 006 phase 03: biomes follow the climate (the family from the climate at the column's height first, then the box within it), so
  * the biomes, and the surface and features they lay, moved; height, density, hydrology, caves and ores did not (their pins hold). */
 /* Plan 007 phase 03: plateaus, escarpments and long ranges moved the land. Its old value 0x703627B51572B80C. */
-static const uint64_t FEA_FOREST_PIN = 0x7745E8634869CCBAull;
+/* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground. Its old value 0x7745E8634869CCBA. */
+static const uint64_t FEA_FOREST_PIN = 0xB1F782D0CD44F880ull;
 
 static uint64_t fea_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

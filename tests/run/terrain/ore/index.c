@@ -51,7 +51,8 @@ static const uint64_t ORE_WORLD = 0x1234567890ABCDEFull;
  * file at a rate of 0 gave the pin before. */
 /* Plan 005 phase 6 added twelve station blocks. The land is the same, as the digest over the numbers before them showed: the numbers of
  * the blocks after them in the alphabet moved. */
-static const uint64_t ORE_DIGEST_PIN = 0x7E24EC83BDAC1B5Bull;
+/* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground, and the rock the veins lie in with it. Its old value 0x7E24EC83BDAC1B5B. */
+static const uint64_t ORE_DIGEST_PIN = 0xF20FF176125D18AEull;
 
 static uint64_t ore_digest(uint64_t hash, const void *memory, uint64_t bytes) {
     const uint8_t *const data = memory;

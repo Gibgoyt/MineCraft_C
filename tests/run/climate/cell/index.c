@@ -24,7 +24,9 @@ static const uint64_t CELL_SEED = 0x1234567890ABCDEFull;
 /* Moved by plan 004 phase 05, which fills t_mean, rain, snow balance, class and seasons, and sets the monsoon and
  * hurricane-coast flags (from 0x4950918E191FF004). */
 /* Plan 007 phase 03: plateaus, escarpments and long ranges moved the ground the cells read through the height estimate. */
-static const uint64_t CELL_DIGEST_PIN = 0x7B07FA060A4F840Eull;
+/* Plan 007 phase 04: slope shaping, summit rock, knobs, gentler hills and no foothills moved the ground the cells read. Its
+ * old value 0x7B07FA060A4F840E. */
+static const uint64_t CELL_DIGEST_PIN = 0x809BAD24EE9E4DA8ull;
 /* Phase 03's own flags, what these tests check: phase 05 adds the monsoon and hurricane-coast flags beside them. */
 static const uint8_t CELL_KIND_FLAGS = CLIMATE_CELL_SEA | CLIMATE_CELL_LAKE | CLIMATE_CELL_LAKE_SMALL;
 

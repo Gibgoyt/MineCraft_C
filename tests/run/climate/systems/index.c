@@ -25,7 +25,9 @@
  * of every list of one_and_sixteen_workers_give_the_same_lists, on seed 0x1234567890ABCDEF. Moved by the final check
  * (phase 06 Issues found 22): hurricanes need sea at the point only, at 0.3 a square-day; it was 0x69B94D8AD6C147C9. */
 /* Plan 007 phase 03: plateaus, escarpments and long ranges moved the ground, so the cells, so the systems. */
-static const uint64_t SYS_DIGEST_PIN = 0xF3A6A0AFA861A1D2ull;
+/* Plan 007 phase 04: slope shaping, knobs and gentler hills moved the ground, so the cells, so the systems. Its old value
+ * 0xF3A6A0AFA861A1D2. */
+static const uint64_t SYS_DIGEST_PIN = 0x70F3E27238A79D91ull;
 static const uint64_t SYS_SEED = 0x1234567890ABCDEFull;
 static const uint64_t SYS_ARENA_BYTES = 8ull << 20;
 /* 15 degrees north, 45 north, 45 south and 45 north in a strip mirrored past the pole (e = -1). */

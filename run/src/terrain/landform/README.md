@@ -50,7 +50,7 @@ So a column climbing out of the coastal plain meets a pediment at about 5:1, tie
 | `landform/uplift` | 24576 | 3 | 0.5 | 0.35 | each node, at the point the warp moves it to |
 | `landform/edge_x`, `landform/edge_y` | 2048 | 2 | 0.5 | 0.39 | each node; each moves the point up to 700 blocks |
 | `landform/rugged` | 3072 | 2 | 0.5 | 0.39 | each node, where it is: `G = 0.5 + 0.5 * spread`, from 0 to 1 |
-| `relief/knobs` | 320 | 2 | 0.5 | 0.39 | each land column: `K = spread`; `sigma = 0.5 + 0.5 * spread(second octave alone, 0.17)` |
+| `relief/knobs` | 640 (master 3.7: 320; see the density README) | 2 | 0.5 | 0.39 | each land column: `K = spread`; `sigma = 0.5 + 0.5 * spread(second octave alone, 0.17)` |
 | `landform/peak` | 48 | 2 | 0.5 | 0.39 | each column high on a range (envelope over 0.6): `spread`, whose ridged `1 - |n|` the density uses |
 
 A limit is about twice the field's measured standard deviation: `tests/run/terrain/landform/` prints them. A node costs 9 octaves. `sigma` is the knob field's second octave, what is left when `terrain_noise_sample_points_split` takes the first away, so it costs no more noise. What the density makes of `G`, `K`, `sigma` and the summit field is in `run/src/terrain/density/README.md`.
