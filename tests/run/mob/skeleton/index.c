@@ -1121,6 +1121,18 @@ static bool msk_game_ticks(display_headless_scene_t *scene, display_script_state
     return true;
 }
 
+/* The stacks lying on the pad cleared round (pad_x, pad_y): 14 blocks each way. */
+static uint32_t msk_drops_on_pad(const item_drop_store_t *drops, int32_t pad_x, int32_t pad_y) {
+    uint32_t count = 0u;
+    for (uint32_t i = 0u; i < drops->count; i++) {
+        const float64_t *const at = drops->borrowed_items[i].position;
+        count += fabs(at[0] - ((float64_t)pad_x + 0.5f64)) <= 15.0f64 && fabs(at[1] - ((float64_t)pad_y + 0.5f64)) <= 15.0f64
+                     ? 1u
+                     : 0u;
+    }
+    return count;
+}
+
 /* All of the wiring in run/src/game/, on its own tick: the skeleton thinks, its arrow is drawn and flies, a real player is hurt and
  * knocked about, and a dead skeleton leaves its drops for that player's world. */
 TEST(in_a_real_game_a_skeleton_shoots_the_player_and_leaves_its_drops) {
@@ -1148,16 +1160,11 @@ TEST(in_a_real_game_a_skeleton_shoots_the_player_and_leaves_its_drops) {
             }
         }
     }
-    /* Whatever the clearing left lying (the land's), so that what follows counts only the skeleton's: the land past the pad
-     * can go on dropping for a while (a plant or block left without its support pops a tick or more after), so it waits
-     * until the count has held for 60 ticks, at most 600 (on plan 007 phase 03's land one came while the skeleton drew). */
     REQUIRE(msk_game_ticks(&scene, state, &tick, 10u));
-    uint32_t drops_before = rig.entity->item_drops.count;
-    for (uint32_t held = 0u, waited = 0u; held < 60u && waited < 600u; waited += 10u) {
-        REQUIRE(msk_game_ticks(&scene, state, &tick, 10u));
-        held = rig.entity->item_drops.count == drops_before ? held + 10u : 0u;
-        drops_before = rig.entity->item_drops.count;
-    }
+    /* Whatever the clearing left lying on the pad, so that what follows counts only the skeleton's. Only the pad's: the land
+     * round it goes on dropping on its own (on plan 007 phase 03's land, saplings 25 to 60 blocks off came while the skeleton
+     * drew, from leaves decaying), which is the land's and no business of this test's. */
+    const uint32_t drops_before = msk_drops_on_pad(&rig.entity->item_drops, pad_x, pad_y);
     const float64_t *const feet = rig.player->movement.position;
     const mob_def_t *const def = &mob_defs[MOB_ID_SKELETON];
     const entity_store_spawn_t body = {
@@ -1174,14 +1181,16 @@ TEST(in_a_real_game_a_skeleton_shoots_the_player_and_leaves_its_drops) {
     REQUIRE(msk_game_ticks(&scene, state, &tick, MOB_SKELETON_DRAW_TICKS + 1u));
     CHECK_EQ_U64(rig.mob->skeleton.shot_count, 1u);
     REQUIRE(rig.entity->projectiles.count == 1u);
-    CHECK_EQ_U64(rig.entity->item_drops.count, drops_before);
-    /* The arrow, and the six parts of what shot it, and what lies there. */
+    CHECK_EQ_U64(msk_drops_on_pad(&rig.entity->item_drops, pad_x, pad_y), drops_before);
+    /* The arrow, and the six parts of what shot it, and what lies on the pad; what lies off it may be drawn too, unless it came
+     * this tick, after the frame's snapshot. */
     uint32_t drawn = 0u;
     for (uint32_t i = 0u; i < RENDER_EXCHANGE_SLOTS; i++) {
         const uint32_t count = rig.render->borrowed_entities->slots[i].count;
         drawn = count > drawn ? count : drawn;
     }
-    CHECK_EQ_U64(drawn, 1u + MOB_SKELETON_PART_COUNT + drops_before);
+    CHECK(drawn >= 1u + MOB_SKELETON_PART_COUNT + drops_before);
+    CHECK(drawn <= 1u + MOB_SKELETON_PART_COUNT + rig.entity->item_drops.count);
 
     const float32_t health = rig.player->survival.health;
     const uint64_t hurts = rig.player->survival.hurt_count;
