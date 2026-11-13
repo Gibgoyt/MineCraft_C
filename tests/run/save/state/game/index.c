@@ -785,6 +785,18 @@ TEST(an_autosave_with_no_edits_builds_no_far_column) {
     REQUIRE(save_world_capture_dirty(&save->world, &world->edit) == SAVE_WORLD_OK);
     game_far_changes_take(game);
     REQUIRE(game_settle(game));
+    /* And whatever else opening left to capture and build: on plan 007 phase 04's land a worker was still building after one
+     * capture and settle, and its time landed in the step below. Captured and settled again until no column more is built. */
+    for (uint32_t again = 0u; again < 16u; again++) {
+        const uint64_t before = lod->stats.columns_built;
+        const uint64_t before_ns = lod->stats.build_ns;
+        REQUIRE(save_world_capture_dirty(&save->world, &world->edit) == SAVE_WORLD_OK);
+        game_far_changes_take(game);
+        REQUIRE(game_settle(game));
+        if (lod->stats.columns_built == before && lod->stats.build_ns == before_ns) {
+            break;
+        }
+    }
     const uint64_t built = lod->stats.columns_built;
     const uint32_t unchanged = save->world.borrowed_far->unchanged;
 

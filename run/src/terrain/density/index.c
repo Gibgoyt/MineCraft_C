@@ -37,13 +37,15 @@ static const density_knot_t DENSITY_KNOTS_CONTINENTAL[] = {
 /* The soft shaping curve, m^1.6 at its knots: a range on rolling ground, gentle at its foot and only a little steeper at its
  * top. The knots at tenths beside master 3.6's table hold the spline's slope near the power curve's (README). */
 static const density_knot_t DENSITY_KNOTS_SOFT[] = {
-    {0.0f64, 0.0f64},   {0.1f64, 0.025f64}, {0.2f64, 0.076f64}, {0.3f64, 0.146f64},  {0.4f64, 0.231f64}, {0.5f64, 0.33f64},
-    {0.6f64, 0.442f64}, {0.7f64, 0.565f64}, {0.8f64, 0.7f64},   {0.9f64, 0.845f64}, {0.95f64, 0.921f64}, {1.0f64, 1.0f64},
+    {0.0f64, 0.0f64},   {0.1f64, 0.025f64}, {0.2f64, 0.076f64},  {0.3f64, 0.146f64},
+    {0.4f64, 0.231f64}, {0.5f64, 0.33f64},  {0.6f64, 0.442f64},  {0.7f64, 0.565f64},
+    {0.8f64, 0.7f64},   {0.9f64, 0.845f64}, {0.95f64, 0.921f64}, {1.0f64, 1.0f64},
 };
 /* The sharp one, m^3: an alpine range, a long gentle apron and a steep top. */
 static const density_knot_t DENSITY_KNOTS_SHARP[] = {
-    {0.0f64, 0.0f64},   {0.1f64, 0.001f64}, {0.2f64, 0.008f64}, {0.3f64, 0.027f64},  {0.4f64, 0.064f64}, {0.5f64, 0.125f64},
-    {0.6f64, 0.216f64}, {0.7f64, 0.343f64}, {0.8f64, 0.512f64}, {0.9f64, 0.729f64}, {0.95f64, 0.857f64}, {1.0f64, 1.0f64},
+    {0.0f64, 0.0f64},   {0.1f64, 0.001f64}, {0.2f64, 0.008f64},  {0.3f64, 0.027f64},
+    {0.4f64, 0.064f64}, {0.5f64, 0.125f64}, {0.6f64, 0.216f64},  {0.7f64, 0.343f64},
+    {0.8f64, 0.512f64}, {0.9f64, 0.729f64}, {0.95f64, 0.857f64}, {1.0f64, 1.0f64},
 };
 /* A koppie: steep sides and a flat top, like the Highveld's. Master 3.7. */
 static const density_knot_t DENSITY_KNOTS_KOPPIE[] = {
@@ -278,15 +280,14 @@ static float64_t density_range_reach(const terrain_density_t *density, float32_t
 
 /* How much of a range stands here, body, from 0 to 1. */
 static float64_t density_body(const terrain_density_t *density, float32_t broad, float32_t range, float32_t massif) {
-    return density_range_reach(density, broad, range) *
-           terrain_density_spline_at(&density->massif, (float64_t)massif);
+    return density_range_reach(density, broad, range) * terrain_density_spline_at(&density->massif, (float64_t)massif);
 }
 
 /* The range's envelope m, body less what a crest's side valleys cut, which cut deep only high up a range: their depth goes
  * with body, so the foothills stay smooth. */
 static float64_t density_envelope(const terrain_density_t *density, float64_t body, float32_t crest) {
-    return body *
-           (1.0f64 - DENSITY_CREST_DEPTH * body * (1.0f64 - terrain_density_spline_at(&density->crest, density_fold(crest))));
+    return body * (1.0f64 - DENSITY_CREST_DEPTH * body *
+                                (1.0f64 - terrain_density_spline_at(&density->crest, density_fold(crest))));
 }
 
 float64_t terrain_density_shape_at(const terrain_density_t *density, float64_t envelope, float64_t rugged) {
@@ -340,8 +341,9 @@ terrain_density_profile_t terrain_density_profile_from(const terrain_density_t *
         terrain_density_spline_at(&density->hill_sea, continentalness) * DENSITY_HILL_BLOCKS_SEA;
 
     /* A range stands on the plateau and rises at most to DENSITY_RANGE_TOP above the base, whatever the plateau. */
-    const float64_t height = base + lift + (DENSITY_RANGE_TOP - lift) * terrain_density_shape_at(density, envelope, rugged) +
-                             peak + knob + hill_blocks * (float64_t)inputs->hills;
+    const float64_t height = base + lift +
+                             (DENSITY_RANGE_TOP - lift) * terrain_density_shape_at(density, envelope, rugged) + peak +
+                             knob + hill_blocks * (float64_t)inputs->hills;
     /* Faces and rugged high ground are rough for the 3D noise: its overhangs go to escarpments and ranges, not plains. */
     float64_t rough = DENSITY_FACE_SOFTNESS * (float64_t)inputs->face + DENSITY_RUGGED_SOFTNESS * rugged * envelope;
     rough = rough > 1.0f64 ? 1.0f64 : rough;

@@ -172,8 +172,8 @@ TEST(splines_go_through_their_knots_and_never_past_them) {
                          {1.0f64, 1.0f64});
     DENSITY_CHECK_SPLINE(crest, {0.0f64, 0.5f64}, {0.4f64, 0.66f64}, {0.8f64, 0.94f64}, {1.0f64, 1.0f64});
     DENSITY_CHECK_SPLINE(soft, {0.0f64, 0.0f64}, {0.1f64, 0.025f64}, {0.2f64, 0.076f64}, {0.3f64, 0.146f64},
-                         {0.4f64, 0.231f64}, {0.5f64, 0.33f64}, {0.6f64, 0.442f64}, {0.7f64, 0.565f64}, {0.8f64, 0.7f64},
-                         {0.9f64, 0.845f64}, {0.95f64, 0.921f64}, {1.0f64, 1.0f64});
+                         {0.4f64, 0.231f64}, {0.5f64, 0.33f64}, {0.6f64, 0.442f64}, {0.7f64, 0.565f64},
+                         {0.8f64, 0.7f64}, {0.9f64, 0.845f64}, {0.95f64, 0.921f64}, {1.0f64, 1.0f64});
     DENSITY_CHECK_SPLINE(sharp, {0.0f64, 0.0f64}, {0.1f64, 0.001f64}, {0.2f64, 0.008f64}, {0.3f64, 0.027f64},
                          {0.4f64, 0.064f64}, {0.5f64, 0.125f64}, {0.6f64, 0.216f64}, {0.7f64, 0.343f64},
                          {0.8f64, 0.512f64}, {0.9f64, 0.729f64}, {0.95f64, 0.857f64}, {1.0f64, 1.0f64});
@@ -206,8 +206,8 @@ static terrain_density_profile_t density_expected_profile(const terrain_density_
     const float64_t m = body * crest_share;
     const float64_t lift = 650.0f64 * (float64_t)in->plateau;
     const float64_t g = (float64_t)in->rugged;
-    const float64_t shape = (1.0f64 - g) * terrain_density_spline_at(&density->soft, m) +
-                            g * terrain_density_spline_at(&density->sharp, m);
+    const float64_t shape =
+        (1.0f64 - g) * terrain_density_spline_at(&density->soft, m) + g * terrain_density_spline_at(&density->sharp, m);
     const float64_t w = m > 0.6f64 ? (m - 0.6f64) / 0.4f64 : 0.0f64;
     const float64_t peak = m > 0.6f64 ? 40.0f64 * w * w * w * (1.0f64 - fabs((float64_t)in->peak)) : 0.0f64;
     const float64_t land = terrain_density_spline_at(&density->hill_land, c);
@@ -219,7 +219,8 @@ static terrain_density_profile_t density_expected_profile(const terrain_density_
                ((1.0f64 - g) * dome + g * terrain_density_spline_at(&density->koppie, k)) * (1.0f64 - body) * land;
     }
     const float64_t hill =
-        land * valley * (6.0f64 + 24.0f64 * terrain_density_spline_at(&density->hill_relief, e) * (0.5f64 + 0.5f64 * g)) +
+        land * valley *
+            (6.0f64 + 24.0f64 * terrain_density_spline_at(&density->hill_relief, e) * (0.5f64 + 0.5f64 * g)) +
         terrain_density_spline_at(&density->hill_sea, c) * 6.0f64;
     const float64_t rough = fmin(1.0f64, 0.5f64 * (float64_t)in->face + 0.3f64 * g * m);
     return (terrain_density_profile_t){
@@ -734,13 +735,13 @@ TEST(peaks_add_nothing_below_sixty_percent) {
         const terrain_density_profile_t with = terrain_density_profile_from(density, &inputs);
         inputs.peak = 1.0f32;
         const terrain_density_profile_t without = terrain_density_profile_from(density, &inputs);
-        const float64_t body =
-            terrain_density_spline_at(&density->range_land, (float64_t)inputs.broad) *
-            terrain_density_spline_at(&density->flank, 1.0f64 - fabs((float64_t)inputs.range)) *
-            terrain_density_spline_at(&density->massif, (float64_t)inputs.massif);
+        const float64_t body = terrain_density_spline_at(&density->range_land, (float64_t)inputs.broad) *
+                               terrain_density_spline_at(&density->flank, 1.0f64 - fabs((float64_t)inputs.range)) *
+                               terrain_density_spline_at(&density->massif, (float64_t)inputs.massif);
         const float64_t m =
-            body * (1.0f64 - 0.5f64 * body *
-                                 (1.0f64 - terrain_density_spline_at(&density->crest, 1.0f64 - fabs((float64_t)inputs.crest))));
+            body * (1.0f64 -
+                    0.5f64 * body *
+                        (1.0f64 - terrain_density_spline_at(&density->crest, 1.0f64 - fabs((float64_t)inputs.crest))));
         const float64_t rock = (float64_t)with.height - (float64_t)without.height;
         if (m <= 0.6f64) {
             low++;
@@ -750,7 +751,8 @@ TEST(peaks_add_nothing_below_sixty_percent) {
         }
         most = rock > most ? rock : most;
     }
-    printf("%" PRIu64 " inputs at m 0.6 or less, %" PRIu64 " above; the most rock %.2f\n", low, high, (libc_double_t)most);
+    printf("%" PRIu64 " inputs at m 0.6 or less, %" PRIu64 " above; the most rock %.2f\n", low, high,
+           (libc_double_t)most);
     CHECK_EQ_U64(low_moved, 0u);
     CHECK(high > 1000u);
     CHECK(most > 20.0f64 && most <= 40.001f64);
@@ -854,16 +856,19 @@ TEST(plateau_tops_have_one_surface) {
         float32_t range = 0.0f32;
         terrain_noise_sample_points(density->borrowed_range, &xs[i], &ys[i], &z, 1u, &range);
         const float64_t reach = terrain_density_spline_at(&density->range_land, (float64_t)fields.broad) *
-                                terrain_density_spline_at(&density->flank,
-                                                          1.0f64 - fabs((float64_t)density_expected_spread(range, 0.36f64)));
+                                terrain_density_spline_at(
+                                    &density->flank, 1.0f64 - fabs((float64_t)density_expected_spread(range, 0.36f64)));
         if (shape.face != 0.0f64 || reach != 0.0f64) {
             continue;
         }
         found++;
         soft += softness[i] <= 6.0f32 ? 1u : 0u;
-        const terrain_density_box_t box = {
-            .origin_x = (int32_t)xs[i], .origin_y = (int32_t)ys[i], .origin_z = -100, .count_x = 1u, .count_y = 1u,
-            .count_z = TALL};
+        const terrain_density_box_t box = {.origin_x = (int32_t)xs[i],
+                                           .origin_y = (int32_t)ys[i],
+                                           .origin_z = -100,
+                                           .count_x = 1u,
+                                           .count_y = 1u,
+                                           .count_z = TALL};
         terrain_density_fill_box(density, &box, blocks);
         uint32_t changes = 0u;
         for (uint32_t k = 0u; k + 1u < TALL; k++) {
