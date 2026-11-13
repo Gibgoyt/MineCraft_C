@@ -1,6 +1,6 @@
 # 009-ahmed-bohemoth-game-engine-optimizations — phase 7: Temporal upscaling
 
-**Status:** in progress: the upscale kernel, its tests and the ladder hookup built; convergence bounds not met (Issues found); measurements, checkerboard and Ahmed's gate still to come   (updated 2026-11-13)
+**Status:** built and measured; not all targets met. The upscale kernel, its tests and the ladder hookup are in. The convergence bounds and 75 % ≤ 62 % are not met (Issues found, Results). Checkerboard was not built. Ahmed's gate is still to come   (updated 2026-11-13)
 
 Read first: the phase 00 file, then the master: sections 3.1 (TSR), 3.5, 4.7, 5 and 7. Then:
 
@@ -114,7 +114,7 @@ A switch `checkerboard` in `render/temporal`. Primary and shade run on half the 
 - [ ] Convergence test at 75 % and 50 % (32 frames, mean ≤ 1 / 255, p99.9 ≤ 8 / 255): the test is built and runs, but the bounds are not met. See Issues found
 - [x] Moving-camera ghost test
 - [x] 100 % pictures unchanged (golden pictures, settled hashes)
-- [ ] His spot at 100 / 85 / 75 / 50 %: ray passes ms in Results; 75 % ≤ 62 % of 100 %
+- [ ] His spot at 100 / 85 / 75 / 50 %: ray passes ms in Results; 75 % ≤ 62 % of 100 %. Measured, in Results: 75 % is 67 % by cycles, so the target is not met, and the bench's saved picture is black (Results)
 - [ ] Checkerboard measured; kept or deleted
 - [x] Plan 008's ladder uses temporal upscaling for rungs below 100 %
 - [x] `cuda/src/post/README.md` "The temporal pass" rewritten for output-resolution accumulation
@@ -122,13 +122,18 @@ A switch `checkerboard` in `render/temporal`. Primary and shade run on half the 
 
 ## Results (filled in by this phase)
 
-| Scale | Coarse + primary + shade ms | Post ms | Card total | Against 100 % |
-|---|---|---|---|---|
-| 100 % | | | | — |
-| 85 % | | | | |
-| 75 % | | | | |
-| 50 % | | | | |
-| Checkerboard | | | | |
+`bench_world_slope --only night-64 --render-scale N`, profile build, 2026-11-13, on `main` 150986d6 plus this branch. Each row is ms at that run's mean card clock, then Mcycles (ms × MHz), because the clock moved from 883 to 1405 MHz between runs. "Against 100 %" compares the ray passes in Mcycles.
+
+| Scale | Coarse + primary + shade ms (Mcycles) | Post ms (Mcycles) | Card total ms | Card MHz (range) | Against 100 % |
+|---|---|---|---|---|---|
+| 100 % | 5.14 (4.54) | 0.52 (0.46) | 6.93 | 883 (669-1008) | — |
+| 85 % | 3.48 (3.90) | 0.57 (0.64) | 5.31 | 1120 (933-1275) | 86 % |
+| 75 % | 2.71 (3.03) | 0.50 (0.56) | 4.48 | 1119 (984-1240) | **67 %** |
+| 71 % (checkerboard's ray count) | 2.52 (2.53) | 0.55 (0.55) | 4.35 | 1004 (793-1140) | 56 % |
+| 50 % | 1.18 (1.66) | 0.30 (0.42) | 2.76 | 1405 (1166-1483) | 37 % |
+| Checkerboard | not built | | | | |
+
+**75 % is 67 % of 100 %'s ray passes by cycles, against the plan's 62 %.** That is not met, and the clock moving between runs makes the cycle numbers rough, as part of the work is bound by memory and not by the clock. By milliseconds alone, 75 % is 53 %. The gather costs about 0.1 Mcycles more than the pass at 100 % (0.56 against 0.46). Level 0's radius falls with the rung (27, 23, 21, 15 chunks), because θ grows by 1 / scale. The bench's rows read **NOT SOUND** because the picture it saves is black at every scale and eye height, with TAA on or off (the same hash, 08C740299C6F4325), while the card's passes clearly run. This also happens with TAA off at 100 %, so it is not this phase's: Ahmed's spot or the bench's picture capture after plan 007 phase 03 and 008 phase 05 needs a look. The pass times are still the card's.
 
 ## Tests
 
@@ -184,6 +189,8 @@ His answers are recorded below.
 
 Appended as they land:
 
+- 76826810 Gather a picture drawn smaller at the output's size, plan 009 phase 07 (the kernel, the 16-point jitter, the history's weight, the frame hookup, the tests, the READMEs). Verified on `main` 150986d6: the 14 tests `render_feature_*` and `run_render_frame` pass, as do `standards_lint` and `clang_format`.
+
 ## Issues found
 
 **Plan 008 phase 05 is on `main`** (cdb81467, 0b616f50). This phase is built on its rungs, on `main` at 150986d6.
@@ -213,5 +220,13 @@ Why the bounds are not met:
 **100 % unchanged:** at a steady 100 % the pass runs the same lines with the same inputs. `render_feature_post`'s goldens and its "same frames, same bytes" test pass, as do `run_render_frame`'s goldens and scripted-bytes test.
 
 **Checkerboard was not built.** It needs a parity mask in `cuda/src/traverse/` and `cuda/src/shade/` index math, and phases 05 and 06 are editing those files in parallel. The ray cost of half the output's pixels is that of the 71 % rung (√0.5). Its accumulation would be cheaper than the gather, but each pixel would be a frame old under motion. It is left unticked, not deleted, as there is nothing to delete.
+
+**The frame pool's budget goes from 256 to 288 MiB** (`config/machine.yaml`, `gpu.budget.frames_mib`). With the history's weight, render distance 64 at 1080p no longer opened: "far hits: over this pool's budget". The two history blocks grew by 16.6 MB. The card has 7398 MiB free against a budget now of 6688.
+
+**Ahmed's gate is not done.** The default stays 100 (Q9), as no one has seen 75 % yet. Ahmed is to run:
+
+    ./build/release/bin/minecraft_c --menu
+
+then set the render scale to 75 on the Settings screen, look standing still and turning, and answer the three questions in the Gate.
 
 **Test name:** "plains and jungle places" is the hand-built stone room and the default world's spawn, which is a bamboo jungle. There is no plains spawn on the default seed.

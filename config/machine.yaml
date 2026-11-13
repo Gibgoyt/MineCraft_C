@@ -17,7 +17,7 @@ gpu:
   model: RTX 2080 Super
   architecture: sm_75
   vram_mib: 8192
-  budget: { voxels_mib: 6144, textures_mib: 256, frames_mib: 256 }
+  budget: { voxels_mib: 6144, textures_mib: 256, frames_mib: 288 }
 display: { backend: kms, device: /dev/dri/card1, connector: auto, width: 1920, height: 1080, refresh_hz: 120 }
 memory: { huge_page_bytes: 2097152, process_budget_mib: 16384 }
 game: { render_distance_default: 32, render_distance_max: 512, tick_hz: 20 }
