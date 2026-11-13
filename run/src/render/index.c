@@ -547,6 +547,8 @@ gpu_status_t render_pyramid_frame(render_t *render, const float64_t position[3])
     }
     /* What rays read comes first: the pyramid's workers wait for it, its octants do not. */
     render_lod_jobs_hold(lod, render->borrowed_lod != nullptr && !render_lod_idle(render->borrowed_lod));
+    /* Plan 008 phase 03: its copies go through the frame's staging while there is a frame, as it may outlive one. */
+    lod->borrowed_staging = render->frame_open != 0u ? &render->frame.gpu.staging : nullptr;
     return render_lod_frame(lod, position);
 }
 
@@ -590,10 +592,12 @@ void render_pyramid_report(const render_t *render) {
              " with no room, %.1f MiB sent",
              lod->stats.columns_built, (libc_double_t)((float64_t)lod->stats.build_ns * 1.0e-9f64),
              lod->stats.columns_no_room, (libc_double_t)((float64_t)lod->stats.bytes_sent / mib));
-    void render_serial_frames_set(render_t * render, bool serial) {
-        render->serial_frames = serial ? 1u : 0u;
-    }
+}
 
-    bool render_serial_frames(const render_t *render) {
-        return render->serial_frames != 0u;
-    }
+void render_serial_frames_set(render_t *render, bool serial) {
+    render->serial_frames = serial ? 1u : 0u;
+}
+
+bool render_serial_frames(const render_t *render) {
+    return render->serial_frames != 0u;
+}
