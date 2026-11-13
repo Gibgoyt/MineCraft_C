@@ -266,6 +266,8 @@ typedef struct hydrology_span_t {
 static_assert(sizeof(hydrology_span_t) == 32);
 
 /* The lattice columns round a span, and ring blocks more on every side. */
+/* Not inlined: its arrays on the frame of a tile's fill, which holds a lattice too, would pass the frame limit. */
+[[gnu::noinline]]
 static void hydrology_lattice_fill(const terrain_hydrology_t *hydrology, const hydrology_span_t *span, int64_t ring,
                                    hydrology_lattice_t *lattice) {
     lattice->cell_x = (span->x_first - ring) >> HYDROLOGY_CELL_SHIFT;
